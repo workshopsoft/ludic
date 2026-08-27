@@ -215,7 +215,14 @@ fn emit_expr(e: Node) -> Val {
     }
     let a = emit_member_addr(e);  return emit_load_at(a, g_addr_ty)
   }
-  if e.kind == E_INDEX  { let a = emit_index_addr(e);   return emit_load_at(a, g_addr_ty) }
+  if e.kind == E_INDEX  {
+    let a = emit_index_addr(e)
+    if (g_addr_ty == "byte") {                    # a byte read, widened to int
+      let b = emit_bind(`load i8, ptr {a}`)
+      return val(emit_bind(`zext i8 {b} to i32`), "int")
+    }
+    return emit_load_at(a, g_addr_ty)
+  }
   if e.kind == E_CALL   { return emit_call(e) }
   if e.kind == E_BIN    { return emit_bin(e) }
   if e.kind == E_UN {

@@ -197,7 +197,7 @@ fn ui_tw(font: int, s: ptr, size: int) -> int {
     if font < tt_n { return rt_text_w(font, s, size) }
   }
   var n = 0
-  while peek8(s, n) != 0 { n = n + 1 }
+  while s[n] != 0 { n = n + 1 }
   return n * 6 * max(size / 8, 1)
 }
 

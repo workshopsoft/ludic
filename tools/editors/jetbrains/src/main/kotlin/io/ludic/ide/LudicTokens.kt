@@ -66,7 +66,7 @@ object LudicVocabulary {
         "ui_focused", "ui_visible", "key", "reg", "set_reg", "self", "save", "load",
         "status", "print", "str", "quit",
         // compiler intrinsics: the floor the Ludic-written runtime stands on
-        "mem_alloc", "mem_realloc", "mem_free", "mem_copy", "mem_set", "peek8", "poke8", "peek32",
+        "mem_alloc", "mem_realloc", "mem_free", "mem_copy", "mem_set", "peek32",
         "os_argc", "os_arg", "file_stderr", "file_stdout",
         "poke32", "peekp", "pokep", "peekf", "pokef", "ptr_add",
         "as_fixed", "as_int", "file_open", "file_read", "file_write",

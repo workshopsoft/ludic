@@ -31,14 +31,14 @@ fn rt_image_init() -> void {
 
 # ---- decoding -------------------------------------------------------------
 fn png_be32(b: ptr, at: int) -> int {
-  return (peek8(b, at) << 24) | (peek8(b, at + 1) << 16) | (peek8(b, at + 2) << 8) | peek8(b, at + 3)
+  return (b[at] << 24) | (b[at + 1] << 16) | (b[at + 2] << 8) | b[at + 3]
 }
 
 fn png_tag(b: ptr, at: int, a: int, c: int, d: int, e: int) -> bool {
-  if peek8(b, at) != a { return false }
-  if peek8(b, at + 1) != c { return false }
-  if peek8(b, at + 2) != d { return false }
-  if peek8(b, at + 3) != e { return false }
+  if b[at] != a { return false }
+  if b[at + 1] != c { return false }
+  if b[at + 2] != d { return false }
+  if b[at + 3] != e { return false }
   return true
 }
 
@@ -70,8 +70,8 @@ fn rt_decode_png(path: str) -> bool {
   if (d == null) { return false }
   let size = rt_file_len
   if size < 8 { mem_free(d); return false }
-  if peek8(d, 0) != 137 { mem_free(d); return false }
-  if peek8(d, 1) != 80 { mem_free(d); return false }
+  if d[0] != 137 { mem_free(d); return false }
+  if d[1] != 80 { mem_free(d); return false }
 
   var w = 0
   var h = 0
@@ -97,19 +97,19 @@ fn rt_decode_png(path: str) -> bool {
         if png_tag(d, typ, 73, 72, 68, 82) {          # IHDR
           w = png_be32(d, body)
           h = png_be32(d, body + 4)
-          bd = peek8(d, body + 8)
-          ct = peek8(d, body + 9)
+          bd = d[body + 8]
+          ct = d[body + 9]
         }
         if png_tag(d, typ, 80, 76, 84, 69) {          # PLTE
           let m = min(ln, 768)
-          for k in 0 .. m { poke8(plte, k, peek8(d, body + k)) }
+          for k in 0 .. m { plte[k] = d[body + k] }
         }
         if png_tag(d, typ, 116, 82, 78, 83) {         # tRNS
           ntrns = min(ln, 256)
-          for k in 0 .. ntrns { poke8(trns, k, peek8(d, body + k)) }
+          for k in 0 .. ntrns { trns[k] = d[body + k] }
         }
         if png_tag(d, typ, 73, 68, 65, 84) {          # IDAT
-          for k in 0 .. ln { poke8(idat, idlen + k, peek8(d, body + k)) }
+          for k in 0 .. ln { idat[idlen + k] = d[body + k] }
           idlen = idlen + ln
         }
         if png_tag(d, typ, 73, 69, 78, 68) { done = 1 }   # IEND
@@ -139,17 +139,17 @@ fn rt_decode_png(path: str) -> bool {
   # reverse the per-scanline filters, in place
   for y in 0 .. h {
     let line = y * (stride + 1)
-    let ft = peek8(raw, line)
+    let ft = raw[line]
     let cur = line + 1
     let prev = cur - (stride + 1)
     for x in 0 .. stride {
       var a = 0
       var b = 0
       var c = 0
-      if x >= fbpp { a = peek8(raw, cur + x - fbpp) }
-      if y > 0 { b = peek8(raw, prev + x) }
-      if x >= fbpp { if y > 0 { c = peek8(raw, prev + x - fbpp) } }
-      var v = peek8(raw, cur + x)
+      if x >= fbpp { a = raw[cur + x - fbpp] }
+      if y > 0 { b = raw[prev + x] }
+      if x >= fbpp { if y > 0 { c = raw[prev + x - fbpp] } }
+      var v = raw[cur + x]
       if ft == 1 { v = v + a }
       if ft == 2 { v = v + b }
       if ft == 3 { v = v + (a + b) / 2 }
@@ -163,7 +163,7 @@ fn rt_decode_png(path: str) -> bool {
         if pa <= pb { if pa <= pc { pick = a } }
         v = v + pick
       }
-      poke8(raw, cur + x, (v & 255))
+      raw[cur + x] = (v & 255)
     }
   }
 
@@ -178,33 +178,33 @@ fn rt_decode_png(path: str) -> bool {
       var B = 0
       var A = 255
       if ct == 6 {
-        R = peek8(raw, row + x * 4)
-        G = peek8(raw, row + x * 4 + 1)
-        B = peek8(raw, row + x * 4 + 2)
-        A = peek8(raw, row + x * 4 + 3)
+        R = raw[row + x * 4]
+        G = raw[row + x * 4 + 1]
+        B = raw[row + x * 4 + 2]
+        A = raw[row + x * 4 + 3]
       }
       if ct == 2 {
-        R = peek8(raw, row + x * 3)
-        G = peek8(raw, row + x * 3 + 1)
-        B = peek8(raw, row + x * 3 + 2)
+        R = raw[row + x * 3]
+        G = raw[row + x * 3 + 1]
+        B = raw[row + x * 3 + 2]
       }
       if ct == 4 {
-        R = peek8(raw, row + x * 2)
+        R = raw[row + x * 2]
         G = R
         B = R
-        A = peek8(raw, row + x * 2 + 1)
+        A = raw[row + x * 2 + 1]
       }
       if ct == 3 {
         let bp = x * bd
-        let idx = ((peek8(raw, row + bp / 8) >> (8 - bd - bp % 8)) & maxv)
-        R = peek8(plte, idx * 3)
-        G = peek8(plte, idx * 3 + 1)
-        B = peek8(plte, idx * 3 + 2)
-        if idx < ntrns { A = peek8(trns, idx) }
+        let idx = ((raw[row + bp / 8] >> (8 - bd - bp % 8)) & maxv)
+        R = plte[idx * 3]
+        G = plte[idx * 3 + 1]
+        B = plte[idx * 3 + 2]
+        if idx < ntrns { A = trns[idx] }
       }
       if ct == 0 {
         let bp = x * bd
-        let s = ((peek8(raw, row + bp / 8) >> (8 - bd - bp % 8)) & maxv)
+        let s = ((raw[row + bp / 8] >> (8 - bd - bp % 8)) & maxv)
         var g = s
         if bd != 8 { g = s * 255 / maxv }
         R = g
@@ -389,15 +389,15 @@ fn rt_sprites_load(path: str) -> void {
     var len = 0
     var j = start
     while j < size {
-      let ch = peek8(d, j)
+      let ch = d[j]
       if ch == 10 { j = size } else { len = len + 1;  j = j + 1 }
     }
-    let c0 = peek8(d, start)
+    let c0 = d[start]
     if c0 == 112 {                       # 'p' — "pal <char> <rrggbb>"
-      let ch = peek8(d, start + 4)
+      let ch = d[start + 4]
       var v = 0
       for k in 0 .. 6 {
-        let hv = rt_hexval(peek8(d, start + 6 + k))
+        let hv = rt_hexval(d[start + 6 + k])
         if hv >= 0 { v = v * 16 + hv }
       }
       if ch < 128 { poke32(pal, ch, ((255 << 24) | v)) }
@@ -419,7 +419,7 @@ fn rt_sprites_load(path: str) -> void {
               for x in 0 .. SPR_SZ {
                 if x < len {
                   poke32(spr_px, cur * SPR_SZ * SPR_SZ + row * SPR_SZ + x,
-                         peek32(pal, (peek8(d, start + x) & 127)))
+                         peek32(pal, (d[start + x] & 127)))
                 }
               }
               row = row + 1

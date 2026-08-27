@@ -21,7 +21,12 @@ fn emit_member_addr(e: Node) -> ptr {
 # address of `base[index]` (slices only in this subset)
 fn emit_index_addr(e: Node) -> ptr {
   let base = emit_expr(e.a)
-  if not is_slice_ty(base.ty) { perr("indexing a non-slice") }
+  if not is_slice_ty(base.ty) {                   # a raw ptr/str: address of byte i.
+    let bi = emit_expr(e.b)                        # (evaluate index first — it may set g_addr_ty)
+    let r = emit_bind(`getelementptr inbounds i8, ptr {base.code}, i32 {bi.code}`)
+    g_addr_ty = "byte"                             # set last so the caller sees it
+    return r
+  }
   let el = slice_elem(base.ty)
   g_addr_ty = el
   # load the data pointer from the slice header (field 0)

@@ -12,7 +12,7 @@ fn emit_str_const(s: ptr) -> ptr {
   emith(itoa(n + 1));  emith(" x i8] c\"")
   var i = 0
   while i < n {
-    let c = peek8(s, i)
+    let c = s[i]
     if c == 34 or c == 92 or c < 32 or c > 126 {
       buf_putc(head, 92)                          # backslash
       buf_putc(head, hexdig(c / 16))
@@ -22,14 +22,6 @@ fn emit_str_const(s: ptr) -> ptr {
   }
   emith("\\00\"\n")
   return name
-}
-
-# a fresh SSA register bound to a `getelementptr`, returned as its name
-fn emit_gep_i8(base: ptr, idx: ptr) -> ptr {
-  let r = nreg()
-  emit("  ");  emit(r);  emit(" = getelementptr inbounds i8, ptr ")
-  emit(base);  emit(", i32 ");  emit(idx);  emit("\n")
-  return r
 }
 
 # the constant initializer for a global var: a literal, or 0/null

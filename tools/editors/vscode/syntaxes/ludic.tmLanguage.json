@@ -209,7 +209,7 @@
         {
           "comment": "compiler intrinsics — these lower straight to libc or the OS",
           "name": "support.function.intrinsic.ludic",
-          "match": "\\b(mem_alloc|mem_realloc|mem_free|mem_copy|mem_set|peek8|poke8|peek32|poke32|peekp|pokep|peekf|pokef|ptr_add|as_fixed|as_int|file_open|file_read|file_write|file_seek|file_tell|file_close|read_byte|write_byte|str_len|os_exit|os_time|os_argc|os_arg|file_stderr|file_stdout|is_windowed|game_title|win_open|win_poll|win_present|win_running|win_close)\\b(?=\\s*\\()"
+          "match": "\\b(mem_alloc|mem_realloc|mem_free|mem_copy|mem_set|peek32|poke32|peekp|pokep|peekf|pokef|ptr_add|as_fixed|as_int|file_open|file_read|file_write|file_seek|file_tell|file_close|read_byte|write_byte|str_len|os_exit|os_time|os_argc|os_arg|file_stderr|file_stdout|is_windowed|game_title|win_open|win_poll|win_present|win_running|win_close)\\b(?=\\s*\\()"
         }
       ]
     },

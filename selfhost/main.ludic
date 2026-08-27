@@ -18,7 +18,7 @@
 fn base_name(path: ptr) -> ptr {
   var last = 0 - 1
   var i = 0
-  while peek8(path, i) != 0 { if peek8(path, i) == 47 { last = i };  i = i + 1 }
+  while path[i] != 0 { if path[i] == 47 { last = i };  i = i + 1 }
   return path[last + 1..i]
 }
 
@@ -42,7 +42,7 @@ fn getenv_or(name: ptr, dflt: ptr) -> ptr {
 fn ensure_slash(d: ptr) -> ptr {
   let n = len(d)
   if n == 0 { return d }
-  if peek8(d, n - 1) == 47 { return d }
+  if d[n - 1] == 47 { return d }
   return (d + ("/"))
 }
 
@@ -76,7 +76,7 @@ entry {
     else {
       # an unknown flag is ignored (with a note) rather than mistaken for the
       # input file — '-' is ASCII 45
-      if peek8(a, 0) == 45 {
+      if a[0] == 45 {
         let m = `ludicc: ignoring unknown flag {a}\n`
         file_write(file_stderr(), m, len(m))
       } else { path = a }

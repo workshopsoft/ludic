@@ -9,7 +9,7 @@ fn read_file(path: str) -> ptr {
   file_seek(f, 0, 0)
   let buf = mem_alloc(n + 1)
   file_read(f, buf, n)
-  poke8(buf, n, 0)
+  buf[n] = 0
   file_close(f)
   return buf
 }
@@ -17,6 +17,6 @@ fn read_file(path: str) -> ptr {
 # length of a NUL-terminated buffer
 fn cstr_len(s: ptr) -> int {
   var n = 0
-  while peek8(s, n) != 0 { n = n + 1 }
+  while s[n] != 0 { n = n + 1 }
   return n
 }

@@ -215,9 +215,9 @@ fn tt_raster(id: int, gid: int, px: int) -> ptr {
             if cvr > 0.0 {
               let oxp = sx / TT_SS
               if oxp >= 0 { if oxp < W { if oy >= 0 { if oy < H {
-                var v = peek8(cover, oy * W + oxp) + flr(cvr * unit)
+                var v = cover[oy * W + oxp] + flr(cvr * unit)
                 if v > 255 { v = 255 }
-                poke8(cover, oy * W + oxp, v)
+                cover[oy * W + oxp] = v
               } } } }
             }
           }
@@ -270,7 +270,7 @@ fn tt_glyph_get(font: int, cp: int, px: int) -> int {
 var u8_next: int = 0        # byte index just past the codepoint last decoded
 
 fn tt_utf8(s: str, at: int) -> int {
-  let c = peek8(s, at)
+  let c = s[at]
   var extra = 0 - 1
   if c < 128 { extra = 0 }
   if (c >> 5) == 6 { extra = 1 }
@@ -286,7 +286,7 @@ fn tt_utf8(s: str, at: int) -> int {
   }
   var cp = (c & (63 >> extra))
   for i in 0 .. extra {
-    let b = peek8(s, at + 1 + i)
+    let b = s[at + 1 + i]
     if (b & 192) != 128 {
       u8_next = at + 1 + i
       return 65533
@@ -308,7 +308,7 @@ fn tt_blit(bmp: ptr, w: int, h: int, dx: int, dy: int, colour: int) -> void {
     if py >= 0 {
       if py < rt_fbh {
         for x in 0 .. w {
-          let a = peek8(bmp, y * w + x)
+          let a = bmp[y * w + x]
           if a != 0 {
             let pxx = dx + x
             if pxx >= 0 {
@@ -337,7 +337,7 @@ fn rt_text_ttf(font: int, x: int, y: int, s: str, colour: int, px: int) -> void 
   let lineh = flr(fx(peek32(tt_asc, font) - peek32(tt_desc, font) + peek32(tt_gap, font)) * scale + 0.5)
   var penx = x
   var i = 0
-  while peek8(s, i) != 0 {
+  while s[i] != 0 {
     let cp = tt_utf8(s, i)
     i = u8_next
     if cp == 10 {
@@ -358,7 +358,7 @@ fn rt_text_w(font: int, s: str, px: int) -> int {
   var w = 0
   var best = 0
   var i = 0
-  while peek8(s, i) != 0 {
+  while s[i] != 0 {
     let cp = tt_utf8(s, i)
     i = u8_next
     if cp == 10 {

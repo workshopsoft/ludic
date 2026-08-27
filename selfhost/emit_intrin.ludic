@@ -8,7 +8,6 @@ var g_intrin_ok: bool = false
 # without evaluating arguments (which could clobber shared state).
 fn is_intrinsic(name: ptr) -> bool {
   if (name == "mem_alloc") or (name == "mem_realloc") { return true }
-  if (name == "peek8") or (name == "poke8") { return true }
   if (name == "file_open") or (name == "file_read") or (name == "file_write") { return true }
   if (name == "file_seek") or (name == "file_tell") or (name == "file_close") { return true }
   if (name == "os_argc") or (name == "os_arg") or (name == "os_exit") or (name == "file_stderr") { return true }
@@ -34,19 +33,6 @@ fn emit_intrinsic(name: ptr, e: Node) -> Val {
     let p = arg_code(e, 0);  let n = arg_code(e, 1)
     let w = emit_bind(`zext i32 {n} to i64`)
     return val(emit_bind(`call ptr @realloc(ptr {p}, i64 {w})`), "ptr")
-  }
-  if (name == "peek8") {
-    let p = arg_code(e, 0);  let i = arg_code(e, 1)
-    let a = emit_gep_i8(p, i)
-    let b = emit_bind(`load i8, ptr {a}`)
-    return val(emit_bind(`zext i8 {b} to i32`), "int")
-  }
-  if (name == "poke8") {
-    let p = arg_code(e, 0);  let i = arg_code(e, 1);  let v = arg_code(e, 2)
-    let a = emit_gep_i8(p, i)
-    let t = emit_bind(`trunc i32 {v} to i8`)
-    emit("  store i8 ");  emit(t);  emit(", ptr ");  emit(a);  emit("\n")
-    return val("0", "void")
   }
   if (name == "file_open") {
     let p = arg_code(e, 0);  let m = arg_code(e, 1)
