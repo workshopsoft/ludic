@@ -16,6 +16,7 @@ const N_ARCH:   int = 10
 const N_EXTERN: int = 11
 const N_UI:     int = 12
 const N_ENUM:   int = 27         # enum Name { A, B, ... } — named int constants
+const S_TOGGLE: int = 28         # enable/disable  (ival: 1=enable 0=disable; s=target; a=entity or null)
 # statements
 const S_LET:      int = 10
 const S_ASSIGN:   int = 11

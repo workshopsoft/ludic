@@ -179,6 +179,7 @@ fn emit_stmt(st: Node) -> void {
   if st.kind == S_QUERY { emit_query(st);  return }
   if st.kind == S_SPAWN { emit_spawn(st);  return }
   if st.kind == S_DESPAWN { emit_despawn(st);  return }
+  if st.kind == S_TOGGLE { emit_toggle(st);  return }
   if st.kind == S_MACHINE { emit_machine(st);  return }
   if st.kind == S_BECOME { emit_become(st);  return }
   if st.kind == S_EXPR { let v = emit_expr(st.a);  return }

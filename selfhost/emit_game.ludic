@@ -24,7 +24,14 @@ fn emit_calls_for_phase(phase: ptr) -> void {
   let i = 0
   while i < len(prog) {
     let d = prog[i]
-    if d.kind == N_SYS and streq(d.ty, phase) { emit("  call void @sys_");  emit(d.s);  emit("()\n") }
+    if d.kind == N_SYS and streq(d.ty, phase) {          # skip a disabled handler
+      let he = emit_bind(sconcat("load i32, ptr @HE_", d.s))
+      let hc = emit_bind(sconcat("icmp ne i32 ", sconcat(he, ", 0")))
+      let run = lbl("hrun");  let skip = lbl("hskip")
+      emit("  br i1 ");  emit(hc);  emit(", label %");  emit(run);  emit(", label %");  emit(skip);  emit("\n")
+      emit(run);  emit(":\n  call void @sys_");  emit(d.s);  emit("()\n")
+      emit("  br label %");  emit(skip);  emit("\n");  emit(skip);  emit(":\n")
+    }
     i = i + 1
   }
 }

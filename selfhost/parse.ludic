@@ -200,6 +200,12 @@ fn stmt() -> Node {
     if streq(t.text, "become") { pi = pi + 1; let n = node(S_BECOME); n.s = eat_id(); return n }
     if streq(t.text, "enter") { pi = pi + 1; let n = node(S_BECOME); n.s = eat_id(); n.ival = 1; return n }
     if streq(t.text, "despawn") { pi = pi + 1; let n = node(S_DESPAWN); n.a = expr(); return n }
+    if streq(t.text, "enable") or streq(t.text, "disable") {
+      let en = 0; if streq(t.text, "enable") { en = 1 }
+      pi = pi + 1; let n = node(S_TOGGLE); n.ival = en; n.s = eat_id()     # `enable P on e` / `disable Model` / `disable Handler`
+      if is_id("on") { pi = pi + 1; n.a = expr() }                        # property on an entity
+      return n
+    }
     if streq(t.text, "break") { pi = pi + 1; return node(S_BREAK) }
     if streq(t.text, "continue") { pi = pi + 1; return node(S_CONTINUE) }
     if streq(t.text, "match") {
@@ -285,6 +291,8 @@ fn parse_one_decl() -> void {
   let onspawn_model: ptr = ptr_null()
   let ondespawn_model: ptr = ptr_null()
   let onattach_prop: ptr = ptr_null()
+  let onenable_prop: ptr = ptr_null()
+  let ondisable_prop: ptr = ptr_null()
   let hook_phase: ptr = ptr_null()            # @OnStart / @OnQuit override the phase
   while is_op("@") {
     pi = pi + 1; let a = eat_id()             # collect a leading @annotation
@@ -293,10 +301,12 @@ fn parse_one_decl() -> void {
     else { if streq(a, "OnSpawn") { eat_op("("); onspawn_model = eat_id(); eat_op(")") }
     else { if streq(a, "OnDespawn") { eat_op("("); ondespawn_model = eat_id(); eat_op(")") }
     else { if streq(a, "OnAttach") { eat_op("("); onattach_prop = eat_id(); eat_op(")") }
+    else { if streq(a, "OnEnable") { eat_op("("); onenable_prop = eat_id(); eat_op(")") }
+    else { if streq(a, "OnDisable") { eat_op("("); ondisable_prop = eat_id(); eat_op(")") }
     else { if streq(a, "OnStart") { hook_phase = "Start" }                       # boot
     else { if streq(a, "OnQuit") { hook_phase = "OnQuit" }                       # shutdown
     else { if is_op("(") { let d = 0          # any other @anno(args) — parsed and skipped
-        while true { if is_op("(") { d = d + 1 };  if is_op(")") { d = d - 1 };  pi = pi + 1;  if d == 0 { break } } } } } } } } } }
+        while true { if is_op("(") { d = d + 1 };  if is_op(")") { d = d - 1 };  pi = pi + 1;  if d == 0 { break } } } } } } } } } } } }
     skipnl()
   }
   if is_id("import") { pi = pi + 1
@@ -315,6 +325,8 @@ fn parse_one_decl() -> void {
     if not ptr_is_null(onspawn_model) { register_onspawn(onspawn_model, h.a); return }       # spawn hook
     if not ptr_is_null(ondespawn_model) { register_ondespawn(ondespawn_model, h.a); return } # despawn hook
     if not ptr_is_null(onattach_prop) { register_onattach(onattach_prop, h.a); return }      # attach hook
+    if not ptr_is_null(onenable_prop) { register_onenable(onenable_prop, h.a); return }      # enable hook
+    if not ptr_is_null(ondisable_prop) { register_ondisable(ondisable_prop, h.a); return }   # disable hook
     if not ptr_is_null(hook_phase) { h.ty = hook_phase }                                     # @OnStart/@OnQuit
     if not ptr_is_null(qspec) {               # @Queries wraps the body in its S_QUERY
       qspec.a = h.a
@@ -363,6 +375,8 @@ fn parse_program() -> void {
   g_onspawn = new []Node
   g_ondespawn = new []Node
   g_onattach = new []Node
+  g_onenable = new []Node
+  g_ondisable = new []Node
   loaded_paths = new []ptr
   skipnl()
   g_game_name = "Ludic"

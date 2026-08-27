@@ -45,12 +45,12 @@ object LudicVocabulary {
         "const", "var", "fn", "extern", "handler", "entry"
     )
     val CLAUSE = setOf(
-        "phase", "query", "reads", "writes"
+        "phase", "query", "reads", "writes", "on"
     )
     val STMT = setOf(
         "let", "return", "if", "else", "when", "while", "for", "in", "spawn", "despawn",
-        "match", "machine", "state", "become", "enter", "where", "and", "or", "not",
-        "break", "continue", "new"
+        "enable", "disable", "match", "machine", "state", "become", "enter", "where",
+        "and", "or", "not", "break", "continue", "new"
     )
     val PRIMITIVES = setOf("int", "fixed", "bool", "entity", "str", "ptr", "void")
     val PHASES = setOf("Start", "Input", "FixedUpdate", "Update", "LateUpdate", "Render")

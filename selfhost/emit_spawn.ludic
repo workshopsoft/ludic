@@ -115,3 +115,30 @@ fn emit_despawn(st: Node) -> void {
   }
   emit("  call void @L_free_entity(i32 ");  emit(v.code);  emit(")\n")
 }
+
+# enable/disable. `<P> on <e>` toggles a property's has-flag on an entity (its
+# data persists, so re-enabling restores it, and queries already skip a cleared
+# flag). A bare `<Model>` / `<Handler>` flips a global enabled flag.
+fn emit_toggle(st: Node) -> void {
+  let val = "0";  if st.ival == 1 { val = "1" }
+  if not ptr_is_null(st.a) {
+    let ev = emit_expr(st.a)
+    let me = itoa(MAX_ENT)
+    let hp = nreg();  emit("  ");  emit(hp);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i8], ptr @H_");  emit(st.s);  emit(", i32 0, i32 ");  emit(ev.code);  emit("\n")
+    emit("  store i8 ");  emit(val);  emit(", ptr ");  emit(hp);  emit("\n")
+    let hb: Node = ptr_null()
+    if st.ival == 1 { hb = onenable_body(st.s) } else { hb = ondisable_body(st.s) }
+    if not ptr_is_null(hb) {
+      let save = nloc
+      let slot = nreg();  emit("  ");  emit(slot);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x %Cmp_");  emit(st.s);  emit("], ptr @S_");  emit(st.s);  emit(", i32 0, i32 ");  emit(ev.code);  emit("\n")
+      let vslot = emit_alloca("ptr")
+      emit("  store ptr ");  emit(slot);  emit(", ptr ");  emit(vslot);  emit("\n")
+      loc_push(st.s, vslot, st.s)
+      emit_block(hb)
+      nloc = save
+    }
+  } else {
+    let g = "@HE_";  if is_model(st.s) { g = "@ME_" }     # model vs handler
+    emit("  store i32 ");  emit(val);  emit(", ptr ");  emit(g);  emit(st.s);  emit("\n")
+  }
+}
