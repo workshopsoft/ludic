@@ -167,7 +167,7 @@ Controls:
 - [x] Cross-compilation to ELF (x86-64, aarch64) and Windows COFF
 - [x] ECS runtime (properties, systems, phases, queries, entity pooling)
 - [x] Windowed 2D rendering (Cocoa driven from LLVM IR) + headless PPM verification
-- [x] CC0 Kenney PNG sprites (`load_png`, decoder written in Ludic) + scrolling camera
+- [x] CC0 Kenney PNG sprites (`png_load`, decoder written in Ludic) + scrolling camera
 - [x] Overworld: tilemap, movement, collision
 - [x] Random encounters + turn-based battle (HP/MP, seeded-RNG damage)
 - [x] Party + **local co-op** (P1 Knight, P2 Mage, per-player turns)

@@ -121,7 +121,7 @@ handlers:
 
 ```ludic
 handler Boot phase Start {
-  setreg(R_FONT, font_load("…Arial.ttf"))
+  set_reg(R_FONT, font_load("…Arial.ttf"))
   ui_build()                 # construct the tree (loads skins/images)
   ui_open(UI_MainMenu)       # make it active, focus the first button
 }
@@ -519,7 +519,7 @@ machine R_PHASE {
 States **number themselves by declaration order** (`KnightMenu` is `0`,
 `KnightResolve` is `1`, …) — no magic constants. (An explicit `state Name = expr`
 is still accepted when a state needs a specific value.) A `machine <reg>` reads
-`reg(<reg>)` to pick the state; `become Name` compiles to `setreg(<reg>, <Name's
+`reg(<reg>)` to pick the state; `become Name` compiles to `set_reg(<reg>, <Name's
 value>)`. Both lower to plain branches (and `match` runs on the native LLVM
 backend too).
 
@@ -538,7 +538,7 @@ if reg(R_MODE) == Mode.Battle { … }
 
 A variant is a **compile-time `int`** accessed as `Enum.Variant` (`Action.Guard`
 is `1`), numbered from `0` by declaration order, so it works anywhere an int does
-— `match` patterns, comparisons, `setreg`. Enums are a naming layer over `int`:
+— `match` patterns, comparisons, `set_reg`. Enums are a naming layer over `int`:
 there is no distinct enum runtime type yet, so an enum value lives in an ordinary
 `int` or register (and is saved with it). See `examples/chronorift/combat.ludic`,
 whose battle menus dispatch on `KnightAct`/`MageAct` instead of `0..3`.
@@ -571,9 +571,9 @@ ints (`0xff8800`).
 # UI        ui_build()  ui_open(id)  ui_tick(key)  ui_render()
 #           ui_clicked(id)->bool  ui_set_text(id,str)  ui_set_int(id,n)
 #           ui_focus(id)  ui_focused()->int  ui_visible(id,bool)
-# assets    load_png(path)->id           (decodes a PNG; returns a 16x16 sprite id)
+# assets    png_load(path)->id           (decodes a PNG; returns a 16x16 sprite id)
 # input     key()->int                   (current frame's key code, 0 if none)
-# state     reg(i)->int   setreg(i,v)     (64 integer resources shared by handlers)
+# state     reg(i)->int   set_reg(i,v)     (64 integer resources shared by handlers)
 # entity    self()->entity
 # save      save()   load()->bool         (binary snapshot of the whole ECS World)
 # control   quit()   print_int(i)
@@ -670,7 +670,7 @@ self-hosting; their lowerings are in
 > `layer`, and the `on enter` / `on exit` hooks are a design target: the
 > compiler has no `scene` declaration and [`examples/scenes.ludic`](examples/scenes.ludic)
 > does not compile today. Games
-> that need mutually-exclusive states use a mode register (`reg`/`setreg`) with a
+> that need mutually-exclusive states use a mode register (`reg`/`set_reg`) with a
 > `machine`, as `examples/chronorift` does. This section describes the intended
 > syntax for when scene support lands.
 

@@ -60,10 +60,10 @@ object LudicVocabulary {
         "min", "max", "abs", "clamp", "seed", "rng_range", "rng_chance", "fx", "flr",
         "map_size", "map_row", "tile", "clear", "present", "fill_rect", "frame_rect",
         "put_px", "text", "text_int", "font_load", "text_ttf", "text_w", "text_h",
-        "image_load", "draw_image", "draw_image_scaled", "draw_9slice", "load_png",
-        "load_sprites", "draw_sprite", "draw_sprite_scaled", "ui_build", "ui_open",
+        "image_load", "draw_image", "draw_image_scaled", "draw_9slice", "png_load",
+        "sprites_load", "draw_sprite", "draw_sprite_scaled", "ui_build", "ui_open",
         "ui_tick", "ui_render", "ui_clicked", "ui_set_text", "ui_set_int", "ui_focus",
-        "ui_focused", "ui_visible", "key", "reg", "setreg", "self", "save", "load",
+        "ui_focused", "ui_visible", "key", "reg", "set_reg", "self", "save", "load",
         "status", "print_int", "quit",
         // compiler intrinsics: the floor the Ludic-written runtime stands on
         "mem_alloc", "mem_realloc", "mem_free", "mem_copy", "mem_set", "peek8", "poke8", "peek32",

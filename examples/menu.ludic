@@ -20,7 +20,7 @@ program Menu {
   }
 
   handler Boot phase Start {
-    setreg(R_FONT, font_load("/System/Library/Fonts/Supplemental/Arial.ttf"))
+    set_reg(R_FONT, font_load("/System/Library/Fonts/Supplemental/Arial.ttf"))
     ui_build()
     ui_open(UI_MainMenu)
   }

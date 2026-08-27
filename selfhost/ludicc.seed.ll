@@ -1465,7 +1465,7 @@ declare void @win_close()
 @.str1390 = private unnamed_addr constant [3 x i8] c":\0A\00"
 @.str1391 = private unnamed_addr constant [27 x i8] c"'become' outside a machine\00"
 @.str1392 = private unnamed_addr constant [18 x i8] c"become: no state \00"
-@.str1393 = private unnamed_addr constant [31 x i8] c"  call void @fn_rt_setreg(i32 \00"
+@.str1393 = private unnamed_addr constant [32 x i8] c"  call void @fn_rt_set_reg(i32 \00"
 @.str1394 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str1395 = private unnamed_addr constant [3 x i8] c")\0A\00"
 @.str1396 = private unnamed_addr constant [4 x i8] c"%io\00"

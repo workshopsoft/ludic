@@ -316,7 +316,7 @@ fn rt_draw_9slice(id: int, dx: int, dy: int, dw: int, dh: int, inset: int) -> vo
 }
 
 # ---- sprites (16x16 art) --------------------------------------------------
-fn rt_load_png(path: str) -> int {
+fn rt_png_load(path: str) -> int {
   if spr_n >= SPR_MAX { return 0 - 1 }
   if rt_decode_png(path) == false { return 0 - 1 }
   let id = spr_n
@@ -376,7 +376,7 @@ fn rt_hexval(c: int) -> int {
   return 0 - 1
 }
 
-fn rt_load_sprites(path: str) -> void {
+fn rt_sprites_load(path: str) -> void {
   let d = rt_read_file(path)
   if ptr_is_null(d) { spr_n = 0; return }
   let size = rt_file_len

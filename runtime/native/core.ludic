@@ -178,7 +178,7 @@ fn rt_reg(i: int) -> int {
   return peek32(rt_regs, i)
 }
 
-fn rt_setreg(i: int, v: int) -> void {
+fn rt_set_reg(i: int, v: int) -> void {
   if i < 0 { return }
   if i >= 64 { return }
   poke32(rt_regs, i, v)
