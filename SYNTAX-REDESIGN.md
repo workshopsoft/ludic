@@ -52,7 +52,7 @@ Verified against the self-hosted compiler ([selfhost/parse.ludic](selfhost/parse
 12. Three overlapping control families — `if`/`when`, `match`, `machine`/`become`
     — and `enter` reuses `become`'s AST node ([parse.ludic:176-177](selfhost/parse.ludic)). *(Phase 4: `if`/`when` kept by choice; magic-int dispatch resolved)*
 13. Typed components/structs exist, but real state lives in 64 untyped int
-    registers (`reg`/`setreg`), so `machine`/`match` dispatch on magic numbers. *(✅ Phase 4: auto-numbered states + `enum` name the values)*
+    registers (`reg`/`set_reg`), so `machine`/`match` dispatch on magic numbers. *(✅ Phase 4: auto-numbered states + `enum` name the values)*
 
 ---
 

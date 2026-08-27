@@ -7,14 +7,14 @@
 program SceneDemo {
   const R_N: int = 0
 
-  handler Boot phase Start { setreg(R_N, 0);  print_int(1000) }
+  handler Boot phase Start { set_reg(R_N, 0);  print_int(1000) }
 
   scene Title start {
     on enter { print_int(1) }
     on exit  { print_int(2) }
     layer Main {
       handler Tick phase Update {
-        setreg(R_N, reg(R_N) + 1)
+        set_reg(R_N, reg(R_N) + 1)
         print_int(100 + reg(R_N))
         if reg(R_N) >= 2 { become Play }
       }
@@ -22,11 +22,11 @@ program SceneDemo {
   }
 
   scene Play {
-    on enter { print_int(3);  setreg(R_N, 0) }
+    on enter { print_int(3);  set_reg(R_N, 0) }
     on exit  { print_int(4) }
     layer World {
       handler Step phase Update {
-        setreg(R_N, reg(R_N) + 1)
+        set_reg(R_N, reg(R_N) + 1)
         print_int(200 + reg(R_N))
         if reg(R_N) >= 2 { quit() }
       }
