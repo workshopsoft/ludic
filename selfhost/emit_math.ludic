@@ -14,14 +14,14 @@ fn emit_math_builtin(name: ptr, e: Node) -> Val {
     return val(emit_bind(sconcat("select i1 ", sconcat(c, sconcat(", i32 ", sconcat(n, sconcat(", i32 ", a.code)))))), "int")
   }
   if streq(name, "min") or streq(name, "max") {
-    let a = emit_expr(e.kids[0])  let b = emit_expr(e.kids[1])
+    let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1])
     let op = "slt"
     if streq(name, "max") { op = "sgt" }
     let c = emit_bind(sconcat("icmp ", sconcat(op, sconcat(" i32 ", sconcat(a.code, sconcat(", ", b.code))))))
     return val(emit_bind(sconcat("select i1 ", sconcat(c, sconcat(", i32 ", sconcat(a.code, sconcat(", i32 ", b.code)))))), "int")
   }
   # clamp(v, lo, hi) = max(lo, min(v, hi))
-  let v = emit_expr(e.kids[0])  let lo = emit_expr(e.kids[1])  let hi = emit_expr(e.kids[2])
+  let v = emit_expr(e.kids[0]);  let lo = emit_expr(e.kids[1]);  let hi = emit_expr(e.kids[2])
   let c1 = emit_bind(sconcat("icmp slt i32 ", sconcat(v.code, sconcat(", ", hi.code))))
   let t = emit_bind(sconcat("select i1 ", sconcat(c1, sconcat(", i32 ", sconcat(v.code, sconcat(", i32 ", hi.code))))))
   let c2 = emit_bind(sconcat("icmp sgt i32 ", sconcat(lo.code, sconcat(", ", t))))

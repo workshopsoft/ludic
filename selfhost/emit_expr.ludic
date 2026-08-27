@@ -12,17 +12,17 @@ fn emit_logic(e: Node) -> Val {
   let la = emit_expr(e.a)
   let lc = emit_bind(sconcat("icmp ne i32 ", sconcat(la.code, ", 0")))
   let lz = emit_bind(sconcat("zext i1 ", sconcat(lc, " to i32")))
-  emit("  store i32 ")  emit(lz)  emit(", ptr ")  emit(slot)  emit("\n")
-  let ev = lbl("sc")  let done = lbl("scend")
-  if streq(e.s, "and") { emit("  br i1 ")  emit(lc)  emit(", label %")  emit(ev)  emit(", label %")  emit(done)  emit("\n") }
-  else { emit("  br i1 ")  emit(lc)  emit(", label %")  emit(done)  emit(", label %")  emit(ev)  emit("\n") }
-  emit(ev)  emit(":\n")
+  emit("  store i32 ");  emit(lz);  emit(", ptr ");  emit(slot);  emit("\n")
+  let ev = lbl("sc");  let done = lbl("scend")
+  if streq(e.s, "and") { emit("  br i1 ");  emit(lc);  emit(", label %");  emit(ev);  emit(", label %");  emit(done);  emit("\n") }
+  else { emit("  br i1 ");  emit(lc);  emit(", label %");  emit(done);  emit(", label %");  emit(ev);  emit("\n") }
+  emit(ev);  emit(":\n")
   let rb = emit_expr(e.b)
   let rc = emit_bind(sconcat("icmp ne i32 ", sconcat(rb.code, ", 0")))
   let rz = emit_bind(sconcat("zext i1 ", sconcat(rc, " to i32")))
-  emit("  store i32 ")  emit(rz)  emit(", ptr ")  emit(slot)  emit("\n")
-  emit("  br label %")  emit(done)  emit("\n")
-  emit(done)  emit(":\n")
+  emit("  store i32 ");  emit(rz);  emit(", ptr ");  emit(slot);  emit("\n")
+  emit("  br label %");  emit(done);  emit("\n")
+  emit(done);  emit(":\n")
   return val(emit_bind(sconcat("load i32, ptr ", slot)), "bool")
 }
 
@@ -57,13 +57,13 @@ fn emit_bin(e: Node) -> Val {
   let b = emit_expr(e.b)
   let fx = streq(a.ty, "fixed") or streq(b.ty, "fixed")
   if is_cmp(e.s) {
-    let ac = a.code  let bc = b.code
-    if fx { ac = to_fixed(a)  bc = to_fixed(b) }
+    let ac = a.code;  let bc = b.code
+    if fx { ac = to_fixed(a);  bc = to_fixed(b) }
     let c = emit_bind(sconcat("icmp ", sconcat(cmp_code(e.s), sconcat(" i32 ", sconcat(ac, sconcat(", ", bc))))))
     return val(emit_bind(sconcat("zext i1 ", sconcat(c, " to i32"))), "bool")
   }
   if fx {
-    let af = to_fixed(a)  let bf = to_fixed(b)
+    let af = to_fixed(a);  let bf = to_fixed(b)
     if streq(e.s, "*") {
       let a64 = emit_bind(sconcat("sext i32 ", sconcat(af, " to i64")))
       let b64 = emit_bind(sconcat("sext i32 ", sconcat(bf, " to i64")))
@@ -87,16 +87,16 @@ fn emit_bin(e: Node) -> Val {
 
 fn emit_call(e: Node) -> Val {
   let name = e.a.s
-  if streq(name, "self") { if nself == 0 { return val("0", "entity") }  return val(emit_bind(sconcat("load i32, ptr ", self_stk[nself - 1])), "entity") }
+  if streq(name, "self") { if nself == 0 { return val("0", "entity") };  return val(emit_bind(sconcat("load i32, ptr ", self_stk[nself - 1])), "entity") }
   if streq(name, "key") { return val(emit_bind("load i32, ptr @L_key"), "int") }
-  if streq(name, "save") { emit("  call void @L_save()\n")  return val("0", "void") }
-  if streq(name, "ui_build") { emit("  call void @ui_build()\n")  return val("0", "void") }
+  if streq(name, "save") { emit("  call void @L_save()\n");  return val("0", "void") }
+  if streq(name, "ui_build") { emit("  call void @ui_build()\n");  return val("0", "void") }
   if streq(name, "load") { return val(emit_bind("call i32 @L_load()"), "bool") }
-  if streq(name, "quit") { emit("  store i32 0, ptr @L_running\n")  return val("0", "void") }
+  if streq(name, "quit") { emit("  store i32 0, ptr @L_running\n");  return val("0", "void") }
   if streq(name, "len") { return emit_len(e) }
   if streq(name, "push") { return emit_push(e) }
-  if streq(name, "fx") { let a = emit_expr(e.kids[0])  return val(emit_bind(sconcat("shl i32 ", sconcat(a.code, ", 16"))), "fixed") }
-  if streq(name, "flr") { let a = emit_expr(e.kids[0])  return val(emit_bind(sconcat("ashr i32 ", sconcat(a.code, ", 16"))), "int") }
+  if streq(name, "fx") { let a = emit_expr(e.kids[0]);  return val(emit_bind(sconcat("shl i32 ", sconcat(a.code, ", 16"))), "fixed") }
+  if streq(name, "flr") { let a = emit_expr(e.kids[0]);  return val(emit_bind(sconcat("ashr i32 ", sconcat(a.code, ", 16"))), "int") }
   if is_intrinsic(name) { return emit_intrinsic(name, e) }
   if is_intrinsic2(name) { return emit_intrinsic2(name, e) }
   if is_math_builtin(name) { return emit_math_builtin(name, e) }
@@ -113,20 +113,19 @@ fn emit_call(e: Node) -> Val {
   let args = new []ptr
   let atys = new []ptr
   let i = 0
-  while i < len(e.kids) { let v = emit_expr(e.kids[i])  push(args, v.code)  push(atys, v.ty)  i = i + 1 }
+  while i < len(e.kids) { let v = emit_expr(e.kids[i]);  push(args, v.code);  push(atys, v.ty);  i = i + 1 }
   let rl = llty(fn2.ty)
   emit("  ")
   let rreg = "0"
-  if not streq(rl, "void") { rreg = nreg()  emit(rreg)  emit(" = ") }
-  emit("call ")  emit(rl)  emit(" @fn_")  emit(cname)  emit("(")
+  if not streq(rl, "void") { rreg = nreg();  emit(rreg);  emit(" = ") }
+  emit("call ");  emit(rl);  emit(" @fn_");  emit(cname);  emit("(")
   i = 0
   while i < len(args) {
     if i > 0 { emit(", ") }
-    emit(llty(atys[i]))  emit(" ")  emit(args[i])
+    emit(llty(atys[i]));  emit(" ");  emit(args[i])
     i = i + 1
   }
-  emit(")
-")
+  emit(")\n")
   return val(rreg, fn2.ty)
 }
 
@@ -153,8 +152,8 @@ fn emit_expr(e: Node) -> Val {
     if is_ui_ident(e.s) { return val(itoa(ui_index_of(e.s)), "int") }
     perr(sconcat("unknown identifier ", e.s))
   }
-  if e.kind == E_MEMBER { let a = emit_member_addr(e)  return emit_load_at(a, g_addr_ty) }
-  if e.kind == E_INDEX  { let a = emit_index_addr(e)   return emit_load_at(a, g_addr_ty) }
+  if e.kind == E_MEMBER { let a = emit_member_addr(e);  return emit_load_at(a, g_addr_ty) }
+  if e.kind == E_INDEX  { let a = emit_index_addr(e);   return emit_load_at(a, g_addr_ty) }
   if e.kind == E_CALL   { return emit_call(e) }
   if e.kind == E_BIN    { return emit_bin(e) }
   if e.kind == E_UN {

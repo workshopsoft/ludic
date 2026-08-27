@@ -26,9 +26,9 @@ game Snake {
 
   fn reset(x: int) -> int {
     for (p, s) in query [Pos, Seg] { despawn self() }
-    spawn S0 { Seg = { order = 0 }  Pos = { x = 10, y = 7 } }
-    spawn S1 { Seg = { order = 1 }  Pos = { x = 9,  y = 7 } }
-    spawn S2 { Seg = { order = 2 }  Pos = { x = 8,  y = 7 } }
+    spawn S0 { Seg = { order = 0 };  Pos = { x = 10, y = 7 } }
+    spawn S1 { Seg = { order = 1 };  Pos = { x = 9,  y = 7 } }
+    spawn S2 { Seg = { order = 2 };  Pos = { x = 8,  y = 7 } }
     setreg(R_DIR, 3)
     setreg(R_LEN, 3)
     setreg(R_TICK, 0)
@@ -62,7 +62,7 @@ game Snake {
         setreg(R_TICK, 0)
         let len = reg(R_LEN)
         for (pt, stg) in query [Pos, Seg] {
-          if stg.order == len - 1 { setreg(R_TX, pt.x)  setreg(R_TY, pt.y) }
+          if stg.order == len - 1 { setreg(R_TX, pt.x);  setreg(R_TY, pt.y) }
         }
         for step in 0 .. len {
           let i = len - 1 - step
@@ -70,7 +70,7 @@ game Snake {
             for (pa, sa) in query [Pos, Seg] {
               if sa.order == i {
                 for (pb, sb) in query [Pos, Seg] {
-                  if sb.order == i - 1 { pa.x = pb.x  pa.y = pb.y }
+                  if sb.order == i - 1 { pa.x = pb.x;  pa.y = pb.y }
                 }
               }
             }
@@ -101,7 +101,7 @@ game Snake {
         }
         if reg(R_ATE) == 1 {
           setreg(R_SCORE, reg(R_SCORE) + 1)
-          spawn Body { Seg = { order = len }  Pos = { x = reg(R_TX), y = reg(R_TY) } }
+          spawn Body { Seg = { order = len };  Pos = { x = reg(R_TX), y = reg(R_TY) } }
           setreg(R_LEN, len + 1)
           setreg(R_FX, rng_range(0, GW - 1))
           setreg(R_FY, rng_range(0, GH - 1))

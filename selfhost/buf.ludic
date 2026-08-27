@@ -23,7 +23,7 @@ fn buf_putc(b: Buf, c: int) -> void {
 }
 fn buf_puts(b: Buf, s: ptr) -> void {
   let i = 0
-  while peek8(s, i) != 0 { buf_putc(b, peek8(s, i)) i = i + 1 }
+  while peek8(s, i) != 0 { buf_putc(b, peek8(s, i)); i = i + 1 }
 }
 fn buf_puti(b: Buf, n: int) -> void { buf_puts(b, itoa(n)) }
-fn buf_str(b: Buf) -> ptr { poke8(b.data, b.len, 0) return b.data }
+fn buf_str(b: Buf) -> ptr { poke8(b.data, b.len, 0); return b.data }

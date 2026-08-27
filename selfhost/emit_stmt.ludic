@@ -12,7 +12,7 @@ fn emit_block(b: Node) -> void {
 
 # store `val` (llvm type `lt`) into address `addr`
 fn store_at(lt: ptr, v: ptr, addr: ptr) -> void {
-  emit("  store ")  emit(lt)  emit(" ")  emit(v)  emit(", ptr ")  emit(addr)  emit("\n")
+  emit("  store ");  emit(lt);  emit(" ");  emit(v);  emit(", ptr ");  emit(addr);  emit("\n")
 }
 
 fn emit_assign(st: Node) -> void {
@@ -22,15 +22,15 @@ fn emit_assign(st: Node) -> void {
   let ty = "int"
   if t.kind == E_ID {
     let li = loc_find(t.s)
-    if li >= 0 { addr = loc_reg[li]  ty = loc_ty[li] }
+    if li >= 0 { addr = loc_reg[li];  ty = loc_ty[li] }
     else {
       let g = find_global(t.s)
       if ptr_is_null(g) { perr(sconcat("assign to unknown ", t.s)) }
-      addr = sconcat("@g_", t.s)  ty = g.ty
+      addr = sconcat("@g_", t.s);  ty = g.ty
     }
   } else {
-    if t.kind == E_MEMBER { addr = emit_member_addr(t)  ty = g_addr_ty }
-    else { if t.kind == E_INDEX { addr = emit_index_addr(t)  ty = g_addr_ty }
+    if t.kind == E_MEMBER { addr = emit_member_addr(t);  ty = g_addr_ty }
+    else { if t.kind == E_INDEX { addr = emit_index_addr(t);  ty = g_addr_ty }
       else { perr("bad assignment target") } }
   }
   let lt = llty(ty)
@@ -51,34 +51,34 @@ fn emit_if(st: Node) -> void {
   let c = emit_expr(st.a)
   let cc = emit_bind(sconcat("icmp ne i32 ", sconcat(c.code, ", 0")))
   let has_else = not ptr_is_null(st.c)
-  let tl = lbl("then")  let el = lbl("else")  let en = lbl("ifend")
-  if has_else { emit("  br i1 ")  emit(cc)  emit(", label %")  emit(tl)  emit(", label %")  emit(el)  emit("\n") }
-  else { emit("  br i1 ")  emit(cc)  emit(", label %")  emit(tl)  emit(", label %")  emit(en)  emit("\n") }
-  emit(tl)  emit(":\n")  g_term = false
+  let tl = lbl("then");  let el = lbl("else");  let en = lbl("ifend")
+  if has_else { emit("  br i1 ");  emit(cc);  emit(", label %");  emit(tl);  emit(", label %");  emit(el);  emit("\n") }
+  else { emit("  br i1 ");  emit(cc);  emit(", label %");  emit(tl);  emit(", label %");  emit(en);  emit("\n") }
+  emit(tl);  emit(":\n");  g_term = false
   emit_block(st.b)
-  if not g_term { emit("  br label %")  emit(en)  emit("\n") }
+  if not g_term { emit("  br label %");  emit(en);  emit("\n") }
   if has_else {
-    emit(el)  emit(":\n")  g_term = false
+    emit(el);  emit(":\n");  g_term = false
     # else is either a block or a nested if-statement
     if st.c.kind == S_IF { emit_stmt(st.c) } else { emit_block(st.c) }
-    if not g_term { emit("  br label %")  emit(en)  emit("\n") }
+    if not g_term { emit("  br label %");  emit(en);  emit("\n") }
   }
-  emit(en)  emit(":\n")  g_term = false
+  emit(en);  emit(":\n");  g_term = false
 }
 
 fn emit_while(st: Node) -> void {
-  let cl = lbl("wcond")  let bl = lbl("wbody")  let en = lbl("wend")
-  emit("  br label %")  emit(cl)  emit("\n")
-  emit(cl)  emit(":\n")
+  let cl = lbl("wcond");  let bl = lbl("wbody");  let en = lbl("wend")
+  emit("  br label %");  emit(cl);  emit("\n")
+  emit(cl);  emit(":\n")
   let c = emit_expr(st.a)
   let cc = emit_bind(sconcat("icmp ne i32 ", sconcat(c.code, ", 0")))
-  emit("  br i1 ")  emit(cc)  emit(", label %")  emit(bl)  emit(", label %")  emit(en)  emit("\n")
-  emit(bl)  emit(":\n")  g_term = false
+  emit("  br i1 ");  emit(cc);  emit(", label %");  emit(bl);  emit(", label %");  emit(en);  emit("\n")
+  emit(bl);  emit(":\n");  g_term = false
   loop_push(cl, en)
   emit_block(st.b)
   loop_pop()
-  if not g_term { emit("  br label %")  emit(cl)  emit("\n") }
-  emit(en)  emit(":\n")  g_term = false
+  if not g_term { emit("  br label %");  emit(cl);  emit("\n") }
+  emit(en);  emit(":\n");  g_term = false
 }
 
 fn emit_for(st: Node) -> void {
@@ -86,24 +86,24 @@ fn emit_for(st: Node) -> void {
   let lo = emit_expr(st.a)
   store_at("i32", lo.code, slot)
   loc_push(st.s, slot, "int")
-  let cl = lbl("fcond")  let bl = lbl("fbody")  let ct = lbl("fcont")  let en = lbl("fend")
-  emit("  br label %")  emit(cl)  emit("\n")
-  emit(cl)  emit(":\n")
+  let cl = lbl("fcond");  let bl = lbl("fbody");  let ct = lbl("fcont");  let en = lbl("fend")
+  emit("  br label %");  emit(cl);  emit("\n")
+  emit(cl);  emit(":\n")
   let iv = emit_bind(sconcat("load i32, ptr ", slot))
   let hi = emit_expr(st.b)
   let cc = emit_bind(sconcat("icmp slt i32 ", sconcat(iv, sconcat(", ", hi.code))))
-  emit("  br i1 ")  emit(cc)  emit(", label %")  emit(bl)  emit(", label %")  emit(en)  emit("\n")
-  emit(bl)  emit(":\n")  g_term = false
+  emit("  br i1 ");  emit(cc);  emit(", label %");  emit(bl);  emit(", label %");  emit(en);  emit("\n")
+  emit(bl);  emit(":\n");  g_term = false
   loop_push(ct, en)
   emit_block(st.c)
   loop_pop()
-  if not g_term { emit("  br label %")  emit(ct)  emit("\n") }
-  emit(ct)  emit(":\n")
+  if not g_term { emit("  br label %");  emit(ct);  emit("\n") }
+  emit(ct);  emit(":\n")
   let i2 = emit_bind(sconcat("load i32, ptr ", slot))
   let i3 = emit_bind(sconcat("add i32 ", sconcat(i2, ", 1")))
   store_at("i32", i3, slot)
-  emit("  br label %")  emit(cl)  emit("\n")
-  emit(en)  emit(":\n")  g_term = false
+  emit("  br label %");  emit(cl);  emit("\n")
+  emit(en);  emit(":\n");  g_term = false
 }
 
 fn emit_return(st: Node) -> void {
@@ -117,7 +117,7 @@ fn emit_return(st: Node) -> void {
 
 fn arm_is_default(arm: Node) -> bool {
   let p = 0
-  while p < len(arm.kids) { if arm.kids[p].kind == E_ID and streq(arm.kids[p].s, "_") { return true } p = p + 1 }
+  while p < len(arm.kids) { if arm.kids[p].kind == E_ID and streq(arm.kids[p].s, "_") { return true }; p = p + 1 }
   return false
 }
 
@@ -136,58 +136,58 @@ fn emit_match(st: Node) -> void {
       while p < len(arm.kids) {
         let pv = emit_expr(arm.kids[p])
         let c = emit_bind(sconcat("icmp eq i32 ", sconcat(sv.code, sconcat(", ", pv.code))))
-        if first { acc = c  first = false }
+        if first { acc = c;  first = false }
         else { acc = emit_bind(sconcat("or i1 ", sconcat(acc, sconcat(", ", c)))) }
         p = p + 1
       }
-      let bodyl = lbl("mbody")  let nextl = lbl("marm")
-      emit("  br i1 ")  emit(acc)  emit(", label %")  emit(bodyl)  emit(", label %")  emit(nextl)  emit("\n")
-      emit(bodyl)  emit(":\n")  g_term = false
+      let bodyl = lbl("mbody");  let nextl = lbl("marm")
+      emit("  br i1 ");  emit(acc);  emit(", label %");  emit(bodyl);  emit(", label %");  emit(nextl);  emit("\n")
+      emit(bodyl);  emit(":\n");  g_term = false
       emit_block(arm.a)
-      if not g_term { emit("  br label %")  emit(endl)  emit("\n") }
-      emit(nextl)  emit(":\n")  g_term = false
+      if not g_term { emit("  br label %");  emit(endl);  emit("\n") }
+      emit(nextl);  emit(":\n");  g_term = false
     }
     i = i + 1
   }
   if not ptr_is_null(deflt) { emit_block(deflt.a) }
-  if not g_term { emit("  br label %")  emit(endl)  emit("\n") }
-  emit(endl)  emit(":\n")  g_term = false
+  if not g_term { emit("  br label %");  emit(endl);  emit("\n") }
+  emit(endl);  emit(":\n");  g_term = false
 }
 
 fn emit_stmt(st: Node) -> void {
   if st.kind == S_LET {
     let ty = st.ty
-    if ptr_is_null(ty) { let v0 = emit_expr(st.a)  ty = v0.ty
-      let slot = emit_alloca(llty(ty))  store_at(llty(ty), v0.code, slot)  loc_push(st.s, slot, ty)  return }
+    if ptr_is_null(ty) { let v0 = emit_expr(st.a);  ty = v0.ty
+      let slot = emit_alloca(llty(ty));  store_at(llty(ty), v0.code, slot);  loc_push(st.s, slot, ty);  return }
     let slot = emit_alloca(llty(ty))
     if ptr_is_null(st.a) {
       let z = "0"
       if streq(llty(ty), "ptr") { z = "null" }
       store_at(llty(ty), z, slot)
-    } else { let v = emit_expr(st.a)  store_at(llty(ty), v.code, slot) }
+    } else { let v = emit_expr(st.a);  store_at(llty(ty), v.code, slot) }
     loc_push(st.s, slot, ty)
     return
   }
-  if st.kind == S_ASSIGN { emit_assign(st) return }
-  if st.kind == S_IF { emit_if(st) return }
-  if st.kind == S_WHILE { emit_while(st) return }
-  if st.kind == S_FOR { emit_for(st) return }
-  if st.kind == S_RETURN { emit_return(st) return }
-  if st.kind == S_BREAK { emit("  br label %")  emit(brk_lbl[nloop - 1])  emit("\n")  g_term = true  return }
-  if st.kind == S_CONTINUE { emit("  br label %")  emit(cnt_lbl[nloop - 1])  emit("\n")  g_term = true  return }
-  if st.kind == S_MATCH { emit_match(st)  return }
-  if st.kind == S_QUERY { emit_query(st)  return }
-  if st.kind == S_SPAWN { emit_spawn(st)  return }
-  if st.kind == S_DESPAWN { emit_despawn(st)  return }
-  if st.kind == S_MACHINE { emit_machine(st)  return }
-  if st.kind == S_BECOME { emit_become(st)  return }
-  if st.kind == S_EXPR { let v = emit_expr(st.a)  return }
+  if st.kind == S_ASSIGN { emit_assign(st); return }
+  if st.kind == S_IF { emit_if(st); return }
+  if st.kind == S_WHILE { emit_while(st); return }
+  if st.kind == S_FOR { emit_for(st); return }
+  if st.kind == S_RETURN { emit_return(st); return }
+  if st.kind == S_BREAK { emit("  br label %");  emit(brk_lbl[nloop - 1]);  emit("\n");  g_term = true;  return }
+  if st.kind == S_CONTINUE { emit("  br label %");  emit(cnt_lbl[nloop - 1]);  emit("\n");  g_term = true;  return }
+  if st.kind == S_MATCH { emit_match(st);  return }
+  if st.kind == S_QUERY { emit_query(st);  return }
+  if st.kind == S_SPAWN { emit_spawn(st);  return }
+  if st.kind == S_DESPAWN { emit_despawn(st);  return }
+  if st.kind == S_MACHINE { emit_machine(st);  return }
+  if st.kind == S_BECOME { emit_become(st);  return }
+  if st.kind == S_EXPR { let v = emit_expr(st.a);  return }
   perr("cannot emit statement")
 }
 
 fn loop_push(cont: ptr, brk: ptr) -> void {
-  if nloop < len(cnt_lbl) { cnt_lbl[nloop] = cont  brk_lbl[nloop] = brk }
-  else { push(cnt_lbl, cont)  push(brk_lbl, brk) }
+  if nloop < len(cnt_lbl) { cnt_lbl[nloop] = cont;  brk_lbl[nloop] = brk }
+  else { push(cnt_lbl, cont);  push(brk_lbl, brk) }
   nloop = nloop + 1
 }
 fn loop_pop() -> void { nloop = nloop - 1 }

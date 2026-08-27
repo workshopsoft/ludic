@@ -853,8 +853,8 @@ current tree (`./test.sh` = 64/64).
 **Recursion** ✅ → `55`
 ```ludic
 game P {
-  fn fib(n: int) -> int { if n < 2 { return n }  return fib(n-1) + fib(n-2) }
-  system B phase Start { print_int(fib(10)) quit() }
+  fn fib(n: int) -> int { if n < 2 { return n };  return fib(n-1) + fib(n-2) }
+  system B phase Start { print_int(fib(10)); quit() }
 }
 ```
 
@@ -878,11 +878,11 @@ fn streq(a: ptr, b: ptr) -> bool {
 fn itoa(v: int, buf: ptr) -> int {
   let n = 0
   let x = v
-  if x == 0 { poke8(buf,0,48) return 1 }
+  if x == 0 { poke8(buf,0,48); return 1 }
   let tmp = mem_alloc(16)
-  while x > 0 { poke8(tmp, n, 48 + x % 10)  x = x / 10  n = n + 1 }
+  while x > 0 { poke8(tmp, n, 48 + x % 10); x = x / 10; n = n + 1 }
   let i = 0
-  while i < n { poke8(buf, i, peek8(tmp, n-1-i))  i = i + 1 }
+  while i < n { poke8(buf, i, peek8(tmp, n-1-i)); i = i + 1 }
   mem_free(tmp)
   return n
 }
@@ -905,9 +905,16 @@ file_close(f)
 Each is a spelling the language accepts; the point is that the *alternative*
 spelling is equally legal (§5.3).
 
-**R1 — three statements on one line, no separators** → `2`
+**R1 — statements now require a separator (Rule B, syntax-redesign Phase 2)** → parse error
 ```ludic
+# doc-check: skip — intentionally rejected under Rule B: needs a newline or ';'
 game P { system B phase Start { let x = 1 x = x + 1 print_int(x) quit() } }
+```
+Statements no longer sit adjacent with only spaces between them; the compiler
+reports `expected newline or ';' between statements`. Put each on its own line,
+or separate them with `;` (both lex to the same separator token):
+```ludic
+game P { system B phase Start { let x = 1; x = x + 1; print_int(x); quit() } }
 ```
 
 **R2 — commas omitted throughout** → `7`
@@ -954,7 +961,7 @@ parenthesisation) while `ludic-fmt` returns the input **unchanged**.
 **Verified-missing** — each a compile error today:
 ```ludic
 # doc-check: expect-error — every line here is a compile error by design
-while i < 10 { i = i + 1  if i == 3 { break } }   # unknown identifier 'break'
+while i < 10 { i = i + 1;  if i == 3 { break } }   # unknown identifier 'break'
 struct Node { k: int, a: ptr }                    # expected declaration (got 'struct')
 var t: [int; 8]                                   # expected identifier (got '[')
 var h: fn = a                                     # unknown type 'fn' for var h
@@ -963,5 +970,5 @@ print_int(os_argc())                              # unknown function 'os_argc'
 print_err("x")                                    # unknown function 'print_err'
 let p = mem_realloc(ptr_null(), 10)               # unknown function 'mem_realloc'
 print_str("ab" + "cd")                            # passes front-end, invalid IR
-let a = 100000  print_int(a*100000)               # 1410065408 — i32 wrap
+let a = 100000;  print_int(a*100000)               # 1410065408 — i32 wrap
 ```

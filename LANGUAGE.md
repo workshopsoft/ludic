@@ -130,7 +130,7 @@ system Nav phase Update {
   if ui_clicked(UI_Quit) { quit() }
   ui_set_int(UI_HpLabel, hp)  # poke dynamic values by id
 }
-system Draw phase Render { clear(0x0e0e16)  ui_render()  present() }
+system Draw phase Render { clear(0x0e0e16); ui_render(); present() }
 ```
 
 See `examples/menu.ludic` for a complete title screen.
@@ -334,6 +334,18 @@ another `.ludic` file (see `examples/lib/`).
 (if-without-else) · `while cond { }` · `for i in a .. b { }` (numeric range) ·
 `for (…) in query […] { }` · `break` · `continue` · `return` · `spawn` ·
 `despawn` · `match` · `machine`.
+
+**Statements are separated by a newline or `;`** (both lex to the same separator
+token). Two statements may not sit adjacent with only spaces between them — the
+compiler reports `expected newline or ';' between statements`. Write one
+statement per line, or, to pack several onto a line, separate them with `;`:
+
+```ludic
+# doc-check: skip — a bare statement block, not a whole declaration
+let x = 1
+x = x + 1                     # one per line, the usual form
+let y = 1; y = y + 1          # or `;`-separated on one line
+```
 
 `break` and `continue` apply to the innermost enclosing loop, and work in all
 three loop forms — `while`, the numeric `for`, and the ECS query loop, where

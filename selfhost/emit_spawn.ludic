@@ -5,21 +5,21 @@ fn emit_init_component(e: ptr, comp: ptr, rec: Node) -> void {
   let me = itoa(MAX_ENT)
   let c = find_comp(comp)
   if ptr_is_null(c) { perr(sconcat("spawn: unknown component ", comp)) }
-  let hp = nreg()  emit("  ")  emit(hp)  emit(" = getelementptr inbounds [")  emit(me)  emit(" x i8], ptr @H_")  emit(comp)  emit(", i32 0, i32 ")  emit(e)  emit("\n")
-  emit("  store i8 1, ptr ")  emit(hp)  emit("\n")
+  let hp = nreg();  emit("  ");  emit(hp);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i8], ptr @H_");  emit(comp);  emit(", i32 0, i32 ");  emit(e);  emit("\n")
+  emit("  store i8 1, ptr ");  emit(hp);  emit("\n")
   let slot = nreg()
-  emit("  ")  emit(slot)  emit(" = getelementptr inbounds [")  emit(me)  emit(" x %Cmp_")  emit(comp)  emit("], ptr @S_")  emit(comp)  emit(", i32 0, i32 ")  emit(e)  emit("\n")
+  emit("  ");  emit(slot);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x %Cmp_");  emit(comp);  emit("], ptr @S_");  emit(comp);  emit(", i32 0, i32 ");  emit(e);  emit("\n")
   # defaults
   let f = 0
   while f < len(c.kids) {
     let fd = c.kids[f]
     let addr = nreg()
-    emit("  ")  emit(addr)  emit(" = getelementptr inbounds %Cmp_")  emit(comp)  emit(", ptr ")  emit(slot)  emit(", i32 0, i32 ")  emit(itoa(f))  emit("\n")
+    emit("  ");  emit(addr);  emit(" = getelementptr inbounds %Cmp_");  emit(comp);  emit(", ptr ");  emit(slot);  emit(", i32 0, i32 ");  emit(itoa(f));  emit("\n")
     let lt = llty(fd.ty)
     let v = "0"
     if streq(lt, "ptr") { v = "null" }
-    if not ptr_is_null(fd.a) { let dv = emit_expr(fd.a)  v = dv.code }
-    emit("  store ")  emit(lt)  emit(" ")  emit(v)  emit(", ptr ")  emit(addr)  emit("\n")
+    if not ptr_is_null(fd.a) { let dv = emit_expr(fd.a);  v = dv.code }
+    emit("  store ");  emit(lt);  emit(" ");  emit(v);  emit(", ptr ");  emit(addr);  emit("\n")
     f = f + 1
   }
   # per-spawn overrides
@@ -30,9 +30,9 @@ fn emit_init_component(e: ptr, comp: ptr, rec: Node) -> void {
       let fidx = field_index(c, fi.s)
       if fidx >= 0 {
         let addr = nreg()
-        emit("  ")  emit(addr)  emit(" = getelementptr inbounds %Cmp_")  emit(comp)  emit(", ptr ")  emit(slot)  emit(", i32 0, i32 ")  emit(itoa(fidx))  emit("\n")
+        emit("  ");  emit(addr);  emit(" = getelementptr inbounds %Cmp_");  emit(comp);  emit(", ptr ");  emit(slot);  emit(", i32 0, i32 ");  emit(itoa(fidx));  emit("\n")
         let dv = emit_expr(fi.a)
-        emit("  store ")  emit(llty(field_type(c, fi.s)))  emit(" ")  emit(dv.code)  emit(", ptr ")  emit(addr)  emit("\n")
+        emit("  store ");  emit(llty(field_type(c, fi.s)));  emit(" ");  emit(dv.code);  emit(", ptr ");  emit(addr);  emit("\n")
       }
       j = j + 1
     }
@@ -44,25 +44,25 @@ fn emit_spawn(st: Node) -> void {
   let ak = find_arch_id(st.s)
   if ak > 0 {
     let me = itoa(MAX_ENT)
-    let kp = nreg()  emit("  ")  emit(kp)  emit(" = getelementptr inbounds [")  emit(me)  emit(" x i32], ptr @L_kind, i32 0, i32 ")  emit(e)  emit("\n")
-    emit("  store i32 ")  emit(itoa(ak))  emit(", ptr ")  emit(kp)  emit("\n")
+    let kp = nreg();  emit("  ");  emit(kp);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_kind, i32 0, i32 ");  emit(e);  emit("\n")
+    emit("  store i32 ");  emit(itoa(ak));  emit(", ptr ");  emit(kp);  emit("\n")
     let arch = find_arch(st.s)
     let c = 0
     while c < len(arch.kids) {
       let cn = arch.kids[c].s
       let rec = ptr_null()
       let i = 0
-      while i < len(st.kids) { if streq(st.kids[i].s, cn) { rec = st.kids[i].a }  i = i + 1 }
+      while i < len(st.kids) { if streq(st.kids[i].s, cn) { rec = st.kids[i].a };  i = i + 1 }
       emit_init_component(e, cn, rec)
       c = c + 1
     }
   } else {
     let i = 0
-    while i < len(st.kids) { emit_init_component(e, st.kids[i].s, st.kids[i].a)  i = i + 1 }
+    while i < len(st.kids) { emit_init_component(e, st.kids[i].s, st.kids[i].a);  i = i + 1 }
   }
 }
 
 fn emit_despawn(st: Node) -> void {
   let v = emit_expr(st.a)
-  emit("  call void @L_free_entity(i32 ")  emit(v.code)  emit(")\n")
+  emit("  call void @L_free_entity(i32 ");  emit(v.code);  emit(")\n")
 }

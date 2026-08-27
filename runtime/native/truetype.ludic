@@ -322,7 +322,7 @@ fn tt_load_outline(id: int, gid: int, a: fixed, b: fixed, c: fixed, e: fixed, dx
         let r = peek8(d, p)
         p = p + 1
         while r > 0 {
-          if i < npts { poke8(flags, i, fl)  i = i + 1 }
+          if i < npts { poke8(flags, i, fl);  i = i + 1 }
           r = r - 1
         }
       }
@@ -338,7 +338,7 @@ fn tt_load_outline(id: int, gid: int, a: fixed, b: fixed, c: fixed, e: fixed, dx
         p = p + 1
         if band(fl, 16) != 0 { xv = xv + dxv } else { xv = xv - dxv }
       } else {
-        if band(fl, 16) == 0 { xv = xv + tt_i16(d, p)  p = p + 2 }
+        if band(fl, 16) == 0 { xv = xv + tt_i16(d, p);  p = p + 2 }
       }
       poke32(xs, k, xv)
     }
@@ -350,7 +350,7 @@ fn tt_load_outline(id: int, gid: int, a: fixed, b: fixed, c: fixed, e: fixed, dx
         p = p + 1
         if band(fl, 32) != 0 { yv = yv + dyv } else { yv = yv - dyv }
       } else {
-        if band(fl, 32) == 0 { yv = yv + tt_i16(d, p)  p = p + 2 }
+        if band(fl, 32) == 0 { yv = yv + tt_i16(d, p);  p = p + 2 }
       }
       poke32(ys, k, yv)
     }

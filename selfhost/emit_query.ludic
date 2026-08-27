@@ -3,8 +3,8 @@
 # the body once per match. Mirrors ll_query in compiler/back/ir_ecs.c.
 
 fn find_arch_id(name: ptr) -> int {
-  let i = 0  let n = 1
-  while i < len(prog) { if prog[i].kind == N_ARCH { if streq(prog[i].s, name) { return n }  n = n + 1 }  i = i + 1 }
+  let i = 0;  let n = 1
+  while i < len(prog) { if prog[i].kind == N_ARCH { if streq(prog[i].s, name) { return n };  n = n + 1 };  i = i + 1 }
   return 0
 }
 
@@ -15,22 +15,22 @@ fn emit_query(st: Node) -> void {
   if nself < len(self_stk) { self_stk[nself] = ip } else { push(self_stk, ip) }
   nself = nself + 1
 
-  let cond = lbl("qcond")  let body = lbl("qbody")  let nxt = lbl("qnext")  let endl = lbl("qend")
-  emit("  br label %")  emit(cond)  emit("\n")
-  emit(cond)  emit(":\n")
+  let cond = lbl("qcond");  let body = lbl("qbody");  let nxt = lbl("qnext");  let endl = lbl("qend")
+  emit("  br label %");  emit(cond);  emit("\n")
+  emit(cond);  emit(":\n")
   let i0 = emit_bind(sconcat("load i32, ptr ", ip))
   let ec = emit_bind("load i32, ptr @L_entc")
   let lt = emit_bind(sconcat("icmp slt i32 ", sconcat(i0, sconcat(", ", ec))))
-  emit("  br i1 ")  emit(lt)  emit(", label %")  emit(body)  emit(", label %")  emit(endl)  emit("\n")
-  emit(body)  emit(":\n")  g_term = false
+  emit("  br i1 ");  emit(lt);  emit(", label %");  emit(body);  emit(", label %");  emit(endl);  emit("\n")
+  emit(body);  emit(":\n");  g_term = false
   let i1 = emit_bind(sconcat("load i32, ptr ", ip))
   # alive?
-  let ap = nreg()  emit("  ")  emit(ap)  emit(" = getelementptr inbounds [")  emit(me)  emit(" x i32], ptr @L_alive, i32 0, i32 ")  emit(i1)  emit("\n")
+  let ap = nreg();  emit("  ");  emit(ap);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_alive, i32 0, i32 ");  emit(i1);  emit("\n")
   let al = emit_bind(sconcat("load i32, ptr ", ap))
   let alc = emit_bind(sconcat("icmp ne i32 ", sconcat(al, ", 0")))
   let ka = lbl("qa")
-  emit("  br i1 ")  emit(alc)  emit(", label %")  emit(ka)  emit(", label %")  emit(nxt)  emit("\n")
-  emit(ka)  emit(":\n")
+  emit("  br i1 ");  emit(alc);  emit(", label %");  emit(ka);  emit(", label %");  emit(nxt);  emit("\n")
+  emit(ka);  emit(":\n")
 
   let terms = st.c
   # component / archetype filters
@@ -40,17 +40,17 @@ fn emit_query(st: Node) -> void {
     let ak = find_arch_id(tm.s)
     let ok = "0"
     if ak > 0 {
-      let kp = nreg()  emit("  ")  emit(kp)  emit(" = getelementptr inbounds [")  emit(me)  emit(" x i32], ptr @L_kind, i32 0, i32 ")  emit(i1)  emit("\n")
+      let kp = nreg();  emit("  ");  emit(kp);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_kind, i32 0, i32 ");  emit(i1);  emit("\n")
       let kv = emit_bind(sconcat("load i32, ptr ", kp))
       ok = emit_bind(sconcat("icmp eq i32 ", sconcat(kv, sconcat(", ", itoa(ak)))))
     } else {
-      let hp = nreg()  emit("  ")  emit(hp)  emit(" = getelementptr inbounds [")  emit(me)  emit(" x i8], ptr @H_")  emit(tm.s)  emit(", i32 0, i32 ")  emit(i1)  emit("\n")
+      let hp = nreg();  emit("  ");  emit(hp);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i8], ptr @H_");  emit(tm.s);  emit(", i32 0, i32 ");  emit(i1);  emit("\n")
       let hv = emit_bind(sconcat("load i8, ptr ", hp))
       ok = emit_bind(sconcat("icmp ne i8 ", sconcat(hv, ", 0")))
     }
     let keep = lbl("qt")
-    emit("  br i1 ")  emit(ok)  emit(", label %")  emit(keep)  emit(", label %")  emit(nxt)  emit("\n")
-    emit(keep)  emit(":\n")
+    emit("  br i1 ");  emit(ok);  emit(", label %");  emit(keep);  emit(", label %");  emit(nxt);  emit("\n")
+    emit(keep);  emit(":\n")
     t = t + 1
   }
 
@@ -63,9 +63,9 @@ fn emit_query(st: Node) -> void {
     if tm.ival == 0 and find_arch_id(tm.s) == 0 {
       if vi < len(st.kids) {
         let slot = nreg()
-        emit("  ")  emit(slot)  emit(" = getelementptr inbounds [")  emit(me)  emit(" x %Cmp_")  emit(tm.s)  emit("], ptr @S_")  emit(tm.s)  emit(", i32 0, i32 ")  emit(i1)  emit("\n")
+        emit("  ");  emit(slot);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x %Cmp_");  emit(tm.s);  emit("], ptr @S_");  emit(tm.s);  emit(", i32 0, i32 ");  emit(i1);  emit("\n")
         let vslot = emit_alloca("ptr")
-        emit("  store ptr ")  emit(slot)  emit(", ptr ")  emit(vslot)  emit("\n")
+        emit("  store ptr ");  emit(slot);  emit(", ptr ");  emit(vslot);  emit("\n")
         loc_push(st.kids[vi].s, vslot, tm.s)
         vi = vi + 1
       }
@@ -78,21 +78,21 @@ fn emit_query(st: Node) -> void {
     let w = emit_expr(st.b)
     let wc = emit_bind(sconcat("icmp ne i32 ", sconcat(w.code, ", 0")))
     let kw = lbl("qw")
-    emit("  br i1 ")  emit(wc)  emit(", label %")  emit(kw)  emit(", label %")  emit(nxt)  emit("\n")
-    emit(kw)  emit(":\n")
+    emit("  br i1 ");  emit(wc);  emit(", label %");  emit(kw);  emit(", label %");  emit(nxt);  emit("\n")
+    emit(kw);  emit(":\n")
   }
 
   loop_push(nxt, endl)
   emit_block(st.a)
   loop_pop()
   nloc = save
-  if not g_term { emit("  br label %")  emit(nxt)  emit("\n") }
+  if not g_term { emit("  br label %");  emit(nxt);  emit("\n") }
 
-  emit(nxt)  emit(":\n")
+  emit(nxt);  emit(":\n")
   let i2 = emit_bind(sconcat("load i32, ptr ", ip))
   let i3 = emit_bind(sconcat("add i32 ", sconcat(i2, ", 1")))
   store_at("i32", i3, ip)
-  emit("  br label %")  emit(cond)  emit("\n")
-  emit(endl)  emit(":\n")  g_term = false
+  emit("  br label %");  emit(cond);  emit("\n")
+  emit(endl);  emit(":\n");  g_term = false
   nself = nself - 1
 }

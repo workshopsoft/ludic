@@ -4,10 +4,10 @@ A plan to make Ludic's syntax internally consistent. It fixes the drift between
 the spec and the compiler, then unifies the grammar around two rules. Scope:
 **full redesign (Phases 0–5)**. Named-field direction: **colon everywhere**.
 
-> Status: **Phase 1 landed** (see below). Phases 2→5 are proposals. The phases
-> are ordered so the documentation never describes syntax the compiler rejects,
-> and every phase ends with the compiler still self-hosting to a fixpoint
-> (`./test.sh`).
+> Status: **Phases 1 & 2 landed** (see below). Phases 3→5 are proposals. The
+> phases are ordered so the documentation never describes syntax the compiler
+> rejects, and every phase ends with the compiler still self-hosting to a
+> fixpoint (`./test.sh`).
 >
 > Coordinated with the toolchain agent (CLI front-end / `ludicc`+`ludic`
 > binaries) via serialized reseeds of `selfhost/ludicc.seed.ll`; Phase 1 rode in
@@ -208,13 +208,36 @@ Made spec ⇄ compiler agree **before** any grammar change. What landed:
   compile yet — a positive test would fail; the header note + LANGUAGE.md warning
   cover the drift instead).
 
-### Phase 2 — Statement separation (Rule B)
-- Enforce a separator in `block()`/`stmt()` ([parse.ludic:130-199](selfhost/parse.ludic)):
-  after a statement, require `TK_NL` or `}`.
-- Teach `ludic-fmt` to normalize one-statement-per-line and insert `;` where two
-  share a line. Reformat the whole corpus with it.
-- Risk: the self-host sources themselves use space-juxtaposed statements heavily
-  — reformat them in the same commit, re-seed, re-verify fixpoint.
+### Phase 2 — Statement separation (Rule B) ✅ DONE
+Landed on branch `syntax-redesign-phase2` (baseline committed on `main` first).
+- ✅ **Parser enforces a separator** — `block()` requires a newline or `;` after
+  each statement, else `expected newline or ';' between statements`
+  ([parse.ludic](selfhost/parse.ludic)). Also fixed `if`-without-`else` swallowing
+  its trailing separator (it now peeks for `else` and restores if absent).
+- ✅ **Interpretation chosen:** *require a separator*, not *reflow to one-per-line*.
+  The migration **inserts `;` at statement boundaries** and leaves lines intact —
+  comment-safe, minimal-diff, and it makes boundaries visible without an
+  opinionated reflow. One-per-line stays the recommended hand-written form.
+- ✅ **Migration tool** ([tools/ludic-tools/migrate_separators.c](tools/ludic-tools/migrate_separators.c),
+  reuses the toolchain lexer) with a
+  **verification oracle**: a `;` inserted at a real boundary is a semantic no-op,
+  proven by the migrated compiler compiling itself to **IR byte-identical to the
+  seed** and every golden game rendering identically. ~1100 boundaries across the
+  corpus (examples, runtime, and the 25 self-host fragments).
+- ✅ **Reseeded** to the strict compiler (19557 lines); C-free bootstrap fixpoint
+  holds; `./test.sh` 14/14; all goldens byte-identical; qdecl runs correctly.
+- ✅ **Docs updated** — Rule B documented in LANGUAGE.md §Statements; BOOTSTRAP.md
+  R1 (which advertised no-separator juxtaposition as legal) and its stale code
+  fences updated; `check-docs` (now a live strict parse gate) green across all docs.
+
+**Bug found & fixed en route:** a multi-line string literal in
+[emit_expr.ludic](selfhost/emit_expr.ludic) (`emit(")<newline>")`) lexed fine in
+the self-host lexer but the **C toolchain lexer** (`ludic_syntax.h`, shared by
+sepfix, `ludic-fmt`, and the LSP) stops strings at newline — so it mis-lexed and
+`ludic-fmt` would corrupt such a file. Converted it to the byte-identical `\n`
+escape. **Open follow-up:** align the C lexer to allow newlines in strings, or
+forbid literal newlines in string literals language-wide (the two lexers should
+agree). Flagged to the toolchain owners.
 
 ### Phase 3 — Named-field unification (Rule A)
 - Migrate spawn/record init (`= {…=…}` → `{…:…}`) and ui props (`key=value` →

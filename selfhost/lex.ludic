@@ -16,7 +16,7 @@ var toks: []Tok
 
 fn tok_push(kind: int, text: ptr, ival: int, line: int) -> void {
   let t = new Tok
-  t.kind = kind  t.text = text  t.ival = ival  t.line = line
+  t.kind = kind;  t.text = text;  t.ival = ival;  t.line = line
   push(toks, t)
 }
 
@@ -42,8 +42,8 @@ fn lex(src: ptr) -> void {
   let n = slen(src)
   while i < n {
     let c = peek8(src, i)
-    if c == 10 { tok_push(TK_NL, ptr_null(), 0, line) line = line + 1 i = i + 1 continue }
-    if c == 32 or c == 9 or c == 13 { i = i + 1 continue }
+    if c == 10 { tok_push(TK_NL, ptr_null(), 0, line); line = line + 1; i = i + 1; continue }
+    if c == 32 or c == 9 or c == 13 { i = i + 1; continue }
     if c == 35 {                                   # '#' comment to end of line
       while i < n and peek8(src, i) != 10 { i = i + 1 }
       continue
@@ -60,8 +60,8 @@ fn lex(src: ptr) -> void {
           if e == 110 { r = 10 }
           if e == 116 { r = 9 }
           if e == 48  { r = 0 }
-          poke8(out, j, r)  j = j + 1  i = i + 2
-        } else { poke8(out, j, peek8(src, i)) j = j + 1 i = i + 1 }
+          poke8(out, j, r);  j = j + 1;  i = i + 2
+        } else { poke8(out, j, peek8(src, i)); j = j + 1; i = i + 1 }
       }
       i = i + 1
       poke8(out, j, 0)
@@ -77,7 +77,7 @@ fn lex(src: ptr) -> void {
         if e == 116 { v = 9 }
         if e == 48  { v = 0 }
         i = i + 2
-      } else { v = peek8(src, i) i = i + 1 }
+      } else { v = peek8(src, i); i = i + 1 }
       if peek8(src, i) == 39 { i = i + 1 }
       tok_push(TK_INT, ptr_null(), v, line)
       continue
@@ -99,12 +99,12 @@ fn lex(src: ptr) -> void {
         continue
       }
       let v = 0
-      while i < n and char_is_digit(peek8(src, i)) { v = v * 10 + (peek8(src, i) - 48) i = i + 1 }
+      while i < n and char_is_digit(peek8(src, i)) { v = v * 10 + (peek8(src, i) - 48); i = i + 1 }
       # a fractional part makes it a Q16.16 fixed literal
       if i < n and peek8(src, i) == 46 and char_is_digit(peek8(src, i + 1)) {
         i = i + 1
-        let fnum = 0  let fden = 1
-        while i < n and char_is_digit(peek8(src, i)) { fnum = fnum * 10 + (peek8(src, i) - 48)  fden = fden * 10  i = i + 1 }
+        let fnum = 0;  let fden = 1
+        while i < n and char_is_digit(peek8(src, i)) { fnum = fnum * 10 + (peek8(src, i) - 48);  fden = fden * 10;  i = i + 1 }
         let bits = shl(v, 16) + shl(fnum, 16) / fden
         tok_push(TK_FLOAT, ptr_null(), bits, line)
         continue
@@ -118,20 +118,20 @@ fn lex(src: ptr) -> void {
       tok_push(TK_ID, substr(src, start, i - start), 0, line)
       continue
     }
-    if c == 59 { tok_push(TK_NL, ptr_null(), 0, line) i = i + 1 continue }   # ';'
+    if c == 59 { tok_push(TK_NL, ptr_null(), 0, line); i = i + 1; continue }   # ';'
     # two-character operators
-    if two_at(src, i, 45, 62) { tok_push(TK_OP, substr(src, i, 2), 0, line) i = i + 2 continue }  # ->
-    if two_at(src, i, 61, 62) { tok_push(TK_OP, substr(src, i, 2), 0, line) i = i + 2 continue }  # =>
-    if two_at(src, i, 61, 61) { tok_push(TK_OP, substr(src, i, 2), 0, line) i = i + 2 continue }  # ==
-    if two_at(src, i, 33, 61) { tok_push(TK_OP, substr(src, i, 2), 0, line) i = i + 2 continue }  # !=
-    if two_at(src, i, 60, 61) { tok_push(TK_OP, substr(src, i, 2), 0, line) i = i + 2 continue }  # <=
-    if two_at(src, i, 62, 61) { tok_push(TK_OP, substr(src, i, 2), 0, line) i = i + 2 continue }  # >=
-    if two_at(src, i, 43, 61) { tok_push(TK_OP, substr(src, i, 2), 0, line) i = i + 2 continue }  # +=
-    if two_at(src, i, 45, 61) { tok_push(TK_OP, substr(src, i, 2), 0, line) i = i + 2 continue }  # -=
-    if two_at(src, i, 42, 61) { tok_push(TK_OP, substr(src, i, 2), 0, line) i = i + 2 continue }  # *=
-    if two_at(src, i, 47, 61) { tok_push(TK_OP, substr(src, i, 2), 0, line) i = i + 2 continue }  # /=
-    if two_at(src, i, 46, 46) { tok_push(TK_OP, substr(src, i, 2), 0, line) i = i + 2 continue }  # ..
-    if is_op1(c) { tok_push(TK_OP, substr(src, i, 1), 0, line) i = i + 1 continue }
+    if two_at(src, i, 45, 62) { tok_push(TK_OP, substr(src, i, 2), 0, line); i = i + 2; continue }  # ->
+    if two_at(src, i, 61, 62) { tok_push(TK_OP, substr(src, i, 2), 0, line); i = i + 2; continue }  # =>
+    if two_at(src, i, 61, 61) { tok_push(TK_OP, substr(src, i, 2), 0, line); i = i + 2; continue }  # ==
+    if two_at(src, i, 33, 61) { tok_push(TK_OP, substr(src, i, 2), 0, line); i = i + 2; continue }  # !=
+    if two_at(src, i, 60, 61) { tok_push(TK_OP, substr(src, i, 2), 0, line); i = i + 2; continue }  # <=
+    if two_at(src, i, 62, 61) { tok_push(TK_OP, substr(src, i, 2), 0, line); i = i + 2; continue }  # >=
+    if two_at(src, i, 43, 61) { tok_push(TK_OP, substr(src, i, 2), 0, line); i = i + 2; continue }  # +=
+    if two_at(src, i, 45, 61) { tok_push(TK_OP, substr(src, i, 2), 0, line); i = i + 2; continue }  # -=
+    if two_at(src, i, 42, 61) { tok_push(TK_OP, substr(src, i, 2), 0, line); i = i + 2; continue }  # *=
+    if two_at(src, i, 47, 61) { tok_push(TK_OP, substr(src, i, 2), 0, line); i = i + 2; continue }  # /=
+    if two_at(src, i, 46, 46) { tok_push(TK_OP, substr(src, i, 2), 0, line); i = i + 2; continue }  # ..
+    if is_op1(c) { tok_push(TK_OP, substr(src, i, 1), 0, line); i = i + 1; continue }
     i = i + 1                                        # skip anything unrecognised
   }
   tok_push(TK_EOF, ptr_null(), 0, line)

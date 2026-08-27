@@ -7,12 +7,12 @@ const MAX_ENT: int = 1024
 
 fn has_ecs() -> bool {
   let i = 0
-  while i < len(prog) { let k = prog[i].kind  if k == N_COMP or k == N_SYS { return true }  i = i + 1 }
+  while i < len(prog) { let k = prog[i].kind;  if k == N_COMP or k == N_SYS { return true };  i = i + 1 }
   return false
 }
 fn has_systems() -> bool {
   let i = 0
-  while i < len(prog) { if prog[i].kind == N_SYS { return true }  i = i + 1 }
+  while i < len(prog) { if prog[i].kind == N_SYS { return true };  i = i + 1 }
   return false
 }
 
@@ -32,7 +32,7 @@ fn emit_ecs_storage() -> void {
       emith(sconcat("%Cmp_", sconcat(c.s, " = type { ")))
       if len(c.kids) == 0 { emith("i32") }
       let f = 0
-      while f < len(c.kids) { if f > 0 { emith(", ") }  emith(llty(c.kids[f].ty))  f = f + 1 }
+      while f < len(c.kids) { if f > 0 { emith(", ") };  emith(llty(c.kids[f].ty));  f = f + 1 }
       emith(" }\n")
       emith(sconcat("@S_", sconcat(c.s, sconcat(" = internal global [", sconcat(me, sconcat(" x %Cmp_", sconcat(c.s, "] zeroinitializer\n")))))))
       emith(sconcat("@H_", sconcat(c.s, sconcat(" = internal global [", sconcat(me, " x i8] zeroinitializer\n")))))
@@ -49,12 +49,12 @@ fn emit_ecs_allocator() -> void {
   while i < len(prog) {
     if prog[i].kind == N_COMP {
       let hn = sconcat("%h", itoa(i))
-      emit("  ")  emit(hn)  emit(" = getelementptr inbounds [")  emit(me)  emit(" x i8], ptr @H_")  emit(prog[i].s)  emit(", i32 0, i32 %e\n")
-      emit("  store i8 0, ptr ")  emit(hn)  emit("\n")
+      emit("  ");  emit(hn);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i8], ptr @H_");  emit(prog[i].s);  emit(", i32 0, i32 %e\n")
+      emit("  store i8 0, ptr ");  emit(hn);  emit("\n")
     }
     i = i + 1
   }
-  emit("  %k = getelementptr inbounds [")  emit(me)  emit(" x i32], ptr @L_kind, i32 0, i32 %e\n")
+  emit("  %k = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_kind, i32 0, i32 %e\n")
   emit("  store i32 0, ptr %k\n  ret void\n}\n\n")
 
   emit("define i32 @L_alloc() {\nentry:\n")
@@ -64,7 +64,7 @@ fn emit_ecs_allocator() -> void {
   emit("reuse:\n")
   emit("  %fn1 = sub i32 %fn, 1\n")
   emit("  store i32 %fn1, ptr @L_freen\n")
-  emit("  %fp = getelementptr inbounds [")  emit(me)  emit(" x i32], ptr @L_freelist, i32 0, i32 %fn1\n")
+  emit("  %fp = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_freelist, i32 0, i32 %fn1\n")
   emit("  %re = load i32, ptr %fp\n")
   emit("  br label %done\n")
   emit("fresh:\n")
@@ -75,16 +75,16 @@ fn emit_ecs_allocator() -> void {
   emit("done:\n")
   emit("  %e = phi i32 [ %re, %reuse ], [ %ec, %fresh ]\n")
   emit("  call void @L_reset(i32 %e)\n")
-  emit("  %ap = getelementptr inbounds [")  emit(me)  emit(" x i32], ptr @L_alive, i32 0, i32 %e\n")
+  emit("  %ap = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_alive, i32 0, i32 %e\n")
   emit("  store i32 1, ptr %ap\n")
   emit("  ret i32 %e\n}\n\n")
 
   emit("define void @L_free_entity(i32 %e) {\nentry:\n")
-  emit("  %ap = getelementptr inbounds [")  emit(me)  emit(" x i32], ptr @L_alive, i32 0, i32 %e\n")
+  emit("  %ap = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_alive, i32 0, i32 %e\n")
   emit("  store i32 0, ptr %ap\n")
   emit("  call void @L_reset(i32 %e)\n")
   emit("  %fn = load i32, ptr @L_freen\n")
-  emit("  %fp = getelementptr inbounds [")  emit(me)  emit(" x i32], ptr @L_freelist, i32 0, i32 %fn\n")
+  emit("  %fp = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_freelist, i32 0, i32 %fn\n")
   emit("  store i32 %e, ptr %fp\n")
   emit("  %fn1 = add i32 %fn, 1\n")
   emit("  store i32 %fn1, ptr @L_freen\n")

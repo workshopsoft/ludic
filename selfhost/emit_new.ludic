@@ -16,13 +16,13 @@ fn emit_new_struct(name: ptr) -> Val {
   while f < len(s.kids) {
     let fd = s.kids[f]
     let addr = nreg()
-    emit("  ")  emit(addr)  emit(" = getelementptr inbounds %Str_")  emit(name)
-    emit(", ptr ")  emit(obj)  emit(", i32 0, i32 ")  emit(itoa(f))  emit("\n")
+    emit("  ");  emit(addr);  emit(" = getelementptr inbounds %Str_");  emit(name)
+    emit(", ptr ");  emit(obj);  emit(", i32 0, i32 ");  emit(itoa(f));  emit("\n")
     let lt = llty(fd.ty)
     let v = "0"
     if streq(lt, "ptr") { v = "null" }
-    if not ptr_is_null(fd.a) { let dv = emit_expr(fd.a)  v = dv.code }
-    emit("  store ")  emit(lt)  emit(" ")  emit(v)  emit(", ptr ")  emit(addr)  emit("\n")
+    if not ptr_is_null(fd.a) { let dv = emit_expr(fd.a);  v = dv.code }
+    emit("  store ");  emit(lt);  emit(" ");  emit(v);  emit(", ptr ");  emit(addr);  emit("\n")
     f = f + 1
   }
   return val(obj, name)
@@ -31,19 +31,19 @@ fn emit_new_struct(name: ptr) -> Val {
 fn emit_new_slice(ty: ptr) -> Val {
   let sz = emit_sizeof("%LSlice")
   let h = emit_bind(sconcat("call ptr @malloc(i64 ", sconcat(sz, ")")))
-  let d0 = nreg()  emit("  ")  emit(d0)  emit(" = getelementptr inbounds %LSlice, ptr ")  emit(h)  emit(", i32 0, i32 0\n")
-  emit("  store ptr null, ptr ")  emit(d0)  emit("\n")
-  let d1 = nreg()  emit("  ")  emit(d1)  emit(" = getelementptr inbounds %LSlice, ptr ")  emit(h)  emit(", i32 0, i32 1\n")
-  emit("  store i32 0, ptr ")  emit(d1)  emit("\n")
-  let d2 = nreg()  emit("  ")  emit(d2)  emit(" = getelementptr inbounds %LSlice, ptr ")  emit(h)  emit(", i32 0, i32 2\n")
-  emit("  store i32 0, ptr ")  emit(d2)  emit("\n")
+  let d0 = nreg();  emit("  ");  emit(d0);  emit(" = getelementptr inbounds %LSlice, ptr ");  emit(h);  emit(", i32 0, i32 0\n")
+  emit("  store ptr null, ptr ");  emit(d0);  emit("\n")
+  let d1 = nreg();  emit("  ");  emit(d1);  emit(" = getelementptr inbounds %LSlice, ptr ");  emit(h);  emit(", i32 0, i32 1\n")
+  emit("  store i32 0, ptr ");  emit(d1);  emit("\n")
+  let d2 = nreg();  emit("  ");  emit(d2);  emit(" = getelementptr inbounds %LSlice, ptr ");  emit(h);  emit(", i32 0, i32 2\n")
+  emit("  store i32 0, ptr ");  emit(d2);  emit("\n")
   return val(h, ty)
 }
 
 fn slice_field(h: ptr, i: int) -> ptr {
   let r = nreg()
-  emit("  ")  emit(r)  emit(" = getelementptr inbounds %LSlice, ptr ")  emit(h)
-  emit(", i32 0, i32 ")  emit(itoa(i))  emit("\n")
+  emit("  ");  emit(r);  emit(" = getelementptr inbounds %LSlice, ptr ");  emit(h)
+  emit(", i32 0, i32 ");  emit(itoa(i));  emit("\n")
   return r
 }
 
@@ -58,13 +58,13 @@ fn emit_push(e: Node) -> Val {
   let el = slice_elem(s.ty)
   let elt = llty(el)
   let h = s.code
-  let lp = slice_field(h, 1)  let cp = slice_field(h, 2)  let dp = slice_field(h, 0)
+  let lp = slice_field(h, 1);  let cp = slice_field(h, 2);  let dp = slice_field(h, 0)
   let l = emit_bind(sconcat("load i32, ptr ", lp))
   let c = emit_bind(sconcat("load i32, ptr ", cp))
   let full = emit_bind(sconcat("icmp sge i32 ", sconcat(l, sconcat(", ", c))))
-  let grow = lbl("grow")  let put = lbl("put")
-  emit("  br i1 ")  emit(full)  emit(", label %")  emit(grow)  emit(", label %")  emit(put)  emit("\n")
-  emit(grow)  emit(":\n")
+  let grow = lbl("grow");  let put = lbl("put")
+  emit("  br i1 ");  emit(full);  emit(", label %");  emit(grow);  emit(", label %");  emit(put);  emit("\n")
+  emit(grow);  emit(":\n")
   let dbl = emit_bind(sconcat("mul i32 ", sconcat(c, ", 2")))
   let isz = emit_bind(sconcat("icmp eq i32 ", sconcat(c, ", 0")))
   let nc = emit_bind(sconcat("select i1 ", sconcat(isz, sconcat(", i32 8, i32 ", dbl))))
@@ -73,16 +73,16 @@ fn emit_push(e: Node) -> Val {
   let bytes = emit_bind(sconcat("mul i64 ", sconcat(ncw, sconcat(", ", esz))))
   let old = emit_bind(sconcat("load ptr, ptr ", dp))
   let nd = emit_bind(sconcat("call ptr @realloc(ptr ", sconcat(old, sconcat(", i64 ", sconcat(bytes, ")")))))
-  emit("  store ptr ")  emit(nd)  emit(", ptr ")  emit(dp)  emit("\n")
-  emit("  store i32 ")  emit(nc)  emit(", ptr ")  emit(cp)  emit("\n")
-  emit("  br label %")  emit(put)  emit("\n")
-  emit(put)  emit(":\n")
+  emit("  store ptr ");  emit(nd);  emit(", ptr ");  emit(dp);  emit("\n")
+  emit("  store i32 ");  emit(nc);  emit(", ptr ");  emit(cp);  emit("\n")
+  emit("  br label %");  emit(put);  emit("\n")
+  emit(put);  emit(":\n")
   let v = emit_expr(e.kids[1])
   let data = emit_bind(sconcat("load ptr, ptr ", dp))
   let slot = nreg()
-  emit("  ")  emit(slot)  emit(" = getelementptr inbounds ")  emit(elt)  emit(", ptr ")  emit(data)  emit(", i32 ")  emit(l)  emit("\n")
-  emit("  store ")  emit(elt)  emit(" ")  emit(v.code)  emit(", ptr ")  emit(slot)  emit("\n")
+  emit("  ");  emit(slot);  emit(" = getelementptr inbounds ");  emit(elt);  emit(", ptr ");  emit(data);  emit(", i32 ");  emit(l);  emit("\n")
+  emit("  store ");  emit(elt);  emit(" ");  emit(v.code);  emit(", ptr ");  emit(slot);  emit("\n")
   let l1 = emit_bind(sconcat("add i32 ", sconcat(l, ", 1")))
-  emit("  store i32 ")  emit(l1)  emit(", ptr ")  emit(lp)  emit("\n")
+  emit("  store i32 ");  emit(l1);  emit(", ptr ");  emit(lp);  emit("\n")
   return val("0", "void")
 }
