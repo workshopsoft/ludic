@@ -140,7 +140,7 @@ same highlighting, checking and formatting as the source tree.
 - `scene` / `layer` / `enter` — mutually-exclusive game states, each with
   `on enter`/`on exit` hooks and layered systems (layer order = draw order).
 - `var` — typed module-level state, included in save/load snapshots.
-- `module` + `export fn` — compile a .ludic file to a shared library whose
+- `module` + `@export fn` — compile a .ludic file to a shared library whose
   exported functions are ordinary C-ABI symbols.
 - `extern fn … = "symbol"` — call any C-ABI library, Ludic or otherwise.
 - `--target wasm32-unknown-unknown` — the same game in a browser: the runtime,

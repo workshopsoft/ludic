@@ -18,7 +18,7 @@
 fn base_name(path: ptr) -> ptr {
   let last = 0 - 1
   let i = 0
-  while peek8(path, i) != 0 { if peek8(path, i) == 47 { last = i }  i = i + 1 }
+  while peek8(path, i) != 0 { if peek8(path, i) == 47 { last = i };  i = i + 1 }
   return substr(path, last + 1, i - (last + 1))
 }
 
@@ -72,7 +72,7 @@ main {
     else { if streq(a, "--fmt") { fmt = true }
     else { if streq(a, "--save-temps") { save = true }
     else { if streq(a, "--run") { run = true }
-    else { if streq(a, "-o") { ai = ai + 1  if ai < os_argc() { out = os_arg(ai) } }
+    else { if streq(a, "-o") { ai = ai + 1;  if ai < os_argc() { out = os_arg(ai) } }
     else {
       # an unknown flag is ignored (with a note) rather than mistaken for the
       # input file — '-' is ASCII 45
@@ -112,8 +112,8 @@ main {
   emit_program()
 
   # --emit-llvm, or no binary target: emit IR and stop (stdout when out is null).
-  if emit_ir { ir_flush(out)  return }
-  if not has_target { ir_flush(ptr_null())  return }
+  if emit_ir { ir_flush(out);  return }
+  if not has_target { ir_flush(ptr_null());  return }
 
   # a run with no explicit -o lands in a temp file
   if run and ptr_is_null(out) {

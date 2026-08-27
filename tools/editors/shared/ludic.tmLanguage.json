@@ -75,35 +75,25 @@
           }
         },
         {
-          "match": "\\b(scene)\\s+([A-Za-z_][A-Za-z0-9_]*)(\\s+start)?",
-          "captures": {
-            "1": { "name": "storage.type.scene.ludic" },
-            "2": { "name": "entity.name.type.scene.ludic" },
-            "3": { "name": "keyword.other.start.ludic" }
-          }
-        },
-        {
-          "match": "\\b(layer|ui)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "match": "\\b(ui)\\s+([A-Za-z_][A-Za-z0-9_]*)",
           "captures": {
             "1": { "name": "storage.type.ludic" },
             "2": { "name": "entity.name.type.ludic" }
           }
         },
         {
-          "match": "\\b(edge\\s+)?(system)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "match": "\\b(system)\\s+([A-Za-z_][A-Za-z0-9_]*)",
           "captures": {
-            "1": { "name": "storage.modifier.edge.ludic" },
-            "2": { "name": "storage.type.system.ludic" },
-            "3": { "name": "entity.name.function.system.ludic" }
+            "1": { "name": "storage.type.system.ludic" },
+            "2": { "name": "entity.name.function.system.ludic" }
           }
         },
         {
-          "match": "\\b(export\\s+|pure\\s+)?(extern\\s+)?(fn)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "match": "\\b(extern\\s+)?(fn)\\s+([A-Za-z_][A-Za-z0-9_]*)",
           "captures": {
-            "1": { "name": "storage.modifier.ludic" },
-            "2": { "name": "storage.modifier.extern.ludic" },
-            "3": { "name": "storage.type.function.ludic" },
-            "4": { "name": "entity.name.function.ludic" }
+            "1": { "name": "storage.modifier.extern.ludic" },
+            "2": { "name": "storage.type.function.ludic" },
+            "3": { "name": "entity.name.function.ludic" }
           }
         },
         {
@@ -173,9 +163,9 @@
       "patterns": [
         { "name": "keyword.control.ludic", "match": "\\b(if|else|when|while|for|in|match|machine|become|enter|return|spawn|despawn|where|break|continue|new)\\b" },
         { "name": "keyword.operator.logical.ludic", "match": "\\b(and|or|not)\\b" },
-        { "name": "keyword.other.clause.ludic", "match": "\\b(phase|query|reads|writes|needs|uses|requires|ensures|invariant|effects|on)\\b" },
-        { "name": "keyword.other.ludic", "match": "\\b(import|export|pure|extern|start|edge)\\b" },
-        { "name": "storage.type.ludic", "match": "\\b(game|module|component|archetype|ui|scene|layer|const|var|let|fn|system|state)\\b" },
+        { "name": "keyword.other.clause.ludic", "match": "\\b(phase|query|reads|writes)\\b" },
+        { "name": "keyword.other.ludic", "match": "\\b(import|extern)\\b" },
+        { "name": "storage.type.ludic", "match": "\\b(game|module|component|struct|archetype|enum|ui|const|var|let|fn|system|main|state)\\b" },
         { "name": "support.type.primitive.ludic", "match": "\\b(int|fixed|bool|entity|str|ptr|void)\\b" },
         { "name": "constant.language.boolean.ludic", "match": "\\b(true|false)\\b" },
         { "name": "constant.language.phase.ludic", "match": "\\b(Start|Input|FixedUpdate|Update|LateUpdate|Render)\\b" }

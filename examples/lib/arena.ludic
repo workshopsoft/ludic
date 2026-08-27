@@ -18,8 +18,8 @@ game Arena {
   component Fighter { hp: int = 30, attack: int = 9, armour: int = 2 }
 
   system Boot phase Start {
-    spawn Hero { Fighter = { hp = 40, attack = 12, armour = 3 } }
-    spawn Orc  { Fighter = { hp = 24, attack = 7,  armour = 1 } }
+    spawn Hero { Fighter { hp: 40, attack: 12, armour: 3 } }
+    spawn Orc  { Fighter { hp: 24, attack: 7,  armour: 1 } }
   }
 
   system Fight phase Update {

@@ -13,8 +13,8 @@ fn emit_member_addr(e: Node) -> ptr {
   if fidx < 0 { perr(sconcat("no such field ", e.s)) }
   g_addr_ty = field_type(s, e.s)
   let r = nreg()
-  emit("  ")  emit(r)  emit(" = getelementptr inbounds ")  emit(layout_ty(base.ty))
-  emit(", ptr ")  emit(base.code)  emit(", i32 0, i32 ")  emit(itoa(fidx))  emit("\n")
+  emit("  ");  emit(r);  emit(" = getelementptr inbounds ");  emit(layout_ty(base.ty))
+  emit(", ptr ");  emit(base.code);  emit(", i32 0, i32 ");  emit(itoa(fidx));  emit("\n")
   return r
 }
 
@@ -26,13 +26,13 @@ fn emit_index_addr(e: Node) -> ptr {
   g_addr_ty = el
   # load the data pointer from the slice header (field 0)
   let dp = nreg()
-  emit("  ")  emit(dp)  emit(" = getelementptr inbounds %LSlice, ptr ")
-  emit(base.code)  emit(", i32 0, i32 0\n")
+  emit("  ");  emit(dp);  emit(" = getelementptr inbounds %LSlice, ptr ")
+  emit(base.code);  emit(", i32 0, i32 0\n")
   let data = nreg()
-  emit("  ")  emit(data)  emit(" = load ptr, ptr ")  emit(dp)  emit("\n")
+  emit("  ");  emit(data);  emit(" = load ptr, ptr ");  emit(dp);  emit("\n")
   let ix = emit_expr(e.b)
   let r = nreg()
-  emit("  ")  emit(r)  emit(" = getelementptr inbounds ")  emit(llty(el))
-  emit(", ptr ")  emit(data)  emit(", i32 ")  emit(ix.code)  emit("\n")
+  emit("  ");  emit(r);  emit(" = getelementptr inbounds ");  emit(llty(el))
+  emit(", ptr ");  emit(data);  emit(", i32 ");  emit(ix.code);  emit("\n")
   return r
 }

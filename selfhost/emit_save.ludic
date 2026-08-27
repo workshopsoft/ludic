@@ -6,8 +6,8 @@
 var g_iok: int = 0
 
 fn emit_io(fn2: ptr, p: ptr, bytes: ptr) -> void {
-  let r = sconcat("%io", itoa(g_iok))  g_iok = g_iok + 1
-  emit("  ")  emit(r)  emit(" = call i64 @")  emit(fn2)  emit("(ptr ")  emit(p)  emit(", i64 1, i64 ")  emit(bytes)  emit(", ptr %f)\n")
+  let r = sconcat("%io", itoa(g_iok));  g_iok = g_iok + 1
+  emit("  ");  emit(r);  emit(" = call i64 @");  emit(fn2);  emit("(ptr ");  emit(p);  emit(", i64 1, i64 ");  emit(bytes);  emit(", ptr %f)\n")
 }
 
 fn emit_snapshot_blocks(fn2: ptr) -> void {
@@ -15,19 +15,19 @@ fn emit_snapshot_blocks(fn2: ptr) -> void {
   let me = itoa(MAX_ENT)
   emit_io(fn2, "@L_entc", "4")
   emit_io(fn2, "@L_freen", "4")
-  emit("  %nalive = mul i64 ")  emit(me)  emit(", 4\n")
+  emit("  %nalive = mul i64 ");  emit(me);  emit(", 4\n")
   emit_io(fn2, "@L_alive", "%nalive")
   emit_io(fn2, "@L_freelist", "%nalive")
   emit_io(fn2, "@L_kind", "%nalive")
   let i = 0
-  while i < len(prog) { if prog[i].kind == N_VAR { emit_io(fn2, sconcat("@g_", prog[i].s), "4") }  i = i + 1 }
+  while i < len(prog) { if prog[i].kind == N_VAR { emit_io(fn2, sconcat("@g_", prog[i].s), "4") };  i = i + 1 }
   let ci = 0
   i = 0
   while i < len(prog) {
     if prog[i].kind == N_COMP {
       let c = prog[i].s
       let csz = sconcat("%csz", itoa(ci))
-      emit("  ")  emit(csz)  emit(" = ptrtoint ptr getelementptr (%Cmp_")  emit(c)  emit(", ptr null, i32 ")  emit(me)  emit(") to i64\n")
+      emit("  ");  emit(csz);  emit(" = ptrtoint ptr getelementptr (%Cmp_");  emit(c);  emit(", ptr null, i32 ");  emit(me);  emit(") to i64\n")
       emit_io(fn2, sconcat("@S_", c), csz)
       emit_io(fn2, sconcat("@H_", c), me)
       ci = ci + 1

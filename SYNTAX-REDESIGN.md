@@ -4,10 +4,11 @@ A plan to make Ludic's syntax internally consistent. It fixes the drift between
 the spec and the compiler, then unifies the grammar around two rules. Scope:
 **full redesign (Phases 0–5)**. Named-field direction: **colon everywhere**.
 
-> Status: **Phase 1 landed** (see below). Phases 2→5 are proposals. The phases
-> are ordered so the documentation never describes syntax the compiler rejects,
-> and every phase ends with the compiler still self-hosting to a fixpoint
-> (`./test.sh`).
+> Status: **Phases 1–5 complete.** Every phase kept the compiler self-hosting to
+> a fixpoint (`./test.sh` 14/14), and each syntax migration was proven
+> behaviour-preserving (the migrated compiler compiles itself to byte-identical
+> IR; every golden game renders byte-identically). Landed on branch
+> `syntax-redesign-phase2` over a committed baseline on `main`.
 >
 > Coordinated with the toolchain agent (CLI front-end / `ludicc`+`ludic`
 > binaries) via serialized reseeds of `selfhost/ludicc.seed.ll`; Phase 1 rode in
@@ -33,9 +34,9 @@ Verified against the self-hosted compiler ([selfhost/parse.ludic](selfhost/parse
 
 **Broken / dead syntax (compiler-verified)**
 4. `edge system` — **hard parse error** (documented at [LANGUAGE.md:188](LANGUAGE.md)). *(✅ fixed in Phase 1)*
-5. `pure fn` — parses, `pure` silently discarded ([parse.ludic:272](selfhost/parse.ludic)); undocumented.
+5. `pure fn` — parses, `pure` silently discarded ([parse.ludic:272](selfhost/parse.ludic)); undocumented. *(✅ Phase 3d: now `@pure`)*
 6. `@anno` + `reads/writes/needs/uses [..]` — parsed then thrown away
-   ([parse_game.ludic:15-31](selfhost/parse_game.ludic)); four synonyms, two undocumented.
+   ([parse_game.ludic:15-31](selfhost/parse_game.ludic)); four synonyms, two undocumented. *(✅ Phase 3c: `needs`/`uses` dropped)*
 7. `scene`/`layer`/`on enter` — full LANGUAGE.md section + [examples/scenes.ludic](examples/scenes.ludic),
    **does not compile** (`expected declaration`).
 8. `query (v) [..]` in a system signature — two LANGUAGE.md sections +
@@ -49,9 +50,9 @@ Verified against the self-hosted compiler ([selfhost/parse.ludic](selfhost/parse
 11. Operators are words (`and`/`or`/`not`), symbols (`==`/`<=`), *and* functions
     (`band`/`shl`) at once.
 12. Three overlapping control families — `if`/`when`, `match`, `machine`/`become`
-    — and `enter` reuses `become`'s AST node ([parse.ludic:176-177](selfhost/parse.ludic)).
+    — and `enter` reuses `become`'s AST node ([parse.ludic:176-177](selfhost/parse.ludic)). *(Phase 4: `if`/`when` kept by choice; magic-int dispatch resolved)*
 13. Typed components/structs exist, but real state lives in 64 untyped int
-    registers (`reg`/`setreg`), so `machine`/`match` dispatch on magic numbers.
+    registers (`reg`/`setreg`), so `machine`/`match` dispatch on magic numbers. *(✅ Phase 4: auto-numbered states + `enum` name the values)*
 
 ---
 
@@ -208,38 +209,142 @@ Made spec ⇄ compiler agree **before** any grammar change. What landed:
   compile yet — a positive test would fail; the header note + LANGUAGE.md warning
   cover the drift instead).
 
-### Phase 2 — Statement separation (Rule B)
-- Enforce a separator in `block()`/`stmt()` ([parse.ludic:130-199](selfhost/parse.ludic)):
-  after a statement, require `TK_NL` or `}`.
-- Teach `ludic-fmt` to normalize one-statement-per-line and insert `;` where two
-  share a line. Reformat the whole corpus with it.
-- Risk: the self-host sources themselves use space-juxtaposed statements heavily
-  — reformat them in the same commit, re-seed, re-verify fixpoint.
+### Phase 2 — Statement separation (Rule B) ✅ DONE
+Landed on branch `syntax-redesign-phase2` (baseline committed on `main` first).
+- ✅ **Parser enforces a separator** — `block()` requires a newline or `;` after
+  each statement, else `expected newline or ';' between statements`
+  ([parse.ludic](selfhost/parse.ludic)). Also fixed `if`-without-`else` swallowing
+  its trailing separator (it now peeks for `else` and restores if absent).
+- ✅ **Interpretation chosen:** *require a separator*, not *reflow to one-per-line*.
+  The migration **inserts `;` at statement boundaries** and leaves lines intact —
+  comment-safe, minimal-diff, and it makes boundaries visible without an
+  opinionated reflow. One-per-line stays the recommended hand-written form.
+- ✅ **Migration tool** ([tools/ludic-tools/migrate_separators.c](tools/ludic-tools/migrate_separators.c),
+  reuses the toolchain lexer) with a
+  **verification oracle**: a `;` inserted at a real boundary is a semantic no-op,
+  proven by the migrated compiler compiling itself to **IR byte-identical to the
+  seed** and every golden game rendering identically. ~1100 boundaries across the
+  corpus (examples, runtime, and the 25 self-host fragments).
+- ✅ **Reseeded** to the strict compiler (19557 lines); C-free bootstrap fixpoint
+  holds; `./test.sh` 14/14; all goldens byte-identical; qdecl runs correctly.
+- ✅ **Docs updated** — Rule B documented in LANGUAGE.md §Statements; BOOTSTRAP.md
+  R1 (which advertised no-separator juxtaposition as legal) and its stale code
+  fences updated; `check-docs` (now a live strict parse gate) green across all docs.
+
+**Bug found & fixed en route:** a multi-line string literal in
+[emit_expr.ludic](selfhost/emit_expr.ludic) (`emit(")<newline>")`) lexed fine in
+the self-host lexer but the **C toolchain lexer** (`ludic_syntax.h`, shared by
+sepfix, `ludic-fmt`, and the LSP) stops strings at newline — so it mis-lexed and
+`ludic-fmt` would corrupt such a file. Converted it to the byte-identical `\n`
+escape. **Open follow-up:** align the C lexer to allow newlines in strings, or
+forbid literal newlines in string literals language-wide (the two lexers should
+agree). Flagged to the toolchain owners.
 
 ### Phase 3 — Named-field unification (Rule A)
-- Migrate spawn/record init (`= {…=…}` → `{…:…}`) and ui props (`key=value` →
-  named-arg form) in the parser and emitters.
-- Collapse `reads/writes/needs/uses` → `reads`/`writes`, stored on the node.
-- Move `edge`/`pure`/`export` into `@`-annotations; parse annotations into a list.
-- Ship `ludic-fmt --migrate`: a mechanical codemod that rewrites old syntax to
-  new, run over `examples/`, `runtime/`, and `selfhost/`.
-- Gate: compiler still self-hosts; every golden render is byte-identical.
 
-### Phase 4 — Control-flow & operator consolidation (largest)
-- Remove `when`; confirm `if` covers all uses in the corpus.
-- Introduce `enum` + typed `machine`/state; migrate `combat.ludic`'s R_PHASE
-  machine and the register-driven `match reg(…)` sites.
-- Decide the bitwise story: keep `band/shl/…` as functions (document as a
-  deliberate "one spelling" choice) or promote to operators — pick one and state
-  it, don't leave it implicit.
+**3a — spawn/record initializers ✅ DONE.** `Comp = { f = v }` → `Comp { f: v }`.
+`record()` requires `:` and `parse_spawn()` drops the `=` before the record
+([parse.ludic](selfhost/parse.ludic), [parse_game.ludic](selfhost/parse_game.ludic)).
+The `=` is now assignment/const/default/extern-binding only. Migration tool:
+[migrate_records.c](tools/ludic-tools/migrate_records.c) (spawn-context aware).
+Records live only in games, so the seed was unaffected; verified every golden
+byte-identical, old `=` form now rejected, reseeded, `test.sh` 14/14. Doc examples
+updated (LANGUAGE.md, BOOTSTRAP.md R2).
 
-### Phase 5 — Single source of truth for keywords/grammar
-- Generate every editor plugin keyword list, `ludic_syntax.h`, and the LSP's
-  token set from **one** canonical list so a keyword can never again be
-  highlighted but unparsed.
-- Add a CI check (extend `tools/check-docs.py` / `check-vocabulary.py`) that
-  every ` ```ludic ` fence in the docs compiles, closing the doc-drift loop
-  permanently.
+**3b — ui props → `key: value` ✅ DONE.** `panel id=Root w=288` → `panel id: Root
+w: 288`. `parse_widget` now reads props with `:` ([parse_game.ludic](selfhost/parse_game.ludic)).
+Chose the **colonized** form over parenthesized named-args: it satisfies Rule A
+(the `=` overload is gone) with minimal churn, needs no new grammar, and `emit_ui`
+(which reads the AST) and `ludic-fmt` (which formats `:` correctly by default)
+were both untouched. Migration: [migrate_ui.c](tools/ludic-tools/migrate_ui.c).
+menu golden byte-identical, old `=` form rejected, reseeded, `test.sh` 14/14.
+(The parenthesized form `panel(id: Root, w: 288)` remains a possible future
+refinement if the language ever gains named call arguments.)
+
+**3c — dropped the dead `needs`/`uses` clause synonyms ✅ DONE.** `reads`/`writes`
+stay (documented; still parsed-and-reserved). `needs`/`uses` were undocumented and
+unused anywhere in the corpus — removed from `parse_system`. *Not done:* actually
+*storing* reads/writes on the node for an analysis pass — that's analysis
+infrastructure, out of scope for a syntax pass.
+
+**3d — modifiers → `@`-annotations ✅ DONE.** `edge`/`pure`/`export` prefix keywords
+are retired; declaration modifiers are now leading `@annotations`: `@export fn`,
+`@edge system`, `@pure`, `@deterministic`. `parse_one_decl` collects a leading
+`@anno` run and `@export` sets the fn export flag ([parse.ludic](selfhost/parse.ludic));
+the dead `edge`-dispatch was removed from `parse_system`. Migrated the one
+`@export` user ([examples/lib/combat.ludic](examples/lib/combat.ludic)); old
+prefix forms now rejected. Behavior-identical: the export flag is parse-only in
+the self-hosted emitter (it emits `@fn_<name>` for every function and never reads
+the flag — the C-ABI-export capability is vestigial, a pre-existing gap), so
+`@export` and the old `export` produce byte-identical IR. Reseeded, fixpoint
+holds, `test.sh` 14/14, goldens byte-identical.
+
+**Phase 3 is complete.** The `=`/`:` overload (finding #2) and the modifier-zoo
+(findings #5, #6) are resolved; `:` associates and `=` binds throughout.
+
+Each sub-phase follows the proven pattern: parser change → verification-gated
+migration (IR byte-identical / goldens identical) → reseed → docs. The migration
+tools ([migrate_separators.c](tools/ludic-tools/migrate_separators.c),
+[migrate_records.c](tools/ludic-tools/migrate_records.c)) are the reusable spine.
+
+### Phase 4 — Control-flow & state consolidation
+
+**4a — machine states auto-number ✅ DONE.** `state KnightMenu = 0 { }` →
+`state KnightMenu { }`; a state's value is its declaration index (an explicit
+`= expr` still works). Removes the magic constants from state machines
+([parse.ludic](selfhost/parse.ludic)). combat.ludic migrated; chronorift golden
+byte-identical.
+
+**4b — `enum` types ✅ DONE.** `enum Action { Attack, Guard, Item, Flee }` declares
+named `int` constants; a variant is a compile-time int accessed as `Action.Guard`
+(= 1), numbered by order. Parser `parse_enum` + dispatch, `enum_ordinal` resolver
+in [emit_core.ludic](selfhost/emit_core.ludic), and `Enum.Variant` handling in
+[emit_expr.ludic](selfhost/emit_expr.ludic). combat.ludic's battle menus now
+dispatch on `KnightAct`/`MageAct` instead of `0..3`; chronorift golden
+byte-identical. Editor vocab (`ludic_syntax.h`, JetBrains, TextMate, emacs) gained
+`enum` and lost the retired `edge`/`export`/`pure` decl keywords; check-vocabulary
++ test-tools green. **Scoped:** enums are a naming layer over `int` (no distinct
+runtime type / enum-typed variables yet) — that keeps register/save semantics
+untouched, which the "enum var replaces the register" vision would have to solve.
+
+**`when` vs `if` — kept both (decision).** `when` stays as the `if`-without-else
+spelling: it is not incoherent so much as a readability signal ("no else here"),
+it is documented and highlighted, and it is a pure alias with no semantic overlap
+to untangle. The real target of finding #12 — dispatch on magic integers — is
+addressed by 4a/4b, not by collapsing `if`/`when`.
+
+**Bitwise operators — kept as functions (decision).** `band`/`bor`/`bxor`/`bnot`/
+`shl`/`shr` stay functions, documented as the deliberate "one spelling, symbols
+stay free" choice (LANGUAGE.md §Expressions already states this). Promoting them
+to operators would re-introduce the symbol soup the current design avoids.
+
+### Phase 5 — Vocabulary anchored to the compiler ✅ DONE
+The editor vocabulary already stayed in sync *with itself* (`check-vocabulary.py`
+compares `ludic_syntax.h`, the JetBrains lexer, and the TextMate grammar). The
+missing anchor was the **compiler**: a keyword could be highlighted everywhere
+and still be silently unparsed. Closed both loops:
+- ✅ **Vocabulary ⇄ parser.** `check-vocabulary.py` now extracts every keyword
+  `selfhost/parse*.ludic` dispatches on (`is_id(...)` / `streq(t.text, ...)`) and
+  requires the header's declaration + clause keywords to be a subset — with a
+  `LUDIC_KW_RESERVED` escape hatch for documented, not-yet-implemented keywords
+  (`scene`/`layer`/`on`/`start`), itself checked so a reserved word that gets
+  implemented must be promoted. Verified it catches an injected bogus keyword.
+- ✅ **Reconciled the drift it exposed.** Removed the highlighted-but-unparsed
+  `scene`/`layer`/`on`/`start` (→ RESERVED) and the never-implemented
+  `needs`/`uses`/`requires`/`ensures`/`invariant`/`effects` clause words, and the
+  retired `edge`/`export`/`pure` prefix modifiers, from `ludic_syntax.h`, the
+  JetBrains lexer, the TextMate grammar, and the emacs mode; added `enum`/`main`.
+  `@`-annotations already highlight generically (`@[A-Za-z_]…`). test-tools 28/0.
+- ✅ **Doc-fence compilation** — the other half of "single source of truth" — was
+  already live: `check-docs.py` compiles every ` ```ludic ` fence through the
+  self-hosted `ludicc --fmt` parse gate (revived during Phase 1's coordination).
+
+Full generation-from-one-list (emit the editor files from a manifest) was not
+needed: the bidirectional *checks* give the same guarantee — nothing can drift
+without CI failing — without a code-generation step to maintain.
+
+**Phases 1–5 are complete.** All thirteen findings are resolved or resolved by an
+explicit, documented decision.
 
 ---
 

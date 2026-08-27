@@ -9,43 +9,43 @@ var ui_roots: []int          # first-widget index of each ui block
 
 fn ui_wtype(w: Node) -> int {
   let s = w.s
-  if streq(s, "panel") { return 0 }  if streq(s, "col") { return 1 }  if streq(s, "row") { return 2 }
-  if streq(s, "label") { return 3 }  if streq(s, "button") { return 4 }
-  if streq(s, "image") { return 5 }  if streq(s, "spacer") { return 6 }
+  if streq(s, "panel") { return 0 };  if streq(s, "col") { return 1 };  if streq(s, "row") { return 2 }
+  if streq(s, "label") { return 3 };  if streq(s, "button") { return 4 }
+  if streq(s, "image") { return 5 };  if streq(s, "spacer") { return 6 }
   return 0
 }
 fn ui_prop(w: Node, key: ptr) -> Node {
   let i = 0
-  while i < len(w.b.kids) { if streq(w.b.kids[i].s, key) { return w.b.kids[i].a }  i = i + 1 }
+  while i < len(w.b.kids) { if streq(w.b.kids[i].s, key) { return w.b.kids[i].a };  i = i + 1 }
   return ptr_null()
 }
 fn ui_flatten(w: Node, parent: int) -> void {
   let idx = len(uiw)
-  push(uiw, w)  push(uiw_parent, parent)
+  push(uiw, w);  push(uiw_parent, parent)
   let i = 0
-  while i < len(w.kids) { ui_flatten(w.kids[i], idx)  i = i + 1 }
+  while i < len(w.kids) { ui_flatten(w.kids[i], idx);  i = i + 1 }
 }
 fn ui_flatten_all() -> void {
-  uiw = new []Node  uiw_parent = new []int  ui_roots = new []int
+  uiw = new []Node;  uiw_parent = new []int;  ui_roots = new []int
   let i = 0
   while i < len(prog) {
-    if prog[i].kind == N_UI and prog[i].ival == 1 { push(ui_roots, len(uiw))  ui_flatten(prog[i].a, 0 - 1) }
+    if prog[i].kind == N_UI and prog[i].ival == 1 { push(ui_roots, len(uiw));  ui_flatten(prog[i].a, 0 - 1) }
     i = i + 1
   }
 }
 fn has_ui() -> bool {
   let i = 0
-  while i < len(prog) { if prog[i].kind == N_UI and prog[i].ival == 1 { return true }  i = i + 1 }
+  while i < len(prog) { if prog[i].kind == N_UI and prog[i].ival == 1 { return true };  i = i + 1 }
   return false
 }
 
 # index of a UI_<name>: a ui block's root, or a widget's id=
 fn ui_index_of(nm: ptr) -> int {
   let s = substr(nm, 3, slen(nm) - 3)          # strip "UI_"
-  let u = 0  let bi = 0
+  let u = 0;  let bi = 0
   let i = 0
   while i < len(prog) {
-    if prog[i].kind == N_UI and prog[i].ival == 1 { if streq(prog[i].s, s) { return ui_roots[bi] }  bi = bi + 1 }
+    if prog[i].kind == N_UI and prog[i].ival == 1 { if streq(prog[i].s, s) { return ui_roots[bi] };  bi = bi + 1 }
     i = i + 1
   }
   i = 0
@@ -61,24 +61,24 @@ fn is_ui_ident(nm: ptr) -> bool {
 }
 
 fn ll_ui_set(idx: int, key: int, val: ptr) -> void {
-  emit("  call void @fn_rt_ui_set(i32 ")  emit(itoa(idx))  emit(", i32 ")  emit(itoa(key))  emit(", i32 ")  emit(val)  emit(")\n")
+  emit("  call void @fn_rt_ui_set(i32 ");  emit(itoa(idx));  emit(", i32 ");  emit(itoa(key));  emit(", i32 ");  emit(val);  emit(")\n")
 }
 fn ui_prop_key(k: ptr) -> int {
-  if streq(k,"w") { return 2 }  if streq(k,"h") { return 3 }  if streq(k,"x") { return 4 }  if streq(k,"y") { return 5 }
-  if streq(k,"pad") { return 7 }  if streq(k,"gap") { return 8 }  if streq(k,"bg") { return 9 }  if streq(k,"fg") { return 10 }
-  if streq(k,"border") { return 11 }  if streq(k,"grow") { return 13 }  if streq(k,"font") { return 14 }  if streq(k,"size") { return 15 }
-  if streq(k,"inset") { return 16 }  if streq(k,"focus") { return 17 }
+  if streq(k,"w") { return 2 };  if streq(k,"h") { return 3 };  if streq(k,"x") { return 4 };  if streq(k,"y") { return 5 }
+  if streq(k,"pad") { return 7 };  if streq(k,"gap") { return 8 };  if streq(k,"bg") { return 9 };  if streq(k,"fg") { return 10 }
+  if streq(k,"border") { return 11 };  if streq(k,"grow") { return 13 };  if streq(k,"font") { return 14 };  if streq(k,"size") { return 15 }
+  if streq(k,"inset") { return 16 };  if streq(k,"focus") { return 17 }
   return 0 - 1
 }
 
 fn emit_ui_build() -> void {
   ui_flatten_all()
-  ll_t = 0  ll_lbl = 0  g_term = false  loc_reset()  nloop = 0
+  ll_t = 0;  ll_lbl = 0;  g_term = false;  loc_reset();  nloop = 0
   let fbody = buf_new()
   falloc = buf_new()
   let saved = code
   code = fbody
-  emit("  call void @fn_rt_ui_reset(i32 ")  emit(itoa(len(uiw)))  emit(")\n")
+  emit("  call void @fn_rt_ui_reset(i32 ");  emit(itoa(len(uiw)));  emit(")\n")
   let i = 0
   while i < len(uiw) {
     let w = uiw[i]
@@ -91,10 +91,10 @@ fn emit_ui_build() -> void {
       let pr = w.b.kids[p]
       let k = pr.s
       let v = pr.a
-      if streq(k, "id") { p = p + 1  continue }
+      if streq(k, "id") { p = p + 1;  continue }
       if streq(k, "text") {
         let sv = emit_expr(v)
-        emit("  call void @fn_rt_ui_static_text(i32 ")  emit(itoa(i))  emit(", ptr ")  emit(sv.code)  emit(")\n")
+        emit("  call void @fn_rt_ui_static_text(i32 ");  emit(itoa(i));  emit(", ptr ");  emit(sv.code);  emit(")\n")
       } else { if streq(k, "skin") or streq(k, "image") {
         let sv = emit_expr(v)
         let r = emit_bind(sconcat("call i32 @fn_rt_image_load(ptr ", sconcat(sv.code, ")")))
@@ -102,9 +102,9 @@ fn emit_ui_build() -> void {
       } else { if streq(k, "align") {
         if v.kind == E_ID {
           let a = 0
-          if streq(v.s, "center") { a = 1 }  if streq(v.s, "end") { a = 2 }
+          if streq(v.s, "center") { a = 1 };  if streq(v.s, "end") { a = 2 }
           ll_ui_set(i, 12, itoa(a))
-        } else { let vv = emit_expr(v)  ll_ui_set(i, 12, vv.code) }
+        } else { let vv = emit_expr(v);  ll_ui_set(i, 12, vv.code) }
       } else {
         let key = ui_prop_key(k)
         if key >= 0 {

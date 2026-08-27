@@ -79,20 +79,20 @@ self-hosted `ludicc`.
 
 > **Not yet on the self-hosted toolchain.** `--shared` and the `nm`/library
 > workflow below describe the old C driver's behavior; the self-hosted `ludicc`
-> builds executables only for now. The `module`/`export fn` semantics are
+> builds executables only for now. The `module`/`@export fn` semantics are
 > unchanged — only the packaging step is pending.
 
 A source file opens with `game Name { … }` or `module Name { … }`.
 
 * A **game** gets an entry point and the phase-ordered frame loop
   (`Start`, then `Input → FixedUpdate → Update → LateUpdate → Render` each tick).
-* A **module** gets neither. It is a library, and only its `export fn`s become
+* A **module** gets neither. It is a library, and only its `@export fn`s become
   public symbols; everything else stays private to the library.
 
 ```ludic
 # doc-check: skip — illustrative: elided body
 module Combat {
-  export fn damage(attack: int, armour: int, roll: int) -> int { … }
+  @export fn damage(attack: int, armour: int, roll: int) -> int { … }
   fn curve(level: int) -> int { … }          # private: not a symbol
 }
 ```

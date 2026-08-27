@@ -4,7 +4,7 @@
 # called only when the runtime defines them.
 
 fn emit_system_fn(sys: Node) -> void {
-  ll_t = 0  ll_lbl = 0  g_term = false  loc_reset()  nloop = 0  nself = 0
+  ll_t = 0;  ll_lbl = 0;  g_term = false;  loc_reset();  nloop = 0;  nself = 0
   ret_ty = "void"
   let fbody = buf_new()
   falloc = buf_new()
@@ -14,7 +14,7 @@ fn emit_system_fn(sys: Node) -> void {
   if not g_term { emit("  br label %ret\n") }
   emit("ret:\n  ret void\n")
   code = saved
-  emit("define void @sys_")  emit(sys.s)  emit("() {\nentry:\n")
+  emit("define void @sys_");  emit(sys.s);  emit("() {\nentry:\n")
   emit(buf_str(falloc))
   emit(buf_str(fbody))
   emit("}\n\n")
@@ -24,7 +24,7 @@ fn emit_calls_for_phase(phase: ptr) -> void {
   let i = 0
   while i < len(prog) {
     let d = prog[i]
-    if d.kind == N_SYS and streq(d.ty, phase) { emit("  call void @sys_")  emit(d.s)  emit("()\n") }
+    if d.kind == N_SYS and streq(d.ty, phase) { emit("  call void @sys_");  emit(d.s);  emit("()\n") }
     i = i + 1
   }
 }
@@ -32,7 +32,7 @@ fn emit_calls_for_phase(phase: ptr) -> void {
 fn emit_game_main() -> void {
   # every system becomes a function first
   let i = 0
-  while i < len(prog) { if prog[i].kind == N_SYS { emit_system_fn(prog[i]) }  i = i + 1 }
+  while i < len(prog) { if prog[i].kind == N_SYS { emit_system_fn(prog[i]) };  i = i + 1 }
 
   emit("define i32 @main(i32 %argc, ptr %argv) {\nentry:\n")
   emit("  store i32 %argc, ptr @L_argc\n")
@@ -47,14 +47,14 @@ fn emit_game_main() -> void {
     let pr = emit_bind("call i32 @fn_rt_running()")
     let pc = emit_bind(sconcat("icmp ne i32 ", sconcat(pr, ", 0")))
     let go = emit_bind(sconcat("and i1 ", sconcat(rc, sconcat(", ", pc))))
-    emit("  br i1 ")  emit(go)  emit(", label %body, label %done\n")
+    emit("  br i1 ");  emit(go);  emit(", label %body, label %done\n")
   } else {
-    emit("  br i1 ")  emit(rc)  emit(", label %body, label %done\n")
+    emit("  br i1 ");  emit(rc);  emit(", label %body, label %done\n")
   }
   emit("body:\n")
   if not ptr_is_null(find_fn("rt_poll")) {
     let k = emit_bind("call i32 @fn_rt_poll()")
-    emit("  store i32 ")  emit(k)  emit(", ptr @L_key\n")
+    emit("  store i32 ");  emit(k);  emit(", ptr @L_key\n")
   }
   emit_calls_for_phase("Input")
   emit_calls_for_phase("FixedUpdate")

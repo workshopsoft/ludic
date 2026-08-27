@@ -67,7 +67,7 @@ component Stats { hp: int = 10 }
 archetype Player { Pos, Stats }        # Player IS a kind, not a component
 archetype Enemy  { Pos, Stats }
 
-spawn Player { Pos = { x = 5 } }        # attaches every listed component
+spawn Player { Pos { x: 5 } }           # attaches every listed component
                                         # (seeding field defaults), then overrides
 for (p, s) in query [Pos, Stats, {Player}] { ... }   # {Player} filters by kind
 ```
@@ -105,18 +105,18 @@ TrueType text, focus highlight) and keyboard focus + activation.
 
 ```ludic
 ui MainMenu {
-  panel id=Root w=288 pad=16 gap=6 skin="assets/ui/panel.png" inset=10 align=center {
-    label  text="CHRONO RIFT" font=reg(R_FONT) size=26 fg=0xffe060 align=center
-    button id=NewGame text="New Game" font=reg(R_FONT) size=16 w=236
-    button id=Quit    text="Quit"     font=reg(R_FONT) size=16 w=236
+  panel id: Root w: 288 pad: 16 gap: 6 skin: "assets/ui/panel.png" inset: 10 align: center {
+    label  text: "CHRONO RIFT" font: reg(R_FONT) size: 26 fg: 0xffe060 align: center
+    button id: NewGame text: "New Game" font: reg(R_FONT) size: 16 w: 236
+    button id: Quit    text: "Quit"     font: reg(R_FONT) size: 16 w: 236
   }
 }
 ```
 
 Widget types: `panel` (container + optional skin/bg/border), `col` / `row`
 (pure stacks), `label`, `button` (focusable), `image`, `spacer`. Props are
-evaluated at build time, so `font=reg(R_FONT)` reads a value the game set first.
-Each `id=Name` mints a `UI_Name` handle (the `ui` block name too), used from
+evaluated at build time, so `font: reg(R_FONT)` reads a value the game set first.
+Each `id: Name` mints a `UI_Name` handle (the `ui` block name too), used from
 systems:
 
 ```ludic
@@ -130,7 +130,7 @@ system Nav phase Update {
   if ui_clicked(UI_Quit) { quit() }
   ui_set_int(UI_HpLabel, hp)  # poke dynamic values by id
 }
-system Draw phase Render { clear(0x0e0e16)  ui_render()  present() }
+system Draw phase Render { clear(0x0e0e16); ui_render(); present() }
 ```
 
 See `examples/menu.ludic` for a complete title screen.
@@ -159,8 +159,8 @@ component Pos { x: int = 0, y: int = 0 }   # typed fields with defaults
 component Player { }                        # a tag (no fields)
 
 spawn Hero {                                # create an entity
-  Pos    = { x = 10, y = 5 }
-  Player = { }
+  Pos    { x: 10, y: 5 }
+  Player { }
 }
 despawn self()                              # remove the current entity
 
@@ -185,7 +185,13 @@ system Move @deterministic
 
 Phases run in this order every frame: **`Start`** (once at boot), then each
 frame **`Input` → `FixedUpdate` → `Update` → `LateUpdate` → `Render`**.
-`edge system` marks a system that touches the outside world.
+`@edge` in front of a `system` marks one that touches the outside world.
+
+Declaration modifiers are `@annotations` written in front of the declaration —
+`@export fn …` (a C-ABI-exported function), `@edge system …`, `@deterministic`,
+`@pure`. They parse into one uniform channel rather than a set of prefix
+keywords. (`@export` sets the export flag; the others parse but have no codegen
+effect in the self-hosted compiler yet.)
 
 ### The `query` clause
 
@@ -335,6 +341,18 @@ another `.ludic` file (see `examples/lib/`).
 `for (…) in query […] { }` · `break` · `continue` · `return` · `spawn` ·
 `despawn` · `match` · `machine`.
 
+**Statements are separated by a newline or `;`** (both lex to the same separator
+token). Two statements may not sit adjacent with only spaces between them — the
+compiler reports `expected newline or ';' between statements`. Write one
+statement per line, or, to pack several onto a line, separate them with `;`:
+
+```ludic
+# doc-check: skip — a bare statement block, not a whole declaration
+let x = 1
+x = x + 1                     # one per line, the usual form
+let y = 1; y = y + 1          # or `;`-separated on one line
+```
+
 `break` and `continue` apply to the innermost enclosing loop, and work in all
 three loop forms — `while`, the numeric `for`, and the ECS query loop, where
 `continue` advances to the next matching entity. Using either outside a loop is
@@ -361,15 +379,38 @@ state (no more `if phase == N` chains). See the co-op battle in
 ```ludic
 # doc-check: skip — illustrative: elided bodies
 machine R_PHASE {
-  state KnightMenu = 0 { … if is_confirm(k) { …attack…  become KnightResolve } }
-  state KnightResolve = 1 { … become MageMenu }
-  state EnemyTurn = 4 { … become KnightMenu }
+  state KnightMenu { … if is_confirm(k) { …attack…  become KnightResolve } }
+  state KnightResolve { … become MageMenu }
+  state EnemyTurn { … become KnightMenu }
 }
 ```
 
-A `machine <reg>` reads `reg(<reg>)` to pick the state; `become Name` compiles to
-`setreg(<reg>, <Name's value>)`. Both lower to plain branches (and `match` runs
-on the native LLVM backend too).
+States **number themselves by declaration order** (`KnightMenu` is `0`,
+`KnightResolve` is `1`, …) — no magic constants. (An explicit `state Name = expr`
+is still accepted when a state needs a specific value.) A `machine <reg>` reads
+`reg(<reg>)` to pick the state; `become Name` compiles to `setreg(<reg>, <Name's
+value>)`. Both lower to plain branches (and `match` runs on the native LLVM
+backend too).
+
+## Enums
+
+`enum` names a set of related integer values so a magic-number space — a menu
+selection, a mode, a machine state — reads as names instead of literals:
+
+```ludic
+# doc-check: skip — composite: a declaration plus its uses
+enum Action { Attack, Guard, Item, Flee }        # Attack = 0, Guard = 1, …
+
+match reg(R_CUR) { Action.Attack => attack()  Action.Guard => guard()  _ => wait() }
+if reg(R_MODE) == Mode.Battle { … }
+```
+
+A variant is a **compile-time `int`** accessed as `Enum.Variant` (`Action.Guard`
+is `1`), numbered from `0` by declaration order, so it works anywhere an int does
+— `match` patterns, comparisons, `setreg`. Enums are a naming layer over `int`:
+there is no distinct enum runtime type yet, so an enum value lives in an ordinary
+`int` or register (and is saved with it). See `examples/chronorift/combat.ludic`,
+whose battle menus dispatch on `KnightAct`/`MageAct` instead of `0..3`.
 
 ## Expressions
 
@@ -378,7 +419,7 @@ postfix(. () )`. Operators are built-in only (no overloading). The boolean
 operators are spelled **`and` / `or` / `not`**; `&&` and `||` are not Ludic operators
 and `!` are rejected with a diagnostic naming the fix (`!=` is unaffected). Bitwise operations are
 functions (`band`, `bor`, `bxor`, `bnot`, `shl`, `shr`), so the symbols are free
-— which is why there is only one spelling to remember. `expr with { field = … }` is not implemented; records appear
+— which is why there is only one spelling to remember. `expr with { field: … }` is not implemented; records appear
 only in `spawn`. Char literals (`'w'`) are `int` code points; colors are hex
 ints (`0xff8800`).
 
