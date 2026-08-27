@@ -50,8 +50,12 @@ fn slice_field(h: ptr, i: int) -> ptr {
 
 fn emit_len(e: Node) -> Val {
   let s = emit_expr(e.kids[0])
-  let lp = slice_field(s.code, 1)
-  return val(emit_bind(("load i32, ptr " + lp)), "int")
+  if is_slice_ty(s.ty) {                          # a slice: read its header length
+    let lp = slice_field(s.code, 1)
+    return val(emit_bind(("load i32, ptr " + lp)), "int")
+  }
+  let r = emit_bind(("call i64 @strlen(ptr " + (s.code + ")")))   # a string: byte length
+  return val(emit_bind(("trunc i64 " + (r + " to i32"))), "int")
 }
 
 fn emit_push(e: Node) -> Val {

@@ -7,7 +7,7 @@ fn hexdig(n: int) -> int { if n < 10 { return 48 + n }; return 55 + n }   # 0-9 
 fn emit_str_const(s: ptr) -> ptr {
   let name = ("@.str" + itoa(ll_str))
   ll_str = ll_str + 1
-  let n = slen(s)
+  let n = len(s)
   emith(name);  emith(" = private unnamed_addr constant [")
   emith(itoa(n + 1));  emith(" x i8] c\"")
   var i = 0
@@ -75,7 +75,7 @@ fn emit_header() -> void {
   emith("@L_argc = internal global i32 0\n")
   emith("@L_argv = internal global ptr null\n")
   emith("@.gametitle = private unnamed_addr constant [")
-  emith(itoa(slen(g_game_name) + 1));  emith(" x i8] c\"");  emith(g_game_name);  emith("\\00\"\n")
+  emith(itoa(len(g_game_name) + 1));  emith(" x i8] c\"");  emith(g_game_name);  emith("\\00\"\n")
   emith("%LSlice = type { ptr, i32, i32 }\n")
   # property layouts — a %Cmp_ record of named fields, emitted here so `new`
   # works whether or not the program runs the ECS. The per-entity @S_/@H_ arrays

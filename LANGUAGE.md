@@ -628,8 +628,9 @@ literal; test any pointer/record/slice with `x == null` / `x != null` (an unset
 # save      save()   load()->bool         (binary snapshot of the whole ECS World)
 # control   quit()   print(x)          (a value + newline)
 # convert   str(x) -> str            (int/bool/fixed -> text)
+# length    len(x) -> int            (elements of a slice, or bytes of a string)
 # process   os_argc()->int   os_arg(i)->str        (the command line; argv[0] included)
-#           file_stderr()->ptr                     (a handle for file_write, off stdout)
+#           file_stderr()->ptr  file_stdout()->ptr (handles for file_write)
 ```
 
 ## Tooling

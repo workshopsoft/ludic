@@ -96,14 +96,14 @@ fn ir_flush(path: ptr) -> bool {
   let c = buf_str(code)
   if (path == null) {                             # raw IR to stdout (no trailing newline)
     let out = file_stdout()
-    file_write(out, h, slen(h))
-    file_write(out, c, slen(c))
+    file_write(out, h, len(h))
+    file_write(out, c, len(c))
     return true
   }
   let f = file_open(path, "wb")
   if (f == null) { return false }
-  file_write(f, h, slen(h))
-  file_write(f, c, slen(c))
+  file_write(f, h, len(h))
+  file_write(f, c, len(c))
   file_close(f)
   return true
 }

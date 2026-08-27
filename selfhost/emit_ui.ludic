@@ -41,7 +41,7 @@ fn has_ui() -> bool {
 
 # index of a UI_<name>: a ui block's root, or a widget's id=
 fn ui_index_of(nm: ptr) -> int {
-  let s = substr(nm, 3, slen(nm) - 3)          # strip "UI_"
+  let s = substr(nm, 3, len(nm) - 3)          # strip "UI_"
   let u = 0;  var bi = 0
   var i = 0
   while i < len(prog) {
@@ -57,7 +57,7 @@ fn ui_index_of(nm: ptr) -> int {
   return 0
 }
 fn is_ui_ident(nm: ptr) -> bool {
-  return slen(nm) > 3 and peek8(nm, 0) == 85 and peek8(nm, 1) == 73 and peek8(nm, 2) == 95   # "UI_"
+  return len(nm) > 3 and peek8(nm, 0) == 85 and peek8(nm, 1) == 73 and peek8(nm, 2) == 95   # "UI_"
 }
 
 fn ll_ui_set(idx: int, key: int, val: ptr) -> void {
