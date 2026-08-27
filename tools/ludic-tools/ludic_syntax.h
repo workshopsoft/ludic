@@ -71,7 +71,7 @@ static const char* LUDIC_KW_STMT[] = {
     "and","or","not","break","continue","new", 0
 };
 static const char* LUDIC_TYPES[] = {
-    "int","fixed","bool","entity","str","ptr","byte","words","void", 0
+    "int","fixed","bool","entity","str","ptr","byte","words","fixeds","ptrs","void", 0
 };
 static const char* LUDIC_PHASES[] = {
     "Start","Input","FixedUpdate","Update","LateUpdate","Render", 0
@@ -155,10 +155,6 @@ static const LBuiltin LUDIC_INTRINSICS[] = {
  {"mem_free","mem_free(p: ptr)","Release an allocation."},
  {"mem_copy","mem_copy(dst: ptr, src: ptr, n: int)","memcpy."},
  {"mem_set","mem_set(p: ptr, byte: int, n: int)","memset."},
- {"peekp","peekp(p: ptr, off: int) -> ptr","Read a pointer-sized word."},
- {"pokep","pokep(p: ptr, off: int, v: ptr)","Write a pointer-sized word."},
- {"peekf","peekf(p: ptr, off: int) -> fixed","Read a fixed-point word."},
- {"pokef","pokef(p: ptr, off: int, v: fixed)","Write a fixed-point word."},
  {"ptr_add","ptr_add(p: ptr, off: int) -> ptr","Offset a pointer by bytes."},
  {"as_fixed","as_fixed(i: int) -> fixed","Reinterpret an int as fixed (no conversion)."},
  {"as_int","as_int(f: fixed) -> int","Reinterpret a fixed as int (no conversion)."},
@@ -170,7 +166,6 @@ static const LBuiltin LUDIC_INTRINSICS[] = {
  {"file_close","file_close(f: ptr)","fclose."},
  {"read_byte","read_byte() -> int","Read one byte from stdin, -1 at EOF."},
  {"write_byte","write_byte(b: int)","Write one byte to stdout."},
- {"str_len","str_len(s: str) -> int","Length of a string in bytes."},
  {"os_exit","os_exit(code: int)","Terminate the process."},
  {"os_time","os_time() -> int","Seconds since the epoch."},
  {"is_windowed","is_windowed() -> bool","True when the build has a window."},

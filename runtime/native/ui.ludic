@@ -73,7 +73,7 @@ var ui_visible: words = null
 var ui_fired: words = null
 var ui_hasdyn: words = null
 var ui_dyn: ptr = null        # UI_MAX * 96 bytes
-var ui_text: ptr = null       # UI_MAX static string pointers
+var ui_text: ptrs = null       # UI_MAX static string pointers
 
 var ui_n: int = 0
 var ui_active: int = -1
@@ -138,7 +138,7 @@ fn rt_ui_reset(n: int) -> void {
     ui_visible[i] = 1
     ui_fired[i] = 0
     ui_hasdyn[i] = 0
-    pokep(ui_text, i, null)
+    ui_text[i] = null
   }
 }
 
@@ -171,13 +171,13 @@ fn rt_ui_set(i: int, k: int, v: int) -> void {
 fn rt_ui_static_text(i: int, s: str) -> void {
   if i < 0 { return }
   if i >= UI_MAX { return }
-  pokep(ui_text, i, s)
+  ui_text[i] = s
 }
 
 # ---- text helpers: TrueType when a font is loaded, bitmap otherwise -------
 fn ui_str(i: int) -> ptr {
   if ui_hasdyn[i] == 1 { return ptr_add(ui_dyn, i * 96) }
-  let t = peekp(ui_text, i)
+  let t = ui_text[i]
   if (t == null) { return ptr_add(ui_dyn, i * 96) }
   return t
 }

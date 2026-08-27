@@ -23,10 +23,20 @@ fn emit_index_addr(e: Node) -> ptr {
   let base = emit_expr(e.a)
   if not is_slice_ty(base.ty) {                   # a raw pointer: address of element i
     let bi = emit_expr(e.b)                        # (evaluate index first — it may set g_addr_ty)
-    if (base.ty == "words") {                      # a `words` buffer: 32-bit elements
+    if (base.ty == "words") {                      # a `words` buffer: 32-bit int elements
       let rw = emit_bind(`getelementptr inbounds i32, ptr {base.code}, i32 {bi.code}`)
       g_addr_ty = "int"
       return rw
+    }
+    if (base.ty == "fixeds") {                     # a `fixeds` buffer: 32-bit fixed elements
+      let rf = emit_bind(`getelementptr inbounds i32, ptr {base.code}, i32 {bi.code}`)
+      g_addr_ty = "fixed"
+      return rf
+    }
+    if (base.ty == "ptrs") {                       # a `ptrs` buffer: pointer elements
+      let rp = emit_bind(`getelementptr inbounds ptr, ptr {base.code}, i32 {bi.code}`)
+      g_addr_ty = "ptr"
+      return rp
     }
     let r = emit_bind(`getelementptr inbounds i8, ptr {base.code}, i32 {bi.code}`)   # a ptr/str: bytes
     g_addr_ty = "byte"                             # set last so the caller sees it
