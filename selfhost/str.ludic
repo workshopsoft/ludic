@@ -3,13 +3,6 @@
 # byte buffers reached with peek8/poke8.
 
 # a fresh NUL-terminated copy of src[start .. start+n]
-fn substr(src: ptr, start: int, n: int) -> ptr {
-  let b = mem_alloc(n + 1)
-  var i = 0
-  while i < n { poke8(b, i, peek8(src, start + i)); i = i + 1 }
-  poke8(b, n, 0)
-  return b
-}
 
 fn char_is_digit(c: int) -> bool { return c >= 48 and c <= 57 }
 fn char_is_alpha(c: int) -> bool {

@@ -22,5 +22,10 @@ program Strings {
     let n = 42
     if `{greeting}, {who}!` == "hello, Ludic!" { print(6) }
     if `n={n}, next={n + 1}` == "n=42, next=43" { print(7) }
+
+    # slicing: s[a..b] is the substring of bytes [a, b), and len(s) its length
+    let full = "hello world"
+    if full[0..5] == "hello" { print(8) }
+    if full[6..len(full)] == "world" { print(9) }
   }
 }

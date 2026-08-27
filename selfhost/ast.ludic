@@ -50,6 +50,7 @@ const E_FLOAT:  int = 40
 const E_REC:    int = 41
 const E_FINIT:  int = 42
 const E_NULL:   int = 43         # the `null` pointer literal
+const E_SLICE:  int = 44         # s[a..b] — substring (a=base, b=start, c=end)
 
 property Node {
   kind: int = 0

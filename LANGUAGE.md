@@ -598,7 +598,10 @@ let msg = `hello {name}, you have {count + 1} messages`
 ```
 
 `str(x)` is the same conversion on its own. Write a literal brace as `{{` / `}}`.
-`expr with { field: … }`
+
+**Slicing.** `s[a..b]` is a fresh substring of the bytes `[a, b)`, and `len(s)`
+is a string's byte length — so `path[0..len(path) - 6]` trims an extension and
+`s[i]` still indexes a single byte. `expr with { field: … }`
 is not implemented; records appear only in `spawn`. Char literals (`'w'`) are
 `int` code points; colors are hex ints (`0xff8800`). `null` is the null-pointer
 literal; test any pointer/record/slice with `x == null` / `x != null` (an unset

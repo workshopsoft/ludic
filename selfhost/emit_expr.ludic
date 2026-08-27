@@ -178,6 +178,13 @@ fn emit_expr(e: Node) -> Val {
   if e.kind == E_FLOAT { return val(itoa(e.ival), "fixed") }
   if e.kind == E_BOOL { return val(itoa(e.ival), "bool") }
   if e.kind == E_NULL { return val("null", "ptr") }
+  if e.kind == E_SLICE {                          # s[a..b] -> a fresh substring
+    let base = emit_expr(e.a)
+    let lo = emit_expr(e.b)
+    let hi = emit_expr(e.c)
+    g_uses_strslice = true
+    return val(emit_bind(`call ptr @fn_str_slice(ptr {base.code}, i32 {lo.code}, i32 {hi.code})`), "str")
+  }
   if e.kind == E_STR  { return val(emit_str_const(e.s), "str") }
   if e.kind == E_NEW  {
     if is_slice_ty(e.s) { return emit_new_slice(e.s) }
