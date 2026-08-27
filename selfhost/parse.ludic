@@ -116,12 +116,13 @@ fn p_or() -> Node {
   return l
 }
 
-# a record literal `{ field = value, ... }` — used by spawn component inits
+# a record literal `{ field: value, ... }` — used by spawn component inits.
+# Rule A: a named part uses `:` (`=` is assignment/binding only).
 fn record() -> Node {
   eat_op("{")
   let r = node(E_REC)
   while true { skipnl(); if is_op("}") { break }
-    let fi = node(E_FINIT); fi.s = eat_id(); eat_op("="); fi.a = expr(); push(r.kids, fi)
+    let fi = node(E_FINIT); fi.s = eat_id(); eat_op(":"); fi.a = expr(); push(r.kids, fi)
     if is_op(",") { pi = pi + 1 } }
   eat_op("}"); return r
 }

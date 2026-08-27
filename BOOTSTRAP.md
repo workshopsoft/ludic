@@ -921,7 +921,7 @@ game P { system B phase Start { let x = 1; x = x + 1; print_int(x); quit() } }
 ```ludic
 # doc-check: skip — composite: declaration plus statements
 component Pos { x: int = 0  y: int = 0 }
-spawn Hero { Pos = { x = 7  y = 2 } }
+spawn Hero { Pos { x: 7  y: 2 } }
 ```
 
 **R3 — RESOLVED.** Every symbol form is now rejected where it is written:

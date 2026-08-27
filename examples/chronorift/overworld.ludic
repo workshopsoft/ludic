@@ -16,14 +16,14 @@ system Boot phase Start {
 
   build_field(0)
   spawn Player {
-    Pos    = { x = 11, y = 15 }
-    Actor  = { kind = 5 }
-    Party  = { slot = 0 }
-    Stats  = { hp = 40, maxhp = 40, mp = 8,  maxmp = 8,  atk = 12, def = 6, lvl = 1, xp = 0, guard = 0 }
+    Pos    { x: 11, y: 15 }
+    Actor  { kind: 5 }
+    Party  { slot: 0 }
+    Stats  { hp: 40, maxhp: 40, mp: 8,  maxmp: 8,  atk: 12, def: 6, lvl: 1, xp: 0, guard: 0 }
   }
   spawn Ally {
-    Party  = { slot = 1 }
-    Stats  = { hp = 26, maxhp = 26, mp = 16, maxmp = 16, atk = 8,  def = 4, lvl = 1, xp = 0, guard = 0 }
+    Party  { slot: 1 }
+    Stats  { hp: 26, maxhp: 26, mp: 16, maxmp: 16, atk: 8,  def: 4, lvl: 1, xp: 0, guard: 0 }
   }
   setreg(R_MODE, 0)
   setreg(R_ENC, 4)
@@ -69,8 +69,8 @@ system Control phase Input {
           if reg(R_BOSS) == 0 {
             setreg(R_ETYPE, 2)
             spawn Enemy {
-              Actor = { kind = 8 }
-              Stats = { hp = 120, maxhp = 120, mp = 0, maxmp = 0, atk = 18, def = 10, lvl = 5, xp = 300, guard = 0 }
+              Actor { kind: 8 }
+              Stats { hp: 120, maxhp: 120, mp: 0, maxmp: 0, atk: 18, def: 10, lvl: 5, xp: 300, guard: 0 }
             }
             setreg(R_MODE, 1)
             setreg(R_PHASE, 0)
@@ -96,14 +96,14 @@ system Control phase Input {
                 setreg(R_ETYPE, et)
                 if et == 0 {
                   spawn Enemy {
-                    Actor = { kind = 6 }
-                    Stats = { hp = 18, maxhp = 18, mp = 0, maxmp = 0, atk = 8, def = 2, lvl = 1, xp = 7, guard = 0 }
+                    Actor { kind: 6 }
+                    Stats { hp: 18, maxhp: 18, mp: 0, maxmp: 0, atk: 8, def: 2, lvl: 1, xp: 7, guard: 0 }
                   }
                 }
                 if et == 1 {
                   spawn Enemy {
-                    Actor = { kind = 7 }
-                    Stats = { hp = 30, maxhp = 30, mp = 0, maxmp = 0, atk = 11, def = 5, lvl = 1, xp = 15, guard = 0 }
+                    Actor { kind: 7 }
+                    Stats { hp: 30, maxhp: 30, mp: 0, maxmp: 0, atk: 11, def: 5, lvl: 1, xp: 15, guard: 0 }
                   }
                 }
                 setreg(R_MODE, 1)

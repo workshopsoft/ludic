@@ -15,9 +15,9 @@ game QueryDecl {
   archetype Foe { Battle, Pos }
 
   system Seed phase Start {
-    spawn Foe { Battle = { hp = 3, side = 1 } }
-    spawn Foe { Battle = { hp = 0, side = 1 } }
-    spawn Foe { Battle = { hp = -2, side = 0 } }
+    spawn Foe { Battle { hp: 3, side: 1 } }
+    spawn Foe { Battle { hp: 0, side: 1 } }
+    spawn Foe { Battle { hp: -2, side: 0 } }
   }
 
   system CleanBattle phase LateUpdate

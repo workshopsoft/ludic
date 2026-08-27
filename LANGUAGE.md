@@ -67,7 +67,7 @@ component Stats { hp: int = 10 }
 archetype Player { Pos, Stats }        # Player IS a kind, not a component
 archetype Enemy  { Pos, Stats }
 
-spawn Player { Pos = { x = 5 } }        # attaches every listed component
+spawn Player { Pos { x: 5 } }           # attaches every listed component
                                         # (seeding field defaults), then overrides
 for (p, s) in query [Pos, Stats, {Player}] { ... }   # {Player} filters by kind
 ```
@@ -159,8 +159,8 @@ component Pos { x: int = 0, y: int = 0 }   # typed fields with defaults
 component Player { }                        # a tag (no fields)
 
 spawn Hero {                                # create an entity
-  Pos    = { x = 10, y = 5 }
-  Player = { }
+  Pos    { x: 10, y: 5 }
+  Player { }
 }
 despawn self()                              # remove the current entity
 
@@ -390,7 +390,7 @@ postfix(. () )`. Operators are built-in only (no overloading). The boolean
 operators are spelled **`and` / `or` / `not`**; `&&` and `||` are not Ludic operators
 and `!` are rejected with a diagnostic naming the fix (`!=` is unaffected). Bitwise operations are
 functions (`band`, `bor`, `bxor`, `bnot`, `shl`, `shr`), so the symbols are free
-— which is why there is only one spelling to remember. `expr with { field = … }` is not implemented; records appear
+— which is why there is only one spelling to remember. `expr with { field: … }` is not implemented; records appear
 only in `spawn`. Char literals (`'w'`) are `int` code points; colors are hex
 ints (`0xff8800`).
 

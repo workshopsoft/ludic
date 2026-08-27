@@ -4,10 +4,10 @@ A plan to make Ludic's syntax internally consistent. It fixes the drift between
 the spec and the compiler, then unifies the grammar around two rules. Scope:
 **full redesign (Phases 0–5)**. Named-field direction: **colon everywhere**.
 
-> Status: **Phases 1 & 2 landed** (see below). Phases 3→5 are proposals. The
-> phases are ordered so the documentation never describes syntax the compiler
-> rejects, and every phase ends with the compiler still self-hosting to a
-> fixpoint (`./test.sh`).
+> Status: **Phases 1 & 2 landed; Phase 3 in progress** (3a records/spawn done).
+> Remaining sub-phases and Phases 4→5 are proposals. The phases are ordered so
+> the documentation never describes syntax the compiler rejects, and every phase
+> ends with the compiler still self-hosting to a fixpoint (`./test.sh`).
 >
 > Coordinated with the toolchain agent (CLI front-end / `ludicc`+`ludic`
 > binaries) via serialized reseeds of `selfhost/ludicc.seed.ll`; Phase 1 rode in
@@ -240,13 +240,29 @@ forbid literal newlines in string literals language-wide (the two lexers should
 agree). Flagged to the toolchain owners.
 
 ### Phase 3 — Named-field unification (Rule A)
-- Migrate spawn/record init (`= {…=…}` → `{…:…}`) and ui props (`key=value` →
-  named-arg form) in the parser and emitters.
-- Collapse `reads/writes/needs/uses` → `reads`/`writes`, stored on the node.
-- Move `edge`/`pure`/`export` into `@`-annotations; parse annotations into a list.
-- Ship `ludic-fmt --migrate`: a mechanical codemod that rewrites old syntax to
-  new, run over `examples/`, `runtime/`, and `selfhost/`.
-- Gate: compiler still self-hosts; every golden render is byte-identical.
+
+**3a — spawn/record initializers ✅ DONE.** `Comp = { f = v }` → `Comp { f: v }`.
+`record()` requires `:` and `parse_spawn()` drops the `=` before the record
+([parse.ludic](selfhost/parse.ludic), [parse_game.ludic](selfhost/parse_game.ludic)).
+The `=` is now assignment/const/default/extern-binding only. Migration tool:
+[migrate_records.c](tools/ludic-tools/migrate_records.c) (spawn-context aware).
+Records live only in games, so the seed was unaffected; verified every golden
+byte-identical, old `=` form now rejected, reseeded, `test.sh` 14/14. Doc examples
+updated (LANGUAGE.md, BOOTSTRAP.md R2).
+
+**3b — ui props → named-argument form.** `panel id=Root w=288` → `panel(id: Root,
+w: 288)`. Not started (touches `parse_widget` + `emit_ui`).
+
+**3c — collapse `reads/writes/needs/uses` → `reads`/`writes`, stored on the node.**
+Not started.
+
+**3d — modifiers `edge`/`pure`/`export` → `@`-annotations, parsed into a list.**
+Not started.
+
+Each sub-phase follows the proven pattern: parser change → verification-gated
+migration (IR byte-identical / goldens identical) → reseed → docs. The migration
+tools ([migrate_separators.c](tools/ludic-tools/migrate_separators.c),
+[migrate_records.c](tools/ludic-tools/migrate_records.c)) are the reusable spine.
 
 ### Phase 4 — Control-flow & operator consolidation (largest)
 - Remove `when`; confirm `if` covers all uses in the corpus.

@@ -89,8 +89,8 @@ fn parse_spawn() -> Node {
   pi = pi + 1; let n = node(S_SPAWN); n.s = eat_id(); skipnl(); eat_op("{")
   while true {
     skipnl(); if is_op("}") { break }
-    let ci = node(E_FINIT); ci.s = eat_id(); eat_op("=")
-    ci.a = record()                          # { field = val, ... }
+    let ci = node(E_FINIT); ci.s = eat_id()
+    ci.a = record()                          # Comp { field: val, ... } — no `=` before the record
     push(n.kids, ci)
     if is_op(",") { pi = pi + 1 }
   }

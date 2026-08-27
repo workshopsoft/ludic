@@ -6,12 +6,12 @@ game Hello {
 
   system Boot phase Start {
     spawn Mob {
-      Pos = { x = 3, y = 4 }
-      Vel = { dx = 1, dy = 0 }
+      Pos { x: 3, y: 4 }
+      Vel { dx: 1, dy: 0 }
     }
     spawn Mob {
-      Pos = { x = 10, y = 2 }
-      Vel = { dx = 0, dy = 1 }
+      Pos { x: 10, y: 2 }
+      Vel { dx: 0, dy: 1 }
     }
   }
 
