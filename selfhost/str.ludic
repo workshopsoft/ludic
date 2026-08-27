@@ -2,12 +2,6 @@
 # slicing out substrings, and integer<->text. All over raw NUL-terminated
 # byte buffers reached with peek8/poke8.
 
-fn slen(s: ptr) -> int {
-  var n = 0
-  while peek8(s, n) != 0 { n = n + 1 }
-  return n
-}
-
 # a fresh NUL-terminated copy of src[start .. start+n]
 fn substr(src: ptr, start: int, n: int) -> ptr {
   let b = mem_alloc(n + 1)

@@ -57,7 +57,7 @@ fn llty(t: ptr) -> ptr {
 }
 
 fn is_slice_ty(t: ptr) -> bool { return peek8(t, 0) == 91 and peek8(t, 1) == 93 }   # "[]"
-fn slice_elem(t: ptr) -> ptr { return substr(t, 2, slen(t) - 2) }
+fn slice_elem(t: ptr) -> ptr { return substr(t, 2, len(t) - 2) }
 
 fn find_arch(name: ptr) -> Node {
   var i = 0

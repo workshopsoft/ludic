@@ -24,7 +24,7 @@ fn base_name(path: ptr) -> ptr {
 
 # drop a trailing ".ludic" if present
 fn strip_ludic(name: ptr) -> ptr {
-  let n = slen(name)
+  let n = len(name)
   if n > 6 {
     if (substr(name, n - 6, 6) == ".ludic") { return substr(name, 0, n - 6) }
   }
@@ -40,14 +40,14 @@ fn getenv_or(name: ptr, dflt: ptr) -> ptr {
 
 # guarantee a directory string ends in '/' so path_join concatenates cleanly
 fn ensure_slash(d: ptr) -> ptr {
-  let n = slen(d)
+  let n = len(d)
   if n == 0 { return d }
   if peek8(d, n - 1) == 47 { return d }
   return (d + ("/"))
 }
 
 fn die(msg: ptr) -> void {
-  file_write(file_stderr(), msg, slen(msg))
+  file_write(file_stderr(), msg, len(msg))
   os_exit(1)
 }
 
@@ -78,7 +78,7 @@ entry {
       # input file — '-' is ASCII 45
       if peek8(a, 0) == 45 {
         let m = ("ludicc: ignoring unknown flag " + (a + "\n"))
-        file_write(file_stderr(), m, slen(m))
+        file_write(file_stderr(), m, len(m))
       } else { path = a }
     } } } } } } }
     ai = ai + 1
@@ -122,7 +122,7 @@ entry {
 
   # make the output directory if the user asked for e.g. bin/app
   let odir = dir_of(out)
-  if slen(odir) > 0 { os_system((("mkdir -p ") + odir)) }
+  if len(odir) > 0 { os_system((("mkdir -p ") + odir)) }
 
   let ll = (out + ".ll")
   if not ir_flush(ll) { die("ludicc: cannot write IR\n") }

@@ -15,7 +15,7 @@ fn is_kw(v: ptr) -> bool { return is_id(v) }
 fn perr(msg: ptr) -> void {
   let e = file_stderr()
   file_write(e, "ludicc(self): parse error: ", 27)
-  file_write(e, msg, slen(msg))
+  file_write(e, msg, len(msg))
   file_write(e, "\n", 1)
   os_exit(1)
 }
@@ -35,7 +35,7 @@ fn ptype() -> ptr {
     pi = pi + 1
     eat_op("]")
     let el = ptype()
-    let out = mem_alloc(slen(el) + 3)
+    let out = mem_alloc(len(el) + 3)
     poke8(out, 0, 91); poke8(out, 1, 93)              # "[]"
     var i = 0
     while peek8(el, i) != 0 { poke8(out, 2 + i, peek8(el, i)); i = i + 1 }
@@ -73,7 +73,7 @@ fn parse_hole(inner: ptr) -> Node {               # re-lex+parse an embedded exp
   return e
 }
 fn parse_interp(raw: ptr) -> Node {
-  let n = slen(raw)
+  let n = len(raw)
   var acc: Node = null
   let lit = mem_alloc(n + 1)
   var lj = 0
