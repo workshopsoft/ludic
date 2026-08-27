@@ -3,10 +3,10 @@
 # general: compiled by the SAME unmodified ludicc + runtime as the JRPG.
 # No sprites/assets — pure primitives. Build: ./build.sh examples/snake.ludic
 # ============================================================================
-game Snake {
+program Snake {
 
-  component Pos { x: int = 0, y: int = 0 }
-  component Seg { order: int = 0 }
+  property Pos { x: int = 0, y: int = 0 }
+  property Seg { order: int = 0 }
 
   const GW: int = 20
   const GH: int = 15
@@ -39,9 +39,9 @@ game Snake {
     return 0
   }
 
-  system Boot phase Start { reset(0) }
+  handler Boot phase Start { reset(0) }
 
-  system Input phase Input {
+  handler Input phase Input {
     let k = key()
     if reg(R_MODE) == 0 {
       if k == 'w' { if reg(R_DIR) != 1 { setreg(R_DIR, 0) } }
@@ -55,7 +55,7 @@ game Snake {
     }
   }
 
-  system Move phase Update {
+  handler Move phase Update {
     if reg(R_MODE) == 0 {
       setreg(R_TICK, reg(R_TICK) + 1)
       if reg(R_TICK) >= 6 {
@@ -110,7 +110,7 @@ game Snake {
     }
   }
 
-  system Draw phase Render {
+  handler Draw phase Render {
     clear(0x0d1020)
     for gy in 0 .. GH {
       for gx in 0 .. GW {

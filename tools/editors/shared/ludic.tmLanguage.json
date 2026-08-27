@@ -54,21 +54,21 @@
     "declaration": {
       "patterns": [
         {
-          "match": "\\b(game|module)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "match": "\\b(program)\\s+([A-Za-z_][A-Za-z0-9_]*)",
           "captures": {
             "1": { "name": "keyword.control.unit.ludic" },
             "2": { "name": "entity.name.type.unit.ludic" }
           }
         },
         {
-          "match": "\\b(component)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "match": "\\b(property)\\s+([A-Za-z_][A-Za-z0-9_]*)",
           "captures": {
             "1": { "name": "storage.type.component.ludic" },
             "2": { "name": "entity.name.type.component.ludic" }
           }
         },
         {
-          "match": "\\b(archetype)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "match": "\\b(model)\\s+([A-Za-z_][A-Za-z0-9_]*)",
           "captures": {
             "1": { "name": "storage.type.archetype.ludic" },
             "2": { "name": "entity.name.type.archetype.ludic" }
@@ -82,7 +82,7 @@
           }
         },
         {
-          "match": "\\b(system)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "match": "\\b(handler)\\s+([A-Za-z_][A-Za-z0-9_]*)",
           "captures": {
             "1": { "name": "storage.type.system.ludic" },
             "2": { "name": "entity.name.function.system.ludic" }
@@ -165,7 +165,7 @@
         { "name": "keyword.operator.logical.ludic", "match": "\\b(and|or|not)\\b" },
         { "name": "keyword.other.clause.ludic", "match": "\\b(phase|query|reads|writes)\\b" },
         { "name": "keyword.other.ludic", "match": "\\b(import|extern)\\b" },
-        { "name": "storage.type.ludic", "match": "\\b(game|module|component|struct|archetype|enum|ui|const|var|let|fn|system|main|state)\\b" },
+        { "name": "storage.type.ludic", "match": "\\b(program|property|struct|model|enum|ui|const|var|let|fn|handler|entry|state)\\b" },
         { "name": "support.type.primitive.ludic", "match": "\\b(int|fixed|bool|entity|str|ptr|void)\\b" },
         { "name": "constant.language.boolean.ludic", "match": "\\b(true|false)\\b" },
         { "name": "constant.language.phase.ludic", "match": "\\b(Start|Input|FixedUpdate|Update|LateUpdate|Render)\\b" }

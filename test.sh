@@ -50,6 +50,11 @@ qsmoke() {  # name
   else bad "$n: $(tail -1 /tmp/qs.out)"; fi
 }
 qsmoke qdecl
+# @Queries desugars to a query loop; @Handles parses. Check the desugared behavior.
+if ./selfhost/game-build.sh build/ludicc examples/annotations.ludic "/tmp/ludic_ann" >/tmp/ann.out 2>&1 \
+   && [ "$(/tmp/ludic_ann | tr '\n' ' ')" = "3 1 0 0 " ]; then
+  ok "annotations.ludic (@Queries desugars to a query, @Handles parses)"
+else bad "annotations: $(tail -1 /tmp/ann.out)"; fi
 # --- Toolchain-agent CLI smoke tests append below this line ---
 echo "== self-hosted front-end binaries (ludicc / ludic) =="
 # The two commands are one multi-call native binary built from the seed with
@@ -72,7 +77,7 @@ if ./ludicc examples/snake.ludic --emit-llvm -o /tmp/cli_snake.ll >/tmp/cli.out 
 else bad "ludicc --emit-llvm: $(tail -1 /tmp/cli.out)"; fi
 
 # ludic compiles, runs, and forwards the program's exit code.
-printf 'main { os_exit(42) }\n' > /tmp/cli_exit.ludic
+printf 'entry { os_exit(42) }\n' > /tmp/cli_exit.ludic
 ./ludic /tmp/cli_exit.ludic >/tmp/cli.out 2>&1
 if [ "$?" -eq 42 ]; then ok "ludic app.ludic  ->  compiles, runs, forwards exit code"
 else bad "ludic run: expected exit 42, got $? ($(tail -1 /tmp/cli.out))"; fi

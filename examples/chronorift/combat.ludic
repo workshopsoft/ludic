@@ -8,7 +8,7 @@
 enum KnightAct { Attack, Guard, Item, Flee }
 enum MageAct   { Attack, Heal, Guard }
 
-system Battle phase Update {
+handler Battle phase Update {
   if reg(R_MODE) == 1 {
     let k = key()
     for (e) in query [Stats, {Enemy}] {
@@ -144,7 +144,7 @@ system Battle phase Update {
   }
 }
 
-system CleanBattle phase LateUpdate {
+handler CleanBattle phase LateUpdate {
   if reg(R_MODE) != 1 {
     for (e) in query [Stats, {Enemy}] {
       despawn self()
@@ -152,7 +152,7 @@ system CleanBattle phase LateUpdate {
   }
 }
 
-system Meta phase Update {
+handler Meta phase Update {
   let k = key()
   if reg(R_MODE) == 2 {
     if k == 0 { setreg(R_ACK, 1) }

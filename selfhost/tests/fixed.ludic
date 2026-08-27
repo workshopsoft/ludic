@@ -1,5 +1,5 @@
-game T {
-  main {
+program T {
+  entry {
     let half = 0.5
     let a = 1.5
     print_int(flr(a + half))          # flr(2.0) = 2

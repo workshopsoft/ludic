@@ -84,6 +84,62 @@ fn parse_query_for() -> Node {
   return n
 }
 
+# ---- @Queries annotation -----------------------------------------------------
+# `@Queries(these: [Prop{constraint}, ...], on: Model)` on a handler is an
+# annotation spelling of the `for (Prop, ...) in query [Prop, ..., {Model}]
+# where <constraints> { body }` loop. It desugars to the same S_QUERY node, so
+# the whole query backend (iteration, filters, binding, break/continue) is reused.
+
+fn mk_and(a: Node, b: Node) -> Node {
+  if ptr_is_null(a) { return b }
+  let n = node(E_BIN); n.s = "and"; n.a = a; n.b = b; return n
+}
+
+# In `Prop{scale > 0}` the bare names are fields of Prop; qualify each to
+# `Prop.field` (the binding var is the property name) for the desugared where.
+fn qualify_fields(e: Node, prop: ptr) -> Node {
+  if ptr_is_null(e) { return e }
+  if e.kind == E_ID {
+    let m = node(E_MEMBER); let base = node(E_ID); base.s = prop; m.a = base; m.s = e.s; return m
+  }
+  if e.kind == E_BIN { e.a = qualify_fields(e.a, prop); e.b = qualify_fields(e.b, prop); return e }
+  if e.kind == E_UN  { e.a = qualify_fields(e.a, prop); return e }
+  return e
+}
+
+# parse `(these: [...], on: Model)`, returning an S_QUERY with its vars/terms/where
+# filled in (the body `.a` is attached by the caller once the handler is parsed).
+fn parse_queries_anno() -> Node {
+  eat_op("(")
+  let qn = node(S_QUERY)
+  let terms = node(N_BLOCK)
+  let wh: Node = ptr_null()
+  while not is_op(")") {
+    skipnl()
+    if is_op(")") { break }
+    let key = eat_id(); eat_op(":")
+    if streq(key, "these") {
+      eat_op("["); skipnl()
+      while not is_op("]") {
+        let pname = eat_id()
+        let v = node(E_ID); v.s = pname; push(qn.kids, v)              # binding var = property name
+        let t = node(E_ID); t.s = pname; t.ival = 0; push(terms.kids, t)
+        if is_op("{") { pi = pi + 1; let ce = expr(); eat_op("}"); wh = mk_and(wh, qualify_fields(ce, pname)) }
+        if is_op(",") { pi = pi + 1 }
+        skipnl()
+      }
+      eat_op("]")
+    } else { if streq(key, "on") {
+      let mname = eat_id(); let t = node(E_ID); t.s = mname; t.ival = 1; push(terms.kids, t)   # {Model} tag
+    } else { expr() } }                                                # unknown key: skip its value
+    if is_op(",") { pi = pi + 1 }
+    skipnl()
+  }
+  eat_op(")")
+  qn.c = terms; qn.b = wh
+  return qn
+}
+
 fn parse_spawn() -> Node {
   pi = pi + 1; let n = node(S_SPAWN); n.s = eat_id(); skipnl(); eat_op("{")
   while true {

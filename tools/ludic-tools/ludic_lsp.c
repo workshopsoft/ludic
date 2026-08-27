@@ -1080,13 +1080,13 @@ static void on_completion(JVal* msg, JVal* id){
         comp_builtins(&c);
         comp_scope(&c, D, off, 0);
         /* the shapes people actually type */
-        comp_item(&c, "system", CI_SNIPPET, "system … phase … { }", "A system with a phase and a body.",
+        comp_item(&c, "handler", CI_SNIPPET, "handler … phase … { }", "A system with a phase and a body.",
                   "system ${1:Name} phase ${2|Start,Input,FixedUpdate,Update,LateUpdate,Render|} {\n  $0\n}");
-        comp_item(&c, "system+query", CI_SNIPPET, "system … query … { }", "A system that runs once per matching entity.",
+        comp_item(&c, "system+query", CI_SNIPPET, "handler … query … { }", "A system that runs once per matching entity.",
                   "system ${1:Name} phase ${2|Update,FixedUpdate,LateUpdate,Render,Input|}\n  query (${3:p}) [${4:Pos}]\n{\n  $0\n}");
-        comp_item(&c, "component", CI_SNIPPET, "component … { }", "A component with typed fields.",
+        comp_item(&c, "property", CI_SNIPPET, "property … { }", "A component with typed fields.",
                   "component ${1:Name} { ${2:x}: ${3:int} = ${4:0} }");
-        comp_item(&c, "archetype", CI_SNIPPET, "archetype … { }", "An entity kind bundling components.",
+        comp_item(&c, "model", CI_SNIPPET, "archetype … { }", "An entity kind bundling components.",
                   "archetype ${1:Name} {\n  ${2:Pos}\n}");
         comp_item(&c, "for-query", CI_SNIPPET, "for (…) in query […] { }", "Iterate matching entities.",
                   "for (${1:p}) in query [${2:Pos}] {\n  $0\n}");

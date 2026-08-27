@@ -421,14 +421,14 @@ static void lp_decl(LP* p, int parent){
         }
         return;
     }
-    if (!strcmp(w, "component") || !strcmp(w, "archetype")){
-        int is_comp = !strcmp(w, "component");
+    if (!strcmp(w, "property") || !strcmp(w, "model")){
+        int is_comp = !strcmp(w, "property");
         lp_adv(p); int nt = lp_name(p); if (nt < 0) return;
         int s = lsym_add(D, is_comp ? LS_COMPONENT : LS_ARCHETYPE, nt, parent);
         ldoc_collect_doc(D, decl_tok, D->sym[s].doc, sizeof(D->sym[s].doc));
         while (lp_kind(p) == LT_ANNO) lp_adv(p);
         snprintf(D->sym[s].detail, sizeof(D->sym[s].detail), "%s %s {",
-                 is_comp ? "component" : "archetype", D->sym[s].name);
+                 is_comp ? "property" : "model", D->sym[s].name);
         if (!lp_is(p, "{")) return;
         int close = D->match[p->i];
         D->sym[s].body_start = D->lex.v[p->i].start;
@@ -518,8 +518,8 @@ static void lp_decl(LP* p, int parent){
         }
         return;
     }
-    if (!strcmp(w, "system") || !strcmp(w, "edge")){
-        if (!strcmp(w, "edge")){ lp_adv(p); if (!lp_is(p, "system")) return; }
+    if (!strcmp(w, "handler") || !strcmp(w, "edge")){
+        if (!strcmp(w, "edge")){ lp_adv(p); if (!lp_is(p, "handler")) return; }
         lp_adv(p);
         int nt = lp_name(p); if (nt < 0) return;
         int s = lsym_add(D, LS_SYSTEM, nt, parent);
@@ -638,15 +638,15 @@ static void ldoc_parse(LDoc* D){
     lp_skipnl(&p);
     while (lp_is(&p, "import")) { lp_decl(&p, -1); lp_skipnl(&p); }
     int unit_parent = -1;
-    if (lp_is(&p, "game") || lp_is(&p, "module")){
-        D->is_module = lp_is(&p, "module");
+    if (lp_is(&p, "program") || lp_is(&p, "program")){
+        D->is_module = lp_is(&p, "program");
         D->is_unit = 1;
         lp_adv(&p);
         int nt = lp_name(&p);
         if (nt >= 0){
             unit_parent = lsym_add(D, LS_UNIT, nt, -1);
             lcpy(D->unit, sizeof(D->unit), D->sym[unit_parent].name, (int)strlen(D->sym[unit_parent].name));
-            lcatf(D->sym[unit_parent].detail, sizeof(D->sym[unit_parent].detail), "%s %s", D->is_module ? "module" : "game", D->unit);
+            lcatf(D->sym[unit_parent].detail, sizeof(D->sym[unit_parent].detail), "%s %s", D->is_module ? "program" : "program", D->unit);
         }
         if (lp_is(&p, "{")){
             int close = D->match[p.i];

@@ -1,10 +1,10 @@
 # hello.ludic — smallest program that exercises the ECS pipeline
-game Hello {
+program Hello {
 
-  component Pos { x: int = 0, y: int = 0 }
-  component Vel { dx: int = 0, dy: int = 0 }
+  property Pos { x: int = 0, y: int = 0 }
+  property Vel { dx: int = 0, dy: int = 0 }
 
-  system Boot phase Start {
+  handler Boot phase Start {
     spawn Mob {
       Pos { x: 3, y: 4 }
       Vel { dx: 1, dy: 0 }
@@ -17,14 +17,14 @@ game Hello {
 
   # a system can declare the entities it operates on: the body then runs once
   # per match, with the components bound and self() giving that entity.
-  system Move phase FixedUpdate
+  handler Move phase FixedUpdate
     query (p, v) [Pos, Vel]
   {
     p.x = p.x + v.dx
     p.y = p.y + v.dy
   }
 
-  system Report phase Update {
+  handler Report phase Update {
     for (p) in query [Pos] {
       print_int(p.x)
       print_int(p.y)

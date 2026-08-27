@@ -12,23 +12,23 @@ program.ludic ──ludicc──▶ program.ll ──▶ program.o ──▶ nat
 `ludicc` lowers Ludic to **LLVM IR itself** and links the result — see
 [COMPILING.md](COMPILING.md) for the pipeline, `module`/`export`, and
 cross-targets. There is one backend: no C is generated, compiled or linked at
-any point, and the runtime a game calls is itself written in Ludic.
+any point, and the runtime a program calls is itself written in Ludic.
 
 ## Program structure
 
-A program is one `game` block containing declarations:
+A program is one `program` block containing declarations:
 
 ```ludic
 # doc-check: skip — illustrative: elided import list
-game Name {
+program Name {
   import ...        # pull declarations in from another file
-  component ...     # data (per entity)
+  property ...     # data (per entity)
   struct ...        # a plain record, not tied to an entity
-  archetype ...     # a named entity KIND (bundle of components)
+  model ...     # a named entity KIND (bundle of properties)
   const ...         # compile-time constants
   fn ...            # functions
   extern fn ...     # bind a C library symbol (FFI)
-  system ...        # behavior, grouped into phases
+  handler ...        # behavior, grouped into phases
 }
 ```
 
@@ -36,43 +36,43 @@ game Name {
 
 ```ludic
 # doc-check: skip — paths resolve only inside the repo
-game ChronoRift {
+program ChronoRift {
   import "chronorift/world.ludic"    # path is relative to THIS file
   import "chronorift/combat.ludic"
 }
 ```
 
-An imported file is a **fragment**: bare declarations, no `game` wrapper. Its
+An imported file is a **fragment**: bare declarations, no `program` wrapper. Its
 declarations are spliced into the importing program. Imports may appear inside
-the `game` block or before it, they may nest (a fragment may import fragments),
+the `program` block or before it, they may nest (a fragment may import fragments),
 and each resolved path is **include-guarded**, so importing the same file twice
 (even via different chains) pulls it in once. Diagnostics report the true file:
 
 ```
 error: line 1: unknown type 'nope' for field Pos.x
-  chronorift/world.ludic:1 | component Pos { x: nope = 0 }
+  chronorift/world.ludic:1 | property Pos { x: nope = 0 }
 ```
 
-## Archetypes (entity kinds)
+## Models (entity kinds)
 
-An `archetype` names a *kind* of entity and the fixed set of components it
-carries. It replaces the empty "tag component" idiom: identity is stored as one
+An `model` names a *kind* of entity and the fixed set of properties it
+carries. It replaces the empty "tag property" idiom: identity is stored as one
 integer per entity, not a parallel boolean array.
 
 ```ludic
 # doc-check: skip — composite: declarations and statements together
-component Pos   { x: int = 0, y: int = 0 }
-component Stats { hp: int = 10 }
+property Pos   { x: int = 0, y: int = 0 }
+property Stats { hp: int = 10 }
 
-archetype Player { Pos, Stats }        # Player IS a kind, not a component
-archetype Enemy  { Pos, Stats }
+model Player { Pos, Stats }        # Player IS a kind, not a property
+model Enemy  { Pos, Stats }
 
-spawn Player { Pos { x: 5 } }           # attaches every listed component
+spawn Player { Pos { x: 5 } }           # attaches every listed property
                                         # (seeding field defaults), then overrides
 for (p, s) in query [Pos, Stats, {Player}] { ... }   # {Player} filters by kind
 ```
 
-Use `{Name}` (tag position) to filter a query by archetype — an archetype can't
+Use `{Name}` (tag position) to filter a query by model — an model can't
 be *bound* to a variable since it has no fields of its own. Entity kind is part
 of the saved snapshot.
 
@@ -82,7 +82,7 @@ The 5×7 bitmap `text` stays for zero-asset programs. For real typography, load 
 TrueType font and draw UTF-8:
 
 ```ludic
-let f = font_load("/System/Library/Fonts/Supplemental/Arial.ttf")
+let f = font_load("/Handler/Library/Fonts/Supplemental/Arial.ttf")
 text_ttf(f, 20, 20, "Héllo — Καλημέρα — Привет", 0xffffff, 28)   # anti-aliased
 let w = text_w(f, "measure me", 28)                              # pixel width
 ```
@@ -115,22 +115,22 @@ ui MainMenu {
 
 Widget types: `panel` (container + optional skin/bg/border), `col` / `row`
 (pure stacks), `label`, `button` (focusable), `image`, `spacer`. Props are
-evaluated at build time, so `font: reg(R_FONT)` reads a value the game set first.
+evaluated at build time, so `font: reg(R_FONT)` reads a value the program set first.
 Each `id: Name` mints a `UI_Name` handle (the `ui` block name too), used from
-systems:
+handlers:
 
 ```ludic
-system Boot phase Start {
+handler Boot phase Start {
   setreg(R_FONT, font_load("…Arial.ttf"))
   ui_build()                 # construct the tree (loads skins/images)
   ui_open(UI_MainMenu)       # make it active, focus the first button
 }
-system Nav phase Update {
+handler Nav phase Update {
   ui_tick(key())             # w/s move focus, space/enter activate
   if ui_clicked(UI_Quit) { quit() }
   ui_set_int(UI_HpLabel, hp)  # poke dynamic values by id
 }
-system Draw phase Render { clear(0x0e0e16); ui_render(); present() }
+handler Draw phase Render { clear(0x0e0e16); ui_render(); present() }
 ```
 
 See `examples/menu.ludic` for a complete title screen.
@@ -151,12 +151,12 @@ point (`1.5`) is `fixed`. Arithmetic on two `fixed` values lowers to
 `fxmul`/`fxdiv`; mixing `int` and `fixed` promotes the `int`. Convert with
 `fx(i)` (int→fixed) and `flr(f)` (fixed→int).
 
-## Components, entities, queries
+## Properties, entities, queries
 
 ```ludic
 # doc-check: skip — composite: declarations and statements together
-component Pos { x: int = 0, y: int = 0 }   # typed fields with defaults
-component Player { }                        # a tag (no fields)
+property Pos { x: int = 0, y: int = 0 }   # typed fields with defaults
+property Player { }                        # a tag (no fields)
 
 spawn Hero {                                # create an entity
   Pos    { x: 10, y: 5 }
@@ -164,44 +164,44 @@ spawn Hero {                                # create an entity
 }
 despawn self()                              # remove the current entity
 
-# iterate every entity that has all listed components:
+# iterate every entity that has all listed properties:
 for (p) in query [Pos, {Player}] { p.x = p.x + 1 }   # {Tag} filters, doesn't bind
 for (a, b) in query [Pos, Vel] where a.x > 0 { ... }  # one var per non-tag term
 ```
 
-Entities are integer handles; component storage and slot reuse are generated per
+Entities are integer handles; property storage and slot reuse are generated per
 program. `self()` yields the entity of the innermost `query` loop.
 
-## Systems & phases
+## Handlers & phases
 
 ```ludic
-system Move @deterministic
+handler Move @deterministic
   reads  [Vel]          # declared data access (parsed and reserved; not yet
   writes [Pos]          # consumed by any analysis pass — see "Not yet implemented")
   phase  FixedUpdate
-  query  (p, v) [Pos, Vel]      # the entities this system operates on
+  query  (p, v) [Pos, Vel]      # the entities this handler operates on
 { p.x = p.x + v.dx }
 ```
 
 Phases run in this order every frame: **`Start`** (once at boot), then each
 frame **`Input` → `FixedUpdate` → `Update` → `LateUpdate` → `Render`**.
-`@edge` in front of a `system` marks one that touches the outside world.
+`@edge` in front of a `handler` marks one that touches the outside world.
 
 Declaration modifiers are `@annotations` written in front of the declaration —
-`@export fn …` (a C-ABI-exported function), `@edge system …`, `@deterministic`,
+`@export fn …` (a C-ABI-exported function), `@edge handler …`, `@deterministic`,
 `@pure`. They parse into one uniform channel rather than a set of prefix
 keywords. (`@export` sets the export flag; the others parse but have no codegen
 effect in the self-hosted compiler yet.)
 
 ### The `query` clause
 
-A system declares the entities it works on, alongside its phase. The body then
-runs **once per matching entity**, with the components bound and `self()` giving
+A handler declares the entities it works on, alongside its phase. The body then
+runs **once per matching entity**, with the properties bound and `self()` giving
 that entity — the query header is simply hoisted out of the body into the
 signature:
 
 ```ludic
-system CleanBattle phase LateUpdate
+handler CleanBattle phase LateUpdate
   query (b, p) [Battle, Pos, {Enemy}] where b.hp <= 0
 { despawn self() }
 ```
@@ -209,32 +209,32 @@ system CleanBattle phase LateUpdate
 is the same program as
 
 ```ludic
-system CleanBattle phase LateUpdate {
+handler CleanBattle phase LateUpdate {
   for (b, p) in query [Battle, Pos, {Enemy}] where b.hp <= 0 { despawn self() }
 }
 ```
 
-Drop `(vars)` when nothing binds: `query [{Enemy}]`. A system declares at most
+Drop `(vars)` when nothing binds: `query [{Enemy}]`. A handler declares at most
 one query, and the number of variables must equal the number of binding terms
-(`{Tag}` terms filter without binding, so they don't count). A system with no
+(`{Tag}` terms filter without binding, so they don't count). A handler with no
 `query` clause runs once per tick, as before.
 
 ### Conditions
 
-A query selects on more than *which* components an entity has. `where` is an
+A query selects on more than *which* properties an entity has. `where` is an
 ordinary expression evaluated with the bindings in scope, so entities can be
 matched on their field values:
 
 ```ludic
-# doc-check: skip — a bare system clause, not a whole declaration
+# doc-check: skip — a bare handler clause, not a whole declaration
   query (b, s) [Battle, Stats] where b.hp <= 0 and s.level > 3
 ```
 
 The same `where` works on an inline `for (…) in query […]`.
 
 `where` is evaluated **per candidate entity**, so it is the wrong place for a
-guard that concerns the whole system (`where reg(R_MODE) != 1` would re-read the
-register for every entity). Keep whole-system guards in the body of a system
+guard that concerns the whole handler (`where reg(R_MODE) != 1` would re-read the
+register for every entity). Keep whole-handler guards in the body of a handler
 with no `query` clause, wrapping an inline query — as `CleanBattle` does in
 `examples/chronorift/combat.ludic`.
 
@@ -247,6 +247,46 @@ there is no per-tick array of matched entities. Consequences worth knowing:
 * An entity **spawned during the loop at a higher id is visited in the same
   tick**. Spawn into a later phase if you don't want that.
 
+## Annotations
+
+Declarations carry `@annotations` in front of them — `@export`, `@edge`, `@pure`,
+`@deterministic` — one uniform channel rather than a set of prefix keywords. Two
+annotations replace a clause with a decorator.
+
+**`@Queries` — a handler's query as a decorator.** Instead of the `query (v) […]`
+clause, a handler annotates its query, with each property's constraints written
+inline and the model given as `on:`:
+
+```ludic
+# doc-check: skip — composite: a handler plus its property/model declarations
+property Transform { x: int = 0, scale: int = 1 }
+property Velocity  { dx: int = 0, dy: int = 0 }
+model Actor { Transform, Velocity }
+
+@Queries(these: [Transform{scale > 0}, Velocity{dx > 0 or dy > 0}], on: Actor)
+handler Move phase Update {
+  Transform.x = Transform.x + Velocity.dx      # each property is bound by its name
+}
+```
+
+It desugars to the ordinary loop
+
+```ludic
+# doc-check: skip — the desugaring of the @Queries above
+for (Transform, Velocity) in query [Transform, Velocity, {Actor}]
+    where Transform.scale > 0 and (Velocity.dx > 0 or Velocity.dy > 0) { … }
+```
+
+— each listed property becomes a binding **named after itself**, a
+`Prop{constraint}` block reads its bare names as fields of `Prop`, and `on: Model`
+adds a `{Model}` tag filter. The body runs once per matching entity.
+
+**`@Handles` — the handlers a program drives.** Written in front of the
+`program`, `@Handles(Move)` names the handlers it uses. It parses and reads as
+documentation; every declared handler still runs (registration is implicit).
+
+See [`examples/annotations.ludic`](examples/annotations.ludic).
+
 ## Structs, arrays and slices
 
 `struct` is the aggregate that is *not* tied to an entity — a plain record, for
@@ -255,7 +295,7 @@ the data a program keeps outside the ECS.
 ```ludic
 struct Tok { kind: int = 0, line: int = 0, next: Tok }
 
-system Lex phase Update {
+handler Lex phase Update {
   let t = new Tok        # allocates; every field seeded from its default
   t.kind = 1
 }
@@ -269,7 +309,7 @@ struct Tok { kind: int = 0, line: int = 0, next: Tok }
 
 fn bump(t: Tok) -> void { t.kind = t.kind + 1 }
 
-system Share phase Update {
+handler Share phase Update {
   let a = new Tok
   let b = a              # b and a are the SAME object
   b.kind = 9
@@ -283,7 +323,7 @@ Fields chain, so a struct can refer to its own type and be walked without
 temporaries — which is what an AST or a linked list needs:
 
 ```ludic
-system Walk phase Update {
+handler Walk phase Update {
   let a = new Tok
   let b = new Tok
   a.next = b
@@ -300,7 +340,7 @@ snippet below does not compile today. Programs use `[]T` slices for now.
 ```ludic
 # doc-check: skip — [T; N] fixed arrays are not yet implemented (design target)
 var table: [int; 8]      # module-level storage
-system S phase Update {
+handler S phase Update {
   let buf: [int; 4]      # a local; no initializer needed
   buf[0] = 10
   table[2] = buf[0]
@@ -312,7 +352,7 @@ capacity. `push` appends, doubling the storage when it is full; because the
 header never moves, an append is visible to everything holding that slice.
 
 ```ludic
-system Collect phase Update {
+handler Collect phase Update {
   let toks = new []Tok
   push(toks, new Tok)
   for i in 0 .. len(toks) { print_int(toks[i].kind) }
@@ -442,7 +482,7 @@ ints (`0xff8800`).
 #           ui_focus(id)  ui_focused()->int  ui_visible(id,bool)
 # assets    load_png(path)->id           (decodes a PNG; returns a 16x16 sprite id)
 # input     key()->int                   (current frame's key code, 0 if none)
-# state     reg(i)->int   setreg(i,v)     (64 integer resources shared by systems)
+# state     reg(i)->int   setreg(i,v)     (64 integer resources shared by handlers)
 # entity    self()->entity
 # save      save()   load()->bool         (binary snapshot of the whole ECS World)
 # control   quit()   print_int(i)
@@ -453,10 +493,10 @@ ints (`0xff8800`).
 ## Tooling
 
 ```bash
-ludicc game.ludic -o build/game         # native binary (windowed for a game)
-ludicc game.ludic --headless -o g       # headless build (renders out.ppm; reads stdin)
-ludicc game.ludic --emit-llvm -o g.ll   # stop at LLVM IR
-ludic  game.ludic                       # compile AND run (forwards the exit code)
+ludicc app.ludic -o build/app         # native binary (windowed for a game)
+ludicc app.ludic --headless -o app       # headless build (renders out.ppm; reads stdin)
+ludicc app.ludic --emit-llvm -o app.ll   # stop at LLVM IR
+ludic  app.ludic                       # compile AND run (forwards the exit code)
 ```
 
 `ludicc` (compile) and `ludic` (compile-and-run) are one multi-call binary built
@@ -464,7 +504,7 @@ by `./build-cli.sh`. **[COMPILING.md](COMPILING.md) is the authoritative CLI
 reference** — the full flag set (`-o`, `--windowed`, `--headless`, `--emit-llvm`,
 `--save-temps`, `--run`), the `LUDIC_HOME` / `LUDIC_CC` environment variables,
 and the IR-to-stdout bootstrap contract (no `-o`, invoked as `ludicc`) that
-`build.sh` / `reseed.sh` rely on. The default mode is auto: a file with `system`s
+`build.sh` / `reseed.sh` rely on. The default mode is auto: a file with `handler`s
 links windowed, otherwise headless; an explicit flag always wins.
 
 The retired C driver's `--shared`, `--fmt`, `-c`, cross-compile (`--target`) and
@@ -502,7 +542,7 @@ Emacs, Sublime and Zed, are in `tools/editors/` — see
 
 - `examples/chronorift.ludic` — a co-op JRPG (overworld, dungeon, boss, shop,
   save) using CC0 Kenney sprites. Split across `chronorift/*.ludic` via `import`,
-  built on archetypes.
+  built on models.
 - `examples/menu.ludic` — a retained-UI title screen (9-slice panel, TrueType
   labels, focusable buttons).
 - `examples/snake.ludic` — Snake, no assets — same compiler, proving generality.
@@ -519,7 +559,7 @@ are future work.
 
 - **`scene` / `layer` / `on enter` / `on exit`** — the state-machine-over-scenes
   sugar is documented above but not parsed by the self-hosted compiler yet.
-- **`reads` / `writes` clauses** — parsed and reserved on the system node, but no
+- **`reads` / `writes` clauses** — parsed and reserved on the handler node, but no
   analysis pass consumes them.
 - **`[T; N]` fixed arrays** — documented above, but `ptype` parses only `[]T`
   slices; fixed inline arrays are not accepted yet. Use `[]T` slices.
@@ -542,9 +582,9 @@ as near-term — are now implemented and self-hosting; their lowerings are in
 > `machine`, as `examples/chronorift` does. This section describes the intended
 > syntax for when scene support lands.
 
-A game is usually several mutually-exclusive states — a title screen, the
+A program is usually several mutually-exclusive states — a title screen, the
 overworld, a battle — and the usual way to write that is a mode register
-consulted at the top of every system. `scene` makes it structure instead:
+consulted at the top of every handler. `scene` makes it structure instead:
 
 ```ludic
 # doc-check: skip — illustrative: elided bodies
@@ -553,7 +593,7 @@ scene Title start {
   on exit  { ui_visible(UI_Menu, 0) }
 
   layer Main {
-    system Choose phase Update {
+    handler Choose phase Update {
       if ui_clicked(UI_NewGame) { enter Overworld }
     }
   }
@@ -562,34 +602,34 @@ scene Title start {
 scene Overworld {
   on enter { spawn_party() }
 
-  layer World { system Move phase Update { … } }
-  layer Hud   { system Draw phase Render { … } }
+  layer World { handler Move phase Update { … } }
+  layer Hud   { handler Draw phase Render { … } }
 }
 ```
 
 - Exactly **one scene is active**. The one marked `start` runs first (or the
   first declared, if none is marked).
-- A scene's systems only run while it is active. Systems declared outside any
+- A scene's handlers only run while it is active. Handlers declared outside any
   scene are global and run every frame regardless.
-- **Layers group systems and declaration order is draw order**: within a phase,
-  global systems run first, then the active scene's layers in the order they
+- **Layers group handlers and declaration order is draw order**: within a phase,
+  global handlers run first, then the active scene's layers in the order they
   were written — so `Hud`'s `Render` paints over `World`'s.
 - `on enter` / `on exit` are lifecycle hooks, not phases. Scene setup goes in
-  `on enter`; a layer system may not use phase `Start`.
+  `on enter`; a layer handler may not use phase `Start`.
 - `enter Name` transitions: the current scene's `on exit` runs, the active scene
-  becomes `Name`, and its `on enter` runs. Inside a layer system the compiler
+  becomes `Name`, and its `on enter` runs. Inside a layer handler the compiler
   knows which scene is leaving, so a transition costs two direct calls and a
   store — there is no dispatch table.
 
 `examples/scenes.ludic` is a runnable demonstration of the ordering rules.
 
-## Queries in a system signature
+## Queries in a handler signature
 
-When a system's whole body is one query loop, the loop header can move into the
+When a handler's whole body is one query loop, the loop header can move into the
 declaration:
 
 ```ludic
-system CleanBattle phase LateUpdate
+handler CleanBattle phase LateUpdate
   query (b, p) [Battle, Pos, {Foe}] where b.hp <= 0
 {
   despawn self()

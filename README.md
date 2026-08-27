@@ -48,7 +48,7 @@ self-hosted native toolchain.)
 | `runtime/web/platform.js` | the browser's window — the same five `win_*` functions `cocoa.ll` implements, against a `<canvas>` |
 | `runtime/web/index.html` | the page a web build is served from |
 | `tools/ludic-web/run.mjs` | runs a headless wasm build under Node, so native and wasm output can be diffed |
-| `examples/chronorift.ludic` | the JRPG written in Ludic (multi-file via `import`, archetype-based) |
+| `examples/chronorift.ludic` | the JRPG written in Ludic (multi-file via `import`, model-based) |
 | `examples/menu.ludic`  | a retained-UI title screen (9-slice, TrueType, focusable buttons) |
 | `examples/snake.ludic` | a second, unrelated game — proves the language is general (same toolchain, no engine hardcoding) |
 | `build.sh`             | `./build.sh examples/<name>.ludic` |
@@ -119,10 +119,10 @@ same highlighting, checking and formatting as the source tree.
 
 ## Language features implemented
 
-- `component` (typed fields + defaults), `system` (`phase`, `@annotations`,
+- `property` (typed fields + defaults), `system` (`phase`, `@annotations`,
   `reads`/`writes` clauses), `const`, `fn` (with `requires`/`ensures` parsed).
-- `archetype` — named entity **kinds** (bundles of components); identity is one
-  int per entity, replacing empty tag components. Filter with `{Kind}`.
+- `model` — named entity **kinds** (bundles of properties); identity is one
+  int per entity, replacing empty tag properties. Filter with `{Kind}`.
 - `import "file"` — multi-file programs (fragments spliced in, include-guarded,
   per-file diagnostics).
 - ECS queries: `for (a, b) in query [A, B, {Tag}] where <expr> { … }`.
@@ -165,7 +165,7 @@ Controls:
 - [x] Compiler pipeline: Ludic → LLVM IR → native binary / shared library
 - [x] No C generated, compiled or linked in a build; runtime written in Ludic
 - [x] Cross-compilation to ELF (x86-64, aarch64) and Windows COFF
-- [x] ECS runtime (components, systems, phases, queries, entity pooling)
+- [x] ECS runtime (properties, systems, phases, queries, entity pooling)
 - [x] Windowed 2D rendering (Cocoa driven from LLVM IR) + headless PPM verification
 - [x] CC0 Kenney PNG sprites (`load_png`, decoder written in Ludic) + scrolling camera
 - [x] Overworld: tilemap, movement, collision

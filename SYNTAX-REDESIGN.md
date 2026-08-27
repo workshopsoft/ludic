@@ -112,11 +112,11 @@ alternative if the paren form is disliked: keep whitespace separation but coloni
 ```ludic
 # doc-check: skip — illustrative redesign snippet (proposed / partial syntax)
 # before
-edge system Move @deterministic reads [Vel] writes [Pos] phase FixedUpdate
+edge handler Move @deterministic reads [Vel] writes [Pos] phase FixedUpdate
   query (p, v) [Pos, Vel] where a.x > 0 { … }
 # after
 @edge @deterministic
-system Move
+handler Move
   phase FixedUpdate
   reads [Vel] writes [Pos]
   query (p, v) [Pos, Vel] where p.x > 0
@@ -343,7 +343,23 @@ Full generation-from-one-list (emit the editor files from a manifest) was not
 needed: the bidirectional *checks* give the same guarantee — nothing can drift
 without CI failing — without a code-generation step to maintain.
 
-**Phases 1–5 are complete.** All thirteen findings are resolved or resolved by an
+**Phases 1–5 are complete.**
+
+### Phase 6 — vocabulary rename + annotation DSL ✅ DONE (follow-on request)
+Renamed the core nouns: `game`/`module` → `program`, `main` → `entry`,
+`component` → `property`, `archetype` → `model`, `system` → `handler`. Done via a
+transitional self-hosting bootstrap (accept both → reseed → move the compiler's
+own source to new keywords + tighten → reseed); old keywords now rejected.
+Token-safe corpus migration ([rename_kw.c](tools/ludic-tools/rename_kw.c)), goldens
+byte-identical. Reconciled the LSP indexer, editor vocab, check-docs wrapper, and
+docs; fixed two pre-existing toolchain bugs (a `set -e` bug in build-tools.sh that
+blocked all editor-binary rebuilds, and a stale LSP test offset).
+
+Added an **annotation DSL**: `@Queries(these: [Prop{constraint}, …], on: Model)` on
+a handler desugars to the existing `S_QUERY` loop (each property binds by its own
+name; a `Prop{…}` constraint qualifies its bare fields; `on:` adds a `{Model}`
+tag), and `@Handles(…)` on a program parses as documentation. See
+[examples/annotations.ludic](examples/annotations.ludic); test.sh 15/15. All thirteen findings are resolved or resolved by an
 explicit, documented decision.
 
 ---

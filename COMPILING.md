@@ -37,7 +37,7 @@ and find your program rewritten in another language.
    app.ludic
       │  ludicc — lex, parse, check, lower              (compiler/ludicc.c,
       ▼                                                  compiler/native.c)
-   app.ll        LLVM IR: your systems, your components, your runtime
+   app.ll        LLVM IR: your systems, your properties, your runtime
       │  IR assembler                                   (compiler/driver.c)
       ▼
    app.o         Mach-O / ELF / COFF object code
@@ -91,7 +91,7 @@ A source file opens with `game Name { … }` or `module Name { … }`.
 
 ```ludic
 # doc-check: skip — illustrative: elided body
-module Combat {
+program Combat {
   @export fn damage(attack: int, armour: int, roll: int) -> int { … }
   fn curve(level: int) -> int { … }          # private: not a symbol
 }
@@ -216,7 +216,7 @@ python3 -m http.server -d build/web 8000     # then open http://localhost:8000/
 itch.io — and the game runs. It needs no server-side anything, and no
 cross-origin isolation headers.
 
-**No game logic passes through JavaScript.** The systems, the queries, the
+**No game logic passes through JavaScript.** The handlers, the queries, the
 fixed-point arithmetic, the PNG decoder, the TrueType rasteriser and the UI are
 all compiled Ludic executing as wasm. `platform.js` is 300 lines and implements
 the same five-function window protocol `cocoa.ll` implements, plus the host
@@ -248,7 +248,7 @@ A browser tab cannot be held inside that loop — it would never paint, and the
 key events the loop is waiting on would never be delivered. So a web build
 exports those four functions instead of `main`, and `platform.js` calls
 `ludic_frame` from `requestAnimationFrame`. Both targets emit the four from the
-same code in `ll_emit_loop_parts`, so the systems that run, and the phase order
+same code in `ll_emit_loop_parts`, so the handlers that run, and the phase order
 they run in, are identical; only the owner of the loop differs.
 
 ### The floor
@@ -302,8 +302,8 @@ asserts exactly that, which is a much stronger check on the backend than
 
 ## What a build contains
 
-Everything: components and archetypes, spawn/despawn, queries with bindings,
-`where` filters and archetype filters, `match`, `machine`/`become`,
+Everything: properties and models, spawn/despawn, queries with bindings,
+`where` filters and model filters, `match`, `machine`/`become`,
 `scene`/`layer`/`enter`, module state (`var`), `const`, int and Q16.16
 fixed-point arithmetic, control flow, functions, `extern fn` FFI, strings, the
 entity allocator, save/load snapshots, the frame loop, the window, and the whole

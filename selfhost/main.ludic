@@ -51,7 +51,7 @@ fn die(msg: ptr) -> void {
   os_exit(1)
 }
 
-main {
+entry {
   let path = ptr_null()
   let out  = ptr_null()
   let want = 0            # 0 = auto, 1 = windowed, 2 = headless
