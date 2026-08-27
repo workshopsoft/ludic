@@ -50,7 +50,7 @@ const E_FLOAT:  int = 40
 const E_REC:    int = 41
 const E_FINIT:  int = 42
 
-struct Node {
+property Node {
   kind: int = 0
   s:    ptr = ptr_null()      # name / operator / string / type-of-new
   ival: int = 0               # int literal, bool, flags

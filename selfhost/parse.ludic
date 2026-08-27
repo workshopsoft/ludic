@@ -224,14 +224,6 @@ fn stmt() -> Node {
 }
 
 # ---- declarations ----------------------------------------------------------
-fn parse_struct() -> Node {
-  pi = pi + 1; let n = node(N_STRUCT); n.s = eat_id(); skipnl(); eat_op("{")
-  while true { skipnl(); if is_op("}") { break }
-    let f = node(N_FIELD); f.s = eat_id(); eat_op(":"); f.ty = ptype()
-    if is_op("=") { pi = pi + 1; f.a = expr() }
-    push(n.kids, f); if is_op(",") { pi = pi + 1 } }
-  eat_op("}"); return n
-}
 fn parse_var() -> Node {
   pi = pi + 1; let n = node(N_VAR); n.s = eat_id(); eat_op(":"); n.ty = ptype()
   if is_op("=") { pi = pi + 1; n.a = expr() }
@@ -311,7 +303,6 @@ fn parse_one_decl() -> void {
     do_import(rel)
     return
   }
-  if is_id("struct") { push(prog, parse_struct()); return }
   if is_id("enum") { push(prog, parse_enum()); return }
   if is_id("property") { push(prog, parse_component()); return }
   if is_id("model") { push(prog, parse_archetype()); return }

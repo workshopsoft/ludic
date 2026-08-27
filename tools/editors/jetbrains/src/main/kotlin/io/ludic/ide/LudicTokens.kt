@@ -41,7 +41,7 @@ object LudicTokens {
  */
 object LudicVocabulary {
     val DECL = setOf(
-        "program", "import", "property", "struct", "model", "enum", "ui",
+        "program", "import", "property", "model", "enum", "ui",
         "const", "var", "fn", "extern", "handler", "entry"
     )
     val CLAUSE = setOf(

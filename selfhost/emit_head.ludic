@@ -76,12 +76,14 @@ fn emit_header() -> void {
   emith("@.gametitle = private unnamed_addr constant [")
   emith(itoa(slen(g_game_name) + 1));  emith(" x i8] c\"");  emith(g_game_name);  emith("\\00\"\n")
   emith("%LSlice = type { ptr, i32, i32 }\n")
-  # struct layouts
+  # property layouts — a %Cmp_ record of named fields, emitted here so `new`
+  # works whether or not the program runs the ECS. The per-entity @S_/@H_ arrays
+  # are separate (emit_ecs_storage), emitted only for a program that runs the ECS.
   let i = 0
   while i < len(prog) {
     let d = prog[i]
-    if d.kind == N_STRUCT {
-      emith("%Str_");  emith(d.s);  emith(" = type { ")
+    if d.kind == N_COMP {
+      emith(layout_ty(d.s));  emith(" = type { ")
       if len(d.kids) == 0 { emith("i32") }
       let f = 0
       while f < len(d.kids) {

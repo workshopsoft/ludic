@@ -2,7 +2,7 @@
 # module header. Mirrors the pieces of compiler/back/ that this subset needs.
 # structs and slices are references, so every non-scalar type lowers to `ptr`.
 
-struct Val { code: ptr = ptr_null(), ty: ptr = ptr_null() }
+property Val { code: ptr = ptr_null(), ty: ptr = ptr_null() }
 fn val(code: ptr, ty: ptr) -> Val { let v = new Val;  v.code = code;  v.ty = ty;  return v }
 
 var head: Buf                 # module-level: types, globals, string constants
@@ -66,17 +66,6 @@ fn llty(t: ptr) -> ptr {
 fn is_slice_ty(t: ptr) -> bool { return peek8(t, 0) == 91 and peek8(t, 1) == 93 }   # "[]"
 fn slice_elem(t: ptr) -> ptr { return substr(t, 2, slen(t) - 2) }
 
-fn find_struct(name: ptr) -> Node {
-  let i = 0
-  while i < len(prog) {
-    let d = prog[i]
-    if d.kind == N_STRUCT and streq(d.s, name) { return d }
-    i = i + 1
-  }
-  return ptr_null()
-}
-fn is_struct_ty(t: ptr) -> bool { return not ptr_is_null(find_struct(t)) }
-
 fn find_arch(name: ptr) -> Node {
   let i = 0
   while i < len(prog) { let d = prog[i];  if d.kind == N_ARCH and streq(d.s, name) { return d };  i = i + 1 }
@@ -87,15 +76,10 @@ fn find_comp(name: ptr) -> Node {
   while i < len(prog) { let d = prog[i];  if d.kind == N_COMP and streq(d.s, name) { return d };  i = i + 1 }
   return ptr_null()
 }
-# a struct or a component — both have %Str_/%Cmp_ layouts with named fields
-fn layout_node(name: ptr) -> Node {
-  let s = find_struct(name);  if not ptr_is_null(s) { return s }
-  return find_comp(name)
-}
-fn layout_ty(name: ptr) -> ptr {
-  if not ptr_is_null(find_struct(name)) { return sconcat("%Str_", name) }
-  return sconcat("%Cmp_", name)
-}
+# every record is a `property` with a %Cmp_ layout of named fields — whether it
+# is stored per-entity by the ECS or heap-allocated by `new` is a matter of use.
+fn layout_node(name: ptr) -> Node { return find_comp(name) }
+fn layout_ty(name: ptr) -> ptr { return sconcat("%Cmp_", name) }
 
 fn field_index(s: Node, fname: ptr) -> int {
   let i = 0
