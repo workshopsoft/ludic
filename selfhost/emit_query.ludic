@@ -18,16 +18,16 @@ fn emit_query(st: Node) -> void {
   let cond = lbl("qcond");  let body = lbl("qbody");  let nxt = lbl("qnext");  let endl = lbl("qend")
   emit("  br label %");  emit(cond);  emit("\n")
   emit(cond);  emit(":\n")
-  let i0 = emit_bind(("load i32, ptr " + ip))
+  let i0 = emit_bind(`load i32, ptr {ip}`)
   let ec = emit_bind("load i32, ptr @L_entc")
-  let lt = emit_bind(("icmp slt i32 " + (i0 + (", " + ec))))
+  let lt = emit_bind(`icmp slt i32 {i0}, {ec}`)
   emit("  br i1 ");  emit(lt);  emit(", label %");  emit(body);  emit(", label %");  emit(endl);  emit("\n")
   emit(body);  emit(":\n");  g_term = false
-  let i1 = emit_bind(("load i32, ptr " + ip))
+  let i1 = emit_bind(`load i32, ptr {ip}`)
   # alive?
   let ap = nreg();  emit("  ");  emit(ap);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_alive, i32 0, i32 ");  emit(i1);  emit("\n")
-  let al = emit_bind(("load i32, ptr " + ap))
-  let alc = emit_bind(("icmp ne i32 " + (al + ", 0")))
+  let al = emit_bind(`load i32, ptr {ap}`)
+  let alc = emit_bind(`icmp ne i32 {al}, 0`)
   let ka = lbl("qa")
   emit("  br i1 ");  emit(alc);  emit(", label %");  emit(ka);  emit(", label %");  emit(nxt);  emit("\n")
   emit(ka);  emit(":\n")
@@ -41,15 +41,15 @@ fn emit_query(st: Node) -> void {
     var ok = "0"
     if ak > 0 {
       let kp = nreg();  emit("  ");  emit(kp);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_kind, i32 0, i32 ");  emit(i1);  emit("\n")
-      let kv = emit_bind(("load i32, ptr " + kp))
-      let kok = emit_bind(("icmp eq i32 " + (kv + (", " + itoa(ak)))))
-      let mev = emit_bind(("load i32, ptr @ME_" + tm.s))                 # model-enabled flag
-      let meok = emit_bind(("icmp ne i32 " + (mev + ", 0")))
-      ok = emit_bind(("and i1 " + (kok + (", " + meok))))
+      let kv = emit_bind(`load i32, ptr {kp}`)
+      let kok = emit_bind(`icmp eq i32 {kv}, {itoa(ak)}`)
+      let mev = emit_bind(`load i32, ptr @ME_{tm.s}`)                 # model-enabled flag
+      let meok = emit_bind(`icmp ne i32 {mev}, 0`)
+      ok = emit_bind(`and i1 {kok}, {meok}`)
     } else {
       let hp = nreg();  emit("  ");  emit(hp);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i8], ptr @H_");  emit(tm.s);  emit(", i32 0, i32 ");  emit(i1);  emit("\n")
-      let hv = emit_bind(("load i8, ptr " + hp))
-      ok = emit_bind(("icmp ne i8 " + (hv + ", 0")))
+      let hv = emit_bind(`load i8, ptr {hp}`)
+      ok = emit_bind(`icmp ne i8 {hv}, 0`)
     }
     let keep = lbl("qt")
     emit("  br i1 ");  emit(ok);  emit(", label %");  emit(keep);  emit(", label %");  emit(nxt);  emit("\n")
@@ -79,7 +79,7 @@ fn emit_query(st: Node) -> void {
   # optional where-clause
   if (st.b != null) {
     let w = emit_expr(st.b)
-    let wc = emit_bind(("icmp ne i32 " + (w.code + ", 0")))
+    let wc = emit_bind(`icmp ne i32 {w.code}, 0`)
     let kw = lbl("qw")
     emit("  br i1 ");  emit(wc);  emit(", label %");  emit(kw);  emit(", label %");  emit(nxt);  emit("\n")
     emit(kw);  emit(":\n")
@@ -92,8 +92,8 @@ fn emit_query(st: Node) -> void {
   if not g_term { emit("  br label %");  emit(nxt);  emit("\n") }
 
   emit(nxt);  emit(":\n")
-  let i2 = emit_bind(("load i32, ptr " + ip))
-  let i3 = emit_bind(("add i32 " + (i2 + ", 1")))
+  let i2 = emit_bind(`load i32, ptr {ip}`)
+  let i3 = emit_bind(`add i32 {i2}, 1`)
   store_at("i32", i3, ip)
   emit("  br label %");  emit(cond);  emit("\n")
   emit(endl);  emit(":\n");  g_term = false

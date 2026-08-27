@@ -9,21 +9,21 @@ fn is_math_builtin(name: ptr) -> bool {
 fn emit_math_builtin(name: ptr, e: Node) -> Val {
   if (name == "abs") {
     let a = emit_expr(e.kids[0])
-    let c = emit_bind(("icmp slt i32 " + (a.code + ", 0")))
-    let n = emit_bind(("sub i32 0, " + a.code))
-    return val(emit_bind(("select i1 " + (c + (", i32 " + (n + (", i32 " + a.code)))))), "int")
+    let c = emit_bind(`icmp slt i32 {a.code}, 0`)
+    let n = emit_bind(`sub i32 0, {a.code}`)
+    return val(emit_bind(`select i1 {c}, i32 {n}, i32 {a.code}`), "int")
   }
   if (name == "min") or (name == "max") {
     let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1])
     var op = "slt"
     if (name == "max") { op = "sgt" }
-    let c = emit_bind(("icmp " + (op + (" i32 " + (a.code + (", " + b.code))))))
-    return val(emit_bind(("select i1 " + (c + (", i32 " + (a.code + (", i32 " + b.code)))))), "int")
+    let c = emit_bind(`icmp {op} i32 {a.code}, {b.code}`)
+    return val(emit_bind(`select i1 {c}, i32 {a.code}, i32 {b.code}`), "int")
   }
   # clamp(v, lo, hi) = max(lo, min(v, hi))
   let v = emit_expr(e.kids[0]);  let lo = emit_expr(e.kids[1]);  let hi = emit_expr(e.kids[2])
-  let c1 = emit_bind(("icmp slt i32 " + (v.code + (", " + hi.code))))
-  let t = emit_bind(("select i1 " + (c1 + (", i32 " + (v.code + (", i32 " + hi.code))))))
-  let c2 = emit_bind(("icmp sgt i32 " + (lo.code + (", " + t))))
-  return val(emit_bind(("select i1 " + (c2 + (", i32 " + (lo.code + (", i32 " + t)))))), "int")
+  let c1 = emit_bind(`icmp slt i32 {v.code}, {hi.code}`)
+  let t = emit_bind(`select i1 {c1}, i32 {v.code}, i32 {hi.code}`)
+  let c2 = emit_bind(`icmp sgt i32 {lo.code}, {t}`)
+  return val(emit_bind(`select i1 {c2}, i32 {lo.code}, i32 {t}`), "int")
 }

@@ -393,7 +393,7 @@ fn do_import(rel: ptr) -> void {
   if already_loaded(full) { return }
   push(loaded_paths, full)
   let src = read_file(full)
-  if (src == null) { perr(("cannot open import " + full)) }
+  if (src == null) { perr(`cannot open import {full}`) }
   let saved_toks = toks;  let saved_pi = pi;  let saved_dir = cur_dir
   cur_dir = dir_of(full)
   lex(src)                                   # resets the global token stream

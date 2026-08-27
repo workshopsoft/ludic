@@ -27,48 +27,48 @@ fn emit_intrinsic(name: ptr, e: Node) -> Val {
   # ptr_null / ptr_is_null are the `null` literal and `x == null` now.
   if (name == "mem_alloc") {
     let n = arg_code(e, 0)
-    let w = emit_bind(("zext i32 " + (n + " to i64")))
-    return val(emit_bind(("call ptr @malloc(i64 " + (w + ")"))), "ptr")
+    let w = emit_bind(`zext i32 {n} to i64`)
+    return val(emit_bind(`call ptr @malloc(i64 {w})`), "ptr")
   }
   if (name == "mem_realloc") {
     let p = arg_code(e, 0);  let n = arg_code(e, 1)
-    let w = emit_bind(("zext i32 " + (n + " to i64")))
-    return val(emit_bind(("call ptr @realloc(ptr " + (p + (", i64 " + (w + ")"))))), "ptr")
+    let w = emit_bind(`zext i32 {n} to i64`)
+    return val(emit_bind(`call ptr @realloc(ptr {p}, i64 {w})`), "ptr")
   }
   if (name == "peek8") {
     let p = arg_code(e, 0);  let i = arg_code(e, 1)
     let a = emit_gep_i8(p, i)
-    let b = emit_bind(("load i8, ptr " + a))
-    return val(emit_bind(("zext i8 " + (b + " to i32"))), "int")
+    let b = emit_bind(`load i8, ptr {a}`)
+    return val(emit_bind(`zext i8 {b} to i32`), "int")
   }
   if (name == "poke8") {
     let p = arg_code(e, 0);  let i = arg_code(e, 1);  let v = arg_code(e, 2)
     let a = emit_gep_i8(p, i)
-    let t = emit_bind(("trunc i32 " + (v + " to i8")))
+    let t = emit_bind(`trunc i32 {v} to i8`)
     emit("  store i8 ");  emit(t);  emit(", ptr ");  emit(a);  emit("\n")
     return val("0", "void")
   }
   if (name == "file_open") {
     let p = arg_code(e, 0);  let m = arg_code(e, 1)
-    return val(emit_bind(("call ptr @fopen(ptr " + (p + (", ptr " + (m + ")"))))), "ptr")
+    return val(emit_bind(`call ptr @fopen(ptr {p}, ptr {m})`), "ptr")
   }
   if (name == "file_read") or (name == "file_write") {
     let f = arg_code(e, 0);  let b = arg_code(e, 1);  let n = arg_code(e, 2)
-    let w = emit_bind(("zext i32 " + (n + " to i64")))
+    let w = emit_bind(`zext i32 {n} to i64`)
     var fn2 = "@fread"
     if (name == "file_write") { fn2 = "@fwrite" }
-    let r = emit_bind(("call i64 " + (fn2 + ("(ptr " + (b + (", i64 1, i64 " + (w + (", ptr " + (f + ")")))))))))
-    return val(emit_bind(("trunc i64 " + (r + " to i32"))), "int")
+    let r = emit_bind(`call i64 {fn2}(ptr {b}, i64 1, i64 {w}, ptr {f})`)
+    return val(emit_bind(`trunc i64 {r} to i32`), "int")
   }
   if (name == "file_seek") {
     let f = arg_code(e, 0);  let off = arg_code(e, 1);  let wh = arg_code(e, 2)
-    let o = emit_bind(("sext i32 " + (off + " to i64")))
-    return val(emit_bind(("call i32 @fseek(ptr " + (f + (", i64 " + (o + (", i32 " + (wh + ")"))))))), "int")
+    let o = emit_bind(`sext i32 {off} to i64`)
+    return val(emit_bind(`call i32 @fseek(ptr {f}, i64 {o}, i32 {wh})`), "int")
   }
   if (name == "file_tell") {
     let f = arg_code(e, 0)
-    let r = emit_bind(("call i64 @ftell(ptr " + (f + ")")))
-    return val(emit_bind(("trunc i64 " + (r + " to i32"))), "int")
+    let r = emit_bind(`call i64 @ftell(ptr {f})`)
+    return val(emit_bind(`trunc i64 {r} to i32`), "int")
   }
   if (name == "file_close") {
     let f = arg_code(e, 0)
@@ -80,8 +80,8 @@ fn emit_intrinsic(name: ptr, e: Node) -> Val {
   if (name == "os_arg") {
     let i = arg_code(e, 0)
     let v = emit_bind("load ptr, ptr @L_argv")
-    let q = emit_bind(("getelementptr ptr, ptr " + (v + (", i32 " + i))))
-    return val(emit_bind(("load ptr, ptr " + q)), "str")
+    let q = emit_bind(`getelementptr ptr, ptr {v}, i32 {i}`)
+    return val(emit_bind(`load ptr, ptr {q}`), "str")
   }
   if (name == "os_exit") {
     let n = arg_code(e, 0)
@@ -94,18 +94,18 @@ fn emit_intrinsic(name: ptr, e: Node) -> Val {
   if (name == "file_stdout") { return val(emit_bind("load ptr, ptr @__stdoutp"), "ptr") }
   if (name == "os_system") {
     let c = arg_code(e, 0)
-    return val(emit_bind(("call i32 @system(ptr " + (c + ")"))), "int")
+    return val(emit_bind(`call i32 @system(ptr {c})`), "int")
   }
   if (name == "os_getenv") {
     let n = arg_code(e, 0)
-    return val(emit_bind(("call ptr @getenv(ptr " + (n + ")"))), "str")
+    return val(emit_bind(`call ptr @getenv(ptr {n})`), "str")
   }
   # bitwise ops are the operators & | ^ << >> ~ now (see emit_bin / p_mul).
   if (name == "peek32") {
     let p = arg_code(e, 0);  let i = arg_code(e, 1)
     let g = nreg()
     emit("  ");  emit(g);  emit(" = getelementptr inbounds i32, ptr ");  emit(p);  emit(", i32 ");  emit(i);  emit("\n")
-    return val(emit_bind(("load i32, ptr " + g)), "int")
+    return val(emit_bind(`load i32, ptr {g}`), "int")
   }
   if (name == "poke32") {
     let p = arg_code(e, 0);  let i = arg_code(e, 1);  let v = arg_code(e, 2)

@@ -4,7 +4,7 @@
 
 fn emit_machine(st: Node) -> void {
   let regv = emit_expr(st.a)
-  let s = emit_bind(("call i32 @fn_rt_reg(i32 " + (regv.code + ")")))
+  let s = emit_bind(`call i32 @fn_rt_reg(i32 {regv.code})`)
   if nmach < len(mach_stk) { mach_stk[nmach] = st } else { push(mach_stk, st) }
   nmach = nmach + 1
   let endl = lbl("smend")
@@ -12,7 +12,7 @@ fn emit_machine(st: Node) -> void {
   while i < len(st.kids) {
     let state = st.kids[i]
     let v = emit_expr(state.b)
-    let c = emit_bind(("icmp eq i32 " + (s + (", " + v.code))))
+    let c = emit_bind(`icmp eq i32 {s}, {v.code}`)
     let body = lbl("sbody");  let nxt = lbl("sarm")
     emit("  br i1 ");  emit(c);  emit(", label %");  emit(body);  emit(", label %");  emit(nxt);  emit("\n")
     emit(body);  emit(":\n");  g_term = false
@@ -32,7 +32,7 @@ fn emit_become(st: Node) -> void {
   var target: Node = null
   var i = 0
   while i < len(m.kids) { if (m.kids[i].s == st.s) { target = m.kids[i] };  i = i + 1 }
-  if (target == null) { perr(("become: no state " + st.s)) }
+  if (target == null) { perr(`become: no state {st.s}`) }
   let regv = emit_expr(m.a)
   let sv = emit_expr(target.b)
   emit("  call void @fn_rt_set_reg(i32 ");  emit(regv.code);  emit(", i32 ");  emit(sv.code);  emit(")\n")

@@ -39,13 +39,13 @@ fn emith(s: ptr) -> void { buf_puts(head, s) }
 # stack slots MUST live in the entry block (an alloca in a loop walks the stack
 # off its end), so they go into a per-function buffer spliced in at entry.
 fn emit_alloca(llt: ptr) -> ptr {
-  let r = (("%t") + itoa(ll_t));  ll_t = ll_t + 1
+  let r = `%t{itoa(ll_t)}`;  ll_t = ll_t + 1
   buf_puts(falloc, "  ");  buf_puts(falloc, r);  buf_puts(falloc, " = alloca ");  buf_puts(falloc, llt);  buf_puts(falloc, "\n")
   return r
 }
 
 # "%t<n>" fresh register
-fn nreg() -> ptr { let r = (("%t") + itoa(ll_t));  ll_t = ll_t + 1;  return r }
+fn nreg() -> ptr { let r = `%t{itoa(ll_t)}`;  ll_t = ll_t + 1;  return r }
 fn lbl(pfx: ptr) -> ptr { let r = (pfx + itoa(ll_lbl));  ll_lbl = ll_lbl + 1;  return r }
 
 # Ludic type -> LLVM type. int/bool are i32; everything else (ptr/str/struct/
@@ -123,12 +123,12 @@ fn find_fn(name: ptr) -> Node {
 var g_computed: []Node          # each: s = "Prop.field", ty = result type, a = expr
 
 fn register_computed(prop: ptr, field: ptr, ty: ptr, e: Node) -> void {
-  let cf = node(N_FIELD); cf.s = (prop + ("." + field)); cf.ty = ty; cf.a = e
+  let cf = node(N_FIELD); cf.s = `{prop}.{field}`; cf.ty = ty; cf.a = e
   push(g_computed, cf)
 }
 fn computed_expr(prop: ptr, field: ptr) -> Node {
   if (prop == null) { return null }
-  let key = (prop + ("." + field))
+  let key = `{prop}.{field}`
   var i = 0
   while i < len(g_computed) { if (g_computed[i].s == key) { return g_computed[i].a };  i = i + 1 }
   return null

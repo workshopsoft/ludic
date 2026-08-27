@@ -27,9 +27,9 @@ fn emit_ecs_storage() -> void {
   emith("@L_key = internal global i32 0\n")
   emith("@L_entc = internal global i32 0\n")
   let me = itoa(MAX_ENT)
-  emith(("@L_alive = internal global [" + (me + " x i32] zeroinitializer\n")))
-  emith(("@L_kind = internal global [" + (me + " x i32] zeroinitializer\n")))
-  emith(("@L_freelist = internal global [" + (me + " x i32] zeroinitializer\n")))
+  emith(`@L_alive = internal global [{me} x i32] zeroinitializer\n`)
+  emith(`@L_kind = internal global [{me} x i32] zeroinitializer\n`)
+  emith(`@L_freelist = internal global [{me} x i32] zeroinitializer\n`)
   emith("@L_freen = internal global i32 0\n")
   var i = 0
   while i < len(prog) {
@@ -38,12 +38,12 @@ fn emit_ecs_storage() -> void {
     # header). Every property in an ECS program is a component today; a property
     # used only via `new` would not need these, but no such program mixes the two.
     if c.kind == N_COMP {
-      emith(("@S_" + (c.s + (" = internal global [" + (me + ((" x %Cmp_") + (c.s + "] zeroinitializer\n")))))))
-      emith(("@H_" + (c.s + (" = internal global [" + (me + " x i8] zeroinitializer\n")))))
+      emith(`@S_{c.s} = internal global [{me} x %Cmp_{c.s}] zeroinitializer\n`)
+      emith(`@H_{c.s} = internal global [{me} x i8] zeroinitializer\n`)
     }
     # one enabled-flag global per model and per handler (default enabled)
-    if c.kind == N_ARCH { emith(("@ME_" + (c.s + " = internal global i32 1\n"))) }
-    if c.kind == N_SYS  { emith(("@HE_" + (c.s + " = internal global i32 1\n"))) }
+    if c.kind == N_ARCH { emith(`@ME_{c.s} = internal global i32 1\n`) }
+    if c.kind == N_SYS  { emith(`@HE_{c.s} = internal global i32 1\n`) }
     i = i + 1
   }
 }
@@ -55,7 +55,7 @@ fn emit_ecs_allocator() -> void {
   var i = 0
   while i < len(prog) {
     if prog[i].kind == N_COMP {
-      let hn = (("%h") + itoa(i))
+      let hn = `%h{itoa(i)}`
       emit("  ");  emit(hn);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i8], ptr @H_");  emit(prog[i].s);  emit(", i32 0, i32 %e\n")
       emit("  store i8 0, ptr ");  emit(hn);  emit("\n")
     }
