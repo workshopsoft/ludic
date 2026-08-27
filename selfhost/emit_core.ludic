@@ -54,7 +54,7 @@ fn lbl(pfx: ptr) -> ptr { let r = (pfx + itoa(ll_lbl));  ll_lbl = ll_lbl + 1;  r
 fn llty(t: ptr) -> ptr {
   if (t == "int") or (t == "bool") or (t == "fixed") { return "i32" }
   if (t == "byte") { return "i8" }                # a single byte (p[i] on a raw ptr)
-  if (t == "words") { return "ptr" }              # a 32-bit-word buffer (w[i] is i32)
+  if (t == "words") or (t == "fixeds") or (t == "ptrs") { return "ptr" }   # typed buffers
   if (t == "void") { return "void" }
   return "ptr"
 }

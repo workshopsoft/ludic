@@ -18,7 +18,7 @@ const TT_EDGES:  int = 16384    # line segments in one glyph
 const TT_GC:     int = 512      # glyph cache entries
 
 # ---- per-font tables (parallel arrays; index = font id) -------------------
-var tt_data:  ptr = null
+var tt_data:  ptrs = null
 var tt_size:  words = null
 var tt_upem:  words = null
 var tt_nglyf: words = null
@@ -35,20 +35,20 @@ var tt_cfmt:  words = null
 var tt_n:     int = 0
 
 # ---- outline + edge scratch (reused for every glyph) ----------------------
-var ol_x:    ptr = null
-var ol_y:    ptr = null
+var ol_x:    fixeds = null
+var ol_y:    fixeds = null
 var ol_on:   words = null
 var ol_ends: words = null
 var ol_n:    int = 0
 var ol_ne:   int = 0
 
-var ed_x0: ptr = null
-var ed_y0: ptr = null
-var ed_x1: ptr = null
-var ed_y1: ptr = null
+var ed_x0: fixeds = null
+var ed_y0: fixeds = null
+var ed_x1: fixeds = null
+var ed_y1: fixeds = null
 var ed_n:  int = 0
 
-var sc_x:  ptr = null     # scanline crossings
+var sc_x:  fixeds = null     # scanline crossings
 var sc_d:  words = null
 
 # ---- glyph cache ----------------------------------------------------------
@@ -61,7 +61,7 @@ var gc_h:    words = null
 var gc_ox:   words = null
 var gc_oy:   words = null
 var gc_adv:  words = null
-var gc_bmp:  ptr = null
+var gc_bmp:  ptrs = null
 
 fn rt_tt_init() -> void {
   tt_data = bytes(TT_MAX * 8)
@@ -193,7 +193,7 @@ fn rt_font_load(path: str) -> int {
 
   let id = tt_n
   tt_n = tt_n + 1
-  pokep(tt_data, id, d)
+  tt_data[id] = d
   tt_size[id] = size
   var upem = tt_u16(d, head + 18)
   if upem <= 0 { upem = 1000 }
@@ -213,7 +213,7 @@ fn rt_font_load(path: str) -> int {
 
 # ---- codepoint -> glyph id ------------------------------------------------
 fn tt_glyph_index(id: int, cp: int) -> int {
-  let d = peekp(tt_data, id)
+  let d = tt_data[id]
   let s = tt_cmap[id]
   if s < 0 { return 0 }
   let fmt = tt_cfmt[id]
@@ -262,7 +262,7 @@ fn tt_glyph_index(id: int, cp: int) -> int {
 }
 
 fn tt_advance(id: int, gid: int) -> int {
-  let d = peekp(tt_data, id)
+  let d = tt_data[id]
   let hmtx = tt_hmtx[id]
   let n = tt_nhm[id]
   if gid < n { return tt_u16(d, hmtx + gid * 4) }
@@ -272,20 +272,20 @@ fn tt_advance(id: int, gid: int) -> int {
 # ---- outline extraction ---------------------------------------------------
 fn ol_pt(x: fixed, y: fixed, on: int) -> void {
   if ol_n >= TT_PTS { return }
-  pokef(ol_x, ol_n, x)
-  pokef(ol_y, ol_n, y)
+  ol_x[ol_n] = x
+  ol_y[ol_n] = y
   ol_on[ol_n] = on
   ol_n = ol_n + 1
 }
 
 fn tt_glyph_start(id: int, gid: int) -> int {
-  let d = peekp(tt_data, id)
+  let d = tt_data[id]
   let loca = tt_loca[id]
   if tt_locfm[id] == 0 { return tt_u16(d, loca + gid * 2) * 2 }
   return tt_u32(d, loca + gid * 4)
 }
 fn tt_glyph_end(id: int, gid: int) -> int {
-  let d = peekp(tt_data, id)
+  let d = tt_data[id]
   let loca = tt_loca[id]
   if tt_locfm[id] == 0 { return tt_u16(d, loca + (gid + 1) * 2) * 2 }
   return tt_u32(d, loca + (gid + 1) * 4)
@@ -299,7 +299,7 @@ fn tt_load_outline(id: int, gid: int, a: fixed, b: fixed, c: fixed, e: fixed, dx
   let goff = tt_glyph_start(id, gid)
   let gend = tt_glyph_end(id, gid)
   if goff >= gend { return }
-  let d = peekp(tt_data, id)
+  let d = tt_data[id]
   let g = tt_glyf[id] + goff
   let nc = tt_i16(d, g)
 

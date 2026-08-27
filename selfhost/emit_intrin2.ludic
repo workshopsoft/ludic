@@ -7,9 +7,8 @@ var g_windowed: bool = false     # headless by default (games read stdin / dump 
 fn is_intrinsic2(name: ptr) -> bool {
   if (name == "mem_free") or (name == "mem_copy") or (name == "mem_set") { return true }
   if (name == "ptr_add") or (name == "read_byte") or (name == "write_byte") { return true }
-  if (name == "str_len") or (name == "os_time") { return true }
-  if (name == "peekf") or (name == "pokef") or (name == "as_fixed") or (name == "as_int") { return true }
-  if (name == "peekp") or (name == "pokep") { return true }
+  if (name == "os_time") { return true }
+  if (name == "as_fixed") or (name == "as_int") { return true }
   if (name == "is_windowed") or (name == "game_title") { return true }
   if (name == "win_open") or (name == "win_poll") or (name == "win_present") { return true }
   if (name == "win_running") or (name == "win_close") { return true }
@@ -42,36 +41,9 @@ fn emit_intrinsic2(name: ptr, e: Node) -> Val {
   if (name == "write_byte") {
     let v = arg_code(e, 0);  emit("  call i32 @putchar(i32 ");  emit(v);  emit(")\n");  return val("0", "void")
   }
-  if (name == "str_len") {
-    let s = arg_code(e, 0)
-    let r = emit_bind(`call i64 @strlen(ptr {s})`)
-    return val(emit_bind(`trunc i64 {r} to i32`), "int")
-  }
   if (name == "os_time") {
     let r = emit_bind("call i64 @time(ptr null)")
     return val(emit_bind(`trunc i64 {r} to i32`), "int")
-  }
-  if (name == "peekf") {
-    let p = arg_code(e, 0);  let i = arg_code(e, 1)
-    let g = nreg();  emit("  ");  emit(g);  emit(" = getelementptr inbounds i32, ptr ");  emit(p);  emit(", i32 ");  emit(i);  emit("\n")
-    return val(emit_bind(`load i32, ptr {g}`), "fixed")
-  }
-  if (name == "pokef") {
-    let p = arg_code(e, 0);  let i = arg_code(e, 1);  let v = arg_code(e, 2)
-    let g = nreg();  emit("  ");  emit(g);  emit(" = getelementptr inbounds i32, ptr ");  emit(p);  emit(", i32 ");  emit(i);  emit("\n")
-    emit("  store i32 ");  emit(v);  emit(", ptr ");  emit(g);  emit("\n")
-    return val("0", "void")
-  }
-  if (name == "peekp") {
-    let p = arg_code(e, 0);  let i = arg_code(e, 1)
-    let g = nreg();  emit("  ");  emit(g);  emit(" = getelementptr inbounds ptr, ptr ");  emit(p);  emit(", i32 ");  emit(i);  emit("\n")
-    return val(emit_bind(`load ptr, ptr {g}`), "ptr")
-  }
-  if (name == "pokep") {
-    let p = arg_code(e, 0);  let i = arg_code(e, 1);  let v = arg_code(e, 2)
-    let g = nreg();  emit("  ");  emit(g);  emit(" = getelementptr inbounds ptr, ptr ");  emit(p);  emit(", i32 ");  emit(i);  emit("\n")
-    emit("  store ptr ");  emit(v);  emit(", ptr ");  emit(g);  emit("\n")
-    return val("0", "void")
   }
   if (name == "as_fixed") { let a = emit_expr(e.kids[0]);  return val(a.code, "fixed") }
   if (name == "as_int")   { let a = emit_expr(e.kids[0]);  return val(a.code, "int") }

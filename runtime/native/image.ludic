@@ -13,7 +13,7 @@ const IMG_MAX: int = 32
 const SPR_MAX: int = 160
 const SPR_SZ:  int = 16
 
-var img_px:   ptr = null     # IMG_MAX pointers to RGBA buffers
+var img_px:   ptrs = null     # IMG_MAX pointers to RGBA buffers
 var img_w:    words = null
 var img_h:    words = null
 var img_n:    int = 0
@@ -232,7 +232,7 @@ fn rt_image_load(path: str) -> int {
   if rt_decode_png(path) == false { return 0 - 1 }
   let id = img_n
   img_n = img_n + 1
-  pokep(img_px, id, png_px)
+  img_px[id] = png_px
   img_w[id] = png_w
   img_h[id] = png_h
   return id
@@ -265,7 +265,7 @@ fn rt_draw_image(id: int, dx: int, dy: int) -> void {
   if id >= img_n { return }
   let w = img_w[id]
   let h = img_h[id]
-  let s: words = peekp(img_px, id)
+  let s: words = img_px[id]
   for y in 0 .. h {
     for x in 0 .. w {
       rt_blend_px(dx + x, dy + y, s[y * w + x])
@@ -280,7 +280,7 @@ fn rt_draw_image_scaled(id: int, dx: int, dy: int, dw: int, dh: int) -> void {
   if dh <= 0 { return }
   let w = img_w[id]
   let h = img_h[id]
-  let s: words = peekp(img_px, id)
+  let s: words = img_px[id]
   for y in 0 .. dh {
     for x in 0 .. dw {
       rt_blend_px(dx + x, dy + y, s[(y * h / dh) * w + x * w / dw])
@@ -305,7 +305,7 @@ fn rt_draw_9slice(id: int, dx: int, dy: int, dw: int, dh: int, inset: int) -> vo
   if dh <= 0 { return }
   let w = img_w[id]
   let h = img_h[id]
-  let s: words = peekp(img_px, id)
+  let s: words = img_px[id]
   for y in 0 .. dh {
     let sy = rt_9map(y, dh, h, inset)
     for x in 0 .. dw {

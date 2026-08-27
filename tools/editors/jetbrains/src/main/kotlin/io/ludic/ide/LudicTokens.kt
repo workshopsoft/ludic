@@ -52,7 +52,7 @@ object LudicVocabulary {
         "enable", "disable", "match", "machine", "state", "become", "where",
         "and", "or", "not", "break", "continue", "new"
     )
-    val PRIMITIVES = setOf("int", "fixed", "bool", "entity", "str", "ptr", "byte", "words", "void")
+    val PRIMITIVES = setOf("int", "fixed", "bool", "entity", "str", "ptr", "byte", "words", "fixeds", "ptrs", "void")
     val PHASES = setOf("Start", "Input", "FixedUpdate", "Update", "LateUpdate", "Render")
     val WIDGETS = setOf("panel", "col", "row", "label", "button", "image", "spacer")
 
@@ -67,10 +67,10 @@ object LudicVocabulary {
         "status", "print", "str", "quit",
         // compiler intrinsics: the floor the Ludic-written runtime stands on
         "bytes", "words", "mem_realloc", "mem_free", "mem_copy", "mem_set",         "os_argc", "os_arg", "file_stderr", "file_stdout",
-        "peekp", "pokep", "peekf", "pokef", "ptr_add",
+        "ptr_add",
         "as_fixed", "as_int", "file_open", "file_read", "file_write",
         "file_seek", "file_tell", "file_close", "read_byte", "write_byte",
-        "str_len", "os_exit", "os_time",
+        "os_exit", "os_time",
         "is_windowed", "game_title", "win_open", "win_poll", "win_present",
         "win_running", "win_close"
     )

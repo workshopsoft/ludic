@@ -4,10 +4,10 @@
 # ---- rasterization --------------------------------------------------------
 fn ed_add(x0: fixed, y0: fixed, x1: fixed, y1: fixed) -> void {
   if ed_n >= TT_EDGES { return }
-  pokef(ed_x0, ed_n, x0)
-  pokef(ed_y0, ed_n, y0)
-  pokef(ed_x1, ed_n, x1)
-  pokef(ed_y1, ed_n, y1)
+  ed_x0[ed_n] = x0
+  ed_y0[ed_n] = y0
+  ed_x1[ed_n] = x1
+  ed_y1[ed_n] = y1
   ed_n = ed_n + 1
 }
 
@@ -68,8 +68,8 @@ fn tt_raster(id: int, gid: int, px: int) -> ptr {
   var maxx = 0.0 - 999999.0
   var maxy = 0.0 - 999999.0
   for i in 0 .. ol_n {
-    let X = peekf(ol_x, i) * scale
-    let Y = peekf(ol_y, i) * scale
+    let X = ol_x[i] * scale
+    let Y = ol_y[i] * scale
     if X < minx { minx = X }
     if X > maxx { maxx = X }
     if Y < miny { miny = Y }
@@ -106,30 +106,30 @@ fn tt_raster(id: int, gid: int, px: int) -> ptr {
       var sy = 0.0
       if first_on < 0 {
         # all off-curve: start at the midpoint of the first and last point
-        let mx = (peekf(ol_x, start) + peekf(ol_x, start + cnt - 1)) / 2
-        let my = (peekf(ol_y, start) + peekf(ol_y, start + cnt - 1)) / 2
+        let mx = (ol_x[start] + ol_x[start + cnt - 1]) / 2
+        let my = (ol_y[start] + ol_y[start + cnt - 1]) / 2
         sx = (mx * scale - fx(x0)) * TT_SS
         sy = (fx(y1) - my * scale) * TT_SS
         first_on = 0
       } else {
-        sx = (peekf(ol_x, start + first_on) * scale - fx(x0)) * TT_SS
-        sy = (fx(y1) - peekf(ol_y, start + first_on) * scale) * TT_SS
+        sx = (ol_x[start + first_on] * scale - fx(x0)) * TT_SS
+        sy = (fx(y1) - ol_y[start + first_on] * scale) * TT_SS
       }
       var curx = sx
       var cury = sy
       var step = 0
       while step < cnt {
         let i = (first_on + 1 + step) % cnt
-        let ix = (peekf(ol_x, start + i) * scale - fx(x0)) * TT_SS
-        let iy = (fx(y1) - peekf(ol_y, start + i) * scale) * TT_SS
+        let ix = (ol_x[start + i] * scale - fx(x0)) * TT_SS
+        let iy = (fx(y1) - ol_y[start + i] * scale) * TT_SS
         if ol_on[start + i] == 1 {
           ed_add(curx, cury, ix, iy)
           curx = ix
           cury = iy
         } else {
           var j = (i + 1) % cnt
-          let jx = (peekf(ol_x, start + j) * scale - fx(x0)) * TT_SS
-          let jy = (fx(y1) - peekf(ol_y, start + j) * scale) * TT_SS
+          let jx = (ol_x[start + j] * scale - fx(x0)) * TT_SS
+          let jy = (fx(y1) - ol_y[start + j] * scale) * TT_SS
           var ex = jx
           var ey = jy
           if ol_on[start + j] == 1 {
@@ -159,38 +159,38 @@ fn tt_raster(id: int, gid: int, px: int) -> ptr {
     let yc = fx(sy) + 0.5
     var m = 0
     for i in 0 .. ed_n {
-      let ya = peekf(ed_y0, i)
-      let yb = peekf(ed_y1, i)
+      let ya = ed_y0[i]
+      let yb = ed_y1[i]
       var hit = 0
       if ya <= yc { if yb > yc { hit = 1 } }
       if yb <= yc { if ya > yc { hit = 1 } }
       if hit == 1 {
         let t = (yc - ya) / (yb - ya)
-        pokef(sc_x, m, peekf(ed_x0, i) + t * (peekf(ed_x1, i) - peekf(ed_x0, i)))
+        sc_x[m] = ed_x0[i] + t * (ed_x1[i] - ed_x0[i])
         if yb > ya { sc_d[m] = 1 } else { sc_d[m] = 0 - 1 }
         m = m + 1
       }
     }
     # insertion sort the crossings by x
     for i in 1 .. m {
-      let kx = peekf(sc_x, i)
+      let kx = sc_x[i]
       let kd = sc_d[i]
       var j = i - 1
       var placed = 0
       while j >= 0 {
-        if peekf(sc_x, j) > kx {
-          pokef(sc_x, j + 1, peekf(sc_x, j))
+        if sc_x[j] > kx {
+          sc_x[j + 1] = sc_x[j]
           sc_d[j + 1] = sc_d[j]
           j = j - 1
         } else {
-          pokef(sc_x, j + 1, kx)
+          sc_x[j + 1] = kx
           sc_d[j + 1] = kd
           placed = 1
           j = 0 - 1
         }
       }
       if placed == 0 {
-        pokef(sc_x, 0, kx)
+        sc_x[0] = kx
         sc_d[0] = kd
       }
     }
@@ -199,8 +199,8 @@ fn tt_raster(id: int, gid: int, px: int) -> ptr {
     for i in 0 .. m - 1 {
       wind = wind + sc_d[i]
       if wind != 0 {
-        var xa = peekf(sc_x, i)
-        var xb = peekf(sc_x, i + 1)
+        var xa = sc_x[i]
+        var xb = sc_x[i + 1]
         if xa < 0.0 { xa = 0.0 }
         if xb > fx(SW) { xb = fx(SW) }
         if xb > xa {
@@ -249,11 +249,11 @@ fn tt_glyph_get(font: int, cp: int, px: int) -> int {
   }
   let s = h
   if gc_used[s] == 1 {
-    let old = peekp(gc_bmp, s)
+    let old = gc_bmp[s]
     if (old == null) == false { mem_free(old) }
   }
   let bmp = tt_raster(font, tt_glyph_index(font, cp), px)
-  pokep(gc_bmp, s, bmp)
+  gc_bmp[s] = bmp
   gc_used[s] = 1
   gc_font[s] = font
   gc_cp[s] = cp
@@ -345,7 +345,7 @@ fn rt_text_ttf(font: int, x: int, y: int, s: str, colour: int, px: int) -> void 
       baseline = baseline + lineh
     } else {
       let g = tt_glyph_get(font, cp, px)
-      tt_blit(peekp(gc_bmp, g), gc_w[g], gc_h[g], penx + gc_ox[g], baseline - gc_oy[g], colour)
+      tt_blit(gc_bmp[g], gc_w[g], gc_h[g], penx + gc_ox[g], baseline - gc_oy[g], colour)
       penx = penx + gc_adv[g]
     }
   }

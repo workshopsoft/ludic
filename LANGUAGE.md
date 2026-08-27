@@ -147,9 +147,12 @@ See `examples/menu.ludic` for a complete title screen.
 | `ptr` | raw address (runtime/FFI) | `ptr` |
 | `byte` | pointer to bytes — `p[i]` reads/writes one byte | `ptr` |
 | `words` | pointer to 32-bit words — `w[i]` reads/writes an `int` | `ptr` |
+| `fixeds` | buffer of `fixed` values — `f[i]` reads/writes a `fixed` | `ptr` |
+| `ptrs` | buffer of pointers — `p[i]` reads/writes a `ptr` | `ptr` |
 
 Allocate raw buffers with `bytes(n)` (n bytes) or `words(n)` (n 32-bit words);
-both return a pointer you index with `buf[i]`.
+both return a pointer you index with `buf[i]` — retype the binding (`words` /
+`fixeds` / `ptrs`) to pick the element size.
 
 Numeric literals: `42` and `0x1affff` are `int`; a literal with a decimal
 point (`1.5`) is `fixed`. Arithmetic on two `fixed` values lowers to
