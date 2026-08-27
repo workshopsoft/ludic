@@ -1,0 +1,41 @@
+# menu.ludic — a retained-UI title screen. The UI is declared as DATA (the `ui`
+# block); the engine lays it out (stacked panel, padding/gap/alignment), draws
+# it (background, TrueType labels, focusable buttons), and routes keyboard focus
+# and activation. The game only loads a font, opens the UI, and reads clicks.
+game Menu {
+
+  const R_FONT: int = 0
+  const R_MSG:  int = 1
+
+  ui MainMenu {
+    panel id=Root w=288 pad=16 gap=6 bg=0x1a1a2c border=0x4a4a72 skin="assets/ui/panel.png" inset=10 align=center {
+      label text="CHRONO RIFT" font=reg(R_FONT) size=26 fg=0xffe060 align=center
+      label text="a Ludic retained-UI demo" font=reg(R_FONT) size=14 fg=0x9aa0c8 align=center
+      spacer h=4
+      button id=NewGame  text="New Game" font=reg(R_FONT) size=16 w=236
+      button id=Continue text="Continue" font=reg(R_FONT) size=16 w=236
+      button id=Options  text="Options"  font=reg(R_FONT) size=16 w=236
+      button id=Quit     text="Quit"     font=reg(R_FONT) size=16 w=236
+    }
+  }
+
+  system Boot phase Start {
+    setreg(R_FONT, font_load("/System/Library/Fonts/Supplemental/Arial.ttf"))
+    ui_build()
+    ui_open(UI_MainMenu)
+  }
+
+  system Nav phase Update {
+    ui_tick(key())
+    if ui_clicked(UI_NewGame)  { ui_set_text(UI_NewGame, "Starting...") }
+    if ui_clicked(UI_Continue) { ui_set_text(UI_Continue, "No save") }
+    if ui_clicked(UI_Options)  { ui_set_text(UI_Options, "Soon (TM)") }
+    if ui_clicked(UI_Quit)     { quit() }
+  }
+
+  system Draw phase Render {
+    clear(0x0e0e16)
+    ui_render()
+    present()
+  }
+}

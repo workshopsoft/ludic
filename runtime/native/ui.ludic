@@ -1,0 +1,312 @@
+# ============================================================================
+# ui.ludic — the retained UI engine, written in Ludic.
+#
+# A `ui Name { … }` block in a game is DATA: the compiler flattens the widget
+# tree and emits a build function that calls rt_ui_set() for each property.
+# Everything after that — measure/arrange layout, 9-slice skins, text, keyboard
+# focus and activation — is this file.
+#
+# Widgets are parallel arrays rather than a struct per widget, because Ludic
+# has components for per-entity data and raw memory for everything else, and a
+# widget is not an entity.
+# ============================================================================
+
+const UI_MAX: int = 256
+
+# widget types, matching the compiler's flattener
+const WT_PANEL:  int = 0
+const WT_COL:    int = 1
+const WT_ROW:    int = 2
+const WT_LABEL:  int = 3
+const WT_BUTTON: int = 4
+const WT_IMAGE:  int = 5
+const WT_SPACER: int = 6
+
+# property keys — the private protocol between ludicc and this runtime
+const K_TYPE: int = 0
+const K_PARENT: int = 1
+const K_W: int = 2
+const K_H: int = 3
+const K_X: int = 4
+const K_Y: int = 5
+const K_HASPOS: int = 6
+const K_PAD: int = 7
+const K_GAP: int = 8
+const K_BG: int = 9
+const K_FG: int = 10
+const K_BORDER: int = 11
+const K_ALIGN: int = 12
+const K_GROW: int = 13
+const K_FONT: int = 14
+const K_SIZE: int = 15
+const K_SKININSET: int = 16
+const K_FOCUSABLE: int = 17
+const K_VISIBLE: int = 18
+const K_IMG: int = 19
+const K_SKIN: int = 20
+
+var ui_type: ptr = ptr_null()
+var ui_parent: ptr = ptr_null()
+var ui_w: ptr = ptr_null()
+var ui_h: ptr = ptr_null()
+var ui_x: ptr = ptr_null()
+var ui_y: ptr = ptr_null()
+var ui_haspos: ptr = ptr_null()
+var ui_pad: ptr = ptr_null()
+var ui_gap: ptr = ptr_null()
+var ui_bg: ptr = ptr_null()
+var ui_fg: ptr = ptr_null()
+var ui_border: ptr = ptr_null()
+var ui_align: ptr = ptr_null()
+var ui_grow: ptr = ptr_null()
+var ui_font: ptr = ptr_null()
+var ui_size: ptr = ptr_null()
+var ui_skin: ptr = ptr_null()
+var ui_inset: ptr = ptr_null()
+var ui_img: ptr = ptr_null()
+var ui_focusable: ptr = ptr_null()
+var ui_rx: ptr = ptr_null()
+var ui_ry: ptr = ptr_null()
+var ui_rw: ptr = ptr_null()
+var ui_rh: ptr = ptr_null()
+var ui_visible: ptr = ptr_null()
+var ui_fired: ptr = ptr_null()
+var ui_hasdyn: ptr = ptr_null()
+var ui_dyn: ptr = ptr_null()        # UI_MAX * 96 bytes
+var ui_text: ptr = ptr_null()       # UI_MAX static string pointers
+
+var ui_n: int = 0
+var ui_active: int = -1
+var ui_focus: int = -1
+
+fn rt_ui_init() -> void {
+  ui_type = mem_alloc(UI_MAX * 4)
+  ui_parent = mem_alloc(UI_MAX * 4)
+  ui_w = mem_alloc(UI_MAX * 4)
+  ui_h = mem_alloc(UI_MAX * 4)
+  ui_x = mem_alloc(UI_MAX * 4)
+  ui_y = mem_alloc(UI_MAX * 4)
+  ui_haspos = mem_alloc(UI_MAX * 4)
+  ui_pad = mem_alloc(UI_MAX * 4)
+  ui_gap = mem_alloc(UI_MAX * 4)
+  ui_bg = mem_alloc(UI_MAX * 4)
+  ui_fg = mem_alloc(UI_MAX * 4)
+  ui_border = mem_alloc(UI_MAX * 4)
+  ui_align = mem_alloc(UI_MAX * 4)
+  ui_grow = mem_alloc(UI_MAX * 4)
+  ui_font = mem_alloc(UI_MAX * 4)
+  ui_size = mem_alloc(UI_MAX * 4)
+  ui_skin = mem_alloc(UI_MAX * 4)
+  ui_inset = mem_alloc(UI_MAX * 4)
+  ui_img = mem_alloc(UI_MAX * 4)
+  ui_focusable = mem_alloc(UI_MAX * 4)
+  ui_rx = mem_alloc(UI_MAX * 4)
+  ui_ry = mem_alloc(UI_MAX * 4)
+  ui_rw = mem_alloc(UI_MAX * 4)
+  ui_rh = mem_alloc(UI_MAX * 4)
+  ui_visible = mem_alloc(UI_MAX * 4)
+  ui_fired = mem_alloc(UI_MAX * 4)
+  ui_hasdyn = mem_alloc(UI_MAX * 4)
+  ui_dyn = mem_alloc(UI_MAX * 96)
+  ui_text = mem_alloc(UI_MAX * 8)
+}
+
+# ---- build-time interface (called by compiler-emitted code) ---------------
+fn rt_ui_reset(n: int) -> void {
+  ui_n = n
+  for i in 0 .. n {
+    poke32(ui_type, i, 0)
+    poke32(ui_parent, i, 0 - 1)
+    poke32(ui_w, i, 0)
+    poke32(ui_h, i, 0)
+    poke32(ui_x, i, 0)
+    poke32(ui_y, i, 0)
+    poke32(ui_haspos, i, 0)
+    poke32(ui_pad, i, 0)
+    poke32(ui_gap, i, 0)
+    poke32(ui_bg, i, 0 - 1)
+    poke32(ui_fg, i, 0 - 1)
+    poke32(ui_border, i, 0 - 1)
+    poke32(ui_align, i, 0 - 1)
+    poke32(ui_grow, i, 0)
+    poke32(ui_font, i, 0 - 1)
+    poke32(ui_size, i, 8)
+    poke32(ui_skin, i, 0 - 1)
+    poke32(ui_inset, i, 6)
+    poke32(ui_img, i, 0 - 1)
+    poke32(ui_focusable, i, 0)
+    poke32(ui_visible, i, 1)
+    poke32(ui_fired, i, 0)
+    poke32(ui_hasdyn, i, 0)
+    pokep(ui_text, i, ptr_null())
+  }
+}
+
+fn rt_ui_set(i: int, k: int, v: int) -> void {
+  if i < 0 { return }
+  if i >= UI_MAX { return }
+  if k == K_TYPE { poke32(ui_type, i, v) }
+  if k == K_PARENT { poke32(ui_parent, i, v) }
+  if k == K_W { poke32(ui_w, i, v) }
+  if k == K_H { poke32(ui_h, i, v) }
+  if k == K_X { poke32(ui_x, i, v) }
+  if k == K_Y { poke32(ui_y, i, v) }
+  if k == K_HASPOS { poke32(ui_haspos, i, v) }
+  if k == K_PAD { poke32(ui_pad, i, v) }
+  if k == K_GAP { poke32(ui_gap, i, v) }
+  if k == K_BG { poke32(ui_bg, i, v) }
+  if k == K_FG { poke32(ui_fg, i, v) }
+  if k == K_BORDER { poke32(ui_border, i, v) }
+  if k == K_ALIGN { poke32(ui_align, i, v) }
+  if k == K_GROW { poke32(ui_grow, i, v) }
+  if k == K_FONT { poke32(ui_font, i, v) }
+  if k == K_SIZE { poke32(ui_size, i, v) }
+  if k == K_SKININSET { poke32(ui_inset, i, v) }
+  if k == K_FOCUSABLE { poke32(ui_focusable, i, v) }
+  if k == K_VISIBLE { poke32(ui_visible, i, v) }
+  if k == K_IMG { poke32(ui_img, i, v) }
+  if k == K_SKIN { poke32(ui_skin, i, v) }
+}
+
+fn rt_ui_static_text(i: int, s: str) -> void {
+  if i < 0 { return }
+  if i >= UI_MAX { return }
+  pokep(ui_text, i, s)
+}
+
+# ---- text helpers: TrueType when a font is loaded, bitmap otherwise -------
+fn ui_str(i: int) -> ptr {
+  if peek32(ui_hasdyn, i) == 1 { return ptr_add(ui_dyn, i * 96) }
+  let t = peekp(ui_text, i)
+  if ptr_is_null(t) { return ptr_add(ui_dyn, i * 96) }
+  return t
+}
+
+fn ui_draw_text(font: int, x: int, y: int, s: ptr, colour: int, size: int) -> void {
+  if font >= 0 {
+    if font < tt_n {
+      rt_text_ttf(font, x, y, s, colour, size)
+      return
+    }
+  }
+  rt_text(x, y, s, colour, max(size / 8, 1))
+}
+
+fn ui_tw(font: int, s: ptr, size: int) -> int {
+  if font >= 0 {
+    if font < tt_n { return rt_text_w(font, s, size) }
+  }
+  let n = 0
+  while peek8(s, n) != 0 { n = n + 1 }
+  return n * 6 * max(size / 8, 1)
+}
+
+fn ui_th(font: int, size: int) -> int {
+  if font >= 0 {
+    if font < tt_n { return rt_text_h(font, size) }
+  }
+  return 7 * max(size / 8, 1)
+}
+
+fn ui_is_container(t: int) -> bool {
+  if t == WT_PANEL { return true }
+  if t == WT_COL { return true }
+  if t == WT_ROW { return true }
+  return false
+}
+fn ui_dir(t: int) -> int {
+  if t == WT_ROW { return 0 }
+  return 1
+}
+fn ui_under(i: int, root: int) -> bool {
+  let k = i
+  while k >= 0 {
+    if k == root { return true }
+    k = peek32(ui_parent, k)
+  }
+  return false
+}
+
+# ---- measure: content sizes, children before parents ----------------------
+fn ui_measure() -> void {
+  let i = ui_n - 1
+  while i >= 0 {
+    if peek32(ui_visible, i) == 0 {
+      poke32(ui_rw, i, 0)
+      poke32(ui_rh, i, 0)
+    } else {
+      let t = peek32(ui_type, i)
+      let pad = peek32(ui_pad, i)
+      let cw = 0
+      let ch = 0
+      if t == WT_LABEL { cw = 0 - 1 }
+      if t == WT_BUTTON { cw = 0 - 1 }
+      if cw == 0 - 1 {
+        let s = ui_str(i)
+        cw = ui_tw(peek32(ui_font, i), s, peek32(ui_size, i)) + 2 * pad
+        ch = ui_th(peek32(ui_font, i), peek32(ui_size, i)) + 2 * pad
+        if t == WT_BUTTON {
+          cw = cw + 10
+          ch = ch + 6
+        }
+      } else {
+        if t == WT_IMAGE {
+          let im = peek32(ui_img, i)
+          if im >= 0 {
+            cw = peek32(img_w, im)
+            ch = peek32(img_h, im)
+          }
+        } else {
+          if t == WT_SPACER {
+            cw = peek32(ui_w, i)
+            ch = peek32(ui_h, i)
+          } else {
+            let dir = ui_dir(t)
+            let mainsz = 0
+            let cross = 0
+            let nc = 0
+            for c in 0 .. ui_n {
+              if peek32(ui_parent, c) == i {
+                if peek32(ui_visible, c) == 1 {
+                  if dir == 1 {
+                    mainsz = mainsz + peek32(ui_rh, c)
+                    cross = max(cross, peek32(ui_rw, c))
+                  } else {
+                    mainsz = mainsz + peek32(ui_rw, c)
+                    cross = max(cross, peek32(ui_rh, c))
+                  }
+                  nc = nc + 1
+                }
+              }
+            }
+            if nc > 1 { mainsz = mainsz + peek32(ui_gap, i) * (nc - 1) }
+            mainsz = mainsz + 2 * pad
+            cross = cross + 2 * pad
+            if dir == 1 {
+              cw = cross
+              ch = mainsz
+            } else {
+              cw = mainsz
+              ch = cross
+            }
+          }
+        }
+      }
+      let rw = peek32(ui_w, i)
+      let rh = peek32(ui_h, i)
+      if rw == 0 { rw = cw }
+      if rh == 0 { rh = ch }
+      poke32(ui_rw, i, rw)
+      poke32(ui_rh, i, rh)
+    }
+    i = i - 1
+  }
+}
+
+fn ui_eff_align(child: int, parent: int) -> int {
+  if peek32(ui_align, child) >= 0 { return peek32(ui_align, child) }
+  if peek32(ui_align, parent) >= 0 { return peek32(ui_align, parent) }
+  return 0
+}
+
+import "ui_draw.ludic"

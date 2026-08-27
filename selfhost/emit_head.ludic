@@ -1,0 +1,108 @@
+# emit_head.ludic — string constants and the module header (libc declarations,
+# the slice header type, struct layouts, globals, argv, format strings).
+
+fn hexdig(n: int) -> int { if n < 10 { return 48 + n } return 55 + n }   # 0-9 A-F
+
+# emit `@.strN = ... c"escaped\00"` and return its name; % and non-print -> \XX
+fn emit_str_const(s: ptr) -> ptr {
+  let name = sconcat("@.str", itoa(ll_str))
+  ll_str = ll_str + 1
+  let n = slen(s)
+  emith(name)  emith(" = private unnamed_addr constant [")
+  emith(itoa(n + 1))  emith(" x i8] c\"")
+  let i = 0
+  while i < n {
+    let c = peek8(s, i)
+    if c == 34 or c == 92 or c < 32 or c > 126 {
+      buf_putc(head, 92)                          # backslash
+      buf_putc(head, hexdig(c / 16))
+      buf_putc(head, hexdig(c % 16))
+    } else { buf_putc(head, c) }
+    i = i + 1
+  }
+  emith("\\00\"\n")
+  return name
+}
+
+# a fresh SSA register bound to a `getelementptr`, returned as its name
+fn emit_gep_i8(base: ptr, idx: ptr) -> ptr {
+  let r = nreg()
+  emit("  ")  emit(r)  emit(" = getelementptr inbounds i8, ptr ")
+  emit(base)  emit(", i32 ")  emit(idx)  emit("\n")
+  return r
+}
+
+# the constant initializer for a global var: a literal, or 0/null
+fn global_init(d: Node) -> ptr {
+  if ptr_is_null(d.a) { if streq(llty(d.ty), "ptr") { return "null" }  return "0" }
+  let e = d.a
+  if e.kind == E_INT or e.kind == E_FLOAT or e.kind == E_BOOL { return itoa(e.ival) }
+  if e.kind == E_UN and streq(e.s, "-") and e.a.kind == E_INT { return sconcat("-", itoa(e.a.ival)) }
+  if streq(llty(d.ty), "ptr") { return "null" }
+  return "0"
+}
+
+fn emit_header() -> void {
+  emith("; Ludic (self-hosted) -> LLVM IR\n")
+  emith("declare i32 @printf(ptr, ...)\n")
+  emith("declare ptr @malloc(i64)\n")
+  emith("declare ptr @realloc(ptr, i64)\n")
+  emith("declare void @free(ptr)\n")
+  emith("declare ptr @fopen(ptr, ptr)\n")
+  emith("declare i64 @fread(ptr, i64, i64, ptr)\n")
+  emith("declare i64 @fwrite(ptr, i64, i64, ptr)\n")
+  emith("declare i32 @fseek(ptr, i64, i32)\n")
+  emith("declare i64 @ftell(ptr)\n")
+  emith("declare i32 @fclose(ptr)\n")
+  emith("declare void @exit(i32)\n")
+  emith("declare i32 @system(ptr)\n")
+  emith("declare ptr @getenv(ptr)\n")
+  emith("declare ptr @memcpy(ptr, ptr, i64)\n")
+  emith("declare ptr @memset(ptr, i32, i64)\n")
+  emith("declare i64 @strlen(ptr)\n")
+  emith("declare i32 @getchar()\n")
+  emith("declare i32 @putchar(i32)\n")
+  emith("declare i64 @time(ptr)\n")
+  emith("declare void @win_open(i32, i32, i32, ptr)\n")
+  emith("declare i32 @win_poll()\n")
+  emith("declare void @win_present(ptr, i32, i32)\n")
+  emith("declare i32 @win_running()\n")
+  emith("declare void @win_close()\n")
+  emith("@__stderrp = external global ptr\n")
+  emith("@.fmt_str = private unnamed_addr constant [3 x i8] c\"%s\\00\"\n")
+  emith("@.fmt_int = private unnamed_addr constant [4 x i8] c\"%d\\0A\\00\"\n")
+  emith("@L_argc = internal global i32 0\n")
+  emith("@L_argv = internal global ptr null\n")
+  emith("@.gametitle = private unnamed_addr constant [")
+  emith(itoa(slen(g_game_name) + 1))  emith(" x i8] c\"")  emith(g_game_name)  emith("\\00\"\n")
+  emith("%LSlice = type { ptr, i32, i32 }\n")
+  # struct layouts
+  let i = 0
+  while i < len(prog) {
+    let d = prog[i]
+    if d.kind == N_STRUCT {
+      emith("%Str_")  emith(d.s)  emith(" = type { ")
+      if len(d.kids) == 0 { emith("i32") }
+      let f = 0
+      while f < len(d.kids) {
+        if f > 0 { emith(", ") }
+        emith(llty(d.kids[f].ty))
+        f = f + 1
+      }
+      emith(" }\n")
+    }
+    i = i + 1
+  }
+  # globals (vars) — aggregates/pointers default to null, scalars to 0
+  i = 0
+  while i < len(prog) {
+    let d = prog[i]
+    if d.kind == N_VAR {
+      emith("@g_")  emith(d.s)  emith(" = internal global ")
+      emith(llty(d.ty))  emith(" ")
+      emith(global_init(d))
+      emith("\n")
+    }
+    i = i + 1
+  }
+}

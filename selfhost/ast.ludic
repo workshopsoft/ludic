@@ -1,0 +1,68 @@
+# ast.ludic — the node kinds and the single Node shape they share, plus the
+# declaration tables the emitter reads. Mirrors compiler/front/ast.h + sem/.
+
+# declarations
+const N_STRUCT: int = 0
+const N_FIELD:  int = 1
+const N_VAR:    int = 2
+const N_CONST:  int = 3
+const N_FN:     int = 4
+const N_PARAM:  int = 5
+const N_MAIN:   int = 6
+const N_BLOCK:  int = 7
+const N_COMP:   int = 8
+const N_SYS:    int = 9
+const N_ARCH:   int = 10
+const N_EXTERN: int = 11
+const N_UI:     int = 12
+# statements
+const S_LET:      int = 10
+const S_ASSIGN:   int = 11
+const S_IF:       int = 12
+const S_WHILE:    int = 13
+const S_FOR:      int = 14
+const S_RETURN:   int = 15
+const S_EXPR:     int = 16
+const S_BREAK:    int = 17
+const S_CONTINUE: int = 18
+const S_MATCH:    int = 19
+const S_MARM:     int = 20
+const S_QUERY:    int = 21
+const S_SPAWN:    int = 22
+const S_DESPAWN:  int = 23
+const S_MACHINE:  int = 24
+const S_STATE:    int = 25
+const S_BECOME:   int = 26
+# expressions
+const E_INT:    int = 30
+const E_STR:    int = 31
+const E_BOOL:   int = 32
+const E_ID:     int = 33
+const E_CALL:   int = 34
+const E_MEMBER: int = 35
+const E_INDEX:  int = 36
+const E_BIN:    int = 37
+const E_UN:     int = 38
+const E_NEW:    int = 39
+const E_FLOAT:  int = 40
+const E_REC:    int = 41
+const E_FINIT:  int = 42
+
+struct Node {
+  kind: int = 0
+  s:    ptr = ptr_null()      # name / operator / string / type-of-new
+  ival: int = 0               # int literal, bool, flags
+  ty:   ptr = ptr_null()      # declared type (let/param/field/fn/var/const)
+  a:    Node                  # fixed children (meaning per kind)
+  b:    Node
+  c:    Node
+  kids: []Node                # variadic children
+  line: int = 0
+}
+
+fn node(kind: int) -> Node {
+  let n = new Node
+  n.kind = kind
+  n.kids = new []Node
+  return n
+}

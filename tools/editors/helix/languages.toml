@@ -1,0 +1,24 @@
+# Ludic for Helix. Append to ~/.config/helix/languages.toml, adjusting the two
+# paths. Highlighting comes from the server's semantic tokens; Helix applies
+# them with no grammar to build.
+
+[[language]]
+name = "ludic"
+scope = "source.ludic"
+file-types = ["ludic"]
+comment-token = "#"
+indent = { tab-width = 2, unit = "  " }
+language-servers = ["ludic-lsp"]
+auto-format = true
+roots = ["build.sh", "LANGUAGE.md", ".git"]
+
+[language-server.ludic-lsp]
+command = "ludic-lsp"
+args = ["--stdio"]
+
+# Ludic fences inside Markdown: point Helix's markdown at the same server so
+# `# ```ludic` blocks get diagnostics too. Merge this with your existing
+# markdown entry rather than adding a second one.
+# [[language]]
+# name = "markdown"
+# language-servers = ["marksman", "ludic-lsp"]

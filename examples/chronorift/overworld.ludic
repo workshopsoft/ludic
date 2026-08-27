@@ -1,0 +1,140 @@
+# overworld.ludic — boot, movement/encounter input, and the shop system.
+
+system Boot phase Start {
+  load_png("assets/kenney/tiny-town/Tiles/tile_0000.png")      # 0 grass
+  load_png("assets/kenney/tiny-town/Tiles/tile_0004.png")      # 1 tree
+  load_png("assets/kenney/tiny-town/Tiles/tile_0025.png")      # 2 path
+  load_png("assets/kenney/tiny-town/Tiles/tile_0073.png")      # 3 house
+  load_png("assets/kenney/tiny-town/Tiles/tile_0112.png")      # 4 arch
+  load_png("assets/kenney/tiny-dungeon/Tiles/tile_0096.png")   # 5 hero
+  load_png("assets/kenney/tiny-dungeon/Tiles/tile_0108.png")   # 6 slime
+  load_png("assets/kenney/tiny-dungeon/Tiles/tile_0120.png")   # 7 skeleton
+  load_png("assets/kenney/tiny-dungeon/Tiles/tile_0110.png")   # 8 boss
+  load_png("assets/kenney/tiny-dungeon/Tiles/tile_0084.png")   # 9 mage
+  load_png("assets/kenney/tiny-dungeon/Tiles/tile_0048.png")   # 10 floor
+  load_png("assets/kenney/tiny-dungeon/Tiles/tile_0026.png")   # 11 wall
+
+  build_field(0)
+  spawn Player {
+    Pos    = { x = 11, y = 15 }
+    Actor  = { kind = 5 }
+    Party  = { slot = 0 }
+    Stats  = { hp = 40, maxhp = 40, mp = 8,  maxmp = 8,  atk = 12, def = 6, lvl = 1, xp = 0, guard = 0 }
+  }
+  spawn Ally {
+    Party  = { slot = 1 }
+    Stats  = { hp = 26, maxhp = 26, mp = 16, maxmp = 16, atk = 8,  def = 4, lvl = 1, xp = 0, guard = 0 }
+  }
+  setreg(R_MODE, 0)
+  setreg(R_ENC, 4)
+  setreg(R_MAP, 0)
+  setreg(R_BOSS, 0)
+  setreg(R_GOLD, 20)
+  setreg(R_POTION, 2)
+}
+
+system Control phase Input {
+  if reg(R_MODE) == 0 {
+    for (p) in query [Pos, {Player}] {
+      let k = key()
+      let nx = p.x
+      let ny = p.y
+      if k == 'w' { ny = p.y - 1 }
+      if k == 's' { ny = p.y + 1 }
+      if k == 'a' { nx = p.x - 1 }
+      if k == 'd' { nx = p.x + 1 }
+      let moved = 0
+      if walkable(nx, ny) {
+        if nx != p.x or ny != p.y {
+          p.x = nx
+          p.y = ny
+          moved = 1
+        }
+      }
+      if moved == 1 {
+        let tc = tile(p.x, p.y)
+        if tc == 'D' {
+          build_dungeon(0)
+          p.x = 3
+          p.y = 2
+          setreg(R_MAP, 1)
+        }
+        if tc == 'S' {
+          build_field(0)
+          p.x = 36
+          p.y = 3
+          setreg(R_MAP, 0)
+        }
+        if tc == 'B' {
+          if reg(R_BOSS) == 0 {
+            setreg(R_ETYPE, 2)
+            spawn Enemy {
+              Actor = { kind = 8 }
+              Stats = { hp = 120, maxhp = 120, mp = 0, maxmp = 0, atk = 18, def = 10, lvl = 5, xp = 300, guard = 0 }
+            }
+            setreg(R_MODE, 1)
+            setreg(R_PHASE, 0)
+            setreg(R_CUR, 0)
+          }
+        }
+        if tc == 'h' {
+          setreg(R_MODE, 4)
+          setreg(R_CUR, 0)
+        }
+        if tc != 'D' {
+          if tc != 'S' {
+            if tc != 'B' {
+             if tc != 'h' {
+              setreg(R_ENC, reg(R_ENC) - 1)
+              if reg(R_ENC) <= 0 {
+                setreg(R_ENC, rng_range(4, 9))
+                let et = 0
+                if reg(R_MAP) == 1 { et = 1 }
+                if reg(R_MAP) == 0 {
+                  if rng_chance(40) { et = 1 }
+                }
+                setreg(R_ETYPE, et)
+                if et == 0 {
+                  spawn Enemy {
+                    Actor = { kind = 6 }
+                    Stats = { hp = 18, maxhp = 18, mp = 0, maxmp = 0, atk = 8, def = 2, lvl = 1, xp = 7, guard = 0 }
+                  }
+                }
+                if et == 1 {
+                  spawn Enemy {
+                    Actor = { kind = 7 }
+                    Stats = { hp = 30, maxhp = 30, mp = 0, maxmp = 0, atk = 11, def = 5, lvl = 1, xp = 15, guard = 0 }
+                  }
+                }
+                setreg(R_MODE, 1)
+                setreg(R_PHASE, 0)
+                setreg(R_CUR, 0)
+              }
+             }
+            }
+          }
+        }
+      }
+      if k == 'k' { save() }
+      if k == 'l' { if load() { } }
+    }
+  }
+}
+
+# shop (at the house 'h' tile): buy potions with gold
+system Shop phase Update {
+  if reg(R_MODE) == 4 {
+    let k = key()
+    if k == 'w' { setreg(R_CUR, max(0, reg(R_CUR) - 1)) }
+    if k == 's' { setreg(R_CUR, min(1, reg(R_CUR) + 1)) }
+    if is_confirm(k) {
+      if reg(R_CUR) == 0 {
+        if reg(R_GOLD) >= 10 {
+          setreg(R_GOLD, reg(R_GOLD) - 10)
+          setreg(R_POTION, reg(R_POTION) + 1)
+        }
+      }
+      if reg(R_CUR) == 1 { setreg(R_MODE, 0) }
+    }
+  }
+}

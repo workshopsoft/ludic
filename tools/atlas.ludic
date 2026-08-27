@@ -1,0 +1,56 @@
+# ============================================================================
+# atlas.ludic — render a Kenney tile pack as one index-labeled sheet, so you can
+# see which sprite id is which before referring to it in a game.
+#
+#   ludicc tools/atlas.ludic --headless -o build/atlas
+#   ./build/atlas && sips -s format png out.ppm --out atlas.png
+#
+# Replaces the old tools/atlas.c, which used the C runtime that no longer
+# exists. It is the same program, in the language it is a tool for.
+# ============================================================================
+game Atlas {
+  const DIR:  str = "assets/kenney/tiny-dungeon/Tiles"
+  const N:    int = 132
+  const COLS: int = 12
+  const CELL: int = 24
+
+  system Sheet phase Start {
+    clear(0x101018)
+    for i in 0 .. N {
+      let col = i % COLS
+      let row = i / COLS
+      let x = col * CELL
+      let y = row * CELL
+      # tile_0000.png … tile_0131.png — the id is the file's number
+      let id = load_png(tile_path(i))
+      if id >= 0 {
+        draw_sprite(id, x + 4, y + 2)
+      }
+      text_int(x + 1, y + 18, i, 0x8090b0, 1)
+    }
+    present()
+    quit()
+  }
+
+  # build "<DIR>/tile_%04d.png" without a formatter: the runtime's string
+  # helpers write into a scratch buffer we own
+  fn tile_path(i: int) -> str {
+    let buf = atlas_buf()
+    let n = rt_put_str(buf, 0, DIR)
+    n = rt_put_str(buf, n, "/tile_")
+    if i < 1000 { poke8(buf, n, 48)  n = n + 1 }
+    if i < 100 { poke8(buf, n, 48)  n = n + 1 }
+    if i < 10 { poke8(buf, n, 48)  n = n + 1 }
+    n = rt_put_int(buf, n, i)
+    n = rt_put_str(buf, n, ".png")
+    poke8(buf, n, 0)
+    return buf
+  }
+
+  var atlas_scratch: ptr = ptr_null()
+
+  fn atlas_buf() -> ptr {
+    if ptr_is_null(atlas_scratch) { atlas_scratch = mem_alloc(512) }
+    return atlas_scratch
+  }
+}

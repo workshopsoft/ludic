@@ -1,0 +1,276 @@
+# ============================================================================
+# inflate.ludic — DEFLATE decompression (RFC 1951), written in Ludic.
+#
+# PNG stores its pixels zlib-compressed, so decoding one means implementing
+# inflate. The C runtime linked zlib for this. We don't: zlib is not present by
+# default on every target Ludic compiles for (Windows especially), and shipping
+# a dependency to read a sprite is a poor trade when the algorithm is this
+# small. So it lives here, in the language.
+#
+# The decoder is the canonical-Huffman formulation from Mark Adler's `puff`:
+# a symbol table plus per-length counts, walked one bit at a time. Slower than
+# a lookup-table decoder, and entirely fast enough to load sprites at startup.
+# ============================================================================
+
+# ---- bit reader (DEFLATE packs bits least-significant-first) ---------------
+var z_src:    ptr = ptr_null()
+var z_len:    int = 0
+var z_pos:    int = 0
+var z_bitbuf: int = 0
+var z_bitcnt: int = 0
+var z_err:    int = 0
+
+fn z_start(src: ptr, len: int) -> void {
+  z_src = src
+  z_len = len
+  z_pos = 0
+  z_bitbuf = 0
+  z_bitcnt = 0
+  z_err = 0
+}
+
+fn z_bits(need: int) -> int {
+  let val = z_bitbuf
+  while z_bitcnt < need {
+    if z_pos >= z_len {
+      z_err = 1
+      return 0
+    }
+    val = bor(val, shl(peek8(z_src, z_pos), z_bitcnt))
+    z_pos = z_pos + 1
+    z_bitcnt = z_bitcnt + 8
+  }
+  z_bitbuf = shr(val, need)
+  z_bitcnt = z_bitcnt - need
+  return band(val, shl(1, need) - 1)
+}
+
+# ---- Huffman tables -------------------------------------------------------
+# A table is a single buffer: 16 length-counts followed by the symbols in
+# canonical order. One allocation, no structs.
+fn z_table_new(nsym: int) -> ptr {
+  return mem_alloc((16 + nsym) * 4)
+}
+
+# lengths[i] = code length of symbol i (0 = symbol unused)
+fn z_table_build(table: ptr, lengths: ptr, n: int) -> void {
+  for i in 0 .. 16 {
+    poke32(table, i, 0)
+  }
+  for s in 0 .. n {
+    let l = peek32(lengths, s)
+    poke32(table, l, peek32(table, l) + 1)
+  }
+  poke32(table, 0, 0)                 # length 0 means "not present"
+  # offset of each length's first symbol
+  let offs = mem_alloc(16 * 4)
+  poke32(offs, 1, 0)
+  for l in 1 .. 15 {
+    poke32(offs, l + 1, peek32(offs, l) + peek32(table, l))
+  }
+  for s in 0 .. n {
+    let l = peek32(lengths, s)
+    if l != 0 {
+      poke32(table, 16 + peek32(offs, l), s)
+      poke32(offs, l, peek32(offs, l) + 1)
+    }
+  }
+  mem_free(offs)
+}
+
+fn z_decode(table: ptr) -> int {
+  let code = 0
+  let first = 0
+  let index = 0
+  for len in 1 .. 16 {
+    code = bor(code, z_bits(1))
+    let count = peek32(table, len)
+    if code - first < count {
+      return peek32(table, 16 + index + (code - first))
+    }
+    index = index + count
+    first = shl(first + count, 1)
+    code = shl(code, 1)
+  }
+  z_err = 1
+  return -1
+}
+
+# ---- length / distance code tables (RFC 1951 section 3.2.5) ---------------
+fn z_len_base(sym: int) -> int {
+  if sym < 8 { return 3 + sym }
+  if sym == 28 { return 258 }
+  let extra = (sym - 4) / 4
+  let group = shl(1, extra)
+  return 3 + shl(group - 1, 2) + 4 + (sym - 4 - extra * 4) * group
+}
+
+fn z_len_extra(sym: int) -> int {
+  if sym < 8 { return 0 }
+  if sym == 28 { return 0 }
+  return (sym - 4) / 4
+}
+
+fn z_dist_base(sym: int) -> int {
+  if sym < 4 { return 1 + sym }
+  let extra = (sym - 2) / 2
+  let group = shl(1, extra)
+  return 1 + shl(group, 1) + (sym - 2 - extra * 2) * group
+}
+
+fn z_dist_extra(sym: int) -> int {
+  if sym < 4 { return 0 }
+  return (sym - 2) / 2
+}
+
+# ---- block decoders -------------------------------------------------------
+# `out` is the destination window; returns the new write position, or -1.
+fn z_stored(out: ptr, at: int, cap: int) -> int {
+  z_bitbuf = 0
+  z_bitcnt = 0                        # stored blocks are byte-aligned
+  if z_pos + 4 > z_len { return -1 }
+  let n = peek8(z_src, z_pos) + shl(peek8(z_src, z_pos + 1), 8)
+  z_pos = z_pos + 4                   # LEN then its one's complement
+  let w = at
+  for i in 0 .. n {
+    if z_pos >= z_len { return -1 }
+    if w >= cap { return -1 }
+    poke8(out, w, peek8(z_src, z_pos))
+    w = w + 1
+    z_pos = z_pos + 1
+  }
+  return w
+}
+
+fn z_codes(out: ptr, at: int, cap: int, lit: ptr, dist: ptr) -> int {
+  let w = at
+  let sym = z_decode(lit)
+  while sym != 256 {
+    if z_err != 0 { return -1 }
+    if sym < 0 { return -1 }
+    if sym < 256 {
+      if w >= cap { return -1 }
+      poke8(out, w, sym)
+      w = w + 1
+    }
+    if sym > 256 {
+      let s = sym - 257
+      if s >= 29 { return -1 }
+      let length = z_len_base(s) + z_bits(z_len_extra(s))
+      let d = z_decode(dist)
+      if d < 0 { return -1 }
+      let distance = z_dist_base(d) + z_bits(z_dist_extra(d))
+      if distance > w { return -1 }
+      for k in 0 .. length {
+        if w >= cap { return -1 }
+        poke8(out, w, peek8(out, w - distance))
+        w = w + 1
+      }
+    }
+    sym = z_decode(lit)
+  }
+  return w
+}
+
+fn z_fixed_tables(lit: ptr, dist: ptr) -> void {
+  let lengths = mem_alloc(288 * 4)
+  for i in 0 .. 144 { poke32(lengths, i, 8) }
+  for i in 144 .. 256 { poke32(lengths, i, 9) }
+  for i in 256 .. 280 { poke32(lengths, i, 7) }
+  for i in 280 .. 288 { poke32(lengths, i, 8) }
+  z_table_build(lit, lengths, 288)
+  for i in 0 .. 30 { poke32(lengths, i, 5) }
+  z_table_build(dist, lengths, 30)
+  mem_free(lengths)
+}
+
+fn z_dynamic_tables(lit: ptr, dist: ptr) -> int {
+  let nlen = z_bits(5) + 257
+  let ndist = z_bits(5) + 1
+  let ncode = z_bits(4) + 4
+  if nlen > 286 { return 0 }
+  if ndist > 30 { return 0 }
+
+  let lengths = mem_alloc(320 * 4)
+  for i in 0 .. 19 { poke32(lengths, i, 0) }
+  # the code-length alphabet is transmitted in this fixed permutation
+  # 16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15 — biased by '0' so it is one literal
+  let order = "@AB08796:5;4<3=2>1?"
+  for i in 0 .. ncode {
+    poke32(lengths, peek8(order, i) - 48, z_bits(3))
+  }
+  let clen = z_table_new(19)
+  z_table_build(clen, lengths, 19)
+
+  let n = 0
+  while n < nlen + ndist {
+    let sym = z_decode(clen)
+    if sym < 0 { return 0 }
+    if sym < 16 {
+      poke32(lengths, n, sym)
+      n = n + 1
+    }
+    if sym >= 16 {
+      let prev = 0
+      let rep = 0
+      if sym == 16 {
+        if n == 0 { return 0 }
+        prev = peek32(lengths, n - 1)
+        rep = 3 + z_bits(2)
+      }
+      if sym == 17 { rep = 3 + z_bits(3) }
+      if sym == 18 { rep = 11 + z_bits(7) }
+      for k in 0 .. rep {
+        if n < 320 {
+          poke32(lengths, n, prev)
+          n = n + 1
+        }
+      }
+    }
+  }
+  z_table_build(lit, lengths, nlen)
+  # the distance lengths follow the literal ones in the same buffer
+  let dl = mem_alloc(32 * 4)
+  for i in 0 .. ndist { poke32(dl, i, peek32(lengths, nlen + i)) }
+  z_table_build(dist, dl, ndist)
+  mem_free(dl)
+  mem_free(lengths)
+  mem_free(clen)
+  return 1
+}
+
+# Inflate a raw DEFLATE stream. Returns bytes written, or -1.
+fn z_inflate(src: ptr, len: int, out: ptr, cap: int) -> int {
+  z_start(src, len)
+  let lit = z_table_new(288)
+  let dist = z_table_new(30)
+  let w = 0
+  let final = 0
+  while final == 0 {
+    final = z_bits(1)
+    let btype = z_bits(2)
+    if z_err != 0 { return -1 }
+    if btype == 0 { w = z_stored(out, w, cap) }
+    if btype == 1 {
+      z_fixed_tables(lit, dist)
+      w = z_codes(out, w, cap, lit, dist)
+    }
+    if btype == 2 {
+      if z_dynamic_tables(lit, dist) == 0 { return -1 }
+      w = z_codes(out, w, cap, lit, dist)
+    }
+    if btype == 3 { return -1 }
+    if w < 0 { return -1 }
+  }
+  mem_free(lit)
+  mem_free(dist)
+  return w
+}
+
+# zlib wrapper (RFC 1950): two header bytes, then DEFLATE, then Adler-32.
+fn z_uncompress(src: ptr, len: int, out: ptr, cap: int) -> int {
+  if len < 2 { return -1 }
+  let cmf = peek8(src, 0)
+  if band(cmf, 15) != 8 { return -1 }
+  return z_inflate(ptr_add(src, 2), len - 2, out, cap)
+}

@@ -1,0 +1,32 @@
+# runtime/web/imports.txt — every symbol a web build may leave undefined.
+#
+# ludicc passes this to wasm-ld as --allow-undefined-file, so these become the
+# module's wasm imports and *anything else* undefined is a link error at build
+# time rather than a LinkError in the browser. That matters because LLVM invents
+# libcalls (calloc, bcmp, memmove) that ludicc never emitted: without this list
+# they would silently become imports nobody implements.
+#
+# runtime/web/platform.js supplies all of them.
+
+# the window — the same five-function protocol runtime/native/cocoa.ll implements
+win_open
+win_poll
+win_present
+win_running
+win_close
+
+# files: a preloaded image of the game's assets, plus localStorage for saves
+web_fopen
+web_fread
+web_fwrite
+web_fclose
+web_fseek
+web_ftell
+
+# stdin, stdout, the clock, and giving up
+web_getchar
+web_putchar
+web_print_str
+web_print_int
+web_time
+web_exit

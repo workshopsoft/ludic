@@ -1,0 +1,167 @@
+# combat.ludic — the co-op turn-based battle state machine.
+
+# The battle is a state machine over R_PHASE. `machine` dispatches on the
+# register and `become` transitions to a named state — no more `if ph == N`
+# ladders. Knight turn (0,1), Mage turn (2,3), Enemy turn (4).
+system Battle phase Update {
+  if reg(R_MODE) == 1 {
+    let k = key()
+    for (e) in query [Stats, {Enemy}] {
+      machine R_PHASE {
+
+        state KnightMenu = 0 {
+          for (st, pt) in query [Stats, Party] {
+            if pt.slot == 0 {
+              if st.hp <= 0 {
+                become MageMenu
+                setreg(R_CUR, 0)
+              } else {
+                if k == 'w' { setreg(R_CUR, max(0, reg(R_CUR) - 1)) }
+                if k == 's' { setreg(R_CUR, min(3, reg(R_CUR) + 1)) }
+                if is_confirm(k) {
+                  match reg(R_CUR) {
+                    0 => {
+                      let d = max(1, st.atk - e.def + rng_range(0, 4))
+                      e.hp = e.hp - d
+                      setreg(R_PDMG, d)
+                    }
+                    1 => { st.guard = 1  setreg(R_PDMG, 0) }
+                    2 => {
+                      if reg(R_POTION) > 0 {
+                        setreg(R_POTION, reg(R_POTION) - 1)
+                        st.hp = min(st.maxhp, st.hp + 24)
+                        setreg(R_PDMG, 24)
+                      } else { setreg(R_PDMG, 0) }
+                    }
+                    3 => {
+                      if rng_chance(50) { e.hp = 0  setreg(R_MODE, 0) }
+                      else { setreg(R_PDMG, 0) }
+                    }
+                  }
+                  become KnightResolve
+                  setreg(R_CUR, 0)
+                }
+              }
+            }
+          }
+        }
+
+        state KnightResolve = 1 {
+          if k != 0 {
+            if e.hp <= 0 {
+              grant_xp(e.xp)
+              setreg(R_GOLD, reg(R_GOLD) + e.xp)
+              if reg(R_ETYPE) == 2 { setreg(R_BOSS, 1)  setreg(R_MODE, 3)  setreg(R_ACK, 0) }
+              else { setreg(R_MODE, 0) }
+              become KnightMenu
+            } else {
+              become MageMenu
+              setreg(R_CUR, 0)
+            }
+          }
+        }
+
+        state MageMenu = 2 {
+          for (st, pt) in query [Stats, Party] {
+            if pt.slot == 1 {
+              if st.hp <= 0 {
+                become EnemyTurn
+              } else {
+                if k == 'i' { setreg(R_CUR, max(0, reg(R_CUR) - 1)) }
+                if k == 'k' { setreg(R_CUR, min(2, reg(R_CUR) + 1)) }
+                if k == 'j' {
+                  match reg(R_CUR) {
+                    0 => {
+                      let d = max(1, st.atk + 5 - e.def + rng_range(0, 5))
+                      e.hp = e.hp - d
+                      setreg(R_PDMG, d)
+                    }
+                    1 => {
+                      if st.mp >= 4 {
+                        st.mp = st.mp - 4
+                        for (t2, p2) in query [Stats, Party] {
+                          if p2.slot == 0 { t2.hp = min(t2.maxhp, t2.hp + 16) }
+                        }
+                        setreg(R_PDMG, 16)
+                      } else { setreg(R_PDMG, 0) }
+                    }
+                    2 => { st.guard = 1  setreg(R_PDMG, 0) }
+                  }
+                  become MageResolve
+                  setreg(R_CUR, 0)
+                }
+              }
+            }
+          }
+        }
+
+        state MageResolve = 3 {
+          if k != 0 {
+            if e.hp <= 0 {
+              grant_xp(e.xp)
+              setreg(R_GOLD, reg(R_GOLD) + e.xp)
+              if reg(R_ETYPE) == 2 { setreg(R_BOSS, 1)  setreg(R_MODE, 3)  setreg(R_ACK, 0) }
+              else { setreg(R_MODE, 0) }
+              become KnightMenu
+            } else {
+              become EnemyTurn
+            }
+          }
+        }
+
+        state EnemyTurn = 4 {
+          if k != 0 {
+            let done = 0
+            for (t3) in query [Stats, {Party}] {
+              if done == 0 {
+                if t3.hp > 0 {
+                  let ed = max(1, e.atk - t3.def + rng_range(0, 4))
+                  if t3.guard == 1 { ed = ed / 2  t3.guard = 0 }
+                  t3.hp = t3.hp - ed
+                  setreg(R_EDMG, ed)
+                  done = 1
+                }
+              }
+            }
+            let alive = 0
+            for (t4) in query [Stats, {Party}] {
+              if t4.hp > 0 { alive = alive + 1 }
+            }
+            if alive == 0 { setreg(R_MODE, 2)  setreg(R_ACK, 0) }
+            else {
+              become KnightMenu
+              setreg(R_CUR, 0)
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+system CleanBattle phase LateUpdate {
+  if reg(R_MODE) != 1 {
+    for (e) in query [Stats, {Enemy}] {
+      despawn self()
+    }
+  }
+}
+
+system Meta phase Update {
+  let k = key()
+  if reg(R_MODE) == 2 {
+    if k == 0 { setreg(R_ACK, 1) }
+    if k != 0 {
+      if reg(R_ACK) == 1 {
+        for (h) in query [Stats, {Party}] { h.hp = h.maxhp }
+        setreg(R_MODE, 0)
+      }
+    }
+  }
+  if reg(R_MODE) == 3 {
+    if k == 0 { setreg(R_ACK, 1) }
+    if k != 0 {
+      if reg(R_ACK) == 1 { setreg(R_MODE, 0) }
+    }
+  }
+}

@@ -1,0 +1,11 @@
+game T {
+  main {
+    let xs = new []int
+    print_int(len(xs))       # 0
+    for i in 0 .. 20 { push(xs, i * i) }
+    print_int(len(xs))       # 20
+    print_int(xs[19])        # 361
+    xs[3] = 777
+    print_int(xs[3])         # 777
+  }
+}

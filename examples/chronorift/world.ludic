@@ -1,0 +1,43 @@
+# world.ludic — the data model: components, entity archetypes, constants.
+# Imported by examples/chronorift.ludic. No `game` wrapper (this is a fragment).
+
+component Pos    { x: int = 0, y: int = 0 }
+component Actor  { kind: int = 0 }
+component Stats  { hp: int = 1, maxhp: int = 1, mp: int = 0, maxmp: int = 0,
+                   atk: int = 1, def: int = 0, lvl: int = 1, xp: int = 0, guard: int = 0 }
+component Party  { slot: int = 0 }
+
+# Entity KINDS. Identity is stored as one integer per entity (L_kind), not as
+# an empty marker component. Query membership with {Player} / {Enemy}.
+archetype Player { Pos, Actor, Party, Stats }   # the controllable knight
+archetype Ally   { Party, Stats }               # backline mage (no overworld body)
+archetype Enemy  { Actor, Stats }               # battle foe
+
+const MW: int = 40
+const MH: int = 18
+
+const SPR_GRASS: int = 0
+const SPR_TREE:  int = 1
+const SPR_PATH:  int = 2
+const SPR_HOUSE: int = 3
+const SPR_DOOR:  int = 4
+const SPR_HERO:  int = 5
+const SPR_SLIME: int = 6
+const SPR_SKEL:  int = 7
+const SPR_BOSS:  int = 8
+const SPR_MAGE:  int = 9
+const SPR_FLOOR: int = 10
+const SPR_WALL:  int = 11
+
+const R_MODE:  int = 0    # 0 field, 1 battle, 2 gameover, 3 victory
+const R_PHASE: int = 1
+const R_CUR:   int = 2
+const R_ENC:   int = 3
+const R_ETYPE: int = 4    # 0 slime, 1 skeleton, 2 boss
+const R_PDMG:  int = 5
+const R_EDMG:  int = 6
+const R_GOLD:  int = 7
+const R_MAP:   int = 8    # 0 overworld, 1 dungeon
+const R_BOSS:  int = 9    # boss defeated flag
+const R_ACK:   int = 10   # debounce for end screens
+const R_POTION: int = 11  # potions in inventory

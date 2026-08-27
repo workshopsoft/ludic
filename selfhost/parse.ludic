@@ -1,0 +1,322 @@
+# parse.ludic — recursive-descent parser: the token slice -> an AST.
+# Reduced grammar: structs, vars, consts, fns, main; no ECS/scene/ui/match.
+# Mirrors compiler/front/parse.c. Uses the global `toks` and a cursor `pi`.
+
+var pi: int = 0
+var prog: []Node                 # the top-level declarations
+var g_game_name: ptr             # the `game`/`module` name
+
+fn cur() -> Tok { return toks[pi] }
+fn pk(o: int) -> Tok { return toks[pi + o] }
+fn is_op(v: ptr) -> bool { let t = toks[pi]  return t.kind == TK_OP and streq(t.text, v) }
+fn is_id(v: ptr) -> bool { let t = toks[pi]  return t.kind == TK_ID and streq(t.text, v) }
+fn is_kw(v: ptr) -> bool { return is_id(v) }
+
+fn perr(msg: ptr) -> void {
+  let e = file_stderr()
+  file_write(e, "ludicc(self): parse error: ", 27)
+  file_write(e, msg, slen(msg))
+  file_write(e, "\n", 1)
+  os_exit(1)
+}
+
+fn eat_op(v: ptr) -> void { if not is_op(v) { perr(v) } pi = pi + 1 }
+fn eat_id() -> ptr {
+  let t = toks[pi]
+  if t.kind != TK_ID { perr("expected identifier") }
+  pi = pi + 1
+  return t.text
+}
+fn skipnl() -> void { while toks[pi].kind == TK_NL { pi = pi + 1 } }
+
+# a type: `[]T` slice, or a plain name (int/ptr/str/bool/struct)
+fn ptype() -> ptr {
+  if is_op("[") {
+    pi = pi + 1
+    eat_op("]")
+    let el = ptype()
+    let out = mem_alloc(slen(el) + 3)
+    poke8(out, 0, 91) poke8(out, 1, 93)              # "[]"
+    let i = 0
+    while peek8(el, i) != 0 { poke8(out, 2 + i, peek8(el, i)) i = i + 1 }
+    poke8(out, 2 + i, 0)
+    return out
+  }
+  return eat_id()
+}
+
+# ---- expressions -----------------------------------------------------------
+fn expr() -> Node { return p_or() }
+
+fn args_call(call: Node) -> void {
+  eat_op("(") skipnl()
+  while not is_op(")") { push(call.kids, expr()) skipnl() if is_op(",") { pi = pi + 1 skipnl() } }
+  eat_op(")")
+}
+
+fn p_primary() -> Node {
+  let t = toks[pi]
+  if t.kind == TK_INT { let n = node(E_INT) n.ival = t.ival pi = pi + 1 return n }
+  if t.kind == TK_FLOAT { let n = node(E_FLOAT) n.ival = t.ival pi = pi + 1 return n }
+  if t.kind == TK_STR { let n = node(E_STR) n.s = t.text pi = pi + 1 return n }
+  if t.kind == TK_ID {
+    if streq(t.text, "true")  { let n = node(E_BOOL) n.ival = 1 pi = pi + 1 return n }
+    if streq(t.text, "false") { let n = node(E_BOOL) n.ival = 0 pi = pi + 1 return n }
+    if streq(t.text, "new")   { pi = pi + 1  let n = node(E_NEW) n.s = ptype() return n }
+    let n = node(E_ID) n.s = t.text pi = pi + 1 return n
+  }
+  if is_op("(") { pi = pi + 1 skipnl() let e = expr() skipnl() eat_op(")") return e }
+  perr("expected expression")
+  return node(E_INT)
+}
+
+fn p_postfix() -> Node {
+  let e = p_primary()
+  while true {
+    if is_op(".") { pi = pi + 1 let m = node(E_MEMBER) m.a = e m.s = eat_id() e = m }
+    else { if is_op("[") { pi = pi + 1 let ix = node(E_INDEX) ix.a = e ix.b = expr() eat_op("]") e = ix }
+      else { if is_op("(") { let c = node(E_CALL) c.a = e args_call(c) e = c } else { break } } }
+  }
+  return e
+}
+
+fn p_unary() -> Node {
+  if is_op("-") { pi = pi + 1 let n = node(E_UN) n.s = "-" n.a = p_unary() return n }
+  if is_id("not") { pi = pi + 1 let n = node(E_UN) n.s = "not" n.a = p_unary() return n }
+  return p_postfix()
+}
+
+fn mkbin(op: ptr, l: Node, r: Node) -> Node { let b = node(E_BIN) b.s = op b.a = l b.b = r return b }
+
+fn p_mul() -> Node {
+  let l = p_unary()
+  while is_op("*") or is_op("/") or is_op("%") { let op = toks[pi].text pi = pi + 1 l = mkbin(op, l, p_unary()) }
+  return l
+}
+fn p_add() -> Node {
+  let l = p_mul()
+  while is_op("+") or is_op("-") { let op = toks[pi].text pi = pi + 1 l = mkbin(op, l, p_mul()) }
+  return l
+}
+fn p_cmp() -> Node {
+  let l = p_add()
+  while is_op("<") or is_op("<=") or is_op(">") or is_op(">=") or is_op("==") or is_op("!=") {
+    let op = toks[pi].text pi = pi + 1 l = mkbin(op, l, p_add())
+  }
+  return l
+}
+fn p_and() -> Node {
+  let l = p_cmp()
+  while is_id("and") { pi = pi + 1 l = mkbin("and", l, p_cmp()) }
+  return l
+}
+fn p_or() -> Node {
+  let l = p_and()
+  while is_id("or") { pi = pi + 1 l = mkbin("or", l, p_and()) }
+  return l
+}
+
+# a record literal `{ field = value, ... }` — used by spawn component inits
+fn record() -> Node {
+  eat_op("{")
+  let r = node(E_REC)
+  while true { skipnl() if is_op("}") { break }
+    let fi = node(E_FINIT) fi.s = eat_id() eat_op("=") fi.a = expr() push(r.kids, fi)
+    if is_op(",") { pi = pi + 1 } }
+  eat_op("}") return r
+}
+
+# ---- statements ------------------------------------------------------------
+fn block() -> Node {
+  skipnl() eat_op("{")
+  let b = node(N_BLOCK)
+  while true { skipnl() if is_op("}") { break } push(b.kids, stmt()) }
+  eat_op("}")
+  return b
+}
+
+fn stmt() -> Node {
+  let t = toks[pi]
+  if t.kind == TK_ID {
+    if streq(t.text, "let") {
+      pi = pi + 1 let n = node(S_LET) n.s = eat_id()
+      if is_op(":") { pi = pi + 1 n.ty = ptype() }
+      if is_op("=") { pi = pi + 1 n.a = expr() }
+      return n
+    }
+    if streq(t.text, "return") {
+      pi = pi + 1 let n = node(S_RETURN)
+      if toks[pi].kind != TK_NL and not is_op("}") { n.a = expr() }
+      return n
+    }
+    if streq(t.text, "if") {
+      pi = pi + 1 let n = node(S_IF) n.a = expr() n.b = block() skipnl()
+      if is_id("else") { pi = pi + 1 skipnl()
+        if is_id("if") { n.c = stmt() } else { n.c = block() } }
+      return n
+    }
+    if streq(t.text, "when") {                # `when c { }` — an if with no else
+      pi = pi + 1 let n = node(S_IF) n.a = expr() n.b = block()
+      return n
+    }
+    if streq(t.text, "while") { pi = pi + 1 let n = node(S_WHILE) n.a = expr() n.b = block() return n }
+    if streq(t.text, "for") {
+      pi = pi + 1
+      if is_op("(") { return parse_query_for() }
+      let n = node(S_FOR) n.s = eat_id()
+      let inkw = eat_id()                       # 'in'
+      n.a = expr() eat_op("..") n.b = expr() n.c = block()
+      return n
+    }
+    if streq(t.text, "spawn") { return parse_spawn() }
+    if streq(t.text, "machine") {
+      pi = pi + 1 let n = node(S_MACHINE) n.a = expr() skipnl() eat_op("{")
+      while true { skipnl() if is_op("}") { break }
+        let stkw = eat_id()                     # 'state'
+        let s = node(S_STATE) s.s = eat_id() eat_op("=") s.b = expr() skipnl() s.a = block()
+        push(n.kids, s) }
+      eat_op("}") return n
+    }
+    if streq(t.text, "become") { pi = pi + 1 let n = node(S_BECOME) n.s = eat_id() return n }
+    if streq(t.text, "enter") { pi = pi + 1 let n = node(S_BECOME) n.s = eat_id() n.ival = 1 return n }
+    if streq(t.text, "despawn") { pi = pi + 1 let n = node(S_DESPAWN) n.a = expr() return n }
+    if streq(t.text, "break") { pi = pi + 1 return node(S_BREAK) }
+    if streq(t.text, "continue") { pi = pi + 1 return node(S_CONTINUE) }
+    if streq(t.text, "match") {
+      pi = pi + 1 let n = node(S_MATCH) n.a = expr() skipnl() eat_op("{")
+      while true {
+        skipnl() if is_op("}") { break }
+        let arm = node(S_MARM)
+        while true { push(arm.kids, expr()) if is_op(",") { pi = pi + 1 skipnl() continue } break }
+        eat_op("=>") skipnl()
+        if is_op("{") { arm.a = block() } else { let b = node(N_BLOCK) push(b.kids, stmt()) arm.a = b }
+        push(n.kids, arm)
+      }
+      eat_op("}") return n
+    }
+  }
+  let e = expr()
+  if is_op("=") or is_op("+=") or is_op("-=") or is_op("*=") or is_op("/=") {
+    let n = node(S_ASSIGN) n.s = toks[pi].text pi = pi + 1 n.a = e n.b = expr() return n
+  }
+  let n = node(S_EXPR) n.a = e return n
+}
+
+# ---- declarations ----------------------------------------------------------
+fn parse_struct() -> Node {
+  pi = pi + 1 let n = node(N_STRUCT) n.s = eat_id() skipnl() eat_op("{")
+  while true { skipnl() if is_op("}") { break }
+    let f = node(N_FIELD) f.s = eat_id() eat_op(":") f.ty = ptype()
+    if is_op("=") { pi = pi + 1 f.a = expr() }
+    push(n.kids, f) if is_op(",") { pi = pi + 1 } }
+  eat_op("}") return n
+}
+fn parse_var() -> Node {
+  pi = pi + 1 let n = node(N_VAR) n.s = eat_id() eat_op(":") n.ty = ptype()
+  if is_op("=") { pi = pi + 1 n.a = expr() }
+  return n
+}
+fn parse_const() -> Node {
+  pi = pi + 1 let n = node(N_CONST) n.s = eat_id() eat_op(":") n.ty = ptype() eat_op("=") n.a = expr()
+  return n
+}
+fn parse_fn() -> Node {
+  pi = pi + 1 let n = node(N_FN) n.s = eat_id() eat_op("(")
+  while not is_op(")") {
+    let p = node(N_PARAM) p.s = eat_id() eat_op(":") p.ty = ptype() push(n.kids, p)
+    if is_op(",") { pi = pi + 1 }
+  }
+  eat_op(")")
+  n.ty = "void"
+  if is_op("->") { pi = pi + 1 n.ty = ptype() }
+  n.a = block()
+  return n
+}
+fn parse_main() -> Node { pi = pi + 1 let n = node(N_MAIN) n.a = block() return n }
+
+# directory part of a path, including the trailing '/', or "" if none
+fn dir_of(path: ptr) -> ptr {
+  let last = 0 - 1
+  let i = 0
+  while peek8(path, i) != 0 { if peek8(path, i) == 47 { last = i }  i = i + 1 }
+  if last < 0 { return "" }
+  return substr(path, 0, last + 1)
+}
+fn path_join(dir: ptr, rel: ptr) -> ptr {
+  if peek8(rel, 0) == 47 { return rel }               # absolute
+  return sconcat(dir, rel)
+}
+
+var loaded_paths: []ptr
+var cur_dir: ptr
+
+fn already_loaded(full: ptr) -> bool {
+  let i = 0
+  while i < len(loaded_paths) { if streq(loaded_paths[i], full) { return true }  i = i + 1 }
+  return false
+}
+
+# parse one top-level declaration (or resolve an import) into `prog`
+fn parse_one_decl() -> void {
+  if is_id("import") { pi = pi + 1
+    let t = toks[pi]
+    if t.kind != TK_STR { perr("expected \"path\" after import") }
+    let rel = t.text  pi = pi + 1
+    do_import(rel)
+    return
+  }
+  if is_id("struct") { push(prog, parse_struct()) return }
+  if is_id("component") { push(prog, parse_component()) return }
+  if is_id("archetype") { push(prog, parse_archetype()) return }
+  if is_id("system") or is_id("edge") { push(prog, parse_system()) return }
+  if is_id("ui") { push(prog, parse_ui()) return }
+  if is_id("var")    { push(prog, parse_var()) return }
+  if is_id("const")  { push(prog, parse_const()) return }
+  if is_id("export") { pi = pi + 1 let f = parse_fn() f.ival = 1 push(prog, f) return }
+  if is_id("fn") or is_id("pure") { if is_id("pure") { pi = pi + 1 }  push(prog, parse_fn()) return }
+  if is_id("extern") { push(prog, parse_extern()) return }
+  if is_id("main")   { push(prog, parse_main()) return }
+  perr("expected declaration")
+}
+
+# lex and parse an imported fragment into `prog`, saving/restoring lexer state
+fn do_import(rel: ptr) -> void {
+  let full = path_join(cur_dir, rel)
+  if already_loaded(full) { return }
+  push(loaded_paths, full)
+  let src = read_file(full)
+  if ptr_is_null(src) { perr(sconcat("cannot open import ", full)) }
+  let saved_toks = toks  let saved_pi = pi  let saved_dir = cur_dir
+  cur_dir = dir_of(full)
+  lex(src)                                   # resets the global token stream
+  pi = 0
+  skipnl()
+  while toks[pi].kind != TK_EOF { parse_one_decl() skipnl() }
+  toks = saved_toks  pi = saved_pi  cur_dir = saved_dir
+}
+
+# a game (has systems/components) links the Ludic runtime; auto-splice it the
+# way the C compiler does. Tools (a `main` block, no ECS) get nothing.
+fn maybe_splice_runtime() -> void {
+  if not has_ecs() { return }
+  let saved = cur_dir
+  cur_dir = ""
+  do_import("runtime/native/core.ludic")
+  cur_dir = saved
+}
+
+fn parse_program() -> void {
+  prog = new []Node
+  loaded_paths = new []ptr
+  skipnl()
+  g_game_name = "Ludic"
+  # imports may precede the game block
+  while is_id("import") { pi = pi + 1 let t = toks[pi]  let rel = t.text  pi = pi + 1  do_import(rel) skipnl() }
+  if is_id("game") or is_id("module") { pi = pi + 1 g_game_name = eat_id() skipnl() eat_op("{") }
+  while true {
+    skipnl()
+    if toks[pi].kind == TK_EOF { break }
+    if is_op("}") { break }
+    parse_one_decl()
+  }
+}

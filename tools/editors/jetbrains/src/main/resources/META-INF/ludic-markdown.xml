@@ -1,0 +1,14 @@
+<idea-plugin>
+    <!--
+      Loaded only when the Markdown plugin is present.
+
+      Nothing needs to be declared for ```ludic fences to highlight: the
+      Markdown plugin resolves a fence's info string against registered language
+      IDs, and io.ludic.ide.LudicLanguage registers as "Ludic". This file exists
+      so that the dependency is expressed honestly — the feature does depend on
+      the Markdown plugin — and as the place to hang Markdown-specific behaviour
+      if the fence syntax ever needs more than the default.
+    -->
+    <extensions defaultExtensionNs="com.intellij">
+    </extensions>
+</idea-plugin>

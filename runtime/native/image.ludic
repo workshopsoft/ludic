@@ -1,0 +1,436 @@
+# ============================================================================
+# image.ludic — PNG decoding, images and sprites, written in Ludic.
+#
+# Replaces the C runtime's image half. Reads a real .png off disk, inflates the
+# IDAT stream with the Ludic DEFLATE decoder next door, reverses the per-scanline
+# filters, and expands whatever colour type the file uses into 0xAARRGGBB.
+#
+# Supported: 8/4/2/1-bit greyscale, 8-bit truecolour, indexed with PLTE/tRNS,
+# greyscale+alpha and RGBA — the same set the C runtime handled.
+# ============================================================================
+
+const IMG_MAX: int = 32
+const SPR_MAX: int = 160
+const SPR_SZ:  int = 16
+
+var img_px:   ptr = ptr_null()     # IMG_MAX pointers to RGBA buffers
+var img_w:    ptr = ptr_null()
+var img_h:    ptr = ptr_null()
+var img_n:    int = 0
+
+var spr_px:   ptr = ptr_null()     # SPR_MAX * 16 * 16 RGBA pixels, one block
+var spr_n:    int = 0
+
+fn rt_image_init() -> void {
+  img_px = mem_alloc(IMG_MAX * 8)
+  img_w = mem_alloc(IMG_MAX * 4)
+  img_h = mem_alloc(IMG_MAX * 4)
+  spr_px = mem_alloc(SPR_MAX * SPR_SZ * SPR_SZ * 4)
+  mem_set(spr_px, 0, SPR_MAX * SPR_SZ * SPR_SZ * 4)
+}
+
+# ---- decoding -------------------------------------------------------------
+fn png_be32(b: ptr, at: int) -> int {
+  return bor(bor(shl(peek8(b, at), 24), shl(peek8(b, at + 1), 16)),
+             bor(shl(peek8(b, at + 2), 8), peek8(b, at + 3)))
+}
+
+fn png_tag(b: ptr, at: int, a: int, c: int, d: int, e: int) -> bool {
+  if peek8(b, at) != a { return false }
+  if peek8(b, at + 1) != c { return false }
+  if peek8(b, at + 2) != d { return false }
+  if peek8(b, at + 3) != e { return false }
+  return true
+}
+
+fn rt_read_file(path: str) -> ptr {
+  let f = file_open(path, "rb")
+  if ptr_is_null(f) { return ptr_null() }
+  file_seek(f, 0, 2)
+  let n = file_tell(f)
+  file_seek(f, 0, 0)
+  if n <= 0 { file_close(f) return ptr_null() }
+  let buf = mem_alloc(n + 8)
+  file_read(f, buf, n)
+  file_close(f)
+  rt_file_len = n
+  return buf
+}
+var rt_file_len: int = 0
+
+# decoded image is left in these; -1 width means failure
+var png_w:  int = 0
+var png_h:  int = 0
+var png_px: ptr = ptr_null()
+
+fn rt_decode_png(path: str) -> bool {
+  png_w = 0
+  png_h = 0
+  png_px = ptr_null()
+  let d = rt_read_file(path)
+  if ptr_is_null(d) { return false }
+  let size = rt_file_len
+  if size < 8 { mem_free(d) return false }
+  if peek8(d, 0) != 137 { mem_free(d) return false }
+  if peek8(d, 1) != 80 { mem_free(d) return false }
+
+  let w = 0
+  let h = 0
+  let bd = 0
+  let ct = 0
+  let plte = mem_alloc(768)
+  let trns = mem_alloc(256)
+  let ntrns = 0
+  let idat = mem_alloc(size)
+  let idlen = 0
+  let i = 8
+  let done = 0
+
+  while done == 0 {
+    if i + 8 > size { done = 1 }
+    if done == 0 {
+      let ln = png_be32(d, i)
+      let typ = i + 4
+      let body = i + 8
+      if ln < 0 { done = 1 }
+      if body + ln > size { done = 1 }
+      if done == 0 {
+        if png_tag(d, typ, 73, 72, 68, 82) {          # IHDR
+          w = png_be32(d, body)
+          h = png_be32(d, body + 4)
+          bd = peek8(d, body + 8)
+          ct = peek8(d, body + 9)
+        }
+        if png_tag(d, typ, 80, 76, 84, 69) {          # PLTE
+          let m = min(ln, 768)
+          for k in 0 .. m { poke8(plte, k, peek8(d, body + k)) }
+        }
+        if png_tag(d, typ, 116, 82, 78, 83) {         # tRNS
+          ntrns = min(ln, 256)
+          for k in 0 .. ntrns { poke8(trns, k, peek8(d, body + k)) }
+        }
+        if png_tag(d, typ, 73, 68, 65, 84) {          # IDAT
+          for k in 0 .. ln { poke8(idat, idlen + k, peek8(d, body + k)) }
+          idlen = idlen + ln
+        }
+        if png_tag(d, typ, 73, 69, 78, 68) { done = 1 }   # IEND
+        i = i + 12 + ln
+      }
+    }
+  }
+
+  if w <= 0 { mem_free(d) return false }
+  if h <= 0 { mem_free(d) return false }
+
+  let channels = 1
+  if ct == 2 { channels = 3 }
+  if ct == 6 { channels = 4 }
+  if ct == 4 { channels = 2 }
+  let bppbits = bd * channels
+  let fbpp = (bppbits + 7) / 8
+  if fbpp < 1 { fbpp = 1 }
+  let stride = (w * bppbits + 7) / 8
+  let rawlen = h * (stride + 1)
+  let raw = mem_alloc(rawlen + 8)
+  if z_uncompress(idat, idlen, raw, rawlen) < 0 {
+    mem_free(d) mem_free(raw) mem_free(idat)
+    return false
+  }
+
+  # reverse the per-scanline filters, in place
+  for y in 0 .. h {
+    let line = y * (stride + 1)
+    let ft = peek8(raw, line)
+    let cur = line + 1
+    let prev = cur - (stride + 1)
+    for x in 0 .. stride {
+      let a = 0
+      let b = 0
+      let c = 0
+      if x >= fbpp { a = peek8(raw, cur + x - fbpp) }
+      if y > 0 { b = peek8(raw, prev + x) }
+      if x >= fbpp { if y > 0 { c = peek8(raw, prev + x - fbpp) } }
+      let v = peek8(raw, cur + x)
+      if ft == 1 { v = v + a }
+      if ft == 2 { v = v + b }
+      if ft == 3 { v = v + (a + b) / 2 }
+      if ft == 4 {
+        let p = a + b - c
+        let pa = abs(p - a)
+        let pb = abs(p - b)
+        let pc = abs(p - c)
+        let pick = c
+        if pb <= pc { pick = b }
+        if pa <= pb { if pa <= pc { pick = a } }
+        v = v + pick
+      }
+      poke8(raw, cur + x, band(v, 255))
+    }
+  }
+
+  # expand to 0xAARRGGBB
+  let out = mem_alloc(w * h * 4)
+  let maxv = shl(1, bd) - 1
+  for y in 0 .. h {
+    let row = y * (stride + 1) + 1
+    for x in 0 .. w {
+      let R = 0
+      let G = 0
+      let B = 0
+      let A = 255
+      if ct == 6 {
+        R = peek8(raw, row + x * 4)
+        G = peek8(raw, row + x * 4 + 1)
+        B = peek8(raw, row + x * 4 + 2)
+        A = peek8(raw, row + x * 4 + 3)
+      }
+      if ct == 2 {
+        R = peek8(raw, row + x * 3)
+        G = peek8(raw, row + x * 3 + 1)
+        B = peek8(raw, row + x * 3 + 2)
+      }
+      if ct == 4 {
+        R = peek8(raw, row + x * 2)
+        G = R
+        B = R
+        A = peek8(raw, row + x * 2 + 1)
+      }
+      if ct == 3 {
+        let bp = x * bd
+        let idx = band(shr(peek8(raw, row + bp / 8), 8 - bd - bp % 8), maxv)
+        R = peek8(plte, idx * 3)
+        G = peek8(plte, idx * 3 + 1)
+        B = peek8(plte, idx * 3 + 2)
+        if idx < ntrns { A = peek8(trns, idx) }
+      }
+      if ct == 0 {
+        let bp = x * bd
+        let s = band(shr(peek8(raw, row + bp / 8), 8 - bd - bp % 8), maxv)
+        let g = s
+        if bd != 8 { g = s * 255 / maxv }
+        R = g
+        G = g
+        B = g
+      }
+      poke32(out, y * w + x, bor(bor(shl(A, 24), shl(R, 16)), bor(shl(G, 8), B)))
+    }
+  }
+
+  mem_free(d)
+  mem_free(idat)
+  mem_free(raw)
+  mem_free(plte)
+  mem_free(trns)
+  png_w = w
+  png_h = h
+  png_px = out
+  return true
+}
+
+# ---- images ---------------------------------------------------------------
+fn rt_image_load(path: str) -> int {
+  if img_n >= IMG_MAX { return 0 - 1 }
+  if rt_decode_png(path) == false { return 0 - 1 }
+  let id = img_n
+  img_n = img_n + 1
+  pokep(img_px, id, png_px)
+  poke32(img_w, id, png_w)
+  poke32(img_h, id, png_h)
+  return id
+}
+
+fn rt_blend_px(x: int, y: int, argb: int) -> void {
+  let a = band(shr(argb, 24), 255)
+  if a == 0 { return }
+  if x < 0 { return }
+  if y < 0 { return }
+  if x >= rt_fbw { return }
+  if y >= rt_fbh { return }
+  let r = band(shr(argb, 16), 255)
+  let g = band(shr(argb, 8), 255)
+  let b = band(argb, 255)
+  if a != 255 {
+    let dst = peek32(rt_fb, y * rt_fbw + x)
+    let dr = band(shr(dst, 16), 255)
+    let dg = band(shr(dst, 8), 255)
+    let db = band(dst, 255)
+    r = (r * a + dr * (255 - a)) / 255
+    g = (g * a + dg * (255 - a)) / 255
+    b = (b * a + db * (255 - a)) / 255
+  }
+  poke32(rt_fb, y * rt_fbw + x, bor(bor(shl(r, 16), shl(g, 8)), b))
+}
+
+fn rt_draw_image(id: int, dx: int, dy: int) -> void {
+  if id < 0 { return }
+  if id >= img_n { return }
+  let w = peek32(img_w, id)
+  let h = peek32(img_h, id)
+  let s = peekp(img_px, id)
+  for y in 0 .. h {
+    for x in 0 .. w {
+      rt_blend_px(dx + x, dy + y, peek32(s, y * w + x))
+    }
+  }
+}
+
+fn rt_draw_image_scaled(id: int, dx: int, dy: int, dw: int, dh: int) -> void {
+  if id < 0 { return }
+  if id >= img_n { return }
+  if dw <= 0 { return }
+  if dh <= 0 { return }
+  let w = peek32(img_w, id)
+  let h = peek32(img_h, id)
+  let s = peekp(img_px, id)
+  for y in 0 .. dh {
+    for x in 0 .. dw {
+      rt_blend_px(dx + x, dy + y, peek32(s, (y * h / dh) * w + x * w / dw))
+    }
+  }
+}
+
+# map one destination axis onto the source for a 9-slice: the two insets are
+# copied 1:1 and only the middle stretches
+fn rt_9map(d: int, dsz: int, ssz: int, inset: int) -> int {
+  if inset * 2 >= dsz { return d * ssz / max(dsz, 1) }
+  if inset * 2 >= ssz { return d * ssz / max(dsz, 1) }
+  if d < inset { return d }
+  if d >= dsz - inset { return ssz - (dsz - d) }
+  return inset + (d - inset) * (ssz - 2 * inset) / (dsz - 2 * inset)
+}
+
+fn rt_draw_9slice(id: int, dx: int, dy: int, dw: int, dh: int, inset: int) -> void {
+  if id < 0 { return }
+  if id >= img_n { return }
+  if dw <= 0 { return }
+  if dh <= 0 { return }
+  let w = peek32(img_w, id)
+  let h = peek32(img_h, id)
+  let s = peekp(img_px, id)
+  for y in 0 .. dh {
+    let sy = rt_9map(y, dh, h, inset)
+    for x in 0 .. dw {
+      rt_blend_px(dx + x, dy + y, peek32(s, sy * w + rt_9map(x, dw, w, inset)))
+    }
+  }
+}
+
+# ---- sprites (16x16 art) --------------------------------------------------
+fn rt_load_png(path: str) -> int {
+  if spr_n >= SPR_MAX { return 0 - 1 }
+  if rt_decode_png(path) == false { return 0 - 1 }
+  let id = spr_n
+  spr_n = spr_n + 1
+  let base = id * SPR_SZ * SPR_SZ
+  for y in 0 .. SPR_SZ {
+    for x in 0 .. SPR_SZ {
+      let px = 0
+      if x < png_w {
+        if y < png_h {
+          let c = peek32(png_px, y * png_w + x)
+          if band(shr(c, 24), 255) >= 128 { px = bor(shl(255, 24), band(c, 16777215)) }
+        }
+      }
+      poke32(spr_px, base + y * SPR_SZ + x, px)
+    }
+  }
+  mem_free(png_px)
+  png_px = ptr_null()
+  return id
+}
+
+fn rt_draw_sprite(id: int, px: int, py: int) -> void {
+  if id < 0 { return }
+  if id >= spr_n { return }
+  let base = id * SPR_SZ * SPR_SZ
+  for y in 0 .. SPR_SZ {
+    for x in 0 .. SPR_SZ {
+      let p = peek32(spr_px, base + y * SPR_SZ + x)
+      if band(shr(p, 24), 255) != 0 {
+        rt_put_px(px + x, py + y, band(p, 16777215))
+      }
+    }
+  }
+}
+
+fn rt_draw_sprite_scaled(id: int, px: int, py: int, sc: int) -> void {
+  if id < 0 { return }
+  if id >= spr_n { return }
+  if sc < 1 { return }
+  let base = id * SPR_SZ * SPR_SZ
+  for y in 0 .. SPR_SZ {
+    for x in 0 .. SPR_SZ {
+      let p = peek32(spr_px, base + y * SPR_SZ + x)
+      if band(shr(p, 24), 255) != 0 {
+        rt_fill_rect(px + x * sc, py + y * sc, sc, sc, band(p, 16777215))
+      }
+    }
+  }
+}
+
+# ---- .lspr sprite sheets (palette + ASCII rows) ---------------------------
+fn rt_hexval(c: int) -> int {
+  if c >= 48 { if c <= 57 { return c - 48 } }
+  if c >= 97 { if c <= 102 { return c - 87 } }
+  if c >= 65 { if c <= 70 { return c - 55 } }
+  return 0 - 1
+}
+
+fn rt_load_sprites(path: str) -> void {
+  let d = rt_read_file(path)
+  if ptr_is_null(d) { spr_n = 0 return }
+  let size = rt_file_len
+  let pal = mem_alloc(128 * 4)
+  mem_set(pal, 0, 128 * 4)
+  let cur = 0 - 1
+  let row = 0
+  let i = 0
+  while i < size {
+    let start = i
+    let len = 0
+    let j = start
+    while j < size {
+      let ch = peek8(d, j)
+      if ch == 10 { j = size } else { len = len + 1  j = j + 1 }
+    }
+    let c0 = peek8(d, start)
+    if c0 == 112 {                       # 'p' — "pal <char> <rrggbb>"
+      let ch = peek8(d, start + 4)
+      let v = 0
+      for k in 0 .. 6 {
+        let hv = rt_hexval(peek8(d, start + 6 + k))
+        if hv >= 0 { v = v * 16 + hv }
+      }
+      if ch < 128 { poke32(pal, ch, bor(shl(255, 24), v)) }
+    }
+    if c0 == 115 {                       # 's' — "spr" starts a new sprite
+      cur = 0 - 1
+      if spr_n < SPR_MAX {
+        cur = spr_n
+        spr_n = spr_n + 1
+        mem_set(ptr_add(spr_px, cur * SPR_SZ * SPR_SZ * 4), 0, SPR_SZ * SPR_SZ * 4)
+      }
+      row = 0
+    }
+    if c0 != 112 {
+      if c0 != 115 {
+        if c0 != 35 {                    # '#' comment
+          if cur >= 0 {
+            if row < SPR_SZ {
+              for x in 0 .. SPR_SZ {
+                if x < len {
+                  poke32(spr_px, cur * SPR_SZ * SPR_SZ + row * SPR_SZ + x,
+                         peek32(pal, band(peek8(d, start + x), 127)))
+                }
+              }
+              row = row + 1
+            }
+          }
+        }
+      }
+    }
+    i = start + len + 1
+  }
+  mem_free(pal)
+  mem_free(d)
+}

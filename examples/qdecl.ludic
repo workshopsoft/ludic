@@ -1,0 +1,37 @@
+# ============================================================================
+# qdecl.ludic — a system whose query lives in its signature.
+#
+#   system CleanBattle phase LateUpdate
+#     query (b, p) [Battle, Pos, {Foe}] where b.hp <= 0
+#   { … }
+#
+# is the same thing as writing `for (b, p) in query [...] where ... { … }` around
+# the whole body — the loop header just moves into the declaration. The body runs
+# once per matching entity, and self() is that entity.
+# ============================================================================
+game QueryDecl {
+  component Battle { hp: int = 0, side: int = 0 }
+  component Pos { x: int = 0, y: int = 0 }
+  archetype Foe { Battle, Pos }
+
+  system Seed phase Start {
+    spawn Foe { Battle = { hp = 3, side = 1 } }
+    spawn Foe { Battle = { hp = 0, side = 1 } }
+    spawn Foe { Battle = { hp = -2, side = 0 } }
+  }
+
+  system CleanBattle phase LateUpdate
+    query (b, p) [Battle, Pos, {Foe}] where b.hp <= 0 and b.side == 1
+  {
+    print_int(p.x)
+    despawn self()
+  }
+
+  system Census phase Render
+    query (b) [Battle]
+  {
+    print_int(b.hp)
+  }
+
+  system Bye phase Render { quit() }
+}

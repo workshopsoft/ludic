@@ -1,0 +1,136 @@
+# ============================================================================
+# snake.ludic — a second, unrelated game in Ludic, to prove the language is
+# general: compiled by the SAME unmodified ludicc + runtime as the JRPG.
+# No sprites/assets — pure primitives. Build: ./build.sh examples/snake.ludic
+# ============================================================================
+game Snake {
+
+  component Pos { x: int = 0, y: int = 0 }
+  component Seg { order: int = 0 }
+
+  const GW: int = 20
+  const GH: int = 15
+  const TS: int = 16
+
+  const R_DIR:   int = 0    # 0 up 1 down 2 left 3 right
+  const R_LEN:   int = 1
+  const R_TICK:  int = 2
+  const R_FX:    int = 3
+  const R_FY:    int = 4
+  const R_MODE:  int = 5    # 0 play 1 gameover
+  const R_SCORE: int = 6
+  const R_ATE:   int = 7
+  const R_TX:    int = 8
+  const R_TY:    int = 9
+  const R_ACK:   int = 10
+
+  fn reset(x: int) -> int {
+    for (p, s) in query [Pos, Seg] { despawn self() }
+    spawn S0 { Seg = { order = 0 }  Pos = { x = 10, y = 7 } }
+    spawn S1 { Seg = { order = 1 }  Pos = { x = 9,  y = 7 } }
+    spawn S2 { Seg = { order = 2 }  Pos = { x = 8,  y = 7 } }
+    setreg(R_DIR, 3)
+    setreg(R_LEN, 3)
+    setreg(R_TICK, 0)
+    setreg(R_MODE, 0)
+    setreg(R_SCORE, 0)
+    setreg(R_FX, 14)
+    setreg(R_FY, 7)
+    return 0
+  }
+
+  system Boot phase Start { reset(0) }
+
+  system Input phase Input {
+    let k = key()
+    if reg(R_MODE) == 0 {
+      if k == 'w' { if reg(R_DIR) != 1 { setreg(R_DIR, 0) } }
+      if k == 's' { if reg(R_DIR) != 0 { setreg(R_DIR, 1) } }
+      if k == 'a' { if reg(R_DIR) != 3 { setreg(R_DIR, 2) } }
+      if k == 'd' { if reg(R_DIR) != 2 { setreg(R_DIR, 3) } }
+    }
+    if reg(R_MODE) == 1 {
+      if k == 0 { setreg(R_ACK, 1) }
+      if k != 0 { if reg(R_ACK) == 1 { reset(0) } }
+    }
+  }
+
+  system Move phase Update {
+    if reg(R_MODE) == 0 {
+      setreg(R_TICK, reg(R_TICK) + 1)
+      if reg(R_TICK) >= 6 {
+        setreg(R_TICK, 0)
+        let len = reg(R_LEN)
+        for (pt, stg) in query [Pos, Seg] {
+          if stg.order == len - 1 { setreg(R_TX, pt.x)  setreg(R_TY, pt.y) }
+        }
+        for step in 0 .. len {
+          let i = len - 1 - step
+          if i >= 1 {
+            for (pa, sa) in query [Pos, Seg] {
+              if sa.order == i {
+                for (pb, sb) in query [Pos, Seg] {
+                  if sb.order == i - 1 { pa.x = pb.x  pa.y = pb.y }
+                }
+              }
+            }
+          }
+        }
+        setreg(R_ATE, 0)
+        for (ph, sh) in query [Pos, Seg] {
+          if sh.order == 0 {
+            if reg(R_DIR) == 0 { ph.y = ph.y - 1 }
+            if reg(R_DIR) == 1 { ph.y = ph.y + 1 }
+            if reg(R_DIR) == 2 { ph.x = ph.x - 1 }
+            if reg(R_DIR) == 3 { ph.x = ph.x + 1 }
+            if ph.x < 0 { setreg(R_MODE, 1) }
+            if ph.x >= GW { setreg(R_MODE, 1) }
+            if ph.y < 0 { setreg(R_MODE, 1) }
+            if ph.y >= GH { setreg(R_MODE, 1) }
+            if ph.x == reg(R_FX) { if ph.y == reg(R_FY) { setreg(R_ATE, 1) } }
+          }
+        }
+        for (ph, sh) in query [Pos, Seg] {
+          if sh.order == 0 {
+            for (pb, sb) in query [Pos, Seg] {
+              if sb.order > 0 {
+                if pb.x == ph.x { if pb.y == ph.y { setreg(R_MODE, 1) } }
+              }
+            }
+          }
+        }
+        if reg(R_ATE) == 1 {
+          setreg(R_SCORE, reg(R_SCORE) + 1)
+          spawn Body { Seg = { order = len }  Pos = { x = reg(R_TX), y = reg(R_TY) } }
+          setreg(R_LEN, len + 1)
+          setreg(R_FX, rng_range(0, GW - 1))
+          setreg(R_FY, rng_range(0, GH - 1))
+        }
+      }
+    }
+  }
+
+  system Draw phase Render {
+    clear(0x0d1020)
+    for gy in 0 .. GH {
+      for gx in 0 .. GW {
+        let col = 0x141a2e
+        if (gx + gy) % 2 == 0 { col = 0x10162a }
+        fill_rect(gx * TS, gy * TS, TS, TS, col)
+      }
+    }
+    fill_rect(reg(R_FX) * TS + 3, reg(R_FY) * TS + 3, TS - 6, TS - 6, 0xe0405a)
+    for (p, s) in query [Pos, Seg] {
+      let col = 0x40c060
+      if s.order == 0 { col = 0x9dffb0 }
+      fill_rect(p.x * TS + 1, p.y * TS + 1, TS - 2, TS - 2, col)
+    }
+    text(6, 4, "SCORE", 0xffffff, 1)
+    text_int(52, 4, reg(R_SCORE), 0xffe060, 1)
+    if reg(R_MODE) == 1 {
+      text(112, 104, "GAME OVER", 0xff5555, 2)
+      text(84, 140, "PRESS ANY KEY", 0xffffff, 1)
+    }
+    present()
+  }
+}

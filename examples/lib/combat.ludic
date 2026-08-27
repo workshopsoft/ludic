@@ -1,0 +1,46 @@
+# ============================================================================
+# combat.ludic — a Ludic *library*, not a game.
+#
+# `module` instead of `game` means: no entry point, no frame loop. ludicc
+# compiles this to a real shared object —
+#
+#     ludicc examples/lib/combat.ludic --shared -o build/libcombat.dylib
+#
+# — whose `export fn`s are ordinary C-ABI symbols. Anything that can call a
+# .dylib/.so/.dll can call these: another Ludic program via `extern fn`, a game
+# engine, a test harness, a scripting host. Non-exported functions stay private
+# to the library.
+# ============================================================================
+module Combat {
+
+  const CRIT_MULT: int = 2
+
+  # damage after armour, with a crit multiplier applied on an exact roll
+  export fn damage(attack: int, armour: int, roll: int) -> int {
+    let raw = attack - armour
+    if raw < 1 { raw = 1 }
+    if roll == 20 { raw = raw * CRIT_MULT }
+    return raw
+  }
+
+  # how many hits to drop a target — the loop is here so the caller cannot
+  # accidentally disagree with `damage` about rounding
+  export fn hits_to_kill(hp: int, attack: int, armour: int) -> int {
+    let left = hp
+    let n = 0
+    while left > 0 {
+      left = left - damage(attack, armour, 0)
+      n = n + 1
+    }
+    return n
+  }
+
+  export fn xp_for(level: int, kills: int) -> int {
+    return curve(level) * kills
+  }
+
+  # private: not exported, so it is not a symbol in the library
+  fn curve(level: int) -> int {
+    return 10 + level * level * 3
+  }
+}

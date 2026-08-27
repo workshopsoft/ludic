@@ -1,0 +1,16 @@
+# ============================================================================
+# chronorift.ludic — a 2D windowed co-op JRPG written in Ludic (CC0 Kenney art)
+# Overworld + dungeon + random encounters + co-op turn battle + boss + save.
+# Compiles to a native macOS app: ludicc -> LLVM IR -> native binary. No C.
+#
+# This entry file is deliberately thin: the game is split across modules under
+# chronorift/, pulled in with `import`. Paths resolve relative to this file, and
+# each import is include-guarded so re-imports are free.
+# ============================================================================
+game ChronoRift {
+  import "chronorift/world.ludic"      # components, entity archetypes, constants
+  import "chronorift/rules.ludic"      # pure rules + map data (functions)
+  import "chronorift/overworld.ludic"  # boot, movement, encounters, shop
+  import "chronorift/combat.ludic"     # co-op turn battle state machine
+  import "chronorift/draw.ludic"       # the Render system
+}

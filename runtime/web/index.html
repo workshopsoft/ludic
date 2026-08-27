@@ -1,0 +1,106 @@
+<!doctype html>
+<!-- =========================================================================
+     runtime/web/index.html — the page a web build is served from.
+
+     ludicc copies this file next to the .wasm, substituting the module name and
+     the game's title. It mounts a canvas, hands it to runtime/web/platform.js,
+     and gets out of the way: everything you see after that is drawn by compiled
+     Ludic writing pixels into its own framebuffer.
+     ========================================================================= -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{{TITLE}}</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%;
+    background: #101018;
+    color: #c8c8d8;
+    font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  body {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 14px; padding: 16px;
+  }
+  h1 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #8a8aa8; }
+  #screen {
+    display: block;
+    background: #000;
+    border: 1px solid #2a2a3c;
+    border-radius: 3px;
+    /* platform.js publishes --ludic-w/h/scale when the game opens its window.
+       Draw at the scale it asked for, but never wider than the page or taller
+       than the room left over — and derive the limit from the *width* so the
+       aspect ratio survives, which a plain max-height would not do. */
+    --fit-height: 72dvh;
+    width: min(
+      calc(var(--ludic-w, 320) * var(--ludic-scale, 1) * 1px),
+      100%,
+      calc(var(--fit-height) * var(--ludic-w, 320) / var(--ludic-h, 240))
+    );
+    image-rendering: pixelated;
+    touch-action: none;
+  }
+  #status { min-height: 1.5em; color: #6a6a86; font-size: 12px; text-align: center; }
+  #status.error { color: #d08a8a; }
+  /* An on-screen d-pad, shown only where there is no keyboard to type on. */
+  #pad { display: none; gap: 8px; }
+  #pad button {
+    width: 52px; height: 52px;
+    font: inherit; font-size: 16px;
+    color: #c8c8d8; background: #1c1c2a;
+    border: 1px solid #33334a; border-radius: 6px;
+  }
+  #pad button:active { background: #2a2a3e; }
+  @media (hover: none) and (pointer: coarse) { #pad { display: grid; grid-template-columns: repeat(3, auto); } }
+  .spacer { visibility: hidden; }
+</style>
+</head>
+<body>
+
+<h1>{{TITLE}}</h1>
+<canvas id="screen" width="320" height="240"></canvas>
+<p id="status">loading…</p>
+
+<div id="pad" aria-label="on-screen controls">
+  <button class="spacer" tabindex="-1"></button>
+  <button data-key="w" aria-label="up">↑</button>
+  <button class="spacer" tabindex="-1"></button>
+  <button data-key="a" aria-label="left">←</button>
+  <button data-key=" " aria-label="confirm">•</button>
+  <button data-key="d" aria-label="right">→</button>
+  <button class="spacer" tabindex="-1"></button>
+  <button data-key="s" aria-label="down">↓</button>
+  <button class="spacer" tabindex="-1"></button>
+</div>
+
+<script type="module">
+import { LudicWeb } from './platform.js';
+
+const status = document.getElementById('status');
+
+try {
+  const game = await LudicWeb.start({
+    wasm: '{{WASM}}',
+    canvas: document.getElementById('screen'),
+    manifest: 'assets.json',
+    onExit: () => { status.textContent = 'game over — reload to play again'; },
+  });
+  status.textContent = 'running';
+
+  for (const b of document.querySelectorAll('#pad button[data-key]')) {
+    const send = (ev) => { ev.preventDefault(); game.press(b.dataset.key); };
+    b.addEventListener('pointerdown', send);
+  }
+} catch (err) {
+  status.className = 'error';
+  status.textContent = 'failed to start: ' + err.message;
+  throw err;
+}
+</script>
+</body>
+</html>

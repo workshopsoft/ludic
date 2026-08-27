@@ -1,0 +1,144 @@
+# parse_game.ludic — the ECS front-end: component and system declarations,
+# `for (vars) in query [terms] where cond`, spawn and despawn. Mirrors the
+# game-construct parsing in compiler/front/parse.c.
+
+fn parse_component() -> Node {
+  pi = pi + 1 let n = node(N_COMP) n.s = eat_id() skipnl() eat_op("{")
+  while true { skipnl() if is_op("}") { break }
+    let f = node(N_FIELD) f.s = eat_id() eat_op(":") f.ty = ptype()
+    if is_op("=") { pi = pi + 1 f.a = expr() }
+    push(n.kids, f) if is_op(",") { pi = pi + 1 } }
+  eat_op("}") return n
+}
+
+# skip an @annotation or a reads/writes/query/... clause we don't model yet
+fn skip_clause() -> void {
+  if is_op("[") { let depth = 0
+    while true { if is_op("[") { depth = depth + 1 }  if is_op("]") { depth = depth - 1 }
+      pi = pi + 1  if depth == 0 { break } }
+  }
+}
+
+fn parse_system() -> Node {
+  if is_id("edge") { pi = pi + 1 }             # optional `edge` modifier before `system`
+  pi = pi + 1 let n = node(N_SYS) n.s = eat_id() n.ty = "Update"
+  # clauses: @anno, phase X, reads/writes/needs/uses [..], query (..) [..]
+  # A `query (vars) [terms] where c` clause desugars to a body wrapped in one
+  # `for (vars) in query [terms] where c { ... }` — the same S_QUERY node the
+  # inline form builds, so `qdecl.ludic` and the inline form share a lowering.
+  let has_q = false
+  let qn = node(S_QUERY)
+  while true {
+    skipnl()                                   # clauses may span several lines
+    if is_op("@") { pi = pi + 1 let a = eat_id()  if is_op("(") { let d = 0    # @anno, one per turn so a
+        while true { if is_op("(") { d = d + 1 }  if is_op(")") { d = d - 1 }  pi = pi + 1  if d == 0 { break } } }
+      continue }                               # newline-separated @anno re-skips at the loop top
+    if is_id("phase") { pi = pi + 1 n.ty = eat_id() continue }
+    if is_id("reads") or is_id("writes") or is_id("needs") or is_id("uses") { pi = pi + 1 skip_clause() continue }
+    if is_id("query") {
+      pi = pi + 1 has_q = true
+      if is_op("(") { eat_op("(")              # optional (vars); omitted when nothing binds
+        while not is_op(")") { let v = node(E_ID) v.s = eat_id() push(qn.kids, v) if is_op(",") { pi = pi + 1 } }
+        eat_op(")") }
+      qn.c = parse_query_tail()
+      qn.b = qn.c.a                            # where-expr (or null)
+      continue
+    }
+    break
+  }
+  skipnl()
+  let body = block()
+  if has_q {
+    qn.a = body
+    let wrap = node(N_BLOCK) push(wrap.kids, qn)
+    n.a = wrap
+  } else { n.a = body }
+  return n
+}
+
+# `[Term, ...]` with optional `where <expr>`, returning a node whose kids are
+# the terms (E_ID with ival=1 for {Tag} filters) and .a the where-expr or null.
+fn parse_query_tail() -> Node {
+  eat_op("[")
+  let q = node(N_BLOCK)
+  while not is_op("]") {
+    if is_op("{") { pi = pi + 1 let t = node(E_ID) t.s = eat_id() t.ival = 1 push(q.kids, t) eat_op("}") }
+    else { let t = node(E_ID) t.s = eat_id() t.ival = 0 push(q.kids, t) }
+    if is_op(",") { pi = pi + 1 }
+  }
+  eat_op("]")
+  if is_id("where") { pi = pi + 1 q.a = expr() }
+  return q
+}
+
+# `for (a, b) in query [Pos, Vel] where ... { body }`
+fn parse_query_for() -> Node {
+  let n = node(S_QUERY)
+  eat_op("(")
+  while not is_op(")") { let v = node(E_ID) v.s = eat_id() push(n.kids, v) if is_op(",") { pi = pi + 1 } }
+  eat_op(")")
+  let inkw = eat_id()                        # 'in'
+  let qkw = eat_id()                         # 'query'
+  n.c = parse_query_tail()
+  n.b = n.c.a                                # where
+  n.a = block()
+  return n
+}
+
+fn parse_spawn() -> Node {
+  pi = pi + 1 let n = node(S_SPAWN) n.s = eat_id() skipnl() eat_op("{")
+  while true {
+    skipnl() if is_op("}") { break }
+    let ci = node(E_FINIT) ci.s = eat_id() eat_op("=")
+    ci.a = record()                          # { field = val, ... }
+    push(n.kids, ci)
+    if is_op(",") { pi = pi + 1 }
+  }
+  eat_op("}") return n
+}
+
+# archetype Name { CompA, CompB } — a named entity kind (bundle of components)
+fn parse_archetype() -> Node {
+  pi = pi + 1 let n = node(N_ARCH) n.s = eat_id() skipnl() eat_op("{")
+  while true { skipnl() if is_op("}") { break }
+    let c = node(E_ID) c.s = eat_id() push(n.kids, c)
+    if is_op(",") { pi = pi + 1 }  skipnl() }
+  eat_op("}") return n
+}
+
+# extern fn name(params) -> T = "symbol"
+fn parse_extern() -> Node {
+  pi = pi + 1                                # 'extern'
+  let fnkw = eat_id()                        # 'fn'
+  let n = node(N_EXTERN) n.s = eat_id() eat_op("(")
+  while not is_op(")") { let p = node(N_PARAM) p.s = eat_id() eat_op(":") p.ty = ptype() push(n.kids, p)
+    if is_op(",") { pi = pi + 1 } }
+  eat_op(")")
+  n.ty = "void"
+  if is_op("->") { pi = pi + 1 n.ty = ptype() }
+  eat_op("=")
+  let t = toks[pi]                           # "symbol"
+  n.a = node(E_STR) n.a.s = t.text  pi = pi + 1
+  return n
+}
+
+# ui Name { widget-tree } — parsed into a widget node tree (emitted later)
+fn parse_widget() -> Node {
+  let w = node(N_UI) w.s = eat_id()          # widget type name
+  w.b = node(N_BLOCK)                        # b.kids = props (E_FINIT)
+  while toks[pi].kind == TK_ID and toks[pi + 1].kind == TK_OP and streq(toks[pi + 1].text, "=") {
+    let pr = node(E_FINIT) pr.s = eat_id() eat_op("=") pr.a = expr() push(w.b.kids, pr)
+  }
+  skipnl()
+  if is_op("{") { pi = pi + 1
+    while true { skipnl() if is_op("}") { break } push(w.kids, parse_widget()) }
+    eat_op("}") }
+  return w
+}
+fn parse_ui() -> Node {
+  pi = pi + 1 let n = node(N_UI) n.s = eat_id() n.ival = 1   # ival=1 marks the top ui block
+  skipnl() eat_op("{") skipnl()
+  n.a = parse_widget()
+  skipnl() eat_op("}")
+  return n
+}

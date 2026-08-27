@@ -1,0 +1,29 @@
+# buf.ludic — a growable byte buffer for building IR text. The emitter writes
+# module-level material (types, globals, string constants) into one buffer and
+# function bodies into another, then prints them in order.
+
+struct Buf { data: ptr = ptr_null(), len: int = 0, cap: int = 0 }
+
+fn buf_new() -> Buf {
+  let b = new Buf
+  b.cap = 256
+  b.data = mem_alloc(b.cap)
+  b.len = 0
+  return b
+}
+fn buf_ensure(b: Buf, extra: int) -> void {
+  if b.len + extra + 1 <= b.cap { return }
+  while b.len + extra + 1 > b.cap { b.cap = b.cap * 2 }
+  b.data = mem_realloc(b.data, b.cap)
+}
+fn buf_putc(b: Buf, c: int) -> void {
+  buf_ensure(b, 1)
+  poke8(b.data, b.len, c)
+  b.len = b.len + 1
+}
+fn buf_puts(b: Buf, s: ptr) -> void {
+  let i = 0
+  while peek8(s, i) != 0 { buf_putc(b, peek8(s, i)) i = i + 1 }
+}
+fn buf_puti(b: Buf, n: int) -> void { buf_puts(b, itoa(n)) }
+fn buf_str(b: Buf) -> ptr { poke8(b.data, b.len, 0) return b.data }

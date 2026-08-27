@@ -1,0 +1,96 @@
+{
+  "game": {
+    "prefix": "game",
+    "body": ["game ${1:Name} {", "\t$0", "}"],
+    "description": "A game unit — compiles to an executable."
+  },
+  "module": {
+    "prefix": "module",
+    "body": ["module ${1:Name} {", "\t$0", "}"],
+    "description": "A library unit — compiles to a shared library, no frame loop."
+  },
+  "component": {
+    "prefix": "component",
+    "body": ["component ${1:Name} { ${2:x}: ${3:int} = ${4:0} }"],
+    "description": "A component: typed per-entity fields."
+  },
+  "archetype": {
+    "prefix": "archetype",
+    "body": ["archetype ${1:Name} {", "\t${2:Pos}", "}"],
+    "description": "An entity kind bundling a fixed set of components."
+  },
+  "system": {
+    "prefix": "system",
+    "body": [
+      "system ${1:Name} phase ${2|Start,Input,FixedUpdate,Update,LateUpdate,Render|} {",
+      "\t$0",
+      "}"
+    ],
+    "description": "A system that runs once per tick in its phase."
+  },
+  "system with query": {
+    "prefix": "systemq",
+    "body": [
+      "system ${1:Name} phase ${2|Update,FixedUpdate,LateUpdate,Render,Input|}",
+      "  query (${3:p}) [${4:Pos}]",
+      "{",
+      "\t$0",
+      "}"
+    ],
+    "description": "A system whose body runs once per matching entity."
+  },
+  "for query": {
+    "prefix": "forq",
+    "body": ["for (${1:p}) in query [${2:Pos}] {", "\t$0", "}"],
+    "description": "Iterate every entity matching a query."
+  },
+  "spawn": {
+    "prefix": "spawn",
+    "body": ["spawn ${1:Kind} {", "\t${2:Pos} = { ${3:x} = ${4:0} }", "}"],
+    "description": "Create an entity of an archetype."
+  },
+  "scene": {
+    "prefix": "scene",
+    "body": [
+      "scene ${1:Name} {",
+      "\ton enter { $2 }",
+      "\tlayer ${3:Main} {",
+      "\t\t$0",
+      "\t}",
+      "}"
+    ],
+    "description": "A scene with lifecycle hooks and one layer of systems."
+  },
+  "ui": {
+    "prefix": "ui",
+    "body": [
+      "ui ${1:Name} {",
+      "\tpanel id=${2:Root} pad=16 gap=6 align=center {",
+      "\t\t$0",
+      "\t}",
+      "}"
+    ],
+    "description": "A retained UI tree."
+  },
+  "match": {
+    "prefix": "match",
+    "body": ["match ${1:x} {", "\t${2:0} => { $3 }", "\t_ => { $0 }", "}"],
+    "description": "Pattern match."
+  },
+  "machine": {
+    "prefix": "machine",
+    "body": [
+      "machine reg(${1:R_PHASE}) {",
+      "\tstate ${2:Idle} = 0 {",
+      "\t\t$0",
+      "\t}",
+      "}"
+    ],
+    "description": "A state machine over a register."
+  },
+  "extern fn": {
+    "prefix": "extern",
+    "body": ["extern fn ${1:name}(${2:a}: ${3:int}) -> ${4:int} = \"${5:c_symbol}\""],
+    "description": "Bind a C symbol through the FFI."
+  }
+}

@@ -1,0 +1,17 @@
+build
+**.zip
+out.ppm
+
+# self-hosted front-end binaries (built by ./build-cli.sh) and their output
+/ludic
+/ludicc
+/bin/
+
+# editor toolchain build artifacts
+tools/editors/vscode/node_modules/
+tools/editors/vscode/*.vsix
+tools/editors/jetbrains/.gradle/
+tools/editors/jetbrains/build/
+
+# IntelliJ plugin SDK sandbox (tools/editors/jetbrains)
+.intellijPlatform/

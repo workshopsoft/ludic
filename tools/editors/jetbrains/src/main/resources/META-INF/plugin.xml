@@ -1,0 +1,78 @@
+<idea-plugin>
+    <id>io.ludic.ide</id>
+    <name>Ludic</name>
+    <vendor>Ludic</vendor>
+
+    <description><![CDATA[
+    <p>Language support for <b>Ludic</b>, the AI-first, ECS-native game language.</p>
+    <ul>
+      <li>Syntax highlighting, brace matching, commenting and folding, implemented natively so a
+          <code>.ludic</code> file is coloured with no external process.</li>
+      <li>Completion, diagnostics, hover, go-to-definition, find usages, rename and formatting via
+          the <code>ludic-lsp</code> language server, through LSP4IJ, so this works in Community
+          editions as well as the paid IDEs.</li>
+      <li>Errors from the Ludic compiler itself, reported on save.</li>
+      <li>Highlighting of <code>```ludic</code> fenced blocks in Markdown.</li>
+    </ul>
+    <p>Set the paths under <b>Settings &rarr; Languages &amp; Frameworks &rarr; Ludic</b>, or leave
+       them blank to use <code>build/ludic-lsp</code> and <code>build/ludicc</code> under the
+       project root.</p>
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.redhat.devtools.lsp4ij</depends>
+    <!-- Optional: without it everything still works, we just do not get the
+         Markdown fence injection that the platform's own Markdown plugin does
+         for any registered language. -->
+    <depends optional="true" config-file="ludic-markdown.xml">org.intellij.plugins.markdown</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <fileType
+            name="Ludic"
+            implementationClass="io.ludic.ide.LudicFileType"
+            fieldName="INSTANCE"
+            language="Ludic"
+            extensions="ludic"/>
+
+        <lang.parserDefinition
+            language="Ludic"
+            implementationClass="io.ludic.ide.LudicParserDefinition"/>
+
+        <lang.syntaxHighlighterFactory
+            language="Ludic"
+            implementationClass="io.ludic.ide.LudicSyntaxHighlighterFactory"/>
+
+        <lang.commenter
+            language="Ludic"
+            implementationClass="io.ludic.ide.LudicCommenter"/>
+
+        <lang.braceMatcher
+            language="Ludic"
+            implementationClass="io.ludic.ide.LudicBraceMatcher"/>
+
+        <lang.foldingBuilder
+            language="Ludic"
+            implementationClass="io.ludic.ide.LudicFoldingBuilder"/>
+
+        <projectConfigurable
+            parentId="language"
+            instance="io.ludic.ide.LudicConfigurable"
+            id="io.ludic.ide.settings"
+            displayName="Ludic"/>
+    </extensions>
+
+    <extensions defaultExtensionNs="com.redhat.devtools.lsp4ij">
+        <server
+            id="ludic"
+            name="Ludic"
+            factoryClass="io.ludic.ide.LudicLanguageServerFactory">
+            <description><![CDATA[
+            The Ludic language server. Built by <code>tools/build-tools.sh</code>.
+            ]]></description>
+        </server>
+        <languageMapping language="Ludic" serverId="ludic"/>
+        <!-- Markdown is mapped too: the server understands ```ludic fences in a
+             .md and reports diagnostics and semantic tokens for them. -->
+        <languageMapping language="Markdown" serverId="ludic"/>
+    </extensions>
+</idea-plugin>

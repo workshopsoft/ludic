@@ -1,0 +1,29 @@
+#!/bin/sh
+# Reject a commit that contains unformatted Ludic — in source or in the ```ludic
+# fences of a Markdown file.
+#
+#   ln -sf ../../tools/git-hooks/pre-commit .git/hooks/pre-commit
+#
+# Checks only the files being committed, so it stays fast on a big tree.
+set -e
+ROOT=$(git rev-parse --show-toplevel)
+FMT="$ROOT/build/ludic-fmt"
+
+[ -x "$FMT" ] || exit 0        # toolchain not built: do not block the commit
+
+FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(ludic|md|markdown)$' || true)
+[ -z "$FILES" ] && exit 0
+
+UNFORMATTED=""
+for f in $FILES; do
+  [ -f "$ROOT/$f" ] || continue
+  "$FMT" --check -q "$ROOT/$f" >/dev/null 2>&1 || UNFORMATTED="$UNFORMATTED $f"
+done
+
+if [ -n "$UNFORMATTED" ]; then
+  echo "unformatted Ludic:"
+  for f in $UNFORMATTED; do echo "  $f"; done
+  echo
+  echo "fix with:  build/ludic-fmt -w$UNFORMATTED"
+  exit 1
+fi

@@ -1,0 +1,380 @@
+# truetype_raster.ludic — glyph rasterization, the glyph cache, UTF-8 decoding
+# and text drawing. Split out of truetype.ludic (the sfnt/cmap/outline half).
+
+# ---- rasterization --------------------------------------------------------
+fn ed_add(x0: fixed, y0: fixed, x1: fixed, y1: fixed) -> void {
+  if ed_n >= TT_EDGES { return }
+  pokef(ed_x0, ed_n, x0)
+  pokef(ed_y0, ed_n, y0)
+  pokef(ed_x1, ed_n, x1)
+  pokef(ed_y1, ed_n, y1)
+  ed_n = ed_n + 1
+}
+
+fn tt_isqrt(v: int) -> int {
+  if v <= 0 { return 0 }
+  let r = 0
+  let b = 32768
+  while b > 0 {
+    let t = r + b
+    if t * t <= v { r = t }
+    b = b / 2
+  }
+  return r
+}
+
+# flatten one quadratic Bézier into line segments, subdivided by chord length
+fn ed_quad(x0: fixed, y0: fixed, cx: fixed, cy: fixed, x1: fixed, y1: fixed) -> void {
+  let dx = flr(x1) - flr(x0)
+  let dy = flr(y1) - flr(y0)
+  let n = tt_isqrt(dx * dx + dy * dy) / 3
+  if n < 2 { n = 2 }
+  if n > 24 { n = 24 }
+  let px = x0
+  let py = y0
+  for i in 1 .. n + 1 {
+    let t = fx(i) / n
+    let u = 1.0 - t
+    let qx = u * u * x0 + 2.0 * u * t * cx + t * t * x1
+    let qy = u * u * y0 + 2.0 * u * t * cy + t * t * y1
+    ed_add(px, py, qx, qy)
+    px = qx
+    py = qy
+  }
+}
+
+# Rasterize a glyph at `px` pixels. Coverage lands in a fresh buffer; the
+# geometry is left in gr_* for the caller.
+var gr_w:   int = 0
+var gr_h:   int = 0
+var gr_ox:  int = 0
+var gr_oy:  int = 0
+var gr_adv: int = 0
+
+fn tt_raster(id: int, gid: int, px: int) -> ptr {
+  let upem = peek32(tt_upem, id)
+  let scale = fx(px) / upem
+  gr_adv = flr(fx(tt_advance(id, gid)) * scale + 0.5)
+  gr_w = 0
+  gr_h = 0
+  ol_n = 0
+  ol_ne = 0
+  ed_n = 0
+  tt_load_outline(id, gid, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0)
+  if ol_n == 0 { return ptr_null() }
+
+  let minx = 999999.0
+  let miny = 999999.0
+  let maxx = 0.0 - 999999.0
+  let maxy = 0.0 - 999999.0
+  for i in 0 .. ol_n {
+    let X = peekf(ol_x, i) * scale
+    let Y = peekf(ol_y, i) * scale
+    if X < minx { minx = X }
+    if X > maxx { maxx = X }
+    if Y < miny { miny = Y }
+    if Y > maxy { maxy = Y }
+  }
+  let x0 = flr(minx)
+  let y0 = flr(miny)
+  let x1 = flr(maxx) + 1
+  let y1 = flr(maxy) + 1
+  if maxx == fx(flr(maxx)) { x1 = flr(maxx) }
+  if maxy == fx(flr(maxy)) { y1 = flr(maxy) }
+  let W = x1 - x0
+  let H = y1 - y0
+  if W <= 0 { return ptr_null() }
+  if H <= 0 { return ptr_null() }
+  if W > 1024 { return ptr_null() }
+  if H > 1024 { return ptr_null() }
+  gr_w = W
+  gr_h = H
+  gr_ox = x0
+  gr_oy = y1
+
+  # build edges in supersample space (y grows downward)
+  let start = 0
+  for ci in 0 .. ol_ne {
+    let end = peek32(ol_ends, ci)
+    let cnt = end - start
+    if cnt >= 2 {
+      let first_on = 0 - 1
+      for i in 0 .. cnt {
+        if first_on < 0 { if peek32(ol_on, start + i) == 1 { first_on = i } }
+      }
+      let sx = 0.0
+      let sy = 0.0
+      if first_on < 0 {
+        # all off-curve: start at the midpoint of the first and last point
+        let mx = (peekf(ol_x, start) + peekf(ol_x, start + cnt - 1)) / 2
+        let my = (peekf(ol_y, start) + peekf(ol_y, start + cnt - 1)) / 2
+        sx = (mx * scale - fx(x0)) * TT_SS
+        sy = (fx(y1) - my * scale) * TT_SS
+        first_on = 0
+      } else {
+        sx = (peekf(ol_x, start + first_on) * scale - fx(x0)) * TT_SS
+        sy = (fx(y1) - peekf(ol_y, start + first_on) * scale) * TT_SS
+      }
+      let curx = sx
+      let cury = sy
+      let step = 0
+      while step < cnt {
+        let i = (first_on + 1 + step) % cnt
+        let ix = (peekf(ol_x, start + i) * scale - fx(x0)) * TT_SS
+        let iy = (fx(y1) - peekf(ol_y, start + i) * scale) * TT_SS
+        if peek32(ol_on, start + i) == 1 {
+          ed_add(curx, cury, ix, iy)
+          curx = ix
+          cury = iy
+        } else {
+          let j = (i + 1) % cnt
+          let jx = (peekf(ol_x, start + j) * scale - fx(x0)) * TT_SS
+          let jy = (fx(y1) - peekf(ol_y, start + j) * scale) * TT_SS
+          let ex = jx
+          let ey = jy
+          if peek32(ol_on, start + j) == 1 {
+            step = step + 1
+          } else {
+            ex = (ix + jx) / 2                       # implied on-curve midpoint
+            ey = (iy + jy) / 2
+          }
+          ed_quad(curx, cury, ix, iy, ex, ey)
+          curx = ex
+          cury = ey
+        }
+        step = step + 1
+      }
+      ed_add(curx, cury, sx, sy)
+    }
+    start = end
+  }
+
+  let SW = W * TT_SS
+  let SH = H * TT_SS
+  let cover = mem_alloc(W * H)
+  mem_set(cover, 0, W * H)
+  let unit = 255 / (TT_SS * TT_SS)
+
+  for sy in 0 .. SH {
+    let yc = fx(sy) + 0.5
+    let m = 0
+    for i in 0 .. ed_n {
+      let ya = peekf(ed_y0, i)
+      let yb = peekf(ed_y1, i)
+      let hit = 0
+      if ya <= yc { if yb > yc { hit = 1 } }
+      if yb <= yc { if ya > yc { hit = 1 } }
+      if hit == 1 {
+        let t = (yc - ya) / (yb - ya)
+        pokef(sc_x, m, peekf(ed_x0, i) + t * (peekf(ed_x1, i) - peekf(ed_x0, i)))
+        if yb > ya { poke32(sc_d, m, 1) } else { poke32(sc_d, m, 0 - 1) }
+        m = m + 1
+      }
+    }
+    # insertion sort the crossings by x
+    for i in 1 .. m {
+      let kx = peekf(sc_x, i)
+      let kd = peek32(sc_d, i)
+      let j = i - 1
+      let placed = 0
+      while j >= 0 {
+        if peekf(sc_x, j) > kx {
+          pokef(sc_x, j + 1, peekf(sc_x, j))
+          poke32(sc_d, j + 1, peek32(sc_d, j))
+          j = j - 1
+        } else {
+          pokef(sc_x, j + 1, kx)
+          poke32(sc_d, j + 1, kd)
+          placed = 1
+          j = 0 - 1
+        }
+      }
+      if placed == 0 {
+        pokef(sc_x, 0, kx)
+        poke32(sc_d, 0, kd)
+      }
+    }
+    let wind = 0
+    let oy = sy / TT_SS
+    for i in 0 .. m - 1 {
+      wind = wind + peek32(sc_d, i)
+      if wind != 0 {
+        let xa = peekf(sc_x, i)
+        let xb = peekf(sc_x, i + 1)
+        if xa < 0.0 { xa = 0.0 }
+        if xb > fx(SW) { xb = fx(SW) }
+        if xb > xa {
+          let ixa = flr(xa)
+          let ixb = flr(xb) + 1
+          for sx in ixa .. ixb {
+            let cxl = xa
+            let cxr = xb
+            if fx(sx) > cxl { cxl = fx(sx) }
+            if fx(sx + 1) < cxr { cxr = fx(sx + 1) }
+            let cvr = cxr - cxl
+            if cvr > 0.0 {
+              let oxp = sx / TT_SS
+              if oxp >= 0 { if oxp < W { if oy >= 0 { if oy < H {
+                let v = peek8(cover, oy * W + oxp) + flr(cvr * unit)
+                if v > 255 { v = 255 }
+                poke8(cover, oy * W + oxp, v)
+              } } } }
+            }
+          }
+        }
+      }
+    }
+  }
+  return cover
+}
+
+# ---- glyph cache ----------------------------------------------------------
+# Rasterizing is far too slow to repeat per frame, so a coverage mask is kept
+# per (font, codepoint, size). Open addressing, 8 probes, evict on miss.
+fn gc_hash(font: int, cp: int, px: int) -> int {
+  return band(bxor(bxor(cp * 2654435761, shl(font, 20)), shl(px, 8)), TT_GC - 1)
+}
+
+fn tt_glyph_get(font: int, cp: int, px: int) -> int {
+  let h = gc_hash(font, cp, px)
+  for k in 0 .. 8 {
+    let s = band(h + k, TT_GC - 1)
+    if peek32(gc_used, s) == 1 {
+      if peek32(gc_font, s) == font {
+        if peek32(gc_cp, s) == cp {
+          if peek32(gc_px, s) == px { return s }
+        }
+      }
+    }
+  }
+  let s = h
+  if peek32(gc_used, s) == 1 {
+    let old = peekp(gc_bmp, s)
+    if ptr_is_null(old) == false { mem_free(old) }
+  }
+  let bmp = tt_raster(font, tt_glyph_index(font, cp), px)
+  pokep(gc_bmp, s, bmp)
+  poke32(gc_used, s, 1)
+  poke32(gc_font, s, font)
+  poke32(gc_cp, s, cp)
+  poke32(gc_px, s, px)
+  poke32(gc_w, s, gr_w)
+  poke32(gc_h, s, gr_h)
+  poke32(gc_ox, s, gr_ox)
+  poke32(gc_oy, s, gr_oy)
+  poke32(gc_adv, s, gr_adv)
+  return s
+}
+
+# ---- UTF-8 ----------------------------------------------------------------
+var u8_next: int = 0        # byte index just past the codepoint last decoded
+
+fn tt_utf8(s: str, at: int) -> int {
+  let c = peek8(s, at)
+  let extra = 0 - 1
+  if c < 128 { extra = 0 }
+  if shr(c, 5) == 6 { extra = 1 }
+  if shr(c, 4) == 14 { extra = 2 }
+  if shr(c, 3) == 30 { extra = 3 }
+  if extra < 0 {
+    u8_next = at + 1
+    return 65533
+  }
+  if extra == 0 {
+    u8_next = at + 1
+    return c
+  }
+  let cp = band(c, shr(63, extra))
+  for i in 0 .. extra {
+    let b = peek8(s, at + 1 + i)
+    if band(b, 192) != 128 {
+      u8_next = at + 1 + i
+      return 65533
+    }
+    cp = bor(shl(cp, 6), band(b, 63))
+  }
+  u8_next = at + 1 + extra
+  return cp
+}
+
+# ---- drawing --------------------------------------------------------------
+fn tt_blit(bmp: ptr, w: int, h: int, dx: int, dy: int, colour: int) -> void {
+  if ptr_is_null(bmp) { return }
+  let cr = band(shr(colour, 16), 255)
+  let cg = band(shr(colour, 8), 255)
+  let cb = band(colour, 255)
+  for y in 0 .. h {
+    let py = dy + y
+    if py >= 0 {
+      if py < rt_fbh {
+        for x in 0 .. w {
+          let a = peek8(bmp, y * w + x)
+          if a != 0 {
+            let pxx = dx + x
+            if pxx >= 0 {
+              if pxx < rt_fbw {
+                let d = peek32(rt_fb, py * rt_fbw + pxx)
+                let rr = (cr * a + band(shr(d, 16), 255) * (255 - a)) / 255
+                let rg = (cg * a + band(shr(d, 8), 255) * (255 - a)) / 255
+                let rb = (cb * a + band(d, 255) * (255 - a)) / 255
+                poke32(rt_fb, py * rt_fbw + pxx, bor(bor(shl(rr, 16), shl(rg, 8)), rb))
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn rt_text_ttf(font: int, x: int, y: int, s: str, colour: int, px: int) -> void {
+  if font < 0 { return }
+  if font >= tt_n { return }
+  if px <= 0 { return }
+  let upem = peek32(tt_upem, font)
+  let scale = fx(px) / upem
+  let baseline = y + flr(fx(peek32(tt_asc, font)) * scale + 0.5)
+  let lineh = flr(fx(peek32(tt_asc, font) - peek32(tt_desc, font) + peek32(tt_gap, font)) * scale + 0.5)
+  let penx = x
+  let i = 0
+  while peek8(s, i) != 0 {
+    let cp = tt_utf8(s, i)
+    i = u8_next
+    if cp == 10 {
+      penx = x
+      baseline = baseline + lineh
+    } else {
+      let g = tt_glyph_get(font, cp, px)
+      tt_blit(peekp(gc_bmp, g), peek32(gc_w, g), peek32(gc_h, g), penx + peek32(gc_ox, g), baseline - peek32(gc_oy, g), colour)
+      penx = penx + peek32(gc_adv, g)
+    }
+  }
+}
+
+fn rt_text_w(font: int, s: str, px: int) -> int {
+  if font < 0 { return 0 }
+  if font >= tt_n { return 0 }
+  if px <= 0 { return 0 }
+  let w = 0
+  let best = 0
+  let i = 0
+  while peek8(s, i) != 0 {
+    let cp = tt_utf8(s, i)
+    i = u8_next
+    if cp == 10 {
+      if w > best { best = w }
+      w = 0
+    } else {
+      w = w + peek32(gc_adv, tt_glyph_get(font, cp, px))
+    }
+  }
+  if w > best { best = w }
+  return best
+}
+
+fn rt_text_h(font: int, px: int) -> int {
+  if font < 0 { return 0 }
+  if font >= tt_n { return 0 }
+  let scale = fx(px) / peek32(tt_upem, font)
+  return flr(fx(peek32(tt_asc, font) - peek32(tt_desc, font) + peek32(tt_gap, font)) * scale + 0.5)
+}

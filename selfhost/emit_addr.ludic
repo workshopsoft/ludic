@@ -1,0 +1,38 @@
+# emit_addr.ludic — addresses of lvalues (struct fields and slice elements),
+# shared by expression loads and assignment stores. Each returns the address
+# register; the element/field type is written into g_addr_ty.
+
+var g_addr_ty: ptr           # out-param: the type at the computed address
+
+# address of `base.field`
+fn emit_member_addr(e: Node) -> ptr {
+  let base = emit_expr(e.a)
+  let s = layout_node(base.ty)
+  if ptr_is_null(s) { perr(sconcat("member access on non-aggregate ", base.ty)) }
+  let fidx = field_index(s, e.s)
+  if fidx < 0 { perr(sconcat("no such field ", e.s)) }
+  g_addr_ty = field_type(s, e.s)
+  let r = nreg()
+  emit("  ")  emit(r)  emit(" = getelementptr inbounds ")  emit(layout_ty(base.ty))
+  emit(", ptr ")  emit(base.code)  emit(", i32 0, i32 ")  emit(itoa(fidx))  emit("\n")
+  return r
+}
+
+# address of `base[index]` (slices only in this subset)
+fn emit_index_addr(e: Node) -> ptr {
+  let base = emit_expr(e.a)
+  if not is_slice_ty(base.ty) { perr("indexing a non-slice") }
+  let el = slice_elem(base.ty)
+  g_addr_ty = el
+  # load the data pointer from the slice header (field 0)
+  let dp = nreg()
+  emit("  ")  emit(dp)  emit(" = getelementptr inbounds %LSlice, ptr ")
+  emit(base.code)  emit(", i32 0, i32 0\n")
+  let data = nreg()
+  emit("  ")  emit(data)  emit(" = load ptr, ptr ")  emit(dp)  emit("\n")
+  let ix = emit_expr(e.b)
+  let r = nreg()
+  emit("  ")  emit(r)  emit(" = getelementptr inbounds ")  emit(llty(el))
+  emit(", ptr ")  emit(data)  emit(", i32 ")  emit(ix.code)  emit("\n")
+  return r
+}

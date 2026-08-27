@@ -1,0 +1,38 @@
+# ⚠️ NOT YET IMPLEMENTED by the self-hosted compiler. `scene` / `layer` /
+# `on enter` / `on exit` have no parser support today, so this file does NOT
+# compile with build/ludicc — it is a design sketch of the intended syntax (see
+# LANGUAGE.md §"Scenes & layers"). It is deliberately excluded from test.sh.
+# Games that need scene-like states use a mode register + `machine` today, as
+# examples/chronorift does.
+game SceneDemo {
+  const R_N: int = 0
+
+  system Boot phase Start { setreg(R_N, 0)  print_int(1000) }
+
+  scene Title start {
+    on enter { print_int(1) }
+    on exit  { print_int(2) }
+    layer Main {
+      system Tick phase Update {
+        setreg(R_N, reg(R_N) + 1)
+        print_int(100 + reg(R_N))
+        if reg(R_N) >= 2 { enter Play }
+      }
+    }
+  }
+
+  scene Play {
+    on enter { print_int(3)  setreg(R_N, 0) }
+    on exit  { print_int(4) }
+    layer World {
+      system Step phase Update {
+        setreg(R_N, reg(R_N) + 1)
+        print_int(200 + reg(R_N))
+        if reg(R_N) >= 2 { quit() }
+      }
+    }
+    layer Hud {
+      system Draw phase Render { print_int(900) }
+    }
+  }
+}

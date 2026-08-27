@@ -1,0 +1,81 @@
+package io.ludic.ide
+
+import com.intellij.psi.tree.IElementType
+import com.intellij.psi.tree.IFileElementType
+
+/**
+ * One token type per thing the highlighter needs to tell apart. This is a
+ * lexer-only language on the JetBrains side: the token set is the whole grammar
+ * the platform sees, and ludic-lsp supplies everything structural.
+ */
+class LudicTokenType(debugName: String) : IElementType(debugName, LudicLanguage)
+
+object LudicTokens {
+    val FILE = IFileElementType(LudicLanguage)
+
+    val COMMENT = LudicTokenType("COMMENT")
+    val STRING = LudicTokenType("STRING")
+    val CHAR = LudicTokenType("CHAR")
+    val NUMBER = LudicTokenType("NUMBER")
+    val IDENTIFIER = LudicTokenType("IDENTIFIER")
+    val TYPE_NAME = LudicTokenType("TYPE_NAME")       // Capitalised: component, archetype, scene
+    val KEYWORD = LudicTokenType("KEYWORD")
+    val DECL_KEYWORD = LudicTokenType("DECL_KEYWORD") // game, component, system, fn, ...
+    val CLAUSE = LudicTokenType("CLAUSE")             // phase, query, reads, writes, ...
+    val PRIMITIVE = LudicTokenType("PRIMITIVE")       // int, fixed, bool, entity, str, ptr, void
+    val PHASE = LudicTokenType("PHASE")               // Start, Update, Render, ...
+    val BOOLEAN = LudicTokenType("BOOLEAN")
+    val BUILTIN = LudicTokenType("BUILTIN")           // runtime surface + compiler intrinsics
+    val ANNOTATION = LudicTokenType("ANNOTATION")     // @deterministic
+    val OPERATOR = LudicTokenType("OPERATOR")
+    val BRACE = LudicTokenType("BRACE")
+    val BRACKET = LudicTokenType("BRACKET")
+    val PAREN = LudicTokenType("PAREN")
+    val COMMA = LudicTokenType("COMMA")
+    val BAD = LudicTokenType("BAD_CHARACTER")
+}
+
+/**
+ * The vocabulary, mirroring tools/ludic-tools/ludic_syntax.h. When the language
+ * grows a keyword both sides change together; that header is the reference.
+ */
+object LudicVocabulary {
+    val DECL = setOf(
+        "game", "module", "import", "component", "struct", "archetype", "ui", "scene", "layer",
+        "const", "var", "export", "fn", "pure", "extern", "system", "edge", "start", "on"
+    )
+    val CLAUSE = setOf(
+        "phase", "query", "reads", "writes", "needs", "uses",
+        "requires", "ensures", "invariant", "effects"
+    )
+    val STMT = setOf(
+        "let", "return", "if", "else", "when", "while", "for", "in", "spawn", "despawn",
+        "match", "machine", "state", "become", "enter", "where", "and", "or", "not",
+        "break", "continue", "new"
+    )
+    val PRIMITIVES = setOf("int", "fixed", "bool", "entity", "str", "ptr", "void")
+    val PHASES = setOf("Start", "Input", "FixedUpdate", "Update", "LateUpdate", "Render")
+    val WIDGETS = setOf("panel", "col", "row", "label", "button", "image", "spacer")
+
+    val BUILTINS = setOf(
+        "min", "max", "abs", "clamp", "seed", "rng_range", "rng_chance", "fx", "flr",
+        "map_size", "map_row", "tile", "clear", "present", "fill_rect", "frame_rect",
+        "put_px", "text", "text_int", "font_load", "text_ttf", "text_w", "text_h",
+        "image_load", "draw_image", "draw_image_scaled", "draw_9slice", "load_png",
+        "load_sprites", "draw_sprite", "draw_sprite_scaled", "ui_build", "ui_open",
+        "ui_tick", "ui_render", "ui_clicked", "ui_set_text", "ui_set_int", "ui_focus",
+        "ui_focused", "ui_visible", "key", "reg", "setreg", "self", "save", "load",
+        "status", "print_int", "quit",
+        // compiler intrinsics: the floor the Ludic-written runtime stands on
+        "mem_alloc", "mem_realloc", "mem_free", "mem_copy", "mem_set", "peek8", "poke8", "peek32",
+        "os_argc", "os_arg", "file_stderr",
+        "poke32", "peekp", "pokep", "peekf", "pokef", "ptr_add", "ptr_null",
+        "ptr_is_null", "as_fixed", "as_int", "file_open", "file_read", "file_write",
+        "file_seek", "file_tell", "file_close", "read_byte", "write_byte", "print_str",
+        "str_len", "shl", "shr", "band", "bor", "bxor", "bnot", "os_exit", "os_time",
+        "is_windowed", "game_title", "win_open", "win_poll", "win_present",
+        "win_running", "win_close"
+    )
+
+    fun isKeyword(w: String) = w in DECL || w in CLAUSE || w in STMT
+}

@@ -1,0 +1,86 @@
+# rules.ludic — pure game rules & map data (functions only, no systems).
+
+fn tile_sprite(c: int) -> int {
+  match c {
+    'T', '#' => return SPR_TREE
+    'H' => return SPR_HOUSE
+    'D' => return SPR_DOOR
+    'r', 'h' => return SPR_PATH
+    ',', 'S', 'B' => return SPR_FLOOR
+    '=' => return SPR_WALL
+  }
+  return SPR_GRASS
+}
+fn walkable(x: int, y: int) -> bool {
+  let c = tile(x, y)
+  return c == '.' or c == 'D' or c == 'r' or c == ',' or c == 'S' or c == 'B' or c == 'h'
+}
+fn is_confirm(k: int) -> bool { return k == 32 or k == 10 or k == 13 }
+fn enemy_name(et: int) -> str {
+  if et == 0 { return "SLIME" }
+  if et == 1 { return "SKELETON" }
+  return "RIFT WARDEN"
+}
+
+fn build_field(x: int) -> int {
+  map_size(40, 18)
+  map_row(0,  "########################################")
+  map_row(1,  "#......................................#")
+  map_row(2,  "#...TT.........................TT.....D#")
+  map_row(3,  "#..TT.......................TT.........#")
+  map_row(4,  "#..T.........................T.........#")
+  map_row(5,  "#....................................T.#")
+  map_row(6,  "#.....TT....................TT.......T.#")
+  map_row(7,  "#....TT.....................T..........#")
+  map_row(8,  "#...........rrrrrrrr........HH.........#")
+  map_row(9,  "#..........r........r.......HH.........#")
+  map_row(10, "#......TT...r........rrrrrrrrhr......T.#")
+  map_row(11, "#.....TT...r.................r.......T.#")
+  map_row(12, "#..........r.......TT.......r..........#")
+  map_row(13, "#..........rrrrrrrrrrrrrrrrr.........T.#")
+  map_row(14, "#.........TT.........................T.#")
+  map_row(15, "#........TT..........................T.#")
+  map_row(16, "#....................................T.#")
+  map_row(17, "########################################")
+  return 0
+}
+fn build_dungeon(x: int) -> int {
+  map_size(40, 18)
+  map_row(0,  "========================================")
+  map_row(1,  "=,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,=")
+  map_row(2,  "=,S,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,=")
+  map_row(3,  "=,,,,,====,,,,,,,,,,,,,,,====,,,,,,,,,,=")
+  map_row(4,  "=,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,=")
+  map_row(5,  "=,,,,,,,,,,,,,====,,,,,,,,,,,,,,,,,,,,,=")
+  map_row(6,  "=,,,,,,,,,,,,,,,,,,,,,,,,,,,,,====,,,,,=")
+  map_row(7,  "=,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,=")
+  map_row(8,  "=,,,====,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,=")
+  map_row(9,  "=,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,=")
+  map_row(10, "=,,,,,,,,,,,,,,,,,,====,,,,,,,,,,,,,,,,=")
+  map_row(11, "=,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,=")
+  map_row(12, "=,,,,,,,,,,,,,,,,,,,,,,,,,,,====,,,,,,,=")
+  map_row(13, "=,,,,,,,,,====,,,,,,,,,,,,,,,,,,,,,,,,,=")
+  map_row(14, "=,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,=")
+  map_row(15, "=,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,B,,=")
+  map_row(16, "=,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,=")
+  map_row(17, "========================================")
+  return 0
+}
+
+fn grant_xp(amount: int) -> int {
+  for (t) in query [Stats, {Party}] {
+    if t.hp > 0 {
+      t.xp = t.xp + amount
+      while t.xp >= t.lvl * 20 {
+        t.xp = t.xp - t.lvl * 20
+        t.lvl = t.lvl + 1
+        t.maxhp = t.maxhp + 8
+        t.hp = t.maxhp
+        t.maxmp = t.maxmp + 2
+        t.atk = t.atk + 2
+        t.def = t.def + 1
+      }
+    }
+  }
+  return 0
+}

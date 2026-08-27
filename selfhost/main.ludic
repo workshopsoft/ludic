@@ -1,0 +1,153 @@
+# main.ludic — the self-hosted Ludic front-end.
+#
+# ludicc lexes, parses, checks and lowers a .ludic file to LLVM IR, then drives
+# clang (the IR assembler + system linker, the same role rustc/swiftc give it)
+# to produce a native binary. No C is compiled: the emitted IR is Ludic's, and
+# clang only assembles and links it.
+#
+#   ludicc app.ludic -o bin/app            # native binary (windowed if a game)
+#   ludicc app.ludic -o bin/app --headless # force headless
+#   ludicc app.ludic --emit-llvm -o app.ll # stop at the IR
+#   ludic  app.ludic                       # compile to a temp binary and run it
+#
+# The multi-call twist: when argv[0] is "ludic" it defaults to compile-and-run.
+# With no -o and no run, IR still goes to stdout — the contract build.sh and
+# reseed.sh rely on, so the bootstrap is untouched.
+
+# basename: the part of a path after the last '/'.
+fn base_name(path: ptr) -> ptr {
+  let last = 0 - 1
+  let i = 0
+  while peek8(path, i) != 0 { if peek8(path, i) == 47 { last = i }  i = i + 1 }
+  return substr(path, last + 1, i - (last + 1))
+}
+
+# drop a trailing ".ludic" if present
+fn strip_ludic(name: ptr) -> ptr {
+  let n = slen(name)
+  if n > 6 {
+    if streq(substr(name, n - 6, 6), ".ludic") { return substr(name, 0, n - 6) }
+  }
+  return name
+}
+
+# env var with a fallback when unset
+fn getenv_or(name: ptr, dflt: ptr) -> ptr {
+  let v = os_getenv(name)
+  if ptr_is_null(v) { return dflt }
+  return v
+}
+
+# guarantee a directory string ends in '/' so path_join concatenates cleanly
+fn ensure_slash(d: ptr) -> ptr {
+  let n = slen(d)
+  if n == 0 { return d }
+  if peek8(d, n - 1) == 47 { return d }
+  return sconcat(d, "/")
+}
+
+fn die(msg: ptr) -> void {
+  file_write(file_stderr(), msg, slen(msg))
+  os_exit(1)
+}
+
+main {
+  let path = ptr_null()
+  let out  = ptr_null()
+  let want = 0            # 0 = auto, 1 = windowed, 2 = headless
+  let emit_ir = false     # --emit-llvm: stop after writing IR
+  let fmt = false         # --fmt: lex + parse only, then exit (the doc-check gate)
+  let save = false        # --save-temps: keep the intermediate .ll
+  let run = false         # compile then execute the result
+
+  # multi-call: invoked as `ludic` -> run mode by default
+  if streq(base_name(os_arg(0)), "ludic") { run = true }
+
+  let ai = 1
+  while ai < os_argc() {
+    let a = os_arg(ai)
+    if streq(a, "--windowed") { want = 1 }
+    else { if streq(a, "--headless") { want = 2 }
+    else { if streq(a, "--emit-llvm") { emit_ir = true }
+    else { if streq(a, "--fmt") { fmt = true }
+    else { if streq(a, "--save-temps") { save = true }
+    else { if streq(a, "--run") { run = true }
+    else { if streq(a, "-o") { ai = ai + 1  if ai < os_argc() { out = os_arg(ai) } }
+    else {
+      # an unknown flag is ignored (with a note) rather than mistaken for the
+      # input file — '-' is ASCII 45
+      if peek8(a, 0) == 45 {
+        let m = sconcat("ludicc: ignoring unknown flag ", sconcat(a, "\n"))
+        file_write(file_stderr(), m, slen(m))
+      } else { path = a }
+    } } } } } } }
+    ai = ai + 1
+  }
+
+  if ptr_is_null(path) {
+    die("usage: ludicc <file.ludic> [-o out] [--windowed|--headless] [--emit-llvm] [--save-temps]\n")
+  }
+  let src = read_file(path)
+  if ptr_is_null(src) { die("ludicc: cannot open input\n") }
+
+  cur_dir = dir_of(path)
+  lex(src)
+  parse_program()
+
+  # --fmt is the doc-check gate: reaching here means it lexed and parsed. A parse
+  # error would already have exited nonzero, so a clean parse exits 0. (Canonical
+  # formatting output is not yet reimplemented on the self-hosted toolchain.)
+  if fmt { os_exit(0) }
+
+  maybe_splice_runtime()
+
+  # a game gets a window by default; a plain program stays headless. An explicit
+  # flag always wins. The stdout-IR path (no target) also stays headless, which
+  # is what reseed.sh compiles the compiler itself with.
+  let has_target = run or (not ptr_is_null(out))
+  if want == 1 { g_windowed = true }
+  else { if want == 2 { g_windowed = false }
+  else { g_windowed = has_target and has_systems() } }
+
+  emit_program()
+
+  # --emit-llvm, or no binary target: emit IR and stop (stdout when out is null).
+  if emit_ir { ir_flush(out)  return }
+  if not has_target { ir_flush(ptr_null())  return }
+
+  # a run with no explicit -o lands in a temp file
+  if run and ptr_is_null(out) {
+    out = sconcat("/tmp/ludic-run-", strip_ludic(base_name(path)))
+  }
+
+  # make the output directory if the user asked for e.g. bin/app
+  let odir = dir_of(out)
+  if slen(odir) > 0 { os_system(sconcat("mkdir -p ", odir)) }
+
+  let ll = sconcat(out, ".ll")
+  if not ir_flush(ll) { die("ludicc: cannot write IR\n") }
+
+  let cc   = getenv_or("LUDIC_CC", "clang")
+  let home = ensure_slash(getenv_or("LUDIC_HOME", dir_of(os_arg(0))))
+
+  # clang twice: assemble the IR, then link. A windowed build adds the macOS
+  # platform layer and the Cocoa framework.
+  # -Wno-override-module: our IR carries an explicit target triple, which clang
+  # would otherwise warn about on every build.
+  let cmd = sconcat(cc, sconcat(" -O2 -Wno-override-module ", ll))
+  if g_windowed {
+    let cocoa = path_join(home, "runtime/native/cocoa.ll")
+    cmd = sconcat(cmd, sconcat(" ", sconcat(cocoa, " -framework Cocoa -Wl,-rpath,@loader_path")))
+  }
+  cmd = sconcat(cmd, sconcat(" -o ", out))
+
+  let rc = os_system(cmd)
+  if not save { os_system(sconcat("rm -f ", ll)) }
+  if rc != 0 { die("ludicc: link failed\n") }
+
+  # run mode: execute the binary we just built and forward its exit code
+  if run {
+    let st = os_system(out)
+    os_exit(band(shr(st, 8), 255))
+  }
+}
