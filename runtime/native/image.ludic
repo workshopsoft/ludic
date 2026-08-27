@@ -74,17 +74,17 @@ fn rt_decode_png(path: str) -> bool {
   if peek8(d, 0) != 137 { mem_free(d); return false }
   if peek8(d, 1) != 80 { mem_free(d); return false }
 
-  let w = 0
-  let h = 0
-  let bd = 0
-  let ct = 0
+  var w = 0
+  var h = 0
+  var bd = 0
+  var ct = 0
   let plte = mem_alloc(768)
   let trns = mem_alloc(256)
-  let ntrns = 0
+  var ntrns = 0
   let idat = mem_alloc(size)
-  let idlen = 0
-  let i = 8
-  let done = 0
+  var idlen = 0
+  var i = 8
+  var done = 0
 
   while done == 0 {
     if i + 8 > size { done = 1 }
@@ -122,12 +122,12 @@ fn rt_decode_png(path: str) -> bool {
   if w <= 0 { mem_free(d); return false }
   if h <= 0 { mem_free(d); return false }
 
-  let channels = 1
+  var channels = 1
   if ct == 2 { channels = 3 }
   if ct == 6 { channels = 4 }
   if ct == 4 { channels = 2 }
   let bppbits = bd * channels
-  let fbpp = (bppbits + 7) / 8
+  var fbpp = (bppbits + 7) / 8
   if fbpp < 1 { fbpp = 1 }
   let stride = (w * bppbits + 7) / 8
   let rawlen = h * (stride + 1)
@@ -144,13 +144,13 @@ fn rt_decode_png(path: str) -> bool {
     let cur = line + 1
     let prev = cur - (stride + 1)
     for x in 0 .. stride {
-      let a = 0
-      let b = 0
-      let c = 0
+      var a = 0
+      var b = 0
+      var c = 0
       if x >= fbpp { a = peek8(raw, cur + x - fbpp) }
       if y > 0 { b = peek8(raw, prev + x) }
       if x >= fbpp { if y > 0 { c = peek8(raw, prev + x - fbpp) } }
-      let v = peek8(raw, cur + x)
+      var v = peek8(raw, cur + x)
       if ft == 1 { v = v + a }
       if ft == 2 { v = v + b }
       if ft == 3 { v = v + (a + b) / 2 }
@@ -159,7 +159,7 @@ fn rt_decode_png(path: str) -> bool {
         let pa = abs(p - a)
         let pb = abs(p - b)
         let pc = abs(p - c)
-        let pick = c
+        var pick = c
         if pb <= pc { pick = b }
         if pa <= pb { if pa <= pc { pick = a } }
         v = v + pick
@@ -174,10 +174,10 @@ fn rt_decode_png(path: str) -> bool {
   for y in 0 .. h {
     let row = y * (stride + 1) + 1
     for x in 0 .. w {
-      let R = 0
-      let G = 0
-      let B = 0
-      let A = 255
+      var R = 0
+      var G = 0
+      var B = 0
+      var A = 255
       if ct == 6 {
         R = peek8(raw, row + x * 4)
         G = peek8(raw, row + x * 4 + 1)
@@ -206,7 +206,7 @@ fn rt_decode_png(path: str) -> bool {
       if ct == 0 {
         let bp = x * bd
         let s = band(shr(peek8(raw, row + bp / 8), 8 - bd - bp % 8), maxv)
-        let g = s
+        var g = s
         if bd != 8 { g = s * 255 / maxv }
         R = g
         G = g
@@ -246,9 +246,9 @@ fn rt_blend_px(x: int, y: int, argb: int) -> void {
   if y < 0 { return }
   if x >= rt_fbw { return }
   if y >= rt_fbh { return }
-  let r = band(shr(argb, 16), 255)
-  let g = band(shr(argb, 8), 255)
-  let b = band(argb, 255)
+  var r = band(shr(argb, 16), 255)
+  var g = band(shr(argb, 8), 255)
+  var b = band(argb, 255)
   if a != 255 {
     let dst = peek32(rt_fb, y * rt_fbw + x)
     let dr = band(shr(dst, 16), 255)
@@ -324,7 +324,7 @@ fn rt_png_load(path: str) -> int {
   let base = id * SPR_SZ * SPR_SZ
   for y in 0 .. SPR_SZ {
     for x in 0 .. SPR_SZ {
-      let px = 0
+      var px = 0
       if x < png_w {
         if y < png_h {
           let c = peek32(png_px, y * png_w + x)
@@ -382,13 +382,13 @@ fn rt_sprites_load(path: str) -> void {
   let size = rt_file_len
   let pal = mem_alloc(128 * 4)
   mem_set(pal, 0, 128 * 4)
-  let cur = 0 - 1
-  let row = 0
-  let i = 0
+  var cur = 0 - 1
+  var row = 0
+  var i = 0
   while i < size {
     let start = i
-    let len = 0
-    let j = start
+    var len = 0
+    var j = start
     while j < size {
       let ch = peek8(d, j)
       if ch == 10 { j = size } else { len = len + 1;  j = j + 1 }
@@ -396,7 +396,7 @@ fn rt_sprites_load(path: str) -> void {
     let c0 = peek8(d, start)
     if c0 == 112 {                       # 'p' — "pal <char> <rrggbb>"
       let ch = peek8(d, start + 4)
-      let v = 0
+      var v = 0
       for k in 0 .. 6 {
         let hv = rt_hexval(peek8(d, start + 6 + k))
         if hv >= 0 { v = v * 16 + hv }

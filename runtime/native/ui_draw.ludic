@@ -12,9 +12,9 @@ fn ui_arrange(i: int, x: int, y: int) -> void {
   let gap = peek32(ui_gap, i)
   let innerw = peek32(ui_rw, i) - 2 * pad
   let innerh = peek32(ui_rh, i) - 2 * pad
-  let total = 0
-  let ng = 0
-  let grows = 0
+  var total = 0
+  var ng = 0
+  var grows = 0
   for c in 0 .. ui_n {
     if peek32(ui_parent, c) == i {
       if peek32(ui_visible, c) == 1 {
@@ -25,16 +25,16 @@ fn ui_arrange(i: int, x: int, y: int) -> void {
     }
   }
   if ng > 1 { total = total + gap * (ng - 1) }
-  let avail = innerw
+  var avail = innerw
   if dir == 1 { avail = innerh }
   let extra = max(avail - total, 0)
-  let cx = x + pad
-  let cy = y + pad
+  var cx = x + pad
+  var cy = y + pad
   for c in 0 .. ui_n {
     if peek32(ui_parent, c) == i {
       if peek32(ui_visible, c) == 1 {
-        let kw = peek32(ui_rw, c)
-        let kh = peek32(ui_rh, c)
+        var kw = peek32(ui_rw, c)
+        var kh = peek32(ui_rh, c)
         if peek32(ui_grow, c) != 0 {
           if grows > 0 {
             if dir == 1 { kh = kh + extra / grows } else { kw = kw + extra / grows }
@@ -44,13 +44,13 @@ fn ui_arrange(i: int, x: int, y: int) -> void {
         poke32(ui_rw, c, kw)
         poke32(ui_rh, c, kh)
         if dir == 1 {
-          let ax = x + pad
+          var ax = x + pad
           if al == 1 { ax = x + pad + (innerw - kw) / 2 }
           if al == 2 { ax = x + pad + (innerw - kw) }
           ui_arrange(c, ax, cy)
           cy = cy + kh + gap
         } else {
-          let ay = y + pad
+          var ay = y + pad
           if al == 1 { ay = y + pad + (innerh - kh) / 2 }
           if al == 2 { ay = y + pad + (innerh - kh) }
           ui_arrange(c, cx, ay)
@@ -64,8 +64,8 @@ fn ui_arrange(i: int, x: int, y: int) -> void {
 fn ui_layout() -> void {
   if ui_active < 0 { return }
   ui_measure()
-  let px = (rt_fbw - peek32(ui_rw, ui_active)) / 2
-  let py = (rt_fbh - peek32(ui_rh, ui_active)) / 2
+  var px = (rt_fbw - peek32(ui_rw, ui_active)) / 2
+  var py = (rt_fbh - peek32(ui_rh, ui_active)) / 2
   if peek32(ui_haspos, ui_active) == 1 {
     px = peek32(ui_x, ui_active)
     py = peek32(ui_y, ui_active)
@@ -75,9 +75,9 @@ fn ui_layout() -> void {
 
 # ---- drawing --------------------------------------------------------------
 fn ui_lighten(c: int) -> int {
-  let r = band(shr(c, 16), 255)
-  let g = band(shr(c, 8), 255)
-  let b = band(c, 255)
+  var r = band(shr(c, 16), 255)
+  var g = band(shr(c, 8), 255)
+  var b = band(c, 255)
   r = r + (255 - r) * 4 / 10
   g = g + (255 - g) * 4 / 10
   b = b + (255 - b) * 4 / 10
@@ -92,7 +92,7 @@ fn ui_draw_node(i: int) -> void {
   let rw = peek32(ui_rw, i)
   let rh = peek32(ui_rh, i)
   let skin = peek32(ui_skin, i)
-  let focused = 0
+  var focused = 0
   if i == ui_focus { focused = 1 }
 
   if t == WT_PANEL {
@@ -104,7 +104,7 @@ fn ui_draw_node(i: int) -> void {
     }
   }
   if t == WT_BUTTON {
-    let bg = peek32(ui_bg, i)
+    var bg = peek32(ui_bg, i)
     if bg < 0 { bg = 0x2a2a3a }
     if focused == 1 { bg = ui_lighten(bg) }
     if skin >= 0 {
@@ -112,12 +112,12 @@ fn ui_draw_node(i: int) -> void {
     } else {
       rt_fill_rect(rx, ry, rw, rh, bg)
     }
-    let bc = peek32(ui_border, i)
+    var bc = peek32(ui_border, i)
     if bc < 0 { bc = 0x555577 }
     if focused == 1 { bc = 0xffff00 }
     rt_frame_rect(rx, ry, rw, rh, bc)
     let s = ui_str(i)
-    let fg = peek32(ui_fg, i)
+    var fg = peek32(ui_fg, i)
     if fg < 0 { fg = 0xffffff }
     let font = peek32(ui_font, i)
     let size = peek32(ui_size, i)
@@ -125,13 +125,13 @@ fn ui_draw_node(i: int) -> void {
   }
   if t == WT_LABEL {
     let s = ui_str(i)
-    let fg = peek32(ui_fg, i)
+    var fg = peek32(ui_fg, i)
     if fg < 0 { fg = 0xffffff }
     let font = peek32(ui_font, i)
     let size = peek32(ui_size, i)
     let pad = peek32(ui_pad, i)
     let tw = ui_tw(font, s, size)
-    let tx = rx + pad
+    var tx = rx + pad
     let al = peek32(ui_align, i)
     if al == 1 { tx = rx + (rw - tw) / 2 }
     if al == 2 { tx = rx + rw - pad - tw }
@@ -150,7 +150,7 @@ var ui_fl: ptr = ptr_null()
 
 fn ui_focusables() -> int {
   if ptr_is_null(ui_fl) { ui_fl = mem_alloc(UI_MAX * 4) }
-  let n = 0
+  var n = 0
   for i in 0 .. ui_n {
     if peek32(ui_focusable, i) == 1 {
       if peek32(ui_visible, i) == 1 {
@@ -180,7 +180,7 @@ fn rt_ui_tick(k: int) -> void {
     ui_focus = 0 - 1
     return
   }
-  let cur = 0 - 1
+  var cur = 0 - 1
   for i in 0 .. n {
     if peek32(ui_fl, i) == ui_focus { cur = i }
   }
@@ -218,8 +218,8 @@ fn rt_ui_set_text(id: int, s: str) -> void {
   if id < 0 { return }
   if id >= ui_n { return }
   let base = id * 96
-  let i = 0
-  let ch = peek8(s, 0)
+  var i = 0
+  var ch = peek8(s, 0)
   while ch != 0 {
     if i >= 95 { ch = 0 }
     if ch != 0 {
@@ -236,8 +236,8 @@ fn rt_ui_set_int(id: int, n: int) -> void {
   if id < 0 { return }
   if id >= ui_n { return }
   let base = id * 96
-  let at = 0
-  let v = n
+  var at = 0
+  var v = n
   if v < 0 {
     poke8(ui_dyn, base, 45)
     at = 1
@@ -247,15 +247,15 @@ fn rt_ui_set_int(id: int, n: int) -> void {
     poke8(ui_dyn, base + at, 48)
     at = at + 1
   } else {
-    let digits = 0
-    let t = v
+    var digits = 0
+    var t = v
     while t > 0 {
       digits = digits + 1
       t = t / 10
     }
-    let p = digits
+    var p = digits
     while p > 0 {
-      let div = 1
+      var div = 1
       for k in 1 .. p { div = div * 10 }
       poke8(ui_dyn, base + at, 48 + (v / div) % 10)
       at = at + 1

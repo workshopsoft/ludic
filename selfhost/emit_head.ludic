@@ -10,7 +10,7 @@ fn emit_str_const(s: ptr) -> ptr {
   let n = slen(s)
   emith(name);  emith(" = private unnamed_addr constant [")
   emith(itoa(n + 1));  emith(" x i8] c\"")
-  let i = 0
+  var i = 0
   while i < n {
     let c = peek8(s, i)
     if c == 34 or c == 92 or c < 32 or c > 126 {
@@ -79,13 +79,13 @@ fn emit_header() -> void {
   # property layouts — a %Cmp_ record of named fields, emitted here so `new`
   # works whether or not the program runs the ECS. The per-entity @S_/@H_ arrays
   # are separate (emit_ecs_storage), emitted only for a program that runs the ECS.
-  let i = 0
+  var i = 0
   while i < len(prog) {
     let d = prog[i]
     if d.kind == N_COMP {
       emith(layout_ty(d.s));  emith(" = type { ")
       if len(d.kids) == 0 { emith("i32") }
-      let f = 0
+      var f = 0
       while f < len(d.kids) {
         if f > 0 { emith(", ") }
         emith(llty(d.kids[f].ty))

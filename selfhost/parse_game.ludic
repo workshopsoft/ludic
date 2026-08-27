@@ -5,7 +5,7 @@
 fn parse_component() -> Node {
   pi = pi + 1; let n = node(N_COMP); n.s = eat_id(); skipnl(); eat_op("{")
   while true { skipnl(); if is_op("}") { break }
-    let is_computed = false
+    var is_computed = false
     if is_op("@") { pi = pi + 1; let ann = eat_id(); if streq(ann, "Computed") { is_computed = true }; skipnl() }
     let f = node(N_FIELD); f.s = eat_id(); eat_op(":"); f.ty = ptype()
     if is_op("=") { pi = pi + 1; f.a = expr() }
@@ -23,7 +23,7 @@ fn parse_system() -> Node {
   # in a signature clause.
   while true {
     skipnl()                                   # clauses may span several lines
-    if is_op("@") { pi = pi + 1; let a = eat_id();  if is_op("(") { let d = 0    # @anno, one per turn so a
+    if is_op("@") { pi = pi + 1; let a = eat_id();  if is_op("(") { var d = 0    # @anno, one per turn so a
         while true { if is_op("(") { d = d + 1 };  if is_op(")") { d = d - 1 };  pi = pi + 1;  if d == 0 { break } } }
       continue }                               # newline-separated @anno re-skips at the loop top
     if is_id("phase") { pi = pi + 1; n.ty = eat_id(); continue }
@@ -99,7 +99,7 @@ fn parse_queries_anno() -> Node {
   eat_op("(")
   let qn = node(S_QUERY)
   let terms = node(N_BLOCK)
-  let wh: Node = ptr_null()
+  var wh: Node = ptr_null()
   while not is_op(")") {
     skipnl()
     if is_op(")") { break }

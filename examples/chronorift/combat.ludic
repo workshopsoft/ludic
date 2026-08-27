@@ -116,11 +116,11 @@ handler Battle phase Update {
 
         state EnemyTurn {
           if k != 0 {
-            let done = 0
+            var done = 0
             for (t3) in query [Stats, {Party}] {
               if done == 0 {
                 if t3.hp > 0 {
-                  let ed = max(1, e.atk - t3.def + rng_range(0, 4))
+                  var ed = max(1, e.atk - t3.def + rng_range(0, 4))
                   if t3.guard == 1 { ed = ed / 2;  t3.guard = 0 }
                   t3.hp = t3.hp - ed
                   set_reg(R_EDMG, ed)
@@ -128,7 +128,7 @@ handler Battle phase Update {
                 }
               }
             }
-            let alive = 0
+            var alive = 0
             for (t4) in query [Stats, {Party}] {
               if t4.hp > 0 { alive = alive + 1 }
             }

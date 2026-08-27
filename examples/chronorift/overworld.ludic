@@ -37,13 +37,13 @@ handler Control phase Input {
   if reg(R_MODE) == 0 {
     for (p) in query [Pos, {Player}] {
       let k = key()
-      let nx = p.x
-      let ny = p.y
+      var nx = p.x
+      var ny = p.y
       if k == 'w' { ny = p.y - 1 }
       if k == 's' { ny = p.y + 1 }
       if k == 'a' { nx = p.x - 1 }
       if k == 'd' { nx = p.x + 1 }
-      let moved = 0
+      var moved = 0
       if walkable(nx, ny) {
         if nx != p.x or ny != p.y {
           p.x = nx
@@ -88,7 +88,7 @@ handler Control phase Input {
               set_reg(R_ENC, reg(R_ENC) - 1)
               if reg(R_ENC) <= 0 {
                 set_reg(R_ENC, rng_range(4, 9))
-                let et = 0
+                var et = 0
                 if reg(R_MAP) == 1 { et = 1 }
                 if reg(R_MAP) == 0 {
                   if rng_chance(40) { et = 1 }

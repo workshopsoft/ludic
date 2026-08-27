@@ -21,7 +21,7 @@ fn emit_system_fn(sys: Node) -> void {
 }
 
 fn emit_calls_for_phase(phase: ptr) -> void {
-  let i = 0
+  var i = 0
   while i < len(prog) {
     let d = prog[i]
     if d.kind == N_SYS and streq(d.ty, phase) {          # skip a disabled handler
@@ -39,7 +39,7 @@ fn emit_calls_for_phase(phase: ptr) -> void {
 # @OnDespawn(Model) hooks compile to `@on_despawn_<Model>(entity)` functions that
 # bind the model's properties and run the body — dispatched by kind at `despawn`.
 fn emit_despawn_hooks() -> void {
-  let i = 0
+  var i = 0
   while i < len(g_ondespawn) {
     let hk = g_ondespawn[i]
     let model = find_arch(hk.s)
@@ -64,7 +64,7 @@ fn emit_despawn_hooks() -> void {
 
 fn emit_game_main() -> void {
   # every system becomes a function first
-  let i = 0
+  var i = 0
   while i < len(prog) { if prog[i].kind == N_SYS { emit_system_fn(prog[i]) };  i = i + 1 }
   emit_despawn_hooks()
 
