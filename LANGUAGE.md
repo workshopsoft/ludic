@@ -584,7 +584,21 @@ are **`& | ^ << >> ~`** (`>>` is a logical/unsigned shift).
 **Strings are values.** `a + b` concatenates two strings, and `a == b` / `a != b`
 compare them **by content** (not by pointer). `"go" + dir == "goleft"` works as
 written. (Under the hood these call a small emitted string runtime; a `==`/`!=`
-against `null` is still a pointer test.) `expr with { field: … }`
+against `null` is still a pointer test.)
+
+**Interpolation is the readable way to build them.** A backtick string
+`` `text {expr} text` `` embeds any expression in `{…}` — numbers, bools and
+`fixed` values become text automatically, strings pass through — and desugars to
+the `+` chain above:
+
+```ludic
+# doc-check: skip — illustrative interpolation
+let msg = `hello {name}, you have {count + 1} messages`
+# == "hello " + name + ", you have " + str(count + 1) + " messages"
+```
+
+`str(x)` is the same conversion on its own. Write a literal brace as `{{` / `}}`.
+`expr with { field: … }`
 is not implemented; records appear only in `spawn`. Char literals (`'w'`) are
 `int` code points; colors are hex ints (`0xff8800`). `null` is the null-pointer
 literal; test any pointer/record/slice with `x == null` / `x != null` (an unset

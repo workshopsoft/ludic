@@ -126,6 +126,12 @@ fn emit_call(e: Node) -> Val {
   if (name == "quit") { emit("  store i32 0, ptr @L_running\n");  return val("0", "void") }
   if (name == "len") { return emit_len(e) }
   if (name == "push") { return emit_push(e) }
+  if (name == "str") {                            # str(x): int/bool/fixed -> text, a string passes through
+    let a = emit_expr(e.kids[0])
+    if (llty(a.ty) == "ptr") { return a }
+    g_uses_intstr = true
+    return val(emit_bind(("call ptr @fn_int_str(i32 " + (a.code + ")"))), "str")
+  }
   if (name == "fx") { let a = emit_expr(e.kids[0]);  return val(emit_bind(("shl i32 " + (a.code + ", 16"))), "fixed") }
   if (name == "flr") { let a = emit_expr(e.kids[0]);  return val(emit_bind(("ashr i32 " + (a.code + ", 16"))), "int") }
   if is_intrinsic(name) { return emit_intrinsic(name, e) }

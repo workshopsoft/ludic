@@ -54,8 +54,64 @@ fn args_call(call: Node) -> void {
   eat_op(")")
 }
 
+# ---- string interpolation --------------------------------------------------
+# `text {expr} text` desugars to a `+` chain of string literals and `str(expr)`
+# holes, so it reuses the string-concat operator and needs no new runtime.
+fn interp_lit(buf: ptr, len: int) -> Node { let n = node(E_STR); n.s = substr(buf, 0, len); return n }
+fn interp_add(acc: Node, part: Node) -> Node {
+  if acc == null { return part }
+  return mkbin("+", acc, part)
+}
+fn interp_str(e: Node) -> Node {                  # wrap a hole in str(...)
+  let c = node(E_CALL); let id = node(E_ID); id.s = "str"; c.a = id; push(c.kids, e); return c
+}
+fn parse_hole(inner: ptr) -> Node {               # re-lex+parse an embedded expression
+  let saved_toks = toks;  let saved_pi = pi
+  lex(inner);  pi = 0;  skipnl()
+  let e = expr()
+  toks = saved_toks;  pi = saved_pi
+  return e
+}
+fn parse_interp(raw: ptr) -> Node {
+  let n = slen(raw)
+  var acc: Node = null
+  let lit = mem_alloc(n + 1)
+  var lj = 0
+  var i = 0
+  while i < n {
+    let c = peek8(raw, i)
+    if c == 123 {                                 # '{'
+      if peek8(raw, i + 1) == 123 { poke8(lit, lj, 123); lj = lj + 1; i = i + 2; continue }   # {{ -> {
+      if lj > 0 { acc = interp_add(acc, interp_lit(lit, lj));  lj = 0 }
+      i = i + 1
+      let hs = i
+      var depth = 1
+      while i < n and depth > 0 {
+        let d = peek8(raw, i)
+        if d == 123 { depth = depth + 1 }
+        else { if d == 125 { depth = depth - 1;  if depth == 0 { break } } }
+        i = i + 1
+      }
+      acc = interp_add(acc, interp_str(parse_hole(substr(raw, hs, i - hs))))
+      i = i + 1                                   # skip the closing '}'
+    } else {
+      if c == 125 and peek8(raw, i + 1) == 125 { poke8(lit, lj, 125); lj = lj + 1; i = i + 2; continue }  # }} -> }
+      if c == 92 {                                # backslash escape in literal text
+        let e = peek8(raw, i + 1);  var r = e
+        if e == 110 { r = 10 }
+        if e == 116 { r = 9 }
+        poke8(lit, lj, r); lj = lj + 1; i = i + 2; continue
+      }
+      poke8(lit, lj, c); lj = lj + 1; i = i + 1
+    }
+  }
+  if lj > 0 or (acc == null) { acc = interp_add(acc, interp_lit(lit, lj)) }
+  return acc
+}
+
 fn p_primary() -> Node {
   let t = toks[pi]
+  if t.kind == TK_INTERP { pi = pi + 1; return parse_interp(t.text) }
   if t.kind == TK_INT { let n = node(E_INT); n.ival = t.ival; pi = pi + 1; return n }
   if t.kind == TK_FLOAT { let n = node(E_FLOAT); n.ival = t.ival; pi = pi + 1; return n }
   if t.kind == TK_STR { let n = node(E_STR); n.s = t.text; pi = pi + 1; return n }

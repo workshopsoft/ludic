@@ -151,3 +151,26 @@ fn emit_str_prelude() -> void {
   emith("  %j1 = add i32 %j, 1\n  br label %c2\n")
   emith("fin:\n  %pe = getelementptr inbounds i8, ptr %out, i32 %sum\n  store i8 0, ptr %pe\n  ret ptr %out\n}\n")
 }
+
+# int -> decimal string, emitted (once) into any program that uses str(int)
+# (string interpolation of a number). Writes digits from the end of a 24-byte
+# buffer, prepends '-' for negatives, and returns a pointer into the buffer.
+fn emit_int_str() -> void {
+  emith("define ptr @fn_int_str(i32 %n0) {\n")
+  emith("entry:\n  %buf = call ptr @malloc(i64 24)\n")
+  emith("  %isneg = icmp slt i32 %n0, 0\n  %neg = sub i32 0, %n0\n")
+  emith("  %n = select i1 %isneg, i32 %neg, i32 %n0\n")
+  emith("  %term = getelementptr inbounds i8, ptr %buf, i32 23\n  store i8 0, ptr %term\n")
+  emith("  %iszero = icmp eq i32 %n0, 0\n  br i1 %iszero, label %zc, label %dl\n")
+  emith("zc:\n  %zp = getelementptr inbounds i8, ptr %buf, i32 22\n  store i8 48, ptr %zp\n  ret ptr %zp\n")
+  emith("dl:\n  br label %dloop\n")
+  emith("dloop:\n  %pos = phi i32 [ 22, %dl ], [ %pos2, %dbody ]\n  %cur = phi i32 [ %n, %dl ], [ %cur2, %dbody ]\n")
+  emith("  %done = icmp eq i32 %cur, 0\n  br i1 %done, label %sign, label %dbody\n")
+  emith("dbody:\n  %d = urem i32 %cur, 10\n  %ch = add i32 %d, 48\n  %ch8 = trunc i32 %ch to i8\n")
+  emith("  %pp = getelementptr inbounds i8, ptr %buf, i32 %pos\n  store i8 %ch8, ptr %pp\n")
+  emith("  %cur2 = udiv i32 %cur, 10\n  %pos2 = sub i32 %pos, 1\n  br label %dloop\n")
+  emith("sign:\n  br i1 %isneg, label %addneg, label %fin\n")
+  emith("addneg:\n  %sp = getelementptr inbounds i8, ptr %buf, i32 %pos\n  store i8 45, ptr %sp\n  %posn = sub i32 %pos, 1\n  br label %fin\n")
+  emith("fin:\n  %fpos = phi i32 [ %pos, %sign ], [ %posn, %addneg ]\n")
+  emith("  %rpos = add i32 %fpos, 1\n  %res = getelementptr inbounds i8, ptr %buf, i32 %rpos\n  ret ptr %res\n}\n")
+}

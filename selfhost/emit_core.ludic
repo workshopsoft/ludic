@@ -19,6 +19,7 @@ var loc_ty:   []ptr
 var loc_mut:  []int          # 1 = mutable (var / param / loop-var), 0 = immutable (let)
 var nloc: int = 0
 var g_uses_str: bool = false  # a `str + str` / `str == str` was emitted -> emit the prelude
+var g_uses_intstr: bool = false  # `str(int)` was emitted -> emit the int->string prelude
 
 # loop targets for break/continue (innermost last)
 var brk_lbl: []ptr

@@ -9,6 +9,7 @@ const TK_OP:  int = 3
 const TK_NL:  int = 4
 const TK_EOF: int = 5
 const TK_FLOAT: int = 6
+const TK_INTERP: int = 7      # `text {expr} text` — raw content, split by the parser
 
 property Tok { kind: int = 0, text: ptr = null, ival: int = 0, line: int = 0 }
 
@@ -67,6 +68,16 @@ fn lex(src: ptr) -> void {
       i = i + 1
       poke8(out, j, 0)
       tok_push(TK_STR, out, 0, line)
+      continue
+    }
+    if c == 96 {                                   # `interpolated string` — captured raw
+      i = i + 1
+      let out = mem_alloc(n)
+      var j = 0
+      while i < n and peek8(src, i) != 96 { poke8(out, j, peek8(src, i)); j = j + 1; i = i + 1 }
+      i = i + 1
+      poke8(out, j, 0)
+      tok_push(TK_INTERP, out, 0, line)
       continue
     }
     if c == 39 {                                   # 'c' char literal -> int

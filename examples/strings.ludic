@@ -1,5 +1,5 @@
-# strings.ludic — strings are values: compare with ==/!=, join with +.
-# Running it prints: 1 2 3 4 5
+# strings.ludic — strings are values: compare with ==/!=, join with +, or (best)
+# interpolate with `backticks {expr}`. Running it prints: 1 2 3 4 5 6 7
 program Strings {
   entry {
     let greeting = "hello"
@@ -17,5 +17,10 @@ program Strings {
     if line == "ababab" { print_int(4) }
 
     if (greeting + who) != greeting { print_int(5) }
+
+    # interpolation: `{expr}` embeds any expression (numbers become text)
+    let n = 42
+    if `{greeting}, {who}!` == "hello, Ludic!" { print_int(6) }
+    if `n={n}, next={n + 1}` == "n=42, next=43" { print_int(7) }
   }
 }

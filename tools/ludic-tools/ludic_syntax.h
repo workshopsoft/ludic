@@ -227,6 +227,12 @@ static void lud_lex(LLex* L, const char* src){
             if (src[i] == '"') i++; else bad = 1;
             ltok_push(L, LT_STR, s, i, line, bad); continue;
         }
+        if (c == '`'){                      /* `interpolated {expr}` string */
+            int s = i; i++; int bad = 0;
+            while (src[i] && src[i] != '`'){ if (src[i] == '\\' && src[i+1]) i += 2; else i++; }
+            if (src[i] == '`') i++; else bad = 1;
+            ltok_push(L, LT_STR, s, i, line, bad); continue;
+        }
         if (c == '\''){
             int s = i; i++; int bad = 0;
             if (src[i] == '\\' && src[i+1]) i += 2; else if (src[i] && src[i] != '\n') i++;
