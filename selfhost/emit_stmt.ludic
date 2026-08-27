@@ -49,6 +49,7 @@ fn emit_assign(st: Node) -> void {
     if (st.s == ("/=")) { opc = "sdiv" }
     v = emit_bind(`{opc} i32 {cur}, {v}`)
   }
+  if (lt == "i8") { v = emit_bind(`trunc i32 {v} to i8`) }   # narrow to a byte for p[i] = v
   store_at(lt, v, addr)
 }
 

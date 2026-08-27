@@ -18,12 +18,12 @@ fn buf_ensure(b: Buf, extra: int) -> void {
 }
 fn buf_putc(b: Buf, c: int) -> void {
   buf_ensure(b, 1)
-  poke8(b.data, b.len, c)
+  b.data[b.len] = c
   b.len = b.len + 1
 }
 fn buf_puts(b: Buf, s: ptr) -> void {
   var i = 0
-  while peek8(s, i) != 0 { buf_putc(b, peek8(s, i)); i = i + 1 }
+  while s[i] != 0 { buf_putc(b, s[i]); i = i + 1 }
 }
 fn buf_puti(b: Buf, n: int) -> void { buf_puts(b, itoa(n)) }
-fn buf_str(b: Buf) -> ptr { poke8(b.data, b.len, 0); return b.data }
+fn buf_str(b: Buf) -> ptr { b.data[b.len] = 0; return b.data }

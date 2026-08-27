@@ -219,16 +219,16 @@ fn rt_ui_set_text(id: int, s: str) -> void {
   if id >= ui_n { return }
   let base = id * 96
   var i = 0
-  var ch = peek8(s, 0)
+  var ch = s[0]
   while ch != 0 {
     if i >= 95 { ch = 0 }
     if ch != 0 {
-      poke8(ui_dyn, base + i, ch)
+      ui_dyn[base + i] = ch
       i = i + 1
-      ch = peek8(s, i)
+      ch = s[i]
     }
   }
-  poke8(ui_dyn, base + i, 0)
+  ui_dyn[base + i] = 0
   poke32(ui_hasdyn, id, 1)
 }
 
@@ -239,12 +239,12 @@ fn rt_ui_set_int(id: int, n: int) -> void {
   var at = 0
   var v = n
   if v < 0 {
-    poke8(ui_dyn, base, 45)
+    ui_dyn[base] = 45
     at = 1
     v = 0 - v
   }
   if v == 0 {
-    poke8(ui_dyn, base + at, 48)
+    ui_dyn[base + at] = 48
     at = at + 1
   } else {
     var digits = 0
@@ -257,12 +257,12 @@ fn rt_ui_set_int(id: int, n: int) -> void {
     while p > 0 {
       var div = 1
       for k in 1 .. p { div = div * 10 }
-      poke8(ui_dyn, base + at, 48 + (v / div) % 10)
+      ui_dyn[base + at] = 48 + (v / div) % 10
       at = at + 1
       p = p - 1
     }
   }
-  poke8(ui_dyn, base + at, 0)
+  ui_dyn[base + at] = 0
   poke32(ui_hasdyn, id, 1)
 }
 

@@ -154,8 +154,6 @@ static const LBuiltin LUDIC_INTRINSICS[] = {
  {"mem_free","mem_free(p: ptr)","Release an allocation."},
  {"mem_copy","mem_copy(dst: ptr, src: ptr, n: int)","memcpy."},
  {"mem_set","mem_set(p: ptr, byte: int, n: int)","memset."},
- {"peek8","peek8(p: ptr, off: int) -> int","Read one byte."},
- {"poke8","poke8(p: ptr, off: int, v: int)","Write one byte."},
  {"peek32","peek32(p: ptr, off: int) -> int","Read a 32-bit word."},
  {"poke32","poke32(p: ptr, off: int, v: int)","Write a 32-bit word."},
  {"peekp","peekp(p: ptr, off: int) -> ptr","Read a pointer-sized word."},

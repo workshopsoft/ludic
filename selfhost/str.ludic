@@ -14,20 +14,20 @@ fn char_is_alnum(c: int) -> bool { return char_is_alpha(c) or char_is_digit(c) }
 
 # integer -> fresh decimal string
 fn itoa(v: int) -> ptr {
-  if v == 0 { let z = mem_alloc(2); poke8(z, 0, 48); poke8(z, 1, 0); return z }
+  if v == 0 { let z = mem_alloc(2); z[0] = 48; z[1] = 0; return z }
   var neg = false
   var x = v
   if x < 0 { neg = true;  x = 0 - x }
   let tmp = mem_alloc(16)
   var n = 0
-  while x > 0 { poke8(tmp, n, 48 + x % 10);  x = x / 10;  n = n + 1 }
+  while x > 0 { tmp[n] = 48 + x % 10;  x = x / 10;  n = n + 1 }
   var total = n
   if neg { total = total + 1 }
   let out = mem_alloc(total + 1)
   var k = 0
-  if neg { poke8(out, 0, 45);  k = 1 }
+  if neg { out[0] = 45;  k = 1 }
   var i = 0
-  while i < n { poke8(out, k + i, peek8(tmp, n - 1 - i));  i = i + 1 }
-  poke8(out, total, 0)
+  while i < n { out[k + i] = tmp[n - 1 - i];  i = i + 1 }
+  out[total] = 0
   return out
 }

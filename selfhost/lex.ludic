@@ -23,7 +23,7 @@ fn tok_push(kind: int, text: ptr, ival: int, line: int) -> void {
 
 # does src match the 2-char operator op at position i?
 fn two_at(src: ptr, i: int, a: int, b: int) -> bool {
-  return peek8(src, i) == a and peek8(src, i + 1) == b
+  return src[i] == a and src[i + 1] == b
 }
 
 fn is_op1(c: int) -> bool {
@@ -43,11 +43,11 @@ fn lex(src: ptr) -> void {
   var line = 1
   let n = len(src)
   while i < n {
-    let c = peek8(src, i)
+    let c = src[i]
     if c == 10 { tok_push(TK_NL, null, 0, line); line = line + 1; i = i + 1; continue }
     if c == 32 or c == 9 or c == 13 { i = i + 1; continue }
     if c == 35 {                                   # '#' comment to end of line
-      while i < n and peek8(src, i) != 10 { i = i + 1 }
+      while i < n and src[i] != 10 { i = i + 1 }
       continue
     }
     if c == 34 {                                   # "string"
@@ -55,18 +55,18 @@ fn lex(src: ptr) -> void {
       let start = i
       let out = mem_alloc(n)
       var j = 0
-      while i < n and peek8(src, i) != 34 {
-        if peek8(src, i) == 92 {                    # backslash escape
-          let e = peek8(src, i + 1)
+      while i < n and src[i] != 34 {
+        if src[i] == 92 {                    # backslash escape
+          let e = src[i + 1]
           var r = e
           if e == 110 { r = 10 }
           if e == 116 { r = 9 }
           if e == 48  { r = 0 }
-          poke8(out, j, r);  j = j + 1;  i = i + 2
-        } else { poke8(out, j, peek8(src, i)); j = j + 1; i = i + 1 }
+          out[j] = r;  j = j + 1;  i = i + 2
+        } else { out[j] = src[i]; j = j + 1; i = i + 1 }
       }
       i = i + 1
-      poke8(out, j, 0)
+      out[j] = 0
       tok_push(TK_STR, out, 0, line)
       continue
     }
@@ -74,32 +74,32 @@ fn lex(src: ptr) -> void {
       i = i + 1
       let out = mem_alloc(n)
       var j = 0
-      while i < n and peek8(src, i) != 96 { poke8(out, j, peek8(src, i)); j = j + 1; i = i + 1 }
+      while i < n and src[i] != 96 { out[j] = src[i]; j = j + 1; i = i + 1 }
       i = i + 1
-      poke8(out, j, 0)
+      out[j] = 0
       tok_push(TK_INTERP, out, 0, line)
       continue
     }
     if c == 39 {                                   # 'c' char literal -> int
       i = i + 1
       var v = 0
-      if peek8(src, i) == 92 {
-        let e = peek8(src, i + 1)
+      if src[i] == 92 {
+        let e = src[i + 1]
         if e == 110 { v = 10 }
         if e == 116 { v = 9 }
         if e == 48  { v = 0 }
         i = i + 2
-      } else { v = peek8(src, i); i = i + 1 }
-      if peek8(src, i) == 39 { i = i + 1 }
+      } else { v = src[i]; i = i + 1 }
+      if src[i] == 39 { i = i + 1 }
       tok_push(TK_INT, null, v, line)
       continue
     }
     if char_is_digit(c) {
-      if c == 48 and peek8(src, i + 1) == 120 {     # 0x hex
+      if c == 48 and src[i + 1] == 120 {     # 0x hex
         var v = 0
         i = i + 2
         while i < n {
-          let h = peek8(src, i)
+          let h = src[i]
           var d = 0
           if char_is_digit(h) { d = h - 48 }
           else { if h >= 97 and h <= 102 { d = h - 87 }
@@ -111,12 +111,12 @@ fn lex(src: ptr) -> void {
         continue
       }
       var v = 0
-      while i < n and char_is_digit(peek8(src, i)) { v = v * 10 + (peek8(src, i) - 48); i = i + 1 }
+      while i < n and char_is_digit(src[i]) { v = v * 10 + (src[i] - 48); i = i + 1 }
       # a fractional part makes it a Q16.16 fixed literal
-      if i < n and peek8(src, i) == 46 and char_is_digit(peek8(src, i + 1)) {
+      if i < n and src[i] == 46 and char_is_digit(src[i + 1]) {
         i = i + 1
         var fnum = 0;  var fden = 1
-        while i < n and char_is_digit(peek8(src, i)) { fnum = fnum * 10 + (peek8(src, i) - 48);  fden = fden * 10;  i = i + 1 }
+        while i < n and char_is_digit(src[i]) { fnum = fnum * 10 + (src[i] - 48);  fden = fden * 10;  i = i + 1 }
         let bits = (v << 16) + (fnum << 16) / fden
         tok_push(TK_FLOAT, null, bits, line)
         continue
@@ -126,7 +126,7 @@ fn lex(src: ptr) -> void {
     }
     if char_is_alpha(c) {
       let start = i
-      while i < n and char_is_alnum(peek8(src, i)) { i = i + 1 }
+      while i < n and char_is_alnum(src[i]) { i = i + 1 }
       tok_push(TK_ID, src[start..i], 0, line)
       continue
     }

@@ -106,7 +106,7 @@ fn rt_tt_init() -> void {
 
 # ---- big-endian readers ---------------------------------------------------
 fn tt_u16(d: ptr, at: int) -> int {
-  return ((peek8(d, at) << 8) | peek8(d, at + 1))
+  return ((d[at] << 8) | d[at + 1])
 }
 fn tt_i16(d: ptr, at: int) -> int {
   let v = tt_u16(d, at)
@@ -114,10 +114,10 @@ fn tt_i16(d: ptr, at: int) -> int {
   return v
 }
 fn tt_u32(d: ptr, at: int) -> int {
-  return (peek8(d, at) << 24) | (peek8(d, at + 1) << 16) | (peek8(d, at + 2) << 8) | peek8(d, at + 3)
+  return (d[at] << 24) | (d[at + 1] << 16) | (d[at + 2] << 8) | d[at + 3]
 }
 fn tt_i8(d: ptr, at: int) -> int {
-  let v = peek8(d, at)
+  let v = d[at]
   if v >= 128 { return v - 256 }
   return v
 }
@@ -126,10 +126,10 @@ fn tt_find_table(d: ptr, base: int, a: int, b: int, c: int, e: int) -> int {
   let n = tt_u16(d, base + 4)
   for i in 0 .. n {
     let rec = base + 12 + i * 16
-    if peek8(d, rec) == a {
-      if peek8(d, rec + 1) == b {
-        if peek8(d, rec + 2) == c {
-          if peek8(d, rec + 3) == e { return tt_u32(d, rec + 8) }
+    if d[rec] == a {
+      if d[rec + 1] == b {
+        if d[rec + 2] == c {
+          if d[rec + 3] == e { return tt_u32(d, rec + 8) }
         }
       }
     }
@@ -174,7 +174,7 @@ fn rt_font_load(path: str) -> int {
   var base = 0
   # a .ttc collection points at its first font
   if size >= 16 {
-    if peek8(d, 0) == 116 { if peek8(d, 1) == 116 { if peek8(d, 2) == 99 { if peek8(d, 3) == 102 {
+    if d[0] == 116 { if d[1] == 116 { if d[2] == 99 { if d[3] == 102 {
       base = tt_u32(d, 12)
     } } } }
   }
@@ -256,7 +256,7 @@ fn tt_glyph_index(id: int, cp: int) -> int {
     return 0
   }
   if fmt == 0 {
-    if cp < 256 { return peek8(d, s + 6 + cp) }
+    if cp < 256 { return d[s + 6 + cp] }
   }
   return 0
 }
@@ -313,15 +313,15 @@ fn tt_load_outline(id: int, gid: int, a: fixed, b: fixed, c: fixed, e: fixed, dx
     let flags = mem_alloc(npts + 8)
     var i = 0
     while i < npts {
-      let fl = peek8(d, p)
+      let fl = d[p]
       p = p + 1
-      poke8(flags, i, fl)
+      flags[i] = fl
       i = i + 1
       if (fl & 8) != 0 {                  # REPEAT
-        var r = peek8(d, p)
+        var r = d[p]
         p = p + 1
         while r > 0 {
-          if i < npts { poke8(flags, i, fl);  i = i + 1 }
+          if i < npts { flags[i] = fl;  i = i + 1 }
           r = r - 1
         }
       }
@@ -331,9 +331,9 @@ fn tt_load_outline(id: int, gid: int, a: fixed, b: fixed, c: fixed, e: fixed, dx
     let ys = mem_alloc((npts + 1) * 4)
     var xv = 0
     for k in 0 .. npts {
-      let fl = peek8(flags, k)
+      let fl = flags[k]
       if (fl & 2) != 0 {
-        let dxv = peek8(d, p)
+        let dxv = d[p]
         p = p + 1
         if (fl & 16) != 0 { xv = xv + dxv } else { xv = xv - dxv }
       } else {
@@ -343,9 +343,9 @@ fn tt_load_outline(id: int, gid: int, a: fixed, b: fixed, c: fixed, e: fixed, dx
     }
     var yv = 0
     for k in 0 .. npts {
-      let fl = peek8(flags, k)
+      let fl = flags[k]
       if (fl & 4) != 0 {
-        let dyv = peek8(d, p)
+        let dyv = d[p]
         p = p + 1
         if (fl & 32) != 0 { yv = yv + dyv } else { yv = yv - dyv }
       } else {
@@ -360,7 +360,7 @@ fn tt_load_outline(id: int, gid: int, a: fixed, b: fixed, c: fixed, e: fixed, dx
       for k in start .. last + 1 {
         let X = fx(peek32(xs, k))
         let Y = fx(peek32(ys, k))
-        ol_pt(a * X + c * Y + dx, b * X + e * Y + dy, (peek8(flags, k) & 1))
+        ol_pt(a * X + c * Y + dx, b * X + e * Y + dy, (flags[k] & 1))
       }
       if ol_ne < 256 {
         poke32(ol_ends, ol_ne, ol_n)

@@ -40,7 +40,7 @@ fn rt_init() -> void {
   rt_map = mem_alloc(96 * 64)
   mem_set(rt_map, 32, 96 * 64)
   rt_statusbuf = mem_alloc(96)
-  poke8(rt_statusbuf, 0, 0)
+  rt_statusbuf[0] = 0
   rt_image_init()
   rt_tt_init()
   rt_ui_init()
@@ -117,7 +117,7 @@ fn rt_glyph(x: int, y: int, ch: int, colour: int, sc: int) -> void {
   let base = (c - 32) * 7
   let font = rt_font()
   for row in 0 .. 7 {
-    let bits = peek8(font, base + row) - 48
+    let bits = font[base + row] - 48
     var b = bits
     for cc in 0 .. 5 {
       let on = b / 16
@@ -132,12 +132,12 @@ fn rt_glyph(x: int, y: int, ch: int, colour: int, sc: int) -> void {
 fn rt_text(x: int, y: int, s: str, colour: int, sc: int) -> void {
   var i = 0
   var cx = x
-  var ch = peek8(s, 0)
+  var ch = s[0]
   while ch != 0 {
     rt_glyph(cx, y, ch, colour, sc)
     cx = cx + 6 * sc
     i = i + 1
-    ch = peek8(s, i)
+    ch = s[i]
   }
 }
 
@@ -240,19 +240,19 @@ fn rt_running() -> bool {
 fn rt_put_str(buf: ptr, at: int, s: str) -> int {
   var i = 0
   var n = at
-  var ch = peek8(s, 0)
+  var ch = s[0]
   while ch != 0 {
-    poke8(buf, n, ch)
+    buf[n] = ch
     n = n + 1
     i = i + 1
-    ch = peek8(s, i)
+    ch = s[i]
   }
   return n
 }
 
 fn rt_put_int(buf: ptr, at: int, v: int) -> int {
   if v == 0 {
-    poke8(buf, at, 48)
+    buf[at] = 48
     return at + 1
   }
   var digits = 0
@@ -268,7 +268,7 @@ fn rt_put_int(buf: ptr, at: int, v: int) -> int {
     for k in 1 .. p {
       div = div * 10
     }
-    poke8(buf, n, 48 + (v / div) % 10)
+    buf[n] = 48 + (v / div) % 10
     n = n + 1
     p = p - 1
   }
@@ -291,9 +291,9 @@ fn rt_dump_ppm(path: str) -> void {
   let buf = mem_alloc(px * 3)
   for i in 0 .. px {
     let c = peek32(rt_fb, i)
-    poke8(buf, i * 3, (c / 65536) % 256)
-    poke8(buf, i * 3 + 1, (c / 256) % 256)
-    poke8(buf, i * 3 + 2, c % 256)
+    buf[i * 3] = (c / 65536) % 256
+    buf[i * 3 + 1] = (c / 256) % 256
+    buf[i * 3 + 2] = c % 256
   }
   file_write(f, buf, px * 3)
   file_close(f)
@@ -324,12 +324,12 @@ fn rt_map_row(y: int, s: str) -> void {
   if y < 0 { return }
   if y >= 64 { return }
   var x = 0
-  var ch = peek8(s, 0)
+  var ch = s[0]
   while ch != 0 {
     if x >= 96 { return }
-    poke8(rt_map, y * 96 + x, ch)
+    rt_map[y * 96 + x] = ch
     x = x + 1
-    ch = peek8(s, x)
+    ch = s[x]
   }
 }
 
@@ -338,7 +338,7 @@ fn rt_tile(x: int, y: int) -> int {
   if y < 0 { return 35 }
   if x >= rt_mapw { return 35 }
   if y >= rt_maph { return 35 }
-  return peek8(rt_map, y * 96 + x)
+  return rt_map[y * 96 + x]
 }
 
 # ---- status line ----------------------------------------------------------
@@ -348,16 +348,16 @@ var rt_statusbuf: ptr = null
 
 fn rt_status(s: str) -> void {
   var i = 0
-  var ch = peek8(s, 0)
+  var ch = s[0]
   while ch != 0 {
     if i >= 95 { ch = 0 }
     if ch != 0 {
-      poke8(rt_statusbuf, i, ch)
+      rt_statusbuf[i] = ch
       i = i + 1
-      ch = peek8(s, i)
+      ch = s[i]
     }
   }
-  poke8(rt_statusbuf, i, 0)
+  rt_statusbuf[i] = 0
 }
 
 fn rt_status_text() -> ptr {

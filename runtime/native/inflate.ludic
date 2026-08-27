@@ -36,7 +36,7 @@ fn z_bits(need: int) -> int {
       z_err = 1
       return 0
     }
-    val = (val | (peek8(z_src, z_pos) << z_bitcnt))
+    val = (val | (z_src[z_pos] << z_bitcnt))
     z_pos = z_pos + 1
     z_bitcnt = z_bitcnt + 8
   }
@@ -129,13 +129,13 @@ fn z_stored(out: ptr, at: int, cap: int) -> int {
   z_bitbuf = 0
   z_bitcnt = 0                        # stored blocks are byte-aligned
   if z_pos + 4 > z_len { return -1 }
-  let n = peek8(z_src, z_pos) + (peek8(z_src, z_pos + 1) << 8)
+  let n = z_src[z_pos] + (z_src[z_pos + 1] << 8)
   z_pos = z_pos + 4                   # LEN then its one's complement
   var w = at
   for i in 0 .. n {
     if z_pos >= z_len { return -1 }
     if w >= cap { return -1 }
-    poke8(out, w, peek8(z_src, z_pos))
+    out[w] = z_src[z_pos]
     w = w + 1
     z_pos = z_pos + 1
   }
@@ -150,7 +150,7 @@ fn z_codes(out: ptr, at: int, cap: int, lit: ptr, dist: ptr) -> int {
     if sym < 0 { return -1 }
     if sym < 256 {
       if w >= cap { return -1 }
-      poke8(out, w, sym)
+      out[w] = sym
       w = w + 1
     }
     if sym > 256 {
@@ -163,7 +163,7 @@ fn z_codes(out: ptr, at: int, cap: int, lit: ptr, dist: ptr) -> int {
       if distance > w { return -1 }
       for k in 0 .. length {
         if w >= cap { return -1 }
-        poke8(out, w, peek8(out, w - distance))
+        out[w] = out[w - distance]
         w = w + 1
       }
     }
@@ -197,7 +197,7 @@ fn z_dynamic_tables(lit: ptr, dist: ptr) -> int {
   # 16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15 — biased by '0' so it is one literal
   let order = "@AB08796:5;4<3=2>1?"
   for i in 0 .. ncode {
-    poke32(lengths, peek8(order, i) - 48, z_bits(3))
+    poke32(lengths, order[i] - 48, z_bits(3))
   }
   let clen = z_table_new(19)
   z_table_build(clen, lengths, 19)
@@ -270,7 +270,7 @@ fn z_inflate(src: ptr, len: int, out: ptr, cap: int) -> int {
 # zlib wrapper (RFC 1950): two header bytes, then DEFLATE, then Adler-32.
 fn z_uncompress(src: ptr, len: int, out: ptr, cap: int) -> int {
   if len < 2 { return -1 }
-  let cmf = peek8(src, 0)
+  let cmf = src[0]
   if (cmf & 15) != 8 { return -1 }
   return z_inflate(ptr_add(src, 2), len - 2, out, cap)
 }
