@@ -34,7 +34,7 @@ fn parse_system() -> Node {
         while true { if is_op("(") { d = d + 1 };  if is_op(")") { d = d - 1 };  pi = pi + 1;  if d == 0 { break } } }
       continue }                               # newline-separated @anno re-skips at the loop top
     if is_id("phase") { pi = pi + 1; n.ty = eat_id(); continue }
-    if is_id("reads") or is_id("writes") or is_id("needs") or is_id("uses") { pi = pi + 1; skip_clause(); continue }
+    if is_id("reads") or is_id("writes") { pi = pi + 1; skip_clause(); continue }   # `needs`/`uses` synonyms dropped (Rule A cleanup)
     if is_id("query") {
       pi = pi + 1; has_q = true
       if is_op("(") { eat_op("(")              # optional (vars); omitted when nothing binds
@@ -126,8 +126,8 @@ fn parse_extern() -> Node {
 fn parse_widget() -> Node {
   let w = node(N_UI); w.s = eat_id()          # widget type name
   w.b = node(N_BLOCK)                        # b.kids = props (E_FINIT)
-  while toks[pi].kind == TK_ID and toks[pi + 1].kind == TK_OP and streq(toks[pi + 1].text, "=") {
-    let pr = node(E_FINIT); pr.s = eat_id(); eat_op("="); pr.a = expr(); push(w.b.kids, pr)
+  while toks[pi].kind == TK_ID and toks[pi + 1].kind == TK_OP and streq(toks[pi + 1].text, ":") {
+    let pr = node(E_FINIT); pr.s = eat_id(); eat_op(":"); pr.a = expr(); push(w.b.kids, pr)   # widget prop `key: value` (Rule A)
   }
   skipnl()
   if is_op("{") { pi = pi + 1

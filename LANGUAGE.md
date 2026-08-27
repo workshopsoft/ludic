@@ -105,18 +105,18 @@ TrueType text, focus highlight) and keyboard focus + activation.
 
 ```ludic
 ui MainMenu {
-  panel id=Root w=288 pad=16 gap=6 skin="assets/ui/panel.png" inset=10 align=center {
-    label  text="CHRONO RIFT" font=reg(R_FONT) size=26 fg=0xffe060 align=center
-    button id=NewGame text="New Game" font=reg(R_FONT) size=16 w=236
-    button id=Quit    text="Quit"     font=reg(R_FONT) size=16 w=236
+  panel id: Root w: 288 pad: 16 gap: 6 skin: "assets/ui/panel.png" inset: 10 align: center {
+    label  text: "CHRONO RIFT" font: reg(R_FONT) size: 26 fg: 0xffe060 align: center
+    button id: NewGame text: "New Game" font: reg(R_FONT) size: 16 w: 236
+    button id: Quit    text: "Quit"     font: reg(R_FONT) size: 16 w: 236
   }
 }
 ```
 
 Widget types: `panel` (container + optional skin/bg/border), `col` / `row`
 (pure stacks), `label`, `button` (focusable), `image`, `spacer`. Props are
-evaluated at build time, so `font=reg(R_FONT)` reads a value the game set first.
-Each `id=Name` mints a `UI_Name` handle (the `ui` block name too), used from
+evaluated at build time, so `font: reg(R_FONT)` reads a value the game set first.
+Each `id: Name` mints a `UI_Name` handle (the `ui` block name too), used from
 systems:
 
 ```ludic

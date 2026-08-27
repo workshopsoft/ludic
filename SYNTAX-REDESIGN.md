@@ -250,14 +250,26 @@ Records live only in games, so the seed was unaffected; verified every golden
 byte-identical, old `=` form now rejected, reseeded, `test.sh` 14/14. Doc examples
 updated (LANGUAGE.md, BOOTSTRAP.md R2).
 
-**3b — ui props → named-argument form.** `panel id=Root w=288` → `panel(id: Root,
-w: 288)`. Not started (touches `parse_widget` + `emit_ui`).
+**3b — ui props → `key: value` ✅ DONE.** `panel id=Root w=288` → `panel id: Root
+w: 288`. `parse_widget` now reads props with `:` ([parse_game.ludic](selfhost/parse_game.ludic)).
+Chose the **colonized** form over parenthesized named-args: it satisfies Rule A
+(the `=` overload is gone) with minimal churn, needs no new grammar, and `emit_ui`
+(which reads the AST) and `ludic-fmt` (which formats `:` correctly by default)
+were both untouched. Migration: [migrate_ui.c](tools/ludic-tools/migrate_ui.c).
+menu golden byte-identical, old `=` form rejected, reseeded, `test.sh` 14/14.
+(The parenthesized form `panel(id: Root, w: 288)` remains a possible future
+refinement if the language ever gains named call arguments.)
 
-**3c — collapse `reads/writes/needs/uses` → `reads`/`writes`, stored on the node.**
-Not started.
+**3c — dropped the dead `needs`/`uses` clause synonyms ✅ DONE.** `reads`/`writes`
+stay (documented; still parsed-and-reserved). `needs`/`uses` were undocumented and
+unused anywhere in the corpus — removed from `parse_system`. *Not done:* actually
+*storing* reads/writes on the node for an analysis pass — that's analysis
+infrastructure, out of scope for a syntax pass.
 
-**3d — modifiers `edge`/`pure`/`export` → `@`-annotations, parsed into a list.**
-Not started.
+**3d — modifiers `edge`/`pure`/`export` → `@`-annotations.** Not started. Low
+urgency: `edge`/`pure` are unused in the corpus and `export` appears once
+([examples/lib/combat.ludic](examples/lib/combat.ludic)); it needs `parse_one_decl`
+to accept leading `@annotations` on any declaration.
 
 Each sub-phase follows the proven pattern: parser change → verification-gated
 migration (IR byte-identical / goldens identical) → reseed → docs. The migration

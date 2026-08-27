@@ -8,14 +8,14 @@ game Menu {
   const R_MSG:  int = 1
 
   ui MainMenu {
-    panel id=Root w=288 pad=16 gap=6 bg=0x1a1a2c border=0x4a4a72 skin="assets/ui/panel.png" inset=10 align=center {
-      label text="CHRONO RIFT" font=reg(R_FONT) size=26 fg=0xffe060 align=center
-      label text="a Ludic retained-UI demo" font=reg(R_FONT) size=14 fg=0x9aa0c8 align=center
-      spacer h=4
-      button id=NewGame  text="New Game" font=reg(R_FONT) size=16 w=236
-      button id=Continue text="Continue" font=reg(R_FONT) size=16 w=236
-      button id=Options  text="Options"  font=reg(R_FONT) size=16 w=236
-      button id=Quit     text="Quit"     font=reg(R_FONT) size=16 w=236
+    panel id: Root w: 288 pad: 16 gap: 6 bg: 0x1a1a2c border: 0x4a4a72 skin: "assets/ui/panel.png" inset: 10 align: center {
+      label text: "CHRONO RIFT" font: reg(R_FONT) size: 26 fg: 0xffe060 align: center
+      label text: "a Ludic retained-UI demo" font: reg(R_FONT) size: 14 fg: 0x9aa0c8 align: center
+      spacer h: 4
+      button id: NewGame  text: "New Game" font: reg(R_FONT) size: 16 w: 236
+      button id: Continue text: "Continue" font: reg(R_FONT) size: 16 w: 236
+      button id: Options  text: "Options"  font: reg(R_FONT) size: 16 w: 236
+      button id: Quit     text: "Quit"     font: reg(R_FONT) size: 16 w: 236
     }
   }
 
