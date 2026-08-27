@@ -37,6 +37,9 @@ fn emit_ecs_storage() -> void {
       emith(sconcat("@S_", sconcat(c.s, sconcat(" = internal global [", sconcat(me, sconcat(" x %Cmp_", sconcat(c.s, "] zeroinitializer\n")))))))
       emith(sconcat("@H_", sconcat(c.s, sconcat(" = internal global [", sconcat(me, " x i8] zeroinitializer\n")))))
     }
+    # one enabled-flag global per model and per handler (default enabled)
+    if c.kind == N_ARCH { emith(sconcat("@ME_", sconcat(c.s, " = internal global i32 1\n"))) }
+    if c.kind == N_SYS  { emith(sconcat("@HE_", sconcat(c.s, " = internal global i32 1\n"))) }
     i = i + 1
   }
 }

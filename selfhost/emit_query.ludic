@@ -42,7 +42,10 @@ fn emit_query(st: Node) -> void {
     if ak > 0 {
       let kp = nreg();  emit("  ");  emit(kp);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_kind, i32 0, i32 ");  emit(i1);  emit("\n")
       let kv = emit_bind(sconcat("load i32, ptr ", kp))
-      ok = emit_bind(sconcat("icmp eq i32 ", sconcat(kv, sconcat(", ", itoa(ak)))))
+      let kok = emit_bind(sconcat("icmp eq i32 ", sconcat(kv, sconcat(", ", itoa(ak)))))
+      let mev = emit_bind(sconcat("load i32, ptr @ME_", tm.s))                 # model-enabled flag
+      let meok = emit_bind(sconcat("icmp ne i32 ", sconcat(mev, ", 0")))
+      ok = emit_bind(sconcat("and i1 ", sconcat(kok, sconcat(", ", meok))))
     } else {
       let hp = nreg();  emit("  ");  emit(hp);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i8], ptr @H_");  emit(tm.s);  emit(", i32 0, i32 ");  emit(i1);  emit("\n")
       let hv = emit_bind(sconcat("load i8, ptr ", hp))

@@ -199,6 +199,26 @@ fn onattach_body(prop: ptr) -> Node {
   return ptr_null()
 }
 
+# @OnEnable(Property) / @OnDisable(Property): run when a property is toggled on an
+# entity, with the property bound by name.
+var g_onenable: []Node
+var g_ondisable: []Node
+fn register_onenable(prop: ptr, body: Node) -> void { let n = node(N_BLOCK); n.s = prop; n.a = body; push(g_onenable, n) }
+fn register_ondisable(prop: ptr, body: Node) -> void { let n = node(N_BLOCK); n.s = prop; n.a = body; push(g_ondisable, n) }
+fn onenable_body(prop: ptr) -> Node {
+  let i = 0
+  while i < len(g_onenable) { if streq(g_onenable[i].s, prop) { return g_onenable[i].a };  i = i + 1 }
+  return ptr_null()
+}
+fn ondisable_body(prop: ptr) -> Node {
+  let i = 0
+  while i < len(g_ondisable) { if streq(g_ondisable[i].s, prop) { return g_ondisable[i].a };  i = i + 1 }
+  return ptr_null()
+}
+
+# is `name` a model (archetype)? — chooses model-vs-handler for a bare enable/disable
+fn is_model(name: ptr) -> bool { return find_arch_id(name) > 0 }
+
 # local variable environment
 fn loc_reset() -> void { nloc = 0 }
 fn loc_push(name: ptr, r: ptr, ty: ptr) -> void {

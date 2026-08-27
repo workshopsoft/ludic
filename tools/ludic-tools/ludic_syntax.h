@@ -56,19 +56,19 @@ static const char* LUDIC_KW_DECL[] = {
     "const","var","fn","extern","handler","entry", 0
 };
 static const char* LUDIC_KW_CLAUSE[] = {
-    "phase","query","reads","writes", 0
+    "phase","query","reads","writes","on", 0
 };
 /* Documented design targets the self-hosted parser does not accept yet. Kept
  * out of the highlighted vocabulary (they would read as working keywords) until
  * they are implemented; check-vocabulary.py verifies the lists above are a
  * subset of what selfhost/parse*.ludic actually dispatches on. */
 static const char* LUDIC_KW_RESERVED[] = {
-    "scene","layer","on","start", 0
+    "scene","layer","start", 0
 };
 static const char* LUDIC_KW_STMT[] = {
     "let","return","if","else","when","while","for","in","spawn","despawn",
-    "match","machine","state","become","enter","where","and","or","not",
-    "break","continue","new", 0
+    "enable","disable","match","machine","state","become","enter","where",
+    "and","or","not","break","continue","new", 0
 };
 static const char* LUDIC_TYPES[] = {
     "int","fixed","bool","entity","str","ptr","void", 0

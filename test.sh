@@ -61,6 +61,11 @@ if ./selfhost/game-build.sh build/ludicc examples/lifecycle.ludic "/tmp/ludic_li
    && [ "$(/tmp/ludic_life </dev/null | tr '\n' ' ')" = "1 700 50 950 2 " ]; then
   ok "lifecycle.ludic (@OnStart/@OnAttach/@OnSpawn/@OnDespawn/@OnQuit in order)"
 else bad "lifecycle: $(tail -1 /tmp/life.out)"; fi
+# enable/disable at property (with @OnDisable/@OnEnable), model, and query scopes.
+if ./selfhost/game-build.sh build/ludicc examples/toggle.ludic "/tmp/ludic_tog" >/tmp/tog.out 2>&1 \
+   && [ "$(/tmp/ludic_tog </dev/null | tr '\n' ' ')" = "6 0 7 1 0 " ]; then
+  ok "toggle.ludic (enable/disable + @OnDisable/@OnEnable across property/model)"
+else bad "toggle: $(tail -1 /tmp/tog.out)"; fi
 # --- Toolchain-agent CLI smoke tests append below this line ---
 echo "== self-hosted front-end binaries (ludicc / ludic) =="
 # The two commands are one multi-call native binary built from the seed with

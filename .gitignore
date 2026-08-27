@@ -15,3 +15,4 @@ tools/editors/jetbrains/build/
 
 # IntelliJ plugin SDK sandbox (tools/editors/jetbrains)
 .intellijPlatform/
+.idea

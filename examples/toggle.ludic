@@ -1,0 +1,37 @@
+# toggle.ludic — enable/disable at the three ECS scopes, each a plain statement.
+# Disabling never destroys data: a property's values persist in storage, so a
+# later `enable` restores them. Queries already skip a cleared flag, so nothing
+# else in the language needs to know. Running it prints: 6 0 7 1 0
+#
+#   disable P on e   clears one entity's has-flag   (@OnDisable / @OnEnable fire)
+#   disable Model    flips the model's enabled flag (its entities drop from queries)
+#   disable Handler  flips the handler's enabled flag (it stops running each phase)
+program Toggles {
+  property Health { hp: int = 0, max: int = 100 }
+  property Shield { amount: int = 0 }
+  model Player { Health, Shield }
+
+  # hooks run at the toggle point with the property's data bound by name
+  @OnDisable(Shield) handler Down { print_int(Shield.amount + 1) }   # 5 + 1
+  @OnEnable(Shield)  handler Up   { print_int(Shield.amount + 2) }   # 5 + 2
+
+  handler Seed phase Start { spawn Player { Health { max: 50 }, Shield { amount: 5 } } }
+
+  handler Run phase Render {
+    for (e) in query [Player] { disable Shield on self() }   # @OnDisable -> 6
+    let n = 0
+    for (s) in query [Shield] { n += 1 }
+    print_int(n)                                             # 0 — no live Shield now
+
+    for (e) in query [Player] { enable Shield on self() }    # @OnEnable -> 7, data intact
+    n = 0
+    for (s) in query [Shield] { n += 1 }
+    print_int(n)                                             # 1 — amount is still 5
+
+    disable Player                                           # whole model off
+    n = 0
+    for (p) in query [Player] { n += 1 }
+    print_int(n)                                             # 0 — model disabled
+    quit()
+  }
+}

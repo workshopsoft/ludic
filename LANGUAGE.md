@@ -323,15 +323,46 @@ boot ── @OnStart ─▶ spawn ── @OnAttach(P), @OnSpawn(M) ─▶ … �
 @OnQuit           handler Save  { save() }                     # once, at shutdown
 ```
 
+**Enable / disable.** `enable` and `disable` are statements that flip something on
+or off without destroying it. There are three scopes:
+
+- **`disable P on e` / `enable P on e`** — one *property* on one entity. Disabling
+  clears the entity's has-flag, so queries stop matching it, but the field values
+  stay in storage — a later `enable` restores them untouched. `@OnDisable(P)` and
+  `@OnEnable(P)` are handler annotations that run at the toggle point with the
+  property bound by name (like a one-entity `@OnSpawn`).
+- **`disable Model` / `enable Model`** — a whole *model*. Its entities drop out of
+  every query while disabled; the entities and their data are left alone.
+- **`disable Handler` / `enable Handler`** — a *handler*. It stops being called
+  each phase while disabled, and resumes on `enable`.
+
+Each toggle is one global flag flip (or one has-flag store), so nothing is copied
+or freed — enable/disable is cheap and fully reversible.
+
+```ludic
+# doc-check: skip — enable/disable
+@OnDisable(Shield) handler Down { play("shield_break.wav") }
+@OnEnable(Shield)  handler Up   { play("shield_up.wav") }
+
+disable Shield on self()     # this entity loses its shield; data kept for later
+enable  Shield on self()     # shield back, amount unchanged
+disable Gravity              # a whole model sits out every query
+disable AiThink              # a handler stops running each phase
+```
+
+See [`examples/toggle.ludic`](examples/toggle.ludic) for all three scopes in one
+frame. Still to come: **`@OnDetach`** (the paired hook for a property leaving,
+needing the same per-property runtime dispatch as despawn).
+
 **`@Handles` — the handlers a program drives.** Written in front of the
 `program`, `@Handles(Move)` names the handlers it uses. It parses and reads as
 documentation; every declared handler still runs (registration is implicit).
 
 See [`examples/annotations.ludic`](examples/annotations.ludic) (queries, computed
 fields, one hook) and [`examples/lifecycle.ludic`](examples/lifecycle.ludic) (the
-whole timeline). Still to come: **`@OnDetach`** (needs the same runtime kind
-dispatch as despawn, per property) and **scene** hooks (`@OnEnter`/`@OnExit`),
-which wait on `scene` support landing in the compiler.
+whole timeline), plus [`examples/toggle.ludic`](examples/toggle.ludic)
+(enable/disable). Still to come: **scene** hooks (`@OnEnter`/`@OnExit`), which
+wait on `scene` support landing in the compiler.
 
 ## Structs, arrays and slices
 
@@ -425,7 +456,8 @@ another `.ludic` file (see `examples/lib/`).
 `let x = expr` · `x = expr` (`+= -= *= /=`) · `if/else` · `when cond { }`
 (if-without-else) · `while cond { }` · `for i in a .. b { }` (numeric range) ·
 `for (…) in query […] { }` · `break` · `continue` · `return` · `spawn` ·
-`despawn` · `match` · `machine`.
+`despawn` · `enable` / `disable` (a property `on e`, a model, or a handler) ·
+`match` · `machine`.
 
 **Statements are separated by a newline or `;`** (both lex to the same separator
 token). Two statements may not sit adjacent with only spaces between them — the
