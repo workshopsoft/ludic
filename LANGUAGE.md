@@ -453,8 +453,8 @@ another `.ludic` file (see `examples/lib/`).
 
 ## Statements
 
-`let x = expr` · `x = expr` (`+= -= *= /=`) · `if/else` · `when cond { }`
-(if-without-else) · `while cond { }` · `for i in a .. b { }` (numeric range) ·
+`let x = expr` · `x = expr` (`+= -= *= /=`) · `if cond { }` / `if/else`
+(the `else` is optional) · `while cond { }` · `for i in a .. b { }` (numeric range) ·
 `for (…) in query […] { }` · `break` · `continue` · `return` · `spawn` ·
 `despawn` · `enable` / `disable` (a property `on e`, a model, or a handler) ·
 `match` · `machine`.
@@ -655,7 +655,7 @@ as near-term — are now implemented and self-hosting; their lowerings are in
 > ⚠️ **Not yet implemented in the current (self-hosted) compiler.** `scene`,
 > `layer`, and the `on enter` / `on exit` hooks are a design target: the
 > compiler has no `scene` declaration and [`examples/scenes.ludic`](examples/scenes.ludic)
-> does not compile today (`enter Name` parses only as a `become` alias). Games
+> does not compile today. Games
 > that need mutually-exclusive states use a mode register (`reg`/`setreg`) with a
 > `machine`, as `examples/chronorift` does. This section describes the intended
 > syntax for when scene support lands.
@@ -672,7 +672,7 @@ scene Title start {
 
   layer Main {
     handler Choose phase Update {
-      if ui_clicked(UI_NewGame) { enter Overworld }
+      if ui_clicked(UI_NewGame) { become Overworld }
     }
   }
 }
@@ -694,12 +694,12 @@ scene Overworld {
   were written — so `Hud`'s `Render` paints over `World`'s.
 - `on enter` / `on exit` are lifecycle hooks, not phases. Scene setup goes in
   `on enter`; a layer handler may not use phase `Start`.
-- `enter Name` transitions: the current scene's `on exit` runs, the active scene
+- `become Name` transitions: the current scene's `on exit` runs, the active scene
   becomes `Name`, and its `on enter` runs. Inside a layer handler the compiler
   knows which scene is leaving, so a transition costs two direct calls and a
   store — there is no dispatch table.
 
-`examples/scenes.ludic` is a runnable demonstration of the ordering rules.
+`examples/scenes.ludic` sketches the ordering rules (it does not compile yet).
 
 ## Queries in a handler signature
 

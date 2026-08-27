@@ -16,7 +16,7 @@ program SceneDemo {
       handler Tick phase Update {
         setreg(R_N, reg(R_N) + 1)
         print_int(100 + reg(R_N))
-        if reg(R_N) >= 2 { enter Play }
+        if reg(R_N) >= 2 { become Play }
       }
     }
   }

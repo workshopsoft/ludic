@@ -66,8 +66,8 @@ static const char* LUDIC_KW_RESERVED[] = {
     "scene","layer","start", 0
 };
 static const char* LUDIC_KW_STMT[] = {
-    "let","return","if","else","when","while","for","in","spawn","despawn",
-    "enable","disable","match","machine","state","become","enter","where",
+    "let","return","if","else","while","for","in","spawn","despawn",
+    "enable","disable","match","machine","state","become","where",
     "and","or","not","break","continue","new", 0
 };
 static const char* LUDIC_TYPES[] = {
