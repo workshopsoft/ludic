@@ -45,33 +45,33 @@ const K_VISIBLE: int = 18
 const K_IMG: int = 19
 const K_SKIN: int = 20
 
-var ui_type: ptr = null
-var ui_parent: ptr = null
-var ui_w: ptr = null
-var ui_h: ptr = null
-var ui_x: ptr = null
-var ui_y: ptr = null
-var ui_haspos: ptr = null
-var ui_pad: ptr = null
-var ui_gap: ptr = null
-var ui_bg: ptr = null
-var ui_fg: ptr = null
-var ui_border: ptr = null
-var ui_align: ptr = null
-var ui_grow: ptr = null
-var ui_font: ptr = null
-var ui_size: ptr = null
-var ui_skin: ptr = null
-var ui_inset: ptr = null
-var ui_img: ptr = null
-var ui_focusable: ptr = null
-var ui_rx: ptr = null
-var ui_ry: ptr = null
-var ui_rw: ptr = null
-var ui_rh: ptr = null
-var ui_visible: ptr = null
-var ui_fired: ptr = null
-var ui_hasdyn: ptr = null
+var ui_type: words = null
+var ui_parent: words = null
+var ui_w: words = null
+var ui_h: words = null
+var ui_x: words = null
+var ui_y: words = null
+var ui_haspos: words = null
+var ui_pad: words = null
+var ui_gap: words = null
+var ui_bg: words = null
+var ui_fg: words = null
+var ui_border: words = null
+var ui_align: words = null
+var ui_grow: words = null
+var ui_font: words = null
+var ui_size: words = null
+var ui_skin: words = null
+var ui_inset: words = null
+var ui_img: words = null
+var ui_focusable: words = null
+var ui_rx: words = null
+var ui_ry: words = null
+var ui_rw: words = null
+var ui_rh: words = null
+var ui_visible: words = null
+var ui_fired: words = null
+var ui_hasdyn: words = null
 var ui_dyn: ptr = null        # UI_MAX * 96 bytes
 var ui_text: ptr = null       # UI_MAX static string pointers
 
@@ -115,29 +115,29 @@ fn rt_ui_init() -> void {
 fn rt_ui_reset(n: int) -> void {
   ui_n = n
   for i in 0 .. n {
-    poke32(ui_type, i, 0)
-    poke32(ui_parent, i, 0 - 1)
-    poke32(ui_w, i, 0)
-    poke32(ui_h, i, 0)
-    poke32(ui_x, i, 0)
-    poke32(ui_y, i, 0)
-    poke32(ui_haspos, i, 0)
-    poke32(ui_pad, i, 0)
-    poke32(ui_gap, i, 0)
-    poke32(ui_bg, i, 0 - 1)
-    poke32(ui_fg, i, 0 - 1)
-    poke32(ui_border, i, 0 - 1)
-    poke32(ui_align, i, 0 - 1)
-    poke32(ui_grow, i, 0)
-    poke32(ui_font, i, 0 - 1)
-    poke32(ui_size, i, 8)
-    poke32(ui_skin, i, 0 - 1)
-    poke32(ui_inset, i, 6)
-    poke32(ui_img, i, 0 - 1)
-    poke32(ui_focusable, i, 0)
-    poke32(ui_visible, i, 1)
-    poke32(ui_fired, i, 0)
-    poke32(ui_hasdyn, i, 0)
+    ui_type[i] = 0
+    ui_parent[i] = 0 - 1
+    ui_w[i] = 0
+    ui_h[i] = 0
+    ui_x[i] = 0
+    ui_y[i] = 0
+    ui_haspos[i] = 0
+    ui_pad[i] = 0
+    ui_gap[i] = 0
+    ui_bg[i] = 0 - 1
+    ui_fg[i] = 0 - 1
+    ui_border[i] = 0 - 1
+    ui_align[i] = 0 - 1
+    ui_grow[i] = 0
+    ui_font[i] = 0 - 1
+    ui_size[i] = 8
+    ui_skin[i] = 0 - 1
+    ui_inset[i] = 6
+    ui_img[i] = 0 - 1
+    ui_focusable[i] = 0
+    ui_visible[i] = 1
+    ui_fired[i] = 0
+    ui_hasdyn[i] = 0
     pokep(ui_text, i, null)
   }
 }
@@ -145,27 +145,27 @@ fn rt_ui_reset(n: int) -> void {
 fn rt_ui_set(i: int, k: int, v: int) -> void {
   if i < 0 { return }
   if i >= UI_MAX { return }
-  if k == K_TYPE { poke32(ui_type, i, v) }
-  if k == K_PARENT { poke32(ui_parent, i, v) }
-  if k == K_W { poke32(ui_w, i, v) }
-  if k == K_H { poke32(ui_h, i, v) }
-  if k == K_X { poke32(ui_x, i, v) }
-  if k == K_Y { poke32(ui_y, i, v) }
-  if k == K_HASPOS { poke32(ui_haspos, i, v) }
-  if k == K_PAD { poke32(ui_pad, i, v) }
-  if k == K_GAP { poke32(ui_gap, i, v) }
-  if k == K_BG { poke32(ui_bg, i, v) }
-  if k == K_FG { poke32(ui_fg, i, v) }
-  if k == K_BORDER { poke32(ui_border, i, v) }
-  if k == K_ALIGN { poke32(ui_align, i, v) }
-  if k == K_GROW { poke32(ui_grow, i, v) }
-  if k == K_FONT { poke32(ui_font, i, v) }
-  if k == K_SIZE { poke32(ui_size, i, v) }
-  if k == K_SKININSET { poke32(ui_inset, i, v) }
-  if k == K_FOCUSABLE { poke32(ui_focusable, i, v) }
-  if k == K_VISIBLE { poke32(ui_visible, i, v) }
-  if k == K_IMG { poke32(ui_img, i, v) }
-  if k == K_SKIN { poke32(ui_skin, i, v) }
+  if k == K_TYPE { ui_type[i] = v }
+  if k == K_PARENT { ui_parent[i] = v }
+  if k == K_W { ui_w[i] = v }
+  if k == K_H { ui_h[i] = v }
+  if k == K_X { ui_x[i] = v }
+  if k == K_Y { ui_y[i] = v }
+  if k == K_HASPOS { ui_haspos[i] = v }
+  if k == K_PAD { ui_pad[i] = v }
+  if k == K_GAP { ui_gap[i] = v }
+  if k == K_BG { ui_bg[i] = v }
+  if k == K_FG { ui_fg[i] = v }
+  if k == K_BORDER { ui_border[i] = v }
+  if k == K_ALIGN { ui_align[i] = v }
+  if k == K_GROW { ui_grow[i] = v }
+  if k == K_FONT { ui_font[i] = v }
+  if k == K_SIZE { ui_size[i] = v }
+  if k == K_SKININSET { ui_inset[i] = v }
+  if k == K_FOCUSABLE { ui_focusable[i] = v }
+  if k == K_VISIBLE { ui_visible[i] = v }
+  if k == K_IMG { ui_img[i] = v }
+  if k == K_SKIN { ui_skin[i] = v }
 }
 
 fn rt_ui_static_text(i: int, s: str) -> void {
@@ -176,7 +176,7 @@ fn rt_ui_static_text(i: int, s: str) -> void {
 
 # ---- text helpers: TrueType when a font is loaded, bitmap otherwise -------
 fn ui_str(i: int) -> ptr {
-  if peek32(ui_hasdyn, i) == 1 { return ptr_add(ui_dyn, i * 96) }
+  if ui_hasdyn[i] == 1 { return ptr_add(ui_dyn, i * 96) }
   let t = peekp(ui_text, i)
   if (t == null) { return ptr_add(ui_dyn, i * 96) }
   return t
@@ -222,7 +222,7 @@ fn ui_under(i: int, root: int) -> bool {
   var k = i
   while k >= 0 {
     if k == root { return true }
-    k = peek32(ui_parent, k)
+    k = ui_parent[k]
   }
   return false
 }
@@ -231,55 +231,55 @@ fn ui_under(i: int, root: int) -> bool {
 fn ui_measure() -> void {
   var i = ui_n - 1
   while i >= 0 {
-    if peek32(ui_visible, i) == 0 {
-      poke32(ui_rw, i, 0)
-      poke32(ui_rh, i, 0)
+    if ui_visible[i] == 0 {
+      ui_rw[i] = 0
+      ui_rh[i] = 0
     } else {
-      let t = peek32(ui_type, i)
-      let pad = peek32(ui_pad, i)
+      let t = ui_type[i]
+      let pad = ui_pad[i]
       var cw = 0
       var ch = 0
       if t == WT_LABEL { cw = 0 - 1 }
       if t == WT_BUTTON { cw = 0 - 1 }
       if cw == 0 - 1 {
         let s = ui_str(i)
-        cw = ui_tw(peek32(ui_font, i), s, peek32(ui_size, i)) + 2 * pad
-        ch = ui_th(peek32(ui_font, i), peek32(ui_size, i)) + 2 * pad
+        cw = ui_tw(ui_font[i], s, ui_size[i]) + 2 * pad
+        ch = ui_th(ui_font[i], ui_size[i]) + 2 * pad
         if t == WT_BUTTON {
           cw = cw + 10
           ch = ch + 6
         }
       } else {
         if t == WT_IMAGE {
-          let im = peek32(ui_img, i)
+          let im = ui_img[i]
           if im >= 0 {
-            cw = peek32(img_w, im)
-            ch = peek32(img_h, im)
+            cw = img_w[im]
+            ch = img_h[im]
           }
         } else {
           if t == WT_SPACER {
-            cw = peek32(ui_w, i)
-            ch = peek32(ui_h, i)
+            cw = ui_w[i]
+            ch = ui_h[i]
           } else {
             let dir = ui_dir(t)
             var mainsz = 0
             var cross = 0
             var nc = 0
             for c in 0 .. ui_n {
-              if peek32(ui_parent, c) == i {
-                if peek32(ui_visible, c) == 1 {
+              if ui_parent[c] == i {
+                if ui_visible[c] == 1 {
                   if dir == 1 {
-                    mainsz = mainsz + peek32(ui_rh, c)
-                    cross = max(cross, peek32(ui_rw, c))
+                    mainsz = mainsz + ui_rh[c]
+                    cross = max(cross, ui_rw[c])
                   } else {
-                    mainsz = mainsz + peek32(ui_rw, c)
-                    cross = max(cross, peek32(ui_rh, c))
+                    mainsz = mainsz + ui_rw[c]
+                    cross = max(cross, ui_rh[c])
                   }
                   nc = nc + 1
                 }
               }
             }
-            if nc > 1 { mainsz = mainsz + peek32(ui_gap, i) * (nc - 1) }
+            if nc > 1 { mainsz = mainsz + ui_gap[i] * (nc - 1) }
             mainsz = mainsz + 2 * pad
             cross = cross + 2 * pad
             if dir == 1 {
@@ -292,20 +292,20 @@ fn ui_measure() -> void {
           }
         }
       }
-      var rw = peek32(ui_w, i)
-      var rh = peek32(ui_h, i)
+      var rw = ui_w[i]
+      var rh = ui_h[i]
       if rw == 0 { rw = cw }
       if rh == 0 { rh = ch }
-      poke32(ui_rw, i, rw)
-      poke32(ui_rh, i, rh)
+      ui_rw[i] = rw
+      ui_rh[i] = rh
     }
     i = i - 1
   }
 }
 
 fn ui_eff_align(child: int, parent: int) -> int {
-  if peek32(ui_align, child) >= 0 { return peek32(ui_align, child) }
-  if peek32(ui_align, parent) >= 0 { return peek32(ui_align, parent) }
+  if ui_align[child] >= 0 { return ui_align[child] }
+  if ui_align[parent] >= 0 { return ui_align[parent] }
   return 0
 }
 

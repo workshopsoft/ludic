@@ -14,11 +14,11 @@ const SPR_MAX: int = 160
 const SPR_SZ:  int = 16
 
 var img_px:   ptr = null     # IMG_MAX pointers to RGBA buffers
-var img_w:    ptr = null
-var img_h:    ptr = null
+var img_w:    words = null
+var img_h:    words = null
 var img_n:    int = 0
 
-var spr_px:   ptr = null     # SPR_MAX * 16 * 16 RGBA pixels, one block
+var spr_px:   words = null     # SPR_MAX * 16 * 16 RGBA pixels, one block
 var spr_n:    int = 0
 
 fn rt_image_init() -> void {
@@ -60,7 +60,7 @@ var rt_file_len: int = 0
 # decoded image is left in these; -1 width means failure
 var png_w:  int = 0
 var png_h:  int = 0
-var png_px: ptr = null
+var png_px: words = null
 
 fn rt_decode_png(path: str) -> bool {
   png_w = 0
@@ -168,7 +168,7 @@ fn rt_decode_png(path: str) -> bool {
   }
 
   # expand to 0xAARRGGBB
-  let out = mem_alloc(w * h * 4)
+  let out: words = mem_alloc(w * h * 4)
   let maxv = (1 << bd) - 1
   for y in 0 .. h {
     let row = y * (stride + 1) + 1
@@ -211,7 +211,7 @@ fn rt_decode_png(path: str) -> bool {
         G = g
         B = g
       }
-      poke32(out, y * w + x, (((A << 24) | (R << 16)) | ((G << 8) | B)))
+      out[y * w + x] = (((A << 24) | (R << 16)) | ((G << 8) | B))
     }
   }
 
@@ -233,8 +233,8 @@ fn rt_image_load(path: str) -> int {
   let id = img_n
   img_n = img_n + 1
   pokep(img_px, id, png_px)
-  poke32(img_w, id, png_w)
-  poke32(img_h, id, png_h)
+  img_w[id] = png_w
+  img_h[id] = png_h
   return id
 }
 
@@ -249,7 +249,7 @@ fn rt_blend_px(x: int, y: int, argb: int) -> void {
   var g = ((argb >> 8) & 255)
   var b = (argb & 255)
   if a != 255 {
-    let dst = peek32(rt_fb, y * rt_fbw + x)
+    let dst = rt_fb[y * rt_fbw + x]
     let dr = ((dst >> 16) & 255)
     let dg = ((dst >> 8) & 255)
     let db = (dst & 255)
@@ -257,18 +257,18 @@ fn rt_blend_px(x: int, y: int, argb: int) -> void {
     g = (g * a + dg * (255 - a)) / 255
     b = (b * a + db * (255 - a)) / 255
   }
-  poke32(rt_fb, y * rt_fbw + x, (((r << 16) | (g << 8)) | b))
+  rt_fb[y * rt_fbw + x] = (((r << 16) | (g << 8)) | b)
 }
 
 fn rt_draw_image(id: int, dx: int, dy: int) -> void {
   if id < 0 { return }
   if id >= img_n { return }
-  let w = peek32(img_w, id)
-  let h = peek32(img_h, id)
-  let s = peekp(img_px, id)
+  let w = img_w[id]
+  let h = img_h[id]
+  let s: words = peekp(img_px, id)
   for y in 0 .. h {
     for x in 0 .. w {
-      rt_blend_px(dx + x, dy + y, peek32(s, y * w + x))
+      rt_blend_px(dx + x, dy + y, s[y * w + x])
     }
   }
 }
@@ -278,12 +278,12 @@ fn rt_draw_image_scaled(id: int, dx: int, dy: int, dw: int, dh: int) -> void {
   if id >= img_n { return }
   if dw <= 0 { return }
   if dh <= 0 { return }
-  let w = peek32(img_w, id)
-  let h = peek32(img_h, id)
-  let s = peekp(img_px, id)
+  let w = img_w[id]
+  let h = img_h[id]
+  let s: words = peekp(img_px, id)
   for y in 0 .. dh {
     for x in 0 .. dw {
-      rt_blend_px(dx + x, dy + y, peek32(s, (y * h / dh) * w + x * w / dw))
+      rt_blend_px(dx + x, dy + y, s[(y * h / dh) * w + x * w / dw])
     }
   }
 }
@@ -303,13 +303,13 @@ fn rt_draw_9slice(id: int, dx: int, dy: int, dw: int, dh: int, inset: int) -> vo
   if id >= img_n { return }
   if dw <= 0 { return }
   if dh <= 0 { return }
-  let w = peek32(img_w, id)
-  let h = peek32(img_h, id)
-  let s = peekp(img_px, id)
+  let w = img_w[id]
+  let h = img_h[id]
+  let s: words = peekp(img_px, id)
   for y in 0 .. dh {
     let sy = rt_9map(y, dh, h, inset)
     for x in 0 .. dw {
-      rt_blend_px(dx + x, dy + y, peek32(s, sy * w + rt_9map(x, dw, w, inset)))
+      rt_blend_px(dx + x, dy + y, s[sy * w + rt_9map(x, dw, w, inset)])
     }
   }
 }
@@ -326,11 +326,11 @@ fn rt_png_load(path: str) -> int {
       var px = 0
       if x < png_w {
         if y < png_h {
-          let c = peek32(png_px, y * png_w + x)
+          let c = png_px[y * png_w + x]
           if ((c >> 24) & 255) >= 128 { px = ((255 << 24) | (c & 16777215)) }
         }
       }
-      poke32(spr_px, base + y * SPR_SZ + x, px)
+      spr_px[base + y * SPR_SZ + x] = px
     }
   }
   mem_free(png_px)
@@ -344,7 +344,7 @@ fn rt_draw_sprite(id: int, px: int, py: int) -> void {
   let base = id * SPR_SZ * SPR_SZ
   for y in 0 .. SPR_SZ {
     for x in 0 .. SPR_SZ {
-      let p = peek32(spr_px, base + y * SPR_SZ + x)
+      let p = spr_px[base + y * SPR_SZ + x]
       if ((p >> 24) & 255) != 0 {
         rt_put_px(px + x, py + y, (p & 16777215))
       }
@@ -359,7 +359,7 @@ fn rt_draw_sprite_scaled(id: int, px: int, py: int, sc: int) -> void {
   let base = id * SPR_SZ * SPR_SZ
   for y in 0 .. SPR_SZ {
     for x in 0 .. SPR_SZ {
-      let p = peek32(spr_px, base + y * SPR_SZ + x)
+      let p = spr_px[base + y * SPR_SZ + x]
       if ((p >> 24) & 255) != 0 {
         rt_fill_rect(px + x * sc, py + y * sc, sc, sc, (p & 16777215))
       }
@@ -379,7 +379,7 @@ fn rt_sprites_load(path: str) -> void {
   let d = rt_read_file(path)
   if (d == null) { spr_n = 0; return }
   let size = rt_file_len
-  let pal = mem_alloc(128 * 4)
+  let pal: words = mem_alloc(128 * 4)
   mem_set(pal, 0, 128 * 4)
   var cur = 0 - 1
   var row = 0
@@ -400,7 +400,7 @@ fn rt_sprites_load(path: str) -> void {
         let hv = rt_hexval(d[start + 6 + k])
         if hv >= 0 { v = v * 16 + hv }
       }
-      if ch < 128 { poke32(pal, ch, ((255 << 24) | v)) }
+      if ch < 128 { pal[ch] = ((255 << 24) | v) }
     }
     if c0 == 115 {                       # 's' — "spr" starts a new sprite
       cur = 0 - 1
@@ -418,8 +418,7 @@ fn rt_sprites_load(path: str) -> void {
             if row < SPR_SZ {
               for x in 0 .. SPR_SZ {
                 if x < len {
-                  poke32(spr_px, cur * SPR_SZ * SPR_SZ + row * SPR_SZ + x,
-                         peek32(pal, (d[start + x] & 127)))
+                  spr_px[cur * SPR_SZ * SPR_SZ + row * SPR_SZ + x] = pal[(d[start + x] & 127)]
                 }
               }
               row = row + 1

@@ -53,40 +53,40 @@ fn z_table_new(nsym: int) -> ptr {
 }
 
 # lengths[i] = code length of symbol i (0 = symbol unused)
-fn z_table_build(table: ptr, lengths: ptr, n: int) -> void {
+fn z_table_build(table: words, lengths: words, n: int) -> void {
   for i in 0 .. 16 {
-    poke32(table, i, 0)
+    table[i] = 0
   }
   for s in 0 .. n {
-    let l = peek32(lengths, s)
-    poke32(table, l, peek32(table, l) + 1)
+    let l = lengths[s]
+    table[l] = table[l] + 1
   }
-  poke32(table, 0, 0)                 # length 0 means "not present"
+  table[0] = 0                 # length 0 means "not present"
   # offset of each length's first symbol
-  let offs = mem_alloc(16 * 4)
-  poke32(offs, 1, 0)
+  let offs: words = mem_alloc(16 * 4)
+  offs[1] = 0
   for l in 1 .. 15 {
-    poke32(offs, l + 1, peek32(offs, l) + peek32(table, l))
+    offs[l + 1] = offs[l] + table[l]
   }
   for s in 0 .. n {
-    let l = peek32(lengths, s)
+    let l = lengths[s]
     if l != 0 {
-      poke32(table, 16 + peek32(offs, l), s)
-      poke32(offs, l, peek32(offs, l) + 1)
+      table[16 + offs[l]] = s
+      offs[l] = offs[l] + 1
     }
   }
   mem_free(offs)
 }
 
-fn z_decode(table: ptr) -> int {
+fn z_decode(table: words) -> int {
   var code = 0
   var first = 0
   var index = 0
   for len in 1 .. 16 {
     code = (code | z_bits(1))
-    let count = peek32(table, len)
+    let count = table[len]
     if code - first < count {
-      return peek32(table, 16 + index + (code - first))
+      return table[16 + index + (code - first)]
     }
     index = index + count
     first = ((first + count) << 1)
@@ -173,13 +173,13 @@ fn z_codes(out: ptr, at: int, cap: int, lit: ptr, dist: ptr) -> int {
 }
 
 fn z_fixed_tables(lit: ptr, dist: ptr) -> void {
-  let lengths = mem_alloc(288 * 4)
-  for i in 0 .. 144 { poke32(lengths, i, 8) }
-  for i in 144 .. 256 { poke32(lengths, i, 9) }
-  for i in 256 .. 280 { poke32(lengths, i, 7) }
-  for i in 280 .. 288 { poke32(lengths, i, 8) }
+  let lengths: words = mem_alloc(288 * 4)
+  for i in 0 .. 144 { lengths[i] = 8 }
+  for i in 144 .. 256 { lengths[i] = 9 }
+  for i in 256 .. 280 { lengths[i] = 7 }
+  for i in 280 .. 288 { lengths[i] = 8 }
   z_table_build(lit, lengths, 288)
-  for i in 0 .. 30 { poke32(lengths, i, 5) }
+  for i in 0 .. 30 { lengths[i] = 5 }
   z_table_build(dist, lengths, 30)
   mem_free(lengths)
 }
@@ -191,13 +191,13 @@ fn z_dynamic_tables(lit: ptr, dist: ptr) -> int {
   if nlen > 286 { return 0 }
   if ndist > 30 { return 0 }
 
-  let lengths = mem_alloc(320 * 4)
-  for i in 0 .. 19 { poke32(lengths, i, 0) }
+  let lengths: words = mem_alloc(320 * 4)
+  for i in 0 .. 19 { lengths[i] = 0 }
   # the code-length alphabet is transmitted in this fixed permutation
   # 16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15 — biased by '0' so it is one literal
   let order = "@AB08796:5;4<3=2>1?"
   for i in 0 .. ncode {
-    poke32(lengths, order[i] - 48, z_bits(3))
+    lengths[order[i] - 48] = z_bits(3)
   }
   let clen = z_table_new(19)
   z_table_build(clen, lengths, 19)
@@ -207,7 +207,7 @@ fn z_dynamic_tables(lit: ptr, dist: ptr) -> int {
     let sym = z_decode(clen)
     if sym < 0 { return 0 }
     if sym < 16 {
-      poke32(lengths, n, sym)
+      lengths[n] = sym
       n = n + 1
     }
     if sym >= 16 {
@@ -215,14 +215,14 @@ fn z_dynamic_tables(lit: ptr, dist: ptr) -> int {
       var rep = 0
       if sym == 16 {
         if n == 0 { return 0 }
-        prev = peek32(lengths, n - 1)
+        prev = lengths[n - 1]
         rep = 3 + z_bits(2)
       }
       if sym == 17 { rep = 3 + z_bits(3) }
       if sym == 18 { rep = 11 + z_bits(7) }
       for k in 0 .. rep {
         if n < 320 {
-          poke32(lengths, n, prev)
+          lengths[n] = prev
           n = n + 1
         }
       }
@@ -230,8 +230,8 @@ fn z_dynamic_tables(lit: ptr, dist: ptr) -> int {
   }
   z_table_build(lit, lengths, nlen)
   # the distance lengths follow the literal ones in the same buffer
-  let dl = mem_alloc(32 * 4)
-  for i in 0 .. ndist { poke32(dl, i, peek32(lengths, nlen + i)) }
+  let dl: words = mem_alloc(32 * 4)
+  for i in 0 .. ndist { dl[i] = lengths[nlen + i] }
   z_table_build(dist, dl, ndist)
   mem_free(dl)
   mem_free(lengths)

@@ -145,6 +145,8 @@ See `examples/menu.ludic` for a complete title screen.
 | `entity` | entity handle | `i32` |
 | `str` | string literal | `ptr` |
 | `ptr` | raw address (runtime/FFI) | `ptr` |
+| `byte` | pointer to bytes — `p[i]` reads/writes one byte | `ptr` |
+| `words` | pointer to 32-bit words — `w[i]` reads/writes an `int` | `ptr` |
 
 Numeric literals: `42` and `0x1affff` are `int`; a literal with a decimal
 point (`1.5`) is `fixed`. Arithmetic on two `fixed` values lowers to

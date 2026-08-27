@@ -52,7 +52,7 @@ var gr_oy:  int = 0
 var gr_adv: int = 0
 
 fn tt_raster(id: int, gid: int, px: int) -> ptr {
-  let upem = peek32(tt_upem, id)
+  let upem = tt_upem[id]
   let scale = fx(px) / upem
   gr_adv = flr(fx(tt_advance(id, gid)) * scale + 0.5)
   gr_w = 0
@@ -95,12 +95,12 @@ fn tt_raster(id: int, gid: int, px: int) -> ptr {
   # build edges in supersample space (y grows downward)
   var start = 0
   for ci in 0 .. ol_ne {
-    let end = peek32(ol_ends, ci)
+    let end = ol_ends[ci]
     let cnt = end - start
     if cnt >= 2 {
       var first_on = 0 - 1
       for i in 0 .. cnt {
-        if first_on < 0 { if peek32(ol_on, start + i) == 1 { first_on = i } }
+        if first_on < 0 { if ol_on[start + i] == 1 { first_on = i } }
       }
       var sx = 0.0
       var sy = 0.0
@@ -122,7 +122,7 @@ fn tt_raster(id: int, gid: int, px: int) -> ptr {
         let i = (first_on + 1 + step) % cnt
         let ix = (peekf(ol_x, start + i) * scale - fx(x0)) * TT_SS
         let iy = (fx(y1) - peekf(ol_y, start + i) * scale) * TT_SS
-        if peek32(ol_on, start + i) == 1 {
+        if ol_on[start + i] == 1 {
           ed_add(curx, cury, ix, iy)
           curx = ix
           cury = iy
@@ -132,7 +132,7 @@ fn tt_raster(id: int, gid: int, px: int) -> ptr {
           let jy = (fx(y1) - peekf(ol_y, start + j) * scale) * TT_SS
           var ex = jx
           var ey = jy
-          if peek32(ol_on, start + j) == 1 {
+          if ol_on[start + j] == 1 {
             step = step + 1
           } else {
             ex = (ix + jx) / 2                       # implied on-curve midpoint
@@ -167,37 +167,37 @@ fn tt_raster(id: int, gid: int, px: int) -> ptr {
       if hit == 1 {
         let t = (yc - ya) / (yb - ya)
         pokef(sc_x, m, peekf(ed_x0, i) + t * (peekf(ed_x1, i) - peekf(ed_x0, i)))
-        if yb > ya { poke32(sc_d, m, 1) } else { poke32(sc_d, m, 0 - 1) }
+        if yb > ya { sc_d[m] = 1 } else { sc_d[m] = 0 - 1 }
         m = m + 1
       }
     }
     # insertion sort the crossings by x
     for i in 1 .. m {
       let kx = peekf(sc_x, i)
-      let kd = peek32(sc_d, i)
+      let kd = sc_d[i]
       var j = i - 1
       var placed = 0
       while j >= 0 {
         if peekf(sc_x, j) > kx {
           pokef(sc_x, j + 1, peekf(sc_x, j))
-          poke32(sc_d, j + 1, peek32(sc_d, j))
+          sc_d[j + 1] = sc_d[j]
           j = j - 1
         } else {
           pokef(sc_x, j + 1, kx)
-          poke32(sc_d, j + 1, kd)
+          sc_d[j + 1] = kd
           placed = 1
           j = 0 - 1
         }
       }
       if placed == 0 {
         pokef(sc_x, 0, kx)
-        poke32(sc_d, 0, kd)
+        sc_d[0] = kd
       }
     }
     var wind = 0
     let oy = sy / TT_SS
     for i in 0 .. m - 1 {
-      wind = wind + peek32(sc_d, i)
+      wind = wind + sc_d[i]
       if wind != 0 {
         var xa = peekf(sc_x, i)
         var xb = peekf(sc_x, i + 1)
@@ -239,30 +239,30 @@ fn tt_glyph_get(font: int, cp: int, px: int) -> int {
   let h = gc_hash(font, cp, px)
   for k in 0 .. 8 {
     let s = ((h + k) & (TT_GC - 1))
-    if peek32(gc_used, s) == 1 {
-      if peek32(gc_font, s) == font {
-        if peek32(gc_cp, s) == cp {
-          if peek32(gc_px, s) == px { return s }
+    if gc_used[s] == 1 {
+      if gc_font[s] == font {
+        if gc_cp[s] == cp {
+          if gc_px[s] == px { return s }
         }
       }
     }
   }
   let s = h
-  if peek32(gc_used, s) == 1 {
+  if gc_used[s] == 1 {
     let old = peekp(gc_bmp, s)
     if (old == null) == false { mem_free(old) }
   }
   let bmp = tt_raster(font, tt_glyph_index(font, cp), px)
   pokep(gc_bmp, s, bmp)
-  poke32(gc_used, s, 1)
-  poke32(gc_font, s, font)
-  poke32(gc_cp, s, cp)
-  poke32(gc_px, s, px)
-  poke32(gc_w, s, gr_w)
-  poke32(gc_h, s, gr_h)
-  poke32(gc_ox, s, gr_ox)
-  poke32(gc_oy, s, gr_oy)
-  poke32(gc_adv, s, gr_adv)
+  gc_used[s] = 1
+  gc_font[s] = font
+  gc_cp[s] = cp
+  gc_px[s] = px
+  gc_w[s] = gr_w
+  gc_h[s] = gr_h
+  gc_ox[s] = gr_ox
+  gc_oy[s] = gr_oy
+  gc_adv[s] = gr_adv
   return s
 }
 
@@ -313,11 +313,11 @@ fn tt_blit(bmp: ptr, w: int, h: int, dx: int, dy: int, colour: int) -> void {
             let pxx = dx + x
             if pxx >= 0 {
               if pxx < rt_fbw {
-                let d = peek32(rt_fb, py * rt_fbw + pxx)
+                let d = rt_fb[py * rt_fbw + pxx]
                 let rr = (cr * a + ((d >> 16) & 255) * (255 - a)) / 255
                 let rg = (cg * a + ((d >> 8) & 255) * (255 - a)) / 255
                 let rb = (cb * a + (d & 255) * (255 - a)) / 255
-                poke32(rt_fb, py * rt_fbw + pxx, (((rr << 16) | (rg << 8)) | rb))
+                rt_fb[py * rt_fbw + pxx] = (((rr << 16) | (rg << 8)) | rb)
               }
             }
           }
@@ -331,10 +331,10 @@ fn rt_text_ttf(font: int, x: int, y: int, s: str, colour: int, px: int) -> void 
   if font < 0 { return }
   if font >= tt_n { return }
   if px <= 0 { return }
-  let upem = peek32(tt_upem, font)
+  let upem = tt_upem[font]
   let scale = fx(px) / upem
-  var baseline = y + flr(fx(peek32(tt_asc, font)) * scale + 0.5)
-  let lineh = flr(fx(peek32(tt_asc, font) - peek32(tt_desc, font) + peek32(tt_gap, font)) * scale + 0.5)
+  var baseline = y + flr(fx(tt_asc[font]) * scale + 0.5)
+  let lineh = flr(fx(tt_asc[font] - tt_desc[font] + tt_gap[font]) * scale + 0.5)
   var penx = x
   var i = 0
   while s[i] != 0 {
@@ -345,8 +345,8 @@ fn rt_text_ttf(font: int, x: int, y: int, s: str, colour: int, px: int) -> void 
       baseline = baseline + lineh
     } else {
       let g = tt_glyph_get(font, cp, px)
-      tt_blit(peekp(gc_bmp, g), peek32(gc_w, g), peek32(gc_h, g), penx + peek32(gc_ox, g), baseline - peek32(gc_oy, g), colour)
-      penx = penx + peek32(gc_adv, g)
+      tt_blit(peekp(gc_bmp, g), gc_w[g], gc_h[g], penx + gc_ox[g], baseline - gc_oy[g], colour)
+      penx = penx + gc_adv[g]
     }
   }
 }
@@ -365,7 +365,7 @@ fn rt_text_w(font: int, s: str, px: int) -> int {
       if w > best { best = w }
       w = 0
     } else {
-      w = w + peek32(gc_adv, tt_glyph_get(font, cp, px))
+      w = w + gc_adv[tt_glyph_get(font, cp, px)]
     }
   }
   if w > best { best = w }
@@ -375,6 +375,6 @@ fn rt_text_w(font: int, s: str, px: int) -> int {
 fn rt_text_h(font: int, px: int) -> int {
   if font < 0 { return 0 }
   if font >= tt_n { return 0 }
-  let scale = fx(px) / peek32(tt_upem, font)
-  return flr(fx(peek32(tt_asc, font) - peek32(tt_desc, font) + peek32(tt_gap, font)) * scale + 0.5)
+  let scale = fx(px) / tt_upem[font]
+  return flr(fx(tt_asc[font] - tt_desc[font] + tt_gap[font]) * scale + 0.5)
 }
