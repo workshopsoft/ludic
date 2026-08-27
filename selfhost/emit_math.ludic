@@ -3,27 +3,27 @@
 # (clear, fill_rect, reg, ...) is resolved to its rt_ function by emit_call.
 
 fn is_math_builtin(name: ptr) -> bool {
-  return streq(name,"min") or streq(name,"max") or streq(name,"abs") or streq(name,"clamp")
+  return (name == "min") or (name == "max") or (name == "abs") or (name == "clamp")
 }
 
 fn emit_math_builtin(name: ptr, e: Node) -> Val {
-  if streq(name, "abs") {
+  if (name == "abs") {
     let a = emit_expr(e.kids[0])
-    let c = emit_bind(sconcat("icmp slt i32 ", sconcat(a.code, ", 0")))
-    let n = emit_bind(sconcat("sub i32 0, ", a.code))
-    return val(emit_bind(sconcat("select i1 ", sconcat(c, sconcat(", i32 ", sconcat(n, sconcat(", i32 ", a.code)))))), "int")
+    let c = emit_bind(("icmp slt i32 " + (a.code + ", 0")))
+    let n = emit_bind(("sub i32 0, " + a.code))
+    return val(emit_bind(("select i1 " + (c + (", i32 " + (n + (", i32 " + a.code)))))), "int")
   }
-  if streq(name, "min") or streq(name, "max") {
+  if (name == "min") or (name == "max") {
     let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1])
     var op = "slt"
-    if streq(name, "max") { op = "sgt" }
-    let c = emit_bind(sconcat("icmp ", sconcat(op, sconcat(" i32 ", sconcat(a.code, sconcat(", ", b.code))))))
-    return val(emit_bind(sconcat("select i1 ", sconcat(c, sconcat(", i32 ", sconcat(a.code, sconcat(", i32 ", b.code)))))), "int")
+    if (name == "max") { op = "sgt" }
+    let c = emit_bind(("icmp " + (op + (" i32 " + (a.code + (", " + b.code))))))
+    return val(emit_bind(("select i1 " + (c + (", i32 " + (a.code + (", i32 " + b.code)))))), "int")
   }
   # clamp(v, lo, hi) = max(lo, min(v, hi))
   let v = emit_expr(e.kids[0]);  let lo = emit_expr(e.kids[1]);  let hi = emit_expr(e.kids[2])
-  let c1 = emit_bind(sconcat("icmp slt i32 ", sconcat(v.code, sconcat(", ", hi.code))))
-  let t = emit_bind(sconcat("select i1 ", sconcat(c1, sconcat(", i32 ", sconcat(v.code, sconcat(", i32 ", hi.code))))))
-  let c2 = emit_bind(sconcat("icmp sgt i32 ", sconcat(lo.code, sconcat(", ", t))))
-  return val(emit_bind(sconcat("select i1 ", sconcat(c2, sconcat(", i32 ", sconcat(lo.code, sconcat(", i32 ", t)))))), "int")
+  let c1 = emit_bind(("icmp slt i32 " + (v.code + (", " + hi.code))))
+  let t = emit_bind(("select i1 " + (c1 + (", i32 " + (v.code + (", i32 " + hi.code))))))
+  let c2 = emit_bind(("icmp sgt i32 " + (lo.code + (", " + t))))
+  return val(emit_bind(("select i1 " + (c2 + (", i32 " + (lo.code + (", i32 " + t)))))), "int")
 }

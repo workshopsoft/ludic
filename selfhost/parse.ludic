@@ -8,8 +8,8 @@ var g_game_name: ptr             # the `game`/`module` name
 
 fn cur() -> Tok { return toks[pi] }
 fn pk(o: int) -> Tok { return toks[pi + o] }
-fn is_op(v: ptr) -> bool { let t = toks[pi];  return t.kind == TK_OP and streq(t.text, v) }
-fn is_id(v: ptr) -> bool { let t = toks[pi];  return t.kind == TK_ID and streq(t.text, v) }
+fn is_op(v: ptr) -> bool { let t = toks[pi];  return t.kind == TK_OP and (t.text == v) }
+fn is_id(v: ptr) -> bool { let t = toks[pi];  return t.kind == TK_ID and (t.text == v) }
 fn is_kw(v: ptr) -> bool { return is_id(v) }
 
 fn perr(msg: ptr) -> void {
@@ -60,10 +60,10 @@ fn p_primary() -> Node {
   if t.kind == TK_FLOAT { let n = node(E_FLOAT); n.ival = t.ival; pi = pi + 1; return n }
   if t.kind == TK_STR { let n = node(E_STR); n.s = t.text; pi = pi + 1; return n }
   if t.kind == TK_ID {
-    if streq(t.text, "true")  { let n = node(E_BOOL); n.ival = 1; pi = pi + 1; return n }
-    if streq(t.text, "false") { let n = node(E_BOOL); n.ival = 0; pi = pi + 1; return n }
-    if streq(t.text, "null")  { pi = pi + 1; return node(E_NULL) }
-    if streq(t.text, "new")   { pi = pi + 1;  let n = node(E_NEW); n.s = ptype(); return n }
+    if (t.text == "true")  { let n = node(E_BOOL); n.ival = 1; pi = pi + 1; return n }
+    if (t.text == "false") { let n = node(E_BOOL); n.ival = 0; pi = pi + 1; return n }
+    if (t.text == "null")  { pi = pi + 1; return node(E_NULL) }
+    if (t.text == "new")   { pi = pi + 1;  let n = node(E_NEW); n.s = ptype(); return n }
     let n = node(E_ID); n.s = t.text; pi = pi + 1; return n
   }
   if is_op("(") { pi = pi + 1; skipnl(); let e = expr(); skipnl(); eat_op(")"); return e }
@@ -153,19 +153,19 @@ fn block() -> Node {
 fn stmt() -> Node {
   let t = toks[pi]
   if t.kind == TK_ID {
-    if streq(t.text, "let") or streq(t.text, "var") {
-      var mut = 0; if streq(t.text, "var") { mut = 1 }     # let = immutable, var = mutable
+    if (t.text == "let") or (t.text == "var") {
+      var mut = 0; if (t.text == "var") { mut = 1 }     # let = immutable, var = mutable
       pi = pi + 1; let n = node(S_LET); n.ival = mut; n.line = toks[pi].line; n.s = eat_id()
       if is_op(":") { pi = pi + 1; n.ty = ptype() }
       if is_op("=") { pi = pi + 1; n.a = expr() }
       return n
     }
-    if streq(t.text, "return") {
+    if (t.text == "return") {
       pi = pi + 1; let n = node(S_RETURN)
       if toks[pi].kind != TK_NL and not is_op("}") { n.a = expr() }
       return n
     }
-    if streq(t.text, "if") {
+    if (t.text == "if") {
       pi = pi + 1; let n = node(S_IF); n.a = expr(); n.b = block()
       let save = pi; skipnl()                 # peek past newlines for a trailing `else`
       if is_id("else") { pi = pi + 1; skipnl()
@@ -173,8 +173,8 @@ fn stmt() -> Node {
       else { pi = save }                      # no else: keep the separator for block()'s Rule-B check
       return n
     }
-    if streq(t.text, "while") { pi = pi + 1; let n = node(S_WHILE); n.a = expr(); n.b = block(); return n }
-    if streq(t.text, "for") {
+    if (t.text == "while") { pi = pi + 1; let n = node(S_WHILE); n.a = expr(); n.b = block(); return n }
+    if (t.text == "for") {
       pi = pi + 1
       if is_op("(") { return parse_query_for() }
       let n = node(S_FOR); n.s = eat_id()
@@ -182,8 +182,8 @@ fn stmt() -> Node {
       n.a = expr(); eat_op(".."); n.b = expr(); n.c = block()
       return n
     }
-    if streq(t.text, "spawn") { return parse_spawn() }
-    if streq(t.text, "machine") {
+    if (t.text == "spawn") { return parse_spawn() }
+    if (t.text == "machine") {
       pi = pi + 1; let n = node(S_MACHINE); n.a = expr(); skipnl(); eat_op("{")
       var sidx = 0                              # states auto-number by declaration order
       while true { skipnl(); if is_op("}") { break }
@@ -195,17 +195,17 @@ fn stmt() -> Node {
         push(n.kids, s); sidx = sidx + 1 }
       eat_op("}"); return n
     }
-    if streq(t.text, "become") { pi = pi + 1; let n = node(S_BECOME); n.s = eat_id(); return n }
-    if streq(t.text, "despawn") { pi = pi + 1; let n = node(S_DESPAWN); n.a = expr(); return n }
-    if streq(t.text, "enable") or streq(t.text, "disable") {
-      var en = 0; if streq(t.text, "enable") { en = 1 }
+    if (t.text == "become") { pi = pi + 1; let n = node(S_BECOME); n.s = eat_id(); return n }
+    if (t.text == "despawn") { pi = pi + 1; let n = node(S_DESPAWN); n.a = expr(); return n }
+    if (t.text == "enable") or (t.text == "disable") {
+      var en = 0; if (t.text == "enable") { en = 1 }
       pi = pi + 1; let n = node(S_TOGGLE); n.ival = en; n.s = eat_id()     # `enable P on e` / `disable Model` / `disable Handler`
       if is_id("on") { pi = pi + 1; n.a = expr() }                        # property on an entity
       return n
     }
-    if streq(t.text, "break") { pi = pi + 1; return node(S_BREAK) }
-    if streq(t.text, "continue") { pi = pi + 1; return node(S_CONTINUE) }
-    if streq(t.text, "match") {
+    if (t.text == "break") { pi = pi + 1; return node(S_BREAK) }
+    if (t.text == "continue") { pi = pi + 1; return node(S_CONTINUE) }
+    if (t.text == "match") {
       pi = pi + 1; let n = node(S_MATCH); n.a = expr(); skipnl(); eat_op("{")
       while true {
         skipnl(); if is_op("}") { break }
@@ -259,7 +259,7 @@ fn dir_of(path: ptr) -> ptr {
 }
 fn path_join(dir: ptr, rel: ptr) -> ptr {
   if peek8(rel, 0) == 47 { return rel }               # absolute
-  return sconcat(dir, rel)
+  return (dir + rel)
 }
 
 var loaded_paths: []ptr
@@ -267,7 +267,7 @@ var cur_dir: ptr
 
 fn already_loaded(full: ptr) -> bool {
   var i = 0
-  while i < len(loaded_paths) { if streq(loaded_paths[i], full) { return true };  i = i + 1 }
+  while i < len(loaded_paths) { if (loaded_paths[i] == full) { return true };  i = i + 1 }
   return false
 }
 
@@ -285,15 +285,15 @@ fn parse_one_decl() -> void {
   var hook_phase: ptr = null            # @OnStart / @OnQuit override the phase
   while is_op("@") {
     pi = pi + 1; let a = eat_id()             # collect a leading @annotation
-    if streq(a, "export") { is_export = true }
-    else { if streq(a, "Queries") { qspec = parse_queries_anno() }               # @Queries(these: [...], on: ...)
-    else { if streq(a, "OnSpawn") { eat_op("("); onspawn_model = eat_id(); eat_op(")") }
-    else { if streq(a, "OnDespawn") { eat_op("("); ondespawn_model = eat_id(); eat_op(")") }
-    else { if streq(a, "OnAttach") { eat_op("("); onattach_prop = eat_id(); eat_op(")") }
-    else { if streq(a, "OnEnable") { eat_op("("); onenable_prop = eat_id(); eat_op(")") }
-    else { if streq(a, "OnDisable") { eat_op("("); ondisable_prop = eat_id(); eat_op(")") }
-    else { if streq(a, "OnStart") { hook_phase = "Start" }                       # boot
-    else { if streq(a, "OnQuit") { hook_phase = "OnQuit" }                       # shutdown
+    if (a == "export") { is_export = true }
+    else { if (a == "Queries") { qspec = parse_queries_anno() }               # @Queries(these: [...], on: ...)
+    else { if (a == "OnSpawn") { eat_op("("); onspawn_model = eat_id(); eat_op(")") }
+    else { if (a == "OnDespawn") { eat_op("("); ondespawn_model = eat_id(); eat_op(")") }
+    else { if (a == "OnAttach") { eat_op("("); onattach_prop = eat_id(); eat_op(")") }
+    else { if (a == "OnEnable") { eat_op("("); onenable_prop = eat_id(); eat_op(")") }
+    else { if (a == "OnDisable") { eat_op("("); ondisable_prop = eat_id(); eat_op(")") }
+    else { if (a == "OnStart") { hook_phase = "Start" }                       # boot
+    else { if (a == "OnQuit") { hook_phase = "OnQuit" }                       # shutdown
     else { if is_op("(") { var d = 0          # any other @anno(args) — parsed and skipped
         while true { if is_op("(") { d = d + 1 };  if is_op(")") { d = d - 1 };  pi = pi + 1;  if d == 0 { break } } } } } } } } } } } }
     skipnl()
@@ -337,7 +337,7 @@ fn do_import(rel: ptr) -> void {
   if already_loaded(full) { return }
   push(loaded_paths, full)
   let src = read_file(full)
-  if (src == null) { perr(sconcat("cannot open import ", full)) }
+  if (src == null) { perr(("cannot open import " + full)) }
   let saved_toks = toks;  let saved_pi = pi;  let saved_dir = cur_dir
   cur_dir = dir_of(full)
   lex(src)                                   # resets the global token stream

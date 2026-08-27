@@ -25,13 +25,13 @@ fn emit_assign(st: Node) -> void {
     if li >= 0 {
       # a `let` binding is immutable: rebinding it is an error (mutating THROUGH
       # it — `x.field = …`, `x[i] = …` — is fine, and lands in the branches below).
-      if loc_mut[li] == 0 { perr(sconcat("cannot assign to immutable '", sconcat(t.s, sconcat("' (declared with let; use var) — line ", itoa(st.line))))) }
+      if loc_mut[li] == 0 { perr(("cannot assign to immutable '" + (t.s + ("' (declared with let; use var) — line " + itoa(st.line))))) }
       addr = loc_reg[li];  ty = loc_ty[li]
     }
     else {
       let g = find_global(t.s)
-      if (g == null) { perr(sconcat("assign to unknown ", t.s)) }
-      addr = sconcat("@g_", t.s);  ty = g.ty
+      if (g == null) { perr(("assign to unknown " + t.s)) }
+      addr = ("@g_" + t.s);  ty = g.ty
     }
   } else {
     if t.kind == E_MEMBER { addr = emit_member_addr(t);  ty = g_addr_ty }
@@ -41,20 +41,20 @@ fn emit_assign(st: Node) -> void {
   let lt = llty(ty)
   let rv = emit_expr(st.b)
   var v = rv.code
-  if not streq(st.s, "=") {
-    let cur = emit_bind(sconcat("load ", sconcat(lt, sconcat(", ptr ", addr))))
+  if not (st.s == "=") {
+    let cur = emit_bind(("load " + (lt + (", ptr " + addr))))
     var opc = "add"
-    if streq(st.s, "-=") { opc = "sub" }
-    if streq(st.s, "*=") { opc = "mul" }
-    if streq(st.s, "/=") { opc = "sdiv" }
-    v = emit_bind(sconcat(opc, sconcat(" i32 ", sconcat(cur, sconcat(", ", v)))))
+    if (st.s == ("-=")) { opc = "sub" }
+    if (st.s == ("*=")) { opc = "mul" }
+    if (st.s == ("/=")) { opc = "sdiv" }
+    v = emit_bind((opc + (" i32 " + (cur + (", " + v)))))
   }
   store_at(lt, v, addr)
 }
 
 fn emit_if(st: Node) -> void {
   let c = emit_expr(st.a)
-  let cc = emit_bind(sconcat("icmp ne i32 ", sconcat(c.code, ", 0")))
+  let cc = emit_bind(("icmp ne i32 " + (c.code + ", 0")))
   let has_else = (st.c != null)
   let tl = lbl("then");  let el = lbl("else");  let en = lbl("ifend")
   if has_else { emit("  br i1 ");  emit(cc);  emit(", label %");  emit(tl);  emit(", label %");  emit(el);  emit("\n") }
@@ -76,7 +76,7 @@ fn emit_while(st: Node) -> void {
   emit("  br label %");  emit(cl);  emit("\n")
   emit(cl);  emit(":\n")
   let c = emit_expr(st.a)
-  let cc = emit_bind(sconcat("icmp ne i32 ", sconcat(c.code, ", 0")))
+  let cc = emit_bind(("icmp ne i32 " + (c.code + ", 0")))
   emit("  br i1 ");  emit(cc);  emit(", label %");  emit(bl);  emit(", label %");  emit(en);  emit("\n")
   emit(bl);  emit(":\n");  g_term = false
   loop_push(cl, en)
@@ -94,9 +94,9 @@ fn emit_for(st: Node) -> void {
   let cl = lbl("fcond");  let bl = lbl("fbody");  let ct = lbl("fcont");  let en = lbl("fend")
   emit("  br label %");  emit(cl);  emit("\n")
   emit(cl);  emit(":\n")
-  let iv = emit_bind(sconcat("load i32, ptr ", slot))
+  let iv = emit_bind(("load i32, ptr " + slot))
   let hi = emit_expr(st.b)
-  let cc = emit_bind(sconcat("icmp slt i32 ", sconcat(iv, sconcat(", ", hi.code))))
+  let cc = emit_bind(("icmp slt i32 " + (iv + (", " + hi.code))))
   emit("  br i1 ");  emit(cc);  emit(", label %");  emit(bl);  emit(", label %");  emit(en);  emit("\n")
   emit(bl);  emit(":\n");  g_term = false
   loop_push(ct, en)
@@ -104,8 +104,8 @@ fn emit_for(st: Node) -> void {
   loop_pop()
   if not g_term { emit("  br label %");  emit(ct);  emit("\n") }
   emit(ct);  emit(":\n")
-  let i2 = emit_bind(sconcat("load i32, ptr ", slot))
-  let i3 = emit_bind(sconcat("add i32 ", sconcat(i2, ", 1")))
+  let i2 = emit_bind(("load i32, ptr " + slot))
+  let i3 = emit_bind(("add i32 " + (i2 + ", 1")))
   store_at("i32", i3, slot)
   emit("  br label %");  emit(cl);  emit("\n")
   emit(en);  emit(":\n");  g_term = false
@@ -122,7 +122,7 @@ fn emit_return(st: Node) -> void {
 
 fn arm_is_default(arm: Node) -> bool {
   var p = 0
-  while p < len(arm.kids) { if arm.kids[p].kind == E_ID and streq(arm.kids[p].s, "_") { return true }; p = p + 1 }
+  while p < len(arm.kids) { if arm.kids[p].kind == E_ID and (arm.kids[p].s == "_") { return true }; p = p + 1 }
   return false
 }
 
@@ -140,9 +140,9 @@ fn emit_match(st: Node) -> void {
       var p = 0
       while p < len(arm.kids) {
         let pv = emit_expr(arm.kids[p])
-        let c = emit_bind(sconcat("icmp eq i32 ", sconcat(sv.code, sconcat(", ", pv.code))))
+        let c = emit_bind(("icmp eq i32 " + (sv.code + (", " + pv.code))))
         if first { acc = c;  first = false }
-        else { acc = emit_bind(sconcat("or i1 ", sconcat(acc, sconcat(", ", c)))) }
+        else { acc = emit_bind(("or i1 " + (acc + (", " + c)))) }
         p = p + 1
       }
       let bodyl = lbl("mbody");  let nextl = lbl("marm")
@@ -167,7 +167,7 @@ fn emit_stmt(st: Node) -> void {
     let slot = emit_alloca(llty(ty))
     if (st.a == null) {
       var z = "0"
-      if streq(llty(ty), "ptr") { z = "null" }
+      if (llty(ty) == "ptr") { z = "null" }
       store_at(llty(ty), z, slot)
     } else { let v = emit_expr(st.a);  store_at(llty(ty), v.code, slot) }
     loc_push(st.s, slot, ty)

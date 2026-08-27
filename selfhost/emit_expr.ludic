@@ -1,7 +1,7 @@
 # emit_expr.ludic — lower an expression to IR, returning its register and type.
 
 fn emit_load_at(addr: ptr, ty: ptr) -> Val {
-  let r = emit_bind(sconcat("load ", sconcat(llty(ty), sconcat(", ptr ", addr))))
+  let r = emit_bind(("load " + (llty(ty) + (", ptr " + addr))))
   return val(r, ty)
 }
 
@@ -10,100 +10,124 @@ fn emit_load_at(addr: ptr, ty: ptr) -> Val {
 fn emit_logic(e: Node) -> Val {
   let slot = emit_alloca("i32")
   let la = emit_expr(e.a)
-  let lc = emit_bind(sconcat("icmp ne i32 ", sconcat(la.code, ", 0")))
-  let lz = emit_bind(sconcat("zext i1 ", sconcat(lc, " to i32")))
+  let lc = emit_bind(("icmp ne i32 " + (la.code + ", 0")))
+  let lz = emit_bind(("zext i1 " + (lc + " to i32")))
   emit("  store i32 ");  emit(lz);  emit(", ptr ");  emit(slot);  emit("\n")
   let ev = lbl("sc");  let done = lbl("scend")
-  if streq(e.s, "and") { emit("  br i1 ");  emit(lc);  emit(", label %");  emit(ev);  emit(", label %");  emit(done);  emit("\n") }
+  if (e.s == "and") { emit("  br i1 ");  emit(lc);  emit(", label %");  emit(ev);  emit(", label %");  emit(done);  emit("\n") }
   else { emit("  br i1 ");  emit(lc);  emit(", label %");  emit(done);  emit(", label %");  emit(ev);  emit("\n") }
   emit(ev);  emit(":\n")
   let rb = emit_expr(e.b)
-  let rc = emit_bind(sconcat("icmp ne i32 ", sconcat(rb.code, ", 0")))
-  let rz = emit_bind(sconcat("zext i1 ", sconcat(rc, " to i32")))
+  let rc = emit_bind(("icmp ne i32 " + (rb.code + ", 0")))
+  let rz = emit_bind(("zext i1 " + (rc + " to i32")))
   emit("  store i32 ");  emit(rz);  emit(", ptr ");  emit(slot);  emit("\n")
   emit("  br label %");  emit(done);  emit("\n")
   emit(done);  emit(":\n")
-  return val(emit_bind(sconcat("load i32, ptr ", slot)), "bool")
+  return val(emit_bind(("load i32, ptr " + slot)), "bool")
 }
 
 fn cmp_code(op: ptr) -> ptr {
-  if streq(op, "<")  { return "slt" }
-  if streq(op, "<=") { return "sle" }
-  if streq(op, ">")  { return "sgt" }
-  if streq(op, ">=") { return "sge" }
-  if streq(op, "==") { return "eq" }
+  if (op == ("<"))  { return "slt" }
+  if (op == ("<=")) { return "sle" }
+  if (op == (">"))  { return "sgt" }
+  if (op == (">=")) { return "sge" }
+  if (op == ("==")) { return "eq" }
   return "ne"
 }
 fn is_cmp(op: ptr) -> bool {
-  return streq(op,"<") or streq(op,"<=") or streq(op,">") or streq(op,">=") or streq(op,"==") or streq(op,"!=")
+  return (op == ("<")) or (op == ("<=")) or (op == (">")) or (op == (">=")) or (op == ("==")) or (op == ("!="))
 }
 fn arith_code(op: ptr) -> ptr {
-  if streq(op, "+") { return "add" }
-  if streq(op, "-") { return "sub" }
-  if streq(op, "*") { return "mul" }
-  if streq(op, "/") { return "sdiv" }
-  if streq(op, "&") { return "and" }
-  if streq(op, "|") { return "or" }
-  if streq(op, "^") { return "xor" }
-  if streq(op, "<<") { return "shl" }
-  if streq(op, ">>") { return "lshr" }             # logical shift (unsigned)
+  if (op == ("+")) { return "add" }
+  if (op == ("-")) { return "sub" }
+  if (op == ("*")) { return "mul" }
+  if (op == ("/")) { return "sdiv" }
+  if (op == ("&")) { return "and" }
+  if (op == ("|")) { return "or" }
+  if (op == ("^")) { return "xor" }
+  if (op == ("<<")) { return "shl" }
+  if (op == (">>")) { return "lshr" }             # logical shift (unsigned)
   return "srem"
 }
 
 # widen an int value to Q16.16 by shifting left 16 (a fixed value passes through)
 fn to_fixed(v: Val) -> ptr {
-  if streq(v.ty, "fixed") { return v.code }
-  return emit_bind(sconcat("shl i32 ", sconcat(v.code, ", 16")))
+  if (v.ty == "fixed") { return v.code }
+  return emit_bind(("shl i32 " + (v.code + ", 16")))
+}
+
+# string operators: `a + b` concatenates, `a == b` / `a != b` compare by content.
+# Both call the @fn_str_* prelude (emitted once per program that uses them).
+fn emit_str_op(op: ptr, a: Val, b: Val) -> Val {
+  g_uses_str = true
+  if (op == ("+")) {
+    return val(emit_bind(("call ptr @fn_str_concat(ptr " + (a.code + (", ptr " + (b.code + ")"))))), "str")
+  }
+  let r = emit_bind(("call i32 @fn_str_eq(ptr " + (a.code + (", ptr " + (b.code + ")")))))
+  if (op == ("!=")) {
+    let c = emit_bind(("icmp eq i32 " + (r + ", 0")))
+    return val(emit_bind(("zext i1 " + (c + " to i32"))), "bool")
+  }
+  return val(r, "bool")
 }
 
 fn emit_bin(e: Node) -> Val {
-  if streq(e.s, "and") or streq(e.s, "or") { return emit_logic(e) }
+  if (e.s == "and") or (e.s == "or") { return emit_logic(e) }
   let a = emit_expr(e.a)
   let b = emit_expr(e.b)
-  let fx = streq(a.ty, "fixed") or streq(b.ty, "fixed")
+  # strings are pointer-typed, so any `+` with a pointer operand is concatenation,
+  # and `==`/`!=` between pointers is content comparison — except `x == null`,
+  # which is a pointer-identity test and falls through to the icmp below.
+  let ptrish = (llty(a.ty) == "ptr") or (llty(b.ty) == "ptr")
+  let isnull = e.a.kind == E_NULL or e.b.kind == E_NULL
+  if ptrish {
+    if (e.s == ("+")) { return emit_str_op("+", a, b) }
+    if ((e.s == ("==")) or (e.s == ("!="))) and not isnull { return emit_str_op(e.s, a, b) }
+  }
+  let fx = (a.ty == "fixed") or (b.ty == "fixed")
   if is_cmp(e.s) {
     var ac = a.code;  var bc = b.code
     var ct = "i32"
     if fx { ac = to_fixed(a);  bc = to_fixed(b) }
-    else { if streq(llty(a.ty), "ptr") or streq(llty(b.ty), "ptr") { ct = "ptr" } }   # `p == null`, str/record identity
-    let c = emit_bind(sconcat("icmp ", sconcat(cmp_code(e.s), sconcat(sconcat(" ", sconcat(ct, " ")), sconcat(ac, sconcat(", ", bc))))))
-    return val(emit_bind(sconcat("zext i1 ", sconcat(c, " to i32"))), "bool")
+    else { if (llty(a.ty) == "ptr") or (llty(b.ty) == "ptr") { ct = "ptr" } }   # `p == null`, str/record identity
+    let c = emit_bind(("icmp " + (cmp_code(e.s) + ((" " + (ct + " ")) + (ac + (", " + bc))))))
+    return val(emit_bind(("zext i1 " + (c + " to i32"))), "bool")
   }
   if fx {
     let af = to_fixed(a);  let bf = to_fixed(b)
-    if streq(e.s, "*") {
-      let a64 = emit_bind(sconcat("sext i32 ", sconcat(af, " to i64")))
-      let b64 = emit_bind(sconcat("sext i32 ", sconcat(bf, " to i64")))
-      let m = emit_bind(sconcat("mul i64 ", sconcat(a64, sconcat(", ", b64))))
-      let sh = emit_bind(sconcat("ashr i64 ", sconcat(m, ", 16")))
-      return val(emit_bind(sconcat("trunc i64 ", sconcat(sh, " to i32"))), "fixed")
+    if (e.s == ("*")) {
+      let a64 = emit_bind(("sext i32 " + (af + " to i64")))
+      let b64 = emit_bind(("sext i32 " + (bf + " to i64")))
+      let m = emit_bind(("mul i64 " + (a64 + (", " + b64))))
+      let sh = emit_bind(("ashr i64 " + (m + ", 16")))
+      return val(emit_bind(("trunc i64 " + (sh + " to i32"))), "fixed")
     }
-    if streq(e.s, "/") {
-      let a64 = emit_bind(sconcat("sext i32 ", sconcat(af, " to i64")))
-      let ash = emit_bind(sconcat("shl i64 ", sconcat(a64, ", 16")))
-      let b64 = emit_bind(sconcat("sext i32 ", sconcat(bf, " to i64")))
-      let dv = emit_bind(sconcat("sdiv i64 ", sconcat(ash, sconcat(", ", b64))))
-      return val(emit_bind(sconcat("trunc i64 ", sconcat(dv, " to i32"))), "fixed")
+    if (e.s == ("/")) {
+      let a64 = emit_bind(("sext i32 " + (af + " to i64")))
+      let ash = emit_bind(("shl i64 " + (a64 + ", 16")))
+      let b64 = emit_bind(("sext i32 " + (bf + " to i64")))
+      let dv = emit_bind(("sdiv i64 " + (ash + (", " + b64))))
+      return val(emit_bind(("trunc i64 " + (dv + " to i32"))), "fixed")
     }
-    let r = emit_bind(sconcat(arith_code(e.s), sconcat(" i32 ", sconcat(af, sconcat(", ", bf)))))
+    let r = emit_bind((arith_code(e.s) + (" i32 " + (af + (", " + bf)))))
     return val(r, "fixed")
   }
-  let r = emit_bind(sconcat(arith_code(e.s), sconcat(" i32 ", sconcat(a.code, sconcat(", ", b.code)))))
+  let r = emit_bind((arith_code(e.s) + (" i32 " + (a.code + (", " + b.code)))))
   return val(r, "int")
 }
 
 fn emit_call(e: Node) -> Val {
   let name = e.a.s
-  if streq(name, "self") { if nself == 0 { return val("0", "entity") };  return val(emit_bind(sconcat("load i32, ptr ", self_stk[nself - 1])), "entity") }
-  if streq(name, "key") { return val(emit_bind("load i32, ptr @L_key"), "int") }
-  if streq(name, "save") { emit("  call void @L_save()\n");  return val("0", "void") }
-  if streq(name, "ui_build") { emit("  call void @ui_build()\n");  return val("0", "void") }
-  if streq(name, "load") { return val(emit_bind("call i32 @L_load()"), "bool") }
-  if streq(name, "quit") { emit("  store i32 0, ptr @L_running\n");  return val("0", "void") }
-  if streq(name, "len") { return emit_len(e) }
-  if streq(name, "push") { return emit_push(e) }
-  if streq(name, "fx") { let a = emit_expr(e.kids[0]);  return val(emit_bind(sconcat("shl i32 ", sconcat(a.code, ", 16"))), "fixed") }
-  if streq(name, "flr") { let a = emit_expr(e.kids[0]);  return val(emit_bind(sconcat("ashr i32 ", sconcat(a.code, ", 16"))), "int") }
+  if (name == "self") { if nself == 0 { return val("0", "entity") };  return val(emit_bind(("load i32, ptr " + self_stk[nself - 1])), "entity") }
+  if (name == "key") { return val(emit_bind("load i32, ptr @L_key"), "int") }
+  if (name == "save") { emit("  call void @L_save()\n");  return val("0", "void") }
+  if (name == "ui_build") { emit("  call void @ui_build()\n");  return val("0", "void") }
+  if (name == "load") { return val(emit_bind("call i32 @L_load()"), "bool") }
+  if (name == "quit") { emit("  store i32 0, ptr @L_running\n");  return val("0", "void") }
+  if (name == "len") { return emit_len(e) }
+  if (name == "push") { return emit_push(e) }
+  if (name == "fx") { let a = emit_expr(e.kids[0]);  return val(emit_bind(("shl i32 " + (a.code + ", 16"))), "fixed") }
+  if (name == "flr") { let a = emit_expr(e.kids[0]);  return val(emit_bind(("ashr i32 " + (a.code + ", 16"))), "int") }
   if is_intrinsic(name) { return emit_intrinsic(name, e) }
   if is_intrinsic2(name) { return emit_intrinsic2(name, e) }
   if is_math_builtin(name) { return emit_math_builtin(name, e) }
@@ -111,9 +135,9 @@ fn emit_call(e: Node) -> Val {
   var cname = name
   if (fn2 == null) {
     # a builtin like clear()/reg() is satisfied by its rt_ function
-    let rtname = sconcat("rt_", name)
+    let rtname = ("rt_" + name)
     fn2 = find_fn(rtname)
-    if (fn2 == null) { perr(sconcat("unknown function ", name)) }
+    if (fn2 == null) { perr(("unknown function " + name)) }
     cname = rtname
   }
   # evaluate args first (their IR is emitted before the call instruction)
@@ -124,7 +148,7 @@ fn emit_call(e: Node) -> Val {
   let rl = llty(fn2.ty)
   emit("  ")
   var rreg = "0"
-  if not streq(rl, "void") { rreg = nreg();  emit(rreg);  emit(" = ") }
+  if not (rl == "void") { rreg = nreg();  emit(rreg);  emit(" = ") }
   emit("call ");  emit(rl);  emit(" @fn_");  emit(cname);  emit("(")
   i = 0
   while i < len(args) {
@@ -153,12 +177,12 @@ fn emit_expr(e: Node) -> Val {
     let g = find_global(e.s)
     if (g != null) {
       if g.kind == N_CONST { return val(itoa(g.a.ival), "int") }
-      let r = emit_bind(sconcat("load ", sconcat(llty(g.ty), sconcat(", ptr @g_", e.s))))
+      let r = emit_bind(("load " + (llty(g.ty) + (", ptr @g_" + e.s))))
       return val(r, g.ty)
     }
     # a UI_<name> that is not a const/var resolves to its widget index
     if is_ui_ident(e.s) { return val(itoa(ui_index_of(e.s)), "int") }
-    perr(sconcat("unknown identifier ", e.s))
+    perr(("unknown identifier " + e.s))
   }
   if e.kind == E_MEMBER {
     if e.a.kind == E_ID {                        # `Enum.Variant` -> its ordinal, a compile-time int
@@ -177,10 +201,10 @@ fn emit_expr(e: Node) -> Val {
   if e.kind == E_BIN    { return emit_bin(e) }
   if e.kind == E_UN {
     let a = emit_expr(e.a)
-    if streq(e.s, "-") { return val(emit_bind(sconcat("sub i32 0, ", a.code)), "int") }
-    if streq(e.s, "~") { return val(emit_bind(sconcat("xor i32 ", sconcat(a.code, ", -1"))), "int") }
-    let c = emit_bind(sconcat("icmp eq i32 ", sconcat(a.code, ", 0")))
-    return val(emit_bind(sconcat("zext i1 ", sconcat(c, " to i32"))), "bool")
+    if (e.s == ("-")) { return val(emit_bind(("sub i32 0, " + a.code)), "int") }
+    if (e.s == "~") { return val(emit_bind(("xor i32 " + (a.code + (", -1")))), "int") }
+    let c = emit_bind(("icmp eq i32 " + (a.code + ", 0")))
+    return val(emit_bind(("zext i1 " + (c + " to i32"))), "bool")
   }
   perr("cannot emit expression")
   return val("0", "int")

@@ -7,14 +7,14 @@ var g_intrin_ok: bool = false
 # is `name` a low-level intrinsic? A pure name check, so it can gate dispatch
 # without evaluating arguments (which could clobber shared state).
 fn is_intrinsic(name: ptr) -> bool {
-  if streq(name,"mem_alloc") or streq(name,"mem_realloc") { return true }
-  if streq(name,"peek8") or streq(name,"poke8") { return true }
-  if streq(name,"file_open") or streq(name,"file_read") or streq(name,"file_write") { return true }
-  if streq(name,"file_seek") or streq(name,"file_tell") or streq(name,"file_close") { return true }
-  if streq(name,"print_str") or streq(name,"print_int") { return true }
-  if streq(name,"os_argc") or streq(name,"os_arg") or streq(name,"os_exit") or streq(name,"file_stderr") { return true }
-  if streq(name,"os_system") or streq(name,"os_getenv") { return true }
-  if streq(name,"peek32") or streq(name,"poke32") { return true }
+  if (name == "mem_alloc") or (name == "mem_realloc") { return true }
+  if (name == "peek8") or (name == "poke8") { return true }
+  if (name == "file_open") or (name == "file_read") or (name == "file_write") { return true }
+  if (name == "file_seek") or (name == "file_tell") or (name == "file_close") { return true }
+  if (name == "print_str") or (name == "print_int") { return true }
+  if (name == "os_argc") or (name == "os_arg") or (name == "os_exit") or (name == "file_stderr") { return true }
+  if (name == "os_system") or (name == "os_getenv") { return true }
+  if (name == "peek32") or (name == "poke32") { return true }
   return false
 }
 # emit "  <r> = <rest>\n" and return r
@@ -25,97 +25,97 @@ fn arg_code(e: Node, i: int) -> ptr { let v = emit_expr(e.kids[i]);  return v.co
 fn emit_intrinsic(name: ptr, e: Node) -> Val {
   g_intrin_ok = true
   # ptr_null / ptr_is_null are the `null` literal and `x == null` now.
-  if streq(name, "mem_alloc") {
+  if (name == "mem_alloc") {
     let n = arg_code(e, 0)
-    let w = emit_bind(sconcat("zext i32 ", sconcat(n, " to i64")))
-    return val(emit_bind(sconcat("call ptr @malloc(i64 ", sconcat(w, ")"))), "ptr")
+    let w = emit_bind(("zext i32 " + (n + " to i64")))
+    return val(emit_bind(("call ptr @malloc(i64 " + (w + ")"))), "ptr")
   }
-  if streq(name, "mem_realloc") {
+  if (name == "mem_realloc") {
     let p = arg_code(e, 0);  let n = arg_code(e, 1)
-    let w = emit_bind(sconcat("zext i32 ", sconcat(n, " to i64")))
-    return val(emit_bind(sconcat("call ptr @realloc(ptr ", sconcat(p, sconcat(", i64 ", sconcat(w, ")"))))), "ptr")
+    let w = emit_bind(("zext i32 " + (n + " to i64")))
+    return val(emit_bind(("call ptr @realloc(ptr " + (p + (", i64 " + (w + ")"))))), "ptr")
   }
-  if streq(name, "peek8") {
+  if (name == "peek8") {
     let p = arg_code(e, 0);  let i = arg_code(e, 1)
     let a = emit_gep_i8(p, i)
-    let b = emit_bind(sconcat("load i8, ptr ", a))
-    return val(emit_bind(sconcat("zext i8 ", sconcat(b, " to i32"))), "int")
+    let b = emit_bind(("load i8, ptr " + a))
+    return val(emit_bind(("zext i8 " + (b + " to i32"))), "int")
   }
-  if streq(name, "poke8") {
+  if (name == "poke8") {
     let p = arg_code(e, 0);  let i = arg_code(e, 1);  let v = arg_code(e, 2)
     let a = emit_gep_i8(p, i)
-    let t = emit_bind(sconcat("trunc i32 ", sconcat(v, " to i8")))
+    let t = emit_bind(("trunc i32 " + (v + " to i8")))
     emit("  store i8 ");  emit(t);  emit(", ptr ");  emit(a);  emit("\n")
     return val("0", "void")
   }
-  if streq(name, "file_open") {
+  if (name == "file_open") {
     let p = arg_code(e, 0);  let m = arg_code(e, 1)
-    return val(emit_bind(sconcat("call ptr @fopen(ptr ", sconcat(p, sconcat(", ptr ", sconcat(m, ")"))))), "ptr")
+    return val(emit_bind(("call ptr @fopen(ptr " + (p + (", ptr " + (m + ")"))))), "ptr")
   }
-  if streq(name, "file_read") or streq(name, "file_write") {
+  if (name == "file_read") or (name == "file_write") {
     let f = arg_code(e, 0);  let b = arg_code(e, 1);  let n = arg_code(e, 2)
-    let w = emit_bind(sconcat("zext i32 ", sconcat(n, " to i64")))
+    let w = emit_bind(("zext i32 " + (n + " to i64")))
     var fn2 = "@fread"
-    if streq(name, "file_write") { fn2 = "@fwrite" }
-    let r = emit_bind(sconcat("call i64 ", sconcat(fn2, sconcat("(ptr ", sconcat(b, sconcat(", i64 1, i64 ", sconcat(w, sconcat(", ptr ", sconcat(f, ")")))))))))
-    return val(emit_bind(sconcat("trunc i64 ", sconcat(r, " to i32"))), "int")
+    if (name == "file_write") { fn2 = "@fwrite" }
+    let r = emit_bind(("call i64 " + (fn2 + ("(ptr " + (b + (", i64 1, i64 " + (w + (", ptr " + (f + ")")))))))))
+    return val(emit_bind(("trunc i64 " + (r + " to i32"))), "int")
   }
-  if streq(name, "file_seek") {
+  if (name == "file_seek") {
     let f = arg_code(e, 0);  let off = arg_code(e, 1);  let wh = arg_code(e, 2)
-    let o = emit_bind(sconcat("sext i32 ", sconcat(off, " to i64")))
-    return val(emit_bind(sconcat("call i32 @fseek(ptr ", sconcat(f, sconcat(", i64 ", sconcat(o, sconcat(", i32 ", sconcat(wh, ")"))))))), "int")
+    let o = emit_bind(("sext i32 " + (off + " to i64")))
+    return val(emit_bind(("call i32 @fseek(ptr " + (f + (", i64 " + (o + (", i32 " + (wh + ")"))))))), "int")
   }
-  if streq(name, "file_tell") {
+  if (name == "file_tell") {
     let f = arg_code(e, 0)
-    let r = emit_bind(sconcat("call i64 @ftell(ptr ", sconcat(f, ")")))
-    return val(emit_bind(sconcat("trunc i64 ", sconcat(r, " to i32"))), "int")
+    let r = emit_bind(("call i64 @ftell(ptr " + (f + ")")))
+    return val(emit_bind(("trunc i64 " + (r + " to i32"))), "int")
   }
-  if streq(name, "file_close") {
+  if (name == "file_close") {
     let f = arg_code(e, 0)
     emit("  call i32 @fclose(ptr ");  emit(f);  emit(")\n")
     return val("0", "void")
   }
-  if streq(name, "print_str") {
+  if (name == "print_str") {
     let s = arg_code(e, 0)
     emit("  call i32 (ptr, ...) @printf(ptr @.fmt_str, ptr ");  emit(s);  emit(")\n")
     return val("0", "void")
   }
-  if streq(name, "print_int") {
+  if (name == "print_int") {
     let n = arg_code(e, 0)
     emit("  call i32 (ptr, ...) @printf(ptr @.fmt_int, i32 ");  emit(n);  emit(")\n")
     return val("0", "void")
   }
-  if streq(name, "os_argc") { return val(emit_bind("load i32, ptr @L_argc"), "int") }
-  if streq(name, "os_arg") {
+  if (name == "os_argc") { return val(emit_bind("load i32, ptr @L_argc"), "int") }
+  if (name == "os_arg") {
     let i = arg_code(e, 0)
     let v = emit_bind("load ptr, ptr @L_argv")
-    let q = emit_bind(sconcat("getelementptr ptr, ptr ", sconcat(v, sconcat(", i32 ", i))))
-    return val(emit_bind(sconcat("load ptr, ptr ", q)), "str")
+    let q = emit_bind(("getelementptr ptr, ptr " + (v + (", i32 " + i))))
+    return val(emit_bind(("load ptr, ptr " + q)), "str")
   }
-  if streq(name, "os_exit") {
+  if (name == "os_exit") {
     let n = arg_code(e, 0)
     emit("  call void @exit(i32 ");  emit(n);  emit(")\n")
     emit("  unreachable\n")
     g_term = true
     return val("0", "void")
   }
-  if streq(name, "file_stderr") { return val(emit_bind("load ptr, ptr @__stderrp"), "ptr") }
-  if streq(name, "os_system") {
+  if (name == "file_stderr") { return val(emit_bind("load ptr, ptr @__stderrp"), "ptr") }
+  if (name == "os_system") {
     let c = arg_code(e, 0)
-    return val(emit_bind(sconcat("call i32 @system(ptr ", sconcat(c, ")"))), "int")
+    return val(emit_bind(("call i32 @system(ptr " + (c + ")"))), "int")
   }
-  if streq(name, "os_getenv") {
+  if (name == "os_getenv") {
     let n = arg_code(e, 0)
-    return val(emit_bind(sconcat("call ptr @getenv(ptr ", sconcat(n, ")"))), "str")
+    return val(emit_bind(("call ptr @getenv(ptr " + (n + ")"))), "str")
   }
   # bitwise ops are the operators & | ^ << >> ~ now (see emit_bin / p_mul).
-  if streq(name, "peek32") {
+  if (name == "peek32") {
     let p = arg_code(e, 0);  let i = arg_code(e, 1)
     let g = nreg()
     emit("  ");  emit(g);  emit(" = getelementptr inbounds i32, ptr ");  emit(p);  emit(", i32 ");  emit(i);  emit("\n")
-    return val(emit_bind(sconcat("load i32, ptr ", g)), "int")
+    return val(emit_bind(("load i32, ptr " + g)), "int")
   }
-  if streq(name, "poke32") {
+  if (name == "poke32") {
     let p = arg_code(e, 0);  let i = arg_code(e, 1);  let v = arg_code(e, 2)
     let g = nreg()
     emit("  ");  emit(g);  emit(" = getelementptr inbounds i32, ptr ");  emit(p);  emit(", i32 ");  emit(i);  emit("\n")

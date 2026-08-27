@@ -24,9 +24,9 @@ fn emit_calls_for_phase(phase: ptr) -> void {
   var i = 0
   while i < len(prog) {
     let d = prog[i]
-    if d.kind == N_SYS and streq(d.ty, phase) {          # skip a disabled handler
-      let he = emit_bind(sconcat("load i32, ptr @HE_", d.s))
-      let hc = emit_bind(sconcat("icmp ne i32 ", sconcat(he, ", 0")))
+    if d.kind == N_SYS and (d.ty == phase) {          # skip a disabled handler
+      let he = emit_bind(("load i32, ptr @HE_" + d.s))
+      let hc = emit_bind(("icmp ne i32 " + (he + ", 0")))
       let run = lbl("hrun");  let skip = lbl("hskip")
       emit("  br i1 ");  emit(hc);  emit(", label %");  emit(run);  emit(", label %");  emit(skip);  emit("\n")
       emit(run);  emit(":\n  call void @sys_");  emit(d.s);  emit("()\n")
@@ -76,11 +76,11 @@ fn emit_game_main() -> void {
   emit("  br label %loop\n")
   emit("loop:\n")
   let r = emit_bind("load i32, ptr @L_running")
-  let rc = emit_bind(sconcat("icmp ne i32 ", sconcat(r, ", 0")))
+  let rc = emit_bind(("icmp ne i32 " + (r + ", 0")))
   if (find_fn("rt_running") != null) {
     let pr = emit_bind("call i32 @fn_rt_running()")
-    let pc = emit_bind(sconcat("icmp ne i32 ", sconcat(pr, ", 0")))
-    let go = emit_bind(sconcat("and i1 ", sconcat(rc, sconcat(", ", pc))))
+    let pc = emit_bind(("icmp ne i32 " + (pr + ", 0")))
+    let go = emit_bind(("and i1 " + (rc + (", " + pc))))
     emit("  br i1 ");  emit(go);  emit(", label %body, label %done\n")
   } else {
     emit("  br i1 ");  emit(rc);  emit(", label %body, label %done\n")
