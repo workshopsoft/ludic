@@ -5,9 +5,13 @@
 fn parse_component() -> Node {
   pi = pi + 1; let n = node(N_COMP); n.s = eat_id(); skipnl(); eat_op("{")
   while true { skipnl(); if is_op("}") { break }
+    let is_computed = false
+    if is_op("@") { pi = pi + 1; let ann = eat_id(); if streq(ann, "Computed") { is_computed = true }; skipnl() }
     let f = node(N_FIELD); f.s = eat_id(); eat_op(":"); f.ty = ptype()
     if is_op("=") { pi = pi + 1; f.a = expr() }
-    push(n.kids, f); if is_op(",") { pi = pi + 1 } }
+    if is_computed { register_computed(n.s, f.s, f.ty, f.a) }   # derived: no storage
+    else { push(n.kids, f) }
+    if is_op(",") { pi = pi + 1 } }
   eat_op("}"); return n
 }
 
@@ -95,15 +99,21 @@ fn mk_and(a: Node, b: Node) -> Node {
   let n = node(E_BIN); n.s = "and"; n.a = a; n.b = b; return n
 }
 
-# In `Prop{scale > 0}` the bare names are fields of Prop; qualify each to
-# `Prop.field` (the binding var is the property name) for the desugared where.
-fn qualify_fields(e: Node, prop: ptr) -> Node {
+# Rewrite each bare identifier in `e` as `base.field` — used both by
+# `Prop{constraint}` (base is the property binding) and by @Computed field
+# expansion (base is the accessed value). Non-destructive: builds a fresh tree,
+# so a stored computed expression can be expanded at many access sites.
+fn qualify_fields(e: Node, base: Node) -> Node {
   if ptr_is_null(e) { return e }
   if e.kind == E_ID {
-    let m = node(E_MEMBER); let base = node(E_ID); base.s = prop; m.a = base; m.s = e.s; return m
+    let m = node(E_MEMBER); m.a = base; m.s = e.s; return m
   }
-  if e.kind == E_BIN { e.a = qualify_fields(e.a, prop); e.b = qualify_fields(e.b, prop); return e }
-  if e.kind == E_UN  { e.a = qualify_fields(e.a, prop); return e }
+  if e.kind == E_BIN {
+    let n2 = node(E_BIN); n2.s = e.s; n2.a = qualify_fields(e.a, base); n2.b = qualify_fields(e.b, base); return n2
+  }
+  if e.kind == E_UN {
+    let n2 = node(E_UN); n2.s = e.s; n2.a = qualify_fields(e.a, base); return n2
+  }
   return e
 }
 
@@ -124,7 +134,8 @@ fn parse_queries_anno() -> Node {
         let pname = eat_id()
         let v = node(E_ID); v.s = pname; push(qn.kids, v)              # binding var = property name
         let t = node(E_ID); t.s = pname; t.ival = 0; push(terms.kids, t)
-        if is_op("{") { pi = pi + 1; let ce = expr(); eat_op("}"); wh = mk_and(wh, qualify_fields(ce, pname)) }
+        if is_op("{") { pi = pi + 1; let ce = expr(); eat_op("}")
+          let cb = node(E_ID); cb.s = pname; wh = mk_and(wh, qualify_fields(ce, cb)) }
         if is_op(",") { pi = pi + 1 }
         skipnl()
       }

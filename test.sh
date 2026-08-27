@@ -50,10 +50,11 @@ qsmoke() {  # name
   else bad "$n: $(tail -1 /tmp/qs.out)"; fi
 }
 qsmoke qdecl
-# @Queries desugars to a query loop; @Handles parses. Check the desugared behavior.
+# The annotation DSL: @Queries desugars to a query, @Computed inlines a derived
+# field, @OnSpawn runs a constructor, @Handles parses. Check the composite output.
 if ./selfhost/game-build.sh build/ludicc examples/annotations.ludic "/tmp/ludic_ann" >/tmp/ann.out 2>&1 \
-   && [ "$(/tmp/ludic_ann | tr '\n' ' ')" = "3 1 0 0 " ]; then
-  ok "annotations.ludic (@Queries desugars to a query, @Handles parses)"
+   && [ "$(/tmp/ludic_ann </dev/null | tr '\n' ' ')" = "3 25 0 0 " ]; then
+  ok "annotations.ludic (@Queries / @Computed / @OnSpawn / @Handles)"
 else bad "annotations: $(tail -1 /tmp/ann.out)"; fi
 # --- Toolchain-agent CLI smoke tests append below this line ---
 echo "== self-hosted front-end binaries (ludicc / ludic) =="

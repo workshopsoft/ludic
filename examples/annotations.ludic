@@ -1,22 +1,29 @@
-# annotations.ludic — the annotation-first style. A handler's query is an
-# @Queries decorator instead of a clause, and the program lists the handlers it
-# drives with @Handles. Both lower to the same code the older spellings did.
+# annotations.ludic — the annotation-first style. Behaviour is expressed with
+# @-decorators that desugar to plain handlers, queries and expressions, so the
+# properties stay pure data and the data-oriented model is untouched.
 
 @Handles(Move)
 program RPG2D {
   property Transform { x: int = 0, y: int = 0, scale: int = 1 }
-  property Velocity  { dx: int = 0, dy: int = 0 }
+  property Velocity {
+    dx: int = 0
+    dy: int = 0
+    @Computed speed2: int = dx * dx + dy * dy      # derived; no storage, inlined at use
+  }
   model Actor { Transform, Velocity }
 
+  # A constructor: every Actor starts visible. Runs at spawn with the model's
+  # properties bound by name — no per-frame cost, no observer machinery.
+  @OnSpawn(Actor)
+  handler InitActor { Transform.scale = 2 }
+
   handler Spawn phase Start {
-    spawn Actor { Transform { x: 0, scale: 2 }  Velocity { dx: 3, dy: 1 } }
-    spawn Actor { Transform { x: 0, scale: 0 }  Velocity { dx: 9, dy: 9 } }
+    spawn Actor { Transform { x: 0 }  Velocity { dx: 3, dy: 4 } }
+    spawn Actor { Transform { x: 0 }  Velocity { dx: 0, dy: 0 } }
   }
 
   # Move every Actor whose scale is positive and that is actually moving. The
-  # query lives in the annotation; each bound property is addressed by its own
-  # name in the body (`Transform`, `Velocity`), and a constraint like
-  # `Transform{scale > 0}` reads `scale` as a field of Transform.
+  # query is the decorator; each bound property is addressed by its own name.
   @Queries(these: [Transform{scale > 0}, Velocity{dx > 0 or dy > 0}], on: Actor)
   handler Move phase Update {
     Transform.x = Transform.x + Velocity.dx
@@ -24,7 +31,7 @@ program RPG2D {
   }
 
   handler Report phase Render {
-    for (t) in query [Transform] { print_int(t.x); print_int(t.y) }
+    for (t, v) in query [Transform, Velocity] { print_int(t.x); print_int(v.speed2) }
     quit()
   }
 }

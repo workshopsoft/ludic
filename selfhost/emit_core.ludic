@@ -140,6 +140,42 @@ fn find_fn(name: ptr) -> Node {
   return ptr_null()
 }
 
+# @Computed derived fields: a per-property (Prop.field -> expression) registry.
+# These are NOT stored in the component layout; `x.field` expands inline to the
+# expression with its bare names read as fields of `x`. Populated at parse time.
+var g_computed: []Node          # each: s = "Prop.field", ty = result type, a = expr
+
+fn register_computed(prop: ptr, field: ptr, ty: ptr, e: Node) -> void {
+  let cf = node(N_FIELD); cf.s = sconcat(prop, sconcat(".", field)); cf.ty = ty; cf.a = e
+  push(g_computed, cf)
+}
+fn computed_expr(prop: ptr, field: ptr) -> Node {
+  if ptr_is_null(prop) { return ptr_null() }
+  let key = sconcat(prop, sconcat(".", field))
+  let i = 0
+  while i < len(g_computed) { if streq(g_computed[i].s, key) { return g_computed[i].a };  i = i + 1 }
+  return ptr_null()
+}
+# best-effort static type of an expression (for computed-field lookup; emits nothing)
+fn static_type(e: Node) -> ptr {
+  if e.kind == E_ID { let li = loc_find(e.s);  if li >= 0 { return loc_ty[li] } }
+  return ptr_null()
+}
+
+# @OnSpawn(Model) hooks: a Model -> hook-body registry. Populated at parse time;
+# `spawn Model { … }` runs the body with the model's properties bound (like a
+# constructor). Spawn statically knows the model, so no runtime dispatch is needed.
+var g_onspawn: []Node           # each: s = Model name, a = hook body block
+
+fn register_onspawn(model: ptr, body: Node) -> void {
+  let n = node(N_BLOCK); n.s = model; n.a = body; push(g_onspawn, n)
+}
+fn onspawn_body(model: ptr) -> Node {
+  let i = 0
+  while i < len(g_onspawn) { if streq(g_onspawn[i].s, model) { return g_onspawn[i].a };  i = i + 1 }
+  return ptr_null()
+}
+
 # local variable environment
 fn loc_reset() -> void { nloc = 0 }
 fn loc_push(name: ptr, r: ptr, ty: ptr) -> void {
