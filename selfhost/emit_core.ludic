@@ -176,6 +176,29 @@ fn onspawn_body(model: ptr) -> Node {
   return ptr_null()
 }
 
+# @OnDespawn(Model): a Model -> hook-body registry. Despawn does not statically
+# know an entity's model, so these are emitted as functions and dispatched on the
+# entity's kind at each `despawn`. @OnAttach(Property) fires per property-attach.
+var g_ondespawn: []Node         # each: s = Model name, a = hook body block
+var g_onattach: []Node          # each: s = Property name, a = hook body block
+
+fn register_ondespawn(model: ptr, body: Node) -> void {
+  let n = node(N_BLOCK); n.s = model; n.a = body; push(g_ondespawn, n)
+}
+fn ondespawn_body(model: ptr) -> Node {
+  let i = 0
+  while i < len(g_ondespawn) { if streq(g_ondespawn[i].s, model) { return g_ondespawn[i].a };  i = i + 1 }
+  return ptr_null()
+}
+fn register_onattach(prop: ptr, body: Node) -> void {
+  let n = node(N_BLOCK); n.s = prop; n.a = body; push(g_onattach, n)
+}
+fn onattach_body(prop: ptr) -> Node {
+  let i = 0
+  while i < len(g_onattach) { if streq(g_onattach[i].s, prop) { return g_onattach[i].a };  i = i + 1 }
+  return ptr_null()
+}
+
 # local variable environment
 fn loc_reset() -> void { nloc = 0 }
 fn loc_push(name: ptr, r: ptr, ty: ptr) -> void {

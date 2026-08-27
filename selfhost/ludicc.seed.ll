@@ -61,6 +61,8 @@ declare void @win_close()
 @g_nmach = internal global i32 0
 @g_g_computed = internal global ptr null
 @g_g_onspawn = internal global ptr null
+@g_g_ondespawn = internal global ptr null
+@g_g_onattach = internal global ptr null
 @g_g_addr_ty = internal global ptr null
 @g_g_intrin_ok = internal global i32 0
 @g_g_windowed = internal global i32 0
@@ -179,1375 +181,1416 @@ declare void @win_close()
 @.str108 = private unnamed_addr constant [8 x i8] c"OnSpawn\00"
 @.str109 = private unnamed_addr constant [2 x i8] c"(\00"
 @.str110 = private unnamed_addr constant [2 x i8] c")\00"
-@.str111 = private unnamed_addr constant [2 x i8] c"(\00"
+@.str111 = private unnamed_addr constant [10 x i8] c"OnDespawn\00"
 @.str112 = private unnamed_addr constant [2 x i8] c"(\00"
 @.str113 = private unnamed_addr constant [2 x i8] c")\00"
-@.str114 = private unnamed_addr constant [7 x i8] c"import\00"
-@.str115 = private unnamed_addr constant [29 x i8] c"expected \22path\22 after import\00"
-@.str116 = private unnamed_addr constant [7 x i8] c"struct\00"
-@.str117 = private unnamed_addr constant [5 x i8] c"enum\00"
-@.str118 = private unnamed_addr constant [9 x i8] c"property\00"
-@.str119 = private unnamed_addr constant [6 x i8] c"model\00"
-@.str120 = private unnamed_addr constant [8 x i8] c"handler\00"
-@.str121 = private unnamed_addr constant [3 x i8] c"ui\00"
-@.str122 = private unnamed_addr constant [4 x i8] c"var\00"
-@.str123 = private unnamed_addr constant [6 x i8] c"const\00"
-@.str124 = private unnamed_addr constant [3 x i8] c"fn\00"
-@.str125 = private unnamed_addr constant [7 x i8] c"extern\00"
-@.str126 = private unnamed_addr constant [6 x i8] c"entry\00"
-@.str127 = private unnamed_addr constant [21 x i8] c"expected declaration\00"
-@.str128 = private unnamed_addr constant [20 x i8] c"cannot open import \00"
-@.str129 = private unnamed_addr constant [1 x i8] c"\00"
-@.str130 = private unnamed_addr constant [26 x i8] c"runtime/native/core.ludic\00"
-@.str131 = private unnamed_addr constant [6 x i8] c"Ludic\00"
-@.str132 = private unnamed_addr constant [7 x i8] c"import\00"
-@.str133 = private unnamed_addr constant [2 x i8] c"@\00"
-@.str134 = private unnamed_addr constant [2 x i8] c"(\00"
-@.str135 = private unnamed_addr constant [2 x i8] c"(\00"
-@.str136 = private unnamed_addr constant [2 x i8] c")\00"
-@.str137 = private unnamed_addr constant [8 x i8] c"program\00"
-@.str138 = private unnamed_addr constant [2 x i8] c"{\00"
-@.str139 = private unnamed_addr constant [2 x i8] c"}\00"
-@.str140 = private unnamed_addr constant [2 x i8] c"{\00"
-@.str141 = private unnamed_addr constant [2 x i8] c"}\00"
-@.str142 = private unnamed_addr constant [2 x i8] c"@\00"
-@.str143 = private unnamed_addr constant [9 x i8] c"Computed\00"
-@.str144 = private unnamed_addr constant [2 x i8] c":\00"
-@.str145 = private unnamed_addr constant [2 x i8] c"=\00"
-@.str146 = private unnamed_addr constant [2 x i8] c",\00"
-@.str147 = private unnamed_addr constant [2 x i8] c"}\00"
-@.str148 = private unnamed_addr constant [2 x i8] c"[\00"
-@.str149 = private unnamed_addr constant [2 x i8] c"[\00"
-@.str150 = private unnamed_addr constant [2 x i8] c"]\00"
-@.str151 = private unnamed_addr constant [7 x i8] c"Update\00"
+@.str114 = private unnamed_addr constant [9 x i8] c"OnAttach\00"
+@.str115 = private unnamed_addr constant [2 x i8] c"(\00"
+@.str116 = private unnamed_addr constant [2 x i8] c")\00"
+@.str117 = private unnamed_addr constant [8 x i8] c"OnStart\00"
+@.str118 = private unnamed_addr constant [6 x i8] c"Start\00"
+@.str119 = private unnamed_addr constant [7 x i8] c"OnQuit\00"
+@.str120 = private unnamed_addr constant [7 x i8] c"OnQuit\00"
+@.str121 = private unnamed_addr constant [2 x i8] c"(\00"
+@.str122 = private unnamed_addr constant [2 x i8] c"(\00"
+@.str123 = private unnamed_addr constant [2 x i8] c")\00"
+@.str124 = private unnamed_addr constant [7 x i8] c"import\00"
+@.str125 = private unnamed_addr constant [29 x i8] c"expected \22path\22 after import\00"
+@.str126 = private unnamed_addr constant [7 x i8] c"struct\00"
+@.str127 = private unnamed_addr constant [5 x i8] c"enum\00"
+@.str128 = private unnamed_addr constant [9 x i8] c"property\00"
+@.str129 = private unnamed_addr constant [6 x i8] c"model\00"
+@.str130 = private unnamed_addr constant [8 x i8] c"handler\00"
+@.str131 = private unnamed_addr constant [3 x i8] c"ui\00"
+@.str132 = private unnamed_addr constant [4 x i8] c"var\00"
+@.str133 = private unnamed_addr constant [6 x i8] c"const\00"
+@.str134 = private unnamed_addr constant [3 x i8] c"fn\00"
+@.str135 = private unnamed_addr constant [7 x i8] c"extern\00"
+@.str136 = private unnamed_addr constant [6 x i8] c"entry\00"
+@.str137 = private unnamed_addr constant [21 x i8] c"expected declaration\00"
+@.str138 = private unnamed_addr constant [20 x i8] c"cannot open import \00"
+@.str139 = private unnamed_addr constant [1 x i8] c"\00"
+@.str140 = private unnamed_addr constant [26 x i8] c"runtime/native/core.ludic\00"
+@.str141 = private unnamed_addr constant [6 x i8] c"Ludic\00"
+@.str142 = private unnamed_addr constant [7 x i8] c"import\00"
+@.str143 = private unnamed_addr constant [2 x i8] c"@\00"
+@.str144 = private unnamed_addr constant [2 x i8] c"(\00"
+@.str145 = private unnamed_addr constant [2 x i8] c"(\00"
+@.str146 = private unnamed_addr constant [2 x i8] c")\00"
+@.str147 = private unnamed_addr constant [8 x i8] c"program\00"
+@.str148 = private unnamed_addr constant [2 x i8] c"{\00"
+@.str149 = private unnamed_addr constant [2 x i8] c"}\00"
+@.str150 = private unnamed_addr constant [2 x i8] c"{\00"
+@.str151 = private unnamed_addr constant [2 x i8] c"}\00"
 @.str152 = private unnamed_addr constant [2 x i8] c"@\00"
-@.str153 = private unnamed_addr constant [2 x i8] c"(\00"
-@.str154 = private unnamed_addr constant [2 x i8] c"(\00"
-@.str155 = private unnamed_addr constant [2 x i8] c")\00"
-@.str156 = private unnamed_addr constant [6 x i8] c"phase\00"
-@.str157 = private unnamed_addr constant [6 x i8] c"reads\00"
-@.str158 = private unnamed_addr constant [7 x i8] c"writes\00"
-@.str159 = private unnamed_addr constant [6 x i8] c"query\00"
-@.str160 = private unnamed_addr constant [2 x i8] c"(\00"
-@.str161 = private unnamed_addr constant [2 x i8] c"(\00"
-@.str162 = private unnamed_addr constant [2 x i8] c")\00"
-@.str163 = private unnamed_addr constant [2 x i8] c",\00"
-@.str164 = private unnamed_addr constant [2 x i8] c")\00"
-@.str165 = private unnamed_addr constant [2 x i8] c"[\00"
-@.str166 = private unnamed_addr constant [2 x i8] c"]\00"
-@.str167 = private unnamed_addr constant [2 x i8] c"{\00"
-@.str168 = private unnamed_addr constant [2 x i8] c"}\00"
-@.str169 = private unnamed_addr constant [2 x i8] c",\00"
-@.str170 = private unnamed_addr constant [2 x i8] c"]\00"
-@.str171 = private unnamed_addr constant [6 x i8] c"where\00"
-@.str172 = private unnamed_addr constant [2 x i8] c"(\00"
-@.str173 = private unnamed_addr constant [2 x i8] c")\00"
-@.str174 = private unnamed_addr constant [2 x i8] c",\00"
-@.str175 = private unnamed_addr constant [2 x i8] c")\00"
-@.str176 = private unnamed_addr constant [4 x i8] c"and\00"
-@.str177 = private unnamed_addr constant [2 x i8] c"(\00"
-@.str178 = private unnamed_addr constant [2 x i8] c")\00"
-@.str179 = private unnamed_addr constant [2 x i8] c")\00"
-@.str180 = private unnamed_addr constant [2 x i8] c":\00"
-@.str181 = private unnamed_addr constant [6 x i8] c"these\00"
-@.str182 = private unnamed_addr constant [2 x i8] c"[\00"
-@.str183 = private unnamed_addr constant [2 x i8] c"]\00"
-@.str184 = private unnamed_addr constant [2 x i8] c"{\00"
-@.str185 = private unnamed_addr constant [2 x i8] c"}\00"
-@.str186 = private unnamed_addr constant [2 x i8] c",\00"
-@.str187 = private unnamed_addr constant [2 x i8] c"]\00"
-@.str188 = private unnamed_addr constant [3 x i8] c"on\00"
-@.str189 = private unnamed_addr constant [2 x i8] c",\00"
-@.str190 = private unnamed_addr constant [2 x i8] c")\00"
-@.str191 = private unnamed_addr constant [2 x i8] c"{\00"
-@.str192 = private unnamed_addr constant [2 x i8] c"}\00"
-@.str193 = private unnamed_addr constant [2 x i8] c",\00"
-@.str194 = private unnamed_addr constant [2 x i8] c"}\00"
-@.str195 = private unnamed_addr constant [2 x i8] c"{\00"
-@.str196 = private unnamed_addr constant [2 x i8] c"}\00"
-@.str197 = private unnamed_addr constant [2 x i8] c",\00"
-@.str198 = private unnamed_addr constant [2 x i8] c"}\00"
-@.str199 = private unnamed_addr constant [2 x i8] c"{\00"
-@.str200 = private unnamed_addr constant [2 x i8] c"}\00"
-@.str201 = private unnamed_addr constant [2 x i8] c",\00"
+@.str153 = private unnamed_addr constant [9 x i8] c"Computed\00"
+@.str154 = private unnamed_addr constant [2 x i8] c":\00"
+@.str155 = private unnamed_addr constant [2 x i8] c"=\00"
+@.str156 = private unnamed_addr constant [2 x i8] c",\00"
+@.str157 = private unnamed_addr constant [2 x i8] c"}\00"
+@.str158 = private unnamed_addr constant [2 x i8] c"[\00"
+@.str159 = private unnamed_addr constant [2 x i8] c"[\00"
+@.str160 = private unnamed_addr constant [2 x i8] c"]\00"
+@.str161 = private unnamed_addr constant [7 x i8] c"Update\00"
+@.str162 = private unnamed_addr constant [2 x i8] c"@\00"
+@.str163 = private unnamed_addr constant [2 x i8] c"(\00"
+@.str164 = private unnamed_addr constant [2 x i8] c"(\00"
+@.str165 = private unnamed_addr constant [2 x i8] c")\00"
+@.str166 = private unnamed_addr constant [6 x i8] c"phase\00"
+@.str167 = private unnamed_addr constant [6 x i8] c"reads\00"
+@.str168 = private unnamed_addr constant [7 x i8] c"writes\00"
+@.str169 = private unnamed_addr constant [6 x i8] c"query\00"
+@.str170 = private unnamed_addr constant [2 x i8] c"(\00"
+@.str171 = private unnamed_addr constant [2 x i8] c"(\00"
+@.str172 = private unnamed_addr constant [2 x i8] c")\00"
+@.str173 = private unnamed_addr constant [2 x i8] c",\00"
+@.str174 = private unnamed_addr constant [2 x i8] c")\00"
+@.str175 = private unnamed_addr constant [2 x i8] c"[\00"
+@.str176 = private unnamed_addr constant [2 x i8] c"]\00"
+@.str177 = private unnamed_addr constant [2 x i8] c"{\00"
+@.str178 = private unnamed_addr constant [2 x i8] c"}\00"
+@.str179 = private unnamed_addr constant [2 x i8] c",\00"
+@.str180 = private unnamed_addr constant [2 x i8] c"]\00"
+@.str181 = private unnamed_addr constant [6 x i8] c"where\00"
+@.str182 = private unnamed_addr constant [2 x i8] c"(\00"
+@.str183 = private unnamed_addr constant [2 x i8] c")\00"
+@.str184 = private unnamed_addr constant [2 x i8] c",\00"
+@.str185 = private unnamed_addr constant [2 x i8] c")\00"
+@.str186 = private unnamed_addr constant [4 x i8] c"and\00"
+@.str187 = private unnamed_addr constant [2 x i8] c"(\00"
+@.str188 = private unnamed_addr constant [2 x i8] c")\00"
+@.str189 = private unnamed_addr constant [2 x i8] c")\00"
+@.str190 = private unnamed_addr constant [2 x i8] c":\00"
+@.str191 = private unnamed_addr constant [6 x i8] c"these\00"
+@.str192 = private unnamed_addr constant [2 x i8] c"[\00"
+@.str193 = private unnamed_addr constant [2 x i8] c"]\00"
+@.str194 = private unnamed_addr constant [2 x i8] c"{\00"
+@.str195 = private unnamed_addr constant [2 x i8] c"}\00"
+@.str196 = private unnamed_addr constant [2 x i8] c",\00"
+@.str197 = private unnamed_addr constant [2 x i8] c"]\00"
+@.str198 = private unnamed_addr constant [3 x i8] c"on\00"
+@.str199 = private unnamed_addr constant [2 x i8] c",\00"
+@.str200 = private unnamed_addr constant [2 x i8] c")\00"
+@.str201 = private unnamed_addr constant [2 x i8] c"{\00"
 @.str202 = private unnamed_addr constant [2 x i8] c"}\00"
-@.str203 = private unnamed_addr constant [2 x i8] c"(\00"
-@.str204 = private unnamed_addr constant [2 x i8] c")\00"
-@.str205 = private unnamed_addr constant [2 x i8] c":\00"
-@.str206 = private unnamed_addr constant [2 x i8] c",\00"
-@.str207 = private unnamed_addr constant [2 x i8] c")\00"
-@.str208 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str209 = private unnamed_addr constant [3 x i8] c"->\00"
-@.str210 = private unnamed_addr constant [2 x i8] c"=\00"
-@.str211 = private unnamed_addr constant [2 x i8] c":\00"
-@.str212 = private unnamed_addr constant [2 x i8] c":\00"
-@.str213 = private unnamed_addr constant [2 x i8] c"{\00"
-@.str214 = private unnamed_addr constant [2 x i8] c"}\00"
-@.str215 = private unnamed_addr constant [2 x i8] c"}\00"
-@.str216 = private unnamed_addr constant [2 x i8] c"{\00"
-@.str217 = private unnamed_addr constant [2 x i8] c"}\00"
-@.str218 = private unnamed_addr constant [3 x i8] c"%t\00"
-@.str219 = private unnamed_addr constant [3 x i8] c"  \00"
-@.str220 = private unnamed_addr constant [11 x i8] c" = alloca \00"
-@.str221 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str222 = private unnamed_addr constant [3 x i8] c"%t\00"
-@.str223 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str224 = private unnamed_addr constant [5 x i8] c"bool\00"
-@.str225 = private unnamed_addr constant [6 x i8] c"fixed\00"
-@.str226 = private unnamed_addr constant [4 x i8] c"i32\00"
-@.str227 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str228 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str229 = private unnamed_addr constant [4 x i8] c"ptr\00"
-@.str230 = private unnamed_addr constant [6 x i8] c"%Str_\00"
-@.str231 = private unnamed_addr constant [6 x i8] c"%Cmp_\00"
-@.str232 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str233 = private unnamed_addr constant [2 x i8] c".\00"
-@.str234 = private unnamed_addr constant [2 x i8] c".\00"
-@.str235 = private unnamed_addr constant [6 x i8] c"@.str\00"
-@.str236 = private unnamed_addr constant [35 x i8] c" = private unnamed_addr constant [\00"
-@.str237 = private unnamed_addr constant [10 x i8] c" x i8] c\22\00"
-@.str238 = private unnamed_addr constant [6 x i8] c"\5C00\22\0A\00"
-@.str239 = private unnamed_addr constant [3 x i8] c"  \00"
-@.str240 = private unnamed_addr constant [35 x i8] c" = getelementptr inbounds i8, ptr \00"
-@.str241 = private unnamed_addr constant [7 x i8] c", i32 \00"
-@.str242 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str243 = private unnamed_addr constant [4 x i8] c"ptr\00"
-@.str244 = private unnamed_addr constant [5 x i8] c"null\00"
-@.str245 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str246 = private unnamed_addr constant [2 x i8] c"-\00"
-@.str247 = private unnamed_addr constant [2 x i8] c"-\00"
-@.str248 = private unnamed_addr constant [4 x i8] c"ptr\00"
-@.str249 = private unnamed_addr constant [5 x i8] c"null\00"
-@.str250 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str251 = private unnamed_addr constant [34 x i8] c"; Ludic (self-hosted) -> LLVM IR\0A\00"
-@.str252 = private unnamed_addr constant [31 x i8] c"declare i32 @printf(ptr, ...)\0A\00"
-@.str253 = private unnamed_addr constant [26 x i8] c"declare ptr @malloc(i64)\0A\00"
-@.str254 = private unnamed_addr constant [32 x i8] c"declare ptr @realloc(ptr, i64)\0A\00"
-@.str255 = private unnamed_addr constant [25 x i8] c"declare void @free(ptr)\0A\00"
-@.str256 = private unnamed_addr constant [30 x i8] c"declare ptr @fopen(ptr, ptr)\0A\00"
-@.str257 = private unnamed_addr constant [40 x i8] c"declare i64 @fread(ptr, i64, i64, ptr)\0A\00"
-@.str258 = private unnamed_addr constant [41 x i8] c"declare i64 @fwrite(ptr, i64, i64, ptr)\0A\00"
-@.str259 = private unnamed_addr constant [35 x i8] c"declare i32 @fseek(ptr, i64, i32)\0A\00"
-@.str260 = private unnamed_addr constant [25 x i8] c"declare i64 @ftell(ptr)\0A\00"
-@.str261 = private unnamed_addr constant [26 x i8] c"declare i32 @fclose(ptr)\0A\00"
-@.str262 = private unnamed_addr constant [25 x i8] c"declare void @exit(i32)\0A\00"
-@.str263 = private unnamed_addr constant [26 x i8] c"declare i32 @system(ptr)\0A\00"
-@.str264 = private unnamed_addr constant [26 x i8] c"declare ptr @getenv(ptr)\0A\00"
-@.str265 = private unnamed_addr constant [36 x i8] c"declare ptr @memcpy(ptr, ptr, i64)\0A\00"
-@.str266 = private unnamed_addr constant [36 x i8] c"declare ptr @memset(ptr, i32, i64)\0A\00"
-@.str267 = private unnamed_addr constant [26 x i8] c"declare i64 @strlen(ptr)\0A\00"
-@.str268 = private unnamed_addr constant [24 x i8] c"declare i32 @getchar()\0A\00"
-@.str269 = private unnamed_addr constant [27 x i8] c"declare i32 @putchar(i32)\0A\00"
-@.str270 = private unnamed_addr constant [24 x i8] c"declare i64 @time(ptr)\0A\00"
-@.str271 = private unnamed_addr constant [44 x i8] c"declare void @win_open(i32, i32, i32, ptr)\0A\00"
-@.str272 = private unnamed_addr constant [25 x i8] c"declare i32 @win_poll()\0A\00"
-@.str273 = private unnamed_addr constant [42 x i8] c"declare void @win_present(ptr, i32, i32)\0A\00"
-@.str274 = private unnamed_addr constant [28 x i8] c"declare i32 @win_running()\0A\00"
-@.str275 = private unnamed_addr constant [27 x i8] c"declare void @win_close()\0A\00"
-@.str276 = private unnamed_addr constant [34 x i8] c"@__stderrp = external global ptr\0A\00"
-@.str277 = private unnamed_addr constant [61 x i8] c"@.fmt_str = private unnamed_addr constant [3 x i8] c\22%s\5C00\22\0A\00"
-@.str278 = private unnamed_addr constant [64 x i8] c"@.fmt_int = private unnamed_addr constant [4 x i8] c\22%d\5C0A\5C00\22\0A\00"
-@.str279 = private unnamed_addr constant [33 x i8] c"@L_argc = internal global i32 0\0A\00"
-@.str280 = private unnamed_addr constant [36 x i8] c"@L_argv = internal global ptr null\0A\00"
-@.str281 = private unnamed_addr constant [46 x i8] c"@.gametitle = private unnamed_addr constant [\00"
-@.str282 = private unnamed_addr constant [10 x i8] c" x i8] c\22\00"
-@.str283 = private unnamed_addr constant [6 x i8] c"\5C00\22\0A\00"
-@.str284 = private unnamed_addr constant [34 x i8] c"%LSlice = type { ptr, i32, i32 }\0A\00"
-@.str285 = private unnamed_addr constant [6 x i8] c"%Str_\00"
-@.str286 = private unnamed_addr constant [11 x i8] c" = type { \00"
-@.str287 = private unnamed_addr constant [4 x i8] c"i32\00"
-@.str288 = private unnamed_addr constant [3 x i8] c", \00"
-@.str289 = private unnamed_addr constant [4 x i8] c" }\0A\00"
-@.str290 = private unnamed_addr constant [4 x i8] c"@g_\00"
-@.str291 = private unnamed_addr constant [20 x i8] c" = internal global \00"
-@.str292 = private unnamed_addr constant [2 x i8] c" \00"
-@.str293 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str294 = private unnamed_addr constant [32 x i8] c"member access on non-aggregate \00"
-@.str295 = private unnamed_addr constant [15 x i8] c"no such field \00"
-@.str296 = private unnamed_addr constant [3 x i8] c"  \00"
-@.str297 = private unnamed_addr constant [27 x i8] c" = getelementptr inbounds \00"
-@.str298 = private unnamed_addr constant [7 x i8] c", ptr \00"
-@.str299 = private unnamed_addr constant [14 x i8] c", i32 0, i32 \00"
-@.str300 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str301 = private unnamed_addr constant [21 x i8] c"indexing a non-slice\00"
-@.str302 = private unnamed_addr constant [3 x i8] c"  \00"
-@.str303 = private unnamed_addr constant [40 x i8] c" = getelementptr inbounds %LSlice, ptr \00"
-@.str304 = private unnamed_addr constant [16 x i8] c", i32 0, i32 0\0A\00"
-@.str305 = private unnamed_addr constant [3 x i8] c"  \00"
-@.str306 = private unnamed_addr constant [18 x i8] c" = load ptr, ptr \00"
-@.str307 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str308 = private unnamed_addr constant [3 x i8] c"  \00"
-@.str309 = private unnamed_addr constant [27 x i8] c" = getelementptr inbounds \00"
-@.str310 = private unnamed_addr constant [7 x i8] c", ptr \00"
-@.str311 = private unnamed_addr constant [7 x i8] c", i32 \00"
-@.str312 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str313 = private unnamed_addr constant [9 x i8] c"ptr_null\00"
-@.str314 = private unnamed_addr constant [10 x i8] c"mem_alloc\00"
-@.str315 = private unnamed_addr constant [12 x i8] c"mem_realloc\00"
-@.str316 = private unnamed_addr constant [6 x i8] c"peek8\00"
-@.str317 = private unnamed_addr constant [6 x i8] c"poke8\00"
-@.str318 = private unnamed_addr constant [12 x i8] c"ptr_is_null\00"
-@.str319 = private unnamed_addr constant [10 x i8] c"file_open\00"
-@.str320 = private unnamed_addr constant [10 x i8] c"file_read\00"
-@.str321 = private unnamed_addr constant [11 x i8] c"file_write\00"
-@.str322 = private unnamed_addr constant [10 x i8] c"file_seek\00"
-@.str323 = private unnamed_addr constant [10 x i8] c"file_tell\00"
-@.str324 = private unnamed_addr constant [11 x i8] c"file_close\00"
-@.str325 = private unnamed_addr constant [10 x i8] c"print_str\00"
-@.str326 = private unnamed_addr constant [10 x i8] c"print_int\00"
-@.str327 = private unnamed_addr constant [8 x i8] c"os_argc\00"
-@.str328 = private unnamed_addr constant [7 x i8] c"os_arg\00"
-@.str329 = private unnamed_addr constant [8 x i8] c"os_exit\00"
-@.str330 = private unnamed_addr constant [12 x i8] c"file_stderr\00"
-@.str331 = private unnamed_addr constant [10 x i8] c"os_system\00"
-@.str332 = private unnamed_addr constant [10 x i8] c"os_getenv\00"
-@.str333 = private unnamed_addr constant [4 x i8] c"shl\00"
-@.str334 = private unnamed_addr constant [4 x i8] c"shr\00"
-@.str335 = private unnamed_addr constant [5 x i8] c"band\00"
-@.str336 = private unnamed_addr constant [4 x i8] c"bor\00"
-@.str337 = private unnamed_addr constant [5 x i8] c"bxor\00"
-@.str338 = private unnamed_addr constant [5 x i8] c"bnot\00"
-@.str339 = private unnamed_addr constant [7 x i8] c"peek32\00"
-@.str340 = private unnamed_addr constant [7 x i8] c"poke32\00"
-@.str341 = private unnamed_addr constant [3 x i8] c"  \00"
-@.str342 = private unnamed_addr constant [4 x i8] c" = \00"
-@.str343 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str344 = private unnamed_addr constant [9 x i8] c"ptr_null\00"
-@.str345 = private unnamed_addr constant [5 x i8] c"null\00"
-@.str346 = private unnamed_addr constant [4 x i8] c"ptr\00"
-@.str347 = private unnamed_addr constant [10 x i8] c"mem_alloc\00"
-@.str348 = private unnamed_addr constant [10 x i8] c"zext i32 \00"
-@.str349 = private unnamed_addr constant [8 x i8] c" to i64\00"
-@.str350 = private unnamed_addr constant [22 x i8] c"call ptr @malloc(i64 \00"
-@.str351 = private unnamed_addr constant [2 x i8] c")\00"
-@.str352 = private unnamed_addr constant [4 x i8] c"ptr\00"
-@.str353 = private unnamed_addr constant [12 x i8] c"mem_realloc\00"
-@.str354 = private unnamed_addr constant [10 x i8] c"zext i32 \00"
-@.str355 = private unnamed_addr constant [8 x i8] c" to i64\00"
-@.str356 = private unnamed_addr constant [23 x i8] c"call ptr @realloc(ptr \00"
-@.str357 = private unnamed_addr constant [7 x i8] c", i64 \00"
-@.str358 = private unnamed_addr constant [2 x i8] c")\00"
-@.str359 = private unnamed_addr constant [4 x i8] c"ptr\00"
-@.str360 = private unnamed_addr constant [6 x i8] c"peek8\00"
-@.str361 = private unnamed_addr constant [14 x i8] c"load i8, ptr \00"
-@.str362 = private unnamed_addr constant [9 x i8] c"zext i8 \00"
-@.str363 = private unnamed_addr constant [8 x i8] c" to i32\00"
-@.str364 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str365 = private unnamed_addr constant [6 x i8] c"poke8\00"
-@.str366 = private unnamed_addr constant [11 x i8] c"trunc i32 \00"
-@.str367 = private unnamed_addr constant [7 x i8] c" to i8\00"
-@.str368 = private unnamed_addr constant [12 x i8] c"  store i8 \00"
-@.str369 = private unnamed_addr constant [7 x i8] c", ptr \00"
-@.str370 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str371 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str372 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str373 = private unnamed_addr constant [12 x i8] c"ptr_is_null\00"
-@.str374 = private unnamed_addr constant [13 x i8] c"icmp eq ptr \00"
-@.str375 = private unnamed_addr constant [7 x i8] c", null\00"
-@.str376 = private unnamed_addr constant [9 x i8] c"zext i1 \00"
-@.str377 = private unnamed_addr constant [8 x i8] c" to i32\00"
-@.str378 = private unnamed_addr constant [5 x i8] c"bool\00"
-@.str379 = private unnamed_addr constant [10 x i8] c"file_open\00"
-@.str380 = private unnamed_addr constant [21 x i8] c"call ptr @fopen(ptr \00"
-@.str381 = private unnamed_addr constant [7 x i8] c", ptr \00"
-@.str382 = private unnamed_addr constant [2 x i8] c")\00"
-@.str383 = private unnamed_addr constant [4 x i8] c"ptr\00"
-@.str384 = private unnamed_addr constant [10 x i8] c"file_read\00"
-@.str385 = private unnamed_addr constant [11 x i8] c"file_write\00"
-@.str386 = private unnamed_addr constant [10 x i8] c"zext i32 \00"
-@.str387 = private unnamed_addr constant [8 x i8] c" to i64\00"
-@.str388 = private unnamed_addr constant [7 x i8] c"@fread\00"
-@.str389 = private unnamed_addr constant [11 x i8] c"file_write\00"
-@.str390 = private unnamed_addr constant [8 x i8] c"@fwrite\00"
-@.str391 = private unnamed_addr constant [10 x i8] c"call i64 \00"
-@.str392 = private unnamed_addr constant [6 x i8] c"(ptr \00"
-@.str393 = private unnamed_addr constant [14 x i8] c", i64 1, i64 \00"
-@.str394 = private unnamed_addr constant [7 x i8] c", ptr \00"
-@.str395 = private unnamed_addr constant [2 x i8] c")\00"
-@.str396 = private unnamed_addr constant [11 x i8] c"trunc i64 \00"
-@.str397 = private unnamed_addr constant [8 x i8] c" to i32\00"
-@.str398 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str399 = private unnamed_addr constant [10 x i8] c"file_seek\00"
-@.str400 = private unnamed_addr constant [10 x i8] c"sext i32 \00"
-@.str401 = private unnamed_addr constant [8 x i8] c" to i64\00"
-@.str402 = private unnamed_addr constant [21 x i8] c"call i32 @fseek(ptr \00"
-@.str403 = private unnamed_addr constant [7 x i8] c", i64 \00"
-@.str404 = private unnamed_addr constant [7 x i8] c", i32 \00"
+@.str203 = private unnamed_addr constant [2 x i8] c",\00"
+@.str204 = private unnamed_addr constant [2 x i8] c"}\00"
+@.str205 = private unnamed_addr constant [2 x i8] c"{\00"
+@.str206 = private unnamed_addr constant [2 x i8] c"}\00"
+@.str207 = private unnamed_addr constant [2 x i8] c",\00"
+@.str208 = private unnamed_addr constant [2 x i8] c"}\00"
+@.str209 = private unnamed_addr constant [2 x i8] c"{\00"
+@.str210 = private unnamed_addr constant [2 x i8] c"}\00"
+@.str211 = private unnamed_addr constant [2 x i8] c",\00"
+@.str212 = private unnamed_addr constant [2 x i8] c"}\00"
+@.str213 = private unnamed_addr constant [2 x i8] c"(\00"
+@.str214 = private unnamed_addr constant [2 x i8] c")\00"
+@.str215 = private unnamed_addr constant [2 x i8] c":\00"
+@.str216 = private unnamed_addr constant [2 x i8] c",\00"
+@.str217 = private unnamed_addr constant [2 x i8] c")\00"
+@.str218 = private unnamed_addr constant [5 x i8] c"void\00"
+@.str219 = private unnamed_addr constant [3 x i8] c"->\00"
+@.str220 = private unnamed_addr constant [2 x i8] c"=\00"
+@.str221 = private unnamed_addr constant [2 x i8] c":\00"
+@.str222 = private unnamed_addr constant [2 x i8] c":\00"
+@.str223 = private unnamed_addr constant [2 x i8] c"{\00"
+@.str224 = private unnamed_addr constant [2 x i8] c"}\00"
+@.str225 = private unnamed_addr constant [2 x i8] c"}\00"
+@.str226 = private unnamed_addr constant [2 x i8] c"{\00"
+@.str227 = private unnamed_addr constant [2 x i8] c"}\00"
+@.str228 = private unnamed_addr constant [3 x i8] c"%t\00"
+@.str229 = private unnamed_addr constant [3 x i8] c"  \00"
+@.str230 = private unnamed_addr constant [11 x i8] c" = alloca \00"
+@.str231 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str232 = private unnamed_addr constant [3 x i8] c"%t\00"
+@.str233 = private unnamed_addr constant [4 x i8] c"int\00"
+@.str234 = private unnamed_addr constant [5 x i8] c"bool\00"
+@.str235 = private unnamed_addr constant [6 x i8] c"fixed\00"
+@.str236 = private unnamed_addr constant [4 x i8] c"i32\00"
+@.str237 = private unnamed_addr constant [5 x i8] c"void\00"
+@.str238 = private unnamed_addr constant [5 x i8] c"void\00"
+@.str239 = private unnamed_addr constant [4 x i8] c"ptr\00"
+@.str240 = private unnamed_addr constant [6 x i8] c"%Str_\00"
+@.str241 = private unnamed_addr constant [6 x i8] c"%Cmp_\00"
+@.str242 = private unnamed_addr constant [4 x i8] c"int\00"
+@.str243 = private unnamed_addr constant [2 x i8] c".\00"
+@.str244 = private unnamed_addr constant [2 x i8] c".\00"
+@.str245 = private unnamed_addr constant [6 x i8] c"@.str\00"
+@.str246 = private unnamed_addr constant [35 x i8] c" = private unnamed_addr constant [\00"
+@.str247 = private unnamed_addr constant [10 x i8] c" x i8] c\22\00"
+@.str248 = private unnamed_addr constant [6 x i8] c"\5C00\22\0A\00"
+@.str249 = private unnamed_addr constant [3 x i8] c"  \00"
+@.str250 = private unnamed_addr constant [35 x i8] c" = getelementptr inbounds i8, ptr \00"
+@.str251 = private unnamed_addr constant [7 x i8] c", i32 \00"
+@.str252 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str253 = private unnamed_addr constant [4 x i8] c"ptr\00"
+@.str254 = private unnamed_addr constant [5 x i8] c"null\00"
+@.str255 = private unnamed_addr constant [2 x i8] c"0\00"
+@.str256 = private unnamed_addr constant [2 x i8] c"-\00"
+@.str257 = private unnamed_addr constant [2 x i8] c"-\00"
+@.str258 = private unnamed_addr constant [4 x i8] c"ptr\00"
+@.str259 = private unnamed_addr constant [5 x i8] c"null\00"
+@.str260 = private unnamed_addr constant [2 x i8] c"0\00"
+@.str261 = private unnamed_addr constant [34 x i8] c"; Ludic (self-hosted) -> LLVM IR\0A\00"
+@.str262 = private unnamed_addr constant [31 x i8] c"declare i32 @printf(ptr, ...)\0A\00"
+@.str263 = private unnamed_addr constant [26 x i8] c"declare ptr @malloc(i64)\0A\00"
+@.str264 = private unnamed_addr constant [32 x i8] c"declare ptr @realloc(ptr, i64)\0A\00"
+@.str265 = private unnamed_addr constant [25 x i8] c"declare void @free(ptr)\0A\00"
+@.str266 = private unnamed_addr constant [30 x i8] c"declare ptr @fopen(ptr, ptr)\0A\00"
+@.str267 = private unnamed_addr constant [40 x i8] c"declare i64 @fread(ptr, i64, i64, ptr)\0A\00"
+@.str268 = private unnamed_addr constant [41 x i8] c"declare i64 @fwrite(ptr, i64, i64, ptr)\0A\00"
+@.str269 = private unnamed_addr constant [35 x i8] c"declare i32 @fseek(ptr, i64, i32)\0A\00"
+@.str270 = private unnamed_addr constant [25 x i8] c"declare i64 @ftell(ptr)\0A\00"
+@.str271 = private unnamed_addr constant [26 x i8] c"declare i32 @fclose(ptr)\0A\00"
+@.str272 = private unnamed_addr constant [25 x i8] c"declare void @exit(i32)\0A\00"
+@.str273 = private unnamed_addr constant [26 x i8] c"declare i32 @system(ptr)\0A\00"
+@.str274 = private unnamed_addr constant [26 x i8] c"declare ptr @getenv(ptr)\0A\00"
+@.str275 = private unnamed_addr constant [36 x i8] c"declare ptr @memcpy(ptr, ptr, i64)\0A\00"
+@.str276 = private unnamed_addr constant [36 x i8] c"declare ptr @memset(ptr, i32, i64)\0A\00"
+@.str277 = private unnamed_addr constant [26 x i8] c"declare i64 @strlen(ptr)\0A\00"
+@.str278 = private unnamed_addr constant [24 x i8] c"declare i32 @getchar()\0A\00"
+@.str279 = private unnamed_addr constant [27 x i8] c"declare i32 @putchar(i32)\0A\00"
+@.str280 = private unnamed_addr constant [24 x i8] c"declare i64 @time(ptr)\0A\00"
+@.str281 = private unnamed_addr constant [44 x i8] c"declare void @win_open(i32, i32, i32, ptr)\0A\00"
+@.str282 = private unnamed_addr constant [25 x i8] c"declare i32 @win_poll()\0A\00"
+@.str283 = private unnamed_addr constant [42 x i8] c"declare void @win_present(ptr, i32, i32)\0A\00"
+@.str284 = private unnamed_addr constant [28 x i8] c"declare i32 @win_running()\0A\00"
+@.str285 = private unnamed_addr constant [27 x i8] c"declare void @win_close()\0A\00"
+@.str286 = private unnamed_addr constant [34 x i8] c"@__stderrp = external global ptr\0A\00"
+@.str287 = private unnamed_addr constant [61 x i8] c"@.fmt_str = private unnamed_addr constant [3 x i8] c\22%s\5C00\22\0A\00"
+@.str288 = private unnamed_addr constant [64 x i8] c"@.fmt_int = private unnamed_addr constant [4 x i8] c\22%d\5C0A\5C00\22\0A\00"
+@.str289 = private unnamed_addr constant [33 x i8] c"@L_argc = internal global i32 0\0A\00"
+@.str290 = private unnamed_addr constant [36 x i8] c"@L_argv = internal global ptr null\0A\00"
+@.str291 = private unnamed_addr constant [46 x i8] c"@.gametitle = private unnamed_addr constant [\00"
+@.str292 = private unnamed_addr constant [10 x i8] c" x i8] c\22\00"
+@.str293 = private unnamed_addr constant [6 x i8] c"\5C00\22\0A\00"
+@.str294 = private unnamed_addr constant [34 x i8] c"%LSlice = type { ptr, i32, i32 }\0A\00"
+@.str295 = private unnamed_addr constant [6 x i8] c"%Str_\00"
+@.str296 = private unnamed_addr constant [11 x i8] c" = type { \00"
+@.str297 = private unnamed_addr constant [4 x i8] c"i32\00"
+@.str298 = private unnamed_addr constant [3 x i8] c", \00"
+@.str299 = private unnamed_addr constant [4 x i8] c" }\0A\00"
+@.str300 = private unnamed_addr constant [4 x i8] c"@g_\00"
+@.str301 = private unnamed_addr constant [20 x i8] c" = internal global \00"
+@.str302 = private unnamed_addr constant [2 x i8] c" \00"
+@.str303 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str304 = private unnamed_addr constant [32 x i8] c"member access on non-aggregate \00"
+@.str305 = private unnamed_addr constant [15 x i8] c"no such field \00"
+@.str306 = private unnamed_addr constant [3 x i8] c"  \00"
+@.str307 = private unnamed_addr constant [27 x i8] c" = getelementptr inbounds \00"
+@.str308 = private unnamed_addr constant [7 x i8] c", ptr \00"
+@.str309 = private unnamed_addr constant [14 x i8] c", i32 0, i32 \00"
+@.str310 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str311 = private unnamed_addr constant [21 x i8] c"indexing a non-slice\00"
+@.str312 = private unnamed_addr constant [3 x i8] c"  \00"
+@.str313 = private unnamed_addr constant [40 x i8] c" = getelementptr inbounds %LSlice, ptr \00"
+@.str314 = private unnamed_addr constant [16 x i8] c", i32 0, i32 0\0A\00"
+@.str315 = private unnamed_addr constant [3 x i8] c"  \00"
+@.str316 = private unnamed_addr constant [18 x i8] c" = load ptr, ptr \00"
+@.str317 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str318 = private unnamed_addr constant [3 x i8] c"  \00"
+@.str319 = private unnamed_addr constant [27 x i8] c" = getelementptr inbounds \00"
+@.str320 = private unnamed_addr constant [7 x i8] c", ptr \00"
+@.str321 = private unnamed_addr constant [7 x i8] c", i32 \00"
+@.str322 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str323 = private unnamed_addr constant [9 x i8] c"ptr_null\00"
+@.str324 = private unnamed_addr constant [10 x i8] c"mem_alloc\00"
+@.str325 = private unnamed_addr constant [12 x i8] c"mem_realloc\00"
+@.str326 = private unnamed_addr constant [6 x i8] c"peek8\00"
+@.str327 = private unnamed_addr constant [6 x i8] c"poke8\00"
+@.str328 = private unnamed_addr constant [12 x i8] c"ptr_is_null\00"
+@.str329 = private unnamed_addr constant [10 x i8] c"file_open\00"
+@.str330 = private unnamed_addr constant [10 x i8] c"file_read\00"
+@.str331 = private unnamed_addr constant [11 x i8] c"file_write\00"
+@.str332 = private unnamed_addr constant [10 x i8] c"file_seek\00"
+@.str333 = private unnamed_addr constant [10 x i8] c"file_tell\00"
+@.str334 = private unnamed_addr constant [11 x i8] c"file_close\00"
+@.str335 = private unnamed_addr constant [10 x i8] c"print_str\00"
+@.str336 = private unnamed_addr constant [10 x i8] c"print_int\00"
+@.str337 = private unnamed_addr constant [8 x i8] c"os_argc\00"
+@.str338 = private unnamed_addr constant [7 x i8] c"os_arg\00"
+@.str339 = private unnamed_addr constant [8 x i8] c"os_exit\00"
+@.str340 = private unnamed_addr constant [12 x i8] c"file_stderr\00"
+@.str341 = private unnamed_addr constant [10 x i8] c"os_system\00"
+@.str342 = private unnamed_addr constant [10 x i8] c"os_getenv\00"
+@.str343 = private unnamed_addr constant [4 x i8] c"shl\00"
+@.str344 = private unnamed_addr constant [4 x i8] c"shr\00"
+@.str345 = private unnamed_addr constant [5 x i8] c"band\00"
+@.str346 = private unnamed_addr constant [4 x i8] c"bor\00"
+@.str347 = private unnamed_addr constant [5 x i8] c"bxor\00"
+@.str348 = private unnamed_addr constant [5 x i8] c"bnot\00"
+@.str349 = private unnamed_addr constant [7 x i8] c"peek32\00"
+@.str350 = private unnamed_addr constant [7 x i8] c"poke32\00"
+@.str351 = private unnamed_addr constant [3 x i8] c"  \00"
+@.str352 = private unnamed_addr constant [4 x i8] c" = \00"
+@.str353 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str354 = private unnamed_addr constant [9 x i8] c"ptr_null\00"
+@.str355 = private unnamed_addr constant [5 x i8] c"null\00"
+@.str356 = private unnamed_addr constant [4 x i8] c"ptr\00"
+@.str357 = private unnamed_addr constant [10 x i8] c"mem_alloc\00"
+@.str358 = private unnamed_addr constant [10 x i8] c"zext i32 \00"
+@.str359 = private unnamed_addr constant [8 x i8] c" to i64\00"
+@.str360 = private unnamed_addr constant [22 x i8] c"call ptr @malloc(i64 \00"
+@.str361 = private unnamed_addr constant [2 x i8] c")\00"
+@.str362 = private unnamed_addr constant [4 x i8] c"ptr\00"
+@.str363 = private unnamed_addr constant [12 x i8] c"mem_realloc\00"
+@.str364 = private unnamed_addr constant [10 x i8] c"zext i32 \00"
+@.str365 = private unnamed_addr constant [8 x i8] c" to i64\00"
+@.str366 = private unnamed_addr constant [23 x i8] c"call ptr @realloc(ptr \00"
+@.str367 = private unnamed_addr constant [7 x i8] c", i64 \00"
+@.str368 = private unnamed_addr constant [2 x i8] c")\00"
+@.str369 = private unnamed_addr constant [4 x i8] c"ptr\00"
+@.str370 = private unnamed_addr constant [6 x i8] c"peek8\00"
+@.str371 = private unnamed_addr constant [14 x i8] c"load i8, ptr \00"
+@.str372 = private unnamed_addr constant [9 x i8] c"zext i8 \00"
+@.str373 = private unnamed_addr constant [8 x i8] c" to i32\00"
+@.str374 = private unnamed_addr constant [4 x i8] c"int\00"
+@.str375 = private unnamed_addr constant [6 x i8] c"poke8\00"
+@.str376 = private unnamed_addr constant [11 x i8] c"trunc i32 \00"
+@.str377 = private unnamed_addr constant [7 x i8] c" to i8\00"
+@.str378 = private unnamed_addr constant [12 x i8] c"  store i8 \00"
+@.str379 = private unnamed_addr constant [7 x i8] c", ptr \00"
+@.str380 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str381 = private unnamed_addr constant [2 x i8] c"0\00"
+@.str382 = private unnamed_addr constant [5 x i8] c"void\00"
+@.str383 = private unnamed_addr constant [12 x i8] c"ptr_is_null\00"
+@.str384 = private unnamed_addr constant [13 x i8] c"icmp eq ptr \00"
+@.str385 = private unnamed_addr constant [7 x i8] c", null\00"
+@.str386 = private unnamed_addr constant [9 x i8] c"zext i1 \00"
+@.str387 = private unnamed_addr constant [8 x i8] c" to i32\00"
+@.str388 = private unnamed_addr constant [5 x i8] c"bool\00"
+@.str389 = private unnamed_addr constant [10 x i8] c"file_open\00"
+@.str390 = private unnamed_addr constant [21 x i8] c"call ptr @fopen(ptr \00"
+@.str391 = private unnamed_addr constant [7 x i8] c", ptr \00"
+@.str392 = private unnamed_addr constant [2 x i8] c")\00"
+@.str393 = private unnamed_addr constant [4 x i8] c"ptr\00"
+@.str394 = private unnamed_addr constant [10 x i8] c"file_read\00"
+@.str395 = private unnamed_addr constant [11 x i8] c"file_write\00"
+@.str396 = private unnamed_addr constant [10 x i8] c"zext i32 \00"
+@.str397 = private unnamed_addr constant [8 x i8] c" to i64\00"
+@.str398 = private unnamed_addr constant [7 x i8] c"@fread\00"
+@.str399 = private unnamed_addr constant [11 x i8] c"file_write\00"
+@.str400 = private unnamed_addr constant [8 x i8] c"@fwrite\00"
+@.str401 = private unnamed_addr constant [10 x i8] c"call i64 \00"
+@.str402 = private unnamed_addr constant [6 x i8] c"(ptr \00"
+@.str403 = private unnamed_addr constant [14 x i8] c", i64 1, i64 \00"
+@.str404 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str405 = private unnamed_addr constant [2 x i8] c")\00"
-@.str406 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str407 = private unnamed_addr constant [10 x i8] c"file_tell\00"
-@.str408 = private unnamed_addr constant [21 x i8] c"call i64 @ftell(ptr \00"
-@.str409 = private unnamed_addr constant [2 x i8] c")\00"
-@.str410 = private unnamed_addr constant [11 x i8] c"trunc i64 \00"
-@.str411 = private unnamed_addr constant [8 x i8] c" to i32\00"
-@.str412 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str413 = private unnamed_addr constant [11 x i8] c"file_close\00"
-@.str414 = private unnamed_addr constant [24 x i8] c"  call i32 @fclose(ptr \00"
-@.str415 = private unnamed_addr constant [3 x i8] c")\0A\00"
-@.str416 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str417 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str418 = private unnamed_addr constant [10 x i8] c"print_str\00"
-@.str419 = private unnamed_addr constant [50 x i8] c"  call i32 (ptr, ...) @printf(ptr @.fmt_str, ptr \00"
-@.str420 = private unnamed_addr constant [3 x i8] c")\0A\00"
-@.str421 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str422 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str423 = private unnamed_addr constant [10 x i8] c"print_int\00"
-@.str424 = private unnamed_addr constant [50 x i8] c"  call i32 (ptr, ...) @printf(ptr @.fmt_int, i32 \00"
+@.str406 = private unnamed_addr constant [11 x i8] c"trunc i64 \00"
+@.str407 = private unnamed_addr constant [8 x i8] c" to i32\00"
+@.str408 = private unnamed_addr constant [4 x i8] c"int\00"
+@.str409 = private unnamed_addr constant [10 x i8] c"file_seek\00"
+@.str410 = private unnamed_addr constant [10 x i8] c"sext i32 \00"
+@.str411 = private unnamed_addr constant [8 x i8] c" to i64\00"
+@.str412 = private unnamed_addr constant [21 x i8] c"call i32 @fseek(ptr \00"
+@.str413 = private unnamed_addr constant [7 x i8] c", i64 \00"
+@.str414 = private unnamed_addr constant [7 x i8] c", i32 \00"
+@.str415 = private unnamed_addr constant [2 x i8] c")\00"
+@.str416 = private unnamed_addr constant [4 x i8] c"int\00"
+@.str417 = private unnamed_addr constant [10 x i8] c"file_tell\00"
+@.str418 = private unnamed_addr constant [21 x i8] c"call i64 @ftell(ptr \00"
+@.str419 = private unnamed_addr constant [2 x i8] c")\00"
+@.str420 = private unnamed_addr constant [11 x i8] c"trunc i64 \00"
+@.str421 = private unnamed_addr constant [8 x i8] c" to i32\00"
+@.str422 = private unnamed_addr constant [4 x i8] c"int\00"
+@.str423 = private unnamed_addr constant [11 x i8] c"file_close\00"
+@.str424 = private unnamed_addr constant [24 x i8] c"  call i32 @fclose(ptr \00"
 @.str425 = private unnamed_addr constant [3 x i8] c")\0A\00"
 @.str426 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str427 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str428 = private unnamed_addr constant [8 x i8] c"os_argc\00"
-@.str429 = private unnamed_addr constant [22 x i8] c"load i32, ptr @L_argc\00"
-@.str430 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str431 = private unnamed_addr constant [7 x i8] c"os_arg\00"
-@.str432 = private unnamed_addr constant [22 x i8] c"load ptr, ptr @L_argv\00"
-@.str433 = private unnamed_addr constant [24 x i8] c"getelementptr ptr, ptr \00"
-@.str434 = private unnamed_addr constant [7 x i8] c", i32 \00"
-@.str435 = private unnamed_addr constant [15 x i8] c"load ptr, ptr \00"
-@.str436 = private unnamed_addr constant [4 x i8] c"str\00"
-@.str437 = private unnamed_addr constant [8 x i8] c"os_exit\00"
-@.str438 = private unnamed_addr constant [23 x i8] c"  call void @exit(i32 \00"
-@.str439 = private unnamed_addr constant [3 x i8] c")\0A\00"
-@.str440 = private unnamed_addr constant [15 x i8] c"  unreachable\0A\00"
-@.str441 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str442 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str443 = private unnamed_addr constant [12 x i8] c"file_stderr\00"
-@.str444 = private unnamed_addr constant [25 x i8] c"load ptr, ptr @__stderrp\00"
-@.str445 = private unnamed_addr constant [4 x i8] c"ptr\00"
-@.str446 = private unnamed_addr constant [10 x i8] c"os_system\00"
-@.str447 = private unnamed_addr constant [22 x i8] c"call i32 @system(ptr \00"
-@.str448 = private unnamed_addr constant [2 x i8] c")\00"
-@.str449 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str450 = private unnamed_addr constant [10 x i8] c"os_getenv\00"
-@.str451 = private unnamed_addr constant [22 x i8] c"call ptr @getenv(ptr \00"
-@.str452 = private unnamed_addr constant [2 x i8] c")\00"
-@.str453 = private unnamed_addr constant [4 x i8] c"str\00"
-@.str454 = private unnamed_addr constant [5 x i8] c"bnot\00"
-@.str455 = private unnamed_addr constant [9 x i8] c"xor i32 \00"
-@.str456 = private unnamed_addr constant [5 x i8] c", -1\00"
-@.str457 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str458 = private unnamed_addr constant [4 x i8] c"shl\00"
-@.str459 = private unnamed_addr constant [4 x i8] c"shr\00"
-@.str460 = private unnamed_addr constant [5 x i8] c"band\00"
-@.str461 = private unnamed_addr constant [4 x i8] c"bor\00"
-@.str462 = private unnamed_addr constant [5 x i8] c"bxor\00"
-@.str463 = private unnamed_addr constant [4 x i8] c"shl\00"
-@.str464 = private unnamed_addr constant [4 x i8] c"shr\00"
-@.str465 = private unnamed_addr constant [5 x i8] c"lshr\00"
-@.str466 = private unnamed_addr constant [5 x i8] c"band\00"
-@.str467 = private unnamed_addr constant [4 x i8] c"and\00"
-@.str468 = private unnamed_addr constant [4 x i8] c"bor\00"
-@.str469 = private unnamed_addr constant [3 x i8] c"or\00"
-@.str470 = private unnamed_addr constant [5 x i8] c"bxor\00"
-@.str471 = private unnamed_addr constant [4 x i8] c"xor\00"
-@.str472 = private unnamed_addr constant [6 x i8] c" i32 \00"
-@.str473 = private unnamed_addr constant [3 x i8] c", \00"
-@.str474 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str475 = private unnamed_addr constant [7 x i8] c"peek32\00"
-@.str476 = private unnamed_addr constant [3 x i8] c"  \00"
-@.str477 = private unnamed_addr constant [36 x i8] c" = getelementptr inbounds i32, ptr \00"
-@.str478 = private unnamed_addr constant [7 x i8] c", i32 \00"
-@.str479 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str480 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
-@.str481 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str482 = private unnamed_addr constant [7 x i8] c"poke32\00"
-@.str483 = private unnamed_addr constant [3 x i8] c"  \00"
-@.str484 = private unnamed_addr constant [36 x i8] c" = getelementptr inbounds i32, ptr \00"
-@.str485 = private unnamed_addr constant [7 x i8] c", i32 \00"
-@.str486 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str487 = private unnamed_addr constant [13 x i8] c"  store i32 \00"
-@.str488 = private unnamed_addr constant [7 x i8] c", ptr \00"
+@.str428 = private unnamed_addr constant [10 x i8] c"print_str\00"
+@.str429 = private unnamed_addr constant [50 x i8] c"  call i32 (ptr, ...) @printf(ptr @.fmt_str, ptr \00"
+@.str430 = private unnamed_addr constant [3 x i8] c")\0A\00"
+@.str431 = private unnamed_addr constant [2 x i8] c"0\00"
+@.str432 = private unnamed_addr constant [5 x i8] c"void\00"
+@.str433 = private unnamed_addr constant [10 x i8] c"print_int\00"
+@.str434 = private unnamed_addr constant [50 x i8] c"  call i32 (ptr, ...) @printf(ptr @.fmt_int, i32 \00"
+@.str435 = private unnamed_addr constant [3 x i8] c")\0A\00"
+@.str436 = private unnamed_addr constant [2 x i8] c"0\00"
+@.str437 = private unnamed_addr constant [5 x i8] c"void\00"
+@.str438 = private unnamed_addr constant [8 x i8] c"os_argc\00"
+@.str439 = private unnamed_addr constant [22 x i8] c"load i32, ptr @L_argc\00"
+@.str440 = private unnamed_addr constant [4 x i8] c"int\00"
+@.str441 = private unnamed_addr constant [7 x i8] c"os_arg\00"
+@.str442 = private unnamed_addr constant [22 x i8] c"load ptr, ptr @L_argv\00"
+@.str443 = private unnamed_addr constant [24 x i8] c"getelementptr ptr, ptr \00"
+@.str444 = private unnamed_addr constant [7 x i8] c", i32 \00"
+@.str445 = private unnamed_addr constant [15 x i8] c"load ptr, ptr \00"
+@.str446 = private unnamed_addr constant [4 x i8] c"str\00"
+@.str447 = private unnamed_addr constant [8 x i8] c"os_exit\00"
+@.str448 = private unnamed_addr constant [23 x i8] c"  call void @exit(i32 \00"
+@.str449 = private unnamed_addr constant [3 x i8] c")\0A\00"
+@.str450 = private unnamed_addr constant [15 x i8] c"  unreachable\0A\00"
+@.str451 = private unnamed_addr constant [2 x i8] c"0\00"
+@.str452 = private unnamed_addr constant [5 x i8] c"void\00"
+@.str453 = private unnamed_addr constant [12 x i8] c"file_stderr\00"
+@.str454 = private unnamed_addr constant [25 x i8] c"load ptr, ptr @__stderrp\00"
+@.str455 = private unnamed_addr constant [4 x i8] c"ptr\00"
+@.str456 = private unnamed_addr constant [10 x i8] c"os_system\00"
+@.str457 = private unnamed_addr constant [22 x i8] c"call i32 @system(ptr \00"
+@.str458 = private unnamed_addr constant [2 x i8] c")\00"
+@.str459 = private unnamed_addr constant [4 x i8] c"int\00"
+@.str460 = private unnamed_addr constant [10 x i8] c"os_getenv\00"
+@.str461 = private unnamed_addr constant [22 x i8] c"call ptr @getenv(ptr \00"
+@.str462 = private unnamed_addr constant [2 x i8] c")\00"
+@.str463 = private unnamed_addr constant [4 x i8] c"str\00"
+@.str464 = private unnamed_addr constant [5 x i8] c"bnot\00"
+@.str465 = private unnamed_addr constant [9 x i8] c"xor i32 \00"
+@.str466 = private unnamed_addr constant [5 x i8] c", -1\00"
+@.str467 = private unnamed_addr constant [4 x i8] c"int\00"
+@.str468 = private unnamed_addr constant [4 x i8] c"shl\00"
+@.str469 = private unnamed_addr constant [4 x i8] c"shr\00"
+@.str470 = private unnamed_addr constant [5 x i8] c"band\00"
+@.str471 = private unnamed_addr constant [4 x i8] c"bor\00"
+@.str472 = private unnamed_addr constant [5 x i8] c"bxor\00"
+@.str473 = private unnamed_addr constant [4 x i8] c"shl\00"
+@.str474 = private unnamed_addr constant [4 x i8] c"shr\00"
+@.str475 = private unnamed_addr constant [5 x i8] c"lshr\00"
+@.str476 = private unnamed_addr constant [5 x i8] c"band\00"
+@.str477 = private unnamed_addr constant [4 x i8] c"and\00"
+@.str478 = private unnamed_addr constant [4 x i8] c"bor\00"
+@.str479 = private unnamed_addr constant [3 x i8] c"or\00"
+@.str480 = private unnamed_addr constant [5 x i8] c"bxor\00"
+@.str481 = private unnamed_addr constant [4 x i8] c"xor\00"
+@.str482 = private unnamed_addr constant [6 x i8] c" i32 \00"
+@.str483 = private unnamed_addr constant [3 x i8] c", \00"
+@.str484 = private unnamed_addr constant [4 x i8] c"int\00"
+@.str485 = private unnamed_addr constant [7 x i8] c"peek32\00"
+@.str486 = private unnamed_addr constant [3 x i8] c"  \00"
+@.str487 = private unnamed_addr constant [36 x i8] c" = getelementptr inbounds i32, ptr \00"
+@.str488 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str489 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str490 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str491 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str492 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str493 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str494 = private unnamed_addr constant [9 x i8] c"mem_free\00"
-@.str495 = private unnamed_addr constant [9 x i8] c"mem_copy\00"
-@.str496 = private unnamed_addr constant [8 x i8] c"mem_set\00"
-@.str497 = private unnamed_addr constant [8 x i8] c"ptr_add\00"
-@.str498 = private unnamed_addr constant [10 x i8] c"read_byte\00"
-@.str499 = private unnamed_addr constant [11 x i8] c"write_byte\00"
-@.str500 = private unnamed_addr constant [8 x i8] c"str_len\00"
-@.str501 = private unnamed_addr constant [8 x i8] c"os_time\00"
-@.str502 = private unnamed_addr constant [6 x i8] c"peekf\00"
-@.str503 = private unnamed_addr constant [6 x i8] c"pokef\00"
-@.str504 = private unnamed_addr constant [9 x i8] c"as_fixed\00"
-@.str505 = private unnamed_addr constant [7 x i8] c"as_int\00"
-@.str506 = private unnamed_addr constant [6 x i8] c"peekp\00"
-@.str507 = private unnamed_addr constant [6 x i8] c"pokep\00"
-@.str508 = private unnamed_addr constant [12 x i8] c"is_windowed\00"
-@.str509 = private unnamed_addr constant [11 x i8] c"game_title\00"
-@.str510 = private unnamed_addr constant [9 x i8] c"win_open\00"
-@.str511 = private unnamed_addr constant [9 x i8] c"win_poll\00"
-@.str512 = private unnamed_addr constant [12 x i8] c"win_present\00"
-@.str513 = private unnamed_addr constant [12 x i8] c"win_running\00"
-@.str514 = private unnamed_addr constant [10 x i8] c"win_close\00"
-@.str515 = private unnamed_addr constant [9 x i8] c"mem_free\00"
-@.str516 = private unnamed_addr constant [23 x i8] c"  call void @free(ptr \00"
-@.str517 = private unnamed_addr constant [3 x i8] c")\0A\00"
-@.str518 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str519 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str520 = private unnamed_addr constant [9 x i8] c"mem_copy\00"
-@.str521 = private unnamed_addr constant [10 x i8] c"zext i32 \00"
-@.str522 = private unnamed_addr constant [8 x i8] c" to i64\00"
-@.str523 = private unnamed_addr constant [24 x i8] c"  call ptr @memcpy(ptr \00"
-@.str524 = private unnamed_addr constant [7 x i8] c", ptr \00"
-@.str525 = private unnamed_addr constant [7 x i8] c", i64 \00"
-@.str526 = private unnamed_addr constant [3 x i8] c")\0A\00"
-@.str527 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str528 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str529 = private unnamed_addr constant [8 x i8] c"mem_set\00"
-@.str530 = private unnamed_addr constant [10 x i8] c"zext i32 \00"
-@.str531 = private unnamed_addr constant [8 x i8] c" to i64\00"
-@.str532 = private unnamed_addr constant [24 x i8] c"  call ptr @memset(ptr \00"
-@.str533 = private unnamed_addr constant [7 x i8] c", i32 \00"
-@.str534 = private unnamed_addr constant [7 x i8] c", i64 \00"
-@.str535 = private unnamed_addr constant [3 x i8] c")\0A\00"
-@.str536 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str537 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str538 = private unnamed_addr constant [8 x i8] c"ptr_add\00"
-@.str539 = private unnamed_addr constant [3 x i8] c"  \00"
-@.str540 = private unnamed_addr constant [35 x i8] c" = getelementptr inbounds i8, ptr \00"
-@.str541 = private unnamed_addr constant [7 x i8] c", i32 \00"
-@.str542 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str543 = private unnamed_addr constant [4 x i8] c"ptr\00"
-@.str544 = private unnamed_addr constant [10 x i8] c"read_byte\00"
-@.str545 = private unnamed_addr constant [20 x i8] c"call i32 @getchar()\00"
-@.str546 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str547 = private unnamed_addr constant [11 x i8] c"write_byte\00"
-@.str548 = private unnamed_addr constant [25 x i8] c"  call i32 @putchar(i32 \00"
-@.str549 = private unnamed_addr constant [3 x i8] c")\0A\00"
-@.str550 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str551 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str552 = private unnamed_addr constant [8 x i8] c"str_len\00"
-@.str553 = private unnamed_addr constant [22 x i8] c"call i64 @strlen(ptr \00"
-@.str554 = private unnamed_addr constant [2 x i8] c")\00"
-@.str555 = private unnamed_addr constant [11 x i8] c"trunc i64 \00"
-@.str556 = private unnamed_addr constant [8 x i8] c" to i32\00"
-@.str557 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str558 = private unnamed_addr constant [8 x i8] c"os_time\00"
-@.str559 = private unnamed_addr constant [25 x i8] c"call i64 @time(ptr null)\00"
-@.str560 = private unnamed_addr constant [11 x i8] c"trunc i64 \00"
-@.str561 = private unnamed_addr constant [8 x i8] c" to i32\00"
-@.str562 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str563 = private unnamed_addr constant [6 x i8] c"peekf\00"
-@.str564 = private unnamed_addr constant [3 x i8] c"  \00"
-@.str565 = private unnamed_addr constant [36 x i8] c" = getelementptr inbounds i32, ptr \00"
-@.str566 = private unnamed_addr constant [7 x i8] c", i32 \00"
-@.str567 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str568 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
-@.str569 = private unnamed_addr constant [6 x i8] c"fixed\00"
-@.str570 = private unnamed_addr constant [6 x i8] c"pokef\00"
-@.str571 = private unnamed_addr constant [3 x i8] c"  \00"
-@.str572 = private unnamed_addr constant [36 x i8] c" = getelementptr inbounds i32, ptr \00"
-@.str573 = private unnamed_addr constant [7 x i8] c", i32 \00"
-@.str574 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str575 = private unnamed_addr constant [13 x i8] c"  store i32 \00"
-@.str576 = private unnamed_addr constant [7 x i8] c", ptr \00"
+@.str490 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
+@.str491 = private unnamed_addr constant [4 x i8] c"int\00"
+@.str492 = private unnamed_addr constant [7 x i8] c"poke32\00"
+@.str493 = private unnamed_addr constant [3 x i8] c"  \00"
+@.str494 = private unnamed_addr constant [36 x i8] c" = getelementptr inbounds i32, ptr \00"
+@.str495 = private unnamed_addr constant [7 x i8] c", i32 \00"
+@.str496 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str497 = private unnamed_addr constant [13 x i8] c"  store i32 \00"
+@.str498 = private unnamed_addr constant [7 x i8] c", ptr \00"
+@.str499 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str500 = private unnamed_addr constant [2 x i8] c"0\00"
+@.str501 = private unnamed_addr constant [5 x i8] c"void\00"
+@.str502 = private unnamed_addr constant [2 x i8] c"0\00"
+@.str503 = private unnamed_addr constant [5 x i8] c"void\00"
+@.str504 = private unnamed_addr constant [9 x i8] c"mem_free\00"
+@.str505 = private unnamed_addr constant [9 x i8] c"mem_copy\00"
+@.str506 = private unnamed_addr constant [8 x i8] c"mem_set\00"
+@.str507 = private unnamed_addr constant [8 x i8] c"ptr_add\00"
+@.str508 = private unnamed_addr constant [10 x i8] c"read_byte\00"
+@.str509 = private unnamed_addr constant [11 x i8] c"write_byte\00"
+@.str510 = private unnamed_addr constant [8 x i8] c"str_len\00"
+@.str511 = private unnamed_addr constant [8 x i8] c"os_time\00"
+@.str512 = private unnamed_addr constant [6 x i8] c"peekf\00"
+@.str513 = private unnamed_addr constant [6 x i8] c"pokef\00"
+@.str514 = private unnamed_addr constant [9 x i8] c"as_fixed\00"
+@.str515 = private unnamed_addr constant [7 x i8] c"as_int\00"
+@.str516 = private unnamed_addr constant [6 x i8] c"peekp\00"
+@.str517 = private unnamed_addr constant [6 x i8] c"pokep\00"
+@.str518 = private unnamed_addr constant [12 x i8] c"is_windowed\00"
+@.str519 = private unnamed_addr constant [11 x i8] c"game_title\00"
+@.str520 = private unnamed_addr constant [9 x i8] c"win_open\00"
+@.str521 = private unnamed_addr constant [9 x i8] c"win_poll\00"
+@.str522 = private unnamed_addr constant [12 x i8] c"win_present\00"
+@.str523 = private unnamed_addr constant [12 x i8] c"win_running\00"
+@.str524 = private unnamed_addr constant [10 x i8] c"win_close\00"
+@.str525 = private unnamed_addr constant [9 x i8] c"mem_free\00"
+@.str526 = private unnamed_addr constant [23 x i8] c"  call void @free(ptr \00"
+@.str527 = private unnamed_addr constant [3 x i8] c")\0A\00"
+@.str528 = private unnamed_addr constant [2 x i8] c"0\00"
+@.str529 = private unnamed_addr constant [5 x i8] c"void\00"
+@.str530 = private unnamed_addr constant [9 x i8] c"mem_copy\00"
+@.str531 = private unnamed_addr constant [10 x i8] c"zext i32 \00"
+@.str532 = private unnamed_addr constant [8 x i8] c" to i64\00"
+@.str533 = private unnamed_addr constant [24 x i8] c"  call ptr @memcpy(ptr \00"
+@.str534 = private unnamed_addr constant [7 x i8] c", ptr \00"
+@.str535 = private unnamed_addr constant [7 x i8] c", i64 \00"
+@.str536 = private unnamed_addr constant [3 x i8] c")\0A\00"
+@.str537 = private unnamed_addr constant [2 x i8] c"0\00"
+@.str538 = private unnamed_addr constant [5 x i8] c"void\00"
+@.str539 = private unnamed_addr constant [8 x i8] c"mem_set\00"
+@.str540 = private unnamed_addr constant [10 x i8] c"zext i32 \00"
+@.str541 = private unnamed_addr constant [8 x i8] c" to i64\00"
+@.str542 = private unnamed_addr constant [24 x i8] c"  call ptr @memset(ptr \00"
+@.str543 = private unnamed_addr constant [7 x i8] c", i32 \00"
+@.str544 = private unnamed_addr constant [7 x i8] c", i64 \00"
+@.str545 = private unnamed_addr constant [3 x i8] c")\0A\00"
+@.str546 = private unnamed_addr constant [2 x i8] c"0\00"
+@.str547 = private unnamed_addr constant [5 x i8] c"void\00"
+@.str548 = private unnamed_addr constant [8 x i8] c"ptr_add\00"
+@.str549 = private unnamed_addr constant [3 x i8] c"  \00"
+@.str550 = private unnamed_addr constant [35 x i8] c" = getelementptr inbounds i8, ptr \00"
+@.str551 = private unnamed_addr constant [7 x i8] c", i32 \00"
+@.str552 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str553 = private unnamed_addr constant [4 x i8] c"ptr\00"
+@.str554 = private unnamed_addr constant [10 x i8] c"read_byte\00"
+@.str555 = private unnamed_addr constant [20 x i8] c"call i32 @getchar()\00"
+@.str556 = private unnamed_addr constant [4 x i8] c"int\00"
+@.str557 = private unnamed_addr constant [11 x i8] c"write_byte\00"
+@.str558 = private unnamed_addr constant [25 x i8] c"  call i32 @putchar(i32 \00"
+@.str559 = private unnamed_addr constant [3 x i8] c")\0A\00"
+@.str560 = private unnamed_addr constant [2 x i8] c"0\00"
+@.str561 = private unnamed_addr constant [5 x i8] c"void\00"
+@.str562 = private unnamed_addr constant [8 x i8] c"str_len\00"
+@.str563 = private unnamed_addr constant [22 x i8] c"call i64 @strlen(ptr \00"
+@.str564 = private unnamed_addr constant [2 x i8] c")\00"
+@.str565 = private unnamed_addr constant [11 x i8] c"trunc i64 \00"
+@.str566 = private unnamed_addr constant [8 x i8] c" to i32\00"
+@.str567 = private unnamed_addr constant [4 x i8] c"int\00"
+@.str568 = private unnamed_addr constant [8 x i8] c"os_time\00"
+@.str569 = private unnamed_addr constant [25 x i8] c"call i64 @time(ptr null)\00"
+@.str570 = private unnamed_addr constant [11 x i8] c"trunc i64 \00"
+@.str571 = private unnamed_addr constant [8 x i8] c" to i32\00"
+@.str572 = private unnamed_addr constant [4 x i8] c"int\00"
+@.str573 = private unnamed_addr constant [6 x i8] c"peekf\00"
+@.str574 = private unnamed_addr constant [3 x i8] c"  \00"
+@.str575 = private unnamed_addr constant [36 x i8] c" = getelementptr inbounds i32, ptr \00"
+@.str576 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str577 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str578 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str579 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str580 = private unnamed_addr constant [6 x i8] c"peekp\00"
+@.str578 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
+@.str579 = private unnamed_addr constant [6 x i8] c"fixed\00"
+@.str580 = private unnamed_addr constant [6 x i8] c"pokef\00"
 @.str581 = private unnamed_addr constant [3 x i8] c"  \00"
-@.str582 = private unnamed_addr constant [36 x i8] c" = getelementptr inbounds ptr, ptr \00"
+@.str582 = private unnamed_addr constant [36 x i8] c" = getelementptr inbounds i32, ptr \00"
 @.str583 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str584 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str585 = private unnamed_addr constant [15 x i8] c"load ptr, ptr \00"
-@.str586 = private unnamed_addr constant [4 x i8] c"ptr\00"
-@.str587 = private unnamed_addr constant [6 x i8] c"pokep\00"
-@.str588 = private unnamed_addr constant [3 x i8] c"  \00"
-@.str589 = private unnamed_addr constant [36 x i8] c" = getelementptr inbounds ptr, ptr \00"
-@.str590 = private unnamed_addr constant [7 x i8] c", i32 \00"
-@.str591 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str592 = private unnamed_addr constant [13 x i8] c"  store ptr \00"
-@.str593 = private unnamed_addr constant [7 x i8] c", ptr \00"
+@.str585 = private unnamed_addr constant [13 x i8] c"  store i32 \00"
+@.str586 = private unnamed_addr constant [7 x i8] c", ptr \00"
+@.str587 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str588 = private unnamed_addr constant [2 x i8] c"0\00"
+@.str589 = private unnamed_addr constant [5 x i8] c"void\00"
+@.str590 = private unnamed_addr constant [6 x i8] c"peekp\00"
+@.str591 = private unnamed_addr constant [3 x i8] c"  \00"
+@.str592 = private unnamed_addr constant [36 x i8] c" = getelementptr inbounds ptr, ptr \00"
+@.str593 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str594 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str595 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str596 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str597 = private unnamed_addr constant [9 x i8] c"as_fixed\00"
-@.str598 = private unnamed_addr constant [6 x i8] c"fixed\00"
-@.str599 = private unnamed_addr constant [7 x i8] c"as_int\00"
-@.str600 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str601 = private unnamed_addr constant [12 x i8] c"is_windowed\00"
-@.str602 = private unnamed_addr constant [2 x i8] c"1\00"
-@.str603 = private unnamed_addr constant [5 x i8] c"bool\00"
-@.str604 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str605 = private unnamed_addr constant [5 x i8] c"bool\00"
-@.str606 = private unnamed_addr constant [11 x i8] c"game_title\00"
-@.str607 = private unnamed_addr constant [12 x i8] c"@.gametitle\00"
-@.str608 = private unnamed_addr constant [4 x i8] c"str\00"
-@.str609 = private unnamed_addr constant [9 x i8] c"win_poll\00"
-@.str610 = private unnamed_addr constant [21 x i8] c"call i32 @win_poll()\00"
-@.str611 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str612 = private unnamed_addr constant [12 x i8] c"win_running\00"
-@.str613 = private unnamed_addr constant [24 x i8] c"call i32 @win_running()\00"
-@.str614 = private unnamed_addr constant [5 x i8] c"bool\00"
-@.str615 = private unnamed_addr constant [9 x i8] c"win_open\00"
-@.str616 = private unnamed_addr constant [27 x i8] c"  call void @win_open(i32 \00"
-@.str617 = private unnamed_addr constant [7 x i8] c", i32 \00"
-@.str618 = private unnamed_addr constant [7 x i8] c", i32 \00"
-@.str619 = private unnamed_addr constant [7 x i8] c", ptr \00"
-@.str620 = private unnamed_addr constant [3 x i8] c")\0A\00"
-@.str621 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str622 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str623 = private unnamed_addr constant [12 x i8] c"win_present\00"
-@.str624 = private unnamed_addr constant [30 x i8] c"  call void @win_present(ptr \00"
-@.str625 = private unnamed_addr constant [7 x i8] c", i32 \00"
-@.str626 = private unnamed_addr constant [7 x i8] c", i32 \00"
-@.str627 = private unnamed_addr constant [3 x i8] c")\0A\00"
-@.str628 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str629 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str630 = private unnamed_addr constant [10 x i8] c"win_close\00"
-@.str631 = private unnamed_addr constant [26 x i8] c"  call void @win_close()\0A\00"
-@.str632 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str633 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str634 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str635 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str636 = private unnamed_addr constant [4 x i8] c"min\00"
-@.str637 = private unnamed_addr constant [4 x i8] c"max\00"
-@.str638 = private unnamed_addr constant [4 x i8] c"abs\00"
-@.str639 = private unnamed_addr constant [6 x i8] c"clamp\00"
-@.str640 = private unnamed_addr constant [4 x i8] c"abs\00"
-@.str641 = private unnamed_addr constant [14 x i8] c"icmp slt i32 \00"
-@.str642 = private unnamed_addr constant [4 x i8] c", 0\00"
-@.str643 = private unnamed_addr constant [12 x i8] c"sub i32 0, \00"
-@.str644 = private unnamed_addr constant [11 x i8] c"select i1 \00"
-@.str645 = private unnamed_addr constant [7 x i8] c", i32 \00"
-@.str646 = private unnamed_addr constant [7 x i8] c", i32 \00"
-@.str647 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str648 = private unnamed_addr constant [4 x i8] c"min\00"
-@.str649 = private unnamed_addr constant [4 x i8] c"max\00"
-@.str650 = private unnamed_addr constant [4 x i8] c"slt\00"
-@.str651 = private unnamed_addr constant [4 x i8] c"max\00"
-@.str652 = private unnamed_addr constant [4 x i8] c"sgt\00"
-@.str653 = private unnamed_addr constant [6 x i8] c"icmp \00"
-@.str654 = private unnamed_addr constant [6 x i8] c" i32 \00"
-@.str655 = private unnamed_addr constant [3 x i8] c", \00"
-@.str656 = private unnamed_addr constant [11 x i8] c"select i1 \00"
-@.str657 = private unnamed_addr constant [7 x i8] c", i32 \00"
-@.str658 = private unnamed_addr constant [7 x i8] c", i32 \00"
-@.str659 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str660 = private unnamed_addr constant [14 x i8] c"icmp slt i32 \00"
-@.str661 = private unnamed_addr constant [3 x i8] c", \00"
-@.str662 = private unnamed_addr constant [11 x i8] c"select i1 \00"
-@.str663 = private unnamed_addr constant [7 x i8] c", i32 \00"
-@.str664 = private unnamed_addr constant [7 x i8] c", i32 \00"
-@.str665 = private unnamed_addr constant [14 x i8] c"icmp sgt i32 \00"
-@.str666 = private unnamed_addr constant [3 x i8] c", \00"
-@.str667 = private unnamed_addr constant [11 x i8] c"select i1 \00"
+@.str595 = private unnamed_addr constant [15 x i8] c"load ptr, ptr \00"
+@.str596 = private unnamed_addr constant [4 x i8] c"ptr\00"
+@.str597 = private unnamed_addr constant [6 x i8] c"pokep\00"
+@.str598 = private unnamed_addr constant [3 x i8] c"  \00"
+@.str599 = private unnamed_addr constant [36 x i8] c" = getelementptr inbounds ptr, ptr \00"
+@.str600 = private unnamed_addr constant [7 x i8] c", i32 \00"
+@.str601 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str602 = private unnamed_addr constant [13 x i8] c"  store ptr \00"
+@.str603 = private unnamed_addr constant [7 x i8] c", ptr \00"
+@.str604 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str605 = private unnamed_addr constant [2 x i8] c"0\00"
+@.str606 = private unnamed_addr constant [5 x i8] c"void\00"
+@.str607 = private unnamed_addr constant [9 x i8] c"as_fixed\00"
+@.str608 = private unnamed_addr constant [6 x i8] c"fixed\00"
+@.str609 = private unnamed_addr constant [7 x i8] c"as_int\00"
+@.str610 = private unnamed_addr constant [4 x i8] c"int\00"
+@.str611 = private unnamed_addr constant [12 x i8] c"is_windowed\00"
+@.str612 = private unnamed_addr constant [2 x i8] c"1\00"
+@.str613 = private unnamed_addr constant [5 x i8] c"bool\00"
+@.str614 = private unnamed_addr constant [2 x i8] c"0\00"
+@.str615 = private unnamed_addr constant [5 x i8] c"bool\00"
+@.str616 = private unnamed_addr constant [11 x i8] c"game_title\00"
+@.str617 = private unnamed_addr constant [12 x i8] c"@.gametitle\00"
+@.str618 = private unnamed_addr constant [4 x i8] c"str\00"
+@.str619 = private unnamed_addr constant [9 x i8] c"win_poll\00"
+@.str620 = private unnamed_addr constant [21 x i8] c"call i32 @win_poll()\00"
+@.str621 = private unnamed_addr constant [4 x i8] c"int\00"
+@.str622 = private unnamed_addr constant [12 x i8] c"win_running\00"
+@.str623 = private unnamed_addr constant [24 x i8] c"call i32 @win_running()\00"
+@.str624 = private unnamed_addr constant [5 x i8] c"bool\00"
+@.str625 = private unnamed_addr constant [9 x i8] c"win_open\00"
+@.str626 = private unnamed_addr constant [27 x i8] c"  call void @win_open(i32 \00"
+@.str627 = private unnamed_addr constant [7 x i8] c", i32 \00"
+@.str628 = private unnamed_addr constant [7 x i8] c", i32 \00"
+@.str629 = private unnamed_addr constant [7 x i8] c", ptr \00"
+@.str630 = private unnamed_addr constant [3 x i8] c")\0A\00"
+@.str631 = private unnamed_addr constant [2 x i8] c"0\00"
+@.str632 = private unnamed_addr constant [5 x i8] c"void\00"
+@.str633 = private unnamed_addr constant [12 x i8] c"win_present\00"
+@.str634 = private unnamed_addr constant [30 x i8] c"  call void @win_present(ptr \00"
+@.str635 = private unnamed_addr constant [7 x i8] c", i32 \00"
+@.str636 = private unnamed_addr constant [7 x i8] c", i32 \00"
+@.str637 = private unnamed_addr constant [3 x i8] c")\0A\00"
+@.str638 = private unnamed_addr constant [2 x i8] c"0\00"
+@.str639 = private unnamed_addr constant [5 x i8] c"void\00"
+@.str640 = private unnamed_addr constant [10 x i8] c"win_close\00"
+@.str641 = private unnamed_addr constant [26 x i8] c"  call void @win_close()\0A\00"
+@.str642 = private unnamed_addr constant [2 x i8] c"0\00"
+@.str643 = private unnamed_addr constant [5 x i8] c"void\00"
+@.str644 = private unnamed_addr constant [2 x i8] c"0\00"
+@.str645 = private unnamed_addr constant [5 x i8] c"void\00"
+@.str646 = private unnamed_addr constant [4 x i8] c"min\00"
+@.str647 = private unnamed_addr constant [4 x i8] c"max\00"
+@.str648 = private unnamed_addr constant [4 x i8] c"abs\00"
+@.str649 = private unnamed_addr constant [6 x i8] c"clamp\00"
+@.str650 = private unnamed_addr constant [4 x i8] c"abs\00"
+@.str651 = private unnamed_addr constant [14 x i8] c"icmp slt i32 \00"
+@.str652 = private unnamed_addr constant [4 x i8] c", 0\00"
+@.str653 = private unnamed_addr constant [12 x i8] c"sub i32 0, \00"
+@.str654 = private unnamed_addr constant [11 x i8] c"select i1 \00"
+@.str655 = private unnamed_addr constant [7 x i8] c", i32 \00"
+@.str656 = private unnamed_addr constant [7 x i8] c", i32 \00"
+@.str657 = private unnamed_addr constant [4 x i8] c"int\00"
+@.str658 = private unnamed_addr constant [4 x i8] c"min\00"
+@.str659 = private unnamed_addr constant [4 x i8] c"max\00"
+@.str660 = private unnamed_addr constant [4 x i8] c"slt\00"
+@.str661 = private unnamed_addr constant [4 x i8] c"max\00"
+@.str662 = private unnamed_addr constant [4 x i8] c"sgt\00"
+@.str663 = private unnamed_addr constant [6 x i8] c"icmp \00"
+@.str664 = private unnamed_addr constant [6 x i8] c" i32 \00"
+@.str665 = private unnamed_addr constant [3 x i8] c", \00"
+@.str666 = private unnamed_addr constant [11 x i8] c"select i1 \00"
+@.str667 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str668 = private unnamed_addr constant [7 x i8] c", i32 \00"
-@.str669 = private unnamed_addr constant [7 x i8] c", i32 \00"
-@.str670 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str671 = private unnamed_addr constant [15 x i8] c"getelementptr \00"
-@.str672 = private unnamed_addr constant [18 x i8] c", ptr null, i32 1\00"
-@.str673 = private unnamed_addr constant [14 x i8] c"ptrtoint ptr \00"
-@.str674 = private unnamed_addr constant [8 x i8] c" to i64\00"
-@.str675 = private unnamed_addr constant [22 x i8] c"unknown struct in new\00"
-@.str676 = private unnamed_addr constant [6 x i8] c"%Str_\00"
-@.str677 = private unnamed_addr constant [22 x i8] c"call ptr @malloc(i64 \00"
-@.str678 = private unnamed_addr constant [2 x i8] c")\00"
-@.str679 = private unnamed_addr constant [3 x i8] c"  \00"
-@.str680 = private unnamed_addr constant [32 x i8] c" = getelementptr inbounds %Str_\00"
-@.str681 = private unnamed_addr constant [7 x i8] c", ptr \00"
-@.str682 = private unnamed_addr constant [14 x i8] c", i32 0, i32 \00"
-@.str683 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str684 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str685 = private unnamed_addr constant [4 x i8] c"ptr\00"
-@.str686 = private unnamed_addr constant [5 x i8] c"null\00"
-@.str687 = private unnamed_addr constant [9 x i8] c"  store \00"
-@.str688 = private unnamed_addr constant [2 x i8] c" \00"
-@.str689 = private unnamed_addr constant [7 x i8] c", ptr \00"
-@.str690 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str691 = private unnamed_addr constant [8 x i8] c"%LSlice\00"
-@.str692 = private unnamed_addr constant [22 x i8] c"call ptr @malloc(i64 \00"
-@.str693 = private unnamed_addr constant [2 x i8] c")\00"
-@.str694 = private unnamed_addr constant [3 x i8] c"  \00"
-@.str695 = private unnamed_addr constant [40 x i8] c" = getelementptr inbounds %LSlice, ptr \00"
-@.str696 = private unnamed_addr constant [16 x i8] c", i32 0, i32 0\0A\00"
-@.str697 = private unnamed_addr constant [23 x i8] c"  store ptr null, ptr \00"
-@.str698 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str699 = private unnamed_addr constant [3 x i8] c"  \00"
-@.str700 = private unnamed_addr constant [40 x i8] c" = getelementptr inbounds %LSlice, ptr \00"
-@.str701 = private unnamed_addr constant [16 x i8] c", i32 0, i32 1\0A\00"
-@.str702 = private unnamed_addr constant [20 x i8] c"  store i32 0, ptr \00"
-@.str703 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str669 = private unnamed_addr constant [4 x i8] c"int\00"
+@.str670 = private unnamed_addr constant [14 x i8] c"icmp slt i32 \00"
+@.str671 = private unnamed_addr constant [3 x i8] c", \00"
+@.str672 = private unnamed_addr constant [11 x i8] c"select i1 \00"
+@.str673 = private unnamed_addr constant [7 x i8] c", i32 \00"
+@.str674 = private unnamed_addr constant [7 x i8] c", i32 \00"
+@.str675 = private unnamed_addr constant [14 x i8] c"icmp sgt i32 \00"
+@.str676 = private unnamed_addr constant [3 x i8] c", \00"
+@.str677 = private unnamed_addr constant [11 x i8] c"select i1 \00"
+@.str678 = private unnamed_addr constant [7 x i8] c", i32 \00"
+@.str679 = private unnamed_addr constant [7 x i8] c", i32 \00"
+@.str680 = private unnamed_addr constant [4 x i8] c"int\00"
+@.str681 = private unnamed_addr constant [15 x i8] c"getelementptr \00"
+@.str682 = private unnamed_addr constant [18 x i8] c", ptr null, i32 1\00"
+@.str683 = private unnamed_addr constant [14 x i8] c"ptrtoint ptr \00"
+@.str684 = private unnamed_addr constant [8 x i8] c" to i64\00"
+@.str685 = private unnamed_addr constant [22 x i8] c"unknown struct in new\00"
+@.str686 = private unnamed_addr constant [6 x i8] c"%Str_\00"
+@.str687 = private unnamed_addr constant [22 x i8] c"call ptr @malloc(i64 \00"
+@.str688 = private unnamed_addr constant [2 x i8] c")\00"
+@.str689 = private unnamed_addr constant [3 x i8] c"  \00"
+@.str690 = private unnamed_addr constant [32 x i8] c" = getelementptr inbounds %Str_\00"
+@.str691 = private unnamed_addr constant [7 x i8] c", ptr \00"
+@.str692 = private unnamed_addr constant [14 x i8] c", i32 0, i32 \00"
+@.str693 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str694 = private unnamed_addr constant [2 x i8] c"0\00"
+@.str695 = private unnamed_addr constant [4 x i8] c"ptr\00"
+@.str696 = private unnamed_addr constant [5 x i8] c"null\00"
+@.str697 = private unnamed_addr constant [9 x i8] c"  store \00"
+@.str698 = private unnamed_addr constant [2 x i8] c" \00"
+@.str699 = private unnamed_addr constant [7 x i8] c", ptr \00"
+@.str700 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str701 = private unnamed_addr constant [8 x i8] c"%LSlice\00"
+@.str702 = private unnamed_addr constant [22 x i8] c"call ptr @malloc(i64 \00"
+@.str703 = private unnamed_addr constant [2 x i8] c")\00"
 @.str704 = private unnamed_addr constant [3 x i8] c"  \00"
 @.str705 = private unnamed_addr constant [40 x i8] c" = getelementptr inbounds %LSlice, ptr \00"
-@.str706 = private unnamed_addr constant [16 x i8] c", i32 0, i32 2\0A\00"
-@.str707 = private unnamed_addr constant [20 x i8] c"  store i32 0, ptr \00"
+@.str706 = private unnamed_addr constant [16 x i8] c", i32 0, i32 0\0A\00"
+@.str707 = private unnamed_addr constant [23 x i8] c"  store ptr null, ptr \00"
 @.str708 = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.str709 = private unnamed_addr constant [3 x i8] c"  \00"
 @.str710 = private unnamed_addr constant [40 x i8] c" = getelementptr inbounds %LSlice, ptr \00"
-@.str711 = private unnamed_addr constant [14 x i8] c", i32 0, i32 \00"
-@.str712 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str713 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
-@.str714 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str715 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
-@.str716 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
-@.str717 = private unnamed_addr constant [14 x i8] c"icmp sge i32 \00"
-@.str718 = private unnamed_addr constant [3 x i8] c", \00"
-@.str719 = private unnamed_addr constant [5 x i8] c"grow\00"
-@.str720 = private unnamed_addr constant [4 x i8] c"put\00"
-@.str721 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
-@.str722 = private unnamed_addr constant [10 x i8] c", label %\00"
-@.str723 = private unnamed_addr constant [10 x i8] c", label %\00"
-@.str724 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str725 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str726 = private unnamed_addr constant [9 x i8] c"mul i32 \00"
-@.str727 = private unnamed_addr constant [4 x i8] c", 2\00"
-@.str728 = private unnamed_addr constant [13 x i8] c"icmp eq i32 \00"
-@.str729 = private unnamed_addr constant [4 x i8] c", 0\00"
-@.str730 = private unnamed_addr constant [11 x i8] c"select i1 \00"
-@.str731 = private unnamed_addr constant [14 x i8] c", i32 8, i32 \00"
-@.str732 = private unnamed_addr constant [10 x i8] c"zext i32 \00"
-@.str733 = private unnamed_addr constant [8 x i8] c" to i64\00"
-@.str734 = private unnamed_addr constant [9 x i8] c"mul i64 \00"
-@.str735 = private unnamed_addr constant [3 x i8] c", \00"
-@.str736 = private unnamed_addr constant [15 x i8] c"load ptr, ptr \00"
-@.str737 = private unnamed_addr constant [23 x i8] c"call ptr @realloc(ptr \00"
-@.str738 = private unnamed_addr constant [7 x i8] c", i64 \00"
-@.str739 = private unnamed_addr constant [2 x i8] c")\00"
-@.str740 = private unnamed_addr constant [13 x i8] c"  store ptr \00"
-@.str741 = private unnamed_addr constant [7 x i8] c", ptr \00"
-@.str742 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str743 = private unnamed_addr constant [13 x i8] c"  store i32 \00"
-@.str744 = private unnamed_addr constant [7 x i8] c", ptr \00"
-@.str745 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str746 = private unnamed_addr constant [13 x i8] c"  br label %\00"
-@.str747 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str748 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str749 = private unnamed_addr constant [15 x i8] c"load ptr, ptr \00"
-@.str750 = private unnamed_addr constant [3 x i8] c"  \00"
-@.str751 = private unnamed_addr constant [27 x i8] c" = getelementptr inbounds \00"
-@.str752 = private unnamed_addr constant [7 x i8] c", ptr \00"
-@.str753 = private unnamed_addr constant [7 x i8] c", i32 \00"
-@.str754 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str755 = private unnamed_addr constant [9 x i8] c"  store \00"
-@.str756 = private unnamed_addr constant [2 x i8] c" \00"
-@.str757 = private unnamed_addr constant [7 x i8] c", ptr \00"
-@.str758 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str759 = private unnamed_addr constant [9 x i8] c"add i32 \00"
-@.str760 = private unnamed_addr constant [4 x i8] c", 1\00"
-@.str761 = private unnamed_addr constant [13 x i8] c"  store i32 \00"
+@.str711 = private unnamed_addr constant [16 x i8] c", i32 0, i32 1\0A\00"
+@.str712 = private unnamed_addr constant [20 x i8] c"  store i32 0, ptr \00"
+@.str713 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str714 = private unnamed_addr constant [3 x i8] c"  \00"
+@.str715 = private unnamed_addr constant [40 x i8] c" = getelementptr inbounds %LSlice, ptr \00"
+@.str716 = private unnamed_addr constant [16 x i8] c", i32 0, i32 2\0A\00"
+@.str717 = private unnamed_addr constant [20 x i8] c"  store i32 0, ptr \00"
+@.str718 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str719 = private unnamed_addr constant [3 x i8] c"  \00"
+@.str720 = private unnamed_addr constant [40 x i8] c" = getelementptr inbounds %LSlice, ptr \00"
+@.str721 = private unnamed_addr constant [14 x i8] c", i32 0, i32 \00"
+@.str722 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str723 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
+@.str724 = private unnamed_addr constant [4 x i8] c"int\00"
+@.str725 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
+@.str726 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
+@.str727 = private unnamed_addr constant [14 x i8] c"icmp sge i32 \00"
+@.str728 = private unnamed_addr constant [3 x i8] c", \00"
+@.str729 = private unnamed_addr constant [5 x i8] c"grow\00"
+@.str730 = private unnamed_addr constant [4 x i8] c"put\00"
+@.str731 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
+@.str732 = private unnamed_addr constant [10 x i8] c", label %\00"
+@.str733 = private unnamed_addr constant [10 x i8] c", label %\00"
+@.str734 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str735 = private unnamed_addr constant [3 x i8] c":\0A\00"
+@.str736 = private unnamed_addr constant [9 x i8] c"mul i32 \00"
+@.str737 = private unnamed_addr constant [4 x i8] c", 2\00"
+@.str738 = private unnamed_addr constant [13 x i8] c"icmp eq i32 \00"
+@.str739 = private unnamed_addr constant [4 x i8] c", 0\00"
+@.str740 = private unnamed_addr constant [11 x i8] c"select i1 \00"
+@.str741 = private unnamed_addr constant [14 x i8] c", i32 8, i32 \00"
+@.str742 = private unnamed_addr constant [10 x i8] c"zext i32 \00"
+@.str743 = private unnamed_addr constant [8 x i8] c" to i64\00"
+@.str744 = private unnamed_addr constant [9 x i8] c"mul i64 \00"
+@.str745 = private unnamed_addr constant [3 x i8] c", \00"
+@.str746 = private unnamed_addr constant [15 x i8] c"load ptr, ptr \00"
+@.str747 = private unnamed_addr constant [23 x i8] c"call ptr @realloc(ptr \00"
+@.str748 = private unnamed_addr constant [7 x i8] c", i64 \00"
+@.str749 = private unnamed_addr constant [2 x i8] c")\00"
+@.str750 = private unnamed_addr constant [13 x i8] c"  store ptr \00"
+@.str751 = private unnamed_addr constant [7 x i8] c", ptr \00"
+@.str752 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str753 = private unnamed_addr constant [13 x i8] c"  store i32 \00"
+@.str754 = private unnamed_addr constant [7 x i8] c", ptr \00"
+@.str755 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str756 = private unnamed_addr constant [13 x i8] c"  br label %\00"
+@.str757 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str758 = private unnamed_addr constant [3 x i8] c":\0A\00"
+@.str759 = private unnamed_addr constant [15 x i8] c"load ptr, ptr \00"
+@.str760 = private unnamed_addr constant [3 x i8] c"  \00"
+@.str761 = private unnamed_addr constant [27 x i8] c" = getelementptr inbounds \00"
 @.str762 = private unnamed_addr constant [7 x i8] c", ptr \00"
-@.str763 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str764 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str765 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str766 = private unnamed_addr constant [6 x i8] c"load \00"
+@.str763 = private unnamed_addr constant [7 x i8] c", i32 \00"
+@.str764 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str765 = private unnamed_addr constant [9 x i8] c"  store \00"
+@.str766 = private unnamed_addr constant [2 x i8] c" \00"
 @.str767 = private unnamed_addr constant [7 x i8] c", ptr \00"
-@.str768 = private unnamed_addr constant [4 x i8] c"i32\00"
-@.str769 = private unnamed_addr constant [13 x i8] c"icmp ne i32 \00"
-@.str770 = private unnamed_addr constant [4 x i8] c", 0\00"
-@.str771 = private unnamed_addr constant [9 x i8] c"zext i1 \00"
-@.str772 = private unnamed_addr constant [8 x i8] c" to i32\00"
-@.str773 = private unnamed_addr constant [13 x i8] c"  store i32 \00"
-@.str774 = private unnamed_addr constant [7 x i8] c", ptr \00"
-@.str775 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str776 = private unnamed_addr constant [3 x i8] c"sc\00"
-@.str777 = private unnamed_addr constant [6 x i8] c"scend\00"
-@.str778 = private unnamed_addr constant [4 x i8] c"and\00"
-@.str779 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
-@.str780 = private unnamed_addr constant [10 x i8] c", label %\00"
-@.str781 = private unnamed_addr constant [10 x i8] c", label %\00"
-@.str782 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str783 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
-@.str784 = private unnamed_addr constant [10 x i8] c", label %\00"
-@.str785 = private unnamed_addr constant [10 x i8] c", label %\00"
-@.str786 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str787 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str788 = private unnamed_addr constant [13 x i8] c"icmp ne i32 \00"
-@.str789 = private unnamed_addr constant [4 x i8] c", 0\00"
-@.str790 = private unnamed_addr constant [9 x i8] c"zext i1 \00"
-@.str791 = private unnamed_addr constant [8 x i8] c" to i32\00"
-@.str792 = private unnamed_addr constant [13 x i8] c"  store i32 \00"
-@.str793 = private unnamed_addr constant [7 x i8] c", ptr \00"
-@.str794 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str795 = private unnamed_addr constant [13 x i8] c"  br label %\00"
+@.str768 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str769 = private unnamed_addr constant [9 x i8] c"add i32 \00"
+@.str770 = private unnamed_addr constant [4 x i8] c", 1\00"
+@.str771 = private unnamed_addr constant [13 x i8] c"  store i32 \00"
+@.str772 = private unnamed_addr constant [7 x i8] c", ptr \00"
+@.str773 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str774 = private unnamed_addr constant [2 x i8] c"0\00"
+@.str775 = private unnamed_addr constant [5 x i8] c"void\00"
+@.str776 = private unnamed_addr constant [6 x i8] c"load \00"
+@.str777 = private unnamed_addr constant [7 x i8] c", ptr \00"
+@.str778 = private unnamed_addr constant [4 x i8] c"i32\00"
+@.str779 = private unnamed_addr constant [13 x i8] c"icmp ne i32 \00"
+@.str780 = private unnamed_addr constant [4 x i8] c", 0\00"
+@.str781 = private unnamed_addr constant [9 x i8] c"zext i1 \00"
+@.str782 = private unnamed_addr constant [8 x i8] c" to i32\00"
+@.str783 = private unnamed_addr constant [13 x i8] c"  store i32 \00"
+@.str784 = private unnamed_addr constant [7 x i8] c", ptr \00"
+@.str785 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str786 = private unnamed_addr constant [3 x i8] c"sc\00"
+@.str787 = private unnamed_addr constant [6 x i8] c"scend\00"
+@.str788 = private unnamed_addr constant [4 x i8] c"and\00"
+@.str789 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
+@.str790 = private unnamed_addr constant [10 x i8] c", label %\00"
+@.str791 = private unnamed_addr constant [10 x i8] c", label %\00"
+@.str792 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str793 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
+@.str794 = private unnamed_addr constant [10 x i8] c", label %\00"
+@.str795 = private unnamed_addr constant [10 x i8] c", label %\00"
 @.str796 = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.str797 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str798 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
-@.str799 = private unnamed_addr constant [5 x i8] c"bool\00"
-@.str800 = private unnamed_addr constant [2 x i8] c"<\00"
-@.str801 = private unnamed_addr constant [4 x i8] c"slt\00"
-@.str802 = private unnamed_addr constant [3 x i8] c"<=\00"
-@.str803 = private unnamed_addr constant [4 x i8] c"sle\00"
-@.str804 = private unnamed_addr constant [2 x i8] c">\00"
-@.str805 = private unnamed_addr constant [4 x i8] c"sgt\00"
-@.str806 = private unnamed_addr constant [3 x i8] c">=\00"
-@.str807 = private unnamed_addr constant [4 x i8] c"sge\00"
-@.str808 = private unnamed_addr constant [3 x i8] c"==\00"
-@.str809 = private unnamed_addr constant [3 x i8] c"eq\00"
-@.str810 = private unnamed_addr constant [3 x i8] c"ne\00"
-@.str811 = private unnamed_addr constant [2 x i8] c"<\00"
+@.str798 = private unnamed_addr constant [13 x i8] c"icmp ne i32 \00"
+@.str799 = private unnamed_addr constant [4 x i8] c", 0\00"
+@.str800 = private unnamed_addr constant [9 x i8] c"zext i1 \00"
+@.str801 = private unnamed_addr constant [8 x i8] c" to i32\00"
+@.str802 = private unnamed_addr constant [13 x i8] c"  store i32 \00"
+@.str803 = private unnamed_addr constant [7 x i8] c", ptr \00"
+@.str804 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str805 = private unnamed_addr constant [13 x i8] c"  br label %\00"
+@.str806 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str807 = private unnamed_addr constant [3 x i8] c":\0A\00"
+@.str808 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
+@.str809 = private unnamed_addr constant [5 x i8] c"bool\00"
+@.str810 = private unnamed_addr constant [2 x i8] c"<\00"
+@.str811 = private unnamed_addr constant [4 x i8] c"slt\00"
 @.str812 = private unnamed_addr constant [3 x i8] c"<=\00"
-@.str813 = private unnamed_addr constant [2 x i8] c">\00"
-@.str814 = private unnamed_addr constant [3 x i8] c">=\00"
-@.str815 = private unnamed_addr constant [3 x i8] c"==\00"
-@.str816 = private unnamed_addr constant [3 x i8] c"!=\00"
-@.str817 = private unnamed_addr constant [2 x i8] c"+\00"
-@.str818 = private unnamed_addr constant [4 x i8] c"add\00"
-@.str819 = private unnamed_addr constant [2 x i8] c"-\00"
-@.str820 = private unnamed_addr constant [4 x i8] c"sub\00"
-@.str821 = private unnamed_addr constant [2 x i8] c"*\00"
-@.str822 = private unnamed_addr constant [4 x i8] c"mul\00"
-@.str823 = private unnamed_addr constant [2 x i8] c"/\00"
-@.str824 = private unnamed_addr constant [5 x i8] c"sdiv\00"
-@.str825 = private unnamed_addr constant [5 x i8] c"srem\00"
-@.str826 = private unnamed_addr constant [6 x i8] c"fixed\00"
-@.str827 = private unnamed_addr constant [9 x i8] c"shl i32 \00"
-@.str828 = private unnamed_addr constant [5 x i8] c", 16\00"
-@.str829 = private unnamed_addr constant [4 x i8] c"and\00"
-@.str830 = private unnamed_addr constant [3 x i8] c"or\00"
-@.str831 = private unnamed_addr constant [6 x i8] c"fixed\00"
-@.str832 = private unnamed_addr constant [6 x i8] c"fixed\00"
-@.str833 = private unnamed_addr constant [6 x i8] c"icmp \00"
-@.str834 = private unnamed_addr constant [6 x i8] c" i32 \00"
-@.str835 = private unnamed_addr constant [3 x i8] c", \00"
-@.str836 = private unnamed_addr constant [9 x i8] c"zext i1 \00"
-@.str837 = private unnamed_addr constant [8 x i8] c" to i32\00"
-@.str838 = private unnamed_addr constant [5 x i8] c"bool\00"
-@.str839 = private unnamed_addr constant [2 x i8] c"*\00"
-@.str840 = private unnamed_addr constant [10 x i8] c"sext i32 \00"
-@.str841 = private unnamed_addr constant [8 x i8] c" to i64\00"
-@.str842 = private unnamed_addr constant [10 x i8] c"sext i32 \00"
-@.str843 = private unnamed_addr constant [8 x i8] c" to i64\00"
-@.str844 = private unnamed_addr constant [9 x i8] c"mul i64 \00"
+@.str813 = private unnamed_addr constant [4 x i8] c"sle\00"
+@.str814 = private unnamed_addr constant [2 x i8] c">\00"
+@.str815 = private unnamed_addr constant [4 x i8] c"sgt\00"
+@.str816 = private unnamed_addr constant [3 x i8] c">=\00"
+@.str817 = private unnamed_addr constant [4 x i8] c"sge\00"
+@.str818 = private unnamed_addr constant [3 x i8] c"==\00"
+@.str819 = private unnamed_addr constant [3 x i8] c"eq\00"
+@.str820 = private unnamed_addr constant [3 x i8] c"ne\00"
+@.str821 = private unnamed_addr constant [2 x i8] c"<\00"
+@.str822 = private unnamed_addr constant [3 x i8] c"<=\00"
+@.str823 = private unnamed_addr constant [2 x i8] c">\00"
+@.str824 = private unnamed_addr constant [3 x i8] c">=\00"
+@.str825 = private unnamed_addr constant [3 x i8] c"==\00"
+@.str826 = private unnamed_addr constant [3 x i8] c"!=\00"
+@.str827 = private unnamed_addr constant [2 x i8] c"+\00"
+@.str828 = private unnamed_addr constant [4 x i8] c"add\00"
+@.str829 = private unnamed_addr constant [2 x i8] c"-\00"
+@.str830 = private unnamed_addr constant [4 x i8] c"sub\00"
+@.str831 = private unnamed_addr constant [2 x i8] c"*\00"
+@.str832 = private unnamed_addr constant [4 x i8] c"mul\00"
+@.str833 = private unnamed_addr constant [2 x i8] c"/\00"
+@.str834 = private unnamed_addr constant [5 x i8] c"sdiv\00"
+@.str835 = private unnamed_addr constant [5 x i8] c"srem\00"
+@.str836 = private unnamed_addr constant [6 x i8] c"fixed\00"
+@.str837 = private unnamed_addr constant [9 x i8] c"shl i32 \00"
+@.str838 = private unnamed_addr constant [5 x i8] c", 16\00"
+@.str839 = private unnamed_addr constant [4 x i8] c"and\00"
+@.str840 = private unnamed_addr constant [3 x i8] c"or\00"
+@.str841 = private unnamed_addr constant [6 x i8] c"fixed\00"
+@.str842 = private unnamed_addr constant [6 x i8] c"fixed\00"
+@.str843 = private unnamed_addr constant [6 x i8] c"icmp \00"
+@.str844 = private unnamed_addr constant [6 x i8] c" i32 \00"
 @.str845 = private unnamed_addr constant [3 x i8] c", \00"
-@.str846 = private unnamed_addr constant [10 x i8] c"ashr i64 \00"
-@.str847 = private unnamed_addr constant [5 x i8] c", 16\00"
-@.str848 = private unnamed_addr constant [11 x i8] c"trunc i64 \00"
-@.str849 = private unnamed_addr constant [8 x i8] c" to i32\00"
-@.str850 = private unnamed_addr constant [6 x i8] c"fixed\00"
-@.str851 = private unnamed_addr constant [2 x i8] c"/\00"
+@.str846 = private unnamed_addr constant [9 x i8] c"zext i1 \00"
+@.str847 = private unnamed_addr constant [8 x i8] c" to i32\00"
+@.str848 = private unnamed_addr constant [5 x i8] c"bool\00"
+@.str849 = private unnamed_addr constant [2 x i8] c"*\00"
+@.str850 = private unnamed_addr constant [10 x i8] c"sext i32 \00"
+@.str851 = private unnamed_addr constant [8 x i8] c" to i64\00"
 @.str852 = private unnamed_addr constant [10 x i8] c"sext i32 \00"
 @.str853 = private unnamed_addr constant [8 x i8] c" to i64\00"
-@.str854 = private unnamed_addr constant [9 x i8] c"shl i64 \00"
-@.str855 = private unnamed_addr constant [5 x i8] c", 16\00"
-@.str856 = private unnamed_addr constant [10 x i8] c"sext i32 \00"
-@.str857 = private unnamed_addr constant [8 x i8] c" to i64\00"
-@.str858 = private unnamed_addr constant [10 x i8] c"sdiv i64 \00"
-@.str859 = private unnamed_addr constant [3 x i8] c", \00"
-@.str860 = private unnamed_addr constant [11 x i8] c"trunc i64 \00"
-@.str861 = private unnamed_addr constant [8 x i8] c" to i32\00"
-@.str862 = private unnamed_addr constant [6 x i8] c"fixed\00"
-@.str863 = private unnamed_addr constant [6 x i8] c" i32 \00"
-@.str864 = private unnamed_addr constant [3 x i8] c", \00"
-@.str865 = private unnamed_addr constant [6 x i8] c"fixed\00"
-@.str866 = private unnamed_addr constant [6 x i8] c" i32 \00"
-@.str867 = private unnamed_addr constant [3 x i8] c", \00"
-@.str868 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str869 = private unnamed_addr constant [5 x i8] c"self\00"
-@.str870 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str871 = private unnamed_addr constant [7 x i8] c"entity\00"
-@.str872 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
-@.str873 = private unnamed_addr constant [7 x i8] c"entity\00"
-@.str874 = private unnamed_addr constant [4 x i8] c"key\00"
-@.str875 = private unnamed_addr constant [21 x i8] c"load i32, ptr @L_key\00"
-@.str876 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str877 = private unnamed_addr constant [5 x i8] c"save\00"
-@.str878 = private unnamed_addr constant [23 x i8] c"  call void @L_save()\0A\00"
-@.str879 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str880 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str881 = private unnamed_addr constant [9 x i8] c"ui_build\00"
-@.str882 = private unnamed_addr constant [25 x i8] c"  call void @ui_build()\0A\00"
-@.str883 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str884 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str885 = private unnamed_addr constant [5 x i8] c"load\00"
-@.str886 = private unnamed_addr constant [19 x i8] c"call i32 @L_load()\00"
-@.str887 = private unnamed_addr constant [5 x i8] c"bool\00"
-@.str888 = private unnamed_addr constant [5 x i8] c"quit\00"
-@.str889 = private unnamed_addr constant [31 x i8] c"  store i32 0, ptr @L_running\0A\00"
-@.str890 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str891 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str892 = private unnamed_addr constant [4 x i8] c"len\00"
-@.str893 = private unnamed_addr constant [5 x i8] c"push\00"
-@.str894 = private unnamed_addr constant [3 x i8] c"fx\00"
-@.str895 = private unnamed_addr constant [9 x i8] c"shl i32 \00"
-@.str896 = private unnamed_addr constant [5 x i8] c", 16\00"
-@.str897 = private unnamed_addr constant [6 x i8] c"fixed\00"
-@.str898 = private unnamed_addr constant [4 x i8] c"flr\00"
-@.str899 = private unnamed_addr constant [10 x i8] c"ashr i32 \00"
-@.str900 = private unnamed_addr constant [5 x i8] c", 16\00"
-@.str901 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str902 = private unnamed_addr constant [4 x i8] c"rt_\00"
-@.str903 = private unnamed_addr constant [18 x i8] c"unknown function \00"
-@.str904 = private unnamed_addr constant [3 x i8] c"  \00"
-@.str905 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str906 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str907 = private unnamed_addr constant [4 x i8] c" = \00"
-@.str908 = private unnamed_addr constant [6 x i8] c"call \00"
-@.str909 = private unnamed_addr constant [6 x i8] c" @fn_\00"
-@.str910 = private unnamed_addr constant [2 x i8] c"(\00"
-@.str911 = private unnamed_addr constant [3 x i8] c", \00"
-@.str912 = private unnamed_addr constant [2 x i8] c" \00"
-@.str913 = private unnamed_addr constant [3 x i8] c")\0A\00"
-@.str914 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str915 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str916 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str917 = private unnamed_addr constant [6 x i8] c"fixed\00"
-@.str918 = private unnamed_addr constant [5 x i8] c"bool\00"
-@.str919 = private unnamed_addr constant [4 x i8] c"str\00"
-@.str920 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str921 = private unnamed_addr constant [6 x i8] c"load \00"
-@.str922 = private unnamed_addr constant [10 x i8] c", ptr @g_\00"
-@.str923 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str924 = private unnamed_addr constant [20 x i8] c"unknown identifier \00"
+@.str854 = private unnamed_addr constant [9 x i8] c"mul i64 \00"
+@.str855 = private unnamed_addr constant [3 x i8] c", \00"
+@.str856 = private unnamed_addr constant [10 x i8] c"ashr i64 \00"
+@.str857 = private unnamed_addr constant [5 x i8] c", 16\00"
+@.str858 = private unnamed_addr constant [11 x i8] c"trunc i64 \00"
+@.str859 = private unnamed_addr constant [8 x i8] c" to i32\00"
+@.str860 = private unnamed_addr constant [6 x i8] c"fixed\00"
+@.str861 = private unnamed_addr constant [2 x i8] c"/\00"
+@.str862 = private unnamed_addr constant [10 x i8] c"sext i32 \00"
+@.str863 = private unnamed_addr constant [8 x i8] c" to i64\00"
+@.str864 = private unnamed_addr constant [9 x i8] c"shl i64 \00"
+@.str865 = private unnamed_addr constant [5 x i8] c", 16\00"
+@.str866 = private unnamed_addr constant [10 x i8] c"sext i32 \00"
+@.str867 = private unnamed_addr constant [8 x i8] c" to i64\00"
+@.str868 = private unnamed_addr constant [10 x i8] c"sdiv i64 \00"
+@.str869 = private unnamed_addr constant [3 x i8] c", \00"
+@.str870 = private unnamed_addr constant [11 x i8] c"trunc i64 \00"
+@.str871 = private unnamed_addr constant [8 x i8] c" to i32\00"
+@.str872 = private unnamed_addr constant [6 x i8] c"fixed\00"
+@.str873 = private unnamed_addr constant [6 x i8] c" i32 \00"
+@.str874 = private unnamed_addr constant [3 x i8] c", \00"
+@.str875 = private unnamed_addr constant [6 x i8] c"fixed\00"
+@.str876 = private unnamed_addr constant [6 x i8] c" i32 \00"
+@.str877 = private unnamed_addr constant [3 x i8] c", \00"
+@.str878 = private unnamed_addr constant [4 x i8] c"int\00"
+@.str879 = private unnamed_addr constant [5 x i8] c"self\00"
+@.str880 = private unnamed_addr constant [2 x i8] c"0\00"
+@.str881 = private unnamed_addr constant [7 x i8] c"entity\00"
+@.str882 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
+@.str883 = private unnamed_addr constant [7 x i8] c"entity\00"
+@.str884 = private unnamed_addr constant [4 x i8] c"key\00"
+@.str885 = private unnamed_addr constant [21 x i8] c"load i32, ptr @L_key\00"
+@.str886 = private unnamed_addr constant [4 x i8] c"int\00"
+@.str887 = private unnamed_addr constant [5 x i8] c"save\00"
+@.str888 = private unnamed_addr constant [23 x i8] c"  call void @L_save()\0A\00"
+@.str889 = private unnamed_addr constant [2 x i8] c"0\00"
+@.str890 = private unnamed_addr constant [5 x i8] c"void\00"
+@.str891 = private unnamed_addr constant [9 x i8] c"ui_build\00"
+@.str892 = private unnamed_addr constant [25 x i8] c"  call void @ui_build()\0A\00"
+@.str893 = private unnamed_addr constant [2 x i8] c"0\00"
+@.str894 = private unnamed_addr constant [5 x i8] c"void\00"
+@.str895 = private unnamed_addr constant [5 x i8] c"load\00"
+@.str896 = private unnamed_addr constant [19 x i8] c"call i32 @L_load()\00"
+@.str897 = private unnamed_addr constant [5 x i8] c"bool\00"
+@.str898 = private unnamed_addr constant [5 x i8] c"quit\00"
+@.str899 = private unnamed_addr constant [31 x i8] c"  store i32 0, ptr @L_running\0A\00"
+@.str900 = private unnamed_addr constant [2 x i8] c"0\00"
+@.str901 = private unnamed_addr constant [5 x i8] c"void\00"
+@.str902 = private unnamed_addr constant [4 x i8] c"len\00"
+@.str903 = private unnamed_addr constant [5 x i8] c"push\00"
+@.str904 = private unnamed_addr constant [3 x i8] c"fx\00"
+@.str905 = private unnamed_addr constant [9 x i8] c"shl i32 \00"
+@.str906 = private unnamed_addr constant [5 x i8] c", 16\00"
+@.str907 = private unnamed_addr constant [6 x i8] c"fixed\00"
+@.str908 = private unnamed_addr constant [4 x i8] c"flr\00"
+@.str909 = private unnamed_addr constant [10 x i8] c"ashr i32 \00"
+@.str910 = private unnamed_addr constant [5 x i8] c", 16\00"
+@.str911 = private unnamed_addr constant [4 x i8] c"int\00"
+@.str912 = private unnamed_addr constant [4 x i8] c"rt_\00"
+@.str913 = private unnamed_addr constant [18 x i8] c"unknown function \00"
+@.str914 = private unnamed_addr constant [3 x i8] c"  \00"
+@.str915 = private unnamed_addr constant [2 x i8] c"0\00"
+@.str916 = private unnamed_addr constant [5 x i8] c"void\00"
+@.str917 = private unnamed_addr constant [4 x i8] c" = \00"
+@.str918 = private unnamed_addr constant [6 x i8] c"call \00"
+@.str919 = private unnamed_addr constant [6 x i8] c" @fn_\00"
+@.str920 = private unnamed_addr constant [2 x i8] c"(\00"
+@.str921 = private unnamed_addr constant [3 x i8] c", \00"
+@.str922 = private unnamed_addr constant [2 x i8] c" \00"
+@.str923 = private unnamed_addr constant [3 x i8] c")\0A\00"
+@.str924 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str925 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str926 = private unnamed_addr constant [2 x i8] c"-\00"
-@.str927 = private unnamed_addr constant [12 x i8] c"sub i32 0, \00"
-@.str928 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str929 = private unnamed_addr constant [13 x i8] c"icmp eq i32 \00"
-@.str930 = private unnamed_addr constant [4 x i8] c", 0\00"
-@.str931 = private unnamed_addr constant [9 x i8] c"zext i1 \00"
-@.str932 = private unnamed_addr constant [8 x i8] c" to i32\00"
-@.str933 = private unnamed_addr constant [5 x i8] c"bool\00"
-@.str934 = private unnamed_addr constant [23 x i8] c"cannot emit expression\00"
-@.str935 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str936 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str937 = private unnamed_addr constant [9 x i8] c"  store \00"
-@.str938 = private unnamed_addr constant [2 x i8] c" \00"
-@.str939 = private unnamed_addr constant [7 x i8] c", ptr \00"
-@.str940 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str941 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str942 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str943 = private unnamed_addr constant [19 x i8] c"assign to unknown \00"
-@.str944 = private unnamed_addr constant [4 x i8] c"@g_\00"
-@.str945 = private unnamed_addr constant [22 x i8] c"bad assignment target\00"
-@.str946 = private unnamed_addr constant [2 x i8] c"=\00"
-@.str947 = private unnamed_addr constant [6 x i8] c"load \00"
-@.str948 = private unnamed_addr constant [7 x i8] c", ptr \00"
-@.str949 = private unnamed_addr constant [4 x i8] c"add\00"
-@.str950 = private unnamed_addr constant [3 x i8] c"-=\00"
-@.str951 = private unnamed_addr constant [4 x i8] c"sub\00"
-@.str952 = private unnamed_addr constant [3 x i8] c"*=\00"
-@.str953 = private unnamed_addr constant [4 x i8] c"mul\00"
-@.str954 = private unnamed_addr constant [3 x i8] c"/=\00"
-@.str955 = private unnamed_addr constant [5 x i8] c"sdiv\00"
-@.str956 = private unnamed_addr constant [6 x i8] c" i32 \00"
-@.str957 = private unnamed_addr constant [3 x i8] c", \00"
-@.str958 = private unnamed_addr constant [13 x i8] c"icmp ne i32 \00"
-@.str959 = private unnamed_addr constant [4 x i8] c", 0\00"
-@.str960 = private unnamed_addr constant [5 x i8] c"then\00"
-@.str961 = private unnamed_addr constant [5 x i8] c"else\00"
-@.str962 = private unnamed_addr constant [6 x i8] c"ifend\00"
-@.str963 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
-@.str964 = private unnamed_addr constant [10 x i8] c", label %\00"
-@.str965 = private unnamed_addr constant [10 x i8] c", label %\00"
-@.str966 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str967 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
-@.str968 = private unnamed_addr constant [10 x i8] c", label %\00"
-@.str969 = private unnamed_addr constant [10 x i8] c", label %\00"
-@.str970 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str971 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str972 = private unnamed_addr constant [13 x i8] c"  br label %\00"
-@.str973 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str974 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str975 = private unnamed_addr constant [13 x i8] c"  br label %\00"
+@.str926 = private unnamed_addr constant [4 x i8] c"int\00"
+@.str927 = private unnamed_addr constant [6 x i8] c"fixed\00"
+@.str928 = private unnamed_addr constant [5 x i8] c"bool\00"
+@.str929 = private unnamed_addr constant [4 x i8] c"str\00"
+@.str930 = private unnamed_addr constant [4 x i8] c"int\00"
+@.str931 = private unnamed_addr constant [6 x i8] c"load \00"
+@.str932 = private unnamed_addr constant [10 x i8] c", ptr @g_\00"
+@.str933 = private unnamed_addr constant [4 x i8] c"int\00"
+@.str934 = private unnamed_addr constant [20 x i8] c"unknown identifier \00"
+@.str935 = private unnamed_addr constant [4 x i8] c"int\00"
+@.str936 = private unnamed_addr constant [2 x i8] c"-\00"
+@.str937 = private unnamed_addr constant [12 x i8] c"sub i32 0, \00"
+@.str938 = private unnamed_addr constant [4 x i8] c"int\00"
+@.str939 = private unnamed_addr constant [13 x i8] c"icmp eq i32 \00"
+@.str940 = private unnamed_addr constant [4 x i8] c", 0\00"
+@.str941 = private unnamed_addr constant [9 x i8] c"zext i1 \00"
+@.str942 = private unnamed_addr constant [8 x i8] c" to i32\00"
+@.str943 = private unnamed_addr constant [5 x i8] c"bool\00"
+@.str944 = private unnamed_addr constant [23 x i8] c"cannot emit expression\00"
+@.str945 = private unnamed_addr constant [2 x i8] c"0\00"
+@.str946 = private unnamed_addr constant [4 x i8] c"int\00"
+@.str947 = private unnamed_addr constant [9 x i8] c"  store \00"
+@.str948 = private unnamed_addr constant [2 x i8] c" \00"
+@.str949 = private unnamed_addr constant [7 x i8] c", ptr \00"
+@.str950 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str951 = private unnamed_addr constant [2 x i8] c"0\00"
+@.str952 = private unnamed_addr constant [4 x i8] c"int\00"
+@.str953 = private unnamed_addr constant [19 x i8] c"assign to unknown \00"
+@.str954 = private unnamed_addr constant [4 x i8] c"@g_\00"
+@.str955 = private unnamed_addr constant [22 x i8] c"bad assignment target\00"
+@.str956 = private unnamed_addr constant [2 x i8] c"=\00"
+@.str957 = private unnamed_addr constant [6 x i8] c"load \00"
+@.str958 = private unnamed_addr constant [7 x i8] c", ptr \00"
+@.str959 = private unnamed_addr constant [4 x i8] c"add\00"
+@.str960 = private unnamed_addr constant [3 x i8] c"-=\00"
+@.str961 = private unnamed_addr constant [4 x i8] c"sub\00"
+@.str962 = private unnamed_addr constant [3 x i8] c"*=\00"
+@.str963 = private unnamed_addr constant [4 x i8] c"mul\00"
+@.str964 = private unnamed_addr constant [3 x i8] c"/=\00"
+@.str965 = private unnamed_addr constant [5 x i8] c"sdiv\00"
+@.str966 = private unnamed_addr constant [6 x i8] c" i32 \00"
+@.str967 = private unnamed_addr constant [3 x i8] c", \00"
+@.str968 = private unnamed_addr constant [13 x i8] c"icmp ne i32 \00"
+@.str969 = private unnamed_addr constant [4 x i8] c", 0\00"
+@.str970 = private unnamed_addr constant [5 x i8] c"then\00"
+@.str971 = private unnamed_addr constant [5 x i8] c"else\00"
+@.str972 = private unnamed_addr constant [6 x i8] c"ifend\00"
+@.str973 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
+@.str974 = private unnamed_addr constant [10 x i8] c", label %\00"
+@.str975 = private unnamed_addr constant [10 x i8] c", label %\00"
 @.str976 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str977 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str978 = private unnamed_addr constant [6 x i8] c"wcond\00"
-@.str979 = private unnamed_addr constant [6 x i8] c"wbody\00"
-@.str980 = private unnamed_addr constant [5 x i8] c"wend\00"
-@.str981 = private unnamed_addr constant [13 x i8] c"  br label %\00"
-@.str982 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str983 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str984 = private unnamed_addr constant [13 x i8] c"icmp ne i32 \00"
-@.str985 = private unnamed_addr constant [4 x i8] c", 0\00"
-@.str986 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
-@.str987 = private unnamed_addr constant [10 x i8] c", label %\00"
-@.str988 = private unnamed_addr constant [10 x i8] c", label %\00"
-@.str989 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str990 = private unnamed_addr constant [3 x i8] c":\0A\00"
+@.str977 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
+@.str978 = private unnamed_addr constant [10 x i8] c", label %\00"
+@.str979 = private unnamed_addr constant [10 x i8] c", label %\00"
+@.str980 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str981 = private unnamed_addr constant [3 x i8] c":\0A\00"
+@.str982 = private unnamed_addr constant [13 x i8] c"  br label %\00"
+@.str983 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str984 = private unnamed_addr constant [3 x i8] c":\0A\00"
+@.str985 = private unnamed_addr constant [13 x i8] c"  br label %\00"
+@.str986 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str987 = private unnamed_addr constant [3 x i8] c":\0A\00"
+@.str988 = private unnamed_addr constant [6 x i8] c"wcond\00"
+@.str989 = private unnamed_addr constant [6 x i8] c"wbody\00"
+@.str990 = private unnamed_addr constant [5 x i8] c"wend\00"
 @.str991 = private unnamed_addr constant [13 x i8] c"  br label %\00"
 @.str992 = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.str993 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str994 = private unnamed_addr constant [4 x i8] c"i32\00"
-@.str995 = private unnamed_addr constant [4 x i8] c"i32\00"
-@.str996 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str997 = private unnamed_addr constant [6 x i8] c"fcond\00"
-@.str998 = private unnamed_addr constant [6 x i8] c"fbody\00"
-@.str999 = private unnamed_addr constant [6 x i8] c"fcont\00"
-@.str1000 = private unnamed_addr constant [5 x i8] c"fend\00"
+@.str994 = private unnamed_addr constant [13 x i8] c"icmp ne i32 \00"
+@.str995 = private unnamed_addr constant [4 x i8] c", 0\00"
+@.str996 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
+@.str997 = private unnamed_addr constant [10 x i8] c", label %\00"
+@.str998 = private unnamed_addr constant [10 x i8] c", label %\00"
+@.str999 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1000 = private unnamed_addr constant [3 x i8] c":\0A\00"
 @.str1001 = private unnamed_addr constant [13 x i8] c"  br label %\00"
 @.str1002 = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.str1003 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str1004 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
-@.str1005 = private unnamed_addr constant [14 x i8] c"icmp slt i32 \00"
-@.str1006 = private unnamed_addr constant [3 x i8] c", \00"
-@.str1007 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
-@.str1008 = private unnamed_addr constant [10 x i8] c", label %\00"
-@.str1009 = private unnamed_addr constant [10 x i8] c", label %\00"
-@.str1010 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1011 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str1012 = private unnamed_addr constant [13 x i8] c"  br label %\00"
-@.str1013 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1014 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str1015 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
-@.str1016 = private unnamed_addr constant [9 x i8] c"add i32 \00"
-@.str1017 = private unnamed_addr constant [4 x i8] c", 1\00"
-@.str1018 = private unnamed_addr constant [4 x i8] c"i32\00"
-@.str1019 = private unnamed_addr constant [13 x i8] c"  br label %\00"
+@.str1004 = private unnamed_addr constant [4 x i8] c"i32\00"
+@.str1005 = private unnamed_addr constant [4 x i8] c"i32\00"
+@.str1006 = private unnamed_addr constant [4 x i8] c"int\00"
+@.str1007 = private unnamed_addr constant [6 x i8] c"fcond\00"
+@.str1008 = private unnamed_addr constant [6 x i8] c"fbody\00"
+@.str1009 = private unnamed_addr constant [6 x i8] c"fcont\00"
+@.str1010 = private unnamed_addr constant [5 x i8] c"fend\00"
+@.str1011 = private unnamed_addr constant [13 x i8] c"  br label %\00"
+@.str1012 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1013 = private unnamed_addr constant [3 x i8] c":\0A\00"
+@.str1014 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
+@.str1015 = private unnamed_addr constant [14 x i8] c"icmp slt i32 \00"
+@.str1016 = private unnamed_addr constant [3 x i8] c", \00"
+@.str1017 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
+@.str1018 = private unnamed_addr constant [10 x i8] c", label %\00"
+@.str1019 = private unnamed_addr constant [10 x i8] c", label %\00"
 @.str1020 = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.str1021 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str1022 = private unnamed_addr constant [8 x i8] c"%retval\00"
-@.str1023 = private unnamed_addr constant [17 x i8] c"  br label %ret\0A\00"
-@.str1024 = private unnamed_addr constant [2 x i8] c"_\00"
-@.str1025 = private unnamed_addr constant [5 x i8] c"mend\00"
-@.str1026 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str1027 = private unnamed_addr constant [13 x i8] c"icmp eq i32 \00"
-@.str1028 = private unnamed_addr constant [3 x i8] c", \00"
-@.str1029 = private unnamed_addr constant [7 x i8] c"or i1 \00"
-@.str1030 = private unnamed_addr constant [3 x i8] c", \00"
-@.str1031 = private unnamed_addr constant [6 x i8] c"mbody\00"
-@.str1032 = private unnamed_addr constant [5 x i8] c"marm\00"
-@.str1033 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
-@.str1034 = private unnamed_addr constant [10 x i8] c", label %\00"
-@.str1035 = private unnamed_addr constant [10 x i8] c", label %\00"
-@.str1036 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1037 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str1038 = private unnamed_addr constant [13 x i8] c"  br label %\00"
-@.str1039 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1040 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str1041 = private unnamed_addr constant [13 x i8] c"  br label %\00"
-@.str1042 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1043 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str1044 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str1045 = private unnamed_addr constant [4 x i8] c"ptr\00"
-@.str1046 = private unnamed_addr constant [5 x i8] c"null\00"
-@.str1047 = private unnamed_addr constant [13 x i8] c"  br label %\00"
-@.str1048 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1049 = private unnamed_addr constant [13 x i8] c"  br label %\00"
-@.str1050 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1051 = private unnamed_addr constant [22 x i8] c"cannot emit statement\00"
-@.str1052 = private unnamed_addr constant [36 x i8] c"@L_running = internal global i32 1\0A\00"
-@.str1053 = private unnamed_addr constant [32 x i8] c"@L_key = internal global i32 0\0A\00"
-@.str1054 = private unnamed_addr constant [33 x i8] c"@L_entc = internal global i32 0\0A\00"
-@.str1055 = private unnamed_addr constant [29 x i8] c"@L_alive = internal global [\00"
-@.str1056 = private unnamed_addr constant [25 x i8] c" x i32] zeroinitializer\0A\00"
-@.str1057 = private unnamed_addr constant [28 x i8] c"@L_kind = internal global [\00"
-@.str1058 = private unnamed_addr constant [25 x i8] c" x i32] zeroinitializer\0A\00"
-@.str1059 = private unnamed_addr constant [32 x i8] c"@L_freelist = internal global [\00"
-@.str1060 = private unnamed_addr constant [25 x i8] c" x i32] zeroinitializer\0A\00"
-@.str1061 = private unnamed_addr constant [34 x i8] c"@L_freen = internal global i32 0\0A\00"
-@.str1062 = private unnamed_addr constant [6 x i8] c"%Cmp_\00"
-@.str1063 = private unnamed_addr constant [11 x i8] c" = type { \00"
-@.str1064 = private unnamed_addr constant [4 x i8] c"i32\00"
-@.str1065 = private unnamed_addr constant [3 x i8] c", \00"
-@.str1066 = private unnamed_addr constant [4 x i8] c" }\0A\00"
-@.str1067 = private unnamed_addr constant [4 x i8] c"@S_\00"
-@.str1068 = private unnamed_addr constant [21 x i8] c" = internal global [\00"
-@.str1069 = private unnamed_addr constant [9 x i8] c" x %Cmp_\00"
-@.str1070 = private unnamed_addr constant [19 x i8] c"] zeroinitializer\0A\00"
-@.str1071 = private unnamed_addr constant [4 x i8] c"@H_\00"
-@.str1072 = private unnamed_addr constant [21 x i8] c" = internal global [\00"
-@.str1073 = private unnamed_addr constant [24 x i8] c" x i8] zeroinitializer\0A\00"
-@.str1074 = private unnamed_addr constant [39 x i8] c"define void @L_reset(i32 %e) {\0Aentry:\0A\00"
-@.str1075 = private unnamed_addr constant [3 x i8] c"%h\00"
-@.str1076 = private unnamed_addr constant [3 x i8] c"  \00"
-@.str1077 = private unnamed_addr constant [28 x i8] c" = getelementptr inbounds [\00"
-@.str1078 = private unnamed_addr constant [16 x i8] c" x i8], ptr @H_\00"
-@.str1079 = private unnamed_addr constant [17 x i8] c", i32 0, i32 %e\0A\00"
-@.str1080 = private unnamed_addr constant [19 x i8] c"  store i8 0, ptr \00"
-@.str1081 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1082 = private unnamed_addr constant [32 x i8] c"  %k = getelementptr inbounds [\00"
-@.str1083 = private unnamed_addr constant [37 x i8] c" x i32], ptr @L_kind, i32 0, i32 %e\0A\00"
-@.str1084 = private unnamed_addr constant [37 x i8] c"  store i32 0, ptr %k\0A  ret void\0A}\0A\0A\00"
-@.str1085 = private unnamed_addr constant [32 x i8] c"define i32 @L_alloc() {\0Aentry:\0A\00"
-@.str1086 = private unnamed_addr constant [32 x i8] c"  %fn = load i32, ptr @L_freen\0A\00"
-@.str1087 = private unnamed_addr constant [30 x i8] c"  %has = icmp sgt i32 %fn, 0\0A\00"
-@.str1088 = private unnamed_addr constant [42 x i8] c"  br i1 %has, label %reuse, label %fresh\0A\00"
-@.str1089 = private unnamed_addr constant [8 x i8] c"reuse:\0A\00"
-@.str1090 = private unnamed_addr constant [25 x i8] c"  %fn1 = sub i32 %fn, 1\0A\00"
-@.str1091 = private unnamed_addr constant [32 x i8] c"  store i32 %fn1, ptr @L_freen\0A\00"
-@.str1092 = private unnamed_addr constant [33 x i8] c"  %fp = getelementptr inbounds [\00"
-@.str1093 = private unnamed_addr constant [43 x i8] c" x i32], ptr @L_freelist, i32 0, i32 %fn1\0A\00"
-@.str1094 = private unnamed_addr constant [27 x i8] c"  %re = load i32, ptr %fp\0A\00"
-@.str1095 = private unnamed_addr constant [18 x i8] c"  br label %done\0A\00"
-@.str1096 = private unnamed_addr constant [8 x i8] c"fresh:\0A\00"
-@.str1097 = private unnamed_addr constant [31 x i8] c"  %ec = load i32, ptr @L_entc\0A\00"
-@.str1098 = private unnamed_addr constant [25 x i8] c"  %ec1 = add i32 %ec, 1\0A\00"
-@.str1099 = private unnamed_addr constant [31 x i8] c"  store i32 %ec1, ptr @L_entc\0A\00"
-@.str1100 = private unnamed_addr constant [18 x i8] c"  br label %done\0A\00"
-@.str1101 = private unnamed_addr constant [7 x i8] c"done:\0A\00"
-@.str1102 = private unnamed_addr constant [49 x i8] c"  %e = phi i32 [ %re, %reuse ], [ %ec, %fresh ]\0A\00"
-@.str1103 = private unnamed_addr constant [30 x i8] c"  call void @L_reset(i32 %e)\0A\00"
-@.str1104 = private unnamed_addr constant [33 x i8] c"  %ap = getelementptr inbounds [\00"
-@.str1105 = private unnamed_addr constant [38 x i8] c" x i32], ptr @L_alive, i32 0, i32 %e\0A\00"
-@.str1106 = private unnamed_addr constant [24 x i8] c"  store i32 1, ptr %ap\0A\00"
-@.str1107 = private unnamed_addr constant [17 x i8] c"  ret i32 %e\0A}\0A\0A\00"
-@.str1108 = private unnamed_addr constant [45 x i8] c"define void @L_free_entity(i32 %e) {\0Aentry:\0A\00"
-@.str1109 = private unnamed_addr constant [33 x i8] c"  %ap = getelementptr inbounds [\00"
-@.str1110 = private unnamed_addr constant [38 x i8] c" x i32], ptr @L_alive, i32 0, i32 %e\0A\00"
-@.str1111 = private unnamed_addr constant [24 x i8] c"  store i32 0, ptr %ap\0A\00"
-@.str1112 = private unnamed_addr constant [30 x i8] c"  call void @L_reset(i32 %e)\0A\00"
-@.str1113 = private unnamed_addr constant [32 x i8] c"  %fn = load i32, ptr @L_freen\0A\00"
-@.str1114 = private unnamed_addr constant [33 x i8] c"  %fp = getelementptr inbounds [\00"
-@.str1115 = private unnamed_addr constant [42 x i8] c" x i32], ptr @L_freelist, i32 0, i32 %fn\0A\00"
-@.str1116 = private unnamed_addr constant [25 x i8] c"  store i32 %e, ptr %fp\0A\00"
-@.str1117 = private unnamed_addr constant [25 x i8] c"  %fn1 = add i32 %fn, 1\0A\00"
-@.str1118 = private unnamed_addr constant [32 x i8] c"  store i32 %fn1, ptr @L_freen\0A\00"
-@.str1119 = private unnamed_addr constant [15 x i8] c"  ret void\0A}\0A\0A\00"
-@.str1120 = private unnamed_addr constant [4 x i8] c"i32\00"
-@.str1121 = private unnamed_addr constant [4 x i8] c"i32\00"
-@.str1122 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str1123 = private unnamed_addr constant [6 x i8] c"qcond\00"
-@.str1124 = private unnamed_addr constant [6 x i8] c"qbody\00"
-@.str1125 = private unnamed_addr constant [6 x i8] c"qnext\00"
-@.str1126 = private unnamed_addr constant [5 x i8] c"qend\00"
-@.str1127 = private unnamed_addr constant [13 x i8] c"  br label %\00"
-@.str1128 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1129 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str1130 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
-@.str1131 = private unnamed_addr constant [22 x i8] c"load i32, ptr @L_entc\00"
-@.str1132 = private unnamed_addr constant [14 x i8] c"icmp slt i32 \00"
-@.str1133 = private unnamed_addr constant [3 x i8] c", \00"
-@.str1134 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
-@.str1135 = private unnamed_addr constant [10 x i8] c", label %\00"
-@.str1136 = private unnamed_addr constant [10 x i8] c", label %\00"
-@.str1137 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1138 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str1139 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
-@.str1140 = private unnamed_addr constant [3 x i8] c"  \00"
-@.str1141 = private unnamed_addr constant [28 x i8] c" = getelementptr inbounds [\00"
-@.str1142 = private unnamed_addr constant [35 x i8] c" x i32], ptr @L_alive, i32 0, i32 \00"
-@.str1143 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1144 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
-@.str1145 = private unnamed_addr constant [13 x i8] c"icmp ne i32 \00"
-@.str1146 = private unnamed_addr constant [4 x i8] c", 0\00"
-@.str1147 = private unnamed_addr constant [3 x i8] c"qa\00"
-@.str1148 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
-@.str1149 = private unnamed_addr constant [10 x i8] c", label %\00"
-@.str1150 = private unnamed_addr constant [10 x i8] c", label %\00"
-@.str1151 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1152 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str1153 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str1154 = private unnamed_addr constant [3 x i8] c"  \00"
-@.str1155 = private unnamed_addr constant [28 x i8] c" = getelementptr inbounds [\00"
-@.str1156 = private unnamed_addr constant [34 x i8] c" x i32], ptr @L_kind, i32 0, i32 \00"
-@.str1157 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1158 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
-@.str1159 = private unnamed_addr constant [13 x i8] c"icmp eq i32 \00"
-@.str1160 = private unnamed_addr constant [3 x i8] c", \00"
-@.str1161 = private unnamed_addr constant [3 x i8] c"  \00"
-@.str1162 = private unnamed_addr constant [28 x i8] c" = getelementptr inbounds [\00"
-@.str1163 = private unnamed_addr constant [16 x i8] c" x i8], ptr @H_\00"
-@.str1164 = private unnamed_addr constant [14 x i8] c", i32 0, i32 \00"
-@.str1165 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1166 = private unnamed_addr constant [14 x i8] c"load i8, ptr \00"
-@.str1167 = private unnamed_addr constant [12 x i8] c"icmp ne i8 \00"
-@.str1168 = private unnamed_addr constant [4 x i8] c", 0\00"
-@.str1169 = private unnamed_addr constant [3 x i8] c"qt\00"
-@.str1170 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
-@.str1171 = private unnamed_addr constant [10 x i8] c", label %\00"
-@.str1172 = private unnamed_addr constant [10 x i8] c", label %\00"
-@.str1173 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1174 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str1175 = private unnamed_addr constant [3 x i8] c"  \00"
-@.str1176 = private unnamed_addr constant [28 x i8] c" = getelementptr inbounds [\00"
-@.str1177 = private unnamed_addr constant [9 x i8] c" x %Cmp_\00"
-@.str1178 = private unnamed_addr constant [11 x i8] c"], ptr @S_\00"
-@.str1179 = private unnamed_addr constant [14 x i8] c", i32 0, i32 \00"
-@.str1180 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1181 = private unnamed_addr constant [4 x i8] c"ptr\00"
-@.str1182 = private unnamed_addr constant [13 x i8] c"  store ptr \00"
-@.str1183 = private unnamed_addr constant [7 x i8] c", ptr \00"
-@.str1184 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1185 = private unnamed_addr constant [13 x i8] c"icmp ne i32 \00"
-@.str1186 = private unnamed_addr constant [4 x i8] c", 0\00"
-@.str1187 = private unnamed_addr constant [3 x i8] c"qw\00"
-@.str1188 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
-@.str1189 = private unnamed_addr constant [10 x i8] c", label %\00"
-@.str1190 = private unnamed_addr constant [10 x i8] c", label %\00"
-@.str1191 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1192 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str1193 = private unnamed_addr constant [13 x i8] c"  br label %\00"
+@.str1022 = private unnamed_addr constant [13 x i8] c"  br label %\00"
+@.str1023 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1024 = private unnamed_addr constant [3 x i8] c":\0A\00"
+@.str1025 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
+@.str1026 = private unnamed_addr constant [9 x i8] c"add i32 \00"
+@.str1027 = private unnamed_addr constant [4 x i8] c", 1\00"
+@.str1028 = private unnamed_addr constant [4 x i8] c"i32\00"
+@.str1029 = private unnamed_addr constant [13 x i8] c"  br label %\00"
+@.str1030 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1031 = private unnamed_addr constant [3 x i8] c":\0A\00"
+@.str1032 = private unnamed_addr constant [8 x i8] c"%retval\00"
+@.str1033 = private unnamed_addr constant [17 x i8] c"  br label %ret\0A\00"
+@.str1034 = private unnamed_addr constant [2 x i8] c"_\00"
+@.str1035 = private unnamed_addr constant [5 x i8] c"mend\00"
+@.str1036 = private unnamed_addr constant [2 x i8] c"0\00"
+@.str1037 = private unnamed_addr constant [13 x i8] c"icmp eq i32 \00"
+@.str1038 = private unnamed_addr constant [3 x i8] c", \00"
+@.str1039 = private unnamed_addr constant [7 x i8] c"or i1 \00"
+@.str1040 = private unnamed_addr constant [3 x i8] c", \00"
+@.str1041 = private unnamed_addr constant [6 x i8] c"mbody\00"
+@.str1042 = private unnamed_addr constant [5 x i8] c"marm\00"
+@.str1043 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
+@.str1044 = private unnamed_addr constant [10 x i8] c", label %\00"
+@.str1045 = private unnamed_addr constant [10 x i8] c", label %\00"
+@.str1046 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1047 = private unnamed_addr constant [3 x i8] c":\0A\00"
+@.str1048 = private unnamed_addr constant [13 x i8] c"  br label %\00"
+@.str1049 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1050 = private unnamed_addr constant [3 x i8] c":\0A\00"
+@.str1051 = private unnamed_addr constant [13 x i8] c"  br label %\00"
+@.str1052 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1053 = private unnamed_addr constant [3 x i8] c":\0A\00"
+@.str1054 = private unnamed_addr constant [2 x i8] c"0\00"
+@.str1055 = private unnamed_addr constant [4 x i8] c"ptr\00"
+@.str1056 = private unnamed_addr constant [5 x i8] c"null\00"
+@.str1057 = private unnamed_addr constant [13 x i8] c"  br label %\00"
+@.str1058 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1059 = private unnamed_addr constant [13 x i8] c"  br label %\00"
+@.str1060 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1061 = private unnamed_addr constant [22 x i8] c"cannot emit statement\00"
+@.str1062 = private unnamed_addr constant [36 x i8] c"@L_running = internal global i32 1\0A\00"
+@.str1063 = private unnamed_addr constant [32 x i8] c"@L_key = internal global i32 0\0A\00"
+@.str1064 = private unnamed_addr constant [33 x i8] c"@L_entc = internal global i32 0\0A\00"
+@.str1065 = private unnamed_addr constant [29 x i8] c"@L_alive = internal global [\00"
+@.str1066 = private unnamed_addr constant [25 x i8] c" x i32] zeroinitializer\0A\00"
+@.str1067 = private unnamed_addr constant [28 x i8] c"@L_kind = internal global [\00"
+@.str1068 = private unnamed_addr constant [25 x i8] c" x i32] zeroinitializer\0A\00"
+@.str1069 = private unnamed_addr constant [32 x i8] c"@L_freelist = internal global [\00"
+@.str1070 = private unnamed_addr constant [25 x i8] c" x i32] zeroinitializer\0A\00"
+@.str1071 = private unnamed_addr constant [34 x i8] c"@L_freen = internal global i32 0\0A\00"
+@.str1072 = private unnamed_addr constant [6 x i8] c"%Cmp_\00"
+@.str1073 = private unnamed_addr constant [11 x i8] c" = type { \00"
+@.str1074 = private unnamed_addr constant [4 x i8] c"i32\00"
+@.str1075 = private unnamed_addr constant [3 x i8] c", \00"
+@.str1076 = private unnamed_addr constant [4 x i8] c" }\0A\00"
+@.str1077 = private unnamed_addr constant [4 x i8] c"@S_\00"
+@.str1078 = private unnamed_addr constant [21 x i8] c" = internal global [\00"
+@.str1079 = private unnamed_addr constant [9 x i8] c" x %Cmp_\00"
+@.str1080 = private unnamed_addr constant [19 x i8] c"] zeroinitializer\0A\00"
+@.str1081 = private unnamed_addr constant [4 x i8] c"@H_\00"
+@.str1082 = private unnamed_addr constant [21 x i8] c" = internal global [\00"
+@.str1083 = private unnamed_addr constant [24 x i8] c" x i8] zeroinitializer\0A\00"
+@.str1084 = private unnamed_addr constant [39 x i8] c"define void @L_reset(i32 %e) {\0Aentry:\0A\00"
+@.str1085 = private unnamed_addr constant [3 x i8] c"%h\00"
+@.str1086 = private unnamed_addr constant [3 x i8] c"  \00"
+@.str1087 = private unnamed_addr constant [28 x i8] c" = getelementptr inbounds [\00"
+@.str1088 = private unnamed_addr constant [16 x i8] c" x i8], ptr @H_\00"
+@.str1089 = private unnamed_addr constant [17 x i8] c", i32 0, i32 %e\0A\00"
+@.str1090 = private unnamed_addr constant [19 x i8] c"  store i8 0, ptr \00"
+@.str1091 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1092 = private unnamed_addr constant [32 x i8] c"  %k = getelementptr inbounds [\00"
+@.str1093 = private unnamed_addr constant [37 x i8] c" x i32], ptr @L_kind, i32 0, i32 %e\0A\00"
+@.str1094 = private unnamed_addr constant [37 x i8] c"  store i32 0, ptr %k\0A  ret void\0A}\0A\0A\00"
+@.str1095 = private unnamed_addr constant [32 x i8] c"define i32 @L_alloc() {\0Aentry:\0A\00"
+@.str1096 = private unnamed_addr constant [32 x i8] c"  %fn = load i32, ptr @L_freen\0A\00"
+@.str1097 = private unnamed_addr constant [30 x i8] c"  %has = icmp sgt i32 %fn, 0\0A\00"
+@.str1098 = private unnamed_addr constant [42 x i8] c"  br i1 %has, label %reuse, label %fresh\0A\00"
+@.str1099 = private unnamed_addr constant [8 x i8] c"reuse:\0A\00"
+@.str1100 = private unnamed_addr constant [25 x i8] c"  %fn1 = sub i32 %fn, 1\0A\00"
+@.str1101 = private unnamed_addr constant [32 x i8] c"  store i32 %fn1, ptr @L_freen\0A\00"
+@.str1102 = private unnamed_addr constant [33 x i8] c"  %fp = getelementptr inbounds [\00"
+@.str1103 = private unnamed_addr constant [43 x i8] c" x i32], ptr @L_freelist, i32 0, i32 %fn1\0A\00"
+@.str1104 = private unnamed_addr constant [27 x i8] c"  %re = load i32, ptr %fp\0A\00"
+@.str1105 = private unnamed_addr constant [18 x i8] c"  br label %done\0A\00"
+@.str1106 = private unnamed_addr constant [8 x i8] c"fresh:\0A\00"
+@.str1107 = private unnamed_addr constant [31 x i8] c"  %ec = load i32, ptr @L_entc\0A\00"
+@.str1108 = private unnamed_addr constant [25 x i8] c"  %ec1 = add i32 %ec, 1\0A\00"
+@.str1109 = private unnamed_addr constant [31 x i8] c"  store i32 %ec1, ptr @L_entc\0A\00"
+@.str1110 = private unnamed_addr constant [18 x i8] c"  br label %done\0A\00"
+@.str1111 = private unnamed_addr constant [7 x i8] c"done:\0A\00"
+@.str1112 = private unnamed_addr constant [49 x i8] c"  %e = phi i32 [ %re, %reuse ], [ %ec, %fresh ]\0A\00"
+@.str1113 = private unnamed_addr constant [30 x i8] c"  call void @L_reset(i32 %e)\0A\00"
+@.str1114 = private unnamed_addr constant [33 x i8] c"  %ap = getelementptr inbounds [\00"
+@.str1115 = private unnamed_addr constant [38 x i8] c" x i32], ptr @L_alive, i32 0, i32 %e\0A\00"
+@.str1116 = private unnamed_addr constant [24 x i8] c"  store i32 1, ptr %ap\0A\00"
+@.str1117 = private unnamed_addr constant [17 x i8] c"  ret i32 %e\0A}\0A\0A\00"
+@.str1118 = private unnamed_addr constant [45 x i8] c"define void @L_free_entity(i32 %e) {\0Aentry:\0A\00"
+@.str1119 = private unnamed_addr constant [33 x i8] c"  %ap = getelementptr inbounds [\00"
+@.str1120 = private unnamed_addr constant [38 x i8] c" x i32], ptr @L_alive, i32 0, i32 %e\0A\00"
+@.str1121 = private unnamed_addr constant [24 x i8] c"  store i32 0, ptr %ap\0A\00"
+@.str1122 = private unnamed_addr constant [30 x i8] c"  call void @L_reset(i32 %e)\0A\00"
+@.str1123 = private unnamed_addr constant [32 x i8] c"  %fn = load i32, ptr @L_freen\0A\00"
+@.str1124 = private unnamed_addr constant [33 x i8] c"  %fp = getelementptr inbounds [\00"
+@.str1125 = private unnamed_addr constant [42 x i8] c" x i32], ptr @L_freelist, i32 0, i32 %fn\0A\00"
+@.str1126 = private unnamed_addr constant [25 x i8] c"  store i32 %e, ptr %fp\0A\00"
+@.str1127 = private unnamed_addr constant [25 x i8] c"  %fn1 = add i32 %fn, 1\0A\00"
+@.str1128 = private unnamed_addr constant [32 x i8] c"  store i32 %fn1, ptr @L_freen\0A\00"
+@.str1129 = private unnamed_addr constant [15 x i8] c"  ret void\0A}\0A\0A\00"
+@.str1130 = private unnamed_addr constant [4 x i8] c"i32\00"
+@.str1131 = private unnamed_addr constant [4 x i8] c"i32\00"
+@.str1132 = private unnamed_addr constant [2 x i8] c"0\00"
+@.str1133 = private unnamed_addr constant [6 x i8] c"qcond\00"
+@.str1134 = private unnamed_addr constant [6 x i8] c"qbody\00"
+@.str1135 = private unnamed_addr constant [6 x i8] c"qnext\00"
+@.str1136 = private unnamed_addr constant [5 x i8] c"qend\00"
+@.str1137 = private unnamed_addr constant [13 x i8] c"  br label %\00"
+@.str1138 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1139 = private unnamed_addr constant [3 x i8] c":\0A\00"
+@.str1140 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
+@.str1141 = private unnamed_addr constant [22 x i8] c"load i32, ptr @L_entc\00"
+@.str1142 = private unnamed_addr constant [14 x i8] c"icmp slt i32 \00"
+@.str1143 = private unnamed_addr constant [3 x i8] c", \00"
+@.str1144 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
+@.str1145 = private unnamed_addr constant [10 x i8] c", label %\00"
+@.str1146 = private unnamed_addr constant [10 x i8] c", label %\00"
+@.str1147 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1148 = private unnamed_addr constant [3 x i8] c":\0A\00"
+@.str1149 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
+@.str1150 = private unnamed_addr constant [3 x i8] c"  \00"
+@.str1151 = private unnamed_addr constant [28 x i8] c" = getelementptr inbounds [\00"
+@.str1152 = private unnamed_addr constant [35 x i8] c" x i32], ptr @L_alive, i32 0, i32 \00"
+@.str1153 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1154 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
+@.str1155 = private unnamed_addr constant [13 x i8] c"icmp ne i32 \00"
+@.str1156 = private unnamed_addr constant [4 x i8] c", 0\00"
+@.str1157 = private unnamed_addr constant [3 x i8] c"qa\00"
+@.str1158 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
+@.str1159 = private unnamed_addr constant [10 x i8] c", label %\00"
+@.str1160 = private unnamed_addr constant [10 x i8] c", label %\00"
+@.str1161 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1162 = private unnamed_addr constant [3 x i8] c":\0A\00"
+@.str1163 = private unnamed_addr constant [2 x i8] c"0\00"
+@.str1164 = private unnamed_addr constant [3 x i8] c"  \00"
+@.str1165 = private unnamed_addr constant [28 x i8] c" = getelementptr inbounds [\00"
+@.str1166 = private unnamed_addr constant [34 x i8] c" x i32], ptr @L_kind, i32 0, i32 \00"
+@.str1167 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1168 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
+@.str1169 = private unnamed_addr constant [13 x i8] c"icmp eq i32 \00"
+@.str1170 = private unnamed_addr constant [3 x i8] c", \00"
+@.str1171 = private unnamed_addr constant [3 x i8] c"  \00"
+@.str1172 = private unnamed_addr constant [28 x i8] c" = getelementptr inbounds [\00"
+@.str1173 = private unnamed_addr constant [16 x i8] c" x i8], ptr @H_\00"
+@.str1174 = private unnamed_addr constant [14 x i8] c", i32 0, i32 \00"
+@.str1175 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1176 = private unnamed_addr constant [14 x i8] c"load i8, ptr \00"
+@.str1177 = private unnamed_addr constant [12 x i8] c"icmp ne i8 \00"
+@.str1178 = private unnamed_addr constant [4 x i8] c", 0\00"
+@.str1179 = private unnamed_addr constant [3 x i8] c"qt\00"
+@.str1180 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
+@.str1181 = private unnamed_addr constant [10 x i8] c", label %\00"
+@.str1182 = private unnamed_addr constant [10 x i8] c", label %\00"
+@.str1183 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1184 = private unnamed_addr constant [3 x i8] c":\0A\00"
+@.str1185 = private unnamed_addr constant [3 x i8] c"  \00"
+@.str1186 = private unnamed_addr constant [28 x i8] c" = getelementptr inbounds [\00"
+@.str1187 = private unnamed_addr constant [9 x i8] c" x %Cmp_\00"
+@.str1188 = private unnamed_addr constant [11 x i8] c"], ptr @S_\00"
+@.str1189 = private unnamed_addr constant [14 x i8] c", i32 0, i32 \00"
+@.str1190 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1191 = private unnamed_addr constant [4 x i8] c"ptr\00"
+@.str1192 = private unnamed_addr constant [13 x i8] c"  store ptr \00"
+@.str1193 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str1194 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1195 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str1196 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
-@.str1197 = private unnamed_addr constant [9 x i8] c"add i32 \00"
-@.str1198 = private unnamed_addr constant [4 x i8] c", 1\00"
-@.str1199 = private unnamed_addr constant [4 x i8] c"i32\00"
-@.str1200 = private unnamed_addr constant [13 x i8] c"  br label %\00"
+@.str1195 = private unnamed_addr constant [13 x i8] c"icmp ne i32 \00"
+@.str1196 = private unnamed_addr constant [4 x i8] c", 0\00"
+@.str1197 = private unnamed_addr constant [3 x i8] c"qw\00"
+@.str1198 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
+@.str1199 = private unnamed_addr constant [10 x i8] c", label %\00"
+@.str1200 = private unnamed_addr constant [10 x i8] c", label %\00"
 @.str1201 = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.str1202 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str1203 = private unnamed_addr constant [25 x i8] c"spawn: unknown property \00"
-@.str1204 = private unnamed_addr constant [3 x i8] c"  \00"
-@.str1205 = private unnamed_addr constant [28 x i8] c" = getelementptr inbounds [\00"
-@.str1206 = private unnamed_addr constant [16 x i8] c" x i8], ptr @H_\00"
-@.str1207 = private unnamed_addr constant [14 x i8] c", i32 0, i32 \00"
-@.str1208 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1209 = private unnamed_addr constant [19 x i8] c"  store i8 1, ptr \00"
-@.str1210 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1211 = private unnamed_addr constant [3 x i8] c"  \00"
-@.str1212 = private unnamed_addr constant [28 x i8] c" = getelementptr inbounds [\00"
-@.str1213 = private unnamed_addr constant [9 x i8] c" x %Cmp_\00"
-@.str1214 = private unnamed_addr constant [11 x i8] c"], ptr @S_\00"
-@.str1215 = private unnamed_addr constant [14 x i8] c", i32 0, i32 \00"
-@.str1216 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1217 = private unnamed_addr constant [3 x i8] c"  \00"
-@.str1218 = private unnamed_addr constant [32 x i8] c" = getelementptr inbounds %Cmp_\00"
-@.str1219 = private unnamed_addr constant [7 x i8] c", ptr \00"
-@.str1220 = private unnamed_addr constant [14 x i8] c", i32 0, i32 \00"
-@.str1221 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1222 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str1223 = private unnamed_addr constant [4 x i8] c"ptr\00"
-@.str1224 = private unnamed_addr constant [5 x i8] c"null\00"
-@.str1225 = private unnamed_addr constant [9 x i8] c"  store \00"
-@.str1226 = private unnamed_addr constant [2 x i8] c" \00"
-@.str1227 = private unnamed_addr constant [7 x i8] c", ptr \00"
-@.str1228 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1229 = private unnamed_addr constant [3 x i8] c"  \00"
-@.str1230 = private unnamed_addr constant [32 x i8] c" = getelementptr inbounds %Cmp_\00"
-@.str1231 = private unnamed_addr constant [7 x i8] c", ptr \00"
-@.str1232 = private unnamed_addr constant [14 x i8] c", i32 0, i32 \00"
-@.str1233 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1234 = private unnamed_addr constant [9 x i8] c"  store \00"
-@.str1235 = private unnamed_addr constant [2 x i8] c" \00"
-@.str1236 = private unnamed_addr constant [7 x i8] c", ptr \00"
-@.str1237 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1238 = private unnamed_addr constant [3 x i8] c"  \00"
-@.str1239 = private unnamed_addr constant [28 x i8] c" = getelementptr inbounds [\00"
-@.str1240 = private unnamed_addr constant [9 x i8] c" x %Cmp_\00"
-@.str1241 = private unnamed_addr constant [11 x i8] c"], ptr @S_\00"
+@.str1203 = private unnamed_addr constant [13 x i8] c"  br label %\00"
+@.str1204 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1205 = private unnamed_addr constant [3 x i8] c":\0A\00"
+@.str1206 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
+@.str1207 = private unnamed_addr constant [9 x i8] c"add i32 \00"
+@.str1208 = private unnamed_addr constant [4 x i8] c", 1\00"
+@.str1209 = private unnamed_addr constant [4 x i8] c"i32\00"
+@.str1210 = private unnamed_addr constant [13 x i8] c"  br label %\00"
+@.str1211 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1212 = private unnamed_addr constant [3 x i8] c":\0A\00"
+@.str1213 = private unnamed_addr constant [25 x i8] c"spawn: unknown property \00"
+@.str1214 = private unnamed_addr constant [3 x i8] c"  \00"
+@.str1215 = private unnamed_addr constant [28 x i8] c" = getelementptr inbounds [\00"
+@.str1216 = private unnamed_addr constant [16 x i8] c" x i8], ptr @H_\00"
+@.str1217 = private unnamed_addr constant [14 x i8] c", i32 0, i32 \00"
+@.str1218 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1219 = private unnamed_addr constant [19 x i8] c"  store i8 1, ptr \00"
+@.str1220 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1221 = private unnamed_addr constant [3 x i8] c"  \00"
+@.str1222 = private unnamed_addr constant [28 x i8] c" = getelementptr inbounds [\00"
+@.str1223 = private unnamed_addr constant [9 x i8] c" x %Cmp_\00"
+@.str1224 = private unnamed_addr constant [11 x i8] c"], ptr @S_\00"
+@.str1225 = private unnamed_addr constant [14 x i8] c", i32 0, i32 \00"
+@.str1226 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1227 = private unnamed_addr constant [3 x i8] c"  \00"
+@.str1228 = private unnamed_addr constant [32 x i8] c" = getelementptr inbounds %Cmp_\00"
+@.str1229 = private unnamed_addr constant [7 x i8] c", ptr \00"
+@.str1230 = private unnamed_addr constant [14 x i8] c", i32 0, i32 \00"
+@.str1231 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1232 = private unnamed_addr constant [2 x i8] c"0\00"
+@.str1233 = private unnamed_addr constant [4 x i8] c"ptr\00"
+@.str1234 = private unnamed_addr constant [5 x i8] c"null\00"
+@.str1235 = private unnamed_addr constant [9 x i8] c"  store \00"
+@.str1236 = private unnamed_addr constant [2 x i8] c" \00"
+@.str1237 = private unnamed_addr constant [7 x i8] c", ptr \00"
+@.str1238 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1239 = private unnamed_addr constant [3 x i8] c"  \00"
+@.str1240 = private unnamed_addr constant [32 x i8] c" = getelementptr inbounds %Cmp_\00"
+@.str1241 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str1242 = private unnamed_addr constant [14 x i8] c", i32 0, i32 \00"
 @.str1243 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1244 = private unnamed_addr constant [4 x i8] c"ptr\00"
-@.str1245 = private unnamed_addr constant [13 x i8] c"  store ptr \00"
+@.str1244 = private unnamed_addr constant [9 x i8] c"  store \00"
+@.str1245 = private unnamed_addr constant [2 x i8] c" \00"
 @.str1246 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str1247 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1248 = private unnamed_addr constant [20 x i8] c"call i32 @L_alloc()\00"
-@.str1249 = private unnamed_addr constant [3 x i8] c"  \00"
-@.str1250 = private unnamed_addr constant [28 x i8] c" = getelementptr inbounds [\00"
-@.str1251 = private unnamed_addr constant [34 x i8] c" x i32], ptr @L_kind, i32 0, i32 \00"
-@.str1252 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1253 = private unnamed_addr constant [13 x i8] c"  store i32 \00"
-@.str1254 = private unnamed_addr constant [7 x i8] c", ptr \00"
-@.str1255 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1256 = private unnamed_addr constant [32 x i8] c"  call void @L_free_entity(i32 \00"
-@.str1257 = private unnamed_addr constant [3 x i8] c")\0A\00"
-@.str1258 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str1259 = private unnamed_addr constant [17 x i8] c"  br label %ret\0A\00"
-@.str1260 = private unnamed_addr constant [17 x i8] c"ret:\0A  ret void\0A\00"
-@.str1261 = private unnamed_addr constant [18 x i8] c"define void @sys_\00"
-@.str1262 = private unnamed_addr constant [13 x i8] c"() {\0Aentry:\0A\00"
-@.str1263 = private unnamed_addr constant [4 x i8] c"}\0A\0A\00"
-@.str1264 = private unnamed_addr constant [18 x i8] c"  call void @sys_\00"
-@.str1265 = private unnamed_addr constant [4 x i8] c"()\0A\00"
-@.str1266 = private unnamed_addr constant [49 x i8] c"define i32 @main(i32 %argc, ptr %argv) {\0Aentry:\0A\00"
-@.str1267 = private unnamed_addr constant [32 x i8] c"  store i32 %argc, ptr @L_argc\0A\00"
-@.str1268 = private unnamed_addr constant [32 x i8] c"  store ptr %argv, ptr @L_argv\0A\00"
-@.str1269 = private unnamed_addr constant [8 x i8] c"rt_init\00"
-@.str1270 = private unnamed_addr constant [27 x i8] c"  call void @fn_rt_init()\0A\00"
-@.str1271 = private unnamed_addr constant [6 x i8] c"Start\00"
-@.str1272 = private unnamed_addr constant [18 x i8] c"  br label %loop\0A\00"
-@.str1273 = private unnamed_addr constant [7 x i8] c"loop:\0A\00"
-@.str1274 = private unnamed_addr constant [25 x i8] c"load i32, ptr @L_running\00"
-@.str1275 = private unnamed_addr constant [13 x i8] c"icmp ne i32 \00"
-@.str1276 = private unnamed_addr constant [4 x i8] c", 0\00"
-@.str1277 = private unnamed_addr constant [11 x i8] c"rt_running\00"
-@.str1278 = private unnamed_addr constant [26 x i8] c"call i32 @fn_rt_running()\00"
-@.str1279 = private unnamed_addr constant [13 x i8] c"icmp ne i32 \00"
-@.str1280 = private unnamed_addr constant [4 x i8] c", 0\00"
-@.str1281 = private unnamed_addr constant [8 x i8] c"and i1 \00"
-@.str1282 = private unnamed_addr constant [3 x i8] c", \00"
-@.str1283 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
-@.str1284 = private unnamed_addr constant [28 x i8] c", label %body, label %done\0A\00"
-@.str1285 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
-@.str1286 = private unnamed_addr constant [28 x i8] c", label %body, label %done\0A\00"
-@.str1287 = private unnamed_addr constant [7 x i8] c"body:\0A\00"
-@.str1288 = private unnamed_addr constant [8 x i8] c"rt_poll\00"
-@.str1289 = private unnamed_addr constant [23 x i8] c"call i32 @fn_rt_poll()\00"
-@.str1290 = private unnamed_addr constant [13 x i8] c"  store i32 \00"
-@.str1291 = private unnamed_addr constant [14 x i8] c", ptr @L_key\0A\00"
-@.str1292 = private unnamed_addr constant [6 x i8] c"Input\00"
-@.str1293 = private unnamed_addr constant [12 x i8] c"FixedUpdate\00"
-@.str1294 = private unnamed_addr constant [7 x i8] c"Update\00"
-@.str1295 = private unnamed_addr constant [11 x i8] c"LateUpdate\00"
-@.str1296 = private unnamed_addr constant [7 x i8] c"Render\00"
-@.str1297 = private unnamed_addr constant [18 x i8] c"  br label %loop\0A\00"
-@.str1298 = private unnamed_addr constant [7 x i8] c"done:\0A\00"
-@.str1299 = private unnamed_addr constant [12 x i8] c"rt_shutdown\00"
-@.str1300 = private unnamed_addr constant [31 x i8] c"  call void @fn_rt_shutdown()\0A\00"
-@.str1301 = private unnamed_addr constant [15 x i8] c"  ret i32 0\0A}\0A\00"
-@.str1302 = private unnamed_addr constant [25 x i8] c"call i32 @fn_rt_reg(i32 \00"
-@.str1303 = private unnamed_addr constant [2 x i8] c")\00"
-@.str1304 = private unnamed_addr constant [6 x i8] c"smend\00"
-@.str1305 = private unnamed_addr constant [13 x i8] c"icmp eq i32 \00"
-@.str1306 = private unnamed_addr constant [3 x i8] c", \00"
-@.str1307 = private unnamed_addr constant [6 x i8] c"sbody\00"
-@.str1308 = private unnamed_addr constant [5 x i8] c"sarm\00"
-@.str1309 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
-@.str1310 = private unnamed_addr constant [10 x i8] c", label %\00"
-@.str1311 = private unnamed_addr constant [10 x i8] c", label %\00"
-@.str1312 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1313 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str1314 = private unnamed_addr constant [13 x i8] c"  br label %\00"
-@.str1315 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1316 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str1317 = private unnamed_addr constant [13 x i8] c"  br label %\00"
-@.str1318 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1319 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str1320 = private unnamed_addr constant [27 x i8] c"'become' outside a machine\00"
-@.str1321 = private unnamed_addr constant [18 x i8] c"become: no state \00"
-@.str1322 = private unnamed_addr constant [31 x i8] c"  call void @fn_rt_setreg(i32 \00"
-@.str1323 = private unnamed_addr constant [7 x i8] c", i32 \00"
-@.str1324 = private unnamed_addr constant [3 x i8] c")\0A\00"
-@.str1325 = private unnamed_addr constant [4 x i8] c"%io\00"
-@.str1326 = private unnamed_addr constant [3 x i8] c"  \00"
-@.str1327 = private unnamed_addr constant [14 x i8] c" = call i64 @\00"
-@.str1328 = private unnamed_addr constant [6 x i8] c"(ptr \00"
-@.str1329 = private unnamed_addr constant [14 x i8] c", i64 1, i64 \00"
-@.str1330 = private unnamed_addr constant [11 x i8] c", ptr %f)\0A\00"
-@.str1331 = private unnamed_addr constant [8 x i8] c"@L_entc\00"
-@.str1332 = private unnamed_addr constant [2 x i8] c"4\00"
-@.str1333 = private unnamed_addr constant [9 x i8] c"@L_freen\00"
-@.str1334 = private unnamed_addr constant [2 x i8] c"4\00"
-@.str1335 = private unnamed_addr constant [21 x i8] c"  %nalive = mul i64 \00"
-@.str1336 = private unnamed_addr constant [5 x i8] c", 4\0A\00"
-@.str1337 = private unnamed_addr constant [9 x i8] c"@L_alive\00"
-@.str1338 = private unnamed_addr constant [8 x i8] c"%nalive\00"
-@.str1339 = private unnamed_addr constant [12 x i8] c"@L_freelist\00"
-@.str1340 = private unnamed_addr constant [8 x i8] c"%nalive\00"
-@.str1341 = private unnamed_addr constant [8 x i8] c"@L_kind\00"
-@.str1342 = private unnamed_addr constant [8 x i8] c"%nalive\00"
-@.str1343 = private unnamed_addr constant [4 x i8] c"@g_\00"
-@.str1344 = private unnamed_addr constant [2 x i8] c"4\00"
-@.str1345 = private unnamed_addr constant [5 x i8] c"%csz\00"
-@.str1346 = private unnamed_addr constant [3 x i8] c"  \00"
-@.str1347 = private unnamed_addr constant [37 x i8] c" = ptrtoint ptr getelementptr (%Cmp_\00"
-@.str1348 = private unnamed_addr constant [17 x i8] c", ptr null, i32 \00"
-@.str1349 = private unnamed_addr constant [10 x i8] c") to i64\0A\00"
-@.str1350 = private unnamed_addr constant [4 x i8] c"@S_\00"
-@.str1351 = private unnamed_addr constant [4 x i8] c"@H_\00"
-@.str1352 = private unnamed_addr constant [70 x i8] c"@.sav_path = private unnamed_addr constant [10 x i8] c\22ludic.sav\5C00\22\0A\00"
-@.str1353 = private unnamed_addr constant [60 x i8] c"@.sav_wb = private unnamed_addr constant [3 x i8] c\22wb\5C00\22\0A\00"
-@.str1354 = private unnamed_addr constant [60 x i8] c"@.sav_rb = private unnamed_addr constant [3 x i8] c\22rb\5C00\22\0A\00"
-@.str1355 = private unnamed_addr constant [14 x i8] c"rt_save_state\00"
-@.str1356 = private unnamed_addr constant [14 x i8] c"rt_load_state\00"
-@.str1357 = private unnamed_addr constant [32 x i8] c"define void @L_save() {\0Aentry:\0A\00"
-@.str1358 = private unnamed_addr constant [54 x i8] c"  %f = call ptr @fopen(ptr @.sav_path, ptr @.sav_wb)\0A\00"
-@.str1359 = private unnamed_addr constant [31 x i8] c"  %bad = icmp eq ptr %f, null\0A\00"
-@.str1360 = private unnamed_addr constant [41 x i8] c"  br i1 %bad, label %out, label %go\0Ago:\0A\00"
-@.str1361 = private unnamed_addr constant [7 x i8] c"fwrite\00"
-@.str1362 = private unnamed_addr constant [39 x i8] c"  call void @fn_rt_save_state(ptr %f)\0A\00"
-@.str1363 = private unnamed_addr constant [68 x i8] c"  %c = call i32 @fclose(ptr %f)\0A  br label %out\0Aout:\0A  ret void\0A}\0A\0A\00"
-@.str1364 = private unnamed_addr constant [31 x i8] c"define i32 @L_load() {\0Aentry:\0A\00"
-@.str1365 = private unnamed_addr constant [54 x i8] c"  %f = call ptr @fopen(ptr @.sav_path, ptr @.sav_rb)\0A\00"
-@.str1366 = private unnamed_addr constant [31 x i8] c"  %bad = icmp eq ptr %f, null\0A\00"
-@.str1367 = private unnamed_addr constant [60 x i8] c"  br i1 %bad, label %miss, label %go\0Amiss:\0A  ret i32 0\0Ago:\0A\00"
-@.str1368 = private unnamed_addr constant [6 x i8] c"fread\00"
-@.str1369 = private unnamed_addr constant [39 x i8] c"  call void @fn_rt_load_state(ptr %f)\0A\00"
-@.str1370 = private unnamed_addr constant [48 x i8] c"  %c = call i32 @fclose(ptr %f)\0A  ret i32 1\0A}\0A\0A\00"
-@.str1371 = private unnamed_addr constant [6 x i8] c"panel\00"
-@.str1372 = private unnamed_addr constant [4 x i8] c"col\00"
-@.str1373 = private unnamed_addr constant [4 x i8] c"row\00"
-@.str1374 = private unnamed_addr constant [6 x i8] c"label\00"
-@.str1375 = private unnamed_addr constant [7 x i8] c"button\00"
-@.str1376 = private unnamed_addr constant [6 x i8] c"image\00"
-@.str1377 = private unnamed_addr constant [7 x i8] c"spacer\00"
-@.str1378 = private unnamed_addr constant [3 x i8] c"id\00"
-@.str1379 = private unnamed_addr constant [31 x i8] c"  call void @fn_rt_ui_set(i32 \00"
-@.str1380 = private unnamed_addr constant [7 x i8] c", i32 \00"
-@.str1381 = private unnamed_addr constant [7 x i8] c", i32 \00"
-@.str1382 = private unnamed_addr constant [3 x i8] c")\0A\00"
-@.str1383 = private unnamed_addr constant [2 x i8] c"w\00"
-@.str1384 = private unnamed_addr constant [2 x i8] c"h\00"
-@.str1385 = private unnamed_addr constant [2 x i8] c"x\00"
-@.str1386 = private unnamed_addr constant [2 x i8] c"y\00"
-@.str1387 = private unnamed_addr constant [4 x i8] c"pad\00"
-@.str1388 = private unnamed_addr constant [4 x i8] c"gap\00"
-@.str1389 = private unnamed_addr constant [3 x i8] c"bg\00"
-@.str1390 = private unnamed_addr constant [3 x i8] c"fg\00"
-@.str1391 = private unnamed_addr constant [7 x i8] c"border\00"
-@.str1392 = private unnamed_addr constant [5 x i8] c"grow\00"
-@.str1393 = private unnamed_addr constant [5 x i8] c"font\00"
-@.str1394 = private unnamed_addr constant [5 x i8] c"size\00"
-@.str1395 = private unnamed_addr constant [6 x i8] c"inset\00"
-@.str1396 = private unnamed_addr constant [6 x i8] c"focus\00"
-@.str1397 = private unnamed_addr constant [33 x i8] c"  call void @fn_rt_ui_reset(i32 \00"
-@.str1398 = private unnamed_addr constant [3 x i8] c")\0A\00"
-@.str1399 = private unnamed_addr constant [2 x i8] c"1\00"
-@.str1400 = private unnamed_addr constant [3 x i8] c"id\00"
-@.str1401 = private unnamed_addr constant [5 x i8] c"text\00"
-@.str1402 = private unnamed_addr constant [39 x i8] c"  call void @fn_rt_ui_static_text(i32 \00"
-@.str1403 = private unnamed_addr constant [7 x i8] c", ptr \00"
-@.str1404 = private unnamed_addr constant [3 x i8] c")\0A\00"
-@.str1405 = private unnamed_addr constant [5 x i8] c"skin\00"
-@.str1406 = private unnamed_addr constant [6 x i8] c"image\00"
-@.str1407 = private unnamed_addr constant [32 x i8] c"call i32 @fn_rt_image_load(ptr \00"
-@.str1408 = private unnamed_addr constant [2 x i8] c")\00"
-@.str1409 = private unnamed_addr constant [5 x i8] c"skin\00"
-@.str1410 = private unnamed_addr constant [6 x i8] c"align\00"
-@.str1411 = private unnamed_addr constant [7 x i8] c"center\00"
-@.str1412 = private unnamed_addr constant [4 x i8] c"end\00"
-@.str1413 = private unnamed_addr constant [2 x i8] c"1\00"
-@.str1414 = private unnamed_addr constant [34 x i8] c"define void @ui_build() {\0Aentry:\0A\00"
-@.str1415 = private unnamed_addr constant [15 x i8] c"  ret void\0A}\0A\0A\00"
-@.str1416 = private unnamed_addr constant [3 x i8] c", \00"
-@.str1417 = private unnamed_addr constant [7 x i8] c" %arg_\00"
-@.str1418 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str1419 = private unnamed_addr constant [20 x i8] c"  %retval = alloca \00"
-@.str1420 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1421 = private unnamed_addr constant [9 x i8] c"  store \00"
-@.str1422 = private unnamed_addr constant [7 x i8] c" %arg_\00"
-@.str1423 = private unnamed_addr constant [7 x i8] c", ptr \00"
-@.str1424 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1425 = private unnamed_addr constant [17 x i8] c"  br label %ret\0A\00"
-@.str1426 = private unnamed_addr constant [6 x i8] c"ret:\0A\00"
-@.str1427 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str1428 = private unnamed_addr constant [12 x i8] c"  ret void\0A\00"
-@.str1429 = private unnamed_addr constant [6 x i8] c"load \00"
-@.str1430 = private unnamed_addr constant [14 x i8] c", ptr %retval\00"
-@.str1431 = private unnamed_addr constant [7 x i8] c"  ret \00"
-@.str1432 = private unnamed_addr constant [2 x i8] c" \00"
-@.str1433 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1434 = private unnamed_addr constant [8 x i8] c"define \00"
-@.str1435 = private unnamed_addr constant [6 x i8] c" @fn_\00"
-@.str1436 = private unnamed_addr constant [2 x i8] c"(\00"
-@.str1437 = private unnamed_addr constant [12 x i8] c") {\0Aentry:\0A\00"
-@.str1438 = private unnamed_addr constant [4 x i8] c"}\0A\0A\00"
-@.str1439 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str1440 = private unnamed_addr constant [24 x i8] c"  %retval = alloca i32\0A\00"
-@.str1441 = private unnamed_addr constant [32 x i8] c"  store i32 %argc, ptr @L_argc\0A\00"
-@.str1442 = private unnamed_addr constant [32 x i8] c"  store ptr %argv, ptr @L_argv\0A\00"
-@.str1443 = private unnamed_addr constant [28 x i8] c"  store i32 0, ptr %retval\0A\00"
-@.str1444 = private unnamed_addr constant [17 x i8] c"  br label %ret\0A\00"
-@.str1445 = private unnamed_addr constant [6 x i8] c"ret:\0A\00"
-@.str1446 = private unnamed_addr constant [22 x i8] c"load i32, ptr %retval\00"
-@.str1447 = private unnamed_addr constant [11 x i8] c"  ret i32 \00"
-@.str1448 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1449 = private unnamed_addr constant [49 x i8] c"define i32 @main(i32 %argc, ptr %argv) {\0Aentry:\0A\00"
-@.str1450 = private unnamed_addr constant [3 x i8] c"}\0A\00"
-@.str1451 = private unnamed_addr constant [3 x i8] c"wb\00"
-@.str1452 = private unnamed_addr constant [7 x i8] c".ludic\00"
-@.str1453 = private unnamed_addr constant [2 x i8] c"/\00"
-@.str1454 = private unnamed_addr constant [6 x i8] c"ludic\00"
-@.str1455 = private unnamed_addr constant [11 x i8] c"--windowed\00"
-@.str1456 = private unnamed_addr constant [11 x i8] c"--headless\00"
-@.str1457 = private unnamed_addr constant [12 x i8] c"--emit-llvm\00"
-@.str1458 = private unnamed_addr constant [6 x i8] c"--fmt\00"
-@.str1459 = private unnamed_addr constant [13 x i8] c"--save-temps\00"
-@.str1460 = private unnamed_addr constant [6 x i8] c"--run\00"
-@.str1461 = private unnamed_addr constant [3 x i8] c"-o\00"
-@.str1462 = private unnamed_addr constant [31 x i8] c"ludicc: ignoring unknown flag \00"
-@.str1463 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1464 = private unnamed_addr constant [90 x i8] c"usage: ludicc <file.ludic> [-o out] [--windowed|--headless] [--emit-llvm] [--save-temps]\0A\00"
-@.str1465 = private unnamed_addr constant [27 x i8] c"ludicc: cannot open input\0A\00"
-@.str1466 = private unnamed_addr constant [16 x i8] c"/tmp/ludic-run-\00"
-@.str1467 = private unnamed_addr constant [10 x i8] c"mkdir -p \00"
-@.str1468 = private unnamed_addr constant [4 x i8] c".ll\00"
-@.str1469 = private unnamed_addr constant [25 x i8] c"ludicc: cannot write IR\0A\00"
-@.str1470 = private unnamed_addr constant [9 x i8] c"LUDIC_CC\00"
-@.str1471 = private unnamed_addr constant [6 x i8] c"clang\00"
-@.str1472 = private unnamed_addr constant [11 x i8] c"LUDIC_HOME\00"
-@.str1473 = private unnamed_addr constant [27 x i8] c" -O2 -Wno-override-module \00"
-@.str1474 = private unnamed_addr constant [24 x i8] c"runtime/native/cocoa.ll\00"
-@.str1475 = private unnamed_addr constant [2 x i8] c" \00"
-@.str1476 = private unnamed_addr constant [42 x i8] c" -framework Cocoa -Wl,-rpath,@loader_path\00"
-@.str1477 = private unnamed_addr constant [5 x i8] c" -o \00"
-@.str1478 = private unnamed_addr constant [7 x i8] c"rm -f \00"
-@.str1479 = private unnamed_addr constant [21 x i8] c"ludicc: link failed\0A\00"
+@.str1248 = private unnamed_addr constant [4 x i8] c"ptr\00"
+@.str1249 = private unnamed_addr constant [13 x i8] c"  store ptr \00"
+@.str1250 = private unnamed_addr constant [7 x i8] c", ptr \00"
+@.str1251 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1252 = private unnamed_addr constant [3 x i8] c"  \00"
+@.str1253 = private unnamed_addr constant [28 x i8] c" = getelementptr inbounds [\00"
+@.str1254 = private unnamed_addr constant [9 x i8] c" x %Cmp_\00"
+@.str1255 = private unnamed_addr constant [11 x i8] c"], ptr @S_\00"
+@.str1256 = private unnamed_addr constant [14 x i8] c", i32 0, i32 \00"
+@.str1257 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1258 = private unnamed_addr constant [4 x i8] c"ptr\00"
+@.str1259 = private unnamed_addr constant [13 x i8] c"  store ptr \00"
+@.str1260 = private unnamed_addr constant [7 x i8] c", ptr \00"
+@.str1261 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1262 = private unnamed_addr constant [20 x i8] c"call i32 @L_alloc()\00"
+@.str1263 = private unnamed_addr constant [3 x i8] c"  \00"
+@.str1264 = private unnamed_addr constant [28 x i8] c" = getelementptr inbounds [\00"
+@.str1265 = private unnamed_addr constant [34 x i8] c" x i32], ptr @L_kind, i32 0, i32 \00"
+@.str1266 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1267 = private unnamed_addr constant [13 x i8] c"  store i32 \00"
+@.str1268 = private unnamed_addr constant [7 x i8] c", ptr \00"
+@.str1269 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1270 = private unnamed_addr constant [3 x i8] c"  \00"
+@.str1271 = private unnamed_addr constant [28 x i8] c" = getelementptr inbounds [\00"
+@.str1272 = private unnamed_addr constant [34 x i8] c" x i32], ptr @L_kind, i32 0, i32 \00"
+@.str1273 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1274 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
+@.str1275 = private unnamed_addr constant [13 x i8] c"icmp eq i32 \00"
+@.str1276 = private unnamed_addr constant [3 x i8] c", \00"
+@.str1277 = private unnamed_addr constant [3 x i8] c"dh\00"
+@.str1278 = private unnamed_addr constant [4 x i8] c"dhn\00"
+@.str1279 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
+@.str1280 = private unnamed_addr constant [10 x i8] c", label %\00"
+@.str1281 = private unnamed_addr constant [10 x i8] c", label %\00"
+@.str1282 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1283 = private unnamed_addr constant [27 x i8] c":\0A  call void @on_despawn_\00"
+@.str1284 = private unnamed_addr constant [6 x i8] c"(i32 \00"
+@.str1285 = private unnamed_addr constant [3 x i8] c")\0A\00"
+@.str1286 = private unnamed_addr constant [13 x i8] c"  br label %\00"
+@.str1287 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1288 = private unnamed_addr constant [3 x i8] c":\0A\00"
+@.str1289 = private unnamed_addr constant [32 x i8] c"  call void @L_free_entity(i32 \00"
+@.str1290 = private unnamed_addr constant [3 x i8] c")\0A\00"
+@.str1291 = private unnamed_addr constant [5 x i8] c"void\00"
+@.str1292 = private unnamed_addr constant [17 x i8] c"  br label %ret\0A\00"
+@.str1293 = private unnamed_addr constant [17 x i8] c"ret:\0A  ret void\0A\00"
+@.str1294 = private unnamed_addr constant [18 x i8] c"define void @sys_\00"
+@.str1295 = private unnamed_addr constant [13 x i8] c"() {\0Aentry:\0A\00"
+@.str1296 = private unnamed_addr constant [4 x i8] c"}\0A\0A\00"
+@.str1297 = private unnamed_addr constant [18 x i8] c"  call void @sys_\00"
+@.str1298 = private unnamed_addr constant [4 x i8] c"()\0A\00"
+@.str1299 = private unnamed_addr constant [5 x i8] c"void\00"
+@.str1300 = private unnamed_addr constant [3 x i8] c"%e\00"
+@.str1301 = private unnamed_addr constant [17 x i8] c"  br label %ret\0A\00"
+@.str1302 = private unnamed_addr constant [17 x i8] c"ret:\0A  ret void\0A\00"
+@.str1303 = private unnamed_addr constant [25 x i8] c"define void @on_despawn_\00"
+@.str1304 = private unnamed_addr constant [19 x i8] c"(i32 %e) {\0Aentry:\0A\00"
+@.str1305 = private unnamed_addr constant [4 x i8] c"}\0A\0A\00"
+@.str1306 = private unnamed_addr constant [49 x i8] c"define i32 @main(i32 %argc, ptr %argv) {\0Aentry:\0A\00"
+@.str1307 = private unnamed_addr constant [32 x i8] c"  store i32 %argc, ptr @L_argc\0A\00"
+@.str1308 = private unnamed_addr constant [32 x i8] c"  store ptr %argv, ptr @L_argv\0A\00"
+@.str1309 = private unnamed_addr constant [8 x i8] c"rt_init\00"
+@.str1310 = private unnamed_addr constant [27 x i8] c"  call void @fn_rt_init()\0A\00"
+@.str1311 = private unnamed_addr constant [6 x i8] c"Start\00"
+@.str1312 = private unnamed_addr constant [18 x i8] c"  br label %loop\0A\00"
+@.str1313 = private unnamed_addr constant [7 x i8] c"loop:\0A\00"
+@.str1314 = private unnamed_addr constant [25 x i8] c"load i32, ptr @L_running\00"
+@.str1315 = private unnamed_addr constant [13 x i8] c"icmp ne i32 \00"
+@.str1316 = private unnamed_addr constant [4 x i8] c", 0\00"
+@.str1317 = private unnamed_addr constant [11 x i8] c"rt_running\00"
+@.str1318 = private unnamed_addr constant [26 x i8] c"call i32 @fn_rt_running()\00"
+@.str1319 = private unnamed_addr constant [13 x i8] c"icmp ne i32 \00"
+@.str1320 = private unnamed_addr constant [4 x i8] c", 0\00"
+@.str1321 = private unnamed_addr constant [8 x i8] c"and i1 \00"
+@.str1322 = private unnamed_addr constant [3 x i8] c", \00"
+@.str1323 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
+@.str1324 = private unnamed_addr constant [28 x i8] c", label %body, label %done\0A\00"
+@.str1325 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
+@.str1326 = private unnamed_addr constant [28 x i8] c", label %body, label %done\0A\00"
+@.str1327 = private unnamed_addr constant [7 x i8] c"body:\0A\00"
+@.str1328 = private unnamed_addr constant [8 x i8] c"rt_poll\00"
+@.str1329 = private unnamed_addr constant [23 x i8] c"call i32 @fn_rt_poll()\00"
+@.str1330 = private unnamed_addr constant [13 x i8] c"  store i32 \00"
+@.str1331 = private unnamed_addr constant [14 x i8] c", ptr @L_key\0A\00"
+@.str1332 = private unnamed_addr constant [6 x i8] c"Input\00"
+@.str1333 = private unnamed_addr constant [12 x i8] c"FixedUpdate\00"
+@.str1334 = private unnamed_addr constant [7 x i8] c"Update\00"
+@.str1335 = private unnamed_addr constant [11 x i8] c"LateUpdate\00"
+@.str1336 = private unnamed_addr constant [7 x i8] c"Render\00"
+@.str1337 = private unnamed_addr constant [18 x i8] c"  br label %loop\0A\00"
+@.str1338 = private unnamed_addr constant [7 x i8] c"done:\0A\00"
+@.str1339 = private unnamed_addr constant [7 x i8] c"OnQuit\00"
+@.str1340 = private unnamed_addr constant [12 x i8] c"rt_shutdown\00"
+@.str1341 = private unnamed_addr constant [31 x i8] c"  call void @fn_rt_shutdown()\0A\00"
+@.str1342 = private unnamed_addr constant [15 x i8] c"  ret i32 0\0A}\0A\00"
+@.str1343 = private unnamed_addr constant [25 x i8] c"call i32 @fn_rt_reg(i32 \00"
+@.str1344 = private unnamed_addr constant [2 x i8] c")\00"
+@.str1345 = private unnamed_addr constant [6 x i8] c"smend\00"
+@.str1346 = private unnamed_addr constant [13 x i8] c"icmp eq i32 \00"
+@.str1347 = private unnamed_addr constant [3 x i8] c", \00"
+@.str1348 = private unnamed_addr constant [6 x i8] c"sbody\00"
+@.str1349 = private unnamed_addr constant [5 x i8] c"sarm\00"
+@.str1350 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
+@.str1351 = private unnamed_addr constant [10 x i8] c", label %\00"
+@.str1352 = private unnamed_addr constant [10 x i8] c", label %\00"
+@.str1353 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1354 = private unnamed_addr constant [3 x i8] c":\0A\00"
+@.str1355 = private unnamed_addr constant [13 x i8] c"  br label %\00"
+@.str1356 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1357 = private unnamed_addr constant [3 x i8] c":\0A\00"
+@.str1358 = private unnamed_addr constant [13 x i8] c"  br label %\00"
+@.str1359 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1360 = private unnamed_addr constant [3 x i8] c":\0A\00"
+@.str1361 = private unnamed_addr constant [27 x i8] c"'become' outside a machine\00"
+@.str1362 = private unnamed_addr constant [18 x i8] c"become: no state \00"
+@.str1363 = private unnamed_addr constant [31 x i8] c"  call void @fn_rt_setreg(i32 \00"
+@.str1364 = private unnamed_addr constant [7 x i8] c", i32 \00"
+@.str1365 = private unnamed_addr constant [3 x i8] c")\0A\00"
+@.str1366 = private unnamed_addr constant [4 x i8] c"%io\00"
+@.str1367 = private unnamed_addr constant [3 x i8] c"  \00"
+@.str1368 = private unnamed_addr constant [14 x i8] c" = call i64 @\00"
+@.str1369 = private unnamed_addr constant [6 x i8] c"(ptr \00"
+@.str1370 = private unnamed_addr constant [14 x i8] c", i64 1, i64 \00"
+@.str1371 = private unnamed_addr constant [11 x i8] c", ptr %f)\0A\00"
+@.str1372 = private unnamed_addr constant [8 x i8] c"@L_entc\00"
+@.str1373 = private unnamed_addr constant [2 x i8] c"4\00"
+@.str1374 = private unnamed_addr constant [9 x i8] c"@L_freen\00"
+@.str1375 = private unnamed_addr constant [2 x i8] c"4\00"
+@.str1376 = private unnamed_addr constant [21 x i8] c"  %nalive = mul i64 \00"
+@.str1377 = private unnamed_addr constant [5 x i8] c", 4\0A\00"
+@.str1378 = private unnamed_addr constant [9 x i8] c"@L_alive\00"
+@.str1379 = private unnamed_addr constant [8 x i8] c"%nalive\00"
+@.str1380 = private unnamed_addr constant [12 x i8] c"@L_freelist\00"
+@.str1381 = private unnamed_addr constant [8 x i8] c"%nalive\00"
+@.str1382 = private unnamed_addr constant [8 x i8] c"@L_kind\00"
+@.str1383 = private unnamed_addr constant [8 x i8] c"%nalive\00"
+@.str1384 = private unnamed_addr constant [4 x i8] c"@g_\00"
+@.str1385 = private unnamed_addr constant [2 x i8] c"4\00"
+@.str1386 = private unnamed_addr constant [5 x i8] c"%csz\00"
+@.str1387 = private unnamed_addr constant [3 x i8] c"  \00"
+@.str1388 = private unnamed_addr constant [37 x i8] c" = ptrtoint ptr getelementptr (%Cmp_\00"
+@.str1389 = private unnamed_addr constant [17 x i8] c", ptr null, i32 \00"
+@.str1390 = private unnamed_addr constant [10 x i8] c") to i64\0A\00"
+@.str1391 = private unnamed_addr constant [4 x i8] c"@S_\00"
+@.str1392 = private unnamed_addr constant [4 x i8] c"@H_\00"
+@.str1393 = private unnamed_addr constant [70 x i8] c"@.sav_path = private unnamed_addr constant [10 x i8] c\22ludic.sav\5C00\22\0A\00"
+@.str1394 = private unnamed_addr constant [60 x i8] c"@.sav_wb = private unnamed_addr constant [3 x i8] c\22wb\5C00\22\0A\00"
+@.str1395 = private unnamed_addr constant [60 x i8] c"@.sav_rb = private unnamed_addr constant [3 x i8] c\22rb\5C00\22\0A\00"
+@.str1396 = private unnamed_addr constant [14 x i8] c"rt_save_state\00"
+@.str1397 = private unnamed_addr constant [14 x i8] c"rt_load_state\00"
+@.str1398 = private unnamed_addr constant [32 x i8] c"define void @L_save() {\0Aentry:\0A\00"
+@.str1399 = private unnamed_addr constant [54 x i8] c"  %f = call ptr @fopen(ptr @.sav_path, ptr @.sav_wb)\0A\00"
+@.str1400 = private unnamed_addr constant [31 x i8] c"  %bad = icmp eq ptr %f, null\0A\00"
+@.str1401 = private unnamed_addr constant [41 x i8] c"  br i1 %bad, label %out, label %go\0Ago:\0A\00"
+@.str1402 = private unnamed_addr constant [7 x i8] c"fwrite\00"
+@.str1403 = private unnamed_addr constant [39 x i8] c"  call void @fn_rt_save_state(ptr %f)\0A\00"
+@.str1404 = private unnamed_addr constant [68 x i8] c"  %c = call i32 @fclose(ptr %f)\0A  br label %out\0Aout:\0A  ret void\0A}\0A\0A\00"
+@.str1405 = private unnamed_addr constant [31 x i8] c"define i32 @L_load() {\0Aentry:\0A\00"
+@.str1406 = private unnamed_addr constant [54 x i8] c"  %f = call ptr @fopen(ptr @.sav_path, ptr @.sav_rb)\0A\00"
+@.str1407 = private unnamed_addr constant [31 x i8] c"  %bad = icmp eq ptr %f, null\0A\00"
+@.str1408 = private unnamed_addr constant [60 x i8] c"  br i1 %bad, label %miss, label %go\0Amiss:\0A  ret i32 0\0Ago:\0A\00"
+@.str1409 = private unnamed_addr constant [6 x i8] c"fread\00"
+@.str1410 = private unnamed_addr constant [39 x i8] c"  call void @fn_rt_load_state(ptr %f)\0A\00"
+@.str1411 = private unnamed_addr constant [48 x i8] c"  %c = call i32 @fclose(ptr %f)\0A  ret i32 1\0A}\0A\0A\00"
+@.str1412 = private unnamed_addr constant [6 x i8] c"panel\00"
+@.str1413 = private unnamed_addr constant [4 x i8] c"col\00"
+@.str1414 = private unnamed_addr constant [4 x i8] c"row\00"
+@.str1415 = private unnamed_addr constant [6 x i8] c"label\00"
+@.str1416 = private unnamed_addr constant [7 x i8] c"button\00"
+@.str1417 = private unnamed_addr constant [6 x i8] c"image\00"
+@.str1418 = private unnamed_addr constant [7 x i8] c"spacer\00"
+@.str1419 = private unnamed_addr constant [3 x i8] c"id\00"
+@.str1420 = private unnamed_addr constant [31 x i8] c"  call void @fn_rt_ui_set(i32 \00"
+@.str1421 = private unnamed_addr constant [7 x i8] c", i32 \00"
+@.str1422 = private unnamed_addr constant [7 x i8] c", i32 \00"
+@.str1423 = private unnamed_addr constant [3 x i8] c")\0A\00"
+@.str1424 = private unnamed_addr constant [2 x i8] c"w\00"
+@.str1425 = private unnamed_addr constant [2 x i8] c"h\00"
+@.str1426 = private unnamed_addr constant [2 x i8] c"x\00"
+@.str1427 = private unnamed_addr constant [2 x i8] c"y\00"
+@.str1428 = private unnamed_addr constant [4 x i8] c"pad\00"
+@.str1429 = private unnamed_addr constant [4 x i8] c"gap\00"
+@.str1430 = private unnamed_addr constant [3 x i8] c"bg\00"
+@.str1431 = private unnamed_addr constant [3 x i8] c"fg\00"
+@.str1432 = private unnamed_addr constant [7 x i8] c"border\00"
+@.str1433 = private unnamed_addr constant [5 x i8] c"grow\00"
+@.str1434 = private unnamed_addr constant [5 x i8] c"font\00"
+@.str1435 = private unnamed_addr constant [5 x i8] c"size\00"
+@.str1436 = private unnamed_addr constant [6 x i8] c"inset\00"
+@.str1437 = private unnamed_addr constant [6 x i8] c"focus\00"
+@.str1438 = private unnamed_addr constant [33 x i8] c"  call void @fn_rt_ui_reset(i32 \00"
+@.str1439 = private unnamed_addr constant [3 x i8] c")\0A\00"
+@.str1440 = private unnamed_addr constant [2 x i8] c"1\00"
+@.str1441 = private unnamed_addr constant [3 x i8] c"id\00"
+@.str1442 = private unnamed_addr constant [5 x i8] c"text\00"
+@.str1443 = private unnamed_addr constant [39 x i8] c"  call void @fn_rt_ui_static_text(i32 \00"
+@.str1444 = private unnamed_addr constant [7 x i8] c", ptr \00"
+@.str1445 = private unnamed_addr constant [3 x i8] c")\0A\00"
+@.str1446 = private unnamed_addr constant [5 x i8] c"skin\00"
+@.str1447 = private unnamed_addr constant [6 x i8] c"image\00"
+@.str1448 = private unnamed_addr constant [32 x i8] c"call i32 @fn_rt_image_load(ptr \00"
+@.str1449 = private unnamed_addr constant [2 x i8] c")\00"
+@.str1450 = private unnamed_addr constant [5 x i8] c"skin\00"
+@.str1451 = private unnamed_addr constant [6 x i8] c"align\00"
+@.str1452 = private unnamed_addr constant [7 x i8] c"center\00"
+@.str1453 = private unnamed_addr constant [4 x i8] c"end\00"
+@.str1454 = private unnamed_addr constant [2 x i8] c"1\00"
+@.str1455 = private unnamed_addr constant [34 x i8] c"define void @ui_build() {\0Aentry:\0A\00"
+@.str1456 = private unnamed_addr constant [15 x i8] c"  ret void\0A}\0A\0A\00"
+@.str1457 = private unnamed_addr constant [3 x i8] c", \00"
+@.str1458 = private unnamed_addr constant [7 x i8] c" %arg_\00"
+@.str1459 = private unnamed_addr constant [5 x i8] c"void\00"
+@.str1460 = private unnamed_addr constant [20 x i8] c"  %retval = alloca \00"
+@.str1461 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1462 = private unnamed_addr constant [9 x i8] c"  store \00"
+@.str1463 = private unnamed_addr constant [7 x i8] c" %arg_\00"
+@.str1464 = private unnamed_addr constant [7 x i8] c", ptr \00"
+@.str1465 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1466 = private unnamed_addr constant [17 x i8] c"  br label %ret\0A\00"
+@.str1467 = private unnamed_addr constant [6 x i8] c"ret:\0A\00"
+@.str1468 = private unnamed_addr constant [5 x i8] c"void\00"
+@.str1469 = private unnamed_addr constant [12 x i8] c"  ret void\0A\00"
+@.str1470 = private unnamed_addr constant [6 x i8] c"load \00"
+@.str1471 = private unnamed_addr constant [14 x i8] c", ptr %retval\00"
+@.str1472 = private unnamed_addr constant [7 x i8] c"  ret \00"
+@.str1473 = private unnamed_addr constant [2 x i8] c" \00"
+@.str1474 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1475 = private unnamed_addr constant [8 x i8] c"define \00"
+@.str1476 = private unnamed_addr constant [6 x i8] c" @fn_\00"
+@.str1477 = private unnamed_addr constant [2 x i8] c"(\00"
+@.str1478 = private unnamed_addr constant [12 x i8] c") {\0Aentry:\0A\00"
+@.str1479 = private unnamed_addr constant [4 x i8] c"}\0A\0A\00"
+@.str1480 = private unnamed_addr constant [4 x i8] c"int\00"
+@.str1481 = private unnamed_addr constant [24 x i8] c"  %retval = alloca i32\0A\00"
+@.str1482 = private unnamed_addr constant [32 x i8] c"  store i32 %argc, ptr @L_argc\0A\00"
+@.str1483 = private unnamed_addr constant [32 x i8] c"  store ptr %argv, ptr @L_argv\0A\00"
+@.str1484 = private unnamed_addr constant [28 x i8] c"  store i32 0, ptr %retval\0A\00"
+@.str1485 = private unnamed_addr constant [17 x i8] c"  br label %ret\0A\00"
+@.str1486 = private unnamed_addr constant [6 x i8] c"ret:\0A\00"
+@.str1487 = private unnamed_addr constant [22 x i8] c"load i32, ptr %retval\00"
+@.str1488 = private unnamed_addr constant [11 x i8] c"  ret i32 \00"
+@.str1489 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1490 = private unnamed_addr constant [49 x i8] c"define i32 @main(i32 %argc, ptr %argv) {\0Aentry:\0A\00"
+@.str1491 = private unnamed_addr constant [3 x i8] c"}\0A\00"
+@.str1492 = private unnamed_addr constant [3 x i8] c"wb\00"
+@.str1493 = private unnamed_addr constant [7 x i8] c".ludic\00"
+@.str1494 = private unnamed_addr constant [2 x i8] c"/\00"
+@.str1495 = private unnamed_addr constant [6 x i8] c"ludic\00"
+@.str1496 = private unnamed_addr constant [11 x i8] c"--windowed\00"
+@.str1497 = private unnamed_addr constant [11 x i8] c"--headless\00"
+@.str1498 = private unnamed_addr constant [12 x i8] c"--emit-llvm\00"
+@.str1499 = private unnamed_addr constant [6 x i8] c"--fmt\00"
+@.str1500 = private unnamed_addr constant [13 x i8] c"--save-temps\00"
+@.str1501 = private unnamed_addr constant [6 x i8] c"--run\00"
+@.str1502 = private unnamed_addr constant [3 x i8] c"-o\00"
+@.str1503 = private unnamed_addr constant [31 x i8] c"ludicc: ignoring unknown flag \00"
+@.str1504 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str1505 = private unnamed_addr constant [90 x i8] c"usage: ludicc <file.ludic> [-o out] [--windowed|--headless] [--emit-llvm] [--save-temps]\0A\00"
+@.str1506 = private unnamed_addr constant [27 x i8] c"ludicc: cannot open input\0A\00"
+@.str1507 = private unnamed_addr constant [16 x i8] c"/tmp/ludic-run-\00"
+@.str1508 = private unnamed_addr constant [10 x i8] c"mkdir -p \00"
+@.str1509 = private unnamed_addr constant [4 x i8] c".ll\00"
+@.str1510 = private unnamed_addr constant [25 x i8] c"ludicc: cannot write IR\0A\00"
+@.str1511 = private unnamed_addr constant [9 x i8] c"LUDIC_CC\00"
+@.str1512 = private unnamed_addr constant [6 x i8] c"clang\00"
+@.str1513 = private unnamed_addr constant [11 x i8] c"LUDIC_HOME\00"
+@.str1514 = private unnamed_addr constant [27 x i8] c" -O2 -Wno-override-module \00"
+@.str1515 = private unnamed_addr constant [24 x i8] c"runtime/native/cocoa.ll\00"
+@.str1516 = private unnamed_addr constant [2 x i8] c" \00"
+@.str1517 = private unnamed_addr constant [42 x i8] c" -framework Cocoa -Wl,-rpath,@loader_path\00"
+@.str1518 = private unnamed_addr constant [5 x i8] c" -o \00"
+@.str1519 = private unnamed_addr constant [7 x i8] c"rm -f \00"
+@.str1520 = private unnamed_addr constant [21 x i8] c"ludicc: link failed\0A\00"
 define i32 @fn_streq(ptr %arg_a, ptr %arg_b) {
 entry:
   %retval = alloca i32
@@ -6107,96 +6150,148 @@ entry:
   %t0 = alloca i32
   %t1 = alloca ptr
   %t2 = alloca ptr
-  %t8 = alloca ptr
-  %t22 = alloca i32
-  %t48 = alloca ptr
-  %t58 = alloca ptr
-  %t153 = alloca ptr
-  %t176 = alloca ptr
-  %t291 = alloca ptr
+  %t3 = alloca ptr
+  %t4 = alloca ptr
+  %t5 = alloca ptr
+  %t11 = alloca ptr
+  %t39 = alloca i32
+  %t65 = alloca ptr
+  %t75 = alloca ptr
+  %t170 = alloca ptr
+  %t222 = alloca ptr
+  %t337 = alloca ptr
   store i32 0, ptr %t0
   store ptr null, ptr %t1
   store ptr null, ptr %t2
+  store ptr null, ptr %t3
+  store ptr null, ptr %t4
+  store ptr null, ptr %t5
   br label %wcond0
 wcond0:
-  %t3 = call i32 @fn_is_op(ptr @.str105)
-  %t4 = icmp ne i32 %t3, 0
-  br i1 %t4, label %wbody1, label %wend2
+  %t6 = call i32 @fn_is_op(ptr @.str105)
+  %t7 = icmp ne i32 %t6, 0
+  br i1 %t7, label %wbody1, label %wend2
 wbody1:
-  %t5 = load i32, ptr @g_pi
-  %t6 = add i32 %t5, 1
-  store i32 %t6, ptr @g_pi
-  %t7 = call ptr @fn_eat_id()
-  store ptr %t7, ptr %t8
-  %t9 = load ptr, ptr %t8
-  %t10 = call i32 @fn_streq(ptr %t9, ptr @.str106)
-  %t11 = icmp ne i32 %t10, 0
-  br i1 %t11, label %then3, label %else4
+  %t8 = load i32, ptr @g_pi
+  %t9 = add i32 %t8, 1
+  store i32 %t9, ptr @g_pi
+  %t10 = call ptr @fn_eat_id()
+  store ptr %t10, ptr %t11
+  %t12 = load ptr, ptr %t11
+  %t13 = call i32 @fn_streq(ptr %t12, ptr @.str106)
+  %t14 = icmp ne i32 %t13, 0
+  br i1 %t14, label %then3, label %else4
 then3:
   store i32 1, ptr %t0
   br label %ifend5
 else4:
-  %t12 = load ptr, ptr %t8
-  %t13 = call i32 @fn_streq(ptr %t12, ptr @.str107)
-  %t14 = icmp ne i32 %t13, 0
-  br i1 %t14, label %then6, label %else7
+  %t15 = load ptr, ptr %t11
+  %t16 = call i32 @fn_streq(ptr %t15, ptr @.str107)
+  %t17 = icmp ne i32 %t16, 0
+  br i1 %t17, label %then6, label %else7
 then6:
-  %t15 = call ptr @fn_parse_queries_anno()
-  store ptr %t15, ptr %t1
+  %t18 = call ptr @fn_parse_queries_anno()
+  store ptr %t18, ptr %t1
   br label %ifend8
 else7:
-  %t16 = load ptr, ptr %t8
-  %t17 = call i32 @fn_streq(ptr %t16, ptr @.str108)
-  %t18 = icmp ne i32 %t17, 0
-  br i1 %t18, label %then9, label %else10
+  %t19 = load ptr, ptr %t11
+  %t20 = call i32 @fn_streq(ptr %t19, ptr @.str108)
+  %t21 = icmp ne i32 %t20, 0
+  br i1 %t21, label %then9, label %else10
 then9:
   call void @fn_eat_op(ptr @.str109)
-  %t19 = call ptr @fn_eat_id()
-  store ptr %t19, ptr %t2
+  %t22 = call ptr @fn_eat_id()
+  store ptr %t22, ptr %t2
   call void @fn_eat_op(ptr @.str110)
   br label %ifend11
 else10:
-  %t20 = call i32 @fn_is_op(ptr @.str111)
-  %t21 = icmp ne i32 %t20, 0
-  br i1 %t21, label %then12, label %ifend14
-then12:
-  store i32 0, ptr %t22
-  br label %wcond15
-wcond15:
-  %t23 = icmp ne i32 1, 0
-  br i1 %t23, label %wbody16, label %wend17
-wbody16:
-  %t24 = call i32 @fn_is_op(ptr @.str112)
+  %t23 = load ptr, ptr %t11
+  %t24 = call i32 @fn_streq(ptr %t23, ptr @.str111)
   %t25 = icmp ne i32 %t24, 0
-  br i1 %t25, label %then18, label %ifend20
-then18:
-  %t26 = load i32, ptr %t22
-  %t27 = add i32 %t26, 1
-  store i32 %t27, ptr %t22
-  br label %ifend20
-ifend20:
-  %t28 = call i32 @fn_is_op(ptr @.str113)
+  br i1 %t25, label %then12, label %else13
+then12:
+  call void @fn_eat_op(ptr @.str112)
+  %t26 = call ptr @fn_eat_id()
+  store ptr %t26, ptr %t3
+  call void @fn_eat_op(ptr @.str113)
+  br label %ifend14
+else13:
+  %t27 = load ptr, ptr %t11
+  %t28 = call i32 @fn_streq(ptr %t27, ptr @.str114)
   %t29 = icmp ne i32 %t28, 0
-  br i1 %t29, label %then21, label %ifend23
+  br i1 %t29, label %then15, label %else16
+then15:
+  call void @fn_eat_op(ptr @.str115)
+  %t30 = call ptr @fn_eat_id()
+  store ptr %t30, ptr %t4
+  call void @fn_eat_op(ptr @.str116)
+  br label %ifend17
+else16:
+  %t31 = load ptr, ptr %t11
+  %t32 = call i32 @fn_streq(ptr %t31, ptr @.str117)
+  %t33 = icmp ne i32 %t32, 0
+  br i1 %t33, label %then18, label %else19
+then18:
+  store ptr @.str118, ptr %t5
+  br label %ifend20
+else19:
+  %t34 = load ptr, ptr %t11
+  %t35 = call i32 @fn_streq(ptr %t34, ptr @.str119)
+  %t36 = icmp ne i32 %t35, 0
+  br i1 %t36, label %then21, label %else22
 then21:
-  %t30 = load i32, ptr %t22
-  %t31 = sub i32 %t30, 1
-  store i32 %t31, ptr %t22
+  store ptr @.str120, ptr %t5
+  br label %ifend23
+else22:
+  %t37 = call i32 @fn_is_op(ptr @.str121)
+  %t38 = icmp ne i32 %t37, 0
+  br i1 %t38, label %then24, label %ifend26
+then24:
+  store i32 0, ptr %t39
+  br label %wcond27
+wcond27:
+  %t40 = icmp ne i32 1, 0
+  br i1 %t40, label %wbody28, label %wend29
+wbody28:
+  %t41 = call i32 @fn_is_op(ptr @.str122)
+  %t42 = icmp ne i32 %t41, 0
+  br i1 %t42, label %then30, label %ifend32
+then30:
+  %t43 = load i32, ptr %t39
+  %t44 = add i32 %t43, 1
+  store i32 %t44, ptr %t39
+  br label %ifend32
+ifend32:
+  %t45 = call i32 @fn_is_op(ptr @.str123)
+  %t46 = icmp ne i32 %t45, 0
+  br i1 %t46, label %then33, label %ifend35
+then33:
+  %t47 = load i32, ptr %t39
+  %t48 = sub i32 %t47, 1
+  store i32 %t48, ptr %t39
+  br label %ifend35
+ifend35:
+  %t49 = load i32, ptr @g_pi
+  %t50 = add i32 %t49, 1
+  store i32 %t50, ptr @g_pi
+  %t51 = load i32, ptr %t39
+  %t52 = icmp eq i32 %t51, 0
+  %t53 = zext i1 %t52 to i32
+  %t54 = icmp ne i32 %t53, 0
+  br i1 %t54, label %then36, label %ifend38
+then36:
+  br label %wend29
+ifend38:
+  br label %wcond27
+wend29:
+  br label %ifend26
+ifend26:
   br label %ifend23
 ifend23:
-  %t32 = load i32, ptr @g_pi
-  %t33 = add i32 %t32, 1
-  store i32 %t33, ptr @g_pi
-  %t34 = load i32, ptr %t22
-  %t35 = icmp eq i32 %t34, 0
-  %t36 = zext i1 %t35 to i32
-  %t37 = icmp ne i32 %t36, 0
-  br i1 %t37, label %then24, label %ifend26
-then24:
-  br label %wend17
-ifend26:
-  br label %wcond15
-wend17:
+  br label %ifend20
+ifend20:
+  br label %ifend17
+ifend17:
   br label %ifend14
 ifend14:
   br label %ifend11
@@ -6208,497 +6303,541 @@ ifend5:
   call void @fn_skipnl()
   br label %wcond0
 wend2:
-  %t38 = call i32 @fn_is_id(ptr @.str114)
-  %t39 = icmp ne i32 %t38, 0
-  br i1 %t39, label %then27, label %ifend29
-then27:
-  %t40 = load i32, ptr @g_pi
-  %t41 = add i32 %t40, 1
-  store i32 %t41, ptr @g_pi
-  %t42 = load ptr, ptr @g_toks
-  %t43 = getelementptr inbounds %LSlice, ptr %t42, i32 0, i32 0
-  %t44 = load ptr, ptr %t43
-  %t45 = load i32, ptr @g_pi
-  %t46 = getelementptr inbounds ptr, ptr %t44, i32 %t45
-  %t47 = load ptr, ptr %t46
-  store ptr %t47, ptr %t48
-  %t49 = load ptr, ptr %t48
-  %t50 = getelementptr inbounds %Str_Tok, ptr %t49, i32 0, i32 0
-  %t51 = load i32, ptr %t50
-  %t52 = icmp ne i32 %t51, 2
-  %t53 = zext i1 %t52 to i32
-  %t54 = icmp ne i32 %t53, 0
-  br i1 %t54, label %then30, label %ifend32
-then30:
-  call void @fn_perr(ptr @.str115)
-  br label %ifend32
-ifend32:
-  %t55 = load ptr, ptr %t48
-  %t56 = getelementptr inbounds %Str_Tok, ptr %t55, i32 0, i32 1
-  %t57 = load ptr, ptr %t56
-  store ptr %t57, ptr %t58
-  %t59 = load i32, ptr @g_pi
-  %t60 = add i32 %t59, 1
-  store i32 %t60, ptr @g_pi
-  %t61 = load ptr, ptr %t58
-  call void @fn_do_import(ptr %t61)
+  %t55 = call i32 @fn_is_id(ptr @.str124)
+  %t56 = icmp ne i32 %t55, 0
+  br i1 %t56, label %then39, label %ifend41
+then39:
+  %t57 = load i32, ptr @g_pi
+  %t58 = add i32 %t57, 1
+  store i32 %t58, ptr @g_pi
+  %t59 = load ptr, ptr @g_toks
+  %t60 = getelementptr inbounds %LSlice, ptr %t59, i32 0, i32 0
+  %t61 = load ptr, ptr %t60
+  %t62 = load i32, ptr @g_pi
+  %t63 = getelementptr inbounds ptr, ptr %t61, i32 %t62
+  %t64 = load ptr, ptr %t63
+  store ptr %t64, ptr %t65
+  %t66 = load ptr, ptr %t65
+  %t67 = getelementptr inbounds %Str_Tok, ptr %t66, i32 0, i32 0
+  %t68 = load i32, ptr %t67
+  %t69 = icmp ne i32 %t68, 2
+  %t70 = zext i1 %t69 to i32
+  %t71 = icmp ne i32 %t70, 0
+  br i1 %t71, label %then42, label %ifend44
+then42:
+  call void @fn_perr(ptr @.str125)
+  br label %ifend44
+ifend44:
+  %t72 = load ptr, ptr %t65
+  %t73 = getelementptr inbounds %Str_Tok, ptr %t72, i32 0, i32 1
+  %t74 = load ptr, ptr %t73
+  store ptr %t74, ptr %t75
+  %t76 = load i32, ptr @g_pi
+  %t77 = add i32 %t76, 1
+  store i32 %t77, ptr @g_pi
+  %t78 = load ptr, ptr %t75
+  call void @fn_do_import(ptr %t78)
   br label %ret
-ifend29:
-  %t62 = call i32 @fn_is_id(ptr @.str116)
-  %t63 = icmp ne i32 %t62, 0
-  br i1 %t63, label %then33, label %ifend35
-then33:
-  %t64 = load ptr, ptr @g_prog
-  %t65 = getelementptr inbounds %LSlice, ptr %t64, i32 0, i32 1
-  %t66 = getelementptr inbounds %LSlice, ptr %t64, i32 0, i32 2
-  %t67 = getelementptr inbounds %LSlice, ptr %t64, i32 0, i32 0
-  %t68 = load i32, ptr %t65
-  %t69 = load i32, ptr %t66
-  %t70 = icmp sge i32 %t68, %t69
-  br i1 %t70, label %grow36, label %put37
-grow36:
-  %t71 = mul i32 %t69, 2
-  %t72 = icmp eq i32 %t69, 0
-  %t73 = select i1 %t72, i32 8, i32 %t71
-  %t74 = getelementptr ptr, ptr null, i32 1
-  %t75 = ptrtoint ptr %t74 to i64
-  %t76 = zext i32 %t73 to i64
-  %t77 = mul i64 %t76, %t75
-  %t78 = load ptr, ptr %t67
-  %t79 = call ptr @realloc(ptr %t78, i64 %t77)
-  store ptr %t79, ptr %t67
-  store i32 %t73, ptr %t66
-  br label %put37
-put37:
-  %t80 = call ptr @fn_parse_struct()
-  %t81 = load ptr, ptr %t67
-  %t82 = getelementptr inbounds ptr, ptr %t81, i32 %t68
-  store ptr %t80, ptr %t82
-  %t83 = add i32 %t68, 1
-  store i32 %t83, ptr %t65
+ifend41:
+  %t79 = call i32 @fn_is_id(ptr @.str126)
+  %t80 = icmp ne i32 %t79, 0
+  br i1 %t80, label %then45, label %ifend47
+then45:
+  %t81 = load ptr, ptr @g_prog
+  %t82 = getelementptr inbounds %LSlice, ptr %t81, i32 0, i32 1
+  %t83 = getelementptr inbounds %LSlice, ptr %t81, i32 0, i32 2
+  %t84 = getelementptr inbounds %LSlice, ptr %t81, i32 0, i32 0
+  %t85 = load i32, ptr %t82
+  %t86 = load i32, ptr %t83
+  %t87 = icmp sge i32 %t85, %t86
+  br i1 %t87, label %grow48, label %put49
+grow48:
+  %t88 = mul i32 %t86, 2
+  %t89 = icmp eq i32 %t86, 0
+  %t90 = select i1 %t89, i32 8, i32 %t88
+  %t91 = getelementptr ptr, ptr null, i32 1
+  %t92 = ptrtoint ptr %t91 to i64
+  %t93 = zext i32 %t90 to i64
+  %t94 = mul i64 %t93, %t92
+  %t95 = load ptr, ptr %t84
+  %t96 = call ptr @realloc(ptr %t95, i64 %t94)
+  store ptr %t96, ptr %t84
+  store i32 %t90, ptr %t83
+  br label %put49
+put49:
+  %t97 = call ptr @fn_parse_struct()
+  %t98 = load ptr, ptr %t84
+  %t99 = getelementptr inbounds ptr, ptr %t98, i32 %t85
+  store ptr %t97, ptr %t99
+  %t100 = add i32 %t85, 1
+  store i32 %t100, ptr %t82
   br label %ret
-ifend35:
-  %t84 = call i32 @fn_is_id(ptr @.str117)
-  %t85 = icmp ne i32 %t84, 0
-  br i1 %t85, label %then38, label %ifend40
-then38:
-  %t86 = load ptr, ptr @g_prog
-  %t87 = getelementptr inbounds %LSlice, ptr %t86, i32 0, i32 1
-  %t88 = getelementptr inbounds %LSlice, ptr %t86, i32 0, i32 2
-  %t89 = getelementptr inbounds %LSlice, ptr %t86, i32 0, i32 0
-  %t90 = load i32, ptr %t87
-  %t91 = load i32, ptr %t88
-  %t92 = icmp sge i32 %t90, %t91
-  br i1 %t92, label %grow41, label %put42
-grow41:
-  %t93 = mul i32 %t91, 2
-  %t94 = icmp eq i32 %t91, 0
-  %t95 = select i1 %t94, i32 8, i32 %t93
-  %t96 = getelementptr ptr, ptr null, i32 1
-  %t97 = ptrtoint ptr %t96 to i64
-  %t98 = zext i32 %t95 to i64
-  %t99 = mul i64 %t98, %t97
-  %t100 = load ptr, ptr %t89
-  %t101 = call ptr @realloc(ptr %t100, i64 %t99)
-  store ptr %t101, ptr %t89
-  store i32 %t95, ptr %t88
-  br label %put42
-put42:
-  %t102 = call ptr @fn_parse_enum()
-  %t103 = load ptr, ptr %t89
-  %t104 = getelementptr inbounds ptr, ptr %t103, i32 %t90
-  store ptr %t102, ptr %t104
-  %t105 = add i32 %t90, 1
-  store i32 %t105, ptr %t87
+ifend47:
+  %t101 = call i32 @fn_is_id(ptr @.str127)
+  %t102 = icmp ne i32 %t101, 0
+  br i1 %t102, label %then50, label %ifend52
+then50:
+  %t103 = load ptr, ptr @g_prog
+  %t104 = getelementptr inbounds %LSlice, ptr %t103, i32 0, i32 1
+  %t105 = getelementptr inbounds %LSlice, ptr %t103, i32 0, i32 2
+  %t106 = getelementptr inbounds %LSlice, ptr %t103, i32 0, i32 0
+  %t107 = load i32, ptr %t104
+  %t108 = load i32, ptr %t105
+  %t109 = icmp sge i32 %t107, %t108
+  br i1 %t109, label %grow53, label %put54
+grow53:
+  %t110 = mul i32 %t108, 2
+  %t111 = icmp eq i32 %t108, 0
+  %t112 = select i1 %t111, i32 8, i32 %t110
+  %t113 = getelementptr ptr, ptr null, i32 1
+  %t114 = ptrtoint ptr %t113 to i64
+  %t115 = zext i32 %t112 to i64
+  %t116 = mul i64 %t115, %t114
+  %t117 = load ptr, ptr %t106
+  %t118 = call ptr @realloc(ptr %t117, i64 %t116)
+  store ptr %t118, ptr %t106
+  store i32 %t112, ptr %t105
+  br label %put54
+put54:
+  %t119 = call ptr @fn_parse_enum()
+  %t120 = load ptr, ptr %t106
+  %t121 = getelementptr inbounds ptr, ptr %t120, i32 %t107
+  store ptr %t119, ptr %t121
+  %t122 = add i32 %t107, 1
+  store i32 %t122, ptr %t104
   br label %ret
-ifend40:
-  %t106 = call i32 @fn_is_id(ptr @.str118)
-  %t107 = icmp ne i32 %t106, 0
-  br i1 %t107, label %then43, label %ifend45
-then43:
-  %t108 = load ptr, ptr @g_prog
-  %t109 = getelementptr inbounds %LSlice, ptr %t108, i32 0, i32 1
-  %t110 = getelementptr inbounds %LSlice, ptr %t108, i32 0, i32 2
-  %t111 = getelementptr inbounds %LSlice, ptr %t108, i32 0, i32 0
-  %t112 = load i32, ptr %t109
-  %t113 = load i32, ptr %t110
-  %t114 = icmp sge i32 %t112, %t113
-  br i1 %t114, label %grow46, label %put47
-grow46:
-  %t115 = mul i32 %t113, 2
-  %t116 = icmp eq i32 %t113, 0
-  %t117 = select i1 %t116, i32 8, i32 %t115
-  %t118 = getelementptr ptr, ptr null, i32 1
-  %t119 = ptrtoint ptr %t118 to i64
-  %t120 = zext i32 %t117 to i64
-  %t121 = mul i64 %t120, %t119
-  %t122 = load ptr, ptr %t111
-  %t123 = call ptr @realloc(ptr %t122, i64 %t121)
-  store ptr %t123, ptr %t111
-  store i32 %t117, ptr %t110
-  br label %put47
-put47:
-  %t124 = call ptr @fn_parse_component()
-  %t125 = load ptr, ptr %t111
-  %t126 = getelementptr inbounds ptr, ptr %t125, i32 %t112
-  store ptr %t124, ptr %t126
-  %t127 = add i32 %t112, 1
-  store i32 %t127, ptr %t109
+ifend52:
+  %t123 = call i32 @fn_is_id(ptr @.str128)
+  %t124 = icmp ne i32 %t123, 0
+  br i1 %t124, label %then55, label %ifend57
+then55:
+  %t125 = load ptr, ptr @g_prog
+  %t126 = getelementptr inbounds %LSlice, ptr %t125, i32 0, i32 1
+  %t127 = getelementptr inbounds %LSlice, ptr %t125, i32 0, i32 2
+  %t128 = getelementptr inbounds %LSlice, ptr %t125, i32 0, i32 0
+  %t129 = load i32, ptr %t126
+  %t130 = load i32, ptr %t127
+  %t131 = icmp sge i32 %t129, %t130
+  br i1 %t131, label %grow58, label %put59
+grow58:
+  %t132 = mul i32 %t130, 2
+  %t133 = icmp eq i32 %t130, 0
+  %t134 = select i1 %t133, i32 8, i32 %t132
+  %t135 = getelementptr ptr, ptr null, i32 1
+  %t136 = ptrtoint ptr %t135 to i64
+  %t137 = zext i32 %t134 to i64
+  %t138 = mul i64 %t137, %t136
+  %t139 = load ptr, ptr %t128
+  %t140 = call ptr @realloc(ptr %t139, i64 %t138)
+  store ptr %t140, ptr %t128
+  store i32 %t134, ptr %t127
+  br label %put59
+put59:
+  %t141 = call ptr @fn_parse_component()
+  %t142 = load ptr, ptr %t128
+  %t143 = getelementptr inbounds ptr, ptr %t142, i32 %t129
+  store ptr %t141, ptr %t143
+  %t144 = add i32 %t129, 1
+  store i32 %t144, ptr %t126
   br label %ret
-ifend45:
-  %t128 = call i32 @fn_is_id(ptr @.str119)
-  %t129 = icmp ne i32 %t128, 0
-  br i1 %t129, label %then48, label %ifend50
-then48:
-  %t130 = load ptr, ptr @g_prog
-  %t131 = getelementptr inbounds %LSlice, ptr %t130, i32 0, i32 1
-  %t132 = getelementptr inbounds %LSlice, ptr %t130, i32 0, i32 2
-  %t133 = getelementptr inbounds %LSlice, ptr %t130, i32 0, i32 0
-  %t134 = load i32, ptr %t131
-  %t135 = load i32, ptr %t132
-  %t136 = icmp sge i32 %t134, %t135
-  br i1 %t136, label %grow51, label %put52
-grow51:
-  %t137 = mul i32 %t135, 2
-  %t138 = icmp eq i32 %t135, 0
-  %t139 = select i1 %t138, i32 8, i32 %t137
-  %t140 = getelementptr ptr, ptr null, i32 1
-  %t141 = ptrtoint ptr %t140 to i64
-  %t142 = zext i32 %t139 to i64
-  %t143 = mul i64 %t142, %t141
-  %t144 = load ptr, ptr %t133
-  %t145 = call ptr @realloc(ptr %t144, i64 %t143)
-  store ptr %t145, ptr %t133
-  store i32 %t139, ptr %t132
-  br label %put52
-put52:
-  %t146 = call ptr @fn_parse_archetype()
-  %t147 = load ptr, ptr %t133
-  %t148 = getelementptr inbounds ptr, ptr %t147, i32 %t134
-  store ptr %t146, ptr %t148
-  %t149 = add i32 %t134, 1
-  store i32 %t149, ptr %t131
+ifend57:
+  %t145 = call i32 @fn_is_id(ptr @.str129)
+  %t146 = icmp ne i32 %t145, 0
+  br i1 %t146, label %then60, label %ifend62
+then60:
+  %t147 = load ptr, ptr @g_prog
+  %t148 = getelementptr inbounds %LSlice, ptr %t147, i32 0, i32 1
+  %t149 = getelementptr inbounds %LSlice, ptr %t147, i32 0, i32 2
+  %t150 = getelementptr inbounds %LSlice, ptr %t147, i32 0, i32 0
+  %t151 = load i32, ptr %t148
+  %t152 = load i32, ptr %t149
+  %t153 = icmp sge i32 %t151, %t152
+  br i1 %t153, label %grow63, label %put64
+grow63:
+  %t154 = mul i32 %t152, 2
+  %t155 = icmp eq i32 %t152, 0
+  %t156 = select i1 %t155, i32 8, i32 %t154
+  %t157 = getelementptr ptr, ptr null, i32 1
+  %t158 = ptrtoint ptr %t157 to i64
+  %t159 = zext i32 %t156 to i64
+  %t160 = mul i64 %t159, %t158
+  %t161 = load ptr, ptr %t150
+  %t162 = call ptr @realloc(ptr %t161, i64 %t160)
+  store ptr %t162, ptr %t150
+  store i32 %t156, ptr %t149
+  br label %put64
+put64:
+  %t163 = call ptr @fn_parse_archetype()
+  %t164 = load ptr, ptr %t150
+  %t165 = getelementptr inbounds ptr, ptr %t164, i32 %t151
+  store ptr %t163, ptr %t165
+  %t166 = add i32 %t151, 1
+  store i32 %t166, ptr %t148
   br label %ret
-ifend50:
-  %t150 = call i32 @fn_is_id(ptr @.str120)
-  %t151 = icmp ne i32 %t150, 0
-  br i1 %t151, label %then53, label %ifend55
-then53:
-  %t152 = call ptr @fn_parse_system()
-  store ptr %t152, ptr %t153
-  %t154 = load ptr, ptr %t2
-  %t155 = icmp eq ptr %t154, null
-  %t156 = zext i1 %t155 to i32
-  %t157 = icmp eq i32 %t156, 0
-  %t158 = zext i1 %t157 to i32
-  %t159 = icmp ne i32 %t158, 0
-  br i1 %t159, label %then56, label %ifend58
-then56:
-  %t160 = load ptr, ptr %t2
-  %t161 = load ptr, ptr %t153
-  %t162 = getelementptr inbounds %Str_Node, ptr %t161, i32 0, i32 4
-  %t163 = load ptr, ptr %t162
-  call void @fn_register_onspawn(ptr %t160, ptr %t163)
+ifend62:
+  %t167 = call i32 @fn_is_id(ptr @.str130)
+  %t168 = icmp ne i32 %t167, 0
+  br i1 %t168, label %then65, label %ifend67
+then65:
+  %t169 = call ptr @fn_parse_system()
+  store ptr %t169, ptr %t170
+  %t171 = load ptr, ptr %t2
+  %t172 = icmp eq ptr %t171, null
+  %t173 = zext i1 %t172 to i32
+  %t174 = icmp eq i32 %t173, 0
+  %t175 = zext i1 %t174 to i32
+  %t176 = icmp ne i32 %t175, 0
+  br i1 %t176, label %then68, label %ifend70
+then68:
+  %t177 = load ptr, ptr %t2
+  %t178 = load ptr, ptr %t170
+  %t179 = getelementptr inbounds %Str_Node, ptr %t178, i32 0, i32 4
+  %t180 = load ptr, ptr %t179
+  call void @fn_register_onspawn(ptr %t177, ptr %t180)
   br label %ret
-ifend58:
-  %t164 = load ptr, ptr %t1
-  %t165 = icmp eq ptr %t164, null
-  %t166 = zext i1 %t165 to i32
-  %t167 = icmp eq i32 %t166, 0
-  %t168 = zext i1 %t167 to i32
-  %t169 = icmp ne i32 %t168, 0
-  br i1 %t169, label %then59, label %ifend61
-then59:
-  %t170 = load ptr, ptr %t1
-  %t171 = getelementptr inbounds %Str_Node, ptr %t170, i32 0, i32 4
-  %t172 = load ptr, ptr %t153
-  %t173 = getelementptr inbounds %Str_Node, ptr %t172, i32 0, i32 4
-  %t174 = load ptr, ptr %t173
-  store ptr %t174, ptr %t171
-  %t175 = call ptr @fn_node(i32 7)
-  store ptr %t175, ptr %t176
-  %t177 = load ptr, ptr %t176
-  %t178 = getelementptr inbounds %Str_Node, ptr %t177, i32 0, i32 7
-  %t179 = load ptr, ptr %t178
-  %t180 = getelementptr inbounds %LSlice, ptr %t179, i32 0, i32 1
-  %t181 = getelementptr inbounds %LSlice, ptr %t179, i32 0, i32 2
-  %t182 = getelementptr inbounds %LSlice, ptr %t179, i32 0, i32 0
-  %t183 = load i32, ptr %t180
-  %t184 = load i32, ptr %t181
-  %t185 = icmp sge i32 %t183, %t184
-  br i1 %t185, label %grow62, label %put63
-grow62:
-  %t186 = mul i32 %t184, 2
-  %t187 = icmp eq i32 %t184, 0
-  %t188 = select i1 %t187, i32 8, i32 %t186
-  %t189 = getelementptr ptr, ptr null, i32 1
-  %t190 = ptrtoint ptr %t189 to i64
-  %t191 = zext i32 %t188 to i64
-  %t192 = mul i64 %t191, %t190
-  %t193 = load ptr, ptr %t182
-  %t194 = call ptr @realloc(ptr %t193, i64 %t192)
-  store ptr %t194, ptr %t182
-  store i32 %t188, ptr %t181
-  br label %put63
-put63:
-  %t195 = load ptr, ptr %t1
-  %t196 = load ptr, ptr %t182
-  %t197 = getelementptr inbounds ptr, ptr %t196, i32 %t183
-  store ptr %t195, ptr %t197
-  %t198 = add i32 %t183, 1
-  store i32 %t198, ptr %t180
-  %t199 = load ptr, ptr %t153
-  %t200 = getelementptr inbounds %Str_Node, ptr %t199, i32 0, i32 4
-  %t201 = load ptr, ptr %t176
-  store ptr %t201, ptr %t200
-  br label %ifend61
-ifend61:
-  %t202 = load ptr, ptr @g_prog
-  %t203 = getelementptr inbounds %LSlice, ptr %t202, i32 0, i32 1
-  %t204 = getelementptr inbounds %LSlice, ptr %t202, i32 0, i32 2
-  %t205 = getelementptr inbounds %LSlice, ptr %t202, i32 0, i32 0
-  %t206 = load i32, ptr %t203
-  %t207 = load i32, ptr %t204
-  %t208 = icmp sge i32 %t206, %t207
-  br i1 %t208, label %grow64, label %put65
-grow64:
-  %t209 = mul i32 %t207, 2
-  %t210 = icmp eq i32 %t207, 0
-  %t211 = select i1 %t210, i32 8, i32 %t209
-  %t212 = getelementptr ptr, ptr null, i32 1
-  %t213 = ptrtoint ptr %t212 to i64
-  %t214 = zext i32 %t211 to i64
-  %t215 = mul i64 %t214, %t213
-  %t216 = load ptr, ptr %t205
-  %t217 = call ptr @realloc(ptr %t216, i64 %t215)
-  store ptr %t217, ptr %t205
-  store i32 %t211, ptr %t204
-  br label %put65
-put65:
-  %t218 = load ptr, ptr %t153
-  %t219 = load ptr, ptr %t205
-  %t220 = getelementptr inbounds ptr, ptr %t219, i32 %t206
-  store ptr %t218, ptr %t220
-  %t221 = add i32 %t206, 1
-  store i32 %t221, ptr %t203
-  br label %ret
-ifend55:
-  %t222 = call i32 @fn_is_id(ptr @.str121)
-  %t223 = icmp ne i32 %t222, 0
-  br i1 %t223, label %then66, label %ifend68
-then66:
-  %t224 = load ptr, ptr @g_prog
-  %t225 = getelementptr inbounds %LSlice, ptr %t224, i32 0, i32 1
-  %t226 = getelementptr inbounds %LSlice, ptr %t224, i32 0, i32 2
-  %t227 = getelementptr inbounds %LSlice, ptr %t224, i32 0, i32 0
-  %t228 = load i32, ptr %t225
-  %t229 = load i32, ptr %t226
-  %t230 = icmp sge i32 %t228, %t229
-  br i1 %t230, label %grow69, label %put70
-grow69:
-  %t231 = mul i32 %t229, 2
-  %t232 = icmp eq i32 %t229, 0
-  %t233 = select i1 %t232, i32 8, i32 %t231
-  %t234 = getelementptr ptr, ptr null, i32 1
-  %t235 = ptrtoint ptr %t234 to i64
-  %t236 = zext i32 %t233 to i64
-  %t237 = mul i64 %t236, %t235
-  %t238 = load ptr, ptr %t227
-  %t239 = call ptr @realloc(ptr %t238, i64 %t237)
-  store ptr %t239, ptr %t227
-  store i32 %t233, ptr %t226
-  br label %put70
-put70:
-  %t240 = call ptr @fn_parse_ui()
-  %t241 = load ptr, ptr %t227
-  %t242 = getelementptr inbounds ptr, ptr %t241, i32 %t228
-  store ptr %t240, ptr %t242
-  %t243 = add i32 %t228, 1
-  store i32 %t243, ptr %t225
-  br label %ret
-ifend68:
-  %t244 = call i32 @fn_is_id(ptr @.str122)
-  %t245 = icmp ne i32 %t244, 0
-  br i1 %t245, label %then71, label %ifend73
+ifend70:
+  %t181 = load ptr, ptr %t3
+  %t182 = icmp eq ptr %t181, null
+  %t183 = zext i1 %t182 to i32
+  %t184 = icmp eq i32 %t183, 0
+  %t185 = zext i1 %t184 to i32
+  %t186 = icmp ne i32 %t185, 0
+  br i1 %t186, label %then71, label %ifend73
 then71:
-  %t246 = load ptr, ptr @g_prog
-  %t247 = getelementptr inbounds %LSlice, ptr %t246, i32 0, i32 1
-  %t248 = getelementptr inbounds %LSlice, ptr %t246, i32 0, i32 2
-  %t249 = getelementptr inbounds %LSlice, ptr %t246, i32 0, i32 0
-  %t250 = load i32, ptr %t247
-  %t251 = load i32, ptr %t248
-  %t252 = icmp sge i32 %t250, %t251
-  br i1 %t252, label %grow74, label %put75
-grow74:
-  %t253 = mul i32 %t251, 2
-  %t254 = icmp eq i32 %t251, 0
-  %t255 = select i1 %t254, i32 8, i32 %t253
-  %t256 = getelementptr ptr, ptr null, i32 1
-  %t257 = ptrtoint ptr %t256 to i64
-  %t258 = zext i32 %t255 to i64
-  %t259 = mul i64 %t258, %t257
-  %t260 = load ptr, ptr %t249
-  %t261 = call ptr @realloc(ptr %t260, i64 %t259)
-  store ptr %t261, ptr %t249
-  store i32 %t255, ptr %t248
-  br label %put75
-put75:
-  %t262 = call ptr @fn_parse_var()
-  %t263 = load ptr, ptr %t249
-  %t264 = getelementptr inbounds ptr, ptr %t263, i32 %t250
-  store ptr %t262, ptr %t264
-  %t265 = add i32 %t250, 1
-  store i32 %t265, ptr %t247
+  %t187 = load ptr, ptr %t3
+  %t188 = load ptr, ptr %t170
+  %t189 = getelementptr inbounds %Str_Node, ptr %t188, i32 0, i32 4
+  %t190 = load ptr, ptr %t189
+  call void @fn_register_ondespawn(ptr %t187, ptr %t190)
   br label %ret
 ifend73:
-  %t266 = call i32 @fn_is_id(ptr @.str123)
-  %t267 = icmp ne i32 %t266, 0
-  br i1 %t267, label %then76, label %ifend78
-then76:
-  %t268 = load ptr, ptr @g_prog
-  %t269 = getelementptr inbounds %LSlice, ptr %t268, i32 0, i32 1
-  %t270 = getelementptr inbounds %LSlice, ptr %t268, i32 0, i32 2
-  %t271 = getelementptr inbounds %LSlice, ptr %t268, i32 0, i32 0
-  %t272 = load i32, ptr %t269
-  %t273 = load i32, ptr %t270
-  %t274 = icmp sge i32 %t272, %t273
-  br i1 %t274, label %grow79, label %put80
-grow79:
-  %t275 = mul i32 %t273, 2
-  %t276 = icmp eq i32 %t273, 0
-  %t277 = select i1 %t276, i32 8, i32 %t275
-  %t278 = getelementptr ptr, ptr null, i32 1
-  %t279 = ptrtoint ptr %t278 to i64
-  %t280 = zext i32 %t277 to i64
-  %t281 = mul i64 %t280, %t279
-  %t282 = load ptr, ptr %t271
-  %t283 = call ptr @realloc(ptr %t282, i64 %t281)
-  store ptr %t283, ptr %t271
-  store i32 %t277, ptr %t270
-  br label %put80
-put80:
-  %t284 = call ptr @fn_parse_const()
-  %t285 = load ptr, ptr %t271
-  %t286 = getelementptr inbounds ptr, ptr %t285, i32 %t272
-  store ptr %t284, ptr %t286
-  %t287 = add i32 %t272, 1
-  store i32 %t287, ptr %t269
+  %t191 = load ptr, ptr %t4
+  %t192 = icmp eq ptr %t191, null
+  %t193 = zext i1 %t192 to i32
+  %t194 = icmp eq i32 %t193, 0
+  %t195 = zext i1 %t194 to i32
+  %t196 = icmp ne i32 %t195, 0
+  br i1 %t196, label %then74, label %ifend76
+then74:
+  %t197 = load ptr, ptr %t4
+  %t198 = load ptr, ptr %t170
+  %t199 = getelementptr inbounds %Str_Node, ptr %t198, i32 0, i32 4
+  %t200 = load ptr, ptr %t199
+  call void @fn_register_onattach(ptr %t197, ptr %t200)
   br label %ret
-ifend78:
-  %t288 = call i32 @fn_is_id(ptr @.str124)
-  %t289 = icmp ne i32 %t288, 0
-  br i1 %t289, label %then81, label %ifend83
-then81:
-  %t290 = call ptr @fn_parse_fn()
-  store ptr %t290, ptr %t291
-  %t292 = load i32, ptr %t0
-  %t293 = icmp ne i32 %t292, 0
-  br i1 %t293, label %then84, label %ifend86
-then84:
-  %t294 = load ptr, ptr %t291
-  %t295 = getelementptr inbounds %Str_Node, ptr %t294, i32 0, i32 2
-  store i32 1, ptr %t295
-  br label %ifend86
-ifend86:
-  %t296 = load ptr, ptr @g_prog
-  %t297 = getelementptr inbounds %LSlice, ptr %t296, i32 0, i32 1
-  %t298 = getelementptr inbounds %LSlice, ptr %t296, i32 0, i32 2
-  %t299 = getelementptr inbounds %LSlice, ptr %t296, i32 0, i32 0
-  %t300 = load i32, ptr %t297
-  %t301 = load i32, ptr %t298
-  %t302 = icmp sge i32 %t300, %t301
-  br i1 %t302, label %grow87, label %put88
-grow87:
-  %t303 = mul i32 %t301, 2
-  %t304 = icmp eq i32 %t301, 0
-  %t305 = select i1 %t304, i32 8, i32 %t303
-  %t306 = getelementptr ptr, ptr null, i32 1
-  %t307 = ptrtoint ptr %t306 to i64
-  %t308 = zext i32 %t305 to i64
-  %t309 = mul i64 %t308, %t307
-  %t310 = load ptr, ptr %t299
-  %t311 = call ptr @realloc(ptr %t310, i64 %t309)
-  store ptr %t311, ptr %t299
-  store i32 %t305, ptr %t298
-  br label %put88
-put88:
-  %t312 = load ptr, ptr %t291
-  %t313 = load ptr, ptr %t299
-  %t314 = getelementptr inbounds ptr, ptr %t313, i32 %t300
-  store ptr %t312, ptr %t314
-  %t315 = add i32 %t300, 1
-  store i32 %t315, ptr %t297
+ifend76:
+  %t201 = load ptr, ptr %t5
+  %t202 = icmp eq ptr %t201, null
+  %t203 = zext i1 %t202 to i32
+  %t204 = icmp eq i32 %t203, 0
+  %t205 = zext i1 %t204 to i32
+  %t206 = icmp ne i32 %t205, 0
+  br i1 %t206, label %then77, label %ifend79
+then77:
+  %t207 = load ptr, ptr %t170
+  %t208 = getelementptr inbounds %Str_Node, ptr %t207, i32 0, i32 3
+  %t209 = load ptr, ptr %t5
+  store ptr %t209, ptr %t208
+  br label %ifend79
+ifend79:
+  %t210 = load ptr, ptr %t1
+  %t211 = icmp eq ptr %t210, null
+  %t212 = zext i1 %t211 to i32
+  %t213 = icmp eq i32 %t212, 0
+  %t214 = zext i1 %t213 to i32
+  %t215 = icmp ne i32 %t214, 0
+  br i1 %t215, label %then80, label %ifend82
+then80:
+  %t216 = load ptr, ptr %t1
+  %t217 = getelementptr inbounds %Str_Node, ptr %t216, i32 0, i32 4
+  %t218 = load ptr, ptr %t170
+  %t219 = getelementptr inbounds %Str_Node, ptr %t218, i32 0, i32 4
+  %t220 = load ptr, ptr %t219
+  store ptr %t220, ptr %t217
+  %t221 = call ptr @fn_node(i32 7)
+  store ptr %t221, ptr %t222
+  %t223 = load ptr, ptr %t222
+  %t224 = getelementptr inbounds %Str_Node, ptr %t223, i32 0, i32 7
+  %t225 = load ptr, ptr %t224
+  %t226 = getelementptr inbounds %LSlice, ptr %t225, i32 0, i32 1
+  %t227 = getelementptr inbounds %LSlice, ptr %t225, i32 0, i32 2
+  %t228 = getelementptr inbounds %LSlice, ptr %t225, i32 0, i32 0
+  %t229 = load i32, ptr %t226
+  %t230 = load i32, ptr %t227
+  %t231 = icmp sge i32 %t229, %t230
+  br i1 %t231, label %grow83, label %put84
+grow83:
+  %t232 = mul i32 %t230, 2
+  %t233 = icmp eq i32 %t230, 0
+  %t234 = select i1 %t233, i32 8, i32 %t232
+  %t235 = getelementptr ptr, ptr null, i32 1
+  %t236 = ptrtoint ptr %t235 to i64
+  %t237 = zext i32 %t234 to i64
+  %t238 = mul i64 %t237, %t236
+  %t239 = load ptr, ptr %t228
+  %t240 = call ptr @realloc(ptr %t239, i64 %t238)
+  store ptr %t240, ptr %t228
+  store i32 %t234, ptr %t227
+  br label %put84
+put84:
+  %t241 = load ptr, ptr %t1
+  %t242 = load ptr, ptr %t228
+  %t243 = getelementptr inbounds ptr, ptr %t242, i32 %t229
+  store ptr %t241, ptr %t243
+  %t244 = add i32 %t229, 1
+  store i32 %t244, ptr %t226
+  %t245 = load ptr, ptr %t170
+  %t246 = getelementptr inbounds %Str_Node, ptr %t245, i32 0, i32 4
+  %t247 = load ptr, ptr %t222
+  store ptr %t247, ptr %t246
+  br label %ifend82
+ifend82:
+  %t248 = load ptr, ptr @g_prog
+  %t249 = getelementptr inbounds %LSlice, ptr %t248, i32 0, i32 1
+  %t250 = getelementptr inbounds %LSlice, ptr %t248, i32 0, i32 2
+  %t251 = getelementptr inbounds %LSlice, ptr %t248, i32 0, i32 0
+  %t252 = load i32, ptr %t249
+  %t253 = load i32, ptr %t250
+  %t254 = icmp sge i32 %t252, %t253
+  br i1 %t254, label %grow85, label %put86
+grow85:
+  %t255 = mul i32 %t253, 2
+  %t256 = icmp eq i32 %t253, 0
+  %t257 = select i1 %t256, i32 8, i32 %t255
+  %t258 = getelementptr ptr, ptr null, i32 1
+  %t259 = ptrtoint ptr %t258 to i64
+  %t260 = zext i32 %t257 to i64
+  %t261 = mul i64 %t260, %t259
+  %t262 = load ptr, ptr %t251
+  %t263 = call ptr @realloc(ptr %t262, i64 %t261)
+  store ptr %t263, ptr %t251
+  store i32 %t257, ptr %t250
+  br label %put86
+put86:
+  %t264 = load ptr, ptr %t170
+  %t265 = load ptr, ptr %t251
+  %t266 = getelementptr inbounds ptr, ptr %t265, i32 %t252
+  store ptr %t264, ptr %t266
+  %t267 = add i32 %t252, 1
+  store i32 %t267, ptr %t249
   br label %ret
-ifend83:
-  %t316 = call i32 @fn_is_id(ptr @.str125)
-  %t317 = icmp ne i32 %t316, 0
-  br i1 %t317, label %then89, label %ifend91
-then89:
-  %t318 = load ptr, ptr @g_prog
-  %t319 = getelementptr inbounds %LSlice, ptr %t318, i32 0, i32 1
-  %t320 = getelementptr inbounds %LSlice, ptr %t318, i32 0, i32 2
-  %t321 = getelementptr inbounds %LSlice, ptr %t318, i32 0, i32 0
-  %t322 = load i32, ptr %t319
-  %t323 = load i32, ptr %t320
-  %t324 = icmp sge i32 %t322, %t323
-  br i1 %t324, label %grow92, label %put93
-grow92:
-  %t325 = mul i32 %t323, 2
-  %t326 = icmp eq i32 %t323, 0
-  %t327 = select i1 %t326, i32 8, i32 %t325
-  %t328 = getelementptr ptr, ptr null, i32 1
-  %t329 = ptrtoint ptr %t328 to i64
-  %t330 = zext i32 %t327 to i64
-  %t331 = mul i64 %t330, %t329
-  %t332 = load ptr, ptr %t321
-  %t333 = call ptr @realloc(ptr %t332, i64 %t331)
-  store ptr %t333, ptr %t321
-  store i32 %t327, ptr %t320
-  br label %put93
-put93:
-  %t334 = call ptr @fn_parse_extern()
-  %t335 = load ptr, ptr %t321
-  %t336 = getelementptr inbounds ptr, ptr %t335, i32 %t322
-  store ptr %t334, ptr %t336
-  %t337 = add i32 %t322, 1
-  store i32 %t337, ptr %t319
+ifend67:
+  %t268 = call i32 @fn_is_id(ptr @.str131)
+  %t269 = icmp ne i32 %t268, 0
+  br i1 %t269, label %then87, label %ifend89
+then87:
+  %t270 = load ptr, ptr @g_prog
+  %t271 = getelementptr inbounds %LSlice, ptr %t270, i32 0, i32 1
+  %t272 = getelementptr inbounds %LSlice, ptr %t270, i32 0, i32 2
+  %t273 = getelementptr inbounds %LSlice, ptr %t270, i32 0, i32 0
+  %t274 = load i32, ptr %t271
+  %t275 = load i32, ptr %t272
+  %t276 = icmp sge i32 %t274, %t275
+  br i1 %t276, label %grow90, label %put91
+grow90:
+  %t277 = mul i32 %t275, 2
+  %t278 = icmp eq i32 %t275, 0
+  %t279 = select i1 %t278, i32 8, i32 %t277
+  %t280 = getelementptr ptr, ptr null, i32 1
+  %t281 = ptrtoint ptr %t280 to i64
+  %t282 = zext i32 %t279 to i64
+  %t283 = mul i64 %t282, %t281
+  %t284 = load ptr, ptr %t273
+  %t285 = call ptr @realloc(ptr %t284, i64 %t283)
+  store ptr %t285, ptr %t273
+  store i32 %t279, ptr %t272
+  br label %put91
+put91:
+  %t286 = call ptr @fn_parse_ui()
+  %t287 = load ptr, ptr %t273
+  %t288 = getelementptr inbounds ptr, ptr %t287, i32 %t274
+  store ptr %t286, ptr %t288
+  %t289 = add i32 %t274, 1
+  store i32 %t289, ptr %t271
   br label %ret
-ifend91:
-  %t338 = call i32 @fn_is_id(ptr @.str126)
+ifend89:
+  %t290 = call i32 @fn_is_id(ptr @.str132)
+  %t291 = icmp ne i32 %t290, 0
+  br i1 %t291, label %then92, label %ifend94
+then92:
+  %t292 = load ptr, ptr @g_prog
+  %t293 = getelementptr inbounds %LSlice, ptr %t292, i32 0, i32 1
+  %t294 = getelementptr inbounds %LSlice, ptr %t292, i32 0, i32 2
+  %t295 = getelementptr inbounds %LSlice, ptr %t292, i32 0, i32 0
+  %t296 = load i32, ptr %t293
+  %t297 = load i32, ptr %t294
+  %t298 = icmp sge i32 %t296, %t297
+  br i1 %t298, label %grow95, label %put96
+grow95:
+  %t299 = mul i32 %t297, 2
+  %t300 = icmp eq i32 %t297, 0
+  %t301 = select i1 %t300, i32 8, i32 %t299
+  %t302 = getelementptr ptr, ptr null, i32 1
+  %t303 = ptrtoint ptr %t302 to i64
+  %t304 = zext i32 %t301 to i64
+  %t305 = mul i64 %t304, %t303
+  %t306 = load ptr, ptr %t295
+  %t307 = call ptr @realloc(ptr %t306, i64 %t305)
+  store ptr %t307, ptr %t295
+  store i32 %t301, ptr %t294
+  br label %put96
+put96:
+  %t308 = call ptr @fn_parse_var()
+  %t309 = load ptr, ptr %t295
+  %t310 = getelementptr inbounds ptr, ptr %t309, i32 %t296
+  store ptr %t308, ptr %t310
+  %t311 = add i32 %t296, 1
+  store i32 %t311, ptr %t293
+  br label %ret
+ifend94:
+  %t312 = call i32 @fn_is_id(ptr @.str133)
+  %t313 = icmp ne i32 %t312, 0
+  br i1 %t313, label %then97, label %ifend99
+then97:
+  %t314 = load ptr, ptr @g_prog
+  %t315 = getelementptr inbounds %LSlice, ptr %t314, i32 0, i32 1
+  %t316 = getelementptr inbounds %LSlice, ptr %t314, i32 0, i32 2
+  %t317 = getelementptr inbounds %LSlice, ptr %t314, i32 0, i32 0
+  %t318 = load i32, ptr %t315
+  %t319 = load i32, ptr %t316
+  %t320 = icmp sge i32 %t318, %t319
+  br i1 %t320, label %grow100, label %put101
+grow100:
+  %t321 = mul i32 %t319, 2
+  %t322 = icmp eq i32 %t319, 0
+  %t323 = select i1 %t322, i32 8, i32 %t321
+  %t324 = getelementptr ptr, ptr null, i32 1
+  %t325 = ptrtoint ptr %t324 to i64
+  %t326 = zext i32 %t323 to i64
+  %t327 = mul i64 %t326, %t325
+  %t328 = load ptr, ptr %t317
+  %t329 = call ptr @realloc(ptr %t328, i64 %t327)
+  store ptr %t329, ptr %t317
+  store i32 %t323, ptr %t316
+  br label %put101
+put101:
+  %t330 = call ptr @fn_parse_const()
+  %t331 = load ptr, ptr %t317
+  %t332 = getelementptr inbounds ptr, ptr %t331, i32 %t318
+  store ptr %t330, ptr %t332
+  %t333 = add i32 %t318, 1
+  store i32 %t333, ptr %t315
+  br label %ret
+ifend99:
+  %t334 = call i32 @fn_is_id(ptr @.str134)
+  %t335 = icmp ne i32 %t334, 0
+  br i1 %t335, label %then102, label %ifend104
+then102:
+  %t336 = call ptr @fn_parse_fn()
+  store ptr %t336, ptr %t337
+  %t338 = load i32, ptr %t0
   %t339 = icmp ne i32 %t338, 0
-  br i1 %t339, label %then94, label %ifend96
-then94:
-  %t340 = load ptr, ptr @g_prog
-  %t341 = getelementptr inbounds %LSlice, ptr %t340, i32 0, i32 1
-  %t342 = getelementptr inbounds %LSlice, ptr %t340, i32 0, i32 2
-  %t343 = getelementptr inbounds %LSlice, ptr %t340, i32 0, i32 0
-  %t344 = load i32, ptr %t341
-  %t345 = load i32, ptr %t342
-  %t346 = icmp sge i32 %t344, %t345
-  br i1 %t346, label %grow97, label %put98
-grow97:
-  %t347 = mul i32 %t345, 2
-  %t348 = icmp eq i32 %t345, 0
-  %t349 = select i1 %t348, i32 8, i32 %t347
-  %t350 = getelementptr ptr, ptr null, i32 1
-  %t351 = ptrtoint ptr %t350 to i64
-  %t352 = zext i32 %t349 to i64
-  %t353 = mul i64 %t352, %t351
-  %t354 = load ptr, ptr %t343
-  %t355 = call ptr @realloc(ptr %t354, i64 %t353)
-  store ptr %t355, ptr %t343
-  store i32 %t349, ptr %t342
-  br label %put98
-put98:
-  %t356 = call ptr @fn_parse_main()
-  %t357 = load ptr, ptr %t343
-  %t358 = getelementptr inbounds ptr, ptr %t357, i32 %t344
-  store ptr %t356, ptr %t358
-  %t359 = add i32 %t344, 1
-  store i32 %t359, ptr %t341
+  br i1 %t339, label %then105, label %ifend107
+then105:
+  %t340 = load ptr, ptr %t337
+  %t341 = getelementptr inbounds %Str_Node, ptr %t340, i32 0, i32 2
+  store i32 1, ptr %t341
+  br label %ifend107
+ifend107:
+  %t342 = load ptr, ptr @g_prog
+  %t343 = getelementptr inbounds %LSlice, ptr %t342, i32 0, i32 1
+  %t344 = getelementptr inbounds %LSlice, ptr %t342, i32 0, i32 2
+  %t345 = getelementptr inbounds %LSlice, ptr %t342, i32 0, i32 0
+  %t346 = load i32, ptr %t343
+  %t347 = load i32, ptr %t344
+  %t348 = icmp sge i32 %t346, %t347
+  br i1 %t348, label %grow108, label %put109
+grow108:
+  %t349 = mul i32 %t347, 2
+  %t350 = icmp eq i32 %t347, 0
+  %t351 = select i1 %t350, i32 8, i32 %t349
+  %t352 = getelementptr ptr, ptr null, i32 1
+  %t353 = ptrtoint ptr %t352 to i64
+  %t354 = zext i32 %t351 to i64
+  %t355 = mul i64 %t354, %t353
+  %t356 = load ptr, ptr %t345
+  %t357 = call ptr @realloc(ptr %t356, i64 %t355)
+  store ptr %t357, ptr %t345
+  store i32 %t351, ptr %t344
+  br label %put109
+put109:
+  %t358 = load ptr, ptr %t337
+  %t359 = load ptr, ptr %t345
+  %t360 = getelementptr inbounds ptr, ptr %t359, i32 %t346
+  store ptr %t358, ptr %t360
+  %t361 = add i32 %t346, 1
+  store i32 %t361, ptr %t343
   br label %ret
-ifend96:
-  call void @fn_perr(ptr @.str127)
+ifend104:
+  %t362 = call i32 @fn_is_id(ptr @.str135)
+  %t363 = icmp ne i32 %t362, 0
+  br i1 %t363, label %then110, label %ifend112
+then110:
+  %t364 = load ptr, ptr @g_prog
+  %t365 = getelementptr inbounds %LSlice, ptr %t364, i32 0, i32 1
+  %t366 = getelementptr inbounds %LSlice, ptr %t364, i32 0, i32 2
+  %t367 = getelementptr inbounds %LSlice, ptr %t364, i32 0, i32 0
+  %t368 = load i32, ptr %t365
+  %t369 = load i32, ptr %t366
+  %t370 = icmp sge i32 %t368, %t369
+  br i1 %t370, label %grow113, label %put114
+grow113:
+  %t371 = mul i32 %t369, 2
+  %t372 = icmp eq i32 %t369, 0
+  %t373 = select i1 %t372, i32 8, i32 %t371
+  %t374 = getelementptr ptr, ptr null, i32 1
+  %t375 = ptrtoint ptr %t374 to i64
+  %t376 = zext i32 %t373 to i64
+  %t377 = mul i64 %t376, %t375
+  %t378 = load ptr, ptr %t367
+  %t379 = call ptr @realloc(ptr %t378, i64 %t377)
+  store ptr %t379, ptr %t367
+  store i32 %t373, ptr %t366
+  br label %put114
+put114:
+  %t380 = call ptr @fn_parse_extern()
+  %t381 = load ptr, ptr %t367
+  %t382 = getelementptr inbounds ptr, ptr %t381, i32 %t368
+  store ptr %t380, ptr %t382
+  %t383 = add i32 %t368, 1
+  store i32 %t383, ptr %t365
+  br label %ret
+ifend112:
+  %t384 = call i32 @fn_is_id(ptr @.str136)
+  %t385 = icmp ne i32 %t384, 0
+  br i1 %t385, label %then115, label %ifend117
+then115:
+  %t386 = load ptr, ptr @g_prog
+  %t387 = getelementptr inbounds %LSlice, ptr %t386, i32 0, i32 1
+  %t388 = getelementptr inbounds %LSlice, ptr %t386, i32 0, i32 2
+  %t389 = getelementptr inbounds %LSlice, ptr %t386, i32 0, i32 0
+  %t390 = load i32, ptr %t387
+  %t391 = load i32, ptr %t388
+  %t392 = icmp sge i32 %t390, %t391
+  br i1 %t392, label %grow118, label %put119
+grow118:
+  %t393 = mul i32 %t391, 2
+  %t394 = icmp eq i32 %t391, 0
+  %t395 = select i1 %t394, i32 8, i32 %t393
+  %t396 = getelementptr ptr, ptr null, i32 1
+  %t397 = ptrtoint ptr %t396 to i64
+  %t398 = zext i32 %t395 to i64
+  %t399 = mul i64 %t398, %t397
+  %t400 = load ptr, ptr %t389
+  %t401 = call ptr @realloc(ptr %t400, i64 %t399)
+  store ptr %t401, ptr %t389
+  store i32 %t395, ptr %t388
+  br label %put119
+put119:
+  %t402 = call ptr @fn_parse_main()
+  %t403 = load ptr, ptr %t389
+  %t404 = getelementptr inbounds ptr, ptr %t403, i32 %t390
+  store ptr %t402, ptr %t404
+  %t405 = add i32 %t390, 1
+  store i32 %t405, ptr %t387
+  br label %ret
+ifend117:
+  call void @fn_perr(ptr @.str137)
   br label %ret
 ret:
   ret void
@@ -6762,7 +6901,7 @@ put4:
   br i1 %t34, label %then5, label %ifend7
 then5:
   %t35 = load ptr, ptr %t4
-  %t36 = call ptr @fn_sconcat(ptr @.str128, ptr %t35)
+  %t36 = call ptr @fn_sconcat(ptr @.str138, ptr %t35)
   call void @fn_perr(ptr %t36)
   br label %ifend7
 ifend7:
@@ -6822,8 +6961,8 @@ then0:
 ifend2:
   %t4 = load ptr, ptr @g_cur_dir
   store ptr %t4, ptr %t5
-  store ptr @.str129, ptr @g_cur_dir
-  call void @fn_do_import(ptr @.str130)
+  store ptr @.str139, ptr @g_cur_dir
+  call void @fn_do_import(ptr @.str140)
   %t6 = load ptr, ptr %t5
   store ptr %t6, ptr @g_cur_dir
   br label %ret
@@ -6833,10 +6972,10 @@ ret:
 
 define void @fn_parse_program() {
 entry:
-  %t34 = alloca ptr
-  %t38 = alloca ptr
-  %t47 = alloca ptr
-  %t50 = alloca i32
+  %t46 = alloca ptr
+  %t50 = alloca ptr
+  %t59 = alloca ptr
+  %t62 = alloca i32
   %t0 = getelementptr %LSlice, ptr null, i32 1
   %t1 = ptrtoint ptr %t0 to i64
   %t2 = call ptr @malloc(i64 %t1)
@@ -6876,84 +7015,104 @@ entry:
   store i32 0, ptr %t22
   %t23 = getelementptr inbounds %LSlice, ptr %t20, i32 0, i32 2
   store i32 0, ptr %t23
-  store ptr %t20, ptr @g_loaded_paths
+  store ptr %t20, ptr @g_g_ondespawn
+  %t24 = getelementptr %LSlice, ptr null, i32 1
+  %t25 = ptrtoint ptr %t24 to i64
+  %t26 = call ptr @malloc(i64 %t25)
+  %t27 = getelementptr inbounds %LSlice, ptr %t26, i32 0, i32 0
+  store ptr null, ptr %t27
+  %t28 = getelementptr inbounds %LSlice, ptr %t26, i32 0, i32 1
+  store i32 0, ptr %t28
+  %t29 = getelementptr inbounds %LSlice, ptr %t26, i32 0, i32 2
+  store i32 0, ptr %t29
+  store ptr %t26, ptr @g_g_onattach
+  %t30 = getelementptr %LSlice, ptr null, i32 1
+  %t31 = ptrtoint ptr %t30 to i64
+  %t32 = call ptr @malloc(i64 %t31)
+  %t33 = getelementptr inbounds %LSlice, ptr %t32, i32 0, i32 0
+  store ptr null, ptr %t33
+  %t34 = getelementptr inbounds %LSlice, ptr %t32, i32 0, i32 1
+  store i32 0, ptr %t34
+  %t35 = getelementptr inbounds %LSlice, ptr %t32, i32 0, i32 2
+  store i32 0, ptr %t35
+  store ptr %t32, ptr @g_loaded_paths
   call void @fn_skipnl()
-  store ptr @.str131, ptr @g_g_game_name
+  store ptr @.str141, ptr @g_g_game_name
   br label %wcond0
 wcond0:
-  %t24 = call i32 @fn_is_id(ptr @.str132)
-  %t25 = icmp ne i32 %t24, 0
-  br i1 %t25, label %wbody1, label %wend2
+  %t36 = call i32 @fn_is_id(ptr @.str142)
+  %t37 = icmp ne i32 %t36, 0
+  br i1 %t37, label %wbody1, label %wend2
 wbody1:
-  %t26 = load i32, ptr @g_pi
-  %t27 = add i32 %t26, 1
-  store i32 %t27, ptr @g_pi
-  %t28 = load ptr, ptr @g_toks
-  %t29 = getelementptr inbounds %LSlice, ptr %t28, i32 0, i32 0
-  %t30 = load ptr, ptr %t29
-  %t31 = load i32, ptr @g_pi
-  %t32 = getelementptr inbounds ptr, ptr %t30, i32 %t31
-  %t33 = load ptr, ptr %t32
-  store ptr %t33, ptr %t34
-  %t35 = load ptr, ptr %t34
-  %t36 = getelementptr inbounds %Str_Tok, ptr %t35, i32 0, i32 1
-  %t37 = load ptr, ptr %t36
-  store ptr %t37, ptr %t38
-  %t39 = load i32, ptr @g_pi
-  %t40 = add i32 %t39, 1
-  store i32 %t40, ptr @g_pi
-  %t41 = load ptr, ptr %t38
-  call void @fn_do_import(ptr %t41)
+  %t38 = load i32, ptr @g_pi
+  %t39 = add i32 %t38, 1
+  store i32 %t39, ptr @g_pi
+  %t40 = load ptr, ptr @g_toks
+  %t41 = getelementptr inbounds %LSlice, ptr %t40, i32 0, i32 0
+  %t42 = load ptr, ptr %t41
+  %t43 = load i32, ptr @g_pi
+  %t44 = getelementptr inbounds ptr, ptr %t42, i32 %t43
+  %t45 = load ptr, ptr %t44
+  store ptr %t45, ptr %t46
+  %t47 = load ptr, ptr %t46
+  %t48 = getelementptr inbounds %Str_Tok, ptr %t47, i32 0, i32 1
+  %t49 = load ptr, ptr %t48
+  store ptr %t49, ptr %t50
+  %t51 = load i32, ptr @g_pi
+  %t52 = add i32 %t51, 1
+  store i32 %t52, ptr @g_pi
+  %t53 = load ptr, ptr %t50
+  call void @fn_do_import(ptr %t53)
   call void @fn_skipnl()
   br label %wcond0
 wend2:
   br label %wcond3
 wcond3:
-  %t42 = call i32 @fn_is_op(ptr @.str133)
-  %t43 = icmp ne i32 %t42, 0
-  br i1 %t43, label %wbody4, label %wend5
+  %t54 = call i32 @fn_is_op(ptr @.str143)
+  %t55 = icmp ne i32 %t54, 0
+  br i1 %t55, label %wbody4, label %wend5
 wbody4:
-  %t44 = load i32, ptr @g_pi
-  %t45 = add i32 %t44, 1
-  store i32 %t45, ptr @g_pi
-  %t46 = call ptr @fn_eat_id()
-  store ptr %t46, ptr %t47
-  %t48 = call i32 @fn_is_op(ptr @.str134)
-  %t49 = icmp ne i32 %t48, 0
-  br i1 %t49, label %then6, label %ifend8
+  %t56 = load i32, ptr @g_pi
+  %t57 = add i32 %t56, 1
+  store i32 %t57, ptr @g_pi
+  %t58 = call ptr @fn_eat_id()
+  store ptr %t58, ptr %t59
+  %t60 = call i32 @fn_is_op(ptr @.str144)
+  %t61 = icmp ne i32 %t60, 0
+  br i1 %t61, label %then6, label %ifend8
 then6:
-  store i32 0, ptr %t50
+  store i32 0, ptr %t62
   br label %wcond9
 wcond9:
-  %t51 = icmp ne i32 1, 0
-  br i1 %t51, label %wbody10, label %wend11
+  %t63 = icmp ne i32 1, 0
+  br i1 %t63, label %wbody10, label %wend11
 wbody10:
-  %t52 = call i32 @fn_is_op(ptr @.str135)
-  %t53 = icmp ne i32 %t52, 0
-  br i1 %t53, label %then12, label %ifend14
+  %t64 = call i32 @fn_is_op(ptr @.str145)
+  %t65 = icmp ne i32 %t64, 0
+  br i1 %t65, label %then12, label %ifend14
 then12:
-  %t54 = load i32, ptr %t50
-  %t55 = add i32 %t54, 1
-  store i32 %t55, ptr %t50
+  %t66 = load i32, ptr %t62
+  %t67 = add i32 %t66, 1
+  store i32 %t67, ptr %t62
   br label %ifend14
 ifend14:
-  %t56 = call i32 @fn_is_op(ptr @.str136)
-  %t57 = icmp ne i32 %t56, 0
-  br i1 %t57, label %then15, label %ifend17
+  %t68 = call i32 @fn_is_op(ptr @.str146)
+  %t69 = icmp ne i32 %t68, 0
+  br i1 %t69, label %then15, label %ifend17
 then15:
-  %t58 = load i32, ptr %t50
-  %t59 = sub i32 %t58, 1
-  store i32 %t59, ptr %t50
+  %t70 = load i32, ptr %t62
+  %t71 = sub i32 %t70, 1
+  store i32 %t71, ptr %t62
   br label %ifend17
 ifend17:
-  %t60 = load i32, ptr @g_pi
-  %t61 = add i32 %t60, 1
-  store i32 %t61, ptr @g_pi
-  %t62 = load i32, ptr %t50
-  %t63 = icmp eq i32 %t62, 0
-  %t64 = zext i1 %t63 to i32
-  %t65 = icmp ne i32 %t64, 0
-  br i1 %t65, label %then18, label %ifend20
+  %t72 = load i32, ptr @g_pi
+  %t73 = add i32 %t72, 1
+  store i32 %t73, ptr @g_pi
+  %t74 = load i32, ptr %t62
+  %t75 = icmp eq i32 %t74, 0
+  %t76 = zext i1 %t75 to i32
+  %t77 = icmp ne i32 %t76, 0
+  br i1 %t77, label %then18, label %ifend20
 then18:
   br label %wend11
 ifend20:
@@ -6964,43 +7123,43 @@ ifend8:
   call void @fn_skipnl()
   br label %wcond3
 wend5:
-  %t66 = call i32 @fn_is_id(ptr @.str137)
-  %t67 = icmp ne i32 %t66, 0
-  br i1 %t67, label %then21, label %ifend23
+  %t78 = call i32 @fn_is_id(ptr @.str147)
+  %t79 = icmp ne i32 %t78, 0
+  br i1 %t79, label %then21, label %ifend23
 then21:
-  %t68 = load i32, ptr @g_pi
-  %t69 = add i32 %t68, 1
-  store i32 %t69, ptr @g_pi
-  %t70 = call ptr @fn_eat_id()
-  store ptr %t70, ptr @g_g_game_name
+  %t80 = load i32, ptr @g_pi
+  %t81 = add i32 %t80, 1
+  store i32 %t81, ptr @g_pi
+  %t82 = call ptr @fn_eat_id()
+  store ptr %t82, ptr @g_g_game_name
   call void @fn_skipnl()
-  call void @fn_eat_op(ptr @.str138)
+  call void @fn_eat_op(ptr @.str148)
   br label %ifend23
 ifend23:
   br label %wcond24
 wcond24:
-  %t71 = icmp ne i32 1, 0
-  br i1 %t71, label %wbody25, label %wend26
+  %t83 = icmp ne i32 1, 0
+  br i1 %t83, label %wbody25, label %wend26
 wbody25:
   call void @fn_skipnl()
-  %t72 = load ptr, ptr @g_toks
-  %t73 = getelementptr inbounds %LSlice, ptr %t72, i32 0, i32 0
-  %t74 = load ptr, ptr %t73
-  %t75 = load i32, ptr @g_pi
-  %t76 = getelementptr inbounds ptr, ptr %t74, i32 %t75
-  %t77 = load ptr, ptr %t76
-  %t78 = getelementptr inbounds %Str_Tok, ptr %t77, i32 0, i32 0
-  %t79 = load i32, ptr %t78
-  %t80 = icmp eq i32 %t79, 5
-  %t81 = zext i1 %t80 to i32
-  %t82 = icmp ne i32 %t81, 0
-  br i1 %t82, label %then27, label %ifend29
+  %t84 = load ptr, ptr @g_toks
+  %t85 = getelementptr inbounds %LSlice, ptr %t84, i32 0, i32 0
+  %t86 = load ptr, ptr %t85
+  %t87 = load i32, ptr @g_pi
+  %t88 = getelementptr inbounds ptr, ptr %t86, i32 %t87
+  %t89 = load ptr, ptr %t88
+  %t90 = getelementptr inbounds %Str_Tok, ptr %t89, i32 0, i32 0
+  %t91 = load i32, ptr %t90
+  %t92 = icmp eq i32 %t91, 5
+  %t93 = zext i1 %t92 to i32
+  %t94 = icmp ne i32 %t93, 0
+  br i1 %t94, label %then27, label %ifend29
 then27:
   br label %wend26
 ifend29:
-  %t83 = call i32 @fn_is_op(ptr @.str139)
-  %t84 = icmp ne i32 %t83, 0
-  br i1 %t84, label %then30, label %ifend32
+  %t95 = call i32 @fn_is_op(ptr @.str149)
+  %t96 = icmp ne i32 %t95, 0
+  br i1 %t96, label %then30, label %ifend32
 then30:
   br label %wend26
 ifend32:
@@ -7029,21 +7188,21 @@ entry:
   %t6 = call ptr @fn_eat_id()
   store ptr %t6, ptr %t5
   call void @fn_skipnl()
-  call void @fn_eat_op(ptr @.str140)
+  call void @fn_eat_op(ptr @.str150)
   br label %wcond0
 wcond0:
   %t7 = icmp ne i32 1, 0
   br i1 %t7, label %wbody1, label %wend2
 wbody1:
   call void @fn_skipnl()
-  %t8 = call i32 @fn_is_op(ptr @.str141)
+  %t8 = call i32 @fn_is_op(ptr @.str151)
   %t9 = icmp ne i32 %t8, 0
   br i1 %t9, label %then3, label %ifend5
 then3:
   br label %wend2
 ifend5:
   store i32 0, ptr %t10
-  %t11 = call i32 @fn_is_op(ptr @.str142)
+  %t11 = call i32 @fn_is_op(ptr @.str152)
   %t12 = icmp ne i32 %t11, 0
   br i1 %t12, label %then6, label %ifend8
 then6:
@@ -7053,7 +7212,7 @@ then6:
   %t15 = call ptr @fn_eat_id()
   store ptr %t15, ptr %t16
   %t17 = load ptr, ptr %t16
-  %t18 = call i32 @fn_streq(ptr %t17, ptr @.str143)
+  %t18 = call i32 @fn_streq(ptr %t17, ptr @.str153)
   %t19 = icmp ne i32 %t18, 0
   br i1 %t19, label %then9, label %ifend11
 then9:
@@ -7069,12 +7228,12 @@ ifend8:
   %t23 = getelementptr inbounds %Str_Node, ptr %t22, i32 0, i32 1
   %t24 = call ptr @fn_eat_id()
   store ptr %t24, ptr %t23
-  call void @fn_eat_op(ptr @.str144)
+  call void @fn_eat_op(ptr @.str154)
   %t25 = load ptr, ptr %t21
   %t26 = getelementptr inbounds %Str_Node, ptr %t25, i32 0, i32 3
   %t27 = call ptr @fn_ptype()
   store ptr %t27, ptr %t26
-  %t28 = call i32 @fn_is_op(ptr @.str145)
+  %t28 = call i32 @fn_is_op(ptr @.str155)
   %t29 = icmp ne i32 %t28, 0
   br i1 %t29, label %then12, label %ifend14
 then12:
@@ -7138,7 +7297,7 @@ put19:
   store i32 %t70, ptr %t52
   br label %ifend17
 ifend17:
-  %t71 = call i32 @fn_is_op(ptr @.str146)
+  %t71 = call i32 @fn_is_op(ptr @.str156)
   %t72 = icmp ne i32 %t71, 0
   br i1 %t72, label %then20, label %ifend22
 then20:
@@ -7149,7 +7308,7 @@ then20:
 ifend22:
   br label %wcond0
 wend2:
-  call void @fn_eat_op(ptr @.str147)
+  call void @fn_eat_op(ptr @.str157)
   %t75 = load ptr, ptr %t3
   store ptr %t75, ptr %retval
   br label %ret
@@ -7161,7 +7320,7 @@ ret:
 define void @fn_skip_clause() {
 entry:
   %t2 = alloca i32
-  %t0 = call i32 @fn_is_op(ptr @.str148)
+  %t0 = call i32 @fn_is_op(ptr @.str158)
   %t1 = icmp ne i32 %t0, 0
   br i1 %t1, label %then0, label %ifend2
 then0:
@@ -7171,7 +7330,7 @@ wcond3:
   %t3 = icmp ne i32 1, 0
   br i1 %t3, label %wbody4, label %wend5
 wbody4:
-  %t4 = call i32 @fn_is_op(ptr @.str149)
+  %t4 = call i32 @fn_is_op(ptr @.str159)
   %t5 = icmp ne i32 %t4, 0
   br i1 %t5, label %then6, label %ifend8
 then6:
@@ -7180,7 +7339,7 @@ then6:
   store i32 %t7, ptr %t2
   br label %ifend8
 ifend8:
-  %t8 = call i32 @fn_is_op(ptr @.str150)
+  %t8 = call i32 @fn_is_op(ptr @.str160)
   %t9 = icmp ne i32 %t8, 0
   br i1 %t9, label %then9, label %ifend11
 then9:
@@ -7232,7 +7391,7 @@ entry:
   store ptr %t6, ptr %t5
   %t7 = load ptr, ptr %t3
   %t8 = getelementptr inbounds %Str_Node, ptr %t7, i32 0, i32 3
-  store ptr @.str151, ptr %t8
+  store ptr @.str161, ptr %t8
   store i32 0, ptr %t9
   %t10 = call ptr @fn_node(i32 21)
   store ptr %t10, ptr %t11
@@ -7242,7 +7401,7 @@ wcond0:
   br i1 %t12, label %wbody1, label %wend2
 wbody1:
   call void @fn_skipnl()
-  %t13 = call i32 @fn_is_op(ptr @.str152)
+  %t13 = call i32 @fn_is_op(ptr @.str162)
   %t14 = icmp ne i32 %t13, 0
   br i1 %t14, label %then3, label %ifend5
 then3:
@@ -7251,7 +7410,7 @@ then3:
   store i32 %t16, ptr @g_pi
   %t17 = call ptr @fn_eat_id()
   store ptr %t17, ptr %t18
-  %t19 = call i32 @fn_is_op(ptr @.str153)
+  %t19 = call i32 @fn_is_op(ptr @.str163)
   %t20 = icmp ne i32 %t19, 0
   br i1 %t20, label %then6, label %ifend8
 then6:
@@ -7261,7 +7420,7 @@ wcond9:
   %t22 = icmp ne i32 1, 0
   br i1 %t22, label %wbody10, label %wend11
 wbody10:
-  %t23 = call i32 @fn_is_op(ptr @.str154)
+  %t23 = call i32 @fn_is_op(ptr @.str164)
   %t24 = icmp ne i32 %t23, 0
   br i1 %t24, label %then12, label %ifend14
 then12:
@@ -7270,7 +7429,7 @@ then12:
   store i32 %t26, ptr %t21
   br label %ifend14
 ifend14:
-  %t27 = call i32 @fn_is_op(ptr @.str155)
+  %t27 = call i32 @fn_is_op(ptr @.str165)
   %t28 = icmp ne i32 %t27, 0
   br i1 %t28, label %then15, label %ifend17
 then15:
@@ -7296,7 +7455,7 @@ wend11:
 ifend8:
   br label %wcond0
 ifend5:
-  %t37 = call i32 @fn_is_id(ptr @.str156)
+  %t37 = call i32 @fn_is_id(ptr @.str166)
   %t38 = icmp ne i32 %t37, 0
   br i1 %t38, label %then21, label %ifend23
 then21:
@@ -7309,13 +7468,13 @@ then21:
   store ptr %t43, ptr %t42
   br label %wcond0
 ifend23:
-  %t45 = call i32 @fn_is_id(ptr @.str157)
+  %t45 = call i32 @fn_is_id(ptr @.str167)
   %t46 = icmp ne i32 %t45, 0
   %t47 = zext i1 %t46 to i32
   store i32 %t47, ptr %t44
   br i1 %t46, label %scend25, label %sc24
 sc24:
-  %t48 = call i32 @fn_is_id(ptr @.str158)
+  %t48 = call i32 @fn_is_id(ptr @.str168)
   %t49 = icmp ne i32 %t48, 0
   %t50 = zext i1 %t49 to i32
   store i32 %t50, ptr %t44
@@ -7331,7 +7490,7 @@ then26:
   call void @fn_skip_clause()
   br label %wcond0
 ifend28:
-  %t55 = call i32 @fn_is_id(ptr @.str159)
+  %t55 = call i32 @fn_is_id(ptr @.str169)
   %t56 = icmp ne i32 %t55, 0
   br i1 %t56, label %then29, label %ifend31
 then29:
@@ -7339,14 +7498,14 @@ then29:
   %t58 = add i32 %t57, 1
   store i32 %t58, ptr @g_pi
   store i32 1, ptr %t9
-  %t59 = call i32 @fn_is_op(ptr @.str160)
+  %t59 = call i32 @fn_is_op(ptr @.str170)
   %t60 = icmp ne i32 %t59, 0
   br i1 %t60, label %then32, label %ifend34
 then32:
-  call void @fn_eat_op(ptr @.str161)
+  call void @fn_eat_op(ptr @.str171)
   br label %wcond35
 wcond35:
-  %t61 = call i32 @fn_is_op(ptr @.str162)
+  %t61 = call i32 @fn_is_op(ptr @.str172)
   %t62 = icmp eq i32 %t61, 0
   %t63 = zext i1 %t62 to i32
   %t64 = icmp ne i32 %t63, 0
@@ -7388,7 +7547,7 @@ put39:
   store ptr %t88, ptr %t90
   %t91 = add i32 %t76, 1
   store i32 %t91, ptr %t73
-  %t92 = call i32 @fn_is_op(ptr @.str163)
+  %t92 = call i32 @fn_is_op(ptr @.str173)
   %t93 = icmp ne i32 %t92, 0
   br i1 %t93, label %then40, label %ifend42
 then40:
@@ -7399,7 +7558,7 @@ then40:
 ifend42:
   br label %wcond35
 wend37:
-  call void @fn_eat_op(ptr @.str164)
+  call void @fn_eat_op(ptr @.str174)
   br label %ifend34
 ifend34:
   %t96 = load ptr, ptr %t11
@@ -7487,18 +7646,18 @@ entry:
   %t1 = alloca ptr
   %t11 = alloca ptr
   %t40 = alloca ptr
-  call void @fn_eat_op(ptr @.str165)
+  call void @fn_eat_op(ptr @.str175)
   %t0 = call ptr @fn_node(i32 7)
   store ptr %t0, ptr %t1
   br label %wcond0
 wcond0:
-  %t2 = call i32 @fn_is_op(ptr @.str166)
+  %t2 = call i32 @fn_is_op(ptr @.str176)
   %t3 = icmp eq i32 %t2, 0
   %t4 = zext i1 %t3 to i32
   %t5 = icmp ne i32 %t4, 0
   br i1 %t5, label %wbody1, label %wend2
 wbody1:
-  %t6 = call i32 @fn_is_op(ptr @.str167)
+  %t6 = call i32 @fn_is_op(ptr @.str177)
   %t7 = icmp ne i32 %t6, 0
   br i1 %t7, label %then3, label %else4
 then3:
@@ -7544,7 +7703,7 @@ put7:
   store ptr %t35, ptr %t37
   %t38 = add i32 %t23, 1
   store i32 %t38, ptr %t20
-  call void @fn_eat_op(ptr @.str168)
+  call void @fn_eat_op(ptr @.str178)
   br label %ifend5
 else4:
   %t39 = call ptr @fn_node(i32 33)
@@ -7588,7 +7747,7 @@ put9:
   store i32 %t67, ptr %t49
   br label %ifend5
 ifend5:
-  %t68 = call i32 @fn_is_op(ptr @.str169)
+  %t68 = call i32 @fn_is_op(ptr @.str179)
   %t69 = icmp ne i32 %t68, 0
   br i1 %t69, label %then10, label %ifend12
 then10:
@@ -7599,8 +7758,8 @@ then10:
 ifend12:
   br label %wcond0
 wend2:
-  call void @fn_eat_op(ptr @.str170)
-  %t72 = call i32 @fn_is_id(ptr @.str171)
+  call void @fn_eat_op(ptr @.str180)
+  %t72 = call i32 @fn_is_id(ptr @.str181)
   %t73 = icmp ne i32 %t72, 0
   br i1 %t73, label %then13, label %ifend15
 then13:
@@ -7630,10 +7789,10 @@ entry:
   %t40 = alloca ptr
   %t0 = call ptr @fn_node(i32 21)
   store ptr %t0, ptr %t1
-  call void @fn_eat_op(ptr @.str172)
+  call void @fn_eat_op(ptr @.str182)
   br label %wcond0
 wcond0:
-  %t2 = call i32 @fn_is_op(ptr @.str173)
+  %t2 = call i32 @fn_is_op(ptr @.str183)
   %t3 = icmp eq i32 %t2, 0
   %t4 = zext i1 %t3 to i32
   %t5 = icmp ne i32 %t4, 0
@@ -7675,7 +7834,7 @@ put4:
   store ptr %t29, ptr %t31
   %t32 = add i32 %t17, 1
   store i32 %t32, ptr %t14
-  %t33 = call i32 @fn_is_op(ptr @.str174)
+  %t33 = call i32 @fn_is_op(ptr @.str184)
   %t34 = icmp ne i32 %t33, 0
   br i1 %t34, label %then5, label %ifend7
 then5:
@@ -7686,7 +7845,7 @@ then5:
 ifend7:
   br label %wcond0
 wend2:
-  call void @fn_eat_op(ptr @.str175)
+  call void @fn_eat_op(ptr @.str185)
   %t37 = call ptr @fn_eat_id()
   store ptr %t37, ptr %t38
   %t39 = call ptr @fn_eat_id()
@@ -7737,7 +7896,7 @@ ifend2:
   store ptr %t7, ptr %t8
   %t9 = load ptr, ptr %t8
   %t10 = getelementptr inbounds %Str_Node, ptr %t9, i32 0, i32 1
-  store ptr @.str176, ptr %t10
+  store ptr @.str186, ptr %t10
   %t11 = load ptr, ptr %t8
   %t12 = getelementptr inbounds %Str_Node, ptr %t11, i32 0, i32 4
   %t13 = load ptr, ptr %t0
@@ -7884,7 +8043,7 @@ entry:
   %t85 = alloca ptr
   %t102 = alloca ptr
   %t104 = alloca ptr
-  call void @fn_eat_op(ptr @.str177)
+  call void @fn_eat_op(ptr @.str187)
   %t0 = call ptr @fn_node(i32 21)
   store ptr %t0, ptr %t1
   %t2 = call ptr @fn_node(i32 7)
@@ -7892,14 +8051,14 @@ entry:
   store ptr null, ptr %t4
   br label %wcond0
 wcond0:
-  %t5 = call i32 @fn_is_op(ptr @.str178)
+  %t5 = call i32 @fn_is_op(ptr @.str188)
   %t6 = icmp eq i32 %t5, 0
   %t7 = zext i1 %t6 to i32
   %t8 = icmp ne i32 %t7, 0
   br i1 %t8, label %wbody1, label %wend2
 wbody1:
   call void @fn_skipnl()
-  %t9 = call i32 @fn_is_op(ptr @.str179)
+  %t9 = call i32 @fn_is_op(ptr @.str189)
   %t10 = icmp ne i32 %t9, 0
   br i1 %t10, label %then3, label %ifend5
 then3:
@@ -7907,17 +8066,17 @@ then3:
 ifend5:
   %t11 = call ptr @fn_eat_id()
   store ptr %t11, ptr %t12
-  call void @fn_eat_op(ptr @.str180)
+  call void @fn_eat_op(ptr @.str190)
   %t13 = load ptr, ptr %t12
-  %t14 = call i32 @fn_streq(ptr %t13, ptr @.str181)
+  %t14 = call i32 @fn_streq(ptr %t13, ptr @.str191)
   %t15 = icmp ne i32 %t14, 0
   br i1 %t15, label %then6, label %else7
 then6:
-  call void @fn_eat_op(ptr @.str182)
+  call void @fn_eat_op(ptr @.str192)
   call void @fn_skipnl()
   br label %wcond9
 wcond9:
-  %t16 = call i32 @fn_is_op(ptr @.str183)
+  %t16 = call i32 @fn_is_op(ptr @.str193)
   %t17 = icmp eq i32 %t16, 0
   %t18 = zext i1 %t17 to i32
   %t19 = icmp ne i32 %t18, 0
@@ -8000,7 +8159,7 @@ put15:
   store ptr %t74, ptr %t76
   %t77 = add i32 %t62, 1
   store i32 %t77, ptr %t59
-  %t78 = call i32 @fn_is_op(ptr @.str184)
+  %t78 = call i32 @fn_is_op(ptr @.str194)
   %t79 = icmp ne i32 %t78, 0
   br i1 %t79, label %then16, label %ifend18
 then16:
@@ -8009,7 +8168,7 @@ then16:
   store i32 %t81, ptr @g_pi
   %t82 = call ptr @fn_expr()
   store ptr %t82, ptr %t83
-  call void @fn_eat_op(ptr @.str185)
+  call void @fn_eat_op(ptr @.str195)
   %t84 = call ptr @fn_node(i32 33)
   store ptr %t84, ptr %t85
   %t86 = load ptr, ptr %t85
@@ -8024,7 +8183,7 @@ then16:
   store ptr %t93, ptr %t4
   br label %ifend18
 ifend18:
-  %t94 = call i32 @fn_is_op(ptr @.str186)
+  %t94 = call i32 @fn_is_op(ptr @.str196)
   %t95 = icmp ne i32 %t94, 0
   br i1 %t95, label %then19, label %ifend21
 then19:
@@ -8036,11 +8195,11 @@ ifend21:
   call void @fn_skipnl()
   br label %wcond9
 wend11:
-  call void @fn_eat_op(ptr @.str187)
+  call void @fn_eat_op(ptr @.str197)
   br label %ifend8
 else7:
   %t98 = load ptr, ptr %t12
-  %t99 = call i32 @fn_streq(ptr %t98, ptr @.str188)
+  %t99 = call i32 @fn_streq(ptr %t98, ptr @.str198)
   %t100 = icmp ne i32 %t99, 0
   br i1 %t100, label %then22, label %else23
 then22:
@@ -8092,7 +8251,7 @@ else23:
 ifend24:
   br label %ifend8
 ifend8:
-  %t133 = call i32 @fn_is_op(ptr @.str189)
+  %t133 = call i32 @fn_is_op(ptr @.str199)
   %t134 = icmp ne i32 %t133, 0
   br i1 %t134, label %then27, label %ifend29
 then27:
@@ -8104,7 +8263,7 @@ ifend29:
   call void @fn_skipnl()
   br label %wcond0
 wend2:
-  call void @fn_eat_op(ptr @.str190)
+  call void @fn_eat_op(ptr @.str200)
   %t137 = load ptr, ptr %t1
   %t138 = getelementptr inbounds %Str_Node, ptr %t137, i32 0, i32 6
   %t139 = load ptr, ptr %t3
@@ -8136,14 +8295,14 @@ entry:
   %t6 = call ptr @fn_eat_id()
   store ptr %t6, ptr %t5
   call void @fn_skipnl()
-  call void @fn_eat_op(ptr @.str191)
+  call void @fn_eat_op(ptr @.str201)
   br label %wcond0
 wcond0:
   %t7 = icmp ne i32 1, 0
   br i1 %t7, label %wbody1, label %wend2
 wbody1:
   call void @fn_skipnl()
-  %t8 = call i32 @fn_is_op(ptr @.str192)
+  %t8 = call i32 @fn_is_op(ptr @.str202)
   %t9 = icmp ne i32 %t8, 0
   br i1 %t9, label %then3, label %ifend5
 then3:
@@ -8189,7 +8348,7 @@ put7:
   store ptr %t36, ptr %t38
   %t39 = add i32 %t24, 1
   store i32 %t39, ptr %t21
-  %t40 = call i32 @fn_is_op(ptr @.str193)
+  %t40 = call i32 @fn_is_op(ptr @.str203)
   %t41 = icmp ne i32 %t40, 0
   br i1 %t41, label %then8, label %ifend10
 then8:
@@ -8200,7 +8359,7 @@ then8:
 ifend10:
   br label %wcond0
 wend2:
-  call void @fn_eat_op(ptr @.str194)
+  call void @fn_eat_op(ptr @.str204)
   %t44 = load ptr, ptr %t3
   store ptr %t44, ptr %retval
   br label %ret
@@ -8224,14 +8383,14 @@ entry:
   %t6 = call ptr @fn_eat_id()
   store ptr %t6, ptr %t5
   call void @fn_skipnl()
-  call void @fn_eat_op(ptr @.str195)
+  call void @fn_eat_op(ptr @.str205)
   br label %wcond0
 wcond0:
   %t7 = icmp ne i32 1, 0
   br i1 %t7, label %wbody1, label %wend2
 wbody1:
   call void @fn_skipnl()
-  %t8 = call i32 @fn_is_op(ptr @.str196)
+  %t8 = call i32 @fn_is_op(ptr @.str206)
   %t9 = icmp ne i32 %t8, 0
   br i1 %t9, label %then3, label %ifend5
 then3:
@@ -8273,7 +8432,7 @@ put7:
   store ptr %t33, ptr %t35
   %t36 = add i32 %t21, 1
   store i32 %t36, ptr %t18
-  %t37 = call i32 @fn_is_op(ptr @.str197)
+  %t37 = call i32 @fn_is_op(ptr @.str207)
   %t38 = icmp ne i32 %t37, 0
   br i1 %t38, label %then8, label %ifend10
 then8:
@@ -8285,7 +8444,7 @@ ifend10:
   call void @fn_skipnl()
   br label %wcond0
 wend2:
-  call void @fn_eat_op(ptr @.str198)
+  call void @fn_eat_op(ptr @.str208)
   %t41 = load ptr, ptr %t3
   store ptr %t41, ptr %retval
   br label %ret
@@ -8309,14 +8468,14 @@ entry:
   %t6 = call ptr @fn_eat_id()
   store ptr %t6, ptr %t5
   call void @fn_skipnl()
-  call void @fn_eat_op(ptr @.str199)
+  call void @fn_eat_op(ptr @.str209)
   br label %wcond0
 wcond0:
   %t7 = icmp ne i32 1, 0
   br i1 %t7, label %wbody1, label %wend2
 wbody1:
   call void @fn_skipnl()
-  %t8 = call i32 @fn_is_op(ptr @.str200)
+  %t8 = call i32 @fn_is_op(ptr @.str210)
   %t9 = icmp ne i32 %t8, 0
   br i1 %t9, label %then3, label %ifend5
 then3:
@@ -8358,7 +8517,7 @@ put7:
   store ptr %t33, ptr %t35
   %t36 = add i32 %t21, 1
   store i32 %t36, ptr %t18
-  %t37 = call i32 @fn_is_op(ptr @.str201)
+  %t37 = call i32 @fn_is_op(ptr @.str211)
   %t38 = icmp ne i32 %t37, 0
   br i1 %t38, label %then8, label %ifend10
 then8:
@@ -8370,7 +8529,7 @@ ifend10:
   call void @fn_skipnl()
   br label %wcond0
 wend2:
-  call void @fn_eat_op(ptr @.str202)
+  call void @fn_eat_op(ptr @.str212)
   %t41 = load ptr, ptr %t3
   store ptr %t41, ptr %retval
   br label %ret
@@ -8397,10 +8556,10 @@ entry:
   %t7 = getelementptr inbounds %Str_Node, ptr %t6, i32 0, i32 1
   %t8 = call ptr @fn_eat_id()
   store ptr %t8, ptr %t7
-  call void @fn_eat_op(ptr @.str203)
+  call void @fn_eat_op(ptr @.str213)
   br label %wcond0
 wcond0:
-  %t9 = call i32 @fn_is_op(ptr @.str204)
+  %t9 = call i32 @fn_is_op(ptr @.str214)
   %t10 = icmp eq i32 %t9, 0
   %t11 = zext i1 %t10 to i32
   %t12 = icmp ne i32 %t11, 0
@@ -8412,7 +8571,7 @@ wbody1:
   %t16 = getelementptr inbounds %Str_Node, ptr %t15, i32 0, i32 1
   %t17 = call ptr @fn_eat_id()
   store ptr %t17, ptr %t16
-  call void @fn_eat_op(ptr @.str205)
+  call void @fn_eat_op(ptr @.str215)
   %t18 = load ptr, ptr %t14
   %t19 = getelementptr inbounds %Str_Node, ptr %t18, i32 0, i32 3
   %t20 = call ptr @fn_ptype()
@@ -8447,7 +8606,7 @@ put4:
   store ptr %t39, ptr %t41
   %t42 = add i32 %t27, 1
   store i32 %t42, ptr %t24
-  %t43 = call i32 @fn_is_op(ptr @.str206)
+  %t43 = call i32 @fn_is_op(ptr @.str216)
   %t44 = icmp ne i32 %t43, 0
   br i1 %t44, label %then5, label %ifend7
 then5:
@@ -8458,11 +8617,11 @@ then5:
 ifend7:
   br label %wcond0
 wend2:
-  call void @fn_eat_op(ptr @.str207)
+  call void @fn_eat_op(ptr @.str217)
   %t47 = load ptr, ptr %t5
   %t48 = getelementptr inbounds %Str_Node, ptr %t47, i32 0, i32 3
-  store ptr @.str208, ptr %t48
-  %t49 = call i32 @fn_is_op(ptr @.str209)
+  store ptr @.str218, ptr %t48
+  %t49 = call i32 @fn_is_op(ptr @.str219)
   %t50 = icmp ne i32 %t49, 0
   br i1 %t50, label %then8, label %ifend10
 then8:
@@ -8475,7 +8634,7 @@ then8:
   store ptr %t55, ptr %t54
   br label %ifend10
 ifend10:
-  call void @fn_eat_op(ptr @.str210)
+  call void @fn_eat_op(ptr @.str220)
   %t56 = load ptr, ptr @g_toks
   %t57 = getelementptr inbounds %LSlice, ptr %t56, i32 0, i32 0
   %t58 = load ptr, ptr %t57
@@ -8571,7 +8730,7 @@ sc5:
   %t44 = load ptr, ptr %t43
   %t45 = getelementptr inbounds %Str_Tok, ptr %t44, i32 0, i32 1
   %t46 = load ptr, ptr %t45
-  %t47 = call i32 @fn_streq(ptr %t46, ptr @.str211)
+  %t47 = call i32 @fn_streq(ptr %t46, ptr @.str221)
   %t48 = icmp ne i32 %t47, 0
   %t49 = zext i1 %t48 to i32
   store i32 %t49, ptr %t8
@@ -8587,7 +8746,7 @@ wbody1:
   %t55 = getelementptr inbounds %Str_Node, ptr %t54, i32 0, i32 1
   %t56 = call ptr @fn_eat_id()
   store ptr %t56, ptr %t55
-  call void @fn_eat_op(ptr @.str212)
+  call void @fn_eat_op(ptr @.str222)
   %t57 = load ptr, ptr %t53
   %t58 = getelementptr inbounds %Str_Node, ptr %t57, i32 0, i32 4
   %t59 = call ptr @fn_expr()
@@ -8627,7 +8786,7 @@ put8:
   br label %wcond0
 wend2:
   call void @fn_skipnl()
-  %t84 = call i32 @fn_is_op(ptr @.str213)
+  %t84 = call i32 @fn_is_op(ptr @.str223)
   %t85 = icmp ne i32 %t84, 0
   br i1 %t85, label %then9, label %ifend11
 then9:
@@ -8640,7 +8799,7 @@ wcond12:
   br i1 %t88, label %wbody13, label %wend14
 wbody13:
   call void @fn_skipnl()
-  %t89 = call i32 @fn_is_op(ptr @.str214)
+  %t89 = call i32 @fn_is_op(ptr @.str224)
   %t90 = icmp ne i32 %t89, 0
   br i1 %t90, label %then15, label %ifend17
 then15:
@@ -8678,7 +8837,7 @@ put19:
   store i32 %t112, ptr %t94
   br label %wcond12
 wend14:
-  call void @fn_eat_op(ptr @.str215)
+  call void @fn_eat_op(ptr @.str225)
   br label %ifend11
 ifend11:
   %t113 = load ptr, ptr %t1
@@ -8706,14 +8865,14 @@ entry:
   %t8 = getelementptr inbounds %Str_Node, ptr %t7, i32 0, i32 2
   store i32 1, ptr %t8
   call void @fn_skipnl()
-  call void @fn_eat_op(ptr @.str216)
+  call void @fn_eat_op(ptr @.str226)
   call void @fn_skipnl()
   %t9 = load ptr, ptr %t3
   %t10 = getelementptr inbounds %Str_Node, ptr %t9, i32 0, i32 4
   %t11 = call ptr @fn_parse_widget()
   store ptr %t11, ptr %t10
   call void @fn_skipnl()
-  call void @fn_eat_op(ptr @.str217)
+  call void @fn_eat_op(ptr @.str227)
   %t12 = load ptr, ptr %t3
   store ptr %t12, ptr %retval
   br label %ret
@@ -8786,23 +8945,23 @@ entry:
   store ptr %arg_llt, ptr %t0
   %t1 = load i32, ptr @g_ll_t
   %t2 = call ptr @fn_itoa(i32 %t1)
-  %t3 = call ptr @fn_sconcat(ptr @.str218, ptr %t2)
+  %t3 = call ptr @fn_sconcat(ptr @.str228, ptr %t2)
   store ptr %t3, ptr %t4
   %t5 = load i32, ptr @g_ll_t
   %t6 = add i32 %t5, 1
   store i32 %t6, ptr @g_ll_t
   %t7 = load ptr, ptr @g_falloc
-  call void @fn_buf_puts(ptr %t7, ptr @.str219)
+  call void @fn_buf_puts(ptr %t7, ptr @.str229)
   %t8 = load ptr, ptr @g_falloc
   %t9 = load ptr, ptr %t4
   call void @fn_buf_puts(ptr %t8, ptr %t9)
   %t10 = load ptr, ptr @g_falloc
-  call void @fn_buf_puts(ptr %t10, ptr @.str220)
+  call void @fn_buf_puts(ptr %t10, ptr @.str230)
   %t11 = load ptr, ptr @g_falloc
   %t12 = load ptr, ptr %t0
   call void @fn_buf_puts(ptr %t11, ptr %t12)
   %t13 = load ptr, ptr @g_falloc
-  call void @fn_buf_puts(ptr %t13, ptr @.str221)
+  call void @fn_buf_puts(ptr %t13, ptr @.str231)
   %t14 = load ptr, ptr %t4
   store ptr %t14, ptr %retval
   br label %ret
@@ -8909,7 +9068,7 @@ entry:
   %t3 = alloca ptr
   %t0 = load i32, ptr @g_ll_t
   %t1 = call ptr @fn_itoa(i32 %t0)
-  %t2 = call ptr @fn_sconcat(ptr @.str222, ptr %t1)
+  %t2 = call ptr @fn_sconcat(ptr @.str232, ptr %t1)
   store ptr %t2, ptr %t3
   %t4 = load i32, ptr @g_ll_t
   %t5 = add i32 %t4, 1
@@ -8952,14 +9111,14 @@ entry:
   %t2 = alloca i32
   store ptr %arg_t, ptr %t0
   %t3 = load ptr, ptr %t0
-  %t4 = call i32 @fn_streq(ptr %t3, ptr @.str223)
+  %t4 = call i32 @fn_streq(ptr %t3, ptr @.str233)
   %t5 = icmp ne i32 %t4, 0
   %t6 = zext i1 %t5 to i32
   store i32 %t6, ptr %t2
   br i1 %t5, label %scend1, label %sc0
 sc0:
   %t7 = load ptr, ptr %t0
-  %t8 = call i32 @fn_streq(ptr %t7, ptr @.str224)
+  %t8 = call i32 @fn_streq(ptr %t7, ptr @.str234)
   %t9 = icmp ne i32 %t8, 0
   %t10 = zext i1 %t9 to i32
   store i32 %t10, ptr %t2
@@ -8972,7 +9131,7 @@ scend1:
   br i1 %t12, label %scend3, label %sc2
 sc2:
   %t14 = load ptr, ptr %t0
-  %t15 = call i32 @fn_streq(ptr %t14, ptr @.str225)
+  %t15 = call i32 @fn_streq(ptr %t14, ptr @.str235)
   %t16 = icmp ne i32 %t15, 0
   %t17 = zext i1 %t16 to i32
   store i32 %t17, ptr %t1
@@ -8982,18 +9141,18 @@ scend3:
   %t19 = icmp ne i32 %t18, 0
   br i1 %t19, label %then4, label %ifend6
 then4:
-  store ptr @.str226, ptr %retval
+  store ptr @.str236, ptr %retval
   br label %ret
 ifend6:
   %t20 = load ptr, ptr %t0
-  %t21 = call i32 @fn_streq(ptr %t20, ptr @.str227)
+  %t21 = call i32 @fn_streq(ptr %t20, ptr @.str237)
   %t22 = icmp ne i32 %t21, 0
   br i1 %t22, label %then7, label %ifend9
 then7:
-  store ptr @.str228, ptr %retval
+  store ptr @.str238, ptr %retval
   br label %ret
 ifend9:
-  store ptr @.str229, ptr %retval
+  store ptr @.str239, ptr %retval
   br label %ret
 ret:
   %t23 = load ptr, ptr %retval
@@ -9317,12 +9476,12 @@ entry:
   br i1 %t7, label %then0, label %ifend2
 then0:
   %t8 = load ptr, ptr %t0
-  %t9 = call ptr @fn_sconcat(ptr @.str230, ptr %t8)
+  %t9 = call ptr @fn_sconcat(ptr @.str240, ptr %t8)
   store ptr %t9, ptr %retval
   br label %ret
 ifend2:
   %t10 = load ptr, ptr %t0
-  %t11 = call ptr @fn_sconcat(ptr @.str231, ptr %t10)
+  %t11 = call ptr @fn_sconcat(ptr @.str241, ptr %t10)
   store ptr %t11, ptr %retval
   br label %ret
 ret:
@@ -9439,7 +9598,7 @@ ifend5:
   store i32 %t36, ptr %t2
   br label %wcond0
 wend2:
-  store ptr @.str232, ptr %retval
+  store ptr @.str242, ptr %retval
   br label %ret
 ret:
   %t37 = load ptr, ptr %retval
@@ -9733,7 +9892,7 @@ entry:
   %t7 = getelementptr inbounds %Str_Node, ptr %t6, i32 0, i32 1
   %t8 = load ptr, ptr %t0
   %t9 = load ptr, ptr %t1
-  %t10 = call ptr @fn_sconcat(ptr @.str233, ptr %t9)
+  %t10 = call ptr @fn_sconcat(ptr @.str243, ptr %t9)
   %t11 = call ptr @fn_sconcat(ptr %t8, ptr %t10)
   store ptr %t11, ptr %t7
   %t12 = load ptr, ptr %t5
@@ -9797,7 +9956,7 @@ then0:
 ifend2:
   %t6 = load ptr, ptr %t0
   %t7 = load ptr, ptr %t1
-  %t8 = call ptr @fn_sconcat(ptr @.str234, ptr %t7)
+  %t8 = call ptr @fn_sconcat(ptr @.str244, ptr %t7)
   %t9 = call ptr @fn_sconcat(ptr %t6, ptr %t8)
   store ptr %t9, ptr %t10
   store i32 0, ptr %t11
@@ -9973,6 +10132,214 @@ wbody1:
   br i1 %t19, label %then3, label %ifend5
 then3:
   %t20 = load ptr, ptr @g_g_onspawn
+  %t21 = getelementptr inbounds %LSlice, ptr %t20, i32 0, i32 0
+  %t22 = load ptr, ptr %t21
+  %t23 = load i32, ptr %t1
+  %t24 = getelementptr inbounds ptr, ptr %t22, i32 %t23
+  %t25 = load ptr, ptr %t24
+  %t26 = getelementptr inbounds %Str_Node, ptr %t25, i32 0, i32 4
+  %t27 = load ptr, ptr %t26
+  store ptr %t27, ptr %retval
+  br label %ret
+ifend5:
+  %t28 = load i32, ptr %t1
+  %t29 = add i32 %t28, 1
+  store i32 %t29, ptr %t1
+  br label %wcond0
+wend2:
+  store ptr null, ptr %retval
+  br label %ret
+ret:
+  %t30 = load ptr, ptr %retval
+  ret ptr %t30
+}
+
+define void @fn_register_ondespawn(ptr %arg_model, ptr %arg_body) {
+entry:
+  %t0 = alloca ptr
+  %t1 = alloca ptr
+  %t3 = alloca ptr
+  store ptr %arg_model, ptr %t0
+  store ptr %arg_body, ptr %t1
+  %t2 = call ptr @fn_node(i32 7)
+  store ptr %t2, ptr %t3
+  %t4 = load ptr, ptr %t3
+  %t5 = getelementptr inbounds %Str_Node, ptr %t4, i32 0, i32 1
+  %t6 = load ptr, ptr %t0
+  store ptr %t6, ptr %t5
+  %t7 = load ptr, ptr %t3
+  %t8 = getelementptr inbounds %Str_Node, ptr %t7, i32 0, i32 4
+  %t9 = load ptr, ptr %t1
+  store ptr %t9, ptr %t8
+  %t10 = load ptr, ptr @g_g_ondespawn
+  %t11 = getelementptr inbounds %LSlice, ptr %t10, i32 0, i32 1
+  %t12 = getelementptr inbounds %LSlice, ptr %t10, i32 0, i32 2
+  %t13 = getelementptr inbounds %LSlice, ptr %t10, i32 0, i32 0
+  %t14 = load i32, ptr %t11
+  %t15 = load i32, ptr %t12
+  %t16 = icmp sge i32 %t14, %t15
+  br i1 %t16, label %grow0, label %put1
+grow0:
+  %t17 = mul i32 %t15, 2
+  %t18 = icmp eq i32 %t15, 0
+  %t19 = select i1 %t18, i32 8, i32 %t17
+  %t20 = getelementptr ptr, ptr null, i32 1
+  %t21 = ptrtoint ptr %t20 to i64
+  %t22 = zext i32 %t19 to i64
+  %t23 = mul i64 %t22, %t21
+  %t24 = load ptr, ptr %t13
+  %t25 = call ptr @realloc(ptr %t24, i64 %t23)
+  store ptr %t25, ptr %t13
+  store i32 %t19, ptr %t12
+  br label %put1
+put1:
+  %t26 = load ptr, ptr %t3
+  %t27 = load ptr, ptr %t13
+  %t28 = getelementptr inbounds ptr, ptr %t27, i32 %t14
+  store ptr %t26, ptr %t28
+  %t29 = add i32 %t14, 1
+  store i32 %t29, ptr %t11
+  br label %ret
+ret:
+  ret void
+}
+
+define ptr @fn_ondespawn_body(ptr %arg_model) {
+entry:
+  %retval = alloca ptr
+  %t0 = alloca ptr
+  %t1 = alloca i32
+  store ptr %arg_model, ptr %t0
+  store i32 0, ptr %t1
+  br label %wcond0
+wcond0:
+  %t2 = load i32, ptr %t1
+  %t3 = load ptr, ptr @g_g_ondespawn
+  %t4 = getelementptr inbounds %LSlice, ptr %t3, i32 0, i32 1
+  %t5 = load i32, ptr %t4
+  %t6 = icmp slt i32 %t2, %t5
+  %t7 = zext i1 %t6 to i32
+  %t8 = icmp ne i32 %t7, 0
+  br i1 %t8, label %wbody1, label %wend2
+wbody1:
+  %t9 = load ptr, ptr @g_g_ondespawn
+  %t10 = getelementptr inbounds %LSlice, ptr %t9, i32 0, i32 0
+  %t11 = load ptr, ptr %t10
+  %t12 = load i32, ptr %t1
+  %t13 = getelementptr inbounds ptr, ptr %t11, i32 %t12
+  %t14 = load ptr, ptr %t13
+  %t15 = getelementptr inbounds %Str_Node, ptr %t14, i32 0, i32 1
+  %t16 = load ptr, ptr %t15
+  %t17 = load ptr, ptr %t0
+  %t18 = call i32 @fn_streq(ptr %t16, ptr %t17)
+  %t19 = icmp ne i32 %t18, 0
+  br i1 %t19, label %then3, label %ifend5
+then3:
+  %t20 = load ptr, ptr @g_g_ondespawn
+  %t21 = getelementptr inbounds %LSlice, ptr %t20, i32 0, i32 0
+  %t22 = load ptr, ptr %t21
+  %t23 = load i32, ptr %t1
+  %t24 = getelementptr inbounds ptr, ptr %t22, i32 %t23
+  %t25 = load ptr, ptr %t24
+  %t26 = getelementptr inbounds %Str_Node, ptr %t25, i32 0, i32 4
+  %t27 = load ptr, ptr %t26
+  store ptr %t27, ptr %retval
+  br label %ret
+ifend5:
+  %t28 = load i32, ptr %t1
+  %t29 = add i32 %t28, 1
+  store i32 %t29, ptr %t1
+  br label %wcond0
+wend2:
+  store ptr null, ptr %retval
+  br label %ret
+ret:
+  %t30 = load ptr, ptr %retval
+  ret ptr %t30
+}
+
+define void @fn_register_onattach(ptr %arg_prop, ptr %arg_body) {
+entry:
+  %t0 = alloca ptr
+  %t1 = alloca ptr
+  %t3 = alloca ptr
+  store ptr %arg_prop, ptr %t0
+  store ptr %arg_body, ptr %t1
+  %t2 = call ptr @fn_node(i32 7)
+  store ptr %t2, ptr %t3
+  %t4 = load ptr, ptr %t3
+  %t5 = getelementptr inbounds %Str_Node, ptr %t4, i32 0, i32 1
+  %t6 = load ptr, ptr %t0
+  store ptr %t6, ptr %t5
+  %t7 = load ptr, ptr %t3
+  %t8 = getelementptr inbounds %Str_Node, ptr %t7, i32 0, i32 4
+  %t9 = load ptr, ptr %t1
+  store ptr %t9, ptr %t8
+  %t10 = load ptr, ptr @g_g_onattach
+  %t11 = getelementptr inbounds %LSlice, ptr %t10, i32 0, i32 1
+  %t12 = getelementptr inbounds %LSlice, ptr %t10, i32 0, i32 2
+  %t13 = getelementptr inbounds %LSlice, ptr %t10, i32 0, i32 0
+  %t14 = load i32, ptr %t11
+  %t15 = load i32, ptr %t12
+  %t16 = icmp sge i32 %t14, %t15
+  br i1 %t16, label %grow0, label %put1
+grow0:
+  %t17 = mul i32 %t15, 2
+  %t18 = icmp eq i32 %t15, 0
+  %t19 = select i1 %t18, i32 8, i32 %t17
+  %t20 = getelementptr ptr, ptr null, i32 1
+  %t21 = ptrtoint ptr %t20 to i64
+  %t22 = zext i32 %t19 to i64
+  %t23 = mul i64 %t22, %t21
+  %t24 = load ptr, ptr %t13
+  %t25 = call ptr @realloc(ptr %t24, i64 %t23)
+  store ptr %t25, ptr %t13
+  store i32 %t19, ptr %t12
+  br label %put1
+put1:
+  %t26 = load ptr, ptr %t3
+  %t27 = load ptr, ptr %t13
+  %t28 = getelementptr inbounds ptr, ptr %t27, i32 %t14
+  store ptr %t26, ptr %t28
+  %t29 = add i32 %t14, 1
+  store i32 %t29, ptr %t11
+  br label %ret
+ret:
+  ret void
+}
+
+define ptr @fn_onattach_body(ptr %arg_prop) {
+entry:
+  %retval = alloca ptr
+  %t0 = alloca ptr
+  %t1 = alloca i32
+  store ptr %arg_prop, ptr %t0
+  store i32 0, ptr %t1
+  br label %wcond0
+wcond0:
+  %t2 = load i32, ptr %t1
+  %t3 = load ptr, ptr @g_g_onattach
+  %t4 = getelementptr inbounds %LSlice, ptr %t3, i32 0, i32 1
+  %t5 = load i32, ptr %t4
+  %t6 = icmp slt i32 %t2, %t5
+  %t7 = zext i1 %t6 to i32
+  %t8 = icmp ne i32 %t7, 0
+  br i1 %t8, label %wbody1, label %wend2
+wbody1:
+  %t9 = load ptr, ptr @g_g_onattach
+  %t10 = getelementptr inbounds %LSlice, ptr %t9, i32 0, i32 0
+  %t11 = load ptr, ptr %t10
+  %t12 = load i32, ptr %t1
+  %t13 = getelementptr inbounds ptr, ptr %t11, i32 %t12
+  %t14 = load ptr, ptr %t13
+  %t15 = getelementptr inbounds %Str_Node, ptr %t14, i32 0, i32 1
+  %t16 = load ptr, ptr %t15
+  %t17 = load ptr, ptr %t0
+  %t18 = call i32 @fn_streq(ptr %t16, ptr %t17)
+  %t19 = icmp ne i32 %t18, 0
+  br i1 %t19, label %then3, label %ifend5
+then3:
+  %t20 = load ptr, ptr @g_g_onattach
   %t21 = getelementptr inbounds %LSlice, ptr %t20, i32 0, i32 0
   %t22 = load ptr, ptr %t21
   %t23 = load i32, ptr %t1
@@ -10221,7 +10588,7 @@ entry:
   store ptr %arg_s, ptr %t0
   %t1 = load i32, ptr @g_ll_str
   %t2 = call ptr @fn_itoa(i32 %t1)
-  %t3 = call ptr @fn_sconcat(ptr @.str235, ptr %t2)
+  %t3 = call ptr @fn_sconcat(ptr @.str245, ptr %t2)
   store ptr %t3, ptr %t4
   %t5 = load i32, ptr @g_ll_str
   %t6 = add i32 %t5, 1
@@ -10231,12 +10598,12 @@ entry:
   store i32 %t8, ptr %t9
   %t10 = load ptr, ptr %t4
   call void @fn_emith(ptr %t10)
-  call void @fn_emith(ptr @.str236)
+  call void @fn_emith(ptr @.str246)
   %t11 = load i32, ptr %t9
   %t12 = add i32 %t11, 1
   %t13 = call ptr @fn_itoa(i32 %t12)
   call void @fn_emith(ptr %t13)
-  call void @fn_emith(ptr @.str237)
+  call void @fn_emith(ptr @.str247)
   store i32 0, ptr %t14
   br label %wcond0
 wcond0:
@@ -10325,7 +10692,7 @@ ifend11:
   store i32 %t69, ptr %t14
   br label %wcond0
 wend2:
-  call void @fn_emith(ptr @.str238)
+  call void @fn_emith(ptr @.str248)
   %t70 = load ptr, ptr %t4
   store ptr %t70, ptr %retval
   br label %ret
@@ -10344,16 +10711,16 @@ entry:
   store ptr %arg_idx, ptr %t1
   %t2 = call ptr @fn_nreg()
   store ptr %t2, ptr %t3
-  call void @fn_emit(ptr @.str239)
+  call void @fn_emit(ptr @.str249)
   %t4 = load ptr, ptr %t3
   call void @fn_emit(ptr %t4)
-  call void @fn_emit(ptr @.str240)
+  call void @fn_emit(ptr @.str250)
   %t5 = load ptr, ptr %t0
   call void @fn_emit(ptr %t5)
-  call void @fn_emit(ptr @.str241)
+  call void @fn_emit(ptr @.str251)
   %t6 = load ptr, ptr %t1
   call void @fn_emit(ptr %t6)
-  call void @fn_emit(ptr @.str242)
+  call void @fn_emit(ptr @.str252)
   %t7 = load ptr, ptr %t3
   store ptr %t7, ptr %retval
   br label %ret
@@ -10384,14 +10751,14 @@ then0:
   %t8 = getelementptr inbounds %Str_Node, ptr %t7, i32 0, i32 3
   %t9 = load ptr, ptr %t8
   %t10 = call ptr @fn_llty(ptr %t9)
-  %t11 = call i32 @fn_streq(ptr %t10, ptr @.str243)
+  %t11 = call i32 @fn_streq(ptr %t10, ptr @.str253)
   %t12 = icmp ne i32 %t11, 0
   br i1 %t12, label %then3, label %ifend5
 then3:
-  store ptr @.str244, ptr %retval
+  store ptr @.str254, ptr %retval
   br label %ret
 ifend5:
-  store ptr @.str245, ptr %retval
+  store ptr @.str255, ptr %retval
   br label %ret
 ifend2:
   %t13 = load ptr, ptr %t0
@@ -10458,7 +10825,7 @@ sc13:
   %t58 = load ptr, ptr %t16
   %t59 = getelementptr inbounds %Str_Node, ptr %t58, i32 0, i32 1
   %t60 = load ptr, ptr %t59
-  %t61 = call i32 @fn_streq(ptr %t60, ptr @.str246)
+  %t61 = call i32 @fn_streq(ptr %t60, ptr @.str256)
   %t62 = icmp ne i32 %t61, 0
   %t63 = zext i1 %t62 to i32
   store i32 %t63, ptr %t50
@@ -10492,7 +10859,7 @@ then17:
   %t81 = getelementptr inbounds %Str_Node, ptr %t80, i32 0, i32 2
   %t82 = load i32, ptr %t81
   %t83 = call ptr @fn_itoa(i32 %t82)
-  %t84 = call ptr @fn_sconcat(ptr @.str247, ptr %t83)
+  %t84 = call ptr @fn_sconcat(ptr @.str257, ptr %t83)
   store ptr %t84, ptr %retval
   br label %ret
 ifend19:
@@ -10500,14 +10867,14 @@ ifend19:
   %t86 = getelementptr inbounds %Str_Node, ptr %t85, i32 0, i32 3
   %t87 = load ptr, ptr %t86
   %t88 = call ptr @fn_llty(ptr %t87)
-  %t89 = call i32 @fn_streq(ptr %t88, ptr @.str248)
+  %t89 = call i32 @fn_streq(ptr %t88, ptr @.str258)
   %t90 = icmp ne i32 %t89, 0
   br i1 %t90, label %then20, label %ifend22
 then20:
-  store ptr @.str249, ptr %retval
+  store ptr @.str259, ptr %retval
   br label %ret
 ifend22:
-  store ptr @.str250, ptr %retval
+  store ptr @.str260, ptr %retval
   br label %ret
 ret:
   %t91 = load ptr, ptr %retval
@@ -10520,16 +10887,6 @@ entry:
   %t19 = alloca ptr
   %t37 = alloca i32
   %t79 = alloca ptr
-  call void @fn_emith(ptr @.str251)
-  call void @fn_emith(ptr @.str252)
-  call void @fn_emith(ptr @.str253)
-  call void @fn_emith(ptr @.str254)
-  call void @fn_emith(ptr @.str255)
-  call void @fn_emith(ptr @.str256)
-  call void @fn_emith(ptr @.str257)
-  call void @fn_emith(ptr @.str258)
-  call void @fn_emith(ptr @.str259)
-  call void @fn_emith(ptr @.str260)
   call void @fn_emith(ptr @.str261)
   call void @fn_emith(ptr @.str262)
   call void @fn_emith(ptr @.str263)
@@ -10551,16 +10908,26 @@ entry:
   call void @fn_emith(ptr @.str279)
   call void @fn_emith(ptr @.str280)
   call void @fn_emith(ptr @.str281)
+  call void @fn_emith(ptr @.str282)
+  call void @fn_emith(ptr @.str283)
+  call void @fn_emith(ptr @.str284)
+  call void @fn_emith(ptr @.str285)
+  call void @fn_emith(ptr @.str286)
+  call void @fn_emith(ptr @.str287)
+  call void @fn_emith(ptr @.str288)
+  call void @fn_emith(ptr @.str289)
+  call void @fn_emith(ptr @.str290)
+  call void @fn_emith(ptr @.str291)
   %t0 = load ptr, ptr @g_g_game_name
   %t1 = call i32 @fn_slen(ptr %t0)
   %t2 = add i32 %t1, 1
   %t3 = call ptr @fn_itoa(i32 %t2)
   call void @fn_emith(ptr %t3)
-  call void @fn_emith(ptr @.str282)
+  call void @fn_emith(ptr @.str292)
   %t4 = load ptr, ptr @g_g_game_name
   call void @fn_emith(ptr %t4)
-  call void @fn_emith(ptr @.str283)
-  call void @fn_emith(ptr @.str284)
+  call void @fn_emith(ptr @.str293)
+  call void @fn_emith(ptr @.str294)
   store i32 0, ptr %t5
   br label %wcond0
 wcond0:
@@ -10588,12 +10955,12 @@ wbody1:
   %t25 = icmp ne i32 %t24, 0
   br i1 %t25, label %then3, label %ifend5
 then3:
-  call void @fn_emith(ptr @.str285)
+  call void @fn_emith(ptr @.str295)
   %t26 = load ptr, ptr %t19
   %t27 = getelementptr inbounds %Str_Node, ptr %t26, i32 0, i32 1
   %t28 = load ptr, ptr %t27
   call void @fn_emith(ptr %t28)
-  call void @fn_emith(ptr @.str286)
+  call void @fn_emith(ptr @.str296)
   %t29 = load ptr, ptr %t19
   %t30 = getelementptr inbounds %Str_Node, ptr %t29, i32 0, i32 7
   %t31 = load ptr, ptr %t30
@@ -10604,7 +10971,7 @@ then3:
   %t36 = icmp ne i32 %t35, 0
   br i1 %t36, label %then6, label %ifend8
 then6:
-  call void @fn_emith(ptr @.str287)
+  call void @fn_emith(ptr @.str297)
   br label %ifend8
 ifend8:
   store i32 0, ptr %t37
@@ -10627,7 +10994,7 @@ wbody10:
   %t50 = icmp ne i32 %t49, 0
   br i1 %t50, label %then12, label %ifend14
 then12:
-  call void @fn_emith(ptr @.str288)
+  call void @fn_emith(ptr @.str298)
   br label %ifend14
 ifend14:
   %t51 = load ptr, ptr %t19
@@ -10647,7 +11014,7 @@ ifend14:
   store i32 %t63, ptr %t37
   br label %wcond9
 wend11:
-  call void @fn_emith(ptr @.str289)
+  call void @fn_emith(ptr @.str299)
   br label %ifend5
 ifend5:
   %t64 = load i32, ptr %t5
@@ -10682,22 +11049,22 @@ wbody16:
   %t85 = icmp ne i32 %t84, 0
   br i1 %t85, label %then18, label %ifend20
 then18:
-  call void @fn_emith(ptr @.str290)
+  call void @fn_emith(ptr @.str300)
   %t86 = load ptr, ptr %t79
   %t87 = getelementptr inbounds %Str_Node, ptr %t86, i32 0, i32 1
   %t88 = load ptr, ptr %t87
   call void @fn_emith(ptr %t88)
-  call void @fn_emith(ptr @.str291)
+  call void @fn_emith(ptr @.str301)
   %t89 = load ptr, ptr %t79
   %t90 = getelementptr inbounds %Str_Node, ptr %t89, i32 0, i32 3
   %t91 = load ptr, ptr %t90
   %t92 = call ptr @fn_llty(ptr %t91)
   call void @fn_emith(ptr %t92)
-  call void @fn_emith(ptr @.str292)
+  call void @fn_emith(ptr @.str302)
   %t93 = load ptr, ptr %t79
   %t94 = call ptr @fn_global_init(ptr %t93)
   call void @fn_emith(ptr %t94)
-  call void @fn_emith(ptr @.str293)
+  call void @fn_emith(ptr @.str303)
   br label %ifend20
 ifend20:
   %t95 = load i32, ptr %t5
@@ -10738,7 +11105,7 @@ then0:
   %t15 = load ptr, ptr %t5
   %t16 = getelementptr inbounds %Str_Val, ptr %t15, i32 0, i32 1
   %t17 = load ptr, ptr %t16
-  %t18 = call ptr @fn_sconcat(ptr @.str294, ptr %t17)
+  %t18 = call ptr @fn_sconcat(ptr @.str304, ptr %t17)
   call void @fn_perr(ptr %t18)
   br label %ifend2
 ifend2:
@@ -10757,7 +11124,7 @@ then3:
   %t29 = load ptr, ptr %t0
   %t30 = getelementptr inbounds %Str_Node, ptr %t29, i32 0, i32 1
   %t31 = load ptr, ptr %t30
-  %t32 = call ptr @fn_sconcat(ptr @.str295, ptr %t31)
+  %t32 = call ptr @fn_sconcat(ptr @.str305, ptr %t31)
   call void @fn_perr(ptr %t32)
   br label %ifend5
 ifend5:
@@ -10769,25 +11136,25 @@ ifend5:
   store ptr %t37, ptr @g_g_addr_ty
   %t38 = call ptr @fn_nreg()
   store ptr %t38, ptr %t39
-  call void @fn_emit(ptr @.str296)
+  call void @fn_emit(ptr @.str306)
   %t40 = load ptr, ptr %t39
   call void @fn_emit(ptr %t40)
-  call void @fn_emit(ptr @.str297)
+  call void @fn_emit(ptr @.str307)
   %t41 = load ptr, ptr %t5
   %t42 = getelementptr inbounds %Str_Val, ptr %t41, i32 0, i32 1
   %t43 = load ptr, ptr %t42
   %t44 = call ptr @fn_layout_ty(ptr %t43)
   call void @fn_emit(ptr %t44)
-  call void @fn_emit(ptr @.str298)
+  call void @fn_emit(ptr @.str308)
   %t45 = load ptr, ptr %t5
   %t46 = getelementptr inbounds %Str_Val, ptr %t45, i32 0, i32 0
   %t47 = load ptr, ptr %t46
   call void @fn_emit(ptr %t47)
-  call void @fn_emit(ptr @.str299)
+  call void @fn_emit(ptr @.str309)
   %t48 = load i32, ptr %t24
   %t49 = call ptr @fn_itoa(i32 %t48)
   call void @fn_emit(ptr %t49)
-  call void @fn_emit(ptr @.str300)
+  call void @fn_emit(ptr @.str310)
   %t50 = load ptr, ptr %t39
   store ptr %t50, ptr %retval
   br label %ret
@@ -10821,7 +11188,7 @@ entry:
   %t12 = icmp ne i32 %t11, 0
   br i1 %t12, label %then0, label %ifend2
 then0:
-  call void @fn_perr(ptr @.str301)
+  call void @fn_perr(ptr @.str311)
   br label %ifend2
 ifend2:
   %t13 = load ptr, ptr %t5
@@ -10833,24 +11200,24 @@ ifend2:
   store ptr %t18, ptr @g_g_addr_ty
   %t19 = call ptr @fn_nreg()
   store ptr %t19, ptr %t20
-  call void @fn_emit(ptr @.str302)
+  call void @fn_emit(ptr @.str312)
   %t21 = load ptr, ptr %t20
   call void @fn_emit(ptr %t21)
-  call void @fn_emit(ptr @.str303)
+  call void @fn_emit(ptr @.str313)
   %t22 = load ptr, ptr %t5
   %t23 = getelementptr inbounds %Str_Val, ptr %t22, i32 0, i32 0
   %t24 = load ptr, ptr %t23
   call void @fn_emit(ptr %t24)
-  call void @fn_emit(ptr @.str304)
+  call void @fn_emit(ptr @.str314)
   %t25 = call ptr @fn_nreg()
   store ptr %t25, ptr %t26
-  call void @fn_emit(ptr @.str305)
+  call void @fn_emit(ptr @.str315)
   %t27 = load ptr, ptr %t26
   call void @fn_emit(ptr %t27)
-  call void @fn_emit(ptr @.str306)
+  call void @fn_emit(ptr @.str316)
   %t28 = load ptr, ptr %t20
   call void @fn_emit(ptr %t28)
-  call void @fn_emit(ptr @.str307)
+  call void @fn_emit(ptr @.str317)
   %t29 = load ptr, ptr %t0
   %t30 = getelementptr inbounds %Str_Node, ptr %t29, i32 0, i32 5
   %t31 = load ptr, ptr %t30
@@ -10858,22 +11225,22 @@ ifend2:
   store ptr %t32, ptr %t33
   %t34 = call ptr @fn_nreg()
   store ptr %t34, ptr %t35
-  call void @fn_emit(ptr @.str308)
+  call void @fn_emit(ptr @.str318)
   %t36 = load ptr, ptr %t35
   call void @fn_emit(ptr %t36)
-  call void @fn_emit(ptr @.str309)
+  call void @fn_emit(ptr @.str319)
   %t37 = load ptr, ptr %t17
   %t38 = call ptr @fn_llty(ptr %t37)
   call void @fn_emit(ptr %t38)
-  call void @fn_emit(ptr @.str310)
+  call void @fn_emit(ptr @.str320)
   %t39 = load ptr, ptr %t26
   call void @fn_emit(ptr %t39)
-  call void @fn_emit(ptr @.str311)
+  call void @fn_emit(ptr @.str321)
   %t40 = load ptr, ptr %t33
   %t41 = getelementptr inbounds %Str_Val, ptr %t40, i32 0, i32 0
   %t42 = load ptr, ptr %t41
   call void @fn_emit(ptr %t42)
-  call void @fn_emit(ptr @.str312)
+  call void @fn_emit(ptr @.str322)
   %t43 = load ptr, ptr %t35
   store ptr %t43, ptr %retval
   br label %ret
@@ -10907,14 +11274,14 @@ entry:
   %t169 = alloca i32
   store ptr %arg_name, ptr %t0
   %t3 = load ptr, ptr %t0
-  %t4 = call i32 @fn_streq(ptr %t3, ptr @.str313)
+  %t4 = call i32 @fn_streq(ptr %t3, ptr @.str323)
   %t5 = icmp ne i32 %t4, 0
   %t6 = zext i1 %t5 to i32
   store i32 %t6, ptr %t2
   br i1 %t5, label %scend1, label %sc0
 sc0:
   %t7 = load ptr, ptr %t0
-  %t8 = call i32 @fn_streq(ptr %t7, ptr @.str314)
+  %t8 = call i32 @fn_streq(ptr %t7, ptr @.str324)
   %t9 = icmp ne i32 %t8, 0
   %t10 = zext i1 %t9 to i32
   store i32 %t10, ptr %t2
@@ -10927,7 +11294,7 @@ scend1:
   br i1 %t12, label %scend3, label %sc2
 sc2:
   %t14 = load ptr, ptr %t0
-  %t15 = call i32 @fn_streq(ptr %t14, ptr @.str315)
+  %t15 = call i32 @fn_streq(ptr %t14, ptr @.str325)
   %t16 = icmp ne i32 %t15, 0
   %t17 = zext i1 %t16 to i32
   store i32 %t17, ptr %t1
@@ -10941,14 +11308,14 @@ then4:
   br label %ret
 ifend6:
   %t22 = load ptr, ptr %t0
-  %t23 = call i32 @fn_streq(ptr %t22, ptr @.str316)
+  %t23 = call i32 @fn_streq(ptr %t22, ptr @.str326)
   %t24 = icmp ne i32 %t23, 0
   %t25 = zext i1 %t24 to i32
   store i32 %t25, ptr %t21
   br i1 %t24, label %scend8, label %sc7
 sc7:
   %t26 = load ptr, ptr %t0
-  %t27 = call i32 @fn_streq(ptr %t26, ptr @.str317)
+  %t27 = call i32 @fn_streq(ptr %t26, ptr @.str327)
   %t28 = icmp ne i32 %t27, 0
   %t29 = zext i1 %t28 to i32
   store i32 %t29, ptr %t21
@@ -10961,7 +11328,7 @@ scend8:
   br i1 %t31, label %scend10, label %sc9
 sc9:
   %t33 = load ptr, ptr %t0
-  %t34 = call i32 @fn_streq(ptr %t33, ptr @.str318)
+  %t34 = call i32 @fn_streq(ptr %t33, ptr @.str328)
   %t35 = icmp ne i32 %t34, 0
   %t36 = zext i1 %t35 to i32
   store i32 %t36, ptr %t20
@@ -10975,14 +11342,14 @@ then11:
   br label %ret
 ifend13:
   %t41 = load ptr, ptr %t0
-  %t42 = call i32 @fn_streq(ptr %t41, ptr @.str319)
+  %t42 = call i32 @fn_streq(ptr %t41, ptr @.str329)
   %t43 = icmp ne i32 %t42, 0
   %t44 = zext i1 %t43 to i32
   store i32 %t44, ptr %t40
   br i1 %t43, label %scend15, label %sc14
 sc14:
   %t45 = load ptr, ptr %t0
-  %t46 = call i32 @fn_streq(ptr %t45, ptr @.str320)
+  %t46 = call i32 @fn_streq(ptr %t45, ptr @.str330)
   %t47 = icmp ne i32 %t46, 0
   %t48 = zext i1 %t47 to i32
   store i32 %t48, ptr %t40
@@ -10995,7 +11362,7 @@ scend15:
   br i1 %t50, label %scend17, label %sc16
 sc16:
   %t52 = load ptr, ptr %t0
-  %t53 = call i32 @fn_streq(ptr %t52, ptr @.str321)
+  %t53 = call i32 @fn_streq(ptr %t52, ptr @.str331)
   %t54 = icmp ne i32 %t53, 0
   %t55 = zext i1 %t54 to i32
   store i32 %t55, ptr %t39
@@ -11009,14 +11376,14 @@ then18:
   br label %ret
 ifend20:
   %t60 = load ptr, ptr %t0
-  %t61 = call i32 @fn_streq(ptr %t60, ptr @.str322)
+  %t61 = call i32 @fn_streq(ptr %t60, ptr @.str332)
   %t62 = icmp ne i32 %t61, 0
   %t63 = zext i1 %t62 to i32
   store i32 %t63, ptr %t59
   br i1 %t62, label %scend22, label %sc21
 sc21:
   %t64 = load ptr, ptr %t0
-  %t65 = call i32 @fn_streq(ptr %t64, ptr @.str323)
+  %t65 = call i32 @fn_streq(ptr %t64, ptr @.str333)
   %t66 = icmp ne i32 %t65, 0
   %t67 = zext i1 %t66 to i32
   store i32 %t67, ptr %t59
@@ -11029,7 +11396,7 @@ scend22:
   br i1 %t69, label %scend24, label %sc23
 sc23:
   %t71 = load ptr, ptr %t0
-  %t72 = call i32 @fn_streq(ptr %t71, ptr @.str324)
+  %t72 = call i32 @fn_streq(ptr %t71, ptr @.str334)
   %t73 = icmp ne i32 %t72, 0
   %t74 = zext i1 %t73 to i32
   store i32 %t74, ptr %t58
@@ -11043,14 +11410,14 @@ then25:
   br label %ret
 ifend27:
   %t78 = load ptr, ptr %t0
-  %t79 = call i32 @fn_streq(ptr %t78, ptr @.str325)
+  %t79 = call i32 @fn_streq(ptr %t78, ptr @.str335)
   %t80 = icmp ne i32 %t79, 0
   %t81 = zext i1 %t80 to i32
   store i32 %t81, ptr %t77
   br i1 %t80, label %scend29, label %sc28
 sc28:
   %t82 = load ptr, ptr %t0
-  %t83 = call i32 @fn_streq(ptr %t82, ptr @.str326)
+  %t83 = call i32 @fn_streq(ptr %t82, ptr @.str336)
   %t84 = icmp ne i32 %t83, 0
   %t85 = zext i1 %t84 to i32
   store i32 %t85, ptr %t77
@@ -11064,14 +11431,14 @@ then30:
   br label %ret
 ifend32:
   %t91 = load ptr, ptr %t0
-  %t92 = call i32 @fn_streq(ptr %t91, ptr @.str327)
+  %t92 = call i32 @fn_streq(ptr %t91, ptr @.str337)
   %t93 = icmp ne i32 %t92, 0
   %t94 = zext i1 %t93 to i32
   store i32 %t94, ptr %t90
   br i1 %t93, label %scend34, label %sc33
 sc33:
   %t95 = load ptr, ptr %t0
-  %t96 = call i32 @fn_streq(ptr %t95, ptr @.str328)
+  %t96 = call i32 @fn_streq(ptr %t95, ptr @.str338)
   %t97 = icmp ne i32 %t96, 0
   %t98 = zext i1 %t97 to i32
   store i32 %t98, ptr %t90
@@ -11084,7 +11451,7 @@ scend34:
   br i1 %t100, label %scend36, label %sc35
 sc35:
   %t102 = load ptr, ptr %t0
-  %t103 = call i32 @fn_streq(ptr %t102, ptr @.str329)
+  %t103 = call i32 @fn_streq(ptr %t102, ptr @.str339)
   %t104 = icmp ne i32 %t103, 0
   %t105 = zext i1 %t104 to i32
   store i32 %t105, ptr %t89
@@ -11097,7 +11464,7 @@ scend36:
   br i1 %t107, label %scend38, label %sc37
 sc37:
   %t109 = load ptr, ptr %t0
-  %t110 = call i32 @fn_streq(ptr %t109, ptr @.str330)
+  %t110 = call i32 @fn_streq(ptr %t109, ptr @.str340)
   %t111 = icmp ne i32 %t110, 0
   %t112 = zext i1 %t111 to i32
   store i32 %t112, ptr %t88
@@ -11111,14 +11478,14 @@ then39:
   br label %ret
 ifend41:
   %t116 = load ptr, ptr %t0
-  %t117 = call i32 @fn_streq(ptr %t116, ptr @.str331)
+  %t117 = call i32 @fn_streq(ptr %t116, ptr @.str341)
   %t118 = icmp ne i32 %t117, 0
   %t119 = zext i1 %t118 to i32
   store i32 %t119, ptr %t115
   br i1 %t118, label %scend43, label %sc42
 sc42:
   %t120 = load ptr, ptr %t0
-  %t121 = call i32 @fn_streq(ptr %t120, ptr @.str332)
+  %t121 = call i32 @fn_streq(ptr %t120, ptr @.str342)
   %t122 = icmp ne i32 %t121, 0
   %t123 = zext i1 %t122 to i32
   store i32 %t123, ptr %t115
@@ -11132,14 +11499,14 @@ then44:
   br label %ret
 ifend46:
   %t131 = load ptr, ptr %t0
-  %t132 = call i32 @fn_streq(ptr %t131, ptr @.str333)
+  %t132 = call i32 @fn_streq(ptr %t131, ptr @.str343)
   %t133 = icmp ne i32 %t132, 0
   %t134 = zext i1 %t133 to i32
   store i32 %t134, ptr %t130
   br i1 %t133, label %scend48, label %sc47
 sc47:
   %t135 = load ptr, ptr %t0
-  %t136 = call i32 @fn_streq(ptr %t135, ptr @.str334)
+  %t136 = call i32 @fn_streq(ptr %t135, ptr @.str344)
   %t137 = icmp ne i32 %t136, 0
   %t138 = zext i1 %t137 to i32
   store i32 %t138, ptr %t130
@@ -11152,7 +11519,7 @@ scend48:
   br i1 %t140, label %scend50, label %sc49
 sc49:
   %t142 = load ptr, ptr %t0
-  %t143 = call i32 @fn_streq(ptr %t142, ptr @.str335)
+  %t143 = call i32 @fn_streq(ptr %t142, ptr @.str345)
   %t144 = icmp ne i32 %t143, 0
   %t145 = zext i1 %t144 to i32
   store i32 %t145, ptr %t129
@@ -11165,7 +11532,7 @@ scend50:
   br i1 %t147, label %scend52, label %sc51
 sc51:
   %t149 = load ptr, ptr %t0
-  %t150 = call i32 @fn_streq(ptr %t149, ptr @.str336)
+  %t150 = call i32 @fn_streq(ptr %t149, ptr @.str346)
   %t151 = icmp ne i32 %t150, 0
   %t152 = zext i1 %t151 to i32
   store i32 %t152, ptr %t128
@@ -11178,7 +11545,7 @@ scend52:
   br i1 %t154, label %scend54, label %sc53
 sc53:
   %t156 = load ptr, ptr %t0
-  %t157 = call i32 @fn_streq(ptr %t156, ptr @.str337)
+  %t157 = call i32 @fn_streq(ptr %t156, ptr @.str347)
   %t158 = icmp ne i32 %t157, 0
   %t159 = zext i1 %t158 to i32
   store i32 %t159, ptr %t127
@@ -11191,7 +11558,7 @@ scend54:
   br i1 %t161, label %scend56, label %sc55
 sc55:
   %t163 = load ptr, ptr %t0
-  %t164 = call i32 @fn_streq(ptr %t163, ptr @.str338)
+  %t164 = call i32 @fn_streq(ptr %t163, ptr @.str348)
   %t165 = icmp ne i32 %t164, 0
   %t166 = zext i1 %t165 to i32
   store i32 %t166, ptr %t126
@@ -11205,14 +11572,14 @@ then57:
   br label %ret
 ifend59:
   %t170 = load ptr, ptr %t0
-  %t171 = call i32 @fn_streq(ptr %t170, ptr @.str339)
+  %t171 = call i32 @fn_streq(ptr %t170, ptr @.str349)
   %t172 = icmp ne i32 %t171, 0
   %t173 = zext i1 %t172 to i32
   store i32 %t173, ptr %t169
   br i1 %t172, label %scend61, label %sc60
 sc60:
   %t174 = load ptr, ptr %t0
-  %t175 = call i32 @fn_streq(ptr %t174, ptr @.str340)
+  %t175 = call i32 @fn_streq(ptr %t174, ptr @.str350)
   %t176 = icmp ne i32 %t175, 0
   %t177 = zext i1 %t176 to i32
   store i32 %t177, ptr %t169
@@ -11240,13 +11607,13 @@ entry:
   store ptr %arg_rest, ptr %t0
   %t1 = call ptr @fn_nreg()
   store ptr %t1, ptr %t2
-  call void @fn_emit(ptr @.str341)
+  call void @fn_emit(ptr @.str351)
   %t3 = load ptr, ptr %t2
   call void @fn_emit(ptr %t3)
-  call void @fn_emit(ptr @.str342)
+  call void @fn_emit(ptr @.str352)
   %t4 = load ptr, ptr %t0
   call void @fn_emit(ptr %t4)
-  call void @fn_emit(ptr @.str343)
+  call void @fn_emit(ptr @.str353)
   %t5 = load ptr, ptr %t2
   store ptr %t5, ptr %retval
   br label %ret
@@ -11347,16 +11714,16 @@ entry:
   store ptr %arg_e, ptr %t1
   store i32 1, ptr @g_g_intrin_ok
   %t2 = load ptr, ptr %t0
-  %t3 = call i32 @fn_streq(ptr %t2, ptr @.str344)
+  %t3 = call i32 @fn_streq(ptr %t2, ptr @.str354)
   %t4 = icmp ne i32 %t3, 0
   br i1 %t4, label %then0, label %ifend2
 then0:
-  %t5 = call ptr @fn_val(ptr @.str345, ptr @.str346)
+  %t5 = call ptr @fn_val(ptr @.str355, ptr @.str356)
   store ptr %t5, ptr %retval
   br label %ret
 ifend2:
   %t6 = load ptr, ptr %t0
-  %t7 = call i32 @fn_streq(ptr %t6, ptr @.str347)
+  %t7 = call i32 @fn_streq(ptr %t6, ptr @.str357)
   %t8 = icmp ne i32 %t7, 0
   br i1 %t8, label %then3, label %ifend5
 then3:
@@ -11364,20 +11731,20 @@ then3:
   %t10 = call ptr @fn_arg_code(ptr %t9, i32 0)
   store ptr %t10, ptr %t11
   %t12 = load ptr, ptr %t11
-  %t13 = call ptr @fn_sconcat(ptr %t12, ptr @.str349)
-  %t14 = call ptr @fn_sconcat(ptr @.str348, ptr %t13)
+  %t13 = call ptr @fn_sconcat(ptr %t12, ptr @.str359)
+  %t14 = call ptr @fn_sconcat(ptr @.str358, ptr %t13)
   %t15 = call ptr @fn_emit_bind(ptr %t14)
   store ptr %t15, ptr %t16
   %t17 = load ptr, ptr %t16
-  %t18 = call ptr @fn_sconcat(ptr %t17, ptr @.str351)
-  %t19 = call ptr @fn_sconcat(ptr @.str350, ptr %t18)
+  %t18 = call ptr @fn_sconcat(ptr %t17, ptr @.str361)
+  %t19 = call ptr @fn_sconcat(ptr @.str360, ptr %t18)
   %t20 = call ptr @fn_emit_bind(ptr %t19)
-  %t21 = call ptr @fn_val(ptr %t20, ptr @.str352)
+  %t21 = call ptr @fn_val(ptr %t20, ptr @.str362)
   store ptr %t21, ptr %retval
   br label %ret
 ifend5:
   %t22 = load ptr, ptr %t0
-  %t23 = call i32 @fn_streq(ptr %t22, ptr @.str353)
+  %t23 = call i32 @fn_streq(ptr %t22, ptr @.str363)
   %t24 = icmp ne i32 %t23, 0
   br i1 %t24, label %then6, label %ifend8
 then6:
@@ -11388,23 +11755,23 @@ then6:
   %t29 = call ptr @fn_arg_code(ptr %t28, i32 1)
   store ptr %t29, ptr %t30
   %t31 = load ptr, ptr %t30
-  %t32 = call ptr @fn_sconcat(ptr %t31, ptr @.str355)
-  %t33 = call ptr @fn_sconcat(ptr @.str354, ptr %t32)
+  %t32 = call ptr @fn_sconcat(ptr %t31, ptr @.str365)
+  %t33 = call ptr @fn_sconcat(ptr @.str364, ptr %t32)
   %t34 = call ptr @fn_emit_bind(ptr %t33)
   store ptr %t34, ptr %t35
   %t36 = load ptr, ptr %t27
   %t37 = load ptr, ptr %t35
-  %t38 = call ptr @fn_sconcat(ptr %t37, ptr @.str358)
-  %t39 = call ptr @fn_sconcat(ptr @.str357, ptr %t38)
+  %t38 = call ptr @fn_sconcat(ptr %t37, ptr @.str368)
+  %t39 = call ptr @fn_sconcat(ptr @.str367, ptr %t38)
   %t40 = call ptr @fn_sconcat(ptr %t36, ptr %t39)
-  %t41 = call ptr @fn_sconcat(ptr @.str356, ptr %t40)
+  %t41 = call ptr @fn_sconcat(ptr @.str366, ptr %t40)
   %t42 = call ptr @fn_emit_bind(ptr %t41)
-  %t43 = call ptr @fn_val(ptr %t42, ptr @.str359)
+  %t43 = call ptr @fn_val(ptr %t42, ptr @.str369)
   store ptr %t43, ptr %retval
   br label %ret
 ifend8:
   %t44 = load ptr, ptr %t0
-  %t45 = call i32 @fn_streq(ptr %t44, ptr @.str360)
+  %t45 = call i32 @fn_streq(ptr %t44, ptr @.str370)
   %t46 = icmp ne i32 %t45, 0
   br i1 %t46, label %then9, label %ifend11
 then9:
@@ -11419,19 +11786,19 @@ then9:
   %t55 = call ptr @fn_emit_gep_i8(ptr %t53, ptr %t54)
   store ptr %t55, ptr %t56
   %t57 = load ptr, ptr %t56
-  %t58 = call ptr @fn_sconcat(ptr @.str361, ptr %t57)
+  %t58 = call ptr @fn_sconcat(ptr @.str371, ptr %t57)
   %t59 = call ptr @fn_emit_bind(ptr %t58)
   store ptr %t59, ptr %t60
   %t61 = load ptr, ptr %t60
-  %t62 = call ptr @fn_sconcat(ptr %t61, ptr @.str363)
-  %t63 = call ptr @fn_sconcat(ptr @.str362, ptr %t62)
+  %t62 = call ptr @fn_sconcat(ptr %t61, ptr @.str373)
+  %t63 = call ptr @fn_sconcat(ptr @.str372, ptr %t62)
   %t64 = call ptr @fn_emit_bind(ptr %t63)
-  %t65 = call ptr @fn_val(ptr %t64, ptr @.str364)
+  %t65 = call ptr @fn_val(ptr %t64, ptr @.str374)
   store ptr %t65, ptr %retval
   br label %ret
 ifend11:
   %t66 = load ptr, ptr %t0
-  %t67 = call i32 @fn_streq(ptr %t66, ptr @.str365)
+  %t67 = call i32 @fn_streq(ptr %t66, ptr @.str375)
   %t68 = icmp ne i32 %t67, 0
   br i1 %t68, label %then12, label %ifend14
 then12:
@@ -11449,23 +11816,23 @@ then12:
   %t80 = call ptr @fn_emit_gep_i8(ptr %t78, ptr %t79)
   store ptr %t80, ptr %t81
   %t82 = load ptr, ptr %t77
-  %t83 = call ptr @fn_sconcat(ptr %t82, ptr @.str367)
-  %t84 = call ptr @fn_sconcat(ptr @.str366, ptr %t83)
+  %t83 = call ptr @fn_sconcat(ptr %t82, ptr @.str377)
+  %t84 = call ptr @fn_sconcat(ptr @.str376, ptr %t83)
   %t85 = call ptr @fn_emit_bind(ptr %t84)
   store ptr %t85, ptr %t86
-  call void @fn_emit(ptr @.str368)
+  call void @fn_emit(ptr @.str378)
   %t87 = load ptr, ptr %t86
   call void @fn_emit(ptr %t87)
-  call void @fn_emit(ptr @.str369)
+  call void @fn_emit(ptr @.str379)
   %t88 = load ptr, ptr %t81
   call void @fn_emit(ptr %t88)
-  call void @fn_emit(ptr @.str370)
-  %t89 = call ptr @fn_val(ptr @.str371, ptr @.str372)
+  call void @fn_emit(ptr @.str380)
+  %t89 = call ptr @fn_val(ptr @.str381, ptr @.str382)
   store ptr %t89, ptr %retval
   br label %ret
 ifend14:
   %t90 = load ptr, ptr %t0
-  %t91 = call i32 @fn_streq(ptr %t90, ptr @.str373)
+  %t91 = call i32 @fn_streq(ptr %t90, ptr @.str383)
   %t92 = icmp ne i32 %t91, 0
   br i1 %t92, label %then15, label %ifend17
 then15:
@@ -11473,20 +11840,20 @@ then15:
   %t94 = call ptr @fn_arg_code(ptr %t93, i32 0)
   store ptr %t94, ptr %t95
   %t96 = load ptr, ptr %t95
-  %t97 = call ptr @fn_sconcat(ptr %t96, ptr @.str375)
-  %t98 = call ptr @fn_sconcat(ptr @.str374, ptr %t97)
+  %t97 = call ptr @fn_sconcat(ptr %t96, ptr @.str385)
+  %t98 = call ptr @fn_sconcat(ptr @.str384, ptr %t97)
   %t99 = call ptr @fn_emit_bind(ptr %t98)
   store ptr %t99, ptr %t100
   %t101 = load ptr, ptr %t100
-  %t102 = call ptr @fn_sconcat(ptr %t101, ptr @.str377)
-  %t103 = call ptr @fn_sconcat(ptr @.str376, ptr %t102)
+  %t102 = call ptr @fn_sconcat(ptr %t101, ptr @.str387)
+  %t103 = call ptr @fn_sconcat(ptr @.str386, ptr %t102)
   %t104 = call ptr @fn_emit_bind(ptr %t103)
-  %t105 = call ptr @fn_val(ptr %t104, ptr @.str378)
+  %t105 = call ptr @fn_val(ptr %t104, ptr @.str388)
   store ptr %t105, ptr %retval
   br label %ret
 ifend17:
   %t106 = load ptr, ptr %t0
-  %t107 = call i32 @fn_streq(ptr %t106, ptr @.str379)
+  %t107 = call i32 @fn_streq(ptr %t106, ptr @.str389)
   %t108 = icmp ne i32 %t107, 0
   br i1 %t108, label %then18, label %ifend20
 then18:
@@ -11498,24 +11865,24 @@ then18:
   store ptr %t113, ptr %t114
   %t115 = load ptr, ptr %t111
   %t116 = load ptr, ptr %t114
-  %t117 = call ptr @fn_sconcat(ptr %t116, ptr @.str382)
-  %t118 = call ptr @fn_sconcat(ptr @.str381, ptr %t117)
+  %t117 = call ptr @fn_sconcat(ptr %t116, ptr @.str392)
+  %t118 = call ptr @fn_sconcat(ptr @.str391, ptr %t117)
   %t119 = call ptr @fn_sconcat(ptr %t115, ptr %t118)
-  %t120 = call ptr @fn_sconcat(ptr @.str380, ptr %t119)
+  %t120 = call ptr @fn_sconcat(ptr @.str390, ptr %t119)
   %t121 = call ptr @fn_emit_bind(ptr %t120)
-  %t122 = call ptr @fn_val(ptr %t121, ptr @.str383)
+  %t122 = call ptr @fn_val(ptr %t121, ptr @.str393)
   store ptr %t122, ptr %retval
   br label %ret
 ifend20:
   %t124 = load ptr, ptr %t0
-  %t125 = call i32 @fn_streq(ptr %t124, ptr @.str384)
+  %t125 = call i32 @fn_streq(ptr %t124, ptr @.str394)
   %t126 = icmp ne i32 %t125, 0
   %t127 = zext i1 %t126 to i32
   store i32 %t127, ptr %t123
   br i1 %t126, label %scend22, label %sc21
 sc21:
   %t128 = load ptr, ptr %t0
-  %t129 = call i32 @fn_streq(ptr %t128, ptr @.str385)
+  %t129 = call i32 @fn_streq(ptr %t128, ptr @.str395)
   %t130 = icmp ne i32 %t129, 0
   %t131 = zext i1 %t130 to i32
   store i32 %t131, ptr %t123
@@ -11535,43 +11902,43 @@ then23:
   %t141 = call ptr @fn_arg_code(ptr %t140, i32 2)
   store ptr %t141, ptr %t142
   %t143 = load ptr, ptr %t142
-  %t144 = call ptr @fn_sconcat(ptr %t143, ptr @.str387)
-  %t145 = call ptr @fn_sconcat(ptr @.str386, ptr %t144)
+  %t144 = call ptr @fn_sconcat(ptr %t143, ptr @.str397)
+  %t145 = call ptr @fn_sconcat(ptr @.str396, ptr %t144)
   %t146 = call ptr @fn_emit_bind(ptr %t145)
   store ptr %t146, ptr %t147
-  store ptr @.str388, ptr %t148
+  store ptr @.str398, ptr %t148
   %t149 = load ptr, ptr %t0
-  %t150 = call i32 @fn_streq(ptr %t149, ptr @.str389)
+  %t150 = call i32 @fn_streq(ptr %t149, ptr @.str399)
   %t151 = icmp ne i32 %t150, 0
   br i1 %t151, label %then26, label %ifend28
 then26:
-  store ptr @.str390, ptr %t148
+  store ptr @.str400, ptr %t148
   br label %ifend28
 ifend28:
   %t152 = load ptr, ptr %t148
   %t153 = load ptr, ptr %t139
   %t154 = load ptr, ptr %t147
   %t155 = load ptr, ptr %t136
-  %t156 = call ptr @fn_sconcat(ptr %t155, ptr @.str395)
-  %t157 = call ptr @fn_sconcat(ptr @.str394, ptr %t156)
+  %t156 = call ptr @fn_sconcat(ptr %t155, ptr @.str405)
+  %t157 = call ptr @fn_sconcat(ptr @.str404, ptr %t156)
   %t158 = call ptr @fn_sconcat(ptr %t154, ptr %t157)
-  %t159 = call ptr @fn_sconcat(ptr @.str393, ptr %t158)
+  %t159 = call ptr @fn_sconcat(ptr @.str403, ptr %t158)
   %t160 = call ptr @fn_sconcat(ptr %t153, ptr %t159)
-  %t161 = call ptr @fn_sconcat(ptr @.str392, ptr %t160)
+  %t161 = call ptr @fn_sconcat(ptr @.str402, ptr %t160)
   %t162 = call ptr @fn_sconcat(ptr %t152, ptr %t161)
-  %t163 = call ptr @fn_sconcat(ptr @.str391, ptr %t162)
+  %t163 = call ptr @fn_sconcat(ptr @.str401, ptr %t162)
   %t164 = call ptr @fn_emit_bind(ptr %t163)
   store ptr %t164, ptr %t165
   %t166 = load ptr, ptr %t165
-  %t167 = call ptr @fn_sconcat(ptr %t166, ptr @.str397)
-  %t168 = call ptr @fn_sconcat(ptr @.str396, ptr %t167)
+  %t167 = call ptr @fn_sconcat(ptr %t166, ptr @.str407)
+  %t168 = call ptr @fn_sconcat(ptr @.str406, ptr %t167)
   %t169 = call ptr @fn_emit_bind(ptr %t168)
-  %t170 = call ptr @fn_val(ptr %t169, ptr @.str398)
+  %t170 = call ptr @fn_val(ptr %t169, ptr @.str408)
   store ptr %t170, ptr %retval
   br label %ret
 ifend25:
   %t171 = load ptr, ptr %t0
-  %t172 = call i32 @fn_streq(ptr %t171, ptr @.str399)
+  %t172 = call i32 @fn_streq(ptr %t171, ptr @.str409)
   %t173 = icmp ne i32 %t172, 0
   br i1 %t173, label %then29, label %ifend31
 then29:
@@ -11585,26 +11952,26 @@ then29:
   %t181 = call ptr @fn_arg_code(ptr %t180, i32 2)
   store ptr %t181, ptr %t182
   %t183 = load ptr, ptr %t179
-  %t184 = call ptr @fn_sconcat(ptr %t183, ptr @.str401)
-  %t185 = call ptr @fn_sconcat(ptr @.str400, ptr %t184)
+  %t184 = call ptr @fn_sconcat(ptr %t183, ptr @.str411)
+  %t185 = call ptr @fn_sconcat(ptr @.str410, ptr %t184)
   %t186 = call ptr @fn_emit_bind(ptr %t185)
   store ptr %t186, ptr %t187
   %t188 = load ptr, ptr %t176
   %t189 = load ptr, ptr %t187
   %t190 = load ptr, ptr %t182
-  %t191 = call ptr @fn_sconcat(ptr %t190, ptr @.str405)
-  %t192 = call ptr @fn_sconcat(ptr @.str404, ptr %t191)
+  %t191 = call ptr @fn_sconcat(ptr %t190, ptr @.str415)
+  %t192 = call ptr @fn_sconcat(ptr @.str414, ptr %t191)
   %t193 = call ptr @fn_sconcat(ptr %t189, ptr %t192)
-  %t194 = call ptr @fn_sconcat(ptr @.str403, ptr %t193)
+  %t194 = call ptr @fn_sconcat(ptr @.str413, ptr %t193)
   %t195 = call ptr @fn_sconcat(ptr %t188, ptr %t194)
-  %t196 = call ptr @fn_sconcat(ptr @.str402, ptr %t195)
+  %t196 = call ptr @fn_sconcat(ptr @.str412, ptr %t195)
   %t197 = call ptr @fn_emit_bind(ptr %t196)
-  %t198 = call ptr @fn_val(ptr %t197, ptr @.str406)
+  %t198 = call ptr @fn_val(ptr %t197, ptr @.str416)
   store ptr %t198, ptr %retval
   br label %ret
 ifend31:
   %t199 = load ptr, ptr %t0
-  %t200 = call i32 @fn_streq(ptr %t199, ptr @.str407)
+  %t200 = call i32 @fn_streq(ptr %t199, ptr @.str417)
   %t201 = icmp ne i32 %t200, 0
   br i1 %t201, label %then32, label %ifend34
 then32:
@@ -11612,130 +11979,130 @@ then32:
   %t203 = call ptr @fn_arg_code(ptr %t202, i32 0)
   store ptr %t203, ptr %t204
   %t205 = load ptr, ptr %t204
-  %t206 = call ptr @fn_sconcat(ptr %t205, ptr @.str409)
-  %t207 = call ptr @fn_sconcat(ptr @.str408, ptr %t206)
+  %t206 = call ptr @fn_sconcat(ptr %t205, ptr @.str419)
+  %t207 = call ptr @fn_sconcat(ptr @.str418, ptr %t206)
   %t208 = call ptr @fn_emit_bind(ptr %t207)
   store ptr %t208, ptr %t209
   %t210 = load ptr, ptr %t209
-  %t211 = call ptr @fn_sconcat(ptr %t210, ptr @.str411)
-  %t212 = call ptr @fn_sconcat(ptr @.str410, ptr %t211)
+  %t211 = call ptr @fn_sconcat(ptr %t210, ptr @.str421)
+  %t212 = call ptr @fn_sconcat(ptr @.str420, ptr %t211)
   %t213 = call ptr @fn_emit_bind(ptr %t212)
-  %t214 = call ptr @fn_val(ptr %t213, ptr @.str412)
+  %t214 = call ptr @fn_val(ptr %t213, ptr @.str422)
   store ptr %t214, ptr %retval
   br label %ret
 ifend34:
   %t215 = load ptr, ptr %t0
-  %t216 = call i32 @fn_streq(ptr %t215, ptr @.str413)
+  %t216 = call i32 @fn_streq(ptr %t215, ptr @.str423)
   %t217 = icmp ne i32 %t216, 0
   br i1 %t217, label %then35, label %ifend37
 then35:
   %t218 = load ptr, ptr %t1
   %t219 = call ptr @fn_arg_code(ptr %t218, i32 0)
   store ptr %t219, ptr %t220
-  call void @fn_emit(ptr @.str414)
+  call void @fn_emit(ptr @.str424)
   %t221 = load ptr, ptr %t220
   call void @fn_emit(ptr %t221)
-  call void @fn_emit(ptr @.str415)
-  %t222 = call ptr @fn_val(ptr @.str416, ptr @.str417)
+  call void @fn_emit(ptr @.str425)
+  %t222 = call ptr @fn_val(ptr @.str426, ptr @.str427)
   store ptr %t222, ptr %retval
   br label %ret
 ifend37:
   %t223 = load ptr, ptr %t0
-  %t224 = call i32 @fn_streq(ptr %t223, ptr @.str418)
+  %t224 = call i32 @fn_streq(ptr %t223, ptr @.str428)
   %t225 = icmp ne i32 %t224, 0
   br i1 %t225, label %then38, label %ifend40
 then38:
   %t226 = load ptr, ptr %t1
   %t227 = call ptr @fn_arg_code(ptr %t226, i32 0)
   store ptr %t227, ptr %t228
-  call void @fn_emit(ptr @.str419)
+  call void @fn_emit(ptr @.str429)
   %t229 = load ptr, ptr %t228
   call void @fn_emit(ptr %t229)
-  call void @fn_emit(ptr @.str420)
-  %t230 = call ptr @fn_val(ptr @.str421, ptr @.str422)
+  call void @fn_emit(ptr @.str430)
+  %t230 = call ptr @fn_val(ptr @.str431, ptr @.str432)
   store ptr %t230, ptr %retval
   br label %ret
 ifend40:
   %t231 = load ptr, ptr %t0
-  %t232 = call i32 @fn_streq(ptr %t231, ptr @.str423)
+  %t232 = call i32 @fn_streq(ptr %t231, ptr @.str433)
   %t233 = icmp ne i32 %t232, 0
   br i1 %t233, label %then41, label %ifend43
 then41:
   %t234 = load ptr, ptr %t1
   %t235 = call ptr @fn_arg_code(ptr %t234, i32 0)
   store ptr %t235, ptr %t236
-  call void @fn_emit(ptr @.str424)
+  call void @fn_emit(ptr @.str434)
   %t237 = load ptr, ptr %t236
   call void @fn_emit(ptr %t237)
-  call void @fn_emit(ptr @.str425)
-  %t238 = call ptr @fn_val(ptr @.str426, ptr @.str427)
+  call void @fn_emit(ptr @.str435)
+  %t238 = call ptr @fn_val(ptr @.str436, ptr @.str437)
   store ptr %t238, ptr %retval
   br label %ret
 ifend43:
   %t239 = load ptr, ptr %t0
-  %t240 = call i32 @fn_streq(ptr %t239, ptr @.str428)
+  %t240 = call i32 @fn_streq(ptr %t239, ptr @.str438)
   %t241 = icmp ne i32 %t240, 0
   br i1 %t241, label %then44, label %ifend46
 then44:
-  %t242 = call ptr @fn_emit_bind(ptr @.str429)
-  %t243 = call ptr @fn_val(ptr %t242, ptr @.str430)
+  %t242 = call ptr @fn_emit_bind(ptr @.str439)
+  %t243 = call ptr @fn_val(ptr %t242, ptr @.str440)
   store ptr %t243, ptr %retval
   br label %ret
 ifend46:
   %t244 = load ptr, ptr %t0
-  %t245 = call i32 @fn_streq(ptr %t244, ptr @.str431)
+  %t245 = call i32 @fn_streq(ptr %t244, ptr @.str441)
   %t246 = icmp ne i32 %t245, 0
   br i1 %t246, label %then47, label %ifend49
 then47:
   %t247 = load ptr, ptr %t1
   %t248 = call ptr @fn_arg_code(ptr %t247, i32 0)
   store ptr %t248, ptr %t249
-  %t250 = call ptr @fn_emit_bind(ptr @.str432)
+  %t250 = call ptr @fn_emit_bind(ptr @.str442)
   store ptr %t250, ptr %t251
   %t252 = load ptr, ptr %t251
   %t253 = load ptr, ptr %t249
-  %t254 = call ptr @fn_sconcat(ptr @.str434, ptr %t253)
+  %t254 = call ptr @fn_sconcat(ptr @.str444, ptr %t253)
   %t255 = call ptr @fn_sconcat(ptr %t252, ptr %t254)
-  %t256 = call ptr @fn_sconcat(ptr @.str433, ptr %t255)
+  %t256 = call ptr @fn_sconcat(ptr @.str443, ptr %t255)
   %t257 = call ptr @fn_emit_bind(ptr %t256)
   store ptr %t257, ptr %t258
   %t259 = load ptr, ptr %t258
-  %t260 = call ptr @fn_sconcat(ptr @.str435, ptr %t259)
+  %t260 = call ptr @fn_sconcat(ptr @.str445, ptr %t259)
   %t261 = call ptr @fn_emit_bind(ptr %t260)
-  %t262 = call ptr @fn_val(ptr %t261, ptr @.str436)
+  %t262 = call ptr @fn_val(ptr %t261, ptr @.str446)
   store ptr %t262, ptr %retval
   br label %ret
 ifend49:
   %t263 = load ptr, ptr %t0
-  %t264 = call i32 @fn_streq(ptr %t263, ptr @.str437)
+  %t264 = call i32 @fn_streq(ptr %t263, ptr @.str447)
   %t265 = icmp ne i32 %t264, 0
   br i1 %t265, label %then50, label %ifend52
 then50:
   %t266 = load ptr, ptr %t1
   %t267 = call ptr @fn_arg_code(ptr %t266, i32 0)
   store ptr %t267, ptr %t268
-  call void @fn_emit(ptr @.str438)
+  call void @fn_emit(ptr @.str448)
   %t269 = load ptr, ptr %t268
   call void @fn_emit(ptr %t269)
-  call void @fn_emit(ptr @.str439)
-  call void @fn_emit(ptr @.str440)
+  call void @fn_emit(ptr @.str449)
+  call void @fn_emit(ptr @.str450)
   store i32 1, ptr @g_g_term
-  %t270 = call ptr @fn_val(ptr @.str441, ptr @.str442)
+  %t270 = call ptr @fn_val(ptr @.str451, ptr @.str452)
   store ptr %t270, ptr %retval
   br label %ret
 ifend52:
   %t271 = load ptr, ptr %t0
-  %t272 = call i32 @fn_streq(ptr %t271, ptr @.str443)
+  %t272 = call i32 @fn_streq(ptr %t271, ptr @.str453)
   %t273 = icmp ne i32 %t272, 0
   br i1 %t273, label %then53, label %ifend55
 then53:
-  %t274 = call ptr @fn_emit_bind(ptr @.str444)
-  %t275 = call ptr @fn_val(ptr %t274, ptr @.str445)
+  %t274 = call ptr @fn_emit_bind(ptr @.str454)
+  %t275 = call ptr @fn_val(ptr %t274, ptr @.str455)
   store ptr %t275, ptr %retval
   br label %ret
 ifend55:
   %t276 = load ptr, ptr %t0
-  %t277 = call i32 @fn_streq(ptr %t276, ptr @.str446)
+  %t277 = call i32 @fn_streq(ptr %t276, ptr @.str456)
   %t278 = icmp ne i32 %t277, 0
   br i1 %t278, label %then56, label %ifend58
 then56:
@@ -11743,15 +12110,15 @@ then56:
   %t280 = call ptr @fn_arg_code(ptr %t279, i32 0)
   store ptr %t280, ptr %t281
   %t282 = load ptr, ptr %t281
-  %t283 = call ptr @fn_sconcat(ptr %t282, ptr @.str448)
-  %t284 = call ptr @fn_sconcat(ptr @.str447, ptr %t283)
+  %t283 = call ptr @fn_sconcat(ptr %t282, ptr @.str458)
+  %t284 = call ptr @fn_sconcat(ptr @.str457, ptr %t283)
   %t285 = call ptr @fn_emit_bind(ptr %t284)
-  %t286 = call ptr @fn_val(ptr %t285, ptr @.str449)
+  %t286 = call ptr @fn_val(ptr %t285, ptr @.str459)
   store ptr %t286, ptr %retval
   br label %ret
 ifend58:
   %t287 = load ptr, ptr %t0
-  %t288 = call i32 @fn_streq(ptr %t287, ptr @.str450)
+  %t288 = call i32 @fn_streq(ptr %t287, ptr @.str460)
   %t289 = icmp ne i32 %t288, 0
   br i1 %t289, label %then59, label %ifend61
 then59:
@@ -11759,15 +12126,15 @@ then59:
   %t291 = call ptr @fn_arg_code(ptr %t290, i32 0)
   store ptr %t291, ptr %t292
   %t293 = load ptr, ptr %t292
-  %t294 = call ptr @fn_sconcat(ptr %t293, ptr @.str452)
-  %t295 = call ptr @fn_sconcat(ptr @.str451, ptr %t294)
+  %t294 = call ptr @fn_sconcat(ptr %t293, ptr @.str462)
+  %t295 = call ptr @fn_sconcat(ptr @.str461, ptr %t294)
   %t296 = call ptr @fn_emit_bind(ptr %t295)
-  %t297 = call ptr @fn_val(ptr %t296, ptr @.str453)
+  %t297 = call ptr @fn_val(ptr %t296, ptr @.str463)
   store ptr %t297, ptr %retval
   br label %ret
 ifend61:
   %t298 = load ptr, ptr %t0
-  %t299 = call i32 @fn_streq(ptr %t298, ptr @.str454)
+  %t299 = call i32 @fn_streq(ptr %t298, ptr @.str464)
   %t300 = icmp ne i32 %t299, 0
   br i1 %t300, label %then62, label %ifend64
 then62:
@@ -11775,22 +12142,22 @@ then62:
   %t302 = call ptr @fn_arg_code(ptr %t301, i32 0)
   store ptr %t302, ptr %t303
   %t304 = load ptr, ptr %t303
-  %t305 = call ptr @fn_sconcat(ptr %t304, ptr @.str456)
-  %t306 = call ptr @fn_sconcat(ptr @.str455, ptr %t305)
+  %t305 = call ptr @fn_sconcat(ptr %t304, ptr @.str466)
+  %t306 = call ptr @fn_sconcat(ptr @.str465, ptr %t305)
   %t307 = call ptr @fn_emit_bind(ptr %t306)
-  %t308 = call ptr @fn_val(ptr %t307, ptr @.str457)
+  %t308 = call ptr @fn_val(ptr %t307, ptr @.str467)
   store ptr %t308, ptr %retval
   br label %ret
 ifend64:
   %t313 = load ptr, ptr %t0
-  %t314 = call i32 @fn_streq(ptr %t313, ptr @.str458)
+  %t314 = call i32 @fn_streq(ptr %t313, ptr @.str468)
   %t315 = icmp ne i32 %t314, 0
   %t316 = zext i1 %t315 to i32
   store i32 %t316, ptr %t312
   br i1 %t315, label %scend66, label %sc65
 sc65:
   %t317 = load ptr, ptr %t0
-  %t318 = call i32 @fn_streq(ptr %t317, ptr @.str459)
+  %t318 = call i32 @fn_streq(ptr %t317, ptr @.str469)
   %t319 = icmp ne i32 %t318, 0
   %t320 = zext i1 %t319 to i32
   store i32 %t320, ptr %t312
@@ -11803,7 +12170,7 @@ scend66:
   br i1 %t322, label %scend68, label %sc67
 sc67:
   %t324 = load ptr, ptr %t0
-  %t325 = call i32 @fn_streq(ptr %t324, ptr @.str460)
+  %t325 = call i32 @fn_streq(ptr %t324, ptr @.str470)
   %t326 = icmp ne i32 %t325, 0
   %t327 = zext i1 %t326 to i32
   store i32 %t327, ptr %t311
@@ -11816,7 +12183,7 @@ scend68:
   br i1 %t329, label %scend70, label %sc69
 sc69:
   %t331 = load ptr, ptr %t0
-  %t332 = call i32 @fn_streq(ptr %t331, ptr @.str461)
+  %t332 = call i32 @fn_streq(ptr %t331, ptr @.str471)
   %t333 = icmp ne i32 %t332, 0
   %t334 = zext i1 %t333 to i32
   store i32 %t334, ptr %t310
@@ -11829,7 +12196,7 @@ scend70:
   br i1 %t336, label %scend72, label %sc71
 sc71:
   %t338 = load ptr, ptr %t0
-  %t339 = call i32 @fn_streq(ptr %t338, ptr @.str462)
+  %t339 = call i32 @fn_streq(ptr %t338, ptr @.str472)
   %t340 = icmp ne i32 %t339, 0
   %t341 = zext i1 %t340 to i32
   store i32 %t341, ptr %t309
@@ -11845,53 +12212,53 @@ then73:
   %t347 = load ptr, ptr %t1
   %t348 = call ptr @fn_arg_code(ptr %t347, i32 1)
   store ptr %t348, ptr %t349
-  store ptr @.str463, ptr %t350
+  store ptr @.str473, ptr %t350
   %t351 = load ptr, ptr %t0
-  %t352 = call i32 @fn_streq(ptr %t351, ptr @.str464)
+  %t352 = call i32 @fn_streq(ptr %t351, ptr @.str474)
   %t353 = icmp ne i32 %t352, 0
   br i1 %t353, label %then76, label %ifend78
 then76:
-  store ptr @.str465, ptr %t350
+  store ptr @.str475, ptr %t350
   br label %ifend78
 ifend78:
   %t354 = load ptr, ptr %t0
-  %t355 = call i32 @fn_streq(ptr %t354, ptr @.str466)
+  %t355 = call i32 @fn_streq(ptr %t354, ptr @.str476)
   %t356 = icmp ne i32 %t355, 0
   br i1 %t356, label %then79, label %ifend81
 then79:
-  store ptr @.str467, ptr %t350
+  store ptr @.str477, ptr %t350
   br label %ifend81
 ifend81:
   %t357 = load ptr, ptr %t0
-  %t358 = call i32 @fn_streq(ptr %t357, ptr @.str468)
+  %t358 = call i32 @fn_streq(ptr %t357, ptr @.str478)
   %t359 = icmp ne i32 %t358, 0
   br i1 %t359, label %then82, label %ifend84
 then82:
-  store ptr @.str469, ptr %t350
+  store ptr @.str479, ptr %t350
   br label %ifend84
 ifend84:
   %t360 = load ptr, ptr %t0
-  %t361 = call i32 @fn_streq(ptr %t360, ptr @.str470)
+  %t361 = call i32 @fn_streq(ptr %t360, ptr @.str480)
   %t362 = icmp ne i32 %t361, 0
   br i1 %t362, label %then85, label %ifend87
 then85:
-  store ptr @.str471, ptr %t350
+  store ptr @.str481, ptr %t350
   br label %ifend87
 ifend87:
   %t363 = load ptr, ptr %t350
   %t364 = load ptr, ptr %t346
   %t365 = load ptr, ptr %t349
-  %t366 = call ptr @fn_sconcat(ptr @.str473, ptr %t365)
+  %t366 = call ptr @fn_sconcat(ptr @.str483, ptr %t365)
   %t367 = call ptr @fn_sconcat(ptr %t364, ptr %t366)
-  %t368 = call ptr @fn_sconcat(ptr @.str472, ptr %t367)
+  %t368 = call ptr @fn_sconcat(ptr @.str482, ptr %t367)
   %t369 = call ptr @fn_sconcat(ptr %t363, ptr %t368)
   %t370 = call ptr @fn_emit_bind(ptr %t369)
-  %t371 = call ptr @fn_val(ptr %t370, ptr @.str474)
+  %t371 = call ptr @fn_val(ptr %t370, ptr @.str484)
   store ptr %t371, ptr %retval
   br label %ret
 ifend75:
   %t372 = load ptr, ptr %t0
-  %t373 = call i32 @fn_streq(ptr %t372, ptr @.str475)
+  %t373 = call i32 @fn_streq(ptr %t372, ptr @.str485)
   %t374 = icmp ne i32 %t373, 0
   br i1 %t374, label %then88, label %ifend90
 then88:
@@ -11903,25 +12270,25 @@ then88:
   store ptr %t379, ptr %t380
   %t381 = call ptr @fn_nreg()
   store ptr %t381, ptr %t382
-  call void @fn_emit(ptr @.str476)
+  call void @fn_emit(ptr @.str486)
   %t383 = load ptr, ptr %t382
   call void @fn_emit(ptr %t383)
-  call void @fn_emit(ptr @.str477)
+  call void @fn_emit(ptr @.str487)
   %t384 = load ptr, ptr %t377
   call void @fn_emit(ptr %t384)
-  call void @fn_emit(ptr @.str478)
+  call void @fn_emit(ptr @.str488)
   %t385 = load ptr, ptr %t380
   call void @fn_emit(ptr %t385)
-  call void @fn_emit(ptr @.str479)
+  call void @fn_emit(ptr @.str489)
   %t386 = load ptr, ptr %t382
-  %t387 = call ptr @fn_sconcat(ptr @.str480, ptr %t386)
+  %t387 = call ptr @fn_sconcat(ptr @.str490, ptr %t386)
   %t388 = call ptr @fn_emit_bind(ptr %t387)
-  %t389 = call ptr @fn_val(ptr %t388, ptr @.str481)
+  %t389 = call ptr @fn_val(ptr %t388, ptr @.str491)
   store ptr %t389, ptr %retval
   br label %ret
 ifend90:
   %t390 = load ptr, ptr %t0
-  %t391 = call i32 @fn_streq(ptr %t390, ptr @.str482)
+  %t391 = call i32 @fn_streq(ptr %t390, ptr @.str492)
   %t392 = icmp ne i32 %t391, 0
   br i1 %t392, label %then91, label %ifend93
 then91:
@@ -11936,29 +12303,29 @@ then91:
   store ptr %t400, ptr %t401
   %t402 = call ptr @fn_nreg()
   store ptr %t402, ptr %t403
-  call void @fn_emit(ptr @.str483)
+  call void @fn_emit(ptr @.str493)
   %t404 = load ptr, ptr %t403
   call void @fn_emit(ptr %t404)
-  call void @fn_emit(ptr @.str484)
+  call void @fn_emit(ptr @.str494)
   %t405 = load ptr, ptr %t395
   call void @fn_emit(ptr %t405)
-  call void @fn_emit(ptr @.str485)
+  call void @fn_emit(ptr @.str495)
   %t406 = load ptr, ptr %t398
   call void @fn_emit(ptr %t406)
-  call void @fn_emit(ptr @.str486)
-  call void @fn_emit(ptr @.str487)
+  call void @fn_emit(ptr @.str496)
+  call void @fn_emit(ptr @.str497)
   %t407 = load ptr, ptr %t401
   call void @fn_emit(ptr %t407)
-  call void @fn_emit(ptr @.str488)
+  call void @fn_emit(ptr @.str498)
   %t408 = load ptr, ptr %t403
   call void @fn_emit(ptr %t408)
-  call void @fn_emit(ptr @.str489)
-  %t409 = call ptr @fn_val(ptr @.str490, ptr @.str491)
+  call void @fn_emit(ptr @.str499)
+  %t409 = call ptr @fn_val(ptr @.str500, ptr @.str501)
   store ptr %t409, ptr %retval
   br label %ret
 ifend93:
   store i32 0, ptr @g_g_intrin_ok
-  %t410 = call ptr @fn_val(ptr @.str492, ptr @.str493)
+  %t410 = call ptr @fn_val(ptr @.str502, ptr @.str503)
   store ptr %t410, ptr %retval
   br label %ret
 ret:
@@ -11985,14 +12352,14 @@ entry:
   %t118 = alloca i32
   store ptr %arg_name, ptr %t0
   %t3 = load ptr, ptr %t0
-  %t4 = call i32 @fn_streq(ptr %t3, ptr @.str494)
+  %t4 = call i32 @fn_streq(ptr %t3, ptr @.str504)
   %t5 = icmp ne i32 %t4, 0
   %t6 = zext i1 %t5 to i32
   store i32 %t6, ptr %t2
   br i1 %t5, label %scend1, label %sc0
 sc0:
   %t7 = load ptr, ptr %t0
-  %t8 = call i32 @fn_streq(ptr %t7, ptr @.str495)
+  %t8 = call i32 @fn_streq(ptr %t7, ptr @.str505)
   %t9 = icmp ne i32 %t8, 0
   %t10 = zext i1 %t9 to i32
   store i32 %t10, ptr %t2
@@ -12005,7 +12372,7 @@ scend1:
   br i1 %t12, label %scend3, label %sc2
 sc2:
   %t14 = load ptr, ptr %t0
-  %t15 = call i32 @fn_streq(ptr %t14, ptr @.str496)
+  %t15 = call i32 @fn_streq(ptr %t14, ptr @.str506)
   %t16 = icmp ne i32 %t15, 0
   %t17 = zext i1 %t16 to i32
   store i32 %t17, ptr %t1
@@ -12019,14 +12386,14 @@ then4:
   br label %ret
 ifend6:
   %t22 = load ptr, ptr %t0
-  %t23 = call i32 @fn_streq(ptr %t22, ptr @.str497)
+  %t23 = call i32 @fn_streq(ptr %t22, ptr @.str507)
   %t24 = icmp ne i32 %t23, 0
   %t25 = zext i1 %t24 to i32
   store i32 %t25, ptr %t21
   br i1 %t24, label %scend8, label %sc7
 sc7:
   %t26 = load ptr, ptr %t0
-  %t27 = call i32 @fn_streq(ptr %t26, ptr @.str498)
+  %t27 = call i32 @fn_streq(ptr %t26, ptr @.str508)
   %t28 = icmp ne i32 %t27, 0
   %t29 = zext i1 %t28 to i32
   store i32 %t29, ptr %t21
@@ -12039,7 +12406,7 @@ scend8:
   br i1 %t31, label %scend10, label %sc9
 sc9:
   %t33 = load ptr, ptr %t0
-  %t34 = call i32 @fn_streq(ptr %t33, ptr @.str499)
+  %t34 = call i32 @fn_streq(ptr %t33, ptr @.str509)
   %t35 = icmp ne i32 %t34, 0
   %t36 = zext i1 %t35 to i32
   store i32 %t36, ptr %t20
@@ -12053,14 +12420,14 @@ then11:
   br label %ret
 ifend13:
   %t40 = load ptr, ptr %t0
-  %t41 = call i32 @fn_streq(ptr %t40, ptr @.str500)
+  %t41 = call i32 @fn_streq(ptr %t40, ptr @.str510)
   %t42 = icmp ne i32 %t41, 0
   %t43 = zext i1 %t42 to i32
   store i32 %t43, ptr %t39
   br i1 %t42, label %scend15, label %sc14
 sc14:
   %t44 = load ptr, ptr %t0
-  %t45 = call i32 @fn_streq(ptr %t44, ptr @.str501)
+  %t45 = call i32 @fn_streq(ptr %t44, ptr @.str511)
   %t46 = icmp ne i32 %t45, 0
   %t47 = zext i1 %t46 to i32
   store i32 %t47, ptr %t39
@@ -12074,14 +12441,14 @@ then16:
   br label %ret
 ifend18:
   %t53 = load ptr, ptr %t0
-  %t54 = call i32 @fn_streq(ptr %t53, ptr @.str502)
+  %t54 = call i32 @fn_streq(ptr %t53, ptr @.str512)
   %t55 = icmp ne i32 %t54, 0
   %t56 = zext i1 %t55 to i32
   store i32 %t56, ptr %t52
   br i1 %t55, label %scend20, label %sc19
 sc19:
   %t57 = load ptr, ptr %t0
-  %t58 = call i32 @fn_streq(ptr %t57, ptr @.str503)
+  %t58 = call i32 @fn_streq(ptr %t57, ptr @.str513)
   %t59 = icmp ne i32 %t58, 0
   %t60 = zext i1 %t59 to i32
   store i32 %t60, ptr %t52
@@ -12094,7 +12461,7 @@ scend20:
   br i1 %t62, label %scend22, label %sc21
 sc21:
   %t64 = load ptr, ptr %t0
-  %t65 = call i32 @fn_streq(ptr %t64, ptr @.str504)
+  %t65 = call i32 @fn_streq(ptr %t64, ptr @.str514)
   %t66 = icmp ne i32 %t65, 0
   %t67 = zext i1 %t66 to i32
   store i32 %t67, ptr %t51
@@ -12107,7 +12474,7 @@ scend22:
   br i1 %t69, label %scend24, label %sc23
 sc23:
   %t71 = load ptr, ptr %t0
-  %t72 = call i32 @fn_streq(ptr %t71, ptr @.str505)
+  %t72 = call i32 @fn_streq(ptr %t71, ptr @.str515)
   %t73 = icmp ne i32 %t72, 0
   %t74 = zext i1 %t73 to i32
   store i32 %t74, ptr %t50
@@ -12121,14 +12488,14 @@ then25:
   br label %ret
 ifend27:
   %t78 = load ptr, ptr %t0
-  %t79 = call i32 @fn_streq(ptr %t78, ptr @.str506)
+  %t79 = call i32 @fn_streq(ptr %t78, ptr @.str516)
   %t80 = icmp ne i32 %t79, 0
   %t81 = zext i1 %t80 to i32
   store i32 %t81, ptr %t77
   br i1 %t80, label %scend29, label %sc28
 sc28:
   %t82 = load ptr, ptr %t0
-  %t83 = call i32 @fn_streq(ptr %t82, ptr @.str507)
+  %t83 = call i32 @fn_streq(ptr %t82, ptr @.str517)
   %t84 = icmp ne i32 %t83, 0
   %t85 = zext i1 %t84 to i32
   store i32 %t85, ptr %t77
@@ -12142,14 +12509,14 @@ then30:
   br label %ret
 ifend32:
   %t89 = load ptr, ptr %t0
-  %t90 = call i32 @fn_streq(ptr %t89, ptr @.str508)
+  %t90 = call i32 @fn_streq(ptr %t89, ptr @.str518)
   %t91 = icmp ne i32 %t90, 0
   %t92 = zext i1 %t91 to i32
   store i32 %t92, ptr %t88
   br i1 %t91, label %scend34, label %sc33
 sc33:
   %t93 = load ptr, ptr %t0
-  %t94 = call i32 @fn_streq(ptr %t93, ptr @.str509)
+  %t94 = call i32 @fn_streq(ptr %t93, ptr @.str519)
   %t95 = icmp ne i32 %t94, 0
   %t96 = zext i1 %t95 to i32
   store i32 %t96, ptr %t88
@@ -12163,14 +12530,14 @@ then35:
   br label %ret
 ifend37:
   %t101 = load ptr, ptr %t0
-  %t102 = call i32 @fn_streq(ptr %t101, ptr @.str510)
+  %t102 = call i32 @fn_streq(ptr %t101, ptr @.str520)
   %t103 = icmp ne i32 %t102, 0
   %t104 = zext i1 %t103 to i32
   store i32 %t104, ptr %t100
   br i1 %t103, label %scend39, label %sc38
 sc38:
   %t105 = load ptr, ptr %t0
-  %t106 = call i32 @fn_streq(ptr %t105, ptr @.str511)
+  %t106 = call i32 @fn_streq(ptr %t105, ptr @.str521)
   %t107 = icmp ne i32 %t106, 0
   %t108 = zext i1 %t107 to i32
   store i32 %t108, ptr %t100
@@ -12183,7 +12550,7 @@ scend39:
   br i1 %t110, label %scend41, label %sc40
 sc40:
   %t112 = load ptr, ptr %t0
-  %t113 = call i32 @fn_streq(ptr %t112, ptr @.str512)
+  %t113 = call i32 @fn_streq(ptr %t112, ptr @.str522)
   %t114 = icmp ne i32 %t113, 0
   %t115 = zext i1 %t114 to i32
   store i32 %t115, ptr %t99
@@ -12197,14 +12564,14 @@ then42:
   br label %ret
 ifend44:
   %t119 = load ptr, ptr %t0
-  %t120 = call i32 @fn_streq(ptr %t119, ptr @.str513)
+  %t120 = call i32 @fn_streq(ptr %t119, ptr @.str523)
   %t121 = icmp ne i32 %t120, 0
   %t122 = zext i1 %t121 to i32
   store i32 %t122, ptr %t118
   br i1 %t121, label %scend46, label %sc45
 sc45:
   %t123 = load ptr, ptr %t0
-  %t124 = call i32 @fn_streq(ptr %t123, ptr @.str514)
+  %t124 = call i32 @fn_streq(ptr %t123, ptr @.str524)
   %t125 = icmp ne i32 %t124, 0
   %t126 = zext i1 %t125 to i32
   store i32 %t126, ptr %t118
@@ -12271,23 +12638,23 @@ entry:
   store ptr %arg_name, ptr %t0
   store ptr %arg_e, ptr %t1
   %t2 = load ptr, ptr %t0
-  %t3 = call i32 @fn_streq(ptr %t2, ptr @.str515)
+  %t3 = call i32 @fn_streq(ptr %t2, ptr @.str525)
   %t4 = icmp ne i32 %t3, 0
   br i1 %t4, label %then0, label %ifend2
 then0:
   %t5 = load ptr, ptr %t1
   %t6 = call ptr @fn_arg_code(ptr %t5, i32 0)
   store ptr %t6, ptr %t7
-  call void @fn_emit(ptr @.str516)
+  call void @fn_emit(ptr @.str526)
   %t8 = load ptr, ptr %t7
   call void @fn_emit(ptr %t8)
-  call void @fn_emit(ptr @.str517)
-  %t9 = call ptr @fn_val(ptr @.str518, ptr @.str519)
+  call void @fn_emit(ptr @.str527)
+  %t9 = call ptr @fn_val(ptr @.str528, ptr @.str529)
   store ptr %t9, ptr %retval
   br label %ret
 ifend2:
   %t10 = load ptr, ptr %t0
-  %t11 = call i32 @fn_streq(ptr %t10, ptr @.str520)
+  %t11 = call i32 @fn_streq(ptr %t10, ptr @.str530)
   %t12 = icmp ne i32 %t11, 0
   br i1 %t12, label %then3, label %ifend5
 then3:
@@ -12301,26 +12668,26 @@ then3:
   %t20 = call ptr @fn_arg_code(ptr %t19, i32 2)
   store ptr %t20, ptr %t21
   %t22 = load ptr, ptr %t21
-  %t23 = call ptr @fn_sconcat(ptr %t22, ptr @.str522)
-  %t24 = call ptr @fn_sconcat(ptr @.str521, ptr %t23)
+  %t23 = call ptr @fn_sconcat(ptr %t22, ptr @.str532)
+  %t24 = call ptr @fn_sconcat(ptr @.str531, ptr %t23)
   %t25 = call ptr @fn_emit_bind(ptr %t24)
   store ptr %t25, ptr %t26
-  call void @fn_emit(ptr @.str523)
+  call void @fn_emit(ptr @.str533)
   %t27 = load ptr, ptr %t15
   call void @fn_emit(ptr %t27)
-  call void @fn_emit(ptr @.str524)
+  call void @fn_emit(ptr @.str534)
   %t28 = load ptr, ptr %t18
   call void @fn_emit(ptr %t28)
-  call void @fn_emit(ptr @.str525)
+  call void @fn_emit(ptr @.str535)
   %t29 = load ptr, ptr %t26
   call void @fn_emit(ptr %t29)
-  call void @fn_emit(ptr @.str526)
-  %t30 = call ptr @fn_val(ptr @.str527, ptr @.str528)
+  call void @fn_emit(ptr @.str536)
+  %t30 = call ptr @fn_val(ptr @.str537, ptr @.str538)
   store ptr %t30, ptr %retval
   br label %ret
 ifend5:
   %t31 = load ptr, ptr %t0
-  %t32 = call i32 @fn_streq(ptr %t31, ptr @.str529)
+  %t32 = call i32 @fn_streq(ptr %t31, ptr @.str539)
   %t33 = icmp ne i32 %t32, 0
   br i1 %t33, label %then6, label %ifend8
 then6:
@@ -12334,26 +12701,26 @@ then6:
   %t41 = call ptr @fn_arg_code(ptr %t40, i32 2)
   store ptr %t41, ptr %t42
   %t43 = load ptr, ptr %t42
-  %t44 = call ptr @fn_sconcat(ptr %t43, ptr @.str531)
-  %t45 = call ptr @fn_sconcat(ptr @.str530, ptr %t44)
+  %t44 = call ptr @fn_sconcat(ptr %t43, ptr @.str541)
+  %t45 = call ptr @fn_sconcat(ptr @.str540, ptr %t44)
   %t46 = call ptr @fn_emit_bind(ptr %t45)
   store ptr %t46, ptr %t47
-  call void @fn_emit(ptr @.str532)
+  call void @fn_emit(ptr @.str542)
   %t48 = load ptr, ptr %t36
   call void @fn_emit(ptr %t48)
-  call void @fn_emit(ptr @.str533)
+  call void @fn_emit(ptr @.str543)
   %t49 = load ptr, ptr %t39
   call void @fn_emit(ptr %t49)
-  call void @fn_emit(ptr @.str534)
+  call void @fn_emit(ptr @.str544)
   %t50 = load ptr, ptr %t47
   call void @fn_emit(ptr %t50)
-  call void @fn_emit(ptr @.str535)
-  %t51 = call ptr @fn_val(ptr @.str536, ptr @.str537)
+  call void @fn_emit(ptr @.str545)
+  %t51 = call ptr @fn_val(ptr @.str546, ptr @.str547)
   store ptr %t51, ptr %retval
   br label %ret
 ifend8:
   %t52 = load ptr, ptr %t0
-  %t53 = call i32 @fn_streq(ptr %t52, ptr @.str538)
+  %t53 = call i32 @fn_streq(ptr %t52, ptr @.str548)
   %t54 = icmp ne i32 %t53, 0
   br i1 %t54, label %then9, label %ifend11
 then9:
@@ -12365,49 +12732,49 @@ then9:
   store ptr %t59, ptr %t60
   %t61 = call ptr @fn_nreg()
   store ptr %t61, ptr %t62
-  call void @fn_emit(ptr @.str539)
+  call void @fn_emit(ptr @.str549)
   %t63 = load ptr, ptr %t62
   call void @fn_emit(ptr %t63)
-  call void @fn_emit(ptr @.str540)
+  call void @fn_emit(ptr @.str550)
   %t64 = load ptr, ptr %t57
   call void @fn_emit(ptr %t64)
-  call void @fn_emit(ptr @.str541)
+  call void @fn_emit(ptr @.str551)
   %t65 = load ptr, ptr %t60
   call void @fn_emit(ptr %t65)
-  call void @fn_emit(ptr @.str542)
+  call void @fn_emit(ptr @.str552)
   %t66 = load ptr, ptr %t62
-  %t67 = call ptr @fn_val(ptr %t66, ptr @.str543)
+  %t67 = call ptr @fn_val(ptr %t66, ptr @.str553)
   store ptr %t67, ptr %retval
   br label %ret
 ifend11:
   %t68 = load ptr, ptr %t0
-  %t69 = call i32 @fn_streq(ptr %t68, ptr @.str544)
+  %t69 = call i32 @fn_streq(ptr %t68, ptr @.str554)
   %t70 = icmp ne i32 %t69, 0
   br i1 %t70, label %then12, label %ifend14
 then12:
-  %t71 = call ptr @fn_emit_bind(ptr @.str545)
-  %t72 = call ptr @fn_val(ptr %t71, ptr @.str546)
+  %t71 = call ptr @fn_emit_bind(ptr @.str555)
+  %t72 = call ptr @fn_val(ptr %t71, ptr @.str556)
   store ptr %t72, ptr %retval
   br label %ret
 ifend14:
   %t73 = load ptr, ptr %t0
-  %t74 = call i32 @fn_streq(ptr %t73, ptr @.str547)
+  %t74 = call i32 @fn_streq(ptr %t73, ptr @.str557)
   %t75 = icmp ne i32 %t74, 0
   br i1 %t75, label %then15, label %ifend17
 then15:
   %t76 = load ptr, ptr %t1
   %t77 = call ptr @fn_arg_code(ptr %t76, i32 0)
   store ptr %t77, ptr %t78
-  call void @fn_emit(ptr @.str548)
+  call void @fn_emit(ptr @.str558)
   %t79 = load ptr, ptr %t78
   call void @fn_emit(ptr %t79)
-  call void @fn_emit(ptr @.str549)
-  %t80 = call ptr @fn_val(ptr @.str550, ptr @.str551)
+  call void @fn_emit(ptr @.str559)
+  %t80 = call ptr @fn_val(ptr @.str560, ptr @.str561)
   store ptr %t80, ptr %retval
   br label %ret
 ifend17:
   %t81 = load ptr, ptr %t0
-  %t82 = call i32 @fn_streq(ptr %t81, ptr @.str552)
+  %t82 = call i32 @fn_streq(ptr %t81, ptr @.str562)
   %t83 = icmp ne i32 %t82, 0
   br i1 %t83, label %then18, label %ifend20
 then18:
@@ -12415,35 +12782,35 @@ then18:
   %t85 = call ptr @fn_arg_code(ptr %t84, i32 0)
   store ptr %t85, ptr %t86
   %t87 = load ptr, ptr %t86
-  %t88 = call ptr @fn_sconcat(ptr %t87, ptr @.str554)
-  %t89 = call ptr @fn_sconcat(ptr @.str553, ptr %t88)
+  %t88 = call ptr @fn_sconcat(ptr %t87, ptr @.str564)
+  %t89 = call ptr @fn_sconcat(ptr @.str563, ptr %t88)
   %t90 = call ptr @fn_emit_bind(ptr %t89)
   store ptr %t90, ptr %t91
   %t92 = load ptr, ptr %t91
-  %t93 = call ptr @fn_sconcat(ptr %t92, ptr @.str556)
-  %t94 = call ptr @fn_sconcat(ptr @.str555, ptr %t93)
+  %t93 = call ptr @fn_sconcat(ptr %t92, ptr @.str566)
+  %t94 = call ptr @fn_sconcat(ptr @.str565, ptr %t93)
   %t95 = call ptr @fn_emit_bind(ptr %t94)
-  %t96 = call ptr @fn_val(ptr %t95, ptr @.str557)
+  %t96 = call ptr @fn_val(ptr %t95, ptr @.str567)
   store ptr %t96, ptr %retval
   br label %ret
 ifend20:
   %t97 = load ptr, ptr %t0
-  %t98 = call i32 @fn_streq(ptr %t97, ptr @.str558)
+  %t98 = call i32 @fn_streq(ptr %t97, ptr @.str568)
   %t99 = icmp ne i32 %t98, 0
   br i1 %t99, label %then21, label %ifend23
 then21:
-  %t100 = call ptr @fn_emit_bind(ptr @.str559)
+  %t100 = call ptr @fn_emit_bind(ptr @.str569)
   store ptr %t100, ptr %t101
   %t102 = load ptr, ptr %t101
-  %t103 = call ptr @fn_sconcat(ptr %t102, ptr @.str561)
-  %t104 = call ptr @fn_sconcat(ptr @.str560, ptr %t103)
+  %t103 = call ptr @fn_sconcat(ptr %t102, ptr @.str571)
+  %t104 = call ptr @fn_sconcat(ptr @.str570, ptr %t103)
   %t105 = call ptr @fn_emit_bind(ptr %t104)
-  %t106 = call ptr @fn_val(ptr %t105, ptr @.str562)
+  %t106 = call ptr @fn_val(ptr %t105, ptr @.str572)
   store ptr %t106, ptr %retval
   br label %ret
 ifend23:
   %t107 = load ptr, ptr %t0
-  %t108 = call i32 @fn_streq(ptr %t107, ptr @.str563)
+  %t108 = call i32 @fn_streq(ptr %t107, ptr @.str573)
   %t109 = icmp ne i32 %t108, 0
   br i1 %t109, label %then24, label %ifend26
 then24:
@@ -12455,25 +12822,25 @@ then24:
   store ptr %t114, ptr %t115
   %t116 = call ptr @fn_nreg()
   store ptr %t116, ptr %t117
-  call void @fn_emit(ptr @.str564)
+  call void @fn_emit(ptr @.str574)
   %t118 = load ptr, ptr %t117
   call void @fn_emit(ptr %t118)
-  call void @fn_emit(ptr @.str565)
+  call void @fn_emit(ptr @.str575)
   %t119 = load ptr, ptr %t112
   call void @fn_emit(ptr %t119)
-  call void @fn_emit(ptr @.str566)
+  call void @fn_emit(ptr @.str576)
   %t120 = load ptr, ptr %t115
   call void @fn_emit(ptr %t120)
-  call void @fn_emit(ptr @.str567)
+  call void @fn_emit(ptr @.str577)
   %t121 = load ptr, ptr %t117
-  %t122 = call ptr @fn_sconcat(ptr @.str568, ptr %t121)
+  %t122 = call ptr @fn_sconcat(ptr @.str578, ptr %t121)
   %t123 = call ptr @fn_emit_bind(ptr %t122)
-  %t124 = call ptr @fn_val(ptr %t123, ptr @.str569)
+  %t124 = call ptr @fn_val(ptr %t123, ptr @.str579)
   store ptr %t124, ptr %retval
   br label %ret
 ifend26:
   %t125 = load ptr, ptr %t0
-  %t126 = call i32 @fn_streq(ptr %t125, ptr @.str570)
+  %t126 = call i32 @fn_streq(ptr %t125, ptr @.str580)
   %t127 = icmp ne i32 %t126, 0
   br i1 %t127, label %then27, label %ifend29
 then27:
@@ -12488,29 +12855,29 @@ then27:
   store ptr %t135, ptr %t136
   %t137 = call ptr @fn_nreg()
   store ptr %t137, ptr %t138
-  call void @fn_emit(ptr @.str571)
+  call void @fn_emit(ptr @.str581)
   %t139 = load ptr, ptr %t138
   call void @fn_emit(ptr %t139)
-  call void @fn_emit(ptr @.str572)
+  call void @fn_emit(ptr @.str582)
   %t140 = load ptr, ptr %t130
   call void @fn_emit(ptr %t140)
-  call void @fn_emit(ptr @.str573)
+  call void @fn_emit(ptr @.str583)
   %t141 = load ptr, ptr %t133
   call void @fn_emit(ptr %t141)
-  call void @fn_emit(ptr @.str574)
-  call void @fn_emit(ptr @.str575)
+  call void @fn_emit(ptr @.str584)
+  call void @fn_emit(ptr @.str585)
   %t142 = load ptr, ptr %t136
   call void @fn_emit(ptr %t142)
-  call void @fn_emit(ptr @.str576)
+  call void @fn_emit(ptr @.str586)
   %t143 = load ptr, ptr %t138
   call void @fn_emit(ptr %t143)
-  call void @fn_emit(ptr @.str577)
-  %t144 = call ptr @fn_val(ptr @.str578, ptr @.str579)
+  call void @fn_emit(ptr @.str587)
+  %t144 = call ptr @fn_val(ptr @.str588, ptr @.str589)
   store ptr %t144, ptr %retval
   br label %ret
 ifend29:
   %t145 = load ptr, ptr %t0
-  %t146 = call i32 @fn_streq(ptr %t145, ptr @.str580)
+  %t146 = call i32 @fn_streq(ptr %t145, ptr @.str590)
   %t147 = icmp ne i32 %t146, 0
   br i1 %t147, label %then30, label %ifend32
 then30:
@@ -12522,25 +12889,25 @@ then30:
   store ptr %t152, ptr %t153
   %t154 = call ptr @fn_nreg()
   store ptr %t154, ptr %t155
-  call void @fn_emit(ptr @.str581)
+  call void @fn_emit(ptr @.str591)
   %t156 = load ptr, ptr %t155
   call void @fn_emit(ptr %t156)
-  call void @fn_emit(ptr @.str582)
+  call void @fn_emit(ptr @.str592)
   %t157 = load ptr, ptr %t150
   call void @fn_emit(ptr %t157)
-  call void @fn_emit(ptr @.str583)
+  call void @fn_emit(ptr @.str593)
   %t158 = load ptr, ptr %t153
   call void @fn_emit(ptr %t158)
-  call void @fn_emit(ptr @.str584)
+  call void @fn_emit(ptr @.str594)
   %t159 = load ptr, ptr %t155
-  %t160 = call ptr @fn_sconcat(ptr @.str585, ptr %t159)
+  %t160 = call ptr @fn_sconcat(ptr @.str595, ptr %t159)
   %t161 = call ptr @fn_emit_bind(ptr %t160)
-  %t162 = call ptr @fn_val(ptr %t161, ptr @.str586)
+  %t162 = call ptr @fn_val(ptr %t161, ptr @.str596)
   store ptr %t162, ptr %retval
   br label %ret
 ifend32:
   %t163 = load ptr, ptr %t0
-  %t164 = call i32 @fn_streq(ptr %t163, ptr @.str587)
+  %t164 = call i32 @fn_streq(ptr %t163, ptr @.str597)
   %t165 = icmp ne i32 %t164, 0
   br i1 %t165, label %then33, label %ifend35
 then33:
@@ -12555,29 +12922,29 @@ then33:
   store ptr %t173, ptr %t174
   %t175 = call ptr @fn_nreg()
   store ptr %t175, ptr %t176
-  call void @fn_emit(ptr @.str588)
+  call void @fn_emit(ptr @.str598)
   %t177 = load ptr, ptr %t176
   call void @fn_emit(ptr %t177)
-  call void @fn_emit(ptr @.str589)
+  call void @fn_emit(ptr @.str599)
   %t178 = load ptr, ptr %t168
   call void @fn_emit(ptr %t178)
-  call void @fn_emit(ptr @.str590)
+  call void @fn_emit(ptr @.str600)
   %t179 = load ptr, ptr %t171
   call void @fn_emit(ptr %t179)
-  call void @fn_emit(ptr @.str591)
-  call void @fn_emit(ptr @.str592)
+  call void @fn_emit(ptr @.str601)
+  call void @fn_emit(ptr @.str602)
   %t180 = load ptr, ptr %t174
   call void @fn_emit(ptr %t180)
-  call void @fn_emit(ptr @.str593)
+  call void @fn_emit(ptr @.str603)
   %t181 = load ptr, ptr %t176
   call void @fn_emit(ptr %t181)
-  call void @fn_emit(ptr @.str594)
-  %t182 = call ptr @fn_val(ptr @.str595, ptr @.str596)
+  call void @fn_emit(ptr @.str604)
+  %t182 = call ptr @fn_val(ptr @.str605, ptr @.str606)
   store ptr %t182, ptr %retval
   br label %ret
 ifend35:
   %t183 = load ptr, ptr %t0
-  %t184 = call i32 @fn_streq(ptr %t183, ptr @.str597)
+  %t184 = call i32 @fn_streq(ptr %t183, ptr @.str607)
   %t185 = icmp ne i32 %t184, 0
   br i1 %t185, label %then36, label %ifend38
 then36:
@@ -12593,12 +12960,12 @@ then36:
   %t195 = load ptr, ptr %t194
   %t196 = getelementptr inbounds %Str_Val, ptr %t195, i32 0, i32 0
   %t197 = load ptr, ptr %t196
-  %t198 = call ptr @fn_val(ptr %t197, ptr @.str598)
+  %t198 = call ptr @fn_val(ptr %t197, ptr @.str608)
   store ptr %t198, ptr %retval
   br label %ret
 ifend38:
   %t199 = load ptr, ptr %t0
-  %t200 = call i32 @fn_streq(ptr %t199, ptr @.str599)
+  %t200 = call i32 @fn_streq(ptr %t199, ptr @.str609)
   %t201 = icmp ne i32 %t200, 0
   br i1 %t201, label %then39, label %ifend41
 then39:
@@ -12614,12 +12981,12 @@ then39:
   %t211 = load ptr, ptr %t210
   %t212 = getelementptr inbounds %Str_Val, ptr %t211, i32 0, i32 0
   %t213 = load ptr, ptr %t212
-  %t214 = call ptr @fn_val(ptr %t213, ptr @.str600)
+  %t214 = call ptr @fn_val(ptr %t213, ptr @.str610)
   store ptr %t214, ptr %retval
   br label %ret
 ifend41:
   %t215 = load ptr, ptr %t0
-  %t216 = call i32 @fn_streq(ptr %t215, ptr @.str601)
+  %t216 = call i32 @fn_streq(ptr %t215, ptr @.str611)
   %t217 = icmp ne i32 %t216, 0
   br i1 %t217, label %then42, label %ifend44
 then42:
@@ -12627,45 +12994,45 @@ then42:
   %t219 = icmp ne i32 %t218, 0
   br i1 %t219, label %then45, label %ifend47
 then45:
-  %t220 = call ptr @fn_val(ptr @.str602, ptr @.str603)
+  %t220 = call ptr @fn_val(ptr @.str612, ptr @.str613)
   store ptr %t220, ptr %retval
   br label %ret
 ifend47:
-  %t221 = call ptr @fn_val(ptr @.str604, ptr @.str605)
+  %t221 = call ptr @fn_val(ptr @.str614, ptr @.str615)
   store ptr %t221, ptr %retval
   br label %ret
 ifend44:
   %t222 = load ptr, ptr %t0
-  %t223 = call i32 @fn_streq(ptr %t222, ptr @.str606)
+  %t223 = call i32 @fn_streq(ptr %t222, ptr @.str616)
   %t224 = icmp ne i32 %t223, 0
   br i1 %t224, label %then48, label %ifend50
 then48:
-  %t225 = call ptr @fn_val(ptr @.str607, ptr @.str608)
+  %t225 = call ptr @fn_val(ptr @.str617, ptr @.str618)
   store ptr %t225, ptr %retval
   br label %ret
 ifend50:
   %t226 = load ptr, ptr %t0
-  %t227 = call i32 @fn_streq(ptr %t226, ptr @.str609)
+  %t227 = call i32 @fn_streq(ptr %t226, ptr @.str619)
   %t228 = icmp ne i32 %t227, 0
   br i1 %t228, label %then51, label %ifend53
 then51:
-  %t229 = call ptr @fn_emit_bind(ptr @.str610)
-  %t230 = call ptr @fn_val(ptr %t229, ptr @.str611)
+  %t229 = call ptr @fn_emit_bind(ptr @.str620)
+  %t230 = call ptr @fn_val(ptr %t229, ptr @.str621)
   store ptr %t230, ptr %retval
   br label %ret
 ifend53:
   %t231 = load ptr, ptr %t0
-  %t232 = call i32 @fn_streq(ptr %t231, ptr @.str612)
+  %t232 = call i32 @fn_streq(ptr %t231, ptr @.str622)
   %t233 = icmp ne i32 %t232, 0
   br i1 %t233, label %then54, label %ifend56
 then54:
-  %t234 = call ptr @fn_emit_bind(ptr @.str613)
-  %t235 = call ptr @fn_val(ptr %t234, ptr @.str614)
+  %t234 = call ptr @fn_emit_bind(ptr @.str623)
+  %t235 = call ptr @fn_val(ptr %t234, ptr @.str624)
   store ptr %t235, ptr %retval
   br label %ret
 ifend56:
   %t236 = load ptr, ptr %t0
-  %t237 = call i32 @fn_streq(ptr %t236, ptr @.str615)
+  %t237 = call i32 @fn_streq(ptr %t236, ptr @.str625)
   %t238 = icmp ne i32 %t237, 0
   br i1 %t238, label %then57, label %ifend59
 then57:
@@ -12681,25 +13048,25 @@ then57:
   %t248 = load ptr, ptr %t1
   %t249 = call ptr @fn_arg_code(ptr %t248, i32 3)
   store ptr %t249, ptr %t250
-  call void @fn_emit(ptr @.str616)
+  call void @fn_emit(ptr @.str626)
   %t251 = load ptr, ptr %t241
   call void @fn_emit(ptr %t251)
-  call void @fn_emit(ptr @.str617)
+  call void @fn_emit(ptr @.str627)
   %t252 = load ptr, ptr %t244
   call void @fn_emit(ptr %t252)
-  call void @fn_emit(ptr @.str618)
+  call void @fn_emit(ptr @.str628)
   %t253 = load ptr, ptr %t247
   call void @fn_emit(ptr %t253)
-  call void @fn_emit(ptr @.str619)
+  call void @fn_emit(ptr @.str629)
   %t254 = load ptr, ptr %t250
   call void @fn_emit(ptr %t254)
-  call void @fn_emit(ptr @.str620)
-  %t255 = call ptr @fn_val(ptr @.str621, ptr @.str622)
+  call void @fn_emit(ptr @.str630)
+  %t255 = call ptr @fn_val(ptr @.str631, ptr @.str632)
   store ptr %t255, ptr %retval
   br label %ret
 ifend59:
   %t256 = load ptr, ptr %t0
-  %t257 = call i32 @fn_streq(ptr %t256, ptr @.str623)
+  %t257 = call i32 @fn_streq(ptr %t256, ptr @.str633)
   %t258 = icmp ne i32 %t257, 0
   br i1 %t258, label %then60, label %ifend62
 then60:
@@ -12712,31 +13079,31 @@ then60:
   %t265 = load ptr, ptr %t1
   %t266 = call ptr @fn_arg_code(ptr %t265, i32 2)
   store ptr %t266, ptr %t267
-  call void @fn_emit(ptr @.str624)
+  call void @fn_emit(ptr @.str634)
   %t268 = load ptr, ptr %t261
   call void @fn_emit(ptr %t268)
-  call void @fn_emit(ptr @.str625)
+  call void @fn_emit(ptr @.str635)
   %t269 = load ptr, ptr %t264
   call void @fn_emit(ptr %t269)
-  call void @fn_emit(ptr @.str626)
+  call void @fn_emit(ptr @.str636)
   %t270 = load ptr, ptr %t267
   call void @fn_emit(ptr %t270)
-  call void @fn_emit(ptr @.str627)
-  %t271 = call ptr @fn_val(ptr @.str628, ptr @.str629)
+  call void @fn_emit(ptr @.str637)
+  %t271 = call ptr @fn_val(ptr @.str638, ptr @.str639)
   store ptr %t271, ptr %retval
   br label %ret
 ifend62:
   %t272 = load ptr, ptr %t0
-  %t273 = call i32 @fn_streq(ptr %t272, ptr @.str630)
+  %t273 = call i32 @fn_streq(ptr %t272, ptr @.str640)
   %t274 = icmp ne i32 %t273, 0
   br i1 %t274, label %then63, label %ifend65
 then63:
-  call void @fn_emit(ptr @.str631)
-  %t275 = call ptr @fn_val(ptr @.str632, ptr @.str633)
+  call void @fn_emit(ptr @.str641)
+  %t275 = call ptr @fn_val(ptr @.str642, ptr @.str643)
   store ptr %t275, ptr %retval
   br label %ret
 ifend65:
-  %t276 = call ptr @fn_val(ptr @.str634, ptr @.str635)
+  %t276 = call ptr @fn_val(ptr @.str644, ptr @.str645)
   store ptr %t276, ptr %retval
   br label %ret
 ret:
@@ -12753,14 +13120,14 @@ entry:
   %t3 = alloca i32
   store ptr %arg_name, ptr %t0
   %t4 = load ptr, ptr %t0
-  %t5 = call i32 @fn_streq(ptr %t4, ptr @.str636)
+  %t5 = call i32 @fn_streq(ptr %t4, ptr @.str646)
   %t6 = icmp ne i32 %t5, 0
   %t7 = zext i1 %t6 to i32
   store i32 %t7, ptr %t3
   br i1 %t6, label %scend1, label %sc0
 sc0:
   %t8 = load ptr, ptr %t0
-  %t9 = call i32 @fn_streq(ptr %t8, ptr @.str637)
+  %t9 = call i32 @fn_streq(ptr %t8, ptr @.str647)
   %t10 = icmp ne i32 %t9, 0
   %t11 = zext i1 %t10 to i32
   store i32 %t11, ptr %t3
@@ -12773,7 +13140,7 @@ scend1:
   br i1 %t13, label %scend3, label %sc2
 sc2:
   %t15 = load ptr, ptr %t0
-  %t16 = call i32 @fn_streq(ptr %t15, ptr @.str638)
+  %t16 = call i32 @fn_streq(ptr %t15, ptr @.str648)
   %t17 = icmp ne i32 %t16, 0
   %t18 = zext i1 %t17 to i32
   store i32 %t18, ptr %t2
@@ -12786,7 +13153,7 @@ scend3:
   br i1 %t20, label %scend5, label %sc4
 sc4:
   %t22 = load ptr, ptr %t0
-  %t23 = call i32 @fn_streq(ptr %t22, ptr @.str639)
+  %t23 = call i32 @fn_streq(ptr %t22, ptr @.str649)
   %t24 = icmp ne i32 %t23, 0
   %t25 = zext i1 %t24 to i32
   store i32 %t25, ptr %t1
@@ -12822,7 +13189,7 @@ entry:
   store ptr %arg_name, ptr %t0
   store ptr %arg_e, ptr %t1
   %t2 = load ptr, ptr %t0
-  %t3 = call i32 @fn_streq(ptr %t2, ptr @.str640)
+  %t3 = call i32 @fn_streq(ptr %t2, ptr @.str650)
   %t4 = icmp ne i32 %t3, 0
   br i1 %t4, label %then0, label %ifend2
 then0:
@@ -12838,14 +13205,14 @@ then0:
   %t14 = load ptr, ptr %t13
   %t15 = getelementptr inbounds %Str_Val, ptr %t14, i32 0, i32 0
   %t16 = load ptr, ptr %t15
-  %t17 = call ptr @fn_sconcat(ptr %t16, ptr @.str642)
-  %t18 = call ptr @fn_sconcat(ptr @.str641, ptr %t17)
+  %t17 = call ptr @fn_sconcat(ptr %t16, ptr @.str652)
+  %t18 = call ptr @fn_sconcat(ptr @.str651, ptr %t17)
   %t19 = call ptr @fn_emit_bind(ptr %t18)
   store ptr %t19, ptr %t20
   %t21 = load ptr, ptr %t13
   %t22 = getelementptr inbounds %Str_Val, ptr %t21, i32 0, i32 0
   %t23 = load ptr, ptr %t22
-  %t24 = call ptr @fn_sconcat(ptr @.str643, ptr %t23)
+  %t24 = call ptr @fn_sconcat(ptr @.str653, ptr %t23)
   %t25 = call ptr @fn_emit_bind(ptr %t24)
   store ptr %t25, ptr %t26
   %t27 = load ptr, ptr %t20
@@ -12853,25 +13220,25 @@ then0:
   %t29 = load ptr, ptr %t13
   %t30 = getelementptr inbounds %Str_Val, ptr %t29, i32 0, i32 0
   %t31 = load ptr, ptr %t30
-  %t32 = call ptr @fn_sconcat(ptr @.str646, ptr %t31)
+  %t32 = call ptr @fn_sconcat(ptr @.str656, ptr %t31)
   %t33 = call ptr @fn_sconcat(ptr %t28, ptr %t32)
-  %t34 = call ptr @fn_sconcat(ptr @.str645, ptr %t33)
+  %t34 = call ptr @fn_sconcat(ptr @.str655, ptr %t33)
   %t35 = call ptr @fn_sconcat(ptr %t27, ptr %t34)
-  %t36 = call ptr @fn_sconcat(ptr @.str644, ptr %t35)
+  %t36 = call ptr @fn_sconcat(ptr @.str654, ptr %t35)
   %t37 = call ptr @fn_emit_bind(ptr %t36)
-  %t38 = call ptr @fn_val(ptr %t37, ptr @.str647)
+  %t38 = call ptr @fn_val(ptr %t37, ptr @.str657)
   store ptr %t38, ptr %retval
   br label %ret
 ifend2:
   %t40 = load ptr, ptr %t0
-  %t41 = call i32 @fn_streq(ptr %t40, ptr @.str648)
+  %t41 = call i32 @fn_streq(ptr %t40, ptr @.str658)
   %t42 = icmp ne i32 %t41, 0
   %t43 = zext i1 %t42 to i32
   store i32 %t43, ptr %t39
   br i1 %t42, label %scend4, label %sc3
 sc3:
   %t44 = load ptr, ptr %t0
-  %t45 = call i32 @fn_streq(ptr %t44, ptr @.str649)
+  %t45 = call i32 @fn_streq(ptr %t44, ptr @.str659)
   %t46 = icmp ne i32 %t45, 0
   %t47 = zext i1 %t46 to i32
   store i32 %t47, ptr %t39
@@ -12899,13 +13266,13 @@ then5:
   %t65 = load ptr, ptr %t64
   %t66 = call ptr @fn_emit_expr(ptr %t65)
   store ptr %t66, ptr %t67
-  store ptr @.str650, ptr %t68
+  store ptr @.str660, ptr %t68
   %t69 = load ptr, ptr %t0
-  %t70 = call i32 @fn_streq(ptr %t69, ptr @.str651)
+  %t70 = call i32 @fn_streq(ptr %t69, ptr @.str661)
   %t71 = icmp ne i32 %t70, 0
   br i1 %t71, label %then8, label %ifend10
 then8:
-  store ptr @.str652, ptr %t68
+  store ptr @.str662, ptr %t68
   br label %ifend10
 ifend10:
   %t72 = load ptr, ptr %t68
@@ -12915,11 +13282,11 @@ ifend10:
   %t76 = load ptr, ptr %t67
   %t77 = getelementptr inbounds %Str_Val, ptr %t76, i32 0, i32 0
   %t78 = load ptr, ptr %t77
-  %t79 = call ptr @fn_sconcat(ptr @.str655, ptr %t78)
+  %t79 = call ptr @fn_sconcat(ptr @.str665, ptr %t78)
   %t80 = call ptr @fn_sconcat(ptr %t75, ptr %t79)
-  %t81 = call ptr @fn_sconcat(ptr @.str654, ptr %t80)
+  %t81 = call ptr @fn_sconcat(ptr @.str664, ptr %t80)
   %t82 = call ptr @fn_sconcat(ptr %t72, ptr %t81)
-  %t83 = call ptr @fn_sconcat(ptr @.str653, ptr %t82)
+  %t83 = call ptr @fn_sconcat(ptr @.str663, ptr %t82)
   %t84 = call ptr @fn_emit_bind(ptr %t83)
   store ptr %t84, ptr %t85
   %t86 = load ptr, ptr %t85
@@ -12929,13 +13296,13 @@ ifend10:
   %t90 = load ptr, ptr %t67
   %t91 = getelementptr inbounds %Str_Val, ptr %t90, i32 0, i32 0
   %t92 = load ptr, ptr %t91
-  %t93 = call ptr @fn_sconcat(ptr @.str658, ptr %t92)
+  %t93 = call ptr @fn_sconcat(ptr @.str668, ptr %t92)
   %t94 = call ptr @fn_sconcat(ptr %t89, ptr %t93)
-  %t95 = call ptr @fn_sconcat(ptr @.str657, ptr %t94)
+  %t95 = call ptr @fn_sconcat(ptr @.str667, ptr %t94)
   %t96 = call ptr @fn_sconcat(ptr %t86, ptr %t95)
-  %t97 = call ptr @fn_sconcat(ptr @.str656, ptr %t96)
+  %t97 = call ptr @fn_sconcat(ptr @.str666, ptr %t96)
   %t98 = call ptr @fn_emit_bind(ptr %t97)
-  %t99 = call ptr @fn_val(ptr %t98, ptr @.str659)
+  %t99 = call ptr @fn_val(ptr %t98, ptr @.str669)
   store ptr %t99, ptr %retval
   br label %ret
 ifend7:
@@ -12972,9 +13339,9 @@ ifend7:
   %t130 = load ptr, ptr %t126
   %t131 = getelementptr inbounds %Str_Val, ptr %t130, i32 0, i32 0
   %t132 = load ptr, ptr %t131
-  %t133 = call ptr @fn_sconcat(ptr @.str661, ptr %t132)
+  %t133 = call ptr @fn_sconcat(ptr @.str671, ptr %t132)
   %t134 = call ptr @fn_sconcat(ptr %t129, ptr %t133)
-  %t135 = call ptr @fn_sconcat(ptr @.str660, ptr %t134)
+  %t135 = call ptr @fn_sconcat(ptr @.str670, ptr %t134)
   %t136 = call ptr @fn_emit_bind(ptr %t135)
   store ptr %t136, ptr %t137
   %t138 = load ptr, ptr %t137
@@ -12984,20 +13351,20 @@ ifend7:
   %t142 = load ptr, ptr %t126
   %t143 = getelementptr inbounds %Str_Val, ptr %t142, i32 0, i32 0
   %t144 = load ptr, ptr %t143
-  %t145 = call ptr @fn_sconcat(ptr @.str664, ptr %t144)
+  %t145 = call ptr @fn_sconcat(ptr @.str674, ptr %t144)
   %t146 = call ptr @fn_sconcat(ptr %t141, ptr %t145)
-  %t147 = call ptr @fn_sconcat(ptr @.str663, ptr %t146)
+  %t147 = call ptr @fn_sconcat(ptr @.str673, ptr %t146)
   %t148 = call ptr @fn_sconcat(ptr %t138, ptr %t147)
-  %t149 = call ptr @fn_sconcat(ptr @.str662, ptr %t148)
+  %t149 = call ptr @fn_sconcat(ptr @.str672, ptr %t148)
   %t150 = call ptr @fn_emit_bind(ptr %t149)
   store ptr %t150, ptr %t151
   %t152 = load ptr, ptr %t117
   %t153 = getelementptr inbounds %Str_Val, ptr %t152, i32 0, i32 0
   %t154 = load ptr, ptr %t153
   %t155 = load ptr, ptr %t151
-  %t156 = call ptr @fn_sconcat(ptr @.str666, ptr %t155)
+  %t156 = call ptr @fn_sconcat(ptr @.str676, ptr %t155)
   %t157 = call ptr @fn_sconcat(ptr %t154, ptr %t156)
-  %t158 = call ptr @fn_sconcat(ptr @.str665, ptr %t157)
+  %t158 = call ptr @fn_sconcat(ptr @.str675, ptr %t157)
   %t159 = call ptr @fn_emit_bind(ptr %t158)
   store ptr %t159, ptr %t160
   %t161 = load ptr, ptr %t160
@@ -13005,13 +13372,13 @@ ifend7:
   %t163 = getelementptr inbounds %Str_Val, ptr %t162, i32 0, i32 0
   %t164 = load ptr, ptr %t163
   %t165 = load ptr, ptr %t151
-  %t166 = call ptr @fn_sconcat(ptr @.str669, ptr %t165)
+  %t166 = call ptr @fn_sconcat(ptr @.str679, ptr %t165)
   %t167 = call ptr @fn_sconcat(ptr %t164, ptr %t166)
-  %t168 = call ptr @fn_sconcat(ptr @.str668, ptr %t167)
+  %t168 = call ptr @fn_sconcat(ptr @.str678, ptr %t167)
   %t169 = call ptr @fn_sconcat(ptr %t161, ptr %t168)
-  %t170 = call ptr @fn_sconcat(ptr @.str667, ptr %t169)
+  %t170 = call ptr @fn_sconcat(ptr @.str677, ptr %t169)
   %t171 = call ptr @fn_emit_bind(ptr %t170)
-  %t172 = call ptr @fn_val(ptr %t171, ptr @.str670)
+  %t172 = call ptr @fn_val(ptr %t171, ptr @.str680)
   store ptr %t172, ptr %retval
   br label %ret
 ret:
@@ -13026,13 +13393,13 @@ entry:
   %t5 = alloca ptr
   store ptr %arg_llt, ptr %t0
   %t1 = load ptr, ptr %t0
-  %t2 = call ptr @fn_sconcat(ptr %t1, ptr @.str672)
-  %t3 = call ptr @fn_sconcat(ptr @.str671, ptr %t2)
+  %t2 = call ptr @fn_sconcat(ptr %t1, ptr @.str682)
+  %t3 = call ptr @fn_sconcat(ptr @.str681, ptr %t2)
   %t4 = call ptr @fn_emit_bind(ptr %t3)
   store ptr %t4, ptr %t5
   %t6 = load ptr, ptr %t5
-  %t7 = call ptr @fn_sconcat(ptr %t6, ptr @.str674)
-  %t8 = call ptr @fn_sconcat(ptr @.str673, ptr %t7)
+  %t7 = call ptr @fn_sconcat(ptr %t6, ptr @.str684)
+  %t8 = call ptr @fn_sconcat(ptr @.str683, ptr %t7)
   %t9 = call ptr @fn_emit_bind(ptr %t8)
   store ptr %t9, ptr %retval
   br label %ret
@@ -13064,16 +13431,16 @@ entry:
   %t7 = icmp ne i32 %t6, 0
   br i1 %t7, label %then0, label %ifend2
 then0:
-  call void @fn_perr(ptr @.str675)
+  call void @fn_perr(ptr @.str685)
   br label %ifend2
 ifend2:
   %t8 = load ptr, ptr %t0
-  %t9 = call ptr @fn_sconcat(ptr @.str676, ptr %t8)
+  %t9 = call ptr @fn_sconcat(ptr @.str686, ptr %t8)
   %t10 = call ptr @fn_emit_sizeof(ptr %t9)
   store ptr %t10, ptr %t11
   %t12 = load ptr, ptr %t11
-  %t13 = call ptr @fn_sconcat(ptr %t12, ptr @.str678)
-  %t14 = call ptr @fn_sconcat(ptr @.str677, ptr %t13)
+  %t13 = call ptr @fn_sconcat(ptr %t12, ptr @.str688)
+  %t14 = call ptr @fn_sconcat(ptr @.str687, ptr %t13)
   %t15 = call ptr @fn_emit_bind(ptr %t14)
   store ptr %t15, ptr %t16
   store i32 0, ptr %t17
@@ -13101,32 +13468,32 @@ wbody4:
   store ptr %t34, ptr %t35
   %t36 = call ptr @fn_nreg()
   store ptr %t36, ptr %t37
-  call void @fn_emit(ptr @.str679)
+  call void @fn_emit(ptr @.str689)
   %t38 = load ptr, ptr %t37
   call void @fn_emit(ptr %t38)
-  call void @fn_emit(ptr @.str680)
+  call void @fn_emit(ptr @.str690)
   %t39 = load ptr, ptr %t0
   call void @fn_emit(ptr %t39)
-  call void @fn_emit(ptr @.str681)
+  call void @fn_emit(ptr @.str691)
   %t40 = load ptr, ptr %t16
   call void @fn_emit(ptr %t40)
-  call void @fn_emit(ptr @.str682)
+  call void @fn_emit(ptr @.str692)
   %t41 = load i32, ptr %t17
   %t42 = call ptr @fn_itoa(i32 %t41)
   call void @fn_emit(ptr %t42)
-  call void @fn_emit(ptr @.str683)
+  call void @fn_emit(ptr @.str693)
   %t43 = load ptr, ptr %t35
   %t44 = getelementptr inbounds %Str_Node, ptr %t43, i32 0, i32 3
   %t45 = load ptr, ptr %t44
   %t46 = call ptr @fn_llty(ptr %t45)
   store ptr %t46, ptr %t47
-  store ptr @.str684, ptr %t48
+  store ptr @.str694, ptr %t48
   %t49 = load ptr, ptr %t47
-  %t50 = call i32 @fn_streq(ptr %t49, ptr @.str685)
+  %t50 = call i32 @fn_streq(ptr %t49, ptr @.str695)
   %t51 = icmp ne i32 %t50, 0
   br i1 %t51, label %then6, label %ifend8
 then6:
-  store ptr @.str686, ptr %t48
+  store ptr @.str696, ptr %t48
   br label %ifend8
 ifend8:
   %t52 = load ptr, ptr %t35
@@ -13150,16 +13517,16 @@ then9:
   store ptr %t67, ptr %t48
   br label %ifend11
 ifend11:
-  call void @fn_emit(ptr @.str687)
+  call void @fn_emit(ptr @.str697)
   %t68 = load ptr, ptr %t47
   call void @fn_emit(ptr %t68)
-  call void @fn_emit(ptr @.str688)
+  call void @fn_emit(ptr @.str698)
   %t69 = load ptr, ptr %t48
   call void @fn_emit(ptr %t69)
-  call void @fn_emit(ptr @.str689)
+  call void @fn_emit(ptr @.str699)
   %t70 = load ptr, ptr %t37
   call void @fn_emit(ptr %t70)
-  call void @fn_emit(ptr @.str690)
+  call void @fn_emit(ptr @.str700)
   %t71 = load i32, ptr %t17
   %t72 = add i32 %t71, 1
   store i32 %t72, ptr %t17
@@ -13185,52 +13552,52 @@ entry:
   %t14 = alloca ptr
   %t19 = alloca ptr
   store ptr %arg_ty, ptr %t0
-  %t1 = call ptr @fn_emit_sizeof(ptr @.str691)
+  %t1 = call ptr @fn_emit_sizeof(ptr @.str701)
   store ptr %t1, ptr %t2
   %t3 = load ptr, ptr %t2
-  %t4 = call ptr @fn_sconcat(ptr %t3, ptr @.str693)
-  %t5 = call ptr @fn_sconcat(ptr @.str692, ptr %t4)
+  %t4 = call ptr @fn_sconcat(ptr %t3, ptr @.str703)
+  %t5 = call ptr @fn_sconcat(ptr @.str702, ptr %t4)
   %t6 = call ptr @fn_emit_bind(ptr %t5)
   store ptr %t6, ptr %t7
   %t8 = call ptr @fn_nreg()
   store ptr %t8, ptr %t9
-  call void @fn_emit(ptr @.str694)
+  call void @fn_emit(ptr @.str704)
   %t10 = load ptr, ptr %t9
   call void @fn_emit(ptr %t10)
-  call void @fn_emit(ptr @.str695)
+  call void @fn_emit(ptr @.str705)
   %t11 = load ptr, ptr %t7
   call void @fn_emit(ptr %t11)
-  call void @fn_emit(ptr @.str696)
-  call void @fn_emit(ptr @.str697)
-  %t12 = load ptr, ptr %t9
-  call void @fn_emit(ptr %t12)
-  call void @fn_emit(ptr @.str698)
-  %t13 = call ptr @fn_nreg()
-  store ptr %t13, ptr %t14
-  call void @fn_emit(ptr @.str699)
-  %t15 = load ptr, ptr %t14
-  call void @fn_emit(ptr %t15)
-  call void @fn_emit(ptr @.str700)
-  %t16 = load ptr, ptr %t7
-  call void @fn_emit(ptr %t16)
-  call void @fn_emit(ptr @.str701)
-  call void @fn_emit(ptr @.str702)
-  %t17 = load ptr, ptr %t14
-  call void @fn_emit(ptr %t17)
-  call void @fn_emit(ptr @.str703)
-  %t18 = call ptr @fn_nreg()
-  store ptr %t18, ptr %t19
-  call void @fn_emit(ptr @.str704)
-  %t20 = load ptr, ptr %t19
-  call void @fn_emit(ptr %t20)
-  call void @fn_emit(ptr @.str705)
-  %t21 = load ptr, ptr %t7
-  call void @fn_emit(ptr %t21)
   call void @fn_emit(ptr @.str706)
   call void @fn_emit(ptr @.str707)
+  %t12 = load ptr, ptr %t9
+  call void @fn_emit(ptr %t12)
+  call void @fn_emit(ptr @.str708)
+  %t13 = call ptr @fn_nreg()
+  store ptr %t13, ptr %t14
+  call void @fn_emit(ptr @.str709)
+  %t15 = load ptr, ptr %t14
+  call void @fn_emit(ptr %t15)
+  call void @fn_emit(ptr @.str710)
+  %t16 = load ptr, ptr %t7
+  call void @fn_emit(ptr %t16)
+  call void @fn_emit(ptr @.str711)
+  call void @fn_emit(ptr @.str712)
+  %t17 = load ptr, ptr %t14
+  call void @fn_emit(ptr %t17)
+  call void @fn_emit(ptr @.str713)
+  %t18 = call ptr @fn_nreg()
+  store ptr %t18, ptr %t19
+  call void @fn_emit(ptr @.str714)
+  %t20 = load ptr, ptr %t19
+  call void @fn_emit(ptr %t20)
+  call void @fn_emit(ptr @.str715)
+  %t21 = load ptr, ptr %t7
+  call void @fn_emit(ptr %t21)
+  call void @fn_emit(ptr @.str716)
+  call void @fn_emit(ptr @.str717)
   %t22 = load ptr, ptr %t19
   call void @fn_emit(ptr %t22)
-  call void @fn_emit(ptr @.str708)
+  call void @fn_emit(ptr @.str718)
   %t23 = load ptr, ptr %t7
   %t24 = load ptr, ptr %t0
   %t25 = call ptr @fn_val(ptr %t23, ptr %t24)
@@ -13251,17 +13618,17 @@ entry:
   store i32 %arg_i, ptr %t1
   %t2 = call ptr @fn_nreg()
   store ptr %t2, ptr %t3
-  call void @fn_emit(ptr @.str709)
+  call void @fn_emit(ptr @.str719)
   %t4 = load ptr, ptr %t3
   call void @fn_emit(ptr %t4)
-  call void @fn_emit(ptr @.str710)
+  call void @fn_emit(ptr @.str720)
   %t5 = load ptr, ptr %t0
   call void @fn_emit(ptr %t5)
-  call void @fn_emit(ptr @.str711)
+  call void @fn_emit(ptr @.str721)
   %t6 = load i32, ptr %t1
   %t7 = call ptr @fn_itoa(i32 %t6)
   call void @fn_emit(ptr %t7)
-  call void @fn_emit(ptr @.str712)
+  call void @fn_emit(ptr @.str722)
   %t8 = load ptr, ptr %t3
   store ptr %t8, ptr %retval
   br label %ret
@@ -13292,9 +13659,9 @@ entry:
   %t13 = call ptr @fn_slice_field(ptr %t12, i32 1)
   store ptr %t13, ptr %t14
   %t15 = load ptr, ptr %t14
-  %t16 = call ptr @fn_sconcat(ptr @.str713, ptr %t15)
+  %t16 = call ptr @fn_sconcat(ptr @.str723, ptr %t15)
   %t17 = call ptr @fn_emit_bind(ptr %t16)
-  %t18 = call ptr @fn_val(ptr %t17, ptr @.str714)
+  %t18 = call ptr @fn_val(ptr %t17, ptr @.str724)
   store ptr %t18, ptr %retval
   br label %ret
 ret:
@@ -13362,102 +13729,102 @@ entry:
   %t29 = call ptr @fn_slice_field(ptr %t28, i32 0)
   store ptr %t29, ptr %t30
   %t31 = load ptr, ptr %t24
-  %t32 = call ptr @fn_sconcat(ptr @.str715, ptr %t31)
+  %t32 = call ptr @fn_sconcat(ptr @.str725, ptr %t31)
   %t33 = call ptr @fn_emit_bind(ptr %t32)
   store ptr %t33, ptr %t34
   %t35 = load ptr, ptr %t27
-  %t36 = call ptr @fn_sconcat(ptr @.str716, ptr %t35)
+  %t36 = call ptr @fn_sconcat(ptr @.str726, ptr %t35)
   %t37 = call ptr @fn_emit_bind(ptr %t36)
   store ptr %t37, ptr %t38
   %t39 = load ptr, ptr %t34
   %t40 = load ptr, ptr %t38
-  %t41 = call ptr @fn_sconcat(ptr @.str718, ptr %t40)
+  %t41 = call ptr @fn_sconcat(ptr @.str728, ptr %t40)
   %t42 = call ptr @fn_sconcat(ptr %t39, ptr %t41)
-  %t43 = call ptr @fn_sconcat(ptr @.str717, ptr %t42)
+  %t43 = call ptr @fn_sconcat(ptr @.str727, ptr %t42)
   %t44 = call ptr @fn_emit_bind(ptr %t43)
   store ptr %t44, ptr %t45
-  %t46 = call ptr @fn_lbl(ptr @.str719)
+  %t46 = call ptr @fn_lbl(ptr @.str729)
   store ptr %t46, ptr %t47
-  %t48 = call ptr @fn_lbl(ptr @.str720)
+  %t48 = call ptr @fn_lbl(ptr @.str730)
   store ptr %t48, ptr %t49
-  call void @fn_emit(ptr @.str721)
+  call void @fn_emit(ptr @.str731)
   %t50 = load ptr, ptr %t45
   call void @fn_emit(ptr %t50)
-  call void @fn_emit(ptr @.str722)
+  call void @fn_emit(ptr @.str732)
   %t51 = load ptr, ptr %t47
   call void @fn_emit(ptr %t51)
-  call void @fn_emit(ptr @.str723)
+  call void @fn_emit(ptr @.str733)
   %t52 = load ptr, ptr %t49
   call void @fn_emit(ptr %t52)
-  call void @fn_emit(ptr @.str724)
+  call void @fn_emit(ptr @.str734)
   %t53 = load ptr, ptr %t47
   call void @fn_emit(ptr %t53)
-  call void @fn_emit(ptr @.str725)
+  call void @fn_emit(ptr @.str735)
   %t54 = load ptr, ptr %t38
-  %t55 = call ptr @fn_sconcat(ptr %t54, ptr @.str727)
-  %t56 = call ptr @fn_sconcat(ptr @.str726, ptr %t55)
+  %t55 = call ptr @fn_sconcat(ptr %t54, ptr @.str737)
+  %t56 = call ptr @fn_sconcat(ptr @.str736, ptr %t55)
   %t57 = call ptr @fn_emit_bind(ptr %t56)
   store ptr %t57, ptr %t58
   %t59 = load ptr, ptr %t38
-  %t60 = call ptr @fn_sconcat(ptr %t59, ptr @.str729)
-  %t61 = call ptr @fn_sconcat(ptr @.str728, ptr %t60)
+  %t60 = call ptr @fn_sconcat(ptr %t59, ptr @.str739)
+  %t61 = call ptr @fn_sconcat(ptr @.str738, ptr %t60)
   %t62 = call ptr @fn_emit_bind(ptr %t61)
   store ptr %t62, ptr %t63
   %t64 = load ptr, ptr %t63
   %t65 = load ptr, ptr %t58
-  %t66 = call ptr @fn_sconcat(ptr @.str731, ptr %t65)
+  %t66 = call ptr @fn_sconcat(ptr @.str741, ptr %t65)
   %t67 = call ptr @fn_sconcat(ptr %t64, ptr %t66)
-  %t68 = call ptr @fn_sconcat(ptr @.str730, ptr %t67)
+  %t68 = call ptr @fn_sconcat(ptr @.str740, ptr %t67)
   %t69 = call ptr @fn_emit_bind(ptr %t68)
   store ptr %t69, ptr %t70
   %t71 = load ptr, ptr %t17
   %t72 = call ptr @fn_emit_sizeof(ptr %t71)
   store ptr %t72, ptr %t73
   %t74 = load ptr, ptr %t70
-  %t75 = call ptr @fn_sconcat(ptr %t74, ptr @.str733)
-  %t76 = call ptr @fn_sconcat(ptr @.str732, ptr %t75)
+  %t75 = call ptr @fn_sconcat(ptr %t74, ptr @.str743)
+  %t76 = call ptr @fn_sconcat(ptr @.str742, ptr %t75)
   %t77 = call ptr @fn_emit_bind(ptr %t76)
   store ptr %t77, ptr %t78
   %t79 = load ptr, ptr %t78
   %t80 = load ptr, ptr %t73
-  %t81 = call ptr @fn_sconcat(ptr @.str735, ptr %t80)
+  %t81 = call ptr @fn_sconcat(ptr @.str745, ptr %t80)
   %t82 = call ptr @fn_sconcat(ptr %t79, ptr %t81)
-  %t83 = call ptr @fn_sconcat(ptr @.str734, ptr %t82)
+  %t83 = call ptr @fn_sconcat(ptr @.str744, ptr %t82)
   %t84 = call ptr @fn_emit_bind(ptr %t83)
   store ptr %t84, ptr %t85
   %t86 = load ptr, ptr %t30
-  %t87 = call ptr @fn_sconcat(ptr @.str736, ptr %t86)
+  %t87 = call ptr @fn_sconcat(ptr @.str746, ptr %t86)
   %t88 = call ptr @fn_emit_bind(ptr %t87)
   store ptr %t88, ptr %t89
   %t90 = load ptr, ptr %t89
   %t91 = load ptr, ptr %t85
-  %t92 = call ptr @fn_sconcat(ptr %t91, ptr @.str739)
-  %t93 = call ptr @fn_sconcat(ptr @.str738, ptr %t92)
+  %t92 = call ptr @fn_sconcat(ptr %t91, ptr @.str749)
+  %t93 = call ptr @fn_sconcat(ptr @.str748, ptr %t92)
   %t94 = call ptr @fn_sconcat(ptr %t90, ptr %t93)
-  %t95 = call ptr @fn_sconcat(ptr @.str737, ptr %t94)
+  %t95 = call ptr @fn_sconcat(ptr @.str747, ptr %t94)
   %t96 = call ptr @fn_emit_bind(ptr %t95)
   store ptr %t96, ptr %t97
-  call void @fn_emit(ptr @.str740)
+  call void @fn_emit(ptr @.str750)
   %t98 = load ptr, ptr %t97
   call void @fn_emit(ptr %t98)
-  call void @fn_emit(ptr @.str741)
+  call void @fn_emit(ptr @.str751)
   %t99 = load ptr, ptr %t30
   call void @fn_emit(ptr %t99)
-  call void @fn_emit(ptr @.str742)
-  call void @fn_emit(ptr @.str743)
+  call void @fn_emit(ptr @.str752)
+  call void @fn_emit(ptr @.str753)
   %t100 = load ptr, ptr %t70
   call void @fn_emit(ptr %t100)
-  call void @fn_emit(ptr @.str744)
+  call void @fn_emit(ptr @.str754)
   %t101 = load ptr, ptr %t27
   call void @fn_emit(ptr %t101)
-  call void @fn_emit(ptr @.str745)
-  call void @fn_emit(ptr @.str746)
+  call void @fn_emit(ptr @.str755)
+  call void @fn_emit(ptr @.str756)
   %t102 = load ptr, ptr %t49
   call void @fn_emit(ptr %t102)
-  call void @fn_emit(ptr @.str747)
+  call void @fn_emit(ptr @.str757)
   %t103 = load ptr, ptr %t49
   call void @fn_emit(ptr %t103)
-  call void @fn_emit(ptr @.str748)
+  call void @fn_emit(ptr @.str758)
   %t104 = load ptr, ptr %t0
   %t105 = getelementptr inbounds %Str_Node, ptr %t104, i32 0, i32 7
   %t106 = load ptr, ptr %t105
@@ -13468,49 +13835,49 @@ entry:
   %t111 = call ptr @fn_emit_expr(ptr %t110)
   store ptr %t111, ptr %t112
   %t113 = load ptr, ptr %t30
-  %t114 = call ptr @fn_sconcat(ptr @.str749, ptr %t113)
+  %t114 = call ptr @fn_sconcat(ptr @.str759, ptr %t113)
   %t115 = call ptr @fn_emit_bind(ptr %t114)
   store ptr %t115, ptr %t116
   %t117 = call ptr @fn_nreg()
   store ptr %t117, ptr %t118
-  call void @fn_emit(ptr @.str750)
+  call void @fn_emit(ptr @.str760)
   %t119 = load ptr, ptr %t118
   call void @fn_emit(ptr %t119)
-  call void @fn_emit(ptr @.str751)
+  call void @fn_emit(ptr @.str761)
   %t120 = load ptr, ptr %t17
   call void @fn_emit(ptr %t120)
-  call void @fn_emit(ptr @.str752)
+  call void @fn_emit(ptr @.str762)
   %t121 = load ptr, ptr %t116
   call void @fn_emit(ptr %t121)
-  call void @fn_emit(ptr @.str753)
+  call void @fn_emit(ptr @.str763)
   %t122 = load ptr, ptr %t34
   call void @fn_emit(ptr %t122)
-  call void @fn_emit(ptr @.str754)
-  call void @fn_emit(ptr @.str755)
+  call void @fn_emit(ptr @.str764)
+  call void @fn_emit(ptr @.str765)
   %t123 = load ptr, ptr %t17
   call void @fn_emit(ptr %t123)
-  call void @fn_emit(ptr @.str756)
+  call void @fn_emit(ptr @.str766)
   %t124 = load ptr, ptr %t112
   %t125 = getelementptr inbounds %Str_Val, ptr %t124, i32 0, i32 0
   %t126 = load ptr, ptr %t125
   call void @fn_emit(ptr %t126)
-  call void @fn_emit(ptr @.str757)
+  call void @fn_emit(ptr @.str767)
   %t127 = load ptr, ptr %t118
   call void @fn_emit(ptr %t127)
-  call void @fn_emit(ptr @.str758)
+  call void @fn_emit(ptr @.str768)
   %t128 = load ptr, ptr %t34
-  %t129 = call ptr @fn_sconcat(ptr %t128, ptr @.str760)
-  %t130 = call ptr @fn_sconcat(ptr @.str759, ptr %t129)
+  %t129 = call ptr @fn_sconcat(ptr %t128, ptr @.str770)
+  %t130 = call ptr @fn_sconcat(ptr @.str769, ptr %t129)
   %t131 = call ptr @fn_emit_bind(ptr %t130)
   store ptr %t131, ptr %t132
-  call void @fn_emit(ptr @.str761)
+  call void @fn_emit(ptr @.str771)
   %t133 = load ptr, ptr %t132
   call void @fn_emit(ptr %t133)
-  call void @fn_emit(ptr @.str762)
+  call void @fn_emit(ptr @.str772)
   %t134 = load ptr, ptr %t24
   call void @fn_emit(ptr %t134)
-  call void @fn_emit(ptr @.str763)
-  %t135 = call ptr @fn_val(ptr @.str764, ptr @.str765)
+  call void @fn_emit(ptr @.str773)
+  %t135 = call ptr @fn_val(ptr @.str774, ptr @.str775)
   store ptr %t135, ptr %retval
   br label %ret
 ret:
@@ -13529,9 +13896,9 @@ entry:
   %t2 = load ptr, ptr %t1
   %t3 = call ptr @fn_llty(ptr %t2)
   %t4 = load ptr, ptr %t0
-  %t5 = call ptr @fn_sconcat(ptr @.str767, ptr %t4)
+  %t5 = call ptr @fn_sconcat(ptr @.str777, ptr %t4)
   %t6 = call ptr @fn_sconcat(ptr %t3, ptr %t5)
-  %t7 = call ptr @fn_sconcat(ptr @.str766, ptr %t6)
+  %t7 = call ptr @fn_sconcat(ptr @.str776, ptr %t6)
   %t8 = call ptr @fn_emit_bind(ptr %t7)
   store ptr %t8, ptr %t9
   %t10 = load ptr, ptr %t9
@@ -13558,7 +13925,7 @@ entry:
   %t49 = alloca ptr
   %t54 = alloca ptr
   store ptr %arg_e, ptr %t0
-  %t1 = call ptr @fn_emit_alloca(ptr @.str768)
+  %t1 = call ptr @fn_emit_alloca(ptr @.str778)
   store ptr %t1, ptr %t2
   %t3 = load ptr, ptr %t0
   %t4 = getelementptr inbounds %Str_Node, ptr %t3, i32 0, i32 4
@@ -13568,60 +13935,60 @@ entry:
   %t8 = load ptr, ptr %t7
   %t9 = getelementptr inbounds %Str_Val, ptr %t8, i32 0, i32 0
   %t10 = load ptr, ptr %t9
-  %t11 = call ptr @fn_sconcat(ptr %t10, ptr @.str770)
-  %t12 = call ptr @fn_sconcat(ptr @.str769, ptr %t11)
+  %t11 = call ptr @fn_sconcat(ptr %t10, ptr @.str780)
+  %t12 = call ptr @fn_sconcat(ptr @.str779, ptr %t11)
   %t13 = call ptr @fn_emit_bind(ptr %t12)
   store ptr %t13, ptr %t14
   %t15 = load ptr, ptr %t14
-  %t16 = call ptr @fn_sconcat(ptr %t15, ptr @.str772)
-  %t17 = call ptr @fn_sconcat(ptr @.str771, ptr %t16)
+  %t16 = call ptr @fn_sconcat(ptr %t15, ptr @.str782)
+  %t17 = call ptr @fn_sconcat(ptr @.str781, ptr %t16)
   %t18 = call ptr @fn_emit_bind(ptr %t17)
   store ptr %t18, ptr %t19
-  call void @fn_emit(ptr @.str773)
+  call void @fn_emit(ptr @.str783)
   %t20 = load ptr, ptr %t19
   call void @fn_emit(ptr %t20)
-  call void @fn_emit(ptr @.str774)
+  call void @fn_emit(ptr @.str784)
   %t21 = load ptr, ptr %t2
   call void @fn_emit(ptr %t21)
-  call void @fn_emit(ptr @.str775)
-  %t22 = call ptr @fn_lbl(ptr @.str776)
+  call void @fn_emit(ptr @.str785)
+  %t22 = call ptr @fn_lbl(ptr @.str786)
   store ptr %t22, ptr %t23
-  %t24 = call ptr @fn_lbl(ptr @.str777)
+  %t24 = call ptr @fn_lbl(ptr @.str787)
   store ptr %t24, ptr %t25
   %t26 = load ptr, ptr %t0
   %t27 = getelementptr inbounds %Str_Node, ptr %t26, i32 0, i32 1
   %t28 = load ptr, ptr %t27
-  %t29 = call i32 @fn_streq(ptr %t28, ptr @.str778)
+  %t29 = call i32 @fn_streq(ptr %t28, ptr @.str788)
   %t30 = icmp ne i32 %t29, 0
   br i1 %t30, label %then0, label %else1
 then0:
-  call void @fn_emit(ptr @.str779)
+  call void @fn_emit(ptr @.str789)
   %t31 = load ptr, ptr %t14
   call void @fn_emit(ptr %t31)
-  call void @fn_emit(ptr @.str780)
+  call void @fn_emit(ptr @.str790)
   %t32 = load ptr, ptr %t23
   call void @fn_emit(ptr %t32)
-  call void @fn_emit(ptr @.str781)
+  call void @fn_emit(ptr @.str791)
   %t33 = load ptr, ptr %t25
   call void @fn_emit(ptr %t33)
-  call void @fn_emit(ptr @.str782)
+  call void @fn_emit(ptr @.str792)
   br label %ifend2
 else1:
-  call void @fn_emit(ptr @.str783)
+  call void @fn_emit(ptr @.str793)
   %t34 = load ptr, ptr %t14
   call void @fn_emit(ptr %t34)
-  call void @fn_emit(ptr @.str784)
+  call void @fn_emit(ptr @.str794)
   %t35 = load ptr, ptr %t25
   call void @fn_emit(ptr %t35)
-  call void @fn_emit(ptr @.str785)
+  call void @fn_emit(ptr @.str795)
   %t36 = load ptr, ptr %t23
   call void @fn_emit(ptr %t36)
-  call void @fn_emit(ptr @.str786)
+  call void @fn_emit(ptr @.str796)
   br label %ifend2
 ifend2:
   %t37 = load ptr, ptr %t23
   call void @fn_emit(ptr %t37)
-  call void @fn_emit(ptr @.str787)
+  call void @fn_emit(ptr @.str797)
   %t38 = load ptr, ptr %t0
   %t39 = getelementptr inbounds %Str_Node, ptr %t38, i32 0, i32 5
   %t40 = load ptr, ptr %t39
@@ -13630,33 +13997,33 @@ ifend2:
   %t43 = load ptr, ptr %t42
   %t44 = getelementptr inbounds %Str_Val, ptr %t43, i32 0, i32 0
   %t45 = load ptr, ptr %t44
-  %t46 = call ptr @fn_sconcat(ptr %t45, ptr @.str789)
-  %t47 = call ptr @fn_sconcat(ptr @.str788, ptr %t46)
+  %t46 = call ptr @fn_sconcat(ptr %t45, ptr @.str799)
+  %t47 = call ptr @fn_sconcat(ptr @.str798, ptr %t46)
   %t48 = call ptr @fn_emit_bind(ptr %t47)
   store ptr %t48, ptr %t49
   %t50 = load ptr, ptr %t49
-  %t51 = call ptr @fn_sconcat(ptr %t50, ptr @.str791)
-  %t52 = call ptr @fn_sconcat(ptr @.str790, ptr %t51)
+  %t51 = call ptr @fn_sconcat(ptr %t50, ptr @.str801)
+  %t52 = call ptr @fn_sconcat(ptr @.str800, ptr %t51)
   %t53 = call ptr @fn_emit_bind(ptr %t52)
   store ptr %t53, ptr %t54
-  call void @fn_emit(ptr @.str792)
+  call void @fn_emit(ptr @.str802)
   %t55 = load ptr, ptr %t54
   call void @fn_emit(ptr %t55)
-  call void @fn_emit(ptr @.str793)
+  call void @fn_emit(ptr @.str803)
   %t56 = load ptr, ptr %t2
   call void @fn_emit(ptr %t56)
-  call void @fn_emit(ptr @.str794)
-  call void @fn_emit(ptr @.str795)
+  call void @fn_emit(ptr @.str804)
+  call void @fn_emit(ptr @.str805)
   %t57 = load ptr, ptr %t25
   call void @fn_emit(ptr %t57)
-  call void @fn_emit(ptr @.str796)
+  call void @fn_emit(ptr @.str806)
   %t58 = load ptr, ptr %t25
   call void @fn_emit(ptr %t58)
-  call void @fn_emit(ptr @.str797)
+  call void @fn_emit(ptr @.str807)
   %t59 = load ptr, ptr %t2
-  %t60 = call ptr @fn_sconcat(ptr @.str798, ptr %t59)
+  %t60 = call ptr @fn_sconcat(ptr @.str808, ptr %t59)
   %t61 = call ptr @fn_emit_bind(ptr %t60)
-  %t62 = call ptr @fn_val(ptr %t61, ptr @.str799)
+  %t62 = call ptr @fn_val(ptr %t61, ptr @.str809)
   store ptr %t62, ptr %retval
   br label %ret
 ret:
@@ -13670,46 +14037,46 @@ entry:
   %t0 = alloca ptr
   store ptr %arg_op, ptr %t0
   %t1 = load ptr, ptr %t0
-  %t2 = call i32 @fn_streq(ptr %t1, ptr @.str800)
+  %t2 = call i32 @fn_streq(ptr %t1, ptr @.str810)
   %t3 = icmp ne i32 %t2, 0
   br i1 %t3, label %then0, label %ifend2
 then0:
-  store ptr @.str801, ptr %retval
+  store ptr @.str811, ptr %retval
   br label %ret
 ifend2:
   %t4 = load ptr, ptr %t0
-  %t5 = call i32 @fn_streq(ptr %t4, ptr @.str802)
+  %t5 = call i32 @fn_streq(ptr %t4, ptr @.str812)
   %t6 = icmp ne i32 %t5, 0
   br i1 %t6, label %then3, label %ifend5
 then3:
-  store ptr @.str803, ptr %retval
+  store ptr @.str813, ptr %retval
   br label %ret
 ifend5:
   %t7 = load ptr, ptr %t0
-  %t8 = call i32 @fn_streq(ptr %t7, ptr @.str804)
+  %t8 = call i32 @fn_streq(ptr %t7, ptr @.str814)
   %t9 = icmp ne i32 %t8, 0
   br i1 %t9, label %then6, label %ifend8
 then6:
-  store ptr @.str805, ptr %retval
+  store ptr @.str815, ptr %retval
   br label %ret
 ifend8:
   %t10 = load ptr, ptr %t0
-  %t11 = call i32 @fn_streq(ptr %t10, ptr @.str806)
+  %t11 = call i32 @fn_streq(ptr %t10, ptr @.str816)
   %t12 = icmp ne i32 %t11, 0
   br i1 %t12, label %then9, label %ifend11
 then9:
-  store ptr @.str807, ptr %retval
+  store ptr @.str817, ptr %retval
   br label %ret
 ifend11:
   %t13 = load ptr, ptr %t0
-  %t14 = call i32 @fn_streq(ptr %t13, ptr @.str808)
+  %t14 = call i32 @fn_streq(ptr %t13, ptr @.str818)
   %t15 = icmp ne i32 %t14, 0
   br i1 %t15, label %then12, label %ifend14
 then12:
-  store ptr @.str809, ptr %retval
+  store ptr @.str819, ptr %retval
   br label %ret
 ifend14:
-  store ptr @.str810, ptr %retval
+  store ptr @.str820, ptr %retval
   br label %ret
 ret:
   %t16 = load ptr, ptr %retval
@@ -13727,14 +14094,14 @@ entry:
   %t5 = alloca i32
   store ptr %arg_op, ptr %t0
   %t6 = load ptr, ptr %t0
-  %t7 = call i32 @fn_streq(ptr %t6, ptr @.str811)
+  %t7 = call i32 @fn_streq(ptr %t6, ptr @.str821)
   %t8 = icmp ne i32 %t7, 0
   %t9 = zext i1 %t8 to i32
   store i32 %t9, ptr %t5
   br i1 %t8, label %scend1, label %sc0
 sc0:
   %t10 = load ptr, ptr %t0
-  %t11 = call i32 @fn_streq(ptr %t10, ptr @.str812)
+  %t11 = call i32 @fn_streq(ptr %t10, ptr @.str822)
   %t12 = icmp ne i32 %t11, 0
   %t13 = zext i1 %t12 to i32
   store i32 %t13, ptr %t5
@@ -13747,7 +14114,7 @@ scend1:
   br i1 %t15, label %scend3, label %sc2
 sc2:
   %t17 = load ptr, ptr %t0
-  %t18 = call i32 @fn_streq(ptr %t17, ptr @.str813)
+  %t18 = call i32 @fn_streq(ptr %t17, ptr @.str823)
   %t19 = icmp ne i32 %t18, 0
   %t20 = zext i1 %t19 to i32
   store i32 %t20, ptr %t4
@@ -13760,7 +14127,7 @@ scend3:
   br i1 %t22, label %scend5, label %sc4
 sc4:
   %t24 = load ptr, ptr %t0
-  %t25 = call i32 @fn_streq(ptr %t24, ptr @.str814)
+  %t25 = call i32 @fn_streq(ptr %t24, ptr @.str824)
   %t26 = icmp ne i32 %t25, 0
   %t27 = zext i1 %t26 to i32
   store i32 %t27, ptr %t3
@@ -13773,7 +14140,7 @@ scend5:
   br i1 %t29, label %scend7, label %sc6
 sc6:
   %t31 = load ptr, ptr %t0
-  %t32 = call i32 @fn_streq(ptr %t31, ptr @.str815)
+  %t32 = call i32 @fn_streq(ptr %t31, ptr @.str825)
   %t33 = icmp ne i32 %t32, 0
   %t34 = zext i1 %t33 to i32
   store i32 %t34, ptr %t2
@@ -13786,7 +14153,7 @@ scend7:
   br i1 %t36, label %scend9, label %sc8
 sc8:
   %t38 = load ptr, ptr %t0
-  %t39 = call i32 @fn_streq(ptr %t38, ptr @.str816)
+  %t39 = call i32 @fn_streq(ptr %t38, ptr @.str826)
   %t40 = icmp ne i32 %t39, 0
   %t41 = zext i1 %t40 to i32
   store i32 %t41, ptr %t1
@@ -13806,38 +14173,38 @@ entry:
   %t0 = alloca ptr
   store ptr %arg_op, ptr %t0
   %t1 = load ptr, ptr %t0
-  %t2 = call i32 @fn_streq(ptr %t1, ptr @.str817)
+  %t2 = call i32 @fn_streq(ptr %t1, ptr @.str827)
   %t3 = icmp ne i32 %t2, 0
   br i1 %t3, label %then0, label %ifend2
 then0:
-  store ptr @.str818, ptr %retval
+  store ptr @.str828, ptr %retval
   br label %ret
 ifend2:
   %t4 = load ptr, ptr %t0
-  %t5 = call i32 @fn_streq(ptr %t4, ptr @.str819)
+  %t5 = call i32 @fn_streq(ptr %t4, ptr @.str829)
   %t6 = icmp ne i32 %t5, 0
   br i1 %t6, label %then3, label %ifend5
 then3:
-  store ptr @.str820, ptr %retval
+  store ptr @.str830, ptr %retval
   br label %ret
 ifend5:
   %t7 = load ptr, ptr %t0
-  %t8 = call i32 @fn_streq(ptr %t7, ptr @.str821)
+  %t8 = call i32 @fn_streq(ptr %t7, ptr @.str831)
   %t9 = icmp ne i32 %t8, 0
   br i1 %t9, label %then6, label %ifend8
 then6:
-  store ptr @.str822, ptr %retval
+  store ptr @.str832, ptr %retval
   br label %ret
 ifend8:
   %t10 = load ptr, ptr %t0
-  %t11 = call i32 @fn_streq(ptr %t10, ptr @.str823)
+  %t11 = call i32 @fn_streq(ptr %t10, ptr @.str833)
   %t12 = icmp ne i32 %t11, 0
   br i1 %t12, label %then9, label %ifend11
 then9:
-  store ptr @.str824, ptr %retval
+  store ptr @.str834, ptr %retval
   br label %ret
 ifend11:
-  store ptr @.str825, ptr %retval
+  store ptr @.str835, ptr %retval
   br label %ret
 ret:
   %t13 = load ptr, ptr %retval
@@ -13852,7 +14219,7 @@ entry:
   %t1 = load ptr, ptr %t0
   %t2 = getelementptr inbounds %Str_Val, ptr %t1, i32 0, i32 1
   %t3 = load ptr, ptr %t2
-  %t4 = call i32 @fn_streq(ptr %t3, ptr @.str826)
+  %t4 = call i32 @fn_streq(ptr %t3, ptr @.str836)
   %t5 = icmp ne i32 %t4, 0
   br i1 %t5, label %then0, label %ifend2
 then0:
@@ -13865,8 +14232,8 @@ ifend2:
   %t9 = load ptr, ptr %t0
   %t10 = getelementptr inbounds %Str_Val, ptr %t9, i32 0, i32 0
   %t11 = load ptr, ptr %t10
-  %t12 = call ptr @fn_sconcat(ptr %t11, ptr @.str828)
-  %t13 = call ptr @fn_sconcat(ptr @.str827, ptr %t12)
+  %t12 = call ptr @fn_sconcat(ptr %t11, ptr @.str838)
+  %t13 = call ptr @fn_sconcat(ptr @.str837, ptr %t12)
   %t14 = call ptr @fn_emit_bind(ptr %t13)
   store ptr %t14, ptr %retval
   br label %ret
@@ -13903,7 +14270,7 @@ entry:
   %t2 = load ptr, ptr %t0
   %t3 = getelementptr inbounds %Str_Node, ptr %t2, i32 0, i32 1
   %t4 = load ptr, ptr %t3
-  %t5 = call i32 @fn_streq(ptr %t4, ptr @.str829)
+  %t5 = call i32 @fn_streq(ptr %t4, ptr @.str839)
   %t6 = icmp ne i32 %t5, 0
   %t7 = zext i1 %t6 to i32
   store i32 %t7, ptr %t1
@@ -13912,7 +14279,7 @@ sc0:
   %t8 = load ptr, ptr %t0
   %t9 = getelementptr inbounds %Str_Node, ptr %t8, i32 0, i32 1
   %t10 = load ptr, ptr %t9
-  %t11 = call i32 @fn_streq(ptr %t10, ptr @.str830)
+  %t11 = call i32 @fn_streq(ptr %t10, ptr @.str840)
   %t12 = icmp ne i32 %t11, 0
   %t13 = zext i1 %t12 to i32
   store i32 %t13, ptr %t1
@@ -13940,7 +14307,7 @@ ifend4:
   %t29 = load ptr, ptr %t22
   %t30 = getelementptr inbounds %Str_Val, ptr %t29, i32 0, i32 1
   %t31 = load ptr, ptr %t30
-  %t32 = call i32 @fn_streq(ptr %t31, ptr @.str831)
+  %t32 = call i32 @fn_streq(ptr %t31, ptr @.str841)
   %t33 = icmp ne i32 %t32, 0
   %t34 = zext i1 %t33 to i32
   store i32 %t34, ptr %t28
@@ -13949,7 +14316,7 @@ sc5:
   %t35 = load ptr, ptr %t27
   %t36 = getelementptr inbounds %Str_Val, ptr %t35, i32 0, i32 1
   %t37 = load ptr, ptr %t36
-  %t38 = call i32 @fn_streq(ptr %t37, ptr @.str832)
+  %t38 = call i32 @fn_streq(ptr %t37, ptr @.str842)
   %t39 = icmp ne i32 %t38, 0
   %t40 = zext i1 %t39 to i32
   store i32 %t40, ptr %t28
@@ -13990,18 +14357,18 @@ ifend12:
   %t65 = call ptr @fn_cmp_code(ptr %t64)
   %t66 = load ptr, ptr %t51
   %t67 = load ptr, ptr %t55
-  %t68 = call ptr @fn_sconcat(ptr @.str835, ptr %t67)
+  %t68 = call ptr @fn_sconcat(ptr @.str845, ptr %t67)
   %t69 = call ptr @fn_sconcat(ptr %t66, ptr %t68)
-  %t70 = call ptr @fn_sconcat(ptr @.str834, ptr %t69)
+  %t70 = call ptr @fn_sconcat(ptr @.str844, ptr %t69)
   %t71 = call ptr @fn_sconcat(ptr %t65, ptr %t70)
-  %t72 = call ptr @fn_sconcat(ptr @.str833, ptr %t71)
+  %t72 = call ptr @fn_sconcat(ptr @.str843, ptr %t71)
   %t73 = call ptr @fn_emit_bind(ptr %t72)
   store ptr %t73, ptr %t74
   %t75 = load ptr, ptr %t74
-  %t76 = call ptr @fn_sconcat(ptr %t75, ptr @.str837)
-  %t77 = call ptr @fn_sconcat(ptr @.str836, ptr %t76)
+  %t76 = call ptr @fn_sconcat(ptr %t75, ptr @.str847)
+  %t77 = call ptr @fn_sconcat(ptr @.str846, ptr %t76)
   %t78 = call ptr @fn_emit_bind(ptr %t77)
-  %t79 = call ptr @fn_val(ptr %t78, ptr @.str838)
+  %t79 = call ptr @fn_val(ptr %t78, ptr @.str848)
   store ptr %t79, ptr %retval
   br label %ret
 ifend9:
@@ -14018,74 +14385,74 @@ then13:
   %t88 = load ptr, ptr %t0
   %t89 = getelementptr inbounds %Str_Node, ptr %t88, i32 0, i32 1
   %t90 = load ptr, ptr %t89
-  %t91 = call i32 @fn_streq(ptr %t90, ptr @.str839)
+  %t91 = call i32 @fn_streq(ptr %t90, ptr @.str849)
   %t92 = icmp ne i32 %t91, 0
   br i1 %t92, label %then16, label %ifend18
 then16:
   %t93 = load ptr, ptr %t84
-  %t94 = call ptr @fn_sconcat(ptr %t93, ptr @.str841)
-  %t95 = call ptr @fn_sconcat(ptr @.str840, ptr %t94)
+  %t94 = call ptr @fn_sconcat(ptr %t93, ptr @.str851)
+  %t95 = call ptr @fn_sconcat(ptr @.str850, ptr %t94)
   %t96 = call ptr @fn_emit_bind(ptr %t95)
   store ptr %t96, ptr %t97
   %t98 = load ptr, ptr %t87
-  %t99 = call ptr @fn_sconcat(ptr %t98, ptr @.str843)
-  %t100 = call ptr @fn_sconcat(ptr @.str842, ptr %t99)
+  %t99 = call ptr @fn_sconcat(ptr %t98, ptr @.str853)
+  %t100 = call ptr @fn_sconcat(ptr @.str852, ptr %t99)
   %t101 = call ptr @fn_emit_bind(ptr %t100)
   store ptr %t101, ptr %t102
   %t103 = load ptr, ptr %t97
   %t104 = load ptr, ptr %t102
-  %t105 = call ptr @fn_sconcat(ptr @.str845, ptr %t104)
+  %t105 = call ptr @fn_sconcat(ptr @.str855, ptr %t104)
   %t106 = call ptr @fn_sconcat(ptr %t103, ptr %t105)
-  %t107 = call ptr @fn_sconcat(ptr @.str844, ptr %t106)
+  %t107 = call ptr @fn_sconcat(ptr @.str854, ptr %t106)
   %t108 = call ptr @fn_emit_bind(ptr %t107)
   store ptr %t108, ptr %t109
   %t110 = load ptr, ptr %t109
-  %t111 = call ptr @fn_sconcat(ptr %t110, ptr @.str847)
-  %t112 = call ptr @fn_sconcat(ptr @.str846, ptr %t111)
+  %t111 = call ptr @fn_sconcat(ptr %t110, ptr @.str857)
+  %t112 = call ptr @fn_sconcat(ptr @.str856, ptr %t111)
   %t113 = call ptr @fn_emit_bind(ptr %t112)
   store ptr %t113, ptr %t114
   %t115 = load ptr, ptr %t114
-  %t116 = call ptr @fn_sconcat(ptr %t115, ptr @.str849)
-  %t117 = call ptr @fn_sconcat(ptr @.str848, ptr %t116)
+  %t116 = call ptr @fn_sconcat(ptr %t115, ptr @.str859)
+  %t117 = call ptr @fn_sconcat(ptr @.str858, ptr %t116)
   %t118 = call ptr @fn_emit_bind(ptr %t117)
-  %t119 = call ptr @fn_val(ptr %t118, ptr @.str850)
+  %t119 = call ptr @fn_val(ptr %t118, ptr @.str860)
   store ptr %t119, ptr %retval
   br label %ret
 ifend18:
   %t120 = load ptr, ptr %t0
   %t121 = getelementptr inbounds %Str_Node, ptr %t120, i32 0, i32 1
   %t122 = load ptr, ptr %t121
-  %t123 = call i32 @fn_streq(ptr %t122, ptr @.str851)
+  %t123 = call i32 @fn_streq(ptr %t122, ptr @.str861)
   %t124 = icmp ne i32 %t123, 0
   br i1 %t124, label %then19, label %ifend21
 then19:
   %t125 = load ptr, ptr %t84
-  %t126 = call ptr @fn_sconcat(ptr %t125, ptr @.str853)
-  %t127 = call ptr @fn_sconcat(ptr @.str852, ptr %t126)
+  %t126 = call ptr @fn_sconcat(ptr %t125, ptr @.str863)
+  %t127 = call ptr @fn_sconcat(ptr @.str862, ptr %t126)
   %t128 = call ptr @fn_emit_bind(ptr %t127)
   store ptr %t128, ptr %t129
   %t130 = load ptr, ptr %t129
-  %t131 = call ptr @fn_sconcat(ptr %t130, ptr @.str855)
-  %t132 = call ptr @fn_sconcat(ptr @.str854, ptr %t131)
+  %t131 = call ptr @fn_sconcat(ptr %t130, ptr @.str865)
+  %t132 = call ptr @fn_sconcat(ptr @.str864, ptr %t131)
   %t133 = call ptr @fn_emit_bind(ptr %t132)
   store ptr %t133, ptr %t134
   %t135 = load ptr, ptr %t87
-  %t136 = call ptr @fn_sconcat(ptr %t135, ptr @.str857)
-  %t137 = call ptr @fn_sconcat(ptr @.str856, ptr %t136)
+  %t136 = call ptr @fn_sconcat(ptr %t135, ptr @.str867)
+  %t137 = call ptr @fn_sconcat(ptr @.str866, ptr %t136)
   %t138 = call ptr @fn_emit_bind(ptr %t137)
   store ptr %t138, ptr %t139
   %t140 = load ptr, ptr %t134
   %t141 = load ptr, ptr %t139
-  %t142 = call ptr @fn_sconcat(ptr @.str859, ptr %t141)
+  %t142 = call ptr @fn_sconcat(ptr @.str869, ptr %t141)
   %t143 = call ptr @fn_sconcat(ptr %t140, ptr %t142)
-  %t144 = call ptr @fn_sconcat(ptr @.str858, ptr %t143)
+  %t144 = call ptr @fn_sconcat(ptr @.str868, ptr %t143)
   %t145 = call ptr @fn_emit_bind(ptr %t144)
   store ptr %t145, ptr %t146
   %t147 = load ptr, ptr %t146
-  %t148 = call ptr @fn_sconcat(ptr %t147, ptr @.str861)
-  %t149 = call ptr @fn_sconcat(ptr @.str860, ptr %t148)
+  %t148 = call ptr @fn_sconcat(ptr %t147, ptr @.str871)
+  %t149 = call ptr @fn_sconcat(ptr @.str870, ptr %t148)
   %t150 = call ptr @fn_emit_bind(ptr %t149)
-  %t151 = call ptr @fn_val(ptr %t150, ptr @.str862)
+  %t151 = call ptr @fn_val(ptr %t150, ptr @.str872)
   store ptr %t151, ptr %retval
   br label %ret
 ifend21:
@@ -14095,14 +14462,14 @@ ifend21:
   %t155 = call ptr @fn_arith_code(ptr %t154)
   %t156 = load ptr, ptr %t84
   %t157 = load ptr, ptr %t87
-  %t158 = call ptr @fn_sconcat(ptr @.str864, ptr %t157)
+  %t158 = call ptr @fn_sconcat(ptr @.str874, ptr %t157)
   %t159 = call ptr @fn_sconcat(ptr %t156, ptr %t158)
-  %t160 = call ptr @fn_sconcat(ptr @.str863, ptr %t159)
+  %t160 = call ptr @fn_sconcat(ptr @.str873, ptr %t159)
   %t161 = call ptr @fn_sconcat(ptr %t155, ptr %t160)
   %t162 = call ptr @fn_emit_bind(ptr %t161)
   store ptr %t162, ptr %t163
   %t164 = load ptr, ptr %t163
-  %t165 = call ptr @fn_val(ptr %t164, ptr @.str865)
+  %t165 = call ptr @fn_val(ptr %t164, ptr @.str875)
   store ptr %t165, ptr %retval
   br label %ret
 ifend15:
@@ -14116,14 +14483,14 @@ ifend15:
   %t173 = load ptr, ptr %t27
   %t174 = getelementptr inbounds %Str_Val, ptr %t173, i32 0, i32 0
   %t175 = load ptr, ptr %t174
-  %t176 = call ptr @fn_sconcat(ptr @.str867, ptr %t175)
+  %t176 = call ptr @fn_sconcat(ptr @.str877, ptr %t175)
   %t177 = call ptr @fn_sconcat(ptr %t172, ptr %t176)
-  %t178 = call ptr @fn_sconcat(ptr @.str866, ptr %t177)
+  %t178 = call ptr @fn_sconcat(ptr @.str876, ptr %t177)
   %t179 = call ptr @fn_sconcat(ptr %t169, ptr %t178)
   %t180 = call ptr @fn_emit_bind(ptr %t179)
   store ptr %t180, ptr %t181
   %t182 = load ptr, ptr %t181
-  %t183 = call ptr @fn_val(ptr %t182, ptr @.str868)
+  %t183 = call ptr @fn_val(ptr %t182, ptr @.str878)
   store ptr %t183, ptr %retval
   br label %ret
 ret:
@@ -14155,7 +14522,7 @@ entry:
   %t5 = load ptr, ptr %t4
   store ptr %t5, ptr %t6
   %t7 = load ptr, ptr %t6
-  %t8 = call i32 @fn_streq(ptr %t7, ptr @.str869)
+  %t8 = call i32 @fn_streq(ptr %t7, ptr @.str879)
   %t9 = icmp ne i32 %t8, 0
   br i1 %t9, label %then0, label %ifend2
 then0:
@@ -14165,7 +14532,7 @@ then0:
   %t13 = icmp ne i32 %t12, 0
   br i1 %t13, label %then3, label %ifend5
 then3:
-  %t14 = call ptr @fn_val(ptr @.str870, ptr @.str871)
+  %t14 = call ptr @fn_val(ptr @.str880, ptr @.str881)
   store ptr %t14, ptr %retval
   br label %ret
 ifend5:
@@ -14176,64 +14543,64 @@ ifend5:
   %t19 = sub i32 %t18, 1
   %t20 = getelementptr inbounds ptr, ptr %t17, i32 %t19
   %t21 = load ptr, ptr %t20
-  %t22 = call ptr @fn_sconcat(ptr @.str872, ptr %t21)
+  %t22 = call ptr @fn_sconcat(ptr @.str882, ptr %t21)
   %t23 = call ptr @fn_emit_bind(ptr %t22)
-  %t24 = call ptr @fn_val(ptr %t23, ptr @.str873)
+  %t24 = call ptr @fn_val(ptr %t23, ptr @.str883)
   store ptr %t24, ptr %retval
   br label %ret
 ifend2:
   %t25 = load ptr, ptr %t6
-  %t26 = call i32 @fn_streq(ptr %t25, ptr @.str874)
+  %t26 = call i32 @fn_streq(ptr %t25, ptr @.str884)
   %t27 = icmp ne i32 %t26, 0
   br i1 %t27, label %then6, label %ifend8
 then6:
-  %t28 = call ptr @fn_emit_bind(ptr @.str875)
-  %t29 = call ptr @fn_val(ptr %t28, ptr @.str876)
+  %t28 = call ptr @fn_emit_bind(ptr @.str885)
+  %t29 = call ptr @fn_val(ptr %t28, ptr @.str886)
   store ptr %t29, ptr %retval
   br label %ret
 ifend8:
   %t30 = load ptr, ptr %t6
-  %t31 = call i32 @fn_streq(ptr %t30, ptr @.str877)
+  %t31 = call i32 @fn_streq(ptr %t30, ptr @.str887)
   %t32 = icmp ne i32 %t31, 0
   br i1 %t32, label %then9, label %ifend11
 then9:
-  call void @fn_emit(ptr @.str878)
-  %t33 = call ptr @fn_val(ptr @.str879, ptr @.str880)
+  call void @fn_emit(ptr @.str888)
+  %t33 = call ptr @fn_val(ptr @.str889, ptr @.str890)
   store ptr %t33, ptr %retval
   br label %ret
 ifend11:
   %t34 = load ptr, ptr %t6
-  %t35 = call i32 @fn_streq(ptr %t34, ptr @.str881)
+  %t35 = call i32 @fn_streq(ptr %t34, ptr @.str891)
   %t36 = icmp ne i32 %t35, 0
   br i1 %t36, label %then12, label %ifend14
 then12:
-  call void @fn_emit(ptr @.str882)
-  %t37 = call ptr @fn_val(ptr @.str883, ptr @.str884)
+  call void @fn_emit(ptr @.str892)
+  %t37 = call ptr @fn_val(ptr @.str893, ptr @.str894)
   store ptr %t37, ptr %retval
   br label %ret
 ifend14:
   %t38 = load ptr, ptr %t6
-  %t39 = call i32 @fn_streq(ptr %t38, ptr @.str885)
+  %t39 = call i32 @fn_streq(ptr %t38, ptr @.str895)
   %t40 = icmp ne i32 %t39, 0
   br i1 %t40, label %then15, label %ifend17
 then15:
-  %t41 = call ptr @fn_emit_bind(ptr @.str886)
-  %t42 = call ptr @fn_val(ptr %t41, ptr @.str887)
+  %t41 = call ptr @fn_emit_bind(ptr @.str896)
+  %t42 = call ptr @fn_val(ptr %t41, ptr @.str897)
   store ptr %t42, ptr %retval
   br label %ret
 ifend17:
   %t43 = load ptr, ptr %t6
-  %t44 = call i32 @fn_streq(ptr %t43, ptr @.str888)
+  %t44 = call i32 @fn_streq(ptr %t43, ptr @.str898)
   %t45 = icmp ne i32 %t44, 0
   br i1 %t45, label %then18, label %ifend20
 then18:
-  call void @fn_emit(ptr @.str889)
-  %t46 = call ptr @fn_val(ptr @.str890, ptr @.str891)
+  call void @fn_emit(ptr @.str899)
+  %t46 = call ptr @fn_val(ptr @.str900, ptr @.str901)
   store ptr %t46, ptr %retval
   br label %ret
 ifend20:
   %t47 = load ptr, ptr %t6
-  %t48 = call i32 @fn_streq(ptr %t47, ptr @.str892)
+  %t48 = call i32 @fn_streq(ptr %t47, ptr @.str902)
   %t49 = icmp ne i32 %t48, 0
   br i1 %t49, label %then21, label %ifend23
 then21:
@@ -14243,7 +14610,7 @@ then21:
   br label %ret
 ifend23:
   %t52 = load ptr, ptr %t6
-  %t53 = call i32 @fn_streq(ptr %t52, ptr @.str893)
+  %t53 = call i32 @fn_streq(ptr %t52, ptr @.str903)
   %t54 = icmp ne i32 %t53, 0
   br i1 %t54, label %then24, label %ifend26
 then24:
@@ -14253,7 +14620,7 @@ then24:
   br label %ret
 ifend26:
   %t57 = load ptr, ptr %t6
-  %t58 = call i32 @fn_streq(ptr %t57, ptr @.str894)
+  %t58 = call i32 @fn_streq(ptr %t57, ptr @.str904)
   %t59 = icmp ne i32 %t58, 0
   br i1 %t59, label %then27, label %ifend29
 then27:
@@ -14269,15 +14636,15 @@ then27:
   %t69 = load ptr, ptr %t68
   %t70 = getelementptr inbounds %Str_Val, ptr %t69, i32 0, i32 0
   %t71 = load ptr, ptr %t70
-  %t72 = call ptr @fn_sconcat(ptr %t71, ptr @.str896)
-  %t73 = call ptr @fn_sconcat(ptr @.str895, ptr %t72)
+  %t72 = call ptr @fn_sconcat(ptr %t71, ptr @.str906)
+  %t73 = call ptr @fn_sconcat(ptr @.str905, ptr %t72)
   %t74 = call ptr @fn_emit_bind(ptr %t73)
-  %t75 = call ptr @fn_val(ptr %t74, ptr @.str897)
+  %t75 = call ptr @fn_val(ptr %t74, ptr @.str907)
   store ptr %t75, ptr %retval
   br label %ret
 ifend29:
   %t76 = load ptr, ptr %t6
-  %t77 = call i32 @fn_streq(ptr %t76, ptr @.str898)
+  %t77 = call i32 @fn_streq(ptr %t76, ptr @.str908)
   %t78 = icmp ne i32 %t77, 0
   br i1 %t78, label %then30, label %ifend32
 then30:
@@ -14293,10 +14660,10 @@ then30:
   %t88 = load ptr, ptr %t87
   %t89 = getelementptr inbounds %Str_Val, ptr %t88, i32 0, i32 0
   %t90 = load ptr, ptr %t89
-  %t91 = call ptr @fn_sconcat(ptr %t90, ptr @.str900)
-  %t92 = call ptr @fn_sconcat(ptr @.str899, ptr %t91)
+  %t91 = call ptr @fn_sconcat(ptr %t90, ptr @.str910)
+  %t92 = call ptr @fn_sconcat(ptr @.str909, ptr %t91)
   %t93 = call ptr @fn_emit_bind(ptr %t92)
-  %t94 = call ptr @fn_val(ptr %t93, ptr @.str901)
+  %t94 = call ptr @fn_val(ptr %t93, ptr @.str911)
   store ptr %t94, ptr %retval
   br label %ret
 ifend32:
@@ -14345,7 +14712,7 @@ ifend41:
   br i1 %t121, label %then42, label %ifend44
 then42:
   %t122 = load ptr, ptr %t6
-  %t123 = call ptr @fn_sconcat(ptr @.str902, ptr %t122)
+  %t123 = call ptr @fn_sconcat(ptr @.str912, ptr %t122)
   store ptr %t123, ptr %t124
   %t125 = load ptr, ptr %t124
   %t126 = call ptr @fn_find_fn(ptr %t125)
@@ -14357,7 +14724,7 @@ then42:
   br i1 %t130, label %then45, label %ifend47
 then45:
   %t131 = load ptr, ptr %t6
-  %t132 = call ptr @fn_sconcat(ptr @.str903, ptr %t131)
+  %t132 = call ptr @fn_sconcat(ptr @.str913, ptr %t131)
   call void @fn_perr(ptr %t132)
   br label %ifend47
 ifend47:
@@ -14479,10 +14846,10 @@ wend50:
   %t216 = load ptr, ptr %t215
   %t217 = call ptr @fn_llty(ptr %t216)
   store ptr %t217, ptr %t218
-  call void @fn_emit(ptr @.str904)
-  store ptr @.str905, ptr %t219
+  call void @fn_emit(ptr @.str914)
+  store ptr @.str915, ptr %t219
   %t220 = load ptr, ptr %t218
-  %t221 = call i32 @fn_streq(ptr %t220, ptr @.str906)
+  %t221 = call i32 @fn_streq(ptr %t220, ptr @.str916)
   %t222 = icmp eq i32 %t221, 0
   %t223 = zext i1 %t222 to i32
   %t224 = icmp ne i32 %t223, 0
@@ -14492,16 +14859,16 @@ then55:
   store ptr %t225, ptr %t219
   %t226 = load ptr, ptr %t219
   call void @fn_emit(ptr %t226)
-  call void @fn_emit(ptr @.str907)
+  call void @fn_emit(ptr @.str917)
   br label %ifend57
 ifend57:
-  call void @fn_emit(ptr @.str908)
+  call void @fn_emit(ptr @.str918)
   %t227 = load ptr, ptr %t218
   call void @fn_emit(ptr %t227)
-  call void @fn_emit(ptr @.str909)
+  call void @fn_emit(ptr @.str919)
   %t228 = load ptr, ptr %t117
   call void @fn_emit(ptr %t228)
-  call void @fn_emit(ptr @.str910)
+  call void @fn_emit(ptr @.str920)
   store i32 0, ptr %t148
   br label %wcond58
 wcond58:
@@ -14520,7 +14887,7 @@ wbody59:
   %t239 = icmp ne i32 %t238, 0
   br i1 %t239, label %then61, label %ifend63
 then61:
-  call void @fn_emit(ptr @.str911)
+  call void @fn_emit(ptr @.str921)
   br label %ifend63
 ifend63:
   %t240 = load ptr, ptr %t147
@@ -14531,7 +14898,7 @@ ifend63:
   %t245 = load ptr, ptr %t244
   %t246 = call ptr @fn_llty(ptr %t245)
   call void @fn_emit(ptr %t246)
-  call void @fn_emit(ptr @.str912)
+  call void @fn_emit(ptr @.str922)
   %t247 = load ptr, ptr %t140
   %t248 = getelementptr inbounds %LSlice, ptr %t247, i32 0, i32 0
   %t249 = load ptr, ptr %t248
@@ -14544,7 +14911,7 @@ ifend63:
   store i32 %t254, ptr %t148
   br label %wcond58
 wend60:
-  call void @fn_emit(ptr @.str913)
+  call void @fn_emit(ptr @.str923)
   %t255 = load ptr, ptr %t219
   %t256 = load ptr, ptr %t115
   %t257 = getelementptr inbounds %Str_Node, ptr %t256, i32 0, i32 3
@@ -14578,7 +14945,7 @@ entry:
   %t4 = icmp ne i32 %t3, 0
   br i1 %t4, label %then0, label %ifend2
 then0:
-  %t5 = call ptr @fn_val(ptr @.str914, ptr @.str915)
+  %t5 = call ptr @fn_val(ptr @.str924, ptr @.str925)
   store ptr %t5, ptr %retval
   br label %ret
 ifend2:
@@ -14594,7 +14961,7 @@ then3:
   %t13 = getelementptr inbounds %Str_Node, ptr %t12, i32 0, i32 2
   %t14 = load i32, ptr %t13
   %t15 = call ptr @fn_itoa(i32 %t14)
-  %t16 = call ptr @fn_val(ptr %t15, ptr @.str916)
+  %t16 = call ptr @fn_val(ptr %t15, ptr @.str926)
   store ptr %t16, ptr %retval
   br label %ret
 ifend5:
@@ -14610,7 +14977,7 @@ then6:
   %t24 = getelementptr inbounds %Str_Node, ptr %t23, i32 0, i32 2
   %t25 = load i32, ptr %t24
   %t26 = call ptr @fn_itoa(i32 %t25)
-  %t27 = call ptr @fn_val(ptr %t26, ptr @.str917)
+  %t27 = call ptr @fn_val(ptr %t26, ptr @.str927)
   store ptr %t27, ptr %retval
   br label %ret
 ifend8:
@@ -14626,7 +14993,7 @@ then9:
   %t35 = getelementptr inbounds %Str_Node, ptr %t34, i32 0, i32 2
   %t36 = load i32, ptr %t35
   %t37 = call ptr @fn_itoa(i32 %t36)
-  %t38 = call ptr @fn_val(ptr %t37, ptr @.str918)
+  %t38 = call ptr @fn_val(ptr %t37, ptr @.str928)
   store ptr %t38, ptr %retval
   br label %ret
 ifend11:
@@ -14642,7 +15009,7 @@ then12:
   %t46 = getelementptr inbounds %Str_Node, ptr %t45, i32 0, i32 1
   %t47 = load ptr, ptr %t46
   %t48 = call ptr @fn_emit_str_const(ptr %t47)
-  %t49 = call ptr @fn_val(ptr %t48, ptr @.str919)
+  %t49 = call ptr @fn_val(ptr %t48, ptr @.str929)
   store ptr %t49, ptr %retval
   br label %ret
 ifend14:
@@ -14737,7 +15104,7 @@ then30:
   %t117 = getelementptr inbounds %Str_Node, ptr %t116, i32 0, i32 2
   %t118 = load i32, ptr %t117
   %t119 = call ptr @fn_itoa(i32 %t118)
-  %t120 = call ptr @fn_val(ptr %t119, ptr @.str920)
+  %t120 = call ptr @fn_val(ptr %t119, ptr @.str930)
   store ptr %t120, ptr %retval
   br label %ret
 ifend32:
@@ -14748,9 +15115,9 @@ ifend32:
   %t125 = load ptr, ptr %t0
   %t126 = getelementptr inbounds %Str_Node, ptr %t125, i32 0, i32 1
   %t127 = load ptr, ptr %t126
-  %t128 = call ptr @fn_sconcat(ptr @.str922, ptr %t127)
+  %t128 = call ptr @fn_sconcat(ptr @.str932, ptr %t127)
   %t129 = call ptr @fn_sconcat(ptr %t124, ptr %t128)
-  %t130 = call ptr @fn_sconcat(ptr @.str921, ptr %t129)
+  %t130 = call ptr @fn_sconcat(ptr @.str931, ptr %t129)
   %t131 = call ptr @fn_emit_bind(ptr %t130)
   store ptr %t131, ptr %t132
   %t133 = load ptr, ptr %t132
@@ -14773,14 +15140,14 @@ then33:
   %t145 = load ptr, ptr %t144
   %t146 = call i32 @fn_ui_index_of(ptr %t145)
   %t147 = call ptr @fn_itoa(i32 %t146)
-  %t148 = call ptr @fn_val(ptr %t147, ptr @.str923)
+  %t148 = call ptr @fn_val(ptr %t147, ptr @.str933)
   store ptr %t148, ptr %retval
   br label %ret
 ifend35:
   %t149 = load ptr, ptr %t0
   %t150 = getelementptr inbounds %Str_Node, ptr %t149, i32 0, i32 1
   %t151 = load ptr, ptr %t150
-  %t152 = call ptr @fn_sconcat(ptr @.str924, ptr %t151)
+  %t152 = call ptr @fn_sconcat(ptr @.str934, ptr %t151)
   call void @fn_perr(ptr %t152)
   br label %ifend23
 ifend23:
@@ -14820,7 +15187,7 @@ then39:
 then42:
   %t181 = load i32, ptr %t176
   %t182 = call ptr @fn_itoa(i32 %t181)
-  %t183 = call ptr @fn_val(ptr %t182, ptr @.str925)
+  %t183 = call ptr @fn_val(ptr %t182, ptr @.str935)
   store ptr %t183, ptr %retval
   br label %ret
 ifend44:
@@ -14932,36 +15299,36 @@ then60:
   %t258 = load ptr, ptr %t0
   %t259 = getelementptr inbounds %Str_Node, ptr %t258, i32 0, i32 1
   %t260 = load ptr, ptr %t259
-  %t261 = call i32 @fn_streq(ptr %t260, ptr @.str926)
+  %t261 = call i32 @fn_streq(ptr %t260, ptr @.str936)
   %t262 = icmp ne i32 %t261, 0
   br i1 %t262, label %then63, label %ifend65
 then63:
   %t263 = load ptr, ptr %t257
   %t264 = getelementptr inbounds %Str_Val, ptr %t263, i32 0, i32 0
   %t265 = load ptr, ptr %t264
-  %t266 = call ptr @fn_sconcat(ptr @.str927, ptr %t265)
+  %t266 = call ptr @fn_sconcat(ptr @.str937, ptr %t265)
   %t267 = call ptr @fn_emit_bind(ptr %t266)
-  %t268 = call ptr @fn_val(ptr %t267, ptr @.str928)
+  %t268 = call ptr @fn_val(ptr %t267, ptr @.str938)
   store ptr %t268, ptr %retval
   br label %ret
 ifend65:
   %t269 = load ptr, ptr %t257
   %t270 = getelementptr inbounds %Str_Val, ptr %t269, i32 0, i32 0
   %t271 = load ptr, ptr %t270
-  %t272 = call ptr @fn_sconcat(ptr %t271, ptr @.str930)
-  %t273 = call ptr @fn_sconcat(ptr @.str929, ptr %t272)
+  %t272 = call ptr @fn_sconcat(ptr %t271, ptr @.str940)
+  %t273 = call ptr @fn_sconcat(ptr @.str939, ptr %t272)
   %t274 = call ptr @fn_emit_bind(ptr %t273)
   store ptr %t274, ptr %t275
   %t276 = load ptr, ptr %t275
-  %t277 = call ptr @fn_sconcat(ptr %t276, ptr @.str932)
-  %t278 = call ptr @fn_sconcat(ptr @.str931, ptr %t277)
+  %t277 = call ptr @fn_sconcat(ptr %t276, ptr @.str942)
+  %t278 = call ptr @fn_sconcat(ptr @.str941, ptr %t277)
   %t279 = call ptr @fn_emit_bind(ptr %t278)
-  %t280 = call ptr @fn_val(ptr %t279, ptr @.str933)
+  %t280 = call ptr @fn_val(ptr %t279, ptr @.str943)
   store ptr %t280, ptr %retval
   br label %ret
 ifend62:
-  call void @fn_perr(ptr @.str934)
-  %t281 = call ptr @fn_val(ptr @.str935, ptr @.str936)
+  call void @fn_perr(ptr @.str944)
+  %t281 = call ptr @fn_val(ptr @.str945, ptr @.str946)
   store ptr %t281, ptr %retval
   br label %ret
 ret:
@@ -15021,16 +15388,16 @@ entry:
   store ptr %arg_lt, ptr %t0
   store ptr %arg_v, ptr %t1
   store ptr %arg_addr, ptr %t2
-  call void @fn_emit(ptr @.str937)
+  call void @fn_emit(ptr @.str947)
   %t3 = load ptr, ptr %t0
   call void @fn_emit(ptr %t3)
-  call void @fn_emit(ptr @.str938)
+  call void @fn_emit(ptr @.str948)
   %t4 = load ptr, ptr %t1
   call void @fn_emit(ptr %t4)
-  call void @fn_emit(ptr @.str939)
+  call void @fn_emit(ptr @.str949)
   %t5 = load ptr, ptr %t2
   call void @fn_emit(ptr %t5)
-  call void @fn_emit(ptr @.str940)
+  call void @fn_emit(ptr @.str950)
   br label %ret
 ret:
   ret void
@@ -15054,8 +15421,8 @@ entry:
   %t2 = getelementptr inbounds %Str_Node, ptr %t1, i32 0, i32 4
   %t3 = load ptr, ptr %t2
   store ptr %t3, ptr %t4
-  store ptr @.str941, ptr %t5
-  store ptr @.str942, ptr %t6
+  store ptr @.str951, ptr %t5
+  store ptr @.str952, ptr %t6
   %t7 = load ptr, ptr %t4
   %t8 = getelementptr inbounds %Str_Node, ptr %t7, i32 0, i32 0
   %t9 = load i32, ptr %t8
@@ -15105,14 +15472,14 @@ then6:
   %t43 = load ptr, ptr %t4
   %t44 = getelementptr inbounds %Str_Node, ptr %t43, i32 0, i32 1
   %t45 = load ptr, ptr %t44
-  %t46 = call ptr @fn_sconcat(ptr @.str943, ptr %t45)
+  %t46 = call ptr @fn_sconcat(ptr @.str953, ptr %t45)
   call void @fn_perr(ptr %t46)
   br label %ifend8
 ifend8:
   %t47 = load ptr, ptr %t4
   %t48 = getelementptr inbounds %Str_Node, ptr %t47, i32 0, i32 1
   %t49 = load ptr, ptr %t48
-  %t50 = call ptr @fn_sconcat(ptr @.str944, ptr %t49)
+  %t50 = call ptr @fn_sconcat(ptr @.str954, ptr %t49)
   store ptr %t50, ptr %t5
   %t51 = load ptr, ptr %t38
   %t52 = getelementptr inbounds %Str_Node, ptr %t51, i32 0, i32 3
@@ -15152,7 +15519,7 @@ then12:
   store ptr %t71, ptr %t6
   br label %ifend14
 else13:
-  call void @fn_perr(ptr @.str945)
+  call void @fn_perr(ptr @.str955)
   br label %ifend14
 ifend14:
   br label %ifend11
@@ -15174,7 +15541,7 @@ ifend2:
   %t84 = load ptr, ptr %t0
   %t85 = getelementptr inbounds %Str_Node, ptr %t84, i32 0, i32 1
   %t86 = load ptr, ptr %t85
-  %t87 = call i32 @fn_streq(ptr %t86, ptr @.str946)
+  %t87 = call i32 @fn_streq(ptr %t86, ptr @.str956)
   %t88 = icmp eq i32 %t87, 0
   %t89 = zext i1 %t88 to i32
   %t90 = icmp ne i32 %t89, 0
@@ -15182,48 +15549,48 @@ ifend2:
 then15:
   %t91 = load ptr, ptr %t74
   %t92 = load ptr, ptr %t5
-  %t93 = call ptr @fn_sconcat(ptr @.str948, ptr %t92)
+  %t93 = call ptr @fn_sconcat(ptr @.str958, ptr %t92)
   %t94 = call ptr @fn_sconcat(ptr %t91, ptr %t93)
-  %t95 = call ptr @fn_sconcat(ptr @.str947, ptr %t94)
+  %t95 = call ptr @fn_sconcat(ptr @.str957, ptr %t94)
   %t96 = call ptr @fn_emit_bind(ptr %t95)
   store ptr %t96, ptr %t97
-  store ptr @.str949, ptr %t98
+  store ptr @.str959, ptr %t98
   %t99 = load ptr, ptr %t0
   %t100 = getelementptr inbounds %Str_Node, ptr %t99, i32 0, i32 1
   %t101 = load ptr, ptr %t100
-  %t102 = call i32 @fn_streq(ptr %t101, ptr @.str950)
+  %t102 = call i32 @fn_streq(ptr %t101, ptr @.str960)
   %t103 = icmp ne i32 %t102, 0
   br i1 %t103, label %then18, label %ifend20
 then18:
-  store ptr @.str951, ptr %t98
+  store ptr @.str961, ptr %t98
   br label %ifend20
 ifend20:
   %t104 = load ptr, ptr %t0
   %t105 = getelementptr inbounds %Str_Node, ptr %t104, i32 0, i32 1
   %t106 = load ptr, ptr %t105
-  %t107 = call i32 @fn_streq(ptr %t106, ptr @.str952)
+  %t107 = call i32 @fn_streq(ptr %t106, ptr @.str962)
   %t108 = icmp ne i32 %t107, 0
   br i1 %t108, label %then21, label %ifend23
 then21:
-  store ptr @.str953, ptr %t98
+  store ptr @.str963, ptr %t98
   br label %ifend23
 ifend23:
   %t109 = load ptr, ptr %t0
   %t110 = getelementptr inbounds %Str_Node, ptr %t109, i32 0, i32 1
   %t111 = load ptr, ptr %t110
-  %t112 = call i32 @fn_streq(ptr %t111, ptr @.str954)
+  %t112 = call i32 @fn_streq(ptr %t111, ptr @.str964)
   %t113 = icmp ne i32 %t112, 0
   br i1 %t113, label %then24, label %ifend26
 then24:
-  store ptr @.str955, ptr %t98
+  store ptr @.str965, ptr %t98
   br label %ifend26
 ifend26:
   %t114 = load ptr, ptr %t98
   %t115 = load ptr, ptr %t97
   %t116 = load ptr, ptr %t83
-  %t117 = call ptr @fn_sconcat(ptr @.str957, ptr %t116)
+  %t117 = call ptr @fn_sconcat(ptr @.str967, ptr %t116)
   %t118 = call ptr @fn_sconcat(ptr %t115, ptr %t117)
-  %t119 = call ptr @fn_sconcat(ptr @.str956, ptr %t118)
+  %t119 = call ptr @fn_sconcat(ptr @.str966, ptr %t118)
   %t120 = call ptr @fn_sconcat(ptr %t114, ptr %t119)
   %t121 = call ptr @fn_emit_bind(ptr %t120)
   store ptr %t121, ptr %t83
@@ -15256,8 +15623,8 @@ entry:
   %t6 = load ptr, ptr %t5
   %t7 = getelementptr inbounds %Str_Val, ptr %t6, i32 0, i32 0
   %t8 = load ptr, ptr %t7
-  %t9 = call ptr @fn_sconcat(ptr %t8, ptr @.str959)
-  %t10 = call ptr @fn_sconcat(ptr @.str958, ptr %t9)
+  %t9 = call ptr @fn_sconcat(ptr %t8, ptr @.str969)
+  %t10 = call ptr @fn_sconcat(ptr @.str968, ptr %t9)
   %t11 = call ptr @fn_emit_bind(ptr %t10)
   store ptr %t11, ptr %t12
   %t13 = load ptr, ptr %t0
@@ -15268,43 +15635,43 @@ entry:
   %t18 = icmp eq i32 %t17, 0
   %t19 = zext i1 %t18 to i32
   store i32 %t19, ptr %t20
-  %t21 = call ptr @fn_lbl(ptr @.str960)
+  %t21 = call ptr @fn_lbl(ptr @.str970)
   store ptr %t21, ptr %t22
-  %t23 = call ptr @fn_lbl(ptr @.str961)
+  %t23 = call ptr @fn_lbl(ptr @.str971)
   store ptr %t23, ptr %t24
-  %t25 = call ptr @fn_lbl(ptr @.str962)
+  %t25 = call ptr @fn_lbl(ptr @.str972)
   store ptr %t25, ptr %t26
   %t27 = load i32, ptr %t20
   %t28 = icmp ne i32 %t27, 0
   br i1 %t28, label %then0, label %else1
 then0:
-  call void @fn_emit(ptr @.str963)
+  call void @fn_emit(ptr @.str973)
   %t29 = load ptr, ptr %t12
   call void @fn_emit(ptr %t29)
-  call void @fn_emit(ptr @.str964)
+  call void @fn_emit(ptr @.str974)
   %t30 = load ptr, ptr %t22
   call void @fn_emit(ptr %t30)
-  call void @fn_emit(ptr @.str965)
+  call void @fn_emit(ptr @.str975)
   %t31 = load ptr, ptr %t24
   call void @fn_emit(ptr %t31)
-  call void @fn_emit(ptr @.str966)
+  call void @fn_emit(ptr @.str976)
   br label %ifend2
 else1:
-  call void @fn_emit(ptr @.str967)
+  call void @fn_emit(ptr @.str977)
   %t32 = load ptr, ptr %t12
   call void @fn_emit(ptr %t32)
-  call void @fn_emit(ptr @.str968)
+  call void @fn_emit(ptr @.str978)
   %t33 = load ptr, ptr %t22
   call void @fn_emit(ptr %t33)
-  call void @fn_emit(ptr @.str969)
+  call void @fn_emit(ptr @.str979)
   %t34 = load ptr, ptr %t26
   call void @fn_emit(ptr %t34)
-  call void @fn_emit(ptr @.str970)
+  call void @fn_emit(ptr @.str980)
   br label %ifend2
 ifend2:
   %t35 = load ptr, ptr %t22
   call void @fn_emit(ptr %t35)
-  call void @fn_emit(ptr @.str971)
+  call void @fn_emit(ptr @.str981)
   store i32 0, ptr @g_g_term
   %t36 = load ptr, ptr %t0
   %t37 = getelementptr inbounds %Str_Node, ptr %t36, i32 0, i32 5
@@ -15316,10 +15683,10 @@ ifend2:
   %t42 = icmp ne i32 %t41, 0
   br i1 %t42, label %then3, label %ifend5
 then3:
-  call void @fn_emit(ptr @.str972)
+  call void @fn_emit(ptr @.str982)
   %t43 = load ptr, ptr %t26
   call void @fn_emit(ptr %t43)
-  call void @fn_emit(ptr @.str973)
+  call void @fn_emit(ptr @.str983)
   br label %ifend5
 ifend5:
   %t44 = load i32, ptr %t20
@@ -15328,7 +15695,7 @@ ifend5:
 then6:
   %t46 = load ptr, ptr %t24
   call void @fn_emit(ptr %t46)
-  call void @fn_emit(ptr @.str974)
+  call void @fn_emit(ptr @.str984)
   store i32 0, ptr @g_g_term
   %t47 = load ptr, ptr %t0
   %t48 = getelementptr inbounds %Str_Node, ptr %t47, i32 0, i32 6
@@ -15358,17 +15725,17 @@ ifend11:
   %t64 = icmp ne i32 %t63, 0
   br i1 %t64, label %then12, label %ifend14
 then12:
-  call void @fn_emit(ptr @.str975)
+  call void @fn_emit(ptr @.str985)
   %t65 = load ptr, ptr %t26
   call void @fn_emit(ptr %t65)
-  call void @fn_emit(ptr @.str976)
+  call void @fn_emit(ptr @.str986)
   br label %ifend14
 ifend14:
   br label %ifend8
 ifend8:
   %t66 = load ptr, ptr %t26
   call void @fn_emit(ptr %t66)
-  call void @fn_emit(ptr @.str977)
+  call void @fn_emit(ptr @.str987)
   store i32 0, ptr @g_g_term
   br label %ret
 ret:
@@ -15384,19 +15751,19 @@ entry:
   %t13 = alloca ptr
   %t20 = alloca ptr
   store ptr %arg_st, ptr %t0
-  %t1 = call ptr @fn_lbl(ptr @.str978)
+  %t1 = call ptr @fn_lbl(ptr @.str988)
   store ptr %t1, ptr %t2
-  %t3 = call ptr @fn_lbl(ptr @.str979)
+  %t3 = call ptr @fn_lbl(ptr @.str989)
   store ptr %t3, ptr %t4
-  %t5 = call ptr @fn_lbl(ptr @.str980)
+  %t5 = call ptr @fn_lbl(ptr @.str990)
   store ptr %t5, ptr %t6
-  call void @fn_emit(ptr @.str981)
+  call void @fn_emit(ptr @.str991)
   %t7 = load ptr, ptr %t2
   call void @fn_emit(ptr %t7)
-  call void @fn_emit(ptr @.str982)
+  call void @fn_emit(ptr @.str992)
   %t8 = load ptr, ptr %t2
   call void @fn_emit(ptr %t8)
-  call void @fn_emit(ptr @.str983)
+  call void @fn_emit(ptr @.str993)
   %t9 = load ptr, ptr %t0
   %t10 = getelementptr inbounds %Str_Node, ptr %t9, i32 0, i32 4
   %t11 = load ptr, ptr %t10
@@ -15405,23 +15772,23 @@ entry:
   %t14 = load ptr, ptr %t13
   %t15 = getelementptr inbounds %Str_Val, ptr %t14, i32 0, i32 0
   %t16 = load ptr, ptr %t15
-  %t17 = call ptr @fn_sconcat(ptr %t16, ptr @.str985)
-  %t18 = call ptr @fn_sconcat(ptr @.str984, ptr %t17)
+  %t17 = call ptr @fn_sconcat(ptr %t16, ptr @.str995)
+  %t18 = call ptr @fn_sconcat(ptr @.str994, ptr %t17)
   %t19 = call ptr @fn_emit_bind(ptr %t18)
   store ptr %t19, ptr %t20
-  call void @fn_emit(ptr @.str986)
+  call void @fn_emit(ptr @.str996)
   %t21 = load ptr, ptr %t20
   call void @fn_emit(ptr %t21)
-  call void @fn_emit(ptr @.str987)
+  call void @fn_emit(ptr @.str997)
   %t22 = load ptr, ptr %t4
   call void @fn_emit(ptr %t22)
-  call void @fn_emit(ptr @.str988)
+  call void @fn_emit(ptr @.str998)
   %t23 = load ptr, ptr %t6
   call void @fn_emit(ptr %t23)
-  call void @fn_emit(ptr @.str989)
+  call void @fn_emit(ptr @.str999)
   %t24 = load ptr, ptr %t4
   call void @fn_emit(ptr %t24)
-  call void @fn_emit(ptr @.str990)
+  call void @fn_emit(ptr @.str1000)
   store i32 0, ptr @g_g_term
   %t25 = load ptr, ptr %t2
   %t26 = load ptr, ptr %t6
@@ -15437,15 +15804,15 @@ entry:
   %t33 = icmp ne i32 %t32, 0
   br i1 %t33, label %then0, label %ifend2
 then0:
-  call void @fn_emit(ptr @.str991)
+  call void @fn_emit(ptr @.str1001)
   %t34 = load ptr, ptr %t2
   call void @fn_emit(ptr %t34)
-  call void @fn_emit(ptr @.str992)
+  call void @fn_emit(ptr @.str1002)
   br label %ifend2
 ifend2:
   %t35 = load ptr, ptr %t6
   call void @fn_emit(ptr %t35)
-  call void @fn_emit(ptr @.str993)
+  call void @fn_emit(ptr @.str1003)
   store i32 0, ptr @g_g_term
   br label %ret
 ret:
@@ -15467,7 +15834,7 @@ entry:
   %t62 = alloca ptr
   %t67 = alloca ptr
   store ptr %arg_st, ptr %t0
-  %t1 = call ptr @fn_emit_alloca(ptr @.str994)
+  %t1 = call ptr @fn_emit_alloca(ptr @.str1004)
   store ptr %t1, ptr %t2
   %t3 = load ptr, ptr %t0
   %t4 = getelementptr inbounds %Str_Node, ptr %t3, i32 0, i32 4
@@ -15478,29 +15845,29 @@ entry:
   %t9 = getelementptr inbounds %Str_Val, ptr %t8, i32 0, i32 0
   %t10 = load ptr, ptr %t9
   %t11 = load ptr, ptr %t2
-  call void @fn_store_at(ptr @.str995, ptr %t10, ptr %t11)
+  call void @fn_store_at(ptr @.str1005, ptr %t10, ptr %t11)
   %t12 = load ptr, ptr %t0
   %t13 = getelementptr inbounds %Str_Node, ptr %t12, i32 0, i32 1
   %t14 = load ptr, ptr %t13
   %t15 = load ptr, ptr %t2
-  call void @fn_loc_push(ptr %t14, ptr %t15, ptr @.str996)
-  %t16 = call ptr @fn_lbl(ptr @.str997)
+  call void @fn_loc_push(ptr %t14, ptr %t15, ptr @.str1006)
+  %t16 = call ptr @fn_lbl(ptr @.str1007)
   store ptr %t16, ptr %t17
-  %t18 = call ptr @fn_lbl(ptr @.str998)
+  %t18 = call ptr @fn_lbl(ptr @.str1008)
   store ptr %t18, ptr %t19
-  %t20 = call ptr @fn_lbl(ptr @.str999)
+  %t20 = call ptr @fn_lbl(ptr @.str1009)
   store ptr %t20, ptr %t21
-  %t22 = call ptr @fn_lbl(ptr @.str1000)
+  %t22 = call ptr @fn_lbl(ptr @.str1010)
   store ptr %t22, ptr %t23
-  call void @fn_emit(ptr @.str1001)
+  call void @fn_emit(ptr @.str1011)
   %t24 = load ptr, ptr %t17
   call void @fn_emit(ptr %t24)
-  call void @fn_emit(ptr @.str1002)
+  call void @fn_emit(ptr @.str1012)
   %t25 = load ptr, ptr %t17
   call void @fn_emit(ptr %t25)
-  call void @fn_emit(ptr @.str1003)
+  call void @fn_emit(ptr @.str1013)
   %t26 = load ptr, ptr %t2
-  %t27 = call ptr @fn_sconcat(ptr @.str1004, ptr %t26)
+  %t27 = call ptr @fn_sconcat(ptr @.str1014, ptr %t26)
   %t28 = call ptr @fn_emit_bind(ptr %t27)
   store ptr %t28, ptr %t29
   %t30 = load ptr, ptr %t0
@@ -15512,24 +15879,24 @@ entry:
   %t36 = load ptr, ptr %t34
   %t37 = getelementptr inbounds %Str_Val, ptr %t36, i32 0, i32 0
   %t38 = load ptr, ptr %t37
-  %t39 = call ptr @fn_sconcat(ptr @.str1006, ptr %t38)
+  %t39 = call ptr @fn_sconcat(ptr @.str1016, ptr %t38)
   %t40 = call ptr @fn_sconcat(ptr %t35, ptr %t39)
-  %t41 = call ptr @fn_sconcat(ptr @.str1005, ptr %t40)
+  %t41 = call ptr @fn_sconcat(ptr @.str1015, ptr %t40)
   %t42 = call ptr @fn_emit_bind(ptr %t41)
   store ptr %t42, ptr %t43
-  call void @fn_emit(ptr @.str1007)
+  call void @fn_emit(ptr @.str1017)
   %t44 = load ptr, ptr %t43
   call void @fn_emit(ptr %t44)
-  call void @fn_emit(ptr @.str1008)
+  call void @fn_emit(ptr @.str1018)
   %t45 = load ptr, ptr %t19
   call void @fn_emit(ptr %t45)
-  call void @fn_emit(ptr @.str1009)
+  call void @fn_emit(ptr @.str1019)
   %t46 = load ptr, ptr %t23
   call void @fn_emit(ptr %t46)
-  call void @fn_emit(ptr @.str1010)
+  call void @fn_emit(ptr @.str1020)
   %t47 = load ptr, ptr %t19
   call void @fn_emit(ptr %t47)
-  call void @fn_emit(ptr @.str1011)
+  call void @fn_emit(ptr @.str1021)
   store i32 0, ptr @g_g_term
   %t48 = load ptr, ptr %t21
   %t49 = load ptr, ptr %t23
@@ -15545,34 +15912,34 @@ entry:
   %t56 = icmp ne i32 %t55, 0
   br i1 %t56, label %then0, label %ifend2
 then0:
-  call void @fn_emit(ptr @.str1012)
+  call void @fn_emit(ptr @.str1022)
   %t57 = load ptr, ptr %t21
   call void @fn_emit(ptr %t57)
-  call void @fn_emit(ptr @.str1013)
+  call void @fn_emit(ptr @.str1023)
   br label %ifend2
 ifend2:
   %t58 = load ptr, ptr %t21
   call void @fn_emit(ptr %t58)
-  call void @fn_emit(ptr @.str1014)
+  call void @fn_emit(ptr @.str1024)
   %t59 = load ptr, ptr %t2
-  %t60 = call ptr @fn_sconcat(ptr @.str1015, ptr %t59)
+  %t60 = call ptr @fn_sconcat(ptr @.str1025, ptr %t59)
   %t61 = call ptr @fn_emit_bind(ptr %t60)
   store ptr %t61, ptr %t62
   %t63 = load ptr, ptr %t62
-  %t64 = call ptr @fn_sconcat(ptr %t63, ptr @.str1017)
-  %t65 = call ptr @fn_sconcat(ptr @.str1016, ptr %t64)
+  %t64 = call ptr @fn_sconcat(ptr %t63, ptr @.str1027)
+  %t65 = call ptr @fn_sconcat(ptr @.str1026, ptr %t64)
   %t66 = call ptr @fn_emit_bind(ptr %t65)
   store ptr %t66, ptr %t67
   %t68 = load ptr, ptr %t67
   %t69 = load ptr, ptr %t2
-  call void @fn_store_at(ptr @.str1018, ptr %t68, ptr %t69)
-  call void @fn_emit(ptr @.str1019)
+  call void @fn_store_at(ptr @.str1028, ptr %t68, ptr %t69)
+  call void @fn_emit(ptr @.str1029)
   %t70 = load ptr, ptr %t17
   call void @fn_emit(ptr %t70)
-  call void @fn_emit(ptr @.str1020)
+  call void @fn_emit(ptr @.str1030)
   %t71 = load ptr, ptr %t23
   call void @fn_emit(ptr %t71)
-  call void @fn_emit(ptr @.str1021)
+  call void @fn_emit(ptr @.str1031)
   store i32 0, ptr @g_g_term
   br label %ret
 ret:
@@ -15604,10 +15971,10 @@ then0:
   %t16 = load ptr, ptr %t13
   %t17 = getelementptr inbounds %Str_Val, ptr %t16, i32 0, i32 0
   %t18 = load ptr, ptr %t17
-  call void @fn_store_at(ptr %t15, ptr %t18, ptr @.str1022)
+  call void @fn_store_at(ptr %t15, ptr %t18, ptr @.str1032)
   br label %ifend2
 ifend2:
-  call void @fn_emit(ptr @.str1023)
+  call void @fn_emit(ptr @.str1033)
   store i32 1, ptr @g_g_term
   br label %ret
 ret:
@@ -15662,7 +16029,7 @@ sc3:
   %t33 = load ptr, ptr %t32
   %t34 = getelementptr inbounds %Str_Node, ptr %t33, i32 0, i32 1
   %t35 = load ptr, ptr %t34
-  %t36 = call i32 @fn_streq(ptr %t35, ptr @.str1024)
+  %t36 = call i32 @fn_streq(ptr %t35, ptr @.str1034)
   %t37 = icmp ne i32 %t36, 0
   %t38 = zext i1 %t37 to i32
   store i32 %t38, ptr %t11
@@ -15708,7 +16075,7 @@ entry:
   %t3 = load ptr, ptr %t2
   %t4 = call ptr @fn_emit_expr(ptr %t3)
   store ptr %t4, ptr %t5
-  %t6 = call ptr @fn_lbl(ptr @.str1025)
+  %t6 = call ptr @fn_lbl(ptr @.str1035)
   store ptr %t6, ptr %t7
   store ptr null, ptr %t8
   store i32 0, ptr %t9
@@ -15743,7 +16110,7 @@ then3:
   store ptr %t31, ptr %t8
   br label %ifend5
 else4:
-  store ptr @.str1026, ptr %t32
+  store ptr @.str1036, ptr %t32
   store i32 1, ptr %t33
   store i32 0, ptr %t34
   br label %wcond6
@@ -15775,9 +16142,9 @@ wbody7:
   %t57 = load ptr, ptr %t53
   %t58 = getelementptr inbounds %Str_Val, ptr %t57, i32 0, i32 0
   %t59 = load ptr, ptr %t58
-  %t60 = call ptr @fn_sconcat(ptr @.str1028, ptr %t59)
+  %t60 = call ptr @fn_sconcat(ptr @.str1038, ptr %t59)
   %t61 = call ptr @fn_sconcat(ptr %t56, ptr %t60)
-  %t62 = call ptr @fn_sconcat(ptr @.str1027, ptr %t61)
+  %t62 = call ptr @fn_sconcat(ptr @.str1037, ptr %t61)
   %t63 = call ptr @fn_emit_bind(ptr %t62)
   store ptr %t63, ptr %t64
   %t65 = load i32, ptr %t33
@@ -15791,9 +16158,9 @@ then9:
 else10:
   %t68 = load ptr, ptr %t32
   %t69 = load ptr, ptr %t64
-  %t70 = call ptr @fn_sconcat(ptr @.str1030, ptr %t69)
+  %t70 = call ptr @fn_sconcat(ptr @.str1040, ptr %t69)
   %t71 = call ptr @fn_sconcat(ptr %t68, ptr %t70)
-  %t72 = call ptr @fn_sconcat(ptr @.str1029, ptr %t71)
+  %t72 = call ptr @fn_sconcat(ptr @.str1039, ptr %t71)
   %t73 = call ptr @fn_emit_bind(ptr %t72)
   store ptr %t73, ptr %t32
   br label %ifend11
@@ -15803,23 +16170,23 @@ ifend11:
   store i32 %t75, ptr %t34
   br label %wcond6
 wend8:
-  %t76 = call ptr @fn_lbl(ptr @.str1031)
+  %t76 = call ptr @fn_lbl(ptr @.str1041)
   store ptr %t76, ptr %t77
-  %t78 = call ptr @fn_lbl(ptr @.str1032)
+  %t78 = call ptr @fn_lbl(ptr @.str1042)
   store ptr %t78, ptr %t79
-  call void @fn_emit(ptr @.str1033)
+  call void @fn_emit(ptr @.str1043)
   %t80 = load ptr, ptr %t32
   call void @fn_emit(ptr %t80)
-  call void @fn_emit(ptr @.str1034)
+  call void @fn_emit(ptr @.str1044)
   %t81 = load ptr, ptr %t77
   call void @fn_emit(ptr %t81)
-  call void @fn_emit(ptr @.str1035)
+  call void @fn_emit(ptr @.str1045)
   %t82 = load ptr, ptr %t79
   call void @fn_emit(ptr %t82)
-  call void @fn_emit(ptr @.str1036)
+  call void @fn_emit(ptr @.str1046)
   %t83 = load ptr, ptr %t77
   call void @fn_emit(ptr %t83)
-  call void @fn_emit(ptr @.str1037)
+  call void @fn_emit(ptr @.str1047)
   store i32 0, ptr @g_g_term
   %t84 = load ptr, ptr %t27
   %t85 = getelementptr inbounds %Str_Node, ptr %t84, i32 0, i32 4
@@ -15831,15 +16198,15 @@ wend8:
   %t90 = icmp ne i32 %t89, 0
   br i1 %t90, label %then12, label %ifend14
 then12:
-  call void @fn_emit(ptr @.str1038)
+  call void @fn_emit(ptr @.str1048)
   %t91 = load ptr, ptr %t7
   call void @fn_emit(ptr %t91)
-  call void @fn_emit(ptr @.str1039)
+  call void @fn_emit(ptr @.str1049)
   br label %ifend14
 ifend14:
   %t92 = load ptr, ptr %t79
   call void @fn_emit(ptr %t92)
-  call void @fn_emit(ptr @.str1040)
+  call void @fn_emit(ptr @.str1050)
   store i32 0, ptr @g_g_term
   br label %ifend5
 ifend5:
@@ -15868,15 +16235,15 @@ ifend17:
   %t107 = icmp ne i32 %t106, 0
   br i1 %t107, label %then18, label %ifend20
 then18:
-  call void @fn_emit(ptr @.str1041)
+  call void @fn_emit(ptr @.str1051)
   %t108 = load ptr, ptr %t7
   call void @fn_emit(ptr %t108)
-  call void @fn_emit(ptr @.str1042)
+  call void @fn_emit(ptr @.str1052)
   br label %ifend20
 ifend20:
   %t109 = load ptr, ptr %t7
   call void @fn_emit(ptr %t109)
-  call void @fn_emit(ptr @.str1043)
+  call void @fn_emit(ptr @.str1053)
   store i32 0, ptr @g_g_term
   br label %ret
 ret:
@@ -15952,14 +16319,14 @@ ifend5:
   %t47 = icmp ne i32 %t46, 0
   br i1 %t47, label %then6, label %else7
 then6:
-  store ptr @.str1044, ptr %t48
+  store ptr @.str1054, ptr %t48
   %t49 = load ptr, ptr %t10
   %t50 = call ptr @fn_llty(ptr %t49)
-  %t51 = call i32 @fn_streq(ptr %t50, ptr @.str1045)
+  %t51 = call i32 @fn_streq(ptr %t50, ptr @.str1055)
   %t52 = icmp ne i32 %t51, 0
   br i1 %t52, label %then9, label %ifend11
 then9:
-  store ptr @.str1046, ptr %t48
+  store ptr @.str1056, ptr %t48
   br label %ifend11
 ifend11:
   %t53 = load ptr, ptr %t10
@@ -16059,7 +16426,7 @@ ifend26:
   %t113 = icmp ne i32 %t112, 0
   br i1 %t113, label %then27, label %ifend29
 then27:
-  call void @fn_emit(ptr @.str1047)
+  call void @fn_emit(ptr @.str1057)
   %t114 = load ptr, ptr @g_brk_lbl
   %t115 = getelementptr inbounds %LSlice, ptr %t114, i32 0, i32 0
   %t116 = load ptr, ptr %t115
@@ -16068,7 +16435,7 @@ then27:
   %t119 = getelementptr inbounds ptr, ptr %t116, i32 %t118
   %t120 = load ptr, ptr %t119
   call void @fn_emit(ptr %t120)
-  call void @fn_emit(ptr @.str1048)
+  call void @fn_emit(ptr @.str1058)
   store i32 1, ptr @g_g_term
   br label %ret
 ifend29:
@@ -16080,7 +16447,7 @@ ifend29:
   %t126 = icmp ne i32 %t125, 0
   br i1 %t126, label %then30, label %ifend32
 then30:
-  call void @fn_emit(ptr @.str1049)
+  call void @fn_emit(ptr @.str1059)
   %t127 = load ptr, ptr @g_cnt_lbl
   %t128 = getelementptr inbounds %LSlice, ptr %t127, i32 0, i32 0
   %t129 = load ptr, ptr %t128
@@ -16089,7 +16456,7 @@ then30:
   %t132 = getelementptr inbounds ptr, ptr %t129, i32 %t131
   %t133 = load ptr, ptr %t132
   call void @fn_emit(ptr %t133)
-  call void @fn_emit(ptr @.str1050)
+  call void @fn_emit(ptr @.str1060)
   store i32 1, ptr @g_g_term
   br label %ret
 ifend32:
@@ -16180,7 +16547,7 @@ then51:
   store ptr %t185, ptr %t186
   br label %ret
 ifend53:
-  call void @fn_perr(ptr @.str1051)
+  call void @fn_perr(ptr @.str1061)
   br label %ret
 ret:
   ret void
@@ -16405,24 +16772,24 @@ entry:
   %t11 = alloca i32
   %t25 = alloca ptr
   %t45 = alloca i32
-  call void @fn_emith(ptr @.str1052)
-  call void @fn_emith(ptr @.str1053)
-  call void @fn_emith(ptr @.str1054)
+  call void @fn_emith(ptr @.str1062)
+  call void @fn_emith(ptr @.str1063)
+  call void @fn_emith(ptr @.str1064)
   %t0 = call ptr @fn_itoa(i32 1024)
   store ptr %t0, ptr %t1
   %t2 = load ptr, ptr %t1
-  %t3 = call ptr @fn_sconcat(ptr %t2, ptr @.str1056)
-  %t4 = call ptr @fn_sconcat(ptr @.str1055, ptr %t3)
+  %t3 = call ptr @fn_sconcat(ptr %t2, ptr @.str1066)
+  %t4 = call ptr @fn_sconcat(ptr @.str1065, ptr %t3)
   call void @fn_emith(ptr %t4)
   %t5 = load ptr, ptr %t1
-  %t6 = call ptr @fn_sconcat(ptr %t5, ptr @.str1058)
-  %t7 = call ptr @fn_sconcat(ptr @.str1057, ptr %t6)
+  %t6 = call ptr @fn_sconcat(ptr %t5, ptr @.str1068)
+  %t7 = call ptr @fn_sconcat(ptr @.str1067, ptr %t6)
   call void @fn_emith(ptr %t7)
   %t8 = load ptr, ptr %t1
-  %t9 = call ptr @fn_sconcat(ptr %t8, ptr @.str1060)
-  %t10 = call ptr @fn_sconcat(ptr @.str1059, ptr %t9)
+  %t9 = call ptr @fn_sconcat(ptr %t8, ptr @.str1070)
+  %t10 = call ptr @fn_sconcat(ptr @.str1069, ptr %t9)
   call void @fn_emith(ptr %t10)
-  call void @fn_emith(ptr @.str1061)
+  call void @fn_emith(ptr @.str1071)
   store i32 0, ptr %t11
   br label %wcond0
 wcond0:
@@ -16453,8 +16820,8 @@ then3:
   %t32 = load ptr, ptr %t25
   %t33 = getelementptr inbounds %Str_Node, ptr %t32, i32 0, i32 1
   %t34 = load ptr, ptr %t33
-  %t35 = call ptr @fn_sconcat(ptr %t34, ptr @.str1063)
-  %t36 = call ptr @fn_sconcat(ptr @.str1062, ptr %t35)
+  %t35 = call ptr @fn_sconcat(ptr %t34, ptr @.str1073)
+  %t36 = call ptr @fn_sconcat(ptr @.str1072, ptr %t35)
   call void @fn_emith(ptr %t36)
   %t37 = load ptr, ptr %t25
   %t38 = getelementptr inbounds %Str_Node, ptr %t37, i32 0, i32 7
@@ -16466,7 +16833,7 @@ then3:
   %t44 = icmp ne i32 %t43, 0
   br i1 %t44, label %then6, label %ifend8
 then6:
-  call void @fn_emith(ptr @.str1064)
+  call void @fn_emith(ptr @.str1074)
   br label %ifend8
 ifend8:
   store i32 0, ptr %t45
@@ -16489,7 +16856,7 @@ wbody10:
   %t58 = icmp ne i32 %t57, 0
   br i1 %t58, label %then12, label %ifend14
 then12:
-  call void @fn_emith(ptr @.str1065)
+  call void @fn_emith(ptr @.str1075)
   br label %ifend14
 ifend14:
   %t59 = load ptr, ptr %t25
@@ -16509,7 +16876,7 @@ ifend14:
   store i32 %t71, ptr %t45
   br label %wcond9
 wend11:
-  call void @fn_emith(ptr @.str1066)
+  call void @fn_emith(ptr @.str1076)
   %t72 = load ptr, ptr %t25
   %t73 = getelementptr inbounds %Str_Node, ptr %t72, i32 0, i32 1
   %t74 = load ptr, ptr %t73
@@ -16517,21 +16884,21 @@ wend11:
   %t76 = load ptr, ptr %t25
   %t77 = getelementptr inbounds %Str_Node, ptr %t76, i32 0, i32 1
   %t78 = load ptr, ptr %t77
-  %t79 = call ptr @fn_sconcat(ptr %t78, ptr @.str1070)
-  %t80 = call ptr @fn_sconcat(ptr @.str1069, ptr %t79)
+  %t79 = call ptr @fn_sconcat(ptr %t78, ptr @.str1080)
+  %t80 = call ptr @fn_sconcat(ptr @.str1079, ptr %t79)
   %t81 = call ptr @fn_sconcat(ptr %t75, ptr %t80)
-  %t82 = call ptr @fn_sconcat(ptr @.str1068, ptr %t81)
+  %t82 = call ptr @fn_sconcat(ptr @.str1078, ptr %t81)
   %t83 = call ptr @fn_sconcat(ptr %t74, ptr %t82)
-  %t84 = call ptr @fn_sconcat(ptr @.str1067, ptr %t83)
+  %t84 = call ptr @fn_sconcat(ptr @.str1077, ptr %t83)
   call void @fn_emith(ptr %t84)
   %t85 = load ptr, ptr %t25
   %t86 = getelementptr inbounds %Str_Node, ptr %t85, i32 0, i32 1
   %t87 = load ptr, ptr %t86
   %t88 = load ptr, ptr %t1
-  %t89 = call ptr @fn_sconcat(ptr %t88, ptr @.str1073)
-  %t90 = call ptr @fn_sconcat(ptr @.str1072, ptr %t89)
+  %t89 = call ptr @fn_sconcat(ptr %t88, ptr @.str1083)
+  %t90 = call ptr @fn_sconcat(ptr @.str1082, ptr %t89)
   %t91 = call ptr @fn_sconcat(ptr %t87, ptr %t90)
-  %t92 = call ptr @fn_sconcat(ptr @.str1071, ptr %t91)
+  %t92 = call ptr @fn_sconcat(ptr @.str1081, ptr %t91)
   call void @fn_emith(ptr %t92)
   br label %ifend5
 ifend5:
@@ -16552,7 +16919,7 @@ entry:
   %t24 = alloca ptr
   %t0 = call ptr @fn_itoa(i32 1024)
   store ptr %t0, ptr %t1
-  call void @fn_emit(ptr @.str1074)
+  call void @fn_emit(ptr @.str1084)
   store i32 0, ptr %t2
   br label %wcond0
 wcond0:
@@ -16580,15 +16947,15 @@ wbody1:
 then3:
   %t21 = load i32, ptr %t2
   %t22 = call ptr @fn_itoa(i32 %t21)
-  %t23 = call ptr @fn_sconcat(ptr @.str1075, ptr %t22)
+  %t23 = call ptr @fn_sconcat(ptr @.str1085, ptr %t22)
   store ptr %t23, ptr %t24
-  call void @fn_emit(ptr @.str1076)
+  call void @fn_emit(ptr @.str1086)
   %t25 = load ptr, ptr %t24
   call void @fn_emit(ptr %t25)
-  call void @fn_emit(ptr @.str1077)
+  call void @fn_emit(ptr @.str1087)
   %t26 = load ptr, ptr %t1
   call void @fn_emit(ptr %t26)
-  call void @fn_emit(ptr @.str1078)
+  call void @fn_emit(ptr @.str1088)
   %t27 = load ptr, ptr @g_prog
   %t28 = getelementptr inbounds %LSlice, ptr %t27, i32 0, i32 0
   %t29 = load ptr, ptr %t28
@@ -16598,11 +16965,11 @@ then3:
   %t33 = getelementptr inbounds %Str_Node, ptr %t32, i32 0, i32 1
   %t34 = load ptr, ptr %t33
   call void @fn_emit(ptr %t34)
-  call void @fn_emit(ptr @.str1079)
-  call void @fn_emit(ptr @.str1080)
+  call void @fn_emit(ptr @.str1089)
+  call void @fn_emit(ptr @.str1090)
   %t35 = load ptr, ptr %t24
   call void @fn_emit(ptr %t35)
-  call void @fn_emit(ptr @.str1081)
+  call void @fn_emit(ptr @.str1091)
   br label %ifend5
 ifend5:
   %t36 = load i32, ptr %t2
@@ -16610,21 +16977,9 @@ ifend5:
   store i32 %t37, ptr %t2
   br label %wcond0
 wend2:
-  call void @fn_emit(ptr @.str1082)
+  call void @fn_emit(ptr @.str1092)
   %t38 = load ptr, ptr %t1
   call void @fn_emit(ptr %t38)
-  call void @fn_emit(ptr @.str1083)
-  call void @fn_emit(ptr @.str1084)
-  call void @fn_emit(ptr @.str1085)
-  call void @fn_emit(ptr @.str1086)
-  call void @fn_emit(ptr @.str1087)
-  call void @fn_emit(ptr @.str1088)
-  call void @fn_emit(ptr @.str1089)
-  call void @fn_emit(ptr @.str1090)
-  call void @fn_emit(ptr @.str1091)
-  call void @fn_emit(ptr @.str1092)
-  %t39 = load ptr, ptr %t1
-  call void @fn_emit(ptr %t39)
   call void @fn_emit(ptr @.str1093)
   call void @fn_emit(ptr @.str1094)
   call void @fn_emit(ptr @.str1095)
@@ -16635,29 +16990,41 @@ wend2:
   call void @fn_emit(ptr @.str1100)
   call void @fn_emit(ptr @.str1101)
   call void @fn_emit(ptr @.str1102)
+  %t39 = load ptr, ptr %t1
+  call void @fn_emit(ptr %t39)
   call void @fn_emit(ptr @.str1103)
   call void @fn_emit(ptr @.str1104)
-  %t40 = load ptr, ptr %t1
-  call void @fn_emit(ptr %t40)
   call void @fn_emit(ptr @.str1105)
   call void @fn_emit(ptr @.str1106)
   call void @fn_emit(ptr @.str1107)
   call void @fn_emit(ptr @.str1108)
   call void @fn_emit(ptr @.str1109)
-  %t41 = load ptr, ptr %t1
-  call void @fn_emit(ptr %t41)
   call void @fn_emit(ptr @.str1110)
   call void @fn_emit(ptr @.str1111)
   call void @fn_emit(ptr @.str1112)
   call void @fn_emit(ptr @.str1113)
   call void @fn_emit(ptr @.str1114)
-  %t42 = load ptr, ptr %t1
-  call void @fn_emit(ptr %t42)
+  %t40 = load ptr, ptr %t1
+  call void @fn_emit(ptr %t40)
   call void @fn_emit(ptr @.str1115)
   call void @fn_emit(ptr @.str1116)
   call void @fn_emit(ptr @.str1117)
   call void @fn_emit(ptr @.str1118)
   call void @fn_emit(ptr @.str1119)
+  %t41 = load ptr, ptr %t1
+  call void @fn_emit(ptr %t41)
+  call void @fn_emit(ptr @.str1120)
+  call void @fn_emit(ptr @.str1121)
+  call void @fn_emit(ptr @.str1122)
+  call void @fn_emit(ptr @.str1123)
+  call void @fn_emit(ptr @.str1124)
+  %t42 = load ptr, ptr %t1
+  call void @fn_emit(ptr %t42)
+  call void @fn_emit(ptr @.str1125)
+  call void @fn_emit(ptr @.str1126)
+  call void @fn_emit(ptr @.str1127)
+  call void @fn_emit(ptr @.str1128)
+  call void @fn_emit(ptr @.str1129)
   br label %ret
 ret:
   ret void
@@ -16771,10 +17138,10 @@ entry:
   store ptr %arg_st, ptr %t0
   %t1 = call ptr @fn_itoa(i32 1024)
   store ptr %t1, ptr %t2
-  %t3 = call ptr @fn_emit_alloca(ptr @.str1120)
+  %t3 = call ptr @fn_emit_alloca(ptr @.str1130)
   store ptr %t3, ptr %t4
   %t5 = load ptr, ptr %t4
-  call void @fn_store_at(ptr @.str1121, ptr @.str1122, ptr %t5)
+  call void @fn_store_at(ptr @.str1131, ptr @.str1132, ptr %t5)
   %t6 = load i32, ptr @g_nself
   %t7 = load ptr, ptr @g_self_stk
   %t8 = getelementptr inbounds %LSlice, ptr %t7, i32 0, i32 1
@@ -16826,88 +17193,88 @@ ifend2:
   %t39 = load i32, ptr @g_nself
   %t40 = add i32 %t39, 1
   store i32 %t40, ptr @g_nself
-  %t41 = call ptr @fn_lbl(ptr @.str1123)
+  %t41 = call ptr @fn_lbl(ptr @.str1133)
   store ptr %t41, ptr %t42
-  %t43 = call ptr @fn_lbl(ptr @.str1124)
+  %t43 = call ptr @fn_lbl(ptr @.str1134)
   store ptr %t43, ptr %t44
-  %t45 = call ptr @fn_lbl(ptr @.str1125)
+  %t45 = call ptr @fn_lbl(ptr @.str1135)
   store ptr %t45, ptr %t46
-  %t47 = call ptr @fn_lbl(ptr @.str1126)
+  %t47 = call ptr @fn_lbl(ptr @.str1136)
   store ptr %t47, ptr %t48
-  call void @fn_emit(ptr @.str1127)
+  call void @fn_emit(ptr @.str1137)
   %t49 = load ptr, ptr %t42
   call void @fn_emit(ptr %t49)
-  call void @fn_emit(ptr @.str1128)
+  call void @fn_emit(ptr @.str1138)
   %t50 = load ptr, ptr %t42
   call void @fn_emit(ptr %t50)
-  call void @fn_emit(ptr @.str1129)
+  call void @fn_emit(ptr @.str1139)
   %t51 = load ptr, ptr %t4
-  %t52 = call ptr @fn_sconcat(ptr @.str1130, ptr %t51)
+  %t52 = call ptr @fn_sconcat(ptr @.str1140, ptr %t51)
   %t53 = call ptr @fn_emit_bind(ptr %t52)
   store ptr %t53, ptr %t54
-  %t55 = call ptr @fn_emit_bind(ptr @.str1131)
+  %t55 = call ptr @fn_emit_bind(ptr @.str1141)
   store ptr %t55, ptr %t56
   %t57 = load ptr, ptr %t54
   %t58 = load ptr, ptr %t56
-  %t59 = call ptr @fn_sconcat(ptr @.str1133, ptr %t58)
+  %t59 = call ptr @fn_sconcat(ptr @.str1143, ptr %t58)
   %t60 = call ptr @fn_sconcat(ptr %t57, ptr %t59)
-  %t61 = call ptr @fn_sconcat(ptr @.str1132, ptr %t60)
+  %t61 = call ptr @fn_sconcat(ptr @.str1142, ptr %t60)
   %t62 = call ptr @fn_emit_bind(ptr %t61)
   store ptr %t62, ptr %t63
-  call void @fn_emit(ptr @.str1134)
+  call void @fn_emit(ptr @.str1144)
   %t64 = load ptr, ptr %t63
   call void @fn_emit(ptr %t64)
-  call void @fn_emit(ptr @.str1135)
+  call void @fn_emit(ptr @.str1145)
   %t65 = load ptr, ptr %t44
   call void @fn_emit(ptr %t65)
-  call void @fn_emit(ptr @.str1136)
+  call void @fn_emit(ptr @.str1146)
   %t66 = load ptr, ptr %t48
   call void @fn_emit(ptr %t66)
-  call void @fn_emit(ptr @.str1137)
+  call void @fn_emit(ptr @.str1147)
   %t67 = load ptr, ptr %t44
   call void @fn_emit(ptr %t67)
-  call void @fn_emit(ptr @.str1138)
+  call void @fn_emit(ptr @.str1148)
   store i32 0, ptr @g_g_term
   %t68 = load ptr, ptr %t4
-  %t69 = call ptr @fn_sconcat(ptr @.str1139, ptr %t68)
+  %t69 = call ptr @fn_sconcat(ptr @.str1149, ptr %t68)
   %t70 = call ptr @fn_emit_bind(ptr %t69)
   store ptr %t70, ptr %t71
   %t72 = call ptr @fn_nreg()
   store ptr %t72, ptr %t73
-  call void @fn_emit(ptr @.str1140)
+  call void @fn_emit(ptr @.str1150)
   %t74 = load ptr, ptr %t73
   call void @fn_emit(ptr %t74)
-  call void @fn_emit(ptr @.str1141)
+  call void @fn_emit(ptr @.str1151)
   %t75 = load ptr, ptr %t2
   call void @fn_emit(ptr %t75)
-  call void @fn_emit(ptr @.str1142)
+  call void @fn_emit(ptr @.str1152)
   %t76 = load ptr, ptr %t71
   call void @fn_emit(ptr %t76)
-  call void @fn_emit(ptr @.str1143)
+  call void @fn_emit(ptr @.str1153)
   %t77 = load ptr, ptr %t73
-  %t78 = call ptr @fn_sconcat(ptr @.str1144, ptr %t77)
+  %t78 = call ptr @fn_sconcat(ptr @.str1154, ptr %t77)
   %t79 = call ptr @fn_emit_bind(ptr %t78)
   store ptr %t79, ptr %t80
   %t81 = load ptr, ptr %t80
-  %t82 = call ptr @fn_sconcat(ptr %t81, ptr @.str1146)
-  %t83 = call ptr @fn_sconcat(ptr @.str1145, ptr %t82)
+  %t82 = call ptr @fn_sconcat(ptr %t81, ptr @.str1156)
+  %t83 = call ptr @fn_sconcat(ptr @.str1155, ptr %t82)
   %t84 = call ptr @fn_emit_bind(ptr %t83)
   store ptr %t84, ptr %t85
-  %t86 = call ptr @fn_lbl(ptr @.str1147)
+  %t86 = call ptr @fn_lbl(ptr @.str1157)
   store ptr %t86, ptr %t87
-  call void @fn_emit(ptr @.str1148)
+  call void @fn_emit(ptr @.str1158)
   %t88 = load ptr, ptr %t85
   call void @fn_emit(ptr %t88)
-  call void @fn_emit(ptr @.str1149)
+  call void @fn_emit(ptr @.str1159)
   %t89 = load ptr, ptr %t87
   call void @fn_emit(ptr %t89)
-  call void @fn_emit(ptr @.str1150)
+  call void @fn_emit(ptr @.str1160)
   %t90 = load ptr, ptr %t46
   call void @fn_emit(ptr %t90)
-  call void @fn_emit(ptr @.str1151)
+  call void @fn_emit(ptr @.str1161)
   %t91 = load ptr, ptr %t87
   call void @fn_emit(ptr %t91)
-  call void @fn_emit(ptr @.str1152)
+  call void @fn_emit(ptr @.str1162)
   %t92 = load ptr, ptr %t0
   %t93 = getelementptr inbounds %Str_Node, ptr %t92, i32 0, i32 6
   %t94 = load ptr, ptr %t93
@@ -16940,7 +17307,7 @@ wbody6:
   %t117 = load ptr, ptr %t116
   %t118 = call i32 @fn_find_arch_id(ptr %t117)
   store i32 %t118, ptr %t119
-  store ptr @.str1153, ptr %t120
+  store ptr @.str1163, ptr %t120
   %t121 = load i32, ptr %t119
   %t122 = icmp sgt i32 %t121, 0
   %t123 = zext i1 %t122 to i32
@@ -16949,73 +17316,73 @@ wbody6:
 then8:
   %t125 = call ptr @fn_nreg()
   store ptr %t125, ptr %t126
-  call void @fn_emit(ptr @.str1154)
+  call void @fn_emit(ptr @.str1164)
   %t127 = load ptr, ptr %t126
   call void @fn_emit(ptr %t127)
-  call void @fn_emit(ptr @.str1155)
+  call void @fn_emit(ptr @.str1165)
   %t128 = load ptr, ptr %t2
   call void @fn_emit(ptr %t128)
-  call void @fn_emit(ptr @.str1156)
+  call void @fn_emit(ptr @.str1166)
   %t129 = load ptr, ptr %t71
   call void @fn_emit(ptr %t129)
-  call void @fn_emit(ptr @.str1157)
+  call void @fn_emit(ptr @.str1167)
   %t130 = load ptr, ptr %t126
-  %t131 = call ptr @fn_sconcat(ptr @.str1158, ptr %t130)
+  %t131 = call ptr @fn_sconcat(ptr @.str1168, ptr %t130)
   %t132 = call ptr @fn_emit_bind(ptr %t131)
   store ptr %t132, ptr %t133
   %t134 = load ptr, ptr %t133
   %t135 = load i32, ptr %t119
   %t136 = call ptr @fn_itoa(i32 %t135)
-  %t137 = call ptr @fn_sconcat(ptr @.str1160, ptr %t136)
+  %t137 = call ptr @fn_sconcat(ptr @.str1170, ptr %t136)
   %t138 = call ptr @fn_sconcat(ptr %t134, ptr %t137)
-  %t139 = call ptr @fn_sconcat(ptr @.str1159, ptr %t138)
+  %t139 = call ptr @fn_sconcat(ptr @.str1169, ptr %t138)
   %t140 = call ptr @fn_emit_bind(ptr %t139)
   store ptr %t140, ptr %t120
   br label %ifend10
 else9:
   %t141 = call ptr @fn_nreg()
   store ptr %t141, ptr %t142
-  call void @fn_emit(ptr @.str1161)
+  call void @fn_emit(ptr @.str1171)
   %t143 = load ptr, ptr %t142
   call void @fn_emit(ptr %t143)
-  call void @fn_emit(ptr @.str1162)
+  call void @fn_emit(ptr @.str1172)
   %t144 = load ptr, ptr %t2
   call void @fn_emit(ptr %t144)
-  call void @fn_emit(ptr @.str1163)
+  call void @fn_emit(ptr @.str1173)
   %t145 = load ptr, ptr %t114
   %t146 = getelementptr inbounds %Str_Node, ptr %t145, i32 0, i32 1
   %t147 = load ptr, ptr %t146
   call void @fn_emit(ptr %t147)
-  call void @fn_emit(ptr @.str1164)
+  call void @fn_emit(ptr @.str1174)
   %t148 = load ptr, ptr %t71
   call void @fn_emit(ptr %t148)
-  call void @fn_emit(ptr @.str1165)
+  call void @fn_emit(ptr @.str1175)
   %t149 = load ptr, ptr %t142
-  %t150 = call ptr @fn_sconcat(ptr @.str1166, ptr %t149)
+  %t150 = call ptr @fn_sconcat(ptr @.str1176, ptr %t149)
   %t151 = call ptr @fn_emit_bind(ptr %t150)
   store ptr %t151, ptr %t152
   %t153 = load ptr, ptr %t152
-  %t154 = call ptr @fn_sconcat(ptr %t153, ptr @.str1168)
-  %t155 = call ptr @fn_sconcat(ptr @.str1167, ptr %t154)
+  %t154 = call ptr @fn_sconcat(ptr %t153, ptr @.str1178)
+  %t155 = call ptr @fn_sconcat(ptr @.str1177, ptr %t154)
   %t156 = call ptr @fn_emit_bind(ptr %t155)
   store ptr %t156, ptr %t120
   br label %ifend10
 ifend10:
-  %t157 = call ptr @fn_lbl(ptr @.str1169)
+  %t157 = call ptr @fn_lbl(ptr @.str1179)
   store ptr %t157, ptr %t158
-  call void @fn_emit(ptr @.str1170)
+  call void @fn_emit(ptr @.str1180)
   %t159 = load ptr, ptr %t120
   call void @fn_emit(ptr %t159)
-  call void @fn_emit(ptr @.str1171)
+  call void @fn_emit(ptr @.str1181)
   %t160 = load ptr, ptr %t158
   call void @fn_emit(ptr %t160)
-  call void @fn_emit(ptr @.str1172)
+  call void @fn_emit(ptr @.str1182)
   %t161 = load ptr, ptr %t46
   call void @fn_emit(ptr %t161)
-  call void @fn_emit(ptr @.str1173)
+  call void @fn_emit(ptr @.str1183)
   %t162 = load ptr, ptr %t158
   call void @fn_emit(ptr %t162)
-  call void @fn_emit(ptr @.str1174)
+  call void @fn_emit(ptr @.str1184)
   %t163 = load i32, ptr %t96
   %t164 = add i32 %t163, 1
   store i32 %t164, ptr %t96
@@ -17085,35 +17452,35 @@ then16:
 then19:
   %t213 = call ptr @fn_nreg()
   store ptr %t213, ptr %t214
-  call void @fn_emit(ptr @.str1175)
+  call void @fn_emit(ptr @.str1185)
   %t215 = load ptr, ptr %t214
   call void @fn_emit(ptr %t215)
-  call void @fn_emit(ptr @.str1176)
+  call void @fn_emit(ptr @.str1186)
   %t216 = load ptr, ptr %t2
   call void @fn_emit(ptr %t216)
-  call void @fn_emit(ptr @.str1177)
+  call void @fn_emit(ptr @.str1187)
   %t217 = load ptr, ptr %t185
   %t218 = getelementptr inbounds %Str_Node, ptr %t217, i32 0, i32 1
   %t219 = load ptr, ptr %t218
   call void @fn_emit(ptr %t219)
-  call void @fn_emit(ptr @.str1178)
+  call void @fn_emit(ptr @.str1188)
   %t220 = load ptr, ptr %t185
   %t221 = getelementptr inbounds %Str_Node, ptr %t220, i32 0, i32 1
   %t222 = load ptr, ptr %t221
   call void @fn_emit(ptr %t222)
-  call void @fn_emit(ptr @.str1179)
+  call void @fn_emit(ptr @.str1189)
   %t223 = load ptr, ptr %t71
   call void @fn_emit(ptr %t223)
-  call void @fn_emit(ptr @.str1180)
-  %t224 = call ptr @fn_emit_alloca(ptr @.str1181)
+  call void @fn_emit(ptr @.str1190)
+  %t224 = call ptr @fn_emit_alloca(ptr @.str1191)
   store ptr %t224, ptr %t225
-  call void @fn_emit(ptr @.str1182)
+  call void @fn_emit(ptr @.str1192)
   %t226 = load ptr, ptr %t214
   call void @fn_emit(ptr %t226)
-  call void @fn_emit(ptr @.str1183)
+  call void @fn_emit(ptr @.str1193)
   %t227 = load ptr, ptr %t225
   call void @fn_emit(ptr %t227)
-  call void @fn_emit(ptr @.str1184)
+  call void @fn_emit(ptr @.str1194)
   %t228 = load ptr, ptr %t0
   %t229 = getelementptr inbounds %Str_Node, ptr %t228, i32 0, i32 7
   %t230 = load ptr, ptr %t229
@@ -17159,25 +17526,25 @@ then22:
   %t259 = load ptr, ptr %t258
   %t260 = getelementptr inbounds %Str_Val, ptr %t259, i32 0, i32 0
   %t261 = load ptr, ptr %t260
-  %t262 = call ptr @fn_sconcat(ptr %t261, ptr @.str1186)
-  %t263 = call ptr @fn_sconcat(ptr @.str1185, ptr %t262)
+  %t262 = call ptr @fn_sconcat(ptr %t261, ptr @.str1196)
+  %t263 = call ptr @fn_sconcat(ptr @.str1195, ptr %t262)
   %t264 = call ptr @fn_emit_bind(ptr %t263)
   store ptr %t264, ptr %t265
-  %t266 = call ptr @fn_lbl(ptr @.str1187)
+  %t266 = call ptr @fn_lbl(ptr @.str1197)
   store ptr %t266, ptr %t267
-  call void @fn_emit(ptr @.str1188)
+  call void @fn_emit(ptr @.str1198)
   %t268 = load ptr, ptr %t265
   call void @fn_emit(ptr %t268)
-  call void @fn_emit(ptr @.str1189)
+  call void @fn_emit(ptr @.str1199)
   %t269 = load ptr, ptr %t267
   call void @fn_emit(ptr %t269)
-  call void @fn_emit(ptr @.str1190)
+  call void @fn_emit(ptr @.str1200)
   %t270 = load ptr, ptr %t46
   call void @fn_emit(ptr %t270)
-  call void @fn_emit(ptr @.str1191)
+  call void @fn_emit(ptr @.str1201)
   %t271 = load ptr, ptr %t267
   call void @fn_emit(ptr %t271)
-  call void @fn_emit(ptr @.str1192)
+  call void @fn_emit(ptr @.str1202)
   br label %ifend24
 ifend24:
   %t272 = load ptr, ptr %t46
@@ -17196,34 +17563,34 @@ ifend24:
   %t281 = icmp ne i32 %t280, 0
   br i1 %t281, label %then25, label %ifend27
 then25:
-  call void @fn_emit(ptr @.str1193)
+  call void @fn_emit(ptr @.str1203)
   %t282 = load ptr, ptr %t46
   call void @fn_emit(ptr %t282)
-  call void @fn_emit(ptr @.str1194)
+  call void @fn_emit(ptr @.str1204)
   br label %ifend27
 ifend27:
   %t283 = load ptr, ptr %t46
   call void @fn_emit(ptr %t283)
-  call void @fn_emit(ptr @.str1195)
+  call void @fn_emit(ptr @.str1205)
   %t284 = load ptr, ptr %t4
-  %t285 = call ptr @fn_sconcat(ptr @.str1196, ptr %t284)
+  %t285 = call ptr @fn_sconcat(ptr @.str1206, ptr %t284)
   %t286 = call ptr @fn_emit_bind(ptr %t285)
   store ptr %t286, ptr %t287
   %t288 = load ptr, ptr %t287
-  %t289 = call ptr @fn_sconcat(ptr %t288, ptr @.str1198)
-  %t290 = call ptr @fn_sconcat(ptr @.str1197, ptr %t289)
+  %t289 = call ptr @fn_sconcat(ptr %t288, ptr @.str1208)
+  %t290 = call ptr @fn_sconcat(ptr @.str1207, ptr %t289)
   %t291 = call ptr @fn_emit_bind(ptr %t290)
   store ptr %t291, ptr %t292
   %t293 = load ptr, ptr %t292
   %t294 = load ptr, ptr %t4
-  call void @fn_store_at(ptr @.str1199, ptr %t293, ptr %t294)
-  call void @fn_emit(ptr @.str1200)
+  call void @fn_store_at(ptr @.str1209, ptr %t293, ptr %t294)
+  call void @fn_emit(ptr @.str1210)
   %t295 = load ptr, ptr %t42
   call void @fn_emit(ptr %t295)
-  call void @fn_emit(ptr @.str1201)
+  call void @fn_emit(ptr @.str1211)
   %t296 = load ptr, ptr %t48
   call void @fn_emit(ptr %t296)
-  call void @fn_emit(ptr @.str1202)
+  call void @fn_emit(ptr @.str1212)
   store i32 0, ptr @g_g_term
   %t297 = load i32, ptr @g_nself
   %t298 = sub i32 %t297, 1
@@ -17253,6 +17620,9 @@ entry:
   %t114 = alloca i32
   %t120 = alloca ptr
   %t130 = alloca ptr
+  %t145 = alloca ptr
+  %t153 = alloca i32
+  %t155 = alloca ptr
   store ptr %arg_e, ptr %t0
   store ptr %arg_comp, ptr %t1
   store ptr %arg_rec, ptr %t2
@@ -17268,47 +17638,47 @@ entry:
   br i1 %t11, label %then0, label %ifend2
 then0:
   %t12 = load ptr, ptr %t1
-  %t13 = call ptr @fn_sconcat(ptr @.str1203, ptr %t12)
+  %t13 = call ptr @fn_sconcat(ptr @.str1213, ptr %t12)
   call void @fn_perr(ptr %t13)
   br label %ifend2
 ifend2:
   %t14 = call ptr @fn_nreg()
   store ptr %t14, ptr %t15
-  call void @fn_emit(ptr @.str1204)
+  call void @fn_emit(ptr @.str1214)
   %t16 = load ptr, ptr %t15
   call void @fn_emit(ptr %t16)
-  call void @fn_emit(ptr @.str1205)
+  call void @fn_emit(ptr @.str1215)
   %t17 = load ptr, ptr %t4
   call void @fn_emit(ptr %t17)
-  call void @fn_emit(ptr @.str1206)
+  call void @fn_emit(ptr @.str1216)
   %t18 = load ptr, ptr %t1
   call void @fn_emit(ptr %t18)
-  call void @fn_emit(ptr @.str1207)
+  call void @fn_emit(ptr @.str1217)
   %t19 = load ptr, ptr %t0
   call void @fn_emit(ptr %t19)
-  call void @fn_emit(ptr @.str1208)
-  call void @fn_emit(ptr @.str1209)
+  call void @fn_emit(ptr @.str1218)
+  call void @fn_emit(ptr @.str1219)
   %t20 = load ptr, ptr %t15
   call void @fn_emit(ptr %t20)
-  call void @fn_emit(ptr @.str1210)
+  call void @fn_emit(ptr @.str1220)
   %t21 = call ptr @fn_nreg()
   store ptr %t21, ptr %t22
-  call void @fn_emit(ptr @.str1211)
+  call void @fn_emit(ptr @.str1221)
   %t23 = load ptr, ptr %t22
   call void @fn_emit(ptr %t23)
-  call void @fn_emit(ptr @.str1212)
+  call void @fn_emit(ptr @.str1222)
   %t24 = load ptr, ptr %t4
   call void @fn_emit(ptr %t24)
-  call void @fn_emit(ptr @.str1213)
+  call void @fn_emit(ptr @.str1223)
   %t25 = load ptr, ptr %t1
   call void @fn_emit(ptr %t25)
-  call void @fn_emit(ptr @.str1214)
+  call void @fn_emit(ptr @.str1224)
   %t26 = load ptr, ptr %t1
   call void @fn_emit(ptr %t26)
-  call void @fn_emit(ptr @.str1215)
+  call void @fn_emit(ptr @.str1225)
   %t27 = load ptr, ptr %t0
   call void @fn_emit(ptr %t27)
-  call void @fn_emit(ptr @.str1216)
+  call void @fn_emit(ptr @.str1226)
   store i32 0, ptr %t28
   br label %wcond3
 wcond3:
@@ -17334,32 +17704,32 @@ wbody4:
   store ptr %t45, ptr %t46
   %t47 = call ptr @fn_nreg()
   store ptr %t47, ptr %t48
-  call void @fn_emit(ptr @.str1217)
+  call void @fn_emit(ptr @.str1227)
   %t49 = load ptr, ptr %t48
   call void @fn_emit(ptr %t49)
-  call void @fn_emit(ptr @.str1218)
+  call void @fn_emit(ptr @.str1228)
   %t50 = load ptr, ptr %t1
   call void @fn_emit(ptr %t50)
-  call void @fn_emit(ptr @.str1219)
+  call void @fn_emit(ptr @.str1229)
   %t51 = load ptr, ptr %t22
   call void @fn_emit(ptr %t51)
-  call void @fn_emit(ptr @.str1220)
+  call void @fn_emit(ptr @.str1230)
   %t52 = load i32, ptr %t28
   %t53 = call ptr @fn_itoa(i32 %t52)
   call void @fn_emit(ptr %t53)
-  call void @fn_emit(ptr @.str1221)
+  call void @fn_emit(ptr @.str1231)
   %t54 = load ptr, ptr %t46
   %t55 = getelementptr inbounds %Str_Node, ptr %t54, i32 0, i32 3
   %t56 = load ptr, ptr %t55
   %t57 = call ptr @fn_llty(ptr %t56)
   store ptr %t57, ptr %t58
-  store ptr @.str1222, ptr %t59
+  store ptr @.str1232, ptr %t59
   %t60 = load ptr, ptr %t58
-  %t61 = call i32 @fn_streq(ptr %t60, ptr @.str1223)
+  %t61 = call i32 @fn_streq(ptr %t60, ptr @.str1233)
   %t62 = icmp ne i32 %t61, 0
   br i1 %t62, label %then6, label %ifend8
 then6:
-  store ptr @.str1224, ptr %t59
+  store ptr @.str1234, ptr %t59
   br label %ifend8
 ifend8:
   %t63 = load ptr, ptr %t46
@@ -17383,16 +17753,16 @@ then9:
   store ptr %t78, ptr %t59
   br label %ifend11
 ifend11:
-  call void @fn_emit(ptr @.str1225)
+  call void @fn_emit(ptr @.str1235)
   %t79 = load ptr, ptr %t58
   call void @fn_emit(ptr %t79)
-  call void @fn_emit(ptr @.str1226)
+  call void @fn_emit(ptr @.str1236)
   %t80 = load ptr, ptr %t59
   call void @fn_emit(ptr %t80)
-  call void @fn_emit(ptr @.str1227)
+  call void @fn_emit(ptr @.str1237)
   %t81 = load ptr, ptr %t48
   call void @fn_emit(ptr %t81)
-  call void @fn_emit(ptr @.str1228)
+  call void @fn_emit(ptr @.str1238)
   %t82 = load i32, ptr %t28
   %t83 = add i32 %t82, 1
   store i32 %t83, ptr %t28
@@ -17443,26 +17813,26 @@ wbody16:
 then18:
   %t119 = call ptr @fn_nreg()
   store ptr %t119, ptr %t120
-  call void @fn_emit(ptr @.str1229)
+  call void @fn_emit(ptr @.str1239)
   %t121 = load ptr, ptr %t120
   call void @fn_emit(ptr %t121)
-  call void @fn_emit(ptr @.str1230)
+  call void @fn_emit(ptr @.str1240)
   %t122 = load ptr, ptr %t1
   call void @fn_emit(ptr %t122)
-  call void @fn_emit(ptr @.str1231)
+  call void @fn_emit(ptr @.str1241)
   %t123 = load ptr, ptr %t22
   call void @fn_emit(ptr %t123)
-  call void @fn_emit(ptr @.str1232)
+  call void @fn_emit(ptr @.str1242)
   %t124 = load i32, ptr %t114
   %t125 = call ptr @fn_itoa(i32 %t124)
   call void @fn_emit(ptr %t125)
-  call void @fn_emit(ptr @.str1233)
+  call void @fn_emit(ptr @.str1243)
   %t126 = load ptr, ptr %t108
   %t127 = getelementptr inbounds %Str_Node, ptr %t126, i32 0, i32 4
   %t128 = load ptr, ptr %t127
   %t129 = call ptr @fn_emit_expr(ptr %t128)
   store ptr %t129, ptr %t130
-  call void @fn_emit(ptr @.str1234)
+  call void @fn_emit(ptr @.str1244)
   %t131 = load ptr, ptr %t7
   %t132 = load ptr, ptr %t108
   %t133 = getelementptr inbounds %Str_Node, ptr %t132, i32 0, i32 1
@@ -17470,15 +17840,15 @@ then18:
   %t135 = call ptr @fn_field_type(ptr %t131, ptr %t134)
   %t136 = call ptr @fn_llty(ptr %t135)
   call void @fn_emit(ptr %t136)
-  call void @fn_emit(ptr @.str1235)
+  call void @fn_emit(ptr @.str1245)
   %t137 = load ptr, ptr %t130
   %t138 = getelementptr inbounds %Str_Val, ptr %t137, i32 0, i32 0
   %t139 = load ptr, ptr %t138
   call void @fn_emit(ptr %t139)
-  call void @fn_emit(ptr @.str1236)
+  call void @fn_emit(ptr @.str1246)
   %t140 = load ptr, ptr %t120
   call void @fn_emit(ptr %t140)
-  call void @fn_emit(ptr @.str1237)
+  call void @fn_emit(ptr @.str1247)
   br label %ifend20
 ifend20:
   %t141 = load i32, ptr %t90
@@ -17488,6 +17858,38 @@ ifend20:
 wend17:
   br label %ifend14
 ifend14:
+  %t143 = load ptr, ptr %t1
+  %t144 = call ptr @fn_onattach_body(ptr %t143)
+  store ptr %t144, ptr %t145
+  %t146 = load ptr, ptr %t145
+  %t147 = icmp eq ptr %t146, null
+  %t148 = zext i1 %t147 to i32
+  %t149 = icmp eq i32 %t148, 0
+  %t150 = zext i1 %t149 to i32
+  %t151 = icmp ne i32 %t150, 0
+  br i1 %t151, label %then21, label %ifend23
+then21:
+  %t152 = load i32, ptr @g_nloc
+  store i32 %t152, ptr %t153
+  %t154 = call ptr @fn_emit_alloca(ptr @.str1248)
+  store ptr %t154, ptr %t155
+  call void @fn_emit(ptr @.str1249)
+  %t156 = load ptr, ptr %t22
+  call void @fn_emit(ptr %t156)
+  call void @fn_emit(ptr @.str1250)
+  %t157 = load ptr, ptr %t155
+  call void @fn_emit(ptr %t157)
+  call void @fn_emit(ptr @.str1251)
+  %t158 = load ptr, ptr %t1
+  %t159 = load ptr, ptr %t155
+  %t160 = load ptr, ptr %t1
+  call void @fn_loc_push(ptr %t158, ptr %t159, ptr %t160)
+  %t161 = load ptr, ptr %t145
+  call void @fn_emit_block(ptr %t161)
+  %t162 = load i32, ptr %t153
+  store i32 %t162, ptr @g_nloc
+  br label %ifend23
+ifend23:
   br label %ret
 ret:
   ret void
@@ -17533,31 +17935,31 @@ wbody1:
   store ptr %t23, ptr %t24
   %t25 = call ptr @fn_nreg()
   store ptr %t25, ptr %t26
-  call void @fn_emit(ptr @.str1238)
+  call void @fn_emit(ptr @.str1252)
   %t27 = load ptr, ptr %t26
   call void @fn_emit(ptr %t27)
-  call void @fn_emit(ptr @.str1239)
+  call void @fn_emit(ptr @.str1253)
   %t28 = load ptr, ptr %t3
   call void @fn_emit(ptr %t28)
-  call void @fn_emit(ptr @.str1240)
+  call void @fn_emit(ptr @.str1254)
   %t29 = load ptr, ptr %t24
   call void @fn_emit(ptr %t29)
-  call void @fn_emit(ptr @.str1241)
+  call void @fn_emit(ptr @.str1255)
   %t30 = load ptr, ptr %t24
   call void @fn_emit(ptr %t30)
-  call void @fn_emit(ptr @.str1242)
+  call void @fn_emit(ptr @.str1256)
   %t31 = load ptr, ptr %t1
   call void @fn_emit(ptr %t31)
-  call void @fn_emit(ptr @.str1243)
-  %t32 = call ptr @fn_emit_alloca(ptr @.str1244)
+  call void @fn_emit(ptr @.str1257)
+  %t32 = call ptr @fn_emit_alloca(ptr @.str1258)
   store ptr %t32, ptr %t33
-  call void @fn_emit(ptr @.str1245)
+  call void @fn_emit(ptr @.str1259)
   %t34 = load ptr, ptr %t26
   call void @fn_emit(ptr %t34)
-  call void @fn_emit(ptr @.str1246)
+  call void @fn_emit(ptr @.str1260)
   %t35 = load ptr, ptr %t33
   call void @fn_emit(ptr %t35)
-  call void @fn_emit(ptr @.str1247)
+  call void @fn_emit(ptr @.str1261)
   %t36 = load ptr, ptr %t24
   %t37 = load ptr, ptr %t33
   %t38 = load ptr, ptr %t24
@@ -17588,7 +17990,7 @@ entry:
   %t101 = alloca i32
   %t106 = alloca i32
   store ptr %arg_st, ptr %t0
-  %t1 = call ptr @fn_emit_bind(ptr @.str1248)
+  %t1 = call ptr @fn_emit_bind(ptr @.str1262)
   store ptr %t1, ptr %t2
   %t3 = load ptr, ptr %t0
   %t4 = getelementptr inbounds %Str_Node, ptr %t3, i32 0, i32 1
@@ -17605,24 +18007,24 @@ then0:
   store ptr %t12, ptr %t13
   %t14 = call ptr @fn_nreg()
   store ptr %t14, ptr %t15
-  call void @fn_emit(ptr @.str1249)
+  call void @fn_emit(ptr @.str1263)
   %t16 = load ptr, ptr %t15
   call void @fn_emit(ptr %t16)
-  call void @fn_emit(ptr @.str1250)
+  call void @fn_emit(ptr @.str1264)
   %t17 = load ptr, ptr %t13
   call void @fn_emit(ptr %t17)
-  call void @fn_emit(ptr @.str1251)
+  call void @fn_emit(ptr @.str1265)
   %t18 = load ptr, ptr %t2
   call void @fn_emit(ptr %t18)
-  call void @fn_emit(ptr @.str1252)
-  call void @fn_emit(ptr @.str1253)
+  call void @fn_emit(ptr @.str1266)
+  call void @fn_emit(ptr @.str1267)
   %t19 = load i32, ptr %t7
   %t20 = call ptr @fn_itoa(i32 %t19)
   call void @fn_emit(ptr %t20)
-  call void @fn_emit(ptr @.str1254)
+  call void @fn_emit(ptr @.str1268)
   %t21 = load ptr, ptr %t15
   call void @fn_emit(ptr %t21)
-  call void @fn_emit(ptr @.str1255)
+  call void @fn_emit(ptr @.str1269)
   %t22 = load ptr, ptr %t0
   %t23 = getelementptr inbounds %Str_Node, ptr %t22, i32 0, i32 1
   %t24 = load ptr, ptr %t23
@@ -17788,18 +18190,123 @@ define void @fn_emit_despawn(ptr %arg_st) {
 entry:
   %t0 = alloca ptr
   %t5 = alloca ptr
+  %t13 = alloca ptr
+  %t15 = alloca ptr
+  %t24 = alloca ptr
+  %t25 = alloca i32
+  %t41 = alloca ptr
+  %t50 = alloca ptr
+  %t52 = alloca ptr
+  %t54 = alloca ptr
   store ptr %arg_st, ptr %t0
   %t1 = load ptr, ptr %t0
   %t2 = getelementptr inbounds %Str_Node, ptr %t1, i32 0, i32 4
   %t3 = load ptr, ptr %t2
   %t4 = call ptr @fn_emit_expr(ptr %t3)
   store ptr %t4, ptr %t5
-  call void @fn_emit(ptr @.str1256)
-  %t6 = load ptr, ptr %t5
-  %t7 = getelementptr inbounds %Str_Val, ptr %t6, i32 0, i32 0
-  %t8 = load ptr, ptr %t7
-  call void @fn_emit(ptr %t8)
-  call void @fn_emit(ptr @.str1257)
+  %t6 = load ptr, ptr @g_g_ondespawn
+  %t7 = getelementptr inbounds %LSlice, ptr %t6, i32 0, i32 1
+  %t8 = load i32, ptr %t7
+  %t9 = icmp sgt i32 %t8, 0
+  %t10 = zext i1 %t9 to i32
+  %t11 = icmp ne i32 %t10, 0
+  br i1 %t11, label %then0, label %ifend2
+then0:
+  %t12 = call ptr @fn_itoa(i32 1024)
+  store ptr %t12, ptr %t13
+  %t14 = call ptr @fn_nreg()
+  store ptr %t14, ptr %t15
+  call void @fn_emit(ptr @.str1270)
+  %t16 = load ptr, ptr %t15
+  call void @fn_emit(ptr %t16)
+  call void @fn_emit(ptr @.str1271)
+  %t17 = load ptr, ptr %t13
+  call void @fn_emit(ptr %t17)
+  call void @fn_emit(ptr @.str1272)
+  %t18 = load ptr, ptr %t5
+  %t19 = getelementptr inbounds %Str_Val, ptr %t18, i32 0, i32 0
+  %t20 = load ptr, ptr %t19
+  call void @fn_emit(ptr %t20)
+  call void @fn_emit(ptr @.str1273)
+  %t21 = load ptr, ptr %t15
+  %t22 = call ptr @fn_sconcat(ptr @.str1274, ptr %t21)
+  %t23 = call ptr @fn_emit_bind(ptr %t22)
+  store ptr %t23, ptr %t24
+  store i32 0, ptr %t25
+  br label %wcond3
+wcond3:
+  %t26 = load i32, ptr %t25
+  %t27 = load ptr, ptr @g_g_ondespawn
+  %t28 = getelementptr inbounds %LSlice, ptr %t27, i32 0, i32 1
+  %t29 = load i32, ptr %t28
+  %t30 = icmp slt i32 %t26, %t29
+  %t31 = zext i1 %t30 to i32
+  %t32 = icmp ne i32 %t31, 0
+  br i1 %t32, label %wbody4, label %wend5
+wbody4:
+  %t33 = load ptr, ptr @g_g_ondespawn
+  %t34 = getelementptr inbounds %LSlice, ptr %t33, i32 0, i32 0
+  %t35 = load ptr, ptr %t34
+  %t36 = load i32, ptr %t25
+  %t37 = getelementptr inbounds ptr, ptr %t35, i32 %t36
+  %t38 = load ptr, ptr %t37
+  %t39 = getelementptr inbounds %Str_Node, ptr %t38, i32 0, i32 1
+  %t40 = load ptr, ptr %t39
+  store ptr %t40, ptr %t41
+  %t42 = load ptr, ptr %t24
+  %t43 = load ptr, ptr %t41
+  %t44 = call i32 @fn_find_arch_id(ptr %t43)
+  %t45 = call ptr @fn_itoa(i32 %t44)
+  %t46 = call ptr @fn_sconcat(ptr @.str1276, ptr %t45)
+  %t47 = call ptr @fn_sconcat(ptr %t42, ptr %t46)
+  %t48 = call ptr @fn_sconcat(ptr @.str1275, ptr %t47)
+  %t49 = call ptr @fn_emit_bind(ptr %t48)
+  store ptr %t49, ptr %t50
+  %t51 = call ptr @fn_lbl(ptr @.str1277)
+  store ptr %t51, ptr %t52
+  %t53 = call ptr @fn_lbl(ptr @.str1278)
+  store ptr %t53, ptr %t54
+  call void @fn_emit(ptr @.str1279)
+  %t55 = load ptr, ptr %t50
+  call void @fn_emit(ptr %t55)
+  call void @fn_emit(ptr @.str1280)
+  %t56 = load ptr, ptr %t52
+  call void @fn_emit(ptr %t56)
+  call void @fn_emit(ptr @.str1281)
+  %t57 = load ptr, ptr %t54
+  call void @fn_emit(ptr %t57)
+  call void @fn_emit(ptr @.str1282)
+  %t58 = load ptr, ptr %t52
+  call void @fn_emit(ptr %t58)
+  call void @fn_emit(ptr @.str1283)
+  %t59 = load ptr, ptr %t41
+  call void @fn_emit(ptr %t59)
+  call void @fn_emit(ptr @.str1284)
+  %t60 = load ptr, ptr %t5
+  %t61 = getelementptr inbounds %Str_Val, ptr %t60, i32 0, i32 0
+  %t62 = load ptr, ptr %t61
+  call void @fn_emit(ptr %t62)
+  call void @fn_emit(ptr @.str1285)
+  call void @fn_emit(ptr @.str1286)
+  %t63 = load ptr, ptr %t54
+  call void @fn_emit(ptr %t63)
+  call void @fn_emit(ptr @.str1287)
+  %t64 = load ptr, ptr %t54
+  call void @fn_emit(ptr %t64)
+  call void @fn_emit(ptr @.str1288)
+  %t65 = load i32, ptr %t25
+  %t66 = add i32 %t65, 1
+  store i32 %t66, ptr %t25
+  br label %wcond3
+wend5:
+  br label %ifend2
+ifend2:
+  call void @fn_emit(ptr @.str1289)
+  %t67 = load ptr, ptr %t5
+  %t68 = getelementptr inbounds %Str_Val, ptr %t67, i32 0, i32 0
+  %t69 = load ptr, ptr %t68
+  call void @fn_emit(ptr %t69)
+  call void @fn_emit(ptr @.str1290)
   br label %ret
 ret:
   ret void
@@ -17817,7 +18324,7 @@ entry:
   call void @fn_loc_reset()
   store i32 0, ptr @g_nloop
   store i32 0, ptr @g_nself
-  store ptr @.str1258, ptr @g_ret_ty
+  store ptr @.str1291, ptr @g_ret_ty
   %t1 = call ptr @fn_buf_new()
   store ptr %t1, ptr %t2
   %t3 = call ptr @fn_buf_new()
@@ -17836,25 +18343,25 @@ entry:
   %t13 = icmp ne i32 %t12, 0
   br i1 %t13, label %then0, label %ifend2
 then0:
-  call void @fn_emit(ptr @.str1259)
+  call void @fn_emit(ptr @.str1292)
   br label %ifend2
 ifend2:
-  call void @fn_emit(ptr @.str1260)
+  call void @fn_emit(ptr @.str1293)
   %t14 = load ptr, ptr %t5
   store ptr %t14, ptr @g_code
-  call void @fn_emit(ptr @.str1261)
+  call void @fn_emit(ptr @.str1294)
   %t15 = load ptr, ptr %t0
   %t16 = getelementptr inbounds %Str_Node, ptr %t15, i32 0, i32 1
   %t17 = load ptr, ptr %t16
   call void @fn_emit(ptr %t17)
-  call void @fn_emit(ptr @.str1262)
+  call void @fn_emit(ptr @.str1295)
   %t18 = load ptr, ptr @g_falloc
   %t19 = call ptr @fn_buf_str(ptr %t18)
   call void @fn_emit(ptr %t19)
   %t20 = load ptr, ptr %t2
   %t21 = call ptr @fn_buf_str(ptr %t20)
   call void @fn_emit(ptr %t21)
-  call void @fn_emit(ptr @.str1263)
+  call void @fn_emit(ptr @.str1296)
   br label %ret
 ret:
   ret void
@@ -17910,17 +18417,104 @@ scend4:
   %t32 = icmp ne i32 %t31, 0
   br i1 %t32, label %then5, label %ifend7
 then5:
-  call void @fn_emit(ptr @.str1264)
+  call void @fn_emit(ptr @.str1297)
   %t33 = load ptr, ptr %t15
   %t34 = getelementptr inbounds %Str_Node, ptr %t33, i32 0, i32 1
   %t35 = load ptr, ptr %t34
   call void @fn_emit(ptr %t35)
-  call void @fn_emit(ptr @.str1265)
+  call void @fn_emit(ptr @.str1298)
   br label %ifend7
 ifend7:
   %t36 = load i32, ptr %t1
   %t37 = add i32 %t36, 1
   store i32 %t37, ptr %t1
+  br label %wcond0
+wend2:
+  br label %ret
+ret:
+  ret void
+}
+
+define void @fn_emit_despawn_hooks() {
+entry:
+  %t0 = alloca i32
+  %t14 = alloca ptr
+  %t19 = alloca ptr
+  %t21 = alloca ptr
+  %t24 = alloca ptr
+  store i32 0, ptr %t0
+  br label %wcond0
+wcond0:
+  %t1 = load i32, ptr %t0
+  %t2 = load ptr, ptr @g_g_ondespawn
+  %t3 = getelementptr inbounds %LSlice, ptr %t2, i32 0, i32 1
+  %t4 = load i32, ptr %t3
+  %t5 = icmp slt i32 %t1, %t4
+  %t6 = zext i1 %t5 to i32
+  %t7 = icmp ne i32 %t6, 0
+  br i1 %t7, label %wbody1, label %wend2
+wbody1:
+  %t8 = load ptr, ptr @g_g_ondespawn
+  %t9 = getelementptr inbounds %LSlice, ptr %t8, i32 0, i32 0
+  %t10 = load ptr, ptr %t9
+  %t11 = load i32, ptr %t0
+  %t12 = getelementptr inbounds ptr, ptr %t10, i32 %t11
+  %t13 = load ptr, ptr %t12
+  store ptr %t13, ptr %t14
+  %t15 = load ptr, ptr %t14
+  %t16 = getelementptr inbounds %Str_Node, ptr %t15, i32 0, i32 1
+  %t17 = load ptr, ptr %t16
+  %t18 = call ptr @fn_find_arch(ptr %t17)
+  store ptr %t18, ptr %t19
+  store i32 0, ptr @g_ll_t
+  store i32 0, ptr @g_ll_lbl
+  store i32 0, ptr @g_g_term
+  call void @fn_loc_reset()
+  store i32 0, ptr @g_nloop
+  store i32 0, ptr @g_nself
+  store ptr @.str1299, ptr @g_ret_ty
+  %t20 = call ptr @fn_buf_new()
+  store ptr %t20, ptr %t21
+  %t22 = call ptr @fn_buf_new()
+  store ptr %t22, ptr @g_falloc
+  %t23 = load ptr, ptr @g_code
+  store ptr %t23, ptr %t24
+  %t25 = load ptr, ptr %t21
+  store ptr %t25, ptr @g_code
+  %t26 = load ptr, ptr %t19
+  call void @fn_emit_bind_props(ptr %t26, ptr @.str1300)
+  %t27 = load ptr, ptr %t14
+  %t28 = getelementptr inbounds %Str_Node, ptr %t27, i32 0, i32 4
+  %t29 = load ptr, ptr %t28
+  call void @fn_emit_block(ptr %t29)
+  %t30 = load i32, ptr @g_g_term
+  %t31 = icmp eq i32 %t30, 0
+  %t32 = zext i1 %t31 to i32
+  %t33 = icmp ne i32 %t32, 0
+  br i1 %t33, label %then3, label %ifend5
+then3:
+  call void @fn_emit(ptr @.str1301)
+  br label %ifend5
+ifend5:
+  call void @fn_emit(ptr @.str1302)
+  %t34 = load ptr, ptr %t24
+  store ptr %t34, ptr @g_code
+  call void @fn_emit(ptr @.str1303)
+  %t35 = load ptr, ptr %t14
+  %t36 = getelementptr inbounds %Str_Node, ptr %t35, i32 0, i32 1
+  %t37 = load ptr, ptr %t36
+  call void @fn_emit(ptr %t37)
+  call void @fn_emit(ptr @.str1304)
+  %t38 = load ptr, ptr @g_falloc
+  %t39 = call ptr @fn_buf_str(ptr %t38)
+  call void @fn_emit(ptr %t39)
+  %t40 = load ptr, ptr %t21
+  %t41 = call ptr @fn_buf_str(ptr %t40)
+  call void @fn_emit(ptr %t41)
+  call void @fn_emit(ptr @.str1305)
+  %t42 = load i32, ptr %t0
+  %t43 = add i32 %t42, 1
+  store i32 %t43, ptr %t0
   br label %wcond0
 wend2:
   br label %ret
@@ -17976,10 +18570,11 @@ ifend5:
   store i32 %t26, ptr %t0
   br label %wcond0
 wend2:
-  call void @fn_emit(ptr @.str1266)
-  call void @fn_emit(ptr @.str1267)
-  call void @fn_emit(ptr @.str1268)
-  %t27 = call ptr @fn_find_fn(ptr @.str1269)
+  call void @fn_emit_despawn_hooks()
+  call void @fn_emit(ptr @.str1306)
+  call void @fn_emit(ptr @.str1307)
+  call void @fn_emit(ptr @.str1308)
+  %t27 = call ptr @fn_find_fn(ptr @.str1309)
   %t28 = icmp eq ptr %t27, null
   %t29 = zext i1 %t28 to i32
   %t30 = icmp eq i32 %t29, 0
@@ -17987,20 +18582,20 @@ wend2:
   %t32 = icmp ne i32 %t31, 0
   br i1 %t32, label %then6, label %ifend8
 then6:
-  call void @fn_emit(ptr @.str1270)
+  call void @fn_emit(ptr @.str1310)
   br label %ifend8
 ifend8:
-  call void @fn_emit_calls_for_phase(ptr @.str1271)
-  call void @fn_emit(ptr @.str1272)
-  call void @fn_emit(ptr @.str1273)
-  %t33 = call ptr @fn_emit_bind(ptr @.str1274)
+  call void @fn_emit_calls_for_phase(ptr @.str1311)
+  call void @fn_emit(ptr @.str1312)
+  call void @fn_emit(ptr @.str1313)
+  %t33 = call ptr @fn_emit_bind(ptr @.str1314)
   store ptr %t33, ptr %t34
   %t35 = load ptr, ptr %t34
-  %t36 = call ptr @fn_sconcat(ptr %t35, ptr @.str1276)
-  %t37 = call ptr @fn_sconcat(ptr @.str1275, ptr %t36)
+  %t36 = call ptr @fn_sconcat(ptr %t35, ptr @.str1316)
+  %t37 = call ptr @fn_sconcat(ptr @.str1315, ptr %t36)
   %t38 = call ptr @fn_emit_bind(ptr %t37)
   store ptr %t38, ptr %t39
-  %t40 = call ptr @fn_find_fn(ptr @.str1277)
+  %t40 = call ptr @fn_find_fn(ptr @.str1317)
   %t41 = icmp eq ptr %t40, null
   %t42 = zext i1 %t41 to i32
   %t43 = icmp eq i32 %t42, 0
@@ -18008,34 +18603,34 @@ ifend8:
   %t45 = icmp ne i32 %t44, 0
   br i1 %t45, label %then9, label %else10
 then9:
-  %t46 = call ptr @fn_emit_bind(ptr @.str1278)
+  %t46 = call ptr @fn_emit_bind(ptr @.str1318)
   store ptr %t46, ptr %t47
   %t48 = load ptr, ptr %t47
-  %t49 = call ptr @fn_sconcat(ptr %t48, ptr @.str1280)
-  %t50 = call ptr @fn_sconcat(ptr @.str1279, ptr %t49)
+  %t49 = call ptr @fn_sconcat(ptr %t48, ptr @.str1320)
+  %t50 = call ptr @fn_sconcat(ptr @.str1319, ptr %t49)
   %t51 = call ptr @fn_emit_bind(ptr %t50)
   store ptr %t51, ptr %t52
   %t53 = load ptr, ptr %t39
   %t54 = load ptr, ptr %t52
-  %t55 = call ptr @fn_sconcat(ptr @.str1282, ptr %t54)
+  %t55 = call ptr @fn_sconcat(ptr @.str1322, ptr %t54)
   %t56 = call ptr @fn_sconcat(ptr %t53, ptr %t55)
-  %t57 = call ptr @fn_sconcat(ptr @.str1281, ptr %t56)
+  %t57 = call ptr @fn_sconcat(ptr @.str1321, ptr %t56)
   %t58 = call ptr @fn_emit_bind(ptr %t57)
   store ptr %t58, ptr %t59
-  call void @fn_emit(ptr @.str1283)
+  call void @fn_emit(ptr @.str1323)
   %t60 = load ptr, ptr %t59
   call void @fn_emit(ptr %t60)
-  call void @fn_emit(ptr @.str1284)
+  call void @fn_emit(ptr @.str1324)
   br label %ifend11
 else10:
-  call void @fn_emit(ptr @.str1285)
+  call void @fn_emit(ptr @.str1325)
   %t61 = load ptr, ptr %t39
   call void @fn_emit(ptr %t61)
-  call void @fn_emit(ptr @.str1286)
+  call void @fn_emit(ptr @.str1326)
   br label %ifend11
 ifend11:
-  call void @fn_emit(ptr @.str1287)
-  %t62 = call ptr @fn_find_fn(ptr @.str1288)
+  call void @fn_emit(ptr @.str1327)
+  %t62 = call ptr @fn_find_fn(ptr @.str1328)
   %t63 = icmp eq ptr %t62, null
   %t64 = zext i1 %t63 to i32
   %t65 = icmp eq i32 %t64, 0
@@ -18043,22 +18638,23 @@ ifend11:
   %t67 = icmp ne i32 %t66, 0
   br i1 %t67, label %then12, label %ifend14
 then12:
-  %t68 = call ptr @fn_emit_bind(ptr @.str1289)
+  %t68 = call ptr @fn_emit_bind(ptr @.str1329)
   store ptr %t68, ptr %t69
-  call void @fn_emit(ptr @.str1290)
+  call void @fn_emit(ptr @.str1330)
   %t70 = load ptr, ptr %t69
   call void @fn_emit(ptr %t70)
-  call void @fn_emit(ptr @.str1291)
+  call void @fn_emit(ptr @.str1331)
   br label %ifend14
 ifend14:
-  call void @fn_emit_calls_for_phase(ptr @.str1292)
-  call void @fn_emit_calls_for_phase(ptr @.str1293)
-  call void @fn_emit_calls_for_phase(ptr @.str1294)
-  call void @fn_emit_calls_for_phase(ptr @.str1295)
-  call void @fn_emit_calls_for_phase(ptr @.str1296)
-  call void @fn_emit(ptr @.str1297)
-  call void @fn_emit(ptr @.str1298)
-  %t71 = call ptr @fn_find_fn(ptr @.str1299)
+  call void @fn_emit_calls_for_phase(ptr @.str1332)
+  call void @fn_emit_calls_for_phase(ptr @.str1333)
+  call void @fn_emit_calls_for_phase(ptr @.str1334)
+  call void @fn_emit_calls_for_phase(ptr @.str1335)
+  call void @fn_emit_calls_for_phase(ptr @.str1336)
+  call void @fn_emit(ptr @.str1337)
+  call void @fn_emit(ptr @.str1338)
+  call void @fn_emit_calls_for_phase(ptr @.str1339)
+  %t71 = call ptr @fn_find_fn(ptr @.str1340)
   %t72 = icmp eq ptr %t71, null
   %t73 = zext i1 %t72 to i32
   %t74 = icmp eq i32 %t73, 0
@@ -18066,10 +18662,10 @@ ifend14:
   %t76 = icmp ne i32 %t75, 0
   br i1 %t76, label %then15, label %ifend17
 then15:
-  call void @fn_emit(ptr @.str1300)
+  call void @fn_emit(ptr @.str1341)
   br label %ifend17
 ifend17:
-  call void @fn_emit(ptr @.str1301)
+  call void @fn_emit(ptr @.str1342)
   br label %ret
 ret:
   ret void
@@ -18096,8 +18692,8 @@ entry:
   %t6 = load ptr, ptr %t5
   %t7 = getelementptr inbounds %Str_Val, ptr %t6, i32 0, i32 0
   %t8 = load ptr, ptr %t7
-  %t9 = call ptr @fn_sconcat(ptr %t8, ptr @.str1303)
-  %t10 = call ptr @fn_sconcat(ptr @.str1302, ptr %t9)
+  %t9 = call ptr @fn_sconcat(ptr %t8, ptr @.str1344)
+  %t10 = call ptr @fn_sconcat(ptr @.str1343, ptr %t9)
   %t11 = call ptr @fn_emit_bind(ptr %t10)
   store ptr %t11, ptr %t12
   %t13 = load i32, ptr @g_nmach
@@ -18151,7 +18747,7 @@ ifend2:
   %t46 = load i32, ptr @g_nmach
   %t47 = add i32 %t46, 1
   store i32 %t47, ptr @g_nmach
-  %t48 = call ptr @fn_lbl(ptr @.str1304)
+  %t48 = call ptr @fn_lbl(ptr @.str1345)
   store ptr %t48, ptr %t49
   store i32 0, ptr %t50
   br label %wcond5
@@ -18185,28 +18781,28 @@ wbody6:
   %t75 = load ptr, ptr %t73
   %t76 = getelementptr inbounds %Str_Val, ptr %t75, i32 0, i32 0
   %t77 = load ptr, ptr %t76
-  %t78 = call ptr @fn_sconcat(ptr @.str1306, ptr %t77)
+  %t78 = call ptr @fn_sconcat(ptr @.str1347, ptr %t77)
   %t79 = call ptr @fn_sconcat(ptr %t74, ptr %t78)
-  %t80 = call ptr @fn_sconcat(ptr @.str1305, ptr %t79)
+  %t80 = call ptr @fn_sconcat(ptr @.str1346, ptr %t79)
   %t81 = call ptr @fn_emit_bind(ptr %t80)
   store ptr %t81, ptr %t82
-  %t83 = call ptr @fn_lbl(ptr @.str1307)
+  %t83 = call ptr @fn_lbl(ptr @.str1348)
   store ptr %t83, ptr %t84
-  %t85 = call ptr @fn_lbl(ptr @.str1308)
+  %t85 = call ptr @fn_lbl(ptr @.str1349)
   store ptr %t85, ptr %t86
-  call void @fn_emit(ptr @.str1309)
+  call void @fn_emit(ptr @.str1350)
   %t87 = load ptr, ptr %t82
   call void @fn_emit(ptr %t87)
-  call void @fn_emit(ptr @.str1310)
+  call void @fn_emit(ptr @.str1351)
   %t88 = load ptr, ptr %t84
   call void @fn_emit(ptr %t88)
-  call void @fn_emit(ptr @.str1311)
+  call void @fn_emit(ptr @.str1352)
   %t89 = load ptr, ptr %t86
   call void @fn_emit(ptr %t89)
-  call void @fn_emit(ptr @.str1312)
+  call void @fn_emit(ptr @.str1353)
   %t90 = load ptr, ptr %t84
   call void @fn_emit(ptr %t90)
-  call void @fn_emit(ptr @.str1313)
+  call void @fn_emit(ptr @.str1354)
   store i32 0, ptr @g_g_term
   %t91 = load ptr, ptr %t68
   %t92 = getelementptr inbounds %Str_Node, ptr %t91, i32 0, i32 4
@@ -18218,15 +18814,15 @@ wbody6:
   %t97 = icmp ne i32 %t96, 0
   br i1 %t97, label %then8, label %ifend10
 then8:
-  call void @fn_emit(ptr @.str1314)
+  call void @fn_emit(ptr @.str1355)
   %t98 = load ptr, ptr %t49
   call void @fn_emit(ptr %t98)
-  call void @fn_emit(ptr @.str1315)
+  call void @fn_emit(ptr @.str1356)
   br label %ifend10
 ifend10:
   %t99 = load ptr, ptr %t86
   call void @fn_emit(ptr %t99)
-  call void @fn_emit(ptr @.str1316)
+  call void @fn_emit(ptr @.str1357)
   store i32 0, ptr @g_g_term
   %t100 = load i32, ptr %t50
   %t101 = add i32 %t100, 1
@@ -18239,15 +18835,15 @@ wend7:
   %t105 = icmp ne i32 %t104, 0
   br i1 %t105, label %then11, label %ifend13
 then11:
-  call void @fn_emit(ptr @.str1317)
+  call void @fn_emit(ptr @.str1358)
   %t106 = load ptr, ptr %t49
   call void @fn_emit(ptr %t106)
-  call void @fn_emit(ptr @.str1318)
+  call void @fn_emit(ptr @.str1359)
   br label %ifend13
 ifend13:
   %t107 = load ptr, ptr %t49
   call void @fn_emit(ptr %t107)
-  call void @fn_emit(ptr @.str1319)
+  call void @fn_emit(ptr @.str1360)
   store i32 0, ptr @g_g_term
   %t108 = load i32, ptr @g_nmach
   %t109 = sub i32 %t108, 1
@@ -18272,7 +18868,7 @@ entry:
   %t4 = icmp ne i32 %t3, 0
   br i1 %t4, label %then0, label %ifend2
 then0:
-  call void @fn_perr(ptr @.str1320)
+  call void @fn_perr(ptr @.str1361)
   br label %ifend2
 ifend2:
   %t5 = load ptr, ptr @g_mach_stk
@@ -18340,7 +18936,7 @@ then9:
   %t53 = load ptr, ptr %t0
   %t54 = getelementptr inbounds %Str_Node, ptr %t53, i32 0, i32 1
   %t55 = load ptr, ptr %t54
-  %t56 = call ptr @fn_sconcat(ptr @.str1321, ptr %t55)
+  %t56 = call ptr @fn_sconcat(ptr @.str1362, ptr %t55)
   call void @fn_perr(ptr %t56)
   br label %ifend11
 ifend11:
@@ -18354,17 +18950,17 @@ ifend11:
   %t64 = load ptr, ptr %t63
   %t65 = call ptr @fn_emit_expr(ptr %t64)
   store ptr %t65, ptr %t66
-  call void @fn_emit(ptr @.str1322)
+  call void @fn_emit(ptr @.str1363)
   %t67 = load ptr, ptr %t61
   %t68 = getelementptr inbounds %Str_Val, ptr %t67, i32 0, i32 0
   %t69 = load ptr, ptr %t68
   call void @fn_emit(ptr %t69)
-  call void @fn_emit(ptr @.str1323)
+  call void @fn_emit(ptr @.str1364)
   %t70 = load ptr, ptr %t66
   %t71 = getelementptr inbounds %Str_Val, ptr %t70, i32 0, i32 0
   %t72 = load ptr, ptr %t71
   call void @fn_emit(ptr %t72)
-  call void @fn_emit(ptr @.str1324)
+  call void @fn_emit(ptr @.str1365)
   br label %ret
 ret:
   ret void
@@ -18381,24 +18977,24 @@ entry:
   store ptr %arg_bytes, ptr %t2
   %t3 = load i32, ptr @g_g_iok
   %t4 = call ptr @fn_itoa(i32 %t3)
-  %t5 = call ptr @fn_sconcat(ptr @.str1325, ptr %t4)
+  %t5 = call ptr @fn_sconcat(ptr @.str1366, ptr %t4)
   store ptr %t5, ptr %t6
   %t7 = load i32, ptr @g_g_iok
   %t8 = add i32 %t7, 1
   store i32 %t8, ptr @g_g_iok
-  call void @fn_emit(ptr @.str1326)
+  call void @fn_emit(ptr @.str1367)
   %t9 = load ptr, ptr %t6
   call void @fn_emit(ptr %t9)
-  call void @fn_emit(ptr @.str1327)
+  call void @fn_emit(ptr @.str1368)
   %t10 = load ptr, ptr %t0
   call void @fn_emit(ptr %t10)
-  call void @fn_emit(ptr @.str1328)
+  call void @fn_emit(ptr @.str1369)
   %t11 = load ptr, ptr %t1
   call void @fn_emit(ptr %t11)
-  call void @fn_emit(ptr @.str1329)
+  call void @fn_emit(ptr @.str1370)
   %t12 = load ptr, ptr %t2
   call void @fn_emit(ptr %t12)
-  call void @fn_emit(ptr @.str1330)
+  call void @fn_emit(ptr @.str1371)
   br label %ret
 ret:
   ret void
@@ -18417,19 +19013,19 @@ entry:
   %t1 = call ptr @fn_itoa(i32 1024)
   store ptr %t1, ptr %t2
   %t3 = load ptr, ptr %t0
-  call void @fn_emit_io(ptr %t3, ptr @.str1331, ptr @.str1332)
+  call void @fn_emit_io(ptr %t3, ptr @.str1372, ptr @.str1373)
   %t4 = load ptr, ptr %t0
-  call void @fn_emit_io(ptr %t4, ptr @.str1333, ptr @.str1334)
-  call void @fn_emit(ptr @.str1335)
+  call void @fn_emit_io(ptr %t4, ptr @.str1374, ptr @.str1375)
+  call void @fn_emit(ptr @.str1376)
   %t5 = load ptr, ptr %t2
   call void @fn_emit(ptr %t5)
-  call void @fn_emit(ptr @.str1336)
+  call void @fn_emit(ptr @.str1377)
   %t6 = load ptr, ptr %t0
-  call void @fn_emit_io(ptr %t6, ptr @.str1337, ptr @.str1338)
+  call void @fn_emit_io(ptr %t6, ptr @.str1378, ptr @.str1379)
   %t7 = load ptr, ptr %t0
-  call void @fn_emit_io(ptr %t7, ptr @.str1339, ptr @.str1340)
+  call void @fn_emit_io(ptr %t7, ptr @.str1380, ptr @.str1381)
   %t8 = load ptr, ptr %t0
-  call void @fn_emit_io(ptr %t8, ptr @.str1341, ptr @.str1342)
+  call void @fn_emit_io(ptr %t8, ptr @.str1382, ptr @.str1383)
   store i32 0, ptr %t9
   br label %wcond0
 wcond0:
@@ -18464,8 +19060,8 @@ then3:
   %t34 = load ptr, ptr %t33
   %t35 = getelementptr inbounds %Str_Node, ptr %t34, i32 0, i32 1
   %t36 = load ptr, ptr %t35
-  %t37 = call ptr @fn_sconcat(ptr @.str1343, ptr %t36)
-  call void @fn_emit_io(ptr %t28, ptr %t37, ptr @.str1344)
+  %t37 = call ptr @fn_sconcat(ptr @.str1384, ptr %t36)
+  call void @fn_emit_io(ptr %t28, ptr %t37, ptr @.str1385)
   br label %ifend5
 ifend5:
   %t38 = load i32, ptr %t9
@@ -18510,26 +19106,26 @@ then9:
   store ptr %t66, ptr %t67
   %t68 = load i32, ptr %t40
   %t69 = call ptr @fn_itoa(i32 %t68)
-  %t70 = call ptr @fn_sconcat(ptr @.str1345, ptr %t69)
+  %t70 = call ptr @fn_sconcat(ptr @.str1386, ptr %t69)
   store ptr %t70, ptr %t71
-  call void @fn_emit(ptr @.str1346)
+  call void @fn_emit(ptr @.str1387)
   %t72 = load ptr, ptr %t71
   call void @fn_emit(ptr %t72)
-  call void @fn_emit(ptr @.str1347)
+  call void @fn_emit(ptr @.str1388)
   %t73 = load ptr, ptr %t67
   call void @fn_emit(ptr %t73)
-  call void @fn_emit(ptr @.str1348)
+  call void @fn_emit(ptr @.str1389)
   %t74 = load ptr, ptr %t2
   call void @fn_emit(ptr %t74)
-  call void @fn_emit(ptr @.str1349)
+  call void @fn_emit(ptr @.str1390)
   %t75 = load ptr, ptr %t0
   %t76 = load ptr, ptr %t67
-  %t77 = call ptr @fn_sconcat(ptr @.str1350, ptr %t76)
+  %t77 = call ptr @fn_sconcat(ptr @.str1391, ptr %t76)
   %t78 = load ptr, ptr %t71
   call void @fn_emit_io(ptr %t75, ptr %t77, ptr %t78)
   %t79 = load ptr, ptr %t0
   %t80 = load ptr, ptr %t67
-  %t81 = call ptr @fn_sconcat(ptr @.str1351, ptr %t80)
+  %t81 = call ptr @fn_sconcat(ptr @.str1392, ptr %t80)
   %t82 = load ptr, ptr %t2
   call void @fn_emit_io(ptr %t79, ptr %t81, ptr %t82)
   %t83 = load i32, ptr %t40
@@ -18551,47 +19147,47 @@ define void @fn_emit_snapshot() {
 entry:
   %t5 = alloca i32
   %t11 = alloca i32
-  call void @fn_emith(ptr @.str1352)
-  call void @fn_emith(ptr @.str1353)
-  call void @fn_emith(ptr @.str1354)
-  %t0 = call ptr @fn_find_fn(ptr @.str1355)
+  call void @fn_emith(ptr @.str1393)
+  call void @fn_emith(ptr @.str1394)
+  call void @fn_emith(ptr @.str1395)
+  %t0 = call ptr @fn_find_fn(ptr @.str1396)
   %t1 = icmp eq ptr %t0, null
   %t2 = zext i1 %t1 to i32
   %t3 = icmp eq i32 %t2, 0
   %t4 = zext i1 %t3 to i32
   store i32 %t4, ptr %t5
-  %t6 = call ptr @fn_find_fn(ptr @.str1356)
+  %t6 = call ptr @fn_find_fn(ptr @.str1397)
   %t7 = icmp eq ptr %t6, null
   %t8 = zext i1 %t7 to i32
   %t9 = icmp eq i32 %t8, 0
   %t10 = zext i1 %t9 to i32
   store i32 %t10, ptr %t11
-  call void @fn_emit(ptr @.str1357)
-  call void @fn_emit(ptr @.str1358)
-  call void @fn_emit(ptr @.str1359)
-  call void @fn_emit(ptr @.str1360)
-  call void @fn_emit_snapshot_blocks(ptr @.str1361)
+  call void @fn_emit(ptr @.str1398)
+  call void @fn_emit(ptr @.str1399)
+  call void @fn_emit(ptr @.str1400)
+  call void @fn_emit(ptr @.str1401)
+  call void @fn_emit_snapshot_blocks(ptr @.str1402)
   %t12 = load i32, ptr %t5
   %t13 = icmp ne i32 %t12, 0
   br i1 %t13, label %then0, label %ifend2
 then0:
-  call void @fn_emit(ptr @.str1362)
+  call void @fn_emit(ptr @.str1403)
   br label %ifend2
 ifend2:
-  call void @fn_emit(ptr @.str1363)
-  call void @fn_emit(ptr @.str1364)
-  call void @fn_emit(ptr @.str1365)
-  call void @fn_emit(ptr @.str1366)
-  call void @fn_emit(ptr @.str1367)
-  call void @fn_emit_snapshot_blocks(ptr @.str1368)
+  call void @fn_emit(ptr @.str1404)
+  call void @fn_emit(ptr @.str1405)
+  call void @fn_emit(ptr @.str1406)
+  call void @fn_emit(ptr @.str1407)
+  call void @fn_emit(ptr @.str1408)
+  call void @fn_emit_snapshot_blocks(ptr @.str1409)
   %t14 = load i32, ptr %t11
   %t15 = icmp ne i32 %t14, 0
   br i1 %t15, label %then3, label %ifend5
 then3:
-  call void @fn_emit(ptr @.str1369)
+  call void @fn_emit(ptr @.str1410)
   br label %ifend5
 ifend5:
-  call void @fn_emit(ptr @.str1370)
+  call void @fn_emit(ptr @.str1411)
   br label %ret
 ret:
   ret void
@@ -18608,7 +19204,7 @@ entry:
   %t3 = load ptr, ptr %t2
   store ptr %t3, ptr %t4
   %t5 = load ptr, ptr %t4
-  %t6 = call i32 @fn_streq(ptr %t5, ptr @.str1371)
+  %t6 = call i32 @fn_streq(ptr %t5, ptr @.str1412)
   %t7 = icmp ne i32 %t6, 0
   br i1 %t7, label %then0, label %ifend2
 then0:
@@ -18616,7 +19212,7 @@ then0:
   br label %ret
 ifend2:
   %t8 = load ptr, ptr %t4
-  %t9 = call i32 @fn_streq(ptr %t8, ptr @.str1372)
+  %t9 = call i32 @fn_streq(ptr %t8, ptr @.str1413)
   %t10 = icmp ne i32 %t9, 0
   br i1 %t10, label %then3, label %ifend5
 then3:
@@ -18624,7 +19220,7 @@ then3:
   br label %ret
 ifend5:
   %t11 = load ptr, ptr %t4
-  %t12 = call i32 @fn_streq(ptr %t11, ptr @.str1373)
+  %t12 = call i32 @fn_streq(ptr %t11, ptr @.str1414)
   %t13 = icmp ne i32 %t12, 0
   br i1 %t13, label %then6, label %ifend8
 then6:
@@ -18632,7 +19228,7 @@ then6:
   br label %ret
 ifend8:
   %t14 = load ptr, ptr %t4
-  %t15 = call i32 @fn_streq(ptr %t14, ptr @.str1374)
+  %t15 = call i32 @fn_streq(ptr %t14, ptr @.str1415)
   %t16 = icmp ne i32 %t15, 0
   br i1 %t16, label %then9, label %ifend11
 then9:
@@ -18640,7 +19236,7 @@ then9:
   br label %ret
 ifend11:
   %t17 = load ptr, ptr %t4
-  %t18 = call i32 @fn_streq(ptr %t17, ptr @.str1375)
+  %t18 = call i32 @fn_streq(ptr %t17, ptr @.str1416)
   %t19 = icmp ne i32 %t18, 0
   br i1 %t19, label %then12, label %ifend14
 then12:
@@ -18648,7 +19244,7 @@ then12:
   br label %ret
 ifend14:
   %t20 = load ptr, ptr %t4
-  %t21 = call i32 @fn_streq(ptr %t20, ptr @.str1376)
+  %t21 = call i32 @fn_streq(ptr %t20, ptr @.str1417)
   %t22 = icmp ne i32 %t21, 0
   br i1 %t22, label %then15, label %ifend17
 then15:
@@ -18656,7 +19252,7 @@ then15:
   br label %ret
 ifend17:
   %t23 = load ptr, ptr %t4
-  %t24 = call i32 @fn_streq(ptr %t23, ptr @.str1377)
+  %t24 = call i32 @fn_streq(ptr %t23, ptr @.str1418)
   %t25 = icmp ne i32 %t24, 0
   br i1 %t25, label %then18, label %ifend20
 then18:
@@ -19154,7 +19750,7 @@ wbody12:
   %t75 = load i32, ptr %t9
   %t76 = getelementptr inbounds ptr, ptr %t74, i32 %t75
   %t77 = load ptr, ptr %t76
-  %t78 = call ptr @fn_ui_prop(ptr %t77, ptr @.str1378)
+  %t78 = call ptr @fn_ui_prop(ptr %t77, ptr @.str1419)
   store ptr %t78, ptr %t79
   %t80 = load ptr, ptr %t79
   %t81 = icmp eq ptr %t80, null
@@ -19284,18 +19880,18 @@ entry:
   store i32 %arg_idx, ptr %t0
   store i32 %arg_key, ptr %t1
   store ptr %arg_val, ptr %t2
-  call void @fn_emit(ptr @.str1379)
+  call void @fn_emit(ptr @.str1420)
   %t3 = load i32, ptr %t0
   %t4 = call ptr @fn_itoa(i32 %t3)
   call void @fn_emit(ptr %t4)
-  call void @fn_emit(ptr @.str1380)
+  call void @fn_emit(ptr @.str1421)
   %t5 = load i32, ptr %t1
   %t6 = call ptr @fn_itoa(i32 %t5)
   call void @fn_emit(ptr %t6)
-  call void @fn_emit(ptr @.str1381)
+  call void @fn_emit(ptr @.str1422)
   %t7 = load ptr, ptr %t2
   call void @fn_emit(ptr %t7)
-  call void @fn_emit(ptr @.str1382)
+  call void @fn_emit(ptr @.str1423)
   br label %ret
 ret:
   ret void
@@ -19307,7 +19903,7 @@ entry:
   %t0 = alloca ptr
   store ptr %arg_k, ptr %t0
   %t1 = load ptr, ptr %t0
-  %t2 = call i32 @fn_streq(ptr %t1, ptr @.str1383)
+  %t2 = call i32 @fn_streq(ptr %t1, ptr @.str1424)
   %t3 = icmp ne i32 %t2, 0
   br i1 %t3, label %then0, label %ifend2
 then0:
@@ -19315,7 +19911,7 @@ then0:
   br label %ret
 ifend2:
   %t4 = load ptr, ptr %t0
-  %t5 = call i32 @fn_streq(ptr %t4, ptr @.str1384)
+  %t5 = call i32 @fn_streq(ptr %t4, ptr @.str1425)
   %t6 = icmp ne i32 %t5, 0
   br i1 %t6, label %then3, label %ifend5
 then3:
@@ -19323,7 +19919,7 @@ then3:
   br label %ret
 ifend5:
   %t7 = load ptr, ptr %t0
-  %t8 = call i32 @fn_streq(ptr %t7, ptr @.str1385)
+  %t8 = call i32 @fn_streq(ptr %t7, ptr @.str1426)
   %t9 = icmp ne i32 %t8, 0
   br i1 %t9, label %then6, label %ifend8
 then6:
@@ -19331,7 +19927,7 @@ then6:
   br label %ret
 ifend8:
   %t10 = load ptr, ptr %t0
-  %t11 = call i32 @fn_streq(ptr %t10, ptr @.str1386)
+  %t11 = call i32 @fn_streq(ptr %t10, ptr @.str1427)
   %t12 = icmp ne i32 %t11, 0
   br i1 %t12, label %then9, label %ifend11
 then9:
@@ -19339,7 +19935,7 @@ then9:
   br label %ret
 ifend11:
   %t13 = load ptr, ptr %t0
-  %t14 = call i32 @fn_streq(ptr %t13, ptr @.str1387)
+  %t14 = call i32 @fn_streq(ptr %t13, ptr @.str1428)
   %t15 = icmp ne i32 %t14, 0
   br i1 %t15, label %then12, label %ifend14
 then12:
@@ -19347,7 +19943,7 @@ then12:
   br label %ret
 ifend14:
   %t16 = load ptr, ptr %t0
-  %t17 = call i32 @fn_streq(ptr %t16, ptr @.str1388)
+  %t17 = call i32 @fn_streq(ptr %t16, ptr @.str1429)
   %t18 = icmp ne i32 %t17, 0
   br i1 %t18, label %then15, label %ifend17
 then15:
@@ -19355,7 +19951,7 @@ then15:
   br label %ret
 ifend17:
   %t19 = load ptr, ptr %t0
-  %t20 = call i32 @fn_streq(ptr %t19, ptr @.str1389)
+  %t20 = call i32 @fn_streq(ptr %t19, ptr @.str1430)
   %t21 = icmp ne i32 %t20, 0
   br i1 %t21, label %then18, label %ifend20
 then18:
@@ -19363,7 +19959,7 @@ then18:
   br label %ret
 ifend20:
   %t22 = load ptr, ptr %t0
-  %t23 = call i32 @fn_streq(ptr %t22, ptr @.str1390)
+  %t23 = call i32 @fn_streq(ptr %t22, ptr @.str1431)
   %t24 = icmp ne i32 %t23, 0
   br i1 %t24, label %then21, label %ifend23
 then21:
@@ -19371,7 +19967,7 @@ then21:
   br label %ret
 ifend23:
   %t25 = load ptr, ptr %t0
-  %t26 = call i32 @fn_streq(ptr %t25, ptr @.str1391)
+  %t26 = call i32 @fn_streq(ptr %t25, ptr @.str1432)
   %t27 = icmp ne i32 %t26, 0
   br i1 %t27, label %then24, label %ifend26
 then24:
@@ -19379,7 +19975,7 @@ then24:
   br label %ret
 ifend26:
   %t28 = load ptr, ptr %t0
-  %t29 = call i32 @fn_streq(ptr %t28, ptr @.str1392)
+  %t29 = call i32 @fn_streq(ptr %t28, ptr @.str1433)
   %t30 = icmp ne i32 %t29, 0
   br i1 %t30, label %then27, label %ifend29
 then27:
@@ -19387,7 +19983,7 @@ then27:
   br label %ret
 ifend29:
   %t31 = load ptr, ptr %t0
-  %t32 = call i32 @fn_streq(ptr %t31, ptr @.str1393)
+  %t32 = call i32 @fn_streq(ptr %t31, ptr @.str1434)
   %t33 = icmp ne i32 %t32, 0
   br i1 %t33, label %then30, label %ifend32
 then30:
@@ -19395,7 +19991,7 @@ then30:
   br label %ret
 ifend32:
   %t34 = load ptr, ptr %t0
-  %t35 = call i32 @fn_streq(ptr %t34, ptr @.str1394)
+  %t35 = call i32 @fn_streq(ptr %t34, ptr @.str1435)
   %t36 = icmp ne i32 %t35, 0
   br i1 %t36, label %then33, label %ifend35
 then33:
@@ -19403,7 +19999,7 @@ then33:
   br label %ret
 ifend35:
   %t37 = load ptr, ptr %t0
-  %t38 = call i32 @fn_streq(ptr %t37, ptr @.str1395)
+  %t38 = call i32 @fn_streq(ptr %t37, ptr @.str1436)
   %t39 = icmp ne i32 %t38, 0
   br i1 %t39, label %then36, label %ifend38
 then36:
@@ -19411,7 +20007,7 @@ then36:
   br label %ret
 ifend38:
   %t40 = load ptr, ptr %t0
-  %t41 = call i32 @fn_streq(ptr %t40, ptr @.str1396)
+  %t41 = call i32 @fn_streq(ptr %t40, ptr @.str1437)
   %t42 = icmp ne i32 %t41, 0
   br i1 %t42, label %then39, label %ifend41
 then39:
@@ -19460,13 +20056,13 @@ entry:
   store ptr %t3, ptr %t4
   %t5 = load ptr, ptr %t1
   store ptr %t5, ptr @g_code
-  call void @fn_emit(ptr @.str1397)
+  call void @fn_emit(ptr @.str1438)
   %t6 = load ptr, ptr @g_uiw
   %t7 = getelementptr inbounds %LSlice, ptr %t6, i32 0, i32 1
   %t8 = load i32, ptr %t7
   %t9 = call ptr @fn_itoa(i32 %t8)
   call void @fn_emit(ptr %t9)
-  call void @fn_emit(ptr @.str1398)
+  call void @fn_emit(ptr @.str1439)
   store i32 0, ptr %t10
   br label %wcond0
 wcond0:
@@ -19509,7 +20105,7 @@ wbody1:
   br i1 %t42, label %then3, label %ifend5
 then3:
   %t43 = load i32, ptr %t10
-  call void @fn_ll_ui_set(i32 %t43, i32 17, ptr @.str1399)
+  call void @fn_ll_ui_set(i32 %t43, i32 17, ptr @.str1440)
   br label %ifend5
 ifend5:
   store i32 0, ptr %t44
@@ -19548,7 +20144,7 @@ wbody7:
   %t73 = load ptr, ptr %t72
   store ptr %t73, ptr %t74
   %t75 = load ptr, ptr %t70
-  %t76 = call i32 @fn_streq(ptr %t75, ptr @.str1400)
+  %t76 = call i32 @fn_streq(ptr %t75, ptr @.str1441)
   %t77 = icmp ne i32 %t76, 0
   br i1 %t77, label %then9, label %ifend11
 then9:
@@ -19558,34 +20154,34 @@ then9:
   br label %wcond6
 ifend11:
   %t80 = load ptr, ptr %t70
-  %t81 = call i32 @fn_streq(ptr %t80, ptr @.str1401)
+  %t81 = call i32 @fn_streq(ptr %t80, ptr @.str1442)
   %t82 = icmp ne i32 %t81, 0
   br i1 %t82, label %then12, label %else13
 then12:
   %t83 = load ptr, ptr %t74
   %t84 = call ptr @fn_emit_expr(ptr %t83)
   store ptr %t84, ptr %t85
-  call void @fn_emit(ptr @.str1402)
+  call void @fn_emit(ptr @.str1443)
   %t86 = load i32, ptr %t10
   %t87 = call ptr @fn_itoa(i32 %t86)
   call void @fn_emit(ptr %t87)
-  call void @fn_emit(ptr @.str1403)
+  call void @fn_emit(ptr @.str1444)
   %t88 = load ptr, ptr %t85
   %t89 = getelementptr inbounds %Str_Val, ptr %t88, i32 0, i32 0
   %t90 = load ptr, ptr %t89
   call void @fn_emit(ptr %t90)
-  call void @fn_emit(ptr @.str1404)
+  call void @fn_emit(ptr @.str1445)
   br label %ifend14
 else13:
   %t92 = load ptr, ptr %t70
-  %t93 = call i32 @fn_streq(ptr %t92, ptr @.str1405)
+  %t93 = call i32 @fn_streq(ptr %t92, ptr @.str1446)
   %t94 = icmp ne i32 %t93, 0
   %t95 = zext i1 %t94 to i32
   store i32 %t95, ptr %t91
   br i1 %t94, label %scend16, label %sc15
 sc15:
   %t96 = load ptr, ptr %t70
-  %t97 = call i32 @fn_streq(ptr %t96, ptr @.str1406)
+  %t97 = call i32 @fn_streq(ptr %t96, ptr @.str1447)
   %t98 = icmp ne i32 %t97, 0
   %t99 = zext i1 %t98 to i32
   store i32 %t99, ptr %t91
@@ -19601,12 +20197,12 @@ then17:
   %t105 = load ptr, ptr %t104
   %t106 = getelementptr inbounds %Str_Val, ptr %t105, i32 0, i32 0
   %t107 = load ptr, ptr %t106
-  %t108 = call ptr @fn_sconcat(ptr %t107, ptr @.str1408)
-  %t109 = call ptr @fn_sconcat(ptr @.str1407, ptr %t108)
+  %t108 = call ptr @fn_sconcat(ptr %t107, ptr @.str1449)
+  %t109 = call ptr @fn_sconcat(ptr @.str1448, ptr %t108)
   %t110 = call ptr @fn_emit_bind(ptr %t109)
   store ptr %t110, ptr %t111
   %t112 = load ptr, ptr %t70
-  %t113 = call i32 @fn_streq(ptr %t112, ptr @.str1409)
+  %t113 = call i32 @fn_streq(ptr %t112, ptr @.str1450)
   %t114 = icmp ne i32 %t113, 0
   br i1 %t114, label %then20, label %else21
 then20:
@@ -19623,7 +20219,7 @@ ifend22:
   br label %ifend19
 else18:
   %t119 = load ptr, ptr %t70
-  %t120 = call i32 @fn_streq(ptr %t119, ptr @.str1410)
+  %t120 = call i32 @fn_streq(ptr %t119, ptr @.str1451)
   %t121 = icmp ne i32 %t120, 0
   br i1 %t121, label %then23, label %else24
 then23:
@@ -19639,7 +20235,7 @@ then26:
   %t129 = load ptr, ptr %t74
   %t130 = getelementptr inbounds %Str_Node, ptr %t129, i32 0, i32 1
   %t131 = load ptr, ptr %t130
-  %t132 = call i32 @fn_streq(ptr %t131, ptr @.str1411)
+  %t132 = call i32 @fn_streq(ptr %t131, ptr @.str1452)
   %t133 = icmp ne i32 %t132, 0
   br i1 %t133, label %then29, label %ifend31
 then29:
@@ -19649,7 +20245,7 @@ ifend31:
   %t134 = load ptr, ptr %t74
   %t135 = getelementptr inbounds %Str_Node, ptr %t134, i32 0, i32 1
   %t136 = load ptr, ptr %t135
-  %t137 = call i32 @fn_streq(ptr %t136, ptr @.str1412)
+  %t137 = call i32 @fn_streq(ptr %t136, ptr @.str1453)
   %t138 = icmp ne i32 %t137, 0
   br i1 %t138, label %then32, label %ifend34
 then32:
@@ -19713,7 +20309,7 @@ scend39:
   br i1 %t176, label %then40, label %ifend42
 then40:
   %t177 = load i32, ptr %t10
-  call void @fn_ll_ui_set(i32 %t177, i32 6, ptr @.str1413)
+  call void @fn_ll_ui_set(i32 %t177, i32 6, ptr @.str1454)
   br label %ifend42
 ifend42:
   br label %ifend37
@@ -19736,14 +20332,14 @@ wend8:
 wend2:
   %t182 = load ptr, ptr %t4
   store ptr %t182, ptr @g_code
-  call void @fn_emit(ptr @.str1414)
+  call void @fn_emit(ptr @.str1455)
   %t183 = load ptr, ptr @g_falloc
   %t184 = call ptr @fn_buf_str(ptr %t183)
   call void @fn_emit(ptr %t184)
   %t185 = load ptr, ptr %t1
   %t186 = call ptr @fn_buf_str(ptr %t185)
   call void @fn_emit(ptr %t186)
-  call void @fn_emit(ptr @.str1415)
+  call void @fn_emit(ptr @.str1456)
   br label %ret
 ret:
   ret void
@@ -19774,7 +20370,7 @@ wbody1:
   %t14 = icmp ne i32 %t13, 0
   br i1 %t14, label %then3, label %ifend5
 then3:
-  call void @fn_emit(ptr @.str1416)
+  call void @fn_emit(ptr @.str1457)
   br label %ifend5
 ifend5:
   %t15 = load ptr, ptr %t0
@@ -19789,7 +20385,7 @@ ifend5:
   %t24 = load ptr, ptr %t23
   %t25 = call ptr @fn_llty(ptr %t24)
   call void @fn_emit(ptr %t25)
-  call void @fn_emit(ptr @.str1417)
+  call void @fn_emit(ptr @.str1458)
   %t26 = load ptr, ptr %t0
   %t27 = getelementptr inbounds %Str_Node, ptr %t26, i32 0, i32 7
   %t28 = load ptr, ptr %t27
@@ -19843,19 +20439,19 @@ entry:
   %t11 = call ptr @fn_llty(ptr %t10)
   store ptr %t11, ptr %t12
   %t13 = load ptr, ptr %t12
-  %t14 = call i32 @fn_streq(ptr %t13, ptr @.str1418)
+  %t14 = call i32 @fn_streq(ptr %t13, ptr @.str1459)
   %t15 = icmp eq i32 %t14, 0
   %t16 = zext i1 %t15 to i32
   %t17 = icmp ne i32 %t16, 0
   br i1 %t17, label %then0, label %ifend2
 then0:
   %t18 = load ptr, ptr @g_falloc
-  call void @fn_buf_puts(ptr %t18, ptr @.str1419)
+  call void @fn_buf_puts(ptr %t18, ptr @.str1460)
   %t19 = load ptr, ptr @g_falloc
   %t20 = load ptr, ptr %t12
   call void @fn_buf_puts(ptr %t19, ptr %t20)
   %t21 = load ptr, ptr @g_falloc
-  call void @fn_buf_puts(ptr %t21, ptr @.str1420)
+  call void @fn_buf_puts(ptr %t21, ptr @.str1461)
   br label %ifend2
 ifend2:
   store i32 0, ptr %t22
@@ -19887,21 +20483,21 @@ wbody4:
   %t44 = call ptr @fn_llty(ptr %t43)
   %t45 = call ptr @fn_emit_alloca(ptr %t44)
   store ptr %t45, ptr %t46
-  call void @fn_emit(ptr @.str1421)
+  call void @fn_emit(ptr @.str1462)
   %t47 = load ptr, ptr %t40
   %t48 = getelementptr inbounds %Str_Node, ptr %t47, i32 0, i32 3
   %t49 = load ptr, ptr %t48
   %t50 = call ptr @fn_llty(ptr %t49)
   call void @fn_emit(ptr %t50)
-  call void @fn_emit(ptr @.str1422)
+  call void @fn_emit(ptr @.str1463)
   %t51 = load ptr, ptr %t40
   %t52 = getelementptr inbounds %Str_Node, ptr %t51, i32 0, i32 1
   %t53 = load ptr, ptr %t52
   call void @fn_emit(ptr %t53)
-  call void @fn_emit(ptr @.str1423)
+  call void @fn_emit(ptr @.str1464)
   %t54 = load ptr, ptr %t46
   call void @fn_emit(ptr %t54)
-  call void @fn_emit(ptr @.str1424)
+  call void @fn_emit(ptr @.str1465)
   %t55 = load ptr, ptr %t40
   %t56 = getelementptr inbounds %Str_Node, ptr %t55, i32 0, i32 1
   %t57 = load ptr, ptr %t56
@@ -19925,53 +20521,53 @@ wend5:
   %t70 = icmp ne i32 %t69, 0
   br i1 %t70, label %then6, label %ifend8
 then6:
-  call void @fn_emit(ptr @.str1425)
+  call void @fn_emit(ptr @.str1466)
   br label %ifend8
 ifend8:
-  call void @fn_emit(ptr @.str1426)
+  call void @fn_emit(ptr @.str1467)
   %t71 = load ptr, ptr %t12
-  %t72 = call i32 @fn_streq(ptr %t71, ptr @.str1427)
+  %t72 = call i32 @fn_streq(ptr %t71, ptr @.str1468)
   %t73 = icmp ne i32 %t72, 0
   br i1 %t73, label %then9, label %else10
 then9:
-  call void @fn_emit(ptr @.str1428)
+  call void @fn_emit(ptr @.str1469)
   br label %ifend11
 else10:
   %t74 = load ptr, ptr %t12
-  %t75 = call ptr @fn_sconcat(ptr %t74, ptr @.str1430)
-  %t76 = call ptr @fn_sconcat(ptr @.str1429, ptr %t75)
+  %t75 = call ptr @fn_sconcat(ptr %t74, ptr @.str1471)
+  %t76 = call ptr @fn_sconcat(ptr @.str1470, ptr %t75)
   %t77 = call ptr @fn_emit_bind(ptr %t76)
   store ptr %t77, ptr %t78
-  call void @fn_emit(ptr @.str1431)
+  call void @fn_emit(ptr @.str1472)
   %t79 = load ptr, ptr %t12
   call void @fn_emit(ptr %t79)
-  call void @fn_emit(ptr @.str1432)
+  call void @fn_emit(ptr @.str1473)
   %t80 = load ptr, ptr %t78
   call void @fn_emit(ptr %t80)
-  call void @fn_emit(ptr @.str1433)
+  call void @fn_emit(ptr @.str1474)
   br label %ifend11
 ifend11:
   %t81 = load ptr, ptr %t8
   store ptr %t81, ptr @g_code
-  call void @fn_emit(ptr @.str1434)
+  call void @fn_emit(ptr @.str1475)
   %t82 = load ptr, ptr %t12
   call void @fn_emit(ptr %t82)
-  call void @fn_emit(ptr @.str1435)
+  call void @fn_emit(ptr @.str1476)
   %t83 = load ptr, ptr %t0
   %t84 = getelementptr inbounds %Str_Node, ptr %t83, i32 0, i32 1
   %t85 = load ptr, ptr %t84
   call void @fn_emit(ptr %t85)
-  call void @fn_emit(ptr @.str1436)
+  call void @fn_emit(ptr @.str1477)
   %t86 = load ptr, ptr %t0
   call void @fn_emit_params_sig(ptr %t86)
-  call void @fn_emit(ptr @.str1437)
+  call void @fn_emit(ptr @.str1478)
   %t87 = load ptr, ptr @g_falloc
   %t88 = call ptr @fn_buf_str(ptr %t87)
   call void @fn_emit(ptr %t88)
   %t89 = load ptr, ptr %t5
   %t90 = call ptr @fn_buf_str(ptr %t89)
   call void @fn_emit(ptr %t90)
-  call void @fn_emit(ptr @.str1438)
+  call void @fn_emit(ptr @.str1479)
   br label %ret
 ret:
   ret void
@@ -19989,7 +20585,7 @@ entry:
   store i32 0, ptr @g_g_term
   call void @fn_loc_reset()
   store i32 0, ptr @g_nloop
-  store ptr @.str1439, ptr @g_ret_ty
+  store ptr @.str1480, ptr @g_ret_ty
   %t1 = call ptr @fn_buf_new()
   store ptr %t1, ptr %t2
   %t3 = call ptr @fn_buf_new()
@@ -19999,10 +20595,10 @@ entry:
   %t6 = load ptr, ptr %t2
   store ptr %t6, ptr @g_code
   %t7 = load ptr, ptr @g_falloc
-  call void @fn_buf_puts(ptr %t7, ptr @.str1440)
-  call void @fn_emit(ptr @.str1441)
-  call void @fn_emit(ptr @.str1442)
-  call void @fn_emit(ptr @.str1443)
+  call void @fn_buf_puts(ptr %t7, ptr @.str1481)
+  call void @fn_emit(ptr @.str1482)
+  call void @fn_emit(ptr @.str1483)
+  call void @fn_emit(ptr @.str1484)
   %t8 = load ptr, ptr %t0
   %t9 = getelementptr inbounds %Str_Node, ptr %t8, i32 0, i32 4
   %t10 = load ptr, ptr %t9
@@ -20013,26 +20609,26 @@ entry:
   %t14 = icmp ne i32 %t13, 0
   br i1 %t14, label %then0, label %ifend2
 then0:
-  call void @fn_emit(ptr @.str1444)
+  call void @fn_emit(ptr @.str1485)
   br label %ifend2
 ifend2:
-  call void @fn_emit(ptr @.str1445)
-  %t15 = call ptr @fn_emit_bind(ptr @.str1446)
+  call void @fn_emit(ptr @.str1486)
+  %t15 = call ptr @fn_emit_bind(ptr @.str1487)
   store ptr %t15, ptr %t16
-  call void @fn_emit(ptr @.str1447)
+  call void @fn_emit(ptr @.str1488)
   %t17 = load ptr, ptr %t16
   call void @fn_emit(ptr %t17)
-  call void @fn_emit(ptr @.str1448)
+  call void @fn_emit(ptr @.str1489)
   %t18 = load ptr, ptr %t5
   store ptr %t18, ptr @g_code
-  call void @fn_emit(ptr @.str1449)
+  call void @fn_emit(ptr @.str1490)
   %t19 = load ptr, ptr @g_falloc
   %t20 = call ptr @fn_buf_str(ptr %t19)
   call void @fn_emit(ptr %t20)
   %t21 = load ptr, ptr %t2
   %t22 = call ptr @fn_buf_str(ptr %t21)
   call void @fn_emit(ptr %t22)
-  call void @fn_emit(ptr @.str1450)
+  call void @fn_emit(ptr @.str1491)
   br label %ret
 ret:
   ret void
@@ -20258,7 +20854,7 @@ then0:
   br label %ret
 ifend2:
   %t13 = load ptr, ptr %t0
-  %t14 = call ptr @fopen(ptr %t13, ptr @.str1451)
+  %t14 = call ptr @fopen(ptr %t13, ptr @.str1492)
   store ptr %t14, ptr %t15
   %t16 = load ptr, ptr %t15
   %t17 = icmp eq ptr %t16, null
@@ -20367,7 +20963,7 @@ then0:
   %t9 = load i32, ptr %t3
   %t10 = sub i32 %t9, 6
   %t11 = call ptr @fn_substr(ptr %t8, i32 %t10, i32 6)
-  %t12 = call i32 @fn_streq(ptr %t11, ptr @.str1452)
+  %t12 = call i32 @fn_streq(ptr %t11, ptr @.str1493)
   %t13 = icmp ne i32 %t12, 0
   br i1 %t13, label %then3, label %ifend5
 then3:
@@ -20452,7 +21048,7 @@ then3:
   br label %ret
 ifend5:
   %t19 = load ptr, ptr %t0
-  %t20 = call ptr @fn_sconcat(ptr %t19, ptr @.str1453)
+  %t20 = call ptr @fn_sconcat(ptr %t19, ptr @.str1494)
   store ptr %t20, ptr %retval
   br label %ret
 ret:
@@ -20517,7 +21113,7 @@ entry:
   %t8 = getelementptr ptr, ptr %t7, i32 0
   %t9 = load ptr, ptr %t8
   %t10 = call ptr @fn_base_name(ptr %t9)
-  %t11 = call i32 @fn_streq(ptr %t10, ptr @.str1454)
+  %t11 = call i32 @fn_streq(ptr %t10, ptr @.str1495)
   %t12 = icmp ne i32 %t11, 0
   br i1 %t12, label %then0, label %ifend2
 then0:
@@ -20540,7 +21136,7 @@ wbody4:
   %t22 = load ptr, ptr %t21
   store ptr %t22, ptr %t23
   %t24 = load ptr, ptr %t23
-  %t25 = call i32 @fn_streq(ptr %t24, ptr @.str1455)
+  %t25 = call i32 @fn_streq(ptr %t24, ptr @.str1496)
   %t26 = icmp ne i32 %t25, 0
   br i1 %t26, label %then6, label %else7
 then6:
@@ -20548,7 +21144,7 @@ then6:
   br label %ifend8
 else7:
   %t27 = load ptr, ptr %t23
-  %t28 = call i32 @fn_streq(ptr %t27, ptr @.str1456)
+  %t28 = call i32 @fn_streq(ptr %t27, ptr @.str1497)
   %t29 = icmp ne i32 %t28, 0
   br i1 %t29, label %then9, label %else10
 then9:
@@ -20556,7 +21152,7 @@ then9:
   br label %ifend11
 else10:
   %t30 = load ptr, ptr %t23
-  %t31 = call i32 @fn_streq(ptr %t30, ptr @.str1457)
+  %t31 = call i32 @fn_streq(ptr %t30, ptr @.str1498)
   %t32 = icmp ne i32 %t31, 0
   br i1 %t32, label %then12, label %else13
 then12:
@@ -20564,7 +21160,7 @@ then12:
   br label %ifend14
 else13:
   %t33 = load ptr, ptr %t23
-  %t34 = call i32 @fn_streq(ptr %t33, ptr @.str1458)
+  %t34 = call i32 @fn_streq(ptr %t33, ptr @.str1499)
   %t35 = icmp ne i32 %t34, 0
   br i1 %t35, label %then15, label %else16
 then15:
@@ -20572,7 +21168,7 @@ then15:
   br label %ifend17
 else16:
   %t36 = load ptr, ptr %t23
-  %t37 = call i32 @fn_streq(ptr %t36, ptr @.str1459)
+  %t37 = call i32 @fn_streq(ptr %t36, ptr @.str1500)
   %t38 = icmp ne i32 %t37, 0
   br i1 %t38, label %then18, label %else19
 then18:
@@ -20580,7 +21176,7 @@ then18:
   br label %ifend20
 else19:
   %t39 = load ptr, ptr %t23
-  %t40 = call i32 @fn_streq(ptr %t39, ptr @.str1460)
+  %t40 = call i32 @fn_streq(ptr %t39, ptr @.str1501)
   %t41 = icmp ne i32 %t40, 0
   br i1 %t41, label %then21, label %else22
 then21:
@@ -20588,7 +21184,7 @@ then21:
   br label %ifend23
 else22:
   %t42 = load ptr, ptr %t23
-  %t43 = call i32 @fn_streq(ptr %t42, ptr @.str1461)
+  %t43 = call i32 @fn_streq(ptr %t42, ptr @.str1502)
   %t44 = icmp ne i32 %t43, 0
   br i1 %t44, label %then24, label %else25
 then24:
@@ -20621,8 +21217,8 @@ else25:
   br i1 %t62, label %then30, label %else31
 then30:
   %t63 = load ptr, ptr %t23
-  %t64 = call ptr @fn_sconcat(ptr %t63, ptr @.str1463)
-  %t65 = call ptr @fn_sconcat(ptr @.str1462, ptr %t64)
+  %t64 = call ptr @fn_sconcat(ptr %t63, ptr @.str1504)
+  %t65 = call ptr @fn_sconcat(ptr @.str1503, ptr %t64)
   store ptr %t65, ptr %t66
   %t67 = load ptr, ptr @__stderrp
   %t68 = load ptr, ptr %t66
@@ -20662,7 +21258,7 @@ wend5:
   %t80 = icmp ne i32 %t79, 0
   br i1 %t80, label %then33, label %ifend35
 then33:
-  call void @fn_die(ptr @.str1464)
+  call void @fn_die(ptr @.str1505)
   br label %ifend35
 ifend35:
   %t81 = load ptr, ptr %t0
@@ -20674,7 +21270,7 @@ ifend35:
   %t87 = icmp ne i32 %t86, 0
   br i1 %t87, label %then36, label %ifend38
 then36:
-  call void @fn_die(ptr @.str1465)
+  call void @fn_die(ptr @.str1506)
   br label %ifend38
 ifend38:
   %t88 = load ptr, ptr %t0
@@ -20784,7 +21380,7 @@ then60:
   %t142 = load ptr, ptr %t0
   %t143 = call ptr @fn_base_name(ptr %t142)
   %t144 = call ptr @fn_strip_ludic(ptr %t143)
-  %t145 = call ptr @fn_sconcat(ptr @.str1466, ptr %t144)
+  %t145 = call ptr @fn_sconcat(ptr @.str1507, ptr %t144)
   store ptr %t145, ptr %t1
   br label %ifend62
 ifend62:
@@ -20799,12 +21395,12 @@ ifend62:
   br i1 %t153, label %then63, label %ifend65
 then63:
   %t154 = load ptr, ptr %t148
-  %t155 = call ptr @fn_sconcat(ptr @.str1467, ptr %t154)
+  %t155 = call ptr @fn_sconcat(ptr @.str1508, ptr %t154)
   %t156 = call i32 @system(ptr %t155)
   br label %ifend65
 ifend65:
   %t157 = load ptr, ptr %t1
-  %t158 = call ptr @fn_sconcat(ptr %t157, ptr @.str1468)
+  %t158 = call ptr @fn_sconcat(ptr %t157, ptr @.str1509)
   store ptr %t158, ptr %t159
   %t160 = load ptr, ptr %t159
   %t161 = call i32 @fn_ir_flush(ptr %t160)
@@ -20813,21 +21409,21 @@ ifend65:
   %t164 = icmp ne i32 %t163, 0
   br i1 %t164, label %then66, label %ifend68
 then66:
-  call void @fn_die(ptr @.str1469)
+  call void @fn_die(ptr @.str1510)
   br label %ifend68
 ifend68:
-  %t165 = call ptr @fn_getenv_or(ptr @.str1470, ptr @.str1471)
+  %t165 = call ptr @fn_getenv_or(ptr @.str1511, ptr @.str1512)
   store ptr %t165, ptr %t166
   %t167 = load ptr, ptr @L_argv
   %t168 = getelementptr ptr, ptr %t167, i32 0
   %t169 = load ptr, ptr %t168
   %t170 = call ptr @fn_dir_of(ptr %t169)
-  %t171 = call ptr @fn_getenv_or(ptr @.str1472, ptr %t170)
+  %t171 = call ptr @fn_getenv_or(ptr @.str1513, ptr %t170)
   %t172 = call ptr @fn_ensure_slash(ptr %t171)
   store ptr %t172, ptr %t173
   %t174 = load ptr, ptr %t166
   %t175 = load ptr, ptr %t159
-  %t176 = call ptr @fn_sconcat(ptr @.str1473, ptr %t175)
+  %t176 = call ptr @fn_sconcat(ptr @.str1514, ptr %t175)
   %t177 = call ptr @fn_sconcat(ptr %t174, ptr %t176)
   store ptr %t177, ptr %t178
   %t179 = load i32, ptr @g_g_windowed
@@ -20835,19 +21431,19 @@ ifend68:
   br i1 %t180, label %then69, label %ifend71
 then69:
   %t181 = load ptr, ptr %t173
-  %t182 = call ptr @fn_path_join(ptr %t181, ptr @.str1474)
+  %t182 = call ptr @fn_path_join(ptr %t181, ptr @.str1515)
   store ptr %t182, ptr %t183
   %t184 = load ptr, ptr %t178
   %t185 = load ptr, ptr %t183
-  %t186 = call ptr @fn_sconcat(ptr %t185, ptr @.str1476)
-  %t187 = call ptr @fn_sconcat(ptr @.str1475, ptr %t186)
+  %t186 = call ptr @fn_sconcat(ptr %t185, ptr @.str1517)
+  %t187 = call ptr @fn_sconcat(ptr @.str1516, ptr %t186)
   %t188 = call ptr @fn_sconcat(ptr %t184, ptr %t187)
   store ptr %t188, ptr %t178
   br label %ifend71
 ifend71:
   %t189 = load ptr, ptr %t178
   %t190 = load ptr, ptr %t1
-  %t191 = call ptr @fn_sconcat(ptr @.str1477, ptr %t190)
+  %t191 = call ptr @fn_sconcat(ptr @.str1518, ptr %t190)
   %t192 = call ptr @fn_sconcat(ptr %t189, ptr %t191)
   store ptr %t192, ptr %t178
   %t193 = load ptr, ptr %t178
@@ -20860,7 +21456,7 @@ ifend71:
   br i1 %t199, label %then72, label %ifend74
 then72:
   %t200 = load ptr, ptr %t159
-  %t201 = call ptr @fn_sconcat(ptr @.str1478, ptr %t200)
+  %t201 = call ptr @fn_sconcat(ptr @.str1519, ptr %t200)
   %t202 = call i32 @system(ptr %t201)
   br label %ifend74
 ifend74:
@@ -20870,7 +21466,7 @@ ifend74:
   %t206 = icmp ne i32 %t205, 0
   br i1 %t206, label %then75, label %ifend77
 then75:
-  call void @fn_die(ptr @.str1479)
+  call void @fn_die(ptr @.str1520)
   br label %ifend77
 ifend77:
   %t207 = load i32, ptr %t6

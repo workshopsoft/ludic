@@ -1,0 +1,28 @@
+# lifecycle.ludic — a game's whole lifecycle as @-hooks. Each fires at one point
+# on the timeline and reduces to ordinary code, so nothing is hidden and the
+# data-oriented model is untouched. Running it prints: 1 700 50 950 2 — one line
+# per hook, in the order the timeline reaches them.
+#
+#   boot ── @OnStart ──▶ spawn ── @OnAttach, @OnSpawn ──▶ … ── @OnDespawn ──▶ quit ── @OnQuit
+program Life {
+  property Health { hp: int = 0, max: int = 100 }
+  property Sprite { id: int = 0 }
+  model Enemy { Health, Sprite }
+
+  # ---- program lifecycle -----------------------------------------------------
+  @OnStart handler Boot { print_int(1) }               # once, at boot
+  @OnQuit  handler Bye  { print_int(2) }               # once, at shutdown
+
+  # ---- property / entity lifecycle -------------------------------------------
+  @OnAttach(Sprite)  handler Load  { print_int(Sprite.id + 700) }   # when a Sprite is attached
+  @OnSpawn(Enemy)    handler Init  { Health.hp = Health.max }        # constructor
+  @OnDespawn(Enemy)  handler Clean { print_int(Health.hp + 900) }    # destructor (dispatched by kind)
+
+  handler Seed phase Start { spawn Enemy { Health { max: 50 } } }
+
+  handler Run phase Render {
+    for (h) in query [Health] { print_int(h.hp) }      # 50 — Init set hp to max
+    for (e) in query [Health] { despawn self() }        # Clean fires: 50 + 900 = 950
+    quit()
+  }
+}

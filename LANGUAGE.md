@@ -295,24 +295,43 @@ property Velocity {
 }
 ```
 
-**`@OnSpawn` — a constructor.** `@OnSpawn(Model)` on a handler runs its body every
-time a `Model` is spawned, with the model's properties bound by name — a place to
-initialize an entity. It's a handler keyed to the spawn, not an observer on the
-data, so the ECS model is untouched:
+**Lifecycle hooks.** A game's timeline has fixed moments, and each is a handler
+annotation. They fire in this order and each reduces to ordinary code, so the
+data stays plain and behaviour stays in handlers:
+
+```
+boot ── @OnStart ─▶ spawn ── @OnAttach(P), @OnSpawn(M) ─▶ … ── @OnDespawn(M) ─▶ quit ── @OnQuit
+```
+
+- **`@OnStart` / `@OnQuit`** — the *program*. `@OnStart` runs once at boot (it is
+  the `Start` phase); `@OnQuit` runs once at shutdown, after the frame loop stops
+  and before the process exits — the place to `save()` or clean up.
+- **`@OnSpawn(Model)` / `@OnDespawn(Model)`** — an *entity*. Both bind the model's
+  properties by name; `@OnSpawn` is a constructor, `@OnDespawn` a destructor.
+  Despawn doesn't statically know an entity's model, so despawn hooks compile to
+  functions dispatched on the entity's kind.
+- **`@OnAttach(Property)`** — a *property*, fired each time that property is
+  attached to an entity (once its fields are seeded), with the property bound by
+  name.
 
 ```ludic
-# doc-check: skip — a spawn hook
-@OnSpawn(Enemy)
-handler InitEnemy { Health.hp = Health.max }     # start every Enemy at full HP
+# doc-check: skip — lifecycle hooks
+@OnStart          handler Boot  { seed(1) }
+@OnSpawn(Enemy)   handler Init  { Health.hp = Health.max }     # constructor
+@OnDespawn(Enemy) handler Clean { drop_loot(Health.hp) }       # destructor
+@OnAttach(Sprite) handler Load  { Sprite.id = image_load("goblin.png") }
+@OnQuit           handler Save  { save() }                     # once, at shutdown
 ```
 
 **`@Handles` — the handlers a program drives.** Written in front of the
 `program`, `@Handles(Move)` names the handlers it uses. It parses and reads as
 documentation; every declared handler still runs (registration is implicit).
 
-See [`examples/annotations.ludic`](examples/annotations.ludic), which uses all
-four. (`@OnDespawn` and change-reactions are future work — despawn doesn't
-statically know an entity's model, and reactions need change-tracking.)
+See [`examples/annotations.ludic`](examples/annotations.ludic) (queries, computed
+fields, one hook) and [`examples/lifecycle.ludic`](examples/lifecycle.ludic) (the
+whole timeline). Still to come: **`@OnDetach`** (needs the same runtime kind
+dispatch as despawn, per property) and **scene** hooks (`@OnEnter`/`@OnExit`),
+which wait on `scene` support landing in the compiler.
 
 ## Structs, arrays and slices
 
