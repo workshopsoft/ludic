@@ -138,7 +138,8 @@ static const LBuiltin LUDIC_BUILTINS[] = {
  {"save","save()","Write a binary snapshot of the whole ECS world."},
  {"load","load() -> bool","Restore the snapshot; false if there is none."},
  {"status","status(s: str)","Set the one-line status message."},
- {"print_int","print_int(i: int)","Print an integer to stdout."},
+ {"print","print(x)","Print a value (int or string) and a newline to stdout."},
+ {"str","str(x) -> str","Convert an int/bool/fixed to text (a string passes through)."},
  {"quit","quit()","Stop the frame loop and exit."},
  {0,0,0}
 };
@@ -149,6 +150,7 @@ static const LBuiltin LUDIC_INTRINSICS[] = {
  {"os_argc","os_argc() -> int","Number of command-line arguments, argv[0] included."},
  {"os_arg","os_arg(i: int) -> str","The i-th command-line argument."},
  {"file_stderr","file_stderr() -> ptr","The standard error stream, for file_write."},
+ {"file_stdout","file_stdout() -> ptr","The standard output stream, for file_write."},
  {"mem_free","mem_free(p: ptr)","Release an allocation."},
  {"mem_copy","mem_copy(dst: ptr, src: ptr, n: int)","memcpy."},
  {"mem_set","mem_set(p: ptr, byte: int, n: int)","memset."},
@@ -171,7 +173,6 @@ static const LBuiltin LUDIC_INTRINSICS[] = {
  {"file_close","file_close(f: ptr)","fclose."},
  {"read_byte","read_byte() -> int","Read one byte from stdin, -1 at EOF."},
  {"write_byte","write_byte(b: int)","Write one byte to stdout."},
- {"print_str","print_str(s: str)","Write a string to stdout."},
  {"str_len","str_len(s: str) -> int","Length of a string in bytes."},
  {"os_exit","os_exit(code: int)","Terminate the process."},
  {"os_time","os_time() -> int","Seconds since the epoch."},

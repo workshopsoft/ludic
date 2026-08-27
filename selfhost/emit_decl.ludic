@@ -94,9 +94,10 @@ fn emit_program() -> void {
 fn ir_flush(path: ptr) -> bool {
   let h = buf_str(head)
   let c = buf_str(code)
-  if (path == null) {
-    print_str(h)
-    print_str(c)
+  if (path == null) {                             # raw IR to stdout (no trailing newline)
+    let out = file_stdout()
+    file_write(out, h, slen(h))
+    file_write(out, c, slen(c))
     return true
   }
   let f = file_open(path, "wb")

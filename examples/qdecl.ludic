@@ -24,13 +24,13 @@ program QueryDecl {
   # property; `on: Foe` adds the {Foe} kind filter.
   @Queries(these: [Battle{hp <= 0 and side == 1}, Pos], on: Foe)
   handler CleanBattle phase LateUpdate {
-    print_int(Pos.x)
+    print(Pos.x)
     despawn self()
   }
 
   @Queries(these: [Battle])
   handler Census phase Render {
-    print_int(Battle.hp)
+    print(Battle.hp)
   }
 
   handler Bye phase Render { quit() }
