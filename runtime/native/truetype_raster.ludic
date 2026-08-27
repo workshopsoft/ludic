@@ -61,7 +61,7 @@ fn tt_raster(id: int, gid: int, px: int) -> ptr {
   ol_ne = 0
   ed_n = 0
   tt_load_outline(id, gid, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0)
-  if ol_n == 0 { return ptr_null() }
+  if ol_n == 0 { return null }
 
   var minx = 999999.0
   var miny = 999999.0
@@ -83,10 +83,10 @@ fn tt_raster(id: int, gid: int, px: int) -> ptr {
   if maxy == fx(flr(maxy)) { y1 = flr(maxy) }
   let W = x1 - x0
   let H = y1 - y0
-  if W <= 0 { return ptr_null() }
-  if H <= 0 { return ptr_null() }
-  if W > 1024 { return ptr_null() }
-  if H > 1024 { return ptr_null() }
+  if W <= 0 { return null }
+  if H <= 0 { return null }
+  if W > 1024 { return null }
+  if H > 1024 { return null }
   gr_w = W
   gr_h = H
   gr_ox = x0
@@ -250,7 +250,7 @@ fn tt_glyph_get(font: int, cp: int, px: int) -> int {
   let s = h
   if peek32(gc_used, s) == 1 {
     let old = peekp(gc_bmp, s)
-    if ptr_is_null(old) == false { mem_free(old) }
+    if (old == null) == false { mem_free(old) }
   }
   let bmp = tt_raster(font, tt_glyph_index(font, cp), px)
   pokep(gc_bmp, s, bmp)
@@ -299,7 +299,7 @@ fn tt_utf8(s: str, at: int) -> int {
 
 # ---- drawing --------------------------------------------------------------
 fn tt_blit(bmp: ptr, w: int, h: int, dx: int, dy: int, colour: int) -> void {
-  if ptr_is_null(bmp) { return }
+  if (bmp == null) { return }
   let cr = ((colour >> 16) & 255)
   let cg = ((colour >> 8) & 255)
   let cb = (colour & 255)

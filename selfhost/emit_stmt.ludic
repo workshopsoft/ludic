@@ -30,7 +30,7 @@ fn emit_assign(st: Node) -> void {
     }
     else {
       let g = find_global(t.s)
-      if ptr_is_null(g) { perr(sconcat("assign to unknown ", t.s)) }
+      if (g == null) { perr(sconcat("assign to unknown ", t.s)) }
       addr = sconcat("@g_", t.s);  ty = g.ty
     }
   } else {
@@ -55,7 +55,7 @@ fn emit_assign(st: Node) -> void {
 fn emit_if(st: Node) -> void {
   let c = emit_expr(st.a)
   let cc = emit_bind(sconcat("icmp ne i32 ", sconcat(c.code, ", 0")))
-  let has_else = not ptr_is_null(st.c)
+  let has_else = (st.c != null)
   let tl = lbl("then");  let el = lbl("else");  let en = lbl("ifend")
   if has_else { emit("  br i1 ");  emit(cc);  emit(", label %");  emit(tl);  emit(", label %");  emit(el);  emit("\n") }
   else { emit("  br i1 ");  emit(cc);  emit(", label %");  emit(tl);  emit(", label %");  emit(en);  emit("\n") }
@@ -112,7 +112,7 @@ fn emit_for(st: Node) -> void {
 }
 
 fn emit_return(st: Node) -> void {
-  if not ptr_is_null(st.a) {
+  if (st.a != null) {
     let v = emit_expr(st.a)
     store_at(llty(ret_ty), v.code, "%retval")
   }
@@ -129,7 +129,7 @@ fn arm_is_default(arm: Node) -> bool {
 fn emit_match(st: Node) -> void {
   let sv = emit_expr(st.a)
   let endl = lbl("mend")
-  var deflt: Node = ptr_null()
+  var deflt: Node = null
   var i = 0
   while i < len(st.kids) {
     let arm = st.kids[i]
@@ -154,7 +154,7 @@ fn emit_match(st: Node) -> void {
     }
     i = i + 1
   }
-  if not ptr_is_null(deflt) { emit_block(deflt.a) }
+  if (deflt != null) { emit_block(deflt.a) }
   if not g_term { emit("  br label %");  emit(endl);  emit("\n") }
   emit(endl);  emit(":\n");  g_term = false
 }
@@ -162,10 +162,10 @@ fn emit_match(st: Node) -> void {
 fn emit_stmt(st: Node) -> void {
   if st.kind == S_LET {
     var ty = st.ty
-    if ptr_is_null(ty) { let v0 = emit_expr(st.a);  ty = v0.ty
+    if (ty == null) { let v0 = emit_expr(st.a);  ty = v0.ty
       let slot = emit_alloca(llty(ty));  store_at(llty(ty), v0.code, slot);  loc_push(st.s, slot, ty);  loc_set_mut(st.ival);  return }
     let slot = emit_alloca(llty(ty))
-    if ptr_is_null(st.a) {
+    if (st.a == null) {
       var z = "0"
       if streq(llty(ty), "ptr") { z = "null" }
       store_at(llty(ty), z, slot)

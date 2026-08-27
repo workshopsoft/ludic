@@ -3,7 +3,7 @@
 
 fn read_file(path: str) -> ptr {
   let f = file_open(path, "rb")
-  if ptr_is_null(f) { return ptr_null() }
+  if (f == null) { return null }
   file_seek(f, 0, 2)
   let n = file_tell(f)
   file_seek(f, 0, 0)

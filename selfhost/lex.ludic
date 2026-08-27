@@ -10,7 +10,7 @@ const TK_NL:  int = 4
 const TK_EOF: int = 5
 const TK_FLOAT: int = 6
 
-property Tok { kind: int = 0, text: ptr = ptr_null(), ival: int = 0, line: int = 0 }
+property Tok { kind: int = 0, text: ptr = null, ival: int = 0, line: int = 0 }
 
 var toks: []Tok
 
@@ -43,7 +43,7 @@ fn lex(src: ptr) -> void {
   let n = slen(src)
   while i < n {
     let c = peek8(src, i)
-    if c == 10 { tok_push(TK_NL, ptr_null(), 0, line); line = line + 1; i = i + 1; continue }
+    if c == 10 { tok_push(TK_NL, null, 0, line); line = line + 1; i = i + 1; continue }
     if c == 32 or c == 9 or c == 13 { i = i + 1; continue }
     if c == 35 {                                   # '#' comment to end of line
       while i < n and peek8(src, i) != 10 { i = i + 1 }
@@ -80,7 +80,7 @@ fn lex(src: ptr) -> void {
         i = i + 2
       } else { v = peek8(src, i); i = i + 1 }
       if peek8(src, i) == 39 { i = i + 1 }
-      tok_push(TK_INT, ptr_null(), v, line)
+      tok_push(TK_INT, null, v, line)
       continue
     }
     if char_is_digit(c) {
@@ -96,7 +96,7 @@ fn lex(src: ptr) -> void {
           v = v * 16 + d
           i = i + 1
         }
-        tok_push(TK_INT, ptr_null(), v, line)
+        tok_push(TK_INT, null, v, line)
         continue
       }
       var v = 0
@@ -107,10 +107,10 @@ fn lex(src: ptr) -> void {
         var fnum = 0;  var fden = 1
         while i < n and char_is_digit(peek8(src, i)) { fnum = fnum * 10 + (peek8(src, i) - 48);  fden = fden * 10;  i = i + 1 }
         let bits = (v << 16) + (fnum << 16) / fden
-        tok_push(TK_FLOAT, ptr_null(), bits, line)
+        tok_push(TK_FLOAT, null, bits, line)
         continue
       }
-      tok_push(TK_INT, ptr_null(), v, line)
+      tok_push(TK_INT, null, v, line)
       continue
     }
     if char_is_alpha(c) {
@@ -119,7 +119,7 @@ fn lex(src: ptr) -> void {
       tok_push(TK_ID, substr(src, start, i - start), 0, line)
       continue
     }
-    if c == 59 { tok_push(TK_NL, ptr_null(), 0, line); i = i + 1; continue }   # ';'
+    if c == 59 { tok_push(TK_NL, null, 0, line); i = i + 1; continue }   # ';'
     # two-character operators
     if two_at(src, i, 45, 62) { tok_push(TK_OP, substr(src, i, 2), 0, line); i = i + 2; continue }  # ->
     if two_at(src, i, 61, 62) { tok_push(TK_OP, substr(src, i, 2), 0, line); i = i + 2; continue }  # =>
@@ -137,5 +137,5 @@ fn lex(src: ptr) -> void {
     if is_op1(c) { tok_push(TK_OP, substr(src, i, 1), 0, line); i = i + 1; continue }
     i = i + 1                                        # skip anything unrecognised
   }
-  tok_push(TK_EOF, ptr_null(), 0, line)
+  tok_push(TK_EOF, null, 0, line)
 }

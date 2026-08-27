@@ -581,7 +581,9 @@ Operators are built-in only (no overloading). The boolean operators are spelled
 rejected with a diagnostic naming the fix (`!=` is unaffected). Bitwise operators
 are **`& | ^ << >> ~`** (`>>` is a logical/unsigned shift). `expr with { field: … }`
 is not implemented; records appear only in `spawn`. Char literals (`'w'`) are
-`int` code points; colors are hex ints (`0xff8800`).
+`int` code points; colors are hex ints (`0xff8800`). `null` is the null-pointer
+literal; test any pointer/record/slice with `x == null` / `x != null` (an unset
+`Node`/`ptr` field reads back as `null`).
 
 ## Builtins (the standard library / runtime surface)
 

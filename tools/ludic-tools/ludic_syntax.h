@@ -161,8 +161,6 @@ static const LBuiltin LUDIC_INTRINSICS[] = {
  {"peekf","peekf(p: ptr, off: int) -> fixed","Read a fixed-point word."},
  {"pokef","pokef(p: ptr, off: int, v: fixed)","Write a fixed-point word."},
  {"ptr_add","ptr_add(p: ptr, off: int) -> ptr","Offset a pointer by bytes."},
- {"ptr_null","ptr_null() -> ptr","The null pointer."},
- {"ptr_is_null","ptr_is_null(p: ptr) -> bool","Null test."},
  {"as_fixed","as_fixed(i: int) -> fixed","Reinterpret an int as fixed (no conversion)."},
  {"as_int","as_int(f: fixed) -> int","Reinterpret a fixed as int (no conversion)."},
  {"file_open","file_open(path: str, mode: str) -> ptr","fopen."},
@@ -259,7 +257,7 @@ static void lud_lex(LLex* L, const char* src){
             int len = i - s; char w[128];
             if (len < (int)sizeof(w)){ memcpy(w, src + s, len); w[len] = 0; } else { w[0] = 0; }
             int k = LT_ID;
-            if (!strcmp(w, "true") || !strcmp(w, "false")) k = LT_BOOL;
+            if (!strcmp(w, "true") || !strcmp(w, "false") || !strcmp(w, "null")) k = LT_BOOL;
             else if (lud_in(LUDIC_TYPES, w)) k = LT_TYPE;
             else if (lud_in(LUDIC_PHASES, w)) k = LT_PHASE;
             else if (lud_is_keyword(w)) k = LT_KW;

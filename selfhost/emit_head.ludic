@@ -34,7 +34,7 @@ fn emit_gep_i8(base: ptr, idx: ptr) -> ptr {
 
 # the constant initializer for a global var: a literal, or 0/null
 fn global_init(d: Node) -> ptr {
-  if ptr_is_null(d.a) { if streq(llty(d.ty), "ptr") { return "null" };  return "0" }
+  if (d.a == null) { if streq(llty(d.ty), "ptr") { return "null" };  return "0" }
   let e = d.a
   if e.kind == E_INT or e.kind == E_FLOAT or e.kind == E_BOOL { return itoa(e.ival) }
   if e.kind == E_UN and streq(e.s, "-") and e.a.kind == E_INT { return sconcat("-", itoa(e.a.ival)) }

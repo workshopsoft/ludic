@@ -146,10 +146,10 @@ fn ui_draw_node(i: int) -> void {
 }
 
 # ---- focus and activation -------------------------------------------------
-var ui_fl: ptr = ptr_null()
+var ui_fl: ptr = null
 
 fn ui_focusables() -> int {
-  if ptr_is_null(ui_fl) { ui_fl = mem_alloc(UI_MAX * 4) }
+  if (ui_fl == null) { ui_fl = mem_alloc(UI_MAX * 4) }
   var n = 0
   for i in 0 .. ui_n {
     if peek32(ui_focusable, i) == 1 {

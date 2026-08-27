@@ -63,8 +63,10 @@ fn emit_bin(e: Node) -> Val {
   let fx = streq(a.ty, "fixed") or streq(b.ty, "fixed")
   if is_cmp(e.s) {
     var ac = a.code;  var bc = b.code
+    var ct = "i32"
     if fx { ac = to_fixed(a);  bc = to_fixed(b) }
-    let c = emit_bind(sconcat("icmp ", sconcat(cmp_code(e.s), sconcat(" i32 ", sconcat(ac, sconcat(", ", bc))))))
+    else { if streq(llty(a.ty), "ptr") or streq(llty(b.ty), "ptr") { ct = "ptr" } }   # `p == null`, str/record identity
+    let c = emit_bind(sconcat("icmp ", sconcat(cmp_code(e.s), sconcat(sconcat(" ", sconcat(ct, " ")), sconcat(ac, sconcat(", ", bc))))))
     return val(emit_bind(sconcat("zext i1 ", sconcat(c, " to i32"))), "bool")
   }
   if fx {
@@ -107,11 +109,11 @@ fn emit_call(e: Node) -> Val {
   if is_math_builtin(name) { return emit_math_builtin(name, e) }
   var fn2 = find_fn(name)
   var cname = name
-  if ptr_is_null(fn2) {
+  if (fn2 == null) {
     # a builtin like clear()/reg() is satisfied by its rt_ function
     let rtname = sconcat("rt_", name)
     fn2 = find_fn(rtname)
-    if ptr_is_null(fn2) { perr(sconcat("unknown function ", name)) }
+    if (fn2 == null) { perr(sconcat("unknown function ", name)) }
     cname = rtname
   }
   # evaluate args first (their IR is emitted before the call instruction)
@@ -135,10 +137,11 @@ fn emit_call(e: Node) -> Val {
 }
 
 fn emit_expr(e: Node) -> Val {
-  if ptr_is_null(e) { return val("0", "int") }
+  if (e == null) { return val("0", "int") }
   if e.kind == E_INT  { return val(itoa(e.ival), "int") }
   if e.kind == E_FLOAT { return val(itoa(e.ival), "fixed") }
   if e.kind == E_BOOL { return val(itoa(e.ival), "bool") }
+  if e.kind == E_NULL { return val("null", "ptr") }
   if e.kind == E_STR  { return val(emit_str_const(e.s), "str") }
   if e.kind == E_NEW  {
     if is_slice_ty(e.s) { return emit_new_slice(e.s) }
@@ -148,7 +151,7 @@ fn emit_expr(e: Node) -> Val {
     let li = loc_find(e.s)
     if li >= 0 { return emit_load_at(loc_reg[li], loc_ty[li]) }
     let g = find_global(e.s)
-    if not ptr_is_null(g) {
+    if (g != null) {
       if g.kind == N_CONST { return val(itoa(g.a.ival), "int") }
       let r = emit_bind(sconcat("load ", sconcat(llty(g.ty), sconcat(", ptr @g_", e.s))))
       return val(r, g.ty)
@@ -163,9 +166,9 @@ fn emit_expr(e: Node) -> Val {
       if ord >= 0 { return val(itoa(ord), "int") }
     }
     let bt = static_type(e.a)                    # `x.field` where field is @Computed -> inline it
-    if not ptr_is_null(bt) {
+    if (bt != null) {
       let cx = computed_expr(bt, e.s)
-      if not ptr_is_null(cx) { return emit_expr(qualify_fields(cx, e.a)) }
+      if (cx != null) { return emit_expr(qualify_fields(cx, e.a)) }
     }
     let a = emit_member_addr(e);  return emit_load_at(a, g_addr_ty)
   }

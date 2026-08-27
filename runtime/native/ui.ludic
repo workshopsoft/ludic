@@ -45,35 +45,35 @@ const K_VISIBLE: int = 18
 const K_IMG: int = 19
 const K_SKIN: int = 20
 
-var ui_type: ptr = ptr_null()
-var ui_parent: ptr = ptr_null()
-var ui_w: ptr = ptr_null()
-var ui_h: ptr = ptr_null()
-var ui_x: ptr = ptr_null()
-var ui_y: ptr = ptr_null()
-var ui_haspos: ptr = ptr_null()
-var ui_pad: ptr = ptr_null()
-var ui_gap: ptr = ptr_null()
-var ui_bg: ptr = ptr_null()
-var ui_fg: ptr = ptr_null()
-var ui_border: ptr = ptr_null()
-var ui_align: ptr = ptr_null()
-var ui_grow: ptr = ptr_null()
-var ui_font: ptr = ptr_null()
-var ui_size: ptr = ptr_null()
-var ui_skin: ptr = ptr_null()
-var ui_inset: ptr = ptr_null()
-var ui_img: ptr = ptr_null()
-var ui_focusable: ptr = ptr_null()
-var ui_rx: ptr = ptr_null()
-var ui_ry: ptr = ptr_null()
-var ui_rw: ptr = ptr_null()
-var ui_rh: ptr = ptr_null()
-var ui_visible: ptr = ptr_null()
-var ui_fired: ptr = ptr_null()
-var ui_hasdyn: ptr = ptr_null()
-var ui_dyn: ptr = ptr_null()        # UI_MAX * 96 bytes
-var ui_text: ptr = ptr_null()       # UI_MAX static string pointers
+var ui_type: ptr = null
+var ui_parent: ptr = null
+var ui_w: ptr = null
+var ui_h: ptr = null
+var ui_x: ptr = null
+var ui_y: ptr = null
+var ui_haspos: ptr = null
+var ui_pad: ptr = null
+var ui_gap: ptr = null
+var ui_bg: ptr = null
+var ui_fg: ptr = null
+var ui_border: ptr = null
+var ui_align: ptr = null
+var ui_grow: ptr = null
+var ui_font: ptr = null
+var ui_size: ptr = null
+var ui_skin: ptr = null
+var ui_inset: ptr = null
+var ui_img: ptr = null
+var ui_focusable: ptr = null
+var ui_rx: ptr = null
+var ui_ry: ptr = null
+var ui_rw: ptr = null
+var ui_rh: ptr = null
+var ui_visible: ptr = null
+var ui_fired: ptr = null
+var ui_hasdyn: ptr = null
+var ui_dyn: ptr = null        # UI_MAX * 96 bytes
+var ui_text: ptr = null       # UI_MAX static string pointers
 
 var ui_n: int = 0
 var ui_active: int = -1
@@ -138,7 +138,7 @@ fn rt_ui_reset(n: int) -> void {
     poke32(ui_visible, i, 1)
     poke32(ui_fired, i, 0)
     poke32(ui_hasdyn, i, 0)
-    pokep(ui_text, i, ptr_null())
+    pokep(ui_text, i, null)
   }
 }
 
@@ -178,7 +178,7 @@ fn rt_ui_static_text(i: int, s: str) -> void {
 fn ui_str(i: int) -> ptr {
   if peek32(ui_hasdyn, i) == 1 { return ptr_add(ui_dyn, i * 96) }
   let t = peekp(ui_text, i)
-  if ptr_is_null(t) { return ptr_add(ui_dyn, i * 96) }
+  if (t == null) { return ptr_add(ui_dyn, i * 96) }
   return t
 }
 

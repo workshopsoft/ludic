@@ -9,7 +9,7 @@ fn emit_sizeof(llt: ptr) -> ptr {
 
 fn emit_new_struct(name: ptr) -> Val {
   let s = layout_node(name)                     # a struct or a property — same shape
-  if ptr_is_null(s) { perr("unknown record type in new") }
+  if (s == null) { perr("unknown record type in new") }
   let lty = layout_ty(name)
   let sz = emit_sizeof(lty)
   let obj = emit_bind(sconcat("call ptr @malloc(i64 ", sconcat(sz, ")")))
@@ -22,7 +22,7 @@ fn emit_new_struct(name: ptr) -> Val {
     let lt = llty(fd.ty)
     var v = "0"
     if streq(lt, "ptr") { v = "null" }
-    if not ptr_is_null(fd.a) { let dv = emit_expr(fd.a);  v = dv.code }
+    if (fd.a != null) { let dv = emit_expr(fd.a);  v = dv.code }
     emit("  store ");  emit(lt);  emit(" ");  emit(v);  emit(", ptr ");  emit(addr);  emit("\n")
     f = f + 1
   }

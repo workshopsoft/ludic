@@ -71,7 +71,7 @@ fn parse_query_for() -> Node {
 # the whole query backend (iteration, filters, binding, break/continue) is reused.
 
 fn mk_and(a: Node, b: Node) -> Node {
-  if ptr_is_null(a) { return b }
+  if (a == null) { return b }
   let n = node(E_BIN); n.s = "and"; n.a = a; n.b = b; return n
 }
 
@@ -80,7 +80,7 @@ fn mk_and(a: Node, b: Node) -> Node {
 # expansion (base is the accessed value). Non-destructive: builds a fresh tree,
 # so a stored computed expression can be expanded at many access sites.
 fn qualify_fields(e: Node, base: Node) -> Node {
-  if ptr_is_null(e) { return e }
+  if (e == null) { return e }
   if e.kind == E_ID {
     let m = node(E_MEMBER); m.a = base; m.s = e.s; return m
   }
@@ -99,7 +99,7 @@ fn parse_queries_anno() -> Node {
   eat_op("(")
   let qn = node(S_QUERY)
   let terms = node(N_BLOCK)
-  var wh: Node = ptr_null()
+  var wh: Node = null
   while not is_op(")") {
     skipnl()
     if is_op(")") { break }
