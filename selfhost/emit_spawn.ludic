@@ -39,6 +39,22 @@ fn emit_init_component(e: ptr, comp: ptr, rec: Node) -> void {
   }
 }
 
+# bind each of a model's properties to entity `e`'s component storage, so an
+# @OnSpawn hook body can address them by name (like a query binding for one entity).
+fn emit_bind_props(model: Node, e: ptr) -> void {
+  let me = itoa(MAX_ENT)
+  let c = 0
+  while c < len(model.kids) {
+    let pname = model.kids[c].s
+    let slot = nreg()
+    emit("  ");  emit(slot);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x %Cmp_");  emit(pname);  emit("], ptr @S_");  emit(pname);  emit(", i32 0, i32 ");  emit(e);  emit("\n")
+    let vslot = emit_alloca("ptr")
+    emit("  store ptr ");  emit(slot);  emit(", ptr ");  emit(vslot);  emit("\n")
+    loc_push(pname, vslot, pname)
+    c = c + 1
+  }
+}
+
 fn emit_spawn(st: Node) -> void {
   let e = emit_bind("call i32 @L_alloc()")
   let ak = find_arch_id(st.s)
@@ -55,6 +71,13 @@ fn emit_spawn(st: Node) -> void {
       while i < len(st.kids) { if streq(st.kids[i].s, cn) { rec = st.kids[i].a };  i = i + 1 }
       emit_init_component(e, cn, rec)
       c = c + 1
+    }
+    let ob = onspawn_body(st.s)                 # @OnSpawn(Model) hook runs after init
+    if not ptr_is_null(ob) {
+      let save = nloc
+      emit_bind_props(arch, e)
+      emit_block(ob)
+      nloc = save
     }
   } else {
     let i = 0

@@ -281,11 +281,38 @@ for (Transform, Velocity) in query [Transform, Velocity, {Actor}]
 `Prop{constraint}` block reads its bare names as fields of `Prop`, and `on: Model`
 adds a `{Model}` tag filter. The body runs once per matching entity.
 
+**`@Computed` — a derived field.** A property field marked `@Computed` is **not
+stored**; `x.field` expands inline to its expression with the bare names read as
+fields of `x`. It reads like a field but costs nothing at runtime — no getter, no
+storage — so it doesn't reattach behavior to data:
+
+```ludic
+# doc-check: skip — a property with a derived field
+property Velocity {
+  dx: int = 0
+  dy: int = 0
+  @Computed speed2: int = dx * dx + dy * dy    # v.speed2  ==  v.dx*v.dx + v.dy*v.dy
+}
+```
+
+**`@OnSpawn` — a constructor.** `@OnSpawn(Model)` on a handler runs its body every
+time a `Model` is spawned, with the model's properties bound by name — a place to
+initialize an entity. It's a handler keyed to the spawn, not an observer on the
+data, so the ECS model is untouched:
+
+```ludic
+# doc-check: skip — a spawn hook
+@OnSpawn(Enemy)
+handler InitEnemy { Health.hp = Health.max }     # start every Enemy at full HP
+```
+
 **`@Handles` — the handlers a program drives.** Written in front of the
 `program`, `@Handles(Move)` names the handlers it uses. It parses and reads as
 documentation; every declared handler still runs (registration is implicit).
 
-See [`examples/annotations.ludic`](examples/annotations.ludic).
+See [`examples/annotations.ludic`](examples/annotations.ludic), which uses all
+four. (`@OnDespawn` and change-reactions are future work — despawn doesn't
+statically know an entity's model, and reactions need change-tracking.)
 
 ## Structs, arrays and slices
 

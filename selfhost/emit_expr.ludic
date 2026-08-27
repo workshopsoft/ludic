@@ -157,6 +157,11 @@ fn emit_expr(e: Node) -> Val {
       let ord = enum_ordinal(e.a.s, e.s)
       if ord >= 0 { return val(itoa(ord), "int") }
     }
+    let bt = static_type(e.a)                    # `x.field` where field is @Computed -> inline it
+    if not ptr_is_null(bt) {
+      let cx = computed_expr(bt, e.s)
+      if not ptr_is_null(cx) { return emit_expr(qualify_fields(cx, e.a)) }
+    }
     let a = emit_member_addr(e);  return emit_load_at(a, g_addr_ty)
   }
   if e.kind == E_INDEX  { let a = emit_index_addr(e);   return emit_load_at(a, g_addr_ty) }
