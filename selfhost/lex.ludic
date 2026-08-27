@@ -32,6 +32,7 @@ fn is_op1(c: int) -> bool {
   if c == 40 or c == 41 or c == 123 or c == 125 { return true }
   if c == 91 or c == 93 or c == 44 or c == 58 or c == 46 { return true }
   if c == 33 or c == 64 { return true }
+  if c == 38 or c == 124 or c == 94 or c == 126 { return true }   # & | ^ ~
   return false
 }
 
@@ -105,7 +106,7 @@ fn lex(src: ptr) -> void {
         i = i + 1
         var fnum = 0;  var fden = 1
         while i < n and char_is_digit(peek8(src, i)) { fnum = fnum * 10 + (peek8(src, i) - 48);  fden = fden * 10;  i = i + 1 }
-        let bits = shl(v, 16) + shl(fnum, 16) / fden
+        let bits = (v << 16) + (fnum << 16) / fden
         tok_push(TK_FLOAT, ptr_null(), bits, line)
         continue
       }
@@ -131,6 +132,8 @@ fn lex(src: ptr) -> void {
     if two_at(src, i, 42, 61) { tok_push(TK_OP, substr(src, i, 2), 0, line); i = i + 2; continue }  # *=
     if two_at(src, i, 47, 61) { tok_push(TK_OP, substr(src, i, 2), 0, line); i = i + 2; continue }  # /=
     if two_at(src, i, 46, 46) { tok_push(TK_OP, substr(src, i, 2), 0, line); i = i + 2; continue }  # ..
+    if two_at(src, i, 60, 60) { tok_push(TK_OP, substr(src, i, 2), 0, line); i = i + 2; continue }  # <<
+    if two_at(src, i, 62, 62) { tok_push(TK_OP, substr(src, i, 2), 0, line); i = i + 2; continue }  # >>
     if is_op1(c) { tok_push(TK_OP, substr(src, i, 1), 0, line); i = i + 1; continue }
     i = i + 1                                        # skip anything unrecognised
   }

@@ -71,7 +71,7 @@ object LudicVocabulary {
         "poke32", "peekp", "pokep", "peekf", "pokef", "ptr_add", "ptr_null",
         "ptr_is_null", "as_fixed", "as_int", "file_open", "file_read", "file_write",
         "file_seek", "file_tell", "file_close", "read_byte", "write_byte", "print_str",
-        "str_len", "shl", "shr", "band", "bor", "bxor", "bnot", "os_exit", "os_time",
+        "str_len", "os_exit", "os_time",
         "is_windowed", "game_title", "win_open", "win_poll", "win_present",
         "win_running", "win_close"
     )

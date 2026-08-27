@@ -36,13 +36,13 @@ fn z_bits(need: int) -> int {
       z_err = 1
       return 0
     }
-    val = bor(val, shl(peek8(z_src, z_pos), z_bitcnt))
+    val = (val | (peek8(z_src, z_pos) << z_bitcnt))
     z_pos = z_pos + 1
     z_bitcnt = z_bitcnt + 8
   }
-  z_bitbuf = shr(val, need)
+  z_bitbuf = (val >> need)
   z_bitcnt = z_bitcnt - need
-  return band(val, shl(1, need) - 1)
+  return (val & ((1 << need) - 1))
 }
 
 # ---- Huffman tables -------------------------------------------------------
@@ -83,14 +83,14 @@ fn z_decode(table: ptr) -> int {
   var first = 0
   var index = 0
   for len in 1 .. 16 {
-    code = bor(code, z_bits(1))
+    code = (code | z_bits(1))
     let count = peek32(table, len)
     if code - first < count {
       return peek32(table, 16 + index + (code - first))
     }
     index = index + count
-    first = shl(first + count, 1)
-    code = shl(code, 1)
+    first = ((first + count) << 1)
+    code = (code << 1)
   }
   z_err = 1
   return -1
@@ -101,8 +101,8 @@ fn z_len_base(sym: int) -> int {
   if sym < 8 { return 3 + sym }
   if sym == 28 { return 258 }
   let extra = (sym - 4) / 4
-  let group = shl(1, extra)
-  return 3 + shl(group - 1, 2) + 4 + (sym - 4 - extra * 4) * group
+  let group = (1 << extra)
+  return 3 + ((group - 1) << 2) + 4 + (sym - 4 - extra * 4) * group
 }
 
 fn z_len_extra(sym: int) -> int {
@@ -114,8 +114,8 @@ fn z_len_extra(sym: int) -> int {
 fn z_dist_base(sym: int) -> int {
   if sym < 4 { return 1 + sym }
   let extra = (sym - 2) / 2
-  let group = shl(1, extra)
-  return 1 + shl(group, 1) + (sym - 2 - extra * 2) * group
+  let group = (1 << extra)
+  return 1 + (group << 1) + (sym - 2 - extra * 2) * group
 }
 
 fn z_dist_extra(sym: int) -> int {
@@ -129,7 +129,7 @@ fn z_stored(out: ptr, at: int, cap: int) -> int {
   z_bitbuf = 0
   z_bitcnt = 0                        # stored blocks are byte-aligned
   if z_pos + 4 > z_len { return -1 }
-  let n = peek8(z_src, z_pos) + shl(peek8(z_src, z_pos + 1), 8)
+  let n = peek8(z_src, z_pos) + (peek8(z_src, z_pos + 1) << 8)
   z_pos = z_pos + 4                   # LEN then its one's complement
   var w = at
   for i in 0 .. n {
@@ -271,6 +271,6 @@ fn z_inflate(src: ptr, len: int, out: ptr, cap: int) -> int {
 fn z_uncompress(src: ptr, len: int, out: ptr, cap: int) -> int {
   if len < 2 { return -1 }
   let cmf = peek8(src, 0)
-  if band(cmf, 15) != 8 { return -1 }
+  if (cmf & 15) != 8 { return -1 }
   return z_inflate(ptr_add(src, 2), len - 2, out, cap)
 }

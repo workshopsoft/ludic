@@ -82,20 +82,25 @@ fn p_postfix() -> Node {
 
 fn p_unary() -> Node {
   if is_op("-") { pi = pi + 1; let n = node(E_UN); n.s = "-"; n.a = p_unary(); return n }
+  if is_op("~") { pi = pi + 1; let n = node(E_UN); n.s = "~"; n.a = p_unary(); return n }   # bitwise not
   if is_id("not") { pi = pi + 1; let n = node(E_UN); n.s = "not"; n.a = p_unary(); return n }
   return p_postfix()
 }
 
 fn mkbin(op: ptr, l: Node, r: Node) -> Node { let b = node(E_BIN); b.s = op; b.a = l; b.b = r; return b }
 
+# precedence (Go-style, so `flags & MASK == 0` needs no parens): shifts and `&`
+# bind like `*`; `|` and `^` bind like `+`; both tighter than comparison.
 fn p_mul() -> Node {
   var l = p_unary()
-  while is_op("*") or is_op("/") or is_op("%") { let op = toks[pi].text; pi = pi + 1; l = mkbin(op, l, p_unary()) }
+  while is_op("*") or is_op("/") or is_op("%") or is_op("<<") or is_op(">>") or is_op("&") {
+    let op = toks[pi].text; pi = pi + 1; l = mkbin(op, l, p_unary()) }
   return l
 }
 fn p_add() -> Node {
   var l = p_mul()
-  while is_op("+") or is_op("-") { let op = toks[pi].text; pi = pi + 1; l = mkbin(op, l, p_mul()) }
+  while is_op("+") or is_op("-") or is_op("|") or is_op("^") {
+    let op = toks[pi].text; pi = pi + 1; l = mkbin(op, l, p_mul()) }
   return l
 }
 fn p_cmp() -> Node {

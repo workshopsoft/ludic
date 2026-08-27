@@ -106,7 +106,7 @@ fn rt_tt_init() -> void {
 
 # ---- big-endian readers ---------------------------------------------------
 fn tt_u16(d: ptr, at: int) -> int {
-  return bor(shl(peek8(d, at), 8), peek8(d, at + 1))
+  return ((peek8(d, at) << 8) | peek8(d, at + 1))
 }
 fn tt_i16(d: ptr, at: int) -> int {
   let v = tt_u16(d, at)
@@ -114,8 +114,7 @@ fn tt_i16(d: ptr, at: int) -> int {
   return v
 }
 fn tt_u32(d: ptr, at: int) -> int {
-  return bor(bor(shl(peek8(d, at), 24), shl(peek8(d, at + 1), 16)),
-             bor(shl(peek8(d, at + 2), 8), peek8(d, at + 3)))
+  return (peek8(d, at) << 24) | (peek8(d, at + 1) << 16) | (peek8(d, at + 2) << 8) | peek8(d, at + 3)
 }
 fn tt_i8(d: ptr, at: int) -> int {
   let v = peek8(d, at)
@@ -232,10 +231,10 @@ fn tt_glyph_index(id: int, cp: int) -> int {
         let st = tt_u16(d, startp + i * 2)
         if cp < st { return 0 }
         let ro = tt_u16(d, rangep + i * 2)
-        if ro == 0 { return band(cp + tt_i16(d, deltap + i * 2), 65535) }
+        if ro == 0 { return ((cp + tt_i16(d, deltap + i * 2)) & 65535) }
         let g = tt_u16(d, rangep + i * 2 + ro + (cp - st) * 2)
         if g == 0 { return 0 }
-        return band(g + tt_i16(d, deltap + i * 2), 65535)
+        return ((g + tt_i16(d, deltap + i * 2)) & 65535)
       }
     }
     return 0
@@ -318,7 +317,7 @@ fn tt_load_outline(id: int, gid: int, a: fixed, b: fixed, c: fixed, e: fixed, dx
       p = p + 1
       poke8(flags, i, fl)
       i = i + 1
-      if band(fl, 8) != 0 {                  # REPEAT
+      if (fl & 8) != 0 {                  # REPEAT
         var r = peek8(d, p)
         p = p + 1
         while r > 0 {
@@ -333,24 +332,24 @@ fn tt_load_outline(id: int, gid: int, a: fixed, b: fixed, c: fixed, e: fixed, dx
     var xv = 0
     for k in 0 .. npts {
       let fl = peek8(flags, k)
-      if band(fl, 2) != 0 {
+      if (fl & 2) != 0 {
         let dxv = peek8(d, p)
         p = p + 1
-        if band(fl, 16) != 0 { xv = xv + dxv } else { xv = xv - dxv }
+        if (fl & 16) != 0 { xv = xv + dxv } else { xv = xv - dxv }
       } else {
-        if band(fl, 16) == 0 { xv = xv + tt_i16(d, p);  p = p + 2 }
+        if (fl & 16) == 0 { xv = xv + tt_i16(d, p);  p = p + 2 }
       }
       poke32(xs, k, xv)
     }
     var yv = 0
     for k in 0 .. npts {
       let fl = peek8(flags, k)
-      if band(fl, 4) != 0 {
+      if (fl & 4) != 0 {
         let dyv = peek8(d, p)
         p = p + 1
-        if band(fl, 32) != 0 { yv = yv + dyv } else { yv = yv - dyv }
+        if (fl & 32) != 0 { yv = yv + dyv } else { yv = yv - dyv }
       } else {
-        if band(fl, 32) == 0 { yv = yv + tt_i16(d, p);  p = p + 2 }
+        if (fl & 32) == 0 { yv = yv + tt_i16(d, p);  p = p + 2 }
       }
       poke32(ys, k, yv)
     }
@@ -361,7 +360,7 @@ fn tt_load_outline(id: int, gid: int, a: fixed, b: fixed, c: fixed, e: fixed, dx
       for k in start .. last + 1 {
         let X = fx(peek32(xs, k))
         let Y = fx(peek32(ys, k))
-        ol_pt(a * X + c * Y + dx, b * X + e * Y + dy, band(peek8(flags, k), 1))
+        ol_pt(a * X + c * Y + dx, b * X + e * Y + dy, (peek8(flags, k) & 1))
       }
       if ol_ne < 256 {
         poke32(ol_ends, ol_ne, ol_n)
@@ -382,7 +381,7 @@ fn tt_load_outline(id: int, gid: int, a: fixed, b: fixed, c: fixed, e: fixed, dx
       p = p + 4
       var arg1 = 0
       var arg2 = 0
-      if band(flags, 1) != 0 {
+      if (flags & 1) != 0 {
         arg1 = tt_i16(d, p)
         arg2 = tt_i16(d, p + 2)
         p = p + 4
@@ -395,32 +394,32 @@ fn tt_load_outline(id: int, gid: int, a: fixed, b: fixed, c: fixed, e: fixed, dx
       var cb = 0.0
       var cc = 0.0
       var ce = 1.0
-      if band(flags, 8) != 0 {
-        ca = as_fixed(shl(tt_i16(d, p), 2))     # F2Dot14 -> Q16.16
+      if (flags & 8) != 0 {
+        ca = as_fixed((tt_i16(d, p) << 2))     # F2Dot14 -> Q16.16
         ce = ca
         p = p + 2
       }
-      if band(flags, 64) != 0 {
-        ca = as_fixed(shl(tt_i16(d, p), 2))
-        ce = as_fixed(shl(tt_i16(d, p + 2), 2))
+      if (flags & 64) != 0 {
+        ca = as_fixed((tt_i16(d, p) << 2))
+        ce = as_fixed((tt_i16(d, p + 2) << 2))
         p = p + 4
       }
-      if band(flags, 128) != 0 {
-        ca = as_fixed(shl(tt_i16(d, p), 2))
-        cb = as_fixed(shl(tt_i16(d, p + 2), 2))
-        cc = as_fixed(shl(tt_i16(d, p + 4), 2))
-        ce = as_fixed(shl(tt_i16(d, p + 6), 2))
+      if (flags & 128) != 0 {
+        ca = as_fixed((tt_i16(d, p) << 2))
+        cb = as_fixed((tt_i16(d, p + 2) << 2))
+        cc = as_fixed((tt_i16(d, p + 4) << 2))
+        ce = as_fixed((tt_i16(d, p + 6) << 2))
         p = p + 8
       }
       var odx = dx
       var ody = dy
-      if band(flags, 2) != 0 {
+      if (flags & 2) != 0 {
         odx = a * fx(arg1) + c * fx(arg2) + dx
         ody = b * fx(arg1) + e * fx(arg2) + dy
       }
       tt_load_outline(id, cgid, a * ca + c * cb, b * ca + e * cb, a * cc + c * ce, b * cc + e * ce, odx, ody, depth + 1)
       more = 0
-      if band(flags, 32) != 0 { more = 1 }
+      if (flags & 32) != 0 { more = 1 }
     }
   }
 }

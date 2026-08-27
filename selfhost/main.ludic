@@ -148,6 +148,6 @@ entry {
   # run mode: execute the binary we just built and forward its exit code
   if run {
     let st = os_system(out)
-    os_exit(band(shr(st, 8), 255))
+    os_exit(((st >> 8) & 255))
   }
 }
