@@ -20,10 +20,10 @@
 # ============================================================================
 
 # ---- state ----------------------------------------------------------------
-var rt_fb:    ptr = null     # framebuffer, one i32 (0x00RRGGBB) per pixel
+var rt_fb:    words = null     # framebuffer, one i32 (0x00RRGGBB) per pixel
 var rt_fbw:   int = 320
 var rt_fbh:   int = 240
-var rt_regs:  ptr = null     # the 64 general-purpose game registers
+var rt_regs:  words = null     # the 64 general-purpose game registers
 var rt_rng:   int = 305419896      # xorshift32 state
 var rt_alive: int = 1              # platform still running?
 
@@ -62,7 +62,7 @@ fn rt_shutdown() -> void {
 fn rt_clear(c: int) -> void {
   let n = rt_fbw * rt_fbh
   for i in 0 .. n {
-    poke32(rt_fb, i, c)
+    rt_fb[i] = c
   }
 }
 
@@ -71,7 +71,7 @@ fn rt_put_px(x: int, y: int, c: int) -> void {
   if y < 0 { return }
   if x >= rt_fbw { return }
   if y >= rt_fbh { return }
-  poke32(rt_fb, y * rt_fbw + x, c)
+  rt_fb[y * rt_fbw + x] = c
 }
 
 fn rt_fill_rect(x: int, y: int, w: int, h: int, c: int) -> void {
@@ -84,7 +84,7 @@ fn rt_fill_rect(x: int, y: int, w: int, h: int, c: int) -> void {
     let row = j * rt_fbw
     var i = x0
     while i < x1 {
-      poke32(rt_fb, row + i, c)
+      rt_fb[row + i] = c
       i = i + 1
     }
     j = j + 1
@@ -175,13 +175,13 @@ fn rt_text_int(x: int, y: int, n: int, colour: int, sc: int) -> void {
 fn rt_reg(i: int) -> int {
   if i < 0 { return 0 }
   if i >= 64 { return 0 }
-  return peek32(rt_regs, i)
+  return rt_regs[i]
 }
 
 fn rt_set_reg(i: int, v: int) -> void {
   if i < 0 { return }
   if i >= 64 { return }
-  poke32(rt_regs, i, v)
+  rt_regs[i] = v
 }
 
 # ---- rng (xorshift32) -----------------------------------------------------
@@ -290,7 +290,7 @@ fn rt_dump_ppm(path: str) -> void {
   let px = rt_fbw * rt_fbh
   let buf = mem_alloc(px * 3)
   for i in 0 .. px {
-    let c = peek32(rt_fb, i)
+    let c = rt_fb[i]
     buf[i * 3] = (c / 65536) % 256
     buf[i * 3 + 1] = (c / 256) % 256
     buf[i * 3 + 2] = c % 256
@@ -369,11 +369,11 @@ fn rt_status_text() -> ptr {
 # only it knows their shape. Everything below belongs to the runtime, so the
 # runtime writes it — same order both ways.
 fn rt_save_state(f: ptr) -> void {
-  let w = mem_alloc(16)
-  poke32(w, 0, rt_rng)
-  poke32(w, 1, rt_mapw)
-  poke32(w, 2, rt_maph)
-  poke32(w, 3, rt_alive)
+  let w: words = mem_alloc(16)
+  w[0] = rt_rng
+  w[1] = rt_mapw
+  w[2] = rt_maph
+  w[3] = rt_alive
   file_write(f, w, 16)
   file_write(f, rt_regs, 64 * 4)
   file_write(f, rt_map, 96 * 64)
@@ -382,11 +382,11 @@ fn rt_save_state(f: ptr) -> void {
 }
 
 fn rt_load_state(f: ptr) -> void {
-  let w = mem_alloc(16)
+  let w: words = mem_alloc(16)
   file_read(f, w, 16)
-  rt_rng = peek32(w, 0)
-  rt_mapw = peek32(w, 1)
-  rt_maph = peek32(w, 2)
+  rt_rng = w[0]
+  rt_mapw = w[1]
+  rt_maph = w[2]
   file_read(f, rt_regs, 64 * 4)
   file_read(f, rt_map, 96 * 64)
   file_read(f, rt_statusbuf, 96)

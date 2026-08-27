@@ -13,7 +13,6 @@ fn is_intrinsic(name: ptr) -> bool {
   if (name == "os_argc") or (name == "os_arg") or (name == "os_exit") or (name == "file_stderr") { return true }
   if (name == "file_stdout") { return true }
   if (name == "os_system") or (name == "os_getenv") { return true }
-  if (name == "peek32") or (name == "poke32") { return true }
   return false
 }
 # emit "  <r> = <rest>\n" and return r
@@ -87,19 +86,7 @@ fn emit_intrinsic(name: ptr, e: Node) -> Val {
     return val(emit_bind(`call ptr @getenv(ptr {n})`), "str")
   }
   # bitwise ops are the operators & | ^ << >> ~ now (see emit_bin / p_mul).
-  if (name == "peek32") {
-    let p = arg_code(e, 0);  let i = arg_code(e, 1)
-    let g = nreg()
-    emit("  ");  emit(g);  emit(" = getelementptr inbounds i32, ptr ");  emit(p);  emit(", i32 ");  emit(i);  emit("\n")
-    return val(emit_bind(`load i32, ptr {g}`), "int")
-  }
-  if (name == "poke32") {
-    let p = arg_code(e, 0);  let i = arg_code(e, 1);  let v = arg_code(e, 2)
-    let g = nreg()
-    emit("  ");  emit(g);  emit(" = getelementptr inbounds i32, ptr ");  emit(p);  emit(", i32 ");  emit(i);  emit("\n")
-    emit("  store i32 ");  emit(v);  emit(", ptr ");  emit(g);  emit("\n")
-    return val("0", "void")
-  }
+  # peek32 / poke32 are `words` indexing now: w[i] and w[i] = v (see emit_index_addr).
   g_intrin_ok = false
   return val("0", "void")
 }

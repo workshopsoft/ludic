@@ -10,7 +10,7 @@ program T {
     print((1 << 4))             # 16
     print(((4 | 1) & 6))    # 4
     let p = mem_alloc(16)
-    poke32(p, 1, 9999)
-    print(peek32(p, 1))          # 9999
+    p[1] = 9999
+    print(p[1])          # 9999
   }
 }

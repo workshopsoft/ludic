@@ -21,9 +21,14 @@ fn emit_member_addr(e: Node) -> ptr {
 # address of `base[index]` (slices only in this subset)
 fn emit_index_addr(e: Node) -> ptr {
   let base = emit_expr(e.a)
-  if not is_slice_ty(base.ty) {                   # a raw ptr/str: address of byte i.
+  if not is_slice_ty(base.ty) {                   # a raw pointer: address of element i
     let bi = emit_expr(e.b)                        # (evaluate index first — it may set g_addr_ty)
-    let r = emit_bind(`getelementptr inbounds i8, ptr {base.code}, i32 {bi.code}`)
+    if (base.ty == "words") {                      # a `words` buffer: 32-bit elements
+      let rw = emit_bind(`getelementptr inbounds i32, ptr {base.code}, i32 {bi.code}`)
+      g_addr_ty = "int"
+      return rw
+    }
+    let r = emit_bind(`getelementptr inbounds i8, ptr {base.code}, i32 {bi.code}`)   # a ptr/str: bytes
     g_addr_ty = "byte"                             # set last so the caller sees it
     return r
   }

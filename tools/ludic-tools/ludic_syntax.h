@@ -71,7 +71,7 @@ static const char* LUDIC_KW_STMT[] = {
     "and","or","not","break","continue","new", 0
 };
 static const char* LUDIC_TYPES[] = {
-    "int","fixed","bool","entity","str","ptr","void", 0
+    "int","fixed","bool","entity","str","ptr","byte","words","void", 0
 };
 static const char* LUDIC_PHASES[] = {
     "Start","Input","FixedUpdate","Update","LateUpdate","Render", 0
@@ -154,8 +154,6 @@ static const LBuiltin LUDIC_INTRINSICS[] = {
  {"mem_free","mem_free(p: ptr)","Release an allocation."},
  {"mem_copy","mem_copy(dst: ptr, src: ptr, n: int)","memcpy."},
  {"mem_set","mem_set(p: ptr, byte: int, n: int)","memset."},
- {"peek32","peek32(p: ptr, off: int) -> int","Read a 32-bit word."},
- {"poke32","poke32(p: ptr, off: int, v: int)","Write a 32-bit word."},
  {"peekp","peekp(p: ptr, off: int) -> ptr","Read a pointer-sized word."},
  {"pokep","pokep(p: ptr, off: int, v: ptr)","Write a pointer-sized word."},
  {"peekf","peekf(p: ptr, off: int) -> fixed","Read a fixed-point word."},
