@@ -14,7 +14,7 @@ fn buf_new() -> Buf {
 fn buf_ensure(b: Buf, extra: int) -> void {
   if b.len + extra + 1 <= b.cap { return }
   while b.len + extra + 1 > b.cap { b.cap = b.cap * 2 }
-  b.data = mem_realloc(b.data, b.cap)
+  b.data = resize(b.data, b.cap)
 }
 fn buf_putc(b: Buf, c: int) -> void {
   buf_ensure(b, 1)

@@ -640,7 +640,8 @@ literal; test any pointer/record/slice with `x == null` / `x != null` (an unset
 # control   quit()   print(x)          (a value + newline)
 # convert   str(x) -> str            (int/bool/fixed -> text)
 # length    len(x) -> int            (elements of a slice, or bytes of a string)
-# process   os_argc()->int   os_arg(i)->str        (the command line; argv[0] included)
+# process   arg_count()->int   arg(i)->str          (the command line; argv[0] included)
+#           exit(code)   run(cmd)   getenv(name)   read_char()->int
 #           file_stderr()->ptr  file_stdout()->ptr (handles for file_write)
 ```
 

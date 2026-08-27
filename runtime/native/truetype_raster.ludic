@@ -152,7 +152,7 @@ fn tt_raster(id: int, gid: int, px: int) -> ptr {
   let SW = W * TT_SS
   let SH = H * TT_SS
   let cover = bytes(W * H)
-  mem_set(cover, 0, W * H)
+  fill(cover, 0, W * H)
   let unit = 255 / (TT_SS * TT_SS)
 
   for sy in 0 .. SH {
@@ -250,7 +250,7 @@ fn tt_glyph_get(font: int, cp: int, px: int) -> int {
   let s = h
   if gc_used[s] == 1 {
     let old = gc_bmp[s]
-    if (old == null) == false { mem_free(old) }
+    if (old == null) == false { free(old) }
   }
   let bmp = tt_raster(font, tt_glyph_index(font, cp), px)
   gc_bmp[s] = bmp

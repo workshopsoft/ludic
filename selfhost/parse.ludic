@@ -17,7 +17,7 @@ fn perr(msg: ptr) -> void {
   file_write(e, "ludicc(self): parse error: ", 27)
   file_write(e, msg, len(msg))
   file_write(e, "\n", 1)
-  os_exit(1)
+  exit(1)
 }
 
 fn eat_op(v: ptr) -> void { if not is_op(v) { perr(v) }; pi = pi + 1 }

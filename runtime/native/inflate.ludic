@@ -75,7 +75,7 @@ fn z_table_build(table: words, lengths: words, n: int) -> void {
       offs[l] = offs[l] + 1
     }
   }
-  mem_free(offs)
+  free(offs)
 }
 
 fn z_decode(table: words) -> int {
@@ -181,7 +181,7 @@ fn z_fixed_tables(lit: ptr, dist: ptr) -> void {
   z_table_build(lit, lengths, 288)
   for i in 0 .. 30 { lengths[i] = 5 }
   z_table_build(dist, lengths, 30)
-  mem_free(lengths)
+  free(lengths)
 }
 
 fn z_dynamic_tables(lit: ptr, dist: ptr) -> int {
@@ -233,9 +233,9 @@ fn z_dynamic_tables(lit: ptr, dist: ptr) -> int {
   let dl: words = words(32)
   for i in 0 .. ndist { dl[i] = lengths[nlen + i] }
   z_table_build(dist, dl, ndist)
-  mem_free(dl)
-  mem_free(lengths)
-  mem_free(clen)
+  free(dl)
+  free(lengths)
+  free(clen)
   return 1
 }
 
@@ -262,8 +262,8 @@ fn z_inflate(src: ptr, len: int, out: ptr, cap: int) -> int {
     if btype == 3 { return -1 }
     if w < 0 { return -1 }
   }
-  mem_free(lit)
-  mem_free(dist)
+  free(lit)
+  free(dist)
   return w
 }
 
@@ -272,5 +272,5 @@ fn z_uncompress(src: ptr, len: int, out: ptr, cap: int) -> int {
   if len < 2 { return -1 }
   let cmf = src[0]
   if (cmf & 15) != 8 { return -1 }
-  return z_inflate(ptr_add(src, 2), len - 2, out, cap)
+  return z_inflate(offset(src, 2), len - 2, out, cap)
 }

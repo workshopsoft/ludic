@@ -137,7 +137,7 @@ compare("builtins", h_builtins | h_intrinsics, kotlin_set(kotlin, "BUILTINS"), "
 # --- against the TextMate grammar ------------------------------------------
 gpath = ["repository", "builtin", "patterns"]
 compare("builtins", h_builtins, grammar_alternation(grammar, gpath, "rng_chance"), "ludic.tmLanguage.json")
-compare("intrinsics", h_intrinsics, grammar_alternation(grammar, gpath, "mem_free"), "ludic.tmLanguage.json")
+compare("intrinsics", h_intrinsics, grammar_alternation(grammar, gpath, "as_fixed"), "ludic.tmLanguage.json")
 kpath = ["repository", "keyword", "patterns"]
 compare("phases", h_phases, grammar_alternation(grammar, kpath, "FixedUpdate"), "ludic.tmLanguage.json")
 compare("primitive types", h_types, grammar_alternation(grammar, kpath, "fixed"), "ludic.tmLanguage.json")
