@@ -11,8 +11,8 @@
 ;;; Code:
 
 (defconst ludic--declaration-keywords
-  '("game" "module" "import" "component" "archetype" "ui" "scene" "layer"
-    "const" "var" "export" "fn" "pure" "extern" "system" "edge" "start" "on"))
+  '("game" "module" "import" "component" "struct" "archetype" "enum" "ui" "scene" "layer"
+    "const" "var" "fn" "extern" "system" "start" "on"))
 
 (defconst ludic--clause-keywords
   '("phase" "query" "reads" "writes" "needs" "uses"

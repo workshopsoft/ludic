@@ -119,6 +119,21 @@ fn find_global(name: ptr) -> Node {
   }
   return ptr_null()
 }
+
+# `Enum.Variant` -> the variant's ordinal (its index), or -1 if `ename` names no
+# enum with that variant. Enum names live in `prog` like any other declaration.
+fn enum_ordinal(ename: ptr, vname: ptr) -> int {
+  let i = 0
+  while i < len(prog) {
+    let d = prog[i]
+    if d.kind == N_ENUM and streq(d.s, ename) {
+      let j = 0
+      while j < len(d.kids) { if streq(d.kids[j].s, vname) { return j };  j = j + 1 }
+    }
+    i = i + 1
+  }
+  return 0 - 1
+}
 fn find_fn(name: ptr) -> Node {
   let i = 0
   while i < len(prog) { let d = prog[i];  if d.kind == N_FN and streq(d.s, name) { return d };  i = i + 1 }

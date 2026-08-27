@@ -296,6 +296,7 @@ fn parse_one_decl() -> void {
     return
   }
   if is_id("struct") { push(prog, parse_struct()); return }
+  if is_id("enum") { push(prog, parse_enum()); return }
   if is_id("component") { push(prog, parse_component()); return }
   if is_id("archetype") { push(prog, parse_archetype()); return }
   if is_id("system") { push(prog, parse_system()); return }

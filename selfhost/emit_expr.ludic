@@ -152,7 +152,13 @@ fn emit_expr(e: Node) -> Val {
     if is_ui_ident(e.s) { return val(itoa(ui_index_of(e.s)), "int") }
     perr(sconcat("unknown identifier ", e.s))
   }
-  if e.kind == E_MEMBER { let a = emit_member_addr(e);  return emit_load_at(a, g_addr_ty) }
+  if e.kind == E_MEMBER {
+    if e.a.kind == E_ID {                        # `Enum.Variant` -> its ordinal, a compile-time int
+      let ord = enum_ordinal(e.a.s, e.s)
+      if ord >= 0 { return val(itoa(ord), "int") }
+    }
+    let a = emit_member_addr(e);  return emit_load_at(a, g_addr_ty)
+  }
   if e.kind == E_INDEX  { let a = emit_index_addr(e);   return emit_load_at(a, g_addr_ty) }
   if e.kind == E_CALL   { return emit_call(e) }
   if e.kind == E_BIN    { return emit_bin(e) }

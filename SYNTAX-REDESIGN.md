@@ -48,9 +48,9 @@ Verified against the self-hosted compiler ([selfhost/parse.ludic](selfhost/parse
 11. Operators are words (`and`/`or`/`not`), symbols (`==`/`<=`), *and* functions
     (`band`/`shl`) at once.
 12. Three overlapping control families — `if`/`when`, `match`, `machine`/`become`
-    — and `enter` reuses `become`'s AST node ([parse.ludic:176-177](selfhost/parse.ludic)).
+    — and `enter` reuses `become`'s AST node ([parse.ludic:176-177](selfhost/parse.ludic)). *(Phase 4: `if`/`when` kept by choice; magic-int dispatch resolved)*
 13. Typed components/structs exist, but real state lives in 64 untyped int
-    registers (`reg`/`setreg`), so `machine`/`match` dispatch on magic numbers.
+    registers (`reg`/`setreg`), so `machine`/`match` dispatch on magic numbers. *(✅ Phase 4: auto-numbered states + `enum` name the values)*
 
 ---
 
@@ -285,13 +285,36 @@ migration (IR byte-identical / goldens identical) → reseed → docs. The migra
 tools ([migrate_separators.c](tools/ludic-tools/migrate_separators.c),
 [migrate_records.c](tools/ludic-tools/migrate_records.c)) are the reusable spine.
 
-### Phase 4 — Control-flow & operator consolidation (largest)
-- Remove `when`; confirm `if` covers all uses in the corpus.
-- Introduce `enum` + typed `machine`/state; migrate `combat.ludic`'s R_PHASE
-  machine and the register-driven `match reg(…)` sites.
-- Decide the bitwise story: keep `band/shl/…` as functions (document as a
-  deliberate "one spelling" choice) or promote to operators — pick one and state
-  it, don't leave it implicit.
+### Phase 4 — Control-flow & state consolidation
+
+**4a — machine states auto-number ✅ DONE.** `state KnightMenu = 0 { }` →
+`state KnightMenu { }`; a state's value is its declaration index (an explicit
+`= expr` still works). Removes the magic constants from state machines
+([parse.ludic](selfhost/parse.ludic)). combat.ludic migrated; chronorift golden
+byte-identical.
+
+**4b — `enum` types ✅ DONE.** `enum Action { Attack, Guard, Item, Flee }` declares
+named `int` constants; a variant is a compile-time int accessed as `Action.Guard`
+(= 1), numbered by order. Parser `parse_enum` + dispatch, `enum_ordinal` resolver
+in [emit_core.ludic](selfhost/emit_core.ludic), and `Enum.Variant` handling in
+[emit_expr.ludic](selfhost/emit_expr.ludic). combat.ludic's battle menus now
+dispatch on `KnightAct`/`MageAct` instead of `0..3`; chronorift golden
+byte-identical. Editor vocab (`ludic_syntax.h`, JetBrains, TextMate, emacs) gained
+`enum` and lost the retired `edge`/`export`/`pure` decl keywords; check-vocabulary
++ test-tools green. **Scoped:** enums are a naming layer over `int` (no distinct
+runtime type / enum-typed variables yet) — that keeps register/save semantics
+untouched, which the "enum var replaces the register" vision would have to solve.
+
+**`when` vs `if` — kept both (decision).** `when` stays as the `if`-without-else
+spelling: it is not incoherent so much as a readability signal ("no else here"),
+it is documented and highlighted, and it is a pure alias with no semantic overlap
+to untangle. The real target of finding #12 — dispatch on magic integers — is
+addressed by 4a/4b, not by collapsing `if`/`when`.
+
+**Bitwise operators — kept as functions (decision).** `band`/`bor`/`bxor`/`bnot`/
+`shl`/`shr` stay functions, documented as the deliberate "one spelling, symbols
+stay free" choice (LANGUAGE.md §Expressions already states this). Promoting them
+to operators would re-introduce the symbol soup the current design avoids.
 
 ### Phase 5 — Single source of truth for keywords/grammar
 - Generate every editor plugin keyword list, `ludic_syntax.h`, and the LSP's

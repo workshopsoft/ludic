@@ -96,6 +96,17 @@ fn parse_spawn() -> Node {
   eat_op("}"); return n
 }
 
+# enum Name { A, B, C } — named int constants; a variant's value is its index.
+# Accessed as `Name.A` (a compile-time int), so it names magic-int value spaces
+# (state ids, menu selections, mode registers) without a runtime cost.
+fn parse_enum() -> Node {
+  pi = pi + 1; let n = node(N_ENUM); n.s = eat_id(); skipnl(); eat_op("{")
+  while true { skipnl(); if is_op("}") { break }
+    let v = node(E_ID); v.s = eat_id(); push(n.kids, v)
+    if is_op(",") { pi = pi + 1 };  skipnl() }
+  eat_op("}"); return n
+}
+
 # archetype Name { CompA, CompB } — a named entity kind (bundle of components)
 fn parse_archetype() -> Node {
   pi = pi + 1; let n = node(N_ARCH); n.s = eat_id(); skipnl(); eat_op("{")

@@ -3,6 +3,11 @@
 # The battle is a state machine over R_PHASE. `machine` dispatches on the
 # register and `become` transitions to a named state — no more `if ph == N`
 # ladders. Knight turn (0,1), Mage turn (2,3), Enemy turn (4).
+
+# Menu selections, named instead of matched on bare integers (R_CUR holds one).
+enum KnightAct { Attack, Guard, Item, Flee }
+enum MageAct   { Attack, Heal, Guard }
+
 system Battle phase Update {
   if reg(R_MODE) == 1 {
     let k = key()
@@ -20,20 +25,20 @@ system Battle phase Update {
                 if k == 's' { setreg(R_CUR, min(3, reg(R_CUR) + 1)) }
                 if is_confirm(k) {
                   match reg(R_CUR) {
-                    0 => {
+                    KnightAct.Attack => {
                       let d = max(1, st.atk - e.def + rng_range(0, 4))
                       e.hp = e.hp - d
                       setreg(R_PDMG, d)
                     }
-                    1 => { st.guard = 1;  setreg(R_PDMG, 0) }
-                    2 => {
+                    KnightAct.Guard => { st.guard = 1;  setreg(R_PDMG, 0) }
+                    KnightAct.Item => {
                       if reg(R_POTION) > 0 {
                         setreg(R_POTION, reg(R_POTION) - 1)
                         st.hp = min(st.maxhp, st.hp + 24)
                         setreg(R_PDMG, 24)
                       } else { setreg(R_PDMG, 0) }
                     }
-                    3 => {
+                    KnightAct.Flee => {
                       if rng_chance(50) { e.hp = 0;  setreg(R_MODE, 0) }
                       else { setreg(R_PDMG, 0) }
                     }
@@ -71,12 +76,12 @@ system Battle phase Update {
                 if k == 'k' { setreg(R_CUR, min(2, reg(R_CUR) + 1)) }
                 if k == 'j' {
                   match reg(R_CUR) {
-                    0 => {
+                    MageAct.Attack => {
                       let d = max(1, st.atk + 5 - e.def + rng_range(0, 5))
                       e.hp = e.hp - d
                       setreg(R_PDMG, d)
                     }
-                    1 => {
+                    MageAct.Heal => {
                       if st.mp >= 4 {
                         st.mp = st.mp - 4
                         for (t2, p2) in query [Stats, Party] {
@@ -85,7 +90,7 @@ system Battle phase Update {
                         setreg(R_PDMG, 16)
                       } else { setreg(R_PDMG, 0) }
                     }
-                    2 => { st.guard = 1;  setreg(R_PDMG, 0) }
+                    MageAct.Guard => { st.guard = 1;  setreg(R_PDMG, 0) }
                   }
                   become MageResolve
                   setreg(R_CUR, 0)

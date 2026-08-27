@@ -392,6 +392,26 @@ is still accepted when a state needs a specific value.) A `machine <reg>` reads
 value>)`. Both lower to plain branches (and `match` runs on the native LLVM
 backend too).
 
+## Enums
+
+`enum` names a set of related integer values so a magic-number space — a menu
+selection, a mode, a machine state — reads as names instead of literals:
+
+```ludic
+# doc-check: skip — composite: a declaration plus its uses
+enum Action { Attack, Guard, Item, Flee }        # Attack = 0, Guard = 1, …
+
+match reg(R_CUR) { Action.Attack => attack()  Action.Guard => guard()  _ => wait() }
+if reg(R_MODE) == Mode.Battle { … }
+```
+
+A variant is a **compile-time `int`** accessed as `Enum.Variant` (`Action.Guard`
+is `1`), numbered from `0` by declaration order, so it works anywhere an int does
+— `match` patterns, comparisons, `setreg`. Enums are a naming layer over `int`:
+there is no distinct enum runtime type yet, so an enum value lives in an ordinary
+`int` or register (and is saved with it). See `examples/chronorift/combat.ludic`,
+whose battle menus dispatch on `KnightAct`/`MageAct` instead of `0..3`.
+
 ## Expressions
 
 Precedence: `or → and → compar(< <= > >= == !=) → + - → * / % → unary(- not) →
