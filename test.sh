@@ -56,6 +56,11 @@ if ./selfhost/game-build.sh build/ludicc examples/annotations.ludic "/tmp/ludic_
    && [ "$(/tmp/ludic_ann </dev/null | tr '\n' ' ')" = "3 25 0 0 " ]; then
   ok "annotations.ludic (@Queries / @Computed / @OnSpawn / @Handles)"
 else bad "annotations: $(tail -1 /tmp/ann.out)"; fi
+# Lifecycle hooks fire in timeline order: @OnStart @OnAttach @OnSpawn @OnDespawn @OnQuit.
+if ./selfhost/game-build.sh build/ludicc examples/lifecycle.ludic "/tmp/ludic_life" >/tmp/life.out 2>&1 \
+   && [ "$(/tmp/ludic_life </dev/null | tr '\n' ' ')" = "1 700 50 950 2 " ]; then
+  ok "lifecycle.ludic (@OnStart/@OnAttach/@OnSpawn/@OnDespawn/@OnQuit in order)"
+else bad "lifecycle: $(tail -1 /tmp/life.out)"; fi
 # --- Toolchain-agent CLI smoke tests append below this line ---
 echo "== self-hosted front-end binaries (ludicc / ludic) =="
 # The two commands are one multi-call native binary built from the seed with

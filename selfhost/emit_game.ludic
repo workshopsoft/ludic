@@ -29,10 +29,37 @@ fn emit_calls_for_phase(phase: ptr) -> void {
   }
 }
 
+# @OnDespawn(Model) hooks compile to `@on_despawn_<Model>(entity)` functions that
+# bind the model's properties and run the body — dispatched by kind at `despawn`.
+fn emit_despawn_hooks() -> void {
+  let i = 0
+  while i < len(g_ondespawn) {
+    let hk = g_ondespawn[i]
+    let model = find_arch(hk.s)
+    ll_t = 0;  ll_lbl = 0;  g_term = false;  loc_reset();  nloop = 0;  nself = 0
+    ret_ty = "void"
+    let fbody = buf_new()
+    falloc = buf_new()
+    let saved = code
+    code = fbody
+    emit_bind_props(model, "%e")
+    emit_block(hk.a)
+    if not g_term { emit("  br label %ret\n") }
+    emit("ret:\n  ret void\n")
+    code = saved
+    emit("define void @on_despawn_");  emit(hk.s);  emit("(i32 %e) {\nentry:\n")
+    emit(buf_str(falloc))
+    emit(buf_str(fbody))
+    emit("}\n\n")
+    i = i + 1
+  }
+}
+
 fn emit_game_main() -> void {
   # every system becomes a function first
   let i = 0
   while i < len(prog) { if prog[i].kind == N_SYS { emit_system_fn(prog[i]) };  i = i + 1 }
+  emit_despawn_hooks()
 
   emit("define i32 @main(i32 %argc, ptr %argv) {\nentry:\n")
   emit("  store i32 %argc, ptr @L_argc\n")
@@ -63,6 +90,7 @@ fn emit_game_main() -> void {
   emit_calls_for_phase("Render")
   emit("  br label %loop\n")
   emit("done:\n")
+  emit_calls_for_phase("OnQuit")               # @OnQuit shutdown hooks run once, before teardown
   if not ptr_is_null(find_fn("rt_shutdown")) { emit("  call void @fn_rt_shutdown()\n") }
   emit("  ret i32 0\n}\n")
 }

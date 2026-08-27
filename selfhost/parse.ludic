@@ -283,13 +283,20 @@ fn parse_one_decl() -> void {
   let is_export = false
   let qspec: Node = ptr_null()
   let onspawn_model: ptr = ptr_null()
+  let ondespawn_model: ptr = ptr_null()
+  let onattach_prop: ptr = ptr_null()
+  let hook_phase: ptr = ptr_null()            # @OnStart / @OnQuit override the phase
   while is_op("@") {
     pi = pi + 1; let a = eat_id()             # collect a leading @annotation
     if streq(a, "export") { is_export = true }
-    else { if streq(a, "Queries") { qspec = parse_queries_anno() }   # @Queries(these: [...], on: ...)
-    else { if streq(a, "OnSpawn") { eat_op("("); onspawn_model = eat_id(); eat_op(")") }   # @OnSpawn(Model)
+    else { if streq(a, "Queries") { qspec = parse_queries_anno() }               # @Queries(these: [...], on: ...)
+    else { if streq(a, "OnSpawn") { eat_op("("); onspawn_model = eat_id(); eat_op(")") }
+    else { if streq(a, "OnDespawn") { eat_op("("); ondespawn_model = eat_id(); eat_op(")") }
+    else { if streq(a, "OnAttach") { eat_op("("); onattach_prop = eat_id(); eat_op(")") }
+    else { if streq(a, "OnStart") { hook_phase = "Start" }                       # boot
+    else { if streq(a, "OnQuit") { hook_phase = "OnQuit" }                       # shutdown
     else { if is_op("(") { let d = 0          # any other @anno(args) — parsed and skipped
-        while true { if is_op("(") { d = d + 1 };  if is_op(")") { d = d - 1 };  pi = pi + 1;  if d == 0 { break } } } } } }
+        while true { if is_op("(") { d = d + 1 };  if is_op(")") { d = d - 1 };  pi = pi + 1;  if d == 0 { break } } } } } } } } } }
     skipnl()
   }
   if is_id("import") { pi = pi + 1
@@ -305,9 +312,10 @@ fn parse_one_decl() -> void {
   if is_id("model") { push(prog, parse_archetype()); return }
   if is_id("handler") {
     let h = parse_system()
-    if not ptr_is_null(onspawn_model) {        # @OnSpawn(Model): a spawn hook, not a phased handler
-      register_onspawn(onspawn_model, h.a); return
-    }
+    if not ptr_is_null(onspawn_model) { register_onspawn(onspawn_model, h.a); return }       # spawn hook
+    if not ptr_is_null(ondespawn_model) { register_ondespawn(ondespawn_model, h.a); return } # despawn hook
+    if not ptr_is_null(onattach_prop) { register_onattach(onattach_prop, h.a); return }      # attach hook
+    if not ptr_is_null(hook_phase) { h.ty = hook_phase }                                     # @OnStart/@OnQuit
     if not ptr_is_null(qspec) {               # @Queries wraps the body in its S_QUERY
       qspec.a = h.a
       let wrap = node(N_BLOCK); push(wrap.kids, qspec); h.a = wrap
@@ -353,6 +361,8 @@ fn parse_program() -> void {
   prog = new []Node
   g_computed = new []Node
   g_onspawn = new []Node
+  g_ondespawn = new []Node
+  g_onattach = new []Node
   loaded_paths = new []ptr
   skipnl()
   g_game_name = "Ludic"
