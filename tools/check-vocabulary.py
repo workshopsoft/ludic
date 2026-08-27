@@ -142,6 +142,35 @@ kpath = ["repository", "keyword", "patterns"]
 compare("phases", h_phases, grammar_alternation(grammar, kpath, "FixedUpdate"), "ludic.tmLanguage.json")
 compare("primitive types", h_types, grammar_alternation(grammar, kpath, "fixed"), "ludic.tmLanguage.json")
 
+# --- against the actual self-hosted parser ---------------------------------
+# The compiler moved to Ludic, so the old C cross-check (above) is dark. This
+# replaces it: a declaration or clause keyword the highlighter colours must be
+# one the parser actually dispatches on, or nobody notices when a keyword is
+# highlighted but silently unparsed (exactly what happened to `scene`, `edge`,
+# `needs`, …). RESERVED is the escape hatch for documented, not-yet-implemented
+# keywords — and it is checked too, so a reserved word that gets implemented
+# must be promoted out of it.
+def parser_keywords():
+    kws = set()
+    for name in ("parse.ludic", "parse_game.ludic"):
+        text = open(os.path.join(ROOT, "selfhost", name), encoding="utf-8").read()
+        kws |= set(re.findall(r'is_id\("([a-z]+)"\)', text))
+        kws |= set(re.findall(r'streq\(t\.text,\s*"([a-z]+)"\)', text))
+    return kws
+
+pkw = parser_keywords()
+h_reserved = c_string_list(syntax_h, "LUDIC_KW_RESERVED")
+if not pkw:
+    problems.append("could not extract any keywords from selfhost/parse*.ludic")
+else:
+    for label, kws in (("declaration keywords", h_decl), ("clause keywords", h_clause)):
+        unparsed = (kws - pkw) - h_reserved
+        if unparsed:
+            problems.append(f"ludic_syntax.h lists {label} the selfhost parser never dispatches on: {', '.join(sorted(unparsed))}")
+    promoted = h_reserved & pkw
+    if promoted:
+        problems.append(f"LUDIC_KW_RESERVED lists keywords the parser now accepts — promote them into the highlighted vocabulary: {', '.join(sorted(promoted))}")
+
 if problems:
     print("vocabulary drift:", file=sys.stderr)
     for p in problems:

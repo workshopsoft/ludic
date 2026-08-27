@@ -41,12 +41,11 @@ object LudicTokens {
  */
 object LudicVocabulary {
     val DECL = setOf(
-        "game", "module", "import", "component", "struct", "archetype", "enum", "ui", "scene", "layer",
-        "const", "var", "fn", "extern", "system", "start", "on"
+        "game", "module", "import", "component", "struct", "archetype", "enum", "ui",
+        "const", "var", "fn", "extern", "system", "main"
     )
     val CLAUSE = setOf(
-        "phase", "query", "reads", "writes", "needs", "uses",
-        "requires", "ensures", "invariant", "effects"
+        "phase", "query", "reads", "writes"
     )
     val STMT = setOf(
         "let", "return", "if", "else", "when", "while", "for", "in", "spawn", "despawn",

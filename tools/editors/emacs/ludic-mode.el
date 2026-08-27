@@ -11,12 +11,11 @@
 ;;; Code:
 
 (defconst ludic--declaration-keywords
-  '("game" "module" "import" "component" "struct" "archetype" "enum" "ui" "scene" "layer"
-    "const" "var" "fn" "extern" "system" "start" "on"))
+  '("game" "module" "import" "component" "struct" "archetype" "enum" "ui"
+    "const" "var" "fn" "extern" "system" "main"))
 
 (defconst ludic--clause-keywords
-  '("phase" "query" "reads" "writes" "needs" "uses"
-    "requires" "ensures" "invariant" "effects"))
+  '("phase" "query" "reads" "writes"))
 
 (defconst ludic--statement-keywords
   '("let" "return" "if" "else" "when" "while" "for" "in" "spawn" "despawn"

@@ -4,9 +4,11 @@ A plan to make Ludic's syntax internally consistent. It fixes the drift between
 the spec and the compiler, then unifies the grammar around two rules. Scope:
 **full redesign (Phases 0–5)**. Named-field direction: **colon everywhere**.
 
-> Status: **Phases 1–3 landed.** Phases 4→5 are proposals. The phases are ordered
-> so the documentation never describes syntax the compiler rejects, and every
-> phase ends with the compiler still self-hosting to a fixpoint (`./test.sh`).
+> Status: **Phases 1–5 complete.** Every phase kept the compiler self-hosting to
+> a fixpoint (`./test.sh` 14/14), and each syntax migration was proven
+> behaviour-preserving (the migrated compiler compiles itself to byte-identical
+> IR; every golden game renders byte-identically). Landed on branch
+> `syntax-redesign-phase2` over a committed baseline on `main`.
 >
 > Coordinated with the toolchain agent (CLI front-end / `ludicc`+`ludic`
 > binaries) via serialized reseeds of `selfhost/ludicc.seed.ll`; Phase 1 rode in
@@ -316,13 +318,33 @@ addressed by 4a/4b, not by collapsing `if`/`when`.
 stay free" choice (LANGUAGE.md §Expressions already states this). Promoting them
 to operators would re-introduce the symbol soup the current design avoids.
 
-### Phase 5 — Single source of truth for keywords/grammar
-- Generate every editor plugin keyword list, `ludic_syntax.h`, and the LSP's
-  token set from **one** canonical list so a keyword can never again be
-  highlighted but unparsed.
-- Add a CI check (extend `tools/check-docs.py` / `check-vocabulary.py`) that
-  every ` ```ludic ` fence in the docs compiles, closing the doc-drift loop
-  permanently.
+### Phase 5 — Vocabulary anchored to the compiler ✅ DONE
+The editor vocabulary already stayed in sync *with itself* (`check-vocabulary.py`
+compares `ludic_syntax.h`, the JetBrains lexer, and the TextMate grammar). The
+missing anchor was the **compiler**: a keyword could be highlighted everywhere
+and still be silently unparsed. Closed both loops:
+- ✅ **Vocabulary ⇄ parser.** `check-vocabulary.py` now extracts every keyword
+  `selfhost/parse*.ludic` dispatches on (`is_id(...)` / `streq(t.text, ...)`) and
+  requires the header's declaration + clause keywords to be a subset — with a
+  `LUDIC_KW_RESERVED` escape hatch for documented, not-yet-implemented keywords
+  (`scene`/`layer`/`on`/`start`), itself checked so a reserved word that gets
+  implemented must be promoted. Verified it catches an injected bogus keyword.
+- ✅ **Reconciled the drift it exposed.** Removed the highlighted-but-unparsed
+  `scene`/`layer`/`on`/`start` (→ RESERVED) and the never-implemented
+  `needs`/`uses`/`requires`/`ensures`/`invariant`/`effects` clause words, and the
+  retired `edge`/`export`/`pure` prefix modifiers, from `ludic_syntax.h`, the
+  JetBrains lexer, the TextMate grammar, and the emacs mode; added `enum`/`main`.
+  `@`-annotations already highlight generically (`@[A-Za-z_]…`). test-tools 28/0.
+- ✅ **Doc-fence compilation** — the other half of "single source of truth" — was
+  already live: `check-docs.py` compiles every ` ```ludic ` fence through the
+  self-hosted `ludicc --fmt` parse gate (revived during Phase 1's coordination).
+
+Full generation-from-one-list (emit the editor files from a manifest) was not
+needed: the bidirectional *checks* give the same guarantee — nothing can drift
+without CI failing — without a code-generation step to maintain.
+
+**Phases 1–5 are complete.** All thirteen findings are resolved or resolved by an
+explicit, documented decision.
 
 ---
 
