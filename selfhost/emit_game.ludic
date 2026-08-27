@@ -71,13 +71,13 @@ fn emit_game_main() -> void {
   emit("define i32 @main(i32 %argc, ptr %argv) {\nentry:\n")
   emit("  store i32 %argc, ptr @L_argc\n")
   emit("  store ptr %argv, ptr @L_argv\n")
-  if not ptr_is_null(find_fn("rt_init")) { emit("  call void @fn_rt_init()\n") }
+  if (find_fn("rt_init") != null) { emit("  call void @fn_rt_init()\n") }
   emit_calls_for_phase("Start")
   emit("  br label %loop\n")
   emit("loop:\n")
   let r = emit_bind("load i32, ptr @L_running")
   let rc = emit_bind(sconcat("icmp ne i32 ", sconcat(r, ", 0")))
-  if not ptr_is_null(find_fn("rt_running")) {
+  if (find_fn("rt_running") != null) {
     let pr = emit_bind("call i32 @fn_rt_running()")
     let pc = emit_bind(sconcat("icmp ne i32 ", sconcat(pr, ", 0")))
     let go = emit_bind(sconcat("and i1 ", sconcat(rc, sconcat(", ", pc))))
@@ -86,7 +86,7 @@ fn emit_game_main() -> void {
     emit("  br i1 ");  emit(rc);  emit(", label %body, label %done\n")
   }
   emit("body:\n")
-  if not ptr_is_null(find_fn("rt_poll")) {
+  if (find_fn("rt_poll") != null) {
     let k = emit_bind("call i32 @fn_rt_poll()")
     emit("  store i32 ");  emit(k);  emit(", ptr @L_key\n")
   }
@@ -98,6 +98,6 @@ fn emit_game_main() -> void {
   emit("  br label %loop\n")
   emit("done:\n")
   emit_calls_for_phase("OnQuit")               # @OnQuit shutdown hooks run once, before teardown
-  if not ptr_is_null(find_fn("rt_shutdown")) { emit("  call void @fn_rt_shutdown()\n") }
+  if (find_fn("rt_shutdown") != null) { emit("  call void @fn_rt_shutdown()\n") }
   emit("  ret i32 0\n}\n")
 }

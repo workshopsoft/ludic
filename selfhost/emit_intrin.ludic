@@ -7,8 +7,8 @@ var g_intrin_ok: bool = false
 # is `name` a low-level intrinsic? A pure name check, so it can gate dispatch
 # without evaluating arguments (which could clobber shared state).
 fn is_intrinsic(name: ptr) -> bool {
-  if streq(name,"ptr_null") or streq(name,"mem_alloc") or streq(name,"mem_realloc") { return true }
-  if streq(name,"peek8") or streq(name,"poke8") or streq(name,"ptr_is_null") { return true }
+  if streq(name,"mem_alloc") or streq(name,"mem_realloc") { return true }
+  if streq(name,"peek8") or streq(name,"poke8") { return true }
   if streq(name,"file_open") or streq(name,"file_read") or streq(name,"file_write") { return true }
   if streq(name,"file_seek") or streq(name,"file_tell") or streq(name,"file_close") { return true }
   if streq(name,"print_str") or streq(name,"print_int") { return true }
@@ -24,7 +24,7 @@ fn arg_code(e: Node, i: int) -> ptr { let v = emit_expr(e.kids[i]);  return v.co
 
 fn emit_intrinsic(name: ptr, e: Node) -> Val {
   g_intrin_ok = true
-  if streq(name, "ptr_null") { return val("null", "ptr") }
+  # ptr_null / ptr_is_null are the `null` literal and `x == null` now.
   if streq(name, "mem_alloc") {
     let n = arg_code(e, 0)
     let w = emit_bind(sconcat("zext i32 ", sconcat(n, " to i64")))
@@ -47,11 +47,6 @@ fn emit_intrinsic(name: ptr, e: Node) -> Val {
     let t = emit_bind(sconcat("trunc i32 ", sconcat(v, " to i8")))
     emit("  store i8 ");  emit(t);  emit(", ptr ");  emit(a);  emit("\n")
     return val("0", "void")
-  }
-  if streq(name, "ptr_is_null") {
-    let p = arg_code(e, 0)
-    let c = emit_bind(sconcat("icmp eq ptr ", sconcat(p, ", null")))
-    return val(emit_bind(sconcat("zext i1 ", sconcat(c, " to i32"))), "bool")
   }
   if streq(name, "file_open") {
     let p = arg_code(e, 0);  let m = arg_code(e, 1)

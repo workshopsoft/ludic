@@ -77,7 +77,7 @@ fn emit_query(st: Node) -> void {
   }
 
   # optional where-clause
-  if not ptr_is_null(st.b) {
+  if (st.b != null) {
     let w = emit_expr(st.b)
     let wc = emit_bind(sconcat("icmp ne i32 ", sconcat(w.code, ", 0")))
     let kw = lbl("qw")

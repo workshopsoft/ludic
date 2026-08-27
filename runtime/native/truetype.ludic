@@ -18,50 +18,50 @@ const TT_EDGES:  int = 16384    # line segments in one glyph
 const TT_GC:     int = 512      # glyph cache entries
 
 # ---- per-font tables (parallel arrays; index = font id) -------------------
-var tt_data:  ptr = ptr_null()
-var tt_size:  ptr = ptr_null()
-var tt_upem:  ptr = ptr_null()
-var tt_nglyf: ptr = ptr_null()
-var tt_locfm: ptr = ptr_null()
-var tt_nhm:   ptr = ptr_null()
-var tt_asc:   ptr = ptr_null()
-var tt_desc:  ptr = ptr_null()
-var tt_gap:   ptr = ptr_null()
-var tt_glyf:  ptr = ptr_null()
-var tt_loca:  ptr = ptr_null()
-var tt_hmtx:  ptr = ptr_null()
-var tt_cmap:  ptr = ptr_null()
-var tt_cfmt:  ptr = ptr_null()
+var tt_data:  ptr = null
+var tt_size:  ptr = null
+var tt_upem:  ptr = null
+var tt_nglyf: ptr = null
+var tt_locfm: ptr = null
+var tt_nhm:   ptr = null
+var tt_asc:   ptr = null
+var tt_desc:  ptr = null
+var tt_gap:   ptr = null
+var tt_glyf:  ptr = null
+var tt_loca:  ptr = null
+var tt_hmtx:  ptr = null
+var tt_cmap:  ptr = null
+var tt_cfmt:  ptr = null
 var tt_n:     int = 0
 
 # ---- outline + edge scratch (reused for every glyph) ----------------------
-var ol_x:    ptr = ptr_null()
-var ol_y:    ptr = ptr_null()
-var ol_on:   ptr = ptr_null()
-var ol_ends: ptr = ptr_null()
+var ol_x:    ptr = null
+var ol_y:    ptr = null
+var ol_on:   ptr = null
+var ol_ends: ptr = null
 var ol_n:    int = 0
 var ol_ne:   int = 0
 
-var ed_x0: ptr = ptr_null()
-var ed_y0: ptr = ptr_null()
-var ed_x1: ptr = ptr_null()
-var ed_y1: ptr = ptr_null()
+var ed_x0: ptr = null
+var ed_y0: ptr = null
+var ed_x1: ptr = null
+var ed_y1: ptr = null
 var ed_n:  int = 0
 
-var sc_x:  ptr = ptr_null()     # scanline crossings
-var sc_d:  ptr = ptr_null()
+var sc_x:  ptr = null     # scanline crossings
+var sc_d:  ptr = null
 
 # ---- glyph cache ----------------------------------------------------------
-var gc_used: ptr = ptr_null()
-var gc_font: ptr = ptr_null()
-var gc_cp:   ptr = ptr_null()
-var gc_px:   ptr = ptr_null()
-var gc_w:    ptr = ptr_null()
-var gc_h:    ptr = ptr_null()
-var gc_ox:   ptr = ptr_null()
-var gc_oy:   ptr = ptr_null()
-var gc_adv:  ptr = ptr_null()
-var gc_bmp:  ptr = ptr_null()
+var gc_used: ptr = null
+var gc_font: ptr = null
+var gc_cp:   ptr = null
+var gc_px:   ptr = null
+var gc_w:    ptr = null
+var gc_h:    ptr = null
+var gc_ox:   ptr = null
+var gc_oy:   ptr = null
+var gc_adv:  ptr = null
+var gc_bmp:  ptr = null
 
 fn rt_tt_init() -> void {
   tt_data = mem_alloc(TT_MAX * 8)
@@ -169,7 +169,7 @@ fn tt_pick_cmap(id: int, d: ptr, co: int) -> void {
 fn rt_font_load(path: str) -> int {
   if tt_n >= TT_MAX { return 0 - 1 }
   let d = rt_read_file(path)
-  if ptr_is_null(d) { return 0 - 1 }
+  if (d == null) { return 0 - 1 }
   let size = rt_file_len
   var base = 0
   # a .ttc collection points at its first font

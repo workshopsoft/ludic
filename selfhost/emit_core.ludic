@@ -2,7 +2,7 @@
 # module header. Mirrors the pieces of compiler/back/ that this subset needs.
 # structs and slices are references, so every non-scalar type lowers to `ptr`.
 
-property Val { code: ptr = ptr_null(), ty: ptr = ptr_null() }
+property Val { code: ptr = null, ty: ptr = null }
 fn val(code: ptr, ty: ptr) -> Val { let v = new Val;  v.code = code;  v.ty = ty;  return v }
 
 var head: Buf                 # module-level: types, globals, string constants
@@ -70,12 +70,12 @@ fn slice_elem(t: ptr) -> ptr { return substr(t, 2, slen(t) - 2) }
 fn find_arch(name: ptr) -> Node {
   var i = 0
   while i < len(prog) { let d = prog[i];  if d.kind == N_ARCH and streq(d.s, name) { return d };  i = i + 1 }
-  return ptr_null()
+  return null
 }
 fn find_comp(name: ptr) -> Node {
   var i = 0
   while i < len(prog) { let d = prog[i];  if d.kind == N_COMP and streq(d.s, name) { return d };  i = i + 1 }
-  return ptr_null()
+  return null
 }
 # every record is a `property` with a %Cmp_ layout of named fields — whether it
 # is stored per-entity by the ECS or heap-allocated by `new` is a matter of use.
@@ -102,7 +102,7 @@ fn find_global(name: ptr) -> Node {
     if d.kind == N_CONST and streq(d.s, name) { return d }
     i = i + 1
   }
-  return ptr_null()
+  return null
 }
 
 # `Enum.Variant` -> the variant's ordinal (its index), or -1 if `ename` names no
@@ -122,7 +122,7 @@ fn enum_ordinal(ename: ptr, vname: ptr) -> int {
 fn find_fn(name: ptr) -> Node {
   var i = 0
   while i < len(prog) { let d = prog[i];  if d.kind == N_FN and streq(d.s, name) { return d };  i = i + 1 }
-  return ptr_null()
+  return null
 }
 
 # @Computed derived fields: a per-property (Prop.field -> expression) registry.
@@ -135,16 +135,16 @@ fn register_computed(prop: ptr, field: ptr, ty: ptr, e: Node) -> void {
   push(g_computed, cf)
 }
 fn computed_expr(prop: ptr, field: ptr) -> Node {
-  if ptr_is_null(prop) { return ptr_null() }
+  if (prop == null) { return null }
   let key = sconcat(prop, sconcat(".", field))
   var i = 0
   while i < len(g_computed) { if streq(g_computed[i].s, key) { return g_computed[i].a };  i = i + 1 }
-  return ptr_null()
+  return null
 }
 # best-effort static type of an expression (for computed-field lookup; emits nothing)
 fn static_type(e: Node) -> ptr {
   if e.kind == E_ID { let li = loc_find(e.s);  if li >= 0 { return loc_ty[li] } }
-  return ptr_null()
+  return null
 }
 
 # @OnSpawn(Model) hooks: a Model -> hook-body registry. Populated at parse time;
@@ -158,7 +158,7 @@ fn register_onspawn(model: ptr, body: Node) -> void {
 fn onspawn_body(model: ptr) -> Node {
   var i = 0
   while i < len(g_onspawn) { if streq(g_onspawn[i].s, model) { return g_onspawn[i].a };  i = i + 1 }
-  return ptr_null()
+  return null
 }
 
 # @OnDespawn(Model): a Model -> hook-body registry. Despawn does not statically
@@ -173,7 +173,7 @@ fn register_ondespawn(model: ptr, body: Node) -> void {
 fn ondespawn_body(model: ptr) -> Node {
   var i = 0
   while i < len(g_ondespawn) { if streq(g_ondespawn[i].s, model) { return g_ondespawn[i].a };  i = i + 1 }
-  return ptr_null()
+  return null
 }
 fn register_onattach(prop: ptr, body: Node) -> void {
   let n = node(N_BLOCK); n.s = prop; n.a = body; push(g_onattach, n)
@@ -181,7 +181,7 @@ fn register_onattach(prop: ptr, body: Node) -> void {
 fn onattach_body(prop: ptr) -> Node {
   var i = 0
   while i < len(g_onattach) { if streq(g_onattach[i].s, prop) { return g_onattach[i].a };  i = i + 1 }
-  return ptr_null()
+  return null
 }
 
 # @OnEnable(Property) / @OnDisable(Property): run when a property is toggled on an
@@ -193,12 +193,12 @@ fn register_ondisable(prop: ptr, body: Node) -> void { let n = node(N_BLOCK); n.
 fn onenable_body(prop: ptr) -> Node {
   var i = 0
   while i < len(g_onenable) { if streq(g_onenable[i].s, prop) { return g_onenable[i].a };  i = i + 1 }
-  return ptr_null()
+  return null
 }
 fn ondisable_body(prop: ptr) -> Node {
   var i = 0
   while i < len(g_ondisable) { if streq(g_ondisable[i].s, prop) { return g_ondisable[i].a };  i = i + 1 }
-  return ptr_null()
+  return null
 }
 
 # is `name` a model (archetype)? — chooses model-vs-handler for a bare enable/disable

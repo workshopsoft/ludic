@@ -17,7 +17,7 @@ fn ui_wtype(w: Node) -> int {
 fn ui_prop(w: Node, key: ptr) -> Node {
   var i = 0
   while i < len(w.b.kids) { if streq(w.b.kids[i].s, key) { return w.b.kids[i].a };  i = i + 1 }
-  return ptr_null()
+  return null
 }
 fn ui_flatten(w: Node, parent: int) -> void {
   let idx = len(uiw)
@@ -51,7 +51,7 @@ fn ui_index_of(nm: ptr) -> int {
   i = 0
   while i < len(uiw) {
     let idp = ui_prop(uiw[i], "id")
-    if not ptr_is_null(idp) { if idp.kind == E_ID and streq(idp.s, s) { return i } }
+    if (idp != null) { if idp.kind == E_ID and streq(idp.s, s) { return i } }
     i = i + 1
   }
   return 0

@@ -4,7 +4,7 @@
 fn emit_init_component(e: ptr, comp: ptr, rec: Node) -> void {
   let me = itoa(MAX_ENT)
   let c = find_comp(comp)
-  if ptr_is_null(c) { perr(sconcat("spawn: unknown property ", comp)) }
+  if (c == null) { perr(sconcat("spawn: unknown property ", comp)) }
   let hp = nreg();  emit("  ");  emit(hp);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i8], ptr @H_");  emit(comp);  emit(", i32 0, i32 ");  emit(e);  emit("\n")
   emit("  store i8 1, ptr ");  emit(hp);  emit("\n")
   let slot = nreg()
@@ -18,12 +18,12 @@ fn emit_init_component(e: ptr, comp: ptr, rec: Node) -> void {
     let lt = llty(fd.ty)
     var v = "0"
     if streq(lt, "ptr") { v = "null" }
-    if not ptr_is_null(fd.a) { let dv = emit_expr(fd.a);  v = dv.code }
+    if (fd.a != null) { let dv = emit_expr(fd.a);  v = dv.code }
     emit("  store ");  emit(lt);  emit(" ");  emit(v);  emit(", ptr ");  emit(addr);  emit("\n")
     f = f + 1
   }
   # per-spawn overrides
-  if not ptr_is_null(rec) {
+  if (rec != null) {
     var j = 0
     while j < len(rec.kids) {
       let fi = rec.kids[j]
@@ -39,7 +39,7 @@ fn emit_init_component(e: ptr, comp: ptr, rec: Node) -> void {
   }
   # @OnAttach(Property) runs once the property is attached and seeded
   let ab = onattach_body(comp)
-  if not ptr_is_null(ab) {
+  if (ab != null) {
     let save = nloc
     let vslot = emit_alloca("ptr")
     emit("  store ptr ");  emit(slot);  emit(", ptr ");  emit(vslot);  emit("\n")
@@ -76,14 +76,14 @@ fn emit_spawn(st: Node) -> void {
     var c = 0
     while c < len(arch.kids) {
       let cn = arch.kids[c].s
-      var rec = ptr_null()
+      var rec = null
       var i = 0
       while i < len(st.kids) { if streq(st.kids[i].s, cn) { rec = st.kids[i].a };  i = i + 1 }
       emit_init_component(e, cn, rec)
       c = c + 1
     }
     let ob = onspawn_body(st.s)                 # @OnSpawn(Model) hook runs after init
-    if not ptr_is_null(ob) {
+    if (ob != null) {
       let save = nloc
       emit_bind_props(arch, e)
       emit_block(ob)
@@ -121,14 +121,14 @@ fn emit_despawn(st: Node) -> void {
 # flag). A bare `<Model>` / `<Handler>` flips a global enabled flag.
 fn emit_toggle(st: Node) -> void {
   var val = "0";  if st.ival == 1 { val = "1" }
-  if not ptr_is_null(st.a) {
+  if (st.a != null) {
     let ev = emit_expr(st.a)
     let me = itoa(MAX_ENT)
     let hp = nreg();  emit("  ");  emit(hp);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i8], ptr @H_");  emit(st.s);  emit(", i32 0, i32 ");  emit(ev.code);  emit("\n")
     emit("  store i8 ");  emit(val);  emit(", ptr ");  emit(hp);  emit("\n")
-    var hb: Node = ptr_null()
+    var hb: Node = null
     if st.ival == 1 { hb = onenable_body(st.s) } else { hb = ondisable_body(st.s) }
-    if not ptr_is_null(hb) {
+    if (hb != null) {
       let save = nloc
       let slot = nreg();  emit("  ");  emit(slot);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x %Cmp_");  emit(st.s);  emit("], ptr @S_");  emit(st.s);  emit(", i32 0, i32 ");  emit(ev.code);  emit("\n")
       let vslot = emit_alloca("ptr")

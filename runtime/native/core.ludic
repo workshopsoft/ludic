@@ -20,10 +20,10 @@
 # ============================================================================
 
 # ---- state ----------------------------------------------------------------
-var rt_fb:    ptr = ptr_null()     # framebuffer, one i32 (0x00RRGGBB) per pixel
+var rt_fb:    ptr = null     # framebuffer, one i32 (0x00RRGGBB) per pixel
 var rt_fbw:   int = 320
 var rt_fbh:   int = 240
-var rt_regs:  ptr = ptr_null()     # the 64 general-purpose game registers
+var rt_regs:  ptr = null     # the 64 general-purpose game registers
 var rt_rng:   int = 305419896      # xorshift32 state
 var rt_alive: int = 1              # platform still running?
 
@@ -277,7 +277,7 @@ fn rt_put_int(buf: ptr, at: int, v: int) -> int {
 
 fn rt_dump_ppm(path: str) -> void {
   let f = file_open(path, "wb")
-  if ptr_is_null(f) { return }
+  if (f == null) { return }
 
   let hdr = mem_alloc(64)
   var n = rt_put_str(hdr, 0, "P6\n")
@@ -310,7 +310,7 @@ import "ui.ludic"
 # A character grid the game paints with map_row() and reads with tile(). Stored
 # as one byte per cell in a flat buffer; out-of-bounds reads answer '#' so a
 # caller can treat the edge of the world as wall without special-casing it.
-var rt_map:  ptr = ptr_null()
+var rt_map:  ptr = null
 var rt_mapw: int = 0
 var rt_maph: int = 0
 
@@ -344,7 +344,7 @@ fn rt_tile(x: int, y: int) -> int {
 # ---- status line ----------------------------------------------------------
 # One persistent string of feedback/dialogue, copied into runtime-owned memory
 # so it survives whatever the caller does with the original.
-var rt_statusbuf: ptr = ptr_null()
+var rt_statusbuf: ptr = null
 
 fn rt_status(s: str) -> void {
   var i = 0

@@ -13,12 +13,12 @@ const IMG_MAX: int = 32
 const SPR_MAX: int = 160
 const SPR_SZ:  int = 16
 
-var img_px:   ptr = ptr_null()     # IMG_MAX pointers to RGBA buffers
-var img_w:    ptr = ptr_null()
-var img_h:    ptr = ptr_null()
+var img_px:   ptr = null     # IMG_MAX pointers to RGBA buffers
+var img_w:    ptr = null
+var img_h:    ptr = null
 var img_n:    int = 0
 
-var spr_px:   ptr = ptr_null()     # SPR_MAX * 16 * 16 RGBA pixels, one block
+var spr_px:   ptr = null     # SPR_MAX * 16 * 16 RGBA pixels, one block
 var spr_n:    int = 0
 
 fn rt_image_init() -> void {
@@ -44,11 +44,11 @@ fn png_tag(b: ptr, at: int, a: int, c: int, d: int, e: int) -> bool {
 
 fn rt_read_file(path: str) -> ptr {
   let f = file_open(path, "rb")
-  if ptr_is_null(f) { return ptr_null() }
+  if (f == null) { return null }
   file_seek(f, 0, 2)
   let n = file_tell(f)
   file_seek(f, 0, 0)
-  if n <= 0 { file_close(f); return ptr_null() }
+  if n <= 0 { file_close(f); return null }
   let buf = mem_alloc(n + 8)
   file_read(f, buf, n)
   file_close(f)
@@ -60,14 +60,14 @@ var rt_file_len: int = 0
 # decoded image is left in these; -1 width means failure
 var png_w:  int = 0
 var png_h:  int = 0
-var png_px: ptr = ptr_null()
+var png_px: ptr = null
 
 fn rt_decode_png(path: str) -> bool {
   png_w = 0
   png_h = 0
-  png_px = ptr_null()
+  png_px = null
   let d = rt_read_file(path)
-  if ptr_is_null(d) { return false }
+  if (d == null) { return false }
   let size = rt_file_len
   if size < 8 { mem_free(d); return false }
   if peek8(d, 0) != 137 { mem_free(d); return false }
@@ -334,7 +334,7 @@ fn rt_png_load(path: str) -> int {
     }
   }
   mem_free(png_px)
-  png_px = ptr_null()
+  png_px = null
   return id
 }
 
@@ -377,7 +377,7 @@ fn rt_hexval(c: int) -> int {
 
 fn rt_sprites_load(path: str) -> void {
   let d = rt_read_file(path)
-  if ptr_is_null(d) { spr_n = 0; return }
+  if (d == null) { spr_n = 0; return }
   let size = rt_file_len
   let pal = mem_alloc(128 * 4)
   mem_set(pal, 0, 128 * 4)

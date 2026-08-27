@@ -40,8 +40,8 @@ fn emit_snapshot() -> void {
   emith("@.sav_path = private unnamed_addr constant [10 x i8] c\"ludic.sav\\00\"\n")
   emith("@.sav_wb = private unnamed_addr constant [3 x i8] c\"wb\\00\"\n")
   emith("@.sav_rb = private unnamed_addr constant [3 x i8] c\"rb\\00\"\n")
-  let has_save = not ptr_is_null(find_fn("rt_save_state"))
-  let has_load = not ptr_is_null(find_fn("rt_load_state"))
+  let has_save = (find_fn("rt_save_state") != null)
+  let has_load = (find_fn("rt_load_state") != null)
 
   emit("define void @L_save() {\nentry:\n")
   emit("  %f = call ptr @fopen(ptr @.sav_path, ptr @.sav_wb)\n")

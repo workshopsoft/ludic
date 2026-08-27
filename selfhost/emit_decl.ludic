@@ -90,13 +90,13 @@ fn emit_program() -> void {
 fn ir_flush(path: ptr) -> bool {
   let h = buf_str(head)
   let c = buf_str(code)
-  if ptr_is_null(path) {
+  if (path == null) {
     print_str(h)
     print_str(c)
     return true
   }
   let f = file_open(path, "wb")
-  if ptr_is_null(f) { return false }
+  if (f == null) { return false }
   file_write(f, h, slen(h))
   file_write(f, c, slen(c))
   file_close(f)

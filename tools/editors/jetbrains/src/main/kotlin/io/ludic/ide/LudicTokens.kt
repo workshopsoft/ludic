@@ -68,8 +68,8 @@ object LudicVocabulary {
         // compiler intrinsics: the floor the Ludic-written runtime stands on
         "mem_alloc", "mem_realloc", "mem_free", "mem_copy", "mem_set", "peek8", "poke8", "peek32",
         "os_argc", "os_arg", "file_stderr",
-        "poke32", "peekp", "pokep", "peekf", "pokef", "ptr_add", "ptr_null",
-        "ptr_is_null", "as_fixed", "as_int", "file_open", "file_read", "file_write",
+        "poke32", "peekp", "pokep", "peekf", "pokef", "ptr_add",
+        "as_fixed", "as_int", "file_open", "file_read", "file_write",
         "file_seek", "file_tell", "file_close", "read_byte", "write_byte", "print_str",
         "str_len", "os_exit", "os_time",
         "is_windowed", "game_title", "win_open", "win_poll", "win_present",

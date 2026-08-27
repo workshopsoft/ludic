@@ -8,7 +8,7 @@ var g_addr_ty: ptr           # out-param: the type at the computed address
 fn emit_member_addr(e: Node) -> ptr {
   let base = emit_expr(e.a)
   let s = layout_node(base.ty)
-  if ptr_is_null(s) { perr(sconcat("member access on non-aggregate ", base.ty)) }
+  if (s == null) { perr(sconcat("member access on non-aggregate ", base.ty)) }
   let fidx = field_index(s, e.s)
   if fidx < 0 { perr(sconcat("no such field ", e.s)) }
   g_addr_ty = field_type(s, e.s)

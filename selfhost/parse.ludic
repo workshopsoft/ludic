@@ -62,6 +62,7 @@ fn p_primary() -> Node {
   if t.kind == TK_ID {
     if streq(t.text, "true")  { let n = node(E_BOOL); n.ival = 1; pi = pi + 1; return n }
     if streq(t.text, "false") { let n = node(E_BOOL); n.ival = 0; pi = pi + 1; return n }
+    if streq(t.text, "null")  { pi = pi + 1; return node(E_NULL) }
     if streq(t.text, "new")   { pi = pi + 1;  let n = node(E_NEW); n.s = ptype(); return n }
     let n = node(E_ID); n.s = t.text; pi = pi + 1; return n
   }
@@ -275,13 +276,13 @@ fn already_loaded(full: ptr) -> bool {
 # `@pure`, `@deterministic`, … — one channel, not a zoo of prefix keywords.
 fn parse_one_decl() -> void {
   var is_export = false
-  var qspec: Node = ptr_null()
-  var onspawn_model: ptr = ptr_null()
-  var ondespawn_model: ptr = ptr_null()
-  var onattach_prop: ptr = ptr_null()
-  var onenable_prop: ptr = ptr_null()
-  var ondisable_prop: ptr = ptr_null()
-  var hook_phase: ptr = ptr_null()            # @OnStart / @OnQuit override the phase
+  var qspec: Node = null
+  var onspawn_model: ptr = null
+  var ondespawn_model: ptr = null
+  var onattach_prop: ptr = null
+  var onenable_prop: ptr = null
+  var ondisable_prop: ptr = null
+  var hook_phase: ptr = null            # @OnStart / @OnQuit override the phase
   while is_op("@") {
     pi = pi + 1; let a = eat_id()             # collect a leading @annotation
     if streq(a, "export") { is_export = true }
@@ -309,13 +310,13 @@ fn parse_one_decl() -> void {
   if is_id("model") { push(prog, parse_archetype()); return }
   if is_id("handler") {
     let h = parse_system()
-    if not ptr_is_null(onspawn_model) { register_onspawn(onspawn_model, h.a); return }       # spawn hook
-    if not ptr_is_null(ondespawn_model) { register_ondespawn(ondespawn_model, h.a); return } # despawn hook
-    if not ptr_is_null(onattach_prop) { register_onattach(onattach_prop, h.a); return }      # attach hook
-    if not ptr_is_null(onenable_prop) { register_onenable(onenable_prop, h.a); return }      # enable hook
-    if not ptr_is_null(ondisable_prop) { register_ondisable(ondisable_prop, h.a); return }   # disable hook
-    if not ptr_is_null(hook_phase) { h.ty = hook_phase }                                     # @OnStart/@OnQuit
-    if not ptr_is_null(qspec) {               # @Queries wraps the body in its S_QUERY
+    if (onspawn_model != null) { register_onspawn(onspawn_model, h.a); return }       # spawn hook
+    if (ondespawn_model != null) { register_ondespawn(ondespawn_model, h.a); return } # despawn hook
+    if (onattach_prop != null) { register_onattach(onattach_prop, h.a); return }      # attach hook
+    if (onenable_prop != null) { register_onenable(onenable_prop, h.a); return }      # enable hook
+    if (ondisable_prop != null) { register_ondisable(ondisable_prop, h.a); return }   # disable hook
+    if (hook_phase != null) { h.ty = hook_phase }                                     # @OnStart/@OnQuit
+    if (qspec != null) {               # @Queries wraps the body in its S_QUERY
       qspec.a = h.a
       let wrap = node(N_BLOCK); push(wrap.kids, qspec); h.a = wrap
     }
@@ -336,7 +337,7 @@ fn do_import(rel: ptr) -> void {
   if already_loaded(full) { return }
   push(loaded_paths, full)
   let src = read_file(full)
-  if ptr_is_null(src) { perr(sconcat("cannot open import ", full)) }
+  if (src == null) { perr(sconcat("cannot open import ", full)) }
   let saved_toks = toks;  let saved_pi = pi;  let saved_dir = cur_dir
   cur_dir = dir_of(full)
   lex(src)                                   # resets the global token stream
