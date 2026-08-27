@@ -197,11 +197,11 @@ fn rt_seed(s: int) -> void {
 # masked off only when a caller asks for a number.
 fn rt_next_rand() -> int {
   var x = rt_rng
-  x = bxor(x, shl(x, 13))
-  x = bxor(x, shr(x, 17))
-  x = bxor(x, shl(x, 5))
+  x = (x ^ (x << 13))
+  x = (x ^ (x >> 17))
+  x = (x ^ (x << 5))
   rt_rng = x
-  return band(x, 2147483647)
+  return (x & 2147483647)
 }
 
 fn rt_rng_range(lo: int, hi: int) -> int {

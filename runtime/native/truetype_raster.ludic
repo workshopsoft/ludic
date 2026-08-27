@@ -232,13 +232,13 @@ fn tt_raster(id: int, gid: int, px: int) -> ptr {
 # Rasterizing is far too slow to repeat per frame, so a coverage mask is kept
 # per (font, codepoint, size). Open addressing, 8 probes, evict on miss.
 fn gc_hash(font: int, cp: int, px: int) -> int {
-  return band(bxor(bxor(cp * 2654435761, shl(font, 20)), shl(px, 8)), TT_GC - 1)
+  return ((((cp * 2654435761) ^ (font << 20)) ^ (px << 8)) & (TT_GC - 1))
 }
 
 fn tt_glyph_get(font: int, cp: int, px: int) -> int {
   let h = gc_hash(font, cp, px)
   for k in 0 .. 8 {
-    let s = band(h + k, TT_GC - 1)
+    let s = ((h + k) & (TT_GC - 1))
     if peek32(gc_used, s) == 1 {
       if peek32(gc_font, s) == font {
         if peek32(gc_cp, s) == cp {
@@ -273,9 +273,9 @@ fn tt_utf8(s: str, at: int) -> int {
   let c = peek8(s, at)
   var extra = 0 - 1
   if c < 128 { extra = 0 }
-  if shr(c, 5) == 6 { extra = 1 }
-  if shr(c, 4) == 14 { extra = 2 }
-  if shr(c, 3) == 30 { extra = 3 }
+  if (c >> 5) == 6 { extra = 1 }
+  if (c >> 4) == 14 { extra = 2 }
+  if (c >> 3) == 30 { extra = 3 }
   if extra < 0 {
     u8_next = at + 1
     return 65533
@@ -284,14 +284,14 @@ fn tt_utf8(s: str, at: int) -> int {
     u8_next = at + 1
     return c
   }
-  var cp = band(c, shr(63, extra))
+  var cp = (c & (63 >> extra))
   for i in 0 .. extra {
     let b = peek8(s, at + 1 + i)
-    if band(b, 192) != 128 {
+    if (b & 192) != 128 {
       u8_next = at + 1 + i
       return 65533
     }
-    cp = bor(shl(cp, 6), band(b, 63))
+    cp = ((cp << 6) | (b & 63))
   }
   u8_next = at + 1 + extra
   return cp
@@ -300,9 +300,9 @@ fn tt_utf8(s: str, at: int) -> int {
 # ---- drawing --------------------------------------------------------------
 fn tt_blit(bmp: ptr, w: int, h: int, dx: int, dy: int, colour: int) -> void {
   if ptr_is_null(bmp) { return }
-  let cr = band(shr(colour, 16), 255)
-  let cg = band(shr(colour, 8), 255)
-  let cb = band(colour, 255)
+  let cr = ((colour >> 16) & 255)
+  let cg = ((colour >> 8) & 255)
+  let cb = (colour & 255)
   for y in 0 .. h {
     let py = dy + y
     if py >= 0 {
@@ -314,10 +314,10 @@ fn tt_blit(bmp: ptr, w: int, h: int, dx: int, dy: int, colour: int) -> void {
             if pxx >= 0 {
               if pxx < rt_fbw {
                 let d = peek32(rt_fb, py * rt_fbw + pxx)
-                let rr = (cr * a + band(shr(d, 16), 255) * (255 - a)) / 255
-                let rg = (cg * a + band(shr(d, 8), 255) * (255 - a)) / 255
-                let rb = (cb * a + band(d, 255) * (255 - a)) / 255
-                poke32(rt_fb, py * rt_fbw + pxx, bor(bor(shl(rr, 16), shl(rg, 8)), rb))
+                let rr = (cr * a + ((d >> 16) & 255) * (255 - a)) / 255
+                let rg = (cg * a + ((d >> 8) & 255) * (255 - a)) / 255
+                let rb = (cb * a + (d & 255) * (255 - a)) / 255
+                poke32(rt_fb, py * rt_fbw + pxx, (((rr << 16) | (rg << 8)) | rb))
               }
             }
           }

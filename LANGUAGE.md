@@ -571,14 +571,17 @@ whose battle menus dispatch on `KnightAct`/`MageAct` instead of `0..3`.
 
 ## Expressions
 
-Precedence: `or → and → compar(< <= > >= == !=) → + - → * / % → unary(- not) →
-postfix(. () )`. Operators are built-in only (no overloading). The boolean
-operators are spelled **`and` / `or` / `not`**; `&&` and `||` are not Ludic operators
-and `!` are rejected with a diagnostic naming the fix (`!=` is unaffected). Bitwise operations are
-functions (`band`, `bor`, `bxor`, `bnot`, `shl`, `shr`), so the symbols are free
-— which is why there is only one spelling to remember. `expr with { field: … }` is not implemented; records appear
-only in `spawn`. Char literals (`'w'`) are `int` code points; colors are hex
-ints (`0xff8800`).
+Precedence (high to low): `postfix(. [] ())  →  unary(- ~ not)  →
+* / %  <<  >>  &  →  + -  |  ^  →  compar(< <= > >= == !=)  →  and  →  or`.
+The bitwise operators bind **tighter than comparison** (Go-style), so
+`flags & MASK == 0` means `(flags & MASK) == 0` — no parentheses needed.
+
+Operators are built-in only (no overloading). The boolean operators are spelled
+**`and` / `or` / `not`**; `&&` and `||` are not Ludic operators, and a bare `!` is
+rejected with a diagnostic naming the fix (`!=` is unaffected). Bitwise operators
+are **`& | ^ << >> ~`** (`>>` is a logical/unsigned shift). `expr with { field: … }`
+is not implemented; records appear only in `spawn`. Char literals (`'w'`) are
+`int` code points; colors are hex ints (`0xff8800`).
 
 ## Builtins (the standard library / runtime surface)
 

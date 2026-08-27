@@ -75,13 +75,13 @@ fn ui_layout() -> void {
 
 # ---- drawing --------------------------------------------------------------
 fn ui_lighten(c: int) -> int {
-  var r = band(shr(c, 16), 255)
-  var g = band(shr(c, 8), 255)
-  var b = band(c, 255)
+  var r = ((c >> 16) & 255)
+  var g = ((c >> 8) & 255)
+  var b = (c & 255)
   r = r + (255 - r) * 4 / 10
   g = g + (255 - g) * 4 / 10
   b = b + (255 - b) * 4 / 10
-  return bor(bor(shl(r, 16), shl(g, 8)), b)
+  return (((r << 16) | (g << 8)) | b)
 }
 
 fn ui_draw_node(i: int) -> void {

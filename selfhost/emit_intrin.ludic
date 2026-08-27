@@ -14,7 +14,6 @@ fn is_intrinsic(name: ptr) -> bool {
   if streq(name,"print_str") or streq(name,"print_int") { return true }
   if streq(name,"os_argc") or streq(name,"os_arg") or streq(name,"os_exit") or streq(name,"file_stderr") { return true }
   if streq(name,"os_system") or streq(name,"os_getenv") { return true }
-  if streq(name,"shl") or streq(name,"shr") or streq(name,"band") or streq(name,"bor") or streq(name,"bxor") or streq(name,"bnot") { return true }
   if streq(name,"peek32") or streq(name,"poke32") { return true }
   return false
 }
@@ -114,16 +113,7 @@ fn emit_intrinsic(name: ptr, e: Node) -> Val {
     let n = arg_code(e, 0)
     return val(emit_bind(sconcat("call ptr @getenv(ptr ", sconcat(n, ")"))), "str")
   }
-  if streq(name, "bnot") { let a = arg_code(e, 0);  return val(emit_bind(sconcat("xor i32 ", sconcat(a, ", -1"))), "int") }
-  if streq(name,"shl") or streq(name,"shr") or streq(name,"band") or streq(name,"bor") or streq(name,"bxor") {
-    let a = arg_code(e, 0);  let b = arg_code(e, 1)
-    var opc = "shl"
-    if streq(name,"shr") { opc = "lshr" }
-    if streq(name,"band") { opc = "and" }
-    if streq(name,"bor") { opc = "or" }
-    if streq(name,"bxor") { opc = "xor" }
-    return val(emit_bind(sconcat(opc, sconcat(" i32 ", sconcat(a, sconcat(", ", b))))), "int")
-  }
+  # bitwise ops are the operators & | ^ << >> ~ now (see emit_bin / p_mul).
   if streq(name, "peek32") {
     let p = arg_code(e, 0);  let i = arg_code(e, 1)
     let g = nreg()

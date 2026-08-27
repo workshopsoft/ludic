@@ -42,6 +42,11 @@ fn arith_code(op: ptr) -> ptr {
   if streq(op, "-") { return "sub" }
   if streq(op, "*") { return "mul" }
   if streq(op, "/") { return "sdiv" }
+  if streq(op, "&") { return "and" }
+  if streq(op, "|") { return "or" }
+  if streq(op, "^") { return "xor" }
+  if streq(op, "<<") { return "shl" }
+  if streq(op, ">>") { return "lshr" }             # logical shift (unsigned)
   return "srem"
 }
 
@@ -170,6 +175,7 @@ fn emit_expr(e: Node) -> Val {
   if e.kind == E_UN {
     let a = emit_expr(e.a)
     if streq(e.s, "-") { return val(emit_bind(sconcat("sub i32 0, ", a.code)), "int") }
+    if streq(e.s, "~") { return val(emit_bind(sconcat("xor i32 ", sconcat(a.code, ", -1"))), "int") }
     let c = emit_bind(sconcat("icmp eq i32 ", sconcat(a.code, ", 0")))
     return val(emit_bind(sconcat("zext i1 ", sconcat(c, " to i32"))), "bool")
   }
