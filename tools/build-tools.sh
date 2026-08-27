@@ -25,8 +25,8 @@ build_one() {
   if [ -x "$OUT/$name" ]; then
     newest=$(find "$SRC" -name '*.h' -o -name "$(basename "$main")" | while read -r f; do
       [ "$f" -nt "$OUT/$name" ] && echo new
-    done)
-    [ -z "$newest" ] && { echo "$name: up to date"; return; }
+    done) || true
+    if [ -z "$newest" ]; then echo "$name: up to date"; return; fi
   fi
   echo "cc: $main -> $OUT/$name"
   $CC $CFLAGS "$main" -o "$OUT/$name"

@@ -71,34 +71,34 @@ else bad "formatter altered non-whitespace bytes" "$DRIFT"; fi
 # --- multi-byte characters must survive intact ------------------------------
 # A UTF-8 character outside a string is an error to the compiler, but the
 # formatter must still not split it: doing so silently corrupts the file.
-printf 'game E {\n  # \xe2\x80\xa6 ellipsis in a comment\n  const S: str = "caf\xc3\xa9 \xe2\x86\x92 na\xc3\xafve"\n}\n' > "$TMP/utf8.ludic"
+printf 'program E {\n  # \xe2\x80\xa6 ellipsis in a comment\n  const S: str = "caf\xc3\xa9 \xe2\x86\x92 na\xc3\xafve"\n}\n' > "$TMP/utf8.ludic"
 "$FMT" "$TMP/utf8.ludic" > "$TMP/utf8.out"
 if cmp -s "$TMP/utf8.ludic" "$TMP/utf8.out"; then ok "UTF-8 preserved byte for byte"
 else bad "UTF-8 mangled" "$(diff "$TMP/utf8.ludic" "$TMP/utf8.out" | head -2)"; fi
 # the same character where the compiler cannot make sense of it at all: it must
 # still come out as one character, not as three spaced-out replacement bytes
-printf 'game F {\nfn f() -> int { return \xe2\x80\xa6 }\n}\n' > "$TMP/utf8b.ludic"
+printf 'program F {\nfn f() -> int { return \xe2\x80\xa6 }\n}\n' > "$TMP/utf8b.ludic"
 a=$(tr -d ' \t\n' < "$TMP/utf8b.ludic" | shasum | cut -d' ' -f1)
 b=$("$FMT" "$TMP/utf8b.ludic" | tr -d ' \t\n' | shasum | cut -d' ' -f1)
 check "unrecognised characters pass through whole" "$b" "$a"
 
 # --- comments survive, which is the whole reason this is not ludicc --fmt ---
-printf 'game C {\n  # keep me\n  component P { x: int = 0 }  # and me\n}\n' > "$TMP/c.ludic"
+printf 'program C {\n  # keep me\n  property P { x: int = 0 }  # and me\n}\n' > "$TMP/c.ludic"
 N=$("$FMT" "$TMP/c.ludic" | grep -c '#')
 check "comments preserved" "$N" "2"
 
 # --- messy input is normalised ----------------------------------------------
-printf 'game M{\ncomponent P{x:int=0}\nsystem S phase Update{let a=1+2\nif a== -1 {a=-a}}\n}\n' > "$TMP/m.ludic"
+printf 'program M{\nproperty P{x:int=0}\nhandler S phase Update{let a=1+2\nif a== -1 {a=-a}}\n}\n' > "$TMP/m.ludic"
 "$FMT" "$TMP/m.ludic" > "$TMP/m.out"
-grep -q '^  component P { x: int = 0 }$' "$TMP/m.out" && ok "reindents and respaces" || bad "reindents and respaces"
+grep -q '^  property P { x: int = 0 }$' "$TMP/m.out" && ok "reindents and respaces" || bad "reindents and respaces"
 grep -q 'a = -a' "$TMP/m.out" && ok "unary minus not spaced" || bad "unary minus not spaced"
 
 # --- language conventions are respected, not overwritten --------------------
-printf 'game U {\n  ui M {\n    panel id=Root w=10 {\n      button id=Go text="go"\n    }\n  }\n}\n' > "$TMP/u.ludic"
+printf 'program U {\n  ui M {\n    panel id=Root w=10 {\n      button id=Go text="go"\n    }\n  }\n}\n' > "$TMP/u.ludic"
 "$FMT" "$TMP/u.ludic" | grep -q 'id=Root' && ok "widget props stay tight (id=Root)" || bad "widget props stay tight"
-printf 'game Q {\n  system S phase Update {\n    for (p) in query [Pos, {Foe}] { }\n  }\n  component Pos { x: int = 0 }\n  component Foe { }\n}\n' > "$TMP/q.ludic"
+printf 'program Q {\n  handler S phase Update {\n    for (p) in query [Pos, {Foe}] { }\n  }\n  property Pos { x: int = 0 }\n  property Foe { }\n}\n' > "$TMP/q.ludic"
 "$FMT" "$TMP/q.ludic" | grep -q '\[Pos, {Foe}\]' && ok "query tags stay tight ({Foe})" || bad "query tags stay tight"
-printf 'game A {\n  const R_A:   int = 0    # one\n  const R_BBB: int = 1    # two\n}\n' > "$TMP/a.ludic"
+printf 'program A {\n  const R_A:   int = 0    # one\n  const R_BBB: int = 1    # two\n}\n' > "$TMP/a.ludic"
 "$FMT" "$TMP/a.ludic" | grep -q 'R_A:   int = 0    # one' && ok "hand alignment preserved" || bad "hand alignment preserved"
 
 # --- --check exit status, for CI and pre-commit hooks -----------------------
@@ -109,11 +109,11 @@ check "--check exits 1 on unformatted input" "$?" "1"
 check "--check exits 0 after -w" "$?" "0"
 
 # --- markdown: fences formatted, prose untouched ----------------------------
-printf '# T\n\nprose  with   spaces\n\n```ludic\ngame D{component P{x:int=0}}\n```\n\n```python\nz  =  1\n```\n' > "$TMP/d.md"
+printf '# T\n\nprose  with   spaces\n\n```ludic\nprogram D{property P{x:int=0}}\n```\n\n```python\nz  =  1\n```\n' > "$TMP/d.md"
 "$FMT" "$TMP/d.md" > "$TMP/d.out"
 grep -q 'prose  with   spaces' "$TMP/d.out" && ok "markdown prose untouched" || bad "markdown prose untouched"
 grep -q 'z  =  1' "$TMP/d.out" && ok "non-ludic fences untouched" || bad "non-ludic fences untouched"
-grep -q 'game D { component P { x: int = 0 } }' "$TMP/d.out" && ok "ludic fences formatted" || bad "ludic fences formatted"
+grep -q 'program D { property P { x: int = 0 } }' "$TMP/d.out" && ok "ludic fences formatted" || bad "ludic fences formatted"
 
 echo "language server"
 python3 tools/test-lsp.py

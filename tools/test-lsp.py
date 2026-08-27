@@ -109,7 +109,7 @@ def main():
                 "signatureHelpProvider", "inlayHintProvider", "documentLinkProvider"]:
         check_true(f"advertises {cap}", cap in caps)
 
-    # ---- a fragment file: no `game` block, only reachable through an import --
+    # ---- a fragment file: no `program` block, only reachable through an import --
     frag = os.path.join(ROOT, "examples/chronorift/combat.ludic")
     text = c.open(frag)
     uri = {"uri": "file://" + frag}
@@ -137,13 +137,13 @@ def main():
     comp = c.request("textDocument/completion", {"textDocument": uri,
                                                  "position": position_of(text, "st.guard", 3)})
     labels = [i["label"] for i in comp["items"]]
-    check_true("completion after '.' offers only that component's fields",
+    check_true("completion after '.' offers only that property's fields",
                "guard" in labels and "hp" in labels and "clear" not in labels)
 
-    # a query's term list admits components and archetypes and nothing else —
+    # a query's term list admits propertys and models and nothing else —
     # not the loop variables, not builtins, not keywords
-    qsrc = ('game QT {\n  component Pos { x: int = 0 }\n  component Vel { dx: int = 0 }\n'
-            '  system S phase Update {\n    for (a, b) in query [Pos, ] { }\n  }\n}\n')
+    qsrc = ('program QT {\n  property Pos { x: int = 0 }\n  property Vel { dx: int = 0 }\n'
+            '  handler S phase Update {\n    for (a, b) in query [Pos, ] { }\n  }\n}\n')
     qfile = "/tmp/ludic_lsp_test_query.ludic"
     with open(qfile, "w") as fh:
         fh.write(qsrc)
@@ -152,7 +152,7 @@ def main():
     qcomp = c.request("textDocument/completion",
                       {"textDocument": quri, "position": position_of(qsrc, "[Pos, ]", 6)})
     qlabels = sorted(i["label"] for i in qcomp["items"])
-    check("completion inside query terms lists components only", qlabels, ["Pos", "Vel"])
+    check("completion inside query terms lists propertys only", qlabels, ["Pos", "Vel"])
     body = c.request("textDocument/completion",
                      {"textDocument": quri, "position": position_of(qsrc, "] { }", 3)})
     blabels = [i["label"] for i in body["items"]]
@@ -196,7 +196,7 @@ def main():
     #  any file and answers structural queries without a compiler present.)
     bad = "/tmp/ludic_lsp_test_bad.ludic"
     with open(bad, "w") as fh:
-        fh.write("game Bad {\n  component P { x: nosuchtype = 0 }\n}\n")
+        fh.write("program Bad {\n  property P { x: nosuchtype = 0 }\n}\n")
     c.open(bad)
     syms = c.request("textDocument/documentSymbol", {"textDocument": {"uri": "file://" + bad}})
     check_true("LSP opens and analyses a file with no compiler present",
@@ -206,7 +206,7 @@ def main():
     # ---- markdown: ```ludic fences are real Ludic ---------------------------
     md = "/tmp/ludic_lsp_test.md"
     with open(md, "w") as fh:
-        fh.write("# Title\n\nprose\n\n```ludic\ngame D { component Pt { x: int = 0 } }\n```\n\n"
+        fh.write("# Title\n\nprose\n\n```ludic\nprogram D { property Pt { x: int = 0 } }\n```\n\n"
                  "```python\nz = 1\n```\n")
     c.open(md, "markdown")
     mduri = {"uri": "file://" + md}
@@ -241,17 +241,17 @@ def main():
     # Renaming any one of them must leave the other three alone.
     amb = "/tmp/ludic_lsp_test_rename.ludic"
     with open(amb, "w") as fh:
-        fh.write("game R {\n"
-                 "  component Pos { x: int = 0, y: int = 0 }\n"
-                 "  component Vel { x: int = 0 }\n"
+        fh.write("program R {\n"
+                 "  property Pos { x: int = 0, y: int = 0 }\n"
+                 "  property Vel { x: int = 0 }\n"
                  "  fn helper(x: int) -> int { return x + 1 }\n"
-                 "  system A phase Update {\n"
+                 "  handler A phase Update {\n"
                  "    for (p) in query [Pos] {\n"
                  "      let x = 5\n"
                  "      p.x = p.x + x\n"
                  "    }\n"
                  "  }\n"
-                 "  system B phase Update {\n"
+                 "  handler B phase Update {\n"
                  "    for (v) in query [Vel] { v.x = v.x + 1 }\n"
                  "  }\n"
                  "}\n")
@@ -268,7 +268,7 @@ def main():
     def lines_touched(edits):
         return sorted({e["range"]["start"]["line"] for e in edits})
 
-    field = rename_at(position_of(atext, "component Pos { x", 16))
+    field = rename_at(position_of(atext, "property Pos { x", 15))
     check("renaming Pos.x touches only its declaration and its uses",
           lines_touched(field), [1, 7])
     local = rename_at(position_of(atext, "let x = 5", 4))
@@ -280,7 +280,7 @@ def main():
     # find-usages must be equally precise
     refs_x = c.request("textDocument/references",
                        {"textDocument": auri,
-                        "position": position_of(atext, "component Vel { x", 16),
+                        "position": position_of(atext, "property Vel { x", 15),
                         "context": {"includeDeclaration": True}})
     check("find-usages of Vel.x does not pick up Pos.x",
           sorted({r["range"]["start"]["line"] for r in refs_x}), [2, 11])
@@ -288,7 +288,7 @@ def main():
 
     # ---- workspace-wide symbol search ---------------------------------------
     ws = c.request("workspace/symbol", {"query": "Stats"})
-    check_true("workspace symbol search finds a component", any(s["name"] == "Stats" for s in ws))
+    check_true("workspace symbol search finds a property", any(s["name"] == "Stats" for s in ws))
 
     c.close()
     print(f"  {passed} passed, {failed} failed")
