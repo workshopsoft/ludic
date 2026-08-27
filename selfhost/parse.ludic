@@ -171,10 +171,6 @@ fn stmt() -> Node {
       else { pi = save }                      # no else: keep the separator for block()'s Rule-B check
       return n
     }
-    if streq(t.text, "when") {                # `when c { }` — an if with no else
-      pi = pi + 1; let n = node(S_IF); n.a = expr(); n.b = block()
-      return n
-    }
     if streq(t.text, "while") { pi = pi + 1; let n = node(S_WHILE); n.a = expr(); n.b = block(); return n }
     if streq(t.text, "for") {
       pi = pi + 1
@@ -198,7 +194,6 @@ fn stmt() -> Node {
       eat_op("}"); return n
     }
     if streq(t.text, "become") { pi = pi + 1; let n = node(S_BECOME); n.s = eat_id(); return n }
-    if streq(t.text, "enter") { pi = pi + 1; let n = node(S_BECOME); n.s = eat_id(); n.ival = 1; return n }
     if streq(t.text, "despawn") { pi = pi + 1; let n = node(S_DESPAWN); n.a = expr(); return n }
     if streq(t.text, "enable") or streq(t.text, "disable") {
       let en = 0; if streq(t.text, "enable") { en = 1 }

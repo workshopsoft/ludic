@@ -161,7 +161,7 @@
     },
     "keyword": {
       "patterns": [
-        { "name": "keyword.control.ludic", "match": "\\b(if|else|when|while|for|in|match|machine|become|enter|return|spawn|despawn|enable|disable|where|break|continue|new)\\b" },
+        { "name": "keyword.control.ludic", "match": "\\b(if|else|while|for|in|match|machine|become|return|spawn|despawn|enable|disable|where|break|continue|new)\\b" },
         { "name": "keyword.operator.logical.ludic", "match": "\\b(and|or|not)\\b" },
         { "name": "keyword.other.clause.ludic", "match": "\\b(phase|query|reads|writes|on)\\b" },
         { "name": "keyword.other.ludic", "match": "\\b(import|extern)\\b" },
