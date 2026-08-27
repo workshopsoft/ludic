@@ -35,7 +35,7 @@ fn ptype() -> ptr {
     pi = pi + 1
     eat_op("]")
     let el = ptype()
-    let out = mem_alloc(len(el) + 3)
+    let out = bytes(len(el) + 3)
     out[0] = 91; out[1] = 93              # "[]"
     var i = 0
     while el[i] != 0 { out[2 + i] = el[i]; i = i + 1 }
@@ -75,7 +75,7 @@ fn parse_hole(inner: ptr) -> Node {               # re-lex+parse an embedded exp
 fn parse_interp(raw: ptr) -> Node {
   let n = len(raw)
   var acc: Node = null
-  let lit = mem_alloc(n + 1)
+  let lit = bytes(n + 1)
   var lj = 0
   var i = 0
   while i < n {

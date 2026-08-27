@@ -34,12 +34,12 @@ fn rt_font() -> str {
 }
 
 fn rt_init() -> void {
-  rt_fb = mem_alloc(320 * 240 * 4)
-  rt_regs = mem_alloc(64 * 4)
+  rt_fb = words(320 * 240)
+  rt_regs = words(64)
   mem_set(rt_regs, 0, 64 * 4)
-  rt_map = mem_alloc(96 * 64)
+  rt_map = bytes(96 * 64)
   mem_set(rt_map, 32, 96 * 64)
-  rt_statusbuf = mem_alloc(96)
+  rt_statusbuf = bytes(96)
   rt_statusbuf[0] = 0
   rt_image_init()
   rt_tt_init()
@@ -279,7 +279,7 @@ fn rt_dump_ppm(path: str) -> void {
   let f = file_open(path, "wb")
   if (f == null) { return }
 
-  let hdr = mem_alloc(64)
+  let hdr = bytes(64)
   var n = rt_put_str(hdr, 0, "P6\n")
   n = rt_put_int(hdr, n, rt_fbw)
   n = rt_put_str(hdr, n, " ")
@@ -288,7 +288,7 @@ fn rt_dump_ppm(path: str) -> void {
   file_write(f, hdr, n)
 
   let px = rt_fbw * rt_fbh
-  let buf = mem_alloc(px * 3)
+  let buf = bytes(px * 3)
   for i in 0 .. px {
     let c = rt_fb[i]
     buf[i * 3] = (c / 65536) % 256
@@ -369,7 +369,7 @@ fn rt_status_text() -> ptr {
 # only it knows their shape. Everything below belongs to the runtime, so the
 # runtime writes it — same order both ways.
 fn rt_save_state(f: ptr) -> void {
-  let w: words = mem_alloc(16)
+  let w: words = bytes(16)
   w[0] = rt_rng
   w[1] = rt_mapw
   w[2] = rt_maph
@@ -382,7 +382,7 @@ fn rt_save_state(f: ptr) -> void {
 }
 
 fn rt_load_state(f: ptr) -> void {
-  let w: words = mem_alloc(16)
+  let w: words = bytes(16)
   file_read(f, w, 16)
   rt_rng = w[0]
   rt_mapw = w[1]

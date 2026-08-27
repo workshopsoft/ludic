@@ -148,6 +148,9 @@ See `examples/menu.ludic` for a complete title screen.
 | `byte` | pointer to bytes — `p[i]` reads/writes one byte | `ptr` |
 | `words` | pointer to 32-bit words — `w[i]` reads/writes an `int` | `ptr` |
 
+Allocate raw buffers with `bytes(n)` (n bytes) or `words(n)` (n 32-bit words);
+both return a pointer you index with `buf[i]`.
+
 Numeric literals: `42` and `0x1affff` are `int`; a literal with a decimal
 point (`1.5`) is `fixed`. Arithmetic on two `fixed` values lowers to
 `fxmul`/`fxdiv`; mixing `int` and `fixed` promotes the `int`. Convert with

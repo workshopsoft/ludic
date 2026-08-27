@@ -7,7 +7,7 @@ fn read_file(path: str) -> ptr {
   file_seek(f, 0, 2)
   let n = file_tell(f)
   file_seek(f, 0, 0)
-  let buf = mem_alloc(n + 1)
+  let buf = bytes(n + 1)
   file_read(f, buf, n)
   buf[n] = 0
   file_close(f)

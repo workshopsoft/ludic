@@ -145,7 +145,8 @@ static const LBuiltin LUDIC_BUILTINS[] = {
 };
 
 static const LBuiltin LUDIC_INTRINSICS[] = {
- {"mem_alloc","mem_alloc(n: int) -> ptr","Allocate n bytes (malloc)."},
+ {"bytes","bytes(n: int) -> ptr","Allocate a buffer of n bytes."},
+ {"words","words(n: int) -> words","Allocate a buffer of n 32-bit words."},
  {"mem_realloc","mem_realloc(p: ptr, n: int) -> ptr","Resize a block to n bytes, preserving its contents (realloc)."},
  {"os_argc","os_argc() -> int","Number of command-line arguments, argv[0] included."},
  {"os_arg","os_arg(i: int) -> str","The i-th command-line argument."},

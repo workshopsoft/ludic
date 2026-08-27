@@ -138,6 +138,17 @@ fn emit_call(e: Node) -> Val {
     else { emit("  call i32 (ptr, ...) @printf(ptr @.fmt_int, i32 " + `{a.code})\n`) }
     return val("0", "void")
   }
+  if (name == "bytes") {                          # bytes(n): allocate n bytes -> a byte buffer
+    let n = emit_expr(e.kids[0])
+    let w = emit_bind(`zext i32 {n.code} to i64`)
+    return val(emit_bind(`call ptr @malloc(i64 {w})`), "ptr")
+  }
+  if (name == "words") {                          # words(n): allocate n 32-bit words
+    let n = emit_expr(e.kids[0])
+    let by = emit_bind(`mul i32 {n.code}, 4`)
+    let w = emit_bind(`zext i32 {by} to i64`)
+    return val(emit_bind(`call ptr @malloc(i64 {w})`), "words")
+  }
   if (name == "fx") { let a = emit_expr(e.kids[0]);  return val(emit_bind(`shl i32 {a.code}, 16`), "fixed") }
   if (name == "flr") { let a = emit_expr(e.kids[0]);  return val(emit_bind(`ashr i32 {a.code}, 16`), "int") }
   if is_intrinsic(name) { return emit_intrinsic(name, e) }

@@ -49,7 +49,7 @@ fn z_bits(need: int) -> int {
 # A table is a single buffer: 16 length-counts followed by the symbols in
 # canonical order. One allocation, no structs.
 fn z_table_new(nsym: int) -> ptr {
-  return mem_alloc((16 + nsym) * 4)
+  return words((16 + nsym))
 }
 
 # lengths[i] = code length of symbol i (0 = symbol unused)
@@ -63,7 +63,7 @@ fn z_table_build(table: words, lengths: words, n: int) -> void {
   }
   table[0] = 0                 # length 0 means "not present"
   # offset of each length's first symbol
-  let offs: words = mem_alloc(16 * 4)
+  let offs: words = words(16)
   offs[1] = 0
   for l in 1 .. 15 {
     offs[l + 1] = offs[l] + table[l]
@@ -173,7 +173,7 @@ fn z_codes(out: ptr, at: int, cap: int, lit: ptr, dist: ptr) -> int {
 }
 
 fn z_fixed_tables(lit: ptr, dist: ptr) -> void {
-  let lengths: words = mem_alloc(288 * 4)
+  let lengths: words = words(288)
   for i in 0 .. 144 { lengths[i] = 8 }
   for i in 144 .. 256 { lengths[i] = 9 }
   for i in 256 .. 280 { lengths[i] = 7 }
@@ -191,7 +191,7 @@ fn z_dynamic_tables(lit: ptr, dist: ptr) -> int {
   if nlen > 286 { return 0 }
   if ndist > 30 { return 0 }
 
-  let lengths: words = mem_alloc(320 * 4)
+  let lengths: words = words(320)
   for i in 0 .. 19 { lengths[i] = 0 }
   # the code-length alphabet is transmitted in this fixed permutation
   # 16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15 — biased by '0' so it is one literal
@@ -230,7 +230,7 @@ fn z_dynamic_tables(lit: ptr, dist: ptr) -> int {
   }
   z_table_build(lit, lengths, nlen)
   # the distance lengths follow the literal ones in the same buffer
-  let dl: words = mem_alloc(32 * 4)
+  let dl: words = words(32)
   for i in 0 .. ndist { dl[i] = lengths[nlen + i] }
   z_table_build(dist, dl, ndist)
   mem_free(dl)

@@ -7,7 +7,7 @@ var g_intrin_ok: bool = false
 # is `name` a low-level intrinsic? A pure name check, so it can gate dispatch
 # without evaluating arguments (which could clobber shared state).
 fn is_intrinsic(name: ptr) -> bool {
-  if (name == "mem_alloc") or (name == "mem_realloc") { return true }
+  if (name == "mem_realloc") { return true }
   if (name == "file_open") or (name == "file_read") or (name == "file_write") { return true }
   if (name == "file_seek") or (name == "file_tell") or (name == "file_close") { return true }
   if (name == "os_argc") or (name == "os_arg") or (name == "os_exit") or (name == "file_stderr") { return true }
@@ -23,11 +23,7 @@ fn arg_code(e: Node, i: int) -> ptr { let v = emit_expr(e.kids[i]);  return v.co
 fn emit_intrinsic(name: ptr, e: Node) -> Val {
   g_intrin_ok = true
   # ptr_null / ptr_is_null are the `null` literal and `x == null` now.
-  if (name == "mem_alloc") {
-    let n = arg_code(e, 0)
-    let w = emit_bind(`zext i32 {n} to i64`)
-    return val(emit_bind(`call ptr @malloc(i64 {w})`), "ptr")
-  }
+  # mem_alloc is bytes(n) / words(n) now (see emit_call).
   if (name == "mem_realloc") {
     let p = arg_code(e, 0);  let n = arg_code(e, 1)
     let w = emit_bind(`zext i32 {n} to i64`)
