@@ -24,11 +24,11 @@ program Arena {
 
   handler Fight phase Update {
     for (f) in query [Fighter] {
-      print_int(damage(f.attack, f.armour, 0))
-      print_int(damage(f.attack, f.armour, 20))
-      print_int(hits_to_kill(f.hp, f.attack, f.armour))
+      print(damage(f.attack, f.armour, 0))
+      print(damage(f.attack, f.armour, 20))
+      print(hits_to_kill(f.hp, f.attack, f.armour))
     }
-    print_int(xp_for(3, 4))
+    print(xp_for(3, 4))
     quit()
   }
 }

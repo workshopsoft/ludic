@@ -12,8 +12,8 @@ program Toggles {
   model Player { Health, Shield }
 
   # hooks run at the toggle point with the property's data bound by name
-  @OnDisable(Shield) handler Down { print_int(Shield.amount + 1) }   # 5 + 1
-  @OnEnable(Shield)  handler Up   { print_int(Shield.amount + 2) }   # 5 + 2
+  @OnDisable(Shield) handler Down { print(Shield.amount + 1) }   # 5 + 1
+  @OnEnable(Shield)  handler Up   { print(Shield.amount + 2) }   # 5 + 2
 
   handler Seed phase Start { spawn Player { Health { max: 50 }, Shield { amount: 5 } } }
 
@@ -21,17 +21,17 @@ program Toggles {
     for (e) in query [Player] { disable Shield on self() }   # @OnDisable -> 6
     var n = 0
     for (s) in query [Shield] { n += 1 }
-    print_int(n)                                             # 0 — no live Shield now
+    print(n)                                             # 0 — no live Shield now
 
     for (e) in query [Player] { enable Shield on self() }    # @OnEnable -> 7, data intact
     n = 0
     for (s) in query [Shield] { n += 1 }
-    print_int(n)                                             # 1 — amount is still 5
+    print(n)                                             # 1 — amount is still 5
 
     disable Player                                           # whole model off
     n = 0
     for (p) in query [Player] { n += 1 }
-    print_int(n)                                             # 0 — model disabled
+    print(n)                                             # 0 — model disabled
     quit()
   }
 }

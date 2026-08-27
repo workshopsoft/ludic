@@ -10,18 +10,18 @@ program Life {
   model Enemy { Health, Sprite }
 
   # ---- program lifecycle -----------------------------------------------------
-  @OnStart handler Boot { print_int(1) }               # once, at boot
-  @OnQuit  handler Bye  { print_int(2) }               # once, at shutdown
+  @OnStart handler Boot { print(1) }               # once, at boot
+  @OnQuit  handler Bye  { print(2) }               # once, at shutdown
 
   # ---- property / entity lifecycle -------------------------------------------
-  @OnAttach(Sprite)  handler Load  { print_int(Sprite.id + 700) }   # when a Sprite is attached
+  @OnAttach(Sprite)  handler Load  { print(Sprite.id + 700) }   # when a Sprite is attached
   @OnSpawn(Enemy)    handler Init  { Health.hp = Health.max }        # constructor
-  @OnDespawn(Enemy)  handler Clean { print_int(Health.hp + 900) }    # destructor (dispatched by kind)
+  @OnDespawn(Enemy)  handler Clean { print(Health.hp + 900) }    # destructor (dispatched by kind)
 
   handler Seed phase Start { spawn Enemy { Health { max: 50 } } }
 
   handler Run phase Render {
-    for (h) in query [Health] { print_int(h.hp) }      # 50 — Init set hp to max
+    for (h) in query [Health] { print(h.hp) }      # 50 — Init set hp to max
     for (e) in query [Health] { despawn self() }        # Clean fires: 50 + 900 = 950
     quit()
   }

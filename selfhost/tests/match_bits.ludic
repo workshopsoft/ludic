@@ -4,13 +4,13 @@ program T {
     return 0
   }
   entry {
-    print_int(classify(65))          # 1
-    print_int(classify(67))          # 2
-    print_int(classify(90))          # 9
-    print_int((1 << 4))             # 16
-    print_int(((4 | 1) & 6))    # 4
+    print(classify(65))          # 1
+    print(classify(67))          # 2
+    print(classify(90))          # 9
+    print((1 << 4))             # 16
+    print(((4 | 1) & 6))    # 4
     let p = mem_alloc(16)
     poke32(p, 1, 9999)
-    print_int(peek32(p, 1))          # 9999
+    print(peek32(p, 1))          # 9999
   }
 }

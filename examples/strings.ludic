@@ -3,24 +3,24 @@
 program Strings {
   entry {
     let greeting = "hello"
-    if greeting == "hello" { print_int(1) }         # content comparison
-    if greeting != "world" { print_int(2) }
+    if greeting == "hello" { print(1) }         # content comparison
+    if greeting != "world" { print(2) }
 
     let who = "Ludic"
     let msg = greeting + ", " + who + "!"            # concatenation chains
-    if msg == "hello, Ludic!" { print_int(3) }
+    if msg == "hello, Ludic!" { print(3) }
 
     # build up a string in a loop
     var line = ""
     var i = 0
     while i < 3 { line = line + "ab"; i = i + 1 }
-    if line == "ababab" { print_int(4) }
+    if line == "ababab" { print(4) }
 
-    if (greeting + who) != greeting { print_int(5) }
+    if (greeting + who) != greeting { print(5) }
 
     # interpolation: `{expr}` embeds any expression (numbers become text)
     let n = 42
-    if `{greeting}, {who}!` == "hello, Ludic!" { print_int(6) }
-    if `n={n}, next={n + 1}` == "n=42, next=43" { print_int(7) }
+    if `{greeting}, {who}!` == "hello, Ludic!" { print(6) }
+    if `n={n}, next={n + 1}` == "n=42, next=43" { print(7) }
   }
 }

@@ -3,18 +3,18 @@ program T {
   fn bump(p: P) -> void { p.x = p.x + 100 }
   entry {
     let a = new P
-    print_int(a.y)            # 7 default
+    print(a.y)            # 7 default
     a.x = 5
     let b = a
     b.x = 9
-    print_int(a.x)            # 9 (reference)
+    print(a.x)            # 9 (reference)
     bump(a)
-    print_int(a.x)            # 109
+    print(a.x)            # 109
     let c = new P
     c.x = 2
     a.next = c
-    print_int(a.next.x)      # 2 chained
+    print(a.next.x)      # 2 chained
     a.next.x = 42
-    print_int(c.x)           # 42
+    print(c.x)           # 42
   }
 }

@@ -64,13 +64,13 @@ object LudicVocabulary {
         "sprites_load", "draw_sprite", "draw_sprite_scaled", "ui_build", "ui_open",
         "ui_tick", "ui_render", "ui_clicked", "ui_set_text", "ui_set_int", "ui_focus",
         "ui_focused", "ui_visible", "key", "reg", "set_reg", "self", "save", "load",
-        "status", "print_int", "quit",
+        "status", "print", "str", "quit",
         // compiler intrinsics: the floor the Ludic-written runtime stands on
         "mem_alloc", "mem_realloc", "mem_free", "mem_copy", "mem_set", "peek8", "poke8", "peek32",
-        "os_argc", "os_arg", "file_stderr",
+        "os_argc", "os_arg", "file_stderr", "file_stdout",
         "poke32", "peekp", "pokep", "peekf", "pokef", "ptr_add",
         "as_fixed", "as_int", "file_open", "file_read", "file_write",
-        "file_seek", "file_tell", "file_close", "read_byte", "write_byte", "print_str",
+        "file_seek", "file_tell", "file_close", "read_byte", "write_byte",
         "str_len", "os_exit", "os_time",
         "is_windowed", "game_title", "win_open", "win_poll", "win_present",
         "win_running", "win_close"

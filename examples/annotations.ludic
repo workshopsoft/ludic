@@ -31,7 +31,7 @@ program RPG2D {
   }
 
   handler Report phase Render {
-    for (t, v) in query [Transform, Velocity] { print_int(t.x); print_int(v.speed2) }
+    for (t, v) in query [Transform, Velocity] { print(t.x); print(v.speed2) }
     quit()
   }
 }

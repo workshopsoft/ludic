@@ -403,9 +403,9 @@ handler Share phase Update {
   let a = new Tok
   let b = a              # b and a are the SAME object
   b.kind = 9
-  print_int(a.kind)      # 9
+  print(a.kind)      # 9
   bump(a)                # the mutation is visible to the caller
-  print_int(a.kind)      # 10
+  print(a.kind)      # 10
 }
 ```
 
@@ -417,7 +417,7 @@ handler Walk phase Update {
   let a = new Tok
   let b = new Tok
   a.next = b
-  print_int(a.next.kind)
+  print(a.next.kind)
   a.next.kind = 42       # chains on the left of an assignment too
 }
 ```
@@ -445,7 +445,7 @@ header never moves, an append is visible to everything holding that slice.
 handler Collect phase Update {
   let toks = new []Tok
   push(toks, new Tok)
-  for i in 0 .. len(toks) { print_int(toks[i].kind) }
+  for i in 0 .. len(toks) { print(toks[i].kind) }
 }
 ```
 
@@ -626,7 +626,8 @@ literal; test any pointer/record/slice with `x == null` / `x != null` (an unset
 # state     reg(i)->int   set_reg(i,v)     (64 integer resources shared by handlers)
 # entity    self()->entity
 # save      save()   load()->bool         (binary snapshot of the whole ECS World)
-# control   quit()   print_int(i)
+# control   quit()   print(x)          (a value + newline)
+# convert   str(x) -> str            (int/bool/fixed -> text)
 # process   os_argc()->int   os_arg(i)->str        (the command line; argv[0] included)
 #           file_stderr()->ptr                     (a handle for file_write, off stdout)
 ```

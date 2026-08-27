@@ -11,8 +11,8 @@ fn is_intrinsic(name: ptr) -> bool {
   if (name == "peek8") or (name == "poke8") { return true }
   if (name == "file_open") or (name == "file_read") or (name == "file_write") { return true }
   if (name == "file_seek") or (name == "file_tell") or (name == "file_close") { return true }
-  if (name == "print_str") or (name == "print_int") { return true }
   if (name == "os_argc") or (name == "os_arg") or (name == "os_exit") or (name == "file_stderr") { return true }
+  if (name == "file_stdout") { return true }
   if (name == "os_system") or (name == "os_getenv") { return true }
   if (name == "peek32") or (name == "poke32") { return true }
   return false
@@ -75,16 +75,7 @@ fn emit_intrinsic(name: ptr, e: Node) -> Val {
     emit("  call i32 @fclose(ptr ");  emit(f);  emit(")\n")
     return val("0", "void")
   }
-  if (name == "print_str") {
-    let s = arg_code(e, 0)
-    emit("  call i32 (ptr, ...) @printf(ptr @.fmt_str, ptr ");  emit(s);  emit(")\n")
-    return val("0", "void")
-  }
-  if (name == "print_int") {
-    let n = arg_code(e, 0)
-    emit("  call i32 (ptr, ...) @printf(ptr @.fmt_int, i32 ");  emit(n);  emit(")\n")
-    return val("0", "void")
-  }
+  # print_str / print_int are the polymorphic `print(x)` builtin now (emit_call).
   if (name == "os_argc") { return val(emit_bind("load i32, ptr @L_argc"), "int") }
   if (name == "os_arg") {
     let i = arg_code(e, 0)
@@ -100,6 +91,7 @@ fn emit_intrinsic(name: ptr, e: Node) -> Val {
     return val("0", "void")
   }
   if (name == "file_stderr") { return val(emit_bind("load ptr, ptr @__stderrp"), "ptr") }
+  if (name == "file_stdout") { return val(emit_bind("load ptr, ptr @__stdoutp"), "ptr") }
   if (name == "os_system") {
     let c = arg_code(e, 0)
     return val(emit_bind(("call i32 @system(ptr " + (c + ")"))), "int")

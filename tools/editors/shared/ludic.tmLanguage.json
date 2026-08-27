@@ -204,12 +204,12 @@
         {
           "comment": "the runtime surface — every name here resolves to rt_<name> in runtime/native",
           "name": "support.function.builtin.ludic",
-          "match": "\\b(min|max|abs|clamp|seed|rng_range|rng_chance|fx|flr|map_size|map_row|tile|clear|present|fill_rect|frame_rect|put_px|text|text_int|font_load|text_ttf|text_w|text_h|image_load|draw_image|draw_image_scaled|draw_9slice|png_load|sprites_load|draw_sprite|draw_sprite_scaled|ui_build|ui_open|ui_tick|ui_render|ui_clicked|ui_set_text|ui_set_int|ui_focus|ui_focused|ui_visible|key|reg|set_reg|self|save|load|status|print_int|quit)\\b(?=\\s*\\()"
+          "match": "\\b(min|max|abs|clamp|seed|rng_range|rng_chance|fx|flr|map_size|map_row|tile|clear|present|fill_rect|frame_rect|put_px|text|text_int|font_load|text_ttf|text_w|text_h|image_load|draw_image|draw_image_scaled|draw_9slice|png_load|sprites_load|draw_sprite|draw_sprite_scaled|ui_build|ui_open|ui_tick|ui_render|ui_clicked|ui_set_text|ui_set_int|ui_focus|ui_focused|ui_visible|key|reg|set_reg|self|save|load|status|print|str|quit)\\b(?=\\s*\\()"
         },
         {
           "comment": "compiler intrinsics — these lower straight to libc or the OS",
           "name": "support.function.intrinsic.ludic",
-          "match": "\\b(mem_alloc|mem_realloc|mem_free|mem_copy|mem_set|peek8|poke8|peek32|poke32|peekp|pokep|peekf|pokef|ptr_add|as_fixed|as_int|file_open|file_read|file_write|file_seek|file_tell|file_close|read_byte|write_byte|print_str|str_len|os_exit|os_time|os_argc|os_arg|file_stderr|is_windowed|game_title|win_open|win_poll|win_present|win_running|win_close)\\b(?=\\s*\\()"
+          "match": "\\b(mem_alloc|mem_realloc|mem_free|mem_copy|mem_set|peek8|poke8|peek32|poke32|peekp|pokep|peekf|pokef|ptr_add|as_fixed|as_int|file_open|file_read|file_write|file_seek|file_tell|file_close|read_byte|write_byte|str_len|os_exit|os_time|os_argc|os_arg|file_stderr|file_stdout|is_windowed|game_title|win_open|win_poll|win_present|win_running|win_close)\\b(?=\\s*\\()"
         }
       ]
     },
