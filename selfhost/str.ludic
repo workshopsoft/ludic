@@ -2,18 +2,6 @@
 # slicing out substrings, and integer<->text. All over raw NUL-terminated
 # byte buffers reached with peek8/poke8.
 
-fn streq(a: ptr, b: ptr) -> bool {
-  var i = 0
-  while true {
-    let ca = peek8(a, i)
-    let cb = peek8(b, i)
-    if ca != cb { return false }
-    if ca == 0 { return true }
-    i = i + 1
-  }
-  return false
-}
-
 fn slen(s: ptr) -> int {
   var n = 0
   while peek8(s, n) != 0 { n = n + 1 }

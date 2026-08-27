@@ -5,7 +5,7 @@ fn hexdig(n: int) -> int { if n < 10 { return 48 + n }; return 55 + n }   # 0-9 
 
 # emit `@.strN = ... c"escaped\00"` and return its name; % and non-print -> \XX
 fn emit_str_const(s: ptr) -> ptr {
-  let name = sconcat("@.str", itoa(ll_str))
+  let name = ("@.str" + itoa(ll_str))
   ll_str = ll_str + 1
   let n = slen(s)
   emith(name);  emith(" = private unnamed_addr constant [")
@@ -34,11 +34,11 @@ fn emit_gep_i8(base: ptr, idx: ptr) -> ptr {
 
 # the constant initializer for a global var: a literal, or 0/null
 fn global_init(d: Node) -> ptr {
-  if (d.a == null) { if streq(llty(d.ty), "ptr") { return "null" };  return "0" }
+  if (d.a == null) { if (llty(d.ty) == "ptr") { return "null" };  return "0" }
   let e = d.a
   if e.kind == E_INT or e.kind == E_FLOAT or e.kind == E_BOOL { return itoa(e.ival) }
-  if e.kind == E_UN and streq(e.s, "-") and e.a.kind == E_INT { return sconcat("-", itoa(e.a.ival)) }
-  if streq(llty(d.ty), "ptr") { return "null" }
+  if e.kind == E_UN and (e.s == ("-")) and e.a.kind == E_INT { return (("-") + itoa(e.a.ival)) }
+  if (llty(d.ty) == "ptr") { return "null" }
   return "0"
 }
 
@@ -107,4 +107,47 @@ fn emit_header() -> void {
     }
     i = i + 1
   }
+}
+
+# The string runtime, emitted (once) into any program that uses `+`/`==`/`!=`
+# on strings. Hand-written IR over NUL-terminated byte buffers: str_eq walks both
+# until a mismatch or a shared terminator; str_concat measures both, mallocs
+# len+len+1, copies each half, and NUL-terminates. @malloc is always declared.
+fn emit_str_prelude() -> void {
+  emith("define i32 @fn_str_eq(ptr %a, ptr %b) {\n")
+  emith("entry:\n  br label %loop\n")
+  emith("loop:\n  %i = phi i32 [ 0, %entry ], [ %i1, %cont ]\n")
+  emith("  %pa = getelementptr inbounds i8, ptr %a, i32 %i\n")
+  emith("  %pb = getelementptr inbounds i8, ptr %b, i32 %i\n")
+  emith("  %ca = load i8, ptr %pa\n  %cb = load i8, ptr %pb\n")
+  emith("  %df = icmp ne i8 %ca, %cb\n  br i1 %df, label %ret0, label %chk\n")
+  emith("chk:\n  %zt = icmp eq i8 %ca, 0\n  br i1 %zt, label %ret1, label %cont\n")
+  emith("cont:\n  %i1 = add i32 %i, 1\n  br label %loop\n")
+  emith("ret1:\n  ret i32 1\nret0:\n  ret i32 0\n}\n")
+
+  emith("define ptr @fn_str_concat(ptr %a, ptr %b) {\n")
+  emith("entry:\n  br label %al\n")
+  emith("al:\n  %ia = phi i32 [ 0, %entry ], [ %ia1, %alb ]\n")
+  emith("  %pa = getelementptr inbounds i8, ptr %a, i32 %ia\n  %cca = load i8, ptr %pa\n")
+  emith("  %za = icmp eq i8 %cca, 0\n  br i1 %za, label %bl0, label %alb\n")
+  emith("alb:\n  %ia1 = add i32 %ia, 1\n  br label %al\n")
+  emith("bl0:\n  br label %bl\n")
+  emith("bl:\n  %ib = phi i32 [ 0, %bl0 ], [ %ib1, %blb ]\n")
+  emith("  %pb = getelementptr inbounds i8, ptr %b, i32 %ib\n  %ccb = load i8, ptr %pb\n")
+  emith("  %zb = icmp eq i8 %ccb, 0\n  br i1 %zb, label %alloc, label %blb\n")
+  emith("blb:\n  %ib1 = add i32 %ib, 1\n  br label %bl\n")
+  emith("alloc:\n  %sum = add i32 %ia, %ib\n  %sz = add i32 %sum, 1\n")
+  emith("  %sz64 = sext i32 %sz to i64\n  %out = call ptr @malloc(i64 %sz64)\n  br label %c1\n")
+  emith("c1:\n  %i = phi i32 [ 0, %alloc ], [ %i1, %c1b ]\n")
+  emith("  %d1 = icmp slt i32 %i, %ia\n  br i1 %d1, label %c1b, label %c2i\n")
+  emith("c1b:\n  %s1 = getelementptr inbounds i8, ptr %a, i32 %i\n  %v1 = load i8, ptr %s1\n")
+  emith("  %o1 = getelementptr inbounds i8, ptr %out, i32 %i\n  store i8 %v1, ptr %o1\n")
+  emith("  %i1 = add i32 %i, 1\n  br label %c1\n")
+  emith("c2i:\n  br label %c2\n")
+  emith("c2:\n  %j = phi i32 [ 0, %c2i ], [ %j1, %c2b ]\n")
+  emith("  %d2 = icmp slt i32 %j, %ib\n  br i1 %d2, label %c2b, label %fin\n")
+  emith("c2b:\n  %s2 = getelementptr inbounds i8, ptr %b, i32 %j\n  %v2 = load i8, ptr %s2\n")
+  emith("  %oj = add i32 %ia, %j\n  %o2 = getelementptr inbounds i8, ptr %out, i32 %oj\n  store i8 %v2, ptr %o2\n")
+  emith("  %j1 = add i32 %j, 1\n  br label %c2\n")
+  emith("fin:\n  %pe = getelementptr inbounds i8, ptr %out, i32 %sum\n  store i8 0, ptr %pe\n  ret ptr %out\n}\n")
 }

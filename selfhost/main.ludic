@@ -26,7 +26,7 @@ fn base_name(path: ptr) -> ptr {
 fn strip_ludic(name: ptr) -> ptr {
   let n = slen(name)
   if n > 6 {
-    if streq(substr(name, n - 6, 6), ".ludic") { return substr(name, 0, n - 6) }
+    if (substr(name, n - 6, 6) == ".ludic") { return substr(name, 0, n - 6) }
   }
   return name
 }
@@ -43,7 +43,7 @@ fn ensure_slash(d: ptr) -> ptr {
   let n = slen(d)
   if n == 0 { return d }
   if peek8(d, n - 1) == 47 { return d }
-  return sconcat(d, "/")
+  return (d + ("/"))
 }
 
 fn die(msg: ptr) -> void {
@@ -61,23 +61,23 @@ entry {
   var run = false         # compile then execute the result
 
   # multi-call: invoked as `ludic` -> run mode by default
-  if streq(base_name(os_arg(0)), "ludic") { run = true }
+  if (base_name(os_arg(0)) == "ludic") { run = true }
 
   var ai = 1
   while ai < os_argc() {
     let a = os_arg(ai)
-    if streq(a, "--windowed") { want = 1 }
-    else { if streq(a, "--headless") { want = 2 }
-    else { if streq(a, "--emit-llvm") { emit_ir = true }
-    else { if streq(a, "--fmt") { fmt = true }
-    else { if streq(a, "--save-temps") { save = true }
-    else { if streq(a, "--run") { run = true }
-    else { if streq(a, "-o") { ai = ai + 1;  if ai < os_argc() { out = os_arg(ai) } }
+    if (a == ("--windowed")) { want = 1 }
+    else { if (a == ("--headless")) { want = 2 }
+    else { if (a == ("--emit-llvm")) { emit_ir = true }
+    else { if (a == ("--fmt")) { fmt = true }
+    else { if (a == ("--save-temps")) { save = true }
+    else { if (a == ("--run")) { run = true }
+    else { if (a == ("-o")) { ai = ai + 1;  if ai < os_argc() { out = os_arg(ai) } }
     else {
       # an unknown flag is ignored (with a note) rather than mistaken for the
       # input file — '-' is ASCII 45
       if peek8(a, 0) == 45 {
-        let m = sconcat("ludicc: ignoring unknown flag ", sconcat(a, "\n"))
+        let m = ("ludicc: ignoring unknown flag " + (a + "\n"))
         file_write(file_stderr(), m, slen(m))
       } else { path = a }
     } } } } } } }
@@ -117,14 +117,14 @@ entry {
 
   # a run with no explicit -o lands in a temp file
   if run and (out == null) {
-    out = sconcat("/tmp/ludic-run-", strip_ludic(base_name(path)))
+    out = (("/tmp/ludic-run-") + strip_ludic(base_name(path)))
   }
 
   # make the output directory if the user asked for e.g. bin/app
   let odir = dir_of(out)
-  if slen(odir) > 0 { os_system(sconcat("mkdir -p ", odir)) }
+  if slen(odir) > 0 { os_system((("mkdir -p ") + odir)) }
 
-  let ll = sconcat(out, ".ll")
+  let ll = (out + ".ll")
   if not ir_flush(ll) { die("ludicc: cannot write IR\n") }
 
   let cc   = getenv_or("LUDIC_CC", "clang")
@@ -134,15 +134,15 @@ entry {
   # platform layer and the Cocoa framework.
   # -Wno-override-module: our IR carries an explicit target triple, which clang
   # would otherwise warn about on every build.
-  var cmd = sconcat(cc, sconcat(" -O2 -Wno-override-module ", ll))
+  var cmd = (cc + ((" -O2 -Wno-override-module ") + ll))
   if g_windowed {
     let cocoa = path_join(home, "runtime/native/cocoa.ll")
-    cmd = sconcat(cmd, sconcat(" ", sconcat(cocoa, " -framework Cocoa -Wl,-rpath,@loader_path")))
+    cmd = (cmd + (" " + (cocoa + (" -framework Cocoa -Wl,-rpath,@loader_path"))))
   }
-  cmd = sconcat(cmd, sconcat(" -o ", out))
+  cmd = (cmd + ((" -o ") + out))
 
   let rc = os_system(cmd)
-  if not save { os_system(sconcat("rm -f ", ll)) }
+  if not save { os_system((("rm -f ") + ll)) }
   if rc != 0 { die("ludicc: link failed\n") }
 
   # run mode: execute the binary we just built and forward its exit code

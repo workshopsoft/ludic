@@ -6,7 +6,7 @@ fn parse_component() -> Node {
   pi = pi + 1; let n = node(N_COMP); n.s = eat_id(); skipnl(); eat_op("{")
   while true { skipnl(); if is_op("}") { break }
     var is_computed = false
-    if is_op("@") { pi = pi + 1; let ann = eat_id(); if streq(ann, "Computed") { is_computed = true }; skipnl() }
+    if is_op("@") { pi = pi + 1; let ann = eat_id(); if (ann == "Computed") { is_computed = true }; skipnl() }
     let f = node(N_FIELD); f.s = eat_id(); eat_op(":"); f.ty = ptype()
     if is_op("=") { pi = pi + 1; f.a = expr() }
     if is_computed { register_computed(n.s, f.s, f.ty, f.a) }   # derived: no storage
@@ -104,7 +104,7 @@ fn parse_queries_anno() -> Node {
     skipnl()
     if is_op(")") { break }
     let key = eat_id(); eat_op(":")
-    if streq(key, "these") {
+    if (key == "these") {
       eat_op("["); skipnl()
       while not is_op("]") {
         let pname = eat_id()
@@ -116,7 +116,7 @@ fn parse_queries_anno() -> Node {
         skipnl()
       }
       eat_op("]")
-    } else { if streq(key, "on") {
+    } else { if (key == "on") {
       let mname = eat_id(); let t = node(E_ID); t.s = mname; t.ival = 1; push(terms.kids, t)   # {Model} tag
     } else { expr() } }                                                # unknown key: skip its value
     if is_op(",") { pi = pi + 1 }
@@ -179,7 +179,7 @@ fn parse_extern() -> Node {
 fn parse_widget() -> Node {
   let w = node(N_UI); w.s = eat_id()          # widget type name
   w.b = node(N_BLOCK)                        # b.kids = props (E_FINIT)
-  while toks[pi].kind == TK_ID and toks[pi + 1].kind == TK_OP and streq(toks[pi + 1].text, ":") {
+  while toks[pi].kind == TK_ID and toks[pi + 1].kind == TK_OP and (toks[pi + 1].text == ":") {
     let pr = node(E_FINIT); pr.s = eat_id(); eat_op(":"); pr.a = expr(); push(w.b.kids, pr)   # widget prop `key: value` (Rule A)
   }
   skipnl()

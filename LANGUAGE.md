@@ -579,7 +579,12 @@ The bitwise operators bind **tighter than comparison** (Go-style), so
 Operators are built-in only (no overloading). The boolean operators are spelled
 **`and` / `or` / `not`**; `&&` and `||` are not Ludic operators, and a bare `!` is
 rejected with a diagnostic naming the fix (`!=` is unaffected). Bitwise operators
-are **`& | ^ << >> ~`** (`>>` is a logical/unsigned shift). `expr with { field: … }`
+are **`& | ^ << >> ~`** (`>>` is a logical/unsigned shift).
+
+**Strings are values.** `a + b` concatenates two strings, and `a == b` / `a != b`
+compare them **by content** (not by pointer). `"go" + dir == "goleft"` works as
+written. (Under the hood these call a small emitted string runtime; a `==`/`!=`
+against `null` is still a pointer test.) `expr with { field: … }`
 is not implemented; records appear only in `spawn`. Char literals (`'w'`) are
 `int` code points; colors are hex ints (`0xff8800`). `null` is the null-pointer
 literal; test any pointer/record/slice with `x == null` / `x != null` (an unset

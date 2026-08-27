@@ -4,7 +4,7 @@
 fn emit_init_component(e: ptr, comp: ptr, rec: Node) -> void {
   let me = itoa(MAX_ENT)
   let c = find_comp(comp)
-  if (c == null) { perr(sconcat("spawn: unknown property ", comp)) }
+  if (c == null) { perr(("spawn: unknown property " + comp)) }
   let hp = nreg();  emit("  ");  emit(hp);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i8], ptr @H_");  emit(comp);  emit(", i32 0, i32 ");  emit(e);  emit("\n")
   emit("  store i8 1, ptr ");  emit(hp);  emit("\n")
   let slot = nreg()
@@ -17,7 +17,7 @@ fn emit_init_component(e: ptr, comp: ptr, rec: Node) -> void {
     emit("  ");  emit(addr);  emit(" = getelementptr inbounds %Cmp_");  emit(comp);  emit(", ptr ");  emit(slot);  emit(", i32 0, i32 ");  emit(itoa(f));  emit("\n")
     let lt = llty(fd.ty)
     var v = "0"
-    if streq(lt, "ptr") { v = "null" }
+    if (lt == "ptr") { v = "null" }
     if (fd.a != null) { let dv = emit_expr(fd.a);  v = dv.code }
     emit("  store ");  emit(lt);  emit(" ");  emit(v);  emit(", ptr ");  emit(addr);  emit("\n")
     f = f + 1
@@ -78,7 +78,7 @@ fn emit_spawn(st: Node) -> void {
       let cn = arch.kids[c].s
       var rec = null
       var i = 0
-      while i < len(st.kids) { if streq(st.kids[i].s, cn) { rec = st.kids[i].a };  i = i + 1 }
+      while i < len(st.kids) { if (st.kids[i].s == cn) { rec = st.kids[i].a };  i = i + 1 }
       emit_init_component(e, cn, rec)
       c = c + 1
     }
@@ -101,11 +101,11 @@ fn emit_despawn(st: Node) -> void {
   if len(g_ondespawn) > 0 {
     let me = itoa(MAX_ENT)
     let kp = nreg();  emit("  ");  emit(kp);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_kind, i32 0, i32 ");  emit(v.code);  emit("\n")
-    let kind = emit_bind(sconcat("load i32, ptr ", kp))
+    let kind = emit_bind(("load i32, ptr " + kp))
     var i = 0
     while i < len(g_ondespawn) {
       let mname = g_ondespawn[i].s
-      let c = emit_bind(sconcat("icmp eq i32 ", sconcat(kind, sconcat(", ", itoa(find_arch_id(mname))))))
+      let c = emit_bind(("icmp eq i32 " + (kind + (", " + itoa(find_arch_id(mname))))))
       let yes = lbl("dh");  let no = lbl("dhn")
       emit("  br i1 ");  emit(c);  emit(", label %");  emit(yes);  emit(", label %");  emit(no);  emit("\n")
       emit(yes);  emit(":\n  call void @on_despawn_");  emit(mname);  emit("(i32 ");  emit(v.code);  emit(")\n")

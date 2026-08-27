@@ -19,7 +19,7 @@ fn emit_fn(d: Node) -> void {
   let saved = code
   code = fbody
   let rl = llty(ret_ty)
-  if not streq(rl, "void") { buf_puts(falloc, "  %retval = alloca ");  buf_puts(falloc, rl);  buf_puts(falloc, "\n") }
+  if not (rl == "void") { buf_puts(falloc, "  %retval = alloca ");  buf_puts(falloc, rl);  buf_puts(falloc, "\n") }
   # params: store each incoming argument into a stack slot
   var i = 0
   while i < len(d.kids) {
@@ -32,8 +32,8 @@ fn emit_fn(d: Node) -> void {
   emit_block(d.a)
   if not g_term { emit("  br label %ret\n") }
   emit("ret:\n")
-  if streq(rl, "void") { emit("  ret void\n") }
-  else { let r = emit_bind(sconcat("load ", sconcat(rl, ", ptr %retval")));  emit("  ret ");  emit(rl);  emit(" ");  emit(r);  emit("\n") }
+  if (rl == "void") { emit("  ret void\n") }
+  else { let r = emit_bind(("load " + (rl + (", ptr %retval"))));  emit("  ret ");  emit(rl);  emit(" ");  emit(r);  emit("\n") }
   code = saved
   emit("define ");  emit(rl);  emit(" @fn_");  emit(d.s);  emit("(");  emit_params_sig(d);  emit(") {\nentry:\n")
   emit(buf_str(falloc))
@@ -67,6 +67,7 @@ fn emit_main(d: Node) -> void {
 fn emit_program() -> void {
   head = buf_new()
   code = buf_new()
+  g_uses_str = false
   loc_name = new []ptr;  loc_reg = new []ptr;  loc_ty = new []ptr;  loc_mut = new []int
   brk_lbl = new []ptr;   cnt_lbl = new []ptr
   self_stk = new []ptr
@@ -82,6 +83,7 @@ fn emit_program() -> void {
     i = 0
     while i < len(prog) { if prog[i].kind == N_MAIN { emit_main(prog[i]) };  i = i + 1 }
   }
+  if g_uses_str { emit_str_prelude() }          # @fn_str_eq / @fn_str_concat, after all uses are seen
 }
 
 # Flush the emitted IR. With a null path it goes to stdout (the pipe the shell

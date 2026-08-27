@@ -5,91 +5,91 @@
 var g_windowed: bool = false     # headless by default (games read stdin / dump PPM)
 
 fn is_intrinsic2(name: ptr) -> bool {
-  if streq(name,"mem_free") or streq(name,"mem_copy") or streq(name,"mem_set") { return true }
-  if streq(name,"ptr_add") or streq(name,"read_byte") or streq(name,"write_byte") { return true }
-  if streq(name,"str_len") or streq(name,"os_time") { return true }
-  if streq(name,"peekf") or streq(name,"pokef") or streq(name,"as_fixed") or streq(name,"as_int") { return true }
-  if streq(name,"peekp") or streq(name,"pokep") { return true }
-  if streq(name,"is_windowed") or streq(name,"game_title") { return true }
-  if streq(name,"win_open") or streq(name,"win_poll") or streq(name,"win_present") { return true }
-  if streq(name,"win_running") or streq(name,"win_close") { return true }
+  if (name == "mem_free") or (name == "mem_copy") or (name == "mem_set") { return true }
+  if (name == "ptr_add") or (name == "read_byte") or (name == "write_byte") { return true }
+  if (name == "str_len") or (name == "os_time") { return true }
+  if (name == "peekf") or (name == "pokef") or (name == "as_fixed") or (name == "as_int") { return true }
+  if (name == "peekp") or (name == "pokep") { return true }
+  if (name == "is_windowed") or (name == "game_title") { return true }
+  if (name == "win_open") or (name == "win_poll") or (name == "win_present") { return true }
+  if (name == "win_running") or (name == "win_close") { return true }
   return false
 }
 
 fn emit_intrinsic2(name: ptr, e: Node) -> Val {
-  if streq(name, "mem_free") {
+  if (name == "mem_free") {
     let p = arg_code(e, 0);  emit("  call void @free(ptr ");  emit(p);  emit(")\n");  return val("0", "void")
   }
-  if streq(name, "mem_copy") {
+  if (name == "mem_copy") {
     let d = arg_code(e, 0);  let s = arg_code(e, 1);  let n = arg_code(e, 2)
-    let w = emit_bind(sconcat("zext i32 ", sconcat(n, " to i64")))
+    let w = emit_bind(("zext i32 " + (n + " to i64")))
     emit("  call ptr @memcpy(ptr ");  emit(d);  emit(", ptr ");  emit(s);  emit(", i64 ");  emit(w);  emit(")\n")
     return val("0", "void")
   }
-  if streq(name, "mem_set") {
+  if (name == "mem_set") {
     let p = arg_code(e, 0);  let v = arg_code(e, 1);  let n = arg_code(e, 2)
-    let w = emit_bind(sconcat("zext i32 ", sconcat(n, " to i64")))
+    let w = emit_bind(("zext i32 " + (n + " to i64")))
     emit("  call ptr @memset(ptr ");  emit(p);  emit(", i32 ");  emit(v);  emit(", i64 ");  emit(w);  emit(")\n")
     return val("0", "void")
   }
-  if streq(name, "ptr_add") {
+  if (name == "ptr_add") {
     let p = arg_code(e, 0);  let n = arg_code(e, 1)
     let g = nreg()
     emit("  ");  emit(g);  emit(" = getelementptr inbounds i8, ptr ");  emit(p);  emit(", i32 ");  emit(n);  emit("\n")
     return val(g, "ptr")
   }
-  if streq(name, "read_byte") { return val(emit_bind("call i32 @getchar()"), "int") }
-  if streq(name, "write_byte") {
+  if (name == "read_byte") { return val(emit_bind("call i32 @getchar()"), "int") }
+  if (name == "write_byte") {
     let v = arg_code(e, 0);  emit("  call i32 @putchar(i32 ");  emit(v);  emit(")\n");  return val("0", "void")
   }
-  if streq(name, "str_len") {
+  if (name == "str_len") {
     let s = arg_code(e, 0)
-    let r = emit_bind(sconcat("call i64 @strlen(ptr ", sconcat(s, ")")))
-    return val(emit_bind(sconcat("trunc i64 ", sconcat(r, " to i32"))), "int")
+    let r = emit_bind(("call i64 @strlen(ptr " + (s + ")")))
+    return val(emit_bind(("trunc i64 " + (r + " to i32"))), "int")
   }
-  if streq(name, "os_time") {
+  if (name == "os_time") {
     let r = emit_bind("call i64 @time(ptr null)")
-    return val(emit_bind(sconcat("trunc i64 ", sconcat(r, " to i32"))), "int")
+    return val(emit_bind(("trunc i64 " + (r + " to i32"))), "int")
   }
-  if streq(name, "peekf") {
+  if (name == "peekf") {
     let p = arg_code(e, 0);  let i = arg_code(e, 1)
     let g = nreg();  emit("  ");  emit(g);  emit(" = getelementptr inbounds i32, ptr ");  emit(p);  emit(", i32 ");  emit(i);  emit("\n")
-    return val(emit_bind(sconcat("load i32, ptr ", g)), "fixed")
+    return val(emit_bind(("load i32, ptr " + g)), "fixed")
   }
-  if streq(name, "pokef") {
+  if (name == "pokef") {
     let p = arg_code(e, 0);  let i = arg_code(e, 1);  let v = arg_code(e, 2)
     let g = nreg();  emit("  ");  emit(g);  emit(" = getelementptr inbounds i32, ptr ");  emit(p);  emit(", i32 ");  emit(i);  emit("\n")
     emit("  store i32 ");  emit(v);  emit(", ptr ");  emit(g);  emit("\n")
     return val("0", "void")
   }
-  if streq(name, "peekp") {
+  if (name == "peekp") {
     let p = arg_code(e, 0);  let i = arg_code(e, 1)
     let g = nreg();  emit("  ");  emit(g);  emit(" = getelementptr inbounds ptr, ptr ");  emit(p);  emit(", i32 ");  emit(i);  emit("\n")
-    return val(emit_bind(sconcat("load ptr, ptr ", g)), "ptr")
+    return val(emit_bind(("load ptr, ptr " + g)), "ptr")
   }
-  if streq(name, "pokep") {
+  if (name == "pokep") {
     let p = arg_code(e, 0);  let i = arg_code(e, 1);  let v = arg_code(e, 2)
     let g = nreg();  emit("  ");  emit(g);  emit(" = getelementptr inbounds ptr, ptr ");  emit(p);  emit(", i32 ");  emit(i);  emit("\n")
     emit("  store ptr ");  emit(v);  emit(", ptr ");  emit(g);  emit("\n")
     return val("0", "void")
   }
-  if streq(name, "as_fixed") { let a = emit_expr(e.kids[0]);  return val(a.code, "fixed") }
-  if streq(name, "as_int")   { let a = emit_expr(e.kids[0]);  return val(a.code, "int") }
-  if streq(name, "is_windowed") { if g_windowed { return val("1", "bool") };  return val("0", "bool") }
-  if streq(name, "game_title") { return val("@.gametitle", "str") }
+  if (name == "as_fixed") { let a = emit_expr(e.kids[0]);  return val(a.code, "fixed") }
+  if (name == "as_int")   { let a = emit_expr(e.kids[0]);  return val(a.code, "int") }
+  if (name == "is_windowed") { if g_windowed { return val("1", "bool") };  return val("0", "bool") }
+  if (name == "game_title") { return val("@.gametitle", "str") }
   # windowing hooks — declared external; only reached on the is_windowed() branch
-  if streq(name, "win_poll") { return val(emit_bind("call i32 @win_poll()"), "int") }
-  if streq(name, "win_running") { return val(emit_bind("call i32 @win_running()"), "bool") }
-  if streq(name, "win_open") {
+  if (name == "win_poll") { return val(emit_bind("call i32 @win_poll()"), "int") }
+  if (name == "win_running") { return val(emit_bind("call i32 @win_running()"), "bool") }
+  if (name == "win_open") {
     let a = arg_code(e, 0);  let b = arg_code(e, 1);  let c = arg_code(e, 2);  let d = arg_code(e, 3)
     emit("  call void @win_open(i32 ");  emit(a);  emit(", i32 ");  emit(b);  emit(", i32 ");  emit(c);  emit(", ptr ");  emit(d);  emit(")\n")
     return val("0", "void")
   }
-  if streq(name, "win_present") {
+  if (name == "win_present") {
     let a = arg_code(e, 0);  let b = arg_code(e, 1);  let c = arg_code(e, 2)
     emit("  call void @win_present(ptr ");  emit(a);  emit(", i32 ");  emit(b);  emit(", i32 ");  emit(c);  emit(")\n")
     return val("0", "void")
   }
-  if streq(name, "win_close") { emit("  call void @win_close()\n");  return val("0", "void") }
+  if (name == "win_close") { emit("  call void @win_close()\n");  return val("0", "void") }
   return val("0", "void")
 }

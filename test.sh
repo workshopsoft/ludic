@@ -66,6 +66,11 @@ if ./selfhost/game-build.sh build/ludicc examples/toggle.ludic "/tmp/ludic_tog" 
    && [ "$(/tmp/ludic_tog </dev/null | tr '\n' ' ')" = "6 0 7 1 0 " ]; then
   ok "toggle.ludic (enable/disable + @OnDisable/@OnEnable across property/model)"
 else bad "toggle: $(tail -1 /tmp/tog.out)"; fi
+# String operators: ==/!= compare by content, + concatenates (str_* prelude).
+if ./selfhost/game-build.sh build/ludicc examples/strings.ludic "/tmp/ludic_str" >/tmp/str.out 2>&1 \
+   && [ "$(/tmp/ludic_str </dev/null | tr '\n' ' ')" = "1 2 3 4 5 " ]; then
+  ok "strings.ludic (str ==/!=/+ operators)"
+else bad "strings: $(tail -1 /tmp/str.out)"; fi
 # --- Toolchain-agent CLI smoke tests append below this line ---
 echo "== self-hosted front-end binaries (ludicc / ludic) =="
 # The two commands are one multi-call native binary built from the seed with
