@@ -175,3 +175,16 @@ fn emit_int_str() -> void {
   emith("fin:\n  %fpos = phi i32 [ %pos, %sign ], [ %posn, %addneg ]\n")
   emith("  %rpos = add i32 %fpos, 1\n  %res = getelementptr inbounds i8, ptr %buf, i32 %rpos\n  ret ptr %res\n}\n")
 }
+
+# s[a..b] -> a fresh NUL-terminated copy of the bytes [a, b), emitted (once) into
+# any program that slices a string. Mallocs (b-a)+1, copies, terminates.
+fn emit_str_slice() -> void {
+  emith("define ptr @fn_str_slice(ptr %s, i32 %start, i32 %end) {\n")
+  emith("entry:\n  %len = sub i32 %end, %start\n  %sz = add i32 %len, 1\n")
+  emith("  %sz64 = sext i32 %sz to i64\n  %out = call ptr @malloc(i64 %sz64)\n  br label %loop\n")
+  emith("loop:\n  %i = phi i32 [ 0, %entry ], [ %i1, %body ]\n")
+  emith("  %d = icmp slt i32 %i, %len\n  br i1 %d, label %body, label %fin\n")
+  emith("body:\n  %si = add i32 %start, %i\n  %sp = getelementptr inbounds i8, ptr %s, i32 %si\n  %c = load i8, ptr %sp\n")
+  emith("  %op = getelementptr inbounds i8, ptr %out, i32 %i\n  store i8 %c, ptr %op\n  %i1 = add i32 %i, 1\n  br label %loop\n")
+  emith("fin:\n  %tp = getelementptr inbounds i8, ptr %out, i32 %len\n  store i8 0, ptr %tp\n  ret ptr %out\n}\n")
+}

@@ -19,14 +19,14 @@ fn base_name(path: ptr) -> ptr {
   var last = 0 - 1
   var i = 0
   while peek8(path, i) != 0 { if peek8(path, i) == 47 { last = i };  i = i + 1 }
-  return substr(path, last + 1, i - (last + 1))
+  return path[last + 1..i]
 }
 
 # drop a trailing ".ludic" if present
 fn strip_ludic(name: ptr) -> ptr {
   let n = len(name)
   if n > 6 {
-    if (substr(name, n - 6, 6) == ".ludic") { return substr(name, 0, n - 6) }
+    if (name[n - 6..n] == ".ludic") { return name[0..n - 6] }
   }
   return name
 }

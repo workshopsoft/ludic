@@ -57,7 +57,7 @@ fn args_call(call: Node) -> void {
 # ---- string interpolation --------------------------------------------------
 # `text {expr} text` desugars to a `+` chain of string literals and `str(expr)`
 # holes, so it reuses the string-concat operator and needs no new runtime.
-fn interp_lit(buf: ptr, len: int) -> Node { let n = node(E_STR); n.s = substr(buf, 0, len); return n }
+fn interp_lit(buf: ptr, len: int) -> Node { let n = node(E_STR); n.s = buf[0..0 + len]; return n }
 fn interp_add(acc: Node, part: Node) -> Node {
   if acc == null { return part }
   return mkbin("+", acc, part)
@@ -92,7 +92,7 @@ fn parse_interp(raw: ptr) -> Node {
         else { if d == 125 { depth = depth - 1;  if depth == 0 { break } } }
         i = i + 1
       }
-      acc = interp_add(acc, interp_str(parse_hole(substr(raw, hs, i - hs))))
+      acc = interp_add(acc, interp_str(parse_hole(raw[hs..i])))
       i = i + 1                                   # skip the closing '}'
     } else {
       if c == 125 and peek8(raw, i + 1) == 125 { poke8(lit, lj, 125); lj = lj + 1; i = i + 2; continue }  # }} -> }
@@ -131,7 +131,9 @@ fn p_postfix() -> Node {
   var e = p_primary()
   while true {
     if is_op(".") { pi = pi + 1; let m = node(E_MEMBER); m.a = e; m.s = eat_id(); e = m }
-    else { if is_op("[") { pi = pi + 1; let ix = node(E_INDEX); ix.a = e; ix.b = expr(); eat_op("]"); e = ix }
+    else { if is_op("[") { pi = pi + 1; let lo = expr()
+        if is_op("..") { pi = pi + 1; let sl = node(E_SLICE); sl.a = e; sl.b = lo; sl.c = expr(); eat_op("]"); e = sl }   # s[a..b] substring
+        else { let ix = node(E_INDEX); ix.a = e; ix.b = lo; eat_op("]"); e = ix } }
       else { if is_op("(") { let c = node(E_CALL); c.a = e; args_call(c); e = c } else { break } } }
   }
   return e
@@ -311,7 +313,7 @@ fn dir_of(path: ptr) -> ptr {
   var i = 0
   while peek8(path, i) != 0 { if peek8(path, i) == 47 { last = i };  i = i + 1 }
   if last < 0 { return "" }
-  return substr(path, 0, last + 1)
+  return path[0..0 + (last + 1)]
 }
 fn path_join(dir: ptr, rel: ptr) -> ptr {
   if peek8(rel, 0) == 47 { return rel }               # absolute
