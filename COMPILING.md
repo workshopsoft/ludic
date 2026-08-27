@@ -37,7 +37,7 @@ and find your program rewritten in another language.
    app.ludic
       │  ludicc — lex, parse, check, lower              (compiler/ludicc.c,
       ▼                                                  compiler/native.c)
-   app.ll        LLVM IR: your systems, your components, your runtime
+   app.ll        LLVM IR: your systems, your properties, your runtime
       │  IR assembler                                   (compiler/driver.c)
       ▼
    app.o         Mach-O / ELF / COFF object code
@@ -302,8 +302,8 @@ asserts exactly that, which is a much stronger check on the backend than
 
 ## What a build contains
 
-Everything: components and archetypes, spawn/despawn, queries with bindings,
-`where` filters and archetype filters, `match`, `machine`/`become`,
+Everything: properties and models, spawn/despawn, queries with bindings,
+`where` filters and model filters, `match`, `machine`/`become`,
 `scene`/`layer`/`enter`, module state (`var`), `const`, int and Q16.16
 fixed-point arithmetic, control flow, functions, `extern fn` FFI, strings, the
 entity allocator, save/load snapshots, the frame loop, the window, and the whole

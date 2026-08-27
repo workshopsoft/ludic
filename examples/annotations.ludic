@@ -1,0 +1,30 @@
+# annotations.ludic — the annotation-first style. A handler's query is an
+# @Queries decorator instead of a clause, and the program lists the handlers it
+# drives with @Handles. Both lower to the same code the older spellings did.
+
+@Handles(Move)
+program RPG2D {
+  property Transform { x: int = 0, y: int = 0, scale: int = 1 }
+  property Velocity  { dx: int = 0, dy: int = 0 }
+  model Actor { Transform, Velocity }
+
+  handler Spawn phase Start {
+    spawn Actor { Transform { x: 0, scale: 2 }  Velocity { dx: 3, dy: 1 } }
+    spawn Actor { Transform { x: 0, scale: 0 }  Velocity { dx: 9, dy: 9 } }
+  }
+
+  # Move every Actor whose scale is positive and that is actually moving. The
+  # query lives in the annotation; each bound property is addressed by its own
+  # name in the body (`Transform`, `Velocity`), and a constraint like
+  # `Transform{scale > 0}` reads `scale` as a field of Transform.
+  @Queries(these: [Transform{scale > 0}, Velocity{dx > 0 or dy > 0}], on: Actor)
+  handler Move phase Update {
+    Transform.x = Transform.x + Velocity.dx
+    Transform.y = Transform.y + Velocity.dy
+  }
+
+  handler Report phase Render {
+    for (t) in query [Transform] { print_int(t.x); print_int(t.y) }
+    quit()
+  }
+}

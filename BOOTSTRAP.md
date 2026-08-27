@@ -110,7 +110,7 @@ All verified. A compiler needs each of these, and each one works today.
 | Heap allocation | ✅ | `mem_alloc`, `mem_free`, `mem_copy`, `mem_set`; 1 MiB alloc verified |
 | Byte-level memory | ✅ | `peek8`/`poke8`, `peek32`/`poke32`, `peekp`/`pokep`, `ptr_add` |
 | `ptr` locals, params, returns | ✅ | `fn make(n: int) -> ptr` |
-| `ptr` in a component field | ✅ | `component Nd { kind: int = 0, a: ptr = ptr_null() }` |
+| `ptr` in a property field | ✅ | `property Nd { kind: int = 0, a: ptr = ptr_null() }` |
 | String literals as readable bytes | ✅ | `peek8("hello", 1)` → `101` |
 | `str` accepted where `ptr` expected | ✅ | `f("A")` into `fn f(p: ptr)` |
 | String comparison, **hand-written in Ludic** | ✅ | `streq` over `peek8` |
@@ -186,10 +186,10 @@ records. Today there are two workarounds, and both are bad at compiler scale:
   what `truetype.ludic` does, and it works, but every field access becomes a
   magic number. Across a 6,000-line compiler this is the difference between
   maintainable and not.
-- **ECS entities as nodes** — verified working (`component Nd { kind, a: ptr }`),
+- **ECS entities as nodes** — verified working (`property Nd { kind, a: ptr }`),
   and initially seductive because queries give you free traversal. **Do not do
   this.** `LUDIC_MAX_ENT` is 1024 in `native.c:18`; the entity world is a fixed
-  array of per-component storage. A compiler needs hundreds of thousands of
+  array of per-property storage. A compiler needs hundreds of thousands of
   nodes. This is a dead end, and it is worth writing down because it is the
   obvious wrong turn.
 
@@ -211,11 +211,11 @@ No copying, no by-value passing, no nested-struct inlining — a `struct` value
 a layout table.
 
 **Lowering.** This is largely already built. `native.c` already emits
-`%Cmp_<Name>` LLVM struct types for components and already resolves
+`%Cmp_<Name>` LLVM struct types for properties and already resolves
 `a.b` through `ll_member_addr` with `getelementptr`. A `struct` is a
 `%Cmp_`-style type *without* the parallel entity arrays: `new` is
 `malloc(sizeof)` plus a default-seeding memset/store sequence, and `.field` is
-the existing `getelementptr` path. Reusing the component machinery is why this
+the existing `getelementptr` path. Reusing the property machinery is why this
 is far cheaper than it looks.
 
 **Cost.** ~250 lines of C across `ludicc.c` (parse) and `native.c` (layout,
@@ -423,7 +423,7 @@ confident nonsense.
 | **No silent no-ops** | If the language accepts a construct it must either honour it or reject it. Accepting-and-ignoring teaches a falsehood (see R6 — the worst thing in the audit). |
 | **Recoverable structure** — explicit terminators | A slightly-wrong generation fails *locally*, with an error pointing at the mistake, instead of cascading into a confusing error 40 lines later. |
 | **Locality** — meaning readable from the construct | No action-at-a-distance. Ludic is already strong here; keep it. |
-| **Greppable unique anchors** | `component Pos` is findable. Retrieval quality is a language design property. |
+| **Greppable unique anchors** | `property Pos` is findable. Retrieval quality is a language design property. |
 | **Errors that name the fix** | Already partly true: a missing builtin errors naming `rt_<name>`. Extend that everywhere. |
 
 **Folklore, and false:**
@@ -452,12 +452,12 @@ Each row verified by compiling a probe, not by reading docs.
 | **R1** | **No statement terminator at all.** `block()` is `skipnl(); stmt()` in a loop. A newline *stops* an expression (it lexes as `T_NL`, and `binlevel` only continues on `T_OP`) but is never *required*. `let x = 1 x = x + 1 print_int(x)` on one line is three legal statements — verified compiling. | `ludicc.c` `block()`, `binlevel` | The reader cannot see where a statement ends without re-deriving operator precedence. Blocks error recovery entirely. |
 | **R2** | **Commas are optional everywhere.** `if(isop(",")) pi++` appears in `comp()`, `arche()`, `fn` params and `spawn`. `{ x: int = 0  y: int = 0 }` and the comma'd form both compile. | 4 parser sites | Two spellings, zero semantic difference. |
 | ~~**R3**~~ | ~~**`and`/`or` alias `&&`/`\|\|`.**~~ **RESOLVED** — `and`/`or`/`not` are the only boolean operators; `&&`, `\|\|` and `!` are each rejected with a diagnostic naming the fix, and all three words are reserved. `!=` is unaffected. | landed via S3 | — |
-| **R4** | **`{ }` means seven different things** — statement block; component fields (`n: T = e`); archetype list (bare idents); spawn initialisers (`N = { … }`); ui props + children (`k=v` juxtaposed, no commas); match arms (`p, p => …`); machine states (`state N = v { … }`). | `block/comp/arche/spawn/parse_widget/match/machine` | The delimiter carries no information. You must already know the head keyword to know the inner grammar. |
+| **R4** | **`{ }` means seven different things** — statement block; property fields (`n: T = e`); model list (bare idents); spawn initialisers (`N = { … }`); ui props + children (`k=v` juxtaposed, no commas); match arms (`p, p => …`); machine states (`state N = v { … }`). | `block/comp/arche/spawn/parse_widget/match/machine` | The delimiter carries no information. You must already know the head keyword to know the inner grammar. |
 | **R5** | **Contextual keywords, not reserved.** `phase`, `query`, `reads`, `writes`, `needs`, `uses`, `where`, `in`, `on`, `layer`, `state`, `start` are matched with `isid()` — ordinary identifiers. `let query = 5  let phase = 6` compiles and prints `11`. | `sys()`, `scene_decl()` | A local named `enter` or `match` produces a baffling error far from the cause. |
 | **R6** | **Contracts are parsed and thrown away.** `requires`/`ensures`/`invariant` parse an expression and **discard it** (`pi++; expr();`). `reads`/`writes`/`needs`/`uses`/`effects` are `skip_brackets()`. `pure` is consumed and ignored. Verified: `fn half(n: int) -> int requires n > 100000 ensures false` compiles, and `half(8)` returns `4`. Verified: a system declaring `reads [Pos]` that **writes** `p.x = 99` compiles. | `fn()`, `sys()` | **The worst item in the audit.** The language accepts a contract and does nothing. A model writing `requires n > 0` is rewarded with a clean compile and zero enforcement — it learns a lie, and so does a human reader trusting the annotation. |
 | **R7** | **`str + str` typechecks, then emits invalid IR.** | verified (§4 B2) | The front-end accepts what the backend cannot lower. |
 | **R8** | **Two formatters, opposite philosophies, both called "format".** `ludicc --fmt` canonicalises hard (one statement per line, `and`→`&&`, full parenthesisation) but drops comments and inlines imports. `ludic-fmt` is token-based and preserves comments — but **normalises nothing**: handed the one-line `let a = 1 a = a + 1  if true and false { … }`, it returned it unchanged. | verified side-by-side | **Neither tool enforces a single spelling.** The canonicaliser is unusable on real source; the source formatter has no opinion. |
-| **R9** | **Two ways to spell a tag** — `component Player { }` (empty component) or `archetype`. | LANGUAGE.md | |
+| **R9** | **Two ways to spell a tag** — `property Player { }` (empty property) or `model`. | LANGUAGE.md | |
 | **R10** | **Stale docs are stale training data.** LANGUAGE.md still says "the current compiler is a tree-to-C translator" (it emits LLVM IR) and lists arrays under "Not yet implemented" beside things never planned. | LANGUAGE.md | Docs are the highest-leverage model input in the repo. A wrong doc is worse than a missing one. |
 
 ### 5.4 Proposals
@@ -497,7 +497,7 @@ point of the mistake. *Fixes R5. Cost:* ~40 lines.
 section.** Two honest options per construct, no third:
 
 - `reads` / `writes`: **implement them.** The compiler already knows every
-  component a system touches — it builds the query and walks the body. Checking
+  property a system touches — it builds the query and walks the body. Checking
   the declaration against actual access is a genuine static analysis the
   language claims to have and doesn't. This converts dead syntax into a real
   guarantee, which is exactly what an "AI-first" language should offer a model
@@ -542,7 +542,7 @@ Recording these so they are not relitigated:
 
 - **Braces, not indentation** (§5.2).
 - **`#` comments** — unambiguous, one spelling already.
-- **The ECS vocabulary** — `component` / `system` / `query` / `phase` are
+- **The ECS vocabulary** — `property` / `system` / `query` / `phase` are
   unusually self-describing and greppable. This is the language's best existing
   readability asset.
 - **`fixed` / Q16.16** — determinism is a design constraint, not a style choice.
@@ -598,7 +598,7 @@ The self-host compiler (`selfhost/`) implements the **compiler-subset**: `struct
 (reference), `[]T` slices with `push`/`len`, functions, a plain `main` entry,
 the full control flow, the operators (with short-circuit `and`/`or`), and the
 low-level intrinsics. It deliberately does **not** implement the game half of
-Ludic — ECS, queries, archetypes, scenes, UI, save/load, `match`/`machine`,
+Ludic — ECS, queries, models, scenes, UI, save/load, `match`/`machine`,
 fixed-point. It targets native (macOS/clang) and emits LLVM IR text that clang
 assembles, exactly the posture the C `ludicc` has.
 
@@ -634,8 +634,8 @@ compiler is now a historical seed, not a dependency.
 
 ### Stage 4+ — `ludicc.c` is deleted
 
-The self-host compiler was extended to the **whole** language — components,
-archetypes, systems, phases, `for … in query` (with `where`), spawn/despawn,
+The self-host compiler was extended to the **whole** language — properties,
+models, systems, phases, `for … in query` (with `where`), spawn/despawn,
 `self()`, `machine`/`become`, `match`, `save`/`load` snapshots, the retained
 `ui` widget tree, multi-file `import`, fixed-point Q16.16, and every runtime
 intrinsic. It auto-splices the Ludic runtime exactly as the C compiler did.
@@ -791,7 +791,7 @@ existing framing ("the same floor Rust and Swift stand on") already covers it.
 ## 8. Risks and gotchas
 
 - **Do not build the AST out of ECS entities.** `LUDIC_MAX_ENT` is 1024
-  (`native.c:18`) and component storage is fixed arrays. It compiles, it looks
+  (`native.c:18`) and property storage is fixed arrays. It compiles, it looks
   elegant, and it caps the compiler at 1024 nodes. Use `struct` (A2).
 - **Do not inherit the C compiler's fixed caps.** `ludicc.c:22` has
   `g_srcpath[128]`; `native.c:161` has `Val a[8]`. The Ludic port should grow
@@ -954,7 +954,7 @@ handler Violate phase Update reads [Pos] query (p) [Pos] { p.x = 99 }
 ```
 
 **R8 — the two formatters disagree about what "format" means.** Given
-`component Pos { x: int = 0  y: int = 0 }` and a multi-statement one-liner,
+`property Pos { x: int = 0  y: int = 0 }` and a multi-statement one-liner,
 `ludicc --fmt` rewrites both (one statement per line, `and`→`&&`, full
 parenthesisation) while `ludic-fmt` returns the input **unchanged**.
 
