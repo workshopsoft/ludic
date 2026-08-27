@@ -1,5 +1,5 @@
 program T {
-  struct P { x: int = 0, y: int = 7, next: P }
+  property P { x: int = 0, y: int = 7, next: P }
   fn bump(p: P) -> void { p.x = p.x + 100 }
   entry {
     let a = new P

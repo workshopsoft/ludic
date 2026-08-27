@@ -2,7 +2,7 @@
 # module-level material (types, globals, string constants) into one buffer and
 # function bodies into another, then prints them in order.
 
-struct Buf { data: ptr = ptr_null(), len: int = 0, cap: int = 0 }
+property Buf { data: ptr = ptr_null(), len: int = 0, cap: int = 0 }
 
 fn buf_new() -> Buf {
   let b = new Buf

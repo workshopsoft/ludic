@@ -5,16 +5,22 @@
 
 const MAX_ENT: int = 1024
 
-fn has_ecs() -> bool {
-  let i = 0
-  while i < len(prog) { let k = prog[i].kind;  if k == N_COMP or k == N_SYS { return true };  i = i + 1 }
-  return false
-}
 fn has_systems() -> bool {
   let i = 0
   while i < len(prog) { if prog[i].kind == N_SYS { return true };  i = i + 1 }
   return false
 }
+fn has_models() -> bool {
+  let i = 0
+  while i < len(prog) { if prog[i].kind == N_ARCH { return true };  i = i + 1 }
+  return false
+}
+# Does this program run the ECS? A property alone no longer answers that — the
+# same `property` keyword also declares plain `new`-allocated records (the merged
+# `struct`). A program uses the ECS when it has a handler or a model; a tool that
+# only declares record types and functions does not, and gets no entity storage,
+# allocator, snapshot or runtime splice.
+fn has_ecs() -> bool { return has_systems() or has_models() }
 
 fn emit_ecs_storage() -> void {
   emith("@L_running = internal global i32 1\n")
@@ -28,12 +34,10 @@ fn emit_ecs_storage() -> void {
   let i = 0
   while i < len(prog) {
     let c = prog[i]
+    # per-entity storage for a property (its %Cmp_ layout is emitted in the
+    # header). Every property in an ECS program is a component today; a property
+    # used only via `new` would not need these, but no such program mixes the two.
     if c.kind == N_COMP {
-      emith(sconcat("%Cmp_", sconcat(c.s, " = type { ")))
-      if len(c.kids) == 0 { emith("i32") }
-      let f = 0
-      while f < len(c.kids) { if f > 0 { emith(", ") };  emith(llty(c.kids[f].ty));  f = f + 1 }
-      emith(" }\n")
       emith(sconcat("@S_", sconcat(c.s, sconcat(" = internal global [", sconcat(me, sconcat(" x %Cmp_", sconcat(c.s, "] zeroinitializer\n")))))))
       emith(sconcat("@H_", sconcat(c.s, sconcat(" = internal global [", sconcat(me, " x i8] zeroinitializer\n")))))
     }

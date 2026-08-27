@@ -10,7 +10,7 @@ const TK_NL:  int = 4
 const TK_EOF: int = 5
 const TK_FLOAT: int = 6
 
-struct Tok { kind: int = 0, text: ptr = ptr_null(), ival: int = 0, line: int = 0 }
+property Tok { kind: int = 0, text: ptr = ptr_null(), ival: int = 0, line: int = 0 }
 
 var toks: []Tok
 

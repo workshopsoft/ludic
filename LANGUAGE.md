@@ -22,8 +22,8 @@ A program is one `program` block containing declarations:
 # doc-check: skip — illustrative: elided import list
 program Name {
   import ...        # pull declarations in from another file
-  property ...     # data (per entity)
-  struct ...        # a plain record, not tied to an entity
+  property ...     # a record of typed fields — a per-entity component, or a
+                    # plain `new`-allocated record; its use decides which
   model ...     # a named entity KIND (bundle of properties)
   const ...         # compile-time constants
   fn ...            # functions
@@ -366,13 +366,24 @@ whole timeline), plus [`examples/toggle.ludic`](examples/toggle.ludic)
 (enable/disable). Still to come: **scene** hooks (`@OnEnter`/`@OnExit`), which
 wait on `scene` support landing in the compiler.
 
-## Structs, arrays and slices
+## Records (`property`), arrays and slices
 
-`struct` is the aggregate that is *not* tied to an entity — a plain record, for
-the data a program keeps outside the ECS.
+There is one record keyword, `property` — a named set of typed fields with
+defaults. How a property is *stored* follows from how it is *used*, so the same
+declaration covers both ECS components and the plain records a program keeps
+outside the ECS:
+
+- listed in a `model` (or attached by `spawn`) → a **component**, stored in the
+  engine's per-entity arrays and bound in queries;
+- constructed with **`new`** → a **heap record**, addressed by a pointer.
+
+A program that only declares `property` records and functions — never a `model`
+or `handler` — is not an ECS program at all: it gets no entity storage or
+runtime, just the record layouts and `new`. (This is exactly how the Ludic
+compiler is written in itself.)
 
 ```ludic
-struct Tok { kind: int = 0, line: int = 0, next: Tok }
+property Tok { kind: int = 0, line: int = 0, next: Tok }
 
 handler Lex phase Update {
   let t = new Tok        # allocates; every field seeded from its default
@@ -380,11 +391,11 @@ handler Lex phase Update {
 }
 ```
 
-Struct values have **reference semantics**: a struct value is a pointer to the
+A `new` record has **reference semantics**: the value is a pointer to the
 object, so assigning or passing one shares it rather than copying.
 
 ```ludic
-struct Tok { kind: int = 0, line: int = 0, next: Tok }
+property Tok { kind: int = 0, line: int = 0, next: Tok }
 
 fn bump(t: Tok) -> void { t.kind = t.kind + 1 }
 
@@ -398,7 +409,7 @@ handler Share phase Update {
 }
 ```
 
-Fields chain, so a struct can refer to its own type and be walked without
+Fields chain, so a record can refer to its own type and be walked without
 temporaries — which is what an AST or a linked list needs:
 
 ```ludic
@@ -648,8 +659,9 @@ are future work.
   formatting lives in `build/ludic-fmt` instead). Output-path and IR flags are in
   flux as the CLI front-end is rebuilt — check `ludicc` usage for the current set.
 
-`struct` and array types, `break`/`continue`, and argv/stderr — once listed here
-as near-term — are now implemented and self-hosting; their lowerings are in
+Records (`property` used with `new`) and array types, `break`/`continue`, and
+argv/stderr — once listed here as near-term — are now implemented and
+self-hosting; their lowerings are in
 [BOOTSTRAP.md](BOOTSTRAP.md) §4.
 
 ## Scenes & layers
