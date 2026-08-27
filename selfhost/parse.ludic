@@ -187,10 +187,14 @@ fn stmt() -> Node {
     if streq(t.text, "spawn") { return parse_spawn() }
     if streq(t.text, "machine") {
       pi = pi + 1; let n = node(S_MACHINE); n.a = expr(); skipnl(); eat_op("{")
+      let sidx = 0                              # states auto-number by declaration order
       while true { skipnl(); if is_op("}") { break }
         let stkw = eat_id()                     # 'state'
-        let s = node(S_STATE); s.s = eat_id(); eat_op("="); s.b = expr(); skipnl(); s.a = block()
-        push(n.kids, s) }
+        let s = node(S_STATE); s.s = eat_id()
+        if is_op("=") { pi = pi + 1; s.b = expr() }              # explicit value (still allowed)
+        else { let iv = node(E_INT); iv.ival = sidx; s.b = iv }  # else its ordinal
+        skipnl(); s.a = block()
+        push(n.kids, s); sidx = sidx + 1 }
       eat_op("}"); return n
     }
     if streq(t.text, "become") { pi = pi + 1; let n = node(S_BECOME); n.s = eat_id(); return n }

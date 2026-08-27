@@ -379,15 +379,18 @@ state (no more `if phase == N` chains). See the co-op battle in
 ```ludic
 # doc-check: skip — illustrative: elided bodies
 machine R_PHASE {
-  state KnightMenu = 0 { … if is_confirm(k) { …attack…  become KnightResolve } }
-  state KnightResolve = 1 { … become MageMenu }
-  state EnemyTurn = 4 { … become KnightMenu }
+  state KnightMenu { … if is_confirm(k) { …attack…  become KnightResolve } }
+  state KnightResolve { … become MageMenu }
+  state EnemyTurn { … become KnightMenu }
 }
 ```
 
-A `machine <reg>` reads `reg(<reg>)` to pick the state; `become Name` compiles to
-`setreg(<reg>, <Name's value>)`. Both lower to plain branches (and `match` runs
-on the native LLVM backend too).
+States **number themselves by declaration order** (`KnightMenu` is `0`,
+`KnightResolve` is `1`, …) — no magic constants. (An explicit `state Name = expr`
+is still accepted when a state needs a specific value.) A `machine <reg>` reads
+`reg(<reg>)` to pick the state; `become Name` compiles to `setreg(<reg>, <Name's
+value>)`. Both lower to plain branches (and `match` runs on the native LLVM
+backend too).
 
 ## Expressions
 
