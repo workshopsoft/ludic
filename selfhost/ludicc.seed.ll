@@ -171,42 +171,42 @@ declare void @win_close()
 @.str102 = private unnamed_addr constant [5 x i8] c"void\00"
 @.str103 = private unnamed_addr constant [3 x i8] c"->\00"
 @.str104 = private unnamed_addr constant [1 x i8] c"\00"
-@.str105 = private unnamed_addr constant [7 x i8] c"import\00"
-@.str106 = private unnamed_addr constant [29 x i8] c"expected \22path\22 after import\00"
-@.str107 = private unnamed_addr constant [7 x i8] c"struct\00"
-@.str108 = private unnamed_addr constant [10 x i8] c"component\00"
-@.str109 = private unnamed_addr constant [10 x i8] c"archetype\00"
-@.str110 = private unnamed_addr constant [7 x i8] c"system\00"
-@.str111 = private unnamed_addr constant [5 x i8] c"edge\00"
-@.str112 = private unnamed_addr constant [3 x i8] c"ui\00"
-@.str113 = private unnamed_addr constant [4 x i8] c"var\00"
-@.str114 = private unnamed_addr constant [6 x i8] c"const\00"
-@.str115 = private unnamed_addr constant [7 x i8] c"export\00"
-@.str116 = private unnamed_addr constant [3 x i8] c"fn\00"
-@.str117 = private unnamed_addr constant [5 x i8] c"pure\00"
-@.str118 = private unnamed_addr constant [5 x i8] c"pure\00"
-@.str119 = private unnamed_addr constant [7 x i8] c"extern\00"
-@.str120 = private unnamed_addr constant [5 x i8] c"main\00"
-@.str121 = private unnamed_addr constant [21 x i8] c"expected declaration\00"
-@.str122 = private unnamed_addr constant [20 x i8] c"cannot open import \00"
-@.str123 = private unnamed_addr constant [1 x i8] c"\00"
-@.str124 = private unnamed_addr constant [26 x i8] c"runtime/native/core.ludic\00"
-@.str125 = private unnamed_addr constant [6 x i8] c"Ludic\00"
-@.str126 = private unnamed_addr constant [7 x i8] c"import\00"
-@.str127 = private unnamed_addr constant [5 x i8] c"game\00"
-@.str128 = private unnamed_addr constant [7 x i8] c"module\00"
-@.str129 = private unnamed_addr constant [2 x i8] c"{\00"
-@.str130 = private unnamed_addr constant [2 x i8] c"}\00"
-@.str131 = private unnamed_addr constant [2 x i8] c"{\00"
-@.str132 = private unnamed_addr constant [2 x i8] c"}\00"
-@.str133 = private unnamed_addr constant [2 x i8] c":\00"
-@.str134 = private unnamed_addr constant [2 x i8] c"=\00"
-@.str135 = private unnamed_addr constant [2 x i8] c",\00"
-@.str136 = private unnamed_addr constant [2 x i8] c"}\00"
-@.str137 = private unnamed_addr constant [2 x i8] c"[\00"
+@.str105 = private unnamed_addr constant [2 x i8] c"@\00"
+@.str106 = private unnamed_addr constant [7 x i8] c"export\00"
+@.str107 = private unnamed_addr constant [2 x i8] c"(\00"
+@.str108 = private unnamed_addr constant [2 x i8] c"(\00"
+@.str109 = private unnamed_addr constant [2 x i8] c")\00"
+@.str110 = private unnamed_addr constant [7 x i8] c"import\00"
+@.str111 = private unnamed_addr constant [29 x i8] c"expected \22path\22 after import\00"
+@.str112 = private unnamed_addr constant [7 x i8] c"struct\00"
+@.str113 = private unnamed_addr constant [10 x i8] c"component\00"
+@.str114 = private unnamed_addr constant [10 x i8] c"archetype\00"
+@.str115 = private unnamed_addr constant [7 x i8] c"system\00"
+@.str116 = private unnamed_addr constant [3 x i8] c"ui\00"
+@.str117 = private unnamed_addr constant [4 x i8] c"var\00"
+@.str118 = private unnamed_addr constant [6 x i8] c"const\00"
+@.str119 = private unnamed_addr constant [3 x i8] c"fn\00"
+@.str120 = private unnamed_addr constant [7 x i8] c"extern\00"
+@.str121 = private unnamed_addr constant [5 x i8] c"main\00"
+@.str122 = private unnamed_addr constant [21 x i8] c"expected declaration\00"
+@.str123 = private unnamed_addr constant [20 x i8] c"cannot open import \00"
+@.str124 = private unnamed_addr constant [1 x i8] c"\00"
+@.str125 = private unnamed_addr constant [26 x i8] c"runtime/native/core.ludic\00"
+@.str126 = private unnamed_addr constant [6 x i8] c"Ludic\00"
+@.str127 = private unnamed_addr constant [7 x i8] c"import\00"
+@.str128 = private unnamed_addr constant [5 x i8] c"game\00"
+@.str129 = private unnamed_addr constant [7 x i8] c"module\00"
+@.str130 = private unnamed_addr constant [2 x i8] c"{\00"
+@.str131 = private unnamed_addr constant [2 x i8] c"}\00"
+@.str132 = private unnamed_addr constant [2 x i8] c"{\00"
+@.str133 = private unnamed_addr constant [2 x i8] c"}\00"
+@.str134 = private unnamed_addr constant [2 x i8] c":\00"
+@.str135 = private unnamed_addr constant [2 x i8] c"=\00"
+@.str136 = private unnamed_addr constant [2 x i8] c",\00"
+@.str137 = private unnamed_addr constant [2 x i8] c"}\00"
 @.str138 = private unnamed_addr constant [2 x i8] c"[\00"
-@.str139 = private unnamed_addr constant [2 x i8] c"]\00"
-@.str140 = private unnamed_addr constant [5 x i8] c"edge\00"
+@.str139 = private unnamed_addr constant [2 x i8] c"[\00"
+@.str140 = private unnamed_addr constant [2 x i8] c"]\00"
 @.str141 = private unnamed_addr constant [7 x i8] c"Update\00"
 @.str142 = private unnamed_addr constant [2 x i8] c"@\00"
 @.str143 = private unnamed_addr constant [2 x i8] c"(\00"
@@ -6034,463 +6034,466 @@ ret:
 
 define void @fn_parse_one_decl() {
 entry:
-  %t10 = alloca ptr
-  %t20 = alloca ptr
-  %t90 = alloca i32
-  %t190 = alloca ptr
-  %t213 = alloca i32
-  %t0 = call i32 @fn_is_id(ptr @.str105)
-  %t1 = icmp ne i32 %t0, 0
-  br i1 %t1, label %then0, label %ifend2
-then0:
-  %t2 = load i32, ptr @g_pi
-  %t3 = add i32 %t2, 1
-  store i32 %t3, ptr @g_pi
-  %t4 = load ptr, ptr @g_toks
-  %t5 = getelementptr inbounds %LSlice, ptr %t4, i32 0, i32 0
-  %t6 = load ptr, ptr %t5
-  %t7 = load i32, ptr @g_pi
-  %t8 = getelementptr inbounds ptr, ptr %t6, i32 %t7
-  %t9 = load ptr, ptr %t8
-  store ptr %t9, ptr %t10
-  %t11 = load ptr, ptr %t10
-  %t12 = getelementptr inbounds %Str_Tok, ptr %t11, i32 0, i32 0
-  %t13 = load i32, ptr %t12
-  %t14 = icmp ne i32 %t13, 2
-  %t15 = zext i1 %t14 to i32
-  %t16 = icmp ne i32 %t15, 0
-  br i1 %t16, label %then3, label %ifend5
+  %t0 = alloca i32
+  %t6 = alloca ptr
+  %t12 = alloca i32
+  %t38 = alloca ptr
+  %t48 = alloca ptr
+  %t209 = alloca ptr
+  store i32 0, ptr %t0
+  br label %wcond0
+wcond0:
+  %t1 = call i32 @fn_is_op(ptr @.str105)
+  %t2 = icmp ne i32 %t1, 0
+  br i1 %t2, label %wbody1, label %wend2
+wbody1:
+  %t3 = load i32, ptr @g_pi
+  %t4 = add i32 %t3, 1
+  store i32 %t4, ptr @g_pi
+  %t5 = call ptr @fn_eat_id()
+  store ptr %t5, ptr %t6
+  %t7 = load ptr, ptr %t6
+  %t8 = call i32 @fn_streq(ptr %t7, ptr @.str106)
+  %t9 = icmp ne i32 %t8, 0
+  br i1 %t9, label %then3, label %ifend5
 then3:
-  call void @fn_perr(ptr @.str106)
+  store i32 1, ptr %t0
   br label %ifend5
 ifend5:
-  %t17 = load ptr, ptr %t10
-  %t18 = getelementptr inbounds %Str_Tok, ptr %t17, i32 0, i32 1
-  %t19 = load ptr, ptr %t18
-  store ptr %t19, ptr %t20
-  %t21 = load i32, ptr @g_pi
-  %t22 = add i32 %t21, 1
-  store i32 %t22, ptr @g_pi
-  %t23 = load ptr, ptr %t20
-  call void @fn_do_import(ptr %t23)
-  br label %ret
-ifend2:
-  %t24 = call i32 @fn_is_id(ptr @.str107)
-  %t25 = icmp ne i32 %t24, 0
-  br i1 %t25, label %then6, label %ifend8
+  %t10 = call i32 @fn_is_op(ptr @.str107)
+  %t11 = icmp ne i32 %t10, 0
+  br i1 %t11, label %then6, label %ifend8
 then6:
-  %t26 = load ptr, ptr @g_prog
-  %t27 = getelementptr inbounds %LSlice, ptr %t26, i32 0, i32 1
-  %t28 = getelementptr inbounds %LSlice, ptr %t26, i32 0, i32 2
-  %t29 = getelementptr inbounds %LSlice, ptr %t26, i32 0, i32 0
-  %t30 = load i32, ptr %t27
-  %t31 = load i32, ptr %t28
-  %t32 = icmp sge i32 %t30, %t31
-  br i1 %t32, label %grow9, label %put10
-grow9:
-  %t33 = mul i32 %t31, 2
-  %t34 = icmp eq i32 %t31, 0
-  %t35 = select i1 %t34, i32 8, i32 %t33
-  %t36 = getelementptr ptr, ptr null, i32 1
-  %t37 = ptrtoint ptr %t36 to i64
-  %t38 = zext i32 %t35 to i64
-  %t39 = mul i64 %t38, %t37
-  %t40 = load ptr, ptr %t29
-  %t41 = call ptr @realloc(ptr %t40, i64 %t39)
-  store ptr %t41, ptr %t29
-  store i32 %t35, ptr %t28
-  br label %put10
-put10:
-  %t42 = call ptr @fn_parse_struct()
-  %t43 = load ptr, ptr %t29
-  %t44 = getelementptr inbounds ptr, ptr %t43, i32 %t30
-  store ptr %t42, ptr %t44
-  %t45 = add i32 %t30, 1
-  store i32 %t45, ptr %t27
-  br label %ret
+  store i32 0, ptr %t12
+  br label %wcond9
+wcond9:
+  %t13 = icmp ne i32 1, 0
+  br i1 %t13, label %wbody10, label %wend11
+wbody10:
+  %t14 = call i32 @fn_is_op(ptr @.str108)
+  %t15 = icmp ne i32 %t14, 0
+  br i1 %t15, label %then12, label %ifend14
+then12:
+  %t16 = load i32, ptr %t12
+  %t17 = add i32 %t16, 1
+  store i32 %t17, ptr %t12
+  br label %ifend14
+ifend14:
+  %t18 = call i32 @fn_is_op(ptr @.str109)
+  %t19 = icmp ne i32 %t18, 0
+  br i1 %t19, label %then15, label %ifend17
+then15:
+  %t20 = load i32, ptr %t12
+  %t21 = sub i32 %t20, 1
+  store i32 %t21, ptr %t12
+  br label %ifend17
+ifend17:
+  %t22 = load i32, ptr @g_pi
+  %t23 = add i32 %t22, 1
+  store i32 %t23, ptr @g_pi
+  %t24 = load i32, ptr %t12
+  %t25 = icmp eq i32 %t24, 0
+  %t26 = zext i1 %t25 to i32
+  %t27 = icmp ne i32 %t26, 0
+  br i1 %t27, label %then18, label %ifend20
+then18:
+  br label %wend11
+ifend20:
+  br label %wcond9
+wend11:
+  br label %ifend8
 ifend8:
-  %t46 = call i32 @fn_is_id(ptr @.str108)
-  %t47 = icmp ne i32 %t46, 0
-  br i1 %t47, label %then11, label %ifend13
-then11:
-  %t48 = load ptr, ptr @g_prog
-  %t49 = getelementptr inbounds %LSlice, ptr %t48, i32 0, i32 1
-  %t50 = getelementptr inbounds %LSlice, ptr %t48, i32 0, i32 2
-  %t51 = getelementptr inbounds %LSlice, ptr %t48, i32 0, i32 0
-  %t52 = load i32, ptr %t49
-  %t53 = load i32, ptr %t50
-  %t54 = icmp sge i32 %t52, %t53
-  br i1 %t54, label %grow14, label %put15
-grow14:
-  %t55 = mul i32 %t53, 2
-  %t56 = icmp eq i32 %t53, 0
-  %t57 = select i1 %t56, i32 8, i32 %t55
-  %t58 = getelementptr ptr, ptr null, i32 1
-  %t59 = ptrtoint ptr %t58 to i64
-  %t60 = zext i32 %t57 to i64
-  %t61 = mul i64 %t60, %t59
-  %t62 = load ptr, ptr %t51
-  %t63 = call ptr @realloc(ptr %t62, i64 %t61)
-  store ptr %t63, ptr %t51
-  store i32 %t57, ptr %t50
-  br label %put15
-put15:
-  %t64 = call ptr @fn_parse_component()
-  %t65 = load ptr, ptr %t51
-  %t66 = getelementptr inbounds ptr, ptr %t65, i32 %t52
-  store ptr %t64, ptr %t66
-  %t67 = add i32 %t52, 1
-  store i32 %t67, ptr %t49
+  call void @fn_skipnl()
+  br label %wcond0
+wend2:
+  %t28 = call i32 @fn_is_id(ptr @.str110)
+  %t29 = icmp ne i32 %t28, 0
+  br i1 %t29, label %then21, label %ifend23
+then21:
+  %t30 = load i32, ptr @g_pi
+  %t31 = add i32 %t30, 1
+  store i32 %t31, ptr @g_pi
+  %t32 = load ptr, ptr @g_toks
+  %t33 = getelementptr inbounds %LSlice, ptr %t32, i32 0, i32 0
+  %t34 = load ptr, ptr %t33
+  %t35 = load i32, ptr @g_pi
+  %t36 = getelementptr inbounds ptr, ptr %t34, i32 %t35
+  %t37 = load ptr, ptr %t36
+  store ptr %t37, ptr %t38
+  %t39 = load ptr, ptr %t38
+  %t40 = getelementptr inbounds %Str_Tok, ptr %t39, i32 0, i32 0
+  %t41 = load i32, ptr %t40
+  %t42 = icmp ne i32 %t41, 2
+  %t43 = zext i1 %t42 to i32
+  %t44 = icmp ne i32 %t43, 0
+  br i1 %t44, label %then24, label %ifend26
+then24:
+  call void @fn_perr(ptr @.str111)
+  br label %ifend26
+ifend26:
+  %t45 = load ptr, ptr %t38
+  %t46 = getelementptr inbounds %Str_Tok, ptr %t45, i32 0, i32 1
+  %t47 = load ptr, ptr %t46
+  store ptr %t47, ptr %t48
+  %t49 = load i32, ptr @g_pi
+  %t50 = add i32 %t49, 1
+  store i32 %t50, ptr @g_pi
+  %t51 = load ptr, ptr %t48
+  call void @fn_do_import(ptr %t51)
   br label %ret
-ifend13:
-  %t68 = call i32 @fn_is_id(ptr @.str109)
-  %t69 = icmp ne i32 %t68, 0
-  br i1 %t69, label %then16, label %ifend18
-then16:
-  %t70 = load ptr, ptr @g_prog
-  %t71 = getelementptr inbounds %LSlice, ptr %t70, i32 0, i32 1
-  %t72 = getelementptr inbounds %LSlice, ptr %t70, i32 0, i32 2
-  %t73 = getelementptr inbounds %LSlice, ptr %t70, i32 0, i32 0
-  %t74 = load i32, ptr %t71
-  %t75 = load i32, ptr %t72
-  %t76 = icmp sge i32 %t74, %t75
-  br i1 %t76, label %grow19, label %put20
-grow19:
-  %t77 = mul i32 %t75, 2
-  %t78 = icmp eq i32 %t75, 0
-  %t79 = select i1 %t78, i32 8, i32 %t77
-  %t80 = getelementptr ptr, ptr null, i32 1
-  %t81 = ptrtoint ptr %t80 to i64
-  %t82 = zext i32 %t79 to i64
-  %t83 = mul i64 %t82, %t81
-  %t84 = load ptr, ptr %t73
-  %t85 = call ptr @realloc(ptr %t84, i64 %t83)
-  store ptr %t85, ptr %t73
-  store i32 %t79, ptr %t72
-  br label %put20
-put20:
-  %t86 = call ptr @fn_parse_archetype()
-  %t87 = load ptr, ptr %t73
-  %t88 = getelementptr inbounds ptr, ptr %t87, i32 %t74
-  store ptr %t86, ptr %t88
-  %t89 = add i32 %t74, 1
-  store i32 %t89, ptr %t71
+ifend23:
+  %t52 = call i32 @fn_is_id(ptr @.str112)
+  %t53 = icmp ne i32 %t52, 0
+  br i1 %t53, label %then27, label %ifend29
+then27:
+  %t54 = load ptr, ptr @g_prog
+  %t55 = getelementptr inbounds %LSlice, ptr %t54, i32 0, i32 1
+  %t56 = getelementptr inbounds %LSlice, ptr %t54, i32 0, i32 2
+  %t57 = getelementptr inbounds %LSlice, ptr %t54, i32 0, i32 0
+  %t58 = load i32, ptr %t55
+  %t59 = load i32, ptr %t56
+  %t60 = icmp sge i32 %t58, %t59
+  br i1 %t60, label %grow30, label %put31
+grow30:
+  %t61 = mul i32 %t59, 2
+  %t62 = icmp eq i32 %t59, 0
+  %t63 = select i1 %t62, i32 8, i32 %t61
+  %t64 = getelementptr ptr, ptr null, i32 1
+  %t65 = ptrtoint ptr %t64 to i64
+  %t66 = zext i32 %t63 to i64
+  %t67 = mul i64 %t66, %t65
+  %t68 = load ptr, ptr %t57
+  %t69 = call ptr @realloc(ptr %t68, i64 %t67)
+  store ptr %t69, ptr %t57
+  store i32 %t63, ptr %t56
+  br label %put31
+put31:
+  %t70 = call ptr @fn_parse_struct()
+  %t71 = load ptr, ptr %t57
+  %t72 = getelementptr inbounds ptr, ptr %t71, i32 %t58
+  store ptr %t70, ptr %t72
+  %t73 = add i32 %t58, 1
+  store i32 %t73, ptr %t55
   br label %ret
-ifend18:
-  %t91 = call i32 @fn_is_id(ptr @.str110)
-  %t92 = icmp ne i32 %t91, 0
-  %t93 = zext i1 %t92 to i32
-  store i32 %t93, ptr %t90
-  br i1 %t92, label %scend22, label %sc21
-sc21:
-  %t94 = call i32 @fn_is_id(ptr @.str111)
-  %t95 = icmp ne i32 %t94, 0
-  %t96 = zext i1 %t95 to i32
-  store i32 %t96, ptr %t90
-  br label %scend22
-scend22:
-  %t97 = load i32, ptr %t90
-  %t98 = icmp ne i32 %t97, 0
-  br i1 %t98, label %then23, label %ifend25
-then23:
-  %t99 = load ptr, ptr @g_prog
-  %t100 = getelementptr inbounds %LSlice, ptr %t99, i32 0, i32 1
-  %t101 = getelementptr inbounds %LSlice, ptr %t99, i32 0, i32 2
-  %t102 = getelementptr inbounds %LSlice, ptr %t99, i32 0, i32 0
+ifend29:
+  %t74 = call i32 @fn_is_id(ptr @.str113)
+  %t75 = icmp ne i32 %t74, 0
+  br i1 %t75, label %then32, label %ifend34
+then32:
+  %t76 = load ptr, ptr @g_prog
+  %t77 = getelementptr inbounds %LSlice, ptr %t76, i32 0, i32 1
+  %t78 = getelementptr inbounds %LSlice, ptr %t76, i32 0, i32 2
+  %t79 = getelementptr inbounds %LSlice, ptr %t76, i32 0, i32 0
+  %t80 = load i32, ptr %t77
+  %t81 = load i32, ptr %t78
+  %t82 = icmp sge i32 %t80, %t81
+  br i1 %t82, label %grow35, label %put36
+grow35:
+  %t83 = mul i32 %t81, 2
+  %t84 = icmp eq i32 %t81, 0
+  %t85 = select i1 %t84, i32 8, i32 %t83
+  %t86 = getelementptr ptr, ptr null, i32 1
+  %t87 = ptrtoint ptr %t86 to i64
+  %t88 = zext i32 %t85 to i64
+  %t89 = mul i64 %t88, %t87
+  %t90 = load ptr, ptr %t79
+  %t91 = call ptr @realloc(ptr %t90, i64 %t89)
+  store ptr %t91, ptr %t79
+  store i32 %t85, ptr %t78
+  br label %put36
+put36:
+  %t92 = call ptr @fn_parse_component()
+  %t93 = load ptr, ptr %t79
+  %t94 = getelementptr inbounds ptr, ptr %t93, i32 %t80
+  store ptr %t92, ptr %t94
+  %t95 = add i32 %t80, 1
+  store i32 %t95, ptr %t77
+  br label %ret
+ifend34:
+  %t96 = call i32 @fn_is_id(ptr @.str114)
+  %t97 = icmp ne i32 %t96, 0
+  br i1 %t97, label %then37, label %ifend39
+then37:
+  %t98 = load ptr, ptr @g_prog
+  %t99 = getelementptr inbounds %LSlice, ptr %t98, i32 0, i32 1
+  %t100 = getelementptr inbounds %LSlice, ptr %t98, i32 0, i32 2
+  %t101 = getelementptr inbounds %LSlice, ptr %t98, i32 0, i32 0
+  %t102 = load i32, ptr %t99
   %t103 = load i32, ptr %t100
-  %t104 = load i32, ptr %t101
-  %t105 = icmp sge i32 %t103, %t104
-  br i1 %t105, label %grow26, label %put27
-grow26:
-  %t106 = mul i32 %t104, 2
-  %t107 = icmp eq i32 %t104, 0
-  %t108 = select i1 %t107, i32 8, i32 %t106
-  %t109 = getelementptr ptr, ptr null, i32 1
-  %t110 = ptrtoint ptr %t109 to i64
-  %t111 = zext i32 %t108 to i64
-  %t112 = mul i64 %t111, %t110
-  %t113 = load ptr, ptr %t102
-  %t114 = call ptr @realloc(ptr %t113, i64 %t112)
-  store ptr %t114, ptr %t102
-  store i32 %t108, ptr %t101
-  br label %put27
-put27:
-  %t115 = call ptr @fn_parse_system()
-  %t116 = load ptr, ptr %t102
-  %t117 = getelementptr inbounds ptr, ptr %t116, i32 %t103
-  store ptr %t115, ptr %t117
-  %t118 = add i32 %t103, 1
-  store i32 %t118, ptr %t100
+  %t104 = icmp sge i32 %t102, %t103
+  br i1 %t104, label %grow40, label %put41
+grow40:
+  %t105 = mul i32 %t103, 2
+  %t106 = icmp eq i32 %t103, 0
+  %t107 = select i1 %t106, i32 8, i32 %t105
+  %t108 = getelementptr ptr, ptr null, i32 1
+  %t109 = ptrtoint ptr %t108 to i64
+  %t110 = zext i32 %t107 to i64
+  %t111 = mul i64 %t110, %t109
+  %t112 = load ptr, ptr %t101
+  %t113 = call ptr @realloc(ptr %t112, i64 %t111)
+  store ptr %t113, ptr %t101
+  store i32 %t107, ptr %t100
+  br label %put41
+put41:
+  %t114 = call ptr @fn_parse_archetype()
+  %t115 = load ptr, ptr %t101
+  %t116 = getelementptr inbounds ptr, ptr %t115, i32 %t102
+  store ptr %t114, ptr %t116
+  %t117 = add i32 %t102, 1
+  store i32 %t117, ptr %t99
   br label %ret
-ifend25:
-  %t119 = call i32 @fn_is_id(ptr @.str112)
-  %t120 = icmp ne i32 %t119, 0
-  br i1 %t120, label %then28, label %ifend30
-then28:
-  %t121 = load ptr, ptr @g_prog
-  %t122 = getelementptr inbounds %LSlice, ptr %t121, i32 0, i32 1
-  %t123 = getelementptr inbounds %LSlice, ptr %t121, i32 0, i32 2
-  %t124 = getelementptr inbounds %LSlice, ptr %t121, i32 0, i32 0
+ifend39:
+  %t118 = call i32 @fn_is_id(ptr @.str115)
+  %t119 = icmp ne i32 %t118, 0
+  br i1 %t119, label %then42, label %ifend44
+then42:
+  %t120 = load ptr, ptr @g_prog
+  %t121 = getelementptr inbounds %LSlice, ptr %t120, i32 0, i32 1
+  %t122 = getelementptr inbounds %LSlice, ptr %t120, i32 0, i32 2
+  %t123 = getelementptr inbounds %LSlice, ptr %t120, i32 0, i32 0
+  %t124 = load i32, ptr %t121
   %t125 = load i32, ptr %t122
-  %t126 = load i32, ptr %t123
-  %t127 = icmp sge i32 %t125, %t126
-  br i1 %t127, label %grow31, label %put32
-grow31:
-  %t128 = mul i32 %t126, 2
-  %t129 = icmp eq i32 %t126, 0
-  %t130 = select i1 %t129, i32 8, i32 %t128
-  %t131 = getelementptr ptr, ptr null, i32 1
-  %t132 = ptrtoint ptr %t131 to i64
-  %t133 = zext i32 %t130 to i64
-  %t134 = mul i64 %t133, %t132
-  %t135 = load ptr, ptr %t124
-  %t136 = call ptr @realloc(ptr %t135, i64 %t134)
-  store ptr %t136, ptr %t124
-  store i32 %t130, ptr %t123
-  br label %put32
-put32:
-  %t137 = call ptr @fn_parse_ui()
-  %t138 = load ptr, ptr %t124
-  %t139 = getelementptr inbounds ptr, ptr %t138, i32 %t125
-  store ptr %t137, ptr %t139
-  %t140 = add i32 %t125, 1
-  store i32 %t140, ptr %t122
+  %t126 = icmp sge i32 %t124, %t125
+  br i1 %t126, label %grow45, label %put46
+grow45:
+  %t127 = mul i32 %t125, 2
+  %t128 = icmp eq i32 %t125, 0
+  %t129 = select i1 %t128, i32 8, i32 %t127
+  %t130 = getelementptr ptr, ptr null, i32 1
+  %t131 = ptrtoint ptr %t130 to i64
+  %t132 = zext i32 %t129 to i64
+  %t133 = mul i64 %t132, %t131
+  %t134 = load ptr, ptr %t123
+  %t135 = call ptr @realloc(ptr %t134, i64 %t133)
+  store ptr %t135, ptr %t123
+  store i32 %t129, ptr %t122
+  br label %put46
+put46:
+  %t136 = call ptr @fn_parse_system()
+  %t137 = load ptr, ptr %t123
+  %t138 = getelementptr inbounds ptr, ptr %t137, i32 %t124
+  store ptr %t136, ptr %t138
+  %t139 = add i32 %t124, 1
+  store i32 %t139, ptr %t121
   br label %ret
-ifend30:
-  %t141 = call i32 @fn_is_id(ptr @.str113)
-  %t142 = icmp ne i32 %t141, 0
-  br i1 %t142, label %then33, label %ifend35
-then33:
-  %t143 = load ptr, ptr @g_prog
-  %t144 = getelementptr inbounds %LSlice, ptr %t143, i32 0, i32 1
-  %t145 = getelementptr inbounds %LSlice, ptr %t143, i32 0, i32 2
-  %t146 = getelementptr inbounds %LSlice, ptr %t143, i32 0, i32 0
+ifend44:
+  %t140 = call i32 @fn_is_id(ptr @.str116)
+  %t141 = icmp ne i32 %t140, 0
+  br i1 %t141, label %then47, label %ifend49
+then47:
+  %t142 = load ptr, ptr @g_prog
+  %t143 = getelementptr inbounds %LSlice, ptr %t142, i32 0, i32 1
+  %t144 = getelementptr inbounds %LSlice, ptr %t142, i32 0, i32 2
+  %t145 = getelementptr inbounds %LSlice, ptr %t142, i32 0, i32 0
+  %t146 = load i32, ptr %t143
   %t147 = load i32, ptr %t144
-  %t148 = load i32, ptr %t145
-  %t149 = icmp sge i32 %t147, %t148
-  br i1 %t149, label %grow36, label %put37
-grow36:
-  %t150 = mul i32 %t148, 2
-  %t151 = icmp eq i32 %t148, 0
-  %t152 = select i1 %t151, i32 8, i32 %t150
-  %t153 = getelementptr ptr, ptr null, i32 1
-  %t154 = ptrtoint ptr %t153 to i64
-  %t155 = zext i32 %t152 to i64
-  %t156 = mul i64 %t155, %t154
-  %t157 = load ptr, ptr %t146
-  %t158 = call ptr @realloc(ptr %t157, i64 %t156)
-  store ptr %t158, ptr %t146
-  store i32 %t152, ptr %t145
-  br label %put37
-put37:
-  %t159 = call ptr @fn_parse_var()
-  %t160 = load ptr, ptr %t146
-  %t161 = getelementptr inbounds ptr, ptr %t160, i32 %t147
-  store ptr %t159, ptr %t161
-  %t162 = add i32 %t147, 1
-  store i32 %t162, ptr %t144
+  %t148 = icmp sge i32 %t146, %t147
+  br i1 %t148, label %grow50, label %put51
+grow50:
+  %t149 = mul i32 %t147, 2
+  %t150 = icmp eq i32 %t147, 0
+  %t151 = select i1 %t150, i32 8, i32 %t149
+  %t152 = getelementptr ptr, ptr null, i32 1
+  %t153 = ptrtoint ptr %t152 to i64
+  %t154 = zext i32 %t151 to i64
+  %t155 = mul i64 %t154, %t153
+  %t156 = load ptr, ptr %t145
+  %t157 = call ptr @realloc(ptr %t156, i64 %t155)
+  store ptr %t157, ptr %t145
+  store i32 %t151, ptr %t144
+  br label %put51
+put51:
+  %t158 = call ptr @fn_parse_ui()
+  %t159 = load ptr, ptr %t145
+  %t160 = getelementptr inbounds ptr, ptr %t159, i32 %t146
+  store ptr %t158, ptr %t160
+  %t161 = add i32 %t146, 1
+  store i32 %t161, ptr %t143
   br label %ret
-ifend35:
-  %t163 = call i32 @fn_is_id(ptr @.str114)
-  %t164 = icmp ne i32 %t163, 0
-  br i1 %t164, label %then38, label %ifend40
-then38:
-  %t165 = load ptr, ptr @g_prog
-  %t166 = getelementptr inbounds %LSlice, ptr %t165, i32 0, i32 1
-  %t167 = getelementptr inbounds %LSlice, ptr %t165, i32 0, i32 2
-  %t168 = getelementptr inbounds %LSlice, ptr %t165, i32 0, i32 0
+ifend49:
+  %t162 = call i32 @fn_is_id(ptr @.str117)
+  %t163 = icmp ne i32 %t162, 0
+  br i1 %t163, label %then52, label %ifend54
+then52:
+  %t164 = load ptr, ptr @g_prog
+  %t165 = getelementptr inbounds %LSlice, ptr %t164, i32 0, i32 1
+  %t166 = getelementptr inbounds %LSlice, ptr %t164, i32 0, i32 2
+  %t167 = getelementptr inbounds %LSlice, ptr %t164, i32 0, i32 0
+  %t168 = load i32, ptr %t165
   %t169 = load i32, ptr %t166
-  %t170 = load i32, ptr %t167
-  %t171 = icmp sge i32 %t169, %t170
-  br i1 %t171, label %grow41, label %put42
-grow41:
-  %t172 = mul i32 %t170, 2
-  %t173 = icmp eq i32 %t170, 0
-  %t174 = select i1 %t173, i32 8, i32 %t172
-  %t175 = getelementptr ptr, ptr null, i32 1
-  %t176 = ptrtoint ptr %t175 to i64
-  %t177 = zext i32 %t174 to i64
-  %t178 = mul i64 %t177, %t176
-  %t179 = load ptr, ptr %t168
-  %t180 = call ptr @realloc(ptr %t179, i64 %t178)
-  store ptr %t180, ptr %t168
-  store i32 %t174, ptr %t167
-  br label %put42
-put42:
-  %t181 = call ptr @fn_parse_const()
-  %t182 = load ptr, ptr %t168
-  %t183 = getelementptr inbounds ptr, ptr %t182, i32 %t169
-  store ptr %t181, ptr %t183
-  %t184 = add i32 %t169, 1
-  store i32 %t184, ptr %t166
+  %t170 = icmp sge i32 %t168, %t169
+  br i1 %t170, label %grow55, label %put56
+grow55:
+  %t171 = mul i32 %t169, 2
+  %t172 = icmp eq i32 %t169, 0
+  %t173 = select i1 %t172, i32 8, i32 %t171
+  %t174 = getelementptr ptr, ptr null, i32 1
+  %t175 = ptrtoint ptr %t174 to i64
+  %t176 = zext i32 %t173 to i64
+  %t177 = mul i64 %t176, %t175
+  %t178 = load ptr, ptr %t167
+  %t179 = call ptr @realloc(ptr %t178, i64 %t177)
+  store ptr %t179, ptr %t167
+  store i32 %t173, ptr %t166
+  br label %put56
+put56:
+  %t180 = call ptr @fn_parse_var()
+  %t181 = load ptr, ptr %t167
+  %t182 = getelementptr inbounds ptr, ptr %t181, i32 %t168
+  store ptr %t180, ptr %t182
+  %t183 = add i32 %t168, 1
+  store i32 %t183, ptr %t165
   br label %ret
-ifend40:
-  %t185 = call i32 @fn_is_id(ptr @.str115)
-  %t186 = icmp ne i32 %t185, 0
-  br i1 %t186, label %then43, label %ifend45
-then43:
-  %t187 = load i32, ptr @g_pi
-  %t188 = add i32 %t187, 1
-  store i32 %t188, ptr @g_pi
-  %t189 = call ptr @fn_parse_fn()
-  store ptr %t189, ptr %t190
-  %t191 = load ptr, ptr %t190
-  %t192 = getelementptr inbounds %Str_Node, ptr %t191, i32 0, i32 2
-  store i32 1, ptr %t192
-  %t193 = load ptr, ptr @g_prog
-  %t194 = getelementptr inbounds %LSlice, ptr %t193, i32 0, i32 1
-  %t195 = getelementptr inbounds %LSlice, ptr %t193, i32 0, i32 2
-  %t196 = getelementptr inbounds %LSlice, ptr %t193, i32 0, i32 0
-  %t197 = load i32, ptr %t194
-  %t198 = load i32, ptr %t195
-  %t199 = icmp sge i32 %t197, %t198
-  br i1 %t199, label %grow46, label %put47
-grow46:
-  %t200 = mul i32 %t198, 2
-  %t201 = icmp eq i32 %t198, 0
-  %t202 = select i1 %t201, i32 8, i32 %t200
-  %t203 = getelementptr ptr, ptr null, i32 1
-  %t204 = ptrtoint ptr %t203 to i64
-  %t205 = zext i32 %t202 to i64
-  %t206 = mul i64 %t205, %t204
-  %t207 = load ptr, ptr %t196
-  %t208 = call ptr @realloc(ptr %t207, i64 %t206)
-  store ptr %t208, ptr %t196
-  store i32 %t202, ptr %t195
-  br label %put47
-put47:
-  %t209 = load ptr, ptr %t190
-  %t210 = load ptr, ptr %t196
-  %t211 = getelementptr inbounds ptr, ptr %t210, i32 %t197
-  store ptr %t209, ptr %t211
-  %t212 = add i32 %t197, 1
-  store i32 %t212, ptr %t194
+ifend54:
+  %t184 = call i32 @fn_is_id(ptr @.str118)
+  %t185 = icmp ne i32 %t184, 0
+  br i1 %t185, label %then57, label %ifend59
+then57:
+  %t186 = load ptr, ptr @g_prog
+  %t187 = getelementptr inbounds %LSlice, ptr %t186, i32 0, i32 1
+  %t188 = getelementptr inbounds %LSlice, ptr %t186, i32 0, i32 2
+  %t189 = getelementptr inbounds %LSlice, ptr %t186, i32 0, i32 0
+  %t190 = load i32, ptr %t187
+  %t191 = load i32, ptr %t188
+  %t192 = icmp sge i32 %t190, %t191
+  br i1 %t192, label %grow60, label %put61
+grow60:
+  %t193 = mul i32 %t191, 2
+  %t194 = icmp eq i32 %t191, 0
+  %t195 = select i1 %t194, i32 8, i32 %t193
+  %t196 = getelementptr ptr, ptr null, i32 1
+  %t197 = ptrtoint ptr %t196 to i64
+  %t198 = zext i32 %t195 to i64
+  %t199 = mul i64 %t198, %t197
+  %t200 = load ptr, ptr %t189
+  %t201 = call ptr @realloc(ptr %t200, i64 %t199)
+  store ptr %t201, ptr %t189
+  store i32 %t195, ptr %t188
+  br label %put61
+put61:
+  %t202 = call ptr @fn_parse_const()
+  %t203 = load ptr, ptr %t189
+  %t204 = getelementptr inbounds ptr, ptr %t203, i32 %t190
+  store ptr %t202, ptr %t204
+  %t205 = add i32 %t190, 1
+  store i32 %t205, ptr %t187
   br label %ret
-ifend45:
-  %t214 = call i32 @fn_is_id(ptr @.str116)
-  %t215 = icmp ne i32 %t214, 0
-  %t216 = zext i1 %t215 to i32
-  store i32 %t216, ptr %t213
-  br i1 %t215, label %scend49, label %sc48
-sc48:
-  %t217 = call i32 @fn_is_id(ptr @.str117)
-  %t218 = icmp ne i32 %t217, 0
-  %t219 = zext i1 %t218 to i32
-  store i32 %t219, ptr %t213
-  br label %scend49
-scend49:
-  %t220 = load i32, ptr %t213
-  %t221 = icmp ne i32 %t220, 0
-  br i1 %t221, label %then50, label %ifend52
-then50:
-  %t222 = call i32 @fn_is_id(ptr @.str118)
-  %t223 = icmp ne i32 %t222, 0
-  br i1 %t223, label %then53, label %ifend55
-then53:
-  %t224 = load i32, ptr @g_pi
-  %t225 = add i32 %t224, 1
-  store i32 %t225, ptr @g_pi
-  br label %ifend55
-ifend55:
-  %t226 = load ptr, ptr @g_prog
-  %t227 = getelementptr inbounds %LSlice, ptr %t226, i32 0, i32 1
-  %t228 = getelementptr inbounds %LSlice, ptr %t226, i32 0, i32 2
-  %t229 = getelementptr inbounds %LSlice, ptr %t226, i32 0, i32 0
-  %t230 = load i32, ptr %t227
-  %t231 = load i32, ptr %t228
-  %t232 = icmp sge i32 %t230, %t231
-  br i1 %t232, label %grow56, label %put57
-grow56:
-  %t233 = mul i32 %t231, 2
-  %t234 = icmp eq i32 %t231, 0
-  %t235 = select i1 %t234, i32 8, i32 %t233
-  %t236 = getelementptr ptr, ptr null, i32 1
-  %t237 = ptrtoint ptr %t236 to i64
-  %t238 = zext i32 %t235 to i64
-  %t239 = mul i64 %t238, %t237
-  %t240 = load ptr, ptr %t229
-  %t241 = call ptr @realloc(ptr %t240, i64 %t239)
-  store ptr %t241, ptr %t229
-  store i32 %t235, ptr %t228
-  br label %put57
-put57:
-  %t242 = call ptr @fn_parse_fn()
-  %t243 = load ptr, ptr %t229
-  %t244 = getelementptr inbounds ptr, ptr %t243, i32 %t230
-  store ptr %t242, ptr %t244
-  %t245 = add i32 %t230, 1
-  store i32 %t245, ptr %t227
+ifend59:
+  %t206 = call i32 @fn_is_id(ptr @.str119)
+  %t207 = icmp ne i32 %t206, 0
+  br i1 %t207, label %then62, label %ifend64
+then62:
+  %t208 = call ptr @fn_parse_fn()
+  store ptr %t208, ptr %t209
+  %t210 = load i32, ptr %t0
+  %t211 = icmp ne i32 %t210, 0
+  br i1 %t211, label %then65, label %ifend67
+then65:
+  %t212 = load ptr, ptr %t209
+  %t213 = getelementptr inbounds %Str_Node, ptr %t212, i32 0, i32 2
+  store i32 1, ptr %t213
+  br label %ifend67
+ifend67:
+  %t214 = load ptr, ptr @g_prog
+  %t215 = getelementptr inbounds %LSlice, ptr %t214, i32 0, i32 1
+  %t216 = getelementptr inbounds %LSlice, ptr %t214, i32 0, i32 2
+  %t217 = getelementptr inbounds %LSlice, ptr %t214, i32 0, i32 0
+  %t218 = load i32, ptr %t215
+  %t219 = load i32, ptr %t216
+  %t220 = icmp sge i32 %t218, %t219
+  br i1 %t220, label %grow68, label %put69
+grow68:
+  %t221 = mul i32 %t219, 2
+  %t222 = icmp eq i32 %t219, 0
+  %t223 = select i1 %t222, i32 8, i32 %t221
+  %t224 = getelementptr ptr, ptr null, i32 1
+  %t225 = ptrtoint ptr %t224 to i64
+  %t226 = zext i32 %t223 to i64
+  %t227 = mul i64 %t226, %t225
+  %t228 = load ptr, ptr %t217
+  %t229 = call ptr @realloc(ptr %t228, i64 %t227)
+  store ptr %t229, ptr %t217
+  store i32 %t223, ptr %t216
+  br label %put69
+put69:
+  %t230 = load ptr, ptr %t209
+  %t231 = load ptr, ptr %t217
+  %t232 = getelementptr inbounds ptr, ptr %t231, i32 %t218
+  store ptr %t230, ptr %t232
+  %t233 = add i32 %t218, 1
+  store i32 %t233, ptr %t215
   br label %ret
-ifend52:
-  %t246 = call i32 @fn_is_id(ptr @.str119)
-  %t247 = icmp ne i32 %t246, 0
-  br i1 %t247, label %then58, label %ifend60
-then58:
-  %t248 = load ptr, ptr @g_prog
-  %t249 = getelementptr inbounds %LSlice, ptr %t248, i32 0, i32 1
-  %t250 = getelementptr inbounds %LSlice, ptr %t248, i32 0, i32 2
-  %t251 = getelementptr inbounds %LSlice, ptr %t248, i32 0, i32 0
-  %t252 = load i32, ptr %t249
-  %t253 = load i32, ptr %t250
-  %t254 = icmp sge i32 %t252, %t253
-  br i1 %t254, label %grow61, label %put62
-grow61:
-  %t255 = mul i32 %t253, 2
-  %t256 = icmp eq i32 %t253, 0
-  %t257 = select i1 %t256, i32 8, i32 %t255
-  %t258 = getelementptr ptr, ptr null, i32 1
-  %t259 = ptrtoint ptr %t258 to i64
-  %t260 = zext i32 %t257 to i64
-  %t261 = mul i64 %t260, %t259
-  %t262 = load ptr, ptr %t251
-  %t263 = call ptr @realloc(ptr %t262, i64 %t261)
-  store ptr %t263, ptr %t251
-  store i32 %t257, ptr %t250
-  br label %put62
-put62:
-  %t264 = call ptr @fn_parse_extern()
-  %t265 = load ptr, ptr %t251
-  %t266 = getelementptr inbounds ptr, ptr %t265, i32 %t252
-  store ptr %t264, ptr %t266
-  %t267 = add i32 %t252, 1
-  store i32 %t267, ptr %t249
+ifend64:
+  %t234 = call i32 @fn_is_id(ptr @.str120)
+  %t235 = icmp ne i32 %t234, 0
+  br i1 %t235, label %then70, label %ifend72
+then70:
+  %t236 = load ptr, ptr @g_prog
+  %t237 = getelementptr inbounds %LSlice, ptr %t236, i32 0, i32 1
+  %t238 = getelementptr inbounds %LSlice, ptr %t236, i32 0, i32 2
+  %t239 = getelementptr inbounds %LSlice, ptr %t236, i32 0, i32 0
+  %t240 = load i32, ptr %t237
+  %t241 = load i32, ptr %t238
+  %t242 = icmp sge i32 %t240, %t241
+  br i1 %t242, label %grow73, label %put74
+grow73:
+  %t243 = mul i32 %t241, 2
+  %t244 = icmp eq i32 %t241, 0
+  %t245 = select i1 %t244, i32 8, i32 %t243
+  %t246 = getelementptr ptr, ptr null, i32 1
+  %t247 = ptrtoint ptr %t246 to i64
+  %t248 = zext i32 %t245 to i64
+  %t249 = mul i64 %t248, %t247
+  %t250 = load ptr, ptr %t239
+  %t251 = call ptr @realloc(ptr %t250, i64 %t249)
+  store ptr %t251, ptr %t239
+  store i32 %t245, ptr %t238
+  br label %put74
+put74:
+  %t252 = call ptr @fn_parse_extern()
+  %t253 = load ptr, ptr %t239
+  %t254 = getelementptr inbounds ptr, ptr %t253, i32 %t240
+  store ptr %t252, ptr %t254
+  %t255 = add i32 %t240, 1
+  store i32 %t255, ptr %t237
   br label %ret
-ifend60:
-  %t268 = call i32 @fn_is_id(ptr @.str120)
-  %t269 = icmp ne i32 %t268, 0
-  br i1 %t269, label %then63, label %ifend65
-then63:
-  %t270 = load ptr, ptr @g_prog
-  %t271 = getelementptr inbounds %LSlice, ptr %t270, i32 0, i32 1
-  %t272 = getelementptr inbounds %LSlice, ptr %t270, i32 0, i32 2
-  %t273 = getelementptr inbounds %LSlice, ptr %t270, i32 0, i32 0
-  %t274 = load i32, ptr %t271
-  %t275 = load i32, ptr %t272
-  %t276 = icmp sge i32 %t274, %t275
-  br i1 %t276, label %grow66, label %put67
-grow66:
-  %t277 = mul i32 %t275, 2
-  %t278 = icmp eq i32 %t275, 0
-  %t279 = select i1 %t278, i32 8, i32 %t277
-  %t280 = getelementptr ptr, ptr null, i32 1
-  %t281 = ptrtoint ptr %t280 to i64
-  %t282 = zext i32 %t279 to i64
-  %t283 = mul i64 %t282, %t281
-  %t284 = load ptr, ptr %t273
-  %t285 = call ptr @realloc(ptr %t284, i64 %t283)
-  store ptr %t285, ptr %t273
-  store i32 %t279, ptr %t272
-  br label %put67
-put67:
-  %t286 = call ptr @fn_parse_main()
-  %t287 = load ptr, ptr %t273
-  %t288 = getelementptr inbounds ptr, ptr %t287, i32 %t274
-  store ptr %t286, ptr %t288
-  %t289 = add i32 %t274, 1
-  store i32 %t289, ptr %t271
+ifend72:
+  %t256 = call i32 @fn_is_id(ptr @.str121)
+  %t257 = icmp ne i32 %t256, 0
+  br i1 %t257, label %then75, label %ifend77
+then75:
+  %t258 = load ptr, ptr @g_prog
+  %t259 = getelementptr inbounds %LSlice, ptr %t258, i32 0, i32 1
+  %t260 = getelementptr inbounds %LSlice, ptr %t258, i32 0, i32 2
+  %t261 = getelementptr inbounds %LSlice, ptr %t258, i32 0, i32 0
+  %t262 = load i32, ptr %t259
+  %t263 = load i32, ptr %t260
+  %t264 = icmp sge i32 %t262, %t263
+  br i1 %t264, label %grow78, label %put79
+grow78:
+  %t265 = mul i32 %t263, 2
+  %t266 = icmp eq i32 %t263, 0
+  %t267 = select i1 %t266, i32 8, i32 %t265
+  %t268 = getelementptr ptr, ptr null, i32 1
+  %t269 = ptrtoint ptr %t268 to i64
+  %t270 = zext i32 %t267 to i64
+  %t271 = mul i64 %t270, %t269
+  %t272 = load ptr, ptr %t261
+  %t273 = call ptr @realloc(ptr %t272, i64 %t271)
+  store ptr %t273, ptr %t261
+  store i32 %t267, ptr %t260
+  br label %put79
+put79:
+  %t274 = call ptr @fn_parse_main()
+  %t275 = load ptr, ptr %t261
+  %t276 = getelementptr inbounds ptr, ptr %t275, i32 %t262
+  store ptr %t274, ptr %t276
+  %t277 = add i32 %t262, 1
+  store i32 %t277, ptr %t259
   br label %ret
-ifend65:
-  call void @fn_perr(ptr @.str121)
+ifend77:
+  call void @fn_perr(ptr @.str122)
   br label %ret
 ret:
   ret void
@@ -6554,7 +6557,7 @@ put4:
   br i1 %t34, label %then5, label %ifend7
 then5:
   %t35 = load ptr, ptr %t4
-  %t36 = call ptr @fn_sconcat(ptr @.str122, ptr %t35)
+  %t36 = call ptr @fn_sconcat(ptr @.str123, ptr %t35)
   call void @fn_perr(ptr %t36)
   br label %ifend7
 ifend7:
@@ -6614,8 +6617,8 @@ then0:
 ifend2:
   %t4 = load ptr, ptr @g_cur_dir
   store ptr %t4, ptr %t5
-  store ptr @.str123, ptr @g_cur_dir
-  call void @fn_do_import(ptr @.str124)
+  store ptr @.str124, ptr @g_cur_dir
+  call void @fn_do_import(ptr @.str125)
   %t6 = load ptr, ptr %t5
   store ptr %t6, ptr @g_cur_dir
   br label %ret
@@ -6649,10 +6652,10 @@ entry:
   store i32 0, ptr %t11
   store ptr %t8, ptr @g_loaded_paths
   call void @fn_skipnl()
-  store ptr @.str125, ptr @g_g_game_name
+  store ptr @.str126, ptr @g_g_game_name
   br label %wcond0
 wcond0:
-  %t12 = call i32 @fn_is_id(ptr @.str126)
+  %t12 = call i32 @fn_is_id(ptr @.str127)
   %t13 = icmp ne i32 %t12, 0
   br i1 %t13, label %wbody1, label %wend2
 wbody1:
@@ -6678,13 +6681,13 @@ wbody1:
   call void @fn_skipnl()
   br label %wcond0
 wend2:
-  %t31 = call i32 @fn_is_id(ptr @.str127)
+  %t31 = call i32 @fn_is_id(ptr @.str128)
   %t32 = icmp ne i32 %t31, 0
   %t33 = zext i1 %t32 to i32
   store i32 %t33, ptr %t30
   br i1 %t32, label %scend4, label %sc3
 sc3:
-  %t34 = call i32 @fn_is_id(ptr @.str128)
+  %t34 = call i32 @fn_is_id(ptr @.str129)
   %t35 = icmp ne i32 %t34, 0
   %t36 = zext i1 %t35 to i32
   store i32 %t36, ptr %t30
@@ -6700,7 +6703,7 @@ then5:
   %t41 = call ptr @fn_eat_id()
   store ptr %t41, ptr @g_g_game_name
   call void @fn_skipnl()
-  call void @fn_eat_op(ptr @.str129)
+  call void @fn_eat_op(ptr @.str130)
   br label %ifend7
 ifend7:
   br label %wcond8
@@ -6724,7 +6727,7 @@ wbody9:
 then11:
   br label %wend10
 ifend13:
-  %t54 = call i32 @fn_is_op(ptr @.str130)
+  %t54 = call i32 @fn_is_op(ptr @.str131)
   %t55 = icmp ne i32 %t54, 0
   br i1 %t55, label %then14, label %ifend16
 then14:
@@ -6753,14 +6756,14 @@ entry:
   %t6 = call ptr @fn_eat_id()
   store ptr %t6, ptr %t5
   call void @fn_skipnl()
-  call void @fn_eat_op(ptr @.str131)
+  call void @fn_eat_op(ptr @.str132)
   br label %wcond0
 wcond0:
   %t7 = icmp ne i32 1, 0
   br i1 %t7, label %wbody1, label %wend2
 wbody1:
   call void @fn_skipnl()
-  %t8 = call i32 @fn_is_op(ptr @.str132)
+  %t8 = call i32 @fn_is_op(ptr @.str133)
   %t9 = icmp ne i32 %t8, 0
   br i1 %t9, label %then3, label %ifend5
 then3:
@@ -6772,12 +6775,12 @@ ifend5:
   %t13 = getelementptr inbounds %Str_Node, ptr %t12, i32 0, i32 1
   %t14 = call ptr @fn_eat_id()
   store ptr %t14, ptr %t13
-  call void @fn_eat_op(ptr @.str133)
+  call void @fn_eat_op(ptr @.str134)
   %t15 = load ptr, ptr %t11
   %t16 = getelementptr inbounds %Str_Node, ptr %t15, i32 0, i32 3
   %t17 = call ptr @fn_ptype()
   store ptr %t17, ptr %t16
-  %t18 = call i32 @fn_is_op(ptr @.str134)
+  %t18 = call i32 @fn_is_op(ptr @.str135)
   %t19 = icmp ne i32 %t18, 0
   br i1 %t19, label %then6, label %ifend8
 then6:
@@ -6820,7 +6823,7 @@ put10:
   store ptr %t43, ptr %t45
   %t46 = add i32 %t31, 1
   store i32 %t46, ptr %t28
-  %t47 = call i32 @fn_is_op(ptr @.str135)
+  %t47 = call i32 @fn_is_op(ptr @.str136)
   %t48 = icmp ne i32 %t47, 0
   br i1 %t48, label %then11, label %ifend13
 then11:
@@ -6831,7 +6834,7 @@ then11:
 ifend13:
   br label %wcond0
 wend2:
-  call void @fn_eat_op(ptr @.str136)
+  call void @fn_eat_op(ptr @.str137)
   %t51 = load ptr, ptr %t3
   store ptr %t51, ptr %retval
   br label %ret
@@ -6843,7 +6846,7 @@ ret:
 define void @fn_skip_clause() {
 entry:
   %t2 = alloca i32
-  %t0 = call i32 @fn_is_op(ptr @.str137)
+  %t0 = call i32 @fn_is_op(ptr @.str138)
   %t1 = icmp ne i32 %t0, 0
   br i1 %t1, label %then0, label %ifend2
 then0:
@@ -6853,7 +6856,7 @@ wcond3:
   %t3 = icmp ne i32 1, 0
   br i1 %t3, label %wbody4, label %wend5
 wbody4:
-  %t4 = call i32 @fn_is_op(ptr @.str138)
+  %t4 = call i32 @fn_is_op(ptr @.str139)
   %t5 = icmp ne i32 %t4, 0
   br i1 %t5, label %then6, label %ifend8
 then6:
@@ -6862,7 +6865,7 @@ then6:
   store i32 %t7, ptr %t2
   br label %ifend8
 ifend8:
-  %t8 = call i32 @fn_is_op(ptr @.str139)
+  %t8 = call i32 @fn_is_op(ptr @.str140)
   %t9 = icmp ne i32 %t8, 0
   br i1 %t9, label %then9, label %ifend11
 then9:
@@ -6894,282 +6897,273 @@ ret:
 define ptr @fn_parse_system() {
 entry:
   %retval = alloca ptr
-  %t7 = alloca ptr
-  %t13 = alloca i32
-  %t15 = alloca ptr
-  %t22 = alloca ptr
-  %t25 = alloca i32
-  %t48 = alloca i32
-  %t70 = alloca ptr
-  %t111 = alloca ptr
-  %t118 = alloca ptr
-  %t0 = call i32 @fn_is_id(ptr @.str140)
-  %t1 = icmp ne i32 %t0, 0
-  br i1 %t1, label %then0, label %ifend2
-then0:
-  %t2 = load i32, ptr @g_pi
-  %t3 = add i32 %t2, 1
-  store i32 %t3, ptr @g_pi
-  br label %ifend2
-ifend2:
-  %t4 = load i32, ptr @g_pi
-  %t5 = add i32 %t4, 1
-  store i32 %t5, ptr @g_pi
-  %t6 = call ptr @fn_node(i32 9)
-  store ptr %t6, ptr %t7
-  %t8 = load ptr, ptr %t7
-  %t9 = getelementptr inbounds %Str_Node, ptr %t8, i32 0, i32 1
-  %t10 = call ptr @fn_eat_id()
-  store ptr %t10, ptr %t9
-  %t11 = load ptr, ptr %t7
-  %t12 = getelementptr inbounds %Str_Node, ptr %t11, i32 0, i32 3
-  store ptr @.str141, ptr %t12
-  store i32 0, ptr %t13
-  %t14 = call ptr @fn_node(i32 21)
-  store ptr %t14, ptr %t15
-  br label %wcond3
-wcond3:
-  %t16 = icmp ne i32 1, 0
-  br i1 %t16, label %wbody4, label %wend5
-wbody4:
+  %t3 = alloca ptr
+  %t9 = alloca i32
+  %t11 = alloca ptr
+  %t18 = alloca ptr
+  %t21 = alloca i32
+  %t44 = alloca i32
+  %t66 = alloca ptr
+  %t107 = alloca ptr
+  %t114 = alloca ptr
+  %t0 = load i32, ptr @g_pi
+  %t1 = add i32 %t0, 1
+  store i32 %t1, ptr @g_pi
+  %t2 = call ptr @fn_node(i32 9)
+  store ptr %t2, ptr %t3
+  %t4 = load ptr, ptr %t3
+  %t5 = getelementptr inbounds %Str_Node, ptr %t4, i32 0, i32 1
+  %t6 = call ptr @fn_eat_id()
+  store ptr %t6, ptr %t5
+  %t7 = load ptr, ptr %t3
+  %t8 = getelementptr inbounds %Str_Node, ptr %t7, i32 0, i32 3
+  store ptr @.str141, ptr %t8
+  store i32 0, ptr %t9
+  %t10 = call ptr @fn_node(i32 21)
+  store ptr %t10, ptr %t11
+  br label %wcond0
+wcond0:
+  %t12 = icmp ne i32 1, 0
+  br i1 %t12, label %wbody1, label %wend2
+wbody1:
   call void @fn_skipnl()
-  %t17 = call i32 @fn_is_op(ptr @.str142)
-  %t18 = icmp ne i32 %t17, 0
-  br i1 %t18, label %then6, label %ifend8
+  %t13 = call i32 @fn_is_op(ptr @.str142)
+  %t14 = icmp ne i32 %t13, 0
+  br i1 %t14, label %then3, label %ifend5
+then3:
+  %t15 = load i32, ptr @g_pi
+  %t16 = add i32 %t15, 1
+  store i32 %t16, ptr @g_pi
+  %t17 = call ptr @fn_eat_id()
+  store ptr %t17, ptr %t18
+  %t19 = call i32 @fn_is_op(ptr @.str143)
+  %t20 = icmp ne i32 %t19, 0
+  br i1 %t20, label %then6, label %ifend8
 then6:
-  %t19 = load i32, ptr @g_pi
-  %t20 = add i32 %t19, 1
-  store i32 %t20, ptr @g_pi
-  %t21 = call ptr @fn_eat_id()
-  store ptr %t21, ptr %t22
-  %t23 = call i32 @fn_is_op(ptr @.str143)
+  store i32 0, ptr %t21
+  br label %wcond9
+wcond9:
+  %t22 = icmp ne i32 1, 0
+  br i1 %t22, label %wbody10, label %wend11
+wbody10:
+  %t23 = call i32 @fn_is_op(ptr @.str144)
   %t24 = icmp ne i32 %t23, 0
-  br i1 %t24, label %then9, label %ifend11
-then9:
-  store i32 0, ptr %t25
-  br label %wcond12
-wcond12:
-  %t26 = icmp ne i32 1, 0
-  br i1 %t26, label %wbody13, label %wend14
-wbody13:
-  %t27 = call i32 @fn_is_op(ptr @.str144)
+  br i1 %t24, label %then12, label %ifend14
+then12:
+  %t25 = load i32, ptr %t21
+  %t26 = add i32 %t25, 1
+  store i32 %t26, ptr %t21
+  br label %ifend14
+ifend14:
+  %t27 = call i32 @fn_is_op(ptr @.str145)
   %t28 = icmp ne i32 %t27, 0
   br i1 %t28, label %then15, label %ifend17
 then15:
-  %t29 = load i32, ptr %t25
-  %t30 = add i32 %t29, 1
-  store i32 %t30, ptr %t25
+  %t29 = load i32, ptr %t21
+  %t30 = sub i32 %t29, 1
+  store i32 %t30, ptr %t21
   br label %ifend17
 ifend17:
-  %t31 = call i32 @fn_is_op(ptr @.str145)
-  %t32 = icmp ne i32 %t31, 0
-  br i1 %t32, label %then18, label %ifend20
+  %t31 = load i32, ptr @g_pi
+  %t32 = add i32 %t31, 1
+  store i32 %t32, ptr @g_pi
+  %t33 = load i32, ptr %t21
+  %t34 = icmp eq i32 %t33, 0
+  %t35 = zext i1 %t34 to i32
+  %t36 = icmp ne i32 %t35, 0
+  br i1 %t36, label %then18, label %ifend20
 then18:
-  %t33 = load i32, ptr %t25
-  %t34 = sub i32 %t33, 1
-  store i32 %t34, ptr %t25
-  br label %ifend20
+  br label %wend11
 ifend20:
-  %t35 = load i32, ptr @g_pi
-  %t36 = add i32 %t35, 1
-  store i32 %t36, ptr @g_pi
-  %t37 = load i32, ptr %t25
-  %t38 = icmp eq i32 %t37, 0
-  %t39 = zext i1 %t38 to i32
-  %t40 = icmp ne i32 %t39, 0
-  br i1 %t40, label %then21, label %ifend23
-then21:
-  br label %wend14
-ifend23:
-  br label %wcond12
-wend14:
-  br label %ifend11
-ifend11:
-  br label %wcond3
+  br label %wcond9
+wend11:
+  br label %ifend8
 ifend8:
-  %t41 = call i32 @fn_is_id(ptr @.str146)
-  %t42 = icmp ne i32 %t41, 0
-  br i1 %t42, label %then24, label %ifend26
-then24:
-  %t43 = load i32, ptr @g_pi
-  %t44 = add i32 %t43, 1
-  store i32 %t44, ptr @g_pi
-  %t45 = load ptr, ptr %t7
-  %t46 = getelementptr inbounds %Str_Node, ptr %t45, i32 0, i32 3
-  %t47 = call ptr @fn_eat_id()
-  store ptr %t47, ptr %t46
-  br label %wcond3
-ifend26:
-  %t49 = call i32 @fn_is_id(ptr @.str147)
-  %t50 = icmp ne i32 %t49, 0
-  %t51 = zext i1 %t50 to i32
-  store i32 %t51, ptr %t48
-  br i1 %t50, label %scend28, label %sc27
-sc27:
-  %t52 = call i32 @fn_is_id(ptr @.str148)
-  %t53 = icmp ne i32 %t52, 0
-  %t54 = zext i1 %t53 to i32
-  store i32 %t54, ptr %t48
-  br label %scend28
-scend28:
-  %t55 = load i32, ptr %t48
+  br label %wcond0
+ifend5:
+  %t37 = call i32 @fn_is_id(ptr @.str146)
+  %t38 = icmp ne i32 %t37, 0
+  br i1 %t38, label %then21, label %ifend23
+then21:
+  %t39 = load i32, ptr @g_pi
+  %t40 = add i32 %t39, 1
+  store i32 %t40, ptr @g_pi
+  %t41 = load ptr, ptr %t3
+  %t42 = getelementptr inbounds %Str_Node, ptr %t41, i32 0, i32 3
+  %t43 = call ptr @fn_eat_id()
+  store ptr %t43, ptr %t42
+  br label %wcond0
+ifend23:
+  %t45 = call i32 @fn_is_id(ptr @.str147)
+  %t46 = icmp ne i32 %t45, 0
+  %t47 = zext i1 %t46 to i32
+  store i32 %t47, ptr %t44
+  br i1 %t46, label %scend25, label %sc24
+sc24:
+  %t48 = call i32 @fn_is_id(ptr @.str148)
+  %t49 = icmp ne i32 %t48, 0
+  %t50 = zext i1 %t49 to i32
+  store i32 %t50, ptr %t44
+  br label %scend25
+scend25:
+  %t51 = load i32, ptr %t44
+  %t52 = icmp ne i32 %t51, 0
+  br i1 %t52, label %then26, label %ifend28
+then26:
+  %t53 = load i32, ptr @g_pi
+  %t54 = add i32 %t53, 1
+  store i32 %t54, ptr @g_pi
+  call void @fn_skip_clause()
+  br label %wcond0
+ifend28:
+  %t55 = call i32 @fn_is_id(ptr @.str149)
   %t56 = icmp ne i32 %t55, 0
   br i1 %t56, label %then29, label %ifend31
 then29:
   %t57 = load i32, ptr @g_pi
   %t58 = add i32 %t57, 1
   store i32 %t58, ptr @g_pi
-  call void @fn_skip_clause()
-  br label %wcond3
-ifend31:
-  %t59 = call i32 @fn_is_id(ptr @.str149)
+  store i32 1, ptr %t9
+  %t59 = call i32 @fn_is_op(ptr @.str150)
   %t60 = icmp ne i32 %t59, 0
   br i1 %t60, label %then32, label %ifend34
 then32:
-  %t61 = load i32, ptr @g_pi
-  %t62 = add i32 %t61, 1
-  store i32 %t62, ptr @g_pi
-  store i32 1, ptr %t13
-  %t63 = call i32 @fn_is_op(ptr @.str150)
-  %t64 = icmp ne i32 %t63, 0
-  br i1 %t64, label %then35, label %ifend37
-then35:
   call void @fn_eat_op(ptr @.str151)
-  br label %wcond38
-wcond38:
-  %t65 = call i32 @fn_is_op(ptr @.str152)
-  %t66 = icmp eq i32 %t65, 0
-  %t67 = zext i1 %t66 to i32
-  %t68 = icmp ne i32 %t67, 0
-  br i1 %t68, label %wbody39, label %wend40
-wbody39:
-  %t69 = call ptr @fn_node(i32 33)
-  store ptr %t69, ptr %t70
-  %t71 = load ptr, ptr %t70
-  %t72 = getelementptr inbounds %Str_Node, ptr %t71, i32 0, i32 1
-  %t73 = call ptr @fn_eat_id()
-  store ptr %t73, ptr %t72
-  %t74 = load ptr, ptr %t15
-  %t75 = getelementptr inbounds %Str_Node, ptr %t74, i32 0, i32 7
-  %t76 = load ptr, ptr %t75
-  %t77 = getelementptr inbounds %LSlice, ptr %t76, i32 0, i32 1
-  %t78 = getelementptr inbounds %LSlice, ptr %t76, i32 0, i32 2
-  %t79 = getelementptr inbounds %LSlice, ptr %t76, i32 0, i32 0
-  %t80 = load i32, ptr %t77
-  %t81 = load i32, ptr %t78
-  %t82 = icmp sge i32 %t80, %t81
-  br i1 %t82, label %grow41, label %put42
-grow41:
-  %t83 = mul i32 %t81, 2
-  %t84 = icmp eq i32 %t81, 0
-  %t85 = select i1 %t84, i32 8, i32 %t83
-  %t86 = getelementptr ptr, ptr null, i32 1
-  %t87 = ptrtoint ptr %t86 to i64
-  %t88 = zext i32 %t85 to i64
-  %t89 = mul i64 %t88, %t87
-  %t90 = load ptr, ptr %t79
-  %t91 = call ptr @realloc(ptr %t90, i64 %t89)
-  store ptr %t91, ptr %t79
-  store i32 %t85, ptr %t78
-  br label %put42
-put42:
-  %t92 = load ptr, ptr %t70
-  %t93 = load ptr, ptr %t79
-  %t94 = getelementptr inbounds ptr, ptr %t93, i32 %t80
-  store ptr %t92, ptr %t94
-  %t95 = add i32 %t80, 1
-  store i32 %t95, ptr %t77
-  %t96 = call i32 @fn_is_op(ptr @.str153)
-  %t97 = icmp ne i32 %t96, 0
-  br i1 %t97, label %then43, label %ifend45
+  br label %wcond35
+wcond35:
+  %t61 = call i32 @fn_is_op(ptr @.str152)
+  %t62 = icmp eq i32 %t61, 0
+  %t63 = zext i1 %t62 to i32
+  %t64 = icmp ne i32 %t63, 0
+  br i1 %t64, label %wbody36, label %wend37
+wbody36:
+  %t65 = call ptr @fn_node(i32 33)
+  store ptr %t65, ptr %t66
+  %t67 = load ptr, ptr %t66
+  %t68 = getelementptr inbounds %Str_Node, ptr %t67, i32 0, i32 1
+  %t69 = call ptr @fn_eat_id()
+  store ptr %t69, ptr %t68
+  %t70 = load ptr, ptr %t11
+  %t71 = getelementptr inbounds %Str_Node, ptr %t70, i32 0, i32 7
+  %t72 = load ptr, ptr %t71
+  %t73 = getelementptr inbounds %LSlice, ptr %t72, i32 0, i32 1
+  %t74 = getelementptr inbounds %LSlice, ptr %t72, i32 0, i32 2
+  %t75 = getelementptr inbounds %LSlice, ptr %t72, i32 0, i32 0
+  %t76 = load i32, ptr %t73
+  %t77 = load i32, ptr %t74
+  %t78 = icmp sge i32 %t76, %t77
+  br i1 %t78, label %grow38, label %put39
+grow38:
+  %t79 = mul i32 %t77, 2
+  %t80 = icmp eq i32 %t77, 0
+  %t81 = select i1 %t80, i32 8, i32 %t79
+  %t82 = getelementptr ptr, ptr null, i32 1
+  %t83 = ptrtoint ptr %t82 to i64
+  %t84 = zext i32 %t81 to i64
+  %t85 = mul i64 %t84, %t83
+  %t86 = load ptr, ptr %t75
+  %t87 = call ptr @realloc(ptr %t86, i64 %t85)
+  store ptr %t87, ptr %t75
+  store i32 %t81, ptr %t74
+  br label %put39
+put39:
+  %t88 = load ptr, ptr %t66
+  %t89 = load ptr, ptr %t75
+  %t90 = getelementptr inbounds ptr, ptr %t89, i32 %t76
+  store ptr %t88, ptr %t90
+  %t91 = add i32 %t76, 1
+  store i32 %t91, ptr %t73
+  %t92 = call i32 @fn_is_op(ptr @.str153)
+  %t93 = icmp ne i32 %t92, 0
+  br i1 %t93, label %then40, label %ifend42
+then40:
+  %t94 = load i32, ptr @g_pi
+  %t95 = add i32 %t94, 1
+  store i32 %t95, ptr @g_pi
+  br label %ifend42
+ifend42:
+  br label %wcond35
+wend37:
+  call void @fn_eat_op(ptr @.str154)
+  br label %ifend34
+ifend34:
+  %t96 = load ptr, ptr %t11
+  %t97 = getelementptr inbounds %Str_Node, ptr %t96, i32 0, i32 6
+  %t98 = call ptr @fn_parse_query_tail()
+  store ptr %t98, ptr %t97
+  %t99 = load ptr, ptr %t11
+  %t100 = getelementptr inbounds %Str_Node, ptr %t99, i32 0, i32 5
+  %t101 = load ptr, ptr %t11
+  %t102 = getelementptr inbounds %Str_Node, ptr %t101, i32 0, i32 6
+  %t103 = load ptr, ptr %t102
+  %t104 = getelementptr inbounds %Str_Node, ptr %t103, i32 0, i32 4
+  %t105 = load ptr, ptr %t104
+  store ptr %t105, ptr %t100
+  br label %wcond0
+ifend31:
+  br label %wend2
+wend2:
+  call void @fn_skipnl()
+  %t106 = call ptr @fn_block()
+  store ptr %t106, ptr %t107
+  %t108 = load i32, ptr %t9
+  %t109 = icmp ne i32 %t108, 0
+  br i1 %t109, label %then43, label %else44
 then43:
-  %t98 = load i32, ptr @g_pi
-  %t99 = add i32 %t98, 1
-  store i32 %t99, ptr @g_pi
+  %t110 = load ptr, ptr %t11
+  %t111 = getelementptr inbounds %Str_Node, ptr %t110, i32 0, i32 4
+  %t112 = load ptr, ptr %t107
+  store ptr %t112, ptr %t111
+  %t113 = call ptr @fn_node(i32 7)
+  store ptr %t113, ptr %t114
+  %t115 = load ptr, ptr %t114
+  %t116 = getelementptr inbounds %Str_Node, ptr %t115, i32 0, i32 7
+  %t117 = load ptr, ptr %t116
+  %t118 = getelementptr inbounds %LSlice, ptr %t117, i32 0, i32 1
+  %t119 = getelementptr inbounds %LSlice, ptr %t117, i32 0, i32 2
+  %t120 = getelementptr inbounds %LSlice, ptr %t117, i32 0, i32 0
+  %t121 = load i32, ptr %t118
+  %t122 = load i32, ptr %t119
+  %t123 = icmp sge i32 %t121, %t122
+  br i1 %t123, label %grow46, label %put47
+grow46:
+  %t124 = mul i32 %t122, 2
+  %t125 = icmp eq i32 %t122, 0
+  %t126 = select i1 %t125, i32 8, i32 %t124
+  %t127 = getelementptr ptr, ptr null, i32 1
+  %t128 = ptrtoint ptr %t127 to i64
+  %t129 = zext i32 %t126 to i64
+  %t130 = mul i64 %t129, %t128
+  %t131 = load ptr, ptr %t120
+  %t132 = call ptr @realloc(ptr %t131, i64 %t130)
+  store ptr %t132, ptr %t120
+  store i32 %t126, ptr %t119
+  br label %put47
+put47:
+  %t133 = load ptr, ptr %t11
+  %t134 = load ptr, ptr %t120
+  %t135 = getelementptr inbounds ptr, ptr %t134, i32 %t121
+  store ptr %t133, ptr %t135
+  %t136 = add i32 %t121, 1
+  store i32 %t136, ptr %t118
+  %t137 = load ptr, ptr %t3
+  %t138 = getelementptr inbounds %Str_Node, ptr %t137, i32 0, i32 4
+  %t139 = load ptr, ptr %t114
+  store ptr %t139, ptr %t138
+  br label %ifend45
+else44:
+  %t140 = load ptr, ptr %t3
+  %t141 = getelementptr inbounds %Str_Node, ptr %t140, i32 0, i32 4
+  %t142 = load ptr, ptr %t107
+  store ptr %t142, ptr %t141
   br label %ifend45
 ifend45:
-  br label %wcond38
-wend40:
-  call void @fn_eat_op(ptr @.str154)
-  br label %ifend37
-ifend37:
-  %t100 = load ptr, ptr %t15
-  %t101 = getelementptr inbounds %Str_Node, ptr %t100, i32 0, i32 6
-  %t102 = call ptr @fn_parse_query_tail()
-  store ptr %t102, ptr %t101
-  %t103 = load ptr, ptr %t15
-  %t104 = getelementptr inbounds %Str_Node, ptr %t103, i32 0, i32 5
-  %t105 = load ptr, ptr %t15
-  %t106 = getelementptr inbounds %Str_Node, ptr %t105, i32 0, i32 6
-  %t107 = load ptr, ptr %t106
-  %t108 = getelementptr inbounds %Str_Node, ptr %t107, i32 0, i32 4
-  %t109 = load ptr, ptr %t108
-  store ptr %t109, ptr %t104
-  br label %wcond3
-ifend34:
-  br label %wend5
-wend5:
-  call void @fn_skipnl()
-  %t110 = call ptr @fn_block()
-  store ptr %t110, ptr %t111
-  %t112 = load i32, ptr %t13
-  %t113 = icmp ne i32 %t112, 0
-  br i1 %t113, label %then46, label %else47
-then46:
-  %t114 = load ptr, ptr %t15
-  %t115 = getelementptr inbounds %Str_Node, ptr %t114, i32 0, i32 4
-  %t116 = load ptr, ptr %t111
-  store ptr %t116, ptr %t115
-  %t117 = call ptr @fn_node(i32 7)
-  store ptr %t117, ptr %t118
-  %t119 = load ptr, ptr %t118
-  %t120 = getelementptr inbounds %Str_Node, ptr %t119, i32 0, i32 7
-  %t121 = load ptr, ptr %t120
-  %t122 = getelementptr inbounds %LSlice, ptr %t121, i32 0, i32 1
-  %t123 = getelementptr inbounds %LSlice, ptr %t121, i32 0, i32 2
-  %t124 = getelementptr inbounds %LSlice, ptr %t121, i32 0, i32 0
-  %t125 = load i32, ptr %t122
-  %t126 = load i32, ptr %t123
-  %t127 = icmp sge i32 %t125, %t126
-  br i1 %t127, label %grow49, label %put50
-grow49:
-  %t128 = mul i32 %t126, 2
-  %t129 = icmp eq i32 %t126, 0
-  %t130 = select i1 %t129, i32 8, i32 %t128
-  %t131 = getelementptr ptr, ptr null, i32 1
-  %t132 = ptrtoint ptr %t131 to i64
-  %t133 = zext i32 %t130 to i64
-  %t134 = mul i64 %t133, %t132
-  %t135 = load ptr, ptr %t124
-  %t136 = call ptr @realloc(ptr %t135, i64 %t134)
-  store ptr %t136, ptr %t124
-  store i32 %t130, ptr %t123
-  br label %put50
-put50:
-  %t137 = load ptr, ptr %t15
-  %t138 = load ptr, ptr %t124
-  %t139 = getelementptr inbounds ptr, ptr %t138, i32 %t125
-  store ptr %t137, ptr %t139
-  %t140 = add i32 %t125, 1
-  store i32 %t140, ptr %t122
-  %t141 = load ptr, ptr %t7
-  %t142 = getelementptr inbounds %Str_Node, ptr %t141, i32 0, i32 4
-  %t143 = load ptr, ptr %t118
-  store ptr %t143, ptr %t142
-  br label %ifend48
-else47:
-  %t144 = load ptr, ptr %t7
-  %t145 = getelementptr inbounds %Str_Node, ptr %t144, i32 0, i32 4
-  %t146 = load ptr, ptr %t111
-  store ptr %t146, ptr %t145
-  br label %ifend48
-ifend48:
-  %t147 = load ptr, ptr %t7
-  store ptr %t147, ptr %retval
+  %t143 = load ptr, ptr %t3
+  store ptr %t143, ptr %retval
   br label %ret
 ret:
-  %t148 = load ptr, ptr %retval
-  ret ptr %t148
+  %t144 = load ptr, ptr %retval
+  ret ptr %t144
 }
 
 define ptr @fn_parse_query_tail() {

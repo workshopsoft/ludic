@@ -4,10 +4,9 @@ A plan to make Ludic's syntax internally consistent. It fixes the drift between
 the spec and the compiler, then unifies the grammar around two rules. Scope:
 **full redesign (Phases 0–5)**. Named-field direction: **colon everywhere**.
 
-> Status: **Phases 1 & 2 landed; Phase 3 in progress** (3a records/spawn done).
-> Remaining sub-phases and Phases 4→5 are proposals. The phases are ordered so
-> the documentation never describes syntax the compiler rejects, and every phase
-> ends with the compiler still self-hosting to a fixpoint (`./test.sh`).
+> Status: **Phases 1–3 landed.** Phases 4→5 are proposals. The phases are ordered
+> so the documentation never describes syntax the compiler rejects, and every
+> phase ends with the compiler still self-hosting to a fixpoint (`./test.sh`).
 >
 > Coordinated with the toolchain agent (CLI front-end / `ludicc`+`ludic`
 > binaries) via serialized reseeds of `selfhost/ludicc.seed.ll`; Phase 1 rode in
@@ -33,9 +32,9 @@ Verified against the self-hosted compiler ([selfhost/parse.ludic](selfhost/parse
 
 **Broken / dead syntax (compiler-verified)**
 4. `edge system` — **hard parse error** (documented at [LANGUAGE.md:188](LANGUAGE.md)). *(✅ fixed in Phase 1)*
-5. `pure fn` — parses, `pure` silently discarded ([parse.ludic:272](selfhost/parse.ludic)); undocumented.
+5. `pure fn` — parses, `pure` silently discarded ([parse.ludic:272](selfhost/parse.ludic)); undocumented. *(✅ Phase 3d: now `@pure`)*
 6. `@anno` + `reads/writes/needs/uses [..]` — parsed then thrown away
-   ([parse_game.ludic:15-31](selfhost/parse_game.ludic)); four synonyms, two undocumented.
+   ([parse_game.ludic:15-31](selfhost/parse_game.ludic)); four synonyms, two undocumented. *(✅ Phase 3c: `needs`/`uses` dropped)*
 7. `scene`/`layer`/`on enter` — full LANGUAGE.md section + [examples/scenes.ludic](examples/scenes.ludic),
    **does not compile** (`expected declaration`).
 8. `query (v) [..]` in a system signature — two LANGUAGE.md sections +
@@ -266,10 +265,20 @@ unused anywhere in the corpus — removed from `parse_system`. *Not done:* actua
 *storing* reads/writes on the node for an analysis pass — that's analysis
 infrastructure, out of scope for a syntax pass.
 
-**3d — modifiers `edge`/`pure`/`export` → `@`-annotations.** Not started. Low
-urgency: `edge`/`pure` are unused in the corpus and `export` appears once
-([examples/lib/combat.ludic](examples/lib/combat.ludic)); it needs `parse_one_decl`
-to accept leading `@annotations` on any declaration.
+**3d — modifiers → `@`-annotations ✅ DONE.** `edge`/`pure`/`export` prefix keywords
+are retired; declaration modifiers are now leading `@annotations`: `@export fn`,
+`@edge system`, `@pure`, `@deterministic`. `parse_one_decl` collects a leading
+`@anno` run and `@export` sets the fn export flag ([parse.ludic](selfhost/parse.ludic));
+the dead `edge`-dispatch was removed from `parse_system`. Migrated the one
+`@export` user ([examples/lib/combat.ludic](examples/lib/combat.ludic)); old
+prefix forms now rejected. Behavior-identical: the export flag is parse-only in
+the self-hosted emitter (it emits `@fn_<name>` for every function and never reads
+the flag — the C-ABI-export capability is vestigial, a pre-existing gap), so
+`@export` and the old `export` produce byte-identical IR. Reseeded, fixpoint
+holds, `test.sh` 14/14, goldens byte-identical.
+
+**Phase 3 is complete.** The `=`/`:` overload (finding #2) and the modifier-zoo
+(findings #5, #6) are resolved; `:` associates and `=` binds throughout.
 
 Each sub-phase follows the proven pattern: parser change → verification-gated
 migration (IR byte-identical / goldens identical) → reseed → docs. The migration

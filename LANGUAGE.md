@@ -185,7 +185,13 @@ system Move @deterministic
 
 Phases run in this order every frame: **`Start`** (once at boot), then each
 frame **`Input` → `FixedUpdate` → `Update` → `LateUpdate` → `Render`**.
-`edge system` marks a system that touches the outside world.
+`@edge` in front of a `system` marks one that touches the outside world.
+
+Declaration modifiers are `@annotations` written in front of the declaration —
+`@export fn …` (a C-ABI-exported function), `@edge system …`, `@deterministic`,
+`@pure`. They parse into one uniform channel rather than a set of prefix
+keywords. (`@export` sets the export flag; the others parse but have no codegen
+effect in the self-hosted compiler yet.)
 
 ### The `query` clause
 

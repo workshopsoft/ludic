@@ -16,7 +16,7 @@ module Combat {
   const CRIT_MULT: int = 2
 
   # damage after armour, with a crit multiplier applied on an exact roll
-  export fn damage(attack: int, armour: int, roll: int) -> int {
+  @export fn damage(attack: int, armour: int, roll: int) -> int {
     let raw = attack - armour
     if raw < 1 { raw = 1 }
     if roll == 20 { raw = raw * CRIT_MULT }
@@ -25,7 +25,7 @@ module Combat {
 
   # how many hits to drop a target — the loop is here so the caller cannot
   # accidentally disagree with `damage` about rounding
-  export fn hits_to_kill(hp: int, attack: int, armour: int) -> int {
+  @export fn hits_to_kill(hp: int, attack: int, armour: int) -> int {
     let left = hp
     let n = 0
     while left > 0 {
@@ -35,7 +35,7 @@ module Combat {
     return n
   }
 
-  export fn xp_for(level: int, kills: int) -> int {
+  @export fn xp_for(level: int, kills: int) -> int {
     return curve(level) * kills
   }
 

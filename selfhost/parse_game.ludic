@@ -20,7 +20,6 @@ fn skip_clause() -> void {
 }
 
 fn parse_system() -> Node {
-  if is_id("edge") { pi = pi + 1 }             # optional `edge` modifier before `system`
   pi = pi + 1; let n = node(N_SYS); n.s = eat_id(); n.ty = "Update"
   # clauses: @anno, phase X, reads/writes/needs/uses [..], query (..) [..]
   # A `query (vars) [terms] where c` clause desugars to a body wrapped in one

@@ -126,7 +126,7 @@ All verified. A compiler needs each of these, and each one works today.
 | `shr` is **logical**, not arithmetic | ✅ | `shr(-16, 1)` → `2147483640` |
 | Character literals | ✅ | `'x'`, `'\n'`, `'\0'` lex to ints |
 | Exit codes | ✅ | `os_exit(3)` → shell sees `3` |
-| Separate compilation, C ABI | ✅ | `module` + `export fn`, `extern fn … = "sym"` |
+| Separate compilation, C ABI | ✅ | `module` + `@export fn`, `extern fn … = "sym"` |
 
 **The consequence:** a compiler is *already expressible* in Ludic today. You
 could write a lexer, a parser building nodes as hand-offset `peek32`/`poke32`
