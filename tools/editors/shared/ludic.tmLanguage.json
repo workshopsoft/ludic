@@ -37,6 +37,17 @@
         {
           "name": "string.quoted.single.ludic",
           "match": "'(\\\\.|[^'\\\\])'"
+        },
+        {
+          "name": "string.interpolated.ludic",
+          "begin": "`",
+          "end": "`",
+          "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.ludic" } },
+          "endCaptures": { "0": { "name": "punctuation.definition.string.end.ludic" } },
+          "patterns": [
+            { "name": "meta.embedded.ludic", "begin": "\\{", "end": "\\}", "patterns": [{ "include": "$self" }] },
+            { "name": "constant.character.escape.ludic", "match": "\\\\." }
+          ]
         }
       ]
     },

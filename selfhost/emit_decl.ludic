@@ -68,6 +68,7 @@ fn emit_program() -> void {
   head = buf_new()
   code = buf_new()
   g_uses_str = false
+  g_uses_intstr = false
   loc_name = new []ptr;  loc_reg = new []ptr;  loc_ty = new []ptr;  loc_mut = new []int
   brk_lbl = new []ptr;   cnt_lbl = new []ptr
   self_stk = new []ptr
@@ -84,6 +85,7 @@ fn emit_program() -> void {
     while i < len(prog) { if prog[i].kind == N_MAIN { emit_main(prog[i]) };  i = i + 1 }
   }
   if g_uses_str { emit_str_prelude() }          # @fn_str_eq / @fn_str_concat, after all uses are seen
+  if g_uses_intstr { emit_int_str() }           # @fn_int_str, for str(int) in interpolation
 }
 
 # Flush the emitted IR. With a null path it goes to stdout (the pipe the shell
