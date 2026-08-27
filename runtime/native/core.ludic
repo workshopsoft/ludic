@@ -36,9 +36,9 @@ fn rt_font() -> str {
 fn rt_init() -> void {
   rt_fb = words(320 * 240)
   rt_regs = words(64)
-  mem_set(rt_regs, 0, 64 * 4)
+  fill(rt_regs, 0, 64 * 4)
   rt_map = bytes(96 * 64)
-  mem_set(rt_map, 32, 96 * 64)
+  fill(rt_map, 32, 96 * 64)
   rt_statusbuf = bytes(96)
   rt_statusbuf[0] = 0
   rt_image_init()
@@ -218,7 +218,7 @@ fn rt_poll() -> int {
   if is_windowed() {
     return win_poll()
   }
-  let c = read_byte()
+  let c = read_char()
   if c < 0 {
     rt_alive = 0
     return 0
@@ -297,8 +297,8 @@ fn rt_dump_ppm(path: str) -> void {
   }
   file_write(f, buf, px * 3)
   file_close(f)
-  mem_free(buf)
-  mem_free(hdr)
+  free(buf)
+  free(hdr)
 }
 
 import "inflate.ludic"
@@ -317,7 +317,7 @@ var rt_maph: int = 0
 fn rt_map_size(w: int, h: int) -> void {
   rt_mapw = clamp(w, 0, 96)
   rt_maph = clamp(h, 0, 64)
-  mem_set(rt_map, 32, 96 * 64)
+  fill(rt_map, 32, 96 * 64)
 }
 
 fn rt_map_row(y: int, s: str) -> void {
@@ -378,7 +378,7 @@ fn rt_save_state(f: ptr) -> void {
   file_write(f, rt_regs, 64 * 4)
   file_write(f, rt_map, 96 * 64)
   file_write(f, rt_statusbuf, 96)
-  mem_free(w)
+  free(w)
 }
 
 fn rt_load_state(f: ptr) -> void {
@@ -390,5 +390,5 @@ fn rt_load_state(f: ptr) -> void {
   file_read(f, rt_regs, 64 * 4)
   file_read(f, rt_map, 96 * 64)
   file_read(f, rt_statusbuf, 96)
-  mem_free(w)
+  free(w)
 }

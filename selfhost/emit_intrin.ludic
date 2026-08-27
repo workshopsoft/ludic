@@ -7,12 +7,12 @@ var g_intrin_ok: bool = false
 # is `name` a low-level intrinsic? A pure name check, so it can gate dispatch
 # without evaluating arguments (which could clobber shared state).
 fn is_intrinsic(name: ptr) -> bool {
-  if (name == "mem_realloc") { return true }
+  if (name == "resize") { return true }
   if (name == "file_open") or (name == "file_read") or (name == "file_write") { return true }
   if (name == "file_seek") or (name == "file_tell") or (name == "file_close") { return true }
-  if (name == "os_argc") or (name == "os_arg") or (name == "os_exit") or (name == "file_stderr") { return true }
-  if (name == "file_stdout") { return true }
-  if (name == "os_system") or (name == "os_getenv") { return true }
+  if (name == "arg_count") or (name == "arg") or (name == "exit") { return true }
+  if (name == "file_stderr") or (name == "file_stdout") { return true }
+  if (name == "run") or (name == "getenv") { return true }
   return false
 }
 # emit "  <r> = <rest>\n" and return r
@@ -24,7 +24,7 @@ fn emit_intrinsic(name: ptr, e: Node) -> Val {
   g_intrin_ok = true
   # ptr_null / ptr_is_null are the `null` literal and `x == null` now.
   # mem_alloc is bytes(n) / words(n) now (see emit_call).
-  if (name == "mem_realloc") {
+  if (name == "resize") {
     let p = arg_code(e, 0);  let n = arg_code(e, 1)
     let w = emit_bind(`zext i32 {n} to i64`)
     return val(emit_bind(`call ptr @realloc(ptr {p}, i64 {w})`), "ptr")
@@ -57,14 +57,14 @@ fn emit_intrinsic(name: ptr, e: Node) -> Val {
     return val("0", "void")
   }
   # print_str / print_int are the polymorphic `print(x)` builtin now (emit_call).
-  if (name == "os_argc") { return val(emit_bind("load i32, ptr @L_argc"), "int") }
-  if (name == "os_arg") {
+  if (name == "arg_count") { return val(emit_bind("load i32, ptr @L_argc"), "int") }
+  if (name == "arg") {
     let i = arg_code(e, 0)
     let v = emit_bind("load ptr, ptr @L_argv")
     let q = emit_bind(`getelementptr ptr, ptr {v}, i32 {i}`)
     return val(emit_bind(`load ptr, ptr {q}`), "str")
   }
-  if (name == "os_exit") {
+  if (name == "exit") {
     let n = arg_code(e, 0)
     emit("  call void @exit(i32 ");  emit(n);  emit(")\n")
     emit("  unreachable\n")
@@ -73,11 +73,11 @@ fn emit_intrinsic(name: ptr, e: Node) -> Val {
   }
   if (name == "file_stderr") { return val(emit_bind("load ptr, ptr @__stderrp"), "ptr") }
   if (name == "file_stdout") { return val(emit_bind("load ptr, ptr @__stdoutp"), "ptr") }
-  if (name == "os_system") {
+  if (name == "run") {
     let c = arg_code(e, 0)
     return val(emit_bind(`call i32 @system(ptr {c})`), "int")
   }
-  if (name == "os_getenv") {
+  if (name == "getenv") {
     let n = arg_code(e, 0)
     return val(emit_bind(`call ptr @getenv(ptr {n})`), "str")
   }

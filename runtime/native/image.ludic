@@ -26,7 +26,7 @@ fn rt_image_init() -> void {
   img_w = words(IMG_MAX)
   img_h = words(IMG_MAX)
   spr_px = words(SPR_MAX * SPR_SZ * SPR_SZ)
-  mem_set(spr_px, 0, SPR_MAX * SPR_SZ * SPR_SZ * 4)
+  fill(spr_px, 0, SPR_MAX * SPR_SZ * SPR_SZ * 4)
 }
 
 # ---- decoding -------------------------------------------------------------
@@ -69,9 +69,9 @@ fn rt_decode_png(path: str) -> bool {
   let d = rt_read_file(path)
   if (d == null) { return false }
   let size = rt_file_len
-  if size < 8 { mem_free(d); return false }
-  if d[0] != 137 { mem_free(d); return false }
-  if d[1] != 80 { mem_free(d); return false }
+  if size < 8 { free(d); return false }
+  if d[0] != 137 { free(d); return false }
+  if d[1] != 80 { free(d); return false }
 
   var w = 0
   var h = 0
@@ -118,8 +118,8 @@ fn rt_decode_png(path: str) -> bool {
     }
   }
 
-  if w <= 0 { mem_free(d); return false }
-  if h <= 0 { mem_free(d); return false }
+  if w <= 0 { free(d); return false }
+  if h <= 0 { free(d); return false }
 
   var channels = 1
   if ct == 2 { channels = 3 }
@@ -132,7 +132,7 @@ fn rt_decode_png(path: str) -> bool {
   let rawlen = h * (stride + 1)
   let raw = bytes(rawlen + 8)
   if z_uncompress(idat, idlen, raw, rawlen) < 0 {
-    mem_free(d); mem_free(raw); mem_free(idat)
+    free(d); free(raw); free(idat)
     return false
   }
 
@@ -215,11 +215,11 @@ fn rt_decode_png(path: str) -> bool {
     }
   }
 
-  mem_free(d)
-  mem_free(idat)
-  mem_free(raw)
-  mem_free(plte)
-  mem_free(trns)
+  free(d)
+  free(idat)
+  free(raw)
+  free(plte)
+  free(trns)
   png_w = w
   png_h = h
   png_px = out
@@ -333,7 +333,7 @@ fn rt_png_load(path: str) -> int {
       spr_px[base + y * SPR_SZ + x] = px
     }
   }
-  mem_free(png_px)
+  free(png_px)
   png_px = null
   return id
 }
@@ -380,7 +380,7 @@ fn rt_sprites_load(path: str) -> void {
   if (d == null) { spr_n = 0; return }
   let size = rt_file_len
   let pal: words = words(128)
-  mem_set(pal, 0, 128 * 4)
+  fill(pal, 0, 128 * 4)
   var cur = 0 - 1
   var row = 0
   var i = 0
@@ -407,7 +407,7 @@ fn rt_sprites_load(path: str) -> void {
       if spr_n < SPR_MAX {
         cur = spr_n
         spr_n = spr_n + 1
-        mem_set(ptr_add(spr_px, cur * SPR_SZ * SPR_SZ * 4), 0, SPR_SZ * SPR_SZ * 4)
+        fill(offset(spr_px, cur * SPR_SZ * SPR_SZ * 4), 0, SPR_SZ * SPR_SZ * 4)
       }
       row = 0
     }
@@ -429,6 +429,6 @@ fn rt_sprites_load(path: str) -> void {
     }
     i = start + len + 1
   }
-  mem_free(pal)
-  mem_free(d)
+  free(pal)
+  free(d)
 }

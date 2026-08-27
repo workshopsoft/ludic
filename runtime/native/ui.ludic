@@ -176,9 +176,9 @@ fn rt_ui_static_text(i: int, s: str) -> void {
 
 # ---- text helpers: TrueType when a font is loaded, bitmap otherwise -------
 fn ui_str(i: int) -> ptr {
-  if ui_hasdyn[i] == 1 { return ptr_add(ui_dyn, i * 96) }
+  if ui_hasdyn[i] == 1 { return offset(ui_dyn, i * 96) }
   let t = ui_text[i]
-  if (t == null) { return ptr_add(ui_dyn, i * 96) }
+  if (t == null) { return offset(ui_dyn, i * 96) }
   return t
 }
 

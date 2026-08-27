@@ -66,12 +66,10 @@ object LudicVocabulary {
         "ui_focused", "ui_visible", "key", "reg", "set_reg", "self", "save", "load",
         "status", "print", "str", "quit",
         // compiler intrinsics: the floor the Ludic-written runtime stands on
-        "bytes", "words", "mem_realloc", "mem_free", "mem_copy", "mem_set",         "os_argc", "os_arg", "file_stderr", "file_stdout",
-        "ptr_add",
+        "bytes", "words", "resize", "free", "fill",         "arg_count", "arg", "file_stderr", "file_stdout",
+        "offset",
         "as_fixed", "as_int", "file_open", "file_read", "file_write",
-        "file_seek", "file_tell", "file_close", "read_byte", "write_byte",
-        "os_exit", "os_time",
-        "is_windowed", "game_title", "win_open", "win_poll", "win_present",
+        "file_seek", "file_tell", "file_close", "read_char",         "exit",         "is_windowed", "game_title", "win_open", "win_poll", "win_present",
         "win_running", "win_close"
     )
 

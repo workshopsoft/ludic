@@ -93,7 +93,7 @@ if ./ludicc examples/snake.ludic --emit-llvm -o /tmp/cli_snake.ll >/tmp/cli.out 
 else bad "ludicc --emit-llvm: $(tail -1 /tmp/cli.out)"; fi
 
 # ludic compiles, runs, and forwards the program's exit code.
-printf 'entry { os_exit(42) }\n' > /tmp/cli_exit.ludic
+printf 'entry { exit(42) }\n' > /tmp/cli_exit.ludic
 ./ludic /tmp/cli_exit.ludic >/tmp/cli.out 2>&1
 if [ "$?" -eq 42 ]; then ok "ludic app.ludic  ->  compiles, runs, forwards exit code"
 else bad "ludic run: expected exit 42, got $? ($(tail -1 /tmp/cli.out))"; fi

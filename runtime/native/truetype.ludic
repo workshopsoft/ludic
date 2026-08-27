@@ -101,7 +101,7 @@ fn rt_tt_init() -> void {
   gc_oy = words(TT_GC)
   gc_adv = words(TT_GC)
   gc_bmp = bytes(TT_GC * 8)
-  mem_set(gc_used, 0, TT_GC * 4)
+  fill(gc_used, 0, TT_GC * 4)
 }
 
 # ---- big-endian readers ---------------------------------------------------
@@ -368,9 +368,9 @@ fn tt_load_outline(id: int, gid: int, a: fixed, b: fixed, c: fixed, e: fixed, dx
       }
       start = last + 1
     }
-    mem_free(flags)
-    mem_free(xs)
-    mem_free(ys)
+    free(flags)
+    free(xs)
+    free(ys)
   } else {
     # composite glyph: components, each with its own placement and transform
     var p = g + 10
