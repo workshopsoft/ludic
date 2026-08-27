@@ -22,10 +22,10 @@ var spr_px:   words = null     # SPR_MAX * 16 * 16 RGBA pixels, one block
 var spr_n:    int = 0
 
 fn rt_image_init() -> void {
-  img_px = mem_alloc(IMG_MAX * 8)
-  img_w = mem_alloc(IMG_MAX * 4)
-  img_h = mem_alloc(IMG_MAX * 4)
-  spr_px = mem_alloc(SPR_MAX * SPR_SZ * SPR_SZ * 4)
+  img_px = bytes(IMG_MAX * 8)
+  img_w = words(IMG_MAX)
+  img_h = words(IMG_MAX)
+  spr_px = words(SPR_MAX * SPR_SZ * SPR_SZ)
   mem_set(spr_px, 0, SPR_MAX * SPR_SZ * SPR_SZ * 4)
 }
 
@@ -49,7 +49,7 @@ fn rt_read_file(path: str) -> ptr {
   let n = file_tell(f)
   file_seek(f, 0, 0)
   if n <= 0 { file_close(f); return null }
-  let buf = mem_alloc(n + 8)
+  let buf = bytes(n + 8)
   file_read(f, buf, n)
   file_close(f)
   rt_file_len = n
@@ -77,10 +77,10 @@ fn rt_decode_png(path: str) -> bool {
   var h = 0
   var bd = 0
   var ct = 0
-  let plte = mem_alloc(768)
-  let trns = mem_alloc(256)
+  let plte = bytes(768)
+  let trns = bytes(256)
   var ntrns = 0
-  let idat = mem_alloc(size)
+  let idat = bytes(size)
   var idlen = 0
   var i = 8
   var done = 0
@@ -130,7 +130,7 @@ fn rt_decode_png(path: str) -> bool {
   if fbpp < 1 { fbpp = 1 }
   let stride = (w * bppbits + 7) / 8
   let rawlen = h * (stride + 1)
-  let raw = mem_alloc(rawlen + 8)
+  let raw = bytes(rawlen + 8)
   if z_uncompress(idat, idlen, raw, rawlen) < 0 {
     mem_free(d); mem_free(raw); mem_free(idat)
     return false
@@ -168,7 +168,7 @@ fn rt_decode_png(path: str) -> bool {
   }
 
   # expand to 0xAARRGGBB
-  let out: words = mem_alloc(w * h * 4)
+  let out: words = words(w * h)
   let maxv = (1 << bd) - 1
   for y in 0 .. h {
     let row = y * (stride + 1) + 1
@@ -379,7 +379,7 @@ fn rt_sprites_load(path: str) -> void {
   let d = rt_read_file(path)
   if (d == null) { spr_n = 0; return }
   let size = rt_file_len
-  let pal: words = mem_alloc(128 * 4)
+  let pal: words = words(128)
   mem_set(pal, 0, 128 * 4)
   var cur = 0 - 1
   var row = 0

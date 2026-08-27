@@ -53,7 +53,7 @@ fn lex(src: ptr) -> void {
     if c == 34 {                                   # "string"
       i = i + 1
       let start = i
-      let out = mem_alloc(n)
+      let out = bytes(n)
       var j = 0
       while i < n and src[i] != 34 {
         if src[i] == 92 {                    # backslash escape
@@ -72,7 +72,7 @@ fn lex(src: ptr) -> void {
     }
     if c == 96 {                                   # `interpolated string` — captured raw
       i = i + 1
-      let out = mem_alloc(n)
+      let out = bytes(n)
       var j = 0
       while i < n and src[i] != 96 { out[j] = src[i]; j = j + 1; i = i + 1 }
       i = i + 1

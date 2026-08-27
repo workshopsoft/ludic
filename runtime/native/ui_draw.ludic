@@ -149,7 +149,7 @@ fn ui_draw_node(i: int) -> void {
 var ui_fl: words = null
 
 fn ui_focusables() -> int {
-  if (ui_fl == null) { ui_fl = mem_alloc(UI_MAX * 4) }
+  if (ui_fl == null) { ui_fl = words(UI_MAX) }
   var n = 0
   for i in 0 .. ui_n {
     if ui_focusable[i] == 1 {

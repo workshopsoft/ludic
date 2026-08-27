@@ -64,43 +64,43 @@ var gc_adv:  words = null
 var gc_bmp:  ptr = null
 
 fn rt_tt_init() -> void {
-  tt_data = mem_alloc(TT_MAX * 8)
-  tt_size = mem_alloc(TT_MAX * 4)
-  tt_upem = mem_alloc(TT_MAX * 4)
-  tt_nglyf = mem_alloc(TT_MAX * 4)
-  tt_locfm = mem_alloc(TT_MAX * 4)
-  tt_nhm = mem_alloc(TT_MAX * 4)
-  tt_asc = mem_alloc(TT_MAX * 4)
-  tt_desc = mem_alloc(TT_MAX * 4)
-  tt_gap = mem_alloc(TT_MAX * 4)
-  tt_glyf = mem_alloc(TT_MAX * 4)
-  tt_loca = mem_alloc(TT_MAX * 4)
-  tt_hmtx = mem_alloc(TT_MAX * 4)
-  tt_cmap = mem_alloc(TT_MAX * 4)
-  tt_cfmt = mem_alloc(TT_MAX * 4)
+  tt_data = bytes(TT_MAX * 8)
+  tt_size = words(TT_MAX)
+  tt_upem = words(TT_MAX)
+  tt_nglyf = words(TT_MAX)
+  tt_locfm = words(TT_MAX)
+  tt_nhm = words(TT_MAX)
+  tt_asc = words(TT_MAX)
+  tt_desc = words(TT_MAX)
+  tt_gap = words(TT_MAX)
+  tt_glyf = words(TT_MAX)
+  tt_loca = words(TT_MAX)
+  tt_hmtx = words(TT_MAX)
+  tt_cmap = words(TT_MAX)
+  tt_cfmt = words(TT_MAX)
 
-  ol_x = mem_alloc(TT_PTS * 4)
-  ol_y = mem_alloc(TT_PTS * 4)
-  ol_on = mem_alloc(TT_PTS * 4)
-  ol_ends = mem_alloc(256 * 4)
+  ol_x = words(TT_PTS)
+  ol_y = words(TT_PTS)
+  ol_on = words(TT_PTS)
+  ol_ends = words(256)
 
-  ed_x0 = mem_alloc(TT_EDGES * 4)
-  ed_y0 = mem_alloc(TT_EDGES * 4)
-  ed_x1 = mem_alloc(TT_EDGES * 4)
-  ed_y1 = mem_alloc(TT_EDGES * 4)
-  sc_x = mem_alloc(TT_EDGES * 4)
-  sc_d = mem_alloc(TT_EDGES * 4)
+  ed_x0 = words(TT_EDGES)
+  ed_y0 = words(TT_EDGES)
+  ed_x1 = words(TT_EDGES)
+  ed_y1 = words(TT_EDGES)
+  sc_x = words(TT_EDGES)
+  sc_d = words(TT_EDGES)
 
-  gc_used = mem_alloc(TT_GC * 4)
-  gc_font = mem_alloc(TT_GC * 4)
-  gc_cp = mem_alloc(TT_GC * 4)
-  gc_px = mem_alloc(TT_GC * 4)
-  gc_w = mem_alloc(TT_GC * 4)
-  gc_h = mem_alloc(TT_GC * 4)
-  gc_ox = mem_alloc(TT_GC * 4)
-  gc_oy = mem_alloc(TT_GC * 4)
-  gc_adv = mem_alloc(TT_GC * 4)
-  gc_bmp = mem_alloc(TT_GC * 8)
+  gc_used = words(TT_GC)
+  gc_font = words(TT_GC)
+  gc_cp = words(TT_GC)
+  gc_px = words(TT_GC)
+  gc_w = words(TT_GC)
+  gc_h = words(TT_GC)
+  gc_ox = words(TT_GC)
+  gc_oy = words(TT_GC)
+  gc_adv = words(TT_GC)
+  gc_bmp = bytes(TT_GC * 8)
   mem_set(gc_used, 0, TT_GC * 4)
 }
 
@@ -310,7 +310,7 @@ fn tt_load_outline(id: int, gid: int, a: fixed, b: fixed, c: fixed, e: fixed, dx
     var p = endpts + nc * 2
     p = p + 2 + tt_u16(d, p)                 # skip instructions
 
-    let flags = mem_alloc(npts + 8)
+    let flags = bytes(npts + 8)
     var i = 0
     while i < npts {
       let fl = d[p]
@@ -327,8 +327,8 @@ fn tt_load_outline(id: int, gid: int, a: fixed, b: fixed, c: fixed, e: fixed, dx
       }
     }
 
-    let xs: words = mem_alloc((npts + 1) * 4)
-    let ys: words = mem_alloc((npts + 1) * 4)
+    let xs: words = words((npts + 1))
+    let ys: words = words((npts + 1))
     var xv = 0
     for k in 0 .. npts {
       let fl = flags[k]

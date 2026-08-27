@@ -151,7 +151,7 @@ fn tt_raster(id: int, gid: int, px: int) -> ptr {
 
   let SW = W * TT_SS
   let SH = H * TT_SS
-  let cover = mem_alloc(W * H)
+  let cover = bytes(W * H)
   mem_set(cover, 0, W * H)
   let unit = 255 / (TT_SS * TT_SS)
 
