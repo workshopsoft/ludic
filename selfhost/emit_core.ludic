@@ -16,6 +16,7 @@ var ll_str: int = 0           # string-constant counter
 var loc_name: []ptr
 var loc_reg:  []ptr
 var loc_ty:   []ptr
+var loc_mut:  []int          # 1 = mutable (var / param / loop-var), 0 = immutable (let)
 var nloc: int = 0
 
 # loop targets for break/continue (innermost last)
@@ -45,9 +46,9 @@ fn emit_alloca(llt: ptr) -> ptr {
 fn sconcat(a: ptr, b: ptr) -> ptr {
   let la = slen(a);  let lb = slen(b)
   let out = mem_alloc(la + lb + 1)
-  let i = 0
+  var i = 0
   while i < la { poke8(out, i, peek8(a, i)); i = i + 1 }
-  let j = 0
+  var j = 0
   while j < lb { poke8(out, la + j, peek8(b, j)); j = j + 1 }
   poke8(out, la + lb, 0)
   return out
@@ -67,12 +68,12 @@ fn is_slice_ty(t: ptr) -> bool { return peek8(t, 0) == 91 and peek8(t, 1) == 93 
 fn slice_elem(t: ptr) -> ptr { return substr(t, 2, slen(t) - 2) }
 
 fn find_arch(name: ptr) -> Node {
-  let i = 0
+  var i = 0
   while i < len(prog) { let d = prog[i];  if d.kind == N_ARCH and streq(d.s, name) { return d };  i = i + 1 }
   return ptr_null()
 }
 fn find_comp(name: ptr) -> Node {
-  let i = 0
+  var i = 0
   while i < len(prog) { let d = prog[i];  if d.kind == N_COMP and streq(d.s, name) { return d };  i = i + 1 }
   return ptr_null()
 }
@@ -82,19 +83,19 @@ fn layout_node(name: ptr) -> Node { return find_comp(name) }
 fn layout_ty(name: ptr) -> ptr { return sconcat("%Cmp_", name) }
 
 fn field_index(s: Node, fname: ptr) -> int {
-  let i = 0
+  var i = 0
   while i < len(s.kids) { if streq(s.kids[i].s, fname) { return i }; i = i + 1 }
   return 0 - 1
 }
 fn field_type(s: Node, fname: ptr) -> ptr {
-  let i = 0
+  var i = 0
   while i < len(s.kids) { if streq(s.kids[i].s, fname) { return s.kids[i].ty }; i = i + 1 }
   return "int"
 }
 
 # find a global var/const by name
 fn find_global(name: ptr) -> Node {
-  let i = 0
+  var i = 0
   while i < len(prog) {
     let d = prog[i]
     if d.kind == N_VAR and streq(d.s, name) { return d }
@@ -107,11 +108,11 @@ fn find_global(name: ptr) -> Node {
 # `Enum.Variant` -> the variant's ordinal (its index), or -1 if `ename` names no
 # enum with that variant. Enum names live in `prog` like any other declaration.
 fn enum_ordinal(ename: ptr, vname: ptr) -> int {
-  let i = 0
+  var i = 0
   while i < len(prog) {
     let d = prog[i]
     if d.kind == N_ENUM and streq(d.s, ename) {
-      let j = 0
+      var j = 0
       while j < len(d.kids) { if streq(d.kids[j].s, vname) { return j };  j = j + 1 }
     }
     i = i + 1
@@ -119,7 +120,7 @@ fn enum_ordinal(ename: ptr, vname: ptr) -> int {
   return 0 - 1
 }
 fn find_fn(name: ptr) -> Node {
-  let i = 0
+  var i = 0
   while i < len(prog) { let d = prog[i];  if d.kind == N_FN and streq(d.s, name) { return d };  i = i + 1 }
   return ptr_null()
 }
@@ -136,7 +137,7 @@ fn register_computed(prop: ptr, field: ptr, ty: ptr, e: Node) -> void {
 fn computed_expr(prop: ptr, field: ptr) -> Node {
   if ptr_is_null(prop) { return ptr_null() }
   let key = sconcat(prop, sconcat(".", field))
-  let i = 0
+  var i = 0
   while i < len(g_computed) { if streq(g_computed[i].s, key) { return g_computed[i].a };  i = i + 1 }
   return ptr_null()
 }
@@ -155,7 +156,7 @@ fn register_onspawn(model: ptr, body: Node) -> void {
   let n = node(N_BLOCK); n.s = model; n.a = body; push(g_onspawn, n)
 }
 fn onspawn_body(model: ptr) -> Node {
-  let i = 0
+  var i = 0
   while i < len(g_onspawn) { if streq(g_onspawn[i].s, model) { return g_onspawn[i].a };  i = i + 1 }
   return ptr_null()
 }
@@ -170,7 +171,7 @@ fn register_ondespawn(model: ptr, body: Node) -> void {
   let n = node(N_BLOCK); n.s = model; n.a = body; push(g_ondespawn, n)
 }
 fn ondespawn_body(model: ptr) -> Node {
-  let i = 0
+  var i = 0
   while i < len(g_ondespawn) { if streq(g_ondespawn[i].s, model) { return g_ondespawn[i].a };  i = i + 1 }
   return ptr_null()
 }
@@ -178,7 +179,7 @@ fn register_onattach(prop: ptr, body: Node) -> void {
   let n = node(N_BLOCK); n.s = prop; n.a = body; push(g_onattach, n)
 }
 fn onattach_body(prop: ptr) -> Node {
-  let i = 0
+  var i = 0
   while i < len(g_onattach) { if streq(g_onattach[i].s, prop) { return g_onattach[i].a };  i = i + 1 }
   return ptr_null()
 }
@@ -190,12 +191,12 @@ var g_ondisable: []Node
 fn register_onenable(prop: ptr, body: Node) -> void { let n = node(N_BLOCK); n.s = prop; n.a = body; push(g_onenable, n) }
 fn register_ondisable(prop: ptr, body: Node) -> void { let n = node(N_BLOCK); n.s = prop; n.a = body; push(g_ondisable, n) }
 fn onenable_body(prop: ptr) -> Node {
-  let i = 0
+  var i = 0
   while i < len(g_onenable) { if streq(g_onenable[i].s, prop) { return g_onenable[i].a };  i = i + 1 }
   return ptr_null()
 }
 fn ondisable_body(prop: ptr) -> Node {
-  let i = 0
+  var i = 0
   while i < len(g_ondisable) { if streq(g_ondisable[i].s, prop) { return g_ondisable[i].a };  i = i + 1 }
   return ptr_null()
 }
@@ -205,13 +206,17 @@ fn is_model(name: ptr) -> bool { return find_arch_id(name) > 0 }
 
 # local variable environment
 fn loc_reset() -> void { nloc = 0 }
+# push a local. Defaults to mutable (params, loop and query bindings are all
+# reassignable/rebindable); a `let` binding marks its slot immutable afterward
+# via loc_set_mut, so a later `name = …` can be rejected.
 fn loc_push(name: ptr, r: ptr, ty: ptr) -> void {
-  if nloc < len(loc_name) { loc_name[nloc] = name;  loc_reg[nloc] = r;  loc_ty[nloc] = ty }
-  else { push(loc_name, name);  push(loc_reg, r);  push(loc_ty, ty) }
+  if nloc < len(loc_name) { loc_name[nloc] = name;  loc_reg[nloc] = r;  loc_ty[nloc] = ty;  loc_mut[nloc] = 1 }
+  else { push(loc_name, name);  push(loc_reg, r);  push(loc_ty, ty);  push(loc_mut, 1) }
   nloc = nloc + 1
 }
+fn loc_set_mut(m: int) -> void { if nloc > 0 { loc_mut[nloc - 1] = m } }
 fn loc_find(name: ptr) -> int {
-  let i = nloc - 1
+  var i = nloc - 1
   while i >= 0 { if streq(loc_name[i], name) { return i }; i = i - 1 }
   return 0 - 1
 }

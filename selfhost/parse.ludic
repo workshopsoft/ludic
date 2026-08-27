@@ -1,6 +1,6 @@
 # parse.ludic — recursive-descent parser: the token slice -> an AST.
-# Reduced grammar: structs, vars, consts, fns, main; no ECS/scene/ui/match.
-# Mirrors compiler/front/parse.c. Uses the global `toks` and a cursor `pi`.
+# Core grammar: properties, vars/lets, consts, fns, entry; the ECS/ui/match
+# constructs live in parse_game.ludic. Uses the global `toks` and a cursor `pi`.
 
 var pi: int = 0
 var prog: []Node                 # the top-level declarations
@@ -37,7 +37,7 @@ fn ptype() -> ptr {
     let el = ptype()
     let out = mem_alloc(slen(el) + 3)
     poke8(out, 0, 91); poke8(out, 1, 93)              # "[]"
-    let i = 0
+    var i = 0
     while peek8(el, i) != 0 { poke8(out, 2 + i, peek8(el, i)); i = i + 1 }
     poke8(out, 2 + i, 0)
     return out
@@ -71,7 +71,7 @@ fn p_primary() -> Node {
 }
 
 fn p_postfix() -> Node {
-  let e = p_primary()
+  var e = p_primary()
   while true {
     if is_op(".") { pi = pi + 1; let m = node(E_MEMBER); m.a = e; m.s = eat_id(); e = m }
     else { if is_op("[") { pi = pi + 1; let ix = node(E_INDEX); ix.a = e; ix.b = expr(); eat_op("]"); e = ix }
@@ -89,29 +89,29 @@ fn p_unary() -> Node {
 fn mkbin(op: ptr, l: Node, r: Node) -> Node { let b = node(E_BIN); b.s = op; b.a = l; b.b = r; return b }
 
 fn p_mul() -> Node {
-  let l = p_unary()
+  var l = p_unary()
   while is_op("*") or is_op("/") or is_op("%") { let op = toks[pi].text; pi = pi + 1; l = mkbin(op, l, p_unary()) }
   return l
 }
 fn p_add() -> Node {
-  let l = p_mul()
+  var l = p_mul()
   while is_op("+") or is_op("-") { let op = toks[pi].text; pi = pi + 1; l = mkbin(op, l, p_mul()) }
   return l
 }
 fn p_cmp() -> Node {
-  let l = p_add()
+  var l = p_add()
   while is_op("<") or is_op("<=") or is_op(">") or is_op(">=") or is_op("==") or is_op("!=") {
     let op = toks[pi].text; pi = pi + 1; l = mkbin(op, l, p_add())
   }
   return l
 }
 fn p_and() -> Node {
-  let l = p_cmp()
+  var l = p_cmp()
   while is_id("and") { pi = pi + 1; l = mkbin("and", l, p_cmp()) }
   return l
 }
 fn p_or() -> Node {
-  let l = p_and()
+  var l = p_and()
   while is_id("or") { pi = pi + 1; l = mkbin("or", l, p_and()) }
   return l
 }
@@ -136,14 +136,9 @@ fn block() -> Node {
     # Rule B: statements are separated by a newline or ';' (both lex to TK_NL).
     # After a statement the next token must be that separator or the block's end —
     # two statements may not sit adjacent with only spaces between them.
-    let sep = toks[pi].kind == TK_NL
+    var sep = toks[pi].kind == TK_NL
     if is_op("}") { sep = true }
-    if not sep {
-      let ez = file_stderr(); file_write(ez, "cur=", 4)
-      if not ptr_is_null(toks[pi].text) { file_write(ez, toks[pi].text, slen(toks[pi].text)) }
-      file_write(ez, "\n", 1); print_int(7770000 + toks[pi].line)
-      perr("expected newline or ';' between statements")
-    }
+    if not sep { perr("expected newline or ';' between statements") }
   }
   eat_op("}")
   return b
@@ -152,8 +147,9 @@ fn block() -> Node {
 fn stmt() -> Node {
   let t = toks[pi]
   if t.kind == TK_ID {
-    if streq(t.text, "let") {
-      pi = pi + 1; let n = node(S_LET); n.s = eat_id()
+    if streq(t.text, "let") or streq(t.text, "var") {
+      var mut = 0; if streq(t.text, "var") { mut = 1 }     # let = immutable, var = mutable
+      pi = pi + 1; let n = node(S_LET); n.ival = mut; n.line = toks[pi].line; n.s = eat_id()
       if is_op(":") { pi = pi + 1; n.ty = ptype() }
       if is_op("=") { pi = pi + 1; n.a = expr() }
       return n
@@ -183,7 +179,7 @@ fn stmt() -> Node {
     if streq(t.text, "spawn") { return parse_spawn() }
     if streq(t.text, "machine") {
       pi = pi + 1; let n = node(S_MACHINE); n.a = expr(); skipnl(); eat_op("{")
-      let sidx = 0                              # states auto-number by declaration order
+      var sidx = 0                              # states auto-number by declaration order
       while true { skipnl(); if is_op("}") { break }
         let stkw = eat_id()                     # 'state'
         let s = node(S_STATE); s.s = eat_id()
@@ -196,7 +192,7 @@ fn stmt() -> Node {
     if streq(t.text, "become") { pi = pi + 1; let n = node(S_BECOME); n.s = eat_id(); return n }
     if streq(t.text, "despawn") { pi = pi + 1; let n = node(S_DESPAWN); n.a = expr(); return n }
     if streq(t.text, "enable") or streq(t.text, "disable") {
-      let en = 0; if streq(t.text, "enable") { en = 1 }
+      var en = 0; if streq(t.text, "enable") { en = 1 }
       pi = pi + 1; let n = node(S_TOGGLE); n.ival = en; n.s = eat_id()     # `enable P on e` / `disable Model` / `disable Handler`
       if is_id("on") { pi = pi + 1; n.a = expr() }                        # property on an entity
       return n
@@ -218,7 +214,7 @@ fn stmt() -> Node {
   }
   let e = expr()
   if is_op("=") or is_op("+=") or is_op("-=") or is_op("*=") or is_op("/=") {
-    let n = node(S_ASSIGN); n.s = toks[pi].text; pi = pi + 1; n.a = e; n.b = expr(); return n
+    let n = node(S_ASSIGN); n.line = toks[pi].line; n.s = toks[pi].text; pi = pi + 1; n.a = e; n.b = expr(); return n
   }
   let n = node(S_EXPR); n.a = e; return n
 }
@@ -249,8 +245,8 @@ fn parse_main() -> Node { pi = pi + 1; let n = node(N_MAIN); n.a = block(); retu
 
 # directory part of a path, including the trailing '/', or "" if none
 fn dir_of(path: ptr) -> ptr {
-  let last = 0 - 1
-  let i = 0
+  var last = 0 - 1
+  var i = 0
   while peek8(path, i) != 0 { if peek8(path, i) == 47 { last = i };  i = i + 1 }
   if last < 0 { return "" }
   return substr(path, 0, last + 1)
@@ -264,7 +260,7 @@ var loaded_paths: []ptr
 var cur_dir: ptr
 
 fn already_loaded(full: ptr) -> bool {
-  let i = 0
+  var i = 0
   while i < len(loaded_paths) { if streq(loaded_paths[i], full) { return true };  i = i + 1 }
   return false
 }
@@ -273,14 +269,14 @@ fn already_loaded(full: ptr) -> bool {
 # Modifiers are `@annotations` in front of the declaration: `@export`, `@edge`,
 # `@pure`, `@deterministic`, … — one channel, not a zoo of prefix keywords.
 fn parse_one_decl() -> void {
-  let is_export = false
-  let qspec: Node = ptr_null()
-  let onspawn_model: ptr = ptr_null()
-  let ondespawn_model: ptr = ptr_null()
-  let onattach_prop: ptr = ptr_null()
-  let onenable_prop: ptr = ptr_null()
-  let ondisable_prop: ptr = ptr_null()
-  let hook_phase: ptr = ptr_null()            # @OnStart / @OnQuit override the phase
+  var is_export = false
+  var qspec: Node = ptr_null()
+  var onspawn_model: ptr = ptr_null()
+  var ondespawn_model: ptr = ptr_null()
+  var onattach_prop: ptr = ptr_null()
+  var onenable_prop: ptr = ptr_null()
+  var ondisable_prop: ptr = ptr_null()
+  var hook_phase: ptr = ptr_null()            # @OnStart / @OnQuit override the phase
   while is_op("@") {
     pi = pi + 1; let a = eat_id()             # collect a leading @annotation
     if streq(a, "export") { is_export = true }
@@ -292,7 +288,7 @@ fn parse_one_decl() -> void {
     else { if streq(a, "OnDisable") { eat_op("("); ondisable_prop = eat_id(); eat_op(")") }
     else { if streq(a, "OnStart") { hook_phase = "Start" }                       # boot
     else { if streq(a, "OnQuit") { hook_phase = "OnQuit" }                       # shutdown
-    else { if is_op("(") { let d = 0          # any other @anno(args) — parsed and skipped
+    else { if is_op("(") { var d = 0          # any other @anno(args) — parsed and skipped
         while true { if is_op("(") { d = d + 1 };  if is_op(")") { d = d - 1 };  pi = pi + 1;  if d == 0 { break } } } } } } } } } } } }
     skipnl()
   }
@@ -371,7 +367,7 @@ fn parse_program() -> void {
   # @annotations on the program itself (e.g. @Handles(Movement)) — parsed, skipped
   while is_op("@") {
     pi = pi + 1; let a = eat_id()
-    if is_op("(") { let d = 0
+    if is_op("(") { var d = 0
       while true { if is_op("(") { d = d + 1 };  if is_op(")") { d = d - 1 };  pi = pi + 1;  if d == 0 { break } } }
     skipnl()
   }

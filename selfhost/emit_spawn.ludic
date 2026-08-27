@@ -10,13 +10,13 @@ fn emit_init_component(e: ptr, comp: ptr, rec: Node) -> void {
   let slot = nreg()
   emit("  ");  emit(slot);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x %Cmp_");  emit(comp);  emit("], ptr @S_");  emit(comp);  emit(", i32 0, i32 ");  emit(e);  emit("\n")
   # defaults
-  let f = 0
+  var f = 0
   while f < len(c.kids) {
     let fd = c.kids[f]
     let addr = nreg()
     emit("  ");  emit(addr);  emit(" = getelementptr inbounds %Cmp_");  emit(comp);  emit(", ptr ");  emit(slot);  emit(", i32 0, i32 ");  emit(itoa(f));  emit("\n")
     let lt = llty(fd.ty)
-    let v = "0"
+    var v = "0"
     if streq(lt, "ptr") { v = "null" }
     if not ptr_is_null(fd.a) { let dv = emit_expr(fd.a);  v = dv.code }
     emit("  store ");  emit(lt);  emit(" ");  emit(v);  emit(", ptr ");  emit(addr);  emit("\n")
@@ -24,7 +24,7 @@ fn emit_init_component(e: ptr, comp: ptr, rec: Node) -> void {
   }
   # per-spawn overrides
   if not ptr_is_null(rec) {
-    let j = 0
+    var j = 0
     while j < len(rec.kids) {
       let fi = rec.kids[j]
       let fidx = field_index(c, fi.s)
@@ -53,7 +53,7 @@ fn emit_init_component(e: ptr, comp: ptr, rec: Node) -> void {
 # @OnSpawn hook body can address them by name (like a query binding for one entity).
 fn emit_bind_props(model: Node, e: ptr) -> void {
   let me = itoa(MAX_ENT)
-  let c = 0
+  var c = 0
   while c < len(model.kids) {
     let pname = model.kids[c].s
     let slot = nreg()
@@ -73,11 +73,11 @@ fn emit_spawn(st: Node) -> void {
     let kp = nreg();  emit("  ");  emit(kp);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_kind, i32 0, i32 ");  emit(e);  emit("\n")
     emit("  store i32 ");  emit(itoa(ak));  emit(", ptr ");  emit(kp);  emit("\n")
     let arch = find_arch(st.s)
-    let c = 0
+    var c = 0
     while c < len(arch.kids) {
       let cn = arch.kids[c].s
-      let rec = ptr_null()
-      let i = 0
+      var rec = ptr_null()
+      var i = 0
       while i < len(st.kids) { if streq(st.kids[i].s, cn) { rec = st.kids[i].a };  i = i + 1 }
       emit_init_component(e, cn, rec)
       c = c + 1
@@ -90,7 +90,7 @@ fn emit_spawn(st: Node) -> void {
       nloc = save
     }
   } else {
-    let i = 0
+    var i = 0
     while i < len(st.kids) { emit_init_component(e, st.kids[i].s, st.kids[i].a);  i = i + 1 }
   }
 }
@@ -102,7 +102,7 @@ fn emit_despawn(st: Node) -> void {
     let me = itoa(MAX_ENT)
     let kp = nreg();  emit("  ");  emit(kp);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_kind, i32 0, i32 ");  emit(v.code);  emit("\n")
     let kind = emit_bind(sconcat("load i32, ptr ", kp))
-    let i = 0
+    var i = 0
     while i < len(g_ondespawn) {
       let mname = g_ondespawn[i].s
       let c = emit_bind(sconcat("icmp eq i32 ", sconcat(kind, sconcat(", ", itoa(find_arch_id(mname))))))
@@ -120,13 +120,13 @@ fn emit_despawn(st: Node) -> void {
 # data persists, so re-enabling restores it, and queries already skip a cleared
 # flag). A bare `<Model>` / `<Handler>` flips a global enabled flag.
 fn emit_toggle(st: Node) -> void {
-  let val = "0";  if st.ival == 1 { val = "1" }
+  var val = "0";  if st.ival == 1 { val = "1" }
   if not ptr_is_null(st.a) {
     let ev = emit_expr(st.a)
     let me = itoa(MAX_ENT)
     let hp = nreg();  emit("  ");  emit(hp);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i8], ptr @H_");  emit(st.s);  emit(", i32 0, i32 ");  emit(ev.code);  emit("\n")
     emit("  store i8 ");  emit(val);  emit(", ptr ");  emit(hp);  emit("\n")
-    let hb: Node = ptr_null()
+    var hb: Node = ptr_null()
     if st.ival == 1 { hb = onenable_body(st.s) } else { hb = ondisable_body(st.s) }
     if not ptr_is_null(hb) {
       let save = nloc
@@ -138,7 +138,7 @@ fn emit_toggle(st: Node) -> void {
       nloc = save
     }
   } else {
-    let g = "@HE_";  if is_model(st.s) { g = "@ME_" }     # model vs handler
+    var g = "@HE_";  if is_model(st.s) { g = "@ME_" }     # model vs handler
     emit("  store i32 ");  emit(val);  emit(", ptr ");  emit(g);  emit(st.s);  emit("\n")
   }
 }

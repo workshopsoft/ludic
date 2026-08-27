@@ -16,7 +16,7 @@ fn read_file(path: str) -> ptr {
 
 # length of a NUL-terminated buffer
 fn cstr_len(s: ptr) -> int {
-  let n = 0
+  var n = 0
   while peek8(s, n) != 0 { n = n + 1 }
   return n
 }

@@ -79,10 +79,10 @@ fn rt_fill_rect(x: int, y: int, w: int, h: int, c: int) -> void {
   let y0 = max(0, y)
   let x1 = min(rt_fbw, x + w)
   let y1 = min(rt_fbh, y + h)
-  let j = y0
+  var j = y0
   while j < y1 {
     let row = j * rt_fbw
-    let i = x0
+    var i = x0
     while i < x1 {
       poke32(rt_fb, row + i, c)
       i = i + 1
@@ -108,7 +108,7 @@ fn rt_present() -> void {
 
 # ---- text -----------------------------------------------------------------
 fn rt_glyph(x: int, y: int, ch: int, colour: int, sc: int) -> void {
-  let c = ch
+  var c = ch
   if c >= 97 {
     if c <= 122 { c = c - 32 }
   }
@@ -118,7 +118,7 @@ fn rt_glyph(x: int, y: int, ch: int, colour: int, sc: int) -> void {
   let font = rt_font()
   for row in 0 .. 7 {
     let bits = peek8(font, base + row) - 48
-    let b = bits
+    var b = bits
     for cc in 0 .. 5 {
       let on = b / 16
       if on == 1 {
@@ -130,9 +130,9 @@ fn rt_glyph(x: int, y: int, ch: int, colour: int, sc: int) -> void {
 }
 
 fn rt_text(x: int, y: int, s: str, colour: int, sc: int) -> void {
-  let i = 0
-  let cx = x
-  let ch = peek8(s, 0)
+  var i = 0
+  var cx = x
+  var ch = peek8(s, 0)
   while ch != 0 {
     rt_glyph(cx, y, ch, colour, sc)
     cx = cx + 6 * sc
@@ -146,22 +146,22 @@ fn rt_text_int(x: int, y: int, n: int, colour: int, sc: int) -> void {
     rt_glyph(x, y, 48, colour, sc)
     return
   }
-  let v = n
-  let cx = x
+  var v = n
+  var cx = x
   if v < 0 {
     rt_glyph(cx, y, 45, colour, sc)
     cx = cx + 6 * sc
     v = 0 - v
   }
-  let digits = 0
-  let t = v
+  var digits = 0
+  var t = v
   while t > 0 {
     digits = digits + 1
     t = t / 10
   }
-  let p = digits
+  var p = digits
   while p > 0 {
-    let div = 1
+    var div = 1
     for k in 1 .. p {
       div = div * 10
     }
@@ -196,7 +196,7 @@ fn rt_seed(s: int) -> void {
 # xorshift32 (Marsaglia). Runs on the raw 32-bit pattern, so the sign bit is
 # masked off only when a caller asks for a number.
 fn rt_next_rand() -> int {
-  let x = rt_rng
+  var x = rt_rng
   x = bxor(x, shl(x, 13))
   x = bxor(x, shr(x, 17))
   x = bxor(x, shl(x, 5))
@@ -238,9 +238,9 @@ fn rt_running() -> bool {
 
 # ---- writing the frame out ------------------------------------------------
 fn rt_put_str(buf: ptr, at: int, s: str) -> int {
-  let i = 0
-  let n = at
-  let ch = peek8(s, 0)
+  var i = 0
+  var n = at
+  var ch = peek8(s, 0)
   while ch != 0 {
     poke8(buf, n, ch)
     n = n + 1
@@ -255,16 +255,16 @@ fn rt_put_int(buf: ptr, at: int, v: int) -> int {
     poke8(buf, at, 48)
     return at + 1
   }
-  let digits = 0
-  let t = v
+  var digits = 0
+  var t = v
   while t > 0 {
     digits = digits + 1
     t = t / 10
   }
-  let n = at
-  let p = digits
+  var n = at
+  var p = digits
   while p > 0 {
-    let div = 1
+    var div = 1
     for k in 1 .. p {
       div = div * 10
     }
@@ -280,7 +280,7 @@ fn rt_dump_ppm(path: str) -> void {
   if ptr_is_null(f) { return }
 
   let hdr = mem_alloc(64)
-  let n = rt_put_str(hdr, 0, "P6\n")
+  var n = rt_put_str(hdr, 0, "P6\n")
   n = rt_put_int(hdr, n, rt_fbw)
   n = rt_put_str(hdr, n, " ")
   n = rt_put_int(hdr, n, rt_fbh)
@@ -323,8 +323,8 @@ fn rt_map_size(w: int, h: int) -> void {
 fn rt_map_row(y: int, s: str) -> void {
   if y < 0 { return }
   if y >= 64 { return }
-  let x = 0
-  let ch = peek8(s, 0)
+  var x = 0
+  var ch = peek8(s, 0)
   while ch != 0 {
     if x >= 96 { return }
     poke8(rt_map, y * 96 + x, ch)
@@ -347,8 +347,8 @@ fn rt_tile(x: int, y: int) -> int {
 var rt_statusbuf: ptr = ptr_null()
 
 fn rt_status(s: str) -> void {
-  let i = 0
-  let ch = peek8(s, 0)
+  var i = 0
+  var ch = peek8(s, 0)
   while ch != 0 {
     if i >= 95 { ch = 0 }
     if ch != 0 {

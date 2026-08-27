@@ -57,7 +57,7 @@ fn emit_bin(e: Node) -> Val {
   let b = emit_expr(e.b)
   let fx = streq(a.ty, "fixed") or streq(b.ty, "fixed")
   if is_cmp(e.s) {
-    let ac = a.code;  let bc = b.code
+    var ac = a.code;  var bc = b.code
     if fx { ac = to_fixed(a);  bc = to_fixed(b) }
     let c = emit_bind(sconcat("icmp ", sconcat(cmp_code(e.s), sconcat(" i32 ", sconcat(ac, sconcat(", ", bc))))))
     return val(emit_bind(sconcat("zext i1 ", sconcat(c, " to i32"))), "bool")
@@ -100,8 +100,8 @@ fn emit_call(e: Node) -> Val {
   if is_intrinsic(name) { return emit_intrinsic(name, e) }
   if is_intrinsic2(name) { return emit_intrinsic2(name, e) }
   if is_math_builtin(name) { return emit_math_builtin(name, e) }
-  let fn2 = find_fn(name)
-  let cname = name
+  var fn2 = find_fn(name)
+  var cname = name
   if ptr_is_null(fn2) {
     # a builtin like clear()/reg() is satisfied by its rt_ function
     let rtname = sconcat("rt_", name)
@@ -112,11 +112,11 @@ fn emit_call(e: Node) -> Val {
   # evaluate args first (their IR is emitted before the call instruction)
   let args = new []ptr
   let atys = new []ptr
-  let i = 0
+  var i = 0
   while i < len(e.kids) { let v = emit_expr(e.kids[i]);  push(args, v.code);  push(atys, v.ty);  i = i + 1 }
   let rl = llty(fn2.ty)
   emit("  ")
-  let rreg = "0"
+  var rreg = "0"
   if not streq(rl, "void") { rreg = nreg();  emit(rreg);  emit(" = ") }
   emit("call ");  emit(rl);  emit(" @fn_");  emit(cname);  emit("(")
   i = 0

@@ -16,8 +16,8 @@
 
 # basename: the part of a path after the last '/'.
 fn base_name(path: ptr) -> ptr {
-  let last = 0 - 1
-  let i = 0
+  var last = 0 - 1
+  var i = 0
   while peek8(path, i) != 0 { if peek8(path, i) == 47 { last = i };  i = i + 1 }
   return substr(path, last + 1, i - (last + 1))
 }
@@ -52,18 +52,18 @@ fn die(msg: ptr) -> void {
 }
 
 entry {
-  let path = ptr_null()
-  let out  = ptr_null()
-  let want = 0            # 0 = auto, 1 = windowed, 2 = headless
-  let emit_ir = false     # --emit-llvm: stop after writing IR
-  let fmt = false         # --fmt: lex + parse only, then exit (the doc-check gate)
-  let save = false        # --save-temps: keep the intermediate .ll
-  let run = false         # compile then execute the result
+  var path = ptr_null()
+  var out  = ptr_null()
+  var want = 0            # 0 = auto, 1 = windowed, 2 = headless
+  var emit_ir = false     # --emit-llvm: stop after writing IR
+  var fmt = false         # --fmt: lex + parse only, then exit (the doc-check gate)
+  var save = false        # --save-temps: keep the intermediate .ll
+  var run = false         # compile then execute the result
 
   # multi-call: invoked as `ludic` -> run mode by default
   if streq(base_name(os_arg(0)), "ludic") { run = true }
 
-  let ai = 1
+  var ai = 1
   while ai < os_argc() {
     let a = os_arg(ai)
     if streq(a, "--windowed") { want = 1 }
@@ -134,7 +134,7 @@ entry {
   # platform layer and the Cocoa framework.
   # -Wno-override-module: our IR carries an explicit target triple, which clang
   # would otherwise warn about on every build.
-  let cmd = sconcat(cc, sconcat(" -O2 -Wno-override-module ", ll))
+  var cmd = sconcat(cc, sconcat(" -O2 -Wno-override-module ", ll))
   if g_windowed {
     let cocoa = path_join(home, "runtime/native/cocoa.ll")
     cmd = sconcat(cmd, sconcat(" ", sconcat(cocoa, " -framework Cocoa -Wl,-rpath,@loader_path")))

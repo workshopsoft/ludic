@@ -196,7 +196,7 @@ fn ui_tw(font: int, s: ptr, size: int) -> int {
   if font >= 0 {
     if font < tt_n { return rt_text_w(font, s, size) }
   }
-  let n = 0
+  var n = 0
   while peek8(s, n) != 0 { n = n + 1 }
   return n * 6 * max(size / 8, 1)
 }
@@ -219,7 +219,7 @@ fn ui_dir(t: int) -> int {
   return 1
 }
 fn ui_under(i: int, root: int) -> bool {
-  let k = i
+  var k = i
   while k >= 0 {
     if k == root { return true }
     k = peek32(ui_parent, k)
@@ -229,7 +229,7 @@ fn ui_under(i: int, root: int) -> bool {
 
 # ---- measure: content sizes, children before parents ----------------------
 fn ui_measure() -> void {
-  let i = ui_n - 1
+  var i = ui_n - 1
   while i >= 0 {
     if peek32(ui_visible, i) == 0 {
       poke32(ui_rw, i, 0)
@@ -237,8 +237,8 @@ fn ui_measure() -> void {
     } else {
       let t = peek32(ui_type, i)
       let pad = peek32(ui_pad, i)
-      let cw = 0
-      let ch = 0
+      var cw = 0
+      var ch = 0
       if t == WT_LABEL { cw = 0 - 1 }
       if t == WT_BUTTON { cw = 0 - 1 }
       if cw == 0 - 1 {
@@ -262,9 +262,9 @@ fn ui_measure() -> void {
             ch = peek32(ui_h, i)
           } else {
             let dir = ui_dir(t)
-            let mainsz = 0
-            let cross = 0
-            let nc = 0
+            var mainsz = 0
+            var cross = 0
+            var nc = 0
             for c in 0 .. ui_n {
               if peek32(ui_parent, c) == i {
                 if peek32(ui_visible, c) == 1 {
@@ -292,8 +292,8 @@ fn ui_measure() -> void {
           }
         }
       }
-      let rw = peek32(ui_w, i)
-      let rh = peek32(ui_h, i)
+      var rw = peek32(ui_w, i)
+      var rh = peek32(ui_h, i)
       if rw == 0 { rw = cw }
       if rh == 0 { rh = ch }
       poke32(ui_rw, i, rw)

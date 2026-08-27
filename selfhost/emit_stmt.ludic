@@ -2,7 +2,7 @@
 # block is skipped until a new basic block opens.
 
 fn emit_block(b: Node) -> void {
-  let i = 0
+  var i = 0
   while i < len(b.kids) {
     if g_term { return }
     emit_stmt(b.kids[i])
@@ -18,11 +18,16 @@ fn store_at(lt: ptr, v: ptr, addr: ptr) -> void {
 fn emit_assign(st: Node) -> void {
   # resolve the target's address and type
   let t = st.a
-  let addr = "0"
-  let ty = "int"
+  var addr = "0"
+  var ty = "int"
   if t.kind == E_ID {
     let li = loc_find(t.s)
-    if li >= 0 { addr = loc_reg[li];  ty = loc_ty[li] }
+    if li >= 0 {
+      # a `let` binding is immutable: rebinding it is an error (mutating THROUGH
+      # it — `x.field = …`, `x[i] = …` — is fine, and lands in the branches below).
+      if loc_mut[li] == 0 { perr(sconcat("cannot assign to immutable '", sconcat(t.s, sconcat("' (declared with let; use var) — line ", itoa(st.line))))) }
+      addr = loc_reg[li];  ty = loc_ty[li]
+    }
     else {
       let g = find_global(t.s)
       if ptr_is_null(g) { perr(sconcat("assign to unknown ", t.s)) }
@@ -35,10 +40,10 @@ fn emit_assign(st: Node) -> void {
   }
   let lt = llty(ty)
   let rv = emit_expr(st.b)
-  let v = rv.code
+  var v = rv.code
   if not streq(st.s, "=") {
     let cur = emit_bind(sconcat("load ", sconcat(lt, sconcat(", ptr ", addr))))
-    let opc = "add"
+    var opc = "add"
     if streq(st.s, "-=") { opc = "sub" }
     if streq(st.s, "*=") { opc = "mul" }
     if streq(st.s, "/=") { opc = "sdiv" }
@@ -116,7 +121,7 @@ fn emit_return(st: Node) -> void {
 }
 
 fn arm_is_default(arm: Node) -> bool {
-  let p = 0
+  var p = 0
   while p < len(arm.kids) { if arm.kids[p].kind == E_ID and streq(arm.kids[p].s, "_") { return true }; p = p + 1 }
   return false
 }
@@ -124,15 +129,15 @@ fn arm_is_default(arm: Node) -> bool {
 fn emit_match(st: Node) -> void {
   let sv = emit_expr(st.a)
   let endl = lbl("mend")
-  let deflt: Node = ptr_null()
-  let i = 0
+  var deflt: Node = ptr_null()
+  var i = 0
   while i < len(st.kids) {
     let arm = st.kids[i]
     if arm_is_default(arm) { deflt = arm }
     else {
-      let acc = "0"
-      let first = true
-      let p = 0
+      var acc = "0"
+      var first = true
+      var p = 0
       while p < len(arm.kids) {
         let pv = emit_expr(arm.kids[p])
         let c = emit_bind(sconcat("icmp eq i32 ", sconcat(sv.code, sconcat(", ", pv.code))))
@@ -156,16 +161,17 @@ fn emit_match(st: Node) -> void {
 
 fn emit_stmt(st: Node) -> void {
   if st.kind == S_LET {
-    let ty = st.ty
+    var ty = st.ty
     if ptr_is_null(ty) { let v0 = emit_expr(st.a);  ty = v0.ty
-      let slot = emit_alloca(llty(ty));  store_at(llty(ty), v0.code, slot);  loc_push(st.s, slot, ty);  return }
+      let slot = emit_alloca(llty(ty));  store_at(llty(ty), v0.code, slot);  loc_push(st.s, slot, ty);  loc_set_mut(st.ival);  return }
     let slot = emit_alloca(llty(ty))
     if ptr_is_null(st.a) {
-      let z = "0"
+      var z = "0"
       if streq(llty(ty), "ptr") { z = "null" }
       store_at(llty(ty), z, slot)
     } else { let v = emit_expr(st.a);  store_at(llty(ty), v.code, slot) }
     loc_push(st.s, slot, ty)
+    loc_set_mut(st.ival)
     return
   }
   if st.kind == S_ASSIGN { emit_assign(st); return }

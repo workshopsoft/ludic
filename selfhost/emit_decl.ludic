@@ -3,7 +3,7 @@
 # ahead of it (see emit_alloca). Returns go through a %retval slot + `ret` label.
 
 fn emit_params_sig(d: Node) -> void {
-  let i = 0
+  var i = 0
   while i < len(d.kids) {
     if i > 0 { emit(", ") }
     emit(llty(d.kids[i].ty));  emit(" %arg_");  emit(d.kids[i].s)
@@ -21,7 +21,7 @@ fn emit_fn(d: Node) -> void {
   let rl = llty(ret_ty)
   if not streq(rl, "void") { buf_puts(falloc, "  %retval = alloca ");  buf_puts(falloc, rl);  buf_puts(falloc, "\n") }
   # params: store each incoming argument into a stack slot
-  let i = 0
+  var i = 0
   while i < len(d.kids) {
     let p = d.kids[i]
     let slot = emit_alloca(llty(p.ty))
@@ -67,13 +67,13 @@ fn emit_main(d: Node) -> void {
 fn emit_program() -> void {
   head = buf_new()
   code = buf_new()
-  loc_name = new []ptr;  loc_reg = new []ptr;  loc_ty = new []ptr
+  loc_name = new []ptr;  loc_reg = new []ptr;  loc_ty = new []ptr;  loc_mut = new []int
   brk_lbl = new []ptr;   cnt_lbl = new []ptr
   self_stk = new []ptr
   mach_stk = new []Node
   emit_header()
   if has_ecs() { emit_ecs_storage() }
-  let i = 0
+  var i = 0
   while i < len(prog) { if prog[i].kind == N_FN { emit_fn(prog[i]) };  i = i + 1 }
   if has_ecs() { emit_ecs_allocator();  emit_snapshot() }
   if has_ui() { emit_ui_build() }

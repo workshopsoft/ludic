@@ -15,26 +15,26 @@ fn ui_wtype(w: Node) -> int {
   return 0
 }
 fn ui_prop(w: Node, key: ptr) -> Node {
-  let i = 0
+  var i = 0
   while i < len(w.b.kids) { if streq(w.b.kids[i].s, key) { return w.b.kids[i].a };  i = i + 1 }
   return ptr_null()
 }
 fn ui_flatten(w: Node, parent: int) -> void {
   let idx = len(uiw)
   push(uiw, w);  push(uiw_parent, parent)
-  let i = 0
+  var i = 0
   while i < len(w.kids) { ui_flatten(w.kids[i], idx);  i = i + 1 }
 }
 fn ui_flatten_all() -> void {
   uiw = new []Node;  uiw_parent = new []int;  ui_roots = new []int
-  let i = 0
+  var i = 0
   while i < len(prog) {
     if prog[i].kind == N_UI and prog[i].ival == 1 { push(ui_roots, len(uiw));  ui_flatten(prog[i].a, 0 - 1) }
     i = i + 1
   }
 }
 fn has_ui() -> bool {
-  let i = 0
+  var i = 0
   while i < len(prog) { if prog[i].kind == N_UI and prog[i].ival == 1 { return true };  i = i + 1 }
   return false
 }
@@ -42,8 +42,8 @@ fn has_ui() -> bool {
 # index of a UI_<name>: a ui block's root, or a widget's id=
 fn ui_index_of(nm: ptr) -> int {
   let s = substr(nm, 3, slen(nm) - 3)          # strip "UI_"
-  let u = 0;  let bi = 0
-  let i = 0
+  let u = 0;  var bi = 0
+  var i = 0
   while i < len(prog) {
     if prog[i].kind == N_UI and prog[i].ival == 1 { if streq(prog[i].s, s) { return ui_roots[bi] };  bi = bi + 1 }
     i = i + 1
@@ -79,14 +79,14 @@ fn emit_ui_build() -> void {
   let saved = code
   code = fbody
   emit("  call void @fn_rt_ui_reset(i32 ");  emit(itoa(len(uiw)));  emit(")\n")
-  let i = 0
+  var i = 0
   while i < len(uiw) {
     let w = uiw[i]
     let t = ui_wtype(w)
     ll_ui_set(i, 0, itoa(t))
     ll_ui_set(i, 1, itoa(uiw_parent[i]))
     if t == 4 { ll_ui_set(i, 17, "1") }
-    let p = 0
+    var p = 0
     while p < len(w.b.kids) {
       let pr = w.b.kids[p]
       let k = pr.s
@@ -101,7 +101,7 @@ fn emit_ui_build() -> void {
         if streq(k, "skin") { ll_ui_set(i, 20, r) } else { ll_ui_set(i, 19, r) }
       } else { if streq(k, "align") {
         if v.kind == E_ID {
-          let a = 0
+          var a = 0
           if streq(v.s, "center") { a = 1 };  if streq(v.s, "end") { a = 2 }
           ll_ui_set(i, 12, itoa(a))
         } else { let vv = emit_expr(v);  ll_ui_set(i, 12, vv.code) }

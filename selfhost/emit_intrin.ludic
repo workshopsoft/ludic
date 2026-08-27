@@ -61,7 +61,7 @@ fn emit_intrinsic(name: ptr, e: Node) -> Val {
   if streq(name, "file_read") or streq(name, "file_write") {
     let f = arg_code(e, 0);  let b = arg_code(e, 1);  let n = arg_code(e, 2)
     let w = emit_bind(sconcat("zext i32 ", sconcat(n, " to i64")))
-    let fn2 = "@fread"
+    var fn2 = "@fread"
     if streq(name, "file_write") { fn2 = "@fwrite" }
     let r = emit_bind(sconcat("call i64 ", sconcat(fn2, sconcat("(ptr ", sconcat(b, sconcat(", i64 1, i64 ", sconcat(w, sconcat(", ptr ", sconcat(f, ")")))))))))
     return val(emit_bind(sconcat("trunc i64 ", sconcat(r, " to i32"))), "int")
@@ -117,7 +117,7 @@ fn emit_intrinsic(name: ptr, e: Node) -> Val {
   if streq(name, "bnot") { let a = arg_code(e, 0);  return val(emit_bind(sconcat("xor i32 ", sconcat(a, ", -1"))), "int") }
   if streq(name,"shl") or streq(name,"shr") or streq(name,"band") or streq(name,"bor") or streq(name,"bxor") {
     let a = arg_code(e, 0);  let b = arg_code(e, 1)
-    let opc = "shl"
+    var opc = "shl"
     if streq(name,"shr") { opc = "lshr" }
     if streq(name,"band") { opc = "and" }
     if streq(name,"bor") { opc = "or" }

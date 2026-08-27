@@ -466,11 +466,37 @@ another `.ludic` file (see `examples/lib/`).
 
 ## Statements
 
-`let x = expr` · `x = expr` (`+= -= *= /=`) · `if cond { }` / `if/else`
-(the `else` is optional) · `while cond { }` · `for i in a .. b { }` (numeric range) ·
-`for (…) in query […] { }` · `break` · `continue` · `return` · `spawn` ·
-`despawn` · `enable` / `disable` (a property `on e`, a model, or a handler) ·
-`match` · `machine`.
+`let x = expr` / `var x = expr` · `x = expr` (`+= -= *= /=`) · `if cond { }` /
+`if/else` (the `else` is optional) · `while cond { }` · `for i in a .. b { }`
+(numeric range) · `for (…) in query […] { }` · `break` · `continue` · `return` ·
+`spawn` · `despawn` · `enable` / `disable` (a property `on e`, a model, or a
+handler) · `match` · `machine`.
+
+### Bindings: `let`, `var`, `const`
+
+A binding's keyword states whether it can be reassigned, the way Rust and Swift
+use them — not its scope (position decides that: inside a body it is a local,
+at the top level it is module state).
+
+- **`let x = e`** — an *immutable* binding. `x = …` afterward is a compile error
+  (`cannot assign to immutable 'x'`). Reach for `let` by default.
+- **`var x = e`** — a *mutable* binding: `x`, `x += 1`, … reassign it. Use it for
+  loop accumulators and anything that genuinely changes.
+- **`const NAME = e`** — a compile-time constant (folded, no storage).
+
+Immutability is of the **binding**, not the object. A `let` that holds a record
+or slice still lets you mutate *through* it — the reference itself just cannot be
+repointed:
+
+```ludic
+# doc-check: skip — illustrative bindings
+let n = new Node       # immutable binding…
+n.kind = 1             # …but mutation through it is fine
+n = new Node           # ERROR: cannot assign to immutable 'n'
+
+var total = 0
+for i in 0 .. 10 { total += i }   # a var is the right tool for an accumulator
+```
 
 **Statements are separated by a newline or `;`** (both lex to the same separator
 token). Two statements may not sit adjacent with only spaces between them — the

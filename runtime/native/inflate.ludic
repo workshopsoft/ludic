@@ -30,7 +30,7 @@ fn z_start(src: ptr, len: int) -> void {
 }
 
 fn z_bits(need: int) -> int {
-  let val = z_bitbuf
+  var val = z_bitbuf
   while z_bitcnt < need {
     if z_pos >= z_len {
       z_err = 1
@@ -79,9 +79,9 @@ fn z_table_build(table: ptr, lengths: ptr, n: int) -> void {
 }
 
 fn z_decode(table: ptr) -> int {
-  let code = 0
-  let first = 0
-  let index = 0
+  var code = 0
+  var first = 0
+  var index = 0
   for len in 1 .. 16 {
     code = bor(code, z_bits(1))
     let count = peek32(table, len)
@@ -131,7 +131,7 @@ fn z_stored(out: ptr, at: int, cap: int) -> int {
   if z_pos + 4 > z_len { return -1 }
   let n = peek8(z_src, z_pos) + shl(peek8(z_src, z_pos + 1), 8)
   z_pos = z_pos + 4                   # LEN then its one's complement
-  let w = at
+  var w = at
   for i in 0 .. n {
     if z_pos >= z_len { return -1 }
     if w >= cap { return -1 }
@@ -143,8 +143,8 @@ fn z_stored(out: ptr, at: int, cap: int) -> int {
 }
 
 fn z_codes(out: ptr, at: int, cap: int, lit: ptr, dist: ptr) -> int {
-  let w = at
-  let sym = z_decode(lit)
+  var w = at
+  var sym = z_decode(lit)
   while sym != 256 {
     if z_err != 0 { return -1 }
     if sym < 0 { return -1 }
@@ -202,7 +202,7 @@ fn z_dynamic_tables(lit: ptr, dist: ptr) -> int {
   let clen = z_table_new(19)
   z_table_build(clen, lengths, 19)
 
-  let n = 0
+  var n = 0
   while n < nlen + ndist {
     let sym = z_decode(clen)
     if sym < 0 { return 0 }
@@ -211,8 +211,8 @@ fn z_dynamic_tables(lit: ptr, dist: ptr) -> int {
       n = n + 1
     }
     if sym >= 16 {
-      let prev = 0
-      let rep = 0
+      var prev = 0
+      var rep = 0
       if sym == 16 {
         if n == 0 { return 0 }
         prev = peek32(lengths, n - 1)
@@ -244,8 +244,8 @@ fn z_inflate(src: ptr, len: int, out: ptr, cap: int) -> int {
   z_start(src, len)
   let lit = z_table_new(288)
   let dist = z_table_new(30)
-  let w = 0
-  let final = 0
+  var w = 0
+  var final = 0
   while final == 0 {
     final = z_bits(1)
     let btype = z_bits(2)

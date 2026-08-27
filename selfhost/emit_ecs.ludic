@@ -6,12 +6,12 @@
 const MAX_ENT: int = 1024
 
 fn has_systems() -> bool {
-  let i = 0
+  var i = 0
   while i < len(prog) { if prog[i].kind == N_SYS { return true };  i = i + 1 }
   return false
 }
 fn has_models() -> bool {
-  let i = 0
+  var i = 0
   while i < len(prog) { if prog[i].kind == N_ARCH { return true };  i = i + 1 }
   return false
 }
@@ -31,7 +31,7 @@ fn emit_ecs_storage() -> void {
   emith(sconcat("@L_kind = internal global [", sconcat(me, " x i32] zeroinitializer\n")))
   emith(sconcat("@L_freelist = internal global [", sconcat(me, " x i32] zeroinitializer\n")))
   emith("@L_freen = internal global i32 0\n")
-  let i = 0
+  var i = 0
   while i < len(prog) {
     let c = prog[i]
     # per-entity storage for a property (its %Cmp_ layout is emitted in the
@@ -52,7 +52,7 @@ fn emit_ecs_storage() -> void {
 fn emit_ecs_allocator() -> void {
   let me = itoa(MAX_ENT)
   emit("define void @L_reset(i32 %e) {\nentry:\n")
-  let i = 0
+  var i = 0
   while i < len(prog) {
     if prog[i].kind == N_COMP {
       let hn = sconcat("%h", itoa(i))

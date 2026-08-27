@@ -19,9 +19,9 @@ fn emit_snapshot_blocks(fn2: ptr) -> void {
   emit_io(fn2, "@L_alive", "%nalive")
   emit_io(fn2, "@L_freelist", "%nalive")
   emit_io(fn2, "@L_kind", "%nalive")
-  let i = 0
+  var i = 0
   while i < len(prog) { if prog[i].kind == N_VAR { emit_io(fn2, sconcat("@g_", prog[i].s), "4") };  i = i + 1 }
-  let ci = 0
+  var ci = 0
   i = 0
   while i < len(prog) {
     if prog[i].kind == N_COMP {

@@ -114,14 +114,14 @@ program Snake {
     clear(0x0d1020)
     for gy in 0 .. GH {
       for gx in 0 .. GW {
-        let col = 0x141a2e
+        var col = 0x141a2e
         if (gx + gy) % 2 == 0 { col = 0x10162a }
         fill_rect(gx * TS, gy * TS, TS, TS, col)
       }
     }
     fill_rect(reg(R_FX) * TS + 3, reg(R_FY) * TS + 3, TS - 6, TS - 6, 0xe0405a)
     for (p, s) in query [Pos, Seg] {
-      let col = 0x40c060
+      var col = 0x40c060
       if s.order == 0 { col = 0x9dffb0 }
       fill_rect(p.x * TS + 1, p.y * TS + 1, TS - 2, TS - 2, col)
     }

@@ -13,14 +13,14 @@ fn emit_new_struct(name: ptr) -> Val {
   let lty = layout_ty(name)
   let sz = emit_sizeof(lty)
   let obj = emit_bind(sconcat("call ptr @malloc(i64 ", sconcat(sz, ")")))
-  let f = 0
+  var f = 0
   while f < len(s.kids) {
     let fd = s.kids[f]
     let addr = nreg()
     emit("  ");  emit(addr);  emit(" = getelementptr inbounds ");  emit(lty)
     emit(", ptr ");  emit(obj);  emit(", i32 0, i32 ");  emit(itoa(f));  emit("\n")
     let lt = llty(fd.ty)
-    let v = "0"
+    var v = "0"
     if streq(lt, "ptr") { v = "null" }
     if not ptr_is_null(fd.a) { let dv = emit_expr(fd.a);  v = dv.code }
     emit("  store ");  emit(lt);  emit(" ");  emit(v);  emit(", ptr ");  emit(addr);  emit("\n")
