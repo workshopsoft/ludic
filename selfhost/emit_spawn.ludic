@@ -4,7 +4,7 @@
 fn emit_init_component(e: ptr, comp: ptr, rec: Node) -> void {
   let me = itoa(MAX_ENT)
   let c = find_comp(comp)
-  if ptr_is_null(c) { perr(sconcat("spawn: unknown component ", comp)) }
+  if ptr_is_null(c) { perr(sconcat("spawn: unknown property ", comp)) }
   let hp = nreg();  emit("  ");  emit(hp);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i8], ptr @H_");  emit(comp);  emit(", i32 0, i32 ");  emit(e);  emit("\n")
   emit("  store i8 1, ptr ");  emit(hp);  emit("\n")
   let slot = nreg()

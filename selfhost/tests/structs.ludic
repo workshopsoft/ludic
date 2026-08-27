@@ -1,7 +1,7 @@
-game T {
+program T {
   struct P { x: int = 0, y: int = 7, next: P }
   fn bump(p: P) -> void { p.x = p.x + 100 }
-  main {
+  entry {
     let a = new P
     print_int(a.y)            # 7 default
     a.x = 5

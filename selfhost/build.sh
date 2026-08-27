@@ -33,7 +33,7 @@ selfhost/emit_ui.ludic
 selfhost/emit_decl.ludic
 selfhost/main.ludic"
 SRC=build/selfhost.ludic
-{ echo "game SelfHost {"; for f in $FRAGS; do cat "$f"; echo; done; echo "}"; } > "$SRC"
+{ echo "program SelfHost {"; for f in $FRAGS; do cat "$f"; echo; done; echo "}"; } > "$SRC"
 # the compiler emits IR to stdout; clang assembles and links it
 "$LC" "$SRC" > "$OUT.ll" 2>/dev/null && ${LUDIC_CC:-clang} "$OUT.ll" -o "$OUT" 2>/dev/null
 rc=$?; rm -f "$OUT.ll"; [ $rc -eq 0 ]

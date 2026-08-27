@@ -297,15 +297,15 @@ fn parse_one_decl() -> void {
   }
   if is_id("struct") { push(prog, parse_struct()); return }
   if is_id("enum") { push(prog, parse_enum()); return }
-  if is_id("component") { push(prog, parse_component()); return }
-  if is_id("archetype") { push(prog, parse_archetype()); return }
-  if is_id("system") { push(prog, parse_system()); return }
+  if is_id("property") { push(prog, parse_component()); return }
+  if is_id("model") { push(prog, parse_archetype()); return }
+  if is_id("handler") { push(prog, parse_system()); return }
   if is_id("ui") { push(prog, parse_ui()); return }
   if is_id("var")    { push(prog, parse_var()); return }
   if is_id("const")  { push(prog, parse_const()); return }
   if is_id("fn") { let f = parse_fn(); if is_export { f.ival = 1 };  push(prog, f); return }
   if is_id("extern") { push(prog, parse_extern()); return }
-  if is_id("main")   { push(prog, parse_main()); return }
+  if is_id("entry")  { push(prog, parse_main()); return }
   perr("expected declaration")
 }
 
@@ -342,7 +342,7 @@ fn parse_program() -> void {
   g_game_name = "Ludic"
   # imports may precede the game block
   while is_id("import") { pi = pi + 1; let t = toks[pi];  let rel = t.text;  pi = pi + 1;  do_import(rel); skipnl() }
-  if is_id("game") or is_id("module") { pi = pi + 1; g_game_name = eat_id(); skipnl(); eat_op("{") }
+  if is_id("program") { pi = pi + 1; g_game_name = eat_id(); skipnl(); eat_op("{") }
   while true {
     skipnl()
     if toks[pi].kind == TK_EOF { break }

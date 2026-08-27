@@ -20,15 +20,15 @@ A program is one `game` block containing declarations:
 
 ```ludic
 # doc-check: skip — illustrative: elided import list
-game Name {
+program Name {
   import ...        # pull declarations in from another file
-  component ...     # data (per entity)
+  property ...     # data (per entity)
   struct ...        # a plain record, not tied to an entity
-  archetype ...     # a named entity KIND (bundle of components)
+  model ...     # a named entity KIND (bundle of components)
   const ...         # compile-time constants
   fn ...            # functions
   extern fn ...     # bind a C library symbol (FFI)
-  system ...        # behavior, grouped into phases
+  handler ...        # behavior, grouped into phases
 }
 ```
 
@@ -36,7 +36,7 @@ game Name {
 
 ```ludic
 # doc-check: skip — paths resolve only inside the repo
-game ChronoRift {
+program ChronoRift {
   import "chronorift/world.ludic"    # path is relative to THIS file
   import "chronorift/combat.ludic"
 }
@@ -61,11 +61,11 @@ integer per entity, not a parallel boolean array.
 
 ```ludic
 # doc-check: skip — composite: declarations and statements together
-component Pos   { x: int = 0, y: int = 0 }
-component Stats { hp: int = 10 }
+property Pos   { x: int = 0, y: int = 0 }
+property Stats { hp: int = 10 }
 
-archetype Player { Pos, Stats }        # Player IS a kind, not a component
-archetype Enemy  { Pos, Stats }
+model Player { Pos, Stats }        # Player IS a kind, not a component
+model Enemy  { Pos, Stats }
 
 spawn Player { Pos { x: 5 } }           # attaches every listed component
                                         # (seeding field defaults), then overrides
@@ -120,17 +120,17 @@ Each `id: Name` mints a `UI_Name` handle (the `ui` block name too), used from
 systems:
 
 ```ludic
-system Boot phase Start {
+handler Boot phase Start {
   setreg(R_FONT, font_load("…Arial.ttf"))
   ui_build()                 # construct the tree (loads skins/images)
   ui_open(UI_MainMenu)       # make it active, focus the first button
 }
-system Nav phase Update {
+handler Nav phase Update {
   ui_tick(key())             # w/s move focus, space/enter activate
   if ui_clicked(UI_Quit) { quit() }
   ui_set_int(UI_HpLabel, hp)  # poke dynamic values by id
 }
-system Draw phase Render { clear(0x0e0e16); ui_render(); present() }
+handler Draw phase Render { clear(0x0e0e16); ui_render(); present() }
 ```
 
 See `examples/menu.ludic` for a complete title screen.
@@ -155,8 +155,8 @@ point (`1.5`) is `fixed`. Arithmetic on two `fixed` values lowers to
 
 ```ludic
 # doc-check: skip — composite: declarations and statements together
-component Pos { x: int = 0, y: int = 0 }   # typed fields with defaults
-component Player { }                        # a tag (no fields)
+property Pos { x: int = 0, y: int = 0 }   # typed fields with defaults
+property Player { }                        # a tag (no fields)
 
 spawn Hero {                                # create an entity
   Pos    { x: 10, y: 5 }
@@ -175,7 +175,7 @@ program. `self()` yields the entity of the innermost `query` loop.
 ## Systems & phases
 
 ```ludic
-system Move @deterministic
+handler Move @deterministic
   reads  [Vel]          # declared data access (parsed and reserved; not yet
   writes [Pos]          # consumed by any analysis pass — see "Not yet implemented")
   phase  FixedUpdate
@@ -201,7 +201,7 @@ that entity — the query header is simply hoisted out of the body into the
 signature:
 
 ```ludic
-system CleanBattle phase LateUpdate
+handler CleanBattle phase LateUpdate
   query (b, p) [Battle, Pos, {Enemy}] where b.hp <= 0
 { despawn self() }
 ```
@@ -209,7 +209,7 @@ system CleanBattle phase LateUpdate
 is the same program as
 
 ```ludic
-system CleanBattle phase LateUpdate {
+handler CleanBattle phase LateUpdate {
   for (b, p) in query [Battle, Pos, {Enemy}] where b.hp <= 0 { despawn self() }
 }
 ```
@@ -255,7 +255,7 @@ the data a program keeps outside the ECS.
 ```ludic
 struct Tok { kind: int = 0, line: int = 0, next: Tok }
 
-system Lex phase Update {
+handler Lex phase Update {
   let t = new Tok        # allocates; every field seeded from its default
   t.kind = 1
 }
@@ -269,7 +269,7 @@ struct Tok { kind: int = 0, line: int = 0, next: Tok }
 
 fn bump(t: Tok) -> void { t.kind = t.kind + 1 }
 
-system Share phase Update {
+handler Share phase Update {
   let a = new Tok
   let b = a              # b and a are the SAME object
   b.kind = 9
@@ -283,7 +283,7 @@ Fields chain, so a struct can refer to its own type and be walked without
 temporaries — which is what an AST or a linked list needs:
 
 ```ludic
-system Walk phase Update {
+handler Walk phase Update {
   let a = new Tok
   let b = new Tok
   a.next = b
@@ -300,7 +300,7 @@ snippet below does not compile today. Programs use `[]T` slices for now.
 ```ludic
 # doc-check: skip — [T; N] fixed arrays are not yet implemented (design target)
 var table: [int; 8]      # module-level storage
-system S phase Update {
+handler S phase Update {
   let buf: [int; 4]      # a local; no initializer needed
   buf[0] = 10
   table[2] = buf[0]
@@ -312,7 +312,7 @@ capacity. `push` appends, doubling the storage when it is full; because the
 header never moves, an append is visible to everything holding that slice.
 
 ```ludic
-system Collect phase Update {
+handler Collect phase Update {
   let toks = new []Tok
   push(toks, new Tok)
   for i in 0 .. len(toks) { print_int(toks[i].kind) }
@@ -553,7 +553,7 @@ scene Title start {
   on exit  { ui_visible(UI_Menu, 0) }
 
   layer Main {
-    system Choose phase Update {
+    handler Choose phase Update {
       if ui_clicked(UI_NewGame) { enter Overworld }
     }
   }
@@ -562,8 +562,8 @@ scene Title start {
 scene Overworld {
   on enter { spawn_party() }
 
-  layer World { system Move phase Update { … } }
-  layer Hud   { system Draw phase Render { … } }
+  layer World { handler Move phase Update { … } }
+  layer Hud   { handler Draw phase Render { … } }
 }
 ```
 
@@ -589,7 +589,7 @@ When a system's whole body is one query loop, the loop header can move into the
 declaration:
 
 ```ludic
-system CleanBattle phase LateUpdate
+handler CleanBattle phase LateUpdate
   query (b, p) [Battle, Pos, {Foe}] where b.hp <= 0
 {
   despawn self()

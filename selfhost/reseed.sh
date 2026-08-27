@@ -11,7 +11,7 @@ FRAGS="selfhost/str.ludic selfhost/buf.ludic selfhost/io.ludic selfhost/ast.ludi
 selfhost/lex.ludic selfhost/parse.ludic selfhost/parse_game.ludic selfhost/emit_core.ludic selfhost/emit_head.ludic
 selfhost/emit_addr.ludic selfhost/emit_intrin.ludic selfhost/emit_intrin2.ludic selfhost/emit_math.ludic selfhost/emit_new.ludic
 selfhost/emit_expr.ludic selfhost/emit_stmt.ludic selfhost/emit_ecs.ludic selfhost/emit_query.ludic selfhost/emit_spawn.ludic selfhost/emit_game.ludic selfhost/emit_machine.ludic selfhost/emit_save.ludic selfhost/emit_ui.ludic selfhost/emit_decl.ludic selfhost/main.ludic"
-{ echo "game SelfHost {"; for f in $FRAGS; do cat "$f"; echo; done; echo "}"; } > "$B/selfhost.ludic"
+{ echo "program SelfHost {"; for f in $FRAGS; do cat "$f"; echo; done; echo "}"; } > "$B/selfhost.ludic"
 if $CC selfhost/ludicc.seed.ll -o "$B/sh_old" 2>/dev/null; then
   # compile once with the old seed, then AGAIN with the freshly built one so the
   # seed is a fixed point of the NEW compiler, not a one-step image of the old.

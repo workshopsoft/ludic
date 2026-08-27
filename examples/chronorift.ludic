@@ -7,7 +7,7 @@
 # chronorift/, pulled in with `import`. Paths resolve relative to this file, and
 # each import is include-guarded so re-imports are free.
 # ============================================================================
-game ChronoRift {
+program ChronoRift {
   import "chronorift/world.ludic"      # components, entity archetypes, constants
   import "chronorift/rules.ludic"      # pure rules + map data (functions)
   import "chronorift/overworld.ludic"  # boot, movement, encounters, shop

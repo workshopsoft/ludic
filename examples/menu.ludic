@@ -2,7 +2,7 @@
 # block); the engine lays it out (stacked panel, padding/gap/alignment), draws
 # it (background, TrueType labels, focusable buttons), and routes keyboard focus
 # and activation. The game only loads a font, opens the UI, and reads clicks.
-game Menu {
+program Menu {
 
   const R_FONT: int = 0
   const R_MSG:  int = 1
@@ -19,13 +19,13 @@ game Menu {
     }
   }
 
-  system Boot phase Start {
+  handler Boot phase Start {
     setreg(R_FONT, font_load("/System/Library/Fonts/Supplemental/Arial.ttf"))
     ui_build()
     ui_open(UI_MainMenu)
   }
 
-  system Nav phase Update {
+  handler Nav phase Update {
     ui_tick(key())
     if ui_clicked(UI_NewGame)  { ui_set_text(UI_NewGame, "Starting...") }
     if ui_clicked(UI_Continue) { ui_set_text(UI_Continue, "No save") }
@@ -33,7 +33,7 @@ game Menu {
     if ui_clicked(UI_Quit)     { quit() }
   }
 
-  system Draw phase Render {
+  handler Draw phase Render {
     clear(0x0e0e16)
     ui_render()
     present()

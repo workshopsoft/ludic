@@ -91,7 +91,7 @@ A source file opens with `game Name { … }` or `module Name { … }`.
 
 ```ludic
 # doc-check: skip — illustrative: elided body
-module Combat {
+program Combat {
   @export fn damage(attack: int, armour: int, roll: int) -> int { … }
   fn curve(level: int) -> int { … }          # private: not a symbol
 }

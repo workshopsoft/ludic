@@ -1,6 +1,6 @@
 # draw.ludic — the Render system (overworld, battle, and overlay screens).
 
-system Draw phase Render {
+handler Draw phase Render {
   let m = reg(R_MODE)
   clear(0x101018)
 

@@ -19,22 +19,22 @@ A bare fragment is wrapped first: a declaration list goes inside
 import re, subprocess, sys, os, tempfile
 
 LC = './build/ludicc'
-DECL = ('game','module','component','archetype','system','edge','fn','pure',
-        'extern','const','var','ui','scene','import')
+DECL = ('program','property','model','handler','enum','fn',
+        'extern','const','var','ui','struct','import')
 
 def classify(body):
     first = next((l.strip() for l in body.split('\n')
                   if l.strip() and not l.strip().startswith('#')), '')
     head = first.split('(')[0].split()[0] if first else ''
-    if head in ('game','module'): return 'whole'
+    if head == 'program': return 'whole'
     return 'decls' if head in DECL else 'stmts'
 
 def wraps(body, kind):
     """Candidate framings, best guess first. An excerpt often mixes declarations
     with loose statements, so both are tried and either parsing counts."""
     if kind == 'whole': return [body]
-    as_decls = 'game DocCheck {\n' + body + '\n}\n'
-    as_stmts = 'game DocCheck {\n  system DocS phase Start {\n' + body + '\n  }\n}\n'
+    as_decls = 'program DocCheck {\n' + body + '\n}\n'
+    as_stmts = 'program DocCheck {\n  handler DocS phase Start {\n' + body + '\n  }\n}\n'
     return [as_decls, as_stmts] if kind == 'decls' else [as_stmts, as_decls]
 
 def fences(path):

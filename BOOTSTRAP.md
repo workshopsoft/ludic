@@ -852,9 +852,9 @@ current tree (`./test.sh` = 64/64).
 
 **Recursion** ✅ → `55`
 ```ludic
-game P {
+program P {
   fn fib(n: int) -> int { if n < 2 { return n };  return fib(n-1) + fib(n-2) }
-  system B phase Start { print_int(fib(10)); quit() }
+  handler B phase Start { print_int(fib(10)); quit() }
 }
 ```
 
@@ -908,19 +908,19 @@ spelling is equally legal (§5.3).
 **R1 — statements now require a separator (Rule B, syntax-redesign Phase 2)** → parse error
 ```ludic
 # doc-check: skip — intentionally rejected under Rule B: needs a newline or ';'
-game P { system B phase Start { let x = 1 x = x + 1 print_int(x) quit() } }
+program P { handler B phase Start { let x = 1 x = x + 1 print_int(x) quit() } }
 ```
 Statements no longer sit adjacent with only spaces between them; the compiler
 reports `expected newline or ';' between statements`. Put each on its own line,
 or separate them with `;` (both lex to the same separator token):
 ```ludic
-game P { system B phase Start { let x = 1; x = x + 1; print_int(x); quit() } }
+program P { handler B phase Start { let x = 1; x = x + 1; print_int(x); quit() } }
 ```
 
 **R2 — commas omitted throughout** → `7`
 ```ludic
 # doc-check: skip — composite: declaration plus statements
-component Pos { x: int = 0  y: int = 0 }
+property Pos { x: int = 0  y: int = 0 }
 spawn Hero { Pos { x: 7  y: 2 } }
 ```
 
@@ -950,7 +950,7 @@ print_int(half(8))
 ```
 And a system may declare read-only access, then write — also compiles:
 ```ludic
-system Violate phase Update reads [Pos] query (p) [Pos] { p.x = 99 }
+handler Violate phase Update reads [Pos] query (p) [Pos] { p.x = 99 }
 ```
 
 **R8 — the two formatters disagree about what "format" means.** Given

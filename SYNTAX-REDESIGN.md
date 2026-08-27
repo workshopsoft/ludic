@@ -112,11 +112,11 @@ alternative if the paren form is disliked: keep whitespace separation but coloni
 ```ludic
 # doc-check: skip — illustrative redesign snippet (proposed / partial syntax)
 # before
-edge system Move @deterministic reads [Vel] writes [Pos] phase FixedUpdate
+edge handler Move @deterministic reads [Vel] writes [Pos] phase FixedUpdate
   query (p, v) [Pos, Vel] where a.x > 0 { … }
 # after
 @edge @deterministic
-system Move
+handler Move
   phase FixedUpdate
   reads [Vel] writes [Pos]
   query (p, v) [Pos, Vel] where p.x > 0

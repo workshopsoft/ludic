@@ -1,6 +1,6 @@
 # overworld.ludic — boot, movement/encounter input, and the shop system.
 
-system Boot phase Start {
+handler Boot phase Start {
   load_png("assets/kenney/tiny-town/Tiles/tile_0000.png")      # 0 grass
   load_png("assets/kenney/tiny-town/Tiles/tile_0004.png")      # 1 tree
   load_png("assets/kenney/tiny-town/Tiles/tile_0025.png")      # 2 path
@@ -33,7 +33,7 @@ system Boot phase Start {
   setreg(R_POTION, 2)
 }
 
-system Control phase Input {
+handler Control phase Input {
   if reg(R_MODE) == 0 {
     for (p) in query [Pos, {Player}] {
       let k = key()
@@ -122,7 +122,7 @@ system Control phase Input {
 }
 
 # shop (at the house 'h' tile): buy potions with gold
-system Shop phase Update {
+handler Shop phase Update {
   if reg(R_MODE) == 4 {
     let k = key()
     if k == 'w' { setreg(R_CUR, max(0, reg(R_CUR) - 1)) }

@@ -11,7 +11,7 @@
 # engine, a test harness, a scripting host. Non-exported functions stay private
 # to the library.
 # ============================================================================
-module Combat {
+program Combat {
 
   const CRIT_MULT: int = 2
 

@@ -1,17 +1,17 @@
 # world.ludic — the data model: components, entity archetypes, constants.
 # Imported by examples/chronorift.ludic. No `game` wrapper (this is a fragment).
 
-component Pos    { x: int = 0, y: int = 0 }
-component Actor  { kind: int = 0 }
-component Stats  { hp: int = 1, maxhp: int = 1, mp: int = 0, maxmp: int = 0,
+property Pos    { x: int = 0, y: int = 0 }
+property Actor  { kind: int = 0 }
+property Stats  { hp: int = 1, maxhp: int = 1, mp: int = 0, maxmp: int = 0,
                    atk: int = 1, def: int = 0, lvl: int = 1, xp: int = 0, guard: int = 0 }
-component Party  { slot: int = 0 }
+property Party  { slot: int = 0 }
 
 # Entity KINDS. Identity is stored as one integer per entity (L_kind), not as
 # an empty marker component. Query membership with {Player} / {Enemy}.
-archetype Player { Pos, Actor, Party, Stats }   # the controllable knight
-archetype Ally   { Party, Stats }               # backline mage (no overworld body)
-archetype Enemy  { Actor, Stats }               # battle foe
+model Player { Pos, Actor, Party, Stats }   # the controllable knight
+model Ally   { Party, Stats }               # backline mage (no overworld body)
+model Enemy  { Actor, Stats }               # battle foe
 
 const MW: int = 40
 const MH: int = 18
