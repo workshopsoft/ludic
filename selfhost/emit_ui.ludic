@@ -97,7 +97,7 @@ fn emit_ui_build() -> void {
         emit("  call void @fn_rt_ui_static_text(i32 ");  emit(itoa(i));  emit(", ptr ");  emit(sv.code);  emit(")\n")
       } else { if (k == "skin") or (k == "image") {
         let sv = emit_expr(v)
-        let r = emit_bind(("call i32 @fn_rt_image_load(ptr " + (sv.code + ")")))
+        let r = emit_bind(`call i32 @fn_rt_image_load(ptr {sv.code})`)
         if (k == "skin") { ll_ui_set(i, 20, r) } else { ll_ui_set(i, 19, r) }
       } else { if (k == "align") {
         if v.kind == E_ID {

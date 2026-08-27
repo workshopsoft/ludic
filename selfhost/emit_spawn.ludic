@@ -4,7 +4,7 @@
 fn emit_init_component(e: ptr, comp: ptr, rec: Node) -> void {
   let me = itoa(MAX_ENT)
   let c = find_comp(comp)
-  if (c == null) { perr(("spawn: unknown property " + comp)) }
+  if (c == null) { perr(`spawn: unknown property {comp}`) }
   let hp = nreg();  emit("  ");  emit(hp);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i8], ptr @H_");  emit(comp);  emit(", i32 0, i32 ");  emit(e);  emit("\n")
   emit("  store i8 1, ptr ");  emit(hp);  emit("\n")
   let slot = nreg()
@@ -101,11 +101,11 @@ fn emit_despawn(st: Node) -> void {
   if len(g_ondespawn) > 0 {
     let me = itoa(MAX_ENT)
     let kp = nreg();  emit("  ");  emit(kp);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_kind, i32 0, i32 ");  emit(v.code);  emit("\n")
-    let kind = emit_bind(("load i32, ptr " + kp))
+    let kind = emit_bind(`load i32, ptr {kp}`)
     var i = 0
     while i < len(g_ondespawn) {
       let mname = g_ondespawn[i].s
-      let c = emit_bind(("icmp eq i32 " + (kind + (", " + itoa(find_arch_id(mname))))))
+      let c = emit_bind(`icmp eq i32 {kind}, {itoa(find_arch_id(mname))}`)
       let yes = lbl("dh");  let no = lbl("dhn")
       emit("  br i1 ");  emit(c);  emit(", label %");  emit(yes);  emit(", label %");  emit(no);  emit("\n")
       emit(yes);  emit(":\n  call void @on_despawn_");  emit(mname);  emit("(i32 ");  emit(v.code);  emit(")\n")

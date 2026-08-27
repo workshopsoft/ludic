@@ -3,8 +3,8 @@
 # holder points at, so growth is visible to every holder.
 
 fn emit_sizeof(llt: ptr) -> ptr {
-  let p = emit_bind(("getelementptr " + (llt + ", ptr null, i32 1")))
-  return emit_bind(("ptrtoint ptr " + (p + " to i64")))
+  let p = emit_bind(`getelementptr {llt}, ptr null, i32 1`)
+  return emit_bind(`ptrtoint ptr {p} to i64`)
 }
 
 fn emit_new_struct(name: ptr) -> Val {
@@ -12,7 +12,7 @@ fn emit_new_struct(name: ptr) -> Val {
   if (s == null) { perr("unknown record type in new") }
   let lty = layout_ty(name)
   let sz = emit_sizeof(lty)
-  let obj = emit_bind(("call ptr @malloc(i64 " + (sz + ")")))
+  let obj = emit_bind(`call ptr @malloc(i64 {sz})`)
   var f = 0
   while f < len(s.kids) {
     let fd = s.kids[f]
@@ -31,7 +31,7 @@ fn emit_new_struct(name: ptr) -> Val {
 
 fn emit_new_slice(ty: ptr) -> Val {
   let sz = emit_sizeof("%LSlice")
-  let h = emit_bind(("call ptr @malloc(i64 " + (sz + ")")))
+  let h = emit_bind(`call ptr @malloc(i64 {sz})`)
   let d0 = nreg();  emit("  ");  emit(d0);  emit(" = getelementptr inbounds %LSlice, ptr ");  emit(h);  emit(", i32 0, i32 0\n")
   emit("  store ptr null, ptr ");  emit(d0);  emit("\n")
   let d1 = nreg();  emit("  ");  emit(d1);  emit(" = getelementptr inbounds %LSlice, ptr ");  emit(h);  emit(", i32 0, i32 1\n")
@@ -52,10 +52,10 @@ fn emit_len(e: Node) -> Val {
   let s = emit_expr(e.kids[0])
   if is_slice_ty(s.ty) {                          # a slice: read its header length
     let lp = slice_field(s.code, 1)
-    return val(emit_bind(("load i32, ptr " + lp)), "int")
+    return val(emit_bind(`load i32, ptr {lp}`), "int")
   }
-  let r = emit_bind(("call i64 @strlen(ptr " + (s.code + ")")))   # a string: byte length
-  return val(emit_bind(("trunc i64 " + (r + " to i32"))), "int")
+  let r = emit_bind(`call i64 @strlen(ptr {s.code})`)   # a string: byte length
+  return val(emit_bind(`trunc i64 {r} to i32`), "int")
 }
 
 fn emit_push(e: Node) -> Val {
@@ -64,30 +64,30 @@ fn emit_push(e: Node) -> Val {
   let elt = llty(el)
   let h = s.code
   let lp = slice_field(h, 1);  let cp = slice_field(h, 2);  let dp = slice_field(h, 0)
-  let l = emit_bind(("load i32, ptr " + lp))
-  let c = emit_bind(("load i32, ptr " + cp))
-  let full = emit_bind(("icmp sge i32 " + (l + (", " + c))))
+  let l = emit_bind(`load i32, ptr {lp}`)
+  let c = emit_bind(`load i32, ptr {cp}`)
+  let full = emit_bind(`icmp sge i32 {l}, {c}`)
   let grow = lbl("grow");  let put = lbl("put")
   emit("  br i1 ");  emit(full);  emit(", label %");  emit(grow);  emit(", label %");  emit(put);  emit("\n")
   emit(grow);  emit(":\n")
-  let dbl = emit_bind(("mul i32 " + (c + ", 2")))
-  let isz = emit_bind(("icmp eq i32 " + (c + ", 0")))
-  let nc = emit_bind(("select i1 " + (isz + (", i32 8, i32 " + dbl))))
+  let dbl = emit_bind(`mul i32 {c}, 2`)
+  let isz = emit_bind(`icmp eq i32 {c}, 0`)
+  let nc = emit_bind(`select i1 {isz}, i32 8, i32 {dbl}`)
   let esz = emit_sizeof(elt)
-  let ncw = emit_bind(("zext i32 " + (nc + " to i64")))
-  let bytes = emit_bind(("mul i64 " + (ncw + (", " + esz))))
-  let old = emit_bind(("load ptr, ptr " + dp))
-  let nd = emit_bind(("call ptr @realloc(ptr " + (old + (", i64 " + (bytes + ")")))))
+  let ncw = emit_bind(`zext i32 {nc} to i64`)
+  let bytes = emit_bind(`mul i64 {ncw}, {esz}`)
+  let old = emit_bind(`load ptr, ptr {dp}`)
+  let nd = emit_bind(`call ptr @realloc(ptr {old}, i64 {bytes})`)
   emit("  store ptr ");  emit(nd);  emit(", ptr ");  emit(dp);  emit("\n")
   emit("  store i32 ");  emit(nc);  emit(", ptr ");  emit(cp);  emit("\n")
   emit("  br label %");  emit(put);  emit("\n")
   emit(put);  emit(":\n")
   let v = emit_expr(e.kids[1])
-  let data = emit_bind(("load ptr, ptr " + dp))
+  let data = emit_bind(`load ptr, ptr {dp}`)
   let slot = nreg()
   emit("  ");  emit(slot);  emit(" = getelementptr inbounds ");  emit(elt);  emit(", ptr ");  emit(data);  emit(", i32 ");  emit(l);  emit("\n")
   emit("  store ");  emit(elt);  emit(" ");  emit(v.code);  emit(", ptr ");  emit(slot);  emit("\n")
-  let l1 = emit_bind(("add i32 " + (l + ", 1")))
+  let l1 = emit_bind(`add i32 {l}, 1`)
   emit("  store i32 ");  emit(l1);  emit(", ptr ");  emit(lp);  emit("\n")
   return val("0", "void")
 }

@@ -33,7 +33,7 @@ fn emit_fn(d: Node) -> void {
   if not g_term { emit("  br label %ret\n") }
   emit("ret:\n")
   if (rl == "void") { emit("  ret void\n") }
-  else { let r = emit_bind(("load " + (rl + (", ptr %retval"))));  emit("  ret ");  emit(rl);  emit(" ");  emit(r);  emit("\n") }
+  else { let r = emit_bind(`load {rl}, ptr %retval`);  emit("  ret ");  emit(rl);  emit(" ");  emit(r);  emit("\n") }
   code = saved
   emit("define ");  emit(rl);  emit(" @fn_");  emit(d.s);  emit("(");  emit_params_sig(d);  emit(") {\nentry:\n")
   emit(buf_str(falloc))
