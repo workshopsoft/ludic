@@ -56,7 +56,7 @@ static const char* LUDIC_KW_DECL[] = {
     "const","var","fn","extern","handler","entry", 0
 };
 static const char* LUDIC_KW_CLAUSE[] = {
-    "phase","query","reads","writes","on", 0
+    "phase","query","on", 0
 };
 /* Documented design targets the self-hosted parser does not accept yet. Kept
  * out of the highlighted vocabulary (they would read as working keywords) until

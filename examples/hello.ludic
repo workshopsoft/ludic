@@ -15,13 +15,12 @@ program Hello {
     }
   }
 
-  # a system can declare the entities it operates on: the body then runs once
-  # per match, with the components bound and self() giving that entity.
-  handler Move phase FixedUpdate
-    query (p, v) [Pos, Vel]
-  {
-    p.x = p.x + v.dx
-    p.y = p.y + v.dy
+  # a handler declares the entities it operates on with @Queries: the body then
+  # runs once per match, each property bound by name and self() giving that entity.
+  @Queries(these: [Pos, Vel])
+  handler Move phase FixedUpdate {
+    Pos.x = Pos.x + Vel.dx
+    Pos.y = Pos.y + Vel.dy
   }
 
   handler Report phase Update {

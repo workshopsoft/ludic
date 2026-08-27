@@ -42,11 +42,11 @@ ok "self-host suite: $CORR checks passed (see ./selfhost/test.sh)"
 
 echo "== documented syntax stays compilable (guards against spec/compiler drift) =="
 # Compiles a feature example end-to-end (parse -> lower -> link). qdecl exercises
-# the `query (vars) [terms] where ...` clause in a system SIGNATURE.
+# a @Queries annotation with a per-property constraint and an `on:` model tag.
 qsmoke() {  # name
   local n="$1"
   if ./selfhost/game-build.sh build/ludicc "examples/$n.ludic" "/tmp/ludic_${n}_s" >/tmp/qs.out 2>&1; then
-    ok "$n compiles (signature-query desugars to S_QUERY)"
+    ok "$n compiles (@Queries desugars to S_QUERY)"
   else bad "$n: $(tail -1 /tmp/qs.out)"; fi
 }
 qsmoke qdecl

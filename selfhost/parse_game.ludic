@@ -15,47 +15,22 @@ fn parse_component() -> Node {
   eat_op("}"); return n
 }
 
-# skip an @annotation or a reads/writes/query/... clause we don't model yet
-fn skip_clause() -> void {
-  if is_op("[") { let depth = 0
-    while true { if is_op("[") { depth = depth + 1 };  if is_op("]") { depth = depth - 1 }
-      pi = pi + 1;  if depth == 0 { break } }
-  }
-}
-
 fn parse_system() -> Node {
   pi = pi + 1; let n = node(N_SYS); n.s = eat_id(); n.ty = "Update"
-  # clauses: @anno, phase X, reads/writes/needs/uses [..], query (..) [..]
-  # A `query (vars) [terms] where c` clause desugars to a body wrapped in one
-  # `for (vars) in query [terms] where c { ... }` — the same S_QUERY node the
-  # inline form builds, so `qdecl.ludic` and the inline form share a lowering.
-  let has_q = false
-  let qn = node(S_QUERY)
+  # postfix clauses on `handler Name …`: @anno(...) (parsed and reserved, e.g.
+  # @deterministic / @Reads(...) / @Writes(...)) and `phase X`. The handler's
+  # query lives in a prefix `@Queries(...)` annotation (see parse_one_decl), not
+  # in a signature clause.
   while true {
     skipnl()                                   # clauses may span several lines
     if is_op("@") { pi = pi + 1; let a = eat_id();  if is_op("(") { let d = 0    # @anno, one per turn so a
         while true { if is_op("(") { d = d + 1 };  if is_op(")") { d = d - 1 };  pi = pi + 1;  if d == 0 { break } } }
       continue }                               # newline-separated @anno re-skips at the loop top
     if is_id("phase") { pi = pi + 1; n.ty = eat_id(); continue }
-    if is_id("reads") or is_id("writes") { pi = pi + 1; skip_clause(); continue }   # `needs`/`uses` synonyms dropped (Rule A cleanup)
-    if is_id("query") {
-      pi = pi + 1; has_q = true
-      if is_op("(") { eat_op("(")              # optional (vars); omitted when nothing binds
-        while not is_op(")") { let v = node(E_ID); v.s = eat_id(); push(qn.kids, v); if is_op(",") { pi = pi + 1 } }
-        eat_op(")") }
-      qn.c = parse_query_tail()
-      qn.b = qn.c.a                            # where-expr (or null)
-      continue
-    }
     break
   }
   skipnl()
-  let body = block()
-  if has_q {
-    qn.a = body
-    let wrap = node(N_BLOCK); push(wrap.kids, qn)
-    n.a = wrap
-  } else { n.a = body }
+  n.a = block()
   return n
 }
 
@@ -81,7 +56,8 @@ fn parse_query_for() -> Node {
   while not is_op(")") { let v = node(E_ID); v.s = eat_id(); push(n.kids, v); if is_op(",") { pi = pi + 1 } }
   eat_op(")")
   let inkw = eat_id()                        # 'in'
-  let qkw = eat_id()                         # 'query'
+  if not is_id("query") { perr("expected 'query' in for-loop") }
+  pi = pi + 1                                # 'query'
   n.c = parse_query_tail()
   n.b = n.c.a                                # where
   n.a = block()

@@ -45,7 +45,7 @@ object LudicVocabulary {
         "const", "var", "fn", "extern", "handler", "entry"
     )
     val CLAUSE = setOf(
-        "phase", "query", "reads", "writes", "on"
+        "phase", "query", "on"
     )
     val STMT = setOf(
         "let", "return", "if", "else", "while", "for", "in", "spawn", "despawn",

@@ -175,49 +175,50 @@ program. `self()` yields the entity of the innermost `query` loop.
 ## Handlers & phases
 
 ```ludic
-handler Move @deterministic
-  reads  [Vel]          # declared data access (parsed and reserved; not yet
-  writes [Pos]          # consumed by any analysis pass — see "Not yet implemented")
-  phase  FixedUpdate
-  query  (p, v) [Pos, Vel]      # the entities this handler operates on
-{ p.x = p.x + v.dx }
+@Queries(these: [Pos, Vel])   # the entities this handler operates on
+@Writes(Pos)                  # declared data access (parsed and reserved; not
+@Reads(Vel)                   # yet consumed by any analysis pass)
+handler Move @deterministic phase FixedUpdate
+{ Pos.x = Pos.x + Vel.dx }
 ```
 
 Phases run in this order every frame: **`Start`** (once at boot), then each
 frame **`Input` → `FixedUpdate` → `Update` → `LateUpdate` → `Render`**.
 `@edge` in front of a `handler` marks one that touches the outside world.
 
-Declaration modifiers are `@annotations` written in front of the declaration —
-`@export fn …` (a C-ABI-exported function), `@edge handler …`, `@deterministic`,
-`@pure`. They parse into one uniform channel rather than a set of prefix
-keywords. (`@export` sets the export flag; the others parse but have no codegen
-effect in the self-hosted compiler yet.)
+Everything a handler declares beyond its `phase` is an `@annotation` — the
+handler's query, its data access, and its modifiers all use one uniform channel
+rather than a mix of prefix keywords and signature clauses. `@export fn …`
+(a C-ABI-exported function), `@edge handler …`, `@deterministic`, `@pure`,
+`@Reads(...)`, `@Writes(...)`. (`@export` sets the export flag; the others parse
+but have no codegen effect in the self-hosted compiler yet.)
 
-### The `query` clause
+### Declaring a handler's query (`@Queries`)
 
-A handler declares the entities it works on, alongside its phase. The body then
-runs **once per matching entity**, with the properties bound and `self()` giving
-that entity — the query header is simply hoisted out of the body into the
-signature:
+`@Queries` declares the entities a handler works on. The body then runs **once
+per matching entity**, with each property bound by its own name and `self()`
+giving that entity — the query header lifts out of the body into an annotation:
 
 ```ludic
-handler CleanBattle phase LateUpdate
-  query (b, p) [Battle, Pos, {Enemy}] where b.hp <= 0
-{ despawn self() }
+# doc-check: skip — illustrative handler
+@Queries(these: [Battle{hp <= 0}, Pos], on: Enemy)
+handler CleanBattle phase LateUpdate { despawn self() }
 ```
 
 is the same program as
 
 ```ludic
 handler CleanBattle phase LateUpdate {
-  for (b, p) in query [Battle, Pos, {Enemy}] where b.hp <= 0 { despawn self() }
+  for (Battle, Pos) in query [Battle, Pos, {Enemy}] where Battle.hp <= 0 { despawn self() }
 }
 ```
 
-Drop `(vars)` when nothing binds: `query [{Enemy}]`. A handler declares at most
-one query, and the number of variables must equal the number of binding terms
-(`{Tag}` terms filter without binding, so they don't count). A handler with no
-`query` clause runs once per tick, as before.
+`these:` lists the bound properties; a `Prop{constraint}` qualifies its bare
+field names to that property (`Battle{hp <= 0}` → `Battle.hp <= 0`). `on: Model`
+adds a `{Model}` kind filter. A handler with no `@Queries` runs once per tick.
+For a constraint that spans two properties (`Pos.x > Vel.dx`), or several kind
+filters, write the loop out with an inline `for (…) in query […] where …`
+instead — `@Queries` covers the common per-property case.
 
 ### Conditions
 
@@ -226,16 +227,17 @@ ordinary expression evaluated with the bindings in scope, so entities can be
 matched on their field values:
 
 ```ludic
-# doc-check: skip — a bare handler clause, not a whole declaration
-  query (b, s) [Battle, Stats] where b.hp <= 0 and s.level > 3
+# doc-check: skip — illustrative @Queries constraint
+@Queries(these: [Battle{hp <= 0}, Stats{level > 3}])
 ```
 
-The same `where` works on an inline `for (…) in query […]`.
+The same `where` works on an inline `for (…) in query […]`; in `@Queries` the
+equivalent is a per-property `Prop{constraint}`.
 
-`where` is evaluated **per candidate entity**, so it is the wrong place for a
-guard that concerns the whole handler (`where reg(R_MODE) != 1` would re-read the
-register for every entity). Keep whole-handler guards in the body of a handler
-with no `query` clause, wrapping an inline query — as `CleanBattle` does in
+A constraint is evaluated **per candidate entity**, so it is the wrong place for
+a guard that concerns the whole handler (re-reading `reg(R_MODE)` for every
+entity). Keep whole-handler guards in the body of a handler with no `@Queries`,
+wrapping an inline query — as `CleanBattle` does in
 `examples/chronorift/combat.ludic`.
 
 ### Matching is lazy, not snapshotted
@@ -703,21 +705,19 @@ scene Overworld {
 
 ## Queries in a handler signature
 
-When a handler's whole body is one query loop, the loop header can move into the
-declaration:
+When a handler's whole body is one query loop, the loop header lifts into a
+`@Queries` annotation (see "Declaring a handler's query" above):
 
 ```ludic
-handler CleanBattle phase LateUpdate
-  query (b, p) [Battle, Pos, {Foe}] where b.hp <= 0
-{
-  despawn self()
-}
+# doc-check: skip — illustrative handler
+@Queries(these: [Battle{hp <= 0}, Pos], on: Foe)
+handler CleanBattle phase LateUpdate { despawn self() }
 ```
 
 This is exactly equivalent to wrapping the body in
-`for (b, p) in query [Battle, Pos, {Foe}] where b.hp <= 0 { … }` — same
-lowering, same semantics. The body runs once per matching entity and `self()`
-is that entity.
+`for (Battle, Pos) in query [Battle, Pos, {Foe}] where Battle.hp <= 0 { … }` —
+same lowering, same semantics. The body runs once per matching entity and
+`self()` is that entity. `examples/qdecl.ludic` is a working example.
 
 Mutation during iteration follows the same rules as an inline query, because it
 is the same loop: entities are visited by ascending id, `despawn` of the current

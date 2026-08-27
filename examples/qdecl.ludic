@@ -1,13 +1,13 @@
 # ============================================================================
-# qdecl.ludic — a system whose query lives in its signature.
+# qdecl.ludic — a handler whose query lives in a @Queries annotation.
 #
-#   system CleanBattle phase LateUpdate
-#     query (b, p) [Battle, Pos, {Foe}] where b.hp <= 0
-#   { … }
+#   @Queries(these: [Battle{hp <= 0 and side == 1}, Pos], on: Foe)
+#   handler CleanBattle phase LateUpdate { … }
 #
-# is the same thing as writing `for (b, p) in query [...] where ... { … }` around
-# the whole body — the loop header just moves into the declaration. The body runs
-# once per matching entity, and self() is that entity.
+# is the same thing as writing `for (Battle, Pos) in query [Battle, Pos, {Foe}]
+# where Battle.hp <= 0 and Battle.side == 1 { … }` around the whole body — the
+# loop header moves into the annotation. Each property binds by name, the body
+# runs once per matching entity, and self() is that entity.
 # ============================================================================
 program QueryDecl {
   property Battle { hp: int = 0, side: int = 0 }
@@ -20,17 +20,17 @@ program QueryDecl {
     spawn Foe { Battle { hp: -2, side: 0 } }
   }
 
-  handler CleanBattle phase LateUpdate
-    query (b, p) [Battle, Pos, {Foe}] where b.hp <= 0 and b.side == 1
-  {
-    print_int(p.x)
+  # a per-property constraint `Battle{...}` qualifies its bare fields to that
+  # property; `on: Foe` adds the {Foe} kind filter.
+  @Queries(these: [Battle{hp <= 0 and side == 1}, Pos], on: Foe)
+  handler CleanBattle phase LateUpdate {
+    print_int(Pos.x)
     despawn self()
   }
 
-  handler Census phase Render
-    query (b) [Battle]
-  {
-    print_int(b.hp)
+  @Queries(these: [Battle])
+  handler Census phase Render {
+    print_int(Battle.hp)
   }
 
   handler Bye phase Render { quit() }
