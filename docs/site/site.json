@@ -14,6 +14,10 @@
     { "label": "Get started", "href": "#start" },
     { "label": "API Reference", "href": "api.html" }
   ],
+  "ref_nav_links": [
+    { "label": "Home", "href": "index.html" },
+    { "label": "API Reference", "href": "api.html" }
+  ],
   "hero": {
     "pill": "Opinionated · Batteries-included · No framework",
     "title_pre": "Build a game,",

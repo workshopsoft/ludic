@@ -79,12 +79,12 @@
   pre a.tok:hover{background:rgba(124,245,196,.14);outline:1px solid rgba(124,245,196,.35)}
 
   /* ---------- pipeline ---------- */
-  .pipeline{display:flex;align-items:center;justify-content:center;gap:4px;flex-wrap:wrap;
-    margin:8px 0 0;padding:16px;border:1px dashed var(--line2);border-radius:var(--radius);background:rgba(18,23,43,.4)}
-  .stage{font-family:"JetBrains Mono",monospace;font-size:12.5px;font-weight:500;color:var(--head);
-    background:var(--panel);border:1px solid var(--line2);padding:7px 11px;border-radius:9px;white-space:nowrap}
+  .pipeline{display:flex;flex-direction:column;align-items:center;gap:8px;
+    margin:8px 0 0;padding:18px 16px;border:1px dashed var(--line2);border-radius:var(--radius);background:rgba(18,23,43,.4)}
+  .stage{font-family:"JetBrains Mono",monospace;font-size:13px;font-weight:500;color:var(--head);text-align:center;
+    background:var(--panel);border:1px solid var(--line2);padding:9px 13px;border-radius:9px;white-space:nowrap}
   .stage.hl{color:var(--mint);border-color:rgba(124,245,196,.35)}
-  .arrow{color:var(--muted);padding:0 6px;font-size:14px}
+  .arrow{color:var(--muted);font-size:16px;line-height:1;transform:rotate(90deg)}
 
   /* ---------- sections ---------- */
   section{padding:48px 0}
@@ -156,13 +156,15 @@
 
   /* hover-card + kind badges (shared with the reference; hover-devices only) */
   .hovercard{position:fixed;z-index:100;max-width:min(340px,calc(100vw - 24px));background:var(--panel2);
-    border:1px solid var(--line2);border-radius:12px;padding:12px 14px;box-shadow:0 20px 50px -18px rgba(0,0,0,.8);pointer-events:none}
+    border:1px solid var(--line2);border-radius:12px;padding:12px 14px;box-shadow:0 20px 50px -18px rgba(0,0,0,.8);
+    pointer-events:auto;cursor:pointer}
+  .hovercard:hover{border-color:var(--mint)}
   .hc-top{display:flex;align-items:center;gap:9px;margin-bottom:8px}
   .hc-name{font-family:"JetBrains Mono",monospace;color:var(--head);font-weight:700;font-size:14px;overflow-wrap:anywhere}
   .hc-sig{display:block;color:var(--c-fn);background:var(--c-bg);border:1px solid var(--line);border-radius:7px;
     padding:6px 9px;font-size:12px;margin-bottom:8px;white-space:pre-wrap;overflow-wrap:anywhere}
   .hc-tip{color:var(--text);font-size:13.5px;line-height:1.5}
-  .hc-foot{color:var(--muted);font-size:11.5px;margin-top:9px;letter-spacing:.3px}
+  .hc-foot{color:var(--mint);font-size:11.5px;margin-top:9px;letter-spacing:.3px}
   .kind-badge{font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;padding:3px 7px;
     border-radius:6px;border:1px solid var(--line2);color:var(--muted);background:var(--panel)}
   .kind-keyword{color:var(--c-key)}.kind-type{color:var(--c-type)}.kind-phase{color:var(--blue)}
@@ -183,6 +185,9 @@
     .nav-links .nav-cta{padding:8px 15px;border-radius:9px;border:1px solid var(--line2);
       background:var(--panel);color:var(--head)!important}
     .nav-links .nav-cta:hover{border-color:var(--mint)}
+    .pipeline{flex-direction:row;flex-wrap:wrap;justify-content:center;gap:4px}
+    .stage{font-size:12.5px;padding:8px 12px}
+    .arrow{transform:none;padding:0 6px;font-size:14px}
   }
   @media (min-width:900px){
     .hero{padding:72px 0 52px}

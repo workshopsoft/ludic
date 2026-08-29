@@ -107,12 +107,25 @@
     document.querySelectorAll('pre[data-lang="ludic"]').forEach(pre => { pre.innerHTML = highlight(pre.textContent); });
   }
 
-  /* ---- hover cards ------------------------------------------------------- */
-  let cardEl = null, cardTimer = null;
+  /* ---- tooltip cards: click a token to open; click the card to open the ---
+     ---- page in a new tab; click outside (or Escape) to close ------------- */
+  let cardEl = null, cardAnchor = null;
   function ensureCard(){
     if (cardEl) return cardEl;
     cardEl = document.createElement("div"); cardEl.className = "hovercard"; cardEl.hidden = true;
+    cardEl.addEventListener("click", () => {
+      const h = cardEl.dataset.href; if (h) window.open(h, "_blank", "noopener");
+    });
     document.body.appendChild(cardEl); return cardEl;
+  }
+  function positionCard(a){
+    const el = cardEl, r = a.getBoundingClientRect();
+    const cw = el.offsetWidth, ch = el.offsetHeight;
+    let left = r.left, top = r.bottom + 8;
+    if (left + cw > window.innerWidth - 12) left = window.innerWidth - cw - 12;
+    if (left < 12) left = 12;
+    if (top + ch > window.innerHeight - 12) top = r.top - ch - 8;
+    el.style.left = Math.max(12,left) + "px"; el.style.top = Math.max(12,top) + "px";
   }
   function showCard(a){
     const id = a.getAttribute("data-id"); if (!id) return;
@@ -122,30 +135,25 @@
       + (c.kind||"").replace("namespace-method","method") + '</span><span class="hc-name">'+esc(c.name||"")+'</span></div>'
       + (c.sig ? '<code class="hc-sig">'+esc(c.sig)+'</code>' : "")
       + '<div class="hc-tip">'+esc(c.tip||"")+'</div>'
-      + '<div class="hc-foot">'+esc(c.section||"")+' · click to open</div>';
-    el.hidden = false;
-    const r = a.getBoundingClientRect();
-    const cw = el.offsetWidth, ch = el.offsetHeight;
-    let left = r.left, top = r.bottom + 8;
-    if (left + cw > window.innerWidth - 12) left = window.innerWidth - cw - 12;
-    if (left < 12) left = 12;
-    if (top + ch > window.innerHeight - 12) top = r.top - ch - 8;
-    el.style.left = Math.max(12,left) + "px"; el.style.top = Math.max(12,top) + "px";
+      + '<div class="hc-foot">'+esc(c.section||"")+' · open in new tab ↗</div>';
+    el.dataset.href = a.getAttribute("href") || "";
+    el.hidden = false; cardAnchor = a; positionCard(a);
   }
-  function hideCard(){ if (cardEl) cardEl.hidden = true; }
+  function hideCard(){ if (cardEl){ cardEl.hidden = true; cardAnchor = null; } }
   function installCards(){
-    // hover cards are a pointer affordance; skip on touch so a tap just navigates
-    if (!(window.matchMedia && window.matchMedia("(hover: hover)").matches)) return;
-    document.addEventListener("mouseover", e => {
+    document.addEventListener("click", e => {
       const a = e.target.closest && e.target.closest("a.tok[data-id]");
-      if (!a) return;
-      clearTimeout(cardTimer); cardTimer = setTimeout(()=>showCard(a), 130);
+      if (a){ e.preventDefault(); showCard(a); return; }               // token -> open card
+      if (cardEl && !cardEl.hidden && !(e.target.closest && e.target.closest(".hovercard"))) hideCard(); // outside -> close
     });
-    document.addEventListener("mouseout", e => {
-      const a = e.target.closest && e.target.closest("a.tok[data-id]");
-      if (a){ clearTimeout(cardTimer); hideCard(); }
-    });
-    window.addEventListener("scroll", hideCard, {passive:true});
+    document.addEventListener("keydown", e => { if (e.key === "Escape") hideCard(); });
+    window.addEventListener("resize", hideCard);
+    window.addEventListener("scroll", () => {
+      if (cardEl && !cardEl.hidden && cardAnchor){
+        const r = cardAnchor.getBoundingClientRect();
+        if (r.bottom < 0 || r.top > window.innerHeight) hideCard(); else positionCard(cardAnchor);
+      }
+    }, {passive:true});
   }
 
   /* ---- flash the scrolled-to target ------------------------------------- */

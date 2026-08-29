@@ -4,7 +4,7 @@
     --mint:#7cf5c4; --coral:#ff5d73; --violet:#c792ea; --blue:#82aaff; --amber:#f6c177;
     --c-bg:#0b0f20; --c-comment:#5b6788; --c-key:#ff7eb6; --c-type:#7cf5c4;
     --c-str:#f6c177; --c-num:#a6b8ff; --c-annot:#c792ea; --c-fn:#82aaff; --c-punc:#9aa6cc; --c-arg:#f6c177;
-    --radius:14px; --max:900px; --hdr:60px;
+    --radius:14px; --max:1120px; --hdr:60px;
   }
   *{box-sizing:border-box}
   html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
@@ -131,13 +131,15 @@
 
   /* ---- hover card (hover-capable devices only; JS also gates it) ---- */
   .hovercard{position:fixed;z-index:100;max-width:min(340px,calc(100vw - 24px));background:var(--panel2);
-    border:1px solid var(--line2);border-radius:12px;padding:12px 14px;box-shadow:0 20px 50px -18px rgba(0,0,0,.8);pointer-events:none}
+    border:1px solid var(--line2);border-radius:12px;padding:12px 14px;box-shadow:0 20px 50px -18px rgba(0,0,0,.8);
+    pointer-events:auto;cursor:pointer}
+  .hovercard:hover{border-color:var(--mint)}
   .hc-top{display:flex;align-items:center;gap:9px;margin-bottom:8px}
   .hc-name{font-family:"JetBrains Mono",monospace;color:var(--head);font-weight:700;font-size:14px;overflow-wrap:anywhere}
   .hc-sig{display:block;color:var(--c-fn);background:var(--c-bg);border:1px solid var(--line);border-radius:7px;
     padding:6px 9px;font-size:12px;margin-bottom:8px;white-space:pre-wrap;overflow-wrap:anywhere}
   .hc-tip{color:var(--text);font-size:13.5px;line-height:1.5}
-  .hc-foot{color:var(--muted);font-size:11.5px;margin-top:9px;letter-spacing:.3px}
+  .hc-foot{color:var(--mint);font-size:11.5px;margin-top:9px;letter-spacing:.3px}
 
   /* ---- target flash ---- */
   @keyframes ludicflash{0%{background:rgba(124,245,196,.28);box-shadow:0 0 0 3px rgba(124,245,196,.28)}
