@@ -1,0 +1,16 @@
+# mod_events.ludic — the event bus with two listeners on one event, driven from
+# Ludic (replaces the former tests/mod_c/mod.c foreign-mod host). A public event
+# `Damage` has two @On listeners: one prints the amount, one accumulates a total.
+# Emitting it twice runs both listeners each time. Prints 10 / 32 / 42.
+program ModEvents {
+  var total: int = 0
+  event Damage { amount: int = 0 }
+  @On(Damage) handler Native { print(amount) }        # prints each hit
+  @On(Damage) handler Accum  { total = total + amount }   # sums them
+
+  entry {
+    emit Damage(amount: 10)     # Native prints 10
+    emit Damage(amount: 32)     # Native prints 32
+    print(total)                # 42
+  }
+}

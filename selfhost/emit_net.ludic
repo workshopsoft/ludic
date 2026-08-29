@@ -1,0 +1,373 @@
+# emit_net.ludic — NETWORKING N2–N6 codegen (NETWORKING-DESIGN.md).
+#
+# A program that calls net_send/net_poll with no `extern fn` override triggers the
+# built-in loopback transport; this flag defers its emission to end-of-module.
+var g_uses_loopback: bool = false
+
+#
+# N2 (@Sync): per-model serialize/apply over the replicable-and-participating
+# fields, by-kind dispatchers a replication runtime calls, and the POD-scalar
+# compile error + empty-participation warning.
+# N3 (@Owned): the @L_owner array + owner()/set_owner()/is_owner().
+# N5 (roles): the @L_role / @L_localid registers + is_server()/local_id().
+#
+# Everything here is gated (net_has_sync / net_has_owned / len(g_events) etc.),
+# so a program that uses none of it is byte-identical to single-player (§8).
+
+# ---- N2: what replicates -----------------------------------------------------
+# A field of an entity replicates iff the field is @Sync (field.ival==1) AND its
+# component participates in the entity's model (the model member is @Sync,
+# member.ival==1). Participation is decided per model use-site.
+
+fn net_field_ibytes(ty: ptr) -> int { if (llty(ty) == "i8") { return 1 };  return 4 }
+fn net_field_bytes(ty: ptr) -> ptr { if (llty(ty) == "i8") { return "1" };  return "4" }
+
+# total replicated bytes for model m (compile-time constant)
+fn net_model_bytes(m: Node) -> int {
+  var total = 0
+  var ci = 0
+  while ci < len(m.kids) {
+    if m.kids[ci].ival == 1 {
+      let c = find_comp(m.kids[ci].s)
+      if (c != null) {
+        var fj = 0
+        while fj < len(c.kids) { if c.kids[fj].ival == 1 { total = total + net_field_ibytes(c.kids[fj].ty) };  fj = fj + 1 }
+      }
+    }
+    ci = ci + 1
+  }
+  return total
+}
+
+fn net_model_syncs(m: Node) -> bool { return net_model_bytes(m) > 0 }
+
+fn net_has_sync() -> bool {
+  var i = 0
+  while i < len(prog) { if prog[i].kind == N_ARCH { if net_model_syncs(prog[i]) { return true } };  i = i + 1 }
+  return false
+}
+
+# ---- N3: ownership -----------------------------------------------------------
+fn net_has_owned() -> bool {
+  var i = 0
+  while i < len(prog) { if prog[i].kind == N_ARCH and (prog[i].ival == 1) { return true };  i = i + 1 }
+  return false
+}
+
+# ---- N5: role-tagged handlers ------------------------------------------------
+# A handler tagged @Server (ival==1) or @Predicted (ival==2) has a network role.
+fn net_has_role() -> bool {
+  var i = 0
+  while i < len(prog) { if prog[i].kind == N_SYS and (prog[i].ival != 0) { return true };  i = i + 1 }
+  return false
+}
+
+# Any networking feature in use → emit the shared role registers (@L_role /
+# @L_localid). A runtime sets them; offline they keep their single-player default.
+fn net_any() -> bool { return net_has_sync() or net_has_owned() or net_has_role() }
+
+# ---- diagnostics -------------------------------------------------------------
+fn net_warn(msg: ptr) -> void {
+  let e = file_stderr()
+  file_write(e, "ludicc(self): warning: ", 23)
+  file_write(e, msg, len(msg))
+  file_write(e, "\n", 1)
+}
+
+# Validate @Sync usage: a participating member whose component replicates nothing
+# is a warning (participation that replicates nothing); a @Sync ptr field is a
+# hard error (footgun 3 — networked fields must be POD scalars).
+fn net_check() -> void {
+  var i = 0
+  while i < len(prog) {
+    if prog[i].kind == N_ARCH {
+      let m = prog[i]
+      var ci = 0
+      while ci < len(m.kids) {
+        if m.kids[ci].ival == 1 {
+          let cn = m.kids[ci].s
+          let c = find_comp(cn)
+          if (c != null) {
+            var any = false
+            var fj = 0
+            while fj < len(c.kids) {
+              if c.kids[fj].ival == 1 {
+                any = true
+                if (llty(c.kids[fj].ty) == "ptr") { perr(`@Sync field {cn}.{c.kids[fj].s} is not a POD scalar (networked fields must be int/bool/fixed/byte)`) }
+              }
+              fj = fj + 1
+            }
+            if not any { net_warn(`model {m.s} @Syncs {cn} but it has no @Sync fields — nothing replicates`) }
+          }
+        }
+        ci = ci + 1
+      }
+    }
+    i = i + 1
+  }
+}
+
+# ---- N2: per-model serializer / applier --------------------------------------
+# serialize_<M>(e, buf) -> bytes written. Copies each replicated field, tightly
+# packed in member-then-field order, so apply reads the identical layout.
+fn emit_net_serialize(m: Node) -> void {
+  ll_t = 0
+  let me = itoa(MAX_ENT)
+  emit("define i32 @L_serialize_");  emit(m.s);  emit("(i32 %e, ptr %buf) {\nentry:\n")
+  var off = 0
+  var ci = 0
+  while ci < len(m.kids) {
+    if m.kids[ci].ival == 1 {
+      let cn = m.kids[ci].s
+      let c = find_comp(cn)
+      if (c != null) {
+        let s = nreg();  emit("  ");  emit(s);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x %Cmp_");  emit(cn);  emit("], ptr @S_");  emit(cn);  emit(", i32 0, i32 %e\n")
+        var fj = 0
+        while fj < len(c.kids) {
+          if c.kids[fj].ival == 1 {
+            let bytes = net_field_bytes(c.kids[fj].ty)
+            let fa = nreg();  emit("  ");  emit(fa);  emit(" = getelementptr inbounds %Cmp_");  emit(cn);  emit(", ptr ");  emit(s);  emit(", i32 0, i32 ");  emit(itoa(fj));  emit("\n")
+            let dst = nreg();  emit("  ");  emit(dst);  emit(" = getelementptr inbounds i8, ptr %buf, i32 ");  emit(itoa(off));  emit("\n")
+            emit("  call ptr @memcpy(ptr ");  emit(dst);  emit(", ptr ");  emit(fa);  emit(", i64 ");  emit(bytes);  emit(")\n")
+            off = off + net_field_ibytes(c.kids[fj].ty)
+          }
+          fj = fj + 1
+        }
+      }
+    }
+    ci = ci + 1
+  }
+  emit("  ret i32 ");  emit(itoa(off));  emit("\n}\n\n")
+}
+
+# apply_<M>(e, buf, len): the inverse — copy each replicated field back from the
+# buffer into component storage. `len` is accepted for symmetry (the runtime's
+# framing) but the layout is fixed, so it is not consulted.
+fn emit_net_apply(m: Node) -> void {
+  ll_t = 0
+  let me = itoa(MAX_ENT)
+  emit("define void @L_apply_");  emit(m.s);  emit("(i32 %e, ptr %buf, i32 %len) {\nentry:\n")
+  var off = 0
+  var ci = 0
+  while ci < len(m.kids) {
+    if m.kids[ci].ival == 1 {
+      let cn = m.kids[ci].s
+      let c = find_comp(cn)
+      if (c != null) {
+        let s = nreg();  emit("  ");  emit(s);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x %Cmp_");  emit(cn);  emit("], ptr @S_");  emit(cn);  emit(", i32 0, i32 %e\n")
+        var fj = 0
+        while fj < len(c.kids) {
+          if c.kids[fj].ival == 1 {
+            let bytes = net_field_bytes(c.kids[fj].ty)
+            let fa = nreg();  emit("  ");  emit(fa);  emit(" = getelementptr inbounds %Cmp_");  emit(cn);  emit(", ptr ");  emit(s);  emit(", i32 0, i32 ");  emit(itoa(fj));  emit("\n")
+            let src = nreg();  emit("  ");  emit(src);  emit(" = getelementptr inbounds i8, ptr %buf, i32 ");  emit(itoa(off));  emit("\n")
+            emit("  call ptr @memcpy(ptr ");  emit(fa);  emit(", ptr ");  emit(src);  emit(", i64 ");  emit(bytes);  emit(")\n")
+            off = off + net_field_ibytes(c.kids[fj].ty)
+          }
+          fj = fj + 1
+        }
+      }
+    }
+    ci = ci + 1
+  }
+  emit("  ret void\n}\n\n")
+}
+
+# ---- N2: by-kind dispatchers (the runtime ABI) -------------------------------
+# ludic_serialize(e, buf) -> bytes / ludic_apply(e, buf, len) / ludic_sync_size(e)
+# route on the entity's model kind to the per-model function above, so a
+# replication runtime replicates any entity without knowing its type.
+fn emit_net_dispatch() -> void {
+  let me = itoa(MAX_ENT)
+
+  emit("define i32 @ludic_serialize(i32 %e, ptr %buf) {\nentry:\n")
+  emit("  %kp = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_kind, i32 0, i32 %e\n  %k = load i32, ptr %kp\n")
+  var k = 0
+  var i = 0
+  while i < len(prog) {
+    if prog[i].kind == N_ARCH and net_model_syncs(prog[i]) {
+      let mn = prog[i].s;  let sk = itoa(k)
+      emit("  %c");  emit(sk);  emit(" = icmp eq i32 %k, ");  emit(itoa(find_arch_id(mn)));  emit("\n")
+      emit("  br i1 %c");  emit(sk);  emit(", label %h");  emit(sk);  emit(", label %n");  emit(sk);  emit("\n")
+      emit("h");  emit(sk);  emit(":\n  %r");  emit(sk);  emit(" = call i32 @L_serialize_");  emit(mn);  emit("(i32 %e, ptr %buf)\n  ret i32 %r");  emit(sk);  emit("\n")
+      emit("n");  emit(sk);  emit(":\n")
+      k = k + 1
+    }
+    i = i + 1
+  }
+  emit("  ret i32 0\n}\n\n")
+
+  emit("define void @ludic_apply(i32 %e, ptr %buf, i32 %len) {\nentry:\n")
+  emit("  %kp = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_kind, i32 0, i32 %e\n  %k = load i32, ptr %kp\n")
+  k = 0;  i = 0
+  while i < len(prog) {
+    if prog[i].kind == N_ARCH and net_model_syncs(prog[i]) {
+      let mn = prog[i].s;  let sk = itoa(k)
+      emit("  %c");  emit(sk);  emit(" = icmp eq i32 %k, ");  emit(itoa(find_arch_id(mn)));  emit("\n")
+      emit("  br i1 %c");  emit(sk);  emit(", label %h");  emit(sk);  emit(", label %n");  emit(sk);  emit("\n")
+      emit("h");  emit(sk);  emit(":\n  call void @L_apply_");  emit(mn);  emit("(i32 %e, ptr %buf, i32 %len)\n  ret void\n")
+      emit("n");  emit(sk);  emit(":\n")
+      k = k + 1
+    }
+    i = i + 1
+  }
+  emit("  ret void\n}\n\n")
+
+  # ludic_sync_size(e): the replicated byte count for the entity's model — a
+  # constant per kind, so a runtime can size a buffer before serialize.
+  emit("define i32 @ludic_sync_size(i32 %e) {\nentry:\n")
+  emit("  %kp = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_kind, i32 0, i32 %e\n  %k = load i32, ptr %kp\n")
+  k = 0;  i = 0
+  while i < len(prog) {
+    if prog[i].kind == N_ARCH and net_model_syncs(prog[i]) {
+      let mn = prog[i].s;  let sk = itoa(k)
+      emit("  %c");  emit(sk);  emit(" = icmp eq i32 %k, ");  emit(itoa(find_arch_id(mn)));  emit("\n")
+      emit("  br i1 %c");  emit(sk);  emit(", label %h");  emit(sk);  emit(", label %n");  emit(sk);  emit("\n")
+      emit("h");  emit(sk);  emit(":\n  ret i32 ");  emit(itoa(net_model_bytes(prog[i])));  emit("\n")
+      emit("n");  emit(sk);  emit(":\n")
+      k = k + 1
+    }
+    i = i + 1
+  }
+  emit("  ret i32 0\n}\n\n")
+}
+
+# ---- N3: ownership storage + accessors ---------------------------------------
+# @L_owner: one i32 owner id per entity, -1 = unowned. Only emitted when a model
+# is @Owned, and L_reset clears it to -1 on alloc/free (see emit_ecs). owner()/
+# set_owner()/is_owner() read and write it; the authority assigns.
+fn emit_net_owner() -> void {
+  let me = itoa(MAX_ENT)
+  emit("define i32 @L_owner(i32 %e) {\nentry:\n")
+  emit("  %p = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_owner_arr, i32 0, i32 %e\n  %v = load i32, ptr %p\n  ret i32 %v\n}\n\n")
+  emit("define void @L_set_owner(i32 %e, i32 %id) {\nentry:\n")
+  emit("  %p = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_owner_arr, i32 0, i32 %e\n  store i32 %id, ptr %p\n  ret void\n}\n\n")
+  # is_owner(e): does the local peer own e? owner(e) == local_id().
+  emit("define i32 @L_is_owner(i32 %e) {\nentry:\n")
+  emit("  %p = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_owner_arr, i32 0, i32 %e\n  %o = load i32, ptr %p\n")
+  emit("  %lid = load i32, ptr @L_localid\n  %eq = icmp eq i32 %o, %lid\n  %r = zext i1 %eq to i32\n  ret i32 %r\n}\n\n")
+}
+
+# ---- built-in loopback transport (NETWORKING-DESIGN §5 N0) -------------------
+# The transport seam is net_send/net_poll. A production build binds them to a real
+# socket via `extern fn` (UDP native, WebRTC/WebSocket wasm). Absent that, the
+# compiler emits this in-process loopback — a single FIFO of datagrams, send
+# enqueues a copy and poll dequeues the oldest — so a game is networked end to end
+# with NO foreign host at all (the Ludic-native default). Datagram-preserving:
+# one message per poll, matching how replication/RPC frame. Emitted only when a
+# program actually calls net_send/net_poll without an extern override.
+fn emit_loopback() -> void {
+  emith("@L_netq = internal global [64 x [2048 x i8]] zeroinitializer\n")
+  emith("@L_netlen = internal global [64 x i32] zeroinitializer\n")
+  emith("@L_nethead = internal global i32 0\n")
+  emith("@L_nettail = internal global i32 0\n")
+
+  emit("define void @L_net_send(i32 %peer, ptr %buf, i32 %len) {\nentry:\n")
+  emit("  %l0 = icmp slt i32 %len, 0\n  %len1 = select i1 %l0, i32 0, i32 %len\n")
+  emit("  %l1 = icmp sgt i32 %len1, 2048\n  %n = select i1 %l1, i32 2048, i32 %len1\n")
+  emit("  %t = load i32, ptr @L_nettail\n  %h = load i32, ptr @L_nethead\n")
+  emit("  %t1 = add i32 %t, 1\n  %tn = srem i32 %t1, 64\n  %full = icmp eq i32 %tn, %h\n")
+  emit("  br i1 %full, label %drop, label %go\n")
+  emit("go:\n")
+  emit("  %row = getelementptr inbounds [64 x [2048 x i8]], ptr @L_netq, i32 0, i32 %t\n")
+  emit("  %nz = zext i32 %n to i64\n  call ptr @memcpy(ptr %row, ptr %buf, i64 %nz)\n")
+  emit("  %lp = getelementptr inbounds [64 x i32], ptr @L_netlen, i32 0, i32 %t\n  store i32 %n, ptr %lp\n")
+  emit("  store i32 %tn, ptr @L_nettail\n  br label %drop\n")
+  emit("drop:\n  ret void\n}\n\n")
+
+  emit("define i32 @L_net_poll(ptr %buf, i32 %cap) {\nentry:\n")
+  emit("  %h = load i32, ptr @L_nethead\n  %t = load i32, ptr @L_nettail\n  %empty = icmp eq i32 %h, %t\n")
+  emit("  br i1 %empty, label %none, label %go\n")
+  emit("go:\n")
+  emit("  %lp = getelementptr inbounds [64 x i32], ptr @L_netlen, i32 0, i32 %h\n  %ln = load i32, ptr %lp\n")
+  emit("  %big = icmp sgt i32 %ln, %cap\n  %n = select i1 %big, i32 %cap, i32 %ln\n")
+  emit("  %row = getelementptr inbounds [64 x [2048 x i8]], ptr @L_netq, i32 0, i32 %h\n")
+  emit("  %nz = zext i32 %n to i64\n  call ptr @memcpy(ptr %buf, ptr %row, i64 %nz)\n")
+  emit("  %h1 = add i32 %h, 1\n  %hn = srem i32 %h1, 64\n  store i32 %hn, ptr @L_nethead\n  ret i32 %n\n")
+  emit("none:\n  ret i32 0\n}\n\n")
+}
+
+# ---- N4: remote events (RPCs) ------------------------------------------------
+# An `event` marked @ToServer / @ToClients (ev.ty set) crosses the wire. At an
+# `emit` site the POD payload is serialized as [i32 event_id][packed fields] and
+# net_send in the declared direction; net_pump() drains inbound frames and
+# re-emits each into the ordinary @ev_<E> dispatch on the far side. Reuses the
+# EV0 payload (already flat) and the transport seam — no new concept.
+
+fn net_has_remote() -> bool {
+  var i = 0
+  while i < len(g_events) { if (g_events[i].ty != null) { return true };  i = i + 1 }
+  return false
+}
+# stable wire id for an event = its index in g_events (same program both peers)
+fn net_event_id(name: ptr) -> int {
+  var i = 0
+  while i < len(g_events) { if (g_events[i].s == name) { return i };  i = i + 1 }
+  return 0 - 1
+}
+# the transport symbols: an `extern fn` override, else the built-in loopback.
+fn net_send_sym() -> ptr { let x = find_extern("net_send");  if (x != null) { return x.a.s };  return "L_net_send" }
+fn net_poll_sym() -> ptr { let x = find_extern("net_poll");  if (x != null) { return x.a.s };  return "L_net_poll" }
+
+# net_pump(): poll every pending frame and re-emit it locally. The receive path
+# of a remote event — the runtime/game calls this each tick.
+fn emit_net_pump() -> void {
+  emith("@L_recvbuf = internal global [2048 x i8] zeroinitializer\n")
+  if (find_extern("net_poll") == null) { g_uses_loopback = true }
+  let psym = net_poll_sym()
+  emit("define void @L_net_pump() {\nentry:\n  br label %loop\n")
+  emit("loop:\n  %n = call i32 @");  emit(psym);  emit("(ptr @L_recvbuf, i32 2048)\n")
+  emit("  %done = icmp eq i32 %n, 0\n  br i1 %done, label %fin, label %body\n")
+  emit("body:\n  %eid = load i32, ptr @L_recvbuf\n")
+  var e = 0
+  while e < len(g_events) {
+    let ev = g_events[e]
+    if (ev.ty != null) {
+      let sk = itoa(e)
+      emit("  %c");  emit(sk);  emit(" = icmp eq i32 %eid, ");  emit(itoa(net_event_id(ev.s)));  emit("\n")
+      emit("  br i1 %c");  emit(sk);  emit(", label %h");  emit(sk);  emit(", label %x");  emit(sk);  emit("\n")
+      emit("h");  emit(sk);  emit(":\n")
+      # decode each field from the frame (offset starts after the i32 event id)
+      var off = 4
+      var f = 0
+      let acc = buf_new()
+      while f < len(ev.kids) {
+        let ft = llty(ev.kids[f].ty)
+        let fk = `{sk}_{itoa(f)}`
+        emit("  %fa");  emit(fk);  emit(" = getelementptr inbounds i8, ptr @L_recvbuf, i32 ");  emit(itoa(off));  emit("\n")
+        emit("  %fv");  emit(fk);  emit(" = load ");  emit(ft);  emit(", ptr %fa");  emit(fk);  emit("\n")
+        if f > 0 { buf_puts(acc, ", ") }
+        buf_puts(acc, ft);  buf_puts(acc, " %fv");  buf_puts(acc, fk)
+        off = off + net_field_ibytes(ev.kids[f].ty)
+        f = f + 1
+      }
+      emit("  call void @ev_");  emit(ev.s);  emit("(");  emit(buf_str(acc));  emit(")\n")
+      emit("  br label %loop\n")
+      emit("x");  emit(sk);  emit(":\n")
+    }
+    e = e + 1
+  }
+  emit("  br label %loop\n")                       # unknown id: skip, keep draining
+  emit("fin:\n  ret void\n}\n\n")
+}
+
+# ---- driver ------------------------------------------------------------------
+fn emit_net() -> void {
+  if net_has_sync() {
+    net_check()
+    var i = 0
+    while i < len(prog) {
+      if prog[i].kind == N_ARCH and net_model_syncs(prog[i]) {
+        emit_net_serialize(prog[i])
+        emit_net_apply(prog[i])
+      }
+      i = i + 1
+    }
+    emit_net_dispatch()
+  }
+  if net_has_owned() { emit_net_owner() }
+  if net_has_remote() {
+    emith("@L_sendbuf = internal global [2048 x i8] zeroinitializer\n")   # RPC send scratch
+    emit_net_pump()
+  }
+}

@@ -319,22 +319,34 @@ boot ── @OnStart ─▶ spawn ── @OnAttach(P), @OnSpawn(M) ─▶ … �
 - **`@OnSpawn(Model)` / `@OnDespawn(Model)`** — an *entity*. Both bind the model's
   properties by name; `@OnSpawn` is a constructor, `@OnDespawn` a destructor.
   Despawn doesn't statically know an entity's model, so despawn hooks compile to
-  functions dispatched on the entity's kind.
-- **`@OnAttach(Property)`** — a *property*, fired each time that property is
-  attached to an entity (once its fields are seeded), with the property bound by
-  name.
+  functions dispatched on the entity's kind. `@OnDespawn` may take an optional
+  **reason**: `@OnDespawn(Enemy, reason: r)` binds `r` to an `EndReason` the
+  compiler passes at each teardown site — `EndReason.Despawned` for an in-world
+  `despawn`, `EndReason.Quit` when the program exits. At shutdown every still-live
+  entity's `@OnDespawn` fires with `Quit` (no silent deaths), so teardown can
+  branch on *why* it is ending — save on `Quit`, drop loot otherwise.
+- **`@OnAttach(Property)` / `@OnDetach(Property)`** — a *property* attached to or
+  removed from an entity, with the property bound by name. `@OnAttach` fires once
+  the fields are seeded (a per-property constructor); `@OnDetach` fires when the
+  property is removed, *before* its has-flag clears, so the body can read the
+  outgoing value (a per-property destructor). They pair with the `attach` /
+  `detach` statements below.
 
 ```ludic
 # doc-check: skip — lifecycle hooks
 @OnStart          handler Boot  { seed(1) }
 @OnSpawn(Enemy)   handler Init  { Health.hp = Health.max }     # constructor
 @OnDespawn(Enemy) handler Clean { drop_loot(Health.hp) }       # destructor
+@OnDespawn(Enemy, reason: r) handler End {                    # destructor that knows why
+  match r { EndReason.Quit => save() ;  _ => drop_loot(Health.hp) }
+}
 @OnAttach(Sprite) handler Load  { Sprite.id = image_load("goblin.png") }
+@OnDetach(Sprite) handler Free  { image_drop(Sprite.id) }      # paired teardown
 @OnQuit           handler Save  { save() }                     # once, at shutdown
 ```
 
-**Enable / disable.** `enable` and `disable` are statements that flip something on
-or off without destroying it. There are three scopes:
+**Enable / disable — pause, don't destroy.** `enable` and `disable` are statements
+that flip something on or off without destroying it. There are three scopes:
 
 - **`disable P on e` / `enable P on e`** — one *property* on one entity. Disabling
   clears the entity's has-flag, so queries stop matching it, but the field values
@@ -349,20 +361,42 @@ or off without destroying it. There are three scopes:
 Each toggle is one global flag flip (or one has-flag store), so nothing is copied
 or freed — enable/disable is cheap and fully reversible.
 
+**Attach / detach — add, don't just resume.** Where `enable`/`disable` *pause* a
+property that already belongs to an entity, `attach`/`detach` change what the
+entity *has*:
+
+- **`attach P on e` / `attach P on e { field: v, … }`** — add property `P` to a
+  live entity, seeding its fields from the defaults plus any overrides, and fire
+  `@OnAttach(P)`. It fires only on a real transition: attaching a property the
+  entity already has is a no-op.
+- **`detach P on e`** — remove `P`, firing `@OnDetach(P)` (which still reads the
+  outgoing value) before the has-flag clears. Also a no-op if `P` is absent.
+
+The distinction mirrors DOTS's enableable components vs structural add/remove, or
+Bevy's disable vs `Remove`: `disable` is a reversible pause that keeps the data;
+`detach` is a structural removal (a following `attach` re-seeds fresh fields).
+
 ```ludic
-# doc-check: skip — enable/disable
+# doc-check: skip — enable/disable + attach/detach
 @OnDisable(Shield) handler Down { play("shield_break.wav") }
 @OnEnable(Shield)  handler Up   { play("shield_up.wav") }
+@OnAttach(Shield)  handler Grab { play("shield_get.wav") }
+@OnDetach(Shield)  handler Drop { play("shield_drop.wav") }
 
-disable Shield on self()     # this entity loses its shield; data kept for later
-enable  Shield on self()     # shield back, amount unchanged
-disable Gravity              # a whole model sits out every query
-disable AiThink              # a handler stops running each phase
+disable Shield on self()          # pause: this entity loses its shield; data kept
+enable  Shield on self()          # resume: shield back, amount unchanged
+attach  Shield on self() { amount: 3 }   # structural: give it a fresh shield
+detach  Shield on self()          # structural: take the shield away entirely
+disable Gravity                   # a whole model sits out every query
+disable AiThink                   # a handler stops running each phase
 ```
 
-See [`examples/toggle.ludic`](examples/toggle.ludic) for all three scopes in one
-frame. Still to come: **`@OnDetach`** (the paired hook for a property leaving,
-needing the same per-property runtime dispatch as despawn).
+See [`examples/toggle.ludic`](examples/toggle.ludic) for the three enable/disable
+scopes, [`examples/detach.ludic`](examples/detach.ludic) for the structural
+attach/detach pair, and [`examples/reason.ludic`](examples/reason.ludic) for
+reason-carrying teardown. The rest of the lifecycle roadmap (value-change hooks,
+query-membership edges, keyed effects) is in
+[LIFECYCLE-DESIGN.md](LIFECYCLE-DESIGN.md).
 
 **`@Handles` — the handlers a program drives.** Written in front of the
 `program`, `@Handles(Move)` names the handlers it uses. It parses and reads as
@@ -371,8 +405,71 @@ documentation; every declared handler still runs (registration is implicit).
 See [`examples/annotations.ludic`](examples/annotations.ludic) (queries, computed
 fields, one hook) and [`examples/lifecycle.ludic`](examples/lifecycle.ludic) (the
 whole timeline), plus [`examples/toggle.ludic`](examples/toggle.ludic)
-(enable/disable). Still to come: **scene** hooks (`@OnEnter`/`@OnExit`), which
-wait on `scene` support landing in the compiler.
+(enable/disable). Scenes and their `on enter` / `on exit` lifecycle blocks are
+implemented — see "Scenes & layers" below. (An annotation spelling,
+`@OnEnter(Scene)` / `@OnExit(Scene)`, is a designed but not-yet-built convenience
+— see [SCENES-DESIGN.md](SCENES-DESIGN.md); today the hooks are written as `on
+enter { … }` inside the `scene`.)
+
+## Events & modding (`event`, `emit`, `@On`)
+
+Where lifecycle hooks are the *closed, in-language* reactions the game author
+compiles in, **events are the open, runtime surface a game exposes to mods** —
+code loaded after compilation, in any language with a C ABI. The two share their
+fire sites; an event is a hook seen from across the ABI. A program that declares
+no `event` is compiled byte-for-byte as before.
+
+- **`event E { field: T = default, … }`** declares a public event carrying a flat
+  POD payload (fields may be empty). **`@On(E) handler Name { … }`** registers an
+  in-language listener whose body reads the payload fields by name. **`emit
+  E(field: v, …)`** fires it — every listener runs, in declaration order, as a
+  direct call. It all desugars to a `@ev_<E>` function; there is no interpreter.
+
+```ludic
+# doc-check: skip — illustrative
+event Hurt { entity: int, amount: int }
+@On(Hurt) handler Flash { hud_flash(amount) }     # payload bound by name
+emit Hurt(entity: e, amount: 5)                    # fires every listener
+```
+
+- **The foreign ABI.** Each event also generates `int ludic_on_<E>(void (*cb)(Ev*))`
+  and a payload struct `%Ev_<E>`, so a mod in C / Lua / JS (over its FFI) registers
+  a callback and is dispatched to right after the native listeners — the closed and
+  open halves, one dispatch. Native listeners cost a direct call; foreign ones one
+  indirect call over a fixed-capacity array (registration order = dispatch order,
+  so a modded game stays deterministic). See [`examples/mod_host.ludic`](examples/mod_host.ludic)
+  and the C mod in [`tests/mod_c/mod.c`](tests/mod_c/mod.c).
+
+- **`@Public` promotes a lifecycle hook to an event, across the whole
+  architecture.** The game's own lifecycle becomes moddable with no hand-written
+  `emit`, at every scope:
+  - **program** — `@Public @OnStart`/`@OnQuit` → `program_start` / `program_quit`
+    (the top-level mod entry/exit points). See [`examples/program_events.ludic`](examples/program_events.ludic).
+  - **models** — `@Public @OnSpawn(Enemy)`/`@OnDespawn(Enemy)` →
+    `model_Enemy_spawn` / `model_Enemy_despawn` (entity, + `EndReason` on despawn).
+    See [`examples/promote.ludic`](examples/promote.ludic).
+  - **properties** — `@Public @OnAttach/@OnDetach/@OnEnable/@OnDisable(P)` →
+    `prop_<P>_attach` / `_detach` / `_enable` / `_disable`. See [`examples/prop_events.ludic`](examples/prop_events.ludic).
+  - **scenes** — a `public` scene → `scene_<S>_enter` / `scene_<S>_exit`. See [`examples/scene_events.ludic`](examples/scene_events.ludic).
+  - **layers** — a `public` layer, with `enable layer L` / `disable layer L`
+    flipping the layer on and off (its handlers stop while hidden) →
+    `layer_<L>_show` / `layer_<L>_hide`. See [`examples/layer_events.ludic`](examples/layer_events.ludic).
+
+- **`cancellable` events are decisions, not just notifications.** A listener on a
+  `cancellable` event may `cancel` it (a foreign listener sets the payload's
+  trailing `cancelled` flag); `emit E(…)` used as an *expression* yields that flag,
+  so the caller applies the action only when it wasn't vetoed — the Bukkit/DOM
+  `preventDefault` shape. See [`examples/cancel.ludic`](examples/cancel.ludic).
+
+```ludic
+# doc-check: skip — illustrative
+event cancellable BeforeHurt { amount: int }
+@On(BeforeHurt) handler Armor { if amount > 10 { cancel } }
+if emit BeforeHurt(amount: dmg) == 0 { hp = hp - dmg }   # apply only if not vetoed
+```
+
+The full modding roadmap — the world-table reflection ABI, scoped/leak-proof
+listeners, and the sandbox — is in [EVENTS-DESIGN.md](EVENTS-DESIGN.md).
 
 ## Records (`property`), arrays and slices
 
@@ -478,7 +575,7 @@ another `.ludic` file (see `examples/lib/`).
 `if/else` (the `else` is optional) · `while cond { }` · `for i in a .. b { }`
 (numeric range) · `for (…) in query […] { }` · `break` · `continue` · `return` ·
 `spawn` · `despawn` · `enable` / `disable` (a property `on e`, a model, or a
-handler) · `match` · `machine`.
+handler) · `attach` / `detach` (a property `on e`) · `match` · `machine`.
 
 ### Bindings: `let`, `var`, `const`
 
@@ -712,8 +809,6 @@ Units on quantities (`9.8 m/s^2`), `with` record-update expressions, a bytecode
 VM + hot-reload, and the live agent bridge — these appear in the design docs but
 are future work.
 
-- **`scene` / `layer` / `on enter` / `on exit`** — the state-machine-over-scenes
-  sugar is documented above but not parsed by the self-hosted compiler yet.
 - **`reads` / `writes` clauses** — parsed and reserved on the handler node, but no
   analysis pass consumes them.
 - **`[T; N]` fixed arrays** — documented above, but `ptype` parses only `[]T`
@@ -730,13 +825,13 @@ self-hosting; their lowerings are in
 
 ## Scenes & layers
 
-> ⚠️ **Not yet implemented in the current (self-hosted) compiler.** `scene`,
-> `layer`, and the `on enter` / `on exit` hooks are a design target: the
-> compiler has no `scene` declaration and [`examples/scenes.ludic`](examples/scenes.ludic)
-> does not compile today. Games
-> that need mutually-exclusive states use a mode register (`reg`/`set_reg`) with a
-> `machine`, as `examples/chronorift` does. This section describes the intended
-> syntax for when scene support lands.
+> **Implemented (S0).** `scene`, `layer`, and the `on enter` / `on exit` hooks
+> compile; [`examples/scenes.ludic`](examples/scenes.ludic) runs and is checked
+> by `test.sh`. A scene lowers to a `machine` the compiler writes for you: one
+> implicit active-scene register, states numbered by declaration order, and
+> `become` as two direct calls plus a store. Richer scene features (the overlay
+> stack, scene-owned entities, scene-local state, transition parameters) are
+> designed in [SCENES-DESIGN.md](SCENES-DESIGN.md) and not built yet.
 
 A program is usually several mutually-exclusive states — a title screen, the
 overworld, a battle — and the usual way to write that is a mode register
@@ -764,7 +859,8 @@ scene Overworld {
 ```
 
 - Exactly **one scene is active**. The one marked `start` runs first (or the
-  first declared, if none is marked).
+  first declared, if none is marked); its `on enter` fires once at boot, right
+  after the `Start` phase.
 - A scene's handlers only run while it is active. Handlers declared outside any
   scene are global and run every frame regardless.
 - **Layers group handlers and declaration order is draw order**: within a phase,
@@ -776,8 +872,14 @@ scene Overworld {
   becomes `Name`, and its `on enter` runs. Inside a layer handler the compiler
   knows which scene is leaving, so a transition costs two direct calls and a
   store — there is no dispatch table.
+- **The active scene is snapshotted per phase.** A `become` mid-phase runs its
+  `on exit`/`on enter` immediately, but the switch of *which layers dispatch*
+  takes effect at the next phase boundary — so exactly one scene's layers run in
+  any single phase, and a `become` in `Update` is visible to that same frame's
+  `Render`.
 
-`examples/scenes.ludic` sketches the ordering rules (it does not compile yet).
+[`examples/scenes.ludic`](examples/scenes.ludic) is a runnable, tested example
+of these rules.
 
 ## Queries in a handler signature
 

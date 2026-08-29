@@ -29,6 +29,7 @@ selfhost/emit_spawn.ludic
 selfhost/emit_game.ludic
 selfhost/emit_machine.ludic
 selfhost/emit_save.ludic
+selfhost/emit_net.ludic
 selfhost/emit_ui.ludic
 selfhost/emit_decl.ludic
 selfhost/main.ludic"

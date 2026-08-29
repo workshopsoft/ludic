@@ -1,0 +1,38 @@
+# reason.ludic — LC1 reason-carrying teardown. One @OnDespawn hook, but it knows
+# *why* the entity is ending: `reason: r` binds an EndReason the compiler passes
+# at each teardown site. An in-world `despawn` passes EndReason.Despawned; program
+# shutdown passes EndReason.Quit (every still-live entity's hook fires at exit — no
+# silent deaths). The body branches on the reason, exactly as Unreal's
+# EndPlay(reason) / Erlang's terminate(Reason) do.
+#
+# Running it prints: 503 1009
+#   503    Enemy A despawned in-world (Despawned): drop its loot, 3 + 500
+#   1009   Enemy B outlived the run; at quit (Quit) it skips loot, 9 + 1000
+#
+#   ./selfhost/game-build.sh build/ludicc examples/reason.ludic /tmp/reason
+#   /tmp/reason </dev/null
+program Reasons {
+  property Health { hp: int = 0 }
+  property Loot   { gold: int = 0 }
+  model Enemy { Health, Loot }
+
+  @OnDespawn(Enemy, reason: r) handler Clean {
+    match r {
+      EndReason.Quit => { print(Health.hp + 1000) }   # app closing — don't bother dropping loot
+      _              => { print(Loot.gold + 500) }     # died in-world — drop the loot
+    }
+  }
+
+  handler Seed phase Start {
+    spawn Enemy { Health { hp: 7 }, Loot { gold: 3 } }   # A
+    spawn Enemy { Health { hp: 9 }, Loot { gold: 4 } }   # B
+  }
+
+  handler Run phase Render {
+    var first = 0
+    for (e) in query [Health] {
+      if first == 0 { despawn self(); first = 1 }        # despawn A -> Despawned -> 3 + 500 = 503
+    }
+    quit()                                               # B survives -> Quit -> 9 + 1000 = 1009
+  }
+}

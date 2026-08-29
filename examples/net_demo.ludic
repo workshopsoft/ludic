@@ -1,0 +1,45 @@
+# net_demo.ludic — N6: a networked game end to end, in pure Ludic, no C at all
+# (NETWORKING-DESIGN §13 N6). It exercises the whole stack the earlier phases
+# built: an RPC carries client input to the authority (N4), the authority mutates
+# authoritative state (N5 roles), and the blessed runtime replicates that state
+# back to a peer that had diverged (N2 @Sync + N3 @Owned + net_rt.ludic).
+#
+# One process, one loopback transport, so the round-trips are observable. The
+# sequence a real client/server splits across machines is played here in order:
+#
+#   1. client emits Move(dx:5)   — an @ToServer RPC → serialized onto the wire
+#   2. net_pump()                — the authority drains it, @On(Move) applies +5
+#   3. rt_replicate(ship)        — the authority ships the ship's synced state
+#   4. Pos.x = 999               — the client diverges (mispredicts)
+#   5. rt_receive()              — the client reconciles to the authoritative x=5
+#
+# Prints 5 / 999 / 5. Build & run with the Ludic toolchain only:
+#   ./build.sh examples/net_demo.ludic --headless && ./build/net_demo_headless
+import "net_rt.ludic"
+
+program NetDemo {
+  @Sync property Pos { x: int = 0, y: int = 0 }
+  @Owned model Ship { @Sync Pos }
+
+  @ToServer event Move { dx: int = 0 }                        # client → server RPC
+  @On(Move) handler DoMove {                                  # the authority applies input
+    for (Pos) in query [Pos, {Ship}] { Pos.x = Pos.x + dx }
+  }
+
+  entry {
+    spawn Ship { Pos { x: 0, y: 0 } }
+
+    emit Move(dx: 5)                                          # 1. client input → wire
+    net_pump()                                               # 2. authority applies it
+
+    for (Pos) in query [Pos, {Ship}] {
+      print(Pos.x)                                            # 5  — server state advanced
+      rt_replicate(self())                                    # 3. authority replicates
+      Pos.x = 999                                             # 4. client diverges
+      print(Pos.x)                                            # 999
+    }
+
+    rt_receive()                                             # 5. client reconciles
+    for (Pos) in query [Pos, {Ship}] { print(Pos.x) }        # 5  — back to authoritative
+  }
+}

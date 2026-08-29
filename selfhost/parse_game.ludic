@@ -6,11 +6,28 @@ fn parse_component() -> Node {
   pi = pi + 1; let n = node(N_COMP); n.s = eat_id(); skipnl(); eat_op("{")
   while true { skipnl(); if is_op("}") { break }
     var is_computed = false
-    if is_op("@") { pi = pi + 1; let ann = eat_id(); if (ann == "Computed") { is_computed = true }; skipnl() }
+    var is_sync = false                              # @Sync — this field replicates (NETWORKING N2)
+    if is_op("@") { pi = pi + 1; let ann = eat_id(); if (ann == "Computed") { is_computed = true } else { if (ann == "Sync") { is_sync = true } }; skipnl() }
     let f = node(N_FIELD); f.s = eat_id(); eat_op(":"); f.ty = ptype()
     if is_op("=") { pi = pi + 1; f.a = expr() }
+    if is_sync { f.ival = 1 }                         # mark the field replicable (read by emit_net)
     if is_computed { register_computed(n.s, f.s, f.ty, f.a) }   # derived: no storage
     else { push(n.kids, f) }
+    if is_op(",") { pi = pi + 1 } }
+  eat_op("}"); return n
+}
+
+# event Name { field: T = default, ... } — a public event's POD payload. Same
+# field grammar as a `property`, but stored in g_events, not prog: an event is a
+# signal shape, not per-entity storage. Zero fields is allowed (`event Ping {}`).
+fn parse_event() -> Node {
+  pi = pi + 1; let n = node(N_EVENT)
+  if is_id("cancellable") { pi = pi + 1; n.ival = 1 }   # a decision event: listeners may `cancel` it
+  n.s = eat_id(); skipnl(); eat_op("{")
+  while true { skipnl(); if is_op("}") { break }
+    let f = node(N_FIELD); f.s = eat_id(); eat_op(":"); f.ty = ptype()
+    if is_op("=") { pi = pi + 1; f.a = expr() }
+    push(n.kids, f)
     if is_op(",") { pi = pi + 1 } }
   eat_op("}"); return n
 }
@@ -139,6 +156,57 @@ fn parse_spawn() -> Node {
   eat_op("}"); return n
 }
 
+# scene Name [start] { on enter {..} on exit {..} layer L { handler .. } .. }
+# A scene groups handlers behind an implicit active-scene register; only the
+# active scene's handlers run each phase. `on enter`/`on exit` are lifecycle
+# blocks (scene .a/.b); each layer's handlers are pushed straight into `prog` as
+# ordinary N_SYS nodes, tagged with the owning scene in `.c`, so the whole
+# system backend (functions, phases, enable/disable) is reused unchanged.
+fn parse_scene() -> void {
+  pi = pi + 1                                # 'scene'
+  let n = node(N_SCENE); n.s = eat_id()
+  n.ival = g_scene_count
+  # optional modifiers after the name, any order: `start` (the boot scene) and
+  # `public` (promote its on-enter/on-exit to scene_<S>_enter / scene_<S>_exit).
+  var is_pub = false
+  while is_id("start") or is_id("public") {
+    if is_id("start") { pi = pi + 1; g_start_scene = g_scene_count }
+    else { pi = pi + 1; is_pub = true }
+  }
+  g_scene_count = g_scene_count + 1
+  if is_pub { ensure_event_empty(`scene_{n.s}_enter`);  ensure_event_empty(`scene_{n.s}_exit`) }
+  skipnl(); eat_op("{")
+  while true {
+    skipnl(); if is_op("}") { break }
+    if is_id("on") {                         # on enter { .. } / on exit { .. }
+      pi = pi + 1; let which = eat_id(); skipnl()
+      if (which == "enter") { n.a = block() }
+      else { if (which == "exit") { n.b = block() } else { perr("expected 'enter' or 'exit' after 'on'") } }
+      continue
+    }
+    if is_id("layer") {                      # layer Name [public] { handler .. }
+      pi = pi + 1; let lname = eat_id()
+      if is_id("public") { pi = pi + 1; ensure_event_empty(`layer_{lname}_show`);  ensure_event_empty(`layer_{lname}_hide`) }
+      skipnl(); eat_op("{")
+      let ltag = node(E_ID); ltag.s = lname   # the layer name, tagged onto each handler
+      while true {
+        skipnl(); if is_op("}") { break }
+        if not is_id("handler") { perr("expected 'handler' in layer") }
+        let h = parse_system()               # N_SYS: .s name, .ty phase, .a body
+        h.c = n                              # tag the owning scene (null = global)
+        h.b = ltag                           # tag the owning layer (for enable/disable layer)
+        push(prog, h)
+        skipnl()
+      }
+      eat_op("}")
+      continue
+    }
+    perr("expected 'on', 'layer' or '}' in scene")
+  }
+  eat_op("}")
+  push(g_scenes, n)
+}
+
 # enum Name { A, B, C } — named int constants; a variant's value is its index.
 # Accessed as `Name.A` (a compile-time int), so it names magic-int value spaces
 # (state ids, menu selections, mode registers) without a runtime cost.
@@ -150,11 +218,17 @@ fn parse_enum() -> Node {
   eat_op("}"); return n
 }
 
-# archetype Name { CompA, CompB } — a named entity kind (bundle of components)
+# archetype Name { CompA, @Sync CompB } — a named entity kind (bundle of
+# components). A member marked `@Sync` *participates* in replication (NETWORKING
+# N2): its @Sync-marked fields cross the wire for this model. Participation is
+# per model use-site — the same property syncs in one model, not another. The
+# per-member @Sync sets the member E_ID's ival=1 (read by emit_net).
 fn parse_archetype() -> Node {
   pi = pi + 1; let n = node(N_ARCH); n.s = eat_id(); skipnl(); eat_op("{")
   while true { skipnl(); if is_op("}") { break }
-    let c = node(E_ID); c.s = eat_id(); push(n.kids, c)
+    let c = node(E_ID)
+    if is_op("@") { pi = pi + 1; let a = eat_id(); if (a == "Sync") { c.ival = 1 }; skipnl() }
+    c.s = eat_id(); push(n.kids, c)
     if is_op(",") { pi = pi + 1 };  skipnl() }
   eat_op("}"); return n
 }

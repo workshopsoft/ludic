@@ -1,0 +1,25 @@
+# events.ludic — EV0: the event bus core.
+#
+# `event E { fields }` declares a public event carrying a POD payload. `@On(E)
+# handler …` registers a listener whose body reads the payload fields by name.
+# `emit E(field: v, …)` fires the event: it calls every @On(E) listener, in
+# declaration order, as a direct call — the whole thing desugars to code, with no
+# runtime and no dispatch table. A program that declares no `event` is compiled
+# byte-for-byte as before (the subsystem is gated on `g_events`).
+#
+# Running it prints:  5 8 20 30 999 42 42
+program Events {
+  event Hurt    { entity: int = 0, amount: int = 0 }   # a payload with fields + defaults
+  event Cleared { }                                    # an empty payload is allowed
+
+  @On(Hurt) handler Flash { print(amount) }            # listeners bind payload fields by name
+  @On(Hurt) handler Guard { print(entity + amount) }   # a second listener, run after the first
+  @On(Cleared) handler Cheer { print(999) }
+
+  entry {
+    emit Hurt(entity: 3, amount: 5)       # -> Flash 5, Guard 3+5=8
+    emit Hurt(entity: 10, amount: 20)     # -> Flash 20, Guard 10+20=30
+    emit Cleared()                        # -> Cheer 999
+    emit Hurt(amount: 42)                 # entity defaults to 0 -> Flash 42, Guard 0+42=42
+  }
+}

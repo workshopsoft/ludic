@@ -47,6 +47,9 @@ fn emit_init_component(e: ptr, comp: ptr, rec: Node) -> void {
     emit_block(ab)
     nloc = save
   }
+  # EV1: a @Public attach hook fires prop_<P>_attach with the entity
+  let aev = `prop_{comp}_attach`
+  if (find_event(aev) != null) { emit("  call void @ev_");  emit(aev);  emit("(i32 ");  emit(e);  emit(")\n") }
 }
 
 # bind each of a model's properties to entity `e`'s component storage, so an
@@ -65,7 +68,7 @@ fn emit_bind_props(model: Node, e: ptr) -> void {
   }
 }
 
-fn emit_spawn(st: Node) -> void {
+fn emit_spawn(st: Node) -> ptr {
   let e = emit_bind("call i32 @L_alloc()")
   let ak = find_arch_id(st.s)
   if ak > 0 {
@@ -89,10 +92,15 @@ fn emit_spawn(st: Node) -> void {
       emit_block(ob)
       nloc = save
     }
+    # EV1: a @Public spawn hook also fires the public event model_<M>_spawn, so
+    # mods (native or foreign, over the ABI) see the entity born.
+    let sev = `model_{st.s}_spawn`
+    if (find_event(sev) != null) { emit("  call void @ev_");  emit(sev);  emit("(i32 ");  emit(e);  emit(")\n") }
   } else {
     var i = 0
     while i < len(st.kids) { emit_init_component(e, st.kids[i].s, st.kids[i].a);  i = i + 1 }
   }
+  return e                                        # the new entity id (for ludic_spawn_<M>)
 }
 
 fn emit_despawn(st: Node) -> void {
@@ -108,12 +116,63 @@ fn emit_despawn(st: Node) -> void {
       let c = emit_bind(`icmp eq i32 {kind}, {itoa(find_arch_id(mname))}`)
       let yes = lbl("dh");  let no = lbl("dhn")
       emit("  br i1 ");  emit(c);  emit(", label %");  emit(yes);  emit(", label %");  emit(no);  emit("\n")
-      emit(yes);  emit(":\n  call void @on_despawn_");  emit(mname);  emit("(i32 ");  emit(v.code);  emit(")\n")
+      emit(yes);  emit(":\n  call void @on_despawn_");  emit(mname);  emit("(i32 ");  emit(v.code);  emit(", i32 0)\n")   # reason = EndReason.Despawned
+      let dev = `model_{mname}_despawn`                                                  # EV1: @Public despawn event
+      if (find_event(dev) != null) { emit("  call void @ev_");  emit(dev);  emit("(i32 ");  emit(v.code);  emit(", i32 0)\n") }
       emit("  br label %");  emit(no);  emit("\n");  emit(no);  emit(":\n")
       i = i + 1
     }
   }
+  if len(g_events) > 0 { emit("  call void @ludic_sweep_entity(i32 ");  emit(v.code);  emit(")\n") }   # EV5: drop entity-scoped listeners
   emit("  call void @L_free_entity(i32 ");  emit(v.code);  emit(")\n")
+}
+
+# attach P on e [{ overrides }] — add a property to a live entity. Structural
+# (not a toggle): seeds the property's fields and fires @OnAttach, but only on a
+# real transition — if the entity already has the property it is a no-op, so the
+# hook fires once per genuine attach (flecs/Bevy "real add" semantics).
+fn emit_attach(st: Node) -> void {
+  let ev = emit_expr(st.a)
+  let me = itoa(MAX_ENT)
+  let hp = nreg();  emit("  ");  emit(hp);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i8], ptr @H_");  emit(st.s);  emit(", i32 0, i32 ");  emit(ev.code);  emit("\n")
+  let cur = emit_bind(`load i8, ptr {hp}`)
+  let isnew = emit_bind(`icmp eq i8 {cur}, 0`)
+  let doit = lbl("attach");  let done = lbl("attdone")
+  emit("  br i1 ");  emit(isnew);  emit(", label %");  emit(doit);  emit(", label %");  emit(done);  emit("\n")
+  emit(doit);  emit(":\n");  g_term = false
+  emit_init_component(ev.code, st.s, st.b)     # sets has=1, seeds defaults+overrides, fires @OnAttach
+  if not g_term { emit("  br label %");  emit(done);  emit("\n") }
+  emit(done);  emit(":\n");  g_term = false
+}
+
+# detach P on e — remove a property from a live entity. Fires @OnDetach with the
+# property bound by name (its data still lives in @S_ storage, so the teardown
+# body reads the outgoing value), then clears the has-flag so queries skip it.
+# Only fires on a real transition; detaching an absent property is a no-op.
+fn emit_detach(st: Node) -> void {
+  let ev = emit_expr(st.a)
+  let me = itoa(MAX_ENT)
+  let hp = nreg();  emit("  ");  emit(hp);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i8], ptr @H_");  emit(st.s);  emit(", i32 0, i32 ");  emit(ev.code);  emit("\n")
+  let cur = emit_bind(`load i8, ptr {hp}`)
+  let here = emit_bind(`icmp ne i8 {cur}, 0`)
+  let doit = lbl("detach");  let done = lbl("detdone")
+  emit("  br i1 ");  emit(here);  emit(", label %");  emit(doit);  emit(", label %");  emit(done);  emit("\n")
+  emit(doit);  emit(":\n");  g_term = false
+  emit("  store i8 0, ptr ");  emit(hp);  emit("\n")           # clear has-flag (data persists in @S_)
+  let hb = ondetach_body(st.s)                                 # @OnDetach reads the outgoing value
+  if (hb != null) {
+    let save = nloc
+    let slot = nreg();  emit("  ");  emit(slot);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x %Cmp_");  emit(st.s);  emit("], ptr @S_");  emit(st.s);  emit(", i32 0, i32 ");  emit(ev.code);  emit("\n")
+    let vslot = emit_alloca("ptr")
+    emit("  store ptr ");  emit(slot);  emit(", ptr ");  emit(vslot);  emit("\n")
+    loc_push(st.s, vslot, st.s)
+    emit_block(hb)
+    nloc = save
+  }
+  let dev = `prop_{st.s}_detach`                               # EV1: @Public detach event
+  if (find_event(dev) != null) { emit("  call void @ev_");  emit(dev);  emit("(i32 ");  emit(ev.code);  emit(")\n") }
+  if not g_term { emit("  br label %");  emit(done);  emit("\n") }
+  emit(done);  emit(":\n");  g_term = false
 }
 
 # enable/disable. `<P> on <e>` toggles a property's has-flag on an entity (its
@@ -121,6 +180,12 @@ fn emit_despawn(st: Node) -> void {
 # flag). A bare `<Model>` / `<Handler>` flips a global enabled flag.
 fn emit_toggle(st: Node) -> void {
   var val = "0";  if st.ival == 1 { val = "1" }
+  if (st.ty != null) and (st.ty == "layer") {    # enable/disable layer L
+    emit("  store i32 ");  emit(val);  emit(", ptr @LE_");  emit(st.s);  emit("\n")
+    var lev = `layer_{st.s}_hide`;  if st.ival == 1 { lev = `layer_{st.s}_show` }   # public layer -> event
+    if (find_event(lev) != null) { emit("  call void @ev_");  emit(lev);  emit("()\n") }
+    return
+  }
   if (st.a != null) {
     let ev = emit_expr(st.a)
     let me = itoa(MAX_ENT)
@@ -137,6 +202,9 @@ fn emit_toggle(st: Node) -> void {
       emit_block(hb)
       nloc = save
     }
+    # EV1: a @Public enable/disable hook fires prop_<P>_enable / prop_<P>_disable
+    var tev = `prop_{st.s}_disable`;  if st.ival == 1 { tev = `prop_{st.s}_enable` }
+    if (find_event(tev) != null) { emit("  call void @ev_");  emit(tev);  emit("(i32 ");  emit(ev.code);  emit(")\n") }
   } else {
     var g = "@HE_";  if is_model(st.s) { g = "@ME_" }     # model vs handler
     emit("  store i32 ");  emit(val);  emit(", ptr ");  emit(g);  emit(st.s);  emit("\n")

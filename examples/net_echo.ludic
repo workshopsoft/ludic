@@ -1,0 +1,24 @@
+# net_echo.ludic — N0: the transport seam (NETWORKING-DESIGN §5, §13 N0).
+#
+# The transport is two calls — net_send puts a datagram on the wire, net_poll
+# takes the next one off. A production build binds them to a real socket with
+# `extern fn net_send/net_poll` (UDP native, WebRTC/WebSocket wasm); absent that,
+# the compiler supplies a built-in in-process loopback, so a program is networked
+# end to end with NO foreign host — pure Ludic. This sends four bytes and polls
+# them back through the loopback: prints 4, then 10 20 30 42.
+program NetEcho {
+  entry {
+    let out = bytes(4)
+    out[0] = 10
+    out[1] = 20
+    out[2] = 30
+    out[3] = 42
+    net_send(0, out, 4)                  # onto the wire (the built-in loopback)
+
+    let inb = bytes(64)
+    let n = net_poll(inb, 64)            # take the next datagram back off
+    print(n)                             # 4
+    var i = 0
+    while i < n { print(inb[i]);  i = i + 1 }   # 10 20 30 42
+  }
+}

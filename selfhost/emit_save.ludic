@@ -5,13 +5,47 @@
 
 var g_iok: int = 0
 
+# The snapshot is a fixed sequence of (region, byte-length) blocks; the same list
+# feeds two targets — a file (save/load via fwrite/fread) and a memory buffer
+# (world_save/world_load via memcpy, NETWORKING-DESIGN §5 N1). g_snap_mode picks
+# which; buffer modes thread a running i64 offset (@g_off) so world_save returns
+# the total byte count and world_load reads the identical layout back.
+# NOTE: a string initializer on a module `ptr` var lowers to null (global_init),
+# so these are seeded at runtime in emit_snapshot before first use — never read
+# them uninitialized (a null string `==` would deref and crash the compiler).
+var g_snap_mode: ptr = null      # "file" | "save" | "load" | "size"
+var g_off: ptr = null            # current byte-offset register, buffer modes
+
 fn emit_io(fn2: ptr, p: ptr, bytes: ptr) -> void {
-  let r = `%io{itoa(g_iok)}`;  g_iok = g_iok + 1
-  emit("  ");  emit(r);  emit(" = call i64 @");  emit(fn2);  emit("(ptr ");  emit(p);  emit(", i64 1, i64 ");  emit(bytes);  emit(", ptr %f)\n")
+  if (g_snap_mode == "file") {
+    let r = `%io{itoa(g_iok)}`;  g_iok = g_iok + 1
+    emit("  ");  emit(r);  emit(" = call i64 @");  emit(fn2);  emit("(ptr ");  emit(p);  emit(", i64 1, i64 ");  emit(bytes);  emit(", ptr %f)\n")
+    return
+  }
+  if (g_snap_mode == "size") {                    # accumulate the offset only, no copy
+    let noff = `%ioff{itoa(g_iok)}`
+    emit("  ");  emit(noff);  emit(" = add i64 ");  emit(g_off);  emit(", ");  emit(bytes);  emit("\n")
+    g_off = noff
+    g_iok = g_iok + 1
+    return
+  }
+  # buffer mode: dst/src is %buf + g_off, copy `bytes`, then advance the cursor
+  let addr = `%ioa{itoa(g_iok)}`
+  emit("  ");  emit(addr);  emit(" = getelementptr inbounds i8, ptr %buf, i64 ");  emit(g_off);  emit("\n")
+  if (g_snap_mode == "save") {
+    emit("  call ptr @memcpy(ptr ");  emit(addr);  emit(", ptr ");  emit(p);  emit(", i64 ");  emit(bytes);  emit(")\n")
+  } else {
+    emit("  call ptr @memcpy(ptr ");  emit(p);  emit(", ptr ");  emit(addr);  emit(", i64 ");  emit(bytes);  emit(")\n")
+  }
+  let noff = `%ioff{itoa(g_iok)}`
+  emit("  ");  emit(noff);  emit(" = add i64 ");  emit(g_off);  emit(", ");  emit(bytes);  emit("\n")
+  g_off = noff
+  g_iok = g_iok + 1
 }
 
 fn emit_snapshot_blocks(fn2: ptr) -> void {
   g_iok = 0
+  g_off = "0"
   let me = itoa(MAX_ENT)
   emit_io(fn2, "@L_entc", "4")
   emit_io(fn2, "@L_freen", "4")
@@ -19,6 +53,9 @@ fn emit_snapshot_blocks(fn2: ptr) -> void {
   emit_io(fn2, "@L_alive", "%nalive")
   emit_io(fn2, "@L_freelist", "%nalive")
   emit_io(fn2, "@L_kind", "%nalive")
+  # N3: an @Owned world snapshots its per-entity owners too, so rollback/replication
+  # round-trips ownership (like @L_kind). Gated, so non-@Owned snapshots are unchanged.
+  if net_has_owned() { emit_io(fn2, "@L_owner_arr", "%nalive") }
   var i = 0
   while i < len(prog) { if prog[i].kind == N_VAR { emit_io(fn2, `@g_{prog[i].s}`, "4") };  i = i + 1 }
   var ci = 0
@@ -37,6 +74,7 @@ fn emit_snapshot_blocks(fn2: ptr) -> void {
 }
 
 fn emit_snapshot() -> void {
+  g_snap_mode = "file"                            # seed (module ptr inits are null)
   emith("@.sav_path = private unnamed_addr constant [10 x i8] c\"ludic.sav\\00\"\n")
   emith("@.sav_wb = private unnamed_addr constant [3 x i8] c\"wb\\00\"\n")
   emith("@.sav_rb = private unnamed_addr constant [3 x i8] c\"rb\\00\"\n")
@@ -58,4 +96,32 @@ fn emit_snapshot() -> void {
   emit_snapshot_blocks("fread")
   if has_load { emit("  call void @fn_rt_load_state(ptr %f)\n") }
   emit("  %c = call i32 @fclose(ptr %f)\n  ret i32 1\n}\n\n")
+
+  # world_save(buf) -> int / world_load(buf, len): the same whole-world snapshot,
+  # to a caller-owned memory buffer instead of a file (NETWORKING-DESIGN §5 N1) —
+  # the rollback/replication substrate. No rt_ hook: this is the ECS world only
+  # (entities, components, vars), which is what a peer replicates or a rollback
+  # restores; the runtime's windowing state stays local. world_save returns the
+  # byte count written; the caller sizes the buffer with world_size().
+  emit("define i32 @L_world_save(ptr %buf) {\nentry:\n")
+  g_snap_mode = "save"
+  emit_snapshot_blocks("")
+  let sret = `%wsn{itoa(g_iok)}`
+  emit("  ");  emit(sret);  emit(" = trunc i64 ");  emit(g_off);  emit(" to i32\n")
+  emit("  ret i32 ");  emit(sret);  emit("\n}\n\n")
+
+  emit("define void @L_world_load(ptr %buf, i32 %len) {\nentry:\n")
+  g_snap_mode = "load"
+  emit_snapshot_blocks("")
+  emit("  ret void\n}\n\n")
+
+  # world_size() -> int: the exact byte count a full snapshot needs, so a caller
+  # can size the buffer before world_save. Same block walk, offset-only.
+  emit("define i32 @L_world_size() {\nentry:\n")
+  g_snap_mode = "size"
+  emit_snapshot_blocks("")
+  let zret = `%wzn{itoa(g_iok)}`
+  emit("  ");  emit(zret);  emit(" = trunc i64 ");  emit(g_off);  emit(" to i32\n")
+  emit("  ret i32 ");  emit(zret);  emit("\n}\n\n")
+  g_snap_mode = "file"
 }

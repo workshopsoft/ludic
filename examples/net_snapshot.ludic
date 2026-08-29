@@ -1,0 +1,29 @@
+# net_snapshot.ludic — N1: whole-world snapshot to a memory buffer
+# (NETWORKING-DESIGN §5, §13 N1). The rollback/replication substrate.
+#
+# save()/load() snapshot the entire ECS world to a file; world_size/world_save/
+# world_load generalize the identical layout to a caller-owned memory buffer:
+#   world_size()          -> exact snapshot byte count
+#   world_save(buf)       -> bytes written (entities, components, vars)
+#   world_load(buf, len)  -> restore the world from those bytes
+# That is all rollback needs (save → predict → on misprediction restore and
+# re-sim) and all state replication needs (snapshot → ship → apply). This program
+# spawns a Unit (hp 50), snapshots the world, mutates hp to 7, then restores — hp
+# reads back 50. Prints 50 / 7 / 50, driven entirely from Ludic (no C host).
+program NetSnapshot {
+  property Health { hp: int = 0, max: int = 0 }
+  model Unit { Health }
+
+  entry {
+    spawn Unit { Health { hp: 50, max: 100 } }
+    let buf = bytes(world_size())
+    for (Health) in query [Health, {Unit}] {
+      print(Health.hp)                    # 50
+      let n = world_save(buf)             # snapshot the whole world
+      Health.hp = 7
+      print(Health.hp)                    # 7
+      world_load(buf, n)                  # roll the world back
+      print(Health.hp)                    # 50 — restored from bytes
+    }
+  }
+}

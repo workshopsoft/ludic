@@ -1,0 +1,20 @@
+# world_spawn.ludic — EV2b reflection: a mod creates a fresh entity by model id
+# (replaces tests/mod_c/world_spawn.c). world_spawn reuses the compiler's own
+# spawn lowering (alloc, kind, component defaults, @OnSpawn), so a mod-spawned
+# entity is indistinguishable from one born in source. Prints 1 / 42 / 1.
+program WorldSpawn {
+  property Health { hp: int = 0, max: int = 0 }
+  model Unit { Health }
+  @Public @OnSpawn(Unit) handler Init { }          # world table; leave defaults
+
+  entry {
+    let Um = world_model_id("Unit")
+    let e  = world_spawn(Um)                        # the mod creates an entity
+    let H  = world_prop_id("Health")
+    let hp = world_field_id(H, "hp")
+    print(world_has(e, H))          # 1 — spawn attached Health with defaults
+    world_set(e, H, hp, 42)
+    print(world_get(e, H, hp))      # 42
+    print(world_count())            # 1 — it is really in the world
+  }
+}

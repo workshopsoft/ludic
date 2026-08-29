@@ -123,7 +123,78 @@ fn emit_call(e: Node) -> Val {
   if (name == "save") { emit("  call void @L_save()\n");  return val("0", "void") }
   if (name == "ui_build") { emit("  call void @ui_build()\n");  return val("0", "void") }
   if (name == "load") { return val(emit_bind("call i32 @L_load()"), "bool") }
+  if (name == "world_size") { return val(emit_bind("call i32 @L_world_size()"), "int") }
+  if (name == "world_save") {                     # world_save(buf) -> bytes written
+    let b = emit_expr(e.kids[0])
+    return val(emit_bind(`call i32 @L_world_save(ptr {b.code})`), "int")
+  }
+  if (name == "world_load") {                     # world_load(buf, len)
+    let b = emit_expr(e.kids[0])
+    let l = emit_expr(e.kids[1])
+    emit("  call void @L_world_load(ptr ");  emit(b.code);  emit(", i32 ");  emit(l.code);  emit(")\n")
+    return val("0", "void")
+  }
   if (name == "quit") { emit("  store i32 0, ptr @L_running\n");  return val("0", "void") }
+  # NETWORKING (NETWORKING-DESIGN §5) — the low-level freedom layer, callable from
+  # Ludic. serialize/apply/sync_size lower to the @Sync by-kind dispatchers (N2);
+  # owner/set_owner/is_owner to the @Owned storage (N3); is_server/local_id read
+  # the runtime-set role registers (N5). Offline these hold their single-player
+  # default (@L_role=1 → is_server()==true), so guards collapse to "run here" (§8).
+  if (name == "serialize") {                        # serialize(e, buf) -> bytes written
+    let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1])
+    return val(emit_bind(`call i32 @ludic_serialize(i32 {a.code}, ptr {b.code})`), "int")
+  }
+  if (name == "apply") {                            # apply(e, buf, len)
+    let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1]);  let c = emit_expr(e.kids[2])
+    emit("  call void @ludic_apply(i32 ");  emit(a.code);  emit(", ptr ");  emit(b.code);  emit(", i32 ");  emit(c.code);  emit(")\n")
+    return val("0", "void")
+  }
+  if (name == "sync_size") {                        # sync_size(e) -> replicated byte count for e's model
+    let a = emit_expr(e.kids[0])
+    return val(emit_bind(`call i32 @ludic_sync_size(i32 {a.code})`), "int")
+  }
+  if (name == "owner") {                            # owner(e) -> peer id (-1 = unowned)
+    let a = emit_expr(e.kids[0])
+    return val(emit_bind(`call i32 @L_owner(i32 {a.code})`), "int")
+  }
+  if (name == "set_owner") {                        # set_owner(e, id)
+    let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1])
+    emit("  call void @L_set_owner(i32 ");  emit(a.code);  emit(", i32 ");  emit(b.code);  emit(")\n")
+    return val("0", "void")
+  }
+  if (name == "is_owner") {                         # is_owner(e) -> owner(e) == local_id()
+    let a = emit_expr(e.kids[0])
+    return val(emit_bind(`call i32 @L_is_owner(i32 {a.code})`), "bool")
+  }
+  if (name == "is_server") {                        # is_server() -> the local peer is the authority
+    let r = emit_bind("load i32, ptr @L_role")
+    let c = emit_bind(`icmp eq i32 {r}, 1`)
+    return val(emit_bind(`zext i1 {c} to i32`), "bool")
+  }
+  if (name == "local_id") { return val(emit_bind("load i32, ptr @L_localid"), "int") }
+  if (name == "net_pump") { emit("  call void @L_net_pump()\n");  return val("0", "void") }   # N4: drain + re-emit inbound RPCs
+  if (name == "tick_fixed") { emit("  call void @L_tick_fixed()\n");  return val("0", "void") }    # N5: run the sim phases
+  if (name == "tick_render") { emit("  call void @L_tick_render()\n");  return val("0", "void") }  # N5: run the Render phase
+  if (name == "set_role") {                          # N5: the runtime sets the peer's role (1=server, 0=client)
+    let a = emit_expr(e.kids[0]);  emit("  store i32 ");  emit(a.code);  emit(", ptr @L_role\n");  return val("0", "void")
+  }
+  if (name == "set_local_id") {                      # N5: the runtime sets this peer's id
+    let a = emit_expr(e.kids[0]);  emit("  store i32 ");  emit(a.code);  emit(", ptr @L_localid\n");  return val("0", "void")
+  }
+  # net_send(peer, buf, len) / net_poll(buf, cap): the transport seam. An
+  # `extern fn` of the same name (a real socket) wins; absent one, these lower to
+  # the compiler's built-in loopback so a game is networked with zero foreign code.
+  if (name == "net_send") and (find_extern("net_send") == null) {
+    g_uses_loopback = true
+    let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1]);  let c = emit_expr(e.kids[2])
+    emit("  call void @L_net_send(i32 ");  emit(a.code);  emit(", ptr ");  emit(b.code);  emit(", i32 ");  emit(c.code);  emit(")\n")
+    return val("0", "void")
+  }
+  if (name == "net_poll") and (find_extern("net_poll") == null) {
+    g_uses_loopback = true
+    let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1])
+    return val(emit_bind(`call i32 @L_net_poll(ptr {a.code}, i32 {b.code})`), "int")
+  }
   if (name == "len") { return emit_len(e) }
   if (name == "push") { return emit_push(e) }
   if (name == "str") {                            # str(x): int/bool/fixed -> text, a string passes through
@@ -151,9 +222,55 @@ fn emit_call(e: Node) -> Val {
   }
   if (name == "fx") { let a = emit_expr(e.kids[0]);  return val(emit_bind(`shl i32 {a.code}, 16`), "fixed") }
   if (name == "flr") { let a = emit_expr(e.kids[0]);  return val(emit_bind(`ashr i32 {a.code}, 16`), "int") }
+  # The EV2 reflection ABI (the world table), exposed to Ludic so a Ludic mod can
+  # introspect the world by name — the same functions a foreign mod binds. Emitted
+  # only for a modding program (ECS + events), so a plain game is unchanged.
+  if (name == "world_prop_id") { let a = emit_expr(e.kids[0]);  return val(emit_bind(`call i32 @ludic_prop_id(ptr {a.code})`), "int") }
+  if (name == "world_field_id") { let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1]);  return val(emit_bind(`call i32 @ludic_field_id(i32 {a.code}, ptr {b.code})`), "int") }
+  if (name == "world_get") {
+    let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1]);  let c = emit_expr(e.kids[2])
+    let r = emit_bind(`call i64 @ludic_get(i32 {a.code}, i32 {b.code}, i32 {c.code})`)
+    return val(emit_bind(`trunc i64 {r} to i32`), "int")
+  }
+  if (name == "world_set") {
+    let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1]);  let c = emit_expr(e.kids[2]);  let d = emit_expr(e.kids[3])
+    let v64 = emit_bind(`sext i32 {d.code} to i64`)
+    emit("  call void @ludic_set(i32 ");  emit(a.code);  emit(", i32 ");  emit(b.code);  emit(", i32 ");  emit(c.code);  emit(", i64 ");  emit(v64);  emit(")\n")
+    return val("0", "void")
+  }
+  if (name == "world_has") { let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1]);  return val(emit_bind(`call i32 @ludic_has(i32 {a.code}, i32 {b.code})`), "int") }
+  if (name == "world_count") { return val(emit_bind("call i32 @ludic_entity_count()"), "int") }
+  if (name == "world_kind") { let a = emit_expr(e.kids[0]);  return val(emit_bind(`call i32 @ludic_kind(i32 {a.code})`), "int") }
+  if (name == "world_model_id") { let a = emit_expr(e.kids[0]);  return val(emit_bind(`call i32 @ludic_model_id(ptr {a.code})`), "int") }
+  if (name == "world_query_next") { let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1]);  return val(emit_bind(`call i32 @ludic_query_next(i32 {a.code}, i32 {b.code})`), "int") }
+  if (name == "world_register_prop") { let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1]);  return val(emit_bind(`call i32 @ludic_register_prop(ptr {a.code}, i32 {b.code})`), "int") }
+  if (name == "world_attach_dyn") { let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1]);  emit("  call void @ludic_attach_dyn(i32 ");  emit(a.code);  emit(", i32 ");  emit(b.code);  emit(")\n");  return val("0", "void") }
+  if (name == "world_detach_dyn") { let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1]);  emit("  call void @ludic_detach_dyn(i32 ");  emit(a.code);  emit(", i32 ");  emit(b.code);  emit(")\n");  return val("0", "void") }
+  if (name == "world_spawn") { let a = emit_expr(e.kids[0]);  return val(emit_bind(`call i32 @ludic_spawn(i32 {a.code})`), "int") }
   if is_intrinsic(name) { return emit_intrinsic(name, e) }
   if is_intrinsic2(name) { return emit_intrinsic2(name, e) }
   if is_math_builtin(name) { return emit_math_builtin(name, e) }
+  # extern fn: a direct call to the declared link symbol (no @fn_ prefix)
+  let ext = find_extern(name)
+  if (ext != null) {
+    let eargs = new []ptr
+    let eatys = new []ptr
+    var ei = 0
+    while ei < len(e.kids) { let v = emit_expr(e.kids[ei]);  push(eargs, v.code);  push(eatys, v.ty);  ei = ei + 1 }
+    let erl = llty(ext.ty)
+    emit("  ")
+    var erreg = "0"
+    if not (erl == "void") { erreg = nreg();  emit(erreg);  emit(" = ") }
+    emit("call ");  emit(erl);  emit(" @");  emit(ext.a.s);  emit("(")
+    ei = 0
+    while ei < len(eargs) {
+      if ei > 0 { emit(", ") }
+      emit(llty(eatys[ei]));  emit(" ");  emit(eargs[ei])
+      ei = ei + 1
+    }
+    emit(")\n")
+    return val(erreg, ext.ty)
+  }
   var fn2 = find_fn(name)
   var cname = name
   if (fn2 == null) {
@@ -234,6 +351,7 @@ fn emit_expr(e: Node) -> Val {
     }
     return emit_load_at(a, g_addr_ty)
   }
+  if e.kind == S_EMIT   { return emit_emit(e) }       # emit as an expression -> cancelled flag
   if e.kind == E_CALL   { return emit_call(e) }
   if e.kind == E_BIN    { return emit_bin(e) }
   if e.kind == E_UN {

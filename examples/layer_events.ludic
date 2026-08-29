@@ -1,0 +1,27 @@
+# layer_events.ludic — EV1 for layers + SCENES E2 (layer toggle). A `public` layer
+# promotes its show/hide to events; `enable layer L` / `disable layer L` flips the
+# layer on and off (its handlers stop running while hidden) and fires
+# layer_<L>_show / layer_<L>_hide. This closes the last scope of "events across the
+# whole architecture" — properties, models, scenes, program, and now layers.
+#
+# Running it prints:  50 2 1 50
+program LayerEvents {
+  var step: int = 0
+
+  @On(layer_Hud_show) handler Shown  { print(1) }   # a mod reacts when the HUD returns
+  @On(layer_Hud_hide) handler Hidden { print(2) }   # ...and when it's hidden
+
+  scene Main start {
+    layer Hud public {
+      handler Draw phase Update { print(50) }        # only runs while Hud is enabled
+    }
+    layer Ctrl {
+      handler Drive phase LateUpdate {
+        step = step + 1
+        if step == 1 { disable layer Hud }           # frame 1: hide -> Hidden 2, Draw stops
+        if step == 2 { enable layer Hud }            # frame 2: show -> Shown 1, Draw resumes
+        if step == 3 { quit() }                      # frame 3: after Draw ran again
+      }
+    }
+  }
+}

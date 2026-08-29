@@ -42,15 +42,15 @@ object LudicTokens {
 object LudicVocabulary {
     val DECL = setOf(
         "program", "import", "property", "model", "enum", "ui",
-        "const", "var", "fn", "extern", "handler", "entry"
+        "const", "var", "fn", "extern", "handler", "entry", "event", "scene"
     )
     val CLAUSE = setOf(
-        "phase", "query", "on"
+        "phase", "query", "on", "cancellable", "public", "layer", "start"
     )
     val STMT = setOf(
         "let", "return", "if", "else", "while", "for", "in", "spawn", "despawn",
         "enable", "disable", "match", "machine", "state", "become", "where",
-        "and", "or", "not", "break", "continue", "new"
+        "and", "or", "not", "break", "continue", "new", "emit", "cancel"
     )
     val PRIMITIVES = setOf("int", "fixed", "bool", "entity", "str", "ptr", "byte", "words", "fixeds", "ptrs", "void")
     val PHASES = setOf("Start", "Input", "FixedUpdate", "Update", "LateUpdate", "Render")

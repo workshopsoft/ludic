@@ -1,0 +1,17 @@
+# world_mixed.ludic — EV2b reflection: get/set use real struct offsets, not a
+# field*4 assumption (replaces tests/mod_c/world_mixed.c). Slot's `qty` sits after
+# a `ptr` field, so its byte offset is 8, not 4; writing qty=99 by name and reading
+# it back proves the world table addresses fields by their true layout. Prints 99.
+program WorldMixed {
+  property Slot { ref: ptr = null, qty: int = 0 }
+  model Item { Slot }
+  @Public @OnSpawn(Item) handler Born { }          # makes it a modding program
+
+  entry {
+    let e   = world_spawn(world_model_id("Item"))
+    let S   = world_prop_id("Slot")
+    let qty = world_field_id(S, "qty")             # field index 1, after the ptr
+    world_set(e, S, qty, 99)
+    print(world_get(e, S, qty))                    # 99 iff the offset is 8, not 4
+  }
+}

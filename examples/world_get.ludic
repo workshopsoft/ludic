@@ -1,0 +1,22 @@
+# world_get.ludic — EV2 reflection: read and write a component by NAME through the
+# world table, driven from Ludic (replaces tests/mod_c/world_mod.c). world_prop_id
+# / world_field_id resolve names to ids; world_get / world_set / world_has read and
+# write by those ids — the same reflection ABI a foreign mod binds, now callable
+# from Ludic. Spawns a Unit (Init sets hp=max=50), then reads/tests/writes hp.
+# Prints 50 / 1 / 7.
+program WorldGet {
+  property Health { hp: int = 0, max: int = 0 }
+  model Unit { Health }
+  @Public @OnSpawn(Unit) handler Init { Health.hp = Health.max }   # -> emits the world table
+
+  entry {
+    spawn Unit { Health { max: 50 } }
+    let H  = world_prop_id("Health")
+    let hp = world_field_id(H, "hp")
+    let e  = world_query_next(H, 0)
+    print(world_get(e, H, hp))      # 50 — read by name
+    print(world_has(e, H))          # 1  — entity has Health
+    world_set(e, H, hp, 7)          # write by name
+    print(world_get(e, H, hp))      # 7  — the write stuck
+  }
+}

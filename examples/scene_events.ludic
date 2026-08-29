@@ -1,0 +1,22 @@
+# scene_events.ludic — EV1 for scenes: a `public` scene promotes its on-enter /
+# on-exit to public events scene_<S>_enter / scene_<S>_exit, extending the modding
+# surface to the game's scene structure. A mod (native @On here, or foreign over
+# the ABI) reacts as the game moves between scenes.
+#
+# Running it prints:  10 1 20 2 30 3
+program SceneEvents {
+  @On(scene_Menu_enter) handler Greet { print(1) }
+  @On(scene_Menu_exit)  handler Bye   { print(2) }
+  @On(scene_Game_enter) handler Begin { print(3) }
+
+  scene Menu start public {
+    on enter { print(10) }        # boot enters Menu: 10, then scene_Menu_enter -> 1
+    on exit  { print(20) }        # become leaves Menu: 20, then scene_Menu_exit -> 2
+    layer L { handler Go phase Update { become Game } }
+  }
+
+  scene Game public {
+    on enter { print(30) }        # become enters Game: 30, then scene_Game_enter -> 3
+    layer M { handler Stop phase Update { quit() } }
+  }
+}

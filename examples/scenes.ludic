@@ -1,9 +1,19 @@
-# ⚠️ NOT YET IMPLEMENTED by the self-hosted compiler. `scene` / `layer` /
-# `on enter` / `on exit` have no parser support today, so this file does NOT
-# compile with build/ludicc — it is a design sketch of the intended syntax (see
-# LANGUAGE.md §"Scenes & layers"). It is deliberately excluded from test.sh.
-# Games that need scene-like states use a mode register + `machine` today, as
-# examples/chronorift does.
+# scenes — one active scene at a time, each grouping handlers into layers behind
+# an implicit active-scene register (see LANGUAGE.md §"Scenes & layers").
+#
+# Running it (feed a few keystrokes so the loop ticks) prints:
+#   1000 1 101 102 2 3 900 201 900 202 900
+#     1000     Boot (a global handler) runs once at Start
+#     1        Title is `start`; its `on enter` fires at boot
+#     101      frame 1 Update: only Title.Main.Tick runs (Play is not active)
+#     102      frame 2 Update: Tick reaches 2 -> `become Play`…
+#     2 3      …which runs Title's `on exit` then Play's `on enter`
+#     900      Play renders the same frame it is entered (Hud.Draw)
+#     201 900  frame 3: Play.World.Step, then Hud.Draw
+#     202 900  frame 4: Step reaches 2 -> quit(); Hud.Draw paints the last frame
+#
+#   ./selfhost/game-build.sh build/ludicc examples/scenes.ludic /tmp/scenes
+#   printf 'aaaa' | /tmp/scenes
 program SceneDemo {
   const R_N: int = 0
 

@@ -15,6 +15,14 @@ fn has_models() -> bool {
   while i < len(prog) { if prog[i].kind == N_ARCH { return true };  i = i + 1 }
   return false
 }
+# N5: does the program have an `entry` block? A game with both handlers and an
+# `entry` drives its own loop (calling tick_fixed/tick_render), instead of the
+# compiler's auto frame loop. A game with handlers and no entry uses the auto-loop.
+fn has_entry() -> bool {
+  var i = 0
+  while i < len(prog) { if prog[i].kind == N_MAIN { return true };  i = i + 1 }
+  return false
+}
 # Does this program run the ECS? A property alone no longer answers that — the
 # same `property` keyword also declares plain `new`-allocated records (the merged
 # `struct`). A program uses the ECS when it has a handler or a model; a tool that
@@ -25,12 +33,22 @@ fn has_ecs() -> bool { return has_systems() or has_models() }
 fn emit_ecs_storage() -> void {
   emith("@L_running = internal global i32 1\n")
   emith("@L_key = internal global i32 0\n")
+  if len(g_scenes) > 0 { emith("@L_scene = internal global i32 0\n") }   # active base scene id
   emith("@L_entc = internal global i32 0\n")
   let me = itoa(MAX_ENT)
   emith(`@L_alive = internal global [{me} x i32] zeroinitializer\n`)
   emith(`@L_kind = internal global [{me} x i32] zeroinitializer\n`)
   emith(`@L_freelist = internal global [{me} x i32] zeroinitializer\n`)
   emith("@L_freen = internal global i32 0\n")
+  # NETWORKING role registers (N3/N5): a runtime sets these; offline they hold the
+  # single-player default — @L_role=1 (this peer is the authority), local id 0.
+  # Emitted only when a networking feature is used, so non-networked builds are
+  # byte-identical (§8). @L_owner_arr is the per-entity network owner (N3, @Owned).
+  if net_any() {
+    emith("@L_role = internal global i32 1\n")       # 1 = server/authority (offline default)
+    emith("@L_localid = internal global i32 0\n")    # this peer's id
+  }
+  if net_has_owned() { emith(`@L_owner_arr = internal global [{me} x i32] zeroinitializer\n`) }
   var i = 0
   while i < len(prog) {
     let c = prog[i]
@@ -46,6 +64,9 @@ fn emit_ecs_storage() -> void {
     if c.kind == N_SYS  { emith(`@HE_{c.s} = internal global i32 1\n`) }
     i = i + 1
   }
+  # one enabled-flag global per toggled layer (default shown)
+  var li = 0
+  while li < len(g_toggled_layers) { emith(`@LE_{g_toggled_layers[li]} = internal global i32 1\n`);  li = li + 1 }
 }
 
 # L_reset(e): clear every has-flag and the archetype kind for entity e
@@ -62,7 +83,13 @@ fn emit_ecs_allocator() -> void {
     i = i + 1
   }
   emit("  %k = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_kind, i32 0, i32 %e\n")
-  emit("  store i32 0, ptr %k\n  ret void\n}\n\n")
+  emit("  store i32 0, ptr %k\n")
+  # N3: reset an @Owned entity's network owner to -1 (unowned) on alloc/free
+  if net_has_owned() {
+    emit("  %ow = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_owner_arr, i32 0, i32 %e\n")
+    emit("  store i32 -1, ptr %ow\n")
+  }
+  emit("  ret void\n}\n\n")
 
   emit("define i32 @L_alloc() {\nentry:\n")
   emit("  %fn = load i32, ptr @L_freen\n")

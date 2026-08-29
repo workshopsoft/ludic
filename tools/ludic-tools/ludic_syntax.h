@@ -53,22 +53,22 @@ typedef struct {
  * declaration keyword, anything stmt() dispatches on is a statement keyword. */
 static const char* LUDIC_KW_DECL[] = {
     "program","import","property","model","enum","ui",
-    "const","var","fn","extern","handler","entry", 0
+    "const","var","fn","extern","handler","entry","event","scene", 0
 };
 static const char* LUDIC_KW_CLAUSE[] = {
-    "phase","query","on", 0
+    "phase","query","on","cancellable","public","layer","start", 0
 };
 /* Documented design targets the self-hosted parser does not accept yet. Kept
  * out of the highlighted vocabulary (they would read as working keywords) until
  * they are implemented; check-vocabulary.py verifies the lists above are a
  * subset of what selfhost/parse*.ludic actually dispatches on. */
 static const char* LUDIC_KW_RESERVED[] = {
-    "scene","layer","start", 0
+    0
 };
 static const char* LUDIC_KW_STMT[] = {
     "let","return","if","else","while","for","in","spawn","despawn",
     "enable","disable","match","machine","state","become","where",
-    "and","or","not","break","continue","new", 0
+    "and","or","not","break","continue","new","emit","cancel", 0
 };
 static const char* LUDIC_TYPES[] = {
     "int","fixed","bool","entity","str","ptr","byte","words","fixeds","ptrs","void", 0

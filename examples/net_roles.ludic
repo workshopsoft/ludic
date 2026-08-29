@@ -1,0 +1,33 @@
+# net_roles.ludic — N5: handler roles + the drivable sim (NETWORKING-DESIGN §6.2,
+# §5, §13 N5).
+#
+# A handler's network role is a declarative annotation, never a runtime branch in
+# ordinary code:
+#   (unmarked)  runs on every peer — the shared, deterministic simulation
+#   @Server     runs only on the authority (clients get the result via @Sync)
+#   @Predicted  runs on the owning client and the server (auto-reconciled)
+# The runtime sets the peer's role register (set_role); offline it defaults to
+# server, so guards collapse to "run here" and a non-networked build is unchanged.
+#
+# The per-frame phases are also exposed as callables — tick_fixed() runs the sim
+# phases — so this game owns its own loop via `entry` (for prediction/rollback,
+# replay, headless tests). Acting as a client then the server: 1, then 102.
+program NetRoles {
+  property Score { n: int = 0 }
+  model Board { Score }
+
+  handler Both phase Update { for (Score) in query [Score] { Score.n = Score.n + 1 } }        # runs everywhere
+  @Server handler ServerOnly phase Update { for (Score) in query [Score] { Score.n = Score.n + 100 } }   # authority only
+
+  entry {
+    spawn Board { Score { n: 0 } }
+
+    set_role(0)                                  # act as a client
+    tick_fixed()                                 # Both(+1); ServerOnly skipped
+    for (Score) in query [Score] { print(Score.n) }   # 1
+
+    set_role(1)                                  # act as the server
+    tick_fixed()                                 # Both(+1) + ServerOnly(+100)
+    for (Score) in query [Score] { print(Score.n) }   # 102
+  }
+}

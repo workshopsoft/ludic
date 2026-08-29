@@ -1,0 +1,29 @@
+# net_rpc.ludic — N4: remote events / RPCs (NETWORKING-DESIGN §6.4, §13 N4).
+#
+# An `event` marked @ToServer (client→server) or @ToClients (server→clients) is a
+# directional remote event — the event bus with a direction flag, no new concept.
+# At an `emit` site the POD payload is serialized as [event id][fields] and
+# net_send in its direction; net_pump() drains inbound frames and re-emits each
+# into the ordinary @On dispatch on the far side. So `emit Fire(...)` is a remote
+# call — it does not run locally; the receiver's pump runs the handler.
+#
+# Here two Fire RPCs are emitted (dir 5, dir 3). Before net_pump the handler has
+# not run (hits still 0); after, both are drained and re-emitted (5 + 3 = 8).
+program NetRpc {
+  property Log { hits: int = 0 }
+  model Sink { Log }
+
+  @ToServer event Fire { dir: int = 0 }
+  @On(Fire) handler OnFire {
+    for (Log) in query [Log] { Log.hits = Log.hits + dir }
+  }
+
+  entry {
+    spawn Sink { Log { hits: 0 } }
+    emit Fire(dir: 5)                     # serialized onto the wire (not run locally)
+    emit Fire(dir: 3)
+    for (Log) in query [Log] { print(Log.hits) }   # 0
+    net_pump()                            # drain + re-emit both RPCs
+    for (Log) in query [Log] { print(Log.hits) }   # 8
+  }
+}

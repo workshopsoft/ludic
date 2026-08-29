@@ -1,0 +1,26 @@
+# prop_events.ludic — EV1 for properties: @Public promotes the structural
+# attach/detach hooks to public events, so a mod sees a property appear or vanish
+# on a live entity (the same shape works for @OnEnable/@OnDisable → enable/disable
+# events). This extends the public-event surface past models to properties —
+# "events for properties, models, scenes, layers" in the architecture.
+#
+# Running it prints:  300 400
+program PropEvents {
+  property Tag    { v: int = 0 }
+  property Shield { amount: int = 0 }
+  model Unit { Tag }
+
+  @Public @OnAttach(Shield) handler Up   { }   # -> prop_Shield_attach
+  @Public @OnDetach(Shield) handler Down { }   # -> prop_Shield_detach
+
+  @On(prop_Shield_attach) handler Gained { print(entity + 300) }   # entity 0 -> 300
+  @On(prop_Shield_detach) handler Lost   { print(entity + 400) }   # entity 0 -> 400
+
+  handler Seed phase Start { spawn Unit { Tag { v: 1 } } }         # entity 0
+
+  handler Run phase Render {
+    for (u) in query [Unit]   { attach Shield on self() { amount: 5 } }   # -> prop_Shield_attach -> 300
+    for (s) in query [Shield] { detach Shield on self() }                # -> prop_Shield_detach -> 400
+    quit()
+  }
+}

@@ -1,0 +1,25 @@
+# net_owner.ludic — N3: entity ownership (NETWORKING-DESIGN §6.3, §13 N3).
+#
+# `@Owned` gives a model an owner slot (the @L_owner array). owner(e) reads it,
+# set_owner(e, id) assigns it (the authority does), is_owner(e) tests it against
+# the local peer id. Ownership gates who may write @Sync(to: owner) fields and who
+# runs @Predicted handlers; it is part of the world snapshot, so it round-trips
+# through rollback/replication. A fresh entity is unowned (-1). This assigns and
+# tests ownership against the default local id (0). Prints -1 / 7 / 0 / 1.
+program NetOwner {
+  @Sync property Pos { x: int = 0, y: int = 0 }
+  @Owned model Unit { @Sync Pos }
+
+  entry {
+    spawn Unit { Pos { x: 5, y: 6 } }
+    for (Pos) in query [Pos, {Unit}] {
+      let e = self()
+      print(owner(e))                     # -1 — fresh entity is unowned
+      set_owner(e, 7)
+      print(owner(e))                     # 7  — the authority assigned it
+      print(is_owner(e))                  # 0  — local id 0 != 7
+      set_owner(e, 0)
+      print(is_owner(e))                  # 1  — now the local peer owns it
+    }
+  }
+}

@@ -1,0 +1,38 @@
+# detach.ludic — the structural attach/detach pair and its @OnAttach / @OnDetach
+# hooks. `attach P on e` adds a property to a LIVE entity (seeding its fields and
+# firing @OnAttach); `detach P on e` removes it (firing @OnDetach, which still
+# reads the outgoing value before the has-flag clears). This is the structural
+# counterpart to enable/disable — attach/detach create and destroy the property's
+# presence, whereas disable/enable only pause it while keeping the data.
+#
+# Running it prints: 15 1 25 0
+#   15   @OnAttach(Shield): amount seeded to 5, prints 5 + 10
+#   1    one live Shield now matches the query
+#   25   @OnDetach(Shield): reads the outgoing amount 5, prints 5 + 20
+#   0    the Shield is gone — nothing matches
+#
+#   ./selfhost/game-build.sh build/ludicc examples/detach.ludic /tmp/detach
+#   /tmp/detach </dev/null
+program Detach {
+  property Tag    { v: int = 0 }
+  property Shield { amount: int = 0 }
+  model Unit { Tag }
+
+  @OnAttach(Shield) handler Up   { print(Shield.amount + 10) }   # structural: property born
+  @OnDetach(Shield) handler Down { print(Shield.amount + 20) }   # structural: property dies
+
+  handler Seed phase Start { spawn Unit { Tag { v: 1 } } }
+
+  handler Run phase Render {
+    for (u) in query [Unit] { attach Shield on self() { amount: 5 } }   # @OnAttach -> 15
+    var n = 0
+    for (s) in query [Shield] { n += 1 }
+    print(n)                                                           # 1
+
+    for (s) in query [Shield] { detach Shield on self() }              # @OnDetach -> 25
+    n = 0
+    for (s) in query [Shield] { n += 1 }
+    print(n)                                                           # 0
+    quit()
+  }
+}

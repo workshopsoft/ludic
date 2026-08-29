@@ -5,41 +5,39 @@
 #   ./tools/build-tools.sh --test       build, then run tools/test-tools.sh
 #   ./tools/build-tools.sh --install    also symlink both into ~/.local/bin
 #
-# Both binaries are plain C with no dependencies, same as the compiler. They
-# share the lexer and vocabulary in tools/ludic-tools/ludic_syntax.h, so a
-# keyword added there reaches every editor at once.
+# Both binaries are written in Ludic (tools/ludic-tools/fmt.ludic, lsp.ludic) and
+# compiled by the Ludic compiler itself — no C is compiled. clang only assembles
+# the emitted LLVM IR, the same floor the compiler stands on. The vocabulary the
+# grammar/lexer share still lives in tools/ludic-tools/ludic_syntax.h (data, read
+# by check-vocabulary.py); the tools carry their own copy of it in Ludic.
 set -e
 cd "$(dirname "$0")/.."
 
 CC="${LUDIC_CC:-clang}"
-CFLAGS="-O2 -Wall -Wno-unused-function"
 SRC=tools/ludic-tools
 OUT=build
 
 mkdir -p "$OUT"
 
-build_one() {
-  local name="$1" main="$2"
-  local newest
-  # rebuild when any header or the entry point is newer than the binary
-  if [ -x "$OUT/$name" ]; then
-    newest=$(find "$SRC" -name '*.h' -o -name "$(basename "$main")" | while read -r f; do
-      [ "$f" -nt "$OUT/$name" ] && echo new
-    done) || true
-    if [ -z "$newest" ]; then echo "$name: up to date"; return; fi
+# the Ludic compiler, assembled from the checked-in IR seed (C-free)
+if [ ! -x "$OUT/ludicc" ] || [ selfhost/ludicc.seed.ll -nt "$OUT/ludicc" ]; then
+  echo "cc: selfhost/ludicc.seed.ll -> $OUT/ludicc  (from the IR seed, no C compiler)"
+  $CC selfhost/ludicc.seed.ll -o "$OUT/ludicc"
+fi
+
+build_ludic() {
+  local name="$1" src="$2"
+  if [ -x "$OUT/$name" ] && [ ! "$src" -nt "$OUT/$name" ] && [ ! "$OUT/ludicc" -nt "$OUT/$name" ]; then
+    echo "$name: up to date"; return
   fi
-  echo "cc: $main -> $OUT/$name"
-  $CC $CFLAGS "$main" -o "$OUT/$name"
+  echo "ludicc: $src -> $OUT/$name  (Ludic -> LLVM IR -> binary, no C)"
+  "$OUT/ludicc" "$src" --emit-llvm -o "$OUT/$name.ll" >/dev/null 2>&1 \
+    && $CC -O2 "$OUT/$name.ll" -o "$OUT/$name" \
+    && rm -f "$OUT/$name.ll" || { echo "build failed: $name"; exit 1; }
 }
 
-build_one ludic-fmt "$SRC/ludic_fmt_main.c"
-build_one ludic-lsp "$SRC/ludic_lsp.c"
-
-# The language server shells out to the compiler for real diagnostics, so having
-# it around is most of the value.
-if [ ! -x "$OUT/ludicc" ]; then
-  echo "note: $OUT/ludicc not built yet — run ./build.sh for compiler diagnostics"
-fi
+build_ludic ludic-fmt "$SRC/fmt.ludic"
+build_ludic ludic-lsp "$SRC/lsp.ludic"
 
 # VS Code needs the grammar inside its own extension directory, so it gets a
 # copy. A copy that can drift is the whole failure mode this toolchain is built

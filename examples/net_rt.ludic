@@ -1,0 +1,33 @@
+# net_rt.ludic — a blessed, server-authoritative replication runtime (NETWORKING
+# N6). It ties the language's networking primitives together into a batteries-
+# included default, the way tests/mod_c/mod.c proved the event ABI — but written
+# in Ludic, over the built-in transport, with no foreign code.
+#
+# This is LIBRARY POLICY, not the language (NETWORKING-DESIGN §10, §12): it picks
+# server-authoritative state replication. The seams stay open — swap this for
+# lockstep+rollback (world_save + tick_fixed on misprediction) or your own.
+#
+# Frame layout on the wire: [i32 entity id][synced field bytes]. The authority
+# calls rt_replicate(e) per entity each tick; a peer calls rt_receive() to drain
+# inbound snapshots and apply them. serialize/apply are the compiler-generated
+# @Sync codecs; net_send/net_poll are the transport seam (built-in loopback here,
+# a real socket when a program binds `extern fn net_send/net_poll`).
+
+# The authority ships one entity's authoritative synced state to peers.
+fn rt_replicate(e: int) -> void {
+  let w = words(512)
+  w[0] = e                                 # entity id in the first word
+  let n = serialize(e, offset(w, 4))       # synced fields after it
+  net_send(0, w, 4 + n)
+}
+
+# A peer drains every inbound snapshot and applies it to the named entity. One
+# datagram per poll (the transport is datagram-preserving), so loop until empty.
+fn rt_receive() -> void {
+  let w = words(512)
+  var n = net_poll(w, 2048)
+  while n > 0 {
+    apply(w[0], offset(w, 4), n - 4)        # w[0] = entity id; bytes follow
+    n = net_poll(w, 2048)
+  }
+}

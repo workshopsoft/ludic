@@ -23,7 +23,8 @@ echo "  seed.ll --clang--> sh_seed   (no C compiler used)"
 FRAGS="selfhost/str.ludic selfhost/buf.ludic selfhost/io.ludic selfhost/ast.ludic
 selfhost/lex.ludic selfhost/parse.ludic selfhost/parse_game.ludic selfhost/emit_core.ludic selfhost/emit_head.ludic
 selfhost/emit_addr.ludic selfhost/emit_intrin.ludic selfhost/emit_intrin2.ludic selfhost/emit_math.ludic selfhost/emit_new.ludic
-selfhost/emit_expr.ludic selfhost/emit_stmt.ludic selfhost/emit_ecs.ludic selfhost/emit_query.ludic selfhost/emit_spawn.ludic selfhost/emit_game.ludic selfhost/emit_machine.ludic selfhost/emit_save.ludic selfhost/emit_ui.ludic selfhost/emit_decl.ludic selfhost/main.ludic"
+selfhost/emit_expr.ludic selfhost/emit_stmt.ludic selfhost/emit_ecs.ludic selfhost/emit_query.ludic selfhost/emit_spawn.ludic selfhost/emit_game.ludic selfhost/emit_machine.ludic selfhost/emit_save.ludic
+selfhost/emit_net.ludic selfhost/emit_ui.ludic selfhost/emit_decl.ludic selfhost/main.ludic"
 { echo "program SelfHost {"; for f in $FRAGS; do cat "$f"; echo; done; echo "}"; } > "$B/selfhost.ludic"
 
 # the seed-built compiler compiles its own source

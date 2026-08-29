@@ -1,0 +1,18 @@
+# program_events.ludic — EV1 for the program ("game") scope: @Public on @OnStart
+# and @OnQuit promotes them to program_start / program_quit events, so a mod runs
+# its own setup after the game boots and its own teardown as the game exits — the
+# top-level modding entry points (Blender's app handlers, Minetest's on_shutdown).
+#
+# Running it prints:  1 100 2 200
+program ProgramEvents {
+  property Health { hp: int = 0 }
+  model Dummy { Health }
+
+  @Public @OnStart handler Boot { print(1) }        # -> program_start
+  @Public @OnQuit  handler Bye  { print(2) }        # -> program_quit
+
+  @On(program_start) handler ModInit { print(100) } # mod boots after the game
+  @On(program_quit)  handler ModDone { print(200) } # mod tears down as the game exits
+
+  handler Run phase Update { quit() }
+}

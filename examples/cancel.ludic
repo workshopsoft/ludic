@@ -1,0 +1,27 @@
+# cancel.ludic — EV3: cancellable (decision) events.
+#
+# A `cancellable` event is fired BEFORE an action so a listener can veto it. The
+# listener calls `cancel`; the caller reads the verdict back — `emit E(…)` used as
+# an expression yields the cancelled flag (1 = vetoed, 0 = allowed). A foreign mod
+# vetoes the same way, by setting the payload's trailing `cancelled` field over
+# the ABI. This is the modding headline: observation becomes control.
+#
+# Running it prints:  0 1 92
+program Cancel {
+  event cancellable BeforeHurt { amount: int = 0 }
+
+  @On(BeforeHurt) handler Armor { if amount > 10 { cancel } }   # veto any hit over 10
+
+  entry {
+    let v1 = emit BeforeHurt(amount: 5)      # 5 <= 10 -> allowed
+    print(v1)                                 # 0
+    let v2 = emit BeforeHurt(amount: 15)     # 15 > 10 -> vetoed
+    print(v2)                                 # 1
+
+    # the realistic shape: only apply the effect when the decision isn't vetoed
+    var hp = 100
+    if emit BeforeHurt(amount: 8)  == 0 { hp = hp - 8 }    # allowed  -> 92
+    if emit BeforeHurt(amount: 50) == 0 { hp = hp - 50 }   # vetoed   -> unchanged
+    print(hp)                                 # 92
+  }
+}

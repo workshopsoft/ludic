@@ -1,0 +1,27 @@
+# world_dyn.ludic — EV7 reflection: register a brand-new component at runtime
+# (replaces tests/mod_c/world_dyn.c). world_register_prop declares a component the
+# game never wrote; world_attach_dyn adds it to an entity; get/set/has then treat
+# it exactly like a built-in, with per-entity isolation. Prints 0 1 30 100 1 30.
+program WorldDyn {
+  property Health { hp: int = 0, max: int = 0 }
+  model Unit { Health }
+  @Public @OnSpawn(Unit) handler Init { }
+
+  entry {
+    let Um = world_model_id("Unit")
+    let e  = world_spawn(Um)
+    let e2 = world_spawn(Um)
+    let Mana = world_register_prop("Mana", 2)      # a component never declared in source
+    print(world_has(e, Mana))       # 0 — not attached yet
+    world_attach_dyn(e, Mana)
+    print(world_has(e, Mana))       # 1
+    world_set(e, Mana, 0, 30)       # field 0 (current)
+    world_set(e, Mana, 1, 100)      # field 1 (max)
+    print(world_get(e, Mana, 0))    # 30
+    print(world_get(e, Mana, 1))    # 100
+    if world_prop_id("Mana") == Mana { print(1) } else { print(0) }   # 1 — name resolves
+    world_attach_dyn(e2, Mana)
+    world_set(e2, Mana, 0, 7)
+    print(world_get(e, Mana, 0))    # 30 — per-entity isolation
+  }
+}

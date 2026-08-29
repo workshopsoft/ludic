@@ -1,0 +1,32 @@
+# promote.ludic — EV1: `@Public` promotes a lifecycle hook to a public event.
+#
+# Marking a lifecycle hook `@Public` makes its fire site ALSO emit an event named
+# for the moment — `model_<M>_spawn`, `model_<M>_despawn` — carrying the entity
+# (and, for despawn, the EndReason). Anything can then subscribe: a native
+# listener with `@On(model_Enemy_spawn)`, or a foreign mod binding
+# `ludic_on_model_Enemy_spawn` over the C ABI. The game's own lifecycle becomes
+# the modding surface, with no hand-written `emit` in the hook body.
+#
+# Running it prints:  100 101 200 201
+program Promote {
+  property Health { hp: int = 0, max: int = 100 }
+  model Enemy { Health }
+
+  @Public @OnSpawn(Enemy)   handler Init  { Health.hp = Health.max }   # -> model_Enemy_spawn
+  @Public @OnDespawn(Enemy) handler Clean { }                          # -> model_Enemy_despawn
+
+  # Listeners on the promoted events. These read the generated payload (entity,
+  # and reason for despawn) by name — exactly what a foreign mod receives.
+  @On(model_Enemy_spawn)   handler Spawned { print(entity + 100) }
+  @On(model_Enemy_despawn) handler Died    { print(entity + reason + 200) }
+
+  handler Seed phase Start {
+    spawn Enemy { Health { max: 50 } }     # entity 0 -> Spawned 100
+    spawn Enemy { Health { max: 60 } }     # entity 1 -> Spawned 101
+  }
+
+  handler Run phase Update {
+    for (h) in query [Health] { despawn self() }   # despawn 0 -> Died 200, despawn 1 -> Died 201
+    quit()
+  }
+}

@@ -160,6 +160,67 @@ fn emit_match(st: Node) -> void {
   emit(endl);  emit(":\n");  g_term = false
 }
 
+# emit E(field: v, ...) — evaluate the payload args in the event's declared field
+# order (so call args line up with the `@ev_<E>` signature), then a direct call.
+# A missing arg falls back to the field's default; an unset scalar/ptr to 0/null.
+fn emit_emit(st: Node) -> Val {
+  let ev = find_event(st.s)
+  if (ev == null) { perr(`emit: unknown event {st.s}`) }
+  # evaluate each payload field in declared order (default for a missing arg)
+  let fcodes = new []ptr
+  let ftys = new []ptr
+  var f = 0
+  while f < len(ev.kids) {
+    let fd = ev.kids[f]
+    var av: Node = null                          # the caller's value for this field, if given
+    var j = 0
+    while j < len(st.a.kids) { if (st.a.kids[j].s == fd.s) { av = st.a.kids[j].a };  j = j + 1 }
+    let lt = llty(fd.ty)
+    var code = "0"
+    if (lt == "ptr") { code = "null" }
+    if (av != null) { let v = emit_expr(av);  code = v.code }
+    else { if (fd.a != null) { let dv = emit_expr(fd.a);  code = dv.code } }   # declared default
+    push(fcodes, code);  push(ftys, lt)
+    f = f + 1
+  }
+  # N4: a remote event (@ToServer/@ToClients) serializes its payload as
+  # [i32 event_id][packed fields] and net_send in its direction — the far side's
+  # net_pump() re-emits it. It is a remote call, so there is no local dispatch.
+  if (ev.ty != null) {
+    let idp = nreg();  emit("  ");  emit(idp);  emit(" = getelementptr inbounds i8, ptr @L_sendbuf, i32 0\n")
+    emit("  store i32 ");  emit(itoa(net_event_id(st.s)));  emit(", ptr ");  emit(idp);  emit("\n")
+    var off = 4
+    var k = 0
+    while k < len(ev.kids) {
+      let dp = nreg();  emit("  ");  emit(dp);  emit(" = getelementptr inbounds i8, ptr @L_sendbuf, i32 ");  emit(itoa(off));  emit("\n")
+      emit("  store ");  emit(ftys[k]);  emit(" ");  emit(fcodes[k]);  emit(", ptr ");  emit(dp);  emit("\n")
+      off = off + net_field_ibytes(ev.kids[k].ty)
+      k = k + 1
+    }
+    var peer = "0"
+    if (ev.ty == "toclients") { peer = "-1" }        # broadcast (loopback ignores the peer id)
+    if (find_extern("net_send") == null) { g_uses_loopback = true }
+    emit("  call void @");  emit(net_send_sym());  emit("(i32 ");  emit(peer);  emit(", ptr @L_sendbuf, i32 ");  emit(itoa(off));  emit(")\n")
+    return val("0", "int")
+  }
+  # a local event: build the call args and dispatch. A cancellable event returns
+  # its cancelled flag (i32); a plain event is void.
+  let args = buf_new()
+  var g = 0
+  while g < len(fcodes) {
+    if g > 0 { buf_puts(args, ", ") }
+    buf_puts(args, ftys[g]);  buf_puts(args, " ");  buf_puts(args, fcodes[g])
+    g = g + 1
+  }
+  if ev.ival == 1 {
+    let r = nreg()
+    emit("  ");  emit(r);  emit(" = call i32 @ev_");  emit(st.s);  emit("(");  emit(buf_str(args));  emit(")\n")
+    return val(r, "int")
+  }
+  emit("  call void @ev_");  emit(st.s);  emit("(");  emit(buf_str(args));  emit(")\n")
+  return val("0", "int")
+}
+
 fn emit_stmt(st: Node) -> void {
   if st.kind == S_LET {
     var ty = st.ty
@@ -184,9 +245,16 @@ fn emit_stmt(st: Node) -> void {
   if st.kind == S_CONTINUE { emit("  br label %");  emit(cnt_lbl[nloop - 1]);  emit("\n");  g_term = true;  return }
   if st.kind == S_MATCH { emit_match(st);  return }
   if st.kind == S_QUERY { emit_query(st);  return }
-  if st.kind == S_SPAWN { emit_spawn(st);  return }
+  if st.kind == S_SPAWN { let se = emit_spawn(st);  return }
   if st.kind == S_DESPAWN { emit_despawn(st);  return }
   if st.kind == S_TOGGLE { emit_toggle(st);  return }
+  if st.kind == S_ATTACH { emit_attach(st);  return }
+  if st.kind == S_DETACH { emit_detach(st);  return }
+  if st.kind == S_EMIT { let v = emit_emit(st);  return }         # statement form: discard the flag
+  if st.kind == S_CANCEL {                                          # veto the enclosing cancellable event
+    if (g_cancel_addr == null) { perr("cancel outside a cancellable event listener") }
+    emit("  store i32 1, ptr ");  emit(g_cancel_addr);  emit("\n");  return
+  }
   if st.kind == S_MACHINE { emit_machine(st);  return }
   if st.kind == S_BECOME { emit_become(st);  return }
   if st.kind == S_EXPR { let v = emit_expr(st.a);  return }

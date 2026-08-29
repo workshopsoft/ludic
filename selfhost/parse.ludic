@@ -109,9 +109,26 @@ fn parse_interp(raw: ptr) -> Node {
   return acc
 }
 
+# emit E(field: v, ...) — shared by the statement form and the expression form.
+# As an expression it yields a cancellable event's cancelled flag (0/1); a
+# non-cancellable event yields 0.
+fn parse_emit() -> Node {
+  pi = pi + 1; let n = node(S_EMIT); n.s = eat_id()
+  let r = node(E_REC)
+  eat_op("("); skipnl()
+  while not is_op(")") {
+    let fi = node(E_FINIT); fi.s = eat_id(); eat_op(":"); fi.a = expr(); push(r.kids, fi)
+    skipnl(); if is_op(",") { pi = pi + 1; skipnl() }
+  }
+  eat_op(")")
+  n.a = r
+  return n
+}
+
 fn p_primary() -> Node {
   let t = toks[pi]
   if t.kind == TK_INTERP { pi = pi + 1; return parse_interp(t.text) }
+  if t.kind == TK_ID and (t.text == "emit") and (toks[pi + 1].kind == TK_ID) { return parse_emit() }
   if t.kind == TK_INT { let n = node(E_INT); n.ival = t.ival; pi = pi + 1; return n }
   if t.kind == TK_FLOAT { let n = node(E_FLOAT); n.ival = t.ival; pi = pi + 1; return n }
   if t.kind == TK_STR { let n = node(E_STR); n.s = t.text; pi = pi + 1; return n }
@@ -253,16 +270,35 @@ fn stmt() -> Node {
         push(n.kids, s); sidx = sidx + 1 }
       eat_op("}"); return n
     }
+    # `emit E(...)` fires an event, but a bare `emit(...)` is an ordinary call
+    # (the compiler dogfoods a function named `emit`), so require an event name.
+    if (t.text == "emit") and (toks[pi + 1].kind == TK_ID) { return parse_emit() }
     if (t.text == "become") { pi = pi + 1; let n = node(S_BECOME); n.s = eat_id(); return n }
     if (t.text == "despawn") { pi = pi + 1; let n = node(S_DESPAWN); n.a = expr(); return n }
     if (t.text == "enable") or (t.text == "disable") {
       var en = 0; if (t.text == "enable") { en = 1 }
-      pi = pi + 1; let n = node(S_TOGGLE); n.ival = en; n.s = eat_id()     # `enable P on e` / `disable Model` / `disable Handler`
+      pi = pi + 1; let n = node(S_TOGGLE); n.ival = en
+      if is_id("layer") { pi = pi + 1; n.ty = "layer"; n.s = eat_id(); note_toggled_layer(n.s); return n }  # enable/disable layer L
+      n.s = eat_id()                                                       # `enable P on e` / `disable Model` / `disable Handler`
       if is_id("on") { pi = pi + 1; n.a = expr() }                        # property on an entity
+      return n
+    }
+    if (t.text == "attach") {                    # attach P on e [{ field: val, ... }]
+      pi = pi + 1; let n = node(S_ATTACH); n.s = eat_id()
+      if not is_id("on") { perr("attach needs 'on <entity>'") }
+      pi = pi + 1; n.a = expr()
+      if is_op("{") { n.b = record() }           # optional field overrides (same-line)
+      return n
+    }
+    if (t.text == "detach") {                    # detach P on e
+      pi = pi + 1; let n = node(S_DETACH); n.s = eat_id()
+      if not is_id("on") { perr("detach needs 'on <entity>'") }
+      pi = pi + 1; n.a = expr()
       return n
     }
     if (t.text == "break") { pi = pi + 1; return node(S_BREAK) }
     if (t.text == "continue") { pi = pi + 1; return node(S_CONTINUE) }
+    if (t.text == "cancel") { pi = pi + 1; return node(S_CANCEL) }   # veto a cancellable event
     if (t.text == "match") {
       pi = pi + 1; let n = node(S_MATCH); n.a = expr(); skipnl(); eat_op("{")
       while true {
@@ -337,23 +373,42 @@ fn parse_one_decl() -> void {
   var qspec: Node = null
   var onspawn_model: ptr = null
   var ondespawn_model: ptr = null
+  var ondespawn_reason: ptr = null      # @OnDespawn(M, reason: r) — LC1 teardown reason binding
   var onattach_prop: ptr = null
+  var ondetach_prop: ptr = null
   var onenable_prop: ptr = null
   var ondisable_prop: ptr = null
+  var on_event: ptr = null              # @On(Event) — a compile-time event listener
+  var is_public = false                 # @Public — promote a lifecycle hook to an event
   var hook_phase: ptr = null            # @OnStart / @OnQuit override the phase
+  var is_sync_prop = false              # @Sync property P — every field replicates (NETWORKING N2)
+  var is_owned = false                  # @Owned model M — entities carry a network owner (N3)
+  var role: ptr = null                  # @Server / @Predicted — a handler's network role (N5)
+  var remote_dir: ptr = null            # @ToServer / @ToClients — a remote event's direction (N4)
   while is_op("@") {
     pi = pi + 1; let a = eat_id()             # collect a leading @annotation
     if (a == "export") { is_export = true }
+    else { if (a == "Public") { is_public = true }                            # @Public hook promotion
+    else { if (a == "On") { eat_op("("); on_event = eat_id(); eat_op(")") }    # @On(Event) listener
     else { if (a == "Queries") { qspec = parse_queries_anno() }               # @Queries(these: [...], on: ...)
     else { if (a == "OnSpawn") { eat_op("("); onspawn_model = eat_id(); eat_op(")") }
-    else { if (a == "OnDespawn") { eat_op("("); ondespawn_model = eat_id(); eat_op(")") }
+    else { if (a == "OnDespawn") { eat_op("("); ondespawn_model = eat_id()
+        if is_op(",") { pi = pi + 1; eat_id(); eat_op(":"); ondespawn_reason = eat_id() }  # , reason: r
+        eat_op(")") }
     else { if (a == "OnAttach") { eat_op("("); onattach_prop = eat_id(); eat_op(")") }
+    else { if (a == "OnDetach") { eat_op("("); ondetach_prop = eat_id(); eat_op(")") }
     else { if (a == "OnEnable") { eat_op("("); onenable_prop = eat_id(); eat_op(")") }
     else { if (a == "OnDisable") { eat_op("("); ondisable_prop = eat_id(); eat_op(")") }
     else { if (a == "OnStart") { hook_phase = "Start" }                       # boot
     else { if (a == "OnQuit") { hook_phase = "OnQuit" }                       # shutdown
+    else { if (a == "Sync") { is_sync_prop = true }                           # @Sync property (N2)
+    else { if (a == "Owned") { is_owned = true }                              # @Owned model (N3)
+    else { if (a == "Server") { role = "server" }                            # @Server handler (N5)
+    else { if (a == "Predicted") { role = "predicted" }                      # @Predicted handler (N5)
+    else { if (a == "ToServer") { remote_dir = "toserver" }                  # @ToServer event (N4)
+    else { if (a == "ToClients") { remote_dir = "toclients" }                # @ToClients event (N4)
     else { if is_op("(") { var d = 0          # any other @anno(args) — parsed and skipped
-        while true { if is_op("(") { d = d + 1 };  if is_op(")") { d = d - 1 };  pi = pi + 1;  if d == 0 { break } } } } } } } } } } } }
+        while true { if is_op("(") { d = d + 1 };  if is_op(")") { d = d - 1 };  pi = pi + 1;  if d == 0 { break } } } } } } } } } } } } } } } } } } } } }
     skipnl()
   }
   if is_id("import") { pi = pi + 1
@@ -364,16 +419,47 @@ fn parse_one_decl() -> void {
     return
   }
   if is_id("enum") { push(prog, parse_enum()); return }
-  if is_id("property") { push(prog, parse_component()); return }
-  if is_id("model") { push(prog, parse_archetype()); return }
+  if is_id("event") {
+    let ev = parse_event()
+    if (remote_dir != null) { ev.ty = remote_dir }               # N4: a directional remote event (RPC)
+    register_event(ev); return
+  }
+  if is_id("property") {
+    let c = parse_component()
+    if is_sync_prop { var fi = 0; while fi < len(c.kids) { c.kids[fi].ival = 1; fi = fi + 1 } }   # N2: mark every field replicable
+    push(prog, c); return
+  }
+  if is_id("model") {
+    let m = parse_archetype()
+    if is_owned { m.ival = 1 }                        # N3: this model's entities carry a network owner
+    push(prog, m); return
+  }
+  if is_id("scene") { parse_scene(); return }        # layers push handlers into prog; scene -> g_scenes
   if is_id("handler") {
     let h = parse_system()
-    if (onspawn_model != null) { register_onspawn(onspawn_model, h.a); return }       # spawn hook
-    if (ondespawn_model != null) { register_ondespawn(ondespawn_model, h.a); return } # despawn hook
-    if (onattach_prop != null) { register_onattach(onattach_prop, h.a); return }      # attach hook
-    if (onenable_prop != null) { register_onenable(onenable_prop, h.a); return }      # enable hook
-    if (ondisable_prop != null) { register_ondisable(ondisable_prop, h.a); return }   # disable hook
-    if (hook_phase != null) { h.ty = hook_phase }                                     # @OnStart/@OnQuit
+    if (role != null) { if (role == "server") { h.ival = 1 } else { h.ival = 2 } }      # N5: @Server=1 / @Predicted=2
+    if (on_event != null) { register_onlisten(on_event, h.a); return }                 # @On(Event) listener
+    if (onspawn_model != null) {
+      register_onspawn(onspawn_model, h.a)                                            # spawn hook
+      if is_public { ensure_event(`model_{onspawn_model}_spawn`, false) }             # @Public -> model_<M>_spawn
+      return
+    }
+    if (ondespawn_model != null) {
+      register_ondespawn(ondespawn_model, h.a, ondespawn_reason)                      # despawn hook
+      if is_public { ensure_event(`model_{ondespawn_model}_despawn`, true) }          # @Public -> model_<M>_despawn (with reason)
+      return
+    }
+    if (onattach_prop != null) { register_onattach(onattach_prop, h.a);  if is_public { ensure_event(`prop_{onattach_prop}_attach`, false) };  return }    # -> prop_<P>_attach
+    if (ondetach_prop != null) { register_ondetach(ondetach_prop, h.a);  if is_public { ensure_event(`prop_{ondetach_prop}_detach`, false) };  return }    # -> prop_<P>_detach
+    if (onenable_prop != null) { register_onenable(onenable_prop, h.a);  if is_public { ensure_event(`prop_{onenable_prop}_enable`, false) };  return }    # -> prop_<P>_enable
+    if (ondisable_prop != null) { register_ondisable(ondisable_prop, h.a);  if is_public { ensure_event(`prop_{ondisable_prop}_disable`, false) };  return } # -> prop_<P>_disable
+    if (hook_phase != null) {                                                         # @OnStart/@OnQuit
+      h.ty = hook_phase
+      if is_public {                                                                  # -> program_start / program_quit
+        if (hook_phase == "Start") { ensure_event_empty("program_start") }
+        else { ensure_event_empty("program_quit") }
+      }
+    }
     if (qspec != null) {               # @Queries wraps the body in its S_QUERY
       qspec.a = h.a
       let wrap = node(N_BLOCK); push(wrap.kids, qspec); h.a = wrap
@@ -421,8 +507,15 @@ fn parse_program() -> void {
   g_onspawn = new []Node
   g_ondespawn = new []Node
   g_onattach = new []Node
+  g_ondetach = new []Node
   g_onenable = new []Node
   g_ondisable = new []Node
+  g_scenes = new []Node
+  g_scene_count = 0
+  g_start_scene = 0
+  g_events = new []Node
+  g_onlisten = new []Node
+  g_toggled_layers = new []ptr
   loaded_paths = new []ptr
   skipnl()
   g_game_name = "Ludic"

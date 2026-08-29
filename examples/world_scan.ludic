@@ -1,0 +1,30 @@
+# world_scan.ludic — EV2b reflection: scan the world and identify each entity by
+# MODEL, by name (replaces tests/mod_c/world_scan.c). world_count / world_kind /
+# world_model_id let a mod walk every entity and pick out a model's instances, then
+# read their fields with world_get. Two Units (hp 50, 60) → count 2, sum 110.
+program WorldScan {
+  property Health { hp: int = 0, max: int = 0 }
+  model Unit { Health }
+  @Public @OnSpawn(Unit) handler Init { Health.hp = Health.max }
+
+  entry {
+    spawn Unit { Health { max: 50 } }
+    spawn Unit { Health { max: 60 } }
+    let H  = world_prop_id("Health")
+    let hp = world_field_id(H, "hp")
+    let Um = world_model_id("Unit")
+    let n  = world_count()
+    var count = 0
+    var sum   = 0
+    var e = 0
+    while e < n {
+      if world_kind(e) == Um {
+        count = count + 1
+        sum = sum + world_get(e, H, hp)
+      }
+      e = e + 1
+    }
+    print(count)   # 2
+    print(sum)     # 110
+  }
+}

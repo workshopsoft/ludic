@@ -1,0 +1,40 @@
+# net_sync.ludic — N2: @Sync replication codegen (NETWORKING-DESIGN §6.1, §13 N2).
+#
+# Replication is opt-in at the field level and per model use-site. All three
+# granularities here:
+#   @Sync property Position   — every field of Position is replicable
+#   Health { @Sync hp, max }  — only hp is replicable; max never is
+#   @Sync Position in Player  — Position participates → x, y replicate
+#   Position in Prop          — not @Sync here → Prop's Position does NOT replicate
+#
+# The compiler generates per-model serialize/apply over exactly the replicable-
+# and-participating fields, plus by-kind dispatchers: sync_size(e) / serialize(e,
+# buf) / apply(e, buf, len). This snapshots a Player's synced fields, mutates all
+# of them, then applies the snapshot: synced fields (x, y, hp) restore; the
+# unsynced one (max) keeps its mutation. Prints 12 (bytes) / 3 4 50 999.
+program NetSync {
+  @Sync property Position { x: int = 0, y: int = 0 }     # all fields replicable
+  property Health { @Sync hp: int = 0, max: int = 0 }     # only hp replicable
+
+  @Owned model Player { @Sync Position, @Sync Health }
+  model Prop { Position }                                  # Position not @Sync here → no replication
+
+  entry {
+    spawn Player { Position { x: 3, y: 4 }, Health { hp: 50, max: 100 } }
+    for (Position, Health) in query [Position, Health, {Player}] {
+      let e = self()
+      let buf = bytes(64)
+      print(sync_size(e))                 # 12 = Position(x,y)=8 + Health.hp=4
+      let n = serialize(e, buf)           # snapshot the synced fields
+      Position.x = 99                     # mutate everything
+      Position.y = 88
+      Health.hp = 7
+      Health.max = 999                    # max is NOT synced
+      apply(e, buf, n)                    # restore from the snapshot
+      print(Position.x)                   # 3   — restored
+      print(Position.y)                   # 4   — restored
+      print(Health.hp)                    # 50  — restored
+      print(Health.max)                   # 999 — kept (unsynced)
+    }
+  }
+}

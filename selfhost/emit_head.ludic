@@ -102,6 +102,27 @@ fn emit_header() -> void {
   }
 }
 
+# One `declare <ret> @<sym>(<argtys>)` per `extern fn`, so the linker resolves the
+# call to the bound symbol. Emitted after the header; a program with no `extern fn`
+# emits nothing here, so un-networked builds stay byte-identical.
+fn emit_extern_decls() -> void {
+  var i = 0
+  while i < len(prog) {
+    let d = prog[i]
+    if d.kind == N_EXTERN {
+      emith("declare ");  emith(llty(d.ty));  emith(" @");  emith(d.a.s);  emith("(")
+      var f = 0
+      while f < len(d.kids) {
+        if f > 0 { emith(", ") }
+        emith(llty(d.kids[f].ty))
+        f = f + 1
+      }
+      emith(")\n")
+    }
+    i = i + 1
+  }
+}
+
 # The string runtime, emitted (once) into any program that uses `+`/`==`/`!=`
 # on strings. Hand-written IR over NUL-terminated byte buffers: str_eq walks both
 # until a mismatch or a shared terminator; str_concat measures both, mallocs

@@ -34,6 +34,20 @@ var nself: int = 0
 var mach_stk: []Node         # enclosing `machine` nodes, so `become` finds its register
 var nmach: int = 0
 
+# scenes: one implicit active-scene register (@L_scene). A scene lowers to a
+# machine the compiler writes for you — `become <Scene>` runs the source scene's
+# on-exit, stores the target id, and runs its on-enter.
+var g_scenes: []Node         # every `scene` declaration, in source order (ival = id)
+var g_scene_count: int = 0   # parse-time id counter
+var g_start_scene: int = 0   # id of the scene marked `start` (else the first)
+var g_cur_scene: Node = null # scene owning the handler being emitted, for `become`
+
+fn find_scene(name: ptr) -> Node {
+  var i = 0
+  while i < len(g_scenes) { if (g_scenes[i].s == name) { return g_scenes[i] };  i = i + 1 }
+  return null
+}
+
 fn emit(s: ptr) -> void { buf_puts(code, s) }
 fn emith(s: ptr) -> void { buf_puts(head, s) }
 
@@ -52,7 +66,7 @@ fn lbl(pfx: ptr) -> ptr { let r = (pfx + itoa(ll_lbl));  ll_lbl = ll_lbl + 1;  r
 # Ludic type -> LLVM type. int/bool are i32; everything else (ptr/str/struct/
 # slice) is a pointer; void is void.
 fn llty(t: ptr) -> ptr {
-  if (t == "int") or (t == "bool") or (t == "fixed") { return "i32" }
+  if (t == "int") or (t == "bool") or (t == "fixed") or (t == "entity") { return "i32" }   # entity = an i32 handle (self())
   if (t == "byte") { return "i8" }                # a single byte (p[i] on a raw ptr)
   if (t == "words") or (t == "fixeds") or (t == "ptrs") { return "ptr" }   # typed buffers
   if (t == "void") { return "void" }
@@ -112,11 +126,29 @@ fn enum_ordinal(ename: ptr, vname: ptr) -> int {
     }
     i = i + 1
   }
+  # LC1: the compiler owns `EndReason` — the reason bound by a reason-carrying
+  # teardown (`@OnDespawn(M, reason: r)`). Each despawn site passes one of these.
+  if (ename == "EndReason") {
+    if (vname == "Despawned") { return 0 }      # explicit `despawn e`
+    if (vname == "SceneExit") { return 1 }      # a scene tearing down its owned entities
+    if (vname == "Quit")      { return 2 }      # program shutdown
+  }
   return 0 - 1
 }
 fn find_fn(name: ptr) -> Node {
   var i = 0
   while i < len(prog) { let d = prog[i];  if d.kind == N_FN and (d.s == name) { return d };  i = i + 1 }
+  return null
+}
+
+# `extern fn name(params) -> T = "sym"` binds a Ludic name to a link symbol. A
+# call to `name` lowers to a direct `@<sym>` call (no @fn_ prefix — the string is
+# the exact linked symbol), and emit_extern_decls emits a matching `declare`. This
+# is the transport seam (net_send/net_poll), the windowing/socket FFI, and any
+# C/Rust/Zig library binding — the same seam NETWORKING-DESIGN §5 names.
+fn find_extern(name: ptr) -> Node {
+  var i = 0
+  while i < len(prog) { let d = prog[i];  if d.kind == N_EXTERN and (d.s == name) { return d };  i = i + 1 }
   return null
 }
 
@@ -162,8 +194,11 @@ fn onspawn_body(model: ptr) -> Node {
 var g_ondespawn: []Node         # each: s = Model name, a = hook body block
 var g_onattach: []Node          # each: s = Property name, a = hook body block
 
-fn register_ondespawn(model: ptr, body: Node) -> void {
-  let n = node(N_BLOCK); n.s = model; n.a = body; push(g_ondespawn, n)
+# LC1: `.ty` carries the optional `reason:` binding name (null if the hook took
+# no reason). The despawn hook function gains an `i32 %reason` parameter and each
+# teardown site passes a constant EndReason (see emit_despawn_hooks / emit_despawn).
+fn register_ondespawn(model: ptr, body: Node, reason: ptr) -> void {
+  let n = node(N_BLOCK); n.s = model; n.a = body; n.ty = reason; push(g_ondespawn, n)
 }
 fn ondespawn_body(model: ptr) -> Node {
   var i = 0
@@ -176,6 +211,19 @@ fn register_onattach(prop: ptr, body: Node) -> void {
 fn onattach_body(prop: ptr) -> Node {
   var i = 0
   while i < len(g_onattach) { if (g_onattach[i].s == prop) { return g_onattach[i].a };  i = i + 1 }
+  return null
+}
+
+# @OnDetach(Property): the teardown paired with @OnAttach — fires when a property
+# is removed from a live entity (`detach P on e`), with the property bound by name
+# so the body can read its outgoing value before it is cleared.
+var g_ondetach: []Node          # each: s = Property name, a = hook body block
+fn register_ondetach(prop: ptr, body: Node) -> void {
+  let n = node(N_BLOCK); n.s = prop; n.a = body; push(g_ondetach, n)
+}
+fn ondetach_body(prop: ptr) -> Node {
+  var i = 0
+  while i < len(g_ondetach) { if (g_ondetach[i].s == prop) { return g_ondetach[i].a };  i = i + 1 }
   return null
 }
 
@@ -194,6 +242,59 @@ fn ondisable_body(prop: ptr) -> Node {
   var i = 0
   while i < len(g_ondisable) { if (g_ondisable[i].s == prop) { return g_ondisable[i].a };  i = i + 1 }
   return null
+}
+
+# EV0 — the event bus core. `event E { fields }` declares a POD payload; `@On(E)
+# handler …` registers a compile-time listener; `emit E(…)` fires it. An event
+# lowers to a `@ev_<E>(payload)` function whose body is the concatenation of its
+# listeners in declaration order — a direct call at each `emit` site, no runtime.
+# Gated on `len(g_events) > 0`, so a program with no events is byte-identical.
+var g_events: []Node            # each: an N_EVENT node (s = name, kids = payload fields, ival=1 if cancellable)
+var g_onlisten: []Node          # each: N_BLOCK, s = event name, a = listener body block
+var g_cancel_addr: ptr = null   # EV3: address of the current cancellable dispatch's flag (null outside one)
+
+fn register_event(n: Node) -> void { push(g_events, n) }
+fn find_event(name: ptr) -> Node {
+  var i = 0
+  while i < len(g_events) { if (g_events[i].s == name) { return g_events[i] };  i = i + 1 }
+  return null
+}
+fn register_onlisten(evt: ptr, body: Node) -> void {
+  let n = node(N_BLOCK);  n.s = evt;  n.a = body;  push(g_onlisten, n)
+}
+
+# EV1 — `@Public` promotes a lifecycle hook to a public event. A promoted event
+# is synthesized here (payload = the entity, plus a reason for despawn); its
+# presence in g_events is what makes each lifecycle fire site also `emit` it, so
+# `find_event(name) != null` doubles as the "is this hook public?" test. Names are
+# the stable ABI contract: `model_<M>_spawn`, `model_<M>_despawn`, etc.
+fn ensure_event(name: ptr, with_reason: bool) -> void {
+  if (find_event(name) != null) { return }
+  let n = node(N_EVENT);  n.s = name
+  let ent = node(N_FIELD);  ent.s = "entity";  ent.ty = "int";  push(n.kids, ent)
+  if with_reason { let r = node(N_FIELD);  r.s = "reason";  r.ty = "int";  push(n.kids, r) }
+  register_event(n)
+}
+# a promoted scene/program event has no per-entity payload
+fn ensure_event_empty(name: ptr) -> void {
+  if (find_event(name) != null) { return }
+  let n = node(N_EVENT);  n.s = name;  register_event(n)
+}
+
+# EV1/SCENES-E2 — layer toggle. A layer named in an `enable layer L`/`disable
+# layer L` statement becomes "managed": it gets an @LE_<L> enabled flag and its
+# handlers gate on it. Only managed layers pay for this, so a scene program that
+# never toggles a layer is byte-identical.
+var g_toggled_layers: []ptr
+fn note_toggled_layer(name: ptr) -> void {
+  var i = 0
+  while i < len(g_toggled_layers) { if (g_toggled_layers[i] == name) { return };  i = i + 1 }
+  push(g_toggled_layers, name)
+}
+fn is_toggled_layer(name: ptr) -> bool {
+  var i = 0
+  while i < len(g_toggled_layers) { if (g_toggled_layers[i] == name) { return true };  i = i + 1 }
+  return false
 }
 
 # is `name` a model (archetype)? — chooses model-vs-handler for a bare enable/disable

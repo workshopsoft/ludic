@@ -17,6 +17,18 @@ const N_EXTERN: int = 11
 const N_UI:     int = 12
 const N_ENUM:   int = 27         # enum Name { A, B, ... } — named int constants
 const S_TOGGLE: int = 28         # enable/disable  (ival: 1=enable 0=disable; s=target; a=entity or null)
+const N_SCENE:  int = 45         # scene Name [start] { on enter{} on exit{} layer L { handlers } }
+                                 #   s=name  ival=scene id  a=on-enter block  b=on-exit block
+const S_ATTACH: int = 46         # attach P on e [{ overrides }]  — add a property to a live entity
+                                 #   s=property  a=entity expr  b=override record (E_REC) or null
+const S_DETACH: int = 47         # detach P on e  — remove a property from a live entity
+                                 #   s=property  a=entity expr
+const N_EVENT:  int = 48         # event Name { field: T = default, ... } — a public event payload
+                                 #   s=name  kids=payload fields (N_FIELD)
+const S_EMIT:   int = 49         # emit E(field: v, ...) — fire event E (calls its @On listeners)
+                                 #   s=event name  a=E_REC of named args; also usable as an
+                                 #   expression (a cancellable event returns its cancelled flag)
+const S_CANCEL: int = 50         # cancel — inside a listener, veto a `cancellable` event
 # statements
 const S_LET:      int = 10
 const S_ASSIGN:   int = 11
