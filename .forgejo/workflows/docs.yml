@@ -19,31 +19,35 @@ permissions:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    # Run in a Python image: the generator is pure-Python stdlib, and this image
+    # already has git for the clone + publish. No node actions are used, so the
+    # job never depends on the runner's base image having python installed.
+    container: python:3.12
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-
       - name: Generate the documentation site
+        env:
+          SOURCE_REF: ${{ github.ref_name }}
         run: |
+          set -eu
+          git config --global --add safe.directory '*'
+          git clone --depth 1 --branch "${SOURCE_REF:-main}" \
+            https://git.workshopsoft.io/workshopsoft/ludic.git src
           python3 --version
-          python3 tools/docgen/gen.py --out public
+          python3 src/tools/docgen/gen.py --out public
+          python3 src/tools/docgen/check.py public
           echo "--- generated files ---"
           ls -la public
 
-      - name: Sanity-check the output (root has index.html + .nojekyll, no broken links)
-        run: python3 tools/docgen/check.py public
-
       - name: Publish to the pages branch
+        env:
+          PAGES_TOKEN: ${{ secrets.PAGES_TOKEN }}
+          AUTO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE_SHA: ${{ github.sha }}
         run: |
           set -eu
           TOKEN="${PAGES_TOKEN:-${AUTO_TOKEN:-}}"
           if [ -z "$TOKEN" ]; then
-            echo "::error::No deploy token. Add a repo secret PAGES_TOKEN (write access) or allow the automatic token to push."
+            echo "::error::No deploy token. Add a repo secret PAGES_TOKEN (write access) or enable the automatic Actions token for pushes."
             exit 1
           fi
           cd public
@@ -54,7 +58,3 @@ jobs:
           git commit -q -m "docs: regenerate site from ${SOURCE_SHA}"
           git push -f "https://ludic-docs-bot:${TOKEN}@git.workshopsoft.io/workshopsoft/ludic.git" pages
           echo "published $(git rev-parse --short HEAD) to pages"
-        env:
-          PAGES_TOKEN: ${{ secrets.PAGES_TOKEN }}
-          AUTO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SOURCE_SHA: ${{ github.sha }}
