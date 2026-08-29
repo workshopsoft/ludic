@@ -4,7 +4,7 @@
 
 fn is_ease_ns(meth: ptr) -> bool {
   if (meth == "in") or (meth == "out") or (meth == "in_out") { return true }
-  if (meth == "back") or (meth == "bounce") { return true }
+  if (meth == "back") or (meth == "bounce") or (meth == "elastic") { return true }
   return false
 }
 
@@ -36,6 +36,17 @@ fn emit_ease_ns(meth: ptr, e: Node) -> Val {
     let a = fx_mul_code(t3, "177051")               # 2.70158 * t^3
     let b = fx_mul_code(t2, "111515")               # 1.70158 * t^2
     return val(emit_bind(`sub i32 {a}, {b}`), "fixed")
+  }
+  if (meth == "elastic") {                          # ease-out elastic: springy overshoot that settles
+    g_uses_mathrt = true                            # 2^(-10t) * sin((10t - 0.75) * 2pi/3) + 1
+    let tt = emit_bind(`mul i32 {t.code}, 10`)       # 10t
+    let ntt = emit_bind(`sub i32 0, {tt}`)           # -10t (exp2 exponent, Q16.16)
+    let decay = emit_bind(`call i32 @fn_fx_exp2(i32 {ntt})`)
+    let ph = emit_bind(`sub i32 {tt}, 49152`)        # 10t - 0.75
+    let ang = fx_mul_code(ph, "137258")              # * (2pi/3), 2pi/3 = 137258 fixed
+    let s = emit_bind(`call i32 @fn_fx_sin(i32 {ang})`)
+    let osc = fx_mul_code(decay, s)
+    return val(emit_bind(`add i32 {osc}, 65536`), "fixed")
   }
   # ease-out bounce: four parabolic segments, selected by t (all computed, then
   # picked branch-free). Shifts/offsets are the standard 2.75-denominator set.

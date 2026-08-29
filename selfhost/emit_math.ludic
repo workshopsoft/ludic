@@ -75,6 +75,7 @@ fn is_math_ns(meth: ptr) -> bool {
   if (meth == "deg_to_rad") or (meth == "rad_to_deg") or (meth == "posmod") or (meth == "wrap") { return true }
   if (meth == "ping_pong") or (meth == "snapped") or (meth == "move_toward") or (meth == "smoothstep") { return true }
   if (meth == "dist") or (meth == "dist2") { return true }
+  if (meth == "exp") or (meth == "log") or (meth == "pow") { return true }
   return false
 }
 
@@ -181,6 +182,25 @@ fn emit_math_ns(meth: ptr, e: Node) -> Val {
     let s = emit_bind(`add i32 {xx}, {yy}`)
     return val(emit_bind(`call i32 @fn_fx_sqrt(i32 {s})`), "fixed")
   }
+  if (meth == "exp") {                              # e^x = 2^(x * log2 e), log2 e = 94548 fixed
+    g_uses_mathrt = true
+    let a = emit_expr(e.kids[0])
+    let t = fx_mul_code(a.code, "94548")
+    return val(emit_bind(`call i32 @fn_fx_exp2(i32 {t})`), "fixed")
+  }
+  if (meth == "log") {                              # natural log: ln(x) = log2(x) * ln 2, ln 2 = 45426 fixed
+    g_uses_mathrt = true
+    let a = emit_expr(e.kids[0])
+    let l2 = emit_bind(`call i32 @fn_fx_log2(i32 {a.code})`)
+    return val(fx_mul_code(l2, "45426"), "fixed")
+  }
+  if (meth == "pow") {                              # a^b = 2^(b * log2 a); needs a > 0
+    g_uses_mathrt = true
+    let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1])
+    let l2 = emit_bind(`call i32 @fn_fx_log2(i32 {a.code})`)
+    let t = fx_mul_code(b.code, l2)
+    return val(emit_bind(`call i32 @fn_fx_exp2(i32 {t})`), "fixed")
+  }
   if (meth == "deg_to_rad") {                       # d * (pi/180), pi/180 = 1144 fixed
     let d = emit_expr(e.kids[0])
     return val(fx_mul_code(d.code, "1144"), "fixed")
@@ -259,9 +279,11 @@ fn emit_math_ns(meth: ptr, e: Node) -> Val {
 }
 
 # emit_math_prelude — the deterministic fixed-point math runtime, emitted once
-# per program that uses Math.sqrt/sin/cos/tan. @fn_fx_sqrt is a 64-bit integer
-# square root (bit-by-bit); @fn_fx_sin reads a 256-entry Q16.16 sine table with
-# linear interpolation. Both are pure integer IR, so bit-identical everywhere.
+# per program that uses Math.sqrt/sin/cos/tan/exp/log/pow. @fn_fx_sqrt is a
+# 64-bit integer square root (bit-by-bit); @fn_fx_sin reads a 256-entry Q16.16
+# sine table with linear interpolation; @fn_fx_exp2/@fn_fx_log2 are range-reduced
+# Q16.16 polynomials (base-2 exp and log) that back exp/log/pow. All are pure
+# integer IR, so bit-identical on every platform.
 fn emit_math_prelude() -> void {
   emith("@L_sin_tab = private unnamed_addr constant [256 x i32] [i32 0, i32 1608, i32 3216, i32 4821, i32 6424, i32 8022, i32 9616, i32 11204, i32 12785, i32 14359, i32 15924, i32 17479, i32 19024, i32 20557, i32 22078, i32 23586, i32 25080, i32 26558, i32 28020, i32 29466, i32 30893, i32 32303, i32 33692, i32 35062, i32 36410, i32 37736, i32 39040, i32 40320, i32 41576, i32 42806, i32 44011, i32 45190, i32 46341, i32 47464, i32 48559, i32 49624, i32 50660, i32 51665, i32 52639, i32 53581, i32 54491, i32 55368, i32 56212, i32 57022, i32 57798, i32 58538, i32 59244, i32 59914, i32 60547, i32 61145, i32 61705, i32 62228, i32 62714, i32 63162, i32 63572, i32 63944, i32 64277, i32 64571, i32 64827, i32 65043, i32 65220, i32 65358, i32 65457, i32 65516, i32 65536, i32 65516, i32 65457, i32 65358, i32 65220, i32 65043, i32 64827, i32 64571, i32 64277, i32 63944, i32 63572, i32 63162, i32 62714, i32 62228, i32 61705, i32 61145, i32 60547, i32 59914, i32 59244, i32 58538, i32 57798, i32 57022, i32 56212, i32 55368, i32 54491, i32 53581, i32 52639, i32 51665, i32 50660, i32 49624, i32 48559, i32 47464, i32 46341, i32 45190, i32 44011, i32 42806, i32 41576, i32 40320, i32 39040, i32 37736, i32 36410, i32 35062, i32 33692, i32 32303, i32 30893, i32 29466, i32 28020, i32 26558, i32 25080, i32 23586, i32 22078, i32 20557, i32 19024, i32 17479, i32 15924, i32 14359, i32 12785, i32 11204, i32 9616, i32 8022, i32 6424, i32 4821, i32 3216, i32 1608, i32 0, i32 -1608, i32 -3216, i32 -4821, i32 -6424, i32 -8022, i32 -9616, i32 -11204, i32 -12785, i32 -14359, i32 -15924, i32 -17479, i32 -19024, i32 -20557, i32 -22078, i32 -23586, i32 -25080, i32 -26558, i32 -28020, i32 -29466, i32 -30893, i32 -32303, i32 -33692, i32 -35062, i32 -36410, i32 -37736, i32 -39040, i32 -40320, i32 -41576, i32 -42806, i32 -44011, i32 -45190, i32 -46341, i32 -47464, i32 -48559, i32 -49624, i32 -50660, i32 -51665, i32 -52639, i32 -53581, i32 -54491, i32 -55368, i32 -56212, i32 -57022, i32 -57798, i32 -58538, i32 -59244, i32 -59914, i32 -60547, i32 -61145, i32 -61705, i32 -62228, i32 -62714, i32 -63162, i32 -63572, i32 -63944, i32 -64277, i32 -64571, i32 -64827, i32 -65043, i32 -65220, i32 -65358, i32 -65457, i32 -65516, i32 -65536, i32 -65516, i32 -65457, i32 -65358, i32 -65220, i32 -65043, i32 -64827, i32 -64571, i32 -64277, i32 -63944, i32 -63572, i32 -63162, i32 -62714, i32 -62228, i32 -61705, i32 -61145, i32 -60547, i32 -59914, i32 -59244, i32 -58538, i32 -57798, i32 -57022, i32 -56212, i32 -55368, i32 -54491, i32 -53581, i32 -52639, i32 -51665, i32 -50660, i32 -49624, i32 -48559, i32 -47464, i32 -46341, i32 -45190, i32 -44011, i32 -42806, i32 -41576, i32 -40320, i32 -39040, i32 -37736, i32 -36410, i32 -35062, i32 -33692, i32 -32303, i32 -30893, i32 -29466, i32 -28020, i32 -26558, i32 -25080, i32 -23586, i32 -22078, i32 -20557, i32 -19024, i32 -17479, i32 -15924, i32 -14359, i32 -12785, i32 -11204, i32 -9616, i32 -8022, i32 -6424, i32 -4821, i32 -3216, i32 -1608]\n")
   emith("define i32 @fn_fx_sqrt(i32 %x) {\n")
@@ -341,4 +363,43 @@ fn emit_math_prelude() -> void {
   emith("  %res = select i1 %yneg, i32 %angneg, i32 %angle\n")
   emith("  ret i32 %res\n")
   emith("}\n")
+  # @fn_fx_exp2(x) = 2^x, Q16.16. Split x into integer part i and fraction f in
+  # [0,1); 2^f is a 5th-order Taylor polynomial (Horner, coefficients (ln2)^k/k!
+  # in Q16.16), then shift by i. Shift amounts are clamped to a safe [0,31] so a
+  # huge exponent saturates instead of hitting an undefined shift.
+  emith("define i32 @fn_fx_exp2(i32 %x) {\n")
+  emith("  %i = ashr i32 %x, 16\n  %f = and i32 %x, 65535\n  %fe = sext i32 %f to i64\n")
+  emith("  %m5 = mul i64 %fe, 87\n  %s5 = ashr i64 %m5, 16\n  %p5 = add i64 %s5, 630\n")
+  emith("  %m4 = mul i64 %fe, %p5\n  %s4 = ashr i64 %m4, 16\n  %p4 = add i64 %s4, 3638\n")
+  emith("  %m3 = mul i64 %fe, %p4\n  %s3 = ashr i64 %m3, 16\n  %p3 = add i64 %s3, 15744\n")
+  emith("  %m2 = mul i64 %fe, %p3\n  %s2 = ashr i64 %m2, 16\n  %p2 = add i64 %s2, 45426\n")
+  emith("  %m1 = mul i64 %fe, %p2\n  %s1 = ashr i64 %m1, 16\n  %p1 = add i64 %s1, 65536\n")
+  emith("  %p = trunc i64 %p1 to i32\n")
+  emith("  %ipos = icmp sge i32 %i, 0\n")
+  emith("  %sa0 = select i1 %ipos, i32 %i, i32 0\n  %sahi = icmp sgt i32 %sa0, 30\n  %sa = select i1 %sahi, i32 30, i32 %sa0\n")
+  emith("  %shl = shl i32 %p, %sa\n")
+  emith("  %ni = sub i32 0, %i\n  %ra0 = select i1 %ipos, i32 0, i32 %ni\n  %rahi = icmp sgt i32 %ra0, 31\n  %ra = select i1 %rahi, i32 31, i32 %ra0\n")
+  emith("  %shr = ashr i32 %p, %ra\n")
+  emith("  %res = select i1 %ipos, i32 %shl, i32 %shr\n  ret i32 %res\n}\n")
+  # @fn_fx_log2(x) = log2(x), Q16.16, for x > 0 (x <= 0 saturates to the most
+  # negative i32). ctlz finds the MSB, giving the integer part e and a mantissa
+  # m in [1,2); ln(m) uses the fast-converging atanh series on r = (m-1)/(m+1),
+  # then log2(m) = ln(m)/ln2. Result is e + log2(m).
+  emith("declare i32 @llvm.ctlz.i32(i32, i1)\n")
+  emith("define i32 @fn_fx_log2(i32 %x) {\n")
+  emith("entry:\n  %pos = icmp sgt i32 %x, 0\n  br i1 %pos, label %go, label %neg\n")
+  emith("neg:\n  ret i32 -2147483648\n")
+  emith("go:\n  %lz = call i32 @llvm.ctlz.i32(i32 %x, i1 true)\n  %pmsb = sub i32 31, %lz\n")
+  emith("  %e = sub i32 %pmsb, 16\n  %ef = shl i32 %e, 16\n")
+  emith("  %sh = sub i32 16, %pmsb\n  %shpos = icmp sge i32 %sh, 0\n  %nsh = sub i32 0, %sh\n")
+  emith("  %mL = shl i32 %x, %sh\n  %mR = ashr i32 %x, %nsh\n  %m = select i1 %shpos, i32 %mL, i32 %mR\n")
+  emith("  %num = sub i32 %m, 65536\n  %den = add i32 %m, 65536\n")
+  emith("  %n64 = sext i32 %num to i64\n  %nshl = shl i64 %n64, 16\n  %d64 = sext i32 %den to i64\n  %rdv = sdiv i64 %nshl, %d64\n  %r = trunc i64 %rdv to i32\n")
+  emith("  %re = sext i32 %r to i64\n  %rr = mul i64 %re, %re\n  %r2 = ashr i64 %rr, 16\n")
+  emith("  %c3 = mul i64 %r2, 9362\n  %c3s = ashr i64 %c3, 16\n  %q3 = add i64 %c3s, 13107\n")
+  emith("  %c2 = mul i64 %r2, %q3\n  %c2s = ashr i64 %c2, 16\n  %q2 = add i64 %c2s, 21845\n")
+  emith("  %c1 = mul i64 %r2, %q2\n  %c1s = ashr i64 %c1, 16\n  %q1 = add i64 %c1s, 65536\n")
+  emith("  %rp = mul i64 %re, %q1\n  %rps = ashr i64 %rp, 16\n  %lnm = shl i64 %rps, 1\n")
+  emith("  %lm = mul i64 %lnm, 94548\n  %lms = ashr i64 %lm, 16\n  %l2m = trunc i64 %lms to i32\n")
+  emith("  %res = add i32 %ef, %l2m\n  ret i32 %res\n}\n")
 }

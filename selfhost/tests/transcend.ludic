@@ -1,0 +1,17 @@
+program T {
+  entry {
+    print(Math.round(Math.exp(1.0) * 1000))            # e         -> 2718
+    print(Math.round(Math.exp(0.0)))                   # 1         -> 1
+    print(Math.floor(Math.exp(5.0)))                   # 148.41    -> 148
+    print(Math.round(Math.log(2.718281828) * 1000))    # ln e      -> 1000
+    print(Math.round(Math.log(1.0)))                   # 0         -> 0
+    print(Math.round(Math.log(10.0) * 1000))           # ln 10     -> 2303
+    print(Math.round(Math.pow(2.0, 10.0)))             # 1024      -> 1024
+    print(Math.round(Math.pow(2.0, 0.5) * 1000))       # sqrt 2    -> 1414
+    print(Math.round(Math.pow(9.0, 0.5)))              # 3         -> 3
+    print(Math.round(Math.pow(2.0, 0.0 - 2.0) * 1000)) # 0.25      -> 250
+    print(Math.round(Ease.elastic(0.0) * 1000))        # anchored  -> 0
+    print(Math.round(Ease.elastic(1.0) * 1000))        # settles   -> 1000
+    print(Math.round(Ease.elastic(0.5) * 1000))        # overshoot -> 1016
+  }
+}
