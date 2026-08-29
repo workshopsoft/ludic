@@ -188,6 +188,7 @@ def head_html(title, desc, css_file):
 def topbar(cfg):
     return ('<header class="nav"><div class="wrap nav-in">'
             '<a class="brand" href="index.html"><span class="logo">L</span> %s</a>'
+            '<button class="nav-toggle" aria-label="Toggle menu" aria-expanded="false">☰</button>'
             '<nav class="nav-links">%s</nav></div></header>') % (esc(cfg["brand"]), nav_html(cfg))
 
 # ---------------------------------------------------------------------------

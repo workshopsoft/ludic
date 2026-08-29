@@ -134,6 +134,8 @@
   }
   function hideCard(){ if (cardEl) cardEl.hidden = true; }
   function installCards(){
+    // hover cards are a pointer affordance; skip on touch so a tap just navigates
+    if (!(window.matchMedia && window.matchMedia("(hover: hover)").matches)) return;
     document.addEventListener("mouseover", e => {
       const a = e.target.closest && e.target.closest("a.tok[data-id]");
       if (!a) return;
@@ -182,5 +184,23 @@
     box.addEventListener("keydown", e => { if (e.key === "Enter"){ const first = items.find(i=>i.style.display!=="none"); if (first) location.href = first.getAttribute("href"); } });
   }
 
-  global.Ludic = { highlight, highlightAll, installCards, flashTarget, installSearch, SYMBOLS: S };
+  /* ---- mobile nav toggle (auto-wired on every page) ------------------- */
+  function initNav(){
+    document.querySelectorAll(".nav-toggle").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const h = btn.closest("header.nav"); if (!h) return;
+        const open = h.classList.toggle("open");
+        btn.setAttribute("aria-expanded", open ? "true" : "false");
+      });
+    });
+    document.querySelectorAll("header.nav .nav-links a").forEach(a => {
+      a.addEventListener("click", () => {
+        const h = a.closest("header.nav");
+        if (h){ h.classList.remove("open"); const b = h.querySelector(".nav-toggle"); if (b) b.setAttribute("aria-expanded","false"); }
+      });
+    });
+  }
+  if (document.readyState !== "loading") initNav(); else document.addEventListener("DOMContentLoaded", initNav);
+
+  global.Ludic = { highlight, highlightAll, installCards, flashTarget, installSearch, initNav, SYMBOLS: S };
 })(window);
