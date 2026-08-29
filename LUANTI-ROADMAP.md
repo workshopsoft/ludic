@@ -1211,7 +1211,7 @@ hand-rolled pointer arithmetic these features exist to delete.
 
 ```ludic
 # before (runtime/native/image.ludic today)
-function px(img: ptr, x: int, y: int, w: int) -> int { return peek32(img, (y*w+x)*4) }
+function px(img: pointer, x: int, y: int, w: int) -> int { return peek32(img, (y*w+x)*4) }
 
 # after
 struct Rgba { r: u8, g: u8, b: u8, a: u8 }

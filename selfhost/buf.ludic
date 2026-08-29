@@ -2,7 +2,7 @@
 # module-level material (types, globals, string constants) into one buffer and
 # function bodies into another, then prints them in order.
 
-property Buf { data: ptr = null, len: int = 0, cap: int = 0 }
+property Buf { data: pointer = null, len: int = 0, cap: int = 0 }
 
 function buf_new() -> Buf {
   let b = new Buf
@@ -21,9 +21,9 @@ function buf_putc(b: Buf, c: int) -> void {
   b.data[b.len] = c
   b.len = b.len + 1
 }
-function buf_puts(b: Buf, s: ptr) -> void {
+function buf_puts(b: Buf, s: pointer) -> void {
   var i = 0
   while s[i] != 0 { buf_putc(b, s[i]); i = i + 1 }
 }
 function buf_puti(b: Buf, n: int) -> void { buf_puts(b, itoa(n)) }
-function buf_str(b: Buf) -> ptr { b.data[b.len] = 0; return b.data }
+function buf_str(b: Buf) -> pointer { b.data[b.len] = 0; return b.data }

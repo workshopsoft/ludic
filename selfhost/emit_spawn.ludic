@@ -1,7 +1,7 @@
 # emit_spawn.ludic — spawn / despawn / self(), and seeding a component's fields
 # from its declared defaults plus any per-spawn overrides.
 
-function emit_init_component(e: ptr, comp: ptr, rec: Node) -> void {
+function emit_init_component(e: pointer, comp: pointer, rec: Node) -> void {
   let me = itoa(MAX_ENT)
   let c = find_comp(comp)
   if (c == null) { perr(`spawn: unknown property {comp}`) }
@@ -54,7 +54,7 @@ function emit_init_component(e: ptr, comp: ptr, rec: Node) -> void {
 
 # bind each of a model's properties to entity `e`'s component storage, so an
 # @OnSpawn hook body can address them by name (like a query binding for one entity).
-function emit_bind_props(model: Node, e: ptr) -> void {
+function emit_bind_props(model: Node, e: pointer) -> void {
   let me = itoa(MAX_ENT)
   var c = 0
   while c < len(model.kids) {
@@ -68,7 +68,7 @@ function emit_bind_props(model: Node, e: ptr) -> void {
   }
 }
 
-function emit_spawn(st: Node) -> ptr {
+function emit_spawn(st: Node) -> pointer {
   let e = emit_bind("call i32 @L_alloc()")
   let ak = find_arch_id(st.s)
   if ak > 0 {

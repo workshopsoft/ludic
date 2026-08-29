@@ -4,7 +4,7 @@
 
 var g_windowed: bool = false     # headless by default (games read stdin / dump PPM)
 
-function is_intrinsic2(name: ptr) -> bool {
+function is_intrinsic2(name: pointer) -> bool {
   if (name == "free") or (name == "fill") { return true }
   if (name == "offset") or (name == "read_char") { return true }
   if (name == "as_fixed") or (name == "as_int") { return true }
@@ -14,7 +14,7 @@ function is_intrinsic2(name: ptr) -> bool {
   return false
 }
 
-function emit_intrinsic2(name: ptr, e: Node) -> Val {
+function emit_intrinsic2(name: pointer, e: Node) -> Val {
   if (name == "free") {
     let p = arg_code(e, 0);  emit("  call void @free(ptr ");  emit(p);  emit(")\n");  return val("0", "void")
   }
@@ -28,7 +28,7 @@ function emit_intrinsic2(name: ptr, e: Node) -> Val {
     let p = arg_code(e, 0);  let n = arg_code(e, 1)
     let g = nreg()
     emit("  ");  emit(g);  emit(" = getelementptr inbounds i8, ptr ");  emit(p);  emit(", i32 ");  emit(n);  emit("\n")
-    return val(g, "ptr")
+    return val(g, "pointer")
   }
   if (name == "read_char") { return val(emit_bind("call i32 @getchar()"), "int") }
   if (name == "as_fixed") { let a = emit_expr(e.kids[0]);  return val(a.code, "fixed") }

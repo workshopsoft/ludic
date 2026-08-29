@@ -13,7 +13,7 @@ const IMG_MAX: int = 32
 const SPR_MAX: int = 160
 const SPR_SZ:  int = 16
 
-var img_px:   ptrs = null     # IMG_MAX pointers to RGBA buffers
+var img_px:   pointers = null     # IMG_MAX pointers to RGBA buffers
 var img_w:    words = null
 var img_h:    words = null
 var img_n:    int = 0
@@ -30,11 +30,11 @@ function rt_image_init() -> void {
 }
 
 # ---- decoding -------------------------------------------------------------
-function png_be32(b: ptr, at: int) -> int {
+function png_be32(b: pointer, at: int) -> int {
   return (b[at] << 24) | (b[at + 1] << 16) | (b[at + 2] << 8) | b[at + 3]
 }
 
-function png_tag(b: ptr, at: int, a: int, c: int, d: int, e: int) -> bool {
+function png_tag(b: pointer, at: int, a: int, c: int, d: int, e: int) -> bool {
   if b[at] != a { return false }
   if b[at + 1] != c { return false }
   if b[at + 2] != d { return false }
@@ -42,7 +42,7 @@ function png_tag(b: ptr, at: int, a: int, c: int, d: int, e: int) -> bool {
   return true
 }
 
-function rt_read_file(path: string) -> ptr {
+function rt_read_file(path: string) -> pointer {
   let f = file_open(path, "rb")
   if (f == null) { return null }
   file_seek(f, 0, 2)

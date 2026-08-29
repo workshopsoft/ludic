@@ -13,7 +13,7 @@ function char_is_alpha(c: int) -> bool {
 function char_is_alnum(c: int) -> bool { return char_is_alpha(c) or char_is_digit(c) }
 
 # integer -> fresh decimal string
-function itoa(v: int) -> ptr {
+function itoa(v: int) -> pointer {
   if v == 0 { let z = bytes(2); z[0] = 48; z[1] = 0; return z }
   var neg = false
   var x = v

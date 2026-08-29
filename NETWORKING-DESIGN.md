@@ -151,9 +151,9 @@ directly from these; the high-level layer (§6) is sugar over them.
 
 | Primitive | Signature (sketch) | Enables |
 |---|---|---|
-| **Transport seam** | `extern function net_send(peer: int, buf: ptr, len: int)` · `extern function net_poll(buf: ptr, cap: int) -> int` | any model; host binds UDP (native) or WebRTC/WebSocket (wasm), or a loopback for tests |
-| **World snapshot ↔ buffer** | `world_save(buf: ptr) -> int` · `world_load(buf: ptr, len: int)` | rollback, replication, join/resync — generalizes `save()`/`load()` off the filesystem |
-| **Generated serializers** | `serialize_<Model>(e: entity, buf: ptr) -> int` · `apply_<Model>(e: entity, buf: ptr, len: int)` | per-model, touch only the `@Sync` fields; emitted from the schema |
+| **Transport seam** | `extern function net_send(peer: int, buf: pointer, len: int)` · `extern function net_poll(buf: pointer, cap: int) -> int` | any model; host binds UDP (native) or WebRTC/WebSocket (wasm), or a loopback for tests |
+| **World snapshot ↔ buffer** | `world_save(buf: pointer) -> int` · `world_load(buf: pointer, len: int)` | rollback, replication, join/resync — generalizes `save()`/`load()` off the filesystem |
+| **Generated serializers** | `serialize_<Model>(e: entity, buf: pointer) -> int` · `apply_<Model>(e: entity, buf: pointer, len: int)` | per-model, touch only the `@Sync` fields; emitted from the schema |
 | **Ownership** | `owner(e: entity) -> int` · `set_owner(e: entity, id: int)` | authority checks, per-entity owner metadata (an `@L_owner` array, like `@L_kind`) |
 | **Role registers** | `is_server() -> bool` · `is_owner(e: entity) -> bool` · `local_id() -> int` | the runtime sets these; role-guarded dispatch reads them |
 | **Drivable sim** | `tick_fixed()` · `tick_render()` · seed get/set | a developer-owned loop for prediction/rollback (also: replay, headless tests, AI) |

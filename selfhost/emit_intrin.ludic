@@ -6,7 +6,7 @@ var g_intrin_ok: bool = false
 
 # is `name` a low-level intrinsic? A pure name check, so it can gate dispatch
 # without evaluating arguments (which could clobber shared state).
-function is_intrinsic(name: ptr) -> bool {
+function is_intrinsic(name: pointer) -> bool {
   if (name == "resize") { return true }
   if (name == "file_open") or (name == "file_read") or (name == "file_write") { return true }
   if (name == "file_seek") or (name == "file_tell") or (name == "file_close") { return true }
@@ -16,22 +16,22 @@ function is_intrinsic(name: ptr) -> bool {
   return false
 }
 # emit "  <r> = <rest>\n" and return r
-function emit_bind(rest: ptr) -> ptr { let r = nreg();  emit("  ");  emit(r);  emit(" = ");  emit(rest);  emit("\n");  return r }
+function emit_bind(rest: pointer) -> pointer { let r = nreg();  emit("  ");  emit(r);  emit(" = ");  emit(rest);  emit("\n");  return r }
 
-function arg_code(e: Node, i: int) -> ptr { let v = emit_expr(e.kids[i]);  return v.code }
+function arg_code(e: Node, i: int) -> pointer { let v = emit_expr(e.kids[i]);  return v.code }
 
-function emit_intrinsic(name: ptr, e: Node) -> Val {
+function emit_intrinsic(name: pointer, e: Node) -> Val {
   g_intrin_ok = true
   # ptr_null / ptr_is_null are the `null` literal and `x == null` now.
   # mem_alloc is bytes(n) / words(n) now (see emit_call).
   if (name == "resize") {
     let p = arg_code(e, 0);  let n = arg_code(e, 1)
     let w = emit_bind(`zext i32 {n} to i64`)
-    return val(emit_bind(`call ptr @realloc(ptr {p}, i64 {w})`), "ptr")
+    return val(emit_bind(`call ptr @realloc(ptr {p}, i64 {w})`), "pointer")
   }
   if (name == "file_open") {
     let p = arg_code(e, 0);  let m = arg_code(e, 1)
-    return val(emit_bind(`call ptr @fopen(ptr {p}, ptr {m})`), "ptr")
+    return val(emit_bind(`call ptr @fopen(ptr {p}, ptr {m})`), "pointer")
   }
   if (name == "file_read") or (name == "file_write") {
     let f = arg_code(e, 0);  let b = arg_code(e, 1);  let n = arg_code(e, 2)
@@ -71,8 +71,8 @@ function emit_intrinsic(name: ptr, e: Node) -> Val {
     g_term = true
     return val("0", "void")
   }
-  if (name == "file_stderr") { return val(emit_bind("load ptr, ptr @__stderrp"), "ptr") }
-  if (name == "file_stdout") { return val(emit_bind("load ptr, ptr @__stdoutp"), "ptr") }
+  if (name == "file_stderr") { return val(emit_bind("load ptr, ptr @__stderrp"), "pointer") }
+  if (name == "file_stdout") { return val(emit_bind("load ptr, ptr @__stdoutp"), "pointer") }
   if (name == "run") {
     let c = arg_code(e, 0)
     return val(emit_bind(`call i32 @system(ptr {c})`), "int")

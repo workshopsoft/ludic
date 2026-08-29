@@ -9,7 +9,7 @@ tip: Bind a name to an external native symbol — the seam for platform and libr
 order: 12
 ---
 
-An <code>extern function</code> declares a function whose body lives outside Ludic and binds it to a native symbol resolved at link time. It is the seam through which Ludic reaches anything with a native interface — a system library, a math routine, or even another `.ludic` file compiled as a `module`. You write the Ludic signature you want to call and give the real symbol name after `=`; the linker connects them (pass `-L`/`-l` to `ludicc` to point at the library). Types must match the foreign ABI, so map each parameter and the return to the right Ludic type (`int`, `fixed`, `ptr`, …).
+An <code>extern function</code> declares a function whose body lives outside Ludic and binds it to a native symbol resolved at link time. It is the seam through which Ludic reaches anything with a native interface — a system library, a math routine, or even another `.ludic` file compiled as a `module`. You write the Ludic signature you want to call and give the real symbol name after `=`; the linker connects them (pass `-L`/`-l` to `ludicc` to point at the library). Types must match the foreign ABI, so map each parameter and the return to the right Ludic type (`int`, `fixed`, `pointer`, …).
 
 Parameters:
 - `a` — a typed argument passed straight through to the foreign symbol

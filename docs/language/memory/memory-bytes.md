@@ -4,7 +4,7 @@ name: Memory.bytes
 category: memory
 kind: namespace-method
 tokens: Memory.bytes
-sig: Memory.bytes(n) -> ptr
+sig: Memory.bytes(n) -> pointer
 tip: Allocate n bytes.
 order: 0
 ns: Memory

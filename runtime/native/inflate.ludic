@@ -13,14 +13,14 @@
 # ============================================================================
 
 # ---- bit reader (DEFLATE packs bits least-significant-first) ---------------
-var z_src:    ptr = null
+var z_src:    pointer = null
 var z_len:    int = 0
 var z_pos:    int = 0
 var z_bitbuf: int = 0
 var z_bitcnt: int = 0
 var z_err:    int = 0
 
-function z_start(src: ptr, len: int) -> void {
+function z_start(src: pointer, len: int) -> void {
   z_src = src
   z_len = len
   z_pos = 0
@@ -48,7 +48,7 @@ function z_bits(need: int) -> int {
 # ---- Huffman tables -------------------------------------------------------
 # A table is a single buffer: 16 length-counts followed by the symbols in
 # canonical order. One allocation, no structs.
-function z_table_new(nsym: int) -> ptr {
+function z_table_new(nsym: int) -> pointer {
   return words((16 + nsym))
 }
 
@@ -125,7 +125,7 @@ function z_dist_extra(sym: int) -> int {
 
 # ---- block decoders -------------------------------------------------------
 # `out` is the destination window; returns the new write position, or -1.
-function z_stored(out: ptr, at: int, cap: int) -> int {
+function z_stored(out: pointer, at: int, cap: int) -> int {
   z_bitbuf = 0
   z_bitcnt = 0                        # stored blocks are byte-aligned
   if z_pos + 4 > z_len { return -1 }
@@ -142,7 +142,7 @@ function z_stored(out: ptr, at: int, cap: int) -> int {
   return w
 }
 
-function z_codes(out: ptr, at: int, cap: int, lit: ptr, dist: ptr) -> int {
+function z_codes(out: pointer, at: int, cap: int, lit: pointer, dist: pointer) -> int {
   var w = at
   var sym = z_decode(lit)
   while sym != 256 {
@@ -172,7 +172,7 @@ function z_codes(out: ptr, at: int, cap: int, lit: ptr, dist: ptr) -> int {
   return w
 }
 
-function z_fixed_tables(lit: ptr, dist: ptr) -> void {
+function z_fixed_tables(lit: pointer, dist: pointer) -> void {
   let lengths: words = words(288)
   for i in 0 .. 144 { lengths[i] = 8 }
   for i in 144 .. 256 { lengths[i] = 9 }
@@ -184,7 +184,7 @@ function z_fixed_tables(lit: ptr, dist: ptr) -> void {
   free(lengths)
 }
 
-function z_dynamic_tables(lit: ptr, dist: ptr) -> int {
+function z_dynamic_tables(lit: pointer, dist: pointer) -> int {
   let nlen = z_bits(5) + 257
   let ndist = z_bits(5) + 1
   let ncode = z_bits(4) + 4
@@ -240,7 +240,7 @@ function z_dynamic_tables(lit: ptr, dist: ptr) -> int {
 }
 
 # Inflate a raw DEFLATE stream. Returns bytes written, or -1.
-function z_inflate(src: ptr, len: int, out: ptr, cap: int) -> int {
+function z_inflate(src: pointer, len: int, out: pointer, cap: int) -> int {
   z_start(src, len)
   let lit = z_table_new(288)
   let dist = z_table_new(30)
@@ -268,7 +268,7 @@ function z_inflate(src: ptr, len: int, out: ptr, cap: int) -> int {
 }
 
 # zlib wrapper (RFC 1950): two header bytes, then DEFLATE, then Adler-32.
-function z_uncompress(src: ptr, len: int, out: ptr, cap: int) -> int {
+function z_uncompress(src: pointer, len: int, out: pointer, cap: int) -> int {
   if len < 2 { return -1 }
   let cmf = src[0]
   if (cmf & 15) != 8 { return -1 }

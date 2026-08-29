@@ -5,13 +5,13 @@
 # for reference elements (structs/strings), matching how `==` behaves elsewhere.
 
 # address of element `idx` (an i32 code) in slice header `h`, element LLVM type `elt`
-function list_elem_addr(h: ptr, elt: ptr, idx: ptr) -> ptr {
+function list_elem_addr(h: pointer, elt: pointer, idx: pointer) -> pointer {
   let dp = slice_field(h, 0)
   let data = emit_bind(`load ptr, ptr {dp}`)
   return emit_bind(`getelementptr inbounds {elt}, ptr {data}, i32 {idx}`)
 }
 
-function is_list_ns(meth: ptr) -> bool {
+function is_list_ns(meth: pointer) -> bool {
   if (meth == "len") or (meth == "push") or (meth == "clear") { return true }
   if (meth == "first") or (meth == "last") or (meth == "pop") or (meth == "swap") { return true }
   if (meth == "contains") or (meth == "index_of") or (meth == "reverse") { return true }
@@ -21,7 +21,7 @@ function is_list_ns(meth: ptr) -> bool {
 
 # grow the slice's backing buffer if it is full, exactly as push does (double,
 # or 8 from empty). Leaves length untouched; only capacity/data may change.
-function list_grow_if_full(h: ptr, elt: ptr) -> void {
+function list_grow_if_full(h: pointer, elt: pointer) -> void {
   let lp = slice_field(h, 1);  let cp = slice_field(h, 2);  let dp = slice_field(h, 0)
   let l = emit_bind(`load i32, ptr {lp}`)
   let c = emit_bind(`load i32, ptr {cp}`)
@@ -43,7 +43,7 @@ function list_grow_if_full(h: ptr, elt: ptr) -> void {
   emit(done);  emit(":\n")
 }
 
-function emit_list_ns(meth: ptr, e: Node) -> Val {
+function emit_list_ns(meth: pointer, e: Node) -> Val {
   if (meth == "len") { return emit_len(e) }         # same header length as len(s)
   if (meth == "push") { return emit_push(e) }       # same as push(s, v)
   let s = emit_expr(e.kids[0])

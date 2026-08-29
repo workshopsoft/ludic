@@ -72,8 +72,8 @@ var ui_rh: words = null
 var ui_visible: words = null
 var ui_fired: words = null
 var ui_hasdyn: words = null
-var ui_dyn: ptr = null        # UI_MAX * 96 bytes
-var ui_text: ptrs = null       # UI_MAX static string pointers
+var ui_dyn: pointer = null        # UI_MAX * 96 bytes
+var ui_text: pointers = null       # UI_MAX static string pointers
 
 var ui_n: int = 0
 var ui_active: int = -1
@@ -175,14 +175,14 @@ function rt_ui_static_text(i: int, s: string) -> void {
 }
 
 # ---- text helpers: TrueType when a font is loaded, bitmap otherwise -------
-function ui_str(i: int) -> ptr {
+function ui_str(i: int) -> pointer {
   if ui_hasdyn[i] == 1 { return offset(ui_dyn, i * 96) }
   let t = ui_text[i]
   if (t == null) { return offset(ui_dyn, i * 96) }
   return t
 }
 
-function ui_draw_text(font: int, x: int, y: int, s: ptr, colour: int, size: int) -> void {
+function ui_draw_text(font: int, x: int, y: int, s: pointer, colour: int, size: int) -> void {
   if font >= 0 {
     if font < tt_n {
       rt_text_ttf(font, x, y, s, colour, size)
@@ -192,7 +192,7 @@ function ui_draw_text(font: int, x: int, y: int, s: ptr, colour: int, size: int)
   rt_text(x, y, s, colour, max(size / 8, 1))
 }
 
-function ui_tw(font: int, s: ptr, size: int) -> int {
+function ui_tw(font: int, s: pointer, size: int) -> int {
   if font >= 0 {
     if font < tt_n { return rt_text_w(font, s, size) }
   }

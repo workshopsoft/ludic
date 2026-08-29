@@ -109,15 +109,15 @@ All verified. A compiler needs each of these, and each one works today.
 | Deep recursion (recursive-descent parsing) | ✅ | 5,000 frames, no crash |
 | Heap allocation | ✅ | `mem_alloc`, `mem_free`, `mem_copy`, `mem_set`; 1 MiB alloc verified |
 | Byte-level memory | ✅ | `peek8`/`poke8`, `peek32`/`poke32`, `peekp`/`pokep`, `ptr_add` |
-| `ptr` locals, params, returns | ✅ | `function make(n: int) -> ptr` |
-| `ptr` in a property field | ✅ | `property Nd { kind: int = 0, a: ptr = ptr_null() }` |
+| `ptr` locals, params, returns | ✅ | `function make(n: int) -> pointer` |
+| `ptr` in a property field | ✅ | `property Nd { kind: int = 0, a: pointer = ptr_null() }` |
 | String literals as readable bytes | ✅ | `peek8("hello", 1)` → `101` |
-| `str` accepted where `ptr` expected | ✅ | `f("A")` into `function f(p: ptr)` |
+| `str` accepted where `ptr` expected | ✅ | `f("A")` into `function f(p: pointer)` |
 | String comparison, **hand-written in Ludic** | ✅ | `streq` over `peek8` |
 | Integer → decimal, **hand-written in Ludic** | ✅ | `itoa(48291)` → `"48291"` |
 | File read: open/seek/tell/read/close | ✅ | full round-trip of a written file |
 | File write | ✅ | `file_open`/`file_write`/`file_close` |
-| Module-level mutable state | ✅ | `var count: int`, `var heap: ptr` |
+| Module-level mutable state | ✅ | `var count: int`, `var heap: pointer` |
 | `let` is mutable | ✅ | `i = i + 1` in a loop |
 | `while`, numeric `for i in a .. b` with runtime bounds | ✅ | |
 | `if` / `else if` / `else` chains | ✅ | |
@@ -186,7 +186,7 @@ records. Today there are two workarounds, and both are bad at compiler scale:
   what `truetype.ludic` does, and it works, but every field access becomes a
   magic number. Across a 6,000-line compiler this is the difference between
   maintainable and not.
-- **ECS entities as nodes** — verified working (`property Nd { kind, a: ptr }`),
+- **ECS entities as nodes** — verified working (`property Nd { kind, a: pointer }`),
   and initially seductive because queries give you free traversal. **Do not do
   this.** `LUDIC_MAX_ENT` is 1024 in `native.c:18`; the entity world is a fixed
   array of per-property storage. A compiler needs hundreds of thousands of
@@ -198,7 +198,7 @@ unblocks everything:
 
 ```ludic
 # doc-check: skip — proposed syntax: struct does not exist yet
-struct Tok { kind: int = 0, text: ptr = ptr_null(), line: int = 0 }
+struct Tok { kind: int = 0, text: pointer = ptr_null(), line: int = 0 }
 
 let t = new Tok            # heap-allocated, fields seeded from defaults
 t.kind = T_ID
@@ -278,7 +278,7 @@ Every table in a compiler grows: tokens, nodes, the output buffer. Hand-rolling
 alloc-copy-free works but is written once per table and gotten wrong once per
 table.
 
-**Design.** `mem_realloc(p: ptr, n: int) -> ptr`.
+**Design.** `mem_realloc(p: pointer, n: int) -> pointer`.
 
 **Lowering.** `declare ptr @realloc(ptr, <size_t>)` plus one `INTRINSICS[]`
 entry. **Use `ll_size_t()` / `ll_widen()` for the size argument — do not
@@ -303,7 +303,7 @@ plumbing is reused rather than duplicated:
 
 ```ludic
 # doc-check: skip — proposed signature notation, not code
-file_stderr() -> ptr        # then file_write(f, buf, n) as usual
+file_stderr() -> pointer        # then file_write(f, buf, n) as usual
 ```
 
 **Lowering — note the portability wrinkle.** There is no portable `@stderr`
@@ -870,7 +870,7 @@ program P {
 
 **String comparison, hand-written** ✅ → `1`
 ```ludic
-function streq(a: ptr, b: ptr) -> bool {
+function streq(a: pointer, b: pointer) -> bool {
   let i = 0
   while true {
     let ca = peek8(a,i)
@@ -885,7 +885,7 @@ function streq(a: ptr, b: ptr) -> bool {
 
 **Integer → string, hand-written** ✅ → `48291`
 ```ludic
-function itoa(v: int, buf: ptr) -> int {
+function itoa(v: int, buf: pointer) -> int {
   let n = 0
   let x = v
   if x == 0 { poke8(buf,0,48); return 1 }
@@ -972,7 +972,7 @@ parenthesisation) while `ludic-fmt` returns the input **unchanged**.
 ```ludic
 # doc-check: expect-error — every line here is a compile error by design
 while i < 10 { i = i + 1;  if i == 3 { break } }   # unknown identifier 'break'
-struct Node { k: int, a: ptr }                    # expected declaration (got 'struct')
+struct Node { k: int, a: pointer }                    # expected declaration (got 'struct')
 var t: [int; 8]                                   # expected identifier (got '[')
 var h: fn = a                                     # unknown type 'fn' for var h
 let p = &cb                                       # fails to compile

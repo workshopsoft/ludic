@@ -5,11 +5,11 @@
 # integer root, @fn_fx_sin a 256-entry interpolated sine table). Everything is
 # plain integer IR, so it is bit-identical on every platform.
 
-function is_math_builtin(name: ptr) -> bool {
+function is_math_builtin(name: pointer) -> bool {
   return (name == "min") or (name == "max") or (name == "abs") or (name == "clamp")
 }
 
-function emit_math_builtin(name: ptr, e: Node) -> Val {
+function emit_math_builtin(name: pointer, e: Node) -> Val {
   if (name == "abs") {
     let a = emit_expr(e.kids[0])
     let c = emit_bind(`icmp slt i32 {a.code}, 0`)
@@ -32,7 +32,7 @@ function emit_math_builtin(name: ptr, e: Node) -> Val {
 }
 
 # a * b in Q16.16 (64-bit intermediate, arithmetic shift back) -> code of an i32
-function fx_mul_code(a: ptr, b: ptr) -> ptr {
+function fx_mul_code(a: pointer, b: pointer) -> pointer {
   let a64 = emit_bind(`sext i32 {a} to i64`)
   let b64 = emit_bind(`sext i32 {b} to i64`)
   let m = emit_bind(`mul i64 {a64}, {b64}`)
@@ -41,7 +41,7 @@ function fx_mul_code(a: ptr, b: ptr) -> ptr {
 }
 
 # a / b in Q16.16 (shift the numerator up before the divide) -> code of an i32
-function fx_div_code(a: ptr, b: ptr) -> ptr {
+function fx_div_code(a: pointer, b: pointer) -> pointer {
   let a64 = emit_bind(`sext i32 {a} to i64`)
   let ash = emit_bind(`shl i64 {a64}, 16`)
   let b64 = emit_bind(`sext i32 {b} to i64`)
@@ -50,14 +50,14 @@ function fx_div_code(a: ptr, b: ptr) -> ptr {
 }
 
 # lerp(a, b, t) = a + (b - a) * t, all Q16.16 -> code of a fixed i32
-function fx_lerp_code(a: ptr, b: ptr, t: ptr) -> ptr {
+function fx_lerp_code(a: pointer, b: pointer, t: pointer) -> pointer {
   let d = emit_bind(`sub i32 {b}, {a}`)
   let dt = fx_mul_code(d, t)
   return emit_bind(`add i32 {a}, {dt}`)
 }
 
 # inverse_lerp(a, b, v) = (v - a) / (b - a), all Q16.16 -> code of a fixed i32
-function fx_inv_lerp_code(a: ptr, b: ptr, v: ptr) -> ptr {
+function fx_inv_lerp_code(a: pointer, b: pointer, v: pointer) -> pointer {
   let num = emit_bind(`sub i32 {v}, {a}`)
   let den = emit_bind(`sub i32 {b}, {a}`)
   return fx_div_code(num, den)
@@ -66,7 +66,7 @@ function fx_inv_lerp_code(a: ptr, b: ptr, v: ptr) -> ptr {
 # Math.* — the namespaced surface. min/max/abs/clamp reuse the bare lowering;
 # the rest are new deterministic fixed-point helpers. Returns g_intrin-style via
 # a direct Val; callers guard with is_math_ns first.
-function is_math_ns(meth: ptr) -> bool {
+function is_math_ns(meth: pointer) -> bool {
   if (meth == "min") or (meth == "max") or (meth == "abs") or (meth == "clamp") { return true }
   if (meth == "sign") or (meth == "floor") or (meth == "ceil") or (meth == "round") { return true }
   if (meth == "lerp") or (meth == "inverse_lerp") or (meth == "remap") { return true }
@@ -79,7 +79,7 @@ function is_math_ns(meth: ptr) -> bool {
   return false
 }
 
-function emit_math_ns(meth: ptr, e: Node) -> Val {
+function emit_math_ns(meth: pointer, e: Node) -> Val {
   if (meth == "min") or (meth == "max") or (meth == "abs") or (meth == "clamp") {
     return emit_math_builtin(meth, e)
   }

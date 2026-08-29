@@ -160,10 +160,10 @@ compiler intrinsics that lower to direct calls into the platform ABI.
 
 | intrinsic | lowers to |
 | --- | --- |
-| `mem_alloc(n) -> ptr`, `mem_free`, `mem_copy`, `mem_set` | `malloc`, `free`, `memcpy`, `memset` |
+| `mem_alloc(n) -> pointer`, `mem_free`, `mem_copy`, `mem_set` | `malloc`, `free`, `memcpy`, `memset` |
 | `peek8/peek32(p, i) -> int`, `poke8/poke32(p, i, v)` | `load` / `store` |
-| `ptr_add(p, n) -> ptr`, `ptr_null()`, `ptr_is_null(p)` | `getelementptr`, `null` |
-| `file_open(path, mode) -> ptr`, `file_read`, `file_write`, `file_close` | `fopen`, `fread`, `fwrite`, `fclose` |
+| `ptr_add(p, n) -> pointer`, `ptr_null()`, `ptr_is_null(p)` | `getelementptr`, `null` |
+| `file_open(path, mode) -> pointer`, `file_read`, `file_write`, `file_close` | `fopen`, `fread`, `fwrite`, `fclose` |
 | `read_byte() -> int`, `write_byte(c)`, `print_str(s)`, `print_int(n)` | `getchar`, `putchar`, `printf` |
 | `str_len(s) -> int`, `os_exit(code)`, `os_time() -> int` | `strlen`, `exit`, `time` |
 

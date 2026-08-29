@@ -14,7 +14,7 @@ function ui_wtype(w: Node) -> int {
   if (s == "image") { return 5 };  if (s == "spacer") { return 6 }
   return 0
 }
-function ui_prop(w: Node, key: ptr) -> Node {
+function ui_prop(w: Node, key: pointer) -> Node {
   var i = 0
   while i < len(w.b.kids) { if (w.b.kids[i].s == key) { return w.b.kids[i].a };  i = i + 1 }
   return null
@@ -40,7 +40,7 @@ function has_ui() -> bool {
 }
 
 # index of a UI_<name>: a ui block's root, or a widget's id=
-function ui_index_of(nm: ptr) -> int {
+function ui_index_of(nm: pointer) -> int {
   let s = nm[3..len(nm)]          # strip "UI_"
   let u = 0;  var bi = 0
   var i = 0
@@ -56,14 +56,14 @@ function ui_index_of(nm: ptr) -> int {
   }
   return 0
 }
-function is_ui_ident(nm: ptr) -> bool {
+function is_ui_ident(nm: pointer) -> bool {
   return len(nm) > 3 and nm[0] == 85 and nm[1] == 73 and nm[2] == 95   # "UI_"
 }
 
-function ll_ui_set(idx: int, key: int, val: ptr) -> void {
+function ll_ui_set(idx: int, key: int, val: pointer) -> void {
   emit("  call void @fn_rt_ui_set(i32 ");  emit(itoa(idx));  emit(", i32 ");  emit(itoa(key));  emit(", i32 ");  emit(val);  emit(")\n")
 }
-function ui_prop_key(k: ptr) -> int {
+function ui_prop_key(k: pointer) -> int {
   if (k == "w") { return 2 };  if (k == "h") { return 3 };  if (k == "x") { return 4 };  if (k == "y") { return 5 }
   if (k == "pad") { return 7 };  if (k == "gap") { return 8 };  if (k == "bg") { return 9 };  if (k == "fg") { return 10 }
   if (k == "border") { return 11 };  if (k == "grow") { return 13 };  if (k == "font") { return 14 };  if (k == "size") { return 15 }

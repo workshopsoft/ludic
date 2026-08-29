@@ -3,17 +3,17 @@
 # read and write one byte. The low-level escape hatch, PICO-8's memcpy/memset/
 # peek/poke by another name.
 
-function is_mem_ns(meth: ptr) -> bool {
+function is_mem_ns(meth: pointer) -> bool {
   if (meth == "bytes") or (meth == "words") { return true }
   if (meth == "copy") or (meth == "fill") or (meth == "peek") or (meth == "poke") { return true }
   return false
 }
 
-function emit_mem_ns(meth: ptr, e: Node) -> Val {
+function emit_mem_ns(meth: pointer, e: Node) -> Val {
   if (meth == "bytes") {                            # allocate n bytes -> a byte buffer
     let n = emit_expr(e.kids[0])
     let w = emit_bind(`zext i32 {n.code} to i64`)
-    return val(emit_bind(`call ptr @malloc(i64 {w})`), "ptr")
+    return val(emit_bind(`call ptr @malloc(i64 {w})`), "pointer")
   }
   if (meth == "words") {                            # allocate n 32-bit words
     let n = emit_expr(e.kids[0])

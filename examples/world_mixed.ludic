@@ -3,7 +3,7 @@
 # a `ptr` field, so its byte offset is 8, not 4; writing qty=99 by name and reading
 # it back proves the world table addresses fields by their true layout. Prints 99.
 program WorldMixed {
-  property Slot { ref: ptr = null, qty: int = 0 }
+  property Slot { ref: pointer = null, qty: int = 0 }
   model Item { Slot }
   @Public @OnSpawn(Item) handler Born { }          # makes it a modding program
 

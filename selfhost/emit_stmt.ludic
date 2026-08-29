@@ -11,7 +11,7 @@ function emit_block(b: Node) -> void {
 }
 
 # store `val` (llvm type `lt`) into address `addr`
-function store_at(lt: ptr, v: ptr, addr: ptr) -> void {
+function store_at(lt: pointer, v: pointer, addr: pointer) -> void {
   emit("  store ");  emit(lt);  emit(" ");  emit(v);  emit(", ptr ");  emit(addr);  emit("\n")
 }
 
@@ -167,8 +167,8 @@ function emit_emit(st: Node) -> Val {
   let ev = find_event(st.s)
   if (ev == null) { perr(`emit: unknown event {st.s}`) }
   # evaluate each payload field in declared order (default for a missing arg)
-  let fcodes = new []ptr
-  let ftys = new []ptr
+  let fcodes = new []pointer
+  let ftys = new []pointer
   var f = 0
   while f < len(ev.kids) {
     let fd = ev.kids[f]
@@ -261,7 +261,7 @@ function emit_stmt(st: Node) -> void {
   perr("cannot emit statement")
 }
 
-function loop_push(cont: ptr, brk: ptr) -> void {
+function loop_push(cont: pointer, brk: pointer) -> void {
   if nloop < len(cnt_lbl) { cnt_lbl[nloop] = cont;  brk_lbl[nloop] = brk }
   else { push(cnt_lbl, cont);  push(brk_lbl, brk) }
   nloop = nloop + 1

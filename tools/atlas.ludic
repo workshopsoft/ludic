@@ -47,9 +47,9 @@ game Atlas {
     return buf
   }
 
-  var atlas_scratch: ptr = ptr_null()
+  var atlas_scratch: pointer = ptr_null()
 
-  function atlas_buf() -> ptr {
+  function atlas_buf() -> pointer {
     if ptr_is_null(atlas_scratch) { atlas_scratch = mem_alloc(512) }
     return atlas_scratch
   }

@@ -7,7 +7,7 @@
 # driven through python3/node (they are not project shell scripts), invoked here.
 
 # refresh one editor-copy of a shared grammar file if it has drifted
-function sync_one(shared: ptr, dst: ptr) -> void {
+function sync_one(shared: pointer, dst: pointer) -> void {
   if not shq(`cmp -s {shared} {dst}`) {
     run(`cp {shared} {dst}`)
     print(`sync: {shared} -> {dst}`)
@@ -25,7 +25,7 @@ function sync_vscode_grammar() -> void {
 }
 
 # is `flag` present anywhere in argv?
-function has_flag(flag: ptr) -> bool {
+function has_flag(flag: pointer) -> bool {
   var i = 2
   while i < arg_count() { if (arg(i) == flag) { return true };  i = i + 1 }
   return false
@@ -172,13 +172,13 @@ function cmd_test_tools() -> int {
   return report()
 }
 
-function test_json(path: ptr) -> void {
+function test_json(path: pointer) -> void {
   let bn = capture_line(`basename {path}`)
   if shq(`python3 -c 'import json,sys;json.load(open(sys.argv[1]))' {path} 2>/dev/null`) {
     ok(`valid JSON: {bn}`)
   } else { bad(`invalid JSON: {path}`) }
 }
-function test_xml(path: ptr) -> void {
+function test_xml(path: pointer) -> void {
   let bn = capture_line(`basename {path}`)
   if shq(`python3 -c 'import xml.dom.minidom,sys;xml.dom.minidom.parse(sys.argv[1])' {path} 2>/dev/null`) {
     ok(`valid XML: {bn}`)

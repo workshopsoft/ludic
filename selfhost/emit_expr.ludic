@@ -1,6 +1,6 @@
 # emit_expr.ludic — lower an expression to IR, returning its register and type.
 
-function emit_load_at(addr: ptr, ty: ptr) -> Val {
+function emit_load_at(addr: pointer, ty: pointer) -> Val {
   let r = emit_bind(`load {llty(ty)}, ptr {addr}`)
   return val(r, ty)
 }
@@ -26,7 +26,7 @@ function emit_logic(e: Node) -> Val {
   return val(emit_bind(`load i32, ptr {slot}`), "bool")
 }
 
-function cmp_code(op: ptr) -> ptr {
+function cmp_code(op: pointer) -> pointer {
   if (op == ("<"))  { return "slt" }
   if (op == ("<=")) { return "sle" }
   if (op == (">"))  { return "sgt" }
@@ -34,10 +34,10 @@ function cmp_code(op: ptr) -> ptr {
   if (op == ("==")) { return "eq" }
   return "ne"
 }
-function is_cmp(op: ptr) -> bool {
+function is_cmp(op: pointer) -> bool {
   return (op == ("<")) or (op == ("<=")) or (op == (">")) or (op == (">=")) or (op == ("==")) or (op == ("!="))
 }
-function arith_code(op: ptr) -> ptr {
+function arith_code(op: pointer) -> pointer {
   if (op == ("+")) { return "add" }
   if (op == ("-")) { return "sub" }
   if (op == ("*")) { return "mul" }
@@ -51,7 +51,7 @@ function arith_code(op: ptr) -> ptr {
 }
 
 # widen an int value to Q16.16 by shifting left 16 (a fixed value passes through)
-function to_fixed(v: Val) -> ptr {
+function to_fixed(v: Val) -> pointer {
   if (v.ty == "fixed") { return v.code }
   return emit_bind(`shl i32 {v.code}, 16`)
 }
@@ -59,7 +59,7 @@ function to_fixed(v: Val) -> ptr {
 # coerce a value's code to the LLVM type of `target`, for the only cross-width
 # pair the language has: int (i32) <-> long (i64). int widens with sext, long
 # narrows with trunc; everything else (same width, or ptr) passes through.
-function coerce_code(v: Val, target: ptr) -> ptr {
+function coerce_code(v: Val, target: pointer) -> pointer {
   let lt = llty(target)
   let vt = llty(v.ty)
   if (lt == vt) { return v.code }
@@ -69,14 +69,14 @@ function coerce_code(v: Val, target: ptr) -> ptr {
 }
 
 # widen an int value to i64 (a long passes through) — the long analogue of to_fixed
-function to_long(v: Val) -> ptr {
+function to_long(v: Val) -> pointer {
   if (llty(v.ty) == "i64") { return v.code }
   return emit_bind(`sext i32 {v.code} to i64`)
 }
 
 # string operators: `a + b` concatenates, `a == b` / `a != b` compare by content.
 # Both call the @fn_str_* prelude (emitted once per program that uses them).
-function emit_str_op(op: ptr, a: Val, b: Val) -> Val {
+function emit_str_op(op: pointer, a: Val, b: Val) -> Val {
   g_uses_str = true
   if (op == ("+")) {
     return val(emit_bind(`call ptr @fn_str_concat(ptr {a.code}, ptr {b.code})`), "string")
@@ -152,7 +152,7 @@ function args_are_named(e: Node) -> bool {
   while i < len(e.kids) { if e.kids[i].kind == E_FINIT { return true };  i = i + 1 }
   return false
 }
-function reorder_named(e: Node, labels: []ptr) -> void {
+function reorder_named(e: Node, labels: []pointer) -> void {
   if not args_are_named(e) { return }
   var i = 0
   while i < len(e.kids) {
@@ -173,15 +173,15 @@ function reorder_named(e: Node, labels: []ptr) -> void {
   e.kids = out
 }
 # The parameter labels of a resolved fn/extern, in declaration order.
-function param_labels(fn: Node) -> []ptr {
-  let out = new []ptr
+function param_labels(fn: Node) -> []pointer {
+  let out = new []pointer
   var i = 0
   while i < len(fn.kids) { if fn.kids[i].kind == N_PARAM { push(out, fn.kids[i].s) };  i = i + 1 }
   return out
 }
 
-function param_types(fn: Node) -> []ptr {
-  let out = new []ptr
+function param_types(fn: Node) -> []pointer {
+  let out = new []pointer
   var i = 0
   while i < len(fn.kids) { if fn.kids[i].kind == N_PARAM { push(out, fn.kids[i].ty) };  i = i + 1 }
   return out
@@ -192,7 +192,7 @@ function param_types(fn: Node) -> []ptr {
 # runtime builtin plus the parameter labels callers may use as named arguments;
 # after reordering we rewrite the callee to that bare name and fall back into the
 # ordinary builtin path (which resolves it to its rt_ function).
-function emit_ns_call(ns: ptr, meth: ptr, e: Node) -> Val {
+function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
   # Math.* is computed inline (deterministic fixed-point), not routed through a
   # bare rt_ name — so `floor`/`round`/`lerp` never leak into the bare namespace.
   if (ns == "Math") {
@@ -231,8 +231,8 @@ function emit_ns_call(ns: ptr, meth: ptr, e: Node) -> Val {
     if is_hash_ns(meth) { return emit_hash_ns(meth, e) }
     perr(`unknown builtin Hash.{meth}`)
   }
-  var bare: ptr = null
-  let labels = new []ptr
+  var bare: pointer = null
+  let labels = new []pointer
   if (ns == "Screen") {
     if (meth == "clear")          { bare = "clear";      push(labels, "color") }
     if (meth == "fill_rectangle") { bare = "fill_rect";  push(labels, "x"); push(labels, "y"); push(labels, "width"); push(labels, "height"); push(labels, "color") }
@@ -428,7 +428,7 @@ function emit_call(e: Node) -> Val {
   if (name == "bytes") {                          # bytes(n): allocate n bytes -> a byte buffer
     let n = emit_expr(e.kids[0])
     let w = emit_bind(`zext i32 {n.code} to i64`)
-    return val(emit_bind(`call ptr @malloc(i64 {w})`), "ptr")
+    return val(emit_bind(`call ptr @malloc(i64 {w})`), "pointer")
   }
   if (name == "words") {                          # words(n): allocate n 32-bit words
     let n = emit_expr(e.kids[0])
@@ -470,8 +470,8 @@ function emit_call(e: Node) -> Val {
   let ext = find_extern(name)
   if (ext != null) {
     reorder_named(e, param_labels(ext))
-    let eargs = new []ptr
-    let eatys = new []ptr
+    let eargs = new []pointer
+    let eatys = new []pointer
     var ei = 0
     while ei < len(e.kids) { let v = emit_expr(e.kids[ei]);  push(eargs, v.code);  push(eatys, v.ty);  ei = ei + 1 }
     let erl = llty(ext.ty)
@@ -501,8 +501,8 @@ function emit_call(e: Node) -> Val {
   # evaluate args first (their IR is emitted before the call instruction), coercing
   # each to the parameter's declared type so an int passed for a `long` widens.
   let ptys = param_types(fn2)
-  let args = new []ptr
-  let atys = new []ptr
+  let args = new []pointer
+  let atys = new []pointer
   var i = 0
   while i < len(e.kids) {
     let v = emit_expr(e.kids[i])
@@ -530,7 +530,7 @@ function emit_expr(e: Node) -> Val {
   if e.kind == E_INT  { return val(itoa(e.ival), "int") }
   if e.kind == E_FLOAT { return val(itoa(e.ival), "fixed") }
   if e.kind == E_BOOL { return val(itoa(e.ival), "bool") }
-  if e.kind == E_NULL { return val("null", "ptr") }
+  if e.kind == E_NULL { return val("null", "pointer") }
   if e.kind == E_SLICE {                          # s[a..b] -> a fresh substring
     let base = emit_expr(e.a)
     let lo = emit_expr(e.b)

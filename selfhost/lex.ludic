@@ -11,18 +11,18 @@ const TK_EOF: int = 5
 const TK_FLOAT: int = 6
 const TK_INTERP: int = 7      # `text {expr} text` — raw content, split by the parser
 
-property Tok { kind: int = 0, text: ptr = null, ival: int = 0, line: int = 0 }
+property Tok { kind: int = 0, text: pointer = null, ival: int = 0, line: int = 0 }
 
 var toks: []Tok
 
-function tok_push(kind: int, text: ptr, ival: int, line: int) -> void {
+function tok_push(kind: int, text: pointer, ival: int, line: int) -> void {
   let t = new Tok
   t.kind = kind;  t.text = text;  t.ival = ival;  t.line = line
   push(toks, t)
 }
 
 # does src match the 2-char operator op at position i?
-function two_at(src: ptr, i: int, a: int, b: int) -> bool {
+function two_at(src: pointer, i: int, a: int, b: int) -> bool {
   return src[i] == a and src[i + 1] == b
 }
 
@@ -37,7 +37,7 @@ function is_op1(c: int) -> bool {
   return false
 }
 
-function lex(src: ptr) -> void {
+function lex(src: pointer) -> void {
   toks = new []Tok
   var i = 0
   var line = 1

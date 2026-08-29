@@ -2,12 +2,12 @@
 # push(slice, v) and len(slice). Slices are a { data, len, cap } header the
 # holder points at, so growth is visible to every holder.
 
-function emit_sizeof(llt: ptr) -> ptr {
+function emit_sizeof(llt: pointer) -> pointer {
   let p = emit_bind(`getelementptr {llt}, ptr null, i32 1`)
   return emit_bind(`ptrtoint ptr {p} to i64`)
 }
 
-function emit_new_struct(name: ptr) -> Val {
+function emit_new_struct(name: pointer) -> Val {
   let s = layout_node(name)                     # a struct or a property — same shape
   if (s == null) { perr("unknown record type in new") }
   let lty = layout_ty(name)
@@ -29,7 +29,7 @@ function emit_new_struct(name: ptr) -> Val {
   return val(obj, name)
 }
 
-function emit_new_slice(ty: ptr) -> Val {
+function emit_new_slice(ty: pointer) -> Val {
   let sz = emit_sizeof("%LSlice")
   let h = emit_bind(`call ptr @malloc(i64 {sz})`)
   let d0 = nreg();  emit("  ");  emit(d0);  emit(" = getelementptr inbounds %LSlice, ptr ");  emit(h);  emit(", i32 0, i32 0\n")
@@ -41,7 +41,7 @@ function emit_new_slice(ty: ptr) -> Val {
   return val(h, ty)
 }
 
-function slice_field(h: ptr, i: int) -> ptr {
+function slice_field(h: pointer, i: int) -> pointer {
   let r = nreg()
   emit("  ");  emit(r);  emit(" = getelementptr inbounds %LSlice, ptr ");  emit(h)
   emit(", i32 0, i32 ");  emit(itoa(i));  emit("\n")

@@ -4,15 +4,15 @@
 
 var pi: int = 0
 var prog: []Node                 # the top-level declarations
-var g_game_name: ptr             # the `game`/`module` name
+var g_game_name: pointer             # the `game`/`module` name
 
 function cur() -> Tok { return toks[pi] }
 function pk(o: int) -> Tok { return toks[pi + o] }
-function is_op(v: ptr) -> bool { let t = toks[pi];  return t.kind == TK_OP and (t.text == v) }
-function is_id(v: ptr) -> bool { let t = toks[pi];  return t.kind == TK_ID and (t.text == v) }
-function is_kw(v: ptr) -> bool { return is_id(v) }
+function is_op(v: pointer) -> bool { let t = toks[pi];  return t.kind == TK_OP and (t.text == v) }
+function is_id(v: pointer) -> bool { let t = toks[pi];  return t.kind == TK_ID and (t.text == v) }
+function is_kw(v: pointer) -> bool { return is_id(v) }
 
-function perr(msg: ptr) -> void {
+function perr(msg: pointer) -> void {
   let e = file_stderr()
   file_write(e, "ludicc(self): parse error: ", 27)
   file_write(e, msg, len(msg))
@@ -20,8 +20,8 @@ function perr(msg: ptr) -> void {
   exit(1)
 }
 
-function eat_op(v: ptr) -> void { if not is_op(v) { perr(v) }; pi = pi + 1 }
-function eat_id() -> ptr {
+function eat_op(v: pointer) -> void { if not is_op(v) { perr(v) }; pi = pi + 1 }
+function eat_id() -> pointer {
   let t = toks[pi]
   if t.kind != TK_ID { perr("expected identifier") }
   pi = pi + 1
@@ -30,7 +30,7 @@ function eat_id() -> ptr {
 function skipnl() -> void { while toks[pi].kind == TK_NL { pi = pi + 1 } }
 
 # a type: `[]T` slice, or a plain name (int/ptr/str/bool/struct)
-function ptype() -> ptr {
+function ptype() -> pointer {
   if is_op("[") {
     pi = pi + 1
     eat_op("]")
@@ -70,7 +70,7 @@ function args_call(call: Node) -> void {
 # ---- string interpolation --------------------------------------------------
 # `text {expr} text` desugars to a `+` chain of string literals and `string(expr)`
 # holes, so it reuses the string-concat operator and needs no new runtime.
-function interp_lit(buf: ptr, len: int) -> Node { let n = node(E_STR); n.s = buf[0..0 + len]; return n }
+function interp_lit(buf: pointer, len: int) -> Node { let n = node(E_STR); n.s = buf[0..0 + len]; return n }
 function interp_add(acc: Node, part: Node) -> Node {
   if acc == null { return part }
   return mkbin("+", acc, part)
@@ -78,14 +78,14 @@ function interp_add(acc: Node, part: Node) -> Node {
 function interp_str(e: Node) -> Node {                  # wrap a hole in string(...)
   let c = node(E_CALL); let id = node(E_ID); id.s = "string"; c.a = id; push(c.kids, e); return c
 }
-function parse_hole(inner: ptr) -> Node {               # re-lex+parse an embedded expression
+function parse_hole(inner: pointer) -> Node {               # re-lex+parse an embedded expression
   let saved_toks = toks;  let saved_pi = pi
   lex(inner);  pi = 0;  skipnl()
   let e = expr()
   toks = saved_toks;  pi = saved_pi
   return e
 }
-function parse_interp(raw: ptr) -> Node {
+function parse_interp(raw: pointer) -> Node {
   let n = len(raw)
   var acc: Node = null
   let lit = bytes(n + 1)
@@ -176,7 +176,7 @@ function p_unary() -> Node {
   return p_postfix()
 }
 
-function mkbin(op: ptr, l: Node, r: Node) -> Node { let b = node(E_BIN); b.s = op; b.a = l; b.b = r; return b }
+function mkbin(op: pointer, l: Node, r: Node) -> Node { let b = node(E_BIN); b.s = op; b.a = l; b.b = r; return b }
 
 # precedence (Go-style, so `flags & MASK == 0` needs no parens): shifts and `&`
 # bind like `*`; `|` and `^` bind like `+`; both tighter than comparison.
@@ -357,22 +357,22 @@ function parse_fn() -> Node {
 function parse_main() -> Node { pi = pi + 1; let n = node(N_MAIN); n.a = block(); return n }
 
 # directory part of a path, including the trailing '/', or "" if none
-function dir_of(path: ptr) -> ptr {
+function dir_of(path: pointer) -> pointer {
   var last = 0 - 1
   var i = 0
   while path[i] != 0 { if path[i] == 47 { last = i };  i = i + 1 }
   if last < 0 { return "" }
   return path[0..0 + (last + 1)]
 }
-function path_join(dir: ptr, rel: ptr) -> ptr {
+function path_join(dir: pointer, rel: pointer) -> pointer {
   if rel[0] == 47 { return rel }               # absolute
   return (dir + rel)
 }
 
-var loaded_paths: []ptr
-var cur_dir: ptr
+var loaded_paths: []pointer
+var cur_dir: pointer
 
-function already_loaded(full: ptr) -> bool {
+function already_loaded(full: pointer) -> bool {
   var i = 0
   while i < len(loaded_paths) { if (loaded_paths[i] == full) { return true };  i = i + 1 }
   return false
@@ -384,20 +384,20 @@ function already_loaded(full: ptr) -> bool {
 function parse_one_decl() -> void {
   var is_export = false
   var qspec: Node = null
-  var onspawn_model: ptr = null
-  var ondespawn_model: ptr = null
-  var ondespawn_reason: ptr = null      # @OnDespawn(M, reason: r) — LC1 teardown reason binding
-  var onattach_prop: ptr = null
-  var ondetach_prop: ptr = null
-  var onenable_prop: ptr = null
-  var ondisable_prop: ptr = null
-  var on_event: ptr = null              # @On(Event) — a compile-time event listener
+  var onspawn_model: pointer = null
+  var ondespawn_model: pointer = null
+  var ondespawn_reason: pointer = null      # @OnDespawn(M, reason: r) — LC1 teardown reason binding
+  var onattach_prop: pointer = null
+  var ondetach_prop: pointer = null
+  var onenable_prop: pointer = null
+  var ondisable_prop: pointer = null
+  var on_event: pointer = null              # @On(Event) — a compile-time event listener
   var is_public = false                 # @Public — promote a lifecycle hook to an event
-  var hook_phase: ptr = null            # @OnStart / @OnQuit override the phase
+  var hook_phase: pointer = null            # @OnStart / @OnQuit override the phase
   var is_sync_prop = false              # @Sync property P — every field replicates (NETWORKING N2)
   var is_owned = false                  # @Owned model M — entities carry a network owner (N3)
-  var role: ptr = null                  # @Server / @Predicted — a handler's network role (N5)
-  var remote_dir: ptr = null            # @ToServer / @ToClients — a remote event's direction (N4)
+  var role: pointer = null                  # @Server / @Predicted — a handler's network role (N5)
+  var remote_dir: pointer = null            # @ToServer / @ToClients — a remote event's direction (N4)
   while is_op("@") {
     pi = pi + 1; let a = eat_id()             # collect a leading @annotation
     if (a == "export") { is_export = true }
@@ -489,7 +489,7 @@ function parse_one_decl() -> void {
 }
 
 # lex and parse an imported fragment into `prog`, saving/restoring lexer state
-function do_import(rel: ptr) -> void {
+function do_import(rel: pointer) -> void {
   let full = path_join(cur_dir, rel)
   if already_loaded(full) { return }
   push(loaded_paths, full)
@@ -528,8 +528,8 @@ function parse_program() -> void {
   g_start_scene = 0
   g_events = new []Node
   g_onlisten = new []Node
-  g_toggled_layers = new []ptr
-  loaded_paths = new []ptr
+  g_toggled_layers = new []pointer
+  loaded_paths = new []pointer
   skipnl()
   g_game_name = "Ludic"
   # imports may precede the program block

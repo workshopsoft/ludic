@@ -4,7 +4,7 @@ name: bytes
 category: builtins
 kind: builtin
 tokens: bytes
-sig: bytes(n) -> ptr
+sig: bytes(n) -> pointer
 tip: Allocate a raw buffer of n bytes and return a pointer to it.
 order: 50
 ---

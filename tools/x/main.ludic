@@ -43,7 +43,7 @@ program X {
   }
 
   # a positional argument, or a default when absent
-  function argn(i: int, dflt: ptr) -> ptr {
+  function argn(i: int, dflt: pointer) -> pointer {
     if (i < arg_count()) { return arg(i) }
     return dflt
   }

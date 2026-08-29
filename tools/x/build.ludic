@@ -5,7 +5,7 @@
 
 # compile a Ludic source to a native binary in bin/ via ludicc + clang (-O2).
 # Returns true on success. Used for x itself and the editor tools.
-function build_tool(name: ptr, src: ptr) -> bool {
+function build_tool(name: pointer, src: pointer) -> bool {
   let ll = `build/{name}.ll`
   if not shq(`bin/ludicc {src} --emit-llvm -o {ll} 2>/dev/null`) { print(`build failed: {name} (compile)`); return false }
   # write to a temp then move, so a running bin/x can rebuild itself in place

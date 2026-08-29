@@ -3,7 +3,7 @@
 # contains/index_of/to_int) allocate nothing; slice/from_int/equals/concat reuse
 # the string preludes that the `+`, `s[a..b]` and string(int) operators emit.
 
-function is_text_ns(meth: ptr) -> bool {
+function is_text_ns(meth: pointer) -> bool {
   if (meth == "length") or (meth == "char_at") or (meth == "slice") { return true }
   if (meth == "equals") or (meth == "concat") or (meth == "to_int") or (meth == "from_int") { return true }
   if (meth == "starts_with") or (meth == "ends_with") { return true }
@@ -14,7 +14,7 @@ function is_text_ns(meth: ptr) -> bool {
   return false
 }
 
-function emit_text_ns(meth: ptr, e: Node) -> Val {
+function emit_text_ns(meth: pointer, e: Node) -> Val {
   if (meth == "from_int") {                          # int -> string, same as string(n)
     let n = emit_expr(e.kids[0])
     g_uses_intstr = true

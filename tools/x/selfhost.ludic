@@ -6,12 +6,12 @@
 # now lives here once, in selfhost_frags().
 
 # the C toolchain driver (clang) that assembles and links the emitted IR
-function cc() -> ptr { return getenv_or("LUDIC_CC", "clang") }
+function cc() -> pointer { return getenv_or("LUDIC_CC", "clang") }
 
 # the self-host compiler's source fragments, in link order. This is THE list;
 # the old scripts each carried their own copy.
-function selfhost_frags() -> []ptr {
-  let f = new []ptr
+function selfhost_frags() -> []pointer {
+  let f = new []pointer
   push(f, "selfhost/str.ludic")
   push(f, "selfhost/buf.ludic")
   push(f, "selfhost/io.ludic")
@@ -52,7 +52,7 @@ function selfhost_frags() -> []ptr {
 
 # concatenate the fragments into `program SelfHost { ... }` at `outpath`.
 # This is the pure-Ludic equivalent of the scripts' `{ echo; for; cat; }` block.
-function write_selfhost_src(outpath: ptr) -> bool {
+function write_selfhost_src(outpath: pointer) -> bool {
   let f = file_open(outpath, "wb")
   if (f == null) { return false }
   let hdr = "program SelfHost {\n"
@@ -72,7 +72,7 @@ function write_selfhost_src(outpath: ptr) -> bool {
 }
 
 # count the lines in a file (for the progress notes the scripts printed)
-function line_count(path: ptr) -> ptr {
+function line_count(path: pointer) -> pointer {
   return capture_line(`wc -l < {path}`)
 }
 
@@ -90,7 +90,7 @@ function ensure_ludicc() -> void {
 
 # ---- selfhost-build: assemble + compile the self-host compiler ---------------
 # usage: x selfhost-build [ludicc] [outbin]   (defaults: bin/ludicc, build/selfhost)
-function cmd_selfhost_build(lc: ptr, outbin: ptr) -> int {
+function cmd_selfhost_build(lc: pointer, outbin: pointer) -> int {
   run("mkdir -p build")
   let src = "build/selfhost.ludic"
   if not write_selfhost_src(src) { err("x: cannot write build/selfhost.ludic\n"); return 1 }
@@ -104,7 +104,7 @@ function cmd_selfhost_build(lc: ptr, outbin: ptr) -> int {
 
 # ---- sh-compile: compile one .ludic with a given selfhost binary and link ----
 # usage: x sh-compile <selfhost-binary> <input.ludic> <output-binary>
-function cmd_sh_compile(shbin: ptr, in: ptr, outbin: ptr) -> int {
+function cmd_sh_compile(shbin: pointer, in: pointer, outbin: pointer) -> int {
   if not shq(`{shbin} {in} > {outbin}.ll`) { return 1 }
   if not shq(`{cc()} {outbin}.ll -o {outbin}`) { return 1 }
   return 0
@@ -116,7 +116,7 @@ function cmd_sh_compile(shbin: ptr, in: ptr, outbin: ptr) -> int {
 
 # the quiet core, reused by the test suites; returns true on success. On failure
 # the self-host/link diagnostics are left in /tmp/x_gb.err.
-function game_build_ok(shbin: ptr, game: ptr, outbin: ptr) -> bool {
+function game_build_ok(shbin: pointer, game: pointer, outbin: pointer) -> bool {
   let ll = `{outbin}.ll`
   if not shq(`{shbin} {game} > {ll} 2>/tmp/x_gb.err`) { return false }
   if not shq(`{cc()} -O2 {ll} -o {outbin} 2>/tmp/x_gb.err`) { return false }
@@ -125,7 +125,7 @@ function game_build_ok(shbin: ptr, game: ptr, outbin: ptr) -> bool {
 }
 
 # usage: x game-build <selfhost-binary> <game.ludic> <out-binary>
-function cmd_game_build(shbin: ptr, game: ptr, outbin: ptr) -> int {
+function cmd_game_build(shbin: pointer, game: pointer, outbin: pointer) -> int {
   if game_build_ok(shbin, game, outbin) { print(`built {outbin}`); return 0 }
   print("build failed:")
   out(capture("grep -i error /tmp/x_gb.err | head -5"))

@@ -185,7 +185,7 @@ explicitly built for.
 - **Touch input changes the input seam.** `win_poll()` returns a single `int`
   keycode today ([emit_intrin2.ludic:41](selfhost/emit_intrin2.ludic:41),
   [core.ludic:217](runtime/native/core.ludic:217)) — insufficient for touch, which
-  needs `(x, y, phase, id)`. Options: (a) a parallel `win_poll_touch() -> ptr`
+  needs `(x, y, phase, id)`. Options: (a) a parallel `win_poll_touch() -> pointer`
   draining an event queue, or (b) widen the input model to a small event struct for
   all platforms. This is the one place mobile forces a decision above the window
   seam. Proposed: add touch as a **separate** seam so keyboard platforms stay
@@ -211,9 +211,9 @@ no new language feature, no new intrinsic:
 
 ```ludic
 # doc-check: skip — runtime/native/gfx3d.ludic, illustrative
-extern function gl_gen_textures(n: int, out: ptr) -> void      = "glGenTextures"
-extern function gl_tex_image_2d(t: int, w: int, h: int, px: ptr) -> void = "gl_tex_image_2d"
-extern function gl_draw_elements(mode: int, count: int, ty: int, idx: ptr) -> void = "glDrawElements"
+extern function gl_gen_textures(n: int, out: pointer) -> void      = "glGenTextures"
+extern function gl_tex_image_2d(t: int, w: int, h: int, px: pointer) -> void = "gl_tex_image_2d"
+extern function gl_draw_elements(mode: int, count: int, ty: int, idx: pointer) -> void = "glDrawElements"
 ```
 
 Two phases, additive:

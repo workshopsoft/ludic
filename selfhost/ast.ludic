@@ -66,9 +66,9 @@ const E_SLICE:  int = 44         # s[a..b] — substring (a=base, b=start, c=end
 
 property Node {
   kind: int = 0
-  s:    ptr = null      # name / operator / string / type-of-new
+  s:    pointer = null      # name / operator / string / type-of-new
   ival: int = 0               # int literal, bool, flags
-  ty:   ptr = null      # declared type (let/param/field/fn/var/const)
+  ty:   pointer = null      # declared type (let/param/field/fn/var/const)
   a:    Node                  # fixed children (meaning per kind)
   b:    Node
   c:    Node

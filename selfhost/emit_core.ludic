@@ -2,8 +2,8 @@
 # module header. Mirrors the pieces of compiler/back/ that this subset needs.
 # structs and slices are references, so every non-scalar type lowers to `ptr`.
 
-property Val { code: ptr = null, ty: ptr = null }
-function val(code: ptr, ty: ptr) -> Val { let v = new Val;  v.code = code;  v.ty = ty;  return v }
+property Val { code: pointer = null, ty: pointer = null }
+function val(code: pointer, ty: pointer) -> Val { let v = new Val;  v.code = code;  v.ty = ty;  return v }
 
 var head: Buf                 # module-level: types, globals, string constants
 var code: Buf                 # function bodies
@@ -13,9 +13,9 @@ var ll_lbl: int = 0           # label counter
 var ll_str: int = 0           # string-constant counter
 
 # local environment (parallel slices), reset per function
-var loc_name: []ptr
-var loc_reg:  []ptr
-var loc_ty:   []ptr
+var loc_name: []pointer
+var loc_reg:  []pointer
+var loc_ty:   []pointer
 var loc_mut:  []int          # 1 = mutable (var / param / loop-var), 0 = immutable (let)
 var nloc: int = 0
 var g_uses_str: bool = false  # a `str + str` / `str == str` was emitted -> emit the prelude
@@ -28,13 +28,13 @@ var g_uses_hashrt: bool = false  # Hash.of/fnv1a/crc32 was emitted -> emit the b
 var g_uses_longstr: bool = false  # string(long) / interpolating a long was emitted -> emit fn_long_str
 
 # loop targets for break/continue (innermost last)
-var brk_lbl: []ptr
-var cnt_lbl: []ptr
+var brk_lbl: []pointer
+var cnt_lbl: []pointer
 var nloop: int = 0
 
-var ret_ty: ptr              # current function's return type
+var ret_ty: pointer              # current function's return type
 var g_term: bool = false     # did the current block end in a terminator?
-var self_stk: []ptr          # entity-index slot (ip) per enclosing query, for self()
+var self_stk: []pointer          # entity-index slot (ip) per enclosing query, for self()
 var nself: int = 0
 var mach_stk: []Node         # enclosing `machine` nodes, so `become` finds its register
 var nmach: int = 0
@@ -47,69 +47,69 @@ var g_scene_count: int = 0   # parse-time id counter
 var g_start_scene: int = 0   # id of the scene marked `start` (else the first)
 var g_cur_scene: Node = null # scene owning the handler being emitted, for `become`
 
-function find_scene(name: ptr) -> Node {
+function find_scene(name: pointer) -> Node {
   var i = 0
   while i < len(g_scenes) { if (g_scenes[i].s == name) { return g_scenes[i] };  i = i + 1 }
   return null
 }
 
-function emit(s: ptr) -> void { buf_puts(code, s) }
-function emith(s: ptr) -> void { buf_puts(head, s) }
+function emit(s: pointer) -> void { buf_puts(code, s) }
+function emith(s: pointer) -> void { buf_puts(head, s) }
 
 # stack slots MUST live in the entry block (an alloca in a loop walks the stack
 # off its end), so they go into a per-function buffer spliced in at entry.
-function emit_alloca(llt: ptr) -> ptr {
+function emit_alloca(llt: pointer) -> pointer {
   let r = `%t{itoa(ll_t)}`;  ll_t = ll_t + 1
   buf_puts(falloc, "  ");  buf_puts(falloc, r);  buf_puts(falloc, " = alloca ");  buf_puts(falloc, llt);  buf_puts(falloc, "\n")
   return r
 }
 
 # "%t<n>" fresh register
-function nreg() -> ptr { let r = `%t{itoa(ll_t)}`;  ll_t = ll_t + 1;  return r }
-function lbl(pfx: ptr) -> ptr { let r = (pfx + itoa(ll_lbl));  ll_lbl = ll_lbl + 1;  return r }
+function nreg() -> pointer { let r = `%t{itoa(ll_t)}`;  ll_t = ll_t + 1;  return r }
+function lbl(pfx: pointer) -> pointer { let r = (pfx + itoa(ll_lbl));  ll_lbl = ll_lbl + 1;  return r }
 
 # Ludic type -> LLVM type. int/bool are i32; everything else (ptr/str/struct/
 # slice) is a pointer; void is void.
-function llty(t: ptr) -> ptr {
+function llty(t: pointer) -> pointer {
   if (t == "int") or (t == "bool") or (t == "fixed") or (t == "entity") { return "i32" }   # entity = an i32 handle (self())
   if (t == "long") { return "i64" }               # a 64-bit signed integer
   if (t == "byte") { return "i8" }                # a single byte (p[i] on a raw ptr)
-  if (t == "words") or (t == "fixeds") or (t == "ptrs") { return "ptr" }   # typed buffers
+  if (t == "words") or (t == "fixeds") or (t == "pointers") { return "ptr" }   # typed buffers
   if (t == "void") { return "void" }
   return "ptr"
 }
 
-function is_slice_ty(t: ptr) -> bool { return t[0] == 91 and t[1] == 93 }   # "[]"
-function slice_elem(t: ptr) -> ptr { return t[2..len(t)] }
+function is_slice_ty(t: pointer) -> bool { return t[0] == 91 and t[1] == 93 }   # "[]"
+function slice_elem(t: pointer) -> pointer { return t[2..len(t)] }
 
-function find_arch(name: ptr) -> Node {
+function find_arch(name: pointer) -> Node {
   var i = 0
   while i < len(prog) { let d = prog[i];  if d.kind == N_ARCH and (d.s == name) { return d };  i = i + 1 }
   return null
 }
-function find_comp(name: ptr) -> Node {
+function find_comp(name: pointer) -> Node {
   var i = 0
   while i < len(prog) { let d = prog[i];  if d.kind == N_COMP and (d.s == name) { return d };  i = i + 1 }
   return null
 }
 # every record is a `property` with a %Cmp_ layout of named fields — whether it
 # is stored per-entity by the ECS or heap-allocated by `new` is a matter of use.
-function layout_node(name: ptr) -> Node { return find_comp(name) }
-function layout_ty(name: ptr) -> ptr { return (("%Cmp_") + name) }
+function layout_node(name: pointer) -> Node { return find_comp(name) }
+function layout_ty(name: pointer) -> pointer { return (("%Cmp_") + name) }
 
-function field_index(s: Node, fname: ptr) -> int {
+function field_index(s: Node, fname: pointer) -> int {
   var i = 0
   while i < len(s.kids) { if (s.kids[i].s == fname) { return i }; i = i + 1 }
   return 0 - 1
 }
-function field_type(s: Node, fname: ptr) -> ptr {
+function field_type(s: Node, fname: pointer) -> pointer {
   var i = 0
   while i < len(s.kids) { if (s.kids[i].s == fname) { return s.kids[i].ty }; i = i + 1 }
   return "int"
 }
 
 # find a global var/const by name
-function find_global(name: ptr) -> Node {
+function find_global(name: pointer) -> Node {
   var i = 0
   while i < len(prog) {
     let d = prog[i]
@@ -122,7 +122,7 @@ function find_global(name: ptr) -> Node {
 
 # `Enum.Variant` -> the variant's ordinal (its index), or -1 if `ename` names no
 # enum with that variant. Enum names live in `prog` like any other declaration.
-function enum_ordinal(ename: ptr, vname: ptr) -> int {
+function enum_ordinal(ename: pointer, vname: pointer) -> int {
   var i = 0
   while i < len(prog) {
     let d = prog[i]
@@ -141,7 +141,7 @@ function enum_ordinal(ename: ptr, vname: ptr) -> int {
   }
   return 0 - 1
 }
-function find_fn(name: ptr) -> Node {
+function find_fn(name: pointer) -> Node {
   var i = 0
   while i < len(prog) { let d = prog[i];  if d.kind == N_FN and (d.s == name) { return d };  i = i + 1 }
   return null
@@ -152,7 +152,7 @@ function find_fn(name: ptr) -> Node {
 # the exact linked symbol), and emit_extern_decls emits a matching `declare`. This
 # is the transport seam (net_send/net_poll), the windowing/socket FFI, and any
 # C/Rust/Zig library binding — the same seam NETWORKING-DESIGN §5 names.
-function find_extern(name: ptr) -> Node {
+function find_extern(name: pointer) -> Node {
   var i = 0
   while i < len(prog) { let d = prog[i];  if d.kind == N_EXTERN and (d.s == name) { return d };  i = i + 1 }
   return null
@@ -163,11 +163,11 @@ function find_extern(name: ptr) -> Node {
 # expression with its bare names read as fields of `x`. Populated at parse time.
 var g_computed: []Node          # each: s = "Prop.field", ty = result type, a = expr
 
-function register_computed(prop: ptr, field: ptr, ty: ptr, e: Node) -> void {
+function register_computed(prop: pointer, field: pointer, ty: pointer, e: Node) -> void {
   let cf = node(N_FIELD); cf.s = `{prop}.{field}`; cf.ty = ty; cf.a = e
   push(g_computed, cf)
 }
-function computed_expr(prop: ptr, field: ptr) -> Node {
+function computed_expr(prop: pointer, field: pointer) -> Node {
   if (prop == null) { return null }
   let key = `{prop}.{field}`
   var i = 0
@@ -175,7 +175,7 @@ function computed_expr(prop: ptr, field: ptr) -> Node {
   return null
 }
 # best-effort static type of an expression (for computed-field lookup; emits nothing)
-function static_type(e: Node) -> ptr {
+function static_type(e: Node) -> pointer {
   if e.kind == E_ID { let li = loc_find(e.s);  if li >= 0 { return loc_ty[li] } }
   return null
 }
@@ -185,10 +185,10 @@ function static_type(e: Node) -> ptr {
 # constructor). Spawn statically knows the model, so no runtime dispatch is needed.
 var g_onspawn: []Node           # each: s = Model name, a = hook body block
 
-function register_onspawn(model: ptr, body: Node) -> void {
+function register_onspawn(model: pointer, body: Node) -> void {
   let n = node(N_BLOCK); n.s = model; n.a = body; push(g_onspawn, n)
 }
-function onspawn_body(model: ptr) -> Node {
+function onspawn_body(model: pointer) -> Node {
   var i = 0
   while i < len(g_onspawn) { if (g_onspawn[i].s == model) { return g_onspawn[i].a };  i = i + 1 }
   return null
@@ -203,18 +203,18 @@ var g_onattach: []Node          # each: s = Property name, a = hook body block
 # LC1: `.ty` carries the optional `reason:` binding name (null if the hook took
 # no reason). The despawn hook function gains an `i32 %reason` parameter and each
 # teardown site passes a constant EndReason (see emit_despawn_hooks / emit_despawn).
-function register_ondespawn(model: ptr, body: Node, reason: ptr) -> void {
+function register_ondespawn(model: pointer, body: Node, reason: pointer) -> void {
   let n = node(N_BLOCK); n.s = model; n.a = body; n.ty = reason; push(g_ondespawn, n)
 }
-function ondespawn_body(model: ptr) -> Node {
+function ondespawn_body(model: pointer) -> Node {
   var i = 0
   while i < len(g_ondespawn) { if (g_ondespawn[i].s == model) { return g_ondespawn[i].a };  i = i + 1 }
   return null
 }
-function register_onattach(prop: ptr, body: Node) -> void {
+function register_onattach(prop: pointer, body: Node) -> void {
   let n = node(N_BLOCK); n.s = prop; n.a = body; push(g_onattach, n)
 }
-function onattach_body(prop: ptr) -> Node {
+function onattach_body(prop: pointer) -> Node {
   var i = 0
   while i < len(g_onattach) { if (g_onattach[i].s == prop) { return g_onattach[i].a };  i = i + 1 }
   return null
@@ -224,10 +224,10 @@ function onattach_body(prop: ptr) -> Node {
 # is removed from a live entity (`detach P on e`), with the property bound by name
 # so the body can read its outgoing value before it is cleared.
 var g_ondetach: []Node          # each: s = Property name, a = hook body block
-function register_ondetach(prop: ptr, body: Node) -> void {
+function register_ondetach(prop: pointer, body: Node) -> void {
   let n = node(N_BLOCK); n.s = prop; n.a = body; push(g_ondetach, n)
 }
-function ondetach_body(prop: ptr) -> Node {
+function ondetach_body(prop: pointer) -> Node {
   var i = 0
   while i < len(g_ondetach) { if (g_ondetach[i].s == prop) { return g_ondetach[i].a };  i = i + 1 }
   return null
@@ -237,14 +237,14 @@ function ondetach_body(prop: ptr) -> Node {
 # entity, with the property bound by name.
 var g_onenable: []Node
 var g_ondisable: []Node
-function register_onenable(prop: ptr, body: Node) -> void { let n = node(N_BLOCK); n.s = prop; n.a = body; push(g_onenable, n) }
-function register_ondisable(prop: ptr, body: Node) -> void { let n = node(N_BLOCK); n.s = prop; n.a = body; push(g_ondisable, n) }
-function onenable_body(prop: ptr) -> Node {
+function register_onenable(prop: pointer, body: Node) -> void { let n = node(N_BLOCK); n.s = prop; n.a = body; push(g_onenable, n) }
+function register_ondisable(prop: pointer, body: Node) -> void { let n = node(N_BLOCK); n.s = prop; n.a = body; push(g_ondisable, n) }
+function onenable_body(prop: pointer) -> Node {
   var i = 0
   while i < len(g_onenable) { if (g_onenable[i].s == prop) { return g_onenable[i].a };  i = i + 1 }
   return null
 }
-function ondisable_body(prop: ptr) -> Node {
+function ondisable_body(prop: pointer) -> Node {
   var i = 0
   while i < len(g_ondisable) { if (g_ondisable[i].s == prop) { return g_ondisable[i].a };  i = i + 1 }
   return null
@@ -257,15 +257,15 @@ function ondisable_body(prop: ptr) -> Node {
 # Gated on `len(g_events) > 0`, so a program with no events is byte-identical.
 var g_events: []Node            # each: an N_EVENT node (s = name, kids = payload fields, ival=1 if cancellable)
 var g_onlisten: []Node          # each: N_BLOCK, s = event name, a = listener body block
-var g_cancel_addr: ptr = null   # EV3: address of the current cancellable dispatch's flag (null outside one)
+var g_cancel_addr: pointer = null   # EV3: address of the current cancellable dispatch's flag (null outside one)
 
 function register_event(n: Node) -> void { push(g_events, n) }
-function find_event(name: ptr) -> Node {
+function find_event(name: pointer) -> Node {
   var i = 0
   while i < len(g_events) { if (g_events[i].s == name) { return g_events[i] };  i = i + 1 }
   return null
 }
-function register_onlisten(evt: ptr, body: Node) -> void {
+function register_onlisten(evt: pointer, body: Node) -> void {
   let n = node(N_BLOCK);  n.s = evt;  n.a = body;  push(g_onlisten, n)
 }
 
@@ -274,7 +274,7 @@ function register_onlisten(evt: ptr, body: Node) -> void {
 # presence in g_events is what makes each lifecycle fire site also `emit` it, so
 # `find_event(name) != null` doubles as the "is this hook public?" test. Names are
 # the stable ABI contract: `model_<M>_spawn`, `model_<M>_despawn`, etc.
-function ensure_event(name: ptr, with_reason: bool) -> void {
+function ensure_event(name: pointer, with_reason: bool) -> void {
   if (find_event(name) != null) { return }
   let n = node(N_EVENT);  n.s = name
   let ent = node(N_FIELD);  ent.s = "entity";  ent.ty = "int";  push(n.kids, ent)
@@ -282,7 +282,7 @@ function ensure_event(name: ptr, with_reason: bool) -> void {
   register_event(n)
 }
 # a promoted scene/program event has no per-entity payload
-function ensure_event_empty(name: ptr) -> void {
+function ensure_event_empty(name: pointer) -> void {
   if (find_event(name) != null) { return }
   let n = node(N_EVENT);  n.s = name;  register_event(n)
 }
@@ -291,33 +291,33 @@ function ensure_event_empty(name: ptr) -> void {
 # layer L` statement becomes "managed": it gets an @LE_<L> enabled flag and its
 # handlers gate on it. Only managed layers pay for this, so a scene program that
 # never toggles a layer is byte-identical.
-var g_toggled_layers: []ptr
-function note_toggled_layer(name: ptr) -> void {
+var g_toggled_layers: []pointer
+function note_toggled_layer(name: pointer) -> void {
   var i = 0
   while i < len(g_toggled_layers) { if (g_toggled_layers[i] == name) { return };  i = i + 1 }
   push(g_toggled_layers, name)
 }
-function is_toggled_layer(name: ptr) -> bool {
+function is_toggled_layer(name: pointer) -> bool {
   var i = 0
   while i < len(g_toggled_layers) { if (g_toggled_layers[i] == name) { return true };  i = i + 1 }
   return false
 }
 
 # is `name` a model (archetype)? — chooses model-vs-handler for a bare enable/disable
-function is_model(name: ptr) -> bool { return find_arch_id(name) > 0 }
+function is_model(name: pointer) -> bool { return find_arch_id(name) > 0 }
 
 # local variable environment
 function loc_reset() -> void { nloc = 0 }
 # push a local. Defaults to mutable (params, loop and query bindings are all
 # reassignable/rebindable); a `let` binding marks its slot immutable afterward
 # via loc_set_mut, so a later `name = …` can be rejected.
-function loc_push(name: ptr, r: ptr, ty: ptr) -> void {
+function loc_push(name: pointer, r: pointer, ty: pointer) -> void {
   if nloc < len(loc_name) { loc_name[nloc] = name;  loc_reg[nloc] = r;  loc_ty[nloc] = ty;  loc_mut[nloc] = 1 }
   else { push(loc_name, name);  push(loc_reg, r);  push(loc_ty, ty);  push(loc_mut, 1) }
   nloc = nloc + 1
 }
 function loc_set_mut(m: int) -> void { if nloc > 0 { loc_mut[nloc - 1] = m } }
-function loc_find(name: ptr) -> int {
+function loc_find(name: pointer) -> int {
   var i = nloc - 1
   while i >= 0 { if (loc_name[i] == name) { return i }; i = i - 1 }
   return 0 - 1

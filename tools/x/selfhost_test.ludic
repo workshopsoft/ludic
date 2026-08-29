@@ -3,7 +3,7 @@
 # fixpoint). Replaces selfhost/test.sh.
 
 # compile selfhost/tests/<name>.ludic with bin/ludicc, assemble, run, compare
-function sh_case(name: ptr, exp: ptr) -> void {
+function sh_case(name: pointer, exp: pointer) -> void {
   let ll = `/tmp/x_sh_{name}.ll`
   let er = `/tmp/x_sh_{name}.err`
   let bn = `/tmp/x_sh_{name}`
@@ -16,7 +16,7 @@ function sh_case(name: ptr, exp: ptr) -> void {
 }
 
 # compile examples/<name>.ludic as a game and diff its render against the golden
-function game_case(name: ptr, keys: ptr) -> void {
+function game_case(name: pointer, keys: pointer) -> void {
   if not game_build_ok("bin/ludicc", `examples/{name}.ludic`, `/tmp/x_g_{name}`) { bad(`{name}: build`); return }
   run(`printf '%s' '{keys}' | /tmp/x_g_{name} >/dev/null 2>&1`)
   if shq(`cmp -s selfhost/golden/{name}.ppm out.ppm`) { ok(`{name} matches the golden render`) }

@@ -28,7 +28,7 @@ program LudicFmt {
   const LT_ERR: int = 14
 
   # ---- tiny stdio + string helpers (self-contained) ----
-  function read_file(path: string) -> ptr {
+  function read_file(path: string) -> pointer {
     let f = file_open(path, "rb")
     if (f == null) { return null }
     file_seek(f, 0, 2)
@@ -40,7 +40,7 @@ program LudicFmt {
     file_close(f)
     return buf
   }
-  function cstr_len(s: ptr) -> int { var n = 0;  while s[n] != 0 { n = n + 1 };  return n }
+  function cstr_len(s: pointer) -> int { var n = 0;  while s[n] != 0 { n = n + 1 };  return n }
   function char_is_digit(c: int) -> bool { return c >= 48 and c <= 57 }
   function char_is_alpha(c: int) -> bool {
     if c >= 65 and c <= 90 { return true }
@@ -49,7 +49,7 @@ program LudicFmt {
   }
   function char_is_alnum(c: int) -> bool { return char_is_alpha(c) or char_is_digit(c) }
   function char_is_hex(c: int) -> bool { return char_is_digit(c) or (c >= 97 and c <= 102) or (c >= 65 and c <= 70) }
-  function itoa(v: int) -> ptr {
+  function itoa(v: int) -> pointer {
     if v == 0 { let z = bytes(2); z[0] = 48; z[1] = 0; return z }
     var neg = false;  var x = v
     if x < 0 { neg = true;  x = 0 - x }
@@ -66,7 +66,7 @@ program LudicFmt {
   }
 
   # ---- a growable byte buffer ----
-  property Buf { data: ptr = null, len: int = 0, cap: int = 0 }
+  property Buf { data: pointer = null, len: int = 0, cap: int = 0 }
   function buf_new() -> Buf { let b = new Buf;  b.cap = 256;  b.data = bytes(b.cap);  b.len = 0;  return b }
   function buf_ensure(b: Buf, extra: int) -> void {
     if b.len + extra + 1 <= b.cap { return }
@@ -74,14 +74,14 @@ program LudicFmt {
     b.data = resize(b.data, b.cap)
   }
   function buf_putc(b: Buf, c: int) -> void { buf_ensure(b, 1);  b.data[b.len] = c;  b.len = b.len + 1 }
-  function buf_puts(b: Buf, s: ptr) -> void { var i = 0;  while s[i] != 0 { buf_putc(b, s[i]);  i = i + 1 } }
+  function buf_puts(b: Buf, s: pointer) -> void { var i = 0;  while s[i] != 0 { buf_putc(b, s[i]);  i = i + 1 } }
   function buf_indent(b: Buf, n: int) -> void { var i = 0;  while i < n { buf_putc(b, 32);  i = i + 1 } }
-  function buf_str(b: Buf) -> ptr { b.data[b.len] = 0;  return b.data }
+  function buf_str(b: Buf) -> pointer { b.data[b.len] = 0;  return b.data }
   # append src[a..b) raw
-  function buf_addrange(b: Buf, s: ptr, a: int, e: int) -> void { var k = a;  while k < e { buf_putc(b, s[k]);  k = k + 1 } }
+  function buf_addrange(b: Buf, s: pointer, a: int, e: int) -> void { var k = a;  while k < e { buf_putc(b, s[k]);  k = k + 1 } }
 
   # ---- the token stream (parallel slices) ----
-  var src: ptr = null
+  var src: pointer = null
   var tk_kind: []int
   var tk_start: []int
   var tk_end: []int
@@ -90,19 +90,19 @@ program LudicFmt {
 
   function ntok() -> int { return len(tk_kind) }
   function tok_len(i: int) -> int { return tk_end[i] - tk_start[i] }
-  function tok_text(i: int) -> ptr { return src[tk_start[i]..tk_end[i]] }
+  function tok_text(i: int) -> pointer { return src[tk_start[i]..tk_end[i]] }
   function push_tok(k: int, st: int, en: int, ln: int) -> void {
     push(tk_kind, k);  push(tk_start, st);  push(tk_end, en);  push(tk_line, ln)
   }
 
   # ---- vocabulary classifiers ----
-  function is_type_word(w: ptr) -> bool {
+  function is_type_word(w: pointer) -> bool {
     return (w == "int") or (w == "long") or (w == "fixed") or (w == "bool") or (w == "entity") or (w == "str") or (w == "ptr") or (w == "byte") or (w == "words") or (w == "fixeds") or (w == "ptrs") or (w == "void")
   }
-  function is_phase_word(w: ptr) -> bool {
+  function is_phase_word(w: pointer) -> bool {
     return (w == "Start") or (w == "Input") or (w == "FixedUpdate") or (w == "Update") or (w == "LateUpdate") or (w == "Render")
   }
-  function is_keyword_word(w: ptr) -> bool {
+  function is_keyword_word(w: pointer) -> bool {
     if (w == "program") or (w == "import") or (w == "property") or (w == "model") or (w == "enum") or (w == "ui") { return true }
     if (w == "const") or (w == "var") or (w == "function") or (w == "extern") or (w == "handler") or (w == "entry") or (w == "event") or (w == "scene") { return true }
     if (w == "phase") or (w == "query") or (w == "on") or (w == "cancellable") or (w == "public") or (w == "layer") or (w == "start") { return true }
@@ -111,7 +111,7 @@ program LudicFmt {
     if (w == "and") or (w == "or") or (w == "not") or (w == "break") or (w == "continue") or (w == "new") or (w == "emit") or (w == "cancel") { return true }
     return false
   }
-  function is_clause_word(w: ptr) -> bool {
+  function is_clause_word(w: pointer) -> bool {
     return (w == "phase") or (w == "query") or (w == "reads") or (w == "writes") or (w == "needs") or (w == "uses") or (w == "requires") or (w == "ensures") or (w == "invariant") or (w == "effects")
   }
 
@@ -129,7 +129,7 @@ program LudicFmt {
     return c == 43 or c == 45 or c == 42 or c == 47 or c == 37 or c == 60 or c == 62 or c == 61 or c == 40 or c == 41 or c == 123 or c == 125 or c == 91 or c == 93 or c == 44 or c == 58 or c == 46 or c == 33 or c == 64 or c == 59
   }
 
-  function lex(s: ptr) -> void {
+  function lex(s: pointer) -> void {
     src = s
     tk_kind = new []int;  tk_start = new []int;  tk_end = new []int;  tk_line = new []int
     linestart = new []int
@@ -394,7 +394,7 @@ program LudicFmt {
   var g_info: int = 0
   var g_marker: int = 0
   # detect a fence at line offset i; sets g_flen/g_info/g_marker; returns bool
-  function md_fence_at(s: ptr, i: int) -> bool {
+  function md_fence_at(s: pointer, i: int) -> bool {
     var j = i;  while s[j] == 32 { j = j + 1 }
     let m = s[j]
     if m != 96 and m != 126 { return false }          # ` or ~
@@ -403,16 +403,16 @@ program LudicFmt {
     g_flen = n;  g_info = j;  g_marker = m
     return true
   }
-  function md_info_is_ludic(s: ptr, at: int) -> bool {
+  function md_info_is_ludic(s: pointer, at: int) -> bool {
     var a = at;  while s[a] == 32 or s[a] == 9 { a = a + 1 }
     # case-insensitive "ludic"
     if not (((s[a] == 108 or s[a] == 76)) and ((s[a + 1] == 117 or s[a + 1] == 85)) and ((s[a + 2] == 100 or s[a + 2] == 68)) and ((s[a + 3] == 105 or s[a + 3] == 73)) and ((s[a + 4] == 99 or s[a + 4] == 67))) { return false }
     let af = s[a + 5]
     return af == 0 or af == 10 or af == 32 or af == 9 or af == 13
   }
-  function line_end(s: ptr, i: int) -> int { var e = i;  while s[e] != 0 and s[e] != 10 { e = e + 1 };  return e }
+  function line_end(s: pointer, i: int) -> int { var e = i;  while s[e] != 0 and s[e] != 10 { e = e + 1 };  return e }
 
-  function format_markdown(s: ptr, indent_width: int) -> Buf {
+  function format_markdown(s: pointer, indent_width: int) -> Buf {
     let o = buf_new()
     var i = 0
     while s[i] != 0 {
@@ -478,14 +478,14 @@ program LudicFmt {
   }
 
   # ---- ends-with helpers for extension detection ----
-  function ends_with(s: ptr, suf: ptr) -> bool {
+  function ends_with(s: pointer, suf: pointer) -> bool {
     let n = cstr_len(s);  let m = cstr_len(suf)
     if m > n { return false }
     return (s[n - m..n] == suf)
   }
 
   # ---- stdin slurp (for `-`) ----
-  function slurp_stdin() -> ptr {
+  function slurp_stdin() -> pointer {
     let b = buf_new()
     var c = read_char()
     while c >= 0 { buf_putc(b, c);  c = read_char() }
@@ -493,14 +493,14 @@ program LudicFmt {
   }
 
   # format one source string according to its kind (markdown vs ludic)
-  function format_source(text: ptr, is_md: bool, indent_width: int) -> ptr {
+  function format_source(text: pointer, is_md: bool, indent_width: int) -> pointer {
     if is_md { let m = format_markdown(text, indent_width);  return buf_str(m) }
     lex(text)
     let f = format(indent_width)
     return buf_str(f)
   }
 
-  function streq(a: ptr, b: ptr) -> bool { return (a == b) }
+  function streq(a: pointer, b: pointer) -> bool { return (a == b) }
 
   entry {
     var write = false
@@ -509,7 +509,7 @@ program LudicFmt {
     var quiet = false
     var changed = false
     var failed = false
-    let files = new []ptr
+    let files = new []pointer
     var ai = 1
     while ai < arg_count() {
       let a = arg(ai)

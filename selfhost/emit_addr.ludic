@@ -2,10 +2,10 @@
 # shared by expression loads and assignment stores. Each returns the address
 # register; the element/field type is written into g_addr_ty.
 
-var g_addr_ty: ptr           # out-param: the type at the computed address
+var g_addr_ty: pointer           # out-param: the type at the computed address
 
 # address of `base.field`
-function emit_member_addr(e: Node) -> ptr {
+function emit_member_addr(e: Node) -> pointer {
   let base = emit_expr(e.a)
   let s = layout_node(base.ty)
   if (s == null) { perr(`member access on non-aggregate {base.ty}`) }
@@ -19,7 +19,7 @@ function emit_member_addr(e: Node) -> ptr {
 }
 
 # address of `base[index]` (slices only in this subset)
-function emit_index_addr(e: Node) -> ptr {
+function emit_index_addr(e: Node) -> pointer {
   let base = emit_expr(e.a)
   if not is_slice_ty(base.ty) {                   # a raw pointer: address of element i
     let bi = emit_expr(e.b)                        # (evaluate index first — it may set g_addr_ty)
@@ -33,7 +33,7 @@ function emit_index_addr(e: Node) -> ptr {
       g_addr_ty = "fixed"
       return rf
     }
-    if (base.ty == "ptrs") {                       # a `ptrs` buffer: pointer elements
+    if (base.ty == "pointers") {                   # a `pointers` buffer: pointer elements
       let rp = emit_bind(`getelementptr inbounds ptr, ptr {base.code}, i32 {bi.code}`)
       g_addr_ty = "ptr"
       return rp

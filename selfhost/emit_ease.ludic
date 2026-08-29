@@ -2,19 +2,19 @@
 # t in 0.0..1.0, returning an eased fixed. All pure Q16.16, deterministic. The
 # "juice" layer that makes motion feel good (Robert Penner's easings).
 
-function is_ease_ns(meth: ptr) -> bool {
+function is_ease_ns(meth: pointer) -> bool {
   if (meth == "in") or (meth == "out") or (meth == "in_out") { return true }
   if (meth == "back") or (meth == "bounce") or (meth == "elastic") { return true }
   return false
 }
 
 # n1 * u * u  (u a fixed code) -> code of a fixed i32
-function ease_bounce_seg(u: ptr) -> ptr {
+function ease_bounce_seg(u: pointer) -> pointer {
   let uu = fx_mul_code(u, u)
   return fx_mul_code(uu, "495616")                  # 7.5625 * u*u
 }
 
-function emit_ease_ns(meth: ptr, e: Node) -> Val {
+function emit_ease_ns(meth: pointer, e: Node) -> Val {
   let t = emit_expr(e.kids[0])
   if (meth == "in") {                               # ease-in quad: t*t
     return val(fx_mul_code(t.code, t.code), "fixed")

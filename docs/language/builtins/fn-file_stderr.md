@@ -4,7 +4,7 @@ name: file_stderr
 category: builtins
 kind: builtin
 tokens: file_stderr
-sig: file_stderr() -> ptr
+sig: file_stderr() -> pointer
 tip: The standard-error stream handle for use with file_write.
 order: 50
 ---

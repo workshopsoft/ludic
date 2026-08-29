@@ -13,7 +13,7 @@
 # ---- file IO ----------------------------------------------------------------
 
 # read a whole file into a fresh NUL-terminated buffer (null if it cannot open)
-function read_file(path: ptr) -> ptr {
+function read_file(path: pointer) -> pointer {
   let f = file_open(path, "rb")
   if (f == null) { return null }
   file_seek(f, 0, 2)
@@ -27,7 +27,7 @@ function read_file(path: ptr) -> ptr {
 }
 
 # overwrite `path` with `s`; returns false if it could not be opened
-function write_file(path: ptr, s: ptr) -> bool {
+function write_file(path: pointer, s: pointer) -> bool {
   let f = file_open(path, "wb")
   if (f == null) { return false }
   file_write(f, s, len(s))
@@ -35,22 +35,22 @@ function write_file(path: ptr, s: ptr) -> bool {
   return true
 }
 
-function file_exists(path: ptr) -> bool { return shq(`test -e {path}`) }
-function is_exec(path: ptr) -> bool { return shq(`test -x {path}`) }
+function file_exists(path: pointer) -> bool { return shq(`test -e {path}`) }
+function is_exec(path: pointer) -> bool { return shq(`test -x {path}`) }
 # is `a` newer than `b` (like the shell's `-nt`)?
-function newer(a: ptr, b: ptr) -> bool { return shq(`test {a} -nt {b}`) }
+function newer(a: pointer, b: pointer) -> bool { return shq(`test {a} -nt {b}`) }
 
 # ---- process control --------------------------------------------------------
 
 # `run` returns the raw wait status; the program's exit code is the high byte.
 function exit_code(st: int) -> int { return (st >> 8) & 255 }
 # run a command, returning its exit code (0 = success)
-function sh(cmd: ptr) -> int { return exit_code(run(cmd)) }
+function sh(cmd: pointer) -> int { return exit_code(run(cmd)) }
 # run a command, true when it succeeded
-function shq(cmd: ptr) -> bool { return exit_code(run(cmd)) == 0 }
+function shq(cmd: pointer) -> bool { return exit_code(run(cmd)) == 0 }
 
 # run `cmd` and return its stdout (stderr discarded). Never null.
-function capture(cmd: ptr) -> ptr {
+function capture(cmd: pointer) -> pointer {
   let tmp = "/tmp/x_capture.out"
   run(`{cmd} > {tmp} 2>/dev/null`)
   let s = read_file(tmp)
@@ -60,16 +60,16 @@ function capture(cmd: ptr) -> ptr {
 
 # run `cmd`, join its output lines with single spaces and trim — the Ludic twin
 # of the shell idiom `$(cmd | tr '\n' ' ' | sed 's/ *$//')`.
-function capture_line(cmd: ptr) -> ptr {
+function capture_line(cmd: pointer) -> pointer {
   return capture(`{cmd} | tr '\n' ' ' | sed 's/ *$//'`)
 }
 
 # the last line of a command's output (for one-line error messages)
-function capture_tail(cmd: ptr) -> ptr {
+function capture_tail(cmd: pointer) -> pointer {
   return capture(`{cmd} 2>&1 | tail -1`)
 }
 
-function getenv_or(name: ptr, dflt: ptr) -> ptr {
+function getenv_or(name: pointer, dflt: pointer) -> pointer {
   let v = getenv(name)
   if (v == null) { return dflt }
   return v
@@ -78,34 +78,34 @@ function getenv_or(name: ptr, dflt: ptr) -> ptr {
 # ---- stdout helpers ---------------------------------------------------------
 
 # write `s` with no trailing newline (print() always adds one)
-function out(s: ptr) -> void { file_write(file_stdout(), s, len(s)) }
-function err(s: ptr) -> void { file_write(file_stderr(), s, len(s)) }
+function out(s: pointer) -> void { file_write(file_stdout(), s, len(s)) }
+function err(s: pointer) -> void { file_write(file_stderr(), s, len(s)) }
 
 # an ESC byte — the lexer has no \033, so build it by hand
-function esc() -> ptr { let b = bytes(2); b[0] = 27; b[1] = 0; return b }
-function c_green() -> ptr { return esc() + "[32m" }
-function c_red() -> ptr { return esc() + "[31m" }
-function c_reset() -> ptr { return esc() + "[0m" }
+function esc() -> pointer { let b = bytes(2); b[0] = 27; b[1] = 0; return b }
+function c_green() -> pointer { return esc() + "[32m" }
+function c_red() -> pointer { return esc() + "[31m" }
+function c_reset() -> pointer { return esc() + "[0m" }
 
 # ---- the PASS/FAIL test harness ---------------------------------------------
 
 var PASS: int = 0
 var FAIL: int = 0
 
-function ok(msg: ptr) -> void {
+function ok(msg: pointer) -> void {
   PASS = PASS + 1
   print(`  {c_green()}PASS{c_reset()} {msg}`)
 }
-function bad(msg: ptr) -> void {
+function bad(msg: pointer) -> void {
   FAIL = FAIL + 1
   print(`  {c_red()}FAIL{c_reset()} {msg}`)
 }
-function bad2(msg: ptr, detail: ptr) -> void {
+function bad2(msg: pointer, detail: pointer) -> void {
   bad(msg)
   print(`        {detail}`)
 }
 # assert two strings equal, reporting the mismatch
-function check(label: ptr, got: ptr, want: ptr) -> void {
+function check(label: pointer, got: pointer, want: pointer) -> void {
   if (got == want) { ok(label) }
   else { bad2(label, `expected [{want}] got [{got}]`) }
 }

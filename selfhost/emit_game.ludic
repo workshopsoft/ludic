@@ -50,7 +50,7 @@ function emit_call_one(d: Node) -> void {
 # declaration (draw) order. The active scene is snapshotted once per phase, so a
 # `become` mid-phase takes effect at the next phase boundary — exactly one scene
 # is active within any single phase.
-function emit_calls_for_phase(phase: ptr) -> void {
+function emit_calls_for_phase(phase: pointer) -> void {
   var i = 0
   while i < len(prog) {
     let d = prog[i]
@@ -81,7 +81,7 @@ function emit_calls_for_phase(phase: ptr) -> void {
 # on enter / on exit compile to void functions @scene_enter_<Name> /
 # @scene_exit_<Name>, called at the transition point (and enter at boot for the
 # start scene). Emitted for every scene, empty body when the hook is absent.
-function emit_scene_fn(name: ptr, kind: ptr, body: Node) -> void {
+function emit_scene_fn(name: pointer, kind: pointer, body: Node) -> void {
   ll_t = 0;  ll_lbl = 0;  g_term = false;  loc_reset();  nloop = 0;  nself = 0
   ret_ty = "void"
   let fbody = buf_new()

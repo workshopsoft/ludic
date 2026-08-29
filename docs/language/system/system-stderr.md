@@ -4,7 +4,7 @@ name: System.stderr
 category: system
 kind: namespace-method
 tokens: System.stderr
-sig: System.stderr() -> ptr
+sig: System.stderr() -> pointer
 tip: The standard error handle.
 order: 13
 ns: System

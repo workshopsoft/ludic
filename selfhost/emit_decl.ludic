@@ -71,9 +71,9 @@ function emit_program() -> void {
   g_uses_intstr = false
   g_uses_strslice = false
   g_uses_loopback = false
-  loc_name = new []ptr;  loc_reg = new []ptr;  loc_ty = new []ptr;  loc_mut = new []int
-  brk_lbl = new []ptr;   cnt_lbl = new []ptr
-  self_stk = new []ptr
+  loc_name = new []pointer;  loc_reg = new []pointer;  loc_ty = new []pointer;  loc_mut = new []int
+  brk_lbl = new []pointer;   cnt_lbl = new []pointer
+  self_stk = new []pointer
   mach_stk = new []Node
   emit_header()
   emit_extern_decls()
@@ -109,7 +109,7 @@ function emit_program() -> void {
 # Flush the emitted IR. With a null path it goes to stdout (the pipe the shell
 # drivers read); with a path it is written to that file so ludicc can hand it to
 # clang itself.
-function ir_flush(path: ptr) -> bool {
+function ir_flush(path: pointer) -> bool {
   let h = buf_str(head)
   let c = buf_str(code)
   if (path == null) {                             # raw IR to stdout (no trailing newline)

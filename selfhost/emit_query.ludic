@@ -2,7 +2,7 @@
 # components/archetypes each carries, binds the requested components, and runs
 # the body once per match. Mirrors ll_query in compiler/back/ir_ecs.c.
 
-function find_arch_id(name: ptr) -> int {
+function find_arch_id(name: pointer) -> int {
   var i = 0;  var n = 1
   while i < len(prog) { if prog[i].kind == N_ARCH { if (prog[i].s == name) { return n };  n = n + 1 };  i = i + 1 }
   return 0

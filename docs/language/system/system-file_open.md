@@ -4,7 +4,7 @@ name: System.file_open
 category: system
 kind: namespace-method
 tokens: System.file_open
-sig: System.file_open(path, mode) -> ptr
+sig: System.file_open(path, mode) -> pointer
 tip: Open a file.
 order: 6
 ns: System

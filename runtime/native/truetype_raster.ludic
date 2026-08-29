@@ -51,7 +51,7 @@ var gr_ox:  int = 0
 var gr_oy:  int = 0
 var gr_adv: int = 0
 
-function tt_raster(id: int, gid: int, px: int) -> ptr {
+function tt_raster(id: int, gid: int, px: int) -> pointer {
   let upem = tt_upem[id]
   let scale = fx(px) / upem
   gr_adv = flr(fx(tt_advance(id, gid)) * scale + 0.5)
@@ -298,7 +298,7 @@ function tt_utf8(s: string, at: int) -> int {
 }
 
 # ---- drawing --------------------------------------------------------------
-function tt_blit(bmp: ptr, w: int, h: int, dx: int, dy: int, colour: int) -> void {
+function tt_blit(bmp: pointer, w: int, h: int, dx: int, dy: int, colour: int) -> void {
   if (bmp == null) { return }
   let cr = ((colour >> 16) & 255)
   let cg = ((colour >> 8) & 255)

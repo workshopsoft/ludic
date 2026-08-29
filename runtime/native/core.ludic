@@ -329,7 +329,7 @@ function rt_running() -> bool {
 }
 
 # ---- writing the frame out ------------------------------------------------
-function rt_put_str(buf: ptr, at: int, s: string) -> int {
+function rt_put_str(buf: pointer, at: int, s: string) -> int {
   var i = 0
   var n = at
   var ch = s[0]
@@ -342,7 +342,7 @@ function rt_put_str(buf: ptr, at: int, s: string) -> int {
   return n
 }
 
-function rt_put_int(buf: ptr, at: int, v: int) -> int {
+function rt_put_int(buf: pointer, at: int, v: int) -> int {
   if v == 0 {
     buf[at] = 48
     return at + 1
@@ -402,7 +402,7 @@ import "ui.ludic"
 # A character grid the game paints with map_row() and reads with tile(). Stored
 # as one byte per cell in a flat buffer; out-of-bounds reads answer '#' so a
 # caller can treat the edge of the world as wall without special-casing it.
-var rt_map:  ptr = null
+var rt_map:  pointer = null
 var rt_mapw: int = 0
 var rt_maph: int = 0
 
@@ -436,7 +436,7 @@ function rt_tile(x: int, y: int) -> int {
 # ---- status line ----------------------------------------------------------
 # One persistent string of feedback/dialogue, copied into runtime-owned memory
 # so it survives whatever the caller does with the original.
-var rt_statusbuf: ptr = null
+var rt_statusbuf: pointer = null
 
 function rt_status(s: string) -> void {
   var i = 0
@@ -452,7 +452,7 @@ function rt_status(s: string) -> void {
   rt_statusbuf[i] = 0
 }
 
-function rt_status_text() -> ptr {
+function rt_status_text() -> pointer {
   return rt_statusbuf
 }
 
@@ -460,7 +460,7 @@ function rt_status_text() -> ptr {
 # The compiler writes the ECS (entities, components, archetype kinds) because
 # only it knows their shape. Everything below belongs to the runtime, so the
 # runtime writes it — same order both ways.
-function rt_save_state(f: ptr) -> void {
+function rt_save_state(f: pointer) -> void {
   let w: words = bytes(16)
   w[0] = rt_rng
   w[1] = rt_mapw
@@ -473,7 +473,7 @@ function rt_save_state(f: ptr) -> void {
   free(w)
 }
 
-function rt_load_state(f: ptr) -> void {
+function rt_load_state(f: pointer) -> void {
   let w: words = bytes(16)
   file_read(f, w, 16)
   rt_rng = w[0]

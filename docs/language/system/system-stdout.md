@@ -4,7 +4,7 @@ name: System.stdout
 category: system
 kind: namespace-method
 tokens: System.stdout
-sig: System.stdout() -> ptr
+sig: System.stdout() -> pointer
 tip: The standard output handle.
 order: 12
 ns: System

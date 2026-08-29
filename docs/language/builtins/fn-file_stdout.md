@@ -4,7 +4,7 @@ name: file_stdout
 category: builtins
 kind: builtin
 tokens: file_stdout
-sig: file_stdout() -> ptr
+sig: file_stdout() -> pointer
 tip: The standard-output stream handle for use with file_write.
 order: 50
 ---
