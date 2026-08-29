@@ -116,7 +116,89 @@ fn emit_bin(e: Node) -> Val {
   return val(r, "int")
 }
 
+# ---- named arguments -------------------------------------------------------
+# An argument list is either all-positional or all-named. When named, each kid
+# is an E_FINIT (label -> value); this rewrites e.kids into plain value exprs in
+# the order the callee declares its parameters, so the rest of emit_call is
+# oblivious to whether the caller used names.
+fn args_are_named(e: Node) -> bool {
+  var i = 0
+  while i < len(e.kids) { if e.kids[i].kind == E_FINIT { return true };  i = i + 1 }
+  return false
+}
+fn reorder_named(e: Node, labels: []ptr) -> void {
+  if not args_are_named(e) { return }
+  var i = 0
+  while i < len(e.kids) {
+    if e.kids[i].kind != E_FINIT { perr("named and positional arguments cannot be mixed in one call") }
+    i = i + 1
+  }
+  if len(e.kids) != len(labels) { perr("wrong number of arguments") }
+  let out = new []Node
+  var li = 0
+  while li < len(labels) {
+    var found: Node = null
+    var k = 0
+    while k < len(e.kids) { if (e.kids[k].s == labels[li]) { found = e.kids[k] };  k = k + 1 }
+    if (found == null) { perr(`no argument named {labels[li]}`) }
+    push(out, found.a)
+    li = li + 1
+  }
+  e.kids = out
+}
+# The parameter labels of a resolved fn/extern, in declaration order.
+fn param_labels(fn: Node) -> []ptr {
+  let out = new []ptr
+  var i = 0
+  while i < len(fn.kids) { if fn.kids[i].kind == N_PARAM { push(out, fn.kids[i].s) };  i = i + 1 }
+  return out
+}
+
+# ---- namespaced builtins: Screen.* / Random.* / Input.* --------------------
+# The game-facing API reads as `subject.action(...)`. Each method maps to a bare
+# runtime builtin plus the parameter labels callers may use as named arguments;
+# after reordering we rewrite the callee to that bare name and fall back into the
+# ordinary builtin path (which resolves it to its rt_ function).
+fn emit_ns_call(ns: ptr, meth: ptr, e: Node) -> Val {
+  var bare: ptr = null
+  let labels = new []ptr
+  if (ns == "Screen") {
+    if (meth == "clear")          { bare = "clear";      push(labels, "color") }
+    if (meth == "fill_rectangle") { bare = "fill_rect";  push(labels, "x"); push(labels, "y"); push(labels, "width"); push(labels, "height"); push(labels, "color") }
+    if (meth == "draw_rectangle") { bare = "frame_rect"; push(labels, "x"); push(labels, "y"); push(labels, "width"); push(labels, "height"); push(labels, "color") }
+    if (meth == "put_pixel")      { bare = "put_px";     push(labels, "x"); push(labels, "y"); push(labels, "color") }
+    if (meth == "draw_text")      { bare = "text";       push(labels, "x"); push(labels, "y"); push(labels, "text"); push(labels, "color"); push(labels, "scale") }
+    if (meth == "draw_number")    { bare = "text_int";   push(labels, "x"); push(labels, "y"); push(labels, "value"); push(labels, "color"); push(labels, "scale") }
+    if (meth == "show")           { bare = "present" }
+    if (meth == "width")          { bare = "screen_w" }
+    if (meth == "height")         { bare = "screen_h" }
+    if (meth == "status")         { bare = "status";  push(labels, "text") }
+  }
+  if (ns == "Map") {
+    if (meth == "size") { bare = "map_size"; push(labels, "width"); push(labels, "height") }
+    if (meth == "row")  { bare = "map_row";  push(labels, "y"); push(labels, "cells") }
+    if (meth == "tile") { bare = "tile";     push(labels, "x"); push(labels, "y") }
+  }
+  if (ns == "Random") {
+    if (meth == "range")  { bare = "rng_range";  push(labels, "low"); push(labels, "high") }
+    if (meth == "chance") { bare = "rng_chance"; push(labels, "percent") }
+    if (meth == "seed")   { bare = "seed";       push(labels, "value") }
+  }
+  if (ns == "Input") {
+    if (meth == "key") { bare = "key" }
+  }
+  if (bare == null) { perr(`unknown builtin {ns}.{meth}`) }
+  reorder_named(e, labels)
+  let id = node(E_ID); id.s = bare; e.a = id
+  return emit_call(e)
+}
+
 fn emit_call(e: Node) -> Val {
+  # `Subject.action(...)` — a namespaced builtin (Screen/Random/Input).
+  if e.a.kind == E_MEMBER {
+    if e.a.a.kind == E_ID { return emit_ns_call(e.a.a.s, e.a.s, e) }
+    perr("call target is not a function")
+  }
   let name = e.a.s
   if (name == "self") { if nself == 0 { return val("0", "entity") };  return val(emit_bind(`load i32, ptr {self_stk[nself - 1]}`), "entity") }
   if (name == "key") { return val(emit_bind("load i32, ptr @L_key"), "int") }
@@ -253,6 +335,7 @@ fn emit_call(e: Node) -> Val {
   # extern fn: a direct call to the declared link symbol (no @fn_ prefix)
   let ext = find_extern(name)
   if (ext != null) {
+    reorder_named(e, param_labels(ext))
     let eargs = new []ptr
     let eatys = new []ptr
     var ei = 0
@@ -280,6 +363,7 @@ fn emit_call(e: Node) -> Val {
     if (fn2 == null) { perr(`unknown function {name}`) }
     cname = rtname
   }
+  reorder_named(e, param_labels(fn2))
   # evaluate args first (their IR is emitted before the call instruction)
   let args = new []ptr
   let atys = new []ptr
@@ -332,8 +416,13 @@ fn emit_expr(e: Node) -> Val {
     perr(`unknown identifier {e.s}`)
   }
   if e.kind == E_MEMBER {
-    if e.a.kind == E_ID {                        # `Enum.Variant` -> its ordinal, a compile-time int
-      let ord = enum_ordinal(e.a.s, e.s)
+    if e.a.kind == E_ID {
+      if (e.a.s == "Color") {                    # `Color.Name` -> its 0xRRGGBB int, at compile time
+        let cv = color_lookup(e.s)
+        if (cv < 0) { perr(`unknown color Color.{e.s}`) }
+        return val(itoa(cv), "int")
+      }
+      let ord = enum_ordinal(e.a.s, e.s)         # `Enum.Variant` -> its ordinal, a compile-time int
       if ord >= 0 { return val(itoa(ord), "int") }
     }
     let bt = static_type(e.a)                    # `x.field` where field is @Computed -> inline it

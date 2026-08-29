@@ -1,8 +1,8 @@
 # draw.ludic — the Render system (overworld, battle, and overlay screens).
 
 handler Draw phase Render {
-  let m = reg(R_MODE)
-  clear(0x101018)
+  let m = game_mode
+  Screen.clear(0x101018)
 
   if m == 0 {
     var cx = 0
@@ -15,7 +15,7 @@ handler Draw phase Render {
     let ty0 = cy / 16
     for ty in ty0 .. ty0 + 16 {
       for tx in tx0 .. tx0 + 21 {
-        let c = tile(tx, ty)
+        let c = Map.tile(tx, ty)
         let sx = tx * 16 - cx
         let sy = ty * 16 - cy
         var base = SPR_GRASS
@@ -31,7 +31,7 @@ handler Draw phase Render {
         if c == 'D' { draw_sprite(SPR_DOOR, sx, sy) }
         if c == 'S' { draw_sprite(SPR_DOOR, sx, sy) }
         if c == 'B' {
-          if reg(R_BOSS) == 0 { draw_sprite(SPR_BOSS, sx, sy) }
+          if boss_down == 0 { draw_sprite(SPR_BOSS, sx, sy) }
         }
       }
     }
@@ -40,99 +40,99 @@ handler Draw phase Render {
     }
     for (h, pp) in query [Stats, Party] {
       if pp.slot == 0 {
-        fill_rect(4, 4, 96, 38, 0x0c0c16)
-        frame_rect(4, 4, 96, 38, 0x3a3a55)
-        text(8, 8, "LV", 0xffe08a, 1)
-        text_int(24, 8, h.lvl, 0xffffff, 1)
-        text(8, 18, "HP", 0x88ff88, 1)
-        text_int(24, 18, h.hp, 0xffffff, 1)
-        text(8, 28, "G", 0xffd24a, 1)
-        text_int(18, 28, reg(R_GOLD), 0xffffff, 1)
-        text(54, 28, "PO", 0x88ffcc, 1)
-        text_int(72, 28, reg(R_POTION), 0xffffff, 1)
+        Screen.fill_rectangle(4, 4, 96, 38, 0x0c0c16)
+        Screen.draw_rectangle(4, 4, 96, 38, 0x3a3a55)
+        Screen.draw_text(8, 8, "LV", 0xffe08a, 1)
+        Screen.draw_number(24, 8, h.lvl, 0xffffff, 1)
+        Screen.draw_text(8, 18, "HP", 0x88ff88, 1)
+        Screen.draw_number(24, 18, h.hp, 0xffffff, 1)
+        Screen.draw_text(8, 28, "G", 0xffd24a, 1)
+        Screen.draw_number(18, 28, gold, 0xffffff, 1)
+        Screen.draw_text(54, 28, "PO", 0x88ffcc, 1)
+        Screen.draw_number(72, 28, potions, 0xffffff, 1)
       }
     }
   }
 
   if m == 1 {
-    fill_rect(0, 0, 320, 176, 0x241a2e)
+    Screen.fill_rectangle(0, 0, 320, 176, 0x241a2e)
     for (e, a) in query [Stats, Actor, {Enemy}] {
       var bs = 5
-      if reg(R_ETYPE) == 2 { bs = 7 }
+      if enemy_type == 2 { bs = 7 }
       draw_sprite_scaled(a.kind, 160 - bs * 8, 44, bs)
-      text(100, 20, enemy_name(reg(R_ETYPE)), 0xffffff, 1)
-      fill_rect(100, 30, 120, 8, 0x401018)
-      fill_rect(100, 30, e.hp * 120 / e.maxhp, 8, 0xe04040)
+      Screen.draw_text(100, 20, enemy_name(enemy_type), 0xffffff, 1)
+      Screen.fill_rectangle(100, 30, 120, 8, 0x401018)
+      Screen.fill_rectangle(100, 30, e.hp * 120 / e.maxhp, 8, 0xe04040)
     }
-    let ph = reg(R_PHASE)
+    let ph = turn_phase
     var act = 0
     if ph >= 2 { act = 1 }
     if ph >= 4 { act = 2 }
-    fill_rect(0, 176, 320, 64, 0x0c0c16)
-    frame_rect(0, 176, 320, 64, 0x3a3a55)
+    Screen.fill_rectangle(0, 176, 320, 64, 0x0c0c16)
+    Screen.draw_rectangle(0, 176, 320, 64, 0x3a3a55)
     for (st, pt) in query [Stats, Party] {
       let hx = 6 + pt.slot * 92
       var spr = 5
       if pt.slot == 1 { spr = 9 }
-      if pt.slot == act { frame_rect(hx - 2, 180, 88, 44, 0xffff00) }
+      if pt.slot == act { Screen.draw_rectangle(hx - 2, 180, 88, 44, 0xffff00) }
       draw_sprite_scaled(spr, hx, 184, 2)
-      if pt.slot == 0 { text(hx + 36, 182, "KNIGHT", 0xffe08a, 1) }
-      if pt.slot == 1 { text(hx + 36, 182, "MAGE", 0xc9a0ff, 1) }
-      text(hx + 36, 195, "HP", 0x88ff88, 1)
-      text_int(hx + 56, 195, st.hp, 0xffffff, 1)
-      text(hx + 36, 207, "MP", 0x88aaff, 1)
-      text_int(hx + 56, 207, st.mp, 0xffffff, 1)
+      if pt.slot == 0 { Screen.draw_text(hx + 36, 182, "KNIGHT", 0xffe08a, 1) }
+      if pt.slot == 1 { Screen.draw_text(hx + 36, 182, "MAGE", 0xc9a0ff, 1) }
+      Screen.draw_text(hx + 36, 195, "HP", 0x88ff88, 1)
+      Screen.draw_number(hx + 56, 195, st.hp, 0xffffff, 1)
+      Screen.draw_text(hx + 36, 207, "MP", 0x88aaff, 1)
+      Screen.draw_number(hx + 56, 207, st.mp, 0xffffff, 1)
     }
-    let cur = reg(R_CUR)
+    let cur = menu_cursor
     if ph == 0 or ph == 1 {
-      text(206, 181, "P1 KNIGHT", 0xffe08a, 1)
-      text(214, 192, "ATTACK", 0xffffff, 1)
-      text(214, 203, "DEFEND", 0xffffff, 1)
-      text(214, 214, "ITEM", 0xffffff, 1)
-      text(256, 214, "x", 0x777777, 1)
-      text_int(264, 214, reg(R_POTION), 0xffd24a, 1)
-      text(214, 225, "RUN", 0xffffff, 1)
-      if ph == 0 { text(204, 192 + cur * 11, ">", 0xffff00, 1) }
+      Screen.draw_text(206, 181, "P1 KNIGHT", 0xffe08a, 1)
+      Screen.draw_text(214, 192, "ATTACK", 0xffffff, 1)
+      Screen.draw_text(214, 203, "DEFEND", 0xffffff, 1)
+      Screen.draw_text(214, 214, "ITEM", 0xffffff, 1)
+      Screen.draw_text(256, 214, "x", 0x777777, 1)
+      Screen.draw_number(264, 214, potions, 0xffd24a, 1)
+      Screen.draw_text(214, 225, "RUN", 0xffffff, 1)
+      if ph == 0 { Screen.draw_text(204, 192 + cur * 11, ">", 0xffff00, 1) }
     }
     if ph == 2 or ph == 3 {
-      text(206, 182, "P2 MAGE", 0xc9a0ff, 1)
-      text(214, 196, "ATTACK", 0xffffff, 1)
-      text(214, 208, "HEAL", 0xffffff, 1)
-      text(214, 220, "DEFEND", 0xffffff, 1)
-      if ph == 2 { text(204, 196 + cur * 12, ">", 0xffff00, 1) }
+      Screen.draw_text(206, 182, "P2 MAGE", 0xc9a0ff, 1)
+      Screen.draw_text(214, 196, "ATTACK", 0xffffff, 1)
+      Screen.draw_text(214, 208, "HEAL", 0xffffff, 1)
+      Screen.draw_text(214, 220, "DEFEND", 0xffffff, 1)
+      if ph == 2 { Screen.draw_text(204, 196 + cur * 12, ">", 0xffff00, 1) }
     }
-    if ph == 4 { text(206, 200, "ENEMY TURN", 0xff8888, 1) }
+    if ph == 4 { Screen.draw_text(206, 200, "ENEMY TURN", 0xff8888, 1) }
     if ph == 1 or ph == 3 {
-      text(6, 232, "DMG", 0xffff88, 1)
-      text_int(34, 232, reg(R_PDMG), 0xffffff, 1)
+      Screen.draw_text(6, 232, "DMG", 0xffff88, 1)
+      Screen.draw_number(34, 232, player_hit, 0xffffff, 1)
     }
     if ph == 4 {
-      text(6, 232, "FOE HITS", 0xff8888, 1)
-      text_int(66, 232, reg(R_EDMG), 0xffffff, 1)
+      Screen.draw_text(6, 232, "FOE HITS", 0xff8888, 1)
+      Screen.draw_number(66, 232, enemy_hit, 0xffffff, 1)
     }
   }
 
   if m == 2 {
-    text(112, 104, "YOU FELL", 0xff5555, 2)
-    text(84, 140, "PRESS ANY KEY", 0xffffff, 1)
+    Screen.draw_text(112, 104, "YOU FELL", 0xff5555, 2)
+    Screen.draw_text(84, 140, "PRESS ANY KEY", 0xffffff, 1)
   }
   if m == 3 {
-    text(60, 96, "THE RIFT IS SEALED", 0x88ffcc, 2)
-    text(96, 132, "VICTORY!", 0xffe060, 3)
-    text(84, 170, "PRESS ANY KEY", 0xffffff, 1)
+    Screen.draw_text(60, 96, "THE RIFT IS SEALED", 0x88ffcc, 2)
+    Screen.draw_text(96, 132, "VICTORY!", 0xffe060, 3)
+    Screen.draw_text(84, 170, "PRESS ANY KEY", 0xffffff, 1)
   }
   if m == 4 {
-    fill_rect(60, 60, 200, 120, 0x141422)
-    frame_rect(60, 60, 200, 120, 0x6a6a95)
-    text(96, 72, "ITEM SHOP", 0xffe060, 2)
-    text(80, 104, "BUY POTION", 0xffffff, 1)
-    text(180, 104, "10 G", 0xffd24a, 1)
-    text(80, 122, "LEAVE", 0xffffff, 1)
-    text(70, 104 + reg(R_CUR) * 18, ">", 0xffff00, 1)
-    text(80, 150, "GOLD", 0xffd24a, 1)
-    text_int(120, 150, reg(R_GOLD), 0xffffff, 1)
-    text(160, 150, "POTIONS", 0x88ffcc, 1)
-    text_int(226, 150, reg(R_POTION), 0xffffff, 1)
+    Screen.fill_rectangle(60, 60, 200, 120, 0x141422)
+    Screen.draw_rectangle(60, 60, 200, 120, 0x6a6a95)
+    Screen.draw_text(96, 72, "ITEM SHOP", 0xffe060, 2)
+    Screen.draw_text(80, 104, "BUY POTION", 0xffffff, 1)
+    Screen.draw_text(180, 104, "10 G", 0xffd24a, 1)
+    Screen.draw_text(80, 122, "LEAVE", 0xffffff, 1)
+    Screen.draw_text(70, 104 + menu_cursor * 18, ">", 0xffff00, 1)
+    Screen.draw_text(80, 150, "GOLD", 0xffd24a, 1)
+    Screen.draw_number(120, 150, gold, 0xffffff, 1)
+    Screen.draw_text(160, 150, "POTIONS", 0x88ffcc, 1)
+    Screen.draw_number(226, 150, potions, 0xffffff, 1)
   }
-  present()
+  Screen.show()
 }

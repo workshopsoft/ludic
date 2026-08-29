@@ -1,71 +1,93 @@
 # ============================================================================
-# snake.ludic — a second, unrelated game in Ludic, to prove the language is
-# general: compiled by the SAME unmodified ludicc + runtime as the JRPG.
-# No sprites/assets — pure primitives. Build: ./build.sh examples/snake.ludic
+# snake.ludic — a small, complete game in Ludic. No sprites or assets: every
+# pixel is drawn from primitives. Build: bin/x app examples/snake.ludic
+#
+# It shows the everyday shape of a Ludic game: an ECS for the moving parts (one
+# entity per snake segment), named program state for the rest, and a Render
+# handler that paints the frame with the Screen API and named colors.
 # ============================================================================
 program Snake {
 
   property Pos { x: int = 0, y: int = 0 }
-  property Seg { order: int = 0 }
+  property Seg { order: int = 0 }              # 0 = head, 1.. = body toward the tail
 
-  const GW: int = 20
-  const GH: int = 15
-  const TS: int = 16
+  const GRID_W:    int = 20                     # playfield, in tiles
+  const GRID_H:    int = 15
+  const TILE:      int = 16                     # pixels per tile
 
-  const R_DIR:   int = 0    # 0 up 1 down 2 left 3 right
-  const R_LEN:   int = 1
-  const R_TICK:  int = 2
-  const R_FX:    int = 3
-  const R_FY:    int = 4
-  const R_MODE:  int = 5    # 0 play 1 gameover
-  const R_SCORE: int = 6
-  const R_ATE:   int = 7
-  const R_TX:    int = 8
-  const R_TY:    int = 9
-  const R_ACK:   int = 10
+  const DIR_UP:    int = 0
+  const DIR_DOWN:  int = 1
+  const DIR_LEFT:  int = 2
+  const DIR_RIGHT: int = 3
 
-  fn reset(x: int) -> int {
+  const MODE_PLAY: int = 0
+  const MODE_OVER: int = 1
+
+  # ---- the game's whole state, named ----------------------------------------
+  var direction: int = DIR_RIGHT
+  var length:    int = 3
+  var tick:      int = 0
+  var food_x:    int = 14
+  var food_y:    int = 7
+  var mode:      int = MODE_PLAY
+  var score:     int = 0
+  var ate:       int = 0                        # did the head reach the food this step?
+  var tail_x:    int = 0                        # where the tail sat before it moved (grow here)
+  var tail_y:    int = 0
+  var acked:     int = 0                        # game-over key must be released before restart
+
+  # ---- custom shades this game uses (values the named palette doesn't carry) -
+  const SHADE_BG:      int = 0x0d1020           # backdrop behind the board
+  const SHADE_TILE_A:  int = 0x141a2e           # checkerboard, light square
+  const SHADE_TILE_B:  int = 0x10162a           # checkerboard, dark square
+  const SHADE_FOOD:    int = 0xe0405a
+  const SHADE_BODY:    int = 0x40c060
+  const SHADE_HEAD:    int = 0x9dffb0
+  const SHADE_SCORE:   int = 0xffe060
+  const SHADE_OVER:    int = 0xff5555
+
+  fn reset(unused: int) -> int {
     for (p, s) in query [Pos, Seg] { despawn self() }
     spawn S0 { Seg { order: 0 };  Pos { x: 10, y: 7 } }
     spawn S1 { Seg { order: 1 };  Pos { x: 9,  y: 7 } }
     spawn S2 { Seg { order: 2 };  Pos { x: 8,  y: 7 } }
-    set_reg(R_DIR, 3)
-    set_reg(R_LEN, 3)
-    set_reg(R_TICK, 0)
-    set_reg(R_MODE, 0)
-    set_reg(R_SCORE, 0)
-    set_reg(R_FX, 14)
-    set_reg(R_FY, 7)
+    direction = DIR_RIGHT
+    length = 3
+    tick = 0
+    mode = MODE_PLAY
+    score = 0
+    food_x = 14
+    food_y = 7
     return 0
   }
 
   handler Boot phase Start { reset(0) }
 
   handler Input phase Input {
-    let k = key()
-    if reg(R_MODE) == 0 {
-      if k == 'w' { if reg(R_DIR) != 1 { set_reg(R_DIR, 0) } }
-      if k == 's' { if reg(R_DIR) != 0 { set_reg(R_DIR, 1) } }
-      if k == 'a' { if reg(R_DIR) != 3 { set_reg(R_DIR, 2) } }
-      if k == 'd' { if reg(R_DIR) != 2 { set_reg(R_DIR, 3) } }
+    let k = Input.key()
+    if mode == MODE_PLAY {
+      if k == 'w' { if direction != DIR_DOWN  { direction = DIR_UP } }
+      if k == 's' { if direction != DIR_UP    { direction = DIR_DOWN } }
+      if k == 'a' { if direction != DIR_RIGHT { direction = DIR_LEFT } }
+      if k == 'd' { if direction != DIR_LEFT  { direction = DIR_RIGHT } }
     }
-    if reg(R_MODE) == 1 {
-      if k == 0 { set_reg(R_ACK, 1) }
-      if k != 0 { if reg(R_ACK) == 1 { reset(0) } }
+    if mode == MODE_OVER {
+      if k == 0 { acked = 1 }
+      if k != 0 { if acked == 1 { reset(0) } }
     }
   }
 
   handler Move phase Update {
-    if reg(R_MODE) == 0 {
-      set_reg(R_TICK, reg(R_TICK) + 1)
-      if reg(R_TICK) >= 6 {
-        set_reg(R_TICK, 0)
-        let len = reg(R_LEN)
+    if mode == MODE_PLAY {
+      tick = tick + 1
+      if tick >= 6 {
+        tick = 0
+        # remember the tail cell, then drag every segment onto the one ahead of it
         for (pt, stg) in query [Pos, Seg] {
-          if stg.order == len - 1 { set_reg(R_TX, pt.x);  set_reg(R_TY, pt.y) }
+          if stg.order == length - 1 { tail_x = pt.x;  tail_y = pt.y }
         }
-        for step in 0 .. len {
-          let i = len - 1 - step
+        for step in 0 .. length {
+          let i = length - 1 - step
           if i >= 1 {
             for (pa, sa) in query [Pos, Seg] {
               if sa.order == i {
@@ -76,61 +98,66 @@ program Snake {
             }
           }
         }
-        set_reg(R_ATE, 0)
+        # move the head, check the walls, check the food
+        ate = 0
         for (ph, sh) in query [Pos, Seg] {
           if sh.order == 0 {
-            if reg(R_DIR) == 0 { ph.y = ph.y - 1 }
-            if reg(R_DIR) == 1 { ph.y = ph.y + 1 }
-            if reg(R_DIR) == 2 { ph.x = ph.x - 1 }
-            if reg(R_DIR) == 3 { ph.x = ph.x + 1 }
-            if ph.x < 0 { set_reg(R_MODE, 1) }
-            if ph.x >= GW { set_reg(R_MODE, 1) }
-            if ph.y < 0 { set_reg(R_MODE, 1) }
-            if ph.y >= GH { set_reg(R_MODE, 1) }
-            if ph.x == reg(R_FX) { if ph.y == reg(R_FY) { set_reg(R_ATE, 1) } }
+            if direction == DIR_UP    { ph.y = ph.y - 1 }
+            if direction == DIR_DOWN  { ph.y = ph.y + 1 }
+            if direction == DIR_LEFT  { ph.x = ph.x - 1 }
+            if direction == DIR_RIGHT { ph.x = ph.x + 1 }
+            if ph.x < 0       { mode = MODE_OVER }
+            if ph.x >= GRID_W { mode = MODE_OVER }
+            if ph.y < 0       { mode = MODE_OVER }
+            if ph.y >= GRID_H { mode = MODE_OVER }
+            if ph.x == food_x { if ph.y == food_y { ate = 1 } }
           }
         }
+        # self-collision: head onto any body segment
         for (ph, sh) in query [Pos, Seg] {
           if sh.order == 0 {
             for (pb, sb) in query [Pos, Seg] {
               if sb.order > 0 {
-                if pb.x == ph.x { if pb.y == ph.y { set_reg(R_MODE, 1) } }
+                if pb.x == ph.x { if pb.y == ph.y { mode = MODE_OVER } }
               }
             }
           }
         }
-        if reg(R_ATE) == 1 {
-          set_reg(R_SCORE, reg(R_SCORE) + 1)
-          spawn Body { Seg { order: len };  Pos { x: reg(R_TX), y: reg(R_TY) } }
-          set_reg(R_LEN, len + 1)
-          set_reg(R_FX, rng_range(0, GW - 1))
-          set_reg(R_FY, rng_range(0, GH - 1))
+        if ate == 1 {
+          score = score + 1
+          spawn Body { Seg { order: length };  Pos { x: tail_x, y: tail_y } }
+          length = length + 1
+          food_x = Random.range(low: 0, high: GRID_W - 1)
+          food_y = Random.range(low: 0, high: GRID_H - 1)
         }
       }
     }
   }
 
   handler Draw phase Render {
-    clear(0x0d1020)
-    for gy in 0 .. GH {
-      for gx in 0 .. GW {
-        var col = 0x141a2e
-        if (gx + gy) % 2 == 0 { col = 0x10162a }
-        fill_rect(gx * TS, gy * TS, TS, TS, col)
+    Screen.clear(SHADE_BG)
+    # checkerboard field
+    for gy in 0 .. GRID_H {
+      for gx in 0 .. GRID_W {
+        var tile_color = SHADE_TILE_A
+        if (gx + gy) % 2 == 0 { tile_color = SHADE_TILE_B }
+        Screen.fill_rectangle(x: gx * TILE, y: gy * TILE, width: TILE, height: TILE, color: tile_color)
       }
     }
-    fill_rect(reg(R_FX) * TS + 3, reg(R_FY) * TS + 3, TS - 6, TS - 6, 0xe0405a)
+    # food, inset a few pixels inside its tile
+    Screen.fill_rectangle(x: food_x * TILE + 3, y: food_y * TILE + 3, width: TILE - 6, height: TILE - 6, color: SHADE_FOOD)
+    # every snake segment, straight from the ECS
     for (p, s) in query [Pos, Seg] {
-      var col = 0x40c060
-      if s.order == 0 { col = 0x9dffb0 }
-      fill_rect(p.x * TS + 1, p.y * TS + 1, TS - 2, TS - 2, col)
+      var seg_color = SHADE_BODY
+      if s.order == 0 { seg_color = SHADE_HEAD }           # the head is brighter
+      Screen.fill_rectangle(x: p.x * TILE + 1, y: p.y * TILE + 1, width: TILE - 2, height: TILE - 2, color: seg_color)
     }
-    text(6, 4, "SCORE", 0xffffff, 1)
-    text_int(52, 4, reg(R_SCORE), 0xffe060, 1)
-    if reg(R_MODE) == 1 {
-      text(112, 104, "GAME OVER", 0xff5555, 2)
-      text(84, 140, "PRESS ANY KEY", 0xffffff, 1)
+    Screen.draw_text(x: 6, y: 4, text: "SCORE", color: Color.White, scale: 1)
+    Screen.draw_number(x: 52, y: 4, value: score, color: SHADE_SCORE, scale: 1)
+    if mode == MODE_OVER {
+      Screen.draw_text(x: 112, y: 104, text: "GAME OVER", color: SHADE_OVER, scale: 2)
+      Screen.draw_text(x: 84, y: 140, text: "PRESS ANY KEY", color: Color.White, scale: 1)
     }
-    present()
+    Screen.show()
   }
 }

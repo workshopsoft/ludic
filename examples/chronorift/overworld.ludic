@@ -25,18 +25,18 @@ handler Boot phase Start {
     Party  { slot: 1 }
     Stats  { hp: 26, maxhp: 26, mp: 16, maxmp: 16, atk: 8,  def: 4, lvl: 1, xp: 0, guard: 0 }
   }
-  set_reg(R_MODE, 0)
-  set_reg(R_ENC, 4)
-  set_reg(R_MAP, 0)
-  set_reg(R_BOSS, 0)
-  set_reg(R_GOLD, 20)
-  set_reg(R_POTION, 2)
+  game_mode = 0
+  encounter = 4
+  world_map = 0
+  boss_down = 0
+  gold = 20
+  potions = 2
 }
 
 handler Control phase Input {
-  if reg(R_MODE) == 0 {
+  if game_mode == 0 {
     for (p) in query [Pos, {Player}] {
-      let k = key()
+      let k = Input.key()
       var nx = p.x
       var ny = p.y
       if k == 'w' { ny = p.y - 1 }
@@ -52,48 +52,48 @@ handler Control phase Input {
         }
       }
       if moved == 1 {
-        let tc = tile(p.x, p.y)
+        let tc = Map.tile(p.x, p.y)
         if tc == 'D' {
           build_dungeon(0)
           p.x = 3
           p.y = 2
-          set_reg(R_MAP, 1)
+          world_map = 1
         }
         if tc == 'S' {
           build_field(0)
           p.x = 36
           p.y = 3
-          set_reg(R_MAP, 0)
+          world_map = 0
         }
         if tc == 'B' {
-          if reg(R_BOSS) == 0 {
-            set_reg(R_ETYPE, 2)
+          if boss_down == 0 {
+            enemy_type = 2
             spawn Enemy {
               Actor { kind: 8 }
               Stats { hp: 120, maxhp: 120, mp: 0, maxmp: 0, atk: 18, def: 10, lvl: 5, xp: 300, guard: 0 }
             }
-            set_reg(R_MODE, 1)
-            set_reg(R_PHASE, 0)
-            set_reg(R_CUR, 0)
+            game_mode = 1
+            turn_phase = 0
+            menu_cursor = 0
           }
         }
         if tc == 'h' {
-          set_reg(R_MODE, 4)
-          set_reg(R_CUR, 0)
+          game_mode = 4
+          menu_cursor = 0
         }
         if tc != 'D' {
           if tc != 'S' {
             if tc != 'B' {
              if tc != 'h' {
-              set_reg(R_ENC, reg(R_ENC) - 1)
-              if reg(R_ENC) <= 0 {
-                set_reg(R_ENC, rng_range(4, 9))
+              encounter = encounter - 1
+              if encounter <= 0 {
+                encounter = Random.range(4, 9)
                 var et = 0
-                if reg(R_MAP) == 1 { et = 1 }
-                if reg(R_MAP) == 0 {
-                  if rng_chance(40) { et = 1 }
+                if world_map == 1 { et = 1 }
+                if world_map == 0 {
+                  if Random.chance(40) { et = 1 }
                 }
-                set_reg(R_ETYPE, et)
+                enemy_type = et
                 if et == 0 {
                   spawn Enemy {
                     Actor { kind: 6 }
@@ -106,9 +106,9 @@ handler Control phase Input {
                     Stats { hp: 30, maxhp: 30, mp: 0, maxmp: 0, atk: 11, def: 5, lvl: 1, xp: 15, guard: 0 }
                   }
                 }
-                set_reg(R_MODE, 1)
-                set_reg(R_PHASE, 0)
-                set_reg(R_CUR, 0)
+                game_mode = 1
+                turn_phase = 0
+                menu_cursor = 0
               }
              }
             }
@@ -123,18 +123,18 @@ handler Control phase Input {
 
 # shop (at the house 'h' tile): buy potions with gold
 handler Shop phase Update {
-  if reg(R_MODE) == 4 {
-    let k = key()
-    if k == 'w' { set_reg(R_CUR, max(0, reg(R_CUR) - 1)) }
-    if k == 's' { set_reg(R_CUR, min(1, reg(R_CUR) + 1)) }
+  if game_mode == 4 {
+    let k = Input.key()
+    if k == 'w' { menu_cursor = max(0, menu_cursor - 1) }
+    if k == 's' { menu_cursor = min(1, menu_cursor + 1) }
     if is_confirm(k) {
-      if reg(R_CUR) == 0 {
-        if reg(R_GOLD) >= 10 {
-          set_reg(R_GOLD, reg(R_GOLD) - 10)
-          set_reg(R_POTION, reg(R_POTION) + 1)
+      if menu_cursor == 0 {
+        if gold >= 10 {
+          gold = gold - 10
+          potions = potions + 1
         }
       }
-      if reg(R_CUR) == 1 { set_reg(R_MODE, 0) }
+      if menu_cursor == 1 { game_mode = 0 }
     }
   }
 }

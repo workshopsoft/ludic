@@ -48,9 +48,22 @@ fn ptype() -> ptr {
 # ---- expressions -----------------------------------------------------------
 fn expr() -> Node { return p_or() }
 
+# Call arguments. Each argument is either positional (`expr`) or named
+# (`name: expr`) — a named argument is an identifier immediately followed by a
+# colon, which is unambiguous inside a call. Named args are stored as E_FINIT
+# (s=label, a=value) and reordered to the callee's parameter order at emit time.
 fn args_call(call: Node) -> void {
   eat_op("("); skipnl()
-  while not is_op(")") { push(call.kids, expr()); skipnl(); if is_op(",") { pi = pi + 1; skipnl() } }
+  while not is_op(")") {
+    let t = toks[pi]
+    let nx = toks[pi + 1]
+    if t.kind == TK_ID and nx.kind == TK_OP and (nx.text == ":") {
+      let fi = node(E_FINIT); fi.s = eat_id(); eat_op(":"); skipnl(); fi.a = expr(); push(call.kids, fi)
+    } else {
+      push(call.kids, expr())
+    }
+    skipnl(); if is_op(",") { pi = pi + 1; skipnl() }
+  }
   eat_op(")")
 }
 

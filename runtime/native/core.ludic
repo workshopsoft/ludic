@@ -59,6 +59,9 @@ fn rt_shutdown() -> void {
 }
 
 # ---- framebuffer ----------------------------------------------------------
+fn rt_screen_w() -> int { return rt_fbw }
+fn rt_screen_h() -> int { return rt_fbh }
+
 fn rt_clear(c: int) -> void {
   let n = rt_fbw * rt_fbh
   for i in 0 .. n {

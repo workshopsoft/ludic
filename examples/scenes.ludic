@@ -12,33 +12,33 @@
 #     201 900  frame 3: Play.World.Step, then Hud.Draw
 #     202 900  frame 4: Step reaches 2 -> quit(); Hud.Draw paints the last frame
 #
-#   ./selfhost/game-build.sh build/ludicc examples/scenes.ludic /tmp/scenes
+#   bin/x game-build bin/ludicc examples/scenes.ludic /tmp/scenes
 #   printf 'aaaa' | /tmp/scenes
 program SceneDemo {
-  const R_N: int = 0
+  var counter: int = 0
 
-  handler Boot phase Start { set_reg(R_N, 0);  print(1000) }
+  handler Boot phase Start { counter = 0;  print(1000) }
 
   scene Title start {
     on enter { print(1) }
     on exit  { print(2) }
     layer Main {
       handler Tick phase Update {
-        set_reg(R_N, reg(R_N) + 1)
-        print(100 + reg(R_N))
-        if reg(R_N) >= 2 { become Play }
+        counter = counter + 1
+        print(100 + counter)
+        if counter >= 2 { become Play }
       }
     }
   }
 
   scene Play {
-    on enter { print(3);  set_reg(R_N, 0) }
+    on enter { print(3);  counter = 0 }
     on exit  { print(4) }
     layer World {
       handler Step phase Update {
-        set_reg(R_N, reg(R_N) + 1)
-        print(200 + reg(R_N))
-        if reg(R_N) >= 2 { quit() }
+        counter = counter + 1
+        print(200 + counter)
+        if counter >= 2 { quit() }
       }
     }
     layer Hud {
