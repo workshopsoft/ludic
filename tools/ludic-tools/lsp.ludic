@@ -1188,6 +1188,203 @@ program LudicLsp {
   fn badd(name: ptr, sig: ptr) -> void { push(g_builtins, name);  push(g_bsigs, sig) }
   fn is_builtin_name(name: ptr) -> bool { var i = 0;  while i < len(g_builtins) { if (g_builtins[i] == name) { return true };  i = i + 1 };  return false }
   fn builtin_sig(name: ptr) -> ptr { var i = 0;  while i < len(g_builtins) { if (g_builtins[i] == name) { return g_bsigs[i] };  i = i + 1 };  return null }
+
+  # The namespaced standard-library surface: `Namespace.method`, mirroring the
+  # compiler's emit_ns_call (selfhost/emit_expr.ludic). Screen/Random/Input/Map
+  # methods resolve to the underlying bare builtin's signature; Math/Text/List
+  # are pure fixed-point / string / slice ops with their own signatures. Returns
+  # the signature label for signature help, or null if it is not a known method.
+  fn ns_method_sig(ns: ptr, meth: ptr) -> ptr {
+    if (ns == "Screen") {
+      if (meth == "clear")          { return builtin_sig("clear") }
+      if (meth == "fill_rectangle") { return builtin_sig("fill_rect") }
+      if (meth == "draw_rectangle") { return builtin_sig("frame_rect") }
+      if (meth == "put_pixel")      { return builtin_sig("put_px") }
+      if (meth == "draw_text")      { return builtin_sig("text") }
+      if (meth == "draw_number")    { return builtin_sig("text_int") }
+      if (meth == "show")           { return builtin_sig("present") }
+      if (meth == "width")          { return "Screen.width() -> int" }
+      if (meth == "height")         { return "Screen.height() -> int" }
+      if (meth == "status")         { return builtin_sig("status") }
+      if (meth == "line")           { return "Screen.line(x1, y1, x2, y2, color)" }
+      if (meth == "circle")         { return "Screen.circle(x, y, radius, color)" }
+      if (meth == "fill_circle")    { return "Screen.fill_circle(x, y, radius, color)" }
+      if (meth == "triangle")       { return "Screen.triangle(x1, y1, x2, y2, x3, y3, color)" }
+      if (meth == "fill_triangle")  { return "Screen.fill_triangle(x1, y1, x2, y2, x3, y3, color)" }
+      if (meth == "sprite")         { return "Screen.sprite(id, x, y)" }
+      if (meth == "sprite_scaled")  { return "Screen.sprite_scaled(id, x, y, scale)" }
+    }
+    if (ns == "Map") {
+      if (meth == "size") { return builtin_sig("map_size") }
+      if (meth == "row")  { return builtin_sig("map_row") }
+      if (meth == "tile") { return builtin_sig("tile") }
+    }
+    if (ns == "Random") {
+      if (meth == "range")  { return builtin_sig("rng_range") }
+      if (meth == "chance") { return builtin_sig("rng_chance") }
+      if (meth == "seed")   { return builtin_sig("seed") }
+      if (meth == "value")  { return "Random.value() -> fixed" }
+      if (meth == "int")    { return "Random.int(max) -> int" }
+      if (meth == "sign")   { return "Random.sign() -> int" }
+    }
+    if (ns == "Color") {
+      if (meth == "rgb")        { return "Color.rgb(r, g, b) -> int" }
+      if (meth == "rgba")       { return "Color.rgba(r, g, b, a) -> int" }
+      if (meth == "lerp")       { return "Color.lerp(c0, c1, t) -> int" }
+      if (meth == "darken")     { return "Color.darken(c, amount) -> int" }
+      if (meth == "lighten")    { return "Color.lighten(c, amount) -> int" }
+      if (meth == "with_alpha") { return "Color.with_alpha(c, a) -> int" }
+    }
+    if (ns == "Input") {
+      if (meth == "key") { return builtin_sig("key") }
+    }
+    if (ns == "Math") {
+      if (meth == "min")          { return "Math.min(a, b) -> int" }
+      if (meth == "max")          { return "Math.max(a, b) -> int" }
+      if (meth == "abs")          { return "Math.abs(x) -> int" }
+      if (meth == "clamp")        { return "Math.clamp(v, lo, hi) -> int" }
+      if (meth == "sign")         { return "Math.sign(x) -> int" }
+      if (meth == "floor")        { return "Math.floor(x) -> int" }
+      if (meth == "ceil")         { return "Math.ceil(x) -> int" }
+      if (meth == "round")        { return "Math.round(x) -> int" }
+      if (meth == "lerp")         { return "Math.lerp(a, b, t) -> fixed" }
+      if (meth == "inverse_lerp") { return "Math.inverse_lerp(a, b, v) -> fixed" }
+      if (meth == "remap")        { return "Math.remap(v, in0, in1, out0, out1) -> fixed" }
+      if (meth == "sqrt")         { return "Math.sqrt(x) -> fixed" }
+      if (meth == "sin")          { return "Math.sin(radians) -> fixed" }
+      if (meth == "cos")          { return "Math.cos(radians) -> fixed" }
+      if (meth == "tan")          { return "Math.tan(radians) -> fixed" }
+      if (meth == "atan2")        { return "Math.atan2(y, x) -> fixed" }
+      if (meth == "asin")         { return "Math.asin(x) -> fixed" }
+      if (meth == "acos")         { return "Math.acos(x) -> fixed" }
+      if (meth == "hypot")        { return "Math.hypot(x, y) -> fixed" }
+      if (meth == "dist")         { return "Math.dist(x0, y0, x1, y1) -> fixed" }
+      if (meth == "dist2")        { return "Math.dist2(x0, y0, x1, y1) -> fixed" }
+      if (meth == "deg_to_rad")   { return "Math.deg_to_rad(degrees) -> fixed" }
+      if (meth == "rad_to_deg")   { return "Math.rad_to_deg(radians) -> fixed" }
+      if (meth == "posmod")       { return "Math.posmod(a, m) -> int" }
+      if (meth == "wrap")         { return "Math.wrap(v, lo, hi) -> int" }
+      if (meth == "ping_pong")    { return "Math.ping_pong(t, len) -> int" }
+      if (meth == "snapped")      { return "Math.snapped(v, step) -> fixed" }
+      if (meth == "move_toward")  { return "Math.move_toward(from, to, delta) -> fixed" }
+      if (meth == "smoothstep")   { return "Math.smoothstep(e0, e1, x) -> fixed" }
+    }
+    if (ns == "Text") {
+      if (meth == "length")       { return "Text.length(s) -> int" }
+      if (meth == "char_at")      { return "Text.char_at(s, i) -> int" }
+      if (meth == "slice")        { return "Text.slice(s, a, b) -> str" }
+      if (meth == "starts_with")  { return "Text.starts_with(s, prefix) -> bool" }
+      if (meth == "ends_with")    { return "Text.ends_with(s, suffix) -> bool" }
+      if (meth == "contains")     { return "Text.contains(s, sub) -> bool" }
+      if (meth == "index_of")     { return "Text.index_of(s, sub) -> int" }
+      if (meth == "equals")       { return "Text.equals(a, b) -> bool" }
+      if (meth == "concat")       { return "Text.concat(a, b) -> str" }
+      if (meth == "to_int")       { return "Text.to_int(s) -> int" }
+      if (meth == "from_int")     { return "Text.from_int(n) -> str" }
+      if (meth == "upper")        { return "Text.upper(s) -> str" }
+      if (meth == "lower")        { return "Text.lower(s) -> str" }
+      if (meth == "trim")         { return "Text.trim(s) -> str" }
+      if (meth == "repeat")       { return "Text.repeat(s, n) -> str" }
+      if (meth == "pad_left")     { return "Text.pad_left(s, width) -> str" }
+      if (meth == "pad_right")    { return "Text.pad_right(s, width) -> str" }
+      if (meth == "split")        { return "Text.split(s, sep) -> []str" }
+      if (meth == "join")         { return "Text.join(parts, sep) -> str" }
+      if (meth == "replace")      { return "Text.replace(s, from, to) -> str" }
+    }
+    if (ns == "List") {
+      if (meth == "len")      { return "List.len(s) -> int" }
+      if (meth == "push")     { return "List.push(s, v)" }
+      if (meth == "clear")    { return "List.clear(s)" }
+      if (meth == "first")    { return "List.first(s) -> T" }
+      if (meth == "last")     { return "List.last(s) -> T" }
+      if (meth == "pop")      { return "List.pop(s) -> T" }
+      if (meth == "swap")     { return "List.swap(s, i, j)" }
+      if (meth == "contains")  { return "List.contains(s, v) -> bool" }
+      if (meth == "index_of")  { return "List.index_of(s, v) -> int" }
+      if (meth == "reverse")   { return "List.reverse(s)" }
+      if (meth == "insert")    { return "List.insert(s, i, v)" }
+      if (meth == "remove_at") { return "List.remove_at(s, i)" }
+      if (meth == "remove")    { return "List.remove(s, v)" }
+      if (meth == "sort")      { return "List.sort(s)" }
+    }
+    if (ns == "Ease") {
+      if (meth == "in")     { return "Ease.in(t) -> fixed" }
+      if (meth == "out")    { return "Ease.out(t) -> fixed" }
+      if (meth == "in_out") { return "Ease.in_out(t) -> fixed" }
+      if (meth == "back")   { return "Ease.back(t) -> fixed" }
+      if (meth == "bounce") { return "Ease.bounce(t) -> fixed" }
+    }
+    if (ns == "Collide") {
+      if (meth == "rects")       { return "Collide.rects(ax, ay, aw, ah, bx, by, bw, bh) -> bool" }
+      if (meth == "point_rect")  { return "Collide.point_rect(px, py, rx, ry, rw, rh) -> bool" }
+      if (meth == "circles")     { return "Collide.circles(ax, ay, ar, bx, by, br) -> bool" }
+      if (meth == "rect_circle") { return "Collide.rect_circle(rx, ry, rw, rh, cx, cy, cr) -> bool" }
+    }
+    if (ns == "World") {
+      if (meth == "get") { return "World.get(prop_id, field_id, entity) -> int" }
+      if (meth == "set") { return "World.set(prop_id, field_id, entity, value)" }
+      if (meth == "has") { return "World.has(entity, prop_id) -> int" }
+      if (meth == "count") { return "World.count() -> int" }
+      if (meth == "size") { return "World.size() -> int" }
+      if (meth == "spawn") { return "World.spawn(model_id) -> entity" }
+      if (meth == "save") { return "World.save(buf) -> int" }
+      if (meth == "load") { return "World.load(buf, len)" }
+      if (meth == "prop_id") { return "World.prop_id(name) -> int" }
+      if (meth == "field_id") { return "World.field_id(prop_id, name) -> int" }
+      if (meth == "model_id") { return "World.model_id(name) -> int" }
+      if (meth == "kind") { return "World.kind(entity) -> int" }
+      if (meth == "register_prop") { return "World.register_prop(name, size) -> int" }
+      if (meth == "attach") { return "World.attach(entity, prop_id)" }
+      if (meth == "detach") { return "World.detach(entity, prop_id)" }
+      if (meth == "query_next") { return "World.query_next(query_id, cursor) -> int" }
+    }
+    if (ns == "Net") {
+      if (meth == "send") { return "Net.send(peer, buf, len)" }
+      if (meth == "poll") { return "Net.poll(buf, cap) -> int" }
+      if (meth == "serialize") { return "Net.serialize(entity, buf) -> int" }
+      if (meth == "apply") { return "Net.apply(entity, buf) -> int" }
+      if (meth == "owner") { return "Net.owner(entity) -> int" }
+      if (meth == "set_owner") { return "Net.set_owner(entity, peer)" }
+      if (meth == "is_server") { return "Net.is_server() -> bool" }
+      if (meth == "is_owner") { return "Net.is_owner(entity) -> bool" }
+      if (meth == "local_id") { return "Net.local_id() -> int" }
+    }
+    if (ns == "Sys") {
+      if (meth == "arg") { return "Sys.arg(i) -> str" }
+      if (meth == "arg_count") { return "Sys.arg_count() -> int" }
+      if (meth == "exit") { return "Sys.exit(code)" }
+      if (meth == "run") { return "Sys.run(command) -> int" }
+      if (meth == "env") { return "Sys.env(name) -> str" }
+      if (meth == "read_char") { return "Sys.read_char() -> int" }
+      if (meth == "file_open") { return "Sys.file_open(path, mode) -> ptr" }
+      if (meth == "file_read") { return "Sys.file_read(file, buf, n) -> int" }
+      if (meth == "file_write") { return "Sys.file_write(file, buf, n) -> int" }
+      if (meth == "file_seek") { return "Sys.file_seek(file, offset, whence) -> int" }
+      if (meth == "file_tell") { return "Sys.file_tell(file) -> int" }
+      if (meth == "file_close") { return "Sys.file_close(file)" }
+      if (meth == "stdout") { return "Sys.stdout() -> ptr" }
+      if (meth == "stderr") { return "Sys.stderr() -> ptr" }
+    }
+    if (ns == "Save") {
+      if (meth == "write") { return "Save.write()" }
+      if (meth == "read") { return "Save.read() -> bool" }
+    }
+    if (ns == "Time") {
+      if (meth == "frame")   { return "Time.frame() -> int" }
+      if (meth == "delta")   { return "Time.delta() -> fixed" }
+      if (meth == "elapsed") { return "Time.elapsed() -> fixed" }
+      if (meth == "now")     { return "Time.now() -> int" }
+    }
+    if (ns == "Mem") {
+      if (meth == "bytes") { return "Mem.bytes(n) -> ptr" }
+      if (meth == "words") { return "Mem.words(n) -> words" }
+      if (meth == "copy") { return "Mem.copy(dst, src, n)" }
+      if (meth == "fill") { return "Mem.fill(buf, value, n)" }
+      if (meth == "peek") { return "Mem.peek(buf, i) -> int" }
+      if (meth == "poke") { return "Mem.poke(buf, i, value)" }
+    }
+    return null
+  }
   fn init_builtins() -> void {
     g_builtins = new []ptr;  g_bsigs = new []ptr
     badd("min", "min(a: int, b: int) -> int")
@@ -2185,7 +2382,14 @@ program LudicLsp {
     }
     if callee < 0 or D.tk_kind[callee] != LT_ID { send_result(id, "null");  return }
     let name = ttext(D, callee)
-    var sig = builtin_sig(name)
+    var sig: ptr = null
+    # a namespaced call `Namespace.method(` resolves through the ns surface first
+    let dot = prev_sig(D, callee)
+    if dot >= 0 and tis(D, dot, ".") {
+      let nsi = prev_sig(D, dot)
+      if nsi >= 0 and D.tk_kind[nsi] == LT_ID { sig = ns_method_sig(ttext(D, nsi), name) }
+    }
+    if (sig == null) { sig = builtin_sig(name) }
     var docstr = ""
     if (sig == null) {
       let t = find_top(D, name)

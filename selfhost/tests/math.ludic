@@ -1,0 +1,27 @@
+program T {
+  entry {
+    # min / max / abs / clamp, now reachable under the Math namespace
+    print(Math.min(3, 7))            # 3
+    print(Math.max(3, 7))            # 7
+    print(Math.abs(0 - 5))           # 5
+    print(Math.clamp(12, 0, 10))     # 10
+
+    # sign -> -1 / 0 / 1
+    print(Math.sign(0 - 4))          # -1
+    print(Math.sign(0))              # 0
+    print(Math.sign(9))              # 1
+
+    # floor / ceil / round on Q16.16 fixed
+    print(Math.floor(2.7))           # 2
+    print(Math.ceil(2.1))            # 3
+    print(Math.round(2.5))           # 3
+    print(Math.round(2.4))           # 2
+
+    # lerp(0, 10, 0.5) = 5.0
+    print(Math.floor(Math.lerp(0.0, 10.0, 0.5)))               # 5
+    # inverse_lerp(0, 10, 2.5) = 0.25 -> *100 = 25
+    print(Math.floor(Math.inverse_lerp(0.0, 10.0, 2.5) * 100.0))  # 25
+    # remap(5, [0..10] -> [0..100]) = 50.0
+    print(Math.floor(Math.remap(5.0, 0.0, 10.0, 0.0, 100.0)))  # 50
+  }
+}

@@ -11,6 +11,6 @@ program T {
     print(((4 | 1) & 6))    # 4
     let p = bytes(16)
     p[1] = 9999
-    print(p[1])          # 9999
+    print(p[1])          # 15 (a byte buffer truncates: 9999 & 0xFF)
   }
 }

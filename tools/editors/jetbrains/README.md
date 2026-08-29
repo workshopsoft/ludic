@@ -43,7 +43,7 @@ The first build downloads an IntelliJ IDEA Community distribution (over 1 GB),
 so expect it to take a while; later builds take seconds. Once the cache is warm,
 
 ```bash
-LUDIC_TEST_JETBRAINS=1 ./tools/test-tools.sh
+LUDIC_TEST_JETBRAINS=1 bin/x test-tools
 ```
 
 includes the plugin build in the toolchain's own test run.
@@ -54,5 +54,5 @@ LSP4IJ is a required dependency; the IDE offers to install it for you.
 ## Settings
 
 **Settings -> Languages & Frameworks -> Ludic** — the path to `ludic-lsp` and to
-`ludicc`. Both default to `build/` under the project root, which is where
-`tools/build-tools.sh` puts them.
+`ludicc`. Both default to `bin/` under the project root, which is where
+`bin/x tools` puts them.

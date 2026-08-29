@@ -3,6 +3,7 @@ id: op-logical
 name: Logical
 category: operators
 kind: operator
+tokens: and or not
 sig: and  or  not
 tip: The boolean combinators, spelled as words — never && or || or a bare !.
 order: 2

@@ -1,0 +1,80 @@
+# x — the Ludic task runner. One native binary (bin/x) that replaces every
+# build/test/bootstrap shell script in the repo. It is written in Ludic and
+# compiled by Ludic; the unix tools and clang it drives are invoked through the
+# `run` intrinsic, the same way the old *.sh files shelled out.
+#
+# Bootstrap it once from a clean checkout (the only step Ludic cannot do for
+# itself, since compiling Ludic needs a compiler):
+#
+#   clang selfhost/ludicc.seed.ll -o bin/ludicc && bin/ludicc tools/x/main.ludic -o bin/x
+#
+# Thereafter `bin/x build` rebuilds the whole toolchain — including bin/x itself.
+# Always run x from the repository root.
+program X {
+  import "prelude.ludic"
+  import "selfhost.ludic"
+  import "build.ludic"
+  import "tools.ludic"
+  import "selfhost_test.ludic"
+  import "test.ludic"
+
+  fn usage() -> void {
+    print("x — the Ludic task runner (run from the repository root)")
+    print("")
+    print("build & run:")
+    print("  x build                       build the whole toolchain into bin/ (ludicc, ludic, x, ludic-fmt, ludic-lsp)")
+    print("  x build-cli                   build just bin/ludicc and bin/ludic from the IR seed")
+    print("  x app <file.ludic> [--headless] [--save-temps]")
+    print("                                compile a Ludic program to a native app in build/")
+    print("  x tools [--install] [--test]  build the editor toolchain (ludic-fmt, ludic-lsp)")
+    print("")
+    print("test:")
+    print("  x test                        the full regression suite")
+    print("  x selfhost-test               the self-hosting suite (correctness + bootstrap fixpoints)")
+    print("  x test-tools                  the editor-toolchain suite")
+    print("")
+    print("self-host internals:")
+    print("  x selfhost-build [ludicc] [out]   assemble + compile the self-host compiler")
+    print("  x bootstrap                   the self-hosting fixpoint proof (seeded from bin/ludicc)")
+    print("  x bootstrap-cfree             rebuild the compiler from the seed with no C compiler")
+    print("  x reseed                      regenerate selfhost/ludicc.seed.ll after a compiler change")
+    print("  x game-build <ludicc> <game.ludic> <out>   compile a Ludic game (headless)")
+    print("  x sh-compile <ludicc> <in.ludic> <out>     compile + link one .ludic file")
+  }
+
+  # a positional argument, or a default when absent
+  fn argn(i: int, dflt: ptr) -> ptr {
+    if (i < arg_count()) { return arg(i) }
+    return dflt
+  }
+
+  entry {
+    if (arg_count() < 2) { usage(); exit(1) }
+    let cmd = arg(1)
+
+    if (cmd == "build") { exit(cmd_build()) }
+    if (cmd == "build-cli") { exit(cmd_build_cli()) }
+    if (cmd == "app") { exit(cmd_app()) }
+    if (cmd == "tools") { exit(cmd_tools()) }
+    if (cmd == "test") { exit(cmd_test()) }
+    if (cmd == "selfhost-test") { exit(cmd_selfhost_test()) }
+    if (cmd == "test-tools") { exit(cmd_test_tools()) }
+    if (cmd == "bootstrap") { exit(cmd_bootstrap()) }
+    if (cmd == "bootstrap-cfree") { exit(cmd_bootstrap_cfree()) }
+    if (cmd == "reseed") { exit(cmd_reseed()) }
+    if (cmd == "selfhost-build") { exit(cmd_selfhost_build(argn(2, "bin/ludicc"), argn(3, "build/selfhost"))) }
+    if (cmd == "sh-compile") {
+      if (arg_count() < 5) { err("usage: x sh-compile <ludicc> <in.ludic> <out>\n"); exit(1) }
+      exit(cmd_sh_compile(arg(2), arg(3), arg(4)))
+    }
+    if (cmd == "game-build") {
+      if (arg_count() < 5) { err("usage: x game-build <ludicc> <game.ludic> <out>\n"); exit(1) }
+      exit(cmd_game_build(arg(2), arg(3), arg(4)))
+    }
+    if (cmd == "help") or (cmd == "--help") or (cmd == "-h") { usage(); exit(0) }
+
+    err(`x: unknown command '{cmd}'\n`)
+    usage()
+    exit(1)
+  }
+}

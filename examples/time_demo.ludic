@@ -1,0 +1,11 @@
+program TimeDemo {
+  handler Tick phase Update {
+    let f = Time.frame()
+    print(f)
+    if f >= 3 {
+      print(Math.floor(Time.elapsed() * 100.0))
+      print(Math.floor(Time.delta() * 1000.0))
+      quit()
+    }
+  }
+}

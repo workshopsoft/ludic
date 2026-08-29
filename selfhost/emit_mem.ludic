@@ -1,0 +1,48 @@
+# emit_mem.ludic — the Mem.* namespace: raw buffers and byte pokes. bytes/words
+# allocate (as the bare builtins do); copy/fill wrap memcpy/memset; peek/poke
+# read and write one byte. The low-level escape hatch, PICO-8's memcpy/memset/
+# peek/poke by another name.
+
+fn is_mem_ns(meth: ptr) -> bool {
+  if (meth == "bytes") or (meth == "words") { return true }
+  if (meth == "copy") or (meth == "fill") or (meth == "peek") or (meth == "poke") { return true }
+  return false
+}
+
+fn emit_mem_ns(meth: ptr, e: Node) -> Val {
+  if (meth == "bytes") {                            # allocate n bytes -> a byte buffer
+    let n = emit_expr(e.kids[0])
+    let w = emit_bind(`zext i32 {n.code} to i64`)
+    return val(emit_bind(`call ptr @malloc(i64 {w})`), "ptr")
+  }
+  if (meth == "words") {                            # allocate n 32-bit words
+    let n = emit_expr(e.kids[0])
+    let by = emit_bind(`mul i32 {n.code}, 4`)
+    let w = emit_bind(`zext i32 {by} to i64`)
+    return val(emit_bind(`call ptr @malloc(i64 {w})`), "words")
+  }
+  if (meth == "copy") {                             # copy n bytes src -> dst
+    let dst = emit_expr(e.kids[0]);  let src = emit_expr(e.kids[1]);  let n = emit_expr(e.kids[2])
+    let w = emit_bind(`zext i32 {n.code} to i64`)
+    emit("  call ptr @memcpy(ptr ");  emit(dst.code);  emit(", ptr ");  emit(src.code);  emit(", i64 ");  emit(w);  emit(")\n")
+    return val("0", "void")
+  }
+  if (meth == "fill") {                             # set n bytes of buf to value v
+    let buf = emit_expr(e.kids[0]);  let v = emit_expr(e.kids[1]);  let n = emit_expr(e.kids[2])
+    let w = emit_bind(`zext i32 {n.code} to i64`)
+    emit("  call ptr @memset(ptr ");  emit(buf.code);  emit(", i32 ");  emit(v.code);  emit(", i64 ");  emit(w);  emit(")\n")
+    return val("0", "void")
+  }
+  if (meth == "peek") {                             # read one byte at buf[i], 0..255
+    let buf = emit_expr(e.kids[0]);  let i = emit_expr(e.kids[1])
+    let p = emit_bind(`getelementptr inbounds i8, ptr {buf.code}, i32 {i.code}`)
+    let c = emit_bind(`load i8, ptr {p}`)
+    return val(emit_bind(`zext i8 {c} to i32`), "int")
+  }
+  # poke: write the low byte of v at buf[i]
+  let buf = emit_expr(e.kids[0]);  let i = emit_expr(e.kids[1]);  let v = emit_expr(e.kids[2])
+  let p = emit_bind(`getelementptr inbounds i8, ptr {buf.code}, i32 {i.code}`)
+  let b = emit_bind(`trunc i32 {v.code} to i8`)
+  emit("  store i8 ");  emit(b);  emit(", ptr ");  emit(p);  emit("\n")
+  return val("0", "void")
+}

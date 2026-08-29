@@ -106,9 +106,14 @@ def load_sections():
             meta["related_list"] = meta.get("related", "").split()
             entries.append(meta)
         entries.sort(key=lambda e: (int(e.get("order", 999)), e.get("name", "")))
+        # A namespace section is discovered, not hardcoded: it is any section
+        # whose symbols are `namespace-method`s, named by their `ns:` field. So
+        # adding a namespace is just adding its docs dir — gen.py needs no edit.
+        ns_name = next((e["ns"] for e in entries
+                        if e.get("kind") == "namespace-method" and e.get("ns")), None)
         sections.append({"id": smeta.get("id", cat), "title": smeta.get("title", cat.title()),
                          "order": int(smeta.get("order", 999)), "blurb": sblurb,
-                         "cat": cat, "entries": entries})
+                         "cat": cat, "entries": entries, "ns_name": ns_name})
     sections.sort(key=lambda s: (s["order"], s["title"]))
     return sections
 
@@ -142,7 +147,10 @@ def build_symbols(sections, palette):
                 elif kind == "annotation":
                     sym["annotations"][tok] = eid
                 if tip: sym["tips"][tok] = tip
-    # namespaces: Screen/Input/Random/Map from ns methods, plus Color
+    # namespaces are discovered from the ns methods present, plus Color; each
+    # namespace's tip falls back to its section blurb so no hardcoded list of
+    # namespaces is needed here when a new one is added.
+    ns_blurb = {s["ns_name"]: plain_text(s["blurb"]) for s in sections if s.get("ns_name")}
     nsnames = set()
     for tok in sym["nsmethods"]:
         if "." in tok: nsnames.add(tok.split(".", 1)[0])
@@ -150,13 +158,26 @@ def build_symbols(sections, palette):
     for nn in sorted(nsnames):
         sym["namespaces"][nn] = ns_page(nn)
         sym["cards"][ns_page(nn)] = {"name": nn, "sig": nn + ".*", "kind": "namespace",
-                                     "tip": NS_TIP.get(nn, ""), "page": ns_page(nn) + ".html",
+                                     "tip": ns_tip(nn, ns_blurb), "page": ns_page(nn) + ".html",
                                      "section": "Namespaces"}
     return sym, items
 
-NS_TIP = {"Screen": "The 2D drawing surface.", "Color": "The named color palette.",
-          "Input": "Reading the keyboard.", "Random": "The seeded, deterministic RNG.",
-          "Map": "The character-grid tilemap."}
+def plain_text(s, limit=160):
+    """The first sentence of a blurb, stripped of tags — for use as a one-line tip."""
+    t = re.sub(r"<[^>]+>", "", s or "").strip()
+    m = re.match(r"(.+?[.!?])(\s|$)", t)
+    if m: t = m.group(1)
+    return t if len(t) <= limit else t[:limit].rsplit(" ", 1)[0] + "…"
+
+def ns_tip(nsname, ns_blurb):
+    """A namespace's tip: an optional curated override, else its section blurb."""
+    return NS_TIP.get(nsname) or ns_blurb.get(nsname, "")
+
+# Optional short overrides for a namespace's one-line tip. A namespace NOT
+# listed here falls back to the first sentence of its section blurb (see
+# ns_tip), so a newly added namespace needs no edit here. Color has no docs
+# section of its own, so its override is required.
+NS_TIP = {"Color": "The named color palette."}
 
 # ---------------------------------------------------------------------------
 # shared chrome
@@ -238,7 +259,7 @@ def item_page(e, section, cfg, items):
 <script>Ludic.highlightAll(); Ludic.installCards(); Ludic.flashTarget();</script>
 </body></html>""", {
         "TOPBAR": topbar(cfg),
-        "SECHREF": "ns-" + section["cat"] + ".html" if section["cat"] in ("screen","input","random","map") else "api.html#" + section["id"],
+        "SECHREF": ns_page(section["ns_name"]) + ".html" if section.get("ns_name") else "api.html#" + section["id"],
         "SECTION": esc(section["title"]),
         "NAME": esc(e.get("name","")),
         "KIND": e.get("kind","").replace("namespace-method","method"),
@@ -270,7 +291,7 @@ def ns_overview_page(nsname, section, cfg):
 <script src="ludic-highlight.js"></script>
 <script>Ludic.installCards(); Ludic.flashTarget();</script>
 </body></html>""", {"TOPBAR": topbar(cfg), "NAME": esc(nsname), "BLURB": section["blurb"], "ROWS": rows})
-    return head_html(nsname + " — Ludic", NS_TIP.get(nsname,""), "item.css") + "\n<body>\n" + body
+    return head_html(nsname + " — Ludic", NS_TIP.get(nsname) or plain_text(section["blurb"]), "item.css") + "\n<body>\n" + body
 
 def color_page(palette, cfg):
     groups = ""
@@ -416,11 +437,10 @@ def main():
             continue
         for e in s["entries"]:
             W(e["id"] + ".html", item_page(e, s, cfg, items)); npages += 1
-    # namespace overview pages
-    by_cat = {s["cat"]: s for s in sections}
-    for nsname, cat in (("Screen","screen"),("Input","input"),("Random","random"),("Map","map")):
-        if cat in by_cat:
-            W(ns_page(nsname) + ".html", ns_overview_page(nsname, by_cat[cat], cfg)); npages += 1
+    # namespace overview pages — one per discovered namespace section
+    for s in sections:
+        if s["ns_name"]:
+            W(ns_page(s["ns_name"]) + ".html", ns_overview_page(s["ns_name"], s, cfg)); npages += 1
     W("ns-color.html", color_page(palette, cfg)); npages += 1
     # index + landing + assets
     W("api.html", api_index(sections, cfg))

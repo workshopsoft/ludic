@@ -1,0 +1,44 @@
+program T {
+  entry {
+    # ---- List.* over a []int slice ----
+    let xs = new []int
+    push(xs, 10)
+    push(xs, 20)
+    push(xs, 30)
+    print(List.len(xs))            # 3
+    print(List.first(xs))          # 10
+    print(List.last(xs))           # 30
+    print(List.contains(xs, 20))   # 1
+    print(List.contains(xs, 99))   # 0
+    print(List.index_of(xs, 30))   # 2
+    print(List.index_of(xs, 99))   # -1
+    List.swap(xs, 0, 2)            # [30, 20, 10]
+    print(List.first(xs))          # 30
+    print(List.last(xs))           # 10
+    List.reverse(xs)              # [10, 20, 30]
+    print(List.first(xs))          # 10
+    print(List.last(xs))           # 30
+    print(List.pop(xs))            # 30 -> [10, 20]
+    print(List.len(xs))            # 2
+    List.clear(xs)
+    print(List.len(xs))            # 0
+
+    # ---- Text.* over a str ----
+    let s = "hello world"
+    print(Text.length(s))                 # 11
+    print(Text.char_at(s, 0))             # 104 ('h')
+    print(Text.starts_with(s, "hello"))   # 1
+    print(Text.starts_with(s, "world"))   # 0
+    print(Text.ends_with(s, "world"))     # 1
+    print(Text.ends_with(s, "hello"))     # 0
+    print(Text.contains(s, "lo w"))       # 1
+    print(Text.contains(s, "xyz"))        # 0
+    print(Text.index_of(s, "world"))      # 6
+    print(Text.index_of(s, "xyz"))        # -1
+    print(Text.to_int("42abc"))           # 42
+    print(Text.length(Text.slice(s, 0, 5)))              # 5
+    print(Text.equals(Text.slice(s, 0, 5), "hello"))     # 1
+    print(Text.length(Text.concat("ab", "cd")))          # 4
+    print(Text.length(Text.from_int(1234)))              # 4
+  }
+}

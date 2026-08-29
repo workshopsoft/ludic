@@ -3,7 +3,7 @@
 > **Status: LC0–LC1 shipped; LC2–LC6 are design.** The structural attach/detach
 > pair and `@OnDetach` (§4, LC0), and reason-carrying `@OnDespawn` (§5, LC1), are
 > implemented and tested ([`examples/detach.ludic`](examples/detach.ludic),
-> [`examples/reason.ludic`](examples/reason.ludic), `test.sh` checks). The
+> [`examples/reason.ludic`](examples/reason.ludic), `bin/x test` checks). The
 > extensions LC2–LC6 are research-informed proposals, not built. This document
 > distills a survey of lifecycle models across seven systems (§3) into a roadmap
 > for Ludic. §13 lists the open decisions.

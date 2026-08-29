@@ -1,0 +1,13 @@
+# draw_prims.ludic — exercises the extended Screen.* drawing primitives
+# (line/circle/fill_circle/triangle/fill_triangle) for the golden render suite.
+program DrawPrims {
+  handler DrawWorld phase Render {
+    Screen.clear(0x0d1020)
+    Screen.line(x1: 4, y1: 4, x2: 120, y2: 60, color: 0xFF4040)
+    Screen.circle(x: 200, y: 60, radius: 30, color: 0x40FF40)
+    Screen.fill_circle(x: 80, y: 150, radius: 24, color: 0x4060FF)
+    Screen.triangle(x1: 160, y1: 120, x2: 230, y2: 130, x3: 190, y3: 200, color: 0xFFD040)
+    Screen.fill_triangle(x1: 250, y1: 150, x2: 300, y2: 160, x3: 270, y3: 210, color: 0xFF40FF)
+    Screen.show()
+  }
+}

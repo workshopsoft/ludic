@@ -11,7 +11,8 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SERVER = os.path.join(ROOT, "build", "ludic-lsp")
+# the toolchain binaries live in bin/ (built by `x tools`); LUDIC_LSP overrides.
+SERVER = os.environ.get("LUDIC_LSP", os.path.join(ROOT, "bin", "ludic-lsp"))
 
 passed = 0
 failed = 0
@@ -171,9 +172,10 @@ def main():
                                                            "end": {"line": 9999, "character": 0}}})
     check_true("inlay hints name query binding types", any(": Stats" == h["label"] for h in hints))
 
+    # a namespaced call resolves to its underlying bare-builtin signature
     sig = c.request("textDocument/signatureHelp",
-                    {"textDocument": uri, "position": position_of(text, "rng_chance(", 11)})
-    check_true("signature help for a builtin",
+                    {"textDocument": uri, "position": position_of(text, "Random.chance(", 14)})
+    check_true("signature help for a namespaced builtin",
                sig and sig["signatures"][0]["label"].startswith("rng_chance("))
 
     toks = c.request("textDocument/semanticTokens/full", {"textDocument": uri})

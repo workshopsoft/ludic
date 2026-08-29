@@ -24,7 +24,7 @@ function resolveServer(folders) {
   const names = ['ludic-lsp', 'ludic-lsp.exe'];
   for (const folder of folders) {
     const root = folder.uri.fsPath;
-    for (const rel of ['build', 'tools/build', 'bin', '.']) {
+    for (const rel of ['bin', 'build', 'tools/build', '.']) {
       for (const name of names) {
         const p = path.join(root, rel, name);
         if (isExecutable(p)) return p;
@@ -45,8 +45,10 @@ function resolveCompiler(folders) {
   const configured = vscode.workspace.getConfiguration('ludic').get('compilerPath');
   if (configured) return expand(configured);
   for (const folder of folders) {
-    const p = path.join(folder.uri.fsPath, 'build', 'ludicc');
-    if (isExecutable(p)) return p;
+    for (const rel of ['bin', 'build']) {
+      const p = path.join(folder.uri.fsPath, rel, 'ludicc');
+      if (isExecutable(p)) return p;
+    }
   }
   return '';
 }
@@ -74,7 +76,7 @@ async function start(context) {
     // Not an error worth a modal: the grammar still highlights, and plenty of
     // people open a .ludic file without having built the toolchain.
     output.appendLine(
-      'ludic-lsp not found. Build it with tools/build-tools.sh, or set "ludic.server.path". ' +
+      'ludic-lsp not found. Build it with `bin/x tools`, or set "ludic.server.path". ' +
       'Syntax highlighting works without it; completion and diagnostics do not.'
     );
     return;

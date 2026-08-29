@@ -146,8 +146,8 @@ internal fun serverCommand(root: String?, configured: String): List<String>? {
 }
 
 /** Where the toolchain is looked for, relative to the project root. */
-internal val SERVER_SUBDIRS = listOf("build", "tools/build", "bin", ".")
-internal val COMPILER_SUBDIRS = listOf("build", "bin", ".")
+internal val SERVER_SUBDIRS = listOf("bin", "build", "tools/build", ".")
+internal val COMPILER_SUBDIRS = listOf("bin", "build", ".")
 
 class LudicLanguageServerFactory : LanguageServerFactory {
     override fun createConnectionProvider(project: Project): StreamConnectionProvider =

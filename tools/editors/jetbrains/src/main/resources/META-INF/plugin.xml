@@ -15,7 +15,7 @@
       <li>Highlighting of <code>```ludic</code> fenced blocks in Markdown.</li>
     </ul>
     <p>Set the paths under <b>Settings &rarr; Languages &amp; Frameworks &rarr; Ludic</b>, or leave
-       them blank to use <code>build/ludic-lsp</code> and <code>build/ludicc</code> under the
+       them blank to use <code>bin/ludic-lsp</code> and <code>bin/ludicc</code> under the
        project root.</p>
     ]]></description>
 

@@ -1,0 +1,201 @@
+# selfhost.ludic — building and bootstrapping the self-host compiler.
+#
+# Replaces selfhost/build.sh, selfhost/bootstrap.sh, selfhost/bootstrap-cfree.sh,
+# selfhost/reseed.sh, selfhost/compile.sh and selfhost/game-build.sh. The one
+# canonical fragment list — copied by hand into three of those scripts before —
+# now lives here once, in selfhost_frags().
+
+# the C toolchain driver (clang) that assembles and links the emitted IR
+fn cc() -> ptr { return getenv_or("LUDIC_CC", "clang") }
+
+# the self-host compiler's source fragments, in link order. This is THE list;
+# the old scripts each carried their own copy.
+fn selfhost_frags() -> []ptr {
+  let f = new []ptr
+  push(f, "selfhost/str.ludic")
+  push(f, "selfhost/buf.ludic")
+  push(f, "selfhost/io.ludic")
+  push(f, "selfhost/ast.ludic")
+  push(f, "selfhost/lex.ludic")
+  push(f, "selfhost/parse.ludic")
+  push(f, "selfhost/parse_game.ludic")
+  push(f, "selfhost/emit_core.ludic")
+  push(f, "selfhost/emit_head.ludic")
+  push(f, "selfhost/emit_addr.ludic")
+  push(f, "selfhost/emit_intrin.ludic")
+  push(f, "selfhost/emit_intrin2.ludic")
+  push(f, "selfhost/emit_math.ludic")
+  push(f, "selfhost/emit_text.ludic")
+  push(f, "selfhost/emit_list.ludic")
+  push(f, "selfhost/emit_ease.ludic")
+  push(f, "selfhost/emit_collide.ludic")
+  push(f, "selfhost/emit_mem.ludic")
+  push(f, "selfhost/emit_time.ludic")
+  push(f, "selfhost/emit_colorfn.ludic")
+  push(f, "selfhost/emit_color.ludic")
+  push(f, "selfhost/emit_new.ludic")
+  push(f, "selfhost/emit_expr.ludic")
+  push(f, "selfhost/emit_stmt.ludic")
+  push(f, "selfhost/emit_ecs.ludic")
+  push(f, "selfhost/emit_query.ludic")
+  push(f, "selfhost/emit_spawn.ludic")
+  push(f, "selfhost/emit_game.ludic")
+  push(f, "selfhost/emit_machine.ludic")
+  push(f, "selfhost/emit_save.ludic")
+  push(f, "selfhost/emit_net.ludic")
+  push(f, "selfhost/emit_ui.ludic")
+  push(f, "selfhost/emit_decl.ludic")
+  push(f, "selfhost/main.ludic")
+  return f
+}
+
+# concatenate the fragments into `program SelfHost { ... }` at `outpath`.
+# This is the pure-Ludic equivalent of the scripts' `{ echo; for; cat; }` block.
+fn write_selfhost_src(outpath: ptr) -> bool {
+  let f = file_open(outpath, "wb")
+  if (f == null) { return false }
+  let hdr = "program SelfHost {\n"
+  file_write(f, hdr, len(hdr))
+  let frags = selfhost_frags()
+  var i = 0
+  while i < len(frags) {
+    let s = read_file(frags[i])
+    if (s != null) { file_write(f, s, len(s)) }
+    file_write(f, "\n", 1)
+    i = i + 1
+  }
+  let ftr = "}\n"
+  file_write(f, ftr, len(ftr))
+  file_close(f)
+  return true
+}
+
+# count the lines in a file (for the progress notes the scripts printed)
+fn line_count(path: ptr) -> ptr {
+  return capture_line(`wc -l < {path}`)
+}
+
+# ensure bin/ludicc exists and is current with the seed. Built from the checked-in
+# IR seed with clang alone — no C compiler is ever involved.
+fn ensure_ludicc() -> void {
+  run("mkdir -p bin build")
+  if (not is_exec("bin/ludicc")) or newer("selfhost/ludicc.seed.ll", "bin/ludicc") {
+    print("cc: selfhost/ludicc.seed.ll -> bin/ludicc  (from the IR seed, no C compiler)")
+    if not shq(`{cc()} selfhost/ludicc.seed.ll -o bin/ludicc`) {
+      err("x: could not assemble the seed\n"); exit(1)
+    }
+  }
+}
+
+# ---- selfhost-build: assemble + compile the self-host compiler ---------------
+# usage: x selfhost-build [ludicc] [outbin]   (defaults: bin/ludicc, build/selfhost)
+fn cmd_selfhost_build(lc: ptr, outbin: ptr) -> int {
+  run("mkdir -p build")
+  let src = "build/selfhost.ludic"
+  if not write_selfhost_src(src) { err("x: cannot write build/selfhost.ludic\n"); return 1 }
+  let ll = `{outbin}.ll`
+  if not shq(`{lc} {src} > {ll} 2>/dev/null`) { run(`rm -f {ll}`); return 1 }
+  let rc = shq(`{cc()} {ll} -o {outbin} 2>/dev/null`)
+  run(`rm -f {ll}`)
+  if rc { return 0 }
+  return 1
+}
+
+# ---- sh-compile: compile one .ludic with a given selfhost binary and link ----
+# usage: x sh-compile <selfhost-binary> <input.ludic> <output-binary>
+fn cmd_sh_compile(shbin: ptr, in: ptr, outbin: ptr) -> int {
+  if not shq(`{shbin} {in} > {outbin}.ll`) { return 1 }
+  if not shq(`{cc()} {outbin}.ll -o {outbin}`) { return 1 }
+  return 0
+}
+
+# ---- game-build: compile a Ludic GAME with the self-host compiler ------------
+# The compiler resolves the game's imports and auto-splices the runtime; -O2
+# strips the dead windowing branches so a headless link needs no win_* defs.
+
+# the quiet core, reused by the test suites; returns true on success. On failure
+# the self-host/link diagnostics are left in /tmp/x_gb.err.
+fn game_build_ok(shbin: ptr, game: ptr, outbin: ptr) -> bool {
+  let ll = `{outbin}.ll`
+  if not shq(`{shbin} {game} > {ll} 2>/tmp/x_gb.err`) { return false }
+  if not shq(`{cc()} -O2 {ll} -o {outbin} 2>/tmp/x_gb.err`) { return false }
+  run(`rm -f {ll}`)
+  return true
+}
+
+# usage: x game-build <selfhost-binary> <game.ludic> <out-binary>
+fn cmd_game_build(shbin: ptr, game: ptr, outbin: ptr) -> int {
+  if game_build_ok(shbin, game, outbin) { print(`built {outbin}`); return 0 }
+  print("build failed:")
+  out(capture("grep -i error /tmp/x_gb.err | head -5"))
+  return 1
+}
+
+# ---- bootstrap: the self-hosting fixpoint proof (seeded from bin/ludicc) ------
+# stage0 bin/ludicc compiles the self-host source -> gen1 (built by a different
+# compiler, so its IR legitimately differs); gen1 -> gen2, gen2 -> gen3, and
+# gen2.ll == gen3.ll is the fixpoint that proves the compiler reproduces itself.
+fn cmd_bootstrap() -> int {
+  ensure_ludicc()
+  run("mkdir -p build/boot")
+  if cmd_selfhost_build("bin/ludicc", "build/boot/gen1") != 0 { print("FAIL: stage0 build"); return 1 }
+  print("  stage0: bin/ludicc -> gen1 (self-host compiler)")
+
+  if not shq("build/boot/gen1 build/selfhost.ludic > build/boot/gen2.ll 2>/dev/null") { print("FAIL: gen1 self-compile"); return 1 }
+  if not shq(`{cc()} build/boot/gen2.ll -o build/boot/gen2 2>/dev/null`) { print("FAIL: gen2 assemble"); return 1 }
+  print(`  stage1: gen1 -> gen2.ll ({line_count("build/boot/gen2.ll")} lines) -> gen2`)
+
+  if not shq("build/boot/gen2 build/selfhost.ludic > build/boot/gen3.ll 2>/dev/null") { print("FAIL: gen2 self-compile"); return 1 }
+  print(`  stage2: gen2 -> gen3.ll ({line_count("build/boot/gen3.ll")} lines)`)
+
+  if shq("cmp -s build/boot/gen2.ll build/boot/gen3.ll") {
+    run("rm -f build/selfhost.ludic")
+    print("  FIXPOINT: gen2.ll == gen3.ll — the self-hosted compiler reproduces itself")
+    return 0
+  }
+  print("  gen2.ll != gen3.ll")
+  out(capture("diff build/boot/gen2.ll build/boot/gen3.ll | head"))
+  return 1
+}
+
+# ---- bootstrap-cfree: rebuild the compiler with NO C compiler -----------------
+# The seed is the compiler's own IR, a proven fixed point: clang assembles it,
+# the seed-built compiler compiles its own source, and the result must equal the
+# seed byte for byte.
+fn cmd_bootstrap_cfree() -> int {
+  run("mkdir -p build/cfree")
+  if not shq(`{cc()} selfhost/ludicc.seed.ll -o build/cfree/sh_seed 2>/dev/null`) { print("FAIL: assemble seed"); return 1 }
+  print("  seed.ll --clang--> sh_seed   (no C compiler used)")
+  if not write_selfhost_src("build/cfree/selfhost.ludic") { print("FAIL: write source"); return 1 }
+  if not shq("build/cfree/sh_seed build/cfree/selfhost.ludic > build/cfree/out.ll 2>/dev/null") { print("FAIL: seed compiler self-compile"); return 1 }
+  print(`  sh_seed compiles selfhost.ludic -> out.ll ({line_count("build/cfree/out.ll")} lines)`)
+  if shq("cmp -s build/cfree/out.ll selfhost/ludicc.seed.ll") {
+    print("  out.ll == seed.ll — the compiler rebuilds itself with no C compiler")
+    return 0
+  }
+  print("  out.ll != seed.ll (seed is stale — regenerate with: x reseed)")
+  out(capture("diff build/cfree/out.ll selfhost/ludicc.seed.ll | head"))
+  return 1
+}
+
+# ---- reseed: regenerate the checked-in IR seed (C-free when possible) ---------
+# Uses the CURRENT seed to build the new one, compiling twice so the seed is a
+# fixed point of the NEW compiler, not a one-step image of the old. Falls back to
+# bin/ludicc only if the seed itself no longer assembles. Verify with
+# `x bootstrap-cfree` afterwards.
+fn cmd_reseed() -> int {
+  run("mkdir -p build/cfree")
+  if not write_selfhost_src("build/cfree/selfhost.ludic") { print("FAIL: write source"); return 1 }
+  if shq(`{cc()} selfhost/ludicc.seed.ll -o build/cfree/sh_old 2>/dev/null`) {
+    if not shq("build/cfree/sh_old build/cfree/selfhost.ludic > build/cfree/step1.ll") { print("FAIL: step1"); return 1 }
+    if not shq(`{cc()} build/cfree/step1.ll -o build/cfree/sh_new`) { print("FAIL: assemble sh_new"); return 1 }
+    if not shq("build/cfree/sh_new build/cfree/selfhost.ludic > selfhost/ludicc.seed.ll") { print("FAIL: reseed"); return 1 }
+  } else {
+    print("seed does not build; reseeding from bin/ludicc")
+    ensure_ludicc()
+    if cmd_selfhost_build("bin/ludicc", "build/cfree/sh_c") != 0 { print("FAIL: build from bin/ludicc"); return 1 }
+    if not shq("build/cfree/sh_c build/cfree/selfhost.ludic > selfhost/ludicc.seed.ll") { print("FAIL: reseed"); return 1 }
+  }
+  print(`reseeded: {line_count("selfhost/ludicc.seed.ll")} lines`)
+  return 0
+}

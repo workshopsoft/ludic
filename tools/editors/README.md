@@ -13,8 +13,8 @@ tools/ludic-tools/            the actual language knowledge, in C, no dependenci
   ludic_index.h               error-tolerant reader: declarations, bindings, scopes
   ludic_workspace.h           multi-file model: imports, compilation units, Markdown
   ludic_json.h                just enough JSON for LSP
-  ludic_fmt_main.c            -> build/ludic-fmt
-  ludic_lsp.c                 -> build/ludic-lsp
+  ludic_fmt_main.c            -> bin/ludic-fmt
+  ludic_lsp.c                 -> bin/ludic-lsp
 
 tools/editors/
   shared/                     TextMate grammar + Markdown injection + language config
@@ -26,11 +26,11 @@ tools/editors/
 ## Build it
 
 ```bash
-./tools/build-tools.sh
+bin/x tools
 ```
 
-Produces `build/ludic-fmt` and `build/ludic-lsp`. Add `--install` to symlink both
-into `~/.local/bin`, `--test` to run `tools/test-tools.sh` afterwards.
+Produces `bin/ludic-fmt` and `bin/ludic-lsp`. Add `--install` to symlink both
+into `~/.local/bin`, `--test` to run `bin/x test-tools` afterwards.
 
 ## What you get, in any editor
 
@@ -53,7 +53,7 @@ and otherwise keywords, builtins, and everything in scope.
 ## Per-editor setup
 
 - **VS Code** — [`vscode/`](vscode/). `npm install && npx @vscode/vsce package`, then
-  install the `.vsix`. Finds the binaries under `build/` on its own.
+  install the `.vsix`. Finds the binaries under `bin/` on its own.
 - **JetBrains** — [`jetbrains/`](jetbrains/). `./gradlew buildPlugin`, then install the
   zip from disk. Uses LSP4IJ rather than the paid-IDE LSP API, so it works in
   Community editions too.
@@ -65,9 +65,9 @@ and otherwise keywords, builtins, and everything in scope.
 - **Anything else** that speaks LSP:
 
   ```
-  command: build/ludic-lsp --stdio
+  command: bin/ludic-lsp --stdio
   languages: ludic, markdown
-  initializationOptions: { "compilerPath": "build/ludicc", "compilerDiagnostics": true, "indentSize": 2 }
+  initializationOptions: { "compilerPath": "bin/ludicc", "compilerDiagnostics": true, "indentSize": 2 }
   ```
 
 ## Markdown
@@ -98,8 +98,8 @@ prose:
 The formatter handles Markdown too, which keeps documentation honest:
 
 ```bash
-build/ludic-fmt --check LANGUAGE.md README.md     # CI: fail if a fence is unformatted
-build/ludic-fmt -w LANGUAGE.md                    # reformat the fences, leave the prose
+bin/ludic-fmt --check LANGUAGE.md README.md     # CI: fail if a fence is unformatted
+bin/ludic-fmt -w LANGUAGE.md                    # reformat the fences, leave the prose
 ```
 
 ## Keeping a tree formatted
@@ -109,8 +109,8 @@ ln -sf ../../tools/git-hooks/pre-commit .git/hooks/pre-commit
 ```
 
 The hook runs `ludic-fmt --check` over the staged `.ludic` and `.md` files only,
-and does nothing at all when `build/ludic-fmt` has not been built — so it never
-blocks a commit on a machine that has not run `build-tools.sh`.
+and does nothing at all when `bin/ludic-fmt` has not been built — so it never
+blocks a commit on a machine that has not run `bin/x tools`.
 
 ## Why the formatter is not `ludicc --fmt`
 
@@ -132,7 +132,7 @@ both spellings are what the language documents and uses:
   (`const R_DIR:   int = 0    # 0 up`) survive a save;
 - `id=Root` inside a `ui` block and `{Enemy}` inside a query stay tight.
 
-`tools/test-tools.sh` checks the property that matters: formatting every file in
+`bin/x test-tools` checks the property that matters: formatting every file in
 the tree and re-running the *compiler's* canonical dump produces byte-identical
 output. The formatter cannot change what a program means.
 
@@ -142,7 +142,7 @@ The vocabulary is written down in five places that cannot include each other —
 the compiler's two tables, `ludic_syntax.h`, the TextMate grammar (JSON), and the
 JetBrains lexer (Kotlin). Adding a builtin and forgetting the rest is silent
 failure, so `tools/check-vocabulary.py` compares all five and
-`tools/test-tools.sh` runs it.
+`bin/x test-tools` runs it.
 
 When you add a keyword or builtin: put it in `ludic_syntax.h`, then run
-`./tools/test-tools.sh` and let it tell you which copies still need it.
+`bin/x test-tools` and let it tell you which copies still need it.

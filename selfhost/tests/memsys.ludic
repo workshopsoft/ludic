@@ -1,0 +1,19 @@
+program T {
+  entry {
+    let b = Mem.bytes(8)
+    Mem.poke(b, 0, 65)
+    Mem.poke(b, 1, 66)
+    print(Mem.peek(b, 0))         # 65
+    print(Mem.peek(b, 1))         # 66
+    Mem.fill(b, 0, 8)
+    print(Mem.peek(b, 0))         # 0
+    let c = Mem.bytes(8)
+    Mem.poke(b, 3, 99)
+    Mem.copy(c, b, 8)
+    print(Mem.peek(c, 3))         # 99
+    let w = Mem.words(4)
+    w[0] = 12345
+    print(w[0])                   # 12345
+    print(Sys.arg_count())        # 1
+  }
+}

@@ -1,0 +1,17 @@
+program T {
+  entry {
+    print(Text.equals(Text.replace("a.b.c", ".", "-"), "a-b-c"))   # 1
+    print(Text.equals(Text.replace("hello", "l", "L"), "heLLo"))   # 1
+    print(Text.equals(Text.replace("hello", "x", "y"), "hello"))   # 1
+    let parts = Text.split("a,b,c", ",")
+    print(List.len(parts))                # 3
+    print(Text.equals(parts[0], "a"))     # 1
+    print(Text.equals(parts[2], "c"))     # 1
+    let one = Text.split("noseps", ",")
+    print(List.len(one))                  # 1
+    print(Text.equals(one[0], "noseps"))  # 1
+    print(Text.equals(Text.join(parts, "-"), "a-b-c"))   # 1
+    print(Text.equals(Text.join(parts, ""), "abc"))      # 1
+    print(Text.equals(Text.join(Text.split("x/y/z", "/"), "/"), "x/y/z"))  # 1
+  }
+}

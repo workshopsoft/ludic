@@ -1,0 +1,86 @@
+# emit_collide.ludic — the Collide.* namespace: 2D overlap tests on plain
+# integer coordinates (pixels or tiles). Rectangles are (x, y, w, h) with the
+# origin at the top-left; circles are (x, y, r). Squared distances use i64 so a
+# large coordinate can't overflow. Each returns a bool.
+
+fn is_collide_ns(meth: ptr) -> bool {
+  if (meth == "rects") or (meth == "point_rect") { return true }
+  if (meth == "circles") or (meth == "rect_circle") { return true }
+  return false
+}
+
+# dx*dx + dy*dy widened to i64 (no overflow for 32-bit deltas)
+fn coll_sq_sum(dx: ptr, dy: ptr) -> ptr {
+  let dx64 = emit_bind(`sext i32 {dx} to i64`)
+  let dy64 = emit_bind(`sext i32 {dy} to i64`)
+  let xx = emit_bind(`mul i64 {dx64}, {dx64}`)
+  let yy = emit_bind(`mul i64 {dy64}, {dy64}`)
+  return emit_bind(`add i64 {xx}, {yy}`)
+}
+
+# max(lo, min(v, hi)) — clamp v into [lo, hi]
+fn coll_clamp(v: ptr, lo: ptr, hi: ptr) -> ptr {
+  let c1 = emit_bind(`icmp slt i32 {v}, {hi}`)
+  let t = emit_bind(`select i1 {c1}, i32 {v}, i32 {hi}`)
+  let c2 = emit_bind(`icmp sgt i32 {lo}, {t}`)
+  return emit_bind(`select i1 {c2}, i32 {lo}, i32 {t}`)
+}
+
+fn emit_collide_ns(meth: ptr, e: Node) -> Val {
+  if (meth == "rects") {                            # AABB overlap of two rects
+    let ax = emit_expr(e.kids[0]);  let ay = emit_expr(e.kids[1]);  let aw = emit_expr(e.kids[2]);  let ah = emit_expr(e.kids[3])
+    let bx = emit_expr(e.kids[4]);  let by = emit_expr(e.kids[5]);  let bw = emit_expr(e.kids[6]);  let bh = emit_expr(e.kids[7])
+    let axw = emit_bind(`add i32 {ax.code}, {aw.code}`)
+    let bxw = emit_bind(`add i32 {bx.code}, {bw.code}`)
+    let ayh = emit_bind(`add i32 {ay.code}, {ah.code}`)
+    let byh = emit_bind(`add i32 {by.code}, {bh.code}`)
+    let c1 = emit_bind(`icmp slt i32 {ax.code}, {bxw}`)
+    let c2 = emit_bind(`icmp slt i32 {bx.code}, {axw}`)
+    let c3 = emit_bind(`icmp slt i32 {ay.code}, {byh}`)
+    let c4 = emit_bind(`icmp slt i32 {by.code}, {ayh}`)
+    let x = emit_bind(`and i1 {c1}, {c2}`)
+    let y = emit_bind(`and i1 {c3}, {c4}`)
+    let r = emit_bind(`and i1 {x}, {y}`)
+    return val(emit_bind(`zext i1 {r} to i32`), "bool")
+  }
+  if (meth == "point_rect") {                       # is a point inside a rect
+    let px = emit_expr(e.kids[0]);  let py = emit_expr(e.kids[1])
+    let rx = emit_expr(e.kids[2]);  let ry = emit_expr(e.kids[3]);  let rw = emit_expr(e.kids[4]);  let rh = emit_expr(e.kids[5])
+    let rxw = emit_bind(`add i32 {rx.code}, {rw.code}`)
+    let ryh = emit_bind(`add i32 {ry.code}, {rh.code}`)
+    let c1 = emit_bind(`icmp sge i32 {px.code}, {rx.code}`)
+    let c2 = emit_bind(`icmp slt i32 {px.code}, {rxw}`)
+    let c3 = emit_bind(`icmp sge i32 {py.code}, {ry.code}`)
+    let c4 = emit_bind(`icmp slt i32 {py.code}, {ryh}`)
+    let x = emit_bind(`and i1 {c1}, {c2}`)
+    let y = emit_bind(`and i1 {c3}, {c4}`)
+    let r = emit_bind(`and i1 {x}, {y}`)
+    return val(emit_bind(`zext i1 {r} to i32`), "bool")
+  }
+  if (meth == "circles") {                          # do two circles overlap
+    let ax = emit_expr(e.kids[0]);  let ay = emit_expr(e.kids[1]);  let ar = emit_expr(e.kids[2])
+    let bx = emit_expr(e.kids[3]);  let by = emit_expr(e.kids[4]);  let br = emit_expr(e.kids[5])
+    let dx = emit_bind(`sub i32 {ax.code}, {bx.code}`)
+    let dy = emit_bind(`sub i32 {ay.code}, {by.code}`)
+    let d2 = coll_sq_sum(dx, dy)
+    let rs = emit_bind(`add i32 {ar.code}, {br.code}`)
+    let rs64 = emit_bind(`sext i32 {rs} to i64`)
+    let r2 = emit_bind(`mul i64 {rs64}, {rs64}`)
+    let le = emit_bind(`icmp sle i64 {d2}, {r2}`)
+    return val(emit_bind(`zext i1 {le} to i32`), "bool")
+  }
+  # rect_circle: nearest point on the rect to the circle centre, within radius
+  let rx = emit_expr(e.kids[0]);  let ry = emit_expr(e.kids[1]);  let rw = emit_expr(e.kids[2]);  let rh = emit_expr(e.kids[3])
+  let cx = emit_expr(e.kids[4]);  let cy = emit_expr(e.kids[5]);  let cr = emit_expr(e.kids[6])
+  let rxw = emit_bind(`add i32 {rx.code}, {rw.code}`)
+  let ryh = emit_bind(`add i32 {ry.code}, {rh.code}`)
+  let clx = coll_clamp(cx.code, rx.code, rxw)
+  let cly = coll_clamp(cy.code, ry.code, ryh)
+  let dx = emit_bind(`sub i32 {cx.code}, {clx}`)
+  let dy = emit_bind(`sub i32 {cy.code}, {cly}`)
+  let d2 = coll_sq_sum(dx, dy)
+  let cr64 = emit_bind(`sext i32 {cr.code} to i64`)
+  let r2 = emit_bind(`mul i64 {cr64}, {cr64}`)
+  let le = emit_bind(`icmp sle i64 {d2}, {r2}`)
+  return val(emit_bind(`zext i1 {le} to i32`), "bool")
+}

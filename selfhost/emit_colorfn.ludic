@@ -1,0 +1,74 @@
+# emit_colorfn.ludic — the Color.* function surface (Color.Name constants are
+# resolved at compile time elsewhere). Colors are 0x00RRGGBB ints; these build
+# and blend them with plain integer/fixed math. rgb/rgba pack channels; lerp/
+# darken/lighten/with_alpha transform an existing color.
+
+fn is_colorfn_ns(meth: ptr) -> bool {
+  if (meth == "rgb") or (meth == "rgba") or (meth == "lerp") { return true }
+  if (meth == "darken") or (meth == "lighten") or (meth == "with_alpha") { return true }
+  return false
+}
+
+# (c >> shift) & 255 -> code of a channel value
+fn color_ch(c: ptr, shift: ptr) -> ptr {
+  let sh = emit_bind(`lshr i32 {c}, {shift}`)
+  return emit_bind(`and i32 {sh}, 255`)
+}
+
+# (r << 16) | (g << 8) | b -> code of a packed color
+fn color_pack(r: ptr, g: ptr, b: ptr) -> ptr {
+  let r16 = emit_bind(`shl i32 {r}, 16`)
+  let g8 = emit_bind(`shl i32 {g}, 8`)
+  let rg = emit_bind(`or i32 {r16}, {g8}`)
+  return emit_bind(`or i32 {rg}, {b}`)
+}
+
+# ch0 + ((ch1 - ch0) * t >> 16), t a fixed 0..1 -> code of a blended channel
+fn color_lerp_ch(ch0: ptr, ch1: ptr, t: ptr) -> ptr {
+  let d = emit_bind(`sub i32 {ch1}, {ch0}`)
+  let dt = emit_bind(`mul i32 {d}, {t}`)
+  let dsh = emit_bind(`ashr i32 {dt}, 16`)
+  return emit_bind(`add i32 {ch0}, {dsh}`)
+}
+
+fn emit_colorfn_ns(meth: ptr, e: Node) -> Val {
+  if (meth == "rgb") {                              # rgb(r, g, b) -> 0xRRGGBB
+    let r = emit_expr(e.kids[0]);  let g = emit_expr(e.kids[1]);  let b = emit_expr(e.kids[2])
+    return val(color_pack(r.code, g.code, b.code), "int")
+  }
+  if (meth == "rgba") {                             # rgba(r, g, b, a) -> 0xAARRGGBB
+    let r = emit_expr(e.kids[0]);  let g = emit_expr(e.kids[1]);  let b = emit_expr(e.kids[2]);  let a = emit_expr(e.kids[3])
+    let base = color_pack(r.code, g.code, b.code)
+    let a24 = emit_bind(`shl i32 {a.code}, 24`)
+    return val(emit_bind(`or i32 {base}, {a24}`), "int")
+  }
+  if (meth == "with_alpha") {                       # replace the alpha byte
+    let c = emit_expr(e.kids[0]);  let a = emit_expr(e.kids[1])
+    let rgb = emit_bind(`and i32 {c.code}, 16777215`)   # c & 0x00FFFFFF
+    let a24 = emit_bind(`shl i32 {a.code}, 24`)
+    return val(emit_bind(`or i32 {rgb}, {a24}`), "int")
+  }
+  if (meth == "lerp") {                             # blend two colors by t (fixed 0..1)
+    let c0 = emit_expr(e.kids[0]);  let c1 = emit_expr(e.kids[1]);  let t = emit_expr(e.kids[2])
+    let r = color_lerp_ch(color_ch(c0.code, "16"), color_ch(c1.code, "16"), t.code)
+    let g = color_lerp_ch(color_ch(c0.code, "8"), color_ch(c1.code, "8"), t.code)
+    let b = color_lerp_ch(color_ch(c0.code, "0"), color_ch(c1.code, "0"), t.code)
+    return val(color_pack(r, g, b), "int")
+  }
+  if (meth == "darken") {                           # scale channels by (1 - amount)
+    let c = emit_expr(e.kids[0]);  let amt = emit_expr(e.kids[1])
+    let factor = emit_bind(`sub i32 65536, {amt.code}`)
+    let r0 = color_ch(c.code, "16");  let g0 = color_ch(c.code, "8");  let b0 = color_ch(c.code, "0")
+    let rm = emit_bind(`mul i32 {r0}, {factor}`);  let r = emit_bind(`ashr i32 {rm}, 16`)
+    let gm = emit_bind(`mul i32 {g0}, {factor}`);  let g = emit_bind(`ashr i32 {gm}, 16`)
+    let bm = emit_bind(`mul i32 {b0}, {factor}`);  let b = emit_bind(`ashr i32 {bm}, 16`)
+    return val(color_pack(r, g, b), "int")
+  }
+  # lighten: ch + (255 - ch) * amount
+  let c = emit_expr(e.kids[0]);  let amt = emit_expr(e.kids[1])
+  let r0 = color_ch(c.code, "16");  let g0 = color_ch(c.code, "8");  let b0 = color_ch(c.code, "0")
+  let rr = emit_bind(`sub i32 255, {r0}`);  let rm = emit_bind(`mul i32 {rr}, {amt.code}`);  let rt = emit_bind(`ashr i32 {rm}, 16`);  let r = emit_bind(`add i32 {r0}, {rt}`)
+  let gr = emit_bind(`sub i32 255, {g0}`);  let gm = emit_bind(`mul i32 {gr}, {amt.code}`);  let gt = emit_bind(`ashr i32 {gm}, 16`);  let g = emit_bind(`add i32 {g0}, {gt}`)
+  let br = emit_bind(`sub i32 255, {b0}`);  let bm = emit_bind(`mul i32 {br}, {amt.code}`);  let bt = emit_bind(`ashr i32 {bm}, 16`);  let b = emit_bind(`add i32 {b0}, {bt}`)
+  return val(color_pack(r, g, b), "int")
+}

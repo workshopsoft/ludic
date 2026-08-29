@@ -37,11 +37,11 @@ class LudicConfigurable(private val project: Project) : Configurable {
         panel = FormBuilder.createFormBuilder()
             .addLabeledComponent(JBLabel("Language server (ludic-lsp):"), serverField, 1, false)
             .addComponentToRightColumn(
-                JBLabel("Leave empty to use build/ludic-lsp under the project, then PATH.")
+                JBLabel("Leave empty to use bin/ludic-lsp under the project, then PATH.")
             )
             .addLabeledComponent(JBLabel("Compiler (ludicc):"), compilerField, 1, false)
             .addComponentToRightColumn(
-                JBLabel("Used for authoritative diagnostics. Empty means build/ludicc.")
+                JBLabel("Used for authoritative diagnostics. Empty means bin/ludicc.")
             )
             .addComponent(diagnostics)
             .addLabeledComponent(JBLabel("Formatter indent:"), indent, 1, false)

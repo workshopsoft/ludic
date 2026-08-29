@@ -2,7 +2,7 @@
 
 > **Status: EV0 fully shipped; EV1 (spawn/despawn), EV2 (first cut) and EV3
 > shipped; EV4–EV7 are design.** Implemented, self-hosted to the C-free fixpoint,
-> and each a `test.sh` check:
+> and each a `bin/x test` check:
 > - **EV0** — `event`/`@On`/`emit` lowered to `@ev_<E>` dispatch (compile-time
 >   listeners), **plus the foreign C ABI** (`ludic_on_<E>`, the `%Ev_<E>` payload
 >   struct, a fixed-capacity listener array), proven by a C mod in
@@ -566,7 +566,7 @@ work (and how LIFECYCLE/SCENES sequence).
   `N_EVENT`/`S_EMIT`; `parse_event` + `@On` annotation + `emit` statement (guarded
   by an identifier-lookahead so a bare `emit(...)` call still parses); registries
   `g_events`/`g_onlisten` (emit_core); `emit_event_fns` (emit_game); `emit_emit`
-  (emit_stmt). [`examples/events.ludic`](examples/events.ludic) is a `test.sh` check.
+  (emit_stmt). [`examples/events.ludic`](examples/events.ludic) is a `bin/x test` check.
 - **EV1 — `@Public` hook promotion.** ✅ *All scopes shipped.* `@Public` on a
   lifecycle hook fires a public event at that hook's site (payload: entity, plus
   `EndReason` for despawn); `find_event(name)` doubles as the "is this hook

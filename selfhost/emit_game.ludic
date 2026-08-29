@@ -751,6 +751,9 @@ fn emit_game_main() -> void {
   emit_calls_for_phase("Update")
   emit_calls_for_phase("LateUpdate")
   emit_calls_for_phase("Render")
+  let fcur = emit_bind("load i32, ptr @L_frame")     # Time.frame(): count completed frames
+  let fnext = emit_bind(`add i32 {fcur}, 1`)
+  emit("  store i32 ");  emit(fnext);  emit(", ptr @L_frame\n")
   emit("  br label %loop\n")
   emit("done:\n")
   if len(g_ondespawn) > 0 { emit("  call void @L_despawn_all(i32 2)\n") }   # LC1: every survivor's @OnDespawn fires with reason Quit

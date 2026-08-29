@@ -11,7 +11,7 @@ threads + sockets + a GPU) are load-bearing for everything above them.
 This document is written against evidence, not memory: `luanti-org/luanti` at
 `main` was cloned and read, and every claim about Ludic below was verified
 against `compiler/ludicc.c` / `compiler/native.c` or by compiling a probe
-program with `build/ludicc`.
+program with `bin/ludicc`.
 
 ---
 
@@ -1246,7 +1246,7 @@ process that reads it back — proving the thread pool, the compressor and the
 round-trip.
 
 **Note on the new WASM target.** A peer session just landed WebAssembly support
-(`runtime/web/`, `test.sh` now 64/64), and `@main` is now split into
+(`runtime/web/`, `bin/x test` now 64/64), and `@main` is now split into
 `ludic_boot/frame/alive/teardown` so a browser can drive the loop from
 `requestAnimationFrame`. Two consequences for this roadmap: (a) threads on
 wasm32 mean Web Workers + SharedArrayBuffer, not pthreads, so **G-17 needs a

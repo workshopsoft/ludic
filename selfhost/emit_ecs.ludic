@@ -33,6 +33,7 @@ fn has_ecs() -> bool { return has_systems() or has_models() }
 fn emit_ecs_storage() -> void {
   emith("@L_running = internal global i32 1\n")
   emith("@L_key = internal global i32 0\n")
+  emith("@L_frame = internal global i32 0\n")
   if len(g_scenes) > 0 { emith("@L_scene = internal global i32 0\n") }   # active base scene id
   emith("@L_entc = internal global i32 0\n")
   let me = itoa(MAX_ENT)

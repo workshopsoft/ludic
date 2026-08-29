@@ -3,7 +3,7 @@
 > **Status: S0 shipped; S1–S6 are design.** The base construct — `scene` /
 > `layer` / `on enter` / `on exit` / `become`, lowered to the implicit machine of
 > §3 and §9 — is implemented and tested ([`examples/scenes.ludic`](examples/scenes.ludic),
-> a `test.sh` check). The extensions in §4–§8 (scene-owned entities, richer
+> a `bin/x test` check). The extensions in §4–§8 (scene-owned entities, richer
 > layers, the overlay stack, scene-local state, transition parameters) are still
 > design targets. This document reaches deliberately past the thin sketch so we
 > can decide the shape before building each one. §11 lists the open decisions.
@@ -310,7 +310,7 @@ Each is independently shippable and testable, matching how the repo phases work.
   exit`/`become` lowered to the implicit `machine`; the active scene is
   snapshotted per phase so exactly one scene's layers dispatch in any phase.
   [`examples/scenes.ludic`](examples/scenes.ludic) compiles, runs, and is checked
-  by `test.sh`. This is the floor everything else builds on.
+  by `bin/x test`. This is the floor everything else builds on.
 - **S1 — `@OnEnter`/`@OnExit` annotation form** (E5, cheap once S0 exists).
 - **S2 — layer toggle & pause** (E2) on top of the existing `enable`/`disable`.
   ✅ *Toggle shipped* (via EVENTS-DESIGN EV1 layers): `enable layer L` / `disable

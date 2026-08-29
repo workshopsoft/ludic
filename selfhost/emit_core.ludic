@@ -21,6 +21,9 @@ var nloc: int = 0
 var g_uses_str: bool = false  # a `str + str` / `str == str` was emitted -> emit the prelude
 var g_uses_intstr: bool = false  # `str(int)` was emitted -> emit the int->string prelude
 var g_uses_strslice: bool = false  # `s[a..b]` was emitted -> emit the substring prelude
+var g_uses_mathrt: bool = false  # Math.sqrt/sin/cos/tan was emitted -> emit the math runtime prelude
+var g_uses_textrt: bool = false  # Text.upper/lower/trim/repeat/pad was emitted -> emit the text builders
+var g_uses_textrt2: bool = false  # Text.split/join/replace was emitted -> emit the string/slice builders
 
 # loop targets for break/continue (innermost last)
 var brk_lbl: []ptr

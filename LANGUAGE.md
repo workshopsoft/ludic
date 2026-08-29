@@ -752,16 +752,16 @@ ludic  app.ludic                       # compile AND run (forwards the exit code
 ```
 
 `ludicc` (compile) and `ludic` (compile-and-run) are one multi-call binary built
-by `./build-cli.sh`. **[COMPILING.md](COMPILING.md) is the authoritative CLI
+by `bin/x build-cli`. **[COMPILING.md](COMPILING.md) is the authoritative CLI
 reference** — the full flag set (`-o`, `--windowed`, `--headless`, `--emit-llvm`,
 `--save-temps`, `--run`), the `LUDIC_HOME` / `LUDIC_CC` environment variables,
 and the IR-to-stdout bootstrap contract (no `-o`, invoked as `ludicc`) that
-`build.sh` / `reseed.sh` rely on. The default mode is auto: a file with `handler`s
+`bin/x app` / `bin/x reseed` rely on. The default mode is auto: a file with `handler`s
 links windowed, otherwise headless; an explicit flag always wins.
 
 The retired C driver's `--shared`, `--fmt`, `-c`, cross-compile (`--target`) and
 wasm modes are **not** on the self-hosted toolchain (see "Not yet implemented").
-Source formatting now lives in the standalone `build/ludic-fmt` (below), not a
+Source formatting now lives in the standalone `bin/ludic-fmt` (below), not a
 compiler flag.
 
 The self-hosted compiler is intentionally permissive: it has no separate
@@ -773,10 +773,10 @@ duplicate types, unknown fields, arity) are future work.
 ### Editors
 
 ```bash
-./tools/build-tools.sh                 # -> build/ludic-fmt, build/ludic-lsp
-build/ludic-fmt -w src/               # format in place (keeps comments)
-build/ludic-fmt --check .             # CI: exit 1 if anything is unformatted
-build/ludic-lsp --stdio               # the language server, for any editor
+bin/x tools                            # -> bin/ludic-fmt, bin/ludic-lsp
+bin/ludic-fmt -w src/                 # format in place (keeps comments)
+bin/ludic-fmt --check .               # CI: exit 1 if anything is unformatted
+bin/ludic-lsp --stdio                 # the language server, for any editor
 ```
 
 `ludic-fmt` is the source formatter: it works on tokens, so comments and blank
@@ -800,7 +800,7 @@ Emacs, Sublime and Zed, are in `tools/editors/` — see
 - `examples/snake.ludic` — Snake, no assets — same compiler, proving generality.
 
 ```bash
-./build.sh examples/snake.ludic && ./build/snake
+bin/x app examples/snake.ludic && ./build/snake
 ```
 
 ## Not yet implemented
@@ -815,7 +815,7 @@ are future work.
   slices; fixed inline arrays are not accepted yet. Use `[]T` slices.
 - **CLI: `--shared`, `--fmt`, and the wasm/cross target** — these were features of
   the retired C driver; the self-hosted `ludicc` does not carry them (source
-  formatting lives in `build/ludic-fmt` instead). Output-path and IR flags are in
+  formatting lives in `bin/ludic-fmt` instead). Output-path and IR flags are in
   flux as the CLI front-end is rebuilt — check `ludicc` usage for the current set.
 
 Records (`property` used with `new`) and array types, `break`/`continue`, and
@@ -827,7 +827,7 @@ self-hosting; their lowerings are in
 
 > **Implemented (S0).** `scene`, `layer`, and the `on enter` / `on exit` hooks
 > compile; [`examples/scenes.ludic`](examples/scenes.ludic) runs and is checked
-> by `test.sh`. A scene lowers to a `machine` the compiler writes for you: one
+> by `bin/x test`. A scene lowers to a `machine` the compiler writes for you: one
 > implicit active-scene register, states numbered by declaration order, and
 > `become` as two direct calls plus a store. Richer scene features (the overlay
 > stack, scene-owned entities, scene-local state, transition parameters) are

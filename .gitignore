@@ -2,9 +2,9 @@ build
 **.zip
 out.ppm
 
-# self-hosted front-end binaries (built by ./build-cli.sh) and their output
-/ludic
-/ludicc
+# the toolchain binaries (ludicc, ludic, x, ludic-fmt, ludic-lsp) — all built
+# into bin/ by the one-line bootstrap + `bin/x build`; never checked in. The
+# only thing published is the source and the LLVM-IR seed (selfhost/ludicc.seed.ll).
 /bin/
 
 # editor toolchain build artifacts

@@ -101,6 +101,77 @@ fn rt_frame_rect(x: int, y: int, w: int, h: int, c: int) -> void {
   rt_fill_rect(x + w - 1, y, 1, h, c)
 }
 
+# A straight line by Bresenham's algorithm — integer only, any direction.
+fn rt_line(x0: int, y0: int, x1: int, y1: int, c: int) -> void {
+  var x = x0;  var y = y0
+  let dx = abs(x1 - x0);  let dy = 0 - abs(y1 - y0)
+  var sx = 0 - 1;  if x0 < x1 { sx = 1 }
+  var sy = 0 - 1;  if y0 < y1 { sy = 1 }
+  var err = dx + dy
+  while true {
+    rt_put_px(x, y, c)
+    if (x == x1) and (y == y1) { return }
+    let e2 = 2 * err
+    if e2 >= dy { err = err + dy;  x = x + sx }
+    if e2 <= dx { err = err + dx;  y = y + sy }
+  }
+}
+
+# A circle outline by the midpoint algorithm (eight-way symmetry).
+fn rt_circle(cx: int, cy: int, r: int, c: int) -> void {
+  if r < 0 { return }
+  var x = r;  var y = 0;  var err = 1 - r
+  while x >= y {
+    rt_put_px(cx + x, cy + y, c);  rt_put_px(cx + y, cy + x, c)
+    rt_put_px(cx - y, cy + x, c);  rt_put_px(cx - x, cy + y, c)
+    rt_put_px(cx - x, cy - y, c);  rt_put_px(cx - y, cy - x, c)
+    rt_put_px(cx + y, cy - x, c);  rt_put_px(cx + x, cy - y, c)
+    y = y + 1
+    if err < 0 { err = err + 2 * y + 1 }
+    else { x = x - 1;  err = err + 2 * (y - x) + 1 }
+  }
+}
+
+# A filled disc — one horizontal span per row, width from the circle equation.
+fn rt_fill_circle(cx: int, cy: int, r: int, c: int) -> void {
+  if r < 0 { return }
+  let r2 = r * r
+  var dy = 0 - r
+  while dy <= r {
+    var dx = 0
+    while (dx + 1) * (dx + 1) + dy * dy <= r2 { dx = dx + 1 }
+    rt_fill_rect(cx - dx, cy + dy, 2 * dx + 1, 1, c)
+    dy = dy + 1
+  }
+}
+
+# A triangle outline — three lines.
+fn rt_triangle(x0: int, y0: int, x1: int, y1: int, x2: int, y2: int, c: int) -> void {
+  rt_line(x0, y0, x1, y1, c)
+  rt_line(x1, y1, x2, y2, c)
+  rt_line(x2, y2, x0, y0, c)
+}
+
+# A filled triangle — bounding-box scan with an edge-sign inside test.
+fn rt_fill_triangle(x0: int, y0: int, x1: int, y1: int, x2: int, y2: int, c: int) -> void {
+  let minx = min(x0, min(x1, x2));  let maxx = max(x0, max(x1, x2))
+  let miny = min(y0, min(y1, y2));  let maxy = max(y0, max(y1, y2))
+  var py = miny
+  while py <= maxy {
+    var px = minx
+    while px <= maxx {
+      let d0 = (x1 - x0) * (py - y0) - (y1 - y0) * (px - x0)
+      let d1 = (x2 - x1) * (py - y1) - (y2 - y1) * (px - x1)
+      let d2 = (x0 - x2) * (py - y2) - (y0 - y2) * (px - x2)
+      let neg = (d0 < 0) or (d1 < 0) or (d2 < 0)
+      let pos = (d0 > 0) or (d1 > 0) or (d2 > 0)
+      if not (neg and pos) { rt_put_px(px, py, c) }
+      px = px + 1
+    }
+    py = py + 1
+  }
+}
+
 # Windowed: hand the framebuffer to the platform layer, which blits it into
 # the view. Headless: nothing to do until shutdown writes the last frame out.
 fn rt_present() -> void {
@@ -214,6 +285,24 @@ fn rt_rng_range(lo: int, hi: int) -> int {
 
 fn rt_rng_chance(pct: int) -> bool {
   return rt_next_rand() % 100 < pct
+}
+
+# a deterministic fixed-point value in [0, 1) — the raw 0..65535 is exactly the
+# Q16.16 fraction (fixed and int share the i32 representation).
+fn rt_rng_value() -> fixed {
+  return rt_rng_range(0, 65535)
+}
+
+# a deterministic integer in [0, max) — 0 when max <= 0
+fn rt_rng_int(max: int) -> int {
+  if max <= 0 { return 0 }
+  return rt_rng_range(0, max - 1)
+}
+
+# a deterministic +1 or -1
+fn rt_rng_sign() -> int {
+  if rt_rng_chance(50) { return 1 }
+  return 0 - 1
 }
 
 # ---- platform: input ------------------------------------------------------

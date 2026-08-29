@@ -289,7 +289,7 @@ Each is independently shippable and testable, matching how the repo phases work.
 
 - **M0 — target axis** (M1) + **revive the OS-owned loop** (M2). *Do these first
   and together* — they're the shared compiler plumbing, they un-break the existing
-  web target (proving the frame-loop split against `run.mjs`/`test.sh` before any
+  web target (proving the frame-loop split against `run.mjs`/`bin/x test` before any
   mobile SDK is involved), and they need no mobile toolchain. This is the floor.
 - **M1 — iOS simulator, framebuffer-as-texture** (M3 iOS shim + M4.1). First pixels
   on a phone, GL/Metal binding proven, no signing/device friction yet.

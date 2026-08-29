@@ -1,0 +1,186 @@
+# tools.ludic — the Ludic editor toolchain: building ludic-fmt / ludic-lsp and
+# their regression suite. Replaces tools/build-tools.sh and tools/test-tools.sh.
+#
+# The formatter and language server are themselves written in Ludic
+# (tools/ludic-tools/*.ludic) and compiled by ludicc; no C is compiled. The LSP
+# protocol test, the TextMate grammar test and the vocabulary check are still
+# driven through python3/node (they are not project shell scripts), invoked here.
+
+# refresh one editor-copy of a shared grammar file if it has drifted
+fn sync_one(shared: ptr, dst: ptr) -> void {
+  if not shq(`cmp -s {shared} {dst}`) {
+    run(`cp {shared} {dst}`)
+    print(`sync: {shared} -> {dst}`)
+  }
+}
+
+# VS Code needs the grammar inside its own extension directory, so it gets a
+# copy that build refreshes rather than trusts (test-tools asserts they match).
+fn sync_vscode_grammar() -> void {
+  if not shq("test -d tools/editors/vscode") { return }
+  run("mkdir -p tools/editors/vscode/syntaxes")
+  sync_one("tools/editors/shared/ludic.tmLanguage.json", "tools/editors/vscode/syntaxes/ludic.tmLanguage.json")
+  sync_one("tools/editors/shared/ludic.markdown-injection.json", "tools/editors/vscode/syntaxes/ludic.markdown-injection.json")
+  sync_one("tools/editors/shared/language-configuration.json", "tools/editors/vscode/language-configuration.json")
+}
+
+# is `flag` present anywhere in argv?
+fn has_flag(flag: ptr) -> bool {
+  var i = 2
+  while i < arg_count() { if (arg(i) == flag) { return true };  i = i + 1 }
+  return false
+}
+
+# ---- tools: build the editor toolchain --------------------------------------
+# usage: x tools [--install] [--test]
+fn cmd_tools() -> int {
+  ensure_ludicc()
+  print("ludicc: tools/ludic-tools/fmt.ludic -> bin/ludic-fmt  (Ludic -> LLVM IR -> binary, no C)")
+  if not build_tool("ludic-fmt", "tools/ludic-tools/fmt.ludic") { return 1 }
+  print("ludicc: tools/ludic-tools/lsp.ludic -> bin/ludic-lsp  (Ludic -> LLVM IR -> binary, no C)")
+  if not build_tool("ludic-lsp", "tools/ludic-tools/lsp.ludic") { return 1 }
+  sync_vscode_grammar()
+
+  if has_flag("--install") {
+    run("mkdir -p \"$HOME/.local/bin\"")
+    run("ln -sf \"$PWD/bin/ludic-fmt\" \"$HOME/.local/bin/ludic-fmt\"")
+    run("ln -sf \"$PWD/bin/ludic-lsp\" \"$HOME/.local/bin/ludic-lsp\"")
+    print("linked into ~/.local/bin (make sure it is on your PATH)")
+  }
+  if has_flag("--test") { return cmd_test_tools() }
+  print("done. editors: see tools/editors/README.md")
+  return 0
+}
+
+# ---- test-tools: the editor-toolchain regression suite -----------------------
+fn cmd_test_tools() -> int {
+  PASS = 0
+  FAIL = 0
+  let fmt = "bin/ludic-fmt"
+  if not is_exec(fmt) { err("bin/ludic-fmt missing — run: x tools\n"); return 2 }
+  if not is_exec("bin/ludic-lsp") { err("bin/ludic-lsp missing — run: x tools\n"); return 2 }
+
+  print("formatter")
+
+  # --- idempotence: formatting twice equals formatting once ------------------
+  let nsrc = capture_line("find examples runtime -name '*.ludic' | wc -l")
+  if shq(`fail=0; for f in $(find examples runtime -name '*.ludic' | sort); do {fmt} "$f" > /tmp/x_a 2>/dev/null; {fmt} /tmp/x_a > /tmp/x_b 2>/dev/null; cmp -s /tmp/x_a /tmp/x_b || fail=1; done; test $fail -eq 0`) {
+    ok(`idempotent on {nsrc} files`)
+  } else { bad("idempotent on the source tree") }
+
+  # --- meaning preserved: reformatting a formatted file must be a no-op -------
+  if shq(`fail=0; for f in examples/hello.ludic examples/snake.ludic examples/menu.ludic examples/qdecl.ludic examples/scenes.ludic; do test -f "$f" || continue; {fmt} "$f" > /tmp/x_f1 2>/dev/null; {fmt} /tmp/x_f1 > /tmp/x_f2 2>/dev/null; cmp -s /tmp/x_f1 /tmp/x_f2 || fail=1; done; test $fail -eq 0`) {
+    ok("formatting is idempotent (fmt(fmt(x)) == fmt(x))")
+  } else { bad("formatting is not idempotent") }
+
+  # --- the strongest invariant: only whitespace ever changes -----------------
+  # every token is re-emitted in order, so the input and output must be
+  # byte-identical once all whitespace is stripped.
+  if shq(`fail=0; for f in $(find examples runtime -name '*.ludic') README.md LANGUAGE.md COMPILING.md; do test -f "$f" || continue; a=$(tr -d ' \t\n' < "$f" | shasum | cut -d' ' -f1); b=$({fmt} "$f" 2>/dev/null | tr -d ' \t\n' | shasum | cut -d' ' -f1); test "$a" = "$b" || fail=1; done; test $fail -eq 0`) {
+    ok("only whitespace changes (byte-identical modulo spacing)")
+  } else { bad("formatter altered non-whitespace bytes") }
+
+  # --- multi-byte characters must survive intact -----------------------------
+  write_file("/tmp/x_utf8.ludic", "program E {\n  # … ellipsis in a comment\n  const S: str = \"café → naïve\"\n}\n")
+  if shq(`{fmt} /tmp/x_utf8.ludic > /tmp/x_utf8.out 2>/dev/null; cmp -s /tmp/x_utf8.ludic /tmp/x_utf8.out`) {
+    ok("UTF-8 preserved byte for byte")
+  } else { bad("UTF-8 mangled") }
+  write_file("/tmp/x_utf8b.ludic", "program F {\nfn f() -> int { return … }\n}\n")
+  let ua = capture_line("tr -d ' \t\n' < /tmp/x_utf8b.ludic | shasum | cut -d' ' -f1")
+  let ub = capture_line(`{fmt} /tmp/x_utf8b.ludic | tr -d ' \t\n' | shasum | cut -d' ' -f1`)
+  check("unrecognised characters pass through whole", ub, ua)
+
+  # --- comments survive, the whole reason this is not `ludicc --fmt` ----------
+  write_file("/tmp/x_c.ludic", "program C {\n  # keep me\n  property P { x: int = 0 }  # and me\n}\n")
+  let ncmt = capture_line(`{fmt} /tmp/x_c.ludic | grep -c '#'`)
+  check("comments preserved", ncmt, "2")
+
+  # --- messy input is normalised ---------------------------------------------
+  write_file("/tmp/x_m.ludic", "program M{\nproperty P{x:int=0}\nhandler S phase Update{let a=1+2\nif a== -1 {a=-a}}\n}\n")
+  run(`{fmt} /tmp/x_m.ludic > /tmp/x_m.out 2>/dev/null`)
+  if shq("grep -q '^  property P { x: int = 0 }$' /tmp/x_m.out") { ok("reindents and respaces") } else { bad("reindents and respaces") }
+  if shq("grep -q 'a = -a' /tmp/x_m.out") { ok("unary minus not spaced") } else { bad("unary minus not spaced") }
+
+  # --- language conventions are respected, not overwritten -------------------
+  write_file("/tmp/x_u.ludic", "program U {\n  ui M {\n    panel id=Root w=10 {\n      button id=Go text=\"go\"\n    }\n  }\n}\n")
+  if shq(`{fmt} /tmp/x_u.ludic | grep -q 'id=Root'`) { ok("widget props stay tight (id=Root)") } else { bad("widget props stay tight") }
+  write_file("/tmp/x_q.ludic", "program Q {\n  handler S phase Update {\n    for (p) in query [Pos, {Foe}] { }\n  }\n  property Pos { x: int = 0 }\n  property Foe { }\n}\n")
+  if shq(`{fmt} /tmp/x_q.ludic | grep -q '\\[Pos, {{Foe}}\\]'`) { ok("query tags stay tight ({Foe})") } else { bad("query tags stay tight") }
+  write_file("/tmp/x_al.ludic", "program A {\n  const R_A:   int = 0    # one\n  const R_BBB: int = 1    # two\n}\n")
+  if shq(`{fmt} /tmp/x_al.ludic | grep -q 'R_A:   int = 0    # one'`) { ok("hand alignment preserved") } else { bad("hand alignment preserved") }
+
+  # --- --check exit status, for CI and pre-commit hooks ----------------------
+  let chk1 = sh(`{fmt} --check -q /tmp/x_m.ludic`)
+  check("--check exits 1 on unformatted input", str(chk1), "1")
+  run(`{fmt} -w /tmp/x_m.ludic`)
+  let chk2 = sh(`{fmt} --check -q /tmp/x_m.ludic`)
+  check("--check exits 0 after -w", str(chk2), "0")
+
+  # --- markdown: fences formatted, prose untouched ---------------------------
+  write_file("/tmp/x_d.md", "# T\n\nprose  with   spaces\n\n```ludic\nprogram D{property P{x:int=0}}\n```\n\n```python\nz  =  1\n```\n")
+  run(`{fmt} /tmp/x_d.md > /tmp/x_d.out 2>/dev/null`)
+  if shq("grep -q 'prose  with   spaces' /tmp/x_d.out") { ok("markdown prose untouched") } else { bad("markdown prose untouched") }
+  if shq("grep -q 'z  =  1' /tmp/x_d.out") { ok("non-ludic fences untouched") } else { bad("non-ludic fences untouched") }
+  if shq("grep -q 'program D { property P { x: int = 0 } }' /tmp/x_d.out") { ok("ludic fences formatted") } else { bad("ludic fences formatted") }
+
+  print("language server")
+  if shq("python3 tools/test-lsp.py") { ok("language server protocol") } else { bad("language server protocol") }
+
+  print("")
+  print("editor assets")
+  test_json("tools/editors/shared/ludic.tmLanguage.json")
+  test_json("tools/editors/shared/ludic.markdown-injection.json")
+  test_json("tools/editors/shared/language-configuration.json")
+  test_json("tools/editors/vscode/package.json")
+  test_json("tools/editors/vscode/snippets/ludic.json")
+  test_xml("tools/editors/jetbrains/src/main/resources/META-INF/plugin.xml")
+  test_xml("tools/editors/jetbrains/src/main/resources/META-INF/ludic-markdown.xml")
+
+  if shq("command -v node >/dev/null 2>&1") {
+    if shq("node --check tools/editors/vscode/src/extension.js 2>/dev/null") { ok("extension.js parses") } else { bad("extension.js parses") }
+    print("textmate grammar")
+    if shq("node tools/test-grammar.js") { ok("textmate grammar") } else { bad("textmate grammar") }
+  } else {
+    print("  skip  extension.js and grammar tests (node not installed)")
+  }
+
+  # VS Code carries its own copy of the shared grammar; catch an edit to the copy
+  if shq("cmp -s tools/editors/shared/ludic.tmLanguage.json tools/editors/vscode/syntaxes/ludic.tmLanguage.json") and shq("cmp -s tools/editors/shared/ludic.markdown-injection.json tools/editors/vscode/syntaxes/ludic.markdown-injection.json") and shq("cmp -s tools/editors/shared/language-configuration.json tools/editors/vscode/language-configuration.json") {
+    ok("vscode grammar copies match tools/editors/shared")
+  } else { bad2("vscode grammar copies have drifted", "run: x tools  to resync") }
+
+  # the JetBrains plugin is off by default (its first build pulls a gigabyte of
+  # IntelliJ SDK). One env var away: LUDIC_TEST_JETBRAINS=1 x test-tools
+  if (getenv_or("LUDIC_TEST_JETBRAINS", "0") == "1") {
+    if shq("test -x tools/editors/jetbrains/gradlew") {
+      if shq("cd tools/editors/jetbrains && ./gradlew buildPlugin verifyPluginStructure --console=plain -q >/dev/null 2>&1 && test -f build/distributions/Ludic-1.0.0.zip") { ok("jetbrains plugin builds and verifies") } else { bad("jetbrains plugin build") }
+      if shq("cd tools/editors/jetbrains && ./gradlew test --console=plain -q >/dev/null 2>&1") { ok("jetbrains platform tests (lexer, file type, PSI, folding)") } else { bad("jetbrains platform tests") }
+    } else { print("  skip  jetbrains plugin (no gradle wrapper)") }
+  } else {
+    print("  skip  jetbrains plugin build (set LUDIC_TEST_JETBRAINS=1)")
+  }
+
+  # the vocabulary lives in one place; drift between it and its copies (the
+  # TextMate grammar, the Kotlin lexer) is the failure mode this layout prevents.
+  if shq("python3 tools/check-vocabulary.py") { ok("vocabulary in sync across grammar/lexer/header") } else { bad("vocabulary drifted") }
+
+  # every feature the compiler actually implements — namespace methods, keywords,
+  # types, phases — must have a docs/language page. This reads the implementation
+  # (emit_ns_call + ludic_syntax.h), so shipping a feature without docs fails here.
+  if shq("python3 tools/docgen/check-impl.py") { ok("docs cover every implemented feature") } else { bad("docs drifted from the implementation") }
+
+  return report()
+}
+
+fn test_json(path: ptr) -> void {
+  let bn = capture_line(`basename {path}`)
+  if shq(`python3 -c 'import json,sys;json.load(open(sys.argv[1]))' {path} 2>/dev/null`) {
+    ok(`valid JSON: {bn}`)
+  } else { bad(`invalid JSON: {path}`) }
+}
+fn test_xml(path: ptr) -> void {
+  let bn = capture_line(`basename {path}`)
+  if shq(`python3 -c 'import xml.dom.minidom,sys;xml.dom.minidom.parse(sys.argv[1])' {path} 2>/dev/null`) {
+    ok(`valid XML: {bn}`)
+  } else { bad(`invalid XML: {path}`) }
+}

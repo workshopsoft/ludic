@@ -385,7 +385,7 @@ are in the appendix under "Syntax audit".
 ordering constraint, not a preference.
 
 Today, changing the grammar costs: edit `ludicc.c`, `sed` three examples and
-five runtime files, run `./test.sh`. An afternoon.
+five runtime files, run `bin/x test`. An afternoon.
 
 After the fixpoint, `ludicc` is *written in the syntax it parses*. Every change
 becomes a four-step dance: build a compiler that accepts both old and new forms
@@ -485,7 +485,7 @@ stray `&`; `and`/`or` became reserved words, so `let and = 5` is rejected at the
 mistake; the AST op string is now `"and"`/`"or"`, which is **exactly the LLVM
 opcode**, so the lowering ternary collapsed to passing `op` straight through;
 and `--fmt` emits the new spelling for free, since it prints the op string.
-Six regression tests in `test.sh` (64 → 70), including one asserting no `.ludic`
+Six regression tests in `bin/x test` (64 → 70), including one asserting no `.ludic`
 source uses the symbols outside a comment. *Fixed R3.*
 
 **S4. Reserve every keyword.** One table, shared by the lexer, parser,
@@ -531,7 +531,7 @@ file, and give every diagnostic a stable code plus a one-line suggested fix
 (`ludicc --explain L0412`). Feeds the LSP, the docs and any model at once.
 *Cost:* ~250 lines. *Defer to after the fixpoint* — valuable, not ordering-critical.
 
-**S9. Documentation hygiene as a build step.** `test.sh` already understands
+**S9. Documentation hygiene as a build step.** `bin/x test` already understands
 ` ```ludic ` fences. Extend it so **every fence in every `.md` must compile**,
 and fix R10's stale claims. *Cost:* ~60 lines of shell. Do this early — it is
 cheap and it stops the docs drifting further while the rest of the work lands.
@@ -572,14 +572,24 @@ now `and`, `or`, `not`, all reserved words, with no symbol spellings at all.
 
 ## 5.7 Status — self-hosting achieved
 
-Updated 2026-08-27. `./test.sh` = 93/93, `./tools/test-tools.sh` = 28/28,
-`./selfhost/test.sh` = 5/5 including the bootstrap fixpoint.
+Updated 2026-08-27. `bin/x test` = 93/93, `bin/x test-tools` = 28/28,
+`bin/x selfhost-test` = 5/5 including the bootstrap fixpoint.
 
 **Ludic is fully self-hosted.** The compiler is written in Ludic
 (`selfhost/*.ludic`, ~2,400 lines), compiles every example to byte-identical
 output and its own source to a fixpoint, and is built from a checked-in IR seed
-with **no C compiler** — the former C compiler has been deleted. Run
-`./selfhost/bootstrap-cfree.sh`.
+with **no C compiler** — the former C compiler has been deleted.
+
+From a clean checkout, build the compiler and the task-runner in one line:
+
+```bash
+clang selfhost/ludicc.seed.ll -o bin/ludicc && bin/ludicc tools/x/main.ludic -o bin/x
+```
+
+Thereafter `bin/x build` rebuilds the entire toolchain into `bin/` (`ludicc`,
+`ludic`, `x`, `ludic-fmt`, `ludic-lsp`), `bin/x bootstrap-cfree` reproduces the
+compiler from the seed with no C compiler, and `bin/x help` lists every command.
+Run `bin/x` from the repository root.
 
 | Stage | What | State |
 |---|---|---|
@@ -589,7 +599,7 @@ with **no C compiler** — the former C compiler has been deleted. Run
 | **1** | support libraries in Ludic (`str`, `buf`, `io`) | ✅ done |
 | **2** | the compiler ported to Ludic (`lex`, `parse`, `emit_*`) | ✅ done |
 | **3** | the fixpoint (`gen2.ll == gen3.ll`) | ✅ done |
-| **4** | retire the C as a *live dependency* (IR seed, C-free rebuild) | ✅ done — `selfhost/bootstrap-cfree.sh` |
+| **4** | retire the C as a *live dependency* (IR seed, C-free rebuild) | ✅ done — `bin/x bootstrap-cfree` |
 | **4+** | retire `ludicc.c` entirely (port the game backend) | ✅ **done** — `compiler/` deleted; the compiler is `selfhost/*.ludic` |
 
 ### What "self-hosting" means here, precisely
@@ -603,7 +613,7 @@ fixed-point. It targets native (macOS/clang) and emits LLVM IR text that clang
 assembles, exactly the posture the C `ludicc` has.
 
 It is written entirely in that subset, which is why it compiles itself. The
-three-generation proof (`selfhost/bootstrap.sh`):
+three-generation proof (`bin/x bootstrap`):
 
 ```
 stage0  build/ludicc (C)  compiles selfhost.ludic  -> gen1   (a Ludic-written compiler)
@@ -622,11 +632,11 @@ binaries that produce the expected output.
 
 The self-hosted compiler no longer needs the C `ludicc` to exist. Its own LLVM
 IR is checked in as `selfhost/ludicc.seed.ll` — a proven fixed point — and
-`selfhost/bootstrap-cfree.sh` assembles that with clang (an IR assembler, the
+`bin/x bootstrap-cfree` assembles that with clang (an IR assembler, the
 floor Rust and Swift stand on) and rebuilds the compiler, which reproduces its
 own IR. **The C source is never invoked.** This is the seed path §8 recommended.
 
-Crucially, the compiler **evolves** without the C compiler: `selfhost/reseed.sh`
+Crucially, the compiler **evolves** without the C compiler: `bin/x reseed`
 uses the *current* seed to build a compiler with new source, then takes that
 compiler's own output as the new seed. New features (this session: `match`,
 bitwise ops, `peek32`/`poke32`) landed and reseeded entirely C-free. The C
@@ -644,14 +654,14 @@ It now compiles **every example** — `snake`, `menu`, and the 6-file JRPG
 `chronorift` — to output byte-identical to the original C compiler (checked
 against golden renders in `selfhost/golden/`), and still compiles its own source
 to a fixpoint. The C compiler (`compiler/`, ~2,700 lines) has been **deleted**.
-`build.sh` builds `build/ludicc` from the IR seed with clang and drives the
-native link (headless, or windowed via `cocoa.ll`).
+`bin/x build` builds `bin/ludicc` from the IR seed with clang, and `bin/x app`
+drives the native link (headless, or windowed via `cocoa.ll`).
 
 What did not come across: the old C driver's **wasm target, cross-compilation,
 and shared-library** paths. Those are driver features, not codegen — the
 self-host compiler emits native-ABI IR — and re-implementing them on the
 self-hosted toolchain (wasm needs i32 `size_t`; the others are clang flags in
-`build.sh`) is the remaining follow-up.
+the `bin/x app` build path) is the remaining follow-up.
 
 ---
 
@@ -668,7 +678,7 @@ this order — cheapest-and-unblocking first:
 4. **A6** `file_stderr` (~40).
 5. **A2 + A3** `struct` + arrays (~400, landed together).
 
-Each gets a test in `test.sh` as it lands. The suite is at 64/64; Stage 0 should
+Each gets a test in `bin/x test` as it lands. The suite is at 64/64; Stage 0 should
 leave it green and larger.
 
 **Explicitly not in Stage 0:** function pointers, 64-bit ints, a `tool` entry
@@ -711,8 +721,8 @@ internals.
 | Sub-stage | Port | Differential oracle |
 |---|---|---|
 | 2a | `lex.ludic` | Dump the token stream from both compilers; `diff` over every `.ludic` in the tree. |
-| 2b | `parse.ludic` (AST) | **`--fmt` is a free oracle.** The formatter is already a canonical AST printer, and `test.sh` already asserts formatting never changes a program. If both compilers' `--fmt` output is byte-identical on every file, the parsers agree. |
-| 2c | `check.ludic` | Diagnostic text must match on a corpus of deliberately-broken programs. `test.sh` already checks diagnostics — extend that corpus. |
+| 2b | `parse.ludic` (AST) | **`--fmt` is a free oracle.** The formatter is already a canonical AST printer, and `bin/x test` already asserts formatting never changes a program. If both compilers' `--fmt` output is byte-identical on every file, the parsers agree. |
+| 2c | `check.ludic` | Diagnostic text must match on a corpus of deliberately-broken programs. `bin/x test` already checks diagnostics — extend that corpus. |
 | 2d | `emit.ludic` (IR) | **`--emit llvm` must be byte-identical** for every example. This is the strongest oracle available: pass/fail on exact text, no judgement. |
 | 2e | `drive.ludic` | Assemble and link via `clang`; compare final binaries. |
 
@@ -823,7 +833,7 @@ existing framing ("the same floor Rust and Swift stand on") already covers it.
 | 0.5 | `and`/`or`/`not` + short-circuit; doc checking (S9) | ✅ done (S1/S2/S4/S5/S6/S7 deferred — full-language polish) |
 | 1 | `str`, `buf`, `io` support libraries in Ludic | ✅ done (`selfhost/`) |
 | 2 | lexer + parser + AST + IR emitter, in Ludic | ✅ done (`selfhost/`, ~1,300 lines) |
-| 3 | the fixpoint (`gen2.ll == gen3.ll`) + harness | ✅ done (`selfhost/bootstrap.sh`) |
+| 3 | the fixpoint (`gen2.ll == gen3.ll`) + harness | ✅ done (`bin/x bootstrap`) |
 | 4 | port the game backend, retire `ludicc.c` | ⛔ out of scope — mechanical continuation |
 
 The self-host compiler is **~1,300 lines of Ludic** covering the compiler-subset.
@@ -847,8 +857,8 @@ exist.
 
 ## Appendix — probe programs
 
-Each was compiled with `./build.sh probe.ludic --headless` and run against the
-current tree (`./test.sh` = 64/64).
+Each was compiled with `bin/x app probe.ludic --headless` and run against the
+current tree (`bin/x test` = 64/64).
 
 **Recursion** ✅ → `55`
 ```ludic

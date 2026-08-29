@@ -1,0 +1,41 @@
+program T {
+  entry {
+    # ---- Text builders (upper/lower/trim/repeat/pad) ----
+    print(Text.length(Text.upper("abc")))              # 3
+    print(Text.equals(Text.upper("aBc"), "ABC"))        # 1
+    print(Text.equals(Text.lower("aBc"), "abc"))        # 1
+    print(Text.equals(Text.trim("  hi  "), "hi"))       # 1
+    print(Text.length(Text.trim("  hi  ")))             # 2
+    print(Text.equals(Text.repeat("ab", 3), "ababab"))  # 1
+    print(Text.length(Text.repeat("ab", 3)))            # 6
+    print(Text.equals(Text.pad_left("7", 3), "  7"))    # 1
+    print(Text.equals(Text.pad_right("7", 3), "7  "))   # 1
+    print(Text.length(Text.pad_left("7", 3)))           # 3
+    print(Text.equals(Text.pad_left("toolong", 3), "toolong"))  # 1
+
+    # ---- List insert/remove_at/remove/sort ----
+    let xs = new []int
+    push(xs, 3);  push(xs, 1);  push(xs, 2)
+    List.sort(xs)
+    print(List.first(xs))          # 1
+    print(List.last(xs))           # 3
+    print(List.index_of(xs, 2))    # 1
+    List.insert(xs, 1, 99)
+    print(List.len(xs))            # 4
+    print(List.index_of(xs, 99))   # 1
+    print(List.index_of(xs, 2))    # 2
+    List.remove_at(xs, 0)
+    print(List.first(xs))          # 99
+    print(List.len(xs))            # 3
+    List.remove(xs, 2)
+    print(List.len(xs))            # 2
+    print(List.contains(xs, 2))    # 0
+    print(List.last(xs))           # 3
+    let ys = new []int
+    push(ys, 5);  push(ys, 2);  push(ys, 8);  push(ys, 1);  push(ys, 9);  push(ys, 3)
+    List.sort(ys)
+    print(List.first(ys))          # 1
+    print(List.last(ys))           # 9
+    print(List.index_of(ys, 5))    # 3
+  }
+}

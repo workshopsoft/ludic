@@ -23,10 +23,10 @@ for the language reference.
 Build the toolchain once, from the repository root:
 
 ```bash
-./tools/build-tools.sh
+bin/x tools
 ```
 
-That produces `build/ludic-lsp` and `build/ludic-fmt`, which the extension finds
+That produces `bin/ludic-lsp` and `bin/ludic-fmt`, which the extension finds
 on its own. If you keep them elsewhere, set `ludic.server.path`.
 
 Format on save:
@@ -37,7 +37,7 @@ Format on save:
 
 ## Settings
 
-- `ludic.server.path` — where `ludic-lsp` lives. Empty = search `build/`, then `PATH`.
+- `ludic.server.path` — where `ludic-lsp` lives. Empty = search `bin/`, then `PATH`.
 - `ludic.server.enabled` — turn the server off and keep only static highlighting.
 - `ludic.compilerPath` — where `ludicc` lives, for on-save diagnostics.
 - `ludic.compilerDiagnostics` — whether to run the compiler at all.

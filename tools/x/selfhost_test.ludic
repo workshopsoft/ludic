@@ -1,0 +1,68 @@
+# selfhost_test.ludic — the self-hosting suite: the compiler is correct (compiles
+# diverse programs to working binaries) and self-reproducing (the bootstrap
+# fixpoint). Replaces selfhost/test.sh.
+
+# compile selfhost/tests/<name>.ludic with bin/ludicc, assemble, run, compare
+fn sh_case(name: ptr, exp: ptr) -> void {
+  let ll = `/tmp/x_sh_{name}.ll`
+  let er = `/tmp/x_sh_{name}.err`
+  let bn = `/tmp/x_sh_{name}`
+  if not shq(`bin/ludicc selfhost/tests/{name}.ludic > {ll} 2>{er}`) {
+    bad2(`{name}: self-host errored`, capture_line(`head -1 {er}`)); return
+  }
+  if not shq(`{cc()} {ll} -o {bn} 2>/dev/null`) { bad(`{name}: IR did not assemble`); return }
+  let got = capture_line(`{bn} < /dev/null`)
+  if (got == exp) { ok(`{name} ({got})`) } else { bad2(name, `got [{got}] want [{exp}]`) }
+}
+
+# compile examples/<name>.ludic as a game and diff its render against the golden
+fn game_case(name: ptr, keys: ptr) -> void {
+  if not game_build_ok("bin/ludicc", `examples/{name}.ludic`, `/tmp/x_g_{name}`) { bad(`{name}: build`); return }
+  run(`printf '%s' '{keys}' | /tmp/x_g_{name} >/dev/null 2>&1`)
+  if shq(`cmp -s selfhost/golden/{name}.ppm out.ppm`) { ok(`{name} matches the golden render`) }
+  else { bad(`{name}: differs from golden`) }
+}
+
+fn cmd_selfhost_test() -> int {
+  PASS = 0
+  FAIL = 0
+
+  print("== build the self-host compiler (from the IR seed, no C) ==")
+  ensure_ludicc()
+  if is_exec("bin/ludicc") { ok("compiler builds from the IR seed (no C)") }
+  else { bad("self-host build"); return report() }
+
+  print("== the self-host compiler is correct ==")
+  sh_case("structs", "7 9 109 2 42")
+  sh_case("slices", "0 20 361 777")
+  sh_case("control", "55 4 15 1")
+  sh_case("match_bits", "1 2 9 16 4 15")
+  sh_case("fixed", "2 3 0 6 1")
+  sh_case("math", "3 7 5 10 -1 0 1 2 3 3 2 5 25 50")
+  sh_case("math2", "1414 3 999 999 499 5 5 25 3142 179 4 2 7 25 30 500")
+  sh_case("textlist", "3 10 30 1 0 2 -1 30 10 10 30 30 2 0 11 104 1 0 1 0 1 0 6 -1 42 5 1 4 4")
+  sh_case("textlist2", "3 1 1 1 2 1 6 1 1 3 1 1 3 1 4 1 2 99 3 2 0 3 1 9 3")
+  sh_case("easecollide", "250 750 500 1000 1000 999 765 -88 1000 1 0 1 0 0 1 0 1 0")
+  sh_case("memsys", "65 66 0 99 12345 1")
+  sh_case("math3", "45 90 180 -135 30 60 90")
+  sh_case("textsplit", "1 1 1 3 1 1 1 1 1 1 1")
+  sh_case("color", "16744512 1090486336 1090486336 8355711 8355711 8355711")
+
+  print("== the self-host compiler compiles real games (vs golden output) ==")
+  # the golden PPMs were produced by the original C compiler; the self-hosted
+  # compiler must reproduce them exactly.
+  game_case("snake", "ddssaawwddss")
+  game_case("menu", "ssss")
+  game_case("chronorift", "ddddwwwwaassK")
+  game_case("draw_prims", "")
+
+  print("== the bootstrap fixpoint (seeded from bin/ludicc) ==")
+  if shq("bin/x bootstrap > /tmp/x_boot.out 2>&1") { ok("gen2.ll == gen3.ll (compiler reproduces itself)") }
+  else { bad("fixpoint not reached"); out(capture("cat /tmp/x_boot.out")) }
+
+  print("== the C-free bootstrap (from the checked-in IR seed, no C compiler) ==")
+  if shq("bin/x bootstrap-cfree > /tmp/x_cfree.out 2>&1") { ok("seed.ll rebuilds the compiler and is its own fixed point") }
+  else { bad("C-free bootstrap failed (seed stale? run: x reseed)"); out(capture("cat /tmp/x_cfree.out")) }
+
+  return report()
+}

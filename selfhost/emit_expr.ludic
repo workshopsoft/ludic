@@ -160,6 +160,40 @@ fn param_labels(fn: Node) -> []ptr {
 # after reordering we rewrite the callee to that bare name and fall back into the
 # ordinary builtin path (which resolves it to its rt_ function).
 fn emit_ns_call(ns: ptr, meth: ptr, e: Node) -> Val {
+  # Math.* is computed inline (deterministic fixed-point), not routed through a
+  # bare rt_ name — so `floor`/`round`/`lerp` never leak into the bare namespace.
+  if (ns == "Math") {
+    if is_math_ns(meth) { return emit_math_ns(meth, e) }
+    perr(`unknown builtin Math.{meth}`)
+  }
+  if (ns == "Text") {
+    if is_text_ns(meth) { return emit_text_ns(meth, e) }
+    perr(`unknown builtin Text.{meth}`)
+  }
+  if (ns == "List") {
+    if is_list_ns(meth) { return emit_list_ns(meth, e) }
+    perr(`unknown builtin List.{meth}`)
+  }
+  if (ns == "Ease") {
+    if is_ease_ns(meth) { return emit_ease_ns(meth, e) }
+    perr(`unknown builtin Ease.{meth}`)
+  }
+  if (ns == "Collide") {
+    if is_collide_ns(meth) { return emit_collide_ns(meth, e) }
+    perr(`unknown builtin Collide.{meth}`)
+  }
+  if (ns == "Mem") {
+    if is_mem_ns(meth) { return emit_mem_ns(meth, e) }
+    perr(`unknown builtin Mem.{meth}`)
+  }
+  if (ns == "Color") {
+    if is_colorfn_ns(meth) { return emit_colorfn_ns(meth, e) }
+    perr(`unknown builtin Color.{meth}`)
+  }
+  if (ns == "Time") {
+    if is_time_ns(meth) { return emit_time_ns(meth, e) }
+    perr(`unknown builtin Time.{meth}`)
+  }
   var bare: ptr = null
   let labels = new []ptr
   if (ns == "Screen") {
@@ -173,6 +207,13 @@ fn emit_ns_call(ns: ptr, meth: ptr, e: Node) -> Val {
     if (meth == "width")          { bare = "screen_w" }
     if (meth == "height")         { bare = "screen_h" }
     if (meth == "status")         { bare = "status";  push(labels, "text") }
+    if (meth == "line")           { bare = "line";      push(labels, "x1"); push(labels, "y1"); push(labels, "x2"); push(labels, "y2"); push(labels, "color") }
+    if (meth == "circle")         { bare = "circle";    push(labels, "x"); push(labels, "y"); push(labels, "radius"); push(labels, "color") }
+    if (meth == "fill_circle")    { bare = "fill_circle"; push(labels, "x"); push(labels, "y"); push(labels, "radius"); push(labels, "color") }
+    if (meth == "triangle")       { bare = "triangle";  push(labels, "x1"); push(labels, "y1"); push(labels, "x2"); push(labels, "y2"); push(labels, "x3"); push(labels, "y3"); push(labels, "color") }
+    if (meth == "fill_triangle")  { bare = "fill_triangle"; push(labels, "x1"); push(labels, "y1"); push(labels, "x2"); push(labels, "y2"); push(labels, "x3"); push(labels, "y3"); push(labels, "color") }
+    if (meth == "sprite")         { bare = "draw_sprite"; push(labels, "id"); push(labels, "x"); push(labels, "y") }
+    if (meth == "sprite_scaled")  { bare = "draw_sprite_scaled"; push(labels, "id"); push(labels, "x"); push(labels, "y"); push(labels, "scale") }
   }
   if (ns == "Map") {
     if (meth == "size") { bare = "map_size"; push(labels, "width"); push(labels, "height") }
@@ -183,9 +224,63 @@ fn emit_ns_call(ns: ptr, meth: ptr, e: Node) -> Val {
     if (meth == "range")  { bare = "rng_range";  push(labels, "low"); push(labels, "high") }
     if (meth == "chance") { bare = "rng_chance"; push(labels, "percent") }
     if (meth == "seed")   { bare = "seed";       push(labels, "value") }
+    if (meth == "value")  { bare = "rng_value" }
+    if (meth == "int")    { bare = "rng_int";    push(labels, "max") }
+    if (meth == "sign")   { bare = "rng_sign" }
   }
   if (ns == "Input") {
     if (meth == "key") { bare = "key" }
+  }
+  # Phase 3: the bare reflection / networking / process builtins, namespaced.
+  # Each is a pure alias — the callee is rewritten to the bare name below.
+  if (ns == "World") {
+    if (meth == "get")           { bare = "world_get" }
+    if (meth == "set")           { bare = "world_set" }
+    if (meth == "has")           { bare = "world_has" }
+    if (meth == "count")         { bare = "world_count" }
+    if (meth == "size")          { bare = "world_size" }
+    if (meth == "spawn")         { bare = "world_spawn" }
+    if (meth == "save")          { bare = "world_save" }
+    if (meth == "load")          { bare = "world_load" }
+    if (meth == "prop_id")       { bare = "world_prop_id" }
+    if (meth == "field_id")      { bare = "world_field_id" }
+    if (meth == "model_id")      { bare = "world_model_id" }
+    if (meth == "kind")          { bare = "world_kind" }
+    if (meth == "register_prop") { bare = "world_register_prop" }
+    if (meth == "attach")        { bare = "world_attach_dyn" }
+    if (meth == "detach")        { bare = "world_detach_dyn" }
+    if (meth == "query_next")    { bare = "world_query_next" }
+  }
+  if (ns == "Net") {
+    if (meth == "send")      { bare = "net_send" }
+    if (meth == "poll")      { bare = "net_poll" }
+    if (meth == "serialize") { bare = "serialize" }
+    if (meth == "apply")     { bare = "apply" }
+    if (meth == "owner")     { bare = "owner" }
+    if (meth == "set_owner") { bare = "set_owner" }
+    if (meth == "is_server") { bare = "is_server" }
+    if (meth == "is_owner")  { bare = "is_owner" }
+    if (meth == "local_id")  { bare = "local_id" }
+  }
+  if (ns == "Sys") {
+    if (meth == "arg")        { bare = "arg" }
+    if (meth == "arg_count")  { bare = "arg_count" }
+    if (meth == "exit")       { bare = "exit" }
+    if (meth == "run")        { bare = "run" }
+    if (meth == "env")        { bare = "getenv" }
+    if (meth == "read_char")  { bare = "read_char" }
+    if (meth == "file_open")  { bare = "file_open" }
+    if (meth == "file_read")  { bare = "file_read" }
+    if (meth == "file_write") { bare = "file_write" }
+    if (meth == "file_seek")  { bare = "file_seek" }
+    if (meth == "file_tell")  { bare = "file_tell" }
+    if (meth == "file_close") { bare = "file_close" }
+    if (meth == "stdout")     { bare = "file_stdout" }
+    if (meth == "stderr")     { bare = "file_stderr" }
+  }
+  if (ns == "Save") {
+    if (meth == "write") { bare = "save" }
+    if (meth == "read")  { bare = "load" }
   }
   if (bare == null) { perr(`unknown builtin {ns}.{meth}`) }
   reorder_named(e, labels)

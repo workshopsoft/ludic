@@ -5,7 +5,7 @@ the spec and the compiler, then unifies the grammar around two rules. Scope:
 **full redesign (Phases 0–5)**. Named-field direction: **colon everywhere**.
 
 > Status: **Phases 1–5 complete.** Every phase kept the compiler self-hosting to
-> a fixpoint (`./test.sh` 14/14), and each syntax migration was proven
+> a fixpoint (`bin/x test` 14/14), and each syntax migration was proven
 > behaviour-preserving (the migrated compiler compiles itself to byte-identical
 > IR; every golden game renders byte-identically). Landed on branch
 > `syntax-redesign-phase2` over a committed baseline on `main`.
@@ -173,8 +173,8 @@ machine R_PHASE {                          var phase: Phase = Phase.KnightMenu
 
 ## Phase sequence
 
-Each phase is independently shippable and ends green on `./test.sh` +
-`./selfhost/test.sh` (fixpoint).
+Each phase is independently shippable and ends green on `bin/x test` +
+`bin/x selfhost-test` (fixpoint).
 
 ### Phase 0 — Doctrine (done here)
 Rules A and B above; colon-everywhere; `@`-annotations as the single modifier
@@ -198,14 +198,14 @@ Made spec ⇄ compiler agree **before** any grammar change. What landed:
 - ✅ **`reads`/`writes` honesty** (#6) + the stale "Not yet implemented" section
   updated in [LANGUAGE.md](LANGUAGE.md); scenes/reads-writes/dropped-CLI-flags now
   listed there.
-- ✅ **`test.sh` guards drift** — added a `qsmoke qdecl` compile check. Suite
+- ✅ **`bin/x test` guards drift** — added a `qsmoke qdecl` compile check. Suite
   green (14/14 incl. the toolchain agent's CLI smoke tests).
 - ✅ **CLI flags** (#10) — `--shared`/`--fmt`/wasm noted as dropped-with-the-C-driver
   in LANGUAGE.md; `-o`/`--emit-llvm` were being re-added by the toolchain agent
-  (now real, verified in `test.sh`); COMPILING.md updated by that agent.
+  (now real, verified in `bin/x test`); COMPILING.md updated by that agent.
 - Deferred (intentionally): `pure`-is-ignored (#5) is undocumented and harmless;
   it will be folded into `@pure` in Phase 3 rather than churned now.
-- **Not done / by design:** `scenes.ludic` is *not* added to `test.sh` (it can't
+- **Not done / by design:** `scenes.ludic` is *not* added to `bin/x test` (it can't
   compile yet — a positive test would fail; the header note + LANGUAGE.md warning
   cover the drift instead).
 
@@ -226,7 +226,7 @@ Landed on branch `syntax-redesign-phase2` (baseline committed on `main` first).
   seed** and every golden game rendering identically. ~1100 boundaries across the
   corpus (examples, runtime, and the 25 self-host fragments).
 - ✅ **Reseeded** to the strict compiler (19557 lines); C-free bootstrap fixpoint
-  holds; `./test.sh` 14/14; all goldens byte-identical; qdecl runs correctly.
+  holds; `bin/x test` 14/14; all goldens byte-identical; qdecl runs correctly.
 - ✅ **Docs updated** — Rule B documented in LANGUAGE.md §Statements; BOOTSTRAP.md
   R1 (which advertised no-separator juxtaposition as legal) and its stale code
   fences updated; `check-docs` (now a live strict parse gate) green across all docs.
@@ -248,7 +248,7 @@ agree). Flagged to the toolchain owners.
 The `=` is now assignment/const/default/extern-binding only. Migration tool:
 [migrate_records.c](tools/ludic-tools/migrate_records.c) (spawn-context aware).
 Records live only in games, so the seed was unaffected; verified every golden
-byte-identical, old `=` form now rejected, reseeded, `test.sh` 14/14. Doc examples
+byte-identical, old `=` form now rejected, reseeded, `bin/x test` 14/14. Doc examples
 updated (LANGUAGE.md, BOOTSTRAP.md R2).
 
 **3b — ui props → `key: value` ✅ DONE.** `panel id=Root w=288` → `panel id: Root
@@ -257,7 +257,7 @@ Chose the **colonized** form over parenthesized named-args: it satisfies Rule A
 (the `=` overload is gone) with minimal churn, needs no new grammar, and `emit_ui`
 (which reads the AST) and `ludic-fmt` (which formats `:` correctly by default)
 were both untouched. Migration: [migrate_ui.c](tools/ludic-tools/migrate_ui.c).
-menu golden byte-identical, old `=` form rejected, reseeded, `test.sh` 14/14.
+menu golden byte-identical, old `=` form rejected, reseeded, `bin/x test` 14/14.
 (The parenthesized form `panel(id: Root, w: 288)` remains a possible future
 refinement if the language ever gains named call arguments.)
 
@@ -277,7 +277,7 @@ prefix forms now rejected. Behavior-identical: the export flag is parse-only in
 the self-hosted emitter (it emits `@fn_<name>` for every function and never reads
 the flag — the C-ABI-export capability is vestigial, a pre-existing gap), so
 `@export` and the old `export` produce byte-identical IR. Reseeded, fixpoint
-holds, `test.sh` 14/14, goldens byte-identical.
+holds, `bin/x test` 14/14, goldens byte-identical.
 
 **Phase 3 is complete.** The `=`/`:` overload (finding #2) and the modifier-zoo
 (findings #5, #6) are resolved; `:` associates and `=` binds throughout.
@@ -359,7 +359,7 @@ Added an **annotation DSL**: `@Queries(these: [Prop{constraint}, …], on: Model
 a handler desugars to the existing `S_QUERY` loop (each property binds by its own
 name; a `Prop{…}` constraint qualifies its bare fields; `on:` adds a `{Model}`
 tag), and `@Handles(…)` on a program parses as documentation. See
-[examples/annotations.ludic](examples/annotations.ludic); test.sh 15/15. All thirteen findings are resolved or resolved by an
+[examples/annotations.ludic](examples/annotations.ludic); bin/x test 15/15. All thirteen findings are resolved or resolved by an
 explicit, documented decision.
 
 ---

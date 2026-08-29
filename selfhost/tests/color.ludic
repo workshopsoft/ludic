@@ -1,0 +1,10 @@
+program T {
+  entry {
+    print(Color.rgb(255, 128, 64))               # 16744512
+    print(Color.rgba(255, 128, 64, 64))          # 1090486336
+    print(Color.with_alpha(0xFF8040, 64))        # 1090486336
+    print(Color.lerp(0x000000, 0xFFFFFF, 0.5))   # 8355711
+    print(Color.darken(0xFFFFFF, 0.5))           # 8355711
+    print(Color.lighten(0x000000, 0.5))          # 8355711
+  }
+}

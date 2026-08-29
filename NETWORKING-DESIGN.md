@@ -4,12 +4,12 @@
 > and — unlike the original N0/N1 which linked C hosts — every phase now runs as a
 > self-contained **pure-Ludic** program (no `.c`, no foreign host): a built-in
 > loopback transport fills the seam, and each `examples/net_*.ludic` drives and
-> asserts itself from its own `entry`. See `test.sh` (checks `net_echo` … `net_demo`)
+> asserts itself from its own `entry`. See `bin/x test` (checks `net_echo` … `net_demo`)
 > and `examples/net_demo.ludic` for a full RPC→authority→replicate→reconcile loop.
 > clang remains only as the LLVM-IR assembler/linker (no C is compiled), the floor
 > Rust and Swift stand on.
 >
-> _Historical note:_ **N0 + N1 shipped first; N2–N6 were design.** Two phases landed as `test.sh`
+> _Historical note:_ **N0 + N1 shipped first; N2–N6 were design.** Two phases landed as `bin/x test`
 > checks. **N0 (transport seam):** `extern fn` now lowers end to end — a direct
 > `@<sym>` call plus a `declare`, no networking logic in the compiler — so the whole
 > transport is two externs (`net_send`/`net_poll`) a host fills. Proven by

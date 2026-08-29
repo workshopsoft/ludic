@@ -1,0 +1,26 @@
+# emit_time.ludic — the Time.* namespace. frame/elapsed/delta are deterministic
+# (driven by @L_frame, the per-frame counter the game loop increments); now() is
+# the wall clock and is explicitly non-deterministic. The frame clock ticks at a
+# fixed 60 per second, so delta is the constant 1/60 s = 1092 in Q16.16.
+
+fn is_time_ns(meth: ptr) -> bool {
+  if (meth == "frame") or (meth == "delta") or (meth == "elapsed") or (meth == "now") { return true }
+  return false
+}
+
+fn emit_time_ns(meth: ptr, e: Node) -> Val {
+  if (meth == "frame") {                            # completed frames since start
+    return val(emit_bind("load i32, ptr @L_frame"), "int")
+  }
+  if (meth == "delta") {                            # seconds per frame, 1/60 (fixed)
+    return val("1092", "fixed")
+  }
+  if (meth == "elapsed") {                          # seconds since start = frame / 60 (fixed)
+    let f = emit_bind("load i32, ptr @L_frame")
+    return val(emit_bind(`mul i32 {f}, 1092`), "fixed")
+  }
+  # now: wall-clock seconds since the epoch — NON-DETERMINISTIC, for seeding /
+  # telemetry only, never the lockstep simulation.
+  let t = emit_bind("call i64 @time(ptr null)")
+  return val(emit_bind(`trunc i64 {t} to i32`), "int")
+}

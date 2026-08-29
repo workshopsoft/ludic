@@ -6,24 +6,31 @@
 > unchanged. `ludicc` now drives clang itself (via an `os_system` intrinsic), so
 > `ludicc app.ludic -o bin/app` and `--emit-llvm` work directly, and a sibling
 > command `ludic app.ludic` compiles to a temporary binary and runs it in one
-> step. Build both with `./build-cli.sh`. `build.sh` remains as a convenience
-> wrapper. `--fmt` is reimplemented as a lex+parse gate (the doc-check hook).
-> The `--target`/cross-compile and `--shared` paths are still features of the old
-> C driver not yet re-implemented on the self-hosted toolchain. See
-> BOOTSTRAP.md §5.7.
+> step. The whole toolchain is built by `bin/x build`; `bin/x app` remains as a
+> convenience wrapper over the compiler. `--fmt` is reimplemented as a lex+parse
+> gate (the doc-check hook). The `--target`/cross-compile and `--shared` paths are
+> still features of the old C driver not yet re-implemented on the self-hosted
+> toolchain. See BOOTSTRAP.md §5.7.
+>
+> From a clean checkout, build the compiler and the task-runner in one line, then
+> let `bin/x` do the rest (run it from the repository root):
 >
 > ```bash
-> ./build-cli.sh                          # build ./ludicc and ./ludic (from the seed)
-> ./ludicc examples/snake.ludic -o bin/snake     # compile
-> ./ludic  examples/snake.ludic                  # compile + run
+> # one-time bootstrap: clang assembles the seed, then ludicc compiles bin/x
+> clang selfhost/ludicc.seed.ll -o bin/ludicc && bin/ludicc tools/x/main.ludic -o bin/x
+> bin/x build                             # rebuild the whole toolchain into bin/
+>                                         #   (ludicc, ludic, x, ludic-fmt, ludic-lsp)
+> bin/ludicc examples/snake.ludic -o bin/snake   # compile
+> bin/ludic  examples/snake.ludic                # compile + run
+> bin/x help                              # list every command
 > ```
 >
 > The binaries are multi-call (one native binary under two names): invoked as
 > `ludicc` it compiles, as `ludic` it compiles-and-runs. A `.ludic` file with
 > systems is a game and links windowed by default; `--headless` and `--windowed`
 > force the mode. The runtime (`runtime/native/cocoa.ll`) is found via
-> `$LUDIC_HOME`, defaulting to the directory the binary sits in — keep them at the
-> repo root, or set `LUDIC_HOME` and put them on `PATH`. `$LUDIC_CC` overrides the
+> `$LUDIC_HOME`, defaulting to the directory the binary sits in — keep them in
+> `bin/`, or set `LUDIC_HOME` and put them on `PATH`. `$LUDIC_CC` overrides the
 > assembler/linker (default `clang`).
 
 
@@ -66,14 +73,18 @@ the old C driver and are **not yet re-implemented** on the self-hosted toolchain
 (see the note at the top). The rows above the line work today via the
 self-hosted `ludicc`.
 
-`build.sh` wraps the common cases:
+`bin/x app` wraps the common cases:
 
 ```bash
-./build.sh examples/snake.ludic              # -> build/snake        (native)
-./build.sh examples/lib/combat.ludic --lib   # -> build/libcombat.*  (library)
-./build.sh examples/snake.ludic --headless   # -> build/snake_headless (out.ppm)
-./build.sh examples/snake.ludic --web        # -> build/web/            (browser)
+bin/x app examples/snake.ludic              # -> build/snake        (native)
+bin/x app examples/lib/combat.ludic --lib   # -> build/libcombat.*  (library)
+bin/x app examples/snake.ludic --headless   # -> build/snake_headless (out.ppm)
+bin/x app examples/snake.ludic --web        # -> build/web/            (browser)
 ```
+
+The `--lib` and `--web` targets were part of the old C driver and are **not yet
+re-implemented** on the self-hosted toolchain — `bin/x app` supports the native
+windowed and `--headless` builds today.
 
 ## Programs and libraries
 
@@ -208,7 +219,7 @@ only the triple changes.
 ```
 
 ```bash
-./build.sh examples/chronorift.ludic --web
+bin/x app examples/chronorift.ludic --web
 python3 -m http.server -d build/web 8000     # then open http://localhost:8000/
 ```
 
@@ -296,7 +307,7 @@ node tools/ludic-web/run.mjs build/web/snake_headless.wasm --stdin=ddss
 ```
 
 Because Ludic is fixed-point and its RNG is seeded, the native headless binary
-and the wasm one must render byte-identical frames from the same input. `test.sh`
+and the wasm one must render byte-identical frames from the same input. `bin/x test`
 asserts exactly that, which is a much stronger check on the backend than
 "it started".
 
@@ -310,13 +321,13 @@ entity allocator, save/load snapshots, the frame loop, the window, and the whole
 graphics stack — framebuffer, PNG decoding, sprites, 9-slice, TrueType text and
 the retained UI.
 
-None of it goes through C. `./test.sh` asserts that directly: no C source
+None of it goes through C. `bin/x test` asserts that directly: no C source
 survives in `runtime/`, no C emitter survives in `ludicc`, and the examples all
 build, run and render from IR alone.
 
 ## Every flag
 
-The self-hosted `ludicc`/`ludic` (built with `./build-cli.sh`) accept:
+The self-hosted `ludicc`/`ludic` (built with `bin/x build-cli`) accept:
 
 ```
   <file.ludic>       the program to compile (first non-flag argument)

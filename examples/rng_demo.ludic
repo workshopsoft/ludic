@@ -1,0 +1,13 @@
+# rng_demo.ludic — exercises the Random.* extensions (value/int/sign) with a
+# fixed seed, so the sequence is deterministic for the regression suite.
+program RngDemo {
+  handler Seed phase Start { Random.seed(value: 1) }
+  handler Once phase Update {
+    print(Random.int(100))
+    print(Random.int(100))
+    print(Math.floor(Random.value() * 10.0))
+    print(Random.sign())
+    print(Random.int(0))          # 0 (max <= 0)
+    quit()
+  }
+}

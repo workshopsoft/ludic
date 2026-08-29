@@ -22,7 +22,7 @@ compiler intrinsics, the same floor Rust and Swift stand on.
 lexer, parser and LLVM-IR backend — that compiles every example (including the
 6-file JRPG) to the byte-exact same binary the original C compiler produced, and
 compiles **its own source** to a fixpoint. It is built from a checked-in IR seed
-(`selfhost/ludicc.seed.ll`) with clang alone; run `./selfhost/bootstrap-cfree.sh`
+(`selfhost/ludicc.seed.ll`) with clang alone; run `bin/x bootstrap-cfree`
 to rebuild it with no C compiler in the loop. The former C compiler is gone.
 
 Neither the compiler nor the games are C. Beneath both sits only the platform's
@@ -35,8 +35,8 @@ self-hosted native toolchain.)
 
 | Path | What it is |
 |------|-----------|
-| `selfhost/*.ludic`     | **the compiler, written in Ludic** — lexer, parser, and the LLVM-IR backend (ECS storage, queries, spawn, `match`/`machine`, UI, scenes, save/load, fixed-point). Concatenated by `selfhost/build.sh`; built from `selfhost/ludicc.seed.ll` |
-| `selfhost/bootstrap-cfree.sh` | rebuild the compiler from the IR seed with **no C compiler**, and prove it reproduces its own IR |
+| `selfhost/*.ludic`     | **the compiler, written in Ludic** — lexer, parser, and the LLVM-IR backend (ECS storage, queries, spawn, `match`/`machine`, UI, scenes, save/load, fixed-point). Concatenated by `bin/x selfhost-build`; built from `selfhost/ludicc.seed.ll` |
+| `tools/x/*.ludic`      | **the task runner, written in Ludic** — one binary (`bin/x`) that builds, tests, bootstraps and reseeds the whole project, replacing every shell script. `bin/x bootstrap-cfree` rebuilds the compiler from the IR seed with **no C compiler** and proves it reproduces its own IR |
 | `runtime/native/core.ludic` | the runtime written *in Ludic* for the native path (framebuffer, text, registers, RNG, input) |
 | `COMPILING.md`         | the native pipeline: `ludicc → LLVM IR → exe/dylib`, `module`/`export`, cross-compilation, `rt_*` intrinsics |
 | `runtime/native/image.ludic` | PNG decoding, images, sprites, alpha blending and 9-slice — in Ludic |
@@ -51,58 +51,50 @@ self-hosted native toolchain.)
 | `examples/chronorift.ludic` | the JRPG written in Ludic (multi-file via `import`, model-based) |
 | `examples/menu.ludic`  | a retained-UI title screen (9-slice, TrueType, focusable buttons) |
 | `examples/snake.ludic` | a second, unrelated game — proves the language is general (same toolchain, no engine hardcoding) |
-| `build.sh`             | `./build.sh examples/<name>.ludic` |
-| `test.sh`              | regression suite: builds the compiler, compiles/runs all examples, checks save/load + diagnostics (`./test.sh`) |
-| `tools/ludic-tools/`   | the editor toolchain, in C: `ludic-fmt` (source formatter) and `ludic-lsp` (language server) — one lexer and one vocabulary shared by both |
+| `bin/x`                | the task runner — `bin/x app examples/<name>.ludic` compiles a program; `bin/x help` lists every command |
+| `bin/x test`           | regression suite: builds the compiler, compiles/runs all examples, checks save/load + diagnostics |
+| `tools/ludic-tools/`   | the editor toolchain, **in Ludic**: `ludic-fmt` (source formatter) and `ludic-lsp` (language server) — one lexer and one vocabulary shared by both |
 | `tools/editors/`       | plugins for VS Code and JetBrains, plus configuration for Neovim, Helix, Emacs, Sublime and Zed ([README](tools/editors/README.md)) |
-| `tools/test-tools.sh`  | regression suite for the toolchain: proves formatting never changes a program, drives the language server over real LSP traffic |
+| `bin/x test-tools`     | regression suite for the toolchain: proves formatting never changes a program, drives the language server over real LSP traffic |
 
 ## Build & run
 
-`ludicc` compiles Ludic straight to machine code via LLVM IR. See
-**[COMPILING.md](COMPILING.md)** for the pipeline, shared libraries
-(`--shared`), cross-compilation and the runtime protocol.
+Everything is driven by `bin/x`, the project's task runner — one native binary,
+written in Ludic and compiled by Ludic, that replaces every build/test/bootstrap
+shell script. Bootstrap it once from a clean checkout (the only step Ludic can't
+do for itself, since compiling Ludic needs a compiler):
 
 ```bash
-./build.sh examples/chronorift.ludic
+clang selfhost/ludicc.seed.ll -o bin/ludicc && bin/ludicc tools/x/main.ludic -o bin/x
+```
+
+Then `bin/x build` builds the whole toolchain into `bin/` — including `bin/x`
+itself — and `bin/x help` lists every command. `ludicc` compiles Ludic straight
+to machine code via LLVM IR; see **[COMPILING.md](COMPILING.md)** for the
+pipeline and the runtime protocol.
+
+```bash
+bin/x app examples/chronorift.ludic
 ./build/chronorift            # opens a native window
 ```
 
 Headless render (for testing / CI):
 
 ```bash
-./build.sh examples/chronorift.ludic --headless
+bin/x app examples/chronorift.ludic --headless
 printf 'ddddwww' | ./build/chronorift_headless   # writes out.ppm
 sips -s format png out.ppm --out frame.png
 ```
 
-A `module` compiles to a shared library instead of a program:
-
-```bash
-./build.sh examples/lib/combat.ludic --lib        # -> build/libcombat.dylib
-```
-
-In a browser:
-
-```bash
-./build.sh examples/chronorift.ludic --web         # -> build/web/
-python3 -m http.server -d build/web 8000          # open http://localhost:8000/
-```
-
-`build/web/` is a self-contained 116 KB directory — the 42 KB module, the loader,
-a page, and the sprites the compiler saw the game name. Copy it to any static
-host and it runs; it needs no server-side anything and no special headers. Saves
-go to `localStorage`, so `save()`/`load()` survive a reload.
-
-A wasm build needs an LLVM with the WebAssembly backend and `wasm-ld` — Linux
-`clang`/`lld` have both, Apple's clang has neither (`brew install llvm lld`).
-See **[COMPILING.md](COMPILING.md#the-web)** for the pipeline, who owns the frame
-loop, and how assets are bundled.
+(The shared-library and wasm/web build paths lived in the old C compiler and are
+not yet re-implemented on the self-hosted native toolchain, so `bin/x app` builds
+native windowed and `--headless` targets today. See
+**[COMPILING.md](COMPILING.md)** for the pipeline and the runtime protocol.)
 
 ## Editor support
 
 ```bash
-./tools/build-tools.sh          # -> build/ludic-fmt, build/ludic-lsp
+bin/x tools                     # -> bin/ludic-fmt, bin/ludic-lsp
 ```
 
 `ludic-lsp` speaks LSP 3.17 over stdio, so one binary serves every editor:
@@ -172,7 +164,7 @@ Controls:
 - [x] Random encounters + turn-based battle (HP/MP, seeded-RNG damage)
 - [x] Party + **local co-op** (P1 Knight, P2 Mage, per-player turns)
 - [x] Leveling (XP → stat growth) and game-over / respawn
-- [x] **Self-hosting**: a Ludic-written compiler compiles its own source to a byte-exact fixpoint, and rebuilds itself from a checked-in IR seed with no C compiler in the loop (`selfhost/`, `./selfhost/bootstrap-cfree.sh`)
+- [x] **Self-hosting**: a Ludic-written compiler compiles its own source to a byte-exact fixpoint, and rebuilds itself from a checked-in IR seed with no C compiler in the loop (`selfhost/`, `bin/x bootstrap-cfree`)
 - [x] Snapshot save / load (full ECS World)
 - [x] Two maps (overworld + dungeon) with map switching via the arch
 - [x] Boss encounter (Rift Warden) + victory condition
