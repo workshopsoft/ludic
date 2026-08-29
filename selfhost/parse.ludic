@@ -68,15 +68,15 @@ function args_call(call: Node) -> void {
 }
 
 # ---- string interpolation --------------------------------------------------
-# `text {expr} text` desugars to a `+` chain of string literals and `str(expr)`
+# `text {expr} text` desugars to a `+` chain of string literals and `string(expr)`
 # holes, so it reuses the string-concat operator and needs no new runtime.
 function interp_lit(buf: ptr, len: int) -> Node { let n = node(E_STR); n.s = buf[0..0 + len]; return n }
 function interp_add(acc: Node, part: Node) -> Node {
   if acc == null { return part }
   return mkbin("+", acc, part)
 }
-function interp_str(e: Node) -> Node {                  # wrap a hole in str(...)
-  let c = node(E_CALL); let id = node(E_ID); id.s = "str"; c.a = id; push(c.kids, e); return c
+function interp_str(e: Node) -> Node {                  # wrap a hole in string(...)
+  let c = node(E_CALL); let id = node(E_ID); id.s = "string"; c.a = id; push(c.kids, e); return c
 }
 function parse_hole(inner: ptr) -> Node {               # re-lex+parse an embedded expression
   let saved_toks = toks;  let saved_pi = pi

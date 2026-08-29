@@ -4,7 +4,7 @@ name: Text.trim
 category: text
 kind: namespace-method
 tokens: Text.trim
-sig: Text.trim(s) -> str
+sig: Text.trim(s) -> string
 tip: A copy with surrounding whitespace removed.
 order: 13
 ns: Text

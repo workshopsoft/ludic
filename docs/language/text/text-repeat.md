@@ -4,7 +4,7 @@ name: Text.repeat
 category: text
 kind: namespace-method
 tokens: Text.repeat
-sig: Text.repeat(s, n) -> str
+sig: Text.repeat(s, n) -> string
 tip: A string repeated n times.
 order: 14
 ns: Text

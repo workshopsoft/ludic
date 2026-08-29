@@ -4,7 +4,7 @@ name: Text.upper
 category: text
 kind: namespace-method
 tokens: Text.upper
-sig: Text.upper(s) -> str
+sig: Text.upper(s) -> string
 tip: An uppercased copy of a string.
 order: 11
 ns: Text

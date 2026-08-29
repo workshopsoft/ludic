@@ -23,7 +23,7 @@ program Reinforcements {
     if Input.key() == ' ' {
       let enemy_model = world_model_id("Enemy")
       let new_enemy = world_spawn(enemy_model)
-      Screen.status(str(new_enemy))
+      Screen.status(string(new_enemy))
     }
   }
 }

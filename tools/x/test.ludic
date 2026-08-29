@@ -137,7 +137,7 @@ function cmd_test() -> int {
   write_file("/tmp/x_cli_exit.ludic", "entry { exit(42) }\n")
   let rc = sh("LUDIC_HOME=. bin/ludic /tmp/x_cli_exit.ludic > /tmp/x_cli.out 2>&1")
   if (rc == 42) { ok("ludic app.ludic  ->  compiles, runs, forwards exit code") }
-  else { bad2("ludic run: expected exit 42", `got {str(rc)}`) }
+  else { bad2("ludic run: expected exit 42", `got {string(rc)}`) }
 
   return report()
 }

@@ -4,7 +4,7 @@ name: Text.concat
 category: text
 kind: namespace-method
 tokens: Text.concat
-sig: Text.concat(a, b) -> str
+sig: Text.concat(a, b) -> string
 tip: Join two strings into a new one.
 order: 8
 ns: Text
@@ -19,7 +19,7 @@ Parameters:
 
 ```ludic
 program Greeting {
-  var name: str = "world"
+  var name: string = "world"
 
   handler Build phase Update {
     let line = Text.concat("hello ", name)   # "hello world"

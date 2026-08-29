@@ -25,7 +25,7 @@ program ResolveModel {
 
   handler Inspect phase Update {
     let player_model = world_model_id("Player")
-    Screen.status(str(player_model))
+    Screen.status(string(player_model))
   }
 }
 ```

@@ -113,7 +113,7 @@ function check(label: ptr, got: ptr, want: ptr) -> void {
 # print the "== N passed, M failed ==" footer and return the process exit code
 function report() -> int {
   print("")
-  print(`== {str(PASS)} passed, {str(FAIL)} failed ==`)
+  print(`== {string(PASS)} passed, {string(FAIL)} failed ==`)
   if (FAIL == 0) { return 0 }
   return 1
 }

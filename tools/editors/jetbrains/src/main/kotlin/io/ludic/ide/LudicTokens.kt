@@ -22,7 +22,7 @@ object LudicTokens {
     val KEYWORD = LudicTokenType("KEYWORD")
     val DECL_KEYWORD = LudicTokenType("DECL_KEYWORD") // game, component, system, function, ...
     val CLAUSE = LudicTokenType("CLAUSE")             // phase, query, reads, writes, ...
-    val PRIMITIVE = LudicTokenType("PRIMITIVE")       // int, fixed, bool, entity, str, ptr, void
+    val PRIMITIVE = LudicTokenType("PRIMITIVE")       // int, fixed, bool, entity, string, pointer, void
     val PHASE = LudicTokenType("PHASE")               // Start, Update, Render, ...
     val BOOLEAN = LudicTokenType("BOOLEAN")
     val BUILTIN = LudicTokenType("BUILTIN")           // runtime surface + compiler intrinsics
@@ -52,7 +52,7 @@ object LudicVocabulary {
         "enable", "disable", "match", "machine", "state", "become", "where",
         "and", "or", "not", "break", "continue", "new", "emit", "cancel"
     )
-    val PRIMITIVES = setOf("int", "long", "fixed", "bool", "entity", "str", "ptr", "byte", "words", "fixeds", "ptrs", "void")
+    val PRIMITIVES = setOf("int", "long", "fixed", "bool", "entity", "string", "ptr", "byte", "words", "fixeds", "ptrs", "void")
     val PHASES = setOf("Start", "Input", "FixedUpdate", "Update", "LateUpdate", "Render")
     val WIDGETS = setOf("panel", "col", "row", "label", "button", "image", "spacer")
 
@@ -64,7 +64,7 @@ object LudicVocabulary {
         "sprites_load", "draw_sprite", "draw_sprite_scaled", "ui_build", "ui_open",
         "ui_tick", "ui_render", "ui_clicked", "ui_set_text", "ui_set_int", "ui_focus",
         "ui_focused", "ui_visible", "key", "reg", "set_reg", "self", "save", "load",
-        "status", "print", "str", "quit",
+        "status", "print", "string", "quit",
         // compiler intrinsics: the floor the Ludic-written runtime stands on
         "bytes", "words", "resize", "free", "fill",         "arg_count", "arg", "file_stderr", "file_stdout",
         "offset",

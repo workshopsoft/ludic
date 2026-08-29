@@ -28,7 +28,7 @@ program LudicFmt {
   const LT_ERR: int = 14
 
   # ---- tiny stdio + string helpers (self-contained) ----
-  function read_file(path: str) -> ptr {
+  function read_file(path: string) -> ptr {
     let f = file_open(path, "rb")
     if (f == null) { return null }
     file_seek(f, 0, 2)

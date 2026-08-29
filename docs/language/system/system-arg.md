@@ -4,7 +4,7 @@ name: System.arg
 category: system
 kind: namespace-method
 tokens: System.arg
-sig: System.arg(i) -> str
+sig: System.arg(i) -> string
 tip: A command-line argument by index.
 order: 0
 ns: System

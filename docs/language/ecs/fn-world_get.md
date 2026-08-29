@@ -30,7 +30,7 @@ program ReadField {
     let column_field = world_field_id(position_property, "column")
     for (position) in query [Position, {Player}] {
       let value = world_get(self(), position_property, column_field)
-      Screen.status(str(value))
+      Screen.status(string(value))
     }
   }
 }

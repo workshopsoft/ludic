@@ -4,7 +4,7 @@ name: Text.slice
 category: text
 kind: namespace-method
 tokens: Text.slice
-sig: Text.slice(s, a, b) -> str
+sig: Text.slice(s, a, b) -> string
 tip: A substring covering bytes [a, b).
 order: 2
 ns: Text
@@ -20,7 +20,7 @@ Parameters:
 
 ```ludic
 program FirstWord {
-  var line: str = "hello world"
+  var line: string = "hello world"
 
   handler Split phase Update {
     let space = Text.index_of(line, " ")   # 5

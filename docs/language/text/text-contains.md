@@ -19,7 +19,7 @@ Parameters:
 
 ```ludic
 program Filter {
-  var line: str = "error: disk full"
+  var line: string = "error: disk full"
 
   handler Scan phase Update {
     if Text.contains(line, "error") {

@@ -18,7 +18,7 @@ Parameters:
 
 ```ludic
 program ParseAmount {
-  var typed: str = "250"
+  var typed: string = "250"
 
   handler Apply phase Update {
     let gold = Text.to_int(typed)   # 250

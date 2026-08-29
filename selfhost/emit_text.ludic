@@ -1,7 +1,7 @@
 # emit_text.ludic — the Text.* namespace over `str` (null-terminated byte
 # strings). The libc-backed queries (length/char_at/starts_with/ends_with/
 # contains/index_of/to_int) allocate nothing; slice/from_int/equals/concat reuse
-# the string preludes that the `+`, `s[a..b]` and str(int) operators emit.
+# the string preludes that the `+`, `s[a..b]` and string(int) operators emit.
 
 function is_text_ns(meth: ptr) -> bool {
   if (meth == "length") or (meth == "char_at") or (meth == "slice") { return true }
@@ -15,15 +15,15 @@ function is_text_ns(meth: ptr) -> bool {
 }
 
 function emit_text_ns(meth: ptr, e: Node) -> Val {
-  if (meth == "from_int") {                          # int -> str, same as str(n)
+  if (meth == "from_int") {                          # int -> string, same as string(n)
     let n = emit_expr(e.kids[0])
     g_uses_intstr = true
-    return val(emit_bind(`call ptr @fn_int_str(i32 {n.code})`), "str")
+    return val(emit_bind(`call ptr @fn_int_str(i32 {n.code})`), "string")
   }
   if (meth == "slice") {                             # s[a..b], same substring helper
     let s0 = emit_expr(e.kids[0]);  let a = emit_expr(e.kids[1]);  let b = emit_expr(e.kids[2])
     g_uses_strslice = true
-    return val(emit_bind(`call ptr @fn_str_slice(ptr {s0.code}, i32 {a.code}, i32 {b.code})`), "str")
+    return val(emit_bind(`call ptr @fn_str_slice(ptr {s0.code}, i32 {a.code}, i32 {b.code})`), "string")
   }
   if (meth == "equals") {                            # byte-wise equality, same as ==
     let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1])
@@ -33,7 +33,7 @@ function emit_text_ns(meth: ptr, e: Node) -> Val {
   if (meth == "concat") {                            # a + b, same as the + operator
     let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1])
     g_uses_str = true
-    return val(emit_bind(`call ptr @fn_str_concat(ptr {a.code}, ptr {b.code})`), "str")
+    return val(emit_bind(`call ptr @fn_str_concat(ptr {a.code}, ptr {b.code})`), "string")
   }
 
   let s = emit_expr(e.kids[0])
@@ -52,45 +52,45 @@ function emit_text_ns(meth: ptr, e: Node) -> Val {
   }
   if (meth == "upper") {                             # ASCII a-z -> A-Z, fresh string
     g_uses_textrt = true
-    return val(emit_bind(`call ptr @fn_str_upper(ptr {s.code})`), "str")
+    return val(emit_bind(`call ptr @fn_str_upper(ptr {s.code})`), "string")
   }
   if (meth == "lower") {                             # ASCII A-Z -> a-z, fresh string
     g_uses_textrt = true
-    return val(emit_bind(`call ptr @fn_str_lower(ptr {s.code})`), "str")
+    return val(emit_bind(`call ptr @fn_str_lower(ptr {s.code})`), "string")
   }
   if (meth == "trim") {                              # drop leading/trailing whitespace
     g_uses_textrt = true
-    return val(emit_bind(`call ptr @fn_str_trim(ptr {s.code})`), "str")
+    return val(emit_bind(`call ptr @fn_str_trim(ptr {s.code})`), "string")
   }
   if (meth == "repeat") {                            # s repeated n times
     g_uses_textrt = true
     let n = emit_expr(e.kids[1])
-    return val(emit_bind(`call ptr @fn_str_repeat(ptr {s.code}, i32 {n.code})`), "str")
+    return val(emit_bind(`call ptr @fn_str_repeat(ptr {s.code}, i32 {n.code})`), "string")
   }
   if (meth == "pad_left") {                          # pad with spaces to width, on the left
     g_uses_textrt = true
     let w = emit_expr(e.kids[1])
-    return val(emit_bind(`call ptr @fn_str_pad(ptr {s.code}, i32 {w.code}, i1 1)`), "str")
+    return val(emit_bind(`call ptr @fn_str_pad(ptr {s.code}, i32 {w.code}, i1 1)`), "string")
   }
   if (meth == "pad_right") {                         # pad with spaces to width, on the right
     g_uses_textrt = true
     let w = emit_expr(e.kids[1])
-    return val(emit_bind(`call ptr @fn_str_pad(ptr {s.code}, i32 {w.code}, i1 0)`), "str")
+    return val(emit_bind(`call ptr @fn_str_pad(ptr {s.code}, i32 {w.code}, i1 0)`), "string")
   }
   if (meth == "replace") {                           # replace every `from` with `to`
     g_uses_textrt2 = true
     let from = emit_expr(e.kids[1]);  let to = emit_expr(e.kids[2])
-    return val(emit_bind(`call ptr @fn_str_replace(ptr {s.code}, ptr {from.code}, ptr {to.code})`), "str")
+    return val(emit_bind(`call ptr @fn_str_replace(ptr {s.code}, ptr {from.code}, ptr {to.code})`), "string")
   }
-  if (meth == "split") {                             # split on a separator -> []str
+  if (meth == "split") {                             # split on a separator -> []string
     g_uses_textrt2 = true
     let sep = emit_expr(e.kids[1])
-    return val(emit_bind(`call ptr @fn_str_split(ptr {s.code}, ptr {sep.code})`), "[]str")
+    return val(emit_bind(`call ptr @fn_str_split(ptr {s.code}, ptr {sep.code})`), "[]string")
   }
-  if (meth == "join") {                              # join a []str with a separator (s is the slice)
+  if (meth == "join") {                              # join a []string with a separator (s is the slice)
     g_uses_textrt2 = true
     let sep = emit_expr(e.kids[1])
-    return val(emit_bind(`call ptr @fn_str_join(ptr {s.code}, ptr {sep.code})`), "str")
+    return val(emit_bind(`call ptr @fn_str_join(ptr {s.code}, ptr {sep.code})`), "string")
   }
   if (meth == "contains") or (meth == "index_of") {  # substring search
     let sub = emit_expr(e.kids[1])
@@ -340,7 +340,7 @@ function emit_text_prelude() -> void {
 }
 
 # emit_text2_prelude — the allocating Text ops that build strings/slices:
-# replace, join (over a []str), split (returns a []str). Emitted once per
+# replace, join (over a []string), split (returns a []string). Emitted once per
 # program that uses them (g_uses_textrt2). Slices are the {data,len,cap}
 # %LSlice with str (ptr) elements.
 function emit_text2_prelude() -> void {

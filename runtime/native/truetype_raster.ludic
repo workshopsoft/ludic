@@ -269,7 +269,7 @@ function tt_glyph_get(font: int, cp: int, px: int) -> int {
 # ---- UTF-8 ----------------------------------------------------------------
 var u8_next: int = 0        # byte index just past the codepoint last decoded
 
-function tt_utf8(s: str, at: int) -> int {
+function tt_utf8(s: string, at: int) -> int {
   let c = s[at]
   var extra = 0 - 1
   if c < 128 { extra = 0 }
@@ -327,7 +327,7 @@ function tt_blit(bmp: ptr, w: int, h: int, dx: int, dy: int, colour: int) -> voi
   }
 }
 
-function rt_text_ttf(font: int, x: int, y: int, s: str, colour: int, px: int) -> void {
+function rt_text_ttf(font: int, x: int, y: int, s: string, colour: int, px: int) -> void {
   if font < 0 { return }
   if font >= tt_n { return }
   if px <= 0 { return }
@@ -351,7 +351,7 @@ function rt_text_ttf(font: int, x: int, y: int, s: str, colour: int, px: int) ->
   }
 }
 
-function rt_text_w(font: int, s: str, px: int) -> int {
+function rt_text_w(font: int, s: string, px: int) -> int {
   if font < 0 { return 0 }
   if font >= tt_n { return 0 }
   if px <= 0 { return 0 }

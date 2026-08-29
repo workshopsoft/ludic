@@ -19,8 +19,8 @@ Parameters:
 
 ```ludic
 program Guess {
-  var answer: str = "swordfish"
-  var attempt: str = "swordfish"
+  var answer: string = "swordfish"
+  var attempt: string = "swordfish"
 
   handler Check phase Update {
     if Text.equals(attempt, answer) {

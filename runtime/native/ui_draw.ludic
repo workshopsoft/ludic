@@ -214,7 +214,7 @@ function rt_ui_clicked(id: int) -> bool {
   return ui_fired[id] == 1
 }
 
-function rt_ui_set_text(id: int, s: str) -> void {
+function rt_ui_set_text(id: int, s: string) -> void {
   if id < 0 { return }
   if id >= ui_n { return }
   let base = id * 96

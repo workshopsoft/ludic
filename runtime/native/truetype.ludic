@@ -166,7 +166,7 @@ function tt_pick_cmap(id: int, d: ptr, co: int) -> void {
   tt_cfmt[id] = tt_u16(d, best)
 }
 
-function rt_font_load(path: str) -> int {
+function rt_font_load(path: string) -> int {
   if tt_n >= TT_MAX { return 0 - 1 }
   let d = rt_read_file(path)
   if (d == null) { return 0 - 1 }

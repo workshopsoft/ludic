@@ -4,7 +4,7 @@ name: Text.lower
 category: text
 kind: namespace-method
 tokens: Text.lower
-sig: Text.lower(s) -> str
+sig: Text.lower(s) -> string
 tip: A lowercased copy of a string.
 order: 12
 ns: Text

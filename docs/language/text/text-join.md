@@ -4,7 +4,7 @@ name: Text.join
 category: text
 kind: namespace-method
 tokens: Text.join
-sig: Text.join(parts, sep) -> str
+sig: Text.join(parts, sep) -> string
 tip: Join a list of strings with a separator.
 order: 18
 ns: Text

@@ -18,6 +18,6 @@ program T {
     print(x == x)                 # 1
     print(0 - sq)                 # -1000000000000 (unary negate stays 64-bit)
     print(big)                    # 1000000
-    print(Text.length(str(sq)))   # 13 — str(long) renders all 13 digits
+    print(Text.length(string(sq)))   # 13 — string(long) renders all 13 digits
   }
 }

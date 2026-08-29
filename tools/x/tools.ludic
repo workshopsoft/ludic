@@ -81,7 +81,7 @@ function cmd_test_tools() -> int {
   } else { bad("formatter altered non-whitespace bytes") }
 
   # --- multi-byte characters must survive intact -----------------------------
-  write_file("/tmp/x_utf8.ludic", "program E {\n  # … ellipsis in a comment\n  const S: str = \"café → naïve\"\n}\n")
+  write_file("/tmp/x_utf8.ludic", "program E {\n  # … ellipsis in a comment\n  const S: string = \"café → naïve\"\n}\n")
   if shq(`{fmt} /tmp/x_utf8.ludic > /tmp/x_utf8.out 2>/dev/null; cmp -s /tmp/x_utf8.ludic /tmp/x_utf8.out`) {
     ok("UTF-8 preserved byte for byte")
   } else { bad("UTF-8 mangled") }
@@ -111,10 +111,10 @@ function cmd_test_tools() -> int {
 
   # --- --check exit status, for CI and pre-commit hooks ----------------------
   let chk1 = sh(`{fmt} --check -q /tmp/x_m.ludic`)
-  check("--check exits 1 on unformatted input", str(chk1), "1")
+  check("--check exits 1 on unformatted input", string(chk1), "1")
   run(`{fmt} -w /tmp/x_m.ludic`)
   let chk2 = sh(`{fmt} --check -q /tmp/x_m.ludic`)
-  check("--check exits 0 after -w", str(chk2), "0")
+  check("--check exits 0 after -w", string(chk2), "0")
 
   # --- markdown: fences formatted, prose untouched ---------------------------
   write_file("/tmp/x_d.md", "# T\n\nprose  with   spaces\n\n```ludic\nprogram D{property P{x:int=0}}\n```\n\n```python\nz  =  1\n```\n")

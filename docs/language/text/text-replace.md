@@ -4,7 +4,7 @@ name: Text.replace
 category: text
 kind: namespace-method
 tokens: Text.replace
-sig: Text.replace(s, from, to) -> str
+sig: Text.replace(s, from, to) -> string
 tip: Replace every occurrence of a substring.
 order: 19
 ns: Text

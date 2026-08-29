@@ -204,7 +204,7 @@ program LudicLsp {
     return c == 43 or c == 45 or c == 42 or c == 47 or c == 37 or c == 60 or c == 62 or c == 61 or c == 40 or c == 41 or c == 123 or c == 125 or c == 91 or c == 93 or c == 44 or c == 58 or c == 46 or c == 33 or c == 64 or c == 59
   }
   function is_type_word(w: ptr) -> bool {
-    return (w == "int") or (w == "long") or (w == "fixed") or (w == "bool") or (w == "entity") or (w == "str") or (w == "ptr") or (w == "byte") or (w == "words") or (w == "fixeds") or (w == "ptrs") or (w == "void")
+    return (w == "int") or (w == "long") or (w == "fixed") or (w == "bool") or (w == "entity") or (w == "string") or (w == "ptr") or (w == "byte") or (w == "words") or (w == "fixeds") or (w == "ptrs") or (w == "void")
   }
   function is_phase_word(w: ptr) -> bool {
     return (w == "Start") or (w == "Input") or (w == "FixedUpdate") or (w == "Update") or (w == "LateUpdate") or (w == "Render")
@@ -1272,24 +1272,24 @@ program LudicLsp {
     if (ns == "Text") {
       if (meth == "length")       { return "Text.length(s) -> int" }
       if (meth == "char_at")      { return "Text.char_at(s, i) -> int" }
-      if (meth == "slice")        { return "Text.slice(s, a, b) -> str" }
+      if (meth == "slice")        { return "Text.slice(s, a, b) -> string" }
       if (meth == "starts_with")  { return "Text.starts_with(s, prefix) -> bool" }
       if (meth == "ends_with")    { return "Text.ends_with(s, suffix) -> bool" }
       if (meth == "contains")     { return "Text.contains(s, sub) -> bool" }
       if (meth == "index_of")     { return "Text.index_of(s, sub) -> int" }
       if (meth == "equals")       { return "Text.equals(a, b) -> bool" }
-      if (meth == "concat")       { return "Text.concat(a, b) -> str" }
+      if (meth == "concat")       { return "Text.concat(a, b) -> string" }
       if (meth == "to_int")       { return "Text.to_int(s) -> int" }
-      if (meth == "from_int")     { return "Text.from_int(n) -> str" }
-      if (meth == "upper")        { return "Text.upper(s) -> str" }
-      if (meth == "lower")        { return "Text.lower(s) -> str" }
-      if (meth == "trim")         { return "Text.trim(s) -> str" }
-      if (meth == "repeat")       { return "Text.repeat(s, n) -> str" }
-      if (meth == "pad_left")     { return "Text.pad_left(s, width) -> str" }
-      if (meth == "pad_right")    { return "Text.pad_right(s, width) -> str" }
-      if (meth == "split")        { return "Text.split(s, sep) -> []str" }
-      if (meth == "join")         { return "Text.join(parts, sep) -> str" }
-      if (meth == "replace")      { return "Text.replace(s, from, to) -> str" }
+      if (meth == "from_int")     { return "Text.from_int(n) -> string" }
+      if (meth == "upper")        { return "Text.upper(s) -> string" }
+      if (meth == "lower")        { return "Text.lower(s) -> string" }
+      if (meth == "trim")         { return "Text.trim(s) -> string" }
+      if (meth == "repeat")       { return "Text.repeat(s, n) -> string" }
+      if (meth == "pad_left")     { return "Text.pad_left(s, width) -> string" }
+      if (meth == "pad_right")    { return "Text.pad_right(s, width) -> string" }
+      if (meth == "split")        { return "Text.split(s, sep) -> []string" }
+      if (meth == "join")         { return "Text.join(parts, sep) -> string" }
+      if (meth == "replace")      { return "Text.replace(s, from, to) -> string" }
     }
     if (ns == "Hash") {
       if (meth == "of")        { return "Hash.of(s) -> int" }
@@ -1360,11 +1360,11 @@ program LudicLsp {
       if (meth == "local_id") { return "Network.local_id() -> int" }
     }
     if (ns == "System") {
-      if (meth == "arg") { return "System.arg(i) -> str" }
+      if (meth == "arg") { return "System.arg(i) -> string" }
       if (meth == "arg_count") { return "System.arg_count() -> int" }
       if (meth == "exit") { return "System.exit(code)" }
       if (meth == "run") { return "System.run(command) -> int" }
-      if (meth == "env") { return "System.env(name) -> str" }
+      if (meth == "env") { return "System.env(name) -> string" }
       if (meth == "read_char") { return "System.read_char() -> int" }
       if (meth == "file_open") { return "System.file_open(path, mode) -> ptr" }
       if (meth == "file_read") { return "System.file_read(file, buf, n) -> int" }
@@ -1407,25 +1407,25 @@ program LudicLsp {
     badd("fx", "fx(i: int) -> fixed")
     badd("flr", "flr(f: fixed) -> int")
     badd("map_size", "map_size(w: int, h: int)")
-    badd("map_row", "map_row(y: int, row: str)")
+    badd("map_row", "map_row(y: int, row: string)")
     badd("tile", "tile(x: int, y: int) -> int")
     badd("clear", "clear(color: int)")
     badd("present", "present()")
     badd("fill_rect", "fill_rect(x: int, y: int, w: int, h: int, color: int)")
     badd("frame_rect", "frame_rect(x: int, y: int, w: int, h: int, color: int)")
     badd("put_px", "put_px(x: int, y: int, color: int)")
-    badd("text", "text(x: int, y: int, s: str, color: int, scale: int)")
+    badd("text", "text(x: int, y: int, s: string, color: int, scale: int)")
     badd("text_int", "text_int(x: int, y: int, n: int, color: int, scale: int)")
-    badd("font_load", "font_load(path: str) -> int")
-    badd("text_ttf", "text_ttf(font: int, x: int, y: int, utf8: str, color: int, px: int)")
-    badd("text_w", "text_w(font: int, utf8: str, px: int) -> int")
+    badd("font_load", "font_load(path: string) -> int")
+    badd("text_ttf", "text_ttf(font: int, x: int, y: int, utf8: string, color: int, px: int)")
+    badd("text_w", "text_w(font: int, utf8: string, px: int) -> int")
     badd("text_h", "text_h(font: int, px: int) -> int")
-    badd("image_load", "image_load(path: str) -> int")
+    badd("image_load", "image_load(path: string) -> int")
     badd("draw_image", "draw_image(id: int, x: int, y: int)")
     badd("draw_image_scaled", "draw_image_scaled(id: int, x: int, y: int, w: int, h: int)")
     badd("draw_9slice", "draw_9slice(id: int, x: int, y: int, w: int, h: int, inset: int)")
-    badd("png_load", "png_load(path: str) -> int")
-    badd("sprites_load", "sprites_load(path: str)")
+    badd("png_load", "png_load(path: string) -> int")
+    badd("sprites_load", "sprites_load(path: string)")
     badd("draw_sprite", "draw_sprite(id: int, x: int, y: int)")
     badd("draw_sprite_scaled", "draw_sprite_scaled(id: int, x: int, y: int, scale: int)")
     badd("ui_build", "ui_build()")
@@ -1433,7 +1433,7 @@ program LudicLsp {
     badd("ui_tick", "ui_tick(key: int)")
     badd("ui_render", "ui_render()")
     badd("ui_clicked", "ui_clicked(id: int) -> bool")
-    badd("ui_set_text", "ui_set_text(id: int, s: str)")
+    badd("ui_set_text", "ui_set_text(id: int, s: string)")
     badd("ui_set_int", "ui_set_int(id: int, n: int)")
     badd("ui_focus", "ui_focus(id: int)")
     badd("ui_focused", "ui_focused() -> int")
@@ -1444,15 +1444,15 @@ program LudicLsp {
     badd("self", "self() -> entity")
     badd("save", "save()")
     badd("load", "load() -> bool")
-    badd("status", "status(s: str)")
+    badd("status", "status(s: string)")
     badd("print", "print(x)")
-    badd("str", "str(x) -> str")
+    badd("string", "string(x) -> string")
     badd("quit", "quit()")
     badd("bytes", "bytes(n: int) -> ptr")
     badd("words", "words(n: int) -> words")
     badd("resize", "resize(p: ptr, n: int) -> ptr")
     badd("arg_count", "arg_count() -> int")
-    badd("arg", "arg(i: int) -> str")
+    badd("arg", "arg(i: int) -> string")
     badd("file_stderr", "file_stderr() -> ptr")
     badd("file_stdout", "file_stdout() -> ptr")
     badd("free", "free(p: ptr)")
@@ -1460,7 +1460,7 @@ program LudicLsp {
     badd("offset", "offset(p: ptr, off: int) -> ptr")
     badd("as_fixed", "as_fixed(i: int) -> fixed")
     badd("as_int", "as_int(f: fixed) -> int")
-    badd("file_open", "file_open(path: str, mode: str) -> ptr")
+    badd("file_open", "file_open(path: string, mode: string) -> ptr")
     badd("file_read", "file_read(f: ptr, buf: ptr, n: int) -> int")
     badd("file_write", "file_write(f: ptr, buf: ptr, n: int) -> int")
     badd("file_seek", "file_seek(f: ptr, off: int, whence: int) -> int")
@@ -1469,8 +1469,8 @@ program LudicLsp {
     badd("read_char", "read_char() -> int")
     badd("exit", "exit(code: int)")
     badd("is_windowed", "is_windowed() -> bool")
-    badd("game_title", "game_title() -> str")
-    badd("win_open", "win_open(title: str, w: int, h: int, scale: int)")
+    badd("game_title", "game_title() -> string")
+    badd("win_open", "win_open(title: string, w: int, h: int, scale: int)")
     badd("win_poll", "win_poll() -> int")
     badd("win_present", "win_present(px: ptr, w: int, h: int)")
     badd("win_running", "win_running() -> bool")
@@ -2287,7 +2287,7 @@ program LudicLsp {
   }
   function comp_types(o: Buf) -> void {
     comp_item(o, "int", 14, "built-in type");  comp_item(o, "long", 14, "built-in type");  comp_item(o, "fixed", 14, "built-in type");  comp_item(o, "bool", 14, "built-in type")
-    comp_item(o, "entity", 14, "built-in type");  comp_item(o, "str", 14, "built-in type");  comp_item(o, "ptr", 14, "built-in type");  comp_item(o, "void", 14, "built-in type")
+    comp_item(o, "entity", 14, "built-in type");  comp_item(o, "string", 14, "built-in type");  comp_item(o, "ptr", 14, "built-in type");  comp_item(o, "void", 14, "built-in type")
   }
   function comp_builtins(o: Buf) -> void { var i = 0;  while i < len(g_builtins) { comp_item(o, g_builtins[i], 3, g_bsigs[i]);  i = i + 1 } }
   function on_completion(msg: JVal, id: JVal) -> void {

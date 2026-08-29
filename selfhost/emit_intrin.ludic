@@ -62,7 +62,7 @@ function emit_intrinsic(name: ptr, e: Node) -> Val {
     let i = arg_code(e, 0)
     let v = emit_bind("load ptr, ptr @L_argv")
     let q = emit_bind(`getelementptr ptr, ptr {v}, i32 {i}`)
-    return val(emit_bind(`load ptr, ptr {q}`), "str")
+    return val(emit_bind(`load ptr, ptr {q}`), "string")
   }
   if (name == "exit") {
     let n = arg_code(e, 0)
@@ -79,7 +79,7 @@ function emit_intrinsic(name: ptr, e: Node) -> Val {
   }
   if (name == "getenv") {
     let n = arg_code(e, 0)
-    return val(emit_bind(`call ptr @getenv(ptr {n})`), "str")
+    return val(emit_bind(`call ptr @getenv(ptr {n})`), "string")
   }
   # bitwise ops are the operators & | ^ << >> ~ now (see emit_bin / p_mul).
   # peek32 / poke32 are `words` indexing now: w[i] and w[i] = v (see emit_index_addr).

@@ -29,7 +29,7 @@ var rt_alive: int = 1              # platform still running?
 
 # 5x7 glyphs for ASCII 32..90, 7 rows per glyph, each row a 5-bit mask stored
 # biased by '0' so the whole font is one printable string literal.
-function rt_font() -> str {
+function rt_font() -> string {
   return "00000004444404000000000000000000000IJ4:FC000000000000000000000000000000E>O>E0044O4400000448000O000000004012448@@>ACEIA>4<4444>>A168@ON11>11N26:BO22O@N11A>>@@NAA>O124888>AA>AA>>AA?11>04004000000000024842000O0O000842480>A164040000000>AAOAAANAANAAN>A@@@A>LBAAABLO@@L@@OO@@L@@@>A@GAA>AAAOAAA>44444>7222BB<ABDHDBA@@@@@@OAKEEAAAAIEECAA>AAAAA>NAAN@@@>AAAEB=NAANDBA>A@>1A>O444444AAAAAA>AAAAA:4AAAEEKAAA:4:AAAA:4444O1248@O"
 }
 
@@ -203,7 +203,7 @@ function rt_glyph(x: int, y: int, ch: int, colour: int, sc: int) -> void {
   }
 }
 
-function rt_text(x: int, y: int, s: str, colour: int, sc: int) -> void {
+function rt_text(x: int, y: int, s: string, colour: int, sc: int) -> void {
   var i = 0
   var cx = x
   var ch = s[0]
@@ -329,7 +329,7 @@ function rt_running() -> bool {
 }
 
 # ---- writing the frame out ------------------------------------------------
-function rt_put_str(buf: ptr, at: int, s: str) -> int {
+function rt_put_str(buf: ptr, at: int, s: string) -> int {
   var i = 0
   var n = at
   var ch = s[0]
@@ -367,7 +367,7 @@ function rt_put_int(buf: ptr, at: int, v: int) -> int {
   return n
 }
 
-function rt_dump_ppm(path: str) -> void {
+function rt_dump_ppm(path: string) -> void {
   let f = file_open(path, "wb")
   if (f == null) { return }
 
@@ -412,7 +412,7 @@ function rt_map_size(w: int, h: int) -> void {
   fill(rt_map, 32, 96 * 64)
 }
 
-function rt_map_row(y: int, s: str) -> void {
+function rt_map_row(y: int, s: string) -> void {
   if y < 0 { return }
   if y >= 64 { return }
   var x = 0
@@ -438,7 +438,7 @@ function rt_tile(x: int, y: int) -> int {
 # so it survives whatever the caller does with the original.
 var rt_statusbuf: ptr = null
 
-function rt_status(s: str) -> void {
+function rt_status(s: string) -> void {
   var i = 0
   var ch = s[0]
   while ch != 0 {

@@ -27,7 +27,7 @@ program ResolveField {
   handler Inspect phase Update {
     let position_property = world_prop_id("Position")
     let column_field = world_field_id(position_property, "column")
-    Screen.status(str(column_field))
+    Screen.status(string(column_field))
   }
 }
 ```

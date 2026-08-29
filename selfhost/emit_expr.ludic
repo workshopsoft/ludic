@@ -79,7 +79,7 @@ function to_long(v: Val) -> ptr {
 function emit_str_op(op: ptr, a: Val, b: Val) -> Val {
   g_uses_str = true
   if (op == ("+")) {
-    return val(emit_bind(`call ptr @fn_str_concat(ptr {a.code}, ptr {b.code})`), "str")
+    return val(emit_bind(`call ptr @fn_str_concat(ptr {a.code}, ptr {b.code})`), "string")
   }
   let r = emit_bind(`call i32 @fn_str_eq(ptr {a.code}, ptr {b.code})`)
   if (op == ("!=")) {
@@ -411,12 +411,12 @@ function emit_call(e: Node) -> Val {
   }
   if (name == "len") { return emit_len(e) }
   if (name == "push") { return emit_push(e) }
-  if (name == "str") {                            # str(x): int/bool/fixed/long -> text, a string passes through
+  if (name == "string") {                            # string(x): int/bool/fixed/long -> text, a string passes through
     let a = emit_expr(e.kids[0])
     if (llty(a.ty) == "ptr") { return a }
-    if (llty(a.ty) == "i64") { g_uses_longstr = true;  return val(emit_bind(`call ptr @fn_long_str(i64 {a.code})`), "str") }
+    if (llty(a.ty) == "i64") { g_uses_longstr = true;  return val(emit_bind(`call ptr @fn_long_str(i64 {a.code})`), "string") }
     g_uses_intstr = true
-    return val(emit_bind(`call ptr @fn_int_str(i32 {a.code})`), "str")
+    return val(emit_bind(`call ptr @fn_int_str(i32 {a.code})`), "string")
   }
   if (name == "print") {                          # print(x): a value + newline (string, long, or int)
     let a = emit_expr(e.kids[0])
@@ -536,9 +536,9 @@ function emit_expr(e: Node) -> Val {
     let lo = emit_expr(e.b)
     let hi = emit_expr(e.c)
     g_uses_strslice = true
-    return val(emit_bind(`call ptr @fn_str_slice(ptr {base.code}, i32 {lo.code}, i32 {hi.code})`), "str")
+    return val(emit_bind(`call ptr @fn_str_slice(ptr {base.code}, i32 {lo.code}, i32 {hi.code})`), "string")
   }
-  if e.kind == E_STR  { return val(emit_str_const(e.s), "str") }
+  if e.kind == E_STR  { return val(emit_str_const(e.s), "string") }
   if e.kind == E_NEW  {
     if is_slice_ty(e.s) { return emit_new_slice(e.s) }
     return emit_new_struct(e.s)

@@ -18,7 +18,7 @@ Parameters:
 
 ```ludic
 program NameWidth {
-  var label: str = "player one"
+  var label: string = "player one"
 
   handler Draw phase Render {
     let width = Text.length(label) * 6   # 6 px per glyph

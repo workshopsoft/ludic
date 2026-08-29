@@ -34,7 +34,7 @@ game Atlas {
 
   # build "<DIR>/tile_%04d.png" without a formatter: the runtime's string
   # helpers write into a scratch buffer we own
-  function tile_path(i: int) -> str {
+  function tile_path(i: int) -> string {
     let buf = atlas_buf()
     let n = rt_put_str(buf, 0, DIR)
     n = rt_put_str(buf, n, "/tile_")

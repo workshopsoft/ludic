@@ -4,7 +4,7 @@ name: System.env
 category: system
 kind: namespace-method
 tokens: System.env
-sig: System.env(name) -> str
+sig: System.env(name) -> string
 tip: Read an environment variable.
 order: 4
 ns: System

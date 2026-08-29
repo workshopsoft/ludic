@@ -4,7 +4,7 @@ name: Text.pad_right
 category: text
 kind: namespace-method
 tokens: Text.pad_right
-sig: Text.pad_right(s, width) -> str
+sig: Text.pad_right(s, width) -> string
 tip: Pad with spaces on the right to a width.
 order: 16
 ns: Text

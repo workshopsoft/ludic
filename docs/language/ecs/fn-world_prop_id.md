@@ -25,7 +25,7 @@ program ResolveProperty {
 
   handler Inspect phase Update {
     let position_property = world_prop_id("Position")
-    Screen.status(str(position_property))
+    Screen.status(string(position_property))
   }
 }
 ```

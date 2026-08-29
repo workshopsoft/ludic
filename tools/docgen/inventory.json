@@ -25,7 +25,7 @@
   ],
   "builtins": [
     "fn-print",
-    "fn-str",
+    "fn-string",
     "fn-quit",
     "fn-save",
     "fn-load",
@@ -327,7 +327,7 @@
     "type-ptr",
     "type-ptrs",
     "type-slices",
-    "type-str",
+    "type-string",
     "type-void",
     "type-words"
   ],

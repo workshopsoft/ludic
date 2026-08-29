@@ -4,7 +4,7 @@ name: getenv
 category: builtins
 kind: builtin
 tokens: getenv
-sig: getenv(name) -> str
+sig: getenv(name) -> string
 tip: Read an environment variable, returning empty when it is unset.
 order: 23
 ---

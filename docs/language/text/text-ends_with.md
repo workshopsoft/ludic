@@ -19,7 +19,7 @@ Parameters:
 
 ```ludic
 program IsImage {
-  var filename: str = "hero.png"
+  var filename: string = "hero.png"
 
   handler Classify phase Update {
     let png = Text.ends_with(filename, ".png")   # true

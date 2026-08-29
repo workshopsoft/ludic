@@ -27,7 +27,7 @@ program SnapshotOut {
     if Input.key() == 's' {
       let buffer = bytes(4096)
       let written = world_save(buffer)
-      Screen.status(str(written))
+      Screen.status(string(written))
     }
   }
 }

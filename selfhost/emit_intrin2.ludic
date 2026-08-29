@@ -34,7 +34,7 @@ function emit_intrinsic2(name: ptr, e: Node) -> Val {
   if (name == "as_fixed") { let a = emit_expr(e.kids[0]);  return val(a.code, "fixed") }
   if (name == "as_int")   { let a = emit_expr(e.kids[0]);  return val(a.code, "int") }
   if (name == "is_windowed") { if g_windowed { return val("1", "bool") };  return val("0", "bool") }
-  if (name == "game_title") { return val("@.gametitle", "str") }
+  if (name == "game_title") { return val("@.gametitle", "string") }
   # windowing hooks — declared external; only reached on the is_windowed() branch
   if (name == "win_poll") { return val(emit_bind("call i32 @win_poll()"), "int") }
   if (name == "win_running") { return val(emit_bind("call i32 @win_running()"), "bool") }

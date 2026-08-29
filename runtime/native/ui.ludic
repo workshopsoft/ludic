@@ -168,7 +168,7 @@ function rt_ui_set(i: int, k: int, v: int) -> void {
   if k == K_SKIN { ui_skin[i] = v }
 }
 
-function rt_ui_static_text(i: int, s: str) -> void {
+function rt_ui_static_text(i: int, s: string) -> void {
   if i < 0 { return }
   if i >= UI_MAX { return }
   ui_text[i] = s

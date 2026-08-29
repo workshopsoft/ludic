@@ -23,7 +23,7 @@ program ModComponent {
   handler Boot phase Start {
     spawn Hero { Position { column: 4, row: 4 } }
     let stamina_property = world_register_prop("Stamina", 1)
-    Screen.status(str(stamina_property))
+    Screen.status(string(stamina_property))
   }
 }
 ```

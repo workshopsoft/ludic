@@ -4,7 +4,7 @@ name: arg
 category: builtins
 kind: builtin
 tokens: arg
-sig: arg(i) -> str
+sig: arg(i) -> string
 tip: The i-th command-line argument as a string.
 order: 50
 ---

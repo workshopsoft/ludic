@@ -170,7 +170,7 @@ function emit_str_prelude() -> void {
   emith("fin:\n  %pe = getelementptr inbounds i8, ptr %out, i32 %sum\n  store i8 0, ptr %pe\n  ret ptr %out\n}\n")
 }
 
-# int -> decimal string, emitted (once) into any program that uses str(int)
+# int -> decimal string, emitted (once) into any program that uses string(int)
 # (string interpolation of a number). Writes digits from the end of a 24-byte
 # buffer, prepends '-' for negatives, and returns a pointer into the buffer.
 function emit_int_str() -> void {

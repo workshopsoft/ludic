@@ -16,7 +16,7 @@ function walkable(x: int, y: int) -> bool {
   return c == '.' or c == 'D' or c == 'r' or c == ',' or c == 'S' or c == 'B' or c == 'h'
 }
 function is_confirm(k: int) -> bool { return k == 32 or k == 10 or k == 13 }
-function enemy_name(et: int) -> str {
+function enemy_name(et: int) -> string {
   if et == 0 { return "SLIME" }
   if et == 1 { return "SKELETON" }
   return "RIFT WARDEN"

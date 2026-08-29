@@ -25,7 +25,7 @@ enum {
     LT_EOF, LT_NL, LT_COMMENT,
     LT_ID,        /* a plain identifier                                       */
     LT_KW,        /* a reserved word (see KEYWORDS)                           */
-    LT_TYPE,      /* a built-in type name: int fixed bool entity str ptr void  */
+    LT_TYPE,      /* a built-in type name: int fixed bool entity string pointer void  */
     LT_PHASE,     /* Start Input FixedUpdate Update LateUpdate Render          */
     LT_BOOL,      /* true false                                               */
     LT_INT, LT_FLOAT, LT_STR, LT_CHAR,
@@ -71,7 +71,7 @@ static const char* LUDIC_KW_STMT[] = {
     "and","or","not","break","continue","new","emit","cancel", 0
 };
 static const char* LUDIC_TYPES[] = {
-    "int","long","fixed","bool","entity","str","ptr","byte","words","fixeds","ptrs","void", 0
+    "int","long","fixed","bool","entity","string","ptr","byte","words","fixeds","ptrs","void", 0
 };
 static const char* LUDIC_PHASES[] = {
     "Start","Input","FixedUpdate","Update","LateUpdate","Render", 0
@@ -100,25 +100,25 @@ static const LBuiltin LUDIC_BUILTINS[] = {
  {"fx","fx(i: int) -> fixed","Widen an int to Q16.16 fixed-point."},
  {"flr","flr(f: fixed) -> int","Truncate a fixed-point value toward zero."},
  {"map_size","map_size(w: int, h: int)","Set the tilemap dimensions."},
- {"map_row","map_row(y: int, row: str)","Fill one tilemap row from a string."},
+ {"map_row","map_row(y: int, row: string)","Fill one tilemap row from a string."},
  {"tile","tile(x: int, y: int) -> int","Tile code at a map cell."},
  {"clear","clear(color: int)","Clear the framebuffer to a 0xRRGGBB colour."},
  {"present","present()","Push the framebuffer to the window (or out.ppm when headless)."},
  {"fill_rect","fill_rect(x: int, y: int, w: int, h: int, color: int)","Filled rectangle."},
  {"frame_rect","frame_rect(x: int, y: int, w: int, h: int, color: int)","One-pixel rectangle outline."},
  {"put_px","put_px(x: int, y: int, color: int)","Write a single pixel."},
- {"text","text(x: int, y: int, s: str, color: int, scale: int)","Draw text with the built-in 5x7 bitmap font."},
+ {"text","text(x: int, y: int, s: string, color: int, scale: int)","Draw text with the built-in 5x7 bitmap font."},
  {"text_int","text_int(x: int, y: int, n: int, color: int, scale: int)","Draw an integer with the 5x7 bitmap font."},
- {"font_load","font_load(path: str) -> int","Load a TrueType .ttf/.ttc; returns a font id."},
- {"text_ttf","text_ttf(font: int, x: int, y: int, utf8: str, color: int, px: int)","Draw UTF-8 text with a TrueType font."},
- {"text_w","text_w(font: int, utf8: str, px: int) -> int","Advance width of the string, in pixels."},
+ {"font_load","font_load(path: string) -> int","Load a TrueType .ttf/.ttc; returns a font id."},
+ {"text_ttf","text_ttf(font: int, x: int, y: int, utf8: string, color: int, px: int)","Draw UTF-8 text with a TrueType font."},
+ {"text_w","text_w(font: int, utf8: string, px: int) -> int","Advance width of the string, in pixels."},
  {"text_h","text_h(font: int, px: int) -> int","Line height of the font, in pixels."},
- {"image_load","image_load(path: str) -> int","Decode a PNG into an image id."},
+ {"image_load","image_load(path: string) -> int","Decode a PNG into an image id."},
  {"draw_image","draw_image(id: int, x: int, y: int)","Blit an image at its natural size."},
  {"draw_image_scaled","draw_image_scaled(id: int, x: int, y: int, w: int, h: int)","Blit an image stretched to w x h."},
  {"draw_9slice","draw_9slice(id: int, x: int, y: int, w: int, h: int, inset: int)","Nine-slice an image across a w x h box."},
- {"png_load","png_load(path: str) -> int","Decode a PNG as a 16x16 sprite sheet; returns the first sprite id."},
- {"sprites_load","sprites_load(path: str)","Load the sprite sheet used by draw_sprite."},
+ {"png_load","png_load(path: string) -> int","Decode a PNG as a 16x16 sprite sheet; returns the first sprite id."},
+ {"sprites_load","sprites_load(path: string)","Load the sprite sheet used by draw_sprite."},
  {"draw_sprite","draw_sprite(id: int, x: int, y: int)","Blit a sprite."},
  {"draw_sprite_scaled","draw_sprite_scaled(id: int, x: int, y: int, scale: int)","Blit a sprite at an integer scale."},
  {"ui_build","ui_build()","Construct every declared `ui` tree (loads skins and images)."},
@@ -126,7 +126,7 @@ static const LBuiltin LUDIC_BUILTINS[] = {
  {"ui_tick","ui_tick(key: int)","Feed a key to the UI: w/s move focus, space/enter activate."},
  {"ui_render","ui_render()","Lay out and draw the active ui tree."},
  {"ui_clicked","ui_clicked(id: int) -> bool","True on the frame a widget was activated."},
- {"ui_set_text","ui_set_text(id: int, s: str)","Replace a widget's text."},
+ {"ui_set_text","ui_set_text(id: int, s: string)","Replace a widget's text."},
  {"ui_set_int","ui_set_int(id: int, n: int)","Replace a widget's text with a number."},
  {"ui_focus","ui_focus(id: int)","Move keyboard focus to a widget."},
  {"ui_focused","ui_focused() -> int","Id of the focused widget."},
@@ -137,9 +137,9 @@ static const LBuiltin LUDIC_BUILTINS[] = {
  {"self","self() -> entity","The entity of the innermost query loop."},
  {"save","save()","Write a binary snapshot of the whole ECS world."},
  {"load","load() -> bool","Restore the snapshot; false if there is none."},
- {"status","status(s: str)","Set the one-line status message."},
+ {"status","status(s: string)","Set the one-line status message."},
  {"print","print(x)","Print a value (int or string) and a newline to stdout."},
- {"str","str(x) -> str","Convert an int/bool/fixed to text (a string passes through)."},
+ {"string","string(x) -> string","Convert an int/bool/fixed to text (a string passes through)."},
  {"quit","quit()","Stop the frame loop and exit."},
  {0,0,0}
 };
@@ -157,7 +157,7 @@ static const LBuiltin LUDIC_INTRINSICS[] = {
  {"offset","offset(p: ptr, off: int) -> ptr","Offset a pointer by bytes."},
  {"as_fixed","as_fixed(i: int) -> fixed","Reinterpret an int as fixed (no conversion)."},
  {"as_int","as_int(f: fixed) -> int","Reinterpret a fixed as int (no conversion)."},
- {"file_open","file_open(path: str, mode: str) -> ptr","fopen."},
+ {"file_open","file_open(path: string, mode: string) -> ptr","fopen."},
  {"file_read","file_read(f: ptr, buf: ptr, n: int) -> int","fread."},
  {"file_write","file_write(f: ptr, buf: ptr, n: int) -> int","fwrite."},
  {"file_seek","file_seek(f: ptr, off: int, whence: int) -> int","fseek."},
@@ -167,7 +167,7 @@ static const LBuiltin LUDIC_INTRINSICS[] = {
  {"exit","exit(code: int)","Terminate the process."},
  {"is_windowed","is_windowed() -> bool","True when the build has a window."},
  {"game_title","game_title() -> str","The name from the `game` declaration."},
- {"win_open","win_open(title: str, w: int, h: int, scale: int)","Open the platform window."},
+ {"win_open","win_open(title: string, w: int, h: int, scale: int)","Open the platform window."},
  {"win_poll","win_poll() -> int","Pump the event queue; returns a key code."},
  {"win_present","win_present(px: ptr, w: int, h: int)","Blit a framebuffer to the window."},
  {"win_running","win_running() -> bool","False once the window has been closed."},
