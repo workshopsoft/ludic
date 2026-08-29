@@ -1269,7 +1269,7 @@ system Generate phase Update {
   for bp in pending_chunks() {
     manip vm = Map.borrow_chunk(bp)
     for p in vm.area {
-      let h = flr(noise2d(fx(p.x) / 64.0, fx(p.z) / 64.0) * 24.0) + 8
+      let h = floor(noise2d(fixed(p.x) / 64.0, fixed(p.z) / 64.0) * 24.0) + 8
       vm[p] = if p.y <= h { NODE_STONE } else { NODE_AIR }
     }
     vm.commit()
@@ -1436,7 +1436,7 @@ game Voxel {
       manip vm = Map.stage(bp)
       for p in vm.area {
         let n  = noise2d(p.x as f32 / 64.0, p.z as f32 / 64.0, seed())
-        let h  = flr(n * 24.0) + 8
+        let h  = floor(n * 24.0) + 8
         vm[p]  = if p.y > h      { NODE_AIR }
                  else if p.y == h { NODE_GRASS }
                  else             { NODE_STONE }

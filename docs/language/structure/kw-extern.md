@@ -23,8 +23,8 @@ program Physics {
 
   handler MeasureSpeed phase Update {
     for (velocity) in query [Velocity, {Projectile}] {
-      let speed = c_hypot(a: fx(velocity.delta_x), b: fx(velocity.delta_y))
-      Screen.status(string(flr(speed)))
+      let speed = c_hypot(a: fixed(velocity.delta_x), b: fixed(velocity.delta_y))
+      Screen.status(string(floor(speed)))
     }
   }
 }

@@ -57,7 +57,7 @@ object LudicVocabulary {
     val WIDGETS = setOf("panel", "col", "row", "label", "button", "image", "spacer")
 
     val BUILTINS = setOf(
-        "min", "max", "abs", "clamp", "seed", "rng_range", "rng_chance", "fx", "flr",
+        "min", "max", "abs", "clamp", "seed", "rng_range", "rng_chance", "fixed", "floor",
         "map_size", "map_row", "tile", "clear", "present", "fill_rect", "frame_rect",
         "put_px", "text", "text_int", "font_load", "text_ttf", "text_w", "text_h",
         "image_load", "draw_image", "draw_image_scaled", "draw_9slice", "png_load",

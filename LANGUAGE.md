@@ -157,7 +157,7 @@ both return a pointer you index with `buf[i]` — retype the binding (`words` /
 Numeric literals: `42` and `0x1affff` are `int`; a literal with a decimal
 point (`1.5`) is `fixed`. Arithmetic on two `fixed` values lowers to
 `fxmul`/`fxdiv`; mixing `int` and `fixed` promotes the `int`. Convert with
-`fx(i)` (int→fixed) and `flr(f)` (fixed→int).
+`fixed(i)` (int→fixed) and `floor(f)` (fixed→int).
 
 ## Properties, entities, queries
 
@@ -717,7 +717,7 @@ literal; test any pointer/record/slice with `x == null` / `x != null` (an unset
 ```
 # math      min max abs clamp                       (int)
 # rng       seed(i)  rng_range(lo,hi)->int  rng_chance(pct)->bool   (deterministic)
-# fixed     fx(i)->fixed   flr(f)->int
+# fixed     fixed(i)->fixed   floor(f)->int
 # tilemap   map_size(w,h)  map_row(y,str)  tile(x,y)->int
 # 2D draw   clear(color)  fill_rect(x,y,w,h,color)  frame_rect(...)  put_px(x,y,color)
 #           draw_sprite(id,x,y)  draw_sprite_scaled(id,x,y,scale)  present()

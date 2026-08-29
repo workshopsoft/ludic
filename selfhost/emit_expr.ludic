@@ -436,8 +436,8 @@ function emit_call(e: Node) -> Val {
     let w = emit_bind(`zext i32 {by} to i64`)
     return val(emit_bind(`call ptr @malloc(i64 {w})`), "words")
   }
-  if (name == "fx") { let a = emit_expr(e.kids[0]);  return val(emit_bind(`shl i32 {a.code}, 16`), "fixed") }
-  if (name == "flr") { let a = emit_expr(e.kids[0]);  return val(emit_bind(`ashr i32 {a.code}, 16`), "int") }
+  if (name == "fixed") { let a = emit_expr(e.kids[0]);  return val(emit_bind(`shl i32 {a.code}, 16`), "fixed") }
+  if (name == "floor") { let a = emit_expr(e.kids[0]);  return val(emit_bind(`ashr i32 {a.code}, 16`), "int") }
   # The EV2 reflection ABI (the world table), exposed to Ludic so a Ludic mod can
   # introspect the world by name — the same functions a foreign mod binds. Emitted
   # only for a modding program (ECS + events), so a plain game is unchanged.

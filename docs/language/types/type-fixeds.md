@@ -15,9 +15,9 @@ A <code>fixeds</code> is a raw buffer whose elements are <code>fixed</code> (Q16
 program Heights {
   handler Setup phase Start {
     let heights: fixeds = words(4)
-    heights[0] = fx(2)
-    heights[1] = heights[0] + fx(1)
-    print(flr(heights[1]))
+    heights[0] = fixed(2)
+    heights[1] = heights[0] + fixed(1)
+    print(floor(heights[1]))
   }
 }
 ```

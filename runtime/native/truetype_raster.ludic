@@ -25,15 +25,15 @@ function tt_isqrt(v: int) -> int {
 
 # flatten one quadratic Bézier into line segments, subdivided by chord length
 function ed_quad(x0: fixed, y0: fixed, cx: fixed, cy: fixed, x1: fixed, y1: fixed) -> void {
-  let dx = flr(x1) - flr(x0)
-  let dy = flr(y1) - flr(y0)
+  let dx = floor(x1) - floor(x0)
+  let dy = floor(y1) - floor(y0)
   var n = tt_isqrt(dx * dx + dy * dy) / 3
   if n < 2 { n = 2 }
   if n > 24 { n = 24 }
   var px = x0
   var py = y0
   for i in 1 .. n + 1 {
-    let t = fx(i) / n
+    let t = fixed(i) / n
     let u = 1.0 - t
     let qx = u * u * x0 + 2.0 * u * t * cx + t * t * x1
     let qy = u * u * y0 + 2.0 * u * t * cy + t * t * y1
@@ -53,8 +53,8 @@ var gr_adv: int = 0
 
 function tt_raster(id: int, gid: int, px: int) -> pointer {
   let upem = tt_upem[id]
-  let scale = fx(px) / upem
-  gr_adv = flr(fx(tt_advance(id, gid)) * scale + 0.5)
+  let scale = fixed(px) / upem
+  gr_adv = floor(fixed(tt_advance(id, gid)) * scale + 0.5)
   gr_w = 0
   gr_h = 0
   ol_n = 0
@@ -75,12 +75,12 @@ function tt_raster(id: int, gid: int, px: int) -> pointer {
     if Y < miny { miny = Y }
     if Y > maxy { maxy = Y }
   }
-  let x0 = flr(minx)
-  let y0 = flr(miny)
-  var x1 = flr(maxx) + 1
-  var y1 = flr(maxy) + 1
-  if maxx == fx(flr(maxx)) { x1 = flr(maxx) }
-  if maxy == fx(flr(maxy)) { y1 = flr(maxy) }
+  let x0 = floor(minx)
+  let y0 = floor(miny)
+  var x1 = floor(maxx) + 1
+  var y1 = floor(maxy) + 1
+  if maxx == fixed(floor(maxx)) { x1 = floor(maxx) }
+  if maxy == fixed(floor(maxy)) { y1 = floor(maxy) }
   let W = x1 - x0
   let H = y1 - y0
   if W <= 0 { return null }
@@ -108,28 +108,28 @@ function tt_raster(id: int, gid: int, px: int) -> pointer {
         # all off-curve: start at the midpoint of the first and last point
         let mx = (ol_x[start] + ol_x[start + cnt - 1]) / 2
         let my = (ol_y[start] + ol_y[start + cnt - 1]) / 2
-        sx = (mx * scale - fx(x0)) * TT_SS
-        sy = (fx(y1) - my * scale) * TT_SS
+        sx = (mx * scale - fixed(x0)) * TT_SS
+        sy = (fixed(y1) - my * scale) * TT_SS
         first_on = 0
       } else {
-        sx = (ol_x[start + first_on] * scale - fx(x0)) * TT_SS
-        sy = (fx(y1) - ol_y[start + first_on] * scale) * TT_SS
+        sx = (ol_x[start + first_on] * scale - fixed(x0)) * TT_SS
+        sy = (fixed(y1) - ol_y[start + first_on] * scale) * TT_SS
       }
       var curx = sx
       var cury = sy
       var step = 0
       while step < cnt {
         let i = (first_on + 1 + step) % cnt
-        let ix = (ol_x[start + i] * scale - fx(x0)) * TT_SS
-        let iy = (fx(y1) - ol_y[start + i] * scale) * TT_SS
+        let ix = (ol_x[start + i] * scale - fixed(x0)) * TT_SS
+        let iy = (fixed(y1) - ol_y[start + i] * scale) * TT_SS
         if ol_on[start + i] == 1 {
           ed_add(curx, cury, ix, iy)
           curx = ix
           cury = iy
         } else {
           var j = (i + 1) % cnt
-          let jx = (ol_x[start + j] * scale - fx(x0)) * TT_SS
-          let jy = (fx(y1) - ol_y[start + j] * scale) * TT_SS
+          let jx = (ol_x[start + j] * scale - fixed(x0)) * TT_SS
+          let jy = (fixed(y1) - ol_y[start + j] * scale) * TT_SS
           var ex = jx
           var ey = jy
           if ol_on[start + j] == 1 {
@@ -156,7 +156,7 @@ function tt_raster(id: int, gid: int, px: int) -> pointer {
   let unit = 255 / (TT_SS * TT_SS)
 
   for sy in 0 .. SH {
-    let yc = fx(sy) + 0.5
+    let yc = fixed(sy) + 0.5
     var m = 0
     for i in 0 .. ed_n {
       let ya = ed_y0[i]
@@ -202,20 +202,20 @@ function tt_raster(id: int, gid: int, px: int) -> pointer {
         var xa = sc_x[i]
         var xb = sc_x[i + 1]
         if xa < 0.0 { xa = 0.0 }
-        if xb > fx(SW) { xb = fx(SW) }
+        if xb > fixed(SW) { xb = fixed(SW) }
         if xb > xa {
-          let ixa = flr(xa)
-          let ixb = flr(xb) + 1
+          let ixa = floor(xa)
+          let ixb = floor(xb) + 1
           for sx in ixa .. ixb {
             var cxl = xa
             var cxr = xb
-            if fx(sx) > cxl { cxl = fx(sx) }
-            if fx(sx + 1) < cxr { cxr = fx(sx + 1) }
+            if fixed(sx) > cxl { cxl = fixed(sx) }
+            if fixed(sx + 1) < cxr { cxr = fixed(sx + 1) }
             let cvr = cxr - cxl
             if cvr > 0.0 {
               let oxp = sx / TT_SS
               if oxp >= 0 { if oxp < W { if oy >= 0 { if oy < H {
-                var v = cover[oy * W + oxp] + flr(cvr * unit)
+                var v = cover[oy * W + oxp] + floor(cvr * unit)
                 if v > 255 { v = 255 }
                 cover[oy * W + oxp] = v
               } } } }
@@ -332,9 +332,9 @@ function rt_text_ttf(font: int, x: int, y: int, s: string, colour: int, px: int)
   if font >= tt_n { return }
   if px <= 0 { return }
   let upem = tt_upem[font]
-  let scale = fx(px) / upem
-  var baseline = y + flr(fx(tt_asc[font]) * scale + 0.5)
-  let lineh = flr(fx(tt_asc[font] - tt_desc[font] + tt_gap[font]) * scale + 0.5)
+  let scale = fixed(px) / upem
+  var baseline = y + floor(fixed(tt_asc[font]) * scale + 0.5)
+  let lineh = floor(fixed(tt_asc[font] - tt_desc[font] + tt_gap[font]) * scale + 0.5)
   var penx = x
   var i = 0
   while s[i] != 0 {
@@ -375,6 +375,6 @@ function rt_text_w(font: int, s: string, px: int) -> int {
 function rt_text_h(font: int, px: int) -> int {
   if font < 0 { return 0 }
   if font >= tt_n { return 0 }
-  let scale = fx(px) / tt_upem[font]
-  return flr(fx(tt_asc[font] - tt_desc[font] + tt_gap[font]) * scale + 0.5)
+  let scale = fixed(px) / tt_upem[font]
+  return floor(fixed(tt_asc[font] - tt_desc[font] + tt_gap[font]) * scale + 0.5)
 }

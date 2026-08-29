@@ -11,7 +11,7 @@ ns: Math
 member: floor
 ---
 
-Takes a <code>fixed</code> value and returns the largest <code>int</code> not greater than it — rounding toward negative infinity, so <code>Math.floor(2.7)</code> is <code>2</code> and <code>Math.floor(-0.2)</code> is <code>-1</code>. This is the fixed-to-int conversion you reach for when turning a smooth position into a whole tile or pixel index. It is the same operation as the bare <code>flr(x)</code>.
+Takes a <code>fixed</code> value and returns the largest <code>int</code> not greater than it — rounding toward negative infinity, so <code>Math.floor(2.7)</code> is <code>2</code> and <code>Math.floor(-0.2)</code> is <code>-1</code>. This is the fixed-to-int conversion you reach for when turning a smooth position into a whole tile or pixel index. It is the same operation as the bare <code>floor(x)</code>.
 
 Parameters:
 - `x` — the `fixed` value to round down

@@ -358,8 +358,8 @@ function tt_load_outline(id: int, gid: int, a: fixed, b: fixed, c: fixed, e: fix
     for ci in 0 .. nc {
       let last = tt_u16(d, endpts + ci * 2)
       for k in start .. last + 1 {
-        let X = fx(xs[k])
-        let Y = fx(ys[k])
+        let X = fixed(xs[k])
+        let Y = fixed(ys[k])
         ol_pt(a * X + c * Y + dx, b * X + e * Y + dy, (flags[k] & 1))
       }
       if ol_ne < 256 {
@@ -414,8 +414,8 @@ function tt_load_outline(id: int, gid: int, a: fixed, b: fixed, c: fixed, e: fix
       var odx = dx
       var ody = dy
       if (flags & 2) != 0 {
-        odx = a * fx(arg1) + c * fx(arg2) + dx
-        ody = b * fx(arg1) + e * fx(arg2) + dy
+        odx = a * fixed(arg1) + c * fixed(arg2) + dx
+        ody = b * fixed(arg1) + e * fixed(arg2) + dy
       }
       tt_load_outline(id, cgid, a * ca + c * cb, b * ca + e * cb, a * cc + c * ce, b * cc + e * ce, odx, ody, depth + 1)
       more = 0
