@@ -73,6 +73,7 @@ function lbl(pfx: pointer) -> pointer { let r = (pfx + itoa(ll_lbl));  ll_lbl = 
 function llty(t: pointer) -> pointer {
   if (t == "int") or (t == "bool") or (t == "fixed") or (t == "entity") { return "i32" }   # entity = an i32 handle (self())
   if (t == "long") { return "i64" }               # a 64-bit signed integer
+  if (t == "Vector") { return "i64" }             # a 2D vector: (x, y) fixeds packed into one i64
   if (t == "byte") { return "i8" }                # a single byte (p[i] on a raw ptr)
   if (t == "words") or (t == "fixeds") or (t == "pointers") { return "ptr" }   # typed buffers
   if (t == "void") { return "void" }

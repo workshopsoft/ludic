@@ -52,7 +52,7 @@ object LudicVocabulary {
         "enable", "disable", "match", "machine", "state", "become", "where",
         "and", "or", "not", "break", "continue", "new", "emit", "cancel"
     )
-    val PRIMITIVES = setOf("int", "long", "fixed", "bool", "entity", "string", "pointer", "byte", "words", "fixeds", "pointers", "void")
+    val PRIMITIVES = setOf("int", "long", "fixed", "bool", "entity", "string", "pointer", "byte", "words", "fixeds", "pointers", "Vector", "void")
     val PHASES = setOf("Start", "Input", "FixedUpdate", "Update", "LateUpdate", "Render")
     val WIDGETS = setOf("panel", "col", "row", "label", "button", "image", "spacer")
 

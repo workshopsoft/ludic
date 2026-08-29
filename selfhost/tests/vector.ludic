@@ -1,0 +1,27 @@
+program T {
+  entry {
+    let a = Vector.make(3.0, 4.0)
+    print(floor(Vector.x(a)))                 # 3
+    print(floor(Vector.y(a)))                 # 4
+    print(floor(Vector.length(a)))            # 5  (3-4-5)
+    let b = Vector.make(1.0, 2.0)
+    let c = Vector.add(a, b)
+    print(floor(Vector.x(c)))                 # 4
+    print(floor(Vector.y(c)))                 # 6
+    let d = Vector.sub(a, b)
+    print(floor(Vector.x(d)))                 # 2
+    print(floor(Vector.y(d)))                 # 2
+    print(floor(Vector.dot(a, b)))            # 11
+    print(floor(Vector.distance(a, b)))       # 2  (sqrt 8)
+    print(floor(Vector.x(Vector.scale(a, 2.0)))) # 6
+    let n = Vector.normalize(a)
+    print(floor(Vector.length(n) * 1000))     # 999 (unit)
+    print(floor(Vector.x(Vector.from_angle(0.0)) * 1000))  # 999 (cos 0)
+    let r = Vector.rotate(Vector.make(1.0, 0.0), 1.5707963) # rotate 90 deg
+    print(floor(Vector.y(r) * 1000))          # 999 (-> (0,1))
+    print(floor(Vector.angle(Vector.make(0.0, 1.0)) * 1000)) # pi/2 -> 1570
+    let m = Vector.lerp(Vector.zero(), Vector.make(10.0, 20.0), 0.5)
+    print(floor(Vector.x(m)))                 # 5
+    print(floor(Vector.y(m)))                 # 10
+  }
+}

@@ -231,6 +231,10 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if is_hash_ns(meth) { return emit_hash_ns(meth, e) }
     perr(`unknown builtin Hash.{meth}`)
   }
+  if (ns == "Vector") {
+    if is_vector_ns(meth) { return emit_vector_ns(meth, e) }
+    perr(`unknown builtin Vector.{meth}`)
+  }
   var bare: pointer = null
   let labels = new []pointer
   if (ns == "Screen") {

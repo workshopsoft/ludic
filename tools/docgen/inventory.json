@@ -329,7 +329,8 @@
     "type-slices",
     "type-string",
     "type-void",
-    "type-words"
+    "type-words",
+    "type-vector"
   ],
   "world": [
     "world-get",
@@ -348,5 +349,22 @@
     "world-attach",
     "world-detach",
     "world-query_next"
+  ],
+  "vector": [
+    "vector-make",
+    "vector-zero",
+    "vector-x",
+    "vector-y",
+    "vector-add",
+    "vector-sub",
+    "vector-scale",
+    "vector-dot",
+    "vector-length",
+    "vector-distance",
+    "vector-normalize",
+    "vector-lerp",
+    "vector-rotate",
+    "vector-angle",
+    "vector-from_angle"
   ]
 }

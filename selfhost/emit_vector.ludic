@@ -1,0 +1,146 @@
+# emit_vector.ludic — the Vector.* namespace: a 2D vector value type. A Vector is
+# a pair of Q16.16 fixed components (x, y) packed into a single i64 — x in the
+# high 32 bits, y in the low 32 — so it is a true by-value type (assignment
+# copies, no heap allocation) that lives in one register. All arithmetic is the
+# same deterministic integer fixed-point the rest of the runtime uses, reusing
+# fx_mul_code / fx_div_code / fx_lerp_code and the @fn_fx_* prelude. llty maps the
+# `Vector` type to i64 (see emit_core.ludic).
+#
+# NOTE: helper results are bound to a `let` before interpolation — a function
+# call inside a backtick `{...}` hole would nest backticks and break.
+
+# pack two fixed i32 codes (x, y) into the i64 Vector representation -> i64 code
+function vec_pack(x: pointer, y: pointer) -> pointer {
+  let xe = emit_bind(`sext i32 {x} to i64`)
+  let xs = emit_bind(`shl i64 {xe}, 32`)
+  let ye = emit_bind(`zext i32 {y} to i64`)
+  return emit_bind(`or i64 {xs}, {ye}`)
+}
+
+# the x component (high 32 bits) of an i64 Vector code -> i32 fixed code
+function vec_x(v: pointer) -> pointer {
+  let s = emit_bind(`lshr i64 {v}, 32`)
+  return emit_bind(`trunc i64 {s} to i32`)
+}
+
+# the y component (low 32 bits) of an i64 Vector code -> i32 fixed code
+function vec_y(v: pointer) -> pointer {
+  return emit_bind(`trunc i64 {v} to i32`)
+}
+
+function is_vector_ns(meth: pointer) -> bool {
+  if (meth == "make") or (meth == "zero") or (meth == "x") or (meth == "y") { return true }
+  if (meth == "add") or (meth == "sub") or (meth == "scale") or (meth == "dot") { return true }
+  if (meth == "length") or (meth == "distance") or (meth == "normalize") or (meth == "lerp") { return true }
+  if (meth == "rotate") or (meth == "angle") or (meth == "from_angle") { return true }
+  return false
+}
+
+function emit_vector_ns(meth: pointer, e: Node) -> Val {
+  if (meth == "zero") {                             # the origin, (0, 0)
+    return val("0", "Vector")
+  }
+  if (meth == "make") {                             # make(x, y: fixed) -> Vector
+    let x = emit_expr(e.kids[0]);  let y = emit_expr(e.kids[1])
+    return val(vec_pack(x.code, y.code), "Vector")
+  }
+  if (meth == "x") {                                # the x component -> fixed
+    let v = emit_expr(e.kids[0])
+    return val(vec_x(v.code), "fixed")
+  }
+  if (meth == "y") {                                # the y component -> fixed
+    let v = emit_expr(e.kids[0])
+    return val(vec_y(v.code), "fixed")
+  }
+  if (meth == "add") {                              # component-wise a + b
+    let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1])
+    let ax = vec_x(a.code);  let ay = vec_y(a.code);  let bx = vec_x(b.code);  let by = vec_y(b.code)
+    let sx = emit_bind(`add i32 {ax}, {bx}`)
+    let sy = emit_bind(`add i32 {ay}, {by}`)
+    return val(vec_pack(sx, sy), "Vector")
+  }
+  if (meth == "sub") {                              # component-wise a - b
+    let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1])
+    let ax = vec_x(a.code);  let ay = vec_y(a.code);  let bx = vec_x(b.code);  let by = vec_y(b.code)
+    let sx = emit_bind(`sub i32 {ax}, {bx}`)
+    let sy = emit_bind(`sub i32 {ay}, {by}`)
+    return val(vec_pack(sx, sy), "Vector")
+  }
+  if (meth == "scale") {                            # v * s (s: fixed)
+    let v = emit_expr(e.kids[0]);  let s = emit_expr(e.kids[1])
+    let vx = vec_x(v.code);  let vy = vec_y(v.code)
+    let sx = fx_mul_code(vx, s.code)
+    let sy = fx_mul_code(vy, s.code)
+    return val(vec_pack(sx, sy), "Vector")
+  }
+  if (meth == "dot") {                              # ax*bx + ay*by -> fixed
+    let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1])
+    let ax = vec_x(a.code);  let ay = vec_y(a.code);  let bx = vec_x(b.code);  let by = vec_y(b.code)
+    let px = fx_mul_code(ax, bx);  let py = fx_mul_code(ay, by)
+    return val(emit_bind(`add i32 {px}, {py}`), "fixed")
+  }
+  if (meth == "length") {                           # sqrt(x*x + y*y) -> fixed
+    g_uses_mathrt = true
+    let v = emit_expr(e.kids[0])
+    let vx = vec_x(v.code);  let vy = vec_y(v.code)
+    let xx = fx_mul_code(vx, vx);  let yy = fx_mul_code(vy, vy)
+    let s = emit_bind(`add i32 {xx}, {yy}`)
+    return val(emit_bind(`call i32 @fn_fx_sqrt(i32 {s})`), "fixed")
+  }
+  if (meth == "distance") {                         # length(a - b) -> fixed
+    g_uses_mathrt = true
+    let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1])
+    let ax = vec_x(a.code);  let ay = vec_y(a.code);  let bx = vec_x(b.code);  let by = vec_y(b.code)
+    let dx = emit_bind(`sub i32 {ax}, {bx}`)
+    let dy = emit_bind(`sub i32 {ay}, {by}`)
+    let xx = fx_mul_code(dx, dx);  let yy = fx_mul_code(dy, dy)
+    let s = emit_bind(`add i32 {xx}, {yy}`)
+    return val(emit_bind(`call i32 @fn_fx_sqrt(i32 {s})`), "fixed")
+  }
+  if (meth == "normalize") {                        # v / length(v); the zero vector maps to itself
+    g_uses_mathrt = true
+    let v = emit_expr(e.kids[0])
+    let vx = vec_x(v.code);  let vy = vec_y(v.code)
+    let xx = fx_mul_code(vx, vx);  let yy = fx_mul_code(vy, vy)
+    let s = emit_bind(`add i32 {xx}, {yy}`)
+    let len = emit_bind(`call i32 @fn_fx_sqrt(i32 {s})`)
+    let zero = emit_bind(`icmp eq i32 {len}, 0`)
+    let denom = emit_bind(`select i1 {zero}, i32 65536, i32 {len}`)   # avoid divide-by-zero
+    let inv = fx_div_code("65536", denom)
+    let nx = fx_mul_code(vx, inv);  let ny = fx_mul_code(vy, inv)
+    return val(vec_pack(nx, ny), "Vector")
+  }
+  if (meth == "rotate") {                           # rotate by angle (radians, fixed)
+    g_uses_mathrt = true
+    let v = emit_expr(e.kids[0]);  let ang = emit_expr(e.kids[1])
+    let sn = emit_bind(`call i32 @fn_fx_sin(i32 {ang.code})`)
+    let ca = emit_bind(`add i32 {ang.code}, 102944`)                  # cos(a) = sin(a + pi/2)
+    let cs = emit_bind(`call i32 @fn_fx_sin(i32 {ca})`)
+    let vx = vec_x(v.code);  let vy = vec_y(v.code)
+    let xc = fx_mul_code(vx, cs);  let ys = fx_mul_code(vy, sn)
+    let xs = fx_mul_code(vx, sn);  let yc = fx_mul_code(vy, cs)
+    let rx = emit_bind(`sub i32 {xc}, {ys}`)                          # x*cos - y*sin
+    let ry = emit_bind(`add i32 {xs}, {yc}`)                          # x*sin + y*cos
+    return val(vec_pack(rx, ry), "Vector")
+  }
+  if (meth == "angle") {                            # atan2(y, x) -> fixed radians
+    g_uses_mathrt = true
+    let v = emit_expr(e.kids[0])
+    let vx = vec_x(v.code);  let vy = vec_y(v.code)
+    return val(emit_bind(`call i32 @fn_fx_atan2(i32 {vy}, i32 {vx})`), "fixed")
+  }
+  if (meth == "from_angle") {                       # unit vector at angle a: (cos a, sin a)
+    g_uses_mathrt = true
+    let ang = emit_expr(e.kids[0])
+    let sn = emit_bind(`call i32 @fn_fx_sin(i32 {ang.code})`)
+    let ca = emit_bind(`add i32 {ang.code}, 102944`)
+    let cs = emit_bind(`call i32 @fn_fx_sin(i32 {ca})`)
+    return val(vec_pack(cs, sn), "Vector")
+  }
+  # lerp(a, b, t: fixed) -> Vector — component-wise linear interpolation
+  let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1]);  let t = emit_expr(e.kids[2])
+  let ax = vec_x(a.code);  let ay = vec_y(a.code);  let bx = vec_x(b.code);  let by = vec_y(b.code)
+  let lx = fx_lerp_code(ax, bx, t.code)
+  let ly = fx_lerp_code(ay, by, t.code)
+  return val(vec_pack(lx, ly), "Vector")
+}
