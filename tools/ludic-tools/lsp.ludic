@@ -1324,11 +1324,11 @@ program LudicLsp {
       if (meth == "back")   { return "Ease.back(t) -> fixed" }
       if (meth == "bounce") { return "Ease.bounce(t) -> fixed" }
     }
-    if (ns == "Collide") {
-      if (meth == "rects")       { return "Collide.rects(ax, ay, aw, ah, bx, by, bw, bh) -> bool" }
-      if (meth == "point_rect")  { return "Collide.point_rect(px, py, rx, ry, rw, rh) -> bool" }
-      if (meth == "circles")     { return "Collide.circles(ax, ay, ar, bx, by, br) -> bool" }
-      if (meth == "rect_circle") { return "Collide.rect_circle(rx, ry, rw, rh, cx, cy, cr) -> bool" }
+    if (ns == "Collision") {
+      if (meth == "rects")       { return "Collision.rects(ax, ay, aw, ah, bx, by, bw, bh) -> bool" }
+      if (meth == "point_rect")  { return "Collision.point_rect(px, py, rx, ry, rw, rh) -> bool" }
+      if (meth == "circles")     { return "Collision.circles(ax, ay, ar, bx, by, br) -> bool" }
+      if (meth == "rect_circle") { return "Collision.rect_circle(rx, ry, rw, rh, cx, cy, cr) -> bool" }
     }
     if (ns == "World") {
       if (meth == "get") { return "World.get(prop_id, field_id, entity) -> int" }
@@ -1348,32 +1348,32 @@ program LudicLsp {
       if (meth == "detach") { return "World.detach(entity, prop_id)" }
       if (meth == "query_next") { return "World.query_next(query_id, cursor) -> int" }
     }
-    if (ns == "Net") {
-      if (meth == "send") { return "Net.send(peer, buf, len)" }
-      if (meth == "poll") { return "Net.poll(buf, cap) -> int" }
-      if (meth == "serialize") { return "Net.serialize(entity, buf) -> int" }
-      if (meth == "apply") { return "Net.apply(entity, buf) -> int" }
-      if (meth == "owner") { return "Net.owner(entity) -> int" }
-      if (meth == "set_owner") { return "Net.set_owner(entity, peer)" }
-      if (meth == "is_server") { return "Net.is_server() -> bool" }
-      if (meth == "is_owner") { return "Net.is_owner(entity) -> bool" }
-      if (meth == "local_id") { return "Net.local_id() -> int" }
+    if (ns == "Network") {
+      if (meth == "send") { return "Network.send(peer, buf, len)" }
+      if (meth == "poll") { return "Network.poll(buf, cap) -> int" }
+      if (meth == "serialize") { return "Network.serialize(entity, buf) -> int" }
+      if (meth == "apply") { return "Network.apply(entity, buf) -> int" }
+      if (meth == "owner") { return "Network.owner(entity) -> int" }
+      if (meth == "set_owner") { return "Network.set_owner(entity, peer)" }
+      if (meth == "is_server") { return "Network.is_server() -> bool" }
+      if (meth == "is_owner") { return "Network.is_owner(entity) -> bool" }
+      if (meth == "local_id") { return "Network.local_id() -> int" }
     }
-    if (ns == "Sys") {
-      if (meth == "arg") { return "Sys.arg(i) -> str" }
-      if (meth == "arg_count") { return "Sys.arg_count() -> int" }
-      if (meth == "exit") { return "Sys.exit(code)" }
-      if (meth == "run") { return "Sys.run(command) -> int" }
-      if (meth == "env") { return "Sys.env(name) -> str" }
-      if (meth == "read_char") { return "Sys.read_char() -> int" }
-      if (meth == "file_open") { return "Sys.file_open(path, mode) -> ptr" }
-      if (meth == "file_read") { return "Sys.file_read(file, buf, n) -> int" }
-      if (meth == "file_write") { return "Sys.file_write(file, buf, n) -> int" }
-      if (meth == "file_seek") { return "Sys.file_seek(file, offset, whence) -> int" }
-      if (meth == "file_tell") { return "Sys.file_tell(file) -> int" }
-      if (meth == "file_close") { return "Sys.file_close(file)" }
-      if (meth == "stdout") { return "Sys.stdout() -> ptr" }
-      if (meth == "stderr") { return "Sys.stderr() -> ptr" }
+    if (ns == "System") {
+      if (meth == "arg") { return "System.arg(i) -> str" }
+      if (meth == "arg_count") { return "System.arg_count() -> int" }
+      if (meth == "exit") { return "System.exit(code)" }
+      if (meth == "run") { return "System.run(command) -> int" }
+      if (meth == "env") { return "System.env(name) -> str" }
+      if (meth == "read_char") { return "System.read_char() -> int" }
+      if (meth == "file_open") { return "System.file_open(path, mode) -> ptr" }
+      if (meth == "file_read") { return "System.file_read(file, buf, n) -> int" }
+      if (meth == "file_write") { return "System.file_write(file, buf, n) -> int" }
+      if (meth == "file_seek") { return "System.file_seek(file, offset, whence) -> int" }
+      if (meth == "file_tell") { return "System.file_tell(file) -> int" }
+      if (meth == "file_close") { return "System.file_close(file)" }
+      if (meth == "stdout") { return "System.stdout() -> ptr" }
+      if (meth == "stderr") { return "System.stderr() -> ptr" }
     }
     if (ns == "Save") {
       if (meth == "write") { return "Save.write()" }
@@ -1385,13 +1385,13 @@ program LudicLsp {
       if (meth == "elapsed") { return "Time.elapsed() -> fixed" }
       if (meth == "now")     { return "Time.now() -> int" }
     }
-    if (ns == "Mem") {
-      if (meth == "bytes") { return "Mem.bytes(n) -> ptr" }
-      if (meth == "words") { return "Mem.words(n) -> words" }
-      if (meth == "copy") { return "Mem.copy(dst, src, n)" }
-      if (meth == "fill") { return "Mem.fill(buf, value, n)" }
-      if (meth == "peek") { return "Mem.peek(buf, i) -> int" }
-      if (meth == "poke") { return "Mem.poke(buf, i, value)" }
+    if (ns == "Memory") {
+      if (meth == "bytes") { return "Memory.bytes(n) -> ptr" }
+      if (meth == "words") { return "Memory.words(n) -> words" }
+      if (meth == "copy") { return "Memory.copy(dst, src, n)" }
+      if (meth == "fill") { return "Memory.fill(buf, value, n)" }
+      if (meth == "peek") { return "Memory.peek(buf, i) -> int" }
+      if (meth == "poke") { return "Memory.poke(buf, i, value)" }
     }
     return null
   }

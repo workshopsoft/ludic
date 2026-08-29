@@ -50,11 +50,11 @@
     "fn-file_stdout",
     "fn-file_stderr"
   ],
-  "collide": [
-    "collide-rects",
-    "collide-point_rect",
-    "collide-circles",
-    "collide-rect_circle"
+  "collision": [
+    "collision-rects",
+    "collision-point_rect",
+    "collision-circles",
+    "collision-rect_circle"
   ],
   "color": [
     "color-rgb",
@@ -168,24 +168,24 @@
     "math-asin",
     "math-acos"
   ],
-  "mem": [
-    "mem-bytes",
-    "mem-words",
-    "mem-copy",
-    "mem-fill",
-    "mem-peek",
-    "mem-poke"
+  "memory": [
+    "memory-bytes",
+    "memory-words",
+    "memory-copy",
+    "memory-fill",
+    "memory-peek",
+    "memory-poke"
   ],
-  "net": [
-    "net-send",
-    "net-poll",
-    "net-serialize",
-    "net-apply",
-    "net-owner",
-    "net-set_owner",
-    "net-is_server",
-    "net-is_owner",
-    "net-local_id"
+  "network": [
+    "network-send",
+    "network-poll",
+    "network-serialize",
+    "network-apply",
+    "network-owner",
+    "network-set_owner",
+    "network-is_server",
+    "network-is_owner",
+    "network-local_id"
   ],
   "networking": [
     "fn-net_send",
@@ -273,21 +273,21 @@
     "kw-ui",
     "kw-enum"
   ],
-  "sys": [
-    "sys-arg",
-    "sys-arg_count",
-    "sys-exit",
-    "sys-run",
-    "sys-env",
-    "sys-read_char",
-    "sys-file_open",
-    "sys-file_read",
-    "sys-file_write",
-    "sys-file_seek",
-    "sys-file_tell",
-    "sys-file_close",
-    "sys-stdout",
-    "sys-stderr"
+  "system": [
+    "system-arg",
+    "system-arg_count",
+    "system-exit",
+    "system-run",
+    "system-env",
+    "system-read_char",
+    "system-file_open",
+    "system-file_read",
+    "system-file_write",
+    "system-file_seek",
+    "system-file_tell",
+    "system-file_close",
+    "system-stdout",
+    "system-stderr"
   ],
   "text": [
     "text-length",

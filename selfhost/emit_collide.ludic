@@ -1,4 +1,4 @@
-# emit_collide.ludic — the Collide.* namespace: 2D overlap tests on plain
+# emit_collide.ludic — the Collision.* namespace: 2D overlap tests on plain
 # integer coordinates (pixels or tiles). Rectangles are (x, y, w, h) with the
 # origin at the top-left; circles are (x, y, r). Squared distances use i64 so a
 # large coordinate can't overflow. Each returns a bool.

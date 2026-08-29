@@ -1,4 +1,4 @@
-# emit_mem.ludic — the Mem.* namespace: raw buffers and byte pokes. bytes/words
+# emit_mem.ludic — the Memory.* namespace: raw buffers and byte pokes. bytes/words
 # allocate (as the bare builtins do); copy/fill wrap memcpy/memset; peek/poke
 # read and write one byte. The low-level escape hatch, PICO-8's memcpy/memset/
 # peek/poke by another name.

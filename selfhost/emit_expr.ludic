@@ -211,13 +211,13 @@ fn emit_ns_call(ns: ptr, meth: ptr, e: Node) -> Val {
     if is_ease_ns(meth) { return emit_ease_ns(meth, e) }
     perr(`unknown builtin Ease.{meth}`)
   }
-  if (ns == "Collide") {
+  if (ns == "Collision") {
     if is_collide_ns(meth) { return emit_collide_ns(meth, e) }
-    perr(`unknown builtin Collide.{meth}`)
+    perr(`unknown builtin Collision.{meth}`)
   }
-  if (ns == "Mem") {
+  if (ns == "Memory") {
     if is_mem_ns(meth) { return emit_mem_ns(meth, e) }
-    perr(`unknown builtin Mem.{meth}`)
+    perr(`unknown builtin Memory.{meth}`)
   }
   if (ns == "Color") {
     if is_colorfn_ns(meth) { return emit_colorfn_ns(meth, e) }
@@ -288,7 +288,7 @@ fn emit_ns_call(ns: ptr, meth: ptr, e: Node) -> Val {
     if (meth == "detach")        { bare = "world_detach_dyn" }
     if (meth == "query_next")    { bare = "world_query_next" }
   }
-  if (ns == "Net") {
+  if (ns == "Network") {
     if (meth == "send")      { bare = "net_send" }
     if (meth == "poll")      { bare = "net_poll" }
     if (meth == "serialize") { bare = "serialize" }
@@ -299,7 +299,7 @@ fn emit_ns_call(ns: ptr, meth: ptr, e: Node) -> Val {
     if (meth == "is_owner")  { bare = "is_owner" }
     if (meth == "local_id")  { bare = "local_id" }
   }
-  if (ns == "Sys") {
+  if (ns == "System") {
     if (meth == "arg")        { bare = "arg" }
     if (meth == "arg_count")  { bare = "arg_count" }
     if (meth == "exit")       { bare = "exit" }
