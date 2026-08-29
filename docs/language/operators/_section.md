@@ -1,7 +1,7 @@
 ---
 id: operators
 title: Operators & tokens
-order: 11
+order: 12
 ---
 
 The symbols the grammar recognizes.
