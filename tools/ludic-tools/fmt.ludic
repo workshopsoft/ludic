@@ -97,7 +97,7 @@ program LudicFmt {
 
   # ---- vocabulary classifiers ----
   fn is_type_word(w: ptr) -> bool {
-    return (w == "int") or (w == "fixed") or (w == "bool") or (w == "entity") or (w == "str") or (w == "ptr") or (w == "byte") or (w == "words") or (w == "fixeds") or (w == "ptrs") or (w == "void")
+    return (w == "int") or (w == "long") or (w == "fixed") or (w == "bool") or (w == "entity") or (w == "str") or (w == "ptr") or (w == "byte") or (w == "words") or (w == "fixeds") or (w == "ptrs") or (w == "void")
   }
   fn is_phase_word(w: ptr) -> bool {
     return (w == "Start") or (w == "Input") or (w == "FixedUpdate") or (w == "Update") or (w == "LateUpdate") or (w == "Render")

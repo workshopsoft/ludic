@@ -24,6 +24,8 @@ var g_uses_strslice: bool = false  # `s[a..b]` was emitted -> emit the substring
 var g_uses_mathrt: bool = false  # Math.sqrt/sin/cos/tan was emitted -> emit the math runtime prelude
 var g_uses_textrt: bool = false  # Text.upper/lower/trim/repeat/pad was emitted -> emit the text builders
 var g_uses_textrt2: bool = false  # Text.split/join/replace was emitted -> emit the string/slice builders
+var g_uses_hashrt: bool = false  # Hash.of/fnv1a/crc32 was emitted -> emit the byte-stream hashers
+var g_uses_longstr: bool = false  # str(long) / interpolating a long was emitted -> emit fn_long_str
 
 # loop targets for break/continue (innermost last)
 var brk_lbl: []ptr
@@ -70,6 +72,7 @@ fn lbl(pfx: ptr) -> ptr { let r = (pfx + itoa(ll_lbl));  ll_lbl = ll_lbl + 1;  r
 # slice) is a pointer; void is void.
 fn llty(t: ptr) -> ptr {
   if (t == "int") or (t == "bool") or (t == "fixed") or (t == "entity") { return "i32" }   # entity = an i32 handle (self())
+  if (t == "long") { return "i64" }               # a 64-bit signed integer
   if (t == "byte") { return "i8" }                # a single byte (p[i] on a raw ptr)
   if (t == "words") or (t == "fixeds") or (t == "ptrs") { return "ptr" }   # typed buffers
   if (t == "void") { return "void" }

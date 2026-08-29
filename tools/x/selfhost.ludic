@@ -26,6 +26,7 @@ fn selfhost_frags() -> []ptr {
   push(f, "selfhost/emit_intrin2.ludic")
   push(f, "selfhost/emit_math.ludic")
   push(f, "selfhost/emit_text.ludic")
+  push(f, "selfhost/emit_hash.ludic")
   push(f, "selfhost/emit_list.ludic")
   push(f, "selfhost/emit_ease.ludic")
   push(f, "selfhost/emit_collide.ludic")

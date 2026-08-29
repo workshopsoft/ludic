@@ -40,16 +40,16 @@ fn emit_assign(st: Node) -> void {
   }
   let lt = llty(ty)
   let rv = emit_expr(st.b)
-  var v = rv.code
+  var v = coerce_code(rv, ty)
+  if (lt == "i8") { v = emit_bind(`trunc i32 {v} to i8`) }   # narrow to a byte for p[i] = v
   if not (st.s == "=") {
     let cur = emit_bind(`load {lt}, ptr {addr}`)
     var opc = "add"
     if (st.s == ("-=")) { opc = "sub" }
     if (st.s == ("*=")) { opc = "mul" }
     if (st.s == ("/=")) { opc = "sdiv" }
-    v = emit_bind(`{opc} i32 {cur}, {v}`)
+    v = emit_bind(`{opc} {lt} {cur}, {v}`)
   }
-  if (lt == "i8") { v = emit_bind(`trunc i32 {v} to i8`) }   # narrow to a byte for p[i] = v
   store_at(lt, v, addr)
 }
 
@@ -115,7 +115,7 @@ fn emit_for(st: Node) -> void {
 fn emit_return(st: Node) -> void {
   if (st.a != null) {
     let v = emit_expr(st.a)
-    store_at(llty(ret_ty), v.code, "%retval")
+    store_at(llty(ret_ty), coerce_code(v, ret_ty), "%retval")
   }
   emit("  br label %ret\n")
   g_term = true
@@ -231,7 +231,7 @@ fn emit_stmt(st: Node) -> void {
       var z = "0"
       if (llty(ty) == "ptr") { z = "null" }
       store_at(llty(ty), z, slot)
-    } else { let v = emit_expr(st.a);  store_at(llty(ty), v.code, slot) }
+    } else { let v = emit_expr(st.a);  store_at(llty(ty), coerce_code(v, ty), slot) }
     loc_push(st.s, slot, ty)
     loc_set_mut(st.ival)
     return

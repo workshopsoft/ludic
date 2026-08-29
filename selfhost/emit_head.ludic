@@ -66,6 +66,7 @@ fn emit_header() -> void {
   emith("@__stderrp = external global ptr\n")
   emith("@__stdoutp = external global ptr\n")
   emith("@.fmt_int = private unnamed_addr constant [4 x i8] c\"%d\\0A\\00\"\n")
+  emith("@.fmt_long = private unnamed_addr constant [6 x i8] c\"%lld\\0A\\00\"\n")
   emith("@.fmt_line = private unnamed_addr constant [4 x i8] c\"%s\\0A\\00\"\n")
   emith("@L_argc = internal global i32 0\n")
   emith("@L_argv = internal global ptr null\n")
@@ -186,6 +187,29 @@ fn emit_int_str() -> void {
   emith("dbody:\n  %d = urem i32 %cur, 10\n  %ch = add i32 %d, 48\n  %ch8 = trunc i32 %ch to i8\n")
   emith("  %pp = getelementptr inbounds i8, ptr %buf, i32 %pos\n  store i8 %ch8, ptr %pp\n")
   emith("  %cur2 = udiv i32 %cur, 10\n  %pos2 = sub i32 %pos, 1\n  br label %dloop\n")
+  emith("sign:\n  br i1 %isneg, label %addneg, label %fin\n")
+  emith("addneg:\n  %sp = getelementptr inbounds i8, ptr %buf, i32 %pos\n  store i8 45, ptr %sp\n  %posn = sub i32 %pos, 1\n  br label %fin\n")
+  emith("fin:\n  %fpos = phi i32 [ %pos, %sign ], [ %posn, %addneg ]\n")
+  emith("  %rpos = add i32 %fpos, 1\n  %res = getelementptr inbounds i8, ptr %buf, i32 %rpos\n  ret ptr %res\n}\n")
+}
+
+# the i64 twin of fn_int_str: a signed 64-bit integer -> decimal text. Emitted
+# once per program that stringifies a `long` (g_uses_longstr). A 64-bit value is
+# at most 20 digits plus sign and NUL, so the 24-byte scratch buffer still fits.
+fn emit_long_str() -> void {
+  emith("define ptr @fn_long_str(i64 %n0) {\n")
+  emith("entry:\n  %buf = call ptr @malloc(i64 24)\n")
+  emith("  %isneg = icmp slt i64 %n0, 0\n  %neg = sub i64 0, %n0\n")
+  emith("  %n = select i1 %isneg, i64 %neg, i64 %n0\n")
+  emith("  %term = getelementptr inbounds i8, ptr %buf, i32 23\n  store i8 0, ptr %term\n")
+  emith("  %iszero = icmp eq i64 %n0, 0\n  br i1 %iszero, label %zc, label %dl\n")
+  emith("zc:\n  %zp = getelementptr inbounds i8, ptr %buf, i32 22\n  store i8 48, ptr %zp\n  ret ptr %zp\n")
+  emith("dl:\n  br label %dloop\n")
+  emith("dloop:\n  %pos = phi i32 [ 22, %dl ], [ %pos2, %dbody ]\n  %cur = phi i64 [ %n, %dl ], [ %cur2, %dbody ]\n")
+  emith("  %done = icmp eq i64 %cur, 0\n  br i1 %done, label %sign, label %dbody\n")
+  emith("dbody:\n  %d = urem i64 %cur, 10\n  %d32 = trunc i64 %d to i32\n  %ch = add i32 %d32, 48\n  %ch8 = trunc i32 %ch to i8\n")
+  emith("  %pp = getelementptr inbounds i8, ptr %buf, i32 %pos\n  store i8 %ch8, ptr %pp\n")
+  emith("  %cur2 = udiv i64 %cur, 10\n  %pos2 = sub i32 %pos, 1\n  br label %dloop\n")
   emith("sign:\n  br i1 %isneg, label %addneg, label %fin\n")
   emith("addneg:\n  %sp = getelementptr inbounds i8, ptr %buf, i32 %pos\n  store i8 45, ptr %sp\n  %posn = sub i32 %pos, 1\n  br label %fin\n")
   emith("fin:\n  %fpos = phi i32 [ %pos, %sign ], [ %posn, %addneg ]\n")

@@ -1,0 +1,35 @@
+program T {
+  entry {
+    # ---- Hash.* — deterministic non-cryptographic hashing ----
+    # FNV-1a 32-bit (printed as a signed i32).
+    print(Hash.fnv1a(""))            # 0x811c9dc5 -> -2128831035
+    print(Hash.fnv1a("a"))           # -468965076
+    print(Hash.fnv1a("grass_tile"))  # 114400290
+    print(Hash.of("grass_tile"))     # Hash.of is the FNV-1a default -> same
+
+    # CRC-32 (IEEE) — known-answer check vectors.
+    print(Hash.crc32(""))            # 0
+    print(Hash.crc32("123456789"))   # 0xCBF43926 -> -873187034
+    print(Hash.crc32("The quick brown fox jumps over the lazy dog"))  # 1095738169
+
+    # fmix32 avalanche of a single int.
+    print(Hash.mix(0))               # 0
+    print(Hash.mix(1))               # 1364076727
+    print(Hash.mix(-1))              # -2114883783
+
+    # combine folds several ints into one seed: deterministic + order-sensitive.
+    print(Hash.combine(123, 456))    # -845898438
+    print(Hash.combine(123, 456))    # same input -> same hash
+    print(Hash.combine(1, 2, 3))     # -78065325
+    print(Hash.combine(3, 2, 1))     # -78057399 (order matters)
+
+    # ---- 64-bit variants (return `long`) ----
+    print(Hash.fnv1a_64(""))            # 0xcbf29ce484222325 -> -3750763034362895579
+    print(Hash.fnv1a_64("a"))           # 0xaf63dc4c8601ec8c -> -5808556873153909620
+    print(Hash.fnv1a_64("grass_tile"))  # -4100651535478758590
+    print(Hash.of64("grass_tile"))      # Hash.of64 is the 64-bit default -> same
+    print(Hash.mix64(0))                # 0
+    print(Hash.mix64(1))                # -5451962507482445012
+    print(Hash.mix64(-1))               # 7256831767414464289
+  }
+}

@@ -98,10 +98,12 @@ fn emit_program() -> void {
   if g_uses_loopback { emit_loopback() }         # built-in transport, after all net_send/net_poll uses are seen
   if g_uses_str { emit_str_prelude() }          # @fn_str_eq / @fn_str_concat, after all uses are seen
   if g_uses_intstr { emit_int_str() }           # @fn_int_str, for str(int) in interpolation
+  if g_uses_longstr { emit_long_str() }         # @fn_long_str, for str(long) / long interpolation
   if g_uses_strslice { emit_str_slice() }       # @fn_str_slice, for s[a..b]
   if g_uses_mathrt { emit_math_prelude() }       # @fn_fx_sqrt / @fn_fx_sin + the sine table
   if g_uses_textrt { emit_text_prelude() }       # @fn_str_upper/lower/trim/repeat/pad builders
   if g_uses_textrt2 { emit_text2_prelude() }     # @fn_str_replace/join/split builders
+  if g_uses_hashrt { emit_hash_prelude() }       # @fn_hash_fnv1a / @fn_hash_crc32 byte hashers
 }
 
 # Flush the emitted IR. With a null path it goes to stdout (the pipe the shell

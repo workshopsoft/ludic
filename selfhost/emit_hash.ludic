@@ -1,0 +1,195 @@
+# emit_hash.ludic — the Hash.* namespace: fast, non-cryptographic hashing for
+# map keys, content IDs, deterministic seeds and checksums. Everything is plain
+# 32-bit integer IR with defined constants and byte order, so a given input
+# hashes to the same value on every platform and every run — which is what makes
+# it safe for procedural generation and lockstep networking. NOT for passwords
+# or tamper-proofing; point users at the Crypto library for that.
+#
+#   Hash.of(s)         fast default string hash (currently FNV-1a 32)
+#   Hash.fnv1a(s)      FNV-1a 32-bit, named explicitly
+#   Hash.crc32(s)      CRC-32 (IEEE 802.3) checksum, for corruption detection
+#   Hash.mix(x)        fmix32 avalanche of a single int (turn a counter into a seed)
+#   Hash.combine(...)  fold several ints into one (e.g. world_seed, cx, cy)
+
+fn is_hash_ns(meth: ptr) -> bool {
+  if (meth == "of") or (meth == "fnv1a") or (meth == "crc32") { return true }
+  if (meth == "mix") or (meth == "combine") { return true }
+  if (meth == "of64") or (meth == "fnv1a_64") or (meth == "mix64") { return true }
+  return false
+}
+
+# fmix32 (MurmurHash3 finalizer) of a single i32 -> code of an i32. A strong
+# avalanche: flips ~half the output bits for any one input bit. Used on its own
+# (Hash.mix) and nowhere else — combine has its own mixing step.
+fn hash_mix_code(x: ptr) -> ptr {
+  let a = emit_bind(`lshr i32 {x}, 16`)
+  let b = emit_bind(`xor i32 {x}, {a}`)
+  let c = emit_bind(`mul i32 {b}, -2048144789`)     # * 0x85ebca6b
+  let d = emit_bind(`lshr i32 {c}, 13`)
+  let e = emit_bind(`xor i32 {c}, {d}`)
+  let f = emit_bind(`mul i32 {e}, -1028477387`)     # * 0xc2b2ae35
+  let g = emit_bind(`lshr i32 {f}, 16`)
+  return emit_bind(`xor i32 {f}, {g}`)
+}
+
+# fmix64 (MurmurHash3 64-bit finalizer) of a single i64 -> code of an i64. The
+# 64-bit twin of hash_mix_code: shift by 33 and multiply by the two 64-bit
+# constants. Backs Hash.mix64.
+fn hash_mix64_code(x: ptr) -> ptr {
+  let a = emit_bind(`lshr i64 {x}, 33`)
+  let b = emit_bind(`xor i64 {x}, {a}`)
+  let c = emit_bind(`mul i64 {b}, -49064778989728563`)    # * 0xff51afd7ed558ccd
+  let d = emit_bind(`lshr i64 {c}, 33`)
+  let e = emit_bind(`xor i64 {c}, {d}`)
+  let f = emit_bind(`mul i64 {e}, -4265267296055464877`)  # * 0xc4ceb9fe1a85ec53
+  let g = emit_bind(`lshr i64 {f}, 33`)
+  return emit_bind(`xor i64 {f}, {g}`)
+}
+
+fn emit_hash_ns(meth: ptr, e: Node) -> Val {
+  if (meth == "of") or (meth == "fnv1a") {          # FNV-1a 32-bit over the bytes
+    g_uses_hashrt = true
+    let s = emit_expr(e.kids[0])
+    return val(emit_bind(`call i32 @fn_hash_fnv1a(ptr {s.code})`), "int")
+  }
+  if (meth == "of64") or (meth == "fnv1a_64") {     # FNV-1a 64-bit -> a `long`
+    g_uses_hashrt = true
+    let s = emit_expr(e.kids[0])
+    return val(emit_bind(`call i64 @fn_hash_fnv1a_64(ptr {s.code})`), "long")
+  }
+  if (meth == "mix64") {                            # fmix64 avalanche of one long
+    let x = emit_expr(e.kids[0])
+    return val(hash_mix64_code(to_long(x)), "long")
+  }
+  if (meth == "crc32") {                            # CRC-32 (IEEE) checksum
+    g_uses_hashrt = true
+    let s = emit_expr(e.kids[0])
+    return val(emit_bind(`call i32 @fn_hash_crc32(ptr {s.code})`), "int")
+  }
+  if (meth == "mix") {                              # fmix32 avalanche of one int
+    let x = emit_expr(e.kids[0])
+    return val(hash_mix_code(x.code), "int")
+  }
+  # combine(a, b, ...) -> fold the boost hash_combine step over every argument:
+  #   seed = seed ^ (v + 0x9e3779b9 + (seed << 6) + (seed >> 2))
+  # order-sensitive and deterministic; seed starts at 0 so a single argument is
+  # still well-mixed with the golden-ratio constant.
+  var seed: ptr = "0"
+  var i = 0
+  while i < len(e.kids) {
+    let v = emit_expr(e.kids[i])
+    let g = emit_bind(`add i32 {v.code}, -1640531527`)   # + 0x9e3779b9
+    let sl = emit_bind(`shl i32 {seed}, 6`)
+    let sr = emit_bind(`lshr i32 {seed}, 2`)
+    let t1 = emit_bind(`add i32 {g}, {sl}`)
+    let t2 = emit_bind(`add i32 {t1}, {sr}`)
+    seed = emit_bind(`xor i32 {seed}, {t2}`)
+    i = i + 1
+  }
+  return val(seed, "int")
+}
+
+# emit_hash_prelude — the byte-stream hashers, emitted once per program that uses
+# Hash.of/fnv1a/crc32 (g_uses_hashrt). Both walk a null-terminated string a byte
+# at a time with pure integer IR: FNV-1a with the standard 32-bit offset basis /
+# prime, and a bitwise CRC-32 with the reflected poly 0xEDB88320. No libc, no
+# allocation, bit-identical on every target.
+fn emit_hash_prelude() -> void {
+  emith("define i32 @fn_hash_fnv1a(ptr %s) {\n")
+  emith("entry:\n")
+  emith("  %hp = alloca i32\n")
+  emith("  store i32 -2128831035, ptr %hp\n")       # 0x811c9dc5 offset basis
+  emith("  %ip = alloca i64\n")
+  emith("  store i64 0, ptr %ip\n")
+  emith("  br label %cond\n")
+  emith("cond:\n")
+  emith("  %i = load i64, ptr %ip\n")
+  emith("  %p = getelementptr i8, ptr %s, i64 %i\n")
+  emith("  %c = load i8, ptr %p\n")
+  emith("  %z = icmp eq i8 %c, 0\n")
+  emith("  br i1 %z, label %done, label %body\n")
+  emith("body:\n")
+  emith("  %ce = zext i8 %c to i32\n")
+  emith("  %h = load i32, ptr %hp\n")
+  emith("  %x = xor i32 %h, %ce\n")
+  emith("  %m = mul i32 %x, 16777619\n")            # * 0x01000193 prime
+  emith("  store i32 %m, ptr %hp\n")
+  emith("  %i1 = add i64 %i, 1\n")
+  emith("  store i64 %i1, ptr %ip\n")
+  emith("  br label %cond\n")
+  emith("done:\n")
+  emith("  %hr = load i32, ptr %hp\n")
+  emith("  ret i32 %hr\n")
+  emith("}\n")
+  emith("define i64 @fn_hash_fnv1a_64(ptr %s) {\n")  # 64-bit FNV-1a, same shape, i64
+  emith("entry:\n")
+  emith("  %hp = alloca i64\n")
+  emith("  store i64 -3750763034362895579, ptr %hp\n")   # 0xcbf29ce484222325 offset basis
+  emith("  %ip = alloca i64\n")
+  emith("  store i64 0, ptr %ip\n")
+  emith("  br label %cond\n")
+  emith("cond:\n")
+  emith("  %i = load i64, ptr %ip\n")
+  emith("  %p = getelementptr i8, ptr %s, i64 %i\n")
+  emith("  %c = load i8, ptr %p\n")
+  emith("  %z = icmp eq i8 %c, 0\n")
+  emith("  br i1 %z, label %done, label %body\n")
+  emith("body:\n")
+  emith("  %ce = zext i8 %c to i64\n")
+  emith("  %h = load i64, ptr %hp\n")
+  emith("  %x = xor i64 %h, %ce\n")
+  emith("  %m = mul i64 %x, 1099511628211\n")            # * 0x100000001b3 prime
+  emith("  store i64 %m, ptr %hp\n")
+  emith("  %i1 = add i64 %i, 1\n")
+  emith("  store i64 %i1, ptr %ip\n")
+  emith("  br label %cond\n")
+  emith("done:\n")
+  emith("  %hr = load i64, ptr %hp\n")
+  emith("  ret i64 %hr\n")
+  emith("}\n")
+  emith("define i32 @fn_hash_crc32(ptr %s) {\n")
+  emith("entry:\n")
+  emith("  %cp = alloca i32\n")
+  emith("  store i32 -1, ptr %cp\n")                # init 0xFFFFFFFF
+  emith("  %ip = alloca i64\n")
+  emith("  store i64 0, ptr %ip\n")
+  emith("  %kp = alloca i32\n")
+  emith("  br label %cond\n")
+  emith("cond:\n")
+  emith("  %i = load i64, ptr %ip\n")
+  emith("  %p = getelementptr i8, ptr %s, i64 %i\n")
+  emith("  %ch = load i8, ptr %p\n")
+  emith("  %z = icmp eq i8 %ch, 0\n")
+  emith("  br i1 %z, label %done, label %body\n")
+  emith("body:\n")
+  emith("  %ce = zext i8 %ch to i32\n")
+  emith("  %c0 = load i32, ptr %cp\n")
+  emith("  %cx = xor i32 %c0, %ce\n")               # fold byte into low 8 bits
+  emith("  store i32 %cx, ptr %cp\n")
+  emith("  store i32 0, ptr %kp\n")
+  emith("  br label %bit\n")
+  emith("bit:\n")
+  emith("  %k = load i32, ptr %kp\n")
+  emith("  %kd = icmp slt i32 %k, 8\n")
+  emith("  br i1 %kd, label %bitbody, label %bitdone\n")
+  emith("bitbody:\n")
+  emith("  %c1 = load i32, ptr %cp\n")
+  emith("  %lb = and i32 %c1, 1\n")
+  emith("  %ls = lshr i32 %c1, 1\n")
+  emith("  %ism = icmp eq i32 %lb, 1\n")
+  emith("  %px = select i1 %ism, i32 -306674912, i32 0\n")   # ^ 0xEDB88320 when LSB set
+  emith("  %c2 = xor i32 %ls, %px\n")
+  emith("  store i32 %c2, ptr %cp\n")
+  emith("  %k1 = add i32 %k, 1\n")
+  emith("  store i32 %k1, ptr %kp\n")
+  emith("  br label %bit\n")
+  emith("bitdone:\n")
+  emith("  %i1 = add i64 %i, 1\n")
+  emith("  store i64 %i1, ptr %ip\n")
+  emith("  br label %cond\n")
+  emith("done:\n")
+  emith("  %cf = load i32, ptr %cp\n")
+  emith("  %r = xor i32 %cf, -1\n")                 # final XOR 0xFFFFFFFF
+  emith("  ret i32 %r\n")
+  emith("}\n")
+}

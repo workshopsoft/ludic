@@ -1,0 +1,23 @@
+program T {
+  fn wide(a: long, b: int) -> long { return a * b }   # int arg widens to i64
+
+  entry {
+    let big: long = 1000000       # int literal widens to a long
+    let sq = big * big            # i64 multiply -> 10^12, no overflow
+    print(sq)                     # 1000000000000
+    print(sq + 1)                 # 1000000000001
+    var acc: long = 0
+    acc += sq
+    acc += 5                      # compound assign in i64
+    print(acc)                    # 1000000000005
+    print(wide(big, 3000000))     # 3000000000000 (> i32 max)
+    let x: long = big * 3
+    let y = big * 2               # inferred long
+    print(x > y)                  # 1
+    print(y < x)                  # 1
+    print(x == x)                 # 1
+    print(0 - sq)                 # -1000000000000 (unary negate stays 64-bit)
+    print(big)                    # 1000000
+    print(Text.length(str(sq)))   # 13 — str(long) renders all 13 digits
+  }
+}

@@ -71,7 +71,7 @@ static const char* LUDIC_KW_STMT[] = {
     "and","or","not","break","continue","new","emit","cancel", 0
 };
 static const char* LUDIC_TYPES[] = {
-    "int","fixed","bool","entity","str","ptr","byte","words","fixeds","ptrs","void", 0
+    "int","long","fixed","bool","entity","str","ptr","byte","words","fixeds","ptrs","void", 0
 };
 static const char* LUDIC_PHASES[] = {
     "Start","Input","FixedUpdate","Update","LateUpdate","Render", 0

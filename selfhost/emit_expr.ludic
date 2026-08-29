@@ -56,6 +56,24 @@ fn to_fixed(v: Val) -> ptr {
   return emit_bind(`shl i32 {v.code}, 16`)
 }
 
+# coerce a value's code to the LLVM type of `target`, for the only cross-width
+# pair the language has: int (i32) <-> long (i64). int widens with sext, long
+# narrows with trunc; everything else (same width, or ptr) passes through.
+fn coerce_code(v: Val, target: ptr) -> ptr {
+  let lt = llty(target)
+  let vt = llty(v.ty)
+  if (lt == vt) { return v.code }
+  if (lt == "i64") and (vt == "i32") { return emit_bind(`sext i32 {v.code} to i64`) }
+  if (lt == "i32") and (vt == "i64") { return emit_bind(`trunc i64 {v.code} to i32`) }
+  return v.code
+}
+
+# widen an int value to i64 (a long passes through) — the long analogue of to_fixed
+fn to_long(v: Val) -> ptr {
+  if (llty(v.ty) == "i64") { return v.code }
+  return emit_bind(`sext i32 {v.code} to i64`)
+}
+
 # string operators: `a + b` concatenates, `a == b` / `a != b` compare by content.
 # Both call the @fn_str_* prelude (emitted once per program that uses them).
 fn emit_str_op(op: ptr, a: Val, b: Val) -> Val {
@@ -85,13 +103,21 @@ fn emit_bin(e: Node) -> Val {
     if ((e.s == ("==")) or (e.s == ("!="))) and not isnull { return emit_str_op(e.s, a, b) }
   }
   let fx = (a.ty == "fixed") or (b.ty == "fixed")
+  # a 64-bit operand (and no fixed/ptr involved) promotes the whole expression to
+  # i64: the other side widens with sext, and the result stays `long`.
+  let lng = ((llty(a.ty) == "i64") or (llty(b.ty) == "i64")) and not fx and not ptrish
   if is_cmp(e.s) {
     var ac = a.code;  var bc = b.code
     var ct = "i32"
     if fx { ac = to_fixed(a);  bc = to_fixed(b) }
-    else { if (llty(a.ty) == "ptr") or (llty(b.ty) == "ptr") { ct = "ptr" } }   # `p == null`, str/record identity
+    else { if lng { ct = "i64";  ac = to_long(a);  bc = to_long(b) }
+      else { if (llty(a.ty) == "ptr") or (llty(b.ty) == "ptr") { ct = "ptr" } } }   # `p == null`, str/record identity
     let c = emit_bind(`icmp {cmp_code(e.s)} {ct} {ac}, {bc}`)
     return val(emit_bind(`zext i1 {c} to i32`), "bool")
+  }
+  if lng {
+    let al = to_long(a);  let bl = to_long(b)
+    return val(emit_bind(`{arith_code(e.s)} i64 {al}, {bl}`), "long")
   }
   if fx {
     let af = to_fixed(a);  let bf = to_fixed(b)
@@ -154,6 +180,13 @@ fn param_labels(fn: Node) -> []ptr {
   return out
 }
 
+fn param_types(fn: Node) -> []ptr {
+  let out = new []ptr
+  var i = 0
+  while i < len(fn.kids) { if fn.kids[i].kind == N_PARAM { push(out, fn.kids[i].ty) };  i = i + 1 }
+  return out
+}
+
 # ---- namespaced builtins: Screen.* / Random.* / Input.* --------------------
 # The game-facing API reads as `subject.action(...)`. Each method maps to a bare
 # runtime builtin plus the parameter labels callers may use as named arguments;
@@ -193,6 +226,10 @@ fn emit_ns_call(ns: ptr, meth: ptr, e: Node) -> Val {
   if (ns == "Time") {
     if is_time_ns(meth) { return emit_time_ns(meth, e) }
     perr(`unknown builtin Time.{meth}`)
+  }
+  if (ns == "Hash") {
+    if is_hash_ns(meth) { return emit_hash_ns(meth, e) }
+    perr(`unknown builtin Hash.{meth}`)
   }
   var bare: ptr = null
   let labels = new []ptr
@@ -374,16 +411,18 @@ fn emit_call(e: Node) -> Val {
   }
   if (name == "len") { return emit_len(e) }
   if (name == "push") { return emit_push(e) }
-  if (name == "str") {                            # str(x): int/bool/fixed -> text, a string passes through
+  if (name == "str") {                            # str(x): int/bool/fixed/long -> text, a string passes through
     let a = emit_expr(e.kids[0])
     if (llty(a.ty) == "ptr") { return a }
+    if (llty(a.ty) == "i64") { g_uses_longstr = true;  return val(emit_bind(`call ptr @fn_long_str(i64 {a.code})`), "str") }
     g_uses_intstr = true
     return val(emit_bind(`call ptr @fn_int_str(i32 {a.code})`), "str")
   }
-  if (name == "print") {                          # print(x): a value + newline (int or string)
+  if (name == "print") {                          # print(x): a value + newline (string, long, or int)
     let a = emit_expr(e.kids[0])
     if (llty(a.ty) == "ptr") { emit("  call i32 (ptr, ...) @printf(ptr @.fmt_line, ptr " + `{a.code})\n`) }
-    else { emit("  call i32 (ptr, ...) @printf(ptr @.fmt_int, i32 " + `{a.code})\n`) }
+    else { if (llty(a.ty) == "i64") { emit("  call i32 (ptr, ...) @printf(ptr @.fmt_long, i64 " + `{a.code})\n`) }
+      else { emit("  call i32 (ptr, ...) @printf(ptr @.fmt_int, i32 " + `{a.code})\n`) } }
     return val("0", "void")
   }
   if (name == "bytes") {                          # bytes(n): allocate n bytes -> a byte buffer
@@ -459,11 +498,18 @@ fn emit_call(e: Node) -> Val {
     cname = rtname
   }
   reorder_named(e, param_labels(fn2))
-  # evaluate args first (their IR is emitted before the call instruction)
+  # evaluate args first (their IR is emitted before the call instruction), coercing
+  # each to the parameter's declared type so an int passed for a `long` widens.
+  let ptys = param_types(fn2)
   let args = new []ptr
   let atys = new []ptr
   var i = 0
-  while i < len(e.kids) { let v = emit_expr(e.kids[i]);  push(args, v.code);  push(atys, v.ty);  i = i + 1 }
+  while i < len(e.kids) {
+    let v = emit_expr(e.kids[i])
+    var pty = v.ty
+    if (i < len(ptys)) { pty = ptys[i] }
+    push(args, coerce_code(v, pty));  push(atys, pty);  i = i + 1
+  }
   let rl = llty(fn2.ty)
   emit("  ")
   var rreg = "0"
@@ -540,6 +586,10 @@ fn emit_expr(e: Node) -> Val {
   if e.kind == E_BIN    { return emit_bin(e) }
   if e.kind == E_UN {
     let a = emit_expr(e.a)
+    if (llty(a.ty) == "i64") {                       # negate / bit-flip a long, staying 64-bit
+      if (e.s == ("-")) { return val(emit_bind(`sub i64 0, {a.code}`), "long") }
+      if (e.s == "~") { return val(emit_bind(`xor i64 {a.code}, -1`), "long") }
+    }
     if (e.s == ("-")) { return val(emit_bind(`sub i32 0, {a.code}`), "int") }
     if (e.s == "~") { return val(emit_bind(`xor i32 {a.code}, -1`), "int") }
     let c = emit_bind(`icmp eq i32 {a.code}, 0`)
