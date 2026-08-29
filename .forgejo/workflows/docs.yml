@@ -1,0 +1,55 @@
+name: docs
+
+# Rebuild the documentation site and publish it to the `pages` branch on every
+# push to main that touches the docs sources. The site is generated from the
+# per-symbol source of truth in docs/language/** — nothing is hand-edited on the
+# pages branch.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'tools/docgen/**'
+      - '.forgejo/workflows/docs.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate the documentation site
+        run: |
+          python3 --version
+          python3 tools/docgen/gen.py --out public
+          echo "--- generated files ---"
+          ls -la public
+
+      - name: Sanity-check the output (root has index.html + .nojekyll, no broken links)
+        run: python3 tools/docgen/check.py public
+
+      - name: Publish to the pages branch
+        run: |
+          set -eu
+          TOKEN="${PAGES_TOKEN:-${AUTO_TOKEN:-}}"
+          if [ -z "$TOKEN" ]; then
+            echo "::error::No deploy token. Add a repo secret PAGES_TOKEN (write access) or allow the automatic token to push."
+            exit 1
+          fi
+          cd public
+          git init -q -b pages
+          git config user.name  "ludic-docs-bot"
+          git config user.email "docs@workshopsoft.io"
+          git add -A
+          git commit -q -m "docs: regenerate site from ${SOURCE_SHA}"
+          git push -f "https://ludic-docs-bot:${TOKEN}@git.workshopsoft.io/workshopsoft/ludic.git" pages
+          echo "published $(git rev-parse --short HEAD) to pages"
+        env:
+          PAGES_TOKEN: ${{ secrets.PAGES_TOKEN }}
+          AUTO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE_SHA: ${{ github.sha }}

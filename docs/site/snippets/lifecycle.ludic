@@ -1,0 +1,20 @@
+program Toggles {
+  property Health { hp: int = 0, max: int = 100 }
+  property Shield { amount: int = 0 }
+  model Player { Health, Shield }
+
+  # hooks fire at the toggle point, data bound by name
+  @OnDisable(Shield) handler Down { print(Shield.amount + 1) }
+  @OnEnable(Shield)  handler Up   { print(Shield.amount + 2) }
+
+  handler Seed phase Start {
+    spawn Player { Health { max: 50 }, Shield { amount: 5 } }
+  }
+
+  handler Run phase Render {
+    for (e) in query [Player] { disable Shield on self() }   # @OnDisable
+    for (e) in query [Player] { enable  Shield on self() }   # @OnEnable, data intact
+    disable Player                                           # whole model off
+    quit()
+  }
+}

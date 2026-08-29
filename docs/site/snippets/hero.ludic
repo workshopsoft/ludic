@@ -1,0 +1,24 @@
+# the smallest program that exercises the whole ECS pipeline
+program Hello {
+
+  property Pos { x: int = 0, y: int = 0 }
+  property Vel { dx: int = 0, dy: int = 0 }
+
+  handler Boot phase Start {
+    spawn Mob { Pos { x: 3, y: 4 }  Vel { dx: 1, dy: 0 } }
+    spawn Mob { Pos { x: 10, y: 2 } Vel { dx: 0, dy: 1 } }
+  }
+
+  # a handler declares the entities it touches; the body
+  # runs once per match, each property bound by name.
+  @Queries(these: [Pos, Vel])
+  handler Move phase FixedUpdate {
+    Pos.x = Pos.x + Vel.dx
+    Pos.y = Pos.y + Vel.dy
+  }
+
+  handler Report phase Update {
+    for (p) in query [Pos] { print(p.x)  print(p.y) }
+    quit()
+  }
+}

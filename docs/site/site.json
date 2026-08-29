@@ -1,0 +1,104 @@
+{
+  "brand": "Ludic",
+  "tagline": "The opinionated, compiled language for 2D games.",
+  "repo_url": "https://git.workshopsoft.io/workshopsoft/ludic",
+  "meta": {
+    "title": "Ludic — the opinionated game language",
+    "description": "Ludic is an opinionated, compiled language for 2D games. The entity system, rendering, named colors, input, deterministic math and save/load are part of the language — so you build a game, not a framework.",
+    "og_title": "Ludic — the opinionated game language",
+    "og_description": "An opinionated, compiled language for 2D games. The ECS, rendering, colors, input and save/load are built in — build a game, not a framework."
+  },
+  "nav_links": [
+    { "label": "Features", "href": "#features" },
+    { "label": "Examples", "href": "#showcase" },
+    { "label": "Get started", "href": "#start" },
+    { "label": "API Reference", "href": "api.html" }
+  ],
+  "hero": {
+    "pill": "Opinionated · Batteries-included · No framework",
+    "title_pre": "Build a game,",
+    "title_accent": "not a framework.",
+    "lead": "Ludic is an <b>opinionated, compiled language for 2D games</b>. The entity system, drawing, named colors, input, deterministic math and save/load aren't libraries you wire up — they're <b>part of the language</b>. You write the game; there's nothing to assemble first.",
+    "snippet": "docs/site/snippets/hero.ludic",
+    "snippet_name": "hello.ludic",
+    "primary_cta": { "label": "Get started →", "href": "#start" },
+    "secondary_cta": { "label": "API Reference", "href": "api.html" },
+    "pipeline": [".ludic", "ludicc", "optimized IR", "native binary"],
+    "pipeline_note": "One step from your code to a native binary. No engine to install, no interpreter, no runtime to ship alongside it — the game <i>is</i> the executable."
+  },
+  "features": {
+    "kicker": "Why Ludic",
+    "title": "A language shaped around the game.",
+    "intro": "The things you normally bolt on — an entity-component system, a renderer, a deterministic clock, save/load — are primitives of the language itself. One opinionated way to do each, so there's little to decide and nothing to wire up.",
+    "cards": [
+      { "icon": "🧩", "title": "ECS in the syntax", "html": "<code>property</code>, <code>model</code>, and <code>handler</code> are keywords. Query entities with <code>query [A, B, {Tag}]</code> and iterate matches directly — no framework to wire up." },
+      { "icon": "⏱️", "title": "Deterministic runtime", "html": "Q16.16 <code>fixed</code>-point math and a seeded RNG mean the same inputs produce the same frame — byte-for-byte — every run. Ideal for replays and lockstep netcode." },
+      { "icon": "🎨", "title": "Drawing &amp; named colors", "html": "The <code>Screen</code> API draws rectangles, text and pixels with named arguments; <code>Color.Crimson</code> and 220 more names read like English and cost nothing at runtime." },
+      { "icon": "📦", "title": "One self-contained binary", "html": "A game compiles to a single native executable — no engine to install, no interpreter, no runtime shipped beside it. Build, and run the file." },
+      { "icon": "💾", "title": "Snapshot save/load", "html": "<code>save()</code> and <code>load()</code> serialize the entire ECS world — every entity, property and program <code>var</code> — in one call." },
+      { "icon": "🎬", "title": "Scenes &amp; state machines", "html": "<code>scene</code>/<code>layer</code>/<code>become</code> model mutually-exclusive game states with enter/exit hooks; <code>match</code>/<code>machine</code>/<code>state</code> handle dispatch and per-entity FSMs." },
+      { "icon": "🖼️", "title": "Retained UI &amp; assets", "html": "Declare a widget tree as data with <code>ui</code> — panels, labels, buttons, 9-slice skins, keyboard focus. Sprites decode from PNG at runtime; text is real TrueType." },
+      { "icon": "🔌", "title": "Modules &amp; native calls", "html": "<code>module</code> + <code>@export fn</code> builds a shared library of plain native symbols; <code>extern fn … = \"symbol\"</code> reaches out to any native library when you need the platform." }
+    ]
+  },
+  "showcase": {
+    "kicker": "Show, don't tell",
+    "title": "Real programs, one toolchain.",
+    "intro": "The same <code style=\"color:var(--mint)\">ludicc</code> that builds a JRPG builds a from-scratch Snake and a scene demo. Nothing is hardcoded to a genre — and every token below links into the reference.",
+    "samples": [
+      { "label": "snake", "name": "snake.ludic", "file": "docs/site/snippets/snake.ludic",
+        "note": "A complete Snake — grid, growth, food, game-over — from primitives. State is named vars, colors are named, and every draw call says what each argument is." },
+      { "label": "scenes", "name": "scenes.ludic", "file": "docs/site/snippets/scenes.ludic",
+        "note": "One active scene at a time. `become` runs the old scene's on-exit and the new one's on-enter; layers draw in declaration order. State is a plain named var." },
+      { "label": "lifecycle", "name": "toggle.ludic", "file": "docs/site/snippets/lifecycle.ludic",
+        "note": "Enable/disable at three scopes — entity, model, handler. Disabling never destroys data: a property's values persist, so a later enable restores them." },
+      { "label": "hello", "name": "hello.ludic", "file": "docs/site/snippets/hero.ludic",
+        "note": "The smallest program that exercises the whole pipeline: properties, a spawn, a queried handler, and a render/quit." }
+    ]
+  },
+  "philosophy": {
+    "kicker": "The philosophy",
+    "title": "No framework. No glue. Just the game.",
+    "paras": [
+      "Most game code is plumbing — registering systems, wiring a renderer, threading state through a framework. Ludic makes those decisions for you and bakes them into the language, so the code you write is the game's actual logic.",
+      "Opinionated on purpose: one clear way to spawn an entity, draw a frame, name a color, run a scene. Less to choose, less to learn, less to maintain."
+    ],
+    "stats": [
+      { "big": "0", "lbl": "engines to install" },
+      { "big": "1", "lbl": "clear way to do each thing" },
+      { "big": "=", "lbl": "deterministic frames" }
+    ]
+  },
+  "start": {
+    "kicker": "Get started",
+    "title": "From clone to a native window.",
+    "intro": "Build the toolchain once, then your game. Everything runs from the repo root.",
+    "steps": [
+      { "title": "Build the toolchain", "html": "<code>bin/x build</code> produces <code>ludicc</code>, the compiler you'll use for everything below." },
+      { "title": "Compile &amp; run an example", "html": "<code>bin/x app examples/snake.ludic</code> turns a <code>.ludic</code> file into a native binary. Run it to open a real window." },
+      { "title": "Go headless for tests", "html": "<code>--headless</code> renders frames to a <code>.ppm</code> from piped input — deterministic output you can diff." },
+      { "title": "Edit with full tooling", "html": "<code>bin/x tools</code> builds the formatter and language server; every editor gets completion, diagnostics and go-to-definition." }
+    ],
+    "terminal_name": "zsh — ludic",
+    "terminal": [
+      { "comment": "build the toolchain (once)" },
+      { "cmd": "bin/x build" },
+      { "blank": true },
+      { "comment": "build and run an example (opens a window)" },
+      { "cmd": "bin/x app examples/snake.ludic" },
+      { "cmd": "./build/snake" },
+      { "blank": true },
+      { "comment": "deterministic headless render for tests" },
+      { "cmd": "bin/x app examples/snake.ludic --headless" },
+      { "cmd": "printf 'ddddwww' | ./build/snake_headless" },
+      { "out": "→ writes out.ppm" }
+    ]
+  },
+  "editors": {
+    "kicker": "Editor experience",
+    "title": "One language server, every editor.",
+    "intro": "<code>ludic-lsp</code> speaks LSP 3.17 over stdio: context-aware completion, diagnostics from the compiler itself, go-to-definition and rename across <code>import</code>ed files, and comment-preserving formatting. It even understands <code>```ludic</code> fences in Markdown.",
+    "list": ["VS Code", "JetBrains IDEs", "Neovim", "Helix", "Emacs", "Sublime Text", "Zed"],
+    "note": "<code>bin/x tools</code> builds <span class=\"mono\">ludic-fmt</span> and <span class=\"mono\">ludic-lsp</span> — the same formatter runs as a CLI for pre-commit hooks and CI."
+  }
+}

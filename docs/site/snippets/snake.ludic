@@ -1,0 +1,30 @@
+program Snake {
+  property Pos { x: int = 0, y: int = 0 }
+  property Seg { order: int = 0 }
+
+  const GRID_W: int = 20   const GRID_H: int = 15   const TILE: int = 16
+
+  var food_x: int = 14   var food_y: int = 7   var score: int = 0
+
+  handler Draw phase Render {
+    Screen.clear(Color.MidnightBlue)
+    # checkerboard field — a fresh, immutable gx/gy each pass
+    for gy in 0 .. GRID_H {
+      for gx in 0 .. GRID_W {
+        var tile_color = Color.Charcoal
+        if (gx + gy) % 2 == 0 { tile_color = Color.Gunmetal }
+        Screen.fill_rectangle(x: gx * TILE, y: gy * TILE, width: TILE, height: TILE, color: tile_color)
+      }
+    }
+    # the food, then every snake segment straight from the ECS
+    Screen.fill_rectangle(x: food_x * TILE + 3, y: food_y * TILE + 3, width: TILE - 6, height: TILE - 6, color: Color.Crimson)
+    for (p, s) in query [Pos, Seg] {
+      var seg_color = Color.LimeGreen
+      if s.order == 0 { seg_color = Color.MintGreen }        # brighter head
+      Screen.fill_rectangle(x: p.x * TILE + 1, y: p.y * TILE + 1, width: TILE - 2, height: TILE - 2, color: seg_color)
+    }
+    Screen.draw_text(x: 6, y: 4, text: "SCORE", color: Color.White, scale: 1)
+    Screen.draw_number(x: 52, y: 4, value: score, color: Color.Gold, scale: 1)
+    Screen.show()
+  }
+}
