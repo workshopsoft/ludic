@@ -16,3 +16,7 @@ tools/editors/jetbrains/build/
 # IntelliJ plugin SDK sandbox (tools/editors/jetbrains)
 .intellijPlatform/
 .idea
+
+# macOS Finder metadata
+.DS_Store
+**/.DS_Store
