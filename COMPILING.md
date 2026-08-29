@@ -103,8 +103,8 @@ A source file opens with `game Name { … }` or `module Name { … }`.
 ```ludic
 # doc-check: skip — illustrative: elided body
 program Combat {
-  @export fn damage(attack: int, armour: int, roll: int) -> int { … }
-  fn curve(level: int) -> int { … }          # private: not a symbol
+  @export function damage(attack: int, armour: int, roll: int) -> int { … }
+  function curve(level: int) -> int { … }          # private: not a symbol
 }
 ```
 
@@ -118,7 +118,7 @@ Those are ordinary C-ABI symbols, so anything that can call a shared library can
 call Ludic. To call them from another Ludic program, declare them and link:
 
 ```ludic
-extern fn damage(attack: int, armour: int, roll: int) -> int = "damage"
+extern function damage(attack: int, armour: int, roll: int) -> int = "damage"
 ```
 
 ```bash

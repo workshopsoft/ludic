@@ -266,7 +266,7 @@
     "kw-const",
     "kw-var",
     "kw-let",
-    "kw-fn",
+    "kw-function",
     "kw-return",
     "kw-import",
     "kw-extern",

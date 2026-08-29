@@ -3,12 +3,12 @@
 # the wall clock and is explicitly non-deterministic. The frame clock ticks at a
 # fixed 60 per second, so delta is the constant 1/60 s = 1092 in Q16.16.
 
-fn is_time_ns(meth: ptr) -> bool {
+function is_time_ns(meth: ptr) -> bool {
   if (meth == "frame") or (meth == "delta") or (meth == "elapsed") or (meth == "now") { return true }
   return false
 }
 
-fn emit_time_ns(meth: ptr, e: Node) -> Val {
+function emit_time_ns(meth: ptr, e: Node) -> Val {
   if (meth == "frame") {                            # completed frames since start
     return val(emit_bind("load i32, ptr @L_frame"), "int")
   }

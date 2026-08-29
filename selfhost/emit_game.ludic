@@ -3,7 +3,7 @@
 # order until the game stops. Runtime hooks (rt_init/poll/running/shutdown) are
 # called only when the runtime defines them.
 
-fn emit_system_fn(sys: Node) -> void {
+function emit_system_fn(sys: Node) -> void {
   g_cur_scene = sys.c                          # scene owning this handler (null if global) — for `become`
   ll_t = 0;  ll_lbl = 0;  g_term = false;  loc_reset();  nloop = 0;  nself = 0
   ret_ty = "void"
@@ -22,7 +22,7 @@ fn emit_system_fn(sys: Node) -> void {
 }
 
 # one enable-gated call to @sys_<d.s> (skipped while the handler is disabled).
-fn emit_call_one(d: Node) -> void {
+function emit_call_one(d: Node) -> void {
   let he = emit_bind(`load i32, ptr @HE_{d.s}`)
   var hc = emit_bind(`icmp ne i32 {he}, 0`)
   # a handler in a toggled layer also gates on its layer's @LE_ flag (byte-identical
@@ -50,7 +50,7 @@ fn emit_call_one(d: Node) -> void {
 # declaration (draw) order. The active scene is snapshotted once per phase, so a
 # `become` mid-phase takes effect at the next phase boundary — exactly one scene
 # is active within any single phase.
-fn emit_calls_for_phase(phase: ptr) -> void {
+function emit_calls_for_phase(phase: ptr) -> void {
   var i = 0
   while i < len(prog) {
     let d = prog[i]
@@ -81,7 +81,7 @@ fn emit_calls_for_phase(phase: ptr) -> void {
 # on enter / on exit compile to void functions @scene_enter_<Name> /
 # @scene_exit_<Name>, called at the transition point (and enter at boot for the
 # start scene). Emitted for every scene, empty body when the hook is absent.
-fn emit_scene_fn(name: ptr, kind: ptr, body: Node) -> void {
+function emit_scene_fn(name: ptr, kind: ptr, body: Node) -> void {
   ll_t = 0;  ll_lbl = 0;  g_term = false;  loc_reset();  nloop = 0;  nself = 0
   ret_ty = "void"
   let fbody = buf_new()
@@ -101,7 +101,7 @@ fn emit_scene_fn(name: ptr, kind: ptr, body: Node) -> void {
   emit("}\n\n")
 }
 
-fn emit_scene_hooks() -> void {
+function emit_scene_hooks() -> void {
   var i = 0
   while i < len(g_scenes) {
     let sc = g_scenes[i]
@@ -116,7 +116,7 @@ fn emit_scene_hooks() -> void {
 # functions that bind the model's properties and run the body — dispatched by
 # kind at `despawn`. LC1: the `i32 %reason` parameter carries an EndReason; when
 # the hook declared `reason: r`, `r` is bound as an int local reading it.
-fn emit_despawn_hooks() -> void {
+function emit_despawn_hooks() -> void {
   var i = 0
   while i < len(g_ondespawn) {
     let hk = g_ondespawn[i]
@@ -152,7 +152,7 @@ fn emit_despawn_hooks() -> void {
 # the same per-model dispatch as `despawn`, but without freeing (the process is
 # ending). Emitted only when the program has @OnDespawn hooks, so despawn-free
 # programs are byte-for-byte unchanged.
-fn emit_despawn_all_fn() -> void {
+function emit_despawn_all_fn() -> void {
   if len(g_ondespawn) == 0 { return }
   let me = itoa(MAX_ENT)
   emit("define void @L_despawn_all(i32 %reason) {\nentry:\n  br label %loop\n")
@@ -204,7 +204,7 @@ const EV_CAP: int = 16
 # returns immediately (a cancellable event returns "not cancelled").
 const EV_DEPTH_CAP: int = 32
 
-fn emit_event_fns() -> void {
+function emit_event_fns() -> void {
   emith("@ev_depth = global i32 0\n")            # EV6 re-entrancy counter
   var e = 0
   while e < len(g_events) {
@@ -400,7 +400,7 @@ fn emit_event_fns() -> void {
 #
 # First cut: integer component fields (the common case — hp, x, amount). Property
 # ids are assignment order in the source; field ids are declaration order.
-fn emit_world_table() -> void {
+function emit_world_table() -> void {
   let me = itoa(MAX_ENT)
   emith("declare i32 @strcmp(ptr, ptr)\n")
 
@@ -687,7 +687,7 @@ fn emit_world_table() -> void {
 # runs are also exposed as callables, so a game that owns its `entry` loop can
 # drive the simulation itself (for prediction/rollback, replay, headless tests, or
 # AI). tick_fixed() runs the sim phases; tick_render() runs Render.
-fn emit_tick_helpers() -> void {
+function emit_tick_helpers() -> void {
   emit("define void @L_tick_fixed() {\nentry:\n")
   ll_t = 0;  ll_lbl = 0
   emit_calls_for_phase("Input")
@@ -703,7 +703,7 @@ fn emit_tick_helpers() -> void {
 
 # system functions + lifecycle hooks + the drivable tick helpers — shared by the
 # auto-loop game (emit_game_main) and an entry-driven game that owns its own loop.
-fn emit_game_defs() -> void {
+function emit_game_defs() -> void {
   var i = 0
   while i < len(prog) { if prog[i].kind == N_SYS { emit_system_fn(prog[i]) };  i = i + 1 }
   emit_despawn_hooks()
@@ -711,7 +711,7 @@ fn emit_game_defs() -> void {
   emit_tick_helpers()
 }
 
-fn emit_game_main() -> void {
+function emit_game_main() -> void {
   emit_game_defs()
 
   emit("define i32 @main(i32 %argc, ptr %argv) {\nentry:\n")

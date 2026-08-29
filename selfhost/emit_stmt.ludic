@@ -1,7 +1,7 @@
 # emit_stmt.ludic — lower statements. Terminators set g_term so the rest of a
 # block is skipped until a new basic block opens.
 
-fn emit_block(b: Node) -> void {
+function emit_block(b: Node) -> void {
   var i = 0
   while i < len(b.kids) {
     if g_term { return }
@@ -11,11 +11,11 @@ fn emit_block(b: Node) -> void {
 }
 
 # store `val` (llvm type `lt`) into address `addr`
-fn store_at(lt: ptr, v: ptr, addr: ptr) -> void {
+function store_at(lt: ptr, v: ptr, addr: ptr) -> void {
   emit("  store ");  emit(lt);  emit(" ");  emit(v);  emit(", ptr ");  emit(addr);  emit("\n")
 }
 
-fn emit_assign(st: Node) -> void {
+function emit_assign(st: Node) -> void {
   # resolve the target's address and type
   let t = st.a
   var addr = "0"
@@ -53,7 +53,7 @@ fn emit_assign(st: Node) -> void {
   store_at(lt, v, addr)
 }
 
-fn emit_if(st: Node) -> void {
+function emit_if(st: Node) -> void {
   let c = emit_expr(st.a)
   let cc = emit_bind(`icmp ne i32 {c.code}, 0`)
   let has_else = (st.c != null)
@@ -72,7 +72,7 @@ fn emit_if(st: Node) -> void {
   emit(en);  emit(":\n");  g_term = false
 }
 
-fn emit_while(st: Node) -> void {
+function emit_while(st: Node) -> void {
   let cl = lbl("wcond");  let bl = lbl("wbody");  let en = lbl("wend")
   emit("  br label %");  emit(cl);  emit("\n")
   emit(cl);  emit(":\n")
@@ -87,7 +87,7 @@ fn emit_while(st: Node) -> void {
   emit(en);  emit(":\n");  g_term = false
 }
 
-fn emit_for(st: Node) -> void {
+function emit_for(st: Node) -> void {
   let slot = emit_alloca("i32")
   let lo = emit_expr(st.a)
   store_at("i32", lo.code, slot)
@@ -112,7 +112,7 @@ fn emit_for(st: Node) -> void {
   emit(en);  emit(":\n");  g_term = false
 }
 
-fn emit_return(st: Node) -> void {
+function emit_return(st: Node) -> void {
   if (st.a != null) {
     let v = emit_expr(st.a)
     store_at(llty(ret_ty), coerce_code(v, ret_ty), "%retval")
@@ -121,13 +121,13 @@ fn emit_return(st: Node) -> void {
   g_term = true
 }
 
-fn arm_is_default(arm: Node) -> bool {
+function arm_is_default(arm: Node) -> bool {
   var p = 0
   while p < len(arm.kids) { if arm.kids[p].kind == E_ID and (arm.kids[p].s == "_") { return true }; p = p + 1 }
   return false
 }
 
-fn emit_match(st: Node) -> void {
+function emit_match(st: Node) -> void {
   let sv = emit_expr(st.a)
   let endl = lbl("mend")
   var deflt: Node = null
@@ -163,7 +163,7 @@ fn emit_match(st: Node) -> void {
 # emit E(field: v, ...) — evaluate the payload args in the event's declared field
 # order (so call args line up with the `@ev_<E>` signature), then a direct call.
 # A missing arg falls back to the field's default; an unset scalar/ptr to 0/null.
-fn emit_emit(st: Node) -> Val {
+function emit_emit(st: Node) -> Val {
   let ev = find_event(st.s)
   if (ev == null) { perr(`emit: unknown event {st.s}`) }
   # evaluate each payload field in declared order (default for a missing arg)
@@ -221,7 +221,7 @@ fn emit_emit(st: Node) -> Val {
   return val("0", "int")
 }
 
-fn emit_stmt(st: Node) -> void {
+function emit_stmt(st: Node) -> void {
   if st.kind == S_LET {
     var ty = st.ty
     if (ty == null) { let v0 = emit_expr(st.a);  ty = v0.ty
@@ -261,9 +261,9 @@ fn emit_stmt(st: Node) -> void {
   perr("cannot emit statement")
 }
 
-fn loop_push(cont: ptr, brk: ptr) -> void {
+function loop_push(cont: ptr, brk: ptr) -> void {
   if nloop < len(cnt_lbl) { cnt_lbl[nloop] = cont;  brk_lbl[nloop] = brk }
   else { push(cnt_lbl, cont);  push(brk_lbl, brk) }
   nloop = nloop + 1
 }
-fn loop_pop() -> void { nloop = nloop - 1 }
+function loop_pop() -> void { nloop = nloop - 1 }

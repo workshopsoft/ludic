@@ -76,7 +76,7 @@ property Node {
   line: int = 0
 }
 
-fn node(kind: int) -> Node {
+function node(kind: int) -> Node {
   let n = new Node
   n.kind = kind
   n.kids = new []Node

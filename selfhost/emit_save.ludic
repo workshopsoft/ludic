@@ -16,7 +16,7 @@ var g_iok: int = 0
 var g_snap_mode: ptr = null      # "file" | "save" | "load" | "size"
 var g_off: ptr = null            # current byte-offset register, buffer modes
 
-fn emit_io(fn2: ptr, p: ptr, bytes: ptr) -> void {
+function emit_io(fn2: ptr, p: ptr, bytes: ptr) -> void {
   if (g_snap_mode == "file") {
     let r = `%io{itoa(g_iok)}`;  g_iok = g_iok + 1
     emit("  ");  emit(r);  emit(" = call i64 @");  emit(fn2);  emit("(ptr ");  emit(p);  emit(", i64 1, i64 ");  emit(bytes);  emit(", ptr %f)\n")
@@ -43,7 +43,7 @@ fn emit_io(fn2: ptr, p: ptr, bytes: ptr) -> void {
   g_iok = g_iok + 1
 }
 
-fn emit_snapshot_blocks(fn2: ptr) -> void {
+function emit_snapshot_blocks(fn2: ptr) -> void {
   g_iok = 0
   g_off = "0"
   let me = itoa(MAX_ENT)
@@ -73,7 +73,7 @@ fn emit_snapshot_blocks(fn2: ptr) -> void {
   }
 }
 
-fn emit_snapshot() -> void {
+function emit_snapshot() -> void {
   g_snap_mode = "file"                            # seed (module ptr inits are null)
   emith("@.sav_path = private unnamed_addr constant [10 x i8] c\"ludic.sav\\00\"\n")
   emith("@.sav_wb = private unnamed_addr constant [3 x i8] c\"wb\\00\"\n")

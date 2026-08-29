@@ -79,7 +79,7 @@ var ui_n: int = 0
 var ui_active: int = -1
 var ui_focus: int = -1
 
-fn rt_ui_init() -> void {
+function rt_ui_init() -> void {
   ui_type = words(UI_MAX)
   ui_parent = words(UI_MAX)
   ui_w = words(UI_MAX)
@@ -112,7 +112,7 @@ fn rt_ui_init() -> void {
 }
 
 # ---- build-time interface (called by compiler-emitted code) ---------------
-fn rt_ui_reset(n: int) -> void {
+function rt_ui_reset(n: int) -> void {
   ui_n = n
   for i in 0 .. n {
     ui_type[i] = 0
@@ -142,7 +142,7 @@ fn rt_ui_reset(n: int) -> void {
   }
 }
 
-fn rt_ui_set(i: int, k: int, v: int) -> void {
+function rt_ui_set(i: int, k: int, v: int) -> void {
   if i < 0 { return }
   if i >= UI_MAX { return }
   if k == K_TYPE { ui_type[i] = v }
@@ -168,21 +168,21 @@ fn rt_ui_set(i: int, k: int, v: int) -> void {
   if k == K_SKIN { ui_skin[i] = v }
 }
 
-fn rt_ui_static_text(i: int, s: str) -> void {
+function rt_ui_static_text(i: int, s: str) -> void {
   if i < 0 { return }
   if i >= UI_MAX { return }
   ui_text[i] = s
 }
 
 # ---- text helpers: TrueType when a font is loaded, bitmap otherwise -------
-fn ui_str(i: int) -> ptr {
+function ui_str(i: int) -> ptr {
   if ui_hasdyn[i] == 1 { return offset(ui_dyn, i * 96) }
   let t = ui_text[i]
   if (t == null) { return offset(ui_dyn, i * 96) }
   return t
 }
 
-fn ui_draw_text(font: int, x: int, y: int, s: ptr, colour: int, size: int) -> void {
+function ui_draw_text(font: int, x: int, y: int, s: ptr, colour: int, size: int) -> void {
   if font >= 0 {
     if font < tt_n {
       rt_text_ttf(font, x, y, s, colour, size)
@@ -192,7 +192,7 @@ fn ui_draw_text(font: int, x: int, y: int, s: ptr, colour: int, size: int) -> vo
   rt_text(x, y, s, colour, max(size / 8, 1))
 }
 
-fn ui_tw(font: int, s: ptr, size: int) -> int {
+function ui_tw(font: int, s: ptr, size: int) -> int {
   if font >= 0 {
     if font < tt_n { return rt_text_w(font, s, size) }
   }
@@ -201,24 +201,24 @@ fn ui_tw(font: int, s: ptr, size: int) -> int {
   return n * 6 * max(size / 8, 1)
 }
 
-fn ui_th(font: int, size: int) -> int {
+function ui_th(font: int, size: int) -> int {
   if font >= 0 {
     if font < tt_n { return rt_text_h(font, size) }
   }
   return 7 * max(size / 8, 1)
 }
 
-fn ui_is_container(t: int) -> bool {
+function ui_is_container(t: int) -> bool {
   if t == WT_PANEL { return true }
   if t == WT_COL { return true }
   if t == WT_ROW { return true }
   return false
 }
-fn ui_dir(t: int) -> int {
+function ui_dir(t: int) -> int {
   if t == WT_ROW { return 0 }
   return 1
 }
-fn ui_under(i: int, root: int) -> bool {
+function ui_under(i: int, root: int) -> bool {
   var k = i
   while k >= 0 {
     if k == root { return true }
@@ -228,7 +228,7 @@ fn ui_under(i: int, root: int) -> bool {
 }
 
 # ---- measure: content sizes, children before parents ----------------------
-fn ui_measure() -> void {
+function ui_measure() -> void {
   var i = ui_n - 1
   while i >= 0 {
     if ui_visible[i] == 0 {
@@ -303,7 +303,7 @@ fn ui_measure() -> void {
   }
 }
 
-fn ui_eff_align(child: int, parent: int) -> int {
+function ui_eff_align(child: int, parent: int) -> int {
   if ui_align[child] >= 0 { return ui_align[child] }
   if ui_align[parent] >= 0 { return ui_align[parent] }
   return 0

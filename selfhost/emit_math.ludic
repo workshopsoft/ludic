@@ -5,11 +5,11 @@
 # integer root, @fn_fx_sin a 256-entry interpolated sine table). Everything is
 # plain integer IR, so it is bit-identical on every platform.
 
-fn is_math_builtin(name: ptr) -> bool {
+function is_math_builtin(name: ptr) -> bool {
   return (name == "min") or (name == "max") or (name == "abs") or (name == "clamp")
 }
 
-fn emit_math_builtin(name: ptr, e: Node) -> Val {
+function emit_math_builtin(name: ptr, e: Node) -> Val {
   if (name == "abs") {
     let a = emit_expr(e.kids[0])
     let c = emit_bind(`icmp slt i32 {a.code}, 0`)
@@ -32,7 +32,7 @@ fn emit_math_builtin(name: ptr, e: Node) -> Val {
 }
 
 # a * b in Q16.16 (64-bit intermediate, arithmetic shift back) -> code of an i32
-fn fx_mul_code(a: ptr, b: ptr) -> ptr {
+function fx_mul_code(a: ptr, b: ptr) -> ptr {
   let a64 = emit_bind(`sext i32 {a} to i64`)
   let b64 = emit_bind(`sext i32 {b} to i64`)
   let m = emit_bind(`mul i64 {a64}, {b64}`)
@@ -41,7 +41,7 @@ fn fx_mul_code(a: ptr, b: ptr) -> ptr {
 }
 
 # a / b in Q16.16 (shift the numerator up before the divide) -> code of an i32
-fn fx_div_code(a: ptr, b: ptr) -> ptr {
+function fx_div_code(a: ptr, b: ptr) -> ptr {
   let a64 = emit_bind(`sext i32 {a} to i64`)
   let ash = emit_bind(`shl i64 {a64}, 16`)
   let b64 = emit_bind(`sext i32 {b} to i64`)
@@ -50,14 +50,14 @@ fn fx_div_code(a: ptr, b: ptr) -> ptr {
 }
 
 # lerp(a, b, t) = a + (b - a) * t, all Q16.16 -> code of a fixed i32
-fn fx_lerp_code(a: ptr, b: ptr, t: ptr) -> ptr {
+function fx_lerp_code(a: ptr, b: ptr, t: ptr) -> ptr {
   let d = emit_bind(`sub i32 {b}, {a}`)
   let dt = fx_mul_code(d, t)
   return emit_bind(`add i32 {a}, {dt}`)
 }
 
 # inverse_lerp(a, b, v) = (v - a) / (b - a), all Q16.16 -> code of a fixed i32
-fn fx_inv_lerp_code(a: ptr, b: ptr, v: ptr) -> ptr {
+function fx_inv_lerp_code(a: ptr, b: ptr, v: ptr) -> ptr {
   let num = emit_bind(`sub i32 {v}, {a}`)
   let den = emit_bind(`sub i32 {b}, {a}`)
   return fx_div_code(num, den)
@@ -66,7 +66,7 @@ fn fx_inv_lerp_code(a: ptr, b: ptr, v: ptr) -> ptr {
 # Math.* — the namespaced surface. min/max/abs/clamp reuse the bare lowering;
 # the rest are new deterministic fixed-point helpers. Returns g_intrin-style via
 # a direct Val; callers guard with is_math_ns first.
-fn is_math_ns(meth: ptr) -> bool {
+function is_math_ns(meth: ptr) -> bool {
   if (meth == "min") or (meth == "max") or (meth == "abs") or (meth == "clamp") { return true }
   if (meth == "sign") or (meth == "floor") or (meth == "ceil") or (meth == "round") { return true }
   if (meth == "lerp") or (meth == "inverse_lerp") or (meth == "remap") { return true }
@@ -79,7 +79,7 @@ fn is_math_ns(meth: ptr) -> bool {
   return false
 }
 
-fn emit_math_ns(meth: ptr, e: Node) -> Val {
+function emit_math_ns(meth: ptr, e: Node) -> Val {
   if (meth == "min") or (meth == "max") or (meth == "abs") or (meth == "clamp") {
     return emit_math_builtin(meth, e)
   }
@@ -284,7 +284,7 @@ fn emit_math_ns(meth: ptr, e: Node) -> Val {
 # sine table with linear interpolation; @fn_fx_exp2/@fn_fx_log2 are range-reduced
 # Q16.16 polynomials (base-2 exp and log) that back exp/log/pow. All are pure
 # integer IR, so bit-identical on every platform.
-fn emit_math_prelude() -> void {
+function emit_math_prelude() -> void {
   emith("@L_sin_tab = private unnamed_addr constant [256 x i32] [i32 0, i32 1608, i32 3216, i32 4821, i32 6424, i32 8022, i32 9616, i32 11204, i32 12785, i32 14359, i32 15924, i32 17479, i32 19024, i32 20557, i32 22078, i32 23586, i32 25080, i32 26558, i32 28020, i32 29466, i32 30893, i32 32303, i32 33692, i32 35062, i32 36410, i32 37736, i32 39040, i32 40320, i32 41576, i32 42806, i32 44011, i32 45190, i32 46341, i32 47464, i32 48559, i32 49624, i32 50660, i32 51665, i32 52639, i32 53581, i32 54491, i32 55368, i32 56212, i32 57022, i32 57798, i32 58538, i32 59244, i32 59914, i32 60547, i32 61145, i32 61705, i32 62228, i32 62714, i32 63162, i32 63572, i32 63944, i32 64277, i32 64571, i32 64827, i32 65043, i32 65220, i32 65358, i32 65457, i32 65516, i32 65536, i32 65516, i32 65457, i32 65358, i32 65220, i32 65043, i32 64827, i32 64571, i32 64277, i32 63944, i32 63572, i32 63162, i32 62714, i32 62228, i32 61705, i32 61145, i32 60547, i32 59914, i32 59244, i32 58538, i32 57798, i32 57022, i32 56212, i32 55368, i32 54491, i32 53581, i32 52639, i32 51665, i32 50660, i32 49624, i32 48559, i32 47464, i32 46341, i32 45190, i32 44011, i32 42806, i32 41576, i32 40320, i32 39040, i32 37736, i32 36410, i32 35062, i32 33692, i32 32303, i32 30893, i32 29466, i32 28020, i32 26558, i32 25080, i32 23586, i32 22078, i32 20557, i32 19024, i32 17479, i32 15924, i32 14359, i32 12785, i32 11204, i32 9616, i32 8022, i32 6424, i32 4821, i32 3216, i32 1608, i32 0, i32 -1608, i32 -3216, i32 -4821, i32 -6424, i32 -8022, i32 -9616, i32 -11204, i32 -12785, i32 -14359, i32 -15924, i32 -17479, i32 -19024, i32 -20557, i32 -22078, i32 -23586, i32 -25080, i32 -26558, i32 -28020, i32 -29466, i32 -30893, i32 -32303, i32 -33692, i32 -35062, i32 -36410, i32 -37736, i32 -39040, i32 -40320, i32 -41576, i32 -42806, i32 -44011, i32 -45190, i32 -46341, i32 -47464, i32 -48559, i32 -49624, i32 -50660, i32 -51665, i32 -52639, i32 -53581, i32 -54491, i32 -55368, i32 -56212, i32 -57022, i32 -57798, i32 -58538, i32 -59244, i32 -59914, i32 -60547, i32 -61145, i32 -61705, i32 -62228, i32 -62714, i32 -63162, i32 -63572, i32 -63944, i32 -64277, i32 -64571, i32 -64827, i32 -65043, i32 -65220, i32 -65358, i32 -65457, i32 -65516, i32 -65536, i32 -65516, i32 -65457, i32 -65358, i32 -65220, i32 -65043, i32 -64827, i32 -64571, i32 -64277, i32 -63944, i32 -63572, i32 -63162, i32 -62714, i32 -62228, i32 -61705, i32 -61145, i32 -60547, i32 -59914, i32 -59244, i32 -58538, i32 -57798, i32 -57022, i32 -56212, i32 -55368, i32 -54491, i32 -53581, i32 -52639, i32 -51665, i32 -50660, i32 -49624, i32 -48559, i32 -47464, i32 -46341, i32 -45190, i32 -44011, i32 -42806, i32 -41576, i32 -40320, i32 -39040, i32 -37736, i32 -36410, i32 -35062, i32 -33692, i32 -32303, i32 -30893, i32 -29466, i32 -28020, i32 -26558, i32 -25080, i32 -23586, i32 -22078, i32 -20557, i32 -19024, i32 -17479, i32 -15924, i32 -14359, i32 -12785, i32 -11204, i32 -9616, i32 -8022, i32 -6424, i32 -4821, i32 -3216, i32 -1608]\n")
   emith("define i32 @fn_fx_sqrt(i32 %x) {\n")
   emith("entry:\n  %neg = icmp slt i32 %x, 0\n  br i1 %neg, label %ret0, label %go\n")

@@ -29,11 +29,11 @@ var rt_alive: int = 1              # platform still running?
 
 # 5x7 glyphs for ASCII 32..90, 7 rows per glyph, each row a 5-bit mask stored
 # biased by '0' so the whole font is one printable string literal.
-fn rt_font() -> str {
+function rt_font() -> str {
   return "00000004444404000000000000000000000IJ4:FC000000000000000000000000000000E>O>E0044O4400000448000O000000004012448@@>ACEIA>4<4444>>A168@ON11>11N26:BO22O@N11A>>@@NAA>O124888>AA>AA>>AA?11>04004000000000024842000O0O000842480>A164040000000>AAOAAANAANAAN>A@@@A>LBAAABLO@@L@@OO@@L@@@>A@GAA>AAAOAAA>44444>7222BB<ABDHDBA@@@@@@OAKEEAAAAIEECAA>AAAAA>NAAN@@@>AAAEB=NAANDBA>A@>1A>O444444AAAAAA>AAAAA:4AAAEEKAAA:4:AAAA:4444O1248@O"
 }
 
-fn rt_init() -> void {
+function rt_init() -> void {
   rt_fb = words(320 * 240)
   rt_regs = words(64)
   fill(rt_regs, 0, 64 * 4)
@@ -50,7 +50,7 @@ fn rt_init() -> void {
   }
 }
 
-fn rt_shutdown() -> void {
+function rt_shutdown() -> void {
   if is_windowed() {
     win_close()
     return
@@ -59,17 +59,17 @@ fn rt_shutdown() -> void {
 }
 
 # ---- framebuffer ----------------------------------------------------------
-fn rt_screen_w() -> int { return rt_fbw }
-fn rt_screen_h() -> int { return rt_fbh }
+function rt_screen_w() -> int { return rt_fbw }
+function rt_screen_h() -> int { return rt_fbh }
 
-fn rt_clear(c: int) -> void {
+function rt_clear(c: int) -> void {
   let n = rt_fbw * rt_fbh
   for i in 0 .. n {
     rt_fb[i] = c
   }
 }
 
-fn rt_put_px(x: int, y: int, c: int) -> void {
+function rt_put_px(x: int, y: int, c: int) -> void {
   if x < 0 { return }
   if y < 0 { return }
   if x >= rt_fbw { return }
@@ -77,7 +77,7 @@ fn rt_put_px(x: int, y: int, c: int) -> void {
   rt_fb[y * rt_fbw + x] = c
 }
 
-fn rt_fill_rect(x: int, y: int, w: int, h: int, c: int) -> void {
+function rt_fill_rect(x: int, y: int, w: int, h: int, c: int) -> void {
   let x0 = max(0, x)
   let y0 = max(0, y)
   let x1 = min(rt_fbw, x + w)
@@ -94,7 +94,7 @@ fn rt_fill_rect(x: int, y: int, w: int, h: int, c: int) -> void {
   }
 }
 
-fn rt_frame_rect(x: int, y: int, w: int, h: int, c: int) -> void {
+function rt_frame_rect(x: int, y: int, w: int, h: int, c: int) -> void {
   rt_fill_rect(x, y, w, 1, c)
   rt_fill_rect(x, y + h - 1, w, 1, c)
   rt_fill_rect(x, y, 1, h, c)
@@ -102,7 +102,7 @@ fn rt_frame_rect(x: int, y: int, w: int, h: int, c: int) -> void {
 }
 
 # A straight line by Bresenham's algorithm — integer only, any direction.
-fn rt_line(x0: int, y0: int, x1: int, y1: int, c: int) -> void {
+function rt_line(x0: int, y0: int, x1: int, y1: int, c: int) -> void {
   var x = x0;  var y = y0
   let dx = abs(x1 - x0);  let dy = 0 - abs(y1 - y0)
   var sx = 0 - 1;  if x0 < x1 { sx = 1 }
@@ -118,7 +118,7 @@ fn rt_line(x0: int, y0: int, x1: int, y1: int, c: int) -> void {
 }
 
 # A circle outline by the midpoint algorithm (eight-way symmetry).
-fn rt_circle(cx: int, cy: int, r: int, c: int) -> void {
+function rt_circle(cx: int, cy: int, r: int, c: int) -> void {
   if r < 0 { return }
   var x = r;  var y = 0;  var err = 1 - r
   while x >= y {
@@ -133,7 +133,7 @@ fn rt_circle(cx: int, cy: int, r: int, c: int) -> void {
 }
 
 # A filled disc — one horizontal span per row, width from the circle equation.
-fn rt_fill_circle(cx: int, cy: int, r: int, c: int) -> void {
+function rt_fill_circle(cx: int, cy: int, r: int, c: int) -> void {
   if r < 0 { return }
   let r2 = r * r
   var dy = 0 - r
@@ -146,14 +146,14 @@ fn rt_fill_circle(cx: int, cy: int, r: int, c: int) -> void {
 }
 
 # A triangle outline — three lines.
-fn rt_triangle(x0: int, y0: int, x1: int, y1: int, x2: int, y2: int, c: int) -> void {
+function rt_triangle(x0: int, y0: int, x1: int, y1: int, x2: int, y2: int, c: int) -> void {
   rt_line(x0, y0, x1, y1, c)
   rt_line(x1, y1, x2, y2, c)
   rt_line(x2, y2, x0, y0, c)
 }
 
 # A filled triangle — bounding-box scan with an edge-sign inside test.
-fn rt_fill_triangle(x0: int, y0: int, x1: int, y1: int, x2: int, y2: int, c: int) -> void {
+function rt_fill_triangle(x0: int, y0: int, x1: int, y1: int, x2: int, y2: int, c: int) -> void {
   let minx = min(x0, min(x1, x2));  let maxx = max(x0, max(x1, x2))
   let miny = min(y0, min(y1, y2));  let maxy = max(y0, max(y1, y2))
   var py = miny
@@ -174,14 +174,14 @@ fn rt_fill_triangle(x0: int, y0: int, x1: int, y1: int, x2: int, y2: int, c: int
 
 # Windowed: hand the framebuffer to the platform layer, which blits it into
 # the view. Headless: nothing to do until shutdown writes the last frame out.
-fn rt_present() -> void {
+function rt_present() -> void {
   if is_windowed() {
     win_present(rt_fb, rt_fbw, rt_fbh)
   }
 }
 
 # ---- text -----------------------------------------------------------------
-fn rt_glyph(x: int, y: int, ch: int, colour: int, sc: int) -> void {
+function rt_glyph(x: int, y: int, ch: int, colour: int, sc: int) -> void {
   var c = ch
   if c >= 97 {
     if c <= 122 { c = c - 32 }
@@ -203,7 +203,7 @@ fn rt_glyph(x: int, y: int, ch: int, colour: int, sc: int) -> void {
   }
 }
 
-fn rt_text(x: int, y: int, s: str, colour: int, sc: int) -> void {
+function rt_text(x: int, y: int, s: str, colour: int, sc: int) -> void {
   var i = 0
   var cx = x
   var ch = s[0]
@@ -215,7 +215,7 @@ fn rt_text(x: int, y: int, s: str, colour: int, sc: int) -> void {
   }
 }
 
-fn rt_text_int(x: int, y: int, n: int, colour: int, sc: int) -> void {
+function rt_text_int(x: int, y: int, n: int, colour: int, sc: int) -> void {
   if n == 0 {
     rt_glyph(x, y, 48, colour, sc)
     return
@@ -246,20 +246,20 @@ fn rt_text_int(x: int, y: int, n: int, colour: int, sc: int) -> void {
 }
 
 # ---- registers ------------------------------------------------------------
-fn rt_reg(i: int) -> int {
+function rt_reg(i: int) -> int {
   if i < 0 { return 0 }
   if i >= 64 { return 0 }
   return rt_regs[i]
 }
 
-fn rt_set_reg(i: int, v: int) -> void {
+function rt_set_reg(i: int, v: int) -> void {
   if i < 0 { return }
   if i >= 64 { return }
   rt_regs[i] = v
 }
 
 # ---- rng (xorshift32) -----------------------------------------------------
-fn rt_seed(s: int) -> void {
+function rt_seed(s: int) -> void {
   if s == 0 {
     rt_rng = 305419896
     return
@@ -269,7 +269,7 @@ fn rt_seed(s: int) -> void {
 
 # xorshift32 (Marsaglia). Runs on the raw 32-bit pattern, so the sign bit is
 # masked off only when a caller asks for a number.
-fn rt_next_rand() -> int {
+function rt_next_rand() -> int {
   var x = rt_rng
   x = (x ^ (x << 13))
   x = (x ^ (x >> 17))
@@ -278,35 +278,35 @@ fn rt_next_rand() -> int {
   return (x & 2147483647)
 }
 
-fn rt_rng_range(lo: int, hi: int) -> int {
+function rt_rng_range(lo: int, hi: int) -> int {
   if hi <= lo { return lo }
   return lo + rt_next_rand() % (hi - lo + 1)
 }
 
-fn rt_rng_chance(pct: int) -> bool {
+function rt_rng_chance(pct: int) -> bool {
   return rt_next_rand() % 100 < pct
 }
 
 # a deterministic fixed-point value in [0, 1) — the raw 0..65535 is exactly the
 # Q16.16 fraction (fixed and int share the i32 representation).
-fn rt_rng_value() -> fixed {
+function rt_rng_value() -> fixed {
   return rt_rng_range(0, 65535)
 }
 
 # a deterministic integer in [0, max) — 0 when max <= 0
-fn rt_rng_int(max: int) -> int {
+function rt_rng_int(max: int) -> int {
   if max <= 0 { return 0 }
   return rt_rng_range(0, max - 1)
 }
 
 # a deterministic +1 or -1
-fn rt_rng_sign() -> int {
+function rt_rng_sign() -> int {
   if rt_rng_chance(50) { return 1 }
   return 0 - 1
 }
 
 # ---- platform: input ------------------------------------------------------
-fn rt_poll() -> int {
+function rt_poll() -> int {
   if is_windowed() {
     return win_poll()
   }
@@ -321,7 +321,7 @@ fn rt_poll() -> int {
   return c
 }
 
-fn rt_running() -> bool {
+function rt_running() -> bool {
   if is_windowed() {
     return win_running()
   }
@@ -329,7 +329,7 @@ fn rt_running() -> bool {
 }
 
 # ---- writing the frame out ------------------------------------------------
-fn rt_put_str(buf: ptr, at: int, s: str) -> int {
+function rt_put_str(buf: ptr, at: int, s: str) -> int {
   var i = 0
   var n = at
   var ch = s[0]
@@ -342,7 +342,7 @@ fn rt_put_str(buf: ptr, at: int, s: str) -> int {
   return n
 }
 
-fn rt_put_int(buf: ptr, at: int, v: int) -> int {
+function rt_put_int(buf: ptr, at: int, v: int) -> int {
   if v == 0 {
     buf[at] = 48
     return at + 1
@@ -367,7 +367,7 @@ fn rt_put_int(buf: ptr, at: int, v: int) -> int {
   return n
 }
 
-fn rt_dump_ppm(path: str) -> void {
+function rt_dump_ppm(path: str) -> void {
   let f = file_open(path, "wb")
   if (f == null) { return }
 
@@ -406,13 +406,13 @@ var rt_map:  ptr = null
 var rt_mapw: int = 0
 var rt_maph: int = 0
 
-fn rt_map_size(w: int, h: int) -> void {
+function rt_map_size(w: int, h: int) -> void {
   rt_mapw = clamp(w, 0, 96)
   rt_maph = clamp(h, 0, 64)
   fill(rt_map, 32, 96 * 64)
 }
 
-fn rt_map_row(y: int, s: str) -> void {
+function rt_map_row(y: int, s: str) -> void {
   if y < 0 { return }
   if y >= 64 { return }
   var x = 0
@@ -425,7 +425,7 @@ fn rt_map_row(y: int, s: str) -> void {
   }
 }
 
-fn rt_tile(x: int, y: int) -> int {
+function rt_tile(x: int, y: int) -> int {
   if x < 0 { return 35 }
   if y < 0 { return 35 }
   if x >= rt_mapw { return 35 }
@@ -438,7 +438,7 @@ fn rt_tile(x: int, y: int) -> int {
 # so it survives whatever the caller does with the original.
 var rt_statusbuf: ptr = null
 
-fn rt_status(s: str) -> void {
+function rt_status(s: str) -> void {
   var i = 0
   var ch = s[0]
   while ch != 0 {
@@ -452,7 +452,7 @@ fn rt_status(s: str) -> void {
   rt_statusbuf[i] = 0
 }
 
-fn rt_status_text() -> ptr {
+function rt_status_text() -> ptr {
   return rt_statusbuf
 }
 
@@ -460,7 +460,7 @@ fn rt_status_text() -> ptr {
 # The compiler writes the ECS (entities, components, archetype kinds) because
 # only it knows their shape. Everything below belongs to the runtime, so the
 # runtime writes it — same order both ways.
-fn rt_save_state(f: ptr) -> void {
+function rt_save_state(f: ptr) -> void {
   let w: words = bytes(16)
   w[0] = rt_rng
   w[1] = rt_mapw
@@ -473,7 +473,7 @@ fn rt_save_state(f: ptr) -> void {
   free(w)
 }
 
-fn rt_load_state(f: ptr) -> void {
+function rt_load_state(f: ptr) -> void {
   let w: words = bytes(16)
   file_read(f, w, 16)
   rt_rng = w[0]

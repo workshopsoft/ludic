@@ -7,25 +7,25 @@ var uiw: []Node              # flattened widgets, pre-order
 var uiw_parent: []int
 var ui_roots: []int          # first-widget index of each ui block
 
-fn ui_wtype(w: Node) -> int {
+function ui_wtype(w: Node) -> int {
   let s = w.s
   if (s == "panel") { return 0 };  if (s == "col") { return 1 };  if (s == "row") { return 2 }
   if (s == "label") { return 3 };  if (s == "button") { return 4 }
   if (s == "image") { return 5 };  if (s == "spacer") { return 6 }
   return 0
 }
-fn ui_prop(w: Node, key: ptr) -> Node {
+function ui_prop(w: Node, key: ptr) -> Node {
   var i = 0
   while i < len(w.b.kids) { if (w.b.kids[i].s == key) { return w.b.kids[i].a };  i = i + 1 }
   return null
 }
-fn ui_flatten(w: Node, parent: int) -> void {
+function ui_flatten(w: Node, parent: int) -> void {
   let idx = len(uiw)
   push(uiw, w);  push(uiw_parent, parent)
   var i = 0
   while i < len(w.kids) { ui_flatten(w.kids[i], idx);  i = i + 1 }
 }
-fn ui_flatten_all() -> void {
+function ui_flatten_all() -> void {
   uiw = new []Node;  uiw_parent = new []int;  ui_roots = new []int
   var i = 0
   while i < len(prog) {
@@ -33,14 +33,14 @@ fn ui_flatten_all() -> void {
     i = i + 1
   }
 }
-fn has_ui() -> bool {
+function has_ui() -> bool {
   var i = 0
   while i < len(prog) { if prog[i].kind == N_UI and prog[i].ival == 1 { return true };  i = i + 1 }
   return false
 }
 
 # index of a UI_<name>: a ui block's root, or a widget's id=
-fn ui_index_of(nm: ptr) -> int {
+function ui_index_of(nm: ptr) -> int {
   let s = nm[3..len(nm)]          # strip "UI_"
   let u = 0;  var bi = 0
   var i = 0
@@ -56,14 +56,14 @@ fn ui_index_of(nm: ptr) -> int {
   }
   return 0
 }
-fn is_ui_ident(nm: ptr) -> bool {
+function is_ui_ident(nm: ptr) -> bool {
   return len(nm) > 3 and nm[0] == 85 and nm[1] == 73 and nm[2] == 95   # "UI_"
 }
 
-fn ll_ui_set(idx: int, key: int, val: ptr) -> void {
+function ll_ui_set(idx: int, key: int, val: ptr) -> void {
   emit("  call void @fn_rt_ui_set(i32 ");  emit(itoa(idx));  emit(", i32 ");  emit(itoa(key));  emit(", i32 ");  emit(val);  emit(")\n")
 }
-fn ui_prop_key(k: ptr) -> int {
+function ui_prop_key(k: ptr) -> int {
   if (k == "w") { return 2 };  if (k == "h") { return 3 };  if (k == "x") { return 4 };  if (k == "y") { return 5 }
   if (k == "pad") { return 7 };  if (k == "gap") { return 8 };  if (k == "bg") { return 9 };  if (k == "fg") { return 10 }
   if (k == "border") { return 11 };  if (k == "grow") { return 13 };  if (k == "font") { return 14 };  if (k == "size") { return 15 }
@@ -71,7 +71,7 @@ fn ui_prop_key(k: ptr) -> int {
   return 0 - 1
 }
 
-fn emit_ui_build() -> void {
+function emit_ui_build() -> void {
   ui_flatten_all()
   ll_t = 0;  ll_lbl = 0;  g_term = false;  loc_reset();  nloop = 0
   let fbody = buf_new()

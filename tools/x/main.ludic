@@ -18,7 +18,7 @@ program X {
   import "selfhost_test.ludic"
   import "test.ludic"
 
-  fn usage() -> void {
+  function usage() -> void {
     print("x — the Ludic task runner (run from the repository root)")
     print("")
     print("build & run:")
@@ -43,7 +43,7 @@ program X {
   }
 
   # a positional argument, or a default when absent
-  fn argn(i: int, dflt: ptr) -> ptr {
+  function argn(i: int, dflt: ptr) -> ptr {
     if (i < arg_count()) { return arg(i) }
     return dflt
   }

@@ -301,7 +301,7 @@ declare void @win_close()
 @.str200 = private unnamed_addr constant [3 x i8] c"ui\00"
 @.str201 = private unnamed_addr constant [4 x i8] c"var\00"
 @.str202 = private unnamed_addr constant [6 x i8] c"const\00"
-@.str203 = private unnamed_addr constant [3 x i8] c"fn\00"
+@.str203 = private unnamed_addr constant [9 x i8] c"function\00"
 @.str204 = private unnamed_addr constant [7 x i8] c"extern\00"
 @.str205 = private unnamed_addr constant [6 x i8] c"entry\00"
 @.str206 = private unnamed_addr constant [21 x i8] c"expected declaration\00"

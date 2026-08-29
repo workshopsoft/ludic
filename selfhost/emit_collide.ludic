@@ -3,14 +3,14 @@
 # origin at the top-left; circles are (x, y, r). Squared distances use i64 so a
 # large coordinate can't overflow. Each returns a bool.
 
-fn is_collide_ns(meth: ptr) -> bool {
+function is_collide_ns(meth: ptr) -> bool {
   if (meth == "rects") or (meth == "point_rect") { return true }
   if (meth == "circles") or (meth == "rect_circle") { return true }
   return false
 }
 
 # dx*dx + dy*dy widened to i64 (no overflow for 32-bit deltas)
-fn coll_sq_sum(dx: ptr, dy: ptr) -> ptr {
+function coll_sq_sum(dx: ptr, dy: ptr) -> ptr {
   let dx64 = emit_bind(`sext i32 {dx} to i64`)
   let dy64 = emit_bind(`sext i32 {dy} to i64`)
   let xx = emit_bind(`mul i64 {dx64}, {dx64}`)
@@ -19,14 +19,14 @@ fn coll_sq_sum(dx: ptr, dy: ptr) -> ptr {
 }
 
 # max(lo, min(v, hi)) — clamp v into [lo, hi]
-fn coll_clamp(v: ptr, lo: ptr, hi: ptr) -> ptr {
+function coll_clamp(v: ptr, lo: ptr, hi: ptr) -> ptr {
   let c1 = emit_bind(`icmp slt i32 {v}, {hi}`)
   let t = emit_bind(`select i1 {c1}, i32 {v}, i32 {hi}`)
   let c2 = emit_bind(`icmp sgt i32 {lo}, {t}`)
   return emit_bind(`select i1 {c2}, i32 {lo}, i32 {t}`)
 }
 
-fn emit_collide_ns(meth: ptr, e: Node) -> Val {
+function emit_collide_ns(meth: ptr, e: Node) -> Val {
   if (meth == "rects") {                            # AABB overlap of two rects
     let ax = emit_expr(e.kids[0]);  let ay = emit_expr(e.kids[1]);  let aw = emit_expr(e.kids[2]);  let ah = emit_expr(e.kids[3])
     let bx = emit_expr(e.kids[4]);  let by = emit_expr(e.kids[5]);  let bw = emit_expr(e.kids[6]);  let bh = emit_expr(e.kids[7])

@@ -33,12 +33,12 @@ def read(*parts):
 
 
 def fn_body(text, name):
-    """The source of `fn <name>` up to the next top-level `fn ` (or EOF)."""
-    m = re.search(r"^fn %s\b" % re.escape(name), text, re.M)
+    """The source of `function <name>` up to the next top-level `function ` (or EOF)."""
+    m = re.search(r"^function %s\b" % re.escape(name), text, re.M)
     if not m:
         return ""
     rest = text[m.end():]
-    nxt = re.search(r"^fn ", rest, re.M)
+    nxt = re.search(r"^function ", rest, re.M)
     return text[m.start(): m.end() + (nxt.start() if nxt else len(rest))]
 
 

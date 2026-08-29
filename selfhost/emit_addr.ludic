@@ -5,7 +5,7 @@
 var g_addr_ty: ptr           # out-param: the type at the computed address
 
 # address of `base.field`
-fn emit_member_addr(e: Node) -> ptr {
+function emit_member_addr(e: Node) -> ptr {
   let base = emit_expr(e.a)
   let s = layout_node(base.ty)
   if (s == null) { perr(`member access on non-aggregate {base.ty}`) }
@@ -19,7 +19,7 @@ fn emit_member_addr(e: Node) -> ptr {
 }
 
 # address of `base[index]` (slices only in this subset)
-fn emit_index_addr(e: Node) -> ptr {
+function emit_index_addr(e: Node) -> ptr {
   let base = emit_expr(e.a)
   if not is_slice_ty(base.ty) {                   # a raw pointer: address of element i
     let bi = emit_expr(e.b)                        # (evaluate index first — it may set g_addr_ty)

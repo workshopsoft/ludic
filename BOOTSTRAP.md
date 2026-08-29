@@ -109,10 +109,10 @@ All verified. A compiler needs each of these, and each one works today.
 | Deep recursion (recursive-descent parsing) | ✅ | 5,000 frames, no crash |
 | Heap allocation | ✅ | `mem_alloc`, `mem_free`, `mem_copy`, `mem_set`; 1 MiB alloc verified |
 | Byte-level memory | ✅ | `peek8`/`poke8`, `peek32`/`poke32`, `peekp`/`pokep`, `ptr_add` |
-| `ptr` locals, params, returns | ✅ | `fn make(n: int) -> ptr` |
+| `ptr` locals, params, returns | ✅ | `function make(n: int) -> ptr` |
 | `ptr` in a property field | ✅ | `property Nd { kind: int = 0, a: ptr = ptr_null() }` |
 | String literals as readable bytes | ✅ | `peek8("hello", 1)` → `101` |
-| `str` accepted where `ptr` expected | ✅ | `f("A")` into `fn f(p: ptr)` |
+| `str` accepted where `ptr` expected | ✅ | `f("A")` into `function f(p: ptr)` |
 | String comparison, **hand-written in Ludic** | ✅ | `streq` over `peek8` |
 | Integer → decimal, **hand-written in Ludic** | ✅ | `itoa(48291)` → `"48291"` |
 | File read: open/seek/tell/read/close | ✅ | full round-trip of a written file |
@@ -361,7 +361,7 @@ whole project.
 | Gap | Why it does not block |
 |---|---|
 | **64-bit integers** ❌ (`100000*100000` → `1410065408`, wraps at i32) | Line numbers, offsets, node indices and string lengths all fit in `i32`. Only matters for source files > 2 GiB. |
-| **A non-ECS entry point** | A `Start`-phase system plus `os_exit(n)` gives correct exit codes — verified. You do pay for an unused 1024-entity world; that is a constant, not a blocker. A `tool Name { fn main() -> int }` form would be nicer, not necessary. |
+| **A non-ECS entry point** | A `Start`-phase system plus `os_exit(n)` gives correct exit codes — verified. You do pay for an unused 1024-entity world; that is a constant, not a blocker. A `tool Name { function main() -> int }` form would be nicer, not necessary. |
 | Closures, generics, unions, sum types | A compiler in the style of `ludicc.c` uses none of them. |
 | GC | A compiler should leak deliberately (§8). |
 | Unsigned integer types | `shr` is already logical and `band`/`bor` are bit-level — sufficient. |
@@ -454,7 +454,7 @@ Each row verified by compiling a probe, not by reading docs.
 | ~~**R3**~~ | ~~**`and`/`or` alias `&&`/`\|\|`.**~~ **RESOLVED** — `and`/`or`/`not` are the only boolean operators; `&&`, `\|\|` and `!` are each rejected with a diagnostic naming the fix, and all three words are reserved. `!=` is unaffected. | landed via S3 | — |
 | **R4** | **`{ }` means seven different things** — statement block; property fields (`n: T = e`); model list (bare idents); spawn initialisers (`N = { … }`); ui props + children (`k=v` juxtaposed, no commas); match arms (`p, p => …`); machine states (`state N = v { … }`). | `block/comp/arche/spawn/parse_widget/match/machine` | The delimiter carries no information. You must already know the head keyword to know the inner grammar. |
 | **R5** | **Contextual keywords, not reserved.** `phase`, `query`, `reads`, `writes`, `needs`, `uses`, `where`, `in`, `on`, `layer`, `state`, `start` are matched with `isid()` — ordinary identifiers. `let query = 5  let phase = 6` compiles and prints `11`. | `sys()`, `scene_decl()` | A local named `enter` or `match` produces a baffling error far from the cause. |
-| **R6** | **Contracts are parsed and thrown away.** `requires`/`ensures`/`invariant` parse an expression and **discard it** (`pi++; expr();`). `reads`/`writes`/`needs`/`uses`/`effects` are `skip_brackets()`. `pure` is consumed and ignored. Verified: `fn half(n: int) -> int requires n > 100000 ensures false` compiles, and `half(8)` returns `4`. Verified: a system declaring `reads [Pos]` that **writes** `p.x = 99` compiles. | `fn()`, `sys()` | **The worst item in the audit.** The language accepts a contract and does nothing. A model writing `requires n > 0` is rewarded with a clean compile and zero enforcement — it learns a lie, and so does a human reader trusting the annotation. |
+| **R6** | **Contracts are parsed and thrown away.** `requires`/`ensures`/`invariant` parse an expression and **discard it** (`pi++; expr();`). `reads`/`writes`/`needs`/`uses`/`effects` are `skip_brackets()`. `pure` is consumed and ignored. Verified: `function half(n: int) -> int requires n > 100000 ensures false` compiles, and `half(8)` returns `4`. Verified: a system declaring `reads [Pos]` that **writes** `p.x = 99` compiles. | `fn()`, `sys()` | **The worst item in the audit.** The language accepts a contract and does nothing. A model writing `requires n > 0` is rewarded with a clean compile and zero enforcement — it learns a lie, and so does a human reader trusting the annotation. |
 | **R7** | **`str + str` typechecks, then emits invalid IR.** | verified (§4 B2) | The front-end accepts what the backend cannot lower. |
 | **R8** | **Two formatters, opposite philosophies, both called "format".** `ludicc --fmt` canonicalises hard (one statement per line, `and`→`&&`, full parenthesisation) but drops comments and inlines imports. `ludic-fmt` is token-based and preserves comments — but **normalises nothing**: handed the one-line `let a = 1 a = a + 1  if true and false { … }`, it returned it unchanged. | verified side-by-side | **Neither tool enforces a single spelling.** The canonicaliser is unusable on real source; the source formatter has no opinion. |
 | **R9** | **Two ways to spell a tag** — `property Player { }` (empty property) or `model`. | LANGUAGE.md | |
@@ -863,14 +863,14 @@ current tree (`bin/x test` = 64/64).
 **Recursion** ✅ → `55`
 ```ludic
 program P {
-  fn fib(n: int) -> int { if n < 2 { return n };  return fib(n-1) + fib(n-2) }
+  function fib(n: int) -> int { if n < 2 { return n };  return fib(n-1) + fib(n-2) }
   handler B phase Start { print_int(fib(10)); quit() }
 }
 ```
 
 **String comparison, hand-written** ✅ → `1`
 ```ludic
-fn streq(a: ptr, b: ptr) -> bool {
+function streq(a: ptr, b: ptr) -> bool {
   let i = 0
   while true {
     let ca = peek8(a,i)
@@ -885,7 +885,7 @@ fn streq(a: ptr, b: ptr) -> bool {
 
 **Integer → string, hand-written** ✅ → `48291`
 ```ludic
-fn itoa(v: int, buf: ptr) -> int {
+function itoa(v: int, buf: ptr) -> int {
   let n = 0
   let x = v
   if x == 0 { poke8(buf,0,48); return 1 }
@@ -955,7 +955,7 @@ print_int(query + phase)
 prints `4`:
 ```ludic
 # doc-check: skip — composite: declaration plus statements
-fn half(n: int) -> int requires n > 100000 ensures false { return n / 2 }
+function half(n: int) -> int requires n > 100000 ensures false { return n / 2 }
 print_int(half(8))
 ```
 And a system may declare read-only access, then write — also compiles:

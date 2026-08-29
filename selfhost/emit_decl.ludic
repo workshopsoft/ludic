@@ -2,7 +2,7 @@
 # body is built into a scratch buffer so entry-block allocas can be spliced in
 # ahead of it (see emit_alloca). Returns go through a %retval slot + `ret` label.
 
-fn emit_params_sig(d: Node) -> void {
+function emit_params_sig(d: Node) -> void {
   var i = 0
   while i < len(d.kids) {
     if i > 0 { emit(", ") }
@@ -11,7 +11,7 @@ fn emit_params_sig(d: Node) -> void {
   }
 }
 
-fn emit_fn(d: Node) -> void {
+function emit_fn(d: Node) -> void {
   ll_t = 0;  ll_lbl = 0;  g_term = false;  loc_reset();  nloop = 0
   ret_ty = d.ty
   let fbody = buf_new()
@@ -41,7 +41,7 @@ fn emit_fn(d: Node) -> void {
   emit("}\n\n")
 }
 
-fn emit_main(d: Node) -> void {
+function emit_main(d: Node) -> void {
   ll_t = 0;  ll_lbl = 0;  g_term = false;  loc_reset();  nloop = 0
   ret_ty = "int"
   let fbody = buf_new()
@@ -64,7 +64,7 @@ fn emit_main(d: Node) -> void {
   emit("}\n")
 }
 
-fn emit_program() -> void {
+function emit_program() -> void {
   head = buf_new()
   code = buf_new()
   g_uses_str = false
@@ -109,7 +109,7 @@ fn emit_program() -> void {
 # Flush the emitted IR. With a null path it goes to stdout (the pipe the shell
 # drivers read); with a path it is written to that file so ludicc can hand it to
 # clang itself.
-fn ir_flush(path: ptr) -> bool {
+function ir_flush(path: ptr) -> bool {
   let h = buf_str(head)
   let c = buf_str(code)
   if (path == null) {                             # raw IR to stdout (no trailing newline)

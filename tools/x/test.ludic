@@ -9,7 +9,7 @@
 
 # compile a feature example as a game, run it (optional keys on stdin) and match
 # its stdout against the expected space-joined output.
-fn feat_case(name: ptr, keys: ptr, exp: ptr, label: ptr) -> void {
+function feat_case(name: ptr, keys: ptr, exp: ptr, label: ptr) -> void {
   if not game_build_ok("bin/ludicc", `examples/{name}.ludic`, `/tmp/x_e_{name}`) {
     bad2(label, capture_line("grep -i error /tmp/x_gb.err | head -1")); return
   }
@@ -20,7 +20,7 @@ fn feat_case(name: ptr, keys: ptr, exp: ptr, label: ptr) -> void {
 }
 
 # a "does it still compile" smoke test (parse -> lower -> link), no run
-fn qsmoke(name: ptr) -> void {
+function qsmoke(name: ptr) -> void {
   if game_build_ok("bin/ludicc", `examples/{name}.ludic`, `/tmp/x_q_{name}`) {
     ok(`{name} compiles (@Queries desugars to S_QUERY)`)
   } else { bad2(name, capture_line("grep -i error /tmp/x_gb.err | head -1")) }
@@ -28,7 +28,7 @@ fn qsmoke(name: ptr) -> void {
 
 # a pure-Ludic example that drives and asserts itself: compile headless to IR,
 # let clang assemble it, run, and compare stdout. No C host and no C compiled.
-fn net_case(name: ptr, exp: ptr) -> void {
+function net_case(name: ptr, exp: ptr) -> void {
   let ll = `/tmp/x_n_{name}.ll`
   let log = `/tmp/x_n_{name}.out`
   if not shq(`bin/ludicc --headless examples/{name}.ludic --emit-llvm -o {ll} > {log} 2>&1`) {
@@ -43,7 +43,7 @@ fn net_case(name: ptr, exp: ptr) -> void {
   if (got == exp) { ok(`{name} ({got})`) } else { bad2(name, `got [{got}] want [{exp}]`) }
 }
 
-fn cmd_test() -> int {
+function cmd_test() -> int {
   PASS = 0
   FAIL = 0
 

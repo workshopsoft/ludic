@@ -502,7 +502,7 @@ object, so assigning or passing one shares it rather than copying.
 ```ludic
 property Tok { kind: int = 0, line: int = 0, next: Tok }
 
-fn bump(t: Tok) -> void { t.kind = t.kind + 1 }
+function bump(t: Tok) -> void { t.kind = t.kind + 1 }
 
 handler Share phase Update {
   let a = new Tok
@@ -560,9 +560,9 @@ fields: `toks[i].kind = T_ID` is a single address computation.
 ## Functions & FFI
 
 ```ludic
-fn heal(amount: int) -> int { return amount * 2 }
+function heal(amount: int) -> int { return amount * 2 }
 
-extern fn c_hypot(a: fixed, b: fixed) -> fixed = "hypot_fx"   # bind a C symbol
+extern function c_hypot(a: fixed, b: fixed) -> fixed = "hypot_fx"   # bind a C symbol
 ```
 `extern fn … = "symbol"` declares a foreign function and binds it to a symbol
 resolved at link time; pass `-L`/`-l` to ludicc to link its library. This is how

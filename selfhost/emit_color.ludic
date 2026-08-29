@@ -9,7 +9,7 @@
 # Edit the palette there and regenerate; do not hand-edit this file.
 # ============================================================================
 
-fn color_lookup(name: ptr) -> int {
+function color_lookup(name: ptr) -> int {
   if (name == "White") { return 0xFFFFFF }
   if (name == "Snow") { return 0xFFFAFA }
   if (name == "Ivory") { return 0xFFFFF0 }

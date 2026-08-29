@@ -5,12 +5,12 @@
 
 const MAX_ENT: int = 1024
 
-fn has_systems() -> bool {
+function has_systems() -> bool {
   var i = 0
   while i < len(prog) { if prog[i].kind == N_SYS { return true };  i = i + 1 }
   return false
 }
-fn has_models() -> bool {
+function has_models() -> bool {
   var i = 0
   while i < len(prog) { if prog[i].kind == N_ARCH { return true };  i = i + 1 }
   return false
@@ -18,7 +18,7 @@ fn has_models() -> bool {
 # N5: does the program have an `entry` block? A game with both handlers and an
 # `entry` drives its own loop (calling tick_fixed/tick_render), instead of the
 # compiler's auto frame loop. A game with handlers and no entry uses the auto-loop.
-fn has_entry() -> bool {
+function has_entry() -> bool {
   var i = 0
   while i < len(prog) { if prog[i].kind == N_MAIN { return true };  i = i + 1 }
   return false
@@ -28,9 +28,9 @@ fn has_entry() -> bool {
 # `struct`). A program uses the ECS when it has a handler or a model; a tool that
 # only declares record types and functions does not, and gets no entity storage,
 # allocator, snapshot or runtime splice.
-fn has_ecs() -> bool { return has_systems() or has_models() }
+function has_ecs() -> bool { return has_systems() or has_models() }
 
-fn emit_ecs_storage() -> void {
+function emit_ecs_storage() -> void {
   emith("@L_running = internal global i32 1\n")
   emith("@L_key = internal global i32 0\n")
   emith("@L_frame = internal global i32 0\n")
@@ -71,7 +71,7 @@ fn emit_ecs_storage() -> void {
 }
 
 # L_reset(e): clear every has-flag and the archetype kind for entity e
-fn emit_ecs_allocator() -> void {
+function emit_ecs_allocator() -> void {
   let me = itoa(MAX_ENT)
   emit("define void @L_reset(i32 %e) {\nentry:\n")
   var i = 0

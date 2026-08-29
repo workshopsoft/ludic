@@ -3,20 +3,20 @@
 # and blend them with plain integer/fixed math. rgb/rgba pack channels; lerp/
 # darken/lighten/with_alpha transform an existing color.
 
-fn is_colorfn_ns(meth: ptr) -> bool {
+function is_colorfn_ns(meth: ptr) -> bool {
   if (meth == "rgb") or (meth == "rgba") or (meth == "lerp") { return true }
   if (meth == "darken") or (meth == "lighten") or (meth == "with_alpha") { return true }
   return false
 }
 
 # (c >> shift) & 255 -> code of a channel value
-fn color_ch(c: ptr, shift: ptr) -> ptr {
+function color_ch(c: ptr, shift: ptr) -> ptr {
   let sh = emit_bind(`lshr i32 {c}, {shift}`)
   return emit_bind(`and i32 {sh}, 255`)
 }
 
 # (r << 16) | (g << 8) | b -> code of a packed color
-fn color_pack(r: ptr, g: ptr, b: ptr) -> ptr {
+function color_pack(r: ptr, g: ptr, b: ptr) -> ptr {
   let r16 = emit_bind(`shl i32 {r}, 16`)
   let g8 = emit_bind(`shl i32 {g}, 8`)
   let rg = emit_bind(`or i32 {r16}, {g8}`)
@@ -24,14 +24,14 @@ fn color_pack(r: ptr, g: ptr, b: ptr) -> ptr {
 }
 
 # ch0 + ((ch1 - ch0) * t >> 16), t a fixed 0..1 -> code of a blended channel
-fn color_lerp_ch(ch0: ptr, ch1: ptr, t: ptr) -> ptr {
+function color_lerp_ch(ch0: ptr, ch1: ptr, t: ptr) -> ptr {
   let d = emit_bind(`sub i32 {ch1}, {ch0}`)
   let dt = emit_bind(`mul i32 {d}, {t}`)
   let dsh = emit_bind(`ashr i32 {dt}, 16`)
   return emit_bind(`add i32 {ch0}, {dsh}`)
 }
 
-fn emit_colorfn_ns(meth: ptr, e: Node) -> Val {
+function emit_colorfn_ns(meth: ptr, e: Node) -> Val {
   if (meth == "rgb") {                              # rgb(r, g, b) -> 0xRRGGBB
     let r = emit_expr(e.kids[0]);  let g = emit_expr(e.kids[1]);  let b = emit_expr(e.kids[2])
     return val(color_pack(r.code, g.code, b.code), "int")

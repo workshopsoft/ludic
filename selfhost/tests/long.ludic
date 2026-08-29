@@ -1,5 +1,5 @@
 program T {
-  fn wide(a: long, b: int) -> long { return a * b }   # int arg widens to i64
+  function wide(a: long, b: int) -> long { return a * b }   # int arg widens to i64
 
   entry {
     let big: long = 1000000       # int literal widens to a long

@@ -2,7 +2,7 @@
 # and text drawing. Split out of truetype.ludic (the sfnt/cmap/outline half).
 
 # ---- rasterization --------------------------------------------------------
-fn ed_add(x0: fixed, y0: fixed, x1: fixed, y1: fixed) -> void {
+function ed_add(x0: fixed, y0: fixed, x1: fixed, y1: fixed) -> void {
   if ed_n >= TT_EDGES { return }
   ed_x0[ed_n] = x0
   ed_y0[ed_n] = y0
@@ -11,7 +11,7 @@ fn ed_add(x0: fixed, y0: fixed, x1: fixed, y1: fixed) -> void {
   ed_n = ed_n + 1
 }
 
-fn tt_isqrt(v: int) -> int {
+function tt_isqrt(v: int) -> int {
   if v <= 0 { return 0 }
   var r = 0
   var b = 32768
@@ -24,7 +24,7 @@ fn tt_isqrt(v: int) -> int {
 }
 
 # flatten one quadratic Bézier into line segments, subdivided by chord length
-fn ed_quad(x0: fixed, y0: fixed, cx: fixed, cy: fixed, x1: fixed, y1: fixed) -> void {
+function ed_quad(x0: fixed, y0: fixed, cx: fixed, cy: fixed, x1: fixed, y1: fixed) -> void {
   let dx = flr(x1) - flr(x0)
   let dy = flr(y1) - flr(y0)
   var n = tt_isqrt(dx * dx + dy * dy) / 3
@@ -51,7 +51,7 @@ var gr_ox:  int = 0
 var gr_oy:  int = 0
 var gr_adv: int = 0
 
-fn tt_raster(id: int, gid: int, px: int) -> ptr {
+function tt_raster(id: int, gid: int, px: int) -> ptr {
   let upem = tt_upem[id]
   let scale = fx(px) / upem
   gr_adv = flr(fx(tt_advance(id, gid)) * scale + 0.5)
@@ -231,11 +231,11 @@ fn tt_raster(id: int, gid: int, px: int) -> ptr {
 # ---- glyph cache ----------------------------------------------------------
 # Rasterizing is far too slow to repeat per frame, so a coverage mask is kept
 # per (font, codepoint, size). Open addressing, 8 probes, evict on miss.
-fn gc_hash(font: int, cp: int, px: int) -> int {
+function gc_hash(font: int, cp: int, px: int) -> int {
   return ((((cp * 2654435761) ^ (font << 20)) ^ (px << 8)) & (TT_GC - 1))
 }
 
-fn tt_glyph_get(font: int, cp: int, px: int) -> int {
+function tt_glyph_get(font: int, cp: int, px: int) -> int {
   let h = gc_hash(font, cp, px)
   for k in 0 .. 8 {
     let s = ((h + k) & (TT_GC - 1))
@@ -269,7 +269,7 @@ fn tt_glyph_get(font: int, cp: int, px: int) -> int {
 # ---- UTF-8 ----------------------------------------------------------------
 var u8_next: int = 0        # byte index just past the codepoint last decoded
 
-fn tt_utf8(s: str, at: int) -> int {
+function tt_utf8(s: str, at: int) -> int {
   let c = s[at]
   var extra = 0 - 1
   if c < 128 { extra = 0 }
@@ -298,7 +298,7 @@ fn tt_utf8(s: str, at: int) -> int {
 }
 
 # ---- drawing --------------------------------------------------------------
-fn tt_blit(bmp: ptr, w: int, h: int, dx: int, dy: int, colour: int) -> void {
+function tt_blit(bmp: ptr, w: int, h: int, dx: int, dy: int, colour: int) -> void {
   if (bmp == null) { return }
   let cr = ((colour >> 16) & 255)
   let cg = ((colour >> 8) & 255)
@@ -327,7 +327,7 @@ fn tt_blit(bmp: ptr, w: int, h: int, dx: int, dy: int, colour: int) -> void {
   }
 }
 
-fn rt_text_ttf(font: int, x: int, y: int, s: str, colour: int, px: int) -> void {
+function rt_text_ttf(font: int, x: int, y: int, s: str, colour: int, px: int) -> void {
   if font < 0 { return }
   if font >= tt_n { return }
   if px <= 0 { return }
@@ -351,7 +351,7 @@ fn rt_text_ttf(font: int, x: int, y: int, s: str, colour: int, px: int) -> void 
   }
 }
 
-fn rt_text_w(font: int, s: str, px: int) -> int {
+function rt_text_w(font: int, s: str, px: int) -> int {
   if font < 0 { return 0 }
   if font >= tt_n { return 0 }
   if px <= 0 { return 0 }
@@ -372,7 +372,7 @@ fn rt_text_w(font: int, s: str, px: int) -> int {
   return best
 }
 
-fn rt_text_h(font: int, px: int) -> int {
+function rt_text_h(font: int, px: int) -> int {
   if font < 0 { return 0 }
   if font >= tt_n { return 0 }
   let scale = fx(px) / tt_upem[font]

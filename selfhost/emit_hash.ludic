@@ -11,7 +11,7 @@
 #   Hash.mix(x)        fmix32 avalanche of a single int (turn a counter into a seed)
 #   Hash.combine(...)  fold several ints into one (e.g. world_seed, cx, cy)
 
-fn is_hash_ns(meth: ptr) -> bool {
+function is_hash_ns(meth: ptr) -> bool {
   if (meth == "of") or (meth == "fnv1a") or (meth == "crc32") { return true }
   if (meth == "mix") or (meth == "combine") { return true }
   if (meth == "of64") or (meth == "fnv1a_64") or (meth == "mix64") { return true }
@@ -21,7 +21,7 @@ fn is_hash_ns(meth: ptr) -> bool {
 # fmix32 (MurmurHash3 finalizer) of a single i32 -> code of an i32. A strong
 # avalanche: flips ~half the output bits for any one input bit. Used on its own
 # (Hash.mix) and nowhere else — combine has its own mixing step.
-fn hash_mix_code(x: ptr) -> ptr {
+function hash_mix_code(x: ptr) -> ptr {
   let a = emit_bind(`lshr i32 {x}, 16`)
   let b = emit_bind(`xor i32 {x}, {a}`)
   let c = emit_bind(`mul i32 {b}, -2048144789`)     # * 0x85ebca6b
@@ -35,7 +35,7 @@ fn hash_mix_code(x: ptr) -> ptr {
 # fmix64 (MurmurHash3 64-bit finalizer) of a single i64 -> code of an i64. The
 # 64-bit twin of hash_mix_code: shift by 33 and multiply by the two 64-bit
 # constants. Backs Hash.mix64.
-fn hash_mix64_code(x: ptr) -> ptr {
+function hash_mix64_code(x: ptr) -> ptr {
   let a = emit_bind(`lshr i64 {x}, 33`)
   let b = emit_bind(`xor i64 {x}, {a}`)
   let c = emit_bind(`mul i64 {b}, -49064778989728563`)    # * 0xff51afd7ed558ccd
@@ -46,7 +46,7 @@ fn hash_mix64_code(x: ptr) -> ptr {
   return emit_bind(`xor i64 {f}, {g}`)
 }
 
-fn emit_hash_ns(meth: ptr, e: Node) -> Val {
+function emit_hash_ns(meth: ptr, e: Node) -> Val {
   if (meth == "of") or (meth == "fnv1a") {          # FNV-1a 32-bit over the bytes
     g_uses_hashrt = true
     let s = emit_expr(e.kids[0])
@@ -94,7 +94,7 @@ fn emit_hash_ns(meth: ptr, e: Node) -> Val {
 # at a time with pure integer IR: FNV-1a with the standard 32-bit offset basis /
 # prime, and a bitwise CRC-32 with the reflected poly 0xEDB88320. No libc, no
 # allocation, bit-identical on every target.
-fn emit_hash_prelude() -> void {
+function emit_hash_prelude() -> void {
   emith("define i32 @fn_hash_fnv1a(ptr %s) {\n")
   emith("entry:\n")
   emith("  %hp = alloca i32\n")

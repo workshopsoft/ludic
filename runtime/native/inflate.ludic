@@ -20,7 +20,7 @@ var z_bitbuf: int = 0
 var z_bitcnt: int = 0
 var z_err:    int = 0
 
-fn z_start(src: ptr, len: int) -> void {
+function z_start(src: ptr, len: int) -> void {
   z_src = src
   z_len = len
   z_pos = 0
@@ -29,7 +29,7 @@ fn z_start(src: ptr, len: int) -> void {
   z_err = 0
 }
 
-fn z_bits(need: int) -> int {
+function z_bits(need: int) -> int {
   var val = z_bitbuf
   while z_bitcnt < need {
     if z_pos >= z_len {
@@ -48,12 +48,12 @@ fn z_bits(need: int) -> int {
 # ---- Huffman tables -------------------------------------------------------
 # A table is a single buffer: 16 length-counts followed by the symbols in
 # canonical order. One allocation, no structs.
-fn z_table_new(nsym: int) -> ptr {
+function z_table_new(nsym: int) -> ptr {
   return words((16 + nsym))
 }
 
 # lengths[i] = code length of symbol i (0 = symbol unused)
-fn z_table_build(table: words, lengths: words, n: int) -> void {
+function z_table_build(table: words, lengths: words, n: int) -> void {
   for i in 0 .. 16 {
     table[i] = 0
   }
@@ -78,7 +78,7 @@ fn z_table_build(table: words, lengths: words, n: int) -> void {
   free(offs)
 }
 
-fn z_decode(table: words) -> int {
+function z_decode(table: words) -> int {
   var code = 0
   var first = 0
   var index = 0
@@ -97,7 +97,7 @@ fn z_decode(table: words) -> int {
 }
 
 # ---- length / distance code tables (RFC 1951 section 3.2.5) ---------------
-fn z_len_base(sym: int) -> int {
+function z_len_base(sym: int) -> int {
   if sym < 8 { return 3 + sym }
   if sym == 28 { return 258 }
   let extra = (sym - 4) / 4
@@ -105,27 +105,27 @@ fn z_len_base(sym: int) -> int {
   return 3 + ((group - 1) << 2) + 4 + (sym - 4 - extra * 4) * group
 }
 
-fn z_len_extra(sym: int) -> int {
+function z_len_extra(sym: int) -> int {
   if sym < 8 { return 0 }
   if sym == 28 { return 0 }
   return (sym - 4) / 4
 }
 
-fn z_dist_base(sym: int) -> int {
+function z_dist_base(sym: int) -> int {
   if sym < 4 { return 1 + sym }
   let extra = (sym - 2) / 2
   let group = (1 << extra)
   return 1 + (group << 1) + (sym - 2 - extra * 2) * group
 }
 
-fn z_dist_extra(sym: int) -> int {
+function z_dist_extra(sym: int) -> int {
   if sym < 4 { return 0 }
   return (sym - 2) / 2
 }
 
 # ---- block decoders -------------------------------------------------------
 # `out` is the destination window; returns the new write position, or -1.
-fn z_stored(out: ptr, at: int, cap: int) -> int {
+function z_stored(out: ptr, at: int, cap: int) -> int {
   z_bitbuf = 0
   z_bitcnt = 0                        # stored blocks are byte-aligned
   if z_pos + 4 > z_len { return -1 }
@@ -142,7 +142,7 @@ fn z_stored(out: ptr, at: int, cap: int) -> int {
   return w
 }
 
-fn z_codes(out: ptr, at: int, cap: int, lit: ptr, dist: ptr) -> int {
+function z_codes(out: ptr, at: int, cap: int, lit: ptr, dist: ptr) -> int {
   var w = at
   var sym = z_decode(lit)
   while sym != 256 {
@@ -172,7 +172,7 @@ fn z_codes(out: ptr, at: int, cap: int, lit: ptr, dist: ptr) -> int {
   return w
 }
 
-fn z_fixed_tables(lit: ptr, dist: ptr) -> void {
+function z_fixed_tables(lit: ptr, dist: ptr) -> void {
   let lengths: words = words(288)
   for i in 0 .. 144 { lengths[i] = 8 }
   for i in 144 .. 256 { lengths[i] = 9 }
@@ -184,7 +184,7 @@ fn z_fixed_tables(lit: ptr, dist: ptr) -> void {
   free(lengths)
 }
 
-fn z_dynamic_tables(lit: ptr, dist: ptr) -> int {
+function z_dynamic_tables(lit: ptr, dist: ptr) -> int {
   let nlen = z_bits(5) + 257
   let ndist = z_bits(5) + 1
   let ncode = z_bits(4) + 4
@@ -240,7 +240,7 @@ fn z_dynamic_tables(lit: ptr, dist: ptr) -> int {
 }
 
 # Inflate a raw DEFLATE stream. Returns bytes written, or -1.
-fn z_inflate(src: ptr, len: int, out: ptr, cap: int) -> int {
+function z_inflate(src: ptr, len: int, out: ptr, cap: int) -> int {
   z_start(src, len)
   let lit = z_table_new(288)
   let dist = z_table_new(30)
@@ -268,7 +268,7 @@ fn z_inflate(src: ptr, len: int, out: ptr, cap: int) -> int {
 }
 
 # zlib wrapper (RFC 1950): two header bytes, then DEFLATE, then Adler-32.
-fn z_uncompress(src: ptr, len: int, out: ptr, cap: int) -> int {
+function z_uncompress(src: ptr, len: int, out: ptr, cap: int) -> int {
   if len < 2 { return -1 }
   let cmf = src[0]
   if (cmf & 15) != 8 { return -1 }

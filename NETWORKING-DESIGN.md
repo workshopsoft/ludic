@@ -151,7 +151,7 @@ directly from these; the high-level layer (§6) is sugar over them.
 
 | Primitive | Signature (sketch) | Enables |
 |---|---|---|
-| **Transport seam** | `extern fn net_send(peer: int, buf: ptr, len: int)` · `extern fn net_poll(buf: ptr, cap: int) -> int` | any model; host binds UDP (native) or WebRTC/WebSocket (wasm), or a loopback for tests |
+| **Transport seam** | `extern function net_send(peer: int, buf: ptr, len: int)` · `extern function net_poll(buf: ptr, cap: int) -> int` | any model; host binds UDP (native) or WebRTC/WebSocket (wasm), or a loopback for tests |
 | **World snapshot ↔ buffer** | `world_save(buf: ptr) -> int` · `world_load(buf: ptr, len: int)` | rollback, replication, join/resync — generalizes `save()`/`load()` off the filesystem |
 | **Generated serializers** | `serialize_<Model>(e: entity, buf: ptr) -> int` · `apply_<Model>(e: entity, buf: ptr, len: int)` | per-model, touch only the `@Sync` fields; emitted from the schema |
 | **Ownership** | `owner(e: entity) -> int` · `set_owner(e: entity, id: int)` | authority checks, per-entity owner metadata (an `@L_owner` array, like `@L_kind`) |

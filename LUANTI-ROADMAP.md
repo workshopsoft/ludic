@@ -429,7 +429,7 @@ nodes[i].param0 = C_STONE
 print_int(nodes.len)
 
 # slices: a (ptr, len) pair, no ownership — the workhorse for I/O
-fn checksum(bytes: []u8) -> int {
+function checksum(bytes: []u8) -> int {
   var sum = 0
   for b in bytes { sum = sum + b }      # `for x in slice` iteration
   return sum
@@ -464,9 +464,9 @@ struct MapNode {
 
 struct v3i { x: int = 0, y: int = 0, z: int = 0 }
 
-fn index(p: v3i) -> int { return (p.z * 16 + p.y) * 16 + p.x }
+function index(p: v3i) -> int { return (p.z * 16 + p.y) * 16 + p.x }
 
-fn get(blk: []MapNode, p: v3i) -> MapNode { return blk[index(p)] }
+function get(blk: []MapNode, p: v3i) -> MapNode { return blk[index(p)] }
 
 # a component becomes "a struct that lives in the world"
 component Pos = v3i                      # aliasing form
@@ -673,7 +673,7 @@ unknown node names, failed DB writes. It uses C++ exceptions
 sum-typed results with sugar, which falls straight out of G-06:
 
 ```ludic
-fn read_block(path: str) -> MapBlock ! IoError {
+function read_block(path: str) -> MapBlock ! IoError {
   let f = file_open(path, "rb") else return IoError.NotFound
   let n  = try file_read(f, buf, 4096)      # `try` propagates the error arm
   return parse(buf[0..n])
@@ -1085,7 +1085,7 @@ Ludic has a 320×240 software framebuffer presented through
 | Write a GPU driver | ✗ | not serious |
 
 **Recommended:** treat the GPU exactly as the project already treats the OS —
-an ABI to call, not a C program to compile. `extern fn glDrawElements(…) =
+an ABI to call, not a C program to compile. `extern function glDrawElements(…) =
 "glDrawElements"`, with a thin `runtime/native/gfx3d.ludic` over it. This is
 consistent with the existing rule ("C libraries are used via FFI") and needs
 **no compiler change beyond G-04's `f32`.**
@@ -1097,11 +1097,11 @@ struct v3f { x: f32 = 0, y: f32 = 0, z: f32 = 0 }
 struct m4  { m: [16]f32 }
 struct aabb { min: v3f, max: v3f }
 
-fn dot(a: v3f, b: v3f) -> f32
-fn cross(a: v3f, b: v3f) -> v3f
-fn normalize(v: v3f) -> v3f
-fn look_at(eye: v3f, at: v3f, up: v3f) -> m4
-fn perspective(fovy: f32, aspect: f32, znear: f32, zfar: f32) -> m4
+function dot(a: v3f, b: v3f) -> f32
+function cross(a: v3f, b: v3f) -> v3f
+function normalize(v: v3f) -> v3f
+function look_at(eye: v3f, at: v3f, up: v3f) -> m4
+function perspective(fovy: f32, aspect: f32, znear: f32, zfar: f32) -> m4
 ```
 
 Worth considering: **operator overloading for vector types only** — Ludic
@@ -1211,11 +1211,11 @@ hand-rolled pointer arithmetic these features exist to delete.
 
 ```ludic
 # before (runtime/native/image.ludic today)
-fn px(img: ptr, x: int, y: int, w: int) -> int { return peek32(img, (y*w+x)*4) }
+function px(img: ptr, x: int, y: int, w: int) -> int { return peek32(img, (y*w+x)*4) }
 
 # after
 struct Rgba { r: u8, g: u8, b: u8, a: u8 }
-fn px(img: []Rgba, x: int, y: int, w: int) -> Rgba { return img[y*w + x] }
+function px(img: []Rgba, x: int, y: int, w: int) -> Rgba { return img[y*w + x] }
 ```
 
 ### M1 — Language core, part 2: numbers, strings, errors *(≈6 weeks)*

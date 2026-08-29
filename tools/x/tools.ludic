@@ -7,7 +7,7 @@
 # driven through python3/node (they are not project shell scripts), invoked here.
 
 # refresh one editor-copy of a shared grammar file if it has drifted
-fn sync_one(shared: ptr, dst: ptr) -> void {
+function sync_one(shared: ptr, dst: ptr) -> void {
   if not shq(`cmp -s {shared} {dst}`) {
     run(`cp {shared} {dst}`)
     print(`sync: {shared} -> {dst}`)
@@ -16,7 +16,7 @@ fn sync_one(shared: ptr, dst: ptr) -> void {
 
 # VS Code needs the grammar inside its own extension directory, so it gets a
 # copy that build refreshes rather than trusts (test-tools asserts they match).
-fn sync_vscode_grammar() -> void {
+function sync_vscode_grammar() -> void {
   if not shq("test -d tools/editors/vscode") { return }
   run("mkdir -p tools/editors/vscode/syntaxes")
   sync_one("tools/editors/shared/ludic.tmLanguage.json", "tools/editors/vscode/syntaxes/ludic.tmLanguage.json")
@@ -25,7 +25,7 @@ fn sync_vscode_grammar() -> void {
 }
 
 # is `flag` present anywhere in argv?
-fn has_flag(flag: ptr) -> bool {
+function has_flag(flag: ptr) -> bool {
   var i = 2
   while i < arg_count() { if (arg(i) == flag) { return true };  i = i + 1 }
   return false
@@ -33,7 +33,7 @@ fn has_flag(flag: ptr) -> bool {
 
 # ---- tools: build the editor toolchain --------------------------------------
 # usage: x tools [--install] [--test]
-fn cmd_tools() -> int {
+function cmd_tools() -> int {
   ensure_ludicc()
   print("ludicc: tools/ludic-tools/fmt.ludic -> bin/ludic-fmt  (Ludic -> LLVM IR -> binary, no C)")
   if not build_tool("ludic-fmt", "tools/ludic-tools/fmt.ludic") { return 1 }
@@ -53,7 +53,7 @@ fn cmd_tools() -> int {
 }
 
 # ---- test-tools: the editor-toolchain regression suite -----------------------
-fn cmd_test_tools() -> int {
+function cmd_test_tools() -> int {
   PASS = 0
   FAIL = 0
   let fmt = "bin/ludic-fmt"
@@ -172,13 +172,13 @@ fn cmd_test_tools() -> int {
   return report()
 }
 
-fn test_json(path: ptr) -> void {
+function test_json(path: ptr) -> void {
   let bn = capture_line(`basename {path}`)
   if shq(`python3 -c 'import json,sys;json.load(open(sys.argv[1]))' {path} 2>/dev/null`) {
     ok(`valid JSON: {bn}`)
   } else { bad(`invalid JSON: {path}`) }
 }
-fn test_xml(path: ptr) -> void {
+function test_xml(path: ptr) -> void {
   let bn = capture_line(`basename {path}`)
   if shq(`python3 -c 'import xml.dom.minidom,sys;xml.dom.minidom.parse(sys.argv[1])' {path} 2>/dev/null`) {
     ok(`valid XML: {bn}`)

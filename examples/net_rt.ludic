@@ -14,7 +14,7 @@
 # a real socket when a program binds `extern fn net_send/net_poll`).
 
 # The authority ships one entity's authoritative synced state to peers.
-fn rt_replicate(e: int) -> void {
+function rt_replicate(e: int) -> void {
   let w = words(512)
   w[0] = e                                 # entity id in the first word
   let n = serialize(e, offset(w, 4))       # synced fields after it
@@ -23,7 +23,7 @@ fn rt_replicate(e: int) -> void {
 
 # A peer drains every inbound snapshot and applies it to the named entity. One
 # datagram per poll (the transport is datagram-preserving), so loop until empty.
-fn rt_receive() -> void {
+function rt_receive() -> void {
   let w = words(512)
   var n = net_poll(w, 2048)
   while n > 0 {

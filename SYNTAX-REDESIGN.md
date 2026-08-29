@@ -133,7 +133,7 @@ handler Move
 ### extern
 ```ludic
 # doc-check: skip — illustrative redesign snippet (proposed / partial syntax)
-extern fn c_hypot(a: fixed, b: fixed) -> fixed = "hypot_fx"   # unchanged
+extern function c_hypot(a: fixed, b: fixed) -> fixed = "hypot_fx"   # unchanged
 ```
 The `= "symbol"` is a binding under Rule A — it stays.
 

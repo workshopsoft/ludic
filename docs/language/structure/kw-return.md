@@ -16,7 +16,7 @@ program Clamp {
   property Health { current: int = 100, maximum: int = 100 }
   model Player { Health }
 
-  fn clamp_current(value: int, maximum: int) -> int {
+  function clamp_current(value: int, maximum: int) -> int {
     if value < 0 { return 0 }
     if value > maximum { return maximum }
     return value

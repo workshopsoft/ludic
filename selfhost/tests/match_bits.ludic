@@ -1,5 +1,5 @@
 program T {
-  fn classify(c: int) -> int {
+  function classify(c: int) -> int {
     match c { 65, 66 => { return 1 };  67 => { return 2 };  _ => { return 9 } }
     return 0
   }

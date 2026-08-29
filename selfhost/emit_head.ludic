@@ -1,10 +1,10 @@
 # emit_head.ludic — string constants and the module header (libc declarations,
 # the slice header type, struct layouts, globals, argv, format strings).
 
-fn hexdig(n: int) -> int { if n < 10 { return 48 + n }; return 55 + n }   # 0-9 A-F
+function hexdig(n: int) -> int { if n < 10 { return 48 + n }; return 55 + n }   # 0-9 A-F
 
 # emit `@.strN = ... c"escaped\00"` and return its name; % and non-print -> \XX
-fn emit_str_const(s: ptr) -> ptr {
+function emit_str_const(s: ptr) -> ptr {
   let name = `@.str{itoa(ll_str)}`
   ll_str = ll_str + 1
   let n = len(s)
@@ -25,7 +25,7 @@ fn emit_str_const(s: ptr) -> ptr {
 }
 
 # the constant initializer for a global var: a literal, or 0/null
-fn global_init(d: Node) -> ptr {
+function global_init(d: Node) -> ptr {
   if (d.a == null) { if (llty(d.ty) == "ptr") { return "null" };  return "0" }
   let e = d.a
   if e.kind == E_INT or e.kind == E_FLOAT or e.kind == E_BOOL { return itoa(e.ival) }
@@ -34,7 +34,7 @@ fn global_init(d: Node) -> ptr {
   return "0"
 }
 
-fn emit_header() -> void {
+function emit_header() -> void {
   emith("; Ludic (self-hosted) -> LLVM IR\n")
   emith("declare i32 @printf(ptr, ...)\n")
   emith("declare ptr @malloc(i64)\n")
@@ -109,7 +109,7 @@ fn emit_header() -> void {
 # One `declare <ret> @<sym>(<argtys>)` per `extern fn`, so the linker resolves the
 # call to the bound symbol. Emitted after the header; a program with no `extern fn`
 # emits nothing here, so un-networked builds stay byte-identical.
-fn emit_extern_decls() -> void {
+function emit_extern_decls() -> void {
   var i = 0
   while i < len(prog) {
     let d = prog[i]
@@ -131,7 +131,7 @@ fn emit_extern_decls() -> void {
 # on strings. Hand-written IR over NUL-terminated byte buffers: str_eq walks both
 # until a mismatch or a shared terminator; str_concat measures both, mallocs
 # len+len+1, copies each half, and NUL-terminates. @malloc is always declared.
-fn emit_str_prelude() -> void {
+function emit_str_prelude() -> void {
   emith("define i32 @fn_str_eq(ptr %a, ptr %b) {\n")
   emith("entry:\n  br label %loop\n")
   emith("loop:\n  %i = phi i32 [ 0, %entry ], [ %i1, %cont ]\n")
@@ -173,7 +173,7 @@ fn emit_str_prelude() -> void {
 # int -> decimal string, emitted (once) into any program that uses str(int)
 # (string interpolation of a number). Writes digits from the end of a 24-byte
 # buffer, prepends '-' for negatives, and returns a pointer into the buffer.
-fn emit_int_str() -> void {
+function emit_int_str() -> void {
   emith("define ptr @fn_int_str(i32 %n0) {\n")
   emith("entry:\n  %buf = call ptr @malloc(i64 24)\n")
   emith("  %isneg = icmp slt i32 %n0, 0\n  %neg = sub i32 0, %n0\n")
@@ -196,7 +196,7 @@ fn emit_int_str() -> void {
 # the i64 twin of fn_int_str: a signed 64-bit integer -> decimal text. Emitted
 # once per program that stringifies a `long` (g_uses_longstr). A 64-bit value is
 # at most 20 digits plus sign and NUL, so the 24-byte scratch buffer still fits.
-fn emit_long_str() -> void {
+function emit_long_str() -> void {
   emith("define ptr @fn_long_str(i64 %n0) {\n")
   emith("entry:\n  %buf = call ptr @malloc(i64 24)\n")
   emith("  %isneg = icmp slt i64 %n0, 0\n  %neg = sub i64 0, %n0\n")
@@ -218,7 +218,7 @@ fn emit_long_str() -> void {
 
 # s[a..b] -> a fresh NUL-terminated copy of the bytes [a, b), emitted (once) into
 # any program that slices a string. Mallocs (b-a)+1, copies, terminates.
-fn emit_str_slice() -> void {
+function emit_str_slice() -> void {
   emith("define ptr @fn_str_slice(ptr %s, i32 %start, i32 %end) {\n")
   emith("entry:\n  %len = sub i32 %end, %start\n  %sz = add i32 %len, 1\n")
   emith("  %sz64 = sext i32 %sz to i64\n  %out = call ptr @malloc(i64 %sz64)\n  br label %loop\n")

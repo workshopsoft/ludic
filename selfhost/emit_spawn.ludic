@@ -1,7 +1,7 @@
 # emit_spawn.ludic — spawn / despawn / self(), and seeding a component's fields
 # from its declared defaults plus any per-spawn overrides.
 
-fn emit_init_component(e: ptr, comp: ptr, rec: Node) -> void {
+function emit_init_component(e: ptr, comp: ptr, rec: Node) -> void {
   let me = itoa(MAX_ENT)
   let c = find_comp(comp)
   if (c == null) { perr(`spawn: unknown property {comp}`) }
@@ -54,7 +54,7 @@ fn emit_init_component(e: ptr, comp: ptr, rec: Node) -> void {
 
 # bind each of a model's properties to entity `e`'s component storage, so an
 # @OnSpawn hook body can address them by name (like a query binding for one entity).
-fn emit_bind_props(model: Node, e: ptr) -> void {
+function emit_bind_props(model: Node, e: ptr) -> void {
   let me = itoa(MAX_ENT)
   var c = 0
   while c < len(model.kids) {
@@ -68,7 +68,7 @@ fn emit_bind_props(model: Node, e: ptr) -> void {
   }
 }
 
-fn emit_spawn(st: Node) -> ptr {
+function emit_spawn(st: Node) -> ptr {
   let e = emit_bind("call i32 @L_alloc()")
   let ak = find_arch_id(st.s)
   if ak > 0 {
@@ -103,7 +103,7 @@ fn emit_spawn(st: Node) -> ptr {
   return e                                        # the new entity id (for ludic_spawn_<M>)
 }
 
-fn emit_despawn(st: Node) -> void {
+function emit_despawn(st: Node) -> void {
   let v = emit_expr(st.a)
   # @OnDespawn: dispatch on the entity's kind and run the matching model's hook
   if len(g_ondespawn) > 0 {
@@ -131,7 +131,7 @@ fn emit_despawn(st: Node) -> void {
 # (not a toggle): seeds the property's fields and fires @OnAttach, but only on a
 # real transition — if the entity already has the property it is a no-op, so the
 # hook fires once per genuine attach (flecs/Bevy "real add" semantics).
-fn emit_attach(st: Node) -> void {
+function emit_attach(st: Node) -> void {
   let ev = emit_expr(st.a)
   let me = itoa(MAX_ENT)
   let hp = nreg();  emit("  ");  emit(hp);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i8], ptr @H_");  emit(st.s);  emit(", i32 0, i32 ");  emit(ev.code);  emit("\n")
@@ -149,7 +149,7 @@ fn emit_attach(st: Node) -> void {
 # property bound by name (its data still lives in @S_ storage, so the teardown
 # body reads the outgoing value), then clears the has-flag so queries skip it.
 # Only fires on a real transition; detaching an absent property is a no-op.
-fn emit_detach(st: Node) -> void {
+function emit_detach(st: Node) -> void {
   let ev = emit_expr(st.a)
   let me = itoa(MAX_ENT)
   let hp = nreg();  emit("  ");  emit(hp);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i8], ptr @H_");  emit(st.s);  emit(", i32 0, i32 ");  emit(ev.code);  emit("\n")
@@ -178,7 +178,7 @@ fn emit_detach(st: Node) -> void {
 # enable/disable. `<P> on <e>` toggles a property's has-flag on an entity (its
 # data persists, so re-enabling restores it, and queries already skip a cleared
 # flag). A bare `<Model>` / `<Handler>` flips a global enabled flag.
-fn emit_toggle(st: Node) -> void {
+function emit_toggle(st: Node) -> void {
   var val = "0";  if st.ival == 1 { val = "1" }
   if (st.ty != null) and (st.ty == "layer") {    # enable/disable layer L
     emit("  store i32 ");  emit(val);  emit(", ptr @LE_");  emit(st.s);  emit("\n")

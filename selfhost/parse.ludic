@@ -6,13 +6,13 @@ var pi: int = 0
 var prog: []Node                 # the top-level declarations
 var g_game_name: ptr             # the `game`/`module` name
 
-fn cur() -> Tok { return toks[pi] }
-fn pk(o: int) -> Tok { return toks[pi + o] }
-fn is_op(v: ptr) -> bool { let t = toks[pi];  return t.kind == TK_OP and (t.text == v) }
-fn is_id(v: ptr) -> bool { let t = toks[pi];  return t.kind == TK_ID and (t.text == v) }
-fn is_kw(v: ptr) -> bool { return is_id(v) }
+function cur() -> Tok { return toks[pi] }
+function pk(o: int) -> Tok { return toks[pi + o] }
+function is_op(v: ptr) -> bool { let t = toks[pi];  return t.kind == TK_OP and (t.text == v) }
+function is_id(v: ptr) -> bool { let t = toks[pi];  return t.kind == TK_ID and (t.text == v) }
+function is_kw(v: ptr) -> bool { return is_id(v) }
 
-fn perr(msg: ptr) -> void {
+function perr(msg: ptr) -> void {
   let e = file_stderr()
   file_write(e, "ludicc(self): parse error: ", 27)
   file_write(e, msg, len(msg))
@@ -20,17 +20,17 @@ fn perr(msg: ptr) -> void {
   exit(1)
 }
 
-fn eat_op(v: ptr) -> void { if not is_op(v) { perr(v) }; pi = pi + 1 }
-fn eat_id() -> ptr {
+function eat_op(v: ptr) -> void { if not is_op(v) { perr(v) }; pi = pi + 1 }
+function eat_id() -> ptr {
   let t = toks[pi]
   if t.kind != TK_ID { perr("expected identifier") }
   pi = pi + 1
   return t.text
 }
-fn skipnl() -> void { while toks[pi].kind == TK_NL { pi = pi + 1 } }
+function skipnl() -> void { while toks[pi].kind == TK_NL { pi = pi + 1 } }
 
 # a type: `[]T` slice, or a plain name (int/ptr/str/bool/struct)
-fn ptype() -> ptr {
+function ptype() -> ptr {
   if is_op("[") {
     pi = pi + 1
     eat_op("]")
@@ -46,13 +46,13 @@ fn ptype() -> ptr {
 }
 
 # ---- expressions -----------------------------------------------------------
-fn expr() -> Node { return p_or() }
+function expr() -> Node { return p_or() }
 
 # Call arguments. Each argument is either positional (`expr`) or named
 # (`name: expr`) — a named argument is an identifier immediately followed by a
 # colon, which is unambiguous inside a call. Named args are stored as E_FINIT
 # (s=label, a=value) and reordered to the callee's parameter order at emit time.
-fn args_call(call: Node) -> void {
+function args_call(call: Node) -> void {
   eat_op("("); skipnl()
   while not is_op(")") {
     let t = toks[pi]
@@ -70,22 +70,22 @@ fn args_call(call: Node) -> void {
 # ---- string interpolation --------------------------------------------------
 # `text {expr} text` desugars to a `+` chain of string literals and `str(expr)`
 # holes, so it reuses the string-concat operator and needs no new runtime.
-fn interp_lit(buf: ptr, len: int) -> Node { let n = node(E_STR); n.s = buf[0..0 + len]; return n }
-fn interp_add(acc: Node, part: Node) -> Node {
+function interp_lit(buf: ptr, len: int) -> Node { let n = node(E_STR); n.s = buf[0..0 + len]; return n }
+function interp_add(acc: Node, part: Node) -> Node {
   if acc == null { return part }
   return mkbin("+", acc, part)
 }
-fn interp_str(e: Node) -> Node {                  # wrap a hole in str(...)
+function interp_str(e: Node) -> Node {                  # wrap a hole in str(...)
   let c = node(E_CALL); let id = node(E_ID); id.s = "str"; c.a = id; push(c.kids, e); return c
 }
-fn parse_hole(inner: ptr) -> Node {               # re-lex+parse an embedded expression
+function parse_hole(inner: ptr) -> Node {               # re-lex+parse an embedded expression
   let saved_toks = toks;  let saved_pi = pi
   lex(inner);  pi = 0;  skipnl()
   let e = expr()
   toks = saved_toks;  pi = saved_pi
   return e
 }
-fn parse_interp(raw: ptr) -> Node {
+function parse_interp(raw: ptr) -> Node {
   let n = len(raw)
   var acc: Node = null
   let lit = bytes(n + 1)
@@ -125,7 +125,7 @@ fn parse_interp(raw: ptr) -> Node {
 # emit E(field: v, ...) — shared by the statement form and the expression form.
 # As an expression it yields a cancellable event's cancelled flag (0/1); a
 # non-cancellable event yields 0.
-fn parse_emit() -> Node {
+function parse_emit() -> Node {
   pi = pi + 1; let n = node(S_EMIT); n.s = eat_id()
   let r = node(E_REC)
   eat_op("("); skipnl()
@@ -138,7 +138,7 @@ fn parse_emit() -> Node {
   return n
 }
 
-fn p_primary() -> Node {
+function p_primary() -> Node {
   let t = toks[pi]
   if t.kind == TK_INTERP { pi = pi + 1; return parse_interp(t.text) }
   if t.kind == TK_ID and (t.text == "emit") and (toks[pi + 1].kind == TK_ID) { return parse_emit() }
@@ -157,7 +157,7 @@ fn p_primary() -> Node {
   return node(E_INT)
 }
 
-fn p_postfix() -> Node {
+function p_postfix() -> Node {
   var e = p_primary()
   while true {
     if is_op(".") { pi = pi + 1; let m = node(E_MEMBER); m.a = e; m.s = eat_id(); e = m }
@@ -169,42 +169,42 @@ fn p_postfix() -> Node {
   return e
 }
 
-fn p_unary() -> Node {
+function p_unary() -> Node {
   if is_op("-") { pi = pi + 1; let n = node(E_UN); n.s = "-"; n.a = p_unary(); return n }
   if is_op("~") { pi = pi + 1; let n = node(E_UN); n.s = "~"; n.a = p_unary(); return n }   # bitwise not
   if is_id("not") { pi = pi + 1; let n = node(E_UN); n.s = "not"; n.a = p_unary(); return n }
   return p_postfix()
 }
 
-fn mkbin(op: ptr, l: Node, r: Node) -> Node { let b = node(E_BIN); b.s = op; b.a = l; b.b = r; return b }
+function mkbin(op: ptr, l: Node, r: Node) -> Node { let b = node(E_BIN); b.s = op; b.a = l; b.b = r; return b }
 
 # precedence (Go-style, so `flags & MASK == 0` needs no parens): shifts and `&`
 # bind like `*`; `|` and `^` bind like `+`; both tighter than comparison.
-fn p_mul() -> Node {
+function p_mul() -> Node {
   var l = p_unary()
   while is_op("*") or is_op("/") or is_op("%") or is_op("<<") or is_op(">>") or is_op("&") {
     let op = toks[pi].text; pi = pi + 1; l = mkbin(op, l, p_unary()) }
   return l
 }
-fn p_add() -> Node {
+function p_add() -> Node {
   var l = p_mul()
   while is_op("+") or is_op("-") or is_op("|") or is_op("^") {
     let op = toks[pi].text; pi = pi + 1; l = mkbin(op, l, p_mul()) }
   return l
 }
-fn p_cmp() -> Node {
+function p_cmp() -> Node {
   var l = p_add()
   while is_op("<") or is_op("<=") or is_op(">") or is_op(">=") or is_op("==") or is_op("!=") {
     let op = toks[pi].text; pi = pi + 1; l = mkbin(op, l, p_add())
   }
   return l
 }
-fn p_and() -> Node {
+function p_and() -> Node {
   var l = p_cmp()
   while is_id("and") { pi = pi + 1; l = mkbin("and", l, p_cmp()) }
   return l
 }
-fn p_or() -> Node {
+function p_or() -> Node {
   var l = p_and()
   while is_id("or") { pi = pi + 1; l = mkbin("or", l, p_and()) }
   return l
@@ -212,7 +212,7 @@ fn p_or() -> Node {
 
 # a record literal `{ field: value, ... }` — used by spawn component inits.
 # Rule A: a named part uses `:` (`=` is assignment/binding only).
-fn record() -> Node {
+function record() -> Node {
   eat_op("{")
   let r = node(E_REC)
   while true { skipnl(); if is_op("}") { break }
@@ -222,7 +222,7 @@ fn record() -> Node {
 }
 
 # ---- statements ------------------------------------------------------------
-fn block() -> Node {
+function block() -> Node {
   skipnl(); eat_op("{")
   let b = node(N_BLOCK)
   while true { skipnl(); if is_op("}") { break }
@@ -238,7 +238,7 @@ fn block() -> Node {
   return b
 }
 
-fn stmt() -> Node {
+function stmt() -> Node {
   let t = toks[pi]
   if t.kind == TK_ID {
     if (t.text == "let") or (t.text == "var") {
@@ -333,16 +333,16 @@ fn stmt() -> Node {
 }
 
 # ---- declarations ----------------------------------------------------------
-fn parse_var() -> Node {
+function parse_var() -> Node {
   pi = pi + 1; let n = node(N_VAR); n.s = eat_id(); eat_op(":"); n.ty = ptype()
   if is_op("=") { pi = pi + 1; n.a = expr() }
   return n
 }
-fn parse_const() -> Node {
+function parse_const() -> Node {
   pi = pi + 1; let n = node(N_CONST); n.s = eat_id(); eat_op(":"); n.ty = ptype(); eat_op("="); n.a = expr()
   return n
 }
-fn parse_fn() -> Node {
+function parse_fn() -> Node {
   pi = pi + 1; let n = node(N_FN); n.s = eat_id(); eat_op("(")
   while not is_op(")") {
     let p = node(N_PARAM); p.s = eat_id(); eat_op(":"); p.ty = ptype(); push(n.kids, p)
@@ -354,17 +354,17 @@ fn parse_fn() -> Node {
   n.a = block()
   return n
 }
-fn parse_main() -> Node { pi = pi + 1; let n = node(N_MAIN); n.a = block(); return n }
+function parse_main() -> Node { pi = pi + 1; let n = node(N_MAIN); n.a = block(); return n }
 
 # directory part of a path, including the trailing '/', or "" if none
-fn dir_of(path: ptr) -> ptr {
+function dir_of(path: ptr) -> ptr {
   var last = 0 - 1
   var i = 0
   while path[i] != 0 { if path[i] == 47 { last = i };  i = i + 1 }
   if last < 0 { return "" }
   return path[0..0 + (last + 1)]
 }
-fn path_join(dir: ptr, rel: ptr) -> ptr {
+function path_join(dir: ptr, rel: ptr) -> ptr {
   if rel[0] == 47 { return rel }               # absolute
   return (dir + rel)
 }
@@ -372,7 +372,7 @@ fn path_join(dir: ptr, rel: ptr) -> ptr {
 var loaded_paths: []ptr
 var cur_dir: ptr
 
-fn already_loaded(full: ptr) -> bool {
+function already_loaded(full: ptr) -> bool {
   var i = 0
   while i < len(loaded_paths) { if (loaded_paths[i] == full) { return true };  i = i + 1 }
   return false
@@ -381,7 +381,7 @@ fn already_loaded(full: ptr) -> bool {
 # parse one top-level declaration (or resolve an import) into `prog`.
 # Modifiers are `@annotations` in front of the declaration: `@export`, `@edge`,
 # `@pure`, `@deterministic`, … — one channel, not a zoo of prefix keywords.
-fn parse_one_decl() -> void {
+function parse_one_decl() -> void {
   var is_export = false
   var qspec: Node = null
   var onspawn_model: ptr = null
@@ -482,14 +482,14 @@ fn parse_one_decl() -> void {
   if is_id("ui") { push(prog, parse_ui()); return }
   if is_id("var")    { push(prog, parse_var()); return }
   if is_id("const")  { push(prog, parse_const()); return }
-  if is_id("fn") { let f = parse_fn(); if is_export { f.ival = 1 };  push(prog, f); return }
+  if is_id("function") { let f = parse_fn(); if is_export { f.ival = 1 };  push(prog, f); return }
   if is_id("extern") { push(prog, parse_extern()); return }
   if is_id("entry")  { push(prog, parse_main()); return }
   perr("expected declaration")
 }
 
 # lex and parse an imported fragment into `prog`, saving/restoring lexer state
-fn do_import(rel: ptr) -> void {
+function do_import(rel: ptr) -> void {
   let full = path_join(cur_dir, rel)
   if already_loaded(full) { return }
   push(loaded_paths, full)
@@ -506,7 +506,7 @@ fn do_import(rel: ptr) -> void {
 
 # a game (has systems/components) links the Ludic runtime; auto-splice it the
 # way the C compiler does. Tools (a `main` block, no ECS) get nothing.
-fn maybe_splice_runtime() -> void {
+function maybe_splice_runtime() -> void {
   if not has_ecs() { return }
   let saved = cur_dir
   cur_dir = ""
@@ -514,7 +514,7 @@ fn maybe_splice_runtime() -> void {
   cur_dir = saved
 }
 
-fn parse_program() -> void {
+function parse_program() -> void {
   prog = new []Node
   g_computed = new []Node
   g_onspawn = new []Node

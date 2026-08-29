@@ -2,7 +2,7 @@
 # `for (vars) in query [terms] where cond`, spawn and despawn. Mirrors the
 # game-construct parsing in compiler/front/parse.c.
 
-fn parse_component() -> Node {
+function parse_component() -> Node {
   pi = pi + 1; let n = node(N_COMP); n.s = eat_id(); skipnl(); eat_op("{")
   while true { skipnl(); if is_op("}") { break }
     var is_computed = false
@@ -20,7 +20,7 @@ fn parse_component() -> Node {
 # event Name { field: T = default, ... } — a public event's POD payload. Same
 # field grammar as a `property`, but stored in g_events, not prog: an event is a
 # signal shape, not per-entity storage. Zero fields is allowed (`event Ping {}`).
-fn parse_event() -> Node {
+function parse_event() -> Node {
   pi = pi + 1; let n = node(N_EVENT)
   if is_id("cancellable") { pi = pi + 1; n.ival = 1 }   # a decision event: listeners may `cancel` it
   n.s = eat_id(); skipnl(); eat_op("{")
@@ -32,7 +32,7 @@ fn parse_event() -> Node {
   eat_op("}"); return n
 }
 
-fn parse_system() -> Node {
+function parse_system() -> Node {
   pi = pi + 1; let n = node(N_SYS); n.s = eat_id(); n.ty = "Update"
   # postfix clauses on `handler Name …`: @anno(...) (parsed and reserved, e.g.
   # @deterministic / @Reads(...) / @Writes(...)) and `phase X`. The handler's
@@ -53,7 +53,7 @@ fn parse_system() -> Node {
 
 # `[Term, ...]` with optional `where <expr>`, returning a node whose kids are
 # the terms (E_ID with ival=1 for {Tag} filters) and .a the where-expr or null.
-fn parse_query_tail() -> Node {
+function parse_query_tail() -> Node {
   eat_op("[")
   let q = node(N_BLOCK)
   while not is_op("]") {
@@ -67,7 +67,7 @@ fn parse_query_tail() -> Node {
 }
 
 # `for (a, b) in query [Pos, Vel] where ... { body }`
-fn parse_query_for() -> Node {
+function parse_query_for() -> Node {
   let n = node(S_QUERY)
   eat_op("(")
   while not is_op(")") { let v = node(E_ID); v.s = eat_id(); push(n.kids, v); if is_op(",") { pi = pi + 1 } }
@@ -87,7 +87,7 @@ fn parse_query_for() -> Node {
 # where <constraints> { body }` loop. It desugars to the same S_QUERY node, so
 # the whole query backend (iteration, filters, binding, break/continue) is reused.
 
-fn mk_and(a: Node, b: Node) -> Node {
+function mk_and(a: Node, b: Node) -> Node {
   if (a == null) { return b }
   let n = node(E_BIN); n.s = "and"; n.a = a; n.b = b; return n
 }
@@ -96,7 +96,7 @@ fn mk_and(a: Node, b: Node) -> Node {
 # `Prop{constraint}` (base is the property binding) and by @Computed field
 # expansion (base is the accessed value). Non-destructive: builds a fresh tree,
 # so a stored computed expression can be expanded at many access sites.
-fn qualify_fields(e: Node, base: Node) -> Node {
+function qualify_fields(e: Node, base: Node) -> Node {
   if (e == null) { return e }
   if e.kind == E_ID {
     let m = node(E_MEMBER); m.a = base; m.s = e.s; return m
@@ -112,7 +112,7 @@ fn qualify_fields(e: Node, base: Node) -> Node {
 
 # parse `(these: [...], on: Model)`, returning an S_QUERY with its vars/terms/where
 # filled in (the body `.a` is attached by the caller once the handler is parsed).
-fn parse_queries_anno() -> Node {
+function parse_queries_anno() -> Node {
   eat_op("(")
   let qn = node(S_QUERY)
   let terms = node(N_BLOCK)
@@ -144,7 +144,7 @@ fn parse_queries_anno() -> Node {
   return qn
 }
 
-fn parse_spawn() -> Node {
+function parse_spawn() -> Node {
   pi = pi + 1; let n = node(S_SPAWN); n.s = eat_id(); skipnl(); eat_op("{")
   while true {
     skipnl(); if is_op("}") { break }
@@ -162,7 +162,7 @@ fn parse_spawn() -> Node {
 # blocks (scene .a/.b); each layer's handlers are pushed straight into `prog` as
 # ordinary N_SYS nodes, tagged with the owning scene in `.c`, so the whole
 # system backend (functions, phases, enable/disable) is reused unchanged.
-fn parse_scene() -> void {
+function parse_scene() -> void {
   pi = pi + 1                                # 'scene'
   let n = node(N_SCENE); n.s = eat_id()
   n.ival = g_scene_count
@@ -210,7 +210,7 @@ fn parse_scene() -> void {
 # enum Name { A, B, C } — named int constants; a variant's value is its index.
 # Accessed as `Name.A` (a compile-time int), so it names magic-int value spaces
 # (state ids, menu selections, mode registers) without a runtime cost.
-fn parse_enum() -> Node {
+function parse_enum() -> Node {
   pi = pi + 1; let n = node(N_ENUM); n.s = eat_id(); skipnl(); eat_op("{")
   while true { skipnl(); if is_op("}") { break }
     let v = node(E_ID); v.s = eat_id(); push(n.kids, v)
@@ -223,7 +223,7 @@ fn parse_enum() -> Node {
 # N2): its @Sync-marked fields cross the wire for this model. Participation is
 # per model use-site — the same property syncs in one model, not another. The
 # per-member @Sync sets the member E_ID's ival=1 (read by emit_net).
-fn parse_archetype() -> Node {
+function parse_archetype() -> Node {
   pi = pi + 1; let n = node(N_ARCH); n.s = eat_id(); skipnl(); eat_op("{")
   while true { skipnl(); if is_op("}") { break }
     let c = node(E_ID)
@@ -233,8 +233,8 @@ fn parse_archetype() -> Node {
   eat_op("}"); return n
 }
 
-# extern fn name(params) -> T = "symbol"
-fn parse_extern() -> Node {
+# extern function name(params) -> T = "symbol"
+function parse_extern() -> Node {
   pi = pi + 1                                # 'extern'
   let fnkw = eat_id()                        # 'fn'
   let n = node(N_EXTERN); n.s = eat_id(); eat_op("(")
@@ -250,7 +250,7 @@ fn parse_extern() -> Node {
 }
 
 # ui Name { widget-tree } — parsed into a widget node tree (emitted later)
-fn parse_widget() -> Node {
+function parse_widget() -> Node {
   let w = node(N_UI); w.s = eat_id()          # widget type name
   w.b = node(N_BLOCK)                        # b.kids = props (E_FINIT)
   while toks[pi].kind == TK_ID and toks[pi + 1].kind == TK_OP and (toks[pi + 1].text == ":") {
@@ -262,7 +262,7 @@ fn parse_widget() -> Node {
     eat_op("}") }
   return w
 }
-fn parse_ui() -> Node {
+function parse_ui() -> Node {
   pi = pi + 1; let n = node(N_UI); n.s = eat_id(); n.ival = 1   # ival=1 marks the top ui block
   skipnl(); eat_op("{"); skipnl()
   n.a = parse_widget()

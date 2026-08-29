@@ -2,12 +2,12 @@
 # push(slice, v) and len(slice). Slices are a { data, len, cap } header the
 # holder points at, so growth is visible to every holder.
 
-fn emit_sizeof(llt: ptr) -> ptr {
+function emit_sizeof(llt: ptr) -> ptr {
   let p = emit_bind(`getelementptr {llt}, ptr null, i32 1`)
   return emit_bind(`ptrtoint ptr {p} to i64`)
 }
 
-fn emit_new_struct(name: ptr) -> Val {
+function emit_new_struct(name: ptr) -> Val {
   let s = layout_node(name)                     # a struct or a property — same shape
   if (s == null) { perr("unknown record type in new") }
   let lty = layout_ty(name)
@@ -29,7 +29,7 @@ fn emit_new_struct(name: ptr) -> Val {
   return val(obj, name)
 }
 
-fn emit_new_slice(ty: ptr) -> Val {
+function emit_new_slice(ty: ptr) -> Val {
   let sz = emit_sizeof("%LSlice")
   let h = emit_bind(`call ptr @malloc(i64 {sz})`)
   let d0 = nreg();  emit("  ");  emit(d0);  emit(" = getelementptr inbounds %LSlice, ptr ");  emit(h);  emit(", i32 0, i32 0\n")
@@ -41,14 +41,14 @@ fn emit_new_slice(ty: ptr) -> Val {
   return val(h, ty)
 }
 
-fn slice_field(h: ptr, i: int) -> ptr {
+function slice_field(h: ptr, i: int) -> ptr {
   let r = nreg()
   emit("  ");  emit(r);  emit(" = getelementptr inbounds %LSlice, ptr ");  emit(h)
   emit(", i32 0, i32 ");  emit(itoa(i));  emit("\n")
   return r
 }
 
-fn emit_len(e: Node) -> Val {
+function emit_len(e: Node) -> Val {
   let s = emit_expr(e.kids[0])
   if is_slice_ty(s.ty) {                          # a slice: read its header length
     let lp = slice_field(s.code, 1)
@@ -58,7 +58,7 @@ fn emit_len(e: Node) -> Val {
   return val(emit_bind(`trunc i64 {r} to i32`), "int")
 }
 
-fn emit_push(e: Node) -> Val {
+function emit_push(e: Node) -> Val {
   let s = emit_expr(e.kids[0])
   let el = slice_elem(s.ty)
   let elt = llty(el)

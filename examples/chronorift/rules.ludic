@@ -1,6 +1,6 @@
 # rules.ludic — pure game rules & map data (functions only, no systems).
 
-fn tile_sprite(c: int) -> int {
+function tile_sprite(c: int) -> int {
   match c {
     'T', '#' => return SPR_TREE
     'H' => return SPR_HOUSE
@@ -11,18 +11,18 @@ fn tile_sprite(c: int) -> int {
   }
   return SPR_GRASS
 }
-fn walkable(x: int, y: int) -> bool {
+function walkable(x: int, y: int) -> bool {
   let c = Map.tile(x, y)
   return c == '.' or c == 'D' or c == 'r' or c == ',' or c == 'S' or c == 'B' or c == 'h'
 }
-fn is_confirm(k: int) -> bool { return k == 32 or k == 10 or k == 13 }
-fn enemy_name(et: int) -> str {
+function is_confirm(k: int) -> bool { return k == 32 or k == 10 or k == 13 }
+function enemy_name(et: int) -> str {
   if et == 0 { return "SLIME" }
   if et == 1 { return "SKELETON" }
   return "RIFT WARDEN"
 }
 
-fn build_field(x: int) -> int {
+function build_field(x: int) -> int {
   Map.size(40, 18)
   Map.row(0,  "########################################")
   Map.row(1,  "#......................................#")
@@ -44,7 +44,7 @@ fn build_field(x: int) -> int {
   Map.row(17, "########################################")
   return 0
 }
-fn build_dungeon(x: int) -> int {
+function build_dungeon(x: int) -> int {
   Map.size(40, 18)
   Map.row(0,  "========================================")
   Map.row(1,  "=,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,=")
@@ -67,7 +67,7 @@ fn build_dungeon(x: int) -> int {
   return 0
 }
 
-fn grant_xp(amount: int) -> int {
+function grant_xp(amount: int) -> int {
   for (t) in query [Stats, {Party}] {
     if t.hp > 0 {
       t.xp = t.xp + amount

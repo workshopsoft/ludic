@@ -16,7 +16,7 @@ program Combat {
   const CRIT_MULT: int = 2
 
   # damage after armour, with a crit multiplier applied on an exact roll
-  @export fn damage(attack: int, armour: int, roll: int) -> int {
+  @export function damage(attack: int, armour: int, roll: int) -> int {
     var raw = attack - armour
     if raw < 1 { raw = 1 }
     if roll == 20 { raw = raw * CRIT_MULT }
@@ -25,7 +25,7 @@ program Combat {
 
   # how many hits to drop a target — the loop is here so the caller cannot
   # accidentally disagree with `damage` about rounding
-  @export fn hits_to_kill(hp: int, attack: int, armour: int) -> int {
+  @export function hits_to_kill(hp: int, attack: int, armour: int) -> int {
     var left = hp
     var n = 0
     while left > 0 {
@@ -35,12 +35,12 @@ program Combat {
     return n
   }
 
-  @export fn xp_for(level: int, kills: int) -> int {
+  @export function xp_for(level: int, kills: int) -> int {
     return curve(level) * kills
   }
 
   # private: not exported, so it is not a symbol in the library
-  fn curve(level: int) -> int {
+  function curve(level: int) -> int {
     return 10 + level * level * 3
   }
 }

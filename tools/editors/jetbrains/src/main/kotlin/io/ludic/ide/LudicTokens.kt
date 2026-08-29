@@ -20,7 +20,7 @@ object LudicTokens {
     val IDENTIFIER = LudicTokenType("IDENTIFIER")
     val TYPE_NAME = LudicTokenType("TYPE_NAME")       // Capitalised: component, archetype, scene
     val KEYWORD = LudicTokenType("KEYWORD")
-    val DECL_KEYWORD = LudicTokenType("DECL_KEYWORD") // game, component, system, fn, ...
+    val DECL_KEYWORD = LudicTokenType("DECL_KEYWORD") // game, component, system, function, ...
     val CLAUSE = LudicTokenType("CLAUSE")             // phase, query, reads, writes, ...
     val PRIMITIVE = LudicTokenType("PRIMITIVE")       // int, fixed, bool, entity, str, ptr, void
     val PHASE = LudicTokenType("PHASE")               // Start, Update, Render, ...
@@ -42,7 +42,7 @@ object LudicTokens {
 object LudicVocabulary {
     val DECL = setOf(
         "program", "import", "property", "model", "enum", "ui",
-        "const", "var", "fn", "extern", "handler", "entry", "event", "scene"
+        "const", "var", "function", "extern", "handler", "entry", "event", "scene"
     )
     val CLAUSE = setOf(
         "phase", "query", "on", "cancellable", "public", "layer", "start"

@@ -19,7 +19,7 @@ A bare fragment is wrapped first: a declaration list goes inside
 import re, subprocess, sys, os, tempfile
 
 LC = './build/ludicc'
-DECL = ('program','property','model','handler','enum','fn',
+DECL = ('program','property','model','handler','enum','function',
         'extern','const','var','ui','struct','import')
 
 def classify(body):

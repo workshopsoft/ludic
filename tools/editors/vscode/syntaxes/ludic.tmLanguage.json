@@ -100,7 +100,7 @@
           }
         },
         {
-          "match": "\\b(extern\\s+)?(fn)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "match": "\\b(extern\\s+)?(function)\\s+([A-Za-z_][A-Za-z0-9_]*)",
           "captures": {
             "1": { "name": "storage.modifier.extern.ludic" },
             "2": { "name": "storage.type.function.ludic" },
@@ -176,7 +176,7 @@
         { "name": "keyword.operator.logical.ludic", "match": "\\b(and|or|not)\\b" },
         { "name": "keyword.other.clause.ludic", "match": "\\b(phase|query|on)\\b" },
         { "name": "keyword.other.ludic", "match": "\\b(import|extern)\\b" },
-        { "name": "storage.type.ludic", "match": "\\b(program|property|model|enum|ui|const|var|let|fn|handler|entry|state)\\b" },
+        { "name": "storage.type.ludic", "match": "\\b(program|property|model|enum|ui|const|var|let|function|handler|entry|state)\\b" },
         { "name": "support.type.primitive.ludic", "match": "\\b(int|long|fixed|bool|entity|str|ptr|byte|words|fixeds|ptrs|void)\\b" },
         { "name": "constant.language.boolean.ludic", "match": "\\b(true|false|null)\\b" },
         { "name": "constant.language.phase.ludic", "match": "\\b(Start|Input|FixedUpdate|Update|LateUpdate|Render)\\b" }

@@ -1,7 +1,7 @@
 # io.ludic — reading the input file and writing the output, plus tiny stdio.
 # The compiler reads one .ludic file whole and emits LLVM IR text to stdout.
 
-fn read_file(path: str) -> ptr {
+function read_file(path: str) -> ptr {
   let f = file_open(path, "rb")
   if (f == null) { return null }
   file_seek(f, 0, 2)
@@ -15,7 +15,7 @@ fn read_file(path: str) -> ptr {
 }
 
 # length of a NUL-terminated buffer
-fn cstr_len(s: ptr) -> int {
+function cstr_len(s: ptr) -> int {
   var n = 0
   while s[n] != 0 { n = n + 1 }
   return n

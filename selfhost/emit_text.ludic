@@ -3,7 +3,7 @@
 # contains/index_of/to_int) allocate nothing; slice/from_int/equals/concat reuse
 # the string preludes that the `+`, `s[a..b]` and str(int) operators emit.
 
-fn is_text_ns(meth: ptr) -> bool {
+function is_text_ns(meth: ptr) -> bool {
   if (meth == "length") or (meth == "char_at") or (meth == "slice") { return true }
   if (meth == "equals") or (meth == "concat") or (meth == "to_int") or (meth == "from_int") { return true }
   if (meth == "starts_with") or (meth == "ends_with") { return true }
@@ -14,7 +14,7 @@ fn is_text_ns(meth: ptr) -> bool {
   return false
 }
 
-fn emit_text_ns(meth: ptr, e: Node) -> Val {
+function emit_text_ns(meth: ptr, e: Node) -> Val {
   if (meth == "from_int") {                          # int -> str, same as str(n)
     let n = emit_expr(e.kids[0])
     g_uses_intstr = true
@@ -138,7 +138,7 @@ fn emit_text_ns(meth: ptr, e: Node) -> Val {
 # emit_text_prelude — string builders that allocate: upper/lower/trim/
 # repeat/pad. Emitted once per program that uses them (g_uses_textrt). Plain
 # libc (strlen/malloc/memcpy), deterministic, C-string in and out.
-fn emit_text_prelude() -> void {
+function emit_text_prelude() -> void {
   emith("define ptr @fn_str_upper(ptr %s) {\n")
   emith("entry:\n")
   emith("  %n = call i64 @strlen(ptr %s)\n")
@@ -343,7 +343,7 @@ fn emit_text_prelude() -> void {
 # replace, join (over a []str), split (returns a []str). Emitted once per
 # program that uses them (g_uses_textrt2). Slices are the {data,len,cap}
 # %LSlice with str (ptr) elements.
-fn emit_text2_prelude() -> void {
+function emit_text2_prelude() -> void {
   emith("define ptr @fn_str_replace(ptr %s, ptr %from, ptr %to) {\n")
   emith("entry:\n")
   emith("  %lf = call i64 @strlen(ptr %from)\n")

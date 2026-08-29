@@ -21,7 +21,7 @@ var img_n:    int = 0
 var spr_px:   words = null     # SPR_MAX * 16 * 16 RGBA pixels, one block
 var spr_n:    int = 0
 
-fn rt_image_init() -> void {
+function rt_image_init() -> void {
   img_px = bytes(IMG_MAX * 8)
   img_w = words(IMG_MAX)
   img_h = words(IMG_MAX)
@@ -30,11 +30,11 @@ fn rt_image_init() -> void {
 }
 
 # ---- decoding -------------------------------------------------------------
-fn png_be32(b: ptr, at: int) -> int {
+function png_be32(b: ptr, at: int) -> int {
   return (b[at] << 24) | (b[at + 1] << 16) | (b[at + 2] << 8) | b[at + 3]
 }
 
-fn png_tag(b: ptr, at: int, a: int, c: int, d: int, e: int) -> bool {
+function png_tag(b: ptr, at: int, a: int, c: int, d: int, e: int) -> bool {
   if b[at] != a { return false }
   if b[at + 1] != c { return false }
   if b[at + 2] != d { return false }
@@ -42,7 +42,7 @@ fn png_tag(b: ptr, at: int, a: int, c: int, d: int, e: int) -> bool {
   return true
 }
 
-fn rt_read_file(path: str) -> ptr {
+function rt_read_file(path: str) -> ptr {
   let f = file_open(path, "rb")
   if (f == null) { return null }
   file_seek(f, 0, 2)
@@ -62,7 +62,7 @@ var png_w:  int = 0
 var png_h:  int = 0
 var png_px: words = null
 
-fn rt_decode_png(path: str) -> bool {
+function rt_decode_png(path: str) -> bool {
   png_w = 0
   png_h = 0
   png_px = null
@@ -227,7 +227,7 @@ fn rt_decode_png(path: str) -> bool {
 }
 
 # ---- images ---------------------------------------------------------------
-fn rt_image_load(path: str) -> int {
+function rt_image_load(path: str) -> int {
   if img_n >= IMG_MAX { return 0 - 1 }
   if rt_decode_png(path) == false { return 0 - 1 }
   let id = img_n
@@ -238,7 +238,7 @@ fn rt_image_load(path: str) -> int {
   return id
 }
 
-fn rt_blend_px(x: int, y: int, argb: int) -> void {
+function rt_blend_px(x: int, y: int, argb: int) -> void {
   let a = ((argb >> 24) & 255)
   if a == 0 { return }
   if x < 0 { return }
@@ -260,7 +260,7 @@ fn rt_blend_px(x: int, y: int, argb: int) -> void {
   rt_fb[y * rt_fbw + x] = (((r << 16) | (g << 8)) | b)
 }
 
-fn rt_draw_image(id: int, dx: int, dy: int) -> void {
+function rt_draw_image(id: int, dx: int, dy: int) -> void {
   if id < 0 { return }
   if id >= img_n { return }
   let w = img_w[id]
@@ -273,7 +273,7 @@ fn rt_draw_image(id: int, dx: int, dy: int) -> void {
   }
 }
 
-fn rt_draw_image_scaled(id: int, dx: int, dy: int, dw: int, dh: int) -> void {
+function rt_draw_image_scaled(id: int, dx: int, dy: int, dw: int, dh: int) -> void {
   if id < 0 { return }
   if id >= img_n { return }
   if dw <= 0 { return }
@@ -290,7 +290,7 @@ fn rt_draw_image_scaled(id: int, dx: int, dy: int, dw: int, dh: int) -> void {
 
 # map one destination axis onto the source for a 9-slice: the two insets are
 # copied 1:1 and only the middle stretches
-fn rt_9map(d: int, dsz: int, ssz: int, inset: int) -> int {
+function rt_9map(d: int, dsz: int, ssz: int, inset: int) -> int {
   if inset * 2 >= dsz { return d * ssz / max(dsz, 1) }
   if inset * 2 >= ssz { return d * ssz / max(dsz, 1) }
   if d < inset { return d }
@@ -298,7 +298,7 @@ fn rt_9map(d: int, dsz: int, ssz: int, inset: int) -> int {
   return inset + (d - inset) * (ssz - 2 * inset) / (dsz - 2 * inset)
 }
 
-fn rt_draw_9slice(id: int, dx: int, dy: int, dw: int, dh: int, inset: int) -> void {
+function rt_draw_9slice(id: int, dx: int, dy: int, dw: int, dh: int, inset: int) -> void {
   if id < 0 { return }
   if id >= img_n { return }
   if dw <= 0 { return }
@@ -315,7 +315,7 @@ fn rt_draw_9slice(id: int, dx: int, dy: int, dw: int, dh: int, inset: int) -> vo
 }
 
 # ---- sprites (16x16 art) --------------------------------------------------
-fn rt_png_load(path: str) -> int {
+function rt_png_load(path: str) -> int {
   if spr_n >= SPR_MAX { return 0 - 1 }
   if rt_decode_png(path) == false { return 0 - 1 }
   let id = spr_n
@@ -338,7 +338,7 @@ fn rt_png_load(path: str) -> int {
   return id
 }
 
-fn rt_draw_sprite(id: int, px: int, py: int) -> void {
+function rt_draw_sprite(id: int, px: int, py: int) -> void {
   if id < 0 { return }
   if id >= spr_n { return }
   let base = id * SPR_SZ * SPR_SZ
@@ -352,7 +352,7 @@ fn rt_draw_sprite(id: int, px: int, py: int) -> void {
   }
 }
 
-fn rt_draw_sprite_scaled(id: int, px: int, py: int, sc: int) -> void {
+function rt_draw_sprite_scaled(id: int, px: int, py: int, sc: int) -> void {
   if id < 0 { return }
   if id >= spr_n { return }
   if sc < 1 { return }
@@ -368,14 +368,14 @@ fn rt_draw_sprite_scaled(id: int, px: int, py: int, sc: int) -> void {
 }
 
 # ---- .lspr sprite sheets (palette + ASCII rows) ---------------------------
-fn rt_hexval(c: int) -> int {
+function rt_hexval(c: int) -> int {
   if c >= 48 { if c <= 57 { return c - 48 } }
   if c >= 97 { if c <= 102 { return c - 87 } }
   if c >= 65 { if c <= 70 { return c - 55 } }
   return 0 - 1
 }
 
-fn rt_sprites_load(path: str) -> void {
+function rt_sprites_load(path: str) -> void {
   let d = rt_read_file(path)
   if (d == null) { spr_n = 0; return }
   let size = rt_file_len

@@ -46,7 +46,7 @@ program Snake {
   const SHADE_SCORE:   int = 0xffe060
   const SHADE_OVER:    int = 0xff5555
 
-  fn reset(unused: int) -> int {
+  function reset(unused: int) -> int {
     for (p, s) in query [Pos, Seg] { despawn self() }
     spawn S0 { Seg { order: 0 };  Pos { x: 10, y: 7 } }
     spawn S1 { Seg { order: 1 };  Pos { x: 9,  y: 7 } }

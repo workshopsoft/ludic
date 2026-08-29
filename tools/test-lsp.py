@@ -246,7 +246,7 @@ def main():
         fh.write("program R {\n"
                  "  property Pos { x: int = 0, y: int = 0 }\n"
                  "  property Vel { x: int = 0 }\n"
-                 "  fn helper(x: int) -> int { return x + 1 }\n"
+                 "  function helper(x: int) -> int { return x + 1 }\n"
                  "  handler A phase Update {\n"
                  "    for (p) in query [Pos] {\n"
                  "      let x = 5\n"
@@ -275,7 +275,7 @@ def main():
           lines_touched(field), [1, 7])
     local = rename_at(position_of(atext, "let x = 5", 4))
     check("renaming a local touches only that local", lines_touched(local), [6, 7])
-    param = rename_at(position_of(atext, "fn helper(x", 10))
+    param = rename_at(position_of(atext, "function helper(x", 16))
     check("renaming a parameter touches only that function", lines_touched(param), [3])
     check("renaming a parameter makes exactly two edits", len(param), 2)
 

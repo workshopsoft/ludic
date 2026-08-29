@@ -2,7 +2,7 @@
 # accessors. Split out of ui.ludic (the storage/build/measure half).
 
 # ---- arrange: rects, parents before children ------------------------------
-fn ui_arrange(i: int, x: int, y: int) -> void {
+function ui_arrange(i: int, x: int, y: int) -> void {
   ui_rx[i] = x
   ui_ry[i] = y
   let t = ui_type[i]
@@ -61,7 +61,7 @@ fn ui_arrange(i: int, x: int, y: int) -> void {
   }
 }
 
-fn ui_layout() -> void {
+function ui_layout() -> void {
   if ui_active < 0 { return }
   ui_measure()
   var px = (rt_fbw - ui_rw[ui_active]) / 2
@@ -74,7 +74,7 @@ fn ui_layout() -> void {
 }
 
 # ---- drawing --------------------------------------------------------------
-fn ui_lighten(c: int) -> int {
+function ui_lighten(c: int) -> int {
   var r = ((c >> 16) & 255)
   var g = ((c >> 8) & 255)
   var b = (c & 255)
@@ -84,7 +84,7 @@ fn ui_lighten(c: int) -> int {
   return (((r << 16) | (g << 8)) | b)
 }
 
-fn ui_draw_node(i: int) -> void {
+function ui_draw_node(i: int) -> void {
   if ui_visible[i] == 0 { return }
   let t = ui_type[i]
   let rx = ui_rx[i]
@@ -148,7 +148,7 @@ fn ui_draw_node(i: int) -> void {
 # ---- focus and activation -------------------------------------------------
 var ui_fl: words = null
 
-fn ui_focusables() -> int {
+function ui_focusables() -> int {
   if (ui_fl == null) { ui_fl = words(UI_MAX) }
   var n = 0
   for i in 0 .. ui_n {
@@ -164,14 +164,14 @@ fn ui_focusables() -> int {
   return n
 }
 
-fn rt_ui_open(root: int) -> void {
+function rt_ui_open(root: int) -> void {
   ui_active = root
   let n = ui_focusables()
   ui_focus = 0 - 1
   if n > 0 { ui_focus = ui_fl[0] }
 }
 
-fn rt_ui_tick(k: int) -> void {
+function rt_ui_tick(k: int) -> void {
   if ui_active < 0 { return }
   for i in 0 .. ui_n { ui_fired[i] = 0 }
   ui_layout()
@@ -201,20 +201,20 @@ fn rt_ui_tick(k: int) -> void {
   if k == 13 { ui_fired[ui_focus] = 1 }
 }
 
-fn rt_ui_render() -> void {
+function rt_ui_render() -> void {
   if ui_active < 0 { return }
   ui_layout()
   ui_draw_node(ui_active)
 }
 
 # ---- game-facing accessors ------------------------------------------------
-fn rt_ui_clicked(id: int) -> bool {
+function rt_ui_clicked(id: int) -> bool {
   if id < 0 { return false }
   if id >= ui_n { return false }
   return ui_fired[id] == 1
 }
 
-fn rt_ui_set_text(id: int, s: str) -> void {
+function rt_ui_set_text(id: int, s: str) -> void {
   if id < 0 { return }
   if id >= ui_n { return }
   let base = id * 96
@@ -232,7 +232,7 @@ fn rt_ui_set_text(id: int, s: str) -> void {
   ui_hasdyn[id] = 1
 }
 
-fn rt_ui_set_int(id: int, n: int) -> void {
+function rt_ui_set_int(id: int, n: int) -> void {
   if id < 0 { return }
   if id >= ui_n { return }
   let base = id * 96
@@ -266,17 +266,17 @@ fn rt_ui_set_int(id: int, n: int) -> void {
   ui_hasdyn[id] = 1
 }
 
-fn rt_ui_focus(id: int) -> void {
+function rt_ui_focus(id: int) -> void {
   if id < 0 { return }
   if id >= ui_n { return }
   ui_focus = id
 }
 
-fn rt_ui_focused() -> int {
+function rt_ui_focused() -> int {
   return ui_focus
 }
 
-fn rt_ui_visible(id: int, v: int) -> void {
+function rt_ui_visible(id: int, v: int) -> void {
   if id < 0 { return }
   if id >= ui_n { return }
   ui_visible[id] = v

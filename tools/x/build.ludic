@@ -5,7 +5,7 @@
 
 # compile a Ludic source to a native binary in bin/ via ludicc + clang (-O2).
 # Returns true on success. Used for x itself and the editor tools.
-fn build_tool(name: ptr, src: ptr) -> bool {
+function build_tool(name: ptr, src: ptr) -> bool {
   let ll = `build/{name}.ll`
   if not shq(`bin/ludicc {src} --emit-llvm -o {ll} 2>/dev/null`) { print(`build failed: {name} (compile)`); return false }
   # write to a temp then move, so a running bin/x can rebuild itself in place
@@ -18,7 +18,7 @@ fn build_tool(name: ptr, src: ptr) -> bool {
 # Both ludicc and ludic are the SAME multi-call binary assembled from the IR seed
 # with clang alone; invoked as `ludic` it compiles-and-runs, as `ludicc` it just
 # compiles.
-fn cmd_build_cli() -> int {
+function cmd_build_cli() -> int {
   run("mkdir -p bin build")
   print("cc: selfhost/ludicc.seed.ll -> bin/ludicc, bin/ludic  (from the IR seed, no C compiler)")
   if not shq(`{cc()} selfhost/ludicc.seed.ll -o bin/ludicc`) { err("x: seed did not assemble\n"); return 1 }
@@ -28,7 +28,7 @@ fn cmd_build_cli() -> int {
 }
 
 # ---- build: the whole toolchain (ludicc, ludic, x, ludic-fmt, ludic-lsp) -----
-fn cmd_build() -> int {
+function cmd_build() -> int {
   if cmd_build_cli() != 0 { return 1 }
   print("ludicc: tools/x/main.ludic -> bin/x  (the task runner rebuilds itself)")
   if not build_tool("x", "tools/x/main.ludic") { return 1 }
@@ -44,7 +44,7 @@ fn cmd_build() -> int {
 # ---- app: compile a Ludic program to a native app ----------------------------
 # usage: x app <file.ludic> [--headless|--windowed] [--save-temps]
 # windowed is the default for a game; headless renders the last frame to out.ppm.
-fn cmd_app() -> int {
+function cmd_app() -> int {
   ensure_ludicc()
   var src = null
   var mode = 1            # 1 = windowed, 2 = headless

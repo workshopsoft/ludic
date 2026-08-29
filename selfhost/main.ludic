@@ -15,7 +15,7 @@
 # reseed.sh rely on, so the bootstrap is untouched.
 
 # basename: the part of a path after the last '/'.
-fn base_name(path: ptr) -> ptr {
+function base_name(path: ptr) -> ptr {
   var last = 0 - 1
   var i = 0
   while path[i] != 0 { if path[i] == 47 { last = i };  i = i + 1 }
@@ -23,7 +23,7 @@ fn base_name(path: ptr) -> ptr {
 }
 
 # drop a trailing ".ludic" if present
-fn strip_ludic(name: ptr) -> ptr {
+function strip_ludic(name: ptr) -> ptr {
   let n = len(name)
   if n > 6 {
     if (name[n - 6..n] == ".ludic") { return name[0..n - 6] }
@@ -32,21 +32,21 @@ fn strip_ludic(name: ptr) -> ptr {
 }
 
 # env var with a fallback when unset
-fn getenv_or(name: ptr, dflt: ptr) -> ptr {
+function getenv_or(name: ptr, dflt: ptr) -> ptr {
   let v = getenv(name)
   if (v == null) { return dflt }
   return v
 }
 
 # guarantee a directory string ends in '/' so path_join concatenates cleanly
-fn ensure_slash(d: ptr) -> ptr {
+function ensure_slash(d: ptr) -> ptr {
   let n = len(d)
   if n == 0 { return d }
   if d[n - 1] == 47 { return d }
   return (d + ("/"))
 }
 
-fn die(msg: ptr) -> void {
+function die(msg: ptr) -> void {
   file_write(file_stderr(), msg, len(msg))
   exit(1)
 }

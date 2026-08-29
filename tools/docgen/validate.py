@@ -5,7 +5,7 @@ Full programs (start with program/module) compile directly; fragments are wrappe
 import os, re, subprocess, tempfile, sys
 REPO=os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))); LC=os.path.join(REPO,"bin","ludicc")
 FENCE=re.compile(r"```ludic\n(.*?)\n```", re.S)
-DECL=("program","property","model","handler","enum","fn","extern","const","var","ui","event","module","import","scene","machine")
+DECL=("program","property","model","handler","enum","function","extern","const","var","ui","event","module","import","scene","machine")
 
 def first_kw(body):
     for l in body.split("\n"):

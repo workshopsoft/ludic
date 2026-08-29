@@ -15,18 +15,18 @@ property Tok { kind: int = 0, text: ptr = null, ival: int = 0, line: int = 0 }
 
 var toks: []Tok
 
-fn tok_push(kind: int, text: ptr, ival: int, line: int) -> void {
+function tok_push(kind: int, text: ptr, ival: int, line: int) -> void {
   let t = new Tok
   t.kind = kind;  t.text = text;  t.ival = ival;  t.line = line
   push(toks, t)
 }
 
 # does src match the 2-char operator op at position i?
-fn two_at(src: ptr, i: int, a: int, b: int) -> bool {
+function two_at(src: ptr, i: int, a: int, b: int) -> bool {
   return src[i] == a and src[i + 1] == b
 }
 
-fn is_op1(c: int) -> bool {
+function is_op1(c: int) -> bool {
   # + - * / % < > = ( ) { } [ ] , : . ! @
   if c == 43 or c == 45 or c == 42 or c == 47 or c == 37 { return true }
   if c == 60 or c == 62 or c == 61 { return true }
@@ -37,7 +37,7 @@ fn is_op1(c: int) -> bool {
   return false
 }
 
-fn lex(src: ptr) -> void {
+function lex(src: ptr) -> void {
   toks = new []Tok
   var i = 0
   var line = 1

@@ -1,13 +1,13 @@
 # emit_expr.ludic — lower an expression to IR, returning its register and type.
 
-fn emit_load_at(addr: ptr, ty: ptr) -> Val {
+function emit_load_at(addr: ptr, ty: ptr) -> Val {
   let r = emit_bind(`load {llty(ty)}, ptr {addr}`)
   return val(r, ty)
 }
 
 # short-circuit `and`/`or`: seed a slot with (left!=0), branch to decide whether
 # to overwrite with (right!=0).
-fn emit_logic(e: Node) -> Val {
+function emit_logic(e: Node) -> Val {
   let slot = emit_alloca("i32")
   let la = emit_expr(e.a)
   let lc = emit_bind(`icmp ne i32 {la.code}, 0`)
@@ -26,7 +26,7 @@ fn emit_logic(e: Node) -> Val {
   return val(emit_bind(`load i32, ptr {slot}`), "bool")
 }
 
-fn cmp_code(op: ptr) -> ptr {
+function cmp_code(op: ptr) -> ptr {
   if (op == ("<"))  { return "slt" }
   if (op == ("<=")) { return "sle" }
   if (op == (">"))  { return "sgt" }
@@ -34,10 +34,10 @@ fn cmp_code(op: ptr) -> ptr {
   if (op == ("==")) { return "eq" }
   return "ne"
 }
-fn is_cmp(op: ptr) -> bool {
+function is_cmp(op: ptr) -> bool {
   return (op == ("<")) or (op == ("<=")) or (op == (">")) or (op == (">=")) or (op == ("==")) or (op == ("!="))
 }
-fn arith_code(op: ptr) -> ptr {
+function arith_code(op: ptr) -> ptr {
   if (op == ("+")) { return "add" }
   if (op == ("-")) { return "sub" }
   if (op == ("*")) { return "mul" }
@@ -51,7 +51,7 @@ fn arith_code(op: ptr) -> ptr {
 }
 
 # widen an int value to Q16.16 by shifting left 16 (a fixed value passes through)
-fn to_fixed(v: Val) -> ptr {
+function to_fixed(v: Val) -> ptr {
   if (v.ty == "fixed") { return v.code }
   return emit_bind(`shl i32 {v.code}, 16`)
 }
@@ -59,7 +59,7 @@ fn to_fixed(v: Val) -> ptr {
 # coerce a value's code to the LLVM type of `target`, for the only cross-width
 # pair the language has: int (i32) <-> long (i64). int widens with sext, long
 # narrows with trunc; everything else (same width, or ptr) passes through.
-fn coerce_code(v: Val, target: ptr) -> ptr {
+function coerce_code(v: Val, target: ptr) -> ptr {
   let lt = llty(target)
   let vt = llty(v.ty)
   if (lt == vt) { return v.code }
@@ -69,14 +69,14 @@ fn coerce_code(v: Val, target: ptr) -> ptr {
 }
 
 # widen an int value to i64 (a long passes through) — the long analogue of to_fixed
-fn to_long(v: Val) -> ptr {
+function to_long(v: Val) -> ptr {
   if (llty(v.ty) == "i64") { return v.code }
   return emit_bind(`sext i32 {v.code} to i64`)
 }
 
 # string operators: `a + b` concatenates, `a == b` / `a != b` compare by content.
 # Both call the @fn_str_* prelude (emitted once per program that uses them).
-fn emit_str_op(op: ptr, a: Val, b: Val) -> Val {
+function emit_str_op(op: ptr, a: Val, b: Val) -> Val {
   g_uses_str = true
   if (op == ("+")) {
     return val(emit_bind(`call ptr @fn_str_concat(ptr {a.code}, ptr {b.code})`), "str")
@@ -89,7 +89,7 @@ fn emit_str_op(op: ptr, a: Val, b: Val) -> Val {
   return val(r, "bool")
 }
 
-fn emit_bin(e: Node) -> Val {
+function emit_bin(e: Node) -> Val {
   if (e.s == "and") or (e.s == "or") { return emit_logic(e) }
   let a = emit_expr(e.a)
   let b = emit_expr(e.b)
@@ -147,12 +147,12 @@ fn emit_bin(e: Node) -> Val {
 # is an E_FINIT (label -> value); this rewrites e.kids into plain value exprs in
 # the order the callee declares its parameters, so the rest of emit_call is
 # oblivious to whether the caller used names.
-fn args_are_named(e: Node) -> bool {
+function args_are_named(e: Node) -> bool {
   var i = 0
   while i < len(e.kids) { if e.kids[i].kind == E_FINIT { return true };  i = i + 1 }
   return false
 }
-fn reorder_named(e: Node, labels: []ptr) -> void {
+function reorder_named(e: Node, labels: []ptr) -> void {
   if not args_are_named(e) { return }
   var i = 0
   while i < len(e.kids) {
@@ -173,14 +173,14 @@ fn reorder_named(e: Node, labels: []ptr) -> void {
   e.kids = out
 }
 # The parameter labels of a resolved fn/extern, in declaration order.
-fn param_labels(fn: Node) -> []ptr {
+function param_labels(fn: Node) -> []ptr {
   let out = new []ptr
   var i = 0
   while i < len(fn.kids) { if fn.kids[i].kind == N_PARAM { push(out, fn.kids[i].s) };  i = i + 1 }
   return out
 }
 
-fn param_types(fn: Node) -> []ptr {
+function param_types(fn: Node) -> []ptr {
   let out = new []ptr
   var i = 0
   while i < len(fn.kids) { if fn.kids[i].kind == N_PARAM { push(out, fn.kids[i].ty) };  i = i + 1 }
@@ -192,7 +192,7 @@ fn param_types(fn: Node) -> []ptr {
 # runtime builtin plus the parameter labels callers may use as named arguments;
 # after reordering we rewrite the callee to that bare name and fall back into the
 # ordinary builtin path (which resolves it to its rt_ function).
-fn emit_ns_call(ns: ptr, meth: ptr, e: Node) -> Val {
+function emit_ns_call(ns: ptr, meth: ptr, e: Node) -> Val {
   # Math.* is computed inline (deterministic fixed-point), not routed through a
   # bare rt_ name — so `floor`/`round`/`lerp` never leak into the bare namespace.
   if (ns == "Math") {
@@ -325,7 +325,7 @@ fn emit_ns_call(ns: ptr, meth: ptr, e: Node) -> Val {
   return emit_call(e)
 }
 
-fn emit_call(e: Node) -> Val {
+function emit_call(e: Node) -> Val {
   # `Subject.action(...)` — a namespaced builtin (Screen/Random/Input).
   if e.a.kind == E_MEMBER {
     if e.a.a.kind == E_ID { return emit_ns_call(e.a.a.s, e.a.s, e) }
@@ -525,7 +525,7 @@ fn emit_call(e: Node) -> Val {
   return val(rreg, fn2.ty)
 }
 
-fn emit_expr(e: Node) -> Val {
+function emit_expr(e: Node) -> Val {
   if (e == null) { return val("0", "int") }
   if e.kind == E_INT  { return val(itoa(e.ival), "int") }
   if e.kind == E_FLOAT { return val(itoa(e.ival), "fixed") }

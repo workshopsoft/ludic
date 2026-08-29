@@ -31,7 +31,7 @@ them:
   [:103](runtime/native/core.ludic:103), [:217](runtime/native/core.ludic:217)).
   `COMPILING.md` states the intent plainly: a new platform is "another `.ll` file
   with the same five entry points and no compiler change."
-- **`extern fn` FFI is real and live** — `extern fn c_hypot(a: fixed, b: fixed) ->
+- **`extern fn` FFI is real and live** — `extern function c_hypot(a: fixed, b: fixed) ->
   fixed = "hypot_fx"` ([LANGUAGE.md:565](LANGUAGE.md:565)), with a full pipeline:
   parse ([parse_game.ludic:236](selfhost/parse_game.ludic:236)) → call lowering to a
   direct `call @<sym>` ([emit_expr.ludic:168](selfhost/emit_expr.ludic:168)) →
@@ -211,9 +211,9 @@ no new language feature, no new intrinsic:
 
 ```ludic
 # doc-check: skip — runtime/native/gfx3d.ludic, illustrative
-extern fn gl_gen_textures(n: int, out: ptr) -> void      = "glGenTextures"
-extern fn gl_tex_image_2d(t: int, w: int, h: int, px: ptr) -> void = "gl_tex_image_2d"
-extern fn gl_draw_elements(mode: int, count: int, ty: int, idx: ptr) -> void = "glDrawElements"
+extern function gl_gen_textures(n: int, out: ptr) -> void      = "glGenTextures"
+extern function gl_tex_image_2d(t: int, w: int, h: int, px: ptr) -> void = "gl_tex_image_2d"
+extern function gl_draw_elements(mode: int, count: int, ty: int, idx: ptr) -> void = "glDrawElements"
 ```
 
 Two phases, additive:

@@ -6,7 +6,7 @@ var g_intrin_ok: bool = false
 
 # is `name` a low-level intrinsic? A pure name check, so it can gate dispatch
 # without evaluating arguments (which could clobber shared state).
-fn is_intrinsic(name: ptr) -> bool {
+function is_intrinsic(name: ptr) -> bool {
   if (name == "resize") { return true }
   if (name == "file_open") or (name == "file_read") or (name == "file_write") { return true }
   if (name == "file_seek") or (name == "file_tell") or (name == "file_close") { return true }
@@ -16,11 +16,11 @@ fn is_intrinsic(name: ptr) -> bool {
   return false
 }
 # emit "  <r> = <rest>\n" and return r
-fn emit_bind(rest: ptr) -> ptr { let r = nreg();  emit("  ");  emit(r);  emit(" = ");  emit(rest);  emit("\n");  return r }
+function emit_bind(rest: ptr) -> ptr { let r = nreg();  emit("  ");  emit(r);  emit(" = ");  emit(rest);  emit("\n");  return r }
 
-fn arg_code(e: Node, i: int) -> ptr { let v = emit_expr(e.kids[i]);  return v.code }
+function arg_code(e: Node, i: int) -> ptr { let v = emit_expr(e.kids[i]);  return v.code }
 
-fn emit_intrinsic(name: ptr, e: Node) -> Val {
+function emit_intrinsic(name: ptr, e: Node) -> Val {
   g_intrin_ok = true
   # ptr_null / ptr_is_null are the `null` literal and `x == null` now.
   # mem_alloc is bytes(n) / words(n) now (see emit_call).
