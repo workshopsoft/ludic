@@ -1,7 +1,10 @@
 program SceneDemo {
   var counter: int = 0
 
-  handler Boot phase Start { counter = 0  print(1000) }
+  handler Boot phase Start {
+    counter = 0
+    print(1000)
+  }
 
   scene Title start {
     on enter { print(1) }
@@ -16,8 +19,11 @@ program SceneDemo {
   }
 
   scene Play {
-    on enter { print(3)  counter = 0 }
-    on exit  { print(4) }
+    on enter {
+      print(3)
+      counter = 0
+    }
+    on exit { print(4) }
     layer World {
       handler Step phase Update {
         counter = counter + 1
@@ -25,6 +31,8 @@ program SceneDemo {
         if counter >= 2 { quit() }
       }
     }
-    layer Hud { handler Draw phase Render { print(900) } }
+    layer Hud {
+      handler DrawHud phase Render { print(900) }
+    }
   }
 }

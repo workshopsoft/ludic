@@ -5,12 +5,27 @@ category: structure
 kind: keyword
 tokens: var
 sig: var name: T = value
-tip: A mutable binding.
+tip: A mutable binding — at program scope, your game's persistent named state.
 order: 6
 ---
 
-A mutable binding. At program scope it is your game's persistent, named state — the modern replacement for numeric registers.
+A <code>var</code> declares a <b>mutable</b> binding: unlike `let`, you may reassign it later with `=`, `+=`, `-=`, and friends. Where it appears decides its lifetime — inside a handler or function body it is a local, and at program scope it is persistent, named game state that every handler shares. Program-scope `var`s are the modern replacement for numeric registers: instead of `reg(0)`, you write `var score: int = 0` and read and write `score` by name. Use `var` for anything that genuinely changes — accumulators, the current score, a mode flag, an elapsed-frame counter — and prefer `let` for values that never change.
 
 ```ludic
-var score: int = 0
+program Scorekeeper {
+  var score: int = 0
+  var elapsed_frames: int = 0
+
+  handler Tick phase Update {
+    elapsed_frames = elapsed_frames + 1
+    if elapsed_frames % 60 == 0 { score = score + 1 }
+  }
+
+  handler DrawWorld phase Render {
+    Screen.clear(Color.MidnightBlue)
+    Screen.draw_text(x: 6, y: 4, text: "SCORE", color: Color.White, scale: 1)
+    Screen.draw_number(x: 52, y: 4, value: score, color: Color.Gold, scale: 1)
+    Screen.show()
+  }
+}
 ```

@@ -1,27 +1,27 @@
 program Snake {
-  property Pos { x: int = 0, y: int = 0 }
-  property Seg { order: int = 0 }
+  property Position { column: int = 0, row: int = 0 }
+  property Segment { index: int = 0 }
 
-  const GRID_W: int = 20   const GRID_H: int = 15   const TILE: int = 16
+  const GRID_WIDTH: int = 20   const GRID_HEIGHT: int = 15   const TILE_SIZE: int = 16
 
-  var food_x: int = 14   var food_y: int = 7   var score: int = 0
+  var food_column: int = 14   var food_row: int = 7   var score: int = 0
 
-  handler Draw phase Render {
+  handler DrawWorld phase Render {
     Screen.clear(Color.MidnightBlue)
-    # checkerboard field — a fresh, immutable gx/gy each pass
-    for gy in 0 .. GRID_H {
-      for gx in 0 .. GRID_W {
+    # checkerboard field — a fresh, immutable column/row each pass
+    for row in 0 .. GRID_HEIGHT {
+      for column in 0 .. GRID_WIDTH {
         var tile_color = Color.Charcoal
-        if (gx + gy) % 2 == 0 { tile_color = Color.Gunmetal }
-        Screen.fill_rectangle(x: gx * TILE, y: gy * TILE, width: TILE, height: TILE, color: tile_color)
+        if (column + row) % 2 == 0 { tile_color = Color.Gunmetal }
+        Screen.fill_rectangle(x: column * TILE_SIZE, y: row * TILE_SIZE, width: TILE_SIZE, height: TILE_SIZE, color: tile_color)
       }
     }
     # the food, then every snake segment straight from the ECS
-    Screen.fill_rectangle(x: food_x * TILE + 3, y: food_y * TILE + 3, width: TILE - 6, height: TILE - 6, color: Color.Crimson)
-    for (p, s) in query [Pos, Seg] {
-      var seg_color = Color.LimeGreen
-      if s.order == 0 { seg_color = Color.MintGreen }        # brighter head
-      Screen.fill_rectangle(x: p.x * TILE + 1, y: p.y * TILE + 1, width: TILE - 2, height: TILE - 2, color: seg_color)
+    Screen.fill_rectangle(x: food_column * TILE_SIZE + 3, y: food_row * TILE_SIZE + 3, width: TILE_SIZE - 6, height: TILE_SIZE - 6, color: Color.Crimson)
+    for (position, segment) in query [Position, Segment] {
+      var segment_color = Color.LimeGreen
+      if segment.index == 0 { segment_color = Color.MintGreen }        # brighter head
+      Screen.fill_rectangle(x: position.column * TILE_SIZE + 1, y: position.row * TILE_SIZE + 1, width: TILE_SIZE - 2, height: TILE_SIZE - 2, color: segment_color)
     }
     Screen.draw_text(x: 6, y: 4, text: "SCORE", color: Color.White, scale: 1)
     Screen.draw_number(x: 52, y: 4, value: score, color: Color.Gold, scale: 1)

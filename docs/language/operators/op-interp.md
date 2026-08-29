@@ -8,8 +8,10 @@ tip: A backtick string with {expr} holes, each stringified and concatenated.
 order: 7
 ---
 
-A backtick string with <code>{expr}</code> holes, each stringified and concatenated. <code>{{</code> and <code>}}</code> are literal braces.
+A backtick string `` `…` `` is an interpolated string: any `{expr}` hole inside it is evaluated, converted to text, and concatenated with the surrounding literal parts. Numbers, `bool`s, and `fixed` values are stringified automatically and `str` values pass through, so `` `score: {score}` `` desugars to `"score: " + str(score)`. It is the readable way to build a message from mixed pieces without hand-writing a `+` chain. Write a literal brace with `{{` or `}}`.
 
 ```ludic
-print(`score: {score}`)
+let status_line: str = `score {score} — health {current_health}/{maximum_health}`
+Screen.status(status_line)
+print(`wave {wave_number} incoming`)
 ```

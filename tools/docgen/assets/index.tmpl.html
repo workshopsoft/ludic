@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>%(title)s</title>
+<meta name="description" content="%(desc)s">
+<meta property="og:title" content="%(ogt)s">
+<meta property="og:description" content="%(ogd)s">
+<meta property="og:type" content="website">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+%(css)s
+</style>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap nav-in">
+    <a class="brand" href="#top"><span class="logo">L</span> %(brand)s</a>
+    <nav class="nav-links">%(navlinks)s
+      <a class="nav-cta" href="%(repo)s">Source ↗</a>
+    </nav>
+  </div>
+</header>
+
+<a id="top"></a>
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <span class="pill"><span class="dot"></span> %(pill)s</span>
+      <h1>%(title_pre)s <span class="accent">%(title_accent)s</span></h1>
+      <p class="lead">%(lead)s</p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="%(pcta_h)s">%(pcta_l)s</a>
+        <a class="btn btn-ghost" href="%(scta_h)s">%(scta_l)s</a>
+      </div>
+    </div>
+    <div class="code-card reveal">
+      <div class="code-top">
+        <span class="tl r"></span><span class="tl y"></span><span class="tl g"></span>
+        <span class="code-name">%(hero_name)s</span>
+      </div>
+      <pre data-lang="ludic">%(hero_code)s</pre>
+    </div>
+  </div>
+  <div class="wrap" style="margin-top:52px">
+    <div class="pipeline reveal">%(stages)s</div>
+    <p style="text-align:center;color:var(--muted);font-size:13.5px;margin:14px 0 0">%(pipenote)s</p>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="kicker">%(feat_kicker)s</div>
+      <h2>%(feat_title)s</h2>
+      <p>%(feat_intro)s</p>
+    </div>
+    <div class="feat-grid">%(feats)s</div>
+  </div>
+</section>
+
+<section id="showcase" style="padding-top:24px">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="kicker">%(sc_kicker)s</div>
+      <h2>%(sc_title)s</h2>
+      <p>%(sc_intro)s</p>
+    </div>
+    <div class="tabs reveal" id="tabs"></div>
+    <div id="panels"></div>
+    <div class="showcase-note reveal"><span class="b">↳</span><span id="note"></span></div>
+  </div>
+</section>
+
+<section style="padding-top:24px">
+  <div class="wrap">
+    <div class="banner reveal">
+      <div>
+        <div class="kicker" style="color:var(--blue)">%(phil_kicker)s</div>
+        <h2>%(phil_title)s</h2>
+        %(phil_paras)s
+      </div>
+      <div class="stat-row">%(phil_stats)s</div>
+    </div>
+  </div>
+</section>
+
+<section id="start">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="kicker">%(start_kicker)s</div>
+      <h2>%(start_title)s</h2>
+      <p>%(start_intro)s</p>
+    </div>
+    <div class="steps">
+      <div>%(steps)s</div>
+      <div class="term reveal">
+        <div class="code-top">
+          <span class="tl r"></span><span class="tl y"></span><span class="tl g"></span>
+          <span class="code-name">%(term_name)s</span>
+        </div>
+<pre>%(term)s</pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="editors" style="padding-top:24px">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="kicker">%(ed_kicker)s</div>
+      <h2>%(ed_title)s</h2>
+      <p>%(ed_intro)s</p>
+    </div>
+    <div class="editors reveal">%(eds)s</div>
+    <p style="margin-top:22px;color:var(--muted);font-size:14.5px">%(ed_note)s</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot-in">
+    <div>
+      <div class="brand" style="margin-bottom:8px"><span class="logo">L</span> %(brand)s</div>
+      <div class="muted">%(tagline)s</div>
+    </div>
+    <nav class="foot-links">%(footlinks)s</nav>
+  </div>
+</footer>
+
+<script src="ludic-highlight.js"></script>
+<script>
+Ludic.highlightAll();
+const SAMPLES = %(samples)s;
+const tabsEl = document.getElementById("tabs");
+const panelsEl = document.getElementById("panels");
+const noteEl = document.getElementById("note");
+SAMPLES.forEach((s, idx)=>{
+  const t = document.createElement("button");
+  t.className = "tab" + (idx===0 ? " active" : "");
+  t.textContent = s.label;
+  t.onclick = ()=>select(idx);
+  tabsEl.appendChild(t);
+  const card = document.createElement("div");
+  card.className = "code-card panel-code" + (idx===0 ? " active" : "");
+  card.innerHTML =
+    '<div class="code-top"><span class="tl r"></span><span class="tl y"></span><span class="tl g"></span><span class="code-name">'
+    + s.name + '</span></div><pre>' + Ludic.highlight(s.code) + '</pre>';
+  panelsEl.appendChild(card);
+});
+function select(idx){
+  [...tabsEl.children].forEach((t,i)=>t.classList.toggle("active", i===idx));
+  [...panelsEl.children].forEach((p,i)=>p.classList.toggle("active", i===idx));
+  noteEl.textContent = SAMPLES[idx].note;
+}
+noteEl.textContent = SAMPLES[0].note;
+Ludic.installCards();
+const io = new IntersectionObserver((entries)=>{
+  entries.forEach(e=>{ if(e.isIntersecting){ e.target.classList.add("in"); io.unobserve(e.target); } });
+},{threshold:.12});
+document.querySelectorAll(".reveal").forEach(el=>io.observe(el));
+</script>
+</body>
+</html>

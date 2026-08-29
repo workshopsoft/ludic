@@ -1,12 +1,32 @@
 ---
 id: fn-owner
-name: owner / set_owner
+name: owner
 category: networking
 kind: builtin
-tokens: owner set_owner
-sig: owner(e) -> int   set_owner(e, id)
-tip: Read or assign an entity's network owner.
-order: 2
+tokens: owner
+sig: owner(target) -> int
+tip: Read a model instance's network owner id.
+order: 50
 ---
 
-<code>@Owned</code> gives a model an owner slot; <code>owner(e)</code> reads the peer id that owns entity <code>e</code> and <code>set_owner(e, id)</code> assigns it (the authority decides). Ownership gates who may write <code>@Sync(to: owner)</code> fields.
+<code>owner</code> returns the network peer id that owns a model instance, or <code>-1</code> when the instance is unowned. It only means anything for instances of an <code>@Owned</code> model, which is what gives the model its owner slot (the runtime's <code>@L_owner</code> array); a fresh instance starts unowned until the authority assigns it with <code>set_owner</code>. Ownership is part of the world snapshot, so it round-trips through replication and rollback. Read it when you need the raw id; use <code>is_owner</code> when you only need to know whether the local peer owns the instance.
+
+Parameters:
+- `target` — the model instance (an `entity`) whose owner is read
+
+```ludic
+program InspectOwner {
+  @Sync property Position { column: int = 0, row: int = 0 }
+  @Owned model Player { @Sync Position }
+
+  entry {
+    spawn Player { Position { column: 5, row: 6 } }
+    for (Position) in query [Position, {Player}] {
+      let player_id = self()
+      print(owner(player_id))          # -1 — a fresh instance is unowned
+      set_owner(player_id, 7)
+      print(owner(player_id))          # 7  — the authority assigned peer 7
+    }
+  }
+}
+```

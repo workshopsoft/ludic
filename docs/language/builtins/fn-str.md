@@ -5,8 +5,22 @@ category: builtins
 kind: builtin
 tokens: str
 sig: str(x) -> str
-tip: Convert an int/bool/fixed to text; a string passes through.
+tip: Convert an int, bool, or fixed value to text; a string passes through unchanged.
 order: 1
 ---
 
-Convert an int/bool/fixed to text; a string passes through. Also used by <code>`{…}`</code> interpolation.
+Converts a value to its textual form: an <code>int</code>, <code>bool</code>, or <code>fixed</code> becomes a string, and a value that is already a string is returned unchanged. This is what backtick <code>`{…}`</code> interpolation calls under the hood, so most of the time you can interpolate directly instead of calling <code>str</code> yourself. Reach for the explicit form when you need to store or pass around the text, or build a string in pieces. The result can be printed, drawn with <code>Screen.draw_text</code>, or concatenated.
+
+Parameters:
+- `x` — the value to convert to text
+
+```ludic
+program LabelValue {
+  var score: int = 250
+
+  handler ReportScore phase Start {
+    let label = str(score)
+    print(label)
+  }
+}
+```

@@ -1,12 +1,27 @@
 ---
 id: fn-arg
-name: arg_count / arg
+name: arg
 category: builtins
 kind: builtin
-tokens: arg_count arg
-sig: arg_count() -> int   arg(i) -> str
-tip: The command line; argv[0] is included.
-order: 20
+tokens: arg
+sig: arg(i) -> str
+tip: The i-th command-line argument as a string.
+order: 50
 ---
 
-Read the process command line: <code>arg_count()</code> is the number of arguments (including the program name at index 0) and <code>arg(i)</code> returns the <code>i</code>th as a string.
+Returns the command-line argument at index <code>i</code> as a string. Index <code>0</code> is conventionally the program's own name or path, so the first user-supplied argument is at index <code>1</code>. Use it together with <code>arg_count</code> to write configurable command-line tools in Ludic — reading an input filename, a mode flag, or a numeric option. Guard the index against <code>arg_count()</code> before reading so you never ask for an argument that was not passed.
+
+Parameters:
+- `i` — the argument index (`0` is the program name)
+
+```ludic
+program EchoFirstArg {
+  handler ShowArg phase Start {
+    if arg_count() > 1 {
+      print(arg(1))
+    } else {
+      print("no argument")
+    }
+  }
+}
+```

@@ -192,3 +192,18 @@
 
   .reveal{opacity:0;transform:translateY(16px);transition:opacity .6s ease, transform .6s ease}
   .reveal.in{opacity:1;transform:none}
+
+  /* hover-card + named-arg token (shared with the reference) */
+  .t-arg{color:var(--amber)}
+  .hovercard{position:fixed;z-index:100;max-width:340px;background:var(--panel2);border:1px solid var(--line2);
+    border-radius:12px;padding:12px 14px;box-shadow:0 20px 50px -18px rgba(0,0,0,.8);pointer-events:none}
+  .hc-top{display:flex;align-items:center;gap:9px;margin-bottom:8px}
+  .hc-name{font-family:"JetBrains Mono",monospace;color:var(--head);font-weight:700;font-size:14px}
+  .hc-sig{display:block;color:var(--c-fn);background:var(--c-bg);border:1px solid var(--line);border-radius:7px;
+    padding:6px 9px;font-size:12px;margin-bottom:8px;white-space:pre-wrap}
+  .hc-tip{color:var(--text);font-size:13.5px;line-height:1.5}
+  .hc-foot{color:var(--muted);font-size:11.5px;margin-top:9px;letter-spacing:.3px}
+  .kind-badge{font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;padding:3px 7px;
+    border-radius:6px;border:1px solid var(--line2);color:var(--muted);background:var(--panel)}
+  .kind-keyword{color:var(--c-key)}.kind-type{color:var(--c-type)}.kind-phase{color:var(--blue)}
+  .kind-method,.kind-builtin{color:var(--c-fn)}.kind-annotation{color:var(--c-annot)}.kind-namespace{color:var(--amber)}

@@ -1,132 +1,186 @@
 /* ============================================================================
- * ludic-highlight.js — the Ludic syntax highlighter for the docs site.
+ * ludic-highlight.js — the Ludic syntax highlighter + docs interactions.
  *
  * GENERATED FILE — do not edit by hand. The symbol tables below (keywords,
- * types, phases, namespace methods, builtins, annotations and their one-line
- * tips + anchors) are produced by tools/docgen/gen.py from the per-symbol
- * source files in docs/language/**. Add a symbol there and it is recognized,
- * colored, tipped and linked here automatically — nothing to maintain twice.
+ * types, phases, namespace methods + their parameter labels, builtins,
+ * annotations, namespaces, one-line tips, per-item page targets and hover-card
+ * data) are produced by tools/docgen/gen.py from the per-symbol source files in
+ * docs/language/**. Add a symbol there and it is recognized, colored, tipped,
+ * linked and card-previewed here automatically.
  *
- * Beyond coloring, every token the language defines becomes a link into the API
- * Reference (api.html): hover a keyword, a Screen.* call, a named color, a
- * builtin or a type and it points at the entry that explains it. Your own
- * symbols (functions, entities, fields) stay plain.
+ * In any code sample: every keyword/type/builtin/annotation links to its own
+ * page; `Screen.fill_rectangle` links `Screen` → the namespace page and
+ * `fill_rectangle` → the method page, separately; a named argument like
+ * `width:` links to that parameter on the method's page; `Color.Charcoal`
+ * links `Color` and `Charcoal` separately. Hovering any of them shows a summary
+ * card pulled from the real API data.
  * ========================================================================== */
 (function (global) {
   "use strict";
 
-  const SYMBOLS = /*__SYMBOLS__*/{};
-  const KEYWORDS   = SYMBOLS.keywords    || {};
-  const TYPES      = SYMBOLS.types       || {};
-  const PHASES     = SYMBOLS.phases      || {};
-  const BUILTINS   = SYMBOLS.builtins    || {};
-  const NSMETHODS  = SYMBOLS.nsmethods   || {};
-  const ANNOTS     = SYMBOLS.annotations || {};
-  const TIPS       = SYMBOLS.tips        || {};
-  const NAMESPACES = new Set(SYMBOLS.namespaces || []);
-  const COLORS_ANCHOR = SYMBOLS.colors_anchor || "colors";
-  const ANNOT_ANCHOR  = SYMBOLS.annotations_anchor || "annotations";
+  const S = /*__SYMBOLS__*/{};
+  const KEYWORDS = S.keywords || {}, TYPES = S.types || {}, PHASES = S.phases || {};
+  const BUILTINS = S.builtins || {}, NSMETHODS = S.nsmethods || {}, ANNOTS = S.annotations || {};
+  const NAMESPACES = S.namespaces || {}, TIPS = S.tips || {}, CARDS = S.cards || {};
 
-  function esc(s) {
-    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  }
+  function esc(s){ return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
   const isIdStart = c => /[A-Za-z_]/.test(c);
   const isId = c => /[A-Za-z0-9_]/.test(c);
 
-  function link(href, tip, inner) {
-    const t = tip ? ' title="' + esc(tip) + '"' : "";
-    return '<a class="tok" href="' + href + '"' + t + ">" + inner + "</a>";
+  function link(href, id, tip, inner){
+    const t = tip ? ' title="'+esc(tip).replace(/"/g,"&quot;")+'"' : "";
+    const d = id ? ' data-id="'+id+'"' : "";
+    return '<a class="tok" href="'+href+'"'+d+t+'>'+inner+'</a>';
   }
 
-  function highlight(src) {
-    let out = "", i = 0;
-    const n = src.length;
-    while (i < n) {
-      const c = src[i];
-      // comment
-      if (c === "#") {
-        let j = i; while (j < n && src[j] !== "\n") j++;
-        out += '<span class="t-com">' + esc(src.slice(i, j)) + "</span>";
-        i = j; continue;
-      }
-      // string / char / interpolation (backtick)
-      if (c === '"' || c === "'" || c === "`") {
-        const q = c; let j = i + 1;
-        while (j < n && src[j] !== q) { if (src[j] === "\\") j++; j++; }
-        j = Math.min(j + 1, n);
-        out += '<span class="t-str">' + esc(src.slice(i, j)) + "</span>";
-        i = j; continue;
-      }
-      // annotation @Name
-      if (c === "@") {
-        let j = i + 1; while (j < n && isId(src[j])) j++;
-        const at = src.slice(i, j);
-        const anchor = ANNOTS[at] || ANNOT_ANCHOR;
-        const tip = TIPS[at] || "A compile-time annotation.";
-        out += link("api.html#" + anchor, tip,
-          '<span class="t-annot">' + esc(at) + "</span>");
-        i = j; continue;
-      }
-      // number (incl 0x hex)
-      if (/[0-9]/.test(c)) {
-        let j = i; while (j < n && /[0-9a-fA-FxX._]/.test(src[j])) j++;
-        out += '<span class="t-num">' + esc(src.slice(i, j)) + "</span>";
-        i = j; continue;
-      }
-      // identifier / keyword / type / namespace.member / builtin
-      if (isIdStart(c)) {
-        let j = i; while (j < n && isId(src[j])) j++;
-        const word = src.slice(i, j);
+  function highlight(src){
+    let out = "", i = 0; const n = src.length;
+    const stack = [];          // call-context stack for named-parameter linking
+    let pending = null;        // ctx to push at the next "("
+    const nextNonSpace = j => { while (j < n && src[j] === " ") j++; return j; };
 
-        // Namespace.member  (Screen.fill_rectangle, Color.Crimson, …)
-        if (NAMESPACES.has(word) && src[j] === "." && j + 1 < n && isIdStart(src[j + 1])) {
-          let k = j + 1; while (k < n && isId(src[k])) k++;
-          const member = src.slice(j + 1, k);
-          const key = word + "." + member;
-          let href, tip;
-          if (word === "Color") {
-            href = "api.html#" + COLORS_ANCHOR; tip = "Named color " + key + ".";
+    while (i < n){
+      const c = src[i];
+      if (c === "#"){ let j=i; while(j<n && src[j]!=="\n") j++; out+='<span class="t-com">'+esc(src.slice(i,j))+'</span>'; i=j; continue; }
+      if (c === '"' || c === "'" || c === "`"){ const q=c; let j=i+1; while(j<n && src[j]!==q){ if(src[j]==="\\") j++; j++; } j=Math.min(j+1,n); out+='<span class="t-str">'+esc(src.slice(i,j))+'</span>'; i=j; continue; }
+      if (c === "@"){ let j=i+1; while(j<n && isId(src[j])) j++; const at=src.slice(i,j); const id=ANNOTS[at];
+        if (id) out += link(id+".html", id, TIPS[at]||"A compile-time annotation.", '<span class="t-annot">'+esc(at)+'</span>');
+        else out += '<span class="t-annot">'+esc(at)+'</span>';
+        i=j; continue; }
+      if (/[0-9]/.test(c)){ let j=i; while(j<n && /[0-9a-fA-FxX._]/.test(src[j])) j++; out+='<span class="t-num">'+esc(src.slice(i,j))+'</span>'; i=j; continue; }
+
+      if (isIdStart(c)){
+        let j=i; while(j<n && isId(src[j])) j++; const word=src.slice(i,j);
+
+        // Namespace.member — link the two halves separately
+        if (NAMESPACES[word] && src[j]==="." && j+1<n && isIdStart(src[j+1])){
+          let k=j+1; while(k<n && isId(src[k])) k++; const member=src.slice(j+1,k);
+          const nsId=NAMESPACES[word];
+          out += link(nsId+".html", nsId, TIPS[word]||(word+" namespace"), '<span class="t-type">'+word+'</span>');
+          out += '<span class="t-punc">.</span>';
+          if (word === "Color"){
+            out += link("ns-color.html#"+member.toLowerCase(), "", "Named color "+word+"."+member+".", '<span class="t-fn">'+esc(member)+'</span>');
           } else {
-            href = "api.html#" + (NSMETHODS[key] || (word.toLowerCase() + "-" + member));
-            tip = TIPS[key] || key;
+            const key=word+"."+member, m=NSMETHODS[key];
+            if (m){
+              out += link(m.id+".html", m.id, TIPS[key]||key, '<span class="t-fn">'+esc(member)+'</span>');
+              if (src[nextNonSpace(k)]==="(") pending = {page:m.id, params:new Set(m.params||[])};
+            } else out += '<span class="t-fn">'+esc(member)+'</span>';
           }
-          const inner = '<span class="t-type">' + word + '</span><span class="t-punc">.</span><span class="t-fn">' + esc(member) + "</span>";
-          out += link(href, tip, inner);
-          i = k; continue;
+          i=k; continue;
         }
 
-        let k2 = j; while (k2 < n && src[k2] === " ") k2++;
-        const callish = src[k2] === "(";
-        if (KEYWORDS[word]) {
-          out += link("api.html#" + KEYWORDS[word], TIPS[word], '<span class="t-key">' + word + "</span>");
-        } else if (BUILTINS[word] && callish) {
-          out += link("api.html#" + BUILTINS[word], TIPS[word], '<span class="t-fn">' + word + "</span>");
-        } else if (TYPES[word]) {
-          out += link("api.html#" + TYPES[word], TIPS[word] || ("The " + word + " type."), '<span class="t-type">' + word + "</span>");
-        } else if (PHASES[word]) {
-          out += link("api.html#" + PHASES[word], "The " + word + " phase.", '<span class="t-type">' + word + "</span>");
-        } else if (callish) {
-          out += '<span class="t-fn">' + esc(word) + "</span>";
+        const ns = nextNonSpace(j);
+        const callish = src[ns] === "(";
+        const labelish = src[ns] === ":";
+        const top = stack.length ? stack[stack.length-1] : null;
+
+        if (KEYWORDS[word]){
+          out += link(KEYWORDS[word]+".html", KEYWORDS[word], TIPS[word], '<span class="t-key">'+word+'</span>');
+        } else if (BUILTINS[word] && callish){
+          const b=BUILTINS[word];
+          out += link(b.id+".html", b.id, TIPS[word], '<span class="t-fn">'+word+'</span>');
+          pending = {page:b.id, params:new Set(b.params||[])};
+        } else if (labelish && top && top.params.has(word)){
+          out += link(top.page+".html#param-"+word, "", "parameter: "+word, '<span class="t-arg">'+word+'</span>');
+        } else if (TYPES[word]){
+          out += link(TYPES[word]+".html", TYPES[word], TIPS[word]||("The "+word+" type."), '<span class="t-type">'+word+'</span>');
+        } else if (PHASES[word]){
+          out += link(PHASES[word]+".html", PHASES[word], TIPS[word]||("The "+word+" phase."), '<span class="t-type">'+word+'</span>');
+        } else if (callish){
+          out += '<span class="t-fn">'+esc(word)+'</span>';
         } else {
           out += esc(word);
         }
-        i = j; continue;
+        i=j; continue;
       }
-      // punctuation
-      if (/[{}\[\]()=<>+\-*\/%,.:;!&|~]/.test(c)) {
-        out += '<span class="t-punc">' + esc(c) + "</span>";
-        i++; continue;
-      }
+
+      if (c === "("){ stack.push(pending); pending=null; out+='<span class="t-punc">(</span>'; i++; continue; }
+      if (c === ")"){ stack.pop(); out+='<span class="t-punc">)</span>'; i++; continue; }
+      if (/[{}\[\]=<>+\-*\/%,.:;!&|~]/.test(c)){ out+='<span class="t-punc">'+esc(c)+'</span>'; i++; continue; }
       out += esc(c); i++;
     }
     return out;
   }
 
-  function highlightAll() {
-    document.querySelectorAll('pre[data-lang="ludic"]').forEach(pre => {
-      pre.innerHTML = highlight(pre.textContent);
-    });
+  function highlightAll(){
+    document.querySelectorAll('pre[data-lang="ludic"]').forEach(pre => { pre.innerHTML = highlight(pre.textContent); });
   }
 
-  global.Ludic = { highlight, highlightAll, SYMBOLS };
+  /* ---- hover cards ------------------------------------------------------- */
+  let cardEl = null, cardTimer = null;
+  function ensureCard(){
+    if (cardEl) return cardEl;
+    cardEl = document.createElement("div"); cardEl.className = "hovercard"; cardEl.hidden = true;
+    document.body.appendChild(cardEl); return cardEl;
+  }
+  function showCard(a){
+    const id = a.getAttribute("data-id"); if (!id) return;
+    const c = CARDS[id]; if (!c) return;
+    const el = ensureCard();
+    el.innerHTML = '<div class="hc-top"><span class="kind-badge kind-'+(c.kind||"").replace("namespace-method","method")+'">'
+      + (c.kind||"").replace("namespace-method","method") + '</span><span class="hc-name">'+esc(c.name||"")+'</span></div>'
+      + (c.sig ? '<code class="hc-sig">'+esc(c.sig)+'</code>' : "")
+      + '<div class="hc-tip">'+esc(c.tip||"")+'</div>'
+      + '<div class="hc-foot">'+esc(c.section||"")+' · click to open</div>';
+    el.hidden = false;
+    const r = a.getBoundingClientRect();
+    const cw = el.offsetWidth, ch = el.offsetHeight;
+    let left = r.left, top = r.bottom + 8;
+    if (left + cw > window.innerWidth - 12) left = window.innerWidth - cw - 12;
+    if (left < 12) left = 12;
+    if (top + ch > window.innerHeight - 12) top = r.top - ch - 8;
+    el.style.left = Math.max(12,left) + "px"; el.style.top = Math.max(12,top) + "px";
+  }
+  function hideCard(){ if (cardEl) cardEl.hidden = true; }
+  function installCards(){
+    document.addEventListener("mouseover", e => {
+      const a = e.target.closest && e.target.closest("a.tok[data-id]");
+      if (!a) return;
+      clearTimeout(cardTimer); cardTimer = setTimeout(()=>showCard(a), 130);
+    });
+    document.addEventListener("mouseout", e => {
+      const a = e.target.closest && e.target.closest("a.tok[data-id]");
+      if (a){ clearTimeout(cardTimer); hideCard(); }
+    });
+    window.addEventListener("scroll", hideCard, {passive:true});
+  }
+
+  /* ---- flash the scrolled-to target ------------------------------------- */
+  function flash(el){ if (!el) return; el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); }
+  function flashTarget(){
+    const go = () => {
+      const h = location.hash ? decodeURIComponent(location.hash.slice(1)) : "";
+      let el = h ? document.getElementById(h) : null;
+      if (!el) el = document.querySelector(".item-head") || document.getElementById("top");
+      flash(el);
+    };
+    if (document.readyState !== "loading") go(); else document.addEventListener("DOMContentLoaded", go);
+    window.addEventListener("hashchange", () => { const el = document.getElementById(decodeURIComponent(location.hash.slice(1))); flash(el); });
+  }
+
+  /* ---- fuzzy search on the API index ------------------------------------ */
+  function subseq(q, s){ let i=0; for (let k=0;k<s.length && i<q.length;k++) if (s[k]===q[i]) i++; return i===q.length; }
+  function installSearch(){
+    const box = document.getElementById("search"); if (!box) return;
+    const items = [...document.querySelectorAll(".idx-item")];
+    const secs = [...document.querySelectorAll(".idx-sec")];
+    const none = document.getElementById("noresults");
+    const run = () => {
+      const q = box.value.trim().toLowerCase();
+      let shown = 0;
+      items.forEach(it => {
+        const name = (it.getAttribute("data-name")||"").toLowerCase();
+        const tip = (it.getAttribute("data-tip")||"").toLowerCase();
+        const hit = !q || name.includes(q) || tip.includes(q) || subseq(q, name);
+        it.style.display = hit ? "" : "none"; if (hit) shown++;
+      });
+      secs.forEach(sec => { const any = [...sec.querySelectorAll(".idx-item")].some(i=>i.style.display!=="none"); sec.style.display = any ? "" : "none"; });
+      if (none) none.hidden = shown !== 0;
+    };
+    box.addEventListener("input", run);
+    box.addEventListener("keydown", e => { if (e.key === "Enter"){ const first = items.find(i=>i.style.display!=="none"); if (first) location.href = first.getAttribute("href"); } });
+  }
+
+  global.Ludic = { highlight, highlightAll, installCards, flashTarget, installSearch, SYMBOLS: S };
 })(window);
