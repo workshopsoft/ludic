@@ -173,15 +173,17 @@
     "kw-enum"
   ],
   "types": [
-    "type-int",
-    "type-fixed",
     "type-bool",
-    "type-str",
-    "type-entity",
-    "type-ptr",
-    "type-words",
     "type-byte",
+    "type-entity",
+    "type-fixed",
+    "type-fixeds",
+    "type-int",
+    "type-ptr",
+    "type-ptrs",
+    "type-slices",
+    "type-str",
     "type-void",
-    "type-slices"
+    "type-words"
   ]
 }
