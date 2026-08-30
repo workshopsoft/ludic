@@ -170,3 +170,21 @@ Controls:
 - [x] Boss encounter (Rift Warden) + victory condition
 - [x] Item shop (gold → potions) at the house; potions usable in battle (Knight ITEM)
 - [ ] More skills / enemy variety (future)
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development loop
+(`bin/x reseed` → `bin/x bootstrap-cfree` → `bin/x test`), the code and commit
+conventions, and how the bootstrap fixpoint works. Issue and pull-request
+templates live under [`.forgejo/`](.forgejo/).
+
+## License
+
+The Ludic compiler and runtime source are licensed under the
+[Apache License 2.0](LICENSE) (`SPDX-License-Identifier: Apache-2.0`) — a
+permissive license with an explicit patent grant.
+
+The bundled [Kenney](https://kenney.nl) art under `assets/kenney/` is
+third-party and released under **CC0 1.0** (public domain); each pack keeps its
+own `License.txt`. Code and assets are licensed separately: the Apache-2.0
+license covers the source, not the art.
