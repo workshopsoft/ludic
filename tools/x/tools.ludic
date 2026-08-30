@@ -178,6 +178,10 @@ function cmd_test_tools() -> int {
   # Ported to Ludic; runs through x.
   if shq("bin/x check-impl > /dev/null 2>&1") { ok("docs cover every implemented feature") } else { bad("docs drifted from the implementation") }
 
+  # every ```ludic fence in the docs must parse (or be marked skip/expect-error),
+  # so a documented snippet can't drift from what the compiler accepts.
+  if shq("bin/x check-docs > /dev/null 2>&1") { ok("every doc fence parses") } else { bad2("a doc fence drifted", "run: x check-docs") }
+
   return report()
 }
 

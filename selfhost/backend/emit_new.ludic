@@ -7,7 +7,23 @@ function emit_sizeof(llt: pointer) -> pointer {
   return emit_bind(`ptrtoint ptr {p} to i64`)
 }
 
-function emit_new_struct(name: pointer) -> Val {
+# the value expression a `new T { ... }` record supplies for field `fname`,
+# or null when the record omits it (so the field keeps its declared default).
+function rec_field(rec: Node, fname: pointer) -> Node {
+  if (rec == null) { return null }
+  var i = 0
+  while i < len(rec.kids) {
+    let fi = rec.kids[i]
+    if (fi.s == fname) { return fi.a }
+    i = i + 1
+  }
+  return null
+}
+
+# `new T` / `new T { field: value, ... }` — allocate a record and seed each
+# field: a value from the override record if given, else the field's declared
+# default. `rec` is the E_REC of overrides (or null for the bare `new T`).
+function emit_new_struct(name: pointer, rec: Node) -> Val {
   let s = layout_node(name)                     # a struct or a property — same shape
   if (s == null) { perr("unknown record type in new") }
   let lty = layout_ty(name)
@@ -23,6 +39,8 @@ function emit_new_struct(name: pointer) -> Val {
     var v = "0"
     if (lt == "ptr") { v = "null" }
     if (fd.a != null) { let dv = emit_expr(fd.a);  v = dv.code }
+    let ov = rec_field(rec, fd.s)               # explicit override wins over the default
+    if (ov != null) { let dv = emit_expr(ov);  v = dv.code }
     emit("  store ");  emit(lt);  emit(" ");  emit(v);  emit(", ptr ");  emit(addr);  emit("\n")
     f = f + 1
   }

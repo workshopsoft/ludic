@@ -149,7 +149,7 @@ function p_primary() -> Node {
     if (t.text == "true")  { let n = node(E_BOOL); n.ival = 1; pi = pi + 1; return n }
     if (t.text == "false") { let n = node(E_BOOL); n.ival = 0; pi = pi + 1; return n }
     if (t.text == "null")  { pi = pi + 1; return node(E_NULL) }
-    if (t.text == "new")   { pi = pi + 1;  let n = node(E_NEW); n.s = ptype(); return n }
+    if (t.text == "new")   { pi = pi + 1;  let n = node(E_NEW); n.s = ptype();  if is_op("{") { n.a = record() };  return n }
     let n = node(E_ID); n.s = t.text; pi = pi + 1; return n
   }
   if is_op("(") { pi = pi + 1; skipnl(); let e = expr(); skipnl(); eat_op(")"); return e }

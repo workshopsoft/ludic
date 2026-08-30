@@ -80,5 +80,6 @@ jobs:
           # site generator (gen.py) is still Python; its port is tracked.
           bin/x check-impl
           bin/x check-vocabulary
+          bin/x check-docs
           python3 tools/docgen/gen.py --out build/pages
           python3 tools/docgen/check.py build/pages
