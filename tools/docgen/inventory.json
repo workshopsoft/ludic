@@ -420,5 +420,14 @@
     "uuid-to_text",
     "uuid-equals",
     "uuid-nil"
+  ],
+  "noise": [
+    "noise-value2",
+    "noise-perlin2",
+    "noise-simplex2",
+    "noise-fbm2",
+    "noise-cellular2",
+    "noise-cellular2_id",
+    "noise-unit"
   ]
 }

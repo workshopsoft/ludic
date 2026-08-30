@@ -30,6 +30,7 @@ function selfhost_frags() -> []pointer {
   push(f, "selfhost/emit_hash.ludic")
   push(f, "selfhost/emit_crypto.ludic")
   push(f, "selfhost/emit_uuid.ludic")
+  push(f, "selfhost/emit_noise.ludic")
   push(f, "selfhost/emit_list.ludic")
   push(f, "selfhost/emit_ease.ludic")
   push(f, "selfhost/emit_collide.ludic")

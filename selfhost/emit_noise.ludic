@@ -1,0 +1,217 @@
+# emit_noise.ludic — the Noise.* namespace: deterministic, fixed-point procedural
+# noise for terrain, caves, biomes, textures, clouds, placement — the primitives
+# procedural generation is built on. Everything is Q16.16 integer IR over an
+# integer permutation hash seeded from an explicit seed, so a seed reproduces the
+# EXACT same field on every platform and every run (native, headless, and later
+# wasm) — the determinism edge over float engines whose worlds drift across CPUs.
+#
+#   Noise.value2(x, y, seed)     value (lattice) noise    -> fixed in [-1, 1]
+#   Noise.perlin2(x, y, seed)    classic gradient noise   -> fixed in [-1, 1]
+#   Noise.simplex2(x, y, seed)   organic simplex noise    -> fixed in [-1, 1]
+#   Noise.fbm2(x, y, seed, oct)  fractal Brownian motion (octaves of simplex)
+#                                                          -> fixed in [-1, 1]
+#   Noise.cellular2(x, y, seed)  Worley F1 distance to the nearest cell point
+#                                                          -> fixed, ~[0, 1.5]
+#   Noise.cellular2_id(x, y, seed)  the id (hash) of that nearest cell -> int
+#   Noise.unit(n)                remap a [-1,1] sample to [0,1]  -> fixed
+#
+# Coordinates are `fixed` (Q16.16); the integer part selects a lattice cell and
+# the fraction interpolates within it, so sample at a fractional `frequency` to
+# scale features. All samplers are pure functions of (x, y, seed): no global
+# state, no allocation, safe to call from worldgen or a shader-like fill.
+
+function is_noise_ns(meth: pointer) -> bool {
+  if (meth == "value2") or (meth == "perlin2") or (meth == "simplex2") { return true }
+  if (meth == "fbm2") or (meth == "cellular2") or (meth == "cellular2_id") { return true }
+  if (meth == "unit") { return true }
+  return false
+}
+
+function emit_noise_ns(meth: pointer, e: Node) -> Val {
+  if (meth == "unit") {                             # [-1,1] -> [0,1]: n/2 + 0.5
+    let n = emit_expr(e.kids[0])
+    let h = emit_bind(`ashr i32 {n.code}, 1`)
+    return val(emit_bind(`add i32 {h}, 32768`), "fixed")
+  }
+  g_uses_noisert = true
+  if (meth == "value2") {
+    let x = emit_expr(e.kids[0]);  let y = emit_expr(e.kids[1]);  let s = emit_expr(e.kids[2])
+    return val(emit_bind(`call i32 @fn_noise_value2(i32 {x.code}, i32 {y.code}, i32 {s.code})`), "fixed")
+  }
+  if (meth == "perlin2") {
+    let x = emit_expr(e.kids[0]);  let y = emit_expr(e.kids[1]);  let s = emit_expr(e.kids[2])
+    return val(emit_bind(`call i32 @fn_noise_perlin2(i32 {x.code}, i32 {y.code}, i32 {s.code})`), "fixed")
+  }
+  if (meth == "simplex2") {
+    let x = emit_expr(e.kids[0]);  let y = emit_expr(e.kids[1]);  let s = emit_expr(e.kids[2])
+    return val(emit_bind(`call i32 @fn_noise_simplex2(i32 {x.code}, i32 {y.code}, i32 {s.code})`), "fixed")
+  }
+  if (meth == "fbm2") {
+    g_uses_mathrt = true                            # simplex path is standalone; fbm needs fx_div only (local)
+    let x = emit_expr(e.kids[0]);  let y = emit_expr(e.kids[1]);  let s = emit_expr(e.kids[2]);  let o = emit_expr(e.kids[3])
+    return val(emit_bind(`call i32 @fn_noise_fbm2(i32 {x.code}, i32 {y.code}, i32 {s.code}, i32 {o.code})`), "fixed")
+  }
+  if (meth == "cellular2") {
+    g_uses_mathrt = true                            # F1 distance needs @fn_fx_sqrt
+    let x = emit_expr(e.kids[0]);  let y = emit_expr(e.kids[1]);  let s = emit_expr(e.kids[2])
+    return val(emit_bind(`call i32 @fn_noise_cellular2(i32 {x.code}, i32 {y.code}, i32 {s.code})`), "fixed")
+  }
+  # cellular2_id: the hash id of the nearest feature cell (stable per cell -> use
+  # it to pick a biome/material). Distances come from cellular2.
+  let x = emit_expr(e.kids[0]);  let y = emit_expr(e.kids[1]);  let s = emit_expr(e.kids[2])
+  return val(emit_bind(`call i32 @fn_noise_cellular2_id(i32 {x.code}, i32 {y.code}, i32 {s.code})`), "int")
+}
+
+# emit_noise_prelude — the noise runtime, emitted once per program that uses
+# Noise.* (g_uses_noisert). Pure Q16.16 integer IR; cellular/fbm additionally use
+# the math prelude (@fn_fx_sqrt), pulled in by setting g_uses_mathrt at the call.
+function emit_noise_prelude() -> void {
+  # Q16.16 helpers (local to noise so the prelude is self-contained for the
+  # gradient/value paths). fx multiply, divide, lerp, and a [-1,1] clamp.
+  emith("define i32 @fn_nfx_mul(i32 %a, i32 %b) {\n")
+  emith("  %a64 = sext i32 %a to i64\n  %b64 = sext i32 %b to i64\n  %m = mul i64 %a64, %b64\n  %s = ashr i64 %m, 16\n  %r = trunc i64 %s to i32\n  ret i32 %r\n}\n")
+  emith("define i32 @fn_nfx_div(i32 %a, i32 %b) {\n")
+  emith("  %z = icmp eq i32 %b, 0\n  br i1 %z, label %zero, label %go\n")
+  emith("zero:\n  ret i32 0\n")
+  emith("go:\n  %a64 = sext i32 %a to i64\n  %ash = shl i64 %a64, 16\n  %b64 = sext i32 %b to i64\n  %d = sdiv i64 %ash, %b64\n  %r = trunc i64 %d to i32\n  ret i32 %r\n}\n")
+  emith("define i32 @fn_nfx_lerp(i32 %a, i32 %b, i32 %t) {\n")
+  emith("  %d = sub i32 %b, %a\n  %dt = call i32 @fn_nfx_mul(i32 %d, i32 %t)\n  %r = add i32 %a, %dt\n  ret i32 %r\n}\n")
+  emith("define i32 @fn_noise_clamp(i32 %v) {\n")
+  emith("  %hi = icmp sgt i32 %v, 65536\n  %v1 = select i1 %hi, i32 65536, i32 %v\n  %lo = icmp slt i32 %v1, -65536\n  %r = select i1 %lo, i32 -65536, i32 %v1\n  ret i32 %r\n}\n")
+
+  # integer lattice hash: mix seed + cell coords with large odd constants, then a
+  # MurmurHash3-style fmix32 finalizer. Deterministic and well-distributed.
+  emith("define i32 @fn_noise_hash(i32 %seed, i32 %xi, i32 %yi) {\n")
+  emith("  %a = mul i32 %xi, 374761393\n  %b = mul i32 %yi, -1028477387\n  %c = add i32 %seed, %a\n  %d0 = add i32 %c, %b\n")
+  emith("  %e = lshr i32 %d0, 16\n  %f = xor i32 %d0, %e\n  %g = mul i32 %f, -2048144789\n")
+  emith("  %h = lshr i32 %g, 13\n  %i = xor i32 %g, %h\n  %j = mul i32 %i, -1028477387\n")
+  emith("  %k = lshr i32 %j, 16\n  %l = xor i32 %j, %k\n  ret i32 %l\n}\n")
+
+  # quintic fade 6t^5 - 15t^4 + 10t^3 (Q16.16); t in [0,1]
+  emith("define i32 @fn_noise_fade(i32 %t) {\n")
+  emith("  %t2 = call i32 @fn_nfx_mul(i32 %t, i32 %t)\n  %t3 = call i32 @fn_nfx_mul(i32 %t2, i32 %t)\n")
+  emith("  %t4 = call i32 @fn_nfx_mul(i32 %t3, i32 %t)\n  %t5 = call i32 @fn_nfx_mul(i32 %t4, i32 %t)\n")
+  emith("  %c6 = mul i32 %t5, 6\n  %c15 = mul i32 %t4, 15\n  %c10 = mul i32 %t3, 10\n")
+  emith("  %s1 = sub i32 %c6, %c15\n  %r = add i32 %s1, %c10\n  ret i32 %r\n}\n")
+
+  # value noise: bilinear-interpolate the four corner random values (each mapped
+  # to [-1,1]) with the faded fractional coordinates.
+  emith("define i32 @fn_noise_value2(i32 %x, i32 %y, i32 %seed) {\n")
+  emith("  %xi = ashr i32 %x, 16\n  %yi = ashr i32 %y, 16\n  %xf = and i32 %x, 65535\n  %yf = and i32 %y, 65535\n")
+  emith("  %u = call i32 @fn_noise_fade(i32 %xf)\n  %v = call i32 @fn_noise_fade(i32 %yf)\n")
+  emith("  %xi1 = add i32 %xi, 1\n  %yi1 = add i32 %yi, 1\n")
+  emith("  %h00 = call i32 @fn_noise_hash(i32 %seed, i32 %xi, i32 %yi)\n  %m00 = and i32 %h00, 131071\n  %n00 = sub i32 %m00, 65536\n")
+  emith("  %h10 = call i32 @fn_noise_hash(i32 %seed, i32 %xi1, i32 %yi)\n  %m10 = and i32 %h10, 131071\n  %n10 = sub i32 %m10, 65536\n")
+  emith("  %h01 = call i32 @fn_noise_hash(i32 %seed, i32 %xi, i32 %yi1)\n  %m01 = and i32 %h01, 131071\n  %n01 = sub i32 %m01, 65536\n")
+  emith("  %h11 = call i32 @fn_noise_hash(i32 %seed, i32 %xi1, i32 %yi1)\n  %m11 = and i32 %h11, 131071\n  %n11 = sub i32 %m11, 65536\n")
+  emith("  %a = call i32 @fn_nfx_lerp(i32 %n00, i32 %n10, i32 %u)\n  %b = call i32 @fn_nfx_lerp(i32 %n01, i32 %n11, i32 %u)\n")
+  emith("  %n = call i32 @fn_nfx_lerp(i32 %a, i32 %b, i32 %v)\n  %r = call i32 @fn_noise_clamp(i32 %n)\n  ret i32 %r\n}\n")
+
+  # 8 gradient directions (axis + diagonal, the diagonals scaled by 1/sqrt2), as
+  # packed (gx, gy) Q16.16 pairs; grad2 dots the selected gradient with (dx, dy).
+  emith("@noise_grad2 = private unnamed_addr constant [16 x i32] [i32 65536, i32 0, i32 -65536, i32 0, i32 0, i32 65536, i32 0, i32 -65536, i32 46341, i32 46341, i32 -46341, i32 46341, i32 46341, i32 -46341, i32 -46341, i32 -46341]\n")
+  emith("define i32 @fn_noise_grad2(i32 %hash, i32 %dx, i32 %dy) {\n")
+  emith("  %h = and i32 %hash, 7\n  %idx = shl i32 %h, 1\n  %idx64 = sext i32 %idx to i64\n")
+  emith("  %gxp = getelementptr [16 x i32], ptr @noise_grad2, i64 0, i64 %idx64\n  %gx = load i32, ptr %gxp\n")
+  emith("  %idy = add i32 %idx, 1\n  %idy64 = sext i32 %idy to i64\n  %gyp = getelementptr [16 x i32], ptr @noise_grad2, i64 0, i64 %idy64\n  %gy = load i32, ptr %gyp\n")
+  emith("  %px = call i32 @fn_nfx_mul(i32 %gx, i32 %dx)\n  %py = call i32 @fn_nfx_mul(i32 %gy, i32 %dy)\n  %r = add i32 %px, %py\n  ret i32 %r\n}\n")
+
+  # Perlin gradient noise: interpolate the four corner gradient dots, then scale
+  # the ~[-0.707,0.707] result by sqrt2 into [-1,1] (and clamp for safety).
+  emith("define i32 @fn_noise_perlin2(i32 %x, i32 %y, i32 %seed) {\n")
+  emith("  %xi = ashr i32 %x, 16\n  %yi = ashr i32 %y, 16\n  %xf = and i32 %x, 65535\n  %yf = and i32 %y, 65535\n")
+  emith("  %xf1 = sub i32 %xf, 65536\n  %yf1 = sub i32 %yf, 65536\n")
+  emith("  %u = call i32 @fn_noise_fade(i32 %xf)\n  %v = call i32 @fn_noise_fade(i32 %yf)\n")
+  emith("  %xi1 = add i32 %xi, 1\n  %yi1 = add i32 %yi, 1\n")
+  emith("  %h00 = call i32 @fn_noise_hash(i32 %seed, i32 %xi, i32 %yi)\n  %h10 = call i32 @fn_noise_hash(i32 %seed, i32 %xi1, i32 %yi)\n")
+  emith("  %h01 = call i32 @fn_noise_hash(i32 %seed, i32 %xi, i32 %yi1)\n  %h11 = call i32 @fn_noise_hash(i32 %seed, i32 %xi1, i32 %yi1)\n")
+  emith("  %g00 = call i32 @fn_noise_grad2(i32 %h00, i32 %xf, i32 %yf)\n  %g10 = call i32 @fn_noise_grad2(i32 %h10, i32 %xf1, i32 %yf)\n")
+  emith("  %g01 = call i32 @fn_noise_grad2(i32 %h01, i32 %xf, i32 %yf1)\n  %g11 = call i32 @fn_noise_grad2(i32 %h11, i32 %xf1, i32 %yf1)\n")
+  emith("  %a = call i32 @fn_nfx_lerp(i32 %g00, i32 %g10, i32 %u)\n  %b = call i32 @fn_nfx_lerp(i32 %g01, i32 %g11, i32 %u)\n")
+  emith("  %n = call i32 @fn_nfx_lerp(i32 %a, i32 %b, i32 %v)\n  %sc = call i32 @fn_nfx_mul(i32 %n, i32 92682)\n  %r = call i32 @fn_noise_clamp(i32 %sc)\n  ret i32 %r\n}\n")
+
+  # one simplex corner contribution: t = 0.5 - x^2 - y^2; if t <= 0 -> 0, else
+  # t^4 * grad(hash, x, y). Kept as a helper so simplex2 reads as three corners.
+  emith("define i32 @fn_noise_scorner(i32 %hash, i32 %dx, i32 %dy) {\n")
+  emith("  %xx = call i32 @fn_nfx_mul(i32 %dx, i32 %dx)\n  %yy = call i32 @fn_nfx_mul(i32 %dy, i32 %dy)\n")
+  emith("  %s0 = sub i32 32768, %xx\n  %t = sub i32 %s0, %yy\n  %neg = icmp sle i32 %t, 0\n  br i1 %neg, label %zero, label %go\n")
+  emith("zero:\n  ret i32 0\n")
+  emith("go:\n  %t2 = call i32 @fn_nfx_mul(i32 %t, i32 %t)\n  %t4 = call i32 @fn_nfx_mul(i32 %t2, i32 %t2)\n")
+  emith("  %g = call i32 @fn_noise_grad2(i32 %hash, i32 %dx, i32 %dy)\n  %r = call i32 @fn_nfx_mul(i32 %t4, i32 %g)\n  ret i32 %r\n}\n")
+
+  # 2D simplex noise (skewed triangular lattice). F2 = (sqrt3-1)/2 = 23994,
+  # G2 = (3-sqrt3)/6 = 13849 in Q16.16. Sum of three corner contributions, scaled
+  # into [-1,1] and clamped.
+  emith("define i32 @fn_noise_simplex2(i32 %x, i32 %y, i32 %seed) {\n")
+  emith("  %sum0 = add i32 %x, %y\n  %skew = call i32 @fn_nfx_mul(i32 %sum0, i32 23994)\n")
+  emith("  %xs = add i32 %x, %skew\n  %ys = add i32 %y, %skew\n  %i = ashr i32 %xs, 16\n  %j = ashr i32 %ys, 16\n")
+  emith("  %ij = add i32 %i, %j\n  %tt = mul i32 %ij, 13849\n")           # t = (i+j)*G2, fixed
+  emith("  %if0 = shl i32 %i, 16\n  %jf0 = shl i32 %j, 16\n")
+  emith("  %X0 = sub i32 %if0, %tt\n  %Y0 = sub i32 %jf0, %tt\n  %x0 = sub i32 %x, %X0\n  %y0 = sub i32 %y, %Y0\n")
+  emith("  %gt = icmp sgt i32 %x0, %y0\n  %i1 = select i1 %gt, i32 1, i32 0\n  %j1 = select i1 %gt, i32 0, i32 1\n")
+  emith("  %i1f = shl i32 %i1, 16\n  %j1f = shl i32 %j1, 16\n")
+  emith("  %x1a = sub i32 %x0, %i1f\n  %x1 = add i32 %x1a, 13849\n  %y1a = sub i32 %y0, %j1f\n  %y1 = add i32 %y1a, 13849\n")
+  emith("  %x2a = sub i32 %x0, 65536\n  %x2 = add i32 %x2a, 27698\n  %y2a = sub i32 %y0, 65536\n  %y2 = add i32 %y2a, 27698\n")
+  emith("  %i1p = add i32 %i, %i1\n  %j1p = add i32 %j, %j1\n  %i2 = add i32 %i, 1\n  %j2 = add i32 %j, 1\n")
+  emith("  %gi0 = call i32 @fn_noise_hash(i32 %seed, i32 %i, i32 %j)\n  %gi1 = call i32 @fn_noise_hash(i32 %seed, i32 %i1p, i32 %j1p)\n  %gi2 = call i32 @fn_noise_hash(i32 %seed, i32 %i2, i32 %j2)\n")
+  emith("  %n0 = call i32 @fn_noise_scorner(i32 %gi0, i32 %x0, i32 %y0)\n  %n1 = call i32 @fn_noise_scorner(i32 %gi1, i32 %x1, i32 %y1)\n  %n2 = call i32 @fn_noise_scorner(i32 %gi2, i32 %x2, i32 %y2)\n")
+  emith("  %sa = add i32 %n0, %n1\n  %sb = add i32 %sa, %n2\n")
+  emith("  %sc = mul i32 %sb, 45\n  %r = call i32 @fn_noise_clamp(i32 %sc)\n  ret i32 %r\n}\n")
+
+  # fractal Brownian motion: sum `oct` octaves of simplex at rising frequency
+  # (lacunarity 2.0) and falling amplitude (gain 0.5), normalised by total
+  # amplitude so the result stays in [-1,1]. seed varies per octave.
+  emith("define i32 @fn_noise_fbm2(i32 %x, i32 %y, i32 %seed, i32 %oct) {\n")
+  emith("entry:\n  %sump = alloca i32\n  %normp = alloca i32\n  %ampp = alloca i32\n  %freqp = alloca i32\n  %op = alloca i32\n")
+  emith("  store i32 0, ptr %sump\n  store i32 0, ptr %normp\n  store i32 65536, ptr %ampp\n  store i32 65536, ptr %freqp\n  store i32 0, ptr %op\n  br label %cond\n")
+  emith("cond:\n  %o = load i32, ptr %op\n  %lt = icmp slt i32 %o, %oct\n  br i1 %lt, label %body, label %done\n")
+  emith("body:\n  %freq = load i32, ptr %freqp\n  %amp = load i32, ptr %ampp\n")
+  emith("  %fx = call i32 @fn_nfx_mul(i32 %x, i32 %freq)\n  %fy = call i32 @fn_nfx_mul(i32 %y, i32 %freq)\n")
+  emith("  %so = add i32 %seed, %o\n  %n = call i32 @fn_noise_simplex2(i32 %fx, i32 %fy, i32 %so)\n")
+  emith("  %na = call i32 @fn_nfx_mul(i32 %n, i32 %amp)\n  %sum = load i32, ptr %sump\n  %sum2 = add i32 %sum, %na\n  store i32 %sum2, ptr %sump\n")
+  emith("  %norm = load i32, ptr %normp\n  %norm2 = add i32 %norm, %amp\n  store i32 %norm2, ptr %normp\n")
+  emith("  %amp2 = call i32 @fn_nfx_mul(i32 %amp, i32 32768)\n  store i32 %amp2, ptr %ampp\n")
+  emith("  %freq2 = call i32 @fn_nfx_mul(i32 %freq, i32 131072)\n  store i32 %freq2, ptr %freqp\n")
+  emith("  %o1 = add i32 %o, 1\n  store i32 %o1, ptr %op\n  br label %cond\n")
+  emith("done:\n  %fsum = load i32, ptr %sump\n  %fnorm = load i32, ptr %normp\n")
+  emith("  %nz = icmp eq i32 %fnorm, 0\n  br i1 %nz, label %z, label %div\n")
+  emith("z:\n  ret i32 0\n")
+  emith("div:\n  %d = call i32 @fn_nfx_div(i32 %fsum, i32 %fnorm)\n  %r = call i32 @fn_noise_clamp(i32 %d)\n  ret i32 %r\n}\n")
+
+  # Worley / cellular noise: scan the 3x3 neighbourhood of cells, each holding one
+  # feature point placed by its cell hash, and return the distance to (and id of)
+  # the nearest feature point. cellular2 returns F1 distance; cellular2_id the id.
+  emit_noise_cellular()
+}
+
+# split out so no single function is oversized; shares the hash/helpers above.
+function emit_noise_cellular() -> void {
+  # core scan -> writes the min squared distance to %d2out and the winning id to
+  # %idout (both caller-allocated), so both public entry points share one loop.
+  emith("define void @fn_noise_cell_scan(i32 %x, i32 %y, i32 %seed, ptr %d2out, ptr %idout) {\n")
+  emith("entry:\n  %xi = ashr i32 %x, 16\n  %yi = ashr i32 %y, 16\n")
+  emith("  %bestp = alloca i32\n  %idp = alloca i32\n  %dyp = alloca i32\n  %dxp = alloca i32\n")
+  emith("  store i32 2147483647, ptr %bestp\n  store i32 0, ptr %idp\n  store i32 -1, ptr %dyp\n  br label %yc\n")
+  emith("yc:\n  %oy = load i32, ptr %dyp\n  %yok = icmp sle i32 %oy, 1\n  br i1 %yok, label %yb, label %ydone\n")
+  emith("yb:\n  store i32 -1, ptr %dxp\n  br label %xc\n")
+  emith("xc:\n  %ox = load i32, ptr %dxp\n  %xok = icmp sle i32 %ox, 1\n  br i1 %xok, label %xb, label %xdone\n")
+  emith("xb:\n  %cx = add i32 %xi, %ox\n  %cy = add i32 %yi, %oy\n")
+  emith("  %h = call i32 @fn_noise_hash(i32 %seed, i32 %cx, i32 %cy)\n")
+  emith("  %fxr = and i32 %h, 65535\n  %hs = lshr i32 %h, 16\n  %fyr = and i32 %hs, 65535\n")
+  emith("  %cxf = shl i32 %cx, 16\n  %cyf = shl i32 %cy, 16\n  %pxr = add i32 %cxf, %fxr\n  %pyr = add i32 %cyf, %fyr\n")
+  emith("  %ddx = sub i32 %pxr, %x\n  %ddy = sub i32 %pyr, %y\n")
+  emith("  %dxx = call i32 @fn_nfx_mul(i32 %ddx, i32 %ddx)\n  %dyy = call i32 @fn_nfx_mul(i32 %ddy, i32 %ddy)\n  %d2 = add i32 %dxx, %dyy\n")
+  emith("  %best = load i32, ptr %bestp\n  %less = icmp slt i32 %d2, %best\n  br i1 %less, label %upd, label %skip\n")
+  emith("upd:\n  store i32 %d2, ptr %bestp\n  store i32 %h, ptr %idp\n  br label %skip\n")
+  emith("skip:\n  %ox1 = add i32 %ox, 1\n  store i32 %ox1, ptr %dxp\n  br label %xc\n")
+  emith("xdone:\n  %oy1 = add i32 %oy, 1\n  store i32 %oy1, ptr %dyp\n  br label %yc\n")
+  emith("ydone:\n  %fb = load i32, ptr %bestp\n  store i32 %fb, ptr %d2out\n  %fi = load i32, ptr %idp\n  store i32 %fi, ptr %idout\n  ret void\n}\n")
+
+  emith("define i32 @fn_noise_cellular2(i32 %x, i32 %y, i32 %seed) {\n")
+  emith("  %d2 = alloca i32\n  %id = alloca i32\n  call void @fn_noise_cell_scan(i32 %x, i32 %y, i32 %seed, ptr %d2, ptr %id)\n")
+  emith("  %v = load i32, ptr %d2\n  %r = call i32 @fn_fx_sqrt(i32 %v)\n  ret i32 %r\n}\n")
+
+  emith("define i32 @fn_noise_cellular2_id(i32 %x, i32 %y, i32 %seed) {\n")
+  emith("  %d2 = alloca i32\n  %id = alloca i32\n  call void @fn_noise_cell_scan(i32 %x, i32 %y, i32 %seed, ptr %d2, ptr %id)\n")
+  emith("  %r = load i32, ptr %id\n  ret i32 %r\n}\n")
+}

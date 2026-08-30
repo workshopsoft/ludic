@@ -239,6 +239,10 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if is_uuid_ns(meth) { return emit_uuid_ns(meth, e) }
     perr(`unknown builtin Uuid.{meth}`)
   }
+  if (ns == "Noise") {
+    if is_noise_ns(meth) { return emit_noise_ns(meth, e) }
+    perr(`unknown builtin Noise.{meth}`)
+  }
   if (ns == "Vector") {
     if is_vector_ns(meth) { return emit_vector_ns(meth, e) }
     perr(`unknown builtin Vector.{meth}`)
