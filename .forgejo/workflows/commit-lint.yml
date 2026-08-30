@@ -1,0 +1,48 @@
+name: commit-lint
+
+# Enforce Conventional Commits in CI, as a backstop to the local commit-msg hook
+# (which a contributor only gets after `git config core.hooksPath tools/git-hooks`).
+# Lints every new commit's summary line against tools/git-hooks/lib.sh — the same
+# rule the hook uses, so the two can never drift.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: {}
+
+jobs:
+  conventional-commits:
+    runs-on: docker
+    container: node:20-bookworm
+    steps:
+      - name: Check out with history
+        env:
+          BEFORE: ${{ github.event.before }}
+          BASE: ${{ github.base_ref }}
+        run: |
+          set -eu
+          git config --global --add safe.directory '*'
+          # Full clone so both endpoints of the range are present.
+          git clone https://git.workshopsoft.io/workshopsoft/ludic.git .
+          git checkout "${GITHUB_SHA}" 2>/dev/null || git checkout "${GITHUB_REF_NAME:-main}"
+
+      - name: Lint the new commits
+        env:
+          BEFORE: ${{ github.event.before }}
+          BASE: ${{ github.base_ref }}
+        run: |
+          set -eu
+          # Pick the range of *new* commits to lint:
+          #  - pull_request: base branch .. this commit
+          #  - push:         the pushed range (event.before .. this commit)
+          #  - new branch / unknown: just the tip commit
+          if [ -n "${BASE:-}" ]; then
+            git fetch --quiet origin "${BASE}" 2>/dev/null || true
+            RANGE="origin/${BASE}..${GITHUB_SHA}"
+          elif [ -n "${BEFORE:-}" ] && ! printf '%s' "$BEFORE" | grep -qE '^0+$'; then
+            RANGE="${BEFORE}..${GITHUB_SHA}"
+          else
+            RANGE="${GITHUB_SHA}~1..${GITHUB_SHA}"
+          fi
+          echo "linting range: $RANGE"
+          sh tools/git-hooks/lint-range.sh "$RANGE"

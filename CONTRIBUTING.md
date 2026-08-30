@@ -67,11 +67,43 @@ The stdlib lives in the runtime (`runtime/`) and is surfaced as namespaces
 ## Conventions
 
 - **Commits:** [Conventional Commits](https://www.conventionalcommits.org) —
-  `type(scope): summary`, e.g. `feat(stdlib): …`, `fix(emit): …`,
-  `ci(docs): …`, `docs(readme): …`. Keep the summary imperative and under ~72
-  chars.
+  `type(scope): summary`, with an optional `!` before the colon for a breaking
+  change. Keep the summary imperative and under ~72 chars. The types in use:
+
+  | type | for |
+  |------|-----|
+  | `feat` | a new user-facing capability (a stdlib namespace, a language feature) |
+  | `fix` | a bug fix |
+  | `refactor` | a change that neither fixes a bug nor adds a feature |
+  | `perf` | a performance improvement |
+  | `docs` | documentation only (`docs/`, README, comments) |
+  | `test` | tests only |
+  | `build` | the build/bootstrap machinery (seed, `bin/x`, linking) |
+  | `ci` | CI workflows under `.forgejo/` |
+  | `style` | formatting/whitespace, no behaviour change |
+  | `chore` | routine housekeeping with no other bucket |
+  | `revert` | reverts a previous commit |
+
+  Common scopes: `stdlib`, `lang`, `emit`, `runtime`, `tooling`, `docs`, `repo`.
+  Reference the issue you close with a `Closes #NN` trailer.
+
+- **Enforcement:** the hooks in [`tools/git-hooks/`](tools/git-hooks) enforce this
+  locally, and the `commit-lint` CI job is the backstop. Turn the hooks on once,
+  per clone:
+
+  ```bash
+  git config core.hooksPath tools/git-hooks
+  ```
+
+  That activates the `commit-msg` hook (rejects a non-conforming summary) and the
+  `pre-commit` hook (rejects unformatted Ludic). Both read the same rules CI does,
+  so a green local commit is a green CI run.
+
 - **Formatting:** `ludic-fmt` is the source of truth (2-space indent, LF, UTF-8);
-  the repo `.editorconfig` mirrors it. Run `bin/ludic-fmt` on files you touch.
+  the repo `.editorconfig` mirrors it. Run `bin/ludic-fmt -w` on files you touch.
+  The contract CI enforces is *idempotence* — `ludic-fmt` re-run on its own output
+  is a no-op — which leaves deliberate hand alignment in place; it is not a
+  blanket `fmt(x) == x`.
 - **Code structure:** one job per file. Split large files by concern into
   subfolders rather than growing a single 500+-line module (see how `selfhost/`
   and `runtime/` are organised).
@@ -79,6 +111,19 @@ The stdlib lives in the runtime (`runtime/`) and is surfaced as namespaces
   not C, Python, or JS. The only non-Ludic pieces are the LLVM-IR seed
   (`selfhost/ludicc.seed.ll`), the hand-written `runtime/native/cocoa.ll` /
   `runtime/web/wasm.ll` shims, and the legacy Python docgen (being ported).
+
+## Git history
+
+The log has two eras: the pre-self-hosting `Phase Nx: …` / `Merge Phase Nx: …`
+commits, and the Conventional Commits used since. **Decision: the old `Phase`
+history stays as-is.** Rewriting already-pushed history (`filter-repo`/rebase) is
+destructive and non-reversible for anyone who has cloned, and it buys little — so
+we do not rewrite it. The convention is enforced *going forward* by the hook and
+the `commit-lint` job (both skip merge commits, so the old merges never trip it).
+
+When the versioning work lands (issue #33), the first release tag doubles as a
+clean `v0` baseline that brackets the `Phase`-era prefix — the safe,
+non-destructive version of "tidy the history" without touching a single commit.
 
 ## Pull requests
 

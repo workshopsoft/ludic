@@ -1,0 +1,25 @@
+#!/bin/sh
+# Reject a commit whose summary line is not a Conventional Commit.
+#
+# Enable every hook in this directory at once with:
+#
+#   git config core.hooksPath tools/git-hooks
+#
+# (git then runs the hooks straight from the tree — no per-hook symlink, and new
+# hooks activate as soon as they land on your branch.)
+set -e
+MSG_FILE="$1"
+
+# The header is the first line that is neither blank nor a comment (git strips
+# '#' lines itself, but a commit-msg hook runs before that, so skip them here).
+HEADER=$(grep -vE '^[[:space:]]*#' "$MSG_FILE" | sed '/^[[:space:]]*$/d' | head -n1)
+
+. "$(dirname "$0")/lib.sh"
+
+if conventional_ok "$HEADER"; then
+  exit 0
+fi
+
+echo "commit-msg hook: rejected." >&2
+conventional_help "$HEADER" >&2
+exit 1
