@@ -18,7 +18,11 @@ permissions:
 
 jobs:
   build-and-deploy:
-    runs-on: ubuntu-latest
+    # Match the label our Forgejo runner actually advertises. The runner is
+    # Docker-capable (it provides the `container:` below); `ubuntu-latest` is a
+    # GitHub-ism this runner does not register, so a job requesting it sits in
+    # "Waiting" forever with "no online runner found matching this label".
+    runs-on: docker
     # Run in a Python image: the generator is pure-Python stdlib, and this image
     # already has git for the clone + publish. No node actions are used, so the
     # job never depends on the runner's base image having python installed.
