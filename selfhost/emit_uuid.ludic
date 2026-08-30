@@ -1,0 +1,164 @@
+# emit_uuid.ludic — the Uuid.* namespace: universally-unique identifiers for
+# stable IDs that don't collide (players, sessions, networked entities, saved
+# and shared user content, per-install analytics IDs).
+#
+#   Uuid.new()        a v4 (random) UUID           -> canonical 36-char string
+#   Uuid.v4()         explicit alias for new()
+#   Uuid.new_v7()     a v7 (time-ordered) UUID: the first 48 bits are a Unix-ms
+#   Uuid.v7()         timestamp, so v7 IDs sort by creation time (DB/index-friendly)
+#   Uuid.parse(s)     normalise an untrusted string -> lowercase UUID, or the nil
+#                     UUID if it is not a well-formed UUID (pair with Uuid.is_valid)
+#   Uuid.is_valid(s)  is `s` a well-formed UUID?    -> bool
+#   Uuid.to_text(id)  the canonical text form       -> string (identity here)
+#   Uuid.equals(a, b) case-insensitive equality     -> bool
+#   Uuid.nil()        the all-zero UUID             -> "00000000-0000-0000-0000-000000000000"
+#
+# A UUID is represented as its canonical lowercase 36-char text form. This is the
+# form you store, print, send over the wire and compare, so keeping IDs in that
+# shape avoids a conversion at every boundary; `equals` is case-insensitive so an
+# upper-case UUID from another system still matches.
+#
+# DETERMINISM CAVEAT: v4 and the random tail of v7 come from the OS CSPRNG
+# (Crypto.random_*), which is deliberately non-deterministic. Minting a UUID
+# inside the lockstep simulation will desync replays / networked peers — generate
+# IDs at the edges (on connect, on save, on spawn-from-input), never per tick in
+# gameplay code that must reproduce.
+
+function is_uuid_ns(meth: pointer) -> bool {
+  if (meth == "new") or (meth == "v4") or (meth == "new_v7") or (meth == "v7") { return true }
+  if (meth == "parse") or (meth == "is_valid") or (meth == "to_text") { return true }
+  if (meth == "equals") or (meth == "nil") { return true }
+  return false
+}
+
+function emit_uuid_ns(meth: pointer, e: Node) -> Val {
+  # Uuid.* reuses the crypto prelude's CSPRNG (fn_secure_bytes) and hex encoder
+  # (fn_hex_encode), so pull that runtime in as well as the uuid formatters.
+  g_uses_cryptort = true
+  g_uses_uuidrt = true
+  if (meth == "new") or (meth == "v4") {            # v4: 122 random bits
+    return val(emit_bind("call ptr @fn_uuid_v4()"), "string")
+  }
+  if (meth == "new_v7") or (meth == "v7") {         # v7: ms timestamp + random
+    return val(emit_bind("call ptr @fn_uuid_v7()"), "string")
+  }
+  if (meth == "nil") {                              # the all-zero UUID
+    return val(emit_bind("call ptr @fn_uuid_nil()"), "string")
+  }
+  if (meth == "is_valid") {                         # well-formed UUID? -> bool
+    let s = emit_expr(e.kids[0])
+    return val(emit_bind(`call i32 @fn_uuid_valid(ptr {s.code})`), "bool")
+  }
+  if (meth == "to_text") {                          # already canonical text: identity
+    let s = emit_expr(e.kids[0])
+    return val(s.code, "string")
+  }
+  if (meth == "equals") {                           # case-insensitive equality -> bool
+    let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1])
+    return val(emit_bind(`call i32 @fn_uuid_eq(ptr {a.code}, ptr {b.code})`), "bool")
+  }
+  # parse(s): normalise an untrusted string to a lowercase UUID, or the nil UUID
+  # when it is not well-formed. Callers that must reject bad input should gate on
+  # Uuid.is_valid(s) first; this never faults on garbage.
+  let s = emit_expr(e.kids[0])
+  return val(emit_bind(`call ptr @fn_uuid_parse(ptr {s.code})`), "string")
+}
+
+# emit_uuid_prelude — the UUID runtime, emitted once per program that uses Uuid.*
+# (g_uses_uuidrt). All pure integer IR over the crypto prelude's CSPRNG + hex
+# encoder; format is the canonical 8-4-4-4-12 lowercase text with RFC 4122
+# version and variant bits set.
+function emit_uuid_prelude() -> void {
+  # 16 raw bytes -> a fresh canonical 36-char string. hex-encode all 16 bytes,
+  # then splice the four hyphens between the 8/4/4/4/12 groups.
+  emith("define ptr @fn_uuid_format(ptr %b16) {\n")
+  emith("entry:\n  %hex = call ptr @fn_hex_encode(ptr %b16, i64 16)\n  %out = call ptr @malloc(i64 37)\n")
+  emith("  call ptr @memcpy(ptr %out, ptr %hex, i64 8)\n")
+  emith("  %o8 = getelementptr i8, ptr %out, i64 8\n  store i8 45, ptr %o8\n")
+  emith("  %h8 = getelementptr i8, ptr %hex, i64 8\n  %o9 = getelementptr i8, ptr %out, i64 9\n  call ptr @memcpy(ptr %o9, ptr %h8, i64 4)\n")
+  emith("  %o13 = getelementptr i8, ptr %out, i64 13\n  store i8 45, ptr %o13\n")
+  emith("  %h12 = getelementptr i8, ptr %hex, i64 12\n  %o14 = getelementptr i8, ptr %out, i64 14\n  call ptr @memcpy(ptr %o14, ptr %h12, i64 4)\n")
+  emith("  %o18 = getelementptr i8, ptr %out, i64 18\n  store i8 45, ptr %o18\n")
+  emith("  %h16 = getelementptr i8, ptr %hex, i64 16\n  %o19 = getelementptr i8, ptr %out, i64 19\n  call ptr @memcpy(ptr %o19, ptr %h16, i64 4)\n")
+  emith("  %o23 = getelementptr i8, ptr %out, i64 23\n  store i8 45, ptr %o23\n")
+  emith("  %h20 = getelementptr i8, ptr %hex, i64 20\n  %o24 = getelementptr i8, ptr %out, i64 24\n  call ptr @memcpy(ptr %o24, ptr %h20, i64 12)\n")
+  emith("  %o36 = getelementptr i8, ptr %out, i64 36\n  store i8 0, ptr %o36\n")
+  emith("  call void @free(ptr %hex)\n  ret ptr %out\n}\n")
+
+  # v4: 16 CSPRNG bytes, then set version (0x4x in byte 6) and variant (0b10xx in
+  # byte 8). 0x80 does not fit an i8 immediate, so it is written as -128.
+  emith("define ptr @fn_uuid_v4() {\n")
+  emith("entry:\n  %b = alloca [16 x i8]\n  %bp = getelementptr [16 x i8], ptr %b, i64 0, i64 0\n  call void @fn_secure_bytes(ptr %bp, i64 16)\n")
+  emith("  %p6 = getelementptr i8, ptr %bp, i64 6\n  %v6 = load i8, ptr %p6\n  %v6a = and i8 %v6, 15\n  %v6b = or i8 %v6a, 64\n  store i8 %v6b, ptr %p6\n")
+  emith("  %p8 = getelementptr i8, ptr %bp, i64 8\n  %v8 = load i8, ptr %p8\n  %v8a = and i8 %v8, 63\n  %v8b = or i8 %v8a, -128\n  store i8 %v8b, ptr %p8\n")
+  emith("  %s = call ptr @fn_uuid_format(ptr %bp)\n  ret ptr %s\n}\n")
+
+  # v7: random fill, then overwrite the first 6 bytes with a 48-bit big-endian
+  # Unix-millisecond timestamp; set version 7 (0x7x) and the variant. Sub-second
+  # resolution is derived from time() seconds * 1000 — monotonic per second, with
+  # the random tail keeping same-millisecond IDs distinct.
+  emith("define ptr @fn_uuid_v7() {\n")
+  emith("entry:\n  %b = alloca [16 x i8]\n  %bp = getelementptr [16 x i8], ptr %b, i64 0, i64 0\n  call void @fn_secure_bytes(ptr %bp, i64 16)\n")
+  emith("  %t = call i64 @time(ptr null)\n  %ms = mul i64 %t, 1000\n")
+  emith("  %s40 = lshr i64 %ms, 40\n  %t0 = trunc i64 %s40 to i8\n  %q0 = getelementptr i8, ptr %bp, i64 0\n  store i8 %t0, ptr %q0\n")
+  emith("  %s32 = lshr i64 %ms, 32\n  %t1 = trunc i64 %s32 to i8\n  %q1 = getelementptr i8, ptr %bp, i64 1\n  store i8 %t1, ptr %q1\n")
+  emith("  %s24 = lshr i64 %ms, 24\n  %t2 = trunc i64 %s24 to i8\n  %q2 = getelementptr i8, ptr %bp, i64 2\n  store i8 %t2, ptr %q2\n")
+  emith("  %s16 = lshr i64 %ms, 16\n  %t3 = trunc i64 %s16 to i8\n  %q3 = getelementptr i8, ptr %bp, i64 3\n  store i8 %t3, ptr %q3\n")
+  emith("  %s8 = lshr i64 %ms, 8\n  %t4 = trunc i64 %s8 to i8\n  %q4 = getelementptr i8, ptr %bp, i64 4\n  store i8 %t4, ptr %q4\n")
+  emith("  %t5 = trunc i64 %ms to i8\n  %q5 = getelementptr i8, ptr %bp, i64 5\n  store i8 %t5, ptr %q5\n")
+  emith("  %p6 = getelementptr i8, ptr %bp, i64 6\n  %v6 = load i8, ptr %p6\n  %v6a = and i8 %v6, 15\n  %v6b = or i8 %v6a, 112\n  store i8 %v6b, ptr %p6\n")
+  emith("  %p8 = getelementptr i8, ptr %bp, i64 8\n  %v8 = load i8, ptr %p8\n  %v8a = and i8 %v8, 63\n  %v8b = or i8 %v8a, -128\n  store i8 %v8b, ptr %p8\n")
+  emith("  %s = call ptr @fn_uuid_format(ptr %bp)\n  ret ptr %s\n}\n")
+
+  # the nil UUID: 36 '0' with hyphens spliced in
+  emith("define ptr @fn_uuid_nil() {\n")
+  emith("entry:\n  %out = call ptr @malloc(i64 37)\n  call ptr @memset(ptr %out, i32 48, i64 36)\n")
+  emith("  %o8 = getelementptr i8, ptr %out, i64 8\n  store i8 45, ptr %o8\n")
+  emith("  %o13 = getelementptr i8, ptr %out, i64 13\n  store i8 45, ptr %o13\n")
+  emith("  %o18 = getelementptr i8, ptr %out, i64 18\n  store i8 45, ptr %o18\n")
+  emith("  %o23 = getelementptr i8, ptr %out, i64 23\n  store i8 45, ptr %o23\n")
+  emith("  %o36 = getelementptr i8, ptr %out, i64 36\n  store i8 0, ptr %o36\n  ret ptr %out\n}\n")
+
+  # is %s a well-formed UUID? length 36, hyphens at 8/13/18/23, hex elsewhere.
+  emith("define i32 @fn_uuid_valid(ptr %s) {\n")
+  emith("entry:\n  %n = call i64 @strlen(ptr %s)\n  %ne = icmp eq i64 %n, 36\n  br i1 %ne, label %go, label %bad\n")
+  emith("go:\n  %ip = alloca i64\n  store i64 0, ptr %ip\n  br label %cond\n")
+  emith("cond:\n  %i = load i64, ptr %ip\n  %lt = icmp ult i64 %i, 36\n  br i1 %lt, label %body, label %good\n")
+  emith("body:\n  %p = getelementptr i8, ptr %s, i64 %i\n  %c = load i8, ptr %p\n")
+  emith("  %h8 = icmp eq i64 %i, 8\n  %h13 = icmp eq i64 %i, 13\n  %h18 = icmp eq i64 %i, 18\n  %h23 = icmp eq i64 %i, 23\n")
+  emith("  %hx = or i1 %h8, %h13\n  %hy = or i1 %hx, %h18\n  %hyph = or i1 %hy, %h23\n  br i1 %hyph, label %ckhyph, label %ckhex\n")
+  emith("ckhyph:\n  %ish = icmp eq i8 %c, 45\n  br i1 %ish, label %next, label %bad\n")
+  emith("ckhex:\n")
+  emith("  %ge0 = icmp uge i8 %c, 48\n  %le9 = icmp ule i8 %c, 57\n  %isdig = and i1 %ge0, %le9\n")
+  emith("  %gea = icmp uge i8 %c, 97\n  %lef = icmp ule i8 %c, 102\n  %islo = and i1 %gea, %lef\n")
+  emith("  %geA = icmp uge i8 %c, 65\n  %leF = icmp ule i8 %c, 70\n  %ishi = and i1 %geA, %leF\n")
+  emith("  %hx1 = or i1 %isdig, %islo\n  %ishex = or i1 %hx1, %ishi\n  br i1 %ishex, label %next, label %bad\n")
+  emith("next:\n  %i1 = add i64 %i, 1\n  store i64 %i1, ptr %ip\n  br label %cond\n")
+  emith("good:\n  ret i32 1\n")
+  emith("bad:\n  ret i32 0\n}\n")
+
+  # case-insensitive equality of two null-terminated strings -> i32 bool
+  emith("define i32 @fn_uuid_eq(ptr %a, ptr %b) {\n")
+  emith("entry:\n  %la = call i64 @strlen(ptr %a)\n  %lb = call i64 @strlen(ptr %b)\n  %eq = icmp eq i64 %la, %lb\n  br i1 %eq, label %go, label %ne\n")
+  emith("go:\n  %ip = alloca i64\n  store i64 0, ptr %ip\n  br label %cond\n")
+  emith("cond:\n  %i = load i64, ptr %ip\n  %lt = icmp ult i64 %i, %la\n  br i1 %lt, label %body, label %eqret\n")
+  emith("body:\n  %pa = getelementptr i8, ptr %a, i64 %i\n  %ca = load i8, ptr %pa\n  %pb = getelementptr i8, ptr %b, i64 %i\n  %cb = load i8, ptr %pb\n")
+  emith("  %caA = icmp uge i8 %ca, 65\n  %caZ = icmp ule i8 %ca, 90\n  %caup = and i1 %caA, %caZ\n  %ca32 = add i8 %ca, 32\n  %cal = select i1 %caup, i8 %ca32, i8 %ca\n")
+  emith("  %cbA = icmp uge i8 %cb, 65\n  %cbZ = icmp ule i8 %cb, 90\n  %cbup = and i1 %cbA, %cbZ\n  %cb32 = add i8 %cb, 32\n  %cbl = select i1 %cbup, i8 %cb32, i8 %cb\n")
+  emith("  %same = icmp eq i8 %cal, %cbl\n  br i1 %same, label %next, label %ne\n")
+  emith("next:\n  %i1 = add i64 %i, 1\n  store i64 %i1, ptr %ip\n  br label %cond\n")
+  emith("eqret:\n  ret i32 1\n")
+  emith("ne:\n  ret i32 0\n}\n")
+
+  # parse: lowercase-normalise a valid UUID, else return the nil UUID.
+  emith("define ptr @fn_uuid_parse(ptr %s) {\n")
+  emith("entry:\n  %ok = call i32 @fn_uuid_valid(ptr %s)\n  %isok = icmp ne i32 %ok, 0\n  br i1 %isok, label %dup, label %nilb\n")
+  emith("dup:\n  %out = call ptr @malloc(i64 37)\n  %ip = alloca i64\n  store i64 0, ptr %ip\n  br label %cond\n")
+  emith("cond:\n  %i = load i64, ptr %ip\n  %lt = icmp ult i64 %i, 36\n  br i1 %lt, label %body, label %fin\n")
+  emith("body:\n  %p = getelementptr i8, ptr %s, i64 %i\n  %c = load i8, ptr %p\n")
+  emith("  %cA = icmp uge i8 %c, 65\n  %cZ = icmp ule i8 %c, 90\n  %cup = and i1 %cA, %cZ\n  %c32 = add i8 %c, 32\n  %cl = select i1 %cup, i8 %c32, i8 %c\n")
+  emith("  %op = getelementptr i8, ptr %out, i64 %i\n  store i8 %cl, ptr %op\n")
+  emith("  %i1 = add i64 %i, 1\n  store i64 %i1, ptr %ip\n  br label %cond\n")
+  emith("fin:\n  %o36 = getelementptr i8, ptr %out, i64 36\n  store i8 0, ptr %o36\n  ret ptr %out\n")
+  emith("nilb:\n  %nn = call ptr @fn_uuid_nil()\n  ret ptr %nn\n}\n")
+}

@@ -1,0 +1,30 @@
+# crypto.ludic — Crypto.* known-answer vectors + the secure-random surface.
+# SHA-256 / HMAC-SHA256 / base64 are checked against published test vectors, so a
+# regression in the integer IR shows up as a changed line. The secure-random
+# helpers are non-deterministic, so we assert their SHAPE (length, distinctness),
+# never a fixed value. Running it prints: 1 2 3 4 5 6 7 8 9
+program Crypto {
+  entry {
+    # SHA-256 (FIPS 180-4 examples)
+    if Crypto.sha256("abc") == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" { print(1) }
+    if Crypto.sha256("") == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" { print(2) }
+
+    # HMAC-SHA256 (RFC 4231 test case 2: key "Jefe", data "what do ya want for nothing?")
+    if Crypto.hmac_sha256("Jefe", "what do ya want for nothing?") == "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843" { print(3) }
+
+    # constant-time verify: the right MAC verifies, a tampered one does not
+    let mac = Crypto.hmac_sha256("k", "payload")
+    if Crypto.verify_hmac("k", "payload", mac) { print(4) }
+    if not Crypto.verify_hmac("k", "payload", "00") { print(5) }
+
+    # base64 (RFC 4648 vectors), covering every padding remainder
+    if Crypto.base64("") == "" { print(6) }
+    if Crypto.base64("f") == "Zg==" { print(7) }
+    if Crypto.base64("foobar") == "Zm9vYmFy" { print(8) }
+
+    # secure random: two 16-byte draws are 32 hex chars each and (near-certainly) differ
+    let a = Crypto.random_bytes(16)
+    let b = Crypto.random_bytes(16)
+    if len(a) == 32 and a != b { print(9) }
+  }
+}

@@ -9,6 +9,16 @@
 #                                in constant time -> bool (the tamper check)
 #   Crypto.hex(s)                lowercase hex of the bytes of `s`
 #   Crypto.ct_equal(a, b)        constant-time string equality (for secrets/MACs)
+#   Crypto.random_bytes(n)       n bytes from the OS CSPRNG -> 2n-char hex string
+#   Crypto.random_hex(n)         alias for random_bytes (explicit about the return)
+#   Crypto.random_u32()          one CSPRNG-drawn 32-bit int (tokens, non-sim seeds)
+#   Crypto.base64(s)             standard base64 (RFC 4648) of the bytes of `s`
+#
+# The secure-random helpers read the operating system CSPRNG (/dev/urandom) and
+# are deliberately NON-deterministic — never seed the lockstep simulation RNG
+# from them (that is `Random.*`). They are for tokens, nonces, and UUIDs, whose
+# whole point is unpredictability. On a target without /dev/urandom (e.g. wasm)
+# the read yields zeroes; a real CSPRNG binding is left to the platform layer.
 #
 # This is a well-specified standard algorithm (FIPS 180-4 / RFC 2104), implemented
 # from scratch in plain integer IR: no libc crypto, no allocation-order or
@@ -26,6 +36,8 @@
 function is_crypto_ns(meth: pointer) -> bool {
   if (meth == "sha256") or (meth == "hmac_sha256") or (meth == "verify_hmac") { return true }
   if (meth == "hex") or (meth == "ct_equal") { return true }
+  if (meth == "random_bytes") or (meth == "random_hex") or (meth == "random_u32") { return true }
+  if (meth == "base64") { return true }
   return false
 }
 
@@ -46,6 +58,21 @@ function emit_crypto_ns(meth: pointer, e: Node) -> Val {
   if (meth == "ct_equal") {                         # constant-time string equality -> bool
     let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1])
     return val(emit_bind(`call i32 @fn_ct_streq(ptr {a.code}, ptr {b.code})`), "bool")
+  }
+  # random_bytes(n) / random_hex(n): n bytes from the OS CSPRNG, returned as a
+  # 2n-char lowercase hex string. A digest of raw bytes can contain NUL and a
+  # `str` is NUL-terminated, so the secure-random surface is hex like the digests.
+  if (meth == "random_bytes") or (meth == "random_hex") {
+    let n = emit_expr(e.kids[0])
+    let n64 = emit_bind(`sext i32 {n.code} to i64`)
+    return val(emit_bind(`call ptr @fn_random_hex(i64 {n64})`), "string")
+  }
+  if (meth == "random_u32") {                       # one CSPRNG-drawn 32-bit int
+    return val(emit_bind(`call i32 @fn_random_u32()`), "int")
+  }
+  if (meth == "base64") {                           # standard base64 (RFC 4648) of a string's bytes
+    let s = emit_expr(e.kids[0])
+    return val(emit_bind(`call ptr @fn_base64(ptr {s.code})`), "string")
   }
   # verify_hmac(key, msg, mac): recompute HMAC-SHA256(key, msg) and compare it to
   # the supplied hex `mac` in constant time. This is the safe way to check a MAC —
@@ -253,4 +280,72 @@ function emit_crypto_prelude() -> void {
   emith("c:\n  %i = load i64, ptr %ip\n  %lt = icmp ult i64 %i, %la\n  br i1 %lt, label %bdy, label %d\n")
   emith("bdy:\n  %pa = getelementptr i8, ptr %a, i64 %i\n  %va = load i8, ptr %pa\n  %pb = getelementptr i8, ptr %b, i64 %i\n  %vb = load i8, ptr %pb\n  %x = xor i8 %va, %vb\n  %xz = zext i8 %x to i32\n  %ac = load i32, ptr %accp\n  %ao = or i32 %ac, %xz\n  store i32 %ao, ptr %accp\n  %in = add i64 %i, 1\n  store i64 %in, ptr %ip\n  br label %c\n")
   emith("d:\n  %finv = load i32, ptr %accp\n  %z = icmp eq i32 %finv, 0\n  %r = zext i1 %z to i32\n  ret i32 %r\n}\n")
+
+  emit_secure_rand_prelude()
+}
+
+# emit_secure_rand_prelude — the OS-CSPRNG surface shared by Crypto.random_* and
+# the Uuid.* library: read raw bytes from /dev/urandom, and a base64 encoder.
+# Emitted as part of the crypto prelude (both Crypto.* and Uuid.* set
+# g_uses_cryptort), so hex_encode above is always in scope here.
+function emit_secure_rand_prelude() -> void {
+  emith("@.ludic_urandom = private unnamed_addr constant [13 x i8] c\"/dev/urandom\\00\"\n")
+  emith("@.ludic_rbmode = private unnamed_addr constant [3 x i8] c\"rb\\00\"\n")
+  emith("@.ludic_b64tab = private unnamed_addr constant [64 x i8] c\"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/\"\n")
+
+  # fill %n bytes at %out from the OS CSPRNG. If /dev/urandom cannot be opened the
+  # buffer is zeroed (documented degraded mode — e.g. wasm), never left uninit.
+  emith("define void @fn_secure_bytes(ptr %out, i64 %n) {\n")
+  emith("entry:\n  call ptr @memset(ptr %out, i32 0, i64 %n)\n")
+  emith("  %fp = call ptr @fopen(ptr @.ludic_urandom, ptr @.ludic_rbmode)\n")
+  emith("  %isnull = icmp eq ptr %fp, null\n  br i1 %isnull, label %fail, label %ok\n")
+  emith("ok:\n  %rd = call i64 @fread(ptr %out, i64 1, i64 %n, ptr %fp)\n  %cl = call i32 @fclose(ptr %fp)\n  ret void\n")
+  emith("fail:\n  ret void\n}\n")
+
+  # %n secure bytes -> a fresh 2n-char lowercase hex string
+  emith("define ptr @fn_random_hex(i64 %n) {\n")
+  emith("entry:\n  %buf = call ptr @malloc(i64 %n)\n  call void @fn_secure_bytes(ptr %buf, i64 %n)\n")
+  emith("  %hex = call ptr @fn_hex_encode(ptr %buf, i64 %n)\n  call void @free(ptr %buf)\n  ret ptr %hex\n}\n")
+
+  # one CSPRNG-drawn i32 (little-endian assembly of four secure bytes)
+  emith("define i32 @fn_random_u32() {\n")
+  emith("entry:\n  %b = alloca [4 x i8]\n  %bp = getelementptr [4 x i8], ptr %b, i64 0, i64 0\n  call void @fn_secure_bytes(ptr %bp, i64 4)\n")
+  emith("  %p0 = getelementptr i8, ptr %bp, i64 0\n  %c0 = load i8, ptr %p0\n  %z0 = zext i8 %c0 to i32\n")
+  emith("  %p1 = getelementptr i8, ptr %bp, i64 1\n  %c1 = load i8, ptr %p1\n  %z1 = zext i8 %c1 to i32\n  %s1 = shl i32 %z1, 8\n")
+  emith("  %p2 = getelementptr i8, ptr %bp, i64 2\n  %c2 = load i8, ptr %p2\n  %z2 = zext i8 %c2 to i32\n  %s2 = shl i32 %z2, 16\n")
+  emith("  %p3 = getelementptr i8, ptr %bp, i64 3\n  %c3 = load i8, ptr %p3\n  %z3 = zext i8 %c3 to i32\n  %s3 = shl i32 %z3, 24\n")
+  emith("  %o1 = or i32 %z0, %s1\n  %o2 = or i32 %o1, %s2\n  %o3 = or i32 %o2, %s3\n  ret i32 %o3\n}\n")
+
+  # standard base64 (RFC 4648, '+' '/' alphabet, '=' padding). The input is copied
+  # into a zero-padded buffer rounded up to a multiple of 3, so the 3-byte group
+  # loop never reads past the string; trailing '=' are written per the remainder.
+  emith("define ptr @fn_base64(ptr %s) {\n")
+  emith("entry:\n  %n = call i64 @strlen(ptr %s)\n")
+  emith("  %n2 = add i64 %n, 2\n  %grp = udiv i64 %n2, 3\n  %bufn = mul i64 %grp, 3\n")
+  emith("  %olen = mul i64 %grp, 4\n  %olen1 = add i64 %olen, 1\n  %out = call ptr @malloc(i64 %olen1)\n")
+  emith("  %inbuf = call ptr @malloc(i64 %bufn)\n  call ptr @memset(ptr %inbuf, i32 0, i64 %bufn)\n  call ptr @memcpy(ptr %inbuf, ptr %s, i64 %n)\n")
+  emith("  %gp = alloca i64\n  store i64 0, ptr %gp\n  br label %cond\n")
+  emith("cond:\n  %gi = load i64, ptr %gp\n  %lt = icmp ult i64 %gi, %grp\n  br i1 %lt, label %body, label %pad\n")
+  emith("body:\n  %i3 = mul i64 %gi, 3\n")
+  emith("  %ip0 = getelementptr i8, ptr %inbuf, i64 %i3\n  %bv0 = load i8, ptr %ip0\n  %b0 = zext i8 %bv0 to i32\n")
+  emith("  %i3a = add i64 %i3, 1\n  %ip1 = getelementptr i8, ptr %inbuf, i64 %i3a\n  %bv1 = load i8, ptr %ip1\n  %b1 = zext i8 %bv1 to i32\n")
+  emith("  %i3b = add i64 %i3, 2\n  %ip2 = getelementptr i8, ptr %inbuf, i64 %i3b\n  %bv2 = load i8, ptr %ip2\n  %b2 = zext i8 %bv2 to i32\n")
+  emith("  %e0 = lshr i32 %b0, 2\n")
+  emith("  %b0l = and i32 %b0, 3\n  %b0s = shl i32 %b0l, 4\n  %b1h = lshr i32 %b1, 4\n  %e1 = or i32 %b0s, %b1h\n")
+  emith("  %b1l = and i32 %b1, 15\n  %b1s = shl i32 %b1l, 2\n  %b2h = lshr i32 %b2, 6\n  %e2 = or i32 %b1s, %b2h\n")
+  emith("  %e3 = and i32 %b2, 63\n")
+  emith("  %o4 = mul i64 %gi, 4\n")
+  emith("  %e0z = zext i32 %e0 to i64\n  %e1z = zext i32 %e1 to i64\n  %e2z = zext i32 %e2 to i64\n  %e3z = zext i32 %e3 to i64\n")
+  emith("  %g0 = getelementptr [64 x i8], ptr @.ludic_b64tab, i64 0, i64 %e0z\n  %ch0 = load i8, ptr %g0\n  %op0 = getelementptr i8, ptr %out, i64 %o4\n  store i8 %ch0, ptr %op0\n")
+  emith("  %o4a = add i64 %o4, 1\n  %g1 = getelementptr [64 x i8], ptr @.ludic_b64tab, i64 0, i64 %e1z\n  %ch1 = load i8, ptr %g1\n  %op1 = getelementptr i8, ptr %out, i64 %o4a\n  store i8 %ch1, ptr %op1\n")
+  emith("  %o4b = add i64 %o4, 2\n  %g2 = getelementptr [64 x i8], ptr @.ludic_b64tab, i64 0, i64 %e2z\n  %ch2 = load i8, ptr %g2\n  %op2 = getelementptr i8, ptr %out, i64 %o4b\n  store i8 %ch2, ptr %op2\n")
+  emith("  %o4c = add i64 %o4, 3\n  %g3 = getelementptr [64 x i8], ptr @.ludic_b64tab, i64 0, i64 %e3z\n  %ch3 = load i8, ptr %g3\n  %op3 = getelementptr i8, ptr %out, i64 %o4c\n  store i8 %ch3, ptr %op3\n")
+  emith("  %gin = add i64 %gi, 1\n  store i64 %gin, ptr %gp\n  br label %cond\n")
+  emith("pad:\n  %rem = urem i64 %n, 3\n  %r1 = icmp eq i64 %rem, 1\n  %r2 = icmp eq i64 %rem, 2\n")
+  emith("  %eq = getelementptr i8, ptr %out, i64 %olen\n  store i8 0, ptr %eq\n")
+  emith("  br i1 %r1, label %pad1, label %maybe2\n")
+  emith("pad1:\n  %pm1 = sub i64 %olen, 1\n  %pp1 = getelementptr i8, ptr %out, i64 %pm1\n  store i8 61, ptr %pp1\n  %pm2 = sub i64 %olen, 2\n  %pp2 = getelementptr i8, ptr %out, i64 %pm2\n  store i8 61, ptr %pp2\n  br label %done\n")
+  emith("maybe2:\n  br i1 %r2, label %pad2, label %done\n")
+  emith("pad2:\n  %qm1 = sub i64 %olen, 1\n  %qp1 = getelementptr i8, ptr %out, i64 %qm1\n  store i8 61, ptr %qp1\n  br label %done\n")
+  emith("done:\n  call void @free(ptr %inbuf)\n  ret ptr %out\n}\n")
 }

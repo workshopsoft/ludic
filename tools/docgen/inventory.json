@@ -404,6 +404,21 @@
     "crypto-hmac_sha256",
     "crypto-verify_hmac",
     "crypto-hex",
-    "crypto-ct_equal"
+    "crypto-ct_equal",
+    "crypto-random_bytes",
+    "crypto-random_hex",
+    "crypto-random_u32",
+    "crypto-base64"
+  ],
+  "uuid": [
+    "uuid-new",
+    "uuid-v4",
+    "uuid-new_v7",
+    "uuid-v7",
+    "uuid-parse",
+    "uuid-is_valid",
+    "uuid-to_text",
+    "uuid-equals",
+    "uuid-nil"
   ]
 }

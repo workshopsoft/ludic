@@ -235,6 +235,10 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if is_crypto_ns(meth) { return emit_crypto_ns(meth, e) }
     perr(`unknown builtin Crypto.{meth}`)
   }
+  if (ns == "Uuid") {
+    if is_uuid_ns(meth) { return emit_uuid_ns(meth, e) }
+    perr(`unknown builtin Uuid.{meth}`)
+  }
   if (ns == "Vector") {
     if is_vector_ns(meth) { return emit_vector_ns(meth, e) }
     perr(`unknown builtin Vector.{meth}`)

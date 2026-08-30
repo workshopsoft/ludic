@@ -1,0 +1,32 @@
+# uuid.ludic — Uuid.* format round-trip, version/variant bits, validation and
+# equality. v4/v7 values are random, so we assert their STRUCTURE (length, the
+# version nibble, the variant, that two draws differ), never a fixed value.
+# Running it prints: 1 2 3 4 5 6 7 8 9 10
+program Uuid {
+  entry {
+    let a = Uuid.new()
+    let b = Uuid.new()
+
+    # 36 chars, canonical hyphen positions, and two draws differ
+    if len(a) == 36 { print(1) }
+    if a[8..9] == "-" and a[13..14] == "-" and a[18..19] == "-" and a[23..24] == "-" { print(2) }
+    if a != b { print(3) }
+
+    # v4: version nibble is '4' (index 14), variant is one of 8/9/a/b (index 19)
+    if a[14..15] == "4" { print(4) }
+    let var4 = a[19..20]
+    if var4 == "8" or var4 == "9" or var4 == "a" or var4 == "b" { print(5) }
+
+    # v7: version nibble is '7'; still a well-formed UUID
+    let c = Uuid.new_v7()
+    if c[14..15] == "7" and Uuid.is_valid(c) { print(6) }
+
+    # validation of untrusted input
+    if Uuid.is_valid("550e8400-e29b-41d4-a716-446655440000") { print(7) }
+    if not Uuid.is_valid("not-a-uuid") { print(8) }
+
+    # parse normalises case; equals is case-insensitive; bad input -> nil
+    if Uuid.equals(Uuid.parse("550E8400-E29B-41D4-A716-446655440000"), "550e8400-e29b-41d4-a716-446655440000") { print(9) }
+    if Uuid.parse("garbage") == Uuid.nil() { print(10) }
+  }
+}
