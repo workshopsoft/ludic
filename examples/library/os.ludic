@@ -1,0 +1,37 @@
+# os.ludic — Os.* environment interface. args/env/platform are non-deterministic
+# host input, so instead of fixed answers we assert the invariants that must hold
+# regardless of where it runs: an env var round-trips, env_or falls back when a
+# var is unset, unset removes it, args() agrees with arg_count(), and the host
+# facts and known folders are all non-empty. Running it prints: 1 2 3 4 5 6 7 8 9 10 11 12 13
+program Os {
+  entry {
+    # environment variables round-trip through set/get
+    if Os.set_env("LUDIC_OS_TEST", "42") { print(1) }
+    if Os.env("LUDIC_OS_TEST") == "42" { print(2) }
+    if Os.has_env("LUDIC_OS_TEST") { print(3) }
+
+    # env_or returns the fallback for a variable that is not set
+    if Os.env_or("LUDIC_OS_DEFINITELY_UNSET", "fallback") == "fallback" { print(4) }
+
+    # unset removes the variable
+    if Os.unset_env("LUDIC_OS_TEST") { print(5) }
+    if not Os.has_env("LUDIC_OS_TEST") { print(6) }
+
+    # the argument vector always carries at least the program path, and args()
+    # is a []string of exactly arg_count() elements
+    if Os.arg_count() >= 1 { print(7) }
+    if len(Os.args()) == Os.arg_count() { print(8) }
+
+    # platform and arch are non-empty host facts
+    if len(Os.platform()) > 0 { print(9) }
+    if len(Os.arch()) > 0 { print(10) }
+
+    # per-user known folders resolve to non-empty paths
+    if len(Os.save_dir("MyGame")) > 0 { print(11) }
+    if len(Os.temp_dir()) > 0 { print(12) }
+
+    # diagnostics go to stderr, so they never disturb this program's stdout
+    Os.stderr_write("os.ludic: hello from stderr\n")
+    print(13)
+  }
+}

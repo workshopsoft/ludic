@@ -247,6 +247,10 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if is_log_ns(meth) { return emit_log_ns(meth, e) }
     perr(`unknown builtin Log.{meth}`)
   }
+  if (ns == "Os") {
+    if is_os_ns(meth) { return emit_os_ns(meth, e) }
+    perr(`unknown builtin Os.{meth}`)
+  }
   if (ns == "Vector") {
     if is_vector_ns(meth) { return emit_vector_ns(meth, e) }
     perr(`unknown builtin Vector.{meth}`)

@@ -438,5 +438,24 @@
     "log-error",
     "log-set_level",
     "log-level"
+  ],
+  "os": [
+    "os-args",
+    "os-arg_count",
+    "os-arg",
+    "os-env",
+    "os-env_or",
+    "os-has_env",
+    "os-set_env",
+    "os-unset_env",
+    "os-exit",
+    "os-platform",
+    "os-arch",
+    "os-stdout_write",
+    "os-stderr_write",
+    "os-save_dir",
+    "os-config_dir",
+    "os-cache_dir",
+    "os-temp_dir"
   ]
 }
