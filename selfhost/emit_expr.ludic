@@ -247,6 +247,10 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if is_datetime_ns(meth) { return emit_datetime_ns(meth, e) }
     perr(`unknown builtin DateTime.{meth}`)
   }
+  if (ns == "Clock") {
+    if is_clock_ns(meth) { return emit_clock_ns(meth, e) }
+    perr(`unknown builtin Clock.{meth}`)
+  }
   var bare: pointer = null
   let labels = new []pointer
   if (ns == "Screen") {

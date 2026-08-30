@@ -400,6 +400,14 @@
     "datetime-weekday",
     "datetime-hour",
     "datetime-minute",
-    "datetime-second"
+    "datetime-second",
+    "datetime-format",
+    "datetime-parse"
+  ],
+  "clock": [
+    "clock-now",
+    "clock-set",
+    "clock-advance",
+    "clock-reset"
   ]
 }

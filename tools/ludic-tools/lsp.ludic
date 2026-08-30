@@ -1436,6 +1436,14 @@ program LudicLsp {
       if (meth == "hour")    { return "DateTime.hour(dt) -> int" }
       if (meth == "minute")  { return "DateTime.minute(dt) -> int" }
       if (meth == "second")  { return "DateTime.second(dt) -> int" }
+      if (meth == "format")  { return "DateTime.format(dt, pattern) -> string" }
+      if (meth == "parse")   { return "DateTime.parse(text, pattern) -> int" }
+    }
+    if (ns == "Clock") {
+      if (meth == "now")     { return "Clock.now() -> int" }
+      if (meth == "set")     { return "Clock.set(t)" }
+      if (meth == "advance") { return "Clock.advance(span)" }
+      if (meth == "reset")   { return "Clock.reset()" }
     }
     if (ns == "Memory") {
       if (meth == "bytes") { return "Memory.bytes(n) -> pointer" }

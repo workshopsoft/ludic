@@ -84,6 +84,9 @@ function cmd_test() -> int {
   feat_case("detach", "", "15 1 25 0", "detach.ludic (attach/detach + @OnAttach/@OnDetach)")
   feat_case("reason", "", "503 1009", "reason.ludic (@OnDespawn reason: Despawned vs Quit)")
 
+  # issue #9: the Time/Date/Duration/Clock stdlib, driven from its own `entry`.
+  net_case("offline_rewards", "13 650 2026-08-30 0")
+
   # EV0b + NETWORKING N0–N6: each a self-contained pure-Ludic program, driven and
   # asserted from its own `entry`. The transport is the compiler's built-in
   # loopback, so a networked game runs with zero foreign code.

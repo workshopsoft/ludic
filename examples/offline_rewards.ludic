@@ -1,0 +1,29 @@
+# offline_rewards.ludic — issue #9's worked example: an idle/farming game grants
+# "you were away for N hours" rewards on load, using the Time/Date/Duration and
+# the deterministic Clock. Everything is integer seconds, so the result replays
+# identically — no wall clock, no floating point.
+#
+#   bin/ludic examples/offline_rewards.ludic     # prints 13 / 650 / 2026-08-30 / 0
+program OfflineRewards {
+  entry {
+    # A save records when the player last quit. It is hardcoded here so the demo
+    # is deterministic; a real game writes Time.now() (or Clock.now()) at save.
+    let last_seen = DateTime.from(2026, 8, 29, 18, 30, 0)
+
+    # On load, set the game clock to "now". We drive it explicitly (rather than
+    # Time.now) so gameplay stays replay-safe and this sample is reproducible.
+    Clock.set(DateTime.from(2026, 8, 30, 7, 45, 0))
+
+    let away  = Clock.now() - last_seen         # a Duration in seconds (47700)
+    let hours = Duration.as_hours(away)         # whole hours away
+
+    # Reward: 50 coins per full hour, capped at a day's worth.
+    let capped = Math.min(hours, 24)
+    let coins  = capped * 50
+
+    print(hours)                                        # 13
+    print(coins)                                        # 650
+    print(DateTime.format(Clock.now(), "YYYY-MM-DD"))   # 2026-08-30 (the day they returned)
+    print(DateTime.weekday(Clock.now()))                # 0 = Sunday
+  }
+}

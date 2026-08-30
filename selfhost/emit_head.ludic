@@ -70,6 +70,7 @@ function emit_header() -> void {
   emith("@.fmt_line = private unnamed_addr constant [4 x i8] c\"%s\\0A\\00\"\n")
   emith("@L_argc = internal global i32 0\n")
   emith("@L_argv = internal global ptr null\n")
+  emith("@L_clock = internal global i32 0\n")       # Clock.* — the game-controlled simulated clock
   emith("@.gametitle = private unnamed_addr constant [")
   emith(itoa(len(g_game_name) + 1));  emith(" x i8] c\"");  emith(g_game_name);  emith("\\00\"\n")
   emith("%LSlice = type { ptr, i32, i32 }\n")

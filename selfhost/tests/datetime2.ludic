@@ -1,0 +1,23 @@
+program T {
+  entry {
+    let t = DateTime.from(2026, 8, 30, 7, 5, 9)
+
+    # format — tokens expand zero-padded, other chars pass through
+    print(DateTime.format(t, "YYYY-MM-DD"))   # 2026-08-30
+    print(DateTime.format(t, "HH:mm:ss"))     # 07:05:09
+    print(DateTime.format(t, "DD/MM/YY"))     # 30/08/26
+
+    # parse — round-trips to the same instant; missing fields default to midnight
+    print(DateTime.parse("2026-08-30", "YYYY-MM-DD") - Date.to_epoch(Date.new(2026, 8, 30))) # 0
+    print(DateTime.parse("zz", "YYYY"))       # -1 (non-digit -> parse fails)
+
+    # Clock — the game-controlled simulated clock
+    Clock.set(3600)
+    print(Clock.now())                        # 3600
+    Clock.advance(Duration.minutes(30))
+    print(Clock.now())                        # 5400
+    print(DateTime.minute(Clock.now()))       # 30
+    Clock.reset()
+    print(Clock.now())                        # 0
+  }
+}

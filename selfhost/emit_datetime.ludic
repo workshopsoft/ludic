@@ -126,10 +126,132 @@ function is_datetime_ns(meth: pointer) -> bool {
   if (meth == "from") or (meth == "date") or (meth == "add") { return true }
   if (meth == "year") or (meth == "month") or (meth == "day") or (meth == "weekday") { return true }
   if (meth == "hour") or (meth == "minute") or (meth == "second") { return true }
+  if (meth == "format") or (meth == "parse") { return true }
   return false
 }
 
+# concat two runtime string codes -> a fresh string code
+function dt_concat(a: pointer, b: pointer) -> pointer {
+  return emit_bind(`call ptr @fn_str_concat(ptr {a}, ptr {b})`)
+}
+
+# does the pattern have token `tok` (length tlen) starting at index i?
+function dt_tok_at(pat: pointer, n: int, i: int, tok: pointer, tlen: int) -> bool {
+  if (i + tlen) > n { return false }
+  var k = 0
+  while k < tlen { if pat[i + k] != tok[k] { return false };  k = k + 1 }
+  return true
+}
+
+# DateTime.format(t, "pattern") -> string. The pattern MUST be a string literal;
+# the tokens YYYY / YY / MM / DD / HH / mm / ss expand to zero-padded fields and
+# every other character is copied through verbatim. Expanded at compile time into
+# a fold of @fn_str_concat over literal runs and @fn_dt_pad0 field conversions.
+function emit_datetime_format(e: Node) -> Val {
+  g_uses_datert = true
+  g_uses_str = true
+  if e.kids[1].kind != E_STR { perr("DateTime.format needs a string-literal pattern") }
+  let t = emit_expr(e.kids[0])
+  let pat = e.kids[1].s
+  let n = len(pat)
+  # compute all six components once
+  let ed = dt_epochday(t.code)
+  let yp = emit_alloca("i32");  let mp = emit_alloca("i32");  let dp = emit_alloca("i32")
+  emit(`  call void @fn_civil_from_days(i32 {ed}, ptr {yp}, ptr {mp}, ptr {dp})\n`)
+  let yv = emit_bind(`load i32, ptr {yp}`)
+  let mv = emit_bind(`load i32, ptr {mp}`)
+  let dv = emit_bind(`load i32, ptr {dp}`)
+  let sod = dt_secofday(t.code)
+  let hh = emit_bind(`sdiv i32 {sod}, 3600`)
+  let m3 = emit_bind(`srem i32 {sod}, 3600`)
+  let mi = emit_bind(`sdiv i32 {m3}, 60`)
+  let ss = emit_bind(`srem i32 {sod}, 60`)
+  let yy = emit_bind(`srem i32 {yv}, 100`)
+  var acc = emit_str_const("")
+  let lit = buf_new()
+  var i = 0
+  while i < n {
+    var field: pointer = null;  var width = 0;  var tlen = 0
+    if dt_tok_at(pat, n, i, "YYYY", 4) { field = yv;  width = 4;  tlen = 4 }
+    else { if dt_tok_at(pat, n, i, "YY", 2) { field = yy;  width = 2;  tlen = 2 }
+    else { if dt_tok_at(pat, n, i, "MM", 2) { field = mv;  width = 2;  tlen = 2 }
+    else { if dt_tok_at(pat, n, i, "DD", 2) { field = dv;  width = 2;  tlen = 2 }
+    else { if dt_tok_at(pat, n, i, "HH", 2) { field = hh;  width = 2;  tlen = 2 }
+    else { if dt_tok_at(pat, n, i, "mm", 2) { field = mi;  width = 2;  tlen = 2 }
+    else { if dt_tok_at(pat, n, i, "ss", 2) { field = ss;  width = 2;  tlen = 2 } } } } } } }
+    if (field == null) { buf_putc(lit, pat[i]);  i = i + 1 }
+    else {
+      let ls = buf_str(lit)
+      if len(ls) > 0 { acc = dt_concat(acc, emit_str_const(ls)) }
+      let piece = emit_bind(`call ptr @fn_dt_pad0(i32 {field}, i32 {width})`)
+      acc = dt_concat(acc, piece)
+      lit.len = 0                                    # start a fresh literal run
+      i = i + tlen
+    }
+  }
+  let tail = buf_str(lit)
+  if len(tail) > 0 { acc = dt_concat(acc, emit_str_const(tail)) }
+  return val(acc, "string")
+}
+
+# DateTime.parse(s, "pattern") -> DateTime. The pattern MUST be a string literal;
+# each field is read from a fixed offset (the layout the pattern fixes) and any
+# non-digit where a digit is expected fails the parse, returning -1. Missing
+# fields default to 1970-01-01 00:00:00.
+function emit_datetime_parse(e: Node) -> Val {
+  g_uses_datert = true
+  if e.kids[1].kind != E_STR { perr("DateTime.parse needs a string-literal pattern") }
+  let s = emit_expr(e.kids[0])
+  let pat = e.kids[1].s
+  let n = len(pat)
+  let failp = emit_alloca("i32")
+  store_at("i32", "0", failp)
+  # component slots, seeded to the epoch defaults
+  let yp = emit_alloca("i32");  store_at("i32", "1970", yp)
+  let mp = emit_alloca("i32");  store_at("i32", "1", mp)
+  let dp = emit_alloca("i32");  store_at("i32", "1", dp)
+  let hp = emit_alloca("i32");  store_at("i32", "0", hp)
+  let np = emit_alloca("i32");  store_at("i32", "0", np)
+  let sp = emit_alloca("i32");  store_at("i32", "0", sp)
+  var off = 0
+  var i = 0
+  while i < n {
+    var slot: pointer = null;  var width = 0;  var tlen = 0
+    if dt_tok_at(pat, n, i, "YYYY", 4) { slot = yp;  width = 4;  tlen = 4 }
+    else { if dt_tok_at(pat, n, i, "MM", 2) { slot = mp;  width = 2;  tlen = 2 }
+    else { if dt_tok_at(pat, n, i, "DD", 2) { slot = dp;  width = 2;  tlen = 2 }
+    else { if dt_tok_at(pat, n, i, "HH", 2) { slot = hp;  width = 2;  tlen = 2 }
+    else { if dt_tok_at(pat, n, i, "mm", 2) { slot = np;  width = 2;  tlen = 2 }
+    else { if dt_tok_at(pat, n, i, "ss", 2) { slot = sp;  width = 2;  tlen = 2 } } } } } }
+    if (slot == null) { off = off + 1;  i = i + 1 }
+    else {
+      let rd = emit_bind(`call i32 @fn_dt_rd(ptr {s.code}, i32 {itoa(off)}, i32 {width}, ptr {failp})`)
+      store_at("i32", rd, slot)
+      off = off + width
+      i = i + tlen
+    }
+  }
+  let y = emit_bind(`load i32, ptr {yp}`)
+  let mo = emit_bind(`load i32, ptr {mp}`)
+  let d = emit_bind(`load i32, ptr {dp}`)
+  let h = emit_bind(`load i32, ptr {hp}`)
+  let mn = emit_bind(`load i32, ptr {np}`)
+  let sc = emit_bind(`load i32, ptr {sp}`)
+  let ed = emit_bind(`call i32 @fn_days_from_civil(i32 {y}, i32 {mo}, i32 {d})`)
+  let days = emit_bind(`mul i32 {ed}, 86400`)
+  let hs = emit_bind(`mul i32 {h}, 3600`)
+  let ns = emit_bind(`mul i32 {mn}, 60`)
+  let a1 = emit_bind(`add i32 {days}, {hs}`)
+  let a2 = emit_bind(`add i32 {a1}, {ns}`)
+  let inst = emit_bind(`add i32 {a2}, {sc}`)
+  let failed = emit_bind(`load i32, ptr {failp}`)
+  let bad = emit_bind(`icmp ne i32 {failed}, 0`)
+  return val(emit_bind(`select i1 {bad}, i32 -1, i32 {inst}`), "int")
+}
+
 function emit_datetime_ns(meth: pointer, e: Node) -> Val {
+  if (meth == "format") { return emit_datetime_format(e) }
+  if (meth == "parse")  { return emit_datetime_parse(e) }
   if (meth == "from") {                             # from(year, month, day, hour, minute, second) -> DateTime
     g_uses_datert = true
     let y = emit_expr(e.kids[0]);  let mo = emit_expr(e.kids[1]);  let d = emit_expr(e.kids[2])
@@ -259,4 +381,65 @@ function emit_datetime_prelude() -> void {
   emith("  store i32 %dd, ptr %dp\n")
   emith("  ret void\n")
   emith("}\n")
+  # @fn_dt_pad0(v, w): a fresh, malloc'd, w-digit zero-padded decimal of v
+  # (v assumed non-negative). Backs DateTime.format's numeric fields.
+  emith("define ptr @fn_dt_pad0(i32 %v, i32 %w) {\n")
+  emith("  %we = zext i32 %w to i64\n")
+  emith("  %sz = add i64 %we, 1\n")
+  emith("  %buf = call ptr @malloc(i64 %sz)\n")
+  emith("  %endp = getelementptr i8, ptr %buf, i32 %w\n")
+  emith("  store i8 0, ptr %endp\n")
+  emith("  %kp = alloca i32\n  %vp = alloca i32\n")
+  emith("  %km1 = sub i32 %w, 1\n  store i32 %km1, ptr %kp\n  store i32 %v, ptr %vp\n")
+  emith("  br label %loop\n")
+  emith("loop:\n  %k = load i32, ptr %kp\n  %kok = icmp sge i32 %k, 0\n  br i1 %kok, label %body, label %done\n")
+  emith("body:\n  %vv = load i32, ptr %vp\n  %d = srem i32 %vv, 10\n  %ch = add i32 %d, 48\n  %ch8 = trunc i32 %ch to i8\n")
+  emith("  %cp = getelementptr i8, ptr %buf, i32 %k\n  store i8 %ch8, ptr %cp\n")
+  emith("  %vn = sdiv i32 %vv, 10\n  store i32 %vn, ptr %vp\n  %kn = sub i32 %k, 1\n  store i32 %kn, ptr %kp\n  br label %loop\n")
+  emith("done:\n  ret ptr %buf\n}\n")
+  # @fn_dt_rd(s, off, w, failp): read w decimal digits of s starting at off into an
+  # int; on any non-digit set *failp = 1. Backs DateTime.parse's fixed-width fields.
+  emith("define i32 @fn_dt_rd(ptr %s, i32 %off, i32 %w, ptr %failp) {\n")
+  emith("  %accp = alloca i32\n  store i32 0, ptr %accp\n  %kp = alloca i32\n  store i32 0, ptr %kp\n")
+  emith("  br label %loop\n")
+  emith("loop:\n  %k = load i32, ptr %kp\n  %kok = icmp slt i32 %k, %w\n  br i1 %kok, label %body, label %done\n")
+  emith("body:\n  %idx = add i32 %off, %k\n  %cp = getelementptr i8, ptr %s, i32 %idx\n  %c8 = load i8, ptr %cp\n  %c = sext i8 %c8 to i32\n")
+  emith("  %zero = icmp eq i32 %c, 0\n  br i1 %zero, label %stop, label %digit\n")   # stop at the terminator, never read past it
+  emith("stop:\n  store i32 1, ptr %failp\n  br label %done\n")
+  emith("digit:\n  %lt = icmp slt i32 %c, 48\n  %gt = icmp sgt i32 %c, 57\n  %isbad = or i1 %lt, %gt\n  br i1 %isbad, label %fail, label %ok\n")
+  emith("fail:\n  store i32 1, ptr %failp\n  br label %next\n")
+  emith("ok:\n  %acc0 = load i32, ptr %accp\n  %m10 = mul i32 %acc0, 10\n  %dg = sub i32 %c, 48\n  %acc1 = add i32 %m10, %dg\n  store i32 %acc1, ptr %accp\n  br label %next\n")
+  emith("next:\n  %kn = add i32 %k, 1\n  store i32 %kn, ptr %kp\n  br label %loop\n")
+  emith("done:\n  %r = load i32, ptr %accp\n  ret i32 %r\n}\n")
+}
+
+# --- Clock.* — a game-controlled simulated clock -----------------------------
+# @L_clock (declared in emit_head, universal) is a plain seconds counter the game
+# owns: unlike Time.now / Time.since, it never touches the wall clock, so gameplay
+# that reads Clock.now() is deterministic and replay-safe. Advance it however the
+# simulation dictates (e.g. by Duration.* each tick), or set it outright.
+function is_clock_ns(meth: pointer) -> bool {
+  if (meth == "now") or (meth == "set") or (meth == "advance") or (meth == "reset") { return true }
+  return false
+}
+
+function emit_clock_ns(meth: pointer, e: Node) -> Val {
+  if (meth == "now") {                              # the current simulated instant
+    return val(emit_bind("load i32, ptr @L_clock"), "int")
+  }
+  if (meth == "reset") {                            # back to the epoch (0)
+    emit("  store i32 0, ptr @L_clock\n")
+    return val("0", "void")
+  }
+  if (meth == "set") {                              # set the clock to instant t
+    let t = emit_expr(e.kids[0])
+    emit(`  store i32 {t.code}, ptr @L_clock\n`)
+    return val("0", "void")
+  }
+  # advance: move the clock forward by a Duration (seconds)
+  let d = emit_expr(e.kids[0])
+  let cur = emit_bind("load i32, ptr @L_clock")
+  let nv = emit_bind(`add i32 {cur}, {d.code}`)
+  emit(`  store i32 {nv}, ptr @L_clock\n`)
+  return val("0", "void")
 }
