@@ -137,7 +137,10 @@ Ludic-written PNG/DEFLATE decoder — no zlib, no external dependency.
 The compiler self-hosts to a byte-exact fixpoint and rebuilds from its IR seed
 with no C compiler; the ECS runtime, windowed + headless 2D rendering, the event
 bus, the deterministic networking stack, scenes, and save/load are all in place
-and covered by `bin/x test`.
+and covered by `bin/x test`. CI gates every push and PR on the build, the test
+suites, and that C-free fixpoint. The toolchain is versioned with SemVer
+(`ludicc --version`); releases and the `CHANGELOG.md` are cut from changesets by
+`x release`.
 
 Active work and proposals — the standard library, a fuller type system,
 rendering/animation/lighting extras, input, filesystem/IO, testing, and

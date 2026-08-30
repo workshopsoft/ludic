@@ -17,6 +17,7 @@ program X {
   import "tools.ludic"
   import "selfhost_test.ludic"
   import "test.ludic"
+  import "release.ludic"
 
   function usage() -> void {
     print("x — the Ludic task runner (run from the repository root)")
@@ -34,6 +35,11 @@ program X {
     print("  x selfhost-test               the self-hosting suite (correctness + bootstrap fixpoints)")
     print("  x test-tools                  the editor-toolchain suite")
     print("  x golden                      regenerate selfhost/golden/renders.sha256 (review with git diff)")
+    print("")
+    print("release:")
+    print("  x version                     print the toolchain version (ludicc --version)")
+    print("  x release [major|minor|patch] [--publish]")
+    print("                                cut a release: CHANGELOG + VERSION bump + tag (+ Forgejo release)")
     print("")
     print("self-host internals:")
     print("  x selfhost-build [ludicc] [out]   assemble + compile the self-host compiler")
@@ -75,6 +81,8 @@ program X {
       if (arg_count() < 5) { err("usage: x game-build <ludicc> <game.ludic> <out>\n"); exit(1) }
       exit(cmd_game_build(arg(2), arg(3), arg(4)))
     }
+    if (cmd == "version") or (cmd == "--version") or (cmd == "-v") { exit(cmd_version()) }
+    if (cmd == "release") { exit(cmd_release()) }
     if (cmd == "help") or (cmd == "--help") or (cmd == "-h") { usage(); exit(0) }
 
     err(`x: unknown command '{cmd}'\n`)

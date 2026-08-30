@@ -1,0 +1,148 @@
+# release.ludic — versioning + release cutting for the toolchain.
+#
+#   x version              print the toolchain version (from the VERSION file)
+#   x release [level]      cut a release: aggregate changes/ into CHANGELOG.md,
+#                          bump VERSION, commit, and tag vX.Y.Z. `level` is
+#                          major|minor|patch; omitted, it is derived from the
+#                          highest `bump:` among the pending changesets.
+#   x release [level] --publish   ...then push main + the tag and create a
+#                          Forgejo release with source + toolchain tarballs.
+#                          Needs FORGEJO_TOKEN in the environment.
+#
+# The scheme is SemVer. VERSION is the single source of truth (ludicc --version
+# reads it at runtime), so a bump touches one file and never reseeds the
+# compiler. Changesets live as one small Markdown file per change under changes/
+# (see changes/README.md); a release consumes them into a CHANGELOG.md section.
+
+# the current version string, or a fallback when VERSION is absent
+function read_version_or(dflt: pointer) -> pointer {
+  let v = capture_line("cat VERSION 2>/dev/null")
+  if (v == "") { return dflt }
+  return v
+}
+
+# true when there is at least one pending changeset (changes/*.md, minus README)
+function has_changesets() -> bool {
+  return capture_line("ls changes/*.md 2>/dev/null | grep -v '/README.md' | head -1") != ""
+}
+
+# the highest bump level requested across the pending changesets ("" if none).
+# README.md is excluded — its format example carries a literal `bump:` line that
+# must not count as a real changeset.
+function highest_bump() -> pointer {
+  if shq("grep -rhqE '^bump:[[:space:]]*major' --include='*.md' --exclude='README.md' changes 2>/dev/null") { return "major" }
+  if shq("grep -rhqE '^bump:[[:space:]]*minor' --include='*.md' --exclude='README.md' changes 2>/dev/null") { return "minor" }
+  if shq("grep -rhqE '^bump:[[:space:]]*patch' --include='*.md' --exclude='README.md' changes 2>/dev/null") { return "patch" }
+  return ""
+}
+
+# cur + a SemVer bump of `level` -> the next version string
+function compute_next(cur: pointer, level: pointer) -> pointer {
+  let maj = capture_line(`printf '%s' '{cur}' | cut -d. -f1`)
+  let min = capture_line(`printf '%s' '{cur}' | cut -d. -f2`)
+  let pat = capture_line(`printf '%s' '{cur}' | cut -d. -f3`)
+  if (level == "major") { let m2 = capture_line(`expr {maj} + 1`);  return `{m2}.0.0` }
+  if (level == "minor") { let n2 = capture_line(`expr {min} + 1`);  return `{maj}.{n2}.0` }
+  let p2 = capture_line(`expr {pat} + 1`)
+  return `{maj}.{min}.{p2}`
+}
+
+# x version — report the toolchain version. Prefer the compiler's own --version
+# (proving that path works); fall back to the file if ludicc is not built yet.
+function cmd_version() -> int {
+  if is_exec("bin/ludicc") {
+    run("LUDIC_HOME=. bin/ludicc --version")
+    return 0
+  }
+  print(`ludic {read_version_or("(version unknown)")}`)
+  return 0
+}
+
+# assemble the CHANGELOG.md section for `ver` from the pending changesets into
+# /tmp/x_rel_section.md (header + one bullet per changeset, sorted by type).
+function build_section(ver: pointer) -> void {
+  let date = capture_line("date +%Y-%m-%d")
+  run(`printf '## v%s — %s\n\n' '{ver}' '{date}' > /tmp/x_rel_section.md`)
+  # one bullet per changeset: "- **<type>**: <body>" (body = the non-header text)
+  run("( for f in changes/*.md; do case \"$f\" in */README.md) continue;; esac; t=$(sed -n 's/^type:[[:space:]]*//p' \"$f\" | head -1); b=$(grep -vE '^(type|bump):' \"$f\" | sed '/^[[:space:]]*$/d' | tr '\\n' ' ' | sed 's/[[:space:]]*$//'); printf -- '- **%s**: %s\\n' \"$t\" \"$b\"; done | sort ) >> /tmp/x_rel_section.md")
+  run("printf '\n' >> /tmp/x_rel_section.md")
+}
+
+# prepend /tmp/x_rel_section.md into CHANGELOG.md, above the first existing
+# release section (or at the end of the header if this is the first release).
+function prepend_changelog() -> void {
+  if not file_exists("CHANGELOG.md") {
+    run("printf '# Changelog\n\nAll notable changes to the Ludic toolchain, newest first. Generated from the\nchangesets under changes/ by x release; do not edit released sections by hand.\n\n' > CHANGELOG.md")
+  }
+  let ln = capture_line("grep -n '^## ' CHANGELOG.md | head -1 | cut -d: -f1")
+  if (ln == "") {
+    run("cat CHANGELOG.md /tmp/x_rel_section.md > /tmp/x_rel_new.md")
+  } else {
+    run(`head -n $(expr {ln} - 1) CHANGELOG.md > /tmp/x_rel_new.md`)
+    run("cat /tmp/x_rel_section.md >> /tmp/x_rel_new.md")
+    run(`tail -n +{ln} CHANGELOG.md >> /tmp/x_rel_new.md`)
+  }
+  run("cp /tmp/x_rel_new.md CHANGELOG.md")
+}
+
+# push main + the tag and create the Forgejo release with build artifacts.
+function publish_release(ver: pointer) -> int {
+  let tok = getenv_or("FORGEJO_TOKEN", "")
+  if (tok == "") { err("release --publish: set FORGEJO_TOKEN (a Forgejo access token)\n"); return 1 }
+  if not shq("git push origin HEAD") { err("release: git push (main) failed\n"); return 1 }
+  if not shq(`git push origin v{ver}`) { err("release: git push (tag) failed\n"); return 1 }
+  # artifacts: a reproducible source+seed tarball, and the built macOS toolchain.
+  run("mkdir -p dist")
+  run(`git archive --format=tar.gz --prefix=ludic-{ver}/ -o dist/ludic-{ver}-src.tar.gz v{ver}`)
+  if is_exec("bin/ludicc") {
+    let plat = capture_line("uname -s | tr '[:upper:]' '[:lower:]'")
+    let arch = capture_line("uname -m")
+    run(`tar -czf dist/ludic-{ver}-{plat}-{arch}.tar.gz bin selfhost/ludicc.seed.ll VERSION`)
+  }
+  # the changelog section written by build_section is the release body
+  if not shq(`FORGEJO_TOKEN='{tok}' python3 tools/ci/forgejo_release.py v{ver} /tmp/x_rel_section.md dist`) {
+    err("release: creating the Forgejo release failed\n"); return 1
+  }
+  return 0
+}
+
+function cmd_release() -> int {
+  # parse args: an optional level positional, and a --publish flag
+  var level = ""
+  var publish = false
+  var ai = 2
+  while ai < arg_count() {
+    let a = arg(ai)
+    if (a == "--publish") { publish = true }
+    else { if (a == "major") or (a == "minor") or (a == "patch") { level = a }
+    else { err(`release: unknown argument {a}\n`); return 1 } }
+    ai = ai + 1
+  }
+
+  if not has_changesets() {
+    err("release: no changesets under changes/ — add one (see changes/README.md)\n"); return 1
+  }
+  if (level == "") { level = highest_bump() }
+  if (level == "") { err("release: no bump: level in any changeset\n"); return 1 }
+
+  let cur = read_version_or("0.0.0")
+  let ver = compute_next(cur, level)
+  print(`releasing v{ver}  ({level} bump from {cur})`)
+
+  build_section(ver)
+  prepend_changelog()
+  if not write_file("VERSION", `{ver}\n`) { err("release: cannot write VERSION\n"); return 1 }
+  run("rm -f $(ls changes/*.md | grep -v '/README.md')")
+
+  # stage only the release artifacts — never a blanket `git add -A`, which would
+  # sweep unrelated in-flight edits (this tree is worked on concurrently).
+  if not shq("git add VERSION CHANGELOG.md changes") { err("release: git add failed\n"); return 1 }
+  if not shq(`git commit -q -m 'chore(release): v{ver}'`) { err("release: git commit failed\n"); return 1 }
+  if not shq(`git tag v{ver}`) { err("release: git tag failed (already exists?)\n"); return 1 }
+  print(`  committed + tagged v{ver}`)
+
+  if publish { return publish_release(ver) }
+  print(`  local release ready. publish with: FORGEJO_TOKEN=… x release {level} --publish`)
+  print(`  (or push:  git push origin HEAD && git push origin v{ver})`)
+  return 0
+}

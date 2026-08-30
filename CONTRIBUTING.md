@@ -63,6 +63,27 @@ The stdlib lives in the runtime (`runtime/`) and is surfaced as namespaces
 3. Add or extend an example under `examples/` and a case in the test suite.
 4. Run `python3 tools/docgen/gen.py && python3 tools/docgen/check.py` — the
    check fails if any inventory symbol lacks a page or is still seed text.
+5. Add a **changeset** for the user-facing change: a small file under
+   [`changes/`](changes/README.md) with a `bump:` level and a one-line summary.
+   The next release folds it into `CHANGELOG.md`.
+
+## Versioning & releases
+
+The toolchain is versioned with [SemVer](https://semver.org); `VERSION` is the
+single source of truth and `ludicc --version` (or `x version`) reports it.
+
+Releases are changeset-driven. Every user-facing change ships with a changeset
+(step 5 above). To cut a release:
+
+```bash
+x release [major|minor|patch]   # omit the level to derive it from the changesets
+```
+
+That aggregates the pending changesets into a new `CHANGELOG.md` section, bumps
+`VERSION`, commits `chore(release): vX.Y.Z`, and tags it. Add `--publish` (with
+`FORGEJO_TOKEN` set) to also push and create the Forgejo release with source and
+toolchain tarballs. The tag doubles as the reproducible bootstrap point: the
+source archive plus its checked-in seed rebuild that exact toolchain.
 
 ## Conventions
 
