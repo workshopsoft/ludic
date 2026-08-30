@@ -27,6 +27,7 @@ program X {
     print("  x app <file.ludic> [--headless] [--save-temps]")
     print("                                compile a Ludic program to a native app in build/")
     print("  x tools [--install] [--test]  build the editor toolchain (ludic-fmt, ludic-lsp)")
+    print("  x clean                       remove build/, out.ppm and stray artifacts (keeps bin/)")
     print("")
     print("test:")
     print("  x test                        the full regression suite")
@@ -56,6 +57,7 @@ program X {
     if (cmd == "build-cli") { exit(cmd_build_cli()) }
     if (cmd == "app") { exit(cmd_app()) }
     if (cmd == "tools") { exit(cmd_tools()) }
+    if (cmd == "clean") { exit(cmd_clean()) }
     if (cmd == "test") { exit(cmd_test()) }
     if (cmd == "selfhost-test") { exit(cmd_selfhost_test()) }
     if (cmd == "test-tools") { exit(cmd_test_tools()) }

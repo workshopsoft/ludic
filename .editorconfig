@@ -1,0 +1,22 @@
+# EditorConfig — machine-enforced formatting conventions for the Ludic repo.
+# Mirrors ludic-fmt (tools/ludic-tools/fmt.ludic), which re-indents with a
+# 2-space unit and normalises to LF/UTF-8. https://editorconfig.org
+root = true
+
+# Ludic is the primary language; 2-space indent, LF, UTF-8, no trailing
+# whitespace, and a final newline everywhere by default.
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# The docgen/asset tooling is Python — PEP 8's 4-space indent.
+[*.py]
+indent_size = 4
+
+# Markdown uses two trailing spaces as a hard line break; keep them.
+[*.md]
+trim_trailing_whitespace = false

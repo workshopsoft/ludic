@@ -1,6 +1,15 @@
-build
-**.zip
-out.ppm
+# Generated build tree: LLVM IR, objects, compiled apps and the docs site all
+# land under build/ (see `bin/x build` / `bin/x clean`). Root-anchored so a
+# source dir named "build" elsewhere is never accidentally ignored.
+/build/
+
+# Headless render dropped in the working directory by a --headless run.
+/out.ppm
+
+# Archives are never tracked: the Kenney art is committed *extracted* under
+# assets/kenney/**/ (PNG/tmx/License), while the original download .zips and any
+# packaged plugin .zip are local-only build inputs/outputs.
+*.zip
 
 # the toolchain binaries (ludicc, ludic, x, ludic-fmt, ludic-lsp) — all built
 # into bin/ by the one-line bootstrap + `bin/x build`; never checked in. The
@@ -15,7 +24,7 @@ tools/editors/jetbrains/build/
 
 # IntelliJ plugin SDK sandbox (tools/editors/jetbrains)
 .intellijPlatform/
-.idea
+.idea/
 
 # macOS Finder metadata
 .DS_Store

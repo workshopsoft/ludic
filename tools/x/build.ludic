@@ -81,3 +81,15 @@ function cmd_app() -> int {
   print(`done. run: ./{outbin}   (from the repo root, so assets/ resolves)`)
   return 0
 }
+
+# Remove every generated artifact and leave the tracked source untouched: the
+# whole build/ tree (IR, objects, compiled apps), the headless render dropped in
+# the root (out.ppm), and any stray *.tmp/*.ll left behind by a failed build.
+# The toolchain binaries in bin/ are kept so the running `x` survives; rebuild
+# them any time with `x build`.
+function cmd_clean() -> int {
+  run("rm -rf build")
+  run("rm -f out.ppm bin/*.tmp")
+  print("cleaned: build/, out.ppm, bin/*.tmp  (bin/ toolchain kept — `x build` to rebuild)")
+  return 0
+}
