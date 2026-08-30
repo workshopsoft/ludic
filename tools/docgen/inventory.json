@@ -263,20 +263,14 @@
     "kw-enum"
   ],
   "system": [
-    "system-arg",
-    "system-arg_count",
-    "system-exit",
     "system-run",
-    "system-env",
     "system-read_char",
     "system-file_open",
     "system-file_read",
     "system-file_write",
     "system-file_seek",
     "system-file_tell",
-    "system-file_close",
-    "system-stdout",
-    "system-stderr"
+    "system-file_close"
   ],
   "text": [
     "text-length",

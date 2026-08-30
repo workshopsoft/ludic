@@ -14,6 +14,6 @@ program T {
     let w = Memory.words(4)
     w[0] = 12345
     print(w[0])                   # 12345
-    print(System.arg_count())        # 1
+    print(Os.arg_count())            # 1
   }
 }

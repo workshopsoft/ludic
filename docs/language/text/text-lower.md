@@ -11,7 +11,7 @@ ns: Text
 member: lower
 ---
 
-Returns a fresh string with every ASCII letter <code>A</code>-<code>Z</code> turned to lowercase; other bytes pass through unchanged. Pair it with <code>Text.equals</code> for case-insensitive matching by lowercasing both sides. Only ASCII is transformed.
+Returns a fresh string with every ASCII letter <code>A</code>-<code>Z</code> turned to lowercase; other bytes pass through unchanged. Pair it with <code>Text.equals</code> for case-insensitive matching by lowercasing both sides. This is ASCII-only — accented and non-Latin letters are left as-is; for full Unicode case mapping use <code>Unicode.lower</code>.
 
 ```ludic
 program Demo {

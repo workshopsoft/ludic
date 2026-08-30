@@ -11,7 +11,7 @@ ns: Text
 member: upper
 ---
 
-Returns a fresh string with every ASCII letter <code>a</code>-<code>z</code> turned to uppercase; other bytes pass through unchanged. The input is left untouched. Use it to normalize input before comparing, or to shout a label. Only ASCII is transformed.
+Returns a fresh string with every ASCII letter <code>a</code>-<code>z</code> turned to uppercase; other bytes pass through unchanged. The input is left untouched. Use it to normalize input before comparing, or to shout a label. This is ASCII-only — accented and non-Latin letters are left as-is; for full Unicode case mapping use <code>Unicode.upper</code>.
 
 ```ludic
 program Demo {

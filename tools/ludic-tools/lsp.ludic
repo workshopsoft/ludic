@@ -1377,11 +1377,7 @@ program LudicLsp {
       if (meth == "local_id") { return "Network.local_id() -> int" }
     }
     if (ns == "System") {
-      if (meth == "arg") { return "System.arg(i) -> string" }
-      if (meth == "arg_count") { return "System.arg_count() -> int" }
-      if (meth == "exit") { return "System.exit(code)" }
       if (meth == "run") { return "System.run(command) -> int" }
-      if (meth == "env") { return "System.env(name) -> string" }
       if (meth == "read_char") { return "System.read_char() -> int" }
       if (meth == "file_open") { return "System.file_open(path, mode) -> pointer" }
       if (meth == "file_read") { return "System.file_read(file, buf, n) -> int" }
@@ -1389,8 +1385,6 @@ program LudicLsp {
       if (meth == "file_seek") { return "System.file_seek(file, offset, whence) -> int" }
       if (meth == "file_tell") { return "System.file_tell(file) -> int" }
       if (meth == "file_close") { return "System.file_close(file)" }
-      if (meth == "stdout") { return "System.stdout() -> pointer" }
-      if (meth == "stderr") { return "System.stderr() -> pointer" }
     }
     if (ns == "Save") {
       if (meth == "write") { return "Save.write()" }

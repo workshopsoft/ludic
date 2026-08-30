@@ -356,11 +356,11 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "local_id")  { bare = "local_id" }
   }
   if (ns == "System") {
-    if (meth == "arg")        { bare = "arg" }
-    if (meth == "arg_count")  { bare = "arg_count" }
-    if (meth == "exit")       { bare = "exit" }
+    # System.* is the low-level file/process surface only. The environment slice
+    # (arg/arg_count/env/exit) and the standard streams (stdout/stderr) were
+    # duplicated by the canonical Os.* namespace and have been retired — see
+    # Os.arg/arg_count/env/exit and Os.stdout_write/stderr_write (issue #40).
     if (meth == "run")        { bare = "run" }
-    if (meth == "env")        { bare = "getenv" }
     if (meth == "read_char")  { bare = "read_char" }
     if (meth == "file_open")  { bare = "file_open" }
     if (meth == "file_read")  { bare = "file_read" }
@@ -368,8 +368,6 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "file_seek")  { bare = "file_seek" }
     if (meth == "file_tell")  { bare = "file_tell" }
     if (meth == "file_close") { bare = "file_close" }
-    if (meth == "stdout")     { bare = "file_stdout" }
-    if (meth == "stderr")     { bare = "file_stderr" }
   }
   if (ns == "Save") {
     if (meth == "write") { bare = "save" }

@@ -4,4 +4,4 @@ title: System
 order: 6
 ---
 
-Process and OS access — command-line arguments, environment, exit code, running a shell command, and raw file I/O. Outside the deterministic simulation.
+Low-level file and process access — raw file handles, reading a character, and running a shell command. Outside the deterministic simulation. For command-line arguments, environment variables, the exit code, and the standard streams, use the <code>Os</code> namespace.
