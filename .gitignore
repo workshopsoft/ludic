@@ -31,3 +31,6 @@ tools/editors/jetbrains/build/
 # Python bytecode cache from the docgen / release tooling
 __pycache__/
 *.pyc
+
+# Release artifacts produced by `x release`
+/dist/
