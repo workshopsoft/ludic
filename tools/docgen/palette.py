@@ -269,7 +269,7 @@ def emit_ludic(path):
   lines.append("# Edit the palette there and regenerate; do not hand-edit this file.")
   lines.append("# ============================================================================")
   lines.append("")
-  lines.append("function color_lookup(name: ptr) -> int {")
+  lines.append("function color_lookup(name: pointer) -> int {")
   for (nm, hexv, grp) in PALETTE:
     lines.append(f'  if (name == "{nm}") {{ return 0x{hexv:06X} }}')
   lines.append("  return -1")
