@@ -12,7 +12,7 @@
 #     201 900  frame 3: Play.World.Step, then Hud.Draw
 #     202 900  frame 4: Step reaches 2 -> quit(); Hud.Draw paints the last frame
 #
-#   bin/x game-build bin/ludicc examples/scenes.ludic /tmp/scenes
+#   bin/x game-build bin/ludicc examples/lang/scenes.ludic /tmp/scenes
 #   printf 'aaaa' | /tmp/scenes
 program SceneDemo {
   var counter: int = 0

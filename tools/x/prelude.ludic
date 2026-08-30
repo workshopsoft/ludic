@@ -75,6 +75,21 @@ function getenv_or(name: pointer, dflt: pointer) -> pointer {
   return v
 }
 
+# flatten a relative example path into a filesystem-safe token: '/' -> '_', so a
+# categorised path like "games/snake" yields a single-segment temp name
+# ("games_snake") that never implies a missing /tmp subdirectory.
+function flat(p: pointer) -> pointer {
+  let n = len(p)
+  let b = bytes(n + 1)
+  for i in 0 .. n {
+    var c = p[i]
+    if (c == 47) { c = 95 }   # '/' (47) -> '_' (95)
+    b[i] = c
+  }
+  b[n] = 0
+  return b
+}
+
 # ---- stdout helpers ---------------------------------------------------------
 
 # write `s` with no trailing newline (print() always adds one)

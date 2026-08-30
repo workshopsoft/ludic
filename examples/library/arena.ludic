@@ -1,8 +1,8 @@
 # ============================================================================
 # arena.ludic — a game that links the Ludic shared library next to it.
 #
-#   ludicc examples/lib/combat.ludic --shared -o build/libcombat.dylib
-#   ludicc examples/lib/arena.ludic  -o build/arena -Lbuild -lcombat
+#   ludicc examples/library/combat.ludic --shared -o build/libcombat.dylib
+#   ludicc examples/library/arena.ludic  -o build/arena -Lbuild -lcombat
 #
 # `extern fn` binds a name to a symbol resolved at link time. The library the
 # symbols come from happens to be written in Ludic, but nothing here depends on

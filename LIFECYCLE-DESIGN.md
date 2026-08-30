@@ -2,8 +2,8 @@
 
 > **Status: LC0–LC1 shipped; LC2–LC6 are design.** The structural attach/detach
 > pair and `@OnDetach` (§4, LC0), and reason-carrying `@OnDespawn` (§5, LC1), are
-> implemented and tested ([`examples/detach.ludic`](examples/detach.ludic),
-> [`examples/reason.ludic`](examples/reason.ludic), `bin/x test` checks). The
+> implemented and tested ([`examples/lang/detach.ludic`](examples/lang/detach.ludic),
+> [`examples/lang/reason.ludic`](examples/lang/reason.ludic), `bin/x test` checks). The
 > extensions LC2–LC6 are research-informed proposals, not built. This document
 > distills a survey of lifecycle models across seven systems (§3) into a roadmap
 > for Ludic. §13 lists the open decisions.
@@ -121,7 +121,7 @@ Lowering: `attach` guards on the has-flag and, when absent, reuses the existing
 `emit_init_component` (seed + `@OnAttach`); `detach` guards on presence, clears the
 flag, and fires `@OnDetach` with the property bound by name — the same binding the
 `@OnDisable` path already uses. No new runtime; POD data stays in `@S_` storage.
-See [`examples/detach.ludic`](examples/detach.ludic).
+See [`examples/lang/detach.ludic`](examples/lang/detach.ludic).
 
 ---
 
@@ -166,7 +166,7 @@ survey promises. The despawn hook compiles to `@on_despawn_<Model>(i32 %e, i32
 works without a user declaration; a user enum of the same name still shadows it.
 Backward-compatible: the `reason:` binding is optional, and `@OnDespawn` without
 it is unchanged. `@OnDetach` and scene `on exit` do **not** yet take reasons
-(§13.1). See [`examples/reason.ludic`](examples/reason.ludic).
+(§13.1). See [`examples/lang/reason.ludic`](examples/lang/reason.ludic).
 
 ---
 

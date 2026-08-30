@@ -1,6 +1,6 @@
 # ============================================================================
 # snake.ludic — a small, complete game in Ludic. No sprites or assets: every
-# pixel is drawn from primitives. Build: bin/x app examples/snake.ludic
+# pixel is drawn from primitives. Build: bin/x app examples/games/snake.ludic
 #
 # It shows the everyday shape of a Ludic game: an ECS for the moving parts (one
 # entity per snake segment), named program state for the rest, and a Render

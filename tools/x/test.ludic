@@ -9,38 +9,51 @@
 
 # compile a feature example as a game, run it (optional keys on stdin) and match
 # its stdout against the expected space-joined output.
-function feat_case(name: pointer, keys: pointer, exp: pointer, label: pointer) -> void {
-  if not game_build_ok("bin/ludicc", `examples/{name}.ludic`, `/tmp/x_e_{name}`) {
+function feat_case(path: pointer, keys: pointer, exp: pointer, label: pointer) -> void {
+  let nm = flat(path)
+  if not game_build_ok("bin/ludicc", `examples/{path}.ludic`, `/tmp/x_e_{nm}`) {
     bad2(label, capture_line("grep -i error /tmp/x_gb.err | head -1")); return
   }
   var got = ""
-  if (keys == "") { got = capture_line(`/tmp/x_e_{name} < /dev/null`) }
-  else { got = capture_line(`printf '{keys}' | /tmp/x_e_{name}`) }
+  if (keys == "") { got = capture_line(`/tmp/x_e_{nm} < /dev/null`) }
+  else { got = capture_line(`printf '{keys}' | /tmp/x_e_{nm}`) }
   if (got == exp) { ok(label) } else { bad2(label, `got [{got}] want [{exp}]`) }
 }
 
 # a "does it still compile" smoke test (parse -> lower -> link), no run
-function qsmoke(name: pointer) -> void {
-  if game_build_ok("bin/ludicc", `examples/{name}.ludic`, `/tmp/x_q_{name}`) {
-    ok(`{name} compiles (@Queries desugars to S_QUERY)`)
-  } else { bad2(name, capture_line("grep -i error /tmp/x_gb.err | head -1")) }
+function qsmoke(path: pointer) -> void {
+  let nm = flat(path)
+  if game_build_ok("bin/ludicc", `examples/{path}.ludic`, `/tmp/x_q_{nm}`) {
+    ok(`{path} compiles (@Queries desugars to S_QUERY)`)
+  } else { bad2(path, capture_line("grep -i error /tmp/x_gb.err | head -1")) }
+}
+
+# a plain compile-only rot guard for a showcase example that has no self-asserting
+# `entry` (so net_case can't drive it): prove it still parses, lowers and links.
+function smoke(path: pointer) -> void {
+  let nm = flat(path)
+  if not shq(`bin/ludicc --headless examples/{path}.ludic --emit-llvm -o /tmp/x_sm_{nm}.ll > /tmp/x_sm_{nm}.err 2>&1`) {
+    bad2(path, capture_line(`tail -1 /tmp/x_sm_{nm}.err`)); return
+  }
+  ok(`{path} still compiles`)
 }
 
 # a pure-Ludic example that drives and asserts itself: compile headless to IR,
 # let clang assemble it, run, and compare stdout. No C host and no C compiled.
-function net_case(name: pointer, exp: pointer) -> void {
-  let ll = `/tmp/x_n_{name}.ll`
-  let log = `/tmp/x_n_{name}.out`
-  if not shq(`bin/ludicc --headless examples/{name}.ludic --emit-llvm -o {ll} > {log} 2>&1`) {
+function net_case(path: pointer, exp: pointer) -> void {
+  let nm = flat(path)
+  let ll = `/tmp/x_n_{nm}.ll`
+  let log = `/tmp/x_n_{nm}.out`
+  if not shq(`bin/ludicc --headless examples/{path}.ludic --emit-llvm -o {ll} > {log} 2>&1`) {
     let t = capture_line(`tail -1 {log}`)
-    bad2(name, `build ({t})`); return
+    bad2(path, `build ({t})`); return
   }
-  if not shq(`{cc()} -O2 {ll} -o /tmp/x_nb_{name} >> {log} 2>&1`) {
+  if not shq(`{cc()} -O2 {ll} -o /tmp/x_nb_{nm} >> {log} 2>&1`) {
     let t = capture_line(`tail -1 {log}`)
-    bad2(name, `build ({t})`); return
+    bad2(path, `build ({t})`); return
   }
-  let got = capture_line(`/tmp/x_nb_{name} < /dev/null`)
-  if (got == exp) { ok(`{name} ({got})`) } else { bad2(name, `got [{got}] want [{exp}]`) }
+  let got = capture_line(`/tmp/x_nb_{nm} < /dev/null`)
+  if (got == exp) { ok(`{path} ({got})`) } else { bad2(path, `got [{got}] want [{exp}]`) }
 }
 
 function cmd_test() -> int {
@@ -56,14 +69,14 @@ function cmd_test() -> int {
 
   print("== the compiler builds from the IR seed (no C compiler) ==")
   run("rm -f bin/ludicc")
-  if shq("bin/x app examples/snake.ludic --headless >/dev/null 2>&1") and is_exec("bin/ludicc") {
+  if shq("bin/x app examples/games/snake.ludic --headless >/dev/null 2>&1") and is_exec("bin/ludicc") {
     ok("clang selfhost/ludicc.seed.ll -> bin/ludicc")
   } else { bad("compiler did not build from the seed") }
 
   print("== every example compiles to its golden render ==")
-  game_case("snake", "ddssaawwddss")
-  game_case("menu", "ssss")
-  game_case("chronorift", "ddddwwwwaassK")
+  game_case("games/snake", "ddssaawwddss")
+  game_case("games/menu", "ssss")
+  game_case("games/chronorift", "ddddwwwwaassK")
 
   print("== self-hosting and the bootstrap fixpoints ==")
   run("bin/x selfhost-test > /tmp/x_sh.out 2>&1")
@@ -73,50 +86,57 @@ function cmd_test() -> int {
   ok(`self-host suite: {corr} checks passed (see: x selfhost-test)`)
 
   print("== documented syntax stays compilable (guards against spec/compiler drift) ==")
-  qsmoke("qdecl")
-  feat_case("annotations", "", "3 25 0 0", "annotations.ludic (@Queries / @Computed / @OnSpawn / @Handles)")
-  feat_case("lifecycle", "", "1 700 50 950 2", "lifecycle.ludic (@OnStart/@OnAttach/@OnSpawn/@OnDespawn/@OnQuit in order)")
-  feat_case("toggle", "", "6 0 7 1 0", "toggle.ludic (enable/disable + @OnDisable/@OnEnable across property/model)")
-  feat_case("strings", "", "1 2 3 4 5 6 7 8 9", "strings.ludic (str ops, interpolation, slicing)")
-  feat_case("rng_demo", "", "69 89 6 -1 0", "rng_demo.ludic (Random.value/int/sign)")
-  feat_case("time_demo", "aaaaaa", "0 1 2 3 4 16", "time_demo.ludic (Time.frame/elapsed/delta)")
-  feat_case("scenes", "aaaaaaaaaa", "1000 1 101 102 2 3 900 201 900 202 900", "scenes.ludic (scene/layer/on enter/on exit/become)")
-  feat_case("detach", "", "15 1 25 0", "detach.ludic (attach/detach + @OnAttach/@OnDetach)")
-  feat_case("reason", "", "503 1009", "reason.ludic (@OnDespawn reason: Despawned vs Quit)")
+  qsmoke("lang/qdecl")
+  feat_case("lang/annotations", "", "3 25 0 0", "annotations.ludic (@Queries / @Computed / @OnSpawn / @Handles)")
+  feat_case("lang/lifecycle", "", "1 700 50 950 2", "lifecycle.ludic (@OnStart/@OnAttach/@OnSpawn/@OnDespawn/@OnQuit in order)")
+  feat_case("lang/toggle", "", "6 0 7 1 0", "toggle.ludic (enable/disable + @OnDisable/@OnEnable across property/model)")
+  feat_case("lang/strings", "", "1 2 3 4 5 6 7 8 9", "strings.ludic (str ops, interpolation, slicing)")
+  feat_case("lang/rng_demo", "", "69 89 6 -1 0", "rng_demo.ludic (Random.value/int/sign)")
+  feat_case("lang/time_demo", "aaaaaa", "0 1 2 3 4 16", "time_demo.ludic (Time.frame/elapsed/delta)")
+  feat_case("lang/scenes", "aaaaaaaaaa", "1000 1 101 102 2 3 900 201 900 202 900", "scenes.ludic (scene/layer/on enter/on exit/become)")
+  feat_case("lang/detach", "", "15 1 25 0", "detach.ludic (attach/detach + @OnAttach/@OnDetach)")
+  feat_case("lang/reason", "", "503 1009", "reason.ludic (@OnDespawn reason: Despawned vs Quit)")
 
   # issue #9: the Time/Date/Duration/Clock stdlib, driven from its own `entry`.
-  net_case("offline_rewards", "13 650 2026-08-30 0")
+  net_case("lang/offline_rewards", "13 650 2026-08-30 0")
 
   # EV0b + NETWORKING N0–N6: each a self-contained pure-Ludic program, driven and
   # asserted from its own `entry`. The transport is the compiler's built-in
   # loopback, so a networked game runs with zero foreign code.
-  net_case("mod_events", "10 32 42")
-  net_case("net_echo", "4 10 20 30 42")
-  net_case("net_snapshot", "50 7 50")
-  net_case("net_sync", "12 3 4 50 999")
-  net_case("net_owner", "-1 7 0 1")
-  net_case("net_rpc", "0 8")
-  net_case("net_roles", "1 102")
-  net_case("net_demo", "5 999 5")
+  net_case("events/mod_events", "10 32 42")
+  net_case("networking/net_echo", "4 10 20 30 42")
+  net_case("networking/net_snapshot", "50 7 50")
+  net_case("networking/net_sync", "12 3 4 50 999")
+  net_case("networking/net_owner", "-1 7 0 1")
+  net_case("networking/net_rpc", "0 8")
+  net_case("networking/net_roles", "1 102")
+  net_case("networking/net_demo", "5 999 5")
 
-  feat_case("promote", "", "100 101 200 201", "promote.ludic (@Public -> model_<M>_spawn/despawn events)")
-  feat_case("cancel", "", "0 1 92", "cancel.ludic (cancellable event + cancel + emit-as-expression)")
+  feat_case("events/promote", "", "100 101 200 201", "promote.ludic (@Public -> model_<M>_spawn/despawn events)")
+  feat_case("events/cancel", "", "0 1 92", "cancel.ludic (cancellable event + cancel + emit-as-expression)")
 
   # EV2 the world table: the mod reflection ABI, callable from Ludic by name.
-  net_case("world_get", "50 1 7")
-  net_case("world_scan", "2 110")
-  net_case("world_spawn", "1 42 1")
-  net_case("world_mixed", "99")
-  net_case("world_query", "2 110")
+  net_case("ecs/world_get", "50 1 7")
+  net_case("ecs/world_scan", "2 110")
+  net_case("ecs/world_spawn", "1 42 1")
+  net_case("ecs/world_mixed", "99")
+  net_case("ecs/world_query", "2 110")
 
-  feat_case("recurse", "", "16", "recurse.ludic (EV6: re-entrant emit is depth-bounded, no runaway cycle)")
-  net_case("scoped", "2")
-  net_case("world_dyn", "0 1 30 100 1 30")
+  feat_case("events/recurse", "", "16", "recurse.ludic (EV6: re-entrant emit is depth-bounded, no runaway cycle)")
+  net_case("events/scoped", "2")
+  net_case("ecs/world_dyn", "0 1 30 100 1 30")
 
-  feat_case("prop_events", "", "300 400", "prop_events.ludic (@Public -> prop_<P>_attach/detach events)")
-  feat_case("scene_events", "", "10 1 20 2 30 3", "scene_events.ludic (public scene -> scene_<S>_enter/exit events)")
-  feat_case("program_events", "", "1 100 2 200", "program_events.ludic (@Public @OnStart/@OnQuit -> program_start/quit)")
-  feat_case("layer_events", "aaaa", "50 2 1 50", "layer_events.ludic (layer toggle + public layer -> layer_<L>_show/hide)")
+  feat_case("events/prop_events", "", "300 400", "prop_events.ludic (@Public -> prop_<P>_attach/detach events)")
+  feat_case("events/scene_events", "", "10 1 20 2 30 3", "scene_events.ludic (public scene -> scene_<S>_enter/exit events)")
+  feat_case("events/program_events", "", "1 100 2 200", "program_events.ludic (@Public @OnStart/@OnQuit -> program_start/quit)")
+  feat_case("events/layer_events", "aaaa", "50 2 1 50", "layer_events.ludic (layer toggle + public layer -> layer_<L>_show/hide)")
+
+  # showcase examples with no self-asserting `entry` — compile-only so they can't
+  # silently rot after a compiler or reorg change.
+  print("== showcase examples still compile ==")
+  smoke("ecs/hello")
+  smoke("events/events")
+  smoke("networking/net_rt")
 
   print("== self-hosted front-end binaries (ludicc / ludic) ==")
   # the two commands are one multi-call native binary built from the seed with
@@ -127,12 +147,12 @@ function cmd_test() -> int {
 
   # ludicc -o drives clang to a native binary; a game links windowed by default
   # (LUDIC_HOME points the linker at runtime/native/cocoa.ll).
-  if shq("LUDIC_HOME=. bin/ludicc examples/snake.ludic -o /tmp/x_cli_snake > /tmp/x_cli.out 2>&1") and shq("file /tmp/x_cli_snake 2>/dev/null | grep -q Mach-O") {
+  if shq("LUDIC_HOME=. bin/ludicc examples/games/snake.ludic -o /tmp/x_cli_snake > /tmp/x_cli.out 2>&1") and shq("file /tmp/x_cli_snake 2>/dev/null | grep -q Mach-O") {
     ok("ludicc app.ludic -o bin  ->  native executable")
   } else { bad2("ludicc -o", capture_line("tail -1 /tmp/x_cli.out")) }
 
   # --emit-llvm stops at the IR.
-  if shq("bin/ludicc examples/snake.ludic --emit-llvm -o /tmp/x_cli_snake.ll > /tmp/x_cli.out 2>&1") and shq("head -1 /tmp/x_cli_snake.ll | grep -q 'LLVM IR'") {
+  if shq("bin/ludicc examples/games/snake.ludic --emit-llvm -o /tmp/x_cli_snake.ll > /tmp/x_cli.out 2>&1") and shq("head -1 /tmp/x_cli_snake.ll | grep -q 'LLVM IR'") {
     ok("ludicc --emit-llvm  ->  LLVM IR")
   } else { bad2("ludicc --emit-llvm", capture_line("tail -1 /tmp/x_cli.out")) }
 

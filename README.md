@@ -48,9 +48,9 @@ self-hosted native toolchain.)
 | `runtime/web/platform.js` | the browser's window — the same five `win_*` functions `cocoa.ll` implements, against a `<canvas>` |
 | `runtime/web/index.html` | the page a web build is served from |
 | `tools/ludic-web/run.mjs` | runs a headless wasm build under Node, so native and wasm output can be diffed |
-| `examples/chronorift.ludic` | the JRPG written in Ludic (multi-file via `import`, model-based) |
-| `examples/menu.ludic`  | a retained-UI title screen (9-slice, TrueType, focusable buttons) |
-| `examples/snake.ludic` | a second, unrelated game — proves the language is general (same toolchain, no engine hardcoding) |
+| `examples/games/chronorift.ludic` | the JRPG written in Ludic (multi-file via `import`, model-based) |
+| `examples/games/menu.ludic`  | a retained-UI title screen (9-slice, TrueType, focusable buttons) |
+| `examples/games/snake.ludic` | a second, unrelated game — proves the language is general (same toolchain, no engine hardcoding) |
 | `bin/x`                | the task runner — `bin/x app examples/<name>.ludic` compiles a program; `bin/x help` lists every command |
 | `bin/x test`           | regression suite: builds the compiler, compiles/runs all examples, checks save/load + diagnostics |
 | `tools/ludic-tools/`   | the editor toolchain, **in Ludic**: `ludic-fmt` (source formatter) and `ludic-lsp` (language server) — one lexer and one vocabulary shared by both |
@@ -74,14 +74,14 @@ to machine code via LLVM IR; see **[COMPILING.md](COMPILING.md)** for the
 pipeline and the runtime protocol.
 
 ```bash
-bin/x app examples/chronorift.ludic
+bin/x app examples/games/chronorift.ludic
 ./build/chronorift            # opens a native window
 ```
 
 Headless render (for testing / CI):
 
 ```bash
-bin/x app examples/chronorift.ludic --headless
+bin/x app examples/games/chronorift.ludic --headless
 printf 'ddddwww' | ./build/chronorift_headless   # writes out.ppm
 sips -s format png out.ppm --out frame.png
 ```
@@ -141,7 +141,7 @@ same highlighting, checking and formatting as the source tree.
 
 ## The game: Chrono Rift
 
-A playable co-op JRPG in `examples/chronorift.ludic`, using CC0
+A playable co-op JRPG in `examples/games/chronorift.ludic`, using CC0
 [Kenney](https://kenney.nl) sprites (Tiny Town + Tiny Dungeon), decoded from
 PNG at runtime by the Ludic-written PNG/DEFLATE decoder — no zlib, no external
 dependency on any target.

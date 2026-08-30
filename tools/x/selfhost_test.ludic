@@ -15,12 +15,55 @@ function sh_case(name: pointer, exp: pointer) -> void {
   if (got == exp) { ok(`{name} ({got})`) } else { bad2(name, `got [{got}] want [{exp}]`) }
 }
 
-# compile examples/<name>.ludic as a game and diff its render against the golden
-function game_case(name: pointer, keys: pointer) -> void {
-  if not game_build_ok("bin/ludicc", `examples/{name}.ludic`, `/tmp/x_g_{name}`) { bad(`{name}: build`); return }
-  run(`printf '%s' '{keys}' | /tmp/x_g_{name} >/dev/null 2>&1`)
-  if shq(`cmp -s selfhost/golden/{name}.ppm out.ppm`) { ok(`{name} matches the golden render`) }
-  else { bad(`{name}: differs from golden`) }
+# compile examples/<path>.ludic as a game, render it headless, and compare the
+# framebuffer's SHA-256 against the text baseline in selfhost/golden/renders.sha256.
+# A hash is tiny and text-diffable — a regression shows as a changed hex line in a
+# review, not an opaque "binary files differ". Regenerate the baseline with
+# `bin/x golden` (see cmd_golden below).
+function game_case(path: pointer, keys: pointer) -> void {
+  let nm = flat(path)
+  if not game_build_ok("bin/ludicc", `examples/{path}.ludic`, `/tmp/x_g_{nm}`) { bad(`{path}: build`); return }
+  run("mkdir -p build")
+  run(`printf '%s' '{keys}' | /tmp/x_g_{nm} >/dev/null 2>&1`)
+  let got = capture_line("shasum -a 256 build/out.ppm | cut -d' ' -f1")
+  let want = capture_line(`grep '^{path} ' selfhost/golden/renders.sha256 | cut -d' ' -f2`)
+  if (want == "") { bad2(path, "no golden hash (run: bin/x golden)"); return }
+  if (got == want) { ok(`{path} matches the golden render`) }
+  else { bad2(path, `render hash {got} != golden {want}`) }
+}
+
+# render one golden game and return its "<path> <sha256>\n" manifest line (empty
+# string on build failure). Shared by `bin/x golden` and nothing else.
+function bless_render(path: pointer, keys: pointer) -> pointer {
+  let nm = flat(path)
+  if not game_build_ok("bin/ludicc", `examples/{path}.ludic`, `/tmp/x_bg_{nm}`) {
+    err(`golden: {path} failed to build\n`); return ""
+  }
+  run("mkdir -p build")
+  run(`printf '%s' '{keys}' | /tmp/x_bg_{nm} >/dev/null 2>&1`)
+  let h = capture_line("shasum -a 256 build/out.ppm | cut -d' ' -f1")
+  return `{path} {h}\n`
+}
+
+# regenerate the text render baseline. The keys here MUST match game_case's so
+# the baseline and the checks render the same frame. Deliberate, reviewable:
+# run it, then `git diff selfhost/golden/renders.sha256` shows exactly which
+# render changed before you commit the new hash.
+function cmd_golden() -> int {
+  ensure_ludicc()
+  if not is_exec("bin/ludicc") { err("golden: bin/ludicc unavailable\n"); return 1 }
+  var manifest = ""
+  manifest = manifest + bless_render("games/snake", "ddssaawwddss")
+  manifest = manifest + bless_render("games/menu", "ssss")
+  manifest = manifest + bless_render("games/chronorift", "ddddwwwwaassK")
+  manifest = manifest + bless_render("rendering/draw_prims", "")
+  if not write_file("selfhost/golden/renders.sha256", manifest) {
+    err("golden: could not write selfhost/golden/renders.sha256\n"); return 1
+  }
+  print("wrote selfhost/golden/renders.sha256:")
+  out(manifest)
+  print("review the change: git diff selfhost/golden/renders.sha256")
+  return 0
 }
 
 function cmd_selfhost_test() -> int {
@@ -57,12 +100,13 @@ function cmd_selfhost_test() -> int {
   sh_case("color", "16744512 1090486336 1090486336 8355711 8355711 8355711")
 
   print("== the self-host compiler compiles real games (vs golden output) ==")
-  # the golden PPMs were produced by the original C compiler; the self-hosted
-  # compiler must reproduce them exactly.
-  game_case("snake", "ddssaawwddss")
-  game_case("menu", "ssss")
-  game_case("chronorift", "ddddwwwwaassK")
-  game_case("draw_prims", "")
+  # the golden render hashes were first produced by the original C compiler; the
+  # self-hosted compiler must reproduce the same framebuffer, byte for byte, so
+  # its SHA-256 matches the checked-in baseline in selfhost/golden/renders.sha256.
+  game_case("games/snake", "ddssaawwddss")
+  game_case("games/menu", "ssss")
+  game_case("games/chronorift", "ddddwwwwaassK")
+  game_case("rendering/draw_prims", "")
 
   print("== the bootstrap fixpoint (seeded from bin/ludicc) ==")
   if shq("bin/x bootstrap > /tmp/x_boot.out 2>&1") { ok("gen2.ll == gen3.ll (compiler reproduces itself)") }

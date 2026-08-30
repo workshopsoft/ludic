@@ -2,7 +2,7 @@
 
 > **Status: S0 shipped; S1–S6 are design.** The base construct — `scene` /
 > `layer` / `on enter` / `on exit` / `become`, lowered to the implicit machine of
-> §3 and §9 — is implemented and tested ([`examples/scenes.ludic`](examples/scenes.ludic),
+> §3 and §9 — is implemented and tested ([`examples/lang/scenes.ludic`](examples/lang/scenes.ludic),
 > a `bin/x test` check). The extensions in §4–§8 (scene-owned entities, richer
 > layers, the overlay stack, scene-local state, transition parameters) are still
 > design targets. This document reaches deliberately past the thin sketch so we
@@ -22,7 +22,7 @@ the language today, and a third is sketched:
 | `machine`/`state`/`become` over a register | works | dispatch on the register each frame; still one flat register, no per-state handlers or lifecycle |
 | `scene`/`layer`/`on enter`/`on exit` | **sketch only** | — |
 
-The sketch ([`examples/scenes.ludic`](examples/scenes.ludic)) specs:
+The sketch ([`examples/lang/scenes.ludic`](examples/lang/scenes.ludic)) specs:
 
 - Exactly **one scene active**; the `start` scene runs first.
 - A scene's handlers run only while it is active; handlers outside any scene are
@@ -309,7 +309,7 @@ Each is independently shippable and testable, matching how the repo phases work.
 - **S0 — parse & lower the sketch.** ✅ **Done.** `scene`/`layer`/`on enter`/`on
   exit`/`become` lowered to the implicit `machine`; the active scene is
   snapshotted per phase so exactly one scene's layers dispatch in any phase.
-  [`examples/scenes.ludic`](examples/scenes.ludic) compiles, runs, and is checked
+  [`examples/lang/scenes.ludic`](examples/lang/scenes.ludic) compiles, runs, and is checked
   by `bin/x test`. This is the floor everything else builds on.
 - **S1 — `@OnEnter`/`@OnExit` annotation form** (E5, cheap once S0 exists).
 - **S2 — layer toggle & pause** (E2) on top of the existing `enable`/`disable`.
@@ -317,7 +317,7 @@ Each is independently shippable and testable, matching how the repo phases work.
   layer L` flips an `@LE_<L>` flag that gates the layer's handlers (emitted only
   for toggled layers, so untouched scene programs stay byte-identical), and a
   `public` layer fires `layer_<L>_show`/`_hide` — see
-  [`examples/layer_events.ludic`](examples/layer_events.ludic). Still open: the
+  [`examples/events/layer_events.ludic`](examples/events/layer_events.ludic). Still open: the
   *pause* half (keep drawing while `Update` handlers suspend) and `on show`/`on
   hide` blocks.
 - **S3 — the scene stack** (E3): `push`/`pop`/`overlay`/`passthrough`. The big one.
@@ -350,5 +350,5 @@ actually lands; S4–S5 are ergonomics; S6 is a performance destination.
 ---
 
 *Companion to [LANGUAGE.md §"Scenes & layers"](LANGUAGE.md) and the ordering
-sketch in [`examples/scenes.ludic`](examples/scenes.ludic). Supersedes nothing
+sketch in [`examples/lang/scenes.ludic`](examples/lang/scenes.ludic). Supersedes nothing
 until the compiler work in §10 lands.*

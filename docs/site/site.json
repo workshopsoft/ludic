@@ -79,7 +79,7 @@
     "intro": "Build the toolchain once, then your game. Everything runs from the repo root.",
     "steps": [
       { "title": "Build the toolchain", "html": "<code>bin/x build</code> produces <code>ludicc</code>, the compiler you'll use for everything below." },
-      { "title": "Compile &amp; run an example", "html": "<code>bin/x app examples/snake.ludic</code> turns a <code>.ludic</code> file into a native binary. Run it to open a real window." },
+      { "title": "Compile &amp; run an example", "html": "<code>bin/x app examples/games/snake.ludic</code> turns a <code>.ludic</code> file into a native binary. Run it to open a real window." },
       { "title": "Go headless for tests", "html": "<code>--headless</code> renders frames to a <code>.ppm</code> from piped input — deterministic output you can diff." },
       { "title": "Edit with full tooling", "html": "<code>bin/x tools</code> builds the formatter and language server; every editor gets completion, diagnostics and go-to-definition." }
     ],
@@ -89,11 +89,11 @@
       { "cmd": "bin/x build" },
       { "blank": true },
       { "comment": "build and run an example (opens a window)" },
-      { "cmd": "bin/x app examples/snake.ludic" },
+      { "cmd": "bin/x app examples/games/snake.ludic" },
       { "cmd": "./build/snake" },
       { "blank": true },
       { "comment": "deterministic headless render for tests" },
-      { "cmd": "bin/x app examples/snake.ludic --headless" },
+      { "cmd": "bin/x app examples/games/snake.ludic --headless" },
       { "cmd": "printf 'ddddwww' | ./build/snake_headless" },
       { "out": "→ writes out.ppm" }
     ]

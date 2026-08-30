@@ -14,7 +14,7 @@
 #   5. rt_receive()              — the client reconciles to the authoritative x=5
 #
 # Prints 5 / 999 / 5. Build & run with the Ludic toolchain only:
-#   bin/x app examples/net_demo.ludic --headless && ./build/net_demo_headless
+#   bin/x app examples/networking/net_demo.ludic --headless && ./build/net_demo_headless
 import "net_rt.ludic"
 
 program NetDemo {

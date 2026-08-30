@@ -119,7 +119,7 @@ async function main() {
   expect('scene in enter', '  enter Battle', 'Battle', 'entity.name.type.scene');
 
   // A whole file must tokenise without the engine bailing out.
-  const sample = fs.readFileSync(path.join(ROOT, 'examples', 'menu.ludic'), 'utf8');
+  const sample = fs.readFileSync(path.join(ROOT, 'examples', 'games', 'menu.ludic'), 'utf8');
   let state = vsctm.INITIAL;
   let tokenCount = 0;
   for (const line of sample.split('\n')) {
@@ -127,8 +127,8 @@ async function main() {
     state = r.ruleStack;
     tokenCount += r.tokens.length;
   }
-  if (tokenCount > 200) ok(`tokenises examples/menu.ludic (${tokenCount} tokens)`);
-  else bad('tokenises examples/menu.ludic', `only ${tokenCount} tokens`);
+  if (tokenCount > 200) ok(`tokenises examples/games/menu.ludic (${tokenCount} tokens)`);
+  else bad('tokenises examples/games/menu.ludic', `only ${tokenCount} tokens`);
 
   // ---- the Markdown injection ---------------------------------------------
   const mdGrammar = await registry.loadGrammar('markdown.ludic.codeblock');

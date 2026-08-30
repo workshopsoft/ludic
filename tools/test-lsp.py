@@ -111,7 +111,7 @@ def main():
         check_true(f"advertises {cap}", cap in caps)
 
     # ---- a fragment file: no `program` block, only reachable through an import --
-    frag = os.path.join(ROOT, "examples/chronorift/combat.ludic")
+    frag = os.path.join(ROOT, "examples/games/chronorift/combat.ludic")
     text = c.open(frag)
     uri = {"uri": "file://" + frag}
 

@@ -9,7 +9,7 @@
 #   503    Enemy A despawned in-world (Despawned): drop its loot, 3 + 500
 #   1009   Enemy B outlived the run; at quit (Quit) it skips loot, 9 + 1000
 #
-#   bin/x game-build bin/ludicc examples/reason.ludic /tmp/reason
+#   bin/x game-build bin/ludicc examples/lang/reason.ludic /tmp/reason
 #   /tmp/reason </dev/null
 program Reasons {
   property Health { hp: int = 0 }

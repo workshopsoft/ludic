@@ -27,12 +27,13 @@ program X {
     print("  x app <file.ludic> [--headless] [--save-temps]")
     print("                                compile a Ludic program to a native app in build/")
     print("  x tools [--install] [--test]  build the editor toolchain (ludic-fmt, ludic-lsp)")
-    print("  x clean                       remove build/, out.ppm and stray artifacts (keeps bin/)")
+    print("  x clean                       remove build/ (incl. build/out.ppm) and stray artifacts (keeps bin/)")
     print("")
     print("test:")
     print("  x test                        the full regression suite")
     print("  x selfhost-test               the self-hosting suite (correctness + bootstrap fixpoints)")
     print("  x test-tools                  the editor-toolchain suite")
+    print("  x golden                      regenerate selfhost/golden/renders.sha256 (review with git diff)")
     print("")
     print("self-host internals:")
     print("  x selfhost-build [ludicc] [out]   assemble + compile the self-host compiler")
@@ -61,6 +62,7 @@ program X {
     if (cmd == "test") { exit(cmd_test()) }
     if (cmd == "selfhost-test") { exit(cmd_selfhost_test()) }
     if (cmd == "test-tools") { exit(cmd_test_tools()) }
+    if (cmd == "golden") { exit(cmd_golden()) }
     if (cmd == "bootstrap") { exit(cmd_bootstrap()) }
     if (cmd == "bootstrap-cfree") { exit(cmd_bootstrap_cfree()) }
     if (cmd == "reseed") { exit(cmd_reseed()) }

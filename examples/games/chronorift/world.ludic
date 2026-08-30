@@ -1,5 +1,5 @@
 # world.ludic — the data model: components, entity archetypes, constants.
-# Imported by examples/chronorift.ludic. No `game` wrapper (this is a fragment).
+# Imported by examples/games/chronorift.ludic. No `game` wrapper (this is a fragment).
 
 property Pos    { x: int = 0, y: int = 0 }
 property Actor  { kind: int = 0 }

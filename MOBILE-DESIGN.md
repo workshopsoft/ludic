@@ -36,8 +36,8 @@ them:
   parse ([parse_game.ludic:236](selfhost/parse_game.ludic:236)) → call lowering to a
   direct `call @<sym>` ([emit_expr.ludic:168](selfhost/emit_expr.ludic:168)) →
   `declare` emission ([emit_head.ludic:105](selfhost/emit_head.ludic:105)). Working
-  examples: [examples/net_echo.ludic:12](examples/net_echo.ludic:12),
-  [examples/lib/arena.ludic:14](examples/lib/arena.ludic:14). This is the single
+  examples: [examples/networking/net_echo.ludic:12](examples/networking/net_echo.ludic:12),
+  [examples/library/arena.ludic:14](examples/library/arena.ludic:14). This is the single
   most important fact in this document — see §7.
 
 **What's missing (all of it must be built):**

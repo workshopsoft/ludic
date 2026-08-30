@@ -43,7 +43,8 @@ function cmd_build() -> int {
 
 # ---- app: compile a Ludic program to a native app ----------------------------
 # usage: x app <file.ludic> [--headless|--windowed] [--save-temps]
-# windowed is the default for a game; headless renders the last frame to out.ppm.
+# windowed is the default for a game; headless renders the last frame to
+# build/out.ppm (never the repo root).
 function cmd_app() -> int {
   ensure_ludicc()
   var src = null
@@ -64,11 +65,11 @@ function cmd_app() -> int {
   if (mode == 2) {
     let outbin = `build/{name}_headless`
     let ll = `{outbin}.ll`
-    print(`ludicc: {src} -> {outbin}  (renders the last frame to out.ppm)`)
+    print(`ludicc: {src} -> {outbin}  (renders the last frame to build/out.ppm)`)
     if not shq(`bin/ludicc --headless {src} > {ll}`) { return 1 }
     if not shq(`{cc()} -O2 {ll} -o {outbin}`) { return 1 }
     if not save { run(`rm -f {ll}`) }
-    print(`done. run: printf 'ddss' | ./{outbin} && open out.ppm`)
+    print(`done. run: mkdir -p build && printf 'ddss' | ./{outbin} && open build/out.ppm`)
     return 0
   }
 
@@ -83,13 +84,14 @@ function cmd_app() -> int {
 }
 
 # Remove every generated artifact and leave the tracked source untouched: the
-# whole build/ tree (IR, objects, compiled apps), the headless render dropped in
-# the root (out.ppm), and any stray *.tmp/*.ll left behind by a failed build.
-# The toolchain binaries in bin/ are kept so the running `x` survives; rebuild
-# them any time with `x build`.
+# whole build/ tree (IR, objects, compiled apps, the headless render at
+# build/out.ppm), and any stray *.tmp/*.ll left behind by a failed build. A
+# legacy out.ppm in the root (from an older toolchain) is swept too. The
+# toolchain binaries in bin/ are kept so the running `x` survives; rebuild them
+# any time with `x build`.
 function cmd_clean() -> int {
   run("rm -rf build")
   run("rm -f out.ppm bin/*.tmp")
-  print("cleaned: build/, out.ppm, bin/*.tmp  (bin/ toolchain kept — `x build` to rebuild)")
+  print("cleaned: build/ (incl. build/out.ppm), bin/*.tmp  (bin/ toolchain kept — `x build` to rebuild)")
   return 0
 }

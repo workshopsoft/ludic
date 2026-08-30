@@ -8,18 +8,18 @@
 >   struct, a fixed-capacity listener array), proven by a C mod in
 >   [`tests/mod_c/mod.c`](tests/mod_c/mod.c) binding
 >   [`examples/mod_host.ludic`](examples/mod_host.ludic). Byte-identical when no
->   event is declared. ([`examples/events.ludic`](examples/events.ludic))
+>   event is declared. ([`examples/events/events.ludic`](examples/events/events.ludic))
 > - **EV1** — public events across the **whole architecture**, every scope shipped:
 >   **program** (`@Public @OnStart`/`@OnQuit` → `program_start`/`program_quit`,
->   [`examples/program_events.ludic`](examples/program_events.ludic)); **models**
+>   [`examples/events/program_events.ludic`](examples/events/program_events.ludic)); **models**
 >   (`@Public @OnSpawn`/`@OnDespawn` → `model_<M>_spawn`/`_despawn`,
->   [`examples/promote.ludic`](examples/promote.ludic)); **properties** (`@Public
+>   [`examples/events/promote.ludic`](examples/events/promote.ludic)); **properties** (`@Public
 >   @OnAttach`/`@OnDetach`/`@OnEnable`/`@OnDisable` → `prop_<P>_attach` etc.,
->   [`examples/prop_events.ludic`](examples/prop_events.ludic)); **scenes** (a
+>   [`examples/events/prop_events.ludic`](examples/events/prop_events.ludic)); **scenes** (a
 >   `public` scene → `scene_<S>_enter`/`_exit`,
->   [`examples/scene_events.ludic`](examples/scene_events.ludic)); and **layers** (a
+>   [`examples/events/scene_events.ludic`](examples/events/scene_events.ludic)); and **layers** (a
 >   `public` layer + `enable/disable layer L` → `layer_<L>_show`/`_hide`,
->   [`examples/layer_events.ludic`](examples/layer_events.ludic)) — which also
+>   [`examples/events/layer_events.ludic`](examples/events/layer_events.ludic)) — which also
 >   landed **SCENES E2 layer toggle** (`@LE_<L>` flag gating a layer's handlers).
 > - **EV2 / EV2b** — the world table: the reflection ABI, generated from the
 >   compile-time schema, so a mod reads, writes, scans, identifies, **and creates**
@@ -35,7 +35,7 @@
 >   for an ECS program that declares events, so event-free games stay byte-exact.
 >   The world table is complete: read, write, scan, identify, create, iterate.
 > - **EV3** — `cancellable` events, the `cancel` verb, and `emit E(…)` as an
->   expression returning the veto flag. ([`examples/cancel.ludic`](examples/cancel.ludic))
+>   expression returning the veto flag. ([`examples/events/cancel.ludic`](examples/events/cancel.ludic))
 > - **EV5** — leak-proof scoped listeners: `ludic_off_<E>(token)` (explicit
 >   unregister; dispatch skips tombstoned slots), `ludic_on_entity_<E>(entity, cb)`
 >   (entity-scoped), and a generated `ludic_sweep_entity` called from `despawn` that
@@ -44,7 +44,7 @@
 > - **EV6** — re-entrant `emit` is depth-bounded (`@ev_depth` vs `EV_DEPTH_CAP`): a
 >   listener may emit another event, but an event cycle traps as an early return
 >   instead of hanging the frame. Dispatch order was already deterministic (array,
->   registration order). Proven by [`examples/recurse.ludic`](examples/recurse.ludic).
+>   registration order). Proven by [`examples/events/recurse.ludic`](examples/events/recurse.ludic).
 >
 > - **EV7 (schema opening)** — a mod defines a brand-new component at runtime:
 >   `ludic_register_prop(name, nfields)` mallocs flat `[MAX_ENT × nfields × i32]`
@@ -566,7 +566,7 @@ work (and how LIFECYCLE/SCENES sequence).
   `N_EVENT`/`S_EMIT`; `parse_event` + `@On` annotation + `emit` statement (guarded
   by an identifier-lookahead so a bare `emit(...)` call still parses); registries
   `g_events`/`g_onlisten` (emit_core); `emit_event_fns` (emit_game); `emit_emit`
-  (emit_stmt). [`examples/events.ludic`](examples/events.ludic) is a `bin/x test` check.
+  (emit_stmt). [`examples/events/events.ludic`](examples/events/events.ludic) is a `bin/x test` check.
 - **EV1 — `@Public` hook promotion.** ✅ *All scopes shipped.* `@Public` on a
   lifecycle hook fires a public event at that hook's site (payload: entity, plus
   `EndReason` for despawn); `find_event(name)` doubles as the "is this hook

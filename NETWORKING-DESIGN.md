@@ -5,7 +5,7 @@
 > self-contained **pure-Ludic** program (no `.c`, no foreign host): a built-in
 > loopback transport fills the seam, and each `examples/net_*.ludic` drives and
 > asserts itself from its own `entry`. See `bin/x test` (checks `net_echo` … `net_demo`)
-> and `examples/net_demo.ludic` for a full RPC→authority→replicate→reconcile loop.
+> and `examples/networking/net_demo.ludic` for a full RPC→authority→replicate→reconcile loop.
 > clang remains only as the LLVM-IR assembler/linker (no C is compiled), the floor
 > Rust and Swift stand on.
 >
@@ -13,13 +13,13 @@
 > checks. **N0 (transport seam):** `extern fn` now lowers end to end — a direct
 > `@<sym>` call plus a `declare`, no networking logic in the compiler — so the whole
 > transport is two externs (`net_send`/`net_poll`) a host fills. Proven by
-> [`examples/net_echo.ludic`](examples/net_echo.ludic) sending four bytes through
+> [`examples/networking/net_echo.ludic`](examples/networking/net_echo.ludic) sending four bytes through
 > the loopback host in [`tests/net_c/loopback.c`](tests/net_c/loopback.c) and
 > polling them back (`4 10 20 30 42`). **N1 (snapshot-to-buffer):**
 > `world_size()`/`world_save(buf)`/`world_load(buf, len)` generalize `save()`/`load()`
 > from a file to a caller-owned memory buffer — the same block layout via `memcpy` —
 > so the whole ECS world round-trips through bytes. Proven by
-> [`examples/net_snapshot.ludic`](examples/net_snapshot.ludic) +
+> [`examples/networking/net_snapshot.ludic`](examples/networking/net_snapshot.ludic) +
 > [`tests/net_c/snapshot_mod.c`](tests/net_c/snapshot_mod.c) (snapshot, mutate,
 > restore → `50 7 50`). Both are byte-identical when unused, so the offline dividend
 > (§8) holds. This is a companion to
@@ -427,7 +427,7 @@ work (and how EVENTS-DESIGN sequenced EV0–EV7).
   header emits a matching `declare`, so any C/Rust/Zig library (a socket, here the
   loopback) binds through the same seam windowing uses. `find_extern` (emit_core),
   the extern branch in emit_expr's call path, `emit_extern_decls` (emit_head).
-  ([`examples/net_echo.ludic`](examples/net_echo.ludic),
+  ([`examples/networking/net_echo.ludic`](examples/networking/net_echo.ludic),
   [`tests/net_c/loopback.c`](tests/net_c/loopback.c) → `4 10 20 30 42`.)
 - **N1 — snapshot-to-buffer. ✅ SHIPPED.** Generalized `save()`/`load()` to a memory
   buffer: `world_size()` (exact snapshot bytes), `world_save(buf) -> int`,
@@ -435,31 +435,31 @@ work (and how EVENTS-DESIGN sequenced EV0–EV7).
   kind, vars, per-component `@S_`/`@H_`) now feeds a file (fwrite/fread) *or* a buffer
   (memcpy over a threaded i64 offset), chosen by `g_snap_mode` in emit_save.ludic;
   no rt_ hook (the ECS world only). The rollback/replication substrate.
-  ([`examples/net_snapshot.ludic`](examples/net_snapshot.ludic),
+  ([`examples/networking/net_snapshot.ludic`](examples/networking/net_snapshot.ludic),
   [`tests/net_c/snapshot_mod.c`](tests/net_c/snapshot_mod.c) → `50 7 50`.)
 - **N2 — `@Sync` codegen. ✅ SHIPPED.** The three-level annotations → generated
   per-model `serialize_<M>`/`apply_<M>` + by-kind dispatchers (`ludic_serialize`/
   `apply`/`sync_size`, and the `serialize`/`apply`/`sync_size` builtins); the
   POD-scalar compile error and the empty-participation warning. The declarative
-  core. ([`examples/net_sync.ludic`](examples/net_sync.ludic) → `12 3 4 50 999`,
+  core. ([`examples/networking/net_sync.ludic`](examples/networking/net_sync.ludic) → `12 3 4 50 999`,
   emit in [`selfhost/emit_net.ludic`](selfhost/emit_net.ludic).)
 - **N3 — ownership. ✅ SHIPPED.** `@Owned` + the `@L_owner_arr` array +
   `owner()`/`set_owner()`/`is_owner()`; owners are part of the world snapshot.
-  ([`examples/net_owner.ludic`](examples/net_owner.ludic) → `-1 7 0 1`.)
+  ([`examples/networking/net_owner.ludic`](examples/networking/net_owner.ludic) → `-1 7 0 1`.)
 - **N4 — remote events (RPCs). ✅ SHIPPED.** `@ToServer`/`@ToClients` on `event`s →
   payload serialize (`[event id][fields]`) + directional `net_send` + `net_pump()`
-  far-side re-`emit`. ([`examples/net_rpc.ludic`](examples/net_rpc.ludic) → `0 8`.)
+  far-side re-`emit`. ([`examples/networking/net_rpc.ludic`](examples/networking/net_rpc.ludic) → `0 8`.)
 - **N5 — roles + drivable sim. ✅ SHIPPED.** `@Server`/`@Predicted` role-guarded
   dispatch driven by the `@L_role` register (`set_role`/`is_server`/`local_id`);
   the opt-in `entry`-owns-the-loop with `tick_fixed()`/`tick_render()`. Together
   these let prediction/rollback be written in developer/library code.
-  ([`examples/net_roles.ludic`](examples/net_roles.ludic) → `1 102`.)
+  ([`examples/networking/net_roles.ludic`](examples/networking/net_roles.ludic) → `1 102`.)
 - **N6 — a blessed reference netcode runtime. ✅ SHIPPED.** A Ludic library
-  ([`examples/net_rt.ludic`](examples/net_rt.ludic)) — server-authoritative state
+  ([`examples/networking/net_rt.ludic`](examples/networking/net_rt.ludic)) — server-authoritative state
   replication over the primitives — plus a full end-to-end demo, proving the seams
   the way the C mod proved the event ABI, but in pure Ludic over the built-in
   transport. Library policy, swappable for lockstep+rollback.
-  ([`examples/net_demo.ludic`](examples/net_demo.ludic) → `5 999 5`.) A built-in
+  ([`examples/networking/net_demo.ludic`](examples/networking/net_demo.ludic) → `5 999 5`.) A built-in
   loopback transport (N0) means all of this needs **no foreign code at all**.
 
 N0–N2 deliver "state can be declared, serialized, and moved." N3–N4 add ownership

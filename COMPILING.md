@@ -20,8 +20,8 @@
 > clang selfhost/ludicc.seed.ll -o bin/ludicc && bin/ludicc tools/x/main.ludic -o bin/x
 > bin/x build                             # rebuild the whole toolchain into bin/
 >                                         #   (ludicc, ludic, x, ludic-fmt, ludic-lsp)
-> bin/ludicc examples/snake.ludic -o bin/snake   # compile
-> bin/ludic  examples/snake.ludic                # compile + run
+> bin/ludicc examples/games/snake.ludic -o bin/snake   # compile
+> bin/ludic  examples/games/snake.ludic                # compile + run
 > bin/x help                              # list every command
 > ```
 >
@@ -76,10 +76,10 @@ self-hosted `ludicc`.
 `bin/x app` wraps the common cases:
 
 ```bash
-bin/x app examples/snake.ludic              # -> build/snake        (native)
-bin/x app examples/lib/combat.ludic --lib   # -> build/libcombat.*  (library)
-bin/x app examples/snake.ludic --headless   # -> build/snake_headless (out.ppm)
-bin/x app examples/snake.ludic --web        # -> build/web/            (browser)
+bin/x app examples/games/snake.ludic              # -> build/snake        (native)
+bin/x app examples/library/combat.ludic --lib   # -> build/libcombat.*  (library)
+bin/x app examples/games/snake.ludic --headless   # -> build/snake_headless (out.ppm)
+bin/x app examples/games/snake.ludic --web        # -> build/web/            (browser)
 ```
 
 The `--lib` and `--web` targets were part of the old C driver and are **not yet
@@ -109,7 +109,7 @@ program Combat {
 ```
 
 ```bash
-ludicc examples/lib/combat.ludic --shared -o build/libcombat.dylib
+ludicc examples/library/combat.ludic --shared -o build/libcombat.dylib
 nm -gU build/libcombat.dylib
 #  T _damage   T _hits_to_kill   T _xp_for        (no _curve)
 ```
@@ -122,7 +122,7 @@ extern function damage(attack: int, armour: int, roll: int) -> int = "damage"
 ```
 
 ```bash
-ludicc examples/lib/arena.ludic -o build/arena -Lbuild -lcombat
+ludicc examples/library/arena.ludic -o build/arena -Lbuild -lcombat
 ```
 
 Libraries are linked as `@rpath/…` (`$ORIGIN` on Linux) and executables search
@@ -219,7 +219,7 @@ only the triple changes.
 ```
 
 ```bash
-bin/x app examples/chronorift.ludic --web
+bin/x app examples/games/chronorift.ludic --web
 python3 -m http.server -d build/web 8000     # then open http://localhost:8000/
 ```
 

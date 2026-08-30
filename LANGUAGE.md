@@ -133,7 +133,7 @@ handler Nav phase Update {
 handler Draw phase Render { clear(0x0e0e16); ui_render(); present() }
 ```
 
-See `examples/menu.ludic` for a complete title screen.
+See `examples/games/menu.ludic` for a complete title screen.
 
 ## Types
 
@@ -246,7 +246,7 @@ A constraint is evaluated **per candidate entity**, so it is the wrong place for
 a guard that concerns the whole handler (re-reading `reg(R_MODE)` for every
 entity). Keep whole-handler guards in the body of a handler with no `@Queries`,
 wrapping an inline query — as `CleanBattle` does in
-`examples/chronorift/combat.ludic`.
+`examples/games/chronorift/combat.ludic`.
 
 ### Matching is lazy, not snapshotted
 
@@ -391,9 +391,9 @@ disable Gravity                   # a whole model sits out every query
 disable AiThink                   # a handler stops running each phase
 ```
 
-See [`examples/toggle.ludic`](examples/toggle.ludic) for the three enable/disable
-scopes, [`examples/detach.ludic`](examples/detach.ludic) for the structural
-attach/detach pair, and [`examples/reason.ludic`](examples/reason.ludic) for
+See [`examples/lang/toggle.ludic`](examples/lang/toggle.ludic) for the three enable/disable
+scopes, [`examples/lang/detach.ludic`](examples/lang/detach.ludic) for the structural
+attach/detach pair, and [`examples/lang/reason.ludic`](examples/lang/reason.ludic) for
 reason-carrying teardown. The rest of the lifecycle roadmap (value-change hooks,
 query-membership edges, keyed effects) is in
 [LIFECYCLE-DESIGN.md](LIFECYCLE-DESIGN.md).
@@ -402,9 +402,9 @@ query-membership edges, keyed effects) is in
 `program`, `@Handles(Move)` names the handlers it uses. It parses and reads as
 documentation; every declared handler still runs (registration is implicit).
 
-See [`examples/annotations.ludic`](examples/annotations.ludic) (queries, computed
-fields, one hook) and [`examples/lifecycle.ludic`](examples/lifecycle.ludic) (the
-whole timeline), plus [`examples/toggle.ludic`](examples/toggle.ludic)
+See [`examples/lang/annotations.ludic`](examples/lang/annotations.ludic) (queries, computed
+fields, one hook) and [`examples/lang/lifecycle.ludic`](examples/lang/lifecycle.ludic) (the
+whole timeline), plus [`examples/lang/toggle.ludic`](examples/lang/toggle.ludic)
 (enable/disable). Scenes and their `on enter` / `on exit` lifecycle blocks are
 implemented — see "Scenes & layers" below. (An annotation spelling,
 `@OnEnter(Scene)` / `@OnExit(Scene)`, is a designed but not-yet-built convenience
@@ -444,22 +444,22 @@ emit Hurt(entity: e, amount: 5)                    # fires every listener
   architecture.** The game's own lifecycle becomes moddable with no hand-written
   `emit`, at every scope:
   - **program** — `@Public @OnStart`/`@OnQuit` → `program_start` / `program_quit`
-    (the top-level mod entry/exit points). See [`examples/program_events.ludic`](examples/program_events.ludic).
+    (the top-level mod entry/exit points). See [`examples/events/program_events.ludic`](examples/events/program_events.ludic).
   - **models** — `@Public @OnSpawn(Enemy)`/`@OnDespawn(Enemy)` →
     `model_Enemy_spawn` / `model_Enemy_despawn` (entity, + `EndReason` on despawn).
-    See [`examples/promote.ludic`](examples/promote.ludic).
+    See [`examples/events/promote.ludic`](examples/events/promote.ludic).
   - **properties** — `@Public @OnAttach/@OnDetach/@OnEnable/@OnDisable(P)` →
-    `prop_<P>_attach` / `_detach` / `_enable` / `_disable`. See [`examples/prop_events.ludic`](examples/prop_events.ludic).
-  - **scenes** — a `public` scene → `scene_<S>_enter` / `scene_<S>_exit`. See [`examples/scene_events.ludic`](examples/scene_events.ludic).
+    `prop_<P>_attach` / `_detach` / `_enable` / `_disable`. See [`examples/events/prop_events.ludic`](examples/events/prop_events.ludic).
+  - **scenes** — a `public` scene → `scene_<S>_enter` / `scene_<S>_exit`. See [`examples/events/scene_events.ludic`](examples/events/scene_events.ludic).
   - **layers** — a `public` layer, with `enable layer L` / `disable layer L`
     flipping the layer on and off (its handlers stop while hidden) →
-    `layer_<L>_show` / `layer_<L>_hide`. See [`examples/layer_events.ludic`](examples/layer_events.ludic).
+    `layer_<L>_show` / `layer_<L>_hide`. See [`examples/events/layer_events.ludic`](examples/events/layer_events.ludic).
 
 - **`cancellable` events are decisions, not just notifications.** A listener on a
   `cancellable` event may `cancel` it (a foreign listener sets the payload's
   trailing `cancelled` flag); `emit E(…)` used as an *expression* yields that flag,
   so the caller applies the action only when it wasn't vetoed — the Bukkit/DOM
-  `preventDefault` shape. See [`examples/cancel.ludic`](examples/cancel.ludic).
+  `preventDefault` shape. See [`examples/events/cancel.ludic`](examples/events/cancel.ludic).
 
 ```ludic
 # doc-check: skip — illustrative
@@ -567,7 +567,7 @@ extern function c_hypot(a: fixed, b: fixed) -> fixed = "hypot_fx"   # bind a C s
 `extern fn … = "symbol"` declares a foreign function and binds it to a symbol
 resolved at link time; pass `-L`/`-l` to ludicc to link its library. This is how
 Ludic calls anything with a C ABI — including a shared library built from
-another `.ludic` file (see `examples/lib/`).
+another `.ludic` file (see `examples/library/`).
 
 ## Statements
 
@@ -636,7 +636,7 @@ match tile {
 `machine` turns a register into an explicit state machine: it dispatches on the
 register's value to the matching `state`, and `become` transitions to a named
 state (no more `if phase == N` chains). See the co-op battle in
-`examples/chronorift/combat.ludic`:
+`examples/games/chronorift/combat.ludic`:
 
 ```ludic
 # doc-check: skip — illustrative: elided bodies
@@ -671,7 +671,7 @@ A variant is a **compile-time `int`** accessed as `Enum.Variant` (`Action.Guard`
 is `1`), numbered from `0` by declaration order, so it works anywhere an int does
 — `match` patterns, comparisons, `set_reg`. Enums are a naming layer over `int`:
 there is no distinct enum runtime type yet, so an enum value lives in an ordinary
-`int` or register (and is saved with it). See `examples/chronorift/combat.ludic`,
+`int` or register (and is saved with it). See `examples/games/chronorift/combat.ludic`,
 whose battle menus dispatch on `KnightAct`/`MageAct` instead of `0..3`.
 
 ## Expressions
@@ -792,15 +792,15 @@ Emacs, Sublime and Zed, are in `tools/editors/` — see
 
 ## Working programs
 
-- `examples/chronorift.ludic` — a co-op JRPG (overworld, dungeon, boss, shop,
+- `examples/games/chronorift.ludic` — a co-op JRPG (overworld, dungeon, boss, shop,
   save) using CC0 Kenney sprites. Split across `chronorift/*.ludic` via `import`,
   built on models.
-- `examples/menu.ludic` — a retained-UI title screen (9-slice panel, TrueType
+- `examples/games/menu.ludic` — a retained-UI title screen (9-slice panel, TrueType
   labels, focusable buttons).
-- `examples/snake.ludic` — Snake, no assets — same compiler, proving generality.
+- `examples/games/snake.ludic` — Snake, no assets — same compiler, proving generality.
 
 ```bash
-bin/x app examples/snake.ludic && ./build/snake
+bin/x app examples/games/snake.ludic && ./build/snake
 ```
 
 ## Not yet implemented
@@ -826,7 +826,7 @@ self-hosting; their lowerings are in
 ## Scenes & layers
 
 > **Implemented (S0).** `scene`, `layer`, and the `on enter` / `on exit` hooks
-> compile; [`examples/scenes.ludic`](examples/scenes.ludic) runs and is checked
+> compile; [`examples/lang/scenes.ludic`](examples/lang/scenes.ludic) runs and is checked
 > by `bin/x test`. A scene lowers to a `machine` the compiler writes for you: one
 > implicit active-scene register, states numbered by declaration order, and
 > `become` as two direct calls plus a store. Richer scene features (the overlay
@@ -878,7 +878,7 @@ scene Overworld {
   any single phase, and a `become` in `Update` is visible to that same frame's
   `Render`.
 
-[`examples/scenes.ludic`](examples/scenes.ludic) is a runnable, tested example
+[`examples/lang/scenes.ludic`](examples/lang/scenes.ludic) is a runnable, tested example
 of these rules.
 
 ## Queries in a handler signature
@@ -895,7 +895,7 @@ handler CleanBattle phase LateUpdate { despawn self() }
 This is exactly equivalent to wrapping the body in
 `for (Battle, Pos) in query [Battle, Pos, {Foe}] where Battle.hp <= 0 { … }` —
 same lowering, same semantics. The body runs once per matching entity and
-`self()` is that entity. `examples/qdecl.ludic` is a working example.
+`self()` is that entity. `examples/lang/qdecl.ludic` is a working example.
 
 Mutation during iteration follows the same rules as an inline query, because it
 is the same loop: entities are visited by ascending id, `despawn` of the current

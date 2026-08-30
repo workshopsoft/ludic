@@ -1,10 +1,8 @@
-# Generated build tree: LLVM IR, objects, compiled apps and the docs site all
-# land under build/ (see `bin/x build` / `bin/x clean`). Root-anchored so a
-# source dir named "build" elsewhere is never accidentally ignored.
+# Generated build tree: LLVM IR, objects, compiled apps, the headless render
+# (build/out.ppm) and the docs site all land under build/ (see `bin/x build` /
+# `bin/x clean`). Root-anchored so a source dir named "build" elsewhere is never
+# accidentally ignored. Nothing is written to the repo root any more.
 /build/
-
-# Headless render dropped in the working directory by a --headless run.
-/out.ppm
 
 # Archives are never tracked: the Kenney art is committed *extracted* under
 # assets/kenney/**/ (PNG/tmx/License), while the original download .zips and any

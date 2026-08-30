@@ -4,7 +4,7 @@
 # `module` instead of `game` means: no entry point, no frame loop. ludicc
 # compiles this to a real shared object —
 #
-#     ludicc examples/lib/combat.ludic --shared -o build/libcombat.dylib
+#     ludicc examples/library/combat.ludic --shared -o build/libcombat.dylib
 #
 # — whose `export fn`s are ordinary C-ABI symbols. Anything that can call a
 # .dylib/.so/.dll can call these: another Ludic program via `extern fn`, a game

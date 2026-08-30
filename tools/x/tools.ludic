@@ -69,7 +69,7 @@ function cmd_test_tools() -> int {
   } else { bad("idempotent on the source tree") }
 
   # --- meaning preserved: reformatting a formatted file must be a no-op -------
-  if shq(`fail=0; for f in examples/hello.ludic examples/snake.ludic examples/menu.ludic examples/qdecl.ludic examples/scenes.ludic; do test -f "$f" || continue; {fmt} "$f" > /tmp/x_f1 2>/dev/null; {fmt} /tmp/x_f1 > /tmp/x_f2 2>/dev/null; cmp -s /tmp/x_f1 /tmp/x_f2 || fail=1; done; test $fail -eq 0`) {
+  if shq(`fail=0; for f in examples/ecs/hello.ludic examples/games/snake.ludic examples/games/menu.ludic examples/lang/qdecl.ludic examples/lang/scenes.ludic; do test -f "$f" || continue; {fmt} "$f" > /tmp/x_f1 2>/dev/null; {fmt} /tmp/x_f1 > /tmp/x_f2 2>/dev/null; cmp -s /tmp/x_f1 /tmp/x_f2 || fail=1; done; test $fail -eq 0`) {
     ok("formatting is idempotent (fmt(fmt(x)) == fmt(x))")
   } else { bad("formatting is not idempotent") }
 

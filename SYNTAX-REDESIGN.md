@@ -37,10 +37,10 @@ Verified against the self-hosted compiler ([selfhost/parse.ludic](selfhost/parse
 5. `pure fn` — parses, `pure` silently discarded ([parse.ludic:272](selfhost/parse.ludic)); undocumented. *(✅ Phase 3d: now `@pure`)*
 6. `@anno` + `reads/writes/needs/uses [..]` — parsed then thrown away
    ([parse_game.ludic:15-31](selfhost/parse_game.ludic)); four synonyms, two undocumented. *(✅ Phase 3c: `needs`/`uses` dropped)*
-7. `scene`/`layer`/`on enter` — full LANGUAGE.md section + [examples/scenes.ludic](examples/scenes.ludic),
+7. `scene`/`layer`/`on enter` — full LANGUAGE.md section + [examples/lang/scenes.ludic](examples/lang/scenes.ludic),
    **does not compile** (`expected declaration`).
 8. `query (v) [..]` in a system signature — two LANGUAGE.md sections +
-   [examples/qdecl.ludic](examples/qdecl.ludic), **does not compile** (`parse error: {`). *(✅ implemented in Phase 1)*
+   [examples/lang/qdecl.ludic](examples/lang/qdecl.ludic), **does not compile** (`parse error: {`). *(✅ implemented in Phase 1)*
 9. `when cond {}` — documented ([LANGUAGE.md:329](LANGUAGE.md)) + in all three editor
    highlighters, **never parsed**. *(✅ implemented in Phase 1 as an if-without-else alias)*
 10. CLI `--emit-llvm`/`-o`/`--shared`/`--fmt` — documented, but `ludicc` only
@@ -187,13 +187,13 @@ Made spec ⇄ compiler agree **before** any grammar change. What landed:
   (`edge` is a pure marker; the emitter never lowered it differently.)
 - ✅ **Signature-`query` implemented** (#8) — `query (vars) [terms] where c` in a
   system header desugars to the same `S_QUERY` node the inline `for` builds, so
-  `examples/qdecl.ludic` compiles and runs. Also fixed multi-line clause parsing
+  `examples/lang/qdecl.ludic` compiles and runs. Also fixed multi-line clause parsing
   (clauses may now span lines).
 - ✅ **`when c { }` implemented** (#9) — as an `if`-without-else alias in
   [parse.ludic](selfhost/parse.ludic). Docs + editors already listed it; now the
   compiler agrees, so no editor-vocab churn was needed.
 - ✅ **`scene`/`layer` marked not-yet-implemented** (#7) — prominent note in
-  LANGUAGE.md §"Scenes & layers" + a header on [examples/scenes.ludic](examples/scenes.ludic).
+  LANGUAGE.md §"Scenes & layers" + a header on [examples/lang/scenes.ludic](examples/lang/scenes.ludic).
   Full scene front-end + emission deferred (real work, out of Phase 1 scope).
 - ✅ **`reads`/`writes` honesty** (#6) + the stale "Not yet implemented" section
   updated in [LANGUAGE.md](LANGUAGE.md); scenes/reads-writes/dropped-CLI-flags now
@@ -272,7 +272,7 @@ are retired; declaration modifiers are now leading `@annotations`: `@export fn`,
 `@edge system`, `@pure`, `@deterministic`. `parse_one_decl` collects a leading
 `@anno` run and `@export` sets the fn export flag ([parse.ludic](selfhost/parse.ludic));
 the dead `edge`-dispatch was removed from `parse_system`. Migrated the one
-`@export` user ([examples/lib/combat.ludic](examples/lib/combat.ludic)); old
+`@export` user ([examples/library/combat.ludic](examples/library/combat.ludic)); old
 prefix forms now rejected. Behavior-identical: the export flag is parse-only in
 the self-hosted emitter (it emits `@fn_<name>` for every function and never reads
 the flag — the C-ABI-export capability is vestigial, a pre-existing gap), so
@@ -359,7 +359,7 @@ Added an **annotation DSL**: `@Queries(these: [Prop{constraint}, …], on: Model
 a handler desugars to the existing `S_QUERY` loop (each property binds by its own
 name; a `Prop{…}` constraint qualifies its bare fields; `on:` adds a `{Model}`
 tag), and `@Handles(…)` on a program parses as documentation. See
-[examples/annotations.ludic](examples/annotations.ludic); bin/x test 15/15. All thirteen findings are resolved or resolved by an
+[examples/lang/annotations.ludic](examples/lang/annotations.ludic); bin/x test 15/15. All thirteen findings are resolved or resolved by an
 explicit, documented decision.
 
 ---

@@ -55,7 +55,7 @@ function rt_shutdown() -> void {
     win_close()
     return
   }
-  rt_dump_ppm("out.ppm")
+  rt_dump_ppm("build/out.ppm")
 }
 
 # ---- framebuffer ----------------------------------------------------------

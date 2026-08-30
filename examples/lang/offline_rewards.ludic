@@ -3,7 +3,7 @@
 # the deterministic Clock. Everything is integer seconds, so the result replays
 # identically — no wall clock, no floating point.
 #
-#   bin/ludic examples/offline_rewards.ludic     # prints 13 / 650 / 2026-08-30 / 0
+#   bin/ludic examples/lang/offline_rewards.ludic     # prints 13 / 650 / 2026-08-30 / 0
 program OfflineRewards {
   entry {
     # A save records when the player last quit. It is hardcoded here so the demo
