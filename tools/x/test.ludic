@@ -103,9 +103,15 @@ function cmd_test() -> int {
   feat_case("library/uuid", "", "1 2 3 4 5 6 7 8 9 10", "uuid.ludic (Uuid v4/v7 format, version/variant, parse/equals)")
   feat_case("library/noise", "", "1 2 3 4 5 6 7 8 9 10 11", "noise.ludic (Noise value/perlin/simplex/fbm/cellular determinism + range)")
   feat_case("library/logging", "", "0 5 2 1", "logging.ludic (Log levels, set_level/level threshold, structured fields)")
-  feat_case("library/os", "", "1 2 3 4 5 6 7 8 9 10 11 12 13", "os.ludic (Os args/env round-trip, platform/arch, known dirs)")
+  # Os known-folders/arch and Fs.list read the BSD utsname/dirent layout, so
+  # their asserted values are macOS-specific; skip off Darwin (see is_darwin).
+  if is_darwin() {
+    feat_case("library/os", "", "1 2 3 4 5 6 7 8 9 10 11 12 13", "os.ludic (Os args/env round-trip, platform/arch, known dirs)")
+  } else { skip("os.ludic (Os known-folder / uname ABI is macOS/BSD-specific)") }
   feat_case("library/unicode", "", "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18", "unicode.ludic (UTF-8 len/validate/char_at/chars/case/truncate/graphemes)")
-  feat_case("library/fs", "", "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32", "fs.ludic (Path join/dir/base/ext/normalize, Fs read/write/list/copy, Mime of/sniff)")
+  if is_darwin() {
+    feat_case("library/fs", "", "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32", "fs.ludic (Path join/dir/base/ext/normalize, Fs read/write/list/copy, Mime of/sniff)")
+  } else { skip("fs.ludic (Fs.list reads the macOS/BSD dirent layout)") }
 
   # issue #9: the Time/Date/Duration/Clock stdlib, driven from its own `entry`.
   net_case("lang/offline_rewards", "13 650 2026-08-30 0")
@@ -155,11 +161,19 @@ function cmd_test() -> int {
     ok("x build-cli builds bin/ludicc and bin/ludic from the seed (clang-only)")
   } else { bad2("x build-cli", capture_line("tail -1 /tmp/x_cli.out")) }
 
-  # ludicc -o drives clang to a native binary; a game links windowed by default
-  # (LUDIC_HOME points the linker at runtime/native/cocoa.ll).
-  if shq("LUDIC_HOME=. bin/ludicc examples/games/snake.ludic -o /tmp/x_cli_snake > /tmp/x_cli.out 2>&1") and shq("file /tmp/x_cli_snake 2>/dev/null | grep -q Mach-O") {
-    ok("ludicc app.ludic -o bin  ->  native executable")
-  } else { bad2("ludicc -o", capture_line("tail -1 /tmp/x_cli.out")) }
+  # ludicc -o drives clang to a native binary. A game links windowed by default
+  # (LUDIC_HOME points the linker at runtime/native/cocoa.ll) — that path is
+  # macOS-only (Cocoa), so off Darwin we prove the same "-o yields a runnable
+  # native binary" with a headless link, which needs no window backend.
+  if is_darwin() {
+    if shq("LUDIC_HOME=. bin/ludicc examples/games/snake.ludic -o /tmp/x_cli_snake > /tmp/x_cli.out 2>&1") and shq("file /tmp/x_cli_snake 2>/dev/null | grep -q Mach-O") {
+      ok("ludicc app.ludic -o bin  ->  native executable")
+    } else { bad2("ludicc -o", capture_line("tail -1 /tmp/x_cli.out")) }
+  } else {
+    if shq("LUDIC_HOME=. bin/ludicc --headless examples/games/snake.ludic -o /tmp/x_cli_snake > /tmp/x_cli.out 2>&1") and shq("test -x /tmp/x_cli_snake") {
+      ok("ludicc app.ludic -o bin  ->  native executable (headless)")
+    } else { bad2("ludicc -o", capture_line("tail -1 /tmp/x_cli.out")) }
+  }
 
   # --emit-llvm stops at the IR.
   if shq("bin/ludicc examples/games/snake.ludic --emit-llvm -o /tmp/x_cli_snake.ll > /tmp/x_cli.out 2>&1") and shq("head -1 /tmp/x_cli_snake.ll | grep -q 'LLVM IR'") {

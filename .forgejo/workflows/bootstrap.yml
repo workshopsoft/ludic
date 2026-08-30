@@ -1,0 +1,50 @@
+name: bootstrap
+
+# The headline guarantee of a self-hosted, C-free toolchain: assembled from the
+# checked-in IR seed with clang alone, the compiler recompiles its own source
+# and reproduces that seed **byte-for-byte**. A regression here (a compiler
+# change that was never reseeded) is otherwise invisible until someone runs it
+# locally. This job fails the moment out.ll != seed.ll.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: {}
+
+jobs:
+  cfree-fixpoint:
+    runs-on: docker
+    container: node:20-bookworm
+    steps:
+      - name: Install clang-16
+        run: |
+          set -eu
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends clang-16 git ca-certificates
+          clang-16 --version | head -1
+
+      - name: Check out the triggering commit
+        run: |
+          set -eu
+          git config --global --add safe.directory '*'
+          git clone https://git.workshopsoft.io/workshopsoft/ludic.git .
+          git checkout "${GITHUB_SHA}" 2>/dev/null || git checkout "${GITHUB_REF_NAME:-main}"
+          git log --oneline -1
+          # See ci.yml for why the Linux build injects the stdio shim via LUDIC_CC.
+          echo "LUDIC_CC=clang-16 $(pwd)/tools/ci/linux_stdio_shim.ll" >> "$GITHUB_ENV"
+          echo "LUDIC_HOME=$(pwd)" >> "$GITHUB_ENV"
+
+      - name: Bootstrap x from the seed
+        run: |
+          set -eu
+          mkdir -p bin
+          clang-16 tools/ci/linux_stdio_shim.ll selfhost/ludicc.seed.ll -o bin/ludicc
+          bin/ludicc tools/x/main.ludic -o bin/x
+
+      - name: Rebuild the compiler from the seed and assert byte-identity
+        # `x bootstrap-cfree` assembles the seed with clang, has that seed
+        # compiler recompile selfhost.ludic to out.ll, and `cmp`s out.ll against
+        # the checked-in seed. It returns non-zero if they differ — i.e. if the
+        # seed is stale relative to the compiler source.
+        run: bin/x bootstrap-cfree

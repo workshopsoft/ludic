@@ -1,0 +1,80 @@
+name: ci
+
+# Build the language toolchain from its IR seed and run the regression suites on
+# every push to main and every pull request. Until this landed the only workflow
+# was docs.yml, so nothing gated a change on `x test` / `x test-tools` or on the
+# compiler even building from the seed. See also bootstrap.yml, which proves the
+# C-free self-rebuild reproduces the seed byte-for-byte.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: {}
+
+jobs:
+  build-and-test:
+    # Same runner label the docs workflow uses — the self-hosted Forgejo runner
+    # advertises `docker`, not the GitHub-ism `ubuntu-latest`.
+    runs-on: docker
+    # Reuse the runner's own base image (Debian bookworm with git + node already
+    # present) and add just the two things the toolchain needs: a modern clang
+    # (LLVM 16 — the IR uses opaque pointers, so clang 15+ is required) and
+    # python3 for the docs/vocabulary checks. A prebuilt image with these baked
+    # in is the obvious future speed-up (see issue #33's packaging work).
+    container: node:20-bookworm
+    steps:
+      - name: Install clang-16 and python3
+        run: |
+          set -eu
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends clang-16 python3 git ca-certificates
+          clang-16 --version | head -1
+          python3 --version
+
+      - name: Check out the triggering commit
+        run: |
+          set -eu
+          git config --global --add safe.directory '*'
+          git clone https://git.workshopsoft.io/workshopsoft/ludic.git .
+          git checkout "${GITHUB_SHA}" 2>/dev/null || git checkout "${GITHUB_REF_NAME:-main}"
+          git log --oneline -1
+          # The toolchain is macOS-first; on this Linux runner it links against a
+          # tiny C-free IR shim that supplies the Darwin standard-stream globals
+          # (__stdoutp/__stderrp) over glibc's stdout/stderr. Injected through
+          # LUDIC_CC so every clang invocation — the seed bootstrap, `x build`,
+          # and each compiled test program — picks it up. Absolute path so it
+          # still resolves if a step changes directory.
+          echo "LUDIC_CC=clang-16 $(pwd)/tools/ci/linux_stdio_shim.ll" >> "$GITHUB_ENV"
+          echo "LUDIC_HOME=$(pwd)" >> "$GITHUB_ENV"
+
+      - name: Bootstrap the toolchain from the IR seed (clang only)
+        run: |
+          set -eu
+          # clang assembles + links the compiler's own checked-in IR seed (plus
+          # the Linux stdio shim), then that seed builds the whole toolchain into
+          # bin/ — ludicc, ludic, x, ludic-fmt, ludic-lsp. No C compiler, no
+          # pre-built binaries: the language builds itself from source + seed.
+          mkdir -p bin
+          clang-16 tools/ci/linux_stdio_shim.ll selfhost/ludicc.seed.ll -o bin/ludicc
+          bin/ludicc tools/x/main.ludic -o bin/x
+          bin/x build
+
+      - name: Regression suite (x test)
+        run: bin/x test
+
+      - name: Editor-toolchain suite (x test-tools)
+        # Grammar/lexer/vocabulary sync, ludic-fmt idempotence (the project's
+        # formatting contract — hand alignment is deliberately preserved, so the
+        # gate is fmt(fmt(x)) == fmt(x), not fmt(x) == x), and the JSON/XML editor
+        # assets. Cross-file LSP behaviour and the golden renders are macOS-ABI
+        # bound and skip here — visibly — until the runtime's directory walk and
+        # windowing are portable.
+        run: bin/x test-tools
+
+      - name: Docs cover the implementation
+        run: |
+          set -eu
+          python3 tools/docgen/gen.py --out build/pages
+          python3 tools/docgen/check.py build/pages
+          python3 tools/docgen/check-impl.py

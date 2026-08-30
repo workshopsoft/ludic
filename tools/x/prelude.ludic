@@ -125,6 +125,18 @@ function check(label: pointer, got: pointer, want: pointer) -> void {
   else { bad2(label, `expected [{want}] got [{got}]`) }
 }
 
+# ---- host platform ----------------------------------------------------------
+# A few cases exercise macOS-specific runtime ABI — Cocoa windowing, the BSD
+# utsname/dirent layout — or compare against renders blessed on macOS. The
+# self-hosted compiler and its C-free bootstrap are host-neutral (they produce
+# byte-identical IR on any host), so the bulk of the suite runs anywhere; only
+# these platform-bound cases are skipped — visibly, never silently — when the
+# suite runs off Darwin. That lets a Linux CI runner gate every portable
+# guarantee without red from the parts that are macOS-only today.
+function host_os() -> pointer { return capture_line("uname -s") }
+function is_darwin() -> bool { return host_os() == "Darwin" }
+function skip(msg: pointer) -> void { print(`  skip  {msg}`) }
+
 # print the "== N passed, M failed ==" footer and return the process exit code
 function report() -> int {
   print("")

@@ -25,6 +25,11 @@ function game_case(path: pointer, keys: pointer) -> void {
   if not game_build_ok("bin/ludicc", `examples/{path}.ludic`, `/tmp/x_g_{nm}`) { bad(`{path}: build`); return }
   run("mkdir -p build")
   run(`printf '%s' '{keys}' | /tmp/x_g_{nm} >/dev/null 2>&1`)
+  # The build + headless run above guard against a compile or runtime break on
+  # every host. The pixel-exact golden comparison, though, is against a render
+  # blessed on macOS; text rasterization differs by a hair on other hosts, so
+  # off Darwin we stop at "it built and ran" rather than fail on the hash.
+  if not is_darwin() { skip(`{path} render (golden hash blessed on macOS)`); return }
   let got = capture_line("shasum -a 256 build/out.ppm | cut -d' ' -f1")
   let want = capture_line(`grep '^{path} ' selfhost/golden/renders.sha256 | cut -d' ' -f2`)
   if (want == "") { bad2(path, "no golden hash (run: bin/x golden)"); return }
