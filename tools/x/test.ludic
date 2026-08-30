@@ -186,5 +186,20 @@ function cmd_test() -> int {
   if (rc == 42) { ok("ludic app.ludic  ->  compiles, runs, forwards exit code") }
   else { bad2("ludic run: expected exit 42", `got {string(rc)}`) }
 
+  # docs site generator + guard, in Ludic (no Python). docs-gen emits the whole
+  # pages payload; docs-check is its coverage/integrity guard; docs-palette is
+  # the named-colour source of truth (its output is the tracked emit_color.ludic
+  # + palette.json, so a clean git diff proves it stayed byte-identical).
+  print("== docs site (Ludic generator, no Python) ==")
+  if shq("bin/x docs-gen --out /tmp/x_docs > /tmp/x_docs.out 2>&1") {
+    ok("x docs-gen  ->  the pages-branch payload")
+  } else { bad2("x docs-gen", capture_line("tail -1 /tmp/x_docs.out")) }
+  if shq("bin/x docs-check /tmp/x_docs > /tmp/x_docs_chk.out 2>&1") {
+    ok("x docs-check passes on the generated site")
+  } else { bad2("x docs-check", capture_line("tail -1 /tmp/x_docs_chk.out")) }
+  if shq("bin/x docs-palette > /dev/null 2>&1") and shq("git diff --quiet selfhost/backend/stdlib/emit_color.ludic docs/language/colors/palette.json") {
+    ok("x docs-palette regenerates emit_color.ludic + palette.json byte-identically")
+  } else { bad("x docs-palette drifted (git diff not empty)") }
+
   return report()
 }

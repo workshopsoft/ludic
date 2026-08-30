@@ -1,0 +1,638 @@
+# docgen.ludic — the Ludic documentation-site generator and its guards, ported
+# off Python (gen.py / check.py / palette.py). Three x subcommands:
+#
+#   x docs-palette          emit selfhost/backend/stdlib/emit_color.ludic +
+#                           docs/language/colors/palette.json from the palette
+#                           table below (the named-colour source of truth).
+#   x docs-gen [--out DIR]  parse docs/language/** + docs/site/*, read the asset
+#                           templates, emit every page + symbols.json + the
+#                           highlighter + .nojekyll into DIR (default build/pages).
+#   x docs-check [DIR]      the coverage/integrity guard over a generated site.
+#
+# String work is over NUL-terminated byte buffers; helpers here mirror gen.py's
+# html.escape / json.dumps / front-matter parsing closely enough to reproduce the
+# Python generator's output byte-for-byte (verified against the oracle in x test).
+
+# ---- a growable byte buffer (avoids O(n^2) string building) ------------------
+property Sb { data: pointer = null, len: int = 0, cap: int = 0 }
+
+function sb_new() -> Sb {
+  let s = new Sb
+  s.cap = 256
+  s.data = bytes(256)
+  s.len = 0
+  return s
+}
+function sb_grow(s: Sb, need: int) -> void {
+  if s.len + need + 1 <= s.cap { return }
+  var nc = s.cap * 2
+  while nc < s.len + need + 1 { nc = nc * 2 }
+  let nd = bytes(nc)
+  var i = 0
+  while i < s.len { nd[i] = s.data[i];  i = i + 1 }
+  s.data = nd
+  s.cap = nc
+}
+function sb_puts(s: Sb, t: pointer) -> void {
+  let n = slen(t)
+  sb_grow(s, n)
+  var i = 0
+  while i < n { s.data[s.len] = t[i];  s.len = s.len + 1;  i = i + 1 }
+}
+function sb_putc(s: Sb, c: int) -> void {
+  sb_grow(s, 1)
+  s.data[s.len] = c
+  s.len = s.len + 1
+}
+function sb_str(s: Sb) -> pointer {
+  s.data[s.len] = 0
+  return s.data
+}
+
+# ---- HTML escaping (html.escape) --------------------------------------------
+# quote=false escapes & < > ; quote=true also escapes " and ' (Python entities:
+# &amp; &lt; &gt; &quot; &#x27;). Two-pass so a big code block stays O(n).
+function esc_q(s: pointer, quote: bool) -> pointer {
+  if s == null { return "" }
+  let n = slen(s)
+  let b = sb_new()
+  var i = 0
+  while i < n {
+    let c = s[i]
+    if c == 38 { sb_puts(b, "&amp;") }
+    else if c == 60 { sb_puts(b, "&lt;") }
+    else if c == 62 { sb_puts(b, "&gt;") }
+    else if quote and c == 34 { sb_puts(b, "&quot;") }
+    else if quote and c == 39 { sb_puts(b, "&#x27;") }
+    else { sb_putc(b, c) }
+    i = i + 1
+  }
+  return sb_str(b)
+}
+function hesc(s: pointer) -> pointer { return esc_q(s, false) }
+function hescattr(s: pointer) -> pointer { return esc_q(s, true) }
+
+# ---- generic byte/character predicates --------------------------------------
+# Python \s = [ \t\n\r\f\v]
+function is_space_all(c: int) -> bool {
+  return c == 32 or c == 9 or c == 10 or c == 13 or c == 12 or c == 11
+}
+# Python \w = [A-Za-z0-9_]
+function is_word(c: int) -> bool {
+  return (c >= 48 and c <= 57) or (c >= 65 and c <= 90) or (c >= 97 and c <= 122) or c == 95
+}
+# strip only leading '\n' (Python str.lstrip("\n"))
+function lstrip_nl(s: pointer) -> pointer {
+  var i = 0
+  while s[i] == 10 { i = i + 1 }
+  return sslice(s, i, slen(s))
+}
+# lowercase ASCII A-Z
+function lower_ascii(s: pointer) -> pointer {
+  let n = slen(s)
+  let b = bytes(n + 1)
+  var i = 0
+  while i < n {
+    var c = s[i]
+    if c >= 65 and c <= 90 { c = c + 32 }
+    b[i] = c
+    i = i + 1
+  }
+  b[n] = 0
+  return b
+}
+# Python str.title(): capitalise the first letter of each alpha run, lower the rest
+function title_case(s: pointer) -> pointer {
+  let n = slen(s)
+  let b = bytes(n + 1)
+  var i = 0
+  var prev_alpha = false
+  while i < n {
+    var c = s[i]
+    let al = (c >= 65 and c <= 90) or (c >= 97 and c <= 122)
+    if al {
+      if prev_alpha { if c >= 65 and c <= 90 { c = c + 32 } }
+      else { if c >= 97 and c <= 122 { c = c - 32 } }
+    }
+    b[i] = c
+    prev_alpha = al
+    i = i + 1
+  }
+  b[n] = 0
+  return b
+}
+# lexicographic byte compare: <0, 0, >0
+function str_cmp(a: pointer, b: pointer) -> int {
+  var i = 0
+  while a[i] != 0 and b[i] != 0 {
+    let ca = a[i] & 255
+    let cb = b[i] & 255
+    if ca != cb { return ca - cb }
+    i = i + 1
+  }
+  return (a[i] & 255) - (b[i] & 255)
+}
+function str_gt(a: pointer, b: pointer) -> bool { return str_cmp(a, b) > 0 }
+# does s end with suffix suf?
+function s_ends(s: pointer, suf: pointer) -> bool {
+  let ls = slen(s)
+  let lf = slen(suf)
+  if lf > ls { return false }
+  return s_starts_at(s, ls - lf, suf)
+}
+# split on runs of ASCII whitespace (Python str.split() with no arg)
+function split_ws(s: pointer) -> []pointer {
+  let out = new []pointer
+  let n = slen(s)
+  var i = 0
+  while i < n {
+    while i < n and is_space_all(s[i]) { i = i + 1 }
+    var e = i
+    while e < n and not is_space_all(s[e]) { e = e + 1 }
+    if e > i { push(out, sslice(s, i, e)) }
+    i = e
+  }
+  return out
+}
+# stable insertion sort of a []pointer, ascending byte order (Python sorted())
+function strs_sort(a: []pointer) -> void {
+  var i = 1
+  while i < len(a) {
+    let cur = a[i]
+    var j = i - 1
+    while j >= 0 and str_gt(a[j], cur) { a[j + 1] = a[j];  j = j - 1 }
+    a[j + 1] = cur
+    i = i + 1
+  }
+}
+
+# `<code>` backtick spans: `x` -> <code>x</code> (inner text NOT escaped).
+# Mirrors codeify's re.sub(r"`([^`]+)`", ...): needs >=1 non-backtick inside.
+function codeify(s: pointer) -> pointer {
+  let n = slen(s)
+  let b = sb_new()
+  var i = 0
+  while i < n {
+    if s[i] == 96 {
+      var j = i + 1
+      while j < n and s[j] != 96 { j = j + 1 }
+      if j < n and j > i + 1 {
+        sb_puts(b, "<code>")
+        var k = i + 1
+        while k < j { sb_putc(b, s[k]);  k = k + 1 }
+        sb_puts(b, "</code>")
+        i = j + 1
+      } else {
+        sb_putc(b, 96)
+        i = i + 1
+      }
+    } else {
+      sb_putc(b, s[i])
+      i = i + 1
+    }
+  }
+  return sb_str(b)
+}
+
+# ---- a Python-json.dumps-compatible JSON writer over the JVal tree ----------
+function jvs(s: pointer) -> JVal { let v = jval_new(JV_STR);  v.s = s;  return v }
+function jvi(n: int) -> JVal { let v = jval_new(JV_NUM);  v.num = n;  return v }
+function jvo() -> JVal { return jval_new(JV_OBJ) }
+function jva() -> JVal { return jval_new(JV_ARR) }
+# like Python dict assignment: update in place at an existing key (keeping its
+# first-insertion position, taking the new value), else append. Matters where a
+# token collides across kinds (e.g. `exit`/`string`/`fixed`) in sym["tips"].
+function jvput(o: JVal, k: pointer, v: JVal) -> void {
+  var i = 0
+  while i < len(o.keys) { if o.keys[i] == k { o.kids[i] = v;  return };  i = i + 1 }
+  push(o.keys, k)
+  push(o.kids, v)
+}
+function jvpush(a: JVal, v: JVal) -> void { push(a.kids, v) }
+
+function hex_lower(n: int) -> int {
+  if n < 10 { return 48 + n }
+  return 87 + n
+}
+function jemit_u(b: Sb, cp: int) -> void {
+  sb_putc(b, 92);  sb_putc(b, 117)                 # \u
+  sb_putc(b, hex_lower((cp >> 12) & 15))
+  sb_putc(b, hex_lower((cp >> 8) & 15))
+  sb_putc(b, hex_lower((cp >> 4) & 15))
+  sb_putc(b, hex_lower(cp & 15))
+}
+# emit the JSON-escaped content of s (no surrounding quotes). ensure_ascii: emit
+# non-ASCII as \uXXXX (UTF-8 decoded, surrogate pairs for astral); else raw bytes.
+function json_escape_into(b: Sb, s: pointer, ensure_ascii: bool) -> void {
+  let n = slen(s)
+  var i = 0
+  while i < n {
+    let c = s[i] & 255
+    if c == 34 { sb_putc(b, 92);  sb_putc(b, 34);  i = i + 1 }
+    else if c == 92 { sb_putc(b, 92);  sb_putc(b, 92);  i = i + 1 }
+    else if c == 8 { sb_putc(b, 92);  sb_putc(b, 98);  i = i + 1 }
+    else if c == 9 { sb_putc(b, 92);  sb_putc(b, 116);  i = i + 1 }
+    else if c == 10 { sb_putc(b, 92);  sb_putc(b, 110);  i = i + 1 }
+    else if c == 12 { sb_putc(b, 92);  sb_putc(b, 102);  i = i + 1 }
+    else if c == 13 { sb_putc(b, 92);  sb_putc(b, 114);  i = i + 1 }
+    else if c < 32 {
+      sb_putc(b, 92);  sb_putc(b, 117);  sb_putc(b, 48);  sb_putc(b, 48)
+      sb_putc(b, hex_lower((c >> 4) & 15));  sb_putc(b, hex_lower(c & 15))
+      i = i + 1
+    }
+    else if c < 128 { sb_putc(b, c);  i = i + 1 }
+    else if not ensure_ascii { sb_putc(b, c);  i = i + 1 }
+    else {
+      var cp = 0
+      var nb = 1
+      if c < 224 { cp = c - 192;  nb = 2 }
+      else if c < 240 { cp = c - 224;  nb = 3 }
+      else { cp = c - 240;  nb = 4 }
+      var k = 1
+      while k < nb and i + k < n { cp = cp * 64 + ((s[i + k] & 255) - 128);  k = k + 1 }
+      i = i + nb
+      if cp <= 65535 { jemit_u(b, cp) }
+      else {
+        let c2 = cp - 65536
+        jemit_u(b, 55296 + (c2 >> 10))
+        jemit_u(b, 56320 + (c2 & 1023))
+      }
+    }
+  }
+}
+function json_indent(b: Sb, depth: int) -> void {
+  var i = 0
+  while i < depth { sb_putc(b, 32);  sb_putc(b, 32);  i = i + 1 }
+}
+# pretty=true reproduces json.dumps(indent=2); pretty=false the compact default
+# (item sep ", ", key sep ": "). ensure_ascii toggles \uXXXX for non-ASCII.
+function jwrite(b: Sb, v: JVal, pretty: bool, depth: int, ea: bool) -> void {
+  if v.t == JV_NULL { sb_puts(b, "null");  return }
+  if v.t == JV_BOOL {
+    if v.b == 1 { sb_puts(b, "true") } else { sb_puts(b, "false") }
+    return
+  }
+  if v.t == JV_NUM { sb_puts(b, string(v.num));  return }
+  if v.t == JV_STR { sb_putc(b, 34);  json_escape_into(b, v.s, ea);  sb_putc(b, 34);  return }
+  if v.t == JV_ARR {
+    let m = len(v.kids)
+    if m == 0 { sb_puts(b, "[]");  return }
+    sb_putc(b, 91)
+    var i = 0
+    while i < m {
+      if pretty { sb_putc(b, 10);  json_indent(b, depth + 1) }
+      jwrite(b, v.kids[i], pretty, depth + 1, ea)
+      if i < m - 1 { sb_putc(b, 44);  if not pretty { sb_putc(b, 32) } }
+      i = i + 1
+    }
+    if pretty { sb_putc(b, 10);  json_indent(b, depth) }
+    sb_putc(b, 93)
+    return
+  }
+  let m = len(v.keys)
+  if m == 0 { sb_puts(b, "{}");  return }
+  sb_putc(b, 123)
+  var i = 0
+  while i < m {
+    if pretty { sb_putc(b, 10);  json_indent(b, depth + 1) }
+    sb_putc(b, 34);  json_escape_into(b, v.keys[i], ea);  sb_putc(b, 34)
+    sb_putc(b, 58);  sb_putc(b, 32)
+    jwrite(b, v.kids[i], pretty, depth + 1, ea)
+    if i < m - 1 { sb_putc(b, 44);  if not pretty { sb_putc(b, 32) } }
+    i = i + 1
+  }
+  if pretty { sb_putc(b, 10);  json_indent(b, depth) }
+  sb_putc(b, 125)
+}
+function json_dumps(v: JVal, pretty: bool, ea: bool) -> pointer {
+  let b = sb_new()
+  jwrite(b, v, pretty, 0, ea)
+  return sb_str(b)
+}
+
+# ============================================================================
+# palette — the named-colour source of truth (ported from palette.py)
+# ============================================================================
+var pal_names: []pointer = new []pointer
+var pal_hexes: []pointer = new []pointer   # 6-digit uppercase, no prefix
+var pal_groups: []pointer = new []pointer
+var pal_ready: int = 0
+
+function pal_add(nm: pointer, hx: pointer, grp: pointer) -> void {
+  push(pal_names, nm)
+  push(pal_hexes, hx)
+  push(pal_groups, grp)
+}
+
+function palette_init() -> void {
+  if pal_ready == 1 { return }
+  pal_ready = 1
+  pal_names = new []pointer
+  pal_hexes = new []pointer
+  pal_groups = new []pointer
+  pal_add("White", "FFFFFF", "Whites")
+  pal_add("Snow", "FFFAFA", "Whites")
+  pal_add("Ivory", "FFFFF0", "Whites")
+  pal_add("EggShellWhite", "F0EAD6", "Whites")
+  pal_add("FloralWhite", "FFFAF0", "Whites")
+  pal_add("SeaShell", "FFF5EE", "Whites")
+  pal_add("Linen", "FAF0E6", "Whites")
+  pal_add("AntiqueWhite", "FAEBD7", "Whites")
+  pal_add("OldLace", "FDF5E6", "Whites")
+  pal_add("Beige", "F5F5DC", "Whites")
+  pal_add("Cream", "FFFDD0", "Whites")
+  pal_add("Honeydew", "F0FFF0", "Whites")
+  pal_add("MintCream", "F5FFFA", "Whites")
+  pal_add("Azure", "F0FFFF", "Whites")
+  pal_add("AliceBlue", "F0F8FF", "Whites")
+  pal_add("GhostWhite", "F8F8FF", "Whites")
+  pal_add("WhiteSmoke", "F5F5F5", "Whites")
+  pal_add("Lavender", "E6E6FA", "Whites")
+  pal_add("Bone", "E3DAC9", "Whites")
+  pal_add("Parchment", "F1E9D2", "Whites")
+  pal_add("Gainsboro", "DCDCDC", "Grays")
+  pal_add("LightGray", "D3D3D3", "Grays")
+  pal_add("Silver", "C0C0C0", "Grays")
+  pal_add("Ash", "B2BEB5", "Grays")
+  pal_add("DarkGray", "A9A9A9", "Grays")
+  pal_add("Gray", "808080", "Grays")
+  pal_add("DimGray", "696969", "Grays")
+  pal_add("Nickel", "727472", "Grays")
+  pal_add("Slate", "708090", "Grays")
+  pal_add("SlateGray", "708090", "Grays")
+  pal_add("LightSlateGray", "778899", "Grays")
+  pal_add("Gunmetal", "2A3439", "Grays")
+  pal_add("Charcoal", "36454F", "Grays")
+  pal_add("Graphite", "1C1C1C", "Grays")
+  pal_add("Onyx", "353839", "Grays")
+  pal_add("Jet", "343434", "Grays")
+  pal_add("Black", "000000", "Grays")
+  pal_add("EerieBlack", "1B1B1B", "Grays")
+  pal_add("RaisinBlack", "242124", "Grays")
+  pal_add("Ebony", "555D50", "Grays")
+  pal_add("Red", "FF0000", "Reds")
+  pal_add("Crimson", "DC143C", "Reds")
+  pal_add("Scarlet", "FF2400", "Reds")
+  pal_add("Vermilion", "E34234", "Reds")
+  pal_add("FireBrick", "B22222", "Reds")
+  pal_add("Cinnabar", "E44D2E", "Reds")
+  pal_add("DarkRed", "8B0000", "Reds")
+  pal_add("Maroon", "800000", "Reds")
+  pal_add("Ruby", "E0115F", "Reds")
+  pal_add("Cardinal", "C41E3A", "Reds")
+  pal_add("IndianRed", "CD5C5C", "Reds")
+  pal_add("Rust", "B7410E", "Reds")
+  pal_add("Sangria", "92000A", "Reds")
+  pal_add("Redwood", "A45A52", "Reds")
+  pal_add("Cerise", "DE3163", "Reds")
+  pal_add("Amaranth", "E52B50", "Reds")
+  pal_add("Carmine", "960018", "Reds")
+  pal_add("Chestnut", "954535", "Reds")
+  pal_add("Brick", "CB4154", "Reds")
+  pal_add("TerraCotta", "E2725B", "Reds")
+  pal_add("Pink", "FFC0CB", "Pinks")
+  pal_add("LightPink", "FFB6C1", "Pinks")
+  pal_add("HotPink", "FF69B4", "Pinks")
+  pal_add("DeepPink", "FF1493", "Pinks")
+  pal_add("PaleVioletRed", "DB7093", "Pinks")
+  pal_add("Rose", "FF007F", "Pinks")
+  pal_add("Blush", "DE5D83", "Pinks")
+  pal_add("Salmon", "FA8072", "Pinks")
+  pal_add("LightSalmon", "FFA07A", "Pinks")
+  pal_add("DarkSalmon", "E9967A", "Pinks")
+  pal_add("Coral", "FF7F50", "Pinks")
+  pal_add("Watermelon", "FC6C85", "Pinks")
+  pal_add("Flamingo", "FC8EAC", "Pinks")
+  pal_add("Bubblegum", "FFC1CC", "Pinks")
+  pal_add("Fuchsia", "FF00FF", "Pinks")
+  pal_add("Magenta", "FF00FF", "Pinks")
+  pal_add("Mauve", "E0B0FF", "Pinks")
+  pal_add("Puce", "CC8899", "Pinks")
+  pal_add("Thistle", "D8BFD8", "Pinks")
+  pal_add("Orchid", "DA70D6", "Pinks")
+  pal_add("Orange", "FFA500", "Oranges")
+  pal_add("DarkOrange", "FF8C00", "Oranges")
+  pal_add("Tangerine", "F28500", "Oranges")
+  pal_add("Pumpkin", "FF7518", "Oranges")
+  pal_add("Apricot", "FBCEB1", "Oranges")
+  pal_add("Peach", "FFE5B4", "Oranges")
+  pal_add("Cantaloupe", "FFA62B", "Oranges")
+  pal_add("Amber", "FFBF00", "Oranges")
+  pal_add("Bronze", "CD7F32", "Oranges")
+  pal_add("Copper", "B87333", "Oranges")
+  pal_add("Marigold", "EAA221", "Oranges")
+  pal_add("Carrot", "ED9121", "Oranges")
+  pal_add("Persimmon", "EC5800", "Oranges")
+  pal_add("Papaya", "FF9E2C", "Oranges")
+  pal_add("Sunset", "FAD6A5", "Oranges")
+  pal_add("Yellow", "FFFF00", "Yellows")
+  pal_add("LightYellow", "FFFFE0", "Yellows")
+  pal_add("Gold", "FFD700", "Yellows")
+  pal_add("Goldenrod", "DAA520", "Yellows")
+  pal_add("Lemon", "FFF700", "Yellows")
+  pal_add("Canary", "FFEF00", "Yellows")
+  pal_add("Mustard", "FFDB58", "Yellows")
+  pal_add("Flax", "EEDC82", "Yellows")
+  pal_add("Wheat", "F5DEB3", "Yellows")
+  pal_add("Corn", "FBEC5D", "Yellows")
+  pal_add("Dandelion", "F0E130", "Yellows")
+  pal_add("Saffron", "F4C430", "Yellows")
+  pal_add("Khaki", "F0E68C", "Yellows")
+  pal_add("DarkKhaki", "BDB76B", "Yellows")
+  pal_add("Straw", "E4D96F", "Yellows")
+  pal_add("Brown", "8B4513", "Browns")
+  pal_add("SaddleBrown", "8B4513", "Browns")
+  pal_add("Sienna", "A0522D", "Browns")
+  pal_add("Chocolate", "D2691E", "Browns")
+  pal_add("Peru", "CD853F", "Browns")
+  pal_add("Tan", "D2B48C", "Browns")
+  pal_add("BurlyWood", "DEB887", "Browns")
+  pal_add("Sand", "C2B280", "Browns")
+  pal_add("Coffee", "6F4E37", "Browns")
+  pal_add("Espresso", "4B3621", "Browns")
+  pal_add("Mahogany", "C04000", "Browns")
+  pal_add("Walnut", "773F1A", "Browns")
+  pal_add("Umber", "635147", "Browns")
+  pal_add("Sepia", "704214", "Browns")
+  pal_add("Taupe", "483C32", "Browns")
+  pal_add("Fawn", "E5AA70", "Browns")
+  pal_add("Caramel", "C68E17", "Browns")
+  pal_add("Cocoa", "D2691E", "Browns")
+  pal_add("Hazel", "8E7618", "Browns")
+  pal_add("Wenge", "645452", "Browns")
+  pal_add("Green", "008000", "Greens")
+  pal_add("Lime", "00FF00", "Greens")
+  pal_add("LimeGreen", "32CD32", "Greens")
+  pal_add("LawnGreen", "7CFC00", "Greens")
+  pal_add("Chartreuse", "7FFF00", "Greens")
+  pal_add("GreenYellow", "ADFF2F", "Greens")
+  pal_add("SpringGreen", "00FF7F", "Greens")
+  pal_add("MintGreen", "98FF98", "Greens")
+  pal_add("SeaGreen", "2E8B57", "Greens")
+  pal_add("MediumSeaGreen", "3CB371", "Greens")
+  pal_add("ForestGreen", "228B22", "Greens")
+  pal_add("DarkGreen", "006400", "Greens")
+  pal_add("OliveDrab", "6B8E23", "Greens")
+  pal_add("Olive", "808000", "Greens")
+  pal_add("Moss", "8A9A5B", "Greens")
+  pal_add("Fern", "4F7942", "Greens")
+  pal_add("Emerald", "50C878", "Greens")
+  pal_add("Jade", "00A86B", "Greens")
+  pal_add("Malachite", "0BDA51", "Greens")
+  pal_add("Shamrock", "009E60", "Greens")
+  pal_add("Pistachio", "93C572", "Greens")
+  pal_add("Avocado", "568203", "Greens")
+  pal_add("Pine", "01796F", "Greens")
+  pal_add("Sage", "9CAF88", "Greens")
+  pal_add("Kelly", "4CBB17", "Greens")
+  pal_add("Hunter", "355E3B", "Greens")
+  pal_add("Basil", "579229", "Greens")
+  pal_add("Clover", "2E8B57", "Greens")
+  pal_add("Juniper", "6D9A79", "Greens")
+  pal_add("Neon", "39FF14", "Greens")
+  pal_add("Cyan", "00FFFF", "Cyans")
+  pal_add("Aqua", "00FFFF", "Cyans")
+  pal_add("LightCyan", "E0FFFF", "Cyans")
+  pal_add("PaleTurquoise", "AFEEEE", "Cyans")
+  pal_add("Aquamarine", "7FFFD4", "Cyans")
+  pal_add("Turquoise", "40E0D0", "Cyans")
+  pal_add("MediumTurquoise", "48D1CC", "Cyans")
+  pal_add("DarkTurquoise", "00CED1", "Cyans")
+  pal_add("Teal", "008080", "Cyans")
+  pal_add("DarkCyan", "008B8B", "Cyans")
+  pal_add("CadetBlue", "5F9EA0", "Cyans")
+  pal_add("Lagoon", "018E8E", "Cyans")
+  pal_add("Seafoam", "93E9BE", "Cyans")
+  pal_add("Cerulean", "007BA7", "Cyans")
+  pal_add("SkyBlueLight", "80DAEB", "Cyans")
+  pal_add("Robin", "00CCCC", "Cyans")
+  pal_add("Verdigris", "43B3AE", "Cyans")
+  pal_add("Celadon", "ACE1AF", "Cyans")
+  pal_add("Blue", "0000FF", "Blues")
+  pal_add("LightBlue", "ADD8E6", "Blues")
+  pal_add("PowderBlue", "B0E0E6", "Blues")
+  pal_add("SkyBlue", "87CEEB", "Blues")
+  pal_add("LightSkyBlue", "87CEFA", "Blues")
+  pal_add("DeepSkyBlue", "00BFFF", "Blues")
+  pal_add("DodgerBlue", "1E90FF", "Blues")
+  pal_add("CornflowerBlue", "6495ED", "Blues")
+  pal_add("SteelBlue", "4682B4", "Blues")
+  pal_add("RoyalBlue", "4169E1", "Blues")
+  pal_add("MediumBlue", "0000CD", "Blues")
+  pal_add("DarkBlue", "00008B", "Blues")
+  pal_add("Navy", "000080", "Blues")
+  pal_add("MidnightBlue", "191970", "Blues")
+  pal_add("Cobalt", "0047AB", "Blues")
+  pal_add("Sapphire", "0F52BA", "Blues")
+  pal_add("Denim", "1560BD", "Blues")
+  pal_add("Indigo", "4B0082", "Blues")
+  pal_add("Prussian", "003153", "Blues")
+  pal_add("Ultramarine", "3F00FF", "Blues")
+  pal_add("Periwinkle", "CCCCFF", "Blues")
+  pal_add("Iris", "5A4FCF", "Blues")
+  pal_add("Glaucous", "6082B6", "Blues")
+  pal_add("Zaffre", "0014A8", "Blues")
+  pal_add("Berry", "2E2D88", "Blues")
+  pal_add("Purple", "800080", "Purples")
+  pal_add("Violet", "EE82EE", "Purples")
+  pal_add("DarkViolet", "9400D3", "Purples")
+  pal_add("BlueViolet", "8A2BE2", "Purples")
+  pal_add("MediumPurple", "9370DB", "Purples")
+  pal_add("Amethyst", "9966CC", "Purples")
+  pal_add("Plum", "8E4585", "Purples")
+  pal_add("Eggplant", "614051", "Purples")
+  pal_add("Grape", "6F2DA8", "Purples")
+  pal_add("Wine", "722F37", "Purples")
+  pal_add("Mulberry", "C54B8C", "Purples")
+  pal_add("Lilac", "C8A2C8", "Purples")
+  pal_add("Wisteria", "C9A0DC", "Purples")
+  pal_add("Heliotrope", "DF73FF", "Purples")
+  pal_add("Byzantium", "702963", "Purples")
+  pal_add("Tyrian", "66023C", "Purples")
+  pal_add("RebeccaPurple", "663399", "Purples")
+  pal_add("Orchid2", "AF69EF", "Purples")
+}
+
+# emit selfhost/backend/stdlib/emit_color.ludic
+function palette_emit_ludic(path: pointer) -> bool {
+  let b = sb_new()
+  sb_puts(b, "# ============================================================================\n")
+  sb_puts(b, "# emit_color.ludic — the named-color palette, resolved at compile time.\n")
+  sb_puts(b, "#\n")
+  sb_puts(b, "# `Color.Name` in a game lowers to a plain 0xRRGGBB int here: no runtime cost,\n")
+  sb_puts(b, "# no allocation, identical codegen to writing the hex by hand. Unknown names are\n")
+  sb_puts(b, "# a compile error (color_lookup returns -1, which emit_expr reports).\n")
+  sb_puts(b, "#\n")
+  sb_puts(b, "# GENERATED by `x docs-palette` from the single source-of-truth palette table\n")
+  sb_puts(b, "# in tools/x/docgen.ludic. Edit the palette there and regenerate; do not hand-edit.\n")
+  sb_puts(b, "# ============================================================================\n")
+  sb_puts(b, "\n")
+  sb_puts(b, "function color_lookup(name: pointer) -> int {\n")
+  var i = 0
+  while i < len(pal_names) {
+    sb_puts(b, `  if (name == "{pal_names[i]}") {{ return 0x{pal_hexes[i]} }}\n`)
+    i = i + 1
+  }
+  sb_puts(b, "  return -1\n")
+  sb_puts(b, "}\n")
+  sb_puts(b, "\n")
+  return write_file(path, sb_str(b))
+}
+
+# emit docs/language/colors/palette.json  (json.dump indent=2, no trailing nl)
+function palette_emit_json(path: pointer) -> bool {
+  let b = sb_new()
+  sb_puts(b, "{\n")
+  sb_puts(b, `  "count": {string(len(pal_names))},\n`)
+  sb_puts(b, `  "groups": [` + "\n")
+  # groups in first-appearance order
+  let seen = new []pointer
+  var gi = 0
+  var firstg = true
+  while gi < len(pal_groups) {
+    let g = pal_groups[gi]
+    if not set_has(seen, g) {
+      push(seen, g)
+      if not firstg { sb_puts(b, ",\n") }
+      firstg = false
+      sb_puts(b, "    {\n")
+      sb_puts(b, `      "name": "{g}",\n`)
+      sb_puts(b, `      "colors": [` + "\n")
+      var ci = 0
+      var firstc = true
+      while ci < len(pal_names) {
+        if pal_groups[ci] == g {
+          if not firstc { sb_puts(b, ",\n") }
+          firstc = false
+          sb_puts(b, "        {\n")
+          sb_puts(b, `          "name": "{pal_names[ci]}",\n`)
+          sb_puts(b, `          "hex": "{pal_hexes[ci]}"\n`)
+          sb_puts(b, "        }")
+        }
+        ci = ci + 1
+      }
+      sb_puts(b, "\n      ]\n")
+      sb_puts(b, "    }")
+    }
+    gi = gi + 1
+  }
+  sb_puts(b, "\n  ]\n")
+  sb_puts(b, "}")
+  return write_file(path, sb_str(b))
+}
+
+function cmd_docs_palette() -> int {
+  palette_init()
+  # guard: duplicate names
+  let seen = new []pointer
+  var i = 0
+  while i < len(pal_names) {
+    if set_has(seen, pal_names[i]) { err(`DUPLICATE NAME: {pal_names[i]}\n`);  return 1 }
+    push(seen, pal_names[i])
+    i = i + 1
+  }
+  if not palette_emit_ludic("selfhost/backend/stdlib/emit_color.ludic") { err("cannot write emit_color.ludic\n");  return 1 }
+  if not palette_emit_json("docs/language/colors/palette.json") { err("cannot write palette.json\n");  return 1 }
+  print(`OK {string(len(pal_names))} colors`)
+  return 0
+}

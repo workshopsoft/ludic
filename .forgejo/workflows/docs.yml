@@ -10,6 +10,7 @@ on:
     paths:
       - 'docs/**'
       - 'tools/docgen/**'
+      - 'tools/x/**'
       - '.forgejo/workflows/docs.yml'
   workflow_dispatch: {}
 
@@ -23,11 +24,20 @@ jobs:
     # GitHub-ism this runner does not register, so a job requesting it sits in
     # "Waiting" forever with "no online runner found matching this label".
     runs-on: docker
-    # Run in a Python image: the generator is pure-Python stdlib, and this image
-    # already has git for the clone + publish. No node actions are used, so the
-    # job never depends on the runner's base image having python installed.
-    container: python:3.12
+    # The generator is now Ludic, so this builds the toolchain from its IR seed
+    # (clang assembles the seed into bin/ludicc, which compiles bin/x) exactly
+    # like the ci workflow, then runs `x docs-gen`. node:20-bookworm carries git
+    # for the clone + publish; clang-16 is the only extra the bootstrap needs.
+    container: node:20-bookworm
     steps:
+      - name: Install clang-16
+        run: |
+          set -eu
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends clang-16 git ca-certificates
+          clang-16 --version | head -1
+
       - name: Generate the documentation site
         env:
           SOURCE_REF: ${{ github.ref_name }}
@@ -36,9 +46,19 @@ jobs:
           git config --global --add safe.directory '*'
           git clone --depth 1 --branch "${SOURCE_REF:-main}" \
             https://git.workshopsoft.io/workshopsoft/ludic.git src
-          python3 --version
-          python3 src/tools/docgen/gen.py --out public
-          python3 src/tools/docgen/check.py public
+          cd src
+          # The toolchain is macOS-first; on this Linux runner it links against a
+          # tiny C-free IR shim supplying the Darwin stdout/stderr globals over
+          # glibc's, injected through LUDIC_CC. docs-gen is a pure CLI (no
+          # windowing), so the C-free bootstrap is all it needs.
+          export LUDIC_CC="clang-16 $(pwd)/tools/ci/linux_stdio_shim.ll"
+          export LUDIC_HOME="$(pwd)"
+          mkdir -p bin
+          clang-16 tools/ci/linux_stdio_shim.ll selfhost/ludicc.seed.ll -o bin/ludicc
+          bin/ludicc tools/x/main.ludic -o bin/x
+          bin/x docs-gen --out ../public
+          bin/x docs-check ../public
+          cd ..
           echo "--- generated files ---"
           ls -la public
 

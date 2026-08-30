@@ -14,7 +14,7 @@ Closes #
 - [ ] `ludic-fmt` leaves the touched files unchanged (2-space, LF, UTF-8).
 - [ ] New/changed stdlib symbols are documented under `docs/language/**` and
       registered in `tools/docgen/inventory.json`
-      (`python3 tools/docgen/check.py` passes).
+      (`bin/x docs-gen && bin/x docs-check build/pages` passes).
 - [ ] Commits follow [Conventional Commits](https://www.conventionalcommits.org).
 - [ ] No new C / Python / JS in tooling (Ludic only), and no generated
       artifacts committed outside `build/` / `bin/`.

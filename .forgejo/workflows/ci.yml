@@ -17,20 +17,20 @@ jobs:
     # advertises `docker`, not the GitHub-ism `ubuntu-latest`.
     runs-on: docker
     # Reuse the runner's own base image (Debian bookworm with git + node already
-    # present) and add just the two things the toolchain needs: a modern clang
-    # (LLVM 16 — the IR uses opaque pointers, so clang 15+ is required) and
-    # python3 for the docs/vocabulary checks. A prebuilt image with these baked
-    # in is the obvious future speed-up (see issue #33's packaging work).
+    # present) and add just the one thing the toolchain needs: a modern clang
+    # (LLVM 16 — the IR uses opaque pointers, so clang 15+ is required). The docs
+    # generator and its guards are now Ludic, so the job carries no Python. A
+    # prebuilt image with clang baked in is the obvious future speed-up (see
+    # issue #33's packaging work).
     container: node:20-bookworm
     steps:
-      - name: Install clang-16 and python3
+      - name: Install clang-16
         run: |
           set -eu
           export DEBIAN_FRONTEND=noninteractive
           apt-get update -qq
-          apt-get install -y -qq --no-install-recommends clang-16 python3 git ca-certificates
+          apt-get install -y -qq --no-install-recommends clang-16 git ca-certificates
           clang-16 --version | head -1
-          python3 --version
 
       - name: Check out the triggering commit
         run: |
@@ -75,11 +75,12 @@ jobs:
       - name: Docs cover the implementation
         run: |
           set -eu
-          # check-impl / check-vocabulary are written in Ludic and run through
-          # x — no Python. (check-vocabulary also runs in `x test-tools`.) The
-          # site generator (gen.py) is still Python; its port is tracked.
+          # The whole docs toolchain is written in Ludic and runs through x —
+          # no Python anywhere. check-impl / check-vocabulary / check-docs guard
+          # the sources; docs-gen builds the site and docs-check is its coverage
+          # + integrity guard. (check-vocabulary also runs in `x test-tools`.)
           bin/x check-impl
           bin/x check-vocabulary
           bin/x check-docs
-          python3 tools/docgen/gen.py --out build/pages
-          python3 tools/docgen/check.py build/pages
+          bin/x docs-gen --out build/pages
+          bin/x docs-check build/pages

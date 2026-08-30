@@ -1,0 +1,288 @@
+# docgen_check.ludic — `x docs-check [DIR]`: the coverage / integrity guard over
+# a generated docs site, ported from tools/docgen/check.py. Fails (exit 1) if the
+# pages contract is broken, an inventory symbol lacks a source file or page, a
+# token is documented on two pages, a namespace/section is split across dirs, or
+# a highlighter link target was not generated. Thin (un-expanded) symbols warn.
+
+# a key -> set-of-values bucket (for token/dir conflict detection)
+property Bucket { k1: pointer = "", k2: pointer = "", vals: []pointer }
+
+function bucket_get(bs: []Bucket, k1: pointer, k2: pointer) -> Bucket {
+  var i = 0
+  while i < len(bs) {
+    if bs[i].k1 == k1 and bs[i].k2 == k2 { return bs[i] }
+    i = i + 1
+  }
+  let b = new Bucket
+  b.k1 = k1
+  b.k2 = k2
+  b.vals = new []pointer
+  push(bs, b)
+  return b
+}
+function bucket_add(bs: []Bucket, k1: pointer, k2: pointer, v: pointer) -> void {
+  let b = bucket_get(bs, k1, k2)
+  var i = 0
+  while i < len(b.vals) { if b.vals[i] == v { return };  i = i + 1 }
+  push(b.vals, v)
+}
+# ", ".join(sorted(vals))
+function join_sorted(vals: []pointer) -> pointer {
+  strs_sort(vals)
+  let b = sb_new()
+  var i = 0
+  while i < len(vals) {
+    if i > 0 { sb_puts(b, ", ") }
+    sb_puts(b, vals[i])
+    i = i + 1
+  }
+  return sb_str(b)
+}
+
+# parse_front: like parse_doc but body is stripped on both ends (check.py)
+function parse_front(path: pointer) -> Doc {
+  let d = new Doc
+  d.m = meta_new()
+  let text = read_file(path)
+  if text == null { d.body = "";  return d }
+  d.body = text
+  if not s_starts(text, "---") { return d }
+  let end = s_index(text, "\n---", 3)
+  if end < 0 { return d }
+  let fm = sslice(text, 3, end)
+  let fn2 = slen(fm)
+  var j = 0
+  while j < fn2 {
+    let ln = line_at(fm, j)
+    j = j + slen(ln) + 1
+    let t = s_trim(ln)
+    if slen(t) == 0 { continue }
+    let c = s_index(ln, ":", 0)
+    if c < 0 { continue }
+    meta_put(d.m, s_trim(sslice(ln, 0, c)), s_trim(sslice(ln, c + 1, slen(ln))))
+  }
+  d.body = s_trim(sslice(text, end + 4, slen(text)))
+  return d
+}
+
+# count Unicode codepoints (a byte is a lead unless (b & 0xC0) == 0x80)
+function cp_len(s: pointer) -> int {
+  let n = slen(s)
+  var c = 0
+  var i = 0
+  while i < n { if (s[i] & 192) != 128 { c = c + 1 };  i = i + 1 }
+  return c
+}
+function replace_all(hay: pointer, needle: pointer, repl: pointer) -> pointer {
+  if slen(needle) == 0 { return hay }
+  let b = sb_new()
+  let nl = slen(needle)
+  let n = slen(hay)
+  var i = 0
+  while i < n {
+    if s_starts_at(hay, i, needle) { sb_puts(b, repl);  i = i + nl }
+    else { sb_putc(b, hay[i]);  i = i + 1 }
+  }
+  return sb_str(b)
+}
+# strip a filename's trailing ".md" -> the fallback id (fn[:-3])
+function drop_md(fn: pointer) -> pointer {
+  let n = slen(fn)
+  if n >= 3 { return sslice(fn, 0, n - 3) }
+  return fn
+}
+
+function cmd_docs_check() -> int {
+  var site = "build/pages"
+  if arg_count() >= 3 { site = arg(2) }
+  let problems = new []pointer
+  let warnings = new []pointer
+
+  # 1) pages contract
+  if not file_exists(`{site}/index.html`) { push(problems, "missing required file: index.html") }
+  if not file_exists(`{site}/api.html`) { push(problems, "missing required file: api.html") }
+  if not file_exists(`{site}/.nojekyll`) { push(problems, "missing required file: .nojekyll") }
+
+  # 2) coverage + thin detection over docs/language/**
+  let id2src = meta_new()
+  let thin = new []pointer
+  let cats = list_sorted("docs/language")
+  var ci = 0
+  while ci < len(cats) {
+    let cat = cats[ci]
+    ci = ci + 1
+    let cdir = "docs/language/" + cat
+    if not is_dir(cdir) { continue }
+    let files = list_sorted(cdir)
+    var fi = 0
+    while fi < len(files) {
+      let fn = files[fi]
+      fi = fi + 1
+      if not s_ends(fn, ".md") { continue }
+      if fn == "_section.md" { continue }
+      let d = parse_front(cdir + "/" + fn)
+      let sid = meta_get(d.m, "id", drop_md(fn))
+      meta_put(id2src, sid, cdir + "/" + fn)
+      # thin: drop a Parameters: block (to end, case-insensitive) + the tip line
+      let tipline = meta_get(d.m, "tip", "")
+      let low = lower_ascii(d.body)
+      var btext = d.body
+      let pp = s_index(low, "parameters:", 0)
+      if pp >= 0 { btext = sslice(d.body, 0, pp) }
+      btext = s_trim(btext)
+      if slen(tipline) > 0 { btext = s_trim(replace_all(btext, tipline, "")) }
+      if cp_len(btext) < 40 { push(thin, sid) }
+    }
+  }
+  # coverage against the authoritative inventory
+  let invtext = read_file("tools/docgen/inventory.json")
+  if invtext != null {
+    let inv = json_parse(invtext)
+    if inv.t == JV_OBJ {
+      var k = 0
+      while k < len(inv.keys) {
+        let cat = inv.keys[k]
+        let ids = inv.kids[k]
+        k = k + 1
+        if ids.t != JV_ARR { continue }
+        var m = 0
+        while m < len(ids.kids) {
+          let sid = ids.kids[m].s
+          m = m + 1
+          if meta_get(id2src, sid, "") == "" { push(problems, `no source file for inventory symbol: {sid} ({cat})`) }
+          else if not file_exists(`{site}/{sid}.html`) { push(problems, `no generated page for symbol: {sid}.html`) }
+        }
+      }
+    }
+  }
+
+  # 2b/2c) duplicate tokens + one-dir-per-namespace/section
+  let tok2ids = new []Bucket    # k1=kind, k2=tok -> ids
+  let ns2dirs = new []Bucket    # k1="", k2=ns -> dirs
+  let id2dirs = new []Bucket    # k1="", k2=section id -> dirs
+  let title2dirs = new []Bucket # k1="", k2=lower(title) -> dirs
+  ci = 0
+  while ci < len(cats) {
+    let cat = cats[ci]
+    ci = ci + 1
+    let cdir = "docs/language/" + cat
+    if not is_dir(cdir) { continue }
+    let secp = cdir + "/_section.md"
+    if file_exists(secp) {
+      let sd = parse_front(secp)
+      bucket_add(id2dirs, "", meta_get(sd.m, "id", cat), cat)
+      bucket_add(title2dirs, "", lower_ascii(s_trim(meta_get(sd.m, "title", ""))), cat)
+    }
+    let files = list_sorted(cdir)
+    var fi = 0
+    while fi < len(files) {
+      let fn = files[fi]
+      fi = fi + 1
+      if not s_ends(fn, ".md") { continue }
+      if fn == "_section.md" { continue }
+      let d = parse_front(cdir + "/" + fn)
+      let kind = meta_get(d.m, "kind", "")
+      let id = meta_get(d.m, "id", "")
+      let toks = split_ws(meta_get(d.m, "tokens", ""))
+      var ti = 0
+      while ti < len(toks) { bucket_add(tok2ids, kind, toks[ti], id);  ti = ti + 1 }
+      let ns = meta_get(d.m, "ns", "")
+      if slen(ns) > 0 { bucket_add(ns2dirs, "", ns, cat) }
+    }
+  }
+  var bi = 0
+  while bi < len(tok2ids) {
+    let b = tok2ids[bi]
+    bi = bi + 1
+    if len(b.vals) > 1 { push(problems, `token '{b.k2}' ({b.k1}) documented on multiple pages: {join_sorted(b.vals)}`) }
+  }
+  bi = 0
+  while bi < len(ns2dirs) {
+    let b = ns2dirs[bi]
+    bi = bi + 1
+    if len(b.vals) > 1 { push(problems, `namespace '{b.k2}' documented from multiple dirs: {join_sorted(b.vals)}`) }
+  }
+  bi = 0
+  while bi < len(id2dirs) {
+    let b = id2dirs[bi]
+    bi = bi + 1
+    if len(b.vals) > 1 { push(problems, `section id '{b.k2}' declared by multiple dirs: {join_sorted(b.vals)}`) }
+  }
+  bi = 0
+  while bi < len(title2dirs) {
+    let b = title2dirs[bi]
+    bi = bi + 1
+    if slen(b.k2) > 0 and len(b.vals) > 1 { push(problems, `section title '{b.k2}' shared by multiple dirs: {join_sorted(b.vals)}`) }
+  }
+
+  # 3) thin warning
+  if len(thin) > 0 {
+    strs_sort(thin)
+    let b = sb_new()
+    var i = 0
+    while i < len(thin) and i < 12 {
+      if i > 0 { sb_puts(b, ", ") }
+      sb_puts(b, thin[i])
+      i = i + 1
+    }
+    var tail = ""
+    if len(thin) > 12 { tail = " …" }
+    push(warnings, `{string(len(thin))} symbols still have only seed text: {sb_str(b)}{tail}`)
+  }
+
+  # 4) highlighter targets exist
+  let sjtext = read_file(`{site}/symbols.json`)
+  if sjtext != null {
+    let sj = json_parse(sjtext)
+    let hl = j_get(sj, "highlight")
+    let targets = new []pointer
+    collect_targets_str(j_get(hl, "keywords"), targets)
+    collect_targets_str(j_get(hl, "types"), targets)
+    collect_targets_str(j_get(hl, "phases"), targets)
+    collect_targets_str(j_get(hl, "annotations"), targets)
+    collect_targets_id(j_get(hl, "builtins"), targets)
+    collect_targets_id(j_get(hl, "nsmethods"), targets)
+    collect_targets_str(j_get(hl, "namespaces"), targets)
+    strs_sort(targets)
+    var i = 0
+    while i < len(targets) {
+      let tgt = targets[i]
+      i = i + 1
+      if not file_exists(`{site}/{tgt}.html`) { push(problems, `highlighter links to {tgt}.html but it was not generated`) }
+    }
+  }
+
+  # report
+  var wi = 0
+  while wi < len(warnings) { print(`  warning: {warnings[wi]}`);  wi = wi + 1 }
+  if len(problems) > 0 {
+    print("docs check FAILED:")
+    var pi = 0
+    while pi < len(problems) { print(`  - {problems[pi]}`);  pi = pi + 1 }
+    return 1
+  }
+  print(`docs check OK: {site}  ({string(len(id2src.keys))} symbols documented)`)
+  return 0
+}
+
+# add every string value of an object's members (set semantics via the caller)
+function collect_targets_str(o: JVal, out: []pointer) -> void {
+  if o.t != JV_OBJ { return }
+  var i = 0
+  while i < len(o.kids) {
+    let v = o.kids[i]
+    i = i + 1
+    if v.t == JV_STR { set_add(out, v.s) }
+  }
+}
+# add each member value's ["id"] (builtins / nsmethods)
+function collect_targets_id(o: JVal, out: []pointer) -> void {
+  if o.t != JV_OBJ { return }
+  var i = 0
+  while i < len(o.kids) {
+    let v = o.kids[i]
+    i = i + 1
+    let id = j_get(v, "id")
+    if id.t == JV_STR { set_add(out, id.s) }
+  }
+}

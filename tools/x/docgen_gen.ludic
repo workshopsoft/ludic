@@ -1,0 +1,1014 @@
+# docgen_gen.ludic — `x docs-gen`: the documentation-site generator, ported from
+# tools/docgen/gen.py. Parses docs/language/** (front-matter + bodies) and
+# docs/site/*, reads the asset templates in tools/docgen/assets, and emits the
+# whole pages-branch payload (per-symbol pages, namespace/color/api pages, the
+# landing page, ludic-highlight.js, symbols.json, .nojekyll) into --out. Output
+# is byte-for-byte identical to the Python generator (gated in x test).
+#
+# Shared helpers (Sb, hesc/hescattr, the JSON writer, codeify, string utils)
+# live in docgen.ludic; the JSON reader (json_parse/j_get) in json.ludic.
+
+# ---- the parsed-doc model ---------------------------------------------------
+property Meta { keys: []pointer, vals: []pointer }
+property Param { name: pointer = "", desc: pointer = "" }
+property Split { desc: pointer = "", examples: []pointer, params: []Param }
+property Doc { m: Meta, body: pointer = "" }
+property Entry {
+  id: pointer = "", name: pointer = "", sig: pointer = "", kind: pointer = "",
+  tip: pointer = "", ns: pointer = "", order: int = 999,
+  desc_html: pointer = "", examples: []pointer, params: []Param,
+  tokens_list: []pointer, related_list: []pointer
+}
+property Section {
+  id: pointer = "", title: pointer = "", order: int = 999, blurb: pointer = "",
+  cat: pointer = "", ns_name: pointer = "", entries: []Entry
+}
+property Symbols { items: JVal, sym: JVal }
+
+function meta_new() -> Meta {
+  let m = new Meta
+  m.keys = new []pointer
+  m.vals = new []pointer
+  return m
+}
+function meta_put(m: Meta, k: pointer, v: pointer) -> void {
+  var i = 0
+  while i < len(m.keys) { if m.keys[i] == k { m.vals[i] = v;  return };  i = i + 1 }
+  push(m.keys, k)
+  push(m.vals, v)
+}
+function meta_get(m: Meta, k: pointer, dflt: pointer) -> pointer {
+  var i = 0
+  while i < len(m.keys) { if m.keys[i] == k { return m.vals[i] };  i = i + 1 }
+  return dflt
+}
+
+# ---- asset / snippet IO -----------------------------------------------------
+function read_asset(name: pointer) -> pointer {
+  let s = read_file("tools/docgen/assets/" + name)
+  if s == null { return "" }
+  return s
+}
+# read a snippet file, rstrip("\n") (trailing newlines only)
+function read_snippet(rel: pointer) -> pointer {
+  let s = read_file(rel)
+  if s == null { return "" }
+  var n = slen(s)
+  while n > 0 and s[n - 1] == 10 { n = n - 1 }
+  return sslice(s, 0, n)
+}
+
+# ---- front-matter + body parsing (parse_doc) --------------------------------
+function parse_doc(path: pointer) -> Doc {
+  let d = new Doc
+  d.m = meta_new()
+  let text = read_file(path)
+  if text == null { d.body = "";  return d }
+  d.body = text
+  if not s_starts(text, "---") { return d }
+  let end = s_index(text, "\n---", 3)
+  if end < 0 { return d }
+  let fm = sslice(text, 3, end)
+  let fn2 = slen(fm)
+  var j = 0
+  while j < fn2 {
+    let ln = line_at(fm, j)
+    j = j + slen(ln) + 1
+    let t = s_trim(ln)
+    if slen(t) == 0 { continue }
+    let c = s_index(ln, ":", 0)
+    if c < 0 { continue }
+    let key = s_trim(sslice(ln, 0, c))
+    let val = s_trim(sslice(ln, c + 1, slen(ln)))
+    meta_put(d.m, key, val)
+  }
+  d.body = lstrip_nl(sslice(text, end + 4, slen(text)))
+  return d
+}
+
+# match ^-\s*`?(\w+)`?\s*[—-]+\s*(.*)$ against an already-trimmed line
+function param_match(line: pointer, p: Param) -> bool {
+  let n = slen(line)
+  var i = 0
+  if i < n and line[i] == 45 { i = i + 1 } else { return false }
+  while i < n and is_ws(line[i]) { i = i + 1 }
+  if i < n and line[i] == 96 { i = i + 1 }
+  let ws = i
+  while i < n and is_word(line[i]) { i = i + 1 }
+  if i == ws { return false }
+  let name = sslice(line, ws, i)
+  if i < n and line[i] == 96 { i = i + 1 }
+  while i < n and is_ws(line[i]) { i = i + 1 }
+  var sep = 0
+  while i < n {
+    if line[i] == 45 { i = i + 1;  sep = sep + 1 }
+    else if (line[i] & 255) == 226 and i + 2 < n and (line[i + 1] & 255) == 128 and (line[i + 2] & 255) == 148 { i = i + 3;  sep = sep + 1 }
+    else { break }
+  }
+  if sep == 0 { return false }
+  while i < n and is_ws(line[i]) { i = i + 1 }
+  p.name = name
+  p.desc = codeify(s_trim(sslice(line, i, n)))
+  return true
+}
+
+# split desc on /\n\s*\n/ into trimmed, non-empty paragraphs
+function split_paras(desc: pointer) -> []pointer {
+  let out = new []pointer
+  let n = slen(desc)
+  var start = 0
+  var i = 0
+  while i < n {
+    if desc[i] == 10 {
+      var jj = i
+      var nl = 0
+      while jj < n and is_space_all(desc[jj]) { if desc[jj] == 10 { nl = nl + 1 };  jj = jj + 1 }
+      if nl >= 2 {
+        let part = s_trim(sslice(desc, start, i))
+        if slen(part) > 0 { push(out, part) }
+        start = jj
+        i = jj
+        continue
+      }
+      i = jj
+    } else {
+      i = i + 1
+    }
+  }
+  let last = s_trim(sslice(desc, start, n))
+  if slen(last) > 0 { push(out, last) }
+  return out
+}
+
+function split_body(body: pointer) -> Split {
+  let r = new Split
+  r.examples = new []pointer
+  r.params = new []Param
+  # 1) pull ```ludic fences out, keep the rest
+  let wo = sb_new()
+  let n = slen(body)
+  var i = 0
+  while i < n {
+    let p = s_index(body, "```ludic\n", i)
+    if p < 0 {
+      var k = i
+      while k < n { sb_putc(wo, body[k]);  k = k + 1 }
+      i = n
+    } else {
+      var k = i
+      while k < p { sb_putc(wo, body[k]);  k = k + 1 }
+      let cs = p + 9
+      let q = s_index(body, "\n```", cs)
+      if q < 0 {
+        var k2 = p
+        while k2 < cs { sb_putc(wo, body[k2]);  k2 = k2 + 1 }
+        i = cs
+      } else {
+        push(r.examples, sslice(body, cs, q))
+        i = q + 4
+      }
+    }
+  }
+  let body2 = sb_str(wo)
+  # 2) pull a Parameters: block, keep every other line
+  let m2 = slen(body2)
+  let keep = sb_new()
+  var firstkeep = true
+  var li = 0
+  while li < m2 {
+    let ln = line_at(body2, li)
+    let lnlen = slen(ln)
+    li = li + lnlen + 1
+    let low = lower_ascii(s_trim(ln))
+    if s_starts(low, "parameters:") {
+      while li < m2 {
+        let ln2 = line_at(body2, li)
+        let l2 = slen(ln2)
+        let t2 = s_trim(ln2)
+        if slen(t2) == 0 { break }
+        li = li + l2 + 1
+        let pp = new Param
+        if param_match(t2, pp) { push(r.params, pp) }
+      }
+    } else {
+      if not firstkeep { sb_putc(keep, 10) }
+      firstkeep = false
+      var kk = 0
+      while kk < lnlen { sb_putc(keep, ln[kk]);  kk = kk + 1 }
+    }
+  }
+  # 3) desc -> paragraphs joined </p><p>, each codeified
+  let desc = s_trim(sb_str(keep))
+  let paras = split_paras(desc)
+  let ob = sb_new()
+  var pi = 0
+  while pi < len(paras) {
+    if pi > 0 { sb_puts(ob, "</p><p>") }
+    sb_puts(ob, codeify(paras[pi]))
+    pi = pi + 1
+  }
+  r.desc = sb_str(ob)
+  return r
+}
+
+# the first sentence of a blurb, tags stripped, truncated to 160 with an ellipsis
+function plain_text(s: pointer) -> pointer {
+  let sb = sb_new()
+  let n = slen(s)
+  var i = 0
+  while i < n {
+    if s[i] == 60 {
+      while i < n and s[i] != 62 { i = i + 1 }
+      if i < n { i = i + 1 }
+    } else {
+      sb_putc(sb, s[i])
+      i = i + 1
+    }
+  }
+  let t0 = s_trim(sb_str(sb))
+  let tn = slen(t0)
+  var cut = 0 - 1
+  var j = 0
+  while j < tn {
+    let c = t0[j]
+    if c == 10 { break }
+    if (c == 46 or c == 33 or c == 63) and j >= 1 {
+      if j + 1 >= tn { cut = j + 1;  break }
+      if is_space_all(t0[j + 1]) { cut = j + 1;  break }
+    }
+    j = j + 1
+  }
+  var t = t0
+  if cut >= 0 { t = sslice(t0, 0, cut) }
+  # Python len()/slicing is by codepoint; count codepoints (a byte is a lead when
+  # (b & 0xC0) != 0x80) and truncate at the 160th, not the 160th byte.
+  let tl = slen(t)
+  var cpc = 0
+  var bi = 0
+  while bi < tl { if (t[bi] & 192) != 128 { cpc = cpc + 1 };  bi = bi + 1 }
+  if cpc <= 160 { return t }
+  var idx = 0
+  var seen = 0
+  while idx < tl and seen < 160 {
+    idx = idx + 1
+    while idx < tl and (t[idx] & 192) == 128 { idx = idx + 1 }
+    seen = seen + 1
+  }
+  let pre = sslice(t, 0, idx)
+  var sp = slen(pre) - 1
+  while sp >= 0 and pre[sp] != 32 { sp = sp - 1 }
+  var head = pre
+  if sp >= 0 { head = sslice(pre, 0, sp) }
+  return head + "…"
+}
+
+# ---- load the section/entry model -------------------------------------------
+function list_sorted(dir: pointer) -> []pointer {
+  let out = new []pointer
+  let s = capture(`LC_ALL=C ls -1A {dir} 2>/dev/null`)
+  let n = slen(s)
+  var i = 0
+  while i < n {
+    let ln = line_at(s, i)
+    i = i + slen(ln) + 1
+    if slen(ln) > 0 { push(out, ln) }
+  }
+  return out
+}
+function is_dir(path: pointer) -> bool { return shq(`test -d {path}`) }
+
+function build_entry(path: pointer) -> Entry {
+  let d = parse_doc(path)
+  let sp = split_body(d.body)
+  let e = new Entry
+  e.id = meta_get(d.m, "id", "")
+  e.name = meta_get(d.m, "name", "")
+  e.sig = meta_get(d.m, "sig", "")
+  e.kind = meta_get(d.m, "kind", "")
+  e.tip = meta_get(d.m, "tip", "")
+  e.ns = meta_get(d.m, "ns", "")
+  e.order = str_to_int(meta_get(d.m, "order", "999"))
+  e.desc_html = sp.desc
+  e.examples = sp.examples
+  e.params = sp.params
+  e.tokens_list = split_ws(meta_get(d.m, "tokens", ""))
+  e.related_list = split_ws(meta_get(d.m, "related", ""))
+  return e
+}
+
+function entry_gt(a: Entry, b: Entry) -> bool {
+  if a.order != b.order { return a.order > b.order }
+  return str_gt(a.name, b.name)
+}
+function entries_sort(es: []Entry) -> void {
+  var i = 1
+  while i < len(es) {
+    let cur = es[i]
+    var j = i - 1
+    while j >= 0 and entry_gt(es[j], cur) { es[j + 1] = es[j];  j = j - 1 }
+    es[j + 1] = cur
+    i = i + 1
+  }
+}
+function section_gt(a: Section, b: Section) -> bool {
+  if a.order != b.order { return a.order > b.order }
+  return str_gt(a.title, b.title)
+}
+function sections_sort(ss: []Section) -> void {
+  var i = 1
+  while i < len(ss) {
+    let cur = ss[i]
+    var j = i - 1
+    while j >= 0 and section_gt(ss[j], cur) { ss[j + 1] = ss[j];  j = j - 1 }
+    ss[j + 1] = cur
+    i = i + 1
+  }
+}
+
+function load_sections() -> []Section {
+  let sections = new []Section
+  let cats = list_sorted("docs/language")
+  var ci = 0
+  while ci < len(cats) {
+    let cat = cats[ci]
+    ci = ci + 1
+    let cdir = "docs/language/" + cat
+    if not is_dir(cdir) { continue }
+    var sid = cat
+    var stitle = title_case(cat)
+    var sorder = 999
+    var sblurb = ""
+    let secp = cdir + "/_section.md"
+    if file_exists(secp) {
+      let sd = parse_doc(secp)
+      sid = meta_get(sd.m, "id", cat)
+      stitle = meta_get(sd.m, "title", title_case(cat))
+      sorder = str_to_int(meta_get(sd.m, "order", "999"))
+      sblurb = codeify(s_trim(sd.body))
+    }
+    let entries = new []Entry
+    let files = list_sorted(cdir)
+    var fi = 0
+    while fi < len(files) {
+      let fn = files[fi]
+      fi = fi + 1
+      if not s_ends(fn, ".md") { continue }
+      if fn == "_section.md" { continue }
+      push(entries, build_entry(cdir + "/" + fn))
+    }
+    entries_sort(entries)
+    var nsname = ""
+    var ei = 0
+    while ei < len(entries) {
+      let e = entries[ei]
+      if e.kind == "namespace-method" and slen(e.ns) > 0 { nsname = e.ns;  break }
+      ei = ei + 1
+    }
+    let sec = new Section
+    sec.id = sid
+    sec.title = stitle
+    sec.order = sorder
+    sec.blurb = sblurb
+    sec.cat = cat
+    sec.entries = entries
+    sec.ns_name = nsname
+    push(sections, sec)
+  }
+  sections_sort(sections)
+  return sections
+}
+
+# ---- symbol / highlighter model (build_symbols) -----------------------------
+function ns_tip(nn: pointer, sections: []Section) -> pointer {
+  if nn == "Color" { return "The named color palette." }
+  var i = 0
+  while i < len(sections) {
+    if sections[i].ns_name == nn { return plain_text(sections[i].blurb) }
+    i = i + 1
+  }
+  return ""
+}
+
+function build_symbols(sections: []Section) -> Symbols {
+  let items = jvo()
+  let sym = jvo()
+  let kw = jvo()
+  let types = jvo()
+  let phases = jvo()
+  let builtins = jvo()
+  let nsm = jvo()
+  let annot = jvo()
+  let namespaces = jvo()
+  let tips = jvo()
+  let cards = jvo()
+  jvput(sym, "keywords", kw)
+  jvput(sym, "types", types)
+  jvput(sym, "phases", phases)
+  jvput(sym, "builtins", builtins)
+  jvput(sym, "nsmethods", nsm)
+  jvput(sym, "annotations", annot)
+  jvput(sym, "namespaces", namespaces)
+  jvput(sym, "tips", tips)
+  jvput(sym, "cards", cards)
+  jvput(sym, "colors_page", jvs("ns-color"))
+  var si = 0
+  while si < len(sections) {
+    let s = sections[si]
+    si = si + 1
+    var ei = 0
+    while ei < len(s.entries) {
+      let e = s.entries[ei]
+      ei = ei + 1
+      let eid = e.id
+      let kind = e.kind
+      let tip = e.tip
+      let page = eid + ".html"
+      let it = jvo()
+      jvput(it, "id", jvs(eid))
+      jvput(it, "name", jvs(e.name))
+      jvput(it, "sig", jvs(e.sig))
+      jvput(it, "kind", jvs(kind))
+      jvput(it, "category", jvs(s.id))
+      jvput(it, "section", jvs(s.title))
+      jvput(it, "tip", jvs(tip))
+      jvput(it, "page", jvs(page))
+      jvput(items, eid, it)
+      let cd = jvo()
+      jvput(cd, "name", jvs(e.name))
+      jvput(cd, "sig", jvs(e.sig))
+      jvput(cd, "tip", jvs(tip))
+      jvput(cd, "kind", jvs(kind))
+      jvput(cd, "page", jvs(page))
+      jvput(cd, "section", jvs(s.title))
+      jvput(cards, eid, cd)
+      var ti = 0
+      while ti < len(e.tokens_list) {
+        let tok = e.tokens_list[ti]
+        ti = ti + 1
+        if kind == "keyword" { jvput(kw, tok, jvs(eid)) }
+        else if kind == "type" { jvput(types, tok, jvs(eid)) }
+        else if kind == "phase" { jvput(phases, tok, jvs(eid)) }
+        else if kind == "builtin" {
+          let o = jvo()
+          jvput(o, "id", jvs(eid))
+          let pa = jva()
+          var qi = 0
+          while qi < len(e.params) { jvpush(pa, jvs(e.params[qi].name));  qi = qi + 1 }
+          jvput(o, "params", pa)
+          jvput(builtins, tok, o)
+        }
+        else if kind == "namespace-method" {
+          let o = jvo()
+          jvput(o, "id", jvs(eid))
+          let pa = jva()
+          var qi = 0
+          while qi < len(e.params) { jvpush(pa, jvs(e.params[qi].name));  qi = qi + 1 }
+          jvput(o, "params", pa)
+          jvput(nsm, tok, o)
+        }
+        else if kind == "annotation" { jvput(annot, tok, jvs(eid)) }
+        if slen(tip) > 0 { jvput(tips, tok, jvs(tip)) }
+      }
+    }
+  }
+  let nsnames = new []pointer
+  var ki = 0
+  while ki < len(nsm.keys) {
+    let tok = nsm.keys[ki]
+    ki = ki + 1
+    let dot = s_index(tok, ".", 0)
+    if dot >= 0 { set_add(nsnames, sslice(tok, 0, dot)) }
+  }
+  set_add(nsnames, "Color")
+  strs_sort(nsnames)
+  var ni = 0
+  while ni < len(nsnames) {
+    let nn = nsnames[ni]
+    ni = ni + 1
+    let pg = "ns-" + lower_ascii(nn)
+    jvput(namespaces, nn, jvs(pg))
+    let cd = jvo()
+    jvput(cd, "name", jvs(nn))
+    jvput(cd, "sig", jvs(nn + ".*"))
+    jvput(cd, "kind", jvs("namespace"))
+    jvput(cd, "tip", jvs(ns_tip(nn, sections)))
+    jvput(cd, "page", jvs(pg + ".html"))
+    jvput(cd, "section", jvs("Namespaces"))
+    jvput(cards, pg, cd)
+  }
+  let res = new Symbols
+  res.items = items
+  res.sym = sym
+  return res
+}
+
+# ---- shared chrome ----------------------------------------------------------
+function js_get(v: JVal, key: pointer) -> pointer {
+  let x = j_get(v, key)
+  if x.t == JV_STR { return x.s }
+  return ""
+}
+function j_has(v: JVal, key: pointer) -> bool {
+  if v.t != JV_OBJ { return false }
+  var i = 0
+  while i < len(v.keys) { if v.keys[i] == key { return true };  i = i + 1 }
+  return false
+}
+
+function emit_head(b: Sb, title: pointer, desc: pointer, cssfile: pointer) -> void {
+  sb_puts(b, `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>{hesc(title)}</title>\n<meta name="description" content="{hescattr(desc)}">\n<link rel="preconnect" href="https://fonts.googleapis.com">\n<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">\n<style>\n`)
+  sb_puts(b, read_asset(cssfile))
+  sb_puts(b, `\n</style>\n</head>`)
+}
+
+# nav links; a link whose href equals cta_href gets the nav-cta class
+function nav_html(b: Sb, links: JVal, cta_href: pointer) -> void {
+  if links.t != JV_ARR { return }
+  var i = 0
+  while i < len(links.kids) {
+    let nlk = links.kids[i]
+    i = i + 1
+    let href = js_get(nlk, "href")
+    let label = js_get(nlk, "label")
+    if href == cta_href { sb_puts(b, `<a class="nav-cta" href="{href}">{hesc(label)}</a>`) }
+    else { sb_puts(b, `<a href="{href}">{hesc(label)}</a>`) }
+  }
+}
+
+function topbar(b: Sb, cfg: JVal) -> void {
+  var links = j_get(cfg, "ref_nav_links")
+  if links.t != JV_ARR { links = j_get(cfg, "nav_links") }
+  sb_puts(b, `<header class="nav"><div class="wrap nav-in"><a class="brand" href="index.html"><span class="logo">L</span> {hesc(js_get(cfg,"brand"))}</a><button class="nav-toggle" aria-label="Toggle menu" aria-expanded="false">☰</button><nav class="nav-links">`)
+  nav_html(b, links, "")
+  sb_puts(b, `<a class="nav-cta" href="{js_get(cfg,"repo_url")}">Source ↗</a></nav></div></header>`)
+}
+
+# ---- per-item page ----------------------------------------------------------
+function render_params(e: Entry) -> pointer {
+  if len(e.params) == 0 { return "" }
+  let b = sb_new()
+  sb_puts(b, `<div class="params"><h2>Parameters</h2>`)
+  var i = 0
+  while i < len(e.params) {
+    let p = e.params[i]
+    i = i + 1
+    sb_puts(b, `<div class="param" id="param-{p.name}"><code class="pname">{hesc(p.name)}</code><span class="pdesc">{p.desc}</span></div>`)
+  }
+  sb_puts(b, `</div>`)
+  return sb_str(b)
+}
+function render_examples(e: Entry) -> pointer {
+  if len(e.examples) == 0 { return "" }
+  let b = sb_new()
+  sb_puts(b, `<div class="examples"><h2>Example</h2>`)
+  var i = 0
+  while i < len(e.examples) {
+    sb_puts(b, `<pre data-lang="ludic">{hesc(e.examples[i])}</pre>`)
+    i = i + 1
+  }
+  sb_puts(b, `</div>`)
+  return sb_str(b)
+}
+function render_related(e: Entry, items: JVal) -> pointer {
+  let b = sb_new()
+  var cnt = 0
+  var i = 0
+  while i < len(e.related_list) {
+    let r = e.related_list[i]
+    i = i + 1
+    let it = j_get(items, r)
+    if it.t == JV_NULL { continue }
+    if cnt == 0 { sb_puts(b, `<div class="related"><h2>Related</h2><div class="rel-row">`) }
+    cnt = cnt + 1
+    sb_puts(b, `<a class="rel" href="{r}.html">{hesc(js_get(it,"name"))}</a>`)
+  }
+  if cnt == 0 { return "" }
+  sb_puts(b, `</div></div>`)
+  return sb_str(b)
+}
+
+function render_item(b: Sb, e: Entry, s: Section, cfg: JVal, items: JVal) -> void {
+  emit_head(b, e.name + " — Ludic", e.tip, "item.css")
+  sb_puts(b, "\n<body>\n")
+  topbar(b, cfg)
+  sb_putc(b, 10)
+  var sechref = "api.html#" + s.id
+  if slen(s.ns_name) > 0 { sechref = "ns-" + lower_ascii(s.ns_name) + ".html" }
+  var kindc = e.kind
+  if e.kind == "namespace-method" { kindc = "method" }
+  var kindlabel = e.kind
+  if e.kind == "namespace-method" { kindlabel = "method" }
+  else if e.kind == "builtin" { kindlabel = "function" }
+  var descv = e.desc_html
+  if slen(descv) == 0 { descv = hesc(e.tip) }
+  sb_puts(b, `<main class="wrap item">\n`)
+  sb_puts(b, `  <div class="crumbs"><a href="api.html">API Reference</a> <span>›</span> <a href="{sechref}">{hesc(s.title)}</a> <span>›</span> <span class="here">{hesc(e.name)}</span></div>\n`)
+  sb_puts(b, `  <div class="item-head">\n`)
+  sb_puts(b, `    <span class="kind-badge kind-{kindc}">{hesc(kindlabel)}</span>\n`)
+  sb_puts(b, `    <h1 id="top">{hesc(e.name)}</h1>\n`)
+  sb_puts(b, `  </div>\n`)
+  sb_puts(b, `  <code class="sig">{hesc(e.sig)}</code>\n`)
+  sb_puts(b, `  <div class="desc"><p>{descv}</p></div>\n`)
+  sb_puts(b, `  {render_params(e)}\n`)
+  sb_puts(b, `  {render_examples(e)}\n`)
+  sb_puts(b, `  {render_related(e, items)}\n`)
+  sb_puts(b, `  <a class="back" href="api.html">← All symbols</a>\n`)
+  sb_puts(b, `</main>\n`)
+  sb_puts(b, `<script src="ludic-highlight.js"></script>\n`)
+  sb_puts(b, `<script>Ludic.highlightAll(); Ludic.installCards(); Ludic.flashTarget();</script>\n`)
+  sb_puts(b, `</body></html>`)
+}
+
+# ---- namespace overview page ------------------------------------------------
+function render_ns(b: Sb, nsname: pointer, s: Section, cfg: JVal) -> void {
+  emit_head(b, nsname + " — Ludic", plain_text(s.blurb), "item.css")
+  sb_puts(b, "\n<body>\n")
+  topbar(b, cfg)
+  sb_putc(b, 10)
+  sb_puts(b, `<main class="wrap item">\n`)
+  sb_puts(b, `  <div class="crumbs"><a href="api.html">API Reference</a> <span>›</span> <span class="here">{hesc(nsname)}</span></div>\n`)
+  sb_puts(b, `  <div class="item-head"><span class="kind-badge kind-namespace">namespace</span><h1 id="top">{hesc(nsname)}</h1></div>\n`)
+  sb_puts(b, `  <p class="ns-blurb">{s.blurb}</p>\n`)
+  sb_puts(b, `  <div class="ns-methods">`)
+  var i = 0
+  while i < len(s.entries) {
+    let e = s.entries[i]
+    i = i + 1
+    sb_puts(b, `<a class="ns-method" href="{e.id}.html"><code class="nm-sig">{hesc(e.sig)}</code><span class="nm-tip">{hesc(e.tip)}</span></a>`)
+  }
+  sb_puts(b, `</div>\n`)
+  sb_puts(b, `  <a class="back" href="api.html">← All symbols</a>\n`)
+  sb_puts(b, `</main>\n`)
+  sb_puts(b, `<script src="ludic-highlight.js"></script>\n`)
+  sb_puts(b, `<script>Ludic.installCards(); Ludic.flashTarget();</script>\n`)
+  sb_puts(b, `</body></html>`)
+}
+
+# ---- color page (from the in-memory palette) --------------------------------
+function render_color(b: Sb, cfg: JVal) -> void {
+  palette_init()
+  emit_head(b, "Color — Ludic", "The Ludic named-color palette.", "item.css")
+  sb_puts(b, "\n<body>\n")
+  topbar(b, cfg)
+  sb_putc(b, 10)
+  sb_puts(b, `<main class="wrap item">\n`)
+  sb_puts(b, `  <div class="crumbs"><a href="api.html">API Reference</a> <span>›</span> <span class="here">Color</span></div>\n`)
+  sb_puts(b, `  <div class="item-head"><span class="kind-badge kind-namespace">namespace</span><h1 id="top">Color</h1></div>\n`)
+  sb_puts(b, `  <p class="ns-blurb">The named color palette. Every <code>Color.Name</code> lowers to a plain <code>0xRRGGBB</code> integer at compile time — no runtime cost. {string(len(pal_names))} names are built in.</p>\n`)
+  sb_puts(b, `  `)
+  # groups in first-appearance order
+  let seen = new []pointer
+  var gi = 0
+  while gi < len(pal_groups) {
+    let g = pal_groups[gi]
+    gi = gi + 1
+    if set_has(seen, g) { continue }
+    push(seen, g)
+    sb_puts(b, `<div class="swatch-group"><h3>{hesc(g)}</h3><div class="swatch-row">`)
+    var ci = 0
+    while ci < len(pal_names) {
+      if pal_groups[ci] == g {
+        let nm = pal_names[ci]
+        let hx = pal_hexes[ci]
+        sb_puts(b, `<div class="swatch" id="{lower_ascii(nm)}"><span class="chip" style="background:#{hx}"></span><span class="cname">Color.{hesc(nm)}</span><span class="chex">#{hx}</span></div>`)
+      }
+      ci = ci + 1
+    }
+    sb_puts(b, `</div></div>`)
+  }
+  sb_puts(b, `\n`)
+  sb_puts(b, `  <a class="back" href="api.html">← All symbols</a>\n`)
+  sb_puts(b, `</main>\n`)
+  sb_puts(b, `<script src="ludic-highlight.js"></script>\n`)
+  sb_puts(b, `<script>Ludic.installCards(); Ludic.flashTarget();</script>\n`)
+  sb_puts(b, `</body></html>`)
+}
+
+# ---- API index --------------------------------------------------------------
+function render_api(b: Sb, sections: []Section, cfg: JVal) -> void {
+  emit_head(b, "Ludic — API Reference", "The complete Ludic API Reference: every keyword, type, builtin, namespace, annotation and color, each on its own page, with fuzzy search.", "item.css")
+  sb_puts(b, "\n<body>\n")
+  topbar(b, cfg)
+  sb_putc(b, 10)
+  sb_puts(b, `<main class="wrap ref">\n`)
+  sb_puts(b, `  <div class="ref-intro">\n`)
+  sb_puts(b, `    <div class="kicker">Reference</div>\n`)
+  sb_puts(b, `    <h1>API Reference</h1>\n`)
+  sb_puts(b, `    <p>Every keyword, type, phase, builtin, namespace method, annotation and color in Ludic — each on its own page. Search, or browse by section. In any code sample across this site, hover a token for a summary and click to jump to its page.</p>\n`)
+  sb_puts(b, `    <input id="search" class="search" type="search" placeholder="Search symbols…  (e.g. handler, fill_rectangle, @Sync)" autocomplete="off" autofocus>\n`)
+  sb_puts(b, `    <div id="noresults" class="noresults" hidden>No symbols match.</div>\n`)
+  sb_puts(b, `  </div>\n`)
+  sb_puts(b, `  `)
+  var si = 0
+  while si < len(sections) {
+    let s = sections[si]
+    si = si + 1
+    if s.cat == "colors" {
+      sb_puts(b, `<section class="idx-sec" data-sec="{s.id}"><h2 id="{s.id}">{hesc(s.title)}</h2><p class="sec-blurb">{s.blurb}</p><div class="idx-grid"><a class="idx-item" href="ns-color.html" data-name="Color" data-tip="The named color palette."><code>Color</code><span>The named color palette (221 names).</span></a></div></section>`)
+      continue
+    }
+    sb_puts(b, `<section class="idx-sec" data-sec="{s.id}"><h2 id="{s.id}">{hesc(s.title)}</h2><p class="sec-blurb">{s.blurb}</p><div class="idx-grid">`)
+    var ei = 0
+    while ei < len(s.entries) {
+      let e = s.entries[ei]
+      ei = ei + 1
+      sb_puts(b, `<a class="idx-item" href="{e.id}.html" data-name="{hescattr(e.name)}" data-tip="{hescattr(e.tip)}"><code>{hesc(e.name)}</code><span>{hesc(e.tip)}</span></a>`)
+    }
+    sb_puts(b, `</div></section>`)
+  }
+  sb_puts(b, `\n`)
+  sb_puts(b, `</main>\n`)
+  sb_puts(b, `<script src="ludic-highlight.js"></script>\n`)
+  sb_puts(b, `<script>Ludic.installCards(); Ludic.installSearch();</script>\n`)
+  sb_puts(b, `</body></html>`)
+}
+
+# ---- landing page (index.tmpl.html via %(key)s substitution) ----------------
+function put(mk: []pointer, mv: []pointer, k: pointer, v: pointer) -> void {
+  push(mk, k)
+  push(mv, v)
+}
+function pct(tmpl: pointer, mk: []pointer, mv: []pointer) -> pointer {
+  let n = slen(tmpl)
+  let b = sb_new()
+  var i = 0
+  while i < n {
+    if tmpl[i] == 37 and i + 1 < n and tmpl[i + 1] == 40 {
+      var j = i + 2
+      while j < n and is_word(tmpl[j]) { j = j + 1 }
+      if j > i + 2 and j + 1 < n and tmpl[j] == 41 and tmpl[j + 1] == 115 {
+        let key = sslice(tmpl, i + 2, j)
+        var k = 0
+        var found = false
+        while k < len(mk) { if mk[k] == key { sb_puts(b, mv[k]);  found = true;  break };  k = k + 1 }
+        i = j + 2
+        continue
+      }
+    }
+    sb_putc(b, tmpl[i])
+    i = i + 1
+  }
+  return sb_str(b)
+}
+
+function build_stages(hero: JVal) -> pointer {
+  let b = sb_new()
+  let pl = j_get(hero, "pipeline")
+  if pl.t != JV_ARR { return "" }
+  let m = len(pl.kids)
+  var i = 0
+  while i < m {
+    let st = pl.kids[i].s
+    var hl = ""
+    if st == "ludicc" { hl = " hl" }
+    sb_puts(b, `<span class="stage{hl}">{hesc(st)}</span>`)
+    if i < m - 1 { sb_puts(b, `<span class="arrow">→</span>`) }
+    i = i + 1
+  }
+  return sb_str(b)
+}
+function build_feats(feats: JVal) -> pointer {
+  let b = sb_new()
+  let cards = j_get(feats, "cards")
+  if cards.t != JV_ARR { return "" }
+  var i = 0
+  while i < len(cards.kids) {
+    let c = cards.kids[i]
+    i = i + 1
+    sb_puts(b, `<div class="feat reveal"><div class="ico">{js_get(c,"icon")}</div><h3>{js_get(c,"title")}</h3><p>{js_get(c,"html")}</p></div>`)
+  }
+  return sb_str(b)
+}
+function build_phil_paras(phil: JVal) -> pointer {
+  let b = sb_new()
+  let ps = j_get(phil, "paras")
+  if ps.t != JV_ARR { return "" }
+  var i = 0
+  while i < len(ps.kids) { sb_puts(b, `<p>{ps.kids[i].s}</p>`);  i = i + 1 }
+  return sb_str(b)
+}
+function build_phil_stats(phil: JVal) -> pointer {
+  let b = sb_new()
+  let ss = j_get(phil, "stats")
+  if ss.t != JV_ARR { return "" }
+  var i = 0
+  while i < len(ss.kids) {
+    let s = ss.kids[i]
+    i = i + 1
+    sb_puts(b, `<div class="stat"><div class="big">{js_get(s,"big")}</div><div class="lbl">{hesc(js_get(s,"lbl"))}</div></div>`)
+  }
+  return sb_str(b)
+}
+function build_steps(start: JVal) -> pointer {
+  let b = sb_new()
+  let st = j_get(start, "steps")
+  if st.t != JV_ARR { return "" }
+  var i = 0
+  while i < len(st.kids) {
+    let s = st.kids[i]
+    sb_puts(b, `<div class="step reveal"><div class="n">{string(i + 1)}</div><div><h4>{js_get(s,"title")}</h4><p>{js_get(s,"html")}</p></div></div>`)
+    i = i + 1
+  }
+  return sb_str(b)
+}
+function build_term(start: JVal) -> pointer {
+  let b = sb_new()
+  let tm = j_get(start, "terminal")
+  if tm.t != JV_ARR { return "" }
+  var i = 0
+  while i < len(tm.kids) {
+    let t = tm.kids[i]
+    i = i + 1
+    let bl = j_get(t, "blank")
+    if bl.t == JV_BOOL and bl.b == 1 { sb_putc(b, 10) }
+    else if j_has(t, "comment") { sb_puts(b, `<span class="t-com"># {hesc(js_get(t,"comment"))}</span>\n`) }
+    else if j_has(t, "cmd") { sb_puts(b, `<span class="prompt">$</span> {hesc(js_get(t,"cmd"))}\n`) }
+    else if j_has(t, "out") { sb_puts(b, `<span class="out">{hesc(js_get(t,"out"))}</span>\n`) }
+  }
+  return sb_str(b)
+}
+function build_eds(ed: JVal) -> pointer {
+  let b = sb_new()
+  let ls = j_get(ed, "list")
+  if ls.t != JV_ARR { return "" }
+  var i = 0
+  while i < len(ls.kids) { sb_puts(b, `<div class="ed"><span class="k">◆</span> {hesc(ls.kids[i].s)}</div>`);  i = i + 1 }
+  return sb_str(b)
+}
+function build_footlinks(cfg: JVal) -> pointer {
+  let b = sb_new()
+  let nl = j_get(cfg, "nav_links")
+  if nl.t == JV_ARR {
+    var i = 0
+    while i < len(nl.kids) {
+      let n = nl.kids[i]
+      i = i + 1
+      sb_puts(b, `<a href="{js_get(n,"href")}">{hesc(js_get(n,"label"))}</a>`)
+    }
+  }
+  sb_puts(b, `<a href="{js_get(cfg,"repo_url")}">Source ↗</a>`)
+  return sb_str(b)
+}
+function build_samples(cfg: JVal) -> pointer {
+  let sc = j_get(cfg, "showcase")
+  let sm = j_get(sc, "samples")
+  let arr = jva()
+  if sm.t == JV_ARR {
+    var i = 0
+    while i < len(sm.kids) {
+      let s = sm.kids[i]
+      i = i + 1
+      let o = jvo()
+      jvput(o, "name", jvs(js_get(s, "name")))
+      jvput(o, "label", jvs(js_get(s, "label")))
+      jvput(o, "note", jvs(js_get(s, "note")))
+      jvput(o, "code", jvs(read_snippet(js_get(s, "file"))))
+      jvpush(arr, o)
+    }
+  }
+  return json_dumps(arr, false, true)
+}
+
+function render_index(b: Sb, cfg: JVal) -> void {
+  let hero = j_get(cfg, "hero")
+  let meta = j_get(cfg, "meta")
+  let feats = j_get(cfg, "features")
+  let sc = j_get(cfg, "showcase")
+  let phil = j_get(cfg, "philosophy")
+  let start = j_get(cfg, "start")
+  let ed = j_get(cfg, "editors")
+  let pcta = j_get(hero, "primary_cta")
+  let scta = j_get(hero, "secondary_cta")
+  let mk = new []pointer
+  let mv = new []pointer
+  put(mk, mv, "css", read_asset("site.css"))
+  put(mk, mv, "brand", hesc(js_get(cfg, "brand")))
+  put(mk, mv, "tagline", hesc(js_get(cfg, "tagline")))
+  put(mk, mv, "repo", js_get(cfg, "repo_url"))
+  put(mk, mv, "title", hesc(js_get(meta, "title")))
+  put(mk, mv, "desc", hescattr(js_get(meta, "description")))
+  put(mk, mv, "ogt", hesc(js_get(meta, "og_title")))
+  put(mk, mv, "ogd", hescattr(js_get(meta, "og_description")))
+  let nb = sb_new()
+  nav_html(nb, j_get(cfg, "nav_links"), "api.html")
+  put(mk, mv, "navlinks", sb_str(nb))
+  put(mk, mv, "pill", hesc(js_get(hero, "pill")))
+  put(mk, mv, "title_pre", hesc(js_get(hero, "title_pre")))
+  put(mk, mv, "title_accent", hesc(js_get(hero, "title_accent")))
+  put(mk, mv, "lead", js_get(hero, "lead"))
+  put(mk, mv, "pcta_h", js_get(pcta, "href"))
+  put(mk, mv, "pcta_l", hesc(js_get(pcta, "label")))
+  put(mk, mv, "scta_h", js_get(scta, "href"))
+  put(mk, mv, "scta_l", hesc(js_get(scta, "label")))
+  put(mk, mv, "hero_name", hesc(js_get(hero, "snippet_name")))
+  put(mk, mv, "hero_code", hesc(read_snippet(js_get(hero, "snippet"))))
+  put(mk, mv, "stages", build_stages(hero))
+  put(mk, mv, "pipenote", js_get(hero, "pipeline_note"))
+  put(mk, mv, "feat_kicker", hesc(js_get(feats, "kicker")))
+  put(mk, mv, "feat_title", hesc(js_get(feats, "title")))
+  put(mk, mv, "feat_intro", js_get(feats, "intro"))
+  put(mk, mv, "feats", build_feats(feats))
+  put(mk, mv, "sc_kicker", hesc(js_get(sc, "kicker")))
+  put(mk, mv, "sc_title", hesc(js_get(sc, "title")))
+  put(mk, mv, "sc_intro", js_get(sc, "intro"))
+  put(mk, mv, "phil_kicker", hesc(js_get(phil, "kicker")))
+  put(mk, mv, "phil_title", hesc(js_get(phil, "title")))
+  put(mk, mv, "phil_paras", build_phil_paras(phil))
+  put(mk, mv, "phil_stats", build_phil_stats(phil))
+  put(mk, mv, "start_kicker", hesc(js_get(start, "kicker")))
+  put(mk, mv, "start_title", hesc(js_get(start, "title")))
+  put(mk, mv, "start_intro", hesc(js_get(start, "intro")))
+  put(mk, mv, "steps", build_steps(start))
+  put(mk, mv, "term_name", hesc(js_get(start, "terminal_name")))
+  put(mk, mv, "term", build_term(start))
+  put(mk, mv, "ed_kicker", hesc(js_get(ed, "kicker")))
+  put(mk, mv, "ed_title", hesc(js_get(ed, "title")))
+  put(mk, mv, "ed_intro", js_get(ed, "intro"))
+  put(mk, mv, "eds", build_eds(ed))
+  put(mk, mv, "ed_note", js_get(ed, "note"))
+  put(mk, mv, "footlinks", build_footlinks(cfg))
+  put(mk, mv, "samples", build_samples(cfg))
+  sb_puts(b, pct(read_asset("index.tmpl.html"), mk, mv))
+}
+
+function render_highlighter(sym: JVal) -> pointer {
+  let tmpl = read_asset("ludic-highlight.tmpl.js")
+  let payload = json_dumps(sym, false, false)
+  let p = s_index(tmpl, "/*__SYMBOLS__*/{}", 0)
+  if p < 0 { return tmpl }
+  let b = sb_new()
+  var i = 0
+  while i < p { sb_putc(b, tmpl[i]);  i = i + 1 }
+  sb_puts(b, payload)
+  var j = p + slen("/*__SYMBOLS__*/{}")
+  let n = slen(tmpl)
+  while j < n { sb_putc(b, tmpl[j]);  j = j + 1 }
+  return sb_str(b)
+}
+
+# ---- the command ------------------------------------------------------------
+function cmd_docs_gen() -> int {
+  var out = "build/pages"
+  var i = 2
+  while i < arg_count() {
+    let a = arg(i)
+    if a == "--out" {
+      i = i + 1
+      if i < arg_count() { out = arg(i) }
+    }
+    i = i + 1
+  }
+  run(`mkdir -p {out}`)
+  palette_init()
+  let sections = load_sections()
+  let syms = build_symbols(sections)
+  let cfgtext = read_file("docs/site/site.json")
+  if cfgtext == null { err("cannot read docs/site/site.json\n");  return 1 }
+  let cfg = json_parse(cfgtext)
+  var npages = 0
+  var si = 0
+  while si < len(sections) {
+    let s = sections[si]
+    si = si + 1
+    if s.cat == "colors" { continue }
+    var ei = 0
+    while ei < len(s.entries) {
+      let e = s.entries[ei]
+      ei = ei + 1
+      let pb = sb_new()
+      render_item(pb, e, s, cfg, syms.items)
+      write_file(`{out}/{e.id}.html`, sb_str(pb))
+      npages = npages + 1
+    }
+  }
+  si = 0
+  while si < len(sections) {
+    let s = sections[si]
+    si = si + 1
+    if slen(s.ns_name) > 0 {
+      let pb = sb_new()
+      render_ns(pb, s.ns_name, s, cfg)
+      write_file(`{out}/ns-{lower_ascii(s.ns_name)}.html`, sb_str(pb))
+      npages = npages + 1
+    }
+  }
+  let cb = sb_new()
+  render_color(cb, cfg)
+  write_file(`{out}/ns-color.html`, sb_str(cb))
+  npages = npages + 1
+  let ab = sb_new()
+  render_api(ab, sections, cfg)
+  write_file(`{out}/api.html`, sb_str(ab))
+  let ib = sb_new()
+  render_index(ib, cfg)
+  write_file(`{out}/index.html`, sb_str(ib))
+  write_file(`{out}/ludic-highlight.js`, render_highlighter(syms.sym))
+  let root = jvo()
+  jvput(root, "items", syms.items)
+  jvput(root, "highlight", syms.sym)
+  write_file(`{out}/symbols.json`, json_dumps(root, true, false))
+  write_file(`{out}/.nojekyll`, "")
+  print(`docs generated -> {out}`)
+  print(`  pages: {string(npages)}`)
+  return 0
+}

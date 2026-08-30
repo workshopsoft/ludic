@@ -19,6 +19,9 @@ program X {
   import "test.ludic"
   import "json.ludic"
   import "checks.ludic"
+  import "docgen.ludic"
+  import "docgen_gen.ludic"
+  import "docgen_check.ludic"
   import "release.ludic"
 
   function usage() -> void {
@@ -43,6 +46,9 @@ program X {
     print("  x check-impl                  every implemented feature has a docs/language page")
     print("  x check-vocabulary            the vocabulary is in sync across grammar / lexer / header / parser")
     print("  x lint-asset <file>           validate one editor .json / .xml asset")
+    print("  x docs-gen [--out DIR]        generate the documentation site (default build/pages)")
+    print("  x docs-check [DIR]            coverage/integrity guard over a generated docs site")
+    print("  x docs-palette                regenerate emit_color.ludic + palette.json from the palette table")
     print("")
     print("release:")
     print("  x version                     print the toolchain version (ludicc --version)")
@@ -80,6 +86,9 @@ program X {
     if (cmd == "check-impl") { exit(cmd_check_impl()) }
     if (cmd == "check-vocabulary") { exit(cmd_check_vocab()) }
     if (cmd == "lint-asset") { exit(cmd_lint_asset()) }
+    if (cmd == "docs-palette") { exit(cmd_docs_palette()) }
+    if (cmd == "docs-gen") { exit(cmd_docs_gen()) }
+    if (cmd == "docs-check") { exit(cmd_docs_check()) }
     if (cmd == "golden") { exit(cmd_golden()) }
     if (cmd == "bootstrap") { exit(cmd_bootstrap()) }
     if (cmd == "bootstrap-cfree") { exit(cmd_bootstrap_cfree()) }
