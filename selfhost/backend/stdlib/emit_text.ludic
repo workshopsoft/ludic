@@ -1,0 +1,137 @@
+# emit_text.ludic — the Text.* namespace over `str` (null-terminated byte
+# strings). The libc-backed queries (length/char_at/starts_with/ends_with/
+# contains/index_of/to_int) allocate nothing; slice/from_int/equals/concat reuse
+# the string preludes that the `+`, `s[a..b]` and string(int) operators emit.
+
+function is_text_ns(meth: pointer) -> bool {
+  if (meth == "length") or (meth == "char_at") or (meth == "slice") { return true }
+  if (meth == "equals") or (meth == "concat") or (meth == "to_int") or (meth == "from_int") { return true }
+  if (meth == "starts_with") or (meth == "ends_with") { return true }
+  if (meth == "contains") or (meth == "index_of") { return true }
+  if (meth == "upper") or (meth == "lower") or (meth == "trim") or (meth == "repeat") { return true }
+  if (meth == "pad_left") or (meth == "pad_right") { return true }
+  if (meth == "split") or (meth == "join") or (meth == "replace") { return true }
+  return false
+}
+
+function emit_text_ns(meth: pointer, e: Node) -> Val {
+  if (meth == "from_int") {                          # int -> string, same as string(n)
+    let n = emit_expr(e.kids[0])
+    g_uses_intstr = true
+    return val(emit_bind(`call ptr @fn_int_str(i32 {n.code})`), "string")
+  }
+  if (meth == "slice") {                             # s[a..b], same substring helper
+    let s0 = emit_expr(e.kids[0]);  let a = emit_expr(e.kids[1]);  let b = emit_expr(e.kids[2])
+    g_uses_strslice = true
+    return val(emit_bind(`call ptr @fn_str_slice(ptr {s0.code}, i32 {a.code}, i32 {b.code})`), "string")
+  }
+  if (meth == "equals") {                            # byte-wise equality, same as ==
+    let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1])
+    g_uses_str = true
+    return val(emit_bind(`call i32 @fn_str_eq(ptr {a.code}, ptr {b.code})`), "bool")
+  }
+  if (meth == "concat") {                            # a + b, same as the + operator
+    let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1])
+    g_uses_str = true
+    return val(emit_bind(`call ptr @fn_str_concat(ptr {a.code}, ptr {b.code})`), "string")
+  }
+
+  let s = emit_expr(e.kids[0])
+  if (meth == "length") {                            # byte length
+    let r = emit_bind(`call i64 @strlen(ptr {s.code})`)
+    return val(emit_bind(`trunc i64 {r} to i32`), "int")
+  }
+  if (meth == "char_at") {                           # the byte at index i, 0..255
+    let i = emit_expr(e.kids[1])
+    let a = emit_bind(`getelementptr inbounds i8, ptr {s.code}, i32 {i.code}`)
+    let c = emit_bind(`load i8, ptr {a}`)
+    return val(emit_bind(`zext i8 {c} to i32`), "int")
+  }
+  if (meth == "to_int") {                            # parse a leading integer, 0 if none
+    return val(emit_bind(`call i32 @atoi(ptr {s.code})`), "int")
+  }
+  if (meth == "upper") {                             # ASCII a-z -> A-Z, fresh string
+    g_uses_textrt = true
+    return val(emit_bind(`call ptr @fn_str_upper(ptr {s.code})`), "string")
+  }
+  if (meth == "lower") {                             # ASCII A-Z -> a-z, fresh string
+    g_uses_textrt = true
+    return val(emit_bind(`call ptr @fn_str_lower(ptr {s.code})`), "string")
+  }
+  if (meth == "trim") {                              # drop leading/trailing whitespace
+    g_uses_textrt = true
+    return val(emit_bind(`call ptr @fn_str_trim(ptr {s.code})`), "string")
+  }
+  if (meth == "repeat") {                            # s repeated n times
+    g_uses_textrt = true
+    let n = emit_expr(e.kids[1])
+    return val(emit_bind(`call ptr @fn_str_repeat(ptr {s.code}, i32 {n.code})`), "string")
+  }
+  if (meth == "pad_left") {                          # pad with spaces to width, on the left
+    g_uses_textrt = true
+    let w = emit_expr(e.kids[1])
+    return val(emit_bind(`call ptr @fn_str_pad(ptr {s.code}, i32 {w.code}, i1 1)`), "string")
+  }
+  if (meth == "pad_right") {                         # pad with spaces to width, on the right
+    g_uses_textrt = true
+    let w = emit_expr(e.kids[1])
+    return val(emit_bind(`call ptr @fn_str_pad(ptr {s.code}, i32 {w.code}, i1 0)`), "string")
+  }
+  if (meth == "replace") {                           # replace every `from` with `to`
+    g_uses_textrt2 = true
+    let from = emit_expr(e.kids[1]);  let to = emit_expr(e.kids[2])
+    return val(emit_bind(`call ptr @fn_str_replace(ptr {s.code}, ptr {from.code}, ptr {to.code})`), "string")
+  }
+  if (meth == "split") {                             # split on a separator -> []string
+    g_uses_textrt2 = true
+    let sep = emit_expr(e.kids[1])
+    return val(emit_bind(`call ptr @fn_str_split(ptr {s.code}, ptr {sep.code})`), "[]string")
+  }
+  if (meth == "join") {                              # join a []string with a separator (s is the slice)
+    g_uses_textrt2 = true
+    let sep = emit_expr(e.kids[1])
+    return val(emit_bind(`call ptr @fn_str_join(ptr {s.code}, ptr {sep.code})`), "string")
+  }
+  if (meth == "contains") or (meth == "index_of") {  # substring search
+    let sub = emit_expr(e.kids[1])
+    let p = emit_bind(`call ptr @strstr(ptr {s.code}, ptr {sub.code})`)
+    if (meth == "contains") {
+      let nn = emit_bind(`icmp ne ptr {p}, null`)
+      return val(emit_bind(`zext i1 {nn} to i32`), "bool")
+    }
+    let isnull = emit_bind(`icmp eq ptr {p}, null`)   # index_of -> byte offset or -1
+    let pi = emit_bind(`ptrtoint ptr {p} to i64`)
+    let si = emit_bind(`ptrtoint ptr {s.code} to i64`)
+    let d = emit_bind(`sub i64 {pi}, {si}`)
+    let d32 = emit_bind(`trunc i64 {d} to i32`)
+    return val(emit_bind(`select i1 {isnull}, i32 -1, i32 {d32}`), "int")
+  }
+
+  # starts_with / ends_with: compare against the affix over its own length
+  let affix = emit_expr(e.kids[1])
+  let la = emit_bind(`call i64 @strlen(ptr {affix.code})`)
+  if (meth == "starts_with") {                       # strncmp of the head is null-safe
+    let cmp = emit_bind(`call i32 @strncmp(ptr {s.code}, ptr {affix.code}, i64 {la})`)
+    let eqz = emit_bind(`icmp eq i32 {cmp}, 0`)
+    return val(emit_bind(`zext i1 {eqz} to i32`), "bool")
+  }
+  # ends_with: compare the tail, but only when the affix fits (else a negative
+  # offset would read before the string) — branch so the strncmp never underflows
+  let ls = emit_bind(`call i64 @strlen(ptr {s.code})`)
+  let off = emit_bind(`sub i64 {ls}, {la}`)
+  let res = emit_alloca("i32")
+  store_at("i32", "0", res)
+  let neg = emit_bind(`icmp slt i64 {off}, 0`)
+  let cmpl = lbl("ew_cmp");  let en = lbl("ew_end")
+  emit("  br i1 ");  emit(neg);  emit(", label %");  emit(en);  emit(", label %");  emit(cmpl);  emit("\n")
+  emit(cmpl);  emit(":\n")
+  let tail = emit_bind(`getelementptr inbounds i8, ptr {s.code}, i64 {off}`)
+  let cmp = emit_bind(`call i32 @strncmp(ptr {tail}, ptr {affix.code}, i64 {la})`)
+  let eqz = emit_bind(`icmp eq i32 {cmp}, 0`)
+  let z = emit_bind(`zext i1 {eqz} to i32`)
+  store_at("i32", z, res)
+  emit("  br label %");  emit(en);  emit("\n")
+  emit(en);  emit(":\n")
+  return val(emit_bind(`load i32, ptr {res}`), "bool")
+}
+

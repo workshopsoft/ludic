@@ -1190,7 +1190,7 @@ program LudicLsp {
   function builtin_sig(name: pointer) -> pointer { var i = 0;  while i < len(g_builtins) { if (g_builtins[i] == name) { return g_bsigs[i] };  i = i + 1 };  return null }
 
   # The namespaced standard-library surface: `Namespace.method`, mirroring the
-  # compiler's emit_ns_call (selfhost/emit_expr.ludic). Screen/Random/Input/Map
+  # compiler's emit_ns_call (selfhost/backend/emit_call.ludic). Screen/Random/Input/Map
   # methods resolve to the underlying bare builtin's signature; Math/Text/List
   # are pure fixed-point / string / slice ops with their own signatures. Returns
   # the signature label for signature help, or null if it is not a known method.

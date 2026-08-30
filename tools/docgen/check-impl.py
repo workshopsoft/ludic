@@ -7,7 +7,7 @@ never written. So the set of things that MUST have a doc page is read straight
 from the implementation, and every one is required to have a page (and every
 namespace-method page is required to correspond to something real):
 
-  * namespace methods   selfhost/emit_expr.ludic `emit_ns_call` + the
+  * namespace methods   selfhost/backend/emit_call.ludic `emit_ns_call` + the
                         `is_<ns>_ns` predicates it delegates to (Math/Text/List)
   * keywords            tools/ludic-tools/ludic_syntax.h  LUDIC_KW_* (minus
                         LUDIC_KW_RESERVED, which is not-yet-implemented)
@@ -45,20 +45,23 @@ def fn_body(text, name):
 def all_selfhost_source():
     src = ""
     d = os.path.join(ROOT, "selfhost")
-    for fn in sorted(os.listdir(d)):
-        if fn.endswith(".ludic"):
-            src += read("selfhost", fn) + "\n"
+    files = []
+    for dirpath, _dirs, names in os.walk(d):
+        for fn in names:
+            if fn.endswith(".ludic"):
+                files.append(os.path.join(dirpath, fn))
+    for path in sorted(files):
+        src += open(path, encoding="utf-8").read() + "\n"
     return src
 
 
 def compiler_ns_methods():
     """{Namespace: set(method)} the compiler actually dispatches on."""
-    expr = read("selfhost", "emit_expr.ludic")
-    body = fn_body(expr, "emit_ns_call")
-    if not body:
-        problems.append("emit_ns_call not found in selfhost/emit_expr.ludic")
-        return {}
     allsrc = all_selfhost_source()
+    body = fn_body(allsrc, "emit_ns_call")
+    if not body:
+        problems.append("emit_ns_call not found in selfhost/ sources")
+        return {}
     result = {}
     # each `if (ns == "X")` opens a block that runs to the next such marker
     chunks = re.split(r'if \(ns == "', body)

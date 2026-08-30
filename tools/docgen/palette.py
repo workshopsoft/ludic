@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Single source of truth for Ludic's named color palette.
-# Emits: selfhost/emit_color.ludic (compiler lookup) and palette.json (docs).
+# Emits: selfhost/backend/stdlib/emit_color.ludic (compiler lookup) and palette.json (docs).
 import json, sys, os
 
 # (Name, 0xRRGGBB, group). Names are PascalCase, unique. >200 entries.
@@ -293,6 +293,6 @@ if __name__ == "__main__":
   names = guard_check()
   root = os.path.dirname(os.path.abspath(__file__))
   repo = "/Users/orkuncakilkaya/workspace/gpp"
-  emit_ludic(os.path.join(repo, "selfhost", "emit_color.ludic"))
+  emit_ludic(os.path.join(repo, "selfhost", "backend", "stdlib", "emit_color.ludic"))
   emit_json(os.path.join(root, "palette.json"))
   print(f"OK {len(PALETTE)} colors ({len(set(names))} unique names)")

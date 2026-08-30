@@ -153,7 +153,7 @@ compare("primitive types", h_types, grammar_alternation(grammar, kpath, "fixed")
 def parser_keywords():
     kws = set()
     for name in ("parse.ludic", "parse_game.ludic"):
-        text = open(os.path.join(ROOT, "selfhost", name), encoding="utf-8").read()
+        text = open(os.path.join(ROOT, "selfhost", "frontend", name), encoding="utf-8").read()
         kws |= set(re.findall(r'is_id\("([a-z]+)"\)', text))
         kws |= set(re.findall(r'streq\(t\.text,\s*"([a-z]+)"\)', text))
     return kws
@@ -161,7 +161,7 @@ def parser_keywords():
 pkw = parser_keywords()
 h_reserved = c_string_list(syntax_h, "LUDIC_KW_RESERVED")
 if not pkw:
-    problems.append("could not extract any keywords from selfhost/parse*.ludic")
+    problems.append("could not extract any keywords from selfhost/frontend/parse*.ludic")
 else:
     for label, kws in (("declaration keywords", h_decl), ("clause keywords", h_clause)):
         unparsed = (kws - pkw) - h_reserved
