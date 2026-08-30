@@ -468,5 +468,29 @@
     "unicode-lower",
     "unicode-truncate",
     "unicode-grapheme_len"
+  ],
+  "path": [
+    "path-join",
+    "path-dir",
+    "path-base",
+    "path-ext",
+    "path-stem",
+    "path-normalize"
+  ],
+  "fs": [
+    "fs-exists",
+    "fs-is_dir",
+    "fs-read_text",
+    "fs-write_text",
+    "fs-append_text",
+    "fs-remove",
+    "fs-size",
+    "fs-mkdir",
+    "fs-copy",
+    "fs-list"
+  ],
+  "mime": [
+    "mime-of",
+    "mime-sniff"
   ]
 }

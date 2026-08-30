@@ -1,0 +1,58 @@
+# fs.ludic — Fs.* / Path.* / Mime.* over a scratch directory under build/. Path
+# ops are pure and deterministic; the Fs ops create, read, copy, list, and delete
+# real files (cleaned up at the end so reruns stay identical); Mime maps by
+# extension and by magic bytes. Running it prints: 1 .. 32 in order.
+program Fs {
+  entry {
+    # ---- Path.* (pure) ----
+    if Path.join("mods", "foo") == "mods/foo" { print(1) }
+    if Path.join("mods/", "foo") == "mods/foo" { print(2) }
+    if Path.join("mods", "/abs") == "/abs" { print(3) }
+    if Path.base("mods/foo/data.json") == "data.json" { print(4) }
+    if Path.dir("mods/foo/data.json") == "mods/foo" { print(5) }
+    if Path.dir("data.json") == "." { print(6) }
+    if Path.ext("data.json") == ".json" { print(7) }
+    if Path.ext("data") == "" { print(8) }
+    if Path.stem("data.json") == "data" { print(9) }
+    if Path.normalize("a/./b/../c") == "a/c" { print(10) }
+    if Path.normalize("a//b/") == "a/b" { print(11) }
+    if Path.normalize("/a/../..") == "/" { print(12) }
+    if Path.normalize("./x") == "x" { print(13) }
+
+    # ---- Fs.* (real files under build/) ----
+    let dir = "build/fs_test_dir"
+    let a = "build/fs_test_dir/a.txt"
+    let b = "build/fs_test_dir/b.txt"
+    if Fs.mkdir("build/fs_test_dir/sub") { print(14) }
+    if Fs.is_dir(dir) { print(15) }
+    if Fs.write_text(a, "hello") { print(16) }
+    if Fs.exists(a) { print(17) }
+    if Fs.read_text(a) == "hello" { print(18) }
+    if Fs.size(a) == 5 { print(19) }
+    if Fs.is_dir(a) == false { print(20) }
+    if Fs.append_text(a, "!") { print(21) }
+    if Fs.read_text(a) == "hello!" { print(22) }
+    if Fs.copy(a, b) { print(23) }
+    if Fs.read_text(b) == "hello!" { print(24) }
+
+    # list is sorted and stable: a.txt, b.txt, sub
+    let names = Fs.list(dir)
+    if len(names) == 3 { print(25) }
+    if names[0] == "a.txt" { print(26) }
+    if names[2] == "sub" { print(27) }
+
+    # remove cleans up
+    if Fs.remove(a) and Fs.remove(b) and not Fs.exists(a) { print(28) }
+
+    # ---- Mime.* ----
+    if Mime.of("hero.png") == "image/png" { print(29) }
+    if Mime.of("save.json") == "application/json" { print(30) }
+    if Mime.of("weird.xyz") == "application/octet-stream" { print(31) }
+    # sniff detects magic bytes even when the extension lies (.bin): the GIF
+    # signature "GIF" is ASCII, so we can write it as ordinary text.
+    let magic = "build/fs_test_dir/magic.bin"
+    Fs.write_text(magic, "GIF89a and then some")
+    if Mime.sniff(magic) == "image/gif" { print(32) }
+    Fs.remove(magic)
+  }
+}

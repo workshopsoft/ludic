@@ -1,0 +1,448 @@
+# emit_fs.ludic — the Fs.* / Path.* / Mime.* namespaces: the filesystem, wrapped
+# into one safe, ergonomic API so a non-expert never touches a file descriptor or
+# a byte buffer. The foundation for saves, config, mods, and asset loading. The
+# bare file_* builtins remain the low-level primitive; this is the layer above.
+#
+#   Path.join(a, b)      join two path segments with the separator
+#   Path.dir(p)          the directory part ("mods/foo/x.json" -> "mods/foo")
+#   Path.base(p)         the final component ("mods/foo/x.json" -> "x.json")
+#   Path.ext(p)          the extension incl. dot (".json"), or "" if none
+#   Path.stem(p)         the base without its extension ("x")
+#   Path.normalize(p)    collapse "." / ".." / duplicate separators
+#
+#   Fs.exists(p)         does the path exist?                 -> bool
+#   Fs.is_dir(p)         is it a directory?                   -> bool
+#   Fs.read_text(p)      read a whole file as a string        -> string (null on error)
+#   Fs.write_text(p, s)  write a string (atomic tmp+rename)   -> bool
+#   Fs.append_text(p, s) append a string                      -> bool
+#   Fs.remove(p)         delete a file                        -> bool
+#   Fs.size(p)           file size in bytes                   -> int (-1 on error)
+#   Fs.mkdir(p)          create a directory (and its parents) -> bool
+#   Fs.copy(src, dst)    copy a file, byte-for-byte           -> bool
+#   Fs.list(dir)         directory entries, sorted, stable    -> []string
+#
+#   Mime.of(path)        MIME type from the file extension    -> string
+#   Mime.sniff(path)     ...refined by magic bytes            -> string
+#
+# Errors are surfaced as values, never crashes: a fallible call returns null / ""
+# / false / -1 that the caller can branch on (a first-class try/else lands with
+# the error-handling work). Determinism: Fs.list is sorted, so a directory walk
+# is reproducible across runs and platforms.
+#
+# Coverage (v1): paths use "/" and the native (macOS/BSD) filesystem — the fully
+# supported target today. Windows separators, a sandboxed virtual FS for wasm,
+# recursive directory copy, and richer magic-byte sniffing are follow-ups. Text
+# helpers are UTF-8 (they tie into Unicode.*); write_text is atomic (tmp+rename)
+# so a crash mid-write never corrupts the previous file.
+
+function is_fs_ns(meth: pointer) -> bool {
+  if (meth == "exists") or (meth == "is_dir") or (meth == "read_text") { return true }
+  if (meth == "write_text") or (meth == "append_text") or (meth == "remove") { return true }
+  if (meth == "size") or (meth == "mkdir") or (meth == "copy") or (meth == "list") { return true }
+  return false
+}
+function is_path_ns(meth: pointer) -> bool {
+  if (meth == "join") or (meth == "dir") or (meth == "base") { return true }
+  if (meth == "ext") or (meth == "stem") or (meth == "normalize") { return true }
+  return false
+}
+function is_mime_ns(meth: pointer) -> bool {
+  if (meth == "of") or (meth == "sniff") { return true }
+  return false
+}
+
+function emit_fs_ns(meth: pointer, e: Node) -> Val {
+  g_uses_fsrt = true
+  let a = emit_expr(e.kids[0])
+  if (meth == "exists")      { return val(emit_bind(`call i32 @fn_fs_exists(ptr {a.code})`), "bool") }
+  if (meth == "is_dir")      { return val(emit_bind(`call i32 @fn_fs_is_dir(ptr {a.code})`), "bool") }
+  if (meth == "read_text")   { return val(emit_bind(`call ptr @fn_fs_read_text(ptr {a.code})`), "string") }
+  if (meth == "remove")      { return val(emit_bind(`call i32 @fn_fs_remove(ptr {a.code})`), "bool") }
+  if (meth == "size")        { return val(emit_bind(`call i32 @fn_fs_size(ptr {a.code})`), "int") }
+  if (meth == "mkdir")       { return val(emit_bind(`call i32 @fn_fs_mkdir(ptr {a.code})`), "bool") }
+  if (meth == "list")        { return val(emit_bind(`call ptr @fn_fs_list(ptr {a.code})`), "[]string") }
+  let b = emit_expr(e.kids[1])
+  if (meth == "write_text")  { return val(emit_bind(`call i32 @fn_fs_write_text(ptr {a.code}, ptr {b.code})`), "bool") }
+  if (meth == "append_text") { return val(emit_bind(`call i32 @fn_fs_append_text(ptr {a.code}, ptr {b.code})`), "bool") }
+  # copy
+  return val(emit_bind(`call i32 @fn_fs_copy(ptr {a.code}, ptr {b.code})`), "bool")
+}
+
+function emit_path_ns(meth: pointer, e: Node) -> Val {
+  g_uses_fsrt = true
+  let a = emit_expr(e.kids[0])
+  if (meth == "dir")       { return val(emit_bind(`call ptr @fn_path_dir(ptr {a.code})`), "string") }
+  if (meth == "base")      { return val(emit_bind(`call ptr @fn_path_base(ptr {a.code})`), "string") }
+  if (meth == "ext")       { return val(emit_bind(`call ptr @fn_path_ext(ptr {a.code})`), "string") }
+  if (meth == "stem")      { return val(emit_bind(`call ptr @fn_path_stem(ptr {a.code})`), "string") }
+  if (meth == "normalize") { return val(emit_bind(`call ptr @fn_path_norm(ptr {a.code})`), "string") }
+  # join
+  let b = emit_expr(e.kids[1])
+  return val(emit_bind(`call ptr @fn_path_join(ptr {a.code}, ptr {b.code})`), "string")
+}
+
+function emit_mime_ns(meth: pointer, e: Node) -> Val {
+  g_uses_fsrt = true
+  let a = emit_expr(e.kids[0])
+  if (meth == "sniff") { return val(emit_bind(`call ptr @fn_mime_sniff(ptr {a.code})`), "string") }
+  return val(emit_bind(`call ptr @fn_mime_of(ptr {a.code})`), "string")
+}
+
+# emit_fs_prelude — the Fs/Path/Mime runtime, emitted once per program that uses
+# any of the three namespaces (g_uses_fsrt). Pure libc + byte IR.
+function emit_fs_prelude() -> void {
+  emith("declare i32 @access(ptr, i32)\n")
+  emith("declare i32 @mkdir(ptr, i32)\n")
+  emith("declare i32 @remove(ptr)\n")
+  emith("declare i32 @rename(ptr, ptr)\n")
+  emith("declare ptr @opendir(ptr)\n")
+  emith("declare ptr @readdir(ptr)\n")
+  emith("declare i32 @closedir(ptr)\n")
+  emith("declare i32 @strcmp(ptr, ptr)\n")
+  emit_fs_common()
+  emit_fs_path()
+  emit_fs_io()
+  emit_fs_dir()
+  emit_fs_mime()
+}
+
+# ---- shared helpers --------------------------------------------------------
+function emit_fs_common() -> void {
+  # duplicate %n bytes of %s into a fresh NUL-terminated buffer
+  emith("define ptr @fn_fs_dup(ptr %s, i32 %n) {\n")
+  emith("entry:\n  %nz = zext i32 %n to i64\n  %t = add i64 %nz, 1\n  %m = call ptr @malloc(i64 %t)\n  call ptr @memcpy(ptr %m, ptr %s, i64 %nz)\n")
+  emith("  %end = getelementptr i8, ptr %m, i32 %n\n  store i8 0, ptr %end\n  ret ptr %m\n}\n")
+
+  emith("define ptr @fn_fs_strdup(ptr %s) {\n")
+  emith("entry:\n  %l = call i64 @strlen(ptr %s)\n  %li = trunc i64 %l to i32\n  %r = call ptr @fn_fs_dup(ptr %s, i32 %li)\n  ret ptr %r\n}\n")
+
+  # index of the last '/' in %s, or -1 if none
+  emith("define i32 @fn_fs_lastslash(ptr %s) {\n")
+  emith("entry:\n  %ip = alloca i32\n  %rp = alloca i32\n  store i32 0, ptr %ip\n  store i32 -1, ptr %rp\n  br label %lp\n")
+  emith("lp:\n  %i = load i32, ptr %ip\n  %p = getelementptr i8, ptr %s, i32 %i\n  %b = load i8, ptr %p\n  %c = zext i8 %b to i32\n")
+  emith("  %z = icmp eq i32 %c, 0\n  br i1 %z, label %done, label %go\n")
+  emith("go:\n  %sl = icmp eq i32 %c, 47\n  br i1 %sl, label %set, label %nx\n")
+  emith("set:\n  store i32 %i, ptr %rp\n  br label %nx\n")
+  emith("nx:\n  %i1 = add i32 %i, 1\n  store i32 %i1, ptr %ip\n  br label %lp\n")
+  emith("done:\n  %r = load i32, ptr %rp\n  ret i32 %r\n}\n")
+}
+
+# ---- Path.* (pure string) --------------------------------------------------
+function emit_fs_path() -> void {
+  # join(a, b): b absolute -> b; a empty -> b; b empty -> a; else a + "/" + b
+  # (avoiding a doubled separator when a already ends with one).
+  emith("define ptr @fn_path_join(ptr %a, ptr %b) {\n")
+  emith("entry:\n  %la64 = call i64 @strlen(ptr %a)\n  %la = trunc i64 %la64 to i32\n  %lb64 = call i64 @strlen(ptr %b)\n  %lb = trunc i64 %lb64 to i32\n")
+  emith("  %b0 = load i8, ptr %b\n  %b0i = zext i8 %b0 to i32\n  %babs = icmp eq i32 %b0i, 47\n  br i1 %babs, label %retb, label %ka\n")
+  emith("retb:\n  %rb = call ptr @fn_fs_strdup(ptr %b)\n  ret ptr %rb\n")
+  emith("ka:\n  %aemp = icmp eq i32 %la, 0\n  br i1 %aemp, label %retb2, label %kb\n")
+  emith("retb2:\n  %rb2 = call ptr @fn_fs_strdup(ptr %b)\n  ret ptr %rb2\n")
+  emith("kb:\n  %bemp = icmp eq i32 %lb, 0\n  br i1 %bemp, label %reta, label %chk\n")
+  emith("reta:\n  %ra = call ptr @fn_fs_strdup(ptr %a)\n  ret ptr %ra\n")
+  emith("chk:\n  %lam1 = sub i32 %la, 1\n  %pe = getelementptr i8, ptr %a, i32 %lam1\n  %ae = load i8, ptr %pe\n  %aei = zext i8 %ae to i32\n  %ends = icmp eq i32 %aei, 47\n")
+  emith("  %sep = select i1 %ends, i32 0, i32 1\n  %tot = add i32 %la, %lb\n  %tot2 = add i32 %tot, %sep\n  %tot3 = add i32 %tot2, 1\n  %totz = zext i32 %tot3 to i64\n  %m = call ptr @malloc(i64 %totz)\n")
+  emith("  %laz = zext i32 %la to i64\n  call ptr @memcpy(ptr %m, ptr %a, i64 %laz)\n")
+  # write separator if needed
+  emith("  br i1 %ends, label %nosep, label %wsep\n")
+  emith("wsep:\n  %sp = getelementptr i8, ptr %m, i32 %la\n  store i8 47, ptr %sp\n  br label %after\n")
+  emith("nosep:\n  br label %after\n")
+  emith("after:\n  %boff = add i32 %la, %sep\n  %dp = getelementptr i8, ptr %m, i32 %boff\n  %lbz = zext i32 %lb to i64\n  call ptr @memcpy(ptr %dp, ptr %b, i64 %lbz)\n")
+  emith("  %endoff = add i32 %boff, %lb\n  %ep = getelementptr i8, ptr %m, i32 %endoff\n  store i8 0, ptr %ep\n  ret ptr %m\n}\n")
+
+  # base(p): the component after the last '/', or p itself
+  emith("define ptr @fn_path_base(ptr %s) {\n")
+  emith("entry:\n  %ls = call i32 @fn_fs_lastslash(ptr %s)\n  %none = icmp eq i32 %ls, -1\n  br i1 %none, label %whole, label %tail\n")
+  emith("whole:\n  %r = call ptr @fn_fs_strdup(ptr %s)\n  ret ptr %r\n")
+  emith("tail:\n  %st = add i32 %ls, 1\n  %p = getelementptr i8, ptr %s, i32 %st\n  %r2 = call ptr @fn_fs_strdup(ptr %p)\n  ret ptr %r2\n}\n")
+
+  # dir(p): everything before the last '/', or "." if none; "/" stays "/"
+  emith("define ptr @fn_path_dir(ptr %s) {\n")
+  emith("entry:\n  %ls = call i32 @fn_fs_lastslash(ptr %s)\n  %none = icmp eq i32 %ls, -1\n  br i1 %none, label %dot, label %chk0\n")
+  emith("dot:\n  %d = call ptr @fn_fs_strdup(ptr @fn_str_dot)\n  ret ptr %d\n")
+  emith("chk0:\n  %isroot = icmp eq i32 %ls, 0\n  br i1 %isroot, label %root, label %cut\n")
+  emith("root:\n  %r = call ptr @fn_fs_strdup(ptr @fn_str_slash)\n  ret ptr %r\n")
+  emith("cut:\n  %r2 = call ptr @fn_fs_dup(ptr %s, i32 %ls)\n  ret ptr %r2\n}\n")
+
+  # ext(p): from the last '.' in the base component to the end, incl. the dot;
+  # "" when the base has no '.' or begins with '.' (a dotfile has no extension)
+  emith("define ptr @fn_path_ext(ptr %s) {\n")
+  emith("entry:\n  %ls = call i32 @fn_fs_lastslash(ptr %s)\n  %bstart = add i32 %ls, 1\n")   # ls=-1 -> bstart=0
+  emith("  %dp = alloca i32\n  %ip = alloca i32\n  store i32 -1, ptr %dp\n  store i32 %bstart, ptr %ip\n  br label %lp\n")
+  emith("lp:\n  %i = load i32, ptr %ip\n  %p = getelementptr i8, ptr %s, i32 %i\n  %b = load i8, ptr %p\n  %c = zext i8 %b to i32\n  %z = icmp eq i32 %c, 0\n  br i1 %z, label %done, label %go\n")
+  emith("go:\n  %dot = icmp eq i32 %c, 46\n  br i1 %dot, label %sd, label %nx\n")
+  emith("sd:\n  store i32 %i, ptr %dp\n  br label %nx\n")
+  emith("nx:\n  %i1 = add i32 %i, 1\n  store i32 %i1, ptr %ip\n  br label %lp\n")
+  emith("done:\n  %d = load i32, ptr %dp\n  %nod = icmp eq i32 %d, -1\n  br i1 %nod, label %empty, label %chkpos\n")
+  emith("empty:\n  %e = call ptr @fn_fs_strdup(ptr @fn_str_empty)\n  ret ptr %e\n")
+  emith("chkpos:\n  %atstart = icmp eq i32 %d, %bstart\n  br i1 %atstart, label %empty2, label %take\n")
+  emith("empty2:\n  %e2 = call ptr @fn_fs_strdup(ptr @fn_str_empty)\n  ret ptr %e2\n")
+  emith("take:\n  %pp = getelementptr i8, ptr %s, i32 %d\n  %r = call ptr @fn_fs_strdup(ptr %pp)\n  ret ptr %r\n}\n")
+
+  # stem(p): the base component without its extension
+  emith("define ptr @fn_path_stem(ptr %s) {\n")
+  emith("entry:\n  %base = call ptr @fn_path_base(ptr %s)\n  %ext = call ptr @fn_path_ext(ptr %s)\n")
+  emith("  %bl64 = call i64 @strlen(ptr %base)\n  %bl = trunc i64 %bl64 to i32\n  %el64 = call i64 @strlen(ptr %ext)\n  %el = trunc i64 %el64 to i32\n")
+  emith("  %keep = sub i32 %bl, %el\n  %r = call ptr @fn_fs_dup(ptr %base, i32 %keep)\n  ret ptr %r\n}\n")
+
+  emit_fs_normalize()
+}
+
+# normalize(p): collapse duplicate '/', drop "." segments, and resolve ".." by
+# popping the previous kept segment (never above an absolute root). Preserves a
+# leading '/'. An empty result becomes ".".
+function emit_fs_normalize() -> void {
+  emith("define ptr @fn_path_norm(ptr %s) {\n")
+  emith("entry:\n  %len64 = call i64 @strlen(ptr %s)\n  %len = trunc i64 %len64 to i32\n  %cap = add i32 %len, 2\n  %capz = zext i32 %cap to i64\n")
+  emith("  %out = call ptr @malloc(i64 %capz)\n")
+  # segst holds output offsets (i32) of each kept segment's start; size cap ints
+  emith("  %stz = mul i32 %cap, 4\n  %stzz = zext i32 %stz to i64\n  %segst = call ptr @malloc(i64 %stzz)\n")
+  emith("  %b0 = load i8, ptr %s\n  %b0i = zext i8 %b0 to i32\n  %abs = icmp eq i32 %b0i, 47\n")
+  emith("  %ip = alloca i32\n  %op = alloca i32\n  %scp = alloca i32\n  store i32 0, ptr %ip\n  store i32 0, ptr %scp\n")
+  emith("  br i1 %abs, label %ldr, label %noldr\n")
+  emith("ldr:\n  store i8 47, ptr %out\n  store i32 1, ptr %op\n  br label %seg\n")
+  emith("noldr:\n  store i32 0, ptr %op\n  br label %seg\n")
+  emith("seg:\n  br label %sksl\n")
+  # skip leading slashes between segments
+  emith("sksl:\n  %i = load i32, ptr %ip\n  %pp = getelementptr i8, ptr %s, i32 %i\n  %cc = load i8, ptr %pp\n  %cci = zext i8 %cc to i32\n  %issl = icmp eq i32 %cci, 47\n  br i1 %issl, label %adv, label %segstart\n")
+  emith("adv:\n  %i2 = add i32 %i, 1\n  store i32 %i2, ptr %ip\n  br label %sksl\n")
+  # gather one segment [sstart, send)
+  emith("segstart:\n  %ss = load i32, ptr %ip\n  br label %scan\n")
+  emith("scan:\n  %j = load i32, ptr %ip\n  %pj = getelementptr i8, ptr %s, i32 %j\n  %cj = load i8, ptr %pj\n  %cji = zext i8 %cj to i32\n  %endc = icmp eq i32 %cji, 0\n  %slc = icmp eq i32 %cji, 47\n  %stop = or i1 %endc, %slc\n  br i1 %stop, label %seghave, label %scanadv\n")
+  emith("scanadv:\n  %j1 = add i32 %j, 1\n  store i32 %j1, ptr %ip\n  br label %scan\n")
+  emith("seghave:\n  %se = load i32, ptr %ip\n  %slen = sub i32 %se, %ss\n  %emptyseg = icmp eq i32 %slen, 0\n  br i1 %emptyseg, label %atend, label %classify\n")
+  # empty segment only happens at the very end (trailing slashes) -> finish
+  emith("classify:\n")
+  # is it "." ? (len 1, char '.')
+  emith("  %is1 = icmp eq i32 %slen, 1\n  %c0p = getelementptr i8, ptr %s, i32 %ss\n  %c0 = load i8, ptr %c0p\n  %c0i = zext i8 %c0 to i32\n  %isdotchar = icmp eq i32 %c0i, 46\n  %isdot = and i1 %is1, %isdotchar\n  br i1 %isdot, label %contseg, label %chkdd\n")
+  # is it ".." ?
+  emith("chkdd:\n  %is2 = icmp eq i32 %slen, 2\n  %d0p = getelementptr i8, ptr %s, i32 %ss\n  %d0 = load i8, ptr %d0p\n  %d0i = zext i8 %d0 to i32\n  %d1o = add i32 %ss, 1\n  %d1p = getelementptr i8, ptr %s, i32 %d1o\n  %d1 = load i8, ptr %d1p\n  %d1i = zext i8 %d1 to i32\n")
+  emith("  %dd0 = icmp eq i32 %d0i, 46\n  %dd1 = icmp eq i32 %d1i, 46\n  %ddx = and i1 %dd0, %dd1\n  %isdd = and i1 %is2, %ddx\n  br i1 %isdd, label %dotdot, label %keepseg\n")
+  # ".." : pop a segment if we have one, else (relative) keep it literally
+  emith("dotdot:\n  %sc = load i32, ptr %scp\n  %has = icmp sgt i32 %sc, 0\n  br i1 %has, label %pop, label %chkrel\n")
+  emith("pop:\n  %sc1 = sub i32 %sc, 1\n  %stp = getelementptr i32, ptr %segst, i32 %sc1\n  %newop = load i32, ptr %stp\n  store i32 %newop, ptr %op\n  store i32 %sc1, ptr %scp\n  br label %contseg\n")
+  emith("chkrel:\n  br i1 %abs, label %contseg, label %keepseg\n")   # absolute: drop; relative: keep ".."
+  # keep the segment: record its start, append it + a trailing '/'
+  emith("keepseg:\n  %sc2 = load i32, ptr %scp\n  %o0 = load i32, ptr %op\n  %stp2 = getelementptr i32, ptr %segst, i32 %sc2\n  store i32 %o0, ptr %stp2\n  %sc2n = add i32 %sc2, 1\n  store i32 %sc2n, ptr %scp\n")
+  emith("  %cpp = alloca i32\n  store i32 %ss, ptr %cpp\n  br label %cpy\n")
+  emith("cpy:\n  %k = load i32, ptr %cpp\n  %klt = icmp slt i32 %k, %se\n  br i1 %klt, label %cpyb, label %cpysl\n")
+  emith("cpyb:\n  %skp = getelementptr i8, ptr %s, i32 %k\n  %sk = load i8, ptr %skp\n  %oo = load i32, ptr %op\n  %dkp = getelementptr i8, ptr %out, i32 %oo\n  store i8 %sk, ptr %dkp\n  %oo1 = add i32 %oo, 1\n  store i32 %oo1, ptr %op\n  %k1 = add i32 %k, 1\n  store i32 %k1, ptr %cpp\n  br label %cpy\n")
+  emith("cpysl:\n  %oc = load i32, ptr %op\n  %scp3 = getelementptr i8, ptr %out, i32 %oc\n  store i8 47, ptr %scp3\n  %oc1 = add i32 %oc, 1\n  store i32 %oc1, ptr %op\n  br label %contseg\n")
+  emith("contseg:\n  %ci = load i32, ptr %ip\n  %cip = getelementptr i8, ptr %s, i32 %ci\n  %cic = load i8, ptr %cip\n  %cici = zext i8 %cic to i32\n  %atz = icmp eq i32 %cici, 0\n  br i1 %atz, label %finish, label %seg\n")
+  emith("atend:\n  br label %finish\n")
+  # trim a trailing '/' (unless the whole result is just "/"), then NUL-terminate
+  emith("finish:\n  %fo = load i32, ptr %op\n  %gt1 = icmp sgt i32 %fo, 1\n  br i1 %gt1, label %trimchk, label %fdefault\n")
+  emith("trimchk:\n  %lasto = sub i32 %fo, 1\n  %lop = getelementptr i8, ptr %out, i32 %lasto\n  %lc = load i8, ptr %lop\n  %lci = zext i8 %lc to i32\n  %istsl = icmp eq i32 %lci, 47\n  br i1 %istsl, label %trim, label %term\n")
+  emith("trim:\n  store i32 %lasto, ptr %op\n  br label %term\n")
+  emith("fdefault:\n  br label %term\n")
+  emith("term:\n  %eo = load i32, ptr %op\n  %ez = icmp eq i32 %eo, 0\n  br i1 %ez, label %emptyout, label %putnul\n")
+  emith("emptyout:\n  store i8 46, ptr %out\n  %e1 = getelementptr i8, ptr %out, i32 1\n  store i8 0, ptr %e1\n  ret ptr %out\n")
+  emith("putnul:\n  %ep = getelementptr i8, ptr %out, i32 %eo\n  store i8 0, ptr %ep\n  ret ptr %out\n}\n")
+}
+
+# ---- Fs.* (libc) -----------------------------------------------------------
+function emit_fs_io() -> void {
+  emith("define i32 @fn_fs_exists(ptr %p) {\n")
+  emith("entry:\n  %r = call i32 @access(ptr %p, i32 0)\n  %ok = icmp eq i32 %r, 0\n  %z = zext i1 %ok to i32\n  ret i32 %z\n}\n")
+
+  # is_dir: opendir succeeds iff it is a directory
+  emith("define i32 @fn_fs_is_dir(ptr %p) {\n")
+  emith("entry:\n  %d = call ptr @opendir(ptr %p)\n  %nz = icmp ne ptr %d, null\n  br i1 %nz, label %yes, label %no\n")
+  emith("yes:\n  call i32 @closedir(ptr %d)\n  ret i32 1\n")
+  emith("no:\n  ret i32 0\n}\n")
+
+  # size: bytes via fseek/ftell, or -1 if it cannot be opened
+  emith("define i32 @fn_fs_size(ptr %p) {\n")
+  emith("entry:\n  %f = call ptr @fopen(ptr %p, ptr @fn_str_rb)\n  %nz = icmp ne ptr %f, null\n  br i1 %nz, label %ok, label %bad\n")
+  emith("bad:\n  ret i32 -1\n")
+  emith("ok:\n  call i32 @fseek(ptr %f, i64 0, i32 2)\n  %n = call i64 @ftell(ptr %f)\n  call i32 @fclose(ptr %f)\n  %ni = trunc i64 %n to i32\n  ret i32 %ni\n}\n")
+
+  # readall: whole file into a fresh buffer; store byte length to %lenout; null on
+  # failure. The buffer is NUL-terminated (one past the length) so text callers
+  # can use it directly while binary callers use the length.
+  emith("define ptr @fn_fs_readall(ptr %p, ptr %lenout) {\n")
+  emith("entry:\n  store i32 0, ptr %lenout\n  %f = call ptr @fopen(ptr %p, ptr @fn_str_rb)\n  %nz = icmp ne ptr %f, null\n  br i1 %nz, label %ok, label %bad\n")
+  emith("bad:\n  ret ptr null\n")
+  emith("ok:\n  call i32 @fseek(ptr %f, i64 0, i32 2)\n  %n64 = call i64 @ftell(ptr %f)\n  call i32 @fseek(ptr %f, i64 0, i32 0)\n  %n = trunc i64 %n64 to i32\n")
+  emith("  %cap = add i64 %n64, 1\n  %m = call ptr @malloc(i64 %cap)\n  %rd = call i64 @fread(ptr %m, i64 1, i64 %n64, ptr %f)\n  call i32 @fclose(ptr %f)\n")
+  emith("  %rdi = trunc i64 %rd to i32\n  %endp = getelementptr i8, ptr %m, i32 %rdi\n  store i8 0, ptr %endp\n  store i32 %rdi, ptr %lenout\n  ret ptr %m\n}\n")
+
+  emith("define ptr @fn_fs_read_text(ptr %p) {\n")
+  emith("entry:\n  %lp = alloca i32\n  %r = call ptr @fn_fs_readall(ptr %p, ptr %lp)\n  ret ptr %r\n}\n")
+
+  # write_text: write to "<p>.tmp" then rename over %p, so a crash mid-write
+  # never truncates the previous file. Returns 1 on success.
+  emith("define i32 @fn_fs_write_text(ptr %p, ptr %s) {\n")
+  emith("entry:\n  %tmp = call ptr @fn_path_join_ext(ptr %p, ptr @fn_str_dottmp)\n  %f = call ptr @fopen(ptr %tmp, ptr @fn_str_wb)\n  %nz = icmp ne ptr %f, null\n  br i1 %nz, label %ok, label %bad\n")
+  emith("bad:\n  ret i32 0\n")
+  emith("ok:\n  %n = call i64 @strlen(ptr %s)\n  %w = call i64 @fwrite(ptr %s, i64 1, i64 %n, ptr %f)\n  call i32 @fclose(ptr %f)\n")
+  emith("  %rr = call i32 @rename(ptr %tmp, ptr %p)\n  %ok2 = icmp eq i32 %rr, 0\n  %z = zext i1 %ok2 to i32\n  ret i32 %z\n}\n")
+
+  # concat two strings (used to build "<p>.tmp"); local so write_text needs no
+  # dependency on the Os prelude
+  emith("define ptr @fn_path_join_ext(ptr %a, ptr %b) {\n")
+  emith("entry:\n  %la = call i64 @strlen(ptr %a)\n  %lb = call i64 @strlen(ptr %b)\n  %sum = add i64 %la, %lb\n  %tot = add i64 %sum, 1\n  %m = call ptr @malloc(i64 %tot)\n")
+  emith("  call ptr @memcpy(ptr %m, ptr %a, i64 %la)\n  %m2 = getelementptr i8, ptr %m, i64 %la\n  call ptr @memcpy(ptr %m2, ptr %b, i64 %lb)\n  %ep = getelementptr i8, ptr %m, i64 %sum\n  store i8 0, ptr %ep\n  ret ptr %m\n}\n")
+
+  emith("define i32 @fn_fs_append_text(ptr %p, ptr %s) {\n")
+  emith("entry:\n  %f = call ptr @fopen(ptr %p, ptr @fn_str_ab)\n  %nz = icmp ne ptr %f, null\n  br i1 %nz, label %ok, label %bad\n")
+  emith("bad:\n  ret i32 0\n")
+  emith("ok:\n  %n = call i64 @strlen(ptr %s)\n  call i64 @fwrite(ptr %s, i64 1, i64 %n, ptr %f)\n  call i32 @fclose(ptr %f)\n  ret i32 1\n}\n")
+
+  emith("define i32 @fn_fs_remove(ptr %p) {\n")
+  emith("entry:\n  %r = call i32 @remove(ptr %p)\n  %ok = icmp eq i32 %r, 0\n  %z = zext i1 %ok to i32\n  ret i32 %z\n}\n")
+
+  # copy: byte-for-byte via readall + a sized write. Returns 1 on success.
+  emith("define i32 @fn_fs_copy(ptr %src, ptr %dst) {\n")
+  emith("entry:\n  %lp = alloca i32\n  %buf = call ptr @fn_fs_readall(ptr %src, ptr %lp)\n  %nz = icmp ne ptr %buf, null\n  br i1 %nz, label %ok, label %bad\n")
+  emith("bad:\n  ret i32 0\n")
+  emith("ok:\n  %tmp = call ptr @fn_path_join_ext(ptr %dst, ptr @fn_str_dottmp)\n  %f = call ptr @fopen(ptr %tmp, ptr @fn_str_wb)\n  %fnz = icmp ne ptr %f, null\n  br i1 %fnz, label %w, label %bad\n")
+  emith("w:\n  %n = load i32, ptr %lp\n  %nz64 = zext i32 %n to i64\n  call i64 @fwrite(ptr %buf, i64 1, i64 %nz64, ptr %f)\n  call i32 @fclose(ptr %f)\n  %rr = call i32 @rename(ptr %tmp, ptr %dst)\n  %ok2 = icmp eq i32 %rr, 0\n  %z = zext i1 %ok2 to i32\n  ret i32 %z\n}\n")
+
+  # mkdir: create %p and any missing parents (mkdir -p). Returns 1 if the
+  # directory exists afterwards. Intermediate EEXIST errors are ignored.
+  emith("define i32 @fn_fs_mkdir(ptr %p) {\n")
+  emith("entry:\n  %dup = call ptr @fn_fs_strdup(ptr %p)\n  %ip = alloca i32\n  store i32 1, ptr %ip\n  br label %lp\n")
+  emith("lp:\n  %i = load i32, ptr %ip\n  %pp = getelementptr i8, ptr %dup, i32 %i\n  %c = load i8, ptr %pp\n  %ci = zext i8 %c to i32\n  %z = icmp eq i32 %ci, 0\n  br i1 %z, label %fin, label %go\n")
+  emith("go:\n  %sl = icmp eq i32 %ci, 47\n  br i1 %sl, label %cut, label %nx\n")
+  emith("cut:\n  store i8 0, ptr %pp\n  call i32 @mkdir(ptr %dup, i32 493)\n  store i8 47, ptr %pp\n  br label %nx\n")
+  emith("nx:\n  %i1 = add i32 %i, 1\n  store i32 %i1, ptr %ip\n  br label %lp\n")
+  emith("fin:\n  call i32 @mkdir(ptr %dup, i32 493)\n  %r = call i32 @fn_fs_is_dir(ptr %p)\n  ret i32 %r\n}\n")
+}
+
+# ---- Fs.list (+ sort) ------------------------------------------------------
+function emit_fs_dir() -> void {
+  # list(dir) -> []string of entries (excluding "." and ".."), sorted ascending
+  # by byte value for a stable, reproducible order. Each name is copied out of
+  # the readdir buffer before the next call. macOS/BSD dirent: d_name at offset
+  # 21 (documented native layout).
+  emith("define ptr @fn_fs_list(ptr %path) {\n")
+  emith("entry:\n  %h = call ptr @malloc(i64 16)\n  %d0 = getelementptr inbounds %LSlice, ptr %h, i32 0, i32 0\n  %d1 = getelementptr inbounds %LSlice, ptr %h, i32 0, i32 1\n  %d2 = getelementptr inbounds %LSlice, ptr %h, i32 0, i32 2\n")
+  emith("  %datap = alloca ptr\n  %cntp = alloca i32\n  %capp = alloca i32\n  %init = call ptr @malloc(i64 128)\n  store ptr %init, ptr %datap\n  store i32 0, ptr %cntp\n  store i32 16, ptr %capp\n")
+  emith("  %dir = call ptr @opendir(ptr %path)\n  %dnz = icmp ne ptr %dir, null\n  br i1 %dnz, label %rd, label %empty\n")
+  emith("rd:\n  %de = call ptr @readdir(ptr %dir)\n  %denz = icmp ne ptr %de, null\n  br i1 %denz, label %ent, label %closed\n")
+  emith("ent:\n  %namep = getelementptr i8, ptr %de, i32 21\n")
+  # skip "." and ".."
+  emith("  %n0 = load i8, ptr %namep\n  %n0i = zext i8 %n0 to i32\n  %isdot0 = icmp eq i32 %n0i, 46\n  br i1 %isdot0, label %chkdots, label %keep\n")
+  emith("chkdots:\n  %n1p = getelementptr i8, ptr %namep, i32 1\n  %n1 = load i8, ptr %n1p\n  %n1i = zext i8 %n1 to i32\n  %n1z = icmp eq i32 %n1i, 0\n  br i1 %n1z, label %rd, label %chkdd\n")   # "." -> skip
+  emith("chkdd:\n  %isdot1 = icmp eq i32 %n1i, 46\n  br i1 %isdot1, label %chkdd2, label %keep\n")
+  emith("chkdd2:\n  %n2p = getelementptr i8, ptr %namep, i32 2\n  %n2 = load i8, ptr %n2p\n  %n2i = zext i8 %n2 to i32\n  %n2z = icmp eq i32 %n2i, 0\n  br i1 %n2z, label %rd, label %keep\n")   # ".." -> skip
+  emith("keep:\n  %nm = call ptr @fn_fs_strdup(ptr %namep)\n")
+  # grow if full
+  emith("  %cnt = load i32, ptr %cntp\n  %cap = load i32, ptr %capp\n  %full = icmp sge i32 %cnt, %cap\n  br i1 %full, label %grow, label %put\n")
+  emith("grow:\n  %nc = mul i32 %cap, 2\n  store i32 %nc, ptr %capp\n  %ncz = zext i32 %nc to i64\n  %nb = mul i64 %ncz, 8\n  %old = load ptr, ptr %datap\n  %new = call ptr @realloc(ptr %old, i64 %nb)\n  store ptr %new, ptr %datap\n  br label %put\n")
+  emith("put:\n  %data = load ptr, ptr %datap\n  %cnt2 = load i32, ptr %cntp\n  %slot = getelementptr ptr, ptr %data, i32 %cnt2\n  store ptr %nm, ptr %slot\n  %cnt3 = add i32 %cnt2, 1\n  store i32 %cnt3, ptr %cntp\n  br label %rd\n")
+  emith("closed:\n  call i32 @closedir(ptr %dir)\n  br label %sortit\n")
+  emith("empty:\n  br label %sortit\n")
+  # insertion sort the ptr array by strcmp
+  emith("sortit:\n  %fdata = load ptr, ptr %datap\n  %fcnt = load i32, ptr %cntp\n  %aip = alloca i32\n  store i32 1, ptr %aip\n  br label %so\n")
+  emith("so:\n  %ai = load i32, ptr %aip\n  %ailt = icmp slt i32 %ai, %fcnt\n  br i1 %ailt, label %sob, label %sod\n")
+  emith("sob:\n  %kp = getelementptr ptr, ptr %fdata, i32 %ai\n  %key = load ptr, ptr %kp\n  %jp = alloca i32\n  %aim1 = sub i32 %ai, 1\n  store i32 %aim1, ptr %jp\n  br label %si\n")
+  emith("si:\n  %jj = load i32, ptr %jp\n  %jge = icmp sge i32 %jj, 0\n  br i1 %jge, label %sic, label %sins\n")
+  emith("sic:\n  %ejp = getelementptr ptr, ptr %fdata, i32 %jj\n  %ej = load ptr, ptr %ejp\n  %cmp = call i32 @strcmp(ptr %ej, ptr %key)\n  %gt = icmp sgt i32 %cmp, 0\n  br i1 %gt, label %shift, label %sins\n")
+  emith("shift:\n  %j1 = add i32 %jj, 1\n  %dp1 = getelementptr ptr, ptr %fdata, i32 %j1\n  store ptr %ej, ptr %dp1\n  %jm = sub i32 %jj, 1\n  store i32 %jm, ptr %jp\n  br label %si\n")
+  emith("sins:\n  %jf = load i32, ptr %jp\n  %jf1 = add i32 %jf, 1\n  %insp = getelementptr ptr, ptr %fdata, i32 %jf1\n  store ptr %key, ptr %insp\n  %ai1 = add i32 %ai, 1\n  store i32 %ai1, ptr %aip\n  br label %so\n")
+  emith("sod:\n  store ptr %fdata, ptr %d0\n  store i32 %fcnt, ptr %d1\n  store i32 %fcnt, ptr %d2\n  ret ptr %h\n}\n")
+}
+
+# ---- Mime.* ----------------------------------------------------------------
+function emit_fs_mime() -> void {
+  # the extension -> MIME table, as parallel lists. Kept small and documented;
+  # unknown extensions fall through to application/octet-stream.
+  let exts = new []pointer;  let tys = new []pointer
+  push(exts, "png");   push(tys, "image/png")
+  push(exts, "jpg");   push(tys, "image/jpeg")
+  push(exts, "jpeg");  push(tys, "image/jpeg")
+  push(exts, "gif");   push(tys, "image/gif")
+  push(exts, "bmp");   push(tys, "image/bmp")
+  push(exts, "webp");  push(tys, "image/webp")
+  push(exts, "svg");   push(tys, "image/svg+xml")
+  push(exts, "txt");   push(tys, "text/plain")
+  push(exts, "md");    push(tys, "text/markdown")
+  push(exts, "csv");   push(tys, "text/csv")
+  push(exts, "html");  push(tys, "text/html")
+  push(exts, "htm");   push(tys, "text/html")
+  push(exts, "css");   push(tys, "text/css")
+  push(exts, "js");    push(tys, "text/javascript")
+  push(exts, "json");  push(tys, "application/json")
+  push(exts, "xml");   push(tys, "application/xml")
+  push(exts, "zip");   push(tys, "application/zip")
+  push(exts, "pdf");   push(tys, "application/pdf")
+  push(exts, "wav");   push(tys, "audio/wav")
+  push(exts, "ogg");   push(tys, "audio/ogg")
+  push(exts, "mp3");   push(tys, "audio/mpeg")
+  push(exts, "ttf");   push(tys, "font/ttf")
+  push(exts, "otf");   push(tys, "font/otf")
+  push(exts, "ludic"); push(tys, "text/x-ludic")
+
+  # create the string constants FIRST (as module globals), then reference them
+  let en = new []pointer;  let tn = new []pointer
+  var i = 0
+  while i < len(exts) { push(en, emit_str_const(exts[i]));  push(tn, emit_str_const(tys[i]));  i = i + 1 }
+  let k_octet = emit_str_const("application/octet-stream")
+  let n = len(exts)
+
+  # the lookup table: an array of { extension, type } string-pointer pairs
+  emith(`@mime_tbl = private unnamed_addr constant [{itoa(n)} x {{ ptr, ptr }}] [`)
+  i = 0
+  while i < len(exts) {
+    if i > 0 { emith(", ") }
+    emith(`{{ ptr, ptr }} {{ ptr {en[i]}, ptr {tn[i]} }}`)
+    i = i + 1
+  }
+  emith("]\n")
+
+  # of(path): lowercased extension, then a linear scan of the table
+  emith("define ptr @fn_mime_of(ptr %path) {\n")
+  emith("entry:\n  %ext = call ptr @fn_path_ext(ptr %path)\n  %lc = call ptr @fn_mime_lc(ptr %ext)\n  %ip = alloca i32\n  store i32 0, ptr %ip\n  br label %lp\n")
+  emith(`lp:\n  %i = load i32, ptr %ip\n  %lt = icmp slt i32 %i, {itoa(n)}\n  br i1 %lt, label %body, label %def\n`)
+  emith(`body:\n  %kp = getelementptr [{itoa(n)} x {{ ptr, ptr }}], ptr @mime_tbl, i32 0, i32 %i, i32 0\n  %k = load ptr, ptr %kp\n  %c = call i32 @strcmp(ptr %lc, ptr %k)\n  %eq = icmp eq i32 %c, 0\n  br i1 %eq, label %hit, label %nx\n`)
+  emith(`hit:\n  %vp = getelementptr [{itoa(n)} x {{ ptr, ptr }}], ptr @mime_tbl, i32 0, i32 %i, i32 1\n  %v = load ptr, ptr %vp\n  %r = call ptr @fn_fs_strdup(ptr %v)\n  ret ptr %r\n`)
+  emith("nx:\n  %i1 = add i32 %i, 1\n  store i32 %i1, ptr %ip\n  br label %lp\n")
+  emith(`def:\n  %d = call ptr @fn_fs_strdup(ptr {k_octet})\n  ret ptr %d\n}}\n`)
+
+  # lowercase an extension, dropping a leading '.' (ASCII only, for table lookup)
+  emith("define ptr @fn_mime_lc(ptr %s) {\n")
+  emith("entry:\n  %l64 = call i64 @strlen(ptr %s)\n  %l = trunc i64 %l64 to i32\n  %cap = add i64 %l64, 1\n  %out = call ptr @malloc(i64 %cap)\n")
+  emith("  %b0 = load i8, ptr %s\n  %b0i = zext i8 %b0 to i32\n  %isdot = icmp eq i32 %b0i, 46\n  %start = select i1 %isdot, i32 1, i32 0\n")
+  emith("  %ip = alloca i32\n  %op = alloca i32\n  store i32 %start, ptr %ip\n  store i32 0, ptr %op\n  br label %lp\n")
+  emith("lp:\n  %i = load i32, ptr %ip\n  %pp = getelementptr i8, ptr %s, i32 %i\n  %c = load i8, ptr %pp\n  %ci = zext i8 %c to i32\n  %z = icmp eq i32 %ci, 0\n  br i1 %z, label %done, label %go\n")
+  emith("go:\n  %ua = icmp uge i32 %ci, 65\n  %ub = icmp ule i32 %ci, 90\n  %up = and i1 %ua, %ub\n  %lo = add i32 %ci, 32\n  %m = select i1 %up, i32 %lo, i32 %ci\n  %mt = trunc i32 %m to i8\n  %o = load i32, ptr %op\n  %dp = getelementptr i8, ptr %out, i32 %o\n  store i8 %mt, ptr %dp\n  %o1 = add i32 %o, 1\n  store i32 %o1, ptr %op\n  %i1 = add i32 %i, 1\n  store i32 %i1, ptr %ip\n  br label %lp\n")
+  emith("done:\n  %fo = load i32, ptr %op\n  %ep = getelementptr i8, ptr %out, i32 %fo\n  store i8 0, ptr %ep\n  ret ptr %out\n}\n")
+
+  emit_fs_sniff()
+}
+
+# sniff(path): read the first bytes and recognise a few well-known signatures,
+# otherwise fall back to the extension. Covers PNG/JPEG/GIF/PDF for now.
+function emit_fs_sniff() -> void {
+  emith("define ptr @fn_mime_sniff(ptr %path) {\n")
+  emith("entry:\n  %f = call ptr @fopen(ptr %path, ptr @fn_str_rb)\n  %nz = icmp ne ptr %f, null\n  br i1 %nz, label %ok, label %fallback\n")
+  emith("ok:\n  %buf = call ptr @malloc(i64 16)\n  %rd = call i64 @fread(ptr %buf, i64 1, i64 8, ptr %f)\n  call i32 @fclose(ptr %f)\n  %rdi = trunc i64 %rd to i32\n  %has4 = icmp sge i32 %rdi, 4\n  br i1 %has4, label %chk, label %fallback\n")
+  emith("chk:\n  %b0p = getelementptr i8, ptr %buf, i32 0\n  %b0 = load i8, ptr %b0p\n  %b0i = zext i8 %b0 to i32\n  %b1p = getelementptr i8, ptr %buf, i32 1\n  %b1 = load i8, ptr %b1p\n  %b1i = zext i8 %b1 to i32\n  %b2p = getelementptr i8, ptr %buf, i32 2\n  %b2 = load i8, ptr %b2p\n  %b2i = zext i8 %b2 to i32\n  %b3p = getelementptr i8, ptr %buf, i32 3\n  %b3 = load i8, ptr %b3p\n  %b3i = zext i8 %b3 to i32\n")
+  # PNG: 89 50 4E 47
+  emith("  %p0 = icmp eq i32 %b0i, 137\n  %p1 = icmp eq i32 %b1i, 80\n  %p2 = icmp eq i32 %b2i, 78\n  %p3 = icmp eq i32 %b3i, 71\n  %pa = and i1 %p0, %p1\n  %pb = and i1 %pa, %p2\n  %pc = and i1 %pb, %p3\n  br i1 %pc, label %png, label %cj\n")
+  emith("png:\n  %rpng = call ptr @fn_fs_strdup(ptr @fn_sig_png)\n  ret ptr %rpng\n")
+  # JPEG: FF D8 FF
+  emith("cj:\n  %j0 = icmp eq i32 %b0i, 255\n  %j1 = icmp eq i32 %b1i, 216\n  %j2 = icmp eq i32 %b2i, 255\n  %ja = and i1 %j0, %j1\n  %jb = and i1 %ja, %j2\n  br i1 %jb, label %jpg, label %cg\n")
+  emith("jpg:\n  %rjpg = call ptr @fn_fs_strdup(ptr @fn_sig_jpg)\n  ret ptr %rjpg\n")
+  # GIF: 47 49 46
+  emith("cg:\n  %g0 = icmp eq i32 %b0i, 71\n  %g1 = icmp eq i32 %b1i, 73\n  %g2 = icmp eq i32 %b2i, 70\n  %ga = and i1 %g0, %g1\n  %gb = and i1 %ga, %g2\n  br i1 %gb, label %gif, label %cp\n")
+  emith("gif:\n  %rgif = call ptr @fn_fs_strdup(ptr @fn_sig_gif)\n  ret ptr %rgif\n")
+  # PDF: 25 50 44 46
+  emith("cp:\n  %q0 = icmp eq i32 %b0i, 37\n  %q1 = icmp eq i32 %b1i, 80\n  %q2 = icmp eq i32 %b2i, 68\n  %q3 = icmp eq i32 %b3i, 70\n  %qa = and i1 %q0, %q1\n  %qb = and i1 %qa, %q2\n  %qc = and i1 %qb, %q3\n  br i1 %qc, label %pdf, label %fallback\n")
+  emith("pdf:\n  %rpdf = call ptr @fn_fs_strdup(ptr @fn_sig_pdf)\n  ret ptr %rpdf\n")
+  emith("fallback:\n  %r = call ptr @fn_mime_of(ptr %path)\n  ret ptr %r\n}\n")
+
+  # the small string constants the Fs/Path/Mime runtime references
+  emith("@fn_str_rb = private unnamed_addr constant [3 x i8] c\"rb\\00\"\n")
+  emith("@fn_str_wb = private unnamed_addr constant [3 x i8] c\"wb\\00\"\n")
+  emith("@fn_str_ab = private unnamed_addr constant [3 x i8] c\"ab\\00\"\n")
+  emith("@fn_str_dot = private unnamed_addr constant [2 x i8] c\".\\00\"\n")
+  emith("@fn_str_slash = private unnamed_addr constant [2 x i8] c\"/\\00\"\n")
+  emith("@fn_str_empty = private unnamed_addr constant [1 x i8] c\"\\00\"\n")
+  emith("@fn_str_dottmp = private unnamed_addr constant [5 x i8] c\".tmp\\00\"\n")
+  emith("@fn_sig_png = private unnamed_addr constant [10 x i8] c\"image/png\\00\"\n")
+  emith("@fn_sig_jpg = private unnamed_addr constant [11 x i8] c\"image/jpeg\\00\"\n")
+  emith("@fn_sig_gif = private unnamed_addr constant [10 x i8] c\"image/gif\\00\"\n")
+  emith("@fn_sig_pdf = private unnamed_addr constant [16 x i8] c\"application/pdf\\00\"\n")
+}
