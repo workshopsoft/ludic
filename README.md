@@ -81,10 +81,17 @@ bin/x help            # every command
 | [`docs/`](docs/) | the per-symbol API reference, regenerated into the docs site. |
 | [`COMPILING.md`](COMPILING.md) | the native pipeline: `ludicc → LLVM IR → exe`, the `rt_*` runtime protocol, and the (pending) wasm/cross-compile/shared-library paths. |
 
-Design and roadmap documents — `LANGUAGE.md`, `EVENTS-DESIGN.md`,
-`NETWORKING-DESIGN.md`, `SCENES-DESIGN.md`, `LIFECYCLE-DESIGN.md`,
-`SYNTAX-REDESIGN.md`, `MOBILE-DESIGN.md`, `LUANTI-ROADMAP.md`, `BOOTSTRAP.md` —
-live at the repository root today and are being migrated to the wiki.
+The design and roadmap material lives on the **[wiki](https://git.workshopsoft.io/workshopsoft/ludic/wiki)**:
+the [Events](https://git.workshopsoft.io/workshopsoft/ludic/wiki/Design/Events),
+[Networking](https://git.workshopsoft.io/workshopsoft/ludic/wiki/Design/Networking),
+[Scenes](https://git.workshopsoft.io/workshopsoft/ludic/wiki/Design/Scenes),
+[Lifecycle](https://git.workshopsoft.io/workshopsoft/ludic/wiki/Design/Lifecycle),
+[Mobile](https://git.workshopsoft.io/workshopsoft/ludic/wiki/Design/Mobile) and
+[Syntax-redesign](https://git.workshopsoft.io/workshopsoft/ludic/wiki/Design/Syntax-Redesign)
+design records, the [Bootstrap deep-dive](https://git.workshopsoft.io/workshopsoft/ludic/wiki/Bootstrap),
+and the [Luanti roadmap](https://git.workshopsoft.io/workshopsoft/ludic/wiki/Roadmap/Luanti).
+The root keeps only this README plus the two user-facing references,
+[`LANGUAGE.md`](LANGUAGE.md) and [`COMPILING.md`](COMPILING.md).
 
 ## Language at a glance
 

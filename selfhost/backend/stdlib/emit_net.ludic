@@ -1,4 +1,4 @@
-# emit_net.ludic — NETWORKING N2–N6 codegen (NETWORKING-DESIGN.md).
+# emit_net.ludic — NETWORKING N2–N6 codegen (see the Networking design on the wiki: Design/Networking).
 #
 # A program that calls net_send/net_poll with no `extern fn` override triggers the
 # built-in loopback transport; this flag defers its emission to end-of-module.

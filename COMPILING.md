@@ -10,7 +10,7 @@
 > convenience wrapper over the compiler. `--fmt` is reimplemented as a lex+parse
 > gate (the doc-check hook). The `--target`/cross-compile and `--shared` paths are
 > still features of the old C driver not yet re-implemented on the self-hosted
-> toolchain. See BOOTSTRAP.md §5.7.
+> toolchain. See the [Bootstrap deep-dive](https://git.workshopsoft.io/workshopsoft/ludic/wiki/Bootstrap) §5.7 on the wiki.
 >
 > From a clean checkout, build the compiler and the task-runner in one line, then
 > let `bin/x` do the rest (run it from the repository root):

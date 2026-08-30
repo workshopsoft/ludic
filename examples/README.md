@@ -55,7 +55,7 @@ bin/ludic examples/lang/offline_rewards.ludic     # compile + run a plain progra
 
 ## `networking/` — deterministic multiplayer (N0–N6)
 
-Each maps to a stage of [`NETWORKING-DESIGN.md`](../NETWORKING-DESIGN.md); all run
+Each maps to a stage of [the Networking design](https://git.workshopsoft.io/workshopsoft/ludic/wiki/Design/Networking); all run
 over the compiler's built-in loopback transport with zero foreign code.
 
 | Example | What it shows |
