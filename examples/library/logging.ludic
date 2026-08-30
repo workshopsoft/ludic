@@ -1,0 +1,28 @@
+# logging.ludic — Log.* levels, the threshold gate, and structured fields. Log
+# lines go to stderr, which the test harness does not capture, so this program
+# asserts the stdout-observable contract: the threshold round-trips through
+# set_level/level, and every level method (with mixed string/number fields) runs
+# without faulting. The run raises the level above `error` first so the suite's
+# output stays clean; the actual stderr sink and its gating are demonstrated in
+# the docs and verified by hand. Running it prints: 0 5 2 1
+program Logging {
+  entry {
+    print(Log.level())              # 0 — everything shown by default
+
+    Log.set_level(5)                # above error: silence the console for this run
+    print(Log.level())              # 5
+
+    # every level builds its line (including numeric fields, which are formatted
+    # for you) and is threshold-gated; none writes at level 5.
+    Log.trace("entering frame", "n", 10)
+    Log.debug("state", "hp", 100, "phase", "combat")
+    Log.info("level loaded", "name", "cavern", "entities", 42)
+    Log.warn("missing texture, using placeholder", "path", "rock.png")
+    Log.error("save failed", "code", 5)
+
+    Log.set_level(2)                # info and above
+    print(Log.level())              # 2
+
+    print(1)                        # sentinel: reached the end without crashing
+  }
+}

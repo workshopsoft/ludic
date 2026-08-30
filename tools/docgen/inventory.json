@@ -429,5 +429,14 @@
     "noise-cellular2",
     "noise-cellular2_id",
     "noise-unit"
+  ],
+  "log": [
+    "log-trace",
+    "log-debug",
+    "log-info",
+    "log-warn",
+    "log-error",
+    "log-set_level",
+    "log-level"
   ]
 }

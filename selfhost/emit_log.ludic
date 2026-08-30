@@ -1,0 +1,87 @@
+# emit_log.ludic — the Log.* namespace: levelled, structured logging, the default
+# way to answer "what is my game doing?" and "why did that break?" — better than
+# scattered `print` calls. Lines go to standard error (so they never pollute a
+# program's real stdout) with a level tag and optional structured key=value
+# fields, gated by a runtime threshold so release builds can go quiet.
+#
+#   Log.trace(msg, [k, v]...)   most verbose            level 0
+#   Log.debug(msg, [k, v]...)   development detail       level 1
+#   Log.info(msg,  [k, v]...)   normal operation         level 2
+#   Log.warn(msg,  [k, v]...)   something looks wrong     level 3
+#   Log.error(msg, [k, v]...)   a failure                level 4
+#   Log.set_level(n)            show only level >= n (0 = all, the default)
+#   Log.level()                 the current threshold -> int
+#
+# Structured fields are optional trailing key/value pairs appended as ` key=value`;
+# values may be strings, ints, or longs (numbers are formatted for you), so
+# `Log.warn("missing texture", "path", p, "id", n)` is cheap to write and easy to
+# grep. The level tag is chosen at compile time from the method name, so a
+# disabled level costs only the threshold comparison at runtime.
+#
+# Determinism: logging writes to stderr and never touches the simulation, so it
+# has no effect on gameplay or replays. This v1 ships the console (stderr) sink;
+# file-with-rotation and in-engine overlay sinks are planned follow-ups.
+
+function is_log_ns(meth: pointer) -> bool {
+  if (meth == "trace") or (meth == "debug") or (meth == "info") { return true }
+  if (meth == "warn") or (meth == "error") { return true }
+  if (meth == "set_level") or (meth == "level") { return true }
+  return false
+}
+
+# format any value as a string for a log field: a string passes through, a long
+# and an int are converted the same way the `string(...)` builtin does.
+function log_stringify(v: Val) -> pointer {
+  if (llty(v.ty) == "ptr") { return v.code }
+  if (llty(v.ty) == "i64") { g_uses_longstr = true;  return emit_bind(`call ptr @fn_long_str(i64 {v.code})`) }
+  g_uses_intstr = true
+  return emit_bind(`call ptr @fn_int_str(i32 {v.code})`)
+}
+
+function emit_log_ns(meth: pointer, e: Node) -> Val {
+  g_uses_logrt = true
+  if (meth == "set_level") {                        # raise/lower the threshold
+    let n = emit_expr(e.kids[0])
+    emit(`  store i32 {n.code}, ptr @L_log_level\n`)
+    return val("0", "void")
+  }
+  if (meth == "level") {                            # read the current threshold
+    return val(emit_bind("load i32, ptr @L_log_level"), "int")
+  }
+  # a level method: tag + numeric level chosen at compile time from the name.
+  var lvl = "2";  var pfx = "[INFO] "
+  if (meth == "trace") { lvl = "0";  pfx = "[TRACE] " }
+  if (meth == "debug") { lvl = "1";  pfx = "[DEBUG] " }
+  if (meth == "warn")  { lvl = "3";  pfx = "[WARN] " }
+  if (meth == "error") { lvl = "4";  pfx = "[ERROR] " }
+  g_uses_str = true
+  # line = "[LEVEL] " + msg, then " key=value" for each trailing pair
+  var line = val(emit_str_const(pfx), "string")
+  let msg = emit_expr(e.kids[0])
+  line = emit_str_op("+", line, val(log_stringify(msg), "string"))
+  var i = 1
+  while (i + 1) < len(e.kids) {
+    let k = emit_expr(e.kids[i])
+    let v = emit_expr(e.kids[i + 1])
+    line = emit_str_op("+", line, val(emit_str_const(" "), "string"))
+    line = emit_str_op("+", line, val(log_stringify(k), "string"))
+    line = emit_str_op("+", line, val(emit_str_const("="), "string"))
+    line = emit_str_op("+", line, val(log_stringify(v), "string"))
+    i = i + 2
+  }
+  emit(`  call void @fn_log_emit(i32 {lvl}, ptr {line.code})\n`)
+  return val("0", "void")
+}
+
+# emit_log_prelude — the log level register and the console sink, emitted once per
+# program that uses Log.* (g_uses_logrt). @fn_log_emit checks the threshold and,
+# if the message is at or above it, writes the line + newline to stderr.
+function emit_log_prelude() -> void {
+  emith("@L_log_level = global i32 0\n")
+  emith("@.log_nl = private unnamed_addr constant [2 x i8] c\"\\0A\\00\"\n")
+  emith("define void @fn_log_emit(i32 %lvl, ptr %s) {\n")
+  emith("entry:\n  %th = load i32, ptr @L_log_level\n  %skip = icmp slt i32 %lvl, %th\n  br i1 %skip, label %done, label %go\n")
+  emith("go:\n  %e = load ptr, ptr @__stderrp\n  %n = call i64 @strlen(ptr %s)\n")
+  emith("  %w = call i64 @fwrite(ptr %s, i64 1, i64 %n, ptr %e)\n  %w2 = call i64 @fwrite(ptr @.log_nl, i64 1, i64 1, ptr %e)\n  br label %done\n")
+  emith("done:\n  ret void\n}\n")
+}
