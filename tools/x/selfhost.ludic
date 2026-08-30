@@ -28,6 +28,7 @@ function selfhost_frags() -> []pointer {
   push(f, "selfhost/emit_vector.ludic")
   push(f, "selfhost/emit_text.ludic")
   push(f, "selfhost/emit_hash.ludic")
+  push(f, "selfhost/emit_crypto.ludic")
   push(f, "selfhost/emit_list.ludic")
   push(f, "selfhost/emit_ease.ludic")
   push(f, "selfhost/emit_collide.ludic")

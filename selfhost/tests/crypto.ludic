@@ -1,0 +1,36 @@
+program T {
+  entry {
+    # ---- Crypto.sha256 — FIPS 180-4 known-answer vectors ----
+    print(Crypto.sha256(""))     # e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+    print(Crypto.sha256("abc"))  # ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad
+    print(Crypto.sha256("The quick brown fox jumps over the lazy dog"))
+    # d7a8fbb307d7809469ca9abcb0082e4f8d5651e46d3cdb762d02d0bf37c9e592
+
+    # multi-block padding edge cases: 55 bytes (fits one block), 56 (spills into a
+    # second), 64 (an exact block that forces a whole padding block).
+    print(Crypto.sha256(Text.repeat("a", 55)))  # 9f4390f8d30c2dd92ec9f095b65e2b9ae9b0a925a5258e241c9f1e910f734318
+    print(Crypto.sha256(Text.repeat("a", 56)))  # b35439a4ac6f0948b6d6f9e3c6af0f5f590ce20f1bde7090ef7970686ec6738a
+    print(Crypto.sha256(Text.repeat("a", 64)))  # ffe054fe7ae0cb6dc65c3af9b61d5209f439851db43d0ba5997337df154668eb
+
+    # ---- Crypto.hmac_sha256 — RFC-style known answers ----
+    print(Crypto.hmac_sha256("key", "The quick brown fox jumps over the lazy dog"))
+    # f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8
+    print(Crypto.hmac_sha256("Jefe", "what do ya want for nothing?"))
+    # 5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843
+
+    # ---- Crypto.verify_hmac — constant-time MAC check ----
+    let key = "s3cret"
+    let payload = "score=9001;level=12"
+    let mac = Crypto.hmac_sha256(key, payload)
+    if Crypto.verify_hmac(key, payload, mac) { print(1) } else { print(0) }              # 1: untampered
+    if Crypto.verify_hmac(key, "score=9999;level=12", mac) { print(1) } else { print(0) } # 0: tampered payload
+    let forged = "0000000000000000000000000000000000000000000000000000000000000000"
+    if Crypto.verify_hmac(key, payload, forged) { print(1) } else { print(0) }            # 0: forged mac
+
+    # ---- Crypto.ct_equal + Crypto.hex ----
+    if Crypto.ct_equal("abc", "abc") { print(1) } else { print(0) }   # 1
+    if Crypto.ct_equal("abc", "abd") { print(1) } else { print(0) }   # 0
+    if Crypto.ct_equal("abc", "abcd") { print(1) } else { print(0) }  # 0 (unequal length)
+    print(Crypto.hex("abc"))   # 616263
+  }
+}

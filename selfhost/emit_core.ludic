@@ -25,6 +25,7 @@ var g_uses_mathrt: bool = false  # Math.sqrt/sin/cos/tan was emitted -> emit the
 var g_uses_textrt: bool = false  # Text.upper/lower/trim/repeat/pad was emitted -> emit the text builders
 var g_uses_textrt2: bool = false  # Text.split/join/replace was emitted -> emit the string/slice builders
 var g_uses_hashrt: bool = false  # Hash.of/fnv1a/crc32 was emitted -> emit the byte-stream hashers
+var g_uses_cryptort: bool = false  # Crypto.* was emitted -> emit the SHA-256 / HMAC runtime
 var g_uses_datert: bool = false  # Date.*/DateTime.* was emitted -> emit the civil<->epoch conversions
 var g_uses_longstr: bool = false  # string(long) / interpolating a long was emitted -> emit fn_long_str
 

@@ -1,0 +1,256 @@
+# emit_crypto.ludic — the Crypto.* namespace: secure, test-vector-backed hashing
+# for the few security-sensitive things games do (signed saves, message/token
+# integrity), kept deliberately separate from the fast, non-cryptographic Hash.*
+# library so nobody reaches for the wrong tool.
+#
+#   Crypto.sha256(s)             SHA-256 of the bytes of `s` -> 64-char lowercase hex
+#   Crypto.hmac_sha256(key, msg) HMAC-SHA256(key, msg)        -> 64-char lowercase hex
+#   Crypto.verify_hmac(key, msg, mac)  recompute the MAC and compare it to `mac`
+#                                in constant time -> bool (the tamper check)
+#   Crypto.hex(s)                lowercase hex of the bytes of `s`
+#   Crypto.ct_equal(a, b)        constant-time string equality (for secrets/MACs)
+#
+# This is a well-specified standard algorithm (FIPS 180-4 / RFC 2104), implemented
+# from scratch in plain integer IR: no libc crypto, no allocation-order or
+# data-dependent branches in the compression rounds, so a given input hashes to
+# the same 32 bytes on every platform and every run. Digests are returned as hex
+# strings (not raw bytes) because a `str` is null-terminated and a raw digest can
+# contain NUL — hex is the directly-printable, directly-comparable form.
+#
+# What this is NOT: it is not DRM and not unbeatable anti-cheat. A client-side
+# game cannot keep a secret from the machine running it; a determined owner can
+# always read the key out of the binary. Use it to make *casual* tampering with a
+# save or a leaderboard payload detectable, and to verify a network message was
+# not forged by a third party who does not hold the key — nothing stronger.
+
+function is_crypto_ns(meth: pointer) -> bool {
+  if (meth == "sha256") or (meth == "hmac_sha256") or (meth == "verify_hmac") { return true }
+  if (meth == "hex") or (meth == "ct_equal") { return true }
+  return false
+}
+
+function emit_crypto_ns(meth: pointer, e: Node) -> Val {
+  g_uses_cryptort = true
+  if (meth == "sha256") {                           # SHA-256 -> 64-char hex string
+    let s = emit_expr(e.kids[0])
+    return val(emit_bind(`call ptr @fn_sha256_hex(ptr {s.code})`), "string")
+  }
+  if (meth == "hmac_sha256") {                      # HMAC-SHA256 -> 64-char hex string
+    let k = emit_expr(e.kids[0]);  let m = emit_expr(e.kids[1])
+    return val(emit_bind(`call ptr @fn_hmac_sha256_hex(ptr {k.code}, ptr {m.code})`), "string")
+  }
+  if (meth == "hex") {                              # lowercase hex of a string's bytes
+    let s = emit_expr(e.kids[0])
+    return val(emit_bind(`call ptr @fn_str_hex(ptr {s.code})`), "string")
+  }
+  if (meth == "ct_equal") {                         # constant-time string equality -> bool
+    let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1])
+    return val(emit_bind(`call i32 @fn_ct_streq(ptr {a.code}, ptr {b.code})`), "bool")
+  }
+  # verify_hmac(key, msg, mac): recompute HMAC-SHA256(key, msg) and compare it to
+  # the supplied hex `mac` in constant time. This is the safe way to check a MAC —
+  # `==` would leak, byte by byte, how much of a forged MAC was correct.
+  let k = emit_expr(e.kids[0]);  let m = emit_expr(e.kids[1]);  let mac = emit_expr(e.kids[2])
+  let computed = emit_bind(`call ptr @fn_hmac_sha256_hex(ptr {k.code}, ptr {m.code})`)
+  return val(emit_bind(`call i32 @fn_ct_streq(ptr {computed}, ptr {mac.code})`), "bool")
+}
+
+# emit_crypto_prelude — the SHA-256 / HMAC-SHA256 runtime, emitted once per program
+# that uses Crypto.* (g_uses_cryptort). Everything below is FIPS 180-4 / RFC 2104
+# to the letter, in pure integer IR with no libc crypto.
+function emit_crypto_prelude() -> void {
+  # the 64 SHA-256 round constants (first 32 bits of the fractional parts of the
+  # cube roots of the first 64 primes), as signed i32.
+  emith("@sha256_K = private unnamed_addr constant [64 x i32] [i32 1116352408, i32 1899447441, i32 -1245643825, i32 -373957723, i32 961987163, i32 1508970993, i32 -1841331548, i32 -1424204075, i32 -670586216, i32 310598401, i32 607225278, i32 1426881987, i32 1925078388, i32 -2132889090, i32 -1680079193, i32 -1046744716, i32 -459576895, i32 -272742522, i32 264347078, i32 604807628, i32 770255983, i32 1249150122, i32 1555081692, i32 1996064986, i32 -1740746414, i32 -1473132947, i32 -1341970488, i32 -1084653625, i32 -958395405, i32 -710438585, i32 113926993, i32 338241895, i32 666307205, i32 773529912, i32 1294757372, i32 1396182291, i32 1695183700, i32 1986661051, i32 -2117940946, i32 -1838011259, i32 -1564481375, i32 -1474664885, i32 -1035236496, i32 -949202525, i32 -778901479, i32 -694614492, i32 -200395387, i32 275423344, i32 430227734, i32 506948616, i32 659060556, i32 883997877, i32 958139571, i32 1322822218, i32 1537002063, i32 1747873779, i32 1955562222, i32 2024104815, i32 -2067236844, i32 -1933114872, i32 -1866530822, i32 -1538233109, i32 -1090935817, i32 -965641998]\n")
+
+  # rotate a 32-bit word right by %n (1..31)
+  emith("define i32 @fn_rotr32(i32 %x, i32 %n) {\n")
+  emith("  %r = lshr i32 %x, %n\n  %m = sub i32 32, %n\n  %l = shl i32 %x, %m\n  %o = or i32 %r, %l\n  ret i32 %o\n}\n")
+
+  # SHA-256 of %len bytes at %msg -> the 32 raw digest bytes at %out. Pads into a
+  # fresh malloc'd buffer (append 0x80, zero-fill, 64-bit big-endian bit length),
+  # then runs the standard 64-round compression over each 512-bit block.
+  emith("define void @fn_sha256_buf(ptr %msg, i64 %len, ptr %out) {\n")
+  emith("entry:\n")
+  emith("  %H = alloca [8 x i32]\n  %W = alloca [64 x i32]\n")
+  emith("  %a = alloca i32\n  %b = alloca i32\n  %c = alloca i32\n  %d = alloca i32\n  %e = alloca i32\n  %f = alloca i32\n  %g = alloca i32\n  %h = alloca i32\n")
+  emith("  %ip = alloca i64\n  %bp = alloca i64\n")
+  # padded length = ((len + 8) / 64 + 1) * 64
+  emith("  %e0 = add i64 %len, 8\n  %e1 = lshr i64 %e0, 6\n  %e2 = add i64 %e1, 1\n  %pl = shl i64 %e2, 6\n")
+  emith("  %buf = call ptr @malloc(i64 %pl)\n")
+  emith("  call ptr @memset(ptr %buf, i32 0, i64 %pl)\n")
+  emith("  call ptr @memcpy(ptr %buf, ptr %msg, i64 %len)\n")
+  emith("  %pmark = getelementptr i8, ptr %buf, i64 %len\n  store i8 -128, ptr %pmark\n")   # 0x80
+  emith("  %bits = shl i64 %len, 3\n")
+  # write the 64-bit big-endian message length into the final 8 bytes
+  emith("  store i64 0, ptr %ip\n  br label %lenc\n")
+  emith("lenc:\n  %lj = load i64, ptr %ip\n  %ljlt = icmp slt i64 %lj, 8\n  br i1 %ljlt, label %lenb, label %hinit\n")
+  emith("lenb:\n")
+  emith("  %lj8 = mul i64 %lj, 8\n  %lsh = sub i64 56, %lj8\n  %lbsh = lshr i64 %bits, %lsh\n  %lbb = trunc i64 %lbsh to i8\n")
+  emith("  %lpm8 = sub i64 %pl, 8\n  %lpos = add i64 %lpm8, %lj\n  %lpp = getelementptr i8, ptr %buf, i64 %lpos\n  store i8 %lbb, ptr %lpp\n")
+  emith("  %lj1 = add i64 %lj, 1\n  store i64 %lj1, ptr %ip\n  br label %lenc\n")
+  # H := the eight initial hash values (fractional parts of the sqrt of primes)
+  emith("hinit:\n")
+  emith("  %H0 = getelementptr [8 x i32], ptr %H, i64 0, i64 0\n  store i32 1779033703, ptr %H0\n")
+  emith("  %H1 = getelementptr [8 x i32], ptr %H, i64 0, i64 1\n  store i32 -1150833019, ptr %H1\n")
+  emith("  %H2 = getelementptr [8 x i32], ptr %H, i64 0, i64 2\n  store i32 1013904242, ptr %H2\n")
+  emith("  %H3 = getelementptr [8 x i32], ptr %H, i64 0, i64 3\n  store i32 -1521486534, ptr %H3\n")
+  emith("  %H4 = getelementptr [8 x i32], ptr %H, i64 0, i64 4\n  store i32 1359893119, ptr %H4\n")
+  emith("  %H5 = getelementptr [8 x i32], ptr %H, i64 0, i64 5\n  store i32 -1694144372, ptr %H5\n")
+  emith("  %H6 = getelementptr [8 x i32], ptr %H, i64 0, i64 6\n  store i32 528734635, ptr %H6\n")
+  emith("  %H7 = getelementptr [8 x i32], ptr %H, i64 0, i64 7\n  store i32 1541459225, ptr %H7\n")
+  emith("  %nb = lshr i64 %pl, 6\n  store i64 0, ptr %bp\n  br label %blkc\n")
+  # ---- per-block loop ----
+  emith("blkc:\n  %bi = load i64, ptr %bp\n  %blt = icmp ult i64 %bi, %nb\n  br i1 %blt, label %blkb, label %outp\n")
+  emith("blkb:\n  %bi64 = shl i64 %bi, 6\n  %base = getelementptr i8, ptr %buf, i64 %bi64\n")
+  # W[0..15] <- the block's sixteen big-endian 32-bit words
+  emith("  store i64 0, ptr %ip\n  br label %w1c\n")
+  emith("w1c:\n  %wi = load i64, ptr %ip\n  %wilt = icmp slt i64 %wi, 16\n  br i1 %wilt, label %w1b, label %w2init\n")
+  emith("w1b:\n")
+  emith("  %wi4 = shl i64 %wi, 2\n")
+  emith("  %wp0 = getelementptr i8, ptr %base, i64 %wi4\n  %wc0 = load i8, ptr %wp0\n")
+  emith("  %wo1 = add i64 %wi4, 1\n  %wp1 = getelementptr i8, ptr %base, i64 %wo1\n  %wc1 = load i8, ptr %wp1\n")
+  emith("  %wo2 = add i64 %wi4, 2\n  %wp2 = getelementptr i8, ptr %base, i64 %wo2\n  %wc2 = load i8, ptr %wp2\n")
+  emith("  %wo3 = add i64 %wi4, 3\n  %wp3 = getelementptr i8, ptr %base, i64 %wo3\n  %wc3 = load i8, ptr %wp3\n")
+  emith("  %wz0 = zext i8 %wc0 to i32\n  %wz1 = zext i8 %wc1 to i32\n  %wz2 = zext i8 %wc2 to i32\n  %wz3 = zext i8 %wc3 to i32\n")
+  emith("  %ws24 = shl i32 %wz0, 24\n  %ws16 = shl i32 %wz1, 16\n  %ws8 = shl i32 %wz2, 8\n")
+  emith("  %wor1 = or i32 %ws24, %ws16\n  %wor2 = or i32 %wor1, %ws8\n  %word = or i32 %wor2, %wz3\n")
+  emith("  %wwp = getelementptr [64 x i32], ptr %W, i64 0, i64 %wi\n  store i32 %word, ptr %wwp\n")
+  emith("  %wi1 = add i64 %wi, 1\n  store i64 %wi1, ptr %ip\n  br label %w1c\n")
+  # W[16..63] <- the message schedule extension
+  emith("w2init:\n  store i64 16, ptr %ip\n  br label %w2c\n")
+  emith("w2c:\n  %xi = load i64, ptr %ip\n  %xilt = icmp slt i64 %xi, 64\n  br i1 %xilt, label %w2b, label %compinit\n")
+  emith("w2b:\n")
+  emith("  %im15 = sub i64 %xi, 15\n  %pm15 = getelementptr [64 x i32], ptr %W, i64 0, i64 %im15\n  %w15 = load i32, ptr %pm15\n")
+  emith("  %r7 = call i32 @fn_rotr32(i32 %w15, i32 7)\n  %r18 = call i32 @fn_rotr32(i32 %w15, i32 18)\n  %sh3 = lshr i32 %w15, 3\n")
+  emith("  %x01 = xor i32 %r7, %r18\n  %s0 = xor i32 %x01, %sh3\n")
+  emith("  %im2 = sub i64 %xi, 2\n  %pm2 = getelementptr [64 x i32], ptr %W, i64 0, i64 %im2\n  %w2v = load i32, ptr %pm2\n")
+  emith("  %r17 = call i32 @fn_rotr32(i32 %w2v, i32 17)\n  %r19 = call i32 @fn_rotr32(i32 %w2v, i32 19)\n  %sh10 = lshr i32 %w2v, 10\n")
+  emith("  %x02 = xor i32 %r17, %r19\n  %s1 = xor i32 %x02, %sh10\n")
+  emith("  %im16 = sub i64 %xi, 16\n  %pm16 = getelementptr [64 x i32], ptr %W, i64 0, i64 %im16\n  %w16 = load i32, ptr %pm16\n")
+  emith("  %im7 = sub i64 %xi, 7\n  %pm7 = getelementptr [64 x i32], ptr %W, i64 0, i64 %im7\n  %w7 = load i32, ptr %pm7\n")
+  emith("  %wa1 = add i32 %w16, %s0\n  %wa2 = add i32 %wa1, %w7\n  %wv = add i32 %wa2, %s1\n")
+  emith("  %wpi = getelementptr [64 x i32], ptr %W, i64 0, i64 %xi\n  store i32 %wv, ptr %wpi\n")
+  emith("  %xi1 = add i64 %xi, 1\n  store i64 %xi1, ptr %ip\n  br label %w2c\n")
+  # a..h <- H
+  emith("compinit:\n")
+  emith("  %cv0 = load i32, ptr %H0\n  store i32 %cv0, ptr %a\n")
+  emith("  %cv1 = load i32, ptr %H1\n  store i32 %cv1, ptr %b\n")
+  emith("  %cv2 = load i32, ptr %H2\n  store i32 %cv2, ptr %c\n")
+  emith("  %cv3 = load i32, ptr %H3\n  store i32 %cv3, ptr %d\n")
+  emith("  %cv4 = load i32, ptr %H4\n  store i32 %cv4, ptr %e\n")
+  emith("  %cv5 = load i32, ptr %H5\n  store i32 %cv5, ptr %f\n")
+  emith("  %cv6 = load i32, ptr %H6\n  store i32 %cv6, ptr %g\n")
+  emith("  %cv7 = load i32, ptr %H7\n  store i32 %cv7, ptr %h\n")
+  emith("  store i64 0, ptr %ip\n  br label %rc\n")
+  # ---- the 64 compression rounds ----
+  emith("rc:\n  %ri = load i64, ptr %ip\n  %rlt = icmp slt i64 %ri, 64\n  br i1 %rlt, label %rb, label %addH\n")
+  emith("rb:\n")
+  emith("  %av = load i32, ptr %a\n  %bv = load i32, ptr %b\n  %cvv = load i32, ptr %c\n  %dv = load i32, ptr %d\n")
+  emith("  %ev = load i32, ptr %e\n  %fv = load i32, ptr %f\n  %gv = load i32, ptr %g\n  %hv = load i32, ptr %h\n")
+  # S1 = rotr(e,6) ^ rotr(e,11) ^ rotr(e,25);  ch = (e & f) ^ (~e & g)
+  emith("  %e6 = call i32 @fn_rotr32(i32 %ev, i32 6)\n  %e11 = call i32 @fn_rotr32(i32 %ev, i32 11)\n  %e25 = call i32 @fn_rotr32(i32 %ev, i32 25)\n")
+  emith("  %S1a = xor i32 %e6, %e11\n  %S1 = xor i32 %S1a, %e25\n")
+  emith("  %ef = and i32 %ev, %fv\n  %ne = xor i32 %ev, -1\n  %neg = and i32 %ne, %gv\n  %ch = xor i32 %ef, %neg\n")
+  emith("  %kp = getelementptr [64 x i32], ptr @sha256_K, i64 0, i64 %ri\n  %kv = load i32, ptr %kp\n")
+  emith("  %wpr = getelementptr [64 x i32], ptr %W, i64 0, i64 %ri\n  %wvr = load i32, ptr %wpr\n")
+  # temp1 = h + S1 + ch + K[i] + W[i]
+  emith("  %t1a = add i32 %hv, %S1\n  %t1b = add i32 %t1a, %ch\n  %t1c = add i32 %t1b, %kv\n  %temp1 = add i32 %t1c, %wvr\n")
+  # S0 = rotr(a,2) ^ rotr(a,13) ^ rotr(a,22);  maj = (a&b) ^ (a&c) ^ (b&c)
+  emith("  %a2r = call i32 @fn_rotr32(i32 %av, i32 2)\n  %a13 = call i32 @fn_rotr32(i32 %av, i32 13)\n  %a22 = call i32 @fn_rotr32(i32 %av, i32 22)\n")
+  emith("  %S0a = xor i32 %a2r, %a13\n  %S0 = xor i32 %S0a, %a22\n")
+  emith("  %ab = and i32 %av, %bv\n  %ac = and i32 %av, %cvv\n  %bc = and i32 %bv, %cvv\n  %mj1 = xor i32 %ab, %ac\n  %maj = xor i32 %mj1, %bc\n")
+  emith("  %temp2 = add i32 %S0, %maj\n")
+  # rotate the working registers: h=g, g=f, f=e, e=d+temp1, d=c, c=b, b=a, a=temp1+temp2
+  emith("  store i32 %gv, ptr %h\n  store i32 %fv, ptr %g\n  store i32 %ev, ptr %f\n")
+  emith("  %newe = add i32 %dv, %temp1\n  store i32 %newe, ptr %e\n")
+  emith("  store i32 %cvv, ptr %d\n  store i32 %bv, ptr %c\n  store i32 %av, ptr %b\n")
+  emith("  %newa = add i32 %temp1, %temp2\n  store i32 %newa, ptr %a\n")
+  emith("  %rin = add i64 %ri, 1\n  store i64 %rin, ptr %ip\n  br label %rc\n")
+  # H[i] += the working registers
+  emith("addH:\n")
+  emith("  %fa = load i32, ptr %a\n  %lH0 = load i32, ptr %H0\n  %nH0 = add i32 %lH0, %fa\n  store i32 %nH0, ptr %H0\n")
+  emith("  %fb = load i32, ptr %b\n  %lH1 = load i32, ptr %H1\n  %nH1 = add i32 %lH1, %fb\n  store i32 %nH1, ptr %H1\n")
+  emith("  %fc = load i32, ptr %c\n  %lH2 = load i32, ptr %H2\n  %nH2 = add i32 %lH2, %fc\n  store i32 %nH2, ptr %H2\n")
+  emith("  %fd = load i32, ptr %d\n  %lH3 = load i32, ptr %H3\n  %nH3 = add i32 %lH3, %fd\n  store i32 %nH3, ptr %H3\n")
+  emith("  %fe = load i32, ptr %e\n  %lH4 = load i32, ptr %H4\n  %nH4 = add i32 %lH4, %fe\n  store i32 %nH4, ptr %H4\n")
+  emith("  %ff = load i32, ptr %f\n  %lH5 = load i32, ptr %H5\n  %nH5 = add i32 %lH5, %ff\n  store i32 %nH5, ptr %H5\n")
+  emith("  %fg = load i32, ptr %g\n  %lH6 = load i32, ptr %H6\n  %nH6 = add i32 %lH6, %fg\n  store i32 %nH6, ptr %H6\n")
+  emith("  %fh = load i32, ptr %h\n  %lH7 = load i32, ptr %H7\n  %nH7 = add i32 %lH7, %fh\n  store i32 %nH7, ptr %H7\n")
+  emith("  %binc = add i64 %bi, 1\n  store i64 %binc, ptr %bp\n  br label %blkc\n")
+  # ---- serialize H[0..7] big-endian into the 32-byte output ----
+  emith("outp:\n  store i64 0, ptr %ip\n  br label %oc\n")
+  emith("oc:\n  %oi = load i64, ptr %ip\n  %olt = icmp slt i64 %oi, 8\n  br i1 %olt, label %ob, label %freeb\n")
+  emith("ob:\n")
+  emith("  %hpp = getelementptr [8 x i32], ptr %H, i64 0, i64 %oi\n  %hval = load i32, ptr %hpp\n  %oi4 = shl i64 %oi, 2\n")
+  emith("  %ob24 = lshr i32 %hval, 24\n  %obb24 = trunc i32 %ob24 to i8\n  %op0 = getelementptr i8, ptr %out, i64 %oi4\n  store i8 %obb24, ptr %op0\n")
+  emith("  %ob16 = lshr i32 %hval, 16\n  %obb16 = trunc i32 %ob16 to i8\n  %oo1 = add i64 %oi4, 1\n  %op1 = getelementptr i8, ptr %out, i64 %oo1\n  store i8 %obb16, ptr %op1\n")
+  emith("  %ob8 = lshr i32 %hval, 8\n  %obb8 = trunc i32 %ob8 to i8\n  %oo2 = add i64 %oi4, 2\n  %op2 = getelementptr i8, ptr %out, i64 %oo2\n  store i8 %obb8, ptr %op2\n")
+  emith("  %obb0 = trunc i32 %hval to i8\n  %oo3 = add i64 %oi4, 3\n  %op3 = getelementptr i8, ptr %out, i64 %oo3\n  store i8 %obb0, ptr %op3\n")
+  emith("  %oin = add i64 %oi, 1\n  store i64 %oin, ptr %ip\n  br label %oc\n")
+  emith("freeb:\n  call void @free(ptr %buf)\n  ret void\n}\n")
+
+  # one hex digit (0..15) -> its lowercase ASCII byte
+  emith("define i8 @fn_hex_digit(i32 %d) {\n")
+  emith("  %lt = icmp ult i32 %d, 10\n  %base = select i1 %lt, i32 48, i32 87\n  %v = add i32 %base, %d\n  %c = trunc i32 %v to i8\n  ret i8 %c\n}\n")
+
+  # hex-encode %n bytes at %in -> a fresh null-terminated 2n-char string
+  emith("define ptr @fn_hex_encode(ptr %in, i64 %n) {\n")
+  emith("entry:\n  %ip = alloca i64\n  %olen = shl i64 %n, 1\n  %olen1 = add i64 %olen, 1\n  %s = call ptr @malloc(i64 %olen1)\n  store i64 0, ptr %ip\n  br label %c\n")
+  emith("c:\n  %i = load i64, ptr %ip\n  %lt = icmp ult i64 %i, %n\n  br i1 %lt, label %bdy, label %done\n")
+  emith("bdy:\n  %pp = getelementptr i8, ptr %in, i64 %i\n  %byte = load i8, ptr %pp\n  %bz = zext i8 %byte to i32\n")
+  emith("  %hi = lshr i32 %bz, 4\n  %lo = and i32 %bz, 15\n  %hc = call i8 @fn_hex_digit(i32 %hi)\n  %lc = call i8 @fn_hex_digit(i32 %lo)\n")
+  emith("  %oi = shl i64 %i, 1\n  %o0 = getelementptr i8, ptr %s, i64 %oi\n  store i8 %hc, ptr %o0\n  %oi1 = add i64 %oi, 1\n  %o1 = getelementptr i8, ptr %s, i64 %oi1\n  store i8 %lc, ptr %o1\n")
+  emith("  %in1 = add i64 %i, 1\n  store i64 %in1, ptr %ip\n  br label %c\n")
+  emith("done:\n  %tp = getelementptr i8, ptr %s, i64 %olen\n  store i8 0, ptr %tp\n  ret ptr %s\n}\n")
+
+  # SHA-256 of a null-terminated string -> 64-char hex
+  emith("define ptr @fn_sha256_hex(ptr %s) {\n")
+  emith("entry:\n  %dig = alloca [32 x i8]\n  %len = call i64 @strlen(ptr %s)\n  %dp = getelementptr [32 x i8], ptr %dig, i64 0, i64 0\n")
+  emith("  call void @fn_sha256_buf(ptr %s, i64 %len, ptr %dp)\n  %hex = call ptr @fn_hex_encode(ptr %dp, i64 32)\n  ret ptr %hex\n}\n")
+
+  # hex of a whole null-terminated string's bytes
+  emith("define ptr @fn_str_hex(ptr %s) {\n")
+  emith("  %n = call i64 @strlen(ptr %s)\n  %h = call ptr @fn_hex_encode(ptr %s, i64 %n)\n  ret ptr %h\n}\n")
+
+  # xor 64 bytes of %src with the byte %pad into %dst (the HMAC key padding step)
+  emith("define void @fn_xor64(ptr %dst, ptr %src, i32 %pad) {\n")
+  emith("entry:\n  %ip = alloca i64\n  store i64 0, ptr %ip\n  br label %c\n")
+  emith("c:\n  %i = load i64, ptr %ip\n  %lt = icmp ult i64 %i, 64\n  br i1 %lt, label %b, label %d\n")
+  emith("b:\n  %sp = getelementptr i8, ptr %src, i64 %i\n  %sv = load i8, ptr %sp\n  %sz = zext i8 %sv to i32\n  %xr = xor i32 %sz, %pad\n  %xb = trunc i32 %xr to i8\n  %dp = getelementptr i8, ptr %dst, i64 %i\n  store i8 %xb, ptr %dp\n  %in = add i64 %i, 1\n  store i64 %in, ptr %ip\n  br label %c\n")
+  emith("d:\n  ret void\n}\n")
+
+  # HMAC-SHA256(key, msg) -> 64-char hex (RFC 2104, block size 64).
+  emith("define ptr @fn_hmac_sha256_hex(ptr %key, ptr %msg) {\n")
+  emith("entry:\n")
+  emith("  %k0 = alloca [64 x i8]\n  %inner = alloca [32 x i8]\n  %outbuf = alloca [96 x i8]\n  %fin = alloca [32 x i8]\n")
+  emith("  %klen = call i64 @strlen(ptr %key)\n  %mlen = call i64 @strlen(ptr %msg)\n")
+  emith("  %k0p = getelementptr [64 x i8], ptr %k0, i64 0, i64 0\n  call ptr @memset(ptr %k0p, i32 0, i64 64)\n")
+  # K0: a key longer than the block is replaced by its own hash; otherwise it is
+  # right-zero-padded to 64 bytes.
+  emith("  %big = icmp ugt i64 %klen, 64\n  br i1 %big, label %hashk, label %copyk\n")
+  emith("hashk:\n  call void @fn_sha256_buf(ptr %key, i64 %klen, ptr %k0p)\n  br label %pads\n")
+  emith("copyk:\n  call ptr @memcpy(ptr %k0p, ptr %key, i64 %klen)\n  br label %pads\n")
+  emith("pads:\n")
+  # inner = SHA-256( (K0 ^ ipad) || msg ),  ipad = 0x36
+  emith("  %inlen = add i64 64, %mlen\n  %inbuf = call ptr @malloc(i64 %inlen)\n")
+  emith("  call void @fn_xor64(ptr %inbuf, ptr %k0p, i32 54)\n")
+  emith("  %inmsg = getelementptr i8, ptr %inbuf, i64 64\n  call ptr @memcpy(ptr %inmsg, ptr %msg, i64 %mlen)\n")
+  emith("  %innerp = getelementptr [32 x i8], ptr %inner, i64 0, i64 0\n  call void @fn_sha256_buf(ptr %inbuf, i64 %inlen, ptr %innerp)\n  call void @free(ptr %inbuf)\n")
+  # digest = SHA-256( (K0 ^ opad) || inner ),  opad = 0x5c
+  emith("  %outp = getelementptr [96 x i8], ptr %outbuf, i64 0, i64 0\n  call void @fn_xor64(ptr %outp, ptr %k0p, i32 92)\n")
+  emith("  %outmsg = getelementptr i8, ptr %outbuf, i64 64\n  call ptr @memcpy(ptr %outmsg, ptr %innerp, i64 32)\n")
+  emith("  %finp = getelementptr [32 x i8], ptr %fin, i64 0, i64 0\n  call void @fn_sha256_buf(ptr %outp, i64 96, ptr %finp)\n")
+  emith("  %hex = call ptr @fn_hex_encode(ptr %finp, i64 32)\n  ret ptr %hex\n}\n")
+
+  # constant-time equality of two null-terminated strings. Length is not secret,
+  # so an unequal length returns early; equal-length inputs are compared with a
+  # data-independent XOR-accumulate that never short-circuits.
+  emith("define i32 @fn_ct_streq(ptr %a, ptr %b) {\n")
+  emith("entry:\n  %accp = alloca i32\n  %ip = alloca i64\n  %la = call i64 @strlen(ptr %a)\n  %lb = call i64 @strlen(ptr %b)\n  %eqlen = icmp eq i64 %la, %lb\n  br i1 %eqlen, label %go, label %ne\n")
+  emith("ne:\n  ret i32 0\n")
+  emith("go:\n  store i32 0, ptr %accp\n  store i64 0, ptr %ip\n  br label %c\n")
+  emith("c:\n  %i = load i64, ptr %ip\n  %lt = icmp ult i64 %i, %la\n  br i1 %lt, label %bdy, label %d\n")
+  emith("bdy:\n  %pa = getelementptr i8, ptr %a, i64 %i\n  %va = load i8, ptr %pa\n  %pb = getelementptr i8, ptr %b, i64 %i\n  %vb = load i8, ptr %pb\n  %x = xor i8 %va, %vb\n  %xz = zext i8 %x to i32\n  %ac = load i32, ptr %accp\n  %ao = or i32 %ac, %xz\n  store i32 %ao, ptr %accp\n  %in = add i64 %i, 1\n  store i64 %in, ptr %ip\n  br label %c\n")
+  emith("d:\n  %finv = load i32, ptr %accp\n  %z = icmp eq i32 %finv, 0\n  %r = zext i1 %z to i32\n  ret i32 %r\n}\n")
+}

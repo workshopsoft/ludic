@@ -104,6 +104,7 @@ function emit_program() -> void {
   if g_uses_textrt { emit_text_prelude() }       # @fn_str_upper/lower/trim/repeat/pad builders
   if g_uses_textrt2 { emit_text2_prelude() }     # @fn_str_replace/join/split builders
   if g_uses_hashrt { emit_hash_prelude() }       # @fn_hash_fnv1a / @fn_hash_crc32 byte hashers
+  if g_uses_cryptort { emit_crypto_prelude() }   # @fn_sha256_hex / @fn_hmac_sha256_hex + constant-time compare
   if g_uses_datert { emit_datetime_prelude() }   # @fn_days_from_civil / @fn_civil_from_days conversions
 }
 

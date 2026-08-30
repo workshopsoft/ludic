@@ -409,5 +409,12 @@
     "clock-set",
     "clock-advance",
     "clock-reset"
+  ],
+  "crypto": [
+    "crypto-sha256",
+    "crypto-hmac_sha256",
+    "crypto-verify_hmac",
+    "crypto-hex",
+    "crypto-ct_equal"
   ]
 }
