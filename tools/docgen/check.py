@@ -83,6 +83,38 @@ def main(site):
         if len(ids) > 1:
             problems.append("token %r (%s) documented on multiple pages: %s" % (tok, kind, ", ".join(sorted(ids))))
 
+    # 2c) one docs directory per namespace / section. Two dirs covering the same
+    # runtime namespace (e.g. a `network`/`networking` or `date`/`datetime`
+    # split) invite drift — a symbol documented in one and not the other — so
+    # fail if any `ns:` is declared from more than one directory, or if two
+    # sections share a section id or (case-folded) title.
+    ns2dirs, id2dirs, title2dirs = {}, {}, {}
+    for cat in sorted(os.listdir(LANG)):
+        cdir = os.path.join(LANG, cat)
+        if not os.path.isdir(cdir):
+            continue
+        sp = os.path.join(cdir, "_section.md")
+        if os.path.exists(sp):
+            smeta, _ = parse_front(sp)
+            id2dirs.setdefault(smeta.get("id", cat), set()).add(cat)
+            title2dirs.setdefault(smeta.get("title", "").strip().lower(), set()).add(cat)
+        for fn in os.listdir(cdir):
+            if not fn.endswith(".md") or fn == "_section.md":
+                continue
+            meta, _ = parse_front(os.path.join(cdir, fn))
+            ns = meta.get("ns", "")
+            if ns:
+                ns2dirs.setdefault(ns, set()).add(cat)
+    for ns, dirs in sorted(ns2dirs.items()):
+        if len(dirs) > 1:
+            problems.append("namespace %r documented from multiple dirs: %s" % (ns, ", ".join(sorted(dirs))))
+    for sid, dirs in sorted(id2dirs.items()):
+        if len(dirs) > 1:
+            problems.append("section id %r declared by multiple dirs: %s" % (sid, ", ".join(sorted(dirs))))
+    for title, dirs in sorted(title2dirs.items()):
+        if title and len(dirs) > 1:
+            problems.append("section title %r shared by multiple dirs: %s" % (title, ", ".join(sorted(dirs))))
+
     # 3) thin (un-expanded) symbols — warn, not fail (lets infra land before prose)
     if thin:
         warnings.append("%d symbols still have only seed text: %s%s"

@@ -187,17 +187,6 @@
     "network-is_owner",
     "network-local_id"
   ],
-  "networking": [
-    "fn-net_send",
-    "fn-net_poll",
-    "fn-owner",
-    "fn-set_owner",
-    "fn-is_server",
-    "fn-is_owner",
-    "fn-local_id",
-    "fn-serialize",
-    "fn-apply"
-  ],
   "operators": [
     "op-arith",
     "op-compare",
