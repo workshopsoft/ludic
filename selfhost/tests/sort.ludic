@@ -1,0 +1,74 @@
+program T {
+  property P { key: int = 0, tag: int = 0 }
+  function pkey(p: P) -> int { return p.key }
+  function cmp_key(a: P, b: P) -> int { return a.key - b.key }
+  entry {
+    # 1) scalar large-n path (merge sort): 40 descending -> ascending
+    let xs = new []int
+    for i in 0 .. 40 { push(xs, 39 - i) }
+    List.sort(xs)
+    print(xs[0])            # 0
+    print(xs[39])           # 39
+    print(xs[20])           # 20
+
+    # 2) sort_by ascending on records by a field
+    let ps = new []P
+    let a = new P
+    a.key = 3
+    push(ps, a)
+    let b = new P
+    b.key = 1
+    push(ps, b)
+    let c = new P
+    c.key = 2
+    push(ps, c)
+    List.sort_by(ps, pkey)
+    print(ps[0].key)        # 1
+    print(ps[1].key)        # 2
+    print(ps[2].key)        # 3
+
+    # 3) sort_desc_by (leaderboard)
+    List.sort_desc_by(ps, pkey)
+    print(ps[0].key)        # 3
+    print(ps[2].key)        # 1
+
+    # 4) stability: equal keys keep their prior order
+    let qs = new []P
+    let q0 = new P
+    q0.key = 1
+    q0.tag = 10
+    push(qs, q0)
+    let q1 = new P
+    q1.key = 1
+    q1.tag = 20
+    push(qs, q1)
+    let q2 = new P
+    q2.key = 0
+    q2.tag = 30
+    push(qs, q2)
+    let q3 = new P
+    q3.key = 1
+    q3.tag = 40
+    push(qs, q3)
+    List.sort_by(qs, pkey)
+    print(qs[0].tag)        # 30 (key 0)
+    print(qs[1].tag)        # 10 (key 1, original order)
+    print(qs[2].tag)        # 20
+    print(qs[3].tag)        # 40
+
+    # 5) sort_with (full comparator, ascending)
+    let rs = new []P
+    let r0 = new P
+    r0.key = 5
+    push(rs, r0)
+    let r1 = new P
+    r1.key = 2
+    push(rs, r1)
+    let r2 = new P
+    r2.key = 8
+    push(rs, r2)
+    List.sort_with(rs, cmp_key)
+    print(rs[0].key)        # 2
+    print(rs[2].key)        # 8
+  }
+}

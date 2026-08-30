@@ -35,6 +35,7 @@ function cmd_selfhost_test() -> int {
   print("== the self-host compiler is correct ==")
   sh_case("structs", "7 9 109 2 42")
   sh_case("slices", "0 20 361 777")
+  sh_case("sort", "0 39 20 1 2 3 3 1 30 10 20 40 2 8")
   sh_case("control", "55 4 15 1")
   sh_case("match_bits", "1 2 9 16 4 15")
   sh_case("fixed", "2 3 0 6 1")

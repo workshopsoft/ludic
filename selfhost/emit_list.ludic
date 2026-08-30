@@ -16,6 +16,7 @@ function is_list_ns(meth: pointer) -> bool {
   if (meth == "first") or (meth == "last") or (meth == "pop") or (meth == "swap") { return true }
   if (meth == "contains") or (meth == "index_of") or (meth == "reverse") { return true }
   if (meth == "insert") or (meth == "remove_at") or (meth == "remove") or (meth == "sort") { return true }
+  if (meth == "sort_by") or (meth == "sort_desc_by") or (meth == "sort_with") { return true }
   return false
 }
 
@@ -41,6 +42,187 @@ function list_grow_if_full(h: pointer, elt: pointer) -> void {
   emit("  store i32 ");  emit(nc);  emit(", ptr ");  emit(cp);  emit("\n")
   emit("  br label %");  emit(done);  emit("\n")
   emit(done);  emit(":\n")
+}
+
+# ---- the sorting toolkit ---------------------------------------------------
+# sort_by / sort_desc_by / sort_with lower to a stable, bottom-up (iterative)
+# merge sort: O(n log n) time, O(n) scratch, and stable — equal elements keep
+# their prior order, which is what tie-breaks (leaderboards, draw order) rely
+# on. The ordering rule is supplied per call site as one of these modes; every
+# mode reduces to a single "should the right run's head come out before the
+# left's?" predicate (emit_takeright), the only place stability is decided.
+const SORT_WITH:     int = 0   # comparator fn(a, b) -> int; a after b when cmp(a, b) > 0
+const SORT_KEY_ASC:  int = 1   # key fn(x) -> K; ascending by key
+const SORT_KEY_DESC: int = 2   # key fn(x) -> K; descending by key
+const SORT_SCALAR:   int = 3   # bare ascending over scalar elements (List.sort's large-n path)
+
+# address of element `idx` (an i32 code) within a raw base pointer `base`
+function gep_at(base: pointer, elt: pointer, idx: pointer) -> pointer {
+  return emit_bind(`getelementptr inbounds {elt}, ptr {base}, i32 {idx}`)
+}
+
+# i1 code for "take the right run's head (`bv`) before the left's (`av`)". True
+# only on a STRICT win for the right, so equal keys keep the left (= earlier)
+# element first — that is the stability guarantee. `fnsym` is the @fn_ name of
+# the user comparator/key function; `keyll` its key's LLVM type (key modes only).
+function emit_takeright(elt: pointer, mode: int, fnsym: pointer, keyll: pointer, av: pointer, bv: pointer) -> pointer {
+  if (mode == SORT_SCALAR) {
+    return emit_bind(`icmp slt {elt} {bv}, {av}`)              # right strictly less than left
+  }
+  if (mode == SORT_WITH) {
+    let c = emit_bind(`call i32 @fn_{fnsym}({elt} {av}, {elt} {bv})`)
+    return emit_bind(`icmp sgt i32 {c}, 0`)                    # cmp(left, right) > 0 -> left comes after
+  }
+  let kl = emit_bind(`call {keyll} @fn_{fnsym}({elt} {av})`)
+  let kr = emit_bind(`call {keyll} @fn_{fnsym}({elt} {bv})`)
+  if (mode == SORT_KEY_DESC) {
+    return emit_bind(`icmp slt {keyll} {kl}, {kr}`)            # desc: right first when its key is larger
+  }
+  return emit_bind(`icmp sgt {keyll} {kl}, {kr}`)             # asc:  right first when its key is smaller
+}
+
+# emit a stable bottom-up merge sort of slice header `h` (element LLVM type
+# `elt`), ordered by `mode`. Passes double the run width each round, merging
+# adjacent runs through a malloc'd scratch buffer and copying the result back,
+# so the slice is sorted in place from the caller's view.
+function emit_merge_sort(h: pointer, elt: pointer, mode: int, fnsym: pointer, keyll: pointer) -> void {
+  let dp = slice_field(h, 0)
+  let data = emit_bind(`load ptr, ptr {dp}`)                  # data pointer is stable during the sort
+  let lp = slice_field(h, 1)
+  let n = emit_bind(`load i32, ptr {lp}`)
+  let esz = emit_sizeof(elt)
+  let nz = emit_bind(`zext i32 {n} to i64`)
+  let byts = emit_bind(`mul i64 {nz}, {esz}`)
+  let scratch = emit_bind(`call ptr @malloc(i64 {byts})`)
+
+  # outer: for (width = 1; width < n; width *= 2)
+  let wp = emit_alloca("i32");  store_at("i32", "1", wp)
+  let wc = lbl("ms_wc");  let wb = lbl("ms_wb");  let we = lbl("ms_we")
+  emit("  br label %");  emit(wc);  emit("\n");  emit(wc);  emit(":\n")
+  let w = emit_bind(`load i32, ptr {wp}`)
+  let wgo = emit_bind(`icmp slt i32 {w}, {n}`)
+  emit("  br i1 ");  emit(wgo);  emit(", label %");  emit(wb);  emit(", label %");  emit(we);  emit("\n")
+  emit(wb);  emit(":\n")
+  let w2 = emit_bind(`mul i32 {w}, 2`)
+
+  # middle: for (i = 0; i < n; i += 2*width) merge [i, i+w) with [i+w, i+2w)
+  let ip = emit_alloca("i32");  store_at("i32", "0", ip)
+  let ic = lbl("ms_ic");  let ib = lbl("ms_ib");  let ie = lbl("ms_ie")
+  emit("  br label %");  emit(ic);  emit("\n");  emit(ic);  emit(":\n")
+  let i = emit_bind(`load i32, ptr {ip}`)
+  let igo = emit_bind(`icmp slt i32 {i}, {n}`)
+  emit("  br i1 ");  emit(igo);  emit(", label %");  emit(ib);  emit(", label %");  emit(ie);  emit("\n")
+  emit(ib);  emit(":\n")
+  let iw = emit_bind(`add i32 {i}, {w}`)
+  let mlt = emit_bind(`icmp slt i32 {iw}, {n}`)
+  let mid = emit_bind(`select i1 {mlt}, i32 {iw}, i32 {n}`)    # mid = min(i+w, n)
+  let iw2 = emit_bind(`add i32 {i}, {w2}`)
+  let hlt = emit_bind(`icmp slt i32 {iw2}, {n}`)
+  let hi = emit_bind(`select i1 {hlt}, i32 {iw2}, i32 {n}`)    # hi  = min(i+2w, n)
+
+  let ap = emit_alloca("i32");  store_at("i32", i, ap)         # a: cursor in left run  [i, mid)
+  let bp = emit_alloca("i32");  store_at("i32", mid, bp)       # b: cursor in right run [mid, hi)
+  let kp = emit_alloca("i32");  store_at("i32", i, kp)         # k: write cursor in scratch
+
+  # merge while both runs have elements
+  let mc = lbl("ms_mc");  let mbb = lbl("ms_mb");  let mend = lbl("ms_mend")
+  emit("  br label %");  emit(mc);  emit("\n");  emit(mc);  emit(":\n")
+  let a = emit_bind(`load i32, ptr {ap}`)
+  let b = emit_bind(`load i32, ptr {bp}`)
+  let aok = emit_bind(`icmp slt i32 {a}, {mid}`)
+  let bok = emit_bind(`icmp slt i32 {b}, {hi}`)
+  let both = emit_bind(`and i1 {aok}, {bok}`)
+  emit("  br i1 ");  emit(both);  emit(", label %");  emit(mbb);  emit(", label %");  emit(mend);  emit("\n")
+  emit(mbb);  emit(":\n")
+  let aad = gep_at(data, elt, a)
+  let av = emit_bind(`load {elt}, ptr {aad}`)
+  let bad = gep_at(data, elt, b)
+  let bv = emit_bind(`load {elt}, ptr {bad}`)
+  let tr = emit_takeright(elt, mode, fnsym, keyll, av, bv)
+  let k = emit_bind(`load i32, ptr {kp}`)
+  let sad = gep_at(scratch, elt, k)
+  let tR = lbl("ms_takeR");  let tL = lbl("ms_takeL");  let tD = lbl("ms_takeD")
+  emit("  br i1 ");  emit(tr);  emit(", label %");  emit(tR);  emit(", label %");  emit(tL);  emit("\n")
+  emit(tR);  emit(":\n")
+  emit("  store ");  emit(elt);  emit(" ");  emit(bv);  emit(", ptr ");  emit(sad);  emit("\n")
+  let b1 = emit_bind(`add i32 {b}, 1`);  store_at("i32", b1, bp)
+  emit("  br label %");  emit(tD);  emit("\n")
+  emit(tL);  emit(":\n")
+  emit("  store ");  emit(elt);  emit(" ");  emit(av);  emit(", ptr ");  emit(sad);  emit("\n")
+  let a1 = emit_bind(`add i32 {a}, 1`);  store_at("i32", a1, ap)
+  emit("  br label %");  emit(tD);  emit("\n")
+  emit(tD);  emit(":\n")
+  let k1 = emit_bind(`add i32 {k}, 1`);  store_at("i32", k1, kp)
+  emit("  br label %");  emit(mc);  emit("\n")
+  emit(mend);  emit(":\n")
+
+  # drain the tail of the left run
+  let dac = lbl("ms_dac");  let dab = lbl("ms_dab");  let dae = lbl("ms_dae")
+  emit("  br label %");  emit(dac);  emit("\n");  emit(dac);  emit(":\n")
+  let a2 = emit_bind(`load i32, ptr {ap}`)
+  let amore = emit_bind(`icmp slt i32 {a2}, {mid}`)
+  emit("  br i1 ");  emit(amore);  emit(", label %");  emit(dab);  emit(", label %");  emit(dae);  emit("\n")
+  emit(dab);  emit(":\n")
+  let aad2 = gep_at(data, elt, a2)
+  let av2 = emit_bind(`load {elt}, ptr {aad2}`)
+  let k2 = emit_bind(`load i32, ptr {kp}`)
+  let sad2 = gep_at(scratch, elt, k2)
+  emit("  store ");  emit(elt);  emit(" ");  emit(av2);  emit(", ptr ");  emit(sad2);  emit("\n")
+  let a3 = emit_bind(`add i32 {a2}, 1`);  store_at("i32", a3, ap)
+  let k3 = emit_bind(`add i32 {k2}, 1`);  store_at("i32", k3, kp)
+  emit("  br label %");  emit(dac);  emit("\n")
+  emit(dae);  emit(":\n")
+
+  # drain the tail of the right run
+  let dbc = lbl("ms_dbc");  let dbb = lbl("ms_dbb");  let dbe = lbl("ms_dbe")
+  emit("  br label %");  emit(dbc);  emit("\n");  emit(dbc);  emit(":\n")
+  let b2 = emit_bind(`load i32, ptr {bp}`)
+  let bmore = emit_bind(`icmp slt i32 {b2}, {hi}`)
+  emit("  br i1 ");  emit(bmore);  emit(", label %");  emit(dbb);  emit(", label %");  emit(dbe);  emit("\n")
+  emit(dbb);  emit(":\n")
+  let bad2 = gep_at(data, elt, b2)
+  let bv2 = emit_bind(`load {elt}, ptr {bad2}`)
+  let k4 = emit_bind(`load i32, ptr {kp}`)
+  let sad3 = gep_at(scratch, elt, k4)
+  emit("  store ");  emit(elt);  emit(" ");  emit(bv2);  emit(", ptr ");  emit(sad3);  emit("\n")
+  let b3 = emit_bind(`add i32 {b2}, 1`);  store_at("i32", b3, bp)
+  let k5 = emit_bind(`add i32 {k4}, 1`);  store_at("i32", k5, kp)
+  emit("  br label %");  emit(dbc);  emit("\n")
+  emit(dbe);  emit(":\n")
+
+  # copy the merged run scratch[i, hi) back into data[i, hi)
+  let jp = emit_alloca("i32");  store_at("i32", i, jp)
+  let cbc = lbl("ms_cbc");  let cbb = lbl("ms_cbb");  let cbe = lbl("ms_cbe")
+  emit("  br label %");  emit(cbc);  emit("\n");  emit(cbc);  emit(":\n")
+  let j = emit_bind(`load i32, ptr {jp}`)
+  let jmore = emit_bind(`icmp slt i32 {j}, {hi}`)
+  emit("  br i1 ");  emit(jmore);  emit(", label %");  emit(cbb);  emit(", label %");  emit(cbe);  emit("\n")
+  emit(cbb);  emit(":\n")
+  let ssad = gep_at(scratch, elt, j)
+  let sv = emit_bind(`load {elt}, ptr {ssad}`)
+  let ddad = gep_at(data, elt, j)
+  emit("  store ");  emit(elt);  emit(" ");  emit(sv);  emit(", ptr ");  emit(ddad);  emit("\n")
+  let j1 = emit_bind(`add i32 {j}, 1`);  store_at("i32", j1, jp)
+  emit("  br label %");  emit(cbc);  emit("\n")
+  emit(cbe);  emit(":\n")
+
+  let inx = emit_bind(`add i32 {i}, {w2}`);  store_at("i32", inx, ip)
+  emit("  br label %");  emit(ic);  emit("\n")
+  emit(ie);  emit(":\n")
+  store_at("i32", w2, wp)                                      # width *= 2
+  emit("  br label %");  emit(wc);  emit("\n")
+  emit(we);  emit(":\n")
+  emit("  call void @free(ptr ");  emit(scratch);  emit(")\n")
+}
+
+# resolve a sort_by/sort_with function argument (a bare identifier naming a
+# top-level function) to its name, erroring clearly on misuse.
+function sort_fn_arg(meth: pointer, e: Node) -> pointer {
+  if (len(e.kids) < 2) { perr(`List.{meth} needs (slice, function)`) }
+  if (e.kids[1].kind != E_ID) { perr(`List.{meth}: the second argument must be a function name`) }
+  let fname = e.kids[1].s
+  if (find_fn(fname) == null) { perr(`List.{meth}: no function named '{fname}'`) }
+  return fname
 }
 
 function emit_list_ns(meth: pointer, e: Node) -> Val {
@@ -221,7 +403,15 @@ function emit_list_ns(meth: pointer, e: Node) -> Val {
     emit(end);  emit(":\n")
     return val("0", "void")
   }
-  if (meth == "sort") {                              # ascending insertion sort, in place
+  if (meth == "sort") {                              # stable ascending sort in place
+    # small lists take the simple insertion sort (fast, cache-friendly, and
+    # what nearly-sorted per-frame lists usually are); larger lists take the
+    # O(n log n) stable merge sort. Both are stable, so the result is identical.
+    let n0 = emit_bind(`load i32, ptr {lp}`)
+    let small = emit_bind(`icmp slt i32 {n0}, 32`)
+    let sIns = lbl("sort_ins");  let sMrg = lbl("sort_mrg");  let sEnd = lbl("sort_end")
+    emit("  br i1 ");  emit(small);  emit(", label %");  emit(sIns);  emit(", label %");  emit(sMrg);  emit("\n")
+    emit(sIns);  emit(":\n")
     let l = emit_bind(`load i32, ptr {lp}`)
     let ip = emit_alloca("i32")
     store_at("i32", "1", ip)
@@ -261,6 +451,28 @@ function emit_list_ns(meth: pointer, e: Node) -> Val {
     store_at("i32", i1, ip)
     emit("  br label %");  emit(oc);  emit("\n")
     emit(oe);  emit(":\n")
+    emit("  br label %");  emit(sEnd);  emit("\n")
+    emit(sMrg);  emit(":\n")
+    emit_merge_sort(h, elt, SORT_SCALAR, "", "")
+    emit("  br label %");  emit(sEnd);  emit("\n")
+    emit(sEnd);  emit(":\n")
+    return val("0", "void")
+  }
+  if (meth == "sort_with") {                          # full comparator: fn(a, b) -> int (a<b when <0)
+    let fname = sort_fn_arg(meth, e)
+    if (len(param_types(find_fn(fname))) != 2) { perr(`List.sort_with: '{fname}' must take two arguments`) }
+    emit_merge_sort(h, elt, SORT_WITH, fname, "i32")
+    return val("0", "void")
+  }
+  if (meth == "sort_by") or (meth == "sort_desc_by") {   # key selector: fn(x) -> number
+    let fname = sort_fn_arg(meth, e)
+    let kf = find_fn(fname)
+    if (len(param_types(kf)) != 1) { perr(`List.{meth}: key '{fname}' must take one argument`) }
+    let keyll = llty(kf.ty)
+    if (keyll == "ptr") or (keyll == "void") { perr(`List.{meth}: key '{fname}' must return a number`) }
+    var m = SORT_KEY_ASC
+    if (meth == "sort_desc_by") { m = SORT_KEY_DESC }
+    emit_merge_sort(h, elt, m, fname, keyll)
     return val("0", "void")
   }
   # reverse: swap ends inward until the cursors meet

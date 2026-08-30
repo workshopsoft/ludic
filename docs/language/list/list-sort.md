@@ -11,7 +11,7 @@ ns: List
 member: sort
 ---
 
-Sorts the elements of <code>s</code> in ascending order in place, using an insertion sort. It is intended for slices of scalar elements (ints, entities, fixed) where <code>&lt;</code> is meaningful; reference elements are ordered by identity, which is rarely useful. Insertion sort is simple and fast for the small, nearly-sorted lists games usually hold.
+Sorts the elements of <code>s</code> in ascending order in place. It is intended for slices of scalar elements (ints, entities, fixed) where <code>&lt;</code> is meaningful; reference elements are ordered by identity, which is rarely useful. Small lists — the nearly-sorted, per-frame kind games usually hold — take a simple insertion sort; larger lists fall to a stable O(n log n) merge sort. Both are stable, so the result is identical either way. To sort records by a field, or in descending order, or with a custom comparator, use <code>List.sort_by</code>, <code>List.sort_desc_by</code>, or <code>List.sort_with</code>.
 
 ```ludic
 program Demo {
