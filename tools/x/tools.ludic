@@ -168,25 +168,25 @@ function cmd_test_tools() -> int {
 
   # the vocabulary lives in one place; drift between it and its copies (the
   # TextMate grammar, the Kotlin lexer) is the failure mode this layout prevents.
-  if shq("python3 tools/check-vocabulary.py") { ok("vocabulary in sync across grammar/lexer/header") } else { bad("vocabulary drifted") }
+  # The check is written in Ludic (tools/x/checks.ludic) and runs through x — no
+  # Python in the loop.
+  if shq("bin/x check-vocabulary 2>/dev/null") { ok("vocabulary in sync across grammar/lexer/header") } else { bad("vocabulary drifted") }
 
   # every feature the compiler actually implements — namespace methods, keywords,
   # types, phases — must have a docs/language page. This reads the implementation
   # (emit_ns_call + ludic_syntax.h), so shipping a feature without docs fails here.
-  if shq("python3 tools/docgen/check-impl.py") { ok("docs cover every implemented feature") } else { bad("docs drifted from the implementation") }
+  # Ported to Ludic; runs through x.
+  if shq("bin/x check-impl > /dev/null 2>&1") { ok("docs cover every implemented feature") } else { bad("docs drifted from the implementation") }
 
   return report()
 }
 
+# JSON/XML validity, checked by the Ludic validators in checks.ludic (no Python).
 function test_json(path: pointer) -> void {
   let bn = capture_line(`basename {path}`)
-  if shq(`python3 -c 'import json,sys;json.load(open(sys.argv[1]))' {path} 2>/dev/null`) {
-    ok(`valid JSON: {bn}`)
-  } else { bad(`invalid JSON: {path}`) }
+  if shq(`bin/x lint-asset {path}`) { ok(`valid JSON: {bn}`) } else { bad(`invalid JSON: {path}`) }
 }
 function test_xml(path: pointer) -> void {
   let bn = capture_line(`basename {path}`)
-  if shq(`python3 -c 'import xml.dom.minidom,sys;xml.dom.minidom.parse(sys.argv[1])' {path} 2>/dev/null`) {
-    ok(`valid XML: {bn}`)
-  } else { bad(`invalid XML: {path}`) }
+  if shq(`bin/x lint-asset {path}`) { ok(`valid XML: {bn}`) } else { bad(`invalid XML: {path}`) }
 }

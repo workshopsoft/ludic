@@ -1,0 +1,174 @@
+# json.ludic — a small JSON reader for the Ludic tooling (vocabulary check,
+# docs generator). Enough of JSON to read the editor grammar and the docs
+# config: objects, arrays, strings (with \uXXXX + surrogates), numbers, the
+# literals. Values are a JVal tree; object member order is preserved.
+
+property JVal { t: int = 0, num: int = 0, b: int = 0, s: pointer = null, kids: []JVal, keys: []pointer }
+
+const JV_NULL: int = 0
+const JV_BOOL: int = 1
+const JV_NUM: int = 2
+const JV_STR: int = 3
+const JV_ARR: int = 4
+const JV_OBJ: int = 5
+
+function jval_new(t: int) -> JVal {
+  let v = new JVal
+  v.t = t
+  v.s = ""
+  v.kids = new []JVal
+  v.keys = new []pointer
+  return v
+}
+
+var jbuf: pointer = ""
+var jpos: int = 0
+var jerr: bool = false
+
+function j_ws() -> void {
+  while jbuf[jpos] == 32 or jbuf[jpos] == 9 or jbuf[jpos] == 10 or jbuf[jpos] == 13 { jpos = jpos + 1 }
+}
+
+function j_hex(c: int) -> int {
+  if c >= 48 and c <= 57 { return c - 48 }
+  if c >= 97 and c <= 102 { return c - 97 + 10 }
+  if c >= 65 and c <= 70 { return c - 65 + 10 }
+  return 0
+}
+function j_hex4() -> int {
+  var v = 0;  var i = 0
+  while i < 4 { v = v * 16 + j_hex(jbuf[jpos]);  jpos = jpos + 1;  i = i + 1 }
+  return v
+}
+
+# append codepoint cp to buffer b at *n (UTF-8); returns new n
+function utf8_put(b: pointer, n: int, cp: int) -> int {
+  if cp < 128 { b[n] = cp;  return n + 1 }
+  if cp < 2048 { b[n] = 192 + (cp >> 6);  b[n + 1] = 128 + (cp & 63);  return n + 2 }
+  if cp < 65536 { b[n] = 224 + (cp >> 12);  b[n + 1] = 128 + ((cp >> 6) & 63);  b[n + 2] = 128 + (cp & 63);  return n + 3 }
+  b[n] = 240 + (cp >> 18);  b[n + 1] = 128 + ((cp >> 12) & 63);  b[n + 2] = 128 + ((cp >> 6) & 63);  b[n + 3] = 128 + (cp & 63)
+  return n + 4
+}
+
+# parse a JSON string starting at the opening quote; returns a fresh buffer
+function j_string() -> pointer {
+  jpos = jpos + 1                                   # opening quote
+  # over-allocate: escapes only ever shrink the byte count
+  let cap = slen(jbuf) - jpos + 1
+  let out = bytes(cap + 4)
+  var n = 0
+  while jbuf[jpos] != 0 and jbuf[jpos] != 34 {
+    if jbuf[jpos] == 92 {
+      jpos = jpos + 1
+      let c = jbuf[jpos];  jpos = jpos + 1
+      if c == 110 { out[n] = 10;  n = n + 1 }
+      else { if c == 116 { out[n] = 9;  n = n + 1 }
+      else { if c == 114 { out[n] = 13;  n = n + 1 }
+      else { if c == 98 { out[n] = 8;  n = n + 1 }
+      else { if c == 102 { out[n] = 12;  n = n + 1 }
+      else { if c == 117 {
+        var cp = j_hex4()
+        if cp >= 55296 and cp < 56320 and jbuf[jpos] == 92 and jbuf[jpos + 1] == 117 {
+          jpos = jpos + 2
+          let lo = j_hex4()
+          cp = 65536 + ((cp - 55296) << 10) + (lo - 56320)
+        }
+        n = utf8_put(out, n, cp)
+      } else { out[n] = c;  n = n + 1 } } } } } }
+    } else { out[n] = jbuf[jpos];  n = n + 1;  jpos = jpos + 1 }
+  }
+  if jbuf[jpos] == 34 { jpos = jpos + 1 }
+  out[n] = 0
+  return out
+}
+
+function j_value() -> JVal {
+  j_ws()
+  let c = jbuf[jpos]
+  if c == 123 {                                     # '{'
+    jpos = jpos + 1
+    let v = jval_new(JV_OBJ)
+    j_ws()
+    if jbuf[jpos] == 125 { jpos = jpos + 1;  return v }
+    while true {
+      j_ws()
+      var key = ""
+      if jbuf[jpos] == 34 { key = j_string() } else { jerr = true }
+      j_ws();  if jbuf[jpos] == 58 { jpos = jpos + 1 } else { jerr = true }
+      let kid = j_value()
+      push(v.keys, key);  push(v.kids, kid)
+      j_ws()
+      if jbuf[jpos] == 44 { jpos = jpos + 1 } else { if jbuf[jpos] == 125 { jpos = jpos + 1;  return v } else { return v } }
+    }
+    return v
+  }
+  if c == 91 {                                      # '['
+    jpos = jpos + 1
+    let v = jval_new(JV_ARR)
+    j_ws()
+    if jbuf[jpos] == 93 { jpos = jpos + 1;  return v }
+    while true {
+      let kid = j_value()
+      push(v.kids, kid)
+      j_ws()
+      if jbuf[jpos] == 44 { jpos = jpos + 1 } else { if jbuf[jpos] == 93 { jpos = jpos + 1;  return v } else { return v } }
+    }
+    return v
+  }
+  if c == 34 {                                      # '"'
+    let v = jval_new(JV_STR)
+    v.s = j_string()
+    return v
+  }
+  if c == 116 {                                     # true
+    jpos = jpos + 4;  let v = jval_new(JV_BOOL);  v.b = 1;  return v
+  }
+  if c == 102 {                                     # false
+    jpos = jpos + 5;  let v = jval_new(JV_BOOL);  v.b = 0;  return v
+  }
+  if c == 110 {                                     # null
+    jpos = jpos + 4;  return jval_new(JV_NULL)
+  }
+  # number
+  let start = jpos
+  if jbuf[jpos] == 45 { jpos = jpos + 1 }
+  if jbuf[jpos] < 48 or jbuf[jpos] > 57 { jerr = true;  if jbuf[jpos] != 0 { jpos = jpos + 1 };  return jval_new(JV_NULL) }
+  while (jbuf[jpos] >= 48 and jbuf[jpos] <= 57) or jbuf[jpos] == 46 or jbuf[jpos] == 101 or jbuf[jpos] == 69 or jbuf[jpos] == 43 or jbuf[jpos] == 45 { jpos = jpos + 1 }
+  let v = jval_new(JV_NUM)
+  v.s = sslice(jbuf, start, jpos)
+  v.num = str_to_int(v.s)
+  return v
+}
+
+# parse whole `text`; returns the root JVal (JV_NULL on empty)
+function json_parse(text: pointer) -> JVal {
+  jbuf = text;  jpos = 0;  jerr = false
+  return j_value()
+}
+
+# is `text` well-formed JSON that consumes to the end?
+function json_valid(text: pointer) -> bool {
+  let v = json_parse(text)
+  j_ws()
+  if jerr { return false }
+  if jpos != slen(text) { return false }
+  return true
+}
+
+# integer value of a decimal string (ignores any fractional part)
+function str_to_int(s: pointer) -> int {
+  var i = 0;  var neg = false
+  if s[0] == 45 { neg = true;  i = 1 }
+  var v = 0
+  while s[i] >= 48 and s[i] <= 57 { v = v * 10 + (s[i] - 48);  i = i + 1 }
+  if neg { return 0 - v }
+  return v
+}
+
+# object member lookup by key (JV_NULL if absent or not an object)
+function j_get(v: JVal, key: pointer) -> JVal {
+  if v.t != JV_OBJ { return jval_new(JV_NULL) }
+  var i = 0
+  while i < len(v.keys) { if v.keys[i] == key { return v.kids[i] };  i = i + 1 }
+  return jval_new(JV_NULL)
+}

@@ -75,6 +75,10 @@ jobs:
       - name: Docs cover the implementation
         run: |
           set -eu
+          # check-impl / check-vocabulary are written in Ludic and run through
+          # x — no Python. (check-vocabulary also runs in `x test-tools`.) The
+          # site generator (gen.py) is still Python; its port is tracked.
+          bin/x check-impl
+          bin/x check-vocabulary
           python3 tools/docgen/gen.py --out build/pages
           python3 tools/docgen/check.py build/pages
-          python3 tools/docgen/check-impl.py

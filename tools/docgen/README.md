@@ -64,7 +64,7 @@ hovering any token shows a summary card from the real API data.
 ```bash
 python3 tools/docgen/gen.py --out build/pages    # generate the whole site
 python3 tools/docgen/check.py build/pages         # coverage + duplicate-token + link guard
-python3 tools/docgen/validate.py                  # compile every ```ludic example with bin/ludicc
+bin/x check-docs                                  # parse every ```ludic doc fence (Ludic; no Python)
 ```
 
 `check.py` fails CI if any symbol in `inventory.json` lacks a page, if a token is

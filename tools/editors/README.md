@@ -141,7 +141,7 @@ output. The formatter cannot change what a program means.
 The vocabulary is written down in five places that cannot include each other —
 the compiler's two tables, `ludic_syntax.h`, the TextMate grammar (JSON), and the
 JetBrains lexer (Kotlin). Adding a builtin and forgetting the rest is silent
-failure, so `tools/check-vocabulary.py` compares all five and
+failure, so `bin/x check-vocabulary` (written in Ludic) compares all five, and
 `bin/x test-tools` runs it.
 
 When you add a keyword or builtin: put it in `ludic_syntax.h`, then run

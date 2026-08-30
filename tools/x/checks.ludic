@@ -1,0 +1,721 @@
+# checks.ludic — the documentation / vocabulary lint suite, in Ludic.
+#
+# Ports the Python guards that used to live under tools/ (check-docs.py,
+# check-vocabulary.py, tools/docgen/check-impl.py) so the doc/lint tooling runs
+# through `x` with no Python in the loop. Each is a plain `x` subcommand and
+# reuses the prelude (read_file / shq / capture / the PASS/FAIL harness).
+#
+# String work is over NUL-terminated byte buffers (read_file), reached with
+# plain indexing; `==` on pointers is a byte-string compare (the whole toolchain
+# leans on this).
+
+# ---- small string helpers ---------------------------------------------------
+
+# length of a NUL-terminated buffer
+function slen(s: pointer) -> int { var n = 0;  while s[n] != 0 { n = n + 1 };  return n }
+
+# a fresh NUL-terminated copy of s[start .. end) (end exclusive)
+function sslice(s: pointer, start: int, end: int) -> pointer {
+  if end < start { return "" }
+  let n = end - start
+  let b = bytes(n + 1)
+  var i = 0
+  while i < n { b[i] = s[start + i];  i = i + 1 }
+  b[n] = 0
+  return b
+}
+
+# index of the first byte of `needle` in `hay` at or after `from`, else -1
+function s_index(hay: pointer, needle: pointer, from: int) -> int {
+  let hn = slen(hay)
+  let nn = slen(needle)
+  if nn == 0 { return from }
+  var i = from
+  while i + nn <= hn {
+    var j = 0
+    while j < nn and hay[i + j] == needle[j] { j = j + 1 }
+    if j == nn { return i }
+    i = i + 1
+  }
+  return 0 - 1
+}
+
+function s_contains(hay: pointer, needle: pointer) -> bool { return s_index(hay, needle, 0) >= 0 }
+
+# does `hay` contain `needle` exactly at position `at`?
+function s_starts_at(hay: pointer, at: int, needle: pointer) -> bool {
+  let nn = slen(needle)
+  var i = 0
+  while i < nn { if hay[at + i] != needle[i] { return false };  i = i + 1 }
+  return true
+}
+
+# does `s` (a whole line) begin with `pre`?
+function s_starts(s: pointer, pre: pointer) -> bool {
+  let pn = slen(pre)
+  var i = 0
+  while i < pn { if s[i] != pre[i] { return false };  i = i + 1 }
+  return true
+}
+
+# is byte c an ASCII space/tab?
+function is_ws(c: int) -> bool { return c == 32 or c == 9 }
+
+# the substring from `start` up to the next '\n' (or end)
+function line_at(s: pointer, start: int) -> pointer {
+  var e = start
+  while s[e] != 0 and s[e] != 10 { e = e + 1 }
+  return sslice(s, start, e)
+}
+
+# trim leading/trailing ASCII whitespace (space, tab, cr, nl)
+function s_trim(s: pointer) -> pointer {
+  let n = slen(s)
+  var a = 0
+  while a < n and (is_ws(s[a]) or s[a] == 10 or s[a] == 13) { a = a + 1 }
+  var b = n
+  while b > a and (is_ws(s[b - 1]) or s[b - 1] == 10 or s[b - 1] == 13) { b = b - 1 }
+  return sslice(s, a, b)
+}
+
+# ============================================================================
+# check-docs — every ```ludic fence in the docs must parse (or be marked)
+# ============================================================================
+# A fence declares its intent inline (# is a Ludic comment, so the marker is
+# valid code):  `# doc-check: skip` (not checked), `# doc-check: expect-error`
+# (must FAIL to parse). Everything else must parse under `ludicc --fmt` (lex +
+# parse, no identifier resolution), after wrapping a bare fragment.
+
+# the declaration heads that mean "these are top-level decls, wrap in program"
+function is_decl_head(h: pointer) -> bool {
+  if h == "program" or h == "property" or h == "model" or h == "handler" { return true }
+  if h == "enum" or h == "function" or h == "extern" or h == "const" { return true }
+  if h == "var" or h == "ui" or h == "struct" or h == "import" { return true }
+  return false
+}
+
+# classify a fence body: "whole" (a full program), "decls", or "stmts"
+function classify_fence(body: pointer) -> pointer {
+  let n = slen(body)
+  var i = 0
+  while i < n {
+    let ln = line_at(body, i)
+    let t = s_trim(ln)
+    if slen(t) > 0 and t[0] != 35 {          # non-empty, not a '#' comment
+      # head = first token, split on '(' or whitespace
+      var e = 0
+      let tn = slen(t)
+      while e < tn and t[e] != 40 and not is_ws(t[e]) { e = e + 1 }
+      let head = sslice(t, 0, e)
+      if head == "program" { return "whole" }
+      if is_decl_head(head) { return "decls" }
+      return "stmts"
+    }
+    i = i + slen(ln) + 1
+  }
+  return "stmts"
+}
+
+# does the wrapped source at `path` parse? (ludicc --fmt = lex+parse gate)
+function fence_parses(src: pointer) -> bool {
+  write_file("/tmp/x_docchk.ludic", src)
+  return shq("bin/ludicc /tmp/x_docchk.ludic --fmt > /dev/null 2>&1")
+}
+
+# try the candidate framings for a fence; true if any parses
+function fence_body_parses(body: pointer, kind: pointer) -> bool {
+  if kind == "whole" { return fence_parses(body) }
+  let as_decls = "program DocCheck {\n" + body + "\n}\n"
+  let as_stmts = "program DocCheck {\n  handler DocS phase Start {\n" + body + "\n  }\n}\n"
+  if kind == "decls" {
+    if fence_parses(as_decls) { return true }
+    return fence_parses(as_stmts)
+  }
+  if fence_parses(as_stmts) { return true }
+  return fence_parses(as_decls)
+}
+
+var DC_OK: int = 0
+var DC_BAD: int = 0
+var DC_SKIP: int = 0
+var DC_FAILS: pointer = ""
+
+# scan one markdown file's ```ludic fences
+function check_docs_file(path: pointer) -> void {
+  let t = read_file(path)
+  if t == null { return }
+  var i = 0
+  while true {
+    let open = s_index(t, "```ludic\n", i)
+    if open < 0 { break }
+    # require the fence to sit at a line start
+    if open != 0 and t[open - 1] != 10 { i = open + 1;  continue }
+    let bstart = open + 9                      # past "```ludic\n"
+    let close = s_index(t, "\n```", bstart)
+    if close < 0 { break }
+    let body = sslice(t, bstart, close + 1)    # include trailing newline
+    let line = 1 + count_nl(t, open)
+    i = close + 4
+    if s_contains(body, "# doc-check: skip") { DC_SKIP = DC_SKIP + 1;  continue }
+    let expect_err = s_contains(body, "# doc-check: expect-error")
+    let kind = classify_fence(body)
+    let parsed = fence_body_parses(body, kind)
+    if parsed == (not expect_err) {
+      DC_OK = DC_OK + 1
+    } else {
+      DC_BAD = DC_BAD + 1
+      if expect_err { DC_FAILS = DC_FAILS + "    " + path + ":" + string(line) + "  expected to be rejected\n" }
+      else { DC_FAILS = DC_FAILS + "    " + path + ":" + string(line) + "  expected to parse\n" }
+    }
+  }
+}
+
+# number of '\n' in s[0 .. upto)
+function count_nl(s: pointer, upto: int) -> int {
+  var n = 0;  var i = 0
+  while i < upto { if s[i] == 10 { n = n + 1 };  i = i + 1 }
+  return n
+}
+
+# usage: x check-docs   (scans the user-facing docs + docs/language/**)
+function cmd_check_docs() -> int {
+  ensure_ludicc()
+  DC_OK = 0;  DC_BAD = 0;  DC_SKIP = 0;  DC_FAILS = ""
+  # the corpus: root references + every per-symbol page
+  let list = capture("{ ls LANGUAGE.md COMPILING.md README.md CONTRIBUTING.md 2>/dev/null; find docs -name '*.md' 2>/dev/null; }")
+  let n = slen(list)
+  var i = 0
+  while i < n {
+    let ln = line_at(list, i)
+    i = i + slen(ln) + 1
+    let path = s_trim(ln)
+    if slen(path) > 0 { check_docs_file(path) }
+  }
+  print(`  doc fences: {string(DC_OK)} as documented, {string(DC_BAD)} drifted, {string(DC_SKIP)} skipped`)
+  if DC_BAD > 0 { out(DC_FAILS) }
+  if DC_BAD > 0 { return 1 }
+  return 0
+}
+
+# ============================================================================
+# check-impl — every implemented feature has a docs/language page
+# ============================================================================
+# Reads the implementation (emit_ns_call dispatch + the is_<ns>_ns predicates,
+# and ludic_syntax.h's keyword/type/phase tables) and the per-symbol docs, then
+# asserts they agree. Replaces the former tools/docgen/check-impl.py.
+
+# a double-quote byte as a string (the lexer has no \" escape we rely on)
+function dq() -> pointer { let b = bytes(2);  b[0] = 34;  b[1] = 0;  return b }
+
+# set-style string list
+function set_has(l: []pointer, s: pointer) -> bool {
+  var i = 0
+  while i < len(l) { if l[i] == s { return true };  i = i + 1 }
+  return false
+}
+function set_add(l: []pointer, s: pointer) -> void { if not set_has(l, s) { push(l, s) } }
+
+# the body of `function <name>(` up to the next top-level `function ` (or EOF)
+function fn_body(src: pointer, name: pointer) -> pointer {
+  let needle = "function " + name + "("
+  var p = 0 - 1
+  if s_starts(src, needle) { p = 0 }
+  else {
+    let q = s_index(src, "\n" + needle, 0)
+    if q >= 0 { p = q + 1 }
+  }
+  if p < 0 { return "" }
+  let nxt = s_index(src, "\nfunction ", p + 1)
+  if nxt < 0 { return sslice(src, p, slen(src)) }
+  return sslice(src, p, nxt)
+}
+
+# every identifier string following each occurrence of `marker` (read to a quote)
+function collect_after(src: pointer, marker: pointer) -> []pointer {
+  let out = new []pointer
+  let mn = slen(marker)
+  var i = 0
+  while true {
+    let p = s_index(src, marker, i)
+    if p < 0 { break }
+    var e = p + mn
+    while src[e] != 0 and src[e] != 34 { e = e + 1 }
+    push(out, sslice(src, p + mn, e))
+    i = e + 1
+  }
+  return out
+}
+
+# quoted strings inside the `NAME[] = { ... };` C table in `h`
+function table_set(h: pointer, name: pointer) -> []pointer {
+  let out = new []pointer
+  let p = s_index(h, name + "[]", 0)
+  if p < 0 { return out }
+  let b = s_index(h, "{", p)
+  let e = s_index(h, "};", b)
+  if b < 0 or e < 0 { return out }
+  var i = b
+  while i < e {
+    if h[i] == 34 {
+      var j = i + 1
+      while j < e and h[j] != 34 { j = j + 1 }
+      set_add(out, sslice(h, i + 1, j))
+      i = j + 1
+    } else { i = i + 1 }
+  }
+  return out
+}
+
+# concatenate every selfhost/*.ludic into one buffer (via cat, then read)
+function read_all_selfhost() -> pointer {
+  run("find selfhost -name '*.ludic' | sort | xargs cat > /tmp/x_allsh.txt 2>/dev/null")
+  let s = read_file("/tmp/x_allsh.txt")
+  if s == null { return "" }
+  return s
+}
+
+# {ns}.{method} pairs the compiler actually dispatches on -> into `pairs`
+function collect_impl_pairs(allsrc: pointer, pairs: []pointer) -> void {
+  let body = fn_body(allsrc, "emit_ns_call")
+  let mns = "if (ns == " + dq()
+  let mmeth = "meth == " + dq()
+  let mnslen = slen(mns)
+  var i = 0
+  while true {
+    let p = s_index(body, mns, i)
+    if p < 0 { break }
+    var ne = p + mnslen
+    while body[ne] != 0 and body[ne] != 34 { ne = ne + 1 }
+    let nsname = sslice(body, p + mnslen, ne)
+    let nxt = s_index(body, mns, ne)
+    var chunkEnd = slen(body)
+    if nxt >= 0 { chunkEnd = nxt }
+    let chunk = sslice(body, p, chunkEnd)
+    var methods = collect_after(chunk, mmeth)
+    if len(methods) == 0 {
+      let dp = s_index(chunk, "is_", 0)
+      if dp >= 0 {
+        var pe = dp
+        while chunk[pe] != 0 and chunk[pe] != 40 { pe = pe + 1 }
+        let predname = sslice(chunk, dp, pe)
+        methods = collect_after(fn_body(allsrc, predname), mmeth)
+      }
+    }
+    var k = 0
+    while k < len(methods) { set_add(pairs, nsname + "." + methods[k]);  k = k + 1 }
+    if nxt < 0 { break }
+    i = nxt
+  }
+}
+
+# gather the docs facts: token set, and the (ns.member) pairs of ns-method pages
+function collect_docs(tokens: []pointer, docpairs: []pointer) -> void {
+  let list = capture("find docs/language -name '*.md' ! -name '_section.md' 2>/dev/null")
+  let n = slen(list)
+  var i = 0
+  while i < n {
+    let ln = line_at(list, i)
+    i = i + slen(ln) + 1
+    let path = s_trim(ln)
+    if slen(path) == 0 { continue }
+    let t = read_file(path)
+    if t == null { continue }
+    if not s_starts(t, "---") { continue }
+    let end = s_index(t, "\n---", 3)
+    if end < 0 { continue }
+    let fm = sslice(t, 3, end)
+    # walk front-matter lines
+    var kind = "";  var ns = "";  var member = ""
+    let fn2 = slen(fm)
+    var j = 0
+    while j < fn2 {
+      let fl = line_at(fm, j)
+      j = j + slen(fl) + 1
+      let c = s_index(fl, ":", 0)
+      if c < 0 { continue }
+      let key = s_trim(sslice(fl, 0, c))
+      let val = s_trim(sslice(fl, c + 1, slen(fl)))
+      if key == "tokens" {
+        # split val on spaces
+        var a = 0
+        let vn = slen(val)
+        while a < vn {
+          while a < vn and val[a] == 32 { a = a + 1 }
+          var e = a
+          while e < vn and val[e] != 32 { e = e + 1 }
+          if e > a { set_add(tokens, sslice(val, a, e)) }
+          a = e
+        }
+      }
+      if key == "kind" { kind = val }
+      if key == "ns" { ns = val }
+      if key == "member" { member = val }
+    }
+    if kind == "namespace-method" and slen(ns) > 0 and slen(member) > 0 {
+      set_add(docpairs, ns + "." + member)
+    }
+  }
+}
+
+var CI_PROB: pointer = ""
+var CI_NPROB: int = 0
+function ci_problem(msg: pointer) -> void { CI_PROB = CI_PROB + "  - " + msg + "\n";  CI_NPROB = CI_NPROB + 1 }
+
+# usage: x check-impl
+function cmd_check_impl() -> int {
+  CI_PROB = "";  CI_NPROB = 0
+  let allsrc = read_all_selfhost()
+  let impl = new []pointer
+  collect_impl_pairs(allsrc, impl)
+  let tokens = new []pointer
+  let docpairs = new []pointer
+  collect_docs(tokens, docpairs)
+
+  # 1) every implemented ns-method has a page with the right token
+  var i = 0
+  while i < len(impl) {
+    let pair = impl[i]
+    if not set_has(docpairs, pair) { ci_problem("undocumented " + pair + " — add a docs/language page (tokens: " + pair + ")") }
+    else { if not set_has(tokens, pair) { ci_problem(pair + " documented but its page lacks that tokens entry") } }
+    i = i + 1
+  }
+  # 2) every documented ns-method corresponds to real dispatch
+  i = 0
+  while i < len(docpairs) {
+    if not set_has(impl, docpairs[i]) { ci_problem("stale doc: " + docpairs[i] + " is not dispatched by the compiler") }
+    i = i + 1
+  }
+  # 3) every implemented keyword / type / phase is documented
+  let h = read_file("tools/ludic-tools/ludic_syntax.h")
+  let reserved = table_set(h, "LUDIC_KW_RESERVED")
+  let kws = new []pointer
+  add_all_except(kws, table_set(h, "LUDIC_KW_DECL"), reserved)
+  add_all_except(kws, table_set(h, "LUDIC_KW_CLAUSE"), reserved)
+  add_all_except(kws, table_set(h, "LUDIC_KW_STMT"), reserved)
+  let types = table_set(h, "LUDIC_TYPES")
+  let phases = table_set(h, "LUDIC_PHASES")
+  check_all_documented(kws, tokens, "keyword")
+  check_all_documented(types, tokens, "type")
+  check_all_documented(phases, tokens, "phase")
+
+  if CI_NPROB > 0 {
+    err("docs-vs-implementation drift:\n")
+    err(CI_PROB)
+    return 1
+  }
+  print("docs cover the implementation: " + string(len(impl)) + " namespace methods, " + string(len(kws)) + " keywords, " + string(len(types)) + " types, " + string(len(phases)) + " phases")
+  return 0
+}
+
+# add every element of `src` not in `deny` to `dst` (set semantics)
+function add_all_except(dst: []pointer, src: []pointer, deny: []pointer) -> void {
+  var i = 0
+  while i < len(src) { if not set_has(deny, src[i]) { set_add(dst, src[i]) };  i = i + 1 }
+}
+# every name must appear in the token set, else a problem
+function check_all_documented(names: []pointer, tokens: []pointer, label: pointer) -> void {
+  var i = 0
+  while i < len(names) {
+    if not set_has(tokens, names[i]) { ci_problem("undocumented " + label + ": " + names[i] + " (no docs/language page lists it in tokens)") }
+    i = i + 1
+  }
+}
+
+# ============================================================================
+# check-vocabulary — the language vocabulary is written down in several places
+# that cannot include each other (ludic_syntax.h, the JetBrains Kotlin lexer,
+# the TextMate grammar, the self-host parser); drift between them is silent, so
+# it is checked. Replaces the former tools/check-vocabulary.py.
+# ============================================================================
+
+# a 3-byte needle as a string
+function bx3(a: int, b: int, c: int) -> pointer { let z = bytes(4);  z[0] = a;  z[1] = b;  z[2] = c;  z[3] = 0;  return z }
+
+function all_lower(s: pointer) -> bool {
+  let n = slen(s)
+  if n == 0 { return false }
+  var i = 0
+  while i < n { if s[i] < 97 or s[i] > 122 { return false };  i = i + 1 }
+  return true
+}
+
+# split `s` on '|' into a set
+function split_pipe(s: pointer) -> []pointer {
+  let out = new []pointer
+  let n = slen(s)
+  var a = 0
+  while a <= n {
+    var e = a
+    while e < n and s[e] != 124 { e = e + 1 }
+    set_add(out, sslice(s, a, e))
+    a = e + 1
+  }
+  return out
+}
+
+# first quoted string after each row-opening '{' in the `name[]` C table
+function c_table_names(h: pointer, name: pointer) -> []pointer {
+  let out = new []pointer
+  let p = s_index(h, name + "[]", 0)
+  if p < 0 { return out }
+  let b = s_index(h, "{", p)
+  let e = s_index(h, "};", b)
+  if b < 0 or e < 0 { return out }
+  var i = b + 1
+  while i < e {
+    if h[i] == 123 {                              # '{' opens a row
+      var j = i + 1
+      while j < e and (h[j] == 32 or h[j] == 9 or h[j] == 10) { j = j + 1 }
+      if h[j] == 34 {
+        var k = j + 1
+        while k < e and h[k] != 34 { k = k + 1 }
+        set_add(out, sslice(h, j + 1, k))
+      }
+    }
+    i = i + 1
+  }
+  return out
+}
+
+# names in a Kotlin `val NAME = setOf( ... )` (parens matched, // comments cut)
+function kotlin_set(text: pointer, name: pointer) -> []pointer {
+  let out = new []pointer
+  let marker = "val " + name + " = setOf("
+  let p = s_index(text, marker, 0)
+  if p < 0 { return out }
+  var i = p + slen(marker)
+  var depth = 1
+  let region_start = i
+  let tn = slen(text)
+  while i < tn and depth > 0 {
+    if text[i] == 40 { depth = depth + 1 }
+    if text[i] == 41 { depth = depth - 1 }
+    if depth == 0 { break }
+    i = i + 1
+  }
+  # collect quoted strings in [region_start, i), skipping //-comments
+  var k = region_start
+  while k < i {
+    if text[k] == 47 and text[k + 1] == 47 {      # '//'
+      while k < i and text[k] != 10 { k = k + 1 }
+    } else { if text[k] == 34 {
+      var e = k + 1
+      while e < i and text[e] != 34 { e = e + 1 }
+      set_add(out, sslice(text, k + 1, e))
+      k = e + 1
+    } else { k = k + 1 } }
+  }
+  return out
+}
+
+# the alternation inside repository.<node>.patterns' first match containing marker
+function grammar_alt(root: JVal, node: pointer, marker: pointer) -> []pointer {
+  let out = new []pointer
+  let pats = j_get(j_get(j_get(root, "repository"), node), "patterns")
+  if pats.t != JV_ARR { return out }
+  var i = 0
+  while i < len(pats.kids) {
+    let m = j_get(pats.kids[i], "match")
+    if m.t == JV_STR and s_contains(m.s, marker) {
+      let op = s_index(m.s, bx3(92, 98, 40), 0)    # \b(
+      if op >= 0 {
+        let cl = s_index(m.s, bx3(41, 92, 98), op)  # )\b
+        if cl >= 0 { return split_pipe(sslice(m.s, op + 3, cl)) }
+      }
+    }
+    i = i + 1
+  }
+  return out
+}
+
+# keywords the self-host parser dispatches on: is_id("x") + streq(t.text, "x")
+function parser_keywords() -> []pointer {
+  let out = new []pointer
+  add_parser_kw(out, "selfhost/frontend/parse.ludic")
+  add_parser_kw(out, "selfhost/frontend/parse_game.ludic")
+  return out
+}
+function add_parser_kw(out: []pointer, path: pointer) -> void {
+  let t = read_file(path)
+  if t == null { return }
+  add_lower(out, collect_after(t, "is_id(" + dq()))
+  add_lower(out, collect_after(t, "streq(t.text, " + dq()))
+}
+function add_lower(out: []pointer, src: []pointer) -> void {
+  var i = 0
+  while i < len(src) { if all_lower(src[i]) { set_add(out, src[i]) };  i = i + 1 }
+}
+
+var CV_PROB: pointer = ""
+var CV_N: int = 0
+function cv_problem(msg: pointer) -> void { CV_PROB = CV_PROB + "  - " + msg + "\n";  CV_N = CV_N + 1 }
+
+# report names in `ref` missing from `other`, and names in `other` not in `ref`
+function cmp_sets(label: pointer, ref: []pointer, other: []pointer, other_label: pointer) -> void {
+  var i = 0
+  while i < len(ref) { if not set_has(other, ref[i]) { cv_problem(other_label + " is missing " + label + ": " + ref[i]) };  i = i + 1 }
+  i = 0
+  while i < len(other) { if not set_has(ref, other[i]) { cv_problem(other_label + " has unknown " + label + ": " + other[i]) };  i = i + 1 }
+}
+
+# union of two sets
+function set_union(a: []pointer, b: []pointer) -> []pointer {
+  let out = new []pointer
+  var i = 0
+  while i < len(a) { set_add(out, a[i]);  i = i + 1 }
+  i = 0
+  while i < len(b) { set_add(out, b[i]);  i = i + 1 }
+  return out
+}
+
+# usage: x check-vocabulary
+function cmd_check_vocab() -> int {
+  CV_PROB = "";  CV_N = 0
+  let h = read_file("tools/ludic-tools/ludic_syntax.h")
+  if h == null { err("check-vocabulary: ludic_syntax.h missing\n");  return 2 }
+  let h_decl = table_set(h, "LUDIC_KW_DECL")
+  let h_clause = table_set(h, "LUDIC_KW_CLAUSE")
+  let h_stmt = table_set(h, "LUDIC_KW_STMT")
+  let h_types = table_set(h, "LUDIC_TYPES")
+  let h_phases = table_set(h, "LUDIC_PHASES")
+  let h_widgets = table_set(h, "LUDIC_WIDGETS")
+  let h_builtins = c_table_names(h, "LUDIC_BUILTINS")
+  let h_intrinsics = c_table_names(h, "LUDIC_INTRINSICS")
+  let h_reserved = table_set(h, "LUDIC_KW_RESERVED")
+
+  # --- against the JetBrains lexer ---
+  let kt = read_file("tools/editors/jetbrains/src/main/kotlin/io/ludic/ide/LudicTokens.kt")
+  if kt != null {
+    cmp_sets("declaration keywords", h_decl, kotlin_set(kt, "DECL"), "LudicTokens.kt")
+    cmp_sets("clause keywords", h_clause, kotlin_set(kt, "CLAUSE"), "LudicTokens.kt")
+    cmp_sets("statement keywords", h_stmt, kotlin_set(kt, "STMT"), "LudicTokens.kt")
+    cmp_sets("primitive types", h_types, kotlin_set(kt, "PRIMITIVES"), "LudicTokens.kt")
+    cmp_sets("phases", h_phases, kotlin_set(kt, "PHASES"), "LudicTokens.kt")
+    cmp_sets("widgets", h_widgets, kotlin_set(kt, "WIDGETS"), "LudicTokens.kt")
+    cmp_sets("builtins", set_union(h_builtins, h_intrinsics), kotlin_set(kt, "BUILTINS"), "LudicTokens.kt")
+  }
+
+  # --- against the TextMate grammar ---
+  let gt = read_file("tools/editors/shared/ludic.tmLanguage.json")
+  if gt != null {
+    let g = json_parse(gt)
+    cmp_sets("builtins", h_builtins, grammar_alt(g, "builtin", "rng_chance"), "ludic.tmLanguage.json")
+    cmp_sets("intrinsics", h_intrinsics, grammar_alt(g, "builtin", "as_fixed"), "ludic.tmLanguage.json")
+    cmp_sets("phases", h_phases, grammar_alt(g, "keyword", "FixedUpdate"), "ludic.tmLanguage.json")
+    cmp_sets("primitive types", h_types, grammar_alt(g, "keyword", "fixed"), "ludic.tmLanguage.json")
+  }
+
+  # --- against the self-host parser ---
+  let pkw = parser_keywords()
+  if len(pkw) == 0 {
+    cv_problem("could not extract any keywords from selfhost/frontend/parse*.ludic")
+  } else {
+    cmp_unparsed("declaration keywords", h_decl, pkw, h_reserved)
+    cmp_unparsed("clause keywords", h_clause, pkw, h_reserved)
+    # reserved words the parser now accepts should be promoted
+    var i = 0
+    while i < len(h_reserved) { if set_has(pkw, h_reserved[i]) { cv_problem("LUDIC_KW_RESERVED lists a keyword the parser now accepts — promote it: " + h_reserved[i]) };  i = i + 1 }
+  }
+
+  if CV_N > 0 {
+    err("vocabulary drift:\n")
+    err(CV_PROB)
+    return 1
+  }
+  return 0
+}
+
+# keywords in `kws` the parser never dispatches on (minus reserved) are a problem
+function cmp_unparsed(label: pointer, kws: []pointer, pkw: []pointer, reserved: []pointer) -> void {
+  var i = 0
+  while i < len(kws) {
+    if not set_has(pkw, kws[i]) {
+      if not set_has(reserved, kws[i]) { cv_problem("ludic_syntax.h lists a " + label + " the selfhost parser never dispatches on: " + kws[i]) }
+    }
+    i = i + 1
+  }
+}
+
+# ============================================================================
+# json/xml asset validation — replaces the python3 json.load / xml.dom checks
+# the editor-toolchain suite used on the shared grammar + plugin assets.
+# ============================================================================
+
+# minimal XML well-formedness: tags balance and nest, quotes respected.
+function xml_valid(text: pointer) -> bool {
+  let n = slen(text)
+  let stack = new []pointer
+  var sp = 0
+  var i = 0
+  while i < n {
+    if text[i] != 60 { i = i + 1;  continue }     # seek '<'
+    if text[i + 1] == 63 {                         # <? ... ?>
+      let e = s_index(text, "?>", i)
+      if e < 0 { return false }
+      i = e + 2;  continue
+    }
+    if text[i + 1] == 33 {                         # <! comment / cdata / doctype
+      if text[i + 2] == 45 and text[i + 3] == 45 {  # <!-- ... -->
+        let e = s_index(text, "-->", i)
+        if e < 0 { return false }
+        i = e + 3;  continue
+      }
+      if s_starts_at(text, i, "<![CDATA[") {        # <![CDATA[ ... ]]>
+        let e = s_index(text, "]]>", i)
+        if e < 0 { return false }
+        i = e + 3;  continue
+      }
+      let e = s_index(text, ">", i)
+      if e < 0 { return false }
+      i = e + 1;  continue
+    }
+    if text[i + 1] == 47 {                         # closing </name>
+      var j = i + 2
+      while j < n and text[j] != 62 and text[j] != 32 and text[j] != 9 and text[j] != 10 { j = j + 1 }
+      let name = sslice(text, i + 2, j)
+      let e = s_index(text, ">", j)
+      if e < 0 { return false }
+      if sp == 0 { return false }
+      if stack[sp - 1] != name { return false }
+      sp = sp - 1
+      i = e + 1;  continue
+    }
+    # opening tag: read the name
+    var j = i + 1
+    while j < n and text[j] != 62 and text[j] != 32 and text[j] != 9 and text[j] != 10 and text[j] != 47 { j = j + 1 }
+    let name = sslice(text, i + 1, j)
+    if slen(name) == 0 { return false }
+    # advance to '>', skipping quoted attribute values
+    var k = j
+    while k < n and text[k] != 62 {
+      if text[k] == 34 { k = k + 1;  while k < n and text[k] != 34 { k = k + 1 } }
+      else { if text[k] == 39 { k = k + 1;  while k < n and text[k] != 39 { k = k + 1 } } }
+      k = k + 1
+    }
+    if k >= n { return false }
+    if text[k - 1] != 47 {                         # not self-closing -> push
+      if sp < len(stack) { stack[sp] = name } else { push(stack, name) }
+      sp = sp + 1
+    }
+    i = k + 1
+  }
+  return sp == 0
+}
+
+# usage: x lint-asset <file>   (validates one .json or .xml editor asset)
+function cmd_lint_asset() -> int {
+  if arg_count() < 3 { err("usage: x lint-asset <file.json|file.xml>\n");  return 2 }
+  let path = arg(2)
+  let t = read_file(path)
+  if t == null { err("lint-asset: cannot read " + path + "\n");  return 1 }
+  if s_index(path, ".json", 0) >= 0 {
+    if json_valid(t) { return 0 }
+    return 1
+  }
+  if s_index(path, ".xml", 0) >= 0 {
+    if xml_valid(t) { return 0 }
+    return 1
+  }
+  err("lint-asset: unknown asset type " + path + "\n")
+  return 2
+}

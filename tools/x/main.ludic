@@ -17,6 +17,8 @@ program X {
   import "tools.ludic"
   import "selfhost_test.ludic"
   import "test.ludic"
+  import "json.ludic"
+  import "checks.ludic"
   import "release.ludic"
 
   function usage() -> void {
@@ -35,6 +37,12 @@ program X {
     print("  x selfhost-test               the self-hosting suite (correctness + bootstrap fixpoints)")
     print("  x test-tools                  the editor-toolchain suite")
     print("  x golden                      regenerate selfhost/golden/renders.sha256 (review with git diff)")
+    print("")
+    print("doc / lint checks (Ludic, no Python):")
+    print("  x check-docs                  every ```ludic doc fence parses (or is marked skip/expect-error)")
+    print("  x check-impl                  every implemented feature has a docs/language page")
+    print("  x check-vocabulary            the vocabulary is in sync across grammar / lexer / header / parser")
+    print("  x lint-asset <file>           validate one editor .json / .xml asset")
     print("")
     print("release:")
     print("  x version                     print the toolchain version (ludicc --version)")
@@ -68,6 +76,10 @@ program X {
     if (cmd == "test") { exit(cmd_test()) }
     if (cmd == "selfhost-test") { exit(cmd_selfhost_test()) }
     if (cmd == "test-tools") { exit(cmd_test_tools()) }
+    if (cmd == "check-docs") { exit(cmd_check_docs()) }
+    if (cmd == "check-impl") { exit(cmd_check_impl()) }
+    if (cmd == "check-vocabulary") { exit(cmd_check_vocab()) }
+    if (cmd == "lint-asset") { exit(cmd_lint_asset()) }
     if (cmd == "golden") { exit(cmd_golden()) }
     if (cmd == "bootstrap") { exit(cmd_bootstrap()) }
     if (cmd == "bootstrap-cfree") { exit(cmd_bootstrap_cfree()) }
