@@ -33,6 +33,7 @@ function selfhost_frags() -> []pointer {
   push(f, "selfhost/emit_noise.ludic")
   push(f, "selfhost/emit_log.ludic")
   push(f, "selfhost/emit_os.ludic")
+  push(f, "selfhost/emit_unicode.ludic")
   push(f, "selfhost/emit_list.ludic")
   push(f, "selfhost/emit_ease.ludic")
   push(f, "selfhost/emit_collide.ludic")

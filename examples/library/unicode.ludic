@@ -1,0 +1,49 @@
+# unicode.ludic — Unicode.* correctness over UTF-8. Byte counting is wrong for
+# non-ASCII, so we assert the code-point / grapheme invariants that must hold:
+# len counts code points not bytes, validation accepts good UTF-8, char access
+# never splits a character, case mapping round-trips, truncate keeps whole
+# characters, and grapheme_len collapses combining marks, ZWJ emoji, and flags.
+# Running it prints: 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18
+program Unicode {
+  entry {
+    # code points vs bytes
+    if Unicode.len("héllo") == 5 { print(1) }
+    if Unicode.byte_len("héllo") == 6 { print(2) }
+    if Unicode.len("abc") == 3 { print(3) }
+
+    # validation of well-formed UTF-8
+    if Unicode.is_valid_utf8("héllo") { print(4) }
+
+    # code-point access by index (é is U+00E9 = 233), out of range -> -1
+    if Unicode.char_at("héllo", 0) == 104 { print(5) }
+    if Unicode.char_at("héllo", 1) == 233 { print(6) }
+    if Unicode.char_at("héllo", 5) < 0 { print(7) }
+
+    # chars() yields every code point in order
+    let cs = Unicode.chars("héllo")
+    if len(cs) == 5 { print(8) }
+    if cs[1] == 233 { print(9) }
+
+    # case mapping (ASCII + Latin-1) round-trips
+    if Unicode.upper("héllo") == "HÉLLO" { print(10) }
+    if Unicode.lower("HÉLLO") == "héllo" { print(11) }
+
+    # truncate keeps whole characters: first 3 code points of "héllo" is "hél"
+    if Unicode.truncate("héllo", 3) == "hél" { print(12) }
+
+    # grapheme clustering: ASCII is one grapheme per code point
+    if Unicode.grapheme_len("abc") == 3 { print(13) }
+
+    # a combining accent joins its base: "café" decomposed is 5 code points but
+    # 4 user-perceived characters
+    if Unicode.grapheme_len("café") == 4 { print(14) }
+    if Unicode.len("café") == 5 { print(15) }
+
+    # a ZWJ emoji sequence (family) is 5 code points but one grapheme
+    if Unicode.grapheme_len("👨‍👩‍👧") == 1 { print(16) }
+    if Unicode.len("👨‍👩‍👧") == 5 { print(17) }
+
+    # a flag is two regional indicators but one grapheme
+    if Unicode.grapheme_len("🇺🇸") == 1 { print(18) }
+  }
+}

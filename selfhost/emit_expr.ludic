@@ -251,6 +251,10 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if is_os_ns(meth) { return emit_os_ns(meth, e) }
     perr(`unknown builtin Os.{meth}`)
   }
+  if (ns == "Unicode") {
+    if is_unicode_ns(meth) { return emit_unicode_ns(meth, e) }
+    perr(`unknown builtin Unicode.{meth}`)
+  }
   if (ns == "Vector") {
     if is_vector_ns(meth) { return emit_vector_ns(meth, e) }
     perr(`unknown builtin Vector.{meth}`)

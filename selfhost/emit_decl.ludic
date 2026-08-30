@@ -109,6 +109,7 @@ function emit_program() -> void {
   if g_uses_noisert { emit_noise_prelude() }     # @fn_noise_value2/perlin2/simplex2/fbm2/cellular2 (Q16.16)
   if g_uses_logrt { emit_log_prelude() }         # @L_log_level + @fn_log_emit (levelled stderr sink)
   if g_uses_osrt { emit_os_prelude() }           # @fn_os_args/platform/arch/save_dir/... (libc env + uname)
+  if g_uses_unicodert { emit_unicode_prelude() } # @fn_uni_len/valid/decode/case/truncate/grapheme (UTF-8)
   if g_uses_datert { emit_datetime_prelude() }   # @fn_days_from_civil / @fn_civil_from_days conversions
 }
 

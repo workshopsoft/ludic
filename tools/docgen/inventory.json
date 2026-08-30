@@ -457,5 +457,16 @@
     "os-config_dir",
     "os-cache_dir",
     "os-temp_dir"
+  ],
+  "unicode": [
+    "unicode-len",
+    "unicode-byte_len",
+    "unicode-is_valid_utf8",
+    "unicode-char_at",
+    "unicode-chars",
+    "unicode-upper",
+    "unicode-lower",
+    "unicode-truncate",
+    "unicode-grapheme_len"
   ]
 }
