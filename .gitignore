@@ -27,3 +27,7 @@ tools/editors/jetbrains/build/
 # macOS Finder metadata
 .DS_Store
 **/.DS_Store
+
+# Python bytecode cache from the docgen / release tooling
+__pycache__/
+*.pyc
