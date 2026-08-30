@@ -1401,6 +1401,41 @@ program LudicLsp {
       if (meth == "delta")   { return "Time.delta() -> fixed" }
       if (meth == "elapsed") { return "Time.elapsed() -> fixed" }
       if (meth == "now")     { return "Time.now() -> int" }
+      if (meth == "since")   { return "Time.since(past) -> int" }
+    }
+    if (ns == "Duration") {
+      if (meth == "seconds")    { return "Duration.seconds(n) -> int" }
+      if (meth == "minutes")    { return "Duration.minutes(n) -> int" }
+      if (meth == "hours")      { return "Duration.hours(n) -> int" }
+      if (meth == "days")       { return "Duration.days(n) -> int" }
+      if (meth == "as_seconds") { return "Duration.as_seconds(span) -> int" }
+      if (meth == "as_minutes") { return "Duration.as_minutes(span) -> int" }
+      if (meth == "as_hours")   { return "Duration.as_hours(span) -> int" }
+      if (meth == "as_days")    { return "Duration.as_days(span) -> int" }
+    }
+    if (ns == "Date") {
+      if (meth == "new")           { return "Date.new(year, month, day) -> int" }
+      if (meth == "year")          { return "Date.year(date) -> int" }
+      if (meth == "month")         { return "Date.month(date) -> int" }
+      if (meth == "day")           { return "Date.day(date) -> int" }
+      if (meth == "weekday")       { return "Date.weekday(date) -> int" }
+      if (meth == "is_leap")       { return "Date.is_leap(year) -> bool" }
+      if (meth == "days_in_month") { return "Date.days_in_month(year, month) -> int" }
+      if (meth == "to_epoch")      { return "Date.to_epoch(date) -> int" }
+      if (meth == "add_days")      { return "Date.add_days(date, n) -> int" }
+      if (meth == "diff_days")     { return "Date.diff_days(a, b) -> int" }
+    }
+    if (ns == "DateTime") {
+      if (meth == "from")    { return "DateTime.from(year, month, day, hour, minute, second) -> int" }
+      if (meth == "date")    { return "DateTime.date(dt) -> int" }
+      if (meth == "add")     { return "DateTime.add(dt, span) -> int" }
+      if (meth == "year")    { return "DateTime.year(dt) -> int" }
+      if (meth == "month")   { return "DateTime.month(dt) -> int" }
+      if (meth == "day")     { return "DateTime.day(dt) -> int" }
+      if (meth == "weekday") { return "DateTime.weekday(dt) -> int" }
+      if (meth == "hour")    { return "DateTime.hour(dt) -> int" }
+      if (meth == "minute")  { return "DateTime.minute(dt) -> int" }
+      if (meth == "second")  { return "DateTime.second(dt) -> int" }
     }
     if (ns == "Memory") {
       if (meth == "bytes") { return "Memory.bytes(n) -> pointer" }

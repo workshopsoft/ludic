@@ -315,7 +315,8 @@
     "time-frame",
     "time-delta",
     "time-elapsed",
-    "time-now"
+    "time-now",
+    "time-since"
   ],
   "types": [
     "type-bool",
@@ -366,5 +367,39 @@
     "vector-rotate",
     "vector-angle",
     "vector-from_angle"
+  ],
+  "duration": [
+    "duration-seconds",
+    "duration-minutes",
+    "duration-hours",
+    "duration-days",
+    "duration-as_seconds",
+    "duration-as_minutes",
+    "duration-as_hours",
+    "duration-as_days"
+  ],
+  "date": [
+    "date-new",
+    "date-year",
+    "date-month",
+    "date-day",
+    "date-weekday",
+    "date-is_leap",
+    "date-days_in_month",
+    "date-to_epoch",
+    "date-add_days",
+    "date-diff_days"
+  ],
+  "datetime": [
+    "datetime-from",
+    "datetime-date",
+    "datetime-add",
+    "datetime-year",
+    "datetime-month",
+    "datetime-day",
+    "datetime-weekday",
+    "datetime-hour",
+    "datetime-minute",
+    "datetime-second"
   ]
 }

@@ -1,0 +1,43 @@
+program T {
+  entry {
+    # Duration — spans in whole seconds
+    print(Duration.hours(3))                          # 10800
+    print(Duration.minutes(5) + Duration.seconds(30)) # 330
+    print(Duration.days(2))                           # 172800
+    print(Duration.as_hours(10800))                   # 3
+    print(Duration.as_days(172800))                   # 2
+
+    # Date — civil day as days-since-1970, round-trips both ways
+    print(Date.new(1970, 1, 1))                       # 0
+    print(Date.new(2000, 1, 1))                       # 10957
+    let d = Date.new(2026, 8, 30)
+    print(Date.year(d))                               # 2026
+    print(Date.month(d))                              # 8
+    print(Date.day(d))                                # 30
+    print(Date.weekday(Date.new(1970, 1, 1)))         # 4  (Thursday)
+    print(Date.weekday(Date.new(2000, 1, 1)))         # 6  (Saturday)
+    print(Date.is_leap(2000))                         # 1
+    print(Date.is_leap(1900))                         # 0
+    print(Date.is_leap(2024))                         # 1
+    print(Date.days_in_month(2024, 2))                # 29 (leap Feb)
+    print(Date.days_in_month(2023, 2))                # 28
+    print(Date.days_in_month(2026, 12))               # 31 (December rollover)
+    let feb = Date.add_days(Date.new(2026, 1, 1), 31)
+    print(Date.month(feb))                            # 2
+    print(Date.day(feb))                              # 1
+    print(Date.diff_days(Date.new(2026, 1, 1), Date.new(2025, 1, 1))) # 365
+
+    # DateTime — instant as seconds-since-1970
+    let t = DateTime.from(2000, 1, 1, 12, 30, 15)
+    print(t)                                          # 946729815
+    print(DateTime.year(t))                           # 2000
+    print(DateTime.month(t))                          # 1
+    print(DateTime.day(t))                            # 1
+    print(DateTime.hour(t))                           # 12
+    print(DateTime.minute(t))                         # 30
+    print(DateTime.second(t))                         # 15
+    print(DateTime.weekday(t))                        # 6
+    print(DateTime.date(t))                           # 10957
+    print(DateTime.hour(DateTime.add(0, Duration.hours(1)))) # 1
+  }
+}

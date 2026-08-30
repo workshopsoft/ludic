@@ -1,0 +1,262 @@
+# emit_datetime.ludic — the calendar/clock half of the stdlib: the Duration.*,
+# Date.* and DateTime.* namespaces (issue #9). Everything is a plain i32 integer
+# epoch, never a float, so it is deterministic and bit-identical on every
+# platform:
+#   Duration — a span in whole seconds (Duration.hours(3) == 10800).
+#   Date     — a civil day, stored as the count of days since 1970-01-01 (UTC),
+#              so Date arithmetic is ordinary integer add/subtract.
+#   DateTime — an instant, stored as the count of seconds since the 1970 epoch
+#              (UTC), matching Time.now().
+# The two civil<->epoch conversions are Howard Hinnant's public-domain algorithms
+# (chrono-compatible, proleptic Gregorian), emitted once per program as the
+# @fn_days_from_civil / @fn_civil_from_days prelude and gated by g_uses_datert.
+# v1 is UTC-only with no leap seconds; instants are assumed non-negative (dates
+# at or after 1970). Timezones, format/parse and a game-controlled simulated
+# clock are tracked follow-ups.
+
+# --- Duration.* — spans in whole seconds -------------------------------------
+function is_duration_ns(meth: pointer) -> bool {
+  if (meth == "seconds") or (meth == "minutes") or (meth == "hours") or (meth == "days") { return true }
+  if (meth == "as_seconds") or (meth == "as_minutes") or (meth == "as_hours") or (meth == "as_days") { return true }
+  return false
+}
+
+function emit_duration_ns(meth: pointer, e: Node) -> Val {
+  let n = emit_expr(e.kids[0])
+  if (meth == "seconds")    { return val(n.code, "int") }                       # already seconds
+  if (meth == "minutes")    { return val(emit_bind(`mul i32 {n.code}, 60`), "int") }
+  if (meth == "hours")      { return val(emit_bind(`mul i32 {n.code}, 3600`), "int") }
+  if (meth == "days")       { return val(emit_bind(`mul i32 {n.code}, 86400`), "int") }
+  if (meth == "as_seconds") { return val(n.code, "int") }
+  if (meth == "as_minutes") { return val(emit_bind(`sdiv i32 {n.code}, 60`), "int") }
+  if (meth == "as_hours")   { return val(emit_bind(`sdiv i32 {n.code}, 3600`), "int") }
+  # as_days: whole days in the span (floor toward zero)
+  return val(emit_bind(`sdiv i32 {n.code}, 86400`), "int")
+}
+
+# --- Date.* — a civil day as days-since-1970 ---------------------------------
+# load one component (0=year, 1=month, 2=day) of the civil date for epoch-day
+# code `ed` by calling the civil_from_days prelude into three stack slots.
+function date_component(ed: pointer, which: int) -> pointer {
+  g_uses_datert = true
+  let yp = emit_alloca("i32")
+  let mp = emit_alloca("i32")
+  let dp = emit_alloca("i32")
+  emit(`  call void @fn_civil_from_days(i32 {ed}, ptr {yp}, ptr {mp}, ptr {dp})\n`)
+  var p = yp
+  if (which == 1) { p = mp }
+  if (which == 2) { p = dp }
+  return emit_bind(`load i32, ptr {p}`)
+}
+
+function is_date_ns(meth: pointer) -> bool {
+  if (meth == "new") or (meth == "year") or (meth == "month") or (meth == "day") { return true }
+  if (meth == "weekday") or (meth == "is_leap") or (meth == "days_in_month") { return true }
+  if (meth == "to_epoch") or (meth == "add_days") or (meth == "diff_days") { return true }
+  return false
+}
+
+function emit_date_ns(meth: pointer, e: Node) -> Val {
+  if (meth == "new") {                              # new(year, month, day) -> Date (epoch-day)
+    g_uses_datert = true
+    let y = emit_expr(e.kids[0]);  let m = emit_expr(e.kids[1]);  let d = emit_expr(e.kids[2])
+    return val(emit_bind(`call i32 @fn_days_from_civil(i32 {y.code}, i32 {m.code}, i32 {d.code})`), "int")
+  }
+  if (meth == "year")  { let ed = emit_expr(e.kids[0]);  return val(date_component(ed.code, 0), "int") }
+  if (meth == "month") { let ed = emit_expr(e.kids[0]);  return val(date_component(ed.code, 1), "int") }
+  if (meth == "day")   { let ed = emit_expr(e.kids[0]);  return val(date_component(ed.code, 2), "int") }
+  if (meth == "weekday") {                          # 0=Sunday .. 6=Saturday (1970-01-01 was Thursday)
+    let ed = emit_expr(e.kids[0])
+    let s = emit_bind(`add i32 {ed.code}, 4`)       # shift so the epoch's Thursday lands right
+    let r = emit_bind(`srem i32 {s}, 7`)
+    let rr = emit_bind(`add i32 {r}, 7`)            # normalise a negative remainder into [0,7)
+    return val(emit_bind(`srem i32 {rr}, 7`), "int")
+  }
+  if (meth == "is_leap") {                          # proleptic Gregorian leap-year test
+    let y = emit_expr(e.kids[0])
+    let m4 = emit_bind(`srem i32 {y.code}, 4`);    let c4 = emit_bind(`icmp eq i32 {m4}, 0`)
+    let m100 = emit_bind(`srem i32 {y.code}, 100`); let c100 = emit_bind(`icmp ne i32 {m100}, 0`)
+    let m400 = emit_bind(`srem i32 {y.code}, 400`); let c400 = emit_bind(`icmp eq i32 {m400}, 0`)
+    let common = emit_bind(`and i1 {c4}, {c100}`)   # divisible by 4 but not by 100
+    let leap = emit_bind(`or i1 {common}, {c400}`)  # ...or divisible by 400
+    return val(emit_bind(`zext i1 {leap} to i32`), "bool")
+  }
+  if (meth == "days_in_month") {                    # length of (year, month) = next month's day 0
+    g_uses_datert = true
+    let y = emit_expr(e.kids[0]);  let m = emit_expr(e.kids[1])
+    let this = emit_bind(`call i32 @fn_days_from_civil(i32 {y.code}, i32 {m.code}, i32 1)`)
+    let dec = emit_bind(`icmp eq i32 {m.code}, 12`) # December rolls over to next January
+    let ny = emit_bind(`add i32 {y.code}, 1`)
+    let ny2 = emit_bind(`select i1 {dec}, i32 {ny}, i32 {y.code}`)
+    let nm = emit_bind(`add i32 {m.code}, 1`)
+    let nm2 = emit_bind(`select i1 {dec}, i32 1, i32 {nm}`)
+    let next = emit_bind(`call i32 @fn_days_from_civil(i32 {ny2}, i32 {nm2}, i32 1)`)
+    return val(emit_bind(`sub i32 {next}, {this}`), "int")
+  }
+  if (meth == "to_epoch") {                         # midnight UTC of the day, as a DateTime instant
+    let ed = emit_expr(e.kids[0])
+    return val(emit_bind(`mul i32 {ed.code}, 86400`), "int")
+  }
+  if (meth == "add_days") {                         # the day `n` days after `ed`
+    let ed = emit_expr(e.kids[0]);  let n = emit_expr(e.kids[1])
+    return val(emit_bind(`add i32 {ed.code}, {n.code}`), "int")
+  }
+  # diff_days(a, b) -> whole days from b to a (a - b)
+  let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1])
+  return val(emit_bind(`sub i32 {a.code}, {b.code}`), "int")
+}
+
+# --- DateTime.* — an instant as seconds-since-1970 ---------------------------
+# seconds-of-day for instant `t`, normalised into [0, 86400) even for a negative
+# instant, so hour/minute/second stay correct.
+function dt_secofday(t: pointer) -> pointer {
+  let r = emit_bind(`srem i32 {t}, 86400`)
+  let rr = emit_bind(`add i32 {r}, 86400`)
+  return emit_bind(`srem i32 {rr}, 86400`)
+}
+
+# the epoch-day (floored) an instant falls on: floor(t / 86400).
+function dt_epochday(t: pointer) -> pointer {
+  let sod = dt_secofday(t)                          # t - sod is an exact multiple of 86400
+  let base = emit_bind(`sub i32 {t}, {sod}`)
+  return emit_bind(`sdiv i32 {base}, 86400`)
+}
+
+function is_datetime_ns(meth: pointer) -> bool {
+  if (meth == "from") or (meth == "date") or (meth == "add") { return true }
+  if (meth == "year") or (meth == "month") or (meth == "day") or (meth == "weekday") { return true }
+  if (meth == "hour") or (meth == "minute") or (meth == "second") { return true }
+  return false
+}
+
+function emit_datetime_ns(meth: pointer, e: Node) -> Val {
+  if (meth == "from") {                             # from(year, month, day, hour, minute, second) -> DateTime
+    g_uses_datert = true
+    let y = emit_expr(e.kids[0]);  let mo = emit_expr(e.kids[1]);  let d = emit_expr(e.kids[2])
+    let h = emit_expr(e.kids[3]);  let mi = emit_expr(e.kids[4]);  let s = emit_expr(e.kids[5])
+    let ed = emit_bind(`call i32 @fn_days_from_civil(i32 {y.code}, i32 {mo.code}, i32 {d.code})`)
+    let days = emit_bind(`mul i32 {ed}, 86400`)
+    let hh = emit_bind(`mul i32 {h.code}, 3600`)
+    let mm = emit_bind(`mul i32 {mi.code}, 60`)
+    let a = emit_bind(`add i32 {days}, {hh}`)
+    let b = emit_bind(`add i32 {a}, {mm}`)
+    return val(emit_bind(`add i32 {b}, {s.code}`), "int")
+  }
+  if (meth == "date") {                             # the calendar day this instant is on -> Date
+    let t = emit_expr(e.kids[0])
+    return val(dt_epochday(t.code), "int")
+  }
+  if (meth == "add") {                              # the instant `dur` seconds after `t`
+    let t = emit_expr(e.kids[0]);  let dur = emit_expr(e.kids[1])
+    return val(emit_bind(`add i32 {t.code}, {dur.code}`), "int")
+  }
+  if (meth == "year")  { let t = emit_expr(e.kids[0]);  return val(date_component(dt_epochday(t.code), 0), "int") }
+  if (meth == "month") { let t = emit_expr(e.kids[0]);  return val(date_component(dt_epochday(t.code), 1), "int") }
+  if (meth == "day")   { let t = emit_expr(e.kids[0]);  return val(date_component(dt_epochday(t.code), 2), "int") }
+  if (meth == "weekday") {                          # 0=Sunday .. 6=Saturday
+    let t = emit_expr(e.kids[0])
+    let ed = dt_epochday(t.code)
+    let s = emit_bind(`add i32 {ed}, 4`)
+    let r = emit_bind(`srem i32 {s}, 7`)
+    let rr = emit_bind(`add i32 {r}, 7`)
+    return val(emit_bind(`srem i32 {rr}, 7`), "int")
+  }
+  if (meth == "hour") {                             # 0..23
+    let t = emit_expr(e.kids[0])
+    let sod = dt_secofday(t.code)
+    return val(emit_bind(`sdiv i32 {sod}, 3600`), "int")
+  }
+  if (meth == "minute") {                           # 0..59
+    let t = emit_expr(e.kids[0])
+    let sod = dt_secofday(t.code)
+    let h = emit_bind(`srem i32 {sod}, 3600`)
+    return val(emit_bind(`sdiv i32 {h}, 60`), "int")
+  }
+  # second: 0..59
+  let t = emit_expr(e.kids[0])
+  let sod = dt_secofday(t.code)
+  return val(emit_bind(`srem i32 {sod}, 60`), "int")
+}
+
+# emit_datetime_prelude — the two civil<->epoch conversions, emitted once per
+# program that uses Date/DateTime (g_uses_datert). Both are Howard Hinnant's
+# public-domain proleptic-Gregorian algorithms, in pure i32 integer IR, so they
+# are deterministic and bit-identical everywhere. 719468 is the day count from
+# 0000-03-01 to 1970-01-01; 146097 is the days in a 400-year era.
+function emit_datetime_prelude() -> void {
+  # @fn_days_from_civil(y, m, d) -> days since 1970-01-01
+  emith("define i32 @fn_days_from_civil(i32 %y0, i32 %m, i32 %d) {\n")
+  emith("  %mle2 = icmp sle i32 %m, 2\n")
+  emith("  %ysub = select i1 %mle2, i32 1, i32 0\n")
+  emith("  %y = sub i32 %y0, %ysub\n")
+  emith("  %yneg = icmp slt i32 %y, 0\n")
+  emith("  %ym399 = sub i32 %y, 399\n")
+  emith("  %enum = select i1 %yneg, i32 %ym399, i32 %y\n")
+  emith("  %era = sdiv i32 %enum, 400\n")
+  emith("  %era400 = mul i32 %era, 400\n")
+  emith("  %yoe = sub i32 %y, %era400\n")
+  emith("  %mgt2 = icmp sgt i32 %m, 2\n")
+  emith("  %mshift = select i1 %mgt2, i32 -3, i32 9\n")
+  emith("  %mm = add i32 %m, %mshift\n")
+  emith("  %t153 = mul i32 153, %mm\n")
+  emith("  %t153b = add i32 %t153, 2\n")
+  emith("  %doy0 = sdiv i32 %t153b, 5\n")
+  emith("  %doy1 = add i32 %doy0, %d\n")
+  emith("  %doy = sub i32 %doy1, 1\n")
+  emith("  %yoe365 = mul i32 %yoe, 365\n")
+  emith("  %yoe4 = sdiv i32 %yoe, 4\n")
+  emith("  %yoe100 = sdiv i32 %yoe, 100\n")
+  emith("  %doe0 = add i32 %yoe365, %yoe4\n")
+  emith("  %doe1 = sub i32 %doe0, %yoe100\n")
+  emith("  %doe = add i32 %doe1, %doy\n")
+  emith("  %e146097 = mul i32 %era, 146097\n")
+  emith("  %r0 = add i32 %e146097, %doe\n")
+  emith("  %r = sub i32 %r0, 719468\n")
+  emith("  ret i32 %r\n")
+  emith("}\n")
+  # @fn_civil_from_days(z0, yp, mp, dp): write the civil (year, month, day) of
+  # the epoch-day z0 through the three out-pointers.
+  emith("define void @fn_civil_from_days(i32 %z0, ptr %yp, ptr %mp, ptr %dp) {\n")
+  emith("  %z = add i32 %z0, 719468\n")
+  emith("  %zneg = icmp slt i32 %z, 0\n")
+  emith("  %zm = sub i32 %z, 146096\n")
+  emith("  %enum = select i1 %zneg, i32 %zm, i32 %z\n")
+  emith("  %era = sdiv i32 %enum, 146097\n")
+  emith("  %era146097 = mul i32 %era, 146097\n")
+  emith("  %doe = sub i32 %z, %era146097\n")
+  emith("  %d1460 = sdiv i32 %doe, 1460\n")
+  emith("  %d36524 = sdiv i32 %doe, 36524\n")
+  emith("  %d146096 = sdiv i32 %doe, 146096\n")
+  emith("  %ya = sub i32 %doe, %d1460\n")
+  emith("  %yb = add i32 %ya, %d36524\n")
+  emith("  %yc = sub i32 %yb, %d146096\n")
+  emith("  %yoe = sdiv i32 %yc, 365\n")
+  emith("  %era400 = mul i32 %era, 400\n")
+  emith("  %yy = add i32 %yoe, %era400\n")
+  emith("  %yoe365 = mul i32 %yoe, 365\n")
+  emith("  %yoe4 = sdiv i32 %yoe, 4\n")
+  emith("  %yoe100 = sdiv i32 %yoe, 100\n")
+  emith("  %sub0 = add i32 %yoe365, %yoe4\n")
+  emith("  %sub1 = sub i32 %sub0, %yoe100\n")
+  emith("  %doy = sub i32 %doe, %sub1\n")
+  emith("  %fivedoy = mul i32 5, %doy\n")
+  emith("  %fivedoy2 = add i32 %fivedoy, 2\n")
+  emith("  %mpv = sdiv i32 %fivedoy2, 153\n")
+  emith("  %m153 = mul i32 153, %mpv\n")
+  emith("  %m153b = add i32 %m153, 2\n")
+  emith("  %m153c = sdiv i32 %m153b, 5\n")
+  emith("  %dd0 = sub i32 %doy, %m153c\n")
+  emith("  %dd = add i32 %dd0, 1\n")
+  emith("  %mplt10 = icmp slt i32 %mpv, 10\n")
+  emith("  %mplus3 = add i32 %mpv, 3\n")
+  emith("  %mminus9 = sub i32 %mpv, 9\n")
+  emith("  %mfin = select i1 %mplt10, i32 %mplus3, i32 %mminus9\n")
+  emith("  %mmle2 = icmp sle i32 %mfin, 2\n")
+  emith("  %yinc = select i1 %mmle2, i32 1, i32 0\n")
+  emith("  %yfin = add i32 %yy, %yinc\n")
+  emith("  store i32 %yfin, ptr %yp\n")
+  emith("  store i32 %mfin, ptr %mp\n")
+  emith("  store i32 %dd, ptr %dp\n")
+  emith("  ret void\n")
+  emith("}\n")
+}

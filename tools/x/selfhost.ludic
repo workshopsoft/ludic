@@ -33,6 +33,7 @@ function selfhost_frags() -> []pointer {
   push(f, "selfhost/emit_collide.ludic")
   push(f, "selfhost/emit_mem.ludic")
   push(f, "selfhost/emit_time.ludic")
+  push(f, "selfhost/emit_datetime.ludic")
   push(f, "selfhost/emit_colorfn.ludic")
   push(f, "selfhost/emit_color.ludic")
   push(f, "selfhost/emit_new.ludic")

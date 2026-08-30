@@ -5,6 +5,7 @@
 
 function is_time_ns(meth: pointer) -> bool {
   if (meth == "frame") or (meth == "delta") or (meth == "elapsed") or (meth == "now") { return true }
+  if (meth == "since") { return true }
   return false
 }
 
@@ -18,6 +19,12 @@ function emit_time_ns(meth: pointer, e: Node) -> Val {
   if (meth == "elapsed") {                          # seconds since start = frame / 60 (fixed)
     let f = emit_bind("load i32, ptr @L_frame")
     return val(emit_bind(`mul i32 {f}, 1092`), "fixed")
+  }
+  if (meth == "since") {                            # seconds elapsed from a past instant to now
+    let past = emit_expr(e.kids[0])                 # NON-DETERMINISTIC (reads the wall clock)
+    let nw = emit_bind("call i64 @time(ptr null)")
+    let n32 = emit_bind(`trunc i64 {nw} to i32`)
+    return val(emit_bind(`sub i32 {n32}, {past.code}`), "int")
   }
   # now: wall-clock seconds since the epoch — NON-DETERMINISTIC, for seeding /
   # telemetry only, never the lockstep simulation.
