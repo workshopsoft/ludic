@@ -1,0 +1,76 @@
+# ============================================================================
+# query.ludic — ECS spatial queries over the reflection ABI, in Ludic.
+#
+# The Query.* namespace (see emit_call.ludic) answers questions about the live
+# entities that carry a given property: how many, the first, the nearest to a
+# point, and every one inside a radius. `prop` is a property id from
+# World.prop_id("Name"); the spatial forms read two int fields of that property
+# (field ids from World.field_id) as an (x, y) position. Everything is integer
+# and deterministic — same world + same query reproduce the same answer, entity
+# order included, every run.
+#
+# ludicc splices this file into a game when it sees Query.* (parse.ludic), and
+# force-emits the reflection ABI it stands on (emit_decl.ludic) so a game that
+# uses Query needs no @events of its own. The scan is linear over the entity
+# table — ample for the entity counts Ludic targets, exactly like the grid
+# pathfinder's open set — and allocates nothing except the one result slice
+# `within` returns. world_query_next / world_get are the bare reflection
+# builtins (they lower to the generated @ludic_query_next / @ludic_get).
+# ============================================================================
+
+# how many live entities carry `prop`.
+function query_count(prop: int) -> int {
+  var n = 0
+  var e = world_query_next(prop, 0)
+  while e >= 0 {
+    n = n + 1
+    e = world_query_next(prop, e + 1)
+  }
+  return n
+}
+
+# the first (lowest-id) live entity carrying `prop`, or -1 if none.
+function query_first(prop: int) -> int {
+  return world_query_next(prop, 0)
+}
+
+# the entity carrying `prop` whose position is closest to (px, py) by squared
+# distance, or -1 if none. Ties go to the lower entity id. The position is read
+# from `pos` — the property that holds the coordinates — at its (x_field,
+# y_field); pass the same id for `prop` and `pos` to query by the position
+# component itself, or a separate tag for `prop` (e.g. "nearest Enemy").
+function query_nearest(prop: int, pos: int, x_field: int, y_field: int, px: int, py: int) -> int {
+  var best = 0 - 1
+  var bestd = 0
+  var e = world_query_next(prop, 0)
+  while e >= 0 {
+    let dx = world_get(e, pos, x_field) - px
+    let dy = world_get(e, pos, y_field) - py
+    let d = dx * dx + dy * dy
+    if best < 0 or d < bestd {
+      best = e
+      bestd = d
+    }
+    e = world_query_next(prop, e + 1)
+  }
+  return best
+}
+
+# every live entity carrying `prop` whose position is within `radius` of
+# (px, py), in ascending entity-id order. Returns a []int of entity ids — index
+# it with len / [i]. The boundary is inclusive (distance <= radius). Position is
+# read from `pos` at (x_field, y_field), as in query_nearest.
+function query_within(prop: int, pos: int, px: int, py: int, radius: int, x_field: int, y_field: int) -> []int {
+  let out = new []int
+  let r2 = radius * radius
+  var e = world_query_next(prop, 0)
+  while e >= 0 {
+    let dx = world_get(e, pos, x_field) - px
+    let dy = world_get(e, pos, y_field) - py
+    if dx * dx + dy * dy <= r2 {
+      push(out, e)
+    }
+    e = world_query_next(prop, e + 1)
+  }
+  return out
+}

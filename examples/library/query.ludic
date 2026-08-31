@@ -1,0 +1,60 @@
+# query.ludic — Query.* ECS spatial queries: count / first / nearest / within
+# over the live entities that carry a property, reading two int fields as (x, y).
+# Five entities are spawned at known positions; each assertion that holds prints
+# its number, so a full run prints:
+#   1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18
+# Deterministic: the same world reproduces the same answers (and within's entity
+# order) every run. Ghost/Phantom are declared but never spawned — the empty
+# case (count 0, first/nearest -1, within []).
+program Query {
+  property Position { col: int = 0, row: int = 0 }
+  property Kind { tag: int = 0 }
+  property Ghost { g: int = 0 }
+  model Mob { Position, Kind }
+  model Rock { Position }
+  model Phantom { Ghost }
+
+  entry {
+    spawn Mob  { Position { col: 0,  row: 0  }, Kind { tag: 1 } }   # e0
+    spawn Mob  { Position { col: 10, row: 0  }, Kind { tag: 1 } }   # e1
+    spawn Mob  { Position { col: 3,  row: 4  }, Kind { tag: 1 } }   # e2
+    spawn Rock { Position { col: 1,  row: 1  } }                    # e3
+    spawn Rock { Position { col: 20, row: 20 } }                    # e4
+
+    let P  = World.prop_id("Position")
+    let cx = World.field_id(P, "col")
+    let cy = World.field_id(P, "row")
+    let K  = World.prop_id("Kind")
+    let G  = World.prop_id("Ghost")
+
+    # --- count: filter by which property an entity carries ---
+    if Query.count(P) == 5 { print(1) }             # all five have Position
+    if Query.count(K) == 3 { print(2) }             # only the three Mobs
+    if Query.count(G) == 0 { print(3) }             # nothing has Ghost
+
+    # --- first: lowest-id bearer (or -1) ---
+    if World.get(Query.first(K), P, cx) == 0 { print(4) }   # first Mob is e0 at col 0
+    if Query.first(G) < 0                    { print(5) }   # none -> -1
+    if World.get(Query.first(P), P, cx) == 0 { print(6) }   # first bearer is e0
+
+    # --- nearest: closest bearer to a point by squared distance. `prop` filters,
+    #     `pos` (here Position) supplies the coordinates. ---
+    let n0 = Query.nearest(P, P, cx, cy, 0, 0)
+    if World.get(n0, P, cx) == 0 { print(7) }
+    if World.get(n0, P, cy) == 0 { print(8) }
+    if World.get(Query.nearest(P, P, cx, cy, 11, 0), P, cx) == 10 { print(9) }   # e1
+    if World.get(Query.nearest(K, P, cx, cy, 9,  0), P, cx) == 10 { print(10) }  # nearest Mob (filter K, pos P)
+    if Query.nearest(G, P, cx, cy, 0, 0) < 0 { print(11) }                       # none -> -1
+
+    # --- within: every bearer inside a radius, ascending entity id ---
+    if len(Query.within(P, P, 0, 0, 5,  cx, cy)) == 3 { print(12) }   # e0, e2, e3
+    if len(Query.within(P, P, 0, 0, 50, cx, cy)) == 5 { print(13) }   # everyone
+    let near0 = Query.within(P, P, 0, 0, 0, cx, cy)
+    if len(near0) == 1 { print(14) }                                  # only e0 at (0,0)
+    if World.get(near0[0], P, cx) == 0 { print(15) }                  # and it is e0
+    if len(Query.within(G, P, 0, 0, 100, cx, cy)) == 0 { print(16) } # empty
+    if len(Query.within(K, P, 0, 0, 6, cx, cy)) == 2 { print(17) }   # Mobs e0, e2 (filter K, pos P)
+
+    if World.get(Query.nearest(P, P, cx, cy, 20, 20), P, cx) == 20 { print(18) }  # e4
+  }
+}

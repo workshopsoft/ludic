@@ -223,6 +223,17 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "flood")         { bare = "grid_flood";         push(labels, "x"); push(labels, "y"); push(labels, "wall") }
     if (meth == "a_star")        { bare = "path_a_star";        push(labels, "x0"); push(labels, "y0"); push(labels, "x1"); push(labels, "y1"); push(labels, "wall") }
   }
+  # Query.* — ECS spatial queries over the reflection ABI (runtime/native/query.ludic,
+  # spliced on demand). `prop` is a property id (World.prop_id); the spatial forms
+  # read two int fields (field ids) as (x, y). nearest/first return an entity (-1 =
+  # none); within returns a []int of entities. A linear scan — ample for the entity
+  # counts Ludic targets, like the grid pathfinder's open set.
+  if (ns == "Query") {
+    if (meth == "count")   { bare = "query_count";   push(labels, "prop") }
+    if (meth == "first")   { bare = "query_first";   push(labels, "prop") }
+    if (meth == "nearest") { bare = "query_nearest"; push(labels, "prop"); push(labels, "pos"); push(labels, "x_field"); push(labels, "y_field"); push(labels, "x"); push(labels, "y") }
+    if (meth == "within")  { bare = "query_within";  push(labels, "prop"); push(labels, "pos"); push(labels, "x"); push(labels, "y"); push(labels, "radius"); push(labels, "x_field"); push(labels, "y_field") }
+  }
   if (bare == null) { perr(`unknown builtin {ns}.{meth}`) }
   reorder_named(e, labels)
   let id = node(E_ID); id.s = bare; e.a = id
