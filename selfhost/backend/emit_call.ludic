@@ -190,6 +190,31 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "pressed") { bare = "input_pressed" }
     if (meth == "record")  { bare = "input_record" }
     if (meth == "replay")  { bare = "input_replay" }
+    # device layer (#50): multi-key held state, analog axes/vectors, mouse,
+    # gamepads, touch — reached as ordinary @fn_input_* calls into input.ludic.
+    if (meth == "key_down")     { bare = "input_key_down";     push(labels, "key") }
+    if (meth == "key_pressed")  { bare = "input_key_pressed";  push(labels, "key") }
+    if (meth == "key_released") { bare = "input_key_released"; push(labels, "key") }
+    if (meth == "press")        { bare = "input_press";        push(labels, "key") }
+    if (meth == "release")      { bare = "input_release";      push(labels, "key") }
+    if (meth == "axis")         { bare = "input_axis";         push(labels, "neg"); push(labels, "pos") }
+    if (meth == "vector")       { bare = "input_vector";       push(labels, "left"); push(labels, "right"); push(labels, "up"); push(labels, "down") }
+    if (meth == "strength")     { bare = "input_strength";     push(labels, "action") }
+    if (meth == "mouse_x")      { bare = "input_mouse_x" }
+    if (meth == "mouse_y")      { bare = "input_mouse_y" }
+    if (meth == "mouse_dx")     { bare = "input_mouse_dx" }
+    if (meth == "mouse_dy")     { bare = "input_mouse_dy" }
+    if (meth == "mouse_down")   { bare = "input_mouse_down";   push(labels, "button") }
+    if (meth == "wheel")        { bare = "input_wheel" }
+    if (meth == "set_mouse")    { bare = "input_set_mouse";    push(labels, "x"); push(labels, "y"); push(labels, "buttons"); push(labels, "wheel") }
+    if (meth == "pad_connected"){ bare = "input_pad_connected"; push(labels, "pad") }
+    if (meth == "pad_button")   { bare = "input_pad_button";   push(labels, "pad"); push(labels, "button") }
+    if (meth == "pad_axis")     { bare = "input_pad_axis";     push(labels, "pad"); push(labels, "axis") }
+    if (meth == "set_pad")      { bare = "input_set_pad";      push(labels, "pad"); push(labels, "connected"); push(labels, "buttons"); push(labels, "lx"); push(labels, "ly"); push(labels, "rx"); push(labels, "ry") }
+    if (meth == "touch_count")  { bare = "input_touch_count" }
+    if (meth == "touch_x")      { bare = "input_touch_x";      push(labels, "index") }
+    if (meth == "touch_y")      { bare = "input_touch_y";      push(labels, "index") }
+    if (meth == "set_touch")    { bare = "input_set_touch";    push(labels, "index"); push(labels, "x"); push(labels, "y"); push(labels, "active") }
   }
   # Phase 3: the bare reflection / networking / process builtins, namespaced.
   # Each is a pure alias — the callee is rewritten to the bare name below.

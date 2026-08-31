@@ -63,6 +63,8 @@ function emit_header() -> void {
   emith("declare void @win_present(ptr, i32, i32)\n")
   emith("declare i32 @win_running()\n")
   emith("declare void @win_close()\n")
+  emith("declare void @win_held(ptr)\n")
+  emith("declare void @win_mouse(ptr)\n")
   emith("@__stderrp = external global ptr\n")
   emith("@__stdoutp = external global ptr\n")
   emith("@.fmt_int = private unnamed_addr constant [4 x i8] c\"%d\\0A\\00\"\n")

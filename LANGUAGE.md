@@ -313,6 +313,17 @@ read the actions sit on — which is what makes **deterministic replay** fall ou
 the tape back, so a run reproduces exactly (the seed of lockstep netcode). All
 integer and deterministic. See `examples/library/input_actions.ludic`.
 
+A **device layer** sits over this for input past one key per frame: multiple
+simultaneous held keys (`Input.key_down` / `key_pressed` / `key_released`),
+analog `Input.axis(neg, pos)` and a normalized `Input.vector(l, r, u, d)`, the
+mouse (`Input.mouse_x/y`, `mouse_dx/dy`, `mouse_down`, `wheel`), gamepads
+(`Input.pad_button` / `pad_axis` / `pad_connected`) and touch
+(`Input.touch_count` / `touch_x/y`). The held set is fed by the window when
+windowed, and by the `Input.press` / `Input.set_mouse` / `Input.set_pad` /
+`Input.set_touch` injection on every target — Godot-style action injection for
+replays, AI and network-fed input — and record/replay snapshots the whole
+per-frame state. See `examples/library/input_device.ludic`.
+
 Everything is integer and deterministic (the frame clock ticks at a fixed 60/s),
 so animation, motion and lighting reproduce exactly under replay and lockstep
 netcode. See `examples/library/anim_ecs.ludic` and `examples/library/light_ecs.ludic`.

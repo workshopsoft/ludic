@@ -255,6 +255,7 @@ function cmd_test() -> int {
   # #7: action maps (read named actions, not keys), runtime rebinding, and
   # deterministic input record/replay — fed one key per poll from stdin.
   feat_case("library/input_actions", "  xwa", "1 0 1 1 0 1 0", "input_actions.ludic (#7 action maps + rebinding + deterministic replay)")
+  feat_case("library/input_device", "", "1 1 0 1 0 1 71 -71 5 1 3 1 2 1 0 0 1", "input_device.ludic (#50 multi-key held state + analog axis/vector + mouse + gamepad/touch + full-state replay)")
 
   feat_case("events/recurse", "", "16", "recurse.ludic (EV6: re-entrant emit is depth-bounded, no runaway cycle)")
   net_case("events/scoped", "2")

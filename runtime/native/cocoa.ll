@@ -69,6 +69,8 @@ declare i32 @usleep(i32)
 @.s_chars  = private unnamed_addr constant [28 x i8] c"charactersIgnoringModifiers\00"
 @.s_length = private unnamed_addr constant [7 x i8]  c"length\00"
 @.s_charat = private unnamed_addr constant [18 x i8] c"characterAtIndex:\00"
+@.s_locwin = private unnamed_addr constant [17 x i8] c"locationInWindow\00"
+@.s_scrly  = private unnamed_addr constant [16 x i8] c"scrollingDeltaY\00"
 @.s_disp   = private unnamed_addr constant [8 x i8]  c"display\00"
 @.s_visib  = private unnamed_addr constant [10 x i8] c"isVisible\00"
 @.s_curctx = private unnamed_addr constant [15 x i8] c"currentContext\00"
@@ -88,6 +90,13 @@ declare i32 @usleep(i32)
 @W_scale   = internal global i32 3
 @W_key     = internal global i32 0
 @W_running = internal global i32 1
+; #50 device layer — a 256-bit held-key set (8 i32) tracked from keyDown/keyUp,
+; and the mouse state (position, button mask, per-frame wheel delta).
+@W_held    = internal global [8 x i32] zeroinitializer
+@W_mx      = internal global i32 0
+@W_my      = internal global i32 0
+@W_mbtn    = internal global i32 0
+@W_wheel   = internal global i32 0
 
 ; -drawRect: — blit the framebuffer into the view.
 ; The NSRect argument is ignored, so it never appears in this signature.
@@ -209,8 +218,76 @@ entry:
   ret void
 }
 
+; #50 — set (%on != 0) or clear a key's bit in the 256-bit held set @W_held.
+define void @win_held_bit(i32 %k, i32 %on) {
+entry:
+  %lo = icmp slt i32 %k, 0
+  %hi = icmp sgt i32 %k, 255
+  %oob = or i1 %lo, %hi
+  br i1 %oob, label %ret, label %go
+go:
+  %w = ashr i32 %k, 5
+  %b = and i32 %k, 31
+  %m = shl i32 1, %b
+  %p = getelementptr [8 x i32], ptr @W_held, i32 0, i32 %w
+  %cur = load i32, ptr %p
+  %onb = icmp ne i32 %on, 0
+  br i1 %onb, label %set, label %clr
+set:
+  %sv = or i32 %cur, %m
+  store i32 %sv, ptr %p
+  br label %ret
+clr:
+  %nm = xor i32 %m, -1
+  %cv = and i32 %cur, %nm
+  store i32 %cv, ptr %p
+  br label %ret
+ret:
+  ret void
+}
+
+; #50 — the ASCII value an NSEvent key event maps to (same mapping as win_poll's
+; keyDown switch: arrows -> WASD, return, escape -> 'q', else the first character).
+define i32 @ev_keyval(ptr %ev) {
+entry:
+  %sel_kc = call ptr @sel_registerName(ptr @.s_keycd)
+  %kc = call i16 (ptr, ptr) @objc_msgSend(ptr %ev, ptr %sel_kc)
+  %kc32 = zext i16 %kc to i32
+  switch i32 %kc32, label %chars [
+    i32 126, label %vw
+    i32 125, label %vs
+    i32 123, label %va
+    i32 124, label %vd
+    i32 49,  label %vspace
+    i32 36,  label %vret
+    i32 53,  label %vesc
+  ]
+vw:     ret i32 119
+vs:     ret i32 115
+va:     ret i32 97
+vd:     ret i32 100
+vspace: ret i32 32
+vret:   ret i32 10
+vesc:   ret i32 113
+chars:
+  %sel_ch = call ptr @sel_registerName(ptr @.s_chars)
+  %sel_len = call ptr @sel_registerName(ptr @.s_length)
+  %sel_cat = call ptr @sel_registerName(ptr @.s_charat)
+  %s = call ptr (ptr, ptr) @objc_msgSend(ptr %ev, ptr %sel_ch)
+  %cl = call i64 (ptr, ptr) @objc_msgSend(ptr %s, ptr %sel_len)
+  %has = icmp sgt i64 %cl, 0
+  br i1 %has, label %take, label %none
+take:
+  %c = call i16 (ptr, ptr, i64) @objc_msgSend(ptr %s, ptr %sel_cat, i64 0)
+  %c32 = zext i16 %c to i32
+  ret i32 %c32
+none:
+  ret i32 0
+}
+
 ; Drain the event queue, remembering the last key pressed. Arrow keys map onto
-; WASD and escape onto 'q', matching what the C backend did.
+; WASD and escape onto 'q', matching what the C backend did. #50: also track the
+; held-key set (keyDown/keyUp) and the mouse (buttons, position, wheel).
 define i32 @win_poll() {
 entry:
   store i32 0, ptr @W_key
@@ -239,8 +316,60 @@ pump:
 handle:
   %ty = call i64 (ptr, ptr) @objc_msgSend(ptr %ev, ptr %sel_type)
   %iskey = icmp eq i64 %ty, 10                 ; NSEventTypeKeyDown
-  br i1 %iskey, label %key, label %forward
+  br i1 %iskey, label %key, label %notkey
+notkey:
+  %isup = icmp eq i64 %ty, 11                  ; NSEventTypeKeyUp
+  br i1 %isup, label %keyup, label %mouse
+keyup:                                          ; #50 — release the held key
+  %uv = call i32 @ev_keyval(ptr %ev)
+  call void @win_held_bit(i32 %uv, i32 0)
+  br label %forward
+mouse:                                          ; #50 — mouse buttons + wheel
+  %ml_d = icmp eq i64 %ty, 1                    ; NSEventTypeLeftMouseDown
+  br i1 %ml_d, label %lset, label %ml_u
+lset:
+  %lb = load i32, ptr @W_mbtn
+  %lb2 = or i32 %lb, 1
+  store i32 %lb2, ptr @W_mbtn
+  br label %forward
+ml_u:
+  %ml_up = icmp eq i64 %ty, 2                   ; NSEventTypeLeftMouseUp
+  br i1 %ml_up, label %lclr, label %mr_d
+lclr:
+  %lc = load i32, ptr @W_mbtn
+  %lc2 = and i32 %lc, -2
+  store i32 %lc2, ptr @W_mbtn
+  br label %forward
+mr_d:
+  %mrd = icmp eq i64 %ty, 3                     ; NSEventTypeRightMouseDown
+  br i1 %mrd, label %rset, label %mr_u
+rset:
+  %rb = load i32, ptr @W_mbtn
+  %rb2 = or i32 %rb, 2
+  store i32 %rb2, ptr @W_mbtn
+  br label %forward
+mr_u:
+  %mru = icmp eq i64 %ty, 4                     ; NSEventTypeRightMouseUp
+  br i1 %mru, label %rclr, label %scroll
+rclr:
+  %rc = load i32, ptr @W_mbtn
+  %rc2 = and i32 %rc, -3
+  store i32 %rc2, ptr @W_mbtn
+  br label %forward
+scroll:
+  %isw = icmp eq i64 %ty, 22                    ; NSEventTypeScrollWheel
+  br i1 %isw, label %wdo, label %forward
+wdo:
+  %sel_sy = call ptr @sel_registerName(ptr @.s_scrly)
+  %dy = call double (ptr, ptr) @objc_msgSend(ptr %ev, ptr %sel_sy)
+  %dyi = fptosi double %dy to i32
+  %wv = load i32, ptr @W_wheel
+  %wv2 = add i32 %wv, %dyi
+  store i32 %wv2, ptr @W_wheel
+  br label %forward
 key:
+  %kdv = call i32 @ev_keyval(ptr %ev)          ; #50 — press the held key
+  call void @win_held_bit(i32 %kdv, i32 1)
   %kc = call i16 (ptr, ptr) @objc_msgSend(ptr %ev, ptr %sel_kc)
   %kc32 = zext i16 %kc to i32
   switch i32 %kc32, label %fromchars [
@@ -323,5 +452,45 @@ entry:
 define void @win_close() {
 entry:
   store i32 0, ptr @W_running
+  ret void
+}
+
+; #50 — copy the 8-word held-key set into the caller's buffer.
+define void @win_held(ptr %out) {
+entry:
+  br label %loop
+loop:
+  %i = phi i32 [ 0, %entry ], [ %ni, %body ]
+  %done = icmp sge i32 %i, 8
+  br i1 %done, label %ret, label %body
+body:
+  %sp = getelementptr [8 x i32], ptr @W_held, i32 0, i32 %i
+  %v = load i32, ptr %sp
+  %dp = getelementptr i32, ptr %out, i32 %i
+  store i32 %v, ptr %dp
+  %ni = add i32 %i, 1
+  br label %loop
+ret:
+  ret void
+}
+
+; #50 — write [x, y, button-mask, wheel-delta] into the caller's buffer, then
+; reset the accumulated wheel delta (it is per-frame). Position is tracked in
+; window points; buttons and wheel come from the event pump above.
+define void @win_mouse(ptr %out) {
+entry:
+  %mx = load i32, ptr @W_mx
+  %p0 = getelementptr i32, ptr %out, i32 0
+  store i32 %mx, ptr %p0
+  %my = load i32, ptr @W_my
+  %p1 = getelementptr i32, ptr %out, i32 1
+  store i32 %my, ptr %p1
+  %mb = load i32, ptr @W_mbtn
+  %p2 = getelementptr i32, ptr %out, i32 2
+  store i32 %mb, ptr %p2
+  %wh = load i32, ptr @W_wheel
+  %p3 = getelementptr i32, ptr %out, i32 3
+  store i32 %wh, ptr %p3
+  store i32 0, ptr @W_wheel
   ret void
 }

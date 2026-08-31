@@ -113,12 +113,16 @@ function input_slot_has(s: int, k: int) -> bool {
 #   live   — read the live key (rt_poll).
 #   record — read the live key and append it to the recording.
 #   replay — take the next key from the recording (the live device is ignored).
+# It also advances the multi-key device layer below (held keys, analog, mouse),
+# snapshotting or replaying the full per-frame state — #50 extends #7's tape.
 function input_poll() -> int {
   input_last = input_frame
   if input_mode == 2 {                               # replay
-    if input_pos < input_recn { input_frame = input_rec[input_pos];  input_pos = input_pos + 1 }
-    else { input_frame = 0 }                          # past the end of the tape: no input
-    return input_frame
+    var k = 0
+    if input_pos < input_recn { k = input_rec[input_pos];  input_pos = input_pos + 1 }
+    input_frame = k
+    input_device_commit(k, 1)                         # rebuild the device state from the tape
+    return k
   }
   let k = rt_poll()
   if input_mode == 1 {                               # record
@@ -126,7 +130,249 @@ function input_poll() -> int {
     if input_recn < INPUT_REC_CAP { input_rec[input_recn] = k;  input_recn = input_recn + 1 }
   }
   input_frame = k
+  input_device_commit(k, 0)
   return k
+}
+
+# ============================================================================
+# device layer (#50) — multiple simultaneous keys, analog axes/vectors, the
+# mouse, gamepads and touch, plus a full-state record/replay snapshot.
+#
+# The single-key poll above can express one key per frame; a game that reads
+# "hold left AND jump" needs a held-key *set*. This layer keeps that set (fed by
+# the platform when windowed, by the polled key when headless, and by the
+# Input.press / Input.set_* injection on every target — the same idea as Godot's
+# action_press, and what a replay or an AI or the network feeds). key_down /
+# key_pressed / key_released read it with clean frame edges; the analog helpers
+# derive axes and vectors from it; mouse / gamepad / touch state ride alongside.
+# Everything is integer and deterministic: the same inputs reproduce the same
+# frame on every run and headless, and Input.record / replay snapshot the whole
+# thing so a recorded run replays exactly — free replays and lockstep netcode.
+# ============================================================================
+
+const IN_WORDS: int = 8            # 256-bit key set (keycodes 0..255)
+const IN_PADS:  int = 4            # gamepads
+const IN_AXES:  int = 4            # axes per pad (2 sticks: lx, ly, rx, ry)
+const IN_TOUCH: int = 8            # simultaneous touch points
+const IN_STRIDE: int = 12          # tape words / frame: 8 held + mx, my, buttons, wheel
+
+var in_ready: bool  = false
+var in_sim:   words = null         # simulated held set (Input.press / release) — persists
+var in_dev:   words = null         # platform / polled held set — refreshed each poll
+var in_held:  words = null         # committed effective set this frame (what reads see)
+var in_prev:  words = null         # committed set last frame (for edges)
+# mouse
+var in_mx: int = 0        # current x/y
+var in_my: int = 0
+var in_mx0: int = 0       # x/y at the previous frame (for the delta)
+var in_my0: int = 0
+var in_mdx: int = 0       # delta this frame
+var in_mdy: int = 0
+var in_mbtn: int = 0      # button bitmask (bit 0 left, 1 right, 2 middle)
+var in_wheel: int = 0     # wheel delta this frame
+# gamepads: connected flag, button bitmask, and IN_AXES fixed axes each
+var in_pad_conn: words = null      # IN_PADS
+var in_pad_btn:  words = null      # IN_PADS
+var in_pad_axis: words = null      # IN_PADS * IN_AXES (fixed)
+# touch points: active flag, x, y each
+var in_touch_on: words = null      # IN_TOUCH
+var in_touch_x:  words = null      # IN_TOUCH
+var in_touch_y:  words = null      # IN_TOUCH
+# full-state tape (held + mouse), recorded / replayed alongside the key tape
+var in_tape: words = null          # INPUT_REC_CAP * IN_STRIDE
+
+function in_init() -> void {
+  if in_ready { return }
+  in_sim   = words(IN_WORDS)
+  in_dev   = words(IN_WORDS)
+  in_held  = words(IN_WORDS)
+  in_prev  = words(IN_WORDS)
+  in_pad_conn = words(IN_PADS)
+  in_pad_btn  = words(IN_PADS)
+  in_pad_axis = words(IN_PADS * IN_AXES)
+  in_touch_on = words(IN_TOUCH)
+  in_touch_x  = words(IN_TOUCH)
+  in_touch_y  = words(IN_TOUCH)
+  in_ready = true
+}
+
+# ---- key-set bit helpers ---------------------------------------------------
+function in_bit_get(set: words, k: int) -> bool {
+  if (k < 0) or (k >= 256) { return false }
+  return (set[k >> 5] & (1 << (k & 31))) != 0
+}
+function in_bit_set(set: words, k: int, on: bool) -> void {
+  if (k < 0) or (k >= 256) { return }
+  let w = k >> 5
+  let m = 1 << (k & 31)
+  if on { set[w] = set[w] | m } else { set[w] = set[w] & (~m) }
+}
+function in_set_clear(set: words) -> void { var i = 0;  while i < IN_WORDS { set[i] = 0;  i = i + 1 } }
+function in_set_copy(dst: words, src: words) -> void { var i = 0;  while i < IN_WORDS { dst[i] = src[i];  i = i + 1 } }
+function in_set_or(dst: words, a: words, b: words) -> void { var i = 0;  while i < IN_WORDS { dst[i] = a[i] | b[i];  i = i + 1 } }
+
+# ---- the per-frame device commit (called by input_poll) --------------------
+# Snapshot the committed set into prev (for edges), refresh the platform set (or
+# rebuild it from the tape on replay), then recombine into the committed set.
+function input_device_commit(k: int, replaying: int) -> void {
+  in_init()
+  in_set_copy(in_prev, in_held)                      # last frame's committed set
+
+  if replaying == 1 {
+    # rebuild the platform set + mouse from the tape; sim/injection is ignored so
+    # a replay is authoritative (as #7's key replay ignores the live device).
+    let base = (input_pos - 1) * IN_STRIDE
+    if (in_tape != null) and (base >= 0) {
+      var i = 0
+      while i < IN_WORDS { in_dev[i] = in_tape[base + i];  i = i + 1 }
+      in_mx    = in_tape[base + 8]
+      in_my    = in_tape[base + 9]
+      in_mbtn  = in_tape[base + 10]
+      in_wheel = in_tape[base + 11]
+    }
+    in_set_copy(in_held, in_dev)
+  } else {
+    # live: fill the platform set from the window (real simultaneous keys) or,
+    # headless, from the single polled key. Injection (in_sim) is OR-ed on top.
+    if is_windowed() {
+      win_held(in_dev)
+      let mbuf = words(4)                              # [x, y, button-mask, wheel]
+      win_mouse(mbuf)
+      in_mx = mbuf[0];  in_my = mbuf[1];  in_mbtn = mbuf[2];  in_wheel = mbuf[3]
+    } else {
+      in_set_clear(in_dev)
+      if k > 0 { in_bit_set(in_dev, k, true) }
+    }
+    in_set_or(in_held, in_dev, in_sim)
+    if input_mode == 1 { input_device_record() }      # snapshot the frame into the tape
+  }
+
+  # mouse delta vs the previous frame's committed position (in_mx set by the
+  # platform above when windowed, by Input.set_mouse before this poll otherwise).
+  in_mdx = in_mx - in_mx0
+  in_mdy = in_my - in_my0
+  in_mx0 = in_mx
+  in_my0 = in_my
+}
+
+# write this frame's committed set + mouse into the tape at the record cursor.
+function input_device_record() -> void {
+  if in_tape == null { in_tape = words(INPUT_REC_CAP * IN_STRIDE) }
+  let f = input_recn - 1
+  if (f < 0) or (f >= INPUT_REC_CAP) { return }
+  let base = f * IN_STRIDE
+  var i = 0
+  while i < IN_WORDS { in_tape[base + i] = in_held[i];  i = i + 1 }
+  in_tape[base + 8]  = in_mx
+  in_tape[base + 9]  = in_my
+  in_tape[base + 10] = in_mbtn
+  in_tape[base + 11] = in_wheel
+}
+
+# ---- held keys -------------------------------------------------------------
+function input_key_down(k: int) -> bool     { in_init();  return in_bit_get(in_held, k) }
+function input_key_pressed(k: int) -> bool  { in_init();  return in_bit_get(in_held, k) and (not in_bit_get(in_prev, k)) }
+function input_key_released(k: int) -> bool { in_init();  return (not in_bit_get(in_held, k)) and in_bit_get(in_prev, k) }
+
+# inject a held key (AI, tutorial, testing, network) — persists until released.
+function input_press(k: int) -> void   { in_init();  in_bit_set(in_sim, k, true) }
+function input_release(k: int) -> void { in_init();  in_bit_set(in_sim, k, false) }
+
+# ---- analog from keys ------------------------------------------------------
+# A digital axis: +1.0 if the positive key is held, -1.0 if the negative, else 0.
+function input_axis(neg: int, pos: int) -> fixed {
+  in_init()
+  var v = fixed(0)
+  if in_bit_get(in_held, pos) { v = v + fixed(1) }
+  if in_bit_get(in_held, neg) { v = v - fixed(1) }
+  return v
+}
+# A 2D vector from four direction keys, normalized so a diagonal is not faster.
+function input_vector(left: int, right: int, up: int, down: int) -> Vector {
+  in_init()
+  var x = fixed(0)
+  var y = fixed(0)
+  if in_bit_get(in_held, right) { x = x + fixed(1) }
+  if in_bit_get(in_held, left)  { x = x - fixed(1) }
+  if in_bit_get(in_held, down)  { y = y + fixed(1) }
+  if in_bit_get(in_held, up)    { y = y - fixed(1) }
+  if (x != 0) and (y != 0) {                          # diagonal: scale by 1/sqrt(2)
+    x = x * 0.7071                                     # fixed multiply (64-bit intermediate)
+    y = y * 0.7071
+  }
+  return Vector.make(x, y)
+}
+# 0.0..1.0 strength of a named action (digital for keys: 1 if any bound key held).
+function input_strength(name: pointer) -> fixed {
+  if input_down(name) { return fixed(1) }
+  return fixed(0)
+}
+
+# ---- mouse -----------------------------------------------------------------
+function input_mouse_x()  -> int { in_init();  return in_mx }
+function input_mouse_y()  -> int { in_init();  return in_my }
+function input_mouse_dx() -> int { in_init();  return in_mdx }
+function input_mouse_dy() -> int { in_init();  return in_mdy }
+function input_mouse_down(btn: int) -> bool { in_init();  return (in_mbtn & (1 << btn)) != 0 }
+function input_wheel() -> int { in_init();  return in_wheel }
+# inject the mouse (headless / AI / testing). buttons is a bitmask; wheel is this
+# frame's delta.
+function input_set_mouse(x: int, y: int, buttons: int, wheel: int) -> void {
+  in_init()
+  in_mx = x;  in_my = y;  in_mbtn = buttons;  in_wheel = wheel
+}
+
+# ---- gamepads --------------------------------------------------------------
+function input_pad_connected(pad: int) -> bool {
+  in_init()
+  if (pad < 0) or (pad >= IN_PADS) { return false }
+  return in_pad_conn[pad] != 0
+}
+function input_pad_button(pad: int, btn: int) -> bool {
+  in_init()
+  if (pad < 0) or (pad >= IN_PADS) { return false }
+  return (in_pad_btn[pad] & (1 << btn)) != 0
+}
+function input_pad_axis(pad: int, axis: int) -> fixed {
+  in_init()
+  if (pad < 0) or (pad >= IN_PADS) { return fixed(0) }
+  if (axis < 0) or (axis >= IN_AXES) { return fixed(0) }
+  return in_pad_axis[pad * IN_AXES + axis]
+}
+# inject a gamepad's whole state: connected, button bitmask, and four fixed axes.
+function input_set_pad(pad: int, connected: bool, buttons: int, lx: fixed, ly: fixed, rx: fixed, ry: fixed) -> void {
+  in_init()
+  if (pad < 0) or (pad >= IN_PADS) { return }
+  var c = 0
+  if connected { c = 1 }
+  in_pad_conn[pad] = c
+  in_pad_btn[pad]  = buttons
+  let b = pad * IN_AXES
+  in_pad_axis[b]     = lx
+  in_pad_axis[b + 1] = ly
+  in_pad_axis[b + 2] = rx
+  in_pad_axis[b + 3] = ry
+}
+
+# ---- touch -----------------------------------------------------------------
+function input_touch_count() -> int {
+  in_init()
+  var n = 0
+  var i = 0
+  while i < IN_TOUCH { if in_touch_on[i] != 0 { n = n + 1 };  i = i + 1 }
+  return n
+}
+function input_touch_x(i: int) -> int { in_init();  if (i < 0) or (i >= IN_TOUCH) { return 0 };  return in_touch_x[i] }
+function input_touch_y(i: int) -> int { in_init();  if (i < 0) or (i >= IN_TOUCH) { return 0 };  return in_touch_y[i] }
+# inject a touch point i: active with a position, or inactive.
+function input_set_touch(i: int, x: int, y: int, active: bool) -> void {
+  in_init()
+  if (i < 0) or (i >= IN_TOUCH) { return }
+  var a = 0
+  if active { a = 1 }
+  in_touch_on[i] = a
+  in_touch_x[i]  = x
+  in_touch_y[i]  = y
 }
 
 # is the named action held on the frame last polled?

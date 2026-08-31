@@ -11,6 +11,7 @@ function is_intrinsic2(name: pointer) -> bool {
   if (name == "is_windowed") or (name == "game_title") { return true }
   if (name == "win_open") or (name == "win_poll") or (name == "win_present") { return true }
   if (name == "win_running") or (name == "win_close") { return true }
+  if (name == "win_held") or (name == "win_mouse") { return true }   # #50 device layer
   return false
 }
 
@@ -49,5 +50,10 @@ function emit_intrinsic2(name: pointer, e: Node) -> Val {
     return val("0", "void")
   }
   if (name == "win_close") { emit("  call void @win_close()\n");  return val("0", "void") }
+  # #50 — fill a caller buffer with the platform device state (windowed only,
+  # DCE'd headless). win_held: an 8-word held-key bitset; win_mouse: [x, y,
+  # button-mask, wheel-delta].
+  if (name == "win_held")  { let a = arg_code(e, 0);  emit("  call void @win_held(ptr ");  emit(a);  emit(")\n");  return val("0", "void") }
+  if (name == "win_mouse") { let a = arg_code(e, 0);  emit("  call void @win_mouse(ptr ");  emit(a);  emit(")\n");  return val("0", "void") }
   return val("0", "void")
 }
