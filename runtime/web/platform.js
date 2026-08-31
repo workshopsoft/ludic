@@ -296,6 +296,13 @@ async function start({ wasm, canvas, manifest = null, files = {}, onExit = null,
     },
     win_running: () => host.running,
     win_close: () => { host.running = 0; },
+    // The #50/#51 device-state fills. The browser has no gamepad/touch hardware
+    // wired here yet, so these zero the caller's buffer; keyboard still flows
+    // through win_poll above, and Input.set_* injection works on every target.
+    win_held: (p) => { host.sync(); const b = p >>> 2; for (let i = 0; i < 8; i++) host.u32[b + i] = 0; },
+    win_mouse: (p) => { host.sync(); const b = p >>> 2; for (let i = 0; i < 4; i++) host.u32[b + i] = 0; },
+    win_pad: (p) => { host.sync(); const b = p >>> 2; for (let i = 0; i < 24; i++) host.u32[b + i] = 0; },
+    win_touch: (p) => { host.sync(); const b = p >>> 2; for (let i = 0; i < 24; i++) host.u32[b + i] = 0; },
   };
 
   const { instance } = await WebAssembly.instantiateStreaming(fetch(wasm), { env });

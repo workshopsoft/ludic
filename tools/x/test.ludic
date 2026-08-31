@@ -288,6 +288,11 @@ function cmd_test() -> int {
     if shq("LUDIC_HOME=. bin/ludicc examples/games/snake.ludic -o /tmp/x_cli_snake > /tmp/x_cli.out 2>&1") and shq("file /tmp/x_cli_snake 2>/dev/null | grep -q Mach-O") {
       ok("ludicc app.ludic -o bin  ->  native executable")
     } else { bad2("ludicc -o", capture_line("tail -1 /tmp/x_cli.out")) }
+    # #51 — a windowed build must load GameController so the native gamepad
+    # polling (win_pad, reached on the is_windowed branch) can see controllers.
+    if shq("otool -L /tmp/x_cli_snake 2>/dev/null | grep -q GameController") {
+      ok("windowed link loads GameController (#51 gamepad binding)")
+    } else { bad("windowed binary is missing the GameController load command") }
   } else {
     if shq("LUDIC_HOME=. bin/ludicc --headless examples/games/snake.ludic -o /tmp/x_cli_snake > /tmp/x_cli.out 2>&1") and shq("test -x /tmp/x_cli_snake") {
       ok("ludicc app.ludic -o bin  ->  native executable (headless)")

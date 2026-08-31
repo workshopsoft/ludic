@@ -20,6 +20,7 @@
 ; ============================================================================
 
 %CGRect = type { double, double, double, double }
+%NSPoint = type { double, double }
 
 declare ptr @objc_getClass(ptr)
 declare ptr @sel_registerName(ptr)
@@ -81,6 +82,48 @@ declare i32 @usleep(i32)
 @.enc_draw = private unnamed_addr constant [36 x i8] c"v@:{CGRect={CGPoint=dd}{CGSize=dd}}\00"
 @.enc_bool = private unnamed_addr constant [4 x i8]  c"c@:\00"
 
+; #51 — native hardware bindings (mouse position, GameController, NSTouch).
+@.s_mloc   = private unnamed_addr constant [34 x i8] c"mouseLocationOutsideOfEventStream\00"
+; GameController.framework selectors (poll GCController.controllers each frame)
+@.c_gc     = private unnamed_addr constant [13 x i8] c"GCController\00"
+@.s_ctrls  = private unnamed_addr constant [12 x i8] c"controllers\00"
+@.s_count  = private unnamed_addr constant [6 x i8]  c"count\00"
+@.s_objidx = private unnamed_addr constant [15 x i8] c"objectAtIndex:\00"
+@.s_extgp  = private unnamed_addr constant [16 x i8] c"extendedGamepad\00"
+@.s_press  = private unnamed_addr constant [10 x i8] c"isPressed\00"
+@.s_value  = private unnamed_addr constant [6 x i8]  c"value\00"
+@.s_btnA   = private unnamed_addr constant [8 x i8]  c"buttonA\00"
+@.s_btnB   = private unnamed_addr constant [8 x i8]  c"buttonB\00"
+@.s_btnX   = private unnamed_addr constant [8 x i8]  c"buttonX\00"
+@.s_btnY   = private unnamed_addr constant [8 x i8]  c"buttonY\00"
+@.s_lsh    = private unnamed_addr constant [13 x i8] c"leftShoulder\00"
+@.s_rsh    = private unnamed_addr constant [14 x i8] c"rightShoulder\00"
+@.s_ltr    = private unnamed_addr constant [12 x i8] c"leftTrigger\00"
+@.s_rtr    = private unnamed_addr constant [13 x i8] c"rightTrigger\00"
+@.s_bmenu  = private unnamed_addr constant [11 x i8] c"buttonMenu\00"
+@.s_bopt   = private unnamed_addr constant [14 x i8] c"buttonOptions\00"
+@.s_lsb    = private unnamed_addr constant [21 x i8] c"leftThumbstickButton\00"
+@.s_rsb    = private unnamed_addr constant [22 x i8] c"rightThumbstickButton\00"
+@.s_dpad   = private unnamed_addr constant [5 x i8]  c"dpad\00"
+@.s_up     = private unnamed_addr constant [3 x i8]  c"up\00"
+@.s_down   = private unnamed_addr constant [5 x i8]  c"down\00"
+@.s_left   = private unnamed_addr constant [5 x i8]  c"left\00"
+@.s_right  = private unnamed_addr constant [6 x i8]  c"right\00"
+@.s_lstick = private unnamed_addr constant [15 x i8] c"leftThumbstick\00"
+@.s_rstick = private unnamed_addr constant [16 x i8] c"rightThumbstick\00"
+@.s_xaxis  = private unnamed_addr constant [6 x i8]  c"xAxis\00"
+@.s_yaxis  = private unnamed_addr constant [6 x i8]  c"yAxis\00"
+; NSTouch selectors (trackpad, indirect touches)
+@.s_setatt = private unnamed_addr constant [22 x i8] c"setAllowedTouchTypes:\00"
+@.s_tmatch = private unnamed_addr constant [29 x i8] c"touchesMatchingPhase:inView:\00"
+@.s_normp  = private unnamed_addr constant [19 x i8] c"normalizedPosition\00"
+@.s_allobj = private unnamed_addr constant [11 x i8] c"allObjects\00"
+@.s_tbegan = private unnamed_addr constant [23 x i8] c"touchesBeganWithEvent:\00"
+@.s_tmoved = private unnamed_addr constant [23 x i8] c"touchesMovedWithEvent:\00"
+@.s_tended = private unnamed_addr constant [23 x i8] c"touchesEndedWithEvent:\00"
+@.s_tcancl = private unnamed_addr constant [27 x i8] c"touchesCancelledWithEvent:\00"
+@.enc_te   = private unnamed_addr constant [5 x i8]  c"v@:@\00"
+
 @W_app     = internal global ptr null
 @W_win     = internal global ptr null
 @W_view    = internal global ptr null
@@ -97,6 +140,9 @@ declare i32 @usleep(i32)
 @W_my      = internal global i32 0
 @W_mbtn    = internal global i32 0
 @W_wheel   = internal global i32 0
+; #51 — up to 8 trackpad touch points, [active, x, y] each (framebuffer pixels),
+; refreshed by the view's touchesBegan/Moved/Ended handlers.
+@W_touch   = internal global [24 x i32] zeroinitializer
 
 ; -drawRect: — blit the framebuffer into the view.
 ; The NSRect argument is ignored, so it never appears in this signature.
@@ -175,6 +221,15 @@ entry:
   %m1 = call i8 @class_addMethod(ptr %cls, ptr %sel_draw, ptr @ludic_drawRect, ptr @.enc_draw)
   %sel_afr = call ptr @sel_registerName(ptr @.s_afr)
   %m2 = call i8 @class_addMethod(ptr %cls, ptr %sel_afr, ptr @ludic_yes, ptr @.enc_bool)
+  ; #51 — the four NSTouch phase handlers, all routed to @ludic_touches.
+  %sel_tb = call ptr @sel_registerName(ptr @.s_tbegan)
+  %mt1 = call i8 @class_addMethod(ptr %cls, ptr %sel_tb, ptr @ludic_touches, ptr @.enc_te)
+  %sel_tm = call ptr @sel_registerName(ptr @.s_tmoved)
+  %mt2 = call i8 @class_addMethod(ptr %cls, ptr %sel_tm, ptr @ludic_touches, ptr @.enc_te)
+  %sel_te = call ptr @sel_registerName(ptr @.s_tended)
+  %mt3 = call i8 @class_addMethod(ptr %cls, ptr %sel_te, ptr @ludic_touches, ptr @.enc_te)
+  %sel_tc = call ptr @sel_registerName(ptr @.s_tcancl)
+  %mt4 = call i8 @class_addMethod(ptr %cls, ptr %sel_tc, ptr @ludic_touches, ptr @.enc_te)
   call void @objc_registerClassPair(ptr %cls)
 
   %wd = sitofp i32 %w to double
@@ -205,6 +260,9 @@ entry:
   %sel_initf = call ptr @sel_registerName(ptr @.s_initf)
   %view = call ptr (ptr, ptr, %CGRect) @objc_msgSend(ptr %v0, ptr %sel_initf, %CGRect %rect)
   store ptr %view, ptr @W_view
+  ; #51 — accept indirect (trackpad) touches. NSTouchTypeMaskIndirect = 1<<0.
+  %sel_att = call ptr @sel_registerName(ptr @.s_setatt)
+  %att = call ptr (ptr, ptr, i64) @objc_msgSend(ptr %view, ptr %sel_att, i64 1)
   %sel_setcv = call ptr @sel_registerName(ptr @.s_setcv)
   %a3 = call ptr (ptr, ptr, ptr) @objc_msgSend(ptr %win, ptr %sel_setcv, ptr %view)
   %sel_center = call ptr @sel_registerName(ptr @.s_center)
@@ -479,6 +537,30 @@ ret:
 ; window points; buttons and wheel come from the event pump above.
 define void @win_mouse(ptr %out) {
 entry:
+  ; #51 — read the live cursor position from the window (points, origin
+  ; bottom-left) and convert to framebuffer pixels, y-flipped so row 0 is the
+  ; top, matching the framebuffer the game draws into.
+  %win = load ptr, ptr @W_win
+  %nowin = icmp eq ptr %win, null
+  br i1 %nowin, label %emit, label %qpos
+qpos:
+  %sel_ml = call ptr @sel_registerName(ptr @.s_mloc)
+  %pt = call %NSPoint (ptr, ptr) @objc_msgSend(ptr %win, ptr %sel_ml)
+  %px = extractvalue %NSPoint %pt, 0
+  %py = extractvalue %NSPoint %pt, 1
+  %sc = load i32, ptr @W_scale
+  %scd = sitofp i32 %sc to double
+  %fbh = load i32, ptr @W_fbh
+  %fbhd = sitofp i32 %fbh to double
+  %fx = fdiv double %px, %scd
+  %fyy = fdiv double %py, %scd
+  %fy = fsub double %fbhd, %fyy
+  %ix = fptosi double %fx to i32
+  %iy = fptosi double %fy to i32
+  store i32 %ix, ptr @W_mx
+  store i32 %iy, ptr @W_my
+  br label %emit
+emit:
   %mx = load i32, ptr @W_mx
   %p0 = getelementptr i32, ptr %out, i32 0
   store i32 %mx, ptr %p0
@@ -492,5 +574,298 @@ entry:
   %p3 = getelementptr i32, ptr %out, i32 3
   store i32 %wh, ptr %p3
   store i32 0, ptr @W_wheel
+  ret void
+}
+
+; ============================================================================
+; #51 — gamepad, via GameController.framework.
+;
+; Each frame win_pad() walks [GCController controllers] and, for every connected
+; controller that exposes an -extendedGamepad, packs its state into the caller's
+; buffer: six words per pad — [connected, button-mask, lx, ly, rx, ly] — for up
+; to four pads. Axes are 16.16 fixed (float value * 65536); the stick Y is
+; negated so "down" is positive, matching the SDL axis convention the device
+; layer maps onto. The button mask follows SDL_GameControllerButton order:
+;   0 A  1 B  2 X  3 Y  4 Back  5 Guide  6 Start  7 LStick  8 RStick
+;   9 LShoulder  10 RShoulder  11 DPadUp  12 DPadDown  13 DPadLeft  14 DPadRight
+;   15 LTrigger  16 RTrigger
+; nil property messaging returns 0, so a controller missing a given button
+; simply reports it unpressed. This whole binding is DCE'd out of a headless
+; build (win_pad is only reached on the is_windowed() branch).
+; ============================================================================
+
+; Is the button property named %name pressed on extended-gamepad %egp? 0 or 1.
+define i32 @gc_pressed(ptr %egp, ptr %name) {
+entry:
+  %sel = call ptr @sel_registerName(ptr %name)
+  %btn = call ptr (ptr, ptr) @objc_msgSend(ptr %egp, ptr %sel)
+  %nil = icmp eq ptr %btn, null
+  br i1 %nil, label %zero, label %ask
+ask:
+  %selp = call ptr @sel_registerName(ptr @.s_press)
+  %b = call i8 (ptr, ptr) @objc_msgSend(ptr %btn, ptr %selp)
+  %bi = zext i8 %b to i32
+  %r = and i32 %bi, 1
+  ret i32 %r
+zero:
+  ret i32 0
+}
+
+; Two-level version: %grp names a sub-object (e.g. "dpad"), %dir the button on
+; it (e.g. "up").
+define i32 @gc_pressed2(ptr %egp, ptr %grp, ptr %dir) {
+entry:
+  %selg = call ptr @sel_registerName(ptr %grp)
+  %g = call ptr (ptr, ptr) @objc_msgSend(ptr %egp, ptr %selg)
+  %nil = icmp eq ptr %g, null
+  br i1 %nil, label %zero, label %ask
+ask:
+  %r = call i32 @gc_pressed(ptr %g, ptr %dir)
+  ret i32 %r
+zero:
+  ret i32 0
+}
+
+; The value of axis %axis on stick %stick, as 16.16 fixed. 0 if either is nil.
+define i32 @gc_axis(ptr %egp, ptr %stick, ptr %axis) {
+entry:
+  %sels = call ptr @sel_registerName(ptr %stick)
+  %st = call ptr (ptr, ptr) @objc_msgSend(ptr %egp, ptr %sels)
+  %n1 = icmp eq ptr %st, null
+  br i1 %n1, label %zero, label %a2
+a2:
+  %sela = call ptr @sel_registerName(ptr %axis)
+  %ax = call ptr (ptr, ptr) @objc_msgSend(ptr %st, ptr %sela)
+  %n2 = icmp eq ptr %ax, null
+  br i1 %n2, label %zero, label %read
+read:
+  %selv = call ptr @sel_registerName(ptr @.s_value)
+  %f = call float (ptr, ptr) @objc_msgSend(ptr %ax, ptr %selv)
+  %scaled = fmul float %f, 6.5536e+04
+  %i = fptosi float %scaled to i32
+  ret i32 %i
+zero:
+  ret i32 0
+}
+
+; The full SDL-ordered button mask for one extended gamepad.
+define i32 @gc_mask(ptr %egp) {
+entry:
+  %a  = call i32 @gc_pressed(ptr %egp, ptr @.s_btnA)
+  %b  = call i32 @gc_pressed(ptr %egp, ptr @.s_btnB)
+  %x  = call i32 @gc_pressed(ptr %egp, ptr @.s_btnX)
+  %y  = call i32 @gc_pressed(ptr %egp, ptr @.s_btnY)
+  %bk = call i32 @gc_pressed(ptr %egp, ptr @.s_bopt)
+  %st = call i32 @gc_pressed(ptr %egp, ptr @.s_bmenu)
+  %ls = call i32 @gc_pressed(ptr %egp, ptr @.s_lsb)
+  %rs = call i32 @gc_pressed(ptr %egp, ptr @.s_rsb)
+  %lsh = call i32 @gc_pressed(ptr %egp, ptr @.s_lsh)
+  %rsh = call i32 @gc_pressed(ptr %egp, ptr @.s_rsh)
+  %du = call i32 @gc_pressed2(ptr %egp, ptr @.s_dpad, ptr @.s_up)
+  %dd = call i32 @gc_pressed2(ptr %egp, ptr @.s_dpad, ptr @.s_down)
+  %dl = call i32 @gc_pressed2(ptr %egp, ptr @.s_dpad, ptr @.s_left)
+  %dr = call i32 @gc_pressed2(ptr %egp, ptr @.s_dpad, ptr @.s_right)
+  %lt = call i32 @gc_pressed(ptr %egp, ptr @.s_ltr)
+  %rt = call i32 @gc_pressed(ptr %egp, ptr @.s_rtr)
+  %s1  = shl i32 %b,  1
+  %s2  = shl i32 %x,  2
+  %s3  = shl i32 %y,  3
+  %s4  = shl i32 %bk, 4
+  %s6  = shl i32 %st, 6
+  %s7  = shl i32 %ls, 7
+  %s8  = shl i32 %rs, 8
+  %s9  = shl i32 %lsh, 9
+  %s10 = shl i32 %rsh, 10
+  %s11 = shl i32 %du, 11
+  %s12 = shl i32 %dd, 12
+  %s13 = shl i32 %dl, 13
+  %s14 = shl i32 %dr, 14
+  %s15 = shl i32 %lt, 15
+  %s16 = shl i32 %rt, 16
+  %o0 = or i32 %a, %s1
+  %o1 = or i32 %o0, %s2
+  %o2 = or i32 %o1, %s3
+  %o3 = or i32 %o2, %s4
+  %o4 = or i32 %o3, %s6
+  %o5 = or i32 %o4, %s7
+  %o6 = or i32 %o5, %s8
+  %o7 = or i32 %o6, %s9
+  %o8 = or i32 %o7, %s10
+  %o9 = or i32 %o8, %s11
+  %o10 = or i32 %o9, %s12
+  %o11 = or i32 %o10, %s13
+  %o12 = or i32 %o11, %s14
+  %o13 = or i32 %o12, %s15
+  %o14 = or i32 %o13, %s16
+  ret i32 %o14
+}
+
+; Fill the caller's 24-word buffer: [connected, mask, lx, ly, rx, ry] per pad.
+define void @win_pad(ptr %out) {
+entry:
+  br label %clr
+clr:
+  %ci = phi i32 [ 0, %entry ], [ %cn, %clrb ]
+  %cd = icmp sge i32 %ci, 24
+  br i1 %cd, label %start, label %clrb
+clrb:
+  %cp = getelementptr i32, ptr %out, i32 %ci
+  store i32 0, ptr %cp
+  %cn = add i32 %ci, 1
+  br label %clr
+start:
+  %gccls = call ptr @objc_getClass(ptr @.c_gc)
+  %nocls = icmp eq ptr %gccls, null
+  br i1 %nocls, label %done, label %getarr
+getarr:
+  %selc = call ptr @sel_registerName(ptr @.s_ctrls)
+  %arr = call ptr (ptr, ptr) @objc_msgSend(ptr %gccls, ptr %selc)
+  %noarr = icmp eq ptr %arr, null
+  br i1 %noarr, label %done, label %count
+count:
+  %seln = call ptr @sel_registerName(ptr @.s_count)
+  %n64 = call i64 (ptr, ptr) @objc_msgSend(ptr %arr, ptr %seln)
+  %n = trunc i64 %n64 to i32
+  br label %loop
+loop:
+  %p = phi i32 [ 0, %count ], [ %pn, %cont ]
+  %lt4 = icmp slt i32 %p, 4
+  %ltn = icmp slt i32 %p, %n
+  %ok = and i1 %lt4, %ltn
+  br i1 %ok, label %body, label %done
+body:
+  %seloi = call ptr @sel_registerName(ptr @.s_objidx)
+  %p64 = sext i32 %p to i64
+  %ctl = call ptr (ptr, ptr, i64) @objc_msgSend(ptr %arr, ptr %seloi, i64 %p64)
+  %selg = call ptr @sel_registerName(ptr @.s_extgp)
+  %egp = call ptr (ptr, ptr) @objc_msgSend(ptr %ctl, ptr %selg)
+  %noegp = icmp eq ptr %egp, null
+  br i1 %noegp, label %cont, label %pack
+pack:
+  %base = mul i32 %p, 6
+  %b0 = getelementptr i32, ptr %out, i32 %base
+  store i32 1, ptr %b0
+  %mask = call i32 @gc_mask(ptr %egp)
+  %i1 = add i32 %base, 1
+  %b1 = getelementptr i32, ptr %out, i32 %i1
+  store i32 %mask, ptr %b1
+  %lx = call i32 @gc_axis(ptr %egp, ptr @.s_lstick, ptr @.s_xaxis)
+  %i2 = add i32 %base, 2
+  %b2 = getelementptr i32, ptr %out, i32 %i2
+  store i32 %lx, ptr %b2
+  %lyr = call i32 @gc_axis(ptr %egp, ptr @.s_lstick, ptr @.s_yaxis)
+  %ly = sub i32 0, %lyr
+  %i3 = add i32 %base, 3
+  %b3 = getelementptr i32, ptr %out, i32 %i3
+  store i32 %ly, ptr %b3
+  %rx = call i32 @gc_axis(ptr %egp, ptr @.s_rstick, ptr @.s_xaxis)
+  %i4 = add i32 %base, 4
+  %b4 = getelementptr i32, ptr %out, i32 %i4
+  store i32 %rx, ptr %b4
+  %ryr = call i32 @gc_axis(ptr %egp, ptr @.s_rstick, ptr @.s_yaxis)
+  %ry = sub i32 0, %ryr
+  %i5 = add i32 %base, 5
+  %b5 = getelementptr i32, ptr %out, i32 %i5
+  store i32 %ry, ptr %b5
+  br label %cont
+cont:
+  %pn = add i32 %p, 1
+  br label %loop
+done:
+  ret void
+}
+
+; ============================================================================
+; #51 — touch, via NSTouch (trackpad / indirect touches).
+;
+; The view's touchesBegan/Moved/Ended/Cancelled handlers all funnel through
+; @ludic_touches, which resnapshots the set of touches currently down into
+; @W_touch as [active, x, y] per point (framebuffer pixels; normalizedPosition
+; is 0..1, origin bottom-left, so y is flipped). win_touch() copies that out.
+; ============================================================================
+define internal void @ludic_touches(ptr %self, ptr %sel, ptr %event) {
+entry:
+  br label %clr
+clr:
+  %ci = phi i32 [ 0, %entry ], [ %cn, %clrb ]
+  %cd = icmp sge i32 %ci, 24
+  br i1 %cd, label %get, label %clrb
+clrb:
+  %cp = getelementptr [24 x i32], ptr @W_touch, i32 0, i32 %ci
+  store i32 0, ptr %cp
+  %cn = add i32 %ci, 1
+  br label %clr
+get:
+  %selm = call ptr @sel_registerName(ptr @.s_tmatch)
+  ; NSTouchPhaseTouching = Began|Moved|Stationary = 1|2|4 = 7
+  %set = call ptr (ptr, ptr, i64, ptr) @objc_msgSend(ptr %event, ptr %selm, i64 7, ptr %self)
+  %noset = icmp eq ptr %set, null
+  br i1 %noset, label %ret, label %toarr
+toarr:
+  %sela = call ptr @sel_registerName(ptr @.s_allobj)
+  %arr = call ptr (ptr, ptr) @objc_msgSend(ptr %set, ptr %sela)
+  %noarr = icmp eq ptr %arr, null
+  br i1 %noarr, label %ret, label %count
+count:
+  %seln = call ptr @sel_registerName(ptr @.s_count)
+  %n64 = call i64 (ptr, ptr) @objc_msgSend(ptr %arr, ptr %seln)
+  %n = trunc i64 %n64 to i32
+  br label %loop
+loop:
+  %i = phi i32 [ 0, %count ], [ %ni, %cont ]
+  %lt8 = icmp slt i32 %i, 8
+  %ltn = icmp slt i32 %i, %n
+  %ok = and i1 %lt8, %ltn
+  br i1 %ok, label %body, label %ret
+body:
+  %seloi = call ptr @sel_registerName(ptr @.s_objidx)
+  %i64v = sext i32 %i to i64
+  %t = call ptr (ptr, ptr, i64) @objc_msgSend(ptr %arr, ptr %seloi, i64 %i64v)
+  %selnp = call ptr @sel_registerName(ptr @.s_normp)
+  %np = call %NSPoint (ptr, ptr) @objc_msgSend(ptr %t, ptr %selnp)
+  %nx = extractvalue %NSPoint %np, 0
+  %ny = extractvalue %NSPoint %np, 1
+  %fbw = load i32, ptr @W_fbw
+  %fbh = load i32, ptr @W_fbh
+  %fbwd = sitofp i32 %fbw to double
+  %fbhd = sitofp i32 %fbh to double
+  %xd = fmul double %nx, %fbwd
+  %ny1 = fsub double 1.0, %ny
+  %yd = fmul double %ny1, %fbhd
+  %xi = fptosi double %xd to i32
+  %yi = fptosi double %yd to i32
+  %base = mul i32 %i, 3
+  %o0 = getelementptr [24 x i32], ptr @W_touch, i32 0, i32 %base
+  store i32 1, ptr %o0
+  %j1 = add i32 %base, 1
+  %o1 = getelementptr [24 x i32], ptr @W_touch, i32 0, i32 %j1
+  store i32 %xi, ptr %o1
+  %j2 = add i32 %base, 2
+  %o2 = getelementptr [24 x i32], ptr @W_touch, i32 0, i32 %j2
+  store i32 %yi, ptr %o2
+  br label %cont
+cont:
+  %ni = add i32 %i, 1
+  br label %loop
+ret:
+  ret void
+}
+
+; Copy the 24-word touch snapshot into the caller's buffer.
+define void @win_touch(ptr %out) {
+entry:
+  br label %loop
+loop:
+  %i = phi i32 [ 0, %entry ], [ %ni, %body ]
+  %done = icmp sge i32 %i, 24
+  br i1 %done, label %ret, label %body
+body:
+  %sp = getelementptr [24 x i32], ptr @W_touch, i32 0, i32 %i
+  %v = load i32, ptr %sp
+  %dp = getelementptr i32, ptr %out, i32 %i
+  store i32 %v, ptr %dp
+  %ni = add i32 %i, 1
+  br label %loop
+ret:
   ret void
 }

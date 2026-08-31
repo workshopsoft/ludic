@@ -160,7 +160,11 @@ entry {
   var cmd = `{cc} -O2 -Wno-override-module {ll}`
   if g_windowed {
     let cocoa = path_join(home, "runtime/native/cocoa.ll")
-    cmd = `{cmd} {cocoa} -framework Cocoa -Wl,-rpath,@loader_path`
+    # GameController holds no symbol cocoa.ll references directly (its classes are
+    # reached by name through objc_getClass), so a plain -framework link gets
+    # dead-stripped; -needed_framework forces the load command so the class is
+    # registered and #51's gamepad polling can see it.
+    cmd = `{cmd} {cocoa} -framework Cocoa -Wl,-needed_framework,GameController -Wl,-rpath,@loader_path`
   }
   cmd = `{cmd} -o {out}`
 

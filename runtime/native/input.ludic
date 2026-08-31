@@ -239,6 +239,27 @@ function input_device_commit(k: int, replaying: int) -> void {
       let mbuf = words(4)                              # [x, y, button-mask, wheel]
       win_mouse(mbuf)
       in_mx = mbuf[0];  in_my = mbuf[1];  in_mbtn = mbuf[2];  in_wheel = mbuf[3]
+      # #51 — feed the platform gamepad + touch state into the same buffers the
+      # read APIs use. Each is windowed-only glue (win_pad / win_touch are DCE'd
+      # in a headless build); on hardware they overwrite the injected state.
+      let pbuf = words(IN_PADS * 6)                     # [conn, mask, lx, ly, rx, ry]/pad
+      win_pad(pbuf)
+      var pi = 0
+      while pi < IN_PADS {
+        let pb = pi * 6
+        input_set_pad(pi, pbuf[pb] != 0, pbuf[pb + 1],
+                      as_fixed(pbuf[pb + 2]), as_fixed(pbuf[pb + 3]),
+                      as_fixed(pbuf[pb + 4]), as_fixed(pbuf[pb + 5]))
+        pi = pi + 1
+      }
+      let tbuf = words(IN_TOUCH * 3)                    # [active, x, y]/point
+      win_touch(tbuf)
+      var ti = 0
+      while ti < IN_TOUCH {
+        let tb = ti * 3
+        input_set_touch(ti, tbuf[tb + 1], tbuf[tb + 2], tbuf[tb] != 0)
+        ti = ti + 1
+      }
     } else {
       in_set_clear(in_dev)
       if k > 0 { in_bit_set(in_dev, k, true) }
