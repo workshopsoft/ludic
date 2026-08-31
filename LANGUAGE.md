@@ -257,6 +257,32 @@ there is no per-tick array of matched entities. Consequences worth knowing:
 * An entity **spawned during the loop at a higher id is visited in the same
   tick**. Spawn into a later phase if you don't want that.
 
+### Engine-owned systems
+
+Some systems are run by the **engine**, not written as a `handler`. A game opts
+in by declaring a well-known component and carrying it on a model; the compiler
+inserts the matching system into the frame loop, so the component is ticked with
+no handler wired. The systems stand on the by-name reflection ABI, so they never
+compile against a fixed layout — a component with the right field names is
+enough, and a game that declares none is byte-for-byte unchanged.
+
+| Component | Phase | Effect |
+|---|---|---|
+| `SpriteAnim { ticks, fps, frames, mode, frame }` | `Update` | advances `frame` — spritesheet frame animation (`mode` 0 loop, 1 once, 2 ping-pong) |
+| `Motion { ticks, dur, from, to, ease, value, done }` | `Update` | advances `value` — value tween (`ease` 0 linear, 1 in, 2 out, 3 in-out), latches `done` |
+
+```ludic
+# doc-check: skip — illustrative engine-owned system
+property SpriteAnim { ticks: int = 0, fps: int = 0, frames: int = 0, mode: int = 0, frame: int = 0 }
+model Hero { Pos, SpriteAnim }
+# spawn a walking 6-frame clip at 10 fps; the engine advances SpriteAnim.frame
+spawn Hero { Pos { x: 0, y: 0 }  SpriteAnim { fps: 10, frames: 6, mode: 0 } }
+```
+
+Everything is integer and deterministic (the frame clock ticks at a fixed 60/s),
+so animation and motion reproduce exactly under replay and lockstep netcode. See
+`examples/library/anim_ecs.ludic`.
+
 ## Annotations
 
 Declarations carry `@annotations` in front of them — `@export`, `@edge`, `@pure`,

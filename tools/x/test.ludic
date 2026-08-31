@@ -242,6 +242,11 @@ function cmd_test() -> int {
   net_case("ecs/world_mixed", "99")
   net_case("ecs/world_query", "2 110")
 
+  # #43: engine-owned systems auto-advance the SpriteAnim / Motion components a
+  # game merely declares and carries — no handler wired. Entry-driven so it can
+  # assert the auto-advanced fields at known tick counts.
+  net_case("library/anim_ecs", "1 5 2 10 0 2 10 1 1")
+
   feat_case("events/recurse", "", "16", "recurse.ludic (EV6: re-entrant emit is depth-bounded, no runaway cycle)")
   net_case("events/scoped", "2")
   net_case("ecs/world_dyn", "0 1 30 100 1 30")

@@ -46,10 +46,33 @@ function emit_call_one(d: Node) -> void {
   emit("  br label %");  emit(skip);  emit("\n");  emit(skip);  emit(":\n")
 }
 
+# Engine-owned systems (#43/#47): systems the compiler injects into the frame
+# loop over a component the game merely declares and carries — the ECS hook the
+# animation and lighting follow-ups both stand on. Each entry is (component,
+# runtime fn, phase); the call is emitted only when the game declares that
+# component (so systems.ludic was spliced and the fn exists). They run *after*
+# the game's own handlers for the phase, so gameplay this frame is already
+# settled when the engine advances animation / accumulates light. Keep the
+# component list in sync with uses_engine_systems (emit_ecs.ludic).
+function emit_one_engine_system(comp: pointer, fn: pointer) -> void {
+  if (find_comp(comp) != null) and (find_fn(fn) != null) {
+    emit("  call void @fn_");  emit(fn);  emit("()\n")
+  }
+}
+function emit_engine_systems_for_phase(phase: pointer) -> void {
+  if (phase == "Update") {
+    emit_one_engine_system("SpriteAnim", "esys_spriteanim")
+    emit_one_engine_system("Motion", "esys_motion")
+  }
+  if (phase == "Render") {
+    emit_one_engine_system("Light2D", "esys_light2d")
+  }
+}
+
 # Global handlers run first, then the active scene's layer handlers in
 # declaration (draw) order. The active scene is snapshotted once per phase, so a
 # `become` mid-phase takes effect at the next phase boundary — exactly one scene
-# is active within any single phase.
+# is active within any single phase. Engine-owned systems for the phase run last.
 function emit_calls_for_phase(phase: pointer) -> void {
   var i = 0
   while i < len(prog) {
@@ -61,21 +84,23 @@ function emit_calls_for_phase(phase: pointer) -> void {
   var has_sc = false
   i = 0
   while i < len(prog) { let d = prog[i];  if d.kind == N_SYS and (d.ty == phase) and (d.c != null) { has_sc = true };  i = i + 1 }
-  if not has_sc { return }
-  let cs = emit_bind("load i32, ptr @L_scene")
-  i = 0
-  while i < len(prog) {
-    let d = prog[i]
-    if d.kind == N_SYS and (d.ty == phase) and (d.c != null) {
-      let ce = emit_bind(`icmp eq i32 {cs}, {itoa(d.c.ival)}`)
-      let run = lbl("scrun");  let skip = lbl("scskip")
-      emit("  br i1 ");  emit(ce);  emit(", label %");  emit(run);  emit(", label %");  emit(skip);  emit("\n")
-      emit(run);  emit(":\n")
-      emit_call_one(d)
-      emit("  br label %");  emit(skip);  emit("\n");  emit(skip);  emit(":\n")
+  if has_sc {
+    let cs = emit_bind("load i32, ptr @L_scene")
+    i = 0
+    while i < len(prog) {
+      let d = prog[i]
+      if d.kind == N_SYS and (d.ty == phase) and (d.c != null) {
+        let ce = emit_bind(`icmp eq i32 {cs}, {itoa(d.c.ival)}`)
+        let run = lbl("scrun");  let skip = lbl("scskip")
+        emit("  br i1 ");  emit(ce);  emit(", label %");  emit(run);  emit(", label %");  emit(skip);  emit("\n")
+        emit(run);  emit(":\n")
+        emit_call_one(d)
+        emit("  br label %");  emit(skip);  emit("\n");  emit(skip);  emit(":\n")
+      }
+      i = i + 1
     }
-    i = i + 1
   }
+  emit_engine_systems_for_phase(phase)               # engine-owned systems run after every user handler
 }
 
 # on enter / on exit compile to void functions @scene_enter_<Name> /

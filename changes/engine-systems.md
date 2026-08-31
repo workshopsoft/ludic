@@ -1,0 +1,3 @@
+bump: minor
+type: feat
+Engine-owned systems over user components (#43) — the ECS hook that runs a system automatically each frame over a component a game merely declares and carries, no `handler` wired. Declaring the well-known `SpriteAnim { ticks, fps, frames, mode, frame }` gives sprite-sheet frame animation (loop / once / ping-pong) that advances `frame` for free; `Motion { ticks, dur, from, to, ease, value, done }` gives value tweening (linear / in / out / in-out) that advances `value`. The systems stand on the reflection ABI, resolving fields by name, so they no-op cleanly when a component or field is absent and cost nothing in a game that declares neither — that build is byte-for-byte unchanged.

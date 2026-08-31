@@ -1,0 +1,64 @@
+# anim_ecs.ludic — engine-owned systems over user components (#43). A game
+# declares the well-known SpriteAnim / Motion components, carries them on a
+# model, and the engine advances them every frame with NO handler wired by the
+# game. Driving the sim from `entry` (tick_fixed runs the Update phase, where the
+# engine systems live), we sample the auto-advanced fields at known tick counts.
+#
+#   bin/ludic examples/library/anim_ecs.ludic
+# A full run prints:  1 5 2 10 0 2 10 1 1
+program AnimEcs {
+  # The engine auto-advances `frame` from `ticks` (runtime/native/systems.ludic).
+  property SpriteAnim { ticks: int = 0, fps: int = 0, frames: int = 0, mode: int = 0, frame: int = 0 }
+  # The engine auto-advances `value` / `done` from `ticks` over `dur`.
+  property Motion { ticks: int = 0, dur: int = 0, from: int = 0, to: int = 0, ease: int = 0, value: int = 0, done: int = 0 }
+
+  model Sprite  { SpriteAnim }
+  model Mover   { Motion }
+  model Bouncer { SpriteAnim }
+
+  entry {
+    # a 4-frame clip at 12 fps, looping: a new cell every 5 ticks (60/12).
+    spawn Sprite { SpriteAnim { fps: 12, frames: 4, mode: 0 } }
+    # a 4-frame ping-pong clip at 12 fps: 0 1 2 3 2 1 0 1 …
+    spawn Bouncer { SpriteAnim { fps: 12, frames: 4, mode: 2 } }
+    # a linear 0..10 tween over 10 ticks.
+    spawn Mover { Motion { dur: 10, from: 0, to: 10, ease: 0 } }
+
+    let sa  = World.prop_id("SpriteAnim")
+    let saf = World.field_id(sa, "frame")
+    let mo  = World.prop_id("Motion")
+    let mov = World.field_id(mo, "value")
+    let mod = World.field_id(mo, "done")
+
+    let sprite  = World.query_next(sa, 0)              # lowest id: the Sprite
+    let bouncer = World.query_next(sa, sprite + 1)     # next SpriteAnim: the Bouncer
+    let mover   = World.query_next(mo, 0)
+
+    tick_n(5)                                          # ticks = 5
+    print(World.get(sprite, sa, saf))                 # loop: (5*12/60) % 4 = 1
+    print(World.get(mover, mo, mov))                  # linear: 5
+
+    tick_n(5)                                          # ticks = 10
+    print(World.get(sprite, sa, saf))                 # (10*12/60) % 4 = 2
+    print(World.get(mover, mo, mov))                  # clamped at dur -> 10
+
+    tick_n(10)                                         # ticks = 20
+    print(World.get(sprite, sa, saf))                 # (20*12/60) % 4 = 0
+    print(World.get(bouncer, sa, saf))                # pingpong, elapsed 4, period 6 -> 2
+
+    # the Mover finished: value rests at `to`, done latched.
+    print(World.get(mover, mo, mov))                  # 10
+    print(World.get(mover, mo, mod))                  # 1
+
+    tick_n(5)                                          # ticks = 25
+    print(World.get(bouncer, sa, saf))                # pingpong, elapsed 5, 6-5 = 1
+
+    quit()
+  }
+
+  # run the Update phase n times; the engine systems advance one tick each call.
+  function tick_n(n: int) -> void {
+    var i = 0
+    while i < n { tick_fixed();  i = i + 1 }
+  }
+}

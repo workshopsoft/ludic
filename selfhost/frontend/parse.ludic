@@ -407,6 +407,7 @@ var g_uses_reflect: bool = false  # a program mentioned Reflect.* -> force-emit 
 var g_uses_light: bool = false    # a program mentioned Light.* -> splice the 2D light pass
 var g_uses_value: bool = false    # Value.*/Json.*/Reflect.serialize -> splice the value tree + JSON (#44)
 var g_uses_reflect_io: bool = false  # Reflect.serialize/apply -> splice the reflection serializer
+var g_uses_esys: bool = false     # an engine-owned system component (SpriteAnim/Motion/Light2D) is declared -> splice systems.ludic + force the reflection ABI
 
 function already_loaded(full: pointer) -> bool {
   var i = 0
@@ -603,6 +604,18 @@ function maybe_splice_runtime() -> void {
     do_import("runtime/native/reflect_io.ludic")
     cur_dir = saved
   }
+  # engine-owned systems (#43/#47): a game that declares a well-known engine
+  # component (SpriteAnim / Motion / Light2D / Occluder) gets systems.ludic
+  # spliced, and the compiler inserts a call to each esys_* at its frame phase
+  # (emit_engine_systems_for_phase). The systems read/write components through the
+  # reflection ABI, so g_uses_esys also force-emits the world table (emit_decl).
+  # Light2D/Occluder additionally consume the 2D light pass, so pull it in too.
+  if uses_engine_systems() {
+    g_uses_esys = true
+    cur_dir = ""
+    do_import("runtime/native/systems.ludic")
+    cur_dir = saved
+  }
 }
 
 function parse_program() -> void {
@@ -623,6 +636,7 @@ function parse_program() -> void {
   g_uses_regex = false
   g_uses_query = false
   g_uses_reflect = false
+  g_uses_esys = false
   g_uses_light = false
   g_uses_value = false
   g_uses_reflect_io = false

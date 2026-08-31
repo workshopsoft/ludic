@@ -8,11 +8,28 @@ const MAX_ENT: int = 1024
 function has_systems() -> bool {
   var i = 0
   while i < len(prog) { if prog[i].kind == N_SYS { return true };  i = i + 1 }
+  # a game with no hand-written handler but a well-known engine component still
+  # runs a frame loop — the engine owns the system that ticks that component
+  # (#43/#47). Treat it as a systems game so the loop / tick helpers are emitted.
+  if uses_engine_systems() { return true }
   return false
 }
 function has_models() -> bool {
   var i = 0
   while i < len(prog) { if prog[i].kind == N_ARCH { return true };  i = i + 1 }
+  return false
+}
+# does the program declare a well-known engine component? Each one is auto-ticked
+# by an engine-owned system (systems.ludic, wired in emit_engine_systems_for_
+# phase). Answering this drives the systems.ludic splice (parse.ludic) and the
+# reflection-ABI force-emit (emit_decl) — a game with none is byte-for-byte the
+# same as before the feature existed. Keep this list in sync with the phase table
+# in emit_engine_systems_for_phase.
+function uses_engine_systems() -> bool {
+  if find_comp("SpriteAnim") != null { return true }
+  if find_comp("Motion") != null { return true }
+  if find_comp("Light2D") != null { return true }
+  if find_comp("Occluder") != null { return true }
   return false
 }
 # N5: does the program have an `entry` block? A game with both handlers and an
