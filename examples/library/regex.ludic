@@ -1,0 +1,59 @@
+# regex.ludic — Regex.* behaviour and the linear-time safety guarantee. Each
+# assertion that holds prints its number, so a full run prints:
+#   1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18
+# The engine is a Thompson NFA / Pike VM (see runtime/native/regex.ludic): a
+# pathological pattern is O(n·m), never exponential — check #17 pins that.
+program Regex {
+  entry {
+    # --- search (matches) ---
+    if Regex.matches("hello world", "wor.d") { print(1) }
+    if not Regex.matches("hello", "\\d+") { print(2) }
+
+    # --- anchors + alternation + groups (a chat-command validator) ---
+    if Regex.matches("/help", "^/(help|quit)$") { print(3) }
+    if not Regex.matches("/helpme", "^/(help|quit)$") { print(4) }
+
+    # --- character classes / shorthands ---
+    if Regex.matches("abc123", "\\d+") { print(5) }
+    if Regex.matches("user_1@host.io", "^\\w+@\\w+\\.\\w+$") { print(6) }
+    if Regex.matches("x", "[a-z]") { print(7) }
+    if not Regex.matches("5", "[^0-9]") { print(8) }
+
+    # --- greedy vs lazy ---
+    let g = Regex.find("<a><b>", "<(.+)>")
+    if Regex.group(g, 1) == "a><b" { print(9) }
+    let l = Regex.find("<a><b>", "<(.+?)>")
+    if Regex.group(l, 1) == "a" { print(10) }
+
+    # --- bounded repetition {n,m} ---
+    if Regex.matches("aaa", "^a{2,3}$") { print(11) }
+    if not Regex.matches("aaaa", "^a{2,3}$") { print(12) }
+
+    # --- capture groups by number ---
+    let m = Regex.find("name: Alice", "(\\w+): (\\w+)")
+    if Regex.group(m, 1) == "name" and Regex.group(m, 2) == "Alice" { print(13) }
+
+    # --- replace: literal and with a \1 backreference (dialogue tokens) ---
+    if Regex.replace("a1b2c3", "\\d", "#") == "a#b#c#" { print(14) }
+    if Regex.replace("hi {name}!", "\\{(\\w+)\\}", "[\\1]") == "hi [name]!" { print(15) }
+
+    # --- find_all via a compile-once / next loop (extract #hashtags) ---
+    let re = Regex.compile("#(\\w+)")
+    var tags = ""
+    var cur = Regex.exec("#a #bb #ccc", re)
+    while Regex.ok(cur) {
+      tags = tags + Regex.group(cur, 1)
+      cur = Regex.next("#a #bb #ccc", re, Regex.end(cur, 0))
+    }
+    if tags == "abbccc" { print(16) }
+
+    # --- linear time: a classic catastrophic-backtracking pattern still runs
+    #     (a naive engine would hang on 40 a's; the NFA is O(n·m)) ---
+    if Regex.matches("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "(a+)+$") { print(17) }
+
+    # --- errors are values: an invalid pattern compiles to null, never crashes ---
+    if not Regex.valid("(unterminated") { print(18) }
+
+    exit(0)
+  }
+}

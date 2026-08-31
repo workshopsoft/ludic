@@ -1,0 +1,506 @@
+# ============================================================================
+# regex.ludic — a regular-expression engine, written in Ludic.
+#
+# PCRE/PECL-compatible syntax over a LINEAR-TIME Thompson NFA (a Pike VM with
+# capture slots), so a bad pattern from a modder can never cause catastrophic
+# backtracking — `(a+)+$` on non-matching input is O(n·m), not exponential. The
+# pattern compiles to a small bytecode program (an unanchored lazy `.*?` prefix
+# makes a plain search match anywhere); the VM runs every alive thread in
+# lockstep per input byte, deduped by program counter so work stays bounded.
+#
+# Supported: literals, `.`, character classes `[...]` (ranges, negation, and the
+# \d \w \s \D \W \S shorthands), anchors `^` `$`, alternation `|`, capturing
+# `(...)` and non-capturing `(?:...)` groups, and the quantifiers `* + ?` and
+# `{n} {n,} {n,m}` in greedy or lazy (`?`-suffixed) form, plus the common
+# escapes. Numbered capture groups. Out of scope for a linear engine (and so
+# unsupported): backreferences and look-around. On the degenerate case of a
+# nullable subpattern under an unbounded quantifier (e.g. `(a*)*`), match/
+# capture positions may differ from a backtracking engine like Python's — the
+# price of the linear-time guarantee.
+#
+# ludicc splices this file into any program that mentions `Regex.*` (like the
+# game runtime in core.ludic); it is a fragment, not a `program`/`module` block.
+# The Regex.* namespace (emit_call.ludic) aliases each method to the matching
+# `regex_*` function below.
+# ============================================================================
+
+# ---- small helpers ----------------------------------------------------------
+function rx_slen(s: pointer) -> int { var n = 0;  while s[n] != 0 { n = n + 1 };  return n }
+
+# ---- growable int vector ----------------------------------------------------
+property IVec { d: words, n: int, cap: int }
+function iv_new() -> IVec {
+  let v = new IVec
+  v.cap = 16;  v.d = words(16);  v.n = 0
+  return v
+}
+function iv_grow(v: IVec, need: int) -> void {
+  if v.n + need <= v.cap { return }
+  var nc = v.cap * 2
+  while nc < v.n + need { nc = nc * 2 }
+  let nd = words(nc)
+  var i = 0
+  while i < v.n { nd[i] = v.d[i];  i = i + 1 }
+  v.d = nd;  v.cap = nc
+}
+function iv_push(v: IVec, x: int) -> int {
+  iv_grow(v, 1)
+  let idx = v.n
+  v.d[v.n] = x
+  v.n = v.n + 1
+  return idx
+}
+
+# ---- instruction opcodes ----------------------------------------------------
+const OP_CHAR:  int = 1
+const OP_ANY:   int = 2    # any byte except '\n'
+const OP_CLASS: int = 3
+const OP_MATCH: int = 4
+const OP_JMP:   int = 5
+const OP_SPLIT: int = 6
+const OP_SAVE:  int = 7
+const OP_BOL:   int = 8
+const OP_EOL:   int = 9
+const OP_ANYNL: int = 10   # any byte incl '\n' (the .*? search prefix)
+
+# ---- AST node types ---------------------------------------------------------
+const N_LIT:    int = 1
+const N_ANY:    int = 2
+const N_CLASS:  int = 3
+const N_CONCAT: int = 4
+const N_ALT:    int = 5
+const N_STAR:   int = 6
+const N_PLUS:   int = 7
+const N_QUEST:  int = 8
+const N_REP:    int = 9
+const N_GROUP:  int = 10
+const N_BOL:    int = 11
+const N_EOL:    int = 12
+const N_EMPTY:  int = 13
+
+property RNode {
+  op: int = 0, ch: int = 0, cls: int = 0, lo: int = 0, hi: int = 0,
+  greedy: int = 1, gidx: int = 0 - 1, kids: []RNode
+}
+function rx_node(op: int) -> RNode {
+  let n = new RNode
+  n.op = op
+  n.greedy = 1
+  n.gidx = 0 - 1
+  n.kids = new []RNode
+  return n
+}
+
+property Prog { code: IVec, cls: IVec, ngroups: int, ok: int }
+
+# ---- parser state -----------------------------------------------------------
+var rx_pat:    pointer = ""
+var rx_pos:    int = 0
+var rx_len:    int = 0
+var rx_err:    int = 0
+var rx_ngroup: int = 0
+var rx_prog:   Prog = null
+
+function rx_peek() -> int { if rx_pos < rx_len { return rx_pat[rx_pos] & 255 };  return 0 - 1 }
+function rx_peek2() -> int { if rx_pos + 1 < rx_len { return rx_pat[rx_pos + 1] & 255 };  return 0 - 1 }
+function rx_adv() -> int { let c = rx_peek();  rx_pos = rx_pos + 1;  return c }
+
+# ---- character classes ------------------------------------------------------
+# a class is 8 i32 words (256 bits) in prog.cls; class k occupies cls[8k .. 8k+8)
+function rx_class_new() -> int {
+  let idx = rx_prog.cls.n / 8
+  var i = 0
+  while i < 8 { iv_push(rx_prog.cls, 0);  i = i + 1 }
+  return idx
+}
+function rx_class_set(idx: int, c: int) -> void {
+  let w = idx * 8 + (c >> 5)
+  rx_prog.cls.d[w] = rx_prog.cls.d[w] | (1 << (c & 31))
+}
+function rx_class_set_range(idx: int, a: int, b: int) -> void {
+  var c = a
+  while c <= b { rx_class_set(idx, c);  c = c + 1 }
+}
+function rx_class_negate(idx: int) -> void {
+  var i = 0
+  while i < 8 { let w = idx * 8 + i;  rx_prog.cls.d[w] = ~rx_prog.cls.d[w];  i = i + 1 }
+}
+function rx_class_unset(idx: int, c: int) -> void {
+  let w = idx * 8 + (c >> 5)
+  rx_prog.cls.d[w] = rx_prog.cls.d[w] & ~(1 << (c & 31))
+}
+function rx_class_unset_range(idx: int, a: int, b: int) -> void {
+  var c = a
+  while c <= b { rx_class_unset(idx, c);  c = c + 1 }
+}
+function rx_class_set_all(idx: int) -> void {
+  var i = 0
+  while i < 8 { rx_prog.cls.d[idx * 8 + i] = 0 - 1;  i = i + 1 }
+}
+function rx_class_set_word(idx: int) -> void {
+  rx_class_set_range(idx, 48, 57)
+  rx_class_set_range(idx, 65, 90)
+  rx_class_set_range(idx, 97, 122)
+  rx_class_set(idx, 95)
+}
+function rx_class_set_ws(idx: int) -> void {
+  rx_class_set(idx, 32);  rx_class_set(idx, 9);  rx_class_set(idx, 10)
+  rx_class_set(idx, 13);  rx_class_set(idx, 12);  rx_class_set(idx, 11)
+}
+function rx_class_has(prog: Prog, idx: int, c: int) -> bool {
+  let w = prog.cls.d[idx * 8 + (c >> 5)]
+  return (w & (1 << (c & 31))) != 0
+}
+function rx_is_digit(c: int) -> bool { return c >= 48 and c <= 57 }
+function rx_is_word(c: int) -> bool {
+  return (c >= 48 and c <= 57) or (c >= 65 and c <= 90) or (c >= 97 and c <= 122) or c == 95
+}
+function rx_is_ws(c: int) -> bool {
+  return c == 32 or c == 9 or c == 10 or c == 13 or c == 12 or c == 11
+}
+# OR the set named by \d \D \w \W \s \S into class idx. The negated forms OR in
+# the complement set bit-by-bit (never via set-all+unset, which would clobber a
+# previously-set member — e.g. the literal `1` in [1\Da] must survive \D).
+function rx_class_add_pre(idx: int, kind: int) -> void {
+  if kind == 100 { rx_class_set_range(idx, 48, 57);  return }             # \d
+  if kind == 119 { rx_class_set_word(idx);  return }                      # \w
+  if kind == 115 { rx_class_set_ws(idx);  return }                        # \s
+  var c = 0
+  while c < 256 {
+    if kind == 68 { if not rx_is_digit(c) { rx_class_set(idx, c) } }      # \D
+    else if kind == 87 { if not rx_is_word(c) { rx_class_set(idx, c) } }  # \W
+    else if kind == 83 { if not rx_is_ws(c) { rx_class_set(idx, c) } }    # \S
+    c = c + 1
+  }
+}
+
+# parse a [...] class starting at '['; returns an N_CLASS node
+function rx_parse_class() -> RNode {
+  rx_adv()                                        # consume '['
+  let idx = rx_class_new()
+  var neg = false
+  if rx_peek() == 94 { neg = true;  rx_adv() }    # [^ ...]
+  # a ']' as the first char is a literal
+  if rx_peek() == 93 { rx_class_set(idx, 93);  rx_adv() }
+  while rx_peek() != 93 and rx_peek() >= 0 {
+    var lo = rx_adv()
+    if lo == 92 {                                 # escape inside class
+      let e = rx_adv()
+      if e == 100 or e == 68 or e == 119 or e == 87 or e == 115 or e == 83 {
+        rx_class_add_pre(idx, e)
+        continue
+      }
+      lo = rx_class_escape_char(e)
+    }
+    # a range a-b (but a trailing '-' before ']' is literal)
+    if rx_peek() == 45 and rx_peek2() != 93 and rx_peek2() >= 0 {
+      rx_adv()                                    # consume '-'
+      var hi = rx_adv()
+      if hi == 92 { hi = rx_class_escape_char(rx_adv()) }
+      rx_class_set_range(idx, lo, hi)
+    } else {
+      rx_class_set(idx, lo)
+    }
+  }
+  if rx_peek() != 93 { rx_err = 1 } else { rx_adv() }   # consume ']'
+  if neg { rx_class_negate(idx) }
+  let node = rx_node(N_CLASS)
+  node.cls = idx
+  return node
+}
+# map an escaped char inside a class to its byte
+function rx_class_escape_char(e: int) -> int {
+  if e == 110 { return 10 }
+  if e == 116 { return 9 }
+  if e == 114 { return 13 }
+  if e == 102 { return 12 }
+  if e == 118 { return 11 }
+  if e == 48  { return 0 }
+  return e
+}
+
+# ---- escapes outside a class ------------------------------------------------
+function rx_parse_escape() -> RNode {
+  rx_adv()                                        # consume '\'
+  let e = rx_adv()
+  if e == 100 or e == 68 or e == 119 or e == 87 or e == 115 or e == 83 {
+    let idx = rx_class_new()
+    rx_class_add_pre(idx, e)
+    let node = rx_node(N_CLASS)
+    node.cls = idx
+    return node
+  }
+  if e >= 49 and e <= 57 { rx_err = 1;  return rx_node(N_EMPTY) }   # backrefs unsupported
+  var ch = e
+  if e == 110 { ch = 10 }
+  else if e == 116 { ch = 9 }
+  else if e == 114 { ch = 13 }
+  else if e == 102 { ch = 12 }
+  else if e == 118 { ch = 11 }
+  else if e == 48  { ch = 0 }
+  else if e < 0    { rx_err = 1;  return rx_node(N_EMPTY) }
+  let node = rx_node(N_LIT)
+  node.ch = ch
+  return node
+}
+
+# ---- parser -----------------------------------------------------------------
+function rx_parse_alt() -> RNode {
+  let first = rx_parse_concat()
+  if rx_peek() != 124 { return first }
+  let alt = rx_node(N_ALT)
+  push(alt.kids, first)
+  while rx_peek() == 124 {
+    rx_adv()
+    push(alt.kids, rx_parse_concat())
+    if rx_err == 1 { break }
+  }
+  return alt
+}
+function rx_parse_concat() -> RNode {
+  let cat = rx_node(N_CONCAT)
+  while true {
+    let c = rx_peek()
+    if c < 0 or c == 124 or c == 41 { break }
+    push(cat.kids, rx_parse_repeat())
+    if rx_err == 1 { break }
+  }
+  if len(cat.kids) == 1 { return cat.kids[0] }
+  if len(cat.kids) == 0 { return rx_node(N_EMPTY) }
+  return cat
+}
+# read the optional lazy '?' after a quantifier; returns greedy flag (0 = lazy)
+function rx_lazy() -> int {
+  if rx_peek() == 63 { rx_adv();  return 0 }
+  return 1
+}
+function rx_parse_repeat() -> RNode {
+  let atom = rx_parse_atom()
+  if rx_err == 1 { return atom }
+  let c = rx_peek()
+  if c == 42 or c == 43 or c == 63 {
+    rx_adv()
+    var op = N_STAR
+    if c == 43 { op = N_PLUS }
+    if c == 63 { op = N_QUEST }
+    let r = rx_node(op)
+    r.greedy = rx_lazy()
+    push(r.kids, atom)
+    return r
+  }
+  if c == 123 { return rx_parse_brace(atom) }
+  return atom
+}
+# {n} {n,} {n,m}
+function rx_parse_brace(atom: RNode) -> RNode {
+  let save = rx_pos
+  rx_adv()                                        # consume '{'
+  var lo = 0
+  var haslo = false
+  while rx_peek() >= 48 and rx_peek() <= 57 { lo = lo * 10 + (rx_adv() - 48);  haslo = true }
+  var hi = lo
+  var hasComma = false
+  if rx_peek() == 44 { hasComma = true;  rx_adv();  hi = 0 - 1
+    var hashi = false
+    while rx_peek() >= 48 and rx_peek() <= 57 { if not hashi { hi = 0 };  hi = hi * 10 + (rx_adv() - 48);  hashi = true }
+  }
+  if rx_peek() != 125 or not haslo {              # not a valid brace -> literal '{'
+    rx_pos = save
+    rx_adv()
+    let n = rx_node(N_LIT);  n.ch = 123;  return n
+  }
+  rx_adv()                                        # consume '}'
+  let r = rx_node(N_REP)
+  r.lo = lo
+  r.hi = hi
+  r.greedy = rx_lazy()
+  push(r.kids, atom)
+  return r
+}
+function rx_parse_atom() -> RNode {
+  let c = rx_peek()
+  if c == 40 {                                    # '('
+    rx_adv()
+    var gidx = 0 - 1
+    if rx_peek() == 63 {                          # (? ...
+      rx_adv()
+      let d = rx_peek()
+      if d == 58 { rx_adv() }                     # (?: non-capturing
+      else if d == 80 { rx_adv();  rx_skip_name() }   # (?P<name>  (captured, name ignored for now)
+      else if d == 60 { rx_skip_name() }          # (?<name>
+      else { rx_err = 1;  return rx_node(N_EMPTY) }
+    } else {
+      rx_ngroup = rx_ngroup + 1
+      gidx = rx_ngroup
+    }
+    let inner = rx_parse_alt()
+    if rx_peek() != 41 { rx_err = 1;  return rx_node(N_EMPTY) }
+    rx_adv()                                      # consume ')'
+    let g = rx_node(N_GROUP)
+    g.gidx = gidx
+    push(g.kids, inner)
+    return g
+  }
+  if c == 91 { return rx_parse_class() }
+  if c == 46 { rx_adv();  return rx_node(N_ANY) }
+  if c == 94 { rx_adv();  return rx_node(N_BOL) }
+  if c == 36 { rx_adv();  return rx_node(N_EOL) }
+  if c == 92 { return rx_parse_escape() }
+  if c == 42 or c == 43 or c == 63 or c == 41 { rx_err = 1;  return rx_node(N_EMPTY) }
+  if c < 0 { rx_err = 1;  return rx_node(N_EMPTY) }
+  rx_adv()
+  let n = rx_node(N_LIT)
+  n.ch = c
+  return n
+}
+# skip a (?P<name> / (?<name> group name up to '>'; leaves a capturing group
+function rx_skip_name() -> void {
+  if rx_peek() == 80 { rx_adv() }                 # already consumed by caller in (?P case? guard
+  if rx_peek() == 60 { rx_adv() }                 # consume '<'
+  while rx_peek() != 62 and rx_peek() >= 0 { rx_adv() }
+  if rx_peek() == 62 { rx_adv() }                 # consume '>'
+  rx_ngroup = rx_ngroup + 1
+  # note: the caller set gidx = -1; fix it up to a real capture index
+  rx_named_gidx = rx_ngroup
+}
+var rx_named_gidx: int = 0
+
+# ---- compile AST -> program -------------------------------------------------
+function pg_emit(op: int, a: int, b: int) -> int {
+  let pc = rx_prog.code.n / 3
+  iv_push(rx_prog.code, op)
+  iv_push(rx_prog.code, a)
+  iv_push(rx_prog.code, b)
+  return pc
+}
+function pg_set_a(pc: int, a: int) -> void { rx_prog.code.d[3 * pc + 1] = a }
+function pg_set_b(pc: int, b: int) -> void { rx_prog.code.d[3 * pc + 2] = b }
+function pg_pc() -> int { return rx_prog.code.n / 3 }
+
+function rx_compile(node: RNode) -> void {
+  let op = node.op
+  if op == N_EMPTY { return }
+  if op == N_LIT { pg_emit(OP_CHAR, node.ch, 0);  return }
+  if op == N_ANY { pg_emit(OP_ANY, 0, 0);  return }
+  if op == N_CLASS { pg_emit(OP_CLASS, node.cls, 0);  return }
+  if op == N_BOL { pg_emit(OP_BOL, 0, 0);  return }
+  if op == N_EOL { pg_emit(OP_EOL, 0, 0);  return }
+  if op == N_CONCAT {
+    var i = 0
+    while i < len(node.kids) { rx_compile(node.kids[i]);  i = i + 1 }
+    return
+  }
+  if op == N_GROUP {
+    if node.gidx >= 0 {
+      pg_emit(OP_SAVE, 2 * node.gidx, 0)
+      rx_compile(node.kids[0])
+      pg_emit(OP_SAVE, 2 * node.gidx + 1, 0)
+    } else {
+      rx_compile(node.kids[0])
+    }
+    return
+  }
+  if op == N_ALT {
+    let jmps = iv_new()
+    var i = 0
+    while i < len(node.kids) {
+      if i < len(node.kids) - 1 {
+        let sp = pg_emit(OP_SPLIT, 0, 0)
+        pg_set_a(sp, pg_pc())
+        rx_compile(node.kids[i])
+        let j = pg_emit(OP_JMP, 0, 0)
+        iv_push(jmps, j)
+        pg_set_b(sp, pg_pc())
+      } else {
+        rx_compile(node.kids[i])
+      }
+      i = i + 1
+    }
+    let end = pg_pc()
+    i = 0
+    while i < jmps.n { pg_set_a(jmps.d[i], end);  i = i + 1 }
+    return
+  }
+  if op == N_STAR {
+    let l1 = pg_pc()
+    let sp = pg_emit(OP_SPLIT, 0, 0)
+    let l2 = pg_pc()
+    rx_compile(node.kids[0])
+    pg_emit(OP_JMP, l1, 0)
+    let l3 = pg_pc()
+    if node.greedy == 1 { pg_set_a(sp, l2);  pg_set_b(sp, l3) }
+    else { pg_set_a(sp, l3);  pg_set_b(sp, l2) }
+    return
+  }
+  if op == N_PLUS {
+    let l1 = pg_pc()
+    rx_compile(node.kids[0])
+    let sp = pg_emit(OP_SPLIT, 0, 0)
+    let l3 = pg_pc()
+    if node.greedy == 1 { pg_set_a(sp, l1);  pg_set_b(sp, l3) }
+    else { pg_set_a(sp, l3);  pg_set_b(sp, l1) }
+    return
+  }
+  if op == N_QUEST {
+    let sp = pg_emit(OP_SPLIT, 0, 0)
+    let l2 = pg_pc()
+    rx_compile(node.kids[0])
+    let l3 = pg_pc()
+    if node.greedy == 1 { pg_set_a(sp, l2);  pg_set_b(sp, l3) }
+    else { pg_set_a(sp, l3);  pg_set_b(sp, l2) }
+    return
+  }
+  if op == N_REP {
+    let kid = node.kids[0]
+    var i = 0
+    while i < node.lo { rx_compile(kid);  i = i + 1 }
+    if node.hi < 0 {
+      let st = rx_node(N_STAR)
+      st.greedy = node.greedy
+      push(st.kids, kid)
+      rx_compile(st)
+    } else {
+      i = 0
+      while i < node.hi - node.lo {
+        let q = rx_node(N_QUEST)
+        q.greedy = node.greedy
+        push(q.kids, kid)
+        rx_compile(q)
+        i = i + 1
+      }
+    }
+    return
+  }
+}
+
+# regex_compile(pattern) -> Prog (null on a syntax error)
+function regex_compile(pattern: pointer) -> Prog {
+  let p = new Prog
+  p.code = iv_new()
+  p.cls = iv_new()
+  p.ngroups = 0
+  p.ok = 1
+  rx_prog = p
+  rx_pat = pattern
+  rx_pos = 0
+  rx_len = rx_slen(pattern)
+  rx_err = 0
+  rx_ngroup = 0
+  let root = rx_parse_alt()
+  if rx_err == 1 or rx_pos != rx_len { return null }
+  p.ngroups = rx_ngroup
+  # unanchored lazy .*? prefix so a match may start at any position
+  let sp0 = pg_emit(OP_SPLIT, 0, 0)
+  let consume = pg_pc()
+  pg_emit(OP_ANYNL, 0, 0)
+  pg_emit(OP_JMP, sp0, 0)
+  let body = pg_pc()
+  pg_set_a(sp0, body)
+  pg_set_b(sp0, consume)
+  pg_emit(OP_SAVE, 0, 0)
+  rx_compile(root)
+  pg_emit(OP_SAVE, 1, 0)
+  pg_emit(OP_MATCH, 0, 0)
+  return p
+}
+

@@ -160,7 +160,9 @@ function p_primary() -> Node {
 function p_postfix() -> Node {
   var e = p_primary()
   while true {
-    if is_op(".") { pi = pi + 1; let m = node(E_MEMBER); m.a = e; m.s = eat_id(); e = m }
+    if is_op(".") { pi = pi + 1; let m = node(E_MEMBER); m.a = e; m.s = eat_id(); e = m
+      if e.a.kind == E_ID and e.a.s == "Regex" { g_uses_regex = true }   # splice the regex runtime on demand
+    }
     else { if is_op("[") { pi = pi + 1; let lo = expr()
         if is_op("..") { pi = pi + 1; let sl = node(E_SLICE); sl.a = e; sl.b = lo; sl.c = expr(); eat_op("]"); e = sl }   # s[a..b] substring
         else { let ix = node(E_INDEX); ix.a = e; ix.b = lo; eat_op("]"); e = ix } }
@@ -371,6 +373,7 @@ function path_join(dir: pointer, rel: pointer) -> pointer {
 
 var loaded_paths: []pointer
 var cur_dir: pointer
+var g_uses_regex: bool = false    # a program mentioned Regex.* -> splice the regex runtime
 
 function already_loaded(full: pointer) -> bool {
   var i = 0
@@ -507,11 +510,21 @@ function do_import(rel: pointer) -> void {
 # a game (has systems/components) links the Ludic runtime; auto-splice it the
 # way the C compiler does. Tools (a `main` block, no ECS) get nothing.
 function maybe_splice_runtime() -> void {
-  if not has_ecs() { return }
   let saved = cur_dir
-  cur_dir = ""
-  do_import("runtime/native/core.ludic")
-  cur_dir = saved
+  # a game (has systems/components) links the Ludic runtime.
+  if has_ecs() {
+    cur_dir = ""
+    do_import("runtime/native/core.ludic")
+    cur_dir = saved
+  }
+  # any program that uses Regex.* gets the regex engine spliced in (it is
+  # self-contained — only compiler intrinsics — so it works in a plain tool too).
+  if g_uses_regex {
+    cur_dir = ""
+    do_import("runtime/native/regex.ludic")
+    do_import("runtime/native/regex_vm.ludic")
+    cur_dir = saved
+  }
 }
 
 function parse_program() -> void {
@@ -529,6 +542,7 @@ function parse_program() -> void {
   g_events = new []Node
   g_onlisten = new []Node
   g_toggled_layers = new []pointer
+  g_uses_regex = false
   loaded_paths = new []pointer
   skipnl()
   g_game_name = "Ludic"

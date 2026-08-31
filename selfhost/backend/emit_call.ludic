@@ -185,6 +185,24 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "write") { bare = "save" }
     if (meth == "read")  { bare = "load" }
   }
+  # Regex.* -> the regex_* engine functions (spliced from runtime/native/regex*.ludic
+  # when a program mentions Regex.*). Each is a plain alias; the engine functions
+  # are ordinary Ludic, so the generic call path resolves them to @fn_regex_*.
+  if (ns == "Regex") {
+    if (meth == "compile")     { bare = "regex_compile";     push(labels, "pattern") }
+    if (meth == "valid")       { bare = "regex_valid";       push(labels, "pattern") }
+    if (meth == "matches")     { bare = "regex_matches";     push(labels, "text"); push(labels, "pattern") }
+    if (meth == "test")        { bare = "regex_test";        push(labels, "text"); push(labels, "re") }
+    if (meth == "find")        { bare = "regex_find";        push(labels, "text"); push(labels, "pattern") }
+    if (meth == "exec")        { bare = "regex_exec";        push(labels, "text"); push(labels, "re") }
+    if (meth == "next")        { bare = "regex_next";        push(labels, "text"); push(labels, "re"); push(labels, "from") }
+    if (meth == "replace")     { bare = "regex_replace";     push(labels, "text"); push(labels, "pattern"); push(labels, "replacement") }
+    if (meth == "group")       { bare = "regex_group";       push(labels, "match"); push(labels, "n") }
+    if (meth == "group_count") { bare = "regex_group_count"; push(labels, "match") }
+    if (meth == "start")       { bare = "regex_start";       push(labels, "match"); push(labels, "n") }
+    if (meth == "end")         { bare = "regex_end";         push(labels, "match"); push(labels, "n") }
+    if (meth == "ok")          { bare = "regex_ok";          push(labels, "match") }
+  }
   if (bare == null) { perr(`unknown builtin {ns}.{meth}`) }
   reorder_named(e, labels)
   let id = node(E_ID); id.s = bare; e.a = id

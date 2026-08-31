@@ -486,5 +486,20 @@
   "mime": [
     "mime-of",
     "mime-sniff"
+  ],
+  "regex": [
+    "regex-compile",
+    "regex-valid",
+    "regex-matches",
+    "regex-test",
+    "regex-find",
+    "regex-exec",
+    "regex-next",
+    "regex-replace",
+    "regex-group",
+    "regex-group_count",
+    "regex-start",
+    "regex-end",
+    "regex-ok"
   ]
 }

@@ -102,6 +102,7 @@ function cmd_test() -> int {
   feat_case("library/crypto", "", "1 2 3 4 5 6 7 8 9", "crypto.ludic (Crypto SHA-256/HMAC/base64 KAT + CSPRNG shape)")
   feat_case("library/uuid", "", "1 2 3 4 5 6 7 8 9 10", "uuid.ludic (Uuid v4/v7 format, version/variant, parse/equals)")
   feat_case("library/noise", "", "1 2 3 4 5 6 7 8 9 10 11", "noise.ludic (Noise value/perlin/simplex/fbm/cellular determinism + range)")
+  feat_case("library/regex", "", "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18", "regex.ludic (Regex match/find/groups/classes/quantifiers/replace + linear-time safety)")
   feat_case("library/logging", "", "0 5 2 1", "logging.ludic (Log levels, set_level/level threshold, structured fields)")
   # Os known-folders/arch and Fs.list read the BSD utsname/dirent layout, so
   # their asserted values are macOS-specific; skip off Darwin (see is_darwin).
