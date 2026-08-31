@@ -1,0 +1,30 @@
+# bignum.ludic — BigInt.* (arbitrary-precision integers) and Decimal.* (exact
+# base-10 money). Each assertion that holds prints its number, so a full run
+# prints:
+#   1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16
+# Both types are exact, so they are deterministic (see runtime/native/bignum.ludic).
+program BigNum {
+  entry {
+    # --- BigInt: exact integers with no upper bound ---
+    let a = BigInt.parse("123456789012345678901234567890")
+    let b = BigInt.from(1000000)
+    if BigInt.str(BigInt.mul(a, b)) == "123456789012345678901234567890000000" { print(1) }
+    if BigInt.str(BigInt.pow(BigInt.from(2), 100)) == "1267650600228229401496703205376" { print(2) }
+    if BigInt.str(BigInt.add(a, a)) == "246913578024691357802469135780" { print(3) }
+    if BigInt.str(BigInt.sub(BigInt.from(5), BigInt.from(12))) == "-7" { print(4) }
+    if BigInt.cmp(a, b) == 1 { print(5) }
+    if BigInt.eq(BigInt.from(42), BigInt.parse("42")) { print(6) }
+    if BigInt.str(BigInt.div(BigInt.parse("1000000000000000000"), 7)) == "142857142857142857" { print(7) }
+    if BigInt.mod(BigInt.from(17), 5) == 2 { print(8) }
+    if BigInt.is_zero(BigInt.sub(a, a)) { print(9) }
+    if BigInt.to_int(BigInt.from(2024)) == 2024 { print(10) }
+
+    # --- Decimal: money that adds up exactly (binary floats can't) ---
+    if Decimal.str(Decimal.add(Decimal.parse("0.10"), Decimal.parse("0.20"))) == "0.30" { print(11) }
+    if Decimal.str(Decimal.mul(Decimal.parse("19.99"), Decimal.from(3))) == "59.97" { print(12) }
+    if Decimal.eq(Decimal.parse("1.5"), Decimal.parse("1.50")) { print(13) }
+    if Decimal.str(Decimal.rescale(Decimal.parse("3.14159"), 2)) == "3.14" { print(14) }
+    if Decimal.str(Decimal.sub(Decimal.parse("100.00"), Decimal.parse("0.01"))) == "99.99" { print(15) }
+    if Decimal.cmp(Decimal.parse("2.5"), Decimal.parse("2.49")) == 1 { print(16) }
+  }
+}

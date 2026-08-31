@@ -1,0 +1,380 @@
+# ============================================================================
+# bignum.ludic — arbitrary-precision integers (`BigInt.*`) and exact base-10
+# decimals (`Decimal.*`), written in Ludic.
+#
+# The thing a tycoon or idle game must never get wrong: money that adds up
+# exactly, and counters that grow past what a 32- or 64-bit int can hold. Both
+# types are EXACT, so they are deterministic — the same guarantee the rest of
+# the runtime gives, with no binary floating point anywhere.
+#
+#   BigInt — a sign-magnitude integer of unbounded size. Limbs are base 1e9
+#            (nine decimal digits each), little-endian, in a `words` buffer, so
+#            printing is just per-limb decimal with zero-padding. Multiplication
+#            accumulates in i64 (`long`) so a limb-by-limb product never
+#            overflows. add / sub / mul / pow / compare / divide-by-int.
+#   Decimal — a BigInt mantissa plus a decimal `scale` (digits after the point),
+#            so a value is mantissa x 10^-scale. add / sub align scales and stay
+#            exact; mul adds scales; `rescale` truncates toward zero. Perfect for
+#            prices, balances and taxes on values like 0.10 that binary can't
+#            represent.
+#
+# ludicc splices this file into any program that mentions `BigInt.*` or
+# `Decimal.*` (like the regex/value runtimes); it is a self-contained fragment
+# (only compiler intrinsics), so it works in a plain `program { entry }` tool as
+# well as a game. The namespaces (emit_call.ludic) alias each method to the
+# matching `bigint_*` / `decimal_*` function below.
+# ============================================================================
+
+const BN_BASE: int = 1000000000    # 1e9 — nine decimal digits per limb
+
+# a sign-magnitude big integer. sign is -1 / 0 / +1 (0 only for the value zero);
+# limbs are base-1e9, little-endian; n is the number of significant limbs.
+property BigNum { sign: int = 0, n: int = 0, limbs: words }
+
+# allocate a BigNum with room for `cap` limbs (at least one), all zeroed
+function bn_alloc(cap: int) -> BigNum {
+  var c = cap
+  if c < 1 { c = 1 }
+  let b = new BigNum
+  b.sign = 0;  b.n = 0;  b.limbs = words(c)
+  var i = 0
+  while i < c { b.limbs[i] = 0;  i = i + 1 }
+  return b
+}
+
+# drop high zero limbs; a magnitude of zero forces sign 0
+function bn_norm(b: BigNum) -> BigNum {
+  var k = b.n
+  while k > 0 and b.limbs[k - 1] == 0 { k = k - 1 }
+  b.n = k
+  if k == 0 { b.sign = 0 }
+  return b
+}
+
+function bigint_zero() -> BigNum { return bn_alloc(1) }
+
+# an int -> BigNum (widened through i64 so INT_MIN's magnitude is representable)
+function bigint_from(value: int) -> BigNum {
+  if value == 0 { return bigint_zero() }
+  var sign = 1
+  var v: long = value
+  if v < 0 { sign = -1;  v = 0 - v }
+  let b = bn_alloc(3)
+  var i = 0
+  while v > 0 {
+    let q: long = v / BN_BASE
+    let lo: int = v - q * BN_BASE
+    b.limbs[i] = lo
+    v = q
+    i = i + 1
+  }
+  b.n = i;  b.sign = sign
+  return bn_norm(b)
+}
+
+# decimal text (optionally signed) -> BigNum. Assumes valid digits.
+function bigint_from_str(text: pointer) -> BigNum {
+  let e = len(text)
+  var i = 0
+  var sign = 1
+  if e > 0 and text[0] == 45 { sign = -1;  i = 1 }    # '-'
+  if e > 0 and text[0] == 43 { i = 1 }                # '+'
+  while i < e - 1 and text[i] == 48 { i = i + 1 }     # skip leading zeros
+  let ndig = e - i
+  if ndig <= 0 { return bigint_zero() }
+  let nlimb = (ndig + 8) / 9
+  let b = bn_alloc(nlimb)
+  var li = 0
+  var pos = e
+  while pos > i {
+    var start = pos - 9
+    if start < i { start = i }
+    var v = 0
+    var k = start
+    while k < pos { v = v * 10 + (text[k] - 48);  k = k + 1 }
+    b.limbs[li] = v;  li = li + 1
+    pos = start
+  }
+  b.n = nlimb;  b.sign = sign
+  return bn_norm(b)
+}
+
+# compare magnitudes: -1 / 0 / 1
+function bn_ucmp(a: BigNum, b: BigNum) -> int {
+  if a.n != b.n { if a.n > b.n { return 1 };  return -1 }
+  var i = a.n - 1
+  while i >= 0 {
+    if a.limbs[i] != b.limbs[i] { if a.limbs[i] > b.limbs[i] { return 1 };  return -1 }
+    i = i - 1
+  }
+  return 0
+}
+
+# magnitude add (ignores signs)
+function bn_uadd(a: BigNum, b: BigNum) -> BigNum {
+  var m = a.n
+  if b.n > m { m = b.n }
+  let r = bn_alloc(m + 1)
+  var carry = 0
+  var i = 0
+  while i < m {
+    var s = carry
+    if i < a.n { s = s + a.limbs[i] }
+    if i < b.n { s = s + b.limbs[i] }
+    if s >= BN_BASE { r.limbs[i] = s - BN_BASE;  carry = 1 } else { r.limbs[i] = s;  carry = 0 }
+    i = i + 1
+  }
+  r.limbs[m] = carry
+  r.n = m + 1
+  return bn_norm(r)
+}
+
+# magnitude subtract, assuming |a| >= |b|
+function bn_usub(a: BigNum, b: BigNum) -> BigNum {
+  let r = bn_alloc(a.n)
+  var borrow = 0
+  var i = 0
+  while i < a.n {
+    var s = a.limbs[i] - borrow
+    if i < b.n { s = s - b.limbs[i] }
+    if s < 0 { s = s + BN_BASE;  borrow = 1 } else { borrow = 0 }
+    r.limbs[i] = s
+    i = i + 1
+  }
+  r.n = a.n
+  return bn_norm(r)
+}
+
+function bigint_neg(a: BigNum) -> BigNum {
+  let r = bn_alloc(a.n)
+  var i = 0
+  while i < a.n { r.limbs[i] = a.limbs[i];  i = i + 1 }
+  r.n = a.n;  r.sign = 0 - a.sign
+  return r
+}
+
+function bigint_add(a: BigNum, b: BigNum) -> BigNum {
+  if a.sign == 0 { return b }
+  if b.sign == 0 { return a }
+  if a.sign == b.sign {
+    let r = bn_uadd(a, b);  r.sign = a.sign
+    return bn_norm(r)
+  }
+  let c = bn_ucmp(a, b)
+  if c == 0 { return bigint_zero() }
+  if c > 0 { let r = bn_usub(a, b);  r.sign = a.sign;  return bn_norm(r) }
+  let r = bn_usub(b, a);  r.sign = b.sign
+  return bn_norm(r)
+}
+
+function bigint_sub(a: BigNum, b: BigNum) -> BigNum { return bigint_add(a, bigint_neg(b)) }
+
+function bigint_mul(a: BigNum, b: BigNum) -> BigNum {
+  if a.sign == 0 or b.sign == 0 { return bigint_zero() }
+  let r = bn_alloc(a.n + b.n)
+  var i = 0
+  while i < a.n {
+    var carry: long = 0
+    let ai: long = a.limbs[i]
+    var j = 0
+    while j < b.n {
+      let bj: long = b.limbs[j]
+      let cur: long = r.limbs[i + j]
+      let t: long = cur + ai * bj + carry
+      let q: long = t / BN_BASE
+      let lo: int = t - q * BN_BASE
+      r.limbs[i + j] = lo
+      carry = q
+      j = j + 1
+    }
+    var k = i + b.n
+    while carry > 0 {
+      let cur2: long = r.limbs[k]
+      let t2: long = cur2 + carry
+      let q2: long = t2 / BN_BASE
+      let lo2: int = t2 - q2 * BN_BASE
+      r.limbs[k] = lo2
+      carry = q2
+      k = k + 1
+    }
+    i = i + 1
+  }
+  r.n = a.n + b.n;  r.sign = a.sign * b.sign
+  return bn_norm(r)
+}
+
+# a^exp for exp >= 0, by binary exponentiation
+function bigint_pow(a: BigNum, exp: int) -> BigNum {
+  var result = bigint_from(1)
+  var base = a
+  var e = exp
+  while e > 0 {
+    if e - (e / 2) * 2 == 1 { result = bigint_mul(result, base) }
+    base = bigint_mul(base, base)
+    e = e / 2
+  }
+  return result
+}
+
+# floor-toward-zero divide by a nonzero int; quotient is a BigNum
+function bigint_div_int(a: BigNum, d: int) -> BigNum {
+  var dd = d
+  var dsign = 1
+  if d < 0 { dsign = -1;  dd = 0 - d }
+  let r = bn_alloc(a.n)
+  var rem: long = 0
+  let ddl: long = dd
+  var i = a.n - 1
+  while i >= 0 {
+    let cur: long = rem * BN_BASE + a.limbs[i]
+    let q: long = cur / ddl
+    rem = cur - q * ddl
+    r.limbs[i] = q
+    i = i - 1
+  }
+  r.n = a.n;  r.sign = a.sign * dsign
+  return bn_norm(r)
+}
+
+# remainder of dividing by a nonzero int; carries the sign of `a`
+function bigint_mod_int(a: BigNum, d: int) -> int {
+  var dd = d
+  if d < 0 { dd = 0 - d }
+  let ddl: long = dd
+  var rem: long = 0
+  var i = a.n - 1
+  while i >= 0 {
+    let cur: long = rem * BN_BASE + a.limbs[i]
+    rem = cur - (cur / ddl) * ddl
+    i = i - 1
+  }
+  let r: int = rem
+  return r * a.sign
+}
+
+function bigint_cmp(a: BigNum, b: BigNum) -> int {
+  if a.sign != b.sign { if a.sign > b.sign { return 1 };  return -1 }
+  if a.sign == 0 { return 0 }
+  let c = bn_ucmp(a, b)
+  if a.sign > 0 { return c }
+  return 0 - c
+}
+
+function bigint_eq(a: BigNum, b: BigNum) -> bool { return bigint_cmp(a, b) == 0 }
+function bigint_is_zero(a: BigNum) -> bool { return a.sign == 0 }
+
+# the value as a plain int when it fits in 32 bits, else clamped to the extreme
+function bigint_to_int(a: BigNum) -> int {
+  if a.sign == 0 { return 0 }
+  var v: long = 0
+  var i = a.n - 1
+  while i >= 0 { v = v * BN_BASE + a.limbs[i];  i = i - 1 }
+  if a.sign < 0 { v = 0 - v }
+  let hi: long = 2147483647
+  let lo: long = 0 - hi - 1
+  if v > hi { let r: int = hi;  return r }
+  if v < lo { return 0 - 2147483647 - 1 }
+  let r: int = v
+  return r
+}
+
+# a limb (< 1e9) as exactly nine digits, left-padded with zeros
+function bn_pad9(x: int) -> pointer {
+  var s = string(x)
+  var pad = 9 - len(s)
+  var out = ""
+  while pad > 0 { out = out + "0";  pad = pad - 1 }
+  return out + s
+}
+
+function bigint_str(a: BigNum) -> pointer {
+  if a.sign == 0 { return "0" }
+  var out = ""
+  if a.sign < 0 { out = "-" }
+  out = out + string(a.limbs[a.n - 1])
+  var i = a.n - 2
+  while i >= 0 { out = out + bn_pad9(a.limbs[i]);  i = i - 1 }
+  return out
+}
+
+# ---- Decimal: a BigNum mantissa scaled by 10^-scale ------------------------
+
+property Dec { m: BigNum, scale: int = 0 }
+
+function dec_make(m: BigNum, scale: int) -> Dec {
+  let d = new Dec
+  d.m = m;  d.scale = scale
+  return d
+}
+
+function decimal_from(value: int) -> Dec { return dec_make(bigint_from(value), 0) }
+
+# "[-]int[.frac]" -> Dec, scale = number of fractional digits
+function decimal_from_str(text: pointer) -> Dec {
+  let e = len(text)
+  var dot = 0 - 1
+  var i = 0
+  while i < e { if text[i] == 46 { dot = i };  i = i + 1 }   # '.'
+  if dot < 0 { return dec_make(bigint_from_str(text), 0) }
+  let intp = text[0..dot]
+  let fracp = text[dot + 1 .. e]
+  let scale = len(fracp)
+  return dec_make(bigint_from_str(intp + fracp), scale)
+}
+
+# mantissa of `d` scaled up to `newscale` (newscale >= d.scale), exact
+function dec_scaled(d: Dec, newscale: int) -> BigNum {
+  let diff = newscale - d.scale
+  if diff <= 0 { return d.m }
+  return bigint_mul(d.m, bigint_pow(bigint_from(10), diff))
+}
+
+function decimal_add(a: Dec, b: Dec) -> Dec {
+  var sc = a.scale
+  if b.scale > sc { sc = b.scale }
+  return dec_make(bigint_add(dec_scaled(a, sc), dec_scaled(b, sc)), sc)
+}
+
+function decimal_sub(a: Dec, b: Dec) -> Dec {
+  var sc = a.scale
+  if b.scale > sc { sc = b.scale }
+  return dec_make(bigint_sub(dec_scaled(a, sc), dec_scaled(b, sc)), sc)
+}
+
+function decimal_mul(a: Dec, b: Dec) -> Dec { return dec_make(bigint_mul(a.m, b.m), a.scale + b.scale) }
+function decimal_neg(a: Dec) -> Dec { return dec_make(bigint_neg(a.m), a.scale) }
+
+function decimal_cmp(a: Dec, b: Dec) -> int {
+  var sc = a.scale
+  if b.scale > sc { sc = b.scale }
+  return bigint_cmp(dec_scaled(a, sc), dec_scaled(b, sc))
+}
+
+function decimal_eq(a: Dec, b: Dec) -> bool { return decimal_cmp(a, b) == 0 }
+function decimal_scale(d: Dec) -> int { return d.scale }
+
+# change the number of fractional digits: scaling up is exact, scaling down
+# truncates toward zero (drop the extra low digits)
+function decimal_rescale(d: Dec, places: int) -> Dec {
+  if places >= d.scale { return dec_make(dec_scaled(d, places), places) }
+  var diff = d.scale - places
+  var m = d.m
+  var i = 0
+  while i < diff { m = bigint_div_int(m, 10);  i = i + 1 }
+  return dec_make(m, places)
+}
+
+function decimal_str(d: Dec) -> pointer {
+  var neg = ""
+  var m = d.m
+  if m.sign < 0 { neg = "-";  m = bigint_neg(m) }
+  var digits = bigint_str(m)
+  if d.scale == 0 { return neg + digits }
+  var nd = len(digits)
+  var pad = d.scale + 1 - nd
+  while pad > 0 { digits = "0" + digits;  pad = pad - 1;  nd = nd + 1 }
+  let cut = nd - d.scale
+  let ip = digits[0..cut]
+  let fp = digits[cut..nd]
+  return neg + ip + "." + fp
+}

@@ -383,6 +383,35 @@
     "rect-contains",
     "rect-intersects"
   ],
+  "bigint": [
+    "bigint-from",
+    "bigint-parse",
+    "bigint-add",
+    "bigint-sub",
+    "bigint-mul",
+    "bigint-neg",
+    "bigint-pow",
+    "bigint-div",
+    "bigint-mod",
+    "bigint-cmp",
+    "bigint-eq",
+    "bigint-is_zero",
+    "bigint-to_int",
+    "bigint-str"
+  ],
+  "decimal": [
+    "decimal-from",
+    "decimal-parse",
+    "decimal-add",
+    "decimal-sub",
+    "decimal-mul",
+    "decimal-neg",
+    "decimal-cmp",
+    "decimal-eq",
+    "decimal-scale",
+    "decimal-rescale",
+    "decimal-str"
+  ],
   "duration": [
     "duration-seconds",
     "duration-minutes",

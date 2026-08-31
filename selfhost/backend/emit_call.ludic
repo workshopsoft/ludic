@@ -332,6 +332,39 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
   # tile char, e.g. '#'. line/flood/a_star return []Cell slices. (Pathfinding
   # lives under Grid rather than a `Path` namespace — that name is the filesystem
   # paths library.)
+  # BigInt.* / Decimal.* -> the bignum engine (runtime/native/bignum.ludic,
+  # spliced on demand). These are ordinary Ludic functions, so the generic call
+  # path resolves them to @fn_bigint_* / @fn_decimal_* and keeps their return
+  # types (BigNum / Dec / int / bool / string).
+  if (ns == "BigInt") {
+    if (meth == "from")    { bare = "bigint_from";     push(labels, "value") }
+    if (meth == "parse")   { bare = "bigint_from_str"; push(labels, "text") }
+    if (meth == "add")     { bare = "bigint_add";      push(labels, "a"); push(labels, "b") }
+    if (meth == "sub")     { bare = "bigint_sub";      push(labels, "a"); push(labels, "b") }
+    if (meth == "mul")     { bare = "bigint_mul";      push(labels, "a"); push(labels, "b") }
+    if (meth == "neg")     { bare = "bigint_neg";      push(labels, "a") }
+    if (meth == "pow")     { bare = "bigint_pow";      push(labels, "a"); push(labels, "exp") }
+    if (meth == "div")     { bare = "bigint_div_int";  push(labels, "a"); push(labels, "d") }
+    if (meth == "mod")     { bare = "bigint_mod_int";  push(labels, "a"); push(labels, "d") }
+    if (meth == "cmp")     { bare = "bigint_cmp";      push(labels, "a"); push(labels, "b") }
+    if (meth == "eq")      { bare = "bigint_eq";       push(labels, "a"); push(labels, "b") }
+    if (meth == "is_zero") { bare = "bigint_is_zero";  push(labels, "a") }
+    if (meth == "to_int")  { bare = "bigint_to_int";   push(labels, "a") }
+    if (meth == "str")     { bare = "bigint_str";      push(labels, "a") }
+  }
+  if (ns == "Decimal") {
+    if (meth == "from")    { bare = "decimal_from";     push(labels, "value") }
+    if (meth == "parse")   { bare = "decimal_from_str"; push(labels, "text") }
+    if (meth == "add")     { bare = "decimal_add";      push(labels, "a"); push(labels, "b") }
+    if (meth == "sub")     { bare = "decimal_sub";      push(labels, "a"); push(labels, "b") }
+    if (meth == "mul")     { bare = "decimal_mul";      push(labels, "a"); push(labels, "b") }
+    if (meth == "neg")     { bare = "decimal_neg";      push(labels, "a") }
+    if (meth == "cmp")     { bare = "decimal_cmp";      push(labels, "a"); push(labels, "b") }
+    if (meth == "eq")      { bare = "decimal_eq";       push(labels, "a"); push(labels, "b") }
+    if (meth == "scale")   { bare = "decimal_scale";    push(labels, "d") }
+    if (meth == "rescale") { bare = "decimal_rescale";  push(labels, "d"); push(labels, "places") }
+    if (meth == "str")     { bare = "decimal_str";      push(labels, "d") }
+  }
   if (ns == "Grid") {
     if (meth == "line")          { bare = "grid_line";          push(labels, "x0"); push(labels, "y0"); push(labels, "x1"); push(labels, "y1") }
     if (meth == "blocked")       { bare = "grid_blocked";       push(labels, "x"); push(labels, "y"); push(labels, "wall") }
