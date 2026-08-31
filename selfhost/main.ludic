@@ -173,6 +173,13 @@ entry {
       cmd = `{cmd} {audio} -Wl,-needed_framework,AVFoundation`
     }
   }
+  # Http.* (#6) links the native transport and Foundation (NSURLConnection etc.,
+  # reached by name). Works headless too, so it is outside the windowed block —
+  # macOS-only for now, which is where the toolchain runs.
+  if g_uses_http {
+    let http = path_join(home, "runtime/native/http.ll")
+    cmd = `{cmd} {http} -Wl,-needed_framework,Foundation`
+  }
   cmd = `{cmd} -o {out}`
 
   let rc = run(cmd)

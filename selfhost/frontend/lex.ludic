@@ -60,6 +60,7 @@ function lex(src: pointer) -> void {
           let e = src[i + 1]
           var r = e
           if e == 110 { r = 10 }
+          if e == 114 { r = 13 }
           if e == 116 { r = 9 }
           if e == 48  { r = 0 }
           out[j] = r;  j = j + 1;  i = i + 2
@@ -86,6 +87,7 @@ function lex(src: pointer) -> void {
       if src[i] == 92 {
         let e = src[i + 1]
         if e == 110 { v = 10 }
+        if e == 114 { v = 13 }
         if e == 116 { v = 9 }
         if e == 48  { v = 0 }
         i = i + 2

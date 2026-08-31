@@ -231,6 +231,27 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "pitch")      { bare = "audio_pitch";      push(labels, "v") }
     if (meth == "is_playing") { bare = "audio_is_playing"; push(labels, "id") }
   }
+  # Http.* (#6) — a poll-based HTTP/HTTPS client (runtime/native/http.ludic +
+  # http.ll). Out-of-band, never part of the deterministic sim. Pairs with Json.*
+  # (#44) for (de)serialization: Json.parse(Http.text(h)).
+  if (ns == "Http") {
+    if (meth == "get")       { bare = "http_get";        push(labels, "url") }
+    if (meth == "post")      { bare = "http_post";       push(labels, "url"); push(labels, "body") }
+    if (meth == "request")   { bare = "http_request";    push(labels, "method"); push(labels, "url"); push(labels, "body") }
+    if (meth == "open")      { bare = "http_open";        push(labels, "method"); push(labels, "url") }
+    if (meth == "set")       { bare = "http_set_header";  push(labels, "handle"); push(labels, "name"); push(labels, "value") }
+    if (meth == "body")      { bare = "http_body";        push(labels, "handle"); push(labels, "body") }
+    if (meth == "body_bytes"){ bare = "http_body_n";      push(labels, "handle"); push(labels, "bytes"); push(labels, "len") }
+    if (meth == "send")      { bare = "http_send_req";    push(labels, "handle") }
+    if (meth == "poll")      { bare = "http_poll";        push(labels, "handle") }
+    if (meth == "status")    { bare = "http_status_of";   push(labels, "handle") }
+    if (meth == "ok")        { bare = "http_ok";          push(labels, "handle") }
+    if (meth == "text")      { bare = "http_text";        push(labels, "handle") }
+    if (meth == "body_len")  { bare = "http_body_len";    push(labels, "handle") }
+    if (meth == "header")    { bare = "http_header_of";   push(labels, "handle"); push(labels, "name") }
+    if (meth == "free")      { bare = "http_close";       push(labels, "handle") }
+    if (meth == "parse")     { bare = "http_parse";       push(labels, "bytes"); push(labels, "len") }
+  }
   # Phase 3: the bare reflection / networking / process builtins, namespaced.
   # Each is a pure alias — the callee is rewritten to the bare name below.
   if (ns == "World") {

@@ -1,0 +1,39 @@
+# http.ludic — the Http.* standard library (#6). A poll-based HTTP/HTTPS client:
+#
+#   let h = Http.get("https://api.example.com/scores?level=3")
+#   handler Update {                       # each frame, never blocking
+#     let st = Http.poll(h)                # -1 pending, 0 error, else HTTP status
+#     if st > 0 {
+#       if Http.ok(h) { let body = Http.text(h) }   # pair with Json.parse(...) (#44)
+#       Http.free(h)
+#     }
+#   }
+#
+# TLS is the system's, on by default, so https:// just works. HTTP is out-of-band
+# and must never feed the deterministic sim (like Net.* and Time.now).
+#
+# The transport runs on a background thread (macOS backend, http.ll) so it can't
+# be driven deterministically here; the response PARSER is pure Ludic, so this
+# self-checking run exercises Http.parse / status / ok / body / headers offline:
+#   bin/ludic examples/library/http.ludic  ->  200 1 5 hello 42 text/plain 404 0
+program HttpDemo {
+  function bi(b: bool) -> int { if b { return 1 };  return 0 }
+
+  entry {
+    let raw = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nX-Answer: 42\r\n\r\nhello"
+    let h = Http.parse(raw, Text.length(raw))
+    print(Http.status(h))                  # 200
+    print(bi(Http.ok(h)))                  # 1 — 2xx
+    print(Http.body_len(h))                # 5
+    print(Http.text(h))                    # hello
+    print(Http.header(h, "X-Answer"))      # 42
+    print(Http.header(h, "content-type"))  # text/plain — header lookup is case-insensitive
+    Http.free(h)
+
+    let nf = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n"
+    let h2 = Http.parse(nf, Text.length(nf))
+    print(Http.status(h2))                 # 404
+    print(bi(Http.ok(h2)))                 # 0 — not 2xx
+    Http.free(h2)
+  }
+}
