@@ -288,6 +288,18 @@ fields — so "Position + Light2D" and a self-positioned light both work. With
 `Light2D` present the engine owns the frame flip: a draw handler renders the
 scene and does **not** call `Screen.show`.
 
+### Input actions & deterministic replay
+
+Beyond the raw `Input.key()` (this frame's key code), gameplay can read **named
+actions** instead of physical keys, so a key is rebindable and a control scheme
+is data. `Input.bind(action, key)` binds a key; `Input.down(action)` /
+`Input.pressed(action)` read it (held vs one-shot edge); `Input.rebind(action,
+from, to)` remaps it at runtime. `Input.poll()` is the single per-frame input
+read the actions sit on — which is what makes **deterministic replay** fall out:
+`Input.record()` captures the polled key each frame and `Input.replay()` feeds
+the tape back, so a run reproduces exactly (the seed of lockstep netcode). All
+integer and deterministic. See `examples/library/input_actions.ludic`.
+
 Everything is integer and deterministic (the frame clock ticks at a fixed 60/s),
 so animation, motion and lighting reproduce exactly under replay and lockstep
 netcode. See `examples/library/anim_ecs.ludic` and `examples/library/light_ecs.ludic`.

@@ -177,6 +177,15 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
   }
   if (ns == "Input") {
     if (meth == "key") { bare = "key" }
+    # action maps + deterministic record/replay (#7) — spliced runtime in
+    # runtime/native/input.ludic, reached as ordinary @fn_input_* calls.
+    if (meth == "bind")    { bare = "input_bind" }
+    if (meth == "rebind")  { bare = "input_rebind" }
+    if (meth == "poll")    { bare = "input_poll" }
+    if (meth == "down")    { bare = "input_down" }
+    if (meth == "pressed") { bare = "input_pressed" }
+    if (meth == "record")  { bare = "input_record" }
+    if (meth == "replay")  { bare = "input_replay" }
   }
   # Phase 3: the bare reflection / networking / process builtins, namespaced.
   # Each is a pure alias — the callee is rewritten to the bare name below.

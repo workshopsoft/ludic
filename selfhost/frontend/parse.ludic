@@ -180,6 +180,9 @@ function p_postfix() -> Node {
       if e.a.kind == E_ID and e.a.s == "Light" { g_uses_light = true }   # splice the 2D light-accumulation pass on demand
       if e.a.kind == E_ID and (e.a.s == "Value" or e.a.s == "Json") { g_uses_value = true }   # splice the value tree + JSON on demand (#44)
       if e.a.kind == E_ID and e.a.s == "Reflect" and (e.s == "serialize" or e.s == "apply") { g_uses_value = true;  g_uses_reflect_io = true }   # Reflect.serialize/apply -> value tree + world table
+      # Input.* action-map / record-replay methods (#7) -> splice input.ludic.
+      # Input.key stays bare (no runtime), so gate on the new methods only.
+      if e.a.kind == E_ID and e.a.s == "Input" and (e.s == "bind" or e.s == "rebind" or e.s == "poll" or e.s == "down" or e.s == "pressed" or e.s == "record" or e.s == "replay") { g_uses_input = true }
     }
     else { if is_op("[") { pi = pi + 1; let lo = expr()
         if is_op("..") { pi = pi + 1; let sl = node(E_SLICE); sl.a = e; sl.b = lo; sl.c = expr(); eat_op("]"); e = sl }   # s[a..b] substring
@@ -408,6 +411,7 @@ var g_uses_light: bool = false    # a program mentioned Light.* -> splice the 2D
 var g_uses_value: bool = false    # Value.*/Json.*/Reflect.serialize -> splice the value tree + JSON (#44)
 var g_uses_reflect_io: bool = false  # Reflect.serialize/apply -> splice the reflection serializer
 var g_uses_esys: bool = false     # an engine-owned system component (SpriteAnim/Motion/Light2D) is declared -> splice systems.ludic + force the reflection ABI
+var g_uses_input: bool = false    # a program used Input.bind/down/poll/… (action maps + record/replay) -> splice input.ludic
 
 function already_loaded(full: pointer) -> bool {
   var i = 0
@@ -610,6 +614,15 @@ function maybe_splice_runtime() -> void {
   # (emit_engine_systems_for_phase). The systems read/write components through the
   # reflection ABI, so g_uses_esys also force-emits the world table (emit_decl).
   # Light2D/Occluder additionally consume the 2D light pass, so pull it in too.
+  # Input.* action maps + record/replay (#7): splice input.ludic. It reads the
+  # live key through rt_poll (core.ludic), so pull the runtime in even for a
+  # program with no ECS (do_import dedupes when a game already linked core).
+  if g_uses_input {
+    cur_dir = ""
+    do_import("runtime/native/core.ludic")
+    do_import("runtime/native/input.ludic")
+    cur_dir = saved
+  }
   if uses_engine_systems() {
     g_uses_esys = true
     cur_dir = ""
@@ -648,6 +661,7 @@ function parse_program() -> void {
   g_uses_query = false
   g_uses_reflect = false
   g_uses_esys = false
+  g_uses_input = false
   g_uses_light = false
   g_uses_value = false
   g_uses_reflect_io = false

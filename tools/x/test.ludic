@@ -250,6 +250,9 @@ function cmd_test() -> int {
   # the end of the Render phase — ambient tint, additive glow, hard shadow — with
   # no Light.* calls wired. Sampled back off the framebuffer with Screen.pixel.
   net_case("library/light_ecs", "32 1 32 1")
+  # #7: action maps (read named actions, not keys), runtime rebinding, and
+  # deterministic input record/replay — fed one key per poll from stdin.
+  feat_case("library/input_actions", "  xwa", "1 0 1 1 0 1 0", "input_actions.ludic (#7 action maps + rebinding + deterministic replay)")
 
   feat_case("events/recurse", "", "16", "recurse.ludic (EV6: re-entrant emit is depth-bounded, no runaway cycle)")
   net_case("events/scoped", "2")

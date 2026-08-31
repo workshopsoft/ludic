@@ -1,0 +1,155 @@
+# ============================================================================
+# input.ludic — action maps + deterministic input recording/replay (#7).
+#
+# The raw platform gives one key per frame (Input.key / rt_poll). This layer
+# adds the two ideas the input proposal leads with:
+#
+#   * Action maps — gameplay reads *named actions*, not physical keys, so a key
+#     is rebindable at runtime and a scheme is data. Bind with Input.bind, read
+#     with Input.down / Input.pressed, remap with Input.rebind.
+#   * Deterministic record/replay — because the sim is deterministic in its input
+#     stream, snapshotting the per-frame key and feeding it back reproduces a run
+#     exactly (free replays, the seed of lockstep netcode). Input.poll is the one
+#     call that advances a frame of input; it reads the live key, records it, or
+#     replays a recorded one depending on the mode — "read input" and "read a
+#     recorded snapshot" are the same call, as the proposal asks.
+#
+# All integer and deterministic. The device layer the proposal also sketches —
+# multiple simultaneous keys, gamepads, touch, analog axes/vectors — needs a
+# platform key-state backend and is tracked separately; this layer stands on the
+# single-key poll every target already provides.
+# ============================================================================
+
+const INPUT_MAX_ACT:  int = 32     # named actions
+const INPUT_MAX_KEYS: int = 4      # physical keys bound per action
+const INPUT_REC_CAP:  int = 8192   # recordable frames
+
+var input_names: pointers = null   # action name per slot (0..input_nact)
+var input_keys:  words = null      # INPUT_MAX_ACT * INPUT_MAX_KEYS key codes (0 = empty)
+var input_nact:  int   = 0
+
+var input_frame: int = 0           # the key polled this frame
+var input_last:  int = 0           # the key polled last frame (for edges)
+
+var input_mode:  int   = 0         # 0 = live, 1 = record, 2 = replay
+var input_rec:   words = null      # recorded key per frame
+var input_recn:  int   = 0         # frames recorded
+var input_pos:   int   = 0         # replay / record cursor
+
+function input_init() -> void {
+  if input_names == null {
+    input_names = bytes(INPUT_MAX_ACT * 8)           # a pointer (8 bytes) per action slot
+    input_keys  = words(INPUT_MAX_ACT * INPUT_MAX_KEYS)
+  }
+}
+
+# slot of the action `name`, or -1. Names compare by byte-string equality.
+function input_find(name: pointer) -> int {
+  input_init()
+  var i = 0
+  while i < input_nact {
+    if input_names[i] == name { return i }
+    i = i + 1
+  }
+  return 0 - 1
+}
+
+# get-or-create the slot for `name`.
+function input_slot(name: pointer) -> int {
+  let f = input_find(name)
+  if f >= 0 { return f }
+  if input_nact >= INPUT_MAX_ACT { return INPUT_MAX_ACT - 1 }   # silently reuse the last slot when full
+  let s = input_nact
+  input_names[s] = name
+  input_nact = input_nact + 1
+  return s
+}
+
+# bind physical `key` to the named action, creating the action if new. A key
+# already bound to the action is left as-is (idempotent).
+function input_bind(name: pointer, key: int) -> void {
+  let s = input_slot(name)
+  let base = s * INPUT_MAX_KEYS
+  var i = 0
+  while i < INPUT_MAX_KEYS {
+    if input_keys[base + i] == key { return }        # already bound
+    i = i + 1
+  }
+  i = 0
+  while i < INPUT_MAX_KEYS {
+    if input_keys[base + i] == 0 { input_keys[base + i] = key;  return }
+    i = i + 1
+  }
+}
+
+# runtime rebinding: replace `oldkey` with `newkey` on the named action. A no-op
+# if the action or the old key is not found.
+function input_rebind(name: pointer, oldkey: int, newkey: int) -> void {
+  let s = input_find(name)
+  if s < 0 { return }
+  let base = s * INPUT_MAX_KEYS
+  var i = 0
+  while i < INPUT_MAX_KEYS {
+    if input_keys[base + i] == oldkey { input_keys[base + i] = newkey;  return }
+    i = i + 1
+  }
+}
+
+# does key `k` (0 = none) fire the action in slot `s`?
+function input_slot_has(s: int, k: int) -> bool {
+  if s < 0 { return false }
+  if k == 0 { return false }
+  let base = s * INPUT_MAX_KEYS
+  var i = 0
+  while i < INPUT_MAX_KEYS {
+    if input_keys[base + i] == k { return true }
+    i = i + 1
+  }
+  return false
+}
+
+# Advance one frame of input and return the frame's key. This is the single
+# per-frame input read: call it once at the top of a frame.
+#   live   — read the live key (rt_poll).
+#   record — read the live key and append it to the recording.
+#   replay — take the next key from the recording (the live device is ignored).
+function input_poll() -> int {
+  input_last = input_frame
+  if input_mode == 2 {                               # replay
+    if input_pos < input_recn { input_frame = input_rec[input_pos];  input_pos = input_pos + 1 }
+    else { input_frame = 0 }                          # past the end of the tape: no input
+    return input_frame
+  }
+  let k = rt_poll()
+  if input_mode == 1 {                               # record
+    if input_rec == null { input_rec = words(INPUT_REC_CAP) }
+    if input_recn < INPUT_REC_CAP { input_rec[input_recn] = k;  input_recn = input_recn + 1 }
+  }
+  input_frame = k
+  return k
+}
+
+# is the named action held on the frame last polled?
+function input_down(name: pointer) -> bool {
+  return input_slot_has(input_find(name), input_frame)
+}
+
+# did the named action go down this frame (down now, not down last frame)?
+function input_pressed(name: pointer) -> bool {
+  let s = input_find(name)
+  return input_slot_has(s, input_frame) and (not input_slot_has(s, input_last))
+}
+
+# begin recording polled input from the next frame (resets the tape).
+function input_record() -> void {
+  if input_rec == null { input_rec = words(INPUT_REC_CAP) }
+  input_recn = 0
+  input_pos = 0
+  input_mode = 1
+}
+
+# replay the recording from its start; subsequent Input.poll calls read the tape.
+function input_replay() -> void {
+  input_pos = 0
+  input_mode = 2
+}
