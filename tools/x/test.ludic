@@ -56,6 +56,25 @@ function net_case(path: pointer, exp: pointer) -> void {
   if (got == exp) { ok(`{path} ({got})`) } else { bad2(path, `got [{got}] want [{exp}]`) }
 }
 
+# a test spec (issue #12): `test "name" { expect… }` blocks with no `entry`. The
+# compiler synthesises a runner @main, so we just build, run, and require a clean
+# exit (0) plus the expected `== N passed, M failed ==` summary on the last line.
+function spec_case(path: pointer, exp: pointer) -> void {
+  let nm = flat(path)
+  let ll = `/tmp/x_spec_{nm}.ll`
+  let er = `/tmp/x_spec_{nm}.err`
+  if not shq(`bin/ludicc examples/{path}.ludic > {ll} 2>{er}`) {
+    bad2(path, capture_line(`tail -1 {er}`)); return
+  }
+  if not shq(`{cc()} -O2 {ll} -o /tmp/x_spec_{nm} 2>{er}`) {
+    bad2(path, capture_line(`tail -1 {er}`)); return
+  }
+  let rc = sh(`/tmp/x_spec_{nm} > /tmp/x_spec_{nm}.out 2>&1`)
+  let summary = capture_line(`tail -1 /tmp/x_spec_{nm}.out`)
+  if (rc == 0) and (summary == exp) { ok(`{path} ({summary})`) }
+  else { bad2(path, `rc={string(rc)} last=[{summary}]`) }
+}
+
 function cmd_test() -> int {
   PASS = 0
   FAIL = 0
@@ -109,6 +128,7 @@ function cmd_test() -> int {
   feat_case("library/reflect", "", "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20", "reflect.ludic (Reflect prop/field enumeration + type + get/set/has/kind — runtime reflection over the world schema)")
   feat_case("library/render", "", "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18", "render.ludic (Screen pixel/oval/camera/clip/blend_mode/measure_text + Camera set/follow/shake, verified by pixel readback)")
   feat_case("library/lighting", "", "1 2 3 4 5 6 7 8 9 10 11 12 13 14", "lighting.ludic (Light ambient/point radial falloff + occluder hard shadows — 2D light accumulation, verified by pixel readback)")
+  spec_case("library/testing", "== 6 passed, 0 failed ==")
   feat_case("library/logging", "", "0 5 2 1", "logging.ludic (Log levels, set_level/level threshold, structured fields)")
   # Os known-folders/arch and Fs.list read the BSD utsname/dirent layout, so
   # their asserted values are macOS-specific; skip off Darwin (see is_darwin).

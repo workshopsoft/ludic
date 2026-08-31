@@ -64,6 +64,73 @@ function emit_main(d: Node) -> void {
   emit("}\n")
 }
 
+# ---- the testing framework -------------------------------------------------
+# A `test "name" { ... }` block lowers to a void function; `expect*` assertions
+# inside it flip @L_test_fail. A synthetic runner @main runs every test, prints
+# `ok   - name` / `FAIL - name`, a summary, and exits non-zero if any failed.
+
+# one test block -> a void function @fn__test_<idx> (mirrors emit_fn's shape).
+function emit_test_fn(t: Node, idx: int) -> void {
+  ll_t = 0;  ll_lbl = 0;  g_term = false;  loc_reset();  nloop = 0
+  ret_ty = "void"
+  let fbody = buf_new()
+  falloc = buf_new()
+  let saved = code
+  code = fbody
+  emit_block(t.a)
+  if not g_term { emit("  br label %ret\n") }
+  emit("ret:\n  ret void\n")
+  code = saved
+  emit("define void @fn__test_");  emit(itoa(idx));  emit("() {\nentry:\n")
+  emit(buf_str(falloc))
+  emit(buf_str(fbody))
+  emit("}\n\n")
+}
+
+# emit every test body plus the runner @main that drives them.
+function emit_test_runner() -> void {
+  emith("@L_test_fail = internal global i32 0\n")
+  emith("@.fmt_test_sum = private unnamed_addr constant [28 x i8] c\"== %d passed, %d failed ==\\0A\\00\"\n")
+  var i = 0
+  while i < len(g_tests) { emit_test_fn(g_tests[i], i);  i = i + 1 }
+  if g_uses_expect { emith("@.fmt_expect = private unnamed_addr constant [22 x i8] c\"%s (got %d, want %d)\\0A\\00\"\n") }
+
+  ll_t = 0;  ll_lbl = 0
+  emit("define i32 @main(i32 %argc, ptr %argv) {\nentry:\n")
+  emit("  store i32 %argc, ptr @L_argc\n")
+  emit("  store ptr %argv, ptr @L_argv\n")
+  emit("  %failed = alloca i32\n  store i32 0, ptr %failed\n")
+  if has_ecs() { emit("  call void @rt_init()\n") }
+  i = 0
+  while i < len(g_tests) {
+    let okmsg = emit_str_const(`ok   - {g_tests[i].s}`)
+    let failmsg = emit_str_const(`FAIL - {g_tests[i].s}`)
+    emit("  store i32 0, ptr @L_test_fail\n")
+    emit(`  call void @fn__test_{itoa(i)}()\n`)
+    let f = emit_bind("load i32, ptr @L_test_fail")
+    let isbad = emit_bind(`icmp ne i32 {f}, 0`)
+    let lpass = lbl("tpass");  let lfail = lbl("tfail");  let ldone = lbl("tdone")
+    emit(`  br i1 {isbad}, label %{lfail}, label %{lpass}\n`)
+    emit(`{lpass}:\n`)
+    emit(`  call i32 (ptr, ...) @printf(ptr @.fmt_line, ptr {okmsg})\n`)
+    emit(`  br label %{ldone}\n`)
+    emit(`{lfail}:\n`)
+    let cf = emit_bind("load i32, ptr %failed")
+    let cf1 = emit_bind(`add i32 {cf}, 1`)
+    emit(`  store i32 {cf1}, ptr %failed\n`)
+    emit(`  call i32 (ptr, ...) @printf(ptr @.fmt_line, ptr {failmsg})\n`)
+    emit(`  br label %{ldone}\n`)
+    emit(`{ldone}:\n`)
+    i = i + 1
+  }
+  let totf = emit_bind("load i32, ptr %failed")
+  let passed = emit_bind(`sub i32 {itoa(len(g_tests))}, {totf}`)
+  emit(`  call i32 (ptr, ...) @printf(ptr @.fmt_test_sum, i32 {passed}, i32 {totf})\n`)
+  let allok = emit_bind(`icmp eq i32 {totf}, 0`)
+  let rc = emit_bind(`select i1 {allok}, i32 0, i32 1`)
+  emit(`  ret i32 {rc}\n}\n`)
+}
+
 function emit_program() -> void {
   head = buf_new()
   code = buf_new()
@@ -71,6 +138,7 @@ function emit_program() -> void {
   g_uses_intstr = false
   g_uses_strslice = false
   g_uses_loopback = false
+  g_uses_expect = false
   loc_name = new []pointer;  loc_reg = new []pointer;  loc_ty = new []pointer;  loc_mut = new []int
   brk_lbl = new []pointer;   cnt_lbl = new []pointer
   self_stk = new []pointer
@@ -85,7 +153,11 @@ function emit_program() -> void {
   if has_ecs() { emit_ecs_allocator();  emit_snapshot() }
   if has_ecs() { emit_net() }                     # N2/N3: @Sync serializers + @Owned storage (gated internally)
   if has_ui() { emit_ui_build() }
-  if has_systems() and has_entry() {              # N5: game owns its loop via `entry`
+  if len(g_tests) > 0 {                           # a test file: synth a runner @main
+    if has_systems() { emit_game_defs() }
+    emit_test_runner()
+  }
+  else { if has_systems() and has_entry() {       # N5: game owns its loop via `entry`
     emit_game_defs()                              # system fns, hooks, tick helpers
     i = 0
     while i < len(prog) { if prog[i].kind == N_MAIN { emit_main(prog[i]) };  i = i + 1 }
@@ -94,7 +166,7 @@ function emit_program() -> void {
   else {
     i = 0
     while i < len(prog) { if prog[i].kind == N_MAIN { emit_main(prog[i]) };  i = i + 1 }
-  } }
+  } } }
   if g_uses_loopback { emit_loopback() }         # built-in transport, after all net_send/net_poll uses are seen
   if g_uses_str { emit_str_prelude() }          # @fn_str_eq / @fn_str_concat, after all uses are seen
   if g_uses_intstr { emit_int_str() }           # @fn_int_str, for string(int) in interpolation

@@ -169,7 +169,7 @@ function p_postfix() -> Node {
     else { if is_op("[") { pi = pi + 1; let lo = expr()
         if is_op("..") { pi = pi + 1; let sl = node(E_SLICE); sl.a = e; sl.b = lo; sl.c = expr(); eat_op("]"); e = sl }   # s[a..b] substring
         else { let ix = node(E_INDEX); ix.a = e; ix.b = lo; eat_op("]"); e = ix } }
-      else { if is_op("(") { let c = node(E_CALL); c.a = e; args_call(c); e = c } else { break } } }
+      else { if is_op("(") { let c = node(E_CALL); c.a = e; c.line = toks[pi].line; args_call(c); e = c } else { break } } }
   }
   return e
 }
@@ -494,7 +494,23 @@ function parse_one_decl() -> void {
   if is_id("function") { let f = parse_fn(); if is_export { f.ival = 1 };  push(prog, f); return }
   if is_id("extern") { push(prog, parse_extern()); return }
   if is_id("entry")  { push(prog, parse_main()); return }
+  if is_id("test")   { push(g_tests, parse_test()); return }
   perr("expected declaration")
+}
+
+# test "name" { ... } — a named test block, collected into g_tests. The block
+# runs under a synthetic runner main (see emit_test_runner); `expect` assertions
+# inside it record failures. Kept out of `prog` so it never emits as a plain fn.
+function parse_test() -> Node {
+  let ln = toks[pi].line
+  pi = pi + 1                                    # past `test`
+  if toks[pi].kind != TK_STR { perr("expected a \"name\" string after test") }
+  let n = node(N_TEST)
+  n.s = toks[pi].text
+  n.line = ln
+  pi = pi + 1                                    # past the name
+  n.a = block()
+  return n
 }
 
 # lex and parse an imported fragment into `prog`, saving/restoring lexer state
@@ -567,6 +583,7 @@ function parse_program() -> void {
   g_uses_query = false
   g_uses_reflect = false
   g_uses_light = false
+  g_tests = new []Node
   loaded_paths = new []pointer
   skipnl()
   g_game_name = "Ludic"

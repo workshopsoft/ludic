@@ -1,0 +1,43 @@
+# testing.ludic — the built-in testing framework: `test "name" { … }` blocks with
+# expect / expect_eq / expect_near assertions, discovered and run automatically by
+# a synthetic runner that prints per-test pass/fail, a summary, and exits non-zero
+# on any failure. This spec passes, so it prints one `ok   - name` per test and:
+#   == 6 passed, 0 failed ==
+# It is a runnable spec (no `entry`), driven by the runner the compiler generates.
+program TestingSpec {
+  function add(a: int, b: int) -> int { return a + b }
+  function mul(a: int, b: int) -> int { return a * b }
+
+  test "expect on a boolean" {
+    expect(add(1, 1) == 2)
+    expect(mul(3, 4) == 12)
+  }
+
+  test "expect_eq compares ints" {
+    expect_eq(add(2, 3), 5)
+    expect_eq(mul(6, 7), 42)
+  }
+
+  test "expect_near tolerates a delta" {
+    expect_near(100, 103, 5)          # |100 - 103| = 3 <= 5
+    expect_near(add(10, 10), 19, 1)   # 20 within 1 of 19
+  }
+
+  test "fixed-point stays close" {
+    let half = fixed(1) / 2           # 0.5 in Q16.16 = 32768
+    expect_near(half, 32768, 0)       # exact here, but tolerance is the point
+    let third = fixed(1) / 3          # ~0.3333
+    expect_near(third, 21845, 2)      # 65536/3 = 21845.33 -> 21845
+  }
+
+  test "loops and locals work in a test" {
+    var sum = 0
+    for i in 0 .. 5 { sum = sum + i } # 0+1+2+3+4 = 10
+    expect_eq(sum, 10)
+  }
+
+  test "strings compare" {
+    let s = "ab" + "c"
+    expect(s == "abc")
+  }
+}

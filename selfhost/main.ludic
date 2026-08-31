@@ -110,6 +110,7 @@ entry {
   if (src == null) { die("ludicc: cannot open input\n") }
 
   cur_dir = dir_of(path)
+  g_src_name = base_name(path)                    # for panic/expect file:line messages
   lex(src)
   parse_program()
 

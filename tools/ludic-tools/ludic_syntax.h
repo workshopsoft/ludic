@@ -53,7 +53,7 @@ typedef struct {
  * declaration keyword, anything stmt() dispatches on is a statement keyword. */
 static const char* LUDIC_KW_DECL[] = {
     "program","import","property","model","enum","ui",
-    "const","var","function","extern","handler","entry","event","scene", 0
+    "const","var","function","extern","handler","entry","event","scene","test", 0
 };
 static const char* LUDIC_KW_CLAUSE[] = {
     "phase","query","on","cancellable","public","layer","start", 0

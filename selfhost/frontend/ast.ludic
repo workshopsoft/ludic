@@ -29,6 +29,8 @@ const S_EMIT:   int = 49         # emit E(field: v, ...) — fire event E (calls
                                  #   s=event name  a=E_REC of named args; also usable as an
                                  #   expression (a cancellable event returns its cancelled flag)
 const S_CANCEL: int = 50         # cancel — inside a listener, veto a `cancellable` event
+const N_TEST:   int = 51         # test "name" { ... } — a named test block (the testing framework)
+                                 #   s=name  a=body block  line=source line of the test
 # statements
 const S_LET:      int = 10
 const S_ASSIGN:   int = 11

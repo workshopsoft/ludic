@@ -4,6 +4,25 @@
 # runtime builtin plus the parameter labels callers may use as named arguments;
 # after reordering we rewrite the callee to that bare name and fall back into the
 # ordinary builtin path (which resolves it to its rt_ function).
+# Emit the failure tail of an `expect*` assertion: if `cond1` (an i1) is false,
+# set the per-test fail flag and print the message, then continue. With got/want
+# codes it prints `<msg> (got G, want W)`; otherwise just the message. Leaves the
+# block live (falls through), so a test keeps running and reports every failure.
+function emit_expect_fail(cond1: pointer, msgsym: pointer, got: pointer, want: pointer) -> void {
+  let lok = lbl("exok")
+  let lbad = lbl("exbad")
+  emit(`  br i1 {cond1}, label %{lok}, label %{lbad}\n`)
+  emit(`{lbad}:\n`)
+  emit("  store i32 1, ptr @L_test_fail\n")
+  if (got == "") {
+    emit(`  call i32 (ptr, ...) @printf(ptr @.fmt_line, ptr {msgsym})\n`)
+  } else {
+    emit(`  call i32 (ptr, ...) @printf(ptr @.fmt_expect, ptr {msgsym}, i32 {got}, i32 {want})\n`)
+  }
+  emit(`  br label %{lok}\n`)
+  emit(`{lok}:\n`)
+}
+
 function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
   # Math.* is computed inline (deterministic fixed-point), not routed through a
   # bare rt_ name — so `floor`/`round`/`lerp` never leak into the bare namespace.
@@ -396,6 +415,39 @@ function emit_call(e: Node) -> Val {
   }
   if (name == "fixed") { let a = emit_expr(e.kids[0]);  return val(emit_bind(`shl i32 {a.code}, 16`), "fixed") }
   if (name == "floor") { let a = emit_expr(e.kids[0]);  return val(emit_bind(`ashr i32 {a.code}, 16`), "int") }
+  # --- the testing framework's assertions (see emit_test_runner) --------------
+  # expect(cond) / expect_eq(a, b) / expect_near(a, b, tol): on failure they set
+  # the per-test fail flag (@L_test_fail) and print `file:line: <what> failed`,
+  # then fall through so a test keeps running and reports every failure. Meant to
+  # be used inside a `test "name" { ... }` block.
+  if (name == "expect") {
+    g_uses_expect = true
+    let a = emit_expr(e.kids[0])
+    let c = emit_bind(`icmp ne i32 {a.code}, 0`)
+    let msg = emit_str_const(`{g_src_name}:{itoa(e.line)}: expect failed`)
+    emit_expect_fail(c, msg, "", "")
+    return val("0", "void")
+  }
+  if (name == "expect_eq") {
+    g_uses_expect = true
+    let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1])
+    let c = emit_bind(`icmp eq i32 {a.code}, {b.code}`)
+    let msg = emit_str_const(`{g_src_name}:{itoa(e.line)}: expect_eq failed`)
+    emit_expect_fail(c, msg, a.code, b.code)
+    return val("0", "void")
+  }
+  if (name == "expect_near") {
+    g_uses_expect = true
+    let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1]);  let tol = emit_expr(e.kids[2])
+    let d = emit_bind(`sub i32 {a.code}, {b.code}`)
+    let neg = emit_bind(`sub i32 0, {d}`)
+    let isneg = emit_bind(`icmp slt i32 {d}, 0`)
+    let ad = emit_bind(`select i1 {isneg}, i32 {neg}, i32 {d}`)
+    let c = emit_bind(`icmp sle i32 {ad}, {tol.code}`)
+    let msg = emit_str_const(`{g_src_name}:{itoa(e.line)}: expect_near failed`)
+    emit_expect_fail(c, msg, a.code, b.code)
+    return val("0", "void")
+  }
   # The EV2 reflection ABI (the world table), exposed to Ludic so a Ludic mod can
   # introspect the world by name — the same functions a foreign mod binds. Emitted
   # only for a modding program (ECS + events), so a plain game is unchanged.
