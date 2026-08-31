@@ -273,8 +273,17 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
   if (ns == "Light") {
     if (meth == "ambient")         { bare = "light_ambient";         push(labels, "color") }
     if (meth == "point")           { bare = "light_point";           push(labels, "x"); push(labels, "y"); push(labels, "radius"); push(labels, "color"); push(labels, "energy") }
+    if (meth == "spot")            { bare = "light_spot";            push(labels, "x"); push(labels, "y"); push(labels, "radius"); push(labels, "color"); push(labels, "energy"); push(labels, "direction"); push(labels, "spread") }
     if (meth == "occlude")         { bare = "light_occlude";         push(labels, "x"); push(labels, "y"); push(labels, "width"); push(labels, "height") }
     if (meth == "clear_occluders") { bare = "light_clear_occluders" }
+    if (meth == "falloff")         { bare = "light_set_falloff";     push(labels, "exponent") }
+    if (meth == "soft")            { bare = "light_set_soft";        push(labels, "radius") }
+    if (meth == "gel")             { bare = "light_set_gel";         push(labels, "color") }
+    if (meth == "clear_gel")       { bare = "light_clear_gel" }
+    if (meth == "height")          { bare = "light_set_height";      push(labels, "height") }
+    if (meth == "normal")          { bare = "light_normal_rect";     push(labels, "x"); push(labels, "y"); push(labels, "width"); push(labels, "height"); push(labels, "nx"); push(labels, "ny") }
+    if (meth == "clear_normals")   { bare = "light_clear_normals" }
+    if (meth == "time_of_day")     { bare = "light_time_of_day";     push(labels, "t") }
   }
   # Query.* — ECS spatial queries over the reflection ABI (runtime/native/query.ludic,
   # spliced on demand). `prop` is a property id (World.prop_id); the spatial forms

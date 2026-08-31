@@ -1,0 +1,91 @@
+# light_tiers.ludic — the lighting render-quality tiers from #49, all riding on
+# the same deterministic accumulation core (integer + Q16.16 fixed):
+#
+#   * Light.spot        — a cone / flashlight (direction + spread degrees)
+#   * Light.falloff     — the brightness-ramp exponent (linear → quadratic → …)
+#   * Light.soft        — soft shadows: an occluder edge fades through a penumbra
+#   * Light.gel         — a colour cookie: the light gels centre → rim
+#   * Light.normal      — normal-mapped surfaces shade by facing (N·L), not distance
+#   * Light.time_of_day — a day/night ambient ramp from one 0..1 value
+#
+# Additive blocks light a *black* scene (so brightness is the light itself, not a
+# saturated white); the day/night block modulates a *white* scene (ambient is
+# multiplicative). Deterministic, so:
+#   bin/ludic examples/library/light_tiers.ludic   ->   1 1 1 1 1 1 1 1 1
+program LightTiers {
+  property Marker { n: int = 0 }        # a component makes this a game (links the runtime)
+  model M { Marker }
+
+  function dark()  -> void { Screen.clear(0) }
+  function white() -> void { Screen.fill_rectangle(0, 0, 64, 64, 16777215) }
+  function bit(b: bool) -> int { if b { return 1 };  return 0 }
+  function lum(x: int, y: int) -> int { return Screen.pixel(x, y) & 255 }
+
+  entry {
+    # --- 1. spot / cone: aimed right (0°), a narrow 25° cone -----------------
+    # a pixel to the right is inside the cone (lit); one straight up is outside.
+    dark()
+    Light.spot(32, 32, 24, 16777215, 1.0, 0, 25)
+    print(bit(lum(44, 32) > 0))          # 1 — right of centre, inside the cone
+    print(bit(lum(32, 14) == 0))         # 1 — above centre, outside the cone (dark)
+
+    # --- 2. falloff exponent: quadratic dims the mid-radius vs linear ---------
+    dark()
+    Light.falloff(1)
+    Light.point(32, 32, 24, 16777215, 1.0)
+    let lin = lum(44, 32)                 # linear brightness a little off-centre
+    dark()
+    Light.falloff(2)
+    Light.point(32, 32, 24, 16777215, 1.0)
+    let quad = lum(44, 32)                # quadratic: same spot, dimmer
+    Light.falloff(1)                      # reset for later blocks
+    print(bit(quad < lin))               # 1 — a steeper curve is darker mid-radius
+
+    # --- 3. soft shadows: a penumbra pixel is partly lit where a hard edge cuts
+    dark()
+    Light.clear_occluders()
+    Light.occlude(38, 22, 3, 12)          # a pillar right of the torch
+    Light.point(32, 32, 28, 16777215, 1.0)
+    let hard = lum(46, 34)                # hard shadow at this pixel → fully dark
+    dark()
+    Light.soft(5)                         # 5px penumbra
+    Light.point(32, 32, 28, 16777215, 1.0)
+    let soft = lum(46, 34)                # same pixel, now inside the penumbra
+    Light.soft(0)                         # back to hard shadows
+    Light.clear_occluders()
+    print(bit(hard == 0))                # 1 — a hard shadow cuts the ray fully
+    print(bit(soft > 0))                 # 1 — the penumbra lets partial light through
+
+    # --- 4. gel / colour cookie: rim tints toward the outer colour -----------
+    dark()
+    Light.gel(255)                        # rim gels to pure blue (0x0000FF)
+    Light.point(32, 32, 24, 16711680, 1.0)   # inner is pure red (0xFF0000)
+    let center_b = Screen.pixel(34, 32) & 255            # blue near the centre → low
+    let rim_b    = Screen.pixel(50, 32) & 255            # blue near the rim → high
+    Light.clear_gel()
+    print(bit(rim_b > center_b))         # 1 — the gel tints the rim bluer than the core
+
+    # --- 5. normal mapping: a face tilted toward the light is brighter --------
+    dark()
+    Light.clear_normals()
+    Light.normal(18, 30, 8, 8, 0.7, 0.0)       # this patch faces right (toward the light)
+    Light.normal(46, 30, 8, 8, 0.0 - 0.7, 0.0) # this patch faces left (away)
+    Light.point(32, 34, 44, 16777215, 1.0)     # a light centred between the patches
+    let toward = lum(22, 34)              # patch facing the light
+    let away   = lum(48, 34)              # patch facing away
+    Light.clear_normals()
+    print(bit(toward > away))            # 1 — N·L brightens the facing surface
+
+    # --- 6. time of day: midnight is dark, noon is bright (ambient modulate) --
+    white()
+    Light.time_of_day(0.0)                # midnight
+    let night = lum(10, 10)
+    white()
+    Light.time_of_day(0.5)               # noon
+    let noon = lum(10, 10)
+    print(bit(noon > night))             # 1 — daylight lifts the ambient
+    print(bit(night < 60))               # 1 — midnight stays dim
+
+    quit()
+  }
+}

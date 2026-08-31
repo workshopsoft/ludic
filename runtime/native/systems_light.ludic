@@ -88,12 +88,23 @@ function esys_light2d() -> void {
   }
 
   # 3. lights — additively accumulate each `Light2D` as a radial glow, cut by the
-  # occluders registered above (hard shadows).
+  # occluders registered above (hard shadows). Beyond the core five fields, a
+  # Light2D may carry optional tier fields, each defaulting off when absent so an
+  # older five-field component still lights exactly as before:
+  #   direction, spread — a cone/spot (spread < 0 or absent = omnidirectional)
+  #   falloff           — brightness ramp exponent (1 = linear, absent = 1)
+  #   softness          — penumbra radius in px (0 / absent = hard shadows)
+  #   gel               — outer rim colour for a colour cookie (< 0 / absent = off)
   let lxf = World.field_id(pl, "x")
   let lyf = World.field_id(pl, "y")
   let lrf = World.field_id(pl, "radius")
   let lcf = World.field_id(pl, "color")
   let lif = World.field_id(pl, "intensity")
+  let ldf = World.field_id(pl, "direction")
+  let lsf = World.field_id(pl, "spread")
+  let lff = World.field_id(pl, "falloff")
+  let lkf = World.field_id(pl, "softness")
+  let lgf = World.field_id(pl, "gel")
   var e = World.query_next(pl, 0)
   while e >= 0 {
     let x = esys_pos_x(e, pl, lxf)
@@ -104,7 +115,23 @@ function esys_light2d() -> void {
     if lcf >= 0 { color = World.get(e, pl, lcf) }
     var energy = fixed(1)                             # full intensity default
     if lif >= 0 { energy = fixed(World.get(e, pl, lif)) / fixed(100) }
-    light_point(x, y, radius, color, energy)
+
+    # tier controls: apply per light, resetting to defaults each time so one
+    # cone/soft light does not bleed its settings onto the next.
+    var falloff = 1
+    if lff >= 0 { falloff = World.get(e, pl, lff) }
+    light_set_falloff(falloff)
+    var soft = 0
+    if lkf >= 0 { soft = World.get(e, pl, lkf) }
+    light_set_soft(soft)
+    if lgf >= 0 { light_set_gel(World.get(e, pl, lgf)) } else { light_clear_gel() }
+
+    var spread = 0 - 1
+    if lsf >= 0 { spread = World.get(e, pl, lsf) }
+    var direction = 0
+    if ldf >= 0 { direction = World.get(e, pl, ldf) }
+    if spread >= 0 { light_spot(x, y, radius, color, energy, direction, spread) }
+    else { light_point(x, y, radius, color, energy) }
     e = World.query_next(pl, e + 1)
   }
 

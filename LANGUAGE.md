@@ -270,7 +270,7 @@ enough, and a game that declares none is byte-for-byte unchanged.
 |---|---|---|
 | `SpriteAnim { ticks, fps, frames, mode, frame }` | `Update` | advances `frame` — spritesheet frame animation (`mode` 0 loop, 1 once, 2 ping-pong) |
 | `Motion { ticks, dur, from, to, ease, value, done }` | `Update` | advances `value` — value tween (`ease` 0 linear, 1 in, 2 out, 3 in-out), latches `done` |
-| `Light2D { x, y, radius, color, intensity }` | `Render` | additive radial glow; the engine runs the whole 2D light pass and presents |
+| `Light2D { x, y, radius, color, intensity }` | `Render` | additive radial glow; the engine runs the whole 2D light pass and presents. Optional `direction`/`spread` (cone), `falloff`, `softness`, `gel` fields select the render-quality tiers |
 | `Occluder { x, y, w, h }` | `Render` | a rectangular shadow caster the light pass carves out |
 | `Ambient { color }` | `Render` | one entity tints the whole scene (night/cave) before lights accumulate |
 
@@ -286,7 +286,11 @@ A `Light2D` / `Occluder` reads its position from a `Position { x, y }` component
 on the same entity when the entity carries one, else from its own `x` / `y`
 fields — so "Position + Light2D" and a self-positioned light both work. With
 `Light2D` present the engine owns the frame flip: a draw handler renders the
-scene and does **not** call `Screen.show`.
+scene and does **not** call `Screen.show`. Beyond the radial core the light pass
+carries the render-quality tiers — `Light.spot` cones, a `Light.falloff`
+exponent, `Light.soft` shadows (penumbra), `Light.gel` colour cookies,
+normal-mapped surfaces (`Light.normal` + `Light.height`), and a
+`Light.time_of_day` day/night ramp — every one deterministic.
 
 ### Input actions & deterministic replay
 
