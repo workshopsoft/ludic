@@ -127,6 +127,21 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "fill_triangle")  { bare = "fill_triangle"; push(labels, "x1"); push(labels, "y1"); push(labels, "x2"); push(labels, "y2"); push(labels, "x3"); push(labels, "y3"); push(labels, "color") }
     if (meth == "sprite")         { bare = "draw_sprite"; push(labels, "id"); push(labels, "x"); push(labels, "y") }
     if (meth == "sprite_scaled")  { bare = "draw_sprite_scaled"; push(labels, "id"); push(labels, "x"); push(labels, "y"); push(labels, "scale") }
+    if (meth == "oval")           { bare = "oval";      push(labels, "x"); push(labels, "y"); push(labels, "rx"); push(labels, "ry"); push(labels, "color") }
+    if (meth == "camera")         { bare = "camera";    push(labels, "x"); push(labels, "y") }
+    if (meth == "clip")           { bare = "clip";      push(labels, "x"); push(labels, "y"); push(labels, "width"); push(labels, "height") }
+    if (meth == "clip_reset")     { bare = "clip_reset" }
+    if (meth == "blend_mode")     { bare = "blend_mode"; push(labels, "mode") }
+    if (meth == "measure_text")   { bare = "measure_text"; push(labels, "text") }
+    if (meth == "pixel")          { bare = "get_px";    push(labels, "x"); push(labels, "y") }
+  }
+  # Camera.* — the world-space camera: a draw offset threaded through the render
+  # path (runtime/native/core.ludic). set/follow move it; shake jitters it from
+  # the seeded RNG, so a replay shakes identically.
+  if (ns == "Camera") {
+    if (meth == "set")    { bare = "camera";        push(labels, "x"); push(labels, "y") }
+    if (meth == "follow") { bare = "camera_follow"; push(labels, "x"); push(labels, "y"); push(labels, "lerp") }
+    if (meth == "shake")  { bare = "camera_shake";  push(labels, "amount") }
   }
   if (ns == "Map") {
     if (meth == "size") { bare = "map_size"; push(labels, "width"); push(labels, "height") }

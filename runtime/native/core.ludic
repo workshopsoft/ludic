@@ -27,6 +27,23 @@ var rt_regs:  words = null     # the 64 general-purpose game registers
 var rt_rng:   int = 305419896      # xorshift32 state
 var rt_alive: int = 1              # platform still running?
 
+# ---- renderer state (camera / clip / blend) -------------------------------
+# A world-space camera offset, a clip rectangle, and a blend mode threaded
+# through the two framebuffer chokepoints (rt_put_px / rt_fill_rect); every
+# draw primitive funnels through one of those, so they all inherit the state.
+# The defaults are neutral — camera (0,0), clip = full screen, blend = replace —
+# so a game that never touches them renders exactly as before. The camera moves
+# everything drawn; reset it to (0,0) to draw a fixed HUD over the world.
+var rt_cam_x:   int = 0        # camera base offset (world -> screen: subtracted)
+var rt_cam_y:   int = 0
+var rt_shake_x: int = 0        # transient screen-shake offset, added to the base
+var rt_shake_y: int = 0
+var rt_clip_x0: int = 0        # clip rectangle in screen space (half-open)
+var rt_clip_y0: int = 0
+var rt_clip_x1: int = 320
+var rt_clip_y1: int = 240
+var rt_blend:   int = 0        # 0 = replace, 1 = additive
+
 # 5x7 glyphs for ASCII 32..90, 7 rows per glyph, each row a 5-bit mask stored
 # biased by '0' so the whole font is one printable string literal.
 function rt_font() -> string {
@@ -39,6 +56,8 @@ function rt_init() -> void {
   fill(rt_regs, 0, 64 * 4)
   rt_map = bytes(96 * 64)
   fill(rt_map, 32, 96 * 64)
+  rt_clip_x1 = rt_fbw
+  rt_clip_y1 = rt_fbh
   rt_statusbuf = bytes(96)
   rt_statusbuf[0] = 0
   rt_image_init()
@@ -69,25 +88,46 @@ function rt_clear(c: int) -> void {
   }
 }
 
+# additive blend of src over dst, per channel, clamped to 255.
+function rt_blend_add(dst: int, src: int) -> int {
+  let r = min(255, ((dst >> 16) & 255) + ((src >> 16) & 255))
+  let g = min(255, ((dst >> 8) & 255) + ((src >> 8) & 255))
+  let b = min(255, (dst & 255) + (src & 255))
+  return (r << 16) | (g << 8) | b
+}
+
+# the low-level plot: apply the camera (+ shake) offset, reject anything outside
+# the clip rectangle or the framebuffer, then write or additively blend.
 function rt_put_px(x: int, y: int, c: int) -> void {
-  if x < 0 { return }
-  if y < 0 { return }
-  if x >= rt_fbw { return }
-  if y >= rt_fbh { return }
-  rt_fb[y * rt_fbw + x] = c
+  let sx = x - rt_cam_x - rt_shake_x
+  let sy = y - rt_cam_y - rt_shake_y
+  if sx < rt_clip_x0 { return }
+  if sy < rt_clip_y0 { return }
+  if sx >= rt_clip_x1 { return }
+  if sy >= rt_clip_y1 { return }
+  if sx < 0 { return }
+  if sy < 0 { return }
+  if sx >= rt_fbw { return }
+  if sy >= rt_fbh { return }
+  let idx = sy * rt_fbw + sx
+  if rt_blend == 1 { rt_fb[idx] = rt_blend_add(rt_fb[idx], c) }
+  else { rt_fb[idx] = c }
 }
 
 function rt_fill_rect(x: int, y: int, w: int, h: int, c: int) -> void {
-  let x0 = max(0, x)
-  let y0 = max(0, y)
-  let x1 = min(rt_fbw, x + w)
-  let y1 = min(rt_fbh, y + h)
+  let ox = x - rt_cam_x - rt_shake_x
+  let oy = y - rt_cam_y - rt_shake_y
+  let x0 = max(max(0, rt_clip_x0), ox)
+  let y0 = max(max(0, rt_clip_y0), oy)
+  let x1 = min(min(rt_fbw, rt_clip_x1), ox + w)
+  let y1 = min(min(rt_fbh, rt_clip_y1), oy + h)
   var j = y0
   while j < y1 {
     let row = j * rt_fbw
     var i = x0
     while i < x1 {
-      rt_fb[row + i] = c
+      if rt_blend == 1 { rt_fb[row + i] = rt_blend_add(rt_fb[row + i], c) }
+      else { rt_fb[row + i] = c }
       i = i + 1
     }
     j = j + 1
@@ -171,6 +211,108 @@ function rt_fill_triangle(x0: int, y0: int, x1: int, y1: int, x2: int, y2: int, 
     py = py + 1
   }
 }
+
+# the four-way symmetric points of an ellipse centred at (cx, cy).
+function rt_oval_pts(cx: int, cy: int, x: int, y: int, c: int) -> void {
+  rt_put_px(cx + x, cy + y, c)
+  rt_put_px(cx - x, cy + y, c)
+  rt_put_px(cx + x, cy - y, c)
+  rt_put_px(cx - x, cy - y, c)
+}
+
+# An axis-aligned ellipse outline by the midpoint algorithm — integer only,
+# radii rx (horizontal) and ry (vertical). rx == ry draws a circle.
+function rt_oval(x: int, y: int, rx: int, ry: int, c: int) -> void {
+  if rx <= 0 { return }
+  if ry <= 0 { return }
+  let rx2 = rx * rx
+  let ry2 = ry * ry
+  let two_rx2 = 2 * rx2
+  let two_ry2 = 2 * ry2
+  var ex = 0
+  var ey = ry
+  var px = 0
+  var py = two_rx2 * ey
+  rt_oval_pts(x, y, ex, ey, c)
+  var p = ry2 - rx2 * ry + rx2 / 4                  # region 1
+  while px < py {
+    ex = ex + 1
+    px = px + two_ry2
+    if p < 0 { p = p + ry2 + px }
+    else { ey = ey - 1;  py = py - two_rx2;  p = p + ry2 + px - py }
+    rt_oval_pts(x, y, ex, ey, c)
+  }
+  p = ry2 * (ex * 2 + 1) * (ex * 2 + 1) / 4 + rx2 * (ey - 1) * (ey - 1) - rx2 * ry2   # region 2
+  while ey > 0 {
+    ey = ey - 1
+    py = py - two_rx2
+    if p > 0 { p = p + rx2 - py }
+    else { ex = ex + 1;  px = px + two_ry2;  p = p + rx2 - py + px }
+    rt_oval_pts(x, y, ex, ey, c)
+  }
+}
+
+# Read a framebuffer pixel in screen space (0x00RRGGBB), or 0 if out of bounds.
+# Unlike the plot path this ignores the camera — it reads the actual screen.
+function rt_get_px(x: int, y: int) -> int {
+  if x < 0 { return 0 }
+  if y < 0 { return 0 }
+  if x >= rt_fbw { return 0 }
+  if y >= rt_fbh { return 0 }
+  return rt_fb[y * rt_fbw + x]
+}
+
+# Advance width (pixels) of `text` in the built-in 5x7 font at scale 1: 6 per
+# glyph (5 wide + 1 gap), matching rt_text's cursor step.
+function rt_measure_text(text: string) -> int {
+  var i = 0
+  while text[i] != 0 { i = i + 1 }
+  return i * 6
+}
+
+# ---- camera / clip / blend controls ---------------------------------------
+# Set the world-space camera offset (a world point (wx,wy) draws at
+# (wx-x, wy-y)). Reset to (0,0) to draw a fixed HUD.
+function rt_camera(x: int, y: int) -> void { rt_cam_x = x;  rt_cam_y = y }
+
+# Ease the camera so (x,y) drifts toward the screen centre by `lerp` (a fixed in
+# 0..1): 0 keeps it still, 65536 (1.0) snaps it centred. Deterministic.
+function rt_camera_follow(x: int, y: int, lerp: fixed) -> void {
+  let tx = x - rt_fbw / 2
+  let ty = y - rt_fbh / 2
+  let sx = fixed(tx - rt_cam_x) * lerp        # fixed * fixed, then floor to whole pixels
+  let sy = fixed(ty - rt_cam_y) * lerp
+  rt_cam_x = rt_cam_x + floor(sx)
+  rt_cam_y = rt_cam_y + floor(sy)
+}
+
+# Add a random screen shake of up to +/- amount pixels, drawn from the seeded
+# RNG (so a replay shakes identically). Call each frame with a decaying amount;
+# amount <= 0 clears it.
+function rt_camera_shake(amount: int) -> void {
+  if amount <= 0 { rt_shake_x = 0;  rt_shake_y = 0;  return }
+  rt_shake_x = rt_rng_range(0 - amount, amount)
+  rt_shake_y = rt_rng_range(0 - amount, amount)
+}
+
+# Restrict drawing to a screen-space rectangle (x, y, width, height).
+function rt_clip(x: int, y: int, width: int, height: int) -> void {
+  rt_clip_x0 = x
+  rt_clip_y0 = y
+  rt_clip_x1 = x + width
+  rt_clip_y1 = y + height
+}
+
+# Reset the clip rectangle to the whole framebuffer.
+function rt_clip_reset() -> void {
+  rt_clip_x0 = 0
+  rt_clip_y0 = 0
+  rt_clip_x1 = rt_fbw
+  rt_clip_y1 = rt_fbh
+}
+
+# Select the pixel blend mode: 0 = replace (default), 1 = additive.
+function rt_blend_mode(mode: int) -> void { rt_blend = mode }
 
 # Windowed: hand the framebuffer to the platform layer, which blits it into
 # the view. Headless: nothing to do until shutdown writes the last frame out.

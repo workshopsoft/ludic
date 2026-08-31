@@ -1,0 +1,79 @@
+# render.ludic — the rendering & camera extras: Screen.pixel/oval/measure_text,
+# Screen.camera/clip/blend_mode, and Camera.set/follow/shake. Each assertion that
+# holds prints its number, so a full run prints:
+#   1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18
+# It draws into the headless framebuffer and reads pixels back with Screen.pixel,
+# so it verifies the actual rendered result (not just that a call compiled). All
+# deterministic. Colours are 0x00RRGGBB.
+program Render {
+  property Tag { v: int = 0 }
+  model Marker { Tag }
+
+  handler Boot phase Start {
+    let WHITE = 16777215      # 0xFFFFFF
+    let RED   = 16711680      # 0xFF0000
+
+    # --- Screen.pixel round-trips a plotted pixel ---
+    Screen.clear(0)
+    Screen.put_pixel(10, 20, WHITE)
+    if Screen.pixel(10, 20) == WHITE { print(1) }
+    if Screen.pixel(11, 20) == 0     { print(2) }
+
+    # --- Screen.camera offsets the draw path (world -> screen) ---
+    Screen.camera(5, 5)
+    Screen.put_pixel(30, 30, RED)              # lands at screen (25, 25)
+    if Screen.pixel(25, 25) == RED { print(3) }
+    if Screen.pixel(30, 30) == 0   { print(4) }
+    Screen.camera(0, 0)
+
+    # --- Camera.set is the same offset control ---
+    Camera.set(8, 8)
+    Screen.put_pixel(40, 40, 65280)            # green, lands at (32, 32)
+    if Screen.pixel(32, 32) == 65280 { print(5) }
+    Camera.set(0, 0)
+
+    # --- Camera.follow eases the offset toward centring a target ---
+    Camera.follow(260, 120, fixed(1))          # tx = 260 - 160 = 100 -> cam_x = 100
+    Screen.put_pixel(100, 50, 255)             # blue, lands at screen (0, 50)
+    if Screen.pixel(0, 50) == 255 { print(6) }
+    Camera.set(0, 0)
+
+    # --- Camera.shake(0) clears any shake (draw lands unshifted) ---
+    Camera.shake(0)
+    Screen.put_pixel(70, 70, WHITE)
+    if Screen.pixel(70, 70) == WHITE { print(7) }
+
+    # --- Screen.clip restricts drawing to a rectangle ---
+    Screen.clip(0, 0, 4, 4)
+    Screen.put_pixel(2, 2, WHITE)              # inside the clip
+    Screen.put_pixel(12, 12, WHITE)            # outside the clip
+    if Screen.pixel(2, 2) == WHITE { print(8) }
+    if Screen.pixel(12, 12) == 0   { print(9) }
+    Screen.clip_reset()
+    Screen.put_pixel(12, 12, WHITE)            # now allowed
+    if Screen.pixel(12, 12) == WHITE { print(10) }
+
+    # --- Screen.blend_mode(1) adds colours channel-wise, clamped at 255 ---
+    Screen.blend_mode(1)
+    Screen.put_pixel(90, 90, Color.rgb(100, 0, 0))
+    Screen.put_pixel(90, 90, Color.rgb(80, 0, 0))
+    if Screen.pixel(90, 90) == Color.rgb(180, 0, 0) { print(11) }
+    Screen.put_pixel(90, 90, Color.rgb(200, 0, 0))   # 180 + 200 -> clamp 255
+    if Screen.pixel(90, 90) == Color.rgb(255, 0, 0) { print(12) }
+    Screen.blend_mode(0)
+
+    # --- Screen.oval outlines an ellipse (rx != ry) ---
+    Screen.clear(0)
+    Screen.oval(50, 50, 10, 6, WHITE)
+    if Screen.pixel(60, 50) == WHITE { print(13) }   # rightmost
+    if Screen.pixel(40, 50) == WHITE { print(14) }   # leftmost
+    if Screen.pixel(50, 56) == WHITE { print(15) }   # bottom
+    if Screen.pixel(50, 50) == 0     { print(16) }   # outline, not filled
+
+    # --- Screen.measure_text: advance width in the 5x7 font (6 px/glyph) ---
+    if Screen.measure_text("abc") == 18 { print(17) }
+    if Screen.measure_text("") == 0     { print(18) }
+  }
+
+  handler Run phase Update { quit() }
+}
