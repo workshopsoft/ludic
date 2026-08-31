@@ -1,0 +1,208 @@
+# ============================================================================
+# tween.ludic — fluent, stateful tween handles the engine advances (#48).
+#
+# The pure Tween.* namespace (emit_anim.ludic) interpolates a single value from a
+# game-managed timer. This adds the *sequenced* layer the follow-up asked for: a
+# disposable handle that chains several segments — tween, delay, tween — and that
+# the engine advances one tick per frame, so a game fires a multi-step motion once
+# and just reads the current value:
+#
+#     var h = Tween.to(0, 100, 30, 2)      # ease-out 0 -> 100 over 30 ticks
+#     h = Tween.delay(h, 15)               # hold 15 ticks
+#     h = Tween.chain(h, 0, 30, 1)         # then ease-in 100 -> 0 over 30 ticks
+#     # ...each frame the engine advances it...
+#     sprite.x = Tween.value(h)
+#     if Tween.done(h) { ... }
+#
+# Everything is integer + Q16.16-free (the ease curves run in 0..1024 fixed-point,
+# like Motion), so a sequence plays identically on every run and headless — free
+# replays and lockstep. The handle pool is fixed-size; Tween.to reuses a finished
+# slot, so a game that starts and finishes tweens forever never runs out.
+# ============================================================================
+
+const TW_MAX:  int = 64            # concurrent handles
+const TW_SEGS: int = 8             # segments per handle (chain depth)
+
+# per-handle state
+var tw_used:  words = null         # slot in use (1) or free (0)
+var tw_seg:   words = null         # index of the segment currently playing
+var tw_nseg:  words = null         # number of segments queued
+var tw_tick:  words = null         # ticks elapsed inside the current segment
+var tw_value: words = null         # OUTPUT: the value this frame
+var tw_done:  words = null         # OUTPUT: 1 once every segment has finished
+
+# per-segment state (flat: handle * TW_SEGS + seg)
+var tw_kind:  words = null         # 0 = tween (from->to), 1 = delay (hold)
+var tw_from:  words = null
+var tw_to:    words = null
+var tw_dur:   words = null         # segment length in ticks
+var tw_ease:  words = null         # 0 linear, 1 in, 2 out, 3 in-out (Motion's curves)
+
+function tw_init() -> void {
+  if tw_used == null {
+    tw_used  = words(TW_MAX)
+    tw_seg   = words(TW_MAX)
+    tw_nseg  = words(TW_MAX)
+    tw_tick  = words(TW_MAX)
+    tw_value = words(TW_MAX)
+    tw_done  = words(TW_MAX)
+    tw_kind  = words(TW_MAX * TW_SEGS)
+    tw_from  = words(TW_MAX * TW_SEGS)
+    tw_to    = words(TW_MAX * TW_SEGS)
+    tw_dur   = words(TW_MAX * TW_SEGS)
+    tw_ease  = words(TW_MAX * TW_SEGS)
+  }
+}
+
+# claim a free handle (a finished or never-used slot). -1 if the pool is full.
+function tw_alloc() -> int {
+  tw_init()
+  var i = 0
+  while i < TW_MAX {
+    if tw_used[i] == 0 { return i }
+    i = i + 1
+  }
+  # none free: reuse the first finished handle so long-lived games don't leak.
+  i = 0
+  while i < TW_MAX {
+    if tw_done[i] != 0 { return i }
+    i = i + 1
+  }
+  return 0 - 1
+}
+
+# append one segment to a handle (internal). Silently ignored past TW_SEGS.
+function tw_push(h: int, kind: int, from: int, to: int, dur: int, ease: int) -> void {
+  if (h < 0) or (h >= TW_MAX) { return }
+  let n = tw_nseg[h]
+  if n >= TW_SEGS { return }
+  let s = h * TW_SEGS + n
+  tw_kind[s] = kind
+  tw_from[s] = from
+  tw_to[s]   = to
+  tw_dur[s]  = dur
+  tw_ease[s] = ease
+  tw_nseg[h] = n + 1
+}
+
+# start a new tween handle: from -> to over `dur` ticks with easing `ease`.
+function tween_to(from: int, to: int, dur: int, ease: int) -> int {
+  let h = tw_alloc()
+  if h < 0 { return 0 - 1 }
+  tw_used[h]  = 1
+  tw_seg[h]   = 0
+  tw_nseg[h]  = 0
+  tw_tick[h]  = 0
+  tw_value[h] = from
+  tw_done[h]  = 0
+  tw_push(h, 0, from, to, dur, ease)
+  return h
+}
+
+# chain a tween segment after the handle's current queue: continues from where the
+# previous segment ends, so the game only names the new target. Returns the handle
+# for fluent chaining.
+function tween_chain(h: int, to: int, dur: int, ease: int) -> int {
+  if (h < 0) or (h >= TW_MAX) { return h }
+  var from = tw_value[h]
+  let n = tw_nseg[h]
+  if n > 0 {
+    let last = h * TW_SEGS + (n - 1)
+    if tw_kind[last] == 0 { from = tw_to[last] }     # continue from the previous tween's end
+  }
+  tw_push(h, 0, from, from + (to - from), dur, ease)  # `to` is the absolute target
+  return h
+}
+
+# chain a pause of `ticks` ticks (the value holds). Returns the handle.
+function tween_delay(h: int, ticks: int) -> int {
+  if (h < 0) or (h >= TW_MAX) { return h }
+  tw_push(h, 1, 0, 0, ticks, 0)
+  return h
+}
+
+# the value of a handle this frame.
+function tween_value(h: int) -> int {
+  if (h < 0) or (h >= TW_MAX) { return 0 }
+  return tw_value[h]
+}
+
+# has every segment of the handle finished?
+function tween_done(h: int) -> bool {
+  if (h < 0) or (h >= TW_MAX) { return true }
+  return tw_done[h] != 0
+}
+
+# are two handles both finished? — the completion of a parallel pair. Independent
+# handles advance together each frame, so running several at once *is* parallel;
+# this is the "all done" query over a pair.
+function tween_parallel(a: int, b: int) -> bool {
+  return tween_done(a) and tween_done(b)
+}
+
+# free a handle immediately (stop and dispose). Its value is frozen where it was.
+function tween_stop(h: int) -> void {
+  if (h < 0) or (h >= TW_MAX) { return }
+  tw_used[h] = 0
+  tw_done[h] = 1
+}
+
+# floor of a/b for non-negative a (the tick counter only ever rises).
+function tw_div(a: int, b: int) -> int {
+  if b <= 0 { return 0 }
+  return a / b
+}
+
+# the same integer easing curves Motion uses (progress carried in 0..1024).
+function tween_ease(t: int, ease: int) -> int {
+  if ease == 1 { return t * t / 1024 }
+  if ease == 2 { let u = 1024 - t;  return 1024 - (u * u / 1024) }
+  if ease == 3 {
+    if t < 512 { return (t * t / 1024) * 2 }
+    let u = 1024 - t
+    return 1024 - (u * u / 1024) * 2
+  }
+  return t
+}
+
+# advance one active handle by a tick: interpolate within the current segment,
+# roll over to the next when it ends, latch done past the last.
+function tw_advance_one(h: int) -> void {
+  if tw_done[h] != 0 { return }
+  let n = tw_nseg[h]
+  if n == 0 { tw_done[h] = 1;  return }
+  var seg = tw_seg[h]
+  if seg >= n { tw_done[h] = 1;  return }
+  var tick = tw_tick[h] + 1
+  let s   = h * TW_SEGS + seg
+  let dur = tw_dur[s]
+  let kind = tw_kind[s]
+  if kind == 0 {                                     # a tween segment
+    var t = 1024
+    if dur > 0 { t = tw_div(tick * 1024, dur) }
+    if t > 1024 { t = 1024 }
+    let te = tween_ease(t, tw_ease[s])
+    tw_value[h] = tw_from[s] + (tw_to[s] - tw_from[s]) * te / 1024
+  }
+  # (a delay segment holds tw_value unchanged.)
+  if tick >= dur {                                   # this segment finished: advance
+    if kind == 0 { tw_value[h] = tw_to[s] }          # rest exactly on the target
+    seg = seg + 1
+    tw_seg[h]  = seg
+    tw_tick[h] = 0
+    if seg >= n { tw_done[h] = 1 }
+  } else {
+    tw_tick[h] = tick
+  }
+}
+
+# the engine-owned system: advance every active tween handle one tick. Inserted
+# into the Update phase when a game uses Tween.to (emit_game.ludic).
+function esys_tween() -> void {
+  if tw_used == null { return }
+  var i = 0
+  while i < TW_MAX {
+    if (tw_used[i] != 0) and (tw_done[i] == 0) { tw_advance_one(i) }
+    i = i + 1
+  }
+}

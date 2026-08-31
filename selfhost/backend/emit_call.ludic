@@ -44,11 +44,15 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
   }
   if (ns == "Anim") {
     if is_anim_ns(meth) { return emit_anim_ns(meth, e) }
-    perr(`unknown builtin Anim.{meth}`)
+    # else: the stateful Anim.play/clip/on_frame/fired sugar (#48) falls through
+    # to the bare table below (calls into systems.ludic).
   }
   if (ns == "Tween") {
     if is_tween_ns(meth) { return emit_tween_ns(meth, e) }
-    perr(`unknown builtin Tween.{meth}`)
+    # else: the stateful Tween.to/chain/delay/value/stop/parallel handles (#48)
+    # fall through to the bare table below (calls into tween.ludic). The 1-arg
+    # Tween.done(handle) is disambiguated from the 2-arg pure form inside
+    # emit_tween_ns itself, so it stays routed through is_tween_ns above.
   }
   if (ns == "Collision") {
     if is_collide_ns(meth) { return emit_collide_ns(meth, e) }
@@ -284,6 +288,34 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "normal")          { bare = "light_normal_rect";     push(labels, "x"); push(labels, "y"); push(labels, "width"); push(labels, "height"); push(labels, "nx"); push(labels, "ny") }
     if (meth == "clear_normals")   { bare = "light_clear_normals" }
     if (meth == "time_of_day")     { bare = "light_time_of_day";     push(labels, "t") }
+  }
+  # Anim.* / Motion.* ergonomic writes over the engine components (#48), spliced
+  # from runtime/native/systems.ludic. Anim.play(entity, "run") plays a named clip
+  # registered with Anim.clip; the four-arg Anim.play sets fps/frames/mode
+  # directly. on_frame arms a frame event the engine flags on SpriteAnim; fired
+  # reads that flag. Motion.to starts a value tween over the Motion component.
+  if (ns == "Anim") {
+    if (meth == "clip")     { bare = "anim_clip";       push(labels, "name"); push(labels, "frames"); push(labels, "fps"); push(labels, "mode") }
+    if (meth == "on_frame") { bare = "anim_on_frame";   push(labels, "entity"); push(labels, "frame") }
+    if (meth == "fired")    { bare = "anim_fired";      push(labels, "entity") }
+    if (meth == "play") {
+      if (len(e.kids) == 2) { bare = "anim_play_named"; push(labels, "entity"); push(labels, "clip") }
+      else { bare = "anim_play"; push(labels, "entity"); push(labels, "fps"); push(labels, "frames"); push(labels, "mode") }
+    }
+  }
+  if (ns == "Motion") {
+    if (meth == "to") { bare = "motion_to"; push(labels, "entity"); push(labels, "from"); push(labels, "to"); push(labels, "dur"); push(labels, "ease") }
+  }
+  # Tween.* fluent stateful handles (#48), spliced from runtime/native/tween.ludic
+  # and advanced each Update tick by esys_tween. These stand alongside the pure
+  # Tween.* interpolators (emit_anim.ludic): the stateful ones take/return a handle.
+  if (ns == "Tween") {
+    if (meth == "to")       { bare = "tween_to";       push(labels, "from"); push(labels, "to"); push(labels, "dur"); push(labels, "ease") }
+    if (meth == "chain")    { bare = "tween_chain";    push(labels, "handle"); push(labels, "to"); push(labels, "dur"); push(labels, "ease") }
+    if (meth == "delay")    { bare = "tween_delay";    push(labels, "handle"); push(labels, "ticks") }
+    if (meth == "value")    { bare = "tween_value";    push(labels, "handle") }
+    if (meth == "stop")     { bare = "tween_stop";     push(labels, "handle") }
+    if (meth == "parallel") { bare = "tween_parallel"; push(labels, "a"); push(labels, "b") }
   }
   # Query.* — ECS spatial queries over the reflection ABI (runtime/native/query.ludic,
   # spliced on demand). `prop` is a property id (World.prop_id); the spatial forms

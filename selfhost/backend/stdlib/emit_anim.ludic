@@ -132,8 +132,14 @@ function emit_tween_ns(meth: pointer, e: Node) -> Val {
     let c = emit_bind(`icmp sle i32 {u}, 65536`)
     return val(emit_bind(`select i1 {c}, i32 {u}, i32 {back}`), "fixed")
   }
-  if (meth == "done") {                             # timer >= duration -> bool
-    let timer = emit_expr(e.kids[0]);  let dur = emit_expr(e.kids[1])
+  if (meth == "done") {
+    # 1-arg Tween.done(handle) -> the fluent stateful handle's completion (#48),
+    # a call into tween.ludic; the 2-arg Tween.done(timer, dur) is the pure form.
+    if (len(e.kids) == 1) {
+      let h = emit_expr(e.kids[0])
+      return val(emit_bind(`call i32 @fn_tween_done(i32 {h.code})`), "bool")
+    }
+    let timer = emit_expr(e.kids[0]);  let dur = emit_expr(e.kids[1])   # timer >= duration -> bool
     let c = emit_bind(`icmp sge i32 {timer.code}, {dur.code}`)
     return val(emit_bind(`zext i1 {c} to i32`), "bool")
   }

@@ -28,6 +28,127 @@ function esys_div(a: int, b: int) -> int {
   return a / b
 }
 
+# ---- named clip registry (#48) ---------------------------------------------
+# A game registers spritesheet clips by name — Anim.clip("run", 6, 12, 0) — and
+# plays one with Anim.play(entity, "run"), so gameplay names a motion instead of
+# hand-writing fps/frames/mode into a component. A small name-keyed table, the
+# same shape the input action map uses; string names compare by byte-pointer
+# identity (a string literal interns to one pointer per program).
+const ANIM_MAX_CLIPS: int = 32
+var anim_clip_names:  pointers = null    # clip name per slot
+var anim_clip_fps:    words    = null
+var anim_clip_frames: words    = null
+var anim_clip_mode:   words    = null
+var anim_nclips:      int      = 0
+
+function anim_clip_init() -> void {
+  if anim_clip_names == null {
+    anim_clip_names  = bytes(ANIM_MAX_CLIPS * 8)     # a pointer (8 bytes) per slot
+    anim_clip_fps    = words(ANIM_MAX_CLIPS)
+    anim_clip_frames = words(ANIM_MAX_CLIPS)
+    anim_clip_mode   = words(ANIM_MAX_CLIPS)
+  }
+}
+
+# register (or update) a named clip. mode is the SpriteAnim mode: 0 loop, 1 once,
+# 2 ping-pong.
+function anim_clip(name: pointer, frames: int, fps: int, mode: int) -> void {
+  anim_clip_init()
+  var i = 0
+  while i < anim_nclips {
+    if anim_clip_names[i] == name {
+      anim_clip_frames[i] = frames;  anim_clip_fps[i] = fps;  anim_clip_mode[i] = mode
+      return
+    }
+    i = i + 1
+  }
+  if anim_nclips >= ANIM_MAX_CLIPS { return }        # silently ignore past capacity
+  let s = anim_nclips
+  anim_clip_names[s]  = name
+  anim_clip_frames[s] = frames
+  anim_clip_fps[s]    = fps
+  anim_clip_mode[s]   = mode
+  anim_nclips = anim_nclips + 1
+}
+
+function anim_clip_find(name: pointer) -> int {
+  anim_clip_init()
+  var i = 0
+  while i < anim_nclips {
+    if anim_clip_names[i] == name { return i }
+    i = i + 1
+  }
+  return 0 - 1
+}
+
+# ---- Anim.play / Anim.on_frame / Anim.fired (#48) --------------------------
+# Ergonomic writes over the SpriteAnim component through the reflection ABI, so a
+# game restarts or swaps a clip with one call instead of setting five fields by
+# hand. All no-op cleanly if the entity has no SpriteAnim (or a field is absent).
+
+# write one SpriteAnim int field on entity e (by name), if present.
+function anim_set(e: int, field: pointer, v: int) -> void {
+  let p = World.prop_id("SpriteAnim")
+  if p < 0 { return }
+  let f = World.field_id(p, field)
+  if f >= 0 { World.set(e, p, f, v) }
+}
+
+# start / restart a clip on entity e: set fps/frames/mode and rewind ticks to 0
+# so the clip plays from its first cell this tick.
+function anim_play(e: int, fps: int, frames: int, mode: int) -> void {
+  anim_set(e, "fps", fps)
+  anim_set(e, "frames", frames)
+  anim_set(e, "mode", mode)
+  anim_set(e, "ticks", 0)
+  anim_set(e, "event_fired", 0)
+}
+
+# start a registered clip by name (a no-op if the name is unknown).
+function anim_play_named(e: int, name: pointer) -> void {
+  let c = anim_clip_find(name)
+  if c < 0 { return }
+  anim_play(e, anim_clip_fps[c], anim_clip_frames[c], anim_clip_mode[c])
+}
+
+# arm a frame event: the engine flags SpriteAnim.event_fired = 1 on the tick the
+# clip first lands on `frame` (a footstep, a hitbox going live). The game reads
+# the flag in its own handler and reacts (emit its own event, spawn, …) — the
+# engine detects the boundary, gameplay owns the reaction, so it stays within the
+# no-runtime-dispatch event model.
+function anim_on_frame(e: int, frame: int) -> void {
+  anim_set(e, "event_frame", frame)
+}
+
+# did entity e's clip land on its armed event frame this tick?
+function anim_fired(e: int) -> bool {
+  let p = World.prop_id("SpriteAnim")
+  if p < 0 { return false }
+  let f = World.field_id(p, "event_fired")
+  if f < 0 { return false }
+  return World.get(e, p, f) != 0
+}
+
+# ---- Motion.to (#48) -------------------------------------------------------
+# Start a value tween on entity e over the Motion component: from -> to over `dur`
+# ticks with easing `ease`, rewinding ticks so it plays from the start. A no-op
+# if the entity has no Motion.
+function motion_to(e: int, from: int, to: int, dur: int, ease: int) -> void {
+  let p = World.prop_id("Motion")
+  if p < 0 { return }
+  motion_set(e, p, "from", from)
+  motion_set(e, p, "to", to)
+  motion_set(e, p, "dur", dur)
+  motion_set(e, p, "ease", ease)
+  motion_set(e, p, "ticks", 0)
+  motion_set(e, p, "done", 0)
+  motion_set(e, p, "value", from)
+}
+function motion_set(e: int, p: int, field: pointer, v: int) -> void {
+  let f = World.field_id(p, field)
+  if f >= 0 { World.set(e, p, f, v) }
+}
+
 # ---- SpriteAnim: spritesheet frame advance (#43) ---------------------------
 # Component contract — `property SpriteAnim { ticks: int, fps: int, frames: int,
 # mode: int, frame: int }`:
@@ -46,10 +167,13 @@ function esys_spriteanim() -> void {
   let f_frames = World.field_id(p, "frames")
   let f_mode   = World.field_id(p, "mode")
   let f_frame  = World.field_id(p, "frame")
+  let f_evfr   = World.field_id(p, "event_frame")   # optional: the frame to flag
+  let f_evfd   = World.field_id(p, "event_fired")   # optional: OUTPUT, 1 on the landing tick
   if f_ticks < 0 { return }
   if f_frame < 0 { return }
   var e = World.query_next(p, 0)
   while e >= 0 {
+    let prev   = World.get(e, p, f_frame)            # last tick's cell (for the frame-event edge)
     let ticks = World.get(e, p, f_ticks) + 1
     World.set(e, p, f_ticks, ticks)
     let fps    = World.get(e, p, f_fps)
@@ -71,6 +195,13 @@ function esys_spriteanim() -> void {
       }
     }
     World.set(e, p, f_frame, fr)
+    # frame event: flag the tick the clip first lands on its armed frame (edge).
+    if (f_evfr >= 0) and (f_evfd >= 0) {
+      let evfr = World.get(e, p, f_evfr)
+      var fired = 0
+      if (fr == evfr) and (prev != evfr) { fired = 1 }
+      World.set(e, p, f_evfd, fired)
+    }
     e = World.query_next(p, e + 1)
   }
 }

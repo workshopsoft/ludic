@@ -268,7 +268,7 @@ enough, and a game that declares none is byte-for-byte unchanged.
 
 | Component | Phase | Effect |
 |---|---|---|
-| `SpriteAnim { ticks, fps, frames, mode, frame }` | `Update` | advances `frame` — spritesheet frame animation (`mode` 0 loop, 1 once, 2 ping-pong) |
+| `SpriteAnim { ticks, fps, frames, mode, frame }` | `Update` | advances `frame` — spritesheet frame animation (`mode` 0 loop, 1 once, 2 ping-pong). Optional `event_frame`/`event_fired` fields arm a frame event (`Anim.on_frame` / `Anim.fired`) |
 | `Motion { ticks, dur, from, to, ease, value, done }` | `Update` | advances `value` — value tween (`ease` 0 linear, 1 in, 2 out, 3 in-out), latches `done` |
 | `Light2D { x, y, radius, color, intensity }` | `Render` | additive radial glow; the engine runs the whole 2D light pass and presents. Optional `direction`/`spread` (cone), `falloff`, `softness`, `gel` fields select the render-quality tiers |
 | `Occluder { x, y, w, h }` | `Render` | a rectangular shadow caster the light pass carves out |
@@ -281,6 +281,15 @@ model Hero { Pos, SpriteAnim }
 # spawn a walking 6-frame clip at 10 fps; the engine advances SpriteAnim.frame
 spawn Hero { Pos { x: 0, y: 0 }  SpriteAnim { fps: 10, frames: 6, mode: 0 } }
 ```
+
+An **ergonomic layer** sits over the animation components: register named clips
+with `Anim.clip("run", frames, fps, mode)` and (re)start one with
+`Anim.play(entity, "run")` (or `Anim.play(entity, fps, frames, mode)`); arm frame
+events with `Anim.on_frame` / read them with `Anim.fired`; start a value tween in
+one call with `Motion.to(entity, from, to, dur, ease)`. Standalone **fluent tween
+handles** — `Tween.to` / `Tween.chain` / `Tween.delay`, read with `Tween.value` /
+`Tween.done` / `Tween.parallel` and cancelled with `Tween.stop` — sequence
+multi-step motion the engine advances each tick, beyond a single `Motion`.
 
 A `Light2D` / `Occluder` reads its position from a `Position { x, y }` component
 on the same entity when the entity carries one, else from its own `x` / `y`

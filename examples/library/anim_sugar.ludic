@@ -1,0 +1,84 @@
+# anim_sugar.ludic — the animation ergonomics from #48, layered over the
+# engine-owned SpriteAnim / Motion systems (#43) and the fixed frame clock:
+#
+#   * Anim.clip / Anim.play  — named spritesheet clips ("run") and one-call
+#                              (re)start, direct or by name
+#   * Anim.on_frame / fired  — a frame event the engine flags, gameplay reacts to
+#   * Motion.to              — start a value tween over the Motion component
+#   * Tween.to/chain/delay   — a fluent, engine-advanced tween handle
+#   * Tween.parallel/done    — completion queries over handles
+#
+# Everything is integer + deterministic (the clock ticks 60/s), so a full run
+# prints:  4 8 2 1 0 100 100 0 0 1 20 20 30 0 1
+program AnimSugar {
+  property SpriteAnim { ticks: int = 0, fps: int = 0, frames: int = 0, mode: int = 0, frame: int = 0, event_frame: int = 0, event_fired: int = 0 }
+  property Motion { ticks: int = 0, dur: int = 0, from: int = 0, to: int = 0, ease: int = 0, value: int = 0, done: int = 0 }
+  model Sprite { SpriteAnim }
+  model Mover  { Motion }
+
+  function tick_n(n: int) -> void { var i = 0;  while i < n { tick_fixed();  i = i + 1 } }
+  function bi(b: bool) -> int { if b { return 1 };  return 0 }
+
+  entry {
+    Anim.clip("run", 4, 12, 0)                     # register a 4-frame, 12fps loop
+
+    let sa  = World.prop_id("SpriteAnim")
+    let saf = World.field_id(sa, "frame")
+    let sfr = World.field_id(sa, "frames")
+    spawn Sprite { SpriteAnim { } }
+    let sprite = World.query_next(sa, 0)
+
+    Anim.play(sprite, "run")                        # named clip -> frames = 4
+    print(World.get(sprite, sa, sfr))               # 4
+    Anim.play(sprite, 6, 8, 1)                      # direct: fps 6, frames 8, once
+    print(World.get(sprite, sa, sfr))               # 8
+
+    # frame event: arm frame 2 on the looping "run" clip, then tick onto it
+    Anim.play(sprite, "run")
+    Anim.on_frame(sprite, 2)
+    tick_n(10)                                       # frame = (10*12/60) % 4 = 2
+    print(World.get(sprite, sa, saf))               # 2
+    print(bi(Anim.fired(sprite)))                   # 1 — landed on the armed frame
+    tick_n(1)
+    print(bi(Anim.fired(sprite)))                   # 0 — no new landing
+
+    # Motion.to: one call starts a tween over the Motion component
+    spawn Mover { Motion { } }
+    let mo  = World.prop_id("Motion")
+    let mov = World.field_id(mo, "value")
+    let mover = World.query_next(mo, 0)
+    Motion.to(mover, 0, 100, 10, 0)                 # linear 0..100 over 10 ticks
+    tick_n(10)
+    print(World.get(mover, mo, mov))                # 100
+
+    # Tween fluent handle: 0->100, then 100->0
+    var h = Tween.to(0, 100, 10, 0)
+    h = Tween.chain(h, 0, 10, 0)
+    tick_n(10)
+    print(Tween.value(h))                            # 100 — end of first segment
+    print(bi(Tween.done(h)))                          # 0 — chained segment pending
+    tick_n(10)
+    print(Tween.value(h))                            # 0 — end of chained segment
+    print(bi(Tween.done(h)))                          # 1
+
+    # Tween with a delay in the middle, and a parallel completion query
+    var g = Tween.to(10, 20, 10, 0)
+    g = Tween.delay(g, 5)
+    g = Tween.chain(g, 30, 10, 0)
+    tick_n(10)
+    print(Tween.value(g))                            # 20 — first segment done
+    tick_n(5)
+    print(Tween.value(g))                            # 20 — held through the delay
+    tick_n(10)
+    print(Tween.value(g))                            # 30 — chained segment done
+
+    let p = Tween.to(0, 5, 4, 0)
+    let q = Tween.to(0, 9, 8, 0)
+    tick_n(4)
+    print(bi(Tween.parallel(p, q)))                 # 0 — q still running
+    tick_n(4)
+    print(bi(Tween.parallel(p, q)))                 # 1 — both done
+
+    quit()
+  }
+}
