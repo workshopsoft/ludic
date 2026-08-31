@@ -50,7 +50,7 @@ object LudicVocabulary {
     val STMT = setOf(
         "let", "return", "if", "else", "while", "for", "in", "spawn", "despawn",
         "enable", "disable", "match", "machine", "state", "become", "where",
-        "and", "or", "not", "break", "continue", "new", "emit", "cancel"
+        "and", "or", "not", "break", "continue", "new", "emit", "cancel", "try"
     )
     val PRIMITIVES = setOf("int", "long", "fixed", "bool", "entity", "string", "pointer", "byte", "words", "fixeds", "pointers", "Vector", "void")
     val PHASES = setOf("Start", "Input", "FixedUpdate", "Update", "LateUpdate", "Render")
@@ -65,6 +65,7 @@ object LudicVocabulary {
         "ui_tick", "ui_render", "ui_clicked", "ui_set_text", "ui_set_int", "ui_focus",
         "ui_focused", "ui_visible", "key", "reg", "set_reg", "self", "save", "load",
         "status", "print", "string", "quit", "panic", "assert",
+        "ok", "err", "is_ok", "is_err",
         // compiler intrinsics: the floor the Ludic-written runtime stands on
         "bytes", "words", "resize", "free", "fill",         "arg_count", "arg", "file_stderr", "file_stdout",
         "offset",

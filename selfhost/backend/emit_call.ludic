@@ -479,6 +479,50 @@ function emit_call(e: Node) -> Val {
     emit(`{lok}:\n`)
     return val("0", "void")
   }
+  # --- recoverable failures as values (issue #46) -----------------------------
+  # A `result` is a heap `%Result = { i32 ok, i32 value, ptr err }`. `ok(v)` wraps
+  # a success payload (any i32-width scalar: int/fixed/bool/entity), `err(msg)` a
+  # failure with a message. `is_ok`/`is_err` test the tag; `try E else { … }`
+  # (emit_try) unwraps the value or runs the fallback. Each is guarded by a
+  # find_fn check so a user function of the same name still wins.
+  if (name == "ok") and (find_fn("ok") == null) {
+    g_uses_result = true
+    let v = emit_expr(e.kids[0])
+    let p = emit_bind("call ptr @malloc(i64 16)")
+    let okp = emit_bind(`getelementptr inbounds %Result, ptr {p}, i32 0, i32 0`)
+    emit(`  store i32 1, ptr {okp}\n`)
+    let vp = emit_bind(`getelementptr inbounds %Result, ptr {p}, i32 0, i32 1`)
+    emit(`  store i32 {coerce_code(v, "int")}, ptr {vp}\n`)
+    let ep = emit_bind(`getelementptr inbounds %Result, ptr {p}, i32 0, i32 2`)
+    emit(`  store ptr null, ptr {ep}\n`)
+    return val(p, "result")
+  }
+  if (name == "err") and (find_fn("err") == null) {
+    g_uses_result = true
+    let m = emit_expr(e.kids[0])
+    let p = emit_bind("call ptr @malloc(i64 16)")
+    let okp = emit_bind(`getelementptr inbounds %Result, ptr {p}, i32 0, i32 0`)
+    emit(`  store i32 0, ptr {okp}\n`)
+    let vp = emit_bind(`getelementptr inbounds %Result, ptr {p}, i32 0, i32 1`)
+    emit(`  store i32 0, ptr {vp}\n`)
+    let ep = emit_bind(`getelementptr inbounds %Result, ptr {p}, i32 0, i32 2`)
+    emit(`  store ptr {m.code}, ptr {ep}\n`)
+    return val(p, "result")
+  }
+  if (name == "is_ok") and (find_fn("is_ok") == null) {
+    let r = emit_expr(e.kids[0])
+    let okp = emit_bind(`getelementptr inbounds %Result, ptr {r.code}, i32 0, i32 0`)
+    let okv = emit_bind(`load i32, ptr {okp}`)
+    let c = emit_bind(`icmp ne i32 {okv}, 0`)
+    return val(emit_bind(`zext i1 {c} to i32`), "bool")
+  }
+  if (name == "is_err") and (find_fn("is_err") == null) {
+    let r = emit_expr(e.kids[0])
+    let okp = emit_bind(`getelementptr inbounds %Result, ptr {r.code}, i32 0, i32 0`)
+    let okv = emit_bind(`load i32, ptr {okp}`)
+    let c = emit_bind(`icmp eq i32 {okv}, 0`)
+    return val(emit_bind(`zext i1 {c} to i32`), "bool")
+  }
   # The EV2 reflection ABI (the world table), exposed to Ludic so a Ludic mod can
   # introspect the world by name — the same functions a foreign mod binds. Emitted
   # only for a modding program (ECS + events), so a plain game is unchanged.
@@ -629,6 +673,7 @@ function emit_expr(e: Node) -> Val {
     return emit_load_at(a, g_addr_ty)
   }
   if e.kind == S_EMIT   { return emit_emit(e) }       # emit as an expression -> cancelled flag
+  if e.kind == E_TRY    { return emit_try(e) }         # try E else { … } -> recovered value (issue #46)
   if e.kind == E_CALL   { return emit_call(e) }
   if e.kind == E_BIN    { return emit_bin(e) }
   if e.kind == E_UN {

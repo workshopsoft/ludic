@@ -1,5 +1,53 @@
 # emit_expr.ludic — lower an expression to IR, returning its register and type.
 
+# issue #46: `try E else { BODY }` as an expression. Evaluate E (a `result`); on
+# `ok` the expression is the payload, on `err` BODY runs with the failure message
+# bound to `error` and its trailing expression supplies the fallback. Pure branch
+# on the tag — no unwinding, no hidden control flow.
+function emit_try_body(b: Node, slot: pointer) -> void {
+  var i = 0
+  while i < len(b.kids) {
+    if g_term { return }
+    let st = b.kids[i]
+    if (i == len(b.kids) - 1) and st.kind == S_EXPR {   # trailing expression = the fallback value
+      emit_cov_hit(st.line)
+      let v = emit_expr(st.a)
+      emit(`  store i32 {coerce_code(v, "int")}, ptr {slot}\n`)
+    } else { emit_stmt(st) }
+    i = i + 1
+  }
+}
+
+function emit_try(e: Node) -> Val {
+  g_uses_result = true
+  let r = emit_expr(e.a)
+  if not (r.ty == "result") { perr(`try expects a result value (got {r.ty}) — line {itoa(e.line)}`) }
+  let slot = emit_alloca("i32")
+  emit(`  store i32 0, ptr {slot}\n`)              # fallback default (an else block with no trailing value)
+  let okp = emit_bind(`getelementptr inbounds %Result, ptr {r.code}, i32 0, i32 0`)
+  let okv = emit_bind(`load i32, ptr {okp}`)
+  let isok = emit_bind(`icmp ne i32 {okv}, 0`)
+  let lok = lbl("tryok");  let lel = lbl("tryelse");  let lend = lbl("tryend")
+  emit(`  br i1 {isok}, label %{lok}, label %{lel}\n`)
+  emit(`{lok}:\n`);  g_term = false
+  let vp = emit_bind(`getelementptr inbounds %Result, ptr {r.code}, i32 0, i32 1`)
+  let vv = emit_bind(`load i32, ptr {vp}`)
+  emit(`  store i32 {vv}, ptr {slot}\n`)
+  emit(`  br label %{lend}\n`)
+  emit(`{lel}:\n`);  g_term = false
+  let ep = emit_bind(`getelementptr inbounds %Result, ptr {r.code}, i32 0, i32 2`)
+  let ev = emit_bind(`load ptr, ptr {ep}`)
+  let eslot = emit_alloca("ptr")
+  emit(`  store ptr {ev}, ptr {eslot}\n`)
+  let save = nloc
+  loc_push("error", eslot, "string")               # bind the failure message inside the else block
+  emit_try_body(e.b, slot)
+  nloc = save
+  if not g_term { emit(`  br label %{lend}\n`) }
+  emit(`{lend}:\n`);  g_term = false
+  return val(emit_bind(`load i32, ptr {slot}`), "int")
+}
+
 function emit_load_at(addr: pointer, ty: pointer) -> Val {
   let r = emit_bind(`load {llty(ty)}, ptr {addr}`)
   return val(r, ty)

@@ -150,6 +150,19 @@ function p_primary() -> Node {
     if (t.text == "false") { let n = node(E_BOOL); n.ival = 0; pi = pi + 1; return n }
     if (t.text == "null")  { pi = pi + 1; return node(E_NULL) }
     if (t.text == "new")   { pi = pi + 1;  let n = node(E_NEW); n.s = ptype();  if is_op("{") { n.a = record() };  return n }
+    # try EXPR else { ... } — evaluate a fallible (result-typed) expression; on
+    # `ok` the whole expression is its payload, on `err` the else block runs (with
+    # the message bound to `error`) and its trailing expression is the fallback.
+    if (t.text == "try") {
+      pi = pi + 1
+      let n = node(E_TRY); n.line = t.line
+      n.a = expr()
+      skipnl()
+      if not is_id("else") { perr("try needs an `else { ... }` fallback") }
+      pi = pi + 1; skipnl()
+      n.b = block()
+      return n
+    }
     let n = node(E_ID); n.s = t.text; pi = pi + 1; return n
   }
   if is_op("(") { pi = pi + 1; skipnl(); let e = expr(); skipnl(); eat_op(")"); return e }

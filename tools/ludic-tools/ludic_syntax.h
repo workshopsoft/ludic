@@ -68,7 +68,7 @@ static const char* LUDIC_KW_RESERVED[] = {
 static const char* LUDIC_KW_STMT[] = {
     "let","return","if","else","while","for","in","spawn","despawn",
     "enable","disable","match","machine","state","become","where",
-    "and","or","not","break","continue","new","emit","cancel", 0
+    "and","or","not","break","continue","new","emit","cancel","try", 0
 };
 static const char* LUDIC_TYPES[] = {
     "int","long","fixed","bool","entity","string","pointer","byte","words","fixeds","pointers","Vector","void", 0
@@ -143,6 +143,10 @@ static const LBuiltin LUDIC_BUILTINS[] = {
  {"quit","quit()","Stop the frame loop and exit."},
  {"panic","panic(msg: string)","Print `file:line: panic: msg` to stderr and abort (exit 1) — a located error, not a crash."},
  {"assert","assert(cond: bool, msg: string)","Abort with `file:line: assertion failed: msg` when cond is false — for programmer-bug invariants."},
+ {"ok","ok(v) -> result","Wrap a success payload (any i32-width scalar) in a result — the happy half of `try`/`else`."},
+ {"err","err(msg: string) -> result","Wrap a failure message in a result — the sad half, recovered by `try`/`else`."},
+ {"is_ok","is_ok(r: result) -> bool","True when a result carries a success payload."},
+ {"is_err","is_err(r: result) -> bool","True when a result carries a failure."},
  {0,0,0}
 };
 

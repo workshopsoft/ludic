@@ -48,7 +48,11 @@
     "fn-read_char",
     "fn-file_write",
     "fn-file_stdout",
-    "fn-file_stderr"
+    "fn-file_stderr",
+    "fn-ok",
+    "fn-err",
+    "fn-is_ok",
+    "fn-is_err"
   ],
   "collision": [
     "collision-rects",
@@ -72,7 +76,8 @@
     "kw-match",
     "kw-machine",
     "kw-state",
-    "kw-become"
+    "kw-become",
+    "kw-try"
   ],
   "ease": [
     "ease-in",

@@ -31,6 +31,9 @@ const S_EMIT:   int = 49         # emit E(field: v, ...) — fire event E (calls
 const S_CANCEL: int = 50         # cancel — inside a listener, veto a `cancellable` event
 const N_TEST:   int = 51         # test "name" { ... } — a named test block (the testing framework)
                                  #   s=name  a=body block  line=source line of the test
+const E_TRY:    int = 52         # try EXPR else { ... } — recover a fallible result as a value (issue #46)
+                                 #   a=the fallible (result-typed) expression  b=else block (its
+                                 #   trailing expression is the fallback)  line=source line
 # statements
 const S_LET:      int = 10
 const S_ASSIGN:   int = 11

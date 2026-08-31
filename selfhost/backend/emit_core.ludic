@@ -35,6 +35,7 @@ var g_uses_fsrt: bool = false  # Fs.*/Path.*/Mime.* was emitted -> emit the file
 var g_uses_datert: bool = false  # Date.*/DateTime.* was emitted -> emit the civil<->epoch conversions
 var g_uses_expect: bool = false  # expect/expect_eq/expect_near was emitted -> emit the test-assert globals
 var g_uses_panic: bool = false   # panic/assert was emitted -> declare @fprintf + the panic format
+var g_uses_result: bool = false  # ok()/err()/try was emitted -> define the %Result value type (issue #46)
 var g_tests: []Node              # test "name" { ... } blocks collected by the parser
 var g_src_name: pointer = "?"    # base name of the source file, for panic/expect file:line messages
 var g_uses_longstr: bool = false  # string(long) / interpolating a long was emitted -> emit fn_long_str

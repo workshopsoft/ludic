@@ -1,0 +1,37 @@
+# recover.ludic — recoverable failures as values (issue #46). A fallible function
+# returns a `result`: `ok(payload)` on success, `err(message)` on failure. The
+# caller recovers a value with `try EXPR else { … }` — on `ok` the expression is
+# the payload, on `err` the else block runs (with the message bound to `error`)
+# and its trailing expression is the fallback. No exceptions, no unwinding — just
+# a branch on the result's tag. `is_ok`/`is_err` classify without unwrapping.
+#
+# This is the SUCCESS-style showcase (it always runs to the end), printing:
+#   2600 100 1 1 42 7
+program Recover {
+  # loading a possibly-missing save: slot 1 has data, everything else is empty.
+  function load_score(slot: int) -> result {
+    if slot == 1 { return ok(2600) }
+    return err("no save in slot")
+  }
+
+  entry {
+    # ok path: the payload flows straight out of `try`
+    print(try load_score(1) else { 0 })       # 2600
+
+    # err path: the else block supplies a fallback (a fresh game)
+    print(try load_score(4) else { 100 })     # 100
+
+    # the else block can read the failure message via `error`, and log/branch
+    var handled = 0
+    let s = try load_score(9) else {
+      if error == "no save in slot" { handled = 1 }
+      100                                       # trailing expression = fallback
+    }
+    print(handled)                             # 1
+    print(s / 100)                             # 1  (fallback was 100)
+
+    # is_ok / is_err classify a result without unwrapping it
+    if is_ok(load_score(1)) { print(42) }      # 42
+    if is_err(load_score(2)) { print(7) }      # 7
+  }
+}

@@ -172,7 +172,7 @@
     },
     "keyword": {
       "patterns": [
-        { "name": "keyword.control.ludic", "match": "\\b(if|else|while|for|in|match|machine|become|return|spawn|despawn|enable|disable|where|break|continue|new)\\b" },
+        { "name": "keyword.control.ludic", "match": "\\b(if|else|while|for|in|match|machine|become|return|spawn|despawn|enable|disable|where|break|continue|new|try)\\b" },
         { "name": "keyword.operator.logical.ludic", "match": "\\b(and|or|not)\\b" },
         { "name": "keyword.other.clause.ludic", "match": "\\b(phase|query|on)\\b" },
         { "name": "keyword.other.ludic", "match": "\\b(import|extern)\\b" },
@@ -204,7 +204,7 @@
         {
           "comment": "the runtime surface — every name here resolves to rt_<name> in runtime/native",
           "name": "support.function.builtin.ludic",
-          "match": "\\b(min|max|abs|clamp|seed|rng_range|rng_chance|fixed|floor|map_size|map_row|tile|clear|present|fill_rect|frame_rect|put_px|text|text_int|font_load|text_ttf|text_w|text_h|image_load|draw_image|draw_image_scaled|draw_9slice|png_load|sprites_load|draw_sprite|draw_sprite_scaled|ui_build|ui_open|ui_tick|ui_render|ui_clicked|ui_set_text|ui_set_int|ui_focus|ui_focused|ui_visible|key|reg|set_reg|self|save|load|status|print|string|quit|panic|assert)\\b(?=\\s*\\()"
+          "match": "\\b(min|max|abs|clamp|seed|rng_range|rng_chance|fixed|floor|map_size|map_row|tile|clear|present|fill_rect|frame_rect|put_px|text|text_int|font_load|text_ttf|text_w|text_h|image_load|draw_image|draw_image_scaled|draw_9slice|png_load|sprites_load|draw_sprite|draw_sprite_scaled|ui_build|ui_open|ui_tick|ui_render|ui_clicked|ui_set_text|ui_set_int|ui_focus|ui_focused|ui_visible|key|reg|set_reg|self|save|load|status|print|string|quit|panic|assert|ok|err|is_ok|is_err)\\b(?=\\s*\\()"
         },
         {
           "comment": "compiler intrinsics — these lower straight to libc or the OS",
