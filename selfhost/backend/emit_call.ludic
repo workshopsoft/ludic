@@ -760,6 +760,55 @@ function emit_call(e: Node) -> Val {
     let c = emit_bind(`icmp eq i32 {okv}, 0`)
     return val(emit_bind(`zext i1 {c} to i32`), "bool")
   }
+  # An `option` is a heap `%Option = { i32 present, i32 value }` — the "maybe a
+  # value" companion to `result` (issue #53). `some(v)` wraps a present payload
+  # (any i32-width scalar: int/fixed/bool/entity), `none()` is the absent case
+  # (no magic -1 sentinel); `is_some`/`is_none` test presence and `unwrap_or`
+  # reads the payload with a fallback. Each is guarded by a find_fn check so a
+  # user function of the same name still wins.
+  if (name == "some") and (find_fn("some") == null) {
+    g_uses_option = true
+    let v = emit_expr(e.kids[0])
+    let p = emit_bind("call ptr @malloc(i64 8)")
+    let pp = emit_bind(`getelementptr inbounds %Option, ptr {p}, i32 0, i32 0`)
+    emit(`  store i32 1, ptr {pp}\n`)
+    let vp = emit_bind(`getelementptr inbounds %Option, ptr {p}, i32 0, i32 1`)
+    emit(`  store i32 {coerce_code(v, "int")}, ptr {vp}\n`)
+    return val(p, "option")
+  }
+  if (name == "none") and (find_fn("none") == null) {
+    g_uses_option = true
+    let p = emit_bind("call ptr @malloc(i64 8)")
+    let pp = emit_bind(`getelementptr inbounds %Option, ptr {p}, i32 0, i32 0`)
+    emit(`  store i32 0, ptr {pp}\n`)
+    let vp = emit_bind(`getelementptr inbounds %Option, ptr {p}, i32 0, i32 1`)
+    emit(`  store i32 0, ptr {vp}\n`)
+    return val(p, "option")
+  }
+  if (name == "is_some") and (find_fn("is_some") == null) {
+    let o = emit_expr(e.kids[0])
+    let pp = emit_bind(`getelementptr inbounds %Option, ptr {o.code}, i32 0, i32 0`)
+    let pv = emit_bind(`load i32, ptr {pp}`)
+    let c = emit_bind(`icmp ne i32 {pv}, 0`)
+    return val(emit_bind(`zext i1 {c} to i32`), "bool")
+  }
+  if (name == "is_none") and (find_fn("is_none") == null) {
+    let o = emit_expr(e.kids[0])
+    let pp = emit_bind(`getelementptr inbounds %Option, ptr {o.code}, i32 0, i32 0`)
+    let pv = emit_bind(`load i32, ptr {pp}`)
+    let c = emit_bind(`icmp eq i32 {pv}, 0`)
+    return val(emit_bind(`zext i1 {c} to i32`), "bool")
+  }
+  if (name == "unwrap_or") and (find_fn("unwrap_or") == null) {
+    let o = emit_expr(e.kids[0])
+    let fb = emit_expr(e.kids[1])
+    let pp = emit_bind(`getelementptr inbounds %Option, ptr {o.code}, i32 0, i32 0`)
+    let pv = emit_bind(`load i32, ptr {pp}`)
+    let vp = emit_bind(`getelementptr inbounds %Option, ptr {o.code}, i32 0, i32 1`)
+    let vv = emit_bind(`load i32, ptr {vp}`)
+    let present = emit_bind(`icmp ne i32 {pv}, 0`)
+    return val(emit_bind(`select i1 {present}, i32 {vv}, i32 {coerce_code(fb, "int")}`), "int")
+  }
   # The EV2 reflection ABI (the world table), exposed to Ludic so a Ludic mod can
   # introspect the world by name — the same functions a foreign mod binds. Emitted
   # only for a modding program (ECS + events), so a plain game is unchanged.

@@ -52,7 +52,12 @@
     "fn-ok",
     "fn-err",
     "fn-is_ok",
-    "fn-is_err"
+    "fn-is_err",
+    "fn-some",
+    "fn-none",
+    "fn-is_some",
+    "fn-is_none",
+    "fn-unwrap_or"
   ],
   "collision": [
     "collision-rects",

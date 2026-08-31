@@ -146,6 +146,7 @@ function emit_program() -> void {
   g_uses_expect = false
   g_uses_panic = false
   g_uses_result = false
+  g_uses_option = false
   g_cov_lines = new []int
   g_cov_active = true
   loc_name = new []pointer;  loc_reg = new []pointer;  loc_ty = new []pointer;  loc_mut = new []int
@@ -205,6 +206,7 @@ function emit_program() -> void {
     emith("@.fmt_panic = private unnamed_addr constant [6 x i8] c\"%s%s\\0A\\00\"\n")
   }
   if g_uses_result { emith("%Result = type { i32, i32, ptr }\n") }   # issue #46: ok/err/try value
+  if g_uses_option { emith("%Option = type { i32, i32 }\n") }         # issue #53: some/none value
   emit_cov_runtime()                              # issue #45: --coverage tables + exit dump
 }
 

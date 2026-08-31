@@ -147,6 +147,11 @@ static const LBuiltin LUDIC_BUILTINS[] = {
  {"err","err(msg: string) -> result","Wrap a failure message in a result — the sad half, recovered by `try`/`else`."},
  {"is_ok","is_ok(r: result) -> bool","True when a result carries a success payload."},
  {"is_err","is_err(r: result) -> bool","True when a result carries a failure."},
+ {"some","some(v) -> option","Wrap a present value (any i32-width scalar) in an option — the `has a value` case."},
+ {"none","none() -> option","The empty option — a missing value with no magic -1 sentinel."},
+ {"is_some","is_some(o: option) -> bool","True when an option holds a value."},
+ {"is_none","is_none(o: option) -> bool","True when an option is empty."},
+ {"unwrap_or","unwrap_or(o: option, fallback) -> int","The option's value, or fallback when it is empty."},
  {0,0,0}
 };
 

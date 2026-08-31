@@ -66,6 +66,7 @@ object LudicVocabulary {
         "ui_focused", "ui_visible", "key", "reg", "set_reg", "self", "save", "load",
         "status", "print", "string", "quit", "panic", "assert",
         "ok", "err", "is_ok", "is_err",
+        "some", "none", "is_some", "is_none", "unwrap_or",
         // compiler intrinsics: the floor the Ludic-written runtime stands on
         "bytes", "words", "resize", "free", "fill",         "arg_count", "arg", "file_stderr", "file_stdout",
         "offset",
