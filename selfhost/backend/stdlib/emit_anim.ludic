@@ -1,0 +1,174 @@
+# emit_anim.ludic — 2D animation: the Anim.* (spritesheet frame animation) and
+# Tween.* (value interpolation over a timeline) namespaces. Both are pure,
+# deterministic Q16.16 / integer math driven off the game's fixed frame clock —
+# the game stores a timer in a component and calls these each frame, exactly the
+# way Collision.* / Grid.* are used. Same inputs -> same frame and same eased
+# value on every run, so replays and lockstep netcode reproduce motion exactly.
+#
+# Conventions: a `timer` is elapsed seconds as a fixed (Q16.16); `fps` and frame
+# counts are plain ints; interpolation amounts `t` are a fixed in 0.0..1.0.
+
+# ------------------------------------------------------------------ Anim.* ----
+# spritesheet frame animation: turn an elapsed timer into the frame index to
+# draw. floor(timer * fps) is the number of whole frames elapsed; the flavour
+# (loop / once / ping-pong) decides how that maps back into 0..count-1.
+
+function is_anim_ns(meth: pointer) -> bool {
+  if (meth == "frame") or (meth == "once") or (meth == "pingpong") { return true }
+  if (meth == "finished") or (meth == "duration") { return true }
+  if (meth == "cell_x") or (meth == "cell_y") { return true }
+  return false
+}
+
+# floor(timer * fps) -> i32 code of whole frames elapsed (i64 intermediate so a
+# long-running timer can't overflow the multiply).
+function anim_elapsed(timer: pointer, fps: pointer) -> pointer {
+  let t64 = emit_bind(`sext i32 {timer} to i64`)
+  let f64 = emit_bind(`sext i32 {fps} to i64`)
+  let m = emit_bind(`mul i64 {t64}, {f64}`)         # Q16.16 frames
+  let sh = emit_bind(`ashr i64 {m}, 16`)
+  return emit_bind(`trunc i64 {sh} to i32`)
+}
+
+# max(1, v) — guard a divisor / modulus against a zero or negative count.
+function anim_atleast1(v: pointer) -> pointer {
+  let c = emit_bind(`icmp slt i32 {v}, 1`)
+  return emit_bind(`select i1 {c}, i32 1, i32 {v}`)
+}
+
+function emit_anim_ns(meth: pointer, e: Node) -> Val {
+  if (meth == "frame") {                            # looping frame: elapsed mod count
+    let timer = emit_expr(e.kids[0]);  let fps = emit_expr(e.kids[1]);  let count = emit_expr(e.kids[2])
+    let el = anim_elapsed(timer.code, fps.code)
+    let cnt = anim_atleast1(count.code)
+    return val(emit_bind(`srem i32 {el}, {cnt}`), "int")
+  }
+  if (meth == "once") {                             # one-shot: min(elapsed, count-1)
+    let timer = emit_expr(e.kids[0]);  let fps = emit_expr(e.kids[1]);  let count = emit_expr(e.kids[2])
+    let el = anim_elapsed(timer.code, fps.code)
+    let last = emit_bind(`sub i32 {count.code}, 1`)
+    let c = emit_bind(`icmp slt i32 {el}, {last}`)
+    return val(emit_bind(`select i1 {c}, i32 {el}, i32 {last}`), "int")
+  }
+  if (meth == "pingpong") {                         # bounce 0..count-1..0
+    let timer = emit_expr(e.kids[0]);  let fps = emit_expr(e.kids[1]);  let count = emit_expr(e.kids[2])
+    let el = anim_elapsed(timer.code, fps.code)
+    let two = emit_bind(`mul i32 {count.code}, 2`)
+    let p2 = emit_bind(`sub i32 {two}, 2`)          # 2*count - 2
+    let period = anim_atleast1(p2)
+    let m = emit_bind(`srem i32 {el}, {period}`)
+    let back = emit_bind(`sub i32 {period}, {m}`)
+    let c = emit_bind(`icmp slt i32 {m}, {count.code}`)
+    return val(emit_bind(`select i1 {c}, i32 {m}, i32 {back}`), "int")
+  }
+  if (meth == "finished") {                         # has a one-shot run past its last frame?
+    let timer = emit_expr(e.kids[0]);  let fps = emit_expr(e.kids[1]);  let count = emit_expr(e.kids[2])
+    let el = anim_elapsed(timer.code, fps.code)
+    let c = emit_bind(`icmp sge i32 {el}, {count.code}`)
+    return val(emit_bind(`zext i1 {c} to i32`), "bool")
+  }
+  if (meth == "duration") {                         # seconds for one cycle: count / fps -> fixed
+    let fps = emit_expr(e.kids[0]);  let count = emit_expr(e.kids[1])
+    let num = emit_bind(`shl i32 {count.code}, 16`)  # count as fixed
+    let den = anim_atleast1(fps.code)
+    return val(emit_bind(`sdiv i32 {num}, {den}`), "fixed")
+  }
+  if (meth == "cell_x") {                           # source x of a frame: (frame mod cols) * cell_w
+    let frame = emit_expr(e.kids[0]);  let cols = emit_expr(e.kids[1]);  let cw = emit_expr(e.kids[2])
+    let c1 = anim_atleast1(cols.code)
+    let col = emit_bind(`srem i32 {frame.code}, {c1}`)
+    return val(emit_bind(`mul i32 {col}, {cw.code}`), "int")
+  }
+  # cell_y — source y of a frame: (frame / cols) * cell_h
+  let frame = emit_expr(e.kids[0]);  let cols = emit_expr(e.kids[1]);  let ch = emit_expr(e.kids[2])
+  let c1 = anim_atleast1(cols.code)
+  let row = emit_bind(`sdiv i32 {frame.code}, {c1}`)
+  return val(emit_bind(`mul i32 {row}, {ch.code}`), "int")
+}
+
+# ----------------------------------------------------------------- Tween.* ----
+# value interpolation over a timeline. The timeline helpers turn (timer,
+# duration) into a normalized amount with a chosen boundary behaviour; ease()
+# shapes that amount through one of the engine's easing curves (shared with
+# Ease.*); the typed interpolators blend two endpoints by an amount.
+
+function is_tween_ns(meth: pointer) -> bool {
+  if (meth == "progress") or (meth == "loop") or (meth == "yoyo") or (meth == "done") { return true }
+  if (meth == "ease") or (meth == "number") or (meth == "round") { return true }
+  if (meth == "point") or (meth == "tint") { return true }
+  return false
+}
+
+# a positive divisor for the timeline: duration if > 0, else 1.0 (65536).
+function tween_den(dur: pointer) -> pointer {
+  let dpos = emit_bind(`icmp sgt i32 {dur}, 0`)
+  return emit_bind(`select i1 {dpos}, i32 {dur}, i32 65536`)
+}
+
+function emit_tween_ns(meth: pointer, e: Node) -> Val {
+  if (meth == "progress") {                         # clamp(timer / duration, 0, 1) -> fixed
+    let timer = emit_expr(e.kids[0]);  let dur = emit_expr(e.kids[1])
+    let dpos = emit_bind(`icmp sgt i32 {dur.code}, 0`)
+    let den = emit_bind(`select i1 {dpos}, i32 {dur.code}, i32 65536`)
+    let r = fx_div_code(timer.code, den)
+    let neg = emit_bind(`icmp slt i32 {r}, 0`)
+    let lo = emit_bind(`select i1 {neg}, i32 0, i32 {r}`)
+    let over = emit_bind(`icmp sgt i32 {lo}, 65536`)
+    let r1 = emit_bind(`select i1 {over}, i32 65536, i32 {lo}`)
+    return val(emit_bind(`select i1 {dpos}, i32 {r1}, i32 65536`), "fixed")   # dur<=0 -> done
+  }
+  if (meth == "loop") {                             # frac(timer / duration) in [0,1) -> fixed
+    let timer = emit_expr(e.kids[0]);  let dur = emit_expr(e.kids[1])
+    let den = tween_den(dur.code)
+    let r = fx_div_code(timer.code, den)
+    return val(emit_bind(`and i32 {r}, 65535`), "fixed")                      # nonneg fractional part
+  }
+  if (meth == "yoyo") {                             # triangle 0..1..0 over the duration -> fixed
+    let timer = emit_expr(e.kids[0]);  let dur = emit_expr(e.kids[1])
+    let den = tween_den(dur.code)
+    let r = fx_div_code(timer.code, den)
+    let u = emit_bind(`srem i32 {r}, 131072`)        # mod 2.0
+    let back = emit_bind(`sub i32 131072, {u}`)
+    let c = emit_bind(`icmp sle i32 {u}, 65536`)
+    return val(emit_bind(`select i1 {c}, i32 {u}, i32 {back}`), "fixed")
+  }
+  if (meth == "done") {                             # timer >= duration -> bool
+    let timer = emit_expr(e.kids[0]);  let dur = emit_expr(e.kids[1])
+    let c = emit_bind(`icmp sge i32 {timer.code}, {dur.code}`)
+    return val(emit_bind(`zext i1 {c} to i32`), "bool")
+  }
+  if (meth == "ease") {                             # ease(t, mode) -> fixed; mode is a literal 0..6
+    let t = emit_expr(e.kids[0])
+    let m = e.kids[1]
+    if (m.kind != E_INT) { perr("Tween.ease: the easing mode must be a literal int 0..6") }
+    return val(ease_eval(m.ival, t.code), "fixed")
+  }
+  if (meth == "number") {                           # lerp two fixeds by t -> fixed
+    let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1]);  let t = emit_expr(e.kids[2])
+    return val(fx_lerp_code(a.code, b.code, t.code), "fixed")
+  }
+  if (meth == "round") {                            # lerp two ints by t, rounded -> int
+    let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1]);  let t = emit_expr(e.kids[2])
+    let d = emit_bind(`sub i32 {b.code}, {a.code}`)
+    let d64 = emit_bind(`sext i32 {d} to i64`)
+    let t64 = emit_bind(`sext i32 {t.code} to i64`)
+    let p = emit_bind(`mul i64 {d64}, {t64}`)        # Q16.16
+    let p2 = emit_bind(`add i64 {p}, 32768`)         # + 0.5
+    let sh = emit_bind(`ashr i64 {p2}, 16`)
+    let dt = emit_bind(`trunc i64 {sh} to i32`)
+    return val(emit_bind(`add i32 {a.code}, {dt}`), "int")
+  }
+  if (meth == "point") {                            # lerp two Vectors by t -> Vector
+    let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1]);  let t = emit_expr(e.kids[2])
+    let ax = vec_x(a.code);  let ay = vec_y(a.code);  let bx = vec_x(b.code);  let by = vec_y(b.code)
+    let lx = fx_lerp_code(ax, bx, t.code)
+    let ly = fx_lerp_code(ay, by, t.code)
+    return val(vec_pack(lx, ly), "Vector")
+  }
+  # tint — blend two colors (0x00RRGGBB) by t, per channel -> int
+  let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1]);  let t = emit_expr(e.kids[2])
+  let r = color_lerp_ch(color_ch(a.code, "16"), color_ch(b.code, "16"), t.code)
+  let g = color_lerp_ch(color_ch(a.code, "8"),  color_ch(b.code, "8"),  t.code)
+  let bl = color_lerp_ch(color_ch(a.code, "0"),  color_ch(b.code, "0"),  t.code)
+  return val(color_pack(r, g, bl), "int")
+}

@@ -23,6 +23,14 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if is_ease_ns(meth) { return emit_ease_ns(meth, e) }
     perr(`unknown builtin Ease.{meth}`)
   }
+  if (ns == "Anim") {
+    if is_anim_ns(meth) { return emit_anim_ns(meth, e) }
+    perr(`unknown builtin Anim.{meth}`)
+  }
+  if (ns == "Tween") {
+    if is_tween_ns(meth) { return emit_tween_ns(meth, e) }
+    perr(`unknown builtin Tween.{meth}`)
+  }
   if (ns == "Collision") {
     if is_collide_ns(meth) { return emit_collide_ns(meth, e) }
     perr(`unknown builtin Collision.{meth}`)

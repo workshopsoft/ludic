@@ -1,6 +1,11 @@
 # emit_ease.ludic — the Ease.* namespace: tween curves over a normalized amount
 # t in 0.0..1.0, returning an eased fixed. All pure Q16.16, deterministic. The
 # "juice" layer that makes motion feel good (Robert Penner's easings).
+#
+# The curve math is factored into ease_eval(mode, t) so the Tween.* namespace
+# (emit_anim.ludic) can pick a curve by a small integer mode and reuse the exact
+# same formulas — one source of truth for every easing in the engine.
+#   0 linear   1 in    2 out    3 in_out    4 back    5 elastic    6 bounce
 
 function is_ease_ns(meth: pointer) -> bool {
   if (meth == "in") or (meth == "out") or (meth == "in_out") { return true }
@@ -14,50 +19,69 @@ function ease_bounce_seg(u: pointer) -> pointer {
   return fx_mul_code(uu, "495616")                  # 7.5625 * u*u
 }
 
-function emit_ease_ns(meth: pointer, e: Node) -> Val {
-  let t = emit_expr(e.kids[0])
-  if (meth == "in") {                               # ease-in quad: t*t
-    return val(fx_mul_code(t.code, t.code), "fixed")
+# ease-out bounce: four parabolic segments, selected by t (all computed, then
+# picked branch-free). Shifts/offsets are the standard 2.75-denominator set.
+function ease_bounce_code(t: pointer) -> pointer {
+  let sA = ease_bounce_seg(t)
+  let uB = emit_bind(`sub i32 {t}, 35747`);  let sB0 = ease_bounce_seg(uB);  let sB = emit_bind(`add i32 {sB0}, 49152`)
+  let uC = emit_bind(`sub i32 {t}, 53620`);  let sC0 = ease_bounce_seg(uC);  let sC = emit_bind(`add i32 {sC0}, 61440`)
+  let uD = emit_bind(`sub i32 {t}, 62557`);  let sD0 = ease_bounce_seg(uD);  let sD = emit_bind(`add i32 {sD0}, 64512`)
+  let cCD = emit_bind(`icmp slt i32 {t}, 59578`)
+  let rCD = emit_bind(`select i1 {cCD}, i32 {sC}, i32 {sD}`)
+  let cB = emit_bind(`icmp slt i32 {t}, 47663`)
+  let rB = emit_bind(`select i1 {cB}, i32 {sB}, i32 {rCD}`)
+  let cA = emit_bind(`icmp slt i32 {t}, 23831`)
+  return emit_bind(`select i1 {cA}, i32 {sA}, i32 {rB}`)
+}
+
+# evaluate easing `mode` at normalized amount `t` (a fixed code) -> fixed code.
+# The single source of truth for the engine's easing curves.
+function ease_eval(mode: int, t: pointer) -> pointer {
+  if (mode == 0) {                                  # linear: t
+    return t
   }
-  if (meth == "out") {                              # ease-out quad: t*(2 - t)
-    let inv = emit_bind(`sub i32 131072, {t.code}`)
-    return val(fx_mul_code(t.code, inv), "fixed")
+  if (mode == 1) {                                  # ease-in quad: t*t
+    return fx_mul_code(t, t)
   }
-  if (meth == "in_out") {                           # smooth ease-in-out: 3t^2 - 2t^3
-    let t2 = fx_mul_code(t.code, t.code)
-    let t3 = fx_mul_code(t2, t.code)
+  if (mode == 2) {                                  # ease-out quad: t*(2 - t)
+    let inv = emit_bind(`sub i32 131072, {t}`)
+    return fx_mul_code(t, inv)
+  }
+  if (mode == 3) {                                  # smooth ease-in-out: 3t^2 - 2t^3
+    let t2 = fx_mul_code(t, t)
+    let t3 = fx_mul_code(t2, t)
     let three = emit_bind(`mul i32 {t2}, 3`)
     let two = emit_bind(`mul i32 {t3}, 2`)
-    return val(emit_bind(`sub i32 {three}, {two}`), "fixed")
+    return emit_bind(`sub i32 {three}, {two}`)
   }
-  if (meth == "back") {                             # ease-in-back (overshoots below 0)
-    let t2 = fx_mul_code(t.code, t.code)
-    let t3 = fx_mul_code(t2, t.code)
+  if (mode == 4) {                                  # ease-in-back (overshoots below 0)
+    let t2 = fx_mul_code(t, t)
+    let t3 = fx_mul_code(t2, t)
     let a = fx_mul_code(t3, "177051")               # 2.70158 * t^3
     let b = fx_mul_code(t2, "111515")               # 1.70158 * t^2
-    return val(emit_bind(`sub i32 {a}, {b}`), "fixed")
+    return emit_bind(`sub i32 {a}, {b}`)
   }
-  if (meth == "elastic") {                          # ease-out elastic: springy overshoot that settles
+  if (mode == 5) {                                  # ease-out elastic: springy overshoot that settles
     g_uses_mathrt = true                            # 2^(-10t) * sin((10t - 0.75) * 2pi/3) + 1
-    let tt = emit_bind(`mul i32 {t.code}, 10`)       # 10t
+    let tt = emit_bind(`mul i32 {t}, 10`)            # 10t
     let ntt = emit_bind(`sub i32 0, {tt}`)           # -10t (exp2 exponent, Q16.16)
     let decay = emit_bind(`call i32 @fn_fx_exp2(i32 {ntt})`)
     let ph = emit_bind(`sub i32 {tt}, 49152`)        # 10t - 0.75
     let ang = fx_mul_code(ph, "137258")              # * (2pi/3), 2pi/3 = 137258 fixed
     let s = emit_bind(`call i32 @fn_fx_sin(i32 {ang})`)
     let osc = fx_mul_code(decay, s)
-    return val(emit_bind(`add i32 {osc}, 65536`), "fixed")
+    return emit_bind(`add i32 {osc}, 65536`)
   }
-  # ease-out bounce: four parabolic segments, selected by t (all computed, then
-  # picked branch-free). Shifts/offsets are the standard 2.75-denominator set.
-  let sA = ease_bounce_seg(t.code)
-  let uB = emit_bind(`sub i32 {t.code}, 35747`);  let sB0 = ease_bounce_seg(uB);  let sB = emit_bind(`add i32 {sB0}, 49152`)
-  let uC = emit_bind(`sub i32 {t.code}, 53620`);  let sC0 = ease_bounce_seg(uC);  let sC = emit_bind(`add i32 {sC0}, 61440`)
-  let uD = emit_bind(`sub i32 {t.code}, 62557`);  let sD0 = ease_bounce_seg(uD);  let sD = emit_bind(`add i32 {sD0}, 64512`)
-  let cCD = emit_bind(`icmp slt i32 {t.code}, 59578`)
-  let rCD = emit_bind(`select i1 {cCD}, i32 {sC}, i32 {sD}`)
-  let cB = emit_bind(`icmp slt i32 {t.code}, 47663`)
-  let rB = emit_bind(`select i1 {cB}, i32 {sB}, i32 {rCD}`)
-  let cA = emit_bind(`icmp slt i32 {t.code}, 23831`)
-  return val(emit_bind(`select i1 {cA}, i32 {sA}, i32 {rB}`), "fixed")
+  # mode == 6 — ease-out bounce
+  return ease_bounce_code(t)
+}
+
+function emit_ease_ns(meth: pointer, e: Node) -> Val {
+  let t = emit_expr(e.kids[0])
+  if (meth == "in")     { return val(ease_eval(1, t.code), "fixed") }
+  if (meth == "out")    { return val(ease_eval(2, t.code), "fixed") }
+  if (meth == "in_out") { return val(ease_eval(3, t.code), "fixed") }
+  if (meth == "back")   { return val(ease_eval(4, t.code), "fixed") }
+  if (meth == "elastic"){ return val(ease_eval(5, t.code), "fixed") }
+  return val(ease_eval(6, t.code), "fixed")         # bounce
 }
