@@ -1,0 +1,24 @@
+program T {
+  # a const reference carries its initializer's real type — so a `fixed` const
+  # compares and computes as fixed-point, not as its raw i32 bits (the bug this
+  # pins: a fixed const used to lower to an `int` and silently corrupt fixed math).
+  const TEN:   fixed = 10.0
+  const HALF:  fixed = 0.5
+  const LIMIT: int   = 7
+  const STEP:  int   = 3
+  const ON:    bool  = true
+  const OFF:   bool  = false
+  entry {
+    let x: fixed = 10.0
+    if x >= TEN  { print(1) } else { print(0) }   # 1  (equal counts)
+    if x >  TEN  { print(1) } else { print(0) }   # 0  (not strictly greater)
+    print(floor(TEN))                             # 10
+    print(floor(TEN * HALF))                      # 5   (fixed * fixed)
+    print(floor(TEN / HALF))                      # 20  (fixed / fixed)
+    print(floor(x - TEN))                         # 0
+    print(LIMIT + STEP)                           # 10  (int const arithmetic)
+    print(LIMIT)                                  # 7
+    if ON  { print(1) } else { print(0) }         # 1  (bool const true)
+    if OFF { print(1) } else { print(0) }         # 0  (bool const false)
+  }
+}

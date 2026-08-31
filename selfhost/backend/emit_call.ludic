@@ -925,7 +925,11 @@ function emit_expr(e: Node) -> Val {
     if li >= 0 { return emit_load_at(loc_reg[li], loc_ty[li]) }
     let g = find_global(e.s)
     if (g != null) {
-      if g.kind == N_CONST { return val(itoa(g.a.ival), "int") }
+      # a const reference IS its initializer expression, carrying that
+      # expression's real type — so `const X: fixed = 10.0` yields a `fixed`, not
+      # the raw Q16.16 bits mislabelled `int`. Every existing const is an int
+      # literal, for which this is byte-identical to the old immediate.
+      if g.kind == N_CONST { return emit_expr(g.a) }
       let r = emit_bind(`load {llty(g.ty)}, ptr @g_{e.s}`)
       return val(r, g.ty)
     }

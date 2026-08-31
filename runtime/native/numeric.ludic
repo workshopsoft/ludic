@@ -20,9 +20,8 @@
 # out of the deterministic simulation and use BigInt/Decimal when exactness
 # matters.
 
-# NOTE: fixed values live as inline `10.0` / `1.0` literals, not `const`s — a
-# `const` reference lowers to its raw integer value typed `int` (emit_call.ludic
-# N_CONST), which silently breaks fixed-point comparisons.
+const HUGE_ONE: fixed = 1.0
+const HUGE_TEN: fixed = 10.0
 
 property Huge { m: fixed = 0.0, e: int = 0 }
 
@@ -34,8 +33,8 @@ function huge_make(m: fixed, e: int) -> Huge {
   var mm = m
   if mm < 0.0 { neg = true;  mm = 0.0 - mm }
   var ee = e
-  while mm >= 10.0 { mm = mm / 10.0;  ee = ee + 1 }
-  while mm < 1.0   { mm = mm * 10.0;  ee = ee - 1 }
+  while mm >= HUGE_TEN { mm = mm / HUGE_TEN;  ee = ee + 1 }
+  while mm < HUGE_ONE  { mm = mm * HUGE_TEN;  ee = ee - 1 }
   if neg { mm = 0.0 - mm }
   h.m = mm;  h.e = ee
   return h
@@ -79,7 +78,7 @@ function huge_add(a: Huge, b: Huge) -> Huge {
   if diff > 8 { return big }               # negligible at display precision
   var sm = small.m
   var k = 0
-  while k < diff { sm = sm / 10.0;  k = k + 1 }
+  while k < diff { sm = sm / HUGE_TEN;  k = k + 1 }
   return huge_make(big.m + sm, big.e)
 }
 
@@ -119,12 +118,14 @@ function huge_str(a: Huge) -> pointer {
 
 # ---- Angle: an auto-wrapping radian angle ----------------------------------
 
-# wrap any radian value into the half-open range [-pi, pi). pi = 3.14159265,
-# tau = 6.28318531 (inline literals — see the note above on fixed consts).
+const ANGLE_PI:  fixed = 3.14159265
+const ANGLE_TAU: fixed = 6.28318531
+
+# wrap any radian value into the half-open range [-pi, pi)
 function angle_wrap(a: fixed) -> fixed {
   var x = a
-  while x >= 3.14159265 { x = x - 6.28318531 }
-  while x < 0.0 - 3.14159265 { x = x + 6.28318531 }
+  while x >= ANGLE_PI { x = x - ANGLE_TAU }
+  while x < 0.0 - ANGLE_PI { x = x + ANGLE_TAU }
   return x
 }
 
@@ -142,10 +143,12 @@ function angle_lerp(a: fixed, b: fixed, t: fixed) -> fixed { return angle_wrap(a
 
 # ---- Percent: a value clamped to [0, 1] ------------------------------------
 
+const PCT_ONE: fixed = 1.0
+
 # clamp any fixed into [0, 1]
 function percent_clamp(v: fixed) -> fixed {
   if v < 0.0 { return 0.0 }
-  if v > 1.0 { return 1.0 }
+  if v > PCT_ONE { return PCT_ONE }
   return v
 }
 
