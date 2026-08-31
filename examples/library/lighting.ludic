@@ -1,0 +1,69 @@
+# lighting.ludic — the 2D light-accumulation pass: Light.ambient (scene modulate),
+# Light.point (additive radial glow with linear falloff), and Light.occlude /
+# Light.clear_occluders (hard shadows). Each assertion that holds prints its
+# number, so a full run prints:
+#   1 2 3 4 5 6 7 8 9 10 11 12 13 14
+# It lights the headless framebuffer and reads pixels back with Screen.pixel, so
+# it verifies the actual composited result — not just that a call compiled. All
+# deterministic (integer + Q16.16 fixed). Colours are 0x00RRGGBB.
+program Lighting {
+  property Tag { v: int = 0 }
+  model Marker { Tag }
+
+  handler Boot phase Start {
+    let WHITE = 16777215      # 0xFFFFFF
+    let RED   = 16711680      # 0xFF0000
+    let BLUE  = 64            # 0x000040
+    let GREY  = 8421504       # 0x808080 (128,128,128)
+
+    # --- Light.ambient multiplies the whole scene by a tint (channel * a / 255) ---
+    Screen.clear(0)
+    Screen.put_pixel(5, 5, WHITE)
+    Screen.put_pixel(6, 5, 0)
+    Light.ambient(GREY)                            # white -> (128,128,128); black stays black
+    if Screen.pixel(5, 5) == GREY { print(1) }
+    if Screen.pixel(6, 5) == 0    { print(2) }
+
+    # --- Light.point adds a radial glow, brightest at the centre, 0 at the radius ---
+    Screen.clear(0)
+    Light.point(50, 50, 20, WHITE, 1.0)
+    if Screen.pixel(50, 50) == WHITE { print(3) }          # centre: full brightness
+    if (Screen.pixel(60, 50) & 255) == 127 { print(4) }    # d=10: 255*10/20 = 127
+    if Screen.pixel(75, 50) == 0 { print(5) }              # d=25 > radius: untouched
+
+    # --- falloff is monotonic: nearer pixels are brighter ---
+    if (Screen.pixel(55, 50) & 255) > (Screen.pixel(65, 50) & 255) { print(6) }
+    if (Screen.pixel(55, 50) & 255) == 191 { print(7) }    # d=5:  255*15/20 = 191
+    if (Screen.pixel(65, 50) & 255) == 63  { print(8) }    # d=15: 255*5/20  = 63
+
+    # --- energy scales brightness (0.5 halves the centre) ---
+    Screen.clear(0)
+    Light.point(50, 50, 20, WHITE, 0.5)
+    if (Screen.pixel(50, 50) & 255) == 127 { print(9) }    # 255 * 0.5 = 127
+
+    # --- lights accumulate additively, clamped per channel at 255 ---
+    Screen.clear(0)
+    Light.point(50, 50, 20, BLUE, 1.0)
+    Light.point(50, 50, 20, BLUE, 1.0)
+    if (Screen.pixel(50, 50) & 255) == 128 { print(10) }   # 64 + 64
+    Screen.clear(0)
+    Light.point(50, 50, 20, RED, 2.0)                      # 255 * 2 -> clamp 255
+    if ((Screen.pixel(50, 50) >> 16) & 255) == 255 { print(11) }
+
+    # --- Light.occlude casts a hard shadow: a wall blocks the ray behind it ---
+    Screen.clear(0)
+    Light.clear_occluders()
+    Light.occlude(60, 45, 4, 10)                   # a thin wall just right of the light
+    Light.point(50, 50, 40, WHITE, 1.0)
+    if Screen.pixel(75, 50) == 0        { print(12) }   # behind the wall: in shadow
+    if (Screen.pixel(25, 50) & 255) != 0 { print(13) }  # opposite side: still lit
+
+    # --- clearing occluders reopens the light ---
+    Screen.clear(0)
+    Light.clear_occluders()
+    Light.point(50, 50, 40, WHITE, 1.0)
+    if Screen.pixel(75, 50) != 0 { print(14) }     # no wall now: lit again
+  }
+
+  handler Run phase Update { quit() }
+}

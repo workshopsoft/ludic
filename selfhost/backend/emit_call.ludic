@@ -238,6 +238,16 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "flood")         { bare = "grid_flood";         push(labels, "x"); push(labels, "y"); push(labels, "wall") }
     if (meth == "a_star")        { bare = "path_a_star";        push(labels, "x0"); push(labels, "y0"); push(labels, "x1"); push(labels, "y1"); push(labels, "wall") }
   }
+  # Light.* — the 2D light-accumulation pass (runtime/native/light.ludic, spliced
+  # on demand). A game runs it in its render phase: ambient multiplies the scene
+  # down, point adds a radial glow (blocked by occluders -> hard shadows). Screen
+  # space, deterministic (integer + Q16.16), diffable. `energy` is a fixed.
+  if (ns == "Light") {
+    if (meth == "ambient")         { bare = "light_ambient";         push(labels, "color") }
+    if (meth == "point")           { bare = "light_point";           push(labels, "x"); push(labels, "y"); push(labels, "radius"); push(labels, "color"); push(labels, "energy") }
+    if (meth == "occlude")         { bare = "light_occlude";         push(labels, "x"); push(labels, "y"); push(labels, "width"); push(labels, "height") }
+    if (meth == "clear_occluders") { bare = "light_clear_occluders" }
+  }
   # Query.* — ECS spatial queries over the reflection ABI (runtime/native/query.ludic,
   # spliced on demand). `prop` is a property id (World.prop_id); the spatial forms
   # read two int fields (field ids) as (x, y). nearest/first return an entity (-1 =

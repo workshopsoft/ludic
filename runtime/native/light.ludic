@@ -1,0 +1,180 @@
+# ============================================================================
+# light.ludic — 2D light accumulation over the framebuffer, in Ludic.
+#
+# The Light.* namespace (see emit_call.ludic) is a software light pass a game
+# runs in its render phase, after drawing the scene and before Screen.show:
+#
+#     Screen.clear(0); draw the world ...
+#     Light.ambient(0x303040)                 # night: multiply the scene down
+#     Light.clear_occluders()
+#     Light.occlude(wall_x, wall_y, w, h)     # geometry that blocks light
+#     Light.point(torch_x, torch_y, 90, Color.Amber, 1.0)   # add a glow
+#     Screen.show()
+#
+# It owns the framebuffer end to end (rt_fb in core.ludic), so lighting is a
+# rendering concern only — it never touches game state, and it is fully
+# deterministic (integer + Q16.16 fixed): the same scene lights identically on
+# every run and in a headless render, so screenshots stay diffable.
+#
+# ludicc splices this file into a game via core.ludic (it reads/writes the
+# framebuffer), so it links only where the renderer does.
+#
+# Tiers shipped here: (1) ambient modulate + additive radial point lights, and
+# (2) hard shadows — a point light is blocked along any segment that crosses a
+# registered rectangular occluder. Normal-mapped sprites, soft shadows and a
+# day/night directional light (issue #4 tiers 3-4), and consuming Light2D /
+# Occluder *components* automatically, are follow-ups: the auto-consumption
+# needs an engine-owned system over user components, the same ECS hook issue #43
+# tracks. Until then Light.* is the imperative escape hatch the proposal names.
+# ============================================================================
+
+# ---- occluder store -------------------------------------------------------
+# Up to 64 rectangular occluders, stored flat as (x, y, w, h) i32 quads. A game
+# clears them each frame (Light.clear_occluders) and re-registers the geometry
+# that should cast shadows this frame.
+var rt_light_occ:   words = null   # occluder rects: 4 i32 each — x, y, w, h
+var rt_light_occ_n: int   = 0      # number of occluders currently stored
+
+function light_occ_init() -> void {
+  if rt_light_occ == null { rt_light_occ = words(64 * 4) }
+}
+
+# forget every occluder — call once per frame before re-registering geometry.
+function light_clear_occluders() -> void { rt_light_occ_n = 0 }
+
+# register a rectangular shadow caster (screen space). Silently ignored past 64.
+function light_occlude(x: int, y: int, w: int, h: int) -> void {
+  light_occ_init()
+  if rt_light_occ_n >= 64 { return }
+  let i = rt_light_occ_n * 4
+  rt_light_occ[i]     = x
+  rt_light_occ[i + 1] = y
+  rt_light_occ[i + 2] = w
+  rt_light_occ[i + 3] = h
+  rt_light_occ_n = rt_light_occ_n + 1
+}
+
+# ---- shadow geometry ------------------------------------------------------
+# Orientation of point c relative to the directed segment a->b: 1 = left/ccw,
+# -1 = right/cw, 0 = colinear. Pure integer; screen coordinates keep the cross
+# product well inside i32.
+function light_orient(ax: int, ay: int, bx: int, by: int, cx: int, cy: int) -> int {
+  let v = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax)
+  if v > 0 { return 1 }
+  if v < 0 { return 0 - 1 }
+  return 0
+}
+
+# do segments a-b and c-d straddle each other (proper crossing)? Colinear
+# touching is treated as no-cross — negligible for a light pass.
+function light_seg_cross(ax: int, ay: int, bx: int, by: int, cx: int, cy: int, dx: int, dy: int) -> bool {
+  let d1 = light_orient(cx, cy, dx, dy, ax, ay)
+  let d2 = light_orient(cx, cy, dx, dy, bx, by)
+  let d3 = light_orient(ax, ay, bx, by, cx, cy)
+  let d4 = light_orient(ax, ay, bx, by, dx, dy)
+  if (d1 != d2) and (d3 != d4) { return true }
+  return false
+}
+
+function light_pt_in_rect(px: int, py: int, rx: int, ry: int, rw: int, rh: int) -> bool {
+  return (px >= rx) and (py >= ry) and (px < rx + rw) and (py < ry + rh)
+}
+
+# is the segment from light (lx,ly) to pixel (px,py) blocked by any occluder?
+# A pixel inside an occluder is in shadow; otherwise the ray is blocked if it
+# crosses any of the rectangle's four edges.
+function light_blocked(lx: int, ly: int, px: int, py: int) -> bool {
+  var k = 0
+  while k < rt_light_occ_n {
+    let i  = k * 4
+    let rx = rt_light_occ[i]
+    let ry = rt_light_occ[i + 1]
+    let rw = rt_light_occ[i + 2]
+    let rh = rt_light_occ[i + 3]
+    if light_pt_in_rect(px, py, rx, ry, rw, rh) { return true }
+    let x0 = rx
+    let y0 = ry
+    let x1 = rx + rw
+    let y1 = ry + rh
+    if light_seg_cross(lx, ly, px, py, x0, y0, x1, y0) { return true }   # top
+    if light_seg_cross(lx, ly, px, py, x1, y0, x1, y1) { return true }   # right
+    if light_seg_cross(lx, ly, px, py, x1, y1, x0, y1) { return true }   # bottom
+    if light_seg_cross(lx, ly, px, py, x0, y1, x0, y0) { return true }   # left
+    k = k + 1
+  }
+  return false
+}
+
+# integer square root (Newton) — 0..sqrt(n). Deterministic, overflow-safe for
+# any screen-scale radius (unlike a fixed(radius^2) that would wrap past ~181px).
+function light_isqrt(n: int) -> int {
+  if n <= 0 { return 0 }
+  var x = n
+  var y = (x + 1) / 2
+  while y < x {
+    x = y
+    y = (x + n / x) / 2
+  }
+  return x
+}
+
+# ---- the light pass -------------------------------------------------------
+# Multiply the whole scene by an ambient tint (0x00RRGGBB): the CanvasModulate
+# that gives a night/cave mood before any light adds brightness back. Ambient
+# 0xFFFFFF is a no-op; darker/colored tints dim and gel the scene.
+function light_ambient(color: int) -> void {
+  let ar = (color >> 16) & 255
+  let ag = (color >> 8) & 255
+  let ab = color & 255
+  let n = rt_fbw * rt_fbh
+  var i = 0
+  while i < n {
+    let cur = rt_fb[i]
+    let nr = (((cur >> 16) & 255) * ar) / 255
+    let ng = (((cur >> 8) & 255) * ag) / 255
+    let nb = ((cur & 255) * ab) / 255
+    rt_fb[i] = (nr << 16) | (ng << 8) | nb
+    i = i + 1
+  }
+}
+
+# Additively accumulate a radial point light centred at (cx,cy) with the given
+# radius (px), colour (0x00RRGGBB) and energy (a Q16.16 fixed multiplier; 1.0 is
+# full). Brightness falls off linearly with distance to zero at the radius, is
+# clamped per channel at 255, and is cut where a registered occluder blocks the
+# ray — a hard shadow. Only the light's bounding box is touched.
+function light_point(cx: int, cy: int, radius: int, color: int, energy: fixed) -> void {
+  if radius <= 0 { return }
+  let lr = (color >> 16) & 255
+  let lg = (color >> 8) & 255
+  let lb = color & 255
+  var py = cy - radius
+  while py <= cy + radius {
+    if (py >= 0) and (py < rt_fbh) {
+      var px = cx - radius
+      while px <= cx + radius {
+        if (px >= 0) and (px < rt_fbw) {
+          let ddx = px - cx
+          let ddy = py - cy
+          let d = light_isqrt(ddx * ddx + ddy * ddy)
+          if d < radius {
+            if not light_blocked(cx, cy, px, py) {
+              let fall = radius - d                       # linear falloff, 0..radius
+              let br = lr * fall / radius                 # channel * falloff, 0..255
+              let bg = lg * fall / radius
+              let bb = lb * fall / radius
+              let idx = py * rt_fbw + px
+              let cur = rt_fb[idx]
+              let nr = min(255, ((cur >> 16) & 255) + floor(fixed(br) * energy))
+              let ng = min(255, ((cur >> 8) & 255) + floor(fixed(bg) * energy))
+              let nb = min(255, (cur & 255) + floor(fixed(bb) * energy))
+              rt_fb[idx] = (nr << 16) | (ng << 8) | nb
+            }
+          }
+        }
+        px = px + 1
+      }
+    }
+    py = py + 1
+  }
+}

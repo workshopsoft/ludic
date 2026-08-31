@@ -108,6 +108,7 @@ function cmd_test() -> int {
   feat_case("library/query", "", "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18", "query.ludic (Query count/first/nearest/within — ECS spatial queries over the reflection ABI)")
   feat_case("library/reflect", "", "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20", "reflect.ludic (Reflect prop/field enumeration + type + get/set/has/kind — runtime reflection over the world schema)")
   feat_case("library/render", "", "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18", "render.ludic (Screen pixel/oval/camera/clip/blend_mode/measure_text + Camera set/follow/shake, verified by pixel readback)")
+  feat_case("library/lighting", "", "1 2 3 4 5 6 7 8 9 10 11 12 13 14", "lighting.ludic (Light ambient/point radial falloff + occluder hard shadows — 2D light accumulation, verified by pixel readback)")
   feat_case("library/logging", "", "0 5 2 1", "logging.ludic (Log levels, set_level/level threshold, structured fields)")
   # Os known-folders/arch and Fs.list read the BSD utsname/dirent layout, so
   # their asserted values are macOS-specific; skip off Darwin (see is_darwin).
