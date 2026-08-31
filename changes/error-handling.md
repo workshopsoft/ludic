@@ -1,0 +1,3 @@
+bump: minor
+type: feat
+Error handling for games — `panic(msg)` prints `file:line: panic: <msg>` to stderr and aborts cleanly (exit 1) instead of crashing, and `assert(cond, msg)` does the same, guarded, only when an invariant is false (`file:line: assertion failed: <msg>`). Non-experts get a clear, located message for a broken invariant or an impossible branch, never a raw segfault or a silent wrong result. The source location is baked in at compile time; the message is any string. Recoverable failures as `try`/`else` values are sequenced after the tagged-union type system (#1); this ships the "programmer bug = loud, located panic" half now.

@@ -1,0 +1,28 @@
+# errors.ludic — error handling (issue #8): assert(cond, msg) guards an invariant
+# and aborts with a located message when it is broken; panic(msg) aborts outright.
+# This is the SUCCESS path — every assertion here holds, so nothing aborts and the
+# program runs to the end, printing:
+#   5 10 0 7 1
+# The failure path (a panic exits non-zero with `file:line: panic: …` on stderr)
+# is exercised separately in the test runner.
+program Errors {
+  function checked_div(a: int, b: int) -> int {
+    assert(b != 0, "division by zero")
+    return a / b
+  }
+
+  function clampi(v: int, lo: int, hi: int) -> int {
+    assert(lo <= hi, "lo must not exceed hi")
+    if v < lo { return lo }
+    if v > hi { return hi }
+    return v
+  }
+
+  entry {
+    print(checked_div(10, 2))    # 5
+    print(clampi(15, 0, 10))     # 10  (above hi)
+    print(clampi(0 - 3, 0, 10))  # 0   (below lo)
+    print(clampi(7, 0, 10))      # 7   (in range)
+    print(1)                     # reached: every assertion held
+  }
+}

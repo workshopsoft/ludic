@@ -64,7 +64,7 @@ object LudicVocabulary {
         "sprites_load", "draw_sprite", "draw_sprite_scaled", "ui_build", "ui_open",
         "ui_tick", "ui_render", "ui_clicked", "ui_set_text", "ui_set_int", "ui_focus",
         "ui_focused", "ui_visible", "key", "reg", "set_reg", "self", "save", "load",
-        "status", "print", "string", "quit",
+        "status", "print", "string", "quit", "panic", "assert",
         // compiler intrinsics: the floor the Ludic-written runtime stands on
         "bytes", "words", "resize", "free", "fill",         "arg_count", "arg", "file_stderr", "file_stdout",
         "offset",

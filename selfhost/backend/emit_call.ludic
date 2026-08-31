@@ -448,6 +448,37 @@ function emit_call(e: Node) -> Val {
     emit_expect_fail(c, msg, a.code, b.code)
     return val("0", "void")
   }
+  # --- error handling: panic / assert (issue #8) ------------------------------
+  # panic(msg) prints `file:line: panic: <msg>` to stderr and aborts the process
+  # cleanly (exit 1) — a located, human error instead of a raw crash. assert(cond,
+  # msg) is the same, guarded: it aborts only when `cond` is false (a programmer
+  # bug — an index out of range, an invariant broken). The location is baked in at
+  # compile time; the message is any string.
+  if (name == "panic") {
+    g_uses_panic = true
+    let m = emit_expr(e.kids[0])
+    let prefix = emit_str_const(`{g_src_name}:{itoa(e.line)}: panic: `)
+    let se = emit_bind("load ptr, ptr @__stderrp")
+    emit(`  call i32 (ptr, ptr, ...) @fprintf(ptr {se}, ptr @.fmt_panic, ptr {prefix}, ptr {m.code})\n`)
+    emit("  call void @exit(i32 1)\n  unreachable\n")
+    g_term = true
+    return val("0", "void")
+  }
+  if (name == "assert") {
+    g_uses_panic = true
+    let c = emit_expr(e.kids[0])
+    let cond = emit_bind(`icmp ne i32 {c.code}, 0`)
+    let lok = lbl("asok");  let lbad = lbl("asbad")
+    emit(`  br i1 {cond}, label %{lok}, label %{lbad}\n`)
+    emit(`{lbad}:\n`)
+    let m = emit_expr(e.kids[1])
+    let prefix = emit_str_const(`{g_src_name}:{itoa(e.line)}: assertion failed: `)
+    let se = emit_bind("load ptr, ptr @__stderrp")
+    emit(`  call i32 (ptr, ptr, ...) @fprintf(ptr {se}, ptr @.fmt_panic, ptr {prefix}, ptr {m.code})\n`)
+    emit("  call void @exit(i32 1)\n  unreachable\n")
+    emit(`{lok}:\n`)
+    return val("0", "void")
+  }
   # The EV2 reflection ABI (the world table), exposed to Ludic so a Ludic mod can
   # introspect the world by name — the same functions a foreign mod binds. Emitted
   # only for a modding program (ECS + events), so a plain game is unchanged.

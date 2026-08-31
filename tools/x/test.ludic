@@ -75,6 +75,18 @@ function spec_case(path: pointer, exp: pointer) -> void {
   else { bad2(path, `rc={string(rc)} last=[{summary}]`) }
 }
 
+# issue #8: the failure path — a panic must abort with a non-zero exit and a
+# `file:line: panic: <msg>` line on stderr (stdout is unaffected up to the panic).
+function panic_case() -> void {
+  write_file("/tmp/x_panic.ludic", "program P { entry { print(7); panic(\"boom\") } }\n")
+  if not shq("bin/ludicc /tmp/x_panic.ludic > /tmp/x_panic.ll 2>/dev/null") { bad("panic example did not compile"); return }
+  if not shq(`{cc()} -O2 /tmp/x_panic.ll -o /tmp/x_panic 2>/dev/null`) { bad("panic example did not link"); return }
+  let rc = sh("/tmp/x_panic > /tmp/x_panic.out 2>/tmp/x_panic.err")
+  let msg = capture_line("cat /tmp/x_panic.err")
+  if (rc != 0) and shq("grep -q 'panic: boom' /tmp/x_panic.err") { ok(`panic aborts non-zero with a located stderr message ({msg})`) }
+  else { bad2("panic", `rc={string(rc)} err=[{msg}]`) }
+}
+
 function cmd_test() -> int {
   PASS = 0
   FAIL = 0
@@ -129,6 +141,8 @@ function cmd_test() -> int {
   feat_case("library/render", "", "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18", "render.ludic (Screen pixel/oval/camera/clip/blend_mode/measure_text + Camera set/follow/shake, verified by pixel readback)")
   feat_case("library/lighting", "", "1 2 3 4 5 6 7 8 9 10 11 12 13 14", "lighting.ludic (Light ambient/point radial falloff + occluder hard shadows — 2D light accumulation, verified by pixel readback)")
   spec_case("library/testing", "== 6 passed, 0 failed ==")
+  feat_case("library/errors", "", "5 10 0 7 1", "errors.ludic (assert guards an invariant, holds -> runs to the end; issue #8 success path)")
+  panic_case()
   feat_case("library/logging", "", "0 5 2 1", "logging.ludic (Log levels, set_level/level threshold, structured fields)")
   # Os known-folders/arch and Fs.list read the BSD utsname/dirent layout, so
   # their asserted values are macOS-specific; skip off Darwin (see is_darwin).

@@ -141,6 +141,8 @@ static const LBuiltin LUDIC_BUILTINS[] = {
  {"print","print(x)","Print a value (int or string) and a newline to stdout."},
  {"string","string(x) -> string","Convert an int/bool/fixed to text (a string passes through)."},
  {"quit","quit()","Stop the frame loop and exit."},
+ {"panic","panic(msg: string)","Print `file:line: panic: msg` to stderr and abort (exit 1) — a located error, not a crash."},
+ {"assert","assert(cond: bool, msg: string)","Abort with `file:line: assertion failed: msg` when cond is false — for programmer-bug invariants."},
  {0,0,0}
 };
 
