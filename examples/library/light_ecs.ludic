@@ -1,0 +1,45 @@
+# light_ecs.ludic — engine-owned 2D lighting over user components (#47). A torch
+# is just an entity carrying Light2D, a wall an entity carrying Occluder, and a
+# single Ambient entity sets the night tint. The engine runs the whole light
+# pass at the end of the Render phase — no Light.* calls wired — then presents.
+#
+# We draw a white scene in a Render handler, drive one render tick, and sample
+# the framebuffer with Screen.pixel to prove ambient, additive light and a hard
+# shadow all landed. Deterministic (integer + Q16.16), so:
+#   bin/ludic examples/library/light_ecs.ludic   ->   32 1 32 1
+program LightEcs {
+  property Ambient  { color: int = 0 }
+  property Light2D  { x: int = 0, y: int = 0, radius: int = 0, color: int = 0, intensity: int = 0 }
+  property Occluder { x: int = 0, y: int = 0, w: int = 0, h: int = 0 }
+
+  model Night { Ambient }
+  model Torch { Light2D }
+  model Wall  { Occluder }
+
+  # the game draws its scene; the engine lights it and presents (do NOT call
+  # Screen.show here — with Light2D the engine owns the flip).
+  handler Draw phase Render {
+    Screen.fill_rectangle(0, 0, 64, 64, 16777215)     # a flat white scene (0xFFFFFF)
+  }
+
+  entry {
+    spawn Night { Ambient { color: 2105376 } }          # 0x202020 — dim night
+    spawn Torch { Light2D { x: 20, y: 20, radius: 15, color: 16777215, intensity: 100 } }
+    spawn Wall  { Occluder { x: 25, y: 10, w: 2, h: 20 } }   # a pillar just right of the torch
+
+    tick_render()                                       # Draw (white) then the engine light pass
+
+    # a far corner sees ambient only: white 255 * 0x20/255 = 32.
+    print(Screen.pixel(60, 60) & 255)                   # 32
+    # the torch centre is fully lit, far brighter than ambient.
+    print(bool_i((Screen.pixel(20, 20) & 255) > 32))    # 1
+    # a point the pillar shadows from the torch stays at ambient.
+    print(Screen.pixel(30, 20) & 255)                   # 32
+    # an equidistant point the pillar does not block is lit.
+    print(bool_i((Screen.pixel(20, 30) & 255) > 32))    # 1
+
+    quit()
+  }
+
+  function bool_i(b: bool) -> int { if b { return 1 };  return 0 }
+}

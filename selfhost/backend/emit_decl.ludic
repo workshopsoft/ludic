@@ -52,6 +52,11 @@ function emit_main(d: Node) -> void {
   emit("  store i32 %argc, ptr @L_argc\n")
   emit("  store ptr %argv, ptr @L_argv\n")
   emit("  store i32 0, ptr %retval\n")
+  # boot the runtime like the auto-loop / test runner do, so an `entry`-driven
+  # game that renders (drives tick_render, draws, uses the engine light pass) has
+  # its framebuffer allocated. Headless it only allocates — no window, no output —
+  # so a non-rendering entry game is unchanged.
+  if (find_fn("rt_init") != null) { emit("  call void @fn_rt_init()\n") }
   emit_block(d.a)
   if not g_term { emit("  br label %ret\n") }
   emit("ret:\n")

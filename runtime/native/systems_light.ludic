@@ -1,0 +1,113 @@
+# ============================================================================
+# systems_light.ludic — the engine-owned 2D lighting render system (#47).
+#
+# This is the ECS-native shape the lighting follow-up asked for: a torch is just
+# an entity carrying `Light2D` (and optionally `Position`), a wall is an entity
+# carrying `Occluder`, and the engine runs the whole light pass for you at the
+# end of the Render phase — no `Light.point` / `Light.occlude` calls wired by
+# hand. It reuses the deterministic accumulation core shipped in #4 (light.ludic:
+# light_ambient / light_occlude / light_point), consuming components through the
+# by-name reflection ABI instead of imperative calls.
+#
+# Split from systems.ludic because it links against the light pass (light.ludic):
+# a game that uses SpriteAnim/Motion but no lights must not pull light_point in,
+# so esys_light2d lives in its own file, spliced only when Light2D / Occluder is
+# declared (parse.ludic). It is inserted into the Render phase after the game's
+# own draw handlers (emit_engine_systems_for_phase), so the scene is already on
+# the framebuffer when the light pass runs; it finishes by presenting the frame,
+# so an ECS-lit game leaves Screen.show to the engine.
+#
+# Component contracts:
+#   property Ambient  { color: int }                       # optional, one entity
+#   property Light2D  { x, y, radius, color, intensity }   # intensity is 0..100 %
+#   property Occluder { x, y, w, h }
+# A Light2D / Occluder reads its position from a `Position { x, y }` component on
+# the same entity when the entity carries one, else from its own x / y fields —
+# so "Position + Light2D" and a self-positioned Light2D both work.
+# ============================================================================
+
+# read entity `e`'s world x: a `Position { x }` component wins when present, else
+# the component's own x field (fx) on prop `p`. Same idea for y below.
+function esys_pos_x(e: int, p: int, fx: int) -> int {
+  let pp = World.prop_id("Position")
+  if pp >= 0 {
+    if World.has(e, pp) != 0 {
+      let f = World.field_id(pp, "x")
+      if f >= 0 { return World.get(e, pp, f) }
+    }
+  }
+  if fx >= 0 { return World.get(e, p, fx) }
+  return 0
+}
+function esys_pos_y(e: int, p: int, fy: int) -> int {
+  let pp = World.prop_id("Position")
+  if pp >= 0 {
+    if World.has(e, pp) != 0 {
+      let f = World.field_id(pp, "y")
+      if f >= 0 { return World.get(e, pp, f) }
+    }
+  }
+  if fy >= 0 { return World.get(e, p, fy) }
+  return 0
+}
+
+function esys_light2d() -> void {
+  let pl = World.prop_id("Light2D")
+  if pl < 0 { return }
+
+  # 1. ambient — a single `Ambient { color }` entity modulates the whole scene
+  # toward its tint (night / cave). Absent: the scene keeps its drawn brightness.
+  let pa = World.prop_id("Ambient")
+  if pa >= 0 {
+    let af = World.field_id(pa, "color")
+    let ae = World.query_next(pa, 0)
+    if ae >= 0 {
+      if af >= 0 { light_ambient(World.get(ae, pa, af)) }
+    }
+  }
+
+  # 2. occluders — re-register every `Occluder` as a shadow caster this frame.
+  light_clear_occluders()
+  let po = World.prop_id("Occluder")
+  if po >= 0 {
+    let oxf = World.field_id(po, "x")
+    let oyf = World.field_id(po, "y")
+    let owf = World.field_id(po, "w")
+    let ohf = World.field_id(po, "h")
+    var oe = World.query_next(po, 0)
+    while oe >= 0 {
+      let ox = esys_pos_x(oe, po, oxf)
+      let oy = esys_pos_y(oe, po, oyf)
+      var ow = 0
+      var oh = 0
+      if owf >= 0 { ow = World.get(oe, po, owf) }
+      if ohf >= 0 { oh = World.get(oe, po, ohf) }
+      light_occlude(ox, oy, ow, oh)
+      oe = World.query_next(po, oe + 1)
+    }
+  }
+
+  # 3. lights — additively accumulate each `Light2D` as a radial glow, cut by the
+  # occluders registered above (hard shadows).
+  let lxf = World.field_id(pl, "x")
+  let lyf = World.field_id(pl, "y")
+  let lrf = World.field_id(pl, "radius")
+  let lcf = World.field_id(pl, "color")
+  let lif = World.field_id(pl, "intensity")
+  var e = World.query_next(pl, 0)
+  while e >= 0 {
+    let x = esys_pos_x(e, pl, lxf)
+    let y = esys_pos_y(e, pl, lyf)
+    var radius = 0
+    if lrf >= 0 { radius = World.get(e, pl, lrf) }
+    var color = 16777215                              # 0xFFFFFF (white) default
+    if lcf >= 0 { color = World.get(e, pl, lcf) }
+    var energy = fixed(1)                             # full intensity default
+    if lif >= 0 { energy = fixed(World.get(e, pl, lif)) / fixed(100) }
+    light_point(x, y, radius, color, energy)
+    e = World.query_next(pl, e + 1)
+  }
+
+  # 4. present — the engine owns the flip for an ECS-lit frame.
+  Screen.show()
+}

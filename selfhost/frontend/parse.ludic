@@ -613,7 +613,18 @@ function maybe_splice_runtime() -> void {
   if uses_engine_systems() {
     g_uses_esys = true
     cur_dir = ""
-    do_import("runtime/native/systems.ludic")
+    # SpriteAnim / Motion -> the animation systems (self-contained, reflection only)
+    if (find_comp("SpriteAnim") != null) or (find_comp("Motion") != null) {
+      do_import("runtime/native/systems.ludic")
+    }
+    # Light2D / Occluder -> the lighting render system, which links against the
+    # 2D light pass (light.ludic). do_import dedupes, so this is a no-op when the
+    # game also uses Light.* directly (g_uses_light already pulled it in).
+    if (find_comp("Light2D") != null) or (find_comp("Occluder") != null) {
+      do_import("runtime/native/light.ludic")
+      do_import("runtime/native/systems_light.ludic")
+      g_uses_light = true
+    }
     cur_dir = saved
   }
 }
