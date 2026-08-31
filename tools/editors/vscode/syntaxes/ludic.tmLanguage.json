@@ -177,7 +177,7 @@
         { "name": "keyword.other.clause.ludic", "match": "\\b(phase|query|on)\\b" },
         { "name": "keyword.other.ludic", "match": "\\b(import|extern)\\b" },
         { "name": "storage.type.ludic", "match": "\\b(program|property|model|enum|ui|const|var|let|function|handler|entry|state|test)\\b" },
-        { "name": "support.type.primitive.ludic", "match": "\\b(int|long|fixed|bool|entity|string|pointer|byte|words|fixeds|pointers|Vector|void)\\b" },
+        { "name": "support.type.primitive.ludic", "match": "\\b(int|long|fixed|bool|entity|string|pointer|byte|words|fixeds|pointers|Vector|IVec2|Rect|void)\\b" },
         { "name": "constant.language.boolean.ludic", "match": "\\b(true|false|null)\\b" },
         { "name": "constant.language.phase.ludic", "match": "\\b(Start|Input|FixedUpdate|Update|LateUpdate|Render)\\b" }
       ]

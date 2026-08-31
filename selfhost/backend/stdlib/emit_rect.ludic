@@ -1,0 +1,95 @@
+# emit_rect.ludic — the Rect.* namespace: an axis-aligned 2D rectangle value
+# type. A Rect is four Q16.16 fixed components (x, y, w, h) packed into a single
+# i128 — x in bits 96..127, y in 64..95, w in 32..63, h in 0..31 — so, like
+# Vector, it is copied by value and never heap-allocates. (x, y) is the top-left
+# corner; (w, h) is the size. It is the natural type for HUD layout boxes,
+# hitboxes, and camera/viewport regions, with fast point-in-rect and
+# rect-overlap tests. Every operation is deterministic integer fixed-point,
+# bit-identical on every platform. llty maps `Rect` to i128 (see emit_core.ludic).
+#
+# NOTE: helper results are bound to a `let` before interpolation — a function
+# call inside a backtick `{...}` hole would nest backticks and break.
+
+# pack four fixed i32 codes (x, y, w, h) into the i128 Rect representation -> i128
+function rect_pack(x: pointer, y: pointer, w: pointer, h: pointer) -> pointer {
+  let xe = emit_bind(`zext i32 {x} to i128`);  let xs = emit_bind(`shl i128 {xe}, 96`)
+  let ye = emit_bind(`zext i32 {y} to i128`);  let ys = emit_bind(`shl i128 {ye}, 64`)
+  let we = emit_bind(`zext i32 {w} to i128`);  let ws = emit_bind(`shl i128 {we}, 32`)
+  let he = emit_bind(`zext i32 {h} to i128`)
+  let o1 = emit_bind(`or i128 {xs}, {ys}`)
+  let o2 = emit_bind(`or i128 {o1}, {ws}`)
+  return emit_bind(`or i128 {o2}, {he}`)
+}
+
+# one 32-bit field of an i128 Rect at bit offset `sh` -> i32 fixed code
+function rect_field(r: pointer, sh: int) -> pointer {
+  if (sh == 0) { return emit_bind(`trunc i128 {r} to i32`) }
+  let s = emit_bind(`lshr i128 {r}, {itoa(sh)}`)
+  return emit_bind(`trunc i128 {s} to i32`)
+}
+
+# a 0/1 bool (i32) from a comparison of two fixed i32 codes with `cmp` (an LLVM
+# icmp predicate like sge / slt)
+function rect_cmp(cmp: pointer, a: pointer, b: pointer) -> pointer {
+  let c = emit_bind(`icmp {cmp} i32 {a}, {b}`)
+  return emit_bind(`zext i1 {c} to i32`)
+}
+
+function is_rect_ns(meth: pointer) -> bool {
+  if (meth == "make") or (meth == "x") or (meth == "y") or (meth == "w") or (meth == "h") { return true }
+  if (meth == "right") or (meth == "bottom") or (meth == "center") { return true }
+  if (meth == "contains") or (meth == "intersects") { return true }
+  return false
+}
+
+function emit_rect_ns(meth: pointer, e: Node) -> Val {
+  if (meth == "make") {                             # make(x, y, w, h: fixed) -> Rect
+    let x = emit_expr(e.kids[0]);  let y = emit_expr(e.kids[1])
+    let w = emit_expr(e.kids[2]);  let h = emit_expr(e.kids[3])
+    return val(rect_pack(x.code, y.code, w.code, h.code), "Rect")
+  }
+  if (meth == "x") { let r = emit_expr(e.kids[0]);  return val(rect_field(r.code, 96), "fixed") }
+  if (meth == "y") { let r = emit_expr(e.kids[0]);  return val(rect_field(r.code, 64), "fixed") }
+  if (meth == "w") { let r = emit_expr(e.kids[0]);  return val(rect_field(r.code, 32), "fixed") }
+  if (meth == "h") { let r = emit_expr(e.kids[0]);  return val(rect_field(r.code, 0),  "fixed") }
+  if (meth == "right") {                            # x + w -> fixed (the right edge)
+    let r = emit_expr(e.kids[0])
+    let rx = rect_field(r.code, 96);  let rw = rect_field(r.code, 32)
+    return val(emit_bind(`add i32 {rx}, {rw}`), "fixed")
+  }
+  if (meth == "bottom") {                           # y + h -> fixed (the bottom edge)
+    let r = emit_expr(e.kids[0])
+    let ry = rect_field(r.code, 64);  let rh = rect_field(r.code, 0)
+    return val(emit_bind(`add i32 {ry}, {rh}`), "fixed")
+  }
+  if (meth == "center") {                           # (x + w/2, y + h/2) -> Vector
+    let r = emit_expr(e.kids[0])
+    let rx = rect_field(r.code, 96);  let ry = rect_field(r.code, 64)
+    let rw = rect_field(r.code, 32);  let rh = rect_field(r.code, 0)
+    let hw = emit_bind(`ashr i32 {rw}, 1`);  let hh = emit_bind(`ashr i32 {rh}, 1`)
+    let cx = emit_bind(`add i32 {rx}, {hw}`);  let cy = emit_bind(`add i32 {ry}, {hh}`)
+    return val(vec_pack(cx, cy), "Vector")
+  }
+  if (meth == "contains") {                         # contains(r, px, py: fixed) -> bool
+    let r = emit_expr(e.kids[0]);  let px = emit_expr(e.kids[1]);  let py = emit_expr(e.kids[2])
+    let rx = rect_field(r.code, 96);  let ry = rect_field(r.code, 64)
+    let rw = rect_field(r.code, 32);  let rh = rect_field(r.code, 0)
+    let rr = emit_bind(`add i32 {rx}, {rw}`);  let rb = emit_bind(`add i32 {ry}, {rh}`)
+    let c1 = rect_cmp("sge", px.code, rx);  let c2 = rect_cmp("slt", px.code, rr)
+    let c3 = rect_cmp("sge", py.code, ry);  let c4 = rect_cmp("slt", py.code, rb)
+    let a1 = emit_bind(`and i32 {c1}, {c2}`);  let a2 = emit_bind(`and i32 {c3}, {c4}`)
+    return val(emit_bind(`and i32 {a1}, {a2}`), "bool")
+  }
+  # intersects(a, b: Rect) -> bool — AABB overlap (touching edges do not overlap)
+  let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1])
+  let axl = rect_field(a.code, 96);  let ayl = rect_field(a.code, 64)
+  let aw = rect_field(a.code, 32);  let ah = rect_field(a.code, 0)
+  let bxl = rect_field(b.code, 96);  let byl = rect_field(b.code, 64)
+  let bw = rect_field(b.code, 32);  let bh = rect_field(b.code, 0)
+  let axr = emit_bind(`add i32 {axl}, {aw}`);  let ayb = emit_bind(`add i32 {ayl}, {ah}`)
+  let bxr = emit_bind(`add i32 {bxl}, {bw}`);  let byb = emit_bind(`add i32 {byl}, {bh}`)
+  let c1 = rect_cmp("slt", axl, bxr);  let c2 = rect_cmp("slt", bxl, axr)
+  let c3 = rect_cmp("slt", ayl, byb);  let c4 = rect_cmp("slt", byl, ayb)
+  let a1 = emit_bind(`and i32 {c1}, {c2}`);  let a2 = emit_bind(`and i32 {c3}, {c4}`)
+  return val(emit_bind(`and i32 {a1}, {a2}`), "bool")
+}

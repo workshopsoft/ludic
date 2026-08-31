@@ -114,6 +114,14 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if is_vector_ns(meth) { return emit_vector_ns(meth, e) }
     perr(`unknown builtin Vector.{meth}`)
   }
+  if (ns == "IVec2") {
+    if is_ivec_ns(meth) { return emit_ivec_ns(meth, e) }
+    perr(`unknown builtin IVec2.{meth}`)
+  }
+  if (ns == "Rect") {
+    if is_rect_ns(meth) { return emit_rect_ns(meth, e) }
+    perr(`unknown builtin Rect.{meth}`)
+  }
   if (ns == "Duration") {
     if is_duration_ns(meth) { return emit_duration_ns(meth, e) }
     perr(`unknown builtin Duration.{meth}`)

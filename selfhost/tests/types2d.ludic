@@ -1,0 +1,45 @@
+program T {
+  entry {
+    # --- IVec2: integer 2D vectors (tile / grid coordinates) ---
+    let a = IVec2.make(3, 4)
+    print(IVec2.x(a))                 # 3
+    print(IVec2.y(a))                 # 4
+    let b = IVec2.make(1, 2)
+    let c = IVec2.add(a, b)
+    print(IVec2.x(c))                 # 4
+    print(IVec2.y(c))                 # 6
+    let d = IVec2.sub(a, b)
+    print(IVec2.x(d))                 # 2
+    print(IVec2.y(d))                 # 2
+    let s = IVec2.scale(a, 3)
+    print(IVec2.x(s))                 # 9
+    print(IVec2.y(s))                 # 12
+    print(IVec2.dot(a, b))            # 3*1 + 4*2 = 11
+    print(IVec2.manhattan(a, b))      # |2| + |2| = 4
+    let z = IVec2.zero()
+    print(IVec2.x(z))                 # 0
+    let eq = IVec2.equal(a, IVec2.make(3, 4))
+    if eq { print(1) } else { print(0) }   # 1
+    let ne = IVec2.equal(a, b)
+    if ne { print(1) } else { print(0) }   # 0
+    print(floor(Vector.y(IVec2.to_vector(a))))  # 4
+
+    # --- Rect: axis-aligned rectangles (HUD boxes, hitboxes) ---
+    let r = Rect.make(10.0, 20.0, 30.0, 40.0)
+    print(floor(Rect.x(r)))           # 10
+    print(floor(Rect.y(r)))           # 20
+    print(floor(Rect.w(r)))           # 30
+    print(floor(Rect.h(r)))           # 40
+    print(floor(Rect.right(r)))       # 40
+    print(floor(Rect.bottom(r)))      # 60
+    print(floor(Vector.x(Rect.center(r))))  # 25
+    print(floor(Vector.y(Rect.center(r))))  # 40
+    if Rect.contains(r, 15.0, 25.0) { print(1) } else { print(0) }  # 1
+    if Rect.contains(r, 5.0, 25.0)  { print(1) } else { print(0) }  # 0
+    if Rect.contains(r, 40.0, 25.0) { print(1) } else { print(0) }  # 0 (right edge exclusive)
+    let r2 = Rect.make(35.0, 25.0, 20.0, 20.0)
+    if Rect.intersects(r, r2) { print(1) } else { print(0) }  # 1
+    let r3 = Rect.make(50.0, 0.0, 5.0, 5.0)
+    if Rect.intersects(r, r3) { print(1) } else { print(0) }  # 0
+  }
+}

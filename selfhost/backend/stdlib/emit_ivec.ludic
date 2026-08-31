@@ -1,0 +1,87 @@
+# emit_ivec.ludic — the IVec2.* namespace: an integer 2D vector value type. An
+# IVec2 is a pair of i32 components (x, y) packed into one i64 — x in the high
+# 32 bits, y in the low 32 — exactly like Vector (emit_vector.ludic) but with
+# whole-integer components and integer arithmetic. It is the natural type for
+# tile / grid coordinates, cell offsets, and integer sizes, where a fractional
+# part is meaningless and rounding would be a bug. Being one i64, it is a true
+# by-value type (assignment copies, no heap) and lives in a single register.
+# Reuses vec_pack / vec_x / vec_y from emit_vector.ludic; llty maps `IVec2` to
+# i64 (see emit_core.ludic). Every operation is exact integer arithmetic, so it
+# is deterministic on every platform.
+
+# |d| for a signed i32 code -> i32 code (branchless: select on d < 0)
+function ivec_abs(d: pointer) -> pointer {
+  let neg = emit_bind(`sub i32 0, {d}`)
+  let lt = emit_bind(`icmp slt i32 {d}, 0`)
+  return emit_bind(`select i1 {lt}, i32 {neg}, i32 {d}`)
+}
+
+function is_ivec_ns(meth: pointer) -> bool {
+  if (meth == "make") or (meth == "zero") or (meth == "x") or (meth == "y") { return true }
+  if (meth == "add") or (meth == "sub") or (meth == "scale") or (meth == "dot") { return true }
+  if (meth == "equal") or (meth == "manhattan") or (meth == "to_vector") { return true }
+  return false
+}
+
+function emit_ivec_ns(meth: pointer, e: Node) -> Val {
+  if (meth == "zero") {                             # the origin, (0, 0)
+    return val("0", "IVec2")
+  }
+  if (meth == "make") {                             # make(x, y: int) -> IVec2
+    let x = emit_expr(e.kids[0]);  let y = emit_expr(e.kids[1])
+    return val(vec_pack(x.code, y.code), "IVec2")
+  }
+  if (meth == "x") {                                # the x component -> int
+    let v = emit_expr(e.kids[0])
+    return val(vec_x(v.code), "int")
+  }
+  if (meth == "y") {                                # the y component -> int
+    let v = emit_expr(e.kids[0])
+    return val(vec_y(v.code), "int")
+  }
+  if (meth == "add") {                              # component-wise a + b
+    let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1])
+    let ax = vec_x(a.code);  let ay = vec_y(a.code);  let bx = vec_x(b.code);  let by = vec_y(b.code)
+    let sx = emit_bind(`add i32 {ax}, {bx}`)
+    let sy = emit_bind(`add i32 {ay}, {by}`)
+    return val(vec_pack(sx, sy), "IVec2")
+  }
+  if (meth == "sub") {                              # component-wise a - b
+    let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1])
+    let ax = vec_x(a.code);  let ay = vec_y(a.code);  let bx = vec_x(b.code);  let by = vec_y(b.code)
+    let sx = emit_bind(`sub i32 {ax}, {bx}`)
+    let sy = emit_bind(`sub i32 {ay}, {by}`)
+    return val(vec_pack(sx, sy), "IVec2")
+  }
+  if (meth == "scale") {                            # v * s (s: int)
+    let v = emit_expr(e.kids[0]);  let s = emit_expr(e.kids[1])
+    let vx = vec_x(v.code);  let vy = vec_y(v.code)
+    let sx = emit_bind(`mul i32 {vx}, {s.code}`)
+    let sy = emit_bind(`mul i32 {vy}, {s.code}`)
+    return val(vec_pack(sx, sy), "IVec2")
+  }
+  if (meth == "dot") {                              # ax*bx + ay*by -> int
+    let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1])
+    let ax = vec_x(a.code);  let ay = vec_y(a.code);  let bx = vec_x(b.code);  let by = vec_y(b.code)
+    let px = emit_bind(`mul i32 {ax}, {bx}`);  let py = emit_bind(`mul i32 {ay}, {by}`)
+    return val(emit_bind(`add i32 {px}, {py}`), "int")
+  }
+  if (meth == "equal") {                            # a == b (both components) -> bool
+    let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1])
+    let c = emit_bind(`icmp eq i64 {a.code}, {b.code}`)
+    return val(emit_bind(`zext i1 {c} to i32`), "bool")
+  }
+  if (meth == "manhattan") {                        # |dx| + |dy| -> int (grid distance)
+    let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1])
+    let ax = vec_x(a.code);  let ay = vec_y(a.code);  let bx = vec_x(b.code);  let by = vec_y(b.code)
+    let dx = emit_bind(`sub i32 {ax}, {bx}`);  let dy = emit_bind(`sub i32 {ay}, {by}`)
+    let adx = ivec_abs(dx);  let ady = ivec_abs(dy)
+    return val(emit_bind(`add i32 {adx}, {ady}`), "int")
+  }
+  # to_vector(v) -> Vector — widen each integer component to a Q16.16 fixed
+  let v = emit_expr(e.kids[0])
+  let vx = vec_x(v.code);  let vy = vec_y(v.code)
+  let fx = emit_bind(`shl i32 {vx}, 16`)
+  let fy = emit_bind(`shl i32 {vy}, 16`)
+  return val(vec_pack(fx, fy), "Vector")
+}

@@ -319,7 +319,9 @@
     "type-string",
     "type-void",
     "type-words",
-    "type-vector"
+    "type-vector",
+    "type-ivec2",
+    "type-rect"
   ],
   "world": [
     "world-get",
@@ -355,6 +357,31 @@
     "vector-rotate",
     "vector-angle",
     "vector-from_angle"
+  ],
+  "ivec2": [
+    "ivec2-make",
+    "ivec2-zero",
+    "ivec2-x",
+    "ivec2-y",
+    "ivec2-add",
+    "ivec2-sub",
+    "ivec2-scale",
+    "ivec2-dot",
+    "ivec2-equal",
+    "ivec2-manhattan",
+    "ivec2-to_vector"
+  ],
+  "rect": [
+    "rect-make",
+    "rect-x",
+    "rect-y",
+    "rect-w",
+    "rect-h",
+    "rect-right",
+    "rect-bottom",
+    "rect-center",
+    "rect-contains",
+    "rect-intersects"
   ],
   "duration": [
     "duration-seconds",

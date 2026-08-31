@@ -204,7 +204,7 @@ program LudicLsp {
     return c == 43 or c == 45 or c == 42 or c == 47 or c == 37 or c == 60 or c == 62 or c == 61 or c == 40 or c == 41 or c == 123 or c == 125 or c == 91 or c == 93 or c == 44 or c == 58 or c == 46 or c == 33 or c == 64 or c == 59
   }
   function is_type_word(w: pointer) -> bool {
-    return (w == "int") or (w == "long") or (w == "fixed") or (w == "bool") or (w == "entity") or (w == "string") or (w == "pointer") or (w == "byte") or (w == "words") or (w == "fixeds") or (w == "pointers") or (w == "Vector") or (w == "void")
+    return (w == "int") or (w == "long") or (w == "fixed") or (w == "bool") or (w == "entity") or (w == "string") or (w == "pointer") or (w == "byte") or (w == "words") or (w == "fixeds") or (w == "pointers") or (w == "Vector") or (w == "IVec2") or (w == "Rect") or (w == "void")
   }
   function is_phase_word(w: pointer) -> bool {
     return (w == "Start") or (w == "Input") or (w == "FixedUpdate") or (w == "Update") or (w == "LateUpdate") or (w == "Render")
@@ -1318,6 +1318,31 @@ program LudicLsp {
       if (meth == "angle")      { return "Vector.angle(v) -> fixed" }
       if (meth == "from_angle") { return "Vector.from_angle(a) -> Vector" }
     }
+    if (ns == "IVec2") {
+      if (meth == "make")      { return "IVec2.make(x, y) -> IVec2" }
+      if (meth == "zero")      { return "IVec2.zero() -> IVec2" }
+      if (meth == "x")         { return "IVec2.x(v) -> int" }
+      if (meth == "y")         { return "IVec2.y(v) -> int" }
+      if (meth == "add")       { return "IVec2.add(a, b) -> IVec2" }
+      if (meth == "sub")       { return "IVec2.sub(a, b) -> IVec2" }
+      if (meth == "scale")     { return "IVec2.scale(v, s) -> IVec2" }
+      if (meth == "dot")       { return "IVec2.dot(a, b) -> int" }
+      if (meth == "equal")     { return "IVec2.equal(a, b) -> bool" }
+      if (meth == "manhattan") { return "IVec2.manhattan(a, b) -> int" }
+      if (meth == "to_vector") { return "IVec2.to_vector(v) -> Vector" }
+    }
+    if (ns == "Rect") {
+      if (meth == "make")       { return "Rect.make(x, y, w, h) -> Rect" }
+      if (meth == "x")          { return "Rect.x(r) -> fixed" }
+      if (meth == "y")          { return "Rect.y(r) -> fixed" }
+      if (meth == "w")          { return "Rect.w(r) -> fixed" }
+      if (meth == "h")          { return "Rect.h(r) -> fixed" }
+      if (meth == "right")      { return "Rect.right(r) -> fixed" }
+      if (meth == "bottom")     { return "Rect.bottom(r) -> fixed" }
+      if (meth == "center")     { return "Rect.center(r) -> Vector" }
+      if (meth == "contains")   { return "Rect.contains(r, px, py) -> bool" }
+      if (meth == "intersects") { return "Rect.intersects(a, b) -> bool" }
+    }
     if (ns == "List") {
       if (meth == "len")      { return "List.len(s) -> int" }
       if (meth == "push")     { return "List.push(s, v)" }
@@ -2341,7 +2366,7 @@ program LudicLsp {
   }
   function comp_types(o: Buf) -> void {
     comp_item(o, "int", 14, "built-in type");  comp_item(o, "long", 14, "built-in type");  comp_item(o, "fixed", 14, "built-in type");  comp_item(o, "bool", 14, "built-in type")
-    comp_item(o, "entity", 14, "built-in type");  comp_item(o, "string", 14, "built-in type");  comp_item(o, "pointer", 14, "built-in type");  comp_item(o, "Vector", 14, "built-in type");  comp_item(o, "void", 14, "built-in type")
+    comp_item(o, "entity", 14, "built-in type");  comp_item(o, "string", 14, "built-in type");  comp_item(o, "pointer", 14, "built-in type");  comp_item(o, "Vector", 14, "built-in type");  comp_item(o, "IVec2", 14, "built-in type");  comp_item(o, "Rect", 14, "built-in type");  comp_item(o, "void", 14, "built-in type")
   }
   function comp_builtins(o: Buf) -> void { var i = 0;  while i < len(g_builtins) { comp_item(o, g_builtins[i], 3, g_bsigs[i]);  i = i + 1 } }
   function on_completion(msg: JVal, id: JVal) -> void {
