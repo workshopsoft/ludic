@@ -1,0 +1,69 @@
+# reflect.ludic — Reflect.* runtime reflection over the world schema: enumerate
+# properties and fields by index, resolve ids by name, read the type of a field,
+# and get/set an entity's fields generically. Each assertion that holds prints
+# its number, so a full run prints:
+#   1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20
+# The generic-inspector case (17) walks every component + field of an entity
+# without naming any of them — the pattern auto-save and debug overlays use.
+program Reflect {
+  property Health { hp: int = 0, max: int = 0 }
+  property Velocity { dx: fixed = 0.0, dy: fixed = 0.0 }
+  model Unit { Health, Velocity }
+
+  entry {
+    spawn Unit { Health { hp: 7, max: 10 }, Velocity { dx: fixed(2), dy: fixed(3) } }
+    let e = 0                                     # the first (only) spawn is entity 0
+
+    # --- enumerate properties by index. The count is >= the two declared here:
+    #     the runtime splices its own components (e.g. Cell, from the grid library
+    #     core imports), and reflection honestly reports every one. ---
+    if Reflect.prop_count() >= 2       { print(1) }
+    if Reflect.prop_name(0) == "Health"   { print(2) }
+    if Reflect.prop_name(1) == "Velocity" { print(3) }
+
+    # --- resolve property ids by name ---
+    let H = Reflect.prop("Health")
+    let V = Reflect.prop("Velocity")
+    if H == 0        { print(4) }
+    if V == 1        { print(5) }
+    if Reflect.prop("Nope") < 0 { print(6) }      # unknown -> -1
+
+    # --- enumerate fields by index, with names and types ---
+    if Reflect.field_count(H) == 2      { print(7) }
+    if Reflect.field_name(H, 0) == "hp"  { print(8) }
+    if Reflect.field_name(H, 1) == "max" { print(9) }
+    if Reflect.field_type(H, 0) == "int"   { print(10) }
+    if Reflect.field_type(V, 0) == "fixed" { print(11) }
+    if Reflect.field(H, "max") == 1     { print(12) }
+
+    # --- entity membership + identity ---
+    if Reflect.has(e, H)  { print(13) }
+    if Reflect.has(e, V)  { print(14) }
+    if Reflect.kind(e) == Reflect.model("Unit") { print(15) }
+    if Reflect.model("Unit") >= 0 { print(16) }
+
+    # --- generic inspector: sum every field of every component the entity has,
+    #     naming nothing. Health(7+10) + Velocity(fixed(2)+fixed(3) raw) ---
+    var total = 0
+    let pc = Reflect.prop_count()
+    var p = 0
+    while p < pc {
+      if Reflect.has(e, p) {
+        let fc = Reflect.field_count(p)
+        var f = 0
+        while f < fc {
+          total = total + Reflect.get(e, p, f)
+          f = f + 1
+        }
+      }
+      p = p + 1
+    }
+    if total == 327697 { print(17) }              # 7 + 10 + 131072 + 196608
+
+    # --- get / set a field by (prop, field) id ---
+    if Reflect.get(e, H, 0) == 7 { print(18) }    # hp
+    Reflect.set(e, H, 0, 99)
+    if Reflect.get(e, H, 0) == 99 { print(19) }   # write took effect
+    if Reflect.get(e, V, 0) == 131072 { print(20) }    # dx stored as raw Q16.16 = fixed(2)
+  }
+}

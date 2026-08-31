@@ -294,6 +294,118 @@ function emit_world_table() -> void {
   emit("hitb:\n  ret i32 %e\n")
   emit("cont:\n  %e1 = add i32 %e, 1\n  br label %loop\n")
   emit("none:\n  ret i32 -1\n}\n\n")
+
+  emit_world_reflect_enum()
+}
+
+# EV8 — schema enumeration: walk the property/field metadata by index, not just
+# by name. Powers the Reflect.* namespace (auto-serialization, debug inspectors)
+# so a mod can list every component and field without knowing them up front.
+# Compile-time props take ids 0..NC-1; ids >= NC are mod-registered (dynamic),
+# whose field names are unknown (i32 fields) so they report "" / "int".
+function emit_world_reflect_enum() -> void {
+  let empty = emit_str_const("")
+  let tint = emit_str_const("int")
+
+  # count the compile-time components (== the first dynamic prop id)
+  var ncomp = 0
+  var i = 0
+  while i < len(prog) { if prog[i].kind == N_COMP { ncomp = ncomp + 1 };  i = i + 1 }
+  let NC = itoa(ncomp)
+
+  # ludic_prop_count() -> total property count (compile-time + mod-registered)
+  emit("define i32 @ludic_prop_count() {\nentry:\n")
+  emit("  %d = load i32, ptr @dyn_count\n  %n = add i32 %d, ");  emit(NC);  emit("\n  ret i32 %n\n}\n\n")
+
+  # ludic_prop_name(i) -> the i-th property's name (or "" if out of range)
+  emit("define ptr @ludic_prop_name(i32 %i) {\nentry:\n")
+  var k = 0;  i = 0
+  while i < len(prog) {
+    if prog[i].kind == N_COMP {
+      let sc = emit_str_const(prog[i].s);  let sk = itoa(k)
+      emit("  %pe");  emit(sk);  emit(" = icmp eq i32 %i, ");  emit(sk);  emit("\n")
+      emit("  br i1 %pe");  emit(sk);  emit(", label %ph");  emit(sk);  emit(", label %pn");  emit(sk);  emit("\n")
+      emit("ph");  emit(sk);  emit(":\n  ret ptr ");  emit(sc);  emit("\n")
+      emit("pn");  emit(sk);  emit(":\n")
+      k = k + 1
+    }
+    i = i + 1
+  }
+  emit("  %dyn = sub i32 %i, ");  emit(NC);  emit("\n  %dc = load i32, ptr @dyn_count\n")
+  emit("  %ib = icmp uge i32 %dyn, %dc\n  br i1 %ib, label %pbad, label %pdyn\n")
+  emit("pdyn:\n  %np = getelementptr inbounds [32 x ptr], ptr @dynName, i32 0, i32 %dyn\n  %nm = load ptr, ptr %np\n  ret ptr %nm\n")
+  emit("pbad:\n  ret ptr ");  emit(empty);  emit("\n}\n\n")
+
+  # ludic_field_count(prop) -> the number of fields of a property
+  emit("define i32 @ludic_field_count(i32 %p) {\nentry:\n")
+  k = 0;  i = 0
+  while i < len(prog) {
+    if prog[i].kind == N_COMP {
+      let c = prog[i];  let sk = itoa(k)
+      emit("  %fce");  emit(sk);  emit(" = icmp eq i32 %p, ");  emit(sk);  emit("\n")
+      emit("  br i1 %fce");  emit(sk);  emit(", label %fch");  emit(sk);  emit(", label %fcn");  emit(sk);  emit("\n")
+      emit("fch");  emit(sk);  emit(":\n  ret i32 ");  emit(itoa(len(c.kids)));  emit("\n")
+      emit("fcn");  emit(sk);  emit(":\n")
+      k = k + 1
+    }
+    i = i + 1
+  }
+  emit("  %dyn = sub i32 %p, ");  emit(NC);  emit("\n  %dc = load i32, ptr @dyn_count\n")
+  emit("  %ib = icmp uge i32 %dyn, %dc\n  br i1 %ib, label %fcbad, label %fcdyn\n")
+  emit("fcdyn:\n  %fp = getelementptr inbounds [32 x i32], ptr @dynF, i32 0, i32 %dyn\n  %fn = load i32, ptr %fp\n  ret i32 %fn\n")
+  emit("fcbad:\n  ret i32 0\n}\n\n")
+
+  # ludic_field_name(prop, f) -> the f-th field's name of a property (or "")
+  emit("define ptr @ludic_field_name(i32 %p, i32 %f) {\nentry:\n")
+  k = 0;  i = 0
+  while i < len(prog) {
+    if prog[i].kind == N_COMP {
+      let c = prog[i];  let sk = itoa(k)
+      emit("  %fne");  emit(sk);  emit(" = icmp eq i32 %p, ");  emit(sk);  emit("\n")
+      emit("  br i1 %fne");  emit(sk);  emit(", label %fnk");  emit(sk);  emit(", label %fnn");  emit(sk);  emit("\n")
+      emit("fnk");  emit(sk);  emit(":\n")
+      var f = 0
+      while f < len(c.kids) {
+        let fc = emit_str_const(c.kids[f].s);  let fk = `{sk}_{itoa(f)}`
+        emit("  %fnfe");  emit(fk);  emit(" = icmp eq i32 %f, ");  emit(itoa(f));  emit("\n")
+        emit("  br i1 %fnfe");  emit(fk);  emit(", label %fnfh");  emit(fk);  emit(", label %fnfn");  emit(fk);  emit("\n")
+        emit("fnfh");  emit(fk);  emit(":\n  ret ptr ");  emit(fc);  emit("\n")
+        emit("fnfn");  emit(fk);  emit(":\n")
+        f = f + 1
+      }
+      emit("  ret ptr ");  emit(empty);  emit("\n")
+      emit("fnn");  emit(sk);  emit(":\n")
+      k = k + 1
+    }
+    i = i + 1
+  }
+  emit("  ret ptr ");  emit(empty);  emit("\n}\n\n")
+
+  # ludic_field_type(prop, f) -> the f-th field's type name (or "int" fallback)
+  emit("define ptr @ludic_field_type(i32 %p, i32 %f) {\nentry:\n")
+  k = 0;  i = 0
+  while i < len(prog) {
+    if prog[i].kind == N_COMP {
+      let c = prog[i];  let sk = itoa(k)
+      emit("  %fte");  emit(sk);  emit(" = icmp eq i32 %p, ");  emit(sk);  emit("\n")
+      emit("  br i1 %fte");  emit(sk);  emit(", label %ftk");  emit(sk);  emit(", label %ftn");  emit(sk);  emit("\n")
+      emit("ftk");  emit(sk);  emit(":\n")
+      var f = 0
+      while f < len(c.kids) {
+        let tc = emit_str_const(c.kids[f].ty);  let fk = `{sk}_{itoa(f)}`
+        emit("  %ftfe");  emit(fk);  emit(" = icmp eq i32 %f, ");  emit(itoa(f));  emit("\n")
+        emit("  br i1 %ftfe");  emit(fk);  emit(", label %ftfh");  emit(fk);  emit(", label %ftfn");  emit(fk);  emit("\n")
+        emit("ftfh");  emit(fk);  emit(":\n  ret ptr ");  emit(tc);  emit("\n")
+        emit("ftfn");  emit(fk);  emit(":\n")
+        f = f + 1
+      }
+      emit("  ret ptr ");  emit(tint);  emit("\n")
+      emit("ftn");  emit(sk);  emit(":\n")
+      k = k + 1
+    }
+    i = i + 1
+  }
+  emit("  ret ptr ");  emit(tint);  emit("\n}\n\n")
 }
 
 # N5 — the drivable sim (NETWORKING-DESIGN §5). The per-frame phases the auto-loop

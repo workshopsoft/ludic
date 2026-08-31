@@ -81,7 +81,7 @@ function emit_program() -> void {
   var i = 0
   while i < len(prog) { if prog[i].kind == N_FN { emit_fn(prog[i]) };  i = i + 1 }
   if len(g_events) > 0 { emit_event_fns() }       # EV0: @ev_<E> event-dispatch functions
-  if has_ecs() and (len(g_events) > 0 or g_uses_query) { emit_world_table() }   # EV2: the mod reflection ABI (also powers Query.*)
+  if has_ecs() and (len(g_events) > 0 or g_uses_query or g_uses_reflect) { emit_world_table() }   # EV2/EV8: the mod reflection ABI (also powers Query.* / Reflect.*)
   if has_ecs() { emit_ecs_allocator();  emit_snapshot() }
   if has_ecs() { emit_net() }                     # N2/N3: @Sync serializers + @Owned storage (gated internally)
   if has_ui() { emit_ui_build() }

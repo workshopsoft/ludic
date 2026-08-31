@@ -234,6 +234,24 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "nearest") { bare = "query_nearest"; push(labels, "prop"); push(labels, "pos"); push(labels, "x_field"); push(labels, "y_field"); push(labels, "x"); push(labels, "y") }
     if (meth == "within")  { bare = "query_within";  push(labels, "prop"); push(labels, "pos"); push(labels, "x"); push(labels, "y"); push(labels, "radius"); push(labels, "x_field"); push(labels, "y_field") }
   }
+  # Reflect.* — runtime type reflection over the world schema (the EV2/EV8 ABI).
+  # Enumerate properties and fields by index, resolve ids by name, and read/write
+  # a field by (prop, field) id — the foundation for auto-serialization and debug
+  # inspectors. Reads the same generated metadata a foreign mod binds.
+  if (ns == "Reflect") {
+    if (meth == "prop")        { bare = "world_prop_id";     push(labels, "name") }
+    if (meth == "field")       { bare = "world_field_id";    push(labels, "prop"); push(labels, "name") }
+    if (meth == "prop_count")  { bare = "world_prop_count" }
+    if (meth == "prop_name")   { bare = "world_prop_name";   push(labels, "index") }
+    if (meth == "field_count") { bare = "world_field_count"; push(labels, "prop") }
+    if (meth == "field_name")  { bare = "world_field_name";  push(labels, "prop"); push(labels, "index") }
+    if (meth == "field_type")  { bare = "world_field_type";  push(labels, "prop"); push(labels, "index") }
+    if (meth == "get")         { bare = "world_get";         push(labels, "entity"); push(labels, "prop"); push(labels, "field") }
+    if (meth == "set")         { bare = "world_set";         push(labels, "entity"); push(labels, "prop"); push(labels, "field"); push(labels, "value") }
+    if (meth == "has")         { bare = "world_has";         push(labels, "entity"); push(labels, "prop") }
+    if (meth == "kind")        { bare = "world_kind";        push(labels, "entity") }
+    if (meth == "model")       { bare = "world_model_id";    push(labels, "name") }
+  }
   if (bare == null) { perr(`unknown builtin {ns}.{meth}`) }
   reorder_named(e, labels)
   let id = node(E_ID); id.s = bare; e.a = id
@@ -378,6 +396,12 @@ function emit_call(e: Node) -> Val {
   if (name == "world_attach_dyn") { let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1]);  emit("  call void @ludic_attach_dyn(i32 ");  emit(a.code);  emit(", i32 ");  emit(b.code);  emit(")\n");  return val("0", "void") }
   if (name == "world_detach_dyn") { let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1]);  emit("  call void @ludic_detach_dyn(i32 ");  emit(a.code);  emit(", i32 ");  emit(b.code);  emit(")\n");  return val("0", "void") }
   if (name == "world_spawn") { let a = emit_expr(e.kids[0]);  return val(emit_bind(`call i32 @ludic_spawn(i32 {a.code})`), "int") }
+  # EV8 — schema enumeration, walking property/field metadata by index (Reflect.*).
+  if (name == "world_prop_count") { return val(emit_bind("call i32 @ludic_prop_count()"), "int") }
+  if (name == "world_prop_name") { let a = emit_expr(e.kids[0]);  return val(emit_bind(`call ptr @ludic_prop_name(i32 {a.code})`), "string") }
+  if (name == "world_field_count") { let a = emit_expr(e.kids[0]);  return val(emit_bind(`call i32 @ludic_field_count(i32 {a.code})`), "int") }
+  if (name == "world_field_name") { let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1]);  return val(emit_bind(`call ptr @ludic_field_name(i32 {a.code}, i32 {b.code})`), "string") }
+  if (name == "world_field_type") { let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1]);  return val(emit_bind(`call ptr @ludic_field_type(i32 {a.code}, i32 {b.code})`), "string") }
   if is_intrinsic(name) { return emit_intrinsic(name, e) }
   if is_intrinsic2(name) { return emit_intrinsic2(name, e) }
   if is_math_builtin(name) { return emit_math_builtin(name, e) }

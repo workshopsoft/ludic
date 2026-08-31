@@ -1,0 +1,7 @@
+---
+id: reflect
+title: Reflect
+order: 31
+---
+
+Runtime reflection over the world schema — inspect properties, fields, and entity state by name and by index. It powers the conveniences game devs consume without writing reflection code: automatic save/load, data-driven tools, and debug/inspector overlays. Enumerate with <a href="reflect-prop_count"><code>Reflect.prop_count</code></a>/<a href="reflect-prop_name"><code>Reflect.prop_name</code></a> and <a href="reflect-field_count"><code>Reflect.field_count</code></a>/<a href="reflect-field_name"><code>Reflect.field_name</code></a>/<a href="reflect-field_type"><code>Reflect.field_type</code></a>; resolve ids with <a href="reflect-prop"><code>Reflect.prop</code></a>/<a href="reflect-field"><code>Reflect.field</code></a>; read and write an entity's fields with <a href="reflect-get"><code>Reflect.get</code></a>/<a href="reflect-set"><code>Reflect.set</code></a>/<a href="reflect-has"><code>Reflect.has</code></a>; and identify its model with <a href="reflect-kind"><code>Reflect.kind</code></a>/<a href="reflect-model"><code>Reflect.model</code></a>. The metadata tables are generated at compile time (the same reflection ABI a foreign mod binds), so introspection is a table walk, not heavy runtime machinery. This is an advanced/tooling surface — most developers get its benefits through built-in features. Related: <a href="world"><code>World</code></a>, <a href="query"><code>Query</code></a>.
