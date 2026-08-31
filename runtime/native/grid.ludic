@@ -1,0 +1,174 @@
+# ============================================================================
+# grid.ludic — grid geometry and pathfinding over the tilemap, in Ludic.
+#
+# The Grid.* / Path.* namespaces (see emit_call.ludic) operate on the tilemap
+# that Map.size/Map.row set up (rt_map / rt_tile in core.ludic). A cell is
+# passable unless it is out of bounds or holds the caller's `wall` tile — a
+# single char code, e.g. '#', so any impassable glyph works. Everything is
+# integer and deterministic: same map + same query -> same path, every run.
+#
+# ludicc splices this file into a game via core.ludic (it needs the tilemap), so
+# it links only where the tilemap does. Returned cell lists are ordinary Ludic
+# slices — index them with `len` / `[i]` (Ludic's `for` iterates ranges, not
+# collections).
+# ============================================================================
+
+property Cell { x: int = 0, y: int = 0 }
+
+function grid_abs(v: int) -> int { if v < 0 { return 0 - v };  return v }
+function grid_in_bounds(x: int, y: int) -> bool { return x >= 0 and y >= 0 and x < rt_mapw and y < rt_maph }
+# a cell blocks movement if it is out of bounds or holds the `wall` tile.
+function grid_blocked(x: int, y: int, wall: int) -> bool {
+  if not grid_in_bounds(x, y) { return true }
+  return rt_tile(x, y) == wall
+}
+
+# Bresenham line from (x0,y0) to (x1,y1), inclusive — every cell it crosses.
+function grid_line(x0: int, y0: int, x1: int, y1: int) -> []Cell {
+  let out = new []Cell
+  var x = x0
+  var y = y0
+  let dx = grid_abs(x1 - x0)
+  let dy = grid_abs(y1 - y0)
+  var sx = 0 - 1
+  if x0 < x1 { sx = 1 }
+  var sy = 0 - 1
+  if y0 < y1 { sy = 1 }
+  var err = dx - dy
+  while true {
+    let c = new Cell
+    c.x = x;  c.y = y
+    push(out, c)
+    if x == x1 and y == y1 { break }
+    let e2 = 2 * err
+    if e2 > 0 - dy { err = err - dy;  x = x + sx }
+    if e2 < dx { err = err + dx;  y = y + sy }
+  }
+  return out
+}
+
+# line of sight: true if the straight line hits no `wall` cell (endpoints incl).
+function grid_line_of_sight(x0: int, y0: int, x1: int, y1: int, wall: int) -> bool {
+  let cells = grid_line(x0, y0, x1, y1)
+  var i = 0
+  while i < len(cells) {
+    if grid_blocked(cells[i].x, cells[i].y, wall) { return false }
+    i = i + 1
+  }
+  return true
+}
+
+# 4-connected flood fill: every passable cell reachable from (sx,sy), BFS order.
+function grid_flood(sx: int, sy: int, wall: int) -> []Cell {
+  let out = new []Cell
+  if grid_blocked(sx, sy, wall) { return out }
+  let w = rt_mapw
+  let n = w * rt_maph
+  let seen = bytes(n)
+  var i = 0
+  while i < n { seen[i] = 0;  i = i + 1 }
+  let qx = words(n)
+  let qy = words(n)
+  var head = 0
+  var tail = 0
+  qx[tail] = sx;  qy[tail] = sy;  tail = tail + 1
+  seen[sy * w + sx] = 1
+  while head < tail {
+    let cx = qx[head]
+    let cy = qy[head]
+    head = head + 1
+    let c = new Cell
+    c.x = cx;  c.y = cy
+    push(out, c)
+    var dir = 0
+    while dir < 4 {
+      var nx = cx
+      var ny = cy
+      if dir == 0 { nx = cx + 1 }
+      if dir == 1 { nx = cx - 1 }
+      if dir == 2 { ny = cy + 1 }
+      if dir == 3 { ny = cy - 1 }
+      if grid_in_bounds(nx, ny) and seen[ny * w + nx] == 0 and not grid_blocked(nx, ny, wall) {
+        seen[ny * w + nx] = 1
+        qx[tail] = nx;  qy[tail] = ny;  tail = tail + 1
+      }
+      dir = dir + 1
+    }
+  }
+  return out
+}
+
+# A* shortest path over the 4-connected grid, uniform step cost, Manhattan
+# heuristic. Returns the path start..goal inclusive, or an empty list if the
+# goal is unreachable (or start/goal is a wall). The open set is a linear scan —
+# ample for a tilemap (<= 96x64), and the heuristic keeps it near-optimal work.
+function path_a_star(x0: int, y0: int, x1: int, y1: int, wall: int) -> []Cell {
+  let out = new []Cell
+  if grid_blocked(x0, y0, wall) or grid_blocked(x1, y1, wall) { return out }
+  let w = rt_mapw
+  let n = w * rt_maph
+  let INF = 1000000000
+  let g = words(n)             # cost from start (INF = unvisited)
+  let came = words(n)          # parent cell index (-1 = none)
+  let inopen = bytes(n)
+  let closed = bytes(n)
+  var i = 0
+  while i < n { g[i] = INF;  came[i] = 0 - 1;  inopen[i] = 0;  closed[i] = 0;  i = i + 1 }
+  let start = y0 * w + x0
+  let goal = y1 * w + x1
+  g[start] = 0
+  inopen[start] = 1
+  var found = false
+  while true {
+    var best = 0 - 1
+    var bestf = INF
+    i = 0
+    while i < n {
+      if inopen[i] == 1 {
+        let cx = i - (i / w) * w
+        let cy = i / w
+        let f = g[i] + grid_abs(cx - x1) + grid_abs(cy - y1)
+        if f < bestf { bestf = f;  best = i }
+      }
+      i = i + 1
+    }
+    if best < 0 { break }
+    if best == goal { found = true;  break }
+    inopen[best] = 0
+    closed[best] = 1
+    let cx = best - (best / w) * w
+    let cy = best / w
+    var dir = 0
+    while dir < 4 {
+      var nx = cx
+      var ny = cy
+      if dir == 0 { nx = cx + 1 }
+      if dir == 1 { nx = cx - 1 }
+      if dir == 2 { ny = cy + 1 }
+      if dir == 3 { ny = cy - 1 }
+      if grid_in_bounds(nx, ny) and not grid_blocked(nx, ny, wall) {
+        let ni = ny * w + nx
+        if closed[ni] == 0 {
+          let ng = g[best] + 1
+          if ng < g[ni] { g[ni] = ng;  came[ni] = best;  inopen[ni] = 1 }
+        }
+      }
+      dir = dir + 1
+    }
+  }
+  if not found { return out }
+  # reconstruct goal..start, then reverse into out
+  let rev = new []Cell
+  var cur = goal
+  while cur >= 0 {
+    let c = new Cell
+    c.x = cur - (cur / w) * w
+    c.y = cur / w
+    push(rev, c)
+    if cur == start { break }
+    cur = came[cur]
+  }
+  var k = len(rev) - 1
+  while k >= 0 { push(out, rev[k]);  k = k - 1 }
+  return out
+}

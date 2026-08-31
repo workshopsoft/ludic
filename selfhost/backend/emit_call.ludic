@@ -203,6 +203,18 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "end")         { bare = "regex_end";         push(labels, "match"); push(labels, "n") }
     if (meth == "ok")          { bare = "regex_ok";          push(labels, "match") }
   }
+  # Grid.* — tile geometry and pathfinding over the Map tilemap, from
+  # runtime/native/grid.ludic (spliced with core.ludic). `wall` is the impassable
+  # tile char, e.g. '#'. line/flood/a_star return []Cell slices. (Pathfinding
+  # lives under Grid rather than a `Path` namespace — that name is the filesystem
+  # paths library.)
+  if (ns == "Grid") {
+    if (meth == "line")          { bare = "grid_line";          push(labels, "x0"); push(labels, "y0"); push(labels, "x1"); push(labels, "y1") }
+    if (meth == "blocked")       { bare = "grid_blocked";       push(labels, "x"); push(labels, "y"); push(labels, "wall") }
+    if (meth == "line_of_sight") { bare = "grid_line_of_sight"; push(labels, "x0"); push(labels, "y0"); push(labels, "x1"); push(labels, "y1"); push(labels, "wall") }
+    if (meth == "flood")         { bare = "grid_flood";         push(labels, "x"); push(labels, "y"); push(labels, "wall") }
+    if (meth == "a_star")        { bare = "path_a_star";        push(labels, "x0"); push(labels, "y0"); push(labels, "x1"); push(labels, "y1"); push(labels, "wall") }
+  }
   if (bare == null) { perr(`unknown builtin {ns}.{meth}`) }
   reorder_named(e, labels)
   let id = node(E_ID); id.s = bare; e.a = id

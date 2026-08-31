@@ -397,6 +397,7 @@ import "inflate.ludic"
 import "image.ludic"
 import "truetype.ludic"
 import "ui.ludic"
+import "grid.ludic"
 
 # ---- tilemap --------------------------------------------------------------
 # A character grid the game paints with map_row() and reads with tile(). Stored

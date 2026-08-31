@@ -501,5 +501,12 @@
     "regex-start",
     "regex-end",
     "regex-ok"
+  ],
+  "grid": [
+    "grid-line",
+    "grid-blocked",
+    "grid-line_of_sight",
+    "grid-flood",
+    "grid-a_star"
   ]
 }
