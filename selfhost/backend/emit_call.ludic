@@ -295,6 +295,36 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "has")         { bare = "world_has";         push(labels, "entity"); push(labels, "prop") }
     if (meth == "kind")        { bare = "world_kind";        push(labels, "entity") }
     if (meth == "model")       { bare = "world_model_id";    push(labels, "name") }
+    # #44 — serialize an entity to a value tree and apply one back (reflect_io.ludic)
+    if (meth == "serialize")   { bare = "reflect_serialize"; push(labels, "entity") }
+    if (meth == "apply")       { bare = "reflect_apply";     push(labels, "entity"); push(labels, "value") }
+  }
+  # Value.* — the generic value tree (runtime/native/value.ludic, spliced on
+  # demand). Nodes are int/fixed/bool/str/list/object; the methods map straight
+  # to the spliced value_* functions, whose signatures carry the return types.
+  if (ns == "Value") {
+    if (meth == "null")    { bare = "value_null" }
+    if (meth == "int")     { bare = "value_int";     push(labels, "n") }
+    if (meth == "fixed")   { bare = "value_fixed";   push(labels, "f") }
+    if (meth == "bool")    { bare = "value_bool";    push(labels, "b") }
+    if (meth == "str")     { bare = "value_str";     push(labels, "s") }
+    if (meth == "list")    { bare = "value_list" }
+    if (meth == "object")  { bare = "value_object" }
+    if (meth == "add")     { bare = "value_add";     push(labels, "list"); push(labels, "item") }
+    if (meth == "put")     { bare = "value_put";     push(labels, "obj"); push(labels, "key"); push(labels, "item") }
+    if (meth == "get")     { bare = "value_get";     push(labels, "obj"); push(labels, "key") }
+    if (meth == "has")     { bare = "value_has";     push(labels, "obj"); push(labels, "key") }
+    if (meth == "at")      { bare = "value_at";      push(labels, "list"); push(labels, "index") }
+    if (meth == "key_at")  { bare = "value_key_at";  push(labels, "obj"); push(labels, "index") }
+    if (meth == "count")   { bare = "value_count";   push(labels, "value") }
+    if (meth == "kind")    { bare = "value_kind";    push(labels, "value") }
+    if (meth == "as_int")  { bare = "value_as_int";  push(labels, "value") }
+    if (meth == "as_str")  { bare = "value_as_str";  push(labels, "value") }
+  }
+  # Json.* — the text bridge over the value tree (runtime/native/value.ludic).
+  if (ns == "Json") {
+    if (meth == "encode")  { bare = "json_encode";   push(labels, "value") }
+    if (meth == "parse")   { bare = "json_parse";    push(labels, "text") }
   }
   if (bare == null) { perr(`unknown builtin {ns}.{meth}`) }
   reorder_named(e, labels)

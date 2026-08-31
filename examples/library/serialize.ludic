@@ -1,0 +1,56 @@
+# serialize.ludic — the generic value tree (Value.*), its JSON bridge (Json.*),
+# and reflection-driven save/load (Reflect.serialize / Reflect.apply, issue #44).
+# One call walks an entity's whole component set into a self-describing value
+# tree; Json.encode turns it into text and Json.parse reads it back; Reflect.apply
+# writes a parsed tree into a live entity — a one-call save/load, bit-exact.
+#
+# Each assertion that holds prints its number, so a full run prints:
+#   1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16
+program Serialize {
+  property Health { hp: int = 0, max: int = 0 }
+  property Velocity { dx: fixed = 0.0, dy: fixed = 0.0 }
+  model Unit { Health, Velocity }
+
+  entry {
+    spawn Unit { Health { hp: 7, max: 10 }, Velocity { dx: fixed(2), dy: fixed(3) } }
+    let e = 0
+
+    # --- serialize an entity to a value tree ---
+    let tree = Reflect.serialize(e)
+    if Value.kind(tree) == 6 { print(1) }                 # object
+    if Value.has(tree, "Health") == 1 { print(2) }
+    let h = Value.get(tree, "Health")
+    if Value.as_int(Value.get(h, "hp")) == 7 { print(3) }
+    if Value.as_int(Value.get(h, "max")) == 10 { print(4) }
+    let vv = Value.get(tree, "Velocity")
+    if Value.kind(Value.get(vv, "dx")) == 2 { print(5) }  # a fixed node
+    if Value.as_int(Value.get(vv, "dx")) == 131072 { print(6) }   # raw Q16.16 = fixed(2)
+
+    # --- JSON bridge: encode, then parse straight back ---
+    let text = Json.encode(tree)
+    if text == "{\"@kind\":1,\"Health\":{\"hp\":7,\"max\":10},\"Velocity\":{\"dx\":2.0,\"dy\":3.0}}" { print(7) }
+    let back = Json.parse(text)
+    if Value.as_int(Value.get(Value.get(back, "Health"), "hp")) == 7 { print(8) }
+
+    # --- apply a parsed tree into a second, zeroed entity: a one-call load ---
+    spawn Unit { Health { hp: 0, max: 0 }, Velocity { dx: 0.0, dy: 0.0 } }
+    let e2 = 1
+    let applied = Reflect.apply(e2, back)
+    if applied == 4 { print(9) }                          # four fields written
+    let H = Reflect.prop("Health")
+    let V = Reflect.prop("Velocity")
+    if Reflect.get(e2, H, 0) == 7 { print(10) }           # hp round-tripped
+    if Reflect.get(e2, H, 1) == 10 { print(11) }          # max round-tripped
+    if Reflect.get(e2, V, 0) == 131072 { print(12) }      # dx (fixed) bit-exact
+
+    # --- build a value tree by hand + inspect a list ---
+    let list = Value.list()
+    Value.add(list, Value.int(3))
+    Value.add(list, Value.str("hi"))
+    Value.add(list, Value.bool(1))
+    if Value.count(list) == 3 { print(13) }
+    if Value.as_int(Value.at(list, 0)) == 3 { print(14) }
+    if Value.as_str(Value.at(list, 1)) == "hi" { print(15) }
+    if Json.encode(list) == "[3,\"hi\",true]" { print(16) }
+  }
+}

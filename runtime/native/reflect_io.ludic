@@ -1,0 +1,71 @@
+# ============================================================================
+# reflect_io.ludic — Reflect.serialize / Reflect.apply, in Ludic. One call walks
+# an entity's whole component set into a generic value tree (value.ludic), and
+# its inverse writes a value tree's fields back into a live entity. Together with
+# Json.* this is a one-call save/load and the backbone of tooling (debug
+# inspectors, network snapshots as text).
+#
+# It stands on the reflection ABI (world_* builtins — the EV2/EV8 world table)
+# and the value tree, so ludicc force-emits the world table and splices value.ludic
+# whenever Reflect.serialize/apply appear (parse.ludic + emit_decl.ludic).
+#
+# Serialize captures each field's raw stored value: a `fixed` field becomes a
+# `fixed` node (its Q16.16 value), everything else an `int` node — so a
+# serialize -> apply round-trip is bit-exact. The entity's model id rides along
+# under the reserved "@kind" key; apply skips any "@"-prefixed key.
+# ============================================================================
+
+# entity -> a value-tree object: { "@kind": <model id>, "<Comp>": { "<field>": v, … }, … }
+function reflect_serialize(e: int) -> Val {
+  let obj = value_object()
+  value_put(obj, "@kind", value_int(world_kind(e)))
+  let pc = world_prop_count()
+  var p = 0
+  while p < pc {
+    if world_has(e, p) != 0 {
+      let comp = value_object()
+      let fc = world_field_count(p)
+      var f = 0
+      while f < fc {
+        let fname = world_field_name(p, f)
+        let raw = world_get(e, p, f)
+        var node = value_int(raw)
+        if world_field_type(p, f) == "fixed" { node = value_fixed(raw) }
+        value_put(comp, fname, node)
+        f = f + 1
+      }
+      value_put(obj, world_prop_name(p), comp)
+    }
+    p = p + 1
+  }
+  return obj
+}
+
+# write a value-tree object's fields back into entity `e`. Only components the
+# entity already has and fields the schema knows are applied; reserved "@"-keys
+# (e.g. "@kind") and unknown names are skipped. Returns the number of fields set.
+function reflect_apply(e: int, v: Val) -> int {
+  var set = 0
+  var i = 0
+  while i < value_count(v) {
+    let pname = value_key_at(v, i)
+    if pname[0] != 64 {                            # skip reserved "@…" keys
+      let p = world_prop_id(pname)
+      if p >= 0 and world_has(e, p) != 0 {
+        let comp = value_at(v, i)
+        var j = 0
+        while j < value_count(comp) {
+          let fname = value_key_at(comp, j)
+          let f = world_field_id(p, fname)
+          if f >= 0 {
+            world_set(e, p, f, value_as_int(value_at(comp, j)))
+            set = set + 1
+          }
+          j = j + 1
+        }
+      }
+    }
+    i = i + 1
+  }
+  return set
+}

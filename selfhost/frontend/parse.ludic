@@ -178,6 +178,8 @@ function p_postfix() -> Node {
       if e.a.kind == E_ID and e.a.s == "Query" { g_uses_query = true }   # splice the ECS spatial-query runtime on demand
       if e.a.kind == E_ID and e.a.s == "Reflect" { g_uses_reflect = true }   # force-emit the reflection ABI (Reflect.* reads the world schema)
       if e.a.kind == E_ID and e.a.s == "Light" { g_uses_light = true }   # splice the 2D light-accumulation pass on demand
+      if e.a.kind == E_ID and (e.a.s == "Value" or e.a.s == "Json") { g_uses_value = true }   # splice the value tree + JSON on demand (#44)
+      if e.a.kind == E_ID and e.a.s == "Reflect" and (e.s == "serialize" or e.s == "apply") { g_uses_value = true;  g_uses_reflect_io = true }   # Reflect.serialize/apply -> value tree + world table
     }
     else { if is_op("[") { pi = pi + 1; let lo = expr()
         if is_op("..") { pi = pi + 1; let sl = node(E_SLICE); sl.a = e; sl.b = lo; sl.c = expr(); eat_op("]"); e = sl }   # s[a..b] substring
@@ -403,6 +405,8 @@ var g_uses_regex: bool = false    # a program mentioned Regex.* -> splice the re
 var g_uses_query: bool = false    # a program mentioned Query.* -> splice the query runtime + reflection ABI
 var g_uses_reflect: bool = false  # a program mentioned Reflect.* -> force-emit the reflection ABI
 var g_uses_light: bool = false    # a program mentioned Light.* -> splice the 2D light pass
+var g_uses_value: bool = false    # Value.*/Json.*/Reflect.serialize -> splice the value tree + JSON (#44)
+var g_uses_reflect_io: bool = false  # Reflect.serialize/apply -> splice the reflection serializer
 
 function already_loaded(full: pointer) -> bool {
   var i = 0
@@ -585,6 +589,20 @@ function maybe_splice_runtime() -> void {
     do_import("runtime/native/light.ludic")
     cur_dir = saved
   }
+  # Value.*/Json.* (#44) get the generic value tree + JSON bridge spliced in; it
+  # is self-contained (only string/slice ops), so it works in a plain tool too.
+  if g_uses_value {
+    cur_dir = ""
+    do_import("runtime/native/value.ludic")
+    cur_dir = saved
+  }
+  # Reflect.serialize/apply add the reflection serializer, which stands on both
+  # the value tree (above) and the world table (force-emitted for Reflect.*).
+  if g_uses_reflect_io {
+    cur_dir = ""
+    do_import("runtime/native/reflect_io.ludic")
+    cur_dir = saved
+  }
 }
 
 function parse_program() -> void {
@@ -606,6 +624,8 @@ function parse_program() -> void {
   g_uses_query = false
   g_uses_reflect = false
   g_uses_light = false
+  g_uses_value = false
+  g_uses_reflect_io = false
   g_tests = new []Node
   loaded_paths = new []pointer
   skipnl()

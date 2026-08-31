@@ -1,0 +1,266 @@
+# ============================================================================
+# value.ludic — a generic value tree (`Value.*`) and its JSON bridge (`Json.*`),
+# in Ludic. The value tree is the tagged, self-describing node the reflection
+# serializer (runtime/native/reflect_io.ludic) walks an entity into, and the
+# shape a JSON save round-trips through. A node is one of:
+#
+#   kind 0 null   kind 1 int   kind 2 fixed   kind 3 bool
+#   kind 4 str    kind 5 list  kind 6 object
+#
+# ludicc splices this file when it sees Value.* / Json.* / Reflect.serialize /
+# Reflect.apply (parse.ludic). Everything is plain Ludic over heap records — no
+# new runtime primitive — so the whole tree is deterministic and allocation is
+# the only cost.
+# ============================================================================
+
+# one node of the tree. A list uses `kids`; an object uses `keys` + `kids` in
+# parallel (keys[i] labels kids[i]). Scalars use `num` (int/bool/fixed-raw) or
+# `txt` (str).
+property Val {
+  tag:  int = 0
+  num:  int = 0
+  txt:  pointer = null
+  keys: []pointer
+  kids: []Val
+}
+
+function value_new(tag: int) -> Val {
+  let v = new Val
+  v.tag = tag
+  v.keys = new []pointer
+  v.kids = new []Val
+  return v
+}
+
+# --- constructors -----------------------------------------------------------
+function value_null() -> Val { return value_new(0) }
+function value_int(n: int) -> Val { let v = value_new(1); v.num = n; return v }
+function value_fixed(f: int) -> Val { let v = value_new(2); v.num = f; return v }   # f = raw Q16.16
+function value_bool(b: int) -> Val { let v = value_new(3); if b != 0 { v.num = 1 }; return v }
+function value_str(s: pointer) -> Val { let v = value_new(4); v.txt = s; return v }
+function value_list() -> Val { return value_new(5) }
+function value_object() -> Val { return value_new(6) }
+
+# --- builders (return the container, so calls chain) ------------------------
+function value_add(list: Val, item: Val) -> Val { push(list.kids, item); return list }
+function value_put(obj: Val, key: pointer, item: Val) -> Val {
+  var i = 0
+  while i < len(obj.keys) { if obj.keys[i] == key { obj.kids[i] = item; return obj };  i = i + 1 }
+  push(obj.keys, key);  push(obj.kids, item)
+  return obj
+}
+
+# --- accessors --------------------------------------------------------------
+function value_kind(v: Val) -> int { return v.tag }
+function value_count(v: Val) -> int { return len(v.kids) }
+function value_as_int(v: Val) -> int { return v.num }
+function value_as_str(v: Val) -> pointer { if v.txt == null { return "" };  return v.txt }
+function value_at(list: Val, i: int) -> Val {
+  if i < 0 or i >= len(list.kids) { return value_null() }
+  return list.kids[i]
+}
+function value_key_at(obj: Val, i: int) -> pointer {
+  if i < 0 or i >= len(obj.keys) { return "" }
+  return obj.keys[i]
+}
+function value_get(obj: Val, key: pointer) -> Val {
+  var i = 0
+  while i < len(obj.keys) { if obj.keys[i] == key { return obj.kids[i] };  i = i + 1 }
+  return value_null()
+}
+function value_has(obj: Val, key: pointer) -> int {
+  var i = 0
+  while i < len(obj.keys) { if obj.keys[i] == key { return 1 };  i = i + 1 }
+  return 0
+}
+
+# --- JSON encode ------------------------------------------------------------
+# escape a string's `"` `\` and newline, wrapping it in quotes.
+function json_quote(s: pointer) -> pointer {
+  var out = "\""
+  var i = 0
+  let n = len(s)
+  while i < n {
+    let c = s[i]
+    if c == 34 { out = out + "\\\"" }
+    else { if c == 92 { out = out + "\\\\" }
+    else { if c == 10 { out = out + "\\n" }
+    else { out = out + s[i..i + 1] } } }
+    i = i + 1
+  }
+  return out + "\""
+}
+
+# a raw Q16.16 fixed -> its EXACT decimal string. The denominator is 2^16, so the
+# decimal always terminates (in <=16 fractional digits): emit digits until the
+# remainder hits zero. This is the exact inverse of jp_number's fixed decode, so
+# a value_fixed round-trips through JSON bit-for-bit; short values (0.5, 2.0) stay
+# short. Each step keeps frac < 655360, well within i32.
+function json_fixed_str(raw: int) -> pointer {
+  var a = raw
+  var sign = ""
+  if a < 0 { sign = "-";  a = 0 - a }
+  let ip = a / 65536
+  var frac = a % 65536
+  if frac == 0 { return sign + string(ip) + ".0" }
+  var fs = ""
+  while frac != 0 {
+    frac = frac * 10
+    fs = fs + string(frac / 65536)
+    frac = frac % 65536
+  }
+  return sign + string(ip) + "." + fs
+}
+
+function json_encode(v: Val) -> pointer {
+  if v.tag == 0 { return "null" }
+  if v.tag == 1 { return string(v.num) }
+  if v.tag == 2 { return json_fixed_str(v.num) }
+  if v.tag == 3 { if v.num != 0 { return "true" };  return "false" }
+  if v.tag == 4 { return json_quote(v.txt) }
+  if v.tag == 5 {
+    var out = "["
+    var i = 0
+    while i < len(v.kids) {
+      if i > 0 { out = out + "," }
+      out = out + json_encode(v.kids[i])
+      i = i + 1
+    }
+    return out + "]"
+  }
+  var out = "{"
+  var i = 0
+  while i < len(v.keys) {
+    if i > 0 { out = out + "," }
+    out = out + json_quote(v.keys[i]) + ":" + json_encode(v.kids[i])
+    i = i + 1
+  }
+  return out + "}"
+}
+
+# --- JSON parse -------------------------------------------------------------
+# a tiny recursive-descent parser over a byte string. `JP` carries the cursor so
+# the recursion threads position without a global. Malformed input yields a null
+# node and leaves the cursor where it stopped (best-effort, not a validator).
+property JP { s: pointer = null, i: int = 0, n: int = 0 }
+
+function jp_skip_ws(p: JP) -> void {
+  while p.i < p.n {
+    let c = p.s[p.i]
+    if c == 32 or c == 9 or c == 10 or c == 13 { p.i = p.i + 1 }
+    else { return }
+  }
+}
+
+function json_parse(s: pointer) -> Val {
+  let p = new JP
+  p.s = s;  p.i = 0;  p.n = len(s)
+  return jp_value(p)
+}
+
+function jp_value(p: JP) -> Val {
+  jp_skip_ws(p)
+  if p.i >= p.n { return value_null() }
+  let c = p.s[p.i]
+  if c == 123 { return jp_object(p) }              # '{'
+  if c == 91 { return jp_list(p) }                 # '['
+  if c == 34 { return value_str(jp_string(p)) }    # '"'
+  if c == 116 { p.i = p.i + 4;  return value_bool(1) }   # true
+  if c == 102 { p.i = p.i + 5;  return value_bool(0) }   # false
+  if c == 110 { p.i = p.i + 4;  return value_null() }    # null
+  return jp_number(p)
+}
+
+# read a quoted string (cursor on the opening quote) -> the unescaped contents.
+function jp_string(p: JP) -> pointer {
+  p.i = p.i + 1                                    # skip opening quote
+  var out = ""
+  while p.i < p.n {
+    let c = p.s[p.i]
+    if c == 34 { p.i = p.i + 1;  return out }       # closing quote
+    if c == 92 {                                    # escape
+      p.i = p.i + 1
+      if p.i < p.n {
+        let e = p.s[p.i]
+        if e == 110 { out = out + "\n" }
+        else { out = out + p.s[p.i..p.i + 1] }      # \" \\ \/ -> the literal char
+        p.i = p.i + 1
+      }
+    } else {
+      out = out + p.s[p.i..p.i + 1]
+      p.i = p.i + 1
+    }
+  }
+  return out
+}
+
+# read a number; a '.' makes it a fixed node, otherwise an int node.
+function jp_number(p: JP) -> Val {
+  var neg = 0
+  if p.i < p.n and p.s[p.i] == 45 { neg = 1;  p.i = p.i + 1 }   # '-'
+  var ip = 0
+  while p.i < p.n and p.s[p.i] >= 48 and p.s[p.i] <= 57 {
+    ip = ip * 10 + (p.s[p.i] - 48)
+    p.i = p.i + 1
+  }
+  if p.i < p.n and p.s[p.i] == 46 {                # '.', a fixed
+    p.i = p.i + 1
+    let digits = new []int
+    while p.i < p.n and p.s[p.i] >= 48 and p.s[p.i] <= 57 {
+      push(digits, p.s[p.i] - 48)
+      p.i = p.i + 1
+    }
+    # exact inverse of json_fixed_str's generation: fold the digits back from the
+    # last, frac_{i-1} = (d_i*65536 + frac_i)/10. Every intermediate stays < 2^16*10,
+    # so this is overflow-free and reproduces the raw Q16.16 for a generated decimal
+    # (an arbitrary hand-written decimal lands within one raw unit).
+    var frac = 0
+    var di = len(digits) - 1
+    while di >= 0 {
+      frac = (digits[di] * 65536 + frac) / 10
+      di = di - 1
+    }
+    var raw = ip * 65536 + frac
+    if neg != 0 { raw = 0 - raw }
+    return value_fixed(raw)
+  }
+  if neg != 0 { ip = 0 - ip }
+  return value_int(ip)
+}
+
+function jp_list(p: JP) -> Val {
+  let out = value_list()
+  p.i = p.i + 1                                    # '['
+  jp_skip_ws(p)
+  if p.i < p.n and p.s[p.i] == 93 { p.i = p.i + 1;  return out }   # empty ']'
+  while p.i < p.n {
+    push(out.kids, jp_value(p))
+    jp_skip_ws(p)
+    if p.i < p.n and p.s[p.i] == 44 { p.i = p.i + 1;  continue }   # ','
+    break
+  }
+  jp_skip_ws(p)
+  if p.i < p.n and p.s[p.i] == 93 { p.i = p.i + 1 }
+  return out
+}
+
+function jp_object(p: JP) -> Val {
+  let out = value_object()
+  p.i = p.i + 1                                    # '{'
+  jp_skip_ws(p)
+  if p.i < p.n and p.s[p.i] == 125 { p.i = p.i + 1;  return out }  # empty '}'
+  while p.i < p.n {
+    jp_skip_ws(p)
+    let key = jp_string(p)
+    jp_skip_ws(p)
+    if p.i < p.n and p.s[p.i] == 58 { p.i = p.i + 1 }             # ':'
+    push(out.keys, key)
+    push(out.kids, jp_value(p))
+    jp_skip_ws(p)
+    if p.i < p.n and p.s[p.i] == 44 { p.i = p.i + 1;  continue }   # ','
+    break
+  }
+  jp_skip_ws(p)
+  if p.i < p.n and p.s[p.i] == 125 { p.i = p.i + 1 }
+  return out
+}
