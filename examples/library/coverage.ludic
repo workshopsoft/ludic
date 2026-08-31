@@ -1,0 +1,51 @@
+# coverage.ludic — a spec built to be measured by `bin/x test --coverage` (issue
+# #45). Compiled with `--coverage`, every statement bumps a per-source-line hit
+# counter; at exit the counts are dumped and `bin/x test --coverage` turns them
+# into a per-file line-coverage report.
+#
+# The tests below exercise `sign` fully but only the taken branches of `grade`,
+# so the report flags `grade`'s unreached line — the whole point of coverage:
+# it shows you the branch your tests forgot.
+#
+# As an ordinary spec it still passes and prints:
+#   == 3 passed, 0 failed ==
+program CoverageSpec {
+  # fully covered: the tests below hit all three returns.
+  function sign(n: int) -> int {
+    if n > 0 {
+      return 1
+    }
+    if n < 0 {
+      return 0 - 1
+    }
+    return 0
+  }
+
+  # partially covered: no test passes a score below 60, so the `return 0` (fail)
+  # line is never reached and shows up as uncovered in the report.
+  function grade(score: int) -> int {
+    if score >= 90 {
+      return 4
+    }
+    if score >= 60 {
+      return 2
+    }
+    return 0
+  }
+
+  test "sign covers every branch" {
+    expect_eq(sign(7), 1)
+    expect_eq(sign(0 - 3), 0 - 1)
+    expect_eq(sign(0), 0)
+  }
+
+  test "grade: high scores" {
+    expect_eq(grade(95), 4)
+    expect_eq(grade(75), 2)
+  }
+
+  test "grade: boundary" {
+    expect_eq(grade(90), 4)
+    expect_eq(grade(60), 2)
+  }
+}

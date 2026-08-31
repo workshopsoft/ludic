@@ -87,6 +87,66 @@ function panic_case() -> void {
   else { bad2("panic", `rc={string(rc)} err=[{msg}]`) }
 }
 
+# issue #45: `bin/x test --coverage`. Compile each test-spec with `--coverage`,
+# run it with LUDIC_COVERAGE pointed at a per-file dump, then aggregate the dumps
+# into a clean per-file line-coverage report. The instrumentation is flag-gated,
+# so this reuses the same seed-built bin/ludicc the rest of the suite does.
+function cov_one(path: pointer, dir: pointer) -> int {
+  let nm = flat(path)
+  let ll = `/tmp/x_cov_{nm}.ll`
+  let bin = `/tmp/x_cov_{nm}`
+  let cov = `{dir}/{nm}.cov`
+  if not shq(`bin/ludicc --coverage examples/{path}.ludic > {ll} 2>/tmp/x_cov.err`) {
+    bad2(path, capture_line("tail -1 /tmp/x_cov.err")); return 1
+  }
+  if not shq(`{cc()} -O2 {ll} -o {bin} 2>/tmp/x_cov.err`) {
+    bad2(path, capture_line("tail -1 /tmp/x_cov.err")); return 1
+  }
+  run(`rm -f {ll}`)
+  # run the spec; its atexit hook writes the dump to $LUDIC_COVERAGE
+  if not shq(`LUDIC_COVERAGE={cov} {bin} > /dev/null 2>&1`) {
+    bad2(path, "spec exited non-zero"); return 1
+  }
+  if not file_exists(cov) { bad2(path, "no coverage dump written"); return 1 }
+  # aggregate: total instrumented lines, how many were hit, and which were missed.
+  # each row is `<line> <hits>`, so an unhit line ends in " 0" — grep counts and
+  # lists them (avoiding awk, whose braces collide with string interpolation).
+  let total = str_to_int(capture_line(`grep -c '^[0-9]' {cov}`))
+  let nmiss = str_to_int(capture_line(`grep -c ' 0$' {cov}`))
+  let covered = total - nmiss
+  let missed = capture_line(`grep ' 0$' {cov} | cut -d' ' -f1 | tr '\n' ' '`)
+  var pct = 100
+  if total > 0 { pct = (covered * 100) / total }
+  var line = `  examples/{path}.ludic   {string(covered)}/{string(total)} lines  {string(pct)}%`
+  if not (missed == "") { line = `{line}   uncovered: {missed}` }
+  print(line)
+  COV_COVERED = COV_COVERED + covered
+  COV_TOTAL = COV_TOTAL + total
+  return 0
+}
+
+var COV_COVERED: int = 0
+var COV_TOTAL: int = 0
+
+function cmd_test_coverage() -> int {
+  # the suite normally rebuilds bin/ludicc from the seed; do the same here so the
+  # instrumentation path is exactly what a clean checkout ships.
+  run("mkdir -p bin build /tmp/x_cov_out")
+  if (not is_exec("bin/ludicc")) or newer("selfhost/ludicc.seed.ll", "bin/ludicc") {
+    if not shq(`{cc()} selfhost/ludicc.seed.ll -o bin/ludicc`) { err("x: cannot build bin/ludicc from the seed\n"); return 1 }
+  }
+  COV_COVERED = 0
+  COV_TOTAL = 0
+  print("== line coverage (bin/x test --coverage) ==")
+  cov_one("library/coverage", "/tmp/x_cov_out")
+  cov_one("library/testing", "/tmp/x_cov_out")
+  var pct = 100
+  if COV_TOTAL > 0 { pct = (COV_COVERED * 100) / COV_TOTAL }
+  print(`  ----`)
+  print(`  total: {string(COV_COVERED)}/{string(COV_TOTAL)} lines  {string(pct)}%`)
+  return 0
+}
+
 function cmd_test() -> int {
   PASS = 0
   FAIL = 0
@@ -141,6 +201,7 @@ function cmd_test() -> int {
   feat_case("library/render", "", "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18", "render.ludic (Screen pixel/oval/camera/clip/blend_mode/measure_text + Camera set/follow/shake, verified by pixel readback)")
   feat_case("library/lighting", "", "1 2 3 4 5 6 7 8 9 10 11 12 13 14", "lighting.ludic (Light ambient/point radial falloff + occluder hard shadows — 2D light accumulation, verified by pixel readback)")
   spec_case("library/testing", "== 6 passed, 0 failed ==")
+  spec_case("library/coverage", "== 3 passed, 0 failed ==")
   feat_case("library/errors", "", "5 10 0 7 1", "errors.ludic (assert guards an invariant, holds -> runs to the end; issue #8 success path)")
   panic_case()
   feat_case("library/logging", "", "0 5 2 1", "logging.ludic (Log levels, set_level/level threshold, structured fields)")

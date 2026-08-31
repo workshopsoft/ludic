@@ -1,0 +1,3 @@
+bump: minor
+type: feat
+Line coverage for the testing framework — compile with `--coverage` and the compiler instruments each statement with a per-source-line hit counter, dumped at exit (via an `atexit` hook) to the file named by `$LUDIC_COVERAGE` (default `ludic.cov`) as a `FILE <name>` header plus one `<line> <hits>` row per instrumented line. The instrumentation is flag-gated and additive, so an ordinary build — and the compiler's own self-compile — stays byte-identical and the C-free bootstrap fixpoint is untouched. `bin/x test --coverage` compiles the test specs this way, runs them, and aggregates the dumps into a per-file line-coverage report that names the unreached lines. Closes the last open acceptance item of the testing framework (#12).

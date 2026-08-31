@@ -37,6 +37,7 @@ program X {
     print("")
     print("test:")
     print("  x test                        the full regression suite")
+    print("  x test --coverage             per-file line coverage over the test specs")
     print("  x selfhost-test               the self-hosting suite (correctness + bootstrap fixpoints)")
     print("  x test-tools                  the editor-toolchain suite")
     print("  x golden                      regenerate selfhost/golden/renders.sha256 (review with git diff)")
@@ -79,7 +80,10 @@ program X {
     if (cmd == "app") { exit(cmd_app()) }
     if (cmd == "tools") { exit(cmd_tools()) }
     if (cmd == "clean") { exit(cmd_clean()) }
-    if (cmd == "test") { exit(cmd_test()) }
+    if (cmd == "test") {
+      if (argn(2, "") == "--coverage") { exit(cmd_test_coverage()) }
+      exit(cmd_test())
+    }
     if (cmd == "selfhost-test") { exit(cmd_selfhost_test()) }
     if (cmd == "test-tools") { exit(cmd_test_tools()) }
     if (cmd == "check-docs") { exit(cmd_check_docs()) }

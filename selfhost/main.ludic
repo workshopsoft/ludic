@@ -77,6 +77,7 @@ entry {
   var fmt = false         # --fmt: lex + parse only, then exit (the doc-check gate)
   var save = false        # --save-temps: keep the intermediate .ll
   var run = false         # compile then execute the result
+  g_coverage = false      # --coverage: instrument each statement with a per-line hit counter
 
   # multi-call: invoked as `ludic` -> run mode by default
   if (base_name(arg(0)) == "ludic") { run = true }
@@ -91,6 +92,7 @@ entry {
     else { if (a == ("--fmt")) { fmt = true }
     else { if (a == ("--save-temps")) { save = true }
     else { if (a == ("--run")) { run = true }
+    else { if (a == ("--coverage")) { g_coverage = true }
     else { if (a == ("-o")) { ai = ai + 1;  if ai < arg_count() { out = arg(ai) } }
     else {
       # an unknown flag is ignored (with a note) rather than mistaken for the
@@ -99,7 +101,7 @@ entry {
         let m = `ludicc: ignoring unknown flag {a}\n`
         file_write(file_stderr(), m, len(m))
       } else { path = a }
-    } } } } } } } }
+    } } } } } } } } }
     ai = ai + 1
   }
 
@@ -113,6 +115,7 @@ entry {
   g_src_name = base_name(path)                    # for panic/expect file:line messages
   lex(src)
   parse_program()
+  g_prog_user_end = len(prog)                     # decls from the user's source; runtime splice appends after
 
   # --fmt is the doc-check gate: reaching here means it lexed and parsed. A parse
   # error would already have exited nonzero, so a clean parse exits 0. (Canonical

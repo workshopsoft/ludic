@@ -243,7 +243,17 @@ function block() -> Node {
   return b
 }
 
+# parse a statement and stamp it with its source line (the first token's line),
+# unless the specific rule already set one. The line drives --coverage and the
+# panic/expect file:line messages.
 function stmt() -> Node {
+  let ln = toks[pi].line
+  let n = stmt_body()
+  if n.line == 0 { n.line = ln }
+  return n
+}
+
+function stmt_body() -> Node {
   let t = toks[pi]
   if t.kind == TK_ID {
     if (t.text == "let") or (t.text == "var") {

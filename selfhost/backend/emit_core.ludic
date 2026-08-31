@@ -39,6 +39,39 @@ var g_tests: []Node              # test "name" { ... } blocks collected by the p
 var g_src_name: pointer = "?"    # base name of the source file, for panic/expect file:line messages
 var g_uses_longstr: bool = false  # string(long) / interpolating a long was emitted -> emit fn_long_str
 
+# ---- line coverage (issue #45) --------------------------------------------
+# --coverage instruments each emitted statement with a bump of a per-source-line
+# hit counter. Everything here is gated behind g_coverage (default off), so an
+# ordinary build — and the compiler's own self-compile — stays byte-identical
+# and the C-free bootstrap fixpoint is untouched.
+var g_coverage: bool = false     # --coverage was passed
+var g_cov_active: bool = true    # instrument the code being emitted now (off for spliced runtime fns)
+var g_cov_lines: []int           # distinct source lines instrumented, first-seen order (slot = index)
+var g_prog_user_end: int = 0     # count of prog decls from the user's source (before the runtime splice)
+
+# slot index for a source line, appending on first sight so g_cov_lines doubles
+# as the line table dumped at exit.
+function cov_slot(line: int) -> int {
+  var i = 0
+  while i < len(g_cov_lines) { if g_cov_lines[i] == line { return i };  i = i + 1 }
+  push(g_cov_lines, line)
+  return len(g_cov_lines) - 1
+}
+
+# emit the per-statement hit bump: @L_cov_hits[slot] += 1. A no-op unless
+# --coverage is on and we are in user code (not a spliced runtime function).
+function emit_cov_hit(line: int) -> void {
+  if not g_coverage { return }
+  if not g_cov_active { return }
+  if line <= 0 { return }
+  let slot = cov_slot(line)
+  let p = nreg()
+  emit("  ");  emit(p);  emit(" = getelementptr inbounds i32, ptr @L_cov_hits, i32 ");  emit(itoa(slot));  emit("\n")
+  let v = emit_bind(`load i32, ptr {p}`)
+  let v1 = emit_bind(`add i32 {v}, 1`)
+  emit("  store i32 ");  emit(v1);  emit(", ptr ");  emit(p);  emit("\n")
+}
+
 # loop targets for break/continue (innermost last)
 var brk_lbl: []pointer
 var cnt_lbl: []pointer
