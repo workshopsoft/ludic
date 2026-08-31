@@ -1,0 +1,140 @@
+# ============================================================================
+# audio.ludic — the Audio.* standard library (#22).
+#
+# A small, game-shaped sound API over the platform audio backend (audio.ll,
+# AVAudioPlayer on macOS). A sound is loaded once into a handle; sfx are fired
+# one-shot, music plays on a single looping channel. Playback itself is not part
+# of the deterministic simulation — the device output is real-time and
+# non-deterministic — but every *trigger* here is an ordinary function call the
+# game makes from a frame handler, so a recorded/replayed run fires exactly the
+# same sounds at exactly the same frames. Nothing in this file feeds the
+# lockstep sim.
+#
+# Headless builds carry the whole API as no-ops: every native call is guarded by
+# is_windowed(), which folds to a compile-time constant, so the snd_* intrinsics
+# (and AVFoundation) are dead-stripped out of a headless binary. Audio.load then
+# returns 0 and Audio.is_playing returns false, so the same game code runs in the
+# test harness without an audio device.
+# ============================================================================
+
+const AUDIO_CAP: int = 64          # max simultaneously-loaded sounds
+
+var snd_ready:   bool  = false
+var snd_tab:     pointers = null    # handle (1-based) -> AVAudioPlayer pointer
+var snd_master:  fixed = 1.0        # master volume, applied to every play
+var snd_rate:    fixed = 1.0        # playback rate / pitch (1.0 = normal)
+var snd_music:   int   = 0          # the handle currently playing as music (0 = none)
+
+function audio_init() -> void {
+  if snd_ready { return }
+  snd_tab = bytes(AUDIO_CAP * 8)     # one 8-byte pointer slot per handle
+  fill(snd_tab, 0, AUDIO_CAP * 8)    # malloc does not zero; empty slots must read null
+  snd_ready = true
+}
+
+# Resolve a 1-based handle to its player pointer (null if out of range / empty).
+function audio_get(id: int) -> pointer {
+  audio_init()
+  if (id < 1) or (id > AUDIO_CAP) { return null }
+  return snd_tab[id - 1]
+}
+
+# Load a sound file and return its handle (>= 1), or 0 on failure / headless.
+function audio_load(path: pointer) -> int {
+  audio_init()
+  if not is_windowed() { return 0 }
+  var i = 0
+  while i < AUDIO_CAP {
+    if snd_tab[i] == null {
+      let p = snd_load(path)
+      if p == null { return 0 }
+      snd_tab[i] = p
+      return i + 1
+    }
+    i = i + 1
+  }
+  return 0
+}
+
+# Fire a one-shot sound from the start.
+function audio_play(id: int) -> void {
+  if not is_windowed() { return }
+  let p = audio_get(id)
+  if p == null { return }
+  snd_play(p, 0, snd_rate, snd_master)
+}
+
+# Play a sound as looping background music on the single music channel; any
+# previous music is stopped first.
+function audio_play_music(id: int) -> void {
+  if not is_windowed() { return }
+  let p = audio_get(id)
+  if p == null { return }
+  audio_stop_music()
+  snd_music = id
+  snd_play(p, -1, snd_rate, snd_master)
+}
+
+# Stop one sound.
+function audio_stop(id: int) -> void {
+  if not is_windowed() { return }
+  let p = audio_get(id)
+  if p == null { return }
+  snd_stop(p)
+  if id == snd_music { snd_music = 0 }
+}
+
+# Stop the current music channel.
+function audio_stop_music() -> void {
+  if not is_windowed() { return }
+  if snd_music != 0 {
+    let p = audio_get(snd_music)
+    if p != null { snd_stop(p) }
+    snd_music = 0
+  }
+}
+
+# Stop every loaded sound.
+function audio_stop_all() -> void {
+  if not is_windowed() { return }
+  audio_init()
+  var i = 0
+  while i < AUDIO_CAP {
+    if snd_tab[i] != null { snd_stop(snd_tab[i]) }
+    i = i + 1
+  }
+  snd_music = 0
+}
+
+# Master volume (0.0 .. 1.0) — applied to every currently-loaded sound now and
+# to every future play.
+function audio_volume(v: fixed) -> void {
+  snd_master = v
+  if not is_windowed() { return }
+  audio_init()
+  var i = 0
+  while i < AUDIO_CAP {
+    if snd_tab[i] != null { snd_set_volume(snd_tab[i], v) }
+    i = i + 1
+  }
+}
+
+# Playback rate / pitch (1.0 = normal, 0.5 = an octave down, 2.0 = up).
+function audio_pitch(v: fixed) -> void {
+  snd_rate = v
+  if not is_windowed() { return }
+  audio_init()
+  var i = 0
+  while i < AUDIO_CAP {
+    if snd_tab[i] != null { snd_set_rate(snd_tab[i], v) }
+    i = i + 1
+  }
+}
+
+# Is this sound currently playing?
+function audio_is_playing(id: int) -> bool {
+  if not is_windowed() { return false }
+  let p = audio_get(id)
+  if p == null { return false }
+  return snd_playing(p) != 0
+}

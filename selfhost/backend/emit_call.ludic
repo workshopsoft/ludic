@@ -216,6 +216,21 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "touch_y")      { bare = "input_touch_y";      push(labels, "index") }
     if (meth == "set_touch")    { bare = "input_set_touch";    push(labels, "index"); push(labels, "x"); push(labels, "y"); push(labels, "active") }
   }
+  # Audio.* (#22) — sfx/music playback over the platform audio backend
+  # (runtime/native/audio.ludic + audio.ll). Playback is out-of-band; the
+  # triggers are ordinary frame-driven calls, so a replay fires the same sounds.
+  if (ns == "Audio") {
+    if (meth == "load")       { bare = "audio_load";       push(labels, "path") }
+    if (meth == "play")       { bare = "audio_play";       push(labels, "id") }
+    if (meth == "play_sound") { bare = "audio_play";       push(labels, "id") }
+    if (meth == "play_music") { bare = "audio_play_music"; push(labels, "id") }
+    if (meth == "stop")       { bare = "audio_stop";       push(labels, "id") }
+    if (meth == "stop_music") { bare = "audio_stop_music" }
+    if (meth == "stop_all")   { bare = "audio_stop_all" }
+    if (meth == "volume")     { bare = "audio_volume";     push(labels, "v") }
+    if (meth == "pitch")      { bare = "audio_pitch";      push(labels, "v") }
+    if (meth == "is_playing") { bare = "audio_is_playing"; push(labels, "id") }
+  }
   # Phase 3: the bare reflection / networking / process builtins, namespaced.
   # Each is a pure alias — the callee is rewritten to the bare name below.
   if (ns == "World") {

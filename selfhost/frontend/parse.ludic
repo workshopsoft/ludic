@@ -192,6 +192,8 @@ function p_postfix() -> Node {
       # the engine auto-advance to do the ticking.
       if e.a.kind == E_ID and e.a.s == "Anim" and (e.s == "play" or e.s == "clip" or e.s == "on_frame" or e.s == "fired") { g_uses_anim_rt = true }
       if e.a.kind == E_ID and e.a.s == "Motion" and e.s == "to" { g_uses_anim_rt = true }
+      # Audio.* (#22) — any Audio method splices the audio runtime.
+      if e.a.kind == E_ID and e.a.s == "Audio" { g_uses_audio = true }
       # Tween.to/chain/delay/value/stop/parallel (#48): the fluent stateful handles
       # live in tween.ludic, advanced by an engine-owned system each Update tick.
       if e.a.kind == E_ID and e.a.s == "Tween" and (e.s == "to" or e.s == "chain" or e.s == "delay" or e.s == "value" or e.s == "stop" or e.s == "parallel") { g_uses_tween_rt = true }
@@ -426,6 +428,7 @@ var g_uses_esys: bool = false     # an engine-owned system component (SpriteAnim
 var g_uses_input: bool = false    # a program used Input.bind/down/poll/… (action maps + record/replay) -> splice input.ludic
 var g_uses_anim_rt: bool = false  # Anim.play/clip/on_frame/fired or Motion.to (#48) -> splice systems.ludic + force the reflection ABI
 var g_uses_tween_rt: bool = false # Tween.to/chain/delay/… (#48) -> splice tween.ludic + run esys_tween each Update
+var g_uses_audio: bool = false    # Audio.* (#22) -> splice audio.ludic; a windowed build also links audio.ll + AVFoundation
 
 function already_loaded(full: pointer) -> bool {
   var i = 0
@@ -644,6 +647,14 @@ function maybe_splice_runtime() -> void {
     cur_dir = ""
     do_import("runtime/native/core.ludic")
     do_import("runtime/native/tween.ludic")
+    cur_dir = saved
+  }
+  # Audio.* (#22): splice the Audio runtime. It is self-contained — its native
+  # calls (snd_*) are is_windowed()-guarded, so a headless build carries the API
+  # as no-ops and needs no audio backend — so it works in a plain program too.
+  if g_uses_audio {
+    cur_dir = ""
+    do_import("runtime/native/audio.ludic")
     cur_dir = saved
   }
   # Anim.play/Motion.to sugar (#48): the writes live in systems.ludic and use the

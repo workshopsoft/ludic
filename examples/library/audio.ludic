@@ -1,0 +1,33 @@
+# audio.ludic — the Audio.* standard library (#22). Sound effects and music over
+# the platform audio backend (AVAudioPlayer on macOS). A sound is loaded once
+# into a handle; sfx fire one-shot, music loops on a single channel; master
+# volume and pitch apply across everything.
+#
+# Playback is out-of-band — the audio device is real-time, not part of the
+# deterministic simulation — but every trigger is an ordinary frame-driven call,
+# so a recorded run replays the same sounds at the same frames. Headless (no
+# window) every call is a safe no-op: load returns 0 and is_playing returns
+# false, so the same code runs under the test harness. A full headless run:
+#   bin/ludic examples/library/audio.ludic  ->  0 0 0 0 1
+program AudioDemo {
+  function bi(b: bool) -> int { if b { return 1 };  return 0 }
+
+  entry {
+    let sfx = Audio.load("assets/sfx/blip.wav")     # 0 headless (no audio device)
+    let mus = Audio.load("assets/music/theme.ogg")  # 0 headless
+    print(sfx)                                       # 0
+    print(mus)                                       # 0
+
+    Audio.volume(0.8)                                # master volume, 0.0..1.0
+    Audio.pitch(1.25)                                # playback rate / pitch
+    Audio.play(sfx)                                  # one-shot sound effect
+    Audio.play_music(mus)                            # looping background music
+    print(bi(Audio.is_playing(sfx)))                 # 0 headless
+
+    Audio.stop(sfx)                                  # stop one sound
+    Audio.stop_music()                               # stop the music channel
+    Audio.stop_all()                                 # stop everything
+    print(bi(Audio.is_playing(mus)))                 # 0
+    print(1)                                          # 1 — every call returned cleanly
+  }
+}

@@ -77,7 +77,9 @@ function cmd_app() -> int {
   let ll = `{outbin}.ll`
   print(`ludicc: {src} -> {outbin}  (Ludic-written compiler -> LLVM IR -> windowed binary)`)
   if not shq(`bin/ludicc --windowed {src} > {ll}`) { return 1 }
-  if not shq(`{cc()} -O2 {ll} runtime/native/cocoa.ll -framework Cocoa -Wl,-needed_framework,GameController -Wl,-rpath,@loader_path -o {outbin}`) { return 1 }
+  # audio.ll (#22) is always linked here for the dev runner — unused snd_* are
+  # dead-stripped; the canonical `ludicc -o` path links it only when Audio.* is used.
+  if not shq(`{cc()} -O2 {ll} runtime/native/cocoa.ll runtime/native/audio.ll -framework Cocoa -Wl,-needed_framework,GameController -Wl,-needed_framework,AVFoundation -Wl,-rpath,@loader_path -o {outbin}`) { return 1 }
   if not save { run(`rm -f {ll}`) }
   print(`done. run: ./{outbin}   (from the repo root, so assets/ resolves)`)
   return 0

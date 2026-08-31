@@ -165,6 +165,13 @@ entry {
     # dead-stripped; -needed_framework forces the load command so the class is
     # registered and #51's gamepad polling can see it.
     cmd = `{cmd} {cocoa} -framework Cocoa -Wl,-needed_framework,GameController -Wl,-rpath,@loader_path`
+    # Audio.* (#22) pulls in the AVAudioPlayer backend and AVFoundation, but only
+    # when the program actually uses it — the snd_* calls are is_windowed()-guarded
+    # yet still live in a windowed build, so the backend must link.
+    if g_uses_audio {
+      let audio = path_join(home, "runtime/native/audio.ll")
+      cmd = `{cmd} {audio} -Wl,-needed_framework,AVFoundation`
+    }
   }
   cmd = `{cmd} -o {out}`
 

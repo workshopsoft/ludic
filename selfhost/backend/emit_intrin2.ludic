@@ -13,6 +13,8 @@ function is_intrinsic2(name: pointer) -> bool {
   if (name == "win_running") or (name == "win_close") { return true }
   if (name == "win_held") or (name == "win_mouse") { return true }   # #50 device layer
   if (name == "win_pad") or (name == "win_touch") { return true }    # #51 gamepad / touch
+  if (name == "snd_load") or (name == "snd_play") or (name == "snd_stop") { return true }   # #22 audio
+  if (name == "snd_playing") or (name == "snd_set_volume") or (name == "snd_set_rate") { return true }
   return false
 }
 
@@ -60,5 +62,15 @@ function emit_intrinsic2(name: pointer, e: Node) -> Val {
   # words/point [active, x, y]. Both windowed-only, DCE'd headless.
   if (name == "win_pad")   { let a = arg_code(e, 0);  emit("  call void @win_pad(ptr ");  emit(a);  emit(")\n");  return val("0", "void") }
   if (name == "win_touch") { let a = arg_code(e, 0);  emit("  call void @win_touch(ptr ");  emit(a);  emit(")\n");  return val("0", "void") }
+  # #22 audio backend — AVAudioPlayer via audio.ll; windowed-only, DCE'd headless.
+  if (name == "snd_load") { let a = arg_code(e, 0);  return val(emit_bind(`call ptr @snd_load(ptr {a})`), "pointer") }
+  if (name == "snd_play") {
+    let a = arg_code(e, 0);  let b = arg_code(e, 1);  let c = arg_code(e, 2);  let d = arg_code(e, 3)
+    emit("  call void @snd_play(ptr ");  emit(a);  emit(", i32 ");  emit(b);  emit(", i32 ");  emit(c);  emit(", i32 ");  emit(d);  emit(")\n");  return val("0", "void")
+  }
+  if (name == "snd_stop") { let a = arg_code(e, 0);  emit("  call void @snd_stop(ptr ");  emit(a);  emit(")\n");  return val("0", "void") }
+  if (name == "snd_playing") { let a = arg_code(e, 0);  return val(emit_bind(`call i32 @snd_playing(ptr {a})`), "int") }
+  if (name == "snd_set_volume") { let a = arg_code(e, 0);  let b = arg_code(e, 1);  emit("  call void @snd_set_volume(ptr ");  emit(a);  emit(", i32 ");  emit(b);  emit(")\n");  return val("0", "void") }
+  if (name == "snd_set_rate") { let a = arg_code(e, 0);  let b = arg_code(e, 1);  emit("  call void @snd_set_rate(ptr ");  emit(a);  emit(", i32 ");  emit(b);  emit(")\n");  return val("0", "void") }
   return val("0", "void")
 }
