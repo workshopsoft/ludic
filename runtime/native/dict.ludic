@@ -1,0 +1,162 @@
+# ============================================================================
+# dict.ludic — string-keyed containers: a hash map (`Dict.*`) from string keys
+# to int values, and a set (`Set.*`) of string members. Written in Ludic.
+#
+# The everyday lookups a game needs: counts and registries by name (Dict) and
+# membership by name — tags, visited tiles, unlocked achievements (Set). Both
+# are backed by one open-addressing hash table (FNV-1a hash, linear probing,
+# tombstone deletes, grow at load factor 0.7), so lookup and insert are O(1)
+# average, not the linear scan a plain list would give. Keys are compared by
+# content (the language's `==` on strings). Values are `int`, which also holds
+# an `entity` handle or any small id; for richer values, use the Value.* tree.
+#
+# ludicc splices this file into any program that mentions `Dict.*` or `Set.*`;
+# it is a self-contained fragment (only compiler intrinsics), so a plain tool
+# works as well as a game. The namespaces (emit_call.ludic) alias each method to
+# the matching `dict_*` / `set_*` function below. A Set is just a Dict whose
+# values are ignored, so `Set.*` delegates to the same table.
+# ============================================================================
+
+const DICT_EMPTY: int = 0    # slot never used
+const DICT_USED:  int = 1    # slot holds a live key
+const DICT_TOMB:  int = 2    # slot held a key that was removed
+
+# keys: one 8-byte pointer slot each (null when empty); vals/used: one word each.
+property Dict { keys: pointers, vals: words, used: words, cap: int = 0, count: int = 0 }
+
+# (re)allocate the three parallel arrays to `cap` slots, all cleared
+function dict_init(d: Dict, cap: int) -> void {
+  d.cap = cap;  d.count = 0
+  d.keys = bytes(cap * 8);  fill(d.keys, 0, cap * 8)   # null slots
+  d.vals = words(cap);      fill(d.vals, 0, cap * 4)
+  d.used = words(cap);      fill(d.used, 0, cap * 4)
+}
+
+function dict_new() -> Dict {
+  let d = new Dict
+  dict_init(d, 16)
+  return d
+}
+
+# FNV-1a over the key's bytes -> a non-negative slot index in [0, cap)
+function dict_slot(key: pointer, cap: int) -> int {
+  var h = 0 - 2128831035          # FNV-1a offset basis, as a signed i32
+  var i = 0
+  while key[i] != 0 { h = (h ^ key[i]) * 16777619;  i = i + 1 }
+  h = h & 2147483647              # clear the sign bit -> non-negative
+  return h - (h / cap) * cap      # h % cap
+}
+
+# slot index of `key`, or -1 if absent
+function dict_find(d: Dict, key: pointer) -> int {
+  if d.cap == 0 { return 0 - 1 }
+  var idx = dict_slot(key, d.cap)
+  var probes = 0
+  while probes < d.cap {
+    let u = d.used[idx]
+    if u == DICT_EMPTY { return 0 - 1 }
+    if u == DICT_USED and d.keys[idx] == key { return idx }
+    idx = idx + 1
+    if idx >= d.cap { idx = 0 }
+    probes = probes + 1
+  }
+  return 0 - 1
+}
+
+# grow to double capacity and reinsert every live key
+function dict_grow(d: Dict) -> void {
+  let oldcap = d.cap
+  let oldkeys = d.keys
+  let oldvals = d.vals
+  let oldused = d.used
+  var nc = oldcap * 2
+  if nc < 16 { nc = 16 }
+  dict_init(d, nc)
+  var i = 0
+  while i < oldcap {
+    if oldused[i] == DICT_USED { dict_set(d, oldkeys[i], oldvals[i]) }
+    i = i + 1
+  }
+}
+
+# insert or update key -> value
+function dict_set(d: Dict, key: pointer, value: int) -> void {
+  if d.cap == 0 { dict_init(d, 16) }
+  if (d.count + 1) * 10 >= d.cap * 7 { dict_grow(d) }      # load factor 0.7
+  var idx = dict_slot(key, d.cap)
+  var tomb = 0 - 1
+  var probes = 0
+  while probes < d.cap {
+    let u = d.used[idx]
+    if u == DICT_EMPTY {
+      var slot = idx
+      if tomb >= 0 { slot = tomb }
+      d.keys[slot] = key;  d.vals[slot] = value;  d.used[slot] = DICT_USED
+      d.count = d.count + 1
+      return
+    }
+    if u == DICT_TOMB { if tomb < 0 { tomb = idx } }
+    if u == DICT_USED and d.keys[idx] == key { d.vals[idx] = value;  return }
+    idx = idx + 1
+    if idx >= d.cap { idx = 0 }
+    probes = probes + 1
+  }
+  if tomb >= 0 {
+    d.keys[tomb] = key;  d.vals[tomb] = value;  d.used[tomb] = DICT_USED
+    d.count = d.count + 1
+  }
+}
+
+# the value for key, or 0 if absent (use dict_get_or to distinguish a stored 0)
+function dict_get(d: Dict, key: pointer) -> int {
+  let i = dict_find(d, key)
+  if i < 0 { return 0 }
+  return d.vals[i]
+}
+
+function dict_get_or(d: Dict, key: pointer, fallback: int) -> int {
+  let i = dict_find(d, key)
+  if i < 0 { return fallback }
+  return d.vals[i]
+}
+
+function dict_has(d: Dict, key: pointer) -> bool { return dict_find(d, key) >= 0 }
+
+# remove key (a no-op if absent); leaves a tombstone so probes still find later keys
+function dict_remove(d: Dict, key: pointer) -> void {
+  let i = dict_find(d, key)
+  if i < 0 { return }
+  d.used[i] = DICT_TOMB
+  d.keys[i] = null
+  d.count = d.count - 1
+}
+
+function dict_size(d: Dict) -> int { return d.count }
+
+function dict_clear(d: Dict) -> void {
+  if d.cap == 0 { return }
+  fill(d.keys, 0, d.cap * 8)
+  fill(d.used, 0, d.cap * 4)
+  d.count = 0
+}
+
+# every live key, in unspecified order
+function dict_keys(d: Dict) -> []pointer {
+  let out = new []pointer
+  var i = 0
+  while i < d.cap {
+    if d.used[i] == DICT_USED { push(out, d.keys[i]) }
+    i = i + 1
+  }
+  return out
+}
+
+# ---- Set: a Dict whose values are ignored ----------------------------------
+
+function set_new() -> Dict { return dict_new() }
+function set_add(s: Dict, key: pointer) -> void { dict_set(s, key, 1) }
+function set_has(s: Dict, key: pointer) -> bool { return dict_has(s, key) }
+function set_remove(s: Dict, key: pointer) -> void { dict_remove(s, key) }
+function set_size(s: Dict) -> int { return dict_size(s) }
+function set_clear(s: Dict) -> void { dict_clear(s) }
+function set_members(s: Dict) -> []pointer { return dict_keys(s) }

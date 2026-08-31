@@ -412,6 +412,26 @@
     "decimal-rescale",
     "decimal-str"
   ],
+  "dict": [
+    "dict-new",
+    "dict-set",
+    "dict-get",
+    "dict-get_or",
+    "dict-has",
+    "dict-remove",
+    "dict-size",
+    "dict-clear",
+    "dict-keys"
+  ],
+  "set": [
+    "set-new",
+    "set-add",
+    "set-has",
+    "set-remove",
+    "set-size",
+    "set-clear",
+    "set-members"
+  ],
   "duration": [
     "duration-seconds",
     "duration-minutes",

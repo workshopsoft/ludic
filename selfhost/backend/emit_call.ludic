@@ -365,6 +365,30 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "rescale") { bare = "decimal_rescale";  push(labels, "d"); push(labels, "places") }
     if (meth == "str")     { bare = "decimal_str";      push(labels, "d") }
   }
+  # Dict.* / Set.* -> the hash-table engine (runtime/native/dict.ludic, spliced
+  # on demand). Ordinary Ludic functions, so the generic call path resolves them
+  # to @fn_dict_* / @fn_set_* and keeps their return types (Dict / int / bool /
+  # []pointer).
+  if (ns == "Dict") {
+    if (meth == "new")     { bare = "dict_new" }
+    if (meth == "set")     { bare = "dict_set";    push(labels, "d"); push(labels, "key"); push(labels, "value") }
+    if (meth == "get")     { bare = "dict_get";    push(labels, "d"); push(labels, "key") }
+    if (meth == "get_or")  { bare = "dict_get_or"; push(labels, "d"); push(labels, "key"); push(labels, "fallback") }
+    if (meth == "has")     { bare = "dict_has";    push(labels, "d"); push(labels, "key") }
+    if (meth == "remove")  { bare = "dict_remove"; push(labels, "d"); push(labels, "key") }
+    if (meth == "size")    { bare = "dict_size";   push(labels, "d") }
+    if (meth == "clear")   { bare = "dict_clear";  push(labels, "d") }
+    if (meth == "keys")    { bare = "dict_keys";   push(labels, "d") }
+  }
+  if (ns == "Set") {
+    if (meth == "new")     { bare = "set_new" }
+    if (meth == "add")     { bare = "set_add";     push(labels, "s"); push(labels, "key") }
+    if (meth == "has")     { bare = "set_has";     push(labels, "s"); push(labels, "key") }
+    if (meth == "remove")  { bare = "set_remove";  push(labels, "s"); push(labels, "key") }
+    if (meth == "size")    { bare = "set_size";    push(labels, "s") }
+    if (meth == "clear")   { bare = "set_clear";   push(labels, "s") }
+    if (meth == "members") { bare = "set_members"; push(labels, "s") }
+  }
   if (ns == "Grid") {
     if (meth == "line")          { bare = "grid_line";          push(labels, "x0"); push(labels, "y0"); push(labels, "x1"); push(labels, "y1") }
     if (meth == "blocked")       { bare = "grid_blocked";       push(labels, "x"); push(labels, "y"); push(labels, "wall") }

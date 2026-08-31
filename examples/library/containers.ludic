@@ -1,0 +1,39 @@
+# containers.ludic — Dict.* (string-keyed hash map) and Set.* (string set).
+# Each assertion that holds prints its number, so a full run prints:
+#   1 2 3 4 5 6 7 8 9 10 11 12 13 14
+# One open-addressing hash table backs both (see runtime/native/dict.ludic).
+program Containers {
+  entry {
+    # --- Dict: name -> int (resource counts, id registries) ---
+    let bank = Dict.new()
+    Dict.set(bank, "gold", 100)
+    Dict.set(bank, "wood", 50)
+    Dict.set(bank, "gold", 150)          # update in place
+    if Dict.get(bank, "gold") == 150 { print(1) }
+    if Dict.get(bank, "wood") == 50 { print(2) }
+    if Dict.get(bank, "stone") == 0 { print(3) }         # absent -> 0
+    if Dict.get_or(bank, "stone", 0 - 1) == 0 - 1 { print(4) }
+    if Dict.has(bank, "wood") { print(5) }
+    if Dict.size(bank) == 2 { print(6) }
+    Dict.remove(bank, "wood")
+    if not Dict.has(bank, "wood") { print(7) }
+    if Dict.size(bank) == 1 { print(8) }
+
+    # grow past the initial capacity, then read back
+    var i = 0
+    while i < 100 { Dict.set(bank, "k" + string(i), i * 2);  i = i + 1 }
+    if Dict.get(bank, "k42") == 84 { print(9) }
+    if Dict.size(bank) == 101 { print(10) }               # gold + k0..k99
+    if len(Dict.keys(bank)) == 101 { print(11) }
+
+    # --- Set: membership by name (tags, unlocked, visited) ---
+    let tags = Set.new()
+    Set.add(tags, "poison")
+    Set.add(tags, "fire")
+    Set.add(tags, "poison")              # duplicate is ignored
+    if Set.has(tags, "fire") { print(12) }
+    if not Set.has(tags, "ice") { print(13) }
+    Set.remove(tags, "fire")
+    if Set.size(tags) == 1 { print(14) }
+  }
+}

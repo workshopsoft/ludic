@@ -176,6 +176,7 @@ function p_postfix() -> Node {
     if is_op(".") { pi = pi + 1; let m = node(E_MEMBER); m.a = e; m.s = eat_id(); e = m
       if e.a.kind == E_ID and e.a.s == "Regex" { g_uses_regex = true }   # splice the regex runtime on demand
       if e.a.kind == E_ID and (e.a.s == "BigInt" or e.a.s == "Decimal") { g_uses_bignum = true }   # splice the bignum runtime on demand
+      if e.a.kind == E_ID and (e.a.s == "Dict" or e.a.s == "Set") { g_uses_dict = true }   # splice the hash-table runtime on demand
       if e.a.kind == E_ID and e.a.s == "Query" { g_uses_query = true }   # splice the ECS spatial-query runtime on demand
       if e.a.kind == E_ID and e.a.s == "Reflect" { g_uses_reflect = true }   # force-emit the reflection ABI (Reflect.* reads the world schema)
       if e.a.kind == E_ID and e.a.s == "Light" { g_uses_light = true }   # splice the 2D light-accumulation pass on demand
@@ -423,6 +424,7 @@ var loaded_paths: []pointer
 var cur_dir: pointer
 var g_uses_regex: bool = false    # a program mentioned Regex.* -> splice the regex runtime
 var g_uses_bignum: bool = false   # a program mentioned BigInt.*/Decimal.* -> splice the bignum runtime
+var g_uses_dict: bool = false     # a program mentioned Dict.*/Set.* -> splice the hash-table runtime
 var g_uses_query: bool = false    # a program mentioned Query.* -> splice the query runtime + reflection ABI
 var g_uses_reflect: bool = false  # a program mentioned Reflect.* -> force-emit the reflection ABI
 var g_uses_light: bool = false    # a program mentioned Light.* -> splice the 2D light pass
@@ -608,6 +610,13 @@ function maybe_splice_runtime() -> void {
     do_import("runtime/native/bignum.ludic")
     cur_dir = saved
   }
+  # any program that uses Dict.*/Set.* gets the hash-table engine spliced in
+  # (self-contained — only compiler intrinsics — so a plain tool works too).
+  if g_uses_dict {
+    cur_dir = ""
+    do_import("runtime/native/dict.ludic")
+    cur_dir = saved
+  }
   # any program that uses Query.* gets the ECS spatial-query helpers spliced in;
   # they read entity state through the reflection ABI (emit_decl force-emits it
   # for a Query program even when it declares no events).
@@ -723,6 +732,7 @@ function parse_program() -> void {
   g_toggled_layers = new []pointer
   g_uses_regex = false
   g_uses_bignum = false
+  g_uses_dict = false
   g_uses_query = false
   g_uses_reflect = false
   g_uses_esys = false
