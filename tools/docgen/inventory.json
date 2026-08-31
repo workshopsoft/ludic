@@ -432,6 +432,34 @@
     "set-clear",
     "set-members"
   ],
+  "huge": [
+    "huge-from",
+    "huge-add",
+    "huge-sub",
+    "huge-mul",
+    "huge-neg",
+    "huge-cmp",
+    "huge-sign",
+    "huge-mantissa",
+    "huge-exp",
+    "huge-str"
+  ],
+  "angle": [
+    "angle-from_degrees",
+    "angle-to_degrees",
+    "angle-wrap",
+    "angle-sin",
+    "angle-cos",
+    "angle-add",
+    "angle-diff",
+    "angle-lerp"
+  ],
+  "percent": [
+    "percent-clamp",
+    "percent-of",
+    "percent-lerp",
+    "percent-apply"
+  ],
   "duration": [
     "duration-seconds",
     "duration-minutes",

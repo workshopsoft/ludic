@@ -1,0 +1,35 @@
+# numeric.ludic — the "polish" numeric types: Huge.* (idle big numbers),
+# Angle.* (auto-wrapping radians) and Percent.* (clamped [0,1]). Each assertion
+# that holds prints its number, so a full run prints:
+#   1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20
+# See runtime/native/numeric.ludic.
+program Numeric {
+  entry {
+    # --- Huge: mantissa x 10^exponent, for idle magnitudes ---
+    if Huge.str(Huge.from(5)) == "5.00e0" { print(1) }
+    if Huge.str(Huge.from(1500)) == "1.50e3" { print(2) }
+    if Huge.str(Huge.from(2000000000)) == "2.00e9" { print(3) }
+    if Huge.str(Huge.mul(Huge.from(1000000), Huge.from(1000000))) == "1.00e12" { print(4) }
+    if Huge.str(Huge.add(Huge.from(1000000), Huge.from(1000000))) == "2.00e6" { print(5) }
+    if Huge.str(Huge.add(Huge.from(1000000000), Huge.from(1))) == "1.00e9" { print(6) }  # +1 negligible
+    if Huge.cmp(Huge.from(1000000000), Huge.from(1000000)) == 1 { print(7) }
+    if Huge.exp(Huge.mul(Huge.from(1000000), Huge.from(1000000))) == 12 { print(8) }
+    if Huge.str(Huge.from(0 - 42)) == "-4.20e1" { print(9) }
+    if Huge.str(Huge.from(0)) == "0" { print(10) }
+
+    # --- Angle: wrapping radians (built on the deterministic Math.*) ---
+    if Math.abs(Angle.diff(Angle.from_degrees(370.0), Angle.from_degrees(10.0))) < 0.05 { print(11) }  # same angle
+    if Angle.sin(Angle.from_degrees(90.0)) > 0.99 { print(12) }
+    if Angle.cos(Angle.from_degrees(0.0)) > 0.99 { print(13) }
+    if Math.abs(Angle.lerp(Angle.from_degrees(350.0), Angle.from_degrees(10.0), 0.5)) < 0.05 { print(14) }  # shortest arc crosses 0
+    let w = Angle.wrap(10.0)
+    if w < 3.15 and w >= 0.0 - 3.15 { print(15) }
+
+    # --- Percent: clamped [0, 1] ---
+    if floor(Percent.clamp(1.5) * 100.0) == 100 { print(16) }
+    if floor(Percent.clamp(0.0 - 0.3) * 100.0) == 0 { print(17) }
+    if floor(Percent.of(3.0, 4.0) * 100.0) == 75 { print(18) }
+    if floor(Percent.apply(200.0, 0.25)) == 50 { print(19) }
+    if floor(Percent.lerp(0.0, 100.0, 0.5)) == 50 { print(20) }
+  }
+}

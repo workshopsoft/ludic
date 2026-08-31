@@ -389,6 +389,37 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "clear")   { bare = "set_clear";   push(labels, "s") }
     if (meth == "members") { bare = "set_members"; push(labels, "s") }
   }
+  # Huge.* / Angle.* / Percent.* -> the numeric runtime (runtime/native/numeric.ludic,
+  # spliced on demand). Ordinary Ludic functions, so the generic call path keeps
+  # their return types (Huge / fixed / int / bool).
+  if (ns == "Huge") {
+    if (meth == "from")     { bare = "huge_from";     push(labels, "value") }
+    if (meth == "add")      { bare = "huge_add";      push(labels, "a"); push(labels, "b") }
+    if (meth == "sub")      { bare = "huge_sub";      push(labels, "a"); push(labels, "b") }
+    if (meth == "mul")      { bare = "huge_mul";      push(labels, "a"); push(labels, "b") }
+    if (meth == "neg")      { bare = "huge_neg";      push(labels, "a") }
+    if (meth == "cmp")      { bare = "huge_cmp";      push(labels, "a"); push(labels, "b") }
+    if (meth == "sign")     { bare = "huge_sign";     push(labels, "a") }
+    if (meth == "mantissa") { bare = "huge_mantissa"; push(labels, "a") }
+    if (meth == "exp")      { bare = "huge_exp";      push(labels, "a") }
+    if (meth == "str")      { bare = "huge_str";      push(labels, "a") }
+  }
+  if (ns == "Angle") {
+    if (meth == "from_degrees") { bare = "angle_from_degrees"; push(labels, "d") }
+    if (meth == "to_degrees")   { bare = "angle_to_degrees";   push(labels, "a") }
+    if (meth == "wrap")         { bare = "angle_wrap";         push(labels, "a") }
+    if (meth == "sin")          { bare = "angle_sin";          push(labels, "a") }
+    if (meth == "cos")          { bare = "angle_cos";          push(labels, "a") }
+    if (meth == "add")          { bare = "angle_add";          push(labels, "a"); push(labels, "b") }
+    if (meth == "diff")         { bare = "angle_diff";         push(labels, "a"); push(labels, "b") }
+    if (meth == "lerp")         { bare = "angle_lerp";         push(labels, "a"); push(labels, "b"); push(labels, "t") }
+  }
+  if (ns == "Percent") {
+    if (meth == "clamp") { bare = "percent_clamp"; push(labels, "v") }
+    if (meth == "of")    { bare = "percent_of";    push(labels, "num"); push(labels, "den") }
+    if (meth == "lerp")  { bare = "percent_lerp";  push(labels, "a"); push(labels, "b"); push(labels, "t") }
+    if (meth == "apply") { bare = "percent_apply"; push(labels, "value"); push(labels, "p") }
+  }
   if (ns == "Grid") {
     if (meth == "line")          { bare = "grid_line";          push(labels, "x0"); push(labels, "y0"); push(labels, "x1"); push(labels, "y1") }
     if (meth == "blocked")       { bare = "grid_blocked";       push(labels, "x"); push(labels, "y"); push(labels, "wall") }
