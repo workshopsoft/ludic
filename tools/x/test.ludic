@@ -206,6 +206,7 @@ function cmd_test() -> int {
   feat_case("library/reflect", "", "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20", "reflect.ludic (Reflect prop/field enumeration + type + get/set/has/kind — runtime reflection over the world schema)")
   feat_case("library/serialize", "", "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16", "serialize.ludic (Value tree + Json encode/parse + Reflect.serialize/apply — bit-exact save/load; issue #44)")
   feat_case("library/tiled_p0", "", "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21", "tiled_p0.ludic (Tiled P0: Xml reader + Base64 decode/encode + gzip framing over inflate; issue #67)")
+  feat_case("library/tiled_p05", "", "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30", "tiled_p05.ludic (Tiled P0.5: TMX/TSX reader -> same Value-tree intermediate as TMJ; Kenney sampleMap.tmx; issue #68)")
   feat_case("library/render", "", "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18", "render.ludic (Screen pixel/oval/camera/clip/blend_mode/measure_text + Camera set/follow/shake, verified by pixel readback)")
   feat_case("library/lighting", "", "1 2 3 4 5 6 7 8 9 10 11 12 13 14", "lighting.ludic (Light ambient/point radial falloff + occluder hard shadows — 2D light accumulation, verified by pixel readback)")
   feat_case("library/light_tiers", "", "1 1 1 1 1 1 1 1 1", "light_tiers.ludic (Light spot/falloff/soft/gel/normal/time_of_day — render-quality tiers 3-4; issue #49)")

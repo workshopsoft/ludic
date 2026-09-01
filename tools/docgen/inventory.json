@@ -681,5 +681,9 @@
   "base64": [
     "base64-decode",
     "base64-encode"
+  ],
+  "tiled": [
+    "tiled-read",
+    "tiled-read_tsx"
   ]
 }

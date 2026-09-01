@@ -607,6 +607,13 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "decode")  { bare = "base64_decode";  push(labels, "src") }
     if (meth == "encode")  { bare = "base64_encode";  push(labels, "src") }
   }
+  # Tiled.* — Tiled map support (runtime/native/tiled.ludic, spliced on demand).
+  # read/read_tsx produce the intermediate Value tree (#68); load/gid/resolve/
+  # draw/prop operate on the loaded map model (#69+).
+  if (ns == "Tiled") {
+    if (meth == "read")      { bare = "tiled_read";      push(labels, "path") }
+    if (meth == "read_tsx")  { bare = "tiled_read_tsx";  push(labels, "path") }
+  }
   # #62: a package-provided namespace (declared with @Namespace(Foo)) that none
   # of the hardcoded core blocks matched — alias Foo.method to the bare function
   # foo_method (positional args), the same generic path the core aliases use.

@@ -1,0 +1,65 @@
+{
+ "type": "map",
+ "version": "1.10",
+ "tiledversion": "1.10.2",
+ "orientation": "orthogonal",
+ "renderorder": "right-down",
+ "width": 4,
+ "height": 4,
+ "tilewidth": 16,
+ "tileheight": 16,
+ "infinite": false,
+ "nextlayerid": 3,
+ "nextobjectid": 1,
+ "tilesets": [
+  {
+   "firstgid": 1,
+   "source": "handmade.tsx"
+  }
+ ],
+ "layers": [
+  {
+   "type": "tilelayer",
+   "id": 1,
+   "name": "csv",
+   "width": 4,
+   "height": 4,
+   "x": 0,
+   "y": 0,
+   "opacity": 1,
+   "visible": true,
+   "data": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    2147483649
+   ]
+  },
+  {
+   "type": "tilelayer",
+   "id": 2,
+   "name": "zlib",
+   "width": 4,
+   "height": 4,
+   "x": 0,
+   "y": 0,
+   "opacity": 1,
+   "visible": true,
+   "encoding": "base64",
+   "compression": "zlib",
+   "data": "eJwNw4cNACAMBLEPvYaVGT1nySYpMbOwsrFzcHJx8/DS+WjSDw1EAPo="
+  }
+ ]
+}

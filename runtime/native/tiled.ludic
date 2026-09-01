@@ -1,0 +1,444 @@
+# ============================================================================
+# tiled.ludic — Tiled map support (`Tiled.*`), the design record of #66
+# (issues #67–#74). Native TMX/TSX/TX (XML) and TMJ/TSJ/TJ (JSON) both map onto
+# ONE intermediate — a generic `Value.*` tree in Tiled's JSON schema — and one
+# format-independent core turns that into the runtime map model. So the two
+# readers below (P0.5, #68) each feed the same `rt_tmap` builder (P1, #69).
+#
+# The JSON path is `Json.parse` + a normalisation pass; the XML path is the
+# `xml_parse` walk in this file. Layer data is decoded to a dense GID int list at
+# read time (CSV split, or base64 -> zlib/gzip inflate -> little-endian u32s), so
+# a CSV `.tmx` and a base64 `.tmj` of the same map yield structurally identical
+# trees.
+#
+# ludicc splices this file (with core + xml + base64 + value) when a program
+# mentions `Tiled.*` (parse.ludic).
+# ============================================================================
+
+# ---- layer-data decode -----------------------------------------------------
+# a CSV of GIDs -> a Value list of int nodes. Non-digit separators (commas,
+# whitespace, newlines) delimit; overflow wraps to the correct 32-bit GID
+# (a flip-flagged GID like 0x80000001 lands as the matching negative i32).
+function tiled_csv_list(text: pointer) -> Val {
+  let out = value_list()
+  let n = len(text)
+  var i = 0
+  var cur = 0
+  var have = 0
+  while i < n {
+    let c = text[i]
+    if c >= 48 and c <= 57 { cur = cur * 10 + (c - 48);  have = 1 }
+    else {
+      if c == 44 or c == 32 or c == 9 or c == 10 or c == 13 {
+        if have == 1 { push(out.kids, value_int(cur));  cur = 0;  have = 0 }
+      }
+    }
+    i = i + 1
+  }
+  if have == 1 { push(out.kids, value_int(cur)) }
+  return out
+}
+
+# a base64 (optionally zlib/gzip-compressed) blob of `count` little-endian u32
+# GIDs -> a Value list of int nodes.
+function tiled_b64_list(text: pointer, compression: pointer, count: int) -> Val {
+  let comp = bytes(len(text) + 4)
+  let clen = b64_decode(text, comp)
+  let outcap = count * 4 + 16
+  var raw = comp
+  var rawlen = clen
+  if compression == "zlib" {
+    let d = bytes(outcap);  let dn = z_uncompress(comp, clen, d, outcap);  raw = d;  rawlen = dn
+  } else { if compression == "gzip" {
+    let d = bytes(outcap);  let dn = z_gunzip(comp, clen, d, outcap);  raw = d;  rawlen = dn
+  } }
+  let out = value_list()
+  var i = 0
+  while i + 3 < rawlen {
+    let g = raw[i] | (raw[i + 1] << 8) | (raw[i + 2] << 16) | (raw[i + 3] << 24)
+    push(out.kids, value_int(g))
+    i = i + 4
+  }
+  return out
+}
+
+# decode a `<data>` element (child of a `<layer>`) into a Value list of GIDs.
+function tiled_data_list(data: Xml, count: int) -> Val {
+  let enc = xml_attr(data, "encoding")
+  let comp = xml_attr(data, "compression")
+  if enc == "base64" { return tiled_b64_list(xml_text(data), comp, count) }
+  # csv (or the legacy tag-per-tile form we don't emit) -> split the text
+  return tiled_csv_list(xml_text(data))
+}
+
+# ---- custom properties -----------------------------------------------------
+# `<properties>` -> a Value list of {name, type, value} objects (P4 reads these;
+# P2 reads the `solid`/`oneway`/`trigger` bool convention off the same list).
+function tmx_props_list(parent: Xml) -> Val {
+  let out = value_list()
+  let props = xml_find(parent, "properties")
+  if xml_tag(props) != "properties" { return out }
+  var i = 0
+  while i < xml_child_count(props) {
+    let p = xml_child(props, i)
+    if xml_tag(p) == "property" {
+      let o = value_object()
+      value_put(o, "name", value_str(xml_attr(p, "name")))
+      var ty = xml_attr(p, "type")
+      if ty == "" { ty = "string" }
+      value_put(o, "type", value_str(ty))
+      # value may be an attribute or (for multiline) the element text
+      var v = xml_attr(p, "value")
+      if xml_has(p, "value") == 0 { v = xml_text(p) }
+      value_put(o, "value", value_str(v))
+      push(out.kids, o)
+    }
+    i = i + 1
+  }
+  return out
+}
+
+# ---- objects (shapes) ------------------------------------------------------
+# one `<object>` -> a Value object mirroring Tiled's JSON object shape.
+function tmx_object_to_value(ob: Xml) -> Val {
+  let o = value_object()
+  value_put(o, "id", value_int(xml_attr_int(ob, "id", 0)))
+  if xml_has(ob, "name") == 1 { value_put(o, "name", value_str(xml_attr(ob, "name"))) }
+  if xml_has(ob, "type") == 1 { value_put(o, "type", value_str(xml_attr(ob, "type"))) }
+  if xml_has(ob, "class") == 1 { value_put(o, "type", value_str(xml_attr(ob, "class"))) }
+  value_put(o, "x", value_int(xml_attr_int(ob, "x", 0)))
+  value_put(o, "y", value_int(xml_attr_int(ob, "y", 0)))
+  value_put(o, "width", value_int(xml_attr_int(ob, "width", 0)))
+  value_put(o, "height", value_int(xml_attr_int(ob, "height", 0)))
+  if xml_has(ob, "gid") == 1 { value_put(o, "gid", value_int(xml_attr_int(ob, "gid", 0))) }
+  if xml_has(ob, "rotation") == 1 { value_put(o, "rotation", value_int(xml_attr_int(ob, "rotation", 0))) }
+  # shape markers: ellipse / point / polygon / polyline / text
+  let el = xml_find(ob, "ellipse");   if xml_tag(el) == "ellipse" { value_put(o, "ellipse", value_bool(1)) }
+  let pt = xml_find(ob, "point");     if xml_tag(pt) == "point"   { value_put(o, "point", value_bool(1)) }
+  let pg = xml_find(ob, "polygon")
+  if xml_tag(pg) == "polygon"  { value_put(o, "polygon", tmx_points_list(xml_attr(pg, "points"))) }
+  let pl = xml_find(ob, "polyline")
+  if xml_tag(pl) == "polyline" { value_put(o, "polyline", tmx_points_list(xml_attr(pl, "points"))) }
+  let tx = xml_find(ob, "text")
+  if xml_tag(tx) == "text" {
+    let t = value_object()
+    value_put(t, "text", value_str(xml_text(tx)))
+    if xml_has(tx, "pixelsize") == 1 { value_put(t, "pixelsize", value_int(xml_attr_int(tx, "pixelsize", 16))) }
+    if xml_has(tx, "bold") == 1 { value_put(t, "bold", value_bool(1)) }
+    if xml_has(tx, "italic") == 1 { value_put(t, "italic", value_bool(1)) }
+    if xml_has(tx, "halign") == 1 { value_put(t, "halign", value_str(xml_attr(tx, "halign"))) }
+    if xml_has(tx, "valign") == 1 { value_put(t, "valign", value_str(xml_attr(tx, "valign"))) }
+    value_put(o, "text", t)
+  }
+  let props = tmx_props_list(ob)
+  if len(props.kids) > 0 { value_put(o, "properties", props) }
+  return o
+}
+
+# "x,y x,y ..." -> a Value list of {x,y} objects.
+function tmx_points_list(s: pointer) -> Val {
+  let out = value_list()
+  let n = len(s)
+  var i = 0
+  while i < n {
+    while i < n and (s[i] == 32 or s[i] == 9) { i = i + 1 }
+    if i >= n { break }
+    # read "x,y"
+    var xv = 0;  var xn = 0;  var xs = 0
+    if s[i] == 45 { xs = 1;  i = i + 1 }
+    while i < n and s[i] >= 48 and s[i] <= 57 { xv = xv * 10 + (s[i] - 48);  xn = 1;  i = i + 1 }
+    if xs == 1 { xv = 0 - xv }
+    if i < n and s[i] == 44 { i = i + 1 }
+    var yv = 0;  var ys = 0
+    if i < n and s[i] == 45 { ys = 1;  i = i + 1 }
+    while i < n and s[i] >= 48 and s[i] <= 57 { yv = yv * 10 + (s[i] - 48);  i = i + 1 }
+    if ys == 1 { yv = 0 - yv }
+    if xn == 1 {
+      let o = value_object()
+      value_put(o, "x", value_int(xv))
+      value_put(o, "y", value_int(yv))
+      push(out.kids, o)
+    }
+  }
+  return out
+}
+
+# ---- tilesets --------------------------------------------------------------
+# one `<tile id=..>` inside a tileset -> a Value object with its metadata:
+# animation frames, per-tile collision objectgroup, class/type, properties.
+function tmx_tile_to_value(t: Xml) -> Val {
+  let o = value_object()
+  value_put(o, "id", value_int(xml_attr_int(t, "id", 0)))
+  if xml_has(t, "type") == 1 { value_put(o, "type", value_str(xml_attr(t, "type"))) }
+  if xml_has(t, "class") == 1 { value_put(o, "type", value_str(xml_attr(t, "class"))) }
+  if xml_has(t, "probability") == 1 { value_put(o, "probability", value_str(xml_attr(t, "probability"))) }
+  # per-tile image (image-collection tilesets)
+  let img = xml_find(t, "image")
+  if xml_tag(img) == "image" {
+    value_put(o, "image", value_str(xml_attr(img, "source")))
+    value_put(o, "imagewidth", value_int(xml_attr_int(img, "width", 0)))
+    value_put(o, "imageheight", value_int(xml_attr_int(img, "height", 0)))
+  }
+  # animation frames
+  let anim = xml_find(t, "animation")
+  if xml_tag(anim) == "animation" {
+    let frames = value_list()
+    var i = 0
+    while i < xml_child_count(anim) {
+      let fr = xml_child(anim, i)
+      if xml_tag(fr) == "frame" {
+        let f = value_object()
+        value_put(f, "tileid", value_int(xml_attr_int(fr, "tileid", 0)))
+        value_put(f, "duration", value_int(xml_attr_int(fr, "duration", 0)))
+        push(frames.kids, f)
+      }
+      i = i + 1
+    }
+    value_put(o, "animation", frames)
+  }
+  # per-tile collision shapes
+  let og = xml_find(t, "objectgroup")
+  if xml_tag(og) == "objectgroup" {
+    let objs = value_list()
+    var j = 0
+    while j < xml_child_count(og) {
+      let ch = xml_child(og, j)
+      if xml_tag(ch) == "object" { push(objs.kids, tmx_object_to_value(ch)) }
+      j = j + 1
+    }
+    let ogo = value_object()
+    value_put(ogo, "objects", objs)
+    value_put(o, "objectgroup", ogo)
+  }
+  let props = tmx_props_list(t)
+  if len(props.kids) > 0 { value_put(o, "properties", props) }
+  return o
+}
+
+# fill the geometry + tiles of a `<tileset>` element into `o` (shared by an
+# embedded tileset and a standalone `.tsx` root).
+function tmx_fill_tileset(o: Val, ts: Xml) -> void {
+  if xml_has(ts, "name") == 1 { value_put(o, "name", value_str(xml_attr(ts, "name"))) }
+  value_put(o, "tilewidth", value_int(xml_attr_int(ts, "tilewidth", 0)))
+  value_put(o, "tileheight", value_int(xml_attr_int(ts, "tileheight", 0)))
+  value_put(o, "spacing", value_int(xml_attr_int(ts, "spacing", 0)))
+  value_put(o, "margin", value_int(xml_attr_int(ts, "margin", 0)))
+  value_put(o, "columns", value_int(xml_attr_int(ts, "columns", 0)))
+  value_put(o, "tilecount", value_int(xml_attr_int(ts, "tilecount", 0)))
+  let img = xml_find(ts, "image")
+  if xml_tag(img) == "image" {
+    value_put(o, "image", value_str(xml_attr(img, "source")))
+    value_put(o, "imagewidth", value_int(xml_attr_int(img, "width", 0)))
+    value_put(o, "imageheight", value_int(xml_attr_int(img, "height", 0)))
+  }
+  let tiles = value_list()
+  var i = 0
+  while i < xml_child_count(ts) {
+    let ch = xml_child(ts, i)
+    if xml_tag(ch) == "tile" { push(tiles.kids, tmx_tile_to_value(ch)) }
+    i = i + 1
+  }
+  if len(tiles.kids) > 0 { value_put(o, "tiles", tiles) }
+}
+
+# a `<tileset>` child of a `<map>` -> a Value object. External (`source=`) keeps
+# the {firstgid, source} reference (as TMJ does); embedded is inlined in full.
+function tmx_tileset_to_value(ts: Xml) -> Val {
+  let o = value_object()
+  value_put(o, "firstgid", value_int(xml_attr_int(ts, "firstgid", 1)))
+  if xml_has(ts, "source") == 1 {
+    value_put(o, "source", value_str(xml_attr(ts, "source")))
+    return o
+  }
+  tmx_fill_tileset(o, ts)
+  return o
+}
+
+# a standalone `.tsx` root -> a tileset Value object (no firstgid — that comes
+# from the map's reference).
+function tsx_to_value(root: Xml) -> Val {
+  let o = value_object()
+  tmx_fill_tileset(o, root)
+  return o
+}
+
+# ---- layers ----------------------------------------------------------------
+function tmx_layer_common(o: Val, el: Xml) -> void {
+  value_put(o, "id", value_int(xml_attr_int(el, "id", 0)))
+  value_put(o, "name", value_str(xml_attr(el, "name")))
+  if xml_has(el, "class") == 1 { value_put(o, "class", value_str(xml_attr(el, "class"))) }
+  var vis = 1
+  if xml_has(el, "visible") == 1 { vis = xml_attr_int(el, "visible", 1) }
+  value_put(o, "visible", value_bool(vis))
+  if xml_has(el, "opacity") == 1 { value_put(o, "opacity", value_str(xml_attr(el, "opacity"))) }
+  if xml_has(el, "offsetx") == 1 { value_put(o, "offsetx", value_int(xml_attr_int(el, "offsetx", 0))) }
+  if xml_has(el, "offsety") == 1 { value_put(o, "offsety", value_int(xml_attr_int(el, "offsety", 0))) }
+  if xml_has(el, "parallaxx") == 1 { value_put(o, "parallaxx", value_str(xml_attr(el, "parallaxx"))) }
+  if xml_has(el, "parallaxy") == 1 { value_put(o, "parallaxy", value_str(xml_attr(el, "parallaxy"))) }
+  if xml_has(el, "tintcolor") == 1 { value_put(o, "tintcolor", value_str(xml_attr(el, "tintcolor"))) }
+  let props = tmx_props_list(el)
+  if len(props.kids) > 0 { value_put(o, "properties", props) }
+}
+
+function tmx_tilelayer_to_value(el: Xml, mapw: int, maph: int) -> Val {
+  let o = value_object()
+  value_put(o, "type", value_str("tilelayer"))
+  tmx_layer_common(o, el)
+  let w = xml_attr_int(el, "width", mapw)
+  let h = xml_attr_int(el, "height", maph)
+  value_put(o, "width", value_int(w))
+  value_put(o, "height", value_int(h))
+  let data = xml_find(el, "data")
+  value_put(o, "data", tiled_data_list(data, w * h))
+  return o
+}
+
+function tmx_objectlayer_to_value(el: Xml) -> Val {
+  let o = value_object()
+  value_put(o, "type", value_str("objectgroup"))
+  tmx_layer_common(o, el)
+  let objs = value_list()
+  var i = 0
+  while i < xml_child_count(el) {
+    let ch = xml_child(el, i)
+    if xml_tag(ch) == "object" { push(objs.kids, tmx_object_to_value(ch)) }
+    i = i + 1
+  }
+  value_put(o, "objects", objs)
+  return o
+}
+
+# ---- map -------------------------------------------------------------------
+# a `<map>` root -> the intermediate map Value tree (Tiled JSON schema).
+function tmx_to_value(root: Xml) -> Val {
+  let m = value_object()
+  value_put(m, "type", value_str("map"))
+  value_put(m, "version", value_str(xml_attr(root, "version")))
+  value_put(m, "orientation", value_str(xml_attr(root, "orientation")))
+  value_put(m, "renderorder", value_str(xml_attr(root, "renderorder")))
+  value_put(m, "width", value_int(xml_attr_int(root, "width", 0)))
+  value_put(m, "height", value_int(xml_attr_int(root, "height", 0)))
+  value_put(m, "tilewidth", value_int(xml_attr_int(root, "tilewidth", 0)))
+  value_put(m, "tileheight", value_int(xml_attr_int(root, "tileheight", 0)))
+  value_put(m, "infinite", value_bool(xml_attr_int(root, "infinite", 0)))
+  if xml_has(root, "backgroundcolor") == 1 { value_put(m, "backgroundcolor", value_str(xml_attr(root, "backgroundcolor"))) }
+  if xml_has(root, "hexsidelength") == 1 { value_put(m, "hexsidelength", value_int(xml_attr_int(root, "hexsidelength", 0))) }
+  if xml_has(root, "staggeraxis") == 1 { value_put(m, "staggeraxis", value_str(xml_attr(root, "staggeraxis"))) }
+  if xml_has(root, "staggerindex") == 1 { value_put(m, "staggerindex", value_str(xml_attr(root, "staggerindex"))) }
+  let mapw = xml_attr_int(root, "width", 0)
+  let maph = xml_attr_int(root, "height", 0)
+  let tilesets = value_list()
+  let layers = value_list()
+  var i = 0
+  while i < xml_child_count(root) {
+    let ch = xml_child(root, i)
+    let tag = xml_tag(ch)
+    if tag == "tileset" { push(tilesets.kids, tmx_tileset_to_value(ch)) }
+    else { if tag == "layer" { push(layers.kids, tmx_tilelayer_to_value(ch, mapw, maph)) }
+    else { if tag == "objectgroup" { push(layers.kids, tmx_objectlayer_to_value(ch)) }
+    else { if tag == "imagelayer" { push(layers.kids, tmx_imagelayer_to_value(ch)) }
+    else { if tag == "group" { push(layers.kids, tmx_group_to_value(ch, mapw, maph)) } } } } }
+    i = i + 1
+  }
+  let props = tmx_props_list(root)
+  if len(props.kids) > 0 { value_put(m, "properties", props) }
+  value_put(m, "tilesets", tilesets)
+  value_put(m, "layers", layers)
+  return m
+}
+
+# `<imagelayer>` -> a Value object (P5 renders these).
+function tmx_imagelayer_to_value(el: Xml) -> Val {
+  let o = value_object()
+  value_put(o, "type", value_str("imagelayer"))
+  tmx_layer_common(o, el)
+  let img = xml_find(el, "image")
+  if xml_tag(img) == "image" { value_put(o, "image", value_str(xml_attr(img, "source"))) }
+  if xml_has(el, "repeatx") == 1 { value_put(o, "repeatx", value_bool(xml_attr_int(el, "repeatx", 0))) }
+  if xml_has(el, "repeaty") == 1 { value_put(o, "repeaty", value_bool(xml_attr_int(el, "repeaty", 0))) }
+  return o
+}
+
+# `<group>` -> a Value object carrying its nested layers (P5 renders recursively).
+function tmx_group_to_value(el: Xml, mapw: int, maph: int) -> Val {
+  let o = value_object()
+  value_put(o, "type", value_str("group"))
+  tmx_layer_common(o, el)
+  let layers = value_list()
+  var i = 0
+  while i < xml_child_count(el) {
+    let ch = xml_child(el, i)
+    let tag = xml_tag(ch)
+    if tag == "layer" { push(layers.kids, tmx_tilelayer_to_value(ch, mapw, maph)) }
+    else { if tag == "objectgroup" { push(layers.kids, tmx_objectlayer_to_value(ch)) }
+    else { if tag == "imagelayer" { push(layers.kids, tmx_imagelayer_to_value(ch)) }
+    else { if tag == "group" { push(layers.kids, tmx_group_to_value(ch, mapw, maph)) } } } }
+    i = i + 1
+  }
+  value_put(o, "layers", layers)
+  return o
+}
+
+# ---- JSON (TMJ) normalisation ----------------------------------------------
+# The JSON reader already yields a Value tree; normalise it so it matches the XML
+# path: decode any base64 `data` string into a dense GID int list, in place, for
+# every tile layer (recursing into groups).
+function tmj_normalize_layer(layer: Val) -> void {
+  if value_kind(layer) != 6 { return }
+  let ty = value_as_str(value_get(layer, "type"))
+  if ty == "group" {
+    let ls = value_get(layer, "layers")
+    var i = 0
+    while i < value_count(ls) { tmj_normalize_layer(value_at(ls, i));  i = i + 1 }
+    return
+  }
+  if ty != "tilelayer" { return }
+  let data = value_get(layer, "data")
+  if value_kind(data) == 4 {                                # a base64 string
+    let enc = value_as_str(value_get(layer, "encoding"))
+    let comp = value_as_str(value_get(layer, "compression"))
+    let w = value_as_int(value_get(layer, "width"))
+    let h = value_as_int(value_get(layer, "height"))
+    if enc == "base64" { value_put(layer, "data", tiled_b64_list(value_as_str(data), comp, w * h)) }
+  }
+}
+
+function tmj_normalize(m: Val) -> Val {
+  let ls = value_get(m, "layers")
+  var i = 0
+  while i < value_count(ls) { tmj_normalize_layer(value_at(ls, i));  i = i + 1 }
+  return m
+}
+
+# ---- top-level readers -----------------------------------------------------
+# skip leading whitespace and return the first non-space byte (0 if none).
+function tiled_first_byte(s: pointer) -> int {
+  var i = 0
+  let n = len(s)
+  while i < n {
+    let c = s[i]
+    if c == 32 or c == 9 or c == 10 or c == 13 { i = i + 1 } else { return c }
+  }
+  return 0
+}
+
+# read a map file (TMX or TMJ, auto-detected by first byte) -> the normalised
+# intermediate map Value tree.
+function tiled_read(path: pointer) -> Val {
+  let text = Fs.read_text(path)
+  if text == null { return value_null() }
+  if text == "" { return value_null() }
+  if tiled_first_byte(text) == 60 {                          # '<' -> XML
+    return tmx_to_value(xml_parse(text))
+  }
+  return tmj_normalize(json_parse(text))                     # '{' -> JSON
+}
+
+# read a tileset file (TSX or TSJ) -> a tileset Value object.
+function tiled_read_tsx(path: pointer) -> Val {
+  let text = Fs.read_text(path)
+  if text == null { return value_null() }
+  if text == "" { return value_null() }
+  if tiled_first_byte(text) == 60 { return tsx_to_value(xml_parse(text)) }
+  return json_parse(text)
+}

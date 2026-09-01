@@ -1,0 +1,94 @@
+# tiled_p05.ludic — the Tiled P0.5 TMX/TSX reader (issue #68). The native XML
+# formats map onto the SAME intermediate the JSON path produces: a Value tree in
+# Tiled's JSON schema, with layer data decoded to a dense GID list. So a CSV
+# `.tmx` and a base64+zlib `.tmj` of the same map read structurally identically.
+#
+# Reads the hand-authored fixture whose four layers carry the same 16 GIDs in
+# CSV, base64-uncompressed, base64+gzip and base64+zlib.
+#
+# A full run prints: 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22
+program TiledP05 {
+  entry {
+    let m = Tiled.read("assets/tiled-fixtures/handmade.tmx")
+    # --- map header ---
+    if Value.as_str(Value.get(m, "orientation")) == "orthogonal" { print(1) }
+    if Value.as_int(Value.get(m, "width")) == 4 { print(2) }
+    if Value.as_int(Value.get(m, "height")) == 4 { print(3) }
+    if Value.as_int(Value.get(m, "tilewidth")) == 16 { print(4) }
+
+    # --- tileset reference (kept as {firstgid, source}, like TMJ) ---
+    let tss = Value.get(m, "tilesets")
+    if Value.count(tss) == 1 { print(5) }
+    let ts0 = Value.at(tss, 0)
+    if Value.as_int(Value.get(ts0, "firstgid")) == 1 { print(6) }
+    if Value.as_str(Value.get(ts0, "source")) == "handmade.tsx" { print(7) }
+
+    # --- four layers, every encoding decodes to the SAME 16-GID array ---
+    let layers = Value.get(m, "layers")
+    if Value.count(layers) == 4 { print(8) }
+    let FLIP = 0 - 2147483647                              # 0x80000001 as i32
+    var same = 1
+    var li = 0
+    while li < 4 {
+      let data = Value.get(Value.at(layers, li), "data")
+      if Value.count(data) != 16 { same = 0 }
+      if Value.as_int(Value.at(data, 0)) != 1 { same = 0 }
+      if Value.as_int(Value.at(data, 14)) != 15 { same = 0 }
+      if Value.as_int(Value.at(data, 15)) != FLIP { same = 0 }
+      li = li + 1
+    }
+    if same == 1 { print(9) }
+    # the CSV path and the gzip path agree on the flip-flagged GID
+    let csvdata = Value.get(Value.at(layers, 0), "data")
+    let gzdata = Value.get(Value.at(layers, 2), "data")
+    if Value.as_int(Value.at(csvdata, 15)) == FLIP { print(10) }
+    if Value.as_int(Value.at(gzdata, 15)) == FLIP { print(11) }
+    if Value.as_str(Value.get(Value.at(layers, 0), "type")) == "tilelayer" { print(12) }
+    if Value.as_str(Value.get(Value.at(layers, 0), "name")) == "csv" { print(13) }
+
+    # --- structural identity vs the TMJ export of the same map ---
+    let j = Tiled.read("assets/tiled-fixtures/handmade.tmj")
+    if Value.as_int(Value.get(j, "width")) == 4 { print(14) }
+    let jlayers = Value.get(j, "layers")
+    if Value.count(jlayers) == 2 { print(15) }
+    # both TMJ layers (a CSV int array + a base64+zlib string) normalise to the
+    # SAME GID array the TMX CSV layer produced
+    var jsame = 1
+    var jli = 0
+    while jli < 2 {
+      let jdata = Value.get(Value.at(jlayers, jli), "data")
+      if Value.count(jdata) != 16 { jsame = 0 }
+      var gi = 0
+      while gi < 16 {
+        if Value.as_int(Value.at(jdata, gi)) != Value.as_int(Value.at(csvdata, gi)) { jsame = 0 }
+        gi = gi + 1
+      }
+      jli = jli + 1
+    }
+    if jsame == 1 { print(16) }
+
+    # --- external tileset geometry via read_tsx ---
+    let ts = Tiled.read_tsx("assets/tiled-fixtures/handmade.tsx")
+    if Value.as_int(Value.get(ts, "tilewidth")) == 16 { print(17) }
+    if Value.as_int(Value.get(ts, "columns")) == 4 { print(18) }
+    if Value.as_int(Value.get(ts, "tilecount")) == 16 { print(19) }
+    if Value.as_str(Value.get(ts, "image")) == "handmade.png" { print(20) }
+    if Value.as_int(Value.get(ts, "imagewidth")) == 64 { print(21) }
+    let tiles = Value.get(ts, "tiles")
+    if Value.count(tiles) == 2 { print(22) }              # tiles 4 (solid) and 6 (objectgroup)
+
+    # --- the in-repo Kenney sampleMap.tmx + external sampleSheet.tsx ---
+    let k = Tiled.read("assets/kenney/tiny-dungeon/Tiled/sampleMap.tmx")
+    if Value.as_int(Value.get(k, "width")) == 32 { print(23) }
+    if Value.as_int(Value.get(k, "height")) == 20 { print(24) }
+    let kts = Value.at(Value.get(k, "tilesets"), 0)
+    if Value.as_str(Value.get(kts, "source")) == "sampleSheet.tsx" { print(25) }
+    let kdata = Value.get(Value.at(Value.get(k, "layers"), 0), "data")
+    if Value.count(kdata) == 640 { print(26) }            # 32 * 20
+    if Value.as_int(Value.at(kdata, 0)) == 14 { print(27) }
+    if Value.as_int(Value.at(kdata, 1)) == 1610612787 { print(28) }   # 0x60000033, V+D flipped
+    let ksheet = Tiled.read_tsx("assets/kenney/tiny-dungeon/Tiled/sampleSheet.tsx")
+    if Value.as_int(Value.get(ksheet, "tilecount")) == 132 { print(29) }
+    if Value.as_int(Value.get(ksheet, "columns")) == 12 { print(30) }
+  }
+}
