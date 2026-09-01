@@ -1,0 +1,84 @@
+# tiled_p2.ludic — Tiled P2 collision & grid integration (issue #70). Normalises
+# three collision sources into the byte tilemap esys_move / Grid.* / Path.* read:
+# per-tile <objectgroup> hitboxes, the solid/oneway/trigger property convention,
+# and the designated collision layer (any non-zero GID is solid). Proves the
+# property convention and the collision-layer fallback produce the same feed, a
+# per-tile-shape floor blocks a mover, and A* over a loaded map matches baseline.
+#
+# A full run prints: 1 2 3 4 5 6 7 8 9 10 11 12 13 14
+program TiledP2 {
+  property Position { x: int = 0, y: int = 0 }
+  property Body {
+    vx: fixed = 0.0, vy: fixed = 0.0,
+    gravity: fixed = 0.0, max_fall: fixed = 0.0,
+    rx: fixed = 0.0, ry: fixed = 0.0,
+    policy: int = 0,
+    on_ground: int = 0, hit_wall: int = 0, hit_ceiling: int = 0
+  }
+  property Collider { w: int = 0, h: int = 0, offx: int = 0, offy: int = 0, is_trigger: int = 0, one_way: int = 0, layer: int = 0, mask: int = 0 }
+  property Solids { tile: int = 0, wall: int = 0, oneway: int = 0 }
+
+  # count solid ('#') cells and hash the whole byte tilemap (deterministic).
+  function grid_solids() -> int {
+    var n = 0
+    var y = 0
+    while y < 10 { var x = 0
+      while x < 16 { if rt_tile(x, y) == 35 { n = n + 1 };  x = x + 1 }
+      y = y + 1 }
+    return n
+  }
+  function grid_hash() -> int {
+    var h = 0
+    var y = 0
+    while y < 10 { var x = 0
+      while x < 16 { h = h * 31 + rt_tile(x, y);  x = x + 1 }
+      y = y + 1 }
+    return h
+  }
+
+  handler Boot phase Start {
+    let m = Tiled.load("assets/tiled-fixtures/p2_map.tmx")
+
+    # --- collision_kind classifies each metadata source (0 none,1 solid,2 one-way,3 trigger) ---
+    if Tiled.collision_kind(m, 1) == 0 { print(1) }    # plain tile — no metadata
+    if Tiled.collision_kind(m, 2) == 1 { print(2) }    # <objectgroup> shape -> solid
+    if Tiled.collision_kind(m, 3) == 2 { print(3) }    # oneway property
+    if Tiled.collision_kind(m, 4) == 1 { print(4) }    # solid property
+    if Tiled.collision_kind(m, 5) == 3 { print(5) }    # trigger property
+    if Tiled.tile_shapes(m, 2) == 1 { print(6) }
+    if Tiled.tile_shapes(m, 1) == 0 { print(7) }
+
+    # --- same feed: collision-layer fallback vs property convention ---
+    Tiled.project(m, 0)                                # "collision": plain tiles, non-zero = solid
+    let solids = grid_solids()
+    let h1 = grid_hash()
+    if solids == 6 { print(8) }
+    Tiled.collide(m, 1)                                # "props": solid-property tiles, metadata only
+    if grid_hash() == h1 { print(9) }                  # identical Solids feed
+
+    # --- A* over a loaded map matches the hand-authored-map baseline ---
+    Tiled.load("assets/tiled-fixtures/grid_maze.tmx")  # auto-projects its collision layer
+    let p = Grid.a_star(1, 1, 6, 3, '#')
+    if len(p) == 8 { print(10) }
+    if p[0].x == 1 and p[0].y == 1 { print(11) }
+    let last = p[len(p) - 1]
+    if last.x == 6 and last.y == 3 { print(12) }
+
+    # --- a per-tile-shape floor blocks an esys_move mover ---
+    let m2 = Tiled.load("assets/tiled-fixtures/p2_map.tmx")
+    Tiled.collide(m2, 2)                               # "floor": <objectgroup> tiles across row 8
+    spawn Config { Solids { tile: 16, wall: 35, oneway: 61 } }
+    spawn Runner { Position { x: 32, y: 16 }, Body { gravity: fixed(1), max_fall: fixed(6) }, Collider { w: 16, h: 16 } }
+    let pb = World.prop_id("Body")
+    let pp = World.prop_id("Position")
+    let f_y = World.field_id(pp, "y")
+    let f_grd = World.field_id(pb, "on_ground")
+    let a = World.query_next(pb, 0)
+    var i = 0
+    while i < 80 { tick_fixed();  i = i + 1 }
+    if World.get(a, pp, f_y) == 112 { print(13) }      # feet rest on the tile floor top (128)
+    if World.get(a, pb, f_grd) == 1 { print(14) }
+  }
+
+  handler Run phase Update { quit() }
+}

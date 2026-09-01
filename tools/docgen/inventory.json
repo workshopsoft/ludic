@@ -695,6 +695,9 @@
     "tiled-draw",
     "tiled-project",
     "tiled-tree",
-    "tiled-tile_prop"
+    "tiled-tile_prop",
+    "tiled-collide",
+    "tiled-collision_kind",
+    "tiled-tile_shapes"
   ]
 }

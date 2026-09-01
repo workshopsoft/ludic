@@ -541,42 +541,76 @@ function tmap_gid(m: Tmap, layer: int, x: int, y: int) -> int {
 
 # ---- per-tile metadata (property convention) -------------------------------
 # does the tile a GID resolves to carry bool custom property `name` = true?
-function tmap_tile_prop(m: Tmap, gid: int, name: pointer) -> int {
+# the metadata Value object for the tile a GID resolves to (a `null` node if the
+# tile carries none). Shared by the property / objectgroup / animation lookups.
+function tmap_tile_meta(m: Tmap, gid: int) -> Val {
   let r = tmap_resolve(m, gid)
-  if r.tileset < 0 { return 0 }
+  if r.tileset < 0 { return value_null() }
   let ts = m.tilesets[r.tileset]
-  if value_kind(ts.meta) != 6 { return 0 }
+  if value_kind(ts.meta) != 6 { return value_null() }
   let tiles = value_get(ts.meta, "tiles")
-  if value_kind(tiles) != 5 { return 0 }
+  if value_kind(tiles) != 5 { return value_null() }
   var i = 0
   while i < value_count(tiles) {
     let t = value_at(tiles, i)
-    if value_as_int(value_get(t, "id")) == r.local {
-      let props = value_get(t, "properties")
-      if value_kind(props) == 5 {
-        var j = 0
-        while j < value_count(props) {
-          let p = value_at(props, j)
-          if value_as_str(value_get(p, "name")) == name {
-            if value_as_str(value_get(p, "value")) == "true" { return 1 }
-            return 0
-          }
-          j = j + 1
-        }
-      }
+    if value_as_int(value_get(t, "id")) == r.local { return t }
+    i = i + 1
+  }
+  return value_null()
+}
+
+# does the tile a GID resolves to carry bool custom property `name` = true?
+function tmap_tile_prop(m: Tmap, gid: int, name: pointer) -> int {
+  let t = tmap_tile_meta(m, gid)
+  if value_kind(t) != 6 { return 0 }
+  let props = value_get(t, "properties")
+  if value_kind(props) != 5 { return 0 }
+  var j = 0
+  while j < value_count(props) {
+    let p = value_at(props, j)
+    if value_as_str(value_get(p, "name")) == name {
+      if value_as_str(value_get(p, "value")) == "true" { return 1 }
       return 0
     }
-    i = i + 1
+    j = j + 1
   }
   return 0
 }
 
+# does the tile a GID resolves to carry a per-tile <objectgroup> collision shape?
+function tmap_tile_has_shapes(m: Tmap, gid: int) -> int {
+  let t = tmap_tile_meta(m, gid)
+  if value_kind(t) != 6 { return 0 }
+  let og = value_get(t, "objectgroup")
+  if value_kind(og) != 6 { return 0 }
+  let objs = value_get(og, "objects")
+  if value_count(objs) > 0 { return 1 }
+  return 0
+}
+
+# ---- collision normalisation (P2, #70) -------------------------------------
+# the collision kind of a GID for the byte-grid projection, from the tile's
+# metadata alone (design §3.5 priority): per-tile <objectgroup> hitboxes, then
+# the solid/oneway/trigger property convention. 0 = no collision metadata,
+# 1 = solid, 2 = one-way, 3 = trigger. The designated-collision-layer fallback
+# (any non-zero GID is solid) is applied by the projection, not here.
+function tmap_collision_kind(m: Tmap, gid: int) -> int {
+  if gid == 0 { return 0 }
+  if tmap_tile_prop(m, gid, "trigger") == 1 { return 3 }
+  if tmap_tile_prop(m, gid, "oneway") == 1 { return 2 }
+  if tmap_tile_has_shapes(m, gid) == 1 { return 1 }
+  if tmap_tile_prop(m, gid, "solid") == 1 { return 1 }
+  return 0
+}
+
 # ---- legacy rt_map compatibility projection --------------------------------
-# project the designated collision layer down to the byte tilemap so Grid.* /
-# Path.* / esys_move keep working unchanged: an empty cell is ' ' (passable), a
-# tile whose GID carries the `oneway` property is '=' (61), any other non-zero
-# GID is '#' (35, solid). The legacy 96x64 cap clips, so old code is byte-exact.
-function tmap_project(m: Tmap, layer: int) -> void {
+# project a layer down to the byte tilemap so Grid.* / Path.* / esys_move keep
+# working unchanged. `whole_layer_solid` picks the source (design §3.5): true for
+# a designated collision LAYER (a bare non-zero GID with no metadata still counts
+# as solid — the fallback source); false to drive collision from per-tile
+# metadata alone (objectgroup shapes / property convention on a visual layer).
+# solid -> '#' (35), one-way -> '=' (61), trigger/empty -> ' ' (32, passable).
+function tmap_project_layer(m: Tmap, layer: int, whole_layer_solid: int) -> void {
   m.coll = layer
   rt_map_size(m.w, m.h)                     # clamps to 96x64, clears to ' '
   if layer < 0 or layer >= len(m.layers) { return }
@@ -590,9 +624,10 @@ function tmap_project(m: Tmap, layer: int) -> void {
         if x < 96 {
           let gid = l.gids[y * l.w + x]
           if gid != 0 {
-            var ch = 35                       # '#'
-            if tmap_tile_prop(m, gid, "oneway") == 1 { ch = 61 }   # '='
-            rt_map[y * 96 + x] = ch
+            var k = tmap_collision_kind(m, gid)
+            if k == 0 and whole_layer_solid != 0 { k = 1 }     # collision-layer fallback
+            if k == 1 { rt_map[y * 96 + x] = 35 }              # '#'
+            if k == 2 { rt_map[y * 96 + x] = 61 }              # '='
           }
         }
         x = x + 1
@@ -601,6 +636,14 @@ function tmap_project(m: Tmap, layer: int) -> void {
     y = y + 1
   }
 }
+
+# project a designated collision layer (non-zero GID is solid unless its tile
+# metadata says otherwise) — the P1 default, called automatically on load.
+function tmap_project(m: Tmap, layer: int) -> void { tmap_project_layer(m, layer, 1) }
+
+# drive collision from per-tile metadata alone (objectgroup hitboxes / property
+# convention) over any layer — a tile with no collision metadata stays passable.
+function tmap_collide(m: Tmap, layer: int) -> void { tmap_project_layer(m, layer, 0) }
 
 # find a tile layer named collision/solids/walls (case-sensitive), or -1.
 function tmap_find_collision(m: Tmap) -> int {
