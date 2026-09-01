@@ -1,0 +1,130 @@
+# inventory.ludic — RPG Module B: inventory + a name-keyed item registry (#59).
+#
+# Items are data (a registry entry, like Anim.clip), so a game/mod adds items with
+# zero code. Per-owner counts live in one string-keyed Dict ("<entity>/<item>"), so
+# the whole inventory is captured by world_save. Equipment routes its stat effects
+# through the ludic.gameplay Stats modifier stack.
+
+import "ludic.gameplay/stats.ludic"
+
+const INV_MAX: int = 256
+
+# ---- item registry --------------------------------------------------------
+var item_reg: Dict = null
+var item_n: int = 0
+var item_stackmax: words = null
+var item_weight:   words = null
+var item_value:    words = null
+
+function item_ensure() -> void {
+  if item_reg == null {
+    item_reg = Dict.new()
+    item_stackmax = words(INV_MAX);  item_weight = words(INV_MAX);  item_value = words(INV_MAX)
+  }
+}
+
+# Item.def(name, stack_max, weight, value) — register an item template. Returns id.
+@Namespace(Item) function item_def(name: pointer, stack_max: int, weight: int, value: int) -> int {
+  item_ensure()
+  if item_n >= INV_MAX { return 0 - 1 }
+  let id = item_n
+  item_stackmax[id] = stack_max;  item_weight[id] = weight;  item_value[id] = value
+  item_n = item_n + 1
+  Dict.set(item_reg, name, id)
+  return id
+}
+@Namespace(Item) function item_id(name: pointer) -> int { item_ensure();  return Dict.get_or(item_reg, name, 0 - 1) }
+@Namespace(Item) function item_value_of(name: pointer) -> int {
+  let id = item_id(name);  if id < 0 { return 0 }
+  return item_value[id]
+}
+
+# ---- per-owner counts -----------------------------------------------------
+property Inventory { gold: int = 0, weight_max: int = 0, slots: int = 0 }
+
+var inv_counts: Dict = null
+function inv_ensure() -> void { if inv_counts == null { inv_counts = Dict.new() } }
+function inv_key(e: int, name: pointer) -> pointer { return `{e}/{name}` }
+
+event ItemAdded { e: int = 0, item: int = 0, qty: int = 0 }        # item = registry id
+event ItemRemoved { e: int = 0, item: int = 0, qty: int = 0 }
+event cancellable ItemUse { e: int = 0, item: int = 0 }           # veto a use (e.g. cursed / requirement)
+
+# Inventory.add(e, name, n) — add n of an item; emits ItemAdded.
+@Namespace(Inventory) function inventory_add(e: int, name: pointer, n: int) -> void {
+  inv_ensure()
+  let k = inv_key(e, name)
+  Dict.set(inv_counts, k, Dict.get_or(inv_counts, k, 0) + n)
+  emit ItemAdded(e: e, item: item_id(name), qty: n)
+}
+# Inventory.count(e, name) — how many the owner holds.
+@Namespace(Inventory) function inventory_count(e: int, name: pointer) -> int {
+  inv_ensure()
+  return Dict.get_or(inv_counts, inv_key(e, name), 0)
+}
+@Namespace(Inventory) function inventory_has(e: int, name: pointer) -> int {
+  if inventory_count(e, name) > 0 { return 1 }
+  return 0
+}
+# Inventory.remove(e, name, n) — remove up to n; returns 1 if it had enough.
+@Namespace(Inventory) function inventory_remove(e: int, name: pointer, n: int) -> int {
+  inv_ensure()
+  let k = inv_key(e, name)
+  let have = Dict.get_or(inv_counts, k, 0)
+  if have < n { return 0 }
+  Dict.set(inv_counts, k, have - n)
+  emit ItemRemoved(e: e, item: item_id(name), qty: n)
+  return 1
+}
+# Inventory.use(e, name) — consume one item unless a listener vetoes ItemUse.
+@Namespace(Inventory) function inventory_use(e: int, name: pointer) -> int {
+  if inventory_count(e, name) <= 0 { return 0 }
+  if emit ItemUse(e: e, item: item_id(name)) != 0 { return 0 }
+  return inventory_remove(e, name, 1)
+}
+# Inventory.gold / add_gold / spend_gold
+@Namespace(Inventory) function inventory_gold(e: int) -> int {
+  let P = World.prop_id("Inventory")
+  if P < 0 { return 0 }
+  return World.get(e, P, World.field_id(P, "gold"))
+}
+@Namespace(Inventory) function inventory_add_gold(e: int, n: int) -> void {
+  let P = World.prop_id("Inventory")
+  if P < 0 { return }
+  let f = World.field_id(P, "gold")
+  World.set(e, P, f, World.get(e, P, f) + n)
+}
+@Namespace(Inventory) function inventory_spend_gold(e: int, n: int) -> int {
+  let g = inventory_gold(e)
+  if g < n { return 0 }
+  inventory_add_gold(e, 0 - n)
+  return 1
+}
+
+# ---- equipment: stat effects flow through the gameplay modifier stack ------
+# Equipment holds one modifier-entity id per slot (0 = empty); equipping pushes a
+# Stats modifier, unequipping drops it. slot ids: 0 weapon, 1 armor, 2 trinket.
+property Equipment { weapon: int = 0, armor: int = 0, trinket: int = 0 }
+
+# Inventory.equip(e, slot, stat, op, amount) — apply an equipment bonus and record
+# the modifier so it can be removed on unequip. Returns the modifier entity.
+@Namespace(Inventory) function inventory_equip(e: int, slot: int, stat: int, op: int, amount: int) -> int {
+  inventory_unequip(e, slot)                         # replace whatever was there
+  let m = Stats.modify(e, stat, op, amount, 0)       # permanent until unequipped
+  let P = World.prop_id("Equipment")
+  if P >= 0 {
+    if slot == 0 { World.set(e, P, World.field_id(P, "weapon"), m + 1) }
+    if slot == 1 { World.set(e, P, World.field_id(P, "armor"), m + 1) }
+    if slot == 2 { World.set(e, P, World.field_id(P, "trinket"), m + 1) }
+  }
+  return m
+}
+@Namespace(Inventory) function inventory_unequip(e: int, slot: int) -> void {
+  let P = World.prop_id("Equipment")
+  if P < 0 { return }
+  var f = World.field_id(P, "weapon")
+  if slot == 1 { f = World.field_id(P, "armor") }
+  if slot == 2 { f = World.field_id(P, "trinket") }
+  let stored = World.get(e, P, f)
+  if stored > 0 { despawn (stored - 1);  World.set(e, P, f, 0) }
+}

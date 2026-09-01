@@ -1,0 +1,118 @@
+# quests.ludic — RPG Module D: quests + objectives, driven by events (#59).
+#
+# A quest is data: a state plus a list of objectives (kind + needed count). Progress
+# is reported through Quest.notify — a game routes its existing gameplay signals
+# (a kill, a pickup, a tile entered, a dialog choice) into it, and matching active
+# objectives tick up; when all of a quest's objectives are met it auto-completes.
+# A global flag store (Dict) records world state for branching. All state is in
+# module Dicts/arrays, so world_save captures the journal for free.
+#
+# objective kind convention: 0 kill, 1 collect, 2 reach, 3 talk, 4 flag (extend
+# with your own kind ints + a Quest.notify from the matching listener).
+# quest state: 0 hidden, 1 available, 2 active, 3 done, 4 failed.
+
+const QUEST_MAX: int = 128
+const OBJ_MAX: int = 512
+
+var quest_reg: Dict = null            # quest name -> id
+var quest_n: int = 0
+var quest_state: words = null
+var obj_n: int = 0
+var obj_qid:    words = null          # owning quest id
+var obj_kind:   words = null
+var obj_target: words = null          # a target id/tag (kind-specific; 0 = any)
+var obj_need:   words = null
+var obj_have:   words = null
+var quest_flags: Dict = null          # global flag store
+
+function quest_ensure() -> void {
+  if quest_reg == null {
+    quest_reg = Dict.new();  quest_flags = Dict.new()
+    quest_state = words(QUEST_MAX)
+    obj_qid = words(OBJ_MAX);  obj_kind = words(OBJ_MAX);  obj_target = words(OBJ_MAX)
+    obj_need = words(OBJ_MAX);  obj_have = words(OBJ_MAX)
+  }
+}
+
+event QuestStarted { quest: int = 0 }
+event QuestCompleted { quest: int = 0 }
+event ObjectiveProgressed { quest: int = 0, objective: int = 0, have: int = 0, need: int = 0 }
+
+# Quest.define(name) — register a quest (state hidden). Returns id.
+@Namespace(Quest) function quest_define(name: pointer) -> int {
+  quest_ensure()
+  if quest_n >= QUEST_MAX { return 0 - 1 }
+  let id = quest_n
+  quest_state[id] = 0
+  quest_n = quest_n + 1
+  Dict.set(quest_reg, name, id)
+  return id
+}
+@Namespace(Quest) function quest_id(name: pointer) -> int { quest_ensure();  return Dict.get_or(quest_reg, name, 0 - 1) }
+# Quest.objective(quest_name, kind, target, need) — add an objective.
+@Namespace(Quest) function quest_objective(quest_name: pointer, kind: int, target: int, need: int) -> int {
+  quest_ensure()
+  let qid = quest_id(quest_name)
+  if qid < 0 { return 0 - 1 }
+  if obj_n >= OBJ_MAX { return 0 - 1 }
+  let id = obj_n
+  obj_qid[id] = qid;  obj_kind[id] = kind;  obj_target[id] = target
+  obj_need[id] = need;  obj_have[id] = 0
+  obj_n = obj_n + 1
+  return id
+}
+# Quest.start(name) — activate a quest (emits QuestStarted).
+@Namespace(Quest) function quest_start(name: pointer) -> void {
+  quest_ensure()
+  let qid = quest_id(name)
+  if qid < 0 { return }
+  quest_state[qid] = 2
+  emit QuestStarted(quest: qid)
+}
+@Namespace(Quest) function quest_state_of(name: pointer) -> int {
+  quest_ensure()
+  let qid = quest_id(name)
+  if qid < 0 { return 0 - 1 }
+  return quest_state[qid]
+}
+
+# is every objective of a quest satisfied?
+function quest_all_done(qid: int) -> int {
+  var i = 0
+  while i < obj_n {
+    if obj_qid[i] == qid { if obj_have[i] < obj_need[i] { return 0 } }
+    i = i + 1
+  }
+  return 1
+}
+
+# Quest.notify(kind, target, amount) — report a gameplay signal. Every ACTIVE
+# quest's matching objectives tick up (target 0 on the objective = "any"); a quest
+# whose objectives are all met auto-completes.
+@Namespace(Quest) function quest_notify(kind: int, target: int, amount: int) -> void {
+  quest_ensure()
+  var i = 0
+  while i < obj_n {
+    let qid = obj_qid[i]
+    if quest_state[qid] == 2 {
+      if obj_kind[i] == kind {
+        if (obj_target[i] == 0) or (obj_target[i] == target) {
+          if obj_have[i] < obj_need[i] {
+            obj_have[i] = obj_have[i] + amount
+            if obj_have[i] > obj_need[i] { obj_have[i] = obj_need[i] }
+            emit ObjectiveProgressed(quest: qid, objective: i, have: obj_have[i], need: obj_need[i])
+            if quest_all_done(qid) == 1 {
+              quest_state[qid] = 3
+              emit QuestCompleted(quest: qid)
+            }
+          }
+        }
+      }
+    }
+    i = i + 1
+  }
+}
+
+# ---- global flag store (branching / world state) --------------------------
+@Namespace(Quest) function quest_flag(name: pointer, value: int) -> void { quest_ensure();  Dict.set(quest_flags, name, value) }
+@Namespace(Quest) function quest_flag_get(name: pointer) -> int { quest_ensure();  return Dict.get_or(quest_flags, name, 0) }

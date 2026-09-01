@@ -1,0 +1,19 @@
+# ludic.rpg — the builtin RPG systems suite (#59).
+#
+# Not one controller but seven independently-usable modules, each conforming to the
+# six-lever contract (#57): movement (grid + free, 4/8-axis), inventory, crafting,
+# quests, dialog, puzzles, and a status/combat backbone. Content is name-keyed data
+# registries (items, recipes, quests, dialog trees) so a game or mod adds content
+# with zero code. Reuses ludic.gameplay Stats/Combat/Cooldown. Deterministic
+# (integer only), so save/load (world_save), replay and rollback all hold.
+package "ludic.rpg"
+version "0.1.0"
+kind source
+provides "Mover"
+provides "Inventory"
+provides "Craft"
+provides "Quest"
+provides "Dialog"
+provides "Puzzle"
+provides "Status"
+require "ludic.gameplay" "0.1.0"

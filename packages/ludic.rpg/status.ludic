@@ -1,0 +1,79 @@
+# status.ludic — RPG Module G: status effects over the shared combat backbone (#59).
+#
+# A status is its own small entity (like a gameplay Modifier), so an actor can carry
+# any number and world_save captures them. esys_status ticks each on its interval,
+# routing poison/regen through the ludic.gameplay Combat pipeline (so armor, veto
+# and Died all still apply), and expires it. Timed stat buffs/debuffs are already
+# ludic.gameplay modifiers (Stats.modify with a ttl); this module adds the
+# over-time damage/heal effects.
+#
+# kind: 0 poison (damage over time), 1 regen (heal over time).
+
+import "ludic.gameplay/combat.ludic"
+
+property Status { target: int = 0, kind: int = 0, amount: int = 0, interval: int = 30, ttl: int = 0, t: int = 0 }
+model StatusFx { Status }
+@OnSpawn(StatusFx) handler StatusFxInit { }
+
+event StatusApplied { target: int = 0, kind: int = 0 }
+event StatusExpired { target: int = 0, kind: int = 0 }
+
+# Status.apply(target, kind, amount, interval, ttl) — attach a timed effect.
+@Namespace(Status) function status_apply(target: int, kind: int, amount: int, interval: int, ttl: int) -> int {
+  let m = World.model_id("StatusFx")
+  if m < 0 { return 0 - 1 }
+  let e = World.spawn(m)
+  let P = World.prop_id("Status")
+  World.set(e, P, World.field_id(P, "target"), target)
+  World.set(e, P, World.field_id(P, "kind"), kind)
+  World.set(e, P, World.field_id(P, "amount"), amount)
+  World.set(e, P, World.field_id(P, "interval"), interval)
+  World.set(e, P, World.field_id(P, "ttl"), ttl)
+  World.set(e, P, World.field_id(P, "t"), interval)
+  emit StatusApplied(target: target, kind: kind)
+  return e
+}
+# Status.clear(target) — drop every status on an actor (dispel).
+@Namespace(Status) function status_clear(target: int) -> void {
+  let P = World.prop_id("Status")
+  if P < 0 { return }
+  let ft = World.field_id(P, "target")
+  var e = World.query_next(P, 0)
+  while e >= 0 {
+    var nxt = World.query_next(P, e + 1)
+    if World.get(e, P, ft) == target { despawn e }
+    e = nxt
+  }
+}
+
+# ===========================================================================
+# esys_status (Update) — tick intervals, apply the effect through Combat, expire.
+# ===========================================================================
+@EngineSystem(Status, Update) function esys_status() -> void {
+  let P = World.prop_id("Status")
+  if P < 0 { return }
+  let ftgt = World.field_id(P, "target")
+  let fkind = World.field_id(P, "kind")
+  let famt = World.field_id(P, "amount")
+  let fint = World.field_id(P, "interval")
+  let fttl = World.field_id(P, "ttl")
+  let ft = World.field_id(P, "t")
+  var e = World.query_next(P, 0)
+  while e >= 0 {
+    var nxt = World.query_next(P, e + 1)
+    let tgt = World.get(e, P, ftgt)
+    let kind = World.get(e, P, fkind)
+    let amt = World.get(e, P, famt)
+    # interval tick
+    var t = World.get(e, P, ft) - 1
+    if t <= 0 {
+      if kind == 1 { Combat.heal(tgt, amt) } else { Combat.damage(tgt, tgt, amt) }
+      t = World.get(e, P, fint)
+    }
+    World.set(e, P, ft, t)
+    # lifetime
+    let ttl = World.get(e, P, fttl) - 1
+    if ttl <= 0 { emit StatusExpired(target: tgt, kind: kind);  despawn e } else { World.set(e, P, fttl, ttl) }
+    e = nxt
+  }
+}

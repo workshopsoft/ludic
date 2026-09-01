@@ -1,0 +1,158 @@
+# rpg_demo.ludic — the ludic.rpg suite (#59), all seven modules exercised headlessly
+# and deterministically: grid movement (+ wall block, MoveRequested veto, interact),
+# inventory + equipment stat bonus, crafting, event-driven quests, a dialog graph,
+# Sokoban pushables + a pressure-plate/gate signal graph, and a poison status effect.
+#
+# A full run prints:  1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 (21 checks)
+#
+# Build (from the repo root):
+#   LUDIC_MODULES=packages ludicc --headless examples/games/rpg_demo.ludic
+program RpgDemo {
+  import "ludic.rpg/mover.ludic"
+  import "ludic.rpg/inventory.ludic"
+  import "ludic.rpg/crafting.ludic"
+  import "ludic.rpg/quests.ludic"
+  import "ludic.rpg/dialog.ludic"
+  import "ludic.rpg/puzzles.ludic"
+  import "ludic.rpg/status.ludic"
+
+  property Position { x: int = 0, y: int = 0 }
+  property Body {
+    vx: fixed = 0.0, vy: fixed = 0.0, gravity: fixed = 0.0, max_fall: fixed = 0.0,
+    rx: fixed = 0.0, ry: fixed = 0.0, policy: int = 1,
+    on_ground: int = 0, hit_wall: int = 0, hit_ceiling: int = 0
+  }
+  property Solids { tile: int = 0, wall: int = 0, oneway: int = 0 }
+
+  model Hero  { Position, Body, Mover, Inventory, Equipment, Stats, Dialog }
+  model Npc   { Position }
+  model Block { Position, Pushable }
+  model Plate { Position, Pressure }
+  model Door  { Position, Gate }
+  model Cfg   { Solids }
+  @OnSpawn(Hero) handler HI { }
+  @OnSpawn(Npc) handler NI { }
+  @OnSpawn(Block) handler BI { }
+  @OnSpawn(Plate) handler PLI { }
+  @OnSpawn(Door) handler DOI { }
+  @OnSpawn(Cfg) handler CI { }
+
+  # a locked-door rule: veto a rightward grid step while `locked` is set (lever 4).
+  var locked: int = 0
+  @On(MoveRequested) handler LockDoor { if (locked == 1) and (dx == 1) { cancel } }
+  var entered: int = 0
+  @On(TileEntered) handler CountEnter { entered = entered + 1 }
+  var talked: int = 0
+  @On(Interacted) handler OnTalk { if target >= 0 { talked = talked + 1 } }
+  var quest_done: int = 0
+  @On(QuestCompleted) handler OnQuestDone { quest_done = quest_done + 1 }
+
+  function tick_n(n: int) -> void { var i = 0;  while i < n { tick_fixed();  i = i + 1 } }
+  function bi(b: bool) -> int { if b { return 1 };  return 0 }
+  function px(e: int) -> int { let P = World.prop_id("Position");  return World.get(e, P, World.field_id(P, "x")) }
+  function py(e: int) -> int { let P = World.prop_id("Position");  return World.get(e, P, World.field_id(P, "y")) }
+  function hp(e: int) -> int { let P = World.prop_id("Stats");  return World.get(e, P, World.field_id(P, "hp")) }
+
+  entry {
+    let PM = World.prop_id("Mover")
+
+    # a 6x3 tile world; a wall glyph at cell (3,1)
+    Map.size(6, 3)
+    Map.row(0, "......")
+    Map.row(1, "...#..")
+    Map.row(2, "......")
+    spawn Cfg { Solids { tile: 16, wall: '#', oneway: 0 } }
+
+    spawn Hero { Position { x: 16, y: 16 }, Mover { mode: 0, step: 16, move_cd: 0, axes: 4 },
+                 Stats { hp: 20, max_hp: 20, atk: 5, def: 0 } }
+    let h = World.query_next(PM, 0)
+
+    # ================= Module A: grid movement =================
+    # move down into the open cell (16,32)
+    Mover.move(h, 0, 1);  tick_n(1);  Mover.move(h, 0, 0);  tick_n(1)
+    print(bi((px(h) == 16) and (py(h) == 32)))         # 1 — stepped one cell down
+    print(bi(entered >= 1))                             # 1 — TileEntered fired
+
+    # try to walk into the wall at cell (3,1)=(48,16): from (32,16) moving right blocked
+    World.set(h, World.prop_id("Position"), World.field_id(World.prop_id("Position"), "x"), 32)
+    World.set(h, World.prop_id("Position"), World.field_id(World.prop_id("Position"), "y"), 16)
+    Mover.move(h, 1, 0);  tick_n(1);  Mover.move(h, 0, 0)
+    print(bi(px(h) == 32))                              # 1 — wall blocked the step
+
+    # MoveRequested veto: a locked door forbids the rightward step (open cell now)
+    World.set(h, World.prop_id("Position"), World.field_id(World.prop_id("Position"), "y"), 32)  # row 2 open
+    locked = 1
+    Mover.move(h, 1, 0);  tick_n(1);  Mover.move(h, 0, 0)
+    print(bi(px(h) == 32))                              # 1 — vetoed, no move
+    locked = 0
+    Mover.move(h, 1, 0);  tick_n(1);  Mover.move(h, 0, 0)
+    print(bi(px(h) == 48))                              # 1 — now allowed
+
+    # interact: an NPC one cell ahead (facing right after the last move)
+    spawn Npc { Position { x: 64, y: 32 } }
+    print(bi(Mover.interact(h) >= 0))                   # 1 — found the NPC ahead
+    print(bi(talked == 1))                              # 1 — Interacted fired
+
+    # ================= Module B: inventory + equipment =================
+    Item.def("herb", 99, 1, 2)
+    Item.def("sword", 1, 10, 50)
+    Inventory.add(h, "herb", 5)
+    print(bi(Inventory.count(h, "herb") == 5))          # 1
+    print(bi(Inventory.use(h, "herb") == 1))            # 1 — consumed one (now 4)
+    let atk0 = Stats.total(h, 1)                         # base atk 5
+    Inventory.equip(h, 0, 1, 0, 10)                     # weapon: +10 flat atk
+    print(bi(Stats.total(h, 1) == atk0 + 10))          # 1 — equipment bonus applies
+    Inventory.unequip(h, 0)
+    print(bi(Stats.total(h, 1) == atk0))               # 1 — removed on unequip
+
+    # ================= Module C: crafting =================
+    Craft.recipe("potion", "herb", 1)                  # 2 herb -> 1 (better) herb, toy recipe
+    Craft.ingredient("potion", "herb", 2)
+    Inventory.add(h, "herb", 2)                          # ensure >= 2
+    let before = Inventory.count(h, "herb")
+    print(bi(Craft.can(h, "potion") == 1))             # 1
+    print(bi(Craft.make(h, "potion") == 1))            # 1 — consumed 2, produced 1
+    print(bi(Inventory.count(h, "herb") == before - 1)) # 1 — net -2 + 1
+
+    # ================= Module D: quests =================
+    Quest.define("hunt")
+    Quest.objective("hunt", 0, 0, 3)                    # kill any x3
+    Quest.start("hunt")
+    Quest.notify(0, 0, 1);  Quest.notify(0, 0, 1);  Quest.notify(0, 0, 1)
+    print(bi(Quest.state_of("hunt") == 3))             # 1 — auto-completed
+    print(bi(quest_done == 1))                          # 1 — QuestCompleted fired
+
+    # ================= Module E: dialog =================
+    let dn0 = Dialog.node("elder", "hello")
+    let dn1 = Dialog.node("elder", "farewell")
+    Dialog.choice(dn0, "greet", dn1)
+    Dialog.choice(dn1, "leave", 0 - 1)
+    Dialog.start(h, "elder")
+    print(bi(Dialog.line(h) == "hello"))               # 1 — entry node text
+    Dialog.choose(h, 0)
+    print(bi(Dialog.line(h) == "farewell"))            # 1 — advanced
+
+    # ================= Module F: puzzles =================
+    spawn Block { Position { x: 16, y: 0 }, Pushable { } }   # cell (1,0), push to (2,0) — both open
+    let blk = World.query_next(World.prop_id("Pushable"), 0)
+    print(bi(Puzzle.push(16, 0, 1, 0, 16) == 1))       # 1 — pushed the block right
+    spawn Plate { Position { x: 200, y: 200 }, Pressure { step: 16 } }
+    let plate = World.query_next(World.prop_id("Pressure"), 0)
+    spawn Door { Position { x: 300, y: 300 }, Gate { } }
+    let door = World.query_next(World.prop_id("Gate"), 0)
+    Puzzle.link(door, plate)
+    tick_n(2)
+    let closed = Puzzle.is_open(door)                    # 0 — nothing on the plate
+    spawn Block { Position { x: 200, y: 200 }, Pushable { } }   # weight on the plate
+    tick_n(2)
+    print(bi((closed == 0) and (Puzzle.is_open(door) == 1)))   # 1 — plate -> gate opened
+
+    # ================= Module G: status =================
+    let hp0 = hp(h)
+    Status.apply(h, 0, 3, 2, 8)                         # poison: 3 dmg every 2 frames for 8 frames
+    tick_n(8)
+    print(bi(hp(h) < hp0))                              # 1 — poison ticked damage
+
+    quit()
+  }
+}

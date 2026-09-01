@@ -1,0 +1,177 @@
+# mover.ludic — RPG Module A: movement (grid + free, 4/8-axis). One component with
+# a `mode` selector, so a game picks its movement feel as data (#59).
+#
+#   mode 0 grid        discrete cell steps (RPG Maker / Pokemon), cooldown-gated
+#   mode 1 free        continuous Body velocity (top-down Zelda), reuses esys_move
+#   mode 2 grid-tween  grid-discrete logic, positions eased between cells
+#
+# Events at every decision: cancellable MoveRequested (locked doors, ice, cutscene
+# lock), TileEntered (encounters, traps), Interacted (the action-button raycast).
+
+const RPG_Q: int = 65536
+
+property Mover {
+  mode:  int = 0,           # 0 grid, 1 free, 2 grid-tween
+  axes:  int = 8,           # 4 cardinal only, 8 with diagonals
+  speed: int = 3,           # free: px/frame; grid-tween: px/frame slide
+  step:  int = 16,          # grid: cell size in px
+  facing_x: int = 0, facing_y: int = 1,   # last-faced direction (for interact)
+  want_x: int = 0, want_y: int = 0,       # intent (-1/0/1), input OR ai
+  cooldown: int = 0, move_cd: int = 8,    # grid: frames between cell steps
+  tx: int = 0, ty: int = 0, sliding: int = 0,   # grid-tween: target cell + state
+  policy: int = 0
+}
+
+event cancellable MoveRequested { e: int = 0, dx: int = 0, dy: int = 0 }
+event TileEntered { e: int = 0, x: int = 0, y: int = 0 }
+event Interacted { e: int = 0, target: int = 0 }
+
+function mv_get(e: int, name: pointer) -> int {
+  let P = World.prop_id("Mover");  if P < 0 { return 0 }
+  let f = World.field_id(P, name);  if f < 0 { return 0 }
+  return World.get(e, P, f)
+}
+function mv_set(e: int, name: pointer, v: int) -> void {
+  let P = World.prop_id("Mover");  if P < 0 { return }
+  let f = World.field_id(P, name);  if f >= 0 { World.set(e, P, f, v) }
+}
+function mv_pos(e: int, name: pointer) -> int {
+  let P = World.prop_id("Position");  if P < 0 { return 0 }
+  let f = World.field_id(P, name);  if f < 0 { return 0 }
+  return World.get(e, P, f)
+}
+function mv_pos_set(e: int, name: pointer, v: int) -> void {
+  let P = World.prop_id("Position");  if P < 0 { return }
+  let f = World.field_id(P, name);  if f >= 0 { World.set(e, P, f, v) }
+}
+function mv_body_set(e: int, name: pointer, v: int) -> void {
+  let P = World.prop_id("Body");  if P < 0 { return }
+  let f = World.field_id(P, name);  if f >= 0 { World.set(e, P, f, v) }
+}
+function mv_sign(a: int) -> int { if a > 0 { return 1 };  if a < 0 { return 0 - 1 };  return 0 }
+
+# is the destination cell walkable? Uses the Solids tilemap when configured,
+# otherwise the whole field is open.
+function mv_walkable(nx: int, ny: int, step: int) -> int {
+  let ps = World.prop_id("Solids")
+  if ps < 0 { return 1 }
+  let se = World.query_next(ps, 0)
+  if se < 0 { return 1 }
+  let ft = World.field_id(ps, "tile")
+  let fw = World.field_id(ps, "wall")
+  if (ft < 0) or (fw < 0) { return 1 }
+  let ts = World.get(se, ps, ft)
+  if ts <= 0 { return 1 }
+  let wall = World.get(se, ps, fw)
+  if Grid.blocked(nx / ts, ny / ts, wall) { return 0 }
+  return 1
+}
+
+# ===========================================================================
+# esys_mover (FixedUpdate) — one active branch per mode.
+# ===========================================================================
+@EngineSystem(Mover, FixedUpdate) function esys_mover() -> void {
+  let P = World.prop_id("Mover")
+  if P < 0 { return }
+  var e = World.query_next(P, 0)
+  while e >= 0 {
+    let mode = mv_get(e, "mode")
+    if mode == 1 { mover_free(e) }
+    else { if mode == 2 { mover_grid_tween(e) } else { mover_grid(e) } }
+    e = World.query_next(P, e + 1)
+  }
+}
+
+# clamp the intent to the allowed axes (4 = no diagonal: prefer the horizontal).
+function mover_intent(e: int) -> int {
+  var wx = mv_get(e, "want_x")
+  var wy = mv_get(e, "want_y")
+  if (mv_get(e, "axes") == 4) and (wx != 0) and (wy != 0) { wy = 0 }
+  mv_set(e, "facing_x", 0);  mv_set(e, "facing_y", 0)
+  if (wx != 0) or (wy != 0) { mv_set(e, "facing_x", mv_sign(wx));  mv_set(e, "facing_y", mv_sign(wy)) }
+  # pack signed x,y into one int for return: (wx+1)*4 + (wy+1)
+  return (mv_sign(wx) + 1) * 4 + (mv_sign(wy) + 1)
+}
+
+function mover_grid(e: int) -> void {
+  let cd = mv_get(e, "cooldown")
+  if cd > 0 { mv_set(e, "cooldown", cd - 1);  return }
+  let packed = mover_intent(e)
+  let dx = packed / 4 - 1
+  let dy = packed - (packed / 4) * 4 - 1
+  if (dx == 0) and (dy == 0) { return }
+  let step = mv_get(e, "step")
+  let nx = mv_pos(e, "x") + dx * step
+  let ny = mv_pos(e, "y") + dy * step
+  if mv_walkable(nx, ny, step) == 0 { return }
+  if emit MoveRequested(e: e, dx: dx, dy: dy) != 0 { return }
+  mv_pos_set(e, "x", nx)
+  mv_pos_set(e, "y", ny)
+  mv_set(e, "cooldown", mv_get(e, "move_cd"))
+  emit TileEntered(e: e, x: nx, y: ny)
+}
+
+# grid-tween: same discrete logic, but slide the sprite between cells so it looks
+# smooth while staying lockstep-discrete (the target cell is the source of truth).
+function mover_grid_tween(e: int) -> void {
+  if mv_get(e, "sliding") == 1 {
+    let step = mv_get(e, "speed")
+    let tx = mv_get(e, "tx");  let ty = mv_get(e, "ty")
+    let px = mv_pos(e, "x");  let py = mv_pos(e, "y")
+    var nxp = px + mv_sign(tx - px) * step
+    var nyp = py + mv_sign(ty - py) * step
+    if mv_sign(tx - px) > 0 { if nxp > tx { nxp = tx } }
+    if mv_sign(tx - px) < 0 { if nxp < tx { nxp = tx } }
+    if mv_sign(ty - py) > 0 { if nyp > ty { nyp = ty } }
+    if mv_sign(ty - py) < 0 { if nyp < ty { nyp = ty } }
+    mv_pos_set(e, "x", nxp);  mv_pos_set(e, "y", nyp)
+    if (nxp == tx) and (nyp == ty) { mv_set(e, "sliding", 0);  emit TileEntered(e: e, x: tx, y: ty) }
+    return
+  }
+  let packed = mover_intent(e)
+  let dx = packed / 4 - 1
+  let dy = packed - (packed / 4) * 4 - 1
+  if (dx == 0) and (dy == 0) { return }
+  let step = mv_get(e, "step")
+  let nx = mv_pos(e, "x") + dx * step
+  let ny = mv_pos(e, "y") + dy * step
+  if mv_walkable(nx, ny, step) == 0 { return }
+  if emit MoveRequested(e: e, dx: dx, dy: dy) != 0 { return }
+  mv_set(e, "tx", nx);  mv_set(e, "ty", ny);  mv_set(e, "sliding", 1)
+}
+
+function mover_free(e: int) -> void {
+  let packed = mover_intent(e)
+  let dx = packed / 4 - 1
+  let dy = packed - (packed / 4) * 4 - 1
+  let sp = mv_get(e, "speed")
+  mv_body_set(e, "vx", dx * sp * RPG_Q)
+  mv_body_set(e, "vy", dy * sp * RPG_Q)
+}
+
+# ---------------------------------------------------------------------------
+# Mover.* convenience
+# ---------------------------------------------------------------------------
+@Namespace(Mover) function mover_move(e: int, dx: int, dy: int) -> void { mv_set(e, "want_x", dx);  mv_set(e, "want_y", dy) }
+# interact: the entity one cell ahead in the facing direction (Interacted event).
+@Namespace(Mover) function mover_interact(e: int) -> int {
+  let step = mv_get(e, "step")
+  let ax = mv_pos(e, "x") + mv_get(e, "facing_x") * step
+  let ay = mv_pos(e, "y") + mv_get(e, "facing_y") * step
+  let PP = World.prop_id("Position")
+  if PP < 0 { return 0 - 1 }
+  var o = World.query_next(PP, 0)
+  while o >= 0 {
+    if o != e {
+      let ox = World.get(o, PP, World.field_id(PP, "x"))
+      let oy = World.get(o, PP, World.field_id(PP, "y"))
+      let dx = ox - ax;  let dy = oy - ay
+      var adx = dx;  if adx < 0 { adx = 0 - adx }
+      var ady = dy;  if ady < 0 { ady = 0 - ady }
+      if (adx < step) and (ady < step) { emit Interacted(e: e, target: o);  return o }
+    }
+    o = World.query_next(PP, o + 1)
+  }
+  emit Interacted(e: e, target: 0 - 1)
+  return 0 - 1
+}

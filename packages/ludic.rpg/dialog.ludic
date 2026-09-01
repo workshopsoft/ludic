@@ -1,0 +1,130 @@
+# dialog.ludic — RPG Module E: a data-driven dialog graph (Ink/Yarn style) (#59).
+#
+# A tree is nodes (a line of text) + choices (label -> next node). Writers register
+# trees with zero engine code; a `Dialog` component tracks the current node per
+# speaker. Choices are veto-able (skill-check gating) via cancellable DialogChoice.
+
+const DLG_TREE_MAX: int = 64
+const DLG_NODE_MAX: int = 512
+const DLG_CHOICE_MAX: int = 1024
+
+var dlg_reg: Dict = null              # tree name -> tree id
+var dlg_tree_n: int = 0
+var dlg_tree_start: words = null      # first node id per tree
+var dlg_node_n: int = 0
+var dlg_node_tree: words = null
+var dlg_node_text: pointers = null
+var dlg_choice_n: int = 0
+var dlg_choice_node: words = null     # owning node
+var dlg_choice_label: pointers = null
+var dlg_choice_next: words = null     # next node id, or -1 to end
+
+function dlg_ensure() -> void {
+  if dlg_reg == null {
+    dlg_reg = Dict.new()
+    dlg_tree_start = words(DLG_TREE_MAX)
+    dlg_node_tree = words(DLG_NODE_MAX);  dlg_node_text = bytes(DLG_NODE_MAX * 8)
+    dlg_choice_node = words(DLG_CHOICE_MAX);  dlg_choice_label = bytes(DLG_CHOICE_MAX * 8);  dlg_choice_next = words(DLG_CHOICE_MAX)
+  }
+}
+
+property Dialog { tree: int = 0, node: int = 0, active: int = 0 }
+
+event DialogStarted { e: int = 0, tree: int = 0 }
+event DialogLine { e: int = 0, node: int = 0 }
+event cancellable DialogChoice { e: int = 0, node: int = 0, choice: int = 0 }
+event DialogEnded { e: int = 0 }
+
+# Dialog.tree(name) — register (or fetch) a tree id.
+@Namespace(Dialog) function dialog_tree(name: pointer) -> int {
+  dlg_ensure()
+  let ex = Dict.get_or(dlg_reg, name, 0 - 1)
+  if ex >= 0 { return ex }
+  if dlg_tree_n >= DLG_TREE_MAX { return 0 - 1 }
+  let id = dlg_tree_n
+  dlg_tree_start[id] = 0 - 1
+  dlg_tree_n = dlg_tree_n + 1
+  Dict.set(dlg_reg, name, id)
+  return id
+}
+# Dialog.node(tree_name, text) — add a line node; the first node added to a tree is
+# its entry point. Returns the node id.
+@Namespace(Dialog) function dialog_node(tree_name: pointer, text: pointer) -> int {
+  dlg_ensure()
+  let tid = dialog_tree(tree_name)
+  if tid < 0 { return 0 - 1 }
+  if dlg_node_n >= DLG_NODE_MAX { return 0 - 1 }
+  let id = dlg_node_n
+  dlg_node_tree[id] = tid;  dlg_node_text[id] = text
+  dlg_node_n = dlg_node_n + 1
+  if dlg_tree_start[tid] < 0 { dlg_tree_start[tid] = id }
+  return id
+}
+# Dialog.choice(node, label, next_node) — add a branch (next_node -1 ends).
+@Namespace(Dialog) function dialog_choice(node: int, label: pointer, next_node: int) -> int {
+  dlg_ensure()
+  if dlg_choice_n >= DLG_CHOICE_MAX { return 0 - 1 }
+  let id = dlg_choice_n
+  dlg_choice_node[id] = node;  dlg_choice_label[id] = label;  dlg_choice_next[id] = next_node
+  dlg_choice_n = dlg_choice_n + 1
+  return id
+}
+
+function dlg_get(e: int, name: pointer) -> int {
+  let P = World.prop_id("Dialog");  if P < 0 { return 0 }
+  return World.get(e, P, World.field_id(P, name))
+}
+function dlg_set(e: int, name: pointer, v: int) -> void {
+  let P = World.prop_id("Dialog");  if P < 0 { return }
+  World.set(e, P, World.field_id(P, name), v)
+}
+
+# Dialog.start(e, tree_name) — open the tree on a speaker (DialogStarted + Line).
+@Namespace(Dialog) function dialog_start(e: int, tree_name: pointer) -> void {
+  dlg_ensure()
+  let tid = dialog_tree(tree_name)
+  if tid < 0 { return }
+  dlg_set(e, "tree", tid)
+  dlg_set(e, "node", dlg_tree_start[tid])
+  dlg_set(e, "active", 1)
+  emit DialogStarted(e: e, tree: tid)
+  emit DialogLine(e: e, node: dlg_tree_start[tid])
+}
+# Dialog.line(e) — text of the current node (empty when inactive).
+@Namespace(Dialog) function dialog_line(e: int) -> pointer {
+  if dlg_get(e, "active") == 0 { return "" }
+  return dlg_node_text[dlg_get(e, "node")]
+}
+# Dialog.count(e) — number of choices at the current node.
+@Namespace(Dialog) function dialog_count(e: int) -> int {
+  dlg_ensure()
+  if dlg_get(e, "active") == 0 { return 0 }
+  let node = dlg_get(e, "node")
+  var n = 0;  var i = 0
+  while i < dlg_choice_n { if dlg_choice_node[i] == node { n = n + 1 };  i = i + 1 }
+  return n
+}
+# Dialog.choose(e, i) — take the i-th choice (veto-able); advance or end.
+@Namespace(Dialog) function dialog_choose(e: int, idx: int) -> int {
+  dlg_ensure()
+  if dlg_get(e, "active") == 0 { return 0 }
+  let node = dlg_get(e, "node")
+  var seen = 0;  var i = 0;  var pick = 0 - 1
+  while i < dlg_choice_n {
+    if dlg_choice_node[i] == node {
+      if seen == idx { pick = i;  i = dlg_choice_n } else { seen = seen + 1 }
+    }
+    i = i + 1
+  }
+  if pick < 0 { return 0 }
+  if emit DialogChoice(e: e, node: node, choice: idx) != 0 { return 0 }
+  let nxt = dlg_choice_next[pick]
+  if nxt < 0 {
+    dlg_set(e, "active", 0)
+    emit DialogEnded(e: e)
+  } else {
+    dlg_set(e, "node", nxt)
+    emit DialogLine(e: e, node: nxt)
+  }
+  return 1
+}

@@ -1,0 +1,152 @@
+# puzzles.ludic — RPG Module F: the recurring 2D puzzle primitives (#59).
+#
+# Sokoban pushables on the grid, plus a signal graph of switches / pressure plates
+# driving gates — logic puzzles with no code: wire a Gate to a source and the gate
+# opens when the source is on. Composes with the grid Mover (Module A).
+
+const PZ_Q: int = 65536
+
+property Pushable { }
+property Switch { on: int = 0 }
+property Pressure { on: int = 0, step: int = 16 }
+property Gate { open: int = 0, src: int = 0 - 1 }
+
+event BlockPushed { block: int = 0, dx: int = 0, dy: int = 0 }
+event cancellable PushBlocked { block: int = 0 }
+event SignalChanged { gate: int = 0, open: int = 0 }
+
+function pz_pos(e: int, name: pointer) -> int {
+  let P = World.prop_id("Position");  if P < 0 { return 0 }
+  return World.get(e, P, World.field_id(P, name))
+}
+function pz_pos_set(e: int, name: pointer, v: int) -> void {
+  let P = World.prop_id("Position");  if P < 0 { return }
+  World.set(e, P, World.field_id(P, name), v)
+}
+
+# the pushable whose cell is exactly (x, y), or -1.
+function pz_block_at(x: int, y: int) -> int {
+  let P = World.prop_id("Pushable")
+  if P < 0 { return 0 - 1 }
+  var e = World.query_next(P, 0)
+  while e >= 0 {
+    if (pz_pos(e, "x") == x) and (pz_pos(e, "y") == y) { return e }
+    e = World.query_next(P, e + 1)
+  }
+  return 0 - 1
+}
+
+# reuse the Mover module's tilemap walkability check when present.
+function pz_walkable(nx: int, ny: int, step: int) -> int {
+  let ps = World.prop_id("Solids")
+  if ps < 0 { return 1 }
+  let se = World.query_next(ps, 0)
+  if se < 0 { return 1 }
+  let ft = World.field_id(ps, "tile")
+  let fw = World.field_id(ps, "wall")
+  if (ft < 0) or (fw < 0) { return 1 }
+  let ts = World.get(se, ps, ft)
+  if ts <= 0 { return 1 }
+  let wall = World.get(se, ps, fw)
+  if Grid.blocked(nx / ts, ny / ts, wall) { return 0 }
+  return 1
+}
+
+# Puzzle.push(bx, by, dx, dy, step) — push the block at (bx,by) one cell along
+# (dx,dy) if the destination is free (no wall, no other block). Returns 1 on a move.
+@Namespace(Puzzle) function puzzle_push(bx: int, by: int, dx: int, dy: int, step: int) -> int {
+  let b = pz_block_at(bx, by)
+  if b < 0 { return 0 }
+  let nx = bx + dx * step
+  let ny = by + dy * step
+  if (pz_walkable(nx, ny, step) == 0) or (pz_block_at(nx, ny) >= 0) {
+    emit PushBlocked(block: b)
+    return 0
+  }
+  pz_pos_set(b, "x", nx);  pz_pos_set(b, "y", ny)
+  emit BlockPushed(block: b, dx: dx, dy: dy)
+  return 1
+}
+
+# Puzzle.link(gate, source) — a gate opens when its source (a Switch or Pressure) is on.
+@Namespace(Puzzle) function puzzle_link(gate: int, source: int) -> void {
+  let P = World.prop_id("Gate")
+  if P < 0 { return }
+  World.set(gate, P, World.field_id(P, "src"), source)
+}
+# Puzzle.switch(e, on) — set a manual switch.
+@Namespace(Puzzle) function puzzle_switch(e: int, on: int) -> void {
+  let P = World.prop_id("Switch")
+  if P < 0 { return }
+  World.set(e, P, World.field_id(P, "on"), on)
+}
+@Namespace(Puzzle) function puzzle_is_open(gate: int) -> int {
+  let P = World.prop_id("Gate")
+  if P < 0 { return 0 }
+  return World.get(gate, P, World.field_id(P, "open"))
+}
+
+# read the "on" state of a signal source (Switch or Pressure), 0 if neither.
+function pz_source_on(src: int) -> int {
+  if src < 0 { return 0 }
+  let PS = World.prop_id("Switch")
+  if (PS >= 0) and (World.has(src, PS) != 0) { return World.get(src, PS, World.field_id(PS, "on")) }
+  let PP = World.prop_id("Pressure")
+  if (PP >= 0) and (World.has(src, PP) != 0) { return World.get(src, PP, World.field_id(PP, "on")) }
+  return 0
+}
+
+# ===========================================================================
+# esys_pressure (Update) — a plate is on while a Pushable or a Position-carrying
+# body sits on its cell.
+# ===========================================================================
+@EngineSystem(Pressure, Update) function esys_pressure() -> void {
+  let P = World.prop_id("Pressure")
+  if P < 0 { return }
+  let fon = World.field_id(P, "on")
+  let fstep = World.field_id(P, "step")
+  var e = World.query_next(P, 0)
+  while e >= 0 {
+    let px = pz_pos(e, "x");  let py = pz_pos(e, "y")
+    let step = World.get(e, P, fstep)
+    var on = 0
+    # a pushable on the plate?
+    if pz_block_at(px, py) >= 0 { on = 1 }
+    # or any other Position entity within the same cell?
+    if on == 0 {
+      let PP = World.prop_id("Position")
+      var o = World.query_next(PP, 0)
+      while o >= 0 {
+        if (o != e) and (World.has(o, P) == 0) {
+          let ox = World.get(o, PP, World.field_id(PP, "x"))
+          let oy = World.get(o, PP, World.field_id(PP, "y"))
+          var adx = ox - px;  if adx < 0 { adx = 0 - adx }
+          var ady = oy - py;  if ady < 0 { ady = 0 - ady }
+          if (adx < step) and (ady < step) { on = 1;  o = 0 - 1 }
+        }
+        if o >= 0 { o = World.query_next(PP, o + 1) }
+      }
+    }
+    World.set(e, P, fon, on)
+    e = World.query_next(P, e + 1)
+  }
+}
+
+# ===========================================================================
+# esys_gate (Update, after pressure) — a gate mirrors its source's on-state.
+# ===========================================================================
+@EngineSystem(Gate, Update) function esys_gate() -> void {
+  let P = World.prop_id("Gate")
+  if P < 0 { return }
+  let fopen = World.field_id(P, "open")
+  let fsrc = World.field_id(P, "src")
+  var e = World.query_next(P, 0)
+  while e >= 0 {
+    let want = pz_source_on(World.get(e, P, fsrc))
+    if World.get(e, P, fopen) != want {
+      World.set(e, P, fopen, want)
+      emit SignalChanged(gate: e, open: want)
+    }
+    e = World.query_next(P, e + 1)
+  }
+}
