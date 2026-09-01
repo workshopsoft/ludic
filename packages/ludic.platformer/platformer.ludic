@@ -1,0 +1,314 @@
+# platformer.ludic — the builtin Platformer controller (#58), the reference
+# implementation of the six-lever extensibility contract (#57).
+#
+# It is *policy on top of mechanism*: the shared engine `esys_move` (Body/Collider,
+# runtime/native/systems_move.ludic) owns integration + swept-AABB tile collision;
+# this package owns movement feel. The controller is decomposed into small
+# engine-owned sub-systems, each registered with @EngineSystem and therefore
+# independently switch-off-able with `disable system <fn>` (lever 5):
+#
+#   Input phase        esys_platformer_input   input actions -> intent fields
+#   FixedUpdate phase  esys_platformer_move     accel/friction/air-control -> Body.vx
+#                      esys_platformer_gravity  apex/fall-mul/variable-jump -> Body.gravity
+#                      esys_platformer_jump     coyote + buffer + air-jumps -> Body.vy
+#   (Update phase      esys_move                the sweep — core engine system)
+#   LateUpdate phase   esys_platformer_anim     grounded/vx/vy -> state + events
+#
+# Running the control systems *before* the Update sweep (Input/FixedUpdate) and the
+# animation state *after* it (LateUpdate) is how the ordering lever (3) is realised
+# with today's phases: a game handler in Update runs after the controller set vx
+# but before the sweep; a handler in LateUpdate runs after collision resolved.
+#
+# Everything is integer Q16.16 (velocities are raw fixed bits, same as esys_move),
+# so replay, lockstep and world_save all hold. Nothing here is a float.
+
+const PLAT_Q: int = 65536              # Q16.16 one whole pixel
+
+# ---------------------------------------------------------------------------
+# The controller component. Every "feel" number is a defaulted POD field (lever
+# 1: tuning is data). `want_*` are the intent fields the input system fills — or
+# that an AI / a game writes directly after `disable system esys_platformer_input`
+# (this is exactly how #61 drives an NPC through the same controller). The rest is
+# engine-owned state the sub-systems keep between frames.
+# ---------------------------------------------------------------------------
+property Platformer {
+  # --- tuning (lever 1) ---
+  move_speed:   int = 3,     # ground max speed, px/frame
+  accel:        int = 60,    # ground responsiveness, % of the speed gap closed / frame
+  air_control:  int = 40,    # airborne responsiveness, %
+  friction:     int = 50,    # ground stopping, % of speed shed / frame when idle
+  jump_height:  int = 4,     # tiles; gravity + impulse are derived from this + apex
+  apex_frames:  int = 14,    # frames to the top of the jump (defines gravity — feel)
+  fall_gravity_mul: int = 160, # 100 = symmetric; >100 = snappier fall (Celeste)
+  coyote_frames: int = 6,    # grace frames to still jump after leaving a ledge
+  jump_buffer_frames: int = 6, # grace frames to buffer a jump pressed before landing
+  max_fall:     int = 8,     # terminal fall speed, px/frame
+  air_jumps:    int = 0,     # extra mid-air jumps (1 = double jump, N = multi)
+  policy:       int = 0,     # gravity profile (lever 6): 0 asymmetric, 1 symmetric, 2 floaty
+  # --- intent (input system OR ai/game writes these) ---
+  want_x:       int = 0,     # -1 left, 0 none, 1 right
+  want_jump:    int = 0,     # 1 = jump pressed THIS frame (edge)
+  hold_jump:    int = 0,     # 1 = jump held (for variable jump height)
+  # --- engine-owned state ---
+  coyote_t:     int = 0,
+  buffer_t:     int = 0,
+  jumps_left:   int = 0,
+  state:        int = 0,     # 0 idle, 1 run, 2 rise, 3 fall
+  face:         int = 1,     # -1 / 1 last horizontal facing
+  air_t:        int = 0      # frames spent airborne (fall timer for Landed)
+}
+
+# jump-feel events, one at every decision (lever 4). The cancellable ones are the
+# veto points; the rest are pure observation.
+event cancellable JumpRequested { e: int = 0, kind: int = 0 }   # kind 0 ground/coyote, 2 air
+event JumpPerformed { e: int = 0, kind: int = 0 }
+event Landed { e: int = 0, fall_frames: int = 0 }
+event StateChanged { e: int = 0, from: int = 0, to: int = 0 }
+
+# ---- small helpers ---------------------------------------------------------
+# the tile size drives the derived jump maths; read it from the Solids config
+# entity (as esys_move does) so a jump_height in "tiles" means the same thing.
+function plat_tile() -> int {
+  let ps = World.prop_id("Solids")
+  if ps < 0 { return 16 }
+  let se = World.query_next(ps, 0)
+  if se < 0 { return 16 }
+  let ft = World.field_id(ps, "tile")
+  if ft < 0 { return 16 }
+  let t = World.get(se, ps, ft)
+  if t <= 0 { return 16 }
+  return t
+}
+
+# derived jump kinematics, in raw Q16.16 px/frame. From peak height H and time to
+# apex T: v0 = 2H/T, g = 2H/T^2 (the standard feel-first parameterisation).
+function plat_v0(jh: int, apex: int, tile: int) -> int {
+  let h = jh * tile
+  if apex <= 0 { return 0 }
+  return (2 * h * PLAT_Q) / apex
+}
+function plat_g(jh: int, apex: int, tile: int) -> int {
+  let h = jh * tile
+  if apex <= 0 { return 0 }
+  return (2 * h * PLAT_Q) / (apex * apex)
+}
+
+# reflected Platformer field accessors (small, so the systems read clean)
+function pf_get(e: int, name: pointer) -> int {
+  let P = World.prop_id("Platformer")
+  let f = World.field_id(P, name)
+  if f < 0 { return 0 }
+  return World.get(e, P, f)
+}
+function pf_set(e: int, name: pointer, v: int) -> void {
+  let P = World.prop_id("Platformer")
+  let f = World.field_id(P, name)
+  if f >= 0 { World.set(e, P, f, v) }
+}
+function bd_get(e: int, name: pointer) -> int {
+  let P = World.prop_id("Body")
+  let f = World.field_id(P, name)
+  if f < 0 { return 0 }
+  return World.get(e, P, f)
+}
+function bd_set(e: int, name: pointer, v: int) -> void {
+  let P = World.prop_id("Body")
+  let f = World.field_id(P, name)
+  if f >= 0 { World.set(e, P, f, v) }
+}
+
+# ===========================================================================
+# esys_platformer_input (Input) — bind the action map once (Input.bind), and this
+# fills the intent fields from it every frame. A game rebinds keys/gamepad through
+# the same Input.* action map (so record/replay is free); an AI-driven body simply
+# `disable system esys_platformer_input` and writes want_x/want_jump itself.
+# ===========================================================================
+@EngineSystem(Platformer, Input) function esys_platformer_input() -> void {
+  let P = World.prop_id("Platformer")
+  if P < 0 { return }
+  var e = World.query_next(P, 0)
+  while e >= 0 {
+    var wx = 0
+    if Input.down("move_right") { wx = wx + 1 }
+    if Input.down("move_left") { wx = wx - 1 }
+    pf_set(e, "want_x", wx)
+    var wj = 0;  if Input.pressed("jump") { wj = 1 }
+    pf_set(e, "want_jump", wj)
+    var hj = 0;  if Input.down("jump") { hj = 1 }
+    pf_set(e, "hold_jump", hj)
+    e = World.query_next(P, e + 1)
+  }
+}
+
+# ===========================================================================
+# esys_platformer_move (FixedUpdate) — accelerate Body.vx toward the intended
+# speed, with less authority in the air and friction when idle. Runs before the
+# Update sweep, which then moves and resolves the body.
+# ===========================================================================
+@EngineSystem(Platformer, FixedUpdate) function esys_platformer_move() -> void {
+  let P = World.prop_id("Platformer")
+  if P < 0 { return }
+  var e = World.query_next(P, 0)
+  while e >= 0 {
+    let wx = pf_get(e, "want_x")
+    let speed = pf_get(e, "move_speed")
+    let grounded = bd_get(e, "on_ground")
+    var vx = bd_get(e, "vx")
+    let tvx = wx * speed * PLAT_Q
+    var rate = 0
+    if wx != 0 {
+      if grounded == 1 { rate = pf_get(e, "accel") } else { rate = pf_get(e, "air_control") }
+    } else {
+      rate = pf_get(e, "friction")
+    }
+    if rate > 100 { rate = 100 }
+    vx = vx + (tvx - vx) * rate / 100
+    bd_set(e, "vx", vx)
+    if wx != 0 { pf_set(e, "face", wx) }
+    e = World.query_next(P, e + 1)
+  }
+}
+
+# ===========================================================================
+# esys_platformer_gravity (FixedUpdate) — set Body.gravity for this frame from the
+# derived apex gravity and the active gravity profile (lever 6), plus variable
+# jump height: a rising body whose jump was released falls faster (a short hop).
+# esys_move applies Body.gravity to vy and clamps to Body.max_fall.
+# ===========================================================================
+@EngineSystem(Platformer, FixedUpdate) function esys_platformer_gravity() -> void {
+  let P = World.prop_id("Platformer")
+  if P < 0 { return }
+  let tile = plat_tile()
+  var e = World.query_next(P, 0)
+  while e >= 0 {
+    let jh = pf_get(e, "jump_height")
+    let apex = pf_get(e, "apex_frames")
+    var g = plat_g(jh, apex, tile)
+    let pol = pf_get(e, "policy")
+    if pol == 2 { g = g / 2 }                       # floaty
+    let vy = bd_get(e, "vy")
+    if vy > 0 {                                       # falling
+      var fm = pf_get(e, "fall_gravity_mul")
+      if pol == 1 { fm = 100 }                        # symmetric profile ignores the fall multiplier
+      g = g * fm / 100
+    } else {
+      if pf_get(e, "hold_jump") == 0 { g = g * 2 }    # released while rising -> short hop
+    }
+    bd_set(e, "gravity", g)
+    bd_set(e, "max_fall", pf_get(e, "max_fall") * PLAT_Q)
+    e = World.query_next(P, e + 1)
+  }
+}
+
+# do one jump: announce it (veto-able), and if allowed apply the upward impulse.
+function plat_do_jump(e: int, kind: int) -> bool {
+  if emit JumpRequested(e: e, kind: kind) != 0 { return false }
+  let tile = plat_tile()
+  let v0 = plat_v0(pf_get(e, "jump_height"), pf_get(e, "apex_frames"), tile)
+  bd_set(e, "vy", 0 - v0)
+  pf_set(e, "buffer_t", 0)
+  pf_set(e, "coyote_t", 0)
+  emit JumpPerformed(e: e, kind: kind)
+  return true
+}
+
+# ===========================================================================
+# esys_platformer_jump (FixedUpdate) — the coyote-time + jump-buffer + air-jump
+# state machine. Grounded state comes from last frame's sweep (Body.on_ground).
+# ===========================================================================
+@EngineSystem(Platformer, FixedUpdate) function esys_platformer_jump() -> void {
+  let P = World.prop_id("Platformer")
+  if P < 0 { return }
+  var e = World.query_next(P, 0)
+  while e >= 0 {
+    let grounded = bd_get(e, "on_ground")
+    # coyote + air-jump refill on the ground
+    if grounded == 1 {
+      pf_set(e, "coyote_t", pf_get(e, "coyote_frames"))
+      pf_set(e, "jumps_left", pf_get(e, "air_jumps"))
+    } else {
+      let c = pf_get(e, "coyote_t")
+      if c > 0 { pf_set(e, "coyote_t", c - 1) }
+    }
+    # jump buffer
+    if pf_get(e, "want_jump") == 1 {
+      pf_set(e, "buffer_t", pf_get(e, "jump_buffer_frames"))
+    } else {
+      let b = pf_get(e, "buffer_t")
+      if b > 0 { pf_set(e, "buffer_t", b - 1) }
+    }
+    pf_set(e, "want_jump", 0)                          # consume the edge
+    # resolve a buffered jump
+    if pf_get(e, "buffer_t") > 0 {
+      if pf_get(e, "coyote_t") > 0 {
+        plat_do_jump(e, 0)                              # ground / coyote
+      } else {
+        let jl = pf_get(e, "jumps_left")
+        if jl > 0 {
+          if plat_do_jump(e, 2) { pf_set(e, "jumps_left", jl - 1) }   # air jump
+        }
+      }
+    }
+    e = World.query_next(P, e + 1)
+  }
+}
+
+# ===========================================================================
+# esys_platformer_anim (LateUpdate) — runs after the sweep, so grounded/vx/vy are
+# settled. Derives the animation state (idle/run/rise/fall), emits StateChanged on
+# a transition and Landed on touchdown (carrying how long the body fell, for squash
+# / fall-damage). It does NOT call into the renderer: a game maps state -> a clip in
+# one @On(StateChanged) listener (see the example), keeping this sub-system pure and
+# the anim mapping fully replaceable.
+# ===========================================================================
+@EngineSystem(Platformer, LateUpdate) function esys_platformer_anim() -> void {
+  let P = World.prop_id("Platformer")
+  if P < 0 { return }
+  var e = World.query_next(P, 0)
+  while e >= 0 {
+    let grounded = bd_get(e, "on_ground")
+    let vx = bd_get(e, "vx")
+    let vy = bd_get(e, "vy")
+    # fall timer + Landed edge
+    if grounded == 1 {
+      let at = pf_get(e, "air_t")
+      if at > 0 { emit Landed(e: e, fall_frames: at) }
+      pf_set(e, "air_t", 0)
+    } else {
+      pf_set(e, "air_t", pf_get(e, "air_t") + 1)
+    }
+    # state
+    var st = 0
+    if grounded == 1 {
+      var ax = vx;  if ax < 0 { ax = 0 - ax }
+      if ax > (PLAT_Q / 4) { st = 1 } else { st = 0 }     # running vs idle (>0.25 px/frame)
+    } else {
+      if vy < 0 { st = 2 } else { st = 3 }                # rise vs fall
+    }
+    let prev = pf_get(e, "state")
+    if st != prev {
+      pf_set(e, "state", st)
+      emit StateChanged(e: e, from: prev, to: st)
+    }
+    e = World.query_next(P, e + 1)
+  }
+}
+
+# ===========================================================================
+# Platformer.* convenience namespace — thin helpers for games/AI.
+# ===========================================================================
+# make a body jump from code (used by AI, cutscenes, springs): buffers a jump so
+# the normal coyote/air-jump rules in esys_platformer_jump still apply next frame.
+@Namespace(Platformer) function platformer_jump(e: int) -> void { pf_set(e, "want_jump", 1) }
+# hold/release the jump button (drives variable jump height): 1 = held.
+@Namespace(Platformer) function platformer_hold(e: int, held: int) -> void { pf_set(e, "hold_jump", held) }
+# set the horizontal intent directly (an AI or a custom input source).
+@Namespace(Platformer) function platformer_move(e: int, dir: int) -> void { pf_set(e, "want_x", dir) }
+@Namespace(Platformer) function platformer_state(e: int) -> int { return pf_get(e, "state") }
+@Namespace(Platformer) function platformer_grounded(e: int) -> int { return bd_get(e, "on_ground") }
+# bind the default action map (call once at boot); a game may bind its own instead.
+@Namespace(Platformer) function platformer_default_binds() -> void {
+  Input.bind("move_left", 'a')
+  Input.bind("move_right", 'd')
+  Input.bind("jump", ' ')
+}

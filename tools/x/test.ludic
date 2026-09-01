@@ -20,6 +20,27 @@ function feat_case(path: pointer, keys: pointer, exp: pointer, label: pointer) -
   if (got == exp) { ok(label) } else { bad2(label, `got [{got}] want [{exp}]`) }
 }
 
+# a feature example that consumes an in-repo controller package (packages/): same
+# as feat_case, but the compiler is pointed at packages/ via LUDIC_MODULES so a
+# `import "ludic.foo/bar.ludic"` resolves, and LUDIC_HOME anchors the engine
+# runtime. This is exactly how `x app` / an external project builds against a
+# fetched source package (the do_import module-root fallback, #63).
+function controller_case(path: pointer, keys: pointer, exp: pointer, label: pointer) -> void {
+  let nm = flat(path)
+  let root = capture_line("pwd")
+  let ll = `/tmp/x_c_{nm}.ll`
+  if not shq(`LUDIC_HOME={root} LUDIC_MODULES={root}/packages bin/ludicc examples/{path}.ludic > {ll} 2>/tmp/x_gb.err`) {
+    bad2(label, capture_line("grep -i error /tmp/x_gb.err | head -1")); return
+  }
+  if not shq(`{cc()} -O2 {ll} -o /tmp/x_c_{nm} 2>/tmp/x_gb.err`) {
+    bad2(label, capture_line("grep -i error /tmp/x_gb.err | head -1")); return
+  }
+  var got = ""
+  if (keys == "") { got = capture_line(`/tmp/x_c_{nm} < /dev/null`) }
+  else { got = capture_line(`printf '{keys}' | /tmp/x_c_{nm}`) }
+  if (got == exp) { ok(label) } else { bad2(label, `got [{got}] want [{exp}]`) }
+}
+
 # a "does it still compile" smoke test (parse -> lower -> link), no run
 function qsmoke(path: pointer) -> void {
   let nm = flat(path)
@@ -218,6 +239,10 @@ function cmd_test() -> int {
   feat_case("library/light_tiers", "", "1 1 1 1 1 1 1 1 1", "light_tiers.ludic (Light spot/falloff/soft/gel/normal/time_of_day — render-quality tiers 3-4; issue #49)")
   feat_case("library/physics", "", "184 1 1 284 1 1 50 51 104 1 134 1 120 0 1 1 1 0 1 1 1", "physics.ludic (Body + Collider + esys_move: gravity/land, wall stop, sub-pixel, entity platform, one-way, triggers — entity broadphase; issue #65)")
   feat_case("library/physics_tiles", "", "112 1 80 1 48 1 60", "physics_tiles.ludic (esys_move tile-grid broadphase: tile floor/wall + one-way tile land-from-above / rise-through; issue #65)")
+  # builtin gameplay controllers, consumed as in-repo packages (issues #57-#61)
+  controller_case("library/gameplay_foundation", "", "2 0 1 5 24 0 2 1 15 85 7 1 1", "gameplay_foundation.ludic (ludic.gameplay #57: Cooldown timer + Stats/modifier stack + Faction table + Combat cancel/mutable pipeline)")
+  controller_case("games/platformer_demo", "", "1 1 1 1 1 1 1 1", "platformer_demo.ludic (ludic.platformer #58: gravity/land, jump apex, coyote, veto-gated double jump, wall collision + disable-system lever)")
+  controller_case("games/platformer_scaffolding", "", "1 1 1 1 1 1", "platformer_scaffolding.ludic (ludic.platformer #58 layers 4-5: moving-platform rider carry, pickup->score, spring, hazard+Life i-frames)")
   spec_case("library/testing", "== 6 passed, 0 failed ==")
   spec_case("library/coverage", "== 3 passed, 0 failed ==")
   feat_case("library/errors", "", "5 10 0 7 1", "errors.ludic (assert guards an invariant, holds -> runs to the end; issue #8 success path)")

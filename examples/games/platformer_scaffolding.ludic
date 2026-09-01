@@ -1,0 +1,94 @@
+# platformer_scaffolding.ludic — the ludic.platformer game-loop pieces (#58
+# layers 4-5): a moving platform that carries its rider, a collectible that scores
+# on pickup (with a cancellable veto), a spring that launches the player, and a
+# hazard that damages a Life with i-frames. Deterministic; a full run prints:
+#   1 1 1 1 1 1
+#
+# Build (from the repo root):
+#   LUDIC_MODULES=packages ludicc --headless examples/games/platformer_scaffolding.ludic
+program PlatformerScaffolding {
+  import "ludic.platformer/platformer.ludic"
+  import "ludic.platformer/scaffolding.ludic"
+
+  property Position { x: int = 0, y: int = 0 }
+  property Body {
+    vx: fixed = 0.0, vy: fixed = 0.0, gravity: fixed = 0.0, max_fall: fixed = 0.0,
+    rx: fixed = 0.0, ry: fixed = 0.0, policy: int = 0,
+    on_ground: int = 0, hit_wall: int = 0, hit_ceiling: int = 0
+  }
+  property Collider {
+    w: int = 0, h: int = 0, offx: int = 0, offy: int = 0,
+    is_trigger: int = 0, one_way: int = 0, layer: int = 0, mask: int = 0,
+    hit: int = 0, entered: int = 0, exited: int = 0
+  }
+
+  model Hero    { Position, Body, Collider, Platformer, Score, Life }
+  model MovePlat { Position, Collider, Platform }
+  model Coin    { Position, Collider, Pickup }
+  model Bouncer { Position, Collider, Spring }
+  model Spike   { Position, Collider, Hazard }
+  @OnSpawn(Hero) handler HI { }
+  @OnSpawn(MovePlat) handler MI { }
+  @OnSpawn(Coin) handler CI { }
+  @OnSpawn(Bouncer) handler BI { }
+  @OnSpawn(Spike) handler SI { }
+
+  var picked: int = 0
+  @On(ItemPickedUp) handler OnPick { picked = picked + 1 }
+  var sprang: int = 0
+  @On(Sprang) handler OnSpring { sprang = sprang + 1 }
+  var hurt: int = 0
+  @On(Hurt) handler OnHurt { hurt = hurt + 1 }
+
+  function tick_n(n: int) -> void { var i = 0;  while i < n { tick_fixed();  i = i + 1 } }
+  function bi(b: bool) -> int { if b { return 1 };  return 0 }
+
+  entry {
+    let PP = World.prop_id("Position")
+    let PB = World.prop_id("Body")
+    let PL = World.prop_id("Platformer")
+    let fx = World.field_id(PP, "x")
+    let fy = World.field_id(PP, "y")
+    disable system esys_platformer_input
+
+    # ---- moving platform carries a rider -----------------------------------
+    # platform shuttles x 100->160 at 2px/frame; hero starts standing on top.
+    spawn MovePlat { Position { x: 100, y: 200 }, Collider { w: 48, h: 8 },
+                     Platform { kind: 2, ax: 100, ay: 200, bx: 160, by: 200, speed: 2, dir: 1 } }
+    spawn Hero { Position { x: 116, y: 184 }, Collider { w: 12, h: 16 },
+                 Platformer { move_speed: 0, jump_height: 4 }, Life { hp: 3, max: 3 } }
+    let h = World.query_next(PL, 0)
+    tick_n(2)                                    # settle onto the platform
+    let x0 = World.get(h, PP, fx)
+    tick_n(10)                                    # platform slides right ~20px
+    let x1 = World.get(h, PP, fx)
+    print(bi(x1 > x0 + 10))                       # 1 — the rider was carried right
+
+    # ---- collectible -> score (with a working veto path) -------------------
+    # a coin overlapping the hero; default policy adds value to Score.
+    spawn Coin { Position { x: World.get(h, PP, fx), y: World.get(h, PP, fy) },
+                 Collider { w: 10, h: 10, is_trigger: 1 }, Pickup { kind: 0, value: 5 } }
+    tick_n(2)
+    print(bi(picked == 1))                        # 1 — ItemPickedUp fired
+    print(bi(Score.get(h) == 5))                  # 1 — value scored
+
+    # ---- spring launches the hero upward -----------------------------------
+    let hx = World.get(h, PP, fx)
+    let hy = World.get(h, PP, fy)
+    spawn Bouncer { Position { x: hx, y: hy + 8 }, Collider { w: 16, h: 8, is_trigger: 1 }, Spring { power: 12 } }
+    let vy_before = World.get(h, PB, World.field_id(PB, "vy"))
+    tick_n(2)
+    let vy_after = World.get(h, PB, World.field_id(PB, "vy"))
+    print(bi((sprang >= 1) and (vy_after < 0)))   # 1 — launched (vy negative = up)
+
+    # ---- hazard damages a Life --------------------------------------------
+    spawn Spike { Position { x: World.get(h, PP, fx), y: World.get(h, PP, fy) },
+                  Collider { w: 12, h: 12, is_trigger: 1 }, Hazard { dmg: 1, knockback: 6 } }
+    tick_n(2)
+    print(bi(hurt >= 1))                           # 1 — Hurt fired
+    let PLife = World.prop_id("Life")
+    print(bi(World.get(h, PLife, World.field_id(PLife, "hp")) < 3))   # 1 — hp dropped
+
+    quit()
+  }
+}

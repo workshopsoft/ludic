@@ -1,0 +1,14 @@
+# ludic.platformer — the builtin Platformer controller (#58).
+#
+# The reference implementation of the six-lever extensibility contract (#57):
+# movement feel as data, decomposed engine sub-systems (each `disable system`-able),
+# a cancellable/observable event at every jump decision, and a gravity policy enum.
+# Builds on the engine's Body/Collider + esys_move (swept-AABB tile collision) — it
+# owns movement *policy*, never re-implements collision. Deterministic (integer
+# Q16.16), so replay / lockstep / world_save all hold.
+package "ludic.platformer"
+version "0.1.0"
+kind source
+provides "Platformer"
+provides "Score"
+provides "Life"

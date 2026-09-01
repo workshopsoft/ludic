@@ -524,7 +524,7 @@ function emit_event_fns() -> void {
     emit("  %swlp");  emit(sk);  emit(" = getelementptr inbounds [");  emit(capS);  emit(" x ptr], ptr @evL_");  emit(en2);  emit(", i32 0, i32 %swi");  emit(sk);  emit("\n")
     emit("  store ptr null, ptr %swlp");  emit(sk);  emit("\n  br label %swx");  emit(sk);  emit("\n")
     emit("swx");  emit(sk);  emit(":\n")
-    emit("  %swi1");  emit(sk);  emit(" = add i32 %swi");  emit(sk);  emit(", 1\n  store i32 %swi1");  emit(sk);  emit(", ptr %ci\n  br label %sw");  emit(sk);  emit("\n")
+    emit("  %swinc");  emit(sk);  emit(" = add i32 %swi");  emit(sk);  emit(", 1\n  store i32 %swinc");  emit(sk);  emit(", ptr %ci\n  br label %sw");  emit(sk);  emit("\n")
     emit("swd");  emit(sk);  emit(":\n  store i32 0, ptr %ci\n")
     if (e2 + 1) < len(g_events) { emit("  br label %sw");  emit(itoa(e2 + 1));  emit("\n") }
     else { emit("  ret void\n") }

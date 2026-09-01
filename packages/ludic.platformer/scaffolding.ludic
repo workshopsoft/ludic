@@ -1,0 +1,327 @@
+# scaffolding.ludic — the composable game-loop pieces a platformer usually wants
+# (#58 layers 4-5), each opt-in: moving / crumbling platform blocks with rider
+# carry, collectibles + score, springs, hazards + a simple life/lives model, and
+# checkpoint / goal triggers. Every piece is a POD component + one engine system +
+# events, so a game adopts only what it needs and extends each via the same six
+# levers. Deterministic integer maths throughout.
+#
+# Depends only on the engine Body/Collider (esys_move) and this package's own
+# helpers; not on ludic.gameplay, so a pure platformer stays self-contained.
+
+const SCAF_Q: int = 65536
+
+# reflected Body/Position/Collider helpers (scaffolding reads several)
+function sc_body(e: int, name: pointer) -> int {
+  let P = World.prop_id("Body");  if P < 0 { return 0 }
+  let f = World.field_id(P, name);  if f < 0 { return 0 }
+  return World.get(e, P, f)
+}
+function sc_body_set(e: int, name: pointer, v: int) -> void {
+  let P = World.prop_id("Body");  if P < 0 { return }
+  let f = World.field_id(P, name);  if f >= 0 { World.set(e, P, f, v) }
+}
+function sc_pos(e: int, name: pointer) -> int {
+  let P = World.prop_id("Position");  if P < 0 { return 0 }
+  let f = World.field_id(P, name);  if f < 0 { return 0 }
+  return World.get(e, P, f)
+}
+function sc_pos_set(e: int, name: pointer, v: int) -> void {
+  let P = World.prop_id("Position");  if P < 0 { return }
+  let f = World.field_id(P, name);  if f >= 0 { World.set(e, P, f, v) }
+}
+function sc_col(e: int, name: pointer) -> int {
+  let P = World.prop_id("Collider");  if P < 0 { return 0 }
+  let f = World.field_id(P, name);  if f < 0 { return 0 }
+  return World.get(e, P, f)
+}
+
+# ===========================================================================
+# Moving / crumbling platform blocks. A Platform is a solid (or one-way) Collider
+# entity the engine already collides against; this system adds motion and crumble.
+#   kind: 0 solid, 1 one_way, 2 moving, 3 crumble
+# Moving platforms shuttle between (ax,ay) and (bx,by) at `speed` px/frame and
+# carry a body resting on top (standard parent-velocity transport). Crumble blocks
+# start a countdown the first time a body stands on them, then despawn.
+# ===========================================================================
+property Platform {
+  kind:  int = 0,
+  ax: int = 0, ay: int = 0, bx: int = 0, by: int = 0,   # moving: endpoints
+  speed: int = 1,
+  dir:   int = 1,     # +1 toward B, -1 toward A
+  delay: int = 30,    # crumble: frames after first contact
+  t:     int = 0,     # crumble: countdown (0 = untriggered)
+  triggered: int = 0
+}
+event PlatformCrumbled { e: int = 0 }
+
+# a body is riding platform `p` if it is grounded and its feet sit on the
+# platform's top edge within the horizontal span.
+function plat_rider_on(p: int) -> int {
+  let PB = World.prop_id("Body")
+  if PB < 0 { return 0 - 1 }
+  let px = sc_pos(p, "x") + sc_col(p, "offx")
+  let py = sc_pos(p, "y") + sc_col(p, "offy")
+  let pw = sc_col(p, "w")
+  var b = World.query_next(PB, 0)
+  while b >= 0 {
+    if b != p {
+      let PC = World.prop_id("Collider")
+      if (PC >= 0) and (World.has(b, PC) != 0) {
+        let bx = sc_pos(b, "x") + sc_col(b, "offx")
+        let by = sc_pos(b, "y") + sc_col(b, "offy")
+        let bw = sc_col(b, "w")
+        let bh = sc_col(b, "h")
+        if (bx < px + pw) and (px < bx + bw) {
+          let feet = by + bh
+          if (feet >= py - 2) and (feet <= py + 2) { return b }
+        }
+      }
+    }
+    b = World.query_next(PB, b + 1)
+  }
+  return 0 - 1
+}
+
+@EngineSystem(Platform, FixedUpdate) function esys_platform() -> void {
+  let P = World.prop_id("Platform")
+  if P < 0 { return }
+  let fk = World.field_id(P, "kind")
+  var e = World.query_next(P, 0)
+  while e >= 0 {
+    var nxt = World.query_next(P, e + 1)
+    let kind = World.get(e, P, fk)
+    if kind == 2 {                                   # moving
+      let ax = World.get(e, P, World.field_id(P, "ax"))
+      let ay = World.get(e, P, World.field_id(P, "ay"))
+      let bx = World.get(e, P, World.field_id(P, "bx"))
+      let by = World.get(e, P, World.field_id(P, "by"))
+      let speed = World.get(e, P, World.field_id(P, "speed"))
+      var dir = World.get(e, P, World.field_id(P, "dir"))
+      let ox = sc_pos(e, "x")
+      let oy = sc_pos(e, "y")
+      # target endpoint by direction
+      var tx = bx;  var ty = by
+      if dir < 0 { tx = ax;  ty = ay }
+      var dx = 0;  var dy = 0
+      if ox < tx { dx = speed } else { if ox > tx { dx = 0 - speed } }
+      if oy < ty { dy = speed } else { if oy > ty { dy = 0 - speed } }
+      # clamp the step so we do not overshoot the endpoint
+      if dx > 0 { if ox + dx > tx { dx = tx - ox } }
+      if dx < 0 { if ox + dx < tx { dx = tx - ox } }
+      if dy > 0 { if oy + dy > ty { dy = ty - oy } }
+      if dy < 0 { if oy + dy < ty { dy = ty - oy } }
+      # carry a rider first (before moving the platform out from under it)
+      let rider = plat_rider_on(e)
+      sc_pos_set(e, "x", ox + dx)
+      sc_pos_set(e, "y", oy + dy)
+      if rider >= 0 {
+        sc_pos_set(rider, "x", sc_pos(rider, "x") + dx)
+        sc_pos_set(rider, "y", sc_pos(rider, "y") + dy)
+      }
+      # flip direction at an endpoint
+      if (sc_pos(e, "x") == tx) and (sc_pos(e, "y") == ty) {
+        World.set(e, P, World.field_id(P, "dir"), 0 - dir)
+      }
+    }
+    if kind == 3 {                                   # crumble
+      let ftrig = World.field_id(P, "triggered")
+      let ft = World.field_id(P, "t")
+      if World.get(e, P, ftrig) == 0 {
+        if plat_rider_on(e) >= 0 {
+          World.set(e, P, ftrig, 1)
+          World.set(e, P, ft, World.get(e, P, World.field_id(P, "delay")))
+        }
+      } else {
+        let t = World.get(e, P, ft) - 1
+        if t <= 0 { emit PlatformCrumbled(e: e);  despawn e } else { World.set(e, P, ft, t) }
+      }
+    }
+    e = nxt
+  }
+}
+
+# ===========================================================================
+# Score + combo. Score.add(e, n) adds n * mult (mult >= 1) and emits ScoreChanged.
+# ===========================================================================
+property Score { value: int = 0, combo: int = 0, mult: int = 1 }
+event ScoreChanged { e: int = 0, value: int = 0, delta: int = 0 }
+
+@Namespace(Score) function score_add(e: int, n: int) -> void {
+  let P = World.prop_id("Score")
+  if P < 0 { return }
+  if World.has(e, P) == 0 { return }
+  let fv = World.field_id(P, "value")
+  let fm = World.field_id(P, "mult")
+  var mult = 1;  if fm >= 0 { mult = World.get(e, P, fm) }
+  if mult < 1 { mult = 1 }
+  let delta = n * mult
+  let v = World.get(e, P, fv) + delta
+  World.set(e, P, fv, v)
+  emit ScoreChanged(e: e, value: v, delta: delta)
+}
+@Namespace(Score) function score_get(e: int) -> int {
+  let P = World.prop_id("Score")
+  if P < 0 { return 0 }
+  let fv = World.field_id(P, "value")
+  if fv < 0 { return 0 }
+  return World.get(e, P, fv)
+}
+
+# ===========================================================================
+# Collectibles. A Pickup carries a trigger Collider; when a body overlaps it, the
+# system emits ItemPickedUp (cancellable — a game may veto, e.g. inventory full)
+# and, by default, adds `value` to the picker's Score if it has one.
+# ===========================================================================
+property Pickup { kind: int = 0, value: int = 1, taken: int = 0 }
+event cancellable ItemPickedUp { picker: int = 0, pickup: int = 0, kind: int = 0, value: int = 0 }
+
+@EngineSystem(Pickup, LateUpdate) function esys_pickup() -> void {
+  let P = World.prop_id("Pickup")
+  if P < 0 { return }
+  let PC = World.prop_id("Collider")
+  if PC < 0 { return }
+  let fhit = World.field_id(PC, "hit")
+  if fhit < 0 { return }
+  let ftaken = World.field_id(P, "taken")
+  let fkind = World.field_id(P, "kind")
+  let fval = World.field_id(P, "value")
+  var e = World.query_next(P, 0)
+  while e >= 0 {
+    var nxt = World.query_next(P, e + 1)
+    if World.get(e, P, ftaken) == 0 {
+      let picker = World.get(e, PC, fhit)
+      if picker >= 0 {
+        let kind = World.get(e, P, fkind)
+        let val = World.get(e, P, fval)
+        if emit ItemPickedUp(picker: picker, pickup: e, kind: kind, value: val) == 0 {
+          Score.add(picker, val)                     # default policy: value -> score
+          World.set(e, P, ftaken, 1)
+          despawn e
+        }
+      }
+    }
+    e = nxt
+  }
+}
+
+# ===========================================================================
+# Springs / bounce pads: a trigger that launches an overlapping body upward.
+# ===========================================================================
+property Spring { power: int = 10 }
+event Sprang { body: int = 0, spring: int = 0, power: int = 0 }
+
+@EngineSystem(Spring, LateUpdate) function esys_spring() -> void {
+  let P = World.prop_id("Spring")
+  if P < 0 { return }
+  let PC = World.prop_id("Collider")
+  if PC < 0 { return }
+  let fhit = World.field_id(PC, "hit")
+  let fpow = World.field_id(P, "power")
+  var e = World.query_next(P, 0)
+  while e >= 0 {
+    let body = World.get(e, PC, fhit)
+    if body >= 0 {
+      let power = World.get(e, P, fpow)
+      sc_body_set(body, "vy", 0 - power * SCAF_Q)
+      sc_body_set(body, "ry", 0)
+      emit Sprang(body: body, spring: e, power: power)
+    }
+    e = World.query_next(P, e + 1)
+  }
+}
+
+# ===========================================================================
+# A simple life / lives model + hazards. (A full RPG uses ludic.gameplay Stats;
+# platformers usually want this lighter hp/lives/i-frames version.)
+# ===========================================================================
+property Life { hp: int = 3, max: int = 3, lives: int = 3, iframes: int = 0 }
+event cancellable Hurt { e: int = 0, src: int = 0, dmg: int = 0 }
+event Death { e: int = 0 }
+
+@Namespace(Life) function life_hurt(e: int, src: int, dmg: int) -> int {
+  let P = World.prop_id("Life")
+  if P < 0 { return 0 }
+  if World.has(e, P) == 0 { return 0 }
+  let fhp = World.field_id(P, "hp")
+  let fif = World.field_id(P, "iframes")
+  if World.get(e, P, fif) > 0 { return 0 }            # invulnerable
+  if emit Hurt(e: e, src: src, dmg: dmg) != 0 { return 0 }
+  var hp = World.get(e, P, fhp) - dmg
+  if hp < 0 { hp = 0 }
+  World.set(e, P, fhp, hp)
+  if hp <= 0 { emit Death(e: e) }
+  return dmg
+}
+
+property Hazard { dmg: int = 1, knockback: int = 6 }
+@EngineSystem(Hazard, LateUpdate) function esys_hazard() -> void {
+  let P = World.prop_id("Hazard")
+  if P < 0 { return }
+  let PC = World.prop_id("Collider")
+  if PC < 0 { return }
+  let fhit = World.field_id(PC, "hit")
+  let fdmg = World.field_id(P, "dmg")
+  let fkb = World.field_id(P, "knockback")
+  var e = World.query_next(P, 0)
+  while e >= 0 {
+    let body = World.get(e, PC, fhit)
+    if body >= 0 {
+      let dmg = World.get(e, P, fdmg)
+      if life_hurt(body, e, dmg) > 0 {
+        let kb = World.get(e, P, fkb)
+        sc_body_set(body, "vy", 0 - kb * SCAF_Q)      # pop up on hit
+      }
+    }
+    e = World.query_next(P, e + 1)
+  }
+}
+
+# i-frames tick down for any Life carrier (small engine system, own component).
+@EngineSystem(Life, Update) function esys_life() -> void {
+  let P = World.prop_id("Life")
+  if P < 0 { return }
+  let fif = World.field_id(P, "iframes")
+  if fif < 0 { return }
+  var e = World.query_next(P, 0)
+  while e >= 0 {
+    let f = World.get(e, P, fif)
+    if f > 0 { World.set(e, P, fif, f - 1) }
+    e = World.query_next(P, e + 1)
+  }
+}
+
+# ===========================================================================
+# Checkpoint / goal triggers (level flow).
+# ===========================================================================
+property Checkpoint { id: int = 0 }
+property Goal { }
+event CheckpointReached { body: int = 0, id: int = 0 }
+event LevelComplete { body: int = 0 }
+
+@EngineSystem(Checkpoint, LateUpdate) function esys_checkpoint() -> void {
+  let P = World.prop_id("Checkpoint")
+  if P < 0 { return }
+  let PC = World.prop_id("Collider")
+  if PC < 0 { return }
+  let fhit = World.field_id(PC, "hit")
+  let fid = World.field_id(P, "id")
+  var e = World.query_next(P, 0)
+  while e >= 0 {
+    let body = World.get(e, PC, fhit)
+    if body >= 0 { emit CheckpointReached(body: body, id: World.get(e, P, fid)) }
+    e = World.query_next(P, e + 1)
+  }
+}
+@EngineSystem(Goal, LateUpdate) function esys_goal() -> void {
+  let P = World.prop_id("Goal")
+  if P < 0 { return }
+  let PC = World.prop_id("Collider")
+  if PC < 0 { return }
+  let fhit = World.field_id(PC, "hit")
+  var e = World.query_next(P, 0)
+  while e >= 0 {
+    let body = World.get(e, PC, fhit)
+    if body >= 0 { emit LevelComplete(body: body) }
+    e = World.query_next(P, e + 1)
+  }
+}
