@@ -208,6 +208,8 @@ function cmd_test() -> int {
   feat_case("library/render", "", "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18", "render.ludic (Screen pixel/oval/camera/clip/blend_mode/measure_text + Camera set/follow/shake, verified by pixel readback)")
   feat_case("library/lighting", "", "1 2 3 4 5 6 7 8 9 10 11 12 13 14", "lighting.ludic (Light ambient/point radial falloff + occluder hard shadows — 2D light accumulation, verified by pixel readback)")
   feat_case("library/light_tiers", "", "1 1 1 1 1 1 1 1 1", "light_tiers.ludic (Light spot/falloff/soft/gel/normal/time_of_day — render-quality tiers 3-4; issue #49)")
+  feat_case("library/physics", "", "184 1 1 284 1 1 50 51 104 1 134 1 120 0 1 1 1 0 1 1 1", "physics.ludic (Body + Collider + esys_move: gravity/land, wall stop, sub-pixel, entity platform, one-way, triggers — entity broadphase; issue #65)")
+  feat_case("library/physics_tiles", "", "112 1 80 1 48 1 60", "physics_tiles.ludic (esys_move tile-grid broadphase: tile floor/wall + one-way tile land-from-above / rise-through; issue #65)")
   spec_case("library/testing", "== 6 passed, 0 failed ==")
   spec_case("library/coverage", "== 3 passed, 0 failed ==")
   feat_case("library/errors", "", "5 10 0 7 1", "errors.ludic (assert guards an invariant, holds -> runs to the end; issue #8 success path)")

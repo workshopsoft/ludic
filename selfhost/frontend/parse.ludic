@@ -776,6 +776,13 @@ function maybe_splice_runtime() -> void {
     if (find_comp("SpriteAnim") != null) or (find_comp("Motion") != null) {
       do_import("runtime/native/systems.ludic")
     }
+    # Body -> the movement + collision system (#65). It reads the tilemap
+    # (rt_tile / rt_mapw / rt_maph) for the tile-grid broadphase, so it links
+    # against core.ludic; do_import dedupes when a game already pulled core in.
+    if find_comp("Body") != null {
+      do_import("runtime/native/core.ludic")
+      do_import("runtime/native/systems_move.ludic")
+    }
     # Light2D / Occluder -> the lighting render system, which links against the
     # 2D light pass (light.ludic). do_import dedupes, so this is a no-op when the
     # game also uses Light.* directly (g_uses_light already pulled it in).
@@ -824,6 +831,7 @@ function parse_program() -> void {
   g_esys_comp = new []pointer;  g_esys_fn = new []pointer;  g_esys_phase = new []pointer
   push(g_esys_comp, "SpriteAnim");  push(g_esys_fn, "esys_spriteanim");  push(g_esys_phase, "Update")
   push(g_esys_comp, "Motion");      push(g_esys_fn, "esys_motion");      push(g_esys_phase, "Update")
+  push(g_esys_comp, "Body");        push(g_esys_fn, "esys_move");        push(g_esys_phase, "Update")
   push(g_esys_comp, "Light2D");     push(g_esys_fn, "esys_light2d");     push(g_esys_phase, "Render")
   g_namespaces = new []pointer
   loaded_paths = new []pointer

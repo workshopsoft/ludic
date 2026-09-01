@@ -1,0 +1,125 @@
+# physics.ludic — the 2D collision / physics-lite foundation (#65): the
+# engine-owned `esys_move` system integrating velocity + gravity and resolving
+# swept-AABB collision against solid `Collider` entities, driven straight from
+# `entry` (tick_fixed runs the Update phase where the engine ticks Body).
+#
+# Everything is integer + Q16.16 fixed-point and deterministic, so a full run
+# prints:  184 1 1 284 1 1 50 51 104 1 134 1 120 0 1 1 1 0 1 1 1
+program Physics {
+  property Position { x: int = 0, y: int = 0 }
+  property Body {
+    vx: fixed = 0.0, vy: fixed = 0.0,
+    gravity: fixed = 0.0, max_fall: fixed = 0.0,
+    rx: fixed = 0.0, ry: fixed = 0.0,
+    policy: int = 0,
+    on_ground: int = 0, hit_wall: int = 0, hit_ceiling: int = 0
+  }
+  property Collider {
+    w: int = 0, h: int = 0, offx: int = 0, offy: int = 0,
+    is_trigger: int = 0, one_way: int = 0, layer: int = 0, mask: int = 0,
+    hit: int = 0, entered: int = 0, exited: int = 0
+  }
+
+  function tick_n(n: int) -> void { var i = 0;  while i < n { tick_fixed();  i = i + 1 } }
+  function bi(b: bool) -> int { if b { return 1 };  return 0 }
+
+  # despawn every live entity carrying a property, so each scenario starts clean.
+  function clear_prop(name: pointer) -> void {
+    let p = World.prop_id(name)
+    if p < 0 { return }
+    var e = World.query_next(p, 0)
+    while e >= 0 { despawn e;  e = World.query_next(p, 0) }
+  }
+  function clear() -> void { clear_prop("Body");  clear_prop("Collider") }
+
+  entry {
+    let pb = World.prop_id("Body")
+    let pc = World.prop_id("Collider")
+    let pp = World.prop_id("Position")
+    let f_y  = World.field_id(pp, "y")
+    let f_x  = World.field_id(pp, "x")
+    let f_vx = World.field_id(pb, "vx")
+    let f_vy = World.field_id(pb, "vy")
+    let f_grd = World.field_id(pb, "on_ground")
+    let f_hw  = World.field_id(pb, "hit_wall")
+    let f_hit = World.field_id(pc, "hit")
+    let f_ent = World.field_id(pc, "entered")
+    let f_ext = World.field_id(pc, "exited")
+
+    # ---- A. gravity + landing on a solid floor entity ----------------------
+    clear()
+    spawn Floor  { Position { x: 0, y: 200 }, Collider { w: 400, h: 16 } }
+    spawn Runner { Position { x: 50, y: 40 }, Body { gravity: fixed(1), max_fall: fixed(6) }, Collider { w: 16, h: 16 } }
+    var a = World.query_next(pb, 0)
+    tick_n(80)
+    print(World.get(a, pp, f_y))                     # 184 — feet rest on the floor top (200)
+    print(World.get(a, pb, f_grd))                   # 1   — on_ground
+    print(bi(World.get(a, pb, f_vy) == 0))           # 1   — vertical velocity zeroed
+
+    # ---- B. horizontal run into a solid wall -------------------------------
+    clear()
+    spawn Floor  { Position { x: 0, y: 200 }, Collider { w: 400, h: 16 } }
+    spawn Wall   { Position { x: 300, y: 0 }, Collider { w: 16, h: 400 } }
+    spawn Runner { Position { x: 100, y: 184 }, Body { gravity: fixed(1), max_fall: fixed(6) }, Collider { w: 16, h: 16 } }
+    a = World.query_next(pb, 0)
+    # re-apply the run velocity each frame, the way a controller drives it from
+    # held input — so hit_wall stays asserted while pressed against the wall.
+    var bi2 = 0
+    while bi2 < 80 { World.set(a, pb, f_vx, fixed(4));  tick_fixed();  bi2 = bi2 + 1 }
+    print(World.get(a, pp, f_x))                     # 284 — right edge stops at the wall (300)
+    print(World.get(a, pb, f_hw))                    # 1   — hit_wall while pressed
+    print(bi(World.get(a, pb, f_vx) == 0))           # 1   — the sweep zeroed it this frame
+
+    # ---- C. sub-pixel accumulation (top-down, no gravity) ------------------
+    clear()
+    spawn Runner { Position { x: 50, y: 50 }, Body { vx: 0.25, policy: 1 }, Collider { w: 16, h: 16 } }
+    a = World.query_next(pb, 0)
+    tick_n(3)
+    print(World.get(a, pp, f_x))                     # 50 — 0.75px accumulated, no whole step yet
+    tick_n(1)
+    print(World.get(a, pp, f_x))                     # 51 — the 4th quarter-pixel carries one px
+
+    # ---- D. landing on a solid platform entity -----------------------------
+    clear()
+    spawn Plat   { Position { x: 400, y: 120 }, Collider { w: 64, h: 8 } }
+    spawn Runner { Position { x: 410, y: 40 }, Body { gravity: fixed(1), max_fall: fixed(6) }, Collider { w: 16, h: 16 } }
+    a = World.query_next(pb, 0)
+    tick_n(60)
+    print(World.get(a, pp, f_y))                     # 104 — feet on the platform top (120)
+    print(World.get(a, pb, f_grd))                   # 1
+
+    # ---- E. one-way platform: land from above, pass through from below -----
+    clear()
+    spawn Plat { Position { x: 400, y: 150 }, Collider { w: 64, h: 8, one_way: 1 } }
+    spawn Runner { Position { x: 405, y: 60 }, Body { gravity: fixed(1), max_fall: fixed(6) }, Collider { w: 16, h: 16 } }
+    let e1 = World.query_next(pb, 0)
+    spawn Riser { Position { x: 430, y: 200 }, Body { vy: fixed(0 - 4), policy: 1 }, Collider { w: 16, h: 16 } }
+    var e2 = World.query_next(pb, 0)
+    if e2 == e1 { e2 = World.query_next(pb, e1 + 1) }
+    tick_n(20)
+    print(World.get(e1, pp, f_y))                    # 134 — landed on the one-way top (150)
+    print(World.get(e1, pb, f_grd))                  # 1
+    print(World.get(e2, pp, f_y))                    # 120 — rose straight through it (200 - 4*20)
+
+    # ---- F. trigger / sensor: enter + exit edges over a moving body --------
+    clear()
+    spawn Sensor { Position { x: 500, y: 100 }, Collider { w: 32, h: 32, is_trigger: 1 } }
+    let sid = World.query_next(pc, 0)
+    spawn Runner { Position { x: 460, y: 108 }, Body { vx: fixed(4), policy: 1 }, Collider { w: 16, h: 16 } }
+    let aid = World.query_next(pb, 0)
+    tick_n(6)                                         # x=484 — not yet overlapping
+    print(World.get(sid, pc, f_ent))                 # 0
+    print(bi(World.get(sid, pc, f_hit) < 0))         # 1 — nothing inside
+    tick_n(1)                                         # x=488 — overlap begins this frame
+    print(World.get(sid, pc, f_ent))                 # 1 — entered edge
+    print(bi(World.get(sid, pc, f_hit) == aid))      # 1 — reports the body inside
+    tick_n(10)                                        # x=528 — still inside, no new edge
+    print(World.get(sid, pc, f_ent))                 # 0
+    print(bi(World.get(sid, pc, f_hit) == aid))      # 1
+    tick_n(1)                                         # x=532 — overlap ends this frame
+    print(World.get(sid, pc, f_ext))                 # 1 — exited edge
+    print(bi(World.get(sid, pc, f_hit) < 0))         # 1 — empty again
+
+    quit()
+  }
+}

@@ -1,0 +1,558 @@
+# ============================================================================
+# systems_move.ludic — the engine-owned 2D movement + collision system (#65).
+#
+# Phase 0 of the gameplay-controller work (#57): turns today's static overlap
+# tests (Collision.*) into a real physics-lite moving-body-with-collision layer
+# that the platformer / shooter / NPC-AI / RPG families all build on.
+#
+# Like the lighting system (systems_light.ludic) this lives in its own file
+# because it links against the tilemap (rt_tile / rt_mapw / rt_maph in
+# core.ludic) for the tile-grid broadphase; it is spliced only when a game
+# declares `Body` or a solid `Collider` (parse.ludic), and inserted into the
+# Update phase after the game's own handlers (emit_engine_systems_for_phase) so
+# gameplay this frame is already settled when the world is integrated.
+#
+# Everything is integer + deterministic — velocities are Q16.16 fixed-point, the
+# frame clock is fixed — so lockstep, replay and `world_save` snapshots hold.
+# There are no floats, no hidden singletons (all state lives in per-entity
+# components), and no runtime dispatch: derived contact flags are polled by the
+# game's own handlers, exactly like SpriteAnim.event_fired (#48), so a game emits
+# its own CollisionResolved / TriggerEntered events without the engine coupling
+# to a user-declared event.
+#
+# Component contracts (POD `property` bundles, every field defaulted so a game
+# overrides only what it needs, and any absent field no-ops cleanly):
+#
+#   property Position { x, y }                     # world anchor, integer px (shared)
+#   property Body {
+#     vx, vy      : fixed = 0    # velocity, Q16.16 px/frame
+#     gravity     : fixed = 0    # per-frame accel added to vy (policy 0 only)
+#     max_fall    : fixed = 0    # terminal downward speed clamp (0 = none)
+#     rx, ry      : fixed = 0    # engine-owned subpixel accumulators
+#     policy      : int   = 0    # 0 = platformer (gravity), 1 = top-down (none)
+#     on_ground   : int          # OUTPUT 0/1 — a solid is directly below
+#     hit_wall    : int          # OUTPUT 0/1 — the X sweep was blocked
+#     hit_ceiling : int          # OUTPUT 0/1 — blocked moving up
+#     hit_nx, hit_ny : int       # OUTPUT — last contact normal (-1/0/1), optional
+#   }
+#   property Collider {
+#     w, h        : int          # AABB size in px
+#     offx, offy  : int = 0      # AABB offset from the Position anchor
+#     is_trigger  : int = 0      # 1 = sensor: reports overlap, never resolves
+#     one_way     : int = 0      # 1 = platform: blocks only a downward landing
+#     layer       : int = 0      # collision layer bitmask (0 = all)
+#     mask        : int = 0      # which layers this collides with (0 = all)
+#     hit         : int          # OUTPUT (trigger) — overlapping entity id, -1 none
+#     entered     : int          # OUTPUT (trigger) — 1 the frame overlap begins
+#     exited      : int          # OUTPUT (trigger) — 1 the frame overlap ends
+#   }
+#   property Solids { tile, wall, oneway }         # optional, one config entity
+#     tile   — tile size in px; > 0 turns the tile-grid broadphase on.
+#     wall   — the solid glyph in the Map.* tilemap (as set by Map.row).
+#     oneway — an optional glyph that is a one-way platform (0 = none).
+#
+# A Body with no Collider integrates freely (projectiles, particles): velocity is
+# applied but nothing resolves. A Collider with no Body is a static solid other
+# bodies collide against (walls, platforms, moving-platform kinematics the game
+# drives itself).
+# ============================================================================
+
+const PHYS_ONE: int = 65536                          # Q16.16 one whole pixel
+
+# ---- per-frame config + reflected ids (filled at the top of esys_move) -------
+var pm_pos:      int = 0 - 1                          # Position prop id
+var pm_pos_x:    int = 0 - 1
+var pm_pos_y:    int = 0 - 1
+var pm_col:      int = 0 - 1                          # Collider prop id
+var pm_c_w:      int = 0 - 1
+var pm_c_h:      int = 0 - 1
+var pm_c_offx:   int = 0 - 1
+var pm_c_offy:   int = 0 - 1
+var pm_c_trig:   int = 0 - 1
+var pm_c_oneway: int = 0 - 1
+var pm_c_layer:  int = 0 - 1
+var pm_c_mask:   int = 0 - 1
+var phys_ts:     int = 0                              # tile size px (0 = grid off)
+var phys_wall:   int = 0                              # solid glyph
+var phys_oneway: int = 0                              # one-way platform glyph (0 = none)
+
+# the moving body's own layer/mask, so the solid scan can filter by them
+var phys_cur_layer: int = 0
+var phys_cur_mask:  int = 0
+
+# sweep outputs (Ludic returns one value, so axis clampers report contact here)
+var phys_hit_x:    int = 0                            # X sweep blocked
+var phys_hit_up:   int = 0                            # Y sweep blocked moving up
+var phys_hit_down: int = 0                            # Y sweep blocked moving down
+
+# trigger edge tracking: the body a trigger overlapped last frame, stored as
+# (entity id + 1) so a zero-filled slot reads as "none" (entity 0 is valid).
+var phys_trig_prev: words = null
+
+# ---- small integer helpers --------------------------------------------------
+# floor division toward negative infinity (positions can go slightly negative);
+# ts is always > 0 here.
+function phys_floordiv(a: int, b: int) -> int {
+  var q = a / b
+  let r = a - q * b
+  if (r != 0) and ((a < 0) != (b < 0)) { q = q - 1 }
+  return q
+}
+
+# a solid (fully blocking) tile: out of bounds counts as a wall, so the map edge
+# is a free arena boundary; otherwise the glyph equals the configured wall.
+function phys_tile_solid(c: int, r: int) -> bool {
+  if c < 0 { return true }
+  if r < 0 { return true }
+  if c >= rt_mapw { return true }
+  if r >= rt_maph { return true }
+  return rt_tile(c, r) == phys_wall
+}
+# a one-way platform tile (in bounds only — the arena edge is a full wall above).
+function phys_tile_oneway(c: int, r: int) -> bool {
+  if phys_oneway == 0 { return false }
+  if c < 0 { return false }
+  if r < 0 { return false }
+  if c >= rt_mapw { return false }
+  if r >= rt_maph { return false }
+  return rt_tile(c, r) == phys_oneway
+}
+# is any full-solid tile present in column c over the row span [r0, r1]?
+function phys_col_solid(c: int, r0: int, r1: int) -> bool {
+  var r = r0
+  while r <= r1 { if phys_tile_solid(c, r) { return true };  r = r + 1 }
+  return false
+}
+# is any full-solid tile present in row r over the column span [c0, c1]?
+function phys_row_solid(r: int, c0: int, c1: int) -> bool {
+  var c = c0
+  while c <= c1 { if phys_tile_solid(c, r) { return true };  c = c + 1 }
+  return false
+}
+# is any full-OR-one-way tile present in row r over [c0, c1]? (downward landings)
+function phys_row_land(r: int, c0: int, c1: int) -> bool {
+  var c = c0
+  while c <= c1 {
+    if phys_tile_solid(c, r) { return true }
+    if phys_tile_oneway(c, r) { return true }
+    c = c + 1
+  }
+  return false
+}
+
+# two colliders interact if each side's mask sees the other's layer; a 0 layer or
+# 0 mask reads as "all" (all-ones), so default-0 components still collide.
+function phys_match(la: int, ma: int, lb: int, mb: int) -> bool {
+  var al = la;  var bl = lb;  var am = ma;  var bm = mb
+  if al == 0 { al = 0 - 1 }
+  if bl == 0 { bl = 0 - 1 }
+  if am == 0 { am = 0 - 1 }
+  if bm == 0 { bm = 0 - 1 }
+  if (am & bl) == 0 { return false }
+  if (bm & al) == 0 { return false }
+  return true
+}
+
+# ---- reflected accessors ----------------------------------------------------
+function phys_pos_x(e: int) -> int { return World.get(e, pm_pos, pm_pos_x) }
+function phys_pos_y(e: int) -> int { return World.get(e, pm_pos, pm_pos_y) }
+function phys_set_x(e: int, v: int) -> void { World.set(e, pm_pos, pm_pos_x, v) }
+function phys_set_y(e: int, v: int) -> void { World.set(e, pm_pos, pm_pos_y, v) }
+
+function phys_c_int(e: int, f: int) -> int {
+  if f < 0 { return 0 }
+  return World.get(e, pm_col, f)
+}
+# a collider's AABB left / top edge (Position anchor + offset).
+function phys_aabb_x(e: int) -> int { return phys_pos_x(e) + phys_c_int(e, pm_c_offx) }
+function phys_aabb_y(e: int) -> int { return phys_pos_y(e) + phys_c_int(e, pm_c_offy) }
+
+# ---- X sweep ----------------------------------------------------------------
+# Clamp a body's tentative dx so its AABB (px,py,w,h) stops at the first solid it
+# would cross this frame — entity colliders and (optionally) the tile grid — and
+# flag phys_hit_x on contact. One-way platforms never block horizontal motion.
+function phys_clamp_x(self_e: int, px: int, py: int, w: int, h: int, dx: int) -> int {
+  if dx == 0 { return 0 }
+  var best = dx
+
+  # --- entity solids: every other non-trigger collider we match against
+  if pm_col >= 0 {
+    var s = World.query_next(pm_col, 0)
+    while s >= 0 {
+      if s != self_e {
+        if phys_c_int(s, pm_c_trig) == 0 {
+          if phys_match(phys_cur_layer, phys_cur_mask, phys_c_int(s, pm_c_layer), phys_c_int(s, pm_c_mask)) {
+            if phys_c_int(s, pm_c_oneway) == 0 {                 # one-way: pass horizontally
+              let sx = phys_aabb_x(s);  let sy = phys_aabb_y(s)
+              let sw = phys_c_int(s, pm_c_w);  let sh = phys_c_int(s, pm_c_h)
+              if (py < sy + sh) and (sy < py + h) {              # vertical spans overlap
+                if dx > 0 {
+                  if px + w <= sx {                              # currently left of s
+                    let allow = sx - (px + w)
+                    if allow < best { best = allow }
+                  }
+                } else {
+                  if px >= sx + sw {                             # currently right of s
+                    let allow = (sx + sw) - px
+                    if allow > best { best = allow }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      s = World.query_next(pm_col, s + 1)
+    }
+  }
+
+  # --- tile grid: nearest solid column in the swept path over the row span
+  if phys_ts > 0 {
+    let ts = phys_ts
+    let r0 = phys_floordiv(py, ts)
+    let r1 = phys_floordiv(py + h - 1, ts)
+    if dx > 0 {
+      let startc = phys_floordiv(px + w - 1, ts)
+      let endc   = phys_floordiv(px + w - 1 + best, ts)
+      var c = startc + 1
+      while c <= endc {
+        if phys_col_solid(c, r0, r1) {
+          let allow = c * ts - (px + w)
+          if allow < best { best = allow }
+          c = endc + 1                                           # nearest wins; stop
+        } else { c = c + 1 }
+      }
+    } else {
+      let startc = phys_floordiv(px, ts)
+      let endc   = phys_floordiv(px + best, ts)
+      var c = startc - 1
+      while c >= endc {
+        if phys_col_solid(c, r0, r1) {
+          let allow = (c + 1) * ts - px
+          if allow > best { best = allow }
+          c = endc - 1                                           # nearest wins; stop
+        } else { c = c - 1 }
+      }
+    }
+  }
+
+  if best != dx { phys_hit_x = 1 }
+  return best
+}
+
+# ---- Y sweep ----------------------------------------------------------------
+# Clamp a body's tentative dy against solids (and one-way platforms on a downward
+# landing), flagging phys_hit_down / phys_hit_up. Must run after the X sweep so
+# px is already resolved for this frame.
+function phys_clamp_y(self_e: int, px: int, py: int, w: int, h: int, dy: int) -> int {
+  if dy == 0 { return 0 }
+  var best = dy
+
+  if pm_col >= 0 {
+    var s = World.query_next(pm_col, 0)
+    while s >= 0 {
+      if s != self_e {
+        if phys_c_int(s, pm_c_trig) == 0 {
+          if phys_match(phys_cur_layer, phys_cur_mask, phys_c_int(s, pm_c_layer), phys_c_int(s, pm_c_mask)) {
+            let sx = phys_aabb_x(s);  let sy = phys_aabb_y(s)
+            let sw = phys_c_int(s, pm_c_w);  let sh = phys_c_int(s, pm_c_h)
+            let oneway = phys_c_int(s, pm_c_oneway)
+            if (px < sx + sw) and (sx < px + w) {                # horizontal spans overlap
+              if dy > 0 {
+                # a one-way platform blocks only when the body starts on/above it
+                var ok = true
+                if oneway != 0 { if py + h > sy { ok = false } }
+                if ok {
+                  if py + h <= sy {
+                    let allow = sy - (py + h)
+                    if allow < best { best = allow }
+                  }
+                }
+              } else {
+                if oneway == 0 {                                 # one-way: pass upward
+                  if py >= sy + sh {
+                    let allow = (sy + sh) - py
+                    if allow > best { best = allow }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      s = World.query_next(pm_col, s + 1)
+    }
+  }
+
+  if phys_ts > 0 {
+    let ts = phys_ts
+    let c0 = phys_floordiv(px, ts)
+    let c1 = phys_floordiv(px + w - 1, ts)
+    if dy > 0 {
+      let startr = phys_floordiv(py + h - 1, ts)
+      let endr   = phys_floordiv(py + h - 1 + best, ts)
+      var r = startr + 1
+      while r <= endr {
+        var block = phys_row_solid(r, c0, c1)
+        # one-way tiles only catch a body whose feet start at/above the tile top
+        if not block {
+          if phys_row_land(r, c0, c1) { if py + h <= r * ts { block = true } }
+        }
+        if block {
+          let allow = r * ts - (py + h)
+          if allow < best { best = allow }
+          r = endr + 1
+        } else { r = r + 1 }
+      }
+    } else {
+      let startr = phys_floordiv(py, ts)
+      let endr   = phys_floordiv(py + best, ts)
+      var r = startr - 1
+      while r >= endr {
+        if phys_row_solid(r, c0, c1) {                           # one-way never blocks upward
+          let allow = (r + 1) * ts - py
+          if allow > best { best = allow }
+          r = endr - 1
+        } else { r = r - 1 }
+      }
+    }
+  }
+
+  if best != dy {
+    if dy > 0 { phys_hit_down = 1 } else { phys_hit_up = 1 }
+  }
+  return best
+}
+
+# ---- ground probe -----------------------------------------------------------
+# on_ground is a 1px downward overlap test, independent of this frame's velocity,
+# so a body resting under sub-pixel gravity still reads grounded.
+function phys_grounded(self_e: int, px: int, py: int, w: int, h: int) -> bool {
+  # entity solids one pixel below
+  if pm_col >= 0 {
+    var s = World.query_next(pm_col, 0)
+    while s >= 0 {
+      if s != self_e {
+        if phys_c_int(s, pm_c_trig) == 0 {
+          if phys_match(phys_cur_layer, phys_cur_mask, phys_c_int(s, pm_c_layer), phys_c_int(s, pm_c_mask)) {
+            let sx = phys_aabb_x(s);  let sy = phys_aabb_y(s)
+            let sw = phys_c_int(s, pm_c_w);  let sh = phys_c_int(s, pm_c_h)
+            if (px < sx + sw) and (sx < px + w) {
+              if (py + h <= sy) and (py + h + 1 > sy) { return true }
+            }
+          }
+        }
+      }
+      s = World.query_next(pm_col, s + 1)
+    }
+  }
+  if phys_ts > 0 {
+    let ts = phys_ts
+    let c0 = phys_floordiv(px, ts)
+    let c1 = phys_floordiv(px + w - 1, ts)
+    let footr = phys_floordiv(py + h, ts)                        # tile row just below the feet
+    if (py + h) == footr * ts {                                  # feet flush on a tile boundary
+      if phys_row_solid(footr, c0, c1) { return true }
+      if phys_row_land(footr, c0, c1) { return true }
+    }
+  }
+  return false
+}
+
+# ---- the system ------------------------------------------------------------
+function esys_move() -> void {
+  let pb = World.prop_id("Body")
+  if pb < 0 { return }
+
+  # Body fields
+  let f_vx    = World.field_id(pb, "vx")
+  let f_vy    = World.field_id(pb, "vy")
+  let f_grav  = World.field_id(pb, "gravity")
+  let f_maxf  = World.field_id(pb, "max_fall")
+  let f_rx    = World.field_id(pb, "rx")
+  let f_ry    = World.field_id(pb, "ry")
+  let f_pol   = World.field_id(pb, "policy")
+  let f_grd   = World.field_id(pb, "on_ground")
+  let f_hw    = World.field_id(pb, "hit_wall")
+  let f_hc    = World.field_id(pb, "hit_ceiling")
+  let f_nx    = World.field_id(pb, "hit_nx")
+  let f_ny    = World.field_id(pb, "hit_ny")
+
+  # shared / config props (into module globals the helpers read)
+  pm_pos = World.prop_id("Position")
+  if pm_pos >= 0 {
+    pm_pos_x = World.field_id(pm_pos, "x")
+    pm_pos_y = World.field_id(pm_pos, "y")
+  }
+  pm_col = World.prop_id("Collider")
+  if pm_col >= 0 {
+    pm_c_w      = World.field_id(pm_col, "w")
+    pm_c_h      = World.field_id(pm_col, "h")
+    pm_c_offx   = World.field_id(pm_col, "offx")
+    pm_c_offy   = World.field_id(pm_col, "offy")
+    pm_c_trig   = World.field_id(pm_col, "is_trigger")
+    pm_c_oneway = World.field_id(pm_col, "one_way")
+    pm_c_layer  = World.field_id(pm_col, "layer")
+    pm_c_mask   = World.field_id(pm_col, "mask")
+  }
+  phys_ts = 0;  phys_wall = 0;  phys_oneway = 0
+  let ps = World.prop_id("Solids")
+  if ps >= 0 {
+    let se = World.query_next(ps, 0)
+    if se >= 0 {
+      let f_tile = World.field_id(ps, "tile")
+      let f_wall = World.field_id(ps, "wall")
+      let f_ow   = World.field_id(ps, "oneway")
+      if f_tile >= 0 { phys_ts = World.get(se, ps, f_tile) }
+      if f_wall >= 0 { phys_wall = World.get(se, ps, f_wall) }
+      if f_ow >= 0 { phys_oneway = World.get(se, ps, f_ow) }
+    }
+  }
+
+  # a Position is required to move a body; a Body with none is inert.
+  if pm_pos < 0 { return }
+  if pm_pos_x < 0 { return }
+  if pm_pos_y < 0 { return }
+
+  var e = World.query_next(pb, 0)
+  while e >= 0 {
+    if World.has(e, pm_pos) != 0 {
+      # 1. integrate velocity (+ gravity for a platformer policy)
+      var vx = 0;  if f_vx >= 0 { vx = World.get(e, pb, f_vx) }
+      var vy = 0;  if f_vy >= 0 { vy = World.get(e, pb, f_vy) }
+      var policy = 0;  if f_pol >= 0 { policy = World.get(e, pb, f_pol) }
+      if policy != 1 {
+        if f_grav >= 0 { vy = vy + World.get(e, pb, f_grav) }
+        if f_maxf >= 0 {
+          let mf = World.get(e, pb, f_maxf)
+          if (mf > 0) and (vy > mf) { vy = mf }
+        }
+      }
+
+      # 2. accumulate subpixels, extract whole-pixel steps (remainder kept exact)
+      var rx = vx;  if f_rx >= 0 { rx = World.get(e, pb, f_rx) + vx }
+      var ry = vy;  if f_ry >= 0 { ry = World.get(e, pb, f_ry) + vy }
+      var dx = rx / PHYS_ONE
+      var dy = ry / PHYS_ONE
+      let remx = rx - dx * PHYS_ONE
+      let remy = ry - dy * PHYS_ONE
+
+      var on_ground = 0
+      var hit_wall = 0
+      var hit_ceiling = 0
+      var nx = 0
+      var ny = 0
+
+      # 3. does this body have a solid shape? (a trigger-only body moves freely)
+      var has_shape = false
+      if pm_col >= 0 {
+        if World.has(e, pm_col) != 0 { if phys_c_int(e, pm_c_trig) == 0 { has_shape = true } }
+      }
+
+      if has_shape {
+        phys_cur_layer = phys_c_int(e, pm_c_layer)
+        phys_cur_mask  = phys_c_int(e, pm_c_mask)
+        let w = phys_c_int(e, pm_c_w)
+        let h = phys_c_int(e, pm_c_h)
+        var px = phys_aabb_x(e)
+        let py0 = phys_aabb_y(e)
+
+        # X sweep, commit, then Y sweep from the resolved x
+        phys_hit_x = 0
+        let cdx = phys_clamp_x(e, px, py0, w, h, dx)
+        phys_set_x(e, phys_pos_x(e) + cdx)
+        px = phys_aabb_x(e)
+
+        phys_hit_up = 0;  phys_hit_down = 0
+        let py = phys_aabb_y(e)
+        let cdy = phys_clamp_y(e, px, py, w, h, dy)
+        phys_set_y(e, phys_pos_y(e) + cdy)
+
+        # derived flags + contact normal
+        if phys_hit_x == 1 { hit_wall = 1;  vx = 0;  if dx > 0 { nx = 0 - 1 } else { nx = 1 } }
+        if phys_hit_up == 1 { hit_ceiling = 1;  vy = 0;  ny = 1 }
+        if phys_hit_down == 1 { vy = 0;  ny = 0 - 1 }
+        let gy = phys_aabb_y(e)
+        if phys_grounded(e, px, gy, w, h) { on_ground = 1 }
+        # a body pressed onto the ground carries no downward velocity, whatever
+        # the gravity step was this frame (so on_ground implies a settled vy).
+        if (on_ground == 1) and (vy > 0) { vy = 0 }
+      } else {
+        # free integration: apply the whole-pixel step straight to Position
+        phys_set_x(e, phys_pos_x(e) + dx)
+        phys_set_y(e, phys_pos_y(e) + dy)
+      }
+
+      # 4. write velocity + subpixel remainder + derived outputs back
+      if f_vx >= 0 { World.set(e, pb, f_vx, vx) }
+      if f_vy >= 0 { World.set(e, pb, f_vy, vy) }
+      if f_rx >= 0 {
+        if hit_wall == 1 { World.set(e, pb, f_rx, 0) } else { World.set(e, pb, f_rx, remx) }
+      }
+      if f_ry >= 0 {
+        if (hit_ceiling == 1) or (on_ground == 1) { World.set(e, pb, f_ry, 0) } else { World.set(e, pb, f_ry, remy) }
+      }
+      if f_grd >= 0 { World.set(e, pb, f_grd, on_ground) }
+      if f_hw >= 0 { World.set(e, pb, f_hw, hit_wall) }
+      if f_hc >= 0 { World.set(e, pb, f_hc, hit_ceiling) }
+      if f_nx >= 0 { World.set(e, pb, f_nx, nx) }
+      if f_ny >= 0 { World.set(e, pb, f_ny, ny) }
+    }
+    e = World.query_next(pb, e + 1)
+  }
+
+  # 5. triggers/sensors — overlap that reports but never resolves. For each
+  # trigger collider, find the lowest-id body-shaped collider it overlaps and
+  # edge-detect enter/exit against last frame (SpriteAnim.event_fired shape).
+  esys_triggers()
+}
+
+function esys_triggers() -> void {
+  if pm_col < 0 { return }
+  if pm_c_trig < 0 { return }
+  let f_hit = World.field_id(pm_col, "hit")
+  let f_ent = World.field_id(pm_col, "entered")
+  let f_ext = World.field_id(pm_col, "exited")
+  if (f_hit < 0) and (f_ent < 0) and (f_ext < 0) { return }     # no trigger outputs declared
+
+  if phys_trig_prev == null { phys_trig_prev = words(1024) }
+
+  var t = World.query_next(pm_col, 0)
+  while t >= 0 {
+    if phys_c_int(t, pm_c_trig) != 0 {
+      if World.has(t, pm_pos) != 0 {
+        let tx = phys_aabb_x(t);  let ty = phys_aabb_y(t)
+        let tw = phys_c_int(t, pm_c_w);  let th = phys_c_int(t, pm_c_h)
+        let tl = phys_c_int(t, pm_c_layer);  let tm = phys_c_int(t, pm_c_mask)
+        var cur = 0 - 1
+        var b = World.query_next(pm_col, 0)
+        while b >= 0 {
+          if b != t {
+            if phys_c_int(b, pm_c_trig) == 0 {
+              if World.has(b, pm_pos) != 0 {
+                if phys_match(tl, tm, phys_c_int(b, pm_c_layer), phys_c_int(b, pm_c_mask)) {
+                  let bx = phys_aabb_x(b);  let by = phys_aabb_y(b)
+                  let bw = phys_c_int(b, pm_c_w);  let bh = phys_c_int(b, pm_c_h)
+                  if (tx < bx + bw) and (bx < tx + tw) and (ty < by + bh) and (by < ty + th) {
+                    if cur < 0 { cur = b }                       # lowest id wins (deterministic)
+                  }
+                }
+              }
+            }
+          }
+          b = World.query_next(pm_col, b + 1)
+        }
+        let prev = phys_trig_prev[t] - 1                        # stored as id+1, 0 = none
+        var entered = 0
+        var exited = 0
+        if (prev < 0) and (cur >= 0) { entered = 1 }
+        if (prev >= 0) and (cur < 0) { exited = 1 }
+        phys_trig_prev[t] = cur + 1
+        if f_hit >= 0 { World.set(t, pm_col, f_hit, cur) }
+        if f_ent >= 0 { World.set(t, pm_col, f_ent, entered) }
+        if f_ext >= 0 { World.set(t, pm_col, f_ext, exited) }
+      }
+    }
+    t = World.query_next(pm_col, t + 1)
+  }
+}
