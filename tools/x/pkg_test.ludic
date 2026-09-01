@@ -1,0 +1,145 @@
+# pkg_test.ludic — the package-manager suite (issue #63), hermetic and offline.
+#
+# It stands up throwaway git repositories under /tmp and points the package
+# manager at them with LUDIC_PKG_PROXY, so the whole fetch → MVS resolve →
+# content-addressed store → project link → compile → run → verify pipeline runs
+# with no network. Every check drives a fresh `bin/x` / `bin/ludicc` process the
+# way a real project would.
+
+# write `body` to `path`, creating parent directories
+function pt_write(path: pointer, body: pointer) -> void {
+  run(`mkdir -p "$(dirname {path})"`)
+  write_file(path, body)
+}
+
+# commit the current tree of `dir` and tag it `tag`
+function pt_commit_tag(dir: pointer, tag: pointer) -> void {
+  run(`git -C {dir} add -A`)
+  run(`git -C {dir} -c user.email=t@t.test -c user.name=tester commit -q -m {tag}`)
+  run(`git -C {dir} tag {tag}`)
+}
+
+function cmd_test_pkg() -> int {
+  PASS = 0
+  FAIL = 0
+  print("== package manager (issue #63): fetch + MVS resolve + store + link + build ==")
+
+  if not shq("command -v git >/dev/null 2>&1") {
+    skip("git unavailable — package-manager suite needs git")
+    return report()
+  }
+
+  let root = capture_line("pwd")
+  let work = "/tmp/x_pkg_test"
+  let proxy = `{work}/proxy`
+  let store = `{work}/store`
+  let proj = `{work}/proj`
+  run(`rm -rf {work}`)
+  run(`mkdir -p {proxy} {store} {proj}`)
+
+  # ---- fixture packages -----------------------------------------------------
+  # example.test/util: a leaf source package, two published versions.
+  let util = `{proxy}/example.test/util`
+  run(`git -C {util} init -q 2>/dev/null || ( mkdir -p {util} && git -C {util} init -q )`)
+  pt_write(`{util}/package.ludic`, `package "example.test/util"` + nl() + `version "1.0.0"` + nl() + "kind source" + nl() + `provides "Util"` + nl())
+  pt_write(`{util}/util.ludic`, "function util_tag() -> pointer { return \"u1\" }\n")
+  pt_commit_tag(util, "v1.0.0")
+  pt_write(`{util}/package.ludic`, `package "example.test/util"` + nl() + `version "1.2.0"` + nl() + "kind source" + nl() + `provides "Util"` + nl())
+  pt_write(`{util}/util.ludic`, "function util_tag() -> pointer { return \"u12\" }\n")
+  pt_commit_tag(util, "v1.2.0")
+
+  # example.test/greeter: requires util >=1.0.0, provides Greet.
+  let greeter = `{proxy}/example.test/greeter`
+  run(`mkdir -p {greeter} && git -C {greeter} init -q`)
+  pt_write(`{greeter}/package.ludic`, `package "example.test/greeter"` + nl() + `version "1.0.0"` + nl() + "kind source" + nl() + `provides "Greet"` + nl() + `require "example.test/util" "1.0.0"` + nl())
+  pt_write(`{greeter}/greet.ludic`, "function greet_hello() -> pointer { return \"hi\" }\n")
+  pt_commit_tag(greeter, "v1.0.0")
+
+  # ---- the consumer project -------------------------------------------------
+  # requires util 1.2.0 directly; greeter (which requires util 1.0.0) is added
+  # too. MVS must pick util 1.2.0 — the greatest required minimum.
+  pt_write(`{proj}/package.ludic`, `package "app"` + nl() + `version "0.0.0"` + nl() + `require "example.test/greeter" "1.0.0"` + nl() + `require "example.test/util" "1.2.0"` + nl())
+  pt_write(`{proj}/app.ludic`, "program App {\n  import \"example.test/greeter/greet.ludic\"\n  import \"example.test/util/util.ludic\"\n  entry { print(greet_hello()); print(util_tag()) }\n}\n")
+
+  let envp = `LUDIC_PKG_PROXY={proxy} LUDIC_STORE={store}`
+
+  # ---- x get: resolve, fetch, store, link, lock -----------------------------
+  if shq(`( cd {proj} && {envp} {root}/bin/x get > {work}/get.out 2>&1 )`) {
+    ok("x get resolves + fetches the dependency graph")
+  } else {
+    bad2("x get failed", capture_line(`tail -2 {work}/get.out`))
+  }
+
+  var lock = read_file(`{proj}/package.lock.ludic`)
+  if lock == null { lock = "" }
+  if s_contains(lock, "example.test/greeter") and s_contains(lock, "example.test/util") {
+    ok("package.lock.ludic pins the whole build list")
+  } else { bad("lockfile is missing a resolved package") }
+
+  # MVS: util resolves to 1.2.0 (max of the 1.0.0 and 1.2.0 minimums), not 1.0.0
+  if s_contains(lock, `"example.test/util" version "1.2.0"`) {
+    ok("MVS selects util 1.2.0 (greatest required minimum)")
+  } else { bad2("MVS picked the wrong util version", capture_line(`grep util {proj}/package.lock.ludic`)) }
+
+  if s_contains(lock, "sha256:") { ok("lockfile records content hashes") } else { bad("lockfile has no content hash") }
+
+  # the project view links into the content-addressed store
+  if file_exists(`{proj}/ludic_modules/example.test/greeter/greet.ludic`) and file_exists(`{proj}/ludic_modules/example.test/util/util.ludic`) {
+    ok("ludic_modules/ links the store entries into the project")
+  } else { bad("ludic_modules view was not linked") }
+
+  # ---- compile + run the consumer against the fetched packages --------------
+  if shq(`( cd {proj} && LUDIC_MODULES=ludic_modules {root}/bin/ludicc app.ludic -o app > {work}/build.out 2>&1 )`) {
+    ok("consumer compiles against the linked packages (do_import module-root fallback)")
+    let got = capture_line(`( cd {proj} && ./app )`)
+    if got == "hi u12" { ok("the running program uses the MVS-selected package code (\"hi u12\")") }
+    else { bad2("program output mismatch", `got [{got}] want [hi u12]`) }
+  } else {
+    bad2("consumer build failed", capture_line(`tail -2 {work}/build.out`))
+  }
+
+  # ---- x verify: content integrity against the store ------------------------
+  if shq(`( cd {proj} && {envp} {root}/bin/x verify > {work}/verify.out 2>&1 )`) {
+    ok("x verify passes on an untouched store")
+  } else { bad2("x verify failed unexpectedly", capture_line(`tail -2 {work}/verify.out`)) }
+
+  # tamper with a stored file — verify must now flag it
+  let uhash = capture_line(`grep 'example.test/util' {proj}/package.lock.ludic | sed 's/.*sha256://; s/\".*//'`)
+  run(`echo tampered >> {store}/{uhash}/util.ludic`)
+  if not shq(`( cd {proj} && {envp} {root}/bin/x verify > {work}/verify2.out 2>&1 )`) {
+    ok("x verify detects a tampered store entry")
+  } else { bad("x verify missed a tampered store entry") }
+  # restore the store for the remaining checks
+  run(`( cd {proj} && {envp} {root}/bin/x get > /dev/null 2>&1 )`)
+
+  # ---- namespace collision policy (v1: hard error) --------------------------
+  let dupe = `{proxy}/example.test/dupe`
+  run(`mkdir -p {dupe} && git -C {dupe} init -q`)
+  pt_write(`{dupe}/package.ludic`, `package "example.test/dupe"` + nl() + `version "1.0.0"` + nl() + "kind source" + nl() + `provides "Util"` + nl())
+  pt_write(`{dupe}/dupe.ludic`, "function dupe_tag() -> pointer { return \"d\" }\n")
+  pt_commit_tag(dupe, "v1.0.0")
+  if not shq(`( cd {proj} && {envp} {root}/bin/x add example.test/dupe@1.0.0 > {work}/dupe.out 2>&1 )`) and shq(`grep -q collision {work}/dupe.out`) {
+    ok("two packages claiming the same Foo.* namespace is a hard error")
+  } else { bad2("collision not rejected", capture_line(`tail -1 {work}/dupe.out`)) }
+  # drop the bad dep again so the manifest is clean
+  pt_write(`{proj}/package.ludic`, `package "app"` + nl() + `version "0.0.0"` + nl() + `require "example.test/greeter" "1.0.0"` + nl() + `require "example.test/util" "1.2.0"` + nl())
+
+  # ---- prebuilt target matrix ----------------------------------------------
+  let pb = `{proxy}/example.test/prebuilt`
+  run(`mkdir -p {pb} && git -C {pb} init -q`)
+  pt_write(`{pb}/package.ludic`, `package "example.test/prebuilt"` + nl() + `version "1.0.0"` + nl() + "kind prebuilt" + nl() + `provides "Blob"` + nl() + `targets "made-up-target"` + nl())
+  pt_write(`{pb}/README`, "a prebuilt lib shipping no artifact for this host\n")
+  pt_commit_tag(pb, "v1.0.0")
+  if not shq(`( cd {proj} && {envp} {root}/bin/x add example.test/prebuilt@1.0.0 > {work}/pb.out 2>&1 )`) and shq(`grep -q 'prebuilt lib' {work}/pb.out`) {
+    ok("a prebuilt lib with no artifact for the build target is a hard error")
+  } else { bad2("prebuilt target matrix not enforced", capture_line(`tail -1 {work}/pb.out`)) }
+  pt_write(`{proj}/package.ludic`, `package "app"` + nl() + `version "0.0.0"` + nl() + `require "example.test/greeter" "1.0.0"` + nl() + `require "example.test/util" "1.2.0"` + nl())
+
+  # ---- x vendor: hermetic copy ---------------------------------------------
+  run(`( cd {proj} && {envp} {root}/bin/x get > /dev/null 2>&1 )`)
+  if shq(`( cd {proj} && {envp} {root}/bin/x vendor > {work}/vendor.out 2>&1 )`) and file_exists(`{proj}/vendor/example.test/util/util.ludic`) {
+    ok("x vendor copies the resolved packages into ./vendor")
+  } else { bad2("x vendor failed", capture_line(`tail -1 {work}/vendor.out`)) }
+
+  return report()
+}

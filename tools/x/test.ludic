@@ -326,6 +326,17 @@ function cmd_test() -> int {
   if (rc == 42) { ok("ludic app.ludic  ->  compiles, runs, forwards exit code") }
   else { bad2("ludic run: expected exit 42", `got {string(rc)}`) }
 
+  # the package manager (issue #63): fetch + MVS resolve + content-addressed
+  # store + ludic_modules/ links + build, run as its own hermetic suite (it
+  # stands up throwaway git repos, so like selfhost-test it runs as a sub-process
+  # and this stage checks its footer).
+  print("== package manager (x test-pkg) ==")
+  run("bin/x test-pkg > /tmp/x_pkg.out 2>&1")
+  if shq("grep -q '0 failed' /tmp/x_pkg.out") {
+    let pc = capture_line("grep -c PASS /tmp/x_pkg.out")
+    ok(`package-manager suite: {pc} checks passed (see: x test-pkg)`)
+  } else { bad2("x test-pkg", capture_line("grep -i fail /tmp/x_pkg.out | head -1")) }
+
   # docs site generator + guard, in Ludic (no Python). docs-gen emits the whole
   # pages payload; docs-check is its coverage/integrity guard; docs-palette is
   # the named-colour source of truth (its output is the tracked emit_color.ludic

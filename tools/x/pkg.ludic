@@ -1,0 +1,646 @@
+# pkg.ludic — the Ludic package manager (issue #63), a set of `x` subcommands.
+#
+# It realises the v1 direction decided in the RFC:
+#
+#   * URL-as-identity, no registry — the import path IS the git location
+#     (git.workshopsoft.io/user/pkg). A `git tag` is publishing.
+#   * Minimum Version Selection (MVS, Go-style) — a require is a *minimum*; the
+#     resolver picks, per module, the greatest of the required minimums, then
+#     the reachable closure at those versions. Deterministic, no SAT solver.
+#   * A content-addressed global store + per-project symlinks (pnpm-style): one
+#     immutable store keyed by a content hash, each project a light linked view
+#     under ludic_modules/ (which the compiler resolves imports against).
+#   * package.ludic (declared deps + provided namespaces + kind + targets) and
+#     package.lock.ludic (resolved versions + content hashes) as the manifest
+#     and lockfile.
+#
+# Fetching drives plain `git` through the `run`/`capture` intrinsics — no new
+# infrastructure. A source package's Ludic is compiled together with the
+# consumer via the module-root import fallback in the compiler (do_import); a
+# prebuilt lib declares its shipped targets and is resolved against the build
+# target. Everything is content-verified against the lockfile by `x verify`.
+
+# ---- the manifest / lock model ----------------------------------------------
+
+property Dep { module: pointer = "", ver: pointer = "" }
+
+property Manifest {
+  module: pointer = "",
+  ver: pointer = "",
+  kind: pointer = "source",   # source | prebuilt
+  hash: pointer = "",         # content hash, filled in after a snapshot
+  provides: []pointer,        # the Foo.* namespace(s) this package registers
+  targets: []pointer,         # prebuilt: the targets it ships (native-arm64, wasm32, …)
+  deps: []Dep
+}
+
+function manifest_new() -> Manifest {
+  let m = new Manifest
+  m.module = ""
+  m.ver = ""
+  m.kind = "source"
+  m.hash = ""
+  m.provides = new []pointer
+  m.targets = new []pointer
+  m.deps = new []Dep
+  return m
+}
+
+# a bare newline string (the lexer has no reliable \n inside interpolation)
+function nl() -> pointer { let b = bytes(2);  b[0] = 10;  b[1] = 0;  return b }
+
+# ---- version arithmetic (semver major.minor.patch, pre-release ignored) ------
+
+# drop a leading 'v' (118) from a tag/version string
+function strip_v(s: pointer) -> pointer {
+  if slen(s) > 0 and s[0] == 118 { return sslice(s, 1, slen(s)) }
+  return s
+}
+
+# major/minor/patch as three ints (missing fields are 0); stops at -/+ metadata
+function ver_nums(s: pointer) -> []int {
+  let v = strip_v(s)
+  var parts = new []int
+  var cur = 0
+  let n = slen(v)
+  var i = 0
+  while i < n {
+    let c = v[i]
+    if c >= 48 and c <= 57 { cur = cur * 10 + (c - 48) }
+    else if c == 46 { push(parts, cur);  cur = 0 }
+    else { i = n }                          # a '-'/'+' ends the numeric core
+    i = i + 1
+  }
+  push(parts, cur)
+  while len(parts) < 3 { push(parts, 0) }
+  return parts
+}
+
+# -1 / 0 / 1 for a < b / a == b / a > b
+function ver_cmp(a: pointer, b: pointer) -> int {
+  let pa = ver_nums(a)
+  let pb = ver_nums(b)
+  var i = 0
+  while i < 3 {
+    if pa[i] < pb[i] { return 0 - 1 }
+    if pa[i] > pb[i] { return 1 }
+    i = i + 1
+  }
+  return 0
+}
+function ver_gt(a: pointer, b: pointer) -> bool { return ver_cmp(a, b) > 0 }
+
+# is `s` a version tag (optional leading v, then a digit)?
+function is_ver_tag(s: pointer) -> bool {
+  let v = strip_v(s)
+  if slen(v) == 0 { return false }
+  return v[0] >= 48 and v[0] <= 57
+}
+
+# ---- tiny line/token scanners for the manifest & lock ------------------------
+
+# split a manifest/lock line into tokens: "quoted strings" (unquoted) or bare
+# words. A '#' outside a quote starts a comment that ends the line.
+function tok_line(line: pointer) -> []pointer {
+  var toks = new []pointer
+  let n = slen(line)
+  var i = 0
+  while i < n {
+    let c = line[i]
+    if c == 35 { i = n }                              # '#' comment
+    else if c == 32 or c == 9 { i = i + 1 }           # whitespace
+    else if c == 34 {                                 # "quoted"
+      i = i + 1
+      let start = i
+      while i < n and line[i] != 34 { i = i + 1 }
+      push(toks, sslice(line, start, i))
+      if i < n { i = i + 1 }
+    } else {                                          # bare word
+      let start = i
+      while i < n and line[i] != 32 and line[i] != 9 and line[i] != 35 { i = i + 1 }
+      push(toks, sslice(line, start, i))
+    }
+  }
+  return toks
+}
+
+# split a captured multi-line string into trimmed non-empty lines
+function split_lines(s: pointer) -> []pointer {
+  var out = new []pointer
+  let n = slen(s)
+  var i = 0
+  while i < n {
+    let line = line_at(s, i)
+    i = i + slen(line) + 1
+    let t = s_trim(line)
+    if slen(t) > 0 { push(out, t) }
+  }
+  return out
+}
+
+# ---- manifest / lock parsing -------------------------------------------------
+
+function parse_manifest(text: pointer) -> Manifest {
+  let m = manifest_new()
+  let n = slen(text)
+  var i = 0
+  while i < n {
+    let line = line_at(text, i)
+    i = i + slen(line) + 1
+    let ts = tok_line(line)
+    if len(ts) > 0 {
+      let head = ts[0]
+      if head == "package" { if len(ts) > 1 { m.module = ts[1] } }
+      else if head == "version" { if len(ts) > 1 { m.ver = ts[1] } }
+      else if head == "kind" { if len(ts) > 1 { m.kind = ts[1] } }
+      else if head == "provides" { var k = 1;  while k < len(ts) { push(m.provides, ts[k]);  k = k + 1 } }
+      else if head == "targets" { var k = 1;  while k < len(ts) { push(m.targets, ts[k]);  k = k + 1 } }
+      else if head == "require" {
+        if len(ts) > 2 { let d = new Dep;  d.module = ts[1];  d.ver = ts[2];  push(m.deps, d) }
+      }
+    }
+  }
+  return m
+}
+
+# read a package.lock.ludic body into a list of pinned entries
+function parse_lock(text: pointer) -> []Manifest {
+  var out = new []Manifest
+  let n = slen(text)
+  var i = 0
+  while i < n {
+    let line = line_at(text, i)
+    i = i + slen(line) + 1
+    let ts = tok_line(line)
+    if len(ts) > 1 and ts[0] == "module" {
+      let m = manifest_new()
+      m.module = ts[1]
+      var k = 2
+      while k < len(ts) {
+        let key = ts[k]
+        if key == "version" and k + 1 < len(ts) { m.ver = ts[k + 1];  k = k + 2 }
+        else if key == "hash" and k + 1 < len(ts) { m.hash = ts[k + 1];  k = k + 2 }
+        else if key == "kind" and k + 1 < len(ts) { m.kind = ts[k + 1];  k = k + 2 }
+        else if key == "provides" and k + 1 < len(ts) { push(m.provides, ts[k + 1]);  k = k + 2 }
+        else { k = k + 1 }
+      }
+      push(out, m)
+    }
+  }
+  return out
+}
+
+# ---- the content-addressed store & git fetch layer --------------------------
+
+# the global store root: $LUDIC_STORE, else ~/.ludic/store. Trailing slash.
+function store_root() -> pointer {
+  let s = getenv("LUDIC_STORE")
+  if s != null { return ensure_dir_slash(s) }
+  return ensure_dir_slash(`{getenv_or("HOME", "/tmp")}/.ludic/store`)
+}
+function ensure_dir_slash(d: pointer) -> pointer {
+  let n = slen(d)
+  if n == 0 { return d }
+  if d[n - 1] == 47 { return d }
+  return d + "/"
+}
+
+# the git URL for a module: a local $LUDIC_PKG_PROXY tree (used by tests and for
+# mirrors/offline) keyed by the import path, else https://<import-path>.
+function repo_url(module: pointer) -> pointer {
+  let proxy = getenv("LUDIC_PKG_PROXY")
+  if proxy != null { return `{proxy}/{module}` }
+  return `https://{module}`
+}
+
+# ensure a clone cache for `module` under the store; refresh tags if present.
+# Returns the cache dir, or "" if the clone failed.
+function ensure_clone(module: pointer) -> pointer {
+  let cache = `{store_root()}cache/{flat(module)}`
+  if file_exists(cache) {
+    run(`git -C {cache} fetch -q --tags 2>/dev/null`)
+    return cache
+  }
+  run(`mkdir -p {store_root()}cache`)
+  if not shq(`git clone -q {repo_url(module)} {cache} 2>/dev/null`) {
+    err(`x: cannot fetch {module} (git clone {repo_url(module)} failed)\n`)
+    return ""
+  }
+  return cache
+}
+
+# check out version `ver` in the cache — a v-prefixed tag first, then bare.
+function checkout_ver(cache: pointer, ver: pointer) -> bool {
+  if shq(`git -C {cache} checkout -q v{ver} 2>/dev/null`) { return true }
+  return shq(`git -C {cache} checkout -q {ver} 2>/dev/null`)
+}
+
+# the greatest published version tag of `module` (normalised, no leading v)
+function latest_version(module: pointer) -> pointer {
+  let cache = ensure_clone(module)
+  if cache == "" { return "" }
+  let lines = split_lines(capture(`git -C {cache} tag`))
+  var best = ""
+  var k = 0
+  while k < len(lines) {
+    let tg = lines[k]
+    if is_ver_tag(tg) {
+      let cand = strip_v(tg)
+      if best == "" or ver_gt(cand, best) { best = cand }
+    }
+    k = k + 1
+  }
+  return best
+}
+
+# read a package's manifest at `ver`; a package may omit package.ludic, in which
+# case it is a leaf source package with no declared deps.
+function fetch_manifest(module: pointer, ver: pointer) -> Manifest {
+  let cache = ensure_clone(module)
+  var m = manifest_new()
+  m.module = module
+  m.ver = ver
+  if cache == "" { return m }
+  if not checkout_ver(cache, ver) {
+    err(`x: {module} has no version {ver}\n`)
+    return m
+  }
+  let txt = read_file(`{cache}/package.ludic`)
+  if txt != null { m = parse_manifest(txt) }
+  m.module = module
+  m.ver = ver
+  return m
+}
+
+# the sha256 pick — shasum on macOS, sha256sum elsewhere. Both print "<hash>  f".
+function sha_cmd() -> pointer {
+  if shq("command -v shasum >/dev/null 2>&1") { return "shasum -a 256" }
+  return "sha256sum"
+}
+
+# a deterministic content hash of a directory tree (its files' names + bytes),
+# excluding .git. Independent of file metadata, so it is stable across machines.
+function dir_hash(dir: pointer) -> pointer {
+  let sc = sha_cmd()
+  return capture_line(`( cd {dir} && find . -type f -not -path './.git/*' | LC_ALL=C sort | while IFS= read -r f; do {sc} "$f"; done | {sc} | cut -d' ' -f1 )`)
+}
+
+# snapshot `module`@`ver` into the content-addressed store; returns its hash.
+# The store entry is immutable and shared: if the hash is already present the
+# copy is skipped. The .git directory is never stored.
+function snapshot(module: pointer, ver: pointer) -> pointer {
+  let cache = ensure_clone(module)
+  if cache == "" { return "" }
+  if not checkout_ver(cache, ver) { return "" }
+  let h = dir_hash(cache)
+  if slen(h) == 0 { return "" }
+  let dest = `{store_root()}{h}`
+  if not file_exists(dest) {
+    run(`rm -rf {dest}.tmp`)
+    run(`cp -R {cache} {dest}.tmp`)
+    run(`rm -rf {dest}.tmp/.git`)
+    run(`mv {dest}.tmp {dest}`)
+  }
+  return h
+}
+
+# link a project's ludic_modules/<module> view at the store entry `hash`
+function link_module(module: pointer, hash: pointer) -> void {
+  let dest = `{store_root()}{hash}`
+  let link = `ludic_modules/{module}`
+  run(`mkdir -p "$(dirname {link})"`)
+  run(`rm -rf {link}`)
+  run(`ln -s {dest} {link}`)
+}
+
+# ---- MVS resolution ----------------------------------------------------------
+
+function find_mod(mods: []pointer, m: pointer) -> int {
+  var i = 0
+  while i < len(mods) { if mods[i] == m { return i };  i = i + 1 }
+  return 0 - 1
+}
+
+# resolve a root manifest to the selected build list (one Manifest per module,
+# each at its chosen version). MVS: a module's version is the greatest of every
+# required minimum; the returned list is the reachable closure at those versions.
+function resolve(root: Manifest) -> []Manifest {
+  var mods = new []pointer          # module -> selected version (parallel arrays)
+  var vers = new []pointer
+  var fm = new []pointer            # the current requirement frontier
+  var fv = new []pointer
+  var di = 0
+  while di < len(root.deps) { push(fm, root.deps[di].module);  push(fv, root.deps[di].ver);  di = di + 1 }
+
+  while len(fm) > 0 {
+    var nm = new []pointer
+    var nv = new []pointer
+    var i = 0
+    while i < len(fm) {
+      let m = fm[i]
+      let v = fv[i]
+      let idx = find_mod(mods, m)
+      var take = false
+      if idx < 0 { push(mods, m);  push(vers, v);  take = true }
+      else if ver_gt(v, vers[idx]) { vers[idx] = v;  take = true }
+      if take {
+        let man = fetch_manifest(m, v)      # expand the chosen version's requires
+        var k = 0
+        while k < len(man.deps) { push(nm, man.deps[k].module);  push(nv, man.deps[k].ver);  k = k + 1 }
+      }
+      i = i + 1
+    }
+    fm = nm
+    fv = nv
+  }
+
+  # reachability closure: keep only modules reachable from the root, each pinned
+  # to its selected version (a module required only by a version later bumped
+  # away drops out — the minimal MVS build list).
+  var out = new []Manifest
+  var seen = new []pointer
+  var q = new []pointer
+  var d2 = 0
+  while d2 < len(root.deps) { push(q, root.deps[d2].module);  d2 = d2 + 1 }
+  var qi = 0
+  while qi < len(q) {
+    let m = q[qi]
+    qi = qi + 1
+    if find_mod(seen, m) < 0 {
+      push(seen, m)
+      let idx = find_mod(mods, m)
+      if idx >= 0 {
+        let ver = vers[idx]
+        let man = fetch_manifest(m, ver)
+        push(out, man)
+        var k = 0
+        while k < len(man.deps) { push(q, man.deps[k].module);  k = k + 1 }
+      }
+    }
+  }
+  return out
+}
+
+# sort a build list by module path (stable enough — insertion sort)
+function sort_mans(a: []Manifest) -> []Manifest {
+  var i = 1
+  while i < len(a) {
+    let x = a[i]
+    var j = i - 1
+    while j >= 0 and (a[j].module > x.module) { a[j + 1] = a[j];  j = j - 1 }
+    a[j + 1] = x
+    i = i + 1
+  }
+  return a
+}
+
+# ---- namespace-collision policy (v1: hard error) ----------------------------
+# Two packages may not both register the same Foo.* namespace. Returns "" when
+# clean, else a human message naming the conflicting modules.
+function collision(sels: []Manifest) -> pointer {
+  var ns = new []pointer
+  var owner = new []pointer
+  var i = 0
+  while i < len(sels) {
+    var p = 0
+    while p < len(sels[i].provides) {
+      let name = sels[i].provides[p]
+      let at = find_mod(ns, name)
+      if at >= 0 { return `namespace {name} provided by both {owner[at]} and {sels[i].module}` }
+      push(ns, name)
+      push(owner, sels[i].module)
+      p = p + 1
+    }
+    i = i + 1
+  }
+  return ""
+}
+
+# ---- lockfile writing --------------------------------------------------------
+
+function write_lock(sels: []Manifest) -> bool {
+  var body = "# package.lock.ludic — generated by `x get`. Do not edit by hand." + nl()
+  body = body + "lock 1" + nl()
+  let sorted = sort_mans(sels)
+  var i = 0
+  while i < len(sorted) {
+    let m = sorted[i]
+    var line = `module "{m.module}" version "{m.ver}" hash "{m.hash}" kind "{m.kind}"`
+    var p = 0
+    while p < len(m.provides) { line = line + ` provides "{m.provides[p]}"`;  p = p + 1 }
+    body = body + line + nl()
+    i = i + 1
+  }
+  return write_file("package.lock.ludic", body)
+}
+
+# ---- the shared get/install pipeline ----------------------------------------
+# resolve -> collision check -> snapshot each into the store -> link the project
+# view -> write the lockfile. Returns 0 on success.
+function do_install(root: Manifest) -> int {
+  let sels = resolve(root)
+  if len(sels) == 0 {
+    print("no dependencies to resolve")
+    write_lock(sels)
+    return 0
+  }
+  let clash = collision(sels)
+  if slen(clash) > 0 { err(`x: namespace collision — {clash}\n`);  return 1 }
+
+  var i = 0
+  while i < len(sels) {
+    let m = sels[i]
+    if m.kind == "prebuilt" {
+      let t = target_id()
+      if not has_target(m, t) {
+        err(`x: {m.module}@{m.ver} is a prebuilt lib and ships no artifact for target {t}\n`)
+        return 1
+      }
+    }
+    let h = snapshot(m.module, m.ver)
+    if slen(h) == 0 { err(`x: failed to snapshot {m.module}@{m.ver}\n`);  return 1 }
+    m.hash = `sha256:{h}`
+    link_module(m.module, h)
+    print(`  {m.module}  {m.ver}  ({m.kind})  sha256:{sslice(h, 0, 12)}…`)
+    i = i + 1
+  }
+  if not write_lock(sels) { err("x: cannot write package.lock.ludic\n");  return 1 }
+  print(`resolved {string(len(sels))} package(s) — see package.lock.ludic; linked under ludic_modules/`)
+  return 0
+}
+
+# the build target id a prebuilt lib is matched against
+function target_id() -> pointer {
+  let t = getenv("LUDIC_TARGET")
+  if t != null { return t }
+  let os = capture_line("uname -s")
+  let arch = capture_line("uname -m")
+  if os == "Darwin" { return `native-{arch}` }
+  return `native-{arch}`
+}
+function has_target(m: Manifest, t: pointer) -> bool {
+  var i = 0
+  while i < len(m.targets) { if m.targets[i] == t { return true };  i = i + 1 }
+  return false
+}
+
+# ---- reading / editing the project manifest ---------------------------------
+
+# the project manifest in the current directory, or a fresh default one
+function read_root_manifest() -> Manifest {
+  let txt = read_file("package.ludic")
+  if txt == null { return manifest_new() }
+  return parse_manifest(txt)
+}
+
+# split "module@version" into a 2-element list [module, version]; version is ""
+# when absent
+function split_spec(spec: pointer) -> []pointer {
+  var out = new []pointer
+  let n = slen(spec)
+  var at = 0 - 1
+  var i = 0
+  while i < n { if spec[i] == 64 { at = i };  i = i + 1 }   # '@' = 64
+  if at < 0 { push(out, spec);  push(out, "") }
+  else { push(out, sslice(spec, 0, at));  push(out, sslice(spec, at + 1, n)) }
+  return out
+}
+
+# rewrite package.ludic so `module` requires exactly `ver`, creating the file
+# with sane defaults when it does not exist yet.
+function set_require(module: pointer, ver: pointer) -> void {
+  var txt = read_file("package.ludic")
+  if txt == null {
+    txt = "# package.ludic — Ludic package manifest" + nl()
+    txt = txt + `package "app"` + nl()
+    txt = txt + `version "0.0.0"` + nl()
+    txt = txt + "kind source" + nl()
+  }
+  var out = ""
+  let n = slen(txt)
+  var i = 0
+  var replaced = false
+  while i < n {
+    let line = line_at(txt, i)
+    i = i + slen(line) + 1
+    let ts = tok_line(line)
+    if len(ts) >= 2 and ts[0] == "require" and ts[1] == module {
+      out = out + `require "{module}" "{ver}"` + nl()
+      replaced = true
+    } else {
+      out = out + line + nl()
+    }
+  }
+  if not replaced { out = out + `require "{module}" "{ver}"` + nl() }
+  write_file("package.ludic", out)
+}
+
+# ---- the commands ------------------------------------------------------------
+
+# x add <module>[@version] — add/update a dependency then install
+function cmd_pkg_add() -> int {
+  if arg_count() < 3 { err("usage: x add <module>[@version]\n");  return 1 }
+  let spec = split_spec(arg(2))
+  let module = spec[0]
+  var ver = spec[1]
+  if slen(ver) == 0 {
+    ver = latest_version(module)
+    if slen(ver) == 0 { err(`x: {module} has no published version tags (git tag vX.Y.Z to publish)\n`);  return 1 }
+    print(`x add: {module} -> latest v{ver}`)
+  }
+  set_require(module, ver)
+  return do_install(read_root_manifest())
+}
+
+# x get — resolve + fetch + link every dependency in package.ludic, write lock
+function cmd_pkg_get() -> int {
+  let txt = read_file("package.ludic")
+  if txt == null { err("x: no package.ludic in the current directory (x add <module> to start one)\n");  return 1 }
+  print("resolving dependencies (MVS)…")
+  return do_install(parse_manifest(txt))
+}
+
+# x update [module] — bump a dep (or all) to its latest published version, relock
+function cmd_pkg_update() -> int {
+  let root = read_root_manifest()
+  if len(root.deps) == 0 { err("x: package.ludic declares no dependencies\n");  return 1 }
+  let only = argn(2, "")
+  var i = 0
+  while i < len(root.deps) {
+    let d = root.deps[i]
+    if only == "" or only == d.module {
+      let latest = latest_version(d.module)
+      if slen(latest) > 0 and ver_gt(latest, d.ver) {
+        print(`x update: {d.module}  {d.ver} -> {latest}`)
+        set_require(d.module, latest)
+      }
+    }
+    i = i + 1
+  }
+  return do_install(read_root_manifest())
+}
+
+# x verify — check every locked package against the store by content hash and
+# confirm the project view links to it
+function cmd_pkg_verify() -> int {
+  let txt = read_file("package.lock.ludic")
+  if txt == null { err("x: no package.lock.ludic (run x get first)\n");  return 1 }
+  let locked = parse_lock(txt)
+  if len(locked) == 0 { print("lockfile lists no packages");  return 0 }
+  var bad_count = 0
+  var i = 0
+  while i < len(locked) {
+    let m = locked[i]
+    let want = m.hash
+    let raw = strip_prefix(want, "sha256:")
+    let dest = `{store_root()}{raw}`
+    if not file_exists(dest) {
+      print(`  MISSING  {m.module}@{m.ver}  (store entry {want} absent)`)
+      bad_count = bad_count + 1
+    } else {
+      let got = dir_hash(dest)
+      if got == raw {
+        let link = `ludic_modules/{m.module}`
+        if file_exists(link) { print(`  ok       {m.module}@{m.ver}`) }
+        else { print(`  UNLINKED {m.module}@{m.ver}  (ludic_modules view missing — run x get)`);  bad_count = bad_count + 1 }
+      } else {
+        print(`  TAMPERED {m.module}@{m.ver}  (want sha256:{sslice(raw, 0, 12)}… got sha256:{sslice(got, 0, 12)}…)`)
+        bad_count = bad_count + 1
+      }
+    }
+    i = i + 1
+  }
+  if bad_count == 0 { print(`verified {string(len(locked))} package(s) against the store`);  return 0 }
+  err(`x: {string(bad_count)} package(s) failed verification\n`)
+  return 1
+}
+
+# x vendor — copy the resolved packages into ./vendor for hermetic/offline
+# builds. Build against them with LUDIC_MODULES=vendor.
+function cmd_pkg_vendor() -> int {
+  let txt = read_file("package.lock.ludic")
+  if txt == null { err("x: no package.lock.ludic (run x get first)\n");  return 1 }
+  let locked = parse_lock(txt)
+  run("rm -rf vendor")
+  var i = 0
+  while i < len(locked) {
+    let m = locked[i]
+    let raw = strip_prefix(m.hash, "sha256:")
+    let dest = `{store_root()}{raw}`
+    if not file_exists(dest) { err(`x: {m.module}@{m.ver} not in the store — run x get\n`);  return 1 }
+    let vdir = `vendor/{m.module}`
+    run(`mkdir -p "$(dirname {vdir})"`)
+    run(`cp -R {dest} {vdir}`)
+    print(`  vendored {m.module}@{m.ver}`)
+    i = i + 1
+  }
+  print(`vendored {string(len(locked))} package(s) into ./vendor — build offline with LUDIC_MODULES=vendor`)
+  return 0
+}
+
+# drop a leading `prefix` from `s` if present
+function strip_prefix(s: pointer, prefix: pointer) -> pointer {
+  let pn = slen(prefix)
+  if pn <= slen(s) and s_starts(s, prefix) { return sslice(s, pn, slen(s)) }
+  return s
+}

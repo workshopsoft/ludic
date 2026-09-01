@@ -23,6 +23,8 @@ program X {
   import "docgen_gen.ludic"
   import "docgen_check.ludic"
   import "release.ludic"
+  import "pkg.ludic"
+  import "pkg_test.ludic"
 
   function usage() -> void {
     print("x — the Ludic task runner (run from the repository root)")
@@ -35,8 +37,16 @@ program X {
     print("  x tools [--install] [--test]  build the editor toolchain (ludic-fmt, ludic-lsp)")
     print("  x clean                       remove build/ (incl. build/out.ppm) and stray artifacts (keeps bin/)")
     print("")
+    print("packages (issue #63 — MVS resolution, content-addressed store, ludic_modules/ links):")
+    print("  x add <module>[@version]      add a dependency to package.ludic, then resolve + fetch + link")
+    print("  x get                         resolve every package.ludic dependency, link them, write the lock")
+    print("  x update [module]             bump a dep (or all) to its latest published version, then relock")
+    print("  x verify                      check every locked package against the store by content hash")
+    print("  x vendor                      copy the resolved packages into ./vendor for offline builds")
+    print("")
     print("test:")
     print("  x test                        the full regression suite")
+    print("  x test-pkg                    the package-manager suite (hermetic git repos, offline)")
     print("  x test --coverage             per-file line coverage over the test specs")
     print("  x selfhost-test               the self-hosting suite (correctness + bootstrap fixpoints)")
     print("  x test-tools                  the editor-toolchain suite")
@@ -106,6 +116,12 @@ program X {
       if (arg_count() < 5) { err("usage: x game-build <ludicc> <game.ludic> <out>\n"); exit(1) }
       exit(cmd_game_build(arg(2), arg(3), arg(4)))
     }
+    if (cmd == "add") { exit(cmd_pkg_add()) }
+    if (cmd == "get") { exit(cmd_pkg_get()) }
+    if (cmd == "update") { exit(cmd_pkg_update()) }
+    if (cmd == "verify") { exit(cmd_pkg_verify()) }
+    if (cmd == "vendor") { exit(cmd_pkg_vendor()) }
+    if (cmd == "test-pkg") { exit(cmd_test_pkg()) }
     if (cmd == "version") or (cmd == "--version") or (cmd == "-v") { exit(cmd_version()) }
     if (cmd == "release") { exit(cmd_release()) }
     if (cmd == "help") or (cmd == "--help") or (cmd == "-h") { usage(); exit(0) }

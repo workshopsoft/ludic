@@ -66,6 +66,16 @@ bin/x selfhost-test   # correctness + the self-hosting / C-free bootstrap fixpoi
 bin/x help            # every command
 ```
 
+Add a dependency (URL-as-identity, MVS resolution, content-addressed store):
+
+```bash
+bin/x add git.workshopsoft.io/user/pkg   # resolve + fetch + link into ludic_modules/
+bin/x get                                # install everything in package.ludic, write the lock
+bin/x verify                             # check the locked packages against the store
+```
+
+See [`docs/PACKAGES.md`](docs/PACKAGES.md) for the manifest, lockfile and package model.
+
 ## Layout
 
 | Path | What it is |
