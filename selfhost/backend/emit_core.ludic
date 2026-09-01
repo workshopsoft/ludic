@@ -18,6 +18,7 @@ var loc_reg:  []pointer
 var loc_ty:   []pointer
 var loc_mut:  []int          # 1 = mutable (var / param / loop-var), 0 = immutable (let)
 var nloc: int = 0
+var g_emit_module: bool = false  # --emit-module: a prebuilt binary module (issue #64) — no main/world; emit host-ABI declares + a load-time registration ctor
 var g_uses_str: bool = false  # a `str + str` / `str == str` was emitted -> emit the prelude
 var g_uses_intstr: bool = false  # `string(int)` was emitted -> emit the int->string prelude
 var g_uses_strslice: bool = false  # `s[a..b]` was emitted -> emit the substring prelude

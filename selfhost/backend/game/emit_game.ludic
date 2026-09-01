@@ -76,6 +76,119 @@ function emit_engine_systems_for_phase(phase: pointer) -> void {
 # declaration (draw) order. The active scene is snapshotted once per phase, so a
 # `become` mid-phase takes effect at the next phase boundary — exactly one scene
 # is active within any single phase. Engine-owned systems for the phase run last.
+# --- dynamic (mod-registered) systems, issue #64 -----------------------------
+# A prebuilt binary module registers a `void()` system into a phase through the C
+# ABI @ludic_register_system(fn, phase); the host's frame loop dispatches every
+# registered system for a phase after its own handlers. This mirrors the EV6
+# foreign event-listener array, and is the systems analogue of @ludic_register_prop
+# (dynamic components). Emitted for every ECS program (the moddability baseline);
+# with nothing registered the dispatch loop runs zero times, so a game that hosts
+# no modules produces byte-identical output.
+const SYS_CAP: int = 64
+
+# stable phase ids shared with modules (see docs — a module passes these to
+# @ludic_register_system). Keep in sync with the frame loop's phase order.
+function phase_id(phase: pointer) -> int {
+  if phase == "Input" { return 0 }
+  if phase == "FixedUpdate" { return 1 }
+  if phase == "Update" { return 2 }
+  if phase == "LateUpdate" { return 3 }
+  if phase == "Render" { return 4 }
+  if phase == "Start" { return 5 }
+  if phase == "OnQuit" { return 6 }
+  return 7
+}
+
+# --- binary-module glue (issue #64) ------------------------------------------
+# A module compiled with --emit-module carries no main and no world table (the
+# consumer owns them). It references the host's reflection ABI, so we (1) declare
+# every host-ABI symbol it may call — resolved from the host image at dylib load
+# via -undefined dynamic_lookup — and (2) emit a load-time constructor that
+# registers the module's @System functions and runs its `module_init` (where it
+# registers its dynamic components via world_register_prop). Ludic source cannot
+# take a function's address, so the compiler supplies @fn_<name> here.
+function emit_module_glue() -> void {
+  emith("declare i32 @ludic_register_prop(ptr, i32)\n")
+  emith("declare i32 @ludic_register_system(ptr, i32)\n")
+  emith("declare i64 @ludic_get(i32, i32, i32)\n")
+  emith("declare void @ludic_set(i32, i32, i32, i64)\n")
+  emith("declare i32 @ludic_has(i32, i32)\n")
+  emith("declare void @ludic_attach_dyn(i32, i32)\n")
+  emith("declare void @ludic_detach_dyn(i32, i32)\n")
+  emith("declare i32 @ludic_prop_id(ptr)\n")
+  emith("declare i32 @ludic_field_id(i32, ptr)\n")
+  emith("declare i32 @ludic_entity_count()\n")
+  emith("declare i32 @ludic_kind(i32)\n")
+  emith("declare i32 @ludic_model_id(ptr)\n")
+  emith("declare i32 @ludic_spawn(i32)\n")
+  emith("declare i32 @ludic_query_next(i32, i32)\n")
+  emith("declare i32 @ludic_prop_count()\n")
+  emith("declare ptr @ludic_prop_name(i32)\n")
+  emith("declare i32 @ludic_field_count(i32)\n")
+  emith("declare ptr @ludic_field_name(i32, i32)\n")
+  emith("declare ptr @ludic_field_type(i32, i32)\n")
+
+  emit("define void @__ludic_mod_init() {\nentry:\n")
+  if (find_fn("module_init") != null) { emit("  call void @fn_module_init()\n") }   # component registration + setup
+  var i = 0
+  while i < len(g_mod_sys_fn) {
+    emit("  call i32 @ludic_register_system(ptr @fn_");  emit(g_mod_sys_fn[i]);  emit(", i32 ");  emit(itoa(phase_id(g_mod_sys_phase[i])));  emit(")\n")
+    i = i + 1
+  }
+  emit("  ret void\n}\n\n")
+  # run @__ludic_mod_init at image load (dyld runs constructors before main)
+  emith("@llvm.global_ctors = appending global [1 x { i32, ptr, ptr }] [{ i32, ptr, ptr } { i32 65535, ptr @__ludic_mod_init, ptr null }]\n")
+}
+
+# the registry globals + the @ludic_register_system C-ABI entry (append fn+phase)
+function emit_system_registry() -> void {
+  let cap = itoa(SYS_CAP)
+  emith("@sysreg_fn = global [");  emith(cap);  emith(" x ptr] zeroinitializer\n")
+  emith("@sysreg_phase = global [");  emith(cap);  emith(" x i32] zeroinitializer\n")
+  emith("@sysreg_count = global i32 0\n")
+  emit("define i32 @ludic_register_system(ptr %fn, i32 %phase) {\nentry:\n")
+  emit("  %n = load i32, ptr @sysreg_count\n")
+  emit("  %ok = icmp slt i32 %n, ");  emit(cap);  emit("\n")
+  emit("  br i1 %ok, label %add, label %drop\n")
+  emit("add:\n")
+  emit("  %fp = getelementptr inbounds [");  emit(cap);  emit(" x ptr], ptr @sysreg_fn, i32 0, i32 %n\n")
+  emit("  store ptr %fn, ptr %fp\n")
+  emit("  %pp = getelementptr inbounds [");  emit(cap);  emit(" x i32], ptr @sysreg_phase, i32 0, i32 %n\n")
+  emit("  store i32 %phase, ptr %pp\n")
+  emit("  %n1 = add i32 %n, 1\n  store i32 %n1, ptr @sysreg_count\n  ret i32 %n\n")
+  emit("drop:\n  ret i32 -1\n}\n\n")
+}
+
+# the per-phase dispatch loop: call every registered system whose phase matches.
+# phi-based (no alloca — this is emitted inline into @main / the tick helpers,
+# which have no falloc entry block). Names/labels come from nreg()/lbl() so the
+# five per-frame calls in one function never collide.
+function emit_dyn_systems_for_phase(phase: pointer) -> void {
+  let cap = itoa(SYS_CAP)
+  let pid = itoa(phase_id(phase))
+  let iv = nreg();  let inext = nreg()
+  let pre = lbl("dsp");  let head = lbl("dsh");  let body = lbl("dsb");  let doo = lbl("dsdo");  let cont = lbl("dsc");  let done = lbl("dsn")
+  emit("  br label %");  emit(pre);  emit("\n")
+  emit(pre);  emit(":\n  br label %");  emit(head);  emit("\n")
+  emit(head);  emit(":\n")
+  emit("  ");  emit(iv);  emit(" = phi i32 [ 0, %");  emit(pre);  emit(" ], [ ");  emit(inext);  emit(", %");  emit(cont);  emit(" ]\n")
+  let nn = emit_bind("load i32, ptr @sysreg_count")
+  let go = emit_bind(`icmp slt i32 {iv}, {nn}`)
+  emit("  br i1 ");  emit(go);  emit(", label %");  emit(body);  emit(", label %");  emit(done);  emit("\n")
+  emit(body);  emit(":\n")
+  let pp = nreg();  emit("  ");  emit(pp);  emit(" = getelementptr inbounds [");  emit(cap);  emit(" x i32], ptr @sysreg_phase, i32 0, i32 ");  emit(iv);  emit("\n")
+  let ph = emit_bind(`load i32, ptr {pp}`)
+  let m = emit_bind(`icmp eq i32 {ph}, {pid}`)
+  emit("  br i1 ");  emit(m);  emit(", label %");  emit(doo);  emit(", label %");  emit(cont);  emit("\n")
+  emit(doo);  emit(":\n")
+  let fp = nreg();  emit("  ");  emit(fp);  emit(" = getelementptr inbounds [");  emit(cap);  emit(" x ptr], ptr @sysreg_fn, i32 0, i32 ");  emit(iv);  emit("\n")
+  let fn = emit_bind(`load ptr, ptr {fp}`)
+  emit("  call void ");  emit(fn);  emit("()\n")
+  emit("  br label %");  emit(cont);  emit("\n")
+  emit(cont);  emit(":\n  ");  emit(inext);  emit(" = add i32 ");  emit(iv);  emit(", 1\n  br label %");  emit(head);  emit("\n")
+  emit(done);  emit(":\n")
+}
+
 function emit_calls_for_phase(phase: pointer) -> void {
   var i = 0
   while i < len(prog) {
@@ -104,6 +217,7 @@ function emit_calls_for_phase(phase: pointer) -> void {
     }
   }
   emit_engine_systems_for_phase(phase)               # engine-owned systems run after every user handler
+  emit_dyn_systems_for_phase(phase)                  # #64: mod-registered systems run last
 }
 
 # on enter / on exit compile to void functions @scene_enter_<Name> /

@@ -440,6 +440,11 @@ var g_uses_anim_rt: bool = false  # Anim.play/clip/on_frame/fired or Motion.to (
 var g_uses_tween_rt: bool = false # Tween.to/chain/delay/… (#48) -> splice tween.ludic + run esys_tween each Update
 var g_uses_audio: bool = false    # Audio.* (#22) -> splice audio.ludic; a windowed build also links audio.ll + AVFoundation
 var g_uses_http:  bool = false    # Http.* (#6) -> splice http.ludic; links http.ll + Foundation (macOS)
+# issue #64: functions marked @System(Phase) in a prebuilt binary module — the
+# compiler registers each with the host at load (it supplies the fn address,
+# which Ludic source cannot take). Parallel arrays: fn name -> phase name.
+var g_mod_sys_fn: []pointer
+var g_mod_sys_phase: []pointer
 
 function already_loaded(full: pointer) -> bool {
   var i = 0
@@ -467,6 +472,7 @@ function parse_one_decl() -> void {
   var is_owned = false                  # @Owned model M — entities carry a network owner (N3)
   var role: pointer = null                  # @Server / @Predicted — a handler's network role (N5)
   var remote_dir: pointer = null            # @ToServer / @ToClients — a remote event's direction (N4)
+  var sys_phase: pointer = null             # @System(Phase) — a binary module's runtime-registered system (#64)
   while is_op("@") {
     pi = pi + 1; let a = eat_id()             # collect a leading @annotation
     if (a == "export") { is_export = true }
@@ -489,8 +495,9 @@ function parse_one_decl() -> void {
     else { if (a == "Predicted") { role = "predicted" }                      # @Predicted handler (N5)
     else { if (a == "ToServer") { remote_dir = "toserver" }                  # @ToServer event (N4)
     else { if (a == "ToClients") { remote_dir = "toclients" }                # @ToClients event (N4)
+    else { if (a == "System") { sys_phase = "Update"; if is_op("(") { pi = pi + 1; sys_phase = eat_id(); eat_op(")") } }   # @System(Phase) binary-module system (#64)
     else { if is_op("(") { var d = 0          # any other @anno(args) — parsed and skipped
-        while true { if is_op("(") { d = d + 1 };  if is_op(")") { d = d - 1 };  pi = pi + 1;  if d == 0 { break } } } } } } } } } } } } } } } } } } } } }
+        while true { if is_op("(") { d = d + 1 };  if is_op(")") { d = d - 1 };  pi = pi + 1;  if d == 0 { break } } } } } } } } } } } } } } } } } } } } } }
     skipnl()
   }
   if is_id("import") { pi = pi + 1
@@ -551,7 +558,12 @@ function parse_one_decl() -> void {
   if is_id("ui") { push(prog, parse_ui()); return }
   if is_id("var")    { push(prog, parse_var()); return }
   if is_id("const")  { push(prog, parse_const()); return }
-  if is_id("function") { let f = parse_fn(); if is_export { f.ival = 1 };  push(prog, f); return }
+  if is_id("function") {
+    let f = parse_fn()
+    if is_export { f.ival = 1 }
+    if (sys_phase != null) { push(g_mod_sys_fn, f.s);  push(g_mod_sys_phase, sys_phase) }   # #64: register at load
+    push(prog, f); return
+  }
   if is_id("extern") { push(prog, parse_extern()); return }
   if is_id("entry")  { push(prog, parse_main()); return }
   if is_id("test")   { push(g_tests, parse_test()); return }
@@ -776,6 +788,8 @@ function parse_program() -> void {
   g_uses_value = false
   g_uses_reflect_io = false
   g_tests = new []Node
+  g_mod_sys_fn = new []pointer
+  g_mod_sys_phase = new []pointer
   loaded_paths = new []pointer
   skipnl()
   g_game_name = "Ludic"

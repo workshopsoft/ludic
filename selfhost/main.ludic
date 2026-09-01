@@ -89,6 +89,7 @@ entry {
     else { if (a == ("--windowed")) { want = 1 }
     else { if (a == ("--headless")) { want = 2 }
     else { if (a == ("--emit-llvm")) { emit_ir = true }
+    else { if (a == ("--emit-module")) { g_emit_module = true;  emit_ir = true }   # issue #64: prebuilt binary module IR
     else { if (a == ("--fmt")) { fmt = true }
     else { if (a == ("--save-temps")) { save = true }
     else { if (a == ("--run")) { run = true }
@@ -101,7 +102,7 @@ entry {
         let m = `ludicc: ignoring unknown flag {a}\n`
         file_write(file_stderr(), m, len(m))
       } else { path = a }
-    } } } } } } } } }
+    } } } } } } } } } }
     ai = ai + 1
   }
 

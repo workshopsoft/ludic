@@ -166,7 +166,7 @@ function emit_program() -> void {
     i = i + 1
   }
   if len(g_events) > 0 { emit_event_fns() }       # EV0: @ev_<E> event-dispatch functions
-  if has_ecs() and (len(g_events) > 0 or g_uses_query or g_uses_reflect or g_uses_esys) { emit_world_table() }   # EV2/EV8: the mod reflection ABI (also powers Query.* / Reflect.* / engine systems)
+  if has_ecs() { emit_world_table() }   # EV2/EV8: the mod reflection ABI (powers Query.* / Reflect.* / engine systems, and lets a binary module (#64) link against a shared world). Unused defs dead-strip at -O2, so a game that touches none is output-identical.
   if has_ecs() { emit_ecs_allocator();  emit_snapshot() }
   if has_ecs() { emit_net() }                     # N2/N3: @Sync serializers + @Owned storage (gated internally)
   if has_ui() { emit_ui_build() }
@@ -208,6 +208,7 @@ function emit_program() -> void {
   if g_uses_result { emith("%Result = type { i32, i32, ptr }\n") }   # issue #46: ok/err/try value
   if g_uses_option { emith("%Option = type { i32, i32 }\n") }         # issue #53: some/none value
   emit_cov_runtime()                              # issue #45: --coverage tables + exit dump
+  if g_emit_module { emit_module_glue() }         # issue #64: binary-module host-ABI declares + load-time registration ctor
 }
 
 # issue #45: the line-coverage runtime. Emits the static line table, a parallel

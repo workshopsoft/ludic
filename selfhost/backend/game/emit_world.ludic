@@ -429,6 +429,7 @@ function emit_tick_helpers() -> void {
 # system functions + lifecycle hooks + the drivable tick helpers — shared by the
 # auto-loop game (emit_game_main) and an entry-driven game that owns its own loop.
 function emit_game_defs() -> void {
+  emit_system_registry()                  # #64: @ludic_register_system + the registry globals
   var i = 0
   while i < len(prog) { if prog[i].kind == N_SYS { emit_system_fn(prog[i]) };  i = i + 1 }
   emit_despawn_hooks()
