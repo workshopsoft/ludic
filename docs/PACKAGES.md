@@ -102,16 +102,62 @@ still hold.
 Two packages may not register the same `Foo.*` namespace — a collision is a hard
 error naming both modules.
 
-## Prebuilt libraries
+## Prebuilt binary packages (issue #64)
 
-A `kind prebuilt` package ships a compiled artifact per target it declares in
-`targets`. Resolution selects the artifact for the build target
-(`$LUDIC_TARGET`, else `native-<arch>` for the host). If a needed target is not
-shipped it is a hard error — unless the package also ships source, in which case
-the source path is used. Prebuilt libs are the escape hatch for closed-source or
-other-language code over the engine's stable C-ABI; source packages are the
-default because they keep cross-compilation (including the wasm target) and the
-compile-time ECS first-class.
+A `kind prebuilt` package ships a **compiled artifact** (a native dylib per
+target it lists in `targets`) instead of source. A consumer uses its exported
+**functions, systems and components** without ever seeing the source. This is
+the escape hatch for closed-source or other-language code; source packages stay
+the default because they keep cross-compilation (including wasm) and the
+compile-time ECS first-class. Prebuilt packages are **native-only** and ride the
+stable reflection C-ABI — second-class ECS (dynamic, by-name components; one
+indirect call per registered system), not part of the deterministic/replay core.
+
+**How a binary module works.** The module is compiled with `--emit-module`: no
+`main`, no world table (the consumer owns the single world). It carries a
+load-time constructor that, when the dylib loads, registers its pieces against
+the host through the C-ABI:
+
+- **Components** — `world_register_prop(name, nfields)` in a `module_init`
+  function; the host owns storage, the module reads/writes by name with
+  `world_get`/`world_set`/`world_has`/`world_attach_dyn`.
+- **Systems** — a function marked `@System(Phase)` is registered with
+  `ludic_register_system`; the host's frame loop calls it every frame in that
+  phase, after its own handlers. Phases: `Input`, `FixedUpdate`, `Update`,
+  `LateUpdate`, `Render`, `Start`, `OnQuit`.
+- **Functions** — plain functions become dylib symbols; a consumer binds them
+  with `extern function name(...) -> T = "fn_name"`.
+
+A module registers its `ludic_*` calls as undefined and binds them back to the
+host image at load (`-undefined dynamic_lookup`); the host exports its ABI
+(`-export_dynamic`). Every Ludic game is a capable host — the reflection ABI is
+always emitted (unused parts dead-strip).
+
+**Publishing.** In the package repo:
+
+```
+x build-lib module.ludic     # -> lib/<target>/lib<name>.dylib
+# add `kind prebuilt` and `targets "<target>"` to package.ludic, commit lib/, git tag
+```
+
+**Consuming.** In the game project:
+
+```
+x add git.host/user/module   # kind prebuilt is resolved + the dylib linked into the view
+x get                         # links the artifact for the build target (hard error if the target is missing)
+```
+
+then link the module dylibs into the game build. `x link-flags` prints the exact
+clang flags (the dylib, an rpath to the store, `-export_dynamic`) for any build
+system to splice into its link step:
+
+```
+clang -O2 game.ll $(x link-flags) -o game
+```
+
+(`x app` links them automatically when building in-repo.) If the package does
+not ship the build target, `x get` fails — build from source instead where the
+package offers it.
 
 ## Offline / hermetic builds
 

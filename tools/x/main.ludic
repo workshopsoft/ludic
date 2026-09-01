@@ -43,6 +43,8 @@ program X {
     print("  x update [module]             bump a dep (or all) to its latest published version, then relock")
     print("  x verify                      check every locked package against the store by content hash")
     print("  x vendor                      copy the resolved packages into ./vendor for offline builds")
+    print("  x build-lib <module.ludic>    (#64) compile a package's module to a prebuilt dylib in lib/<target>/")
+    print("  x link-flags                  (#64) print the clang flags to link this project's prebuilt module dylibs")
     print("")
     print("test:")
     print("  x test                        the full regression suite")
@@ -121,6 +123,8 @@ program X {
     if (cmd == "update") { exit(cmd_pkg_update()) }
     if (cmd == "verify") { exit(cmd_pkg_verify()) }
     if (cmd == "vendor") { exit(cmd_pkg_vendor()) }
+    if (cmd == "build-lib") { exit(cmd_pkg_build_lib()) }
+    if (cmd == "link-flags") { exit(cmd_pkg_link_flags()) }
     if (cmd == "test-pkg") { exit(cmd_test_pkg()) }
     if (cmd == "version") or (cmd == "--version") or (cmd == "-v") { exit(cmd_version()) }
     if (cmd == "release") { exit(cmd_release()) }

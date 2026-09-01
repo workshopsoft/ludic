@@ -638,6 +638,77 @@ function cmd_pkg_vendor() -> int {
   return 0
 }
 
+# ---- prebuilt binary packages (issue #64) -----------------------------------
+
+# x build-lib [module.ludic] — compile a package's module to a prebuilt dylib for
+# the current target, under lib/<target>/. The developer runs this in the package
+# repo, commits the artifact, and `git tag`s — consumers fetch and link it.
+# The compiler is $LUDICC (default bin/ludicc) so this works both in-repo and,
+# with the flag set, from an installed toolchain.
+function cmd_pkg_build_lib() -> int {
+  var src = argn(2, "")
+  if src == "" { src = capture_line("ls *.ludic 2>/dev/null | grep -v package.ludic | head -1") }
+  if src == "" or not file_exists(src) { err("usage: x build-lib <module.ludic>  (run in the package directory)\n");  return 1 }
+  let man = read_root_manifest()
+  var name = ""
+  if man.module != "" { name = capture_line(`basename {man.module}`) }
+  if name == "" { name = capture_line(`basename {src} .ludic`) }
+  let t = target_id()
+  run(`mkdir -p lib/{t}`)
+  let ludicc = getenv_or("LUDICC", "bin/ludicc")
+  let ll = "/tmp/x_buildlib.ll"
+  if not shq(`{ludicc} --emit-module {src} -o {ll} 2>/tmp/x_bl.err`) {
+    err(`x: build-lib compile failed — {capture_line("tail -1 /tmp/x_bl.err")}\n`);  return 1
+  }
+  let out = `lib/{t}/lib{name}.dylib`
+  # @rpath install name so a consumer resolves it via -rpath to the store dir
+  if not shq(`{cc()} -O2 -Wno-override-module -dynamiclib -undefined dynamic_lookup -Wl,-install_name,@rpath/lib{name}.dylib {ll} -o {out} 2>/tmp/x_bl.err`) {
+    err(`x: build-lib link failed — {capture_line("tail -1 /tmp/x_bl.err")}\n`);  return 1
+  }
+  run(`rm -f {ll}`)
+  print(`built {out}  (target {t})`)
+  print(`add to package.ludic:  kind prebuilt  /  targets "{t}"  — then commit lib/ and git tag`)
+  return 0
+}
+
+# x link-flags — print the clang link flags a consumer build needs to pull in the
+# project's prebuilt module dylibs (for the current target). Portable escape from
+# `x app` (which is in-repo only): any build system can splice `$(x link-flags)`
+# into its link step.
+function cmd_pkg_link_flags() -> int {
+  let f = prebuilt_link_flags()
+  print(s_trim(f))
+  return 0
+}
+
+# clang link flags that pull every locked prebuilt package's dylib (for the
+# current target) into a consumer build: the dylib itself, an rpath to its store
+# directory, and -export_dynamic so the module resolves the host's ludic_* ABI at
+# load. Empty when the project has no prebuilt dependencies.
+function prebuilt_link_flags() -> pointer {
+  let txt = read_file("package.lock.ludic")
+  if txt == null { return "" }
+  let locked = parse_lock(txt)
+  let t = target_id()
+  var flags = ""
+  var any = false
+  var i = 0
+  while i < len(locked) {
+    let m = locked[i]
+    if m.kind == "prebuilt" {
+      let raw = strip_prefix(m.hash, "sha256:")
+      let dir = `{store_root()}{raw}/lib/{t}`
+      let libs = split_lines(capture(`ls {dir}/*.dylib 2>/dev/null`))
+      var k = 0
+      while k < len(libs) { flags = flags + " " + libs[k];  any = true;  k = k + 1 }
+      if len(libs) > 0 { flags = flags + ` -Wl,-rpath,{dir}` }
+    }
+    i = i + 1
+  }
+  if any { flags = flags + " -Wl,-export_dynamic" }
+  return flags
+}
+
 # drop a leading `prefix` from `s` if present
 function strip_prefix(s: pointer, prefix: pointer) -> pointer {
   let pn = slen(prefix)
