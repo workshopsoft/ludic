@@ -1,0 +1,16 @@
+# ludic.shooter — the builtin top-down Shooter controller (#60).
+#
+# A twin-stick / mouse-aim character whose movement is decoupled from aim, a
+# data-driven weapon registry, and a general projectile system (pierce / bounce /
+# homing / bullet-hell patterns), all conforming to the six-lever contract (#57).
+# Reuses the engine Body/Collider and the ludic.gameplay Faction + Combat + Stats
+# foundation: the SAME weapon/projectile systems drive a player and an NPC (the AI
+# writes the "fire" intent instead of input), so there is no duplicate enemy-gun
+# code. Deterministic integer/fixed maths throughout, so bullet patterns replay.
+package "ludic.shooter"
+version "0.1.0"
+kind source
+provides "TopDown"
+provides "Weapon"
+provides "Spawner"
+require "ludic.gameplay" "0.1.0"

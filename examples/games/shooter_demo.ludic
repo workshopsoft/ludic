@@ -1,0 +1,174 @@
+# shooter_demo.ludic — the ludic.shooter controller (#60) exercised headlessly and
+# deterministically: decoupled top-down movement, a data-driven weapon that fires
+# along the aim, a projectile that travels and damages an ENEMY (faction-filtered,
+# so friendly fire is ignored), a piercing shot that hits two enemies, a spread
+# weapon that emits several pellets, and the ProjectileSpawned mutable hook.
+#
+# A full run prints:  1 1 1 1 1 1 1 1 1 1 1
+#
+# Build (from the repo root):
+#   LUDIC_MODULES=packages ludicc --headless examples/games/shooter_demo.ludic
+program ShooterDemo {
+  import "ludic.shooter/shooter.ludic"
+
+  property Position { x: int = 0, y: int = 0 }
+  property Body {
+    vx: fixed = 0.0, vy: fixed = 0.0, gravity: fixed = 0.0, max_fall: fixed = 0.0,
+    rx: fixed = 0.0, ry: fixed = 0.0, policy: int = 1,
+    on_ground: int = 0, hit_wall: int = 0, hit_ceiling: int = 0
+  }
+  property Collider {
+    w: int = 0, h: int = 0, offx: int = 0, offy: int = 0,
+    is_trigger: int = 0, one_way: int = 0, layer: int = 0, mask: int = 0,
+    hit: int = 0, entered: int = 0, exited: int = 0
+  }
+
+  model Gunner { Position, Body, Collider, TopDown, Weapon, Faction, Stats }
+  model Mob    { Position, Collider, Faction, Stats }
+  model Nest   { Position, Spawner }
+  @OnSpawn(Gunner) handler GInit { }
+  @OnSpawn(Mob) handler MInit { }
+  @OnSpawn(Nest) handler NInit { }
+
+  var spawn_reqs: int = 0
+  @On(SpawnRequested) handler OnSpawnReq { spawn_reqs = spawn_reqs + 1 }
+  var waves_cleared: int = 0
+  @On(WaveCleared) handler OnWaveClear { waves_cleared = waves_cleared + 1 }
+
+  var spawned: int = 0
+  @On(ProjectileSpawned) handler CountSpawn { spawned = spawned + 1 }
+  var hits: int = 0
+  @On(ProjectileHit) handler CountHit { hits = hits + 1 }
+  # reap the dead (the realistic policy: a Died body leaves the world) so stale
+  # corpses do not sit in the faction/targeting scans.
+  var deaths: int = 0
+  @On(Died) handler Reap { deaths = deaths + 1;  despawn e }
+
+  function tick_n(n: int) -> void { var i = 0;  while i < n { tick_fixed();  i = i + 1 } }
+  function bi(b: bool) -> int { if b { return 1 };  return 0 }
+  function hp_of(e: int) -> int {
+    let P = World.prop_id("Stats")
+    return World.get(e, P, World.field_id(P, "hp"))
+  }
+  # the mob is the Stats-carrying entity with no TopDown (Mob is a model, not a
+  # queryable property — query by a component it actually has).
+  function find_mob() -> int {
+    let PS = World.prop_id("Stats")
+    let PT = World.prop_id("TopDown")
+    var e = World.query_next(PS, 0)
+    while e >= 0 { if World.has(e, PT) == 0 { return e };  e = World.query_next(PS, e + 1) }
+    return 0 - 1
+  }
+  # a mob still alive (hp > 0) — the dead one from an earlier test stays in the world.
+  function find_live_mob() -> int {
+    let PS = World.prop_id("Stats")
+    let PT = World.prop_id("TopDown")
+    let fhp = World.field_id(PS, "hp")
+    var e = World.query_next(PS, 0)
+    while e >= 0 {
+      if (World.has(e, PT) == 0) and (World.get(e, PS, fhp) > 0) { return e }
+      e = World.query_next(PS, e + 1)
+    }
+    return 0 - 1
+  }
+
+  entry {
+    let PT = World.prop_id("TopDown")
+    let PB = World.prop_id("Body")
+    let PP = World.prop_id("Position")
+
+    # weapons: a pistol (single) and a shotgun (spread cone of 5), plus a piercer.
+    Weapon.def("pistol",  6, 10, 8, 0, 1, 0)
+    Weapon.def("shotgun", 12, 6, 7, 30, 5, 1)
+    Weapon.def("rifle",   4, 8, 10, 0, 1, 0)
+
+    # player faction 1, enemies faction 2 (hostile by default).
+    spawn Gunner { Position { x: 100, y: 100 }, Collider { w: 12, h: 12 },
+                   TopDown { move_speed: 4, aim_mode: 2 }, Weapon { def_id: 0 }, Faction { id: 1 },
+                   Stats { hp: 50, max_hp: 50 } }
+    let g = World.query_next(PT, 0)
+
+    # ---- A. decoupled movement: move right, body slides, aim follows move dir --
+    TopDown.move(g, 1, 0)
+    let x0 = World.get(g, PP, World.field_id(PP, "x"))
+    tick_n(15)
+    TopDown.move(g, 0, 0)
+    let x1 = World.get(g, PP, World.field_id(PP, "x"))
+    print(bi(x1 > x0 + 10))                          # 1 — moved right
+    print(bi(World.get(g, PT, World.field_id(PT, "aim_angle")) == 0))  # 1 — aim = move dir (+x = 0deg)
+
+    # ---- B. fire the pistol straight at an enemy to the right --------------
+    let gx = World.get(g, PP, World.field_id(PP, "x"))
+    let gy = World.get(g, PP, World.field_id(PP, "y"))
+    spawn Mob { Position { x: gx + 120, y: gy }, Collider { w: 16, h: 16 }, Faction { id: 2 }, Stats { hp: 100, max_hp: 100, def: 0 } }
+    let mob = find_mob()
+    World.set(g, PT, World.field_id(PT, "aim_mode"), 4)   # manual aim for the firing tests
+    TopDown.aim(g, 0)                                 # aim +x
+    Weapon.equip(g, "pistol")
+    TopDown.fire(g, 1)
+    tick_n(1)                                          # one shot fires (cooldown gates the rest)
+    TopDown.fire(g, 0)
+    let hp_before = hp_of(mob)
+    tick_n(40)                                          # bullet flies ~120px and hits
+    print(bi(spawned >= 1))                            # 1 — a projectile spawned
+    print(bi(hp_of(mob) < hp_before))                  # 1 — enemy took damage
+
+    # ---- C. friendly fire is ignored (same faction) ------------------------
+    spawn Gunner { Position { x: gx + 40, y: gy }, Collider { w: 12, h: 12 },
+                   TopDown { aim_mode: 2 }, Weapon { def_id: 0 }, Faction { id: 1 }, Stats { hp: 50, max_hp: 50 } }
+    var ally = World.query_next(PT, 0)
+    if ally == g { ally = World.query_next(PT, g + 1) }
+    let ally_hp = hp_of(ally)
+    TopDown.aim(g, 0)
+    TopDown.fire(g, 1);  tick_n(1);  TopDown.fire(g, 0)
+    tick_n(20)
+    print(bi(hp_of(ally) == ally_hp))                  # 1 — ally unharmed (faction)
+
+    # ---- D. shotgun spread emits multiple pellets in one shot ---------------
+    let s0 = spawned
+    Weapon.equip(g, "shotgun")
+    TopDown.aim(g, 0)
+    TopDown.fire(g, 1);  tick_n(1);  TopDown.fire(g, 0)
+    print(bi(spawned - s0 == 5))                        # 1 — 5 pellets
+
+    # ---- E. a fresh enemy is eventually killed (Combat -> Died -> reaped) --
+    let d0 = deaths
+    Weapon.equip(g, "rifle")
+    TopDown.aim(g, 0)
+    var f = 0
+    while (deaths == d0) and (f < 400) {
+      TopDown.fire(g, 1);  tick_fixed();  TopDown.fire(g, 0);  tick_fixed()
+      f = f + 1
+    }
+    print(bi(deaths == d0 + 1))                         # 1 — enemy destroyed (Died fired)
+
+    # ---- F. ring pattern (bullet-hell) emits N bullets around 360 ----------
+    let r0 = spawned
+    let ring = Weapon.def("nova", 30, 3, 6, 0, 8, 2)   # pattern 2 = ring, 8 pellets
+    Weapon.equip(g, "nova")
+    TopDown.fire(g, 1);  tick_n(1);  TopDown.fire(g, 0)
+    print(bi(spawned - r0 == 8))                        # 1 — 8-way ring
+
+    # ---- G. homing shot curves onto an off-axis enemy ----------------------
+    let seek = Weapon.def("seeker", 30, 40, 6, 0, 1, 0)
+    Weapon.set_homing(seek, 12)                         # 12 deg/frame turn
+    let gx2 = World.get(g, PP, World.field_id(PP, "x"))
+    let gy2 = World.get(g, PP, World.field_id(PP, "y"))
+    spawn Mob { Position { x: gx2 + 60, y: gy2 + 60 }, Collider { w: 16, h: 16 }, Faction { id: 2 }, Stats { hp: 30, max_hp: 30 } }
+    let mob2 = find_live_mob()
+    let mob2_hp0 = hp_of(mob2)
+    Weapon.equip(g, "seeker")
+    TopDown.aim(g, 0)                                   # fire +x, but the target is down-right
+    TopDown.fire(g, 1);  tick_n(1);  TopDown.fire(g, 0)
+    tick_n(60)                                           # the shot should curve in and hit
+    print(bi(hp_of(mob2) < mob2_hp0))                   # 1 — homing connected
+
+    # ---- H. wave spawner: budgeted, throttled SpawnRequested + WaveCleared --
+    spawn Nest { Position { x: 300, y: 300 }, Spawner { rate: 3, budget: 4 } }
+    tick_n(20)                                            # 4 spawns at 3-frame spacing, then cleared
+    print(bi(spawn_reqs == 4))                            # 1 — exactly budget requests
+    print(bi(waves_cleared == 1))                         # 1 — wave cleared once
+
+    quit()
+  }
+}

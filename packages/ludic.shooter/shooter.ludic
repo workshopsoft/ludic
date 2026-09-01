@@ -1,0 +1,511 @@
+# shooter.ludic — the builtin top-down Shooter controller (#60).
+#
+# Three layers, each reachable by the six levers (#57):
+#   TopDown    — decoupled move + aim (aim_mode: mouse / stick / move-dir / auto)
+#   Weapon     — a data-driven registry (add a gun with Weapon.def, zero code) +
+#                esys_weapon (fire rate, patterns) reading a "want_fire" intent
+#   Projectile — esys_projectile: integrate, TTL, faction-filtered hit, pierce,
+#                homing; emits ProjectileSpawned (mutable) / Hit / Expired.
+#
+# The controller reuses ludic.gameplay Faction (who may hit whom) + Combat (the one
+# damage pipeline). Because esys_weapon reads an intent flag, the identical weapon
+# fires for a player (input sets want_fire) and an NPC (#61 AI sets want_fire).
+
+import "ludic.gameplay/faction.ludic"
+import "ludic.gameplay/stats.ludic"
+import "ludic.gameplay/combat.ludic"
+
+const SH_Q: int = 65536
+const WPN_MAX: int = 64
+
+# ---------------------------------------------------------------------------
+# Components
+# ---------------------------------------------------------------------------
+property TopDown {
+  move_speed: int = 4,      # px/frame
+  accel:      int = 80,     # responsiveness %, gap closed / frame
+  friction:   int = 70,     # stopping %, speed shed / frame when idle
+  aim_mode:   int = 0,      # 0 mouse, 1 right-stick, 2 move-dir, 3 nearest-enemy (auto)
+  turn_rate:  int = 0,      # 0 = snap; >0 = max degrees/frame toward the target aim
+  strafe:     int = 1,      # 1 = body free of move dir; 0 = face move dir
+  aim_angle:  int = 0,      # current facing, degrees (0 = +x, 90 = +y)
+  want_x:     int = 0,      # -1/0/1 move intent (input OR ai writes)
+  want_y:     int = 0,
+  want_fire:  int = 0,      # 1 = fire held (input OR ai writes)
+  policy:     int = 0
+}
+
+# a Weapon instance points at a registry entry (def_id). cooldown counts down to
+# the next allowed shot; ammo -1 = infinite; phase drives spiral emitters.
+property Weapon { def_id: int = 0, ammo: int = 0 - 1, cooldown: int = 0, phase: int = 0 }
+
+property Projectile {
+  vx: fixed = 0.0, vy: fixed = 0.0, rx: fixed = 0.0, ry: fixed = 0.0,
+  dir: int = 0,             # heading in degrees (drives homing without re-deriving from velocity)
+  speed: int = 8, damage: int = 1, ttl: int = 120,
+  pierce: int = 0, bounce: int = 0, homing: int = 0,
+  owner: int = 0, faction: int = 0, on_hit: int = 0
+}
+model Bullet { Position, Projectile, Collider }
+@OnSpawn(Bullet) handler BulletInit { }
+
+# ---------------------------------------------------------------------------
+# Events (lever 4)
+# ---------------------------------------------------------------------------
+event cancellable ProjectileSpawned { proj: int = 0, owner: int = 0, damage: int = 0 }
+event ProjectileHit { proj: int = 0, target: int = 0, damage: int = 0 }
+event ProjectileExpired { proj: int = 0 }
+event WeaponFired { owner: int = 0, def_id: int = 0 }
+
+# ---------------------------------------------------------------------------
+# Weapon registry (name-keyed, mod-friendly — add a gun with no code)
+# ---------------------------------------------------------------------------
+var wpn_reg: Dict = null
+var wpn_n:   int = 0
+var wpn_rate:    words = null
+var wpn_dmg:     words = null
+var wpn_speed:   words = null
+var wpn_spread:  words = null
+var wpn_pellets: words = null
+var wpn_pattern: words = null
+var wpn_ttl:     words = null
+var wpn_pierce:  words = null
+var wpn_homing:  words = null
+
+function wpn_ensure() -> void {
+  if wpn_reg == null {
+    wpn_reg = Dict.new()
+    wpn_rate = words(WPN_MAX);  wpn_dmg = words(WPN_MAX);  wpn_speed = words(WPN_MAX)
+    wpn_spread = words(WPN_MAX);  wpn_pellets = words(WPN_MAX);  wpn_pattern = words(WPN_MAX)
+    wpn_ttl = words(WPN_MAX);  wpn_pierce = words(WPN_MAX);  wpn_homing = words(WPN_MAX)
+  }
+}
+
+# Weapon.def(name, fire_rate, damage, speed, spread, pellets, pattern) — register a
+# gun. pattern: 0 single/aimed, 1 spread cone, 2 ring, 3 spiral. Returns the def id.
+@Namespace(Weapon) function weapon_def(name: pointer, fire_rate: int, damage: int, speed: int, spread: int, pellets: int, pattern: int) -> int {
+  wpn_ensure()
+  if wpn_n >= WPN_MAX { return 0 - 1 }
+  let id = wpn_n
+  wpn_rate[id] = fire_rate;  wpn_dmg[id] = damage;  wpn_speed[id] = speed
+  wpn_spread[id] = spread;  wpn_pellets[id] = pellets;  wpn_pattern[id] = pattern
+  wpn_ttl[id] = 120
+  wpn_n = wpn_n + 1
+  Dict.set(wpn_reg, name, id)
+  return id
+}
+@Namespace(Weapon) function weapon_id(name: pointer) -> int {
+  wpn_ensure()
+  return Dict.get_or(wpn_reg, name, 0 - 1)
+}
+# Weapon.set_ttl(id, frames) — projectile lifetime for a weapon (range control).
+@Namespace(Weapon) function weapon_set_ttl(id: int, frames: int) -> void {
+  wpn_ensure();  if (id >= 0) and (id < WPN_MAX) { wpn_ttl[id] = frames }
+}
+# Weapon.set_pierce(id, n) — a shot passes through n targets before it dies.
+@Namespace(Weapon) function weapon_set_pierce(id: int, n: int) -> void {
+  wpn_ensure();  if (id >= 0) and (id < WPN_MAX) { wpn_pierce[id] = n }
+}
+# Weapon.set_homing(id, deg) — max degrees/frame a shot turns toward an enemy.
+@Namespace(Weapon) function weapon_set_homing(id: int, deg: int) -> void {
+  wpn_ensure();  if (id >= 0) and (id < WPN_MAX) { wpn_homing[id] = deg }
+}
+
+# ---------------------------------------------------------------------------
+# reflected accessors
+# ---------------------------------------------------------------------------
+function td_get(e: int, name: pointer) -> int {
+  let P = World.prop_id("TopDown");  if P < 0 { return 0 }
+  let f = World.field_id(P, name);  if f < 0 { return 0 }
+  return World.get(e, P, f)
+}
+function td_set(e: int, name: pointer, v: int) -> void {
+  let P = World.prop_id("TopDown");  if P < 0 { return }
+  let f = World.field_id(P, name);  if f >= 0 { World.set(e, P, f, v) }
+}
+function bod_get(e: int, name: pointer) -> int {
+  let P = World.prop_id("Body");  if P < 0 { return 0 }
+  let f = World.field_id(P, name);  if f < 0 { return 0 }
+  return World.get(e, P, f)
+}
+function bod_set(e: int, name: pointer, v: int) -> void {
+  let P = World.prop_id("Body");  if P < 0 { return }
+  let f = World.field_id(P, name);  if f >= 0 { World.set(e, P, f, v) }
+}
+function pos_get(e: int, name: pointer) -> int {
+  let P = World.prop_id("Position");  if P < 0 { return 0 }
+  let f = World.field_id(P, name);  if f < 0 { return 0 }
+  return World.get(e, P, f)
+}
+function pos_set(e: int, name: pointer, v: int) -> void {
+  let P = World.prop_id("Position");  if P < 0 { return }
+  let f = World.field_id(P, name);  if f >= 0 { World.set(e, P, f, v) }
+}
+function pr_get(e: int, name: pointer) -> int {
+  let P = World.prop_id("Projectile");  if P < 0 { return 0 }
+  let f = World.field_id(P, name);  if f < 0 { return 0 }
+  return World.get(e, P, f)
+}
+function pr_set(e: int, name: pointer, v: int) -> void {
+  let P = World.prop_id("Projectile");  if P < 0 { return }
+  let f = World.field_id(P, name);  if f >= 0 { World.set(e, P, f, v) }
+}
+
+# nearest entity with a Faction hostile to `fac`, by centre distance. -1 if none.
+function sh_nearest_enemy(self_e: int, fac: int, px: int, py: int) -> int {
+  let PF = World.prop_id("Faction")
+  if PF < 0 { return 0 - 1 }
+  let PP = World.prop_id("Position")
+  if PP < 0 { return 0 - 1 }
+  var best = 0 - 1
+  var bestd = 0
+  var e = World.query_next(PF, 0)
+  while e >= 0 {
+    if (e != self_e) and (World.has(e, PP) != 0) {
+      if Faction.hostile(fac, Faction.id_of(e)) == 1 {
+        let dx = pos_get(e, "x") - px
+        let dy = pos_get(e, "y") - py
+        let d = dx * dx + dy * dy
+        if (best < 0) or (d < bestd) { best = e;  bestd = d }
+      }
+    }
+    e = World.query_next(PF, e + 1)
+  }
+  return best
+}
+
+# ===========================================================================
+# esys_topdown_move (FixedUpdate) — 2-axis acceleration toward the move intent.
+# ===========================================================================
+@EngineSystem(TopDown, FixedUpdate) function esys_topdown_move() -> void {
+  let P = World.prop_id("TopDown")
+  if P < 0 { return }
+  var e = World.query_next(P, 0)
+  while e >= 0 {
+    let sp = td_get(e, "move_speed")
+    let wx = td_get(e, "want_x")
+    let wy = td_get(e, "want_y")
+    var rx = 0;  if wx != 0 { rx = td_get(e, "accel") } else { rx = td_get(e, "friction") }
+    var ry = 0;  if wy != 0 { ry = td_get(e, "accel") } else { ry = td_get(e, "friction") }
+    if rx > 100 { rx = 100 }
+    if ry > 100 { ry = 100 }
+    let tvx = wx * sp * SH_Q
+    let tvy = wy * sp * SH_Q
+    var vx = bod_get(e, "vx")
+    var vy = bod_get(e, "vy")
+    vx = vx + (tvx - vx) * rx / 100
+    vy = vy + (tvy - vy) * ry / 100
+    bod_set(e, "vx", vx)
+    bod_set(e, "vy", vy)
+    e = World.query_next(P, e + 1)
+  }
+}
+
+# ===========================================================================
+# esys_topdown_aim (FixedUpdate) — resolve the facing per aim_mode, honouring
+# turn_rate (0 = instant snap, >0 = gradual). Only the active branch runs.
+# ===========================================================================
+@EngineSystem(TopDown, FixedUpdate) function esys_topdown_aim() -> void {
+  let P = World.prop_id("TopDown")
+  if P < 0 { return }
+  var e = World.query_next(P, 0)
+  while e >= 0 {
+    let mode = td_get(e, "aim_mode")
+    let px = pos_get(e, "x")
+    let py = pos_get(e, "y")
+    var target = td_get(e, "aim_angle")            # default: keep current
+    var have = 0
+    if mode == 0 {                                  # mouse / point
+      let mx = Input.mouse_x()
+      let my = Input.mouse_y()
+      target = sh_angle_to(px, py, mx, my);  have = 1
+    }
+    if mode == 1 {                                  # right stick
+      let ax = Input.pad_axis(0, 2)
+      let ay = Input.pad_axis(0, 3)
+      if (ax != 0) or (ay != 0) { target = sh_dir_angle(ax, ay);  have = 1 }
+    }
+    if mode == 2 {                                  # move direction (from the intent)
+      let wx = td_get(e, "want_x")
+      let wy = td_get(e, "want_y")
+      if (wx != 0) or (wy != 0) { target = sh_dir_angle(wx, wy);  have = 1 }
+    }
+    # mode 4 = manual: the game/AI owns aim_angle; the aim system leaves it alone.
+    if mode == 3 {                                  # nearest enemy (auto-aim)
+      let fac = Faction.id_of(e)
+      let t = sh_nearest_enemy(e, fac, px, py)
+      if t >= 0 { target = sh_angle_to(px, py, pos_get(t, "x"), pos_get(t, "y"));  have = 1 }
+    }
+    if have == 1 {
+      let tr = td_get(e, "turn_rate")
+      if tr <= 0 {
+        td_set(e, "aim_angle", target)
+      } else {
+        let cur = td_get(e, "aim_angle")
+        let d = sh_angle_diff(cur, target)          # shortest signed arc, degrees
+        if (d >= 0 - tr) and (d <= tr) { td_set(e, "aim_angle", target) }
+        else { if d > 0 { td_set(e, "aim_angle", sh_wrap_deg(cur + tr)) } else { td_set(e, "aim_angle", sh_wrap_deg(cur - tr)) } }
+      }
+    }
+    e = World.query_next(P, e + 1)
+  }
+}
+
+# integer-degree angle helpers (built on Math trig, kept in degrees for the API)
+# both take small integer components (pixel deltas or -1/0/1 intent), so fixed()
+# stays well inside i32; results are wrapped into 0..359.
+function sh_angle_to(ax: int, ay: int, bx: int, by: int) -> int {
+  let r = Math.atan2(fixed(by - ay), fixed(bx - ax))
+  return sh_wrap_deg(floor(Math.rad_to_deg(r)))
+}
+function sh_dir_angle(dx: int, dy: int) -> int {
+  let r = Math.atan2(fixed(dy), fixed(dx))
+  return sh_wrap_deg(floor(Math.rad_to_deg(r)))
+}
+function sh_wrap_deg(d: int) -> int {
+  var a = d
+  while a < 0 { a = a + 360 }
+  while a >= 360 { a = a - 360 }
+  return a
+}
+function sh_angle_diff(from: int, to: int) -> int {
+  var d = sh_wrap_deg(to) - sh_wrap_deg(from)
+  while d > 180 { d = d - 360 }
+  while d < 0 - 180 { d = d + 360 }
+  return d
+}
+
+# spawn one projectile travelling at `deg` degrees from (px,py).
+function sh_spawn_bullet(owner: int, fac: int, px: int, py: int, deg: int, speed: int, dmg: int, ttl: int, pierce: int, homing: int) -> int {
+  let m = World.model_id("Bullet")
+  if m < 0 { return 0 - 1 }
+  let b = World.spawn(m)
+  pos_set(b, "x", px)
+  pos_set(b, "y", py)
+  let rad = Angle.from_degrees(fixed(deg))
+  pr_set(b, "vx", Angle.cos(rad) * fixed(speed))
+  pr_set(b, "vy", Angle.sin(rad) * fixed(speed))
+  pr_set(b, "dir", deg)
+  pr_set(b, "speed", speed)
+  pr_set(b, "damage", dmg)
+  pr_set(b, "ttl", ttl)
+  pr_set(b, "pierce", pierce)
+  pr_set(b, "homing", homing)
+  pr_set(b, "owner", owner)
+  pr_set(b, "faction", fac)
+  # a small default hitbox unless the game set one on the model
+  let PC = World.prop_id("Collider")
+  if (PC >= 0) and (World.get(b, PC, World.field_id(PC, "w")) == 0) {
+    World.set(b, PC, World.field_id(PC, "w"), 4)
+    World.set(b, PC, World.field_id(PC, "h"), 4)
+  }
+  # announce it: a listener may veto (cancel -> despawn) or tweak the Projectile.
+  if emit ProjectileSpawned(proj: b, owner: owner, damage: dmg) != 0 { despawn b;  return 0 - 1 }
+  return b
+}
+
+# ===========================================================================
+# esys_weapon (Update) — fire-rate gating + pattern emission. Reads the owner's
+# TopDown.aim_angle + Weapon.want-fire-equivalent (TopDown.want_fire); one impl
+# serves player and NPC.
+# ===========================================================================
+@EngineSystem(Weapon, Update) function esys_weapon() -> void {
+  let P = World.prop_id("Weapon")
+  if P < 0 { return }
+  wpn_ensure()
+  var e = World.query_next(P, 0)
+  while e >= 0 {
+    let cd = World.get(e, P, World.field_id(P, "cooldown"))
+    if cd > 0 { World.set(e, P, World.field_id(P, "cooldown"), cd - 1) }
+    let fire = td_get(e, "want_fire")
+    if (fire == 1) and (cd <= 0) {
+      let id = World.get(e, P, World.field_id(P, "def_id"))
+      if (id >= 0) and (id < wpn_n) {
+        sh_fire(e, id)
+        World.set(e, P, World.field_id(P, "cooldown"), wpn_rate[id])
+      }
+    }
+    e = World.query_next(P, e + 1)
+  }
+}
+
+function sh_fire(owner: int, id: int) -> void {
+  let px = pos_get(owner, "x")
+  let py = pos_get(owner, "y")
+  let base = td_get(owner, "aim_angle")
+  let fac = Faction.id_of(owner)
+  let speed = wpn_speed[id]
+  let dmg = wpn_dmg[id]
+  let spread = wpn_spread[id]
+  let pellets0 = wpn_pellets[id]
+  let pattern = wpn_pattern[id]
+  let ttl = wpn_ttl[id]
+  let pierce = wpn_pierce[id]
+  let homing = wpn_homing[id]
+  var pellets = pellets0;  if pellets < 1 { pellets = 1 }
+  emit WeaponFired(owner: owner, def_id: id)
+  if pattern == 2 {                                 # ring: pellets around 360
+    var i = 0
+    while i < pellets { sh_spawn_bullet(owner, fac, px, py, sh_wrap_deg(base + i * 360 / pellets), speed, dmg, ttl, pierce, homing);  i = i + 1 }
+    return
+  }
+  if pattern == 3 {                                 # spiral: ring + a rotating phase
+    let PW = World.prop_id("Weapon")
+    let fph = World.field_id(PW, "phase")
+    var ph = 0;  if fph >= 0 { ph = World.get(owner, PW, fph) }
+    var i = 0
+    while i < pellets { sh_spawn_bullet(owner, fac, px, py, sh_wrap_deg(base + ph + i * 360 / pellets), speed, dmg, ttl, pierce, homing);  i = i + 1 }
+    if fph >= 0 { World.set(owner, PW, fph, sh_wrap_deg(ph + 15)) }
+    return
+  }
+  # single / spread cone centred on the aim
+  if pellets == 1 {
+    sh_spawn_bullet(owner, fac, px, py, base, speed, dmg, ttl, pierce, homing)
+  } else {
+    var i = 0
+    while i < pellets {
+      let off = 0 - (spread / 2) + i * spread / (pellets - 1)
+      sh_spawn_bullet(owner, fac, px, py, sh_wrap_deg(base + off), speed, dmg, ttl, pierce, homing)
+      i = i + 1
+    }
+  }
+}
+
+# ===========================================================================
+# esys_projectile (Update) — integrate, TTL, homing steer, faction-filtered hit
+# (through Combat), pierce. Self-contained integration (projectiles carry their own
+# vx/vy), so they need no Body and stay a dense, deterministic pool.
+# ===========================================================================
+@EngineSystem(Projectile, Update) function esys_projectile() -> void {
+  let P = World.prop_id("Projectile")
+  if P < 0 { return }
+  let PC = World.prop_id("Collider")
+  var e = World.query_next(P, 0)
+  while e >= 0 {
+    var nxt = World.query_next(P, e + 1)
+    # TTL
+    let ttl = pr_get(e, "ttl") - 1
+    if ttl <= 0 { emit ProjectileExpired(proj: e);  despawn e;  e = nxt;  continue }
+    pr_set(e, "ttl", ttl)
+    # homing steer toward the nearest enemy of the projectile's faction
+    let hom = pr_get(e, "homing")
+    if hom > 0 {
+      let fac = pr_get(e, "faction")
+      let px0 = pos_get(e, "x");  let py0 = pos_get(e, "y")
+      let t = sh_nearest_enemy(e, fac, px0, py0)
+      if t >= 0 {
+        let want = sh_angle_to(px0, py0, pos_get(t, "x"), pos_get(t, "y"))
+        let cur = pr_get(e, "dir")
+        let d = sh_angle_diff(cur, want)
+        var na = cur
+        if (d >= 0 - hom) and (d <= hom) { na = want }
+        else { if d > 0 { na = sh_wrap_deg(cur + hom) } else { na = sh_wrap_deg(cur - hom) } }
+        pr_set(e, "dir", na)
+        let sp = pr_get(e, "speed")
+        let rad = Angle.from_degrees(fixed(na))
+        let nvx = Angle.cos(rad) * fixed(sp)
+        let nvy = Angle.sin(rad) * fixed(sp)
+        pr_set(e, "vx", nvx)
+        pr_set(e, "vy", nvy)
+      }
+    }
+    # integrate (Q16.16 with subpixel remainder)
+    let vx = pr_get(e, "vx");  let vy = pr_get(e, "vy")
+    var rrx = pr_get(e, "rx") + vx
+    var rry = pr_get(e, "ry") + vy
+    let dx = rrx / SH_Q;  let dy = rry / SH_Q
+    pos_set(e, "x", pos_get(e, "x") + dx)
+    pos_set(e, "y", pos_get(e, "y") + dy)
+    pr_set(e, "rx", rrx - dx * SH_Q)
+    pr_set(e, "ry", rry - dy * SH_Q)
+    # collision vs hostile Colliders
+    if PC >= 0 {
+      let ex = pos_get(e, "x");  let ey = pos_get(e, "y")
+      let ew = World.get(e, PC, World.field_id(PC, "w"))
+      let eh = World.get(e, PC, World.field_id(PC, "h"))
+      let owner = pr_get(e, "owner")
+      let fac = pr_get(e, "faction")
+      var hit_done = 0
+      var t = World.query_next(PC, 0)
+      while (t >= 0) and (hit_done == 0) {
+        if (t != e) and (t != owner) {
+          if World.get(t, PC, World.field_id(PC, "is_trigger")) == 0 {
+            if Faction.hostile(fac, Faction.id_of(t)) == 1 {
+              let tx = pos_get(t, "x");  let ty = pos_get(t, "y")
+              let tw = World.get(t, PC, World.field_id(PC, "w"))
+              let th = World.get(t, PC, World.field_id(PC, "h"))
+              if (ex < tx + tw) and (tx < ex + ew) and (ey < ty + th) and (ty < ey + eh) {
+                emit ProjectileHit(proj: e, target: t, damage: pr_get(e, "damage"))
+                Combat.damage(t, owner, pr_get(e, "damage"))
+                let pierce = pr_get(e, "pierce") - 1
+                if pierce < 0 { despawn e;  hit_done = 1 } else { pr_set(e, "pierce", pierce) }
+              }
+            }
+          }
+        }
+        t = World.query_next(PC, t + 1)
+      }
+    }
+    e = nxt
+  }
+}
+
+# ===========================================================================
+# Spawner / wave director (macro). A budgeted, throttled emitter: every `rate`
+# frames while spawned < budget it emits SpawnRequested (the game does the actual
+# spawn + placement, so the WHAT stays the game's policy); when the budget is met
+# and the wave is cleared it emits WaveCleared. Shared with NPC AI arenas (#61).
+# ===========================================================================
+property Spawner { rate: int = 60, budget: int = 5, spawned: int = 0, t: int = 0, alive: int = 0, wave: int = 0 }
+event SpawnRequested { spawner: int = 0, wave: int = 0, index: int = 0 }
+event WaveCleared { spawner: int = 0, wave: int = 0 }
+
+@EngineSystem(Spawner, Update) function esys_spawner() -> void {
+  let P = World.prop_id("Spawner")
+  if P < 0 { return }
+  let frate = World.field_id(P, "rate")
+  let fbudget = World.field_id(P, "budget")
+  let fsp = World.field_id(P, "spawned")
+  let ft = World.field_id(P, "t")
+  let fwave = World.field_id(P, "wave")
+  var e = World.query_next(P, 0)
+  while e >= 0 {
+    let budget = World.get(e, P, fbudget)
+    var spawned = World.get(e, P, fsp)
+    if spawned < budget {
+      var t = World.get(e, P, ft) - 1
+      if t <= 0 {
+        emit SpawnRequested(spawner: e, wave: World.get(e, P, fwave), index: spawned)
+        spawned = spawned + 1
+        World.set(e, P, fsp, spawned)
+        World.set(e, P, ft, World.get(e, P, frate))
+        if spawned >= budget { emit WaveCleared(spawner: e, wave: World.get(e, P, fwave)) }
+      } else {
+        World.set(e, P, ft, t)
+      }
+    }
+    e = World.query_next(P, e + 1)
+  }
+}
+# Spawner.next_wave(e, budget) — start a fresh wave with a new budget.
+@Namespace(Spawner) function spawner_next_wave(e: int, budget: int) -> void {
+  let P = World.prop_id("Spawner")
+  if P < 0 { return }
+  World.set(e, P, World.field_id(P, "budget"), budget)
+  World.set(e, P, World.field_id(P, "spawned"), 0)
+  World.set(e, P, World.field_id(P, "t"), 1)
+  World.set(e, P, World.field_id(P, "wave"), World.get(e, P, World.field_id(P, "wave")) + 1)
+}
+
+# ---------------------------------------------------------------------------
+# TopDown.* / Weapon.* convenience
+# ---------------------------------------------------------------------------
+@Namespace(TopDown) function topdown_move(e: int, dx: int, dy: int) -> void { td_set(e, "want_x", dx);  td_set(e, "want_y", dy) }
+@Namespace(TopDown) function topdown_aim(e: int, deg: int) -> void { td_set(e, "aim_angle", deg) }
+@Namespace(TopDown) function topdown_fire(e: int, on: int) -> void { td_set(e, "want_fire", on) }
+# equip a weapon by registry name.
+@Namespace(Weapon) function weapon_equip(e: int, name: pointer) -> void {
+  let P = World.prop_id("Weapon")
+  if P < 0 { return }
+  World.set(e, P, World.field_id(P, "def_id"), weapon_id(name))
+}
