@@ -109,8 +109,13 @@ function cmd_test_pkg() -> int {
   if not shq(`( cd {proj} && {envp} {root}/bin/x verify > {work}/verify2.out 2>&1 )`) {
     ok("x verify detects a tampered store entry")
   } else { bad("x verify missed a tampered store entry") }
-  # restore the store for the remaining checks
+  # heal the store: a content-addressed entry is keyed by its hash-named dir, so
+  # `x get` trusts an existing one — drop it first, then re-fetch a clean copy.
+  run(`rm -rf {store}/{uhash}`)
   run(`( cd {proj} && {envp} {root}/bin/x get > /dev/null 2>&1 )`)
+  if shq(`( cd {proj} && {envp} {root}/bin/x verify > {work}/verify3.out 2>&1 )`) {
+    ok("re-fetching heals a tampered store entry (x verify green again)")
+  } else { bad2("store did not heal after re-fetch", capture_line(`tail -1 {work}/verify3.out`)) }
 
   # ---- namespace collision policy (v1: hard error) --------------------------
   let dupe = `{proxy}/example.test/dupe`
