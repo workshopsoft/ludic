@@ -21,7 +21,10 @@
     "annot-server",
     "annot-predicted",
     "annot-toserver",
-    "annot-toclients"
+    "annot-toclients",
+    "annot-system",
+    "annot-enginesystem",
+    "annot-namespace"
   ],
   "builtins": [
     "fn-print",

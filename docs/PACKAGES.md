@@ -102,6 +102,37 @@ still hold.
 Two packages may not register the same `Foo.*` namespace — a collision is a hard
 error naming both modules.
 
+## Package-declarable namespaces and engine systems (issue #62)
+
+A package can register two things that used to be compiler-hardcoded — a `Foo.*`
+namespace and an engine-owned system — with **no compiler edit**, via two
+keyword-free annotations. This is what lets gameplay-controller libraries ship as
+ordinary packages instead of living in the compiler's stdlib.
+
+- `@Namespace(Name)` on a function opens a `Name.method(…)` namespace that
+  dispatches to the bare `name_method(…)` (the same generic path the built-in
+  namespaces use, applied only after them so it never shadows a core one):
+
+  ```
+  @Namespace(Coach) function coach_bonus() -> int { return 99 }
+  # a consumer then writes  Coach.bonus()
+  ```
+
+- `@EngineSystem(Component, Phase)` registers an engine-owned system: the frame
+  loop calls it every `Phase` (after the game's own handlers) whenever the named
+  `Component` is present — the package-declarable form of the built-in
+  `SpriteAnim`/`Motion`/`Light2D` systems. It reads and writes components by name
+  through the reflection ABI, so an unused registration is byte-identical:
+
+  ```
+  @EngineSystem(Score, Update) function esys_score() -> void { … }
+  ```
+
+The core stdlib namespaces and engine systems keep their own optimized codegen;
+packages flow through the generic registry alongside them. (For a *prebuilt*
+binary module, the runtime counterpart of `@EngineSystem` is `@System(Phase)` —
+see below.)
+
 ## Prebuilt binary packages (issue #64)
 
 A `kind prebuilt` package ships a **compiled artifact** (a native dylib per
