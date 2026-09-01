@@ -180,6 +180,7 @@ function emit_detach(st: Node) -> void {
 # flag). A bare `<Model>` / `<Handler>` flips a global enabled flag.
 function emit_toggle(st: Node) -> void {
   var val = "0";  if st.ival == 1 { val = "1" }
+  if (st.ty != null) and (st.ty == "system") { return }    # `disable system <fn>` is compile-time (handled in emit_one_engine_system); no runtime code
   if (st.ty != null) and (st.ty == "layer") {    # enable/disable layer L
     emit("  store i32 ");  emit(val);  emit(", ptr @LE_");  emit(st.s);  emit("\n")
     var lev = `layer_{st.s}_hide`;  if st.ival == 1 { lev = `layer_{st.s}_show` }   # public layer -> event

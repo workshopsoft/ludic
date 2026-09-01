@@ -55,6 +55,7 @@ function emit_call_one(d: Node) -> void {
 # settled when the engine advances animation / accumulates light. Keep the
 # component list in sync with uses_engine_systems (emit_ecs.ludic).
 function emit_one_engine_system(comp: pointer, fn: pointer) -> void {
+  if is_system_disabled(fn) { return }              # lever 5 (#57): `disable system <fn>` drops the tick
   if (find_comp(comp) != null) and (find_fn(fn) != null) {
     emit("  call void @fn_");  emit(fn);  emit("()\n")
   }

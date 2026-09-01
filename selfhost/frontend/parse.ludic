@@ -348,6 +348,7 @@ function stmt_body() -> Node {
       var en = 0; if (t.text == "enable") { en = 1 }
       pi = pi + 1; let n = node(S_TOGGLE); n.ival = en
       if is_id("layer") { pi = pi + 1; n.ty = "layer"; n.s = eat_id(); note_toggled_layer(n.s); return n }  # enable/disable layer L
+      if is_id("system") { pi = pi + 1; n.ty = "system"; n.s = eat_id(); if en == 0 { push(g_disabled_sys, n.s) };  return n }  # disable system <esys_fn> (lever 5, compile-time)
       n.s = eat_id()                                                       # `enable P on e` / `disable Model` / `disable Handler`
       if is_id("on") { pi = pi + 1; n.a = expr() }                        # property on an entity
       return n
@@ -458,6 +459,19 @@ var g_esys_comp: []pointer
 var g_esys_fn: []pointer
 var g_esys_phase: []pointer
 var g_namespaces: []pointer
+
+# lever 5 of the controller extensibility contract (#57): `disable system <fn>`
+# switches off exactly one engine-owned system (an esys_* registered via
+# @EngineSystem or the core seed) at compile time, so a game can carry a
+# well-known component but tick it with its own handler instead. Recorded at
+# parse time and read by emit_one_engine_system, which then skips that call
+# (byte-identical for any program that disables nothing).
+var g_disabled_sys: []pointer
+function is_system_disabled(fn: pointer) -> bool {
+  var i = 0
+  while i < len(g_disabled_sys) { if (g_disabled_sys[i] == fn) { return true };  i = i + 1 }
+  return false
+}
 
 # #62: package namespace registry — a package marks a Foo.* provider with
 # @Namespace(Foo); emit_ns_call aliases an otherwise-unknown Foo.method to the
@@ -874,6 +888,7 @@ function parse_program() -> void {
   # emit order (SpriteAnim, Motion — Update; Light2D — Render), so a core game is
   # byte-identical; packages append via @EngineSystem.
   g_esys_comp = new []pointer;  g_esys_fn = new []pointer;  g_esys_phase = new []pointer
+  g_disabled_sys = new []pointer
   push(g_esys_comp, "SpriteAnim");  push(g_esys_fn, "esys_spriteanim");  push(g_esys_phase, "Update")
   push(g_esys_comp, "Motion");      push(g_esys_fn, "esys_motion");      push(g_esys_phase, "Update")
   push(g_esys_comp, "Body");        push(g_esys_fn, "esys_move");        push(g_esys_phase, "Update")

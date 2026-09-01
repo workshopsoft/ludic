@@ -1,0 +1,82 @@
+# gameplay_foundation.ludic — exercises the ludic.gameplay foundation package
+# (#57): the Cooldown timer, the Stats + modifier stack, the Faction table and the
+# Combat damage pipeline (cancel + mutable hooks). Deterministic; a full run prints:
+#   2 0 1 5 24 0 2 1 15 85 7 1 1
+#
+# Build (from the repo root, so runtime/native resolves):
+#   LUDIC_MODULES=packages ludicc --headless examples/library/gameplay_foundation.ludic
+program GameplayFoundation {
+  import "ludic.gameplay/cooldown.ludic"
+  import "ludic.gameplay/stats.ludic"
+  import "ludic.gameplay/faction.ludic"
+  import "ludic.gameplay/combat.ludic"
+
+  model Fighter { Stats, Cooldown, Faction }
+  @OnSpawn(Fighter) handler FighterInit { }
+
+  # a game-supplied policy: while "enraged" is set, halve incoming damage by
+  # rewriting the pending amount (lever 6, the mutable hook), and hard-veto any
+  # hit over 100 (lever 4, cancel). Both are just listeners — no engine fork.
+  var enraged: int = 0
+  @On(DamageAboutToApply) handler Ward {
+    if amount > 100 { cancel }
+    if enraged == 1 { Combat.set_amount(amount / 2) }
+  }
+
+  var deaths: int = 0
+  @On(Died) handler Tally { deaths = deaths + 1 }
+
+  function tick_n(n: int) -> void { var i = 0;  while i < n { tick_fixed();  i = i + 1 } }
+  function bi(b: bool) -> int { if b { return 1 };  return 0 }
+
+  entry {
+    let PS  = World.prop_id("Stats")
+    let fhp = World.field_id(PS, "hp")
+    let fatk = World.field_id(PS, "atk")
+
+    # ---- Cooldown: engine-ticked frame timer -------------------------------
+    spawn Fighter { Stats { hp: 30, max_hp: 30, def: 5 }, Faction { id: 1 } }
+    let a = World.query_next(PS, 0)
+    Cooldown.start(a, 3)
+    tick_n(1)
+    print(Cooldown.left(a))                 # 2  — decremented once by esys_cooldown
+    print(Cooldown.ready(a))                # 0  — still counting
+    tick_n(2)
+    print(Cooldown.ready(a))                # 1  — hit zero
+
+    # ---- Stats + modifier stack --------------------------------------------
+    print(Stats.total(a, 2))               # 5  — base def, no modifiers
+    World.set(a, PS, fatk, 10)
+    Stats.modify(a, 1, 0, 6, 0)            # +6 flat atk, permanent
+    Stats.modify(a, 1, 1, 50, 0)           # +50% atk, permanent
+    print(Stats.total(a, 1))               # 24 — (10 + 6) * 150 / 100
+
+    # ---- Faction relationships ---------------------------------------------
+    print(Faction.rel(1, 1))               # 0  — same faction is friendly
+    print(Faction.rel(1, 2))               # 2  — different is hostile by default
+    Faction.set(1, 2, 1)                   # make 1 and 2 neutral
+    print(Faction.rel(1, 2))               # 1
+
+    # ---- Combat pipeline: mitigate, apply, Damaged/Died --------------------
+    spawn Fighter { Stats { hp: 100, max_hp: 100, def: 5 }, Faction { id: 2 } }
+    var t = World.query_next(PS, 0)
+    if t == a { t = World.query_next(PS, a + 1) }
+    print(Combat.damage(t, a, 20))         # 15 — 20 - def 5
+    print(World.get(t, PS, fhp))           # 85
+
+    # mutable hook: enrage halves the next hit ((20 - 5) -> 7)
+    enraged = 1
+    print(Combat.damage(t, a, 20))         # 7
+    enraged = 0
+
+    # veto hook: an over-100 hit is cancelled (0 applied)
+    print(bi(Combat.damage(t, a, 200) == 0))   # 1
+
+    # finish it off with sub-100 hits so the veto never blocks the kill
+    var guard = 0
+    while (World.get(t, PS, fhp) > 0) and (guard < 100) { Combat.damage(t, a, 90);  guard = guard + 1 }
+    print(deaths)                           # 1
+
+    quit()
+  }
+}

@@ -1,0 +1,76 @@
+# combat.ludic — the shared damage pipeline (#57 foundation).
+#
+# One place every family routes hits through, so buffs/armor/crits/lifesteal are
+# written once as event listeners rather than re-invented per genre. The pipeline
+# is the honest no-closure realisation of lever 4 (events) + lever 6 (a mutable
+# hook):
+#
+#   1. mitigate the raw amount by the target's effective defence (Stats.total);
+#   2. publish the pending amount and emit `cancellable DamageAboutToApply` —
+#      a listener may veto the hit (cancel) or *rewrite the number* by calling
+#      Combat.set_amount(n) (the mutable channel, since `emit` only returns the
+#      cancelled flag);
+#   3. apply the final amount to Stats.hp, emit `Damaged`, and emit `Died` when hp
+#      reaches zero.
+#
+# Determinism: integer arithmetic, fixed listener order, no wall-clock — a hit
+# replays identically. Combat never moves or despawns bodies itself; the game
+# reacts to `Died` (respawn, ragdoll, loot) so the policy stays with the game.
+
+event cancellable DamageAboutToApply { target: int = 0, src: int = 0, amount: int = 0 }
+event Damaged { target: int = 0, src: int = 0, amount: int = 0 }
+event Died { e: int = 0, src: int = 0 }
+event Healed { e: int = 0, amount: int = 0 }
+
+# the mutable channel for lever 6: listeners rewrite the pending damage here.
+var combat_pending: int = 0
+
+@Namespace(Combat) function combat_amount() -> int { return combat_pending }
+@Namespace(Combat) function combat_set_amount(n: int) -> void { combat_pending = n }
+
+# Combat.mitigate(target, raw) — raw minus effective defence, floored at 1 so any
+# landed hit chips at least a point (a common, tunable default). A game that wants
+# a different formula overrides via the DamageAboutToApply hook.
+@Namespace(Combat) function combat_mitigate(target: int, raw: int) -> int {
+  let d = stats_total(target, 2)          # stat 2 = def
+  var v = raw - d
+  if v < 1 { v = 1 }
+  return v
+}
+
+# Combat.damage(target, src, amount) — the full pipeline. Returns the damage
+# actually applied (0 when vetoed or the target has no Stats/hp).
+@Namespace(Combat) function combat_damage(target: int, src: int, amount: int) -> int {
+  let P = World.prop_id("Stats")
+  if P < 0 { return 0 }
+  if World.has(target, P) == 0 { return 0 }
+  let fhp = World.field_id(P, "hp")
+  if fhp < 0 { return 0 }
+
+  combat_pending = combat_mitigate(target, amount)
+  if emit DamageAboutToApply(target: target, src: src, amount: combat_pending) != 0 { return 0 }
+  var dmg = combat_pending
+  if dmg < 0 { dmg = 0 }
+
+  var hp = World.get(target, P, fhp) - dmg
+  if hp < 0 { hp = 0 }
+  World.set(target, P, fhp, hp)
+  emit Damaged(target: target, src: src, amount: dmg)
+  if hp <= 0 { emit Died(e: target, src: src) }
+  return dmg
+}
+
+# Combat.heal(e, amount) — restore hp, clamped to max_hp (effective, so a +max_hp
+# buff raises the ceiling), and emit `Healed`.
+@Namespace(Combat) function combat_heal(e: int, amount: int) -> void {
+  let P = World.prop_id("Stats")
+  if P < 0 { return }
+  if World.has(e, P) == 0 { return }
+  let fhp = World.field_id(P, "hp")
+  if fhp < 0 { return }
+  let cap = stats_total(e, 0)             # stat 0 = max_hp
+  var hp = World.get(e, P, fhp) + amount
+  if (cap > 0) and (hp > cap) { hp = cap }
+  World.set(e, P, fhp, hp)
+  emit Healed(e: e, amount: amount)
+}

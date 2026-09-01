@@ -1,0 +1,111 @@
+# stats.ludic — attributes + a timed modifier stack (#57 foundation).
+#
+# `Stats` is a POD attribute bundle shared by the RPG, shooter and NPC families.
+# On top of the raw fields sits a *modifier stack*: each buff/debuff is its own
+# tiny `Modifier` entity (target + stat + op + amount + ttl), so the stack is
+# unbounded, captured by world_save, and expired by one engine system. A queried
+# stat is `base + flat`, then scaled by the summed percent — the standard
+# flat-then-percent order — computed on demand, never mutating the base.
+#
+# Stat codes (the `stat` argument everywhere below):
+#   0 = max_hp   1 = atk   2 = def   3 = spd   4 = max_mp
+
+property Stats {
+  hp: int = 0, max_hp: int = 0,
+  mp: int = 0, max_mp: int = 0,
+  atk: int = 0, def: int = 0, spd: int = 0,
+  level: int = 1, xp: int = 0
+}
+
+# a single timed modifier, carried on its own entity so the stack is dynamic.
+# op: 0 = flat add, 1 = percent add. ttl: frames left (0 or less = permanent).
+property Modifier { target: int = 0, stat: int = 0, op: int = 0, amount: int = 0, ttl: int = 0 }
+model ModifierFx { Modifier }
+@OnSpawn(ModifierFx) handler ModifierFxInit { }
+
+# esys_modifier (Update): count down every timed modifier and despawn the expired
+# ones. Permanent modifiers (ttl <= 0) are left alone.
+@EngineSystem(Modifier, Update) function esys_modifier() -> void {
+  let P = World.prop_id("Modifier")
+  if P < 0 { return }
+  let fttl = World.field_id(P, "ttl")
+  if fttl < 0 { return }
+  var e = World.query_next(P, 0)
+  while e >= 0 {
+    let ttl = World.get(e, P, fttl)
+    var nxt = World.query_next(P, e + 1)
+    if ttl > 0 {
+      let left = ttl - 1
+      if left <= 0 { despawn e } else { World.set(e, P, fttl, left) }
+    }
+    e = nxt
+  }
+}
+
+# map a stat code to the matching Stats field name.
+function stat_field(stat: int) -> pointer {
+  if stat == 0 { return "max_hp" }
+  if stat == 1 { return "atk" }
+  if stat == 2 { return "def" }
+  if stat == 3 { return "spd" }
+  if stat == 4 { return "max_mp" }
+  return "atk"
+}
+
+# Stats.base(e, stat) — the raw stored field, no modifiers.
+@Namespace(Stats) function stats_base(e: int, stat: int) -> int {
+  let P = World.prop_id("Stats")
+  if P < 0 { return 0 }
+  let f = World.field_id(P, stat_field(stat))
+  if f < 0 { return 0 }
+  return World.get(e, P, f)
+}
+
+# Stats.total(e, stat) — the effective value: (base + flat) * (100 + percent)/100.
+@Namespace(Stats) function stats_total(e: int, stat: int) -> int {
+  let base = stats_base(e, stat)
+  let P = World.prop_id("Modifier")
+  if P < 0 { return base }
+  let ft = World.field_id(P, "target")
+  let fs = World.field_id(P, "stat")
+  let fo = World.field_id(P, "op")
+  let fa = World.field_id(P, "amount")
+  var flat = 0
+  var pct = 0
+  var m = World.query_next(P, 0)
+  while m >= 0 {
+    if (World.get(m, P, ft) == e) and (World.get(m, P, fs) == stat) {
+      let amt = World.get(m, P, fa)
+      if World.get(m, P, fo) == 1 { pct = pct + amt } else { flat = flat + amt }
+    }
+    m = World.query_next(P, m + 1)
+  }
+  return (base + flat) * (100 + pct) / 100
+}
+
+# Stats.modify(target, stat, op, amount, ttl) — push a modifier onto the stack.
+@Namespace(Stats) function stats_modify(target: int, stat: int, op: int, amount: int, ttl: int) -> int {
+  let m = World.model_id("ModifierFx")
+  if m < 0 { return 0 - 1 }
+  let e = World.spawn(m)
+  let P = World.prop_id("Modifier")
+  World.set(e, P, World.field_id(P, "target"), target)
+  World.set(e, P, World.field_id(P, "stat"), stat)
+  World.set(e, P, World.field_id(P, "op"), op)
+  World.set(e, P, World.field_id(P, "amount"), amount)
+  World.set(e, P, World.field_id(P, "ttl"), ttl)
+  return e
+}
+
+# Stats.clear_mods(e) — drop every modifier targeting an entity (e.g. on unequip).
+@Namespace(Stats) function stats_clear_mods(target: int) -> void {
+  let P = World.prop_id("Modifier")
+  if P < 0 { return }
+  let ft = World.field_id(P, "target")
+  var m = World.query_next(P, 0)
+  while m >= 0 {
+    var nxt = World.query_next(P, m + 1)
+    if World.get(m, P, ft) == target { despawn m }
+    m = nxt
+  }
+}

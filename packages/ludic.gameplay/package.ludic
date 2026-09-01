@@ -1,0 +1,18 @@
+# ludic.gameplay — the shared foundation for the builtin gameplay controllers.
+#
+# This is the "foundation" phase of the controller layer (#57): the cross-cutting
+# building blocks every genre package (platformer / shooter / RPG / NPC-AI) leans
+# on — a deterministic timer, a stats + timed-modifier stack, a faction
+# relationship table, and a combat pipeline with cancellable/mutable hooks.
+#
+# It ships as an ordinary source package: AOT means these declarations compile
+# straight into the consumer's compile-time ECS, so there is no ABI seam, and the
+# whole thing stays deterministic (integer only) — lockstep, replay and
+# world_save snapshots all hold.
+package "ludic.gameplay"
+version "0.1.0"
+kind source
+provides "Cooldown"
+provides "Stats"
+provides "Faction"
+provides "Combat"

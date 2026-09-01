@@ -1,0 +1,53 @@
+# cooldown.ludic — a generic deterministic frame timer (#57 foundation).
+#
+# Ubiquitous across the controllers: jump buffers, fire rate, ability cooldowns,
+# AI re-plan intervals, i-frames. A body carries a `Cooldown` and the engine ticks
+# it down one frame at a time (never below zero); the game reads `Cooldown.ready`.
+# It is the smallest possible engine system and the template for the rest: resolve
+# fields by name, no-op on anything absent, mutate in place, no allocation.
+#
+# For more than one timer on one entity a controller carries its own countdown
+# fields (the platformer keeps coyote/buffer counters inside `Platformer`); this
+# component is the shared, drop-in single timer.
+
+property Cooldown { t: int = 0, max: int = 0 }
+
+# esys_cooldown (Update): decrement every live Cooldown toward zero. Registered on
+# the compile-time engine-system registry via @EngineSystem, so a game that merely
+# declares `Cooldown` gets it ticked for free, and a game that never mentions
+# Cooldown compiles byte-identically (the call is component-gated).
+@EngineSystem(Cooldown, Update) function esys_cooldown() -> void {
+  let P = World.prop_id("Cooldown")
+  if P < 0 { return }
+  let ft = World.field_id(P, "t")
+  if ft < 0 { return }
+  var e = World.query_next(P, 0)
+  while e >= 0 {
+    let t = World.get(e, P, ft)
+    if t > 0 { World.set(e, P, ft, t - 1) }
+    e = World.query_next(P, e + 1)
+  }
+}
+
+# Cooldown.start(e, n) — begin an n-frame countdown (also records `max` so a UI can
+# draw a fill ratio). Cooldown.ready(e) is 1 once it hits zero; Cooldown.left(e) is
+# the frames remaining.
+@Namespace(Cooldown) function cooldown_start(e: int, frames: int) -> void {
+  let P = World.prop_id("Cooldown")
+  if P < 0 { return }
+  let ft = World.field_id(P, "t")
+  let fm = World.field_id(P, "max")
+  if ft >= 0 { World.set(e, P, ft, frames) }
+  if fm >= 0 { World.set(e, P, fm, frames) }
+}
+@Namespace(Cooldown) function cooldown_left(e: int) -> int {
+  let P = World.prop_id("Cooldown")
+  if P < 0 { return 0 }
+  let ft = World.field_id(P, "t")
+  if ft < 0 { return 0 }
+  return World.get(e, P, ft)
+}
+@Namespace(Cooldown) function cooldown_ready(e: int) -> int {
+  if cooldown_left(e) <= 0 { return 1 }
+  return 0
+}
