@@ -117,6 +117,30 @@ function cmd_test_pkg() -> int {
     ok("re-fetching heals a tampered store entry (x verify green again)")
   } else { bad2("store did not heal after re-fetch", capture_line(`tail -1 {work}/verify3.out`)) }
 
+  # ---- a package that exports ECS: a component, a model and a system --------
+  # Ludic is AOT, so a source package's declarations compile straight into the
+  # consumer's compile-time ECS — no ABI seam. This proves a consumer *game* can
+  # use a package's property (component), model, @OnSpawn handler (system) and a
+  # plain function together. The engine runtime (runtime/native/*.ludic) resolves
+  # relative to the compile CWD, so — exactly like `x app` — the game is compiled
+  # from the repo root with the package linked in via an absolute LUDIC_MODULES.
+  let epkg = `{proxy}/example.test/enginepkg`
+  run(`mkdir -p {epkg} && git -C {epkg} init -q`)
+  pt_write(`{epkg}/package.ludic`, `package "example.test/enginepkg"` + nl() + `version "1.0.0"` + nl() + "kind source" + nl() + `provides "EnginePkg"` + nl())
+  pt_write(`{epkg}/lib.ludic`, "property Health { hp: int = 0, max: int = 0 }\nmodel Unit { Health }\n@Public @OnSpawn(Unit) handler Init { Health.hp = Health.max }\nfunction bonus() -> int { return 7 }\n")
+  pt_commit_tag(epkg, "v1.0.0")
+  let proj2 = `{work}/proj2`
+  pt_write(`{proj2}/package.ludic`, `package "game"` + nl() + `version "0.0.0"` + nl() + `require "example.test/enginepkg" "1.0.0"` + nl())
+  pt_write(`{proj2}/game.ludic`, "program G {\n  import \"example.test/enginepkg/lib.ludic\"\n  entry {\n    spawn Unit { Health { max: 50 } }\n    let H  = world_prop_id(\"Health\")\n    let hp = world_field_id(H, \"hp\")\n    let e  = world_query_next(H, 0)\n    print(world_get(e, H, hp))\n    print(bonus())\n  }\n}\n")
+  if shq(`( cd {proj2} && {envp} {root}/bin/x get > {work}/get2.out 2>&1 )`) {
+    if shq(`( cd {root} && LUDIC_MODULES={proj2}/ludic_modules {root}/bin/ludicc --headless {proj2}/game.ludic -o {proj2}/game > {work}/gbuild.out 2>&1 )`) {
+      let got = capture_line(`{proj2}/game`)
+      if got == "50 7" {
+        ok("a consumer game uses the package's component + model + system + function (\"50 7\")")
+      } else { bad2("imported ECS produced wrong output", `got [{got}] want [50 7]`) }
+    } else { bad2("game consuming an ECS package failed to build", capture_line(`tail -2 {work}/gbuild.out`)) }
+  } else { bad2("x get for the ECS package failed", capture_line(`tail -1 {work}/get2.out`)) }
+
   # ---- namespace collision policy (v1: hard error) --------------------------
   let dupe = `{proxy}/example.test/dupe`
   run(`mkdir -p {dupe} && git -C {dupe} init -q`)
