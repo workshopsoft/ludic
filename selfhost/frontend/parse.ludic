@@ -183,6 +183,9 @@ function p_postfix() -> Node {
       if e.a.kind == E_ID and e.a.s == "Reflect" { g_uses_reflect = true }   # force-emit the reflection ABI (Reflect.* reads the world schema)
       if e.a.kind == E_ID and e.a.s == "Light" { g_uses_light = true }   # splice the 2D light-accumulation pass on demand
       if e.a.kind == E_ID and (e.a.s == "Value" or e.a.s == "Json") { g_uses_value = true }   # splice the value tree + JSON on demand (#44)
+      if e.a.kind == E_ID and e.a.s == "Xml" { g_uses_xml = true }   # splice the XML reader on demand (Tiled #67)
+      if e.a.kind == E_ID and e.a.s == "Base64" { g_uses_base64 = true }   # splice base64 codec + inflate on demand (Tiled #67)
+      if e.a.kind == E_ID and e.a.s == "Tiled" { g_uses_tiled = true }   # splice the Tiled map runtime on demand (#69)
       if e.a.kind == E_ID and e.a.s == "Reflect" and (e.s == "serialize" or e.s == "apply") { g_uses_value = true;  g_uses_reflect_io = true }   # Reflect.serialize/apply -> value tree + world table
       # Input.* action-map / record-replay methods (#7) -> splice input.ludic.
       # Input.key stays bare (no runtime), so gate on the new methods only.
@@ -433,6 +436,9 @@ var g_uses_query: bool = false    # a program mentioned Query.* -> splice the qu
 var g_uses_reflect: bool = false  # a program mentioned Reflect.* -> force-emit the reflection ABI
 var g_uses_light: bool = false    # a program mentioned Light.* -> splice the 2D light pass
 var g_uses_value: bool = false    # Value.*/Json.*/Reflect.serialize -> splice the value tree + JSON (#44)
+var g_uses_xml: bool = false      # Xml.* -> splice the XML reader (Tiled #67)
+var g_uses_base64: bool = false   # Base64.* -> splice the base64 codec + inflate (Tiled #67)
+var g_uses_tiled: bool = false    # Tiled.* -> splice the Tiled map runtime (#69)
 var g_uses_reflect_io: bool = false  # Reflect.serialize/apply -> splice the reflection serializer
 var g_uses_esys: bool = false     # an engine-owned system component (SpriteAnim/Motion/Light2D) is declared -> splice systems.ludic + force the reflection ABI
 var g_uses_input: bool = false    # a program used Input.bind/down/poll/… (action maps + record/replay) -> splice input.ludic
@@ -712,6 +718,34 @@ function maybe_splice_runtime() -> void {
     do_import("runtime/native/value.ludic")
     cur_dir = saved
   }
+  # Xml.* (#67) — the minimal pure-Ludic XML reader for the TMX/TSX/TX subset.
+  # Self-contained (string/slice ops only), so it works in a plain tool too.
+  if g_uses_xml {
+    cur_dir = ""
+    do_import("runtime/native/xml.ludic")
+    cur_dir = saved
+  }
+  # Base64.* (#67) — base64 codec; pull in the DEFLATE inflater alongside it, so
+  # a plain tool can run the full base64 -> zlib/gzip decode chain (inflate.ludic
+  # is self-contained; do_import dedupes when a game already linked it via core).
+  if g_uses_base64 {
+    cur_dir = ""
+    do_import("runtime/native/inflate.ludic")
+    do_import("runtime/native/base64.ludic")
+    cur_dir = saved
+  }
+  # Tiled.* (#69) — the Tiled map runtime: model, GID resolver, loader, draw. It
+  # reads/writes the tilemap + framebuffer, so it links against core.ludic, and
+  # it consumes the XML/base64/inflate primitives above.
+  if g_uses_tiled {
+    cur_dir = ""
+    do_import("runtime/native/core.ludic")
+    do_import("runtime/native/xml.ludic")
+    do_import("runtime/native/base64.ludic")
+    do_import("runtime/native/value.ludic")
+    do_import("runtime/native/tiled.ludic")
+    cur_dir = saved
+  }
   # Reflect.serialize/apply add the reflection serializer, which stands on both
   # the value tree (above) and the world table (force-emitted for Reflect.*).
   if g_uses_reflect_io {
@@ -821,6 +855,9 @@ function parse_program() -> void {
   g_uses_input = false
   g_uses_light = false
   g_uses_value = false
+  g_uses_xml = false
+  g_uses_base64 = false
+  g_uses_tiled = false
   g_uses_reflect_io = false
   g_tests = new []Node
   g_mod_sys_fn = new []pointer

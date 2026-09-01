@@ -274,3 +274,34 @@ function z_uncompress(src: pointer, len: int, out: pointer, cap: int) -> int {
   if (cmf & 15) != 8 { return -1 }
   return z_inflate(offset(src, 2), len - 2, out, cap)
 }
+
+# gzip framing (RFC 1952): a 10-byte header (magic 1f 8b, CM=8, FLG, 4-byte MTIME,
+# XFL, OS), optional FEXTRA/FNAME/FCOMMENT/FHCRC fields selected by FLG, then the
+# same DEFLATE body zlib carries, then an 8-byte CRC32 + ISIZE trailer. We skip
+# the header + optional fields, inflate the body, and ignore the trailer — the
+# CRC is a redundancy check, not needed to decode (PNG likewise ignores ancillary
+# CRCs). Returns bytes written, or -1.
+function z_gunzip(src: pointer, len: int, out: pointer, cap: int) -> int {
+  if len < 18 { return -1 }                 # 10 header + 8 trailer minimum
+  if src[0] != 31 { return -1 }             # 0x1f
+  if src[1] != 139 { return -1 }            # 0x8b
+  if src[2] != 8 { return -1 }              # CM must be DEFLATE
+  let flg = src[3]
+  var pos = 10                              # past the fixed header
+  if (flg & 4) != 0 {                       # FEXTRA: 2-byte length then that many bytes
+    if pos + 2 > len { return -1 }
+    let xlen = src[pos] + (src[pos + 1] << 8)
+    pos = pos + 2 + xlen
+  }
+  if (flg & 8) != 0 {                       # FNAME: NUL-terminated
+    while pos < len and src[pos] != 0 { pos = pos + 1 }
+    pos = pos + 1
+  }
+  if (flg & 16) != 0 {                      # FCOMMENT: NUL-terminated
+    while pos < len and src[pos] != 0 { pos = pos + 1 }
+    pos = pos + 1
+  }
+  if (flg & 2) != 0 { pos = pos + 2 }       # FHCRC: 2-byte header CRC
+  if pos + 8 > len { return -1 }
+  return z_inflate(offset(src, pos), len - pos - 8, out, cap)
+}

@@ -664,5 +664,22 @@
     "grid-line_of_sight",
     "grid-flood",
     "grid-a_star"
+  ],
+  "xml": [
+    "xml-parse",
+    "xml-tag",
+    "xml-text",
+    "xml-attr",
+    "xml-attr_int",
+    "xml-has",
+    "xml-attr_count",
+    "xml-child_count",
+    "xml-child",
+    "xml-find",
+    "xml-count"
+  ],
+  "base64": [
+    "base64-decode",
+    "base64-encode"
   ]
 }

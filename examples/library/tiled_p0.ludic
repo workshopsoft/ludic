@@ -1,0 +1,61 @@
+# tiled_p0.ludic — the Tiled P0 parsing primitives (issue #67): the pure-Ludic
+# XML reader (Xml.*), base64 decode/encode (Base64.*), and gzip framing over the
+# existing DEFLATE inflater (z_gunzip). These are the three primitives the TMX
+# path needs that were not already in the tree (zlib + JSON already shipped).
+#
+# Each assertion that holds prints its number, so a full run prints:
+#   1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21
+program TiledP0 {
+  entry {
+    # --- base64 decode: RFC 4648 test vectors (every padding remainder) ---
+    if Base64.decode("") == "" { print(1) }
+    if Base64.decode("Zg==") == "f" { print(2) }
+    if Base64.decode("Zm8=") == "fo" { print(3) }
+    if Base64.decode("Zm9v") == "foo" { print(4) }
+    if Base64.decode("Zm9vYg==") == "foob" { print(5) }
+    if Base64.decode("Zm9vYmE=") == "fooba" { print(6) }
+    if Base64.decode("Zm9vYmFy") == "foobar" { print(7) }
+    # decode ignores embedded whitespace/newlines (as TMX <data> carries)
+    if Base64.decode("Zm9v\n  YmFy") == "foobar" { print(8) }
+
+    # --- base64 encode round-trips ---
+    if Base64.encode("foobar") == "Zm9vYmFy" { print(9) }
+    if Base64.encode("f") == "Zg==" { print(10) }
+    if Base64.decode(Base64.encode("the quick brown fox")) == "the quick brown fox" { print(11) }
+
+    # --- XML reader over a TSX element tree ---
+    let tsx = "<?xml version='1.0' encoding='UTF-8'?>\n<!-- a comment -->\n<tileset version='1.10' name='sheet &amp; co' tilewidth='16' tileheight='16' tilecount='4' columns='2'>\n <image source='sheet.png' width='32' height='32'/>\n <tile id='0'><properties><property name='solid' type='bool' value='true'/></properties></tile>\n <data encoding='csv'>1,2,3,4</data>\n</tileset>\n"
+    let root = Xml.parse(tsx)
+    if Xml.tag(root) == "tileset" { print(12) }
+    if Xml.attr(root, "name") == "sheet & co" { print(13) }              # entity decode
+    if Xml.attr_int(root, "tilewidth", 0) == 16 { print(14) }
+    if Xml.attr_int(root, "tilecount", 0) == 4 { print(15) }
+    let img = Xml.find(root, "image")
+    if Xml.attr(img, "source") == "sheet.png" { print(16) }
+    let tile = Xml.find(root, "tile")
+    let props = Xml.find(tile, "properties")
+    let prop = Xml.find(props, "property")
+    if Xml.attr(prop, "value") == "true" { print(17) }
+    let data = Xml.find(root, "data")
+    if Xml.text(data) == "1,2,3,4" { print(18) }
+
+    # --- gzip framing: base64 -> bytes -> gunzip round-trips ---
+    let gz = "H4sIAAAAAAAC//NIzcnJ11EIycxJTVFIr8osUCjPL8pJUVQwMDQyNjE1M7ewVCjJSFUoLM1MzlZIKsovz1NIy6/QAwCLdXOzOAAAAA=="
+    let comp = bytes(256)
+    let clen = b64_decode(gz, comp)
+    let out = bytes(256)
+    let n = z_gunzip(comp, clen, out, 256)
+    out[n] = 0
+    if n == 56 { print(19) }
+    if out == "Hello, Tiled gzip world! 0123456789 the quick brown fox." { print(20) }
+
+    # --- zlib still round-trips through the same path (regression) ---
+    let zl = "eJzzSM3JyddRCMnMSU1RSK/KLFAozy/KSVFUMDA0MjYxNTO3sFQoyUhVKCzNTM5WSCrKL89TSMuv0AMAA10SJA=="
+    let zc = bytes(256)
+    let zclen = b64_decode(zl, zc)
+    let zout = bytes(256)
+    let zn = z_uncompress(zc, zclen, zout, 256)
+    zout[zn] = 0
+    if zout == "Hello, Tiled gzip world! 0123456789 the quick brown fox." { print(21) }
+  }
+}

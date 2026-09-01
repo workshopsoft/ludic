@@ -1,0 +1,301 @@
+# ============================================================================
+# xml.ludic — a minimal pure-Ludic XML reader (`Xml.*`), for the TMX/TSX/TX
+# subset Tiled emits (Tiled design §0.1, issue #67). It handles exactly what the
+# native Tiled formats use: elements, single/double-quoted attributes, nested
+# children, text/CDATA content, comments, the `<?xml?>` prolog and `<!DOCTYPE>`,
+# and the five predefined entities plus numeric character references. It is NOT
+# a validating or namespace-aware parser — best-effort, deterministic, allocation
+# the only cost, the same contract as the JSON reader (value.ludic).
+#
+# ludicc splices this file when a program mentions `Xml.*` (parse.ludic), exactly
+# like `Regex.*`/`Value.*`. The tree is plain Ludic over heap records.
+#
+# A node is one element: its `tag`, parallel attribute `akeys`/`avals`, ordered
+# child elements `kids`, and the concatenated character data `text` (the CSV in a
+# `<data encoding="csv">` element, or a `<property>` string, lands here).
+# ============================================================================
+
+property Xml {
+  tag:   pointer = null      # element name ("" for the synthetic empty node)
+  text:  pointer = null      # concatenated character data of this element
+  akeys: []pointer           # attribute names
+  avals: []pointer           # attribute values (entity-decoded)
+  kids:  []Xml               # child elements, in document order
+}
+
+function xml_new(tag: pointer) -> Xml {
+  let n = new Xml
+  n.tag = tag
+  n.text = ""
+  n.akeys = new []pointer
+  n.avals = new []pointer
+  n.kids = new []Xml
+  return n
+}
+
+# --- accessors --------------------------------------------------------------
+function xml_tag(n: Xml) -> pointer { if n.tag == null { return "" };  return n.tag }
+function xml_text(n: Xml) -> pointer { if n.text == null { return "" };  return n.text }
+function xml_child_count(n: Xml) -> int { return len(n.kids) }
+function xml_child(n: Xml, i: int) -> Xml {
+  if i < 0 or i >= len(n.kids) { return xml_new("") }
+  return n.kids[i]
+}
+function xml_attr_count(n: Xml) -> int { return len(n.akeys) }
+function xml_has(n: Xml, key: pointer) -> int {
+  var i = 0
+  while i < len(n.akeys) { if n.akeys[i] == key { return 1 };  i = i + 1 }
+  return 0
+}
+function xml_attr(n: Xml, key: pointer) -> pointer {
+  var i = 0
+  while i < len(n.akeys) { if n.akeys[i] == key { return n.avals[i] };  i = i + 1 }
+  return ""
+}
+# attribute as an integer (decimal, optional leading '-'); `dflt` when absent.
+function xml_attr_int(n: Xml, key: pointer, dflt: int) -> int {
+  if xml_has(n, key) == 0 { return dflt }
+  return xml_atoi(xml_attr(n, key))
+}
+
+# the first direct child named `tag`, or the synthetic empty node if none.
+function xml_find(n: Xml, tag: pointer) -> Xml {
+  var i = 0
+  while i < len(n.kids) { if n.kids[i].tag == tag { return n.kids[i] };  i = i + 1 }
+  return xml_new("")
+}
+# count direct children named `tag`.
+function xml_count(n: Xml, tag: pointer) -> int {
+  var c = 0
+  var i = 0
+  while i < len(n.kids) { if n.kids[i].tag == tag { c = c + 1 };  i = i + 1 }
+  return c
+}
+
+# parse a signed decimal integer prefix of `s` (stops at the first non-digit).
+function xml_atoi(s: pointer) -> int {
+  var i = 0
+  let n = len(s)
+  var neg = 0
+  if i < n and s[i] == 45 { neg = 1;  i = i + 1 }      # '-'
+  var v = 0
+  while i < n and s[i] >= 48 and s[i] <= 57 {
+    v = v * 10 + (s[i] - 48)
+    i = i + 1
+  }
+  if neg != 0 { return 0 - v }
+  return v
+}
+
+# --- entity decoding --------------------------------------------------------
+# expand the five predefined entities and &#NN; / &#xHH; numeric references in a
+# raw run. Only bytes 0..255 of a character reference are emitted (Ludic strings
+# are byte strings); a code point above that is written as its low byte, which is
+# ample for the ASCII/Latin-1 text Tiled attributes carry.
+function xml_unescape(s: pointer) -> pointer {
+  # fast path: no '&' means nothing to expand
+  var k = 0
+  let m = len(s)
+  var amp = 0
+  while k < m { if s[k] == 38 { amp = 1;  k = m } else { k = k + 1 } }
+  if amp == 0 { return s }
+  var out = ""
+  var i = 0
+  while i < m {
+    let c = s[i]
+    if c != 38 {                                       # not '&'
+      # copy the run up to the next '&' in one slice
+      var j = i
+      while j < m and s[j] != 38 { j = j + 1 }
+      out = out + s[i..j]
+      i = j
+    } else {
+      # find the ';'
+      var j = i + 1
+      while j < m and s[j] != 59 { j = j + 1 }         # ';'
+      if j >= m { out = out + s[i..m];  i = m }
+      else {
+        let ent = s[i + 1..j]
+        if ent == "amp" { out = out + "&" }
+        else { if ent == "lt" { out = out + "<" }
+        else { if ent == "gt" { out = out + ">" }
+        else { if ent == "quot" { out = out + "\"" }
+        else { if ent == "apos" { out = out + "'" }
+        else {
+          if len(ent) >= 2 and ent[0] == 35 {          # '#' numeric reference
+            var code = 0
+            if ent[1] == 120 or ent[1] == 88 {         # '#x' hex
+              var h = 2
+              while h < len(ent) { code = code * 16 + xml_hexval(ent[h]);  h = h + 1 }
+            } else {
+              var d = 1
+              while d < len(ent) { code = code * 10 + (ent[d] - 48);  d = d + 1 }
+            }
+            out = out + xml_byte(code & 255)
+          } else {
+            out = out + "&" + ent + ";"                # unknown entity, keep literal
+          }
+        } } } } }
+        i = j + 1
+      }
+    }
+  }
+  return out
+}
+
+function xml_hexval(c: int) -> int {
+  if c >= 48 and c <= 57 { return c - 48 }
+  if c >= 97 and c <= 102 { return c - 87 }
+  if c >= 65 and c <= 70 { return c - 55 }
+  return 0
+}
+
+# a one-byte string holding byte value `b` (1..255); "" for 0 (a NUL can't sit in
+# a Ludic string). Built by slicing a 256-byte table of every byte value.
+var xml_bytetab: pointer = null
+function xml_byte(b: int) -> pointer {
+  if b <= 0 { return "" }
+  if xml_bytetab == null {
+    let t = bytes(257)
+    var i = 0
+    while i < 256 { t[i] = i + 1;  i = i + 1 }         # table[i] = byte (i+1), so 0 never appears
+    t[256] = 0
+    xml_bytetab = t
+  }
+  return xml_bytetab[b - 1..b]
+}
+
+# --- parser -----------------------------------------------------------------
+property XP { s: pointer = null, i: int = 0, n: int = 0 }
+
+function xp_ws(c: int) -> bool { return c == 32 or c == 9 or c == 10 or c == 13 }
+
+function xp_skip_ws(p: XP) -> void {
+  while p.i < p.n and xp_ws(p.s[p.i]) { p.i = p.i + 1 }
+}
+
+# skip a `<?...?>`, `<!-- ... -->` or `<!DOCTYPE ...>` at the cursor. Returns true
+# if it consumed one (cursor on '<').
+function xp_skip_misc(p: XP) -> bool {
+  if p.i + 1 >= p.n or p.s[p.i] != 60 { return false }   # '<'
+  let c = p.s[p.i + 1]
+  if c == 63 {                                           # '<?'  ... '?>'
+    p.i = p.i + 2
+    while p.i + 1 < p.n and not (p.s[p.i] == 63 and p.s[p.i + 1] == 62) { p.i = p.i + 1 }
+    p.i = p.i + 2
+    return true
+  }
+  if c == 33 {                                           # '<!'
+    if p.i + 3 < p.n and p.s[p.i + 2] == 45 and p.s[p.i + 3] == 45 {   # '<!--' comment
+      p.i = p.i + 4
+      while p.i + 2 < p.n and not (p.s[p.i] == 45 and p.s[p.i + 1] == 45 and p.s[p.i + 2] == 62) { p.i = p.i + 1 }
+      p.i = p.i + 3
+      return true
+    }
+    # '<!DOCTYPE ...>' or other declaration — skip to the matching '>'
+    p.i = p.i + 2
+    while p.i < p.n and p.s[p.i] != 62 { p.i = p.i + 1 }
+    p.i = p.i + 1
+    return true
+  }
+  return false
+}
+
+# read a name (element or attribute): letters, digits, '_', '-', ':', '.'
+function xp_name(p: XP) -> pointer {
+  let start = p.i
+  while p.i < p.n {
+    let c = p.s[p.i]
+    let ok = (c >= 65 and c <= 90) or (c >= 97 and c <= 122) or (c >= 48 and c <= 57)
+    if ok or c == 95 or c == 45 or c == 58 or c == 46 { p.i = p.i + 1 }
+    else { break }
+  }
+  return p.s[start..p.i]
+}
+
+# parse `key="value"` / `key='value'` attributes into the element node.
+function xp_attrs(p: XP, node: Xml) -> void {
+  while true {
+    xp_skip_ws(p)
+    if p.i >= p.n { return }
+    let c = p.s[p.i]
+    if c == 62 or c == 47 or c == 63 { return }          # '>' '/' '?'
+    let key = xp_name(p)
+    if len(key) == 0 { p.i = p.i + 1;  continue }         # stray char, don't stall
+    xp_skip_ws(p)
+    var val = ""
+    if p.i < p.n and p.s[p.i] == 61 {                     # '='
+      p.i = p.i + 1
+      xp_skip_ws(p)
+      if p.i < p.n and (p.s[p.i] == 34 or p.s[p.i] == 39) {
+        let q = p.s[p.i]
+        p.i = p.i + 1
+        let start = p.i
+        while p.i < p.n and p.s[p.i] != q { p.i = p.i + 1 }
+        val = xml_unescape(p.s[start..p.i])
+        p.i = p.i + 1                                     # skip closing quote
+      }
+    }
+    push(node.akeys, key)
+    push(node.avals, val)
+  }
+}
+
+# parse one element (cursor on its opening '<'). Recurses for children.
+function xp_element(p: XP) -> Xml {
+  p.i = p.i + 1                                           # skip '<'
+  let name = xp_name(p)
+  let node = xml_new(name)
+  xp_attrs(p, node)
+  # self-closing '/>'
+  if p.i < p.n and p.s[p.i] == 47 {                       # '/'
+    p.i = p.i + 1
+    if p.i < p.n and p.s[p.i] == 62 { p.i = p.i + 1 }     # '>'
+    return node
+  }
+  if p.i < p.n and p.s[p.i] == 62 { p.i = p.i + 1 }       # '>'
+  # content until the matching close tag
+  while p.i < p.n {
+    if p.s[p.i] == 60 {                                   # '<'
+      if p.i + 1 < p.n and p.s[p.i + 1] == 47 {           # '</' close
+        p.i = p.i + 2
+        let cn = xp_name(p)
+        while p.i < p.n and p.s[p.i] != 62 { p.i = p.i + 1 }
+        p.i = p.i + 1                                     # skip '>'
+        return node
+      }
+      if p.i + 3 < p.n and p.s[p.i + 1] == 33 and p.s[p.i + 2] == 91 {   # '<![' CDATA
+        # <![CDATA[ ... ]]>
+        p.i = p.i + 9                                     # past "<![CDATA["
+        let start = p.i
+        while p.i + 2 < p.n and not (p.s[p.i] == 93 and p.s[p.i + 1] == 93 and p.s[p.i + 2] == 62) { p.i = p.i + 1 }
+        node.text = node.text + p.s[start..p.i]
+        p.i = p.i + 3                                     # past "]]>"
+      } else {
+        if xp_skip_misc(p) { }                            # comment / PI inside content
+        else { push(node.kids, xp_element(p)) }
+      }
+    } else {
+      # character data run up to the next '<'
+      let start = p.i
+      while p.i < p.n and p.s[p.i] != 60 { p.i = p.i + 1 }
+      node.text = node.text + xml_unescape(p.s[start..p.i])
+    }
+  }
+  return node
+}
+
+# parse a whole document -> its root element (or the synthetic empty node).
+function xml_parse(s: pointer) -> Xml {
+  let p = new XP
+  p.s = s;  p.i = 0;  p.n = len(s)
+  while p.i < p.n {
+    xp_skip_ws(p)
+    if p.i >= p.n { break }
+    if p.s[p.i] == 60 {                                   # '<'
+      if xp_skip_misc(p) { }                              # prolog / comment / doctype
+      else { return xp_element(p) }
+    } else { p.i = p.i + 1 }
+  }
+  return xml_new("")
+}

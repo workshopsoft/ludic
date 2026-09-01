@@ -1,0 +1,87 @@
+# ============================================================================
+# base64.ludic — standard base64 (RFC 4648) encode + decode, in Ludic (`Base64.*`).
+#
+# `Crypto.base64` already encodes (hand-written IR, tied to the crypto prelude);
+# the Tiled data pipeline (issue #67) needs a *decoder* — base64 layer data feeds
+# the DEFLATE inflater. This is that decoder, plus a matching pure-Ludic encoder
+# so the namespace is self-contained and spliceable on its own (no crypto prelude
+# dependency). Deterministic, allocation the only cost.
+#
+# ludicc splices this file when a program mentions `Base64.*` (parse.ludic). The
+# decoder ignores ASCII whitespace (TMX embeds newlines/indentation in its base64
+# `<data>`), and '=' padding ends the stream.
+# ============================================================================
+
+# the standard alphabet value of a base64 character, or -1 for anything else
+# (whitespace, '=', stray bytes — the decoder skips them / stops on '=').
+function b64_val(c: int) -> int {
+  if c >= 65 and c <= 90  { return c - 65 }          # 'A'..'Z' -> 0..25
+  if c >= 97 and c <= 122 { return c - 71 }          # 'a'..'z' -> 26..51
+  if c >= 48 and c <= 57  { return c + 4 }            # '0'..'9' -> 52..61
+  if c == 43 { return 62 }                            # '+'
+  if c == 47 { return 63 }                            # '/'
+  return 0 - 1
+}
+
+# decode NUL-terminated base64 `src` into the caller's `out` buffer; returns the
+# number of bytes written. Whitespace is ignored; '=' padding terminates. `out`
+# must hold at least (len(src)*3)/4 bytes.
+function b64_decode(src: pointer, out: pointer) -> int {
+  var acc = 0
+  var nbits = 0
+  var w = 0
+  var i = 0
+  var c = src[i]
+  while c != 0 {
+    if c == 61 { return w }                            # '=' -> done
+    let v = b64_val(c)
+    if v >= 0 {
+      acc = (acc << 6) | v
+      nbits = nbits + 6
+      if nbits >= 8 {
+        nbits = nbits - 8
+        out[w] = (acc >> nbits) & 255
+        w = w + 1
+      }
+    }
+    i = i + 1
+    c = src[i]
+  }
+  return w
+}
+
+# decode base64 text -> a fresh NUL-terminated string of the decoded bytes.
+# (For binary payloads that may contain NUL, decode into a sized buffer with
+# `b64_decode` and track the returned length instead.)
+function base64_decode(src: pointer) -> pointer {
+  let cap = len(src) + 4
+  let out = bytes(cap)
+  let w = b64_decode(src, out)
+  out[w] = 0
+  return out
+}
+
+# encode the bytes of NUL-terminated `src` as standard base64 (with '=' padding).
+function base64_encode(src: pointer) -> pointer {
+  let tab = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+  let n = len(src)
+  var out = ""
+  var i = 0
+  while i < n {
+    let b0 = src[i]
+    var b1 = 0
+    var b2 = 0
+    var have = 1
+    if i + 1 < n { b1 = src[i + 1];  have = 2 }
+    if i + 2 < n { b2 = src[i + 2];  have = 3 }
+    let e0 = b0 >> 2
+    let e1 = ((b0 & 3) << 4) | (b1 >> 4)
+    let e2 = ((b1 & 15) << 2) | (b2 >> 6)
+    let e3 = b2 & 63
+    out = out + tab[e0..e0 + 1] + tab[e1..e1 + 1]
+    if have >= 2 { out = out + tab[e2..e2 + 1] } else { out = out + "=" }
+    if have >= 3 { out = out + tab[e3..e3 + 1] } else { out = out + "=" }
+    i = i + 3
+  }
+  return out
+}

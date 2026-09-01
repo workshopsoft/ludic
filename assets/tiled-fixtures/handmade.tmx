@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Hand-authored fixture for the Ludic Tiled reader (issue #67). Public domain (CC0). -->
+<map version="1.10" tiledversion="1.10.2" orientation="orthogonal" renderorder="right-down" width="4" height="4" tilewidth="16" tileheight="16" infinite="0" nextlayerid="4" nextobjectid="1">
+ <tileset firstgid="1" source="handmade.tsx"/>
+ <layer id="1" name="csv" width="4" height="4">
+  <data encoding="csv">
+1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,2147483649
+</data>
+ </layer>
+ <layer id="2" name="base64" width="4" height="4">
+  <data encoding="base64">
+   AQAAAAIAAAADAAAABAAAAAUAAAAGAAAABwAAAAgAAAAJAAAACgAAAAsAAAAMAAAADQAAAA4AAAAPAAAAAQAAgA==
+  </data>
+ </layer>
+ <layer id="3" name="gzip" width="4" height="4">
+  <data encoding="base64" compression="gzip">
+   H4sIAAAAAAAC/w3Dhw0AIAwEsQ+9hpUZPWfJJikxs7CysXNwcnHz8NL5aNIPlvf4ekAAAAA=
+  </data>
+ </layer>
+ <layer id="4" name="zlib" width="4" height="4">
+  <data encoding="base64" compression="zlib">
+   eJwNw4cNACAMBLEPvYaVGT1nySYpMbOwsrFzcHJx8/DS+WjSDw1EAPo=
+  </data>
+ </layer>
+</map>

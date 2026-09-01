@@ -586,6 +586,27 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "encode")  { bare = "json_encode";   push(labels, "value") }
     if (meth == "parse")   { bare = "json_parse";    push(labels, "text") }
   }
+  # Xml.* — the minimal XML reader (runtime/native/xml.ludic, spliced on demand).
+  # parse returns an Xml node; the accessors read tag/text/attributes/children.
+  if (ns == "Xml") {
+    if (meth == "parse")       { bare = "xml_parse";       push(labels, "text") }
+    if (meth == "tag")         { bare = "xml_tag";         push(labels, "node") }
+    if (meth == "text")        { bare = "xml_text";        push(labels, "node") }
+    if (meth == "attr")        { bare = "xml_attr";        push(labels, "node"); push(labels, "key") }
+    if (meth == "attr_int")    { bare = "xml_attr_int";    push(labels, "node"); push(labels, "key"); push(labels, "dflt") }
+    if (meth == "has")         { bare = "xml_has";         push(labels, "node"); push(labels, "key") }
+    if (meth == "attr_count")  { bare = "xml_attr_count";  push(labels, "node") }
+    if (meth == "child_count") { bare = "xml_child_count"; push(labels, "node") }
+    if (meth == "child")       { bare = "xml_child";       push(labels, "node"); push(labels, "index") }
+    if (meth == "find")        { bare = "xml_find";        push(labels, "node"); push(labels, "tag") }
+    if (meth == "count")       { bare = "xml_count";       push(labels, "node"); push(labels, "tag") }
+  }
+  # Base64.* — standard base64 codec (runtime/native/base64.ludic, spliced on
+  # demand). decode/encode round-trip through NUL-terminated strings.
+  if (ns == "Base64") {
+    if (meth == "decode")  { bare = "base64_decode";  push(labels, "src") }
+    if (meth == "encode")  { bare = "base64_encode";  push(labels, "src") }
+  }
   # #62: a package-provided namespace (declared with @Namespace(Foo)) that none
   # of the hardcoded core blocks matched — alias Foo.method to the bare function
   # foo_method (positional args), the same generic path the core aliases use.
