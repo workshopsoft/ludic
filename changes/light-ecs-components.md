@@ -1,3 +1,0 @@
-bump: minor
-type: feat
-ECS-native 2D lighting (#47) — a torch is now just an entity carrying `Light2D { x, y, radius, color, intensity }`, a wall an entity carrying `Occluder { x, y, w, h }`, and one `Ambient { color }` entity sets the night tint. The engine runs the whole deterministic light pass (ambient modulate → carve occluder shadows → accumulate each additive radial light) at the end of the Render phase and presents — no `Light.*` calls wired by hand. A `Light2D`/`Occluder` takes its position from a `Position { x, y }` component when the entity carries one, else from its own `x`/`y`. Built on the engine-owned-system hook, so it costs nothing in a game that declares none of these components.

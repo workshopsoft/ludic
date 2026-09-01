@@ -1,3 +1,0 @@
-bump: minor
-type: feat
-Built-in testing framework — a `test "name" { … }` block, discovered and run automatically by a synthetic runner (no `entry` to write). Inside a test, `expect(cond)`, `expect_eq(a, b)` and `expect_near(a, b, tol)` assert; on failure they print `file:line: … failed (got …, want …)` and mark the test failed without aborting, so one run reports every failure. The runner prints `ok   - name` / `FAIL - name` per test, a `== N passed, M failed ==` summary, and exits non-zero if any test failed — so `ludic spec_test.ludic` drops straight into `bin/x` and CI. `expect_near` carries the tolerance fixed-point and accumulated-integer game math need. Coverage instrumentation is a follow-up.
