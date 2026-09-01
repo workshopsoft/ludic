@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<objecttypes>
+ <objecttype name="Enemy" color="#ff0000">
+  <property name="hp" type="int" default="10"/>
+  <property name="speed" type="int" default="3"/>
+  <property name="boss" type="bool" default="false"/>
+ </objecttype>
+</objecttypes>

@@ -1,0 +1,55 @@
+# ============================================================================
+# tiled_spawn.ludic — Tiled P4 (#72) opt-in entity spawning. Split from
+# tiled.ludic because it stands on the reflection ABI (world_spawn / world_set /
+# world_field_id …), which the compiler emits only for a game (has_ecs); so this
+# fragment is spliced only when a Tiled program is itself a game. A plain tool
+# that reads maps never references the world table.
+# ============================================================================
+# ---- opt-in entity spawning ------------------------------------------------
+# set an int field named `fname` on entity e wherever it exists (any prop the
+# entity carries) — the by-name bridge from object properties to components.
+function tiled_apply_field(e: int, fname: pointer, v: int) -> void {
+  let np = world_prop_count()
+  var pi = 0
+  while pi < np {
+    if world_has(e, pi) == 1 {
+      let fid = world_field_id(pi, fname)
+      if fid >= 0 { world_set(e, pi, fid, v) }
+    }
+    pi = pi + 1
+  }
+}
+
+# spawn a Ludic entity of `model_name` from an object: its Position (if the model
+# has one) takes the object's x/y, and each object custom property sets a like-
+# named int/bool component field. Returns the entity, or -1 if the model is
+# unknown. Opt-in — the core load never calls this.
+function tiled_spawn_object(m: Tmap, obj: Val, model_name: pointer) -> int {
+  let mid = world_model_id(model_name)
+  if mid < 0 { return 0 - 1 }
+  let e = world_spawn(mid)
+  let pp = world_prop_id("Position")
+  if pp >= 0 and world_has(e, pp) == 1 {
+    let fx = world_field_id(pp, "x")
+    let fy = world_field_id(pp, "y")
+    if fx >= 0 { world_set(e, pp, fx, value_as_int(value_get(obj, "x"))) }
+    if fy >= 0 { world_set(e, pp, fy, value_as_int(value_get(obj, "y"))) }
+  }
+  let props = value_get(obj, "properties")
+  var i = 0
+  while i < value_count(props) {
+    let p = value_at(props, i)
+    tiled_apply_field(e, value_as_str(value_get(p, "name")), tiled_prop_int(obj, value_as_str(value_get(p, "name"))))
+    i = i + 1
+  }
+  return e
+}
+
+# spawn every object on `layer` as `model_name` (opt-in). Returns the count.
+function tiled_spawn_layer(m: Tmap, layer: int, model_name: pointer) -> int {
+  var n = 0
+  let c = tmap_object_count(m, layer)
+  var i = 0
+  while i < c { if tiled_spawn_object(m, tmap_object(m, layer, i), model_name) >= 0 { n = n + 1 };  i = i + 1 }
+  return n
+}

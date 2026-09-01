@@ -1,0 +1,78 @@
+# tiled_p4.ludic — Tiled P4 objects, custom properties/types, templates, opt-in
+# spawning (issue #72). All object shapes (rect/ellipse/point/polygon/polyline/
+# text) parse and are queryable; class properties resolve their defaults against
+# the project custom-type table (objecttypes.xml); a template instance inherits
+# its template's fields; and an object maps onto Ludic components on demand.
+#
+# A full run prints: 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16
+program TiledP4 {
+  property Position { x: int = 0, y: int = 0 }
+  property Health { hp: int = 0 }
+  model Enemy { Position, Health }
+
+  handler Boot phase Start {
+    let m = Tiled.load("assets/tiled-fixtures/p4_map.tmx")
+    Tiled.load_types("assets/tiled-fixtures/p4_types.xml")
+
+    # --- all object shapes parse and are queryable (layer 0 "shapes") ---
+    if Tiled.object_count(m, 0) == 6 { print(1) }
+    if Tiled.object_shape(Tiled.object(m, 0, 0)) == "rectangle" { print(2) }
+    if Tiled.object_shape(Tiled.object(m, 0, 1)) == "ellipse" { print(3) }
+    if Tiled.object_shape(Tiled.object(m, 0, 2)) == "point" { print(4) }
+    if Tiled.object_shape(Tiled.object(m, 0, 3)) == "polygon" { print(5) }
+    if Tiled.object_shape(Tiled.object(m, 0, 4)) == "polyline" { print(6) }
+    if Tiled.object_shape(Tiled.object(m, 0, 5)) == "text" { print(7) }
+    # polygon points + text content, via the value tree
+    let poly = Tiled.object(m, 0, 3)
+    if Value.count(Value.get(poly, "polygon")) == 4 { print(8) }
+    let txt = Tiled.object(m, 0, 5)
+    if Value.as_str(Value.get(Value.get(txt, "text"), "text")) == "Hello" { print(9) }
+
+    # --- custom properties + class defaults (layer 1 "spawns") ---
+    let e0 = Tiled.object(m, 1, 0)                       # id 10, hp override = 99
+    if Tiled.prop_int(e0, "hp") == 99 { print(10) }
+    let e1 = Tiled.object(m, 1, 1)                       # id 11, no hp -> Enemy default 10
+    if Tiled.prop_int(e1, "hp") == 10 { print(11) }
+    if Tiled.prop_int(e1, "speed") == 3 { print(12) }   # class default
+    if Tiled.prop_type(e1, "hp") == "int" { print(13) }
+
+    # --- template instance inherits its template's fields (id 12) ---
+    let e2 = Tiled.object(m, 1, 2)
+    if Value.as_str(Value.get(e2, "type")) == "Enemy" { print(14) }   # type inherited from p4_enemy.tx
+    if Tiled.prop_int(e2, "hp") == 25 { print(15) }     # hp inherited from p4_enemy.tx
+
+    # --- opt-in spawn maps an object's class/properties -> components ---
+    let ent = Tiled.spawn(m, e0, "Enemy")
+    let pp = World.prop_id("Position")
+    let ph = World.prop_id("Health")
+    let ok_pos = World.get(ent, pp, World.field_id(pp, "x")) == 32
+    let ok_hp = World.get(ent, ph, World.field_id(ph, "hp")) == 99
+    if ok_pos and ok_hp { print(16) }
+
+    # --- the design's named fixture: orthogonal-outside.tmx object shapes ---
+    let og = Tiled.load("assets/tiled-fixtures/orthogonal-outside.tmx")
+    var olayer = 0 - 1
+    var oli = 0
+    while oli < Tiled.layer_count(og) {
+      if Tiled.object_count(og, oli) > 0 { olayer = oli }
+      oli = oli + 1
+    }
+    var nell = 0
+    var npt = 0
+    var npg = 0
+    var npl = 0
+    var oi = 0
+    while oi < Tiled.object_count(og, olayer) {
+      let sh = Tiled.object_shape(Tiled.object(og, olayer, oi))
+      if sh == "ellipse" { nell = nell + 1 }
+      if sh == "point" { npt = npt + 1 }
+      if sh == "polygon" { npg = npg + 1 }
+      if sh == "polyline" { npl = npl + 1 }
+      oi = oi + 1
+    }
+    if nell == 1 and npt == 1 and npg == 1 { print(17) }
+    if npl == 2 { print(18) }
+  }
+
+  handler Run phase Update { quit() }
+}

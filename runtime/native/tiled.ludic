@@ -106,6 +106,7 @@ function tmx_object_to_value(ob: Xml) -> Val {
   if xml_has(ob, "name") == 1 { value_put(o, "name", value_str(xml_attr(ob, "name"))) }
   if xml_has(ob, "type") == 1 { value_put(o, "type", value_str(xml_attr(ob, "type"))) }
   if xml_has(ob, "class") == 1 { value_put(o, "type", value_str(xml_attr(ob, "class"))) }
+  if xml_has(ob, "template") == 1 { value_put(o, "template", value_str(xml_attr(ob, "template"))) }
   value_put(o, "x", value_int(xml_attr_int(ob, "x", 0)))
   value_put(o, "y", value_int(xml_attr_int(ob, "y", 0)))
   value_put(o, "width", value_int(xml_attr_int(ob, "width", 0)))
@@ -807,6 +808,7 @@ function tmap_add_layer(m: Tmap, lv: Val) -> void {
 function tiled_load(path: pointer) -> Tmap {
   let tree = tiled_read(path)
   let m = tmap_build(tree, Path.dir(path))
+  tmap_resolve_templates(m, Path.dir(path))      # #72: fill template-instance objects
   let c = tmap_find_collision(m)
   if c >= 0 { tmap_project(m, c) }
   return m
@@ -916,3 +918,194 @@ function tmap_draw(m: Tmap, camx: int, camy: int) -> void { tmap_draw_full(m, ca
 # animated draw at engine `frame` (pass Time.frame): animated tiles advance,
 # deterministically and frame-identically across runs.
 function tmap_draw_anim(m: Tmap, camx: int, camy: int, frame: int) -> void { tmap_draw_full(m, camx, camy, frame, 1) }
+
+# ============================================================================
+# P4 (#72) — object layers (shapes + text), custom properties/types, templates,
+# and opt-in entity spawning. Objects, shapes and properties already parse into
+# the intermediate tree (P0.5); this phase exposes them, resolves custom-type
+# defaults and template inheritance, and maps an object onto Ludic components.
+# ============================================================================
+
+# ---- object accessors ------------------------------------------------------
+function tmap_object_layer(m: Tmap, layer: int) -> Val {
+  if layer < 0 or layer >= len(m.layers) { return value_null() }
+  return m.layers[layer].data
+}
+function tmap_object_count(m: Tmap, layer: int) -> int {
+  return value_count(value_get(tmap_object_layer(m, layer), "objects"))
+}
+function tmap_object(m: Tmap, layer: int, i: int) -> Val {
+  return value_at(value_get(tmap_object_layer(m, layer), "objects"), i)
+}
+
+# the shape of an object: "tile" (a gid object), "point", "ellipse", "polygon",
+# "polyline", "text", or "rectangle" (the default).
+function tiled_object_shape(obj: Val) -> pointer {
+  if value_has(obj, "gid") == 1 { return "tile" }
+  if value_has(obj, "point") == 1 { return "point" }
+  if value_has(obj, "ellipse") == 1 { return "ellipse" }
+  if value_has(obj, "polygon") == 1 { return "polygon" }
+  if value_has(obj, "polyline") == 1 { return "polyline" }
+  if value_has(obj, "text") == 1 { return "text" }
+  return "rectangle"
+}
+
+# ---- custom properties -----------------------------------------------------
+# the {name,type,value} property node named `name` in a container's "properties"
+# list (an object / tile / layer / map), or a null node.
+function tiled_prop_node(container: Val, name: pointer) -> Val {
+  let props = value_get(container, "properties")
+  if value_kind(props) != 5 { return value_null() }
+  var i = 0
+  while i < value_count(props) {
+    let p = value_at(props, i)
+    if value_as_str(value_get(p, "name")) == name { return p }
+    i = i + 1
+  }
+  return value_null()
+}
+
+# a property's raw string value, with a fallback to the object's custom-type
+# default (objecttypes.xml, via the type table). "" when absent everywhere.
+function tiled_prop_str(container: Val, name: pointer) -> pointer {
+  let p = tiled_prop_node(container, name)
+  if value_kind(p) == 6 { return value_as_str(value_get(p, "value")) }
+  # fall back to the container's class default
+  let cls = value_as_str(value_get(container, "type"))
+  if cls != "" {
+    let d = tiled_type_default(cls, name)
+    if value_kind(d) == 6 { return value_as_str(value_get(d, "value")) }
+  }
+  return ""
+}
+
+# a property parsed as an integer ("true"/"false" -> 1/0), with the same default
+# fallback.
+function tiled_prop_int(container: Val, name: pointer) -> int {
+  let s = tiled_prop_str(container, name)
+  if s == "true" { return 1 }
+  if s == "false" { return 0 }
+  return xml_atoi(s)
+}
+
+function tiled_prop_type(container: Val, name: pointer) -> pointer {
+  let p = tiled_prop_node(container, name)
+  if value_kind(p) == 6 { return value_as_str(value_get(p, "type")) }
+  let cls = value_as_str(value_get(container, "type"))
+  if cls != "" {
+    let d = tiled_type_default(cls, name)
+    if value_kind(d) == 6 { return value_as_str(value_get(d, "type")) }
+  }
+  return ""
+}
+
+# ---- custom types (objecttypes.xml) ----------------------------------------
+# The project custom-type table: an object mapping a type/class name to its list
+# of {name,type,value(default)} property definitions. class/enum properties then
+# resolve their defaults against it.
+var tiled_type_table: Val = null
+
+function tiled_types() -> Val {
+  if tiled_type_table == null { tiled_type_table = value_object() }
+  return tiled_type_table
+}
+
+# load an objecttypes.xml file into the type table. Each <objecttype name=..> maps
+# to its <property name= type= default=> list.
+function tiled_load_types(path: pointer) -> int {
+  let text = Fs.read_text(path)
+  if text == null { return 0 }
+  if text == "" { return 0 }
+  let root = xml_parse(text)
+  let tbl = tiled_types()
+  var n = 0
+  var i = 0
+  while i < xml_child_count(root) {
+    let ot = xml_child(root, i)
+    if xml_tag(ot) == "objecttype" {
+      let props = value_list()
+      var j = 0
+      while j < xml_child_count(ot) {
+        let pr = xml_child(ot, j)
+        if xml_tag(pr) == "property" {
+          let o = value_object()
+          value_put(o, "name", value_str(xml_attr(pr, "name")))
+          var ty = xml_attr(pr, "type")
+          if ty == "" { ty = "string" }
+          value_put(o, "type", value_str(ty))
+          value_put(o, "value", value_str(xml_attr(pr, "default")))
+          push(props.kids, o)
+        }
+        j = j + 1
+      }
+      value_put(tbl, xml_attr(ot, "name"), props)
+      n = n + 1
+    }
+    i = i + 1
+  }
+  return n
+}
+
+# the default {name,type,value} property node for a custom type, or a null node.
+function tiled_type_default(typename: pointer, propname: pointer) -> Val {
+  let tbl = tiled_types()
+  let props = value_get(tbl, typename)
+  if value_kind(props) != 5 { return value_null() }
+  var i = 0
+  while i < value_count(props) {
+    let p = value_at(props, i)
+    if value_as_str(value_get(p, "name")) == propname { return p }
+    i = i + 1
+  }
+  return value_null()
+}
+
+# ---- templates (.tx / .tj) -------------------------------------------------
+# read a template file -> its object Value (the <object> a .tx wraps, or the
+# "object" of a .tj). External reusable object definitions.
+function tiled_read_template(path: pointer) -> Val {
+  let text = Fs.read_text(path)
+  if text == null { return value_null() }
+  if text == "" { return value_null() }
+  if tiled_first_byte(text) == 60 {                         # XML .tx
+    let root = xml_parse(text)                              # <template>
+    let ob = xml_find(root, "object")
+    if xml_tag(ob) == "object" { return tmx_object_to_value(ob) }
+    return value_null()
+  }
+  let j = json_parse(text)                                  # JSON .tj
+  return value_get(j, "object")
+}
+
+# merge a template's fields into an instance object: the instance keeps every key
+# it already sets; the template fills in the rest (so an instance inherits the
+# template's gid / shape / size / properties, overriding per field).
+function tiled_merge_template(inst: Val, tmpl: Val) -> void {
+  if value_kind(tmpl) != 6 { return }
+  var i = 0
+  while i < value_count(tmpl) {
+    let k = value_key_at(tmpl, i)
+    if value_has(inst, k) == 0 { value_put(inst, k, value_at(tmpl, i)) }
+    i = i + 1
+  }
+}
+
+# resolve every object that references a `template`, loading + merging it. Paths
+# are relative to the map file (`basedir`).
+function tmap_resolve_templates(m: Tmap, basedir: pointer) -> void {
+  var li = 0
+  while li < len(m.layers) {
+    let l = m.layers[li]
+    if l.kind == 1 {
+      let objs = value_get(l.data, "objects")
+      var oi = 0
+      while oi < value_count(objs) {
+        let ob = value_at(objs, oi)
+        let tp = value_as_str(value_get(ob, "template"))
+        if tp != "" { tiled_merge_template(ob, tiled_read_template(tiled_join(basedir, tp))) }
+        oi = oi + 1
+      }
+    }
+    li = li + 1
+  }
+}

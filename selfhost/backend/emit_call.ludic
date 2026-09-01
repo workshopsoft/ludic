@@ -630,6 +630,17 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "tree")        { bare = "tmap_tree";         push(labels, "map") }
     if (meth == "tile_prop")   { bare = "tmap_tile_prop";    push(labels, "map"); push(labels, "gid"); push(labels, "name") }
     if (meth == "tile_shapes") { bare = "tmap_tile_has_shapes"; push(labels, "map"); push(labels, "gid") }
+    # P4 (#72): objects / properties / custom types / templates / opt-in spawn
+    if (meth == "object_count") { bare = "tmap_object_count"; push(labels, "map"); push(labels, "layer") }
+    if (meth == "object")       { bare = "tmap_object";       push(labels, "map"); push(labels, "layer"); push(labels, "index") }
+    if (meth == "object_shape") { bare = "tiled_object_shape"; push(labels, "object") }
+    if (meth == "prop")         { bare = "tiled_prop_str";    push(labels, "container"); push(labels, "name") }
+    if (meth == "prop_int")     { bare = "tiled_prop_int";    push(labels, "container"); push(labels, "name") }
+    if (meth == "prop_type")    { bare = "tiled_prop_type";   push(labels, "container"); push(labels, "name") }
+    if (meth == "load_types")   { bare = "tiled_load_types";  push(labels, "path") }
+    if (meth == "template")     { bare = "tiled_read_template"; push(labels, "path") }
+    if (meth == "spawn")        { bare = "tiled_spawn_object"; push(labels, "map"); push(labels, "object"); push(labels, "model") }
+    if (meth == "spawn_layer")  { bare = "tiled_spawn_layer"; push(labels, "map"); push(labels, "layer"); push(labels, "model") }
   }
   # #62: a package-provided namespace (declared with @Namespace(Foo)) that none
   # of the hardcoded core blocks matched — alias Foo.method to the bare function

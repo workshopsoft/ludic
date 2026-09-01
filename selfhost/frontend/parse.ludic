@@ -744,6 +744,11 @@ function maybe_splice_runtime() -> void {
     do_import("runtime/native/base64.ludic")
     do_import("runtime/native/value.ludic")
     do_import("runtime/native/tiled.ludic")
+    # #72 opt-in spawning stands on the reflection ABI, which the compiler emits
+    # only for a game (emit_decl: has_ecs -> emit_world_table). So splice the
+    # spawn helpers only for a Tiled game; a plain map-reading tool never links
+    # against the world table.
+    if has_ecs() { do_import("runtime/native/tiled_spawn.ludic") }
     cur_dir = saved
   }
   # Reflect.serialize/apply add the reflection serializer, which stands on both

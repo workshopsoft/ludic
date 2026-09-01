@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Hand-authored P4 fixture: object shapes, custom types, templates (issue #72). CC0. -->
+<map version="1.10" tiledversion="1.10.2" orientation="orthogonal" renderorder="right-down" width="16" height="16" tilewidth="16" tileheight="16" infinite="0" nextlayerid="3" nextobjectid="13">
+ <objectgroup id="1" name="shapes">
+  <object id="1" x="10" y="10" width="20" height="30"/>
+  <object id="2" x="40" y="10" width="20" height="20"><ellipse/></object>
+  <object id="3" x="70" y="10"><point/></object>
+  <object id="4" x="90" y="10"><polygon points="0,0 16,0 16,16 0,16"/></object>
+  <object id="5" x="120" y="10"><polyline points="0,0 10,10 20,0"/></object>
+  <object id="6" x="10" y="60" width="80" height="20"><text pixelsize="12" halign="center">Hello</text></object>
+ </objectgroup>
+ <objectgroup id="2" name="spawns">
+  <object id="10" type="Enemy" x="32" y="48" width="16" height="16">
+   <properties><property name="hp" type="int" value="99"/></properties>
+  </object>
+  <object id="11" type="Enemy" x="64" y="48" width="16" height="16"/>
+  <object id="12" template="p4_enemy.tx" x="80" y="48"/>
+ </objectgroup>
+</map>

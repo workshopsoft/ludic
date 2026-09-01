@@ -701,6 +701,16 @@
     "tiled-tile_shapes",
     "tiled-draw_anim",
     "tiled-frame_gid",
-    "tiled-animated"
+    "tiled-animated",
+    "tiled-object_count",
+    "tiled-object",
+    "tiled-object_shape",
+    "tiled-prop",
+    "tiled-prop_int",
+    "tiled-prop_type",
+    "tiled-load_types",
+    "tiled-template",
+    "tiled-spawn",
+    "tiled-spawn_layer"
   ]
 }
