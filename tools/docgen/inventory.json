@@ -437,6 +437,45 @@
     "set-clear",
     "set-members"
   ],
+  "job": [
+    "job-defer",
+    "job-run",
+    "job-fulfill",
+    "job-fail",
+    "job-cancel",
+    "job-pump",
+    "job-done",
+    "job-ok",
+    "job-failed",
+    "job-cancelled",
+    "job-result",
+    "job-error",
+    "job-pending",
+    "job-free"
+  ],
+  "promise": [
+    "promise-all",
+    "promise-race",
+    "promise-count_done",
+    "promise-all_done"
+  ],
+  "sync": [
+    "sync-mutex",
+    "sync-lock",
+    "sync-unlock",
+    "sync-try_lock",
+    "sync-atomic",
+    "sync-get",
+    "sync-set",
+    "sync-add",
+    "sync-cas",
+    "sync-channel",
+    "sync-send",
+    "sync-recv",
+    "sync-can_recv",
+    "sync-len",
+    "sync-cpu_count"
+  ],
   "huge": [
     "huge-from",
     "huge-add",

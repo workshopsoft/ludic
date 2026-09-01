@@ -196,6 +196,7 @@ function cmd_test() -> int {
   feat_case("library/bignum", "", "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16", "bignum.ludic (BigInt arbitrary-precision + Decimal exact base-10 money)")
   feat_case("library/containers", "", "1 2 3 4 5 6 7 8 9 10 11 12 13 14", "containers.ludic (Dict string-keyed hash map + Set string set)")
   feat_case("library/numeric", "", "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20", "numeric.ludic (Huge idle big-numbers + Angle wrapping radians + Percent clamped [0,1])")
+  feat_case("library/jobs", "", "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31", "jobs.ludic (Job background compute/defer/fulfill/cancel + Promise all/race/progress + Sync mutex/atomic/channel; issue #14)")
   feat_case("library/optionresult", "", "1 2 3 4 5 6 7 8 9 10 11 12", "optionresult.ludic (option some/none + result ok/err/try safety types)")
   feat_case("library/regex", "", "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18", "regex.ludic (Regex match/find/groups/classes/quantifiers/replace + linear-time safety)")
   feat_case("library/grid", "", "1 2 3 4 5 6 7 8 9 10 11 12 13", "grid.ludic (Grid line/flood/line_of_sight + A* pathfinding over the tilemap)")

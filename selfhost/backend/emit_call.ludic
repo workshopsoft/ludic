@@ -389,6 +389,49 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "clear")   { bare = "set_clear";   push(labels, "s") }
     if (meth == "members") { bare = "set_members"; push(labels, "s") }
   }
+  # Job.* / Promise.* / Sync.* -> the concurrency runtime (runtime/native/jobs.ludic,
+  # spliced on demand). Ordinary Ludic functions, so the generic call path keeps
+  # their return types (int / bool). The safe tier (Job/Promise) is a deterministic
+  # cooperative scheduler; Sync.* is the advanced, opt-in message-passing tier. #14.
+  if (ns == "Job") {
+    if (meth == "defer")     { bare = "job_defer" }
+    if (meth == "run")       { bare = "job_run";      push(labels, "kind"); push(labels, "arg") }
+    if (meth == "fulfill")   { bare = "job_fulfill";  push(labels, "handle"); push(labels, "value") }
+    if (meth == "fail")      { bare = "job_fail";     push(labels, "handle"); push(labels, "error") }
+    if (meth == "cancel")    { bare = "job_cancel";   push(labels, "handle") }
+    if (meth == "pump")      { bare = "job_pump";     push(labels, "budget") }
+    if (meth == "done")      { bare = "job_done";     push(labels, "handle") }
+    if (meth == "ok")        { bare = "job_ok";       push(labels, "handle") }
+    if (meth == "failed")    { bare = "job_failed";   push(labels, "handle") }
+    if (meth == "cancelled") { bare = "job_cancelled"; push(labels, "handle") }
+    if (meth == "result")    { bare = "job_result";   push(labels, "handle") }
+    if (meth == "error")     { bare = "job_error";    push(labels, "handle") }
+    if (meth == "pending")   { bare = "job_pending" }
+    if (meth == "free")      { bare = "job_free";     push(labels, "handle") }
+  }
+  if (ns == "Promise") {
+    if (meth == "all")        { bare = "prom_all";        push(labels, "handles") }
+    if (meth == "race")       { bare = "prom_race";       push(labels, "handles") }
+    if (meth == "count_done") { bare = "prom_count_done"; push(labels, "handles") }
+    if (meth == "all_done")   { bare = "prom_all_done";   push(labels, "handles") }
+  }
+  if (ns == "Sync") {
+    if (meth == "mutex")     { bare = "sync_mutex" }
+    if (meth == "lock")      { bare = "sync_lock";     push(labels, "mutex") }
+    if (meth == "unlock")    { bare = "sync_unlock";   push(labels, "mutex") }
+    if (meth == "try_lock")  { bare = "sync_try_lock"; push(labels, "mutex") }
+    if (meth == "atomic")    { bare = "sync_atomic" }
+    if (meth == "get")       { bare = "sync_get";      push(labels, "atomic") }
+    if (meth == "set")       { bare = "sync_set";      push(labels, "atomic"); push(labels, "value") }
+    if (meth == "add")       { bare = "sync_add";      push(labels, "atomic"); push(labels, "delta") }
+    if (meth == "cas")       { bare = "sync_cas";      push(labels, "atomic"); push(labels, "expect"); push(labels, "next") }
+    if (meth == "channel")   { bare = "sync_channel" }
+    if (meth == "send")      { bare = "sync_send";     push(labels, "channel"); push(labels, "value") }
+    if (meth == "recv")      { bare = "sync_recv";     push(labels, "channel") }
+    if (meth == "can_recv")  { bare = "sync_can_recv"; push(labels, "channel") }
+    if (meth == "len")       { bare = "sync_len";      push(labels, "channel") }
+    if (meth == "cpu_count") { bare = "sync_cpu_count" }
+  }
   # Huge.* / Angle.* / Percent.* -> the numeric runtime (runtime/native/numeric.ludic,
   # spliced on demand). Ordinary Ludic functions, so the generic call path keeps
   # their return types (Huge / fixed / int / bool).

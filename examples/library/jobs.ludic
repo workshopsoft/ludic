@@ -1,0 +1,113 @@
+# jobs.ludic — Job.* / Promise.* (safe, deterministic) + Sync.* (advanced,
+# opt-in). Each assertion that holds prints its number, so a full run prints:
+#   1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31
+# One cooperative scheduler backs it all (see runtime/native/jobs.ludic): a
+# background Job runs a little each Job.pump and its result is collected on the
+# main thread — no hitches, no locks in game code, and byte-identical every run.
+program Concurrency {
+  entry {
+    # --- Job: background compute, collected on the main thread ---
+    # kinds: 1 = sum 1..n, 2 = fib(n), 3 = count primes <= n
+    let sum = Job.run(1, 100)              # 1 + 2 + ... + 100 = 5050
+    Job.pump(0)                            # budget 0 = run every job to completion
+    if Job.ok(sum) and Job.result(sum) == 5050 { print(1) }
+
+    let fib = Job.run(2, 10)               # fib(10) = 55
+    Job.pump(0)
+    if Job.result(fib) == 55 { print(2) }
+
+    let primes = Job.run(3, 20)            # primes <= 20: 2 3 5 7 11 13 17 19 -> 8
+    Job.pump(0)
+    if Job.result(primes) == 8 { print(3) }
+
+    # cooperative: a job finishes only after enough total budget has been spent,
+    # so heavy work is spread across frames instead of hitching one.
+    let slow = Job.run(1, 10)              # needs 10 steps; 1+..+10 = 55
+    Job.pump(3)                            # 3 of 10
+    if not Job.done(slow) { print(4) }
+    Job.pump(3)                            # 6 of 10
+    if not Job.done(slow) { print(5) }
+    Job.pump(100)                          # finishes this frame
+    if Job.done(slow) and Job.result(slow) == 55 { print(6) }
+
+    # hand-driven future: defer now, fulfill later (no closures needed)
+    let f = Job.defer()
+    if not Job.done(f) { print(7) }
+    Job.fulfill(f, 42)
+    if Job.ok(f) and Job.result(f) == 42 { print(8) }
+
+    # error path: a job can fail with a code
+    let e = Job.defer()
+    Job.fail(e, 9)
+    if Job.failed(e) and Job.error(e) == 9 { print(9) }
+
+    # cancel path
+    let c = Job.defer()
+    Job.cancel(c)
+    if Job.cancelled(c) and Job.done(c) and not Job.ok(c) { print(10) }
+
+    # --- Promise: combine futures, resolve on the main thread ---
+    let a1 = Job.defer()
+    let a2 = Job.defer()
+    let a3 = Job.defer()
+    let all = new []int
+    push(all, a1)
+    push(all, a2)
+    push(all, a3)
+    let grp = Promise.all(all)
+    if not Job.done(grp) { print(11) }
+    if Promise.count_done(all) == 0 { print(12) }        # loading bar: 0 / 3
+    Job.fulfill(a1, 1)
+    Job.fulfill(a2, 2)
+    if Promise.count_done(all) == 2 { print(13) }        # 2 / 3
+    if not Promise.all_done(all) { print(14) }
+    Job.fulfill(a3, 3)
+    if Promise.all_done(all) { print(15) }               # 3 / 3
+    if Job.ok(grp) and Job.result(grp) == 3 { print(16) }
+
+    # race: the first member to succeed wins; its handle is the result
+    let b1 = Job.defer()
+    let b2 = Job.defer()
+    let two = new []int
+    push(two, b1)
+    push(two, b2)
+    let winner = Promise.race(two)
+    Job.fulfill(b2, 77)
+    if Job.ok(winner) and Job.result(winner) == b2 { print(17) }
+
+    # Promise.all fails once the set settles with a failure
+    let d1 = Job.defer()
+    let d2 = Job.defer()
+    let dd = new []int
+    push(dd, d1)
+    push(dd, d2)
+    let dgrp = Promise.all(dd)
+    Job.fulfill(d1, 1)
+    Job.fail(d2, 5)
+    if Job.failed(dgrp) { print(18) }
+
+    # --- Sync: the advanced, opt-in tier (cooperative + deterministic today) ---
+    let m = Sync.mutex()
+    Sync.lock(m)
+    if not Sync.try_lock(m) { print(19) }                # already held
+    Sync.unlock(m)
+    if Sync.try_lock(m) { print(20) }                    # now free
+
+    let at = Sync.atomic()
+    if Sync.add(at, 5) == 5 { print(21) }
+    if Sync.add(at, 3) == 8 { print(22) }
+    if Sync.cas(at, 8, 100) { print(23) }                # 8 -> 100
+    if Sync.get(at) == 100 { print(24) }
+    if not Sync.cas(at, 8, 0) { print(25) }              # stale expect, no swap
+
+    let ch = Sync.channel()
+    if Sync.send(ch, 10) { print(26) }
+    Sync.send(ch, 20)
+    Sync.send(ch, 30)
+    if Sync.len(ch) == 3 { print(27) }
+    if Sync.recv(ch) == 10 { print(28) }                 # FIFO order
+    if Sync.recv(ch) == 20 { print(29) }
+    if Sync.can_recv(ch) { print(30) }                   # one left (30)
+    if Sync.cpu_count() >= 1 { print(31) }
+  }
+}
