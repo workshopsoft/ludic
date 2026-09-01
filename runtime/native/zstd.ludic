@@ -1,0 +1,721 @@
+# ============================================================================
+# zstd.ludic — a self-contained pure-Ludic Zstandard decompressor (RFC 8878),
+# for Tiled's `base64` + `zstd` layer compression (issue #74, the design's
+# "largest single item, explicitly last"). A single-frame stream, no dictionary,
+# no content-checksum validation (Tiled uses neither). Deterministic.
+#
+# Coverage: the frame header + raw / RLE / compressed blocks; raw + RLE + Huffman
+# (direct-weight) literals; the full sequence path (predefined / RLE / FSE-
+# described tables + repeat offsets + execution). This decompresses the layer
+# data a tilemap actually produces — low-to-moderate entropy GID streams, which
+# zstd encodes with raw literals + sequences. The one remaining gap is
+# FSE-compressed Huffman weight tables (a high-entropy-literal case); such a
+# block is detected and the decode returns -1 rather than emitting wrong bytes.
+#
+# `z_zstd(src, len, out, cap)` mirrors `z_inflate` / `z_gunzip`: returns the
+# number of bytes written, or -1.
+# ============================================================================
+
+# ---- forward bit reader (LSB-first) — for FSE table descriptions -----------
+var zf_src: pointer = null
+var zf_pos: int = 0            # byte cursor
+var zf_bit: int = 0            # bit within the current byte (0 = LSB)
+
+function zf_init(src: pointer, at: int) -> void { zf_src = src;  zf_pos = at;  zf_bit = 0 }
+function zf_read(n: int) -> int {
+  var v = 0
+  var k = 0
+  while k < n {
+    let b = (zf_src[zf_pos] >> zf_bit) & 1
+    v = v | (b << k)
+    zf_bit = zf_bit + 1
+    if zf_bit == 8 { zf_bit = 0;  zf_pos = zf_pos + 1 }
+    k = k + 1
+  }
+  return v
+}
+# byte position just past the bits consumed (rounding up a partial byte).
+function zf_bytepos() -> int { if zf_bit == 0 { return zf_pos };  return zf_pos + 1 }
+
+# ---- backward bit reader (MSB-first) — for FSE / Huffman streams ------------
+var zb_src:  pointer = null
+var zb_s:    int = 0           # first byte of the stream
+var zb_L:    int = 0           # stream length
+var zb_skip: int = 0           # padding bits above the sentinel in the last byte
+var zb_cur:  int = 0           # data-bit index consumed so far
+
+function zstd_highbit(v: int) -> int {
+  var r = 0 - 1
+  var x = v & 255
+  while x > 0 { r = r + 1;  x = x >> 1 }
+  return r                     # position of the most-significant set bit (-1 if 0)
+}
+
+# init over stream bytes [s, s+L); the sentinel is the top set bit of the last.
+function zb_init(src: pointer, s: int, L: int) -> int {
+  zb_src = src;  zb_s = s;  zb_L = L;  zb_cur = 0
+  if L <= 0 { return 0 - 1 }
+  let hb = zstd_highbit(src[s + L - 1])
+  if hb < 0 { return 0 - 1 }   # a zero last byte is invalid
+  zb_skip = 8 - hb             # the sentinel bit + anything above it is padding
+  return 0
+}
+# one data bit (0/1), MSB-first from the end of the stream.
+function zb_bit() -> int {
+  let j = zb_skip + zb_cur
+  let byteidx = (zb_L - 1) - (j >> 3)
+  let bit = 7 - (j & 7)
+  zb_cur = zb_cur + 1
+  if byteidx < 0 { return 0 }
+  return (zb_src[zb_s + byteidx] >> bit) & 1
+}
+# read n bits, first bit read = most-significant of the result.
+function zb_read(n: int) -> int {
+  var v = 0
+  var k = 0
+  while k < n { v = (v << 1) | zb_bit();  k = k + 1 }
+  return v
+}
+function zb_total() -> int { return 8 * (zb_L - 1) + (8 - zb_skip) }   # usable data bits
+function zb_done() -> int { if zb_cur >= zb_total() { return 1 };  return 0 }
+
+# ---- FSE decode table ------------------------------------------------------
+property FseDT {
+  log: int = 0
+  sym: words                   # symbol per table cell
+  nb:  words                   # bits to read to advance from this cell
+  ns:  words                   # base new-state for this cell
+}
+
+# build an FSE decode table from normalized counts `norm[0..nsym)` (a count of
+# -1 means "least-probable", one cell at the top of the table).
+function fse_build(norm: words, nsym: int, tableLog: int) -> FseDT {
+  let size = 1 << tableLog
+  let dt = new FseDT
+  dt.log = tableLog
+  dt.sym = words(size)
+  dt.nb = words(size)
+  dt.ns = words(size)
+  let symnext = words(nsym + 1)
+  # place the -1 (low-prob) symbols at the top of the table, descending
+  var highThreshold = size - 1
+  var s = 0
+  while s < nsym {
+    if norm[s] == (0 - 1) {
+      dt.sym[highThreshold] = s
+      highThreshold = highThreshold - 1
+      symnext[s] = 1
+    } else {
+      symnext[s] = norm[s]
+    }
+    s = s + 1
+  }
+  # spread the remaining symbols with the standard step
+  let step = (size >> 1) + (size >> 3) + 3
+  let mask = size - 1
+  var pos = 0
+  s = 0
+  while s < nsym {
+    if norm[s] > 0 {
+      var i = 0
+      while i < norm[s] {
+        dt.sym[pos] = s
+        pos = (pos + step) & mask
+        while pos > highThreshold { pos = (pos + step) & mask }   # skip the low-prob zone
+        i = i + 1
+      }
+    }
+    s = s + 1
+  }
+  # assign nbBits + newState for each cell
+  var u = 0
+  while u < size {
+    let sy = dt.sym[u]
+    let nextState = symnext[sy]
+    symnext[sy] = symnext[sy] + 1
+    let nbits = tableLog - zstd_highbit32(nextState)
+    dt.nb[u] = nbits
+    dt.ns[u] = (nextState << nbits) - size
+    u = u + 1
+  }
+  free(symnext)
+  return dt
+}
+
+# highbit for a full 32-bit-ish value (nextState < size <= 2^tableLog)
+function zstd_highbit32(v: int) -> int {
+  var r = 0 - 1
+  var x = v
+  while x > 0 { r = r + 1;  x = x >> 1 }
+  return r
+}
+
+# read normalized counts (FSE_readNCount) forward from the current zf position.
+# fills `norm[0..*nsym)`, returns the tableLog; `outn` receives the symbol count.
+var fse_ncount_n: int = 0
+function fse_read_ncount(norm: words, maxsym: int) -> int {
+  let accLog = zf_read(4) + 5
+  var remaining = (1 << accLog) + 1
+  var threshold = 1 << accLog
+  var bitsLeft = accLog + 1
+  var sym = 0
+  var prev0 = 0
+  while (remaining > 1) and (sym <= maxsym) {
+    if prev0 == 1 {
+      # a run of zero-probability symbols, encoded in groups of 2 bits (0..3),
+      # 3 meaning "continue"
+      var n0 = sym
+      var rep = zf_read(2)
+      while rep == 3 {
+        n0 = n0 + 3
+        rep = zf_read(2)
+      }
+      n0 = n0 + rep
+      while sym < n0 { norm[sym] = 0;  sym = sym + 1 }
+      prev0 = 0
+    } else {
+      let maxv = (2 * threshold - 1) - remaining
+      var count = 0
+      # low bitsLeft-1 bits, then maybe one more (the "large" range)
+      let low = zf_peek(bitsLeft - 1)
+      if low < maxv {
+        count = low
+        zf_skip(bitsLeft - 1)
+      } else {
+        count = zf_read(bitsLeft)
+        if count >= threshold { count = count - maxv }
+      }
+      let val = count - 1                 # -1 means low-prob (stored as -1)
+      norm[sym] = val
+      if val == (0 - 1) { remaining = remaining - 1 }
+      else { remaining = remaining - val }
+      sym = sym + 1
+      if val == 0 { prev0 = 1 }
+      # shrink the threshold as `remaining` falls
+      while remaining < threshold {
+        bitsLeft = bitsLeft - 1
+        threshold = threshold >> 1
+      }
+    }
+  }
+  while sym <= maxsym { norm[sym] = 0;  sym = sym + 1 }
+  fse_ncount_n = sym
+  return accLog
+}
+
+# peek/skip helpers for the forward reader (the ncount "large range" needs a peek)
+function zf_peek(n: int) -> int {
+  let sp = zf_pos;  let sb = zf_bit
+  let v = zf_read(n)
+  zf_pos = sp;  zf_bit = sb
+  return v
+}
+function zf_skip(n: int) -> void { zf_read(n) }
+
+# ---- FSE decompress (2 interleaved states) — Huffman weight stream ----------
+# decode symbols from a backward stream already init'd, using DTable `dt`, into
+# out[0..cap). Returns count. Two states advance alternately (FSE_decompress).
+function fse_decompress(dt: FseDT, out: words, cap: int) -> int {
+  var s1 = zb_read(dt.log)
+  var s2 = zb_read(dt.log)
+  var n = 0
+  # two states alternate; when a state-advance read overruns the stream, the
+  # other state's residual symbol is the final one (FSE_decompress tail).
+  while true {
+    out[n] = dt.sym[s1];  n = n + 1
+    s1 = dt.ns[s1] + zb_read(dt.nb[s1])
+    if zb_cur > zb_total() { out[n] = dt.sym[s2];  n = n + 1;  return n }
+    if n >= cap { return n }
+    out[n] = dt.sym[s2];  n = n + 1
+    s2 = dt.ns[s2] + zb_read(dt.nb[s2])
+    if zb_cur > zb_total() { out[n] = dt.sym[s1];  n = n + 1;  return n }
+    if n >= cap { return n }
+  }
+  return n
+}
+
+# ---- predefined FSE distributions (RFC 8878 §3.1.1.3.2.2.1) -----------------
+# A sequence FSE decode table as {baseValue, nbAdditionalBits, nbBits, nextState}
+# per cell — the shape zstd's ZSTD_seqSymbol uses. The predefined tables are
+# FIXED constants (a specific spread the encoder shares), NOT rebuilt from the
+# default distributions, so they are transcribed verbatim below.
+property SeqDT { log: int = 0, base: words, addbits: words, nb: words, ns: words }
+
+# parse a ';'-separated list of (possibly negative) ints into a words array.
+function zstd_lits(s: pointer) -> words {
+  var n = 1
+  var i = 0
+  while i < len(s) { if s[i] == 59 { n = n + 1 };  i = i + 1 }
+  let a = words(n)
+  var idx = 0
+  var cur = 0
+  var neg = 0
+  i = 0
+  while i < len(s) {
+    let c = s[i]
+    if c == 59 { if neg == 1 { cur = 0 - cur };  a[idx] = cur;  idx = idx + 1;  cur = 0;  neg = 0 }
+    else { if c == 45 { neg = 1 } else { cur = cur * 10 + (c - 48) } }
+    i = i + 1
+  }
+  if neg == 1 { cur = 0 - cur }
+  a[idx] = cur
+  return a
+}
+
+var zstd_pll: SeqDT = null
+function zstd_predef_ll() -> SeqDT {
+  if zstd_pll != null { return zstd_pll }
+  let dt = new SeqDT
+  dt.log = 6
+  dt.base = zstd_lits("0;0;1;3;4;6;7;9;10;12;14;16;20;22;28;32;48;64;128;256;1024;4096;0;1;2;4;5;7;8;10;11;13;16;18;22;24;32;40;64;64;128;512;2048;0;1;2;3;5;6;8;9;11;12;15;18;20;24;28;40;48;65536;32768;16384;8192")
+  dt.addbits = zstd_lits("0;0;0;0;0;0;0;0;0;0;0;1;1;1;2;3;4;6;7;8;10;12;0;0;0;0;0;0;0;0;0;0;1;1;1;2;3;3;6;6;7;9;11;0;0;0;0;0;0;0;0;0;0;0;1;1;2;2;3;4;16;15;14;13")
+  dt.nb = zstd_lits("4;4;5;5;5;5;5;5;5;5;6;5;5;5;5;5;5;5;5;6;6;6;4;4;5;5;5;5;5;5;5;6;5;5;5;5;5;5;4;4;5;6;6;4;4;5;5;5;5;5;5;5;5;6;5;5;5;5;5;5;6;6;6;6")
+  dt.ns = zstd_lits("0;16;32;0;0;0;0;0;0;0;0;0;0;0;0;0;0;32;0;0;0;0;32;0;0;32;0;32;0;32;0;0;32;0;32;0;32;0;0;16;32;0;0;48;16;32;32;32;32;32;32;32;32;0;32;32;32;32;32;32;0;0;0;0")
+  zstd_pll = dt
+  return dt
+}
+
+var zstd_pof: SeqDT = null
+function zstd_predef_of() -> SeqDT {
+  if zstd_pof != null { return zstd_pof }
+  let dt = new SeqDT
+  dt.log = 5
+  dt.base = zstd_lits("0;61;509;32765;2097149;5;125;4093;262141;8388605;29;253;16381;1048573;1;125;2045;131069;4194301;13;253;8189;524285;1;61;1021;65533;268435453;134217725;67108861;33554429;16777213")
+  dt.addbits = zstd_lits("0;6;9;15;21;3;7;12;18;23;5;8;14;20;2;7;11;17;22;4;8;13;19;1;6;10;16;28;27;26;25;24")
+  dt.nb = zstd_lits("5;4;5;5;5;5;4;5;5;5;5;4;5;5;5;4;5;5;5;5;4;5;5;5;4;5;5;5;5;5;5;5")
+  dt.ns = zstd_lits("0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;16;0;0;0;0;16;0;0;0;16;0;0;0;0;0;0;0")
+  zstd_pof = dt
+  return dt
+}
+
+var zstd_pml: SeqDT = null
+function zstd_predef_ml() -> SeqDT {
+  if zstd_pml != null { return zstd_pml }
+  let dt = new SeqDT
+  dt.log = 6
+  dt.base = zstd_lits("3;4;5;6;8;9;11;13;16;19;22;25;28;31;34;37;41;47;59;83;131;515;4;5;6;7;9;10;12;15;18;21;24;27;30;33;35;39;43;51;67;99;259;4;4;5;7;8;10;11;14;17;20;23;26;29;32;65539;32771;16387;8195;4099;2051;1027")
+  dt.addbits = zstd_lits("0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;1;1;2;3;4;7;9;0;0;0;0;0;0;0;0;0;0;0;0;0;0;1;1;2;3;4;5;8;0;0;0;0;0;0;0;0;0;0;0;0;0;0;16;15;14;13;12;11;10")
+  dt.nb = zstd_lits("6;4;5;5;5;5;5;6;6;6;6;6;6;6;6;6;6;6;6;6;6;6;4;4;5;5;5;5;6;6;6;6;6;6;6;6;6;6;6;6;6;6;6;4;4;4;5;5;5;5;6;6;6;6;6;6;6;6;6;6;6;6;6;6")
+  dt.ns = zstd_lits("0;0;32;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;16;0;32;0;32;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;32;48;16;32;32;32;32;0;0;0;0;0;0;0;0;0;0;0;0;0;0")
+  zstd_pml = dt
+  return dt
+}
+
+var zstd_ll_base: words = null
+var zstd_ll_bits: words = null
+var zstd_ml_base: words = null
+var zstd_ml_bits: words = null
+function zstd_seq_tables_init() -> void {
+  if zstd_ll_base != null { return }
+  let llb = words(36)
+  var i = 0
+  while i < 16 { llb[i] = i;  i = i + 1 }
+  llb[16]=16; llb[17]=18; llb[18]=20; llb[19]=22; llb[20]=24; llb[21]=28
+  llb[22]=32; llb[23]=40; llb[24]=48; llb[25]=64; llb[26]=128; llb[27]=256
+  llb[28]=512; llb[29]=1024; llb[30]=2048; llb[31]=4096; llb[32]=8192
+  llb[33]=16384; llb[34]=32768; llb[35]=65536
+  let llx = words(36)
+  i = 0
+  while i < 16 { llx[i] = 0;  i = i + 1 }
+  llx[16]=1; llx[17]=1; llx[18]=1; llx[19]=1; llx[20]=2; llx[21]=2
+  llx[22]=3; llx[23]=3; llx[24]=4; llx[25]=6; llx[26]=7; llx[27]=8
+  llx[28]=9; llx[29]=10; llx[30]=11; llx[31]=12; llx[32]=13; llx[33]=14
+  llx[34]=15; llx[35]=16
+  let mlb = words(53)
+  i = 0
+  while i < 32 { mlb[i] = i + 3;  i = i + 1 }
+  mlb[32]=35; mlb[33]=37; mlb[34]=39; mlb[35]=41; mlb[36]=43; mlb[37]=47
+  mlb[38]=51; mlb[39]=59; mlb[40]=67; mlb[41]=83; mlb[42]=99; mlb[43]=131
+  mlb[44]=259; mlb[45]=515; mlb[46]=1027; mlb[47]=2051; mlb[48]=4099
+  mlb[49]=8195; mlb[50]=16387; mlb[51]=32771; mlb[52]=65539
+  let mlx = words(53)
+  i = 0
+  while i < 32 { mlx[i] = 0;  i = i + 1 }
+  mlx[32]=1; mlx[33]=1; mlx[34]=1; mlx[35]=1; mlx[36]=2; mlx[37]=2
+  mlx[38]=3; mlx[39]=3; mlx[40]=4; mlx[41]=4; mlx[42]=5; mlx[43]=7
+  mlx[44]=8; mlx[45]=9; mlx[46]=10; mlx[47]=11; mlx[48]=12; mlx[49]=13
+  mlx[50]=14; mlx[51]=15; mlx[52]=16
+  zstd_ll_base = llb;  zstd_ll_bits = llx;  zstd_ml_base = mlb;  zstd_ml_bits = mlx
+}
+
+
+# ---- Huffman literal decode ------------------------------------------------
+property HufDT { maxbits: int = 0, sym: words, nb: words }
+
+# build a Huffman decode table from `nweights` weights (the last symbol's weight
+# is derived so the code space is full).
+function huf_build(weight: words, nweights: int) -> HufDT {
+  var total = 0
+  var i = 0
+  while i < nweights { if weight[i] > 0 { total = total + (1 << (weight[i] - 1)) };  i = i + 1 }
+  let maxbits = zstd_highbit32(total) + 1
+  let left = (1 << maxbits) - total
+  weight[nweights] = zstd_highbit32(left) + 1                # last symbol's weight
+  let nsym = nweights + 1
+  let size = 1 << maxbits
+  let dt = new HufDT
+  dt.maxbits = maxbits
+  dt.sym = words(size)
+  dt.nb = words(size)
+  # rank start positions: weight w occupies rankCount[w] << (w-1) cells, low weights first
+  let rankcount = words(maxbits + 2)
+  var w = 0
+  while w <= maxbits { rankcount[w] = 0;  w = w + 1 }
+  i = 0
+  while i < nsym { rankcount[weight[i]] = rankcount[weight[i]] + 1;  i = i + 1 }
+  let rankval = words(maxbits + 2)
+  var next = 0
+  w = 1
+  while w <= maxbits { rankval[w] = next;  next = next + (rankcount[w] << (w - 1));  w = w + 1 }
+  i = 0
+  while i < nsym {
+    let ww = weight[i]
+    if ww > 0 {
+      let len = 1 << (ww - 1)
+      let nb = maxbits + 1 - ww
+      var k = 0
+      while k < len { dt.sym[rankval[ww] + k] = i;  dt.nb[rankval[ww] + k] = nb;  k = k + 1 }
+      rankval[ww] = rankval[ww] + len
+    }
+    i = i + 1
+  }
+  free(rankcount);  free(rankval)
+  return dt
+}
+
+# parse a Huffman tree description at zf_pos (forward); returns the HufDT and
+# leaves zf_pos just past the description.
+function huf_read_tree() -> HufDT {
+  let header = zf_src[zf_pos]
+  zf_pos = zf_pos + 1
+  let weight = words(256)
+  if header >= 128 {                                        # direct: (header-127) 4-bit weights
+    let n = header - 127
+    var i = 0
+    while i < n {
+      let bpos = zf_pos + (i >> 1)
+      var w = 0
+      if (i & 1) == 0 { w = zf_src[bpos] >> 4 } else { w = zf_src[bpos] & 15 }
+      weight[i] = w
+      i = i + 1
+    }
+    zf_pos = zf_pos + ((n + 1) >> 1)
+    return huf_build(weight, n)
+  }
+  # FSE-compressed weights: header = compressed size; decode via a fresh FSE.
+  # This path is not yet bit-exact, so flag it and let z_zstd bail with -1 rather
+  # than emit wrong literals (a low-entropy tilemap uses raw literals, not this).
+  zstd_err = 1
+  let cstart = zf_pos
+  let norm = words(256)
+  let log = fse_read_ncount(norm, 255)                      # forward table description
+  let wt = fse_build(norm, fse_ncount_n, log)
+  # the weight bitstream runs from the byte after the ncount to cstart+header
+  zb_init(zf_src, zf_bytepos(), cstart + header - zf_bytepos())
+  let n = fse_decompress(wt, weight, 256)
+  zf_pos = cstart + header
+  return huf_build(weight, n)
+}
+
+# decode `n` Huffman symbols from a backward stream already init'd into out.
+function huf_decode_stream(dt: HufDT, out: pointer, at: int, n: int) -> void {
+  var i = 0
+  while i < n {
+    let bits = zstd_peek_rev(dt.maxbits)
+    out[at + i] = dt.sym[bits]
+    zb_cur = zb_cur + dt.nb[bits]
+    i = i + 1
+  }
+}
+# peek maxbits bits (MSB-first) without consuming — for the Huffman table index.
+function zstd_peek_rev(n: int) -> int {
+  let save = zb_cur
+  let v = zb_read(n)
+  zb_cur = save
+  return v
+}
+
+# ---- literals section ------------------------------------------------------
+# decoded literals live here; zstd_lit_decode fills them and returns the byte
+# offset where the sequences section begins.
+var zstd_lit:  pointer = null
+var zstd_litn: int = 0
+
+function zstd_lit_decode(src: pointer, pos: int, blockend: int) -> int {
+  let lb = src[pos]
+  let ltype = lb & 3
+  let sf = (lb >> 2) & 3
+  var regen = 0
+  var hdr = 1
+  if (sf & 1) == 0 {                                # 1-byte header (sf 0 or 2)
+    regen = lb >> 3
+    hdr = 1
+  } else { if sf == 1 {                             # 2-byte
+    regen = (lb >> 4) | (src[pos + 1] << 4)
+    hdr = 2
+  } else {                                          # sf 3: 3-byte
+    regen = (lb >> 4) | (src[pos + 1] << 4) | (src[pos + 2] << 12)
+    hdr = 3
+  } }
+  if ltype == 0 {                                   # raw literals: copy regen bytes
+    zstd_lit = offset(src, pos + hdr)
+    zstd_litn = regen
+    return pos + hdr + regen
+  }
+  if ltype == 1 {                                   # RLE literals: one byte * regen
+    let buf = bytes(regen + 1)
+    let b = src[pos + hdr]
+    var i = 0
+    while i < regen { buf[i] = b;  i = i + 1 }
+    zstd_lit = buf
+    zstd_litn = regen
+    return pos + hdr + 1
+  }
+  # Huffman literals (ltype 2 compressed, 3 treeless) — a 3/4/5-byte header with
+  # regenerated + compressed sizes and 1 or 4 streams.
+  return zstd_lit_huff(src, pos, ltype, sf)
+}
+
+var zstd_huf_prev: HufDT = null
+function zstd_lit_huff(src: pointer, pos: int, ltype: int, sf: int) -> int {
+  var regen = 0
+  var comp = 0
+  var hdr = 0
+  var streams = 4
+  if sf == 0 {                                      # 1 stream, 3-byte header, 10+10
+    let v = src[pos] | (src[pos + 1] << 8) | (src[pos + 2] << 16)
+    regen = (v >> 4) & 1023;  comp = (v >> 14) & 1023;  hdr = 3;  streams = 1
+  } else { if sf == 1 {                             # 4 streams, 3-byte, 10+10
+    let v = src[pos] | (src[pos + 1] << 8) | (src[pos + 2] << 16)
+    regen = (v >> 4) & 1023;  comp = (v >> 14) & 1023;  hdr = 3
+  } else { if sf == 2 {                             # 4 streams, 4-byte, 14+14
+    let v = src[pos] | (src[pos + 1] << 8) | (src[pos + 2] << 16) | (src[pos + 3] << 24)
+    regen = (v >> 4) & 16383;  comp = (v >> 18) & 16383;  hdr = 4
+  } else {                                          # sf 3: 4 streams, 5-byte, 18+18
+    let lo = src[pos] | (src[pos + 1] << 8) | (src[pos + 2] << 16)
+    regen = (lo >> 4) & 262143
+    comp = ((src[pos + 2] >> 6) | (src[pos + 3] << 2) | (src[pos + 4] << 10)) & 262143
+    hdr = 5
+  } } }
+  let buf = bytes(regen + 4)
+  zstd_lit = buf
+  zstd_litn = regen
+  var hs = pos + hdr                                # start of the Huffman payload
+  var payn = comp
+  var dt = zstd_huf_prev
+  if ltype == 2 {                                   # compressed: read the tree first
+    zf_init(src, hs)
+    dt = huf_read_tree()
+    let treesize = zf_bytepos() - hs
+    hs = hs + treesize
+    payn = comp - treesize
+    zstd_huf_prev = dt
+  }
+  if streams == 1 {
+    zb_init(src, hs, payn)
+    huf_decode_stream(dt, buf, 0, regen)
+  } else {
+    # 4 streams with a 6-byte jump table (three 16-bit sizes; the 4th is derived)
+    let s1 = src[hs] | (src[hs + 1] << 8)
+    let s2 = src[hs + 2] | (src[hs + 3] << 8)
+    let s3 = src[hs + 4] | (src[hs + 5] << 8)
+    let s4 = payn - 6 - s1 - s2 - s3
+    let seg = (regen + 3) / 4
+    var o = hs + 6
+    zb_init(src, o, s1);      huf_decode_stream(dt, buf, 0, seg)
+    o = o + s1
+    zb_init(src, o, s2);      huf_decode_stream(dt, buf, seg, seg)
+    o = o + s2
+    zb_init(src, o, s3);      huf_decode_stream(dt, buf, 2 * seg, seg)
+    o = o + s3
+    zb_init(src, o, s4);      huf_decode_stream(dt, buf, 3 * seg, regen - 3 * seg)
+  }
+  return pos + hdr + comp
+}
+
+# ---- sequences + execution (exact port of ZSTD_decodeSequence) -------------
+var zstd_rep0: int = 1
+var zstd_rep1: int = 4
+var zstd_rep2: int = 8
+var zstd_seq_sp: int = 0
+
+# build a sequence SeqDT for a symbol type from its compression mode:
+# 0 predefined, 1 RLE, 2 FSE-described (forward table desc), 3 repeat previous.
+# `kind` selects the baseline tables for RLE / mode-2: 0 = LL, 1 = OF, 2 = ML.
+function zstd_seq_table(src: pointer, sp: int, mode: int, kind: int, prev: SeqDT) -> SeqDT {
+  if mode == 0 {
+    zstd_seq_sp = sp
+    if kind == 0 { return zstd_predef_ll() }
+    if kind == 1 { return zstd_predef_of() }
+    return zstd_predef_ml()
+  }
+  if mode == 3 { zstd_seq_sp = sp;  return prev }
+  if mode == 1 {                                    # RLE: a single symbol byte
+    let sym = src[sp]
+    zstd_seq_sp = sp + 1
+    let dt = new SeqDT
+    dt.log = 0;  dt.base = words(1);  dt.addbits = words(1);  dt.nb = words(1);  dt.ns = words(1)
+    dt.base[0] = zstd_seq_base(kind, sym);  dt.addbits[0] = zstd_seq_bits(kind, sym)
+    dt.nb[0] = 0;  dt.ns[0] = 0
+    return dt
+  }
+  # mode 2: FSE table description (forward), build, then map base/addbits per symbol
+  let norm = words(256)
+  zf_init(src, sp)
+  let log = fse_read_ncount(norm, 255)
+  zstd_seq_sp = zf_bytepos()
+  let ft = fse_build(norm, fse_ncount_n, log)
+  let size = 1 << log
+  let dt = new SeqDT
+  dt.log = log;  dt.base = words(size);  dt.addbits = words(size);  dt.nb = ft.nb;  dt.ns = ft.ns
+  var u = 0
+  while u < size {
+    dt.base[u] = zstd_seq_base(kind, ft.sym[u])
+    dt.addbits[u] = zstd_seq_bits(kind, ft.sym[u])
+    u = u + 1
+  }
+  return dt
+}
+
+# baseline / extra-bit tables per symbol type for RLE + FSE-described tables.
+function zstd_seq_base(kind: int, sym: int) -> int {
+  if kind == 0 { return zstd_ll_base[sym] }
+  if kind == 2 { return zstd_ml_base[sym] }
+  return 1 << sym                                   # OF: offset base = 1<<code
+}
+function zstd_seq_bits(kind: int, sym: int) -> int {
+  if kind == 0 { return zstd_ll_bits[sym] }
+  if kind == 2 { return zstd_ml_bits[sym] }
+  return sym                                        # OF: extra bits = code
+}
+
+# decode one compressed block's literals + sequences into out[opos..].
+function zstd_decomp_block(src: pointer, bstart: int, bsize: int, out: pointer, opos: int, cap: int) -> int {
+  zstd_seq_tables_init()
+  let blockend = bstart + bsize
+  var sp = zstd_lit_decode(src, bstart, blockend)
+  var nseq = src[sp]
+  if nseq < 128 { sp = sp + 1 }
+  else { if nseq < 255 { nseq = ((nseq - 128) << 8) + src[sp + 1];  sp = sp + 2 }
+  else { nseq = src[sp + 1] + (src[sp + 2] << 8) + 32512;  sp = sp + 3 } }
+  var op = opos
+  var litpos = 0
+  if nseq == 0 {
+    var i = 0
+    while i < zstd_litn { out[op] = zstd_lit[i];  op = op + 1;  i = i + 1 }
+    return op
+  }
+  let modes = src[sp];  sp = sp + 1
+  let llmode = (modes >> 6) & 3
+  let ofmode = (modes >> 4) & 3
+  let mlmode = (modes >> 2) & 3
+  let llt = zstd_seq_table(src, sp, llmode, 0, null);  sp = zstd_seq_sp
+  let oft = zstd_seq_table(src, sp, ofmode, 1, null);  sp = zstd_seq_sp
+  let mlt = zstd_seq_table(src, sp, mlmode, 2, null);  sp = zstd_seq_sp
+  zstd_rep0 = 1;  zstd_rep1 = 4;  zstd_rep2 = 8
+  zb_init(src, sp, blockend - sp)
+  var llstate = zb_read(llt.log)
+  var ofstate = zb_read(oft.log)
+  var mlstate = zb_read(mlt.log)
+  var q = 0
+  while q < nseq {
+    var matchLen = mlt.base[mlstate]
+    var litLen = llt.base[llstate]
+    let ofBase = oft.base[ofstate]
+    let llBits = llt.addbits[llstate]
+    let mlBits = mlt.addbits[mlstate]
+    let ofBits = oft.addbits[ofstate]
+    var ll0 = 0
+    if llt.base[llstate] == 0 { ll0 = 1 }
+    var offset = 0
+    if ofBits > 1 {
+      offset = ofBase + zb_read(ofBits)
+      zstd_rep2 = zstd_rep1;  zstd_rep1 = zstd_rep0;  zstd_rep0 = offset
+    } else {
+      if ofBits == 0 {
+        if ll0 == 1 { offset = zstd_rep1;  zstd_rep1 = zstd_rep0;  zstd_rep0 = offset }
+        else { offset = zstd_rep0 }
+      } else {
+        let ov = ofBase + ll0 + zb_read(1)
+        var temp = 0
+        if ov == 1 { temp = zstd_rep1 }
+        else { if ov == 3 { temp = zstd_rep0 - 1 }
+        else { if ov >= 2 { temp = zstd_rep2 } else { temp = zstd_rep0 } } }
+        if temp == 0 { temp = 0 - 1 }
+        if ov == 1 { } else { zstd_rep2 = zstd_rep1 }
+        zstd_rep1 = zstd_rep0
+        zstd_rep0 = temp
+        offset = temp
+      }
+    }
+    if mlBits > 0 { matchLen = matchLen + zb_read(mlBits) }
+    if llBits > 0 { litLen = litLen + zb_read(llBits) }
+    var i = 0
+    while i < litLen { out[op] = zstd_lit[litpos];  op = op + 1;  litpos = litpos + 1;  i = i + 1 }
+    var k = 0
+    while k < matchLen { out[op] = out[op - offset];  op = op + 1;  k = k + 1 }
+    q = q + 1
+    if q < nseq {
+      llstate = llt.ns[llstate] + zb_read(llt.nb[llstate])
+      mlstate = mlt.ns[mlstate] + zb_read(mlt.nb[mlstate])
+      ofstate = oft.ns[ofstate] + zb_read(oft.nb[ofstate])
+    }
+  }
+  while litpos < zstd_litn { out[op] = zstd_lit[litpos];  op = op + 1;  litpos = litpos + 1 }
+  return op
+}
+
+
+# ---- frame / block loop ----------------------------------------------------
+var zstd_err: int = 0
+# decompress a single zstd frame. Returns bytes written, or -1.
+function z_zstd(src: pointer, len: int, out: pointer, cap: int) -> int {
+  if len < 6 { return 0 - 1 }
+  if src[0] != 40 { return 0 - 1 }                  # 0x28
+  if src[1] != 181 { return 0 - 1 }                 # 0xB5
+  if src[2] != 47 { return 0 - 1 }                  # 0x2F
+  if src[3] != 253 { return 0 - 1 }                 # 0xFD
+  let fhd = src[4]
+  let fcsFlag = (fhd >> 6) & 3
+  let single = (fhd >> 5) & 1
+  let dictFlag = fhd & 3
+  var pos = 5
+  if single == 0 { pos = pos + 1 }                  # window descriptor
+  if dictFlag == 1 { pos = pos + 1 }
+  if dictFlag == 2 { pos = pos + 2 }
+  if dictFlag == 3 { pos = pos + 4 }
+  if fcsFlag == 0 { if single == 1 { pos = pos + 1 } }
+  if fcsFlag == 1 { pos = pos + 2 }
+  if fcsFlag == 2 { pos = pos + 4 }
+  if fcsFlag == 3 { pos = pos + 8 }
+  # reset the repeat offsets per frame
+  zstd_rep0 = 1;  zstd_rep1 = 4;  zstd_rep2 = 8
+  zstd_huf_prev = null
+  zstd_err = 0
+  var op = 0
+  var last = 0
+  while last == 0 {
+    if pos + 3 > len { return 0 - 1 }
+    let bh = src[pos] | (src[pos + 1] << 8) | (src[pos + 2] << 16)
+    pos = pos + 3
+    last = bh & 1
+    let btype = (bh >> 1) & 3
+    let bsize = bh >> 3
+    if btype == 0 {                                 # raw block
+      var i = 0
+      while i < bsize { out[op] = src[pos + i];  op = op + 1;  i = i + 1 }
+      pos = pos + bsize
+    } else { if btype == 1 {                         # RLE block: one byte * bsize
+      let b = src[pos]
+      var i = 0
+      while i < bsize { out[op] = b;  op = op + 1;  i = i + 1 }
+      pos = pos + 1
+    } else { if btype == 2 {                         # compressed block
+      op = zstd_decomp_block(src, pos, bsize, out, op, cap)
+      pos = pos + bsize
+    } else { return 0 - 1 } } }                      # reserved
+    if op > cap { return 0 - 1 }
+    if zstd_err != 0 { return 0 - 1 }
+  }
+  return op
+}

@@ -731,6 +731,7 @@ function maybe_splice_runtime() -> void {
   if g_uses_base64 {
     cur_dir = ""
     do_import("runtime/native/inflate.ludic")
+    do_import("runtime/native/zstd.ludic")
     do_import("runtime/native/base64.ludic")
     cur_dir = saved
   }
@@ -741,6 +742,8 @@ function maybe_splice_runtime() -> void {
     cur_dir = ""
     do_import("runtime/native/core.ludic")
     do_import("runtime/native/xml.ludic")
+    do_import("runtime/native/inflate.ludic")
+    do_import("runtime/native/zstd.ludic")
     do_import("runtime/native/base64.ludic")
     do_import("runtime/native/value.ludic")
     do_import("runtime/native/tiled.ludic")

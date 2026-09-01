@@ -718,6 +718,9 @@
     "tiled-layer_opacity",
     "tiled-layer_tint",
     "tiled-layer_offsetx",
-    "tiled-layer_offsety"
+    "tiled-layer_offsety",
+    "tiled-world",
+    "tiled-world_count",
+    "tiled-world_map"
   ]
 }

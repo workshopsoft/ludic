@@ -649,6 +649,10 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "layer_tint")   { bare = "tmap_layer_tint";   push(labels, "map"); push(labels, "layer") }
     if (meth == "layer_offsetx"){ bare = "tmap_layer_offsetx"; push(labels, "map"); push(labels, "layer") }
     if (meth == "layer_offsety"){ bare = "tmap_layer_offsety"; push(labels, "map"); push(labels, "layer") }
+    # P6 (#74): .world stitching
+    if (meth == "world")       { bare = "tiled_read_world";  push(labels, "path") }
+    if (meth == "world_count") { bare = "tiled_world_count"; push(labels, "world") }
+    if (meth == "world_map")   { bare = "tiled_world_map";   push(labels, "world"); push(labels, "index") }
   }
   # #62: a package-provided namespace (declared with @Namespace(Foo)) that none
   # of the hardcoded core blocks matched — alias Foo.method to the bare function

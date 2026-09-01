@@ -51,7 +51,9 @@ function tiled_b64_list(text: pointer, compression: pointer, count: int) -> Val 
     let d = bytes(outcap);  let dn = z_uncompress(comp, clen, d, outcap);  raw = d;  rawlen = dn
   } else { if compression == "gzip" {
     let d = bytes(outcap);  let dn = z_gunzip(comp, clen, d, outcap);  raw = d;  rawlen = dn
-  } }
+  } else { if compression == "zstd" {
+    let d = bytes(outcap);  let dn = z_zstd(comp, clen, d, outcap);  raw = d;  rawlen = dn
+  } } }
   let out = value_list()
   var i = 0
   while i + 3 < rawlen {
@@ -62,13 +64,70 @@ function tiled_b64_list(text: pointer, compression: pointer, count: int) -> Val 
   return out
 }
 
+# decode the text of `node` under encoding `enc` / compression `comp` -> GID list.
+function tiled_decode_enc(node: Xml, enc: pointer, comp: pointer, count: int) -> Val {
+  if enc == "base64" { return tiled_b64_list(xml_text(node), comp, count) }
+  return tiled_csv_list(xml_text(node))          # csv (or the tag-per-tile form)
+}
+
 # decode a `<data>` element (child of a `<layer>`) into a Value list of GIDs.
 function tiled_data_list(data: Xml, count: int) -> Val {
+  return tiled_decode_enc(data, xml_attr(data, "encoding"), xml_attr(data, "compression"), count)
+}
+
+# flatten a chunked (infinite-map) `<data>` — its `<chunk x y width height>`
+# children — into a dense GID list; sets `o`'s width/height/data (#74).
+function tiled_chunked_layer(data: Xml, o: Val) -> void {
   let enc = xml_attr(data, "encoding")
   let comp = xml_attr(data, "compression")
-  if enc == "base64" { return tiled_b64_list(xml_text(data), comp, count) }
-  # csv (or the legacy tag-per-tile form we don't emit) -> split the text
-  return tiled_csv_list(xml_text(data))
+  # pass 1: bounds over every chunk (tile coordinates)
+  var minx = 1000000000
+  var miny = 1000000000
+  var maxx = 0 - 1000000000
+  var maxy = 0 - 1000000000
+  var i = 0
+  while i < xml_child_count(data) {
+    let ch = xml_child(data, i)
+    if xml_tag(ch) == "chunk" {
+      let cx = xml_attr_int(ch, "x", 0)
+      let cy = xml_attr_int(ch, "y", 0)
+      if cx < minx { minx = cx }
+      if cy < miny { miny = cy }
+      if cx + xml_attr_int(ch, "width", 0) > maxx { maxx = cx + xml_attr_int(ch, "width", 0) }
+      if cy + xml_attr_int(ch, "height", 0) > maxy { maxy = cy + xml_attr_int(ch, "height", 0) }
+    }
+    i = i + 1
+  }
+  let W = maxx - minx
+  let H = maxy - miny
+  let gids = value_list()
+  var k = 0
+  while k < W * H { push(gids.kids, value_int(0));  k = k + 1 }
+  # pass 2: place each chunk's decoded data at its offset
+  i = 0
+  while i < xml_child_count(data) {
+    let ch = xml_child(data, i)
+    if xml_tag(ch) == "chunk" {
+      let cx = xml_attr_int(ch, "x", 0) - minx
+      let cy = xml_attr_int(ch, "y", 0) - miny
+      let cw = xml_attr_int(ch, "width", 0)
+      let cht = xml_attr_int(ch, "height", 0)
+      let cdata = tiled_decode_enc(ch, enc, comp, cw * cht)
+      var yy = 0
+      while yy < cht {
+        var xx = 0
+        while xx < cw {
+          gids.kids[(cy + yy) * W + (cx + xx)] = value_at(cdata, yy * cw + xx)
+          xx = xx + 1
+        }
+        yy = yy + 1
+      }
+    }
+    i = i + 1
+  }
+  value_put(o, "width", value_int(W))
+  value_put(o, "height", value_int(H))
+  value_put(o, "data", gids)
 }
 
 # ---- custom properties -----------------------------------------------------
@@ -287,10 +346,14 @@ function tmx_tilelayer_to_value(el: Xml, mapw: int, maph: int) -> Val {
   tmx_layer_common(o, el)
   let w = xml_attr_int(el, "width", mapw)
   let h = xml_attr_int(el, "height", maph)
-  value_put(o, "width", value_int(w))
-  value_put(o, "height", value_int(h))
   let data = xml_find(el, "data")
-  value_put(o, "data", tiled_data_list(data, w * h))
+  if xml_count(data, "chunk") > 0 {                # infinite map: flatten the chunks
+    tiled_chunked_layer(data, o)
+  } else {
+    value_put(o, "width", value_int(w))
+    value_put(o, "height", value_int(h))
+    value_put(o, "data", tiled_data_list(data, w * h))
+  }
   return o
 }
 
@@ -394,14 +457,73 @@ function tmj_normalize_layer(layer: Val) -> void {
     return
   }
   if ty != "tilelayer" { return }
+  let enc = value_as_str(value_get(layer, "encoding"))
+  let comp = value_as_str(value_get(layer, "compression"))
+  # infinite map: flatten the JSON `chunks` array into a dense data list (#74)
+  let chunks = value_get(layer, "chunks")
+  if value_kind(chunks) == 5 and value_count(chunks) > 0 {
+    tmj_flatten_chunks(layer, chunks, enc, comp)
+    return
+  }
   let data = value_get(layer, "data")
   if value_kind(data) == 4 {                                # a base64 string
-    let enc = value_as_str(value_get(layer, "encoding"))
-    let comp = value_as_str(value_get(layer, "compression"))
     let w = value_as_int(value_get(layer, "width"))
     let h = value_as_int(value_get(layer, "height"))
     if enc == "base64" { value_put(layer, "data", tiled_b64_list(value_as_str(data), comp, w * h)) }
   }
+}
+
+# a JSON chunk's `data` (int array, or a base64 string) -> a GID Value list.
+function tmj_chunk_gids(chunk: Val, enc: pointer, comp: pointer, count: int) -> Val {
+  let d = value_get(chunk, "data")
+  if value_kind(d) == 4 { return tiled_b64_list(value_as_str(d), comp, count) }   # base64 string
+  return d                                                  # already an int array
+}
+
+# flatten JSON `chunks[]` into a dense data list on `layer`, sizing to the union.
+function tmj_flatten_chunks(layer: Val, chunks: Val, enc: pointer, comp: pointer) -> void {
+  var minx = 1000000000
+  var miny = 1000000000
+  var maxx = 0 - 1000000000
+  var maxy = 0 - 1000000000
+  var i = 0
+  while i < value_count(chunks) {
+    let c = value_at(chunks, i)
+    let cx = value_as_int(value_get(c, "x"))
+    let cy = value_as_int(value_get(c, "y"))
+    if cx < minx { minx = cx }
+    if cy < miny { miny = cy }
+    if cx + value_as_int(value_get(c, "width")) > maxx { maxx = cx + value_as_int(value_get(c, "width")) }
+    if cy + value_as_int(value_get(c, "height")) > maxy { maxy = cy + value_as_int(value_get(c, "height")) }
+    i = i + 1
+  }
+  let W = maxx - minx
+  let H = maxy - miny
+  let gids = value_list()
+  var k = 0
+  while k < W * H { push(gids.kids, value_int(0));  k = k + 1 }
+  i = 0
+  while i < value_count(chunks) {
+    let c = value_at(chunks, i)
+    let cx = value_as_int(value_get(c, "x")) - minx
+    let cy = value_as_int(value_get(c, "y")) - miny
+    let cw = value_as_int(value_get(c, "width"))
+    let cht = value_as_int(value_get(c, "height"))
+    let cdata = tmj_chunk_gids(c, enc, comp, cw * cht)
+    var yy = 0
+    while yy < cht {
+      var xx = 0
+      while xx < cw {
+        gids.kids[(cy + yy) * W + (cx + xx)] = value_at(cdata, yy * cw + xx)
+        xx = xx + 1
+      }
+      yy = yy + 1
+    }
+    i = i + 1
+  }
+  value_put(layer, "width", value_int(W))
+  value_put(layer, "height", value_int(H))
+  value_put(layer, "data", gids)
 }
 
 function tmj_normalize(m: Val) -> Val {
@@ -780,8 +902,35 @@ function tmap_build(tree: Val, basedir: pointer) -> Tmap {
     }
     i = i + 1
   }
+  # infinite map (#74): the header w/h are 0 — take the flattened layer bounds.
+  if m.w <= 0 or m.h <= 0 {
+    var mw = 0
+    var mh = 0
+    i = 0
+    while i < len(m.layers) {
+      if m.layers[i].kind == 0 {
+        if m.layers[i].w > mw { mw = m.layers[i].w }
+        if m.layers[i].h > mh { mh = m.layers[i].h }
+      }
+      i = i + 1
+    }
+    m.w = mw
+    m.h = mh
+  }
   return m
 }
+
+# ---- .world stitching (#74) ------------------------------------------------
+# read a `.world` file (JSON): { maps: [{fileName,x,y}], patterns: [...],
+# onlyShowAdjacentMaps }. Reuses Json.parse; the members stitch at their offsets.
+function tiled_read_world(path: pointer) -> Val {
+  let text = Fs.read_text(path)
+  if text == null { return value_null() }
+  if text == "" { return value_null() }
+  return json_parse(text)
+}
+function tiled_world_count(world: Val) -> int { return value_count(value_get(world, "maps")) }
+function tiled_world_map(world: Val, i: int) -> Val { return value_at(value_get(world, "maps"), i) }
 
 function tmap_add_layer(m: Tmap, lv: Val) -> void {
   let ty = value_as_str(value_get(lv, "type"))

@@ -1,0 +1,47 @@
+# tiled_p6.ludic — Tiled P6 scale (issue #74): infinite/chunked maps, `.world`
+# stitching, and base64+zstd layer decompression. Chunks flatten into the dense
+# layer; a `.world` lists its member maps at their offsets; and a real zstd frame
+# (a low-entropy tile layer, as a tilemap produces) decompresses byte-exactly.
+#
+# A full run prints: 1 2 3 4 5 6 7 8 9 10 11 12
+program TiledP6 {
+  entry {
+    # --- infinite/chunked TMX: two 16x16 chunks flatten into a 32x16 layer ---
+    let m = Tiled.read("assets/tiled-fixtures/infinite_map.tmx")
+    let l = Value.at(Value.get(m, "layers"), 0)
+    if Value.as_int(Value.get(l, "width")) == 32 { print(1) }
+    if Value.as_int(Value.get(l, "height")) == 16 { print(2) }
+    let d = Value.get(l, "data")
+    if Value.count(d) == 512 { print(3) }                 # 32 * 16
+    if Value.as_int(Value.at(d, 0)) == 1 { print(4) }     # chunk0 (0,0) = wall
+    if Value.as_int(Value.at(d, 511)) == 2 { print(5) }   # chunk1 (15,15)
+    if Value.as_int(Value.at(d, 16)) == 3 { print(6) }    # chunk1 (0,0) = floor
+
+    # --- infinite/chunked TMJ: same map flattens identically ---
+    let mj = Tiled.read("assets/tiled-fixtures/infinite_map.tmj")
+    let dj = Value.get(Value.at(Value.get(mj, "layers"), 0), "data")
+    if Value.count(dj) == 512 and Value.as_int(Value.at(dj, 0)) == 1 and Value.as_int(Value.at(dj, 511)) == 2 { print(7) }
+
+    # --- .world stitching: member maps at their offsets ---
+    let w = Tiled.world("assets/tiled-fixtures/demo.world")
+    if Tiled.world_count(w) == 2 { print(8) }
+    let w0 = Tiled.world_map(w, 0)
+    if Value.as_str(Value.get(w0, "fileName")) == "zstd_map.tmx" and Value.as_int(Value.get(w0, "x")) == 0 { print(9) }
+    let w1 = Tiled.world_map(w, 1)
+    if Value.as_str(Value.get(w1, "fileName")) == "grid_maze.tmx" and Value.as_int(Value.get(w1, "x")) == 384 { print(10) }
+
+    # --- base64+zstd: the zstd layer decompresses to the CSV baseline ---
+    let z = Tiled.read("assets/tiled-fixtures/zstd_map.tmx")
+    let zl = Value.get(z, "layers")
+    let csv = Value.get(Value.at(zl, 0), "data")
+    let zstd = Value.get(Value.at(zl, 1), "data")
+    if Value.count(zstd) == 384 { print(11) }
+    var same = 1
+    var i = 0
+    while i < Value.count(csv) {
+      if Value.as_int(Value.at(csv, i)) != Value.as_int(Value.at(zstd, i)) { same = 0 }
+      i = i + 1
+    }
+    if same == 1 { print(12) }
+  }
+}

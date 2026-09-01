@@ -1,0 +1,1 @@
+{"maps": [{"fileName": "zstd_map.tmx", "x": 0, "y": 0, "width": 384, "height": 256}, {"fileName": "grid_maze.tmx", "x": 384, "y": 0, "width": 128, "height": 80}], "onlyShowAdjacentMaps": false, "type": "world"}
