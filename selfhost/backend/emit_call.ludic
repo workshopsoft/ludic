@@ -611,8 +611,19 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
   # read/read_tsx produce the intermediate Value tree (#68); load/gid/resolve/
   # draw/prop operate on the loaded map model (#69+).
   if (ns == "Tiled") {
-    if (meth == "read")      { bare = "tiled_read";      push(labels, "path") }
-    if (meth == "read_tsx")  { bare = "tiled_read_tsx";  push(labels, "path") }
+    if (meth == "read")        { bare = "tiled_read";        push(labels, "path") }
+    if (meth == "read_tsx")    { bare = "tiled_read_tsx";    push(labels, "path") }
+    if (meth == "load")        { bare = "tiled_load";        push(labels, "path") }
+    if (meth == "gid")         { bare = "tmap_gid";          push(labels, "map"); push(labels, "layer"); push(labels, "x"); push(labels, "y") }
+    if (meth == "resolve")     { bare = "tmap_resolve";      push(labels, "map"); push(labels, "gid") }
+    if (meth == "width")       { bare = "tmap_width";        push(labels, "map") }
+    if (meth == "height")      { bare = "tmap_height";       push(labels, "map") }
+    if (meth == "layer_count") { bare = "tmap_layer_count";  push(labels, "map") }
+    if (meth == "layer_name")  { bare = "tmap_layer_name";   push(labels, "map"); push(labels, "index") }
+    if (meth == "draw")        { bare = "tmap_draw";         push(labels, "map"); push(labels, "camx"); push(labels, "camy") }
+    if (meth == "project")     { bare = "tmap_project";      push(labels, "map"); push(labels, "layer") }
+    if (meth == "tree")        { bare = "tmap_tree";         push(labels, "map") }
+    if (meth == "tile_prop")   { bare = "tmap_tile_prop";    push(labels, "map"); push(labels, "gid"); push(labels, "name") }
   }
   # #62: a package-provided namespace (declared with @Namespace(Foo)) that none
   # of the hardcoded core blocks matched — alias Foo.method to the bare function

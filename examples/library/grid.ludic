@@ -7,13 +7,16 @@ program Grid {
   model Marker { Tag }
 
   handler Boot phase Start {
+    # The maze is now a loaded Tiled map (issue #69): its `collision` layer —
+    # 1 = wall, 0 = open — projects to the same byte tilemap Map.row used to fill,
+    # so every Grid.* / Path.* query below is byte-identical.
     #             01234567
-    Map.size(8, 5)
-    Map.row(0, "########")
-    Map.row(1, "#......#")
-    Map.row(2, "#.####.#")
-    Map.row(3, "#....#.#")
-    Map.row(4, "########")
+    #   row 0     ########
+    #   row 1     #......#
+    #   row 2     #.####.#
+    #   row 3     #....#.#
+    #   row 4     ########
+    Tiled.load("assets/tiled-fixtures/grid_maze.tmx")
 
     # --- Bresenham line ---
     let hl = Grid.line(1, 1, 6, 1)

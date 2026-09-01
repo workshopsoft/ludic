@@ -52,6 +52,7 @@ function emit_header() -> void {
   emith("declare ptr @memcpy(ptr, ptr, i64)\n")
   emith("declare ptr @memset(ptr, i32, i64)\n")
   emith("declare i64 @strlen(ptr)\n")
+  emith("declare i32 @strcmp(ptr, ptr)\n")
   emith("declare i32 @strncmp(ptr, ptr, i64)\n")
   emith("declare ptr @strstr(ptr, ptr)\n")
   emith("declare i32 @atoi(ptr)\n")

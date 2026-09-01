@@ -442,3 +442,349 @@ function tiled_read_tsx(path: pointer) -> Val {
   if tiled_first_byte(text) == 60 { return tsx_to_value(xml_parse(text)) }
   return json_parse(text)
 }
+
+# ============================================================================
+# P1 (#69) — the runtime map model (`rt_tmap`), the GID resolver, the legacy
+# `rt_map` compatibility projection, and image-backed rendering. Built from the
+# intermediate Value tree above, so both the TMX and TMJ paths feed it.
+# ============================================================================
+
+property TmTileset {
+  firstgid:  int = 0
+  columns:   int = 0
+  tilew:     int = 0
+  tileh:     int = 0
+  spacing:   int = 0
+  margin:    int = 0
+  tilecount: int = 0
+  imgid:     int = 0 - 1        # loaded image handle (rt_image_load), -1 = none
+  meta:      Val               # the tileset Value object (per-tile metadata)
+}
+
+property TmLayer {
+  kind:    int = 0             # 0 tilelayer, 1 objectgroup, 2 imagelayer, 3 group
+  name:    pointer = null
+  w:       int = 0
+  h:       int = 0
+  visible: int = 1
+  gids:    []int               # dense w*h GID array (tilelayer only)
+  data:    Val                 # the layer Value object (objects, image, …)
+}
+
+property Tmap {
+  w:         int = 0           # map width in tiles
+  h:         int = 0
+  tilew:     int = 0           # map tile size in pixels
+  tileh:     int = 0
+  orientation: pointer = null
+  layers:    []TmLayer
+  tilesets:  []TmTileset
+  tree:      Val               # the source intermediate tree
+  coll:      int = 0 - 1       # designated collision layer index, or -1
+}
+
+# ---- GID resolver ----------------------------------------------------------
+property GidInfo {
+  tileset: int = 0 - 1        # index into Tmap.tilesets (-1 = none/empty)
+  local:   int = 0            # local tile id within that tileset
+  fh:      int = 0            # horizontal flip
+  fv:      int = 0            # vertical flip
+  fd:      int = 0            # anti-diagonal flip
+  empty:   int = 0            # gid was 0
+}
+
+# decompose a raw GID: strip the three flip flags (0x80000000 H, 0x40000000 V,
+# 0x20000000 D), keep the low 29 bits as the global tile id, and find the tileset
+# whose firstgid is the greatest not exceeding it. gid == 0 is the empty cell.
+function tmap_resolve(m: Tmap, gid: int) -> GidInfo {
+  let r = new GidInfo
+  if gid == 0 { r.empty = 1;  r.tileset = 0 - 1;  return r }
+  let H = 1 << 31
+  let V = 1 << 30
+  let D = 1 << 29
+  if (gid & H) != 0 { r.fh = 1 }
+  if (gid & V) != 0 { r.fv = 1 }
+  if (gid & D) != 0 { r.fd = 1 }
+  let id = gid & 536870911                 # low 29 bits = global tile id
+  var best = 0 - 1
+  var bestfg = 0
+  var i = 0
+  while i < len(m.tilesets) {
+    let fg = m.tilesets[i].firstgid
+    if fg <= id and fg >= bestfg { bestfg = fg;  best = i }
+    i = i + 1
+  }
+  r.tileset = best
+  if best >= 0 { r.local = id - m.tilesets[best].firstgid }
+  return r
+}
+
+# ---- accessors -------------------------------------------------------------
+function tmap_width(m: Tmap) -> int { return m.w }
+function tmap_height(m: Tmap) -> int { return m.h }
+function tmap_layer_count(m: Tmap) -> int { return len(m.layers) }
+function tmap_layer_name(m: Tmap, i: int) -> pointer {
+  if i < 0 or i >= len(m.layers) { return "" }
+  if m.layers[i].name == null { return "" }
+  return m.layers[i].name
+}
+function tmap_tree(m: Tmap) -> Val { return m.tree }
+
+# raw GID at (x,y) in tile layer `layer` (0 out of bounds / non-tile layer).
+function tmap_gid(m: Tmap, layer: int, x: int, y: int) -> int {
+  if layer < 0 or layer >= len(m.layers) { return 0 }
+  let l = m.layers[layer]
+  if l.kind != 0 { return 0 }
+  if x < 0 or y < 0 or x >= l.w or y >= l.h { return 0 }
+  return l.gids[y * l.w + x]
+}
+
+# ---- per-tile metadata (property convention) -------------------------------
+# does the tile a GID resolves to carry bool custom property `name` = true?
+function tmap_tile_prop(m: Tmap, gid: int, name: pointer) -> int {
+  let r = tmap_resolve(m, gid)
+  if r.tileset < 0 { return 0 }
+  let ts = m.tilesets[r.tileset]
+  if value_kind(ts.meta) != 6 { return 0 }
+  let tiles = value_get(ts.meta, "tiles")
+  if value_kind(tiles) != 5 { return 0 }
+  var i = 0
+  while i < value_count(tiles) {
+    let t = value_at(tiles, i)
+    if value_as_int(value_get(t, "id")) == r.local {
+      let props = value_get(t, "properties")
+      if value_kind(props) == 5 {
+        var j = 0
+        while j < value_count(props) {
+          let p = value_at(props, j)
+          if value_as_str(value_get(p, "name")) == name {
+            if value_as_str(value_get(p, "value")) == "true" { return 1 }
+            return 0
+          }
+          j = j + 1
+        }
+      }
+      return 0
+    }
+    i = i + 1
+  }
+  return 0
+}
+
+# ---- legacy rt_map compatibility projection --------------------------------
+# project the designated collision layer down to the byte tilemap so Grid.* /
+# Path.* / esys_move keep working unchanged: an empty cell is ' ' (passable), a
+# tile whose GID carries the `oneway` property is '=' (61), any other non-zero
+# GID is '#' (35, solid). The legacy 96x64 cap clips, so old code is byte-exact.
+function tmap_project(m: Tmap, layer: int) -> void {
+  m.coll = layer
+  rt_map_size(m.w, m.h)                     # clamps to 96x64, clears to ' '
+  if layer < 0 or layer >= len(m.layers) { return }
+  let l = m.layers[layer]
+  if l.kind != 0 { return }
+  var y = 0
+  while y < l.h {
+    if y < 64 {
+      var x = 0
+      while x < l.w {
+        if x < 96 {
+          let gid = l.gids[y * l.w + x]
+          if gid != 0 {
+            var ch = 35                       # '#'
+            if tmap_tile_prop(m, gid, "oneway") == 1 { ch = 61 }   # '='
+            rt_map[y * 96 + x] = ch
+          }
+        }
+        x = x + 1
+      }
+    }
+    y = y + 1
+  }
+}
+
+# find a tile layer named collision/solids/walls (case-sensitive), or -1.
+function tmap_find_collision(m: Tmap) -> int {
+  var i = 0
+  while i < len(m.layers) {
+    let n = m.layers[i].name
+    if m.layers[i].kind == 0 and (n == "collision" or n == "solids" or n == "walls" or n == "Collision" or n == "Solids") { return i }
+    i = i + 1
+  }
+  return 0 - 1
+}
+
+# ---- rendering -------------------------------------------------------------
+# blit one tilew x tileh tile from a tileset image (source origin sx,sy) to the
+# framebuffer at (dx,dy), applying the three flip flags. Square tiles assumed
+# for the diagonal flip (Kenney art is 16x16), which is the orthogonal case.
+function tmap_blit_tile(imgid: int, sx: int, sy: int, tw: int, th: int, dx: int, dy: int, fh: int, fv: int, fd: int) -> void {
+  if imgid < 0 { return }
+  let s: words = img_px[imgid]
+  let iw = img_w[imgid]
+  var j = 0
+  while j < th {
+    var i = 0
+    while i < tw {
+      var u = i
+      var v = j
+      if fd == 1 { u = j;  v = i }
+      if fh == 1 { u = tw - 1 - u }
+      if fv == 1 { v = th - 1 - v }
+      let argb = s[(sy + v) * iw + (sx + u)]
+      rt_blend_px(dx + i, dy + j, argb)
+      i = i + 1
+    }
+    j = j + 1
+  }
+}
+
+# draw one tile GID at map cell (x,y) with the camera offset already applied.
+function tmap_draw_gid(m: Tmap, gid: int, dx: int, dy: int) -> void {
+  if gid == 0 { return }
+  let r = tmap_resolve(m, gid)
+  if r.tileset < 0 { return }
+  let ts = m.tilesets[r.tileset]
+  if ts.imgid < 0 { return }
+  let cols = ts.columns
+  if cols <= 0 { return }
+  let cx = r.local - (r.local / cols) * cols
+  let cy = r.local / cols
+  let sx = ts.margin + cx * (ts.tilew + ts.spacing)
+  let sy = ts.margin + cy * (ts.tileh + ts.spacing)
+  # Tiled anchors a tile by its bottom-left, so a tile taller than the map cell
+  # rises above the cell.
+  let ddy = dy - (ts.tileh - m.tileh)
+  tmap_blit_tile(ts.imgid, sx, sy, ts.tilew, ts.tileh, dx, ddy, r.fh, r.fv, r.fd)
+}
+
+# draw every visible tile layer in file order, offset by the camera (camx,camy).
+function tmap_draw(m: Tmap, camx: int, camy: int) -> void {
+  var li = 0
+  while li < len(m.layers) {
+    let l = m.layers[li]
+    if l.kind == 0 and l.visible != 0 {
+      var y = 0
+      while y < l.h {
+        var x = 0
+        while x < l.w {
+          let gid = l.gids[y * l.w + x]
+          if gid != 0 {
+            tmap_draw_gid(m, gid, x * m.tilew - camx, y * m.tileh - camy)
+          }
+          x = x + 1
+        }
+        y = y + 1
+      }
+    }
+    li = li + 1
+  }
+}
+
+# ---- build the model from the intermediate Value tree ----------------------
+function tmap_gids_from_layer(lv: Val) -> []int {
+  let out = new []int
+  let data = value_get(lv, "data")
+  var i = 0
+  while i < value_count(data) { push(out, value_as_int(value_at(data, i)));  i = i + 1 }
+  return out
+}
+
+# fill a TmTileset's geometry from a tileset Value object (its per-tile metadata
+# stays in `.meta` for the resolver / property convention).
+function tmap_tileset_from_value(tv: Val) -> TmTileset {
+  let ts = new TmTileset
+  ts.firstgid = value_as_int(value_get(tv, "firstgid"))
+  ts.tilew = value_as_int(value_get(tv, "tilewidth"))
+  ts.tileh = value_as_int(value_get(tv, "tileheight"))
+  ts.spacing = value_as_int(value_get(tv, "spacing"))
+  ts.margin = value_as_int(value_get(tv, "margin"))
+  ts.tilecount = value_as_int(value_get(tv, "tilecount"))
+  ts.columns = value_as_int(value_get(tv, "columns"))
+  if ts.columns <= 0 and ts.tilew > 0 {                  # derive columns from the image
+    let iw = value_as_int(value_get(tv, "imagewidth"))
+    if iw > 0 { ts.columns = (iw - 2 * ts.margin + ts.spacing) / (ts.tilew + ts.spacing) }
+  }
+  ts.meta = tv
+  return ts
+}
+
+function tiled_join(a: pointer, b: pointer) -> pointer { return Path.normalize(Path.join(a, b)) }
+
+# build the runtime map from an intermediate tree, resolving external tilesets
+# and loading tileset images relative to `basedir`.
+function tmap_build(tree: Val, basedir: pointer) -> Tmap {
+  let m = new Tmap
+  m.tree = tree
+  m.layers = new []TmLayer
+  m.tilesets = new []TmTileset
+  m.orientation = value_as_str(value_get(tree, "orientation"))
+  m.w = value_as_int(value_get(tree, "width"))
+  m.h = value_as_int(value_get(tree, "height"))
+  m.tilew = value_as_int(value_get(tree, "tilewidth"))
+  m.tileh = value_as_int(value_get(tree, "tileheight"))
+  # tilesets
+  let tss = value_get(tree, "tilesets")
+  var i = 0
+  while i < value_count(tss) {
+    var tv = value_at(tss, i)
+    var imgdir = basedir
+    let src = value_as_str(value_get(tv, "source"))
+    if src != "" {                                        # external .tsx/.tsj
+      let tsxpath = tiled_join(basedir, src)
+      let ext = tiled_read_tsx(tsxpath)
+      value_put(ext, "firstgid", value_get(tv, "firstgid"))
+      tv = ext
+      imgdir = Path.dir(tsxpath)
+    }
+    let ts = tmap_tileset_from_value(tv)
+    let img = value_as_str(value_get(tv, "image"))
+    if img != "" { ts.imgid = rt_image_load(tiled_join(imgdir, img)) }
+    push(m.tilesets, ts)
+    i = i + 1
+  }
+  # layers (flat; groups' children are lifted so tile layers render/resolve)
+  let ls = value_get(tree, "layers")
+  i = 0
+  while i < value_count(ls) { tmap_add_layer(m, value_at(ls, i));  i = i + 1 }
+  return m
+}
+
+function tmap_add_layer(m: Tmap, lv: Val) -> void {
+  let ty = value_as_str(value_get(lv, "type"))
+  let l = new TmLayer
+  l.data = lv
+  l.name = value_as_str(value_get(lv, "name"))
+  var vis = 1
+  if value_has(lv, "visible") == 1 { if value_as_int(value_get(lv, "visible")) == 0 { vis = 0 } }
+  l.visible = vis
+  if ty == "tilelayer" {
+    l.kind = 0
+    l.w = value_as_int(value_get(lv, "width"))
+    l.h = value_as_int(value_get(lv, "height"))
+    l.gids = tmap_gids_from_layer(lv)
+    push(m.layers, l)
+    return
+  }
+  if ty == "objectgroup" { l.kind = 1;  push(m.layers, l);  return }
+  if ty == "imagelayer" { l.kind = 2;  push(m.layers, l);  return }
+  if ty == "group" {
+    l.kind = 3;  push(m.layers, l)
+    let sub = value_get(lv, "layers")
+    var i = 0
+    while i < value_count(sub) { tmap_add_layer(m, value_at(sub, i));  i = i + 1 }
+    return
+  }
+  push(m.layers, l)
+}
+
+# ---- top-level load --------------------------------------------------------
+# load a Tiled map file into the runtime model: read + parse (TMX or TMJ), build
+# the model (resolving external tilesets + images), and project the collision
+# layer (a tile layer named collision/solids/walls) down to the legacy tilemap.
+function tiled_load(path: pointer) -> Tmap {
+  let tree = tiled_read(path)
+  let m = tmap_build(tree, Path.dir(path))
+  let c = tmap_find_collision(m)
+  if c >= 0 { tmap_project(m, c) }
+  return m
+}

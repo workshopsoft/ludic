@@ -43,16 +43,16 @@ function emit_index_addr(e: Node) -> pointer {
     return r
   }
   let el = slice_elem(base.ty)
-  g_addr_ty = el
   # load the data pointer from the slice header (field 0)
   let dp = nreg()
   emit("  ");  emit(dp);  emit(" = getelementptr inbounds %LSlice, ptr ")
   emit(base.code);  emit(", i32 0, i32 0\n")
   let data = nreg()
   emit("  ");  emit(data);  emit(" = load ptr, ptr ");  emit(dp);  emit("\n")
-  let ix = emit_expr(e.b)
-  let r = nreg()
-  emit("  ");  emit(r);  emit(" = getelementptr inbounds ");  emit(llty(el))
+  let ix = emit_expr(e.b)                          # (evaluate index BEFORE setting
+  let r = nreg()                                   #  g_addr_ty — a member-access index
+  emit("  ");  emit(r);  emit(" = getelementptr inbounds ");  emit(llty(el))   # overwrites it)
   emit(", ptr ");  emit(data);  emit(", i32 ");  emit(ix.code);  emit("\n")
+  g_addr_ty = el                                   # set last so the caller sees the element type
   return r
 }

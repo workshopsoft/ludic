@@ -1,0 +1,100 @@
+# tiled_p1.ludic — the Tiled P1 core (issue #69): the rt_tmap model, the GID
+# resolver (flip decode), image-backed render, and load-and-draw over the in-repo
+# Kenney sampleMap. Proves the map loads and renders identically from both the
+# `.tmx` and its `.tmj` export, and that flipped tiles draw mirrored.
+#
+# A game so the runtime (framebuffer + tilemap) is initialised; the Start handler
+# runs the checks and Update quits. A full run prints:
+#   1 2 3 4 5 6 7 8 9 10 11 12 13 14
+program TiledP1 {
+  property Tag { v: int = 0 }
+  model Marker { Tag }
+
+  # a rolling hash of the whole framebuffer (deterministic; equal iff identical).
+  function fb_hash() -> int {
+    var h = 0
+    var y = 0
+    while y < 240 {
+      var x = 0
+      while x < 320 {
+        h = h * 31 + rt_get_px(x, y)
+        x = x + 4
+      }
+      y = y + 4
+    }
+    return h
+  }
+
+  handler Boot phase Start {
+    let m = Tiled.load("assets/kenney/tiny-dungeon/Tiled/sampleMap.tmx")
+    if Tiled.width(m) == 32 { print(1) }
+    if Tiled.height(m) == 20 { print(2) }
+    if Tiled.gid(m, 0, 0, 0) == 14 { print(3) }
+
+    # resolve a flip-flagged GID: 1610612787 = 0x60000033 -> V+D, global tile
+    # 0x33 = 51; firstgid 1 makes the tileset-local id 50; tileset 0
+    let r = Tiled.resolve(m, 1610612787)
+    if r.local == 50 { print(4) }
+    if r.fv == 1 { print(5) }
+    if r.fd == 1 { print(6) }
+    if r.fh == 0 { print(7) }
+    if r.tileset == 0 { print(8) }
+    let e = Tiled.resolve(m, 0)
+    if e.empty == 1 { print(9) }
+
+    # render the .tmx and hash the framebuffer
+    rt_clear(0)
+    Tiled.draw(m, 0, 0)
+    let hx = fb_hash()
+    if hx != 0 { print(10) }                         # something was drawn
+
+    # render the .tmj of the same map — must be pixel-identical
+    let j = Tiled.load("assets/kenney/tiny-dungeon/Tiled/sampleMap.tmj")
+    rt_clear(0)
+    Tiled.draw(j, 0, 0)
+    if fb_hash() == hx { print(11) }
+
+    # --- flips draw with the correct orientation ---
+    # find a horizontally-asymmetric tile so the mirror test is meaningful
+    var chosen = 0 - 1
+    var t = 0
+    while t < 132 {
+      rt_clear(0)
+      tmap_draw_gid(m, 1 + t, 0, 0)
+      var asym = 0
+      var yy = 0
+      while yy < 16 {
+        var xx = 0
+        while xx < 8 {
+          if rt_get_px(xx, yy) != rt_get_px(15 - xx, yy) { asym = 1 }
+          xx = xx + 1
+        }
+        yy = yy + 1
+      }
+      if asym == 1 and chosen < 0 { chosen = t }
+      t = t + 1
+    }
+    if chosen >= 0 { print(12) }
+
+    # draw the chosen tile normal at x=0 and H-flipped at x=16
+    rt_clear(0)
+    tmap_draw_gid(m, 1 + chosen, 0, 0)
+    tmap_draw_gid(m, (1 + chosen) | (1 << 31), 16, 0)
+    var mirror = 1
+    var diff = 0
+    var yy2 = 0
+    while yy2 < 16 {
+      var xx2 = 0
+      while xx2 < 16 {
+        if rt_get_px(xx2, yy2) != rt_get_px(31 - xx2, yy2) { mirror = 0 }   # H-flip mirrors
+        if rt_get_px(xx2, yy2) != rt_get_px(15 - xx2, yy2) { diff = 1 }     # the tile isn't symmetric
+        xx2 = xx2 + 1
+      }
+      yy2 = yy2 + 1
+    }
+    if mirror == 1 { print(13) }
+    if diff == 1 { print(14) }
+  }
+
+  handler Run phase Update { quit() }
+}

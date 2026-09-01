@@ -15,7 +15,6 @@
 # ids are assignment order in the source; field ids are declaration order.
 function emit_world_table() -> void {
   let me = itoa(MAX_ENT)
-  emith("declare i32 @strcmp(ptr, ptr)\n")
 
   # EV7 — schema opening: a mod can register a brand-new component at runtime.
   # Compile-time components take prop ids 0..NC-1; mod-defined ones take NC.. and

@@ -98,7 +98,6 @@ function emit_fs_prelude() -> void {
   emith("declare ptr @opendir(ptr)\n")
   emith("declare ptr @readdir(ptr)\n")
   emith("declare i32 @closedir(ptr)\n")
-  emith("declare i32 @strcmp(ptr, ptr)\n")
   emit_fs_common()
   emit_fs_path()
   emit_fs_io()

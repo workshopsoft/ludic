@@ -684,6 +684,17 @@
   ],
   "tiled": [
     "tiled-read",
-    "tiled-read_tsx"
+    "tiled-read_tsx",
+    "tiled-load",
+    "tiled-gid",
+    "tiled-resolve",
+    "tiled-width",
+    "tiled-height",
+    "tiled-layer_count",
+    "tiled-layer_name",
+    "tiled-draw",
+    "tiled-project",
+    "tiled-tree",
+    "tiled-tile_prop"
   ]
 }

@@ -35,13 +35,13 @@ program PhysicsTiles {
     let f_grd = World.field_id(pb, "on_ground")
     let f_hw  = World.field_id(pb, "hit_wall")
 
-    # 16px tiles; '#' (35) is solid, '=' (61) is a one-way platform.
-    Map.size(16, 10)
-    Map.row(4, "          ===   ")             # one-way platform, cols 10-12 (y 64)
-    Map.row(5, "      #         ")             # wall column, col 6, rows 5-7
-    Map.row(6, "      #         ")
-    Map.row(7, "      #         ")
-    Map.row(8, "################")             # solid floor, row 8 (top edge y 128)
+    # 16px tiles; the map is now a loaded Tiled map (issue #69). Its `collision`
+    # layer projects to the same byte tilemap: a non-zero GID becomes '#' (35,
+    # solid), and a GID whose tile carries the bool `oneway` property becomes
+    # '=' (61), a one-way platform — so esys_move sees the identical grid.
+    #   one-way platform, cols 10-12 (y 64); wall column, col 6, rows 5-7;
+    #   solid floor, row 8 (top edge y 128).
+    Tiled.load("assets/tiled-fixtures/physics_map.tmx")
     spawn Config { Solids { tile: 16, wall: 35, oneway: 61 } }
 
     # ---- T1. fall and land on the tile floor -------------------------------
