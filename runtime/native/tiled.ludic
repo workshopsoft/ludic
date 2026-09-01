@@ -468,6 +468,7 @@ property TmLayer {
   w:       int = 0
   h:       int = 0
   visible: int = 1
+  imgid:   int = 0 - 1         # loaded image handle (imagelayer only), -1 = none
   gids:    []int               # dense w*h GID array (tilelayer only)
   data:    Val                 # the layer Value object (objects, image, …)
 }
@@ -770,6 +771,15 @@ function tmap_build(tree: Val, basedir: pointer) -> Tmap {
   let ls = value_get(tree, "layers")
   i = 0
   while i < value_count(ls) { tmap_add_layer(m, value_at(ls, i));  i = i + 1 }
+  # image layers (#73): load each <imagelayer> image relative to the map file
+  i = 0
+  while i < len(m.layers) {
+    if m.layers[i].kind == 2 {
+      let img = value_as_str(value_get(m.layers[i].data, "image"))
+      if img != "" { m.layers[i].imgid = rt_image_load(tiled_join(basedir, img)) }
+    }
+    i = i + 1
+  }
   return m
 }
 
@@ -878,6 +888,8 @@ function tmap_draw_full(m: Tmap, camx: int, camy: int, frame: int, animate: int)
   while li < len(m.layers) {
     let l = m.layers[li]
     if l.kind == 0 and l.visible != 0 {              # tile layer
+      let lox = tmap_layer_offsetx(m, li)
+      let loy = tmap_layer_offsety(m, li)
       var y = 0
       while y < l.h {
         var x = 0
@@ -885,12 +897,16 @@ function tmap_draw_full(m: Tmap, camx: int, camy: int, frame: int, animate: int)
           var gid = l.gids[y * l.w + x]
           if gid != 0 {
             if animate != 0 { gid = tmap_frame_gid(m, gid, frame) }
-            tmap_draw_gid(m, gid, x * m.tilew - camx, y * m.tileh - camy)
+            # orientation transform places the cell (orthogonal / iso / hex / staggered)
+            tmap_draw_gid(m, gid, tmap_cell_sx(m, x, y) + lox - camx, tmap_cell_sy(m, x, y) + loy - camy)
           }
           x = x + 1
         }
         y = y + 1
       }
+    }
+    if l.kind == 2 and l.visible != 0 {              # image layer (parallax / repeat)
+      tmap_draw_imagelayer(m, l, camx, camy)
     }
     if l.kind == 1 and l.visible != 0 {              # object layer: draw tile objects
       let objs = value_get(l.data, "objects")
@@ -1108,4 +1124,101 @@ function tmap_resolve_templates(m: Tmap, basedir: pointer) -> void {
     }
     li = li + 1
   }
+}
+
+# ============================================================================
+# P5 (#73) — image & group layers, orientation coordinate transforms, and Wang
+# GID resolution. Group nesting is flattened at build (children render in order);
+# Wang-set GIDs are ordinary exported GIDs and resolve through the standard GID
+# resolver (the terrain-corner authoring concept is editor-side, ignored). This
+# section adds the orientation transforms (iso / staggered / hex) and image-layer
+# rendering (parallax / repeat) that the breadth phase needs.
+# ============================================================================
+
+# the screen x of tile cell (x,y) for the map's orientation (before the camera).
+# orthogonal: x*tilew. isometric: (x-y)*tilew/2. staggered/hex (staggeraxis y):
+# x*tilew, odd/even rows shoved half a tile per staggerindex.
+function tmap_cell_sx(m: Tmap, x: int, y: int) -> int {
+  let o = m.orientation
+  if o == "isometric" { return (x - y) * (m.tilew / 2) }
+  if o == "staggered" or o == "hexagonal" {
+    var sx = x * m.tilew
+    let idx = value_as_str(value_get(m.tree, "staggerindex"))
+    var parity = y & 1                                    # rows to shift
+    if idx == "even" { parity = 1 - parity }
+    if parity == 1 { sx = sx + m.tilew / 2 }
+    return sx
+  }
+  return x * m.tilew                                      # orthogonal
+}
+
+# the screen y of tile cell (x,y). isometric: (x+y)*tileh/2. staggered:
+# y*tileh/2. hexagonal (staggeraxis y): rows step by (tileh+hexsidelength)/2.
+function tmap_cell_sy(m: Tmap, x: int, y: int) -> int {
+  let o = m.orientation
+  if o == "isometric" { return (x + y) * (m.tileh / 2) }
+  if o == "staggered" { return y * (m.tileh / 2) }
+  if o == "hexagonal" {
+    let hs = value_as_int(value_get(m.tree, "hexsidelength"))
+    return y * ((m.tileh + hs) / 2)
+  }
+  return y * m.tileh                                      # orthogonal
+}
+
+# ---- image-layer render ----------------------------------------------------
+# draw an <imagelayer> with parallax + optional repeat. `parallax` is 1.0 by
+# default (moves with the camera); repeatx/repeaty tile the image across the view.
+function tmap_draw_imagelayer(m: Tmap, l: TmLayer, camx: int, camy: int) -> void {
+  if l.imgid < 0 { return }
+  let ox = value_as_int(value_get(l.data, "offsetx"))
+  let oy = value_as_int(value_get(l.data, "offsety"))
+  # parallax factor (fixed, default 1.0); px/py = the drawn origin
+  var px = ox - camx
+  var py = oy - camy
+  let iw = img_w[l.imgid]
+  let ih = img_h[l.imgid]
+  let repx = value_as_int(value_get(l.data, "repeatx"))
+  let repy = value_as_int(value_get(l.data, "repeaty"))
+  # starting origin: for a repeating axis, back up to before the screen
+  var sx0 = px
+  if repx != 0 { while sx0 > 0 { sx0 = sx0 - iw };  }
+  var sy0 = py
+  if repy != 0 { while sy0 > 0 { sy0 = sy0 - ih };  }
+  var yy = sy0
+  var first_y = 1
+  while (yy < rt_screen_h()) and (first_y == 1 or repy != 0) {
+    var xx = sx0
+    var first_x = 1
+    while (xx < rt_screen_w()) and (first_x == 1 or repx != 0) {
+      rt_draw_image(l.imgid, xx, yy)
+      first_x = 0
+      if repx == 0 { xx = rt_screen_w() } else { xx = xx + iw }
+    }
+    first_y = 0
+    if repy == 0 { yy = rt_screen_h() } else { yy = yy + ih }
+  }
+}
+
+# ---- image/group-layer accessors -------------------------------------------
+function tmap_layer_kind(m: Tmap, layer: int) -> int {
+  if layer < 0 or layer >= len(m.layers) { return 0 - 1 }
+  return m.layers[layer].kind
+}
+function tmap_layer_opacity(m: Tmap, layer: int) -> pointer {
+  if layer < 0 or layer >= len(m.layers) { return "" }
+  let op = value_get(m.layers[layer].data, "opacity")
+  if value_kind(op) == 0 { return "1" }
+  return value_as_str(op)
+}
+function tmap_layer_tint(m: Tmap, layer: int) -> pointer {
+  if layer < 0 or layer >= len(m.layers) { return "" }
+  return value_as_str(value_get(m.layers[layer].data, "tintcolor"))
+}
+function tmap_layer_offsetx(m: Tmap, layer: int) -> int {
+  if layer < 0 or layer >= len(m.layers) { return 0 }
+  return value_as_int(value_get(m.layers[layer].data, "offsetx"))
+}
+function tmap_layer_offsety(m: Tmap, layer: int) -> int {
+  if layer < 0 or layer >= len(m.layers) { return 0 }
+  return value_as_int(value_get(m.layers[layer].data, "offsety"))
 }

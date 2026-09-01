@@ -641,6 +641,14 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "template")     { bare = "tiled_read_template"; push(labels, "path") }
     if (meth == "spawn")        { bare = "tiled_spawn_object"; push(labels, "map"); push(labels, "object"); push(labels, "model") }
     if (meth == "spawn_layer")  { bare = "tiled_spawn_layer"; push(labels, "map"); push(labels, "layer"); push(labels, "model") }
+    # P5 (#73): orientation coords + image/group-layer accessors
+    if (meth == "cell_x")       { bare = "tmap_cell_sx";      push(labels, "map"); push(labels, "x"); push(labels, "y") }
+    if (meth == "cell_y")       { bare = "tmap_cell_sy";      push(labels, "map"); push(labels, "x"); push(labels, "y") }
+    if (meth == "layer_kind")   { bare = "tmap_layer_kind";   push(labels, "map"); push(labels, "layer") }
+    if (meth == "layer_opacity"){ bare = "tmap_layer_opacity"; push(labels, "map"); push(labels, "layer") }
+    if (meth == "layer_tint")   { bare = "tmap_layer_tint";   push(labels, "map"); push(labels, "layer") }
+    if (meth == "layer_offsetx"){ bare = "tmap_layer_offsetx"; push(labels, "map"); push(labels, "layer") }
+    if (meth == "layer_offsety"){ bare = "tmap_layer_offsety"; push(labels, "map"); push(labels, "layer") }
   }
   # #62: a package-provided namespace (declared with @Namespace(Foo)) that none
   # of the hardcoded core blocks matched — alias Foo.method to the bare function

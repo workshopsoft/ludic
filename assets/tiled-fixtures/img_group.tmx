@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Hand-authored P5 fixture: image + group layers (issue #73). CC0. -->
+<map version="1.10" tiledversion="1.10.2" orientation="orthogonal" renderorder="right-down" width="4" height="4" tilewidth="16" tileheight="16" infinite="0" nextlayerid="4" nextobjectid="1">
+ <tileset firstgid="1" source="anim_tiles.tsx"/>
+ <imagelayer id="1" name="bg" offsetx="8" offsety="4" repeatx="1">
+  <image source="../kenney/tiny-dungeon/Tilemap/tilemap.png" width="203" height="186"/>
+ </imagelayer>
+ <group id="2" name="grp" offsetx="16" opacity="0.5" tintcolor="#ff0000">
+  <layer id="3" name="inner" width="4" height="4">
+   <data encoding="csv">
+2,0,0,0,
+0,0,0,0,
+0,0,0,0,
+0,0,0,0
+</data>
+  </layer>
+ </group>
+</map>

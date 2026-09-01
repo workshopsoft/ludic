@@ -711,6 +711,13 @@
     "tiled-load_types",
     "tiled-template",
     "tiled-spawn",
-    "tiled-spawn_layer"
+    "tiled-spawn_layer",
+    "tiled-cell_x",
+    "tiled-cell_y",
+    "tiled-layer_kind",
+    "tiled-layer_opacity",
+    "tiled-layer_tint",
+    "tiled-layer_offsetx",
+    "tiled-layer_offsety"
   ]
 }
