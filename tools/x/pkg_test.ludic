@@ -170,6 +170,28 @@ function cmd_test_pkg() -> int {
     ok("x vendor copies the resolved packages into ./vendor")
   } else { bad2("x vendor failed", capture_line(`tail -1 {work}/vendor.out`)) }
 
+  # ---- package-declarable engine-system + namespace (issue #62) -------------
+  # A source package registers a compile-time engine system (@EngineSystem) and a
+  # Foo.* namespace (@Namespace) with no compiler edit; a consumer game imports it
+  # and both take effect. Source path → runs everywhere (not dylib/macOS-gated).
+  let cp = `{proxy}/example.test/coachpack`
+  run(`mkdir -p {cp} && git -C {cp} init -q`)
+  pt_write(`{cp}/package.ludic`, `package "example.test/coachpack"` + nl() + `version "1.0.0"` + nl() + "kind source" + nl() + `provides "Coach"` + nl())
+  pt_write(`{cp}/coach.ludic`, "property Score { value: int = 0 }\n@EngineSystem(Score, Update) function esys_score() -> void {\n  let P = world_prop_id(\"Score\")\n  let e = world_query_next(P, 0)\n  if e >= 0 { world_set(e, P, 0, world_get(e, P, 0) + 1) }\n}\n@Namespace(Coach) function coach_bonus() -> int { return 99 }\n")
+  pt_commit_tag(cp, "v1.0.0")
+  let proj4 = `{work}/proj4`
+  pt_write(`{proj4}/package.ludic`, `package "game"` + nl() + `version "0.0.0"` + nl() + `require "example.test/coachpack" "1.0.0"` + nl())
+  pt_write(`{proj4}/game.ludic`, "program Game {\n  import \"example.test/coachpack/coach.ludic\"\n  model Player { Score }\n  @OnSpawn(Player) handler Init { }\n  var frames: int = 0\n  handler Boot phase Start { let e = world_spawn(world_model_id(\"Player\")) }\n  handler Run phase Update {\n    frames = frames + 1\n    if frames >= 5 {\n      let P = world_prop_id(\"Score\")\n      let e = world_query_next(P, 0)\n      print(world_get(e, P, 0))\n      print(Coach.bonus())\n      quit()\n    }\n  }\n}\n")
+  if shq(`( cd {proj4} && {envp} {root}/bin/x get > {work}/get4.out 2>&1 )`) {
+    run(`LUDIC_HOME={root} LUDIC_MODULES={proj4}/ludic_modules {root}/bin/ludicc --headless {proj4}/game.ludic -o {proj4}/game 2>{work}/gc4.err`)
+    if file_exists(`{proj4}/game`) {
+      let got = capture_line(`printf 'aaaaa' | {proj4}/game`)
+      if got == "4 99" {
+        ok("a package registers an engine-system (@EngineSystem) + a namespace (@Namespace) with no compiler edit (\"4 99\")")
+      } else { bad2("package hooks produced wrong output", `got [{got}] want [4 99]`) }
+    } else { bad2("consumer of a @EngineSystem/@Namespace package failed to build", capture_line(`tail -1 {work}/gc4.err`)) }
+  } else { bad2("x get for the coach package failed", capture_line(`tail -1 {work}/get4.out`)) }
+
   # ---- prebuilt binary package (issue #64): exported function + system + component
   # A module is compiled to a dylib (x build-lib), fetched as a `kind prebuilt`
   # dependency, and linked into a consumer game that never saw its source. At load

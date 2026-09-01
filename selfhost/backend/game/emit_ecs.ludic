@@ -26,9 +26,11 @@ function has_models() -> bool {
 # same as before the feature existed. Keep this list in sync with the phase table
 # in emit_engine_systems_for_phase.
 function uses_engine_systems() -> bool {
-  if find_comp("SpriteAnim") != null { return true }
-  if find_comp("Motion") != null { return true }
-  if find_comp("Light2D") != null { return true }
+  # #62: any registered engine-system component present (core seeds SpriteAnim /
+  # Motion / Light2D; packages append via @EngineSystem), or an Occluder (which
+  # feeds the Light2D pass without an esys of its own).
+  var i = 0
+  while i < len(g_esys_comp) { if find_comp(g_esys_comp[i]) != null { return true };  i = i + 1 }
   if find_comp("Occluder") != null { return true }
   return false
 }

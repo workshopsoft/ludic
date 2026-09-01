@@ -23,6 +23,16 @@ function emit_expect_fail(cond1: pointer, msgsym: pointer, got: pointer, want: p
   emit(`{lok}:\n`)
 }
 
+# lowercase an ASCII identifier (for #62 package-namespace aliasing: Foo -> foo)
+function ns_lower(s: pointer) -> pointer {
+  let n = cstr_len(s)
+  let b = bytes(n + 1)
+  var i = 0
+  while i < n { var c = s[i];  if (c >= 65) and (c <= 90) { c = c + 32 };  b[i] = c;  i = i + 1 }
+  b[n] = 0
+  return b
+}
+
 function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
   # Math.* is computed inline (deterministic fixed-point), not routed through a
   # bare rt_ name — so `floor`/`round`/`lerp` never leak into the bare namespace.
@@ -576,6 +586,10 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "encode")  { bare = "json_encode";   push(labels, "value") }
     if (meth == "parse")   { bare = "json_parse";    push(labels, "text") }
   }
+  # #62: a package-provided namespace (declared with @Namespace(Foo)) that none
+  # of the hardcoded core blocks matched — alias Foo.method to the bare function
+  # foo_method (positional args), the same generic path the core aliases use.
+  if (bare == null) and is_registered_namespace(ns) { bare = ns_lower(ns) + ("_") + meth }
   if (bare == null) { perr(`unknown builtin {ns}.{meth}`) }
   reorder_named(e, labels)
   let id = node(E_ID); id.s = bare; e.a = id

@@ -60,15 +60,19 @@ function emit_one_engine_system(comp: pointer, fn: pointer) -> void {
   }
 }
 function emit_engine_systems_for_phase(phase: pointer) -> void {
+  # #62: registry-driven — core entries (seeded in parse_program) keep their
+  # historical per-phase order, and packages that appended via @EngineSystem run
+  # after them in the same phase. Each call is component-gated (no-op when the
+  # component is absent), so an unused registration is byte-identical.
+  var i = 0
+  while i < len(g_esys_comp) {
+    if (g_esys_phase[i] == phase) { emit_one_engine_system(g_esys_comp[i], g_esys_fn[i]) }
+    i = i + 1
+  }
   if (phase == "Update") {
-    emit_one_engine_system("SpriteAnim", "esys_spriteanim")
-    emit_one_engine_system("Motion", "esys_motion")
     # Tween.* fluent handles (#48): advanced each Update tick when the game uses
     # them (gated on g_uses_tween_rt rather than a declared component).
     if g_uses_tween_rt and (find_fn("esys_tween") != null) { emit("  call void @fn_esys_tween()\n") }
-  }
-  if (phase == "Render") {
-    emit_one_engine_system("Light2D", "esys_light2d")
   }
 }
 
