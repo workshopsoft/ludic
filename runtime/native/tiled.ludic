@@ -700,28 +700,8 @@ function tmap_draw_gid(m: Tmap, gid: int, dx: int, dy: int) -> void {
   tmap_blit_tile(ts.imgid, sx, sy, ts.tilew, ts.tileh, dx, ddy, r.fh, r.fv, r.fd)
 }
 
-# draw every visible tile layer in file order, offset by the camera (camx,camy).
-function tmap_draw(m: Tmap, camx: int, camy: int) -> void {
-  var li = 0
-  while li < len(m.layers) {
-    let l = m.layers[li]
-    if l.kind == 0 and l.visible != 0 {
-      var y = 0
-      while y < l.h {
-        var x = 0
-        while x < l.w {
-          let gid = l.gids[y * l.w + x]
-          if gid != 0 {
-            tmap_draw_gid(m, gid, x * m.tilew - camx, y * m.tileh - camy)
-          }
-          x = x + 1
-        }
-        y = y + 1
-      }
-    }
-    li = li + 1
-  }
-}
+# (tmap_draw / tmap_draw_anim are defined in the P3 section below, over the shared
+# tmap_draw_full — a static draw plus animated tiles + tile objects.)
 
 # ---- build the model from the intermediate Value tree ----------------------
 function tmap_gids_from_layer(lv: Val) -> []int {
@@ -831,3 +811,108 @@ function tiled_load(path: pointer) -> Tmap {
   if c >= 0 { tmap_project(m, c) }
   return m
 }
+
+# ============================================================================
+# P3 (#71) — animated tiles + tile objects.
+#
+# Animated tiles: a tileset's <animation> is a list of {tileid, duration(ms)}
+# frames. The current frame is a pure function of the engine frame counter
+# (fixed 60/s, deterministic — the same mechanism SpriteAnim rides), so it ticks
+# for free and reproduces frame-for-frame across runs. An animated GID resolves,
+# at draw, to the current frame's GID (its flip flags preserved).
+#
+# Tile objects: an object-layer entry with a `gid` draws the tile image (with its
+# own flip flags), bottom-anchored at the object position, as a placeable sprite.
+# ============================================================================
+
+# the three flip-flag bits of a GID (0xE0000000), kept when swapping an animation
+# frame's tile id in.
+function tmap_flag_bits(gid: int) -> int { return gid & ((1 << 31) | (1 << 30) | (1 << 29)) }
+
+# the GID an (animated) GID resolves to at engine `frame` — frames not carrying an
+# <animation> pass through unchanged. elapsed ms = frame * 1000 / 60 (the fixed
+# 60/s clock), then walk the frame durations to the current one.
+function tmap_frame_gid(m: Tmap, gid: int, frame: int) -> int {
+  if gid == 0 { return 0 }
+  let r = tmap_resolve(m, gid)
+  if r.tileset < 0 { return gid }
+  let t = tmap_tile_meta(m, gid)
+  if value_kind(t) != 6 { return gid }
+  let anim = value_get(t, "animation")
+  if value_kind(anim) != 5 { return gid }
+  let nfr = value_count(anim)
+  if nfr == 0 { return gid }
+  var total = 0
+  var i = 0
+  while i < nfr { total = total + value_as_int(value_get(value_at(anim, i), "duration"));  i = i + 1 }
+  if total <= 0 { return gid }
+  let t_ms = (frame * 1000 / 60) % total
+  var cur = value_as_int(value_get(value_at(anim, 0), "tileid"))
+  var acc = 0
+  i = 0
+  while i < nfr {
+    let fr = value_at(anim, i)
+    acc = acc + value_as_int(value_get(fr, "duration"))
+    if t_ms < acc { cur = value_as_int(value_get(fr, "tileid"));  i = nfr }
+    else { i = i + 1 }
+  }
+  let ts = m.tilesets[r.tileset]
+  return (ts.firstgid + cur) | tmap_flag_bits(gid)
+}
+
+# is a GID animated (its tile carries a non-empty <animation>)?
+function tmap_is_animated(m: Tmap, gid: int) -> int {
+  let t = tmap_tile_meta(m, gid)
+  if value_kind(t) != 6 { return 0 }
+  let anim = value_get(t, "animation")
+  if value_kind(anim) == 5 and value_count(anim) > 0 { return 1 }
+  return 0
+}
+
+# draw every visible tile layer (animated tiles resolved for `frame`) plus every
+# tile object on the object layers, in file order, offset by the camera.
+function tmap_draw_full(m: Tmap, camx: int, camy: int, frame: int, animate: int) -> void {
+  var li = 0
+  while li < len(m.layers) {
+    let l = m.layers[li]
+    if l.kind == 0 and l.visible != 0 {              # tile layer
+      var y = 0
+      while y < l.h {
+        var x = 0
+        while x < l.w {
+          var gid = l.gids[y * l.w + x]
+          if gid != 0 {
+            if animate != 0 { gid = tmap_frame_gid(m, gid, frame) }
+            tmap_draw_gid(m, gid, x * m.tilew - camx, y * m.tileh - camy)
+          }
+          x = x + 1
+        }
+        y = y + 1
+      }
+    }
+    if l.kind == 1 and l.visible != 0 {              # object layer: draw tile objects
+      let objs = value_get(l.data, "objects")
+      var oi = 0
+      while oi < value_count(objs) {
+        let ob = value_at(objs, oi)
+        if value_has(ob, "gid") == 1 {
+          var g = value_as_int(value_get(ob, "gid"))
+          if animate != 0 { g = tmap_frame_gid(m, g, frame) }
+          let ox = value_as_int(value_get(ob, "x"))
+          let oy = value_as_int(value_get(ob, "y"))
+          # Tiled anchors a tile object by its bottom-left corner
+          tmap_draw_gid(m, g, ox - camx, oy - m.tileh - camy)
+        }
+        oi = oi + 1
+      }
+    }
+    li = li + 1
+  }
+}
+
+# static draw (no animation) — the P1 entry point.
+function tmap_draw(m: Tmap, camx: int, camy: int) -> void { tmap_draw_full(m, camx, camy, 0, 0) }
+
+# animated draw at engine `frame` (pass Time.frame): animated tiles advance,
+# deterministically and frame-identically across runs.
+function tmap_draw_anim(m: Tmap, camx: int, camy: int, frame: int) -> void { tmap_draw_full(m, camx, camy, frame, 1) }

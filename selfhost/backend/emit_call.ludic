@@ -621,6 +621,9 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "layer_count") { bare = "tmap_layer_count";  push(labels, "map") }
     if (meth == "layer_name")  { bare = "tmap_layer_name";   push(labels, "map"); push(labels, "index") }
     if (meth == "draw")        { bare = "tmap_draw";         push(labels, "map"); push(labels, "camx"); push(labels, "camy") }
+    if (meth == "draw_anim")   { bare = "tmap_draw_anim";    push(labels, "map"); push(labels, "camx"); push(labels, "camy"); push(labels, "frame") }
+    if (meth == "frame_gid")   { bare = "tmap_frame_gid";    push(labels, "map"); push(labels, "gid"); push(labels, "frame") }
+    if (meth == "animated")    { bare = "tmap_is_animated";  push(labels, "map"); push(labels, "gid") }
     if (meth == "project")     { bare = "tmap_project";      push(labels, "map"); push(labels, "layer") }
     if (meth == "collide")     { bare = "tmap_collide";      push(labels, "map"); push(labels, "layer") }
     if (meth == "collision_kind") { bare = "tmap_collision_kind"; push(labels, "map"); push(labels, "gid") }

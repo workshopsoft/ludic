@@ -1,0 +1,105 @@
+# tiled_p3.ludic — Tiled P3 animated tiles + tile objects (issue #71). A tileset
+# <animation> maps to a deterministic frame = f(engine frame) (the fixed 60/s
+# clock SpriteAnim rides), so an animated GID resolves at draw to the current
+# frame's GID, its flip flags preserved. An object-layer entry with a `gid` draws
+# the tile image (with its own flips), bottom-anchored, as a placeable sprite.
+#
+# A full run prints: 1 2 3 4 5 6 7 8 9 10 11 12
+program TiledP3 {
+  property Tag { v: int = 0 }
+  model Marker { Tag }
+
+  function fb_hash() -> int {
+    var h = 0
+    var y = 0
+    while y < 64 { var x = 0
+      while x < 64 { h = h * 31 + rt_get_px(x, y);  x = x + 2 }
+      y = y + 2 }
+    return h
+  }
+
+  handler Boot phase Start {
+    let m = Tiled.load("assets/tiled-fixtures/anim_map.tmx")
+
+    # --- animated tiles: current frame is f(engine frame), 100ms per frame ---
+    if Tiled.animated(m, 1) == 1 { print(1) }              # tile 0 carries <animation>
+    if Tiled.animated(m, 2) == 0 { print(2) }              # a frame tile, not itself animated
+    let a0 = Tiled.resolve(m, Tiled.frame_gid(m, 1, 0))    # 0 ms -> frame 0 (local 0)
+    if a0.local == 0 { print(3) }
+    let a1 = Tiled.resolve(m, Tiled.frame_gid(m, 1, 6))    # frame 6 = 100 ms -> local 40
+    if a1.local == 40 { print(4) }
+    let a2 = Tiled.resolve(m, Tiled.frame_gid(m, 1, 12))   # 200 ms -> local 80
+    if a2.local == 80 { print(5) }
+    let a3 = Tiled.resolve(m, Tiled.frame_gid(m, 1, 18))   # 300 ms wraps -> local 0
+    if a3.local == 0 { print(6) }
+    # the flip flags ride through an animated frame swap
+    let af = Tiled.resolve(m, Tiled.frame_gid(m, 1 | (1 << 31), 6))
+    if af.local == 40 and af.fh == 1 { print(7) }
+
+    # --- tile object parsed from the object layer ---
+    let tree = Tiled.tree(m)
+    var oglayer = Value.null()
+    let layers = Value.get(tree, "layers")
+    var li = 0
+    while li < Value.count(layers) {
+      let L = Value.at(layers, li)
+      if Value.as_str(Value.get(L, "type")) == "objectgroup" { oglayer = L }
+      li = li + 1
+    }
+    let objs = Value.get(oglayer, "objects")
+    if Value.count(objs) == 1 { print(8) }
+    let ob = Value.at(objs, 0)
+    if Value.as_int(Value.get(ob, "gid")) == 53 { print(9) }
+    if Value.as_int(Value.get(ob, "x")) == 16 and Value.as_int(Value.get(ob, "y")) == 32 { print(10) }
+
+    # --- animated draw differs frame-to-frame (the tile actually advances) ---
+    rt_clear(0)
+    Tiled.draw_anim(m, 0, 0, 0)
+    let h0 = fb_hash()
+    rt_clear(0)
+    Tiled.draw_anim(m, 0, 0, 6)
+    if fb_hash() != h0 { print(11) }
+
+    # --- tile objects draw with correct GID flips (mirror test) ---
+    # find an asymmetric tile, draw it normal vs H-flipped as a tile object
+    var chosen = 0 - 1
+    var t = 0
+    while t < 132 {
+      rt_clear(0)
+      tmap_draw_gid(m, 1 + t, 0, 0)
+      var asym = 0
+      var yy = 0
+      while yy < 16 { var xx = 0
+        while xx < 8 { if rt_get_px(xx, yy) != rt_get_px(15 - xx, yy) { asym = 1 };  xx = xx + 1 }
+        yy = yy + 1 }
+      if asym == 1 and chosen < 0 { chosen = t }
+      t = t + 1
+    }
+    rt_clear(0)
+    tmap_draw_gid(m, 1 + chosen, 0, 0)
+    tmap_draw_gid(m, (1 + chosen) | (1 << 31), 16, 0)
+    var mirror = 1
+    var yy2 = 0
+    while yy2 < 16 { var xx2 = 0
+      while xx2 < 16 { if rt_get_px(xx2, yy2) != rt_get_px(31 - xx2, yy2) { mirror = 0 };  xx2 = xx2 + 1 }
+      yy2 = yy2 + 1 }
+    if mirror == 1 and chosen >= 0 { print(12) }
+
+    # --- the design's named fixture: rpg/beach_tileset.tsx (33 animations) ---
+    let beach = Tiled.read_tsx("assets/tiled-fixtures/beach_tileset.tsx")
+    let tiles = Value.get(beach, "tiles")
+    var nanim = 0
+    var nframes = 0
+    var ti = 0
+    while ti < Value.count(tiles) {
+      let tt = Value.at(tiles, ti)
+      let an = Value.get(tt, "animation")
+      if Value.count(an) > 0 { nanim = nanim + 1;  nframes = nframes + Value.count(an) }
+      ti = ti + 1
+    }
+    if nanim == 33 { print(13) }
+    if nframes == 131 { print(14) }
+  }
+
+  handler Run phase Update { quit() }
+}

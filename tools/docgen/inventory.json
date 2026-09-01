@@ -698,6 +698,9 @@
     "tiled-tile_prop",
     "tiled-collide",
     "tiled-collision_kind",
-    "tiled-tile_shapes"
+    "tiled-tile_shapes",
+    "tiled-draw_anim",
+    "tiled-frame_gid",
+    "tiled-animated"
   ]
 }
