@@ -244,6 +244,7 @@ function cmd_test() -> int {
   controller_case("games/platformer_demo", "", "1 1 1 1 1 1 1 1", "platformer_demo.ludic (ludic.platformer #58: gravity/land, jump apex, coyote, veto-gated double jump, wall collision + disable-system lever)")
   controller_case("games/platformer_scaffolding", "", "1 1 1 1 1 1", "platformer_scaffolding.ludic (ludic.platformer #58 layers 4-5: moving-platform rider carry, pickup->score, spring, hazard+Life i-frames)")
   controller_case("games/shooter_demo", "", "1 1 1 1 1 1 1 1 1 1 1", "shooter_demo.ludic (ludic.shooter #60: decoupled move/aim, weapon registry, projectile faction-hit, spread/ring, homing, wave spawner)")
+  controller_case("games/npcai_demo", "", "1 1 1 1 1 1 1 1", "npcai_demo.ludic (ludic.npcai #61: perception/spot, FSM chase+attack driving the shooter weapon, utility flee, companion follower)")
   spec_case("library/testing", "== 6 passed, 0 failed ==")
   spec_case("library/coverage", "== 3 passed, 0 failed ==")
   feat_case("library/errors", "", "5 10 0 7 1", "errors.ludic (assert guards an invariant, holds -> runs to the end; issue #8 success path)")

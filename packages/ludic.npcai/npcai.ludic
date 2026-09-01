@@ -1,0 +1,398 @@
+# npcai.ludic — the builtin NPC AI stack (#61).
+#
+# Layers (each an independently disable-able engine system, run in the Input phase
+# so intent is set before the FixedUpdate movers read it):
+#   esys_perception  Vision + Faction + optional LOS  -> Memory (target, last-seen)
+#   esys_ai_decide   Brain.model in {fsm, utility, bt} -> Brain intent + state
+#   esys_follower    companion stances                 -> Brain intent
+#   esys_steering    Reynolds flocking (separate/cohere/align) -> Brain intent
+#   esys_ai_act      Brain intent -> the body's mover fields (TopDown / Platformer)
+#
+# Because esys_ai_act writes the mover's OWN intent fields, an enemy gunner is just
+# a body + a Brain: the shooter's esys_weapon/esys_projectile fire for it unchanged
+# (set the body's TopDown.aim_mode = 3 and the shooter auto-aims at the nearest
+# enemy). Friendly vs enemy is faction + goal, not different code.
+
+import "ludic.gameplay/faction.ludic"
+import "ludic.gameplay/stats.ludic"
+
+# ---------------------------------------------------------------------------
+# Components
+# ---------------------------------------------------------------------------
+property Vision { range: int = 140, fov: int = 360, scan: int = 6, scan_t: int = 0 }
+property Memory { has_target: int = 0, target: int = 0, last_x: int = 0, last_y: int = 0, alertness: int = 0, ttl: int = 0 }
+
+# model: 0 FSM, 1 utility, 2 behaviour-tree. state (FSM): 0 patrol,1 chase,2 attack,3 flee.
+property Brain {
+  model: int = 0, state: int = 0,
+  attack_range: int = 40, flee_pct: int = 0,
+  intent_x: int = 0, intent_y: int = 0, want_fire: int = 0,
+  home_x: int = 0, home_y: int = 0, seed: int = 1
+}
+property Follower { leader: int = 0 - 1, distance: int = 40, mode: int = 0 }   # mode 0 follow,1 guard,2 aggressive
+property Steering { separate: int = 0, cohere: int = 0, align: int = 0, radius: int = 48 }
+
+# ---------------------------------------------------------------------------
+# Events (lever 4)
+# ---------------------------------------------------------------------------
+event TargetSpotted { e: int = 0, target: int = 0 }
+event TargetLost { e: int = 0 }
+event cancellable DecisionMade { e: int = 0, action: int = 0 }   # action = the state about to be entered
+event StateEntered { e: int = 0, state: int = 0 }
+
+# ---------------------------------------------------------------------------
+# reflected accessors
+# ---------------------------------------------------------------------------
+function ai_get(prop: pointer, e: int, name: pointer) -> int {
+  let P = World.prop_id(prop);  if P < 0 { return 0 }
+  let f = World.field_id(P, name);  if f < 0 { return 0 }
+  return World.get(e, P, f)
+}
+function ai_set(prop: pointer, e: int, name: pointer, v: int) -> void {
+  let P = World.prop_id(prop);  if P < 0 { return }
+  let f = World.field_id(P, name);  if f >= 0 { World.set(e, P, f, v) }
+}
+function ai_has(prop: pointer, e: int) -> int {
+  let P = World.prop_id(prop);  if P < 0 { return 0 }
+  return World.has(e, P)
+}
+function sign_i(a: int) -> int { if a > 0 { return 1 };  if a < 0 { return 0 - 1 };  return 0 }
+
+# optional line-of-sight over the tilemap (only when a Solids config exists);
+# without a tilemap the field is open, so LOS is always clear.
+function ai_los(px: int, py: int, tx: int, ty: int) -> int {
+  let ps = World.prop_id("Solids")
+  if ps < 0 { return 1 }
+  let se = World.query_next(ps, 0)
+  if se < 0 { return 1 }
+  let ft = World.field_id(ps, "tile")
+  let fw = World.field_id(ps, "wall")
+  if (ft < 0) or (fw < 0) { return 1 }
+  let ts = World.get(se, ps, ft)
+  if ts <= 0 { return 1 }
+  let wall = World.get(se, ps, fw)
+  if Grid.line_of_sight(px / ts, py / ts, tx / ts, ty / ts, wall) { return 1 }
+  return 0
+}
+
+# ===========================================================================
+# esys_perception (Input) — throttled scan: find the nearest hostile within Vision
+# range (and LOS, if a tilemap is configured) and remember it. Emits spotted/lost.
+# ===========================================================================
+@EngineSystem(Vision, Input) function esys_perception() -> void {
+  let PV = World.prop_id("Vision")
+  if PV < 0 { return }
+  let PP = World.prop_id("Position")
+  if PP < 0 { return }
+  let fscanT = World.field_id(PV, "scan_t")
+  let fscan = World.field_id(PV, "scan")
+  let frange = World.field_id(PV, "range")
+  var e = World.query_next(PV, 0)
+  while e >= 0 {
+    # throttle: only re-scan every `scan` frames (deterministic re-plan interval)
+    var st = World.get(e, PV, fscanT)
+    if st > 0 {
+      World.set(e, PV, fscanT, st - 1)
+    } else {
+      World.set(e, PV, fscanT, World.get(e, PV, fscan))
+      let px = ai_get("Position", e, "x")
+      let py = ai_get("Position", e, "y")
+      let rng = World.get(e, PV, frange)
+      let fac = Faction.id_of(e)
+      # nearest hostile in range + LOS
+      let PF = World.prop_id("Faction")
+      var best = 0 - 1
+      var bestd = 0
+      var o = World.query_next(PF, 0)
+      while o >= 0 {
+        if (o != e) and (World.has(o, PP) != 0) {
+          if Faction.hostile(fac, Faction.id_of(o)) == 1 {
+            let dx = ai_get("Position", o, "x") - px
+            let dy = ai_get("Position", o, "y") - py
+            let d = dx * dx + dy * dy
+            if d <= rng * rng {
+              if ai_los(px, py, ai_get("Position", o, "x"), ai_get("Position", o, "y")) == 1 {
+                if (best < 0) or (d < bestd) { best = o;  bestd = d }
+              }
+            }
+          }
+        }
+        o = World.query_next(PF, o + 1)
+      }
+      # update Memory + edges
+      let had = ai_get("Memory", e, "has_target")
+      if best >= 0 {
+        if had == 0 { emit TargetSpotted(e: e, target: best) }
+        ai_set("Memory", e, "has_target", 1)
+        ai_set("Memory", e, "target", best)
+        ai_set("Memory", e, "last_x", ai_get("Position", best, "x"))
+        ai_set("Memory", e, "last_y", ai_get("Position", best, "y"))
+        ai_set("Memory", e, "alertness", 100)
+      } else {
+        if had == 1 { emit TargetLost(e: e) }
+        ai_set("Memory", e, "has_target", 0)
+      }
+    }
+    e = World.query_next(PV, e + 1)
+  }
+}
+
+# set the Brain state, emitting StateEntered on a transition (veto-able upstream via
+# DecisionMade, which the caller already checked).
+function brain_set_state(e: int, st: int) -> void {
+  if ai_get("Brain", e, "state") != st {
+    ai_set("Brain", e, "state", st)
+    emit StateEntered(e: e, state: st)
+  }
+}
+
+# steer the Brain intent toward / away from a point (8-way signed intent).
+function brain_seek(e: int, tx: int, ty: int) -> void {
+  let px = ai_get("Position", e, "x")
+  let py = ai_get("Position", e, "y")
+  ai_set("Brain", e, "intent_x", sign_i(tx - px))
+  ai_set("Brain", e, "intent_y", sign_i(ty - py))
+}
+function brain_flee(e: int, tx: int, ty: int) -> void {
+  let px = ai_get("Position", e, "x")
+  let py = ai_get("Position", e, "y")
+  ai_set("Brain", e, "intent_x", 0 - sign_i(tx - px))
+  ai_set("Brain", e, "intent_y", 0 - sign_i(ty - py))
+}
+function brain_stop(e: int) -> void { ai_set("Brain", e, "intent_x", 0);  ai_set("Brain", e, "intent_y", 0) }
+
+# a low-hp check for the flee behaviour (uses gameplay Stats if present).
+function brain_low_hp(e: int, pct: int) -> int {
+  if pct <= 0 { return 0 }
+  let PS = World.prop_id("Stats")
+  if PS < 0 { return 0 }
+  if World.has(e, PS) == 0 { return 0 }
+  let hp = World.get(e, PS, World.field_id(PS, "hp"))
+  let mx = Stats.total(e, 0)                      # effective max_hp
+  if mx <= 0 { return 0 }
+  if hp * 100 <= mx * pct { return 1 }
+  return 0
+}
+
+# deterministic wander: a tiny LCG per Brain seed, stepped each decision.
+function brain_wander(e: int) -> void {
+  var s = ai_get("Brain", e, "seed")
+  s = (s * 1103515245 + 12345) & 2147483647
+  ai_set("Brain", e, "seed", s)
+  ai_set("Brain", e, "intent_x", (s / 7) % 3 - 1)
+  ai_set("Brain", e, "intent_y", (s / 13) % 3 - 1)
+}
+
+# distance^2 from a body to its memory target.
+function brain_target_d2(e: int) -> int {
+  let tx = ai_get("Memory", e, "last_x")
+  let ty = ai_get("Memory", e, "last_y")
+  let px = ai_get("Position", e, "x")
+  let py = ai_get("Position", e, "y")
+  let dx = tx - px;  let dy = ty - py
+  return dx * dx + dy * dy
+}
+
+# ===========================================================================
+# esys_ai_decide (Input) — dispatch on Brain.model and write intent + want_fire.
+# ===========================================================================
+@EngineSystem(Brain, Input) function esys_ai_decide() -> void {
+  let PB = World.prop_id("Brain")
+  if PB < 0 { return }
+  var e = World.query_next(PB, 0)
+  while e >= 0 {
+    let model = World.get(e, PB, World.field_id(PB, "model"))
+    if model == 1 { ai_decide_utility(e) }
+    else { if model == 2 { ai_decide_bt(e) } else { ai_decide_fsm(e) } }
+    e = World.query_next(PB, e + 1)
+  }
+}
+
+# --- (a) finite state machine: patrol -> chase -> attack, with flee override ---
+function ai_decide_fsm(e: int) -> void {
+  ai_set("Brain", e, "want_fire", 0)
+  if ai_get("Memory", e, "has_target") == 1 {
+    let ar = ai_get("Brain", e, "attack_range")
+    let d2 = brain_target_d2(e)
+    let tx = ai_get("Memory", e, "last_x")
+    let ty = ai_get("Memory", e, "last_y")
+    if brain_low_hp(e, ai_get("Brain", e, "flee_pct")) == 1 {
+      if emit DecisionMade(e: e, action: 3) == 0 { brain_set_state(e, 3);  brain_flee(e, tx, ty) }
+    } else {
+      if d2 <= ar * ar {
+        if emit DecisionMade(e: e, action: 2) == 0 { brain_set_state(e, 2);  brain_stop(e);  ai_set("Brain", e, "want_fire", 1) }
+      } else {
+        if emit DecisionMade(e: e, action: 1) == 0 { brain_set_state(e, 1);  brain_seek(e, tx, ty) }
+      }
+    }
+  } else {
+    if emit DecisionMade(e: e, action: 0) == 0 { brain_set_state(e, 0);  brain_wander(e) }
+  }
+}
+
+# --- (b) utility AI: score each action, act on the highest ---
+function ai_decide_utility(e: int) -> void {
+  ai_set("Brain", e, "want_fire", 0)
+  let has = ai_get("Memory", e, "has_target")
+  let ar = ai_get("Brain", e, "attack_range")
+  let d2 = brain_target_d2(e)
+  # scores
+  var s_wander = 10
+  var s_chase = 0
+  var s_attack = 0
+  var s_flee = 0
+  if has == 1 {
+    s_chase = 50
+    if d2 <= ar * ar { s_attack = 70 }
+    if brain_low_hp(e, ai_get("Brain", e, "flee_pct")) == 1 { s_flee = 90 }
+  }
+  # pick max
+  var best = 0;  var bs = s_wander
+  if s_chase > bs { bs = s_chase;  best = 1 }
+  if s_attack > bs { bs = s_attack;  best = 2 }
+  if s_flee > bs { bs = s_flee;  best = 3 }
+  let tx = ai_get("Memory", e, "last_x")
+  let ty = ai_get("Memory", e, "last_y")
+  if emit DecisionMade(e: e, action: best) != 0 { return }
+  brain_set_state(e, best)
+  if best == 0 { brain_wander(e) }
+  if best == 1 { brain_seek(e, tx, ty) }
+  if best == 2 { brain_stop(e);  ai_set("Brain", e, "want_fire", 1) }
+  if best == 3 { brain_flee(e, tx, ty) }
+}
+
+# --- (c) behaviour tree: a canonical Selector( Sequence(see, in_range, attack),
+# Sequence(see, chase), wander ). The leaves are the same named behaviours; a game
+# swaps a leaf with a DecisionMade veto + its own handler, the no-closure BT story.
+function ai_decide_bt(e: int) -> void {
+  ai_set("Brain", e, "want_fire", 0)
+  let tx = ai_get("Memory", e, "last_x")
+  let ty = ai_get("Memory", e, "last_y")
+  let ar = ai_get("Brain", e, "attack_range")
+  if ai_get("Memory", e, "has_target") == 1 {              # leaf: see_target
+    if brain_target_d2(e) <= ar * ar {                     # leaf: in_range
+      if emit DecisionMade(e: e, action: 2) == 0 { brain_set_state(e, 2);  brain_stop(e);  ai_set("Brain", e, "want_fire", 1);  return }
+    }
+    if emit DecisionMade(e: e, action: 1) == 0 { brain_set_state(e, 1);  brain_seek(e, tx, ty);  return }
+  }
+  if emit DecisionMade(e: e, action: 0) == 0 { brain_set_state(e, 0);  brain_wander(e) }
+}
+
+# ===========================================================================
+# esys_follower (Input) — companion stances. Follow at `distance`; if aggressive
+# and the leader has a target, hand it to this Brain so the shared attack logic
+# takes over next decision.
+# ===========================================================================
+@EngineSystem(Follower, Input) function esys_follower() -> void {
+  let PF = World.prop_id("Follower")
+  if PF < 0 { return }
+  var e = World.query_next(PF, 0)
+  while e >= 0 {
+    let leader = World.get(e, PF, World.field_id(PF, "leader"))
+    if (leader >= 0) and (ai_has("Position", leader) == 1) {
+      let dist = World.get(e, PF, World.field_id(PF, "distance"))
+      let lx = ai_get("Position", leader, "x")
+      let ly = ai_get("Position", leader, "y")
+      let px = ai_get("Position", e, "x")
+      let py = ai_get("Position", e, "y")
+      let dx = lx - px;  let dy = ly - py
+      let d2 = dx * dx + dy * dy
+      # only close the gap when beyond the standoff distance (arrive behaviour)
+      if d2 > dist * dist {
+        ai_set("Brain", e, "intent_x", sign_i(dx))
+        ai_set("Brain", e, "intent_y", sign_i(dy))
+      } else {
+        ai_set("Brain", e, "intent_x", 0)
+        ai_set("Brain", e, "intent_y", 0)
+      }
+    }
+    e = World.query_next(PF, e + 1)
+  }
+}
+
+# ===========================================================================
+# esys_steering (Input) — Reynolds flocking over neighbours in `radius`: separate
+# (push off close neighbours), cohere (toward the group centre), align (match their
+# heading, approximated by summed intent). Adds to the existing Brain intent.
+# ===========================================================================
+@EngineSystem(Steering, Input) function esys_steering() -> void {
+  let PS = World.prop_id("Steering")
+  if PS < 0 { return }
+  let PP = World.prop_id("Position")
+  if PP < 0 { return }
+  var e = World.query_next(PS, 0)
+  while e >= 0 {
+    let radius = World.get(e, PS, World.field_id(PS, "radius"))
+    let wsep = World.get(e, PS, World.field_id(PS, "separate"))
+    let wcoh = World.get(e, PS, World.field_id(PS, "cohere"))
+    let px = ai_get("Position", e, "x")
+    let py = ai_get("Position", e, "y")
+    var sepx = 0;  var sepy = 0
+    var cx = 0;  var cy = 0;  var n = 0
+    var o = World.query_next(PS, 0)
+    while o >= 0 {
+      if o != e {
+        let ox = ai_get("Position", o, "x")
+        let oy = ai_get("Position", o, "y")
+        let dx = ox - px;  let dy = oy - py
+        let d2 = dx * dx + dy * dy
+        if d2 <= radius * radius {
+          sepx = sepx - sign_i(dx);  sepy = sepy - sign_i(dy)
+          cx = cx + ox;  cy = cy + oy;  n = n + 1
+        }
+      }
+      o = World.query_next(PS, o + 1)
+    }
+    if n > 0 {
+      var ix = ai_get("Brain", e, "intent_x")
+      var iy = ai_get("Brain", e, "intent_y")
+      if wsep > 0 { ix = ix + sign_i(sepx);  iy = iy + sign_i(sepy) }
+      if wcoh > 0 { ix = ix + sign_i(cx / n - px);  iy = iy + sign_i(cy / n - py) }
+      ai_set("Brain", e, "intent_x", sign_i(ix))
+      ai_set("Brain", e, "intent_y", sign_i(iy))
+    }
+    e = World.query_next(PS, e + 1)
+  }
+}
+
+# ===========================================================================
+# esys_ai_act (Input, last) — bridge the Brain intent onto whatever mover the body
+# carries: TopDown (want_x/want_y/want_fire) and/or Platformer (want_x, want_jump
+# on an upward intent). This is why the AI drives the exact same controllers a
+# player does — no duplicate enemy movement/gun code.
+# ===========================================================================
+@EngineSystem(Brain, Input) function esys_ai_act() -> void {
+  let PB = World.prop_id("Brain")
+  if PB < 0 { return }
+  var e = World.query_next(PB, 0)
+  while e >= 0 {
+    let ix = World.get(e, PB, World.field_id(PB, "intent_x"))
+    let iy = World.get(e, PB, World.field_id(PB, "intent_y"))
+    let wf = World.get(e, PB, World.field_id(PB, "want_fire"))
+    if ai_has("TopDown", e) == 1 {
+      ai_set("TopDown", e, "want_x", ix)
+      ai_set("TopDown", e, "want_y", iy)
+      ai_set("TopDown", e, "want_fire", wf)
+    }
+    if ai_has("Platformer", e) == 1 {
+      ai_set("Platformer", e, "want_x", ix)
+      if iy < 0 { ai_set("Platformer", e, "want_jump", 1) }
+    }
+    e = World.query_next(PB, e + 1)
+  }
+}
+
+# ---------------------------------------------------------------------------
+# Ai.* convenience
+# ---------------------------------------------------------------------------
+@Namespace(Ai) function ai_set_model(e: int, model: int) -> void { ai_set("Brain", e, "model", model) }
+@Namespace(Ai) function ai_state(e: int) -> int { return ai_get("Brain", e, "state") }
+@Namespace(Ai) function ai_target(e: int) -> int {
+  if ai_get("Memory", e, "has_target") == 1 { return ai_get("Memory", e, "target") }
+  return 0 - 1
+}
+@Namespace(Follower) function follower_set(e: int, leader: int, distance: int, mode: int) -> void {
+  ai_set("Follower", e, "leader", leader)
+  ai_set("Follower", e, "distance", distance)
+  ai_set("Follower", e, "mode", mode)
+}

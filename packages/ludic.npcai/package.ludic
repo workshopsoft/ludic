@@ -1,0 +1,18 @@
+# ludic.npcai — builtin NPC AI (#61): perception -> decision -> action.
+#
+# Reusable friendly & enemy AI that plugs into the platformer / shooter / RPG
+# bodies rather than re-implementing movement. The AI never moves a body directly —
+# it writes the SAME intent fields the player controllers read (want_x/want_y,
+# want_fire, want_jump), so an enemy gunner reuses the shooter's weapon/projectile
+# systems verbatim and a companion reuses the mover. Three decision models (FSM,
+# utility, behaviour tree) all write one `Brain` intent. Reuses ludic.gameplay
+# Faction (friend/enemy) + Stats (hp for flee). Deterministic: perception + replan
+# are frame-throttled and fixed-order, no wall-clock, no float.
+package "ludic.npcai"
+version "0.1.0"
+kind source
+provides "Vision"
+provides "Brain"
+provides "Ai"
+provides "Follower"
+require "ludic.gameplay" "0.1.0"
