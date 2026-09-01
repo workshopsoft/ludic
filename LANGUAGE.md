@@ -738,12 +738,33 @@ match reg(R_CUR) { Action.Attack => attack()  Action.Guard => guard()  _ => wait
 if reg(R_MODE) == Mode.Battle { … }
 ```
 
-A variant is a **compile-time `int`** accessed as `Enum.Variant` (`Action.Guard`
+A bare variant is a **compile-time `int`** accessed as `Enum.Variant` (`Action.Guard`
 is `1`), numbered from `0` by declaration order, so it works anywhere an int does
-— `match` patterns, comparisons, `set_reg`. Enums are a naming layer over `int`:
-there is no distinct enum runtime type yet, so an enum value lives in an ordinary
-`int` or register (and is saved with it). See `examples/games/chronorift/combat.ludic`,
-whose battle menus dispatch on `KnightAct`/`MageAct` instead of `0..3`.
+— `match` patterns, comparisons, `set_reg`. A plain (all-bare) enum is a naming
+layer over `int`: an enum value lives in an ordinary `int` or register (and is
+saved with it). See `examples/games/chronorift/combat.ludic`, whose battle menus
+dispatch on `KnightAct`/`MageAct` instead of `0..3`.
+
+A variant may instead carry a **payload**, which makes the enum a *tagged union*:
+
+```ludic
+# doc-check: skip — composite: a declaration plus its uses
+enum Tile { Empty, Wall, Door(int), Portal(int, int) }
+
+let t: Tile = Door(3)                            # constructed by name; bare Empty for no payload
+match t {
+  Empty        => rest()
+  Wall         => block()
+  Door(n)      => open(n)                        # payload bound as `n` in this arm
+  Portal(x, y) => teleport(x, y)                 # both fields bound
+}
+```
+
+A payloaded value is boxed (a tag plus its payload slots) and carries the enum's
+type, so it flows through `let`, params and returns. A tagged `match` is checked
+for **exhaustiveness** — every variant must be handled or a `_` arm given — and
+constructor/pattern arities are checked, so adding a variant flags each match that
+must learn it. Bare enums are untouched by this and keep their zero-cost form.
 
 ## Expressions
 

@@ -197,6 +197,67 @@ function find_fn(name: pointer) -> Node {
   return null
 }
 
+# ---- tagged-union enums (issue #56) ----------------------------------------
+# A tagged enum is one where at least one variant declares a payload. Such enums
+# use a boxed value ABI (a heap block: an i32 tag at offset 0, then one 8-byte
+# slot per payload position); a payload-less enum keeps its compile-time-ordinal
+# int representation untouched, so every existing enum + golden render is byte-
+# identical.  `g_var_ord` carries the ordinal matched by variant_enum().
+var g_var_ord: int = 0
+
+function find_enum(name: pointer) -> Node {
+  var i = 0
+  while i < len(prog) { let d = prog[i];  if d.kind == N_ENUM and (d.s == name) { return d };  i = i + 1 }
+  return null
+}
+function enum_is_tagged(en: Node) -> bool {
+  var i = 0
+  while i < len(en.kids) { if len(en.kids[i].kids) > 0 { return true };  i = i + 1 }
+  return false
+}
+# the tagged enum whose type name is `ty`, or null (a plain enum / non-enum type
+# yields null, so the scalar match/ordinal paths stay in charge of those).
+function tagged_enum_of(ty: pointer) -> Node {
+  let en = find_enum(ty)
+  if (en == null) { return null }
+  if enum_is_tagged(en) { return en }
+  return null
+}
+# the ordinal of variant `vname` within enum `en`, or -1.
+function variant_ordinal(en: Node, vname: pointer) -> int {
+  var j = 0
+  while j < len(en.kids) { if (en.kids[j].s == vname) { return j };  j = j + 1 }
+  return 0 - 1
+}
+# find the tagged enum that declares a variant named `vname` (used to resolve a
+# bare constructor like `Door(3)` / `Empty`); sets g_var_ord to its ordinal.
+# Only tagged enums participate, so a plain enum's `Enum.Variant` member form and
+# any like-named function are left alone.
+function variant_enum(vname: pointer) -> Node {
+  var i = 0
+  while i < len(prog) {
+    let d = prog[i]
+    if d.kind == N_ENUM {
+      if enum_is_tagged(d) {
+        let ord = variant_ordinal(d, vname)
+        if ord >= 0 { g_var_ord = ord;  return d }
+      }
+    }
+    i = i + 1
+  }
+  return null
+}
+# the widest payload arity across an enum's variants — sizes the box.
+function enum_max_arity(en: Node) -> int {
+  var m = 0
+  var i = 0
+  while i < len(en.kids) { let a = len(en.kids[i].kids);  if a > m { m = a };  i = i + 1 }
+  return m
+}
+# byte size of a variant box: an 8-byte tag slot + one 8-byte slot per payload
+# position (8 bytes holds any i32/i64/ptr payload with natural alignment).
+function enum_box_size(en: Node) -> int { return 8 * (1 + enum_max_arity(en)) }
+
 # `extern function name(params) -> T = "sym"` binds a Ludic name to a link symbol. A
 # call to `name` lowers to a direct `@<sym>` call (no @fn_ prefix — the string is
 # the exact linked symbol), and emit_extern_decls emits a matching `declare`. This

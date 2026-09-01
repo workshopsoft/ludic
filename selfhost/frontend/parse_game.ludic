@@ -210,10 +210,25 @@ function parse_scene() -> void {
 # enum Name { A, B, C } — named int constants; a variant's value is its index.
 # Accessed as `Name.A` (a compile-time int), so it names magic-int value spaces
 # (state ids, menu selections, mode registers) without a runtime cost.
+#
+# A variant may also carry a payload — `enum Tile { Empty, Wall, Door(int),
+# Portal(int, int) }` (issue #56). A payload turns the whole enum into a tagged
+# union: variants are constructed by name (`Door(3)`, bare `Empty`) and boxed
+# (a tag + payload slots), and `match` destructures them (`Door(n) => …`). An
+# all-payload-less enum keeps the zero-cost compile-time-ordinal representation.
+# Each variant node is an E_ID (s=variant name); its payload types are stored as
+# N_PARAM kids, one per slot, carrying only `.ty`.
 function parse_enum() -> Node {
   pi = pi + 1; let n = node(N_ENUM); n.s = eat_id(); skipnl(); eat_op("{")
   while true { skipnl(); if is_op("}") { break }
-    let v = node(E_ID); v.s = eat_id(); push(n.kids, v)
+    let v = node(E_ID); v.s = eat_id()
+    if is_op("(") {                              # variant payload: Door(int), Portal(int, int)
+      pi = pi + 1; skipnl()
+      while not is_op(")") {
+        let p = node(N_PARAM); p.ty = ptype(); push(v.kids, p)
+        if is_op(",") { pi = pi + 1 };  skipnl() }
+      eat_op(")") }
+    push(n.kids, v)
     if is_op(",") { pi = pi + 1 };  skipnl() }
   eat_op("}"); return n
 }

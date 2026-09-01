@@ -127,8 +127,90 @@ function arm_is_default(arm: Node) -> bool {
   return false
 }
 
+# bind a tagged variant's payloads as locals for one arm's body. Pattern `pat`
+# is the E_CALL `Door(n)` / `Portal(x, y)`; each argument E_ID names a payload
+# slot. Each binding gets its own stack slot (loaded from the box), so it reads
+# and shadows uniformly with any other local. `sv` is the box pointer.
+function emit_bind_payload(en: Node, pat: Node, sv: Val) -> void {
+  let ord = variant_ordinal(en, pat.a.s)
+  let variant = en.kids[ord]
+  if (len(pat.kids) != len(variant.kids)) {
+    perr(`match: {pat.a.s} binds {itoa(len(pat.kids))} name(s) but carries {itoa(len(variant.kids))}`)
+  }
+  var k = 0
+  while k < len(pat.kids) {
+    if not (pat.kids[k].kind == E_ID) { perr(`match: {pat.a.s} payload {itoa(k)} must be a binding name`) }
+    let pty = variant.kids[k].ty
+    let lt = llty(pty)
+    let p = nreg();  emit("  ");  emit(p);  emit(" = getelementptr inbounds i8, ptr ");  emit(sv.code)
+    emit(", i32 ");  emit(itoa(8 * (k + 1)));  emit("\n")
+    let lv = emit_bind(`load {lt}, ptr {p}`)
+    let slot = emit_alloca(lt);  store_at(lt, lv, slot)
+    loc_push(pat.kids[k].s, slot, pty)
+    k = k + 1
+  }
+}
+
+# `match` over a tagged-union enum (issue #56): switch on the box's tag, bind
+# each arm's payload names, and require the arms to be exhaustive (cover every
+# variant) unless a `_` default is present — the checking pass the proposal asks
+# for, run where the scrutinee's type is known.
+function emit_match_tagged(st: Node, sv: Val, en: Node) -> void {
+  let tag = emit_bind(`load i32, ptr {sv.code}`)
+  let endl = lbl("mend")
+  var deflt: Node = null
+  var covered = 0                                  # bitmask of matched ordinals
+  var i = 0
+  while i < len(st.kids) {
+    let arm = st.kids[i]
+    if arm_is_default(arm) { deflt = arm }
+    else {
+      var acc = "0"
+      var first = true
+      var bindPat: Node = null
+      var p = 0
+      while p < len(arm.kids) {
+        let pat = arm.kids[p]
+        var vname = pat.s
+        if pat.kind == E_CALL { vname = pat.a.s;  bindPat = pat }
+        let ord = variant_ordinal(en, vname)
+        if (ord < 0) { perr(`match: {vname} is not a variant of enum {en.s}`) }
+        covered = covered | (1 << ord)
+        let c = emit_bind(`icmp eq i32 {tag}, {itoa(ord)}`)
+        if first { acc = c;  first = false } else { acc = emit_bind(`or i1 {acc}, {c}`) }
+        p = p + 1
+      }
+      let bodyl = lbl("mbody");  let nextl = lbl("marm")
+      emit("  br i1 ");  emit(acc);  emit(", label %");  emit(bodyl);  emit(", label %");  emit(nextl);  emit("\n")
+      emit(bodyl);  emit(":\n");  g_term = false
+      let save = nloc
+      if (bindPat != null) { emit_bind_payload(en, bindPat, sv) }
+      emit_block(arm.a)
+      nloc = save                                  # drop the arm's payload bindings
+      if not g_term { emit("  br label %");  emit(endl);  emit("\n") }
+      emit(nextl);  emit(":\n");  g_term = false
+    }
+    i = i + 1
+  }
+  if (deflt != null) { emit_block(deflt.a) }
+  else {
+    let full = (1 << len(en.kids)) - 1
+    if not (covered == full) {                     # find and name the first uncovered variant
+      var m = 0
+      while m < len(en.kids) {
+        if (covered & (1 << m)) == 0 { perr(`match on {en.s} is not exhaustive: variant {en.kids[m].s} is unhandled (add it or a _ arm)`) }
+        m = m + 1
+      }
+    }
+  }
+  if not g_term { emit("  br label %");  emit(endl);  emit("\n") }
+  emit(endl);  emit(":\n");  g_term = false
+}
+
 function emit_match(st: Node) -> void {
   let sv = emit_expr(st.a)
+  let te = tagged_enum_of(sv.ty)
+  if (te != null) { emit_match_tagged(st, sv, te);  return }
   let endl = lbl("mend")
   var deflt: Node = null
   var i = 0

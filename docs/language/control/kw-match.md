@@ -11,6 +11,8 @@ order: 4
 
 A <code>match</code> replaces an `if`/`else` ladder that tests one value against several constants. It evaluates the subject once, then takes the first arm whose pattern matches; an arm lists one or more literal patterns separated by commas and points at a body with `=>`, and a lone `_` arm is the catch-all default. Patterns are compile-time constants — integers, char literals like `'w'`, or `enum` variants such as `Action.Guard` — which makes `match` ideal for dispatching on a key press, a tile code, or a mode. Each arm's body is a single statement or a `{ … }` block; matching lowers to plain branches, so it is as cheap as the `if` chain it replaces.
 
+When the subject is a **tagged-union enum** (an `enum` whose variants carry payloads), `match` also *destructures* it: an arm names a variant and binds its payload — `Door(n) => …`, `Portal(x, y) => …` — with `n`, `x`, `y` in scope for that arm's body. A tagged `match` must be **exhaustive**: it covers every variant or ends with a `_`, or the compiler rejects it, so a newly added variant flags every match that must handle it. See [enum](../structure/kw-enum) for the full picture.
+
 ```ludic
 program Steering {
   property Velocity { delta_x: int = 0, delta_y: int = 0 }

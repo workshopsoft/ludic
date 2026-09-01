@@ -1,0 +1,50 @@
+program T {
+  # a tagged-union enum (issue #56): variants carry payloads, are constructed by
+  # name, and destructure in `match` with the payload names bound in each arm.
+  enum Tile { Empty, Wall, Door(int), Portal(int, int) }
+
+  # match binds each variant's payload; the arms are exhaustive (no `_`).
+  function walk_cost(t: Tile) -> int {
+    match t {
+      Empty => { return 1 }
+      Wall => { return 0 }
+      Door(n) => { return 10 + n }
+      Portal(x, y) => { return x + y }
+    }
+    return -1
+  }
+
+  # a nested match and an enum flowing through a return
+  function open(t: Tile) -> Tile {
+    match t {
+      Door(n) => { return Portal(n, n) }
+      _ => { return t }
+    }
+    return t
+  }
+
+  entry {
+    print(walk_cost(Empty))              # 1
+    print(walk_cost(Wall))               # 0
+    print(walk_cost(Door(5)))            # 15
+    print(walk_cost(Portal(3, 4)))       # 7
+
+    let d = Door(9)
+    print(walk_cost(d))                  # 19
+    print(walk_cost(open(d)))            # 18  (Door(9) -> Portal(9,9) -> 18)
+    print(walk_cost(open(Wall)))         # 0   (default arm returns t unchanged)
+
+    # a match with a default arm, OR-ed nullary patterns, and a bound arm
+    let t = Portal(2, 40)
+    match t {
+      Empty, Wall => { print(100) }
+      Portal(x, y) => { print(x * y) } # 80
+      _ => { print(999) }
+    }
+
+    # payload-less variant boxed and matched
+    var here: Tile = Empty
+    here = Door(7)
+    print(walk_cost(here))               # 17
+  }
+}

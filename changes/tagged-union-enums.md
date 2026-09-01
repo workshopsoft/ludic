@@ -1,0 +1,3 @@
+bump: minor
+type: feat
+Tagged-union enums (#56) — an `enum` variant may now carry a payload (`enum Tile { Empty, Wall, Door(int), Portal(int, int) }`), turning the enum into a sum type. Variants are constructed by name (`Door(3)`, bare `Empty`) and boxed as a tag plus payload slots; `match` destructures them, binding each payload in the arm's scope (`Door(n) => …`, `Portal(x, y) => …`). A tagged `match` is checked for exhaustiveness — it must cover every variant or end in `_`, and constructor/pattern arities are checked too — so adding a variant surfaces every site that must handle it. Plain (all-bare) enums keep their zero-cost compile-time-ordinal `Name.Variant` representation, byte-for-byte unchanged.
