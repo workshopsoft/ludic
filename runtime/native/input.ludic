@@ -142,14 +142,19 @@ function input_slot_has(s: int, k: int) -> bool {
   return false
 }
 
-# Advance one frame of input and return the frame's key. This is the single
-# per-frame input read: call it once at the top of a frame.
-#   live   — read the live key (rt_poll).
-#   record — read the live key and append it to the recording.
-#   replay — take the next key from the recording (the live device is ignored).
-# It also advances the multi-key device layer below (held keys, analog, mouse),
-# snapshotting or replaying the full per-frame state — #50 extends #7's tape.
-function input_poll() -> int {
+# #87 — a frame-loop game now has its device layer committed automatically by the
+# generated loop (which calls input_drive once per frame). in_have_frame_driver
+# records that a loop is driving input, so a *manual* Input.poll in a handler
+# becomes a no-op instead of committing a second time in the same frame — a double
+# commit copied in_held into in_prev twice, which destroyed the key_pressed /
+# key_released edges (in_prev ended up equal to in_held). An entry-driven harness
+# has no loop, so the flag stays false and each Input.poll commits a frame as before.
+var in_have_frame_driver: bool = false
+
+# The actual per-frame input read: read the live key (or a recorded one), advance
+# the record/replay tape, and rebuild the multi-key device layer (held keys, mouse,
+# gamepad — #50). Returns the frame's key.
+function input_commit() -> int {
   input_last = input_frame
   if input_mode == 2 {                               # replay
     var k = 0
@@ -166,6 +171,22 @@ function input_poll() -> int {
   input_frame = k
   input_device_commit(k, 0)
   return k
+}
+
+# Called by the generated frame loop once per frame (#83). Marks that a loop is
+# driving input so a later manual Input.poll this frame does not double-commit.
+function input_drive() -> int {
+  in_have_frame_driver = true
+  return input_commit()
+}
+
+# Input.poll — the single per-frame input read a game can call by hand. In a
+# frame-loop game the loop already drove input this frame (input_drive), so this is
+# a no-op that returns the frame's key; in an entry-driven harness (no loop) it
+# commits a frame of input each call, exactly as before.
+function input_poll() -> int {
+  if in_have_frame_driver { return input_frame }
+  return input_commit()
 }
 
 # ============================================================================

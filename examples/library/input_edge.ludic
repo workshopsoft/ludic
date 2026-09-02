@@ -1,0 +1,27 @@
+# input_edge.ludic — Input.key_pressed / key_released edge detection (#87). A
+# handler game reads the press and release edges of a key in its Update phase; the
+# frame loop commits the device layer itself (#83), so the game does NOT call
+# Input.poll by hand, and the edges fire on exactly the transition frame. (The bug:
+# a manual Input.poll under the loop used to double-commit and copy in_held into
+# in_prev twice, so key_pressed/key_released never fired.)
+#
+# Driven headless by the keys on stdin, one char per frame. With "xkkxq":
+#   x   frame0 — nothing
+#   k   frame1 — pressed edge (down + just went down)
+#   k   frame2 — held (down, no edge)
+#   x   frame3 — released edge (was k, now not)
+#   q   frame4 — nothing, then quit
+#
+# Run:  printf 'xkkxq' | bin/ludic examples/library/input_edge.ludic   ->  0 11 1 100 0
+program InputEdge {
+  property Tag { n: int = 0 }
+  model P { Tag }
+
+  handler In phase Update {
+    var v = 0
+    if Input.key_down('k')     { v = v + 1 }       # held
+    if Input.key_pressed('k')  { v = v + 10 }      # went down this frame
+    if Input.key_released('k') { v = v + 100 }     # went up this frame
+    print(v)
+  }
+}

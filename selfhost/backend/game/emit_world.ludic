@@ -473,8 +473,8 @@ function emit_game_main() -> void {
   # mouse and gamepad state). Its return is the frame key, so Input.key still works
   # and the game no longer has to call Input.poll by hand. A game that uses no Input
   # runtime keeps the plain rt_poll path, byte-identical.
-  if g_uses_input and (find_fn("input_poll") != null) {
-    let k = emit_bind("call i32 @fn_input_poll()")
+  if g_uses_input and (find_fn("input_drive") != null) {
+    let k = emit_bind("call i32 @fn_input_drive()")
     emit("  store i32 ");  emit(k);  emit(", ptr @L_key\n")
   } else {
     if (find_fn("rt_poll") != null) {
