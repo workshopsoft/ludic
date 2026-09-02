@@ -1,0 +1,32 @@
+# sprite_render.ludic — the engine-owned sprite-render system (#85). Declare a
+# Sprite component (from ludic.core) on an entity with a Position and the engine
+# draws it each Render frame — no hand-written Render handler querying positions
+# and calling draw_sprite per entity. A `hidden` sprite is skipped. Verified by
+# pixel readback after one frame.
+#
+# Driven headless by one stdin key ('q' quits after the frame renders).
+#   printf 'q' | LUDIC_MODULES=packages bin/ludic examples/library/sprite_render.ludic  ->  1 0
+program SpriteRender {
+  import "ludic.core/components.ludic"
+
+  var HERO: int = 0
+
+  @OnStart handler Boot {
+    HERO = png_load("assets/kenney/tiny-dungeon/Tiles/tile_0096.png")
+    spawn Shown  { Position { x: 40, y: 40 },  Sprite { id: HERO } }
+    spawn Hidden { Position { x: 100, y: 40 }, Sprite { id: HERO, hidden: 1 } }
+  }
+
+  # An empty Render handler: the engine sprite system draws the Sprite entities.
+  handler Draw phase Render { }
+
+  @OnQuit handler Report {
+    var drew = 0
+    for yy in 40 .. 56 { for xx in 40 .. 56 { if Screen.pixel(xx, yy) != 0 { drew = 1 } } }
+    print(drew)                          # 1 — the engine drew the shown sprite
+
+    var hid = 0
+    for yy in 40 .. 56 { for xx in 100 .. 116 { if Screen.pixel(xx, yy) != 0 { hid = 1 } } }
+    print(hid)                           # 0 — the hidden sprite was skipped
+  }
+}

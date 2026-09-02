@@ -210,7 +210,9 @@ function p_postfix() -> Node {
     else { if is_op("[") { pi = pi + 1; let lo = expr()
         if is_op("..") { pi = pi + 1; let sl = node(E_SLICE); sl.a = e; sl.b = lo; sl.c = expr(); eat_op("]"); e = sl }   # s[a..b] substring
         else { let ix = node(E_INDEX); ix.a = e; ix.b = lo; eat_op("]"); e = ix } }
-      else { if is_op("(") { let c = node(E_CALL); c.a = e; c.line = toks[pi].line; args_call(c); e = c } else { break } } }
+      else { if is_op("(") { let c = node(E_CALL); c.a = e; c.line = toks[pi].line; args_call(c); e = c
+          if (c.a.kind == E_ID) and ((c.a.s == "draw_sprite") or (c.a.s == "draw_sprite_scaled")) { warn_draw_sprite(c.a.s) }   # #85 deprecate the bare aliases
+        } else { break } } }
   }
   return e
 }
@@ -445,6 +447,17 @@ var g_uses_esys: bool = false     # an engine-owned system component (SpriteAnim
 var g_uses_input: bool = false    # a program used Input.bind/down/poll/… (action maps + record/replay) -> splice input.ludic
 var g_has_clear_color: bool = false   # @ClearColor(N) declared -> the Render phase auto-clears + auto-presents (#86)
 var g_clear_color: int = 0            # the declared clear colour (0x00RRGGBB)
+var g_warned_draw_sprite: bool = false   # emit the bare-draw_sprite deprecation note once (#85)
+
+# #85 — steer a direct bare draw_sprite / draw_sprite_scaled call to the namespaced
+# Screen.sprite (or the engine sprite-render system). Warns once, non-fatally — the
+# bare form still compiles (Screen.sprite lowers to it), it is just deprecated.
+function warn_draw_sprite(name: pointer) -> void {
+  if g_warned_draw_sprite { return }
+  g_warned_draw_sprite = true
+  let m = `ludicc: warning: bare {name}(...) is deprecated (#85) — use Screen.sprite / Screen.sprite_scaled, or declare a Sprite component for the engine sprite-render system\n`
+  file_write(file_stderr(), m, len(m))
+}
 var g_uses_anim_rt: bool = false  # Anim.play/clip/on_frame/fired or Motion.to (#48) -> splice systems.ludic + force the reflection ABI
 var g_uses_tween_rt: bool = false # Tween.to/chain/delay/… (#48) -> splice tween.ludic + run esys_tween each Update
 var g_uses_audio: bool = false    # Audio.* (#22) -> splice audio.ludic; a windowed build also links audio.ll + AVFoundation
@@ -844,6 +857,13 @@ function maybe_splice_runtime() -> void {
       do_import("runtime/native/core.ludic")
       do_import("runtime/native/systems_move.ludic")
     }
+    # Sprite -> the engine sprite-render system (#85). It draws through
+    # rt_draw_sprite_ex (image.ludic, part of core), so it links against core.ludic
+    # (do_import dedupes when a game already pulled core in).
+    if find_comp("Sprite") != null {
+      do_import("runtime/native/core.ludic")
+      do_import("runtime/native/systems_sprite.ludic")
+    }
     # Light2D / Occluder -> the lighting render system, which links against the
     # 2D light pass (light.ludic). do_import dedupes, so this is a no-op when the
     # game also uses Light.* directly (g_uses_light already pulled it in).
@@ -882,6 +902,7 @@ function parse_program() -> void {
   g_uses_input = false
   g_has_clear_color = false
   g_clear_color = 0
+  g_warned_draw_sprite = false
   g_uses_light = false
   g_uses_value = false
   g_uses_xml = false
@@ -899,6 +920,7 @@ function parse_program() -> void {
   push(g_esys_comp, "SpriteAnim");  push(g_esys_fn, "esys_spriteanim");  push(g_esys_phase, "Update")
   push(g_esys_comp, "Motion");      push(g_esys_fn, "esys_motion");      push(g_esys_phase, "Update")
   push(g_esys_comp, "Body");        push(g_esys_fn, "esys_move");        push(g_esys_phase, "Update")
+  push(g_esys_comp, "Sprite");      push(g_esys_fn, "esys_sprite");      push(g_esys_phase, "Render")
   push(g_esys_comp, "Light2D");     push(g_esys_fn, "esys_light2d");     push(g_esys_phase, "Render")
   g_namespaces = new []pointer
   loaded_paths = new []pointer

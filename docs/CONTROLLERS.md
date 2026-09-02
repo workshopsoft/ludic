@@ -53,7 +53,7 @@ controller.
 
 | Package | Issue | What it gives you |
 | --- | --- | --- |
-| **ludic.core** | #77 | The canonical engine-ABI components the movement system reads by name — `Position`, `Body`, `Collider`, `Solids` — so a game imports them instead of hand-declaring the bundles. Extend by composition (attach your own components alongside). |
+| **ludic.core** | #77, #85 | The canonical engine-ABI components the engine systems read by name — `Position`, `Body`, `Collider`, `Solids`, and `Sprite` — so a game imports them instead of hand-declaring the bundles. Declaring `Sprite` (id/offset/scale/flip/tint/hidden) makes the engine sprite-render system auto-draw the entity each Render frame (adding the SpriteAnim frame when present). Extend by composition (attach your own components alongside). |
 | **ludic.gameplay** | #57 | The shared foundation: `Cooldown` timer, `Stats` + a timed modifier stack, a `Faction` friend/enemy/neutral table, and a `Combat` damage pipeline (`cancellable DamageAboutToApply` with a mutable amount, `Damaged`/`Died`/`Healed`). |
 | **ludic.platformer** | #58 | Jump-feel `Platformer` (apex/coyote/buffer/variable-height/multi-jump), decomposed input/move/gravity/jump/anim sub-systems, `JumpRequested`/`Landed`/`StateChanged` events, a gravity policy enum, and opt-in scaffolding (moving/crumble platforms with rider carry, pickups+`Score`, springs, hazards+`Life`, checkpoints/goal). |
 | **ludic.shooter** | #60 | `TopDown` decoupled move + aim (mouse / stick / move-dir / nearest-enemy auto-aim), a name-keyed `Weapon` registry (fire-rate/spread/pellets/pattern + data-driven pierce/homing), a deterministic `Projectile` pool (faction-filtered hits through `Combat`, pierce, ring/spiral patterns, homing), and a budgeted wave `Spawner`. |

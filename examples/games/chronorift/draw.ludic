@@ -24,19 +24,19 @@ handler Draw phase Render {
           ',', 'S', 'B' => base = SPR_FLOOR
           '=' => base = SPR_WALL
         }
-        draw_sprite(base, sx, sy)
-        if c == 'T' { draw_sprite(SPR_TREE, sx, sy) }
-        if c == '#' { draw_sprite(SPR_TREE, sx, sy) }
-        if c == 'H' { draw_sprite(SPR_HOUSE, sx, sy) }
-        if c == 'D' { draw_sprite(SPR_DOOR, sx, sy) }
-        if c == 'S' { draw_sprite(SPR_DOOR, sx, sy) }
+        Screen.sprite(base, sx, sy)
+        if c == 'T' { Screen.sprite(SPR_TREE, sx, sy) }
+        if c == '#' { Screen.sprite(SPR_TREE, sx, sy) }
+        if c == 'H' { Screen.sprite(SPR_HOUSE, sx, sy) }
+        if c == 'D' { Screen.sprite(SPR_DOOR, sx, sy) }
+        if c == 'S' { Screen.sprite(SPR_DOOR, sx, sy) }
         if c == 'B' {
-          if boss_down == 0 { draw_sprite(SPR_BOSS, sx, sy) }
+          if boss_down == 0 { Screen.sprite(SPR_BOSS, sx, sy) }
         }
       }
     }
     for (p, a) in query [Pos, Actor] {
-      draw_sprite(a.kind, p.x * 16 - cx, p.y * 16 - cy)
+      Screen.sprite(a.kind, p.x * 16 - cx, p.y * 16 - cy)
     }
     for (h, pp) in query [Stats, Party] {
       if pp.slot == 0 {
@@ -59,7 +59,7 @@ handler Draw phase Render {
     for (e, a) in query [Stats, Actor, {Enemy}] {
       var bs = 5
       if enemy_type == 2 { bs = 7 }
-      draw_sprite_scaled(a.kind, 160 - bs * 8, 44, bs)
+      Screen.sprite_scaled(a.kind, 160 - bs * 8, 44, bs)
       Screen.draw_text(100, 20, enemy_name(enemy_type), 0xffffff, 1)
       Screen.fill_rectangle(100, 30, 120, 8, 0x401018)
       Screen.fill_rectangle(100, 30, e.hp * 120 / e.maxhp, 8, 0xe04040)
@@ -75,7 +75,7 @@ handler Draw phase Render {
       var spr = 5
       if pt.slot == 1 { spr = 9 }
       if pt.slot == act { Screen.draw_rectangle(hx - 2, 180, 88, 44, 0xffff00) }
-      draw_sprite_scaled(spr, hx, 184, 2)
+      Screen.sprite_scaled(spr, hx, 184, 2)
       if pt.slot == 0 { Screen.draw_text(hx + 36, 182, "KNIGHT", 0xffe08a, 1) }
       if pt.slot == 1 { Screen.draw_text(hx + 36, 182, "MAGE", 0xc9a0ff, 1) }
       Screen.draw_text(hx + 36, 195, "HP", 0x88ff88, 1)

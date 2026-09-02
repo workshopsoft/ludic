@@ -1,0 +1,84 @@
+# ============================================================================
+# systems_sprite.ludic — the engine-owned sprite-render system (#85).
+#
+# The engine already auto-*ticks* SpriteAnim (advance the frame) and Motion; this
+# adds the missing half: it auto-*draws* an entity's sprite. Declare a `Sprite`
+# component (id + optional offset / scale / flip / tint / hidden) and the engine
+# draws it each Render frame from the entity's `Position` — no hand-written Render
+# handler querying positions and calling draw_sprite per entity, and no hand
+# animation: when the entity also carries SpriteAnim, the current animation frame
+# is added to the base id automatically.
+#
+# It is registered on the compile-time engine-system registry (parse_program) for
+# the Render phase and spliced only when a game declares `Sprite`, so a game that
+# never declares it compiles byte-identically. A game that wants a custom draw
+# simply doesn't declare Sprite (or `disable system esys_sprite`) and draws itself.
+#
+# Component contract (POD, every field defaulted; ship it from ludic.core):
+#   property Sprite {
+#     id     : int       # sprite id (png_load / atlas cell); base frame for SpriteAnim
+#     offx   : int = 0   # draw offset from the Position anchor, px
+#     offy   : int = 0
+#     scale  : int = 1   # integer scale (0/1 = 1:1)
+#     flip   : int = 0   # 1 = mirror horizontally
+#     tint   : int = 0   # 0 = sprite's own colours; non-zero = solid tint (hit flash)
+#     hidden : int = 0   # 1 = skip drawing this entity
+#   }
+#
+# Draw order is entity/query order (spawn order). Everything integer + through the
+# camera/zoom/clip chokepoints, so it stays deterministic and headless-identical.
+# ============================================================================
+
+# read entity `e`'s world coordinate from a Position component (x when axis==0,
+# y when axis==1), or 0 if it has none.
+function spr_pos(e: int, axis: int) -> int {
+  let pp = World.prop_id("Position")
+  if pp < 0 { return 0 }
+  if World.has(e, pp) == 0 { return 0 }
+  var f = World.field_id(pp, "x")
+  if axis == 1 { f = World.field_id(pp, "y") }
+  if f < 0 { return 0 }
+  return World.get(e, pp, f)
+}
+
+function esys_sprite() -> void {
+  let P = World.prop_id("Sprite")
+  if P < 0 { return }
+  let f_id = World.field_id(P, "id")
+  if f_id < 0 { return }
+  let f_offx   = World.field_id(P, "offx")
+  let f_offy   = World.field_id(P, "offy")
+  let f_scale  = World.field_id(P, "scale")
+  let f_flip   = World.field_id(P, "flip")
+  let f_tint   = World.field_id(P, "tint")
+  let f_hidden = World.field_id(P, "hidden")
+
+  let SA = World.prop_id("SpriteAnim")
+  var f_frame = 0 - 1
+  if SA >= 0 { f_frame = World.field_id(SA, "frame") }
+
+  var e = World.query_next(P, 0)
+  while e >= 0 {
+    var hidden = 0
+    if f_hidden >= 0 { hidden = World.get(e, P, f_hidden) }
+    if hidden == 0 {
+      var id = World.get(e, P, f_id)
+      # add the current animation frame when the entity also carries SpriteAnim.
+      if (SA >= 0) and (f_frame >= 0) {
+        if World.has(e, SA) != 0 { id = id + World.get(e, SA, f_frame) }
+      }
+      var x = spr_pos(e, 0)
+      var y = spr_pos(e, 1)
+      if f_offx >= 0 { x = x + World.get(e, P, f_offx) }
+      if f_offy >= 0 { y = y + World.get(e, P, f_offy) }
+      var sc = 1
+      if f_scale >= 0 { let sv = World.get(e, P, f_scale);  if sv > 1 { sc = sv } }
+      var flip = 0
+      if f_flip >= 0 { flip = World.get(e, P, f_flip) }
+      var tint = 0
+      if f_tint >= 0 { tint = World.get(e, P, f_tint) }
+      rt_draw_sprite_ex(id, x, y, sc, flip, tint)
+    }
+    e = World.query_next(P, e + 1)
+  }
+}

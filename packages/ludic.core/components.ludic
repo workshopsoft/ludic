@@ -41,6 +41,15 @@ property Collider {
   hit: int = 0, entered: int = 0, exited: int = 0
 }
 
+# A drawable sprite (#85): declare it and the engine-owned sprite-render system
+# draws the entity each Render frame from its Position — no hand-written Render
+# handler. `id` is a sprite id (png_load / atlas cell); when the entity also carries
+# SpriteAnim, the current animation frame is added to it. offx/offy offset from the
+# Position anchor, scale is an integer zoom (0/1 = 1:1), flip mirrors horizontally,
+# tint (non-zero) draws every opaque pixel in one colour (hit flash), hidden = 1
+# skips it. Draw order is spawn order; a game wanting custom draw omits Sprite.
+property Sprite { id: int = 0, offx: int = 0, offy: int = 0, scale: int = 1, flip: int = 0, tint: int = 0, hidden: int = 0 }
+
 # Optional single config entity that turns the tile-grid broadphase on: solids are
 # read from the Map.* tilemap. tile > 0 sets the tile size in px; wall is the solid
 # glyph; oneway is an optional one-way-platform glyph (0 = none).

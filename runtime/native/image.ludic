@@ -367,6 +367,32 @@ function rt_draw_sprite_scaled(id: int, px: int, py: int, sc: int) -> void {
   }
 }
 
+# The full sprite blit the engine sprite-render system (#85) uses: an integer
+# scale (>= 1), a horizontal flip, and an optional solid tint (0 = keep the
+# sprite's own colours; non-zero = draw every opaque pixel in the tint colour, for
+# a hit-flash / team-colour silhouette). It funnels through the same put_px /
+# fill_rect chokepoints, so camera / zoom / clip / blend all apply.
+function rt_draw_sprite_ex(id: int, px: int, py: int, sc: int, flip: int, tint: int) -> void {
+  if id < 0 { return }
+  if id >= spr_n { return }
+  var s = sc
+  if s < 1 { s = 1 }
+  let base = id * SPR_SZ * SPR_SZ
+  for y in 0 .. SPR_SZ {
+    for x in 0 .. SPR_SZ {
+      var rx = x
+      if flip != 0 { rx = SPR_SZ - 1 - x }              # sample mirrored, draw upright
+      let p = spr_px[base + y * SPR_SZ + rx]
+      if ((p >> 24) & 255) != 0 {
+        var col = (p & 16777215)
+        if tint != 0 { col = (tint & 16777215) }
+        if s == 1 { rt_put_px(px + x, py + y, col) }
+        else { rt_fill_rect(px + x * s, py + y * s, s, s, col) }
+      }
+    }
+  }
+}
+
 # ---- .lspr sprite sheets (palette + ASCII rows) ---------------------------
 function rt_hexval(c: int) -> int {
   if c >= 48 { if c <= 57 { return c - 48 } }
