@@ -54,3 +54,9 @@ property Sprite { id: int = 0, offx: int = 0, offy: int = 0, scale: int = 1, fli
 # read from the Map.* tilemap. tile > 0 sets the tile size in px; wall is the solid
 # glyph; oneway is an optional one-way-platform glyph (0 = none).
 property Solids { tile: int = 0, wall: int = 0, oneway: int = 0 }
+
+# Optional single config entity defining a world boundary / play area (#84): a rect
+# (x, y, w, h) and a policy the engine applies to every moving Body each frame —
+# 0 clamp (walls), 1 wrap (toroidal), 2 bounce (flip velocity), 3 kill (despawn when
+# fully outside). Off by default (no Bounds entity = open world).
+property Bounds { x: int = 0, y: int = 0, w: int = 0, h: int = 0, policy: int = 0 }

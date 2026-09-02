@@ -13,6 +13,7 @@ function is_intrinsic(name: pointer) -> bool {
   if (name == "arg_count") or (name == "arg") or (name == "exit") { return true }
   if (name == "file_stderr") or (name == "file_stdout") { return true }
   if (name == "run") or (name == "getenv") { return true }
+  if (name == "world_despawn") { return true }          # #84 — despawn an entity by id from a system
   return false
 }
 # emit "  <r> = <rest>\n" and return r
@@ -54,6 +55,15 @@ function emit_intrinsic(name: pointer, e: Node) -> Val {
   if (name == "file_close") {
     let f = arg_code(e, 0)
     emit("  call i32 @fclose(ptr ");  emit(f);  emit(")\n")
+    return val("0", "void")
+  }
+  # #84 — despawn an entity by id (runs its @OnDespawn hooks + frees the slot),
+  # callable from a system (esys_bounds kill) or as World.despawn(e). The helper
+  # @fn_world_despawn is emitted with the ECS defs when g_uses_world_despawn.
+  if (name == "world_despawn") {
+    g_uses_world_despawn = true                        # emit @fn_world_despawn in the tail (after all uses seen)
+    let ent = arg_code(e, 0)
+    emit("  call void @fn_world_despawn(i32 ");  emit(ent);  emit(")\n")
     return val("0", "void")
   }
   # print_str / print_int are the polymorphic `print(x)` builtin now (emit_call).

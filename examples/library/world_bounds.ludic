@@ -1,0 +1,63 @@
+# world_bounds.ludic — the engine world-bounds system (#84): declare one Bounds
+# config entity (rect + policy) and the engine keeps every moving Body inside the
+# play area each frame — clamp / wrap / bounce / kill — instead of the game
+# hand-clamping Position. Bounds/Body/Collider come from ludic.core. Driven by
+# tick_fixed (Update integrates, LateUpdate applies the bounds).
+#
+# Deterministic; a full run prints:  184 -16 184 1 1
+program WorldBounds {
+  import "ludic.core/components.ludic"
+
+  function tick_n(n: int) -> void { var i = 0;  while i < n { tick_fixed();  i = i + 1 } }
+  function bi(b: bool) -> int { if b { return 1 };  return 0 }
+
+  function clear_all() -> void {
+    let pb = World.prop_id("Body")
+    var e = World.query_next(pb, 0)
+    while e >= 0 { despawn e;  e = World.query_next(pb, 0) }
+    let pn = World.prop_id("Bounds")
+    var c = World.query_next(pn, 0)
+    while c >= 0 { despawn c;  c = World.query_next(pn, 0) }
+  }
+
+  entry {
+    let PP = World.prop_id("Position")
+    let fx = World.field_id(PP, "x")
+    let PBody = World.prop_id("Body")
+    let f_vx = World.field_id(PBody, "vx")
+
+    # A. clamp (policy 0): a body running right is stopped at the right wall.
+    spawn B0 { Bounds { x: 0, y: 0, w: 200, h: 200, policy: 0 } }
+    spawn M0 { Position { x: 180, y: 50 }, Body { vx: fixed(10), policy: 1 }, Collider { w: 16, h: 16 } }
+    var a = World.query_next(PBody, 0)
+    tick_n(10)
+    print(World.get(a, PP, fx))                      # 184 = 200 - 16 (box right edge at the wall)
+    clear_all()
+
+    # B. wrap (policy 1): past the right edge, it reappears on the left.
+    spawn B1 { Bounds { x: 0, y: 0, w: 200, h: 200, policy: 1 } }
+    spawn M1 { Position { x: 195, y: 50 }, Body { vx: fixed(10), policy: 1 }, Collider { w: 16, h: 16 } }
+    a = World.query_next(PBody, 0)
+    tick_n(1)
+    print(World.get(a, PP, fx))                      # -16 = bx - w (wrapped to the far side)
+    clear_all()
+
+    # C. bounce (policy 2): clamp at the wall AND flip the velocity.
+    spawn B2 { Bounds { x: 0, y: 0, w: 200, h: 200, policy: 2 } }
+    spawn M2 { Position { x: 190, y: 50 }, Body { vx: fixed(10), policy: 1 }, Collider { w: 16, h: 16 } }
+    a = World.query_next(PBody, 0)
+    tick_n(1)
+    print(World.get(a, PP, fx))                      # 184 (clamped at the wall)
+    print(bi(World.get(a, PBody, f_vx) < 0))         # 1  (vx flipped negative)
+    clear_all()
+
+    # D. kill (policy 3): a body fully outside is despawned.
+    spawn B3 { Bounds { x: 0, y: 0, w: 200, h: 200, policy: 3 } }
+    spawn M3 { Position { x: 300, y: 50 }, Body { vx: fixed(10), policy: 1 }, Collider { w: 16, h: 16 } }
+    tick_n(1)
+    var live = 0
+    var q = World.query_next(PBody, 0)
+    while q >= 0 { live = live + 1;  q = World.query_next(PBody, q + 1) }
+    print(live)                                      # 0 — the out-of-bounds body was killed
+  }
+}

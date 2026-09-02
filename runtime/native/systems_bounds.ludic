@@ -1,0 +1,106 @@
+# ============================================================================
+# systems_bounds.ludic — the engine-owned world-bounds system (#84).
+#
+# Games used to hand-roll clamping (clamp Position every frame) to fake walls or
+# keep entities inside a play area. Declare a single `Bounds` config entity — a
+# rect (x, y, w, h) plus a policy — and the engine keeps every moving `Body`
+# inside it each frame, applying the policy at the edge:
+#
+#   policy 0 clamp   — stop at the edge (walls)
+#   policy 1 wrap    — reappear on the opposite side (asteroids / toroidal world)
+#   policy 2 bounce  — clamp and flip the Body velocity on the axis that hit
+#   policy 3 kill    — despawn an entity fully outside the bounds (offscreen cleanup)
+#
+# Off by default (no Bounds entity = open world). Registered on the engine-system
+# registry for LateUpdate, so it runs after the movement system has integrated the
+# frame; spliced only when a game declares `Bounds`, so a game that never does
+# compiles byte-identically. Everything integer + deterministic.
+#
+# Component contract (ship it from ludic.core):
+#   property Bounds { x: int, y: int, w: int, h: int, policy: int }
+#
+# It reads each Body entity's Position and (if present) its Collider size so the
+# whole box stays inside; a Body with no Collider is treated as a point.
+# ============================================================================
+
+const BND_CLAMP:  int = 0
+const BND_WRAP:   int = 1
+const BND_BOUNCE: int = 2
+const BND_KILL:   int = 3
+
+# read an int field by name off a component, or 0 if absent.
+function bnd_get(e: int, p: int, name: pointer) -> int {
+  let f = World.field_id(p, name)
+  if f < 0 { return 0 }
+  return World.get(e, p, f)
+}
+
+function esys_bounds() -> void {
+  let PB = World.prop_id("Bounds")
+  if PB < 0 { return }
+  let cfg = World.query_next(PB, 0)                    # the single bounds config entity
+  if cfg < 0 { return }
+  let bx  = bnd_get(cfg, PB, "x")
+  let by  = bnd_get(cfg, PB, "y")
+  let bw  = bnd_get(cfg, PB, "w")
+  let bh  = bnd_get(cfg, PB, "h")
+  let pol = bnd_get(cfg, PB, "policy")
+  if bw <= 0 { return }
+  if bh <= 0 { return }
+  let x1 = bx + bw                                     # right / bottom edges (exclusive of box size)
+  let y1 = by + bh
+
+  let PP = World.prop_id("Position")
+  if PP < 0 { return }
+  let fx = World.field_id(PP, "x")
+  let fy = World.field_id(PP, "y")
+  let PBody = World.prop_id("Body")
+  if PBody < 0 { return }
+  let f_vx = World.field_id(PBody, "vx")
+  let f_vy = World.field_id(PBody, "vy")
+  let PC = World.prop_id("Collider")
+
+  var e = World.query_next(PBody, 0)
+  while e >= 0 {
+    if World.has(e, PP) != 0 {
+      var x = World.get(e, PP, fx)
+      var y = World.get(e, PP, fy)
+      var w = 0
+      var h = 0
+      if PC >= 0 {
+        if World.has(e, PC) != 0 { w = bnd_get(e, PC, "w");  h = bnd_get(e, PC, "h") }
+      }
+
+      var killed = 0
+      if pol == BND_KILL {
+        if (x + w < bx) or (x > x1) or (y + h < by) or (y > y1) {
+          world_despawn(e)                             # fully outside -> remove it
+          killed = 1
+        }
+      }
+      if killed == 0 {
+        if pol == BND_WRAP {
+          if x + w < bx { x = x1 }
+          if x > x1 { x = bx - w }
+          if y + h < by { y = y1 }
+          if y > y1 { y = by - h }
+        } else {
+          # clamp (also the position half of bounce): keep [x, x+w] inside [bx, x1]
+          var hitx = 0
+          var hity = 0
+          if x < bx { x = bx;  hitx = 1 }
+          if x + w > x1 { x = x1 - w;  hitx = 1 }
+          if y < by { y = by;  hity = 1 }
+          if y + h > y1 { y = y1 - h;  hity = 1 }
+          if pol == BND_BOUNCE {
+            if (hitx == 1) and (f_vx >= 0) { World.set(e, PBody, f_vx, 0 - World.get(e, PBody, f_vx)) }
+            if (hity == 1) and (f_vy >= 0) { World.set(e, PBody, f_vy, 0 - World.get(e, PBody, f_vy)) }
+          }
+        }
+        World.set(e, PP, fx, x)
+        World.set(e, PP, fy, y)
+      }
+    }
+    e = World.query_next(PBody, e + 1)
+  }
+}

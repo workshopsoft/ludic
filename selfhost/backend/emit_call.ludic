@@ -224,6 +224,7 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "press")        { bare = "input_press";        push(labels, "key") }
     if (meth == "release")      { bare = "input_release";      push(labels, "key") }
     if (meth == "axis")         { bare = "input_axis";         push(labels, "neg"); push(labels, "pos") }
+    if (meth == "axis_i")       { bare = "input_axis_i";       push(labels, "neg"); push(labels, "pos") }   # #79 directional int (-1/0/1)
     if (meth == "vector")       { bare = "input_vector";       push(labels, "left"); push(labels, "right"); push(labels, "up"); push(labels, "down") }
     if (meth == "strength")     { bare = "input_strength";     push(labels, "action") }
     if (meth == "mouse_x")      { bare = "input_mouse_x" }
@@ -287,6 +288,7 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "count")         { bare = "world_count" }
     if (meth == "size")          { bare = "world_size" }
     if (meth == "spawn")         { bare = "world_spawn" }
+    if (meth == "despawn")       { bare = "world_despawn" }   # #84 — despawn an entity by id (runs @OnDespawn + frees)
     if (meth == "save")          { bare = "world_save" }
     if (meth == "load")          { bare = "world_load" }
     if (meth == "prop_id")       { bare = "world_prop_id" }

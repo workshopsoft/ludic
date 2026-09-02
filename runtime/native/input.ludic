@@ -370,6 +370,17 @@ function input_axis(neg: int, pos: int) -> fixed {
   if in_bit_get(in_held, neg) { v = v - fixed(1) }
   return v
 }
+# #79 — a directional intent as a plain int: +1 if the positive key is held, -1 if
+# the negative, 0 if neither or both. Reads the multi-key device set, so it needs
+# no bool->int glue (the `dx = ki(key_down('d')) - ki(key_down('a'))` boilerplate)
+# and feeds an int mover (TopDown.move) straight: dx = Input.axis_i('a','d').
+function input_axis_i(neg: int, pos: int) -> int {
+  in_init()
+  var v = 0
+  if in_bit_get(in_held, pos) { v = v + 1 }
+  if in_bit_get(in_held, neg) { v = v - 1 }
+  return v
+}
 # A 2D vector from four direction keys, normalized so a diagonal is not faster.
 function input_vector(left: int, right: int, up: int, down: int) -> Vector {
   in_init()

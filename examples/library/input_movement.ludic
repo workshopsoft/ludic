@@ -1,0 +1,25 @@
+# input_movement.ludic — Input.axis_i (#79): turn WASD into a -1/0/1 movement
+# intent as a plain int, with no bool->int glue (`ki(key_down('d')) - ...`). It
+# reads the multi-key device set and feeds an int mover directly. Driven headless
+# by injection, the same way the #50 device tests are.
+#
+# Deterministic; a full run prints:  1 0 -1 -1 0
+program InputMovement {
+  entry {
+    Input.press('d')                 # hold right
+    Input.poll()
+    print(Input.axis_i('a', 'd'))    # 1  — dx = right
+    print(Input.axis_i('w', 's'))    # 0  — dy = none
+
+    Input.release('d')
+    Input.press('a')                 # hold left
+    Input.press('w')                 # and up
+    Input.poll()
+    print(Input.axis_i('a', 'd'))    # -1 — dx = left
+    print(Input.axis_i('w', 's'))    # -1 — dy = up
+
+    Input.press('d')                 # now both left AND right held
+    Input.poll()
+    print(Input.axis_i('a', 'd'))    # 0  — opposing keys cancel
+  }
+}

@@ -244,6 +244,7 @@ function cmd_test() -> int {
   # builtin gameplay controllers, consumed as in-repo packages (issues #57-#61)
   controller_case("library/core_components", "", "110 30 184 1", "core_components.ludic (ludic.core #77: canonical Position/Body/Collider imported from a package, driving esys_move, composed with a game Health component)")
   controller_case("library/sprite_render", "q", "1 0", "sprite_render.ludic (ludic.core #85: engine sprite-render system auto-draws a Sprite entity from its Position; respects hidden)")
+  controller_case("library/world_bounds", "", "184 -16 184 1 0", "world_bounds.ludic (ludic.core #84: engine world-bounds system — clamp/wrap/bounce/kill keep a Body in the play area)")
   controller_case("library/gameplay_foundation", "", "2 0 1 5 24 0 2 1 15 85 7 1 1", "gameplay_foundation.ludic (ludic.gameplay #57: Cooldown timer + Stats/modifier stack + Faction table + Combat cancel/mutable pipeline)")
   controller_case("games/platformer_demo", "", "1 1 1 1 1 1 1 1", "platformer_demo.ludic (ludic.platformer #58: gravity/land, jump apex, coyote, veto-gated double jump, wall collision + disable-system lever)")
   controller_case("games/platformer_scaffolding", "", "1 1 1 1 1 1", "platformer_scaffolding.ludic (ludic.platformer #58 layers 4-5: moving-platform rider carry, pickup->score, spring, hazard+Life i-frames)")
@@ -306,6 +307,7 @@ function cmd_test() -> int {
   feat_case("library/input_manager", "", "1 1 1 0 1 0 0 1", "input_manager.ludic (#83 Input Manager: default bindings + device-agnostic actions across keyboard/pad + on-press/on-release edges)")
   feat_case("library/input_auto", "llq", "2", "input_auto.ludic (#83 the frame loop auto-commits the device layer: Input.active fires with no manual Input.poll)")
   feat_case("library/input_edge", "xkkxq", "0 11 1 100 0", "input_edge.ludic (#87 Input.key_pressed/key_released edges fire on the transition frame; no double-commit under the frame loop)")
+  feat_case("library/input_movement", "", "1 0 -1 -1 0", "input_movement.ludic (#79 Input.axis_i turns WASD into a -1/0/1 movement intent, no bool->int glue)")
   feat_case("library/audio", "", "0 0 0 0 1", "audio.ludic (#22 Audio.* load/play/music/volume/pitch/stop/is_playing — headless no-op)")
   # #6 Http.* — the client links Foundation (macOS-only), so build it through the
   # canonical `ludicc -o` path (which wires the framework) and gate on Darwin. The

@@ -192,7 +192,7 @@ function p_postfix() -> Node {
       if e.a.kind == E_ID and e.a.s == "Input" and (e.s == "bind" or e.s == "rebind" or e.s == "poll" or e.s == "down" or e.s == "pressed" or e.s == "record" or e.s == "replay" or e.s == "action" or e.s == "bind_pad" or e.s == "active" or e.s == "just_pressed" or e.s == "just_released") { g_uses_input = true }
       # #50 device layer — any of the multi-key / analog / mouse / gamepad / touch
       # methods also splices input.ludic (Input.key stays bare, no runtime).
-      if e.a.kind == E_ID and e.a.s == "Input" and (e.s == "key_down" or e.s == "key_pressed" or e.s == "key_released" or e.s == "press" or e.s == "release" or e.s == "axis" or e.s == "vector" or e.s == "strength" or e.s == "mouse_x" or e.s == "mouse_y" or e.s == "mouse_dx" or e.s == "mouse_dy" or e.s == "mouse_down" or e.s == "wheel" or e.s == "set_mouse" or e.s == "pad_connected" or e.s == "pad_button" or e.s == "pad_axis" or e.s == "set_pad" or e.s == "touch_count" or e.s == "touch_x" or e.s == "touch_y" or e.s == "set_touch") { g_uses_input = true }
+      if e.a.kind == E_ID and e.a.s == "Input" and (e.s == "key_down" or e.s == "key_pressed" or e.s == "key_released" or e.s == "press" or e.s == "release" or e.s == "axis" or e.s == "axis_i" or e.s == "vector" or e.s == "strength" or e.s == "mouse_x" or e.s == "mouse_y" or e.s == "mouse_dx" or e.s == "mouse_dy" or e.s == "mouse_down" or e.s == "wheel" or e.s == "set_mouse" or e.s == "pad_connected" or e.s == "pad_button" or e.s == "pad_axis" or e.s == "set_pad" or e.s == "touch_count" or e.s == "touch_x" or e.s == "touch_y" or e.s == "set_touch") { g_uses_input = true }
       # Anim.play/clip/on_frame/fired + Motion.to (#48): the ergonomic writes over
       # the SpriteAnim/Motion components live in systems.ludic and use the world
       # table, so splice it and force the reflection ABI even if the game leaves
@@ -448,6 +448,7 @@ var g_uses_input: bool = false    # a program used Input.bind/down/poll/… (act
 var g_has_clear_color: bool = false   # @ClearColor(N) declared -> the Render phase auto-clears + auto-presents (#86)
 var g_clear_color: int = 0            # the declared clear colour (0x00RRGGBB)
 var g_warned_draw_sprite: bool = false   # emit the bare-draw_sprite deprecation note once (#85)
+var g_uses_world_despawn: bool = false   # World.despawn / esys_bounds kill -> emit @fn_world_despawn (#84)
 
 # #85 — steer a direct bare draw_sprite / draw_sprite_scaled call to the namespaced
 # Screen.sprite (or the engine sprite-render system). Warns once, non-fatally — the
@@ -864,6 +865,12 @@ function maybe_splice_runtime() -> void {
       do_import("runtime/native/core.ludic")
       do_import("runtime/native/systems_sprite.ludic")
     }
+    # Bounds -> the engine world-bounds system (#84). Self-contained (reflection
+    # ABI only); its kill policy calls world_despawn, so force the @fn_world_despawn
+    # helper to be emitted.
+    if find_comp("Bounds") != null {
+      do_import("runtime/native/systems_bounds.ludic")
+    }
     # Light2D / Occluder -> the lighting render system, which links against the
     # 2D light pass (light.ludic). do_import dedupes, so this is a no-op when the
     # game also uses Light.* directly (g_uses_light already pulled it in).
@@ -903,6 +910,7 @@ function parse_program() -> void {
   g_has_clear_color = false
   g_clear_color = 0
   g_warned_draw_sprite = false
+  g_uses_world_despawn = false
   g_uses_light = false
   g_uses_value = false
   g_uses_xml = false
@@ -920,6 +928,7 @@ function parse_program() -> void {
   push(g_esys_comp, "SpriteAnim");  push(g_esys_fn, "esys_spriteanim");  push(g_esys_phase, "Update")
   push(g_esys_comp, "Motion");      push(g_esys_fn, "esys_motion");      push(g_esys_phase, "Update")
   push(g_esys_comp, "Body");        push(g_esys_fn, "esys_move");        push(g_esys_phase, "Update")
+  push(g_esys_comp, "Bounds");      push(g_esys_fn, "esys_bounds");      push(g_esys_phase, "LateUpdate")
   push(g_esys_comp, "Sprite");      push(g_esys_fn, "esys_sprite");      push(g_esys_phase, "Render")
   push(g_esys_comp, "Light2D");     push(g_esys_fn, "esys_light2d");     push(g_esys_phase, "Render")
   g_namespaces = new []pointer

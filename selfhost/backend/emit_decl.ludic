@@ -147,6 +147,7 @@ function emit_program() -> void {
   g_uses_panic = false
   g_uses_result = false
   g_uses_option = false
+  g_uses_world_despawn = false                   # #84: set when a world_despawn call is emitted (below)
   g_cov_lines = new []int
   g_cov_active = true
   loc_name = new []pointer;  loc_reg = new []pointer;  loc_ty = new []pointer;  loc_mut = new []int
@@ -184,6 +185,7 @@ function emit_program() -> void {
     i = 0
     while i < len(prog) { if prog[i].kind == N_MAIN { emit_main(prog[i]) };  i = i + 1 }
   } } }
+  if g_uses_world_despawn { emit_world_despawn_fn() }   # #84: @fn_world_despawn, after all World.despawn / esys_bounds-kill uses are seen
   if g_uses_loopback { emit_loopback() }         # built-in transport, after all net_send/net_poll uses are seen
   if g_uses_str { emit_str_prelude() }          # @fn_str_eq / @fn_str_concat, after all uses are seen
   if g_uses_intstr { emit_int_str() }           # @fn_int_str, for string(int) in interpolation
