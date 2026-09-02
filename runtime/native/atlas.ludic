@@ -43,6 +43,16 @@ var at_name_str: pointers = null    # name per named sprite
 var at_name_id:  words = null       # atlas id per name
 var at_nname: int = 0
 
+# #82 — an incremental preload queue: enqueue named image files, then load a
+# bounded number per frame (Assets.pump) so a loading scene stays responsive and
+# a game only enters play once Assets.ready(). Deterministic: the same enqueue +
+# pump order loads the same assets in the same order on every run.
+const ATLAS_MAX_QUEUE: int = 512
+var at_q_name: pointers = null      # name to register the loaded sprite under
+var at_q_path: pointers = null      # file path to load
+var at_q_n:   int = 0               # how many enqueued
+var at_q_pos: int = 0               # how many loaded so far
+
 function atlas_init() -> void {
   if at_sheet_img != null { return }
   at_sheet_img = words(ATLAS_MAX_SHEET)
@@ -55,6 +65,17 @@ function atlas_init() -> void {
   at_spr_h     = words(ATLAS_MAX_SPR)
   at_name_str  = bytes(ATLAS_MAX_NAME * 8)         # a pointer (8 bytes) per name slot
   at_name_id   = words(ATLAS_MAX_NAME)
+  at_q_name    = bytes(ATLAS_MAX_QUEUE * 8)
+  at_q_path    = bytes(ATLAS_MAX_QUEUE * 8)
+}
+
+# register (name -> atlas id) in the name table so Assets.get / Sprite.named find it.
+function atlas_register_name(name: pointer, id: int) -> void {
+  atlas_init()
+  if at_nname >= ATLAS_MAX_NAME { return }
+  at_name_str[at_nname] = name
+  at_name_id[at_nname] = id
+  at_nname = at_nname + 1
 }
 
 # load a spritesheet PNG whose cells are cw x ch px; returns a sheet handle (>= 0).
@@ -210,3 +231,39 @@ function atlas_draw_scaled(id: int, dx: int, dy: int, sc: int) -> void {
 # an atlas sprite's pixel size — handy for centering / layout.
 function atlas_width(id: int)  -> int { atlas_init();  if (id < 0) or (id >= at_nspr) { return 0 };  return at_spr_w[id] }
 function atlas_height(id: int) -> int { atlas_init();  if (id < 0) or (id >= at_nspr) { return 0 };  return at_spr_h[id] }
+
+# ---- incremental preload (#82) --------------------------------------------
+# Enqueue a named image file to load later (does not load it now).
+function assets_enqueue(name: pointer, path: pointer) -> void {
+  atlas_init()
+  if at_q_n >= ATLAS_MAX_QUEUE { return }
+  at_q_name[at_q_n] = name
+  at_q_path[at_q_n] = path
+  at_q_n = at_q_n + 1
+}
+
+# Load up to `max` queued assets this frame, registering each under its name, and
+# return how many were loaded by this call. Call it each frame in a loading scene
+# (a small `max` keeps the frame short); Assets.ready() flips true when done.
+function assets_pump(max: int) -> int {
+  atlas_init()
+  var done = 0
+  while (done < max) and (at_q_pos < at_q_n) {
+    let id = atlas_image(at_q_path[at_q_pos])
+    atlas_register_name(at_q_name[at_q_pos], id)
+    at_q_pos = at_q_pos + 1
+    done = done + 1
+  }
+  return done
+}
+
+function assets_total()  -> int { atlas_init();  return at_q_n }
+function assets_loaded() -> int { atlas_init();  return at_q_pos }
+function assets_ready()  -> int { atlas_init();  if at_q_pos >= at_q_n { return 1 };  return 0 }
+
+# loading progress as a whole-number percent (0..100); an empty queue is 100.
+function assets_progress() -> int {
+  atlas_init()
+  if at_q_n <= 0 { return 100 }
+  return at_q_pos * 100 / at_q_n
+}

@@ -1,0 +1,38 @@
+# preload.ludic — incremental asset preloading (#82). Instead of loading every
+# asset synchronously in Boot (stalling the first frame), enqueue named files and
+# load a bounded number per frame with Assets.pump, showing progress until
+# Assets.ready(). Deterministic (no threads): the work is spread across frames.
+#
+# The loading-scene pattern: in a `scene Loading` a Render handler pumps a few
+# assets, draws Assets.progress() as a bar, and `become`s the play scene once
+# Assets.ready(). Here the API is driven from `entry` for a deterministic check.
+#
+# Deterministic; a full run prints:  3 0 0 0 1 33 66 1 100 1
+program Preload {
+  # a model so the program runs the ECS and links the core runtime / framebuffer.
+  property Cam { z: fixed = 1.0 }
+  model V { Cam }
+
+  function bi(b: bool) -> int { if b { return 1 };  return 0 }
+
+  entry {
+    Assets.enqueue("hero", "assets/kenney/tiny-dungeon/Tiles/tile_0096.png")
+    Assets.enqueue("wall", "assets/kenney/tiny-dungeon/Tiles/tile_0036.png")
+    Assets.enqueue("door", "assets/kenney/tiny-dungeon/Tiles/tile_0037.png")
+    print(Assets.total())               # 3
+    print(Assets.loaded())              # 0
+    print(Assets.progress())            # 0
+    print(bi(Assets.ready()))           # 0
+
+    Assets.pump(1)                       # load one this frame
+    print(Assets.loaded())              # 1
+    print(Assets.progress())            # 33
+    Assets.pump(1)                       # and one the next
+    print(Assets.progress())            # 66
+    Assets.pump(5)                       # drain the rest
+    print(bi(Assets.ready()))           # 1
+    print(Assets.progress())            # 100
+
+    print(bi(Assets.get("hero") >= 0))  # 1 — reachable by name once loaded
+  }
+}

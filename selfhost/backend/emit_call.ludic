@@ -196,6 +196,13 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "image")       { bare = "atlas_image";       push(labels, "path") }
     if (meth == "load")        { bare = "atlas_image";       push(labels, "path") }   # alias
     if (meth == "get")         { bare = "atlas_named";       push(labels, "name") }    # alias of Sprite.named
+    # #82 — incremental preload queue + progress for a loading scene.
+    if (meth == "enqueue")     { bare = "assets_enqueue";    push(labels, "name"); push(labels, "path") }
+    if (meth == "pump")        { bare = "assets_pump";       push(labels, "max") }
+    if (meth == "total")       { bare = "assets_total" }
+    if (meth == "loaded")      { bare = "assets_loaded" }
+    if (meth == "ready")       { bare = "assets_ready" }
+    if (meth == "progress")    { bare = "assets_progress" }
   }
   # Camera.* — the world-space camera: a draw offset threaded through the render
   # path (runtime/native/core.ludic). set/follow move it; shake jitters it from
