@@ -157,7 +157,8 @@ bus, the deterministic networking stack, scenes, and save/load are all in place
 and covered by `bin/x test`. CI gates every push and PR on the build, the test
 suites, and that C-free fixpoint. The toolchain is versioned with SemVer
 (`ludicc --version`); releases and the `CHANGELOG.md` are cut from changesets by
-`x release`.
+`x release`. Upgrading from 0.2? See the
+[0.2 → 0.3 migration guide](docs/MIGRATION-0.2-to-0.3.md).
 
 Active work and proposals — the standard library, a fuller type system,
 rendering/animation/lighting extras, input, filesystem/IO, testing, and
