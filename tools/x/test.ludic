@@ -224,6 +224,7 @@ function cmd_test() -> int {
   feat_case("library/anim", "", "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34", "anim.ludic (Anim frame/once/pingpong/cell + Tween progress/loop/yoyo/ease/number/round/point/tint)")
   feat_case("library/anim_sugar", "", "4 8 2 1 0 100 100 0 0 1 20 20 30 0 1", "anim_sugar.ludic (Anim.clip/play/on_frame/fired + Motion.to + fluent Tween.to/chain/delay/parallel handles; issue #48)")
   feat_case("library/camera_zoom", "", "1 0 0 1 1", "camera_zoom.ludic (Camera.zoom deterministic Q16.16 render-time zoom about the screen centre, verified by pixel readback; issue #78)")
+  feat_case("library/clear_color", "q", "1 1", "clear_color.ludic (@ClearColor: the Render phase auto-clears to the declared colour + auto-presents, no Screen.clear/show in the handler; issue #86)")
   feat_case("library/query", "", "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18", "query.ludic (Query count/first/nearest/within — ECS spatial queries over the reflection ABI)")
   feat_case("library/reflect", "", "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20", "reflect.ludic (Reflect prop/field enumeration + type + get/set/has/kind — runtime reflection over the world schema)")
   feat_case("library/serialize", "", "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16", "serialize.ludic (Value tree + Json encode/parse + Reflect.serialize/apply — bit-exact save/load; issue #44)")

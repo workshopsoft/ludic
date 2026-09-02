@@ -24,7 +24,8 @@
     "annot-toclients",
     "annot-system",
     "annot-enginesystem",
-    "annot-namespace"
+    "annot-namespace",
+    "annot-clearcolor"
   ],
   "builtins": [
     "fn-print",

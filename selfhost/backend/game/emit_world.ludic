@@ -486,7 +486,18 @@ function emit_game_main() -> void {
   emit_calls_for_phase("FixedUpdate")
   emit_calls_for_phase("Update")
   emit_calls_for_phase("LateUpdate")
+  # #86: @ClearColor(N) makes the Render phase auto-clear to N at the top and
+  # auto-present after the handlers run, so a game drops the clear/show boilerplate
+  # (the clear colour is declared, not written in the handler body). Opt-in — a game
+  # with no @ClearColor is byte-identical (it clears/shows itself, or the light
+  # system owns the present).
+  if g_has_clear_color and (find_fn("rt_clear") != null) {
+    emit("  call void @fn_rt_clear(i32 ");  emit(itoa(g_clear_color));  emit(")\n")
+  }
   emit_calls_for_phase("Render")
+  if g_has_clear_color and (find_fn("rt_present") != null) {
+    emit("  call void @fn_rt_present()\n")
+  }
   let fcur = emit_bind("load i32, ptr @L_frame")     # Time.frame(): count completed frames
   let fnext = emit_bind(`add i32 {fcur}, 1`)
   emit("  store i32 ");  emit(fnext);  emit(", ptr @L_frame\n")

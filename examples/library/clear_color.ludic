@@ -1,0 +1,25 @@
+# clear_color.ludic — @ClearColor (#86): the Render phase auto-clears to a
+# declaratively-configured colour at the top and auto-presents after the handlers
+# run, so the game's Render handler carries NO Screen.clear / Screen.show. Verified
+# by pixel readback after the frame loop: an undrawn pixel holds the clear colour
+# (proving the engine cleared), and the drawn box is present.
+#
+# Driven headless by one stdin key ('q' quits after the frame renders).
+#   printf 'q' | bin/ludic examples/library/clear_color.ludic   ->  1 1
+program ClearColorDemo {
+  property Tag { n: int = 0 }
+  model P { Tag }
+
+  function bi(b: bool) -> int { if b { return 1 };  return 0 }
+
+  # No Screen.clear, no Screen.show — the engine clears to @ClearColor and presents.
+  @ClearColor(0x102030)
+  handler Draw phase Render {
+    Screen.fill_rectangle(10, 10, 4, 4, 0xffffff)
+  }
+
+  @OnQuit handler Report {
+    print(bi(Screen.pixel(200, 200) == 0x102030))    # 1 — background is the clear colour
+    print(bi(Screen.pixel(11, 11) == 0xffffff))       # 1 — the drawn box is there
+  }
+}

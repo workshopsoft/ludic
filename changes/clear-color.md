@@ -1,0 +1,3 @@
+bump: minor
+type: feat
+Declarative Render clear + present (#86) — `@ClearColor(0xRRGGBB)` makes the engine own the per-frame clear and flip: at the top of the Render phase it clears the framebuffer to the declared colour, and after the Render handlers run it presents the frame, so a game's Render handler no longer repeats `Screen.clear(color)` / `Screen.show()` and the clear colour is configured *declaratively* rather than in the handler body. Opt-in and backward-compatible: a program with no `@ClearColor` is byte-for-byte identical (it clears/presents itself, or the light system owns the present). Example: `examples/library/clear_color.ludic`.
