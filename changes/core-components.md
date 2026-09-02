@@ -1,0 +1,3 @@
+bump: minor
+type: feat
+Canonical engine-ABI components (#77) — the shared `Position` / `Body` / `Collider` / `Solids` bundles the engine-owned movement system (`esys_move`, #65) reads by name are now shipped from a base source package, **ludic.core**, instead of being re-declared by hand in every game and example. A game `import "ludic.core/components.ludic"` and the engine moves and collides its entities for free; extend by *composition* (attach your own components on the same model). AOT means the properties compile straight into the consumer's compile-time ECS with no ABI seam, and everything stays integer + Q16.16 deterministic (lockstep / replay / `world_save` hold). Example: `examples/library/core_components.ludic`.

@@ -1,0 +1,45 @@
+# core_components.ludic — exercises the ludic.core canonical components (#77):
+# Position / Body / Collider imported from the package instead of hand-declared,
+# driving the engine-owned esys_move (#65) exactly as a copy-pasted bundle would,
+# and composed with a game-defined Health component on the same model.
+#
+# Deterministic; a full run prints:  110 30 184 1
+#
+# Build (from the repo root, so runtime/native resolves):
+#   LUDIC_MODULES=packages ludicc --headless examples/library/core_components.ludic
+program CoreComponents {
+  import "ludic.core/components.ludic"
+
+  # a game-defined component, composed alongside the canonical engine ones — no
+  # subclassing, just another property on the same model.
+  property Health { hp: int = 0 }
+
+  function tick_n(n: int) -> void { var i = 0;  while i < n { tick_fixed();  i = i + 1 } }
+
+  entry {
+    let pp = World.prop_id("Position")
+    let pb = World.prop_id("Body")
+    let ph = World.prop_id("Health")
+    let f_x = World.field_id(pp, "x")
+    let f_y = World.field_id(pp, "y")
+    let f_grd = World.field_id(pb, "on_ground")
+    let f_hp = World.field_id(ph, "hp")
+
+    # A. top-down constant velocity over the *package* Body/Position bundles.
+    spawn Mover { Position { x: 100, y: 50 }, Body { vx: fixed(2), policy: 1 }, Collider { w: 16, h: 16 }, Health { hp: 30 } }
+    let a = World.query_next(pb, 0)
+    tick_n(5)
+    print(World.get(a, pp, f_x))                     # 110 — +2px/frame, exact
+    print(World.get(a, ph, f_hp))                    # 30  — the composed game component coexists
+    despawn a
+
+    # B. a gravity body falls and lands on a solid floor entity — the engine reads
+    # the package-defined Position/Body/Collider by name, no local re-declaration.
+    spawn Floor  { Position { x: 0, y: 200 }, Collider { w: 400, h: 16 } }
+    spawn Faller { Position { x: 50, y: 40 }, Body { gravity: fixed(1), max_fall: fixed(6) }, Collider { w: 16, h: 16 } }
+    let b = World.query_next(pb, 0)
+    tick_n(80)
+    print(World.get(b, pp, f_y))                     # 184 — feet rest on the floor top (200)
+    print(World.get(b, pb, f_grd))                   # 1   — on_ground
+  }
+}

@@ -1,0 +1,22 @@
+# ludic.core — the canonical engine-ABI components (#77).
+#
+# The engine-owned movement system (runtime/native/systems_move.ludic) reads
+# Position / Body / Collider / Solids *by name* through the reflection ABI, but
+# no package defined them — so every game and every example re-declared identical
+# `property Position/Body/Collider` bundles by hand, copy-pasting the engine ABI.
+# That is exactly the kind of thing a game developer should never hand-write.
+#
+# This package ships those bundles as the one canonical definition. A game
+# imports them instead of copy-pasting, and extends by *composition* — attach
+# your own components alongside on the same model; the engine still resolves
+# Position/Body/Collider by name, and any field a game does not need simply keeps
+# its default. It is an ordinary source package: AOT means the properties compile
+# straight into the consumer's compile-time ECS with no ABI seam, and everything
+# stays integer + Q16.16 deterministic (lockstep / replay / world_save hold).
+package "ludic.core"
+version "0.1.0"
+kind source
+provides "Position"
+provides "Body"
+provides "Collider"
+provides "Solids"

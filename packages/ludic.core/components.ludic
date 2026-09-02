@@ -1,0 +1,47 @@
+# components.ludic — the canonical engine-ABI components (#77).
+#
+# These are the exact bundles runtime/native/systems_move.ludic (#65) reads by
+# name. Import this file instead of re-declaring them, and the engine-owned
+# `esys_move` system moves and collides your entities for free — declare a Body
+# (and optionally a Collider) and it is ticked in the Update phase.
+#
+# Every field is defaulted so a game overrides only what it needs, and any field
+# the move system does not find on an entity no-ops cleanly. Extend by
+# *composition*: attach your own components (Health, Sprite, an AI brain) on the
+# same model next to these; nothing here needs subclassing.
+
+# The world anchor: integer pixels. This is the *rendered* location — a
+# framebuffer pixel is the smallest drawable unit — so it stays integer. Sub-pixel
+# motion accumulates in Body.rx/ry (Q16.16) and only the whole-pixel carry reaches
+# Position (see docs/RFC-POSITION-TYPES.md, #78).
+property Position { x: int = 0, y: int = 0 }
+
+# A moving body: Q16.16 velocity, optional gravity, engine-owned sub-pixel
+# accumulators, and the polled contact outputs the move system writes each frame.
+#   policy 0 = platformer (gravity applies)   policy 1 = top-down (no gravity)
+# on_ground / hit_wall / hit_ceiling and the optional contact normal hit_nx/hit_ny
+# are OUTPUTS: read them in a handler to raise your own landing / bonk events
+# (the SpriteAnim.event_fired pattern — polled flags, no engine coupling).
+property Body {
+  vx: fixed = 0.0, vy: fixed = 0.0,
+  gravity: fixed = 0.0, max_fall: fixed = 0.0,
+  rx: fixed = 0.0, ry: fixed = 0.0,
+  policy: int = 0,
+  on_ground: int = 0, hit_wall: int = 0, hit_ceiling: int = 0,
+  hit_nx: int = 0, hit_ny: int = 0
+}
+
+# An axis-aligned box off the Position anchor. A solid Collider resolves swept-AABB
+# collisions; a trigger (is_trigger = 1) reports overlap without resolving. layer /
+# mask are collision bitmasks (0 = all); one_way = 1 is a platform that blocks only
+# a downward landing. hit / entered / exited are trigger OUTPUTS.
+property Collider {
+  w: int = 0, h: int = 0, offx: int = 0, offy: int = 0,
+  is_trigger: int = 0, one_way: int = 0, layer: int = 0, mask: int = 0,
+  hit: int = 0, entered: int = 0, exited: int = 0
+}
+
+# Optional single config entity that turns the tile-grid broadphase on: solids are
+# read from the Map.* tilemap. tile > 0 sets the tile size in px; wall is the solid
+# glyph; oneway is an optional one-way-platform glyph (0 = none).
+property Solids { tile: int = 0, wall: int = 0, oneway: int = 0 }
