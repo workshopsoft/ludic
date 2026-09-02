@@ -186,6 +186,10 @@ function p_postfix() -> Node {
       if e.a.kind == E_ID and e.a.s == "Xml" { g_uses_xml = true }   # splice the XML reader on demand (Tiled #67)
       if e.a.kind == E_ID and e.a.s == "Base64" { g_uses_base64 = true }   # splice base64 codec + inflate on demand (Tiled #67)
       if e.a.kind == E_ID and e.a.s == "Tiled" { g_uses_tiled = true }   # splice the Tiled map runtime on demand (#69)
+      # #81 — Sprite.sheet/cell/… or Assets.* splice the spritesheet/atlas runtime
+      # (it reads the framebuffer + the image loader, so it links against core).
+      if e.a.kind == E_ID and e.a.s == "Sprite" and (e.s == "sheet" or e.s == "cell" or e.s == "cell_span" or e.s == "define" or e.s == "named" or e.s == "draw" or e.s == "draw_scaled" or e.s == "width" or e.s == "height") { g_uses_atlas = true }
+      if e.a.kind == E_ID and e.a.s == "Assets" { g_uses_atlas = true }
       if e.a.kind == E_ID and e.a.s == "Reflect" and (e.s == "serialize" or e.s == "apply") { g_uses_value = true;  g_uses_reflect_io = true }   # Reflect.serialize/apply -> value tree + world table
       # Input.* action-map / record-replay methods (#7) -> splice input.ludic.
       # Input.key stays bare (no runtime), so gate on the new methods only.
@@ -442,6 +446,7 @@ var g_uses_value: bool = false    # Value.*/Json.*/Reflect.serialize -> splice t
 var g_uses_xml: bool = false      # Xml.* -> splice the XML reader (Tiled #67)
 var g_uses_base64: bool = false   # Base64.* -> splice the base64 codec + inflate (Tiled #67)
 var g_uses_tiled: bool = false    # Tiled.* -> splice the Tiled map runtime (#69)
+var g_uses_atlas: bool = false    # Sprite.sheet/cell/… or Assets.* -> splice the spritesheet/atlas runtime (#81)
 var g_uses_reflect_io: bool = false  # Reflect.serialize/apply -> splice the reflection serializer
 var g_uses_esys: bool = false     # an engine-owned system component (SpriteAnim/Motion/Light2D) is declared -> splice systems.ludic + force the reflection ABI
 var g_uses_input: bool = false    # a program used Input.bind/down/poll/… (action maps + record/replay) -> splice input.ludic
@@ -784,6 +789,15 @@ function maybe_splice_runtime() -> void {
     do_import("runtime/native/xml.ludic")
     cur_dir = saved
   }
+  # Sprite.sheet/cell/… or Assets.* (#81) — the spritesheet / atlas runtime. It
+  # reads the framebuffer and the image loader (rt_image_load / img_px in
+  # image.ludic), so it links against core.ludic (do_import dedupes).
+  if g_uses_atlas {
+    cur_dir = ""
+    do_import("runtime/native/core.ludic")
+    do_import("runtime/native/atlas.ludic")
+    cur_dir = saved
+  }
   # Base64.* (#67) — base64 codec; pull in the DEFLATE inflater alongside it, so
   # a plain tool can run the full base64 -> zlib/gzip decode chain (inflate.ludic
   # is self-contained; do_import dedupes when a game already linked it via core).
@@ -942,6 +956,7 @@ function parse_program() -> void {
   g_uses_xml = false
   g_uses_base64 = false
   g_uses_tiled = false
+  g_uses_atlas = false
   g_uses_reflect_io = false
   g_tests = new []Node
   g_mod_sys_fn = new []pointer

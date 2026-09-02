@@ -1,0 +1,212 @@
+# ============================================================================
+# atlas.ludic — a namespaced spritesheet / atlas API (#81).
+#
+# Sprite loading used to be a bare png_load("assets/sprites/floor0.png") — one
+# file per 16x16 sprite, and no way to load one sheet and address a cell by grid
+# coords or by name. This adds:
+#
+#   Sprite.sheet(path, cellw, cellh) -> handle     load a sheet, remember its grid
+#   Sprite.cell(sheet, col, row) -> id             one cell, addressed by grid coords
+#   Sprite.cell_span(sheet, col, row, cols, rows)  a sprite spanning >1 cell (tall/wide)
+#   Sprite.define(name, sheet, col, row) -> id     name a cell for later lookup
+#   Sprite.named(name) -> id                        look a named sprite up
+#   Sprite.draw(id, x, y) / draw_scaled(id,x,y,sc)  blit an atlas sprite
+#   Sprite.width(id) / height(id)                   its pixel size
+#   Assets.image(path) -> id                        a whole file as one sprite
+#   Assets.load(path) -> id                         alias of Assets.image
+#   Assets.get(name) -> id                          alias of Sprite.named
+#
+# It stands on the variable-size image loader in image.ludic (rt_image_load keeps
+# the whole decoded PNG; a cell is a sub-rect of it), so a sprite is NOT restricted
+# to the 16x16 sprite table — a cell (and a multi-cell span) can be any size. Draws
+# go through rt_put_px, so the camera, zoom (#78) and clip all apply, exactly like
+# Screen.sprite. Spliced on demand when a program uses Sprite.sheet / Assets.*.
+# ============================================================================
+
+const ATLAS_MAX_SHEET: int = 32
+const ATLAS_MAX_SPR:   int = 1024
+const ATLAS_MAX_NAME:  int = 512
+
+var at_sheet_img: words = null      # image id per sheet
+var at_sheet_cw:  words = null      # cell width  per sheet
+var at_sheet_ch:  words = null      # cell height per sheet
+var at_nsheet: int = 0
+
+var at_spr_sheet: words = null      # owning sheet per atlas sprite
+var at_spr_sx: words = null         # source x/y (px) of the sub-rect
+var at_spr_sy: words = null
+var at_spr_w:  words = null         # sub-rect width/height (px)
+var at_spr_h:  words = null
+var at_nspr: int = 0
+
+var at_name_str: pointers = null    # name per named sprite
+var at_name_id:  words = null       # atlas id per name
+var at_nname: int = 0
+
+function atlas_init() -> void {
+  if at_sheet_img != null { return }
+  at_sheet_img = words(ATLAS_MAX_SHEET)
+  at_sheet_cw  = words(ATLAS_MAX_SHEET)
+  at_sheet_ch  = words(ATLAS_MAX_SHEET)
+  at_spr_sheet = words(ATLAS_MAX_SPR)
+  at_spr_sx    = words(ATLAS_MAX_SPR)
+  at_spr_sy    = words(ATLAS_MAX_SPR)
+  at_spr_w     = words(ATLAS_MAX_SPR)
+  at_spr_h     = words(ATLAS_MAX_SPR)
+  at_name_str  = bytes(ATLAS_MAX_NAME * 8)         # a pointer (8 bytes) per name slot
+  at_name_id   = words(ATLAS_MAX_NAME)
+}
+
+# load a spritesheet PNG whose cells are cw x ch px; returns a sheet handle (>= 0).
+function atlas_sheet(path: pointer, cw: int, ch: int) -> int {
+  atlas_init()
+  if at_nsheet >= ATLAS_MAX_SHEET { return 0 - 1 }
+  let img = rt_image_load(path)
+  if img < 0 { return 0 - 1 }
+  let h = at_nsheet
+  at_sheet_img[h] = img
+  at_sheet_cw[h] = cw
+  at_sheet_ch[h] = ch
+  at_nsheet = at_nsheet + 1
+  return h
+}
+
+# register an atlas sprite for a sub-rect (px) of a sheet's image.
+function atlas_make(sheet: int, sx: int, sy: int, w: int, h: int) -> int {
+  atlas_init()
+  if at_nspr >= ATLAS_MAX_SPR { return 0 - 1 }
+  let id = at_nspr
+  at_spr_sheet[id] = sheet
+  at_spr_sx[id] = sx
+  at_spr_sy[id] = sy
+  at_spr_w[id] = w
+  at_spr_h[id] = h
+  at_nspr = at_nspr + 1
+  return id
+}
+
+# one cell (col, row) of a sheet, addressed by grid coords.
+function atlas_cell(sheet: int, col: int, row: int) -> int {
+  if (sheet < 0) or (sheet >= at_nsheet) { return 0 - 1 }
+  let cw = at_sheet_cw[sheet]
+  let ch = at_sheet_ch[sheet]
+  return atlas_make(sheet, col * cw, row * ch, cw, ch)
+}
+
+# a sprite spanning cols x rows cells from (col, row) — some sprites cover more
+# than one cell (a tall character, a wide object).
+function atlas_cell_span(sheet: int, col: int, row: int, cols: int, rows: int) -> int {
+  if (sheet < 0) or (sheet >= at_nsheet) { return 0 - 1 }
+  let cw = at_sheet_cw[sheet]
+  let ch = at_sheet_ch[sheet]
+  return atlas_make(sheet, col * cw, row * ch, cols * cw, rows * ch)
+}
+
+# name a cell so a game can look it up by name; returns the atlas id.
+function atlas_define(name: pointer, sheet: int, col: int, row: int) -> int {
+  atlas_init()
+  let id = atlas_cell(sheet, col, row)
+  if id < 0 { return 0 - 1 }
+  if at_nname < ATLAS_MAX_NAME {
+    at_name_str[at_nname] = name
+    at_name_id[at_nname] = id
+    at_nname = at_nname + 1
+  }
+  return id
+}
+
+# look up a named sprite's atlas id (names compare by content), or -1.
+function atlas_named(name: pointer) -> int {
+  atlas_init()
+  var i = 0
+  while i < at_nname {
+    if at_name_str[i] == name { return at_name_id[i] }
+    i = i + 1
+  }
+  return 0 - 1
+}
+
+# load a whole image file as one atlas sprite (a 1x1 sheet the size of the image).
+function atlas_image(path: pointer) -> int {
+  atlas_init()
+  if at_nsheet >= ATLAS_MAX_SHEET { return 0 - 1 }
+  let img = rt_image_load(path)
+  if img < 0 { return 0 - 1 }
+  let w = img_w[img]
+  let h = img_h[img]
+  let sh = at_nsheet
+  at_sheet_img[sh] = img
+  at_sheet_cw[sh] = w
+  at_sheet_ch[sh] = h
+  at_nsheet = at_nsheet + 1
+  return atlas_make(sh, 0, 0, w, h)
+}
+
+# blit an atlas sprite at (dx, dy) through rt_put_px (camera / zoom / clip apply).
+# Only sufficiently-opaque pixels are drawn (the sprite's transparent border is
+# skipped), matching Screen.sprite.
+function atlas_draw(id: int, dx: int, dy: int) -> void {
+  atlas_init()
+  if (id < 0) or (id >= at_nspr) { return }
+  let sheet = at_spr_sheet[id]
+  let img = at_sheet_img[sheet]
+  let iw = img_w[img]
+  let ih = img_h[img]
+  let s: words = img_px[img]
+  let sx = at_spr_sx[id]
+  let sy = at_spr_sy[id]
+  let w = at_spr_w[id]
+  let h = at_spr_h[id]
+  var y = 0
+  while y < h {
+    let srcy = sy + y
+    if (srcy >= 0) and (srcy < ih) {
+      var x = 0
+      while x < w {
+        let srcx = sx + x
+        if (srcx >= 0) and (srcx < iw) {
+          let px = s[srcy * iw + srcx]
+          if ((px >> 24) & 255) >= 128 { rt_put_px(dx + x, dy + y, px & 16777215) }
+        }
+        x = x + 1
+      }
+    }
+    y = y + 1
+  }
+}
+
+# blit an atlas sprite scaled by an integer factor (through rt_fill_rect blocks).
+function atlas_draw_scaled(id: int, dx: int, dy: int, sc: int) -> void {
+  atlas_init()
+  if (id < 0) or (id >= at_nspr) { return }
+  if sc < 1 { return }
+  let sheet = at_spr_sheet[id]
+  let img = at_sheet_img[sheet]
+  let iw = img_w[img]
+  let ih = img_h[img]
+  let s: words = img_px[img]
+  let sx = at_spr_sx[id]
+  let sy = at_spr_sy[id]
+  let w = at_spr_w[id]
+  let h = at_spr_h[id]
+  var y = 0
+  while y < h {
+    let srcy = sy + y
+    if (srcy >= 0) and (srcy < ih) {
+      var x = 0
+      while x < w {
+        let srcx = sx + x
+        if (srcx >= 0) and (srcx < iw) {
+          let px = s[srcy * iw + srcx]
+          if ((px >> 24) & 255) >= 128 { rt_fill_rect(dx + x * sc, dy + y * sc, sc, sc, px & 16777215) }
+        }
+        x = x + 1
+      }
+    }
+    y = y + 1
+  }
+}
+
+# an atlas sprite's pixel size — handy for centering / layout.
+function atlas_width(id: int)  -> int { atlas_init();  if (id < 0) or (id >= at_nspr) { return 0 };  return at_spr_w[id] }
+function atlas_height(id: int) -> int { atlas_init();  if (id < 0) or (id >= at_nspr) { return 0 };  return at_spr_h[id] }

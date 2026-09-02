@@ -176,6 +176,27 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "measure_text")   { bare = "measure_text"; push(labels, "text") }
     if (meth == "pixel")          { bare = "get_px";    push(labels, "x"); push(labels, "y") }
   }
+  # Sprite.* / Assets.* — the namespaced spritesheet / atlas API (#81), a runtime
+  # in atlas.ludic over the variable-size image loader. A cell (or multi-cell span)
+  # is a sub-rect of a loaded sheet; draws go through rt_put_px so camera/zoom/clip
+  # apply. Distinct from the `Sprite` engine component (#85) — same name, different
+  # namespace (a namespaced builtin, never an entity).
+  if (ns == "Sprite") {
+    if (meth == "sheet")       { bare = "atlas_sheet";       push(labels, "path"); push(labels, "cellw"); push(labels, "cellh") }
+    if (meth == "cell")        { bare = "atlas_cell";        push(labels, "sheet"); push(labels, "col"); push(labels, "row") }
+    if (meth == "cell_span")   { bare = "atlas_cell_span";   push(labels, "sheet"); push(labels, "col"); push(labels, "row"); push(labels, "cols"); push(labels, "rows") }
+    if (meth == "define")      { bare = "atlas_define";      push(labels, "name"); push(labels, "sheet"); push(labels, "col"); push(labels, "row") }
+    if (meth == "named")       { bare = "atlas_named";       push(labels, "name") }
+    if (meth == "draw")        { bare = "atlas_draw";        push(labels, "id"); push(labels, "x"); push(labels, "y") }
+    if (meth == "draw_scaled") { bare = "atlas_draw_scaled"; push(labels, "id"); push(labels, "x"); push(labels, "y"); push(labels, "scale") }
+    if (meth == "width")       { bare = "atlas_width";       push(labels, "id") }
+    if (meth == "height")      { bare = "atlas_height";      push(labels, "id") }
+  }
+  if (ns == "Assets") {
+    if (meth == "image")       { bare = "atlas_image";       push(labels, "path") }
+    if (meth == "load")        { bare = "atlas_image";       push(labels, "path") }   # alias
+    if (meth == "get")         { bare = "atlas_named";       push(labels, "name") }    # alias of Sprite.named
+  }
   # Camera.* — the world-space camera: a draw offset threaded through the render
   # path (runtime/native/core.ludic). set/follow move it; shake jitters it from
   # the seeded RNG, so a replay shakes identically.
