@@ -402,6 +402,20 @@ function input_strength(name: pointer) -> fixed {
   return fixed(0)
 }
 
+# ---- cursor capture (#89) --------------------------------------------------
+# Set the OS cursor mode for a windowed game:
+#   0 normal   — cursor visible and free (default).
+#   1 hidden   — cursor hidden while the window is focused (draw your own reticle).
+#   2 locked   — hidden + dissociated; the mouse feeds relative motion through
+#                Input.mouse_dx/dy and Input.mouse_x/y is a clamped virtual cursor
+#                (the FPS / twin-stick capture mode).
+#   3 confined — dissociated but visible; the mouse cannot leave the window.
+# The platform auto-releases (shows + reconnects) while the window is not key
+# (Cmd-Tab) and on close. Headless / non-windowed: a no-op.
+function input_cursor_mode(mode: int) -> void {
+  if is_windowed() { win_cursor_mode(mode) }
+}
+
 # ---- mouse -----------------------------------------------------------------
 function input_mouse_x()  -> int { in_init();  return in_mx }
 function input_mouse_y()  -> int { in_init();  return in_my }

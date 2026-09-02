@@ -1,0 +1,24 @@
+# cursor_capture.ludic — cursor capture (#89): a windowed game hides / locks the
+# OS mouse and draws its own reticle from the mouse position. Input.cursor_mode is
+# a no-op headless (it only touches the platform cursor on a windowed build), so
+# this compiles and links both ways; the capture behaviour is windowed-only.
+#
+# Run windowed:  bin/ludicc examples/library/cursor_capture.ludic -o /tmp/aim && /tmp/aim
+program CursorCapture {
+  property Tag { n: int = 0 }
+  model P { Tag }
+
+  @OnStart handler Boot {
+    Input.cursor_mode(2)                 # 2 = locked: hide the OS cursor, feed relative motion
+  }
+
+  handler Draw phase Render {
+    Screen.clear(0x101018)
+    # a reticle drawn at the captured mouse position (a virtual cursor while locked)
+    let mx = Input.mouse_x()
+    let my = Input.mouse_y()
+    Screen.fill_rectangle(mx - 3, my - 1, 7, 2, 0xffcc00)
+    Screen.fill_rectangle(mx - 1, my - 3, 2, 7, 0xffcc00)
+    Screen.show()
+  }
+}

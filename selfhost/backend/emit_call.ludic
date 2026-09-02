@@ -263,6 +263,7 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "touch_x")      { bare = "input_touch_x";      push(labels, "index") }
     if (meth == "touch_y")      { bare = "input_touch_y";      push(labels, "index") }
     if (meth == "set_touch")    { bare = "input_set_touch";    push(labels, "index"); push(labels, "x"); push(labels, "y"); push(labels, "active") }
+    if (meth == "cursor_mode")  { bare = "input_cursor_mode";  push(labels, "mode") }   # #89 cursor capture
   }
   # Audio.* (#22) — sfx/music playback over the platform audio backend
   # (runtime/native/audio.ludic + audio.ll). Playback is out-of-band; the

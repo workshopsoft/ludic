@@ -41,6 +41,10 @@ declare void @CGImageRelease(ptr)
 declare void @CGContextRelease(ptr)
 declare void @CGColorSpaceRelease(ptr)
 declare i32 @usleep(i32)
+; #89 — cursor capture: NSCursor hide/unhide (ref-counted) + the CoreGraphics
+; mouse-association / relative-delta calls.
+declare i32 @CGAssociateMouseAndMouseCursorPosition(i32)
+declare void @CGGetLastMouseDelta(ptr, ptr)
 
 @.c_app    = private unnamed_addr constant [14 x i8] c"NSApplication\00"
 @.c_win    = private unnamed_addr constant [9 x i8]  c"NSWindow\00"
@@ -49,6 +53,10 @@ declare i32 @usleep(i32)
 @.c_view   = private unnamed_addr constant [7 x i8]  c"NSView\00"
 @.c_gctx   = private unnamed_addr constant [18 x i8] c"NSGraphicsContext\00"
 @.c_ludic  = private unnamed_addr constant [10 x i8] c"LudicView\00"
+@.c_cursor = private unnamed_addr constant [9 x i8]  c"NSCursor\00"
+@.s_hide   = private unnamed_addr constant [5 x i8]  c"hide\00"
+@.s_unhide = private unnamed_addr constant [7 x i8]  c"unhide\00"
+@.s_iskey  = private unnamed_addr constant [12 x i8] c"isKeyWindow\00"
 
 @.s_shared = private unnamed_addr constant [18 x i8] c"sharedApplication\00"
 @.s_policy = private unnamed_addr constant [21 x i8] c"setActivationPolicy:\00"
@@ -143,6 +151,14 @@ declare i32 @usleep(i32)
 ; #51 — up to 8 trackpad touch points, [active, x, y] each (framebuffer pixels),
 ; refreshed by the view's touchesBegan/Moved/Ended handlers.
 @W_touch   = internal global [24 x i32] zeroinitializer
+; #89 — cursor capture. @W_cursor_mode is the desired mode (0 normal, 1 hidden,
+; 2 locked+relative, 3 confined). @W_cursor_hidden / @W_cursor_assoc track the
+; currently-applied NSCursor hide (ref-counted, so we only toggle on a change) and
+; the CGAssociateMouseAndMouseCursorPosition state, so focus loss auto-releases and
+; refocus re-acquires without unbalancing the hide counter.
+@W_cursor_mode   = internal global i32 0
+@W_cursor_hidden = internal global i32 0
+@W_cursor_assoc  = internal global i32 1
 
 ; -drawRect: — blit the framebuffer into the view.
 ; The NSRect argument is ignored, so it never appears in this signature.
@@ -477,6 +493,7 @@ dosend:
   %fwd = call ptr (ptr, ptr, ptr) @objc_msgSend(ptr %app, ptr %sel_send, ptr %ev)
   br label %pump
 finish:
+  call void @win_cursor_maintain()      ; #89 — keep the cursor state (auto-release on focus loss)
   ; a closed window ends the run
   %win = load ptr, ptr @W_win
   %hw = icmp ne ptr %win, null
@@ -519,6 +536,9 @@ entry:
 
 define void @win_close() {
 entry:
+  ; #89 — restore the cursor so it is never left hidden / dissociated after quit.
+  store i32 0, ptr @W_cursor_mode
+  call void @cursor_apply(i32 0, i32 1)
   store i32 0, ptr @W_running
   ret void
 }
@@ -550,6 +570,41 @@ entry:
   ; #51 — read the live cursor position from the window (points, origin
   ; bottom-left) and convert to framebuffer pixels, y-flipped so row 0 is the
   ; top, matching the framebuffer the game draws into.
+  ; #89 — in a relative mode (locked / confined) the OS cursor is dissociated, so
+  ; mouseLocation is frozen; accumulate CGGetLastMouseDelta into a virtual cursor
+  ; (clamped to the framebuffer) so Input.mouse_dx/dy report the motion and
+  ; Input.mouse_x/y give a reticle position.
+  %cmode = load i32, ptr @W_cursor_mode
+  %isrel = icmp sge i32 %cmode, 2
+  br i1 %isrel, label %reldelta, label %abspos
+reldelta:
+  %dxp = alloca i32
+  %dyp = alloca i32
+  call void @CGGetLastMouseDelta(ptr %dxp, ptr %dyp)
+  %ddx = load i32, ptr %dxp
+  %ddy = load i32, ptr %dyp
+  %omx = load i32, ptr @W_mx
+  %omy = load i32, ptr @W_my
+  %nmx = add i32 %omx, %ddx
+  %nmy = add i32 %omy, %ddy
+  ; clamp x to [0, fbw-1]
+  %fbwv = load i32, ptr @W_fbw
+  %fbwm = sub i32 %fbwv, 1
+  %xlo = icmp slt i32 %nmx, 0
+  %nmx1 = select i1 %xlo, i32 0, i32 %nmx
+  %xhi = icmp sgt i32 %nmx1, %fbwm
+  %nmx2 = select i1 %xhi, i32 %fbwm, i32 %nmx1
+  ; clamp y to [0, fbh-1]
+  %fbhv = load i32, ptr @W_fbh
+  %fbhm = sub i32 %fbhv, 1
+  %ylo = icmp slt i32 %nmy, 0
+  %nmy1 = select i1 %ylo, i32 0, i32 %nmy
+  %yhi = icmp sgt i32 %nmy1, %fbhm
+  %nmy2 = select i1 %yhi, i32 %fbhm, i32 %nmy1
+  store i32 %nmx2, ptr @W_mx
+  store i32 %nmy2, ptr @W_my
+  br label %emit
+abspos:
   %win = load ptr, ptr @W_win
   %nowin = icmp eq ptr %win, null
   br i1 %nowin, label %emit, label %qpos
@@ -584,6 +639,84 @@ emit:
   %p3 = getelementptr i32, ptr %out, i32 3
   store i32 %wh, ptr %p3
   store i32 0, ptr @W_wheel
+  ret void
+}
+
+; ============================================================================
+; #89 — cursor capture. Apply the currently-wanted hidden / associated state,
+; toggling only on a change so the ref-counted [NSCursor hide]/[unhide] stays
+; balanced across frames and focus changes.
+define void @cursor_apply(i32 %wh, i32 %wa) {
+entry:
+  %ch = load i32, ptr @W_cursor_hidden
+  %hdiff = icmp ne i32 %ch, %wh
+  br i1 %hdiff, label %doh, label %skiph
+doh:
+  %curscls = call ptr @objc_getClass(ptr @.c_cursor)
+  %wanth = icmp ne i32 %wh, 0
+  br i1 %wanth, label %hide, label %unhide
+hide:
+  %selhide = call ptr @sel_registerName(ptr @.s_hide)
+  %r1 = call ptr (ptr, ptr) @objc_msgSend(ptr %curscls, ptr %selhide)
+  br label %storeh
+unhide:
+  %selunh = call ptr @sel_registerName(ptr @.s_unhide)
+  %r2 = call ptr (ptr, ptr) @objc_msgSend(ptr %curscls, ptr %selunh)
+  br label %storeh
+storeh:
+  store i32 %wh, ptr @W_cursor_hidden
+  br label %skiph
+skiph:
+  %ca = load i32, ptr @W_cursor_assoc
+  %adiff = icmp ne i32 %ca, %wa
+  br i1 %adiff, label %doa, label %skipa
+doa:
+  %rc = call i32 @CGAssociateMouseAndMouseCursorPosition(i32 %wa)
+  store i32 %wa, ptr @W_cursor_assoc
+  br label %skipa
+skipa:
+  ret void
+}
+
+; Re-derive the wanted state from the mode + window key status, then apply it.
+; Called on a mode change and once per frame from win_poll, so losing focus
+; (Cmd-Tab) auto-releases the cursor and refocusing re-acquires it.
+define void @win_cursor_maintain() {
+entry:
+  %mode = load i32, ptr @W_cursor_mode
+  %win = load ptr, ptr @W_win
+  %nowin = icmp eq ptr %win, null
+  br i1 %nowin, label %release, label %askkey
+askkey:
+  %selk = call ptr @sel_registerName(ptr @.s_iskey)
+  %k8 = call i8 (ptr, ptr) @objc_msgSend(ptr %win, ptr %selk)
+  %iskey = icmp ne i8 %k8, 0
+  br i1 %iskey, label %keyed, label %release
+release:
+  ; not focused (or no window): show the cursor and reconnect it
+  call void @cursor_apply(i32 0, i32 1)
+  ret void
+keyed:
+  ; want_hidden when mode is 1 (hidden) or 2 (locked)
+  %h1 = icmp eq i32 %mode, 1
+  %h2 = icmp eq i32 %mode, 2
+  %wh = or i1 %h1, %h2
+  %whi = zext i1 %wh to i32
+  ; dissociate (relative) when mode is 2 (locked) or 3 (confined)
+  %a2 = icmp eq i32 %mode, 2
+  %a3 = icmp eq i32 %mode, 3
+  %dis = or i1 %a2, %a3
+  %wa = xor i1 %dis, true
+  %wai = zext i1 %wa to i32
+  call void @cursor_apply(i32 %whi, i32 %wai)
+  ret void
+}
+
+; the Ludic entry point: set the desired cursor mode and apply it now.
+define void @win_cursor_mode(i32 %mode) {
+entry:
+  store i32 %mode, ptr @W_cursor_mode
+  call void @win_cursor_maintain()
   ret void
 }
 

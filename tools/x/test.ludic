@@ -355,6 +355,7 @@ function cmd_test() -> int {
   smoke("ecs/hello")
   smoke("events/events")
   smoke("networking/net_rt")
+  smoke("library/cursor_capture")                    # #89 Input.cursor_mode compiles (no-op headless; windowed links cocoa.ll)
 
   print("== self-hosted front-end binaries (ludicc / ludic) ==")
   # the two commands are one multi-call native binary built from the seed with
