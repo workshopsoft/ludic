@@ -1,8 +1,10 @@
 # RFC — position & vector numeric types (#78)
 
-Status: **decided — keep the deterministic integer core; add the three things
-that were actually missing, all deterministic.** This document is the record of
-the investigation asked for in issue #78, and the rationale for the decision.
+Status: **decided + first feature shipped.** Keep the deterministic integer core;
+add the things that were actually missing, all deterministic. `Camera.zoom` — the
+one genuinely-missing render feature this investigation identified — is now
+implemented (see below). This document is the record of the investigation asked
+for in issue #78, and the rationale for the decision.
 
 ## The question
 
@@ -64,15 +66,21 @@ wall*; none has, so we do not add speculative width now. Camera scroll itself is
 just a draw offset (`Camera.set`/`follow`, already threaded through the two
 framebuffer chokepoints) and needs no coordinate change at all.
 
-### 3. Camera zoom
+### 3. Camera zoom — **shipped**
 
 Zoom is a **render-time** transform, not a world-coordinate change. Multiplying
 world→screen by a Q16.16 scale in the blit path is deterministic (fixed×fixed with
 a 64-bit intermediate, exactly as the existing sprite-scale and light math do).
 Zoom does not require `Position` to be a float — the world stays integer, the
 *camera* carries a Q16.16 zoom. **Decision: zoom belongs on the camera as a
-Q16.16 scale (future `Camera.zoom`), reusing the existing fixed-point blit; the
-coordinate types are untouched.**
+Q16.16 scale, reusing the existing fixed-point blit; the coordinate types are
+untouched — and this is now implemented as `Camera.zoom(scale)`.** It scales every
+draw about the screen centre through the same two framebuffer chokepoints
+(`rt_put_px` / `rt_fill_rect`) that already carry the camera offset, gated by a
+`rt_cam_zoomed` flag so a game that never zooms renders byte-for-byte identically
+(the golden renders are unchanged). `Camera.zoom(1.0)` turns it back off. See
+`examples/library/camera_zoom.ludic` (pixel-readback verified) and
+`docs/language/camera/camera-zoom.md`.
 
 ### 4. Precision
 
@@ -112,7 +120,7 @@ Conflating them would cost more than it pays.
 | `i64` positions       | Deferred, additive later (`Position64`) only when a real game needs >±2e9 px. Not speculative now. |
 | Sub-pixel motion      | Already solved; `Body.rx`/`ry` Q16.16 accumulators, now documented as the pattern. |
 | Large worlds          | Range, not representation; `i32` px is ±2e9. Wide ints (`BigInt`) exist. |
-| Camera zoom           | Render-time Q16.16 scale on the camera (future `Camera.zoom`), not a coordinate change. |
+| Camera zoom           | **Shipped** as `Camera.zoom(scale)` — render-time Q16.16 scale about the screen centre, not a coordinate change; byte-identical when unused. |
 | `Position` as `Vector`| **No.** `Position` is a reflected/saved/networked *component*; `IVec2` is the *value* type for math. Convert at the boundary. |
 
 The deterministic integer + Q16.16 core stays. The genuinely-missing pieces are

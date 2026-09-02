@@ -1,0 +1,37 @@
+# camera_zoom.ludic — the deterministic render-time camera zoom (#78). Zoom is a
+# Q16.16 scale applied about the screen centre in the blit path; the world stays
+# integer pixels, so lockstep / replay / world_save are untouched. Verified by
+# pixel readback (Screen.pixel reads the actual framebuffer, un-transformed).
+#
+# Deterministic; a full run prints:  1 0 0 1 1
+program CameraZoom {
+  # a model so the program runs the ECS and links the core runtime (the framebuffer
+  # + Screen.* live in runtime/native/core.ludic, spliced for an ECS program).
+  property Cam { z: fixed = 1.0 }
+  model View { Cam }
+
+  function bi(b: bool) -> int { if b { return 1 };  return 0 }
+
+  entry {
+    # A. no zoom: a 4x4 white box drawn at (100,100) lands at (100,100).
+    Screen.clear(0)
+    Screen.fill_rectangle(100, 100, 4, 4, 0xffffff)
+    print(bi(Screen.pixel(101, 101) == 0xffffff))    # 1 — box is here
+    print(bi(Screen.pixel(43, 83) == 0xffffff))       # 0 — nothing here yet
+
+    # B. 2x zoom about the screen centre (160,120): (100,100) maps to
+    #    ((100-160)*2+160, (100-120)*2+120) = (40, 80), size 4 -> 8, so the box
+    #    now covers x 40..48, y 80..88 and has left (101,101).
+    Screen.clear(0)
+    Camera.zoom(2.0)
+    Screen.fill_rectangle(100, 100, 4, 4, 0xffffff)
+    print(bi(Screen.pixel(101, 101) == 0xffffff))    # 0 — moved away
+    print(bi(Screen.pixel(43, 83) == 0xffffff))       # 1 — scaled to here
+
+    # C. zoom back to 1.0 restores the byte-identical un-zoomed blit.
+    Screen.clear(0)
+    Camera.zoom(1.0)
+    Screen.fill_rectangle(100, 100, 4, 4, 0xffffff)
+    print(bi(Screen.pixel(101, 101) == 0xffffff))    # 1 — normal again
+  }
+}

@@ -43,6 +43,14 @@ var rt_clip_y0: int = 0
 var rt_clip_x1: int = 320
 var rt_clip_y1: int = 240
 var rt_blend:   int = 0        # 0 = replace, 1 = additive
+# #78 — deterministic camera zoom. A Q16.16 scale applied about the screen centre
+# in the same two chokepoints as the camera offset. Rejected floats for the
+# coordinate types (they would desync lockstep/replay/save); zoom is a *render-time*
+# transform, so it rides on fixed-point exactly like sprite-scale and the light math.
+# rt_cam_zoomed gates the fixed multiply out of the hot path so a game that never
+# zooms renders byte-for-byte identically (the else-branch is the original code).
+var rt_cam_zoom:   fixed = 1.0     # 1.0 = no zoom; >1 zooms in, <1 zooms out
+var rt_cam_zoomed: bool  = false   # true once a non-1.0 zoom is set
 
 # 5x7 glyphs for ASCII 32..90, 7 rows per glyph, each row a 5-bit mask stored
 # biased by '0' so the whole font is one printable string literal.
@@ -99,8 +107,14 @@ function rt_blend_add(dst: int, src: int) -> int {
 # the low-level plot: apply the camera (+ shake) offset, reject anything outside
 # the clip rectangle or the framebuffer, then write or additively blend.
 function rt_put_px(x: int, y: int, c: int) -> void {
-  let sx = x - rt_cam_x - rt_shake_x
-  let sy = y - rt_cam_y - rt_shake_y
+  var sx = x - rt_cam_x - rt_shake_x
+  var sy = y - rt_cam_y - rt_shake_y
+  if rt_cam_zoomed {                                # #78: scale about the screen centre
+    let hw = rt_fbw / 2
+    let hh = rt_fbh / 2
+    sx = floor(fixed(sx - hw) * rt_cam_zoom) + hw
+    sy = floor(fixed(sy - hh) * rt_cam_zoom) + hh
+  }
   if sx < rt_clip_x0 { return }
   if sy < rt_clip_y0 { return }
   if sx >= rt_clip_x1 { return }
@@ -115,12 +129,22 @@ function rt_put_px(x: int, y: int, c: int) -> void {
 }
 
 function rt_fill_rect(x: int, y: int, w: int, h: int, c: int) -> void {
-  let ox = x - rt_cam_x - rt_shake_x
-  let oy = y - rt_cam_y - rt_shake_y
+  var ox = x - rt_cam_x - rt_shake_x
+  var oy = y - rt_cam_y - rt_shake_y
+  var ow = w
+  var oh = h
+  if rt_cam_zoomed {                                # #78: scale position + size about the centre
+    let hw = rt_fbw / 2
+    let hh = rt_fbh / 2
+    ox = floor(fixed(ox - hw) * rt_cam_zoom) + hw
+    oy = floor(fixed(oy - hh) * rt_cam_zoom) + hh
+    ow = floor(fixed(w) * rt_cam_zoom);  if ow < 1 { ow = 1 }
+    oh = floor(fixed(h) * rt_cam_zoom);  if oh < 1 { oh = 1 }
+  }
   let x0 = max(max(0, rt_clip_x0), ox)
   let y0 = max(max(0, rt_clip_y0), oy)
-  let x1 = min(min(rt_fbw, rt_clip_x1), ox + w)
-  let y1 = min(min(rt_fbh, rt_clip_y1), oy + h)
+  let x1 = min(min(rt_fbw, rt_clip_x1), ox + ow)
+  let y1 = min(min(rt_fbh, rt_clip_y1), oy + oh)
   var j = y0
   while j < y1 {
     let row = j * rt_fbw
@@ -274,6 +298,15 @@ function rt_measure_text(text: string) -> int {
 # Set the world-space camera offset (a world point (wx,wy) draws at
 # (wx-x, wy-y)). Reset to (0,0) to draw a fixed HUD.
 function rt_camera(x: int, y: int) -> void { rt_cam_x = x;  rt_cam_y = y }
+
+# #78 — set the render-time zoom (a Q16.16 scale applied about the screen centre):
+# 1.0 = no zoom, 2.0 = 2x in, 0.5 = out. Deterministic (fixed-point), so it
+# preserves lockstep / replay / world_save. Setting exactly 1.0 turns the zoom
+# path back off, restoring the byte-identical no-zoom blit.
+function rt_camera_zoom(scale: fixed) -> void {
+  rt_cam_zoom = scale
+  rt_cam_zoomed = scale != 1.0
+}
 
 # Ease the camera so (x,y) drifts toward the screen centre by `lerp` (a fixed in
 # 0..1): 0 keeps it still, 65536 (1.0) snaps it centred. Deterministic.

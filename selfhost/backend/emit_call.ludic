@@ -183,6 +183,7 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "set")    { bare = "camera";        push(labels, "x"); push(labels, "y") }
     if (meth == "follow") { bare = "camera_follow"; push(labels, "x"); push(labels, "y"); push(labels, "lerp") }
     if (meth == "shake")  { bare = "camera_shake";  push(labels, "amount") }
+    if (meth == "zoom")   { bare = "camera_zoom";   push(labels, "scale") }   # #78 deterministic Q16.16 zoom
   }
   if (ns == "Map") {
     if (meth == "size") { bare = "map_size"; push(labels, "width"); push(labels, "height") }
