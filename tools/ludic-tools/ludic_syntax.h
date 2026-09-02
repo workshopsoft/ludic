@@ -52,7 +52,7 @@ typedef struct {
  * mirror the compiler's parser: anything parse_decl() dispatches on is a
  * declaration keyword, anything stmt() dispatches on is a statement keyword. */
 static const char* LUDIC_KW_DECL[] = {
-    "program","import","property","model","enum","ui",
+    "program","import","property","model","enum","ui","namespace",
     "const","var","function","extern","handler","entry","event","scene","test", 0
 };
 static const char* LUDIC_KW_CLAUSE[] = {

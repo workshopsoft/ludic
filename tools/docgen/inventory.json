@@ -274,7 +274,8 @@
     "kw-import",
     "kw-extern",
     "kw-ui",
-    "kw-enum"
+    "kw-enum",
+    "kw-namespace"
   ],
   "system": [
     "system-run",

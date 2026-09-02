@@ -1,0 +1,20 @@
+# namespace_block.ludic — the `namespace Name { ... }` block form (#76). Declares
+# the namespace once and controls its public surface declaratively: `export`
+# functions are callable as Name.method, `internal` ones are private helpers.
+# Sibling calls inside the block use the short name.
+#
+# Deterministic; a full run prints:  15 42 100
+program NamespaceBlock {
+  namespace Combat {
+    export function amount() -> int { return base() + 5 }   # calls the internal sibling by short name
+    internal function base() -> int { return 10 }           # a private helper — not Combat.base
+    export function double(n: int) -> int { return n + n }
+    export function via_internal() -> int { return base() * 10 }
+  }
+
+  entry {
+    print(Combat.amount())          # 15 — 10 (internal base) + 5
+    print(Combat.double(21))        # 42
+    print(Combat.via_internal())    # 100 — reaches the internal helper from inside the namespace
+  }
+}

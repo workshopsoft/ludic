@@ -689,7 +689,12 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
   # #62: a package-provided namespace (declared with @Namespace(Foo)) that none
   # of the hardcoded core blocks matched — alias Foo.method to the bare function
   # foo_method (positional args), the same generic path the core aliases use.
-  if (bare == null) and is_registered_namespace(ns) { bare = ns_lower(ns) + ("_") + meth }
+  if (bare == null) and is_registered_namespace(ns) {
+    bare = ns_lower(ns) + ("_") + meth
+    # #76: a namespace declared with a block controls its public surface — an
+    # `internal` method is emitted but not callable as Name.method.
+    if is_ns_block(ns) and (not ns_export_has(bare)) { perr(`{ns}.{meth} is internal to namespace {ns}`) }
+  }
   if (bare == null) { perr(`unknown builtin {ns}.{meth}`) }
   reorder_named(e, labels)
   let id = node(E_ID); id.s = bare; e.a = id
