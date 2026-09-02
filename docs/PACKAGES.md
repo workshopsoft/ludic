@@ -94,7 +94,16 @@ The compiler resolves an import first relative to the importing file, then — f
 a non-absolute path that is not found — under the package module root
 (`$LUDIC_MODULES`, default `ludic_modules/`). So a fetched package's code is
 spliced into the build and its namespace becomes available exactly the way the
-built-in stdlib namespaces (Regex.\*, Grid.\*, …) are. Because Ludic compiles
+built-in stdlib namespaces (Regex.\*, Grid.\*, …) are.
+
+The **engine runtime is the exception** (issue #75): the compiler auto-splices
+`runtime/native/*` for any ECS game, and that runtime ships with the *toolchain*,
+not the project. A `runtime/...` import that is not found relative to the build is
+resolved from the install root **`$LUDIC_HOME`** (default: the compiler binary's
+directory — the same place the platform `.ll` files come from), *before* the
+package module root. So an external game does not have to copy or symlink the
+engine runtime into its `ludic_modules/`; that directory holds only third-party
+packages. In-repo builds are unaffected — the runtime resolves locally there. Because Ludic compiles
 ahead-of-time, a source package is compiled *into* the consumer's binary — no
 ABI seam, and the whole-program guarantees (determinism, replay, `world_save`)
 still hold.

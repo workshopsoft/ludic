@@ -662,9 +662,35 @@ function parse_test() -> Node {
 # materialised by `x get` at ludic_modules/git.workshopsoft.io/user/pkg/foo.ludic.
 # The fallback only fires when the local path does not exist, so every existing
 # import resolves exactly as before (the emitted IR is byte-identical).
+# true when `rel` is an engine-runtime splice path ("runtime/..."), as opposed to
+# a user or package import. Those ship with the toolchain, not the project (#75).
+function is_runtime_path(rel: pointer) -> bool {
+  if rel[0] != 114 { return false }   # r
+  if rel[1] != 117 { return false }   # u
+  if rel[2] != 110 { return false }   # n
+  if rel[3] != 116 { return false }   # t
+  if rel[4] != 105 { return false }   # i
+  if rel[5] != 109 { return false }   # m
+  if rel[6] != 101 { return false }   # e
+  if rel[7] != 47  { return false }   # /
+  return true
+}
+
 function do_import(rel: pointer) -> void {
   var full = path_join(cur_dir, rel)
   var src = read_file(full)
+  # #75 — the engine runtime (runtime/native/*) ships with the toolchain, not the
+  # project. When an auto-spliced runtime import is not found relative to the build
+  # (an external game whose CWD is not the toolchain repo), resolve it from the
+  # install root $LUDIC_HOME (default: the compiler binary's directory) — the same
+  # place main.ludic finds cocoa.ll / audio.ll. This is tried before the package
+  # module root, so $LUDIC_MODULES / ludic_modules holds only third-party packages.
+  if (src == null) and (rel[0] != 47) and is_runtime_path(rel) {
+    let home = ensure_slash(getenv_or("LUDIC_HOME", dir_of(arg(0))))
+    let hc = home + rel
+    let hs = read_file(hc)
+    if (hs != null) { full = hc;  src = hs }
+  }
   if (src == null) and (rel[0] != 47) {
     let cand = ensure_slash(getenv_or("LUDIC_MODULES", "ludic_modules")) + rel
     let s2 = read_file(cand)

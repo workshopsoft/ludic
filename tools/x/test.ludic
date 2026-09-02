@@ -41,6 +41,24 @@ function controller_case(path: pointer, keys: pointer, exp: pointer, label: poin
   if (got == exp) { ok(label) } else { bad2(label, `got [{got}] want [{exp}]`) }
 }
 
+# #75 — an external project (its CWD is not the toolchain repo, with no runtime/
+# under it and no ludic_modules) builds an ECS game by resolving the engine runtime
+# from $LUDIC_HOME (the toolchain install), independent of the package module root.
+function runtime_home_case() -> void {
+  let root = capture_line("pwd")
+  let dir = "/tmp/x_ext75"
+  shq(`rm -rf {dir} && mkdir -p {dir}`)
+  write_file(`{dir}/game.ludic`, "program Ext {\n  property Mob { hp: int = 0 }\n  model M { Mob }\n  entry {\n    spawn M { Mob { hp: 7 } }\n    let pm = World.prop_id(\"Mob\")\n    let e = World.query_next(pm, 0)\n    print(World.get(e, pm, World.field_id(pm, \"hp\")))\n  }\n}\n")
+  let lbl = "runtime ships with the toolchain, resolved from LUDIC_HOME (#75)"
+  # compiled from the external CWD; there is deliberately no runtime/ or
+  # ludic_modules/ under {dir}, so the engine runtime can only come from LUDIC_HOME.
+  if not shq(`cd {dir} && LUDIC_HOME={root} {root}/bin/ludicc game.ludic -o {dir}/game 2>{dir}/err`) {
+    bad2(lbl, capture_line(`grep -i 'error|cannot open' {dir}/err | head -1`)); return
+  }
+  let got = capture_line(`{dir}/game < /dev/null`)
+  if (got == "7") { ok(lbl) } else { bad2(lbl, `got [{got}] want [7]`) }
+}
+
 # a "does it still compile" smoke test (parse -> lower -> link), no run
 function qsmoke(path: pointer) -> void {
   let nm = flat(path)
@@ -241,6 +259,7 @@ function cmd_test() -> int {
   feat_case("library/light_tiers", "", "1 1 1 1 1 1 1 1 1", "light_tiers.ludic (Light spot/falloff/soft/gel/normal/time_of_day — render-quality tiers 3-4; issue #49)")
   feat_case("library/physics", "", "184 1 1 284 1 1 50 51 104 1 134 1 120 0 1 1 1 0 1 1 1", "physics.ludic (Body + Collider + esys_move: gravity/land, wall stop, sub-pixel, entity platform, one-way, triggers — entity broadphase; issue #65)")
   feat_case("library/physics_tiles", "", "112 1 80 1 48 1 60", "physics_tiles.ludic (esys_move tile-grid broadphase: tile floor/wall + one-way tile land-from-above / rise-through; issue #65)")
+  runtime_home_case()                                # #75: engine runtime resolves from LUDIC_HOME, not the project
   # builtin gameplay controllers, consumed as in-repo packages (issues #57-#61)
   controller_case("library/core_components", "", "110 30 184 1", "core_components.ludic (ludic.core #77: canonical Position/Body/Collider imported from a package, driving esys_move, composed with a game Health component)")
   controller_case("library/sprite_render", "q", "1 0", "sprite_render.ludic (ludic.core #85: engine sprite-render system auto-draws a Sprite entity from its Position; respects hidden)")
