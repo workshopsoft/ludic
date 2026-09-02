@@ -1,0 +1,39 @@
+# pool.ludic — entity pooling stats (#80). Ludic's ECS already recycles freed
+# entity slots through a freelist (a despawned slot is reused by the next spawn
+# before any new slot is taken), so bullet-hell / horde spawn+despawn does no
+# per-spawn allocation and cannot fragment. Pool.* exposes the counters so a game
+# can watch the reuse. The key proof: after despawn + respawn, Pool.reserved()
+# does NOT grow — the freed slot was reused, not reallocated.
+#
+# Deterministic; a full run prints:  0 0 3 3 0 2 1 3 0 3 1
+program PoolDemo {
+  property Mob { hp: int = 0 }
+  model M { Mob }
+
+  function bi(b: bool) -> int { if b { return 1 };  return 0 }
+
+  entry {
+    print(Pool.reserved())               # 0 — nothing allocated yet
+    print(Pool.live())                   # 0
+
+    spawn M { Mob { hp: 1 } }
+    spawn M { Mob { hp: 2 } }
+    spawn M { Mob { hp: 3 } }
+    print(Pool.reserved())               # 3
+    print(Pool.live())                   # 3
+    print(Pool.free())                   # 0 — no freed slots yet
+
+    let pm = World.prop_id("Mob")
+    let e = World.query_next(pm, 0)
+    despawn e
+    print(Pool.live())                   # 2
+    print(Pool.free())                   # 1 — one slot recycled onto the freelist
+
+    spawn M { Mob { hp: 4 } }             # reuses the freed slot
+    print(Pool.reserved())               # 3 — NO new slot allocated (pooled, not reallocated)
+    print(Pool.free())                   # 0 — the freelist slot was drawn back down
+    print(Pool.live())                   # 3
+
+    print(bi(Pool.capacity() >= 3))      # 1 — there is a fixed entity cap to budget against
+  }
+}

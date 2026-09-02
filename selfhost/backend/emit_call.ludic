@@ -148,6 +148,21 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if is_clock_ns(meth) { return emit_clock_ns(meth, e) }
     perr(`unknown builtin Clock.{meth}`)
   }
+  # #80 — entity pool stats. The ECS allocator already recycles freed entity slots
+  # through a freelist (L_alloc pops @L_freen before growing @L_entc), and component
+  # storage is fixed per-entity arrays — so there is no per-spawn heap allocation or
+  # fragmentation. Pool.* just reads those counters so a game can watch reuse.
+  if (ns == "Pool") {
+    if (meth == "capacity") { return val(itoa(MAX_ENT), "int") }                 # max entities
+    if (meth == "reserved") { return val(emit_bind("load i32, ptr @L_entc"), "int") }   # slots ever allocated (high-water)
+    if (meth == "free")     { return val(emit_bind("load i32, ptr @L_freen"), "int") }   # recycled slots ready for reuse
+    if (meth == "live") {                                                        # currently alive = reserved - free
+      let ec = emit_bind("load i32, ptr @L_entc")
+      let fr = emit_bind("load i32, ptr @L_freen")
+      return val(emit_bind(`sub i32 {ec}, {fr}`), "int")
+    }
+    perr(`unknown builtin Pool.{meth}`)
+  }
   var bare: pointer = null
   let labels = new []pointer
   if (ns == "Screen") {

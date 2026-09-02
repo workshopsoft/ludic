@@ -243,6 +243,7 @@ function cmd_test() -> int {
   feat_case("library/anim_sugar", "", "4 8 2 1 0 100 100 0 0 1 20 20 30 0 1", "anim_sugar.ludic (Anim.clip/play/on_frame/fired + Motion.to + fluent Tween.to/chain/delay/parallel handles; issue #48)")
   feat_case("library/namespace_block", "", "15 42 100", "namespace_block.ludic (#76 namespace Name { export/internal function } block — declares the namespace once, controls the public surface)")
   feat_case("library/preload", "", "3 0 0 0 1 33 66 1 100 1", "preload.ludic (#82 Assets.enqueue/pump/progress/ready — incremental asset preload for a loading scene)")
+  feat_case("library/pool", "", "0 0 3 3 0 2 1 3 0 3 1", "pool.ludic (#80 Pool.live/free/reserved/capacity — the ECS freelist recycles despawned slots, reserved stays flat)")
   feat_case("library/atlas", "", "16 16 32 48 1 1 1 16 1", "atlas.ludic (#81 Sprite.sheet/cell/cell_span/define/named + Assets.image/get — namespaced spritesheet/atlas with multi-cell sprites)")
   feat_case("library/camera_zoom", "", "1 0 0 1 1", "camera_zoom.ludic (Camera.zoom deterministic Q16.16 render-time zoom about the screen centre, verified by pixel readback; issue #78)")
   feat_case("library/clear_color", "q", "1 1", "clear_color.ludic (@ClearColor: the Render phase auto-clears to the declared colour + auto-presents, no Screen.clear/show in the handler; issue #86)")
