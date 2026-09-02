@@ -209,6 +209,13 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "pressed") { bare = "input_pressed" }
     if (meth == "record")  { bare = "input_record" }
     if (meth == "replay")  { bare = "input_replay" }
+    # Input Manager (#83): default bindings + device-agnostic actions that read the
+    # multi-key device layer (the frame loop now commits it automatically).
+    if (meth == "action")        { bare = "input_default";       push(labels, "action"); push(labels, "key") }
+    if (meth == "bind_pad")      { bare = "input_bind_pad";      push(labels, "action"); push(labels, "button") }
+    if (meth == "active")        { bare = "input_active";        push(labels, "action") }
+    if (meth == "just_pressed")  { bare = "input_just_pressed";  push(labels, "action") }
+    if (meth == "just_released") { bare = "input_just_released"; push(labels, "action") }
     # device layer (#50): multi-key held state, analog axes/vectors, mouse,
     # gamepads, touch — reached as ordinary @fn_input_* calls into input.ludic.
     if (meth == "key_down")     { bare = "input_key_down";     push(labels, "key") }

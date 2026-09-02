@@ -189,7 +189,7 @@ function p_postfix() -> Node {
       if e.a.kind == E_ID and e.a.s == "Reflect" and (e.s == "serialize" or e.s == "apply") { g_uses_value = true;  g_uses_reflect_io = true }   # Reflect.serialize/apply -> value tree + world table
       # Input.* action-map / record-replay methods (#7) -> splice input.ludic.
       # Input.key stays bare (no runtime), so gate on the new methods only.
-      if e.a.kind == E_ID and e.a.s == "Input" and (e.s == "bind" or e.s == "rebind" or e.s == "poll" or e.s == "down" or e.s == "pressed" or e.s == "record" or e.s == "replay") { g_uses_input = true }
+      if e.a.kind == E_ID and e.a.s == "Input" and (e.s == "bind" or e.s == "rebind" or e.s == "poll" or e.s == "down" or e.s == "pressed" or e.s == "record" or e.s == "replay" or e.s == "action" or e.s == "bind_pad" or e.s == "active" or e.s == "just_pressed" or e.s == "just_released") { g_uses_input = true }
       # #50 device layer — any of the multi-key / analog / mouse / gamepad / touch
       # methods also splices input.ludic (Input.key stays bare, no runtime).
       if e.a.kind == E_ID and e.a.s == "Input" and (e.s == "key_down" or e.s == "key_pressed" or e.s == "key_released" or e.s == "press" or e.s == "release" or e.s == "axis" or e.s == "vector" or e.s == "strength" or e.s == "mouse_x" or e.s == "mouse_y" or e.s == "mouse_dx" or e.s == "mouse_dy" or e.s == "mouse_down" or e.s == "wheel" or e.s == "set_mouse" or e.s == "pad_connected" or e.s == "pad_button" or e.s == "pad_axis" or e.s == "set_pad" or e.s == "touch_count" or e.s == "touch_x" or e.s == "touch_y" or e.s == "set_touch") { g_uses_input = true }

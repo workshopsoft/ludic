@@ -26,6 +26,7 @@ const INPUT_REC_CAP:  int = 8192   # recordable frames
 
 var input_names: pointers = null   # action name per slot (0..input_nact)
 var input_keys:  words = null      # INPUT_MAX_ACT * INPUT_MAX_KEYS key codes (0 = empty)
+var input_pads:  words = null      # INPUT_MAX_ACT * INPUT_MAX_KEYS pad buttons, stored +1 (0 = empty) — #83
 var input_nact:  int   = 0
 
 var input_frame: int = 0           # the key polled this frame
@@ -40,6 +41,7 @@ function input_init() -> void {
   if input_names == null {
     input_names = bytes(INPUT_MAX_ACT * 8)           # a pointer (8 bytes) per action slot
     input_keys  = words(INPUT_MAX_ACT * INPUT_MAX_KEYS)
+    input_pads  = words(INPUT_MAX_ACT * INPUT_MAX_KEYS)   # #83 pad buttons per action (+1 encoded)
   }
 }
 
@@ -78,6 +80,38 @@ function input_bind(name: pointer, key: int) -> void {
   i = 0
   while i < INPUT_MAX_KEYS {
     if input_keys[base + i] == 0 { input_keys[base + i] = key;  return }
+    i = i + 1
+  }
+}
+
+# #83 — a *default* binding: bind `key` only if the action has no key bound yet.
+# A game ships its defaults with Input.action in Boot; a player's later Input.rebind
+# (or a loaded key-map) is not clobbered, and re-running the defaults is idempotent.
+function input_default(name: pointer, key: int) -> void {
+  let s = input_slot(name)
+  let base = s * INPUT_MAX_KEYS
+  var i = 0
+  while i < INPUT_MAX_KEYS {
+    if input_keys[base + i] != 0 { return }          # already has a binding — keep it
+    i = i + 1
+  }
+  input_keys[base] = key
+}
+
+# #83 — device-agnostic actions: also fire the named action from a gamepad button.
+# Buttons are stored +1 so 0 stays the empty marker. The same action can carry both
+# keyboard keys (input_bind / input_default) and pad buttons; a read fires on either.
+function input_bind_pad(name: pointer, button: int) -> void {
+  let s = input_slot(name)
+  let base = s * INPUT_MAX_KEYS
+  var i = 0
+  while i < INPUT_MAX_KEYS {
+    if input_pads[base + i] == (button + 1) { return }   # already bound
+    i = i + 1
+  }
+  i = 0
+  while i < INPUT_MAX_KEYS {
+    if input_pads[base + i] == 0 { input_pads[base + i] = button + 1;  return }
     i = i + 1
   }
 }
@@ -173,6 +207,7 @@ var in_wheel: int = 0     # wheel delta this frame
 # gamepads: connected flag, button bitmask, and IN_AXES fixed axes each
 var in_pad_conn: words = null      # IN_PADS
 var in_pad_btn:  words = null      # IN_PADS
+var in_pad_btn0: words = null      # IN_PADS — pad button mask last frame (edges) — #83
 var in_pad_axis: words = null      # IN_PADS * IN_AXES (fixed)
 # touch points: active flag, x, y each
 var in_touch_on: words = null      # IN_TOUCH
@@ -189,6 +224,7 @@ function in_init() -> void {
   in_prev  = words(IN_WORDS)
   in_pad_conn = words(IN_PADS)
   in_pad_btn  = words(IN_PADS)
+  in_pad_btn0 = words(IN_PADS)
   in_pad_axis = words(IN_PADS * IN_AXES)
   in_touch_on = words(IN_TOUCH)
   in_touch_x  = words(IN_TOUCH)
@@ -217,6 +253,11 @@ function in_set_or(dst: words, a: words, b: words) -> void { var i = 0;  while i
 function input_device_commit(k: int, replaying: int) -> void {
   in_init()
   in_set_copy(in_prev, in_held)                      # last frame's committed set
+  # #83: snapshot last frame's pad-button masks for the just_pressed/released edges.
+  # Taken before the platform refresh (win_pad, below, runs after this), so it holds
+  # the previous frame's committed value against which this frame's edge is measured.
+  var pj = 0
+  while pj < IN_PADS { in_pad_btn0[pj] = in_pad_btn[pj];  pj = pj + 1 }
 
   if replaying == 1 {
     # rebuild the platform set + mouse from the tape; sim/injection is ignored so
@@ -399,6 +440,45 @@ function input_set_touch(i: int, x: int, y: int, active: bool) -> void {
 # is the named action held on the frame last polled?
 function input_down(name: pointer) -> bool {
   return input_slot_has(input_find(name), input_frame)
+}
+
+# #83 — the Input-Manager reads: an action is *active* when any of its bound
+# keyboard keys is in the multi-key device held-set OR any of its bound pad buttons
+# is down on pad 0. Unlike input_down (which reads the single per-frame key), these
+# see the whole device layer (hold left AND jump), and are device-agnostic. The
+# frame loop now commits the device layer automatically (input_poll), so these read
+# live without the game calling Input.poll by hand.
+function input_active_in(name: pointer, held: words, padmask: int) -> bool {
+  let s = input_find(name)
+  if s < 0 { return false }
+  let base = s * INPUT_MAX_KEYS
+  var i = 0
+  while i < INPUT_MAX_KEYS {
+    let k = input_keys[base + i]
+    if (k != 0) and in_bit_get(held, k) { return true }
+    let pb = input_pads[base + i]
+    if (pb != 0) and ((padmask & (1 << (pb - 1))) != 0) { return true }
+    i = i + 1
+  }
+  return false
+}
+function input_active(name: pointer) -> bool {
+  in_init()
+  return input_active_in(name, in_held, in_pad_btn[0])
+}
+# went active this frame (active now, not last frame) — the deterministic on-press.
+function input_just_pressed(name: pointer) -> bool {
+  in_init()
+  let now  = input_active_in(name, in_held, in_pad_btn[0])
+  let was  = input_active_in(name, in_prev, in_pad_btn0[0])
+  return now and (not was)
+}
+# went inactive this frame (not active now, was last frame) — the on-release.
+function input_just_released(name: pointer) -> bool {
+  in_init()
+  let now  = input_active_in(name, in_held, in_pad_btn[0])
+  let was  = input_active_in(name, in_prev, in_pad_btn0[0])
+  return (not now) and was
 }
 
 # did the named action go down this frame (down now, not down last frame)?

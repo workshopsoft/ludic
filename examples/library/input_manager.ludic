@@ -1,0 +1,42 @@
+# input_manager.ludic — the Input Manager (#83): default bindings a game ships and
+# a player rebinds, and device-agnostic actions that read the multi-key device
+# layer across keyboard and gamepad, with clean on-press / on-release edges. Driven
+# headless by injection (Input.press / Input.set_pad), the same way #7/#50 test.
+#
+# Deterministic; a full run prints:  1 1 1 0 1 0 0 1
+program InputManager {
+  function bi(b: bool) -> int { if b { return 1 };  return 0 }
+
+  entry {
+    Input.action("jump", ' ')        # ship a default binding (space)
+    Input.action("jump", 'k')        # ignored — jump already has a default, not clobbered
+    Input.bind_pad("jump", 0)        # device-agnostic: also fire jump from pad button 0
+
+    # A. active via the keyboard, with on-press / on-release edges.
+    Input.press(' ')
+    Input.poll()
+    print(bi(Input.active("jump")))          # 1 — space held
+    print(bi(Input.just_pressed("jump")))    # 1 — went active this frame
+    print(bi(Input.active("jump")))          # 1 — still active
+    Input.poll()
+    print(bi(Input.just_pressed("jump")))    # 0 — held, not a fresh press
+    Input.release(' ')
+    Input.poll()
+    print(bi(Input.just_released("jump")))   # 1 — went inactive this frame
+    print(bi(Input.active("jump")))          # 0
+
+    # B. the default was not clobbered — 'k' never fires jump (2nd default ignored).
+    Input.press('k')
+    Input.poll()
+    print(bi(Input.active("jump")))          # 0 — 'k' isn't bound to jump
+
+    # C. device-agnostic — a gamepad button fires the same action, no key held.
+    # (The just_pressed/just_released *edges* also work across the pad in a real
+    # windowed game, where the platform refreshes the pad each frame; the headless
+    # injection path here exercises the device-agnostic `active` read.)
+    Input.release('k')
+    Input.set_pad(0, true, 1, 0.0, 0.0, 0.0, 0.0)    # pad 0, button-0 mask (bit 0)
+    Input.poll()
+    print(bi(Input.active("jump")))          # 1 — active via the pad, no key held
+  }
+}

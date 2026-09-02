@@ -301,6 +301,8 @@ function cmd_test() -> int {
   # deterministic input record/replay — fed one key per poll from stdin.
   feat_case("library/input_actions", "  xwa", "1 0 1 1 0 1 0", "input_actions.ludic (#7 action maps + rebinding + deterministic replay)")
   feat_case("library/input_device", "", "1 1 0 1 0 1 71 -71 5 1 3 1 2 1 0 0 1", "input_device.ludic (#50 multi-key held state + analog axis/vector + mouse + gamepad/touch + full-state replay)")
+  feat_case("library/input_manager", "", "1 1 1 0 1 0 0 1", "input_manager.ludic (#83 Input Manager: default bindings + device-agnostic actions across keyboard/pad + on-press/on-release edges)")
+  feat_case("library/input_auto", "llq", "2", "input_auto.ludic (#83 the frame loop auto-commits the device layer: Input.active fires with no manual Input.poll)")
   feat_case("library/audio", "", "0 0 0 0 1", "audio.ludic (#22 Audio.* load/play/music/volume/pitch/stop/is_playing — headless no-op)")
   # #6 Http.* — the client links Foundation (macOS-only), so build it through the
   # canonical `ludicc -o` path (which wires the framework) and gate on Darwin. The

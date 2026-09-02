@@ -467,9 +467,20 @@ function emit_game_main() -> void {
     emit("  br i1 ");  emit(rc);  emit(", label %body, label %done\n")
   }
   emit("body:\n")
-  if (find_fn("rt_poll") != null) {
-    let k = emit_bind("call i32 @fn_rt_poll()")
+  # #83: when the game uses the input action-map / device layer, the frame loop
+  # commits the device layer automatically each frame by calling input_poll (which
+  # reads the live key via rt_poll, records/replays, and rebuilds the held-key set,
+  # mouse and gamepad state). Its return is the frame key, so Input.key still works
+  # and the game no longer has to call Input.poll by hand. A game that uses no Input
+  # runtime keeps the plain rt_poll path, byte-identical.
+  if g_uses_input and (find_fn("input_poll") != null) {
+    let k = emit_bind("call i32 @fn_input_poll()")
     emit("  store i32 ");  emit(k);  emit(", ptr @L_key\n")
+  } else {
+    if (find_fn("rt_poll") != null) {
+      let k = emit_bind("call i32 @fn_rt_poll()")
+      emit("  store i32 ");  emit(k);  emit(", ptr @L_key\n")
+    }
   }
   emit_calls_for_phase("Input")
   emit_calls_for_phase("FixedUpdate")

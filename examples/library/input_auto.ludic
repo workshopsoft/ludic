@@ -1,0 +1,20 @@
+# input_auto.ludic — proves the frame loop commits the device layer automatically
+# (#83): a real handler game reads Input.active in its Update phase and NEVER calls
+# Input.poll by hand, yet the action fires from the live key. Before this fix the
+# loop only fed Input.key(), so Input.active read empty unless the game polled.
+#
+# Driven headless by the keys on stdin — one char per frame. With "llq": frame 1
+# and 2 read 'l' (the action key), frame 3 reads 'q' (which quits). So the action
+# is active on exactly two frames.
+#
+# Run:  printf 'llq' | bin/ludic examples/library/input_auto.ludic   ->  2
+program InputAuto {
+  property Tag { n: int = 0 }
+  model Player { Tag }
+
+  var hits: int = 0
+
+  @OnStart handler Boot { Input.action("go", 'l') }        # 'l' == 108
+  handler Sense phase Update { if Input.active("go") { hits = hits + 1 } }
+  @OnQuit handler Report { print(hits) }
+}
