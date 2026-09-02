@@ -305,7 +305,9 @@ ret:
 }
 
 ; #50 — the ASCII value an NSEvent key event maps to (same mapping as win_poll's
-; keyDown switch: arrows -> WASD, return, escape -> 'q', else the first character).
+; keyDown switch: arrows -> WASD, return, escape -> 27, else the first character).
+; #88: escape delivers key 27 (left to the game), not 'q' — so the held-key set
+; stays consistent with @W_key and a shipped game owns Esc (pause).
 define i32 @ev_keyval(ptr %ev) {
 entry:
   %sel_kc = call ptr @sel_registerName(ptr @.s_keycd)
@@ -326,7 +328,7 @@ va:     ret i32 97
 vd:     ret i32 100
 vspace: ret i32 32
 vret:   ret i32 10
-vesc:   ret i32 113
+vesc:   ret i32 27
 chars:
   %sel_ch = call ptr @sel_registerName(ptr @.s_chars)
   %sel_len = call ptr @sel_registerName(ptr @.s_length)
@@ -344,8 +346,9 @@ none:
 }
 
 ; Drain the event queue, remembering the last key pressed. Arrow keys map onto
-; WASD and escape onto 'q', matching what the C backend did. #50: also track the
-; held-key set (keyDown/keyUp) and the mouse (buttons, position, wheel).
+; WASD; escape delivers key 27 and 'q' is an ordinary key (#88 — a windowed game
+; owns Esc/quit; the headless rt_poll keeps its own 'q' = quit for scripted tests).
+; #50: also track the held-key set (keyDown/keyUp) and the mouse.
 define i32 @win_poll() {
 entry:
   store i32 0, ptr @W_key
@@ -446,8 +449,9 @@ k_d:     store i32 100, ptr @W_key  br label %forward
 k_space: store i32 32,  ptr @W_key  br label %forward
 k_ret:   store i32 10,  ptr @W_key  br label %forward
 k_esc:
-  store i32 113, ptr @W_key
-  store i32 0, ptr @W_running
+  ; Escape is delivered as key 27 and left to the game (pause menus etc.).
+  ; It used to force-quit the window, which a shipped game cannot tolerate.
+  store i32 27, ptr @W_key
   br label %forward
 fromchars:
   %chars = call ptr (ptr, ptr) @objc_msgSend(ptr %ev, ptr %sel_ch)
@@ -458,12 +462,18 @@ takechar:
   %ch = call i16 (ptr, ptr, i64) @objc_msgSend(ptr %chars, ptr %sel_cat, i64 0)
   %ch32 = zext i16 %ch to i32
   store i32 %ch32, ptr @W_key
-  %isq = icmp eq i32 %ch32, 113
-  br i1 %isq, label %quit, label %forward
-quit:
-  store i32 0, ptr @W_running
+  ; 'q' is an ordinary key in a windowed game (the headless test driver keeps its
+  ; own 'q' = quit in rt_poll); a shipped game must not die on a typo.
   br label %forward
 forward:
+  ; key events are consumed by win_poll itself; forwarding them to -sendEvent:
+  ; hits an unhandled responder chain and AppKit plays the system "funk" beep.
+  ; Mouse / other events are still forwarded so the window behaves normally.
+  %fwd_isdown = icmp eq i64 %ty, 10
+  %fwd_isup = icmp eq i64 %ty, 11
+  %fwd_iskey = or i1 %fwd_isdown, %fwd_isup
+  br i1 %fwd_iskey, label %pump, label %dosend
+dosend:
   %fwd = call ptr (ptr, ptr, ptr) @objc_msgSend(ptr %app, ptr %sel_send, ptr %ev)
   br label %pump
 finish:
