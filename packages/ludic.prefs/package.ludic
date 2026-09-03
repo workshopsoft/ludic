@@ -1,0 +1,7 @@
+# ludic.prefs — a tiny, human-readable key = value store for player preferences and
+# records (high scores, options). Text file, one `key=value` per line, integers only;
+# a whole-world Save.write is the wrong tool for "remember my best run".
+package "ludic.prefs"
+version "0.1.0"
+kind source
+provides "Prefs"

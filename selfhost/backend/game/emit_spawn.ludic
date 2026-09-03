@@ -1,6 +1,16 @@
 # emit_spawn.ludic — spawn / despawn / self(), and seeding a component's fields
 # from its declared defaults plus any per-spawn overrides.
 
+# run a hook body with `self()` bound to entity `e` (a constructor knows its entity)
+function emit_hook_with_self(e: pointer, body: Node) -> void {
+  let sslot = emit_alloca("i32")
+  emit("  store i32 ");  emit(e);  emit(", ptr ");  emit(sslot);  emit("\n")
+  if nself < len(self_stk) { self_stk[nself] = sslot } else { push(self_stk, sslot) }
+  nself = nself + 1
+  emit_block(body)
+  nself = nself - 1
+}
+
 function emit_init_component(e: pointer, comp: pointer, rec: Node) -> void {
   let me = itoa(MAX_ENT)
   let c = find_comp(comp)
@@ -44,7 +54,7 @@ function emit_init_component(e: pointer, comp: pointer, rec: Node) -> void {
     let vslot = emit_alloca("ptr")
     emit("  store ptr ");  emit(slot);  emit(", ptr ");  emit(vslot);  emit("\n")
     loc_push(comp, vslot, comp)
-    emit_block(ab)
+    emit_hook_with_self(e, ab)
     nloc = save
   }
   # EV1: a @Public attach hook fires prop_<P>_attach with the entity
@@ -68,33 +78,72 @@ function emit_bind_props(model: Node, e: pointer) -> void {
   }
 }
 
+# the record for component `cn` in a spawn or prefab node (null when absent)
+function spawn_record(n: Node, cn: pointer) -> Node {
+  if (n == null) { return null }
+  var i = 0
+  while i < len(n.kids) { if (n.kids[i].s == cn) { return n.kids[i].a };  i = i + 1 }
+  return null
+}
+# a prefab's preset fields with the spawn's own overrides after them (later wins)
+function merge_records(base: Node, over: Node) -> Node {
+  if (base == null) { return over }
+  if (over == null) { return base }
+  let m = node(E_REC)
+  var i = 0
+  while i < len(base.kids) { push(m.kids, base.kids[i]);  i = i + 1 }
+  i = 0
+  while i < len(over.kids) { push(m.kids, over.kids[i]);  i = i + 1 }
+  return m
+}
+
+# the model behind a spawn name: a model itself, or the model at the end of a
+# prefab chain (`prefab Grunt: Foe`, `prefab Foe: Creature` -> Creature)
+function spawn_model(name: pointer) -> pointer {
+  var n = name
+  var depth = 0
+  while true {
+    let p = find_prefab(n)
+    if (p == null) { return n }
+    n = p.ty
+    depth = depth + 1
+    if depth > 16 { perr(`prefab {name}: the chain of prefabs never reaches a model`) }
+  }
+  return n
+}
+# the preset record for component `cn` along a prefab chain, base prefabs first
+function prefab_record(name: pointer, cn: pointer) -> Node {
+  let p = find_prefab(name)
+  if (p == null) { return null }
+  return merge_records(prefab_record(p.ty, cn), spawn_record(p, cn))
+}
+
 function emit_spawn(st: Node) -> pointer {
   let e = emit_bind("call i32 @L_alloc()")
-  let ak = find_arch_id(st.s)
+  let model = spawn_model(st.s)
+  let ak = find_arch_id(model)
+  if (find_prefab(st.s) != null) and (ak == 0) { perr(`prefab {st.s}: unknown model {model}`) }
   if ak > 0 {
     let me = itoa(MAX_ENT)
     let kp = nreg();  emit("  ");  emit(kp);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_kind, i32 0, i32 ");  emit(e);  emit("\n")
     emit("  store i32 ");  emit(itoa(ak));  emit(", ptr ");  emit(kp);  emit("\n")
-    let arch = find_arch(st.s)
+    let arch = find_arch(model)
     var c = 0
     while c < len(arch.kids) {
       let cn = arch.kids[c].s
-      var rec = null
-      var i = 0
-      while i < len(st.kids) { if (st.kids[i].s == cn) { rec = st.kids[i].a };  i = i + 1 }
-      emit_init_component(e, cn, rec)
+      emit_init_component(e, cn, merge_records(prefab_record(st.s, cn), spawn_record(st, cn)))
       c = c + 1
     }
-    let ob = onspawn_body(st.s)                 # @OnSpawn(Model) hook runs after init
+    let ob = onspawn_body(model)                # @OnSpawn(Model) hook runs after init
     if (ob != null) {
       let save = nloc
       emit_bind_props(arch, e)
-      emit_block(ob)
+      emit_hook_with_self(e, ob)
       nloc = save
     }
     # EV1: a @Public spawn hook also fires the public event model_<M>_spawn, so
     # mods (native or foreign, over the ABI) see the entity born.
-    let sev = `model_{st.s}_spawn`
+    let sev = `model_{model}_spawn`
     if (find_event(sev) != null) { emit("  call void @ev_");  emit(sev);  emit("(i32 ");  emit(e);  emit(")\n") }
   } else {
     var i = 0
@@ -178,6 +227,11 @@ function emit_detach(st: Node) -> void {
 # enable/disable. `<P> on <e>` toggles a property's has-flag on an entity (its
 # data persists, so re-enabling restores it, and queries already skip a cleared
 # flag). A bare `<Model>` / `<Handler>` flips a global enabled flag.
+function find_sys(name: pointer) -> Node {
+  var i = 0
+  while i < len(prog) { let d = prog[i];  if d.kind == N_SYS and (d.s == name) { return d };  i = i + 1 }
+  return null
+}
 function emit_toggle(st: Node) -> void {
   var val = "0";  if st.ival == 1 { val = "1" }
   if (st.ty != null) and (st.ty == "system") { return }    # `disable system <fn>` is compile-time (handled in emit_one_engine_system); no runtime code
@@ -208,6 +262,11 @@ function emit_toggle(st: Node) -> void {
     if (find_event(tev) != null) { emit("  call void @ev_");  emit(tev);  emit("(i32 ");  emit(ev.code);  emit(")\n") }
   } else {
     var g = "@HE_";  if is_model(st.s) { g = "@ME_" }     # model vs handler
-    emit("  store i32 ");  emit(val);  emit(", ptr ");  emit(g);  emit(st.s);  emit("\n")
+    var hname = st.s
+    if (g == "@HE_") and (find_sys(hname) == null) and (g_cur_scene != null) {   # a scene's own handler, by its bare name
+      let qualified = `{g_cur_scene.s}_{hname}`
+      if (find_sys(qualified) != null) { hname = qualified }
+    }
+    emit("  store i32 ");  emit(val);  emit(", ptr ");  emit(g);  emit(hname);  emit("\n")
   }
 }

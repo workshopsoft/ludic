@@ -381,6 +381,22 @@ function input_axis_i(neg: int, pos: int) -> int {
   if in_bit_get(in_held, neg) { v = v - 1 }
   return v
 }
+# The standard top-down movement intent as -1/0/1 per axis: WASD or the arrow
+# keys, and the left stick of pad 0 (past a 0.35 deadzone) when one is connected.
+function input_move_i() -> IVec2 {
+  in_init()
+  var x = input_axis_i(Key.A, Key.D) + input_axis_i(Key.Left, Key.Right)
+  var y = input_axis_i(Key.W, Key.S) + input_axis_i(Key.Up, Key.Down)
+  if input_pad_connected(0) {
+    let sx = input_pad_axis(0, 0)
+    let sy = input_pad_axis(0, 1)
+    if sx > 0.35 { x = 1 }
+    if sx < -0.35 { x = 0 - 1 }
+    if sy > 0.35 { y = 1 }
+    if sy < -0.35 { y = 0 - 1 }
+  }
+  return IVec2.make(clamp(x, 0 - 1, 1), clamp(y, 0 - 1, 1))
+}
 # A 2D vector from four direction keys, normalized so a diagonal is not faster.
 function input_vector(left: int, right: int, up: int, down: int) -> Vector {
   in_init()
@@ -412,6 +428,9 @@ function input_strength(name: pointer) -> fixed {
 #   3 confined — dissociated but visible; the mouse cannot leave the window.
 # The platform auto-releases (shows + reconnects) while the window is not key
 # (Cmd-Tab) and on close. Headless / non-windowed: a no-op.
+enum CursorMode { Normal, Hidden, Locked, Confined }   # Input.cursor_mode(mode:)
+enum PadButton { A, B, X, Y, LeftShoulder, RightShoulder, Back, Start }   # Input.bind_pad(button:) / pad_button
+enum MouseButton { Left, Right, Middle }                                  # Input.mouse_down(button:)
 function input_cursor_mode(mode: int) -> void {
   if is_windowed() { win_cursor_mode(mode) }
 }

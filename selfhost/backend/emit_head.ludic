@@ -30,8 +30,48 @@ function global_init(d: Node) -> pointer {
   let e = d.a
   if e.kind == E_INT or e.kind == E_FLOAT or e.kind == E_BOOL { return itoa(e.ival) }
   if e.kind == E_UN and (e.s == ("-")) and e.a.kind == E_INT { return (("-") + itoa(e.a.ival)) }
+  if e.kind == E_MEMBER and e.a.kind == E_ID {                  # `Enum.Variant` is a compile-time int
+    let ord = enum_ordinal(e.a.s, e.s)
+    if ord >= 0 { return itoa(ord) }
+  }
   if (llty(d.ty) == "ptr") { return "null" }
   return "0"
+}
+# does a global's initializer need code at startup (anything global_init cannot fold)?
+function global_needs_init_code(d: Node) -> bool {
+  if (d.a == null) { return false }
+  let e = d.a
+  if e.kind == E_INT or e.kind == E_FLOAT or e.kind == E_BOOL or e.kind == E_NULL { return false }
+  if e.kind == E_UN and (e.s == ("-")) and e.a.kind == E_INT { return false }
+  if e.kind == E_MEMBER and e.a.kind == E_ID { if enum_ordinal(e.a.s, e.s) >= 0 { return false } }
+  return true
+}
+
+# @L_init_globals(): evaluate every global initializer global_init could not fold
+# (`var run: Progress = new Progress`, `var speed: int = BASE * 2`, a call), in
+# declaration order, once at startup — after the runtime boots, before Start.
+function emit_global_init_fn() -> void {
+  ll_t = 0;  ll_lbl = 0;  g_term = false;  loc_reset();  nloop = 0;  nself = 0
+  ret_ty = "void"
+  let fbody = buf_new()
+  falloc = buf_new()
+  let saved = code
+  code = fbody
+  var i = 0
+  while i < len(prog) {
+    let d = prog[i]
+    if d.kind == N_VAR and global_needs_init_code(d) {
+      let v = emit_expr(d.a)
+      emit("  store ");  emit(llty(d.ty));  emit(" ");  emit(coerce_code(v, d.ty));  emit(", ptr @g_");  emit(d.s);  emit("\n")
+    }
+    i = i + 1
+  }
+  emit("  ret void\n")
+  code = saved
+  emit("define void @L_init_globals() {\nentry:\n")
+  emit(buf_str(falloc))
+  emit(buf_str(fbody))
+  emit("}\n\n")
 }
 
 function emit_header() -> void {
@@ -103,6 +143,14 @@ function emit_header() -> void {
   while i < len(prog) {
     let d = prog[i]
     if d.kind == N_COMP {
+      var j = 0                                   # the same record twice would silently use the first
+      while j < i {
+        if prog[j].kind == N_COMP and (prog[j].s == d.s) {
+          if (j < g_prog_user_end) and (i >= g_prog_user_end) { perr(`property {d.s} is also a property of the engine runtime; choose another name`) }
+          perr(`property {d.s} is declared twice`)
+        }
+        j = j + 1
+      }
       emith(layout_ty(d.s));  emith(" = type { ")
       if len(d.kids) == 0 { emith("i32") }
       var f = 0
@@ -120,6 +168,14 @@ function emit_header() -> void {
   while i < len(prog) {
     let d = prog[i]
     if d.kind == N_VAR {
+      var j = 0                                   # the same name twice would be one LLVM global
+      while j < i {
+        if prog[j].kind == N_VAR and (prog[j].s == d.s) {
+          if (j < g_prog_user_end) and (i >= g_prog_user_end) { perr(`variable {d.s} is also a variable of the engine runtime; choose another name`) }
+          perr(`variable {d.s} is declared twice`)
+        }
+        j = j + 1
+      }
       emith("@g_");  emith(d.s);  emith(" = internal global ")
       emith(llty(d.ty));  emith(" ")
       emith(global_init(d))

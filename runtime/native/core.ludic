@@ -90,6 +90,7 @@ function rt_screen_w() -> int { return rt_fbw }
 function rt_screen_h() -> int { return rt_fbh }
 
 function rt_clear(c: int) -> void {
+  rt_camera_tick()                              # a timed Camera.shake_for advances once per frame
   let n = rt_fbw * rt_fbh
   for i in 0 .. n {
     rt_fb[i] = c
@@ -326,6 +327,24 @@ function rt_camera_shake(amount: int) -> void {
   if amount <= 0 { rt_shake_x = 0;  rt_shake_y = 0;  return }
   rt_shake_x = rt_rng_range(0 - amount, amount)
   rt_shake_y = rt_rng_range(0 - amount, amount)
+}
+
+# Camera.shake_for(amount, frames): shake by up to +/- amount pixels for `frames`
+# frames, then stop — the engine re-rolls the offset at the start of every frame
+# (rt_camera_tick, from the frame clear) so no handler has to count it down. A
+# later call restarts the shake; a bigger amount wins over a smaller one in flight.
+var rt_shake_amount: int = 0
+var rt_shake_left:   int = 0
+function rt_camera_shake_for(amount: int, frames: int) -> void {
+  if amount >= rt_shake_amount { rt_shake_amount = amount;  rt_shake_left = frames }
+}
+function rt_camera_tick() -> void {
+  if rt_shake_left > 0 {
+    rt_shake_left = rt_shake_left - 1
+    rt_camera_shake(rt_shake_amount)
+    return
+  }
+  if rt_shake_amount > 0 { rt_shake_amount = 0;  rt_camera_shake(0) }
 }
 
 # Restrict drawing to a screen-space rectangle (x, y, width, height).
@@ -599,6 +618,139 @@ function rt_map_row(y: int, s: string) -> void {
     x = x + 1
     ch = s[x]
   }
+}
+
+# ---- the cell API: a game edits the grid in place instead of keeping its own copy
+function rt_map_set(x: int, y: int, glyph: int) -> void {
+  if (x < 0) or (y < 0) or (x >= rt_mapw) or (y >= rt_maph) { return }
+  rt_map[y * 96 + x] = glyph
+}
+function rt_map_fill(glyph: int) -> void {
+  var y = 0
+  while y < rt_maph { var x = 0;  while x < rt_mapw { rt_map[y * 96 + x] = glyph;  x = x + 1 };  y = y + 1 }
+}
+# every cell of the rectangle (x, y, w, h)
+function rt_map_rect(x: int, y: int, w: int, h: int, glyph: int) -> void {
+  var yy = y
+  while yy < y + h { var xx = x;  while xx < x + w { rt_map_set(xx, yy, glyph);  xx = xx + 1 };  yy = yy + 1 }
+}
+# the outermost ring of cells
+function rt_map_border(glyph: int) -> void {
+  rt_map_rect(0, 0, rt_mapw, 1, glyph)
+  rt_map_rect(0, rt_maph - 1, rt_mapw, 1, glyph)
+  rt_map_rect(0, 0, 1, rt_maph, glyph)
+  rt_map_rect(rt_mapw - 1, 0, 1, rt_maph, glyph)
+}
+# a random cell holding `glyph` (seeded RNG): random tries, then a sweep; (-1, -1) if none
+function rt_map_random_cell(glyph: int) -> IVec2 {
+  var tries = 0
+  while tries < 64 {
+    let x = rt_rng_range(0, rt_mapw - 1)
+    let y = rt_rng_range(0, rt_maph - 1)
+    if rt_tile(x, y) == glyph { return IVec2.make(x, y) }
+    tries = tries + 1
+  }
+  var y2 = 0
+  while y2 < rt_maph { var x2 = 0;  while x2 < rt_mapw { if rt_tile(x2, y2) == glyph { return IVec2.make(x2, y2) };  x2 = x2 + 1 };  y2 = y2 + 1 }
+  return IVec2.make(0 - 1, 0 - 1)
+}
+# a random cell holding `glyph` at least `min_tiles` from `from` (tiles); falls back to any such cell
+function rt_map_random_cell_far(glyph: int, from: IVec2, min_tiles: int) -> IVec2 {
+  var tile = rt_map_random_cell(glyph)
+  var tries = 0
+  while tries < 40 {
+    if not IVec2.within(tile, from, min_tiles - 1) { return tile }
+    tile = rt_map_random_cell(glyph)
+    tries = tries + 1
+  }
+  return tile
+}
+# the solid glyphs, as the move system read them from the Solids config (0 = none)
+var rt_map_solid1: int = 0
+var rt_map_solid2: int = 0
+var rt_map_tile_px: int = 16
+function rt_map_is_solid(x: int, y: int) -> bool {
+  if rt_map_solid1 == 0 { return false }        # no Solids config: nothing is solid
+  let g = rt_tile(x, y)
+  if (x < 0) or (y < 0) or (x >= rt_mapw) or (y >= rt_maph) { return true }
+  if (rt_map_solid1 != 0) and (g == rt_map_solid1) { return true }
+  if (rt_map_solid2 != 0) and (g == rt_map_solid2) { return true }
+  return false
+}
+function rt_map_is_solid_at(px: int, py: int) -> bool { return rt_map_is_solid(px / rt_map_tile_px, py / rt_map_tile_px) }
+function rt_map_to_tile(pixel: IVec2) -> IVec2 { return IVec2.make(pixel.x / rt_map_tile_px, pixel.y / rt_map_tile_px) }
+function rt_map_width() -> int { return rt_mapw }
+function rt_map_height() -> int { return rt_maph }
+
+# IVec2.heading / along / step and Angle.diff_degrees — integer-degree geometry
+function rt_ivec_heading(a: IVec2, b: IVec2) -> int {
+  return floor(Math.rad_to_deg(Math.atan2(fixed(b.y - a.y), fixed(b.x - a.x))))
+}
+function rt_ivec_along(origin: IVec2, degrees: int, distance: int) -> IVec2 {
+  let r = Math.deg_to_rad(fixed(degrees))
+  return IVec2.make(origin.x + floor(Math.cos(r) * fixed(distance)), origin.y + floor(Math.sin(r) * fixed(distance)))
+}
+function rt_ivec_step(degrees: int) -> IVec2 {
+  let p = rt_ivec_along(IVec2.zero(), degrees, 10)
+  return IVec2.make(Math.sign(p.x), Math.sign(p.y))
+}
+function rt_angle_diff_degrees(a: int, b: int) -> int {
+  var d = (b - a) % 360
+  if d > 180 { d = d - 360 }
+  if d <= 0 - 180 { d = d + 360 }
+  return d
+}
+
+# Screen.bar: a filled meter — `value` of `max` in `color` over a `back` track
+function rt_bar(x: int, y: int, w: int, h: int, value: int, max: int, color: int, back: int) -> void {
+  rt_fill_rect(x, y, w, h, back)
+  var filled = 0
+  if max > 0 { filled = clamp(value, 0, max) * w / max }
+  if filled > 0 { rt_fill_rect(x, y, filled, h, color) }
+}
+
+# Random.weighted(weights): an index drawn in proportion to its weight (0 = never);
+# -1 when every weight is 0. Deterministic, from the seeded RNG.
+function rt_rng_weighted(weights: []int) -> int {
+  var total = 0
+  var i = 0
+  while i < len(weights) { if weights[i] > 0 { total = total + weights[i] };  i = i + 1 }
+  if total <= 0 { return 0 - 1 }
+  var roll = rt_rng_range(0, total - 1)
+  i = 0
+  while i < len(weights) {
+    if weights[i] > 0 {
+      if roll < weights[i] { return i }
+      roll = roll - weights[i]
+    }
+    i = i + 1
+  }
+  return 0 - 1
+}
+
+# List.sample(pool, count): `count` picks from an int slice, distinct while the
+# pool has enough, repeating a valid pick when it does not; empty in -> zeros
+function rt_list_sample(pool: []int, count: int) -> []int {
+  let out = new []int
+  let n = len(pool)
+  var i = 0
+  while i < count {
+    if n == 0 { push(out, 0);  i = i + 1;  continue }
+    var pick = rt_rng_range(0, n - 1)
+    var distinct = n > i
+    var tries = 0
+    while distinct and (tries < 64) {
+      var seen = false
+      var j = 0
+      while j < len(out) { if out[j] == pool[pick] { seen = true };  j = j + 1 }
+      if not seen { break }
+      pick = rt_rng_range(0, n - 1)
+      tries = tries + 1
+    }
+    push(out, pool[pick])
+    i = i + 1
+  }
+  return out
 }
 
 function rt_tile(x: int, y: int) -> int {

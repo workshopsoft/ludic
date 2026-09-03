@@ -1,0 +1,52 @@
+# ============================================================================
+# systems_tileskin.ludic — the engine-owned tilemap-render system.
+#
+# A game that builds its world with Map.row(...) used to draw it by hand — a loop over
+# every cell calling a sprite draw per glyph. Declare one `TileSkin` entity per glyph
+# (from ludic.core) and the engine paints the whole Map.* grid each Render frame,
+# BEFORE the sprite system, so actors land on top of the floor and walls:
+#
+#   spawn Wall { TileSkin { glyph: '#', sprite: wall_id, atlas: 1 } }
+#
+# Cells whose glyph has no skin are left to the clear colour (a flat floor is free).
+# Runs through the same draw chokepoints as sprites (camera / zoom / clip), integer,
+# deterministic. Spliced only when a game declares TileSkin.
+#
+#   property TileSkin { glyph: int, sprite: int, atlas: int = 1, size: int = 16, scale: int = 1 }
+# ============================================================================
+import "atlas.ludic"
+
+function esys_tileskin() -> void {
+  let P = World.prop_id("TileSkin")
+  if P < 0 { return }
+  let f_glyph  = World.field_id(P, "glyph")
+  let f_sprite = World.field_id(P, "sprite")
+  let f_atlas  = World.field_id(P, "atlas")
+  let f_size   = World.field_id(P, "size")
+  let f_scale  = World.field_id(P, "scale")
+  if (f_glyph < 0) or (f_sprite < 0) { return }
+  var e = World.query_next(P, 0)
+  while e >= 0 {
+    let glyph  = World.get(e, P, f_glyph)
+    let sprite = World.get(e, P, f_sprite)
+    var is_atlas = 1
+    if f_atlas >= 0 { is_atlas = World.get(e, P, f_atlas) }
+    var size = 16
+    if f_size >= 0 { let sv = World.get(e, P, f_size);  if sv > 0 { size = sv } }
+    var sc = 1
+    if f_scale >= 0 { let cv = World.get(e, P, f_scale);  if cv > 1 { sc = cv } }
+    var ty = 0
+    while ty < rt_maph {
+      var tx = 0
+      while tx < rt_mapw {
+        if rt_tile(tx, ty) == glyph {
+          if is_atlas != 0 { atlas_draw_ex(sprite, tx * size, ty * size, sc, 0, 0) }
+          else { rt_draw_sprite_ex(sprite, tx * size, ty * size, sc, 0, 0) }
+        }
+        tx = tx + 1
+      }
+      ty = ty + 1
+    }
+    e = World.query_next(P, e + 1)
+  }
+}

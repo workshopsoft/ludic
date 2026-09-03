@@ -1,0 +1,51 @@
+# sprite_atlas.ludic — the engine sprite-render system draws atlas ids (#90).
+# `Sprite { id, atlas: 1 }` marks `id` as a Sprite.cell / Sprite.cell_span sprite
+# (any size, here a 16x32 two-cell character) and esys_sprite routes it through
+# atlas_draw_ex with scale / flip / tint, so the #81 atlas API and the #85 engine
+# sprite system compose. atlas: 0 (the default) keeps `id` a 16x16 table sprite.
+# Verified by pixel readback after one frame.
+#
+# Driven headless by one stdin key ('q' quits after the frame renders).
+#   printf 'q' | LUDIC_MODULES=packages bin/ludic examples/library/sprite_atlas.ludic  ->  32 1 1 1 0
+program SpriteAtlas {
+  import "ludic.core/components.ludic"
+
+  var TALL: int = 0
+
+  function bi(b: bool) -> int { if b { return 1 };  return 0 }
+
+  @OnStart handler Boot {
+    let sheet = Sprite.sheet("assets/kenney/tiny-dungeon/Tilemap/tilemap_packed.png", 16, 16)
+    TALL = Sprite.cell_span(sheet, 0, 0, 1, 2)                       # a 16x32 sprite: two cells tall
+    spawn Tall   { Position { x: 40, y: 40 },  Sprite { id: TALL, atlas: 1 } }
+    spawn Tinted { Position { x: 100, y: 40 }, Sprite { id: TALL, atlas: 1, tint: 0xff0000 } }
+    spawn Table  { Position { x: 160, y: 40 }, Sprite { id: TALL } }   # atlas: 0 -> the (empty) 16x16 table
+  }
+
+  # An empty Render handler: the engine sprite system draws the Sprite entities.
+  handler Draw phase Render { }
+
+  @OnQuit handler Report {
+    print(Sprite.height(TALL))           # 32 — the span is two cells tall
+
+    var top = 0
+    for yy in 40 .. 56 { for xx in 40 .. 56 { if Screen.pixel(xx, yy) != 0 { top = 1 } } }
+    print(top)                           # 1 — the upper cell drew
+
+    var bottom = 0
+    for yy in 56 .. 72 { for xx in 40 .. 56 { if Screen.pixel(xx, yy) != 0 { bottom = 1 } } }
+    print(bottom)                        # 1 — the lower cell drew too (a table sprite stops at 16px)
+
+    var tinted = 1
+    var seen = 0
+    for yy in 40 .. 72 { for xx in 100 .. 116 {
+      let c = Screen.pixel(xx, yy)
+      if c != 0 { seen = 1;  if c != 0xff0000 { tinted = 0 } }
+    } }
+    print(bi((seen == 1) and (tinted == 1)))   # 1 — every opaque pixel took the tint
+
+    var table = 0
+    for yy in 40 .. 72 { for xx in 160 .. 176 { if Screen.pixel(xx, yy) != 0 { table = 1 } } }
+    print(table)                         # 0 — without atlas: 1 the id is a table id (nothing loaded there)
+  }
+}

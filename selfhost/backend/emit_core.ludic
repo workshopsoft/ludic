@@ -120,6 +120,8 @@ function lbl(pfx: pointer) -> pointer { let r = (pfx + itoa(ll_lbl));  ll_lbl = 
 # slice) is a pointer; void is void.
 function llty(t: pointer) -> pointer {
   if (t == "int") or (t == "bool") or (t == "fixed") or (t == "entity") { return "i32" }   # entity = an i32 handle (self())
+  if is_bare_enum(t) { return "i32" }             # a payload-free enum is an int by another name
+  if (t == "countdown") { return "i32" }          # an int the engine counts down to 0 each Update
   if (t == "long") { return "i64" }               # a 64-bit signed integer
   if (t == "Vector") { return "i64" }             # a 2D vector: (x, y) fixeds packed into one i64
   if (t == "IVec2") { return "i64" }              # an integer 2D vector: (x, y) ints packed into one i64
@@ -191,6 +193,34 @@ function enum_ordinal(ename: pointer, vname: pointer) -> int {
     if (vname == "Quit")      { return 2 }      # program shutdown
   }
   return 0 - 1
+}
+# an enum none of whose variants carries a payload: a plain int-valued naming layer
+function is_bare_enum(name: pointer) -> bool {
+  let en = find_enum(name)
+  if (en == null) { return false }
+  var i = 0
+  while i < len(en.kids) { if len(en.kids[i].kids) > 0 { return false };  i = i + 1 }
+  return true
+}
+function find_prefab(name: pointer) -> Node {
+  var i = 0
+  while i < len(prog) { let d = prog[i];  if d.kind == N_PREFAB and (d.s == name) { return d };  i = i + 1 }
+  return null
+}
+function has_prefabs() -> bool {
+  var i = 0
+  while i < len(prog) { if prog[i].kind == N_PREFAB { return true };  i = i + 1 }
+  return false
+}
+# does any component declare a `countdown` field?
+function has_countdowns() -> bool {
+  var i = 0
+  while i < len(prog) {
+    let d = prog[i]
+    if d.kind == N_COMP { var f = 0;  while f < len(d.kids) { if (d.kids[f].ty == "countdown") { return true };  f = f + 1 } }
+    i = i + 1
+  }
+  return false
 }
 function find_fn(name: pointer) -> Node {
   var i = 0
@@ -288,7 +318,25 @@ function computed_expr(prop: pointer, field: pointer) -> Node {
 }
 # best-effort static type of an expression (for computed-field lookup; emits nothing)
 function static_type(e: Node) -> pointer {
-  if e.kind == E_ID { let li = loc_find(e.s);  if li >= 0 { return loc_ty[li] } }
+  if e.kind == E_ID {
+    let li = loc_find(e.s);  if li >= 0 { return loc_ty[li] }
+    let g = find_global(e.s);  if (g != null) { return g.ty }
+  }
+  if e.kind == E_CALL {
+    if e.a.kind == E_ID { let f = find_fn(e.a.s);  if (f != null) { return f.ty } }
+    if e.a.kind == E_MEMBER and e.a.a.kind == E_ID {                 # Ns.fn(...) / Prop.of(e)
+      if (find_comp(e.a.a.s) != null) and (e.a.s == "of") { return e.a.a.s }
+      if (e.a.a.s == "IVec2") and ((e.a.s == "make") or (e.a.s == "zero") or (e.a.s == "add") or (e.a.s == "sub") or (e.a.s == "scale") or (e.a.s == "along") or (e.a.s == "step")) { return "IVec2" }
+      if (e.a.a.s == "Map") and ((e.a.s == "random_cell") or (e.a.s == "random_cell_far") or (e.a.s == "to_tile")) { return "IVec2" }
+      if (e.a.a.s == "Collider") and (e.a.s == "center") { return "IVec2" }
+      if (e.a.a.s == "Input") and (e.a.s == "move_i") { return "IVec2" }
+      let nf = find_fn(ns_lower(e.a.a.s) + ("_") + e.a.s);  if (nf != null) { return nf.ty }
+    }
+  }
+  if e.kind == E_MEMBER {                                            # record.field
+    let bt = static_type(e.a)
+    if (bt != null) { let s = layout_node(bt);  if (s != null) { return field_type(s, e.s) } }
+  }
   return null
 }
 

@@ -67,11 +67,11 @@ static const char* LUDIC_KW_RESERVED[] = {
 };
 static const char* LUDIC_KW_STMT[] = {
     "let","return","if","else","while","for","in","spawn","despawn",
-    "enable","disable","match","machine","state","become","where",
+    "enable","disable","match","machine","state","become","where","prefab",
     "and","or","not","break","continue","new","emit","cancel","try", 0
 };
 static const char* LUDIC_TYPES[] = {
-    "int","long","fixed","bool","entity","string","pointer","byte","words","fixeds","pointers","Vector","IVec2","Rect","void", 0
+    "int","long","fixed","countdown","bool","entity","string","pointer","byte","words","fixeds","pointers","Vector","IVec2","Rect","void", 0
 };
 static const char* LUDIC_PHASES[] = {
     "Start","Input","FixedUpdate","Update","LateUpdate","Render", 0

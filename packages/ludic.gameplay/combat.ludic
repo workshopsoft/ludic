@@ -21,6 +21,9 @@ event cancellable DamageAboutToApply { target: int = 0, src: int = 0, amount: in
 event Damaged { target: int = 0, src: int = 0, amount: int = 0 }
 event Died { e: int = 0, src: int = 0 }
 event Healed { e: int = 0, amount: int = 0 }
+event Crit { target: int = 0, src: int = 0 }     # the attacker's crit_pct fired
+
+var combat_reflecting: bool = false              # thorns never reflect thorns
 
 # the mutable channel for lever 6: listeners rewrite the pending damage here.
 var combat_pending: int = 0
@@ -47,7 +50,11 @@ var combat_pending: int = 0
   let fhp = World.field_id(P, "hp")
   if fhp < 0 { return 0 }
 
-  combat_pending = combat_mitigate(target, amount)
+  # the attacker's build: damage_pct, then a crit_pct chance to double
+  var raw = amount * stats_field(src, "damage_pct", 100) / 100
+  let crit = stats_field(src, "crit_pct", 0)
+  if (crit > 0) and Random.chance(percent: crit) { raw = raw * 2;  emit Crit(target: target, src: src) }
+  combat_pending = combat_mitigate(target, raw)
   if emit DamageAboutToApply(target: target, src: src, amount: combat_pending) != 0 { return 0 }
   var dmg = combat_pending
   if dmg < 0 { dmg = 0 }
@@ -57,6 +64,17 @@ var combat_pending: int = 0
   World.set(target, P, fhp, hp)
   emit Damaged(target: target, src: src, amount: dmg)
   if hp <= 0 { emit Died(e: target, src: src) }
+  # the attacker's leech, and the defender's thorns (never reflected back again)
+  if dmg > 0 {
+    let leech = stats_field(src, "leech_pct", 0)
+    if (leech > 0) and Random.chance(percent: leech) { combat_heal(src, stats_field(src, "leech_hp", 1)) }
+    let thorns = stats_field(target, "thorns", 0)
+    if (thorns > 0) and (src != target) and (not combat_reflecting) and (World.has(src, P) != 0) {
+      combat_reflecting = true
+      combat_damage(src, target, thorns)
+      combat_reflecting = false
+    }
+  }
   return dmg
 }
 

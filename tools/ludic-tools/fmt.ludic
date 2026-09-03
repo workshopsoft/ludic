@@ -97,7 +97,7 @@ program LudicFmt {
 
   # ---- vocabulary classifiers ----
   function is_type_word(w: pointer) -> bool {
-    return (w == "int") or (w == "long") or (w == "fixed") or (w == "bool") or (w == "entity") or (w == "str") or (w == "ptr") or (w == "byte") or (w == "words") or (w == "fixeds") or (w == "ptrs") or (w == "void")
+    return (w == "int") or (w == "long") or (w == "fixed") or (w == "countdown") or (w == "bool") or (w == "entity") or (w == "string") or (w == "pointer") or (w == "byte") or (w == "words") or (w == "fixeds") or (w == "pointers") or (w == "void")
   }
   function is_phase_word(w: pointer) -> bool {
     return (w == "Start") or (w == "Input") or (w == "FixedUpdate") or (w == "Update") or (w == "LateUpdate") or (w == "Render")
@@ -107,7 +107,7 @@ program LudicFmt {
     if (w == "const") or (w == "var") or (w == "function") or (w == "extern") or (w == "handler") or (w == "entry") or (w == "event") or (w == "scene") { return true }
     if (w == "phase") or (w == "query") or (w == "on") or (w == "cancellable") or (w == "public") or (w == "layer") or (w == "start") { return true }
     if (w == "let") or (w == "return") or (w == "if") or (w == "else") or (w == "while") or (w == "for") or (w == "in") or (w == "spawn") or (w == "despawn") { return true }
-    if (w == "enable") or (w == "disable") or (w == "match") or (w == "machine") or (w == "state") or (w == "become") or (w == "where") { return true }
+    if (w == "enable") or (w == "disable") or (w == "match") or (w == "machine") or (w == "state") or (w == "become") or (w == "where") or (w == "prefab") { return true }
     if (w == "and") or (w == "or") or (w == "not") or (w == "break") or (w == "continue") or (w == "new") or (w == "emit") or (w == "cancel") { return true }
     return false
   }
@@ -249,7 +249,7 @@ program LudicFmt {
     if pk == LT_ANNO and c1 and c0 == 40 { return 0 }                        # @anno(
     if c1 and c0 == 40 and ck == LT_OP {
       if pk == LT_ID or pk == LT_TYPE or pk == LT_PHASE { return 0 }         # function move( / clear(
-      if pk == LT_OP { if p1 and (p0 == 41 or p0 == 93) { return 1 };  return 0 }
+      if pk == LT_OP { return 1 }                                          # `= (`, `+ (`, `) (` keep a space
       return 1
     }
     return 1

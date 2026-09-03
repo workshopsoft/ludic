@@ -422,6 +422,7 @@ function emit_tick_helpers() -> void {
   emit("define void @L_tick_render() {\nentry:\n")
   ll_t = 0;  ll_lbl = 0
   emit_calls_for_phase("Render")
+  emit_calls_for_phase("Overlay")
   emit("  ret void\n}\n\n")
 }
 
@@ -433,6 +434,8 @@ function emit_game_defs() -> void {
   while i < len(prog) { if prog[i].kind == N_SYS { emit_system_fn(prog[i]) };  i = i + 1 }
   emit_despawn_hooks()
   emit_scene_hooks()
+  if has_countdowns() { emit_countdown_system() }   # `countdown` fields (see emit_game.ludic)
+  if has_prefabs() { emit_prefab_fns() }            # @L_prefab_<Name> + @L_spawn_prefab(name)
   emit_tick_helpers()
 }
 
@@ -443,6 +446,7 @@ function emit_game_main() -> void {
   emit("  store i32 %argc, ptr @L_argc\n")
   emit("  store ptr %argv, ptr @L_argv\n")
   if (find_fn("rt_init") != null) { emit("  call void @fn_rt_init()\n") }
+  emit("  call void @L_init_globals()\n")
   emit_calls_for_phase("Start")
   # enter the start scene once, after boot: store its id and run its on-enter.
   if len(g_scenes) > 0 {
@@ -482,6 +486,12 @@ function emit_game_main() -> void {
       emit("  store i32 ");  emit(k);  emit(", ptr @L_key\n")
     }
   }
+  # a program with `ui` blocks: navigate the open UI from this frame's key and emit
+  # UiClicked on activation — so a scene never polls ui_tick by hand.
+  if has_ui() and (find_fn("rt_ui_tick") != null) {
+    let uk = emit_bind("load i32, ptr @L_key")
+    emit("  call void @fn_rt_ui_tick(i32 ");  emit(uk);  emit(")\n")
+  }
   emit_calls_for_phase("Input")
   emit_calls_for_phase("FixedUpdate")
   emit_calls_for_phase("Update")
@@ -495,6 +505,9 @@ function emit_game_main() -> void {
     emit("  call void @fn_rt_clear(i32 ");  emit(itoa(g_clear_color));  emit(")\n")
   }
   emit_calls_for_phase("Render")
+  # Overlay: HUD / menus drawn after every engine Render system (sprites, lights), so
+  # game UI is never painted under an actor. Presented together with the frame.
+  emit_calls_for_phase("Overlay")
   if g_has_clear_color and (find_fn("rt_present") != null) {
     emit("  call void @fn_rt_present()\n")
   }

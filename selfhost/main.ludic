@@ -38,7 +38,7 @@ function getenv_or(name: pointer, dflt: pointer) -> pointer {
   return v
 }
 
-# guarantee a directory string ends in '/' so path_join concatenates cleanly
+# guarantee a directory string ends in '/' so join_path concatenates cleanly
 function ensure_slash(d: pointer) -> pointer {
   let n = len(d)
   if n == 0 { return d }
@@ -63,7 +63,7 @@ function chomp(s: pointer) -> pointer {
 # so a version change never requires reseeding the compiler.
 function show_version() -> void {
   let home = ensure_slash(getenv_or("LUDIC_HOME", dir_of(arg(0))))
-  let v = read_file(path_join(home, "VERSION"))
+  let v = read_file(join_path(home, "VERSION"))
   if (v == null) { print("ludic (version unknown)") }
   else { print(`ludic {chomp(v)}`) }
   exit(0)
@@ -124,6 +124,7 @@ entry {
   if fmt { exit(0) }
 
   maybe_splice_runtime()
+  ui_register_gotos()                             # `goto:` buttons -> generated UiClicked listeners
 
   # a game gets a window by default; a plain program stays headless. An explicit
   # flag always wins. The stdout-IR path (no target) also stays headless, which
@@ -160,7 +161,7 @@ entry {
   # would otherwise warn about on every build.
   var cmd = `{cc} -O2 -Wno-override-module {ll}`
   if g_windowed {
-    let cocoa = path_join(home, "runtime/native/cocoa.ll")
+    let cocoa = join_path(home, "runtime/native/cocoa.ll")
     # GameController holds no symbol cocoa.ll references directly (its classes are
     # reached by name through objc_getClass), so a plain -framework link gets
     # dead-stripped; -needed_framework forces the load command so the class is
@@ -170,7 +171,7 @@ entry {
     # when the program actually uses it — the snd_* calls are is_windowed()-guarded
     # yet still live in a windowed build, so the backend must link.
     if g_uses_audio {
-      let audio = path_join(home, "runtime/native/audio.ll")
+      let audio = join_path(home, "runtime/native/audio.ll")
       cmd = `{cmd} {audio} -Wl,-needed_framework,AVFoundation`
     }
   }
@@ -178,7 +179,7 @@ entry {
   # reached by name). Works headless too, so it is outside the windowed block —
   # macOS-only for now, which is where the toolchain runs.
   if g_uses_http {
-    let http = path_join(home, "runtime/native/http.ll")
+    let http = join_path(home, "runtime/native/http.ll")
     cmd = `{cmd} {http} -Wl,-needed_framework,Foundation`
   }
   cmd = `{cmd} -o {out}`

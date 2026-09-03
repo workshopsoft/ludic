@@ -24,13 +24,44 @@ var snd_tab:     pointers = null    # handle (1-based) -> AVAudioPlayer pointer
 var snd_master:  fixed = 1.0        # master volume, applied to every play
 var snd_rate:    fixed = 1.0        # playback rate / pitch (1.0 = normal)
 var snd_music:   int   = 0          # the handle currently playing as music (0 = none)
+# the sound bank: sounds registered by name (Audio.define), played by name (Audio.play(name:))
+var snd_bank_name: pointers = null
+var snd_bank_id:   words    = null
+var snd_bank_n:    int      = 0
 
 function audio_init() -> void {
   if snd_ready { return }
   snd_tab = bytes(AUDIO_CAP * 8)     # one 8-byte pointer slot per handle
   fill(snd_tab, 0, AUDIO_CAP * 8)    # malloc does not zero; empty slots must read null
+  snd_bank_name = bytes(AUDIO_CAP * 8)
+  snd_bank_id = words(AUDIO_CAP)
   snd_ready = true
 }
+
+# ---- the sound bank: Audio.define(name, path) then Audio.play(name: "…") ------
+# Load a sound and remember it under a name; returns the handle (0 headless).
+function audio_define(name: pointer, path: pointer) -> int {
+  audio_init()
+  let id = audio_load(path)
+  if snd_bank_n < AUDIO_CAP {
+    snd_bank_name[snd_bank_n] = name
+    snd_bank_id[snd_bank_n] = id
+    snd_bank_n = snd_bank_n + 1
+  }
+  return id
+}
+# the handle registered under `name`, or 0
+function audio_named(name: pointer) -> int {
+  audio_init()
+  var i = 0
+  while i < snd_bank_n {
+    if snd_bank_name[i] == name { return snd_bank_id[i] }
+    i = i + 1
+  }
+  return 0
+}
+function audio_play_named(name: pointer) -> void { audio_play(audio_named(name)) }
+function audio_play_music_named(name: pointer) -> void { audio_play_music(audio_named(name)) }
 
 # Resolve a 1-based handle to its player pointer (null if out of range / empty).
 function audio_get(id: int) -> pointer {

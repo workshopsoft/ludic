@@ -26,8 +26,10 @@ program Name {
                     # plain `new`-allocated record; its use decides which
   model ...     # a named entity KIND (bundle of properties)
   const ...         # compile-time constants
-  fn ...            # functions
-  extern fn ...     # bind a C library symbol (FFI)
+  function ...      # functions
+  extern function … # bind a C library symbol (FFI)
+  enum ...          # a named set of integer values
+  namespace ...     # a block of functions with export / internal visibility
   handler ...        # behavior, grouped into phases
 }
 ```
@@ -42,7 +44,9 @@ program ChronoRift {
 }
 ```
 
-An imported file is a **fragment**: bare declarations, no `program` wrapper. Its
+`import "emberdepths/*.ludic"` imports every `.ludic` file of a directory, in name
+order — a game lists its modules once. An imported file is a **fragment**: bare
+declarations, no `program` wrapper. Its
 declarations are spliced into the importing program. Imports may appear inside
 the `program` block or before it, they may nest (a fragment may import fragments),
 and each resolved path is **include-guarded**, so importing the same file twice
@@ -75,6 +79,27 @@ for (p, s) in query [Pos, Stats, {Player}] { ... }   # {Player} filters by kind
 Use `{Name}` (tag position) to filter a query by model — an model can't
 be *bound* to a variable since it has no fields of its own. Entity kind is part
 of the saved snapshot.
+
+### Prefabs
+
+A **`prefab`** is a model with preset component fields, the Unity prefab in
+miniature. `spawn` takes a prefab name like a model name, and the spawn's own
+fields override the presets. Prefabs chain, so what several share lives once:
+
+```ludic
+# doc-check: skip — composite: prefabs plus their spawns
+prefab Foe: Creature { Faction { id: 2 }, Body { policy: BodyPolicy.TopDown } }
+prefab Grunt: Foe { Stats { hp: 30, max_hp: 30 }, Weapon { def_id: WeaponId.Bite } }
+prefab Boss:  Foe { Stats { hp: 400, max_hp: 400 }, Sprite { scale: 4 } }
+
+spawn Grunt { Position { x: 40, y: 60 } }            # Foe's presets, Grunt's, then this
+let boss = spawn Boss { Position { x: 160, y: 40 } } # spawn is also an expression: the entity
+let e = Prefab.spawn(name: kind_name)                # chosen at runtime by name (-1 if none)
+```
+
+Field values in a prefab are ordinary expressions evaluated at each spawn, so a
+preset may read a global (`Sprite { id: art.orc }`). `@OnSpawn(Model)` runs for a
+prefab spawn as for any spawn of its model.
 
 ## Text, fonts & images
 
@@ -113,6 +138,8 @@ ui MainMenu {
 }
 ```
 
+A widget inherits `font`, `size`, `fg` and `align` from the nearest ancestor that
+sets them, so a panel states a menu's look once and a label only says what differs.
 Widget types: `panel` (container + optional skin/bg/border), `col` / `row`
 (pure stacks), `label`, `button` (focusable), `image`, `spacer`. Props are
 evaluated at build time, so `font: reg(R_FONT)` reads a value the program set first.
@@ -133,26 +160,47 @@ handler Nav phase Update {
 handler Draw phase Render { clear(0x0e0e16); ui_render(); present() }
 ```
 
-See `examples/games/menu.ludic` for a complete title screen.
+The frame loop ticks navigation on its own, and an activation fires the
+`UiClicked { id }` event, so a menu is usually handled by one listener that can
+change scene directly:
+
+```ludic
+# doc-check: skip — illustrative
+@On(UiClicked) handler MenuActions {
+  if id == UI_Play { become Play }
+  else if id == UI_Quit { quit() }
+}
+```
+
+`Ui.open(id: UI_Menu)` activates a menu, `Ui.close()` deactivates it, and
+`Ui.set_text(id: UI_Label, text: s)` updates a label. See `examples/games/menu.ludic`
+for a complete title screen.
 
 ## Types
 
 | Type | Meaning | LLVM IR type |
 |------|---------|--------------|
 | `int` | 32-bit integer | `i32` |
+| `countdown` | an `int` component field the engine steps toward 0 once per Update | `i32` |
+| a bare `enum` | its variants, as an `int` | `i32` |
+| `IVec2` | an integer (x, y) pair by value — `v.x`, `v.y`, `IVec2.make/add/sub/…` | `i64` |
 | `fixed` | Q16.16 fixed-point | `i32` |
 | `bool` | boolean | `i32` |
 | `entity` | entity handle | `i32` |
-| `str` | string literal | `ptr` |
-| `ptr` | raw address (runtime/FFI) | `ptr` |
-| `byte` | pointer to bytes — `p[i]` reads/writes one byte | `ptr` |
-| `words` | pointer to 32-bit words — `w[i]` reads/writes an `int` | `ptr` |
+| `string` | text (a string literal, an interpolation, a concatenation) | `ptr` |
+| `pointer` | raw address (runtime/FFI, records, anything untyped) | `ptr` |
+| `byte` | one byte value (what `p[i]` on a `bytes` buffer reads) | `i8` |
+| `bytes` | buffer of bytes — `b[i]` reads/writes one byte | `ptr` |
+| `words` | buffer of 32-bit words — `w[i]` reads/writes an `int` | `ptr` |
 | `fixeds` | buffer of `fixed` values — `f[i]` reads/writes a `fixed` | `ptr` |
-| `ptrs` | buffer of pointers — `p[i]` reads/writes a `ptr` | `ptr` |
+| `pointers` | buffer of pointers — `p[i]` reads/writes a `pointer` | `ptr` |
 
 Allocate raw buffers with `bytes(n)` (n bytes) or `words(n)` (n 32-bit words);
 both return a pointer you index with `buf[i]` — retype the binding (`words` /
-`fixeds` / `ptrs`) to pick the element size.
+`fixeds` / `pointers`) to pick the element size. Use `string` for text and
+`pointer` for an opaque address: the compiler treats both as one pointer type
+(it is the operand kinds, not the name, that select string concatenation and
+content comparison), so the name is documentation for the reader.
 
 Numeric literals: `42` and `0x1affff` are `int`; a literal with a decimal
 point (`1.5`) is `fixed`. Arithmetic on two `fixed` values lowers to
@@ -179,6 +227,57 @@ for (a, b) in query [Pos, Vel] where a.x > 0 { ... }  # one var per non-tag term
 
 Entities are integer handles; property storage and slot reuse are generated per
 program. `self()` yields the entity of the innermost `query` loop.
+
+### A component by entity handle: `Prop.of(e)` / `Prop.has(e)`
+
+A query binds components for the entities it visits. When the handle is already
+in a variable — the player, a boss, the `target` of a damage event — `Prop.of(e)`
+gives the same typed binding without a loop, and its fields read and assign like
+any record's:
+
+```ludic
+# doc-check: skip — composite: declarations plus statements using them
+property Hero { iframes: int = 0, roll_cooldown: int = 0 }
+var player: int = -1
+
+Hero.of(player).iframes = 20              # assign a field
+Hero.of(player).roll_cooldown -= 1        # compound-assign one
+let hero = Hero.of(player)                # or bind the component once
+if hero.iframes > 0 { hero.iframes -= 1 }
+```
+
+`Prop.of(e)` is unchecked, like a query binding: on an entity that does not carry
+the property it reads that entity's zeroed slot. Guard with **`Prop.has(e)`**,
+which is true only when `e` is a valid handle, alive, and carries the property —
+so `-1` (no entity) and a despawned handle are both simply `false`:
+
+```ludic
+# doc-check: skip — illustrative
+if Stats.has(target) { Stats.of(target).hp -= amount }
+```
+
+**`Prop.count()`** is the number of live entities carrying `Prop` — the
+"are there foes left?" question without a counting loop — and
+**`Prop.despawn_all()`** despawns every one of them (a room teardown:
+`Position.despawn_all()` clears the world and keeps the config entities).
+
+**Timers are a field type.** A component field declared **`countdown`** is an
+`int` the engine steps toward 0 once per Update, for every live entity carrying
+the component, never below 0. Set it, then test it; no handler counts it down:
+
+```ludic
+# doc-check: skip — illustrative
+property Roll { frames_left: countdown = 0, cooldown: countdown = 0 }
+Roll.of(player).cooldown = 35            # …and 35 frames later it reads 0
+if Roll.of(player).cooldown == 0 { start_roll() }
+```
+
+Both `Prop.of` and `Prop.has` are the typed, compile-time form of the by-name reflection ABI
+(`World.prop_id` / `World.field_id` / `World.get` / `World.set`), which remains
+the tool for code that does not know the property name until runtime (mods,
+engine systems). A package that declares a real `prop_of` / `prop_has` function
+under `@Namespace(Prop)` keeps it — the sugar only applies where no such function
+exists.
 
 ## Handlers & phases
 
@@ -301,6 +400,26 @@ exponent, `Light.soft` shadows (penumbra), `Light.gel` colour cookies,
 normal-mapped surfaces (`Light.normal` + `Light.height`), and a
 `Light.time_of_day` day/night ramp — every one deterministic.
 
+### Managers: the engine owns the small stuff
+
+Beyond the component systems, a few engine-owned managers cover what every game
+otherwise hand-rolls — each a namespace, nothing to declare:
+
+| Manager | What it owns |
+|---|---|
+| `Fx.sparks` / `Fx.number` / `Fx.clear` | transient sparks and floating numbers: moved, aged, drawn after the sprites, dropped when done |
+| `Audio.define(name:, path:)` then `Audio.play(name:)` / `Audio.play_music(name:)` | a sound bank by name; the handle form still works |
+| `Camera.shake_for(amount:, frames:)` | a timed screen shake the engine decays |
+| `Assets.enqueue` / `pump` / `progress` / `ready`, `Assets.get`, `Audio.play(name:)`, `Assets.font` | one preload queue for images, sounds and fonts, sorted by extension |
+| `Prefab.spawn(name:)` | spawning a prefab chosen at runtime |
+| `Map.get/set/fill/rect/border/random_cell/random_cell_far/to_tile/is_solid/is_solid_at` | the tilemap edited in place, and what is solid per the `Solids` config (projectiles die on it too) |
+| `Stats { damage_pct, crit_pct, leech_pct, thorns, fire_rate_pct }`, `Stats.add`, `Stats.scale_hp` | the build stats every action game bolts on, applied by `Combat.damage` and the weapon system |
+| `Dash`, `Melee` (ludic.shooter), `Dungeon.*` (ludic.dungeon), `Brain { hunt_blind }` (ludic.npcai) | the dodge roll with i-frames, the arc swing with knockback, arena rooms with exits, relentless pursuit |
+| `PadButton.A/B/X/Y/…`, `CursorMode.*` | names for the input runtime's numbers |
+| `TopDown { reticle }`, `Weapon.set_color`, `Sprite.draw_meter`, `Collider.center`, `Prefs.max`, `Assets.enqueue_dir` | the aim line, engine-drawn shots, icon meters, box centres, high scores, a whole asset directory |
+| `Sprite { move_id, face, flash, blink }` | the run strip while moving, facing by movement, a white hit flash and an invulnerability blink — all engine-driven |
+| `IVec2.distance2/within/heading/along/step`, `Angle.diff_degrees`, `List.sample`, `Input.move_i`, `Screen.bar` | the geometry, sampling, movement intent and meters every action game rewrites |
+
 ### Input actions & deterministic replay
 
 Beyond the raw `Input.key()` (this frame's key code), gameplay can read **named
@@ -388,7 +507,8 @@ boot ── @OnStart ─▶ spawn ── @OnAttach(P), @OnSpawn(M) ─▶ … �
   the `Start` phase); `@OnQuit` runs once at shutdown, after the frame loop stops
   and before the process exits — the place to `save()` or clean up.
 - **`@OnSpawn(Model)` / `@OnDespawn(Model)`** — an *entity*. Both bind the model's
-  properties by name; `@OnSpawn` is a constructor, `@OnDespawn` a destructor.
+  properties by name, and `self()` is that entity; `@OnSpawn` is a constructor
+  (`@OnSpawn(Hero) handler Remember { player = self() }`), `@OnDespawn` a destructor.
   Despawn doesn't statically know an entity's model, so despawn hooks compile to
   functions dispatched on the entity's kind. `@OnDespawn` may take an optional
   **reason**: `@OnDespawn(Enemy, reason: r)` binds `r` to an `EndReason` the
@@ -632,6 +752,25 @@ fields: `toks[i].kind = T_ID` is a single address computation.
 
 ```ludic
 function heal(amount: int) -> int { return amount * 2 }
+```
+
+A call passes arguments **positionally or by name**. A named argument is the
+parameter's name, a colon, and the value; named arguments may come in any order
+and are reordered to the declaration at compile time. A call is either all
+positional or all named — the two do not mix. This works for every callable:
+bare functions, `namespace` and `@Namespace` functions, externs, and the
+builtin namespaces (`Screen.*`, `Input.*`, …):
+
+```ludic
+# doc-check: skip — composite: a declaration plus its uses
+function define_weapon(name: string, fire_rate: int, damage: int) -> int { … }
+
+define_weapon("pistol", 9, 14)                                 # positional
+define_weapon(name: "pistol", fire_rate: 9, damage: 14)       # named, reads as a table row
+Weapon.def(damage: 14, name: "pistol", fire_rate: 9)          # any order, on a namespace too
+```
+
+```ludic
 
 extern function c_hypot(a: fixed, b: fixed) -> fixed = "hypot_fx"   # bind a C symbol
 ```
@@ -659,6 +798,22 @@ at the top level it is module state).
 - **`var x = e`** — a *mutable* binding: `x`, `x += 1`, … reassign it. Use it for
   loop accumulators and anything that genuinely changes.
 - **`const NAME = e`** — a compile-time constant (folded, no storage).
+
+A program-scope `var` may be initialized with **any expression** — a literal, an
+`Enum.Variant`, a `new Record`, a call. What the compiler can fold becomes the
+global's initial value; the rest runs once at startup, in declaration order,
+after the runtime boots and before the `Start` phase:
+
+```ludic
+# doc-check: skip — illustrative globals
+var run:    Progress  = new Progress             # allocated before Start
+var origin: IVec2     = IVec2.zero()
+var mode:   HeroState = HeroState.Idle           # folded
+```
+
+Declaring the same `var` twice is an error — including a name the spliced engine
+runtime already uses, which the message says (`variable ui_font is also a
+variable of the engine runtime; choose another name`).
 
 Immutability is of the **binding**, not the object. A `let` that holds a record
 or slice still lets you mutate *through* it — the reference itself just cannot be
@@ -724,6 +879,28 @@ is still accepted when a state needs a specific value.) A `machine <reg>` reads
 `reg(<reg>)` to pick the state; `become Name` compiles to `set_reg(<reg>, <Name's
 value>)`. Both lower to plain branches (and `match` runs on the native LLVM
 backend too).
+
+The store is usually a program-scope `var`. Declare it with an **enum type** and
+the machine's states are that enum's variants, matched by name — so the rest of
+the program compares the store against `HeroState.Rolling` and the machine needs
+no `= value` on any state:
+
+```ludic
+# doc-check: skip — composite: declarations plus a machine over them
+enum HeroState { Idle, Rolling, Swinging }
+var hero_state: HeroState = HeroState.Idle
+
+machine hero_state {
+  state Idle     { if wants_roll { become Rolling } }      # HeroState.Idle
+  state Rolling  { if done { become Idle } }               # HeroState.Rolling
+  state Swinging { … }
+}
+if hero_state == HeroState.Rolling { … }                   # readable from anywhere
+```
+
+A state that names no variant of the store's enum is a compile error. A bare
+(payload-free) enum is an `int`-sized type wherever a type is written — a `var`,
+a parameter, a field, a return.
 
 ## Enums
 
@@ -818,7 +995,7 @@ literal; test any pointer/record/slice with `x == null` / `x != null` (an unset
 #           text_ttf(font,x,y,utf8,color,px)  text_w(font,utf8,px)->int  text_h(font,px)->int
 # images    image_load(path)->id   draw_image(id,x,y)   draw_image_scaled(id,x,y,w,h)
 #           draw_9slice(id,x,y,w,h,inset)
-# UI        ui_build()  ui_open(id)  ui_tick(key)  ui_render()
+# UI        ui_build()  ui_open(id)  ui_close()  ui_tick(key)  ui_render()
 #           ui_clicked(id)->bool  ui_set_text(id,str)  ui_set_int(id,n)
 #           ui_focus(id)  ui_focused()->int  ui_visible(id,bool)
 # assets    png_load(path)->id           (decodes a PNG; returns a 16x16 sprite id)
@@ -963,7 +1140,27 @@ scene Overworld {
 - `become Name` transitions: the current scene's `on exit` runs, the active scene
   becomes `Name`, and its `on enter` runs. Inside a layer handler the compiler
   knows which scene is leaving, so a transition costs two direct calls and a
-  store — there is no dispatch table.
+  store. From code no scene owns — a global handler, an `@On(Event)` listener, a
+  plain function — `become` runs the *live* scene's `on exit` through one
+  generated dispatch (`@L_scene_leave`), so a menu can react to `UiClicked` and
+  `become Play` from a listener.
+- **`scene Title shows TitleMenu { … }`** — the scene owns a `ui` block: the
+  engine frees the cursor and opens the menu on enter, draws it last in the
+  `Overlay` phase, and closes it on exit. The scene's own handlers stay for the
+  rest (`Ui.set_text` in `on enter`, a `Hud.draw()` under an overlay menu).
+- **`scene Splash lasts 110 then Title { … }`** — a timed scene: the engine counts
+  the frames and moves on. **`scene Loading start loads then Title { … }`** — a
+  loading scene: the engine pumps the `Assets` queue each frame, draws a default
+  progress bar, fires `AssetsReady` once, and moves on when everything is in.
+- **`button id: Resume text: "Resume" goto: Play`** in a `ui` block — a click
+  changes scene; no listener to write for the plain navigation buttons.
+- Handler names inside a scene's layers are qualified by the scene (`Play_Draw`),
+  so two scenes may both have a `Draw`; `enable` / `disable` by the bare name
+  still resolves inside that scene.
+- A layer handler may carry **`@Queries`** (and only that annotation), so a scene
+  owns its per-entity systems: `@Queries(these: [Particle]) handler AgeSparks
+  phase Update { … }` runs once per matching entity, only while the scene is
+  active.
 - **The active scene is snapshotted per phase.** A `become` mid-phase runs its
   `on exit`/`on enter` immediately, but the switch of *which layers dispatch*
   takes effect at the next phase boundary — so exactly one scene's layers run in

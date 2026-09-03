@@ -12,7 +12,7 @@ function list_elem_addr(h: pointer, elt: pointer, idx: pointer) -> pointer {
 }
 
 function is_list_ns(meth: pointer) -> bool {
-  if (meth == "len") or (meth == "push") or (meth == "clear") { return true }
+  if (meth == "len") or (meth == "push") or (meth == "clear") or (meth == "sample") { return true }
   if (meth == "first") or (meth == "last") or (meth == "pop") or (meth == "swap") { return true }
   if (meth == "contains") or (meth == "index_of") or (meth == "reverse") { return true }
   if (meth == "insert") or (meth == "remove_at") or (meth == "remove") or (meth == "sort") { return true }
@@ -228,6 +228,12 @@ function sort_fn_arg(meth: pointer, e: Node) -> pointer {
 function emit_list_ns(meth: pointer, e: Node) -> Val {
   if (meth == "len") { return emit_len(e) }         # same header length as len(s)
   if (meth == "push") { return emit_push(e) }       # same as push(s, v)
+  if (meth == "sample") {                            # count random picks from an int slice (runtime)
+    let pool = emit_expr(e.kids[0])
+    let cnt = emit_expr(e.kids[1])
+    if find_fn("rt_list_sample") == null { perr("List.sample needs the engine runtime (a game, or import ludic.core)") }
+    return val(emit_bind(`call ptr @fn_rt_list_sample(ptr {pool.code}, i32 {cnt.code})`), "[]int")
+  }
   let s = emit_expr(e.kids[0])
   if not is_slice_ty(s.ty) { perr(`List.{meth} needs a slice`) }
   let el = slice_elem(s.ty)

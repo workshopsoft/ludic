@@ -23,11 +23,14 @@ property Vision { range: int = 140, fov: int = 360, scan: int = 6, scan_t: int =
 property Memory { has_target: int = 0, target: int = 0, last_x: int = 0, last_y: int = 0, alertness: int = 0, ttl: int = 0 }
 
 # model: 0 FSM, 1 utility, 2 behaviour-tree. state (FSM): 0 patrol,1 chase,2 attack,3 flee.
+enum BrainModel { StateMachine, Utility, BehaviourTree }   # Brain.model
+enum AiState { Patrol, Chase, Attack, Flee }               # Brain.state / DecisionMade.action
 property Brain {
   model: int = 0, state: int = 0,
   attack_range: int = 40, flee_pct: int = 0,
   intent_x: int = 0, intent_y: int = 0, want_fire: int = 0,
-  home_x: int = 0, home_y: int = 0, seed: int = 1
+  home_x: int = 0, home_y: int = 0, seed: int = 1,
+  hunt_blind: int = 0       # 1 = with no target in sight, seek the nearest hostile anyway (no idle patrol)
 }
 property Follower { leader: int = 0 - 1, distance: int = 40, mode: int = 0 }   # mode 0 follow,1 guard,2 aggressive
 property Steering { separate: int = 0, cohere: int = 0, align: int = 0, radius: int = 48 }
@@ -147,9 +150,46 @@ function brain_set_state(e: int, st: int) -> void {
 }
 
 # steer the Brain intent toward / away from a point (8-way signed intent).
+# the Solids config (tile size / wall glyph) when the game declared one, else 0
+function ai_solid_tile() -> int {
+  let ps = World.prop_id("Solids")
+  if ps < 0 { return 0 }
+  let se = World.query_next(ps, 0)
+  if se < 0 { return 0 }
+  let ft = World.field_id(ps, "tile")
+  if ft < 0 { return 0 }
+  return World.get(se, ps, ft)
+}
+function ai_solid_wall() -> int {
+  let ps = World.prop_id("Solids")
+  let se = World.query_next(ps, 0)
+  return World.get(se, ps, World.field_id(ps, "wall"))
+}
+
+# move toward (tx,ty). With a tilemap, a blocked straight line is routed around
+# obstacles with Grid.a_star on the tile grid: the intent points at the next
+# waypoint, so bodies flow around pillars instead of pushing into them.
 function brain_seek(e: int, tx: int, ty: int) -> void {
   let px = ai_get("Position", e, "x")
   let py = ai_get("Position", e, "y")
+  let ts = ai_solid_tile()
+  if ts > 0 {
+    let wall = ai_solid_wall()
+    let cx = px / ts;  let cy = py / ts
+    let gx = tx / ts;  let gy = ty / ts
+    if (cx != gx) or (cy != gy) {
+      if not Grid.line_of_sight(x0: cx, y0: cy, x1: gx, y1: gy, wall: wall) {
+        let path = Grid.a_star(x0: cx, y0: cy, x1: gx, y1: gy, wall: wall)
+        if len(path) > 1 {
+          let nx = path[1].x * ts + ts / 2
+          let ny = path[1].y * ts + ts / 2
+          ai_set("Brain", e, "intent_x", sign_i(nx - (px + ts / 2)))
+          ai_set("Brain", e, "intent_y", sign_i(ny - (py + ts / 2)))
+          return
+        }
+      }
+    }
+  }
   ai_set("Brain", e, "intent_x", sign_i(tx - px))
   ai_set("Brain", e, "intent_y", sign_i(ty - py))
 }
@@ -226,8 +266,35 @@ function ai_decide_fsm(e: int) -> void {
       }
     }
   } else {
-    if emit DecisionMade(e: e, action: 0) == 0 { brain_set_state(e, 0);  brain_wander(e) }
+    let prey = brain_nearest_hostile(e)
+    if (ai_get("Brain", e, "hunt_blind") == 1) and (prey >= 0) {
+      if emit DecisionMade(e: e, action: 1) == 0 { brain_set_state(e, 1);  brain_seek(e, ai_get("Position", prey, "x"), ai_get("Position", prey, "y")) }
+    } else {
+      if emit DecisionMade(e: e, action: 0) == 0 { brain_set_state(e, 0);  brain_wander(e) }
+    }
   }
+}
+# the nearest entity hostile to e (by Faction) that has a Position, or -1
+function brain_nearest_hostile(e: int) -> int {
+  let PF = World.prop_id("Faction")
+  let PP = World.prop_id("Position")
+  if (PF < 0) or (PP < 0) { return 0 - 1 }
+  let fac = Faction.id_of(e)
+  let px = ai_get("Position", e, "x")
+  let py = ai_get("Position", e, "y")
+  var best = 0 - 1
+  var bestd = 0
+  var o = World.query_next(PF, 0)
+  while o >= 0 {
+    if (o != e) and (World.has(o, PP) != 0) and (Faction.hostile(fac, Faction.id_of(o)) == 1) {
+      let dx = ai_get("Position", o, "x") - px
+      let dy = ai_get("Position", o, "y") - py
+      let d = dx * dx + dy * dy
+      if (best < 0) or (d < bestd) { best = o;  bestd = d }
+    }
+    o = World.query_next(PF, o + 1)
+  }
+  return best
 }
 
 # --- (b) utility AI: score each action, act on the highest ---
@@ -386,6 +453,7 @@ function ai_decide_bt(e: int) -> void {
 # Ai.* convenience
 # ---------------------------------------------------------------------------
 @Namespace(Ai) function ai_set_model(e: int, model: int) -> void { ai_set("Brain", e, "model", model) }
+@Namespace(Ai) function ai_seek(e: int, tx: int, ty: int) -> void { brain_seek(e, tx, ty) }    # path-aware move-toward
 @Namespace(Ai) function ai_state(e: int) -> int { return ai_get("Brain", e, "state") }
 @Namespace(Ai) function ai_target(e: int) -> int {
   if ai_get("Memory", e, "has_target") == 1 { return ai_get("Memory", e, "target") }

@@ -45,6 +45,7 @@ declare i32 @usleep(i32)
 ; mouse-association / relative-delta calls.
 declare i32 @CGAssociateMouseAndMouseCursorPosition(i32)
 declare void @CGGetLastMouseDelta(ptr, ptr)
+declare i32 @CGWarpMouseCursorPosition(%NSPoint)
 
 @.c_app    = private unnamed_addr constant [14 x i8] c"NSApplication\00"
 @.c_win    = private unnamed_addr constant [9 x i8]  c"NSWindow\00"
@@ -54,6 +55,10 @@ declare void @CGGetLastMouseDelta(ptr, ptr)
 @.c_gctx   = private unnamed_addr constant [18 x i8] c"NSGraphicsContext\00"
 @.c_ludic  = private unnamed_addr constant [10 x i8] c"LudicView\00"
 @.c_cursor = private unnamed_addr constant [9 x i8]  c"NSCursor\00"
+@.c_screen = private unnamed_addr constant [9 x i8]  c"NSScreen\00"
+@.s_cpts   = private unnamed_addr constant [22 x i8] c"convertPointToScreen:\00"
+@.s_main   = private unnamed_addr constant [11 x i8] c"mainScreen\00"
+@.s_frame  = private unnamed_addr constant [6 x i8]  c"frame\00"
 @.s_hide   = private unnamed_addr constant [5 x i8]  c"hide\00"
 @.s_unhide = private unnamed_addr constant [7 x i8]  c"unhide\00"
 @.s_iskey  = private unnamed_addr constant [12 x i8] c"isKeyWindow\00"
@@ -570,12 +575,14 @@ entry:
   ; #51 — read the live cursor position from the window (points, origin
   ; bottom-left) and convert to framebuffer pixels, y-flipped so row 0 is the
   ; top, matching the framebuffer the game draws into.
-  ; #89 — in a relative mode (locked / confined) the OS cursor is dissociated, so
+  ; #89 — only mode 2 (true lock / FPS mouselook) dissociates the OS cursor, so its
   ; mouseLocation is frozen; accumulate CGGetLastMouseDelta into a virtual cursor
   ; (clamped to the framebuffer) so Input.mouse_dx/dy report the motion and
-  ; Input.mouse_x/y give a reticle position.
+  ; Input.mouse_x/y give a reticle position. Mode 3 (confined) keeps the cursor
+  ; ASSOCIATED, so it stays on the absolute path below — absolute mouse aim
+  ; (aim_mode 0) works in a confined-cursor game, which is the whole point.
   %cmode = load i32, ptr @W_cursor_mode
-  %isrel = icmp sge i32 %cmode, 2
+  %isrel = icmp eq i32 %cmode, 2
   br i1 %isrel, label %reldelta, label %abspos
 reldelta:
   %dxp = alloca i32
@@ -620,8 +627,21 @@ qpos:
   %fx = fdiv double %px, %scd
   %fyy = fdiv double %py, %scd
   %fy = fsub double %fbhd, %fyy
-  %ix = fptosi double %fx to i32
-  %iy = fptosi double %fy to i32
+  %ix0 = fptosi double %fx to i32
+  %iy0 = fptosi double %fy to i32
+  ; clamp the reported position to [0, fbw-1] x [0, fbh-1] so the reticle stays in
+  ; the play area even when the (hidden) OS cursor strays past the window edge.
+  %fbwa = load i32, ptr @W_fbw
+  %fbwam = sub i32 %fbwa, 1
+  %fbham = sub i32 %fbh, 1
+  %axlo = icmp slt i32 %ix0, 0
+  %ix1 = select i1 %axlo, i32 0, i32 %ix0
+  %axhi = icmp sgt i32 %ix1, %fbwam
+  %ix = select i1 %axhi, i32 %fbwam, i32 %ix1
+  %aylo = icmp slt i32 %iy0, 0
+  %iy1 = select i1 %aylo, i32 0, i32 %iy0
+  %ayhi = icmp sgt i32 %iy1, %fbham
+  %iy = select i1 %ayhi, i32 %fbham, i32 %iy1
   store i32 %ix, ptr @W_mx
   store i32 %iy, ptr @W_my
   br label %emit
@@ -697,18 +717,93 @@ release:
   call void @cursor_apply(i32 0, i32 1)
   ret void
 keyed:
-  ; want_hidden when mode is 1 (hidden) or 2 (locked)
+  ; want_hidden for every capture mode: 1 (hidden), 2 (locked) and 3 (confined).
+  ; A confined-cursor game hides the OS cursor and draws its own reticle.
   %h1 = icmp eq i32 %mode, 1
   %h2 = icmp eq i32 %mode, 2
-  %wh = or i1 %h1, %h2
+  %h3 = icmp eq i32 %mode, 3
+  %hor = or i1 %h1, %h2
+  %wh = or i1 %hor, %h3
   %whi = zext i1 %wh to i32
-  ; dissociate (relative) when mode is 2 (locked) or 3 (confined)
+  ; dissociate (relative deltas) ONLY for mode 2 (true lock / FPS mouselook).
+  ; Mode 3 (confined) stays associated so its absolute position stays valid.
   %a2 = icmp eq i32 %mode, 2
-  %a3 = icmp eq i32 %mode, 3
-  %dis = or i1 %a2, %a3
-  %wa = xor i1 %dis, true
+  %wa = xor i1 %a2, true
   %wai = zext i1 %wa to i32
   call void @cursor_apply(i32 %whi, i32 %wai)
+  ; mode 3 (confined): physically hold the cursor inside the window each frame.
+  %ism3 = icmp eq i32 %mode, 3
+  br i1 %ism3, label %confine, label %noconf
+confine:
+  call void @win_cursor_confine()
+  br label %noconf
+noconf:
+  ret void
+}
+
+; #89 — confine the (hidden) cursor to the content area in mode 3. Because mode 3
+; keeps the cursor ASSOCIATED (so absolute mouse aim works), the OS cursor is still
+; free to leave the window; without this a click outside would land outside and drop
+; focus. Each frame we read the window-local cursor point, and if it has strayed past
+; the content rect we warp it back to the nearest inside point. Only warps when the
+; cursor is actually out, so an in-window cursor is untouched.
+define void @win_cursor_confine() {
+entry:
+  %win = load ptr, ptr @W_win
+  %nowin = icmp eq ptr %win, null
+  br i1 %nowin, label %done, label %go
+go:
+  %sel_ml = call ptr @sel_registerName(ptr @.s_mloc)
+  %pt = call %NSPoint (ptr, ptr) @objc_msgSend(ptr %win, ptr %sel_ml)
+  %px = extractvalue %NSPoint %pt, 0
+  %py = extractvalue %NSPoint %pt, 1
+  ; content bounds in points: [0, fbw*scale] x [0, fbh*scale]
+  %sc = load i32, ptr @W_scale
+  %scd = sitofp i32 %sc to double
+  %fbw = load i32, ptr @W_fbw
+  %fbh = load i32, ptr @W_fbh
+  %fbwd = sitofp i32 %fbw to double
+  %fbhd = sitofp i32 %fbh to double
+  %cw = fmul double %fbwd, %scd
+  %ch = fmul double %fbhd, %scd
+  %cwm = fsub double %cw, 1.000000e+00
+  %chm = fsub double %ch, 1.000000e+00
+  ; clamp px to [1, cw-1]
+  %pxlo = fcmp olt double %px, 1.000000e+00
+  %px1 = select i1 %pxlo, double 1.000000e+00, double %px
+  %pxhi = fcmp ogt double %px1, %cwm
+  %cpx = select i1 %pxhi, double %cwm, double %px1
+  ; clamp py to [1, ch-1]
+  %pylo = fcmp olt double %py, 1.000000e+00
+  %py1 = select i1 %pylo, double 1.000000e+00, double %py
+  %pyhi = fcmp ogt double %py1, %chm
+  %cpy = select i1 %pyhi, double %chm, double %py1
+  ; warp only if the cursor actually strayed
+  %dx = fcmp one double %cpx, %px
+  %dy = fcmp one double %cpy, %py
+  %need = or i1 %dx, %dy
+  br i1 %need, label %warp, label %done
+warp:
+  ; clamped window-local point -> global screen coords (bottom-left origin, y up)
+  %cp0 = insertvalue %NSPoint undef, double %cpx, 0
+  %cp = insertvalue %NSPoint %cp0, double %cpy, 1
+  %sel_cps = call ptr @sel_registerName(ptr @.s_cpts)
+  %gp = call %NSPoint (ptr, ptr, %NSPoint) @objc_msgSend(ptr %win, ptr %sel_cps, %NSPoint %cp)
+  %gx = extractvalue %NSPoint %gp, 0
+  %gy = extractvalue %NSPoint %gp, 1
+  ; main screen height for the flip to CG global coords (top-left origin, y down)
+  %scrcls = call ptr @objc_getClass(ptr @.c_screen)
+  %sel_main = call ptr @sel_registerName(ptr @.s_main)
+  %scr = call ptr (ptr, ptr) @objc_msgSend(ptr %scrcls, ptr %sel_main)
+  %sel_fr = call ptr @sel_registerName(ptr @.s_frame)
+  %fr = call %CGRect (ptr, ptr) @objc_msgSend(ptr %scr, ptr %sel_fr)
+  %sh = extractvalue %CGRect %fr, 3
+  %warpy = fsub double %sh, %gy
+  %wp0 = insertvalue %NSPoint undef, double %gx, 0
+  %wp = insertvalue %NSPoint %wp0, double %warpy, 1
+  %rc = call i32 @CGWarpMouseCursorPosition(%NSPoint %wp)
+  br label %done
+done:
   ret void
 }
 

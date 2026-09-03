@@ -1,0 +1,25 @@
+# prefabs.ludic — prefabs: a model with preset fields, chained (`Grunt: Foe: Creature`),
+# spawned by name with overrides, `spawn` as an expression, `Prefab.spawn` / `spawn_at`
+# by a runtime name, and `self()` inside @OnSpawn. Deterministic; prints:
+#   230159 30 0 7 44 -1 2
+program Prefabs {
+  import "ludic.core/components.ludic"
+  property Enemy { kind: int = 0, hp: int = 10, team: int = 0 }
+  model Creature { Position, Enemy }
+  prefab Foe: Creature { Enemy { team: 2, hp: 1 }, Position { y: 9 } }
+  prefab Grunt: Foe { Enemy { kind: 1, hp: 30 } }
+  var last: int = -1
+  @OnSpawn(Creature) handler Remember { last = self() }
+  entry {
+    let g = spawn Grunt { Position { x: 5 } }                     # Foe's presets, Grunt's, then this
+    print(Enemy.of(g).team * 100000 + Enemy.of(g).hp * 1000 + Enemy.of(g).kind * 100 + Position.of(g).x * 10 + Position.of(g).y)
+    let n = Prefab.spawn(name: "Grunt")
+    print(Enemy.of(n).hp)
+    print(g)                                                       # the first entity
+    let placed = Prefab.spawn_at(name: "Foe", at: IVec2.make(7, 44))
+    print(Position.of(placed).x)
+    print(Position.of(placed).y)
+    print(Prefab.spawn(name: "Nope"))                              # no such prefab
+    print(last)                                                    # self() in the hook: the last spawn
+  }
+}

@@ -1,0 +1,124 @@
+# ============================================================================
+# fx.ludic — Fx.*: engine-owned transient effects. A game asks for a burst of
+# sparks or a floating number and the engine owns the rest: it ages and moves
+# them every Update, draws them every Render (after the sprites, before a game's
+# Overlay pass, through the camera / shake / clip chokepoints), and drops them
+# when they expire. Nothing is an entity, so nothing needs a component, a model,
+# a handler or a draw call. Deterministic: velocities and lifetimes come from the
+# seeded RNG.
+#
+#   Fx.sparks(x, y, color, count)   a burst of `count` sparks flying out of (x, y)
+#   Fx.number(x, y, value, color)   a number that floats up from (x, y) and fades
+#   Fx.clear()                      drop every effect (a room change, a new run)
+# ============================================================================
+
+const FX_MAX_SPARKS:  int = 512
+const FX_MAX_NUMBERS: int = 64
+const FX_SPARK_LIFE:  int = 18     # frames, plus up to FX_SPARK_LIFE_JITTER
+const FX_SPARK_LIFE_JITTER: int = 8
+const FX_SPARK_SPEED: int = 3      # px per frame, each axis, either way
+const FX_NUMBER_LIFE: int = 30     # frames; a number rises one pixel every other frame
+
+var fx_ready: bool = false
+var fx_sx: words = null
+var fx_sy: words = null
+var fx_svx: words = null
+var fx_svy: words = null
+var fx_slife: words = null
+var fx_scolor: words = null
+var fx_ssize: words = null
+var fx_sn: int = 0
+var fx_nx: words = null
+var fx_ny: words = null
+var fx_nvalue: words = null
+var fx_nlife: words = null
+var fx_ncolor: words = null
+var fx_nn: int = 0
+
+function fx_init() -> void {
+  if fx_ready { return }
+  fx_sx = words(FX_MAX_SPARKS);  fx_sy = words(FX_MAX_SPARKS)
+  fx_svx = words(FX_MAX_SPARKS);  fx_svy = words(FX_MAX_SPARKS)
+  fx_slife = words(FX_MAX_SPARKS);  fx_scolor = words(FX_MAX_SPARKS);  fx_ssize = words(FX_MAX_SPARKS)
+  fx_nx = words(FX_MAX_NUMBERS);  fx_ny = words(FX_MAX_NUMBERS)
+  fx_nvalue = words(FX_MAX_NUMBERS);  fx_nlife = words(FX_MAX_NUMBERS);  fx_ncolor = words(FX_MAX_NUMBERS)
+  fx_ready = true
+}
+
+function fx_sparks(x: int, y: int, color: int, count: int) -> void {
+  fx_init()
+  var i = 0
+  while i < count {
+    if fx_sn >= FX_MAX_SPARKS { return }
+    fx_sx[fx_sn] = x
+    fx_sy[fx_sn] = y
+    fx_svx[fx_sn] = rt_rng_range(0 - FX_SPARK_SPEED, FX_SPARK_SPEED)
+    fx_svy[fx_sn] = rt_rng_range(0 - FX_SPARK_SPEED, FX_SPARK_SPEED)
+    fx_slife[fx_sn] = FX_SPARK_LIFE + rt_rng_range(0, FX_SPARK_LIFE_JITTER)
+    fx_scolor[fx_sn] = color
+    fx_ssize[fx_sn] = 1 + rt_rng_range(0, 2)
+    fx_sn = fx_sn + 1
+    i = i + 1
+  }
+}
+
+function fx_number(x: int, y: int, value: int, color: int) -> void {
+  fx_init()
+  if fx_nn >= FX_MAX_NUMBERS { return }
+  fx_nx[fx_nn] = x
+  fx_ny[fx_nn] = y
+  fx_nvalue[fx_nn] = value
+  fx_nlife[fx_nn] = FX_NUMBER_LIFE
+  fx_ncolor[fx_nn] = color
+  fx_nn = fx_nn + 1
+}
+
+function fx_clear() -> void { fx_sn = 0;  fx_nn = 0 }
+
+# drop spark i by moving the last one into its slot
+function fx_drop_spark(i: int) -> void {
+  let last = fx_sn - 1
+  fx_sx[i] = fx_sx[last];  fx_sy[i] = fx_sy[last]
+  fx_svx[i] = fx_svx[last];  fx_svy[i] = fx_svy[last]
+  fx_slife[i] = fx_slife[last];  fx_scolor[i] = fx_scolor[last];  fx_ssize[i] = fx_ssize[last]
+  fx_sn = last
+}
+function fx_drop_number(i: int) -> void {
+  let last = fx_nn - 1
+  fx_nx[i] = fx_nx[last];  fx_ny[i] = fx_ny[last]
+  fx_nvalue[i] = fx_nvalue[last];  fx_nlife[i] = fx_nlife[last];  fx_ncolor[i] = fx_ncolor[last]
+  fx_nn = last
+}
+
+# once per Update: move and age everything, dropping what expired
+function fx_tick() -> void {
+  if not fx_ready { return }
+  var i = 0
+  while i < fx_sn {
+    fx_sx[i] = fx_sx[i] + fx_svx[i]
+    fx_sy[i] = fx_sy[i] + fx_svy[i]
+    fx_slife[i] = fx_slife[i] - 1
+    if fx_slife[i] <= 0 { fx_drop_spark(i) } else { i = i + 1 }
+  }
+  i = 0
+  while i < fx_nn {
+    fx_nlife[i] = fx_nlife[i] - 1
+    if fx_nlife[i] % 2 == 0 { fx_ny[i] = fx_ny[i] - 1 }
+    if fx_nlife[i] <= 0 { fx_drop_number(i) } else { i = i + 1 }
+  }
+}
+
+# once per Render, after the sprites: everything goes through the camera chokepoints
+function fx_draw() -> void {
+  if not fx_ready { return }
+  var i = 0
+  while i < fx_sn {
+    rt_fill_rect(fx_sx[i], fx_sy[i], fx_ssize[i], fx_ssize[i], fx_scolor[i])
+    i = i + 1
+  }
+  i = 0
+  while i < fx_nn {
+    rt_text_int(fx_nx[i] - 4, fx_ny[i] - 10, fx_nvalue[i], fx_ncolor[i], 1)
+    i = i + 1
+  }
+}

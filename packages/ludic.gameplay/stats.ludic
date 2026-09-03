@@ -10,11 +10,58 @@
 # Stat codes (the `stat` argument everywhere below):
 #   0 = max_hp   1 = atk   2 = def   3 = spd   4 = max_mp
 
+enum StatKind { MaxHp, Attack, Defense, Speed, MaxMp, DamagePct, CritPct, LeechPct, Thorns, FireRatePct }   # Stats.* stat codes
+enum ModifyOp { Flat, Percent }                    # Stats.modify op
+# The build stats Combat.damage applies by itself: the attacker's damage_pct and
+# crit_pct (a crit doubles), its leech_pct chance to heal leech_hp on a hit, the
+# defender's thorns dealt back, and fire_rate_pct the weapon system reads.
 property Stats {
   hp: int = 0, max_hp: int = 0,
   mp: int = 0, max_mp: int = 0,
   atk: int = 0, def: int = 0, spd: int = 0,
-  level: int = 1, xp: int = 0
+  level: int = 1, xp: int = 0,
+  damage_pct: int = 100, crit_pct: int = 0, leech_pct: int = 0, leech_hp: int = 1, thorns: int = 0, fire_rate_pct: int = 100
+}
+
+# a Stats field of an entity by name, or `fallback` when absent
+function stats_field(e: int, name: pointer, fallback: int) -> int {
+  let P = World.prop_id("Stats")
+  if (P < 0) or (World.has(e, P) == 0) { return fallback }
+  let f = World.field_id(P, name)
+  if f < 0 { return fallback }
+  return World.get(e, P, f)
+}
+# the Stats field a stat code names
+function stats_field_name(stat: int) -> pointer {
+  match stat {
+    StatKind.MaxHp       => { return "max_hp" }
+    StatKind.Attack      => { return "atk" }
+    StatKind.Defense     => { return "def" }
+    StatKind.Speed       => { return "spd" }
+    StatKind.MaxMp       => { return "max_mp" }
+    StatKind.DamagePct   => { return "damage_pct" }
+    StatKind.CritPct     => { return "crit_pct" }
+    StatKind.LeechPct    => { return "leech_pct" }
+    StatKind.Thorns      => { return "thorns" }
+    _                    => { return "fire_rate_pct" }
+  }
+}
+# Stats.add(e, stat, amount): change a base stat in place (a permanent upgrade)
+@Namespace(Stats) function stats_add(e: int, stat: int, amount: int) -> void {
+  let P = World.prop_id("Stats")
+  if (P < 0) or (World.has(e, P) == 0) { return }
+  let f = World.field_id(P, stats_field_name(stat))
+  if f >= 0 { World.set(e, P, f, World.get(e, P, f) + amount) }
+}
+# Stats.scale_hp(e, percent): hp and max_hp scaled (a floor's difficulty)
+@Namespace(Stats) function stats_scale_hp(e: int, percent: int) -> void {
+  let P = World.prop_id("Stats")
+  if (P < 0) or (World.has(e, P) == 0) { return }
+  let fhp = World.field_id(P, "hp")
+  let fmax = World.field_id(P, "max_hp")
+  let hp = World.get(e, P, fhp) * percent / 100
+  World.set(e, P, fhp, hp)
+  World.set(e, P, fmax, hp)
 }
 
 # a single timed modifier, carried on its own entity so the stack is dynamic.

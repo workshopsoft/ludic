@@ -1,0 +1,124 @@
+# dungeon.ludic — `Dungeon.*`: arena rooms for a room-to-room roguelite, built
+# straight into the engine tilemap (Map.*).
+#
+#   Dungeon.arena(style, wall, floor)      a walled room with mirrored cover in one of
+#                                          the RoomStyles, and the door lanes (two cells
+#                                          wide, through the centre) always open
+#   Dungeon.open_arena(wall, floor)        the walled room alone (a boss arena)
+#   Dungeon.random_style()                 a style roll (Scatter twice as likely)
+#   Dungeon.set_exit(side, glyph)          the two centre cells of one edge
+#   Dungeon.entry_point(side, inset, w, h) where a w x h body starts after entering
+#   Dungeon.opposite(side)                 the side across the room
+#   Dungeon.at_edge(tile)                  is a tile on the border? (an open doorway is
+#                                          the only border cell a body can stand in)
+#
+# Cover never touches the two-tile margin, and every style mirrors across both axes,
+# so every quadrant stays reachable. Deterministic: the seeded RNG drives it all.
+
+enum Side      { North, South, West, East }        # opposite = side ^ 1
+enum RoomStyle { Pillars, Columns, CenterSlab, Bars, Scatter }
+
+const DUNGEON_MARGIN: int = 2
+
+var dungeon_wall:  int = '#'
+var dungeon_floor: int = '.'
+
+function dungeon_columns() -> int { return Map.width() }
+function dungeon_rows() -> int { return Map.height() }
+function dungeon_door_column() -> int { return Map.width() / 2 - 1 }     # the left of the two door cells
+function dungeon_door_row() -> int { return Map.height() / 2 }           # the top of the two door cells
+
+# a wall, but never in the margin so rooms stay traversable
+function dungeon_place(x: int, y: int) -> void {
+  if (x < DUNGEON_MARGIN) or (x > dungeon_columns() - 1 - DUNGEON_MARGIN) { return }
+  if (y < DUNGEON_MARGIN) or (y > dungeon_rows() - 1 - DUNGEON_MARGIN) { return }
+  Map.set(x: x, y: y, glyph: dungeon_wall)
+}
+function dungeon_mirrored(x: int, y: int) -> void {
+  dungeon_place(x, y)
+  dungeon_place(dungeon_columns() - 1 - x, y)
+  dungeon_place(x, dungeon_rows() - 1 - y)
+  dungeon_place(dungeon_columns() - 1 - x, dungeon_rows() - 1 - y)
+}
+function dungeon_pillar(x: int, y: int) -> void {   # 2x2, mirrored four ways
+  dungeon_mirrored(x, y)
+  dungeon_mirrored(x + 1, y)
+  dungeon_mirrored(x, y + 1)
+  dungeon_mirrored(x + 1, y + 1)
+}
+
+function dungeon_style(style: int) -> void {
+  let cols = dungeon_columns()
+  let rows = dungeon_rows()
+  match style {
+    RoomStyle.Pillars => {
+      let x = Random.range(low: 3, high: 5)
+      let y = Random.range(low: 3, high: 4)
+      dungeon_pillar(x, y)
+      if Random.chance(percent: 60) { dungeon_pillar(x + 3, y + 2) }
+    }
+    RoomStyle.Columns => {
+      let x = Random.range(low: 4, high: 6)
+      for y in 3 .. rows - 3 { dungeon_mirrored(x, y) }
+    }
+    RoomStyle.CenterSlab => { Map.rect(x: 6, y: 5, width: cols - 12, height: rows - 10, glyph: dungeon_wall) }
+    RoomStyle.Bars => {
+      let y = Random.range(low: 3, high: 4)
+      for x in 4 .. cols - 4 { dungeon_mirrored(x, y) }
+    }
+    _ => {
+      for i in 0 .. Random.range(low: 3, high: 5) {
+        let x = Random.range(low: 3, high: cols / 2 - 1)
+        dungeon_place(x, Random.range(low: 3, high: rows - 4))
+        dungeon_place(cols - 1 - x, Random.range(low: 3, high: rows - 4))
+      }
+    }
+  }
+}
+
+@Namespace(Dungeon) function dungeon_open_arena(wall: int, floor: int) -> void {
+  dungeon_wall = wall
+  dungeon_floor = floor
+  Map.fill(glyph: floor)
+  Map.border(glyph: wall)
+}
+@Namespace(Dungeon) function dungeon_arena(style: int, wall: int, floor: int) -> void {
+  dungeon_open_arena(wall, floor)
+  dungeon_style(style)
+  Map.rect(x: dungeon_door_column(), y: 1, width: 2, height: dungeon_rows() - 2, glyph: floor)   # the door lanes
+  Map.rect(x: 1, y: dungeon_door_row(), width: dungeon_columns() - 2, height: 2, glyph: floor)
+}
+@Namespace(Dungeon) function dungeon_random_style() -> int { return Random.range(low: 0, high: 5) }
+
+# the first of an exit's two cells, and the step to the second
+function dungeon_exit_cell(side: int) -> IVec2 {
+  match side {
+    Side.North => { return IVec2.make(dungeon_door_column(), 0) }
+    Side.South => { return IVec2.make(dungeon_door_column(), dungeon_rows() - 1) }
+    Side.West  => { return IVec2.make(0, dungeon_door_row()) }
+    _          => { return IVec2.make(dungeon_columns() - 1, dungeon_door_row()) }
+  }
+}
+@Namespace(Dungeon) function dungeon_set_exit(side: int, glyph: int) -> void {
+  let first = dungeon_exit_cell(side)
+  var second = IVec2.add(first, IVec2.make(0, 1))
+  if side <= Side.South { second = IVec2.add(first, IVec2.make(1, 0)) }
+  Map.set(x: first.x, y: first.y, glyph: glyph)
+  Map.set(x: second.x, y: second.y, glyph: glyph)
+}
+# where a body of w x h px starts after entering from `side`, `inset` px inside the edge
+@Namespace(Dungeon) function dungeon_entry_point(side: int, inset: int, w: int, h: int) -> IVec2 {
+  let tile = rt_map_tile_px
+  let across_x = (dungeon_door_column() + 1) * tile - w / 2
+  let across_y = dungeon_door_row() * tile + (2 * tile - h) / 2
+  match side {
+    Side.North => { return IVec2.make(across_x, inset) }
+    Side.South => { return IVec2.make(across_x, dungeon_rows() * tile - inset - h) }
+    Side.West  => { return IVec2.make(inset, across_y) }
+    _          => { return IVec2.make(dungeon_columns() * tile - inset - w, across_y) }
+  }
+}
+@Namespace(Dungeon) function dungeon_opposite(side: int) -> int { return side ^ 1 }
+@Namespace(Dungeon) function dungeon_at_edge(tile: IVec2) -> bool {
+  return (tile.x == 0) or (tile.y == 0) or (tile.x == dungeon_columns() - 1) or (tile.y == dungeon_rows() - 1)
+}

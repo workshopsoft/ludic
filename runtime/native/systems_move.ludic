@@ -74,6 +74,7 @@ var pm_c_layer:  int = 0 - 1
 var pm_c_mask:   int = 0 - 1
 var phys_ts:     int = 0                              # tile size px (0 = grid off)
 var phys_wall:   int = 0                              # solid glyph
+var phys_wall2:  int = 0                              # optional second solid glyph (Solids.solid2), e.g. a closed door
 var phys_oneway: int = 0                              # one-way platform glyph (0 = none)
 
 # the moving body's own layer/mask, so the solid scan can filter by them
@@ -106,7 +107,9 @@ function phys_tile_solid(c: int, r: int) -> bool {
   if r < 0 { return true }
   if c >= rt_mapw { return true }
   if r >= rt_maph { return true }
-  return rt_tile(c, r) == phys_wall
+  let g = rt_tile(c, r)
+  if g == phys_wall { return true }
+  return (phys_wall2 != 0) and (g == phys_wall2)
 }
 # a one-way platform tile (in bounds only — the arena edge is a full wall above).
 function phys_tile_oneway(c: int, r: int) -> bool {
@@ -395,7 +398,7 @@ function esys_move() -> void {
     pm_c_layer  = World.field_id(pm_col, "layer")
     pm_c_mask   = World.field_id(pm_col, "mask")
   }
-  phys_ts = 0;  phys_wall = 0;  phys_oneway = 0
+  phys_ts = 0;  phys_wall = 0;  phys_wall2 = 0;  phys_oneway = 0
   let ps = World.prop_id("Solids")
   if ps >= 0 {
     let se = World.query_next(ps, 0)
@@ -406,6 +409,10 @@ function esys_move() -> void {
       if f_tile >= 0 { phys_ts = World.get(se, ps, f_tile) }
       if f_wall >= 0 { phys_wall = World.get(se, ps, f_wall) }
       if f_ow >= 0 { phys_oneway = World.get(se, ps, f_ow) }
+      let f_w2 = World.field_id(ps, "solid2")
+      if f_w2 >= 0 { phys_wall2 = World.get(se, ps, f_w2) }
+      rt_map_solid1 = phys_wall;  rt_map_solid2 = phys_wall2   # Map.is_solid reads the same config
+      if phys_ts > 0 { rt_map_tile_px = phys_ts }
     }
   }
 

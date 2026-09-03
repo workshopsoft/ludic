@@ -12,6 +12,22 @@ function machine_var(a: Node) -> Node {
   return null
 }
 
+# the value a state dispatches on: its explicit `= expr`; else, when the machine's
+# store is a `var` declared with an enum type, the variant named like the state
+# (`var mode: HeroState` + `state Rolling` -> HeroState.Rolling); else its ordinal.
+function machine_state_value(m: Node, state: Node) -> pointer {
+  if (state.b != null) { return emit_expr(state.b).code }
+  let gv = machine_var(m.a)
+  if (gv != null) {
+    if (gv.ty != null) {
+      let ord = enum_ordinal(gv.ty, state.s)
+      if ord >= 0 { return itoa(ord) }
+      if (find_enum(gv.ty) != null) { perr(`machine state {state.s} is not a variant of enum {gv.ty}`) }
+    }
+  }
+  return itoa(state.ival)
+}
+
 function emit_machine(st: Node) -> void {
   let gv = machine_var(st.a)
   var s = ""
@@ -26,8 +42,8 @@ function emit_machine(st: Node) -> void {
   var i = 0
   while i < len(st.kids) {
     let state = st.kids[i]
-    let v = emit_expr(state.b)
-    let c = emit_bind(`icmp eq i32 {s}, {v.code}`)
+    let v = machine_state_value(st, state)
+    let c = emit_bind(`icmp eq i32 {s}, {v}`)
     let body = lbl("sbody");  let nxt = lbl("sarm")
     emit("  br i1 ");  emit(c);  emit(", label %");  emit(body);  emit(", label %");  emit(nxt);  emit("\n")
     emit(body);  emit(":\n");  g_term = false
@@ -53,19 +69,22 @@ function emit_become(st: Node) -> void {
     while i < len(m.kids) { if (m.kids[i].s == st.s) { target = m.kids[i] };  i = i + 1 }
     if (target != null) {
       let gv = machine_var(m.a)
-      let sv = emit_expr(target.b)
+      let sv = machine_state_value(m, target)
       if (gv != null) {
-        emit("  store i32 ");  emit(sv.code);  emit(", ptr @g_");  emit(m.a.s);  emit("\n")
+        emit("  store i32 ");  emit(sv);  emit(", ptr @g_");  emit(m.a.s);  emit("\n")
       } else {
         let regv = emit_expr(m.a)
-        emit("  call void @fn_rt_set_reg(i32 ");  emit(regv.code);  emit(", i32 ");  emit(sv.code);  emit(")\n")
+        emit("  call void @fn_rt_set_reg(i32 ");  emit(regv.code);  emit(", i32 ");  emit(sv);  emit(")\n")
       }
       return
     }
   }
   let sc = find_scene(st.s)                             # else a scene transition
   if (sc == null) { perr(`become: no state or scene {st.s}`) }
+  # leave the scene we are in: statically known inside a scene's own handler, else
+  # (a global handler, an event listener, a function) whichever scene is live now
   if (g_cur_scene != null) { emit("  call void @scene_exit_");  emit(g_cur_scene.s);  emit("()\n") }
+  else { emit("  call void @L_scene_leave()\n") }
   emit("  store i32 ");  emit(itoa(sc.ival));  emit(", ptr @L_scene\n")
   emit("  call void @scene_enter_");  emit(sc.s);  emit("()\n")
 }

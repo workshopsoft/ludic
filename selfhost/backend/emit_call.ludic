@@ -33,7 +33,89 @@ function ns_lower(s: pointer) -> pointer {
   return b
 }
 
+# `Prop.of(e)`: the address of entity e's Prop slot in the dense @S_ store,
+# typed as Prop — exactly what a query loop binds. It is not checked: reading a
+# component the entity does not carry yields its zeroed storage, like a query
+# binding would. Guard with `Prop.has(e)` when the entity may lack it.
+# `Prop.has(e)`: e is in range, alive, and carries Prop. Branch-free: an
+# out-of-range handle is clamped to slot 0 for the loads, then masked out.
+function emit_component_access(prop: pointer, meth: pointer, e: Node) -> Val {
+  let me = itoa(MAX_ENT)
+  if (meth == "despawn_all") {                  # `Prop.despawn_all()`: a query loop that despawns each
+    if len(e.kids) != 0 { perr(`{prop}.despawn_all takes no arguments`) }
+    let q = node(S_QUERY); q.kids = new []Node; q.c = node(N_BLOCK)
+    let term = node(E_ID); term.s = prop; push(q.c.kids, term)
+    let v = node(E_ID); v.s = "__each"; push(q.kids, v)
+    q.a = node(N_BLOCK); let d = node(S_DESPAWN); let sc = node(E_CALL); let sid = node(E_ID); sid.s = "self"; sc.a = sid; d.a = sc; push(q.a.kids, d)
+    emit_query(q)
+    return val("0", "void")
+  }
+  if (meth == "count") {                        # `Prop.count()`: live entities carrying Prop
+    if len(e.kids) != 0 { perr(`{prop}.count takes no arguments`) }
+    let ip = emit_alloca("i32");  store_at("i32", "0", ip)
+    let cp = emit_alloca("i32");  store_at("i32", "0", cp)
+    let cond = lbl("cc");  let body = lbl("cb");  let nxt = lbl("cn");  let endl = lbl("ce")
+    emit("  br label %");  emit(cond);  emit("\n");  emit(cond);  emit(":\n")
+    let i0 = emit_bind(`load i32, ptr {ip}`)
+    let ec = emit_bind("load i32, ptr @L_entc")
+    let lt = emit_bind(`icmp slt i32 {i0}, {ec}`)
+    emit("  br i1 ");  emit(lt);  emit(", label %");  emit(body);  emit(", label %");  emit(endl);  emit("\n")
+    emit(body);  emit(":\n")
+    let ap = emit_bind(`getelementptr inbounds [{me} x i32], ptr @L_alive, i32 0, i32 {i0}`)
+    let al = emit_bind(`load i32, ptr {ap}`)
+    let hp = emit_bind(`getelementptr inbounds [{me} x i8], ptr @H_{prop}, i32 0, i32 {i0}`)
+    let hv = emit_bind(`load i8, ptr {hp}`)
+    let hz = emit_bind(`zext i8 {hv} to i32`)
+    let both = emit_bind(`and i32 {al}, {hz}`)
+    let c0 = emit_bind(`load i32, ptr {cp}`)
+    let c1 = emit_bind(`add i32 {c0}, {both}`)
+    store_at("i32", c1, cp)
+    emit("  br label %");  emit(nxt);  emit("\n");  emit(nxt);  emit(":\n")
+    let i1 = emit_bind(`add i32 {i0}, 1`)
+    store_at("i32", i1, ip)
+    emit("  br label %");  emit(cond);  emit("\n");  emit(endl);  emit(":\n")
+    return val(emit_bind(`load i32, ptr {cp}`), "int")
+  }
+  if len(e.kids) != 1 { perr(`{prop}.{meth} takes one argument: the entity`) }
+  let ev = emit_expr(e.kids[0])
+  if (meth == "of") {
+    let slot = emit_bind(`getelementptr inbounds [{me} x %Cmp_{prop}], ptr @S_{prop}, i32 0, i32 {ev.code}`)
+    return val(slot, prop)
+  }
+  let in_range = emit_bind(`icmp ult i32 {ev.code}, {me}`)
+  let idx = emit_bind(`select i1 {in_range}, i32 {ev.code}, i32 0`)
+  let ap = emit_bind(`getelementptr inbounds [{me} x i32], ptr @L_alive, i32 0, i32 {idx}`)
+  let alive = emit_bind(`load i32, ptr {ap}`)
+  let is_alive = emit_bind(`icmp ne i32 {alive}, 0`)
+  let hp = emit_bind(`getelementptr inbounds [{me} x i8], ptr @H_{prop}, i32 0, i32 {idx}`)
+  let hv = emit_bind(`load i8, ptr {hp}`)
+  let carries = emit_bind(`icmp ne i8 {hv}, 0`)
+  let ok1 = emit_bind(`and i1 {in_range}, {is_alive}`)
+  let ok = emit_bind(`and i1 {ok1}, {carries}`)
+  return val(emit_bind(`zext i1 {ok} to i32`), "bool")
+}
+
+# is a call's first argument text (a string literal or a string-typed expression)?
+# Selects the by-name form of an overloaded builtin (Audio.play(name: "hit")).
+function first_arg_is_text(e: Node) -> bool {
+  if len(e.kids) == 0 { return false }
+  var a = e.kids[0]
+  if a.kind == E_FINIT { if (a.s == "name") { return true };  a = a.a }
+  if a.kind == E_STR { return true }
+  let t = static_type(a)
+  if (t == null) { return false }
+  return t == "string"
+}
+
 function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
+  # `Prop.of(e)` / `Prop.has(e)` — typed access to one entity's component, the
+  # same binding a query loop makes but for an entity handle held in a variable.
+  # `Prop.of(e)` yields the component (read and assign its fields directly);
+  # `Prop.has(e)` is true when `e` is a live entity carrying Prop. A package that
+  # declares a real `prop_of` / `prop_has` function keeps it.
+  if (find_comp(ns) != null) and ((meth == "of") or (meth == "has") or (meth == "count") or (meth == "despawn_all")) {
+    if find_fn(ns_lower(ns) + ("_") + meth) == null { return emit_component_access(ns, meth, e) }
+  }
   # Math.* is computed inline (deterministic fixed-point), not routed through a
   # bare rt_ name — so `floor`/`round`/`lerp` never leak into the bare namespace.
   if (ns == "Math") {
@@ -168,6 +250,7 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
   if (ns == "Screen") {
     if (meth == "clear")          { bare = "clear";      push(labels, "color") }
     if (meth == "fill_rectangle") { bare = "fill_rect";  push(labels, "x"); push(labels, "y"); push(labels, "width"); push(labels, "height"); push(labels, "color") }
+    if (meth == "bar")            { bare = "bar";        push(labels, "x"); push(labels, "y"); push(labels, "width"); push(labels, "height"); push(labels, "value"); push(labels, "max"); push(labels, "color"); push(labels, "back") }
     if (meth == "draw_rectangle") { bare = "frame_rect"; push(labels, "x"); push(labels, "y"); push(labels, "width"); push(labels, "height"); push(labels, "color") }
     if (meth == "put_pixel")      { bare = "put_px";     push(labels, "x"); push(labels, "y"); push(labels, "color") }
     if (meth == "draw_text")      { bare = "text";       push(labels, "x"); push(labels, "y"); push(labels, "text"); push(labels, "color"); push(labels, "scale") }
@@ -200,14 +283,75 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "sheet")       { bare = "atlas_sheet";       push(labels, "path"); push(labels, "cellw"); push(labels, "cellh") }
     if (meth == "cell")        { bare = "atlas_cell";        push(labels, "sheet"); push(labels, "col"); push(labels, "row") }
     if (meth == "cell_span")   { bare = "atlas_cell_span";   push(labels, "sheet"); push(labels, "col"); push(labels, "row"); push(labels, "cols"); push(labels, "rows") }
+    if (meth == "strip")       { bare = "atlas_strip";       push(labels, "sheet"); push(labels, "col"); push(labels, "row"); push(labels, "count"); push(labels, "rows") }
     if (meth == "define")      { bare = "atlas_define";      push(labels, "name"); push(labels, "sheet"); push(labels, "col"); push(labels, "row") }
     if (meth == "named")       { bare = "atlas_named";       push(labels, "name") }
     if (meth == "draw")        { bare = "atlas_draw";        push(labels, "id"); push(labels, "x"); push(labels, "y") }
     if (meth == "draw_scaled") { bare = "atlas_draw_scaled"; push(labels, "id"); push(labels, "x"); push(labels, "y"); push(labels, "scale") }
+    if (meth == "draw_meter")  { bare = "atlas_draw_meter";  push(labels, "x"); push(labels, "y"); push(labels, "value"); push(labels, "max"); push(labels, "per_icon"); push(labels, "spacing"); push(labels, "full"); push(labels, "half"); push(labels, "empty") }
     if (meth == "width")       { bare = "atlas_width";       push(labels, "id") }
     if (meth == "height")      { bare = "atlas_height";      push(labels, "id") }
   }
+  if (ns == "Font") {
+    if (meth == "load")        { bare = "font_load";         push(labels, "path") }
+  }
+  # Ui.* — the retained UI (ui blocks): navigation is engine-ticked (esys_ui) and
+  # activations arrive as UiClicked events; these are the remaining verbs.
+  if (ns == "Ui") {
+    if (meth == "build")       { bare = "ui_build" }
+    if (meth == "open")        { bare = "ui_open";           push(labels, "id") }
+    if (meth == "close")       { bare = "ui_close" }
+    if (meth == "tick")        { bare = "ui_tick";           push(labels, "key") }
+    if (meth == "clicked")     { bare = "ui_clicked";        push(labels, "id") }
+    if (meth == "set_text")    { bare = "ui_set_text";       push(labels, "id"); push(labels, "text") }
+    if (meth == "render")      { bare = "ui_render" }
+  }
+  if (ns == "File") {
+    if (meth == "open")        { bare = "file_open";         push(labels, "path"); push(labels, "mode") }
+    if (meth == "read")        { bare = "file_read";         push(labels, "file"); push(labels, "buffer"); push(labels, "count") }
+    if (meth == "write")       { bare = "file_write";        push(labels, "file"); push(labels, "buffer"); push(labels, "count") }
+    if (meth == "seek")        { bare = "file_seek";         push(labels, "file"); push(labels, "offset"); push(labels, "whence") }
+    if (meth == "tell")        { bare = "file_tell";         push(labels, "file") }
+    if (meth == "close")       { bare = "file_close";        push(labels, "file") }
+  }
+  if (ns == "Fx") {                             # engine-owned sparks and floating numbers (fx.ludic)
+    if (meth == "sparks")      { bare = "fx_sparks";         push(labels, "x"); push(labels, "y"); push(labels, "color"); push(labels, "count") }
+    if (meth == "number")      { bare = "fx_number";         push(labels, "x"); push(labels, "y"); push(labels, "value"); push(labels, "color") }
+    if (meth == "clear")       { bare = "fx_clear" }
+  }
+  if (ns == "Prefab") {                         # spawn a prefab by name at runtime (see emit_prefab_fns)
+    if (meth == "spawn_at") {                   # Prefab.spawn_at(name:, at: IVec2) — spawned, then placed
+      if not has_prefabs() { perr("Prefab.spawn_at: the program declares no prefab") }
+      let pos = find_comp("Position")
+      if (pos == null) { perr("Prefab.spawn_at needs a Position property") }
+      let plabels = new []pointer;  push(plabels, "name");  push(plabels, "at")
+      reorder_named(e, plabels)
+      let nm = emit_expr(e.kids[0])
+      let at = emit_expr(e.kids[1])
+      let ent = emit_bind(`call i32 @L_spawn_prefab(ptr {nm.code})`)
+      let me = itoa(MAX_ENT)
+      let slot = emit_bind(`getelementptr inbounds [{me} x %Cmp_Position], ptr @S_Position, i32 0, i32 {ent}`)
+      let xa = emit_bind(`getelementptr inbounds %Cmp_Position, ptr {slot}, i32 0, i32 {itoa(field_index(pos, "x"))}`)
+      let ya = emit_bind(`getelementptr inbounds %Cmp_Position, ptr {slot}, i32 0, i32 {itoa(field_index(pos, "y"))}`)
+      let ax = vec_x(at.code)
+      let ay = vec_y(at.code)
+      emit("  store i32 ");  emit(ax);  emit(", ptr ");  emit(xa);  emit("\n")
+      emit("  store i32 ");  emit(ay);  emit(", ptr ");  emit(ya);  emit("\n")
+      return val(ent, "entity")
+    }
+    if (meth == "spawn") {
+      if not has_prefabs() { perr("Prefab.spawn: the program declares no prefab") }
+      let plabels = new []pointer;  push(plabels, "name")
+      reorder_named(e, plabels)
+      if len(e.kids) != 1 { perr("Prefab.spawn takes one argument: the prefab's name") }
+      let nm = emit_expr(e.kids[0])
+      return val(emit_bind(`call i32 @L_spawn_prefab(ptr {nm.code})`), "entity")
+    }
+    perr(`unknown builtin Prefab.{meth}`)
+  }
   if (ns == "Assets") {
+    if (meth == "font")        { bare = "assets_font";       push(labels, "name") }   # a .ttf loaded through the queue
+    if (meth == "enqueue_dir") { bare = "assets_enqueue_dir"; push(labels, "path") }   # every file of a directory, by base name
     if (meth == "image")       { bare = "atlas_image";       push(labels, "path") }
     if (meth == "load")        { bare = "atlas_image";       push(labels, "path") }   # alias
     if (meth == "get")         { bare = "atlas_named";       push(labels, "name") }    # alias of Sprite.named
@@ -226,15 +370,30 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "set")    { bare = "camera";        push(labels, "x"); push(labels, "y") }
     if (meth == "follow") { bare = "camera_follow"; push(labels, "x"); push(labels, "y"); push(labels, "lerp") }
     if (meth == "shake")  { bare = "camera_shake";  push(labels, "amount") }
+    if (meth == "shake_for") { bare = "camera_shake_for";  push(labels, "amount"); push(labels, "frames") }   # a timed shake the engine decays
     if (meth == "zoom")   { bare = "camera_zoom";   push(labels, "scale") }   # #78 deterministic Q16.16 zoom
   }
   if (ns == "Map") {
     if (meth == "size") { bare = "map_size"; push(labels, "width"); push(labels, "height") }
     if (meth == "row")  { bare = "map_row";  push(labels, "y"); push(labels, "cells") }
     if (meth == "tile") { bare = "tile";     push(labels, "x"); push(labels, "y") }
+    if (meth == "get")  { bare = "tile";     push(labels, "x"); push(labels, "y") }
+    # the cell API: edit the grid in place, ask it what is where
+    if (meth == "set")         { bare = "map_set";         push(labels, "x"); push(labels, "y"); push(labels, "glyph") }
+    if (meth == "fill")        { bare = "map_fill";        push(labels, "glyph") }
+    if (meth == "rect")        { bare = "map_rect";        push(labels, "x"); push(labels, "y"); push(labels, "width"); push(labels, "height"); push(labels, "glyph") }
+    if (meth == "border")      { bare = "map_border";      push(labels, "glyph") }
+    if (meth == "random_cell") { bare = "map_random_cell"; push(labels, "glyph") }
+    if (meth == "random_cell_far") { bare = "map_random_cell_far"; push(labels, "glyph"); push(labels, "from"); push(labels, "min_tiles") }
+    if (meth == "is_solid")    { bare = "map_is_solid";    push(labels, "x"); push(labels, "y") }
+    if (meth == "is_solid_at") { bare = "map_is_solid_at"; push(labels, "x"); push(labels, "y") }
+    if (meth == "to_tile")     { bare = "map_to_tile";     push(labels, "pixel") }
+    if (meth == "width")       { bare = "map_width" }
+    if (meth == "height")      { bare = "map_height" }
   }
   if (ns == "Random") {
     if (meth == "range")  { bare = "rng_range";  push(labels, "low"); push(labels, "high") }
+    if (meth == "weighted") { bare = "rng_weighted";  push(labels, "weights") }   # an index in proportion to its weight
     if (meth == "chance") { bare = "rng_chance"; push(labels, "percent") }
     if (meth == "seed")   { bare = "seed";       push(labels, "value") }
     if (meth == "value")  { bare = "rng_value" }
@@ -245,8 +404,8 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "key") { bare = "key" }
     # action maps + deterministic record/replay (#7) — spliced runtime in
     # runtime/native/input.ludic, reached as ordinary @fn_input_* calls.
-    if (meth == "bind")    { bare = "input_bind" }
-    if (meth == "rebind")  { bare = "input_rebind" }
+    if (meth == "bind")    { bare = "input_bind";    push(labels, "action"); push(labels, "key") }
+    if (meth == "rebind")  { bare = "input_rebind";  push(labels, "action"); push(labels, "old"); push(labels, "new") }
     if (meth == "poll")    { bare = "input_poll" }
     if (meth == "down")    { bare = "input_down" }
     if (meth == "pressed") { bare = "input_pressed" }
@@ -268,6 +427,7 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "release")      { bare = "input_release";      push(labels, "key") }
     if (meth == "axis")         { bare = "input_axis";         push(labels, "neg"); push(labels, "pos") }
     if (meth == "axis_i")       { bare = "input_axis_i";       push(labels, "neg"); push(labels, "pos") }   # #79 directional int (-1/0/1)
+    if (meth == "move_i")        { bare = "input_move_i" }                     # WASD / arrows / left stick -> IVec2
     if (meth == "vector")       { bare = "input_vector";       push(labels, "left"); push(labels, "right"); push(labels, "up"); push(labels, "down") }
     if (meth == "strength")     { bare = "input_strength";     push(labels, "action") }
     if (meth == "mouse_x")      { bare = "input_mouse_x" }
@@ -292,9 +452,12 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
   # triggers are ordinary frame-driven calls, so a replay fires the same sounds.
   if (ns == "Audio") {
     if (meth == "load")       { bare = "audio_load";       push(labels, "path") }
-    if (meth == "play")       { bare = "audio_play";       push(labels, "id") }
+    if (meth == "define")     { bare = "audio_define";     push(labels, "name"); push(labels, "path") }
+    if (meth == "named")      { bare = "audio_named";      push(labels, "name") }
+    # Audio.play / play_music take a handle, or a name from the sound bank (Audio.define)
+    if (meth == "play")       { if first_arg_is_text(e) { bare = "audio_play_named";  push(labels, "name") } else { bare = "audio_play";  push(labels, "id") } }
     if (meth == "play_sound") { bare = "audio_play";       push(labels, "id") }
-    if (meth == "play_music") { bare = "audio_play_music"; push(labels, "id") }
+    if (meth == "play_music") { if first_arg_is_text(e) { bare = "audio_play_music_named";  push(labels, "name") } else { bare = "audio_play_music";  push(labels, "id") } }
     if (meth == "stop")       { bare = "audio_stop";       push(labels, "id") }
     if (meth == "stop_music") { bare = "audio_stop_music" }
     if (meth == "stop_all")   { bare = "audio_stop_all" }
@@ -519,6 +682,7 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "cos")          { bare = "angle_cos";          push(labels, "a") }
     if (meth == "add")          { bare = "angle_add";          push(labels, "a"); push(labels, "b") }
     if (meth == "diff")         { bare = "angle_diff";         push(labels, "a"); push(labels, "b") }
+    if (meth == "diff_degrees") { bare = "angle_diff_degrees"; push(labels, "a"); push(labels, "b") }   # signed, -180..180, ints
     if (meth == "lerp")         { bare = "angle_lerp";         push(labels, "a"); push(labels, "b"); push(labels, "t") }
   }
   if (ns == "Percent") {
@@ -716,6 +880,14 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     # #76: a namespace declared with a block controls its public surface — an
     # `internal` method is emitted but not callable as Name.method.
     if is_ns_block(ns) and (not ns_export_has(bare)) { perr(`{ns}.{meth} is internal to namespace {ns}`) }
+    # a namespace function takes named arguments like any other function: its
+    # labels are its parameter names, so `Weapon.def(name: "pistol", ...)` works.
+    let nsfn = find_fn(bare)
+    if (nsfn != null) {
+      let names = param_labels(nsfn)
+      var pi2 = 0
+      while pi2 < len(names) { push(labels, names[pi2]);  pi2 = pi2 + 1 }
+    }
   }
   if (bare == null) { perr(`unknown builtin {ns}.{meth}`) }
   reorder_named(e, labels)
@@ -1121,6 +1293,7 @@ function emit_expr(e: Node) -> Val {
   if e.kind == E_FLOAT { return val(itoa(e.ival), "fixed") }
   if e.kind == E_BOOL { return val(itoa(e.ival), "bool") }
   if e.kind == E_NULL { return val("null", "pointer") }
+  if e.kind == S_SPAWN { return val(emit_spawn(e), "entity") }   # `let e = spawn Model { … }`
   if e.kind == E_SLICE {                          # s[a..b] -> a fresh substring
     let base = emit_expr(e.a)
     let lo = emit_expr(e.b)
@@ -1161,11 +1334,21 @@ function emit_expr(e: Node) -> Val {
         if (cv < 0) { perr(`unknown color Color.{e.s}`) }
         return val(itoa(cv), "int")
       }
+      if (e.a.s == "Key") {                      # `Key.Name` -> its key code, at compile time
+        let kv = key_lookup(e.s)
+        if (kv < 0) { perr(`unknown key Key.{e.s}`) }
+        return val(itoa(kv), "int")
+      }
       let ord = enum_ordinal(e.a.s, e.s)         # `Enum.Variant` -> its ordinal, a compile-time int
       if ord >= 0 { return val(itoa(ord), "int") }
     }
     let bt = static_type(e.a)                    # `x.field` where field is @Computed -> inline it
     if (bt != null) {
+      if (bt == "IVec2") and ((e.s == "x") or (e.s == "y")) {   # a packed vector's component
+        let v = emit_expr(e.a)
+        if (e.s == "x") { return val(vec_x(v.code), "int") }
+        return val(vec_y(v.code), "int")
+      }
       let cx = computed_expr(bt, e.s)
       if (cx != null) { return emit_expr(qualify_fields(cx, e.a)) }
     }

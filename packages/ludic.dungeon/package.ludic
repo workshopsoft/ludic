@@ -1,0 +1,6 @@
+# ludic.dungeon — arena rooms for a room-to-room roguelite, built into the engine
+# tilemap: mirrored cover styles, door lanes, exits by side, entry points.
+package "ludic.dungeon"
+version "0.1.0"
+kind source
+provides "Dungeon"

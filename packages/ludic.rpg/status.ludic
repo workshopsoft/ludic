@@ -11,6 +11,7 @@
 
 import "ludic.gameplay/combat.ludic"
 
+enum StatusKind { Poison, Regen }                # Status.apply kind
 property Status { target: int = 0, kind: int = 0, amount: int = 0, interval: int = 30, ttl: int = 0, t: int = 0 }
 model StatusFx { Status }
 @OnSpawn(StatusFx) handler StatusFxInit { }

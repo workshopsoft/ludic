@@ -1,0 +1,121 @@
+# prefs.ludic — `Prefs.*`: named integer preferences persisted as plain text.
+#
+#   Prefs.load("save/prefs.txt")      read the file if it exists (missing = empty)
+#   Prefs.get("best_floor", 0)        an int by name, with a default
+#   Prefs.set("best_floor", 3)        set (and remember) a value
+#   Prefs.save()                      write every key back as `key=value` lines
+#
+# Deterministic and dependency-free: one file, up to PREFS_MAX entries.
+
+const PREFS_MAX: int = 64
+
+var prefs_path:  pointer  = null
+var prefs_names: pointers = null
+var prefs_vals:  words    = null
+var prefs_n:     int      = 0
+
+namespace Prefs {
+  internal function init() -> void {
+    if prefs_names != null { return }
+    prefs_names = bytes(PREFS_MAX * 8)
+    prefs_vals  = words(PREFS_MAX)
+    prefs_n = 0
+  }
+
+  internal function find(key: pointer) -> int {
+    var i = 0
+    while i < prefs_n { if prefs_names[i] == key { return i };  i = i + 1 }
+    return 0 - 1
+  }
+
+  export function get(key: pointer, fallback: int) -> int {
+    init()
+    let i = find(key)
+    if i < 0 { return fallback }
+    return prefs_vals[i]
+  }
+
+  # keep the larger of the stored value and `value`; true when `value` is a new record
+  export function max(key: pointer, value: int) -> bool {
+    if value <= get(key, 0) { return false }
+    set(key, value)
+    return true
+  }
+
+  export function set(key: pointer, value: int) -> void {
+    init()
+    var i = find(key)
+    if i < 0 {
+      if prefs_n >= PREFS_MAX { return }
+      i = prefs_n
+      prefs_names[i] = key
+      prefs_n = prefs_n + 1
+    }
+    prefs_vals[i] = value
+  }
+
+  # the text of a whole file, or null when it does not exist
+  internal function read_all(path: pointer) -> pointer {
+    let f = file_open(path, "rb")
+    if f == null { return null }
+    file_seek(f, 0, 2)
+    let size = file_tell(f)
+    file_seek(f, 0, 0)
+    let buf = bytes(size + 1)
+    file_read(f, buf, size)
+    file_close(f)
+    buf[size] = 0
+    return buf
+  }
+
+  # digits after `=` on one line -> an int (a leading '-' negates)
+  internal function parse_line(buf: pointer, from: int, to: int) -> void {
+    var eq = from
+    while (eq < to) and (buf[eq] != 61) { eq = eq + 1 }          # '='
+    if eq >= to { return }
+    let key = bytes(eq - from + 1)
+    var k = 0
+    while k < eq - from { key[k] = buf[from + k];  k = k + 1 }
+    key[eq - from] = 0
+    var v = 0
+    var neg = false
+    var p = eq + 1
+    if (p < to) and (buf[p] == 45) { neg = true;  p = p + 1 }   # '-'
+    while (p < to) and (buf[p] >= 48) and (buf[p] <= 57) { v = v * 10 + (buf[p] - 48);  p = p + 1 }
+    if neg { v = 0 - v }
+    set(key, v)
+  }
+
+  export function load(path: pointer) -> void {
+    init()
+    prefs_path = path
+    let buf = read_all(path)
+    if buf == null { return }
+    var start = 0
+    var i = 0
+    while buf[i] != 0 {
+      if buf[i] == 10 { parse_line(buf, start, i);  start = i + 1 }   # newline
+      i = i + 1
+    }
+    if i > start { parse_line(buf, start, i) }
+  }
+
+  internal function write_text(f: pointer, s: pointer) -> void {
+    var n = 0
+    while s[n] != 0 { n = n + 1 }
+    file_write(f, s, n)
+  }
+
+  export function save() -> void {
+    init()
+    if prefs_path == null { return }
+    let f = file_open(prefs_path, "wb")
+    if f == null { return }
+    var i = 0
+    while i < prefs_n {
+      write_text(f, `{prefs_names[i]}={string(prefs_vals[i])}\n`)
+      i = i + 1
+    }
+    file_close(f)
+  }
+}

@@ -22,6 +22,7 @@ property Position { x: int = 0, y: int = 0 }
 # on_ground / hit_wall / hit_ceiling and the optional contact normal hit_nx/hit_ny
 # are OUTPUTS: read them in a handler to raise your own landing / bonk events
 # (the SpriteAnim.event_fired pattern — polled flags, no engine coupling).
+enum BodyPolicy { Platformer, TopDown }        # Body.policy: gravity applies / no gravity
 property Body {
   vx: fixed = 0.0, vy: fixed = 0.0,
   gravity: fixed = 0.0, max_fall: fixed = 0.0,
@@ -48,15 +49,46 @@ property Collider {
 # Position anchor, scale is an integer zoom (0/1 = 1:1), flip mirrors horizontally,
 # tint (non-zero) draws every opaque pixel in one colour (hit flash), hidden = 1
 # skips it. Draw order is spawn order; a game wanting custom draw omits Sprite.
-property Sprite { id: int = 0, offx: int = 0, offy: int = 0, scale: int = 1, flip: int = 0, tint: int = 0, hidden: int = 0 }
+# atlas = 1 marks `id` as an atlas sprite (Sprite.cell / Sprite.cell_span — any size,
+# including multi-cell characters); 0 = the 16x16 sprite table (png_load). (#90)
+# move_id: the strip drawn while the entity moves (0 = always `id`); face = 1 turns
+# the sprite toward its movement (TopDown intent, else Body velocity); flash and
+# blink are countdowns: white tint while flash > 0, hidden every other pair of
+# frames while blink > 0 (a hit flash and invulnerability blink, no handler).
+property Sprite {
+  id: int = 0, offx: int = 0, offy: int = 0, scale: int = 1, flip: int = 0, tint: int = 0, hidden: int = 0, atlas: int = 0,
+  move_id: int = 0, face: int = 0, flash: countdown = 0, blink: countdown = 0
+}
+
+# Collider.center(e): the middle of an entity's box, from its Position and Collider
+@Namespace(Collider) function collider_center(e: int) -> IVec2 {
+  let PP = World.prop_id("Position")
+  let PC = World.prop_id("Collider")
+  var x = 0;  var y = 0;  var w = 0;  var h = 0
+  if (PP >= 0) and (World.has(e, PP) != 0) { x = World.get(e, PP, World.field_id(PP, "x"));  y = World.get(e, PP, World.field_id(PP, "y")) }
+  if (PC >= 0) and (World.has(e, PC) != 0) { w = World.get(e, PC, World.field_id(PC, "w"));  h = World.get(e, PC, World.field_id(PC, "h")) }
+  return IVec2.make(x + w / 2, y + h / 2)
+}
 
 # Optional single config entity that turns the tile-grid broadphase on: solids are
 # read from the Map.* tilemap. tile > 0 sets the tile size in px; wall is the solid
 # glyph; oneway is an optional one-way-platform glyph (0 = none).
-property Solids { tile: int = 0, wall: int = 0, oneway: int = 0 }
+# solid2 is an optional second solid glyph (0 = none) — e.g. a closed door drawn with
+# its own TileSkin while it blocks movement.
+property Solids { tile: int = 0, wall: int = 0, oneway: int = 0, solid2: int = 0 }
+
+# The engine-advanced animation clock (esys_spriteanim): `frame` is the current cell
+# (0..frames-1) and the sprite system adds it to Sprite.id. mode 0 loop, 1 once, 2 pingpong.
+enum AnimMode { Loop, Once, PingPong }         # SpriteAnim.mode
+property SpriteAnim { ticks: int = 0, fps: int = 8, frames: int = 4, mode: int = 0, frame: int = 0 }
+
+# One entity per map glyph: the engine tilemap-render system paints every Map.* cell
+# carrying `glyph` with `sprite` (atlas id when atlas = 1), before sprites are drawn.
+property TileSkin { glyph: int = 0, sprite: int = 0, atlas: int = 1, size: int = 16, scale: int = 1 }
 
 # Optional single config entity defining a world boundary / play area (#84): a rect
 # (x, y, w, h) and a policy the engine applies to every moving Body each frame —
 # 0 clamp (walls), 1 wrap (toroidal), 2 bounce (flip velocity), 3 kill (despawn when
 # fully outside). Off by default (no Bounds entity = open world).
+enum BoundsPolicy { Clamp, Wrap, Bounce, Kill }   # Bounds.policy
 property Bounds { x: int = 0, y: int = 0, w: int = 0, h: int = 0, policy: int = 0 }

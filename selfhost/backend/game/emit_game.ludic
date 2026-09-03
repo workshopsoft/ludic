@@ -74,7 +74,116 @@ function emit_engine_systems_for_phase(phase: pointer) -> void {
     # Tween.* fluent handles (#48): advanced each Update tick when the game uses
     # them (gated on g_uses_tween_rt rather than a declared component).
     if g_uses_tween_rt and (find_fn("esys_tween") != null) { emit("  call void @fn_esys_tween()\n") }
+    if has_countdowns() { emit("  call void @L_countdowns()\n") }        # `countdown` fields tick toward 0
+    if g_uses_fx and (find_fn("fx_tick") != null) { emit("  call void @fn_fx_tick()\n") }   # Fx.* age and move
   }
+  if (phase == "Render") {
+    if g_uses_fx and (find_fn("fx_draw") != null) { emit("  call void @fn_fx_draw()\n") }   # Fx.* draw after the sprites
+  }
+}
+
+# @L_countdowns(): every `countdown` field of every live entity that carries the
+# component steps toward 0 once per Update (never below it). The timer idiom —
+# "frames left" fields counted down by hand in a handler — becomes a field type.
+function emit_countdown_system() -> void {
+  let me = itoa(MAX_ENT)
+  emit("define void @L_countdowns() {\nentry:\n")
+  emit("  %n = load i32, ptr @L_entc\n  br label %loop\nloop:\n")
+  emit("  %i = phi i32 [ 0, %entry ], [ %i1, %next ]\n")
+  emit("  %go = icmp slt i32 %i, %n\n  br i1 %go, label %body, label %done\nbody:\n")
+  emit("  %ap = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_alive, i32 0, i32 %i\n")
+  emit("  %al = load i32, ptr %ap\n  %alive = icmp ne i32 %al, 0\n  br i1 %alive, label %c0, label %next\n")
+  var k = 0
+  var i = 0
+  while i < len(prog) {
+    let d = prog[i]
+    if d.kind == N_COMP {
+      var any = false
+      var f = 0
+      while f < len(d.kids) { if (d.kids[f].ty == "countdown") { any = true };  f = f + 1 }
+      if any {
+        let sk = itoa(k);  let nk = itoa(k + 1)
+        emit("c");  emit(sk);  emit(":\n")
+        emit("  %h");  emit(sk);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i8], ptr @H_");  emit(d.s);  emit(", i32 0, i32 %i\n")
+        emit("  %hv");  emit(sk);  emit(" = load i8, ptr %h");  emit(sk);  emit("\n")
+        emit("  %has");  emit(sk);  emit(" = icmp ne i8 %hv");  emit(sk);  emit(", 0\n")
+        emit("  br i1 %has");  emit(sk);  emit(", label %t");  emit(sk);  emit(", label %c");  emit(nk);  emit("\n")
+        emit("t");  emit(sk);  emit(":\n")
+        emit("  %s");  emit(sk);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x %Cmp_");  emit(d.s);  emit("], ptr @S_");  emit(d.s);  emit(", i32 0, i32 %i\n")
+        f = 0
+        while f < len(d.kids) {
+          if (d.kids[f].ty == "countdown") {
+            let fk = sk + ("_") + itoa(f)
+            emit("  %fa");  emit(fk);  emit(" = getelementptr inbounds %Cmp_");  emit(d.s);  emit(", ptr %s");  emit(sk);  emit(", i32 0, i32 ");  emit(itoa(f));  emit("\n")
+            emit("  %fv");  emit(fk);  emit(" = load i32, ptr %fa");  emit(fk);  emit("\n")
+            emit("  %fp");  emit(fk);  emit(" = icmp sgt i32 %fv");  emit(fk);  emit(", 0\n")
+            emit("  %fd");  emit(fk);  emit(" = sub i32 %fv");  emit(fk);  emit(", 1\n")
+            emit("  %fn");  emit(fk);  emit(" = select i1 %fp");  emit(fk);  emit(", i32 %fd");  emit(fk);  emit(", i32 %fv");  emit(fk);  emit("\n")
+            emit("  store i32 %fn");  emit(fk);  emit(", ptr %fa");  emit(fk);  emit("\n")
+          }
+          f = f + 1
+        }
+        emit("  br label %c");  emit(nk);  emit("\n")
+        k = k + 1
+      }
+    }
+    i = i + 1
+  }
+  emit("c");  emit(itoa(k));  emit(":\n  br label %next\n")
+  emit("next:\n  %i1 = add i32 %i, 1\n  br label %loop\ndone:\n  ret void\n}\n\n")
+}
+
+# @L_prefab_<Name>(): spawn one prefab with its presets; @L_spawn_prefab(name):
+# the runtime dispatch by name that Prefab.spawn(name:) calls (-1 for no such prefab).
+function emit_prefab_fn(pre: Node) -> void {
+  ll_t = 0;  ll_lbl = 0;  g_term = false;  loc_reset();  nloop = 0;  nself = 0
+  g_cur_scene = null
+  ret_ty = "int"
+  let fbody = buf_new()
+  falloc = buf_new()
+  let saved = code
+  code = fbody
+  let sp = node(S_SPAWN);  sp.s = pre.s
+  let e = emit_spawn(sp)
+  emit("  ret i32 ");  emit(e);  emit("\n")
+  code = saved
+  emit("define i32 @L_prefab_");  emit(pre.s);  emit("() {\nentry:\n")
+  emit(buf_str(falloc))
+  emit(buf_str(fbody))
+  emit("}\n\n")
+}
+function emit_prefab_fns() -> void {
+  var i = 0
+  while i < len(prog) { if prog[i].kind == N_PREFAB { emit_prefab_fn(prog[i]) };  i = i + 1 }
+  g_uses_str = true
+  ll_t = 0;  ll_lbl = 0;  g_term = false;  loc_reset();  nloop = 0;  nself = 0
+  let fbody = buf_new()
+  falloc = buf_new()
+  let saved = code
+  code = fbody
+  i = 0
+  while i < len(prog) {
+    let d = prog[i]
+    if d.kind == N_PREFAB {
+      let lit = node(E_STR);  lit.s = d.s
+      let sv = emit_expr(lit)
+      let same = emit_bind(`call i32 @fn_str_eq(ptr %name, ptr {sv.code})`)
+      let hit = emit_bind(`icmp ne i32 {same}, 0`)
+      let yes = lbl("pf");  let no = lbl("pfn")
+      emit("  br i1 ");  emit(hit);  emit(", label %");  emit(yes);  emit(", label %");  emit(no);  emit("\n")
+      emit(yes);  emit(":\n")
+      let r = emit_bind(`call i32 @L_prefab_{d.s}()`)
+      emit("  ret i32 ");  emit(r);  emit("\n")
+      emit(no);  emit(":\n")
+    }
+    i = i + 1
+  }
+  emit("  ret i32 -1\n")
+  code = saved
+  emit("define i32 @L_spawn_prefab(ptr %name) {\nentry:\n")
+  emit(buf_str(falloc))
+  emit(buf_str(fbody))
+  emit("}\n\n")
 }
 
 # Global handlers run first, then the active scene's layer handlers in
@@ -101,6 +210,7 @@ function phase_id(phase: pointer) -> int {
   if phase == "Render" { return 4 }
   if phase == "Start" { return 5 }
   if phase == "OnQuit" { return 6 }
+  if phase == "Overlay" { return 7 }      # HUD/UI pass after the engine drew sprites
   return 7
 }
 
@@ -223,18 +333,46 @@ function emit_calls_for_phase(phase: pointer) -> void {
   }
   emit_engine_systems_for_phase(phase)               # engine-owned systems run after every user handler
   emit_dyn_systems_for_phase(phase)                  # #64: mod-registered systems run last
+  if (phase == "Overlay") { emit_scene_menu_render() }   # a scene's `shows` menu paints last
+}
+
+# the menu of the live `scene X shows Menu`, drawn on top of everything else
+function emit_scene_menu_render() -> void {
+  var any = false
+  var i = 0
+  while i < len(g_scenes) { if (g_scenes[i].ty != null) { any = true };  i = i + 1 }
+  if not any { return }
+  let cs = emit_bind("load i32, ptr @L_scene")
+  i = 0
+  while i < len(g_scenes) {
+    let sc = g_scenes[i]
+    if (sc.ty != null) {
+      let ce = emit_bind(`icmp eq i32 {cs}, {itoa(sc.ival)}`)
+      let run = lbl("mrun");  let skip = lbl("mskip")
+      emit("  br i1 ");  emit(ce);  emit(", label %");  emit(run);  emit(", label %");  emit(skip);  emit("\n")
+      emit(run);  emit(":\n  call void @fn_rt_ui_render()\n")
+      emit("  br label %");  emit(skip);  emit("\n");  emit(skip);  emit(":\n")
+    }
+    i = i + 1
+  }
 }
 
 # on enter / on exit compile to void functions @scene_enter_<Name> /
 # @scene_exit_<Name>, called at the transition point (and enter at boot for the
 # start scene). Emitted for every scene, empty body when the hook is absent.
-function emit_scene_fn(name: pointer, kind: pointer, body: Node) -> void {
+function emit_scene_fn(name: pointer, kind: pointer, body: Node, menu: pointer) -> void {
   ll_t = 0;  ll_lbl = 0;  g_term = false;  loc_reset();  nloop = 0;  nself = 0
   ret_ty = "void"
   let fbody = buf_new()
   falloc = buf_new()
   let saved = code
   code = fbody
+  # `scene X shows Menu`: a free cursor and the menu open on enter, closed on exit
+  if (menu != null) and (kind == "enter") {
+    if (find_fn("input_cursor_mode") != null) { emit("  call void @fn_input_cursor_mode(i32 0)\n") }
+    emit("  call void @fn_rt_ui_open(i32 ");  emit(itoa(ui_index_of("UI_" + menu)));  emit(")\n")
+  }
+  if (menu != null) and (kind == "exit") { emit("  call void @fn_rt_ui_close()\n") }
   if (body != null) { emit_block(body) }
   # EV1: a `public` scene fires scene_<S>_enter / scene_<S>_exit after its block
   let sev = `scene_{name}_{kind}`
@@ -253,10 +391,31 @@ function emit_scene_hooks() -> void {
   while i < len(g_scenes) {
     let sc = g_scenes[i]
     g_cur_scene = sc
-    emit_scene_fn(sc.s, "enter", sc.a)
-    emit_scene_fn(sc.s, "exit", sc.b)
+    emit_scene_fn(sc.s, "enter", sc.a, sc.ty)
+    emit_scene_fn(sc.s, "exit", sc.b, sc.ty)
     i = i + 1
   }
+  g_cur_scene = null
+  if len(g_scenes) > 0 { emit_scene_leave_fn() }   # a program without scenes has no @L_scene
+}
+
+# @L_scene_leave(): run the on-exit hook of whichever scene is live — what a
+# `become` outside any scene's own handlers (a global handler, an @On listener,
+# a plain function) calls, since it cannot know the leaving scene at compile time.
+function emit_scene_leave_fn() -> void {
+  emit("define void @L_scene_leave() {\nentry:\n")
+  emit("  %s = load i32, ptr @L_scene\n")
+  var i = 0
+  while i < len(g_scenes) {
+    let sc = g_scenes[i]
+    let k = itoa(i)
+    emit("  %is");  emit(k);  emit(" = icmp eq i32 %s, ");  emit(itoa(sc.ival));  emit("\n")
+    emit("  br i1 %is");  emit(k);  emit(", label %leave");  emit(k);  emit(", label %next");  emit(k);  emit("\n")
+    emit("leave");  emit(k);  emit(":\n  call void @scene_exit_");  emit(sc.s);  emit("()\n  ret void\n")
+    emit("next");  emit(k);  emit(":\n")
+    i = i + 1
+  }
+  emit("  ret void\n}\n\n")
 }
 
 # @OnDespawn(Model) hooks compile to `@on_despawn_<Model>(entity, reason)`
@@ -443,6 +602,7 @@ function emit_event_fns() -> void {
 
     # --- @ev_<E>(payload): fire compile-time listeners, then foreign ones
     ll_t = 0;  ll_lbl = 0;  g_term = false;  loc_reset();  nloop = 0;  nself = 0
+    g_cur_scene = null                          # a listener belongs to no scene: `become` leaves the live one
     ret_ty = "void"
     let fbody = buf_new()
     falloc = buf_new()

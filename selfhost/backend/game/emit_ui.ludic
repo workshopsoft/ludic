@@ -19,6 +19,29 @@ function ui_prop(w: Node, key: pointer) -> Node {
   while i < len(w.b.kids) { if (w.b.kids[i].s == key) { return w.b.kids[i].a };  i = i + 1 }
   return null
 }
+# a widget's props plus the text props (font, size, fg, align) it inherits from the
+# nearest ancestor that sets them — so a panel states the menu's look once.
+function ui_props_with_inherited(i: int) -> []Node {
+  let w = uiw[i]
+  let out = new []Node
+  var p = 0
+  while p < len(w.b.kids) { push(out, w.b.kids[p]);  p = p + 1 }
+  let keys = new []pointer
+  push(keys, "font");  push(keys, "size");  push(keys, "fg");  push(keys, "align")
+  var k = 0
+  while k < len(keys) {
+    if ui_prop(w, keys[k]) == null {
+      var a = uiw_parent[i]
+      while a >= 0 {
+        let v = ui_prop(uiw[a], keys[k])
+        if (v != null) { let fi = node(E_FINIT);  fi.s = keys[k];  fi.a = v;  push(out, fi);  a = 0 - 1 }
+        else { a = uiw_parent[a] }
+      }
+    }
+    k = k + 1
+  }
+  return out
+}
 function ui_flatten(w: Node, parent: int) -> void {
   let idx = len(uiw)
   push(uiw, w);  push(uiw_parent, parent)
@@ -41,6 +64,7 @@ function has_ui() -> bool {
 
 # index of a UI_<name>: a ui block's root, or a widget's id=
 function ui_index_of(nm: pointer) -> int {
+  if uiw == null { ui_flatten_all() }   # a UI_ id may be read before @ui_build is emitted (a function, a listener)
   let s = nm[3..len(nm)]          # strip "UI_"
   let u = 0;  var bi = 0
   var i = 0
@@ -86,12 +110,13 @@ function emit_ui_build() -> void {
     ll_ui_set(i, 0, itoa(t))
     ll_ui_set(i, 1, itoa(uiw_parent[i]))
     if t == 4 { ll_ui_set(i, 17, "1") }
+    let props = ui_props_with_inherited(i)
     var p = 0
-    while p < len(w.b.kids) {
-      let pr = w.b.kids[p]
+    while p < len(props) {
+      let pr = props[p]
       let k = pr.s
       let v = pr.a
-      if (k == "id") { p = p + 1;  continue }
+      if (k == "id") or (k == "goto") { p = p + 1;  continue }
       if (k == "text") {
         let sv = emit_expr(v)
         emit("  call void @fn_rt_ui_static_text(i32 ");  emit(itoa(i));  emit(", ptr ");  emit(sv.code);  emit(")\n")

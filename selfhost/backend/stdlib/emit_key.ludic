@@ -1,0 +1,34 @@
+# emit_key.ludic — `Key.Name` -> the key code the input layer delivers, folded at
+# compile time (like Color.*). Letters are the lowercase character (what the held-key
+# set stores), digits their ASCII, plus the specials. Arrow keys alias WASD because the
+# platform layer maps them that way; Escape is 27 (0.3, #88).
+function key_lookup(name: pointer) -> int {
+  if (name == "Space")     { return 32 }
+  if (name == "Enter")     { return 10 }
+  if (name == "Return")    { return 10 }
+  if (name == "Escape")    { return 27 }
+  if (name == "Esc")       { return 27 }
+  if (name == "Shift")     { return 16 }
+  if (name == "Tab")       { return 9 }
+  if (name == "Backspace") { return 8 }
+  if (name == "Up")        { return 119 }
+  if (name == "Down")      { return 115 }
+  if (name == "Left")      { return 97 }
+  if (name == "Right")     { return 100 }
+  if (name == "Digit0") { return 48 }
+  if (name == "Digit1") { return 49 }
+  if (name == "Digit2") { return 50 }
+  if (name == "Digit3") { return 51 }
+  if (name == "Digit4") { return 52 }
+  if (name == "Digit5") { return 53 }
+  if (name == "Digit6") { return 54 }
+  if (name == "Digit7") { return 55 }
+  if (name == "Digit8") { return 56 }
+  if (name == "Digit9") { return 57 }
+  # a single capital letter names that letter key: Key.A .. Key.Z
+  if (name[1] == 0) {
+    let c = name[0]
+    if (c >= 65) and (c <= 90) { return c + 32 }
+  }
+  return 0 - 1
+}

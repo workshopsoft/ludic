@@ -150,6 +150,7 @@ function p_primary() -> Node {
     if (t.text == "false") { let n = node(E_BOOL); n.ival = 0; pi = pi + 1; return n }
     if (t.text == "null")  { pi = pi + 1; return node(E_NULL) }
     if (t.text == "new")   { pi = pi + 1;  let n = node(E_NEW); n.s = ptype();  if is_op("{") { n.a = record() };  return n }
+    if (t.text == "spawn") { return parse_spawn() }    # spawn as an expression: the new entity
     # try EXPR else { ... } — evaluate a fallible (result-typed) expression; on
     # `ok` the whole expression is its payload, on `err` the else block runs (with
     # the message bound to `error`) and its trailing expression is the fallback.
@@ -196,7 +197,7 @@ function p_postfix() -> Node {
       if e.a.kind == E_ID and e.a.s == "Input" and (e.s == "bind" or e.s == "rebind" or e.s == "poll" or e.s == "down" or e.s == "pressed" or e.s == "record" or e.s == "replay" or e.s == "action" or e.s == "bind_pad" or e.s == "active" or e.s == "just_pressed" or e.s == "just_released") { g_uses_input = true }
       # #50 device layer — any of the multi-key / analog / mouse / gamepad / touch
       # methods also splices input.ludic (Input.key stays bare, no runtime).
-      if e.a.kind == E_ID and e.a.s == "Input" and (e.s == "key_down" or e.s == "key_pressed" or e.s == "key_released" or e.s == "press" or e.s == "release" or e.s == "axis" or e.s == "axis_i" or e.s == "vector" or e.s == "strength" or e.s == "mouse_x" or e.s == "mouse_y" or e.s == "mouse_dx" or e.s == "mouse_dy" or e.s == "mouse_down" or e.s == "wheel" or e.s == "set_mouse" or e.s == "pad_connected" or e.s == "pad_button" or e.s == "pad_axis" or e.s == "set_pad" or e.s == "touch_count" or e.s == "touch_x" or e.s == "touch_y" or e.s == "set_touch" or e.s == "cursor_mode") { g_uses_input = true }
+      if e.a.kind == E_ID and e.a.s == "Input" and (e.s == "key_down" or e.s == "key_pressed" or e.s == "key_released" or e.s == "press" or e.s == "release" or e.s == "axis" or e.s == "axis_i" or e.s == "vector" or e.s == "strength" or e.s == "mouse_x" or e.s == "mouse_y" or e.s == "mouse_dx" or e.s == "mouse_dy" or e.s == "mouse_down" or e.s == "wheel" or e.s == "set_mouse" or e.s == "pad_connected" or e.s == "pad_button" or e.s == "pad_axis" or e.s == "move_i" or e.s == "set_pad" or e.s == "touch_count" or e.s == "touch_x" or e.s == "touch_y" or e.s == "set_touch" or e.s == "cursor_mode") { g_uses_input = true }
       # Anim.play/clip/on_frame/fired + Motion.to (#48): the ergonomic writes over
       # the SpriteAnim/Motion components live in systems.ludic and use the world
       # table, so splice it and force the reflection ABI even if the game leaves
@@ -210,6 +211,7 @@ function p_postfix() -> Node {
       # Tween.to/chain/delay/value/stop/parallel (#48): the fluent stateful handles
       # live in tween.ludic, advanced by an engine-owned system each Update tick.
       if e.a.kind == E_ID and e.a.s == "Tween" and (e.s == "to" or e.s == "chain" or e.s == "delay" or e.s == "value" or e.s == "stop" or e.s == "parallel") { g_uses_tween_rt = true }
+      if e.a.kind == E_ID and e.a.s == "Fx" { g_uses_fx = true }   # Fx.* -> splice fx.ludic + tick/draw it each frame
     }
     else { if is_op("[") { pi = pi + 1; let lo = expr()
         if is_op("..") { pi = pi + 1; let sl = node(E_SLICE); sl.a = e; sl.b = lo; sl.c = expr(); eat_op("]"); e = sl }   # s[a..b] substring
@@ -340,7 +342,8 @@ function stmt_body() -> Node {
         let stkw = eat_id()                     # 'state'
         let s = node(S_STATE); s.s = eat_id()
         if is_op("=") { pi = pi + 1; s.b = expr() }              # explicit value (still allowed)
-        else { let iv = node(E_INT); iv.ival = sidx; s.b = iv }  # else its ordinal
+        s.ival = sidx                                              # else: the enum variant of the same name
+                                                                   # when the store is enum-typed, or this ordinal
         skipnl(); s.a = block()
         push(n.kids, s); sidx = sidx + 1 }
       eat_op("}"); return n
@@ -405,8 +408,24 @@ function parse_const() -> Node {
   pi = pi + 1; let n = node(N_CONST); n.s = eat_id(); eat_op(":"); n.ty = ptype(); eat_op("="); n.a = expr()
   return n
 }
+# the language's statement / declaration words cannot name a function (`new`,
+# `match`, `spawn` ...). Contextual words the parser only recognises in position
+# (`emit`, `on`, `phase`, `start`, `export`, ...) stay usable — the compiler itself
+# has a function called `emit`.
+function is_reserved_word(w: pointer) -> bool {
+  if (w == "new") or (w == "match") or (w == "machine") or (w == "become") or (w == "spawn") or (w == "despawn") { return true }
+  if (w == "query") or (w == "cancel") or (w == "scene") or (w == "layer") or (w == "handler") or (w == "property") { return true }
+  if (w == "model") or (w == "enum") or (w == "event") or (w == "namespace") or (w == "function") or (w == "let") { return true }
+  if (w == "prefab") { return true }
+  if (w == "var") or (w == "const") or (w == "if") or (w == "else") or (w == "while") or (w == "for") or (w == "return") { return true }
+  if (w == "import") or (w == "program") or (w == "entry") or (w == "ui") or (w == "break") or (w == "continue") { return true }
+  if (w == "and") or (w == "or") or (w == "not") or (w == "true") or (w == "false") or (w == "null") { return true }
+  return false
+}
+
 function parse_fn() -> Node {
   pi = pi + 1; let n = node(N_FN); n.s = eat_id(); eat_op("(")
+  if is_reserved_word(n.s) { perr(`'{n.s}' is a reserved word and cannot name a function`) }
   while not is_op(")") {
     let p = node(N_PARAM); p.s = eat_id(); eat_op(":"); p.ty = ptype(); push(n.kids, p)
     if is_op(",") { pi = pi + 1 }
@@ -487,7 +506,7 @@ function dir_of(path: pointer) -> pointer {
   if last < 0 { return "" }
   return path[0..0 + (last + 1)]
 }
-function path_join(dir: pointer, rel: pointer) -> pointer {
+function join_path(dir: pointer, rel: pointer) -> pointer {
   if rel[0] == 47 { return rel }               # absolute
   return (dir + rel)
 }
@@ -526,6 +545,7 @@ function warn_draw_sprite(name: pointer) -> void {
 }
 var g_uses_anim_rt: bool = false  # Anim.play/clip/on_frame/fired or Motion.to (#48) -> splice systems.ludic + force the reflection ABI
 var g_uses_tween_rt: bool = false # Tween.to/chain/delay/… (#48) -> splice tween.ludic + run esys_tween each Update
+var g_uses_fx: bool = false       # Fx.sparks/number/clear -> splice fx.ludic; fx_tick each Update, fx_draw each Render
 var g_uses_audio: bool = false    # Audio.* (#22) -> splice audio.ludic; a windowed build also links audio.ll + AVFoundation
 var g_uses_http:  bool = false    # Http.* (#6) -> splice http.ludic; links http.ll + Foundation (macOS)
 # issue #64: functions marked @System(Phase) in a prebuilt binary module — the
@@ -674,6 +694,7 @@ function parse_one_decl() -> void {
     push(prog, m); return
   }
   if is_id("scene") { parse_scene(); return }        # layers push handlers into prog; scene -> g_scenes
+  if is_id("prefab") { push(prog, parse_prefab()); return }   # a model with preset component fields
   if is_id("handler") {
     let h = parse_system()
     if (role != null) { if (role == "server") { h.ival = 1 } else { h.ival = 2 } }      # N5: @Server=1 / @Predicted=2
@@ -762,8 +783,43 @@ function is_runtime_path(rel: pointer) -> bool {
   return true
 }
 
+# byte-wise `a < b`, for a stable import order of a directory's files
+function str_less(a: pointer, b: pointer) -> bool {
+  var i = 0
+  while true {
+    let ca = a[i];  let cb = b[i]
+    if ca != cb { return ca < cb }
+    if ca == 0 { return false }
+    i = i + 1
+  }
+  return false
+}
+# `import "dir/*.ludic"` — every .ludic file of the directory, in name order, so
+# a game lists its modules once instead of one import per file.
+function do_import_dir(rel: pointer) -> void {
+  let dir = rel[0..len(rel) - 8]                  # strip "/*.ludic"
+  let names = Fs.list(join_path(cur_dir, dir))
+  if (names == null) { perr(`import: no directory {dir}`) }
+  var i = 0
+  while i < len(names) {                          # selection sort by name
+    var best = i
+    var j = i + 1
+    while j < len(names) { if str_less(names[j], names[best]) { best = j };  j = j + 1 }
+    let t = names[i];  names[i] = names[best];  names[best] = t
+    i = i + 1
+  }
+  i = 0
+  while i < len(names) {
+    let nm = names[i]
+    let n = len(nm)
+    if (n > 6) and (nm[n - 6..n] == ".ludic") { do_import(dir + ("/") + nm) }
+    i = i + 1
+  }
+}
+
 function do_import(rel: pointer) -> void {
-  var full = path_join(cur_dir, rel)
+  if (len(rel) > 8) and (rel[len(rel) - 8..len(rel)] == "/*.ludic") { do_import_dir(rel);  return }
+  var full = join_path(cur_dir, rel)
   var src = read_file(full)
   # #75 — the engine runtime (runtime/native/*) ships with the toolchain, not the
   # project. When an auto-spliced runtime import is not found relative to the build
@@ -785,6 +841,12 @@ function do_import(rel: pointer) -> void {
   if already_loaded(full) { return }
   push(loaded_paths, full)
   if (src == null) { perr(`cannot open import {full}`) }
+  # the audio runtime can arrive through atlas.ludic's own import or the Assets
+  # splice, not only through an Audio.* call in the game; a windowed build must
+  # then link audio.ll + AVFoundation for its snd_* calls, so flag it here.
+  let atail = "runtime/native/audio.ludic"
+  let fl = len(full)
+  if (fl >= len(atail)) and (full[fl - len(atail)..fl] == atail) { g_uses_audio = true }
   let saved_toks = toks;  let saved_pi = pi;  let saved_dir = cur_dir
   cur_dir = dir_of(full)
   lex(src)                                   # resets the global token stream
@@ -876,7 +938,16 @@ function maybe_splice_runtime() -> void {
   if g_uses_atlas {
     cur_dir = ""
     do_import("runtime/native/core.ludic")
+    do_import("runtime/native/audio.ludic")    # Assets.enqueue loads .wav/.mp3 into the sound bank
     do_import("runtime/native/atlas.ludic")
+    cur_dir = saved
+  }
+  # Fx.* — engine-owned sparks and floating numbers; drawn through the framebuffer,
+  # so it links against core.ludic (do_import dedupes).
+  if g_uses_fx {
+    cur_dir = ""
+    do_import("runtime/native/core.ludic")
+    do_import("runtime/native/fx.ludic")
     cur_dir = saved
   }
   # Base64.* (#67) — base64 codec; pull in the DEFLATE inflater alongside it, so
@@ -986,6 +1057,11 @@ function maybe_splice_runtime() -> void {
       do_import("runtime/native/core.ludic")
       do_import("runtime/native/systems_sprite.ludic")
     }
+    # TileSkin -> the engine tilemap-render system: draws the Map.* grid from glyph -> sprite skins.
+    if find_comp("TileSkin") != null {
+      do_import("runtime/native/core.ludic")
+      do_import("runtime/native/systems_tileskin.ludic")
+    }
     # Bounds -> the engine world-bounds system (#84). Self-contained (reflection
     # ABI only); its kill policy calls world_despawn, so force the @fn_world_despawn
     # helper to be emitted.
@@ -1038,6 +1114,7 @@ function parse_program() -> void {
   g_uses_base64 = false
   g_uses_tiled = false
   g_uses_atlas = false
+  g_uses_fx = false
   g_uses_reflect_io = false
   g_tests = new []Node
   g_mod_sys_fn = new []pointer
@@ -1051,6 +1128,7 @@ function parse_program() -> void {
   push(g_esys_comp, "Motion");      push(g_esys_fn, "esys_motion");      push(g_esys_phase, "Update")
   push(g_esys_comp, "Body");        push(g_esys_fn, "esys_move");        push(g_esys_phase, "Update")
   push(g_esys_comp, "Bounds");      push(g_esys_fn, "esys_bounds");      push(g_esys_phase, "LateUpdate")
+  push(g_esys_comp, "TileSkin");    push(g_esys_fn, "esys_tileskin");    push(g_esys_phase, "Render")
   push(g_esys_comp, "Sprite");      push(g_esys_fn, "esys_sprite");      push(g_esys_phase, "Render")
   push(g_esys_comp, "Light2D");     push(g_esys_fn, "esys_light2d");     push(g_esys_phase, "Render")
   g_namespaces = new []pointer

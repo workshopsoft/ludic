@@ -23,11 +23,13 @@
 #     flip   : int = 0   # 1 = mirror horizontally
 #     tint   : int = 0   # 0 = sprite's own colours; non-zero = solid tint (hit flash)
 #     hidden : int = 0   # 1 = skip drawing this entity
+#     atlas  : int = 0   # 1 = `id` is an atlas sprite (Sprite.cell / cell_span), any size (#90)
 #   }
 #
 # Draw order is entity/query order (spawn order). Everything integer + through the
 # camera/zoom/clip chokepoints, so it stays deterministic and headless-identical.
 # ============================================================================
+import "atlas.ludic"      # #90: atlas sprites draw through atlas_draw_ex
 
 # read entity `e`'s world coordinate from a Position component (x when axis==0,
 # y when axis==1), or 0 if it has none.
@@ -52,17 +54,44 @@ function esys_sprite() -> void {
   let f_flip   = World.field_id(P, "flip")
   let f_tint   = World.field_id(P, "tint")
   let f_hidden = World.field_id(P, "hidden")
+  let f_atlas  = World.field_id(P, "atlas")
 
   let SA = World.prop_id("SpriteAnim")
   var f_frame = 0 - 1
   if SA >= 0 { f_frame = World.field_id(SA, "frame") }
+  let f_move  = World.field_id(P, "move_id")
+  let f_face  = World.field_id(P, "face")
+  let f_flash = World.field_id(P, "flash")
+  let f_blink = World.field_id(P, "blink")
+  let TD = World.prop_id("TopDown")
+  var f_wx = 0 - 1;  var f_wy = 0 - 1
+  if TD >= 0 { f_wx = World.field_id(TD, "want_x");  f_wy = World.field_id(TD, "want_y") }
+  let PB = World.prop_id("Body")
+  var f_vx = 0 - 1;  var f_vy = 0 - 1
+  if PB >= 0 { f_vx = World.field_id(PB, "vx");  f_vy = World.field_id(PB, "vy") }
 
   var e = World.query_next(P, 0)
   while e >= 0 {
     var hidden = 0
     if f_hidden >= 0 { hidden = World.get(e, P, f_hidden) }
+    if (f_blink >= 0) and (World.get(e, P, f_blink) > 0) and (Time.frame() % 4 < 2) { hidden = 1 }
     if hidden == 0 {
       var id = World.get(e, P, f_id)
+      # movement, from the TopDown intent or the Body velocity: picks the move strip and the facing
+      var moving = 0
+      var dir = 0
+      if (TD >= 0) and (f_wx >= 0) and (World.has(e, TD) != 0) {
+        let wx = World.get(e, TD, f_wx);  let wy = World.get(e, TD, f_wy)
+        if (wx != 0) or (wy != 0) { moving = 1 };  dir = wx
+      } else { if (PB >= 0) and (f_vx >= 0) and (World.has(e, PB) != 0) {
+        let vx = World.get(e, PB, f_vx);  let vy = World.get(e, PB, f_vy)
+        if (vx != 0) or (vy != 0) { moving = 1 };  dir = vx
+      } }
+      if (moving == 1) and (f_move >= 0) { let mid = World.get(e, P, f_move);  if mid > 0 { id = mid } }
+      if (f_face >= 0) and (World.get(e, P, f_face) != 0) and (dir != 0) {
+        var fl = 0;  if dir < 0 { fl = 1 }
+        World.set(e, P, f_flip, fl)             # written back so an idle sprite keeps facing
+      }
       # add the current animation frame when the entity also carries SpriteAnim.
       if (SA >= 0) and (f_frame >= 0) {
         if World.has(e, SA) != 0 { id = id + World.get(e, SA, f_frame) }
@@ -77,7 +106,11 @@ function esys_sprite() -> void {
       if f_flip >= 0 { flip = World.get(e, P, f_flip) }
       var tint = 0
       if f_tint >= 0 { tint = World.get(e, P, f_tint) }
-      rt_draw_sprite_ex(id, x, y, sc, flip, tint)
+      if (f_flash >= 0) and (World.get(e, P, f_flash) > 0) { tint = 0xffffff }
+      var is_atlas = 0
+      if f_atlas >= 0 { is_atlas = World.get(e, P, f_atlas) }
+      if is_atlas != 0 { atlas_draw_ex(id, x, y, sc, flip, tint) }       # #90 atlas cells / spans
+      else { rt_draw_sprite_ex(id, x, y, sc, flip, tint) }
     }
     e = World.query_next(P, e + 1)
   }

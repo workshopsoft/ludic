@@ -146,6 +146,11 @@ function parse_queries_anno() -> Node {
 
 function parse_spawn() -> Node {
   pi = pi + 1; let n = node(S_SPAWN); n.s = eat_id(); skipnl(); eat_op("{")
+  parse_component_records(n)
+  eat_op("}"); return n
+}
+# `Comp { field: val, ... }, Comp { ... }` — the body shared by spawn and prefab
+function parse_component_records(n: Node) -> void {
   while true {
     skipnl(); if is_op("}") { break }
     let ci = node(E_FINIT); ci.s = eat_id()
@@ -153,6 +158,13 @@ function parse_spawn() -> Node {
     push(n.kids, ci)
     if is_op(",") { pi = pi + 1 }
   }
+}
+# prefab Name: Model { Comp { field: val }, ... } — a model with preset fields.
+# `spawn Name { ... }` spawns the model with the prefab's fields, then the spawn's
+# own overrides on top; `Prefab.spawn(name: "Name")` does it by name at runtime.
+function parse_prefab() -> Node {
+  pi = pi + 1; let n = node(N_PREFAB); n.s = eat_id(); eat_op(":"); n.ty = eat_id(); skipnl(); eat_op("{")
+  parse_component_records(n)
   eat_op("}"); return n
 }
 
@@ -169,9 +181,15 @@ function parse_scene() -> void {
   # optional modifiers after the name, any order: `start` (the boot scene) and
   # `public` (promote its on-enter/on-exit to scene_<S>_enter / scene_<S>_exit).
   var is_pub = false
-  while is_id("start") or is_id("public") {
+  var lasts: Node = null                     # lasts N then Next: a timed scene (a banner, a splash)
+  var then_scene: pointer = null
+  var loads_then: pointer = null             # loads then Next: pump the Assets queue, draw a bar, go on when ready
+  while is_id("start") or is_id("public") or is_id("shows") or is_id("lasts") or is_id("loads") {
     if is_id("start") { pi = pi + 1; g_start_scene = g_scene_count }
-    else { pi = pi + 1; is_pub = true }
+    else { if is_id("shows") { pi = pi + 1; n.ty = eat_id() }    # shows Menu: the engine opens, renders and closes it
+    else { if is_id("lasts") { pi = pi + 1; lasts = expr(); if not is_id("then") { perr("lasts N needs `then Scene`") }; pi = pi + 1; then_scene = eat_id() }
+    else { if is_id("loads") { pi = pi + 1; if not is_id("then") { perr("loads needs `then Scene`") }; pi = pi + 1; loads_then = eat_id(); g_uses_atlas = true }
+    else { pi = pi + 1; is_pub = true } } } }
   }
   g_scene_count = g_scene_count + 1
   if is_pub { ensure_event_empty(`scene_{n.s}_enter`);  ensure_event_empty(`scene_{n.s}_exit`) }
@@ -191,8 +209,17 @@ function parse_scene() -> void {
       let ltag = node(E_ID); ltag.s = lname   # the layer name, tagged onto each handler
       while true {
         skipnl(); if is_op("}") { break }
+        var qspec: Node = null               # `@Queries(...)` makes the handler run once per matching entity
+        while is_op("@") {
+          pi = pi + 1; let a = eat_id()
+          if (a == "Queries") { qspec = parse_queries_anno() }
+          else { perr(`a handler inside a layer may only carry @Queries (got @{a})`) }
+          skipnl()
+        }
         if not is_id("handler") { perr("expected 'handler' in layer") }
         let h = parse_system()               # N_SYS: .s name, .ty phase, .a body
+        if (qspec != null) { qspec.a = h.a;  let wrap = node(N_BLOCK);  push(wrap.kids, qspec);  h.a = wrap }
+        h.s = `{n.s}_{h.s}`                  # scene-qualified: two scenes may both have a `Draw` handler
         h.c = n                              # tag the owning scene (null = global)
         h.b = ltag                           # tag the owning layer (for enable/disable layer)
         push(prog, h)
@@ -204,7 +231,79 @@ function parse_scene() -> void {
     perr("expected 'on', 'layer' or '}' in scene")
   }
   eat_op("}")
+  if (lasts != null) { scene_add_timer(n, lasts, then_scene) }
+  if (loads_then != null) { scene_add_loader(n, loads_then) }
   push(g_scenes, n)
+}
+
+# `scene S loads then T`: an Update handler that pumps the Assets queue and
+# `become`s T once it is ready, and a Render handler that draws the default bar.
+function scene_add_loader(sc: Node, next: pointer) -> void {
+  let h = node(N_SYS); h.s = `{sc.s}_Loader`; h.ty = "Update"; h.c = sc
+  let body = node(N_BLOCK)
+  let pump = node(S_EXPR); let pc = node(E_CALL); let pm = node(E_MEMBER); let pid = node(E_ID); pid.s = "Assets"; pm.a = pid; pm.s = "pump"; pc.a = pm
+  let n4 = node(E_INT); n4.ival = 4; push(pc.kids, n4); pump.a = pc; push(body.kids, pump)
+  let go = node(S_IF); let rc = node(E_CALL); let rm = node(E_MEMBER); let rid = node(E_ID); rid.s = "Assets"; rm.a = rid; rm.s = "ready"; rc.a = rm; go.a = rc
+  go.b = node(N_BLOCK); let bec = node(S_BECOME); bec.s = next; push(go.b.kids, bec); push(body.kids, go)
+  h.a = body; push(prog, h)
+  let d = node(N_SYS); d.s = `{sc.s}_LoaderBar`; d.ty = "Render"; d.c = sc
+  let dbody = node(N_BLOCK); let dc = node(E_CALL); let did = node(E_ID); did.s = "assets_draw_progress"; dc.a = did
+  let ds = node(S_EXPR); ds.a = dc; push(dbody.kids, ds); d.a = dbody; push(prog, d)
+}
+
+# `scene S lasts N then T`: a counter var, set on enter, counted down by a
+# generated Update handler that `become`s T at zero — the splash / banner scene.
+function scene_add_timer(sc: Node, frames: Node, next: pointer) -> void {
+  let counter = `scene_{sc.s}_left`
+  let v = node(N_VAR); v.s = counter; v.ty = "int"; push(prog, v)
+  if (sc.a == null) { sc.a = node(N_BLOCK) }
+  let set = node(S_ASSIGN); set.s = "="; let lhs = node(E_ID); lhs.s = counter; set.a = lhs; set.b = frames
+  let ins = new []Node; push(ins, set)
+  var i = 0
+  while i < len(sc.a.kids) { push(ins, sc.a.kids[i]); i = i + 1 }
+  sc.a.kids = ins
+  let h = node(N_SYS); h.s = `{sc.s}_Timer`; h.ty = "Update"; h.c = sc
+  let body = node(N_BLOCK)
+  let dec = node(S_ASSIGN); dec.s = "-="; let l2 = node(E_ID); l2.s = counter; dec.a = l2; let one = node(E_INT); one.ival = 1; dec.b = one
+  push(body.kids, dec)
+  let test = node(E_BIN); test.s = "<="; let l3 = node(E_ID); l3.s = counter; test.a = l3; let zero = node(E_INT); zero.ival = 0; test.b = zero
+  let go = node(S_IF); go.a = test; go.b = node(N_BLOCK)
+  let bec = node(S_BECOME); bec.s = next; push(go.b.kids, bec)
+  push(body.kids, go)
+  h.a = body
+  push(prog, h)
+}
+
+# `button id: Play goto: Scene`: a click changes scene. Every such button becomes a
+# generated UiClicked listener — `if id == UI_Name { become Scene }` — the same
+# code a game would write by hand.
+function ui_register_gotos() -> void {
+  var i = 0
+  while i < len(prog) {
+    if prog[i].kind == N_UI and prog[i].ival == 1 { ui_gotos_in(prog[i].a) }
+    i = i + 1
+  }
+}
+function ui_gotos_in(w: Node) -> void {
+  var idn: pointer = null
+  var goto: pointer = null
+  var p = 0
+  while p < len(w.b.kids) {
+    let pr = w.b.kids[p]
+    if (pr.s == "id") and (pr.a.kind == E_ID) { idn = pr.a.s }
+    if (pr.s == "goto") and (pr.a.kind == E_ID) { goto = pr.a.s }
+    p = p + 1
+  }
+  if (idn != null) and (goto != null) {
+    let body = node(N_BLOCK)
+    let test = node(E_BIN); test.s = "=="; let l = node(E_ID); l.s = "id"; test.a = l; let r = node(E_ID); r.s = "UI_" + idn; test.b = r
+    let go = node(S_IF); go.a = test; go.b = node(N_BLOCK)
+    let bec = node(S_BECOME); bec.s = goto; push(go.b.kids, bec)
+    push(body.kids, go)
+    register_onlisten("UiClicked", body)
+  }
+  var k = 0
+  while k < len(w.kids) { ui_gotos_in(w.kids[k]); k = k + 1 }
 }
 
 # enum Name { A, B, C } — named int constants; a variant's value is its index.

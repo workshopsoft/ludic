@@ -13,6 +13,7 @@ function emit_params_sig(d: Node) -> void {
 
 function emit_fn(d: Node) -> void {
   ll_t = 0;  ll_lbl = 0;  g_term = false;  loc_reset();  nloop = 0
+  g_cur_scene = null                            # a function belongs to no scene: `become` leaves the live one
   ret_ty = d.ty
   let fbody = buf_new()
   falloc = buf_new()
@@ -57,6 +58,7 @@ function emit_main(d: Node) -> void {
   # its framebuffer allocated. Headless it only allocates — no window, no output —
   # so a non-rendering entry game is unchanged.
   if (find_fn("rt_init") != null) { emit("  call void @fn_rt_init()\n") }
+  emit("  call void @L_init_globals()\n")
   emit_block(d.a)
   if not g_term { emit("  br label %ret\n") }
   emit("ret:\n")
@@ -106,6 +108,7 @@ function emit_test_runner() -> void {
   emit("  store ptr %argv, ptr @L_argv\n")
   emit("  %failed = alloca i32\n  store i32 0, ptr %failed\n")
   if has_ecs() { emit("  call void @rt_init()\n") }
+  emit("  call void @L_init_globals()\n")
   i = 0
   while i < len(g_tests) {
     let okmsg = emit_str_const(`ok   - {g_tests[i].s}`)
@@ -166,6 +169,7 @@ function emit_program() -> void {
     }
     i = i + 1
   }
+  emit_global_init_fn()                           # @L_init_globals: the non-constant `var` initializers
   if len(g_events) > 0 { emit_event_fns() }       # EV0: @ev_<E> event-dispatch functions
   if has_ecs() { emit_world_table() }   # EV2/EV8: the mod reflection ABI (powers Query.* / Reflect.* / engine systems, and lets a binary module (#64) link against a shared world). Unused defs dead-strip at -O2, so a game that touches none is output-identical.
   if has_ecs() { emit_ecs_allocator();  emit_snapshot() }
