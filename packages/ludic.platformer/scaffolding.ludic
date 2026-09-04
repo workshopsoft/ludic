@@ -58,7 +58,7 @@ event PlatformCrumbled { e: int = 0 }
 # platform's top edge within the horizontal span.
 function plat_rider_on(p: int) -> int {
   let PB = World.prop_id("Body")
-  if PB < 0 { return 0 - 1 }
+  if PB < 0 { return -1 }
   let px = sc_pos(p, "x") + sc_col(p, "offx")
   let py = sc_pos(p, "y") + sc_col(p, "offy")
   let pw = sc_col(p, "w")
@@ -79,7 +79,7 @@ function plat_rider_on(p: int) -> int {
     }
     b = World.query_next(PB, b + 1)
   }
-  return 0 - 1
+  return -1
 }
 
 @EngineSystem(Platform, FixedUpdate) function esys_platform() -> void {
@@ -103,8 +103,8 @@ function plat_rider_on(p: int) -> int {
       var tx = bx;  var ty = by
       if dir < 0 { tx = ax;  ty = ay }
       var dx = 0;  var dy = 0
-      if ox < tx { dx = speed } else { if ox > tx { dx = 0 - speed } }
-      if oy < ty { dy = speed } else { if oy > ty { dy = 0 - speed } }
+      if ox < tx { dx = speed } else { if ox > tx { dx = -speed } }
+      if oy < ty { dy = speed } else { if oy > ty { dy = -speed } }
       # clamp the step so we do not overshoot the endpoint
       if dx > 0 { if ox + dx > tx { dx = tx - ox } }
       if dx < 0 { if ox + dx < tx { dx = tx - ox } }
@@ -120,7 +120,7 @@ function plat_rider_on(p: int) -> int {
       }
       # flip direction at an endpoint
       if (sc_pos(e, "x") == tx) and (sc_pos(e, "y") == ty) {
-        World.set(e, P, World.field_id(P, "dir"), 0 - dir)
+        World.set(e, P, World.field_id(P, "dir"), -dir)
       }
     }
     if kind == 3 {                                   # crumble
@@ -222,7 +222,7 @@ event Sprang { body: int = 0, spring: int = 0, power: int = 0 }
     let body = World.get(e, PC, fhit)
     if body >= 0 {
       let power = World.get(e, P, fpow)
-      sc_body_set(body, "vy", 0 - power * SCAF_Q)
+      sc_body_set(body, "vy", -power * SCAF_Q)
       sc_body_set(body, "ry", 0)
       emit Sprang(body: body, spring: e, power: power)
     }
@@ -269,7 +269,7 @@ property Hazard { dmg: int = 1, knockback: int = 6 }
       let dmg = World.get(e, P, fdmg)
       if life_hurt(body, e, dmg) > 0 {
         let kb = World.get(e, P, fkb)
-        sc_body_set(body, "vy", 0 - kb * SCAF_Q)      # pop up on hit
+        sc_body_set(body, "vy", -kb * SCAF_Q)      # pop up on hit
       }
     }
     e = World.query_next(P, e + 1)

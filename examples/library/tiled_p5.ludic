@@ -13,7 +13,7 @@ program TiledP5 {
     let iso = Tiled.load("assets/tiled-fixtures/isometric_grass_and_water.tmx")
     if Value.as_str(Value.get(Tiled.tree(iso), "orientation")) == "isometric" { print(1) }
     if Tiled.cell_x(iso, 1, 0) == 32 { print(2) }        # (1-0)*64/2
-    if Tiled.cell_x(iso, 0, 1) == 0 - 32 { print(3) }    # (0-1)*64/2
+    if Tiled.cell_x(iso, 0, 1) == -32 { print(3) }    # (0-1)*64/2
     if Tiled.cell_y(iso, 1, 1) == 32 { print(4) }        # (1+1)*32/2
     if Tiled.cell_y(iso, 2, 0) == 32 { print(5) }        # (2+0)*32/2
 
@@ -23,8 +23,8 @@ program TiledP5 {
     var cy = 0
     while cy < Tiled.height(iso) and g == 0 {
       var cx = 0
-      while cx < Tiled.width(iso) and g == 0 { g = Tiled.gid(iso, 0, cx, cy);  cx = cx + 1 }
-      cy = cy + 1
+      while cx < Tiled.width(iso) and g == 0 { g = Tiled.gid(iso, 0, cx, cy);  cx += 1 }
+      cy += 1
     }
     let r = Tiled.resolve(iso, g)
     if r.tileset == 0 and r.local >= 0 { print(6) }
@@ -48,8 +48,8 @@ program TiledP5 {
     var yy = 0
     while yy < 32 and painted == 0 {
       var xx = 0
-      while xx < 32 and painted == 0 { if rt_get_px(xx, yy) != 0 { painted = 1 };  xx = xx + 1 }
-      yy = yy + 1
+      while xx < 32 and painted == 0 { if rt_get_px(xx, yy) != 0 { painted = 1 };  xx += 1 }
+      yy += 1
     }
     if painted == 1 { print(14) }
   }

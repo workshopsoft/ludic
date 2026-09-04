@@ -32,7 +32,7 @@ program TestingSpec {
 
   test "loops and locals work in a test" {
     var sum = 0
-    for i in 0 .. 5 { sum = sum + i } # 0+1+2+3+4 = 10
+    for i in 0 .. 5 { sum += i }  # 0+1+2+3+4 = 10
     expect_eq(sum, 10)
   }
 

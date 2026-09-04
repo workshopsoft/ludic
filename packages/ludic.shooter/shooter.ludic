@@ -23,6 +23,10 @@ const WPN_MAX: int = 64
 # ---------------------------------------------------------------------------
 enum AimMode { Mouse, RightStick, MoveDirection, NearestEnemy, Manual, Auto }   # TopDown.aim_mode; Auto = mouse, or the right stick while a pad is connected
 enum WeaponPattern { Single, Cone, Ring, Spiral }                 # Weapon.def pattern
+
+# gamepad axis indices as Input.pad_axis numbers them: left stick 0/1, right stick 2/3
+const STICK_RIGHT_X: int = 2
+const STICK_RIGHT_Y: int = 3
 property TopDown {
   move_speed: int = 4,      # px/frame
   accel:      int = 80,     # responsiveness %, gap closed / frame
@@ -41,7 +45,7 @@ property TopDown {
 
 # a Weapon instance points at a registry entry (def_id). cooldown counts down to
 # the next allowed shot; ammo -1 = infinite; phase drives spiral emitters.
-property Weapon { def_id: int = 0, ammo: int = 0 - 1, cooldown: int = 0, phase: int = 0 }
+property Weapon { def_id: int = 0, ammo: int = -1, cooldown: int = 0, phase: int = 0 }
 
 property Projectile {
   color: int = 0xffffff,    # drawn by the engine as a 3x3 square (Weapon.set_color)
@@ -92,20 +96,20 @@ function wpn_ensure() -> void {
 # gun. pattern: 0 single/aimed, 1 spread cone, 2 ring, 3 spiral. Returns the def id.
 @Namespace(Weapon) function weapon_def(name: pointer, fire_rate: int, damage: int, speed: int, spread: int, pellets: int, pattern: int) -> int {
   wpn_ensure()
-  if wpn_n >= WPN_MAX { return 0 - 1 }
+  if wpn_n >= WPN_MAX { return -1 }
   let id = wpn_n
   wpn_rate[id] = fire_rate;  wpn_dmg[id] = damage;  wpn_speed[id] = speed
   wpn_spread[id] = spread;  wpn_pellets[id] = pellets;  wpn_pattern[id] = pattern
   wpn_ttl[id] = 120
   wpn_color[id] = 0xffffff
   wpn_rate_base[id] = fire_rate
-  wpn_n = wpn_n + 1
+  wpn_n += 1
   Dict.set(wpn_reg, name, id)
   return id
 }
 @Namespace(Weapon) function weapon_id(name: pointer) -> int {
   wpn_ensure()
-  return Dict.get_or(wpn_reg, name, 0 - 1)
+  return Dict.get_or(wpn_reg, name, -1)
 }
 # Weapon.set_rate(id, frames) — frames between shots (a fire-rate upgrade changes it in place).
 @Namespace(Weapon) function weapon_set_rate(id: int, frames: int) -> void {
@@ -180,10 +184,10 @@ function pr_set(e: int, name: pointer, v: int) -> void {
 # nearest entity with a Faction hostile to `fac`, by centre distance. -1 if none.
 function sh_nearest_enemy(self_e: int, fac: int, px: int, py: int) -> int {
   let PF = World.prop_id("Faction")
-  if PF < 0 { return 0 - 1 }
+  if PF < 0 { return -1 }
   let PP = World.prop_id("Position")
-  if PP < 0 { return 0 - 1 }
-  var best = 0 - 1
+  if PP < 0 { return -1 }
+  var best = -1
   var bestd = 0
   var e = World.query_next(PF, 0)
   while e >= 0 {
@@ -292,7 +296,7 @@ function melee_get(e: int, name: pointer) -> int { return sh_get("Melee", e, nam
 @Namespace(Melee) function melee_ready(e: int) -> bool { return melee_get(e, "cooldown") == 0 }
 @Namespace(Melee) function melee_active(e: int) -> bool { return melee_get(e, "frames_left") > 0 }
 @Namespace(Melee) function melee_swing(e: int) -> int {
-  if melee_get(e, "cooldown") > 0 { return 0 - 1 }
+  if melee_get(e, "cooldown") > 0 { return -1 }
   sh_set("Melee", e, "frames_left", melee_get(e, "frames"))
   sh_set("Melee", e, "cooldown", melee_get(e, "cooldown_frames"))
   let PF = World.prop_id("Faction")
@@ -316,7 +320,7 @@ function melee_get(e: int, name: pointer) -> int { return sh_get("Melee", e, nam
           let ny = pos_get(o, "y") + push.y
           if not Map.is_solid_at(nx, ny) { pos_set(o, "x", nx);  pos_set(o, "y", ny) }
           emit MeleeHit(attacker: e, target: o)
-          hits = hits + 1
+          hits += 1
         }
       }
     }
@@ -405,23 +409,23 @@ function sh_half_w(e: int) -> int {
     let py = sh_cy(e)
     var target = td_get(e, "aim_angle")            # default: keep current
     var have = 0
-    if mode == 0 {                                  # mouse / point
+    if mode == AimMode.Mouse {
       let mx = Input.mouse_x()
       let my = Input.mouse_y()
       target = sh_angle_to(px, py, mx, my);  have = 1
     }
-    if mode == 1 {                                  # right stick
-      let ax = Input.pad_axis(0, 2)
-      let ay = Input.pad_axis(0, 3)
+    if mode == AimMode.RightStick {
+      let ax = Input.pad_axis(0, STICK_RIGHT_X)
+      let ay = Input.pad_axis(0, STICK_RIGHT_Y)
       if (ax != 0) or (ay != 0) { target = sh_dir_angle(ax, ay);  have = 1 }
     }
-    if mode == 2 {                                  # move direction (from the intent)
+    if mode == AimMode.MoveDirection {              # from the movement intent
       let wx = td_get(e, "want_x")
       let wy = td_get(e, "want_y")
       if (wx != 0) or (wy != 0) { target = sh_dir_angle(wx, wy);  have = 1 }
     }
-    # mode 4 = manual: the game/AI owns aim_angle; the aim system leaves it alone.
-    if mode == 3 {                                  # nearest enemy (auto-aim)
+    # AimMode.Manual: the game/AI owns aim_angle; the aim system leaves it alone.
+    if mode == AimMode.NearestEnemy {               # auto-aim
       let fac = Faction.id_of(e)
       let t = sh_nearest_enemy(e, fac, px, py)
       if t >= 0 { target = sh_angle_to(px, py, sh_cx(t), sh_cy(t));  have = 1 }
@@ -433,7 +437,7 @@ function sh_half_w(e: int) -> int {
       } else {
         let cur = td_get(e, "aim_angle")
         let d = sh_angle_diff(cur, target)          # shortest signed arc, degrees
-        if (d >= 0 - tr) and (d <= tr) { td_set(e, "aim_angle", target) }
+        if (d >= -tr) and (d <= tr) { td_set(e, "aim_angle", target) }
         else { if d > 0 { td_set(e, "aim_angle", sh_wrap_deg(cur + tr)) } else { td_set(e, "aim_angle", sh_wrap_deg(cur - tr)) } }
       }
     }
@@ -471,21 +475,21 @@ function sh_dir_angle(dx: int, dy: int) -> int {
 }
 function sh_wrap_deg(d: int) -> int {
   var a = d
-  while a < 0 { a = a + 360 }
-  while a >= 360 { a = a - 360 }
+  while a < 0 { a += 360 }
+  while a >= 360 { a -= 360 }
   return a
 }
 function sh_angle_diff(from: int, to: int) -> int {
   var d = sh_wrap_deg(to) - sh_wrap_deg(from)
-  while d > 180 { d = d - 360 }
-  while d < 0 - 180 { d = d + 360 }
+  while d > 180 { d -= 360 }
+  while d < -180 { d += 360 }
   return d
 }
 
 # spawn one projectile travelling at `deg` degrees from (px,py).
 function sh_spawn_bullet(owner: int, fac: int, px: int, py: int, deg: int, speed: int, dmg: int, ttl: int, pierce: int, homing: int) -> int {
   let m = World.model_id("Bullet")
-  if m < 0 { return 0 - 1 }
+  if m < 0 { return -1 }
   let b = World.spawn(m)
   pos_set(b, "x", px)
   pos_set(b, "y", py)
@@ -508,7 +512,7 @@ function sh_spawn_bullet(owner: int, fac: int, px: int, py: int, deg: int, speed
   }
   # announce it: a listener may veto (cancel -> despawn) or tweak the Projectile.
   pr_set(b, "color", wpn_fire_color)
-  if emit ProjectileSpawned(proj: b, owner: owner, damage: dmg) != 0 { despawn b;  return 0 - 1 }
+  if emit ProjectileSpawned(proj: b, owner: owner, damage: dmg) != 0 { despawn b;  return -1 }
   return b
 }
 var wpn_fire_color: int = 0xffffff              # the colour of the weapon being fired (sh_fire)
@@ -554,17 +558,17 @@ function sh_fire(owner: int, id: int) -> void {
   wpn_fire_color = wpn_color[id]
   var pellets = pellets0;  if pellets < 1 { pellets = 1 }
   emit WeaponFired(owner: owner, def_id: id)
-  if pattern == 2 {                                 # ring: pellets around 360
+  if pattern == WeaponPattern.Ring {                # pellets around 360
     var i = 0
-    while i < pellets { sh_spawn_bullet(owner, fac, px, py, sh_wrap_deg(base + i * 360 / pellets), speed, dmg, ttl, pierce, homing);  i = i + 1 }
+    while i < pellets { sh_spawn_bullet(owner, fac, px, py, sh_wrap_deg(base + i * 360 / pellets), speed, dmg, ttl, pierce, homing);  i += 1 }
     return
   }
-  if pattern == 3 {                                 # spiral: ring + a rotating phase
+  if pattern == WeaponPattern.Spiral {              # ring + a rotating phase
     let PW = World.prop_id("Weapon")
     let fph = World.field_id(PW, "phase")
     var ph = 0;  if fph >= 0 { ph = World.get(owner, PW, fph) }
     var i = 0
-    while i < pellets { sh_spawn_bullet(owner, fac, px, py, sh_wrap_deg(base + ph + i * 360 / pellets), speed, dmg, ttl, pierce, homing);  i = i + 1 }
+    while i < pellets { sh_spawn_bullet(owner, fac, px, py, sh_wrap_deg(base + ph + i * 360 / pellets), speed, dmg, ttl, pierce, homing);  i += 1 }
     if fph >= 0 { World.set(owner, PW, fph, sh_wrap_deg(ph + 15)) }
     return
   }
@@ -574,9 +578,9 @@ function sh_fire(owner: int, id: int) -> void {
   } else {
     var i = 0
     while i < pellets {
-      let off = 0 - (spread / 2) + i * spread / (pellets - 1)
+      let off = -(spread / 2) + i * spread / (pellets - 1)
       sh_spawn_bullet(owner, fac, px, py, sh_wrap_deg(base + off), speed, dmg, ttl, pierce, homing)
-      i = i + 1
+      i += 1
     }
   }
 }
@@ -610,7 +614,7 @@ function sh_fire(owner: int, id: int) -> void {
         let cur = pr_get(e, "dir")
         let d = sh_angle_diff(cur, want)
         var na = cur
-        if (d >= 0 - hom) and (d <= hom) { na = want }
+        if (d >= -hom) and (d <= hom) { na = want }
         else { if d > 0 { na = sh_wrap_deg(cur + hom) } else { na = sh_wrap_deg(cur - hom) } }
         pr_set(e, "dir", na)
         let sp = pr_get(e, "speed")
@@ -688,7 +692,7 @@ event WaveCleared { spawner: int = 0, wave: int = 0 }
       var t = World.get(e, P, ft) - 1
       if t <= 0 {
         emit SpawnRequested(spawner: e, wave: World.get(e, P, fwave), index: spawned)
-        spawned = spawned + 1
+        spawned += 1
         World.set(e, P, fsp, spawned)
         World.set(e, P, ft, World.get(e, P, frate))
         if spawned >= budget { emit WaveCleared(spawner: e, wave: World.get(e, P, fwave)) }

@@ -9,7 +9,7 @@ const PZ_Q: int = 65536
 property Pushable { }
 property Switch { on: int = 0 }
 property Pressure { on: int = 0, step: int = 16 }
-property Gate { open: int = 0, src: int = 0 - 1 }
+property Gate { open: int = 0, src: int = -1 }
 
 event BlockPushed { block: int = 0, dx: int = 0, dy: int = 0 }
 event cancellable PushBlocked { block: int = 0 }
@@ -27,13 +27,13 @@ function pz_pos_set(e: int, name: pointer, v: int) -> void {
 # the pushable whose cell is exactly (x, y), or -1.
 function pz_block_at(x: int, y: int) -> int {
   let P = World.prop_id("Pushable")
-  if P < 0 { return 0 - 1 }
+  if P < 0 { return -1 }
   var e = World.query_next(P, 0)
   while e >= 0 {
     if (pz_pos(e, "x") == x) and (pz_pos(e, "y") == y) { return e }
     e = World.query_next(P, e + 1)
   }
-  return 0 - 1
+  return -1
 }
 
 # reuse the Mover module's tilemap walkability check when present.
@@ -120,9 +120,9 @@ function pz_source_on(src: int) -> int {
         if (o != e) and (World.has(o, P) == 0) {
           let ox = World.get(o, PP, World.field_id(PP, "x"))
           let oy = World.get(o, PP, World.field_id(PP, "y"))
-          var adx = ox - px;  if adx < 0 { adx = 0 - adx }
-          var ady = oy - py;  if ady < 0 { ady = 0 - ady }
-          if (adx < step) and (ady < step) { on = 1;  o = 0 - 1 }
+          var adx = ox - px;  if adx < 0 { adx = -adx }
+          var ady = oy - py;  if ady < 0 { ady = -ady }
+          if (adx < step) and (ady < step) { on = 1;  o = -1 }
         }
         if o >= 0 { o = World.query_next(PP, o + 1) }
       }

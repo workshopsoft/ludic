@@ -20,8 +20,8 @@ program Cancel {
 
     # the realistic shape: only apply the effect when the decision isn't vetoed
     var hp = 100
-    if emit BeforeHurt(amount: 8)  == 0 { hp = hp - 8 }    # allowed  -> 92
-    if emit BeforeHurt(amount: 50) == 0 { hp = hp - 50 }   # vetoed   -> unchanged
+    if emit BeforeHurt(amount: 8)  == 0 { hp -= 8 }    # allowed  -> 92
+    if emit BeforeHurt(amount: 50) == 0 { hp -= 50 }   # vetoed   -> unchanged
     print(hp)                                 # 92
   }
 }

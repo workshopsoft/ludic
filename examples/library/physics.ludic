@@ -20,7 +20,7 @@ program Physics {
     hit: int = 0, entered: int = 0, exited: int = 0
   }
 
-  function tick_n(n: int) -> void { var i = 0;  while i < n { tick_fixed();  i = i + 1 } }
+  function tick_n(n: int) -> void { var i = 0;  while i < n { tick_fixed();  i += 1 } }
   function bi(b: bool) -> int { if b { return 1 };  return 0 }
 
   # despawn every live entity carrying a property, so each scenario starts clean.
@@ -65,7 +65,7 @@ program Physics {
     # re-apply the run velocity each frame, the way a controller drives it from
     # held input — so hit_wall stays asserted while pressed against the wall.
     var bi2 = 0
-    while bi2 < 80 { World.set(a, pb, f_vx, fixed(4));  tick_fixed();  bi2 = bi2 + 1 }
+    while bi2 < 80 { World.set(a, pb, f_vx, fixed(4));  tick_fixed();  bi2 += 1 }
     print(World.get(a, pp, f_x))                     # 284 — right edge stops at the wall (300)
     print(World.get(a, pb, f_hw))                    # 1   — hit_wall while pressed
     print(bi(World.get(a, pb, f_vx) == 0))           # 1   — the sweep zeroed it this frame
@@ -93,7 +93,7 @@ program Physics {
     spawn Plat { Position { x: 400, y: 150 }, Collider { w: 64, h: 8, one_way: 1 } }
     spawn Runner { Position { x: 405, y: 60 }, Body { gravity: fixed(1), max_fall: fixed(6) }, Collider { w: 16, h: 16 } }
     let e1 = World.query_next(pb, 0)
-    spawn Riser { Position { x: 430, y: 200 }, Body { vy: fixed(0 - 4), policy: 1 }, Collider { w: 16, h: 16 } }
+    spawn Riser { Position { x: 430, y: 200 }, Body { vy: fixed(-4), policy: 1 }, Collider { w: 16, h: 16 } }
     var e2 = World.query_next(pb, 0)
     if e2 == e1 { e2 = World.query_next(pb, e1 + 1) }
     tick_n(20)

@@ -39,9 +39,9 @@ property Platformer {
   friction:     int = 50,    # ground stopping, % of speed shed / frame when idle
   jump_height:  int = 4,     # tiles; gravity + impulse are derived from this + apex
   apex_frames:  int = 14,    # frames to the top of the jump (defines gravity — feel)
-  fall_gravity_mul: int = 160, # 100 = symmetric; >100 = snappier fall (Celeste)
+  fall_gravity_mul: int = 160,  # 100 = symmetric; >100 = snappier fall (Celeste)
   coyote_frames: int = 6,    # grace frames to still jump after leaving a ledge
-  jump_buffer_frames: int = 6, # grace frames to buffer a jump pressed before landing
+  jump_buffer_frames: int = 6,  # grace frames to buffer a jump pressed before landing
   max_fall:     int = 8,     # terminal fall speed, px/frame
   air_jumps:    int = 0,     # extra mid-air jumps (1 = double jump, N = multi)
   policy:       int = 0,     # gravity profile (lever 6): 0 asymmetric, 1 symmetric, 2 floaty
@@ -129,8 +129,8 @@ function bd_set(e: int, name: pointer, v: int) -> void {
   var e = World.query_next(P, 0)
   while e >= 0 {
     var wx = 0
-    if Input.down("move_right") { wx = wx + 1 }
-    if Input.down("move_left") { wx = wx - 1 }
+    if Input.down("move_right") { wx += 1 }
+    if Input.down("move_left") { wx -= 1 }
     pf_set(e, "want_x", wx)
     var wj = 0;  if Input.pressed("jump") { wj = 1 }
     pf_set(e, "want_jump", wj)
@@ -185,14 +185,14 @@ function bd_set(e: int, name: pointer, v: int) -> void {
     let apex = pf_get(e, "apex_frames")
     var g = plat_g(jh, apex, tile)
     let pol = pf_get(e, "policy")
-    if pol == 2 { g = g / 2 }                       # floaty
+    if pol == 2 { g /= 2 }                       # floaty
     let vy = bd_get(e, "vy")
     if vy > 0 {                                       # falling
       var fm = pf_get(e, "fall_gravity_mul")
       if pol == 1 { fm = 100 }                        # symmetric profile ignores the fall multiplier
       g = g * fm / 100
     } else {
-      if pf_get(e, "hold_jump") == 0 { g = g * 2 }    # released while rising -> short hop
+      if pf_get(e, "hold_jump") == 0 { g *= 2 }    # released while rising -> short hop
     }
     bd_set(e, "gravity", g)
     bd_set(e, "max_fall", pf_get(e, "max_fall") * PLAT_Q)
@@ -205,7 +205,7 @@ function plat_do_jump(e: int, kind: int) -> bool {
   if emit JumpRequested(e: e, kind: kind) != 0 { return false }
   let tile = plat_tile()
   let v0 = plat_v0(pf_get(e, "jump_height"), pf_get(e, "apex_frames"), tile)
-  bd_set(e, "vy", 0 - v0)
+  bd_set(e, "vy", -v0)
   pf_set(e, "buffer_t", 0)
   pf_set(e, "coyote_t", 0)
   emit JumpPerformed(e: e, kind: kind)
@@ -280,7 +280,7 @@ function plat_do_jump(e: int, kind: int) -> bool {
     # state
     var st = 0
     if grounded == 1 {
-      var ax = vx;  if ax < 0 { ax = 0 - ax }
+      var ax = vx;  if ax < 0 { ax = -ax }
       if ax > (PLAT_Q / 4) { st = 1 } else { st = 0 }     # running vs idle (>0.25 px/frame)
     } else {
       if vy < 0 { st = 2 } else { st = 3 }                # rise vs fall

@@ -18,9 +18,9 @@ program TiledP1 {
       var x = 0
       while x < 320 {
         h = h * 31 + rt_get_px(x, y)
-        x = x + 4
+        x += 4
       }
-      y = y + 4
+      y += 4
     }
     return h
   }
@@ -56,7 +56,7 @@ program TiledP1 {
 
     # --- flips draw with the correct orientation ---
     # find a horizontally-asymmetric tile so the mirror test is meaningful
-    var chosen = 0 - 1
+    var chosen = -1
     var t = 0
     while t < 132 {
       rt_clear(0)
@@ -67,12 +67,12 @@ program TiledP1 {
         var xx = 0
         while xx < 8 {
           if rt_get_px(xx, yy) != rt_get_px(15 - xx, yy) { asym = 1 }
-          xx = xx + 1
+          xx += 1
         }
-        yy = yy + 1
+        yy += 1
       }
       if asym == 1 and chosen < 0 { chosen = t }
-      t = t + 1
+      t += 1
     }
     if chosen >= 0 { print(12) }
 
@@ -88,9 +88,9 @@ program TiledP1 {
       while xx2 < 16 {
         if rt_get_px(xx2, yy2) != rt_get_px(31 - xx2, yy2) { mirror = 0 }   # H-flip mirrors
         if rt_get_px(xx2, yy2) != rt_get_px(15 - xx2, yy2) { diff = 1 }     # the tile isn't symmetric
-        xx2 = xx2 + 1
+        xx2 += 1
       }
-      yy2 = yy2 + 1
+      yy2 += 1
     }
     if mirror == 1 { print(13) }
     if diff == 1 { print(14) }

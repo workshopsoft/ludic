@@ -41,13 +41,13 @@ program RpgDemo {
   var locked: int = 0
   @On(MoveRequested) handler LockDoor { if (locked == 1) and (dx == 1) { cancel } }
   var entered: int = 0
-  @On(TileEntered) handler CountEnter { entered = entered + 1 }
+  @On(TileEntered) handler CountEnter { entered += 1 }
   var talked: int = 0
-  @On(Interacted) handler OnTalk { if target >= 0 { talked = talked + 1 } }
+  @On(Interacted) handler OnTalk { if target >= 0 { talked += 1 } }
   var quest_done: int = 0
-  @On(QuestCompleted) handler OnQuestDone { quest_done = quest_done + 1 }
+  @On(QuestCompleted) handler OnQuestDone { quest_done += 1 }
 
-  function tick_n(n: int) -> void { var i = 0;  while i < n { tick_fixed();  i = i + 1 } }
+  function tick_n(n: int) -> void { var i = 0;  while i < n { tick_fixed();  i += 1 } }
   function bi(b: bool) -> int { if b { return 1 };  return 0 }
   function px(e: int) -> int { let P = World.prop_id("Position");  return World.get(e, P, World.field_id(P, "x")) }
   function py(e: int) -> int { let P = World.prop_id("Position");  return World.get(e, P, World.field_id(P, "y")) }
@@ -112,7 +112,7 @@ program RpgDemo {
     let before = Inventory.count(h, "herb")
     print(bi(Craft.can(h, "potion") == 1))             # 1
     print(bi(Craft.make(h, "potion") == 1))            # 1 — consumed 2, produced 1
-    print(bi(Inventory.count(h, "herb") == before - 1)) # 1 — net -2 + 1
+    print(bi(Inventory.count(h, "herb") == before - 1))  # 1 — net -2 + 1
 
     # ================= Module D: quests =================
     Quest.define("hunt")
@@ -126,7 +126,7 @@ program RpgDemo {
     let dn0 = Dialog.node("elder", "hello")
     let dn1 = Dialog.node("elder", "farewell")
     Dialog.choice(dn0, "greet", dn1)
-    Dialog.choice(dn1, "leave", 0 - 1)
+    Dialog.choice(dn1, "leave", -1)
     Dialog.start(h, "elder")
     print(bi(Dialog.line(h) == "hello"))               # 1 — entry node text
     Dialog.choose(h, 0)

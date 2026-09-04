@@ -19,7 +19,7 @@ program Combat {
   @export function damage(attack: int, armour: int, roll: int) -> int {
     var raw = attack - armour
     if raw < 1 { raw = 1 }
-    if roll == 20 { raw = raw * CRIT_MULT }
+    if roll == 20 { raw *= CRIT_MULT }
     return raw
   }
 
@@ -29,8 +29,8 @@ program Combat {
     var left = hp
     var n = 0
     while left > 0 {
-      left = left - damage(attack, armour, 0)
-      n = n + 1
+      left -= damage(attack, armour, 0)
+      n += 1
     }
     return n
   }

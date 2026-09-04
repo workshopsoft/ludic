@@ -60,18 +60,18 @@
 const PHYS_ONE: int = 65536                          # Q16.16 one whole pixel
 
 # ---- per-frame config + reflected ids (filled at the top of esys_move) -------
-var pm_pos:      int = 0 - 1                          # Position prop id
-var pm_pos_x:    int = 0 - 1
-var pm_pos_y:    int = 0 - 1
-var pm_col:      int = 0 - 1                          # Collider prop id
-var pm_c_w:      int = 0 - 1
-var pm_c_h:      int = 0 - 1
-var pm_c_offx:   int = 0 - 1
-var pm_c_offy:   int = 0 - 1
-var pm_c_trig:   int = 0 - 1
-var pm_c_oneway: int = 0 - 1
-var pm_c_layer:  int = 0 - 1
-var pm_c_mask:   int = 0 - 1
+var pm_pos:      int = -1                          # Position prop id
+var pm_pos_x:    int = -1
+var pm_pos_y:    int = -1
+var pm_col:      int = -1                          # Collider prop id
+var pm_c_w:      int = -1
+var pm_c_h:      int = -1
+var pm_c_offx:   int = -1
+var pm_c_offy:   int = -1
+var pm_c_trig:   int = -1
+var pm_c_oneway: int = -1
+var pm_c_layer:  int = -1
+var pm_c_mask:   int = -1
 var phys_ts:     int = 0                              # tile size px (0 = grid off)
 var phys_wall:   int = 0                              # solid glyph
 var phys_wall2:  int = 0                              # optional second solid glyph (Solids.solid2), e.g. a closed door
@@ -96,7 +96,7 @@ var phys_trig_prev: words = null
 function phys_floordiv(a: int, b: int) -> int {
   var q = a / b
   let r = a - q * b
-  if (r != 0) and ((a < 0) != (b < 0)) { q = q - 1 }
+  if (r != 0) and ((a < 0) != (b < 0)) { q -= 1 }
   return q
 }
 
@@ -123,13 +123,13 @@ function phys_tile_oneway(c: int, r: int) -> bool {
 # is any full-solid tile present in column c over the row span [r0, r1]?
 function phys_col_solid(c: int, r0: int, r1: int) -> bool {
   var r = r0
-  while r <= r1 { if phys_tile_solid(c, r) { return true };  r = r + 1 }
+  while r <= r1 { if phys_tile_solid(c, r) { return true };  r += 1 }
   return false
 }
 # is any full-solid tile present in row r over the column span [c0, c1]?
 function phys_row_solid(r: int, c0: int, c1: int) -> bool {
   var c = c0
-  while c <= c1 { if phys_tile_solid(c, r) { return true };  c = c + 1 }
+  while c <= c1 { if phys_tile_solid(c, r) { return true };  c += 1 }
   return false
 }
 # is any full-OR-one-way tile present in row r over [c0, c1]? (downward landings)
@@ -138,7 +138,7 @@ function phys_row_land(r: int, c0: int, c1: int) -> bool {
   while c <= c1 {
     if phys_tile_solid(c, r) { return true }
     if phys_tile_oneway(c, r) { return true }
-    c = c + 1
+    c += 1
   }
   return false
 }
@@ -147,10 +147,10 @@ function phys_row_land(r: int, c0: int, c1: int) -> bool {
 # 0 mask reads as "all" (all-ones), so default-0 components still collide.
 function phys_match(la: int, ma: int, lb: int, mb: int) -> bool {
   var al = la;  var bl = lb;  var am = ma;  var bm = mb
-  if al == 0 { al = 0 - 1 }
-  if bl == 0 { bl = 0 - 1 }
-  if am == 0 { am = 0 - 1 }
-  if bm == 0 { bm = 0 - 1 }
+  if al == 0 { al = -1 }
+  if bl == 0 { bl = -1 }
+  if am == 0 { am = -1 }
+  if bm == 0 { bm = -1 }
   if (am & bl) == 0 { return false }
   if (bm & al) == 0 { return false }
   return true
@@ -223,7 +223,7 @@ function phys_clamp_x(self_e: int, px: int, py: int, w: int, h: int, dx: int) ->
           let allow = c * ts - (px + w)
           if allow < best { best = allow }
           c = endc + 1                                           # nearest wins; stop
-        } else { c = c + 1 }
+        } else { c += 1 }
       }
     } else {
       let startc = phys_floordiv(px, ts)
@@ -234,7 +234,7 @@ function phys_clamp_x(self_e: int, px: int, py: int, w: int, h: int, dx: int) ->
           let allow = (c + 1) * ts - px
           if allow > best { best = allow }
           c = endc - 1                                           # nearest wins; stop
-        } else { c = c - 1 }
+        } else { c -= 1 }
       }
     }
   }
@@ -305,7 +305,7 @@ function phys_clamp_y(self_e: int, px: int, py: int, w: int, h: int, dy: int) ->
           let allow = r * ts - (py + h)
           if allow < best { best = allow }
           r = endr + 1
-        } else { r = r + 1 }
+        } else { r += 1 }
       }
     } else {
       let startr = phys_floordiv(py, ts)
@@ -316,7 +316,7 @@ function phys_clamp_y(self_e: int, px: int, py: int, w: int, h: int, dy: int) ->
           let allow = (r + 1) * ts - py
           if allow > best { best = allow }
           r = endr - 1
-        } else { r = r - 1 }
+        } else { r -= 1 }
       }
     }
   }
@@ -429,7 +429,7 @@ function esys_move() -> void {
       var vy = 0;  if f_vy >= 0 { vy = World.get(e, pb, f_vy) }
       var policy = 0;  if f_pol >= 0 { policy = World.get(e, pb, f_pol) }
       if policy != 1 {
-        if f_grav >= 0 { vy = vy + World.get(e, pb, f_grav) }
+        if f_grav >= 0 { vy += World.get(e, pb, f_grav) }
         if f_maxf >= 0 {
           let mf = World.get(e, pb, f_maxf)
           if (mf > 0) and (vy > mf) { vy = mf }
@@ -476,9 +476,9 @@ function esys_move() -> void {
         phys_set_y(e, phys_pos_y(e) + cdy)
 
         # derived flags + contact normal
-        if phys_hit_x == 1 { hit_wall = 1;  vx = 0;  if dx > 0 { nx = 0 - 1 } else { nx = 1 } }
+        if phys_hit_x == 1 { hit_wall = 1;  vx = 0;  if dx > 0 { nx = -1 } else { nx = 1 } }
         if phys_hit_up == 1 { hit_ceiling = 1;  vy = 0;  ny = 1 }
-        if phys_hit_down == 1 { vy = 0;  ny = 0 - 1 }
+        if phys_hit_down == 1 { vy = 0;  ny = -1 }
         let gy = phys_aabb_y(e)
         if phys_grounded(e, px, gy, w, h) { on_ground = 1 }
         # a body pressed onto the ground carries no downward velocity, whatever
@@ -531,7 +531,7 @@ function esys_triggers() -> void {
         let tx = phys_aabb_x(t);  let ty = phys_aabb_y(t)
         let tw = phys_c_int(t, pm_c_w);  let th = phys_c_int(t, pm_c_h)
         let tl = phys_c_int(t, pm_c_layer);  let tm = phys_c_int(t, pm_c_mask)
-        var cur = 0 - 1
+        var cur = -1
         var b = World.query_next(pm_col, 0)
         while b >= 0 {
           if b != t {

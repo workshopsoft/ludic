@@ -116,7 +116,7 @@ function rt_ui_reset(n: int) -> void {
   ui_n = n
   for i in 0 .. n {
     ui_type[i] = 0
-    ui_parent[i] = 0 - 1
+    ui_parent[i] = -1
     ui_w[i] = 0
     ui_h[i] = 0
     ui_x[i] = 0
@@ -124,16 +124,16 @@ function rt_ui_reset(n: int) -> void {
     ui_haspos[i] = 0
     ui_pad[i] = 0
     ui_gap[i] = 0
-    ui_bg[i] = 0 - 1
-    ui_fg[i] = 0 - 1
-    ui_border[i] = 0 - 1
-    ui_align[i] = 0 - 1
+    ui_bg[i] = -1
+    ui_fg[i] = -1
+    ui_border[i] = -1
+    ui_align[i] = -1
     ui_grow[i] = 0
-    ui_font[i] = 0 - 1
+    ui_font[i] = -1
     ui_size[i] = 8
-    ui_skin[i] = 0 - 1
+    ui_skin[i] = -1
     ui_inset[i] = 6
-    ui_img[i] = 0 - 1
+    ui_img[i] = -1
     ui_focusable[i] = 0
     ui_visible[i] = 1
     ui_fired[i] = 0
@@ -197,7 +197,7 @@ function ui_tw(font: int, s: pointer, size: int) -> int {
     if font < tt_n { return rt_text_w(font, s, size) }
   }
   var n = 0
-  while s[n] != 0 { n = n + 1 }
+  while s[n] != 0 { n += 1 }
   return n * 6 * max(size / 8, 1)
 }
 
@@ -239,15 +239,15 @@ function ui_measure() -> void {
       let pad = ui_pad[i]
       var cw = 0
       var ch = 0
-      if t == WT_LABEL { cw = 0 - 1 }
-      if t == WT_BUTTON { cw = 0 - 1 }
-      if cw == 0 - 1 {
+      if t == WT_LABEL { cw = -1 }
+      if t == WT_BUTTON { cw = -1 }
+      if cw == -1 {
         let s = ui_str(i)
         cw = ui_tw(ui_font[i], s, ui_size[i]) + 2 * pad
         ch = ui_th(ui_font[i], ui_size[i]) + 2 * pad
         if t == WT_BUTTON {
-          cw = cw + 10
-          ch = ch + 6
+          cw += 10
+          ch += 6
         }
       } else {
         if t == WT_IMAGE {
@@ -269,13 +269,13 @@ function ui_measure() -> void {
               if ui_parent[c] == i {
                 if ui_visible[c] == 1 {
                   if dir == 1 {
-                    mainsz = mainsz + ui_rh[c]
+                    mainsz += ui_rh[c]
                     cross = max(cross, ui_rw[c])
                   } else {
-                    mainsz = mainsz + ui_rw[c]
+                    mainsz += ui_rw[c]
                     cross = max(cross, ui_rh[c])
                   }
-                  nc = nc + 1
+                  nc += 1
                 }
               }
             }
@@ -299,7 +299,7 @@ function ui_measure() -> void {
       ui_rw[i] = rw
       ui_rh[i] = rh
     }
-    i = i - 1
+    i -= 1
   }
 }
 

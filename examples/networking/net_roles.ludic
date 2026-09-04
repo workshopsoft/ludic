@@ -16,8 +16,8 @@ program NetRoles {
   property Score { n: int = 0 }
   model Board { Score }
 
-  handler Both phase Update { for (Score) in query [Score] { Score.n = Score.n + 1 } }        # runs everywhere
-  @Server handler ServerOnly phase Update { for (Score) in query [Score] { Score.n = Score.n + 100 } }   # authority only
+  handler Both phase Update { for (Score) in query [Score] { Score.n += 1 } }        # runs everywhere
+  @Server handler ServerOnly phase Update { for (Score) in query [Score] { Score.n += 100 } }   # authority only
 
   entry {
     spawn Board { Score { n: 0 } }

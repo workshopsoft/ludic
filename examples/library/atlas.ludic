@@ -25,7 +25,7 @@ program AtlasDemo {
     let d = Sprite.define("hero", sheet, 2, 3)       # name a cell
     print(bi(Sprite.named("hero") == d))             # 1 — looked up by name
     print(bi(Assets.get("hero") == d))               # 1 — Assets.get is the same lookup
-    print(bi(Sprite.named("nope") == (0 - 1)))       # 1 — an unknown name is -1
+    print(bi(Sprite.named("nope") == (-1)))       # 1 — an unknown name is -1
 
     let whole = Assets.image("assets/kenney/tiny-dungeon/Tiles/tile_0096.png")
     print(Sprite.width(whole))                       # 16 — a whole tile as one sprite
@@ -34,7 +34,7 @@ program AtlasDemo {
     Screen.clear(0)
     Sprite.draw(whole, 10, 10)
     var n = 0
-    for yy in 10 .. 26 { for xx in 10 .. 26 { if Screen.pixel(xx, yy) != 0 { n = n + 1 } } }
+    for yy in 10 .. 26 { for xx in 10 .. 26 { if Screen.pixel(xx, yy) != 0 { n += 1 } } }
     print(bi(n > 0))                                 # 1 — the sprite drew content
   }
 }

@@ -12,7 +12,7 @@ program Containers {
     if Dict.get(bank, "gold") == 150 { print(1) }
     if Dict.get(bank, "wood") == 50 { print(2) }
     if Dict.get(bank, "stone") == 0 { print(3) }         # absent -> 0
-    if Dict.get_or(bank, "stone", 0 - 1) == 0 - 1 { print(4) }
+    if Dict.get_or(bank, "stone", -1) == -1 { print(4) }
     if Dict.has(bank, "wood") { print(5) }
     if Dict.size(bank) == 2 { print(6) }
     Dict.remove(bank, "wood")
@@ -21,7 +21,7 @@ program Containers {
 
     # grow past the initial capacity, then read back
     var i = 0
-    while i < 100 { Dict.set(bank, "k" + string(i), i * 2);  i = i + 1 }
+    while i < 100 { Dict.set(bank, "k" + string(i), i * 2);  i += 1 }
     if Dict.get(bank, "k42") == 84 { print(9) }
     if Dict.size(bank) == 101 { print(10) }               # gold + k0..k99
     if len(Dict.keys(bank)) == 101 { print(11) }

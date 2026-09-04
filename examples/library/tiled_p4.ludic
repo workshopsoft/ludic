@@ -51,11 +51,11 @@ program TiledP4 {
 
     # --- the design's named fixture: orthogonal-outside.tmx object shapes ---
     let og = Tiled.load("assets/tiled-fixtures/orthogonal-outside.tmx")
-    var olayer = 0 - 1
+    var olayer = -1
     var oli = 0
     while oli < Tiled.layer_count(og) {
       if Tiled.object_count(og, oli) > 0 { olayer = oli }
-      oli = oli + 1
+      oli += 1
     }
     var nell = 0
     var npt = 0
@@ -64,11 +64,11 @@ program TiledP4 {
     var oi = 0
     while oi < Tiled.object_count(og, olayer) {
       let sh = Tiled.object_shape(Tiled.object(og, olayer, oi))
-      if sh == "ellipse" { nell = nell + 1 }
-      if sh == "point" { npt = npt + 1 }
-      if sh == "polygon" { npg = npg + 1 }
-      if sh == "polyline" { npl = npl + 1 }
-      oi = oi + 1
+      if sh == "ellipse" { nell += 1 }
+      if sh == "point" { npt += 1 }
+      if sh == "polygon" { npg += 1 }
+      if sh == "polyline" { npl += 1 }
+      oi += 1
     }
     if nell == 1 and npt == 1 and npg == 1 { print(17) }
     if npl == 2 { print(18) }

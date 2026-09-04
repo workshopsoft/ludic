@@ -41,24 +41,24 @@ event ObjectiveProgressed { quest: int = 0, objective: int = 0, have: int = 0, n
 # Quest.define(name) — register a quest (state hidden). Returns id.
 @Namespace(Quest) function quest_define(name: pointer) -> int {
   quest_ensure()
-  if quest_n >= QUEST_MAX { return 0 - 1 }
+  if quest_n >= QUEST_MAX { return -1 }
   let id = quest_n
   quest_state[id] = 0
-  quest_n = quest_n + 1
+  quest_n += 1
   Dict.set(quest_reg, name, id)
   return id
 }
-@Namespace(Quest) function quest_id(name: pointer) -> int { quest_ensure();  return Dict.get_or(quest_reg, name, 0 - 1) }
+@Namespace(Quest) function quest_id(name: pointer) -> int { quest_ensure();  return Dict.get_or(quest_reg, name, -1) }
 # Quest.objective(quest_name, kind, target, need) — add an objective.
 @Namespace(Quest) function quest_objective(quest_name: pointer, kind: int, target: int, need: int) -> int {
   quest_ensure()
   let qid = quest_id(quest_name)
-  if qid < 0 { return 0 - 1 }
-  if obj_n >= OBJ_MAX { return 0 - 1 }
+  if qid < 0 { return -1 }
+  if obj_n >= OBJ_MAX { return -1 }
   let id = obj_n
   obj_qid[id] = qid;  obj_kind[id] = kind;  obj_target[id] = target
   obj_need[id] = need;  obj_have[id] = 0
-  obj_n = obj_n + 1
+  obj_n += 1
   return id
 }
 # Quest.start(name) — activate a quest (emits QuestStarted).
@@ -72,7 +72,7 @@ event ObjectiveProgressed { quest: int = 0, objective: int = 0, have: int = 0, n
 @Namespace(Quest) function quest_state_of(name: pointer) -> int {
   quest_ensure()
   let qid = quest_id(name)
-  if qid < 0 { return 0 - 1 }
+  if qid < 0 { return -1 }
   return quest_state[qid]
 }
 
@@ -81,7 +81,7 @@ function quest_all_done(qid: int) -> int {
   var i = 0
   while i < obj_n {
     if obj_qid[i] == qid { if obj_have[i] < obj_need[i] { return 0 } }
-    i = i + 1
+    i += 1
   }
   return 1
 }
@@ -98,7 +98,7 @@ function quest_all_done(qid: int) -> int {
       if obj_kind[i] == kind {
         if (obj_target[i] == 0) or (obj_target[i] == target) {
           if obj_have[i] < obj_need[i] {
-            obj_have[i] = obj_have[i] + amount
+            obj_have[i] += amount
             if obj_have[i] > obj_need[i] { obj_have[i] = obj_need[i] }
             emit ObjectiveProgressed(quest: qid, objective: i, have: obj_have[i], need: obj_need[i])
             if quest_all_done(qid) == 1 {
@@ -109,7 +109,7 @@ function quest_all_done(qid: int) -> int {
         }
       }
     }
-    i = i + 1
+    i += 1
   }
 }
 

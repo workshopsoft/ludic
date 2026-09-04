@@ -90,7 +90,7 @@ function jb_alloc(kind: int) -> int {
       jb_nmem[i]   = 0
       return i + 1
     }
-    i = i + 1
+    i += 1
   }
   return 0
 }
@@ -161,16 +161,16 @@ function jb_refresh_group(s: int) -> void {
       let ms = mh - 1
       let mst = jb_state[ms]
       if mst != J_PENDING {
-        settled = settled + 1
+        settled += 1
         if mst == J_DONE {
-          ok = ok + 1
+          ok += 1
           if first_ok == 0 { first_ok = mh }
         }
       }
     } else {
-      settled = settled + 1        # a freed/invalid member counts as settled-failed
+      settled += 1        # a freed/invalid member counts as settled-failed
     }
-    i = i + 1
+    i += 1
   }
   if k == JK_ALL {
     if ok == n { jb_state[s] = J_DONE;  jb_result[s] = n }
@@ -227,8 +227,8 @@ function job_pending() -> int {
   var n = 0
   var i = 0
   while i < JOB_SLOTS {
-    if jb_state[i] == J_PENDING { n = n + 1 }
-    i = i + 1
+    if jb_state[i] == J_PENDING { n += 1 }
+    i += 1
   }
   return n
 }
@@ -246,7 +246,7 @@ function jb_step(s: int) -> int {
   var i = jb_i[s]
   if k == JK_SUM {
     jb_acc[s] = jb_acc[s] + (i + 1)
-    i = i + 1
+    i += 1
     jb_i[s] = i
     if i >= n { jb_state[s] = J_DONE;  jb_result[s] = jb_acc[s];  return 1 }
     return 0
@@ -256,14 +256,14 @@ function jb_step(s: int) -> int {
     let t = jb_acc[s] + jb_acc2[s]
     jb_acc[s] = jb_acc2[s]
     jb_acc2[s] = t
-    i = i + 1
+    i += 1
     jb_i[s] = i
     if i >= n { jb_state[s] = J_DONE;  jb_result[s] = jb_acc[s];  return 1 }
     return 0
   }
   if k == JK_PRIMES {
-    if jb_is_prime(i) { jb_acc[s] = jb_acc[s] + 1 }
-    i = i + 1
+    if jb_is_prime(i) { jb_acc[s] += 1 }
+    i += 1
     jb_i[s] = i
     if i > n { jb_state[s] = J_DONE;  jb_result[s] = jb_acc[s];  return 1 }
     return 0
@@ -276,7 +276,7 @@ function jb_is_prime(v: int) -> bool {
   var d = 2
   while d * d <= v {
     if v - (v / d) * d == 0 { return false }
-    d = d + 1
+    d += 1
   }
   return true
 }
@@ -296,10 +296,10 @@ function job_pump(budget: int) -> int {
     while (jb_state[s] == J_PENDING) and compute {
       if (budget > 0) and (spent >= budget) { s = JOB_SLOTS + 1;  break }
       let fin = jb_step(s)
-      spent = spent + 1
-      if fin == 1 { completed = completed + 1 }
+      spent += 1
+      if fin == 1 { completed += 1 }
     }
-    s = s + 1
+    s += 1
   }
   # settle groups after the compute jobs advanced this frame.
   s = 0
@@ -308,10 +308,10 @@ function job_pump(budget: int) -> int {
       let k = jb_kind[s]
       if (k == JK_ALL) or (k == JK_RACE) {
         jb_refresh_group(s)
-        if jb_state[s] != J_PENDING { completed = completed + 1 }
+        if jb_state[s] != J_PENDING { completed += 1 }
       }
     }
-    s = s + 1
+    s += 1
   }
   return completed
 }
@@ -324,7 +324,7 @@ function jb_set_members(s: int, handles: []int) -> void {
   if n > JOB_MAXMEM { n = JOB_MAXMEM }
   let base = s * JOB_MAXMEM
   var i = 0
-  while i < n { jb_mem[base + i] = handles[i];  i = i + 1 }
+  while i < n { jb_mem[base + i] = handles[i];  i += 1 }
   jb_nmem[s] = n
 }
 
@@ -354,8 +354,8 @@ function prom_count_done(handles: []int) -> int {
   var n = 0
   var i = 0
   while i < len(handles) {
-    if job_done(handles[i]) { n = n + 1 }
-    i = i + 1
+    if job_done(handles[i]) { n += 1 }
+    i += 1
   }
   return n
 }
@@ -364,7 +364,7 @@ function prom_all_done(handles: []int) -> bool {
   var i = 0
   while i < len(handles) {
     if not job_done(handles[i]) { return false }
-    i = i + 1
+    i += 1
   }
   return true
 }
@@ -415,7 +415,7 @@ function sync_mutex() -> int {
   var i = 0
   while i < SYNC_MUTEX {
     if mx_used[i] == 0 { mx_used[i] = 1;  mx_held[i] = 0;  return i + 1 }
-    i = i + 1
+    i += 1
   }
   return 0
 }
@@ -447,7 +447,7 @@ function sync_atomic() -> int {
   var i = 0
   while i < SYNC_ATOMIC {
     if at_used[i] == 0 { at_used[i] = 1;  at_val[i] = 0;  return i + 1 }
-    i = i + 1
+    i += 1
   }
   return 0
 }
@@ -468,7 +468,7 @@ function sync_set(a: int, v: int) -> void {
 function sync_add(a: int, delta: int) -> int {
   sy_init()
   if (a < 1) or (a > SYNC_ATOMIC) { return 0 }
-  at_val[a - 1] = at_val[a - 1] + delta
+  at_val[a - 1] += delta
   return at_val[a - 1]
 }
 
@@ -487,7 +487,7 @@ function sync_channel() -> int {
   var i = 0
   while i < SYNC_CHAN {
     if ch_used[i] == 0 { ch_used[i] = 1;  ch_head[i] = 0;  ch_count[i] = 0;  return i + 1 }
-    i = i + 1
+    i += 1
   }
   return 0
 }
@@ -500,9 +500,9 @@ function sync_send(c: int, v: int) -> bool {
   if ch_count[s] >= CHAN_CAP { return false }
   let pos = ch_head[s] + ch_count[s]
   var idx = pos
-  if idx >= CHAN_CAP { idx = idx - CHAN_CAP }
+  if idx >= CHAN_CAP { idx -= CHAN_CAP }
   ch_buf[s * CHAN_CAP + idx] = v
-  ch_count[s] = ch_count[s] + 1
+  ch_count[s] += 1
   return true
 }
 
@@ -516,7 +516,7 @@ function sync_recv(c: int) -> int {
   var nh = ch_head[s] + 1
   if nh >= CHAN_CAP { nh = 0 }
   ch_head[s] = nh
-  ch_count[s] = ch_count[s] - 1
+  ch_count[s] -= 1
   return v
 }
 

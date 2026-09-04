@@ -51,9 +51,9 @@ function input_find(name: pointer) -> int {
   var i = 0
   while i < input_nact {
     if input_names[i] == name { return i }
-    i = i + 1
+    i += 1
   }
-  return 0 - 1
+  return -1
 }
 
 # get-or-create the slot for `name`.
@@ -63,7 +63,7 @@ function input_slot(name: pointer) -> int {
   if input_nact >= INPUT_MAX_ACT { return INPUT_MAX_ACT - 1 }   # silently reuse the last slot when full
   let s = input_nact
   input_names[s] = name
-  input_nact = input_nact + 1
+  input_nact += 1
   return s
 }
 
@@ -75,12 +75,12 @@ function input_bind(name: pointer, key: int) -> void {
   var i = 0
   while i < INPUT_MAX_KEYS {
     if input_keys[base + i] == key { return }        # already bound
-    i = i + 1
+    i += 1
   }
   i = 0
   while i < INPUT_MAX_KEYS {
     if input_keys[base + i] == 0 { input_keys[base + i] = key;  return }
-    i = i + 1
+    i += 1
   }
 }
 
@@ -93,7 +93,7 @@ function input_default(name: pointer, key: int) -> void {
   var i = 0
   while i < INPUT_MAX_KEYS {
     if input_keys[base + i] != 0 { return }          # already has a binding — keep it
-    i = i + 1
+    i += 1
   }
   input_keys[base] = key
 }
@@ -107,12 +107,12 @@ function input_bind_pad(name: pointer, button: int) -> void {
   var i = 0
   while i < INPUT_MAX_KEYS {
     if input_pads[base + i] == (button + 1) { return }   # already bound
-    i = i + 1
+    i += 1
   }
   i = 0
   while i < INPUT_MAX_KEYS {
     if input_pads[base + i] == 0 { input_pads[base + i] = button + 1;  return }
-    i = i + 1
+    i += 1
   }
 }
 
@@ -125,7 +125,7 @@ function input_rebind(name: pointer, oldkey: int, newkey: int) -> void {
   var i = 0
   while i < INPUT_MAX_KEYS {
     if input_keys[base + i] == oldkey { input_keys[base + i] = newkey;  return }
-    i = i + 1
+    i += 1
   }
 }
 
@@ -137,7 +137,7 @@ function input_slot_has(s: int, k: int) -> bool {
   var i = 0
   while i < INPUT_MAX_KEYS {
     if input_keys[base + i] == k { return true }
-    i = i + 1
+    i += 1
   }
   return false
 }
@@ -158,7 +158,7 @@ function input_commit() -> int {
   input_last = input_frame
   if input_mode == 2 {                               # replay
     var k = 0
-    if input_pos < input_recn { k = input_rec[input_pos];  input_pos = input_pos + 1 }
+    if input_pos < input_recn { k = input_rec[input_pos];  input_pos += 1 }
     input_frame = k
     input_device_commit(k, 1)                         # rebuild the device state from the tape
     return k
@@ -166,7 +166,7 @@ function input_commit() -> int {
   let k = rt_poll()
   if input_mode == 1 {                               # record
     if input_rec == null { input_rec = words(INPUT_REC_CAP) }
-    if input_recn < INPUT_REC_CAP { input_rec[input_recn] = k;  input_recn = input_recn + 1 }
+    if input_recn < INPUT_REC_CAP { input_rec[input_recn] = k;  input_recn += 1 }
   }
   input_frame = k
   input_device_commit(k, 0)
@@ -264,9 +264,9 @@ function in_bit_set(set: words, k: int, on: bool) -> void {
   let m = 1 << (k & 31)
   if on { set[w] = set[w] | m } else { set[w] = set[w] & (~m) }
 }
-function in_set_clear(set: words) -> void { var i = 0;  while i < IN_WORDS { set[i] = 0;  i = i + 1 } }
-function in_set_copy(dst: words, src: words) -> void { var i = 0;  while i < IN_WORDS { dst[i] = src[i];  i = i + 1 } }
-function in_set_or(dst: words, a: words, b: words) -> void { var i = 0;  while i < IN_WORDS { dst[i] = a[i] | b[i];  i = i + 1 } }
+function in_set_clear(set: words) -> void { var i = 0;  while i < IN_WORDS { set[i] = 0;  i += 1 } }
+function in_set_copy(dst: words, src: words) -> void { var i = 0;  while i < IN_WORDS { dst[i] = src[i];  i += 1 } }
+function in_set_or(dst: words, a: words, b: words) -> void { var i = 0;  while i < IN_WORDS { dst[i] = a[i] | b[i];  i += 1 } }
 
 # ---- the per-frame device commit (called by input_poll) --------------------
 # Snapshot the committed set into prev (for edges), refresh the platform set (or
@@ -278,7 +278,7 @@ function input_device_commit(k: int, replaying: int) -> void {
   # Taken before the platform refresh (win_pad, below, runs after this), so it holds
   # the previous frame's committed value against which this frame's edge is measured.
   var pj = 0
-  while pj < IN_PADS { in_pad_btn0[pj] = in_pad_btn[pj];  pj = pj + 1 }
+  while pj < IN_PADS { in_pad_btn0[pj] = in_pad_btn[pj];  pj += 1 }
 
   if replaying == 1 {
     # rebuild the platform set + mouse from the tape; sim/injection is ignored so
@@ -286,7 +286,7 @@ function input_device_commit(k: int, replaying: int) -> void {
     let base = (input_pos - 1) * IN_STRIDE
     if (in_tape != null) and (base >= 0) {
       var i = 0
-      while i < IN_WORDS { in_dev[i] = in_tape[base + i];  i = i + 1 }
+      while i < IN_WORDS { in_dev[i] = in_tape[base + i];  i += 1 }
       in_mx    = in_tape[base + 8]
       in_my    = in_tape[base + 9]
       in_mbtn  = in_tape[base + 10]
@@ -312,7 +312,7 @@ function input_device_commit(k: int, replaying: int) -> void {
         input_set_pad(pi, pbuf[pb] != 0, pbuf[pb + 1],
                       as_fixed(pbuf[pb + 2]), as_fixed(pbuf[pb + 3]),
                       as_fixed(pbuf[pb + 4]), as_fixed(pbuf[pb + 5]))
-        pi = pi + 1
+        pi += 1
       }
       let tbuf = words(IN_TOUCH * 3)                    # [active, x, y]/point
       win_touch(tbuf)
@@ -320,7 +320,7 @@ function input_device_commit(k: int, replaying: int) -> void {
       while ti < IN_TOUCH {
         let tb = ti * 3
         input_set_touch(ti, tbuf[tb + 1], tbuf[tb + 2], tbuf[tb] != 0)
-        ti = ti + 1
+        ti += 1
       }
     } else {
       in_set_clear(in_dev)
@@ -345,7 +345,7 @@ function input_device_record() -> void {
   if (f < 0) or (f >= INPUT_REC_CAP) { return }
   let base = f * IN_STRIDE
   var i = 0
-  while i < IN_WORDS { in_tape[base + i] = in_held[i];  i = i + 1 }
+  while i < IN_WORDS { in_tape[base + i] = in_held[i];  i += 1 }
   in_tape[base + 8]  = in_mx
   in_tape[base + 9]  = in_my
   in_tape[base + 10] = in_mbtn
@@ -366,8 +366,8 @@ function input_release(k: int) -> void { in_init();  in_bit_set(in_sim, k, false
 function input_axis(neg: int, pos: int) -> fixed {
   in_init()
   var v = fixed(0)
-  if in_bit_get(in_held, pos) { v = v + fixed(1) }
-  if in_bit_get(in_held, neg) { v = v - fixed(1) }
+  if in_bit_get(in_held, pos) { v += fixed(1) }
+  if in_bit_get(in_held, neg) { v -= fixed(1) }
   return v
 }
 # #79 — a directional intent as a plain int: +1 if the positive key is held, -1 if
@@ -377,38 +377,44 @@ function input_axis(neg: int, pos: int) -> fixed {
 function input_axis_i(neg: int, pos: int) -> int {
   in_init()
   var v = 0
-  if in_bit_get(in_held, pos) { v = v + 1 }
-  if in_bit_get(in_held, neg) { v = v - 1 }
+  if in_bit_get(in_held, pos) { v += 1 }
+  if in_bit_get(in_held, neg) { v -= 1 }
   return v
 }
+# a stick has to leave its centre by this much before it counts as a direction
+const STICK_DEADZONE: fixed = 0.35
+# gamepad axis indices as input_pad_axis numbers them
+const STICK_LEFT_X: int = 0
+const STICK_LEFT_Y: int = 1
+
 # The standard top-down movement intent as -1/0/1 per axis: WASD or the arrow
-# keys, and the left stick of pad 0 (past a 0.35 deadzone) when one is connected.
+# keys, and the left stick of pad 0 (past the deadzone) when one is connected.
 function input_move_i() -> IVec2 {
   in_init()
   var x = input_axis_i(Key.A, Key.D) + input_axis_i(Key.Left, Key.Right)
   var y = input_axis_i(Key.W, Key.S) + input_axis_i(Key.Up, Key.Down)
   if input_pad_connected(0) {
-    let sx = input_pad_axis(0, 0)
-    let sy = input_pad_axis(0, 1)
-    if sx > 0.35 { x = 1 }
-    if sx < -0.35 { x = 0 - 1 }
-    if sy > 0.35 { y = 1 }
-    if sy < -0.35 { y = 0 - 1 }
+    let sx = input_pad_axis(0, STICK_LEFT_X)
+    let sy = input_pad_axis(0, STICK_LEFT_Y)
+    if sx > STICK_DEADZONE { x = 1 }
+    if sx < -STICK_DEADZONE { x = -1 }
+    if sy > STICK_DEADZONE { y = 1 }
+    if sy < -STICK_DEADZONE { y = -1 }
   }
-  return IVec2.make(clamp(x, 0 - 1, 1), clamp(y, 0 - 1, 1))
+  return IVec2.make(clamp(x, -1, 1), clamp(y, -1, 1))
 }
 # A 2D vector from four direction keys, normalized so a diagonal is not faster.
 function input_vector(left: int, right: int, up: int, down: int) -> Vector {
   in_init()
   var x = fixed(0)
   var y = fixed(0)
-  if in_bit_get(in_held, right) { x = x + fixed(1) }
-  if in_bit_get(in_held, left)  { x = x - fixed(1) }
-  if in_bit_get(in_held, down)  { y = y + fixed(1) }
-  if in_bit_get(in_held, up)    { y = y - fixed(1) }
+  if in_bit_get(in_held, right) { x += fixed(1) }
+  if in_bit_get(in_held, left)  { x -= fixed(1) }
+  if in_bit_get(in_held, down)  { y += fixed(1) }
+  if in_bit_get(in_held, up)    { y -= fixed(1) }
   if (x != 0) and (y != 0) {                          # diagonal: scale by 1/sqrt(2)
-    x = x * 0.7071                                     # fixed multiply (64-bit intermediate)
-    y = y * 0.7071
+    x *= 0.7071                                     # fixed multiply (64-bit intermediate)
+    y *= 0.7071
   }
   return Vector.make(x, y)
 }
@@ -486,7 +492,7 @@ function input_touch_count() -> int {
   in_init()
   var n = 0
   var i = 0
-  while i < IN_TOUCH { if in_touch_on[i] != 0 { n = n + 1 };  i = i + 1 }
+  while i < IN_TOUCH { if in_touch_on[i] != 0 { n += 1 };  i += 1 }
   return n
 }
 function input_touch_x(i: int) -> int { in_init();  if (i < 0) or (i >= IN_TOUCH) { return 0 };  return in_touch_x[i] }
@@ -523,7 +529,7 @@ function input_active_in(name: pointer, held: words, padmask: int) -> bool {
     if (k != 0) and in_bit_get(held, k) { return true }
     let pb = input_pads[base + i]
     if (pb != 0) and ((padmask & (1 << (pb - 1))) != 0) { return true }
-    i = i + 1
+    i += 1
   }
   return false
 }

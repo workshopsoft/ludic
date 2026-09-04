@@ -13,8 +13,8 @@ program TiledP3 {
     var h = 0
     var y = 0
     while y < 64 { var x = 0
-      while x < 64 { h = h * 31 + rt_get_px(x, y);  x = x + 2 }
-      y = y + 2 }
+      while x < 64 { h = h * 31 + rt_get_px(x, y);  x += 2 }
+      y += 2 }
     return h
   }
 
@@ -38,13 +38,13 @@ program TiledP3 {
 
     # --- tile object parsed from the object layer ---
     let tree = Tiled.tree(m)
-    var oglayer = Value.null()
+    var oglayer = Value.null ()
     let layers = Value.get(tree, "layers")
     var li = 0
     while li < Value.count(layers) {
       let L = Value.at(layers, li)
       if Value.as_str(Value.get(L, "type")) == "objectgroup" { oglayer = L }
-      li = li + 1
+      li += 1
     }
     let objs = Value.get(oglayer, "objects")
     if Value.count(objs) == 1 { print(8) }
@@ -62,7 +62,7 @@ program TiledP3 {
 
     # --- tile objects draw with correct GID flips (mirror test) ---
     # find an asymmetric tile, draw it normal vs H-flipped as a tile object
-    var chosen = 0 - 1
+    var chosen = -1
     var t = 0
     while t < 132 {
       rt_clear(0)
@@ -70,10 +70,10 @@ program TiledP3 {
       var asym = 0
       var yy = 0
       while yy < 16 { var xx = 0
-        while xx < 8 { if rt_get_px(xx, yy) != rt_get_px(15 - xx, yy) { asym = 1 };  xx = xx + 1 }
-        yy = yy + 1 }
+        while xx < 8 { if rt_get_px(xx, yy) != rt_get_px(15 - xx, yy) { asym = 1 };  xx += 1 }
+        yy += 1 }
       if asym == 1 and chosen < 0 { chosen = t }
-      t = t + 1
+      t += 1
     }
     rt_clear(0)
     tmap_draw_gid(m, 1 + chosen, 0, 0)
@@ -81,8 +81,8 @@ program TiledP3 {
     var mirror = 1
     var yy2 = 0
     while yy2 < 16 { var xx2 = 0
-      while xx2 < 16 { if rt_get_px(xx2, yy2) != rt_get_px(31 - xx2, yy2) { mirror = 0 };  xx2 = xx2 + 1 }
-      yy2 = yy2 + 1 }
+      while xx2 < 16 { if rt_get_px(xx2, yy2) != rt_get_px(31 - xx2, yy2) { mirror = 0 };  xx2 += 1 }
+      yy2 += 1 }
     if mirror == 1 and chosen >= 0 { print(12) }
 
     # --- the design's named fixture: rpg/beach_tileset.tsx (33 animations) ---
@@ -94,8 +94,8 @@ program TiledP3 {
     while ti < Value.count(tiles) {
       let tt = Value.at(tiles, ti)
       let an = Value.get(tt, "animation")
-      if Value.count(an) > 0 { nanim = nanim + 1;  nframes = nframes + Value.count(an) }
-      ti = ti + 1
+      if Value.count(an) > 0 { nanim += 1;  nframes += Value.count(an) }
+      ti += 1
     }
     if nanim == 33 { print(13) }
     if nframes == 131 { print(14) }

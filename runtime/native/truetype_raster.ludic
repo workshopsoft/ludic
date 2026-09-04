@@ -8,7 +8,7 @@ function ed_add(x0: fixed, y0: fixed, x1: fixed, y1: fixed) -> void {
   ed_y0[ed_n] = y0
   ed_x1[ed_n] = x1
   ed_y1[ed_n] = y1
-  ed_n = ed_n + 1
+  ed_n += 1
 }
 
 function tt_isqrt(v: int) -> int {
@@ -18,7 +18,7 @@ function tt_isqrt(v: int) -> int {
   while b > 0 {
     let t = r + b
     if t * t <= v { r = t }
-    b = b / 2
+    b /= 2
   }
   return r
 }
@@ -98,7 +98,7 @@ function tt_raster(id: int, gid: int, px: int) -> pointer {
     let end = ol_ends[ci]
     let cnt = end - start
     if cnt >= 2 {
-      var first_on = 0 - 1
+      var first_on = -1
       for i in 0 .. cnt {
         if first_on < 0 { if ol_on[start + i] == 1 { first_on = i } }
       }
@@ -133,7 +133,7 @@ function tt_raster(id: int, gid: int, px: int) -> pointer {
           var ex = jx
           var ey = jy
           if ol_on[start + j] == 1 {
-            step = step + 1
+            step += 1
           } else {
             ex = (ix + jx) / 2                       # implied on-curve midpoint
             ey = (iy + jy) / 2
@@ -142,7 +142,7 @@ function tt_raster(id: int, gid: int, px: int) -> pointer {
           curx = ex
           cury = ey
         }
-        step = step + 1
+        step += 1
       }
       ed_add(curx, cury, sx, sy)
     }
@@ -167,8 +167,8 @@ function tt_raster(id: int, gid: int, px: int) -> pointer {
       if hit == 1 {
         let t = (yc - ya) / (yb - ya)
         sc_x[m] = ed_x0[i] + t * (ed_x1[i] - ed_x0[i])
-        if yb > ya { sc_d[m] = 1 } else { sc_d[m] = 0 - 1 }
-        m = m + 1
+        if yb > ya { sc_d[m] = 1 } else { sc_d[m] = -1 }
+        m += 1
       }
     }
     # insertion sort the crossings by x
@@ -181,12 +181,12 @@ function tt_raster(id: int, gid: int, px: int) -> pointer {
         if sc_x[j] > kx {
           sc_x[j + 1] = sc_x[j]
           sc_d[j + 1] = sc_d[j]
-          j = j - 1
+          j -= 1
         } else {
           sc_x[j + 1] = kx
           sc_d[j + 1] = kd
           placed = 1
-          j = 0 - 1
+          j = -1
         }
       }
       if placed == 0 {
@@ -197,7 +197,7 @@ function tt_raster(id: int, gid: int, px: int) -> pointer {
     var wind = 0
     let oy = sy / TT_SS
     for i in 0 .. m - 1 {
-      wind = wind + sc_d[i]
+      wind += sc_d[i]
       if wind != 0 {
         var xa = sc_x[i]
         var xb = sc_x[i + 1]
@@ -271,7 +271,7 @@ var u8_next: int = 0        # byte index just past the codepoint last decoded
 
 function tt_utf8(s: string, at: int) -> int {
   let c = s[at]
-  var extra = 0 - 1
+  var extra = -1
   if c < 128 { extra = 0 }
   if (c >> 5) == 6 { extra = 1 }
   if (c >> 4) == 14 { extra = 2 }
@@ -342,11 +342,11 @@ function rt_text_ttf(font: int, x: int, y: int, s: string, colour: int, px: int)
     i = u8_next
     if cp == 10 {
       penx = x
-      baseline = baseline + lineh
+      baseline += lineh
     } else {
       let g = tt_glyph_get(font, cp, px)
       tt_blit(gc_bmp[g], gc_w[g], gc_h[g], penx + gc_ox[g], baseline - gc_oy[g], colour)
-      penx = penx + gc_adv[g]
+      penx += gc_adv[g]
     }
   }
 }
@@ -365,7 +365,7 @@ function rt_text_w(font: int, s: string, px: int) -> int {
       if w > best { best = w }
       w = 0
     } else {
-      w = w + gc_adv[tt_glyph_get(font, cp, px)]
+      w += gc_adv[tt_glyph_get(font, cp, px)]
     }
   }
   if w > best { best = w }

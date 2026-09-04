@@ -34,13 +34,13 @@ program PlatformerScaffolding {
   @OnSpawn(Spike) handler SI { }
 
   var picked: int = 0
-  @On(ItemPickedUp) handler OnPick { picked = picked + 1 }
+  @On(ItemPickedUp) handler OnPick { picked += 1 }
   var sprang: int = 0
-  @On(Sprang) handler OnSpring { sprang = sprang + 1 }
+  @On(Sprang) handler OnSpring { sprang += 1 }
   var hurt: int = 0
-  @On(Hurt) handler OnHurt { hurt = hurt + 1 }
+  @On(Hurt) handler OnHurt { hurt += 1 }
 
-  function tick_n(n: int) -> void { var i = 0;  while i < n { tick_fixed();  i = i + 1 } }
+  function tick_n(n: int) -> void { var i = 0;  while i < n { tick_fixed();  i += 1 } }
   function bi(b: bool) -> int { if b { return 1 };  return 0 }
 
   entry {

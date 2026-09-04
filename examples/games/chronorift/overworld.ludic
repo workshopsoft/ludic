@@ -84,33 +84,33 @@ handler Control phase Input {
         if tc != 'D' {
           if tc != 'S' {
             if tc != 'B' {
-             if tc != 'h' {
-              encounter = encounter - 1
-              if encounter <= 0 {
-                encounter = Random.range(4, 9)
-                var et = 0
-                if world_map == 1 { et = 1 }
-                if world_map == 0 {
-                  if Random.chance(40) { et = 1 }
-                }
-                enemy_type = et
-                if et == 0 {
-                  spawn Enemy {
-                    Actor { kind: 6 }
-                    Stats { hp: 18, maxhp: 18, mp: 0, maxmp: 0, atk: 8, def: 2, lvl: 1, xp: 7, guard: 0 }
+              if tc != 'h' {
+                encounter -= 1
+                if encounter <= 0 {
+                  encounter = Random.range(4, 9)
+                  var et = 0
+                  if world_map == 1 { et = 1 }
+                  if world_map == 0 {
+                    if Random.chance(40) { et = 1 }
                   }
-                }
-                if et == 1 {
-                  spawn Enemy {
-                    Actor { kind: 7 }
-                    Stats { hp: 30, maxhp: 30, mp: 0, maxmp: 0, atk: 11, def: 5, lvl: 1, xp: 15, guard: 0 }
+                  enemy_type = et
+                  if et == 0 {
+                    spawn Enemy {
+                      Actor { kind: 6 }
+                      Stats { hp: 18, maxhp: 18, mp: 0, maxmp: 0, atk: 8, def: 2, lvl: 1, xp: 7, guard: 0 }
+                    }
                   }
+                  if et == 1 {
+                    spawn Enemy {
+                      Actor { kind: 7 }
+                      Stats { hp: 30, maxhp: 30, mp: 0, maxmp: 0, atk: 11, def: 5, lvl: 1, xp: 15, guard: 0 }
+                    }
+                  }
+                  game_mode = 1
+                  turn_phase = 0
+                  menu_cursor = 0
                 }
-                game_mode = 1
-                turn_phase = 0
-                menu_cursor = 0
               }
-             }
             }
           }
         }
@@ -130,8 +130,8 @@ handler Shop phase Update {
     if is_confirm(k) {
       if menu_cursor == 0 {
         if gold >= 10 {
-          gold = gold - 10
-          potions = potions + 1
+          gold -= 10
+          potions += 1
         }
       }
       if menu_cursor == 1 { game_mode = 0 }

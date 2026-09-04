@@ -79,7 +79,7 @@ program Snake {
 
   handler Move phase Update {
     if mode == MODE_PLAY {
-      tick = tick + 1
+      tick += 1
       if tick >= 6 {
         tick = 0
         # remember the tail cell, then drag every segment onto the one ahead of it
@@ -102,10 +102,10 @@ program Snake {
         ate = 0
         for (ph, sh) in query [Pos, Seg] {
           if sh.order == 0 {
-            if direction == DIR_UP    { ph.y = ph.y - 1 }
-            if direction == DIR_DOWN  { ph.y = ph.y + 1 }
-            if direction == DIR_LEFT  { ph.x = ph.x - 1 }
-            if direction == DIR_RIGHT { ph.x = ph.x + 1 }
+            if direction == DIR_UP    { ph.y -= 1 }
+            if direction == DIR_DOWN  { ph.y += 1 }
+            if direction == DIR_LEFT  { ph.x -= 1 }
+            if direction == DIR_RIGHT { ph.x += 1 }
             if ph.x < 0       { mode = MODE_OVER }
             if ph.x >= GRID_W { mode = MODE_OVER }
             if ph.y < 0       { mode = MODE_OVER }
@@ -124,9 +124,9 @@ program Snake {
           }
         }
         if ate == 1 {
-          score = score + 1
+          score += 1
           spawn Body { Seg { order: length };  Pos { x: tail_x, y: tail_y } }
-          length = length + 1
+          length += 1
           food_x = Random.range(low: 0, high: GRID_W - 1)
           food_y = Random.range(low: 0, high: GRID_H - 1)
         }

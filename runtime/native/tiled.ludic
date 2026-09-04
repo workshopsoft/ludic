@@ -27,13 +27,13 @@ function tiled_csv_list(text: pointer) -> Val {
   var have = 0
   while i < n {
     let c = text[i]
-    if c >= 48 and c <= 57 { cur = cur * 10 + (c - 48);  have = 1 }
+    if c >= '0' and c <= '9' { cur = cur * 10 + (c - 48);  have = 1 }
     else {
-      if c == 44 or c == 32 or c == 9 or c == 10 or c == 13 {
+      if c == ',' or c == ' ' or c == '\t' or c == '\n' or c == '\r' {
         if have == 1 { push(out.kids, value_int(cur));  cur = 0;  have = 0 }
       }
     }
-    i = i + 1
+    i += 1
   }
   if have == 1 { push(out.kids, value_int(cur)) }
   return out
@@ -59,7 +59,7 @@ function tiled_b64_list(text: pointer, compression: pointer, count: int) -> Val 
   while i + 3 < rawlen {
     let g = raw[i] | (raw[i + 1] << 8) | (raw[i + 2] << 16) | (raw[i + 3] << 24)
     push(out.kids, value_int(g))
-    i = i + 4
+    i += 4
   }
   return out
 }
@@ -83,8 +83,8 @@ function tiled_chunked_layer(data: Xml, o: Val) -> void {
   # pass 1: bounds over every chunk (tile coordinates)
   var minx = 1000000000
   var miny = 1000000000
-  var maxx = 0 - 1000000000
-  var maxy = 0 - 1000000000
+  var maxx = -1000000000
+  var maxy = -1000000000
   var i = 0
   while i < xml_child_count(data) {
     let ch = xml_child(data, i)
@@ -96,13 +96,13 @@ function tiled_chunked_layer(data: Xml, o: Val) -> void {
       if cx + xml_attr_int(ch, "width", 0) > maxx { maxx = cx + xml_attr_int(ch, "width", 0) }
       if cy + xml_attr_int(ch, "height", 0) > maxy { maxy = cy + xml_attr_int(ch, "height", 0) }
     }
-    i = i + 1
+    i += 1
   }
   let W = maxx - minx
   let H = maxy - miny
   let gids = value_list()
   var k = 0
-  while k < W * H { push(gids.kids, value_int(0));  k = k + 1 }
+  while k < W * H { push(gids.kids, value_int(0));  k += 1 }
   # pass 2: place each chunk's decoded data at its offset
   i = 0
   while i < xml_child_count(data) {
@@ -118,12 +118,12 @@ function tiled_chunked_layer(data: Xml, o: Val) -> void {
         var xx = 0
         while xx < cw {
           gids.kids[(cy + yy) * W + (cx + xx)] = value_at(cdata, yy * cw + xx)
-          xx = xx + 1
+          xx += 1
         }
-        yy = yy + 1
+        yy += 1
       }
     }
-    i = i + 1
+    i += 1
   }
   value_put(o, "width", value_int(W))
   value_put(o, "height", value_int(H))
@@ -152,7 +152,7 @@ function tmx_props_list(parent: Xml) -> Val {
       value_put(o, "value", value_str(v))
       push(out.kids, o)
     }
-    i = i + 1
+    i += 1
   }
   return out
 }
@@ -201,18 +201,18 @@ function tmx_points_list(s: pointer) -> Val {
   let n = len(s)
   var i = 0
   while i < n {
-    while i < n and (s[i] == 32 or s[i] == 9) { i = i + 1 }
+    while i < n and (s[i] == ' ' or s[i] == '\t') { i += 1 }
     if i >= n { break }
     # read "x,y"
     var xv = 0;  var xn = 0;  var xs = 0
-    if s[i] == 45 { xs = 1;  i = i + 1 }
-    while i < n and s[i] >= 48 and s[i] <= 57 { xv = xv * 10 + (s[i] - 48);  xn = 1;  i = i + 1 }
-    if xs == 1 { xv = 0 - xv }
-    if i < n and s[i] == 44 { i = i + 1 }
+    if s[i] == '-' { xs = 1;  i += 1 }
+    while i < n and s[i] >= '0' and s[i] <= '9' { xv = xv * 10 + (s[i] - 48);  xn = 1;  i += 1 }
+    if xs == 1 { xv = -xv }
+    if i < n and s[i] == ',' { i += 1 }
     var yv = 0;  var ys = 0
-    if i < n and s[i] == 45 { ys = 1;  i = i + 1 }
-    while i < n and s[i] >= 48 and s[i] <= 57 { yv = yv * 10 + (s[i] - 48);  i = i + 1 }
-    if ys == 1 { yv = 0 - yv }
+    if i < n and s[i] == '-' { ys = 1;  i += 1 }
+    while i < n and s[i] >= '0' and s[i] <= '9' { yv = yv * 10 + (s[i] - 48);  i += 1 }
+    if ys == 1 { yv = -yv }
     if xn == 1 {
       let o = value_object()
       value_put(o, "x", value_int(xv))
@@ -252,7 +252,7 @@ function tmx_tile_to_value(t: Xml) -> Val {
         value_put(f, "duration", value_int(xml_attr_int(fr, "duration", 0)))
         push(frames.kids, f)
       }
-      i = i + 1
+      i += 1
     }
     value_put(o, "animation", frames)
   }
@@ -264,7 +264,7 @@ function tmx_tile_to_value(t: Xml) -> Val {
     while j < xml_child_count(og) {
       let ch = xml_child(og, j)
       if xml_tag(ch) == "object" { push(objs.kids, tmx_object_to_value(ch)) }
-      j = j + 1
+      j += 1
     }
     let ogo = value_object()
     value_put(ogo, "objects", objs)
@@ -296,7 +296,7 @@ function tmx_fill_tileset(o: Val, ts: Xml) -> void {
   while i < xml_child_count(ts) {
     let ch = xml_child(ts, i)
     if xml_tag(ch) == "tile" { push(tiles.kids, tmx_tile_to_value(ch)) }
-    i = i + 1
+    i += 1
   }
   if len(tiles.kids) > 0 { value_put(o, "tiles", tiles) }
 }
@@ -366,7 +366,7 @@ function tmx_objectlayer_to_value(el: Xml) -> Val {
   while i < xml_child_count(el) {
     let ch = xml_child(el, i)
     if xml_tag(ch) == "object" { push(objs.kids, tmx_object_to_value(ch)) }
-    i = i + 1
+    i += 1
   }
   value_put(o, "objects", objs)
   return o
@@ -402,7 +402,7 @@ function tmx_to_value(root: Xml) -> Val {
     else { if tag == "objectgroup" { push(layers.kids, tmx_objectlayer_to_value(ch)) }
     else { if tag == "imagelayer" { push(layers.kids, tmx_imagelayer_to_value(ch)) }
     else { if tag == "group" { push(layers.kids, tmx_group_to_value(ch, mapw, maph)) } } } } }
-    i = i + 1
+    i += 1
   }
   let props = tmx_props_list(root)
   if len(props.kids) > 0 { value_put(m, "properties", props) }
@@ -437,7 +437,7 @@ function tmx_group_to_value(el: Xml, mapw: int, maph: int) -> Val {
     else { if tag == "objectgroup" { push(layers.kids, tmx_objectlayer_to_value(ch)) }
     else { if tag == "imagelayer" { push(layers.kids, tmx_imagelayer_to_value(ch)) }
     else { if tag == "group" { push(layers.kids, tmx_group_to_value(ch, mapw, maph)) } } } }
-    i = i + 1
+    i += 1
   }
   value_put(o, "layers", layers)
   return o
@@ -453,7 +453,7 @@ function tmj_normalize_layer(layer: Val) -> void {
   if ty == "group" {
     let ls = value_get(layer, "layers")
     var i = 0
-    while i < value_count(ls) { tmj_normalize_layer(value_at(ls, i));  i = i + 1 }
+    while i < value_count(ls) { tmj_normalize_layer(value_at(ls, i));  i += 1 }
     return
   }
   if ty != "tilelayer" { return }
@@ -484,8 +484,8 @@ function tmj_chunk_gids(chunk: Val, enc: pointer, comp: pointer, count: int) -> 
 function tmj_flatten_chunks(layer: Val, chunks: Val, enc: pointer, comp: pointer) -> void {
   var minx = 1000000000
   var miny = 1000000000
-  var maxx = 0 - 1000000000
-  var maxy = 0 - 1000000000
+  var maxx = -1000000000
+  var maxy = -1000000000
   var i = 0
   while i < value_count(chunks) {
     let c = value_at(chunks, i)
@@ -495,13 +495,13 @@ function tmj_flatten_chunks(layer: Val, chunks: Val, enc: pointer, comp: pointer
     if cy < miny { miny = cy }
     if cx + value_as_int(value_get(c, "width")) > maxx { maxx = cx + value_as_int(value_get(c, "width")) }
     if cy + value_as_int(value_get(c, "height")) > maxy { maxy = cy + value_as_int(value_get(c, "height")) }
-    i = i + 1
+    i += 1
   }
   let W = maxx - minx
   let H = maxy - miny
   let gids = value_list()
   var k = 0
-  while k < W * H { push(gids.kids, value_int(0));  k = k + 1 }
+  while k < W * H { push(gids.kids, value_int(0));  k += 1 }
   i = 0
   while i < value_count(chunks) {
     let c = value_at(chunks, i)
@@ -515,11 +515,11 @@ function tmj_flatten_chunks(layer: Val, chunks: Val, enc: pointer, comp: pointer
       var xx = 0
       while xx < cw {
         gids.kids[(cy + yy) * W + (cx + xx)] = value_at(cdata, yy * cw + xx)
-        xx = xx + 1
+        xx += 1
       }
-      yy = yy + 1
+      yy += 1
     }
-    i = i + 1
+    i += 1
   }
   value_put(layer, "width", value_int(W))
   value_put(layer, "height", value_int(H))
@@ -529,7 +529,7 @@ function tmj_flatten_chunks(layer: Val, chunks: Val, enc: pointer, comp: pointer
 function tmj_normalize(m: Val) -> Val {
   let ls = value_get(m, "layers")
   var i = 0
-  while i < value_count(ls) { tmj_normalize_layer(value_at(ls, i));  i = i + 1 }
+  while i < value_count(ls) { tmj_normalize_layer(value_at(ls, i));  i += 1 }
   return m
 }
 
@@ -540,7 +540,7 @@ function tiled_first_byte(s: pointer) -> int {
   let n = len(s)
   while i < n {
     let c = s[i]
-    if c == 32 or c == 9 or c == 10 or c == 13 { i = i + 1 } else { return c }
+    if c == ' ' or c == '\t' or c == '\n' or c == '\r' { i += 1 } else { return c }
   }
   return 0
 }
@@ -580,7 +580,7 @@ property TmTileset {
   spacing:   int = 0
   margin:    int = 0
   tilecount: int = 0
-  imgid:     int = 0 - 1        # loaded image handle (rt_image_load), -1 = none
+  imgid:     int = -1        # loaded image handle (rt_image_load), -1 = none
   meta:      Val               # the tileset Value object (per-tile metadata)
 }
 
@@ -590,7 +590,7 @@ property TmLayer {
   w:       int = 0
   h:       int = 0
   visible: int = 1
-  imgid:   int = 0 - 1         # loaded image handle (imagelayer only), -1 = none
+  imgid:   int = -1         # loaded image handle (imagelayer only), -1 = none
   gids:    []int               # dense w*h GID array (tilelayer only)
   data:    Val                 # the layer Value object (objects, image, …)
 }
@@ -604,12 +604,12 @@ property Tmap {
   layers:    []TmLayer
   tilesets:  []TmTileset
   tree:      Val               # the source intermediate tree
-  coll:      int = 0 - 1       # designated collision layer index, or -1
+  coll:      int = -1       # designated collision layer index, or -1
 }
 
 # ---- GID resolver ----------------------------------------------------------
 property GidInfo {
-  tileset: int = 0 - 1        # index into Tmap.tilesets (-1 = none/empty)
+  tileset: int = -1        # index into Tmap.tilesets (-1 = none/empty)
   local:   int = 0            # local tile id within that tileset
   fh:      int = 0            # horizontal flip
   fv:      int = 0            # vertical flip
@@ -622,7 +622,7 @@ property GidInfo {
 # whose firstgid is the greatest not exceeding it. gid == 0 is the empty cell.
 function tmap_resolve(m: Tmap, gid: int) -> GidInfo {
   let r = new GidInfo
-  if gid == 0 { r.empty = 1;  r.tileset = 0 - 1;  return r }
+  if gid == 0 { r.empty = 1;  r.tileset = -1;  return r }
   let H = 1 << 31
   let V = 1 << 30
   let D = 1 << 29
@@ -630,13 +630,13 @@ function tmap_resolve(m: Tmap, gid: int) -> GidInfo {
   if (gid & V) != 0 { r.fv = 1 }
   if (gid & D) != 0 { r.fd = 1 }
   let id = gid & 536870911                 # low 29 bits = global tile id
-  var best = 0 - 1
+  var best = -1
   var bestfg = 0
   var i = 0
   while i < len(m.tilesets) {
     let fg = m.tilesets[i].firstgid
     if fg <= id and fg >= bestfg { bestfg = fg;  best = i }
-    i = i + 1
+    i += 1
   }
   r.tileset = best
   if best >= 0 { r.local = id - m.tilesets[best].firstgid }
@@ -678,7 +678,7 @@ function tmap_tile_meta(m: Tmap, gid: int) -> Val {
   while i < value_count(tiles) {
     let t = value_at(tiles, i)
     if value_as_int(value_get(t, "id")) == r.local { return t }
-    i = i + 1
+    i += 1
   }
   return value_null()
 }
@@ -696,7 +696,7 @@ function tmap_tile_prop(m: Tmap, gid: int, name: pointer) -> int {
       if value_as_str(value_get(p, "value")) == "true" { return 1 }
       return 0
     }
-    j = j + 1
+    j += 1
   }
   return 0
 }
@@ -750,14 +750,14 @@ function tmap_project_layer(m: Tmap, layer: int, whole_layer_solid: int) -> void
           if gid != 0 {
             var k = tmap_collision_kind(m, gid)
             if k == 0 and whole_layer_solid != 0 { k = 1 }     # collision-layer fallback
-            if k == 1 { rt_map[y * 96 + x] = 35 }              # '#'
-            if k == 2 { rt_map[y * 96 + x] = 61 }              # '='
+            if k == 1 { rt_map[y * 96 + x] = '#' }              # '#'
+            if k == 2 { rt_map[y * 96 + x] = '=' }              # '='
           }
         }
-        x = x + 1
+        x += 1
       }
     }
-    y = y + 1
+    y += 1
   }
 }
 
@@ -775,9 +775,9 @@ function tmap_find_collision(m: Tmap) -> int {
   while i < len(m.layers) {
     let n = m.layers[i].name
     if m.layers[i].kind == 0 and (n == "collision" or n == "solids" or n == "walls" or n == "Collision" or n == "Solids") { return i }
-    i = i + 1
+    i += 1
   }
-  return 0 - 1
+  return -1
 }
 
 # ---- rendering -------------------------------------------------------------
@@ -799,9 +799,9 @@ function tmap_blit_tile(imgid: int, sx: int, sy: int, tw: int, th: int, dx: int,
       if fv == 1 { v = th - 1 - v }
       let argb = s[(sy + v) * iw + (sx + u)]
       rt_blend_px(dx + i, dy + j, argb)
-      i = i + 1
+      i += 1
     }
-    j = j + 1
+    j += 1
   }
 }
 
@@ -832,7 +832,7 @@ function tmap_gids_from_layer(lv: Val) -> []int {
   let out = new []int
   let data = value_get(lv, "data")
   var i = 0
-  while i < value_count(data) { push(out, value_as_int(value_at(data, i)));  i = i + 1 }
+  while i < value_count(data) { push(out, value_as_int(value_at(data, i)));  i += 1 }
   return out
 }
 
@@ -887,12 +887,12 @@ function tmap_build(tree: Val, basedir: pointer) -> Tmap {
     let img = value_as_str(value_get(tv, "image"))
     if img != "" { ts.imgid = rt_image_load(tiled_join(imgdir, img)) }
     push(m.tilesets, ts)
-    i = i + 1
+    i += 1
   }
   # layers (flat; groups' children are lifted so tile layers render/resolve)
   let ls = value_get(tree, "layers")
   i = 0
-  while i < value_count(ls) { tmap_add_layer(m, value_at(ls, i));  i = i + 1 }
+  while i < value_count(ls) { tmap_add_layer(m, value_at(ls, i));  i += 1 }
   # image layers (#73): load each <imagelayer> image relative to the map file
   i = 0
   while i < len(m.layers) {
@@ -900,7 +900,7 @@ function tmap_build(tree: Val, basedir: pointer) -> Tmap {
       let img = value_as_str(value_get(m.layers[i].data, "image"))
       if img != "" { m.layers[i].imgid = rt_image_load(tiled_join(basedir, img)) }
     }
-    i = i + 1
+    i += 1
   }
   # infinite map (#74): the header w/h are 0 — take the flattened layer bounds.
   if m.w <= 0 or m.h <= 0 {
@@ -912,7 +912,7 @@ function tmap_build(tree: Val, basedir: pointer) -> Tmap {
         if m.layers[i].w > mw { mw = m.layers[i].w }
         if m.layers[i].h > mh { mh = m.layers[i].h }
       }
-      i = i + 1
+      i += 1
     }
     m.w = mw
     m.h = mh
@@ -954,7 +954,7 @@ function tmap_add_layer(m: Tmap, lv: Val) -> void {
     l.kind = 3;  push(m.layers, l)
     let sub = value_get(lv, "layers")
     var i = 0
-    while i < value_count(sub) { tmap_add_layer(m, value_at(sub, i));  i = i + 1 }
+    while i < value_count(sub) { tmap_add_layer(m, value_at(sub, i));  i += 1 }
     return
   }
   push(m.layers, l)
@@ -1005,7 +1005,7 @@ function tmap_frame_gid(m: Tmap, gid: int, frame: int) -> int {
   if nfr == 0 { return gid }
   var total = 0
   var i = 0
-  while i < nfr { total = total + value_as_int(value_get(value_at(anim, i), "duration"));  i = i + 1 }
+  while i < nfr { total = total + value_as_int(value_get(value_at(anim, i), "duration"));  i += 1 }
   if total <= 0 { return gid }
   let t_ms = (frame * 1000 / 60) % total
   var cur = value_as_int(value_get(value_at(anim, 0), "tileid"))
@@ -1015,7 +1015,7 @@ function tmap_frame_gid(m: Tmap, gid: int, frame: int) -> int {
     let fr = value_at(anim, i)
     acc = acc + value_as_int(value_get(fr, "duration"))
     if t_ms < acc { cur = value_as_int(value_get(fr, "tileid"));  i = nfr }
-    else { i = i + 1 }
+    else { i += 1 }
   }
   let ts = m.tilesets[r.tileset]
   return (ts.firstgid + cur) | tmap_flag_bits(gid)
@@ -1049,9 +1049,9 @@ function tmap_draw_full(m: Tmap, camx: int, camy: int, frame: int, animate: int)
             # orientation transform places the cell (orthogonal / iso / hex / staggered)
             tmap_draw_gid(m, gid, tmap_cell_sx(m, x, y) + lox - camx, tmap_cell_sy(m, x, y) + loy - camy)
           }
-          x = x + 1
+          x += 1
         }
-        y = y + 1
+        y += 1
       }
     }
     if l.kind == 2 and l.visible != 0 {              # image layer (parallax / repeat)
@@ -1070,10 +1070,10 @@ function tmap_draw_full(m: Tmap, camx: int, camy: int, frame: int, animate: int)
           # Tiled anchors a tile object by its bottom-left corner
           tmap_draw_gid(m, g, ox - camx, oy - m.tileh - camy)
         }
-        oi = oi + 1
+        oi += 1
       }
     }
-    li = li + 1
+    li += 1
   }
 }
 
@@ -1125,7 +1125,7 @@ function tiled_prop_node(container: Val, name: pointer) -> Val {
   while i < value_count(props) {
     let p = value_at(props, i)
     if value_as_str(value_get(p, "name")) == name { return p }
-    i = i + 1
+    i += 1
   }
   return value_null()
 }
@@ -1201,12 +1201,12 @@ function tiled_load_types(path: pointer) -> int {
           value_put(o, "value", value_str(xml_attr(pr, "default")))
           push(props.kids, o)
         }
-        j = j + 1
+        j += 1
       }
       value_put(tbl, xml_attr(ot, "name"), props)
-      n = n + 1
+      n += 1
     }
-    i = i + 1
+    i += 1
   }
   return n
 }
@@ -1220,7 +1220,7 @@ function tiled_type_default(typename: pointer, propname: pointer) -> Val {
   while i < value_count(props) {
     let p = value_at(props, i)
     if value_as_str(value_get(p, "name")) == propname { return p }
-    i = i + 1
+    i += 1
   }
   return value_null()
 }
@@ -1251,7 +1251,7 @@ function tiled_merge_template(inst: Val, tmpl: Val) -> void {
   while i < value_count(tmpl) {
     let k = value_key_at(tmpl, i)
     if value_has(inst, k) == 0 { value_put(inst, k, value_at(tmpl, i)) }
-    i = i + 1
+    i += 1
   }
 }
 
@@ -1268,10 +1268,10 @@ function tmap_resolve_templates(m: Tmap, basedir: pointer) -> void {
         let ob = value_at(objs, oi)
         let tp = value_as_str(value_get(ob, "template"))
         if tp != "" { tiled_merge_template(ob, tiled_read_template(tiled_join(basedir, tp))) }
-        oi = oi + 1
+        oi += 1
       }
     }
-    li = li + 1
+    li += 1
   }
 }
 
@@ -1330,9 +1330,9 @@ function tmap_draw_imagelayer(m: Tmap, l: TmLayer, camx: int, camy: int) -> void
   let repy = value_as_int(value_get(l.data, "repeaty"))
   # starting origin: for a repeating axis, back up to before the screen
   var sx0 = px
-  if repx != 0 { while sx0 > 0 { sx0 = sx0 - iw };  }
+  if repx != 0 { while sx0 > 0 { sx0 -= iw };  }
   var sy0 = py
-  if repy != 0 { while sy0 > 0 { sy0 = sy0 - ih };  }
+  if repy != 0 { while sy0 > 0 { sy0 -= ih };  }
   var yy = sy0
   var first_y = 1
   while (yy < rt_screen_h()) and (first_y == 1 or repy != 0) {
@@ -1341,16 +1341,16 @@ function tmap_draw_imagelayer(m: Tmap, l: TmLayer, camx: int, camy: int) -> void
     while (xx < rt_screen_w()) and (first_x == 1 or repx != 0) {
       rt_draw_image(l.imgid, xx, yy)
       first_x = 0
-      if repx == 0 { xx = rt_screen_w() } else { xx = xx + iw }
+      if repx == 0 { xx = rt_screen_w() } else { xx += iw }
     }
     first_y = 0
-    if repy == 0 { yy = rt_screen_h() } else { yy = yy + ih }
+    if repy == 0 { yy = rt_screen_h() } else { yy += ih }
   }
 }
 
 # ---- image/group-layer accessors -------------------------------------------
 function tmap_layer_kind(m: Tmap, layer: int) -> int {
-  if layer < 0 or layer >= len(m.layers) { return 0 - 1 }
+  if layer < 0 or layer >= len(m.layers) { return -1 }
   return m.layers[layer].kind
 }
 function tmap_layer_opacity(m: Tmap, layer: int) -> pointer {

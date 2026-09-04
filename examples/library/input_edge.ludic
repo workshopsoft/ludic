@@ -19,9 +19,9 @@ program InputEdge {
 
   handler In phase Update {
     var v = 0
-    if Input.key_down('k')     { v = v + 1 }       # held
-    if Input.key_pressed('k')  { v = v + 10 }      # went down this frame
-    if Input.key_released('k') { v = v + 100 }     # went up this frame
+    if Input.key_down('k')     { v += 1 }       # held
+    if Input.key_pressed('k')  { v += 10 }      # went down this frame
+    if Input.key_released('k') { v += 100 }     # went up this frame
     print(v)
   }
 }

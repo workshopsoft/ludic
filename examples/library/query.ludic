@@ -52,7 +52,7 @@ program Query {
     let near0 = Query.within(P, P, 0, 0, 0, cx, cy)
     if len(near0) == 1 { print(14) }                                  # only e0 at (0,0)
     if World.get(near0[0], P, cx) == 0 { print(15) }                  # and it is e0
-    if len(Query.within(G, P, 0, 0, 100, cx, cy)) == 0 { print(16) } # empty
+    if len(Query.within(G, P, 0, 0, 100, cx, cy)) == 0 { print(16) }  # empty
     if len(Query.within(K, P, 0, 0, 6, cx, cy)) == 2 { print(17) }   # Mobs e0, e2 (filter K, pos P)
 
     if World.get(Query.nearest(P, P, cx, cy, 20, 20), P, cx) == 20 { print(18) }  # e4

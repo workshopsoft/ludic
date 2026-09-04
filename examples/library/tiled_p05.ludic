@@ -26,7 +26,7 @@ program TiledP05 {
     # --- four layers, every encoding decodes to the SAME 16-GID array ---
     let layers = Value.get(m, "layers")
     if Value.count(layers) == 4 { print(8) }
-    let FLIP = 0 - 2147483647                              # 0x80000001 as i32
+    let FLIP = -2147483647                              # 0x80000001 as i32
     var same = 1
     var li = 0
     while li < 4 {
@@ -35,7 +35,7 @@ program TiledP05 {
       if Value.as_int(Value.at(data, 0)) != 1 { same = 0 }
       if Value.as_int(Value.at(data, 14)) != 15 { same = 0 }
       if Value.as_int(Value.at(data, 15)) != FLIP { same = 0 }
-      li = li + 1
+      li += 1
     }
     if same == 1 { print(9) }
     # the CSV path and the gzip path agree on the flip-flagged GID
@@ -61,9 +61,9 @@ program TiledP05 {
       var gi = 0
       while gi < 16 {
         if Value.as_int(Value.at(jdata, gi)) != Value.as_int(Value.at(csvdata, gi)) { jsame = 0 }
-        gi = gi + 1
+        gi += 1
       }
-      jli = jli + 1
+      jli += 1
     }
     if jsame == 1 { print(16) }
 

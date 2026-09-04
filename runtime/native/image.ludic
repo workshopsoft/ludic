@@ -71,7 +71,7 @@ function rt_decode_png(path: string) -> bool {
   let size = rt_file_len
   if size < 8 { free(d); return false }
   if d[0] != 137 { free(d); return false }
-  if d[1] != 80 { free(d); return false }
+  if d[1] != 'P' { free(d); return false }
 
   var w = 0
   var h = 0
@@ -110,7 +110,7 @@ function rt_decode_png(path: string) -> bool {
         }
         if png_tag(d, typ, 73, 68, 65, 84) {          # IDAT
           for k in 0 .. ln { idat[idlen + k] = d[body + k] }
-          idlen = idlen + ln
+          idlen += ln
         }
         if png_tag(d, typ, 73, 69, 78, 68) { done = 1 }   # IEND
         i = i + 12 + ln
@@ -150,8 +150,8 @@ function rt_decode_png(path: string) -> bool {
       if y > 0 { b = raw[prev + x] }
       if x >= fbpp { if y > 0 { c = raw[prev + x - fbpp] } }
       var v = raw[cur + x]
-      if ft == 1 { v = v + a }
-      if ft == 2 { v = v + b }
+      if ft == 1 { v += a }
+      if ft == 2 { v += b }
       if ft == 3 { v = v + (a + b) / 2 }
       if ft == 4 {
         let p = a + b - c
@@ -161,7 +161,7 @@ function rt_decode_png(path: string) -> bool {
         var pick = c
         if pb <= pc { pick = b }
         if pa <= pb { if pa <= pc { pick = a } }
-        v = v + pick
+        v += pick
       }
       raw[cur + x] = (v & 255)
     }
@@ -228,10 +228,10 @@ function rt_decode_png(path: string) -> bool {
 
 # ---- images ---------------------------------------------------------------
 function rt_image_load(path: string) -> int {
-  if img_n >= IMG_MAX { return 0 - 1 }
-  if rt_decode_png(path) == false { return 0 - 1 }
+  if img_n >= IMG_MAX { return -1 }
+  if rt_decode_png(path) == false { return -1 }
   let id = img_n
-  img_n = img_n + 1
+  img_n += 1
   img_px[id] = png_px
   img_w[id] = png_w
   img_h[id] = png_h
@@ -316,10 +316,10 @@ function rt_draw_9slice(id: int, dx: int, dy: int, dw: int, dh: int, inset: int)
 
 # ---- sprites (16x16 art) --------------------------------------------------
 function rt_png_load(path: string) -> int {
-  if spr_n >= SPR_MAX { return 0 - 1 }
-  if rt_decode_png(path) == false { return 0 - 1 }
+  if spr_n >= SPR_MAX { return -1 }
+  if rt_decode_png(path) == false { return -1 }
   let id = spr_n
-  spr_n = spr_n + 1
+  spr_n += 1
   let base = id * SPR_SZ * SPR_SZ
   for y in 0 .. SPR_SZ {
     for x in 0 .. SPR_SZ {
@@ -395,10 +395,10 @@ function rt_draw_sprite_ex(id: int, px: int, py: int, sc: int, flip: int, tint: 
 
 # ---- .lspr sprite sheets (palette + ASCII rows) ---------------------------
 function rt_hexval(c: int) -> int {
-  if c >= 48 { if c <= 57 { return c - 48 } }
-  if c >= 97 { if c <= 102 { return c - 87 } }
-  if c >= 65 { if c <= 70 { return c - 55 } }
-  return 0 - 1
+  if c >= '0' { if c <= '9' { return c - 48 } }
+  if c >= 'a' { if c <= 'f' { return c - 87 } }
+  if c >= 'A' { if c <= 'F' { return c - 55 } }
+  return -1
 }
 
 function rt_sprites_load(path: string) -> void {
@@ -407,7 +407,7 @@ function rt_sprites_load(path: string) -> void {
   let size = rt_file_len
   let pal: words = words(128)
   fill(pal, 0, 128 * 4)
-  var cur = 0 - 1
+  var cur = -1
   var row = 0
   var i = 0
   while i < size {
@@ -416,10 +416,10 @@ function rt_sprites_load(path: string) -> void {
     var j = start
     while j < size {
       let ch = d[j]
-      if ch == 10 { j = size } else { len = len + 1;  j = j + 1 }
+      if ch == '\n' { j = size } else { len += 1;  j += 1 }
     }
     let c0 = d[start]
-    if c0 == 112 {                       # 'p' — "pal <char> <rrggbb>"
+    if c0 == 'p' {                       # 'p' — "pal <char> <rrggbb>"
       let ch = d[start + 4]
       var v = 0
       for k in 0 .. 6 {
@@ -428,18 +428,18 @@ function rt_sprites_load(path: string) -> void {
       }
       if ch < 128 { pal[ch] = ((255 << 24) | v) }
     }
-    if c0 == 115 {                       # 's' — "spr" starts a new sprite
-      cur = 0 - 1
+    if c0 == 's' {                       # 's' — "spr" starts a new sprite
+      cur = -1
       if spr_n < SPR_MAX {
         cur = spr_n
-        spr_n = spr_n + 1
+        spr_n += 1
         fill(offset(spr_px, cur * SPR_SZ * SPR_SZ * 4), 0, SPR_SZ * SPR_SZ * 4)
       }
       row = 0
     }
-    if c0 != 112 {
-      if c0 != 115 {
-        if c0 != 35 {                    # '#' comment
+    if c0 != 'p' {
+      if c0 != 's' {
+        if c0 != '#' {                    # '#' comment
           if cur >= 0 {
             if row < SPR_SZ {
               for x in 0 .. SPR_SZ {
@@ -447,7 +447,7 @@ function rt_sprites_load(path: string) -> void {
                   spr_px[cur * SPR_SZ * SPR_SZ + row * SPR_SZ + x] = pal[(d[start + x] & 127)]
                 }
               }
-              row = row + 1
+              row += 1
             }
           }
         }

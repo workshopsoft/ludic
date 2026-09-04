@@ -19,8 +19,8 @@ program Hello {
   # runs once per match, each property bound by name and self() giving that entity.
   @Queries(these: [Pos, Vel])
   handler Move phase FixedUpdate {
-    Pos.x = Pos.x + Vel.dx
-    Pos.y = Pos.y + Vel.dy
+    Pos.x += Vel.dx
+    Pos.y += Vel.dy
   }
 
   handler Report phase Update {

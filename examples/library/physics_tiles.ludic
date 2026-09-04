@@ -49,7 +49,7 @@ program PhysicsTiles {
     spawn Runner { Position { x: 32, y: 16 }, Body { gravity: fixed(1), max_fall: fixed(6) }, Collider { w: 16, h: 16 } }
     var a = World.query_next(pb, 0)
     var i = 0
-    while i < 80 { tick_fixed();  i = i + 1 }
+    while i < 80 { tick_fixed();  i += 1 }
     print(World.get(a, pp, f_y))               # 112 — feet rest on the tile floor top (128)
     print(World.get(a, pb, f_grd))             # 1
 
@@ -58,7 +58,7 @@ program PhysicsTiles {
     spawn Runner { Position { x: 16, y: 112 }, Body { gravity: fixed(1), max_fall: fixed(6) }, Collider { w: 16, h: 16 } }
     a = World.query_next(pb, 0)
     i = 0
-    while i < 60 { World.set(a, pb, f_vx, fixed(4));  tick_fixed();  i = i + 1 }
+    while i < 60 { World.set(a, pb, f_vx, fixed(4));  tick_fixed();  i += 1 }
     print(World.get(a, pp, f_x))               # 80 — right edge stops at the wall column (96)
     print(World.get(a, pb, f_hw))              # 1
 
@@ -67,16 +67,16 @@ program PhysicsTiles {
     spawn Runner { Position { x: 176, y: 16 }, Body { gravity: fixed(1), max_fall: fixed(6) }, Collider { w: 16, h: 16 } }
     a = World.query_next(pb, 0)
     i = 0
-    while i < 40 { tick_fixed();  i = i + 1 }
+    while i < 40 { tick_fixed();  i += 1 }
     print(World.get(a, pp, f_y))               # 48 — feet on the one-way top (64)
     print(World.get(a, pb, f_grd))             # 1
 
     # ---- T3b. rise straight up through the one-way tile --------------------
     clear()
-    spawn Riser { Position { x: 176, y: 120 }, Body { vy: fixed(0 - 4), policy: 1 }, Collider { w: 16, h: 16 } }
+    spawn Riser { Position { x: 176, y: 120 }, Body { vy: fixed(-4), policy: 1 }, Collider { w: 16, h: 16 } }
     a = World.query_next(pb, 0)
     i = 0
-    while i < 15 { tick_fixed();  i = i + 1 }
+    while i < 15 { tick_fixed();  i += 1 }
     print(World.get(a, pp, f_y))               # 60 — passed through (120 - 4*15), above the platform
 
     quit()

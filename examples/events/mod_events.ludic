@@ -6,7 +6,7 @@ program ModEvents {
   var total: int = 0
   event Damage { amount: int = 0 }
   @On(Damage) handler Native { print(amount) }        # prints each hit
-  @On(Damage) handler Accum  { total = total + amount }   # sums them
+  @On(Damage) handler Accum  { total += amount }   # sums them
 
   entry {
     emit Damage(amount: 10)     # Native prints 10

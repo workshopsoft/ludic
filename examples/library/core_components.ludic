@@ -14,7 +14,7 @@ program CoreComponents {
   # subclassing, just another property on the same model.
   property Health { hp: int = 0 }
 
-  function tick_n(n: int) -> void { var i = 0;  while i < n { tick_fixed();  i = i + 1 } }
+  function tick_n(n: int) -> void { var i = 0;  while i < n { tick_fixed();  i += 1 } }
 
   entry {
     let pp = World.prop_id("Position")

@@ -60,7 +60,7 @@ function anim_clip(name: pointer, frames: int, fps: int, mode: int) -> void {
       anim_clip_frames[i] = frames;  anim_clip_fps[i] = fps;  anim_clip_mode[i] = mode
       return
     }
-    i = i + 1
+    i += 1
   }
   if anim_nclips >= ANIM_MAX_CLIPS { return }        # silently ignore past capacity
   let s = anim_nclips
@@ -68,7 +68,7 @@ function anim_clip(name: pointer, frames: int, fps: int, mode: int) -> void {
   anim_clip_frames[s] = frames
   anim_clip_fps[s]    = fps
   anim_clip_mode[s]   = mode
-  anim_nclips = anim_nclips + 1
+  anim_nclips += 1
 }
 
 function anim_clip_find(name: pointer) -> int {
@@ -76,9 +76,9 @@ function anim_clip_find(name: pointer) -> int {
   var i = 0
   while i < anim_nclips {
     if anim_clip_names[i] == name { return i }
-    i = i + 1
+    i += 1
   }
-  return 0 - 1
+  return -1
 }
 
 # ---- Anim.play / Anim.on_frame / Anim.fired (#48) --------------------------

@@ -24,9 +24,9 @@ program GameplayFoundation {
   }
 
   var deaths: int = 0
-  @On(Died) handler Tally { deaths = deaths + 1 }
+  @On(Died) handler Tally { deaths += 1 }
 
-  function tick_n(n: int) -> void { var i = 0;  while i < n { tick_fixed();  i = i + 1 } }
+  function tick_n(n: int) -> void { var i = 0;  while i < n { tick_fixed();  i += 1 } }
   function bi(b: bool) -> int { if b { return 1 };  return 0 }
 
   entry {
@@ -74,7 +74,7 @@ program GameplayFoundation {
 
     # finish it off with sub-100 hits so the veto never blocks the kill
     var guard = 0
-    while (World.get(t, PS, fhp) > 0) and (guard < 100) { Combat.damage(t, a, 90);  guard = guard + 1 }
+    while (World.get(t, PS, fhp) > 0) and (guard < 100) { Combat.damage(t, a, 90);  guard += 1 }
     print(deaths)                           # 1
 
     quit()

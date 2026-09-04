@@ -11,8 +11,8 @@ program ProgramEvents {
   @Public @OnStart handler Boot { print(1) }        # -> program_start
   @Public @OnQuit  handler Bye  { print(2) }        # -> program_quit
 
-  @On(program_start) handler ModInit { print(100) } # mod boots after the game
-  @On(program_quit)  handler ModDone { print(200) } # mod tears down as the game exits
+  @On(program_start) handler ModInit { print(100) }  # mod boots after the game
+  @On(program_quit)  handler ModDone { print(200) }  # mod tears down as the game exits
 
   handler Run phase Update { quit() }
 }

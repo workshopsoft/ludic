@@ -18,9 +18,9 @@ function ui_arrange(i: int, x: int, y: int) -> void {
   for c in 0 .. ui_n {
     if ui_parent[c] == i {
       if ui_visible[c] == 1 {
-        if dir == 1 { total = total + ui_rh[c] } else { total = total + ui_rw[c] }
-        ng = ng + 1
-        grows = grows + ui_grow[c]
+        if dir == 1 { total += ui_rh[c] } else { total += ui_rw[c] }
+        ng += 1
+        grows += ui_grow[c]
       }
     }
   }
@@ -156,7 +156,7 @@ function ui_focusables() -> int {
       if ui_visible[i] == 1 {
         if ui_under(i, ui_active) {
           ui_fl[n] = i
-          n = n + 1
+          n += 1
         }
       }
     }
@@ -169,12 +169,12 @@ function ui_focusables() -> int {
 event UiClicked { id: int = 0 }
 
 # Ui.close(): no menu is active (the same as opening root -1)
-function rt_ui_close() -> void { rt_ui_open(0 - 1) }
+function rt_ui_close() -> void { rt_ui_open(-1) }
 
 function rt_ui_open(root: int) -> void {
   ui_active = root
   let n = ui_focusables()
-  ui_focus = 0 - 1
+  ui_focus = -1
   if n > 0 { ui_focus = ui_fl[0] }
 }
 
@@ -184,10 +184,10 @@ function rt_ui_tick(k: int) -> void {
   ui_layout()
   let n = ui_focusables()
   if n == 0 {
-    ui_focus = 0 - 1
+    ui_focus = -1
     return
   }
-  var cur = 0 - 1
+  var cur = -1
   for i in 0 .. n {
     if ui_fl[i] == ui_focus { cur = i }
   }
@@ -195,18 +195,18 @@ function rt_ui_tick(k: int) -> void {
     cur = 0
     ui_focus = ui_fl[0]
   }
-  if k == 119 {                     # 'w'
+  if k == 'w' {                     # 'w'
     cur = (cur - 1 + n) % n
     ui_focus = ui_fl[cur]
   }
-  if k == 115 {                     # 's'
+  if k == 's' {                     # 's'
     cur = (cur + 1) % n
     ui_focus = ui_fl[cur]
   }
   var fire = 0
-  if k == 32 { fire = 1 }
-  if k == 10 { fire = 1 }
-  if k == 13 { fire = 1 }
+  if k == ' ' { fire = 1 }
+  if k == '\n' { fire = 1 }
+  if k == '\r' { fire = 1 }
   if fire == 1 { ui_fired[ui_focus] = 1;  emit UiClicked(id: ui_focus) }
 }
 
@@ -233,7 +233,7 @@ function rt_ui_set_text(id: int, s: string) -> void {
     if i >= 95 { ch = 0 }
     if ch != 0 {
       ui_dyn[base + i] = ch
-      i = i + 1
+      i += 1
       ch = s[i]
     }
   }
@@ -248,27 +248,27 @@ function rt_ui_set_int(id: int, n: int) -> void {
   var at = 0
   var v = n
   if v < 0 {
-    ui_dyn[base] = 45
+    ui_dyn[base] = '-'
     at = 1
-    v = 0 - v
+    v = -v
   }
   if v == 0 {
-    ui_dyn[base + at] = 48
-    at = at + 1
+    ui_dyn[base + at] = '0'
+    at += 1
   } else {
     var digits = 0
     var t = v
     while t > 0 {
-      digits = digits + 1
-      t = t / 10
+      digits += 1
+      t /= 10
     }
     var p = digits
     while p > 0 {
       var div = 1
-      for k in 1 .. p { div = div * 10 }
+      for k in 1 .. p { div *= 10 }
       ui_dyn[base + at] = 48 + (v / div) % 10
-      at = at + 1
-      p = p - 1
+      at += 1
+      p -= 1
     }
   }
   ui_dyn[base + at] = 0

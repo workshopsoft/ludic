@@ -60,15 +60,15 @@ function tw_alloc() -> int {
   var i = 0
   while i < TW_MAX {
     if tw_used[i] == 0 { return i }
-    i = i + 1
+    i += 1
   }
   # none free: reuse the first finished handle so long-lived games don't leak.
   i = 0
   while i < TW_MAX {
     if tw_done[i] != 0 { return i }
-    i = i + 1
+    i += 1
   }
-  return 0 - 1
+  return -1
 }
 
 # append one segment to a handle (internal). Silently ignored past TW_SEGS.
@@ -88,7 +88,7 @@ function tw_push(h: int, kind: int, from: int, to: int, dur: int, ease: int) -> 
 # start a new tween handle: from -> to over `dur` ticks with easing `ease`.
 function tween_to(from: int, to: int, dur: int, ease: int) -> int {
   let h = tw_alloc()
-  if h < 0 { return 0 - 1 }
+  if h < 0 { return -1 }
   tw_used[h]  = 1
   tw_seg[h]   = 0
   tw_nseg[h]  = 0
@@ -187,7 +187,7 @@ function tw_advance_one(h: int) -> void {
   # (a delay segment holds tw_value unchanged.)
   if tick >= dur {                                   # this segment finished: advance
     if kind == 0 { tw_value[h] = tw_to[s] }          # rest exactly on the target
-    seg = seg + 1
+    seg += 1
     tw_seg[h]  = seg
     tw_tick[h] = 0
     if seg >= n { tw_done[h] = 1 }
@@ -203,6 +203,6 @@ function esys_tween() -> void {
   var i = 0
   while i < TW_MAX {
     if (tw_used[i] != 0) and (tw_done[i] == 0) { tw_advance_one(i) }
-    i = i + 1
+    i += 1
   }
 }

@@ -43,9 +43,9 @@ function esys_tileskin() -> void {
           if is_atlas != 0 { atlas_draw_ex(sprite, tx * size, ty * size, sc, 0, 0) }
           else { rt_draw_sprite_ex(sprite, tx * size, ty * size, sc, 0, 0) }
         }
-        tx = tx + 1
+        tx += 1
       }
-      ty = ty + 1
+      ty += 1
     }
     e = World.query_next(P, e + 1)
   }

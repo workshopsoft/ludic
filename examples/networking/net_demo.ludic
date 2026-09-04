@@ -23,7 +23,7 @@ program NetDemo {
 
   @ToServer event Move { dx: int = 0 }                        # client → server RPC
   @On(Move) handler DoMove {                                  # the authority applies input
-    for (Pos) in query [Pos, {Ship}] { Pos.x = Pos.x + dx }
+    for (Pos) in query [Pos, {Ship}] { Pos.x += dx }
   }
 
   entry {

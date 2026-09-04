@@ -69,7 +69,7 @@ program LightTiers {
     dark()
     Light.clear_normals()
     Light.normal(18, 30, 8, 8, 0.7, 0.0)       # this patch faces right (toward the light)
-    Light.normal(46, 30, 8, 8, 0.0 - 0.7, 0.0) # this patch faces left (away)
+    Light.normal(46, 30, 8, 8, 0.0 - 0.7, 0.0)  # this patch faces left (away)
     Light.point(32, 34, 44, 16777215, 1.0)     # a light centred between the patches
     let toward = lum(22, 34)              # patch facing the light
     let away   = lum(48, 34)              # patch facing away

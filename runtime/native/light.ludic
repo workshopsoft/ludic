@@ -53,7 +53,7 @@ function light_occlude(x: int, y: int, w: int, h: int) -> void {
   rt_light_occ[i + 1] = y
   rt_light_occ[i + 2] = w
   rt_light_occ[i + 3] = h
-  rt_light_occ_n = rt_light_occ_n + 1
+  rt_light_occ_n += 1
 }
 
 # ---- shadow geometry ------------------------------------------------------
@@ -63,7 +63,7 @@ function light_occlude(x: int, y: int, w: int, h: int) -> void {
 function light_orient(ax: int, ay: int, bx: int, by: int, cx: int, cy: int) -> int {
   let v = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax)
   if v > 0 { return 1 }
-  if v < 0 { return 0 - 1 }
+  if v < 0 { return -1 }
   return 0
 }
 
@@ -102,7 +102,7 @@ function light_blocked(lx: int, ly: int, px: int, py: int) -> bool {
     if light_seg_cross(lx, ly, px, py, x1, y0, x1, y1) { return true }   # right
     if light_seg_cross(lx, ly, px, py, x1, y1, x0, y1) { return true }   # bottom
     if light_seg_cross(lx, ly, px, py, x0, y1, x0, y0) { return true }   # left
-    k = k + 1
+    k += 1
   }
   return false
 }
@@ -135,7 +135,7 @@ function light_fsqrt(v: fixed) -> fixed {
 var rt_light_falloff: int  = 1     # brightness ramp exponent: 1 linear, 2 quadratic, 3 cubic…
 var rt_light_soft:    int  = 0     # penumbra radius in px (0 = hard single-sample shadow)
 var rt_light_gel:     int  = 0     # outer gel colour 0x00RRGGBB (used only when rt_light_gel_on)
-var rt_light_gel_on:  bool = false # gel active? off = a flat single-colour light
+var rt_light_gel_on:  bool = false  # gel active? off = a flat single-colour light
 var rt_light_h:       int  = 64    # virtual light height above the surface, for normal-map N·L
 
 function light_set_falloff(exp: int) -> void {
@@ -163,7 +163,7 @@ function light_clear_normals() -> void {
   if rt_light_nrm == null { return }
   let n = rt_fbw * rt_fbh
   var i = 0
-  while i < n { rt_light_nrm[i] = 0;  i = i + 1 }
+  while i < n { rt_light_nrm[i] = 0;  i += 1 }
 }
 
 # stamp a rectangular region's surface normal. nx, ny are the normal's x/y as a
@@ -182,10 +182,10 @@ function light_normal_rect(x: int, y: int, w: int, h: int, nx: fixed, ny: fixed)
       var px = x
       while px < x + w {
         if (px >= 0) and (px < rt_fbw) { rt_light_nrm[py * rt_fbw + px] = packed }
-        px = px + 1
+        px += 1
       }
     }
-    py = py + 1
+    py += 1
   }
 }
 
@@ -220,7 +220,7 @@ function light_atan2_deg(y: int, x: int) -> int {
 # smallest absolute difference between two whole-degree angles, 0..180.
 function light_ang_diff(a: int, b: int) -> int {
   var d = a - b
-  if d < 0 { d = 0 - d }
+  if d < 0 { d = -d }
   if d > 180 { d = 360 - d }
   return d
 }
@@ -231,7 +231,7 @@ function light_pow_t(t: fixed, exp: int) -> fixed {
   if exp <= 1 { return t }
   var r = t
   var i = 1
-  while i < exp { r = r * t;  i = i + 1 }
+  while i < exp { r *= t;  i += 1 }
   return r
 }
 
@@ -246,11 +246,11 @@ function light_vis(cx: int, cy: int, px: int, py: int) -> fixed {
   }
   let s = rt_light_soft
   var hit = 0
-  if not light_blocked(cx,     cy,     px, py) { hit = hit + 1 }
-  if not light_blocked(cx + s, cy,     px, py) { hit = hit + 1 }
-  if not light_blocked(cx - s, cy,     px, py) { hit = hit + 1 }
-  if not light_blocked(cx,     cy + s, px, py) { hit = hit + 1 }
-  if not light_blocked(cx,     cy - s, px, py) { hit = hit + 1 }
+  if not light_blocked(cx,     cy,     px, py) { hit += 1 }
+  if not light_blocked(cx + s, cy,     px, py) { hit += 1 }
+  if not light_blocked(cx - s, cy,     px, py) { hit += 1 }
+  if not light_blocked(cx,     cy + s, px, py) { hit += 1 }
+  if not light_blocked(cx,     cy - s, px, py) { hit += 1 }
   return fixed(hit) / fixed(5)
 }
 
@@ -297,7 +297,7 @@ function light_ambient(color: int) -> void {
     let ng = (((cur >> 8) & 255) * ag) / 255
     let nb = ((cur & 255) * ab) / 255
     rt_fb[i] = (nr << 16) | (ng << 8) | nb
-    i = i + 1
+    i += 1
   }
 }
 
@@ -368,17 +368,17 @@ function light_emit(cx: int, cy: int, radius: int, color: int, energy: fixed, di
             }
           }
         }
-        px = px + 1
+        px += 1
       }
     }
-    py = py + 1
+    py += 1
   }
 }
 
 # a radial (omnidirectional) point light — the original short-signature call,
 # now a thin wrapper over light_emit with the cone disabled.
 function light_point(cx: int, cy: int, radius: int, color: int, energy: fixed) -> void {
-  light_emit(cx, cy, radius, color, energy, 0, 0 - 1)
+  light_emit(cx, cy, radius, color, energy, 0, -1)
 }
 
 # a cone / spot light aimed at `direction` degrees (0 = +x, CCW) with a half-angle
@@ -396,7 +396,7 @@ function light_spot(cx: int, cy: int, radius: int, color: int, energy: fixed, di
 function light_time_of_day(t: fixed) -> void {
   # day factor 0..1: 0 at midnight, 1 at noon (triangle over the day).
   var day = t * fixed(2)                    # 0..2 across the day
-  if day > fixed(1) { day = fixed(2) - day } # fold 0.5..1 back down: peak at noon
+  if day > fixed(1) { day = fixed(2) - day }  # fold 0.5..1 back down: peak at noon
   if day < 0 { day = fixed(0) }
   # night tint 0x14142a (deep blue) -> day 0xffffff, per channel.
   let nr = 20;   let ng = 20;   let nb = 42

@@ -52,11 +52,11 @@ program Reflect {
         let fc = Reflect.field_count(p)
         var f = 0
         while f < fc {
-          total = total + Reflect.get(e, p, f)
-          f = f + 1
+          total += Reflect.get(e, p, f)
+          f += 1
         }
       }
-      p = p + 1
+      p += 1
     }
     if total == 327697 { print(17) }              # 7 + 10 + 131072 + 196608
 

@@ -46,7 +46,7 @@ function audio_define(name: pointer, path: pointer) -> int {
   if snd_bank_n < AUDIO_CAP {
     snd_bank_name[snd_bank_n] = name
     snd_bank_id[snd_bank_n] = id
-    snd_bank_n = snd_bank_n + 1
+    snd_bank_n += 1
   }
   return id
 }
@@ -56,7 +56,7 @@ function audio_named(name: pointer) -> int {
   var i = 0
   while i < snd_bank_n {
     if snd_bank_name[i] == name { return snd_bank_id[i] }
-    i = i + 1
+    i += 1
   }
   return 0
 }
@@ -82,7 +82,7 @@ function audio_load(path: pointer) -> int {
       snd_tab[i] = p
       return i + 1
     }
-    i = i + 1
+    i += 1
   }
   return 0
 }
@@ -132,7 +132,7 @@ function audio_stop_all() -> void {
   var i = 0
   while i < AUDIO_CAP {
     if snd_tab[i] != null { snd_stop(snd_tab[i]) }
-    i = i + 1
+    i += 1
   }
   snd_music = 0
 }
@@ -146,7 +146,7 @@ function audio_volume(v: fixed) -> void {
   var i = 0
   while i < AUDIO_CAP {
     if snd_tab[i] != null { snd_set_volume(snd_tab[i], v) }
-    i = i + 1
+    i += 1
   }
 }
 
@@ -158,7 +158,7 @@ function audio_pitch(v: fixed) -> void {
   var i = 0
   while i < AUDIO_CAP {
     if snd_tab[i] != null { snd_set_rate(snd_tab[i], v) }
-    i = i + 1
+    i += 1
   }
 }
 

@@ -24,8 +24,8 @@ namespace Prefs {
 
   internal function find(key: pointer) -> int {
     var i = 0
-    while i < prefs_n { if prefs_names[i] == key { return i };  i = i + 1 }
-    return 0 - 1
+    while i < prefs_n { if prefs_names[i] == key { return i };  i += 1 }
+    return -1
   }
 
   export function get(key: pointer, fallback: int) -> int {
@@ -49,7 +49,7 @@ namespace Prefs {
       if prefs_n >= PREFS_MAX { return }
       i = prefs_n
       prefs_names[i] = key
-      prefs_n = prefs_n + 1
+      prefs_n += 1
     }
     prefs_vals[i] = value
   }
@@ -71,18 +71,18 @@ namespace Prefs {
   # digits after `=` on one line -> an int (a leading '-' negates)
   internal function parse_line(buf: pointer, from: int, to: int) -> void {
     var eq = from
-    while (eq < to) and (buf[eq] != 61) { eq = eq + 1 }          # '='
+    while (eq < to) and (buf[eq] != '=') { eq += 1 }          # '='
     if eq >= to { return }
     let key = bytes(eq - from + 1)
     var k = 0
-    while k < eq - from { key[k] = buf[from + k];  k = k + 1 }
+    while k < eq - from { key[k] = buf[from + k];  k += 1 }
     key[eq - from] = 0
     var v = 0
     var neg = false
     var p = eq + 1
-    if (p < to) and (buf[p] == 45) { neg = true;  p = p + 1 }   # '-'
-    while (p < to) and (buf[p] >= 48) and (buf[p] <= 57) { v = v * 10 + (buf[p] - 48);  p = p + 1 }
-    if neg { v = 0 - v }
+    if (p < to) and (buf[p] == '-') { neg = true;  p += 1 }   # '-'
+    while (p < to) and (buf[p] >= '0') and (buf[p] <= '9') { v = v * 10 + (buf[p] - 48);  p += 1 }
+    if neg { v = -v }
     set(key, v)
   }
 
@@ -94,15 +94,15 @@ namespace Prefs {
     var start = 0
     var i = 0
     while buf[i] != 0 {
-      if buf[i] == 10 { parse_line(buf, start, i);  start = i + 1 }   # newline
-      i = i + 1
+      if buf[i] == '\n' { parse_line(buf, start, i);  start = i + 1 }   # newline
+      i += 1
     }
     if i > start { parse_line(buf, start, i) }
   }
 
   internal function write_text(f: pointer, s: pointer) -> void {
     var n = 0
-    while s[n] != 0 { n = n + 1 }
+    while s[n] != 0 { n += 1 }
     file_write(f, s, n)
   }
 
@@ -114,7 +114,7 @@ namespace Prefs {
     var i = 0
     while i < prefs_n {
       write_text(f, `{prefs_names[i]}={string(prefs_vals[i])}\n`)
-      i = i + 1
+      i += 1
     }
     file_close(f)
   }

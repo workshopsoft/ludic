@@ -40,7 +40,7 @@ program TiledP6 {
     var i = 0
     while i < Value.count(csv) {
       if Value.as_int(Value.at(csv, i)) != Value.as_int(Value.at(zstd, i)) { same = 0 }
-      i = i + 1
+      i += 1
     }
     if same == 1 { print(12) }
   }

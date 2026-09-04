@@ -14,7 +14,7 @@ program Numeric {
     if Huge.str(Huge.add(Huge.from(1000000000), Huge.from(1))) == "1.00e9" { print(6) }  # +1 negligible
     if Huge.cmp(Huge.from(1000000000), Huge.from(1000000)) == 1 { print(7) }
     if Huge.exp(Huge.mul(Huge.from(1000000), Huge.from(1000000))) == 12 { print(8) }
-    if Huge.str(Huge.from(0 - 42)) == "-4.20e1" { print(9) }
+    if Huge.str(Huge.from(-42)) == "-4.20e1" { print(9) }
     if Huge.str(Huge.from(0)) == "0" { print(10) }
 
     # --- Angle: wrapping radians (built on the deterministic Math.*) ---

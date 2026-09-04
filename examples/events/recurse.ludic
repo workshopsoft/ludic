@@ -11,7 +11,7 @@ program Recurse {
   event Ping { }
   event Pong { }
 
-  @On(Ping) handler A { n = n + 1; emit Pong() }   # each Ping deepens by one Pong
+  @On(Ping) handler A { n += 1; emit Pong() }   # each Ping deepens by one Pong
   @On(Pong) handler B { emit Ping() }              # ...and each Pong by one Ping
 
   entry {

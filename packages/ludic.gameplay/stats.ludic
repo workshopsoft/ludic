@@ -89,21 +89,11 @@ model ModifierFx { Modifier }
   }
 }
 
-# map a stat code to the matching Stats field name.
-function stat_field(stat: int) -> pointer {
-  if stat == 0 { return "max_hp" }
-  if stat == 1 { return "atk" }
-  if stat == 2 { return "def" }
-  if stat == 3 { return "spd" }
-  if stat == 4 { return "max_mp" }
-  return "atk"
-}
-
 # Stats.base(e, stat) — the raw stored field, no modifiers.
 @Namespace(Stats) function stats_base(e: int, stat: int) -> int {
   let P = World.prop_id("Stats")
   if P < 0 { return 0 }
-  let f = World.field_id(P, stat_field(stat))
+  let f = World.field_id(P, stats_field_name(stat))
   if f < 0 { return 0 }
   return World.get(e, P, f)
 }
@@ -123,7 +113,7 @@ function stat_field(stat: int) -> pointer {
   while m >= 0 {
     if (World.get(m, P, ft) == e) and (World.get(m, P, fs) == stat) {
       let amt = World.get(m, P, fa)
-      if World.get(m, P, fo) == 1 { pct = pct + amt } else { flat = flat + amt }
+      if World.get(m, P, fo) == 1 { pct += amt } else { flat += amt }
     }
     m = World.query_next(P, m + 1)
   }
@@ -133,7 +123,7 @@ function stat_field(stat: int) -> pointer {
 # Stats.modify(target, stat, op, amount, ttl) — push a modifier onto the stack.
 @Namespace(Stats) function stats_modify(target: int, stat: int, op: int, amount: int, ttl: int) -> int {
   let m = World.model_id("ModifierFx")
-  if m < 0 { return 0 - 1 }
+  if m < 0 { return -1 }
   let e = World.spawn(m)
   let P = World.prop_id("Modifier")
   World.set(e, P, World.field_id(P, "target"), target)

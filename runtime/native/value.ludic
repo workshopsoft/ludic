@@ -45,7 +45,7 @@ function value_object() -> Val { return value_new(6) }
 function value_add(list: Val, item: Val) -> Val { push(list.kids, item); return list }
 function value_put(obj: Val, key: pointer, item: Val) -> Val {
   var i = 0
-  while i < len(obj.keys) { if obj.keys[i] == key { obj.kids[i] = item; return obj };  i = i + 1 }
+  while i < len(obj.keys) { if obj.keys[i] == key { obj.kids[i] = item; return obj };  i += 1 }
   push(obj.keys, key);  push(obj.kids, item)
   return obj
 }
@@ -65,12 +65,12 @@ function value_key_at(obj: Val, i: int) -> pointer {
 }
 function value_get(obj: Val, key: pointer) -> Val {
   var i = 0
-  while i < len(obj.keys) { if obj.keys[i] == key { return obj.kids[i] };  i = i + 1 }
+  while i < len(obj.keys) { if obj.keys[i] == key { return obj.kids[i] };  i += 1 }
   return value_null()
 }
 function value_has(obj: Val, key: pointer) -> int {
   var i = 0
-  while i < len(obj.keys) { if obj.keys[i] == key { return 1 };  i = i + 1 }
+  while i < len(obj.keys) { if obj.keys[i] == key { return 1 };  i += 1 }
   return 0
 }
 
@@ -82,11 +82,11 @@ function json_quote(s: pointer) -> pointer {
   let n = len(s)
   while i < n {
     let c = s[i]
-    if c == 34 { out = out + "\\\"" }
-    else { if c == 92 { out = out + "\\\\" }
-    else { if c == 10 { out = out + "\\n" }
-    else { out = out + s[i..i + 1] } } }
-    i = i + 1
+    if c == '"' { out += "\\\"" }
+    else { if c == '\\' { out += "\\\\" }
+    else { if c == '\n' { out += "\\n" }
+    else { out += s[i..i + 1] } } }
+    i += 1
   }
   return out + "\""
 }
@@ -99,14 +99,14 @@ function json_quote(s: pointer) -> pointer {
 function json_fixed_str(raw: int) -> pointer {
   var a = raw
   var sign = ""
-  if a < 0 { sign = "-";  a = 0 - a }
+  if a < 0 { sign = "-";  a = -a }
   let ip = a / 65536
   var frac = a % 65536
   if frac == 0 { return sign + string(ip) + ".0" }
   var fs = ""
   while frac != 0 {
-    frac = frac * 10
-    fs = fs + string(frac / 65536)
+    frac *= 10
+    fs += string(frac / 65536)
     frac = frac % 65536
   }
   return sign + string(ip) + "." + fs
@@ -122,18 +122,18 @@ function json_encode(v: Val) -> pointer {
     var out = "["
     var i = 0
     while i < len(v.kids) {
-      if i > 0 { out = out + "," }
-      out = out + json_encode(v.kids[i])
-      i = i + 1
+      if i > 0 { out += "," }
+      out += json_encode(v.kids[i])
+      i += 1
     }
     return out + "]"
   }
   var out = "{"
   var i = 0
   while i < len(v.keys) {
-    if i > 0 { out = out + "," }
+    if i > 0 { out += "," }
     out = out + json_quote(v.keys[i]) + ":" + json_encode(v.kids[i])
-    i = i + 1
+    i += 1
   }
   return out + "}"
 }
@@ -147,7 +147,7 @@ property JP { s: pointer = null, i: int = 0, n: int = 0 }
 function jp_skip_ws(p: JP) -> void {
   while p.i < p.n {
     let c = p.s[p.i]
-    if c == 32 or c == 9 or c == 10 or c == 13 { p.i = p.i + 1 }
+    if c == ' ' or c == '\t' or c == '\n' or c == '\r' { p.i += 1 }
     else { return }
   }
 }
@@ -162,33 +162,33 @@ function jp_value(p: JP) -> Val {
   jp_skip_ws(p)
   if p.i >= p.n { return value_null() }
   let c = p.s[p.i]
-  if c == 123 { return jp_object(p) }              # '{'
-  if c == 91 { return jp_list(p) }                 # '['
-  if c == 34 { return value_str(jp_string(p)) }    # '"'
-  if c == 116 { p.i = p.i + 4;  return value_bool(1) }   # true
-  if c == 102 { p.i = p.i + 5;  return value_bool(0) }   # false
-  if c == 110 { p.i = p.i + 4;  return value_null() }    # null
+  if c == '{' { return jp_object(p) }              # '{'
+  if c == '[' { return jp_list(p) }                 # '['
+  if c == '"' { return value_str(jp_string(p)) }    # '"'
+  if c == 't' { p.i += 4;  return value_bool(1) }   # true
+  if c == 'f' { p.i += 5;  return value_bool(0) }   # false
+  if c == 'n' { p.i += 4;  return value_null() }    # null
   return jp_number(p)
 }
 
 # read a quoted string (cursor on the opening quote) -> the unescaped contents.
 function jp_string(p: JP) -> pointer {
-  p.i = p.i + 1                                    # skip opening quote
+  p.i += 1                                    # skip opening quote
   var out = ""
   while p.i < p.n {
     let c = p.s[p.i]
-    if c == 34 { p.i = p.i + 1;  return out }       # closing quote
-    if c == 92 {                                    # escape
-      p.i = p.i + 1
+    if c == '"' { p.i += 1;  return out }       # closing quote
+    if c == '\\' {                                    # escape
+      p.i += 1
       if p.i < p.n {
         let e = p.s[p.i]
-        if e == 110 { out = out + "\n" }
-        else { out = out + p.s[p.i..p.i + 1] }      # \" \\ \/ -> the literal char
-        p.i = p.i + 1
+        if e == 'n' { out += "\n" }
+        else { out += p.s[p.i..p.i + 1] }      # \" \\ \/ -> the literal char
+        p.i += 1
       }
     } else {
-      out = out + p.s[p.i..p.i + 1]
-      p.i = p.i + 1
+      out += p.s[p.i..p.i + 1]
+      p.i += 1
     }
   }
   return out
@@ -197,18 +197,18 @@ function jp_string(p: JP) -> pointer {
 # read a number; a '.' makes it a fixed node, otherwise an int node.
 function jp_number(p: JP) -> Val {
   var neg = 0
-  if p.i < p.n and p.s[p.i] == 45 { neg = 1;  p.i = p.i + 1 }   # '-'
+  if p.i < p.n and p.s[p.i] == '-' { neg = 1;  p.i += 1 }   # '-'
   var ip = 0
-  while p.i < p.n and p.s[p.i] >= 48 and p.s[p.i] <= 57 {
+  while p.i < p.n and p.s[p.i] >= '0' and p.s[p.i] <= '9' {
     ip = ip * 10 + (p.s[p.i] - 48)
-    p.i = p.i + 1
+    p.i += 1
   }
-  if p.i < p.n and p.s[p.i] == 46 {                # '.', a fixed
-    p.i = p.i + 1
+  if p.i < p.n and p.s[p.i] == '.' {                # '.', a fixed
+    p.i += 1
     let digits = new []int
-    while p.i < p.n and p.s[p.i] >= 48 and p.s[p.i] <= 57 {
+    while p.i < p.n and p.s[p.i] >= '0' and p.s[p.i] <= '9' {
       push(digits, p.s[p.i] - 48)
-      p.i = p.i + 1
+      p.i += 1
     }
     # exact inverse of json_fixed_str's generation: fold the digits back from the
     # last, frac_{i-1} = (d_i*65536 + frac_i)/10. Every intermediate stays < 2^16*10,
@@ -218,49 +218,49 @@ function jp_number(p: JP) -> Val {
     var di = len(digits) - 1
     while di >= 0 {
       frac = (digits[di] * 65536 + frac) / 10
-      di = di - 1
+      di -= 1
     }
     var raw = ip * 65536 + frac
-    if neg != 0 { raw = 0 - raw }
+    if neg != 0 { raw = -raw }
     return value_fixed(raw)
   }
-  if neg != 0 { ip = 0 - ip }
+  if neg != 0 { ip = -ip }
   return value_int(ip)
 }
 
 function jp_list(p: JP) -> Val {
   let out = value_list()
-  p.i = p.i + 1                                    # '['
+  p.i += 1                                    # '['
   jp_skip_ws(p)
-  if p.i < p.n and p.s[p.i] == 93 { p.i = p.i + 1;  return out }   # empty ']'
+  if p.i < p.n and p.s[p.i] == ']' { p.i += 1;  return out }   # empty ']'
   while p.i < p.n {
     push(out.kids, jp_value(p))
     jp_skip_ws(p)
-    if p.i < p.n and p.s[p.i] == 44 { p.i = p.i + 1;  continue }   # ','
+    if p.i < p.n and p.s[p.i] == ',' { p.i += 1;  continue }   # ','
     break
   }
   jp_skip_ws(p)
-  if p.i < p.n and p.s[p.i] == 93 { p.i = p.i + 1 }
+  if p.i < p.n and p.s[p.i] == ']' { p.i += 1 }
   return out
 }
 
 function jp_object(p: JP) -> Val {
   let out = value_object()
-  p.i = p.i + 1                                    # '{'
+  p.i += 1                                    # '{'
   jp_skip_ws(p)
-  if p.i < p.n and p.s[p.i] == 125 { p.i = p.i + 1;  return out }  # empty '}'
+  if p.i < p.n and p.s[p.i] == '}' { p.i += 1;  return out }  # empty '}'
   while p.i < p.n {
     jp_skip_ws(p)
     let key = jp_string(p)
     jp_skip_ws(p)
-    if p.i < p.n and p.s[p.i] == 58 { p.i = p.i + 1 }             # ':'
+    if p.i < p.n and p.s[p.i] == ':' { p.i += 1 }             # ':'
     push(out.keys, key)
     push(out.kids, jp_value(p))
     jp_skip_ws(p)
-    if p.i < p.n and p.s[p.i] == 44 { p.i = p.i + 1;  continue }   # ','
+    if p.i < p.n and p.s[p.i] == ',' { p.i += 1;  continue }   # ','
     break
   }
   jp_skip_ws(p)
-  if p.i < p.n and p.s[p.i] == 125 { p.i = p.i + 1 }
+  if p.i < p.n and p.s[p.i] == '}' { p.i += 1 }
   return out
 }

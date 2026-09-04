@@ -34,9 +34,9 @@ program NpcAiDemo {
   @OnSpawn(Dummy) handler DInit { }
 
   var spotted: int = 0
-  @On(TargetSpotted) handler OnSpot { spotted = spotted + 1 }
+  @On(TargetSpotted) handler OnSpot { spotted += 1 }
 
-  function tick_n(n: int) -> void { var i = 0;  while i < n { tick_fixed();  i = i + 1 } }
+  function tick_n(n: int) -> void { var i = 0;  while i < n { tick_fixed();  i += 1 } }
   function bi(b: bool) -> int { if b { return 1 };  return 0 }
   function gx(e: int) -> int { let P = World.prop_id("Position");  return World.get(e, P, World.field_id(P, "x")) }
   function gy(e: int) -> int { let P = World.prop_id("Position");  return World.get(e, P, World.field_id(P, "y")) }
@@ -52,7 +52,7 @@ program NpcAiDemo {
     let PBr = World.prop_id("Brain")
     var e = World.query_next(PS, 0)
     while e >= 0 { if World.has(e, PBr) == 0 { return e };  e = World.query_next(PS, e + 1) }
-    return 0 - 1
+    return -1
   }
 
   entry {
@@ -102,7 +102,7 @@ program NpcAiDemo {
     # ---- E. companion follower advances toward its leader ------------------
     spawn Ally { Position { x: 40, y: 40 }, Collider { w: 12, h: 12 },
                  TopDown { move_speed: 3 }, Faction { id: 2 }, Stats { hp: 30, max_hp: 30 },
-                 Brain { model: 0 }, Follower { leader: 0 - 1, distance: 24 } }
+                 Brain { model: 0 }, Follower { leader: -1, distance: 24 } }
     # the ally is the Brain+Follower entity that isn't the enemy
     var ally = World.query_next(PBr, 0)
     while (ally >= 0) and (World.has(ally, World.prop_id("Follower")) == 0) { ally = World.query_next(PBr, ally + 1) }

@@ -57,17 +57,17 @@ function esys_sprite() -> void {
   let f_atlas  = World.field_id(P, "atlas")
 
   let SA = World.prop_id("SpriteAnim")
-  var f_frame = 0 - 1
+  var f_frame = -1
   if SA >= 0 { f_frame = World.field_id(SA, "frame") }
   let f_move  = World.field_id(P, "move_id")
   let f_face  = World.field_id(P, "face")
   let f_flash = World.field_id(P, "flash")
   let f_blink = World.field_id(P, "blink")
   let TD = World.prop_id("TopDown")
-  var f_wx = 0 - 1;  var f_wy = 0 - 1
+  var f_wx = -1;  var f_wy = -1
   if TD >= 0 { f_wx = World.field_id(TD, "want_x");  f_wy = World.field_id(TD, "want_y") }
   let PB = World.prop_id("Body")
-  var f_vx = 0 - 1;  var f_vy = 0 - 1
+  var f_vx = -1;  var f_vy = -1
   if PB >= 0 { f_vx = World.field_id(PB, "vx");  f_vy = World.field_id(PB, "vy") }
 
   var e = World.query_next(P, 0)
@@ -94,12 +94,12 @@ function esys_sprite() -> void {
       }
       # add the current animation frame when the entity also carries SpriteAnim.
       if (SA >= 0) and (f_frame >= 0) {
-        if World.has(e, SA) != 0 { id = id + World.get(e, SA, f_frame) }
+        if World.has(e, SA) != 0 { id += World.get(e, SA, f_frame) }
       }
       var x = spr_pos(e, 0)
       var y = spr_pos(e, 1)
-      if f_offx >= 0 { x = x + World.get(e, P, f_offx) }
-      if f_offy >= 0 { y = y + World.get(e, P, f_offy) }
+      if f_offx >= 0 { x += World.get(e, P, f_offx) }
+      if f_offy >= 0 { y += World.get(e, P, f_offy) }
       var sc = 1
       if f_scale >= 0 { let sv = World.get(e, P, f_scale);  if sv > 1 { sc = sv } }
       var flip = 0

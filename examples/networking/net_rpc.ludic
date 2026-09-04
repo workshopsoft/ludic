@@ -15,7 +15,7 @@ program NetRpc {
 
   @ToServer event Fire { dir: int = 0 }
   @On(Fire) handler OnFire {
-    for (Log) in query [Log] { Log.hits = Log.hits + dir }
+    for (Log) in query [Log] { Log.hits += dir }
   }
 
   entry {

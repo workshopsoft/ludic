@@ -93,8 +93,8 @@ function esys_bounds() -> void {
           if y < by { y = by;  hity = 1 }
           if y + h > y1 { y = y1 - h;  hity = 1 }
           if pol == BND_BOUNCE {
-            if (hitx == 1) and (f_vx >= 0) { World.set(e, PBody, f_vx, 0 - World.get(e, PBody, f_vx)) }
-            if (hity == 1) and (f_vy >= 0) { World.set(e, PBody, f_vy, 0 - World.get(e, PBody, f_vy)) }
+            if (hitx == 1) and (f_vx >= 0) { World.set(e, PBody, f_vx, -World.get(e, PBody, f_vx)) }
+            if (hity == 1) and (f_vy >= 0) { World.set(e, PBody, f_vy, -World.get(e, PBody, f_vy)) }
           }
         }
         World.set(e, PP, fx, x)

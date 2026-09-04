@@ -45,12 +45,12 @@ program Grid {
       let dx = p[i].x - p[i - 1].x
       let dy = p[i].y - p[i - 1].y
       var ad = dx
-      if ad < 0 { ad = 0 - ad }
+      if ad < 0 { ad = -ad }
       var ay = dy
-      if ay < 0 { ay = 0 - ay }
+      if ay < 0 { ay = -ay }
       if ad + ay != 1 { ok = false }
       if Grid.blocked(p[i].x, p[i].y, '#') { ok = false }
-      i = i + 1
+      i += 1
     }
     if ok { print(9) }
 
@@ -58,7 +58,7 @@ program Grid {
     if len(Grid.a_star(1, 1, 3, 2, '#')) == 0 { print(10) }   # (3,2) is a wall
     if Grid.blocked(3, 2, '#') { print(11) }
     if not Grid.blocked(1, 1, '#') { print(12) }
-    if Grid.blocked(0 - 1, 0, '#') { print(13) }              # out of bounds
+    if Grid.blocked(-1, 0, '#') { print(13) }              # out of bounds
   }
 
   handler Run phase Update { quit() }

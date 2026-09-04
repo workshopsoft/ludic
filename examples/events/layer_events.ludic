@@ -17,7 +17,7 @@ program LayerEvents {
     }
     layer Ctrl {
       handler Drive phase LateUpdate {
-        step = step + 1
+        step += 1
         if step == 1 { disable layer Hud }           # frame 1: hide -> Hidden 2, Draw stops
         if step == 2 { enable layer Hud }            # frame 2: show -> Shown 1, Draw resumes
         if step == 3 { quit() }                      # frame 3: after Draw ran again

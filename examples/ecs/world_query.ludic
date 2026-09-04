@@ -16,8 +16,8 @@ program WorldQuery {
     var sum   = 0
     var e = world_query_next(H, 0)
     while e >= 0 {
-      count = count + 1
-      sum = sum + world_get(e, H, hp)
+      count += 1
+      sum += world_get(e, H, hp)
       e = world_query_next(H, e + 1)
     }
     print(count)   # 2

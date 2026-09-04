@@ -21,7 +21,7 @@ program Errors {
   entry {
     print(checked_div(10, 2))    # 5
     print(clampi(15, 0, 10))     # 10  (above hi)
-    print(clampi(0 - 3, 0, 10))  # 0   (below lo)
+    print(clampi(-3, 0, 10))  # 0   (below lo)
     print(clampi(7, 0, 10))      # 7   (in range)
     print(1)                     # reached: every assertion held
   }

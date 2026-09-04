@@ -26,14 +26,14 @@ function item_ensure() -> void {
 # Item.def(name, stack_max, weight, value) — register an item template. Returns id.
 @Namespace(Item) function item_def(name: pointer, stack_max: int, weight: int, value: int) -> int {
   item_ensure()
-  if item_n >= INV_MAX { return 0 - 1 }
+  if item_n >= INV_MAX { return -1 }
   let id = item_n
   item_stackmax[id] = stack_max;  item_weight[id] = weight;  item_value[id] = value
-  item_n = item_n + 1
+  item_n += 1
   Dict.set(item_reg, name, id)
   return id
 }
-@Namespace(Item) function item_id(name: pointer) -> int { item_ensure();  return Dict.get_or(item_reg, name, 0 - 1) }
+@Namespace(Item) function item_id(name: pointer) -> int { item_ensure();  return Dict.get_or(item_reg, name, -1) }
 @Namespace(Item) function item_value_of(name: pointer) -> int {
   let id = item_id(name);  if id < 0 { return 0 }
   return item_value[id]
@@ -97,7 +97,7 @@ event cancellable ItemUse { e: int = 0, item: int = 0 }           # veto a use (
 @Namespace(Inventory) function inventory_spend_gold(e: int, n: int) -> int {
   let g = inventory_gold(e)
   if g < n { return 0 }
-  inventory_add_gold(e, 0 - n)
+  inventory_add_gold(e, -n)
   return 1
 }
 

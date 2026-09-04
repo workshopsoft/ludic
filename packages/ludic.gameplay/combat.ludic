@@ -53,7 +53,7 @@ var combat_pending: int = 0
   # the attacker's build: damage_pct, then a crit_pct chance to double
   var raw = amount * stats_field(src, "damage_pct", 100) / 100
   let crit = stats_field(src, "crit_pct", 0)
-  if (crit > 0) and Random.chance(percent: crit) { raw = raw * 2;  emit Crit(target: target, src: src) }
+  if (crit > 0) and Random.chance(percent: crit) { raw *= 2;  emit Crit(target: target, src: src) }
   combat_pending = combat_mitigate(target, raw)
   if emit DamageAboutToApply(target: target, src: src, amount: combat_pending) != 0 { return 0 }
   var dmg = combat_pending

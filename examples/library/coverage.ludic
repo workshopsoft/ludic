@@ -16,7 +16,7 @@ program CoverageSpec {
       return 1
     }
     if n < 0 {
-      return 0 - 1
+      return -1
     }
     return 0
   }
@@ -35,7 +35,7 @@ program CoverageSpec {
 
   test "sign covers every branch" {
     expect_eq(sign(7), 1)
-    expect_eq(sign(0 - 3), 0 - 1)
+    expect_eq(sign(-3), -1)
     expect_eq(sign(0), 0)
   }
 

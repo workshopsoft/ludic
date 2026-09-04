@@ -20,6 +20,9 @@
 # ============================================================================
 
 # ---- state ----------------------------------------------------------------
+# where a headless build leaves its last frame (relative to the working directory)
+const HEADLESS_FRAME_PATH: string = "build/out.ppm"
+
 var rt_fb:    words = null     # framebuffer, one i32 (0x00RRGGBB) per pixel
 var rt_fbw:   int = 320
 var rt_fbh:   int = 240
@@ -63,7 +66,7 @@ function rt_init() -> void {
   rt_regs = words(64)
   fill(rt_regs, 0, 64 * 4)
   rt_map = bytes(96 * 64)
-  fill(rt_map, 32, 96 * 64)
+  fill(rt_map, ' ', 96 * 64)
   rt_clip_x1 = rt_fbw
   rt_clip_y1 = rt_fbh
   rt_statusbuf = bytes(96)
@@ -82,7 +85,7 @@ function rt_shutdown() -> void {
     win_close()
     return
   }
-  rt_dump_ppm("build/out.ppm")
+  rt_dump_ppm(HEADLESS_FRAME_PATH)
 }
 
 # ---- framebuffer ----------------------------------------------------------
@@ -153,9 +156,9 @@ function rt_fill_rect(x: int, y: int, w: int, h: int, c: int) -> void {
     while i < x1 {
       if rt_blend == 1 { rt_fb[row + i] = rt_blend_add(rt_fb[row + i], c) }
       else { rt_fb[row + i] = c }
-      i = i + 1
+      i += 1
     }
-    j = j + 1
+    j += 1
   }
 }
 
@@ -169,16 +172,16 @@ function rt_frame_rect(x: int, y: int, w: int, h: int, c: int) -> void {
 # A straight line by Bresenham's algorithm — integer only, any direction.
 function rt_line(x0: int, y0: int, x1: int, y1: int, c: int) -> void {
   var x = x0;  var y = y0
-  let dx = abs(x1 - x0);  let dy = 0 - abs(y1 - y0)
-  var sx = 0 - 1;  if x0 < x1 { sx = 1 }
-  var sy = 0 - 1;  if y0 < y1 { sy = 1 }
+  let dx = abs(x1 - x0);  let dy = -abs(y1 - y0)
+  var sx = -1;  if x0 < x1 { sx = 1 }
+  var sy = -1;  if y0 < y1 { sy = 1 }
   var err = dx + dy
   while true {
     rt_put_px(x, y, c)
     if (x == x1) and (y == y1) { return }
     let e2 = 2 * err
-    if e2 >= dy { err = err + dy;  x = x + sx }
-    if e2 <= dx { err = err + dx;  y = y + sy }
+    if e2 >= dy { err += dy;  x += sx }
+    if e2 <= dx { err += dx;  y += sy }
   }
 }
 
@@ -191,9 +194,9 @@ function rt_circle(cx: int, cy: int, r: int, c: int) -> void {
     rt_put_px(cx - y, cy + x, c);  rt_put_px(cx - x, cy + y, c)
     rt_put_px(cx - x, cy - y, c);  rt_put_px(cx - y, cy - x, c)
     rt_put_px(cx + y, cy - x, c);  rt_put_px(cx + x, cy - y, c)
-    y = y + 1
+    y += 1
     if err < 0 { err = err + 2 * y + 1 }
-    else { x = x - 1;  err = err + 2 * (y - x) + 1 }
+    else { x -= 1;  err = err + 2 * (y - x) + 1 }
   }
 }
 
@@ -201,12 +204,12 @@ function rt_circle(cx: int, cy: int, r: int, c: int) -> void {
 function rt_fill_circle(cx: int, cy: int, r: int, c: int) -> void {
   if r < 0 { return }
   let r2 = r * r
-  var dy = 0 - r
+  var dy = -r
   while dy <= r {
     var dx = 0
-    while (dx + 1) * (dx + 1) + dy * dy <= r2 { dx = dx + 1 }
+    while (dx + 1) * (dx + 1) + dy * dy <= r2 { dx += 1 }
     rt_fill_rect(cx - dx, cy + dy, 2 * dx + 1, 1, c)
-    dy = dy + 1
+    dy += 1
   }
 }
 
@@ -231,9 +234,9 @@ function rt_fill_triangle(x0: int, y0: int, x1: int, y1: int, x2: int, y2: int, 
       let neg = (d0 < 0) or (d1 < 0) or (d2 < 0)
       let pos = (d0 > 0) or (d1 > 0) or (d2 > 0)
       if not (neg and pos) { rt_put_px(px, py, c) }
-      px = px + 1
+      px += 1
     }
-    py = py + 1
+    py += 1
   }
 }
 
@@ -261,18 +264,18 @@ function rt_oval(x: int, y: int, rx: int, ry: int, c: int) -> void {
   rt_oval_pts(x, y, ex, ey, c)
   var p = ry2 - rx2 * ry + rx2 / 4                  # region 1
   while px < py {
-    ex = ex + 1
-    px = px + two_ry2
+    ex += 1
+    px += two_ry2
     if p < 0 { p = p + ry2 + px }
-    else { ey = ey - 1;  py = py - two_rx2;  p = p + ry2 + px - py }
+    else { ey -= 1;  py -= two_rx2;  p = p + ry2 + px - py }
     rt_oval_pts(x, y, ex, ey, c)
   }
   p = ry2 * (ex * 2 + 1) * (ex * 2 + 1) / 4 + rx2 * (ey - 1) * (ey - 1) - rx2 * ry2   # region 2
   while ey > 0 {
-    ey = ey - 1
-    py = py - two_rx2
+    ey -= 1
+    py -= two_rx2
     if p > 0 { p = p + rx2 - py }
-    else { ex = ex + 1;  px = px + two_ry2;  p = p + rx2 - py + px }
+    else { ex += 1;  px += two_ry2;  p = p + rx2 - py + px }
     rt_oval_pts(x, y, ex, ey, c)
   }
 }
@@ -291,7 +294,7 @@ function rt_get_px(x: int, y: int) -> int {
 # glyph (5 wide + 1 gap), matching rt_text's cursor step.
 function rt_measure_text(text: string) -> int {
   var i = 0
-  while text[i] != 0 { i = i + 1 }
+  while text[i] != 0 { i += 1 }
   return i * 6
 }
 
@@ -316,8 +319,8 @@ function rt_camera_follow(x: int, y: int, lerp: fixed) -> void {
   let ty = y - rt_fbh / 2
   let sx = fixed(tx - rt_cam_x) * lerp        # fixed * fixed, then floor to whole pixels
   let sy = fixed(ty - rt_cam_y) * lerp
-  rt_cam_x = rt_cam_x + floor(sx)
-  rt_cam_y = rt_cam_y + floor(sy)
+  rt_cam_x += floor(sx)
+  rt_cam_y += floor(sy)
 }
 
 # Add a random screen shake of up to +/- amount pixels, drawn from the seeded
@@ -325,8 +328,8 @@ function rt_camera_follow(x: int, y: int, lerp: fixed) -> void {
 # amount <= 0 clears it.
 function rt_camera_shake(amount: int) -> void {
   if amount <= 0 { rt_shake_x = 0;  rt_shake_y = 0;  return }
-  rt_shake_x = rt_rng_range(0 - amount, amount)
-  rt_shake_y = rt_rng_range(0 - amount, amount)
+  rt_shake_x = rt_rng_range(-amount, amount)
+  rt_shake_y = rt_rng_range(-amount, amount)
 }
 
 # Camera.shake_for(amount, frames): shake by up to +/- amount pixels for `frames`
@@ -340,7 +343,7 @@ function rt_camera_shake_for(amount: int, frames: int) -> void {
 }
 function rt_camera_tick() -> void {
   if rt_shake_left > 0 {
-    rt_shake_left = rt_shake_left - 1
+    rt_shake_left -= 1
     rt_camera_shake(rt_shake_amount)
     return
   }
@@ -377,11 +380,11 @@ function rt_present() -> void {
 # ---- text -----------------------------------------------------------------
 function rt_glyph(x: int, y: int, ch: int, colour: int, sc: int) -> void {
   var c = ch
-  if c >= 97 {
-    if c <= 122 { c = c - 32 }
+  if c >= 'a' {
+    if c <= 'z' { c -= 32 }
   }
-  if c < 32 { return }
-  if c > 90 { return }
+  if c < ' ' { return }
+  if c > 'Z' { return }
   let base = (c - 32) * 7
   let font = rt_font()
   for row in 0 .. 7 {
@@ -404,38 +407,38 @@ function rt_text(x: int, y: int, s: string, colour: int, sc: int) -> void {
   while ch != 0 {
     rt_glyph(cx, y, ch, colour, sc)
     cx = cx + 6 * sc
-    i = i + 1
+    i += 1
     ch = s[i]
   }
 }
 
 function rt_text_int(x: int, y: int, n: int, colour: int, sc: int) -> void {
   if n == 0 {
-    rt_glyph(x, y, 48, colour, sc)
+    rt_glyph(x, y, '0', colour, sc)
     return
   }
   var v = n
   var cx = x
   if v < 0 {
-    rt_glyph(cx, y, 45, colour, sc)
+    rt_glyph(cx, y, '-', colour, sc)
     cx = cx + 6 * sc
-    v = 0 - v
+    v = -v
   }
   var digits = 0
   var t = v
   while t > 0 {
-    digits = digits + 1
-    t = t / 10
+    digits += 1
+    t /= 10
   }
   var p = digits
   while p > 0 {
     var div = 1
     for k in 1 .. p {
-      div = div * 10
+      div *= 10
     }
     rt_glyph(cx, y, 48 + (v / div) % 10, colour, sc)
     cx = cx + 6 * sc
-    p = p - 1
+    p -= 1
   }
 }
 
@@ -496,7 +499,7 @@ function rt_rng_int(max: int) -> int {
 # a deterministic +1 or -1
 function rt_rng_sign() -> int {
   if rt_rng_chance(50) { return 1 }
-  return 0 - 1
+  return -1
 }
 
 # ---- platform: input ------------------------------------------------------
@@ -509,7 +512,7 @@ function rt_poll() -> int {
     rt_alive = 0
     return 0
   }
-  if c == 113 {          # 'q' quits, as in the headless C platform
+  if c == 'q' {          # 'q' quits, as in the headless C platform
     rt_alive = 0
   }
   return c
@@ -529,8 +532,8 @@ function rt_put_str(buf: pointer, at: int, s: string) -> int {
   var ch = s[0]
   while ch != 0 {
     buf[n] = ch
-    n = n + 1
-    i = i + 1
+    n += 1
+    i += 1
     ch = s[i]
   }
   return n
@@ -538,25 +541,25 @@ function rt_put_str(buf: pointer, at: int, s: string) -> int {
 
 function rt_put_int(buf: pointer, at: int, v: int) -> int {
   if v == 0 {
-    buf[at] = 48
+    buf[at] = '0'
     return at + 1
   }
   var digits = 0
   var t = v
   while t > 0 {
-    digits = digits + 1
-    t = t / 10
+    digits += 1
+    t /= 10
   }
   var n = at
   var p = digits
   while p > 0 {
     var div = 1
     for k in 1 .. p {
-      div = div * 10
+      div *= 10
     }
     buf[n] = 48 + (v / div) % 10
-    n = n + 1
-    p = p - 1
+    n += 1
+    p -= 1
   }
   return n
 }
@@ -604,7 +607,7 @@ var rt_maph: int = 0
 function rt_map_size(w: int, h: int) -> void {
   rt_mapw = clamp(w, 0, 96)
   rt_maph = clamp(h, 0, 64)
-  fill(rt_map, 32, 96 * 64)
+  fill(rt_map, ' ', 96 * 64)
 }
 
 function rt_map_row(y: int, s: string) -> void {
@@ -615,7 +618,7 @@ function rt_map_row(y: int, s: string) -> void {
   while ch != 0 {
     if x >= 96 { return }
     rt_map[y * 96 + x] = ch
-    x = x + 1
+    x += 1
     ch = s[x]
   }
 }
@@ -627,12 +630,12 @@ function rt_map_set(x: int, y: int, glyph: int) -> void {
 }
 function rt_map_fill(glyph: int) -> void {
   var y = 0
-  while y < rt_maph { var x = 0;  while x < rt_mapw { rt_map[y * 96 + x] = glyph;  x = x + 1 };  y = y + 1 }
+  while y < rt_maph { var x = 0;  while x < rt_mapw { rt_map[y * 96 + x] = glyph;  x += 1 };  y += 1 }
 }
 # every cell of the rectangle (x, y, w, h)
 function rt_map_rect(x: int, y: int, w: int, h: int, glyph: int) -> void {
   var yy = y
-  while yy < y + h { var xx = x;  while xx < x + w { rt_map_set(xx, yy, glyph);  xx = xx + 1 };  yy = yy + 1 }
+  while yy < y + h { var xx = x;  while xx < x + w { rt_map_set(xx, yy, glyph);  xx += 1 };  yy += 1 }
 }
 # the outermost ring of cells
 function rt_map_border(glyph: int) -> void {
@@ -648,11 +651,11 @@ function rt_map_random_cell(glyph: int) -> IVec2 {
     let x = rt_rng_range(0, rt_mapw - 1)
     let y = rt_rng_range(0, rt_maph - 1)
     if rt_tile(x, y) == glyph { return IVec2.make(x, y) }
-    tries = tries + 1
+    tries += 1
   }
   var y2 = 0
-  while y2 < rt_maph { var x2 = 0;  while x2 < rt_mapw { if rt_tile(x2, y2) == glyph { return IVec2.make(x2, y2) };  x2 = x2 + 1 };  y2 = y2 + 1 }
-  return IVec2.make(0 - 1, 0 - 1)
+  while y2 < rt_maph { var x2 = 0;  while x2 < rt_mapw { if rt_tile(x2, y2) == glyph { return IVec2.make(x2, y2) };  x2 += 1 };  y2 += 1 }
+  return IVec2.make(-1, -1)
 }
 # a random cell holding `glyph` at least `min_tiles` from `from` (tiles); falls back to any such cell
 function rt_map_random_cell_far(glyph: int, from: IVec2, min_tiles: int) -> IVec2 {
@@ -661,7 +664,7 @@ function rt_map_random_cell_far(glyph: int, from: IVec2, min_tiles: int) -> IVec
   while tries < 40 {
     if not IVec2.within(tile, from, min_tiles - 1) { return tile }
     tile = rt_map_random_cell(glyph)
-    tries = tries + 1
+    tries += 1
   }
   return tile
 }
@@ -696,8 +699,8 @@ function rt_ivec_step(degrees: int) -> IVec2 {
 }
 function rt_angle_diff_degrees(a: int, b: int) -> int {
   var d = (b - a) % 360
-  if d > 180 { d = d - 360 }
-  if d <= 0 - 180 { d = d + 360 }
+  if d > 180 { d -= 360 }
+  if d <= -180 { d += 360 }
   return d
 }
 
@@ -714,18 +717,18 @@ function rt_bar(x: int, y: int, w: int, h: int, value: int, max: int, color: int
 function rt_rng_weighted(weights: []int) -> int {
   var total = 0
   var i = 0
-  while i < len(weights) { if weights[i] > 0 { total = total + weights[i] };  i = i + 1 }
-  if total <= 0 { return 0 - 1 }
+  while i < len(weights) { if weights[i] > 0 { total += weights[i] };  i += 1 }
+  if total <= 0 { return -1 }
   var roll = rt_rng_range(0, total - 1)
   i = 0
   while i < len(weights) {
     if weights[i] > 0 {
       if roll < weights[i] { return i }
-      roll = roll - weights[i]
+      roll -= weights[i]
     }
-    i = i + 1
+    i += 1
   }
-  return 0 - 1
+  return -1
 }
 
 # List.sample(pool, count): `count` picks from an int slice, distinct while the
@@ -735,20 +738,20 @@ function rt_list_sample(pool: []int, count: int) -> []int {
   let n = len(pool)
   var i = 0
   while i < count {
-    if n == 0 { push(out, 0);  i = i + 1;  continue }
+    if n == 0 { push(out, 0);  i += 1;  continue }
     var pick = rt_rng_range(0, n - 1)
     var distinct = n > i
     var tries = 0
     while distinct and (tries < 64) {
       var seen = false
       var j = 0
-      while j < len(out) { if out[j] == pool[pick] { seen = true };  j = j + 1 }
+      while j < len(out) { if out[j] == pool[pick] { seen = true };  j += 1 }
       if not seen { break }
       pick = rt_rng_range(0, n - 1)
-      tries = tries + 1
+      tries += 1
     }
     push(out, pool[pick])
-    i = i + 1
+    i += 1
   }
   return out
 }
@@ -773,7 +776,7 @@ function rt_status(s: string) -> void {
     if i >= 95 { ch = 0 }
     if ch != 0 {
       rt_statusbuf[i] = ch
-      i = i + 1
+      i += 1
       ch = s[i]
     }
   }

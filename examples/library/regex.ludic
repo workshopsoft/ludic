@@ -42,7 +42,7 @@ program Regex {
     var tags = ""
     var cur = Regex.exec("#a #bb #ccc", re)
     while Regex.ok(cur) {
-      tags = tags + Regex.group(cur, 1)
+      tags += Regex.group(cur, 1)
       cur = Regex.next("#a #bb #ccc", re, Regex.end(cur, 0))
     }
     if tags == "abbccc" { print(16) }

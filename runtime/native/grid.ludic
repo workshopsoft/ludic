@@ -15,7 +15,7 @@
 
 property Cell { x: int = 0, y: int = 0 }
 
-function grid_abs(v: int) -> int { if v < 0 { return 0 - v };  return v }
+function grid_abs(v: int) -> int { if v < 0 { return -v };  return v }
 function grid_in_bounds(x: int, y: int) -> bool { return x >= 0 and y >= 0 and x < rt_mapw and y < rt_maph }
 # a cell blocks movement if it is out of bounds or holds the `wall` tile.
 function grid_blocked(x: int, y: int, wall: int) -> bool {
@@ -30,9 +30,9 @@ function grid_line(x0: int, y0: int, x1: int, y1: int) -> []Cell {
   var y = y0
   let dx = grid_abs(x1 - x0)
   let dy = grid_abs(y1 - y0)
-  var sx = 0 - 1
+  var sx = -1
   if x0 < x1 { sx = 1 }
-  var sy = 0 - 1
+  var sy = -1
   if y0 < y1 { sy = 1 }
   var err = dx - dy
   while true {
@@ -41,8 +41,8 @@ function grid_line(x0: int, y0: int, x1: int, y1: int) -> []Cell {
     push(out, c)
     if x == x1 and y == y1 { break }
     let e2 = 2 * err
-    if e2 > 0 - dy { err = err - dy;  x = x + sx }
-    if e2 < dx { err = err + dx;  y = y + sy }
+    if e2 > -dy { err -= dy;  x += sx }
+    if e2 < dx { err += dx;  y += sy }
   }
   return out
 }
@@ -53,7 +53,7 @@ function grid_line_of_sight(x0: int, y0: int, x1: int, y1: int, wall: int) -> bo
   var i = 0
   while i < len(cells) {
     if grid_blocked(cells[i].x, cells[i].y, wall) { return false }
-    i = i + 1
+    i += 1
   }
   return true
 }
@@ -66,17 +66,17 @@ function grid_flood(sx: int, sy: int, wall: int) -> []Cell {
   let n = w * rt_maph
   let seen = bytes(n)
   var i = 0
-  while i < n { seen[i] = 0;  i = i + 1 }
+  while i < n { seen[i] = 0;  i += 1 }
   let qx = words(n)
   let qy = words(n)
   var head = 0
   var tail = 0
-  qx[tail] = sx;  qy[tail] = sy;  tail = tail + 1
+  qx[tail] = sx;  qy[tail] = sy;  tail += 1
   seen[sy * w + sx] = 1
   while head < tail {
     let cx = qx[head]
     let cy = qy[head]
-    head = head + 1
+    head += 1
     let c = new Cell
     c.x = cx;  c.y = cy
     push(out, c)
@@ -90,9 +90,9 @@ function grid_flood(sx: int, sy: int, wall: int) -> []Cell {
       if dir == 3 { ny = cy - 1 }
       if grid_in_bounds(nx, ny) and seen[ny * w + nx] == 0 and not grid_blocked(nx, ny, wall) {
         seen[ny * w + nx] = 1
-        qx[tail] = nx;  qy[tail] = ny;  tail = tail + 1
+        qx[tail] = nx;  qy[tail] = ny;  tail += 1
       }
-      dir = dir + 1
+      dir += 1
     }
   }
   return out
@@ -113,14 +113,14 @@ function path_a_star(x0: int, y0: int, x1: int, y1: int, wall: int) -> []Cell {
   let inopen = bytes(n)
   let closed = bytes(n)
   var i = 0
-  while i < n { g[i] = INF;  came[i] = 0 - 1;  inopen[i] = 0;  closed[i] = 0;  i = i + 1 }
+  while i < n { g[i] = INF;  came[i] = -1;  inopen[i] = 0;  closed[i] = 0;  i += 1 }
   let start = y0 * w + x0
   let goal = y1 * w + x1
   g[start] = 0
   inopen[start] = 1
   var found = false
   while true {
-    var best = 0 - 1
+    var best = -1
     var bestf = INF
     i = 0
     while i < n {
@@ -130,7 +130,7 @@ function path_a_star(x0: int, y0: int, x1: int, y1: int, wall: int) -> []Cell {
         let f = g[i] + grid_abs(cx - x1) + grid_abs(cy - y1)
         if f < bestf { bestf = f;  best = i }
       }
-      i = i + 1
+      i += 1
     }
     if best < 0 { break }
     if best == goal { found = true;  break }
@@ -153,7 +153,7 @@ function path_a_star(x0: int, y0: int, x1: int, y1: int, wall: int) -> []Cell {
           if ng < g[ni] { g[ni] = ng;  came[ni] = best;  inopen[ni] = 1 }
         }
       }
-      dir = dir + 1
+      dir += 1
     }
   }
   if not found { return out }
@@ -169,6 +169,6 @@ function path_a_star(x0: int, y0: int, x1: int, y1: int, wall: int) -> []Cell {
     cur = came[cur]
   }
   var k = len(rev) - 1
-  while k >= 0 { push(out, rev[k]);  k = k - 1 }
+  while k >= 0 { push(out, rev[k]);  k -= 1 }
   return out
 }

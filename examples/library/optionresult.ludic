@@ -12,7 +12,7 @@ program OptionResult {
   }
   # a fallible parse — a value or a message
   function to_digit(c: int) -> result {
-    if c >= 48 and c <= 57 { return ok(c - 48) }   # '0'..'9'
+    if c >= '0' and c <= '9' { return ok(c - 48) }   # '0'..'9'
     return err("not a digit")
   }
   entry {
@@ -20,20 +20,20 @@ program OptionResult {
     let a = some(42)
     if is_some(a) { print(1) }
     if not is_none(a) { print(2) }
-    if unwrap_or(a, 0 - 1) == 42 { print(3) }
+    if unwrap_or(a, -1) == 42 { print(3) }
     let b = none()
     if is_none(b) { print(4) }
-    if unwrap_or(b, 0 - 1) == 0 - 1 { print(5) }
+    if unwrap_or(b, -1) == -1 { print(5) }
     if unwrap_or(slot_of(5), 0) == 50 { print(6) }
-    if is_none(slot_of(0 - 1)) { print(7) }
+    if is_none(slot_of(-1)) { print(7) }
 
     # --- result + try/else ---
     if is_ok(to_digit(55)) { print(8) }
     if is_err(to_digit(120)) { print(9) }
     let d = try to_digit(55) else { 0 }        # '7' -> 7
     if d == 7 { print(10) }
-    let bad = try to_digit(120) else { 0 - 1 } # not a digit -> fallback
-    if bad == 0 - 1 { print(11) }
+    let bad = try to_digit(120) else { -1 }  # not a digit -> fallback
+    if bad == -1 { print(11) }
     let msg = try to_digit(120) else { print(12);  0 }   # else binds `error`
   }
 }

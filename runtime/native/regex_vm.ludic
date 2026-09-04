@@ -43,8 +43,8 @@ function rx_add(list: TList, pc: int, caps: words, sp: int, s: pointer, slen: in
   let t = list.n
   list.pc[t] = pc
   var i = 0
-  while i < rx_nc { list.caps[t * rx_nc + i] = caps[i];  i = i + 1 }
-  list.n = list.n + 1
+  while i < rx_nc { list.caps[t * rx_nc + i] = caps[i];  i += 1 }
+  list.n += 1
 }
 
 # run prog over s (length slen) from startpos; returns caps words or null
@@ -54,7 +54,7 @@ function rx_run(prog: Prog, s: pointer, slen: int, startpos: int) -> words {
   let ncode = prog.code.n / 3
   rx_seen = words(ncode)
   var i = 0
-  while i < ncode { rx_seen[i] = 0;  i = i + 1 }
+  while i < ncode { rx_seen[i] = 0;  i += 1 }
   rx_gen = 0
   var clist = new TList
   clist.pc = words(ncode);  clist.caps = words(ncode * rx_nc);  clist.n = 0
@@ -63,29 +63,29 @@ function rx_run(prog: Prog, s: pointer, slen: int, startpos: int) -> words {
   let wcaps = words(rx_nc)
   var matched: words = null
 
-  rx_gen = rx_gen + 1
+  rx_gen += 1
   i = 0
-  while i < rx_nc { wcaps[i] = 0 - 1;  i = i + 1 }
+  while i < rx_nc { wcaps[i] = -1;  i += 1 }
   rx_add(clist, 0, wcaps, startpos, s, slen)
 
   var sp = startpos
   while true {
     if clist.n == 0 { break }
-    var c = 0 - 1
+    var c = -1
     if sp < slen { c = s[sp] & 255 }
     nlist.n = 0
-    rx_gen = rx_gen + 1
+    rx_gen += 1
     var ti = 0
     var stop = false
     while ti < clist.n and not stop {
       let pc = clist.pc[ti]
       var k = 0
-      while k < rx_nc { wcaps[k] = clist.caps[ti * rx_nc + k];  k = k + 1 }
+      while k < rx_nc { wcaps[k] = clist.caps[ti * rx_nc + k];  k += 1 }
       let op = rx_code[3 * pc]
       if op == OP_CHAR {
         if c >= 0 and c == rx_code[3 * pc + 1] { rx_add(nlist, pc + 1, wcaps, sp + 1, s, slen) }
       } else if op == OP_ANY {
-        if c >= 0 and c != 10 { rx_add(nlist, pc + 1, wcaps, sp + 1, s, slen) }
+        if c >= 0 and c != '\n' { rx_add(nlist, pc + 1, wcaps, sp + 1, s, slen) }
       } else if op == OP_ANYNL {
         if c >= 0 { rx_add(nlist, pc + 1, wcaps, sp + 1, s, slen) }
       } else if op == OP_CLASS {
@@ -93,14 +93,14 @@ function rx_run(prog: Prog, s: pointer, slen: int, startpos: int) -> words {
       } else if op == OP_MATCH {
         if matched == null { matched = words(rx_nc) }
         k = 0
-        while k < rx_nc { matched[k] = wcaps[k];  k = k + 1 }
+        while k < rx_nc { matched[k] = wcaps[k];  k += 1 }
         stop = true
       }
-      ti = ti + 1
+      ti += 1
     }
     let tmp = clist;  clist = nlist;  nlist = tmp
     if sp >= slen { break }
-    sp = sp + 1
+    sp += 1
   }
   return matched
 }
@@ -143,11 +143,11 @@ function regex_next(str: pointer, re: Prog, from: int) -> Match {
 function regex_ok(m: Match) -> bool { return m != null }
 function regex_group_count(m: Match) -> int { if m == null { return 0 };  return m.ng }
 function regex_start(m: Match, n: int) -> int {
-  if m == null or n < 0 or n > m.ng { return 0 - 1 }
+  if m == null or n < 0 or n > m.ng { return -1 }
   return m.caps[2 * n]
 }
 function regex_end(m: Match, n: int) -> int {
-  if m == null or n < 0 or n > m.ng { return 0 - 1 }
+  if m == null or n < 0 or n > m.ng { return -1 }
   return m.caps[2 * n + 1]
 }
 function regex_group(m: Match, n: int) -> pointer {
@@ -157,7 +157,7 @@ function regex_group(m: Match, n: int) -> pointer {
   if a < 0 or b < 0 { return "" }
   let out = bytes(b - a + 1)
   var i = 0
-  while i < b - a { out[i] = m.str[a + i];  i = i + 1 }
+  while i < b - a { out[i] = m.str[a + i];  i += 1 }
   out[b - a] = 0
   return out
 }
@@ -167,7 +167,7 @@ function regex_valid(pattern: pointer) -> bool { return regex_compile(pattern) !
 # repl expands \0..\9 (groups; \0 = whole match) and \\ (a literal backslash).
 function rx_append(out: IVec, s: pointer, a: int, b: int) -> void {
   var i = a
-  while i < b { iv_push(out, s[i] & 255);  i = i + 1 }
+  while i < b { iv_push(out, s[i] & 255);  i += 1 }
 }
 function regex_replace(str: pointer, pattern: pointer, repl: pointer) -> pointer {
   let p = regex_compile(pattern)
@@ -186,16 +186,16 @@ function regex_replace(str: pointer, pattern: pointer, repl: pointer) -> pointer
     # expand replacement
     var i = 0
     while i < rn {
-      if repl[i] == 92 and i + 1 < rn {
+      if repl[i] == '\\' and i + 1 < rn {
         let d = repl[i + 1] & 255
-        if d >= 48 and d <= 57 {
+        if d >= '0' and d <= '9' {
           let g = d - 48
           if g <= p.ngroups { let a = caps[2 * g];  let b = caps[2 * g + 1];  if a >= 0 and b >= 0 { rx_append(out, str, a, b) } }
-          i = i + 2
-        } else if d == 92 { iv_push(out, 92);  i = i + 2 }
-        else { iv_push(out, d);  i = i + 2 }
+          i += 2
+        } else if d == '\\' { iv_push(out, 92);  i += 2 }
+        else { iv_push(out, d);  i += 2 }
       } else {
-        iv_push(out, repl[i] & 255);  i = i + 1
+        iv_push(out, repl[i] & 255);  i += 1
       }
     }
     prev = me
@@ -204,8 +204,7 @@ function regex_replace(str: pointer, pattern: pointer, repl: pointer) -> pointer
   rx_append(out, str, prev, n)                     # trailing text
   let res = bytes(out.n + 1)
   var i = 0
-  while i < out.n { res[i] = out.d[i];  i = i + 1 }
+  while i < out.n { res[i] = out.d[i];  i += 1 }
   res[out.n] = 0
   return res
 }
-

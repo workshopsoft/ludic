@@ -52,13 +52,13 @@ function fx_sparks(x: int, y: int, color: int, count: int) -> void {
     if fx_sn >= FX_MAX_SPARKS { return }
     fx_sx[fx_sn] = x
     fx_sy[fx_sn] = y
-    fx_svx[fx_sn] = rt_rng_range(0 - FX_SPARK_SPEED, FX_SPARK_SPEED)
-    fx_svy[fx_sn] = rt_rng_range(0 - FX_SPARK_SPEED, FX_SPARK_SPEED)
+    fx_svx[fx_sn] = rt_rng_range(-FX_SPARK_SPEED, FX_SPARK_SPEED)
+    fx_svy[fx_sn] = rt_rng_range(-FX_SPARK_SPEED, FX_SPARK_SPEED)
     fx_slife[fx_sn] = FX_SPARK_LIFE + rt_rng_range(0, FX_SPARK_LIFE_JITTER)
     fx_scolor[fx_sn] = color
     fx_ssize[fx_sn] = 1 + rt_rng_range(0, 2)
-    fx_sn = fx_sn + 1
-    i = i + 1
+    fx_sn += 1
+    i += 1
   }
 }
 
@@ -70,7 +70,7 @@ function fx_number(x: int, y: int, value: int, color: int) -> void {
   fx_nvalue[fx_nn] = value
   fx_nlife[fx_nn] = FX_NUMBER_LIFE
   fx_ncolor[fx_nn] = color
-  fx_nn = fx_nn + 1
+  fx_nn += 1
 }
 
 function fx_clear() -> void { fx_sn = 0;  fx_nn = 0 }
@@ -95,16 +95,16 @@ function fx_tick() -> void {
   if not fx_ready { return }
   var i = 0
   while i < fx_sn {
-    fx_sx[i] = fx_sx[i] + fx_svx[i]
-    fx_sy[i] = fx_sy[i] + fx_svy[i]
-    fx_slife[i] = fx_slife[i] - 1
-    if fx_slife[i] <= 0 { fx_drop_spark(i) } else { i = i + 1 }
+    fx_sx[i] += fx_svx[i]
+    fx_sy[i] += fx_svy[i]
+    fx_slife[i] -= 1
+    if fx_slife[i] <= 0 { fx_drop_spark(i) } else { i += 1 }
   }
   i = 0
   while i < fx_nn {
-    fx_nlife[i] = fx_nlife[i] - 1
-    if fx_nlife[i] % 2 == 0 { fx_ny[i] = fx_ny[i] - 1 }
-    if fx_nlife[i] <= 0 { fx_drop_number(i) } else { i = i + 1 }
+    fx_nlife[i] -= 1
+    if fx_nlife[i] % 2 == 0 { fx_ny[i] -= 1 }
+    if fx_nlife[i] <= 0 { fx_drop_number(i) } else { i += 1 }
   }
 }
 
@@ -114,11 +114,11 @@ function fx_draw() -> void {
   var i = 0
   while i < fx_sn {
     rt_fill_rect(fx_sx[i], fx_sy[i], fx_ssize[i], fx_ssize[i], fx_scolor[i])
-    i = i + 1
+    i += 1
   }
   i = 0
   while i < fx_nn {
     rt_text_int(fx_nx[i] - 4, fx_ny[i] - 10, fx_nvalue[i], fx_ncolor[i], 1)
-    i = i + 1
+    i += 1
   }
 }

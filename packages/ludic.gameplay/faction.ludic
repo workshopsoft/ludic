@@ -55,10 +55,10 @@ function fac_ensure() -> void {
 # Faction.id_of(e) — the faction id an entity carries (-1 if it has no Faction).
 @Namespace(Faction) function faction_id_of(e: int) -> int {
   let P = World.prop_id("Faction")
-  if P < 0 { return 0 - 1 }
-  if World.has(e, P) == 0 { return 0 - 1 }
+  if P < 0 { return -1 }
+  if World.has(e, P) == 0 { return -1 }
   let f = World.field_id(P, "id")
-  if f < 0 { return 0 - 1 }
+  if f < 0 { return -1 }
   return World.get(e, P, f)
 }
 

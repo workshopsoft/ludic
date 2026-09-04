@@ -37,11 +37,11 @@ function z_bits(need: int) -> int {
       return 0
     }
     val = (val | (z_src[z_pos] << z_bitcnt))
-    z_pos = z_pos + 1
-    z_bitcnt = z_bitcnt + 8
+    z_pos += 1
+    z_bitcnt += 8
   }
   z_bitbuf = (val >> need)
-  z_bitcnt = z_bitcnt - need
+  z_bitcnt -= need
   return (val & ((1 << need) - 1))
 }
 
@@ -59,7 +59,7 @@ function z_table_build(table: words, lengths: words, n: int) -> void {
   }
   for s in 0 .. n {
     let l = lengths[s]
-    table[l] = table[l] + 1
+    table[l] += 1
   }
   table[0] = 0                 # length 0 means "not present"
   # offset of each length's first symbol
@@ -72,7 +72,7 @@ function z_table_build(table: words, lengths: words, n: int) -> void {
     let l = lengths[s]
     if l != 0 {
       table[16 + offs[l]] = s
-      offs[l] = offs[l] + 1
+      offs[l] += 1
     }
   }
   free(offs)
@@ -88,7 +88,7 @@ function z_decode(table: words) -> int {
     if code - first < count {
       return table[16 + index + (code - first)]
     }
-    index = index + count
+    index += count
     first = ((first + count) << 1)
     code = (code << 1)
   }
@@ -130,14 +130,14 @@ function z_stored(out: pointer, at: int, cap: int) -> int {
   z_bitcnt = 0                        # stored blocks are byte-aligned
   if z_pos + 4 > z_len { return -1 }
   let n = z_src[z_pos] + (z_src[z_pos + 1] << 8)
-  z_pos = z_pos + 4                   # LEN then its one's complement
+  z_pos += 4                   # LEN then its one's complement
   var w = at
   for i in 0 .. n {
     if z_pos >= z_len { return -1 }
     if w >= cap { return -1 }
     out[w] = z_src[z_pos]
-    w = w + 1
-    z_pos = z_pos + 1
+    w += 1
+    z_pos += 1
   }
   return w
 }
@@ -151,7 +151,7 @@ function z_codes(out: pointer, at: int, cap: int, lit: pointer, dist: pointer) -
     if sym < 256 {
       if w >= cap { return -1 }
       out[w] = sym
-      w = w + 1
+      w += 1
     }
     if sym > 256 {
       let s = sym - 257
@@ -164,7 +164,7 @@ function z_codes(out: pointer, at: int, cap: int, lit: pointer, dist: pointer) -
       for k in 0 .. length {
         if w >= cap { return -1 }
         out[w] = out[w - distance]
-        w = w + 1
+        w += 1
       }
     }
     sym = z_decode(lit)
@@ -208,7 +208,7 @@ function z_dynamic_tables(lit: pointer, dist: pointer) -> int {
     if sym < 0 { return 0 }
     if sym < 16 {
       lengths[n] = sym
-      n = n + 1
+      n += 1
     }
     if sym >= 16 {
       var prev = 0
@@ -223,7 +223,7 @@ function z_dynamic_tables(lit: pointer, dist: pointer) -> int {
       for k in 0 .. rep {
         if n < 320 {
           lengths[n] = prev
-          n = n + 1
+          n += 1
         }
       }
     }
@@ -294,14 +294,14 @@ function z_gunzip(src: pointer, len: int, out: pointer, cap: int) -> int {
     pos = pos + 2 + xlen
   }
   if (flg & 8) != 0 {                       # FNAME: NUL-terminated
-    while pos < len and src[pos] != 0 { pos = pos + 1 }
-    pos = pos + 1
+    while pos < len and src[pos] != 0 { pos += 1 }
+    pos += 1
   }
   if (flg & 16) != 0 {                      # FCOMMENT: NUL-terminated
-    while pos < len and src[pos] != 0 { pos = pos + 1 }
-    pos = pos + 1
+    while pos < len and src[pos] != 0 { pos += 1 }
+    pos += 1
   }
-  if (flg & 2) != 0 { pos = pos + 2 }       # FHCRC: 2-byte header CRC
+  if (flg & 2) != 0 { pos += 2 }       # FHCRC: 2-byte header CRC
   if pos + 8 > len { return -1 }
   return z_inflate(offset(src, pos), len - pos - 8, out, cap)
 }

@@ -8,7 +8,7 @@ program Scoped {
   model Unit { Health }
   var fires: int = 0
   event Tick { }
-  @On(Tick) handler OnTick { for (Health) in query [Health, {Unit}] { fires = fires + 1 } }
+  @On(Tick) handler OnTick { for (Health) in query [Health, {Unit}] { fires += 1 } }
 
   entry {
     spawn Unit { Health { hp: 1 } }

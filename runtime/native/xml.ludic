@@ -44,12 +44,12 @@ function xml_child(n: Xml, i: int) -> Xml {
 function xml_attr_count(n: Xml) -> int { return len(n.akeys) }
 function xml_has(n: Xml, key: pointer) -> int {
   var i = 0
-  while i < len(n.akeys) { if n.akeys[i] == key { return 1 };  i = i + 1 }
+  while i < len(n.akeys) { if n.akeys[i] == key { return 1 };  i += 1 }
   return 0
 }
 function xml_attr(n: Xml, key: pointer) -> pointer {
   var i = 0
-  while i < len(n.akeys) { if n.akeys[i] == key { return n.avals[i] };  i = i + 1 }
+  while i < len(n.akeys) { if n.akeys[i] == key { return n.avals[i] };  i += 1 }
   return ""
 }
 # attribute as an integer (decimal, optional leading '-'); `dflt` when absent.
@@ -61,14 +61,14 @@ function xml_attr_int(n: Xml, key: pointer, dflt: int) -> int {
 # the first direct child named `tag`, or the synthetic empty node if none.
 function xml_find(n: Xml, tag: pointer) -> Xml {
   var i = 0
-  while i < len(n.kids) { if n.kids[i].tag == tag { return n.kids[i] };  i = i + 1 }
+  while i < len(n.kids) { if n.kids[i].tag == tag { return n.kids[i] };  i += 1 }
   return xml_new("")
 }
 # count direct children named `tag`.
 function xml_count(n: Xml, tag: pointer) -> int {
   var c = 0
   var i = 0
-  while i < len(n.kids) { if n.kids[i].tag == tag { c = c + 1 };  i = i + 1 }
+  while i < len(n.kids) { if n.kids[i].tag == tag { c += 1 };  i += 1 }
   return c
 }
 
@@ -77,13 +77,13 @@ function xml_atoi(s: pointer) -> int {
   var i = 0
   let n = len(s)
   var neg = 0
-  if i < n and s[i] == 45 { neg = 1;  i = i + 1 }      # '-'
+  if i < n and s[i] == '-' { neg = 1;  i += 1 }      # '-'
   var v = 0
-  while i < n and s[i] >= 48 and s[i] <= 57 {
+  while i < n and s[i] >= '0' and s[i] <= '9' {
     v = v * 10 + (s[i] - 48)
-    i = i + 1
+    i += 1
   }
-  if neg != 0 { return 0 - v }
+  if neg != 0 { return -v }
   return v
 }
 
@@ -97,41 +97,41 @@ function xml_unescape(s: pointer) -> pointer {
   var k = 0
   let m = len(s)
   var amp = 0
-  while k < m { if s[k] == 38 { amp = 1;  k = m } else { k = k + 1 } }
+  while k < m { if s[k] == '&' { amp = 1;  k = m } else { k += 1 } }
   if amp == 0 { return s }
   var out = ""
   var i = 0
   while i < m {
     let c = s[i]
-    if c != 38 {                                       # not '&'
+    if c != '&' {                                       # not '&'
       # copy the run up to the next '&' in one slice
       var j = i
-      while j < m and s[j] != 38 { j = j + 1 }
-      out = out + s[i..j]
+      while j < m and s[j] != '&' { j += 1 }
+      out += s[i..j]
       i = j
     } else {
       # find the ';'
       var j = i + 1
-      while j < m and s[j] != 59 { j = j + 1 }         # ';'
-      if j >= m { out = out + s[i..m];  i = m }
+      while j < m and s[j] != ';' { j += 1 }         # ';'
+      if j >= m { out += s[i..m];  i = m }
       else {
         let ent = s[i + 1..j]
-        if ent == "amp" { out = out + "&" }
-        else { if ent == "lt" { out = out + "<" }
-        else { if ent == "gt" { out = out + ">" }
-        else { if ent == "quot" { out = out + "\"" }
-        else { if ent == "apos" { out = out + "'" }
+        if ent == "amp" { out += "&" }
+        else { if ent == "lt" { out += "<" }
+        else { if ent == "gt" { out += ">" }
+        else { if ent == "quot" { out += "\"" }
+        else { if ent == "apos" { out += "'" }
         else {
-          if len(ent) >= 2 and ent[0] == 35 {          # '#' numeric reference
+          if len(ent) >= 2 and ent[0] == '#' {          # '#' numeric reference
             var code = 0
-            if ent[1] == 120 or ent[1] == 88 {         # '#x' hex
+            if ent[1] == 'x' or ent[1] == 'X' {         # '#x' hex
               var h = 2
-              while h < len(ent) { code = code * 16 + xml_hexval(ent[h]);  h = h + 1 }
+              while h < len(ent) { code = code * 16 + xml_hexval(ent[h]);  h += 1 }
             } else {
               var d = 1
-              while d < len(ent) { code = code * 10 + (ent[d] - 48);  d = d + 1 }
+              while d < len(ent) { code = code * 10 + (ent[d] - 48);  d += 1 }
             }
-            out = out + xml_byte(code & 255)
+            out += xml_byte(code & 255)
           } else {
             out = out + "&" + ent + ";"                # unknown entity, keep literal
           }
@@ -144,9 +144,9 @@ function xml_unescape(s: pointer) -> pointer {
 }
 
 function xml_hexval(c: int) -> int {
-  if c >= 48 and c <= 57 { return c - 48 }
-  if c >= 97 and c <= 102 { return c - 87 }
-  if c >= 65 and c <= 70 { return c - 55 }
+  if c >= '0' and c <= '9' { return c - 48 }
+  if c >= 'a' and c <= 'f' { return c - 87 }
+  if c >= 'A' and c <= 'F' { return c - 55 }
   return 0
 }
 
@@ -158,7 +158,7 @@ function xml_byte(b: int) -> pointer {
   if xml_bytetab == null {
     let t = bytes(257)
     var i = 0
-    while i < 256 { t[i] = i + 1;  i = i + 1 }         # table[i] = byte (i+1), so 0 never appears
+    while i < 256 { t[i] = i + 1;  i += 1 }         # table[i] = byte (i+1), so 0 never appears
     t[256] = 0
     xml_bytetab = t
   }
@@ -168,34 +168,34 @@ function xml_byte(b: int) -> pointer {
 # --- parser -----------------------------------------------------------------
 property XP { s: pointer = null, i: int = 0, n: int = 0 }
 
-function xp_ws(c: int) -> bool { return c == 32 or c == 9 or c == 10 or c == 13 }
+function xp_ws(c: int) -> bool { return c == ' ' or c == '\t' or c == '\n' or c == '\r' }
 
 function xp_skip_ws(p: XP) -> void {
-  while p.i < p.n and xp_ws(p.s[p.i]) { p.i = p.i + 1 }
+  while p.i < p.n and xp_ws(p.s[p.i]) { p.i += 1 }
 }
 
 # skip a `<?...?>`, `<!-- ... -->` or `<!DOCTYPE ...>` at the cursor. Returns true
 # if it consumed one (cursor on '<').
 function xp_skip_misc(p: XP) -> bool {
-  if p.i + 1 >= p.n or p.s[p.i] != 60 { return false }   # '<'
+  if p.i + 1 >= p.n or p.s[p.i] != '<' { return false }   # '<'
   let c = p.s[p.i + 1]
-  if c == 63 {                                           # '<?'  ... '?>'
-    p.i = p.i + 2
-    while p.i + 1 < p.n and not (p.s[p.i] == 63 and p.s[p.i + 1] == 62) { p.i = p.i + 1 }
-    p.i = p.i + 2
+  if c == '?' {                                           # '<?'  ... '?>'
+    p.i += 2
+    while p.i + 1 < p.n and not (p.s[p.i] == '?' and p.s[p.i + 1] == '>') { p.i += 1 }
+    p.i += 2
     return true
   }
-  if c == 33 {                                           # '<!'
-    if p.i + 3 < p.n and p.s[p.i + 2] == 45 and p.s[p.i + 3] == 45 {   # '<!--' comment
-      p.i = p.i + 4
-      while p.i + 2 < p.n and not (p.s[p.i] == 45 and p.s[p.i + 1] == 45 and p.s[p.i + 2] == 62) { p.i = p.i + 1 }
-      p.i = p.i + 3
+  if c == '!' {                                           # '<!'
+    if p.i + 3 < p.n and p.s[p.i + 2] == '-' and p.s[p.i + 3] == '-' {   # '<!--' comment
+      p.i += 4
+      while p.i + 2 < p.n and not (p.s[p.i] == '-' and p.s[p.i + 1] == '-' and p.s[p.i + 2] == '>') { p.i += 1 }
+      p.i += 3
       return true
     }
     # '<!DOCTYPE ...>' or other declaration — skip to the matching '>'
-    p.i = p.i + 2
-    while p.i < p.n and p.s[p.i] != 62 { p.i = p.i + 1 }
-    p.i = p.i + 1
+    p.i += 2
+    while p.i < p.n and p.s[p.i] != '>' { p.i += 1 }
+    p.i += 1
     return true
   }
   return false
@@ -206,8 +206,8 @@ function xp_name(p: XP) -> pointer {
   let start = p.i
   while p.i < p.n {
     let c = p.s[p.i]
-    let ok = (c >= 65 and c <= 90) or (c >= 97 and c <= 122) or (c >= 48 and c <= 57)
-    if ok or c == 95 or c == 45 or c == 58 or c == 46 { p.i = p.i + 1 }
+    let ok = (c >= 'A' and c <= 'Z') or (c >= 'a' and c <= 'z') or (c >= '0' and c <= '9')
+    if ok or c == '_' or c == '-' or c == ':' or c == '.' { p.i += 1 }
     else { break }
   }
   return p.s[start..p.i]
@@ -219,21 +219,21 @@ function xp_attrs(p: XP, node: Xml) -> void {
     xp_skip_ws(p)
     if p.i >= p.n { return }
     let c = p.s[p.i]
-    if c == 62 or c == 47 or c == 63 { return }          # '>' '/' '?'
+    if c == '>' or c == '/' or c == '?' { return }          # '>' '/' '?'
     let key = xp_name(p)
-    if len(key) == 0 { p.i = p.i + 1;  continue }         # stray char, don't stall
+    if len(key) == 0 { p.i += 1;  continue }         # stray char, don't stall
     xp_skip_ws(p)
     var val = ""
-    if p.i < p.n and p.s[p.i] == 61 {                     # '='
-      p.i = p.i + 1
+    if p.i < p.n and p.s[p.i] == '=' {                     # '='
+      p.i += 1
       xp_skip_ws(p)
-      if p.i < p.n and (p.s[p.i] == 34 or p.s[p.i] == 39) {
+      if p.i < p.n and (p.s[p.i] == '"' or p.s[p.i] == '\'') {
         let q = p.s[p.i]
-        p.i = p.i + 1
+        p.i += 1
         let start = p.i
-        while p.i < p.n and p.s[p.i] != q { p.i = p.i + 1 }
+        while p.i < p.n and p.s[p.i] != q { p.i += 1 }
         val = xml_unescape(p.s[start..p.i])
-        p.i = p.i + 1                                     # skip closing quote
+        p.i += 1                                     # skip closing quote
       }
     }
     push(node.akeys, key)
@@ -243,34 +243,34 @@ function xp_attrs(p: XP, node: Xml) -> void {
 
 # parse one element (cursor on its opening '<'). Recurses for children.
 function xp_element(p: XP) -> Xml {
-  p.i = p.i + 1                                           # skip '<'
+  p.i += 1                                           # skip '<'
   let name = xp_name(p)
   let node = xml_new(name)
   xp_attrs(p, node)
   # self-closing '/>'
-  if p.i < p.n and p.s[p.i] == 47 {                       # '/'
-    p.i = p.i + 1
-    if p.i < p.n and p.s[p.i] == 62 { p.i = p.i + 1 }     # '>'
+  if p.i < p.n and p.s[p.i] == '/' {                       # '/'
+    p.i += 1
+    if p.i < p.n and p.s[p.i] == '>' { p.i += 1 }     # '>'
     return node
   }
-  if p.i < p.n and p.s[p.i] == 62 { p.i = p.i + 1 }       # '>'
+  if p.i < p.n and p.s[p.i] == '>' { p.i += 1 }       # '>'
   # content until the matching close tag
   while p.i < p.n {
-    if p.s[p.i] == 60 {                                   # '<'
-      if p.i + 1 < p.n and p.s[p.i + 1] == 47 {           # '</' close
-        p.i = p.i + 2
+    if p.s[p.i] == '<' {                                   # '<'
+      if p.i + 1 < p.n and p.s[p.i + 1] == '/' {           # '</' close
+        p.i += 2
         let cn = xp_name(p)
-        while p.i < p.n and p.s[p.i] != 62 { p.i = p.i + 1 }
-        p.i = p.i + 1                                     # skip '>'
+        while p.i < p.n and p.s[p.i] != '>' { p.i += 1 }
+        p.i += 1                                     # skip '>'
         return node
       }
-      if p.i + 3 < p.n and p.s[p.i + 1] == 33 and p.s[p.i + 2] == 91 {   # '<![' CDATA
+      if p.i + 3 < p.n and p.s[p.i + 1] == '!' and p.s[p.i + 2] == '[' {   # '<![' CDATA
         # <![CDATA[ ... ]]>
-        p.i = p.i + 9                                     # past "<![CDATA["
+        p.i += 9                                     # past "<![CDATA["
         let start = p.i
-        while p.i + 2 < p.n and not (p.s[p.i] == 93 and p.s[p.i + 1] == 93 and p.s[p.i + 2] == 62) { p.i = p.i + 1 }
-        node.text = node.text + p.s[start..p.i]
-        p.i = p.i + 3                                     # past "]]>"
+        while p.i + 2 < p.n and not (p.s[p.i] == ']' and p.s[p.i + 1] == ']' and p.s[p.i + 2] == '>') { p.i += 1 }
+        node.text += p.s[start..p.i]
+        p.i += 3                                     # past "]]>"
       } else {
         if xp_skip_misc(p) { }                            # comment / PI inside content
         else { push(node.kids, xp_element(p)) }
@@ -278,8 +278,8 @@ function xp_element(p: XP) -> Xml {
     } else {
       # character data run up to the next '<'
       let start = p.i
-      while p.i < p.n and p.s[p.i] != 60 { p.i = p.i + 1 }
-      node.text = node.text + xml_unescape(p.s[start..p.i])
+      while p.i < p.n and p.s[p.i] != '<' { p.i += 1 }
+      node.text += xml_unescape(p.s[start..p.i])
     }
   }
   return node
@@ -292,10 +292,10 @@ function xml_parse(s: pointer) -> Xml {
   while p.i < p.n {
     xp_skip_ws(p)
     if p.i >= p.n { break }
-    if p.s[p.i] == 60 {                                   # '<'
+    if p.s[p.i] == '<' {                                   # '<'
       if xp_skip_misc(p) { }                              # prolog / comment / doctype
       else { return xp_element(p) }
-    } else { p.i = p.i + 1 }
+    } else { p.i += 1 }
   }
   return xml_new("")
 }

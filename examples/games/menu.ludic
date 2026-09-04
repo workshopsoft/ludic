@@ -4,6 +4,11 @@
 # and activation. The game only loads a font, opens the UI, and reads clicks.
 program Menu {
 
+  # the macOS system font: the toolchain targets macOS today, and the sample keeps
+  # the repo free of a bundled font
+  const FONT_PATH: string = "/System/Library/Fonts/Supplemental/Arial.ttf"
+  const BACKDROP: int = 0x0e0e16
+
   var title_font: int = 0
 
   ui MainMenu {
@@ -19,22 +24,22 @@ program Menu {
   }
 
   handler Boot phase Start {
-    title_font = font_load("/System/Library/Fonts/Supplemental/Arial.ttf")
-    ui_build()
-    ui_open(UI_MainMenu)
+    title_font = Font.load(FONT_PATH)
+    Ui.build()
+    Ui.open(UI_MainMenu)
   }
 
   handler Nav phase Update {
-    ui_tick(Input.key())
-    if ui_clicked(UI_NewGame)  { ui_set_text(UI_NewGame, "Starting...") }
-    if ui_clicked(UI_Continue) { ui_set_text(UI_Continue, "No save") }
-    if ui_clicked(UI_Options)  { ui_set_text(UI_Options, "Soon (TM)") }
-    if ui_clicked(UI_Quit)     { quit() }
+    Ui.tick(Input.key())
+    if Ui.clicked(UI_NewGame)  { Ui.set_text(UI_NewGame, "Starting...") }
+    if Ui.clicked(UI_Continue) { Ui.set_text(UI_Continue, "No save") }
+    if Ui.clicked(UI_Options)  { Ui.set_text(UI_Options, "Soon (TM)") }
+    if Ui.clicked(UI_Quit)     { quit() }
   }
 
   handler Draw phase Render {
-    Screen.clear(0x0e0e16)
-    ui_render()
+    Screen.clear(BACKDROP)
+    Ui.render()
     Screen.show()
   }
 }

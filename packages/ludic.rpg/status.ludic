@@ -22,7 +22,7 @@ event StatusExpired { target: int = 0, kind: int = 0 }
 # Status.apply(target, kind, amount, interval, ttl) — attach a timed effect.
 @Namespace(Status) function status_apply(target: int, kind: int, amount: int, interval: int, ttl: int) -> int {
   let m = World.model_id("StatusFx")
-  if m < 0 { return 0 - 1 }
+  if m < 0 { return -1 }
   let e = World.spawn(m)
   let P = World.prop_id("Status")
   World.set(e, P, World.field_id(P, "target"), target)

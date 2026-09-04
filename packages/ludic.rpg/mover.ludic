@@ -48,7 +48,7 @@ function mv_body_set(e: int, name: pointer, v: int) -> void {
   let P = World.prop_id("Body");  if P < 0 { return }
   let f = World.field_id(P, name);  if f >= 0 { World.set(e, P, f, v) }
 }
-function mv_sign(a: int) -> int { if a > 0 { return 1 };  if a < 0 { return 0 - 1 };  return 0 }
+function mv_sign(a: int) -> int { if a > 0 { return 1 };  if a < 0 { return -1 };  return 0 }
 
 # is the destination cell walkable? Uses the Solids tilemap when configured,
 # otherwise the whole field is open.
@@ -159,19 +159,19 @@ function mover_free(e: int) -> void {
   let ax = mv_pos(e, "x") + mv_get(e, "facing_x") * step
   let ay = mv_pos(e, "y") + mv_get(e, "facing_y") * step
   let PP = World.prop_id("Position")
-  if PP < 0 { return 0 - 1 }
+  if PP < 0 { return -1 }
   var o = World.query_next(PP, 0)
   while o >= 0 {
     if o != e {
       let ox = World.get(o, PP, World.field_id(PP, "x"))
       let oy = World.get(o, PP, World.field_id(PP, "y"))
       let dx = ox - ax;  let dy = oy - ay
-      var adx = dx;  if adx < 0 { adx = 0 - adx }
-      var ady = dy;  if ady < 0 { ady = 0 - ady }
+      var adx = dx;  if adx < 0 { adx = -adx }
+      var ady = dy;  if ady < 0 { ady = -ady }
       if (adx < step) and (ady < step) { emit Interacted(e: e, target: o);  return o }
     }
     o = World.query_next(PP, o + 1)
   }
-  emit Interacted(e: e, target: 0 - 1)
-  return 0 - 1
+  emit Interacted(e: e, target: -1)
+  return -1
 }

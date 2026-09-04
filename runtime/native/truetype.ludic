@@ -134,23 +134,23 @@ function tt_find_table(d: pointer, base: int, a: int, b: int, c: int, e: int) ->
       }
     }
   }
-  return 0 - 1
+  return -1
 }
 
 # pick the most capable Unicode subtable, as the C loader did
 function tt_pick_cmap(id: int, d: pointer, co: int) -> void {
-  tt_cmap[id] = 0 - 1
+  tt_cmap[id] = -1
   tt_cfmt[id] = 0
   if co < 0 { return }
   let n = tt_u16(d, co + 2)
-  var best = 0 - 1
-  var bestscore = 0 - 1
+  var best = -1
+  var bestscore = -1
   for i in 0 .. n {
     let rec = co + 4 + i * 8
     let plat = tt_u16(d, rec)
     let enc = tt_u16(d, rec + 2)
     let off = tt_u32(d, rec + 4)
-    var score = 0 - 1
+    var score = -1
     if plat == 0 { score = 2 }
     if plat == 0 { if enc == 4 { score = 4 } }
     if plat == 0 { if enc == 6 { score = 4 } }
@@ -167,14 +167,14 @@ function tt_pick_cmap(id: int, d: pointer, co: int) -> void {
 }
 
 function rt_font_load(path: string) -> int {
-  if tt_n >= TT_MAX { return 0 - 1 }
+  if tt_n >= TT_MAX { return -1 }
   let d = rt_read_file(path)
-  if (d == null) { return 0 - 1 }
+  if (d == null) { return -1 }
   let size = rt_file_len
   var base = 0
   # a .ttc collection points at its first font
   if size >= 16 {
-    if d[0] == 116 { if d[1] == 116 { if d[2] == 99 { if d[3] == 102 {
+    if d[0] == 't' { if d[1] == 't' { if d[2] == 'c' { if d[3] == 'f' {
       base = tt_u32(d, 12)
     } } } }
   }
@@ -184,15 +184,15 @@ function rt_font_load(path: string) -> int {
   let loca = tt_find_table(d, base, 108, 111, 99, 97)
   let glyf = tt_find_table(d, base, 103, 108, 121, 102)
   let hmtx = tt_find_table(d, base, 104, 109, 116, 120)
-  if head < 0 { return 0 - 1 }
-  if maxp < 0 { return 0 - 1 }
-  if hhea < 0 { return 0 - 1 }
-  if loca < 0 { return 0 - 1 }
-  if glyf < 0 { return 0 - 1 }
-  if hmtx < 0 { return 0 - 1 }
+  if head < 0 { return -1 }
+  if maxp < 0 { return -1 }
+  if hhea < 0 { return -1 }
+  if loca < 0 { return -1 }
+  if glyf < 0 { return -1 }
+  if hmtx < 0 { return -1 }
 
   let id = tt_n
-  tt_n = tt_n + 1
+  tt_n += 1
   tt_data[id] = d
   tt_size[id] = size
   var upem = tt_u16(d, head + 18)
@@ -275,7 +275,7 @@ function ol_pt(x: fixed, y: fixed, on: int) -> void {
   ol_x[ol_n] = x
   ol_y[ol_n] = y
   ol_on[ol_n] = on
-  ol_n = ol_n + 1
+  ol_n += 1
 }
 
 function tt_glyph_start(id: int, gid: int) -> int {
@@ -314,15 +314,15 @@ function tt_load_outline(id: int, gid: int, a: fixed, b: fixed, c: fixed, e: fix
     var i = 0
     while i < npts {
       let fl = d[p]
-      p = p + 1
+      p += 1
       flags[i] = fl
-      i = i + 1
+      i += 1
       if (fl & 8) != 0 {                  # REPEAT
         var r = d[p]
-        p = p + 1
+        p += 1
         while r > 0 {
-          if i < npts { flags[i] = fl;  i = i + 1 }
-          r = r - 1
+          if i < npts { flags[i] = fl;  i += 1 }
+          r -= 1
         }
       }
     }
@@ -334,10 +334,10 @@ function tt_load_outline(id: int, gid: int, a: fixed, b: fixed, c: fixed, e: fix
       let fl = flags[k]
       if (fl & 2) != 0 {
         let dxv = d[p]
-        p = p + 1
-        if (fl & 16) != 0 { xv = xv + dxv } else { xv = xv - dxv }
+        p += 1
+        if (fl & 16) != 0 { xv += dxv } else { xv -= dxv }
       } else {
-        if (fl & 16) == 0 { xv = xv + tt_i16(d, p);  p = p + 2 }
+        if (fl & 16) == 0 { xv += tt_i16(d, p);  p += 2 }
       }
       xs[k] = xv
     }
@@ -346,10 +346,10 @@ function tt_load_outline(id: int, gid: int, a: fixed, b: fixed, c: fixed, e: fix
       let fl = flags[k]
       if (fl & 4) != 0 {
         let dyv = d[p]
-        p = p + 1
-        if (fl & 32) != 0 { yv = yv + dyv } else { yv = yv - dyv }
+        p += 1
+        if (fl & 32) != 0 { yv += dyv } else { yv -= dyv }
       } else {
-        if (fl & 32) == 0 { yv = yv + tt_i16(d, p);  p = p + 2 }
+        if (fl & 32) == 0 { yv += tt_i16(d, p);  p += 2 }
       }
       ys[k] = yv
     }
@@ -364,7 +364,7 @@ function tt_load_outline(id: int, gid: int, a: fixed, b: fixed, c: fixed, e: fix
       }
       if ol_ne < 256 {
         ol_ends[ol_ne] = ol_n
-        ol_ne = ol_ne + 1
+        ol_ne += 1
       }
       start = last + 1
     }
@@ -378,17 +378,17 @@ function tt_load_outline(id: int, gid: int, a: fixed, b: fixed, c: fixed, e: fix
     while more == 1 {
       let flags = tt_u16(d, p)
       let cgid = tt_u16(d, p + 2)
-      p = p + 4
+      p += 4
       var arg1 = 0
       var arg2 = 0
       if (flags & 1) != 0 {
         arg1 = tt_i16(d, p)
         arg2 = tt_i16(d, p + 2)
-        p = p + 4
+        p += 4
       } else {
         arg1 = tt_i8(d, p)
         arg2 = tt_i8(d, p + 1)
-        p = p + 2
+        p += 2
       }
       var ca = 1.0
       var cb = 0.0
@@ -397,19 +397,19 @@ function tt_load_outline(id: int, gid: int, a: fixed, b: fixed, c: fixed, e: fix
       if (flags & 8) != 0 {
         ca = as_fixed((tt_i16(d, p) << 2))     # F2Dot14 -> Q16.16
         ce = ca
-        p = p + 2
+        p += 2
       }
       if (flags & 64) != 0 {
         ca = as_fixed((tt_i16(d, p) << 2))
         ce = as_fixed((tt_i16(d, p + 2) << 2))
-        p = p + 4
+        p += 4
       }
       if (flags & 128) != 0 {
         ca = as_fixed((tt_i16(d, p) << 2))
         cb = as_fixed((tt_i16(d, p + 2) << 2))
         cc = as_fixed((tt_i16(d, p + 4) << 2))
         ce = as_fixed((tt_i16(d, p + 6) << 2))
-        p = p + 8
+        p += 8
       }
       var odx = dx
       var ody = dy

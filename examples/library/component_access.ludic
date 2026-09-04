@@ -30,7 +30,7 @@ program ComponentAccess {
       Hero.of(player).iframes -= 5
       print(Hero.of(player).iframes)                    # 15
       let hero = Hero.of(player)
-      hero.roll_frames = hero.roll_frames + 1
+      hero.roll_frames += 1
       print(Hero.of(player).roll_frames)                # 10
       print(Position.of(player).x + Position.of(1).x)   # 33
       print(Hero.has(player))                           # 1

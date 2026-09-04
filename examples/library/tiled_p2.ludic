@@ -23,16 +23,16 @@ program TiledP2 {
     var n = 0
     var y = 0
     while y < 10 { var x = 0
-      while x < 16 { if rt_tile(x, y) == 35 { n = n + 1 };  x = x + 1 }
-      y = y + 1 }
+      while x < 16 { if rt_tile(x, y) == 35 { n += 1 };  x += 1 }
+      y += 1 }
     return n
   }
   function grid_hash() -> int {
     var h = 0
     var y = 0
     while y < 10 { var x = 0
-      while x < 16 { h = h * 31 + rt_tile(x, y);  x = x + 1 }
-      y = y + 1 }
+      while x < 16 { h = h * 31 + rt_tile(x, y);  x += 1 }
+      y += 1 }
     return h
   }
 
@@ -75,7 +75,7 @@ program TiledP2 {
     let f_grd = World.field_id(pb, "on_ground")
     let a = World.query_next(pb, 0)
     var i = 0
-    while i < 80 { tick_fixed();  i = i + 1 }
+    while i < 80 { tick_fixed();  i += 1 }
     if World.get(a, pp, f_y) == 112 { print(13) }      # feet rest on the tile floor top (128)
     if World.get(a, pb, f_grd) == 1 { print(14) }
   }

@@ -33,14 +33,14 @@ program PlatformerDemo {
   @OnSpawn(Wall)  handler WallInit { }
 
   var jumps: int = 0
-  @On(JumpPerformed) handler CountJumps { jumps = jumps + 1 }
+  @On(JumpPerformed) handler CountJumps { jumps += 1 }
   # a game rule: forbid the air (double) jump unless a "power" flag is set — pure
   # lever-4 veto, no controller edit.
   var have_power: int = 0
   var vetoed_air: int = 0
   @On(JumpRequested) handler GateAir { if (kind == 2) and (have_power == 0) { vetoed_air = 1; cancel } }
 
-  function tick_n(n: int) -> void { var i = 0;  while i < n { tick_fixed();  i = i + 1 } }
+  function tick_n(n: int) -> void { var i = 0;  while i < n { tick_fixed();  i += 1 } }
   function bi(b: bool) -> int { if b { return 1 };  return 0 }
   function pf_coyote(e: int) -> int {
     let P = World.prop_id("Platformer")
@@ -78,7 +78,7 @@ program PlatformerDemo {
     Platformer.jump(h)
     var top = World.get(h, PP, fy)
     var i = 0
-    while i < 20 { tick_fixed();  let y = World.get(h, PP, fy);  if y < top { top = y };  i = i + 1 }
+    while i < 20 { tick_fixed();  let y = World.get(h, PP, fy);  if y < top { top = y };  i += 1 }
     let rise = floor_y - top                        # px risen at apex (target 64 = 4 tiles)
     print(bi((rise >= 56) and (rise <= 72)))        # 1
     Platformer.hold(h, 0)

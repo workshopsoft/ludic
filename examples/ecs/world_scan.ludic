@@ -19,10 +19,10 @@ program WorldScan {
     var e = 0
     while e < n {
       if world_kind(e) == Um {
-        count = count + 1
-        sum = sum + world_get(e, H, hp)
+        count += 1
+        sum += world_get(e, H, hp)
       }
-      e = e + 1
+      e += 1
     }
     print(count)   # 2
     print(sum)     # 110

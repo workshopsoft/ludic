@@ -15,7 +15,7 @@ function walkable(x: int, y: int) -> bool {
   let c = Map.tile(x, y)
   return c == '.' or c == 'D' or c == 'r' or c == ',' or c == 'S' or c == 'B' or c == 'h'
 }
-function is_confirm(k: int) -> bool { return k == 32 or k == 10 or k == 13 }
+function is_confirm(k: int) -> bool { return k == ' ' or k == '\n' or k == '\r' }
 function enemy_name(et: int) -> string {
   if et == 0 { return "SLIME" }
   if et == 1 { return "SKELETON" }
@@ -70,15 +70,15 @@ function build_dungeon(x: int) -> int {
 function grant_xp(amount: int) -> int {
   for (t) in query [Stats, {Party}] {
     if t.hp > 0 {
-      t.xp = t.xp + amount
+      t.xp += amount
       while t.xp >= t.lvl * 20 {
         t.xp = t.xp - t.lvl * 20
-        t.lvl = t.lvl + 1
-        t.maxhp = t.maxhp + 8
+        t.lvl += 1
+        t.maxhp += 8
         t.hp = t.maxhp
-        t.maxmp = t.maxmp + 2
-        t.atk = t.atk + 2
-        t.def = t.def + 1
+        t.maxmp += 2
+        t.atk += 2
+        t.def += 1
       }
     }
   }

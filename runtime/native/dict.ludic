@@ -40,27 +40,27 @@ function dict_new() -> Dict {
 
 # FNV-1a over the key's bytes -> a non-negative slot index in [0, cap)
 function dict_slot(key: pointer, cap: int) -> int {
-  var h = 0 - 2128831035          # FNV-1a offset basis, as a signed i32
+  var h = -2128831035          # FNV-1a offset basis, as a signed i32
   var i = 0
-  while key[i] != 0 { h = (h ^ key[i]) * 16777619;  i = i + 1 }
+  while key[i] != 0 { h = (h ^ key[i]) * 16777619;  i += 1 }
   h = h & 2147483647              # clear the sign bit -> non-negative
   return h - (h / cap) * cap      # h % cap
 }
 
 # slot index of `key`, or -1 if absent
 function dict_find(d: Dict, key: pointer) -> int {
-  if d.cap == 0 { return 0 - 1 }
+  if d.cap == 0 { return -1 }
   var idx = dict_slot(key, d.cap)
   var probes = 0
   while probes < d.cap {
     let u = d.used[idx]
-    if u == DICT_EMPTY { return 0 - 1 }
+    if u == DICT_EMPTY { return -1 }
     if u == DICT_USED and d.keys[idx] == key { return idx }
-    idx = idx + 1
+    idx += 1
     if idx >= d.cap { idx = 0 }
-    probes = probes + 1
+    probes += 1
   }
-  return 0 - 1
+  return -1
 }
 
 # grow to double capacity and reinsert every live key
@@ -75,7 +75,7 @@ function dict_grow(d: Dict) -> void {
   var i = 0
   while i < oldcap {
     if oldused[i] == DICT_USED { dict_set(d, oldkeys[i], oldvals[i]) }
-    i = i + 1
+    i += 1
   }
 }
 
@@ -84,7 +84,7 @@ function dict_set(d: Dict, key: pointer, value: int) -> void {
   if d.cap == 0 { dict_init(d, 16) }
   if (d.count + 1) * 10 >= d.cap * 7 { dict_grow(d) }      # load factor 0.7
   var idx = dict_slot(key, d.cap)
-  var tomb = 0 - 1
+  var tomb = -1
   var probes = 0
   while probes < d.cap {
     let u = d.used[idx]
@@ -92,18 +92,18 @@ function dict_set(d: Dict, key: pointer, value: int) -> void {
       var slot = idx
       if tomb >= 0 { slot = tomb }
       d.keys[slot] = key;  d.vals[slot] = value;  d.used[slot] = DICT_USED
-      d.count = d.count + 1
+      d.count += 1
       return
     }
     if u == DICT_TOMB { if tomb < 0 { tomb = idx } }
     if u == DICT_USED and d.keys[idx] == key { d.vals[idx] = value;  return }
-    idx = idx + 1
+    idx += 1
     if idx >= d.cap { idx = 0 }
-    probes = probes + 1
+    probes += 1
   }
   if tomb >= 0 {
     d.keys[tomb] = key;  d.vals[tomb] = value;  d.used[tomb] = DICT_USED
-    d.count = d.count + 1
+    d.count += 1
   }
 }
 
@@ -128,7 +128,7 @@ function dict_remove(d: Dict, key: pointer) -> void {
   if i < 0 { return }
   d.used[i] = DICT_TOMB
   d.keys[i] = null
-  d.count = d.count - 1
+  d.count -= 1
 }
 
 function dict_size(d: Dict) -> int { return d.count }
@@ -146,7 +146,7 @@ function dict_keys(d: Dict) -> []pointer {
   var i = 0
   while i < d.cap {
     if d.used[i] == DICT_USED { push(out, d.keys[i]) }
-    i = i + 1
+    i += 1
   }
   return out
 }
