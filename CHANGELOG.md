@@ -7,6 +7,119 @@ type. Preview the next one with `x release --dry-run`.
 A released section may carry a hand-written summary paragraph above its groups
 (v0.2.0 has one); the generated bullets below it are not edited by hand.
 
+## v0.4.0 — 2026-09-05
+
+### Features
+
+- **Prefabs.** `prefab Grunt: Creature { Stats { hp: 30 }, Weapon { def_id: 1 } }` names a model with preset fields; `spawn Grunt { Position { x: 40 } }` spawns it, the spawn's own fields winning over the presets. Prefabs chain (`prefab Grunt: Foe` where `Foe` is a prefab) so shared presets live once. `spawn` is now also an expression yielding the new entity (`let e = spawn Grunt { … }`), and `Prefab.spawn(name: "Grunt")` spawns one chosen at runtime by name (-1 when none matches).
+- **`countdown` fields.** A component field declared `frames_left: countdown = 0` is an `int` the engine steps toward 0 once per Update for every live entity carrying the component (never below 0). Roll timers, invulnerability frames, hit flashes and cooldowns need no hand-written "decrement each frame" handler: set the field, test it.
+- A `machine` over an enum-typed store maps its states to the enum by name: with `enum HeroState { Idle, Rolling }` and `var hero_state: HeroState = HeroState.Idle`, `machine hero_state { state Idle { … } state Rolling { … } }` dispatches on `HeroState.Idle` / `HeroState.Rolling` — no `state Idle = HeroState.Idle` repetition, and a state that names no variant is a compile error. A bare enum is now a first-class `int`-sized type for `var`, params, fields and returns (`llty`), and `Enum.Variant` folds in a global initializer.
+- A handler inside a scene `layer` may carry `@Queries(these: […], on: Model)`, so a scene can own its per-entity systems (`@Queries(these: [Particle]) handler AgeSparks phase Update { … }` runs once per matching entity only while that scene is active). Any other annotation on a layer handler is reported.
+- A program-scope `var` may be initialized with any expression: `var run: Progress = new Progress`, `var speed: int = BASE_SPEED * 2`, `var origin: IVec2 = IVec2.zero()`. Initializers the compiler cannot fold run once at startup (`@L_init_globals`, after the runtime boots and before the `Start` phase), in declaration order. Previously such an initializer was silently replaced by `0` / `null`.
+- Engine managers for what every action game hand-rolls: **`Fx.sparks` / `Fx.number` / `Fx.clear`** — engine-owned sparks and floating damage numbers, moved and aged each Update and drawn after the sprites, with no component, model, handler or draw call in the game; **`Audio.define(name:, path:)` + `Audio.play(name:)` / `Audio.play_music(name:)` / `Audio.named`** — a sound bank by name (the handle form still works); **`Camera.shake_for(amount:, frames:)`** — a timed shake the engine decays; **`Assets.enqueue`** now loads `.wav` / `.mp3` into the sound bank and `.ttf` / `.ttc` into a font table (**`Assets.font(name:)`**) alongside images, so one loading scene covers everything; **`Prop.count()`** — how many live entities carry a component.
+- Every compiler diagnostic is reported as `file:line: error: message` — the file the line really lives in, even through imports — so editors can jump to it. Unexpected characters are errors (they used to be skipped silently), and defining one `function` twice is reported in source terms instead of failing in the IR assembler.
+- Less to write for a game. **`Map` cell API** — `Map.get/set/fill/rect/border/random_cell/is_solid/is_solid_at/width/height`: a game edits the engine's tilemap in place and asks it what is solid (from the `Solids` config) instead of keeping its own grid. **`Sprite` does the small animation work**: `move_id` is the strip drawn while the entity moves, `face: 1` turns it toward its movement, and the `flash` / `blink` countdowns give a white hit flash and an invulnerability blink with no handler. **`scene X shows Menu`** — the engine opens the menu (and frees the cursor) on enter, draws it last in Overlay, and closes it on exit. **`import "dir/*.ludic"`** imports a directory in name order. **`IVec2.distance2/within/heading/along/step`** and **`Angle.diff_degrees`** cover the geometry every action game rewrites; **`List.sample`** draws distinct random picks; **`Input.move_i`** is the standard top-down movement intent; **`AimMode.Auto`** aims with the mouse, or the right stick while a pad is connected; **`Weapon.set_rate` / `Weapon.rate`** change a fire rate in place; projectiles now die on `Solids` tiles by themselves; **`Screen.bar`** draws a meter.
+  Handlers inside a scene's layers are scene-qualified (`Play_Draw`), so two scenes may both name a handler `Draw`; `enable` / `disable` of a scene's own handler by its bare name still works from inside that scene.
+- The engine's numeric parameters have names. ludic.core: `BodyPolicy { Platformer, TopDown }`, `BoundsPolicy { Clamp, Wrap, Bounce, Kill }`, `AnimMode { Loop, Once, PingPong }`; ludic.shooter: `AimMode { Mouse, RightStick, MoveDirection, NearestEnemy }`, `WeaponPattern { Single, Cone, Ring, Spiral }`; ludic.npcai: `BrainModel { StateMachine, Utility, BehaviourTree }`, `AiState { Patrol, Chase, Attack, Flee }`; ludic.gameplay: `StatKind { MaxHp, Attack, Defense, Speed }`, `ModifyOp { Flat, Percent }`; ludic.rpg: `StatusKind { Poison, Regen }`; the input runtime: `CursorMode { Normal, Hidden, Locked, Confined }`. `Body { policy: BodyPolicy.TopDown }` reads as what it is; the old integers still work. The input runtime also names the gamepad buttons: `PadButton { A, B, X, Y, LeftShoulder, RightShoulder, Back, Start }` for `Input.bind_pad(button:)`.
+- The second "write less" round, all generic. **ludic.gameplay**: `Stats` carries the build stats every action game bolts on — `damage_pct`, `crit_pct`, `leech_pct` / `leech_hp`, `thorns`, `fire_rate_pct` — and `Combat.damage` applies them itself (a `Crit` event fires; thorns never reflect thorns); `Stats.add(e, stat, amount)` changes a base stat in place and `Stats.scale_hp(e, percent)` scales hp and max_hp; `StatKind` names every code. **ludic.shooter**: `Dash { frames, speed, cooldown_frames }` with `Dash.start(e, dx, dy)` / `Dash.active(e)` — a dodge roll with i-frames the package guards; `Melee { range, half_arc, damage, knockback, frames, cooldown_frames, arc }` with `Melee.swing(e)` (hits every hostile in the arc, knocks back, fires `MeleeHit`) / `Melee.ready` / `Melee.active`; projectiles drawn by the engine in their weapon's colour (`Weapon.set_color`); `TopDown { reticle, reticle_length }` draws the aim line and a mouse cross; the weapon system honours `Stats.fire_rate_pct`. **ludic.dungeon** (new package): `Dungeon.arena / open_arena / random_style / set_exit / entry_point / opposite / at_edge`, with `Side` and `RoomStyle` — arena rooms with mirrored cover, door lanes and exits by side, built into the engine tilemap. **Compiler**: `scene Splash lasts N then Next` (a timed scene), `button … goto: Scene` (a click changes scene, no listener to write). **Runtime**: `Map.random_cell_far`, `Sprite.draw_meter` (hearts / pips), `Assets.enqueue_dir`, `Collider.center`, `Prefs.max`. Also `scene X loads then Y` (the loading scene: pumped, drawn, `AssetsReady` fired), `Prop.despawn_all()`, `Map.to_tile`, and `Brain { hunt_blind }` in ludic.npcai (seek the nearest hostile without line of sight). `Prefab.spawn_at(name:, at:)` spawns and places; `Weapon.reset(id)` restores a definition (no pierce, no homing, its fire rate). Five regression examples cover the additions (`examples/library/prefabs`, `component_access`, `scene_menus`, `managers`, `combat_kit`). `Random.weighted(weights:)` draws an index by weight; `ui` widgets inherit `font` / `size` / `fg` / `align` from their panel; the input runtime names `MouseButton { Left, Right, Middle }`.
+- `@ClearColor(expr)` takes any constant expression, so a named palette colour (`@ClearColor(COLOR_FLOOR)`) works as well as a hex literal.
+- `Ai.seek` + path-aware `brain_seek` — when a Solids tilemap is present the NPC-AI routes a blocked straight line around obstacles with `Grid.a_star`, so foes flow around pillars instead of getting stuck.
+- `Key.*` compile-time key constants (`Key.Space`, `Key.Escape`, `Key.A`, `Key.Up`, ...), folded like `Color.*`; and `Font.*` / `Ui.* / File.*` namespaces so `png_load`/`font_load`/file I/O are namespaced.
+- `Os.pid()` returns the process id, for scratch files that concurrent runs of one tool must not share.
+- `Overlay` render phase — runs after the engine Render systems (sprites, lights) and before present, so a game's HUD / menus are never painted under an actor. Byte-identical when unused.
+- `Prop.of(entity)` and `Prop.has(entity)` — typed access to one entity's component from an entity handle, the same binding a query loop makes. `Hero.of(player).iframes = 20` reads and writes fields directly (no `World.prop_id` / `World.field_id` / `World.get` reflection chain); `Prop.has(e)` is true when `e` is in range, alive, and carries the property, so `-1` is a safe "no entity". A package that declares a real `prop_of` / `prop_has` function keeps it.
+- `Solids.solid2` — an optional second solid glyph (e.g. a closed door) the move system also blocks.
+- `Sprite.strip(sheet, col, row, count, rows)` — register N consecutive animation frames in one call (the base id for `SpriteAnim`).
+- `Sprite` component draws atlas ids (#90) — `Sprite.atlas = 1` routes `esys_sprite` through `atlas_draw_ex` (scale/flip/tint) so atlas cells / multi-cell spans (tall characters) use the engine sprite-render system, not just the 16x16 table.
+- `Ui.close()` — deactivate the retained UI (no menu open); the readable form of `Ui.open(id: -1)`.
+- `[a, b, c]` list literals build a slice in place; the first element fixes the element type, later elements must match, and `[]` is an error (use `new []T`). Tables of records read as `[Row { … }, Row { … }]`.
+- `ludic.prefs` package — `Prefs.*`, a human-readable `key=value` text store for scores / options (the right tool for "remember my best run"; a whole-world `Save.write` is not).
+- `v.x` and `v.y` read the components of an `IVec2` value (a local, a global, a record field, or a call result) — the readable form of `IVec2.x(v)` / `IVec2.y(v)`. The compiler's static typing now also follows function return types, namespace calls, `Prop.of(e)` and record fields, so `@Computed` fields expand in those positions too.
+- engine tilemap-render system (`TileSkin`, shipped from ludic.core) — one entity per glyph paints the whole `Map.*` grid each Render frame *before* sprites, so a game stops hand-looping the map. `esys_tileskin` registered ahead of `esys_sprite`.
+- engine-driven retained UI — a program with a `ui` block has its navigation ticked by the frame loop automatically (from the frame key) and an activation now emits a `UiClicked { id }` event, so scenes react with `@On(UiClicked)` instead of polling `Ui.clicked`. New `Ui.*` namespace (`Ui.open/tick/clicked/set_text/render/build`).
+
+### Fixes
+
+- A `UI_Name` handle can be read from any code — a plain function, an `@On(UiClicked)` listener, a global initializer — not only from handlers and scene hooks. The widget table it indexes is now built on first use instead of when `@ui_build` is emitted, which came after functions and listeners and crashed the compiler on such a reference.
+- A `var` declared twice — including a game `var` whose name the spliced engine runtime already uses (`ui_font`, `grid`, …) — is now a compile error naming the variable and, when it is the runtime's, saying so (`variable ui_font is also a variable of the engine runtime; choose another name`). Previously the two became one LLVM global and clang reported a redefinition in generated IR. The same check covers `property` names (`property Cell is also a property of the engine runtime; choose another name`); before, the first declaration silently won and field lookups failed with a confusing message.
+- A `{` or `}` inside a string literal within an interpolation hole (`` `{f("{")}` ``) is text, not structure; the hole scanner used to miscount it.
+- A windowed build that reaches the audio runtime indirectly — through the atlas / `Assets.*` preload queue (which feeds `.wav`/`.mp3` into the sound bank) or the engine sprite-render system, without any `Audio.*` call in the game — now links the native audio backend (`audio.ll` + AVFoundation). Previously `ludicc -o` failed at link with undefined `snd_*` symbols for any windowed game declaring a `Sprite` component; the import of `runtime/native/audio.ludic` now flags the backend link itself.
+- Character literals accept the same escapes as strings (`'\''`, `'\\'` and `'\"'` were silently read as 0); an unterminated character literal is now an error.
+- Hand-written runtime preludes (string, Os.*, Fs.*, Crypto.*, …) now live under their own `@lp_` symbol prefix, so a user `function` named `is_ws`, `str_eq`, `path_join` and the like no longer collides with them at link time.
+- Named arguments now work on namespace functions (`@Namespace(Foo)` and `namespace Foo { export function … }`), not only on builtins and bare functions: `Weapon.def(name: "pistol", fire_rate: 9, damage: 14, speed: 8, spread: 0, pellets: 1, pattern: 0)` reorders to the declared parameter order like any other call. Previously every named call on a namespace function failed with "wrong number of arguments".
+- The documented bootstrap works on a fresh clone. `bin/` is gitignored and not
+  checked in, so `clang selfhost/ludicc.seed.ll -o bin/ludicc` — the first command
+  in the README, in COMPILING, in CONTRIBUTING and on the site — failed with
+  `ld: open() failed, errno=2 for 'bin/ludicc'`. Every copy now begins with
+  `mkdir -p bin`, which is what CI had been doing all along.
+- Unary minus keeps its operand type: `-f` on a `fixed` is a `fixed` (it was typed `int`, which broke mixed arithmetic and comparisons).
+- `become Scene` now works from an `@On(Event)` listener, a global handler, or a plain function (#91). Code outside a scene's own layers cannot know the leaving scene at compile time, so the compiler emits `@L_scene_leave()` — a dispatch on the live scene id that runs its `on exit` — and calls it there. Previously a listener's `become` reused the last emitted handler's scene (or crashed), and a global handler's `become` skipped the leaving scene's `on exit` entirely.
+- `ludic-fmt` keeps `rows[i]`, `new []int`, `s[a..b]`, `emit(…)`, `~x` and list-literal braces tight, and recognises `<< >> & | ^ ~` as operators.
+- `ludic-fmt` no longer glues an opening parenthesis to a preceding operator: `let moving = (a or b)` stays as written instead of becoming `let moving =(a or b)`.
+- `self()` inside an `@OnSpawn(Model)` or `@OnAttach(Property)` body is now the entity being constructed. Previously it was the entity of the innermost query loop — or the constant 0 when the spawn happened outside any loop — so a hook such as `@OnSpawn(Hero) handler Remember { player = self() }` silently recorded entity 0.
+- `x += y` / `-=` / `*=` / `/=` now lower exactly like `x = x op y`: a Q16.16 `fixed` multiplies and divides through the 64-bit path, a string `+=` concatenates, and an `int` added to a `long` widens (they previously emitted raw integer arithmetic on the LLVM type).
+- `x release` keeps a changeset's markdown intact. Bodies used to go through
+  `tr '\n' ' '`, which flattened every multi-line changeset into one paragraph —
+  nested bullets came out as inline `" - "` runs and a release read as a single
+  unbroken wall of text. A section is now grouped by change type (**Features**,
+  **Fixes**, **Performance**, …) with one bullet per changeset and continuation
+  lines indented to stay inside it.
+
+  - `x release --dry-run` renders the next section to stdout and writes nothing,
+    so a release can be read before it is cut.
+  - `x changelog-section <version>` prints one release's section from
+    `CHANGELOG.md`; `x changelog-render` re-renders a section from a directory of
+    changesets. The v0.1.0 and v0.3.0 sections were re-rendered with these.
+- cursor `mode 3` (confined) now keeps the OS cursor **associated** (absolute position preserved) and hidden, instead of dissociating it like `mode 2` (lock/relative). Only true-lock `mode 2` uses relative deltas now; `win_mouse` reports the absolute position on `mode 3` and clamps it to the framebuffer. And `mode 3` now **physically confines** the cursor: each frame the platform layer warps it back to the window's content rect (`CGWarpMouseCursorPosition`) whenever it strays past the edge, so clicks can't land outside and the window keeps focus. This lets a top-down game hide + confine the cursor while `aim_mode 0` (mouse aim) keeps resolving to where the reticle points — previously any confine/lock mode silently broke absolute mouse aim, and a confined cursor still escaped the window (#89 follow-up).
+- reserved words (`new`, `match`, `spawn`, ...) can no longer name a function — the compiler errors instead of miscompiling.
+- the shooter aims / homes / fires from a body's **centre** (Position + Collider offset + half-size) instead of the Position anchor, so auto-aim and homing target what is drawn, not a corner.
+
+### Documentation
+
+- The generated site is redesigned around reading rather than launching: a warm
+  paper ground with a serif display face, one ink-blue accent, and rules instead
+  of floating cards. Colour is reserved for code. Dark mode is the same design
+  with the ground inverted, driven entirely by tokens under one
+  `prefers-color-scheme` block, and the landing page's scroll-reveal animations,
+  gradient headline, glowing badge and emoji feature icons are gone.
+
+  - Stylesheets are linked files (`base.css` + `site.css`/`docs.css`) instead of
+    being inlined into all 900+ pages, which cuts the published site from 16 MB to
+    5 MB and means a design change no longer requires regenerating to be seen.
+  - Fonts are the platform's own; the site makes no webfont request.
+  - `api.css` was dead — the generator never referenced it — and is removed along
+    with `item.css`, which `docs.css` replaces.
+  - A page no longer flashes its own title on every plain visit; only a deep link
+    highlights its target, and under `prefers-reduced-motion` the highlight no
+    longer stays on the element permanently.
+  - The copy leads with what is verifiable — ahead-of-time compiled, an ECS in the
+    syntax, deterministic fixed-point, no C in a build — and the "get started"
+    steps now begin with the clang-plus-seed bootstrap, without which `bin/x` does
+    not exist on a clean checkout.
+
+### Build
+
+- `x` no longer prints a clang warning on every build. Each `clang` invocation the
+  task runner makes now passes `-Wno-override-module`, the same flag `ludicc`
+  already passes for its own link step: the emitted IR names no target triple, so
+  clang substitutes the host's and says so — four times per `x build`, with
+  nothing to act on. (The comment in `selfhost/main.ludic` claimed the opposite,
+  that the IR *does* carry a triple; it does not.)
+
+### CI
+
+- Releases are published by CI from a tag instead of by hand from a laptop. The
+  new `release` workflow triggers on a `v*` tag, builds the toolchain from the IR
+  seed, runs `x test`, `x test-tools` and `x bootstrap-cfree` against the tagged
+  tree, and only then creates the Forgejo release. It refuses to publish when the
+  tag and `VERSION` disagree or `CHANGELOG.md` has no section for that version.
+
+  `x publish [vX.Y.Z]` is the command behind it and works locally too: it builds
+  `dist/` (a source tarball from the tag, this host's toolchain, and a
+  `SHA256SUMS` covering both — releases previously shipped no checksums) and takes
+  the release notes from that version's `CHANGELOG.md` section, so the notes and
+  the changelog cannot drift. Re-running it only adds assets the release is
+  missing, which is how a macOS build gets attached to a Linux-built release.
 ## v0.3.0 — 2026-09-02
 
 ### Features

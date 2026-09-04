@@ -1,3 +1,0 @@
-bump: minor
-type: feat
-Engine managers for what every action game hand-rolls: **`Fx.sparks` / `Fx.number` / `Fx.clear`** — engine-owned sparks and floating damage numbers, moved and aged each Update and drawn after the sprites, with no component, model, handler or draw call in the game; **`Audio.define(name:, path:)` + `Audio.play(name:)` / `Audio.play_music(name:)` / `Audio.named`** — a sound bank by name (the handle form still works); **`Camera.shake_for(amount:, frames:)`** — a timed shake the engine decays; **`Assets.enqueue`** now loads `.wav` / `.mp3` into the sound bank and `.ttf` / `.ttc` into a font table (**`Assets.font(name:)`**) alongside images, so one loading scene covers everything; **`Prop.count()`** — how many live entities carry a component.

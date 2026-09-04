@@ -1,3 +1,0 @@
-bump: patch
-type: fix
-A `var` declared twice — including a game `var` whose name the spliced engine runtime already uses (`ui_font`, `grid`, …) — is now a compile error naming the variable and, when it is the runtime's, saying so (`variable ui_font is also a variable of the engine runtime; choose another name`). Previously the two became one LLVM global and clang reported a redefinition in generated IR. The same check covers `property` names (`property Cell is also a property of the engine runtime; choose another name`); before, the first declaration silently won and field lookups failed with a confusing message.
