@@ -160,10 +160,10 @@
   function flash(el){ if (!el) return; el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); }
   function flashTarget(){
     const go = () => {
+      // Only a deep link gets a flash. The old fallback flashed the page title
+      // on every plain visit, which points at nothing the reader was looking for.
       const h = location.hash ? decodeURIComponent(location.hash.slice(1)) : "";
-      let el = h ? document.getElementById(h) : null;
-      if (!el) el = document.querySelector(".item-head") || document.getElementById("top");
-      flash(el);
+      if (h) flash(document.getElementById(h));
     };
     if (document.readyState !== "loading") go(); else document.addEventListener("DOMContentLoaded", go);
     window.addEventListener("hashchange", () => { const el = document.getElementById(decodeURIComponent(location.hash.slice(1))); flash(el); });

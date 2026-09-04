@@ -515,10 +515,12 @@ function j_has(v: JVal, key: pointer) -> bool {
   return false
 }
 
+# The stylesheets are linked, not inlined: base.css alone is ~6 KB, and there
+# are 900+ pages, so inlining cost ~10 MB of duplicated bytes and meant a design
+# change had to be regenerated to be seen. Linking makes the browser cache them
+# once across the whole site. Fonts are the platform's own — no webfont request.
 function emit_head(b: Sb, title: pointer, desc: pointer, cssfile: pointer) -> void {
-  sb_puts(b, `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>{hesc(title)}</title>\n<meta name="description" content="{hescattr(desc)}">\n<link rel="preconnect" href="https://fonts.googleapis.com">\n<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">\n<style>\n`)
-  sb_puts(b, read_asset(cssfile))
-  sb_puts(b, `\n</style>\n</head>`)
+  sb_puts(b, `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>{hesc(title)}</title>\n<meta name="description" content="{hescattr(desc)}">\n<link rel="stylesheet" href="base.css">\n<link rel="stylesheet" href="{cssfile}">\n</head>`)
 }
 
 # nav links; a link whose href equals cta_href gets the nav-cta class
@@ -588,7 +590,7 @@ function render_related(e: Entry, items: JVal) -> pointer {
 }
 
 function render_item(b: Sb, e: Entry, s: Section, cfg: JVal, items: JVal) -> void {
-  emit_head(b, e.name + " — Ludic", e.tip, "item.css")
+  emit_head(b, e.name + " — Ludic", e.tip, "docs.css")
   sb_puts(b, "\n<body>\n")
   topbar(b, cfg)
   sb_putc(b, '\n')
@@ -621,7 +623,7 @@ function render_item(b: Sb, e: Entry, s: Section, cfg: JVal, items: JVal) -> voi
 
 # ---- namespace overview page ------------------------------------------------
 function render_ns(b: Sb, nsname: pointer, s: Section, cfg: JVal) -> void {
-  emit_head(b, nsname + " — Ludic", plain_text(s.blurb), "item.css")
+  emit_head(b, nsname + " — Ludic", plain_text(s.blurb), "docs.css")
   sb_puts(b, "\n<body>\n")
   topbar(b, cfg)
   sb_putc(b, '\n')
@@ -647,7 +649,7 @@ function render_ns(b: Sb, nsname: pointer, s: Section, cfg: JVal) -> void {
 # ---- color page (from the in-memory palette) --------------------------------
 function render_color(b: Sb, cfg: JVal) -> void {
   palette_init()
-  emit_head(b, "Color — Ludic", "The Ludic named-color palette.", "item.css")
+  emit_head(b, "Color — Ludic", "The Ludic named-color palette.", "docs.css")
   sb_puts(b, "\n<body>\n")
   topbar(b, cfg)
   sb_putc(b, '\n')
@@ -686,7 +688,7 @@ function render_color(b: Sb, cfg: JVal) -> void {
 
 # ---- API index --------------------------------------------------------------
 function render_api(b: Sb, sections: []Section, cfg: JVal) -> void {
-  emit_head(b, "Ludic — API Reference", "The complete Ludic API Reference: every keyword, type, builtin, namespace, annotation and color, each on its own page, with fuzzy search.", "item.css")
+  emit_head(b, "Ludic — API Reference", "The complete Ludic API Reference: every keyword, type, builtin, namespace, annotation and color, each on its own page, with fuzzy search.", "docs.css")
   sb_puts(b, "\n<body>\n")
   topbar(b, cfg)
   sb_putc(b, '\n')
@@ -775,7 +777,7 @@ function build_feats(feats: JVal) -> pointer {
   while i < len(cards.kids) {
     let c = cards.kids[i]
     i += 1
-    sb_puts(b, `<div class="feat reveal"><div class="ico">{js_get(c,"icon")}</div><h3>{js_get(c,"title")}</h3><p>{js_get(c,"html")}</p></div>`)
+    sb_puts(b, `<div class="feat"><h3>{js_get(c,"title")}</h3><p>{js_get(c,"html")}</p></div>`)
   }
   return sb_str(b)
 }
@@ -806,7 +808,7 @@ function build_steps(start: JVal) -> pointer {
   var i = 0
   while i < len(st.kids) {
     let s = st.kids[i]
-    sb_puts(b, `<div class="step reveal"><div class="n">{string(i + 1)}</div><div><h4>{js_get(s,"title")}</h4><p>{js_get(s,"html")}</p></div></div>`)
+    sb_puts(b, `<div class="step"><div class="n">{string(i + 1)}</div><div><h4>{js_get(s,"title")}</h4><p>{js_get(s,"html")}</p></div></div>`)
     i += 1
   }
   return sb_str(b)
@@ -881,7 +883,6 @@ function render_index(b: Sb, cfg: JVal) -> void {
   let scta = j_get(hero, "secondary_cta")
   let mk = new []pointer
   let mv = new []pointer
-  put(mk, mv, "css", read_asset("site.css"))
   put(mk, mv, "brand", hesc(js_get(cfg, "brand")))
   put(mk, mv, "tagline", hesc(js_get(cfg, "tagline")))
   put(mk, mv, "repo", js_get(cfg, "repo_url"))
@@ -1002,6 +1003,10 @@ function cmd_docs_gen() -> int {
   let ib = sb_new()
   render_index(ib, cfg)
   write_file(`{out}/index.html`, sb_str(ib))
+  # the stylesheets ship as files, linked from every page (see emit_head)
+  write_file(`{out}/base.css`, read_asset("base.css"))
+  write_file(`{out}/site.css`, read_asset("site.css"))
+  write_file(`{out}/docs.css`, read_asset("docs.css"))
   write_file(`{out}/ludic-highlight.js`, render_highlighter(syms.sym))
   let root = jvo()
   jvput(root, "items", syms.items)

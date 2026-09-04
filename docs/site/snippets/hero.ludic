@@ -9,7 +9,7 @@ program Hello {
     spawn Enemy { Position { column: 10, row: 2 },  Velocity { delta_x: 0, delta_y: 1 } }
   }
 
-  # a handler declares the models it touches; the body
+  # a handler declares the entities it touches; the body
   # runs once per match, each property bound by name.
   @Queries(these: [Position, Velocity])
   handler AdvancePositions phase FixedUpdate {
