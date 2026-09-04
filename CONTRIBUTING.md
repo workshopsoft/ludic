@@ -176,6 +176,39 @@ non-destructive version of "tidy the history" without touching a single commit.
 - Fill in the PR template checklist. Reference the issue you close with
   `Closes #NN` in the description or a commit message.
 
+## CI (self-hosted runners)
+
+Every workflow starts by cloning `${{ github.server_url }}/${{ github.repository }}`.
+On a self-hosted Forgejo runner that URL is usually the instance's *internal*
+address (e.g. `http://forgejo:3000`), so **the job container must be able to
+resolve it**. The runner puts each job on a fresh per-job network by default,
+which the Forgejo container is not attached to — so the clone fails with:
+
+```
+fatal: unable to access 'http://forgejo:3000/…': Could not resolve host: forgejo
+```
+
+Give the runner a config that pins job containers to a network Forgejo is also
+on. A dedicated network is better than the general application network, so a CI
+job cannot reach unrelated services:
+
+```yaml
+# the runner's config.yml, passed with: forgejo-runner daemon --config …
+container:
+  network: forgejo-ci
+```
+
+with `forgejo-ci` attached to the Forgejo container as well. Verify it without
+running a workflow:
+
+```bash
+docker run --rm --network forgejo-ci alpine:3 getent hosts forgejo
+```
+
+This failure mode is intermittent if left unfixed: Docker forwards names it
+cannot resolve to the host's resolver, which may answer for the container name
+often enough that CI looks healthy for a while.
+
 ## Reporting issues
 
 Use the templates under [`.forgejo/issue_template/`](.forgejo/issue_template):
