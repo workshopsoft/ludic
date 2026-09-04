@@ -19,7 +19,7 @@ let output = null;
 /** Where the language server might be, in the order we should look. */
 function resolveServer(folders) {
   const configured = vscode.workspace.getConfiguration('ludic').get('server.path');
-  if (configured) return expand(configured);
+  if (configured) return expand(configured, folders);
 
   const names = ['ludic-lsp', 'ludic-lsp.exe'];
   for (const folder of folders) {
@@ -43,18 +43,26 @@ function resolveServer(folders) {
 
 function resolveCompiler(folders) {
   const configured = vscode.workspace.getConfiguration('ludic').get('compilerPath');
-  if (configured) return expand(configured);
+  if (configured) return expand(configured, folders);
   for (const folder of folders) {
     for (const rel of ['bin', 'build']) {
       const p = path.join(folder.uri.fsPath, rel, 'ludicc');
       if (isExecutable(p)) return p;
     }
   }
+  for (const dir of (process.env.PATH || '').split(path.delimiter)) {
+    const p = path.join(dir, 'ludicc');
+    if (isExecutable(p)) return p;
+  }
   return '';
 }
 
-function expand(p) {
-  return p.startsWith('~') ? path.join(os.homedir(), p.slice(1)) : p;
+/** A configured path may use `~` and `${workspaceFolder}`, so a project can point
+ *  at a sibling checkout without hard-coding one machine's home directory. */
+function expand(p, folders) {
+  const root = folders && folders.length ? folders[0].uri.fsPath : '';
+  const withRoot = p.replace(/\$\{workspaceFolder\}/g, root);
+  return withRoot.startsWith('~') ? path.join(os.homedir(), withRoot.slice(1)) : withRoot;
 }
 
 function isExecutable(p) {

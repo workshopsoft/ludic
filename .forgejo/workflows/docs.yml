@@ -41,11 +41,11 @@ jobs:
       - name: Generate the documentation site
         env:
           SOURCE_REF: ${{ github.ref_name }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
         run: |
           set -eu
           git config --global --add safe.directory '*'
-          git clone --depth 1 --branch "${SOURCE_REF:-main}" \
-            https://git.workshopsoft.io/workshopsoft/ludic.git src
+          git clone --depth 1 --branch "${SOURCE_REF:-main}" "$REPO_URL" src
           cd src
           # The toolchain is macOS-first; on this Linux runner it links against a
           # tiny C-free IR shim supplying the Darwin stdout/stderr globals over
@@ -67,6 +67,8 @@ jobs:
           PAGES_TOKEN: ${{ secrets.PAGES_TOKEN }}
           AUTO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SOURCE_SHA: ${{ github.sha }}
+          SERVER_URL: ${{ github.server_url }}
+          REPO: ${{ github.repository }}
         run: |
           set -eu
           TOKEN="${PAGES_TOKEN:-${AUTO_TOKEN:-}}"
@@ -80,5 +82,6 @@ jobs:
           git config user.email "docs@workshopsoft.io"
           git add -A
           git commit -q -m "docs: regenerate site from ${SOURCE_SHA}"
-          git push -f "https://ludic-docs-bot:${TOKEN}@git.workshopsoft.io/workshopsoft/ludic.git" pages
+          # the same server and repository the run came from, with the token spliced in
+          git push -f "${SERVER_URL%%://*}://ludic-docs-bot:${TOKEN}@${SERVER_URL#*://}/${REPO}.git" pages
           echo "published $(git rev-parse --short HEAD) to pages"

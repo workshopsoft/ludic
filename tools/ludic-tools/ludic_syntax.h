@@ -6,8 +6,8 @@
  * addition to the language shows up in every editor at once instead of drifting
  * across six hand-maintained copies.
  *
- * Unlike the compiler's lexer (compiler/ludicc.c) this one is written for
- * editors: it keeps comments, keeps newlines, records byte spans for every
+ * Unlike the compiler's lexer (selfhost/frontend/lex.ludic) this one is written
+ * for editors: it keeps comments, keeps newlines, records byte spans for every
  * token, and never exits on bad input — a stray character becomes an LT_ERR
  * token and lexing continues, because a file being typed into is malformed most
  * of the time.
@@ -74,7 +74,7 @@ static const char* LUDIC_TYPES[] = {
     "int","long","fixed","countdown","bool","entity","string","pointer","byte","words","fixeds","pointers","Vector","IVec2","Rect","void", 0
 };
 static const char* LUDIC_PHASES[] = {
-    "Start","Input","FixedUpdate","Update","LateUpdate","Render", 0
+    "Start","Input","FixedUpdate","Update","LateUpdate","Render","Overlay", 0
 };
 static const char* LUDIC_WIDGETS[] = {
     "panel","col","row","label","button","image","spacer", 0
@@ -208,7 +208,7 @@ static void lline_push(LLex* L, int off){
     L->linestart[L->nline++] = off;
 }
 
-static const char* LUDIC_OPS2[] = { "->","+=","-=","*=","/=","==","!=","<=",">=","&&","||","..","=>", 0 };
+static const char* LUDIC_OPS2[] = { "->","+=","-=","*=","/=","==","!=","<=",">=","<<",">>","..","=>", 0 };
 
 /* Lex the whole buffer. Comments and newlines are kept — the formatter needs
  * both, and a highlighter needs the comments. */
@@ -279,7 +279,7 @@ static void lud_lex(LLex* L, const char* src){
             if (matched) continue;
         }
         if (c == ';'){ ltok_push(L, LT_OP, i, i + 1, line, 0); i++; continue; }
-        if (strchr("+-*/%<>=(){}[],:.!@", c)){ ltok_push(L, LT_OP, i, i + 1, line, 0); i++; continue; }
+        if (strchr("+-*/%<>=(){}[],:.!@&|^~", c)){ ltok_push(L, LT_OP, i, i + 1, line, 0); i++; continue; }
         /* Anything else is an error token — but a whole UTF-8 character's worth
          * at a time. Splitting a multi-byte character into one token per byte
          * would let a consumer that re-emits tokens (the formatter) put spaces

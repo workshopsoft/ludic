@@ -17,13 +17,12 @@ jobs:
     steps:
       - name: Check out with history
         env:
-          BEFORE: ${{ github.event.before }}
-          BASE: ${{ github.base_ref }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
         run: |
           set -eu
           git config --global --add safe.directory '*'
           # Full clone so both endpoints of the range are present.
-          git clone https://git.workshopsoft.io/workshopsoft/ludic.git .
+          git clone "$REPO_URL" .
           git checkout "${GITHUB_SHA}" 2>/dev/null || git checkout "${GITHUB_REF_NAME:-main}"
 
       - name: Lint the new commits

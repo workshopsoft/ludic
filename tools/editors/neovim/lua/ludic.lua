@@ -3,7 +3,7 @@
 --   :lua require('ludic').setup()
 --   -- or, from init.lua:
 --   vim.opt.runtimepath:append('/path/to/gpp/tools/editors/neovim')
---   require('ludic').setup({ server = '/path/to/gpp/build/ludic-lsp' })
+--   require('ludic').setup({ server = '/path/to/gpp/bin/ludic-lsp' })
 --
 -- Highlighting here comes from the language server's semantic tokens, which
 -- Neovim applies natively -- there is no tree-sitter grammar to install and no
@@ -43,7 +43,7 @@ function M.setup(opts)
     end,
   })
 
-  local root_markers = { 'build.sh', 'LANGUAGE.md', '.git' }
+  local root_markers = { 'package.ludic', 'LANGUAGE.md', '.git' }
 
   local function root_dir(fname)
     local found = vim.fs.find(root_markers, { path = vim.fs.dirname(fname), upward = true })[1]
@@ -57,10 +57,10 @@ function M.setup(opts)
     callback = function(args)
       local root = root_dir(vim.api.nvim_buf_get_name(args.buf))
       local server = opts.server or find_executable(
-        { 'ludic-lsp' }, { root }, { 'build', 'tools/build', 'bin', '.' })
+        { 'ludic-lsp' }, { root }, { 'bin', 'build', '.' })
       if not server then return end
       local compiler = opts.compiler or find_executable(
-        { 'ludicc' }, { root }, { 'build', 'bin', '.' }) or ''
+        { 'ludicc' }, { root }, { 'bin', 'build', '.' }) or ''
 
       vim.lsp.start({
         name = 'ludic-lsp',

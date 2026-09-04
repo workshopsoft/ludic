@@ -1,20 +1,18 @@
 # Ludic in your editor
 
-Everything here is built on one idea: **write the language knowledge once, in C,
-and let every editor talk to it.** There is one lexer, one vocabulary, one
+Everything here is built on one idea: **write the language knowledge once, in
+Ludic, and let every editor talk to it.** There is one vocabulary, one
 formatter and one language server. VS Code and JetBrains get first-class plugins
 because those are the two that were asked for; every other editor gets the same
 capabilities by pointing at the same binary.
 
 ```
-tools/ludic-tools/            the actual language knowledge, in C, no dependencies
-  ludic_syntax.h              lexer + the vocabulary — the source of truth
-  ludic_fmt.h                 comment-preserving formatter
-  ludic_index.h               error-tolerant reader: declarations, bindings, scopes
-  ludic_workspace.h           multi-file model: imports, compilation units, Markdown
-  ludic_json.h                just enough JSON for LSP
-  ludic_fmt_main.c            -> bin/ludic-fmt
-  ludic_lsp.c                 -> bin/ludic-lsp
+tools/ludic-tools/            the actual language knowledge, in Ludic
+  ludic_syntax.h              the vocabulary tables (keywords, operators, builtins)
+                              that the formatter, the server and the vocabulary
+                              check all read — the source of truth
+  fmt.ludic                   -> bin/ludic-fmt   token-based, comment-preserving formatter
+  lsp.ludic                   -> bin/ludic-lsp   the language server (LSP 3.17)
 
 tools/editors/
   shared/                     TextMate grammar + Markdown injection + language config

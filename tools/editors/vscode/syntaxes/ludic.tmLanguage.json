@@ -133,10 +133,18 @@
           }
         },
         {
-          "match": "\\b(enter)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "match": "\\b(become)\\s+([A-Za-z_][A-Za-z0-9_]*)",
           "captures": {
-            "1": { "name": "keyword.control.enter.ludic" },
+            "1": { "name": "keyword.control.become.ludic" },
             "2": { "name": "entity.name.type.scene.ludic" }
+          }
+        },
+        {
+          "match": "\\b(scene|prefab|event)\\s+(cancellable\\s+)?([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "storage.type.ludic" },
+            "2": { "name": "keyword.other.clause.ludic" },
+            "3": { "name": "entity.name.type.ludic" }
           }
         },
         {
@@ -172,29 +180,29 @@
     },
     "keyword": {
       "patterns": [
-        { "name": "keyword.control.ludic", "match": "\\b(if|else|while|for|in|match|machine|prefab|become|return|spawn|despawn|enable|disable|where|break|continue|new|try)\\b" },
+        { "name": "keyword.control.ludic", "match": "\\b(if|else|while|for|in|match|machine|become|return|spawn|despawn|enable|disable|attach|detach|emit|cancel|where|break|continue|new|try)\\b" },
         { "name": "keyword.operator.logical.ludic", "match": "\\b(and|or|not)\\b" },
-        { "name": "keyword.other.clause.ludic", "match": "\\b(phase|query|on)\\b" },
+        { "name": "keyword.other.clause.ludic", "match": "\\b(phase|query|on|cancellable|public|layer|start|shows|lasts|loads|then|export|internal)\\b" },
         { "name": "keyword.other.ludic", "match": "\\b(import|extern)\\b" },
-        { "name": "storage.type.ludic", "match": "\\b(program|property|model|namespace|enum|ui|const|var|let|function|handler|entry|state|test)\\b" },
+        { "name": "storage.type.ludic", "match": "\\b(program|property|model|prefab|namespace|enum|ui|const|var|let|function|handler|entry|event|scene|state|test)\\b" },
         { "name": "support.type.primitive.ludic", "match": "\\b(int|long|fixed|countdown|bool|entity|string|pointer|byte|words|fixeds|pointers|Vector|IVec2|Rect|void)\\b" },
         { "name": "constant.language.boolean.ludic", "match": "\\b(true|false|null)\\b" },
-        { "name": "constant.language.phase.ludic", "match": "\\b(Start|Input|FixedUpdate|Update|LateUpdate|Render)\\b" }
+        { "name": "constant.language.phase.ludic", "match": "\\b(Start|Input|FixedUpdate|Update|LateUpdate|Render|Overlay)\\b" }
       ]
     },
     "widget": {
       "patterns": [
         {
-          "comment": "widget types, recognised by the props or the child block that follow them",
+          "comment": "widget types, recognised by the `key: value` props or the child block that follow them",
           "name": "support.class.widget.ludic",
-          "match": "\\b(panel|col|row|label|button|image|spacer)\\b(?=\\s*(\\{|[a-z][A-Za-z0-9_]*\\s*=|$))"
+          "match": "\\b(panel|col|row|label|button|image|spacer)\\b(?=\\s*(\\{|[a-z][A-Za-z0-9_]*\\s*:|$))"
         },
         {
-          "comment": "widget props are written tight (id=Root); an assignment is written x = 1",
-          "match": "\\b([a-z][A-Za-z0-9_]*)(=)(?!=)",
+          "comment": "a widget prop or a named argument: `id: Root`, `x: 10`",
+          "match": "\\b([a-z][A-Za-z0-9_]*)(:)(?=\\s)",
           "captures": {
-            "1": { "name": "variable.parameter.widget.ludic" },
-            "2": { "name": "keyword.operator.assignment.ludic" }
+            "1": { "name": "variable.parameter.ludic" },
+            "2": { "name": "punctuation.separator.ludic" }
           }
         }
       ]

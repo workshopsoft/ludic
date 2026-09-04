@@ -17,7 +17,7 @@ import java.io.File
 
 /**
  * Where to find the toolchain. Both paths may be left blank, in which case the
- * plugin looks under the project root for what tools/build-tools.sh produces —
+ * plugin looks under the project root for what `bin/x tools` produces —
  * which is the case for anyone working in the Ludic repository itself.
  */
 @Service(Service.Level.PROJECT)
@@ -110,7 +110,7 @@ class LudicConnectionProvider(private val project: Project) : ProcessStreamConne
             }
             append("  and on PATH.\n")
         }
-        append("\nBuild it with ./tools/build-tools.sh from the repository root, ")
+        append("\nBuild it with `bin/x tools` from the repository root, ")
         append("or set the path in Settings | Languages & Frameworks | Ludic. ")
         append("Syntax highlighting works without it; completion and diagnostics do not.")
     }

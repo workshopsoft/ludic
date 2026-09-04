@@ -4,7 +4,7 @@
   "description": "Ludic language support: syntax highlighting, formatting, and the ludic-lsp language server. Also highlights ```ludic fences in Markdown.",
   "version": "1.0.0",
   "publisher": "ludic",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "engines": {
     "vscode": "^1.75.0"
   },
@@ -90,7 +90,7 @@
         "ludic.server.path": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Path to the `ludic-lsp` binary. Empty means: look in `build/ludic-lsp` under each workspace folder, then on `PATH`."
+          "markdownDescription": "Path to the `ludic-lsp` binary; `~` and `${workspaceFolder}` are expanded. Empty means: look in `bin/ludic-lsp` under each workspace folder, then on `PATH`."
         },
         "ludic.server.enabled": {
           "type": "boolean",
@@ -100,7 +100,7 @@
         "ludic.compilerPath": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Path to `ludicc`. The server shells out to it for authoritative diagnostics on save. Empty means `build/ludicc` under the workspace."
+          "markdownDescription": "Path to `ludicc`; `~` and `${workspaceFolder}` are expanded. The server runs it on save for the compiler's own diagnostics. Empty means `bin/ludicc` under the workspace, then `PATH`."
         },
         "ludic.compilerDiagnostics": {
           "type": "boolean",
@@ -153,6 +153,6 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://example.invalid/ludic"
+    "url": "https://git.workshopsoft.io/workshopsoft/ludic"
   }
 }

@@ -37,9 +37,9 @@ Format on save:
 
 ## Settings
 
-- `ludic.server.path` — where `ludic-lsp` lives. Empty = search `bin/`, then `PATH`.
+- `ludic.server.path` — where `ludic-lsp` lives (`~` and `${workspaceFolder}` expand). Empty = search `bin/`, then `PATH`.
 - `ludic.server.enabled` — turn the server off and keep only static highlighting.
-- `ludic.compilerPath` — where `ludicc` lives, for on-save diagnostics.
+- `ludic.compilerPath` — where `ludicc` lives, for on-save diagnostics (`~` and `${workspaceFolder}` expand).
 - `ludic.compilerDiagnostics` — whether to run the compiler at all.
 - `ludic.indentSize` — spaces per level for the formatter.
 - `ludic.trace.server` — log LSP traffic (`Ludic: Show Language Server Log`).

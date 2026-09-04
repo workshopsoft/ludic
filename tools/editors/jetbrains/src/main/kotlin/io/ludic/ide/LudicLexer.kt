@@ -7,7 +7,7 @@ import com.intellij.psi.tree.IElementType
 /**
  * A hand-written lexer matching tools/ludic-tools/ludic_syntax.h token for
  * token. Hand-written rather than generated because the grammar is small, the
- * rules are the ones the C lexer already implements, and keeping the two
+ * rules are the ones the shared header already implements, and keeping the two
  * readable side by side is worth more here than a JFlex spec.
  *
  * It must never throw and never fail to advance: the IDE lexes half-typed text
@@ -142,7 +142,7 @@ class LudicLexer : LexerBase() {
     }
 
     private companion object {
-        val TWO_CHAR_OPS = setOf("->", "+=", "-=", "*=", "/=", "==", "!=", "<=", ">=", "&&", "||", "..", "=>")
-        const val SINGLE_CHAR_OPS = "+-*/%<>=:.!@;"
+        val TWO_CHAR_OPS = setOf("->", "+=", "-=", "*=", "/=", "==", "!=", "<=", ">=", "<<", ">>", "..", "=>")
+        const val SINGLE_CHAR_OPS = "+-*/%<>=:.!@;&|^~"
     }
 }

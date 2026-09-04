@@ -35,7 +35,7 @@ class LudicBraceMatcher : PairedBraceMatcher {
     private companion object {
         // Structural braces only: a record literal shares the token type, so
         // marking them all structural would make the "matched brace" gutter
-        // noisy inside `spawn Hero { Pos = { x = 1 } }`.
+        // noisy inside `spawn Hero { Pos { x: 1 } }`.
         val PAIRS = arrayOf(
             BracePair(LudicTokens.BRACE, LudicTokens.BRACE, true),
             BracePair(LudicTokens.BRACKET, LudicTokens.BRACKET, false),

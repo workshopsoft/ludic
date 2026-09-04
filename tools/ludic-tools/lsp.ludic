@@ -84,36 +84,36 @@ program LudicLsp {
     file_close(f)
     return buf
   }
-  function cstr_len(s: pointer) -> int { var n = 0;  while s[n] != 0 { n = n + 1 };  return n }
-  function char_is_digit(c: int) -> bool { return c >= 48 and c <= 57 }
+  function cstr_len(s: pointer) -> int { var n = 0;  while s[n] != 0 { n += 1 };  return n }
+  function char_is_digit(c: int) -> bool { return c >= '0' and c <= '9' }
   function char_is_alpha(c: int) -> bool {
-    if c >= 65 and c <= 90 { return true }
-    if c >= 97 and c <= 122 { return true }
-    return c == 95
+    if c >= 'A' and c <= 'Z' { return true }
+    if c >= 'a' and c <= 'z' { return true }
+    return c == '_'
   }
   function char_is_alnum(c: int) -> bool { return char_is_alpha(c) or char_is_digit(c) }
-  function char_is_hex(c: int) -> bool { return char_is_digit(c) or (c >= 97 and c <= 102) or (c >= 65 and c <= 70) }
+  function char_is_hex(c: int) -> bool { return char_is_digit(c) or (c >= 'a' and c <= 'f') or (c >= 'A' and c <= 'F') }
   function itoa(v: int) -> pointer {
-    if v == 0 { let z = bytes(2); z[0] = 48; z[1] = 0; return z }
+    if v == 0 { let z = bytes(2); z[0] = '0'; z[1] = 0; return z }
     var neg = false;  var x = v
-    if x < 0 { neg = true;  x = 0 - x }
+    if x < 0 { neg = true;  x = -x }
     let tmp = bytes(16);  var n = 0
-    while x > 0 { tmp[n] = 48 + x % 10;  x = x / 10;  n = n + 1 }
+    while x > 0 { tmp[n] = 48 + x % 10;  x /= 10;  n += 1 }
     var total = n
-    if neg { total = total + 1 }
+    if neg { total += 1 }
     let out = bytes(total + 1);  var k = 0
-    if neg { out[0] = 45;  k = 1 }
+    if neg { out[0] = '-';  k = 1 }
     var i = 0
-    while i < n { out[k + i] = tmp[n - 1 - i];  i = i + 1 }
+    while i < n { out[k + i] = tmp[n - 1 - i];  i += 1 }
     out[total] = 0
     return out
   }
   function atoi(s: pointer) -> int {
     var n = 0;  var i = 0;  var neg = false
-    while s[i] == 32 or s[i] == 9 { i = i + 1 }
-    if s[i] == 45 { neg = true;  i = i + 1 }
-    while char_is_digit(s[i]) { n = n * 10 + (s[i] - 48);  i = i + 1 }
-    if neg { return 0 - n }
+    while s[i] == ' ' or s[i] == '\t' { i += 1 }
+    if s[i] == '-' { neg = true;  i += 1 }
+    while char_is_digit(s[i]) { n = n * 10 + (s[i] - 48);  i += 1 }
+    if neg { return -n }
     return n
   }
 
@@ -122,13 +122,13 @@ program LudicLsp {
   function buf_new() -> Buf { let b = new Buf;  b.cap = 256;  b.data = bytes(b.cap);  b.len = 0;  return b }
   function buf_ensure(b: Buf, extra: int) -> void {
     if b.len + extra + 1 <= b.cap { return }
-    while b.len + extra + 1 > b.cap { b.cap = b.cap * 2 }
+    while b.len + extra + 1 > b.cap { b.cap *= 2 }
     b.data = resize(b.data, b.cap)
   }
-  function buf_putc(b: Buf, c: int) -> void { buf_ensure(b, 1);  b.data[b.len] = c;  b.len = b.len + 1 }
-  function buf_puts(b: Buf, s: pointer) -> void { var i = 0;  while s[i] != 0 { buf_putc(b, s[i]);  i = i + 1 } }
+  function buf_putc(b: Buf, c: int) -> void { buf_ensure(b, 1);  b.data[b.len] = c;  b.len += 1 }
+  function buf_puts(b: Buf, s: pointer) -> void { var i = 0;  while s[i] != 0 { buf_putc(b, s[i]);  i += 1 } }
   function buf_puti(b: Buf, n: int) -> void { buf_puts(b, itoa(n)) }
-  function buf_addrange(b: Buf, s: pointer, a: int, e: int) -> void { var k = a;  while k < e { buf_putc(b, s[k]);  k = k + 1 } }
+  function buf_addrange(b: Buf, s: pointer, a: int, e: int) -> void { var k = a;  while k < e { buf_putc(b, s[k]);  k += 1 } }
   function buf_str(b: Buf) -> pointer { b.data[b.len] = 0;  return b.data }
 
   # ---- string helpers ----
@@ -184,24 +184,32 @@ program LudicLsp {
     had_diags: int = 0
     isopen: int = 0
     version: int = 0
+    cc_line: int = 0            # the compiler's last error on this file (1-based line), or 0
+    cc_msg: pointer = null
   }
 
   var g_docs: []Doc
   var g_root: pointer = null
   var g_shutdown: int = 0
+  # initializationOptions.compilerPath — the ludicc to run on every save when
+  # compilerDiagnostics is on (default: the ludicc beside this binary). null = off.
+  var g_compiler: pointer = null
 
   # ---- the lexer, over a Doc ----
   function is_op2(c0: int, c1: int) -> bool {
-    if c0 == 45 and c1 == 62 { return true }
-    if c1 == 61 and (c0 == 43 or c0 == 45 or c0 == 42 or c0 == 47 or c0 == 61 or c0 == 33 or c0 == 60 or c0 == 62) { return true }
-    if c0 == 38 and c1 == 38 { return true }
-    if c0 == 124 and c1 == 124 { return true }
-    if c0 == 46 and c1 == 46 { return true }
-    if c0 == 61 and c1 == 62 { return true }
+    if c0 == '-' and c1 == '>' { return true }
+    if c1 == '=' and (c0 == '+' or c0 == '-' or c0 == '*' or c0 == '/' or c0 == '=' or c0 == '!' or c0 == '<' or c0 == '>') { return true }
+    if c0 == '<' and c1 == '<' { return true }          # <<
+    if c0 == '>' and c1 == '>' { return true }          # >>
+    if c0 == '.' and c1 == '.' { return true }
+    if c0 == '=' and c1 == '>' { return true }
     return false
   }
   function is_op1(c: int) -> bool {
-    return c == 43 or c == 45 or c == 42 or c == 47 or c == 37 or c == 60 or c == 62 or c == 61 or c == 40 or c == 41 or c == 123 or c == 125 or c == 91 or c == 93 or c == 44 or c == 58 or c == 46 or c == 33 or c == 64 or c == 59
+    if c == '+' or c == '-' or c == '*' or c == '/' or c == '%' or c == '<' or c == '>' or c == '=' { return true }   # + - * / % < > =
+    if c == '(' or c == ')' or c == '{' or c == '}' or c == '[' or c == ']' { return true }                       # ( ) { } [ ]
+    if c == ',' or c == ':' or c == '.' or c == '!' or c == '@' or c == ';' { return true }                         # , : . ! @ ;
+    return c == '&' or c == '|' or c == '^' or c == '~'                                                        # & | ^ ~
   }
   function is_type_word(w: pointer) -> bool {
     return (w == "int") or (w == "long") or (w == "fixed") or (w == "countdown") or (w == "bool") or (w == "entity") or (w == "string") or (w == "pointer") or (w == "byte") or (w == "words") or (w == "fixeds") or (w == "pointers") or (w == "Vector") or (w == "IVec2") or (w == "Rect") or (w == "void")
@@ -230,22 +238,22 @@ program LudicLsp {
     var i = 0;  var line = 0
     while s[i] != 0 {
       let c = s[i]
-      if c == 10 { push(D.tk_kind, LT_NL); push(D.tk_start, i); push(D.tk_end, i + 1); push(D.tk_line, line);  i = i + 1;  line = line + 1;  push(D.linestart, i);  continue }
-      if c == 32 or c == 9 or c == 13 { i = i + 1;  continue }
+      if c == '\n' { push(D.tk_kind, LT_NL); push(D.tk_start, i); push(D.tk_end, i + 1); push(D.tk_line, line);  i += 1;  line += 1;  push(D.linestart, i);  continue }
+      if c == ' ' or c == '\t' or c == '\r' { i += 1;  continue }
       var st = i
-      if c == 35 { while s[i] != 0 and s[i] != 10 { i = i + 1 };  push(D.tk_kind, LT_COMMENT); push(D.tk_start, st); push(D.tk_end, i); push(D.tk_line, line);  continue }
-      if c == 34 { i = i + 1;  while s[i] != 0 and s[i] != 34 and s[i] != 10 { if s[i] == 92 and s[i + 1] != 0 { i = i + 2 } else { i = i + 1 } };  if s[i] == 34 { i = i + 1 };  push(D.tk_kind, LT_STR); push(D.tk_start, st); push(D.tk_end, i); push(D.tk_line, line);  continue }
-      if c == 96 { i = i + 1;  while s[i] != 0 and s[i] != 96 { if s[i] == 92 and s[i + 1] != 0 { i = i + 2 } else { i = i + 1 } };  if s[i] == 96 { i = i + 1 };  push(D.tk_kind, LT_STR); push(D.tk_start, st); push(D.tk_end, i); push(D.tk_line, line);  continue }
-      if c == 39 { i = i + 1;  if s[i] == 92 and s[i + 1] != 0 { i = i + 2 } else { if s[i] != 0 and s[i] != 10 { i = i + 1 } };  if s[i] == 39 { i = i + 1 };  push(D.tk_kind, LT_CHAR); push(D.tk_start, st); push(D.tk_end, i); push(D.tk_line, line);  continue }
+      if c == '#' { while s[i] != 0 and s[i] != '\n' { i += 1 };  push(D.tk_kind, LT_COMMENT); push(D.tk_start, st); push(D.tk_end, i); push(D.tk_line, line);  continue }
+      if c == '"' { i += 1;  while s[i] != 0 and s[i] != '"' and s[i] != '\n' { if s[i] == '\\' and s[i + 1] != 0 { i += 2 } else { i += 1 } };  if s[i] == '"' { i += 1 };  push(D.tk_kind, LT_STR); push(D.tk_start, st); push(D.tk_end, i); push(D.tk_line, line);  continue }
+      if c == '`' { i += 1;  while s[i] != 0 and s[i] != '`' { if s[i] == '\\' and s[i + 1] != 0 { i += 2 } else { i += 1 } };  if s[i] == '`' { i += 1 };  push(D.tk_kind, LT_STR); push(D.tk_start, st); push(D.tk_end, i); push(D.tk_line, line);  continue }
+      if c == '\'' { i += 1;  if s[i] == '\\' and s[i + 1] != 0 { i += 2 } else { if s[i] != 0 and s[i] != '\n' { i += 1 } };  if s[i] == '\'' { i += 1 };  push(D.tk_kind, LT_CHAR); push(D.tk_start, st); push(D.tk_end, i); push(D.tk_line, line);  continue }
       if char_is_digit(c) {
-        if c == 48 and (s[i + 1] == 120 or s[i + 1] == 88) { i = i + 2;  while char_is_hex(s[i]) { i = i + 1 };  push(D.tk_kind, LT_INT); push(D.tk_start, st); push(D.tk_end, i); push(D.tk_line, line);  continue }
-        while char_is_digit(s[i]) { i = i + 1 }
-        if s[i] == 46 and char_is_digit(s[i + 1]) { i = i + 1;  while char_is_digit(s[i]) { i = i + 1 };  push(D.tk_kind, LT_FLOAT); push(D.tk_start, st); push(D.tk_end, i); push(D.tk_line, line);  continue }
+        if c == '0' and (s[i + 1] == 'x' or s[i + 1] == 'X') { i += 2;  while char_is_hex(s[i]) { i += 1 };  push(D.tk_kind, LT_INT); push(D.tk_start, st); push(D.tk_end, i); push(D.tk_line, line);  continue }
+        while char_is_digit(s[i]) { i += 1 }
+        if s[i] == '.' and char_is_digit(s[i + 1]) { i += 1;  while char_is_digit(s[i]) { i += 1 };  push(D.tk_kind, LT_FLOAT); push(D.tk_start, st); push(D.tk_end, i); push(D.tk_line, line);  continue }
         push(D.tk_kind, LT_INT); push(D.tk_start, st); push(D.tk_end, i); push(D.tk_line, line);  continue
       }
-      if c == 64 and (char_is_alpha(s[i + 1]) or s[i + 1] == 95) { i = i + 1;  while char_is_alnum(s[i]) { i = i + 1 };  push(D.tk_kind, LT_ANNO); push(D.tk_start, st); push(D.tk_end, i); push(D.tk_line, line);  continue }
+      if c == '@' and (char_is_alpha(s[i + 1]) or s[i + 1] == '_') { i += 1;  while char_is_alnum(s[i]) { i += 1 };  push(D.tk_kind, LT_ANNO); push(D.tk_start, st); push(D.tk_end, i); push(D.tk_line, line);  continue }
       if char_is_alpha(c) {
-        while char_is_alnum(s[i]) { i = i + 1 }
+        while char_is_alnum(s[i]) { i += 1 }
         let w = s[st..i]
         var k = LT_ID
         if (w == "true") or (w == "false") or (w == "null") { k = LT_BOOL }
@@ -254,13 +262,13 @@ program LudicLsp {
         else { if is_keyword_word(w) { k = LT_KW } } } }
         push(D.tk_kind, k); push(D.tk_start, st); push(D.tk_end, i); push(D.tk_line, line);  continue
       }
-      if is_op2(c, s[i + 1]) { push(D.tk_kind, LT_OP); push(D.tk_start, i); push(D.tk_end, i + 2); push(D.tk_line, line);  i = i + 2;  continue }
-      if is_op1(c) { push(D.tk_kind, LT_OP); push(D.tk_start, i); push(D.tk_end, i + 1); push(D.tk_line, line);  i = i + 1;  continue }
+      if is_op2(c, s[i + 1]) { push(D.tk_kind, LT_OP); push(D.tk_start, i); push(D.tk_end, i + 2); push(D.tk_line, line);  i += 2;  continue }
+      if is_op1(c) { push(D.tk_kind, LT_OP); push(D.tk_start, i); push(D.tk_end, i + 1); push(D.tk_line, line);  i += 1;  continue }
       var ln = 1
       if c >= 240 { ln = 4 } else { if c >= 224 { ln = 3 } else { if c >= 128 { ln = 2 } } }
       var kk = 1
-      while kk < ln { if s[i + kk] == 0 or (s[i + kk] & 192) != 128 { ln = kk };  kk = kk + 1 }
-      push(D.tk_kind, LT_ERR); push(D.tk_start, i); push(D.tk_end, i + ln); push(D.tk_line, line);  i = i + ln
+      while kk < ln { if s[i + kk] == 0 or (s[i + kk] & 192) != 128 { ln = kk };  kk += 1 }
+      push(D.tk_kind, LT_ERR); push(D.tk_start, i); push(D.tk_end, i + ln); push(D.tk_line, line);  i += ln
     }
     push(D.tk_kind, LT_EOF); push(D.tk_start, i); push(D.tk_end, i); push(D.tk_line, line)
   }
@@ -269,18 +277,18 @@ program LudicLsp {
   function tlen(D: Doc, i: int) -> int { return D.tk_end[i] - D.tk_start[i] }
   function ttext(D: Doc, i: int) -> pointer { return D.src[D.tk_start[i]..D.tk_end[i]] }
   function tis(D: Doc, i: int, s: pointer) -> bool { if i < 0 or i >= ntok(D) { return false };  return (ttext(D, i) == s) }
-  function next_sig(D: Doc, i: int) -> int { var j = i + 1;  while j < ntok(D) { let k = D.tk_kind[j];  if k != LT_NL and k != LT_COMMENT { return j };  j = j + 1 };  return 0 - 1 }
-  function prev_sig(D: Doc, i: int) -> int { var j = i - 1;  while j >= 0 { let k = D.tk_kind[j];  if k != LT_NL and k != LT_COMMENT { return j };  j = j - 1 };  return 0 - 1 }
+  function next_sig(D: Doc, i: int) -> int { var j = i + 1;  while j < ntok(D) { let k = D.tk_kind[j];  if k != LT_NL and k != LT_COMMENT { return j };  j += 1 };  return -1 }
+  function prev_sig(D: Doc, i: int) -> int { var j = i - 1;  while j >= 0 { let k = D.tk_kind[j];  if k != LT_NL and k != LT_COMMENT { return j };  j -= 1 };  return -1 }
 
   # ---- positions (UTF-16 for LSP) ----
   function utf16_len(s: pointer, a: int, nbytes: int) -> int {
     var u = 0;  var i = 0
     while i < nbytes {
       let c = s[a + i]
-      if c < 128 { i = i + 1;  u = u + 1 }
-      else { if c < 224 { i = i + 2;  u = u + 1 }
-      else { if c < 240 { i = i + 3;  u = u + 1 }
-      else { i = i + 4;  u = u + 2 } } }
+      if c < 128 { i += 1;  u += 1 }
+      else { if c < 224 { i += 2;  u += 1 }
+      else { if c < 240 { i += 3;  u += 1 }
+      else { i += 4;  u += 2 } } }
     }
     return u
   }
@@ -299,15 +307,15 @@ program LudicLsp {
     var u = 0
     while off < endo and u < ch {
       let c = D.text[off]
-      if c < 128 { off = off + 1;  u = u + 1 }
-      else { if c < 224 { off = off + 2;  u = u + 1 }
-      else { if c < 240 { off = off + 3;  u = u + 1 }
-      else { off = off + 4;  u = u + 2 } } }
+      if c < 128 { off += 1;  u += 1 }
+      else { if c < 224 { off += 2;  u += 1 }
+      else { if c < 240 { off += 3;  u += 1 }
+      else { off += 4;  u += 2 } } }
     }
     return off
   }
   function tok_at(D: Doc, off: int) -> int {
-    var touching = 0 - 1
+    var touching = -1
     var i = 0
     let N = ntok(D)
     while i < N {
@@ -317,7 +325,7 @@ program LudicLsp {
         if off == D.tk_end[i] and touching < 0 { touching = i }
         if D.tk_start[i] > off { return touching }
       }
-      i = i + 1
+      i += 1
     }
     return touching
   }
@@ -327,28 +335,28 @@ program LudicLsp {
     let N = ntok(D)
     D.tmatch = new []int
     var i = 0
-    while i < N { push(D.tmatch, 0 - 1);  i = i + 1 }
+    while i < N { push(D.tmatch, -1);  i += 1 }
     let stack = words(1200)
     var top = 0
     i = 0
     while i < N {
       if D.tk_kind[i] == LT_OP and tlen(D, i) == 1 {
         let c = D.src[D.tk_start[i]]
-        if c == 123 or c == 40 or c == 91 { if top < 1200 { stack[top] = i;  top = top + 1 } }
-        else { if c == 125 or c == 41 or c == 93 { if top > 0 { top = top - 1;  let o = stack[top];  D.tmatch[o] = i;  D.tmatch[i] = o } } }
+        if c == '{' or c == '(' or c == '[' { if top < 1200 { stack[top] = i;  top += 1 } }
+        else { if c == '}' or c == ')' or c == ']' { if top > 0 { top -= 1;  let o = stack[top];  D.tmatch[o] = i;  D.tmatch[i] = o } } }
       }
-      i = i + 1
+      i += 1
     }
   }
 
   # ---- doc comment: the comment block directly above a declaration ----
   function collect_doc(D: Doc, decl_tok: int) -> pointer {
     var line = D.tk_line[decl_tok]
-    var first = 0 - 1
+    var first = -1
     var i = decl_tok - 1
     while i >= 0 {
       let k = D.tk_kind[i]
-      if k == LT_NL { i = i - 1;  continue }
+      if k == LT_NL { i -= 1;  continue }
       if k != LT_COMMENT { break }
       if D.tk_line[i] >= line { break }
       let p = prev_sig(D, i)
@@ -356,7 +364,7 @@ program LudicLsp {
       if D.tk_line[i] < line - 1 and first >= 0 { break }
       if first >= 0 and D.tk_line[first] != D.tk_line[i] + 1 { break }
       first = i;  line = D.tk_line[i]
-      i = i - 1
+      i -= 1
     }
     if first < 0 { return "" }
     let out = buf_new()
@@ -364,11 +372,11 @@ program LudicLsp {
     while i < decl_tok {
       if D.tk_kind[i] == LT_COMMENT {
         var s = D.tk_start[i] + 1
-        while s < D.tk_end[i] and (D.text[s] == 32 or D.text[s] == 9 or D.text[s] == 35 or D.text[s] == 42) { s = s + 1 }
+        while s < D.tk_end[i] and (D.text[s] == ' ' or D.text[s] == '\t' or D.text[s] == '#' or D.text[s] == '*') { s += 1 }
         buf_addrange(out, D.text, s, D.tk_end[i])
-        buf_putc(out, 10)
+        buf_putc(out, '\n')
       }
-      i = i + 1
+      i += 1
     }
     return buf_str(out)
   }
@@ -381,13 +389,13 @@ program LudicLsp {
 
   function pk() -> int { if pi < ntok(pD) { return pD.tk_kind[pi] };  return LT_EOF }
   function pis(s: pointer) -> bool { return tis(pD, pi, s) }
-  function pskipnl() -> void { while pi < ntok(pD) and (pk() == LT_NL or pk() == LT_COMMENT) { pi = pi + 1 } }
-  function padv() -> void { if pi < ntok(pD) { pi = pi + 1 };  pskipnl() }
+  function pskipnl() -> void { while pi < ntok(pD) and (pk() == LT_NL or pk() == LT_COMMENT) { pi += 1 } }
+  function padv() -> void { if pi < ntok(pD) { pi += 1 };  pskipnl() }
   function pword() -> pointer { if pi < ntok(pD) { return ttext(pD, pi) };  return "" }
   function pname() -> int {
     let k = pk()
     if k == LT_ID or k == LT_TYPE or k == LT_PHASE or k == LT_KW or k == LT_BOOL { let t = pi;  padv();  return t }
-    return 0 - 1
+    return -1
   }
   function sym_add(kind: int, nametok: int, parent: int) -> int {
     let s = new Sym
@@ -398,14 +406,14 @@ program LudicLsp {
     push(pD.syms, s)
     return len(pD.syms) - 1
   }
-  function cur_match() -> int { if pi < ntok(pD) { return pD.tmatch[pi] };  return 0 - 1 }
+  function cur_match() -> int { if pi < ntok(pD) { return pD.tmatch[pi] };  return -1 }
   function skip_group() -> void { let m = cur_match();  if m < 0 { padv();  return };  pi = m + 1;  pskipnl() }
 
   # `name: Type` pairs inside ( ) — record params, build the signature into sig
   function lp_params(owner: int, kind: int, sig: Buf) -> void {
     if not pis("(") { return }
     let close = cur_match()
-    buf_putc(sig, 40)                      # '('
+    buf_putc(sig, '(')                      # '('
     padv()
     var first = true
     while pi < ntok(pD) and (close < 0 or pi < close) {
@@ -424,7 +432,7 @@ program LudicLsp {
     }
     if close >= 0 { pi = close + 1 }
     pskipnl()
-    buf_putc(sig, 41)                      # ')'
+    buf_putc(sig, ')')                      # ')'
   }
 
   # (a, b) variable list -> token indices into out; returns count
@@ -438,7 +446,7 @@ program LudicLsp {
       if pis(",") { padv();  continue }
       let nt = pname()
       if nt < 0 { padv();  continue }
-      push(out, nt);  n = n + 1
+      push(out, nt);  n += 1
     }
     if close >= 0 { pi = close + 1 }
     pskipnl()
@@ -463,7 +471,7 @@ program LudicLsp {
         pD.syms[sidx].bstart = scope_start;  pD.syms[sidx].bend = scope_end
         pD.syms[sidx].detail = concat3(pD.syms[sidx].name, ": ", concat3(pD.syms[sidx].ty, "  (query binding)", ""))
       }
-      bind = bind + 1
+      bind += 1
     }
     if close >= 0 { pi = close + 1 }
     pskipnl()
@@ -592,7 +600,7 @@ program LudicLsp {
       pD.syms[sidx].doc = collect_doc(pD, decl_tok)
       while pk() == LT_ANNO { padv() }
       let det = buf_new()
-      buf_puts(det, w);  buf_putc(det, 32);  buf_puts(det, pD.syms[sidx].name);  buf_puts(det, " {")
+      buf_puts(det, w);  buf_putc(det, ' ');  buf_puts(det, pD.syms[sidx].name);  buf_puts(det, " {")
       if not pis("{") { pD.syms[sidx].detail = buf_str(det);  return }
       let close = cur_match()
       pD.syms[sidx].bstart = pD.tk_start[pi]
@@ -611,11 +619,11 @@ program LudicLsp {
           pD.syms[f].ty = fty
           pD.syms[f].detail = concat3(pD.syms[sidx].name, ".", concat3(pD.syms[f].name, ": ", fty))
           if pis("=") { padv();  while pi < ntok(pD) and not pis(",") and not pis("}") and pk() != LT_EOF { if pis("(") or pis("{") or pis("[") { skip_group() } else { padv() } } }
-          if not first { buf_putc(det, 44) }
-          buf_putc(det, 32);  buf_puts(det, pD.syms[f].name);  buf_puts(det, ": ");  buf_puts(det, fty)
+          if not first { buf_putc(det, ',') }
+          buf_putc(det, ' ');  buf_puts(det, pD.syms[f].name);  buf_puts(det, ": ");  buf_puts(det, fty)
         } else {
-          if not first { buf_putc(det, 44) }
-          buf_putc(det, 32);  buf_puts(det, ttext(pD, ft))
+          if not first { buf_putc(det, ',') }
+          buf_putc(det, ' ');  buf_puts(det, ttext(pD, ft))
         }
         first = false
       }
@@ -633,7 +641,7 @@ program LudicLsp {
       pD.syms[sidx].doc = collect_doc(pD, decl_tok)
       if pis(":") { padv();  let tt = pname();  if tt >= 0 { pD.syms[sidx].ty = ttext(pD, tt) } }
       pD.syms[sidx].detail = concat3(w, " ", concat3(pD.syms[sidx].name, ": ", pD.syms[sidx].ty))
-      while pi < ntok(pD) and pk() != LT_NL and pk() != LT_EOF { if pis("(") or pis("{") or pis("[") { skip_group() } else { pi = pi + 1 } }
+      while pi < ntok(pD) and pk() != LT_NL and pk() != LT_EOF { if pis("(") or pis("{") or pis("[") { skip_group() } else { pi += 1 } }
       pskipnl()
       return
     }
@@ -646,7 +654,7 @@ program LudicLsp {
       lp_params(sidx, LS_PARAM, sig)
       if pis("->") { padv();  let tt = pname();  if tt >= 0 { pD.syms[sidx].ty = ttext(pD, tt);  buf_puts(sig, " -> ");  buf_puts(sig, pD.syms[sidx].ty) } }
       pD.syms[sidx].detail = buf_str(sig)
-      while pi < ntok(pD) and pk() != LT_NL and pk() != LT_EOF { pi = pi + 1 }
+      while pi < ntok(pD) and pk() != LT_NL and pk() != LT_EOF { pi += 1 }
       pskipnl()
       return
     }
@@ -665,7 +673,7 @@ program LudicLsp {
       pD.syms[sidx].detail = buf_str(sig)
       while pis("requires") or pis("ensures") or pis("invariant") or pis("effects") {
         padv()
-        while pi < ntok(pD) and pk() != LT_NL and pk() != LT_EOF and not pis("{") { if pis("(") or pis("[") { skip_group() } else { pi = pi + 1 } }
+        while pi < ntok(pD) and pk() != LT_NL and pk() != LT_EOF and not pis("{") { if pis("(") or pis("[") { skip_group() } else { pi += 1 } }
         pskipnl()
       }
       if pis("{") {
@@ -673,7 +681,7 @@ program LudicLsp {
         pD.syms[sidx].bstart = pD.tk_start[pi]
         if close >= 0 { pD.syms[sidx].bend = pD.tk_end[close] } else { pD.syms[sidx].bend = cstr_len(pD.text) }
         var q = 0
-        while q < len(pD.syms) { if pD.syms[q].parent == sidx and pD.syms[q].kind == LS_PARAM { pD.syms[q].bstart = pD.syms[sidx].bstart;  pD.syms[q].bend = pD.syms[sidx].bend };  q = q + 1 }
+        while q < len(pD.syms) { if pD.syms[q].parent == sidx and pD.syms[q].kind == LS_PARAM { pD.syms[q].bstart = pD.syms[sidx].bstart;  pD.syms[q].bend = pD.syms[sidx].bend };  q += 1 }
         lp_block(sidx, pD.syms[sidx].bend)
       }
       return
@@ -706,8 +714,8 @@ program LudicLsp {
       if have_query {
         let save = pi
         var scan = pi
-        while scan < ntok(pD) and not tis(pD, scan, "{") and pD.tk_kind[scan] != LT_EOF { scan = scan + 1 }
-        var cl = 0 - 1
+        while scan < ntok(pD) and not tis(pD, scan, "{") and pD.tk_kind[scan] != LT_EOF { scan += 1 }
+        var cl = -1
         if scan < ntok(pD) { cl = pD.tmatch[scan] }
         var bs = 0
         if scan < ntok(pD) { bs = pD.tk_start[scan] }
@@ -767,7 +775,7 @@ program LudicLsp {
           if pis("on") { padv();  let x = pname();  lp_block(sidx, pD.syms[sidx].bend) }
           else { if pis("layer") {
             padv();  let lt = pname()
-            var lsidx = 0 - 1
+            var lsidx = -1
             if lt >= 0 { lsidx = sym_add(LS_LAYER, lt, sidx);  pD.syms[lsidx].detail = concat3("layer ", pD.syms[lsidx].name, concat3(" of scene ", pD.syms[sidx].name, "")) }
             if pis("{") {
               let lc = cur_match()
@@ -801,14 +809,14 @@ program LudicLsp {
     D.is_unit = 0;  D.is_module = 0;  D.unit = ""
     pD = D;  pi = 0
     pskipnl()
-    while pis("import") { lp_decl(0 - 1);  pskipnl() }
+    while pis("import") { lp_decl(-1);  pskipnl() }
     if pis("program") {
       D.is_module = 1;  D.is_unit = 1
       padv()
       let nt = pname()
-      var up = 0 - 1
+      var up = -1
       if nt >= 0 {
-        up = sym_add(LS_UNIT, nt, 0 - 1)
+        up = sym_add(LS_UNIT, nt, -1)
         D.unit = pD.syms[up].name
         pD.syms[up].detail = concat3("program ", D.unit, "")
       }
@@ -825,7 +833,7 @@ program LudicLsp {
       return
     }
     while pi < ntok(pD) and pk() != LT_EOF {
-      let before = pi;  lp_decl(0 - 1)
+      let before = pi;  lp_decl(-1)
       if pi == before { padv() }
     }
   }
@@ -843,10 +851,10 @@ program LudicLsp {
 
   # ---- paths & URIs ----
   function hexval(c: int) -> int {
-    if c >= 48 and c <= 57 { return c - 48 }
+    if c >= '0' and c <= '9' { return c - 48 }
     let l = c | 32
     if l >= 97 and l <= 102 { return l - 97 + 10 }
-    return 0 - 1
+    return -1
   }
   function uri_to_path(uri: pointer) -> pointer {
     var s = uri
@@ -855,15 +863,15 @@ program LudicLsp {
     let out = bytes(n + 1)
     var j = 0;  var i = 0
     while i < n {
-      if s[i] == 37 and hexval(s[i + 1]) >= 0 and hexval(s[i + 2]) >= 0 { out[j] = hexval(s[i + 1]) * 16 + hexval(s[i + 2]);  j = j + 1;  i = i + 3 }
-      else { out[j] = s[i];  j = j + 1;  i = i + 1 }
+      if s[i] == '%' and hexval(s[i + 1]) >= 0 and hexval(s[i + 2]) >= 0 { out[j] = hexval(s[i + 1]) * 16 + hexval(s[i + 2]);  j += 1;  i += 3 }
+      else { out[j] = s[i];  j += 1;  i += 1 }
     }
     out[j] = 0
     return out
   }
   function uri_safe(c: int) -> bool {
     if char_is_alnum(c) { return true }
-    return c == 45 or c == 46 or c == 126 or c == 47   # - . ~ /
+    return c == '-' or c == '.' or c == '~' or c == '/'   # - . ~ /
   }
   function hexch(n: int) -> int { if n < 10 { return 48 + n };  return 55 + n }
   function path_to_uri(path: pointer) -> pointer {
@@ -873,100 +881,100 @@ program LudicLsp {
     while path[i] != 0 {
       let c = path[i]
       if uri_safe(c) { buf_putc(out, c) }
-      else { buf_putc(out, 37);  buf_putc(out, hexch((c & 255) / 16));  buf_putc(out, hexch((c & 255) % 16)) }
-      i = i + 1
+      else { buf_putc(out, '%');  buf_putc(out, hexch((c & 255) / 16));  buf_putc(out, hexch((c & 255) % 16)) }
+      i += 1
     }
     return buf_str(out)
   }
   function dirname(p: pointer) -> pointer {
-    var last = 0 - 1
+    var last = -1
     var i = 0
-    while p[i] != 0 { if p[i] == 47 { last = i };  i = i + 1 }
+    while p[i] != 0 { if p[i] == '/' { last = i };  i += 1 }
     if last < 0 { return "." }
     if last == 0 { return "/" }
     return p[0..last]
   }
   function normpath(p: pointer) -> pointer {
     let n = cstr_len(p)
-    let abs = (n > 0 and p[0] == 47)
+    let abs = (n > 0 and p[0] == '/')
     let list = new []pointer
     var cnt = 0
     var i = 0
     while i < n {
-      while i < n and p[i] == 47 { i = i + 1 }
+      while i < n and p[i] == '/' { i += 1 }
       let st = i
-      while i < n and p[i] != 47 { i = i + 1 }
+      while i < n and p[i] != '/' { i += 1 }
       if i > st {
         let c = p[st..i]
         if (c == ".") { }
         else { if (c == "..") {
-          if cnt > 0 and not (list[cnt - 1] == "..") { cnt = cnt - 1 }
-          else { if not abs { if cnt < len(list) { list[cnt] = c } else { push(list, c) };  cnt = cnt + 1 } }
+          if cnt > 0 and not (list[cnt - 1] == "..") { cnt -= 1 }
+          else { if not abs { if cnt < len(list) { list[cnt] = c } else { push(list, c) };  cnt += 1 } }
         } else {
-          if cnt < len(list) { list[cnt] = c } else { push(list, c) };  cnt = cnt + 1
+          if cnt < len(list) { list[cnt] = c } else { push(list, c) };  cnt += 1
         } }
       }
     }
     if cnt == 0 { if abs { return "/" };  return "." }
     let out = buf_new()
-    if abs { buf_putc(out, 47) }
+    if abs { buf_putc(out, '/') }
     var k = 0
-    while k < cnt { if k > 0 { buf_putc(out, 47) };  buf_puts(out, list[k]);  k = k + 1 }
+    while k < cnt { if k > 0 { buf_putc(out, '/') };  buf_puts(out, list[k]);  k += 1 }
     return buf_str(out)
   }
   function join_path(dir: pointer, rel: pointer) -> pointer {
-    if rel[0] == 47 { return normpath(rel) }
+    if rel[0] == '/' { return normpath(rel) }
     return normpath(concat3(dir, "/", rel))
   }
 
   # ---- markdown scrub: blank everything outside a ```ludic fence ----
   function word_ludic_at(s: pointer, at: int) -> bool {
-    return ((s[at] == 108 or s[at] == 76)) and ((s[at + 1] == 117 or s[at + 1] == 85)) and ((s[at + 2] == 100 or s[at + 2] == 68)) and ((s[at + 3] == 105 or s[at + 3] == 73)) and ((s[at + 4] == 99 or s[at + 4] == 67))
+    return ((s[at] == 'l' or s[at] == 'L')) and ((s[at + 1] == 'u' or s[at + 1] == 'U')) and ((s[at + 2] == 'd' or s[at + 2] == 'D')) and ((s[at + 3] == 'i' or s[at + 3] == 'I')) and ((s[at + 4] == 'c' or s[at + 4] == 'C'))
   }
   function scrub_markdown(src: pointer) -> pointer {
     let n = cstr_len(src)
     let out = bytes(n + 1)
     var c0 = 0
-    while c0 < n { out[c0] = src[c0];  c0 = c0 + 1 }
+    while c0 < n { out[c0] = src[c0];  c0 += 1 }
     out[n] = 0
     var i = 0
     while i < n {
       let ls = i
       var le = i
-      while le < n and src[le] != 10 { le = le + 1 }
+      while le < n and src[le] != '\n' { le += 1 }
       var ind = 0
-      while ls + ind < le and src[ls + ind] == 32 { ind = ind + 1 }
+      while ls + ind < le and src[ls + ind] == ' ' { ind += 1 }
       let j = ls + ind
       var m = 0
       if j < le { m = src[j] }
       var run = 0
-      while j + run < le and src[j + run] == m { run = run + 1 }
-      let fenced = (m == 96 or m == 126) and run >= 3
+      while j + run < le and src[j + run] == m { run += 1 }
+      let fenced = (m == '`' or m == '~') and run >= 3
       let info = j + run
       var is_ludic = false
       if fenced {
         var kk = info
-        while kk < le and (src[kk] == 32 or src[kk] == 9) { kk = kk + 1 }
-        if le - kk >= 5 { if word_ludic_at(src, kk) and (le - kk == 5 or src[kk + 5] == 32 or src[kk + 5] == 9 or src[kk + 5] == 13) { is_ludic = true } }
+        while kk < le and (src[kk] == ' ' or src[kk] == '\t') { kk += 1 }
+        if le - kk >= 5 { if word_ludic_at(src, kk) and (le - kk == 5 or src[kk + 5] == ' ' or src[kk + 5] == '\t' or src[kk + 5] == '\r') { is_ludic = true } }
       }
       var b = ls
-      while b < le { out[b] = 32;  b = b + 1 }
+      while b < le { out[b] = ' ';  b += 1 }
       i = le + 1;  if le >= n { i = n }
       if not fenced { continue }
       while i < n {
         let bs = i
         var be = i
-        while be < n and src[be] != 10 { be = be + 1 }
+        while be < n and src[be] != '\n' { be += 1 }
         var bi = 0
-        while bs + bi < be and src[bs + bi] == 32 { bi = bi + 1 }
+        while bs + bi < be and src[bs + bi] == ' ' { bi += 1 }
         let cj = bs + bi
         var crun = 0
-        while cj + crun < be and src[cj + crun] == m { crun = crun + 1 }
+        while cj + crun < be and src[cj + crun] == m { crun += 1 }
         var only = true
         var k2 = cj + crun
-        while k2 < be { if src[k2] != 32 and src[k2] != 13 { only = false;  break };  k2 = k2 + 1 }
-        if crun >= run and only { var bb = bs;  while bb < be { out[bb] = 32;  bb = bb + 1 };  i = be + 1;  if be >= n { i = n };  break }
-        if not is_ludic { var bb = bs;  while bb < be { out[bb] = 32;  bb = bb + 1 } }
+        while k2 < be { if src[k2] != ' ' and src[k2] != '\r' { only = false;  break };  k2 += 1 }
+        if crun >= run and only { var bb = bs;  while bb < be { out[bb] = ' ';  bb += 1 };  i = be + 1;  if be >= n { i = n };  break }
+        if not is_ludic { var bb = bs;  while bb < be { out[bb] = ' ';  bb += 1 } }
         i = be + 1;  if be >= n { i = n }
       }
     }
@@ -986,7 +994,7 @@ program LudicLsp {
     D.cls = new []int
     var i = 0
     let N = ntok(D)
-    while i < N { push(D.cls, SC_NONE);  i = i + 1 }
+    while i < N { push(D.cls, SC_NONE);  i += 1 }
   }
   function new_doc(path: pointer, text: pointer) -> Doc {
     let D = new Doc
@@ -1002,7 +1010,7 @@ program LudicLsp {
   function by_path(path: pointer) -> Doc {
     let p = normpath(path)
     var i = 0
-    while i < len(g_docs) { if (g_docs[i].path == p) { return g_docs[i] };  i = i + 1 }
+    while i < len(g_docs) { if (g_docs[i].path == p) { return g_docs[i] };  i += 1 }
     return null
   }
   function by_uri(uri: pointer) -> Doc {
@@ -1010,7 +1018,7 @@ program LudicLsp {
     let D = by_path(p)
     if (D != null) { return D }
     var i = 0
-    while i < len(g_docs) { if (g_docs[i].uri == uri) { return g_docs[i] };  i = i + 1 }
+    while i < len(g_docs) { if (g_docs[i].uri == uri) { return g_docs[i] };  i += 1 }
     return null
   }
   function ensure_doc(path: pointer) -> Doc {
@@ -1025,14 +1033,14 @@ program LudicLsp {
 
   function scan_root(root: pointer) -> void {
     if (root == null) { return }
-    let listfile = "/tmp/ludic_lsp_scan.txt"
+    let listfile = `{Os.temp_dir()}/ludic_lsp_scan_{Os.pid()}.txt`   # per process: editors run several servers
     run(concat3(concat3("find '", root, "' -name '*.ludic' -not -path '*/build/*' -not -path '*/node_modules/*' -not -path '*/.*' > "), listfile, " 2>/dev/null"))
     let list = read_file(listfile)
     if (list == null) { return }
     var i = 0;  var start = 0
     while list[i] != 0 {
-      if list[i] == 10 { if i > start { let d = ensure_doc(list[start..i]) };  start = i + 1 }
-      i = i + 1
+      if list[i] == '\n' { if i > start { let d = ensure_doc(list[start..i]) };  start = i + 1 }
+      i += 1
     }
     if i > start { let d = ensure_doc(list[start..i]) }
   }
@@ -1049,10 +1057,10 @@ program LudicLsp {
       if (I != null) {
         var seen = false
         var k = 0
-        while k < len(out) { if (out[k].path == I.path) { seen = true };  k = k + 1 }
+        while k < len(out) { if (out[k].path == I.path) { seen = true };  k += 1 }
         if not seen { push(out, I);  imports_of(I, out) }
       }
-      i = i + 1
+      i += 1
     }
   }
   function related(D: Doc) -> []Doc {
@@ -1068,23 +1076,23 @@ program LudicLsp {
         imports_of(R, reach)
         var hits = false
         var k = 0
-        while k < len(reach) { if (reach[k].path == D.path) { hits = true };  k = k + 1 }
+        while k < len(reach) { if (reach[k].path == D.path) { hits = true };  k += 1 }
         if hits {
           var seen = false
           k = 0
-          while k < len(out) { if (out[k].path == R.path) { seen = true };  k = k + 1 }
+          while k < len(out) { if (out[k].path == R.path) { seen = true };  k += 1 }
           if not seen { push(out, R) }
           k = 0
           while k < len(reach) {
             var s2 = false
             var q = 0
-            while q < len(out) { if (out[q].path == reach[k].path) { s2 = true };  q = q + 1 }
+            while q < len(out) { if (out[q].path == reach[k].path) { s2 = true };  q += 1 }
             if not s2 { push(out, reach[k]) }
-            k = k + 1
+            k += 1
           }
         }
       }
-      i = i + 1
+      i += 1
     }
     return out
   }
@@ -1093,18 +1101,18 @@ program LudicLsp {
     if D.is_unit == 1 { return D }
     let rel = related(D)
     var i = 0
-    while i < len(rel) { if rel[i].is_unit == 1 and rel[i].is_md == 0 { return rel[i] };  i = i + 1 }
+    while i < len(rel) { if rel[i].is_unit == 1 and rel[i].is_md == 0 { return rel[i] };  i += 1 }
     return null
   }
   function find_local(D: Doc, name: pointer, off: int) -> int {
-    var best = 0 - 1
+    var best = -1
     var i = 0
     while i < len(D.syms) {
       let s = D.syms[i]
       if is_local_kind(s.kind) and (s.name == name) {
         if off >= s.bstart and off <= s.bend { if best < 0 or s.bstart >= D.syms[best].bstart { best = i } }
       }
-      i = i + 1
+      i += 1
     }
     return best
   }
@@ -1116,42 +1124,42 @@ program LudicLsp {
       var k = 0
       while k < len(rel[i].syms) {
         if is_toplevel_kind(rel[i].syms[k].kind) and (rel[i].syms[k].name == name) { g_owner = rel[i];  return k }
-        k = k + 1
+        k += 1
       }
-      i = i + 1
+      i += 1
     }
     i = 0
     while i < len(g_docs) {
       var k = 0
       while k < len(g_docs[i].syms) {
         if is_toplevel_kind(g_docs[i].syms[k].kind) and (g_docs[i].syms[k].name == name) { g_owner = g_docs[i];  return k }
-        k = k + 1
+        k += 1
       }
-      i = i + 1
+      i += 1
     }
-    return 0 - 1
+    return -1
   }
   # component sym index (in g_owner) for a dotted receiver, or -1
   function receiver_component(D: Doc, dot_tok: int) -> int {
     let recv = prev_sig(D, dot_tok)
-    if recv < 0 or D.tk_kind[recv] != LT_ID { return 0 - 1 }
+    if recv < 0 or D.tk_kind[recv] != LT_ID { return -1 }
     let name = ttext(D, recv)
     var ty = null
     let l = find_local(D, name, D.tk_start[recv])
     if l >= 0 { ty = D.syms[l].ty }
     else { let t = find_top(D, name);  if t >= 0 { ty = g_owner.syms[t].ty } }
-    if (ty == null) { return 0 - 1 }
-    if (ty == "") { return 0 - 1 }
+    if (ty == null) { return -1 }
+    if (ty == "") { return -1 }
     return find_top(D, ty)
   }
   # resolve the token: sets g_owner/g_symidx; returns the token index (or -1)
   function resolve_tok(D: Doc, tok: int) -> int {
-    g_owner = null;  g_symidx = 0 - 1
-    if tok < 0 { return 0 - 1 }
-    if D.tk_kind[tok] != LT_ID and D.tk_kind[tok] != LT_STR { return 0 - 1 }
+    g_owner = null;  g_symidx = -1
+    if tok < 0 { return -1 }
+    if D.tk_kind[tok] != LT_ID and D.tk_kind[tok] != LT_STR { return -1 }
     let name = ttext(D, tok)
     var i = 0
-    while i < len(D.syms) { if D.syms[i].tok == tok { g_owner = D;  g_symidx = i;  return tok };  i = i + 1 }
+    while i < len(D.syms) { if D.syms[i].tok == tok { g_owner = D;  g_symidx = i;  return tok };  i += 1 }
     let prev = prev_sig(D, tok)
     if prev >= 0 and tis(D, prev, ".") {
       let comp = receiver_component(D, prev)
@@ -1160,17 +1168,17 @@ program LudicLsp {
         var k = 0
         while k < len(co.syms) {
           if co.syms[k].kind == LS_FIELD and co.syms[k].parent == comp and (co.syms[k].name == name) { g_owner = co;  g_symidx = k;  return tok }
-          k = k + 1
+          k += 1
         }
       }
-      g_owner = null;  g_symidx = 0 - 1
+      g_owner = null;  g_symidx = -1
       return tok
     }
     let l = find_local(D, name, D.tk_start[tok])
     if l >= 0 { g_owner = D;  g_symidx = l;  return tok }
     let t = find_top(D, name)
     if t >= 0 { g_symidx = t;  return tok }
-    g_owner = null;  g_symidx = 0 - 1
+    g_owner = null;  g_symidx = -1
     return tok
   }
   function resolve_at(D: Doc, off: int) -> int { return resolve_tok(D, tok_at(D, off)) }
@@ -1178,7 +1186,7 @@ program LudicLsp {
   function first_on_line(D: Doc, tok: int) -> bool { let p = prev_sig(D, tok);  return p < 0 or D.tk_line[p] != D.tk_line[tok] }
   function in_ui_body(D: Doc, off: int) -> bool {
     var i = 0
-    while i < len(D.syms) { if D.syms[i].kind == LS_UI and off > D.syms[i].bstart and off < D.syms[i].bend { return true };  i = i + 1 }
+    while i < len(D.syms) { if D.syms[i].kind == LS_UI and off > D.syms[i].bstart and off < D.syms[i].bend { return true };  i += 1 }
     return false
   }
 
@@ -1186,8 +1194,8 @@ program LudicLsp {
   var g_builtins: []pointer
   var g_bsigs: []pointer
   function badd(name: pointer, sig: pointer) -> void { push(g_builtins, name);  push(g_bsigs, sig) }
-  function is_builtin_name(name: pointer) -> bool { var i = 0;  while i < len(g_builtins) { if (g_builtins[i] == name) { return true };  i = i + 1 };  return false }
-  function builtin_sig(name: pointer) -> pointer { var i = 0;  while i < len(g_builtins) { if (g_builtins[i] == name) { return g_bsigs[i] };  i = i + 1 };  return null }
+  function is_builtin_name(name: pointer) -> bool { var i = 0;  while i < len(g_builtins) { if (g_builtins[i] == name) { return true };  i += 1 };  return false }
+  function builtin_sig(name: pointer) -> pointer { var i = 0;  while i < len(g_builtins) { if (g_builtins[i] == name) { return g_bsigs[i] };  i += 1 };  return null }
 
   # The namespaced standard-library surface: `Namespace.method`, mirroring the
   # compiler's emit_ns_call (selfhost/backend/emit_call.ludic). Screen/Random/Input/Map
@@ -1576,7 +1584,7 @@ program LudicLsp {
   }
   function classify(D: Doc) -> void {
     let N = ntok(D)
-    if len(D.cls) < N { D.cls = new []int;  var z = 0;  while z < N { push(D.cls, SC_NONE);  z = z + 1 } }
+    if len(D.cls) < N { D.cls = new []int;  var z = 0;  while z < N { push(D.cls, SC_NONE);  z += 1 } }
     var i = 0
     while i < N {
       let k = D.tk_kind[i]
@@ -1590,32 +1598,32 @@ program LudicLsp {
       else { if k == LT_ANNO { c = SC_ANNOTATION }
       else { if k == LT_OP { c = SC_OPERATOR }
       else { if k == LT_ID { c = SC_UNKNOWN } } } } } } } } }
-      if k != LT_ID { D.cls[i] = c;  i = i + 1;  continue }
+      if k != LT_ID { D.cls[i] = c;  i += 1;  continue }
       let name = ttext(D, i)
-      var decl = 0 - 1
+      var decl = -1
       var s = 0
-      while s < len(D.syms) { if D.syms[s].tok == i { decl = s;  break };  s = s + 1 }
-      if decl >= 0 { D.cls[i] = class_of_symkind(D.syms[decl].kind);  i = i + 1;  continue }
+      while s < len(D.syms) { if D.syms[s].tok == i { decl = s;  break };  s += 1 }
+      if decl >= 0 { D.cls[i] = class_of_symkind(D.syms[decl].kind);  i += 1;  continue }
       let prev = prev_sig(D, i)
-      if prev >= 0 and tis(D, prev, ".") { D.cls[i] = SC_FIELD;  i = i + 1;  continue }
+      if prev >= 0 and tis(D, prev, ".") { D.cls[i] = SC_FIELD;  i += 1;  continue }
       let nxt = next_sig(D, i)
       var followed_eq = false
       if nxt >= 0 and tis(D, nxt, "=") { followed_eq = true }
       if in_ui_body(D, D.tk_start[i]) {
-        if followed_eq { D.cls[i] = SC_PROP;  i = i + 1;  continue }
+        if followed_eq { D.cls[i] = SC_PROP;  i += 1;  continue }
         if first_on_line(D, i) or (prev >= 0 and (tis(D, prev, "{") or tis(D, prev, "}"))) {
           if is_widget_word(name) { D.cls[i] = SC_WIDGET } else { D.cls[i] = SC_UI }
-          i = i + 1;  continue
+          i += 1;  continue
         }
       }
       let l = find_local(D, name, D.tk_start[i])
-      if l >= 0 { if D.syms[l].kind == LS_PARAM { D.cls[i] = SC_PARAM } else { D.cls[i] = SC_VARIABLE };  i = i + 1;  continue }
+      if l >= 0 { if D.syms[l].kind == LS_PARAM { D.cls[i] = SC_PARAM } else { D.cls[i] = SC_VARIABLE };  i += 1;  continue }
       let top = find_top(D, name)
-      if top >= 0 { D.cls[i] = class_of_symkind(g_owner.syms[top].kind);  i = i + 1;  continue }
-      if is_builtin_name(name) { D.cls[i] = SC_BUILTIN;  i = i + 1;  continue }
-      if followed_eq { D.cls[i] = SC_FIELD;  i = i + 1;  continue }
+      if top >= 0 { D.cls[i] = class_of_symkind(g_owner.syms[top].kind);  i += 1;  continue }
+      if is_builtin_name(name) { D.cls[i] = SC_BUILTIN;  i += 1;  continue }
+      if followed_eq { D.cls[i] = SC_FIELD;  i += 1;  continue }
       D.cls[i] = SC_UNKNOWN
-      i = i + 1
+      i += 1
     }
   }
 
@@ -1646,7 +1654,7 @@ program LudicLsp {
     if cls == SC_COMMENT { return 12 }
     if cls == SC_OPERATOR { return 13 }
     if cls == SC_ANNOTATION { return 14 }
-    return 0 - 1
+    return -1
   }
 
   # ============================================================================
@@ -1663,10 +1671,10 @@ program LudicLsp {
 
   var jsrc: pointer = null
   var jp: int = 0
-  function jskip() -> void { while jsrc[jp] == 32 or jsrc[jp] == 9 or jsrc[jp] == 10 or jsrc[jp] == 13 { jp = jp + 1 } }
+  function jskip() -> void { while jsrc[jp] == ' ' or jsrc[jp] == '\t' or jsrc[jp] == '\n' or jsrc[jp] == '\r' { jp += 1 } }
   function jhex4(s: pointer, at: int) -> int {
     var v = 0;  var i = 0
-    while i < 4 { let h = hexval(s[at + i]);  if h < 0 { return v };  v = v * 16 + h;  i = i + 1 }
+    while i < 4 { let h = hexval(s[at + i]);  if h < 0 { return v };  v = v * 16 + h;  i += 1 }
     return v
   }
   function utf8_emit(o: Buf, cp: int) -> void {
@@ -1676,85 +1684,85 @@ program LudicLsp {
     else { buf_putc(o, 240 | (cp >> 18));  buf_putc(o, 128 | ((cp >> 12) & 63));  buf_putc(o, 128 | ((cp >> 6) & 63));  buf_putc(o, 128 | (cp & 63)) } } }
   }
   function jparse_string() -> pointer {
-    jp = jp + 1                                   # skip opening quote
+    jp += 1                                   # skip opening quote
     let o = buf_new()
-    while jsrc[jp] != 0 and jsrc[jp] != 34 {
-      if jsrc[jp] == 92 {
-        jp = jp + 1
-        let c = jsrc[jp];  jp = jp + 1
-        if c == 110 { buf_putc(o, 10) }
-        else { if c == 116 { buf_putc(o, 9) }
-        else { if c == 114 { buf_putc(o, 13) }
-        else { if c == 98 { buf_putc(o, 8) }
-        else { if c == 102 { buf_putc(o, 12) }
-        else { if c == 117 {
-          var cp = jhex4(jsrc, jp);  jp = jp + 4
-          if cp >= 55296 and cp < 56320 and jsrc[jp] == 92 and jsrc[jp + 1] == 117 {
-            let lo = jhex4(jsrc, jp + 2);  jp = jp + 6
+    while jsrc[jp] != 0 and jsrc[jp] != '"' {
+      if jsrc[jp] == '\\' {
+        jp += 1
+        let c = jsrc[jp];  jp += 1
+        if c == 'n' { buf_putc(o, '\n') }
+        else { if c == 't' { buf_putc(o, '\t') }
+        else { if c == 'r' { buf_putc(o, '\r') }
+        else { if c == 'b' { buf_putc(o, 8) }
+        else { if c == 'f' { buf_putc(o, 12) }
+        else { if c == 'u' {
+          var cp = jhex4(jsrc, jp);  jp += 4
+          if cp >= 55296 and cp < 56320 and jsrc[jp] == '\\' and jsrc[jp + 1] == 'u' {
+            let lo = jhex4(jsrc, jp + 2);  jp += 6
             cp = 65536 + ((cp - 55296) << 10) + (lo - 56320)
           }
           utf8_emit(o, cp)
         } else { buf_putc(o, c) } } } } } }
-      } else { buf_putc(o, jsrc[jp]);  jp = jp + 1 }
+      } else { buf_putc(o, jsrc[jp]);  jp += 1 }
     }
-    if jsrc[jp] == 34 { jp = jp + 1 }
+    if jsrc[jp] == '"' { jp += 1 }
     return buf_str(o)
   }
   function jparse() -> JVal {
     jskip()
     let c = jsrc[jp]
-    if c == 123 {                                 # '{'
-      jp = jp + 1
+    if c == '{' {                                 # '{'
+      jp += 1
       let v = jval(JOBJ)
       while true {
         jskip()
-        if jsrc[jp] == 125 { jp = jp + 1;  break }
+        if jsrc[jp] == '}' { jp += 1;  break }
         var key = ""
-        if jsrc[jp] == 34 { key = jparse_string() }
-        jskip();  if jsrc[jp] == 58 { jp = jp + 1 }
+        if jsrc[jp] == '"' { key = jparse_string() }
+        jskip();  if jsrc[jp] == ':' { jp += 1 }
         let kid = jparse()
         push(v.keys, key);  push(v.kids, kid)
         jskip()
-        if jsrc[jp] == 44 { jp = jp + 1 }
-        else { if jsrc[jp] == 125 { jp = jp + 1;  break } else { if jsrc[jp] == 0 { break } } }
+        if jsrc[jp] == ',' { jp += 1 }
+        else { if jsrc[jp] == '}' { jp += 1;  break } else { if jsrc[jp] == 0 { break } } }
       }
       return v
     }
-    if c == 91 {                                  # '['
-      jp = jp + 1
+    if c == '[' {                                  # '['
+      jp += 1
       let v = jval(JARR)
       while true {
         jskip()
-        if jsrc[jp] == 93 { jp = jp + 1;  break }
+        if jsrc[jp] == ']' { jp += 1;  break }
         let kid = jparse()
         push(v.keys, "");  push(v.kids, kid)
         jskip()
-        if jsrc[jp] == 44 { jp = jp + 1 }
-        else { if jsrc[jp] == 93 { jp = jp + 1;  break } else { if jsrc[jp] == 0 { break } } }
+        if jsrc[jp] == ',' { jp += 1 }
+        else { if jsrc[jp] == ']' { jp += 1;  break } else { if jsrc[jp] == 0 { break } } }
       }
       return v
     }
-    if c == 34 { let v = jval(JSTR);  v.s = jparse_string();  return v }
-    if jsrc[jp] == 116 and jsrc[jp + 1] == 114 { jp = jp + 4;  let v = jval(JBOOL);  v.b = 1;  return v }   # true
-    if jsrc[jp] == 102 and jsrc[jp + 1] == 97 { jp = jp + 5;  let v = jval(JBOOL);  v.b = 0;  return v }   # false
-    if jsrc[jp] == 110 and jsrc[jp + 1] == 117 { jp = jp + 4;  return jval(JNULL) }                        # null
+    if c == '"' { let v = jval(JSTR);  v.s = jparse_string();  return v }
+    if jsrc[jp] == 't' and jsrc[jp + 1] == 'r' { jp += 4;  let v = jval(JBOOL);  v.b = 1;  return v }   # true
+    if jsrc[jp] == 'f' and jsrc[jp + 1] == 'a' { jp += 5;  let v = jval(JBOOL);  v.b = 0;  return v }   # false
+    if jsrc[jp] == 'n' and jsrc[jp + 1] == 'u' { jp += 4;  return jval(JNULL) }                        # null
     # number
     var neg = false
-    if jsrc[jp] == 45 { neg = true;  jp = jp + 1 }
+    if jsrc[jp] == '-' { neg = true;  jp += 1 }
     if char_is_digit(jsrc[jp]) {
       var n = 0
-      while char_is_digit(jsrc[jp]) { n = n * 10 + (jsrc[jp] - 48);  jp = jp + 1 }
-      if jsrc[jp] == 46 { jp = jp + 1;  while char_is_digit(jsrc[jp]) { jp = jp + 1 } }   # skip fraction
-      let v = jval(JNUM);  if neg { v.num = 0 - n } else { v.num = n };  return v
+      while char_is_digit(jsrc[jp]) { n = n * 10 + (jsrc[jp] - 48);  jp += 1 }
+      if jsrc[jp] == '.' { jp += 1;  while char_is_digit(jsrc[jp]) { jp += 1 } }   # skip fraction
+      let v = jval(JNUM);  if neg { v.num = -n } else { v.num = n };  return v
     }
-    jp = jp + 1
+    jp += 1
     return jval(JNULL)
   }
   function jget(v: JVal, key: pointer) -> JVal {
     if (v == null) { return null }
     if v.t != JOBJ { return null }
     var i = 0
-    while i < len(v.keys) { if (v.keys[i] == key) { return v.kids[i] };  i = i + 1 }
+    while i < len(v.keys) { if (v.keys[i] == key) { return v.kids[i] };  i += 1 }
     return null
   }
   function jat(v: JVal, i: int) -> JVal { if (v == null) { return null };  if i < 0 or i >= len(v.kids) { return null };  return v.kids[i] }
@@ -1766,13 +1774,13 @@ program LudicLsp {
     let n = cstr_len(path)
     var start = 0;  var i = 0
     while i <= n {
-      if i == n or path[i] == 46 {
+      if i == n or path[i] == '.' {
         let key = path[start..i]
         cur = jget(cur, key)
         if (cur == null) { return null }
         start = i + 1
       }
-      i = i + 1
+      i += 1
     }
     return cur
   }
@@ -1785,8 +1793,8 @@ program LudicLsp {
     if f_name_like(F.tk_kind[t]) { return true }
     if F.tk_kind[t] != LT_OP { return false }
     let n = tlen(F, t);  let c0 = F.src[F.tk_start[t]]
-    if n == 1 and (c0 == 41 or c0 == 93 or c0 == 46) { return true }
-    if n == 2 and c0 == 46 and F.src[F.tk_start[t] + 1] == 46 { return true }
+    if n == 1 and (c0 == ')' or c0 == ']' or c0 == '.') { return true }
+    if n == 2 and c0 == '.' and F.src[F.tk_start[t] + 1] == 46 { return true }
     return false
   }
   function f_is_unary(F: Doc, i: int) -> bool {
@@ -1797,7 +1805,7 @@ program LudicLsp {
     if p < 0 { return true }
     let pk2 = F.tk_kind[p]
     if pk2 == LT_ID or pk2 == LT_INT or pk2 == LT_FLOAT or pk2 == LT_STR or pk2 == LT_CHAR or pk2 == LT_BOOL or pk2 == LT_TYPE or pk2 == LT_PHASE { return false }
-    if pk2 == LT_OP { let c = F.src[F.tk_start[p]];  return not (tlen(F, p) == 1 and (c == 41 or c == 93 or c == 125)) }
+    if pk2 == LT_OP { let c = F.src[F.tk_start[p]];  return not (tlen(F, p) == 1 and (c == ')' or c == ']' or c == '}')) }
     return true
   }
   function f_space_before(F: Doc, prev: int, cur: int) -> int {
@@ -1807,15 +1815,15 @@ program LudicLsp {
     let p0 = F.src[F.tk_start[prev]];  let c0 = F.src[F.tk_start[cur]]
     let p1 = (plen == 1);  let c1 = (clen == 1)
     if pk2 == LT_ERR or ck == LT_ERR { return F.tk_start[cur] - F.tk_end[prev] }
-    if c1 and (c0 == 41 or c0 == 93 or c0 == 44 or c0 == 58 or c0 == 59) { return 0 }
-    if c1 and c0 == 46 and ck == LT_OP and f_dot_tight(F, prev) { return 0 }
-    if p1 and p0 == 46 and pk2 == LT_OP and f_dot_tight(F, cur) { return 0 }
-    if p1 and (p0 == 40 or p0 == 91) and pk2 == LT_OP { return 0 }
+    if c1 and (c0 == ')' or c0 == ']' or c0 == ',' or c0 == ':' or c0 == ';') { return 0 }
+    if c1 and c0 == '.' and ck == LT_OP and f_dot_tight(F, prev) { return 0 }
+    if p1 and p0 == '.' and pk2 == LT_OP and f_dot_tight(F, cur) { return 0 }
+    if p1 and (p0 == '(' or p0 == '[') and pk2 == LT_OP { return 0 }
     if pk2 == LT_OP and f_is_unary(F, prev) { return 0 }
-    if pk2 == LT_ANNO and c1 and c0 == 40 { return 0 }
-    if c1 and c0 == 40 and ck == LT_OP {
+    if pk2 == LT_ANNO and c1 and c0 == '(' { return 0 }
+    if c1 and c0 == '(' and ck == LT_OP {
       if pk2 == LT_ID or pk2 == LT_TYPE or pk2 == LT_PHASE { return 0 }
-      if pk2 == LT_OP { if p1 and (p0 == 41 or p0 == 93) { return 1 };  return 0 }
+      if pk2 == LT_OP { if p1 and (p0 == ')' or p0 == ']') { return 1 };  return 0 }
       return 1
     }
     return 1
@@ -1833,22 +1841,22 @@ program LudicLsp {
     let o = buf_new()
     let stack = words(600)
     let hang = words(600)
-    var sp = 0;  var cur = 0;  var open = 0;  var brack = 0;  var ui_depth = 0 - 1
+    var sp = 0;  var cur = 0;  var open = 0;  var brack = 0;  var ui_depth = -1
     var pending_blank = 0;  var wrote_any = 0;  var prev_line_had_comment = 0
     let N = ntok(F)
     var i = 0
     while i < N and F.tk_kind[i] != LT_EOF {
       let a = i
-      while i < N and F.tk_kind[i] != LT_NL and F.tk_kind[i] != LT_EOF { i = i + 1 }
+      while i < N and F.tk_kind[i] != LT_NL and F.tk_kind[i] != LT_EOF { i += 1 }
       let b = i
-      if i < N and F.tk_kind[i] == LT_NL { i = i + 1 }
+      if i < N and F.tk_kind[i] == LT_NL { i += 1 }
       if a == b { if wrote_any == 1 { pending_blank = 1 };  continue }
       var line_level = cur
       var tsp = sp;  var t = a
-      while t < b and F.tk_kind[t] == LT_OP and tlen(F, t) == 1 and F.src[F.tk_start[t]] == 125 { if tsp > 0 { tsp = tsp - 1;  line_level = stack[tsp] };  t = t + 1 }
+      while t < b and F.tk_kind[t] == LT_OP and tlen(F, t) == 1 and F.src[F.tk_start[t]] == 125 { if tsp > 0 { tsp -= 1;  line_level = stack[tsp] };  t += 1 }
       var orig_ind = 0
       var kk = F.linestart[F.tk_line[a]]
-      while kk < F.tk_start[a] { if F.src[kk] == 9 { orig_ind = orig_ind + 4 } else { orig_ind = orig_ind + 1 };  kk = kk + 1 }
+      while kk < F.tk_start[a] { if F.src[kk] == '\t' { orig_ind += 4 } else { orig_ind += 1 };  kk += 1 }
       var comment_run = 0
       if F.tk_kind[a] == LT_COMMENT and b == a + 1 and prev_line_had_comment == 1 { comment_run = 1 }
       var ind = 0
@@ -1857,18 +1865,18 @@ program LudicLsp {
       if open > 0 or (sp > 0 and hangprev == 1) {
         var k2 = F.linestart[F.tk_line[a]]
         ind = 0
-        while k2 < F.tk_start[a] { if F.src[k2] == 9 { ind = ind + 4 } else { ind = ind + 1 };  k2 = k2 + 1 }
+        while k2 < F.tk_start[a] { if F.src[k2] == '\t' { ind += 4 } else { ind += 1 };  k2 += 1 }
       } else {
         var extra = 0
         if f_is_clause(ttext(F, a)) and F.tk_kind[a] == LT_KW { extra = iw }
         ind = line_level * iw + extra
         if comment_run == 1 and orig_ind > ind { ind = orig_ind }
       }
-      if pending_blank == 1 and wrote_any == 1 { buf_putc(o, 10) }
+      if pending_blank == 1 and wrote_any == 1 { buf_putc(o, '\n') }
       pending_blank = 0
       var wi = 0
-      while wi < ind { buf_putc(o, 32);  wi = wi + 1 }
-      var prev = 0 - 1
+      while wi < ind { buf_putc(o, ' ');  wi += 1 }
+      var prev = -1
       var line_brack = brack
       var line_ui_open = 0
       if ui_depth >= 0 and sp > ui_depth { line_ui_open = 1 }
@@ -1895,17 +1903,17 @@ program LudicLsp {
         if gap >= 2 and want >= 1 { if gap > 60 { gap = 60 };  want = gap }
         if want < 0 { want = 0 }
         var w2 = 0
-        while w2 < want { buf_putc(o, 32);  w2 = w2 + 1 }
+        while w2 < want { buf_putc(o, ' ');  w2 += 1 }
         buf_addrange(o, F.src, F.tk_start[t], F.tk_end[t])
         prev = t
         if F.tk_kind[t] == LT_OP and tlen(F, t) == 1 {
           let c = F.src[F.tk_start[t]]
-          if c == 91 { line_brack = line_brack + 1 }
-          else { if c == 93 { line_brack = line_brack - 1;  if line_brack < 0 { line_brack = 0 } } }
+          if c == '[' { line_brack += 1 }
+          else { if c == ']' { line_brack -= 1;  if line_brack < 0 { line_brack = 0 } } }
         }
-        t = t + 1
+        t += 1
       }
-      buf_putc(o, 10)
+      buf_putc(o, '\n')
       wrote_any = 1
       prev_line_had_comment = 0
       if prev >= 0 and F.tk_kind[prev] == LT_COMMENT { prev_line_had_comment = 1 }
@@ -1915,18 +1923,18 @@ program LudicLsp {
       while t < b {
         if F.tk_kind[t] == LT_OP and tlen(F, t) == 1 {
           let c = F.src[F.tk_start[t]]
-          if c == 123 {
-            if sp < 512 { let nxt = next_sig(F, t);  stack[sp] = line_level;  var h = 0;  if nxt >= 0 and nxt < b { h = 1 };  hang[sp] = h;  sp = sp + 1 }
+          if c == '{' {
+            if sp < 512 { let nxt = next_sig(F, t);  stack[sp] = line_level;  var h = 0;  if nxt >= 0 and nxt < b { h = 1 };  hang[sp] = h;  sp += 1 }
             level = line_level + 1
           }
-          else { if c == 125 { if sp > 0 { sp = sp - 1;  level = stack[sp] } }
-          else { if c == 40 or c == 91 { open = open + 1;  if c == 91 { brack = brack + 1 } }
-          else { if c == 41 or c == 93 { open = open - 1;  if open < 0 { open = 0 };  if c == 93 { brack = brack - 1;  if brack < 0 { brack = 0 } } } } } }
+          else { if c == '}' { if sp > 0 { sp -= 1;  level = stack[sp] } }
+          else { if c == '(' or c == '[' { open += 1;  if c == '[' { brack += 1 } }
+          else { if c == ')' or c == ']' { open -= 1;  if open < 0 { open = 0 };  if c == ']' { brack -= 1;  if brack < 0 { brack = 0 } } } } } }
         }
-        t = t + 1
+        t += 1
       }
       cur = level
-      if ui_depth >= 0 and sp <= ui_depth { ui_depth = 0 - 1 }
+      if ui_depth >= 0 and sp <= ui_depth { ui_depth = -1 }
     }
     return buf_str(o)
   }
@@ -1935,25 +1943,25 @@ program LudicLsp {
   var mf_info: int = 0
   var mf_marker: int = 0
   function mf_fence_at(s: pointer, i: int) -> bool {
-    var j = i;  while s[j] == 32 { j = j + 1 }
+    var j = i;  while s[j] == ' ' { j += 1 }
     let m = s[j]
-    if m != 96 and m != 126 { return false }
-    var n = 0;  while s[j] == m { j = j + 1;  n = n + 1 }
+    if m != '`' and m != '~' { return false }
+    var n = 0;  while s[j] == m { j += 1;  n += 1 }
     if n < 3 { return false }
     mf_flen = n;  mf_info = j;  mf_marker = m
     return true
   }
-  function f_line_end(s: pointer, i: int) -> int { var e = i;  while s[e] != 0 and s[e] != 10 { e = e + 1 };  return e }
+  function f_line_end(s: pointer, i: int) -> int { var e = i;  while s[e] != 0 and s[e] != '\n' { e += 1 };  return e }
   function format_md(s: pointer, iw: int) -> pointer {
     let o = buf_new()
     var i = 0
     while s[i] != 0 {
       let ls = i
       let le = f_line_end(s, ls)
-      var indent = 0;  while s[ls + indent] == 32 { indent = indent + 1 }
+      var indent = 0;  while s[ls + indent] == ' ' { indent += 1 }
       var is_ludic_fence = false
       if mf_fence_at(s, ls) {
-        var kk = mf_info;  while s[kk] == 32 or s[kk] == 9 { kk = kk + 1 }
+        var kk = mf_info;  while s[kk] == ' ' or s[kk] == '\t' { kk += 1 }
         if word_ludic_at(s, kk) { is_ludic_fence = true }
       }
       if is_ludic_fence {
@@ -1969,7 +1977,7 @@ program LudicLsp {
           if mf_fence_at(s, ps) {
             if mf_marker == openm and mf_flen >= openlen {
               var only = 1;  var k = mf_info
-              while k < pe { if s[k] != 32 and s[k] != 13 { only = 0;  break };  k = k + 1 }
+              while k < pe { if s[k] != ' ' and s[k] != '\r' { only = 0;  break };  k += 1 }
               if only == 1 { be = ps;  break }
             }
           }
@@ -1980,19 +1988,19 @@ program LudicLsp {
         while p < be {
           let q = f_line_end(s, p)
           var skip = 0
-          while skip < indent and (p + skip) < q and s[p + skip] == 32 { skip = skip + 1 }
+          while skip < indent and (p + skip) < q and s[p + skip] == ' ' { skip += 1 }
           buf_addrange(body, s, p + skip, q)
-          buf_putc(body, 10)
+          buf_putc(body, '\n')
           if s[q] != 0 { p = q + 1 } else { p = q }
         }
         let F = make_text_doc(buf_str(body))
         let ftext = format_doc(F, iw)
         var fp = 0
         while ftext[fp] != 0 {
-          var fq = fp;  while ftext[fq] != 0 and ftext[fq] != 10 { fq = fq + 1 }
-          if fq > fp { var wi = 0;  while wi < indent { buf_putc(o, 32);  wi = wi + 1 } }
+          var fq = fp;  while ftext[fq] != 0 and ftext[fq] != '\n' { fq += 1 }
+          if fq > fp { var wi = 0;  while wi < indent { buf_putc(o, ' ');  wi += 1 } }
           buf_addrange(o, ftext, fp, fq)
-          buf_putc(o, 10)
+          buf_putc(o, '\n')
           if ftext[fq] != 0 { fp = fq + 1 } else { fp = fq }
         }
         i = be
@@ -2004,7 +2012,7 @@ program LudicLsp {
     }
     return buf_str(o)
   }
-  function skip_ws2(s: pointer, at: int) -> int { var a = at;  while s[a] == 32 or s[a] == 9 { a = a + 1 };  return a }
+  function skip_ws2(s: pointer, at: int) -> int { var a = at;  while s[a] == ' ' or s[a] == '\t' { a += 1 };  return a }
 
   # ============================================================================
   # framing + output
@@ -2012,26 +2020,26 @@ program LudicLsp {
   extern function fflush(f: pointer) -> int = "fflush"
 
   function jstr_out(o: Buf, z: pointer) -> void {
-    buf_putc(o, 34)
-    if (z == null) { buf_putc(o, 34);  return }
+    buf_putc(o, '"')
+    if (z == null) { buf_putc(o, '"');  return }
     var i = 0
     while z[i] != 0 {
       let c = z[i]
-      if c == 34 { buf_putc(o, 92);  buf_putc(o, 34) }
-      else { if c == 92 { buf_putc(o, 92);  buf_putc(o, 92) }
-      else { if c == 10 { buf_putc(o, 92);  buf_putc(o, 110) }
-      else { if c == 13 { buf_putc(o, 92);  buf_putc(o, 114) }
-      else { if c == 9 { buf_putc(o, 92);  buf_putc(o, 116) }
-      else { if c >= 0 and c < 32 { buf_putc(o, 92);  buf_putc(o, 117);  buf_putc(o, 48);  buf_putc(o, 48);  buf_putc(o, hexch(c / 16));  buf_putc(o, hexch(c % 16)) }
+      if c == '"' { buf_putc(o, '\\');  buf_putc(o, '"') }
+      else { if c == '\\' { buf_putc(o, '\\');  buf_putc(o, '\\') }
+      else { if c == '\n' { buf_putc(o, '\\');  buf_putc(o, 'n') }
+      else { if c == '\r' { buf_putc(o, '\\');  buf_putc(o, 'r') }
+      else { if c == '\t' { buf_putc(o, '\\');  buf_putc(o, 't') }
+      else { if c >= 0 and c < ' ' { buf_putc(o, '\\');  buf_putc(o, 'u');  buf_putc(o, '0');  buf_putc(o, '0');  buf_putc(o, hexch(c / 16));  buf_putc(o, hexch(c % 16)) }
       else { buf_putc(o, c) } } } } } }
-      i = i + 1
+      i += 1
     }
-    buf_putc(o, 34)
+    buf_putc(o, '"')
   }
 
   function send_raw(body: pointer) -> void {
     let hdr = buf_new()
-    buf_puts(hdr, "Content-Length: ");  buf_puti(hdr, cstr_len(body));  buf_putc(hdr, 13);  buf_putc(hdr, 10);  buf_putc(hdr, 13);  buf_putc(hdr, 10)
+    buf_puts(hdr, "Content-Length: ");  buf_puti(hdr, cstr_len(body));  buf_putc(hdr, '\r');  buf_putc(hdr, '\n');  buf_putc(hdr, '\r');  buf_putc(hdr, '\n')
     let hs = buf_str(hdr)
     let out = file_stdout()
     file_write(out, hs, cstr_len(hs))
@@ -2045,47 +2053,47 @@ program LudicLsp {
     else { if idv.t == JSTR { jstr_out(o, idv.s) } else { buf_puti(o, idv.num) } }
     buf_puts(o, ",\"result\":")
     if (result == null) or (result[0] == 0) { buf_puts(o, "null") } else { buf_puts(o, result) }
-    buf_putc(o, 125)
+    buf_putc(o, '}')
     send_raw(buf_str(o))
   }
   function send_notify(method: pointer, params: pointer) -> void {
     let o = buf_new()
-    buf_puts(o, "{\"jsonrpc\":\"2.0\",\"method\":");  jstr_out(o, method);  buf_puts(o, ",\"params\":");  buf_puts(o, params);  buf_putc(o, 125)
+    buf_puts(o, "{\"jsonrpc\":\"2.0\",\"method\":");  jstr_out(o, method);  buf_puts(o, ",\"params\":");  buf_puts(o, params);  buf_putc(o, '}')
     send_raw(buf_str(o))
   }
 
-  function lower(c: int) -> int { if c >= 65 and c <= 90 { return c + 32 };  return c }
+  function lower(c: int) -> int { if c >= 'A' and c <= 'Z' { return c + 32 };  return c }
   function starts_with_ci(s: pointer, pre: pointer) -> bool {
     var i = 0
-    while pre[i] != 0 { if s[i] == 0 or lower(s[i]) != lower(pre[i]) { return false };  i = i + 1 }
+    while pre[i] != 0 { if s[i] == 0 or lower(s[i]) != lower(pre[i]) { return false };  i += 1 }
     return true
   }
   function read_message() -> pointer {
-    var length = 0 - 1
+    var length = -1
     let line = buf_new()
     while true {
       line.len = 0
       var c = read_char()
       if c < 0 { return null }
-      while c >= 0 and c != 10 { buf_putc(line, c);  c = read_char() }
+      while c >= 0 and c != '\n' { buf_putc(line, c);  c = read_char() }
       let s = buf_str(line)
       var L = cstr_len(s)
-      if L > 0 and s[L - 1] == 13 { s[L - 1] = 0;  L = L - 1 }
+      if L > 0 and s[L - 1] == '\r' { s[L - 1] = 0;  L -= 1 }
       if L == 0 { break }
       if starts_with_ci(s, "content-length:") { length = atoi(s[15..cstr_len(s)]) }
     }
     if length <= 0 { return null }
     let buf = bytes(length + 1)
     var got = 0
-    while got < length { let c = read_char();  if c < 0 { break };  buf[got] = c;  got = got + 1 }
+    while got < length { let c = read_char();  if c < 0 { break };  buf[got] = c;  got += 1 }
     buf[got] = 0
     return buf
   }
 
   # ---- position output ----
-  function put_pos(o: Buf, D: Doc, off: int) -> void { buf_puts(o, "{\"line\":");  buf_puti(o, line_of(D, off));  buf_puts(o, ",\"character\":");  buf_puti(o, col_of(D, off));  buf_putc(o, 125) }
-  function put_range(o: Buf, D: Doc, a: int, b: int) -> void { buf_puts(o, "{\"start\":");  put_pos(o, D, a);  buf_puts(o, ",\"end\":");  put_pos(o, D, b);  buf_putc(o, 125) }
-  function put_location(o: Buf, D: Doc, a: int, b: int) -> void { buf_puts(o, "{\"uri\":");  jstr_out(o, D.uri);  buf_puts(o, ",\"range\":");  put_range(o, D, a, b);  buf_putc(o, 125) }
+  function put_pos(o: Buf, D: Doc, off: int) -> void { buf_puts(o, "{\"line\":");  buf_puti(o, line_of(D, off));  buf_puts(o, ",\"character\":");  buf_puti(o, col_of(D, off));  buf_putc(o, '}') }
+  function put_range(o: Buf, D: Doc, a: int, b: int) -> void { buf_puts(o, "{\"start\":");  put_pos(o, D, a);  buf_puts(o, ",\"end\":");  put_pos(o, D, b);  buf_putc(o, '}') }
+  function put_location(o: Buf, D: Doc, a: int, b: int) -> void { buf_puts(o, "{\"uri\":");  jstr_out(o, D.uri);  buf_puts(o, ",\"range\":");  put_range(o, D, a, b);  buf_putc(o, '}') }
 
   function doc_of(msg: JVal) -> Doc {
     let uri = jstr(jpath(msg, "params.textDocument.uri"), null)
@@ -2099,7 +2107,7 @@ program LudicLsp {
     let ch = jint(jpath(msg, concat3(base, ".character", "")), 0)
     return offset_of(D, line, ch)
   }
-  function basename(p: pointer) -> pointer { var last = 0 - 1;  var i = 0;  while p[i] != 0 { if p[i] == 47 { last = i };  i = i + 1 };  return p[last + 1..i] }
+  function basename(p: pointer) -> pointer { var last = -1;  var i = 0;  while p[i] != 0 { if p[i] == '/' { last = i };  i += 1 };  return p[last + 1..i] }
 
   # ---- LSP symbol kinds & completion kinds ----
   function lsp_symbol_kind(k: int) -> int {
@@ -2138,45 +2146,105 @@ program LudicLsp {
     let stack = words(1200);  var top = 0
     var i = 0;  let N = ntok(D)
     while i < N {
-      if D.tk_kind[i] != LT_OP or tlen(D, i) != 1 { i = i + 1;  continue }
+      if D.tk_kind[i] != LT_OP or tlen(D, i) != 1 { i += 1;  continue }
       let c = D.src[D.tk_start[i]]
-      if c == 123 or c == 40 or c == 91 { if top < 1200 { stack[top] = i;  top = top + 1 } }
-      else { if c == 125 or c == 41 or c == 93 {
+      if c == '{' or c == '(' or c == '[' { if top < 1200 { stack[top] = i;  top += 1 } }
+      else { if c == '}' or c == ')' or c == ']' {
         if top == 0 { push(ds_s, D.tk_start[i]);  push(ds_e, D.tk_end[i]);  push(ds_m, concat3("unmatched '", D.src[D.tk_start[i]..D.tk_end[i]], "'")) }
-        else { top = top - 1;  let oi = stack[top];  let oc = D.src[D.tk_start[oi]]
-          var wantc = 93
-          if oc == 123 { wantc = 125 } else { if oc == 40 { wantc = 41 } }
+        else { top -= 1;  let oi = stack[top];  let oc = D.src[D.tk_start[oi]]
+          var wantc = ']'
+          if oc == '{' { wantc = '}' } else if oc == '(' { wantc = ')' }
           if wantc != c { push(ds_s, D.tk_start[i]);  push(ds_e, D.tk_end[i]);  push(ds_m, "mismatched bracket") }
         }
       } }
-      i = i + 1
+      i += 1
     }
     var k = 0
-    while k < top { let oi = stack[k];  push(ds_s, D.tk_start[oi]);  push(ds_e, D.tk_end[oi]);  push(ds_m, concat3("unclosed '", D.src[D.tk_start[oi]..D.tk_end[oi]], "'"));  k = k + 1 }
+    while k < top { let oi = stack[k];  push(ds_s, D.tk_start[oi]);  push(ds_e, D.tk_end[oi]);  push(ds_m, concat3("unclosed '", D.src[D.tk_start[oi]..D.tk_end[oi]], "'"));  k += 1 }
     var j = 0
     while j < len(ds_s) {
-      if j > 0 { buf_putc(o, 44) }
-      buf_puts(o, "{\"range\":");  put_range(o, D, ds_s[j], ds_e[j]);  buf_puts(o, ",\"severity\":1,\"source\":\"ludic\",\"message\":");  jstr_out(o, ds_m[j]);  buf_putc(o, 125)
-      j = j + 1
+      if j > 0 { buf_putc(o, ',') }
+      buf_puts(o, "{\"range\":");  put_range(o, D, ds_s[j], ds_e[j]);  buf_puts(o, ",\"severity\":1,\"source\":\"ludic\",\"message\":");  jstr_out(o, ds_m[j]);  buf_putc(o, '}')
+      j += 1
     }
+  }
+  # the compiler's error, as one whole-line diagnostic from source "ludicc"
+  function diag_compiler(D: Doc, o: Buf, first: bool) -> void {
+    if (D.cc_msg == null) or D.cc_line < 1 or D.cc_line > len(D.linestart) { return }
+    let a = D.linestart[D.cc_line - 1]
+    var b = cstr_len(D.src)
+    if D.cc_line < len(D.linestart) { b = D.linestart[D.cc_line] - 1 }
+    if not first { buf_putc(o, ',') }
+    buf_puts(o, "{\"range\":");  put_range(o, D, a, b);  buf_puts(o, ",\"severity\":1,\"source\":\"ludicc\",\"message\":");  jstr_out(o, D.cc_msg);  buf_putc(o, '}')
   }
   function publish_diag(D: Doc) -> void {
     let o = buf_new()
     buf_puts(o, "{\"uri\":");  jstr_out(o, D.uri);  buf_puts(o, ",\"diagnostics\":[")
-    if D.is_md == 0 { diag_structural(D, o) }
+    if D.is_md == 0 {
+      let before = o.len
+      diag_structural(D, o)
+      diag_compiler(D, o, o.len == before)
+    }
     buf_puts(o, "]}")
     send_notify("textDocument/publishDiagnostics", buf_str(o))
   }
 
+  # ---- compiler diagnostics, on save ----
+  # ludicc stops at its first error and reports it as `path:line: error: msg`;
+  # run it over the saved document's compilation unit, clear the previous
+  # compiler error from every document of that unit, and pin the new one (if
+  # any) on the document it names — publishing both so a fixed error clears.
+  function compiler_diags(D: Doc) -> void {
+    if (g_compiler == null) or D.is_md == 1 { return }
+    let root = unit_root(D)
+    if (root == null) { return }
+    var i = 0
+    while i < len(g_docs) { if (g_docs[i].unit == root.unit) { g_docs[i].cc_msg = null;  g_docs[i].cc_line = 0 };  i += 1 }
+    let errf = `{Os.temp_dir()}/ludic_lsp_cc_{Os.pid()}.txt`
+    run(`'{g_compiler}' --emit-llvm '{root.path}' -o /dev/null > /dev/null 2> '{errf}'`)
+    let out = read_file(errf)
+    run(`rm -f '{errf}'`)
+    if (out == null) { return }
+    # the first `path:line: error: msg` line
+    var a = 0
+    while out[a] != 0 {
+      var b = a
+      while out[b] != 0 and out[b] != '\n' { b += 1 }
+      let line = out[a..b]
+      let e = Text.index_of(line, ": error: ")
+      if e > 0 {
+        var c = e - 1
+        while c > 0 and line[c - 1] >= '0' and line[c - 1] <= '9' { c -= 1 }
+        if c > 1 and line[c - 1] == ':' {
+          let target = by_path(line[0..c - 1])
+          if (target != null) {
+            target.cc_line = Text.to_int(line[c..e])
+            target.cc_msg = line[e + 9..cstr_len(line)]
+            if (target != D) and target.isopen == 1 { publish_diag(target) }
+          }
+        }
+        return
+      }
+      a = b
+      if out[a] == '\n' { a += 1 }
+    }
+  }
+  function on_did_save(msg: JVal) -> void {
+    let D = doc_of(msg)
+    if (D == null) { return }
+    compiler_diags(D)
+    publish_diag(D)
+  }
+
   # ---- document symbols ----
   function put_doc_symbols(o: Buf, D: Doc, parent: int) -> void {
-    buf_putc(o, 91)
+    buf_putc(o, '[')
     var first = 1
     var i = 0
     while i < len(D.syms) {
       let y = D.syms[i]
       if y.parent == parent and is_outline_kind(y.kind) and (y.name != null) and (cstr_len(y.name) > 0) {
-        if first == 0 { buf_putc(o, 44) }
+        if first == 0 { buf_putc(o, ',') }
         first = 0
         buf_puts(o, "{\"name\":");  jstr_out(o, y.name)
         buf_puts(o, ",\"detail\":");  jstr_out(o, y.detail)
@@ -2187,11 +2255,11 @@ program LudicLsp {
         put_range(o, D, a, b)
         buf_puts(o, ",\"selectionRange\":");  put_range(o, D, y.start, y.end)
         buf_puts(o, ",\"children\":");  put_doc_symbols(o, D, i)
-        buf_putc(o, 125)
+        buf_putc(o, '}')
       }
-      i = i + 1
+      i += 1
     }
-    buf_putc(o, 93)
+    buf_putc(o, ']')
   }
 
   # ---- hover ----
@@ -2265,9 +2333,9 @@ program LudicLsp {
           resolve_tok(T, k)
           if (g_owner != null) and (g_owner.path == tdoc.path) and g_symidx == tsym { push(g_occ_doc, T);  push(g_occ_tok, k) }
         }
-        k = k + 1
+        k += 1
       }
-      i = i + 1
+      i += 1
     }
   }
   function on_references(msg: JVal, id: JVal) -> void {
@@ -2278,15 +2346,15 @@ program LudicLsp {
     if tok < 0 or (g_owner == null) or g_symidx < 0 { send_result(id, "[]");  return }
     let tdoc = g_owner;  let tsym = g_symidx
     find_occurrences(D, tdoc, tsym)
-    let o = buf_new();  buf_putc(o, 91)
+    let o = buf_new();  buf_putc(o, '[')
     var i = 0
     while i < len(g_occ_doc) {
-      if i > 0 { buf_putc(o, 44) }
+      if i > 0 { buf_putc(o, ',') }
       let T = g_occ_doc[i];  let k = g_occ_tok[i]
       put_location(o, T, T.tk_start[k], T.tk_end[k])
-      i = i + 1
+      i += 1
     }
-    buf_putc(o, 93);  send_result(id, buf_str(o))
+    buf_putc(o, ']');  send_result(id, buf_str(o))
   }
   function on_rename(msg: JVal, id: JVal) -> void {
     let D = doc_of(msg)
@@ -2304,25 +2372,25 @@ program LudicLsp {
     while gi < len(g_occ_doc) {
       var already = false
       var s = 0
-      while s < len(seen) { if (seen[s].path == g_occ_doc[gi].path) { already = true };  s = s + 1 }
+      while s < len(seen) { if (seen[s].path == g_occ_doc[gi].path) { already = true };  s += 1 }
       if not already {
         push(seen, g_occ_doc[gi])
-        if len(seen) > 1 { buf_putc(o, 44) }
-        jstr_out(o, g_occ_doc[gi].uri);  buf_putc(o, 58);  buf_putc(o, 91)
+        if len(seen) > 1 { buf_putc(o, ',') }
+        jstr_out(o, g_occ_doc[gi].uri);  buf_putc(o, ':');  buf_putc(o, '[')
         var first = 1
         var k = 0
         while k < len(g_occ_doc) {
           if (g_occ_doc[k].path == g_occ_doc[gi].path) {
-            if first == 0 { buf_putc(o, 44) }
+            if first == 0 { buf_putc(o, ',') }
             first = 0
             let T = g_occ_doc[k];  let tk = g_occ_tok[k]
-            buf_puts(o, "{\"range\":");  put_range(o, T, T.tk_start[tk], T.tk_end[tk]);  buf_puts(o, ",\"newText\":");  jstr_out(o, newname);  buf_putc(o, 125)
+            buf_puts(o, "{\"range\":");  put_range(o, T, T.tk_start[tk], T.tk_end[tk]);  buf_puts(o, ",\"newText\":");  jstr_out(o, newname);  buf_putc(o, '}')
           }
-          k = k + 1
+          k += 1
         }
-        buf_putc(o, 93)
+        buf_putc(o, ']')
       }
-      gi = gi + 1
+      gi += 1
     }
     buf_puts(o, "}}");  send_result(id, buf_str(o))
   }
@@ -2330,11 +2398,11 @@ program LudicLsp {
   # ---- completion ----
   var g_first: int = 1
   function comp_item(o: Buf, label: pointer, kind: int, detail: pointer) -> void {
-    if g_first == 0 { buf_putc(o, 44) }
+    if g_first == 0 { buf_putc(o, ',') }
     g_first = 0
     buf_puts(o, "{\"label\":");  jstr_out(o, label);  buf_puts(o, ",\"kind\":");  buf_puti(o, kind)
     if (detail != null) and (detail[0] != 0) { buf_puts(o, ",\"detail\":");  jstr_out(o, detail) }
-    buf_putc(o, 125)
+    buf_putc(o, '}')
   }
   function comp_scope(o: Buf, D: Doc, off: int, types_only: int) -> void {
     if types_only == 0 {
@@ -2345,7 +2413,7 @@ program LudicLsp {
           var det = y.detail;  if det == "" { det = y.ty }
           comp_item(o, y.name, 6, det)
         }
-        i = i + 1
+        i += 1
       }
     }
     let rel = related(D)
@@ -2359,16 +2427,16 @@ program LudicLsp {
           if types_only == 1 and not (y.kind == LS_COMPONENT or y.kind == LS_ARCHETYPE) { okk = false }
           if okk { comp_item(o, y.name, comp_kind_of(y.kind), y.detail) }
         }
-        k = k + 1
+        k += 1
       }
-      r = r + 1
+      r += 1
     }
   }
   function comp_types(o: Buf) -> void {
     comp_item(o, "int", 14, "built-in type");  comp_item(o, "long", 14, "built-in type");  comp_item(o, "fixed", 14, "built-in type");  comp_item(o, "bool", 14, "built-in type")
     comp_item(o, "entity", 14, "built-in type");  comp_item(o, "string", 14, "built-in type");  comp_item(o, "pointer", 14, "built-in type");  comp_item(o, "Vector", 14, "built-in type");  comp_item(o, "IVec2", 14, "built-in type");  comp_item(o, "Rect", 14, "built-in type");  comp_item(o, "void", 14, "built-in type")
   }
-  function comp_builtins(o: Buf) -> void { var i = 0;  while i < len(g_builtins) { comp_item(o, g_builtins[i], 3, g_bsigs[i]);  i = i + 1 } }
+  function comp_builtins(o: Buf) -> void { var i = 0;  while i < len(g_builtins) { comp_item(o, g_builtins[i], 3, g_bsigs[i]);  i += 1 } }
   function on_completion(msg: JVal, id: JVal) -> void {
     let D = doc_of(msg)
     if (D == null) { send_result(id, "{\"isIncomplete\":false,\"items\":[]}");  return }
@@ -2376,12 +2444,12 @@ program LudicLsp {
     let o = buf_new()
     buf_puts(o, "{\"isIncomplete\":false,\"items\":[")
     g_first = 1
-    var tok = 0 - 1
+    var tok = -1
     var i = ntok(D) - 1
     while i >= 0 {
       let k = D.tk_kind[i]
       if k != LT_NL and k != LT_EOF and k != LT_COMMENT { if D.tk_end[i] <= off { tok = i;  break } }
-      i = i - 1
+      i -= 1
     }
     var anchor = tok
     if anchor >= 0 and D.tk_kind[anchor] == LT_ID and D.tk_end[anchor] >= off { anchor = prev_sig(D, anchor) }
@@ -2391,11 +2459,11 @@ program LudicLsp {
     while j >= 0 {
       if D.tk_kind[j] == LT_OP and tlen(D, j) == 1 {
         let ch = D.src[D.tk_start[j]]
-        if ch == 93 { depth = depth + 1 }
-        else { if ch == 91 { if depth == 0 { in_qt = 1;  j = 0 - 1 } else { depth = depth - 1 } }
-        else { if ch == 123 or ch == 125 { j = 0 - 1 } } }
+        if ch == ']' { depth += 1 }
+        else { if ch == '[' { if depth == 0 { in_qt = 1;  j = -1 } else { depth -= 1 } }
+        else { if ch == '{' or ch == '}' { j = -1 } } }
       }
-      j = j - 1
+      j -= 1
     }
     var done = 0
     if in_qt == 1 { comp_scope(o, D, off, 1);  done = 1 }
@@ -2405,7 +2473,7 @@ program LudicLsp {
         if comp >= 0 and (g_owner != null) {
           let co = g_owner
           var k = 0
-          while k < len(co.syms) { if co.syms[k].kind == LS_FIELD and co.syms[k].parent == comp { comp_item(o, co.syms[k].name, 5, co.syms[k].detail) };  k = k + 1 }
+          while k < len(co.syms) { if co.syms[k].kind == LS_FIELD and co.syms[k].parent == comp { comp_item(o, co.syms[k].name, 5, co.syms[k].detail) };  k += 1 }
         }
         done = 1
       }
@@ -2432,42 +2500,42 @@ program LudicLsp {
   function on_inlay_hint(msg: JVal, id: JVal) -> void {
     let D = doc_of(msg)
     if (D == null) { send_result(id, "[]");  return }
-    let o = buf_new();  buf_putc(o, 91)
+    let o = buf_new();  buf_putc(o, '[')
     var first = 1
     var i = 0
     while i < len(D.syms) {
       let y = D.syms[i]
       if y.kind == LS_QUERYVAR and (y.ty != null) and (y.ty[0] != 0) {
-        if first == 0 { buf_putc(o, 44) }
+        if first == 0 { buf_putc(o, ',') }
         first = 0
         buf_puts(o, "{\"position\":");  put_pos(o, D, y.end);  buf_puts(o, ",\"label\":");  jstr_out(o, concat3(": ", y.ty, ""));  buf_puts(o, ",\"kind\":1,\"paddingLeft\":false}")
       }
-      i = i + 1
+      i += 1
     }
-    buf_putc(o, 93);  send_result(id, buf_str(o))
+    buf_putc(o, ']');  send_result(id, buf_str(o))
   }
   function on_signature_help(msg: JVal, id: JVal) -> void {
     let D = doc_of(msg)
     if (D == null) { send_result(id, "null");  return }
     let off = off_of(msg, D, "params.position")
-    var depth = 0;  var callee = 0 - 1;  var arg = 0
+    var depth = 0;  var callee = -1;  var arg = 0
     var i = ntok(D) - 1
     while i >= 0 {
       let t = i
-      if D.tk_start[t] >= off { i = i - 1;  continue }
+      if D.tk_start[t] >= off { i -= 1;  continue }
       if D.tk_kind[t] == LT_OP and tlen(D, t) == 1 {
         let c = D.src[D.tk_start[t]]
-        if c == 41 { depth = depth + 1 }
-        else { if c == 40 {
+        if c == ')' { depth += 1 }
+        else { if c == '(' {
           if depth == 0 {
             callee = prev_sig(D, t)
             var k = t + 1
-            while k < ntok(D) and D.tk_start[k] < off { if tis(D, k, ",") { arg = arg + 1 };  k = k + 1 }
-            i = 0 - 1
-          } else { depth = depth - 1 }
+            while k < ntok(D) and D.tk_start[k] < off { if tis(D, k, ",") { arg += 1 };  k += 1 }
+            i = -1
+          } else { depth -= 1 }
         } }
       }
-      i = i - 1
+      i -= 1
     }
     if callee < 0 or D.tk_kind[callee] != LT_ID { send_result(id, "null");  return }
     let name = ttext(D, callee)
@@ -2488,7 +2556,7 @@ program LudicLsp {
     let o = buf_new()
     buf_puts(o, "{\"signatures\":[{\"label\":");  jstr_out(o, sig)
     if (docstr != null) and (docstr[0] != 0) { buf_puts(o, ",\"documentation\":");  jstr_out(o, docstr) }
-    buf_puts(o, "}],\"activeSignature\":0,\"activeParameter\":");  buf_puti(o, arg);  buf_putc(o, 125)
+    buf_puts(o, "}],\"activeSignature\":0,\"activeParameter\":");  buf_puti(o, arg);  buf_putc(o, '}')
     send_result(id, buf_str(o))
   }
   function on_semantic_tokens(msg: JVal, id: JVal) -> void {
@@ -2510,21 +2578,21 @@ program LudicLsp {
             let dl = line - prev_line
             var dc = ch
             if dl == 0 { dc = ch - prev_char }
-            if first == 0 { buf_putc(o, 44) }
+            if first == 0 { buf_putc(o, ',') }
             first = 0
-            buf_puti(o, dl);  buf_putc(o, 44);  buf_puti(o, dc);  buf_putc(o, 44);  buf_puti(o, ln);  buf_putc(o, 44);  buf_puti(o, ty);  buf_putc(o, 44);  buf_puti(o, g_semmods)
+            buf_puti(o, dl);  buf_putc(o, ',');  buf_puti(o, dc);  buf_putc(o, ',');  buf_puti(o, ln);  buf_putc(o, ',');  buf_puti(o, ty);  buf_putc(o, ',');  buf_puti(o, g_semmods)
             prev_line = line;  prev_char = ch
           }
         }
       }
-      i = i + 1
+      i += 1
     }
     buf_puts(o, "]}");  send_result(id, buf_str(o))
   }
   function on_folding(msg: JVal, id: JVal) -> void {
     let D = doc_of(msg)
     if (D == null) { send_result(id, "[]");  return }
-    let o = buf_new();  buf_putc(o, 91);  var first = 1
+    let o = buf_new();  buf_putc(o, '[');  var first = 1
     var i = 0;  let N = ntok(D)
     while i < N {
       if D.tk_kind[i] == LT_OP and tlen(D, i) == 1 and D.src[D.tk_start[i]] == 123 {
@@ -2532,19 +2600,19 @@ program LudicLsp {
         if m >= 0 {
           let a = D.tk_line[i];  let b = D.tk_line[m]
           if b > a {
-            if first == 0 { buf_putc(o, 44) }
+            if first == 0 { buf_putc(o, ',') }
             first = 0
             buf_puts(o, "{\"startLine\":");  buf_puti(o, a);  buf_puts(o, ",\"endLine\":");  buf_puti(o, b - 1);  buf_puts(o, ",\"kind\":\"region\"}")
           }
         }
       }
-      i = i + 1
+      i += 1
     }
-    buf_putc(o, 93);  send_result(id, buf_str(o))
+    buf_putc(o, ']');  send_result(id, buf_str(o))
   }
   function on_workspace_symbol(msg: JVal, id: JVal) -> void {
     let q = jstr(jpath(msg, "params.query"), "")
-    let o = buf_new();  buf_putc(o, 91);  var first = 1
+    let o = buf_new();  buf_putc(o, '[');  var first = 1
     var d = 0
     while d < len(g_docs) {
       let D = g_docs[d]
@@ -2555,16 +2623,16 @@ program LudicLsp {
           var keep = true
           if q[0] != 0 { keep = contains_ci(y.name, q) }
           if keep {
-            if first == 0 { buf_putc(o, 44) }
+            if first == 0 { buf_putc(o, ',') }
             first = 0
-            buf_puts(o, "{\"name\":");  jstr_out(o, y.name);  buf_puts(o, ",\"kind\":");  buf_puti(o, lsp_symbol_kind(y.kind));  buf_puts(o, ",\"location\":");  put_location(o, D, y.start, y.end);  buf_putc(o, 125)
+            buf_puts(o, "{\"name\":");  jstr_out(o, y.name);  buf_puts(o, ",\"kind\":");  buf_puti(o, lsp_symbol_kind(y.kind));  buf_puts(o, ",\"location\":");  put_location(o, D, y.start, y.end);  buf_putc(o, '}')
           }
         }
-        k = k + 1
+        k += 1
       }
-      d = d + 1
+      d += 1
     }
-    buf_putc(o, 93);  send_result(id, buf_str(o))
+    buf_putc(o, ']');  send_result(id, buf_str(o))
   }
   function contains_ci(hay: pointer, needle: pointer) -> bool {
     let hn = cstr_len(hay);  let nn = cstr_len(needle)
@@ -2573,9 +2641,9 @@ program LudicLsp {
     while i + nn <= hn {
       var m = true
       var j = 0
-      while j < nn { if lower(hay[i + j]) != lower(needle[j]) { m = false;  break };  j = j + 1 }
+      while j < nn { if lower(hay[i + j]) != lower(needle[j]) { m = false;  break };  j += 1 }
       if m { return true }
-      i = i + 1
+      i += 1
     }
     return false
   }
@@ -2651,10 +2719,24 @@ program LudicLsp {
     buf_puts(o, "},\"serverInfo\":{\"name\":\"ludic-lsp\",\"version\":\"1.0.0\"}}")
     return buf_str(o)
   }
+  # the ludicc that ships beside this server binary, when there is one
+  function compiler_beside_me() -> pointer {
+    let me = arg(0)
+    var i = cstr_len(me)
+    while i > 0 and me[i - 1] != '/' { i -= 1 }
+    let cand = me[0..i] + "ludicc"
+    if run(`test -x '{cand}'`) == 0 { return cand }
+    return null
+  }
   function on_initialize(msg: JVal, id: JVal) -> void {
     let root = jpath(msg, "params.rootUri")
     if (root != null) and root.t == JSTR { g_root = uri_to_path(root.s) }
     if (g_root != null) { scan_root(g_root) }
+    let want = jpath(msg, "params.initializationOptions.compilerDiagnostics")
+    if (want != null) and want.t == JBOOL and want.b == 1 {
+      g_compiler = jstr(jpath(msg, "params.initializationOptions.compilerPath"), null)
+      if (g_compiler == null) or cstr_len(g_compiler) == 0 { g_compiler = compiler_beside_me() }
+    }
     send_result(id, caps())
   }
 
@@ -2669,15 +2751,15 @@ program LudicLsp {
     if (method == "textDocument/didOpen") { on_did_open(msg);  return }
     if (method == "textDocument/didChange") { on_did_change(msg);  return }
     if (method == "textDocument/didClose") { on_did_close(msg);  return }
-    if (method == "textDocument/didSave") { on_did_change(msg);  return }
-    if (method == "textDocument/documentSymbol") { let D = doc_of(msg);  if (D == null) { send_result(id, "[]");  return };  let o = buf_new();  put_doc_symbols(o, D, 0 - 1);  send_result(id, buf_str(o));  return }
+    if (method == "textDocument/didSave") { on_did_save(msg);  return }
+    if (method == "textDocument/documentSymbol") { let D = doc_of(msg);  if (D == null) { send_result(id, "[]");  return };  let o = buf_new();  put_doc_symbols(o, D, -1);  send_result(id, buf_str(o));  return }
     if (method == "workspace/symbol") { on_workspace_symbol(msg, id);  return }
     if (method == "textDocument/definition") or (method == "textDocument/declaration") or (method == "textDocument/typeDefinition") { on_definition(msg, id);  return }
     if (method == "textDocument/hover") { on_hover(msg, id);  return }
     if (method == "textDocument/references") { on_references(msg, id);  return }
     if (method == "textDocument/documentHighlight") { on_references(msg, id);  return }
     if (method == "textDocument/rename") { on_rename(msg, id);  return }
-    if (method == "textDocument/prepareRename") { let D = doc_of(msg);  if (D == null) { send_result(id, "null");  return };  let off = off_of(msg, D, "params.position");  let tok = resolve_at(D, off);  if tok < 0 or (g_owner == null) or g_symidx < 0 or D.tk_kind[tok] != LT_ID { send_result(id, "null");  return };  let o = buf_new();  buf_puts(o, "{\"range\":");  put_range(o, D, D.tk_start[tok], D.tk_end[tok]);  buf_puts(o, ",\"placeholder\":");  jstr_out(o, ttext(D, tok));  buf_putc(o, 125);  send_result(id, buf_str(o));  return }
+    if (method == "textDocument/prepareRename") { let D = doc_of(msg);  if (D == null) { send_result(id, "null");  return };  let off = off_of(msg, D, "params.position");  let tok = resolve_at(D, off);  if tok < 0 or (g_owner == null) or g_symidx < 0 or D.tk_kind[tok] != LT_ID { send_result(id, "null");  return };  let o = buf_new();  buf_puts(o, "{\"range\":");  put_range(o, D, D.tk_start[tok], D.tk_end[tok]);  buf_puts(o, ",\"placeholder\":");  jstr_out(o, ttext(D, tok));  buf_putc(o, '}');  send_result(id, buf_str(o));  return }
     if (method == "textDocument/formatting") or (method == "textDocument/rangeFormatting") { on_formatting(msg, id);  return }
     if (method == "textDocument/foldingRange") { on_folding(msg, id);  return }
     if (method == "textDocument/inlayHint") { on_inlay_hint(msg, id);  return }

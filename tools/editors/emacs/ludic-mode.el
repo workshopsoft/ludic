@@ -10,19 +10,23 @@
 
 ;;; Code:
 
+;; The vocabulary mirrors tools/ludic-tools/ludic_syntax.h; that header is the reference.
 (defconst ludic--declaration-keywords
-  '("program" "import" "property" "struct" "model" "enum" "ui"
-    "const" "var" "fn" "extern" "handler" "entry"))
+  '("program" "import" "property" "model" "enum" "ui" "namespace"
+    "const" "var" "function" "extern" "handler" "entry" "event" "scene" "test" "prefab"))
 
 (defconst ludic--clause-keywords
-  '("phase" "query" "reads" "writes"))
+  '("phase" "query" "on" "cancellable" "public" "layer" "start" "shows" "lasts" "loads" "then" "export" "internal"))
 
 (defconst ludic--statement-keywords
-  '("let" "return" "if" "else" "when" "while" "for" "in" "spawn" "despawn"
-    "match" "machine" "state" "become" "enter" "where" "and" "or"))
+  '("let" "return" "if" "else" "while" "for" "in" "spawn" "despawn"
+    "enable" "disable" "attach" "detach" "match" "machine" "state" "become" "where"
+    "and" "or" "not" "break" "continue" "new" "emit" "cancel" "try"))
 
-(defconst ludic--types '("int" "fixed" "bool" "entity" "str" "ptr" "void"))
-(defconst ludic--phases '("Start" "Input" "FixedUpdate" "Update" "LateUpdate" "Render"))
+(defconst ludic--types
+  '("int" "long" "fixed" "countdown" "bool" "entity" "string" "pointer" "byte"
+    "words" "fixeds" "pointers" "Vector" "IVec2" "Rect" "void"))
+(defconst ludic--phases '("Start" "Input" "FixedUpdate" "Update" "LateUpdate" "Render" "Overlay"))
 
 (defconst ludic-font-lock-keywords
   (list
@@ -31,7 +35,7 @@
    (cons (regexp-opt ludic--statement-keywords 'symbols) 'font-lock-keyword-face)
    (cons (regexp-opt ludic--types 'symbols) 'font-lock-type-face)
    (cons (regexp-opt ludic--phases 'symbols) 'font-lock-builtin-face)
-   (cons "\\_<\\(true\\|false\\)\\_>" 'font-lock-constant-face)
+   (cons "\\_<\\(true\\|false\\|null\\)\\_>" 'font-lock-constant-face)
    (cons "@[A-Za-z_][A-Za-z0-9_]*" 'font-lock-preprocessor-face)
    ;; components, archetypes, scenes and UI handles are Capitalised by convention
    (cons "\\_<[A-Z][A-Za-z0-9_]*\\_>" 'font-lock-type-face)

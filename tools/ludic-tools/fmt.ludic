@@ -40,27 +40,27 @@ program LudicFmt {
     file_close(f)
     return buf
   }
-  function cstr_len(s: pointer) -> int { var n = 0;  while s[n] != 0 { n = n + 1 };  return n }
-  function char_is_digit(c: int) -> bool { return c >= 48 and c <= 57 }
+  function cstr_len(s: pointer) -> int { var n = 0;  while s[n] != 0 { n += 1 };  return n }
+  function char_is_digit(c: int) -> bool { return c >= '0' and c <= '9' }
   function char_is_alpha(c: int) -> bool {
-    if c >= 65 and c <= 90 { return true }
-    if c >= 97 and c <= 122 { return true }
-    return c == 95
+    if c >= 'A' and c <= 'Z' { return true }
+    if c >= 'a' and c <= 'z' { return true }
+    return c == '_'
   }
   function char_is_alnum(c: int) -> bool { return char_is_alpha(c) or char_is_digit(c) }
-  function char_is_hex(c: int) -> bool { return char_is_digit(c) or (c >= 97 and c <= 102) or (c >= 65 and c <= 70) }
+  function char_is_hex(c: int) -> bool { return char_is_digit(c) or (c >= 'a' and c <= 'f') or (c >= 'A' and c <= 'F') }
   function itoa(v: int) -> pointer {
-    if v == 0 { let z = bytes(2); z[0] = 48; z[1] = 0; return z }
+    if v == 0 { let z = bytes(2); z[0] = '0'; z[1] = 0; return z }
     var neg = false;  var x = v
-    if x < 0 { neg = true;  x = 0 - x }
+    if x < 0 { neg = true;  x = -x }
     let tmp = bytes(16);  var n = 0
-    while x > 0 { tmp[n] = 48 + x % 10;  x = x / 10;  n = n + 1 }
+    while x > 0 { tmp[n] = 48 + x % 10;  x /= 10;  n += 1 }
     var total = n
-    if neg { total = total + 1 }
+    if neg { total += 1 }
     let out = bytes(total + 1);  var k = 0
-    if neg { out[0] = 45;  k = 1 }
+    if neg { out[0] = '-';  k = 1 }
     var i = 0
-    while i < n { out[k + i] = tmp[n - 1 - i];  i = i + 1 }
+    while i < n { out[k + i] = tmp[n - 1 - i];  i += 1 }
     out[total] = 0
     return out
   }
@@ -70,15 +70,15 @@ program LudicFmt {
   function buf_new() -> Buf { let b = new Buf;  b.cap = 256;  b.data = bytes(b.cap);  b.len = 0;  return b }
   function buf_ensure(b: Buf, extra: int) -> void {
     if b.len + extra + 1 <= b.cap { return }
-    while b.len + extra + 1 > b.cap { b.cap = b.cap * 2 }
+    while b.len + extra + 1 > b.cap { b.cap *= 2 }
     b.data = resize(b.data, b.cap)
   }
-  function buf_putc(b: Buf, c: int) -> void { buf_ensure(b, 1);  b.data[b.len] = c;  b.len = b.len + 1 }
-  function buf_puts(b: Buf, s: pointer) -> void { var i = 0;  while s[i] != 0 { buf_putc(b, s[i]);  i = i + 1 } }
-  function buf_indent(b: Buf, n: int) -> void { var i = 0;  while i < n { buf_putc(b, 32);  i = i + 1 } }
+  function buf_putc(b: Buf, c: int) -> void { buf_ensure(b, 1);  b.data[b.len] = c;  b.len += 1 }
+  function buf_puts(b: Buf, s: pointer) -> void { var i = 0;  while s[i] != 0 { buf_putc(b, s[i]);  i += 1 } }
+  function buf_indent(b: Buf, n: int) -> void { var i = 0;  while i < n { buf_putc(b, ' ');  i += 1 } }
   function buf_str(b: Buf) -> pointer { b.data[b.len] = 0;  return b.data }
   # append src[a..b) raw
-  function buf_addrange(b: Buf, s: pointer, a: int, e: int) -> void { var k = a;  while k < e { buf_putc(b, s[k]);  k = k + 1 } }
+  function buf_addrange(b: Buf, s: pointer, a: int, e: int) -> void { var k = a;  while k < e { buf_putc(b, s[k]);  k += 1 } }
 
   # ---- the token stream (parallel slices) ----
   var src: pointer = null
@@ -117,16 +117,19 @@ program LudicFmt {
 
   # ---- the lexer: keeps comments, newlines, byte spans; never exits on bad input ----
   function is_op2(c0: int, c1: int) -> bool {
-    if c0 == 45 and c1 == 62 { return true }          # ->
-    if c1 == 61 and (c0 == 43 or c0 == 45 or c0 == 42 or c0 == 47 or c0 == 61 or c0 == 33 or c0 == 60 or c0 == 62) { return true }  # += -= *= /= == != <= >=
-    if c0 == 38 and c1 == 38 { return true }          # &&
-    if c0 == 124 and c1 == 124 { return true }        # ||
-    if c0 == 46 and c1 == 46 { return true }          # ..
-    if c0 == 61 and c1 == 62 { return true }          # =>
+    if c0 == '-' and c1 == '>' { return true }          # ->
+    if c1 == '=' and (c0 == '+' or c0 == '-' or c0 == '*' or c0 == '/' or c0 == '=' or c0 == '!' or c0 == '<' or c0 == '>') { return true }  # += -= *= /= == != <= >=
+    if c0 == '<' and c1 == '<' { return true }          # <<
+    if c0 == '>' and c1 == '>' { return true }          # >>
+    if c0 == '.' and c1 == '.' { return true }          # ..
+    if c0 == '=' and c1 == '>' { return true }          # =>
     return false
   }
   function is_op1(c: int) -> bool {
-    return c == 43 or c == 45 or c == 42 or c == 47 or c == 37 or c == 60 or c == 62 or c == 61 or c == 40 or c == 41 or c == 123 or c == 125 or c == 91 or c == 93 or c == 44 or c == 58 or c == 46 or c == 33 or c == 64 or c == 59
+    if c == '+' or c == '-' or c == '*' or c == '/' or c == '%' or c == '<' or c == '>' or c == '=' { return true }   # + - * / % < > =
+    if c == '(' or c == ')' or c == '{' or c == '}' or c == '[' or c == ']' { return true }                       # ( ) { } [ ]
+    if c == ',' or c == ':' or c == '.' or c == '!' or c == '@' or c == ';' { return true }                         # , : . ! @ ;
+    return c == '&' or c == '|' or c == '^' or c == '~'                                                        # & | ^ ~
   }
 
   function lex(s: pointer) -> void {
@@ -137,45 +140,45 @@ program LudicFmt {
     var i = 0;  var line = 0
     while s[i] != 0 {
       let c = s[i]
-      if c == 10 { push_tok(LT_NL, i, i + 1, line);  i = i + 1;  line = line + 1;  push(linestart, i);  continue }
-      if c == 32 or c == 9 or c == 13 { i = i + 1;  continue }
-      if c == 35 {                                    # '#' comment to end of line
-        let st = i;  while s[i] != 0 and s[i] != 10 { i = i + 1 };  push_tok(LT_COMMENT, st, i, line);  continue
+      if c == '\n' { push_tok(LT_NL, i, i + 1, line);  i += 1;  line += 1;  push(linestart, i);  continue }
+      if c == ' ' or c == '\t' or c == '\r' { i += 1;  continue }
+      if c == '#' {                                    # '#' comment to end of line
+        let st = i;  while s[i] != 0 and s[i] != '\n' { i += 1 };  push_tok(LT_COMMENT, st, i, line);  continue
       }
-      if c == 34 {                                    # "string"
-        let st = i;  i = i + 1
-        while s[i] != 0 and s[i] != 34 and s[i] != 10 { if s[i] == 92 and s[i + 1] != 0 { i = i + 2 } else { i = i + 1 } }
-        if s[i] == 34 { i = i + 1 }
+      if c == '"' {                                    # "string"
+        let st = i;  i += 1
+        while s[i] != 0 and s[i] != '"' and s[i] != '\n' { if s[i] == '\\' and s[i + 1] != 0 { i += 2 } else { i += 1 } }
+        if s[i] == '"' { i += 1 }
         push_tok(LT_STR, st, i, line);  continue
       }
-      if c == 96 {                                    # `interpolated`
-        let st = i;  i = i + 1
-        while s[i] != 0 and s[i] != 96 { if s[i] == 92 and s[i + 1] != 0 { i = i + 2 } else { i = i + 1 } }
-        if s[i] == 96 { i = i + 1 }
+      if c == '`' {                                    # `interpolated`
+        let st = i;  i += 1
+        while s[i] != 0 and s[i] != '`' { if s[i] == '\\' and s[i + 1] != 0 { i += 2 } else { i += 1 } }
+        if s[i] == '`' { i += 1 }
         push_tok(LT_STR, st, i, line);  continue
       }
-      if c == 39 {                                    # 'c'
-        let st = i;  i = i + 1
-        if s[i] == 92 and s[i + 1] != 0 { i = i + 2 } else { if s[i] != 0 and s[i] != 10 { i = i + 1 } }
-        if s[i] == 39 { i = i + 1 }
+      if c == '\'' {                                    # 'c'
+        let st = i;  i += 1
+        if s[i] == '\\' and s[i + 1] != 0 { i += 2 } else { if s[i] != 0 and s[i] != '\n' { i += 1 } }
+        if s[i] == '\'' { i += 1 }
         push_tok(LT_CHAR, st, i, line);  continue
       }
       if char_is_digit(c) {
         let st = i
-        if c == 48 and (s[i + 1] == 120 or s[i + 1] == 88) {   # 0x hex
-          i = i + 2;  while char_is_hex(s[i]) { i = i + 1 };  push_tok(LT_INT, st, i, line);  continue
+        if c == '0' and (s[i + 1] == 'x' or s[i + 1] == 'X') {   # 0x hex
+          i += 2;  while char_is_hex(s[i]) { i += 1 };  push_tok(LT_INT, st, i, line);  continue
         }
-        while char_is_digit(s[i]) { i = i + 1 }
-        if s[i] == 46 and char_is_digit(s[i + 1]) {
-          i = i + 1;  while char_is_digit(s[i]) { i = i + 1 };  push_tok(LT_FLOAT, st, i, line);  continue
+        while char_is_digit(s[i]) { i += 1 }
+        if s[i] == '.' and char_is_digit(s[i + 1]) {
+          i += 1;  while char_is_digit(s[i]) { i += 1 };  push_tok(LT_FLOAT, st, i, line);  continue
         }
         push_tok(LT_INT, st, i, line);  continue
       }
-      if c == 64 and (char_is_alpha(s[i + 1]) or s[i + 1] == 95) {   # @name annotation
-        let st = i;  i = i + 1;  while char_is_alnum(s[i]) { i = i + 1 };  push_tok(LT_ANNO, st, i, line);  continue
+      if c == '@' and (char_is_alpha(s[i + 1]) or s[i + 1] == '_') {   # @name annotation
+        let st = i;  i += 1;  while char_is_alnum(s[i]) { i += 1 };  push_tok(LT_ANNO, st, i, line);  continue
       }
       if char_is_alpha(c) {
-        let st = i;  while char_is_alnum(s[i]) { i = i + 1 }
+        let st = i;  while char_is_alnum(s[i]) { i += 1 }
         let w = s[st..i]
         var k = LT_ID
         if (w == "true") or (w == "false") or (w == "null") { k = LT_BOOL }
@@ -184,14 +187,14 @@ program LudicFmt {
         else { if is_keyword_word(w) { k = LT_KW } } } }
         push_tok(k, st, i, line);  continue
       }
-      if is_op2(c, s[i + 1]) { push_tok(LT_OP, i, i + 2, line);  i = i + 2;  continue }
-      if is_op1(c) { push_tok(LT_OP, i, i + 1, line);  i = i + 1;  continue }
+      if is_op2(c, s[i + 1]) { push_tok(LT_OP, i, i + 2, line);  i += 2;  continue }
+      if is_op1(c) { push_tok(LT_OP, i, i + 1, line);  i += 1;  continue }
       # anything else: one UTF-8 character's worth as an LT_ERR token
       var ln = 1
       if c >= 240 { ln = 4 } else { if c >= 224 { ln = 3 } else { if c >= 128 { ln = 2 } } }
       var kk = 1
-      while kk < ln { if s[i + kk] == 0 or (s[i + kk] & 192) != 128 { ln = kk };  kk = kk + 1 }
-      push_tok(LT_ERR, i, i + ln, line);  i = i + ln
+      while kk < ln { if s[i + kk] == 0 or (s[i + kk] & 192) != 128 { ln = kk };  kk += 1 }
+      push_tok(LT_ERR, i, i + ln, line);  i += ln
     }
     push_tok(LT_EOF, i, i, line)
   }
@@ -199,36 +202,41 @@ program LudicFmt {
   # ---- token-stream helpers ----
   function next_sig(i: int) -> int {
     var j = i + 1
-    while j < ntok() { let k = tk_kind[j];  if k != LT_NL and k != LT_COMMENT { return j };  j = j + 1 }
-    return 0 - 1
+    while j < ntok() { let k = tk_kind[j];  if k != LT_NL and k != LT_COMMENT { return j };  j += 1 }
+    return -1
   }
   function prev_sig(i: int) -> int {
     var j = i - 1
-    while j >= 0 { let k = tk_kind[j];  if k != LT_NL and k != LT_COMMENT { return j };  j = j - 1 }
-    return 0 - 1
+    while j >= 0 { let k = tk_kind[j];  if k != LT_NL and k != LT_COMMENT { return j };  j -= 1 }
+    return -1
   }
   function name_like(k: int) -> bool { return k == LT_ID or k == LT_KW or k == LT_TYPE or k == LT_PHASE or k == LT_BOOL }
+  # is token i written right after a '.', i.e. a member/method name?
+  function is_member(i: int) -> bool {
+    let p = prev_sig(i)
+    return p >= 0 and tk_kind[p] == LT_OP and tok_len(p) == 1 and src[tk_start[p]] == '.'
+  }
   # a '.' hugs an operand, a closing bracket, and another dot
   function dot_tight(t: int) -> bool {
     if name_like(tk_kind[t]) { return true }
     if tk_kind[t] != LT_OP { return false }
     let n = tok_len(t);  let c0 = src[tk_start[t]]
-    if n == 1 and (c0 == 41 or c0 == 93 or c0 == 46) { return true }
-    if n == 2 and c0 == 46 and src[tk_start[t] + 1] == 46 { return true }
+    if n == 1 and (c0 == ')' or c0 == ']' or c0 == '.') { return true }
+    if n == 2 and c0 == '.' and src[tk_start[t] + 1] == 46 { return true }
     return false
   }
-  # is the token at index i a unary '-'/'!' rather than a binary operator?
+  # is the token at index i a unary '-' / '!' / '~' rather than a binary operator?
   function is_unary(i: int) -> bool {
     if tk_kind[i] != LT_OP { return false }
     let n = tok_len(i)
-    if not (n == 1 and (src[tk_start[i]] == 45 or src[tk_start[i]] == 33)) { return false }
+    if not (n == 1 and (src[tk_start[i]] == 45 or src[tk_start[i]] == 33 or src[tk_start[i]] == 126)) { return false }
     let p = prev_sig(i)
     if p < 0 { return true }
     let pk = tk_kind[p]
     if pk == LT_ID or pk == LT_INT or pk == LT_FLOAT or pk == LT_STR or pk == LT_CHAR or pk == LT_BOOL or pk == LT_TYPE or pk == LT_PHASE { return false }
     if pk == LT_OP {
       let c = src[tk_start[p]]
-      return not (tok_len(p) == 1 and (c == 41 or c == 93 or c == 125))   # a closing bracket ends an operand
+      return not (tok_len(p) == 1 and (c == ')' or c == ']' or c == '}'))   # a closing bracket ends an operand
     }
     return true                                       # keyword/annotation/comment: operand starts here
   }
@@ -241,14 +249,26 @@ program LudicFmt {
     let p0 = src[tk_start[prev]];  let c0 = src[tk_start[cur]]
     let p1 = (plen == 1);  let c1 = (clen == 1)
     if pk == LT_ERR or ck == LT_ERR { return tk_start[cur] - tk_end[prev] }   # preserve an error token's spacing
-    if c1 and (c0 == 41 or c0 == 93 or c0 == 44 or c0 == 58 or c0 == 59) { return 0 }   # ) ] , : ;
-    if c1 and c0 == 46 and ck == LT_OP and dot_tight(prev) { return 0 }
-    if p1 and p0 == 46 and pk == LT_OP and dot_tight(cur) { return 0 }
-    if p1 and (p0 == 40 or p0 == 91) and pk == LT_OP { return 0 }            # nothing hugs an opener from the right
+    if c1 and (c0 == ')' or c0 == ']' or c0 == ',' or c0 == ':' or c0 == ';') { return 0 }   # ) ] , : ;
+    if c1 and c0 == '.' and ck == LT_OP and dot_tight(prev) { return 0 }
+    if p1 and p0 == '.' and pk == LT_OP and dot_tight(cur) { return 0 }
+    if p1 and (p0 == '(' or p0 == '[') and pk == LT_OP { return 0 }            # nothing hugs an opener from the right
+    # an index or slice hugs its operand: a[i], f()[0], a[i][j]; `query [` and `= [` keep their space
+    if c1 and c0 == '[' and ck == LT_OP {
+      if pk == LT_ID or pk == LT_STR { return 0 }
+      if pk == LT_OP and p1 and (p0 == ')' or p0 == ']') { return 0 }
+    }
+    # the element type hugs an empty pair of brackets: `[]int`, `[]Node`
+    if p1 and p0 == ']' and pk == LT_OP and (ck == LT_ID or ck == LT_TYPE) {
+      let pp = prev_sig(prev)
+      if pp >= 0 and tk_kind[pp] == LT_OP and tok_len(pp) == 1 and src[tk_start[pp]] == 91 { return 0 }
+    }
     if pk == LT_OP and is_unary(prev) { return 0 }
-    if pk == LT_ANNO and c1 and c0 == 40 { return 0 }                        # @anno(
-    if c1 and c0 == 40 and ck == LT_OP {
+    if pk == LT_ANNO and c1 and c0 == '(' { return 0 }                        # @anno(
+    if c1 and c0 == '(' and ck == LT_OP {
       if pk == LT_ID or pk == LT_TYPE or pk == LT_PHASE { return 0 }         # function move( / clear(
+      if pk == LT_KW and (tok_text(prev) == "emit") { return 0 }             # emit(...) is a call, `emit E(...)` an event
+      if pk == LT_KW and is_member(prev) { return 0 }                         # Prefab.spawn( / Date.new( — a member name is never a keyword
       if pk == LT_OP { return 1 }                                          # `= (`, `+ (`, `) (` keep a space
       return 1
     }
@@ -264,7 +284,7 @@ program LudicFmt {
     var cur = 0
     var open = 0
     var brack = 0
-    var ui_depth = 0 - 1
+    var ui_depth = -1
     var pending_blank = 0
     var wrote_any = 0
     var prev_line_had_comment = 0
@@ -272,9 +292,9 @@ program LudicFmt {
     var i = 0
     while i < N and tk_kind[i] != LT_EOF {
       let a = i
-      while i < N and tk_kind[i] != LT_NL and tk_kind[i] != LT_EOF { i = i + 1 }
+      while i < N and tk_kind[i] != LT_NL and tk_kind[i] != LT_EOF { i += 1 }
       let b = i
-      if i < N and tk_kind[i] == LT_NL { i = i + 1 }
+      if i < N and tk_kind[i] == LT_NL { i += 1 }
 
       if a == b {                                     # a blank line
         if wrote_any == 1 { pending_blank = 1 }
@@ -286,13 +306,13 @@ program LudicFmt {
       var tsp = sp
       var t = a
       while t < b and tk_kind[t] == LT_OP and tok_len(t) == 1 and src[tk_start[t]] == 125 {   # leading '}'
-        if tsp > 0 { tsp = tsp - 1;  line_level = stack[tsp] }
-        t = t + 1
+        if tsp > 0 { tsp -= 1;  line_level = stack[tsp] }
+        t += 1
       }
       # original column of this line
       var orig_ind = 0
       var kk = linestart[tk_line[a]]
-      while kk < tk_start[a] { if src[kk] == 9 { orig_ind = orig_ind + 4 } else { orig_ind = orig_ind + 1 };  kk = kk + 1 }
+      while kk < tk_start[a] { if src[kk] == '\t' { orig_ind += 4 } else { orig_ind += 1 };  kk += 1 }
       # a comment continuing the previous comment line keeps the author's column
       var comment_run = 0
       if tk_kind[a] == LT_COMMENT and b == a + 1 and prev_line_had_comment == 1 { comment_run = 1 }
@@ -304,7 +324,7 @@ program LudicFmt {
         let ls = linestart[tk_line[a]]
         ind = 0
         var k2 = ls
-        while k2 < tk_start[a] { if src[k2] == 9 { ind = ind + 4 } else { ind = ind + 1 };  k2 = k2 + 1 }
+        while k2 < tk_start[a] { if src[k2] == '\t' { ind += 4 } else { ind += 1 };  k2 += 1 }
       } else {
         var extra = 0
         if is_clause_word(tok_text(a)) and tk_kind[a] == LT_KW { extra = indent_width }
@@ -312,13 +332,14 @@ program LudicFmt {
         if comment_run == 1 and orig_ind > ind { ind = orig_ind }
       }
 
-      if pending_blank == 1 and wrote_any == 1 { buf_putc(o, 10) }
+      if pending_blank == 1 and wrote_any == 1 { buf_putc(o, '\n') }
       pending_blank = 0
       buf_indent(o, ind)
 
       # emit the tokens
-      var prev = 0 - 1
+      var prev = -1
       var line_brack = brack
+      var in_tag = 0                                   # inside a query's {Tag} filter
       var line_ui_open = 0
       if ui_depth >= 0 and sp > ui_depth { line_ui_open = 1 }
       t = a
@@ -327,9 +348,18 @@ program LudicFmt {
         if tk_kind[t] == LT_COMMENT { if prev >= 0 { want = 2 } else { want = 0 } }
         else {
           want = space_before(prev, t)
-          if line_brack > 0 {                         # query {Tag} filter is one word
-            if tk_kind[t] == LT_OP and tok_len(t) == 1 and src[tk_start[t]] == 125 { want = 0 }
-            if prev >= 0 and tk_kind[prev] == LT_OP and tok_len(prev) == 1 and src[tk_start[prev]] == 123 { want = 0 }
+          # a query's {Tag} filter is one word: a `{` straight after `[` or `,` opens one
+          # (a record literal `new R { … }` inside a list keeps its spaces)
+          if line_brack > 0 and tk_kind[t] == LT_OP and tok_len(t) == 1 {
+            let c = src[tk_start[t]]
+            if c == '{' and prev >= 0 and tk_kind[prev] == LT_OP and tok_len(prev) == 1 and (src[tk_start[prev]] == '[' or src[tk_start[prev]] == ',') { in_tag = 1 }
+            if c == '}' and in_tag == 1 { want = 0;  in_tag = 0 }
+          }
+          if in_tag == 1 and prev >= 0 and tk_kind[prev] == LT_OP and tok_len(prev) == 1 and src[tk_start[prev]] == '{' { want = 0 }
+          # a slice range hugs its bounds, `s[a..b]`; a `for i in a .. b` range keeps its spaces
+          if line_brack > 0 {
+            if tk_kind[t] == LT_OP and tok_len(t) == 2 and src[tk_start[t]] == 46 and src[tk_start[t] + 1] == 46 { want = 0 }
+            if prev >= 0 and tk_kind[prev] == LT_OP and tok_len(prev) == 2 and src[tk_start[prev]] == 46 and src[tk_start[prev] + 1] == 46 { want = 0 }
           }
           if line_ui_open == 1 {                       # widget props are k=v
             var eq_here = 0
@@ -344,17 +374,17 @@ program LudicFmt {
         if gap >= 2 and want >= 1 { if gap > 60 { gap = 60 };  want = gap }   # hand alignment wins
         if want < 0 { want = 0 }
         var w2 = 0
-        while w2 < want { buf_putc(o, 32);  w2 = w2 + 1 }
+        while w2 < want { buf_putc(o, ' ');  w2 += 1 }
         buf_addrange(o, src, tk_start[t], tk_end[t])
         prev = t
         if tk_kind[t] == LT_OP and tok_len(t) == 1 {
           let c = src[tk_start[t]]
-          if c == 91 { line_brack = line_brack + 1 }
-          else { if c == 93 { line_brack = line_brack - 1;  if line_brack < 0 { line_brack = 0 } } }
+          if c == '[' { line_brack += 1 }
+          else { if c == ']' { line_brack -= 1;  if line_brack < 0 { line_brack = 0 } } }
         }
-        t = t + 1
+        t += 1
       }
-      buf_putc(o, 10)
+      buf_putc(o, '\n')
       wrote_any = 1
       prev_line_had_comment = 0
       if prev >= 0 and tk_kind[prev] == LT_COMMENT { prev_line_had_comment = 1 }
@@ -366,25 +396,25 @@ program LudicFmt {
       while t < b {
         if tk_kind[t] == LT_OP and tok_len(t) == 1 {
           let c = src[tk_start[t]]
-          if c == 123 {                               # '{'
+          if c == '{' {                               # '{'
             if sp < 512 {
               let nxt = next_sig(t)
               stack[sp] = line_level
               var h = 0
               if nxt >= 0 and nxt < b { h = 1 }
               hang[sp] = h
-              sp = sp + 1
+              sp += 1
             }
             level = line_level + 1
           }
-          else { if c == 125 { if sp > 0 { sp = sp - 1;  level = stack[sp] } }
-          else { if c == 40 or c == 91 { open = open + 1;  if c == 91 { brack = brack + 1 } }
-          else { if c == 41 or c == 93 { open = open - 1;  if open < 0 { open = 0 };  if c == 93 { brack = brack - 1;  if brack < 0 { brack = 0 } } } } } }
+          else { if c == '}' { if sp > 0 { sp -= 1;  level = stack[sp] } }
+          else { if c == '(' or c == '[' { open += 1;  if c == '[' { brack += 1 } }
+          else { if c == ')' or c == ']' { open -= 1;  if open < 0 { open = 0 };  if c == ']' { brack -= 1;  if brack < 0 { brack = 0 } } } } } }
         }
-        t = t + 1
+        t += 1
       }
       cur = level
-      if ui_depth >= 0 and sp <= ui_depth { ui_depth = 0 - 1 }
+      if ui_depth >= 0 and sp <= ui_depth { ui_depth = -1 }
     }
     return o
   }
@@ -395,22 +425,22 @@ program LudicFmt {
   var g_marker: int = 0
   # detect a fence at line offset i; sets g_flen/g_info/g_marker; returns bool
   function md_fence_at(s: pointer, i: int) -> bool {
-    var j = i;  while s[j] == 32 { j = j + 1 }
+    var j = i;  while s[j] == ' ' { j += 1 }
     let m = s[j]
-    if m != 96 and m != 126 { return false }          # ` or ~
-    var n = 0;  while s[j] == m { j = j + 1;  n = n + 1 }
+    if m != '`' and m != '~' { return false }          # ` or ~
+    var n = 0;  while s[j] == m { j += 1;  n += 1 }
     if n < 3 { return false }
     g_flen = n;  g_info = j;  g_marker = m
     return true
   }
   function md_info_is_ludic(s: pointer, at: int) -> bool {
-    var a = at;  while s[a] == 32 or s[a] == 9 { a = a + 1 }
+    var a = at;  while s[a] == ' ' or s[a] == '\t' { a += 1 }
     # case-insensitive "ludic"
-    if not (((s[a] == 108 or s[a] == 76)) and ((s[a + 1] == 117 or s[a + 1] == 85)) and ((s[a + 2] == 100 or s[a + 2] == 68)) and ((s[a + 3] == 105 or s[a + 3] == 73)) and ((s[a + 4] == 99 or s[a + 4] == 67))) { return false }
+    if not (((s[a] == 'l' or s[a] == 'L')) and ((s[a + 1] == 'u' or s[a + 1] == 'U')) and ((s[a + 2] == 'd' or s[a + 2] == 'D')) and ((s[a + 3] == 'i' or s[a + 3] == 'I')) and ((s[a + 4] == 'c' or s[a + 4] == 'C'))) { return false }
     let af = s[a + 5]
-    return af == 0 or af == 10 or af == 32 or af == 9 or af == 13
+    return af == 0 or af == '\n' or af == ' ' or af == '\t' or af == '\r'
   }
-  function line_end(s: pointer, i: int) -> int { var e = i;  while s[e] != 0 and s[e] != 10 { e = e + 1 };  return e }
+  function line_end(s: pointer, i: int) -> int { var e = i;  while s[e] != 0 and s[e] != '\n' { e += 1 };  return e }
 
   function format_markdown(s: pointer, indent_width: int) -> Buf {
     let o = buf_new()
@@ -418,7 +448,7 @@ program LudicFmt {
     while s[i] != 0 {
       let ls = i
       let le = line_end(s, ls)
-      var indent = 0;  while s[ls + indent] == 32 { indent = indent + 1 }
+      var indent = 0;  while s[ls + indent] == ' ' { indent += 1 }
       if md_fence_at(s, ls) and md_info_is_ludic(s, g_info) {
         # copy the opening fence line verbatim (with its newline)
         var e0 = le;  if s[le] != 0 { e0 = le + 1 }
@@ -437,7 +467,7 @@ program LudicFmt {
               if g_marker == cmark and g_flen >= clen {
                 var only = 1
                 var k = g_info
-                while k < pe { if s[k] != 32 and s[k] != 13 { only = 0;  break };  k = k + 1 }
+                while k < pe { if s[k] != ' ' and s[k] != '\r' { only = 0;  break };  k += 1 }
                 if only == 1 { be = ps;  break }
               }
             }
@@ -450,9 +480,9 @@ program LudicFmt {
         while p < be {
           var q = line_end(s, p)
           var skip = 0
-          while skip < indent and (p + skip) < q and s[p + skip] == 32 { skip = skip + 1 }
+          while skip < indent and (p + skip) < q and s[p + skip] == ' ' { skip += 1 }
           buf_addrange(body, s, p + skip, q)
-          buf_putc(body, 10)
+          buf_putc(body, '\n')
           if s[q] != 0 { p = q + 1 } else { p = q }
         }
         # feed the body through the ludic formatter
@@ -461,10 +491,10 @@ program LudicFmt {
         let ftext = buf_str(f)
         var fp = 0
         while ftext[fp] != 0 {
-          var fq = fp;  while ftext[fq] != 0 and ftext[fq] != 10 { fq = fq + 1 }
+          var fq = fp;  while ftext[fq] != 0 and ftext[fq] != '\n' { fq += 1 }
           if fq > fp { buf_indent(o, indent) }
           buf_addrange(o, ftext, fp, fq)
-          buf_putc(o, 10)
+          buf_putc(o, '\n')
           if ftext[fq] != 0 { fp = fq + 1 } else { fp = fq }
         }
         i = be
@@ -516,10 +546,10 @@ program LudicFmt {
       if (a == "-w") or (a == "--write") { write = true }
       else { if (a == "--check") or (a == "-l") { check = true }
       else { if (a == "-q") or (a == "--quiet") { quiet = true }
-      else { if (a == "--indent") { ai = ai + 1;  if ai < arg_count() { indent = 0;  let d = arg(ai);  var di = 0;  while d[di] != 0 { indent = indent * 10 + (d[di] - 48);  di = di + 1 } } }
+      else { if (a == "--indent") { ai += 1;  if ai < arg_count() { indent = 0;  let d = arg(ai);  var di = 0;  while d[di] != 0 { indent = indent * 10 + (d[di] - 48);  di += 1 } } }
       else { if (a == "-h") or (a == "--help") { print("ludic-fmt — format Ludic source");  return }
       else { push(files, a) } } } } }
-      ai = ai + 1
+      ai += 1
     }
     if indent < 1 or indent > 8 { indent = 2 }
 
@@ -555,7 +585,7 @@ program LudicFmt {
           file_write(file_stdout(), out, cstr_len(out))
         } }
       }
-      fi = fi + 1
+      fi += 1
     }
     if failed { exit(2) }
     if check and changed { exit(1) }

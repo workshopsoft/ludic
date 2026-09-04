@@ -10,7 +10,7 @@ comment-token = "#"
 indent = { tab-width = 2, unit = "  " }
 language-servers = ["ludic-lsp"]
 auto-format = true
-roots = ["build.sh", "LANGUAGE.md", ".git"]
+roots = ["package.ludic", "LANGUAGE.md", ".git"]
 
 [language-server.ludic-lsp]
 command = "ludic-lsp"

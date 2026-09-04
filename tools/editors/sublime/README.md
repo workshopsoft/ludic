@@ -20,10 +20,10 @@ Sublime reads TextMate grammars directly, so the shared grammar works as-is.
   "clients": {
     "ludic": {
       "enabled": true,
-      "command": ["/path/to/gpp/build/ludic-lsp", "--stdio"],
+      "command": ["/path/to/gpp/bin/ludic-lsp", "--stdio"],
       "selector": "source.ludic | text.html.markdown",
       "initializationOptions": {
-        "compilerPath": "/path/to/gpp/build/ludicc",
+        "compilerPath": "/path/to/gpp/bin/ludicc",
         "compilerDiagnostics": true,
         "indentSize": 2
       }

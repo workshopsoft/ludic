@@ -33,10 +33,13 @@ jobs:
           clang-16 --version | head -1
 
       - name: Check out the triggering commit
+        env:
+          # the repository that triggered the run, so a fork or a mirror tests itself
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
         run: |
           set -eu
           git config --global --add safe.directory '*'
-          git clone https://git.workshopsoft.io/workshopsoft/ludic.git .
+          git clone "$REPO_URL" .
           git checkout "${GITHUB_SHA}" 2>/dev/null || git checkout "${GITHUB_REF_NAME:-main}"
           git log --oneline -1
           # The toolchain is macOS-first; on this Linux runner it links against a

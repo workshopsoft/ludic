@@ -1,53 +1,52 @@
 {
-  "game": {
-    "prefix": "game",
-    "body": ["game ${1:Name} {", "\t$0", "}"],
-    "description": "A game unit — compiles to an executable."
+  "program": {
+    "prefix": "program",
+    "body": ["program ${1:Name} {", "\t$0", "}"],
+    "description": "A program: one block of declarations that compiles to an executable."
   },
-  "module": {
-    "prefix": "module",
-    "body": ["module ${1:Name} {", "\t$0", "}"],
-    "description": "A library unit — compiles to a shared library, no frame loop."
+  "property": {
+    "prefix": "property",
+    "body": ["property ${1:Name} { ${2:x}: ${3:int} = ${4:0} }"],
+    "description": "A property: typed fields with defaults — a per-entity component, or a record made with `new`."
   },
-  "component": {
-    "prefix": "component",
-    "body": ["component ${1:Name} { ${2:x}: ${3:int} = ${4:0} }"],
-    "description": "A component: typed per-entity fields."
+  "model": {
+    "prefix": "model",
+    "body": ["model ${1:Name} { ${2:Position} }"],
+    "description": "An entity kind bundling a fixed set of properties."
   },
-  "archetype": {
-    "prefix": "archetype",
-    "body": ["archetype ${1:Name} {", "\t${2:Pos}", "}"],
-    "description": "An entity kind bundling a fixed set of components."
+  "prefab": {
+    "prefix": "prefab",
+    "body": ["prefab ${1:Name}: ${2:Model} { ${3:Stats} { ${4:hp}: ${5:30} } }"],
+    "description": "A model with preset property fields; `spawn` adds only what differs."
   },
-  "system": {
-    "prefix": "system",
+  "handler": {
+    "prefix": "handler",
     "body": [
-      "system ${1:Name} phase ${2|Start,Input,FixedUpdate,Update,LateUpdate,Render|} {",
+      "handler ${1:Name} phase ${2|Start,Input,FixedUpdate,Update,LateUpdate,Render,Overlay|} {",
       "\t$0",
       "}"
     ],
-    "description": "A system that runs once per tick in its phase."
+    "description": "A handler that runs once per tick in its phase."
   },
-  "system with query": {
-    "prefix": "systemq",
+  "handler with query": {
+    "prefix": "handlerq",
     "body": [
-      "system ${1:Name} phase ${2|Update,FixedUpdate,LateUpdate,Render,Input|}",
-      "  query (${3:p}) [${4:Pos}]",
-      "{",
+      "@Queries(these: [${1:Position}])",
+      "handler ${2:Name} phase ${3|Update,FixedUpdate,LateUpdate,Render,Input|} {",
       "\t$0",
       "}"
     ],
-    "description": "A system whose body runs once per matching entity."
+    "description": "A handler whose body runs once per matching entity, each property bound by name."
   },
   "for query": {
     "prefix": "forq",
-    "body": ["for (${1:p}) in query [${2:Pos}] {", "\t$0", "}"],
+    "body": ["for (${1:p}) in query [${2:Position}] {", "\t$0", "}"],
     "description": "Iterate every entity matching a query."
   },
   "spawn": {
     "prefix": "spawn",
-    "body": ["spawn ${1:Kind} {", "\t${2:Pos} = { ${3:x} = ${4:0} }", "}"],
-    "description": "Create an entity of an archetype."
+    "body": ["spawn ${1:Kind} { ${2:Position} { ${3:x}: ${4:0} } }"],
+    "description": "Create an entity of a model or prefab."
   },
   "scene": {
     "prefix": "scene",
@@ -59,18 +58,18 @@
       "\t}",
       "}"
     ],
-    "description": "A scene with lifecycle hooks and one layer of systems."
+    "description": "A scene with lifecycle hooks and one layer of handlers."
   },
   "ui": {
     "prefix": "ui",
     "body": [
       "ui ${1:Name} {",
-      "\tpanel id=${2:Root} pad=16 gap=6 align=center {",
+      "\tpanel id: ${2:Root} pad: 16 gap: 6 align: center {",
       "\t\t$0",
       "\t}",
       "}"
     ],
-    "description": "A retained UI tree."
+    "description": "A retained UI tree, declared as data."
   },
   "match": {
     "prefix": "match",
@@ -80,17 +79,32 @@
   "machine": {
     "prefix": "machine",
     "body": [
-      "machine reg(${1:R_PHASE}) {",
-      "\tstate ${2:Idle} = 0 {",
+      "machine ${1:state} {",
+      "\tstate ${2:Idle} {",
       "\t\t$0",
       "\t}",
       "}"
     ],
-    "description": "A state machine over a register."
+    "description": "A state machine over an enum-typed variable; `become` transitions."
   },
-  "extern fn": {
+  "event": {
+    "prefix": "event",
+    "body": ["event ${1:Name} { ${2:amount}: int = 0 }"],
+    "description": "An event payload; fire it with `emit`, listen with `@On`."
+  },
+  "listener": {
+    "prefix": "on",
+    "body": ["@On(${1:Event}) handler ${2:Name} { $0 }"],
+    "description": "A listener on an event, its payload fields bound by name."
+  },
+  "namespace": {
+    "prefix": "namespace",
+    "body": ["namespace ${1:Name} {", "\texport function ${2:method}() -> ${3:void} { $0 }", "}"],
+    "description": "A block of functions callable as Name.method(); `internal` keeps a helper private."
+  },
+  "extern function": {
     "prefix": "extern",
-    "body": ["extern fn ${1:name}(${2:a}: ${3:int}) -> ${4:int} = \"${5:c_symbol}\""],
+    "body": ["extern function ${1:name}(${2:a}: ${3:int}) -> ${4:int} = \"${5:c_symbol}\""],
     "description": "Bind a C symbol through the FFI."
   }
 }
