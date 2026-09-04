@@ -27,7 +27,7 @@
 >
 > The binaries are multi-call (one native binary under two names): invoked as
 > `ludicc` it compiles, as `ludic` it compiles-and-runs. A `.ludic` file with
-> systems is a game and links windowed by default; `--headless` and `--windowed`
+> handlers is a game and links windowed by default; `--headless` and `--windowed`
 > force the mode. The runtime (`runtime/native/cocoa.ll`) is found via
 > `$LUDIC_HOME`, defaulting to the directory the binary sits in — keep them in
 > `bin/`, or set `LUDIC_HOME` and put them on `PATH`. `$LUDIC_CC` overrides the
@@ -42,10 +42,10 @@ and find your program rewritten in another language.
 
 ```
    app.ludic
-      │  ludicc — lex, parse, check, lower              (compiler/ludicc.c,
-      ▼                                                  compiler/native.c)
-   app.ll        LLVM IR: your systems, your properties, your runtime
-      │  IR assembler                                   (compiler/driver.c)
+      │  ludicc — lex, parse, lower                     (selfhost/frontend/*.ludic,
+      ▼                                                  selfhost/backend/*.ludic)
+   app.ll        LLVM IR: your handlers, your properties, your runtime
+      │  IR assembler                                   (selfhost/main.ludic drives $LUDIC_CC)
       ▼
    app.o         Mach-O / ELF / COFF object code
       │  system linker
@@ -90,15 +90,16 @@ windowed and `--headless` builds today.
 
 > **Not yet on the self-hosted toolchain.** `--shared` and the `nm`/library
 > workflow below describe the old C driver's behavior; the self-hosted `ludicc`
-> builds executables only for now. The `module`/`@export fn` semantics are
+> builds executables only for now. The `@export function` semantics are
 > unchanged — only the packaging step is pending.
 
-A source file opens with `game Name { … }` or `module Name { … }`.
+A source file opens with `program Name { … }`.
 
-* A **game** gets an entry point and the phase-ordered frame loop
+* A program with **handlers** is a game: it gets the phase-ordered frame loop
   (`Start`, then `Input → FixedUpdate → Update → LateUpdate → Render` each tick).
-* A **module** gets neither. It is a library, and only its `@export fn`s become
-  public symbols; everything else stays private to the library.
+* A program with only an **`entry`** block is a tool: it runs `entry` and exits.
+* Either kind can be a library: only its `@export function`s become public
+  symbols; everything else stays private.
 
 ```ludic
 # doc-check: skip — illustrative: elided body
@@ -196,8 +197,11 @@ intrinsics compile to nothing there, so a headless binary never references a
 symbol the window would have provided.
 
 Other platforms build headless today. A Win32 or X11 port is another `.ll` file
-with the same five entry points — `win_open`, `win_poll`, `win_present`,
-`win_running`, `win_close` — and no compiler change.
+with the same entry points — the window (`win_open`, `win_poll`, `win_present`,
+`win_running`, `win_close`), keys (`win_held`, `win_held_bit`), the mouse and
+cursor (`win_mouse`, `win_cursor_mode`, `win_cursor_confine`,
+`win_cursor_maintain`), gamepad (`win_pad`) and touch (`win_touch`) — and no
+compiler change.
 
 ## The web
 

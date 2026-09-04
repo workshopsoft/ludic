@@ -11,7 +11,7 @@ program SceneDemo {
     on exit  { print(2) }
     layer Main {
       handler Tick phase Update {
-        counter = counter + 1
+        counter += 1
         print(100 + counter)
         if counter >= 2 { become Play }        # hand off to Play
       }
@@ -26,7 +26,7 @@ program SceneDemo {
     on exit { print(4) }
     layer World {
       handler Step phase Update {
-        counter = counter + 1
+        counter += 1
         print(200 + counter)
         if counter >= 2 { quit() }
       }

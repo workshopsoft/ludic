@@ -27,7 +27,7 @@ program Name {
   model ...     # a named entity KIND (bundle of properties)
   const ...         # compile-time constants
   function ...      # functions
-  extern function … # bind a C library symbol (FFI)
+  extern function …  # bind a C library symbol (FFI)
   enum ...          # a named set of integer values
   namespace ...     # a block of functions with export / internal visibility
   handler ...        # behavior, grouped into phases
@@ -50,11 +50,12 @@ declarations, no `program` wrapper. Its
 declarations are spliced into the importing program. Imports may appear inside
 the `program` block or before it, they may nest (a fragment may import fragments),
 and each resolved path is **include-guarded**, so importing the same file twice
-(even via different chains) pulls it in once. Diagnostics report the true file:
+(even via different chains) pulls it in once. Diagnostics name the file the
+line really lives in, in the `file:line: error: message` shape editors already
+parse:
 
 ```
-error: line 1: unknown type 'nope' for field Pos.x
-  chronorift/world.ludic:1 | property Pos { x: nope = 0 }
+chronorift/world.ludic:1: error: expected expression
 ```
 
 ## Models (entity kinds)
@@ -93,7 +94,7 @@ prefab Grunt: Foe { Stats { hp: 30, max_hp: 30 }, Weapon { def_id: WeaponId.Bite
 prefab Boss:  Foe { Stats { hp: 400, max_hp: 400 }, Sprite { scale: 4 } }
 
 spawn Grunt { Position { x: 40, y: 60 } }            # Foe's presets, Grunt's, then this
-let boss = spawn Boss { Position { x: 160, y: 40 } } # spawn is also an expression: the entity
+let boss = spawn Boss { Position { x: 160, y: 40 } }  # spawn is also an expression: the entity
 let e = Prefab.spawn(name: kind_name)                # chosen at runtime by name (-1 if none)
 ```
 
@@ -107,7 +108,7 @@ The 5×7 bitmap `text` stays for zero-asset programs. For real typography, load 
 TrueType font and draw UTF-8:
 
 ```ludic
-let f = font_load("/Handler/Library/Fonts/Supplemental/Arial.ttf")
+let f = Font.load("/System/Library/Fonts/Supplemental/Arial.ttf")
 text_ttf(f, 20, 20, "Héllo — Καλημέρα — Привет", 0xffffff, 28)   # anti-aliased
 let w = text_w(f, "measure me", 28)                              # pixel width
 ```
@@ -129,11 +130,13 @@ panels with padding / gap / alignment / grow), drawing (9-slice skins, images,
 TrueType text, focus highlight) and keyboard focus + activation.
 
 ```ludic
+var title_font: int = 0
+
 ui MainMenu {
   panel id: Root w: 288 pad: 16 gap: 6 skin: "assets/ui/panel.png" inset: 10 align: center {
-    label  text: "CHRONO RIFT" font: reg(R_FONT) size: 26 fg: 0xffe060 align: center
-    button id: NewGame text: "New Game" font: reg(R_FONT) size: 16 w: 236
-    button id: Quit    text: "Quit"     font: reg(R_FONT) size: 16 w: 236
+    label  text: "CHRONO RIFT" font: title_font size: 26 fg: Color.Gold align: center
+    button id: NewGame text: "New Game" font: title_font size: 16 w: 236
+    button id: Quit    text: "Quit"     font: title_font size: 16 w: 236
   }
 }
 ```
@@ -142,22 +145,22 @@ A widget inherits `font`, `size`, `fg` and `align` from the nearest ancestor tha
 sets them, so a panel states a menu's look once and a label only says what differs.
 Widget types: `panel` (container + optional skin/bg/border), `col` / `row`
 (pure stacks), `label`, `button` (focusable), `image`, `spacer`. Props are
-evaluated at build time, so `font: reg(R_FONT)` reads a value the program set first.
+evaluated at build time, so `font: title_font` reads a value the program set first.
 Each `id: Name` mints a `UI_Name` handle (the `ui` block name too), used from
 handlers:
 
 ```ludic
 handler Boot phase Start {
-  set_reg(R_FONT, font_load("…Arial.ttf"))
-  ui_build()                 # construct the tree (loads skins/images)
-  ui_open(UI_MainMenu)       # make it active, focus the first button
+  title_font = Font.load("…Arial.ttf")
+  Ui.build()                 # construct the tree (loads skins/images)
+  Ui.open(UI_MainMenu)       # make it active, focus the first button
 }
 handler Nav phase Update {
-  ui_tick(key())             # w/s move focus, space/enter activate
-  if ui_clicked(UI_Quit) { quit() }
-  ui_set_int(UI_HpLabel, hp)  # poke dynamic values by id
+  Ui.tick(Input.key())       # w/s move focus, space/enter activate
+  if Ui.clicked(UI_Quit) { quit() }
+  Ui.set_text(UI_HpLabel, `HP {hp}`)   # poke dynamic values by id
 }
-handler Draw phase Render { clear(0x0e0e16); ui_render(); present() }
+handler Draw phase Render { Screen.clear(Color.Black); Ui.render(); Screen.show() }
 ```
 
 The frame loop ticks navigation on its own, and an activation fires the
@@ -308,7 +311,7 @@ giving that entity — the query header lifts out of the body into an annotation
 
 ```ludic
 # doc-check: skip — illustrative handler
-@Queries(these: [Battle{hp <= 0}, Pos], on: Enemy)
+@Queries(these: [Battle { hp <= 0 }, Pos], on: Enemy)
 handler CleanBattle phase LateUpdate { despawn self() }
 ```
 
@@ -335,7 +338,7 @@ matched on their field values:
 
 ```ludic
 # doc-check: skip — illustrative @Queries constraint
-@Queries(these: [Battle{hp <= 0}, Stats{level > 3}])
+@Queries(these: [Battle { hp <= 0 }, Stats { level > 3 }])
 ```
 
 The same `where` works on an inline `for (…) in query […]`; in `@Queries` the
@@ -463,7 +466,7 @@ property Transform { x: int = 0, scale: int = 1 }
 property Velocity  { dx: int = 0, dy: int = 0 }
 model Actor { Transform, Velocity }
 
-@Queries(these: [Transform{scale > 0}, Velocity{dx > 0 or dy > 0}], on: Actor)
+@Queries(these: [Transform { scale > 0 }, Velocity { dx > 0 or dy > 0 }], on: Actor)
 handler Move phase Update {
   Transform.x = Transform.x + Velocity.dx      # each property is bound by its name
 }
@@ -474,7 +477,7 @@ It desugars to the ordinary loop
 ```ludic
 # doc-check: skip — the desugaring of the @Queries above
 for (Transform, Velocity) in query [Transform, Velocity, {Actor}]
-    where Transform.scale > 0 and (Velocity.dx > 0 or Velocity.dy > 0) { … }
+where Transform.scale > 0 and (Velocity.dx > 0 or Velocity.dy > 0) { … }
 ```
 
 — each listed property becomes a binding **named after itself**, a
@@ -529,7 +532,7 @@ boot ── @OnStart ─▶ spawn ── @OnAttach(P), @OnSpawn(M) ─▶ … �
 @OnSpawn(Enemy)   handler Init  { Health.hp = Health.max }     # constructor
 @OnDespawn(Enemy) handler Clean { drop_loot(Health.hp) }       # destructor
 @OnDespawn(Enemy, reason: r) handler End {                    # destructor that knows why
-  match r { EndReason.Quit => save() ;  _ => drop_loot(Health.hp) }
+  match r { EndReason.Quit => save();  _ => drop_loot(Health.hp) }
 }
 @OnAttach(Sprite) handler Load  { Sprite.id = image_load("goblin.png") }
 @OnDetach(Sprite) handler Free  { image_drop(Sprite.id) }      # paired teardown
@@ -628,8 +631,7 @@ emit Hurt(entity: e, amount: 5)                    # fires every listener
   a callback and is dispatched to right after the native listeners — the closed and
   open halves, one dispatch. Native listeners cost a direct call; foreign ones one
   indirect call over a fixed-capacity array (registration order = dispatch order,
-  so a modded game stays deterministic). See [`examples/mod_host.ludic`](examples/mod_host.ludic)
-  and the C mod in [`tests/mod_c/mod.c`](tests/mod_c/mod.c).
+  so a modded game stays deterministic). See [`examples/events/mod_events.ludic`](examples/events/mod_events.ludic).
 
 - **`@Public` promotes a lifecycle hook to an event, across the whole
   architecture.** The game's own lifecycle becomes moddable with no hand-written
@@ -745,6 +747,13 @@ handler Collect phase Update {
 }
 ```
 
+A slice whose contents are known up front is written as a **list literal**:
+`[2, 3, 5, 7]` or `["ember", "depths"]` builds a fresh slice holding exactly those
+elements. The first element fixes the element type (`[]int`, `[]string`, a
+record type, …) and every later element must match it; an empty `[]` is an error
+(there is nothing to infer from — use `new []T`). List literals are the natural
+way to write a table of records: `let rows = [Row { … }, Row { … }]`.
+
 Indexing works as both a value and an assignment target, and composes with
 fields: `toks[i].kind = T_ID` is a single address computation.
 
@@ -771,10 +780,9 @@ Weapon.def(damage: 14, name: "pistol", fire_rate: 9)          # any order, on a 
 ```
 
 ```ludic
-
 extern function c_hypot(a: fixed, b: fixed) -> fixed = "hypot_fx"   # bind a C symbol
 ```
-`extern fn … = "symbol"` declares a foreign function and binds it to a symbol
+`extern function … = "symbol"` declares a foreign function and binds it to a symbol
 resolved at link time; pass `-L`/`-l` to ludicc to link its library. This is how
 Ludic calls anything with a C ABI — including a shared library built from
 another `.ludic` file (see `examples/library/`).
@@ -991,16 +999,15 @@ literal; test any pointer/record/slice with `x == null` / `x != null` (an unset
 # 2D draw   clear(color)  fill_rect(x,y,w,h,color)  frame_rect(...)  put_px(x,y,color)
 #           draw_sprite(id,x,y)  draw_sprite_scaled(id,x,y,scale)  present()
 # text      text(x,y,str,color,scale)  text_int(x,y,n,color,scale)   (5x7 bitmap)
-# fonts     font_load(path)->id                                       (TrueType .ttf/.ttc)
+# fonts     Font.load(path)->id                                       (TrueType .ttf/.ttc)
 #           text_ttf(font,x,y,utf8,color,px)  text_w(font,utf8,px)->int  text_h(font,px)->int
 # images    image_load(path)->id   draw_image(id,x,y)   draw_image_scaled(id,x,y,w,h)
 #           draw_9slice(id,x,y,w,h,inset)
-# UI        ui_build()  ui_open(id)  ui_close()  ui_tick(key)  ui_render()
-#           ui_clicked(id)->bool  ui_set_text(id,str)  ui_set_int(id,n)
-#           ui_focus(id)  ui_focused()->int  ui_visible(id,bool)
+# UI        Ui.build()  Ui.open(id)  Ui.close()  Ui.tick(key)  Ui.render()
+#           Ui.clicked(id)->bool  Ui.set_text(id,str)
+#           ui_set_int(id,n)  ui_focus(id)  ui_focused()->int  ui_visible(id,bool)   (bare only)
 # assets    png_load(path)->id           (decodes a PNG; returns a 16x16 sprite id)
-# input     key()->int                   (current frame's key code, 0 if none)
-# state     reg(i)->int   set_reg(i,v)     (64 integer resources shared by handlers)
+# input     Input.key()->int             (current frame's key code, 0 if none)
 # entity    self()->entity
 # save      save()   load()->bool         (binary snapshot of the whole ECS World)
 # control   quit()   print(x)          (a value + newline)
@@ -1035,8 +1042,8 @@ compiler flag.
 
 The self-hosted compiler is intentionally permissive: it has no separate
 validation pass yet, so unknown types lower to `ptr` and call arity is not
-checked. Diagnostics are limited to parse-level errors
-(`ludicc(self): parse error: …`); richer static checks (unknown identifiers,
+checked. Diagnostics are limited to parse-level errors, reported as
+`file:line: error: message`; richer static checks (unknown identifiers,
 duplicate types, unknown fields, arity) are future work.
 
 ### Editors
@@ -1177,7 +1184,7 @@ When a handler's whole body is one query loop, the loop header lifts into a
 
 ```ludic
 # doc-check: skip — illustrative handler
-@Queries(these: [Battle{hp <= 0}, Pos], on: Foe)
+@Queries(these: [Battle { hp <= 0 }, Pos], on: Foe)
 handler CleanBattle phase LateUpdate { despawn self() }
 ```
 

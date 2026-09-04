@@ -15,8 +15,9 @@ with **no C compiler in the loop**.
 **No C is generated, compiled or linked in a build.** No interpreter, no
 transpiler, no C runtime: the framebuffer, sprites, PNG/DEFLATE decoding,
 TrueType text, the retained UI, the registers and the RNG are all written in
-Ludic (`runtime/native/*.ludic`); only the window seam — five `win_*` functions
-— is hand-written LLVM IR against the platform ABI (`runtime/native/cocoa.ll`),
+Ludic (`runtime/native/*.ludic`); only the window seam — the `win_*` functions
+for the window, keys, mouse, cursor, gamepad and touch — is hand-written LLVM IR
+against the platform ABI (`runtime/native/cocoa.ll`),
 the same floor Rust and Swift stand on.
 
 ## Backends

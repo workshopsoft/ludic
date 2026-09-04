@@ -61,7 +61,7 @@ The stdlib lives in the runtime (`runtime/`) and is surfaced as namespaces
    and register its id in `tools/docgen/inventory.json`. Each documented
    namespace gets exactly **one** directory (the docs check enforces this).
 3. Add or extend an example under `examples/` and a case in the test suite.
-4. Run `python3 tools/docgen/gen.py && python3 tools/docgen/check.py` — the
+4. Run `bin/x docs-gen --out build/pages && bin/x docs-check build/pages` — the
    check fails if any inventory symbol lacks a page or is still seed text.
 5. Add a **changeset** for the user-facing change: a small file under
    [`changes/`](changes/README.md) with a `bump:` level and a one-line summary.
