@@ -39,7 +39,7 @@ Bootstrap it once from a clean checkout (the only step Ludic can't do for
 itself, since compiling Ludic needs a compiler) with clang alone:
 
 ```bash
-clang selfhost/ludicc.seed.ll -o bin/ludicc && bin/ludicc tools/x/main.ludic -o bin/x
+mkdir -p bin && clang selfhost/ludicc.seed.ll -o bin/ludicc && bin/ludicc tools/x/main.ludic -o bin/x
 ```
 
 Then build the whole toolchain and run a game:
