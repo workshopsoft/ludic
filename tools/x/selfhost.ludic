@@ -6,7 +6,10 @@
 # now lives here once, in selfhost_frags().
 
 # the C toolchain driver (clang) that assembles and links the emitted IR
-function cc() -> pointer { return getenv_or("LUDIC_CC", "clang") }
+# The C toolchain used to assemble and link IR. -Wno-override-module for the
+# same reason the compiler itself passes it (see selfhost/main.ludic): the IR
+# names no target triple, so clang substitutes the host's and warns every time.
+function cc() -> pointer { return getenv_or("LUDIC_CC", "clang") + " -Wno-override-module" }
 
 # the self-host compiler's source fragments, in link order. This is THE list;
 # the old scripts each carried their own copy.

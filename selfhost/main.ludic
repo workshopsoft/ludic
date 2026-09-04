@@ -157,8 +157,9 @@ entry {
 
   # clang twice: assemble the IR, then link. A windowed build adds the macOS
   # platform layer and the Cocoa framework.
-  # -Wno-override-module: our IR carries an explicit target triple, which clang
-  # would otherwise warn about on every build.
+  # -Wno-override-module: the emitted IR carries no target triple, so clang
+  # substitutes the host's and warns about it on every single build. There is
+  # nothing to act on — the host default is exactly what we want — so it is off.
   var cmd = `{cc} -O2 -Wno-override-module {ll}`
   if g_windowed {
     let cocoa = join_path(home, "runtime/native/cocoa.ll")
