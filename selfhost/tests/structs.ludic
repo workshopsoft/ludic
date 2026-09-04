@@ -1,6 +1,6 @@
 program T {
   property P { x: int = 0, y: int = 7, next: P }
-  function bump(p: P) -> void { p.x = p.x + 100 }
+  function bump(p: P) -> void { p.x += 100 }
   entry {
     let a = new P
     print(a.y)            # 7 default

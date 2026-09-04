@@ -24,10 +24,10 @@ program RPG2D {
 
   # Move every Actor whose scale is positive and that is actually moving. The
   # query is the decorator; each bound property is addressed by its own name.
-  @Queries(these: [Transform{scale > 0}, Velocity{dx > 0 or dy > 0}], on: Actor)
+  @Queries(these: [Transform { scale > 0 }, Velocity { dx > 0 or dy > 0 }], on: Actor)
   handler Move phase Update {
-    Transform.x = Transform.x + Velocity.dx
-    Transform.y = Transform.y + Velocity.dy
+    Transform.x += Velocity.dx
+    Transform.y += Velocity.dy
   }
 
   handler Report phase Render {

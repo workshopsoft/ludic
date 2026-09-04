@@ -85,7 +85,7 @@ function emit_vector_ns(meth: pointer, e: Node) -> Val {
     let vx = vec_x(v.code);  let vy = vec_y(v.code)
     let xx = fx_mul_code(vx, vx);  let yy = fx_mul_code(vy, vy)
     let s = emit_bind(`add i32 {xx}, {yy}`)
-    return val(emit_bind(`call i32 @fn_fx_sqrt(i32 {s})`), "fixed")
+    return val(emit_bind(`call i32 @lp_fx_sqrt(i32 {s})`), "fixed")
   }
   if (meth == "distance") {                         # length(a - b) -> fixed
     g_uses_mathrt = true
@@ -95,7 +95,7 @@ function emit_vector_ns(meth: pointer, e: Node) -> Val {
     let dy = emit_bind(`sub i32 {ay}, {by}`)
     let xx = fx_mul_code(dx, dx);  let yy = fx_mul_code(dy, dy)
     let s = emit_bind(`add i32 {xx}, {yy}`)
-    return val(emit_bind(`call i32 @fn_fx_sqrt(i32 {s})`), "fixed")
+    return val(emit_bind(`call i32 @lp_fx_sqrt(i32 {s})`), "fixed")
   }
   if (meth == "normalize") {                        # v / length(v); the zero vector maps to itself
     g_uses_mathrt = true
@@ -103,7 +103,7 @@ function emit_vector_ns(meth: pointer, e: Node) -> Val {
     let vx = vec_x(v.code);  let vy = vec_y(v.code)
     let xx = fx_mul_code(vx, vx);  let yy = fx_mul_code(vy, vy)
     let s = emit_bind(`add i32 {xx}, {yy}`)
-    let len = emit_bind(`call i32 @fn_fx_sqrt(i32 {s})`)
+    let len = emit_bind(`call i32 @lp_fx_sqrt(i32 {s})`)
     let zero = emit_bind(`icmp eq i32 {len}, 0`)
     let denom = emit_bind(`select i1 {zero}, i32 65536, i32 {len}`)   # avoid divide-by-zero
     let inv = fx_div_code("65536", denom)
@@ -113,9 +113,9 @@ function emit_vector_ns(meth: pointer, e: Node) -> Val {
   if (meth == "rotate") {                           # rotate by angle (radians, fixed)
     g_uses_mathrt = true
     let v = emit_expr(e.kids[0]);  let ang = emit_expr(e.kids[1])
-    let sn = emit_bind(`call i32 @fn_fx_sin(i32 {ang.code})`)
+    let sn = emit_bind(`call i32 @lp_fx_sin(i32 {ang.code})`)
     let ca = emit_bind(`add i32 {ang.code}, 102944`)                  # cos(a) = sin(a + pi/2)
-    let cs = emit_bind(`call i32 @fn_fx_sin(i32 {ca})`)
+    let cs = emit_bind(`call i32 @lp_fx_sin(i32 {ca})`)
     let vx = vec_x(v.code);  let vy = vec_y(v.code)
     let xc = fx_mul_code(vx, cs);  let ys = fx_mul_code(vy, sn)
     let xs = fx_mul_code(vx, sn);  let yc = fx_mul_code(vy, cs)
@@ -127,14 +127,14 @@ function emit_vector_ns(meth: pointer, e: Node) -> Val {
     g_uses_mathrt = true
     let v = emit_expr(e.kids[0])
     let vx = vec_x(v.code);  let vy = vec_y(v.code)
-    return val(emit_bind(`call i32 @fn_fx_atan2(i32 {vy}, i32 {vx})`), "fixed")
+    return val(emit_bind(`call i32 @lp_fx_atan2(i32 {vy}, i32 {vx})`), "fixed")
   }
   if (meth == "from_angle") {                       # unit vector at angle a: (cos a, sin a)
     g_uses_mathrt = true
     let ang = emit_expr(e.kids[0])
-    let sn = emit_bind(`call i32 @fn_fx_sin(i32 {ang.code})`)
+    let sn = emit_bind(`call i32 @lp_fx_sin(i32 {ang.code})`)
     let ca = emit_bind(`add i32 {ang.code}, 102944`)
-    let cs = emit_bind(`call i32 @fn_fx_sin(i32 {ca})`)
+    let cs = emit_bind(`call i32 @lp_fx_sin(i32 {ca})`)
     return val(vec_pack(cs, sn), "Vector")
   }
   # lerp(a, b, t: fixed) -> Vector — component-wise linear interpolation

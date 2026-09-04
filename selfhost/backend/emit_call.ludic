@@ -28,7 +28,7 @@ function ns_lower(s: pointer) -> pointer {
   let n = cstr_len(s)
   let b = bytes(n + 1)
   var i = 0
-  while i < n { var c = s[i];  if (c >= 65) and (c <= 90) { c = c + 32 };  b[i] = c;  i = i + 1 }
+  while i < n { var c = s[i];  if (c >= 'A') and (c <= 'Z') { c += 32 };  b[i] = c;  i += 1 }
   b[n] = 0
   return b
 }
@@ -437,7 +437,7 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "mouse_down")   { bare = "input_mouse_down";   push(labels, "button") }
     if (meth == "wheel")        { bare = "input_wheel" }
     if (meth == "set_mouse")    { bare = "input_set_mouse";    push(labels, "x"); push(labels, "y"); push(labels, "buttons"); push(labels, "wheel") }
-    if (meth == "pad_connected"){ bare = "input_pad_connected"; push(labels, "pad") }
+    if (meth == "pad_connected") { bare = "input_pad_connected"; push(labels, "pad") }
     if (meth == "pad_button")   { bare = "input_pad_button";   push(labels, "pad"); push(labels, "button") }
     if (meth == "pad_axis")     { bare = "input_pad_axis";     push(labels, "pad"); push(labels, "axis") }
     if (meth == "set_pad")      { bare = "input_set_pad";      push(labels, "pad"); push(labels, "connected"); push(labels, "buttons"); push(labels, "lx"); push(labels, "ly"); push(labels, "rx"); push(labels, "ry") }
@@ -475,7 +475,7 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "open")      { bare = "http_open";        push(labels, "method"); push(labels, "url") }
     if (meth == "set")       { bare = "http_set_header";  push(labels, "handle"); push(labels, "name"); push(labels, "value") }
     if (meth == "body")      { bare = "http_body";        push(labels, "handle"); push(labels, "body") }
-    if (meth == "body_bytes"){ bare = "http_body_n";      push(labels, "handle"); push(labels, "bytes"); push(labels, "len") }
+    if (meth == "body_bytes") { bare = "http_body_n";      push(labels, "handle"); push(labels, "bytes"); push(labels, "len") }
     if (meth == "send")      { bare = "http_send_req";    push(labels, "handle") }
     if (meth == "poll")      { bare = "http_poll";        push(labels, "handle") }
     if (meth == "status")    { bare = "http_status_of";   push(labels, "handle") }
@@ -863,10 +863,10 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "cell_x")       { bare = "tmap_cell_sx";      push(labels, "map"); push(labels, "x"); push(labels, "y") }
     if (meth == "cell_y")       { bare = "tmap_cell_sy";      push(labels, "map"); push(labels, "x"); push(labels, "y") }
     if (meth == "layer_kind")   { bare = "tmap_layer_kind";   push(labels, "map"); push(labels, "layer") }
-    if (meth == "layer_opacity"){ bare = "tmap_layer_opacity"; push(labels, "map"); push(labels, "layer") }
+    if (meth == "layer_opacity") { bare = "tmap_layer_opacity"; push(labels, "map"); push(labels, "layer") }
     if (meth == "layer_tint")   { bare = "tmap_layer_tint";   push(labels, "map"); push(labels, "layer") }
-    if (meth == "layer_offsetx"){ bare = "tmap_layer_offsetx"; push(labels, "map"); push(labels, "layer") }
-    if (meth == "layer_offsety"){ bare = "tmap_layer_offsety"; push(labels, "map"); push(labels, "layer") }
+    if (meth == "layer_offsetx") { bare = "tmap_layer_offsetx"; push(labels, "map"); push(labels, "layer") }
+    if (meth == "layer_offsety") { bare = "tmap_layer_offsety"; push(labels, "map"); push(labels, "layer") }
     # P6 (#74): .world stitching
     if (meth == "world")       { bare = "tiled_read_world";  push(labels, "path") }
     if (meth == "world_count") { bare = "tiled_world_count"; push(labels, "world") }
@@ -886,7 +886,7 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (nsfn != null) {
       let names = param_labels(nsfn)
       var pi2 = 0
-      while pi2 < len(names) { push(labels, names[pi2]);  pi2 = pi2 + 1 }
+      while pi2 < len(names) { push(labels, names[pi2]);  pi2 += 1 }
     }
   }
   if (bare == null) { perr(`unknown builtin {ns}.{meth}`) }
@@ -914,7 +914,7 @@ function emit_variant_new(en: Node, ord: int, args: []Node) -> Val {
     let p = nreg();  emit("  ");  emit(p);  emit(" = getelementptr inbounds i8, ptr ");  emit(box)
     emit(", i32 ");  emit(itoa(8 * (k + 1)));  emit("\n")
     emit("  store ");  emit(llty(pty));  emit(" ");  emit(cv);  emit(", ptr ");  emit(p);  emit("\n")
-    k = k + 1
+    k += 1
   }
   return val(box, en.s)
 }
@@ -1008,9 +1008,9 @@ function emit_call(e: Node) -> Val {
   if (name == "string") {                            # string(x): int/bool/fixed/long -> text, a string passes through
     let a = emit_expr(e.kids[0])
     if (llty(a.ty) == "ptr") { return a }
-    if (llty(a.ty) == "i64") { g_uses_longstr = true;  return val(emit_bind(`call ptr @fn_long_str(i64 {a.code})`), "string") }
+    if (llty(a.ty) == "i64") { g_uses_longstr = true;  return val(emit_bind(`call ptr @lp_long_str(i64 {a.code})`), "string") }
     g_uses_intstr = true
-    return val(emit_bind(`call ptr @fn_int_str(i32 {a.code})`), "string")
+    return val(emit_bind(`call ptr @lp_int_str(i32 {a.code})`), "string")
   }
   if (name == "print") {                          # print(x): a value + newline (string, long, or int)
     let a = emit_expr(e.kids[0])
@@ -1230,7 +1230,7 @@ function emit_call(e: Node) -> Val {
     let eargs = new []pointer
     let eatys = new []pointer
     var ei = 0
-    while ei < len(e.kids) { let v = emit_expr(e.kids[ei]);  push(eargs, v.code);  push(eatys, v.ty);  ei = ei + 1 }
+    while ei < len(e.kids) { let v = emit_expr(e.kids[ei]);  push(eargs, v.code);  push(eatys, v.ty);  ei += 1 }
     let erl = llty(ext.ty)
     emit("  ")
     var erreg = "0"
@@ -1240,7 +1240,7 @@ function emit_call(e: Node) -> Val {
     while ei < len(eargs) {
       if ei > 0 { emit(", ") }
       emit(llty(eatys[ei]));  emit(" ");  emit(eargs[ei])
-      ei = ei + 1
+      ei += 1
     }
     emit(")\n")
     return val(erreg, ext.ty)
@@ -1270,7 +1270,7 @@ function emit_call(e: Node) -> Val {
     let v = emit_expr(e.kids[i])
     var pty = v.ty
     if (i < len(ptys)) { pty = ptys[i] }
-    push(args, coerce_code(v, pty));  push(atys, pty);  i = i + 1
+    push(args, coerce_code(v, pty));  push(atys, pty);  i += 1
   }
   let rl = llty(fn2.ty)
   emit("  ")
@@ -1281,7 +1281,7 @@ function emit_call(e: Node) -> Val {
   while i < len(args) {
     if i > 0 { emit(", ") }
     emit(llty(atys[i]));  emit(" ");  emit(args[i])
-    i = i + 1
+    i += 1
   }
   emit(")\n")
   return val(rreg, fn2.ty)
@@ -1299,13 +1299,14 @@ function emit_expr(e: Node) -> Val {
     let lo = emit_expr(e.b)
     let hi = emit_expr(e.c)
     g_uses_strslice = true
-    return val(emit_bind(`call ptr @fn_str_slice(ptr {base.code}, i32 {lo.code}, i32 {hi.code})`), "string")
+    return val(emit_bind(`call ptr @lp_str_slice(ptr {base.code}, i32 {lo.code}, i32 {hi.code})`), "string")
   }
   if e.kind == E_STR  { return val(emit_str_const(e.s), "string") }
   if e.kind == E_NEW  {
     if is_slice_ty(e.s) { return emit_new_slice(e.s) }
     return emit_new_struct(e.s, e.a)
   }
+  if e.kind == E_LIST { return emit_list(e) }        # [a, b, c] -> a fresh slice
   if e.kind == E_ID {
     let li = loc_find(e.s)
     if li >= 0 { return emit_load_at(loc_reg[li], loc_ty[li]) }
@@ -1372,8 +1373,10 @@ function emit_expr(e: Node) -> Val {
       if (e.s == ("-")) { return val(emit_bind(`sub i64 0, {a.code}`), "long") }
       if (e.s == "~") { return val(emit_bind(`xor i64 {a.code}, -1`), "long") }
     }
-    if (e.s == ("-")) { return val(emit_bind(`sub i32 0, {a.code}`), "int") }
-    if (e.s == "~") { return val(emit_bind(`xor i32 {a.code}, -1`), "int") }
+    # negation keeps the operand's type: -x on a fixed is still a fixed (the Q16.16
+    # bit pattern negates like any two's-complement int)
+    if (e.s == ("-")) { return val(emit_bind(`sub i32 0, {a.code}`), arith_ty(a.ty)) }
+    if (e.s == "~") { return val(emit_bind(`xor i32 {a.code}, -1`), arith_ty(a.ty)) }
     let c = emit_bind(`icmp eq i32 {a.code}, 0`)
     return val(emit_bind(`zext i1 {c} to i32`), "bool")
   }

@@ -14,7 +14,7 @@ function emit_try_body(b: Node, slot: pointer) -> void {
       let v = emit_expr(st.a)
       emit(`  store i32 {coerce_code(v, "int")}, ptr {slot}\n`)
     } else { emit_stmt(st) }
-    i = i + 1
+    i += 1
   }
 }
 
@@ -127,9 +127,9 @@ function to_long(v: Val) -> pointer {
 function emit_str_op(op: pointer, a: Val, b: Val) -> Val {
   g_uses_str = true
   if (op == ("+")) {
-    return val(emit_bind(`call ptr @fn_str_concat(ptr {a.code}, ptr {b.code})`), "string")
+    return val(emit_bind(`call ptr @lp_str_concat(ptr {a.code}, ptr {b.code})`), "string")
   }
-  let r = emit_bind(`call i32 @fn_str_eq(ptr {a.code}, ptr {b.code})`)
+  let r = emit_bind(`call i32 @lp_str_eq(ptr {a.code}, ptr {b.code})`)
   if (op == ("!=")) {
     let c = emit_bind(`icmp eq i32 {r}, 0`)
     return val(emit_bind(`zext i1 {c} to i32`), "bool")
@@ -137,56 +137,72 @@ function emit_str_op(op: pointer, a: Val, b: Val) -> Val {
   return val(r, "bool")
 }
 
+# the result type of a unary arithmetic operator on a value of type `ty`: fixed
+# and long survive, every other 32-bit scalar (int/bool/enum) collapses to int
+function arith_ty(ty: pointer) -> pointer {
+  if (ty == "fixed") or (ty == "long") { return ty }
+  return "int"
+}
+
 function emit_bin(e: Node) -> Val {
   if (e.s == "and") or (e.s == "or") { return emit_logic(e) }
   let a = emit_expr(e.a)
   let b = emit_expr(e.b)
+  let isnull = e.a.kind == E_NULL or e.b.kind == E_NULL
+  return emit_bin_vals(e.s, a, b, isnull)
+}
+
+# lower `a <op> b` on two already-evaluated operands. Shared by binary expressions
+# and compound assignment (`x += y` is exactly `x = x + y`), so both agree on
+# string concatenation, Q16.16 multiply/divide, and int->long promotion.
+# `isnull` marks a comparison against the literal null (pointer identity, not
+# string content).
+function emit_bin_vals(op: pointer, a: Val, b: Val, isnull: bool) -> Val {
   # strings are pointer-typed, so any `+` with a pointer operand is concatenation,
   # and `==`/`!=` between pointers is content comparison — except `x == null`,
   # which is a pointer-identity test and falls through to the icmp below.
   let ptrish = (llty(a.ty) == "ptr") or (llty(b.ty) == "ptr")
-  let isnull = e.a.kind == E_NULL or e.b.kind == E_NULL
   if ptrish {
-    if (e.s == ("+")) { return emit_str_op("+", a, b) }
-    if ((e.s == ("==")) or (e.s == ("!="))) and not isnull { return emit_str_op(e.s, a, b) }
+    if (op == ("+")) { return emit_str_op("+", a, b) }
+    if ((op == ("==")) or (op == ("!="))) and not isnull { return emit_str_op(op, a, b) }
   }
   let fx = (a.ty == "fixed") or (b.ty == "fixed")
   # a 64-bit operand (and no fixed/ptr involved) promotes the whole expression to
   # i64: the other side widens with sext, and the result stays `long`.
   let lng = ((llty(a.ty) == "i64") or (llty(b.ty) == "i64")) and not fx and not ptrish
-  if is_cmp(e.s) {
+  if is_cmp(op) {
     var ac = a.code;  var bc = b.code
     var ct = "i32"
     if fx { ac = to_fixed(a);  bc = to_fixed(b) }
     else { if lng { ct = "i64";  ac = to_long(a);  bc = to_long(b) }
       else { if (llty(a.ty) == "ptr") or (llty(b.ty) == "ptr") { ct = "ptr" } } }   # `p == null`, str/record identity
-    let c = emit_bind(`icmp {cmp_code(e.s)} {ct} {ac}, {bc}`)
+    let c = emit_bind(`icmp {cmp_code(op)} {ct} {ac}, {bc}`)
     return val(emit_bind(`zext i1 {c} to i32`), "bool")
   }
   if lng {
     let al = to_long(a);  let bl = to_long(b)
-    return val(emit_bind(`{arith_code(e.s)} i64 {al}, {bl}`), "long")
+    return val(emit_bind(`{arith_code(op)} i64 {al}, {bl}`), "long")
   }
   if fx {
     let af = to_fixed(a);  let bf = to_fixed(b)
-    if (e.s == ("*")) {
+    if (op == ("*")) {
       let a64 = emit_bind(`sext i32 {af} to i64`)
       let b64 = emit_bind(`sext i32 {bf} to i64`)
       let m = emit_bind(`mul i64 {a64}, {b64}`)
       let sh = emit_bind(`ashr i64 {m}, 16`)
       return val(emit_bind(`trunc i64 {sh} to i32`), "fixed")
     }
-    if (e.s == ("/")) {
+    if (op == ("/")) {
       let a64 = emit_bind(`sext i32 {af} to i64`)
       let ash = emit_bind(`shl i64 {a64}, 16`)
       let b64 = emit_bind(`sext i32 {bf} to i64`)
       let dv = emit_bind(`sdiv i64 {ash}, {b64}`)
       return val(emit_bind(`trunc i64 {dv} to i32`), "fixed")
     }
-    let r = emit_bind(`{arith_code(e.s)} i32 {af}, {bf}`)
+    let r = emit_bind(`{arith_code(op)} i32 {af}, {bf}`)
     return val(r, "fixed")
   }
-  let r = emit_bind(`{arith_code(e.s)} i32 {a.code}, {b.code}`)
+  let r = emit_bind(`{arith_code(op)} i32 {a.code}, {b.code}`)
   return val(r, "int")
 }
 
@@ -197,7 +213,7 @@ function emit_bin(e: Node) -> Val {
 # oblivious to whether the caller used names.
 function args_are_named(e: Node) -> bool {
   var i = 0
-  while i < len(e.kids) { if e.kids[i].kind == E_FINIT { return true };  i = i + 1 }
+  while i < len(e.kids) { if e.kids[i].kind == E_FINIT { return true };  i += 1 }
   return false
 }
 function reorder_named(e: Node, labels: []pointer) -> void {
@@ -205,7 +221,7 @@ function reorder_named(e: Node, labels: []pointer) -> void {
   var i = 0
   while i < len(e.kids) {
     if e.kids[i].kind != E_FINIT { perr("named and positional arguments cannot be mixed in one call") }
-    i = i + 1
+    i += 1
   }
   if len(e.kids) != len(labels) { perr("wrong number of arguments") }
   let out = new []Node
@@ -213,10 +229,10 @@ function reorder_named(e: Node, labels: []pointer) -> void {
   while li < len(labels) {
     var found: Node = null
     var k = 0
-    while k < len(e.kids) { if (e.kids[k].s == labels[li]) { found = e.kids[k] };  k = k + 1 }
+    while k < len(e.kids) { if (e.kids[k].s == labels[li]) { found = e.kids[k] };  k += 1 }
     if (found == null) { perr(`no argument named {labels[li]}`) }
     push(out, found.a)
-    li = li + 1
+    li += 1
   }
   e.kids = out
 }
@@ -224,14 +240,13 @@ function reorder_named(e: Node, labels: []pointer) -> void {
 function param_labels(fn: Node) -> []pointer {
   let out = new []pointer
   var i = 0
-  while i < len(fn.kids) { if fn.kids[i].kind == N_PARAM { push(out, fn.kids[i].s) };  i = i + 1 }
+  while i < len(fn.kids) { if fn.kids[i].kind == N_PARAM { push(out, fn.kids[i].s) };  i += 1 }
   return out
 }
 
 function param_types(fn: Node) -> []pointer {
   let out = new []pointer
   var i = 0
-  while i < len(fn.kids) { if fn.kids[i].kind == N_PARAM { push(out, fn.kids[i].ty) };  i = i + 1 }
+  while i < len(fn.kids) { if fn.kids[i].kind == N_PARAM { push(out, fn.kids[i].ty) };  i += 1 }
   return out
 }
-

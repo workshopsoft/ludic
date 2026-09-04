@@ -18,22 +18,22 @@ function emit_text_ns(meth: pointer, e: Node) -> Val {
   if (meth == "from_int") {                          # int -> string, same as string(n)
     let n = emit_expr(e.kids[0])
     g_uses_intstr = true
-    return val(emit_bind(`call ptr @fn_int_str(i32 {n.code})`), "string")
+    return val(emit_bind(`call ptr @lp_int_str(i32 {n.code})`), "string")
   }
   if (meth == "slice") {                             # s[a..b], same substring helper
     let s0 = emit_expr(e.kids[0]);  let a = emit_expr(e.kids[1]);  let b = emit_expr(e.kids[2])
     g_uses_strslice = true
-    return val(emit_bind(`call ptr @fn_str_slice(ptr {s0.code}, i32 {a.code}, i32 {b.code})`), "string")
+    return val(emit_bind(`call ptr @lp_str_slice(ptr {s0.code}, i32 {a.code}, i32 {b.code})`), "string")
   }
   if (meth == "equals") {                            # byte-wise equality, same as ==
     let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1])
     g_uses_str = true
-    return val(emit_bind(`call i32 @fn_str_eq(ptr {a.code}, ptr {b.code})`), "bool")
+    return val(emit_bind(`call i32 @lp_str_eq(ptr {a.code}, ptr {b.code})`), "bool")
   }
   if (meth == "concat") {                            # a + b, same as the + operator
     let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1])
     g_uses_str = true
-    return val(emit_bind(`call ptr @fn_str_concat(ptr {a.code}, ptr {b.code})`), "string")
+    return val(emit_bind(`call ptr @lp_str_concat(ptr {a.code}, ptr {b.code})`), "string")
   }
 
   let s = emit_expr(e.kids[0])
@@ -52,45 +52,45 @@ function emit_text_ns(meth: pointer, e: Node) -> Val {
   }
   if (meth == "upper") {                             # ASCII a-z -> A-Z, fresh string
     g_uses_textrt = true
-    return val(emit_bind(`call ptr @fn_str_upper(ptr {s.code})`), "string")
+    return val(emit_bind(`call ptr @lp_str_upper(ptr {s.code})`), "string")
   }
   if (meth == "lower") {                             # ASCII A-Z -> a-z, fresh string
     g_uses_textrt = true
-    return val(emit_bind(`call ptr @fn_str_lower(ptr {s.code})`), "string")
+    return val(emit_bind(`call ptr @lp_str_lower(ptr {s.code})`), "string")
   }
   if (meth == "trim") {                              # drop leading/trailing whitespace
     g_uses_textrt = true
-    return val(emit_bind(`call ptr @fn_str_trim(ptr {s.code})`), "string")
+    return val(emit_bind(`call ptr @lp_str_trim(ptr {s.code})`), "string")
   }
   if (meth == "repeat") {                            # s repeated n times
     g_uses_textrt = true
     let n = emit_expr(e.kids[1])
-    return val(emit_bind(`call ptr @fn_str_repeat(ptr {s.code}, i32 {n.code})`), "string")
+    return val(emit_bind(`call ptr @lp_str_repeat(ptr {s.code}, i32 {n.code})`), "string")
   }
   if (meth == "pad_left") {                          # pad with spaces to width, on the left
     g_uses_textrt = true
     let w = emit_expr(e.kids[1])
-    return val(emit_bind(`call ptr @fn_str_pad(ptr {s.code}, i32 {w.code}, i1 1)`), "string")
+    return val(emit_bind(`call ptr @lp_str_pad(ptr {s.code}, i32 {w.code}, i1 1)`), "string")
   }
   if (meth == "pad_right") {                         # pad with spaces to width, on the right
     g_uses_textrt = true
     let w = emit_expr(e.kids[1])
-    return val(emit_bind(`call ptr @fn_str_pad(ptr {s.code}, i32 {w.code}, i1 0)`), "string")
+    return val(emit_bind(`call ptr @lp_str_pad(ptr {s.code}, i32 {w.code}, i1 0)`), "string")
   }
   if (meth == "replace") {                           # replace every `from` with `to`
     g_uses_textrt2 = true
     let from = emit_expr(e.kids[1]);  let to = emit_expr(e.kids[2])
-    return val(emit_bind(`call ptr @fn_str_replace(ptr {s.code}, ptr {from.code}, ptr {to.code})`), "string")
+    return val(emit_bind(`call ptr @lp_str_replace(ptr {s.code}, ptr {from.code}, ptr {to.code})`), "string")
   }
   if (meth == "split") {                             # split on a separator -> []string
     g_uses_textrt2 = true
     let sep = emit_expr(e.kids[1])
-    return val(emit_bind(`call ptr @fn_str_split(ptr {s.code}, ptr {sep.code})`), "[]string")
+    return val(emit_bind(`call ptr @lp_str_split(ptr {s.code}, ptr {sep.code})`), "[]string")
   }
   if (meth == "join") {                              # join a []string with a separator (s is the slice)
     g_uses_textrt2 = true
     let sep = emit_expr(e.kids[1])
-    return val(emit_bind(`call ptr @fn_str_join(ptr {s.code}, ptr {sep.code})`), "string")
+    return val(emit_bind(`call ptr @lp_str_join(ptr {s.code}, ptr {sep.code})`), "string")
   }
   if (meth == "contains") or (meth == "index_of") {  # substring search
     let sub = emit_expr(e.kids[1])
@@ -134,4 +134,3 @@ function emit_text_ns(meth: pointer, e: Node) -> Val {
   emit(en);  emit(":\n")
   return val(emit_bind(`load i32, ptr {res}`), "bool")
 }
-

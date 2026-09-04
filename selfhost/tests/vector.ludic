@@ -13,13 +13,13 @@ program T {
     print(floor(Vector.y(d)))                 # 2
     print(floor(Vector.dot(a, b)))            # 11
     print(floor(Vector.distance(a, b)))       # 2  (sqrt 8)
-    print(floor(Vector.x(Vector.scale(a, 2.0)))) # 6
+    print(floor(Vector.x(Vector.scale(a, 2.0))))  # 6
     let n = Vector.normalize(a)
     print(floor(Vector.length(n) * 1000))     # 999 (unit)
     print(floor(Vector.x(Vector.from_angle(0.0)) * 1000))  # 999 (cos 0)
-    let r = Vector.rotate(Vector.make(1.0, 0.0), 1.5707963) # rotate 90 deg
+    let r = Vector.rotate(Vector.make(1.0, 0.0), 1.5707963)  # rotate 90 deg
     print(floor(Vector.y(r) * 1000))          # 999 (-> (0,1))
-    print(floor(Vector.angle(Vector.make(0.0, 1.0)) * 1000)) # pi/2 -> 1570
+    print(floor(Vector.angle(Vector.make(0.0, 1.0)) * 1000))  # pi/2 -> 1570
     let m = Vector.lerp(Vector.zero(), Vector.make(10.0, 20.0), 0.5)
     print(floor(Vector.x(m)))                 # 5
     print(floor(Vector.y(m)))                 # 10

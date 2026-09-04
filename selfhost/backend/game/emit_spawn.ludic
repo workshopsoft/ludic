@@ -6,9 +6,9 @@ function emit_hook_with_self(e: pointer, body: Node) -> void {
   let sslot = emit_alloca("i32")
   emit("  store i32 ");  emit(e);  emit(", ptr ");  emit(sslot);  emit("\n")
   if nself < len(self_stk) { self_stk[nself] = sslot } else { push(self_stk, sslot) }
-  nself = nself + 1
+  nself += 1
   emit_block(body)
-  nself = nself - 1
+  nself -= 1
 }
 
 function emit_init_component(e: pointer, comp: pointer, rec: Node) -> void {
@@ -30,7 +30,7 @@ function emit_init_component(e: pointer, comp: pointer, rec: Node) -> void {
     if (lt == "ptr") { v = "null" }
     if (fd.a != null) { let dv = emit_expr(fd.a);  v = dv.code }
     emit("  store ");  emit(lt);  emit(" ");  emit(v);  emit(", ptr ");  emit(addr);  emit("\n")
-    f = f + 1
+    f += 1
   }
   # per-spawn overrides
   if (rec != null) {
@@ -44,7 +44,7 @@ function emit_init_component(e: pointer, comp: pointer, rec: Node) -> void {
         let dv = emit_expr(fi.a)
         emit("  store ");  emit(llty(field_type(c, fi.s)));  emit(" ");  emit(dv.code);  emit(", ptr ");  emit(addr);  emit("\n")
       }
-      j = j + 1
+      j += 1
     }
   }
   # @OnAttach(Property) runs once the property is attached and seeded
@@ -74,7 +74,7 @@ function emit_bind_props(model: Node, e: pointer) -> void {
     let vslot = emit_alloca("ptr")
     emit("  store ptr ");  emit(slot);  emit(", ptr ");  emit(vslot);  emit("\n")
     loc_push(pname, vslot, pname)
-    c = c + 1
+    c += 1
   }
 }
 
@@ -82,7 +82,7 @@ function emit_bind_props(model: Node, e: pointer) -> void {
 function spawn_record(n: Node, cn: pointer) -> Node {
   if (n == null) { return null }
   var i = 0
-  while i < len(n.kids) { if (n.kids[i].s == cn) { return n.kids[i].a };  i = i + 1 }
+  while i < len(n.kids) { if (n.kids[i].s == cn) { return n.kids[i].a };  i += 1 }
   return null
 }
 # a prefab's preset fields with the spawn's own overrides after them (later wins)
@@ -91,9 +91,9 @@ function merge_records(base: Node, over: Node) -> Node {
   if (over == null) { return base }
   let m = node(E_REC)
   var i = 0
-  while i < len(base.kids) { push(m.kids, base.kids[i]);  i = i + 1 }
+  while i < len(base.kids) { push(m.kids, base.kids[i]);  i += 1 }
   i = 0
-  while i < len(over.kids) { push(m.kids, over.kids[i]);  i = i + 1 }
+  while i < len(over.kids) { push(m.kids, over.kids[i]);  i += 1 }
   return m
 }
 
@@ -106,7 +106,7 @@ function spawn_model(name: pointer) -> pointer {
     let p = find_prefab(n)
     if (p == null) { return n }
     n = p.ty
-    depth = depth + 1
+    depth += 1
     if depth > 16 { perr(`prefab {name}: the chain of prefabs never reaches a model`) }
   }
   return n
@@ -132,7 +132,7 @@ function emit_spawn(st: Node) -> pointer {
     while c < len(arch.kids) {
       let cn = arch.kids[c].s
       emit_init_component(e, cn, merge_records(prefab_record(st.s, cn), spawn_record(st, cn)))
-      c = c + 1
+      c += 1
     }
     let ob = onspawn_body(model)                # @OnSpawn(Model) hook runs after init
     if (ob != null) {
@@ -147,7 +147,7 @@ function emit_spawn(st: Node) -> pointer {
     if (find_event(sev) != null) { emit("  call void @ev_");  emit(sev);  emit("(i32 ");  emit(e);  emit(")\n") }
   } else {
     var i = 0
-    while i < len(st.kids) { emit_init_component(e, st.kids[i].s, st.kids[i].a);  i = i + 1 }
+    while i < len(st.kids) { emit_init_component(e, st.kids[i].s, st.kids[i].a);  i += 1 }
   }
   return e                                        # the new entity id (for ludic_spawn_<M>)
 }
@@ -169,7 +169,7 @@ function emit_despawn(st: Node) -> void {
       let dev = `model_{mname}_despawn`                                                  # EV1: @Public despawn event
       if (find_event(dev) != null) { emit("  call void @ev_");  emit(dev);  emit("(i32 ");  emit(v.code);  emit(", i32 0)\n") }
       emit("  br label %");  emit(no);  emit("\n");  emit(no);  emit(":\n")
-      i = i + 1
+      i += 1
     }
   }
   if len(g_events) > 0 { emit("  call void @ludic_sweep_entity(i32 ");  emit(v.code);  emit(")\n") }   # EV5: drop entity-scoped listeners
@@ -229,7 +229,7 @@ function emit_detach(st: Node) -> void {
 # flag). A bare `<Model>` / `<Handler>` flips a global enabled flag.
 function find_sys(name: pointer) -> Node {
   var i = 0
-  while i < len(prog) { let d = prog[i];  if d.kind == N_SYS and (d.s == name) { return d };  i = i + 1 }
+  while i < len(prog) { let d = prog[i];  if d.kind == N_SYS and (d.s == name) { return d };  i += 1 }
   return null
 }
 function emit_toggle(st: Node) -> void {

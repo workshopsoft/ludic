@@ -22,7 +22,7 @@ program QueryDecl {
 
   # a per-property constraint `Battle{...}` qualifies its bare fields to that
   # property; `on: Foe` adds the {Foe} kind filter.
-  @Queries(these: [Battle{hp <= 0 and side == 1}, Pos], on: Foe)
+  @Queries(these: [Battle { hp <= 0 and side == 1 }, Pos], on: Foe)
   handler CleanBattle phase LateUpdate {
     print(Pos.x)
     despawn self()

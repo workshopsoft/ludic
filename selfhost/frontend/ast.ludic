@@ -1,5 +1,5 @@
 # ast.ludic — the node kinds and the single Node shape they share, plus the
-# declaration tables the emitter reads. Mirrors compiler/front/ast.h + sem/.
+# declaration tables the emitter reads.
 
 # declarations
 const N_STRUCT: int = 0
@@ -36,6 +36,7 @@ const N_PREFAB: int = 53         # prefab Name: Model { Comp { field: v }, … }
 const E_TRY:    int = 52         # try EXPR else { ... } — recover a fallible result as a value (issue #46)
                                  #   a=the fallible (result-typed) expression  b=else block (its
                                  #   trailing expression is the fallback)  line=source line
+const E_LIST:   int = 54         # [a, b, c] — a slice literal; kids=the elements, all of one type
 # statements
 const S_LET:      int = 10
 const S_ASSIGN:   int = 11
@@ -81,11 +82,16 @@ property Node {
   c:    Node
   kids: []Node                # variadic children
   line: int = 0
+  file: pointer = null        # the source file the node was parsed from (for diagnostics)
 }
 
+# every node remembers where it was parsed (file + the line of the token the
+# parser is looking at), so any later diagnostic can point at real source
 function node(kind: int) -> Node {
   let n = new Node
   n.kind = kind
   n.kids = new []Node
+  n.file = g_parse_file
+  if g_parsing and pi < len(toks) { n.line = toks[pi].line }
   return n
 }

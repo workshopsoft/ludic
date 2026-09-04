@@ -13,6 +13,7 @@
 #   Os.set_env(name, val)  -> bool       set it (true on success)
 #   Os.unset_env(name)     -> bool       remove it (true on success)
 #   Os.exit(code)                        terminate the process with a status code
+#   Os.pid()               -> int        this process's id (unique among live processes)
 #   Os.platform()          -> string     "macos" | "linux" | ...(raw uname sysname)
 #   Os.arch()              -> string     machine arch, e.g. "arm64" | "x86_64"
 #   Os.stdout_write(s)                   write a string to standard output
@@ -35,15 +36,15 @@ function is_os_ns(meth: pointer) -> bool {
   if (meth == "args") or (meth == "arg_count") or (meth == "arg") { return true }
   if (meth == "env") or (meth == "env_or") or (meth == "has_env") { return true }
   if (meth == "set_env") or (meth == "unset_env") { return true }
-  if (meth == "exit") or (meth == "platform") or (meth == "arch") { return true }
+  if (meth == "exit") or (meth == "pid") or (meth == "platform") or (meth == "arch") { return true }
   if (meth == "stdout_write") or (meth == "stderr_write") { return true }
   if (meth == "save_dir") or (meth == "config_dir") or (meth == "cache_dir") or (meth == "temp_dir") { return true }
   return false
 }
 
 function emit_os_ns(meth: pointer, e: Node) -> Val {
-  # arg_count / arg / exit stay light — they mirror the bare intrinsics and need
-  # no Os runtime prelude, so a program using only these emits no extra IR.
+  # arg_count / arg / exit / pid stay light — they mirror the bare intrinsics and
+  # need no Os runtime prelude, so a program using only these emits no extra IR.
   if (meth == "arg_count") { return val(emit_bind("load i32, ptr @L_argc"), "int") }
   if (meth == "arg") {
     let i = emit_expr(e.kids[0])
@@ -51,6 +52,7 @@ function emit_os_ns(meth: pointer, e: Node) -> Val {
     let q = emit_bind(`getelementptr ptr, ptr {v}, i32 {i.code}`)
     return val(emit_bind(`load ptr, ptr {q}`), "string")
   }
+  if (meth == "pid") { g_uses_pid = true;  return val(emit_bind("call i32 @getpid()"), "int") }
   if (meth == "exit") {
     let n = emit_expr(e.kids[0])
     emit(`  call void @exit(i32 {n.code})\n`)
@@ -79,10 +81,10 @@ function emit_os_ns(meth: pointer, e: Node) -> Val {
   }
   # everything below is served by the Os runtime prelude
   g_uses_osrt = true
-  if (meth == "args") { return val(emit_bind("call ptr @fn_os_args()"), "[]string") }
+  if (meth == "args") { return val(emit_bind("call ptr @lp_os_args()"), "[]string") }
   if (meth == "env_or") {
     let nm = emit_expr(e.kids[0]);  let fb = emit_expr(e.kids[1])
-    return val(emit_bind(`call ptr @fn_os_getenv_or(ptr {nm.code}, ptr {fb.code})`), "string")
+    return val(emit_bind(`call ptr @lp_os_getenv_or(ptr {nm.code}, ptr {fb.code})`), "string")
   }
   if (meth == "set_env") {
     let nm = emit_expr(e.kids[0]);  let v = emit_expr(e.kids[1])
@@ -96,22 +98,22 @@ function emit_os_ns(meth: pointer, e: Node) -> Val {
     let ok = emit_bind(`icmp eq i32 {r}, 0`)
     return val(emit_bind(`zext i1 {ok} to i32`), "bool")
   }
-  if (meth == "platform") { return val(emit_bind("call ptr @fn_os_platform()"), "string") }
-  if (meth == "arch")     { return val(emit_bind("call ptr @fn_os_arch()"), "string") }
+  if (meth == "platform") { return val(emit_bind("call ptr @lp_os_platform()"), "string") }
+  if (meth == "arch")     { return val(emit_bind("call ptr @lp_os_arch()"), "string") }
   if (meth == "save_dir") {
     let a = emit_expr(e.kids[0])
-    return val(emit_bind(`call ptr @fn_os_save_dir(ptr {a.code})`), "string")
+    return val(emit_bind(`call ptr @lp_os_save_dir(ptr {a.code})`), "string")
   }
   if (meth == "config_dir") {
     let a = emit_expr(e.kids[0])
-    return val(emit_bind(`call ptr @fn_os_config_dir(ptr {a.code})`), "string")
+    return val(emit_bind(`call ptr @lp_os_config_dir(ptr {a.code})`), "string")
   }
   if (meth == "cache_dir") {
     let a = emit_expr(e.kids[0])
-    return val(emit_bind(`call ptr @fn_os_cache_dir(ptr {a.code})`), "string")
+    return val(emit_bind(`call ptr @lp_os_cache_dir(ptr {a.code})`), "string")
   }
   # temp_dir
-  return val(emit_bind("call ptr @fn_os_temp_dir()"), "string")
+  return val(emit_bind("call ptr @lp_os_temp_dir()"), "string")
 }
 
 # emit_os_prelude — the Os runtime, emitted once per program that uses the
@@ -135,34 +137,34 @@ function emit_os_prelude() -> void {
   let k_linux   = emit_str_const("linux")
 
   # getenv(name) or a fallback when it is unset
-  emith("define ptr @fn_os_getenv_or(ptr %name, ptr %fb) {\n")
+  emith("define ptr @lp_os_getenv_or(ptr %name, ptr %fb) {\n")
   emith("entry:\n  %r = call ptr @getenv(ptr %name)\n  %z = icmp eq ptr %r, null\n  br i1 %z, label %use, label %got\n")
   emith("use:\n  ret ptr %fb\n")
   emith("got:\n  ret ptr %r\n}\n")
 
   # concatenate two NUL-terminated strings into a fresh malloc'd buffer
-  emith("define ptr @fn_os_join2(ptr %a, ptr %b) {\n")
+  emith("define ptr @lp_os_join2(ptr %a, ptr %b) {\n")
   emith("entry:\n  %la = call i64 @strlen(ptr %a)\n  %lb = call i64 @strlen(ptr %b)\n")
   emith("  %sum = add i64 %la, %lb\n  %tot = add i64 %sum, 1\n  %m = call ptr @malloc(i64 %tot)\n")
   emith("  call ptr @memcpy(ptr %m, ptr %a, i64 %la)\n")
   emith("  %m2 = getelementptr i8, ptr %m, i64 %la\n  call ptr @memcpy(ptr %m2, ptr %b, i64 %lb)\n")
   emith("  %end = getelementptr i8, ptr %m, i64 %sum\n  store i8 0, ptr %end\n  ret ptr %m\n}\n")
 
-  emith("define ptr @fn_os_join3(ptr %a, ptr %b, ptr %c) {\n")
-  emith("entry:\n  %ab = call ptr @fn_os_join2(ptr %a, ptr %b)\n  %r = call ptr @fn_os_join2(ptr %ab, ptr %c)\n  ret ptr %r\n}\n")
+  emith("define ptr @lp_os_join3(ptr %a, ptr %b, ptr %c) {\n")
+  emith("entry:\n  %ab = call ptr @lp_os_join2(ptr %a, ptr %b)\n  %r = call ptr @lp_os_join2(ptr %ab, ptr %c)\n  ret ptr %r\n}\n")
 
   # the user's home directory, or "." when HOME is unset
-  emith(`define ptr @fn_os_home() {{\n  %r = call ptr @fn_os_getenv_or(ptr {k_home}, ptr {k_dot})\n  ret ptr %r\n}}\n`)
+  emith(`define ptr @lp_os_home() {{\n  %r = call ptr @lp_os_getenv_or(ptr {k_home}, ptr {k_dot})\n  ret ptr %r\n}}\n`)
 
   # per-user known folders (macOS/BSD layout)
-  emith(`define ptr @fn_os_save_dir(ptr %app) {{\n  %h = call ptr @fn_os_home()\n  %r = call ptr @fn_os_join3(ptr %h, ptr {k_appsp}, ptr %app)\n  ret ptr %r\n}}\n`)
-  emith(`define ptr @fn_os_config_dir(ptr %app) {{\n  %h = call ptr @fn_os_home()\n  %r = call ptr @fn_os_join3(ptr %h, ptr {k_appsp}, ptr %app)\n  ret ptr %r\n}}\n`)
-  emith(`define ptr @fn_os_cache_dir(ptr %app) {{\n  %h = call ptr @fn_os_home()\n  %r = call ptr @fn_os_join3(ptr %h, ptr {k_cache}, ptr %app)\n  ret ptr %r\n}}\n`)
-  emith(`define ptr @fn_os_temp_dir() {{\n  %r = call ptr @fn_os_getenv_or(ptr {k_tmpk}, ptr {k_tmp})\n  ret ptr %r\n}}\n`)
+  emith(`define ptr @lp_os_save_dir(ptr %app) {{\n  %h = call ptr @lp_os_home()\n  %r = call ptr @lp_os_join3(ptr %h, ptr {k_appsp}, ptr %app)\n  ret ptr %r\n}}\n`)
+  emith(`define ptr @lp_os_config_dir(ptr %app) {{\n  %h = call ptr @lp_os_home()\n  %r = call ptr @lp_os_join3(ptr %h, ptr {k_appsp}, ptr %app)\n  ret ptr %r\n}}\n`)
+  emith(`define ptr @lp_os_cache_dir(ptr %app) {{\n  %h = call ptr @lp_os_home()\n  %r = call ptr @lp_os_join3(ptr %h, ptr {k_cache}, ptr %app)\n  ret ptr %r\n}}\n`)
+  emith(`define ptr @lp_os_temp_dir() {{\n  %r = call ptr @lp_os_getenv_or(ptr {k_tmpk}, ptr {k_tmp})\n  ret ptr %r\n}}\n`)
 
   # Os.args() -> a %LSlice of the argv strings (data = argv, len = cap = argc), a
   # snapshot the caller may iterate or index like any other []string.
-  emith("define ptr @fn_os_args() {\n")
+  emith("define ptr @lp_os_args() {\n")
   emith("entry:\n  %c = load i32, ptr @L_argc\n  %v = load ptr, ptr @L_argv\n")
   emith("  %h = call ptr @malloc(i64 16)\n")
   emith("  %d0 = getelementptr inbounds %LSlice, ptr %h, i32 0, i32 0\n  store ptr %v, ptr %d0\n")
@@ -171,7 +173,7 @@ function emit_os_prelude() -> void {
   emith("  ret ptr %h\n}\n")
 
   # platform(): uname sysname (field 0, portable) mapped to a short id
-  emith("define ptr @fn_os_platform() {\n")
+  emith("define ptr @lp_os_platform() {\n")
   emith("entry:\n  %buf = call ptr @malloc(i64 8192)\n  call i32 @uname(ptr %buf)\n")
   emith(`  %cd = call i32 @strncmp(ptr %buf, ptr {k_darw}, i64 6)\n  %isd = icmp eq i32 %cd, 0\n  br i1 %isd, label %mac, label %chkl\n`)
   emith(`mac:\n  ret ptr {k_macos}\n`)
@@ -182,7 +184,7 @@ function emit_os_prelude() -> void {
   # arch(): the uname `machine` field. On macOS/BSD utsname each field is 256
   # bytes, so `machine` (index 4) sits at offset 1024. Documented BSD-layout
   # assumption (see the header note); other layouts are a follow-up.
-  emith("define ptr @fn_os_arch() {\n")
+  emith("define ptr @lp_os_arch() {\n")
   emith("entry:\n  %buf = call ptr @malloc(i64 8192)\n  call i32 @uname(ptr %buf)\n")
   emith("  %m = getelementptr i8, ptr %buf, i64 1024\n  ret ptr %m\n}\n")
 }

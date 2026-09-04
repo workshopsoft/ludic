@@ -10,11 +10,11 @@ program T {
     print(Math.floor(Math.dist2(0.0, 0.0, 3.0, 4.0)))    # 25
     print(Math.floor(Math.deg_to_rad(180.0) * 1000.0))   # 3142
     print(Math.floor(Math.rad_to_deg(3.1415926)))        # 180
-    print(Math.posmod(0 - 1, 5))                          # 4
+    print(Math.posmod(-1, 5))                          # 4
     print(Math.wrap(12, 0, 10))                            # 2
     print(Math.ping_pong(13, 10))                          # 7
     print(Math.floor(Math.snapped(2.3, 0.5) * 10.0))      # 25
     print(Math.floor(Math.move_toward(0.0, 10.0, 3.0) * 10.0))  # 30
-    print(Math.floor(Math.smoothstep(0.0, 10.0, 5.0) * 1000.0)) # 500
+    print(Math.floor(Math.smoothstep(0.0, 10.0, 5.0) * 1000.0))  # 500
   }
 }

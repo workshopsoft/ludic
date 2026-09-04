@@ -17,6 +17,6 @@ function read_file(path: string) -> pointer {
 # length of a NUL-terminated buffer
 function cstr_len(s: pointer) -> int {
   var n = 0
-  while s[n] != 0 { n = n + 1 }
+  while s[n] != 0 { n += 1 }
   return n
 }

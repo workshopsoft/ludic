@@ -23,7 +23,7 @@ program T {
     let payload = "score=9001;level=12"
     let mac = Crypto.hmac_sha256(key, payload)
     if Crypto.verify_hmac(key, payload, mac) { print(1) } else { print(0) }              # 1: untampered
-    if Crypto.verify_hmac(key, "score=9999;level=12", mac) { print(1) } else { print(0) } # 0: tampered payload
+    if Crypto.verify_hmac(key, "score=9999;level=12", mac) { print(1) } else { print(0) }  # 0: tampered payload
     let forged = "0000000000000000000000000000000000000000000000000000000000000000"
     if Crypto.verify_hmac(key, payload, forged) { print(1) } else { print(0) }            # 0: forged mac
 

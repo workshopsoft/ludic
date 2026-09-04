@@ -45,19 +45,19 @@ function emit_crypto_ns(meth: pointer, e: Node) -> Val {
   g_uses_cryptort = true
   if (meth == "sha256") {                           # SHA-256 -> 64-char hex string
     let s = emit_expr(e.kids[0])
-    return val(emit_bind(`call ptr @fn_sha256_hex(ptr {s.code})`), "string")
+    return val(emit_bind(`call ptr @lp_sha256_hex(ptr {s.code})`), "string")
   }
   if (meth == "hmac_sha256") {                      # HMAC-SHA256 -> 64-char hex string
     let k = emit_expr(e.kids[0]);  let m = emit_expr(e.kids[1])
-    return val(emit_bind(`call ptr @fn_hmac_sha256_hex(ptr {k.code}, ptr {m.code})`), "string")
+    return val(emit_bind(`call ptr @lp_hmac_sha256_hex(ptr {k.code}, ptr {m.code})`), "string")
   }
   if (meth == "hex") {                              # lowercase hex of a string's bytes
     let s = emit_expr(e.kids[0])
-    return val(emit_bind(`call ptr @fn_str_hex(ptr {s.code})`), "string")
+    return val(emit_bind(`call ptr @lp_str_hex(ptr {s.code})`), "string")
   }
   if (meth == "ct_equal") {                         # constant-time string equality -> bool
     let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1])
-    return val(emit_bind(`call i32 @fn_ct_streq(ptr {a.code}, ptr {b.code})`), "bool")
+    return val(emit_bind(`call i32 @lp_ct_streq(ptr {a.code}, ptr {b.code})`), "bool")
   }
   # random_bytes(n) / random_hex(n): n bytes from the OS CSPRNG, returned as a
   # 2n-char lowercase hex string. A digest of raw bytes can contain NUL and a
@@ -65,21 +65,21 @@ function emit_crypto_ns(meth: pointer, e: Node) -> Val {
   if (meth == "random_bytes") or (meth == "random_hex") {
     let n = emit_expr(e.kids[0])
     let n64 = emit_bind(`sext i32 {n.code} to i64`)
-    return val(emit_bind(`call ptr @fn_random_hex(i64 {n64})`), "string")
+    return val(emit_bind(`call ptr @lp_random_hex(i64 {n64})`), "string")
   }
   if (meth == "random_u32") {                       # one CSPRNG-drawn 32-bit int
-    return val(emit_bind(`call i32 @fn_random_u32()`), "int")
+    return val(emit_bind(`call i32 @lp_random_u32()`), "int")
   }
   if (meth == "base64") {                           # standard base64 (RFC 4648) of a string's bytes
     let s = emit_expr(e.kids[0])
-    return val(emit_bind(`call ptr @fn_base64(ptr {s.code})`), "string")
+    return val(emit_bind(`call ptr @lp_base64(ptr {s.code})`), "string")
   }
   # verify_hmac(key, msg, mac): recompute HMAC-SHA256(key, msg) and compare it to
   # the supplied hex `mac` in constant time. This is the safe way to check a MAC —
   # `==` would leak, byte by byte, how much of a forged MAC was correct.
   let k = emit_expr(e.kids[0]);  let m = emit_expr(e.kids[1]);  let mac = emit_expr(e.kids[2])
-  let computed = emit_bind(`call ptr @fn_hmac_sha256_hex(ptr {k.code}, ptr {m.code})`)
-  return val(emit_bind(`call i32 @fn_ct_streq(ptr {computed}, ptr {mac.code})`), "bool")
+  let computed = emit_bind(`call ptr @lp_hmac_sha256_hex(ptr {k.code}, ptr {m.code})`)
+  return val(emit_bind(`call i32 @lp_ct_streq(ptr {computed}, ptr {mac.code})`), "bool")
 }
 
 # emit_crypto_prelude — the SHA-256 / HMAC-SHA256 runtime, emitted once per program
@@ -91,13 +91,13 @@ function emit_crypto_prelude() -> void {
   emith("@sha256_K = private unnamed_addr constant [64 x i32] [i32 1116352408, i32 1899447441, i32 -1245643825, i32 -373957723, i32 961987163, i32 1508970993, i32 -1841331548, i32 -1424204075, i32 -670586216, i32 310598401, i32 607225278, i32 1426881987, i32 1925078388, i32 -2132889090, i32 -1680079193, i32 -1046744716, i32 -459576895, i32 -272742522, i32 264347078, i32 604807628, i32 770255983, i32 1249150122, i32 1555081692, i32 1996064986, i32 -1740746414, i32 -1473132947, i32 -1341970488, i32 -1084653625, i32 -958395405, i32 -710438585, i32 113926993, i32 338241895, i32 666307205, i32 773529912, i32 1294757372, i32 1396182291, i32 1695183700, i32 1986661051, i32 -2117940946, i32 -1838011259, i32 -1564481375, i32 -1474664885, i32 -1035236496, i32 -949202525, i32 -778901479, i32 -694614492, i32 -200395387, i32 275423344, i32 430227734, i32 506948616, i32 659060556, i32 883997877, i32 958139571, i32 1322822218, i32 1537002063, i32 1747873779, i32 1955562222, i32 2024104815, i32 -2067236844, i32 -1933114872, i32 -1866530822, i32 -1538233109, i32 -1090935817, i32 -965641998]\n")
 
   # rotate a 32-bit word right by %n (1..31)
-  emith("define i32 @fn_rotr32(i32 %x, i32 %n) {\n")
+  emith("define i32 @lp_rotr32(i32 %x, i32 %n) {\n")
   emith("  %r = lshr i32 %x, %n\n  %m = sub i32 32, %n\n  %l = shl i32 %x, %m\n  %o = or i32 %r, %l\n  ret i32 %o\n}\n")
 
   # SHA-256 of %len bytes at %msg -> the 32 raw digest bytes at %out. Pads into a
   # fresh malloc'd buffer (append 0x80, zero-fill, 64-bit big-endian bit length),
   # then runs the standard 64-round compression over each 512-bit block.
-  emith("define void @fn_sha256_buf(ptr %msg, i64 %len, ptr %out) {\n")
+  emith("define void @lp_sha256_buf(ptr %msg, i64 %len, ptr %out) {\n")
   emith("entry:\n")
   emith("  %H = alloca [8 x i32]\n  %W = alloca [64 x i32]\n")
   emith("  %a = alloca i32\n  %b = alloca i32\n  %c = alloca i32\n  %d = alloca i32\n  %e = alloca i32\n  %f = alloca i32\n  %g = alloca i32\n  %h = alloca i32\n")
@@ -149,10 +149,10 @@ function emit_crypto_prelude() -> void {
   emith("w2c:\n  %xi = load i64, ptr %ip\n  %xilt = icmp slt i64 %xi, 64\n  br i1 %xilt, label %w2b, label %compinit\n")
   emith("w2b:\n")
   emith("  %im15 = sub i64 %xi, 15\n  %pm15 = getelementptr [64 x i32], ptr %W, i64 0, i64 %im15\n  %w15 = load i32, ptr %pm15\n")
-  emith("  %r7 = call i32 @fn_rotr32(i32 %w15, i32 7)\n  %r18 = call i32 @fn_rotr32(i32 %w15, i32 18)\n  %sh3 = lshr i32 %w15, 3\n")
+  emith("  %r7 = call i32 @lp_rotr32(i32 %w15, i32 7)\n  %r18 = call i32 @lp_rotr32(i32 %w15, i32 18)\n  %sh3 = lshr i32 %w15, 3\n")
   emith("  %x01 = xor i32 %r7, %r18\n  %s0 = xor i32 %x01, %sh3\n")
   emith("  %im2 = sub i64 %xi, 2\n  %pm2 = getelementptr [64 x i32], ptr %W, i64 0, i64 %im2\n  %w2v = load i32, ptr %pm2\n")
-  emith("  %r17 = call i32 @fn_rotr32(i32 %w2v, i32 17)\n  %r19 = call i32 @fn_rotr32(i32 %w2v, i32 19)\n  %sh10 = lshr i32 %w2v, 10\n")
+  emith("  %r17 = call i32 @lp_rotr32(i32 %w2v, i32 17)\n  %r19 = call i32 @lp_rotr32(i32 %w2v, i32 19)\n  %sh10 = lshr i32 %w2v, 10\n")
   emith("  %x02 = xor i32 %r17, %r19\n  %s1 = xor i32 %x02, %sh10\n")
   emith("  %im16 = sub i64 %xi, 16\n  %pm16 = getelementptr [64 x i32], ptr %W, i64 0, i64 %im16\n  %w16 = load i32, ptr %pm16\n")
   emith("  %im7 = sub i64 %xi, 7\n  %pm7 = getelementptr [64 x i32], ptr %W, i64 0, i64 %im7\n  %w7 = load i32, ptr %pm7\n")
@@ -176,7 +176,7 @@ function emit_crypto_prelude() -> void {
   emith("  %av = load i32, ptr %a\n  %bv = load i32, ptr %b\n  %cvv = load i32, ptr %c\n  %dv = load i32, ptr %d\n")
   emith("  %ev = load i32, ptr %e\n  %fv = load i32, ptr %f\n  %gv = load i32, ptr %g\n  %hv = load i32, ptr %h\n")
   # S1 = rotr(e,6) ^ rotr(e,11) ^ rotr(e,25);  ch = (e & f) ^ (~e & g)
-  emith("  %e6 = call i32 @fn_rotr32(i32 %ev, i32 6)\n  %e11 = call i32 @fn_rotr32(i32 %ev, i32 11)\n  %e25 = call i32 @fn_rotr32(i32 %ev, i32 25)\n")
+  emith("  %e6 = call i32 @lp_rotr32(i32 %ev, i32 6)\n  %e11 = call i32 @lp_rotr32(i32 %ev, i32 11)\n  %e25 = call i32 @lp_rotr32(i32 %ev, i32 25)\n")
   emith("  %S1a = xor i32 %e6, %e11\n  %S1 = xor i32 %S1a, %e25\n")
   emith("  %ef = and i32 %ev, %fv\n  %ne = xor i32 %ev, -1\n  %neg = and i32 %ne, %gv\n  %ch = xor i32 %ef, %neg\n")
   emith("  %kp = getelementptr [64 x i32], ptr @sha256_K, i64 0, i64 %ri\n  %kv = load i32, ptr %kp\n")
@@ -184,7 +184,7 @@ function emit_crypto_prelude() -> void {
   # temp1 = h + S1 + ch + K[i] + W[i]
   emith("  %t1a = add i32 %hv, %S1\n  %t1b = add i32 %t1a, %ch\n  %t1c = add i32 %t1b, %kv\n  %temp1 = add i32 %t1c, %wvr\n")
   # S0 = rotr(a,2) ^ rotr(a,13) ^ rotr(a,22);  maj = (a&b) ^ (a&c) ^ (b&c)
-  emith("  %a2r = call i32 @fn_rotr32(i32 %av, i32 2)\n  %a13 = call i32 @fn_rotr32(i32 %av, i32 13)\n  %a22 = call i32 @fn_rotr32(i32 %av, i32 22)\n")
+  emith("  %a2r = call i32 @lp_rotr32(i32 %av, i32 2)\n  %a13 = call i32 @lp_rotr32(i32 %av, i32 13)\n  %a22 = call i32 @lp_rotr32(i32 %av, i32 22)\n")
   emith("  %S0a = xor i32 %a2r, %a13\n  %S0 = xor i32 %S0a, %a22\n")
   emith("  %ab = and i32 %av, %bv\n  %ac = and i32 %av, %cvv\n  %bc = and i32 %bv, %cvv\n  %mj1 = xor i32 %ab, %ac\n  %maj = xor i32 %mj1, %bc\n")
   emith("  %temp2 = add i32 %S0, %maj\n")
@@ -218,37 +218,37 @@ function emit_crypto_prelude() -> void {
   emith("freeb:\n  call void @free(ptr %buf)\n  ret void\n}\n")
 
   # one hex digit (0..15) -> its lowercase ASCII byte
-  emith("define i8 @fn_hex_digit(i32 %d) {\n")
+  emith("define i8 @lp_hex_digit(i32 %d) {\n")
   emith("  %lt = icmp ult i32 %d, 10\n  %base = select i1 %lt, i32 48, i32 87\n  %v = add i32 %base, %d\n  %c = trunc i32 %v to i8\n  ret i8 %c\n}\n")
 
   # hex-encode %n bytes at %in -> a fresh null-terminated 2n-char string
-  emith("define ptr @fn_hex_encode(ptr %in, i64 %n) {\n")
+  emith("define ptr @lp_hex_encode(ptr %in, i64 %n) {\n")
   emith("entry:\n  %ip = alloca i64\n  %olen = shl i64 %n, 1\n  %olen1 = add i64 %olen, 1\n  %s = call ptr @malloc(i64 %olen1)\n  store i64 0, ptr %ip\n  br label %c\n")
   emith("c:\n  %i = load i64, ptr %ip\n  %lt = icmp ult i64 %i, %n\n  br i1 %lt, label %bdy, label %done\n")
   emith("bdy:\n  %pp = getelementptr i8, ptr %in, i64 %i\n  %byte = load i8, ptr %pp\n  %bz = zext i8 %byte to i32\n")
-  emith("  %hi = lshr i32 %bz, 4\n  %lo = and i32 %bz, 15\n  %hc = call i8 @fn_hex_digit(i32 %hi)\n  %lc = call i8 @fn_hex_digit(i32 %lo)\n")
+  emith("  %hi = lshr i32 %bz, 4\n  %lo = and i32 %bz, 15\n  %hc = call i8 @lp_hex_digit(i32 %hi)\n  %lc = call i8 @lp_hex_digit(i32 %lo)\n")
   emith("  %oi = shl i64 %i, 1\n  %o0 = getelementptr i8, ptr %s, i64 %oi\n  store i8 %hc, ptr %o0\n  %oi1 = add i64 %oi, 1\n  %o1 = getelementptr i8, ptr %s, i64 %oi1\n  store i8 %lc, ptr %o1\n")
   emith("  %in1 = add i64 %i, 1\n  store i64 %in1, ptr %ip\n  br label %c\n")
   emith("done:\n  %tp = getelementptr i8, ptr %s, i64 %olen\n  store i8 0, ptr %tp\n  ret ptr %s\n}\n")
 
   # SHA-256 of a null-terminated string -> 64-char hex
-  emith("define ptr @fn_sha256_hex(ptr %s) {\n")
+  emith("define ptr @lp_sha256_hex(ptr %s) {\n")
   emith("entry:\n  %dig = alloca [32 x i8]\n  %len = call i64 @strlen(ptr %s)\n  %dp = getelementptr [32 x i8], ptr %dig, i64 0, i64 0\n")
-  emith("  call void @fn_sha256_buf(ptr %s, i64 %len, ptr %dp)\n  %hex = call ptr @fn_hex_encode(ptr %dp, i64 32)\n  ret ptr %hex\n}\n")
+  emith("  call void @lp_sha256_buf(ptr %s, i64 %len, ptr %dp)\n  %hex = call ptr @lp_hex_encode(ptr %dp, i64 32)\n  ret ptr %hex\n}\n")
 
   # hex of a whole null-terminated string's bytes
-  emith("define ptr @fn_str_hex(ptr %s) {\n")
-  emith("  %n = call i64 @strlen(ptr %s)\n  %h = call ptr @fn_hex_encode(ptr %s, i64 %n)\n  ret ptr %h\n}\n")
+  emith("define ptr @lp_str_hex(ptr %s) {\n")
+  emith("  %n = call i64 @strlen(ptr %s)\n  %h = call ptr @lp_hex_encode(ptr %s, i64 %n)\n  ret ptr %h\n}\n")
 
   # xor 64 bytes of %src with the byte %pad into %dst (the HMAC key padding step)
-  emith("define void @fn_xor64(ptr %dst, ptr %src, i32 %pad) {\n")
+  emith("define void @lp_xor64(ptr %dst, ptr %src, i32 %pad) {\n")
   emith("entry:\n  %ip = alloca i64\n  store i64 0, ptr %ip\n  br label %c\n")
   emith("c:\n  %i = load i64, ptr %ip\n  %lt = icmp ult i64 %i, 64\n  br i1 %lt, label %b, label %d\n")
   emith("b:\n  %sp = getelementptr i8, ptr %src, i64 %i\n  %sv = load i8, ptr %sp\n  %sz = zext i8 %sv to i32\n  %xr = xor i32 %sz, %pad\n  %xb = trunc i32 %xr to i8\n  %dp = getelementptr i8, ptr %dst, i64 %i\n  store i8 %xb, ptr %dp\n  %in = add i64 %i, 1\n  store i64 %in, ptr %ip\n  br label %c\n")
   emith("d:\n  ret void\n}\n")
 
   # HMAC-SHA256(key, msg) -> 64-char hex (RFC 2104, block size 64).
-  emith("define ptr @fn_hmac_sha256_hex(ptr %key, ptr %msg) {\n")
+  emith("define ptr @lp_hmac_sha256_hex(ptr %key, ptr %msg) {\n")
   emith("entry:\n")
   emith("  %k0 = alloca [64 x i8]\n  %inner = alloca [32 x i8]\n  %outbuf = alloca [96 x i8]\n  %fin = alloca [32 x i8]\n")
   emith("  %klen = call i64 @strlen(ptr %key)\n  %mlen = call i64 @strlen(ptr %msg)\n")
@@ -256,24 +256,24 @@ function emit_crypto_prelude() -> void {
   # K0: a key longer than the block is replaced by its own hash; otherwise it is
   # right-zero-padded to 64 bytes.
   emith("  %big = icmp ugt i64 %klen, 64\n  br i1 %big, label %hashk, label %copyk\n")
-  emith("hashk:\n  call void @fn_sha256_buf(ptr %key, i64 %klen, ptr %k0p)\n  br label %pads\n")
+  emith("hashk:\n  call void @lp_sha256_buf(ptr %key, i64 %klen, ptr %k0p)\n  br label %pads\n")
   emith("copyk:\n  call ptr @memcpy(ptr %k0p, ptr %key, i64 %klen)\n  br label %pads\n")
   emith("pads:\n")
   # inner = SHA-256( (K0 ^ ipad) || msg ),  ipad = 0x36
   emith("  %inlen = add i64 64, %mlen\n  %inbuf = call ptr @malloc(i64 %inlen)\n")
-  emith("  call void @fn_xor64(ptr %inbuf, ptr %k0p, i32 54)\n")
+  emith("  call void @lp_xor64(ptr %inbuf, ptr %k0p, i32 54)\n")
   emith("  %inmsg = getelementptr i8, ptr %inbuf, i64 64\n  call ptr @memcpy(ptr %inmsg, ptr %msg, i64 %mlen)\n")
-  emith("  %innerp = getelementptr [32 x i8], ptr %inner, i64 0, i64 0\n  call void @fn_sha256_buf(ptr %inbuf, i64 %inlen, ptr %innerp)\n  call void @free(ptr %inbuf)\n")
+  emith("  %innerp = getelementptr [32 x i8], ptr %inner, i64 0, i64 0\n  call void @lp_sha256_buf(ptr %inbuf, i64 %inlen, ptr %innerp)\n  call void @free(ptr %inbuf)\n")
   # digest = SHA-256( (K0 ^ opad) || inner ),  opad = 0x5c
-  emith("  %outp = getelementptr [96 x i8], ptr %outbuf, i64 0, i64 0\n  call void @fn_xor64(ptr %outp, ptr %k0p, i32 92)\n")
+  emith("  %outp = getelementptr [96 x i8], ptr %outbuf, i64 0, i64 0\n  call void @lp_xor64(ptr %outp, ptr %k0p, i32 92)\n")
   emith("  %outmsg = getelementptr i8, ptr %outbuf, i64 64\n  call ptr @memcpy(ptr %outmsg, ptr %innerp, i64 32)\n")
-  emith("  %finp = getelementptr [32 x i8], ptr %fin, i64 0, i64 0\n  call void @fn_sha256_buf(ptr %outp, i64 96, ptr %finp)\n")
-  emith("  %hex = call ptr @fn_hex_encode(ptr %finp, i64 32)\n  ret ptr %hex\n}\n")
+  emith("  %finp = getelementptr [32 x i8], ptr %fin, i64 0, i64 0\n  call void @lp_sha256_buf(ptr %outp, i64 96, ptr %finp)\n")
+  emith("  %hex = call ptr @lp_hex_encode(ptr %finp, i64 32)\n  ret ptr %hex\n}\n")
 
   # constant-time equality of two null-terminated strings. Length is not secret,
   # so an unequal length returns early; equal-length inputs are compared with a
   # data-independent XOR-accumulate that never short-circuits.
-  emith("define i32 @fn_ct_streq(ptr %a, ptr %b) {\n")
+  emith("define i32 @lp_ct_streq(ptr %a, ptr %b) {\n")
   emith("entry:\n  %accp = alloca i32\n  %ip = alloca i64\n  %la = call i64 @strlen(ptr %a)\n  %lb = call i64 @strlen(ptr %b)\n  %eqlen = icmp eq i64 %la, %lb\n  br i1 %eqlen, label %go, label %ne\n")
   emith("ne:\n  ret i32 0\n")
   emith("go:\n  store i32 0, ptr %accp\n  store i64 0, ptr %ip\n  br label %c\n")
@@ -295,7 +295,7 @@ function emit_secure_rand_prelude() -> void {
 
   # fill %n bytes at %out from the OS CSPRNG. If /dev/urandom cannot be opened the
   # buffer is zeroed (documented degraded mode — e.g. wasm), never left uninit.
-  emith("define void @fn_secure_bytes(ptr %out, i64 %n) {\n")
+  emith("define void @lp_secure_bytes(ptr %out, i64 %n) {\n")
   emith("entry:\n  call ptr @memset(ptr %out, i32 0, i64 %n)\n")
   emith("  %fp = call ptr @fopen(ptr @.ludic_urandom, ptr @.ludic_rbmode)\n")
   emith("  %isnull = icmp eq ptr %fp, null\n  br i1 %isnull, label %fail, label %ok\n")
@@ -303,13 +303,13 @@ function emit_secure_rand_prelude() -> void {
   emith("fail:\n  ret void\n}\n")
 
   # %n secure bytes -> a fresh 2n-char lowercase hex string
-  emith("define ptr @fn_random_hex(i64 %n) {\n")
-  emith("entry:\n  %buf = call ptr @malloc(i64 %n)\n  call void @fn_secure_bytes(ptr %buf, i64 %n)\n")
-  emith("  %hex = call ptr @fn_hex_encode(ptr %buf, i64 %n)\n  call void @free(ptr %buf)\n  ret ptr %hex\n}\n")
+  emith("define ptr @lp_random_hex(i64 %n) {\n")
+  emith("entry:\n  %buf = call ptr @malloc(i64 %n)\n  call void @lp_secure_bytes(ptr %buf, i64 %n)\n")
+  emith("  %hex = call ptr @lp_hex_encode(ptr %buf, i64 %n)\n  call void @free(ptr %buf)\n  ret ptr %hex\n}\n")
 
   # one CSPRNG-drawn i32 (little-endian assembly of four secure bytes)
-  emith("define i32 @fn_random_u32() {\n")
-  emith("entry:\n  %b = alloca [4 x i8]\n  %bp = getelementptr [4 x i8], ptr %b, i64 0, i64 0\n  call void @fn_secure_bytes(ptr %bp, i64 4)\n")
+  emith("define i32 @lp_random_u32() {\n")
+  emith("entry:\n  %b = alloca [4 x i8]\n  %bp = getelementptr [4 x i8], ptr %b, i64 0, i64 0\n  call void @lp_secure_bytes(ptr %bp, i64 4)\n")
   emith("  %p0 = getelementptr i8, ptr %bp, i64 0\n  %c0 = load i8, ptr %p0\n  %z0 = zext i8 %c0 to i32\n")
   emith("  %p1 = getelementptr i8, ptr %bp, i64 1\n  %c1 = load i8, ptr %p1\n  %z1 = zext i8 %c1 to i32\n  %s1 = shl i32 %z1, 8\n")
   emith("  %p2 = getelementptr i8, ptr %bp, i64 2\n  %c2 = load i8, ptr %p2\n  %z2 = zext i8 %c2 to i32\n  %s2 = shl i32 %z2, 16\n")
@@ -319,7 +319,7 @@ function emit_secure_rand_prelude() -> void {
   # standard base64 (RFC 4648, '+' '/' alphabet, '=' padding). The input is copied
   # into a zero-padded buffer rounded up to a multiple of 3, so the 3-byte group
   # loop never reads past the string; trailing '=' are written per the remainder.
-  emith("define ptr @fn_base64(ptr %s) {\n")
+  emith("define ptr @lp_base64(ptr %s) {\n")
   emith("entry:\n  %n = call i64 @strlen(ptr %s)\n")
   emith("  %n2 = add i64 %n, 2\n  %grp = udiv i64 %n2, 3\n  %bufn = mul i64 %grp, 3\n")
   emith("  %olen = mul i64 %grp, 4\n  %olen1 = add i64 %olen, 1\n  %out = call ptr @malloc(i64 %olen1)\n")

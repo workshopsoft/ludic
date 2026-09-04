@@ -21,9 +21,9 @@ program Demo {
     Screen.clear(0)
     Light.ambient(Color.rgb(24, 24, 32))
     Light.gel(Color.rgb(40, 60, 160))
-    Light.point(60, 60, 60, Color.rgb(255, 200, 120), 1.0) # gelled
+    Light.point(60, 60, 60, Color.rgb(255, 200, 120), 1.0)  # gelled
     Light.clear_gel()
-    Light.point(150, 60, 60, Color.rgb(255, 240, 200), 1.0) # flat again
+    Light.point(150, 60, 60, Color.rgb(255, 240, 200), 1.0)  # flat again
     Screen.show()
   }
 }

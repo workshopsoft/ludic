@@ -31,10 +31,10 @@ function net_model_bytes(m: Node) -> int {
       let c = find_comp(m.kids[ci].s)
       if (c != null) {
         var fj = 0
-        while fj < len(c.kids) { if c.kids[fj].ival == 1 { total = total + net_field_ibytes(c.kids[fj].ty) };  fj = fj + 1 }
+        while fj < len(c.kids) { if c.kids[fj].ival == 1 { total += net_field_ibytes(c.kids[fj].ty) };  fj += 1 }
       }
     }
-    ci = ci + 1
+    ci += 1
   }
   return total
 }
@@ -43,14 +43,14 @@ function net_model_syncs(m: Node) -> bool { return net_model_bytes(m) > 0 }
 
 function net_has_sync() -> bool {
   var i = 0
-  while i < len(prog) { if prog[i].kind == N_ARCH { if net_model_syncs(prog[i]) { return true } };  i = i + 1 }
+  while i < len(prog) { if prog[i].kind == N_ARCH { if net_model_syncs(prog[i]) { return true } };  i += 1 }
   return false
 }
 
 # ---- N3: ownership -----------------------------------------------------------
 function net_has_owned() -> bool {
   var i = 0
-  while i < len(prog) { if prog[i].kind == N_ARCH and (prog[i].ival == 1) { return true };  i = i + 1 }
+  while i < len(prog) { if prog[i].kind == N_ARCH and (prog[i].ival == 1) { return true };  i += 1 }
   return false
 }
 
@@ -58,7 +58,7 @@ function net_has_owned() -> bool {
 # A handler tagged @Server (ival==1) or @Predicted (ival==2) has a network role.
 function net_has_role() -> bool {
   var i = 0
-  while i < len(prog) { if prog[i].kind == N_SYS and (prog[i].ival != 0) { return true };  i = i + 1 }
+  while i < len(prog) { if prog[i].kind == N_SYS and (prog[i].ival != 0) { return true };  i += 1 }
   return false
 }
 
@@ -95,15 +95,15 @@ function net_check() -> void {
                 any = true
                 if (llty(c.kids[fj].ty) == "ptr") { perr(`@Sync field {cn}.{c.kids[fj].s} is not a POD scalar (networked fields must be int/bool/fixed/byte)`) }
               }
-              fj = fj + 1
+              fj += 1
             }
             if not any { net_warn(`model {m.s} @Syncs {cn} but it has no @Sync fields — nothing replicates`) }
           }
         }
-        ci = ci + 1
+        ci += 1
       }
     }
-    i = i + 1
+    i += 1
   }
 }
 
@@ -129,13 +129,13 @@ function emit_net_serialize(m: Node) -> void {
             let fa = nreg();  emit("  ");  emit(fa);  emit(" = getelementptr inbounds %Cmp_");  emit(cn);  emit(", ptr ");  emit(s);  emit(", i32 0, i32 ");  emit(itoa(fj));  emit("\n")
             let dst = nreg();  emit("  ");  emit(dst);  emit(" = getelementptr inbounds i8, ptr %buf, i32 ");  emit(itoa(off));  emit("\n")
             emit("  call ptr @memcpy(ptr ");  emit(dst);  emit(", ptr ");  emit(fa);  emit(", i64 ");  emit(bytes);  emit(")\n")
-            off = off + net_field_ibytes(c.kids[fj].ty)
+            off += net_field_ibytes(c.kids[fj].ty)
           }
-          fj = fj + 1
+          fj += 1
         }
       }
     }
-    ci = ci + 1
+    ci += 1
   }
   emit("  ret i32 ");  emit(itoa(off));  emit("\n}\n\n")
 }
@@ -162,13 +162,13 @@ function emit_net_apply(m: Node) -> void {
             let fa = nreg();  emit("  ");  emit(fa);  emit(" = getelementptr inbounds %Cmp_");  emit(cn);  emit(", ptr ");  emit(s);  emit(", i32 0, i32 ");  emit(itoa(fj));  emit("\n")
             let src = nreg();  emit("  ");  emit(src);  emit(" = getelementptr inbounds i8, ptr %buf, i32 ");  emit(itoa(off));  emit("\n")
             emit("  call ptr @memcpy(ptr ");  emit(fa);  emit(", ptr ");  emit(src);  emit(", i64 ");  emit(bytes);  emit(")\n")
-            off = off + net_field_ibytes(c.kids[fj].ty)
+            off += net_field_ibytes(c.kids[fj].ty)
           }
-          fj = fj + 1
+          fj += 1
         }
       }
     }
-    ci = ci + 1
+    ci += 1
   }
   emit("  ret void\n}\n\n")
 }
@@ -191,9 +191,9 @@ function emit_net_dispatch() -> void {
       emit("  br i1 %c");  emit(sk);  emit(", label %h");  emit(sk);  emit(", label %n");  emit(sk);  emit("\n")
       emit("h");  emit(sk);  emit(":\n  %r");  emit(sk);  emit(" = call i32 @L_serialize_");  emit(mn);  emit("(i32 %e, ptr %buf)\n  ret i32 %r");  emit(sk);  emit("\n")
       emit("n");  emit(sk);  emit(":\n")
-      k = k + 1
+      k += 1
     }
-    i = i + 1
+    i += 1
   }
   emit("  ret i32 0\n}\n\n")
 
@@ -207,9 +207,9 @@ function emit_net_dispatch() -> void {
       emit("  br i1 %c");  emit(sk);  emit(", label %h");  emit(sk);  emit(", label %n");  emit(sk);  emit("\n")
       emit("h");  emit(sk);  emit(":\n  call void @L_apply_");  emit(mn);  emit("(i32 %e, ptr %buf, i32 %len)\n  ret void\n")
       emit("n");  emit(sk);  emit(":\n")
-      k = k + 1
+      k += 1
     }
-    i = i + 1
+    i += 1
   }
   emit("  ret void\n}\n\n")
 
@@ -225,9 +225,9 @@ function emit_net_dispatch() -> void {
       emit("  br i1 %c");  emit(sk);  emit(", label %h");  emit(sk);  emit(", label %n");  emit(sk);  emit("\n")
       emit("h");  emit(sk);  emit(":\n  ret i32 ");  emit(itoa(net_model_bytes(prog[i])));  emit("\n")
       emit("n");  emit(sk);  emit(":\n")
-      k = k + 1
+      k += 1
     }
-    i = i + 1
+    i += 1
   }
   emit("  ret i32 0\n}\n\n")
 }
@@ -296,14 +296,14 @@ function emit_loopback() -> void {
 
 function net_has_remote() -> bool {
   var i = 0
-  while i < len(g_events) { if (g_events[i].ty != null) { return true };  i = i + 1 }
+  while i < len(g_events) { if (g_events[i].ty != null) { return true };  i += 1 }
   return false
 }
 # stable wire id for an event = its index in g_events (same program both peers)
 function net_event_id(name: pointer) -> int {
   var i = 0
-  while i < len(g_events) { if (g_events[i].s == name) { return i };  i = i + 1 }
-  return 0 - 1
+  while i < len(g_events) { if (g_events[i].s == name) { return i };  i += 1 }
+  return -1
 }
 # the transport symbols: an `extern fn` override, else the built-in loopback.
 function net_send_sym() -> pointer { let x = find_extern("net_send");  if (x != null) { return x.a.s };  return "L_net_send" }
@@ -338,14 +338,14 @@ function emit_net_pump() -> void {
         emit("  %fv");  emit(fk);  emit(" = load ");  emit(ft);  emit(", ptr %fa");  emit(fk);  emit("\n")
         if f > 0 { buf_puts(acc, ", ") }
         buf_puts(acc, ft);  buf_puts(acc, " %fv");  buf_puts(acc, fk)
-        off = off + net_field_ibytes(ev.kids[f].ty)
-        f = f + 1
+        off += net_field_ibytes(ev.kids[f].ty)
+        f += 1
       }
       emit("  call void @ev_");  emit(ev.s);  emit("(");  emit(buf_str(acc));  emit(")\n")
       emit("  br label %loop\n")
       emit("x");  emit(sk);  emit(":\n")
     }
-    e = e + 1
+    e += 1
   }
   emit("  br label %loop\n")                       # unknown id: skip, keep draining
   emit("fin:\n  ret void\n}\n\n")
@@ -361,7 +361,7 @@ function emit_net() -> void {
         emit_net_serialize(prog[i])
         emit_net_apply(prog[i])
       }
-      i = i + 1
+      i += 1
     }
     emit_net_dispatch()
   }

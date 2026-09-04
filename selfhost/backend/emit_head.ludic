@@ -6,19 +6,19 @@ function hexdig(n: int) -> int { if n < 10 { return 48 + n }; return 55 + n }   
 # emit `@.strN = ... c"escaped\00"` and return its name; % and non-print -> \XX
 function emit_str_const(s: pointer) -> pointer {
   let name = `@.str{itoa(ll_str)}`
-  ll_str = ll_str + 1
+  ll_str += 1
   let n = len(s)
   emith(name);  emith(" = private unnamed_addr constant [")
   emith(itoa(n + 1));  emith(" x i8] c\"")
   var i = 0
   while i < n {
     let c = s[i]
-    if c == 34 or c == 92 or c < 32 or c > 126 {
-      buf_putc(head, 92)                          # backslash
+    if c == '"' or c == CH_BACKSLASH or c < ' ' or c > '~' {
+      buf_putc(head, CH_BACKSLASH)                  # \XX hex escape
       buf_putc(head, hexdig(c / 16))
       buf_putc(head, hexdig(c % 16))
     } else { buf_putc(head, c) }
-    i = i + 1
+    i += 1
   }
   emith("\\00\"\n")
   return name
@@ -64,7 +64,7 @@ function emit_global_init_fn() -> void {
       let v = emit_expr(d.a)
       emit("  store ");  emit(llty(d.ty));  emit(" ");  emit(coerce_code(v, d.ty));  emit(", ptr @g_");  emit(d.s);  emit("\n")
     }
-    i = i + 1
+    i += 1
   }
   emit("  ret void\n")
   code = saved
@@ -149,7 +149,7 @@ function emit_header() -> void {
           if (j < g_prog_user_end) and (i >= g_prog_user_end) { perr(`property {d.s} is also a property of the engine runtime; choose another name`) }
           perr(`property {d.s} is declared twice`)
         }
-        j = j + 1
+        j += 1
       }
       emith(layout_ty(d.s));  emith(" = type { ")
       if len(d.kids) == 0 { emith("i32") }
@@ -157,11 +157,11 @@ function emit_header() -> void {
       while f < len(d.kids) {
         if f > 0 { emith(", ") }
         emith(llty(d.kids[f].ty))
-        f = f + 1
+        f += 1
       }
       emith(" }\n")
     }
-    i = i + 1
+    i += 1
   }
   # globals (vars) — aggregates/pointers default to null, scalars to 0
   i = 0
@@ -174,14 +174,14 @@ function emit_header() -> void {
           if (j < g_prog_user_end) and (i >= g_prog_user_end) { perr(`variable {d.s} is also a variable of the engine runtime; choose another name`) }
           perr(`variable {d.s} is declared twice`)
         }
-        j = j + 1
+        j += 1
       }
       emith("@g_");  emith(d.s);  emith(" = internal global ")
       emith(llty(d.ty));  emith(" ")
       emith(global_init(d))
       emith("\n")
     }
-    i = i + 1
+    i += 1
   }
 }
 
@@ -198,11 +198,11 @@ function emit_extern_decls() -> void {
       while f < len(d.kids) {
         if f > 0 { emith(", ") }
         emith(llty(d.kids[f].ty))
-        f = f + 1
+        f += 1
       }
       emith(")\n")
     }
-    i = i + 1
+    i += 1
   }
 }
 
@@ -211,7 +211,7 @@ function emit_extern_decls() -> void {
 # until a mismatch or a shared terminator; str_concat measures both, mallocs
 # len+len+1, copies each half, and NUL-terminates. @malloc is always declared.
 function emit_str_prelude() -> void {
-  emith("define i32 @fn_str_eq(ptr %a, ptr %b) {\n")
+  emith("define i32 @lp_str_eq(ptr %a, ptr %b) {\n")
   emith("entry:\n  br label %loop\n")
   emith("loop:\n  %i = phi i32 [ 0, %entry ], [ %i1, %cont ]\n")
   emith("  %pa = getelementptr inbounds i8, ptr %a, i32 %i\n")
@@ -222,7 +222,7 @@ function emit_str_prelude() -> void {
   emith("cont:\n  %i1 = add i32 %i, 1\n  br label %loop\n")
   emith("ret1:\n  ret i32 1\nret0:\n  ret i32 0\n}\n")
 
-  emith("define ptr @fn_str_concat(ptr %a, ptr %b) {\n")
+  emith("define ptr @lp_str_concat(ptr %a, ptr %b) {\n")
   emith("entry:\n  br label %al\n")
   emith("al:\n  %ia = phi i32 [ 0, %entry ], [ %ia1, %alb ]\n")
   emith("  %pa = getelementptr inbounds i8, ptr %a, i32 %ia\n  %cca = load i8, ptr %pa\n")
@@ -253,7 +253,7 @@ function emit_str_prelude() -> void {
 # (string interpolation of a number). Writes digits from the end of a 24-byte
 # buffer, prepends '-' for negatives, and returns a pointer into the buffer.
 function emit_int_str() -> void {
-  emith("define ptr @fn_int_str(i32 %n0) {\n")
+  emith("define ptr @lp_int_str(i32 %n0) {\n")
   emith("entry:\n  %buf = call ptr @malloc(i64 24)\n")
   emith("  %isneg = icmp slt i32 %n0, 0\n  %neg = sub i32 0, %n0\n")
   emith("  %n = select i1 %isneg, i32 %neg, i32 %n0\n")
@@ -276,7 +276,7 @@ function emit_int_str() -> void {
 # once per program that stringifies a `long` (g_uses_longstr). A 64-bit value is
 # at most 20 digits plus sign and NUL, so the 24-byte scratch buffer still fits.
 function emit_long_str() -> void {
-  emith("define ptr @fn_long_str(i64 %n0) {\n")
+  emith("define ptr @lp_long_str(i64 %n0) {\n")
   emith("entry:\n  %buf = call ptr @malloc(i64 24)\n")
   emith("  %isneg = icmp slt i64 %n0, 0\n  %neg = sub i64 0, %n0\n")
   emith("  %n = select i1 %isneg, i64 %neg, i64 %n0\n")
@@ -298,7 +298,7 @@ function emit_long_str() -> void {
 # s[a..b] -> a fresh NUL-terminated copy of the bytes [a, b), emitted (once) into
 # any program that slices a string. Mallocs (b-a)+1, copies, terminates.
 function emit_str_slice() -> void {
-  emith("define ptr @fn_str_slice(ptr %s, i32 %start, i32 %end) {\n")
+  emith("define ptr @lp_str_slice(ptr %s, i32 %start, i32 %end) {\n")
   emith("entry:\n  %len = sub i32 %end, %start\n  %sz = add i32 %len, 1\n")
   emith("  %sz64 = sext i32 %sz to i64\n  %out = call ptr @malloc(i64 %sz64)\n  br label %loop\n")
   emith("loop:\n  %i = phi i32 [ 0, %entry ], [ %i1, %body ]\n")

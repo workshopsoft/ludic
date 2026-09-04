@@ -13,5 +13,5 @@ The access operators reach into a compound value. `value.field` reads or writes 
 ```ludic
 let head_column: int = segments[0].column
 segments[0].column = head_column + 1
-let extension: string = file_name[len(file_name) - 4 .. len(file_name)]
+let extension: string = file_name[len(file_name) - 4..len(file_name)]
 ```

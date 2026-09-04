@@ -31,6 +31,7 @@ var g_uses_uuidrt: bool = false  # Uuid.* was emitted -> emit the UUID runtime (
 var g_uses_noisert: bool = false  # Noise.* was emitted -> emit the fixed-point noise runtime
 var g_uses_logrt: bool = false  # Log.* was emitted -> emit the log level register + console sink
 var g_uses_osrt: bool = false  # Os.* (prelude-backed methods) was emitted -> emit the Os runtime
+var g_uses_pid: bool = false   # Os.pid() was emitted -> declare libc getpid
 var g_uses_unicodert: bool = false  # Unicode.* was emitted -> emit the UTF-8 runtime
 var g_uses_fsrt: bool = false  # Fs.*/Path.*/Mime.* was emitted -> emit the filesystem runtime
 var g_uses_datert: bool = false  # Date.*/DateTime.* was emitted -> emit the civil<->epoch conversions
@@ -56,7 +57,7 @@ var g_prog_user_end: int = 0     # count of prog decls from the user's source (b
 # as the line table dumped at exit.
 function cov_slot(line: int) -> int {
   var i = 0
-  while i < len(g_cov_lines) { if g_cov_lines[i] == line { return i };  i = i + 1 }
+  while i < len(g_cov_lines) { if g_cov_lines[i] == line { return i };  i += 1 }
   push(g_cov_lines, line)
   return len(g_cov_lines) - 1
 }
@@ -93,11 +94,11 @@ var nmach: int = 0
 var g_scenes: []Node         # every `scene` declaration, in source order (ival = id)
 var g_scene_count: int = 0   # parse-time id counter
 var g_start_scene: int = 0   # id of the scene marked `start` (else the first)
-var g_cur_scene: Node = null # scene owning the handler being emitted, for `become`
+var g_cur_scene: Node = null  # scene owning the handler being emitted, for `become`
 
 function find_scene(name: pointer) -> Node {
   var i = 0
-  while i < len(g_scenes) { if (g_scenes[i].s == name) { return g_scenes[i] };  i = i + 1 }
+  while i < len(g_scenes) { if (g_scenes[i].s == name) { return g_scenes[i] };  i += 1 }
   return null
 }
 
@@ -107,14 +108,14 @@ function emith(s: pointer) -> void { buf_puts(head, s) }
 # stack slots MUST live in the entry block (an alloca in a loop walks the stack
 # off its end), so they go into a per-function buffer spliced in at entry.
 function emit_alloca(llt: pointer) -> pointer {
-  let r = `%t{itoa(ll_t)}`;  ll_t = ll_t + 1
+  let r = `%t{itoa(ll_t)}`;  ll_t += 1
   buf_puts(falloc, "  ");  buf_puts(falloc, r);  buf_puts(falloc, " = alloca ");  buf_puts(falloc, llt);  buf_puts(falloc, "\n")
   return r
 }
 
 # "%t<n>" fresh register
-function nreg() -> pointer { let r = `%t{itoa(ll_t)}`;  ll_t = ll_t + 1;  return r }
-function lbl(pfx: pointer) -> pointer { let r = (pfx + itoa(ll_lbl));  ll_lbl = ll_lbl + 1;  return r }
+function nreg() -> pointer { let r = `%t{itoa(ll_t)}`;  ll_t += 1;  return r }
+function lbl(pfx: pointer) -> pointer { let r = (pfx + itoa(ll_lbl));  ll_lbl += 1;  return r }
 
 # Ludic type -> LLVM type. int/bool are i32; everything else (ptr/str/struct/
 # slice) is a pointer; void is void.
@@ -132,17 +133,17 @@ function llty(t: pointer) -> pointer {
   return "ptr"
 }
 
-function is_slice_ty(t: pointer) -> bool { return t[0] == 91 and t[1] == 93 }   # "[]"
+function is_slice_ty(t: pointer) -> bool { return t[0] == '[' and t[1] == ']' }   # "[]"
 function slice_elem(t: pointer) -> pointer { return t[2..len(t)] }
 
 function find_arch(name: pointer) -> Node {
   var i = 0
-  while i < len(prog) { let d = prog[i];  if d.kind == N_ARCH and (d.s == name) { return d };  i = i + 1 }
+  while i < len(prog) { let d = prog[i];  if d.kind == N_ARCH and (d.s == name) { return d };  i += 1 }
   return null
 }
 function find_comp(name: pointer) -> Node {
   var i = 0
-  while i < len(prog) { let d = prog[i];  if d.kind == N_COMP and (d.s == name) { return d };  i = i + 1 }
+  while i < len(prog) { let d = prog[i];  if d.kind == N_COMP and (d.s == name) { return d };  i += 1 }
   return null
 }
 # every record is a `property` with a %Cmp_ layout of named fields — whether it
@@ -152,12 +153,12 @@ function layout_ty(name: pointer) -> pointer { return (("%Cmp_") + name) }
 
 function field_index(s: Node, fname: pointer) -> int {
   var i = 0
-  while i < len(s.kids) { if (s.kids[i].s == fname) { return i }; i = i + 1 }
-  return 0 - 1
+  while i < len(s.kids) { if (s.kids[i].s == fname) { return i }; i += 1 }
+  return -1
 }
 function field_type(s: Node, fname: pointer) -> pointer {
   var i = 0
-  while i < len(s.kids) { if (s.kids[i].s == fname) { return s.kids[i].ty }; i = i + 1 }
+  while i < len(s.kids) { if (s.kids[i].s == fname) { return s.kids[i].ty }; i += 1 }
   return "int"
 }
 
@@ -168,7 +169,7 @@ function find_global(name: pointer) -> Node {
     let d = prog[i]
     if d.kind == N_VAR and (d.s == name) { return d }
     if d.kind == N_CONST and (d.s == name) { return d }
-    i = i + 1
+    i += 1
   }
   return null
 }
@@ -181,9 +182,9 @@ function enum_ordinal(ename: pointer, vname: pointer) -> int {
     let d = prog[i]
     if d.kind == N_ENUM and (d.s == ename) {
       var j = 0
-      while j < len(d.kids) { if (d.kids[j].s == vname) { return j };  j = j + 1 }
+      while j < len(d.kids) { if (d.kids[j].s == vname) { return j };  j += 1 }
     }
-    i = i + 1
+    i += 1
   }
   # LC1: the compiler owns `EndReason` — the reason bound by a reason-carrying
   # teardown (`@OnDespawn(M, reason: r)`). Each despawn site passes one of these.
@@ -192,24 +193,24 @@ function enum_ordinal(ename: pointer, vname: pointer) -> int {
     if (vname == "SceneExit") { return 1 }      # a scene tearing down its owned entities
     if (vname == "Quit")      { return 2 }      # program shutdown
   }
-  return 0 - 1
+  return -1
 }
 # an enum none of whose variants carries a payload: a plain int-valued naming layer
 function is_bare_enum(name: pointer) -> bool {
   let en = find_enum(name)
   if (en == null) { return false }
   var i = 0
-  while i < len(en.kids) { if len(en.kids[i].kids) > 0 { return false };  i = i + 1 }
+  while i < len(en.kids) { if len(en.kids[i].kids) > 0 { return false };  i += 1 }
   return true
 }
 function find_prefab(name: pointer) -> Node {
   var i = 0
-  while i < len(prog) { let d = prog[i];  if d.kind == N_PREFAB and (d.s == name) { return d };  i = i + 1 }
+  while i < len(prog) { let d = prog[i];  if d.kind == N_PREFAB and (d.s == name) { return d };  i += 1 }
   return null
 }
 function has_prefabs() -> bool {
   var i = 0
-  while i < len(prog) { if prog[i].kind == N_PREFAB { return true };  i = i + 1 }
+  while i < len(prog) { if prog[i].kind == N_PREFAB { return true };  i += 1 }
   return false
 }
 # does any component declare a `countdown` field?
@@ -217,14 +218,14 @@ function has_countdowns() -> bool {
   var i = 0
   while i < len(prog) {
     let d = prog[i]
-    if d.kind == N_COMP { var f = 0;  while f < len(d.kids) { if (d.kids[f].ty == "countdown") { return true };  f = f + 1 } }
-    i = i + 1
+    if d.kind == N_COMP { var f = 0;  while f < len(d.kids) { if (d.kids[f].ty == "countdown") { return true };  f += 1 } }
+    i += 1
   }
   return false
 }
 function find_fn(name: pointer) -> Node {
   var i = 0
-  while i < len(prog) { let d = prog[i];  if d.kind == N_FN and (d.s == name) { return d };  i = i + 1 }
+  while i < len(prog) { let d = prog[i];  if d.kind == N_FN and (d.s == name) { return d };  i += 1 }
   return null
 }
 
@@ -238,12 +239,12 @@ var g_var_ord: int = 0
 
 function find_enum(name: pointer) -> Node {
   var i = 0
-  while i < len(prog) { let d = prog[i];  if d.kind == N_ENUM and (d.s == name) { return d };  i = i + 1 }
+  while i < len(prog) { let d = prog[i];  if d.kind == N_ENUM and (d.s == name) { return d };  i += 1 }
   return null
 }
 function enum_is_tagged(en: Node) -> bool {
   var i = 0
-  while i < len(en.kids) { if len(en.kids[i].kids) > 0 { return true };  i = i + 1 }
+  while i < len(en.kids) { if len(en.kids[i].kids) > 0 { return true };  i += 1 }
   return false
 }
 # the tagged enum whose type name is `ty`, or null (a plain enum / non-enum type
@@ -257,8 +258,8 @@ function tagged_enum_of(ty: pointer) -> Node {
 # the ordinal of variant `vname` within enum `en`, or -1.
 function variant_ordinal(en: Node, vname: pointer) -> int {
   var j = 0
-  while j < len(en.kids) { if (en.kids[j].s == vname) { return j };  j = j + 1 }
-  return 0 - 1
+  while j < len(en.kids) { if (en.kids[j].s == vname) { return j };  j += 1 }
+  return -1
 }
 # find the tagged enum that declares a variant named `vname` (used to resolve a
 # bare constructor like `Door(3)` / `Empty`); sets g_var_ord to its ordinal.
@@ -274,7 +275,7 @@ function variant_enum(vname: pointer) -> Node {
         if ord >= 0 { g_var_ord = ord;  return d }
       }
     }
-    i = i + 1
+    i += 1
   }
   return null
 }
@@ -282,7 +283,7 @@ function variant_enum(vname: pointer) -> Node {
 function enum_max_arity(en: Node) -> int {
   var m = 0
   var i = 0
-  while i < len(en.kids) { let a = len(en.kids[i].kids);  if a > m { m = a };  i = i + 1 }
+  while i < len(en.kids) { let a = len(en.kids[i].kids);  if a > m { m = a };  i += 1 }
   return m
 }
 # byte size of a variant box: an 8-byte tag slot + one 8-byte slot per payload
@@ -296,7 +297,7 @@ function enum_box_size(en: Node) -> int { return 8 * (1 + enum_max_arity(en)) }
 # C/Rust/Zig library binding — the same seam NETWORKING-DESIGN §5 names.
 function find_extern(name: pointer) -> Node {
   var i = 0
-  while i < len(prog) { let d = prog[i];  if d.kind == N_EXTERN and (d.s == name) { return d };  i = i + 1 }
+  while i < len(prog) { let d = prog[i];  if d.kind == N_EXTERN and (d.s == name) { return d };  i += 1 }
   return null
 }
 
@@ -313,7 +314,7 @@ function computed_expr(prop: pointer, field: pointer) -> Node {
   if (prop == null) { return null }
   let key = `{prop}.{field}`
   var i = 0
-  while i < len(g_computed) { if (g_computed[i].s == key) { return g_computed[i].a };  i = i + 1 }
+  while i < len(g_computed) { if (g_computed[i].s == key) { return g_computed[i].a };  i += 1 }
   return null
 }
 # best-effort static type of an expression (for computed-field lookup; emits nothing)
@@ -337,6 +338,19 @@ function static_type(e: Node) -> pointer {
     let bt = static_type(e.a)
     if (bt != null) { let s = layout_node(bt);  if (s != null) { return field_type(s, e.s) } }
   }
+  if e.kind == E_INDEX {                                             # slice[i] -> the element type
+    let bt = static_type(e.a)
+    if (bt != null) and is_slice_ty(bt) { return slice_elem(bt) }
+  }
+  if e.kind == E_NEW { return e.s }                                  # new T / new []T
+  if e.kind == E_LIST and len(e.kids) > 0 {                          # [a, b] -> a slice of the first's type
+    let et = static_type(e.kids[0])
+    if (et != null) { return "[]" + et }
+  }
+  if e.kind == E_STR or e.kind == E_SLICE { return "string" }
+  if e.kind == E_INT { return "int" }
+  if e.kind == E_FLOAT { return "fixed" }
+  if e.kind == E_BOOL { return "bool" }
   return null
 }
 
@@ -350,7 +364,7 @@ function register_onspawn(model: pointer, body: Node) -> void {
 }
 function onspawn_body(model: pointer) -> Node {
   var i = 0
-  while i < len(g_onspawn) { if (g_onspawn[i].s == model) { return g_onspawn[i].a };  i = i + 1 }
+  while i < len(g_onspawn) { if (g_onspawn[i].s == model) { return g_onspawn[i].a };  i += 1 }
   return null
 }
 
@@ -368,7 +382,7 @@ function register_ondespawn(model: pointer, body: Node, reason: pointer) -> void
 }
 function ondespawn_body(model: pointer) -> Node {
   var i = 0
-  while i < len(g_ondespawn) { if (g_ondespawn[i].s == model) { return g_ondespawn[i].a };  i = i + 1 }
+  while i < len(g_ondespawn) { if (g_ondespawn[i].s == model) { return g_ondespawn[i].a };  i += 1 }
   return null
 }
 function register_onattach(prop: pointer, body: Node) -> void {
@@ -376,7 +390,7 @@ function register_onattach(prop: pointer, body: Node) -> void {
 }
 function onattach_body(prop: pointer) -> Node {
   var i = 0
-  while i < len(g_onattach) { if (g_onattach[i].s == prop) { return g_onattach[i].a };  i = i + 1 }
+  while i < len(g_onattach) { if (g_onattach[i].s == prop) { return g_onattach[i].a };  i += 1 }
   return null
 }
 
@@ -389,7 +403,7 @@ function register_ondetach(prop: pointer, body: Node) -> void {
 }
 function ondetach_body(prop: pointer) -> Node {
   var i = 0
-  while i < len(g_ondetach) { if (g_ondetach[i].s == prop) { return g_ondetach[i].a };  i = i + 1 }
+  while i < len(g_ondetach) { if (g_ondetach[i].s == prop) { return g_ondetach[i].a };  i += 1 }
   return null
 }
 
@@ -401,12 +415,12 @@ function register_onenable(prop: pointer, body: Node) -> void { let n = node(N_B
 function register_ondisable(prop: pointer, body: Node) -> void { let n = node(N_BLOCK); n.s = prop; n.a = body; push(g_ondisable, n) }
 function onenable_body(prop: pointer) -> Node {
   var i = 0
-  while i < len(g_onenable) { if (g_onenable[i].s == prop) { return g_onenable[i].a };  i = i + 1 }
+  while i < len(g_onenable) { if (g_onenable[i].s == prop) { return g_onenable[i].a };  i += 1 }
   return null
 }
 function ondisable_body(prop: pointer) -> Node {
   var i = 0
-  while i < len(g_ondisable) { if (g_ondisable[i].s == prop) { return g_ondisable[i].a };  i = i + 1 }
+  while i < len(g_ondisable) { if (g_ondisable[i].s == prop) { return g_ondisable[i].a };  i += 1 }
   return null
 }
 
@@ -422,7 +436,7 @@ var g_cancel_addr: pointer = null   # EV3: address of the current cancellable di
 function register_event(n: Node) -> void { push(g_events, n) }
 function find_event(name: pointer) -> Node {
   var i = 0
-  while i < len(g_events) { if (g_events[i].s == name) { return g_events[i] };  i = i + 1 }
+  while i < len(g_events) { if (g_events[i].s == name) { return g_events[i] };  i += 1 }
   return null
 }
 function register_onlisten(evt: pointer, body: Node) -> void {
@@ -454,12 +468,12 @@ function ensure_event_empty(name: pointer) -> void {
 var g_toggled_layers: []pointer
 function note_toggled_layer(name: pointer) -> void {
   var i = 0
-  while i < len(g_toggled_layers) { if (g_toggled_layers[i] == name) { return };  i = i + 1 }
+  while i < len(g_toggled_layers) { if (g_toggled_layers[i] == name) { return };  i += 1 }
   push(g_toggled_layers, name)
 }
 function is_toggled_layer(name: pointer) -> bool {
   var i = 0
-  while i < len(g_toggled_layers) { if (g_toggled_layers[i] == name) { return true };  i = i + 1 }
+  while i < len(g_toggled_layers) { if (g_toggled_layers[i] == name) { return true };  i += 1 }
   return false
 }
 
@@ -474,11 +488,11 @@ function loc_reset() -> void { nloc = 0 }
 function loc_push(name: pointer, r: pointer, ty: pointer) -> void {
   if nloc < len(loc_name) { loc_name[nloc] = name;  loc_reg[nloc] = r;  loc_ty[nloc] = ty;  loc_mut[nloc] = 1 }
   else { push(loc_name, name);  push(loc_reg, r);  push(loc_ty, ty);  push(loc_mut, 1) }
-  nloc = nloc + 1
+  nloc += 1
 }
 function loc_set_mut(m: int) -> void { if nloc > 0 { loc_mut[nloc - 1] = m } }
 function loc_find(name: pointer) -> int {
   var i = nloc - 1
-  while i >= 0 { if (loc_name[i] == name) { return i }; i = i - 1 }
-  return 0 - 1
+  while i >= 0 { if (loc_name[i] == name) { return i }; i -= 1 }
+  return -1
 }

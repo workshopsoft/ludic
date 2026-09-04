@@ -68,7 +68,7 @@ function emit_engine_systems_for_phase(phase: pointer) -> void {
   var i = 0
   while i < len(g_esys_comp) {
     if (g_esys_phase[i] == phase) { emit_one_engine_system(g_esys_comp[i], g_esys_fn[i]) }
-    i = i + 1
+    i += 1
   }
   if (phase == "Update") {
     # Tween.* fluent handles (#48): advanced each Update tick when the game uses
@@ -100,7 +100,7 @@ function emit_countdown_system() -> void {
     if d.kind == N_COMP {
       var any = false
       var f = 0
-      while f < len(d.kids) { if (d.kids[f].ty == "countdown") { any = true };  f = f + 1 }
+      while f < len(d.kids) { if (d.kids[f].ty == "countdown") { any = true };  f += 1 }
       if any {
         let sk = itoa(k);  let nk = itoa(k + 1)
         emit("c");  emit(sk);  emit(":\n")
@@ -121,13 +121,13 @@ function emit_countdown_system() -> void {
             emit("  %fn");  emit(fk);  emit(" = select i1 %fp");  emit(fk);  emit(", i32 %fd");  emit(fk);  emit(", i32 %fv");  emit(fk);  emit("\n")
             emit("  store i32 %fn");  emit(fk);  emit(", ptr %fa");  emit(fk);  emit("\n")
           }
-          f = f + 1
+          f += 1
         }
         emit("  br label %c");  emit(nk);  emit("\n")
-        k = k + 1
+        k += 1
       }
     }
-    i = i + 1
+    i += 1
   }
   emit("c");  emit(itoa(k));  emit(":\n  br label %next\n")
   emit("next:\n  %i1 = add i32 %i, 1\n  br label %loop\ndone:\n  ret void\n}\n\n")
@@ -154,7 +154,7 @@ function emit_prefab_fn(pre: Node) -> void {
 }
 function emit_prefab_fns() -> void {
   var i = 0
-  while i < len(prog) { if prog[i].kind == N_PREFAB { emit_prefab_fn(prog[i]) };  i = i + 1 }
+  while i < len(prog) { if prog[i].kind == N_PREFAB { emit_prefab_fn(prog[i]) };  i += 1 }
   g_uses_str = true
   ll_t = 0;  ll_lbl = 0;  g_term = false;  loc_reset();  nloop = 0;  nself = 0
   let fbody = buf_new()
@@ -167,7 +167,7 @@ function emit_prefab_fns() -> void {
     if d.kind == N_PREFAB {
       let lit = node(E_STR);  lit.s = d.s
       let sv = emit_expr(lit)
-      let same = emit_bind(`call i32 @fn_str_eq(ptr %name, ptr {sv.code})`)
+      let same = emit_bind(`call i32 @lp_str_eq(ptr %name, ptr {sv.code})`)
       let hit = emit_bind(`icmp ne i32 {same}, 0`)
       let yes = lbl("pf");  let no = lbl("pfn")
       emit("  br i1 ");  emit(hit);  emit(", label %");  emit(yes);  emit(", label %");  emit(no);  emit("\n")
@@ -176,7 +176,7 @@ function emit_prefab_fns() -> void {
       emit("  ret i32 ");  emit(r);  emit("\n")
       emit(no);  emit(":\n")
     }
-    i = i + 1
+    i += 1
   }
   emit("  ret i32 -1\n")
   code = saved
@@ -209,9 +209,18 @@ function phase_id(phase: pointer) -> int {
   if phase == "LateUpdate" { return 3 }
   if phase == "Render" { return 4 }
   if phase == "Start" { return 5 }
-  if phase == "OnQuit" { return 6 }
+  if phase == "OnQuit" { return 6 }      # the @OnQuit hook's internal slot, never written as `phase OnQuit`
   if phase == "Overlay" { return 7 }      # HUD/UI pass after the engine drew sprites
+  perr(`unknown phase '{phase}'`)          # the parser rejects these; a desugaring bug if we get here
   return 7
+}
+
+# the phases a handler may declare — the frame loop's buckets, in the order the
+# frame runs them (Start once, then Input … Overlay every tick)
+function is_phase_name(name: pointer) -> bool {
+  if name == "Start" or name == "Input" or name == "FixedUpdate" or name == "Update" { return true }
+  if name == "LateUpdate" or name == "Render" or name == "Overlay" { return true }
+  return false
 }
 
 # --- binary-module glue (issue #64) ------------------------------------------
@@ -248,7 +257,7 @@ function emit_module_glue() -> void {
   var i = 0
   while i < len(g_mod_sys_fn) {
     emit("  call i32 @ludic_register_system(ptr @fn_");  emit(g_mod_sys_fn[i]);  emit(", i32 ");  emit(itoa(phase_id(g_mod_sys_phase[i])));  emit(")\n")
-    i = i + 1
+    i += 1
   }
   emit("  ret void\n}\n\n")
   # run @__ludic_mod_init at image load (dyld runs constructors before main)
@@ -309,12 +318,12 @@ function emit_calls_for_phase(phase: pointer) -> void {
   while i < len(prog) {
     let d = prog[i]
     if d.kind == N_SYS and (d.ty == phase) and (d.c == null) { emit_call_one(d) }
-    i = i + 1
+    i += 1
   }
   # any scene-owned handlers in this phase? gate them on one @L_scene snapshot.
   var has_sc = false
   i = 0
-  while i < len(prog) { let d = prog[i];  if d.kind == N_SYS and (d.ty == phase) and (d.c != null) { has_sc = true };  i = i + 1 }
+  while i < len(prog) { let d = prog[i];  if d.kind == N_SYS and (d.ty == phase) and (d.c != null) { has_sc = true };  i += 1 }
   if has_sc {
     let cs = emit_bind("load i32, ptr @L_scene")
     i = 0
@@ -328,7 +337,7 @@ function emit_calls_for_phase(phase: pointer) -> void {
         emit_call_one(d)
         emit("  br label %");  emit(skip);  emit("\n");  emit(skip);  emit(":\n")
       }
-      i = i + 1
+      i += 1
     }
   }
   emit_engine_systems_for_phase(phase)               # engine-owned systems run after every user handler
@@ -340,7 +349,7 @@ function emit_calls_for_phase(phase: pointer) -> void {
 function emit_scene_menu_render() -> void {
   var any = false
   var i = 0
-  while i < len(g_scenes) { if (g_scenes[i].ty != null) { any = true };  i = i + 1 }
+  while i < len(g_scenes) { if (g_scenes[i].ty != null) { any = true };  i += 1 }
   if not any { return }
   let cs = emit_bind("load i32, ptr @L_scene")
   i = 0
@@ -353,7 +362,7 @@ function emit_scene_menu_render() -> void {
       emit(run);  emit(":\n  call void @fn_rt_ui_render()\n")
       emit("  br label %");  emit(skip);  emit("\n");  emit(skip);  emit(":\n")
     }
-    i = i + 1
+    i += 1
   }
 }
 
@@ -393,7 +402,7 @@ function emit_scene_hooks() -> void {
     g_cur_scene = sc
     emit_scene_fn(sc.s, "enter", sc.a, sc.ty)
     emit_scene_fn(sc.s, "exit", sc.b, sc.ty)
-    i = i + 1
+    i += 1
   }
   g_cur_scene = null
   if len(g_scenes) > 0 { emit_scene_leave_fn() }   # a program without scenes has no @L_scene
@@ -413,7 +422,7 @@ function emit_scene_leave_fn() -> void {
     emit("  br i1 %is");  emit(k);  emit(", label %leave");  emit(k);  emit(", label %next");  emit(k);  emit("\n")
     emit("leave");  emit(k);  emit(":\n  call void @scene_exit_");  emit(sc.s);  emit("()\n  ret void\n")
     emit("next");  emit(k);  emit(":\n")
-    i = i + 1
+    i += 1
   }
   emit("  ret void\n}\n\n")
 }
@@ -447,7 +456,7 @@ function emit_despawn_hooks() -> void {
     emit(buf_str(falloc))
     emit(buf_str(fbody))
     emit("}\n\n")
-    i = i + 1
+    i += 1
   }
   emit_despawn_all_fn()
 }
@@ -475,7 +484,7 @@ function emit_world_despawn_fn() -> void {
       if (find_event(dev) != null) { emit("  call void @ev_");  emit(dev);  emit("(i32 %e, i32 0)\n") }
       emit("  br label %next");  emit(si);  emit("\n")
       emit("next");  emit(si);  emit(":\n")
-      i = i + 1
+      i += 1
     }
   }
   if len(g_events) > 0 { emit("  call void @ludic_sweep_entity(i32 %e)\n") }   # EV5: drop entity-scoped listeners
@@ -512,7 +521,7 @@ function emit_despawn_all_fn() -> void {
     if (find_event(dev) != null) { emit("  call void @ev_");  emit(dev);  emit("(i32 %i, i32 %reason)\n") }
     emit("  br label %next");  emit(si);  emit("\n")
     emit("next");  emit(si);  emit(":\n")
-    i = i + 1
+    i += 1
   }
   emit("  br label %cont\n")
   emit("cont:\n  %i1 = add i32 %i, 1\n  br label %loop\n")
@@ -557,7 +566,7 @@ function emit_event_fns() -> void {
     while t < len(ev.kids) {
       if t > 0 { emith(", ") }
       emith(llty(ev.kids[t].ty))
-      t = t + 1
+      t += 1
     }
     if ev.ival == 1 { if len(ev.kids) > 0 { emith(", ") };  emith("i32") }
     emith(" }\n")
@@ -629,7 +638,7 @@ function emit_event_fns() -> void {
       let slot = emit_alloca(lt)
       emit("  store ");  emit(lt);  emit(" %p");  emit(itoa(f));  emit(", ptr ");  emit(slot);  emit("\n")
       loc_push(fd.s, slot, fd.ty)
-      f = f + 1
+      f += 1
     }
     # cancellable: zero the flag and expose its address to `cancel` in the listeners
     var caddr = null
@@ -642,7 +651,7 @@ function emit_event_fns() -> void {
     var i = 0
     while i < len(g_onlisten) {
       if (g_onlisten[i].s == en) { nloc = base;  g_term = false;  emit_block(g_onlisten[i].a) }
-      i = i + 1
+      i += 1
     }
     # the open half: walk the foreign callback array in registration order
     if not g_term {
@@ -684,13 +693,13 @@ function emit_event_fns() -> void {
     while g < len(ev.kids) {
       if g > 0 { emit(", ") }
       emit(llty(ev.kids[g].ty));  emit(" %p");  emit(itoa(g))
-      g = g + 1
+      g += 1
     }
     emit(") {\nentry:\n")
     emit(buf_str(falloc))
     emit(buf_str(fbody))
     emit("}\n\n")
-    e = e + 1
+    e += 1
   }
 
   # EV5: @ludic_sweep_entity(owner) — remove every entity-scoped listener owned by
@@ -719,8 +728,7 @@ function emit_event_fns() -> void {
     emit("swd");  emit(sk);  emit(":\n  store i32 0, ptr %ci\n")
     if (e2 + 1) < len(g_events) { emit("  br label %sw");  emit(itoa(e2 + 1));  emit("\n") }
     else { emit("  ret void\n") }
-    e2 = e2 + 1
+    e2 += 1
   }
   emit("}\n\n")
 }
-

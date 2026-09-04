@@ -23,7 +23,7 @@ function emit_world_table() -> void {
   # and prop_id fall through to this table for a prop id >= NC.
   var ncomp = 0
   var ci0 = 0
-  while ci0 < len(prog) { if prog[ci0].kind == N_COMP { ncomp = ncomp + 1 };  ci0 = ci0 + 1 }
+  while ci0 < len(prog) { if prog[ci0].kind == N_COMP { ncomp += 1 };  ci0 += 1 }
   let NC = itoa(ncomp)
   emith("@dyn_count = global i32 0\n")
   emith("@dynS = global [32 x ptr] zeroinitializer\n")     # storage base per dyn component
@@ -43,9 +43,9 @@ function emit_world_table() -> void {
       emit("  br i1 %e");  emit(sk);  emit(", label %h");  emit(sk);  emit(", label %n");  emit(sk);  emit("\n")
       emit("h");  emit(sk);  emit(":\n  ret i32 ");  emit(sk);  emit("\n")
       emit("n");  emit(sk);  emit(":\n")
-      k = k + 1
+      k += 1
     }
-    i = i + 1
+    i += 1
   }
   # EV7: not a compile-time component — search the dynamic (mod-registered) names
   emit("  %dpi = alloca i32\n  store i32 0, ptr %dpi\n  br label %dpl\n")
@@ -72,13 +72,13 @@ function emit_world_table() -> void {
         emit("  br i1 %fe");  emit(fk);  emit(", label %fh");  emit(fk);  emit(", label %fn");  emit(fk);  emit("\n")
         emit("fh");  emit(fk);  emit(":\n  ret i32 ");  emit(itoa(f));  emit("\n")
         emit("fn");  emit(fk);  emit(":\n")
-        f = f + 1
+        f += 1
       }
       emit("  ret i32 -1\n")
       emit("pn");  emit(sk);  emit(":\n")
-      k = k + 1
+      k += 1
     }
-    i = i + 1
+    i += 1
   }
   emit("  ret i32 -1\n}\n\n")
 
@@ -115,13 +115,13 @@ function emit_world_table() -> void {
           emit("  %gr");  emit(fk);  emit(" = sext i32 %gl");  emit(fk);  emit(" to i64\n  ret i64 %gr");  emit(fk);  emit("\n")
         } }
         emit("gk");  emit(fk);  emit(":\n")
-        fj = fj + 1
+        fj += 1
       }
       emit("  ret i64 0\n")
       emit("gn");  emit(sk);  emit(":\n")
-      k = k + 1
+      k += 1
     }
-    i = i + 1
+    i += 1
   }
   # EV7: prop id >= NC -> a mod-registered component; index its flat storage
   emit("  %gdyn = sub i32 %p, ");  emit(NC);  emit("\n")
@@ -158,13 +158,13 @@ function emit_world_table() -> void {
           emit("  store i32 %sw");  emit(fk);  emit(", ptr %sa");  emit(fk);  emit("\n  ret void\n")
         } }
         emit("sk");  emit(fk);  emit(":\n")
-        fj = fj + 1
+        fj += 1
       }
       emit("  ret void\n")
       emit("gn");  emit(sk);  emit(":\n")
-      k = k + 1
+      k += 1
     }
-    i = i + 1
+    i += 1
   }
   # EV7: prop id >= NC -> a mod-registered component
   emit("  %sdyn = sub i32 %p, ");  emit(NC);  emit("\n")
@@ -186,9 +186,9 @@ function emit_world_table() -> void {
       emit("  %hv");  emit(sk);  emit(" = load i8, ptr %hp");  emit(sk);  emit("\n")
       emit("  %hr");  emit(sk);  emit(" = zext i8 %hv");  emit(sk);  emit(" to i32\n  ret i32 %hr");  emit(sk);  emit("\n")
       emit("gn");  emit(sk);  emit(":\n")
-      k = k + 1
+      k += 1
     }
-    i = i + 1
+    i += 1
   }
   # EV7: prop id >= NC -> a mod-registered component's has-flag array
   emit("  %hdyn = sub i32 %p, ");  emit(NC);  emit("\n")
@@ -234,9 +234,9 @@ function emit_world_table() -> void {
       emit("  br i1 %mde");  emit(sk);  emit(", label %mdh");  emit(sk);  emit(", label %mdn");  emit(sk);  emit("\n")
       emit("mdh");  emit(sk);  emit(":\n  ret i32 ");  emit(itoa(find_arch_id(prog[i].s)));  emit("\n")
       emit("mdn");  emit(sk);  emit(":\n")
-      k = k + 1
+      k += 1
     }
-    i = i + 1
+    i += 1
   }
   emit("  ret i32 -1\n}\n\n")
 
@@ -263,7 +263,7 @@ function emit_world_table() -> void {
       emit(buf_str(fbody))
       emit("}\n\n")
     }
-    i = i + 1
+    i += 1
   }
   emit("define i32 @ludic_spawn(i32 %m) {\nentry:\n")
   k = 0;  i = 0
@@ -274,9 +274,9 @@ function emit_world_table() -> void {
       emit("  br i1 %sm");  emit(sk);  emit(", label %sh");  emit(sk);  emit(", label %sn");  emit(sk);  emit("\n")
       emit("sh");  emit(sk);  emit(":\n  %sr");  emit(sk);  emit(" = call i32 @ludic_spawn_");  emit(m);  emit("()\n  ret i32 %sr");  emit(sk);  emit("\n")
       emit("sn");  emit(sk);  emit(":\n")
-      k = k + 1
+      k += 1
     }
-    i = i + 1
+    i += 1
   }
   emit("  ret i32 -1\n}\n\n")
 
@@ -309,7 +309,7 @@ function emit_world_reflect_enum() -> void {
   # count the compile-time components (== the first dynamic prop id)
   var ncomp = 0
   var i = 0
-  while i < len(prog) { if prog[i].kind == N_COMP { ncomp = ncomp + 1 };  i = i + 1 }
+  while i < len(prog) { if prog[i].kind == N_COMP { ncomp += 1 };  i += 1 }
   let NC = itoa(ncomp)
 
   # ludic_prop_count() -> total property count (compile-time + mod-registered)
@@ -326,9 +326,9 @@ function emit_world_reflect_enum() -> void {
       emit("  br i1 %pe");  emit(sk);  emit(", label %ph");  emit(sk);  emit(", label %pn");  emit(sk);  emit("\n")
       emit("ph");  emit(sk);  emit(":\n  ret ptr ");  emit(sc);  emit("\n")
       emit("pn");  emit(sk);  emit(":\n")
-      k = k + 1
+      k += 1
     }
-    i = i + 1
+    i += 1
   }
   emit("  %dyn = sub i32 %i, ");  emit(NC);  emit("\n  %dc = load i32, ptr @dyn_count\n")
   emit("  %ib = icmp uge i32 %dyn, %dc\n  br i1 %ib, label %pbad, label %pdyn\n")
@@ -345,9 +345,9 @@ function emit_world_reflect_enum() -> void {
       emit("  br i1 %fce");  emit(sk);  emit(", label %fch");  emit(sk);  emit(", label %fcn");  emit(sk);  emit("\n")
       emit("fch");  emit(sk);  emit(":\n  ret i32 ");  emit(itoa(len(c.kids)));  emit("\n")
       emit("fcn");  emit(sk);  emit(":\n")
-      k = k + 1
+      k += 1
     }
-    i = i + 1
+    i += 1
   }
   emit("  %dyn = sub i32 %p, ");  emit(NC);  emit("\n  %dc = load i32, ptr @dyn_count\n")
   emit("  %ib = icmp uge i32 %dyn, %dc\n  br i1 %ib, label %fcbad, label %fcdyn\n")
@@ -370,13 +370,13 @@ function emit_world_reflect_enum() -> void {
         emit("  br i1 %fnfe");  emit(fk);  emit(", label %fnfh");  emit(fk);  emit(", label %fnfn");  emit(fk);  emit("\n")
         emit("fnfh");  emit(fk);  emit(":\n  ret ptr ");  emit(fc);  emit("\n")
         emit("fnfn");  emit(fk);  emit(":\n")
-        f = f + 1
+        f += 1
       }
       emit("  ret ptr ");  emit(empty);  emit("\n")
       emit("fnn");  emit(sk);  emit(":\n")
-      k = k + 1
+      k += 1
     }
-    i = i + 1
+    i += 1
   }
   emit("  ret ptr ");  emit(empty);  emit("\n}\n\n")
 
@@ -396,13 +396,13 @@ function emit_world_reflect_enum() -> void {
         emit("  br i1 %ftfe");  emit(fk);  emit(", label %ftfh");  emit(fk);  emit(", label %ftfn");  emit(fk);  emit("\n")
         emit("ftfh");  emit(fk);  emit(":\n  ret ptr ");  emit(tc);  emit("\n")
         emit("ftfn");  emit(fk);  emit(":\n")
-        f = f + 1
+        f += 1
       }
       emit("  ret ptr ");  emit(tint);  emit("\n")
       emit("ftn");  emit(sk);  emit(":\n")
-      k = k + 1
+      k += 1
     }
-    i = i + 1
+    i += 1
   }
   emit("  ret ptr ");  emit(tint);  emit("\n}\n\n")
 }
@@ -431,7 +431,7 @@ function emit_tick_helpers() -> void {
 function emit_game_defs() -> void {
   emit_system_registry()                  # #64: @ludic_register_system + the registry globals
   var i = 0
-  while i < len(prog) { if prog[i].kind == N_SYS { emit_system_fn(prog[i]) };  i = i + 1 }
+  while i < len(prog) { if prog[i].kind == N_SYS { emit_system_fn(prog[i]) };  i += 1 }
   emit_despawn_hooks()
   emit_scene_hooks()
   if has_countdowns() { emit_countdown_system() }   # `countdown` fields (see emit_game.ludic)
@@ -454,7 +454,7 @@ function emit_game_main() -> void {
     var si = 0
     while si < len(g_scenes) {
       if (g_scenes[si].ival == g_start_scene) { emit("  call void @scene_enter_");  emit(g_scenes[si].s);  emit("()\n") }
-      si = si + 1
+      si += 1
     }
   }
   if (find_event("program_start") != null) { emit("  call void @ev_program_start()\n") }   # EV1: @Public @OnStart
@@ -502,7 +502,8 @@ function emit_game_main() -> void {
   # with no @ClearColor is byte-identical (it clears/shows itself, or the light
   # system owns the present).
   if g_has_clear_color and (find_fn("rt_clear") != null) {
-    emit("  call void @fn_rt_clear(i32 ");  emit(itoa(g_clear_color));  emit(")\n")
+    let colour = emit_expr(g_clear_color)          # a literal, a const, or a Color.Name
+    emit("  call void @fn_rt_clear(i32 ");  emit(colour.code);  emit(")\n")
   }
   emit_calls_for_phase("Render")
   # Overlay: HUD / menus drawn after every engine Render system (sprites, lights), so

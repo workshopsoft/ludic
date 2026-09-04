@@ -65,10 +65,10 @@ function ease_eval(mode: int, t: pointer) -> pointer {
     g_uses_mathrt = true                            # 2^(-10t) * sin((10t - 0.75) * 2pi/3) + 1
     let tt = emit_bind(`mul i32 {t}, 10`)            # 10t
     let ntt = emit_bind(`sub i32 0, {tt}`)           # -10t (exp2 exponent, Q16.16)
-    let decay = emit_bind(`call i32 @fn_fx_exp2(i32 {ntt})`)
+    let decay = emit_bind(`call i32 @lp_fx_exp2(i32 {ntt})`)
     let ph = emit_bind(`sub i32 {tt}, 49152`)        # 10t - 0.75
     let ang = fx_mul_code(ph, "137258")              # * (2pi/3), 2pi/3 = 137258 fixed
-    let s = emit_bind(`call i32 @fn_fx_sin(i32 {ang})`)
+    let s = emit_bind(`call i32 @lp_fx_sin(i32 {ang})`)
     let osc = fx_mul_code(decay, s)
     return emit_bind(`add i32 {osc}, 65536`)
   }
@@ -82,6 +82,6 @@ function emit_ease_ns(meth: pointer, e: Node) -> Val {
   if (meth == "out")    { return val(ease_eval(2, t.code), "fixed") }
   if (meth == "in_out") { return val(ease_eval(3, t.code), "fixed") }
   if (meth == "back")   { return val(ease_eval(4, t.code), "fixed") }
-  if (meth == "elastic"){ return val(ease_eval(5, t.code), "fixed") }
+  if (meth == "elastic") { return val(ease_eval(5, t.code), "fixed") }
   return val(ease_eval(6, t.code), "fixed")         # bounce
 }

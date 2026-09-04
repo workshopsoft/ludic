@@ -28,7 +28,7 @@ function key_lookup(name: pointer) -> int {
   # a single capital letter names that letter key: Key.A .. Key.Z
   if (name[1] == 0) {
     let c = name[0]
-    if (c >= 65) and (c <= 90) { return c + 32 }
+    if (c >= 'A') and (c <= 'Z') { return c + 32 }
   }
-  return 0 - 1
+  return -1
 }

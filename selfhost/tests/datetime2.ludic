@@ -8,7 +8,7 @@ program T {
     print(DateTime.format(t, "DD/MM/YY"))     # 30/08/26
 
     # parse — round-trips to the same instant; missing fields default to midnight
-    print(DateTime.parse("2026-08-30", "YYYY-MM-DD") - Date.to_epoch(Date.new(2026, 8, 30))) # 0
+    print(DateTime.parse("2026-08-30", "YYYY-MM-DD") - Date.to_epoch(Date.new(2026, 8, 30)))  # 0
     print(DateTime.parse("zz", "YYYY"))       # -1 (non-digit -> parse fails)
 
     # Clock — the game-controlled simulated clock

@@ -14,7 +14,7 @@ These are the two declarative switches at the top of Ludic's networking: <code>@
 ```ludic
 program SyncedWorld {
   @Sync property Position { column: int = 0, row: int = 0 }   # every field replicable
-  property Health { @Sync current: int = 0, maximum: int = 0 } # only current replicable
+  property Health { @Sync current: int = 0, maximum: int = 0 }  # only current replicable
 
   @Owned model Player { @Sync Position, @Sync Health }         # participates -> column,row,current
   model Scenery { Position }                                   # not @Sync here -> never replicates

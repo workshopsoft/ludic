@@ -13,17 +13,17 @@ function buf_new() -> Buf {
 }
 function buf_ensure(b: Buf, extra: int) -> void {
   if b.len + extra + 1 <= b.cap { return }
-  while b.len + extra + 1 > b.cap { b.cap = b.cap * 2 }
+  while b.len + extra + 1 > b.cap { b.cap *= 2 }
   b.data = resize(b.data, b.cap)
 }
 function buf_putc(b: Buf, c: int) -> void {
   buf_ensure(b, 1)
   b.data[b.len] = c
-  b.len = b.len + 1
+  b.len += 1
 }
 function buf_puts(b: Buf, s: pointer) -> void {
   var i = 0
-  while s[i] != 0 { buf_putc(b, s[i]); i = i + 1 }
+  while s[i] != 0 { buf_putc(b, s[i]); i += 1 }
 }
 function buf_puti(b: Buf, n: int) -> void { buf_puts(b, itoa(n)) }
 function buf_str(b: Buf) -> pointer { b.data[b.len] = 0; return b.data }

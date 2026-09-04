@@ -50,12 +50,12 @@ function emit_hash_ns(meth: pointer, e: Node) -> Val {
   if (meth == "of") or (meth == "fnv1a") {          # FNV-1a 32-bit over the bytes
     g_uses_hashrt = true
     let s = emit_expr(e.kids[0])
-    return val(emit_bind(`call i32 @fn_hash_fnv1a(ptr {s.code})`), "int")
+    return val(emit_bind(`call i32 @lp_hash_fnv1a(ptr {s.code})`), "int")
   }
   if (meth == "of64") or (meth == "fnv1a_64") {     # FNV-1a 64-bit -> a `long`
     g_uses_hashrt = true
     let s = emit_expr(e.kids[0])
-    return val(emit_bind(`call i64 @fn_hash_fnv1a_64(ptr {s.code})`), "long")
+    return val(emit_bind(`call i64 @lp_hash_fnv1a_64(ptr {s.code})`), "long")
   }
   if (meth == "mix64") {                            # fmix64 avalanche of one long
     let x = emit_expr(e.kids[0])
@@ -64,7 +64,7 @@ function emit_hash_ns(meth: pointer, e: Node) -> Val {
   if (meth == "crc32") {                            # CRC-32 (IEEE) checksum
     g_uses_hashrt = true
     let s = emit_expr(e.kids[0])
-    return val(emit_bind(`call i32 @fn_hash_crc32(ptr {s.code})`), "int")
+    return val(emit_bind(`call i32 @lp_hash_crc32(ptr {s.code})`), "int")
   }
   if (meth == "mix") {                              # fmix32 avalanche of one int
     let x = emit_expr(e.kids[0])
@@ -84,7 +84,7 @@ function emit_hash_ns(meth: pointer, e: Node) -> Val {
     let t1 = emit_bind(`add i32 {g}, {sl}`)
     let t2 = emit_bind(`add i32 {t1}, {sr}`)
     seed = emit_bind(`xor i32 {seed}, {t2}`)
-    i = i + 1
+    i += 1
   }
   return val(seed, "int")
 }
@@ -95,7 +95,7 @@ function emit_hash_ns(meth: pointer, e: Node) -> Val {
 # prime, and a bitwise CRC-32 with the reflected poly 0xEDB88320. No libc, no
 # allocation, bit-identical on every target.
 function emit_hash_prelude() -> void {
-  emith("define i32 @fn_hash_fnv1a(ptr %s) {\n")
+  emith("define i32 @lp_hash_fnv1a(ptr %s) {\n")
   emith("entry:\n")
   emith("  %hp = alloca i32\n")
   emith("  store i32 -2128831035, ptr %hp\n")       # 0x811c9dc5 offset basis
@@ -121,7 +121,7 @@ function emit_hash_prelude() -> void {
   emith("  %hr = load i32, ptr %hp\n")
   emith("  ret i32 %hr\n")
   emith("}\n")
-  emith("define i64 @fn_hash_fnv1a_64(ptr %s) {\n")  # 64-bit FNV-1a, same shape, i64
+  emith("define i64 @lp_hash_fnv1a_64(ptr %s) {\n")  # 64-bit FNV-1a, same shape, i64
   emith("entry:\n")
   emith("  %hp = alloca i64\n")
   emith("  store i64 -3750763034362895579, ptr %hp\n")   # 0xcbf29ce484222325 offset basis
@@ -147,7 +147,7 @@ function emit_hash_prelude() -> void {
   emith("  %hr = load i64, ptr %hp\n")
   emith("  ret i64 %hr\n")
   emith("}\n")
-  emith("define i32 @fn_hash_crc32(ptr %s) {\n")
+  emith("define i32 @lp_hash_crc32(ptr %s) {\n")
   emith("entry:\n")
   emith("  %cp = alloca i32\n")
   emith("  store i32 -1, ptr %cp\n")                # init 0xFFFFFFFF

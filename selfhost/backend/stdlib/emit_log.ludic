@@ -33,9 +33,9 @@ function is_log_ns(meth: pointer) -> bool {
 # and an int are converted the same way the `string(...)` builtin does.
 function log_stringify(v: Val) -> pointer {
   if (llty(v.ty) == "ptr") { return v.code }
-  if (llty(v.ty) == "i64") { g_uses_longstr = true;  return emit_bind(`call ptr @fn_long_str(i64 {v.code})`) }
+  if (llty(v.ty) == "i64") { g_uses_longstr = true;  return emit_bind(`call ptr @lp_long_str(i64 {v.code})`) }
   g_uses_intstr = true
-  return emit_bind(`call ptr @fn_int_str(i32 {v.code})`)
+  return emit_bind(`call ptr @lp_int_str(i32 {v.code})`)
 }
 
 function emit_log_ns(meth: pointer, e: Node) -> Val {
@@ -67,19 +67,19 @@ function emit_log_ns(meth: pointer, e: Node) -> Val {
     line = emit_str_op("+", line, val(log_stringify(k), "string"))
     line = emit_str_op("+", line, val(emit_str_const("="), "string"))
     line = emit_str_op("+", line, val(log_stringify(v), "string"))
-    i = i + 2
+    i += 2
   }
-  emit(`  call void @fn_log_emit(i32 {lvl}, ptr {line.code})\n`)
+  emit(`  call void @lp_log_emit(i32 {lvl}, ptr {line.code})\n`)
   return val("0", "void")
 }
 
 # emit_log_prelude — the log level register and the console sink, emitted once per
-# program that uses Log.* (g_uses_logrt). @fn_log_emit checks the threshold and,
+# program that uses Log.* (g_uses_logrt). @lp_log_emit checks the threshold and,
 # if the message is at or above it, writes the line + newline to stderr.
 function emit_log_prelude() -> void {
   emith("@L_log_level = global i32 0\n")
   emith("@.log_nl = private unnamed_addr constant [2 x i8] c\"\\0A\\00\"\n")
-  emith("define void @fn_log_emit(i32 %lvl, ptr %s) {\n")
+  emith("define void @lp_log_emit(i32 %lvl, ptr %s) {\n")
   emith("entry:\n  %th = load i32, ptr @L_log_level\n  %skip = icmp slt i32 %lvl, %th\n  br i1 %skip, label %done, label %go\n")
   emith("go:\n  %e = load ptr, ptr @__stderrp\n  %n = call i64 @strlen(ptr %s)\n")
   emith("  %w = call i64 @fwrite(ptr %s, i64 1, i64 %n, ptr %e)\n  %w2 = call i64 @fwrite(ptr @.log_nl, i64 1, i64 1, ptr %e)\n  br label %done\n")

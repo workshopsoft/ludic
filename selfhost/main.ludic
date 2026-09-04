@@ -11,14 +11,14 @@
 #   ludic  app.ludic                       # compile to a temp binary and run it
 #
 # The multi-call twist: when argv[0] is "ludic" it defaults to compile-and-run.
-# With no -o and no run, IR still goes to stdout — the contract build.sh and
-# reseed.sh rely on, so the bootstrap is untouched.
+# With no -o and no run, IR still goes to stdout — the contract `x reseed` and
+# `x bootstrap` rely on, so the bootstrap is untouched.
 
 # basename: the part of a path after the last '/'.
 function base_name(path: pointer) -> pointer {
-  var last = 0 - 1
+  var last = -1
   var i = 0
-  while path[i] != 0 { if path[i] == 47 { last = i };  i = i + 1 }
+  while path[i] != 0 { if path[i] == '/' { last = i };  i += 1 }
   return path[last + 1..i]
 }
 
@@ -42,8 +42,8 @@ function getenv_or(name: pointer, dflt: pointer) -> pointer {
 function ensure_slash(d: pointer) -> pointer {
   let n = len(d)
   if n == 0 { return d }
-  if d[n - 1] == 47 { return d }
-  return (d + ("/"))
+  if d[n - 1] == '/' { return d }
+  return d + "/"
 }
 
 function die(msg: pointer) -> void {
@@ -54,7 +54,7 @@ function die(msg: pointer) -> void {
 # strip trailing newline/carriage-return/space (the VERSION file's trailing \n)
 function chomp(s: pointer) -> pointer {
   var n = len(s)
-  while (n > 0) and ((s[n - 1] == 10) or (s[n - 1] == 13) or (s[n - 1] == 32)) { n = n - 1 }
+  while (n > 0) and ((s[n - 1] == '\n') or (s[n - 1] == '\r') or (s[n - 1] == ' ')) { n -= 1 }
   return s[0..n]
 }
 
@@ -85,25 +85,23 @@ entry {
   var ai = 1
   while ai < arg_count() {
     let a = arg(ai)
-    if (a == ("--version")) { show_version() }
-    else { if (a == ("--windowed")) { want = 1 }
-    else { if (a == ("--headless")) { want = 2 }
-    else { if (a == ("--emit-llvm")) { emit_ir = true }
-    else { if (a == ("--emit-module")) { g_emit_module = true;  emit_ir = true }   # issue #64: prebuilt binary module IR
-    else { if (a == ("--fmt")) { fmt = true }
-    else { if (a == ("--save-temps")) { save = true }
-    else { if (a == ("--run")) { run = true }
-    else { if (a == ("--coverage")) { g_coverage = true }
-    else { if (a == ("-o")) { ai = ai + 1;  if ai < arg_count() { out = arg(ai) } }
-    else {
-      # an unknown flag is ignored (with a note) rather than mistaken for the
-      # input file — '-' is ASCII 45
-      if a[0] == 45 {
-        let m = `ludicc: ignoring unknown flag {a}\n`
-        file_write(file_stderr(), m, len(m))
-      } else { path = a }
-    } } } } } } } } } }
-    ai = ai + 1
+    if a == "--version" { show_version() }
+    else if a == "--windowed" { want = 1 }
+    else if a == "--headless" { want = 2 }
+    else if a == "--emit-llvm" { emit_ir = true }
+    else if a == "--emit-module" { g_emit_module = true;  emit_ir = true }   # issue #64: prebuilt binary module IR
+    else if a == "--fmt" { fmt = true }
+    else if a == "--save-temps" { save = true }
+    else if a == "--run" { run = true }
+    else if a == "--coverage" { g_coverage = true }
+    else if a == "-o" { ai += 1;  if ai < arg_count() { out = arg(ai) } }
+    else if a[0] == '-' {
+      # an unknown flag is ignored (with a note) rather than mistaken for the input file
+      let m = `ludicc: ignoring unknown flag {a}\n`
+      file_write(file_stderr(), m, len(m))
+    }
+    else { path = a }
+    ai += 1
   }
 
   if (path == null) {
@@ -114,6 +112,7 @@ entry {
 
   cur_dir = dir_of(path)
   g_src_name = base_name(path)                    # for panic/expect file:line messages
+  g_parse_file = path                             # for the compiler's own file:line diagnostics
   lex(src)
   parse_program()
   g_prog_user_end = len(prog)                     # decls from the user's source; runtime splice appends after
@@ -128,12 +127,13 @@ entry {
 
   # a game gets a window by default; a plain program stays headless. An explicit
   # flag always wins. The stdout-IR path (no target) also stays headless, which
-  # is what reseed.sh compiles the compiler itself with.
-  let has_target = run or ((out != null))
+  # is what `x reseed` compiles the compiler itself with.
+  let has_target = run or (out != null)
   if want == 1 { g_windowed = true }
-  else { if want == 2 { g_windowed = false }
-  else { g_windowed = has_target and has_systems() } }
+  else if want == 2 { g_windowed = false }
+  else { g_windowed = has_target and has_systems() }
 
+  g_parsing = false                               # lowering errors now locate by statement, not token
   emit_program()
 
   # --emit-llvm, or no binary target: emit IR and stop (stdout when out is null).

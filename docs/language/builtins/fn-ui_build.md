@@ -24,19 +24,19 @@ program TitleMenu {
   }
 
   handler Boot phase Start {
-    title_font = font_load("/System/Library/Fonts/Supplemental/Arial.ttf")
+    title_font = Font.load("/System/Library/Fonts/Supplemental/Arial.ttf")
     ui_build()
-    ui_open(UI_MainMenu)
+    Ui.open(UI_MainMenu)
   }
 
   handler Navigate phase Update {
-    ui_tick(Input.key())
-    if ui_clicked(UI_Quit) { quit() }
+    Ui.tick(Input.key())
+    if Ui.clicked(UI_Quit) { quit() }
   }
 
   handler DrawWorld phase Render {
     Screen.clear(Color.MidnightBlue)
-    ui_render()
+    Ui.render()
     Screen.show()
   }
 }

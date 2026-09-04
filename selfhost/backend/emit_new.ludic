@@ -15,7 +15,7 @@ function rec_field(rec: Node, fname: pointer) -> Node {
   while i < len(rec.kids) {
     let fi = rec.kids[i]
     if (fi.s == fname) { return fi.a }
-    i = i + 1
+    i += 1
   }
   return null
 }
@@ -42,7 +42,7 @@ function emit_new_struct(name: pointer, rec: Node) -> Val {
     let ov = rec_field(rec, fd.s)               # explicit override wins over the default
     if (ov != null) { let dv = emit_expr(ov);  v = dv.code }
     emit("  store ");  emit(lt);  emit(" ");  emit(v);  emit(", ptr ");  emit(addr);  emit("\n")
-    f = f + 1
+    f += 1
   }
   return val(obj, name)
 }
@@ -78,9 +78,32 @@ function emit_len(e: Node) -> Val {
 
 function emit_push(e: Node) -> Val {
   let s = emit_expr(e.kids[0])
-  let el = slice_elem(s.ty)
-  let elt = llty(el)
-  let h = s.code
+  emit_push_into(s.code, llty(slice_elem(s.ty)), emit_expr(e.kids[1]))
+  return val("0", "void")
+}
+
+# `[a, b, c]` — a fresh slice holding the elements in order. The element type
+# is the first element's; an empty literal has none, so it is spelled `new []T`.
+function emit_list(e: Node) -> Val {
+  if len(e.kids) == 0 { perr("an empty list literal has no element type: write `new []T` instead") }
+  let first = emit_expr(e.kids[0])
+  let ty = "[]" + first.ty
+  let elt = llty(first.ty)
+  let s = emit_new_slice(ty)
+  emit_push_into(s.code, elt, first)
+  var i = 1
+  while i < len(e.kids) {
+    let v = emit_expr(e.kids[i])
+    if not (v.ty == first.ty) { perr(`list literal mixes element types {first.ty} and {v.ty}`) }
+    emit_push_into(s.code, elt, v)
+    i += 1
+  }
+  return s
+}
+
+# append the already-emitted value `v` (of LLVM element type `elt`) to the slice
+# whose header is `h`, growing the storage when it is full
+function emit_push_into(h: pointer, elt: pointer, v: Val) -> void {
   let lp = slice_field(h, 1);  let cp = slice_field(h, 2);  let dp = slice_field(h, 0)
   let l = emit_bind(`load i32, ptr {lp}`)
   let c = emit_bind(`load i32, ptr {cp}`)
@@ -100,12 +123,10 @@ function emit_push(e: Node) -> Val {
   emit("  store i32 ");  emit(nc);  emit(", ptr ");  emit(cp);  emit("\n")
   emit("  br label %");  emit(put);  emit("\n")
   emit(put);  emit(":\n")
-  let v = emit_expr(e.kids[1])
   let data = emit_bind(`load ptr, ptr {dp}`)
   let slot = nreg()
   emit("  ");  emit(slot);  emit(" = getelementptr inbounds ");  emit(elt);  emit(", ptr ");  emit(data);  emit(", i32 ");  emit(l);  emit("\n")
   emit("  store ");  emit(elt);  emit(" ");  emit(v.code);  emit(", ptr ");  emit(slot);  emit("\n")
   let l1 = emit_bind(`add i32 {l}, 1`)
   emit("  store i32 ");  emit(l1);  emit(", ptr ");  emit(lp);  emit("\n")
-  return val("0", "void")
 }

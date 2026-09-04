@@ -38,7 +38,7 @@ program T {
     let t = Portal(2, 40)
     match t {
       Empty, Wall => { print(100) }
-      Portal(x, y) => { print(x * y) } # 80
+      Portal(x, y) => { print(x * y) }  # 80
       _ => { print(999) }
     }
 

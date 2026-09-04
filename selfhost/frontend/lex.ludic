@@ -1,6 +1,6 @@
-# lex.ludic — source text -> a token slice. Mirrors compiler/front/lex.c.
-# Tokens carry their kind, their text (identifiers, strings, operators),
-# an integer value (numbers, char literals) and a line for diagnostics.
+# lex.ludic — source text -> a token slice. Tokens carry their kind, their
+# text (identifiers, strings, operators), an integer value (numbers, char
+# literals) and a line for diagnostics.
 
 const TK_ID:  int = 0
 const TK_INT: int = 1
@@ -28,102 +28,125 @@ function two_at(src: pointer, i: int, a: int, b: int) -> bool {
 
 function is_op1(c: int) -> bool {
   # + - * / % < > = ( ) { } [ ] , : . ! @
-  if c == 43 or c == 45 or c == 42 or c == 47 or c == 37 { return true }
-  if c == 60 or c == 62 or c == 61 { return true }
-  if c == 40 or c == 41 or c == 123 or c == 125 { return true }
-  if c == 91 or c == 93 or c == 44 or c == 58 or c == 46 { return true }
-  if c == 33 or c == 64 { return true }
-  if c == 38 or c == 124 or c == 94 or c == 126 { return true }   # & | ^ ~
+  if c == '+' or c == '-' or c == '*' or c == '/' or c == '%' { return true }
+  if c == '<' or c == '>' or c == '=' { return true }
+  if c == '(' or c == ')' or c == '{' or c == '}' { return true }
+  if c == '[' or c == ']' or c == ',' or c == ':' or c == '.' { return true }
+  if c == '!' or c == '@' { return true }
+  if c == '&' or c == '|' or c == '^' or c == '~' { return true }   # & | ^ ~
   return false
 }
 
-function lex(src: pointer) -> void {
+# The two bytes that delimit escapes, spelled numerically on purpose: this file
+# is what teaches the compiler to read `'\''` and `'\\'`, and the seed that
+# bootstraps it must lex it without already knowing those spellings.
+const CH_SQUOTE: int = 39      # '
+const CH_BACKSLASH: int = 92   # \
+
+# the byte an escape sequence `\e` stands for, shared by "strings" and 'chars':
+# \n \r \t \0 are the named ones; anything else (\\ \' \" \`) is itself.
+function unescape(e: int) -> int {
+  if e == 'n' { return 10 }
+  if e == 'r' { return 13 }
+  if e == 't' { return 9 }
+  if e == '0' { return 0 }
+  return e
+}
+
+# a character the language has no use for is an error, never silently dropped:
+# `x = 5 $ 3` must not compile as `x = 5 3`.
+function lex_error(line: int, c: int) -> void {
+  let ch = bytes(2);  ch[0] = c;  ch[1] = 0
+  lex_fail(line, `unexpected character '{ch}' (byte {c})`)
+}
+
+# report a lexical error in the standard `file:line: error: msg` shape and stop
+function lex_fail(line: int, msg: pointer) -> void {
+  let m = `{g_parse_file}:{line}: error: {msg}\n`
+  file_write(file_stderr(), m, len(m))
+  exit(1)
+}
+
+function lex(src: pointer) -> void { lex_at(src, 1) }
+
+# lex `src` with its first line numbered `first_line` (an interpolation hole is
+# re-lexed on its own, and keeps the line of the string it sits in)
+function lex_at(src: pointer, first_line: int) -> void {
   toks = new []Tok
   var i = 0
-  var line = 1
+  var line = first_line
   let n = len(src)
   while i < n {
     let c = src[i]
-    if c == 10 { tok_push(TK_NL, null, 0, line); line = line + 1; i = i + 1; continue }
-    if c == 32 or c == 9 or c == 13 { i = i + 1; continue }
-    if c == 35 {                                   # '#' comment to end of line
-      while i < n and src[i] != 10 { i = i + 1 }
+    if c == '\n' { tok_push(TK_NL, null, 0, line); line += 1; i += 1; continue }
+    if c == ' ' or c == '\t' or c == '\r' { i += 1; continue }
+    if c == '#' {                                   # '#' comment to end of line
+      while i < n and src[i] != '\n' { i += 1 }
       continue
     }
-    if c == 34 {                                   # "string"
-      i = i + 1
+    if c == '"' {                                   # "string"
+      i += 1
       let start = i
       let out = bytes(n)
       var j = 0
-      while i < n and src[i] != 34 {
-        if src[i] == 92 {                    # backslash escape
-          let e = src[i + 1]
-          var r = e
-          if e == 110 { r = 10 }
-          if e == 114 { r = 13 }
-          if e == 116 { r = 9 }
-          if e == 48  { r = 0 }
-          out[j] = r;  j = j + 1;  i = i + 2
-        } else { out[j] = src[i]; j = j + 1; i = i + 1 }
+      while i < n and src[i] != '"' {
+        if src[i] == CH_BACKSLASH {              # backslash escape
+          out[j] = unescape(src[i + 1]);  j += 1;  i += 2
+        } else { out[j] = src[i]; j += 1; i += 1 }
       }
-      i = i + 1
+      i += 1
       out[j] = 0
       tok_push(TK_STR, out, 0, line)
       continue
     }
-    if c == 96 {                                   # `interpolated string` — captured raw
-      i = i + 1
+    if c == '`' {                                   # `interpolated string` — captured raw
+      i += 1
       let out = bytes(n)
       var j = 0
-      while i < n and src[i] != 96 { out[j] = src[i]; j = j + 1; i = i + 1 }
-      i = i + 1
+      while i < n and src[i] != '`' { out[j] = src[i]; j += 1; i += 1 }
+      i += 1
       out[j] = 0
       tok_push(TK_INTERP, out, 0, line)
       continue
     }
-    if c == 39 {                                   # 'c' char literal -> int
-      i = i + 1
+    if c == CH_SQUOTE {                              # 'c' char literal -> int
+      i += 1
       var v = 0
-      if src[i] == 92 {
-        let e = src[i + 1]
-        if e == 110 { v = 10 }
-        if e == 114 { v = 13 }
-        if e == 116 { v = 9 }
-        if e == 48  { v = 0 }
-        i = i + 2
-      } else { v = src[i]; i = i + 1 }
-      if src[i] == 39 { i = i + 1 }
+      if src[i] == CH_BACKSLASH { v = unescape(src[i + 1]);  i += 2 }
+      else { v = src[i];  i += 1 }
+      if src[i] != CH_SQUOTE { lex_fail(line, "unterminated character literal (expected closing ')") }
+      i += 1
       tok_push(TK_INT, null, v, line)
       continue
     }
     if char_is_digit(c) {
-      if c == 48 and src[i + 1] == 120 {     # 0x hex
+      if c == '0' and src[i + 1] == 'x' {     # 0x hex
         var v = 0
-        i = i + 2
+        i += 2
         while i < n {
           let h = src[i]
           var d = 0
           if char_is_digit(h) { d = h - 48 }
-          else { if h >= 97 and h <= 102 { d = h - 87 }
-                 else { if h >= 65 and h <= 70 { d = h - 55 } else { break } } }
+          else { if h >= 'a' and h <= 'f' { d = h - 87 }
+                 else { if h >= 'A' and h <= 'F' { d = h - 55 } else { break } } }
           v = v * 16 + d
-          i = i + 1
+          i += 1
         }
         tok_push(TK_INT, null, v, line)
         continue
       }
       var v = 0
-      while i < n and char_is_digit(src[i]) { v = v * 10 + (src[i] - 48); i = i + 1 }
+      while i < n and char_is_digit(src[i]) { v = v * 10 + (src[i] - 48); i += 1 }
       # a fractional part makes it a Q16.16 fixed literal
-      if i < n and src[i] == 46 and char_is_digit(src[i + 1]) {
-        i = i + 1
+      if i < n and src[i] == '.' and char_is_digit(src[i + 1]) {
+        i += 1
         # Accumulate only the first 4 fractional digits: `fnum << 16` must stay
         # in i32 (5+ digits overflow), and Q16.16 resolves ~4-5 decimals anyway.
         # Extra digits are still consumed so they don't become a stray token.
         var fnum = 0;  var fden = 1
         while i < n and char_is_digit(src[i]) {
-          if fden < 10000 { fnum = fnum * 10 + (src[i] - 48);  fden = fden * 10 }
-          i = i + 1
+          if fden < 10000 { fnum = fnum * 10 + (src[i] - 48);  fden *= 10 }
+          i += 1
         }
         let bits = (v << 16) + ((fnum << 16) + (fden >> 1)) / fden
         tok_push(TK_FLOAT, null, bits, line)
@@ -134,27 +157,27 @@ function lex(src: pointer) -> void {
     }
     if char_is_alpha(c) {
       let start = i
-      while i < n and char_is_alnum(src[i]) { i = i + 1 }
+      while i < n and char_is_alnum(src[i]) { i += 1 }
       tok_push(TK_ID, src[start..i], 0, line)
       continue
     }
-    if c == 59 { tok_push(TK_NL, null, 0, line); i = i + 1; continue }   # ';'
+    if c == ';' { tok_push(TK_NL, null, 0, line); i += 1; continue }   # ';'
     # two-character operators
-    if two_at(src, i, 45, 62) { tok_push(TK_OP, src[i..i + 2], 0, line); i = i + 2; continue }  # ->
-    if two_at(src, i, 61, 62) { tok_push(TK_OP, src[i..i + 2], 0, line); i = i + 2; continue }  # =>
-    if two_at(src, i, 61, 61) { tok_push(TK_OP, src[i..i + 2], 0, line); i = i + 2; continue }  # ==
-    if two_at(src, i, 33, 61) { tok_push(TK_OP, src[i..i + 2], 0, line); i = i + 2; continue }  # !=
-    if two_at(src, i, 60, 61) { tok_push(TK_OP, src[i..i + 2], 0, line); i = i + 2; continue }  # <=
-    if two_at(src, i, 62, 61) { tok_push(TK_OP, src[i..i + 2], 0, line); i = i + 2; continue }  # >=
-    if two_at(src, i, 43, 61) { tok_push(TK_OP, src[i..i + 2], 0, line); i = i + 2; continue }  # +=
-    if two_at(src, i, 45, 61) { tok_push(TK_OP, src[i..i + 2], 0, line); i = i + 2; continue }  # -=
-    if two_at(src, i, 42, 61) { tok_push(TK_OP, src[i..i + 2], 0, line); i = i + 2; continue }  # *=
-    if two_at(src, i, 47, 61) { tok_push(TK_OP, src[i..i + 2], 0, line); i = i + 2; continue }  # /=
-    if two_at(src, i, 46, 46) { tok_push(TK_OP, src[i..i + 2], 0, line); i = i + 2; continue }  # ..
-    if two_at(src, i, 60, 60) { tok_push(TK_OP, src[i..i + 2], 0, line); i = i + 2; continue }  # <<
-    if two_at(src, i, 62, 62) { tok_push(TK_OP, src[i..i + 2], 0, line); i = i + 2; continue }  # >>
-    if is_op1(c) { tok_push(TK_OP, src[i..i + 1], 0, line); i = i + 1; continue }
-    i = i + 1                                        # skip anything unrecognised
+    if two_at(src, i, 45, 62) { tok_push(TK_OP, src[i..i + 2], 0, line); i += 2; continue }  # ->
+    if two_at(src, i, 61, 62) { tok_push(TK_OP, src[i..i + 2], 0, line); i += 2; continue }  # =>
+    if two_at(src, i, 61, 61) { tok_push(TK_OP, src[i..i + 2], 0, line); i += 2; continue }  # ==
+    if two_at(src, i, 33, 61) { tok_push(TK_OP, src[i..i + 2], 0, line); i += 2; continue }  # !=
+    if two_at(src, i, 60, 61) { tok_push(TK_OP, src[i..i + 2], 0, line); i += 2; continue }  # <=
+    if two_at(src, i, 62, 61) { tok_push(TK_OP, src[i..i + 2], 0, line); i += 2; continue }  # >=
+    if two_at(src, i, 43, 61) { tok_push(TK_OP, src[i..i + 2], 0, line); i += 2; continue }  # +=
+    if two_at(src, i, 45, 61) { tok_push(TK_OP, src[i..i + 2], 0, line); i += 2; continue }  # -=
+    if two_at(src, i, 42, 61) { tok_push(TK_OP, src[i..i + 2], 0, line); i += 2; continue }  # *=
+    if two_at(src, i, 47, 61) { tok_push(TK_OP, src[i..i + 2], 0, line); i += 2; continue }  # /=
+    if two_at(src, i, 46, 46) { tok_push(TK_OP, src[i..i + 2], 0, line); i += 2; continue }  # ..
+    if two_at(src, i, 60, 60) { tok_push(TK_OP, src[i..i + 2], 0, line); i += 2; continue }  # <<
+    if two_at(src, i, 62, 62) { tok_push(TK_OP, src[i..i + 2], 0, line); i += 2; continue }  # >>
+    if is_op1(c) { tok_push(TK_OP, src[i..i + 1], 0, line); i += 1; continue }
+    lex_error(line, c)
   }
   tok_push(TK_EOF, null, 0, line)
 }

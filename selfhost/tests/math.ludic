@@ -3,11 +3,11 @@ program T {
     # min / max / abs / clamp, now reachable under the Math namespace
     print(Math.min(3, 7))            # 3
     print(Math.max(3, 7))            # 7
-    print(Math.abs(0 - 5))           # 5
+    print(Math.abs(-5))           # 5
     print(Math.clamp(12, 0, 10))     # 10
 
     # sign -> -1 / 0 / 1
-    print(Math.sign(0 - 4))          # -1
+    print(Math.sign(-4))          # -1
     print(Math.sign(0))              # 0
     print(Math.sign(9))              # 1
 

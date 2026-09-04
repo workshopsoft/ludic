@@ -7,7 +7,7 @@ const MAX_ENT: int = 1024
 
 function has_systems() -> bool {
   var i = 0
-  while i < len(prog) { if prog[i].kind == N_SYS { return true };  i = i + 1 }
+  while i < len(prog) { if prog[i].kind == N_SYS { return true };  i += 1 }
   # a game with no hand-written handler but a well-known engine component still
   # runs a frame loop — the engine owns the system that ticks that component
   # (#43/#47). Treat it as a systems game so the loop / tick helpers are emitted.
@@ -16,7 +16,7 @@ function has_systems() -> bool {
 }
 function has_models() -> bool {
   var i = 0
-  while i < len(prog) { if prog[i].kind == N_ARCH { return true };  i = i + 1 }
+  while i < len(prog) { if prog[i].kind == N_ARCH { return true };  i += 1 }
   return false
 }
 # does the program declare a well-known engine component? Each one is auto-ticked
@@ -30,7 +30,7 @@ function uses_engine_systems() -> bool {
   # Motion / Light2D; packages append via @EngineSystem), or an Occluder (which
   # feeds the Light2D pass without an esys of its own).
   var i = 0
-  while i < len(g_esys_comp) { if find_comp(g_esys_comp[i]) != null { return true };  i = i + 1 }
+  while i < len(g_esys_comp) { if find_comp(g_esys_comp[i]) != null { return true };  i += 1 }
   if find_comp("Occluder") != null { return true }
   return false
 }
@@ -39,7 +39,7 @@ function uses_engine_systems() -> bool {
 # compiler's auto frame loop. A game with handlers and no entry uses the auto-loop.
 function has_entry() -> bool {
   var i = 0
-  while i < len(prog) { if prog[i].kind == N_MAIN { return true };  i = i + 1 }
+  while i < len(prog) { if prog[i].kind == N_MAIN { return true };  i += 1 }
   return false
 }
 # Does this program run the ECS? A property alone no longer answers that — the
@@ -82,11 +82,11 @@ function emit_ecs_storage() -> void {
     # one enabled-flag global per model and per handler (default enabled)
     if c.kind == N_ARCH { emith(`@ME_{c.s} = internal global i32 1\n`) }
     if c.kind == N_SYS  { emith(`@HE_{c.s} = internal global i32 1\n`) }
-    i = i + 1
+    i += 1
   }
   # one enabled-flag global per toggled layer (default shown)
   var li = 0
-  while li < len(g_toggled_layers) { emith(`@LE_{g_toggled_layers[li]} = internal global i32 1\n`);  li = li + 1 }
+  while li < len(g_toggled_layers) { emith(`@LE_{g_toggled_layers[li]} = internal global i32 1\n`);  li += 1 }
 }
 
 # L_reset(e): clear every has-flag and the archetype kind for entity e
@@ -100,7 +100,7 @@ function emit_ecs_allocator() -> void {
       emit("  ");  emit(hn);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i8], ptr @H_");  emit(prog[i].s);  emit(", i32 0, i32 %e\n")
       emit("  store i8 0, ptr ");  emit(hn);  emit("\n")
     }
-    i = i + 1
+    i += 1
   }
   emit("  %k = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_kind, i32 0, i32 %e\n")
   emit("  store i32 0, ptr %k\n")

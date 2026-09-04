@@ -37,7 +37,7 @@ function emit_machine(st: Node) -> void {
     s = emit_bind(`call i32 @fn_rt_reg(i32 {regv.code})`)
   }
   if nmach < len(mach_stk) { mach_stk[nmach] = st } else { push(mach_stk, st) }
-  nmach = nmach + 1
+  nmach += 1
   let endl = lbl("smend")
   var i = 0
   while i < len(st.kids) {
@@ -50,11 +50,11 @@ function emit_machine(st: Node) -> void {
     emit_block(state.a)
     if not g_term { emit("  br label %");  emit(endl);  emit("\n") }
     emit(nxt);  emit(":\n");  g_term = false
-    i = i + 1
+    i += 1
   }
   if not g_term { emit("  br label %");  emit(endl);  emit("\n") }
   emit(endl);  emit(":\n");  g_term = false
-  nmach = nmach - 1
+  nmach -= 1
 }
 
 # `become Name` — a machine state transition when Name is a state of an
@@ -66,7 +66,7 @@ function emit_become(st: Node) -> void {
     let m = mach_stk[nmach - 1]
     var target: Node = null
     var i = 0
-    while i < len(m.kids) { if (m.kids[i].s == st.s) { target = m.kids[i] };  i = i + 1 }
+    while i < len(m.kids) { if (m.kids[i].s == st.s) { target = m.kids[i] };  i += 1 }
     if (target != null) {
       let gv = machine_var(m.a)
       let sv = machine_state_value(m, target)

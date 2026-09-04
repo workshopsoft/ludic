@@ -19,7 +19,7 @@ program DespawnHook {
 
   @OnDespawn(Enemy, reason: teardown_reason) handler DropLoot {
     match teardown_reason {
-      EndReason.Quit => {}                            # app closing — do not drop loot
+      EndReason.Quit => { }                            # app closing — do not drop loot
       _              => { print(Loot.gold) }          # died in-world — award the gold
     }
   }

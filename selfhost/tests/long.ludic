@@ -16,7 +16,7 @@ program T {
     print(x > y)                  # 1
     print(y < x)                  # 1
     print(x == x)                 # 1
-    print(0 - sq)                 # -1000000000000 (unary negate stays 64-bit)
+    print(-sq)                 # -1000000000000 (unary negate stays 64-bit)
     print(big)                    # 1000000
     print(Text.length(string(sq)))   # 13 — string(long) renders all 13 digits
   }

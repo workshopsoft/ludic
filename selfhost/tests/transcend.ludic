@@ -9,7 +9,7 @@ program T {
     print(Math.round(Math.pow(2.0, 10.0)))             # 1024      -> 1024
     print(Math.round(Math.pow(2.0, 0.5) * 1000))       # sqrt 2    -> 1414
     print(Math.round(Math.pow(9.0, 0.5)))              # 3         -> 3
-    print(Math.round(Math.pow(2.0, 0.0 - 2.0) * 1000)) # 0.25      -> 250
+    print(Math.round(Math.pow(2.0, 0.0 - 2.0) * 1000))  # 0.25      -> 250
     print(Math.round(Ease.elastic(0.0) * 1000))        # anchored  -> 0
     print(Math.round(Ease.elastic(1.0) * 1000))        # settles   -> 1000
     print(Math.round(Ease.elastic(0.5) * 1000))        # overshoot -> 1016

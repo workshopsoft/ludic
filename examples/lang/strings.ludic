@@ -1,5 +1,5 @@
 # strings.ludic — strings are values: compare with ==/!=, join with +, or (best)
-# interpolate with `backticks {expr}`. Running it prints: 1 2 3 4 5 6 7
+# interpolate with `backticks {expr}`. Running it prints: 1 2 3 4 5 6 7 8 9
 program Strings {
   entry {
     let greeting = "hello"
@@ -13,7 +13,7 @@ program Strings {
     # build up a string in a loop
     var line = ""
     var i = 0
-    while i < 3 { line = line + "ab"; i = i + 1 }
+    while i < 3 { line += "ab"; i += 1 }
     if line == "ababab" { print(4) }
 
     if (greeting + who) != greeting { print(5) }

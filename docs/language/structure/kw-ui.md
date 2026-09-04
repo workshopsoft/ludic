@@ -9,7 +9,7 @@ tip: Declare a retained widget tree as data; the engine lays it out and draws it
 order: 50
 ---
 
-A <code>ui</code> block declares a <b>retained</b> widget tree as data — panels, labels and buttons — and hands layout, drawing and keyboard focus to the engine, so you describe the interface once instead of repainting it every frame. Widget types are `panel` (a container with optional skin/background/border), `col`/`row` (pure stacks), `label`, `button` (focusable), `image` and `spacer`, and their props are evaluated at build time, so `font: title_font` reads a value the program set first. Each `id: Name` mints a `UI_Name` handle you drive from handlers: call `ui_build()` then `ui_open(UI_MainMenu)` at start, `ui_tick(Input.key())` each update to move focus and activate, and `ui_clicked(UI_Name)` to react. Draw it during `Render` with `ui_render()` between `Screen.clear` and `Screen.show()`.
+A <code>ui</code> block declares a <b>retained</b> widget tree as data — panels, labels and buttons — and hands layout, drawing and keyboard focus to the engine, so you describe the interface once instead of repainting it every frame. Widget types are `panel` (a container with optional skin/background/border), `col`/`row` (pure stacks), `label`, `button` (focusable), `image` and `spacer`, and their props are evaluated at build time, so `font: title_font` reads a value the program set first. Each `id: Name` mints a `UI_Name` handle you drive from handlers: call `Ui.build()` then `Ui.open(UI_MainMenu)` at start, `Ui.tick(Input.key())` each update to move focus and activate, and `Ui.clicked(UI_Name)` to react. Draw it during `Render` with `Ui.render()` between `Screen.clear` and `Screen.show()`.
 
 ```ludic
 program TitleScreen {
@@ -24,19 +24,19 @@ program TitleScreen {
   }
 
   handler Boot phase Start {
-    title_font = font_load("/System/Library/Fonts/Supplemental/Arial.ttf")
-    ui_build()
-    ui_open(UI_MainMenu)
+    title_font = Font.load("/System/Library/Fonts/Supplemental/Arial.ttf")
+    Ui.build()
+    Ui.open(UI_MainMenu)
   }
 
   handler Navigate phase Update {
-    ui_tick(Input.key())
-    if ui_clicked(UI_Quit) { quit() }
+    Ui.tick(Input.key())
+    if Ui.clicked(UI_Quit) { quit() }
   }
 
   handler DrawWorld phase Render {
     Screen.clear(Color.MidnightBlue)
-    ui_render()
+    Ui.render()
     Screen.show()
   }
 }

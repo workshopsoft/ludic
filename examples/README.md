@@ -81,6 +81,7 @@ over the compiler's built-in loopback transport with zero foreign code.
 | [`lang/toggle.ludic`](lang/toggle.ludic) | enable/disable at the three ECS scopes. |
 | [`lang/scenes.ludic`](lang/scenes.ludic) | One active scene at a time, handlers grouped into layers. |
 | [`lang/strings.ludic`](lang/strings.ludic) | Strings as values: compare, join, interpolate, slice. |
+| [`lang/operators.ludic`](lang/operators.ludic) | Compound assignment on every type, unary minus, char escapes, list literals. |
 | [`lang/rng_demo.ludic`](lang/rng_demo.ludic) | The `Random.*` extensions (value/int/sign). |
 | [`lang/time_demo.ludic`](lang/time_demo.ludic) | `Time.frame` / `elapsed` / `delta`. |
 | [`lang/offline_rewards.ludic`](lang/offline_rewards.ludic) | A worked idle-game example over the Time/Date/Duration stdlib. |

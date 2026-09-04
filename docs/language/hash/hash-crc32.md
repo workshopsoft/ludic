@@ -22,7 +22,7 @@ program Checksum {
     let data = "save:level=3;coins=120"
     let ck = Hash.crc32(data)     # store this next to the save; recompute on load
     print(ck)
-    print(Hash.crc32(data) == ck) # 1 — unchanged data checks out
+    print(Hash.crc32(data) == ck)  # 1 — unchanged data checks out
   }
 }
 ```

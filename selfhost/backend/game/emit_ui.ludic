@@ -16,7 +16,7 @@ function ui_wtype(w: Node) -> int {
 }
 function ui_prop(w: Node, key: pointer) -> Node {
   var i = 0
-  while i < len(w.b.kids) { if (w.b.kids[i].s == key) { return w.b.kids[i].a };  i = i + 1 }
+  while i < len(w.b.kids) { if (w.b.kids[i].s == key) { return w.b.kids[i].a };  i += 1 }
   return null
 }
 # a widget's props plus the text props (font, size, fg, align) it inherits from the
@@ -25,7 +25,7 @@ function ui_props_with_inherited(i: int) -> []Node {
   let w = uiw[i]
   let out = new []Node
   var p = 0
-  while p < len(w.b.kids) { push(out, w.b.kids[p]);  p = p + 1 }
+  while p < len(w.b.kids) { push(out, w.b.kids[p]);  p += 1 }
   let keys = new []pointer
   push(keys, "font");  push(keys, "size");  push(keys, "fg");  push(keys, "align")
   var k = 0
@@ -34,11 +34,11 @@ function ui_props_with_inherited(i: int) -> []Node {
       var a = uiw_parent[i]
       while a >= 0 {
         let v = ui_prop(uiw[a], keys[k])
-        if (v != null) { let fi = node(E_FINIT);  fi.s = keys[k];  fi.a = v;  push(out, fi);  a = 0 - 1 }
+        if (v != null) { let fi = node(E_FINIT);  fi.s = keys[k];  fi.a = v;  push(out, fi);  a = -1 }
         else { a = uiw_parent[a] }
       }
     }
-    k = k + 1
+    k += 1
   }
   return out
 }
@@ -46,19 +46,19 @@ function ui_flatten(w: Node, parent: int) -> void {
   let idx = len(uiw)
   push(uiw, w);  push(uiw_parent, parent)
   var i = 0
-  while i < len(w.kids) { ui_flatten(w.kids[i], idx);  i = i + 1 }
+  while i < len(w.kids) { ui_flatten(w.kids[i], idx);  i += 1 }
 }
 function ui_flatten_all() -> void {
   uiw = new []Node;  uiw_parent = new []int;  ui_roots = new []int
   var i = 0
   while i < len(prog) {
-    if prog[i].kind == N_UI and prog[i].ival == 1 { push(ui_roots, len(uiw));  ui_flatten(prog[i].a, 0 - 1) }
-    i = i + 1
+    if prog[i].kind == N_UI and prog[i].ival == 1 { push(ui_roots, len(uiw));  ui_flatten(prog[i].a, -1) }
+    i += 1
   }
 }
 function has_ui() -> bool {
   var i = 0
-  while i < len(prog) { if prog[i].kind == N_UI and prog[i].ival == 1 { return true };  i = i + 1 }
+  while i < len(prog) { if prog[i].kind == N_UI and prog[i].ival == 1 { return true };  i += 1 }
   return false
 }
 
@@ -69,19 +69,19 @@ function ui_index_of(nm: pointer) -> int {
   let u = 0;  var bi = 0
   var i = 0
   while i < len(prog) {
-    if prog[i].kind == N_UI and prog[i].ival == 1 { if (prog[i].s == s) { return ui_roots[bi] };  bi = bi + 1 }
-    i = i + 1
+    if prog[i].kind == N_UI and prog[i].ival == 1 { if (prog[i].s == s) { return ui_roots[bi] };  bi += 1 }
+    i += 1
   }
   i = 0
   while i < len(uiw) {
     let idp = ui_prop(uiw[i], "id")
     if (idp != null) { if idp.kind == E_ID and (idp.s == s) { return i } }
-    i = i + 1
+    i += 1
   }
   return 0
 }
 function is_ui_ident(nm: pointer) -> bool {
-  return len(nm) > 3 and nm[0] == 85 and nm[1] == 73 and nm[2] == 95   # "UI_"
+  return len(nm) > 3 and nm[0] == 'U' and nm[1] == 'I' and nm[2] == '_'   # "UI_"
 }
 
 function ll_ui_set(idx: int, key: int, val: pointer) -> void {
@@ -92,7 +92,7 @@ function ui_prop_key(k: pointer) -> int {
   if (k == "pad") { return 7 };  if (k == "gap") { return 8 };  if (k == "bg") { return 9 };  if (k == "fg") { return 10 }
   if (k == "border") { return 11 };  if (k == "grow") { return 13 };  if (k == "font") { return 14 };  if (k == "size") { return 15 }
   if (k == "inset") { return 16 };  if (k == "focus") { return 17 }
-  return 0 - 1
+  return -1
 }
 
 function emit_ui_build() -> void {
@@ -116,7 +116,7 @@ function emit_ui_build() -> void {
       let pr = props[p]
       let k = pr.s
       let v = pr.a
-      if (k == "id") or (k == "goto") { p = p + 1;  continue }
+      if (k == "id") or (k == "goto") { p += 1;  continue }
       if (k == "text") {
         let sv = emit_expr(v)
         emit("  call void @fn_rt_ui_static_text(i32 ");  emit(itoa(i));  emit(", ptr ");  emit(sv.code);  emit(")\n")
@@ -138,9 +138,9 @@ function emit_ui_build() -> void {
           if key == 4 or key == 5 { ll_ui_set(i, 6, "1") }
         }
       } } }
-      p = p + 1
+      p += 1
     }
-    i = i + 1
+    i += 1
   }
   code = saved
   emit("define void @ui_build() {\nentry:\n")

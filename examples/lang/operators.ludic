@@ -1,0 +1,40 @@
+# operators.ludic — compound assignment (`+= -= *= /=`) is exactly `x = x op y`,
+# whatever the type: Q16.16 `fixed` multiplies through the 64-bit path, strings
+# concatenate, an `int` added to a `long` widens. Unary minus keeps its operand's
+# type, character literals accept the same escapes as strings, and `[a, b, c]`
+# builds a slice in place. Running it prints: 1 2 3 4 5 6 7 8 9 10
+program Operators {
+  entry {
+    var f: fixed = 1.5
+    f *= 2.0
+    if f == 3.0 { print(1) }                          # fixed *= is a Q16.16 multiply, not a raw mul
+    f /= 4.0
+    if f == 0.75 { print(2) }
+    let neg: fixed = -f
+    if neg + f == 0.0 { print(3) }                    # -fixed is still a fixed
+
+    var s = "ab"
+    s += "cd"
+    if s == "abcd" { print(4) }                       # string += concatenates
+
+    var n = 40
+    n += 2
+    n -= 1
+    n *= 2
+    n /= 3
+    if n == 27 { print(5) }
+
+    var big: long = 1
+    big += n                                          # int widens into the long
+    if big == 28 { print(6) }
+
+    if '\'' == 39 and '\\' == 92 and '\n' == 10 { print(7) }   # char escapes mirror string escapes
+    if "q\"b\\c" == `q"b\\c` { print(8) }                 # "…" and `…` share one escape table
+    if `{Text.length("{")}{Text.length("}")}` != "11" { print(0) }   # braces inside a hole's string are text
+
+    let primes = [2, 3, 5, 7]                         # a list literal is a fresh slice
+    if len(primes) == 4 and primes[3] == 7 { print(9) }
+    let names = ["ember", "depths"]
+    if names[1] == "depths" { print(10) }
+  }
+}

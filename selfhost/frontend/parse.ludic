@@ -4,7 +4,16 @@
 
 var pi: int = 0
 var prog: []Node                 # the top-level declarations
-var g_game_name: pointer             # the `game`/`module` name
+var g_game_name: pointer             # the `program` name
+
+# ---- diagnostics -----------------------------------------------------------
+# Every compiler error is `file:line: error: message` — the form editors and
+# build tools parse. While parsing, the location is the current token's; while
+# lowering, it is the statement being emitted (emit_stmt records it).
+var g_parse_file: pointer = ""     # the file whose tokens are being parsed
+var g_parsing: bool = true         # false once lowering starts
+var g_err_file: pointer = ""       # the statement being lowered
+var g_err_line: int = 0
 
 function cur() -> Tok { return toks[pi] }
 function pk(o: int) -> Tok { return toks[pi + o] }
@@ -13,32 +22,47 @@ function is_id(v: pointer) -> bool { let t = toks[pi];  return t.kind == TK_ID a
 function is_kw(v: pointer) -> bool { return is_id(v) }
 
 function perr(msg: pointer) -> void {
-  let e = file_stderr()
-  file_write(e, "ludicc(self): parse error: ", 27)
-  file_write(e, msg, len(msg))
-  file_write(e, "\n", 1)
+  var file = g_err_file
+  var line = g_err_line
+  if g_parsing {
+    file = g_parse_file
+    line = 0
+    if pi < len(toks) { line = toks[pi].line }
+  }
+  if file == null { file = "" }
+  let m = `{file}:{line}: error: {msg}\n`
+  file_write(file_stderr(), m, len(m))
   exit(1)
 }
 
-function eat_op(v: pointer) -> void { if not is_op(v) { perr(v) }; pi = pi + 1 }
+# the current token, described for a diagnostic
+function tok_desc() -> pointer {
+  let t = toks[pi]
+  if t.kind == TK_EOF { return "end of file" }
+  if t.kind == TK_NL { return "end of line" }
+  if t.kind == TK_INT or t.kind == TK_FLOAT { return `number {itoa(t.ival)}` }
+  if t.kind == TK_STR { return `string \"{t.text}\"` }
+  return `'{t.text}'`
+}
+function eat_op(v: pointer) -> void { if not is_op(v) { perr(`expected '{v}', got {tok_desc()}`) }; pi += 1 }
 function eat_id() -> pointer {
   let t = toks[pi]
-  if t.kind != TK_ID { perr("expected identifier") }
-  pi = pi + 1
+  if t.kind != TK_ID { perr(`expected an identifier, got {tok_desc()}`) }
+  pi += 1
   return t.text
 }
-function skipnl() -> void { while toks[pi].kind == TK_NL { pi = pi + 1 } }
+function skipnl() -> void { while toks[pi].kind == TK_NL { pi += 1 } }
 
 # a type: `[]T` slice, or a plain name (int/ptr/str/bool/struct)
 function ptype() -> pointer {
   if is_op("[") {
-    pi = pi + 1
+    pi += 1
     eat_op("]")
     let el = ptype()
     let out = bytes(len(el) + 3)
-    out[0] = 91; out[1] = 93              # "[]"
+    out[0] = '['; out[1] = ']'              # "[]"
     var i = 0
-    while el[i] != 0 { out[2 + i] = el[i]; i = i + 1 }
+    while el[i] != 0 { out[2 + i] = el[i]; i += 1 }
     out[2 + i] = 0
     return out
   }
@@ -62,7 +86,7 @@ function args_call(call: Node) -> void {
     } else {
       push(call.kids, expr())
     }
-    skipnl(); if is_op(",") { pi = pi + 1; skipnl() }
+    skipnl(); if is_op(",") { pi += 1; skipnl() }
   }
   eat_op(")")
 }
@@ -78,9 +102,10 @@ function interp_add(acc: Node, part: Node) -> Node {
 function interp_str(e: Node) -> Node {                  # wrap a hole in string(...)
   let c = node(E_CALL); let id = node(E_ID); id.s = "string"; c.a = id; push(c.kids, e); return c
 }
+var g_interp_line: int = 1                                  # the line the interpolated string sits on
 function parse_hole(inner: pointer) -> Node {               # re-lex+parse an embedded expression
   let saved_toks = toks;  let saved_pi = pi
-  lex(inner);  pi = 0;  skipnl()
+  lex_at(inner, g_interp_line);  pi = 0;  skipnl()
   let e = expr()
   toks = saved_toks;  pi = saved_pi
   return e
@@ -93,29 +118,32 @@ function parse_interp(raw: pointer) -> Node {
   var i = 0
   while i < n {
     let c = raw[i]
-    if c == 123 {                                 # '{'
-      if raw[i + 1] == 123 { lit[lj] = 123; lj = lj + 1; i = i + 2; continue }   # {{ -> {
+    if c == '{' {                                 # '{'
+      if raw[i + 1] == '{' { lit[lj] = '{'; lj += 1; i += 2; continue }   # {{ -> {
       if lj > 0 { acc = interp_add(acc, interp_lit(lit, lj));  lj = 0 }
-      i = i + 1
+      i += 1
       let hs = i
+      # find the hole's closing brace: braces nest, and a brace inside a
+      # "string" or 'char' literal in the hole is text, not structure
       var depth = 1
       while i < n and depth > 0 {
         let d = raw[i]
-        if d == 123 { depth = depth + 1 }
-        else { if d == 125 { depth = depth - 1;  if depth == 0 { break } } }
-        i = i + 1
+        if d == '"' or d == CH_SQUOTE {
+          i += 1
+          while i < n and raw[i] != d { if raw[i] == CH_BACKSLASH { i += 1 };  i += 1 }
+        }
+        else if d == '{' { depth += 1 }
+        else if d == '}' { depth -= 1;  if depth == 0 { break } }
+        i += 1
       }
       acc = interp_add(acc, interp_str(parse_hole(raw[hs..i])))
-      i = i + 1                                   # skip the closing '}'
+      i += 1                                   # skip the closing '}'
     } else {
-      if c == 125 and raw[i + 1] == 125 { lit[lj] = 125; lj = lj + 1; i = i + 2; continue }  # }} -> }
-      if c == 92 {                                # backslash escape in literal text
-        let e = raw[i + 1];  var r = e
-        if e == 110 { r = 10 }
-        if e == 116 { r = 9 }
-        lit[lj] = r; lj = lj + 1; i = i + 2; continue
+      if c == '}' and raw[i + 1] == '}' { lit[lj] = '}'; lj += 1; i += 2; continue }  # }} -> }
+      if c == CH_BACKSLASH {                        # backslash escape, same table as "strings"
+        lit[lj] = unescape(raw[i + 1]); lj += 1; i += 2; continue
       }
-      lit[lj] = c; lj = lj + 1; i = i + 1
+      lit[lj] = c; lj += 1; i += 1
     }
   }
   if lj > 0 or (acc == null) { acc = interp_add(acc, interp_lit(lit, lj)) }
@@ -126,47 +154,60 @@ function parse_interp(raw: pointer) -> Node {
 # As an expression it yields a cancellable event's cancelled flag (0/1); a
 # non-cancellable event yields 0.
 function parse_emit() -> Node {
-  pi = pi + 1; let n = node(S_EMIT); n.s = eat_id()
+  pi += 1; let n = node(S_EMIT); n.s = eat_id()
   let r = node(E_REC)
   eat_op("("); skipnl()
   while not is_op(")") {
     let fi = node(E_FINIT); fi.s = eat_id(); eat_op(":"); fi.a = expr(); push(r.kids, fi)
-    skipnl(); if is_op(",") { pi = pi + 1; skipnl() }
+    skipnl(); if is_op(",") { pi += 1; skipnl() }
   }
   eat_op(")")
   n.a = r
   return n
 }
 
+# `[a, b, c]` — a slice literal (an empty `[]` needs a type: `new []T`)
+function parse_list() -> Node {
+  let n = node(E_LIST); n.line = toks[pi].line
+  eat_op("["); skipnl()
+  while not is_op("]") {
+    push(n.kids, expr())
+    skipnl(); if is_op(",") { pi += 1; skipnl() }
+  }
+  eat_op("]")
+  return n
+}
+
 function p_primary() -> Node {
   let t = toks[pi]
-  if t.kind == TK_INTERP { pi = pi + 1; return parse_interp(t.text) }
+  if t.kind == TK_INTERP { pi += 1; g_interp_line = t.line; return parse_interp(t.text) }
+  if is_op("[") { return parse_list() }
   if t.kind == TK_ID and (t.text == "emit") and (toks[pi + 1].kind == TK_ID) { return parse_emit() }
-  if t.kind == TK_INT { let n = node(E_INT); n.ival = t.ival; pi = pi + 1; return n }
-  if t.kind == TK_FLOAT { let n = node(E_FLOAT); n.ival = t.ival; pi = pi + 1; return n }
-  if t.kind == TK_STR { let n = node(E_STR); n.s = t.text; pi = pi + 1; return n }
+  if t.kind == TK_INT { let n = node(E_INT); n.ival = t.ival; pi += 1; return n }
+  if t.kind == TK_FLOAT { let n = node(E_FLOAT); n.ival = t.ival; pi += 1; return n }
+  if t.kind == TK_STR { let n = node(E_STR); n.s = t.text; pi += 1; return n }
   if t.kind == TK_ID {
-    if (t.text == "true")  { let n = node(E_BOOL); n.ival = 1; pi = pi + 1; return n }
-    if (t.text == "false") { let n = node(E_BOOL); n.ival = 0; pi = pi + 1; return n }
-    if (t.text == "null")  { pi = pi + 1; return node(E_NULL) }
-    if (t.text == "new")   { pi = pi + 1;  let n = node(E_NEW); n.s = ptype();  if is_op("{") { n.a = record() };  return n }
+    if (t.text == "true")  { let n = node(E_BOOL); n.ival = 1; pi += 1; return n }
+    if (t.text == "false") { let n = node(E_BOOL); n.ival = 0; pi += 1; return n }
+    if (t.text == "null")  { pi += 1; return node(E_NULL) }
+    if (t.text == "new")   { pi += 1;  let n = node(E_NEW); n.s = ptype();  if is_op("{") { n.a = record() };  return n }
     if (t.text == "spawn") { return parse_spawn() }    # spawn as an expression: the new entity
     # try EXPR else { ... } — evaluate a fallible (result-typed) expression; on
     # `ok` the whole expression is its payload, on `err` the else block runs (with
     # the message bound to `error`) and its trailing expression is the fallback.
     if (t.text == "try") {
-      pi = pi + 1
+      pi += 1
       let n = node(E_TRY); n.line = t.line
       n.a = expr()
       skipnl()
       if not is_id("else") { perr("try needs an `else { ... }` fallback") }
-      pi = pi + 1; skipnl()
+      pi += 1; skipnl()
       n.b = block()
       return n
     }
-    let n = node(E_ID); n.s = t.text; pi = pi + 1; return n
+    let n = node(E_ID); n.s = t.text; pi += 1; return n
   }
-  if is_op("(") { pi = pi + 1; skipnl(); let e = expr(); skipnl(); eat_op(")"); return e }
+  if is_op("(") { pi += 1; skipnl(); let e = expr(); skipnl(); eat_op(")"); return e }
   perr("expected expression")
   return node(E_INT)
 }
@@ -174,7 +215,7 @@ function p_primary() -> Node {
 function p_postfix() -> Node {
   var e = p_primary()
   while true {
-    if is_op(".") { pi = pi + 1; let m = node(E_MEMBER); m.a = e; m.s = eat_id(); e = m
+    if is_op(".") { pi += 1; let m = node(E_MEMBER); m.a = e; m.s = eat_id(); e = m
       if e.a.kind == E_ID and e.a.s == "Regex" { g_uses_regex = true }   # splice the regex runtime on demand
       if e.a.kind == E_ID and (e.a.s == "BigInt" or e.a.s == "Decimal") { g_uses_bignum = true }   # splice the bignum runtime on demand
       if e.a.kind == E_ID and (e.a.s == "Dict" or e.a.s == "Set") { g_uses_dict = true }   # splice the hash-table runtime on demand
@@ -213,20 +254,22 @@ function p_postfix() -> Node {
       if e.a.kind == E_ID and e.a.s == "Tween" and (e.s == "to" or e.s == "chain" or e.s == "delay" or e.s == "value" or e.s == "stop" or e.s == "parallel") { g_uses_tween_rt = true }
       if e.a.kind == E_ID and e.a.s == "Fx" { g_uses_fx = true }   # Fx.* -> splice fx.ludic + tick/draw it each frame
     }
-    else { if is_op("[") { pi = pi + 1; let lo = expr()
-        if is_op("..") { pi = pi + 1; let sl = node(E_SLICE); sl.a = e; sl.b = lo; sl.c = expr(); eat_op("]"); e = sl }   # s[a..b] substring
-        else { let ix = node(E_INDEX); ix.a = e; ix.b = lo; eat_op("]"); e = ix } }
-      else { if is_op("(") { let c = node(E_CALL); c.a = e; c.line = toks[pi].line; args_call(c); e = c
-          if (c.a.kind == E_ID) and ((c.a.s == "draw_sprite") or (c.a.s == "draw_sprite_scaled")) { warn_draw_sprite(c.a.s) }   # #85 deprecate the bare aliases
-        } else { break } } }
+    else if is_op("[") { pi += 1; let lo = expr()
+      if is_op("..") { pi += 1; let sl = node(E_SLICE); sl.a = e; sl.b = lo; sl.c = expr(); eat_op("]"); e = sl }   # s[a..b] substring
+      else { let ix = node(E_INDEX); ix.a = e; ix.b = lo; eat_op("]"); e = ix }
+    }
+    else if is_op("(") { let c = node(E_CALL); c.a = e; c.line = toks[pi].line; args_call(c); e = c
+      if (c.a.kind == E_ID) and ((c.a.s == "draw_sprite") or (c.a.s == "draw_sprite_scaled")) { warn_draw_sprite(c.a.s) }   # #85 deprecate the bare aliases
+    }
+    else { break }
   }
   return e
 }
 
 function p_unary() -> Node {
-  if is_op("-") { pi = pi + 1; let n = node(E_UN); n.s = "-"; n.a = p_unary(); return n }
-  if is_op("~") { pi = pi + 1; let n = node(E_UN); n.s = "~"; n.a = p_unary(); return n }   # bitwise not
-  if is_id("not") { pi = pi + 1; let n = node(E_UN); n.s = "not"; n.a = p_unary(); return n }
+  if is_op("-") { pi += 1; let n = node(E_UN); n.s = "-"; n.a = p_unary(); return n }
+  if is_op("~") { pi += 1; let n = node(E_UN); n.s = "~"; n.a = p_unary(); return n }   # bitwise not
+  if is_id("not") { pi += 1; let n = node(E_UN); n.s = "not"; n.a = p_unary(); return n }
   return p_postfix()
 }
 
@@ -237,30 +280,30 @@ function mkbin(op: pointer, l: Node, r: Node) -> Node { let b = node(E_BIN); b.s
 function p_mul() -> Node {
   var l = p_unary()
   while is_op("*") or is_op("/") or is_op("%") or is_op("<<") or is_op(">>") or is_op("&") {
-    let op = toks[pi].text; pi = pi + 1; l = mkbin(op, l, p_unary()) }
+    let op = toks[pi].text; pi += 1; l = mkbin(op, l, p_unary()) }
   return l
 }
 function p_add() -> Node {
   var l = p_mul()
   while is_op("+") or is_op("-") or is_op("|") or is_op("^") {
-    let op = toks[pi].text; pi = pi + 1; l = mkbin(op, l, p_mul()) }
+    let op = toks[pi].text; pi += 1; l = mkbin(op, l, p_mul()) }
   return l
 }
 function p_cmp() -> Node {
   var l = p_add()
   while is_op("<") or is_op("<=") or is_op(">") or is_op(">=") or is_op("==") or is_op("!=") {
-    let op = toks[pi].text; pi = pi + 1; l = mkbin(op, l, p_add())
+    let op = toks[pi].text; pi += 1; l = mkbin(op, l, p_add())
   }
   return l
 }
 function p_and() -> Node {
   var l = p_cmp()
-  while is_id("and") { pi = pi + 1; l = mkbin("and", l, p_cmp()) }
+  while is_id("and") { pi += 1; l = mkbin("and", l, p_cmp()) }
   return l
 }
 function p_or() -> Node {
   var l = p_and()
-  while is_id("or") { pi = pi + 1; l = mkbin("or", l, p_and()) }
+  while is_id("or") { pi += 1; l = mkbin("or", l, p_and()) }
   return l
 }
 
@@ -271,7 +314,7 @@ function record() -> Node {
   let r = node(E_REC)
   while true { skipnl(); if is_op("}") { break }
     let fi = node(E_FINIT); fi.s = eat_id(); eat_op(":"); fi.a = expr(); push(r.kids, fi)
-    if is_op(",") { pi = pi + 1 } }
+    if is_op(",") { pi += 1 } }
   eat_op("}"); return r
 }
 
@@ -307,27 +350,27 @@ function stmt_body() -> Node {
   if t.kind == TK_ID {
     if (t.text == "let") or (t.text == "var") {
       var mut = 0; if (t.text == "var") { mut = 1 }     # let = immutable, var = mutable
-      pi = pi + 1; let n = node(S_LET); n.ival = mut; n.line = toks[pi].line; n.s = eat_id()
-      if is_op(":") { pi = pi + 1; n.ty = ptype() }
-      if is_op("=") { pi = pi + 1; n.a = expr() }
+      pi += 1; let n = node(S_LET); n.ival = mut; n.line = toks[pi].line; n.s = eat_id()
+      if is_op(":") { pi += 1; n.ty = ptype() }
+      if is_op("=") { pi += 1; n.a = expr() }
       return n
     }
     if (t.text == "return") {
-      pi = pi + 1; let n = node(S_RETURN)
+      pi += 1; let n = node(S_RETURN)
       if toks[pi].kind != TK_NL and not is_op("}") { n.a = expr() }
       return n
     }
     if (t.text == "if") {
-      pi = pi + 1; let n = node(S_IF); n.a = expr(); n.b = block()
+      pi += 1; let n = node(S_IF); n.a = expr(); n.b = block()
       let save = pi; skipnl()                 # peek past newlines for a trailing `else`
-      if is_id("else") { pi = pi + 1; skipnl()
+      if is_id("else") { pi += 1; skipnl()
         if is_id("if") { n.c = stmt() } else { n.c = block() } }
       else { pi = save }                      # no else: keep the separator for block()'s Rule-B check
       return n
     }
-    if (t.text == "while") { pi = pi + 1; let n = node(S_WHILE); n.a = expr(); n.b = block(); return n }
+    if (t.text == "while") { pi += 1; let n = node(S_WHILE); n.a = expr(); n.b = block(); return n }
     if (t.text == "for") {
-      pi = pi + 1
+      pi += 1
       if is_op("(") { return parse_query_for() }
       let n = node(S_FOR); n.s = eat_id()
       let inkw = eat_id()                       # 'in'
@@ -336,54 +379,54 @@ function stmt_body() -> Node {
     }
     if (t.text == "spawn") { return parse_spawn() }
     if (t.text == "machine") {
-      pi = pi + 1; let n = node(S_MACHINE); n.a = expr(); skipnl(); eat_op("{")
+      pi += 1; let n = node(S_MACHINE); n.a = expr(); skipnl(); eat_op("{")
       var sidx = 0                              # states auto-number by declaration order
       while true { skipnl(); if is_op("}") { break }
         let stkw = eat_id()                     # 'state'
         let s = node(S_STATE); s.s = eat_id()
-        if is_op("=") { pi = pi + 1; s.b = expr() }              # explicit value (still allowed)
+        if is_op("=") { pi += 1; s.b = expr() }              # explicit value (still allowed)
         s.ival = sidx                                              # else: the enum variant of the same name
                                                                    # when the store is enum-typed, or this ordinal
         skipnl(); s.a = block()
-        push(n.kids, s); sidx = sidx + 1 }
+        push(n.kids, s); sidx += 1 }
       eat_op("}"); return n
     }
     # `emit E(...)` fires an event, but a bare `emit(...)` is an ordinary call
     # (the compiler dogfoods a function named `emit`), so require an event name.
     if (t.text == "emit") and (toks[pi + 1].kind == TK_ID) { return parse_emit() }
-    if (t.text == "become") { pi = pi + 1; let n = node(S_BECOME); n.s = eat_id(); return n }
-    if (t.text == "despawn") { pi = pi + 1; let n = node(S_DESPAWN); n.a = expr(); return n }
+    if (t.text == "become") { pi += 1; let n = node(S_BECOME); n.s = eat_id(); return n }
+    if (t.text == "despawn") { pi += 1; let n = node(S_DESPAWN); n.a = expr(); return n }
     if (t.text == "enable") or (t.text == "disable") {
       var en = 0; if (t.text == "enable") { en = 1 }
-      pi = pi + 1; let n = node(S_TOGGLE); n.ival = en
-      if is_id("layer") { pi = pi + 1; n.ty = "layer"; n.s = eat_id(); note_toggled_layer(n.s); return n }  # enable/disable layer L
-      if is_id("system") { pi = pi + 1; n.ty = "system"; n.s = eat_id(); if en == 0 { push(g_disabled_sys, n.s) };  return n }  # disable system <esys_fn> (lever 5, compile-time)
+      pi += 1; let n = node(S_TOGGLE); n.ival = en
+      if is_id("layer") { pi += 1; n.ty = "layer"; n.s = eat_id(); note_toggled_layer(n.s); return n }  # enable/disable layer L
+      if is_id("system") { pi += 1; n.ty = "system"; n.s = eat_id(); if en == 0 { push(g_disabled_sys, n.s) };  return n }  # disable system <esys_fn> (lever 5, compile-time)
       n.s = eat_id()                                                       # `enable P on e` / `disable Model` / `disable Handler`
-      if is_id("on") { pi = pi + 1; n.a = expr() }                        # property on an entity
+      if is_id("on") { pi += 1; n.a = expr() }                        # property on an entity
       return n
     }
     if (t.text == "attach") {                    # attach P on e [{ field: val, ... }]
-      pi = pi + 1; let n = node(S_ATTACH); n.s = eat_id()
+      pi += 1; let n = node(S_ATTACH); n.s = eat_id()
       if not is_id("on") { perr("attach needs 'on <entity>'") }
-      pi = pi + 1; n.a = expr()
+      pi += 1; n.a = expr()
       if is_op("{") { n.b = record() }           # optional field overrides (same-line)
       return n
     }
     if (t.text == "detach") {                    # detach P on e
-      pi = pi + 1; let n = node(S_DETACH); n.s = eat_id()
+      pi += 1; let n = node(S_DETACH); n.s = eat_id()
       if not is_id("on") { perr("detach needs 'on <entity>'") }
-      pi = pi + 1; n.a = expr()
+      pi += 1; n.a = expr()
       return n
     }
-    if (t.text == "break") { pi = pi + 1; return node(S_BREAK) }
-    if (t.text == "continue") { pi = pi + 1; return node(S_CONTINUE) }
-    if (t.text == "cancel") { pi = pi + 1; return node(S_CANCEL) }   # veto a cancellable event
+    if (t.text == "break") { pi += 1; return node(S_BREAK) }
+    if (t.text == "continue") { pi += 1; return node(S_CONTINUE) }
+    if (t.text == "cancel") { pi += 1; return node(S_CANCEL) }   # veto a cancellable event
     if (t.text == "match") {
-      pi = pi + 1; let n = node(S_MATCH); n.a = expr(); skipnl(); eat_op("{")
+      pi += 1; let n = node(S_MATCH); n.a = expr(); skipnl(); eat_op("{")
       while true {
         skipnl(); if is_op("}") { break }
         let arm = node(S_MARM)
-        while true { push(arm.kids, expr()); if is_op(",") { pi = pi + 1; skipnl(); continue }; break }
+        while true { push(arm.kids, expr()); if is_op(",") { pi += 1; skipnl(); continue }; break }
         eat_op("=>"); skipnl()
         if is_op("{") { arm.a = block() } else { let b = node(N_BLOCK); push(b.kids, stmt()); arm.a = b }
         push(n.kids, arm)
@@ -393,19 +436,19 @@ function stmt_body() -> Node {
   }
   let e = expr()
   if is_op("=") or is_op("+=") or is_op("-=") or is_op("*=") or is_op("/=") {
-    let n = node(S_ASSIGN); n.line = toks[pi].line; n.s = toks[pi].text; pi = pi + 1; n.a = e; n.b = expr(); return n
+    let n = node(S_ASSIGN); n.line = toks[pi].line; n.s = toks[pi].text; pi += 1; n.a = e; n.b = expr(); return n
   }
   let n = node(S_EXPR); n.a = e; return n
 }
 
 # ---- declarations ----------------------------------------------------------
 function parse_var() -> Node {
-  pi = pi + 1; let n = node(N_VAR); n.s = eat_id(); eat_op(":"); n.ty = ptype()
-  if is_op("=") { pi = pi + 1; n.a = expr() }
+  pi += 1; let n = node(N_VAR); n.s = eat_id(); eat_op(":"); n.ty = ptype()
+  if is_op("=") { pi += 1; n.a = expr() }
   return n
 }
 function parse_const() -> Node {
-  pi = pi + 1; let n = node(N_CONST); n.s = eat_id(); eat_op(":"); n.ty = ptype(); eat_op("="); n.a = expr()
+  pi += 1; let n = node(N_CONST); n.s = eat_id(); eat_op(":"); n.ty = ptype(); eat_op("="); n.a = expr()
   return n
 }
 # the language's statement / declaration words cannot name a function (`new`,
@@ -424,19 +467,19 @@ function is_reserved_word(w: pointer) -> bool {
 }
 
 function parse_fn() -> Node {
-  pi = pi + 1; let n = node(N_FN); n.s = eat_id(); eat_op("(")
+  pi += 1; let n = node(N_FN); n.s = eat_id(); eat_op("(")
   if is_reserved_word(n.s) { perr(`'{n.s}' is a reserved word and cannot name a function`) }
   while not is_op(")") {
     let p = node(N_PARAM); p.s = eat_id(); eat_op(":"); p.ty = ptype(); push(n.kids, p)
-    if is_op(",") { pi = pi + 1 }
+    if is_op(",") { pi += 1 }
   }
   eat_op(")")
   n.ty = "void"
-  if is_op("->") { pi = pi + 1; n.ty = ptype() }
+  if is_op("->") { pi += 1; n.ty = ptype() }
   n.a = block()
   return n
 }
-function parse_main() -> Node { pi = pi + 1; let n = node(N_MAIN); n.a = block(); return n }
+function parse_main() -> Node { pi += 1; let n = node(N_MAIN); n.a = block(); return n }
 
 # issue #76 — rewrite calls to a namespace-block sibling (a bare short-name call)
 # to the prefixed function name, so a body can call `pending()` where the function
@@ -444,7 +487,7 @@ function parse_main() -> Node { pi = pi + 1; let n = node(N_MAIN); n.a = block()
 # rewritten (Ludic has no function values, and Name.method calls are E_MEMBER).
 function ns_short_in(names: []pointer, s: pointer) -> bool {
   var i = 0
-  while i < len(names) { if (names[i] == s) { return true };  i = i + 1 }
+  while i < len(names) { if (names[i] == s) { return true };  i += 1 }
   return false
 }
 function ns_rewrite_calls(n: Node, shorts: []pointer, prefix: pointer) -> void {
@@ -456,7 +499,7 @@ function ns_rewrite_calls(n: Node, shorts: []pointer, prefix: pointer) -> void {
   ns_rewrite_calls(n.b, shorts, prefix)
   ns_rewrite_calls(n.c, shorts, prefix)
   var i = 0
-  while i < len(n.kids) { ns_rewrite_calls(n.kids[i], shorts, prefix);  i = i + 1 }
+  while i < len(n.kids) { ns_rewrite_calls(n.kids[i], shorts, prefix);  i += 1 }
 }
 
 # issue #76 — `namespace Name { [export|internal] function short(…) … }`. Declares
@@ -467,7 +510,7 @@ function ns_rewrite_calls(n: Node, shorts: []pointer, prefix: pointer) -> void {
 # name. `internal` keeps a function as a private helper: it is emitted but not part
 # of the Name.* surface.
 function parse_namespace() -> void {
-  pi = pi + 1                                        # eat "namespace"
+  pi += 1                                        # eat "namespace"
   let nsname = eat_id()
   eat_op("{");  skipnl()
   let fns = new []Node
@@ -475,8 +518,8 @@ function parse_namespace() -> void {
   let exps = new []int
   while not is_op("}") {
     var is_exp = 1                                   # default: exported (public)
-    if is_id("export") { pi = pi + 1 }
-    else { if is_id("internal") { pi = pi + 1;  is_exp = 0 } }
+    if is_id("export") { pi += 1 }
+    else { if is_id("internal") { pi += 1;  is_exp = 0 } }
     if not is_id("function") { perr("a namespace body holds functions: expected `function`") }
     let f = parse_fn()
     push(fns, f);  push(shorts, f.s);  push(exps, is_exp)
@@ -485,30 +528,30 @@ function parse_namespace() -> void {
   eat_op("}")
   let prefix = ns_lower(nsname) + ("_")
   var i = 0                                           # prefix every function name
-  while i < len(fns) { fns[i].s = prefix + shorts[i];  i = i + 1 }
+  while i < len(fns) { fns[i].s = prefix + shorts[i];  i += 1 }
   i = 0                                               # rewrite sibling calls to the prefixed name
-  while i < len(fns) { ns_rewrite_calls(fns[i].a, shorts, prefix);  i = i + 1 }
+  while i < len(fns) { ns_rewrite_calls(fns[i].a, shorts, prefix);  i += 1 }
   register_namespace(nsname)                          # Name.method dispatch (generic path)
   push(g_ns_blocks, nsname)
   i = 0
   while i < len(fns) {
     if (exps[i] == 1) { push(g_ns_exports, fns[i].s) }   # record the public surface
     push(prog, fns[i])
-    i = i + 1
+    i += 1
   }
 }
 
 # directory part of a path, including the trailing '/', or "" if none
 function dir_of(path: pointer) -> pointer {
-  var last = 0 - 1
+  var last = -1
   var i = 0
-  while path[i] != 0 { if path[i] == 47 { last = i };  i = i + 1 }
+  while path[i] != 0 { if path[i] == '/' { last = i };  i += 1 }
   if last < 0 { return "" }
-  return path[0..0 + (last + 1)]
+  return path[0..last + 1]
 }
 function join_path(dir: pointer, rel: pointer) -> pointer {
-  if rel[0] == 47 { return rel }               # absolute
-  return (dir + rel)
+  if rel[0] == '/' { return rel }              # absolute
+  return dir + rel
 }
 
 var loaded_paths: []pointer
@@ -529,8 +572,8 @@ var g_uses_atlas: bool = false    # Sprite.sheet/cell/… or Assets.* -> splice 
 var g_uses_reflect_io: bool = false  # Reflect.serialize/apply -> splice the reflection serializer
 var g_uses_esys: bool = false     # an engine-owned system component (SpriteAnim/Motion/Light2D) is declared -> splice systems.ludic + force the reflection ABI
 var g_uses_input: bool = false    # a program used Input.bind/down/poll/… (action maps + record/replay) -> splice input.ludic
-var g_has_clear_color: bool = false   # @ClearColor(N) declared -> the Render phase auto-clears + auto-presents (#86)
-var g_clear_color: int = 0            # the declared clear colour (0x00RRGGBB)
+var g_has_clear_color: bool = false   # @ClearColor(colour) declared -> the Render phase auto-clears + auto-presents (#86)
+var g_clear_color: Node = null        # the declared clear colour: a literal, a const name or a Color.Name
 var g_warned_draw_sprite: bool = false   # emit the bare-draw_sprite deprecation note once (#85)
 var g_uses_world_despawn: bool = false   # World.despawn / esys_bounds kill -> emit @fn_world_despawn (#84)
 
@@ -544,7 +587,7 @@ function warn_draw_sprite(name: pointer) -> void {
   file_write(file_stderr(), m, len(m))
 }
 var g_uses_anim_rt: bool = false  # Anim.play/clip/on_frame/fired or Motion.to (#48) -> splice systems.ludic + force the reflection ABI
-var g_uses_tween_rt: bool = false # Tween.to/chain/delay/… (#48) -> splice tween.ludic + run esys_tween each Update
+var g_uses_tween_rt: bool = false  # Tween.to/chain/delay/… (#48) -> splice tween.ludic + run esys_tween each Update
 var g_uses_fx: bool = false       # Fx.sparks/number/clear -> splice fx.ludic; fx_tick each Update, fx_draw each Render
 var g_uses_audio: bool = false    # Audio.* (#22) -> splice audio.ludic; a windowed build also links audio.ll + AVFoundation
 var g_uses_http:  bool = false    # Http.* (#6) -> splice http.ludic; links http.ll + Foundation (macOS)
@@ -572,12 +615,12 @@ var g_ns_blocks: []pointer
 var g_ns_exports: []pointer
 function is_ns_block(name: pointer) -> bool {
   var i = 0
-  while i < len(g_ns_blocks) { if (g_ns_blocks[i] == name) { return true };  i = i + 1 }
+  while i < len(g_ns_blocks) { if (g_ns_blocks[i] == name) { return true };  i += 1 }
   return false
 }
 function ns_export_has(prefixed: pointer) -> bool {
   var i = 0
-  while i < len(g_ns_exports) { if (g_ns_exports[i] == prefixed) { return true };  i = i + 1 }
+  while i < len(g_ns_exports) { if (g_ns_exports[i] == prefixed) { return true };  i += 1 }
   return false
 }
 
@@ -590,7 +633,7 @@ function ns_export_has(prefixed: pointer) -> bool {
 var g_disabled_sys: []pointer
 function is_system_disabled(fn: pointer) -> bool {
   var i = 0
-  while i < len(g_disabled_sys) { if (g_disabled_sys[i] == fn) { return true };  i = i + 1 }
+  while i < len(g_disabled_sys) { if (g_disabled_sys[i] == fn) { return true };  i += 1 }
   return false
 }
 
@@ -599,18 +642,18 @@ function is_system_disabled(fn: pointer) -> bool {
 # bare function foo_method (lowercased namespace + "_" + method).
 function register_namespace(name: pointer) -> void {
   var i = 0
-  while i < len(g_namespaces) { if (g_namespaces[i] == name) { return };  i = i + 1 }
+  while i < len(g_namespaces) { if (g_namespaces[i] == name) { return };  i += 1 }
   push(g_namespaces, name)
 }
 function is_registered_namespace(name: pointer) -> bool {
   var i = 0
-  while i < len(g_namespaces) { if (g_namespaces[i] == name) { return true };  i = i + 1 }
+  while i < len(g_namespaces) { if (g_namespaces[i] == name) { return true };  i += 1 }
   return false
 }
 
 function already_loaded(full: pointer) -> bool {
   var i = 0
-  while i < len(loaded_paths) { if (loaded_paths[i] == full) { return true };  i = i + 1 }
+  while i < len(loaded_paths) { if (loaded_paths[i] == full) { return true };  i += 1 }
   return false
 }
 
@@ -639,41 +682,48 @@ function parse_one_decl() -> void {
   var esys_phase: pointer = null
   var ns_name: pointer = null               # @Namespace(Name) — a package-provided Foo.* namespace (#62)
   while is_op("@") {
-    pi = pi + 1; let a = eat_id()             # collect a leading @annotation
-    if (a == "export") { is_export = true }
-    else { if (a == "Public") { is_public = true }                            # @Public hook promotion
-    else { if (a == "On") { eat_op("("); on_event = eat_id(); eat_op(")") }    # @On(Event) listener
-    else { if (a == "Queries") { qspec = parse_queries_anno() }               # @Queries(these: [...], on: ...)
-    else { if (a == "OnSpawn") { eat_op("("); onspawn_model = eat_id(); eat_op(")") }
-    else { if (a == "OnDespawn") { eat_op("("); ondespawn_model = eat_id()
-        if is_op(",") { pi = pi + 1; eat_id(); eat_op(":"); ondespawn_reason = eat_id() }  # , reason: r
-        eat_op(")") }
-    else { if (a == "OnAttach") { eat_op("("); onattach_prop = eat_id(); eat_op(")") }
-    else { if (a == "OnDetach") { eat_op("("); ondetach_prop = eat_id(); eat_op(")") }
-    else { if (a == "OnEnable") { eat_op("("); onenable_prop = eat_id(); eat_op(")") }
-    else { if (a == "OnDisable") { eat_op("("); ondisable_prop = eat_id(); eat_op(")") }
-    else { if (a == "OnStart") { hook_phase = "Start" }                       # boot
-    else { if (a == "OnQuit") { hook_phase = "OnQuit" }                       # shutdown
-    else { if (a == "Sync") { is_sync_prop = true }                           # @Sync property (N2)
-    else { if (a == "Owned") { is_owned = true }                              # @Owned model (N3)
-    else { if (a == "Server") { role = "server" }                            # @Server handler (N5)
-    else { if (a == "Predicted") { role = "predicted" }                      # @Predicted handler (N5)
-    else { if (a == "ToServer") { remote_dir = "toserver" }                  # @ToServer event (N4)
-    else { if (a == "ToClients") { remote_dir = "toclients" }                # @ToClients event (N4)
-    else { if (a == "System") { sys_phase = "Update"; if is_op("(") { pi = pi + 1; sys_phase = eat_id(); eat_op(")") } }   # @System(Phase) binary-module system (#64)
-    else { if (a == "EngineSystem") { eat_op("("); esys_comp = eat_id(); eat_op(","); esys_phase = eat_id(); eat_op(")") }   # @EngineSystem(Comp, Phase) package engine system (#62)
-    else { if (a == "Namespace") { eat_op("("); ns_name = eat_id(); eat_op(")") }   # @Namespace(Name) package Foo.* namespace (#62)
-    else { if (a == "ClearColor") { eat_op("(")                                     # @ClearColor(N) — Render auto-clear + auto-present (#86)
-        if toks[pi].kind != TK_INT { perr("@ClearColor expects an integer colour, e.g. @ClearColor(0x101018)") }
-        g_clear_color = toks[pi].ival;  g_has_clear_color = true;  pi = pi + 1;  eat_op(")") }
-    else { if is_op("(") { var d = 0          # any other @anno(args) — parsed and skipped
-        while true { if is_op("(") { d = d + 1 };  if is_op(")") { d = d - 1 };  pi = pi + 1;  if d == 0 { break } } } } } } } } } } } } } } } } } } } } } } } } }
+    pi += 1; let a = eat_id()             # collect a leading @annotation
+    if a == "export" { is_export = true }
+    else if a == "Public" { is_public = true }                              # @Public hook promotion
+    else if a == "On" { eat_op("("); on_event = eat_id(); eat_op(")") }      # @On(Event) listener
+    else if a == "Queries" { qspec = parse_queries_anno() }                 # @Queries(these: [...], on: ...)
+    else if a == "OnSpawn" { eat_op("("); onspawn_model = eat_id(); eat_op(")") }
+    else if a == "OnDespawn" {
+      eat_op("("); ondespawn_model = eat_id()
+      if is_op(",") { pi += 1; eat_id(); eat_op(":"); ondespawn_reason = eat_id() }  # , reason: r
+      eat_op(")")
+    }
+    else if a == "OnAttach" { eat_op("("); onattach_prop = eat_id(); eat_op(")") }
+    else if a == "OnDetach" { eat_op("("); ondetach_prop = eat_id(); eat_op(")") }
+    else if a == "OnEnable" { eat_op("("); onenable_prop = eat_id(); eat_op(")") }
+    else if a == "OnDisable" { eat_op("("); ondisable_prop = eat_id(); eat_op(")") }
+    else if a == "OnStart" { hook_phase = "Start" }                         # boot
+    else if a == "OnQuit" { hook_phase = "OnQuit" }                         # shutdown
+    else if a == "Sync" { is_sync_prop = true }                             # @Sync property (N2)
+    else if a == "Owned" { is_owned = true }                                # @Owned model (N3)
+    else if a == "Server" { role = "server" }                              # @Server handler (N5)
+    else if a == "Predicted" { role = "predicted" }                        # @Predicted handler (N5)
+    else if a == "ToServer" { remote_dir = "toserver" }                    # @ToServer event (N4)
+    else if a == "ToClients" { remote_dir = "toclients" }                  # @ToClients event (N4)
+    else if a == "System" { sys_phase = "Update"; if is_op("(") { pi += 1; sys_phase = eat_id(); eat_op(")") } }   # @System(Phase) binary-module system (#64)
+    else if a == "EngineSystem" { eat_op("("); esys_comp = eat_id(); eat_op(","); esys_phase = eat_id(); eat_op(")") }   # @EngineSystem(Comp, Phase) package engine system (#62)
+    else if a == "Namespace" { eat_op("("); ns_name = eat_id(); eat_op(")") }   # @Namespace(Name) package Foo.* namespace (#62)
+    else if a == "ClearColor" {                    # @ClearColor(colour) — Render auto-clear + auto-present (#86)
+      eat_op("(")
+      g_clear_color = expr()                        # a literal, a `const`, or a Color.Name — resolved when emitted
+      g_has_clear_color = true
+      eat_op(")")
+    }
+    else if is_op("(") {                           # any other @anno(args) — parsed and skipped
+      var d = 0
+      while true { if is_op("(") { d += 1 };  if is_op(")") { d -= 1 };  pi += 1;  if d == 0 { break } }
+    }
     skipnl()
   }
-  if is_id("import") { pi = pi + 1
+  if is_id("import") { pi += 1
     let t = toks[pi]
     if t.kind != TK_STR { perr("expected \"path\" after import") }
-    let rel = t.text;  pi = pi + 1
+    let rel = t.text;  pi += 1
     do_import(rel)
     return
   }
@@ -685,7 +735,7 @@ function parse_one_decl() -> void {
   }
   if is_id("property") {
     let c = parse_component()
-    if is_sync_prop { var fi = 0; while fi < len(c.kids) { c.kids[fi].ival = 1; fi = fi + 1 } }   # N2: mark every field replicable
+    if is_sync_prop { var fi = 0; while fi < len(c.kids) { c.kids[fi].ival = 1; fi += 1 } }   # N2: mark every field replicable
     push(prog, c); return
   }
   if is_id("model") {
@@ -712,10 +762,10 @@ function parse_one_decl() -> void {
     if (onattach_prop != null) { register_onattach(onattach_prop, h.a);  if is_public { ensure_event(`prop_{onattach_prop}_attach`, false) };  return }    # -> prop_<P>_attach
     if (ondetach_prop != null) { register_ondetach(ondetach_prop, h.a);  if is_public { ensure_event(`prop_{ondetach_prop}_detach`, false) };  return }    # -> prop_<P>_detach
     if (onenable_prop != null) { register_onenable(onenable_prop, h.a);  if is_public { ensure_event(`prop_{onenable_prop}_enable`, false) };  return }    # -> prop_<P>_enable
-    if (ondisable_prop != null) { register_ondisable(ondisable_prop, h.a);  if is_public { ensure_event(`prop_{ondisable_prop}_disable`, false) };  return } # -> prop_<P>_disable
+    if (ondisable_prop != null) { register_ondisable(ondisable_prop, h.a);  if is_public { ensure_event(`prop_{ondisable_prop}_disable`, false) };  return }  # -> prop_<P>_disable
     if (hook_phase != null) {                                                         # @OnStart/@OnQuit
       h.ty = hook_phase
-      if is_public {                                                                  # -> program_start / program_quit
+      if is_public {                                                            # -> program_start / program_quit
         if (hook_phase == "Start") { ensure_event_empty("program_start") }
         else { ensure_event_empty("program_quit") }
       }
@@ -741,7 +791,7 @@ function parse_one_decl() -> void {
   if is_id("extern") { push(prog, parse_extern()); return }
   if is_id("entry")  { push(prog, parse_main()); return }
   if is_id("test")   { push(g_tests, parse_test()); return }
-  perr("expected declaration")
+  perr(`expected a declaration (property, model, handler, function, …), got {tok_desc()}`)
 }
 
 # test "name" { ... } — a named test block, collected into g_tests. The block
@@ -749,12 +799,12 @@ function parse_one_decl() -> void {
 # inside it record failures. Kept out of `prog` so it never emits as a plain fn.
 function parse_test() -> Node {
   let ln = toks[pi].line
-  pi = pi + 1                                    # past `test`
+  pi += 1                                    # past `test`
   if toks[pi].kind != TK_STR { perr("expected a \"name\" string after test") }
   let n = node(N_TEST)
   n.s = toks[pi].text
   n.line = ln
-  pi = pi + 1                                    # past the name
+  pi += 1                                    # past the name
   n.a = block()
   return n
 }
@@ -771,17 +821,7 @@ function parse_test() -> Node {
 # import resolves exactly as before (the emitted IR is byte-identical).
 # true when `rel` is an engine-runtime splice path ("runtime/..."), as opposed to
 # a user or package import. Those ship with the toolchain, not the project (#75).
-function is_runtime_path(rel: pointer) -> bool {
-  if rel[0] != 114 { return false }   # r
-  if rel[1] != 117 { return false }   # u
-  if rel[2] != 110 { return false }   # n
-  if rel[3] != 116 { return false }   # t
-  if rel[4] != 105 { return false }   # i
-  if rel[5] != 109 { return false }   # m
-  if rel[6] != 101 { return false }   # e
-  if rel[7] != 47  { return false }   # /
-  return true
-}
+function is_runtime_path(rel: pointer) -> bool { return str_starts(rel, "runtime/") }
 
 # byte-wise `a < b`, for a stable import order of a directory's files
 function str_less(a: pointer, b: pointer) -> bool {
@@ -790,7 +830,7 @@ function str_less(a: pointer, b: pointer) -> bool {
     let ca = a[i];  let cb = b[i]
     if ca != cb { return ca < cb }
     if ca == 0 { return false }
-    i = i + 1
+    i += 1
   }
   return false
 }
@@ -804,16 +844,16 @@ function do_import_dir(rel: pointer) -> void {
   while i < len(names) {                          # selection sort by name
     var best = i
     var j = i + 1
-    while j < len(names) { if str_less(names[j], names[best]) { best = j };  j = j + 1 }
+    while j < len(names) { if str_less(names[j], names[best]) { best = j };  j += 1 }
     let t = names[i];  names[i] = names[best];  names[best] = t
-    i = i + 1
+    i += 1
   }
   i = 0
   while i < len(names) {
     let nm = names[i]
     let n = len(nm)
     if (n > 6) and (nm[n - 6..n] == ".ludic") { do_import(dir + ("/") + nm) }
-    i = i + 1
+    i += 1
   }
 }
 
@@ -827,13 +867,13 @@ function do_import(rel: pointer) -> void {
   # install root $LUDIC_HOME (default: the compiler binary's directory) — the same
   # place main.ludic finds cocoa.ll / audio.ll. This is tried before the package
   # module root, so $LUDIC_MODULES / ludic_modules holds only third-party packages.
-  if (src == null) and (rel[0] != 47) and is_runtime_path(rel) {
+  if (src == null) and (rel[0] != '/') and is_runtime_path(rel) {
     let home = ensure_slash(getenv_or("LUDIC_HOME", dir_of(arg(0))))
     let hc = home + rel
     let hs = read_file(hc)
     if (hs != null) { full = hc;  src = hs }
   }
-  if (src == null) and (rel[0] != 47) {
+  if (src == null) and (rel[0] != '/') {
     let cand = ensure_slash(getenv_or("LUDIC_MODULES", "ludic_modules")) + rel
     let s2 = read_file(cand)
     if (s2 != null) { full = cand;  src = s2 }
@@ -848,16 +888,19 @@ function do_import(rel: pointer) -> void {
   let fl = len(full)
   if (fl >= len(atail)) and (full[fl - len(atail)..fl] == atail) { g_uses_audio = true }
   let saved_toks = toks;  let saved_pi = pi;  let saved_dir = cur_dir
+  let saved_file = g_parse_file;  let saved_parsing = g_parsing
   cur_dir = dir_of(full)
+  g_parse_file = full;  g_parsing = true
   lex(src)                                   # resets the global token stream
   pi = 0
   skipnl()
   while toks[pi].kind != TK_EOF { parse_one_decl(); skipnl() }
   toks = saved_toks;  pi = saved_pi;  cur_dir = saved_dir
+  g_parse_file = saved_file;  g_parsing = saved_parsing
 }
 
-# a game (has systems/components) links the Ludic runtime; auto-splice it the
-# way the C compiler does. Tools (a `main` block, no ECS) get nothing.
+# a game (has handlers/components) links the Ludic runtime; auto-splice it.
+# Tools (an `entry` block, no ECS) get nothing.
 function maybe_splice_runtime() -> void {
   let saved = cur_dir
   # a game (has systems/components) links the Ludic runtime.
@@ -1105,7 +1148,7 @@ function parse_program() -> void {
   g_uses_esys = false
   g_uses_input = false
   g_has_clear_color = false
-  g_clear_color = 0
+  g_clear_color = null
   g_warned_draw_sprite = false
   g_uses_world_despawn = false
   g_uses_light = false
@@ -1138,15 +1181,15 @@ function parse_program() -> void {
   skipnl()
   g_game_name = "Ludic"
   # imports may precede the program block
-  while is_id("import") { pi = pi + 1; let t = toks[pi];  let rel = t.text;  pi = pi + 1;  do_import(rel); skipnl() }
+  while is_id("import") { pi += 1; let t = toks[pi];  let rel = t.text;  pi += 1;  do_import(rel); skipnl() }
   # @annotations on the program itself (e.g. @Handles(Movement)) — parsed, skipped
   while is_op("@") {
-    pi = pi + 1; let a = eat_id()
+    pi += 1; let a = eat_id()
     if is_op("(") { var d = 0
-      while true { if is_op("(") { d = d + 1 };  if is_op(")") { d = d - 1 };  pi = pi + 1;  if d == 0 { break } } }
+      while true { if is_op("(") { d += 1 };  if is_op(")") { d -= 1 };  pi += 1;  if d == 0 { break } } }
     skipnl()
   }
-  if is_id("program") { pi = pi + 1; g_game_name = eat_id(); skipnl(); eat_op("{") }
+  if is_id("program") { pi += 1; g_game_name = eat_id(); skipnl(); eat_op("{") }
   while true {
     skipnl()
     if toks[pi].kind == TK_EOF { break }

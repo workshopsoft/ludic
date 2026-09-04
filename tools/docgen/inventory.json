@@ -217,6 +217,7 @@
     "phase-fixedupdate",
     "phase-input",
     "phase-lateupdate",
+    "phase-overlay",
     "phase-render",
     "phase-start",
     "phase-update"
@@ -601,6 +602,7 @@
     "os-set_env",
     "os-unset_env",
     "os-exit",
+    "os-pid",
     "os-platform",
     "os-arch",
     "os-stdout_write",

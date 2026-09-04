@@ -24,7 +24,7 @@ program Demo {
   model Boom { Blast }
   handler Run phase Update {
     Blast.timer = Blast.timer + Time.delta()
-    if Anim.finished(Blast.timer, 15, 6) { despawn(self()) }
+    if Anim.finished(Blast.timer, 15, 6) { despawn (self()) }
   }
 }
 ```

@@ -20,6 +20,6 @@ program Demo {
     let idx = Random.int(list_count)
   }
 }
-  }
+}
 }
 ```

@@ -1,19 +1,18 @@
-# parse_game.ludic — the ECS front-end: component and system declarations,
-# `for (vars) in query [terms] where cond`, spawn and despawn. Mirrors the
-# game-construct parsing in compiler/front/parse.c.
+# parse_game.ludic — the ECS front-end: property, model, handler, scene, ui and
+# enum declarations, `for (vars) in query [terms] where cond`, spawn and prefab.
 
 function parse_component() -> Node {
-  pi = pi + 1; let n = node(N_COMP); n.s = eat_id(); skipnl(); eat_op("{")
+  pi += 1; let n = node(N_COMP); n.s = eat_id(); skipnl(); eat_op("{")
   while true { skipnl(); if is_op("}") { break }
     var is_computed = false
     var is_sync = false                              # @Sync — this field replicates (NETWORKING N2)
-    if is_op("@") { pi = pi + 1; let ann = eat_id(); if (ann == "Computed") { is_computed = true } else { if (ann == "Sync") { is_sync = true } }; skipnl() }
+    if is_op("@") { pi += 1; let ann = eat_id(); if ann == "Computed" { is_computed = true } else if ann == "Sync" { is_sync = true }; skipnl() }
     let f = node(N_FIELD); f.s = eat_id(); eat_op(":"); f.ty = ptype()
-    if is_op("=") { pi = pi + 1; f.a = expr() }
+    if is_op("=") { pi += 1; f.a = expr() }
     if is_sync { f.ival = 1 }                         # mark the field replicable (read by emit_net)
     if is_computed { register_computed(n.s, f.s, f.ty, f.a) }   # derived: no storage
     else { push(n.kids, f) }
-    if is_op(",") { pi = pi + 1 } }
+    if is_op(",") { pi += 1 } }
   eat_op("}"); return n
 }
 
@@ -21,29 +20,33 @@ function parse_component() -> Node {
 # field grammar as a `property`, but stored in g_events, not prog: an event is a
 # signal shape, not per-entity storage. Zero fields is allowed (`event Ping {}`).
 function parse_event() -> Node {
-  pi = pi + 1; let n = node(N_EVENT)
-  if is_id("cancellable") { pi = pi + 1; n.ival = 1 }   # a decision event: listeners may `cancel` it
+  pi += 1; let n = node(N_EVENT)
+  if is_id("cancellable") { pi += 1; n.ival = 1 }   # a decision event: listeners may `cancel` it
   n.s = eat_id(); skipnl(); eat_op("{")
   while true { skipnl(); if is_op("}") { break }
     let f = node(N_FIELD); f.s = eat_id(); eat_op(":"); f.ty = ptype()
-    if is_op("=") { pi = pi + 1; f.a = expr() }
+    if is_op("=") { pi += 1; f.a = expr() }
     push(n.kids, f)
-    if is_op(",") { pi = pi + 1 } }
+    if is_op(",") { pi += 1 } }
   eat_op("}"); return n
 }
 
 function parse_system() -> Node {
-  pi = pi + 1; let n = node(N_SYS); n.s = eat_id(); n.ty = "Update"
+  pi += 1; let n = node(N_SYS); n.s = eat_id(); n.ty = "Update"
   # postfix clauses on `handler Name …`: @anno(...) (parsed and reserved, e.g.
   # @deterministic / @Reads(...) / @Writes(...)) and `phase X`. The handler's
   # query lives in a prefix `@Queries(...)` annotation (see parse_one_decl), not
   # in a signature clause.
   while true {
     skipnl()                                   # clauses may span several lines
-    if is_op("@") { pi = pi + 1; let a = eat_id();  if is_op("(") { var d = 0    # @anno, one per turn so a
-        while true { if is_op("(") { d = d + 1 };  if is_op(")") { d = d - 1 };  pi = pi + 1;  if d == 0 { break } } }
+    if is_op("@") { pi += 1; let a = eat_id();  if is_op("(") { var d = 0    # @anno, one per turn so a
+        while true { if is_op("(") { d += 1 };  if is_op(")") { d -= 1 };  pi += 1;  if d == 0 { break } } }
       continue }                               # newline-separated @anno re-skips at the loop top
-    if is_id("phase") { pi = pi + 1; n.ty = eat_id(); continue }
+    if is_id("phase") {
+      pi += 1;  n.ty = eat_id()
+      if not is_phase_name(n.ty) { perr(`unknown phase '{n.ty}' (expected Start, Input, FixedUpdate, Update, LateUpdate, Render or Overlay)`) }
+      continue
+    }
     break
   }
   skipnl()
@@ -57,12 +60,12 @@ function parse_query_tail() -> Node {
   eat_op("[")
   let q = node(N_BLOCK)
   while not is_op("]") {
-    if is_op("{") { pi = pi + 1; let t = node(E_ID); t.s = eat_id(); t.ival = 1; push(q.kids, t); eat_op("}") }
+    if is_op("{") { pi += 1; let t = node(E_ID); t.s = eat_id(); t.ival = 1; push(q.kids, t); eat_op("}") }
     else { let t = node(E_ID); t.s = eat_id(); t.ival = 0; push(q.kids, t) }
-    if is_op(",") { pi = pi + 1 }
+    if is_op(",") { pi += 1 }
   }
   eat_op("]")
-  if is_id("where") { pi = pi + 1; q.a = expr() }
+  if is_id("where") { pi += 1; q.a = expr() }
   return q
 }
 
@@ -70,11 +73,11 @@ function parse_query_tail() -> Node {
 function parse_query_for() -> Node {
   let n = node(S_QUERY)
   eat_op("(")
-  while not is_op(")") { let v = node(E_ID); v.s = eat_id(); push(n.kids, v); if is_op(",") { pi = pi + 1 } }
+  while not is_op(")") { let v = node(E_ID); v.s = eat_id(); push(n.kids, v); if is_op(",") { pi += 1 } }
   eat_op(")")
   let inkw = eat_id()                        # 'in'
   if not is_id("query") { perr("expected 'query' in for-loop") }
-  pi = pi + 1                                # 'query'
+  pi += 1                                # 'query'
   n.c = parse_query_tail()
   n.b = n.c.a                                # where
   n.a = block()
@@ -127,16 +130,16 @@ function parse_queries_anno() -> Node {
         let pname = eat_id()
         let v = node(E_ID); v.s = pname; push(qn.kids, v)              # binding var = property name
         let t = node(E_ID); t.s = pname; t.ival = 0; push(terms.kids, t)
-        if is_op("{") { pi = pi + 1; let ce = expr(); eat_op("}")
+        if is_op("{") { pi += 1; let ce = expr(); eat_op("}")
           let cb = node(E_ID); cb.s = pname; wh = mk_and(wh, qualify_fields(ce, cb)) }
-        if is_op(",") { pi = pi + 1 }
+        if is_op(",") { pi += 1 }
         skipnl()
       }
       eat_op("]")
     } else { if (key == "on") {
       let mname = eat_id(); let t = node(E_ID); t.s = mname; t.ival = 1; push(terms.kids, t)   # {Model} tag
     } else { expr() } }                                                # unknown key: skip its value
-    if is_op(",") { pi = pi + 1 }
+    if is_op(",") { pi += 1 }
     skipnl()
   }
   eat_op(")")
@@ -145,7 +148,7 @@ function parse_queries_anno() -> Node {
 }
 
 function parse_spawn() -> Node {
-  pi = pi + 1; let n = node(S_SPAWN); n.s = eat_id(); skipnl(); eat_op("{")
+  pi += 1; let n = node(S_SPAWN); n.s = eat_id(); skipnl(); eat_op("{")
   parse_component_records(n)
   eat_op("}"); return n
 }
@@ -156,14 +159,14 @@ function parse_component_records(n: Node) -> void {
     let ci = node(E_FINIT); ci.s = eat_id()
     ci.a = record()                          # Comp { field: val, ... } — no `=` before the record
     push(n.kids, ci)
-    if is_op(",") { pi = pi + 1 }
+    if is_op(",") { pi += 1 }
   }
 }
 # prefab Name: Model { Comp { field: val }, ... } — a model with preset fields.
 # `spawn Name { ... }` spawns the model with the prefab's fields, then the spawn's
 # own overrides on top; `Prefab.spawn(name: "Name")` does it by name at runtime.
 function parse_prefab() -> Node {
-  pi = pi + 1; let n = node(N_PREFAB); n.s = eat_id(); eat_op(":"); n.ty = eat_id(); skipnl(); eat_op("{")
+  pi += 1; let n = node(N_PREFAB); n.s = eat_id(); eat_op(":"); n.ty = eat_id(); skipnl(); eat_op("{")
   parse_component_records(n)
   eat_op("}"); return n
 }
@@ -175,7 +178,7 @@ function parse_prefab() -> Node {
 # ordinary N_SYS nodes, tagged with the owning scene in `.c`, so the whole
 # system backend (functions, phases, enable/disable) is reused unchanged.
 function parse_scene() -> void {
-  pi = pi + 1                                # 'scene'
+  pi += 1                                # 'scene'
   let n = node(N_SCENE); n.s = eat_id()
   n.ival = g_scene_count
   # optional modifiers after the name, any order: `start` (the boot scene) and
@@ -185,33 +188,34 @@ function parse_scene() -> void {
   var then_scene: pointer = null
   var loads_then: pointer = null             # loads then Next: pump the Assets queue, draw a bar, go on when ready
   while is_id("start") or is_id("public") or is_id("shows") or is_id("lasts") or is_id("loads") {
-    if is_id("start") { pi = pi + 1; g_start_scene = g_scene_count }
-    else { if is_id("shows") { pi = pi + 1; n.ty = eat_id() }    # shows Menu: the engine opens, renders and closes it
-    else { if is_id("lasts") { pi = pi + 1; lasts = expr(); if not is_id("then") { perr("lasts N needs `then Scene`") }; pi = pi + 1; then_scene = eat_id() }
-    else { if is_id("loads") { pi = pi + 1; if not is_id("then") { perr("loads needs `then Scene`") }; pi = pi + 1; loads_then = eat_id(); g_uses_atlas = true }
-    else { pi = pi + 1; is_pub = true } } } }
+    if is_id("start") { pi += 1; g_start_scene = g_scene_count }
+    else if is_id("shows") { pi += 1; n.ty = eat_id() }    # shows Menu: the engine opens, renders and closes it
+    else if is_id("lasts") { pi += 1; lasts = expr(); if not is_id("then") { perr("lasts N needs `then Scene`") }; pi += 1; then_scene = eat_id() }
+    else if is_id("loads") { pi += 1; if not is_id("then") { perr("loads needs `then Scene`") }; pi += 1; loads_then = eat_id(); g_uses_atlas = true }
+    else { pi += 1; is_pub = true }
   }
-  g_scene_count = g_scene_count + 1
+  g_scene_count += 1
   if is_pub { ensure_event_empty(`scene_{n.s}_enter`);  ensure_event_empty(`scene_{n.s}_exit`) }
   skipnl(); eat_op("{")
   while true {
     skipnl(); if is_op("}") { break }
     if is_id("on") {                         # on enter { .. } / on exit { .. }
-      pi = pi + 1; let which = eat_id(); skipnl()
-      if (which == "enter") { n.a = block() }
-      else { if (which == "exit") { n.b = block() } else { perr("expected 'enter' or 'exit' after 'on'") } }
+      pi += 1; let which = eat_id(); skipnl()
+      if which == "enter" { n.a = block() }
+      else if which == "exit" { n.b = block() }
+      else { perr("expected 'enter' or 'exit' after 'on'") }
       continue
     }
     if is_id("layer") {                      # layer Name [public] { handler .. }
-      pi = pi + 1; let lname = eat_id()
-      if is_id("public") { pi = pi + 1; ensure_event_empty(`layer_{lname}_show`);  ensure_event_empty(`layer_{lname}_hide`) }
+      pi += 1; let lname = eat_id()
+      if is_id("public") { pi += 1; ensure_event_empty(`layer_{lname}_show`);  ensure_event_empty(`layer_{lname}_hide`) }
       skipnl(); eat_op("{")
       let ltag = node(E_ID); ltag.s = lname   # the layer name, tagged onto each handler
       while true {
         skipnl(); if is_op("}") { break }
         var qspec: Node = null               # `@Queries(...)` makes the handler run once per matching entity
         while is_op("@") {
-          pi = pi + 1; let a = eat_id()
+          pi += 1; let a = eat_id()
           if (a == "Queries") { qspec = parse_queries_anno() }
           else { perr(`a handler inside a layer may only carry @Queries (got @{a})`) }
           skipnl()
@@ -260,7 +264,7 @@ function scene_add_timer(sc: Node, frames: Node, next: pointer) -> void {
   let set = node(S_ASSIGN); set.s = "="; let lhs = node(E_ID); lhs.s = counter; set.a = lhs; set.b = frames
   let ins = new []Node; push(ins, set)
   var i = 0
-  while i < len(sc.a.kids) { push(ins, sc.a.kids[i]); i = i + 1 }
+  while i < len(sc.a.kids) { push(ins, sc.a.kids[i]); i += 1 }
   sc.a.kids = ins
   let h = node(N_SYS); h.s = `{sc.s}_Timer`; h.ty = "Update"; h.c = sc
   let body = node(N_BLOCK)
@@ -281,7 +285,7 @@ function ui_register_gotos() -> void {
   var i = 0
   while i < len(prog) {
     if prog[i].kind == N_UI and prog[i].ival == 1 { ui_gotos_in(prog[i].a) }
-    i = i + 1
+    i += 1
   }
 }
 function ui_gotos_in(w: Node) -> void {
@@ -292,7 +296,7 @@ function ui_gotos_in(w: Node) -> void {
     let pr = w.b.kids[p]
     if (pr.s == "id") and (pr.a.kind == E_ID) { idn = pr.a.s }
     if (pr.s == "goto") and (pr.a.kind == E_ID) { goto = pr.a.s }
-    p = p + 1
+    p += 1
   }
   if (idn != null) and (goto != null) {
     let body = node(N_BLOCK)
@@ -303,7 +307,7 @@ function ui_gotos_in(w: Node) -> void {
     register_onlisten("UiClicked", body)
   }
   var k = 0
-  while k < len(w.kids) { ui_gotos_in(w.kids[k]); k = k + 1 }
+  while k < len(w.kids) { ui_gotos_in(w.kids[k]); k += 1 }
 }
 
 # enum Name { A, B, C } — named int constants; a variant's value is its index.
@@ -318,17 +322,17 @@ function ui_gotos_in(w: Node) -> void {
 # Each variant node is an E_ID (s=variant name); its payload types are stored as
 # N_PARAM kids, one per slot, carrying only `.ty`.
 function parse_enum() -> Node {
-  pi = pi + 1; let n = node(N_ENUM); n.s = eat_id(); skipnl(); eat_op("{")
+  pi += 1; let n = node(N_ENUM); n.s = eat_id(); skipnl(); eat_op("{")
   while true { skipnl(); if is_op("}") { break }
     let v = node(E_ID); v.s = eat_id()
     if is_op("(") {                              # variant payload: Door(int), Portal(int, int)
-      pi = pi + 1; skipnl()
-      while not is_op(")") {
-        let p = node(N_PARAM); p.ty = ptype(); push(v.kids, p)
-        if is_op(",") { pi = pi + 1 };  skipnl() }
-      eat_op(")") }
+    pi += 1; skipnl()
+    while not is_op(")") {
+      let p = node(N_PARAM); p.ty = ptype(); push(v.kids, p)
+      if is_op(",") { pi += 1 };  skipnl() }
+    eat_op(")") }
     push(n.kids, v)
-    if is_op(",") { pi = pi + 1 };  skipnl() }
+    if is_op(",") { pi += 1 };  skipnl() }
   eat_op("}"); return n
 }
 
@@ -338,28 +342,28 @@ function parse_enum() -> Node {
 # per model use-site — the same property syncs in one model, not another. The
 # per-member @Sync sets the member E_ID's ival=1 (read by emit_net).
 function parse_archetype() -> Node {
-  pi = pi + 1; let n = node(N_ARCH); n.s = eat_id(); skipnl(); eat_op("{")
+  pi += 1; let n = node(N_ARCH); n.s = eat_id(); skipnl(); eat_op("{")
   while true { skipnl(); if is_op("}") { break }
     let c = node(E_ID)
-    if is_op("@") { pi = pi + 1; let a = eat_id(); if (a == "Sync") { c.ival = 1 }; skipnl() }
+    if is_op("@") { pi += 1; let a = eat_id(); if (a == "Sync") { c.ival = 1 }; skipnl() }
     c.s = eat_id(); push(n.kids, c)
-    if is_op(",") { pi = pi + 1 };  skipnl() }
+    if is_op(",") { pi += 1 };  skipnl() }
   eat_op("}"); return n
 }
 
 # extern function name(params) -> T = "symbol"
 function parse_extern() -> Node {
-  pi = pi + 1                                # 'extern'
+  pi += 1                                # 'extern'
   let fnkw = eat_id()                        # 'fn'
   let n = node(N_EXTERN); n.s = eat_id(); eat_op("(")
   while not is_op(")") { let p = node(N_PARAM); p.s = eat_id(); eat_op(":"); p.ty = ptype(); push(n.kids, p)
-    if is_op(",") { pi = pi + 1 } }
+    if is_op(",") { pi += 1 } }
   eat_op(")")
   n.ty = "void"
-  if is_op("->") { pi = pi + 1; n.ty = ptype() }
+  if is_op("->") { pi += 1; n.ty = ptype() }
   eat_op("=")
   let t = toks[pi]                           # "symbol"
-  n.a = node(E_STR); n.a.s = t.text;  pi = pi + 1
+  n.a = node(E_STR); n.a.s = t.text;  pi += 1
   return n
 }
 
@@ -371,13 +375,13 @@ function parse_widget() -> Node {
     let pr = node(E_FINIT); pr.s = eat_id(); eat_op(":"); pr.a = expr(); push(w.b.kids, pr)   # widget prop `key: value` (Rule A)
   }
   skipnl()
-  if is_op("{") { pi = pi + 1
+  if is_op("{") { pi += 1
     while true { skipnl(); if is_op("}") { break }; push(w.kids, parse_widget()) }
     eat_op("}") }
   return w
 }
 function parse_ui() -> Node {
-  pi = pi + 1; let n = node(N_UI); n.s = eat_id(); n.ival = 1   # ival=1 marks the top ui block
+  pi += 1; let n = node(N_UI); n.s = eat_id(); n.ival = 1   # ival=1 marks the top ui block
   skipnl(); eat_op("{"); skipnl()
   n.a = parse_widget()
   skipnl(); eat_op("}")

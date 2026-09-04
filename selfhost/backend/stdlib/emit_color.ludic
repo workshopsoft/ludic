@@ -233,4 +233,3 @@ function color_lookup(name: pointer) -> int {
   if (name == "Orchid2") { return 0xAF69EF }
   return -1
 }
-

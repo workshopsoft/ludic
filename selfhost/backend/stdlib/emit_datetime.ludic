@@ -9,7 +9,7 @@
 #              (UTC), matching Time.now().
 # The two civil<->epoch conversions are Howard Hinnant's public-domain algorithms
 # (chrono-compatible, proleptic Gregorian), emitted once per program as the
-# @fn_days_from_civil / @fn_civil_from_days prelude and gated by g_uses_datert.
+# @lp_days_from_civil / @lp_civil_from_days prelude and gated by g_uses_datert.
 # v1 is UTC-only with no leap seconds; instants are assumed non-negative (dates
 # at or after 1970). Timezones, format/parse and a game-controlled simulated
 # clock are tracked follow-ups.
@@ -42,7 +42,7 @@ function date_component(ed: pointer, which: int) -> pointer {
   let yp = emit_alloca("i32")
   let mp = emit_alloca("i32")
   let dp = emit_alloca("i32")
-  emit(`  call void @fn_civil_from_days(i32 {ed}, ptr {yp}, ptr {mp}, ptr {dp})\n`)
+  emit(`  call void @lp_civil_from_days(i32 {ed}, ptr {yp}, ptr {mp}, ptr {dp})\n`)
   var p = yp
   if (which == 1) { p = mp }
   if (which == 2) { p = dp }
@@ -60,7 +60,7 @@ function emit_date_ns(meth: pointer, e: Node) -> Val {
   if (meth == "new") {                              # new(year, month, day) -> Date (epoch-day)
     g_uses_datert = true
     let y = emit_expr(e.kids[0]);  let m = emit_expr(e.kids[1]);  let d = emit_expr(e.kids[2])
-    return val(emit_bind(`call i32 @fn_days_from_civil(i32 {y.code}, i32 {m.code}, i32 {d.code})`), "int")
+    return val(emit_bind(`call i32 @lp_days_from_civil(i32 {y.code}, i32 {m.code}, i32 {d.code})`), "int")
   }
   if (meth == "year")  { let ed = emit_expr(e.kids[0]);  return val(date_component(ed.code, 0), "int") }
   if (meth == "month") { let ed = emit_expr(e.kids[0]);  return val(date_component(ed.code, 1), "int") }
@@ -84,13 +84,13 @@ function emit_date_ns(meth: pointer, e: Node) -> Val {
   if (meth == "days_in_month") {                    # length of (year, month) = next month's day 0
     g_uses_datert = true
     let y = emit_expr(e.kids[0]);  let m = emit_expr(e.kids[1])
-    let this = emit_bind(`call i32 @fn_days_from_civil(i32 {y.code}, i32 {m.code}, i32 1)`)
-    let dec = emit_bind(`icmp eq i32 {m.code}, 12`) # December rolls over to next January
+    let this = emit_bind(`call i32 @lp_days_from_civil(i32 {y.code}, i32 {m.code}, i32 1)`)
+    let dec = emit_bind(`icmp eq i32 {m.code}, 12`)  # December rolls over to next January
     let ny = emit_bind(`add i32 {y.code}, 1`)
     let ny2 = emit_bind(`select i1 {dec}, i32 {ny}, i32 {y.code}`)
     let nm = emit_bind(`add i32 {m.code}, 1`)
     let nm2 = emit_bind(`select i1 {dec}, i32 1, i32 {nm}`)
-    let next = emit_bind(`call i32 @fn_days_from_civil(i32 {ny2}, i32 {nm2}, i32 1)`)
+    let next = emit_bind(`call i32 @lp_days_from_civil(i32 {ny2}, i32 {nm2}, i32 1)`)
     return val(emit_bind(`sub i32 {next}, {this}`), "int")
   }
   if (meth == "to_epoch") {                         # midnight UTC of the day, as a DateTime instant
@@ -132,21 +132,21 @@ function is_datetime_ns(meth: pointer) -> bool {
 
 # concat two runtime string codes -> a fresh string code
 function dt_concat(a: pointer, b: pointer) -> pointer {
-  return emit_bind(`call ptr @fn_str_concat(ptr {a}, ptr {b})`)
+  return emit_bind(`call ptr @lp_str_concat(ptr {a}, ptr {b})`)
 }
 
 # does the pattern have token `tok` (length tlen) starting at index i?
 function dt_tok_at(pat: pointer, n: int, i: int, tok: pointer, tlen: int) -> bool {
   if (i + tlen) > n { return false }
   var k = 0
-  while k < tlen { if pat[i + k] != tok[k] { return false };  k = k + 1 }
+  while k < tlen { if pat[i + k] != tok[k] { return false };  k += 1 }
   return true
 }
 
 # DateTime.format(t, "pattern") -> string. The pattern MUST be a string literal;
 # the tokens YYYY / YY / MM / DD / HH / mm / ss expand to zero-padded fields and
 # every other character is copied through verbatim. Expanded at compile time into
-# a fold of @fn_str_concat over literal runs and @fn_dt_pad0 field conversions.
+# a fold of @lp_str_concat over literal runs and @lp_dt_pad0 field conversions.
 function emit_datetime_format(e: Node) -> Val {
   g_uses_datert = true
   g_uses_str = true
@@ -157,7 +157,7 @@ function emit_datetime_format(e: Node) -> Val {
   # compute all six components once
   let ed = dt_epochday(t.code)
   let yp = emit_alloca("i32");  let mp = emit_alloca("i32");  let dp = emit_alloca("i32")
-  emit(`  call void @fn_civil_from_days(i32 {ed}, ptr {yp}, ptr {mp}, ptr {dp})\n`)
+  emit(`  call void @lp_civil_from_days(i32 {ed}, ptr {yp}, ptr {mp}, ptr {dp})\n`)
   let yv = emit_bind(`load i32, ptr {yp}`)
   let mv = emit_bind(`load i32, ptr {mp}`)
   let dv = emit_bind(`load i32, ptr {dp}`)
@@ -179,14 +179,14 @@ function emit_datetime_format(e: Node) -> Val {
     else { if dt_tok_at(pat, n, i, "HH", 2) { field = hh;  width = 2;  tlen = 2 }
     else { if dt_tok_at(pat, n, i, "mm", 2) { field = mi;  width = 2;  tlen = 2 }
     else { if dt_tok_at(pat, n, i, "ss", 2) { field = ss;  width = 2;  tlen = 2 } } } } } } }
-    if (field == null) { buf_putc(lit, pat[i]);  i = i + 1 }
+    if (field == null) { buf_putc(lit, pat[i]);  i += 1 }
     else {
       let ls = buf_str(lit)
       if len(ls) > 0 { acc = dt_concat(acc, emit_str_const(ls)) }
-      let piece = emit_bind(`call ptr @fn_dt_pad0(i32 {field}, i32 {width})`)
+      let piece = emit_bind(`call ptr @lp_dt_pad0(i32 {field}, i32 {width})`)
       acc = dt_concat(acc, piece)
       lit.len = 0                                    # start a fresh literal run
-      i = i + tlen
+      i += tlen
     }
   }
   let tail = buf_str(lit)
@@ -223,12 +223,12 @@ function emit_datetime_parse(e: Node) -> Val {
     else { if dt_tok_at(pat, n, i, "HH", 2) { slot = hp;  width = 2;  tlen = 2 }
     else { if dt_tok_at(pat, n, i, "mm", 2) { slot = np;  width = 2;  tlen = 2 }
     else { if dt_tok_at(pat, n, i, "ss", 2) { slot = sp;  width = 2;  tlen = 2 } } } } } }
-    if (slot == null) { off = off + 1;  i = i + 1 }
+    if (slot == null) { off += 1;  i += 1 }
     else {
-      let rd = emit_bind(`call i32 @fn_dt_rd(ptr {s.code}, i32 {itoa(off)}, i32 {width}, ptr {failp})`)
+      let rd = emit_bind(`call i32 @lp_dt_rd(ptr {s.code}, i32 {itoa(off)}, i32 {width}, ptr {failp})`)
       store_at("i32", rd, slot)
-      off = off + width
-      i = i + tlen
+      off += width
+      i += tlen
     }
   }
   let y = emit_bind(`load i32, ptr {yp}`)
@@ -237,7 +237,7 @@ function emit_datetime_parse(e: Node) -> Val {
   let h = emit_bind(`load i32, ptr {hp}`)
   let mn = emit_bind(`load i32, ptr {np}`)
   let sc = emit_bind(`load i32, ptr {sp}`)
-  let ed = emit_bind(`call i32 @fn_days_from_civil(i32 {y}, i32 {mo}, i32 {d})`)
+  let ed = emit_bind(`call i32 @lp_days_from_civil(i32 {y}, i32 {mo}, i32 {d})`)
   let days = emit_bind(`mul i32 {ed}, 86400`)
   let hs = emit_bind(`mul i32 {h}, 3600`)
   let ns = emit_bind(`mul i32 {mn}, 60`)
@@ -256,7 +256,7 @@ function emit_datetime_ns(meth: pointer, e: Node) -> Val {
     g_uses_datert = true
     let y = emit_expr(e.kids[0]);  let mo = emit_expr(e.kids[1]);  let d = emit_expr(e.kids[2])
     let h = emit_expr(e.kids[3]);  let mi = emit_expr(e.kids[4]);  let s = emit_expr(e.kids[5])
-    let ed = emit_bind(`call i32 @fn_days_from_civil(i32 {y.code}, i32 {mo.code}, i32 {d.code})`)
+    let ed = emit_bind(`call i32 @lp_days_from_civil(i32 {y.code}, i32 {mo.code}, i32 {d.code})`)
     let days = emit_bind(`mul i32 {ed}, 86400`)
     let hh = emit_bind(`mul i32 {h.code}, 3600`)
     let mm = emit_bind(`mul i32 {mi.code}, 60`)
@@ -306,8 +306,8 @@ function emit_datetime_ns(meth: pointer, e: Node) -> Val {
 # are deterministic and bit-identical everywhere. 719468 is the day count from
 # 0000-03-01 to 1970-01-01; 146097 is the days in a 400-year era.
 function emit_datetime_prelude() -> void {
-  # @fn_days_from_civil(y, m, d) -> days since 1970-01-01
-  emith("define i32 @fn_days_from_civil(i32 %y0, i32 %m, i32 %d) {\n")
+  # @lp_days_from_civil(y, m, d) -> days since 1970-01-01
+  emith("define i32 @lp_days_from_civil(i32 %y0, i32 %m, i32 %d) {\n")
   emith("  %mle2 = icmp sle i32 %m, 2\n")
   emith("  %ysub = select i1 %mle2, i32 1, i32 0\n")
   emith("  %y = sub i32 %y0, %ysub\n")
@@ -336,9 +336,9 @@ function emit_datetime_prelude() -> void {
   emith("  %r = sub i32 %r0, 719468\n")
   emith("  ret i32 %r\n")
   emith("}\n")
-  # @fn_civil_from_days(z0, yp, mp, dp): write the civil (year, month, day) of
+  # @lp_civil_from_days(z0, yp, mp, dp): write the civil (year, month, day) of
   # the epoch-day z0 through the three out-pointers.
-  emith("define void @fn_civil_from_days(i32 %z0, ptr %yp, ptr %mp, ptr %dp) {\n")
+  emith("define void @lp_civil_from_days(i32 %z0, ptr %yp, ptr %mp, ptr %dp) {\n")
   emith("  %z = add i32 %z0, 719468\n")
   emith("  %zneg = icmp slt i32 %z, 0\n")
   emith("  %zm = sub i32 %z, 146096\n")
@@ -381,9 +381,9 @@ function emit_datetime_prelude() -> void {
   emith("  store i32 %dd, ptr %dp\n")
   emith("  ret void\n")
   emith("}\n")
-  # @fn_dt_pad0(v, w): a fresh, malloc'd, w-digit zero-padded decimal of v
+  # @lp_dt_pad0(v, w): a fresh, malloc'd, w-digit zero-padded decimal of v
   # (v assumed non-negative). Backs DateTime.format's numeric fields.
-  emith("define ptr @fn_dt_pad0(i32 %v, i32 %w) {\n")
+  emith("define ptr @lp_dt_pad0(i32 %v, i32 %w) {\n")
   emith("  %we = zext i32 %w to i64\n")
   emith("  %sz = add i64 %we, 1\n")
   emith("  %buf = call ptr @malloc(i64 %sz)\n")
@@ -397,9 +397,9 @@ function emit_datetime_prelude() -> void {
   emith("  %cp = getelementptr i8, ptr %buf, i32 %k\n  store i8 %ch8, ptr %cp\n")
   emith("  %vn = sdiv i32 %vv, 10\n  store i32 %vn, ptr %vp\n  %kn = sub i32 %k, 1\n  store i32 %kn, ptr %kp\n  br label %loop\n")
   emith("done:\n  ret ptr %buf\n}\n")
-  # @fn_dt_rd(s, off, w, failp): read w decimal digits of s starting at off into an
+  # @lp_dt_rd(s, off, w, failp): read w decimal digits of s starting at off into an
   # int; on any non-digit set *failp = 1. Backs DateTime.parse's fixed-width fields.
-  emith("define i32 @fn_dt_rd(ptr %s, i32 %off, i32 %w, ptr %failp) {\n")
+  emith("define i32 @lp_dt_rd(ptr %s, i32 %off, i32 %w, ptr %failp) {\n")
   emith("  %accp = alloca i32\n  store i32 0, ptr %accp\n  %kp = alloca i32\n  store i32 0, ptr %kp\n")
   emith("  br label %loop\n")
   emith("loop:\n  %k = load i32, ptr %kp\n  %kok = icmp slt i32 %k, %w\n  br i1 %kok, label %body, label %done\n")

@@ -2,32 +2,37 @@
 # slicing out substrings, and integer<->text. All over raw NUL-terminated
 # byte buffers reached with peek8/poke8.
 
-# a fresh NUL-terminated copy of src[start .. start+n]
-
-function char_is_digit(c: int) -> bool { return c >= 48 and c <= 57 }
+function char_is_digit(c: int) -> bool { return c >= '0' and c <= '9' }
 function char_is_alpha(c: int) -> bool {
-  if c >= 65 and c <= 90 { return true }
-  if c >= 97 and c <= 122 { return true }
-  return c == 95
+  if c >= 'A' and c <= 'Z' { return true }
+  if c >= 'a' and c <= 'z' { return true }
+  return c == '_'
 }
 function char_is_alnum(c: int) -> bool { return char_is_alpha(c) or char_is_digit(c) }
 
+# does `s` begin with `prefix`? (byte-wise; both NUL-terminated)
+function str_starts(s: pointer, prefix: pointer) -> bool {
+  var i = 0
+  while prefix[i] != 0 { if s[i] != prefix[i] { return false };  i += 1 }
+  return true
+}
+
 # integer -> fresh decimal string
 function itoa(v: int) -> pointer {
-  if v == 0 { let z = bytes(2); z[0] = 48; z[1] = 0; return z }
+  if v == 0 { let z = bytes(2); z[0] = '0'; z[1] = 0; return z }
   var neg = false
   var x = v
-  if x < 0 { neg = true;  x = 0 - x }
+  if x < 0 { neg = true;  x = -x }
   let tmp = bytes(16)
   var n = 0
-  while x > 0 { tmp[n] = 48 + x % 10;  x = x / 10;  n = n + 1 }
+  while x > 0 { tmp[n] = 48 + x % 10;  x /= 10;  n += 1 }
   var total = n
-  if neg { total = total + 1 }
+  if neg { total += 1 }
   let out = bytes(total + 1)
   var k = 0
-  if neg { out[0] = 45;  k = 1 }
+  if neg { out[0] = '-';  k = 1 }
   var i = 0
-  while i < n { out[k + i] = tmp[n - 1 - i];  i = i + 1 }
+  while i < n { out[k + i] = tmp[n - 1 - i];  i += 1 }
   out[total] = 0
   return out
 }

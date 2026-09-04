@@ -1,8 +1,8 @@
 # emit_math.ludic — the Math.* namespace, all deterministic Q16.16 fixed-point.
 # min/max/abs/clamp lower to inline IR (and stay bare too); sign/floor/ceil/
 # round/lerp/inverse_lerp/remap and the geometry/interp helpers are inline; and
-# sqrt/sin/cos/tan call the runtime prelude below (@fn_fx_sqrt is a bit-by-bit
-# integer root, @fn_fx_sin a 256-entry interpolated sine table). Everything is
+# sqrt/sin/cos/tan call the runtime prelude below (@lp_fx_sqrt is a bit-by-bit
+# integer root, @lp_fx_sin a 256-entry interpolated sine table). Everything is
 # plain integer IR, so it is bit-identical on every platform.
 
 function is_math_builtin(name: pointer) -> bool {
@@ -115,54 +115,54 @@ function emit_math_ns(meth: pointer, e: Node) -> Val {
   if (meth == "sqrt") {                             # sqrt(fixed) -> fixed (deterministic isqrt)
     g_uses_mathrt = true
     let a = emit_expr(e.kids[0])
-    return val(emit_bind(`call i32 @fn_fx_sqrt(i32 {a.code})`), "fixed")
+    return val(emit_bind(`call i32 @lp_fx_sqrt(i32 {a.code})`), "fixed")
   }
   if (meth == "sin") {                              # sin(radians: fixed) -> fixed
     g_uses_mathrt = true
     let a = emit_expr(e.kids[0])
-    return val(emit_bind(`call i32 @fn_fx_sin(i32 {a.code})`), "fixed")
+    return val(emit_bind(`call i32 @lp_fx_sin(i32 {a.code})`), "fixed")
   }
   if (meth == "cos") {                              # cos(x) = sin(x + pi/2), pi/2 = 102944 fixed
     g_uses_mathrt = true
     let a = emit_expr(e.kids[0])
     let sh = emit_bind(`add i32 {a.code}, 102944`)
-    return val(emit_bind(`call i32 @fn_fx_sin(i32 {sh})`), "fixed")
+    return val(emit_bind(`call i32 @lp_fx_sin(i32 {sh})`), "fixed")
   }
   if (meth == "tan") {                              # tan(x) = sin(x) / cos(x)
     g_uses_mathrt = true
     let a = emit_expr(e.kids[0])
-    let s = emit_bind(`call i32 @fn_fx_sin(i32 {a.code})`)
+    let s = emit_bind(`call i32 @lp_fx_sin(i32 {a.code})`)
     let sh = emit_bind(`add i32 {a.code}, 102944`)
-    let c = emit_bind(`call i32 @fn_fx_sin(i32 {sh})`)
+    let c = emit_bind(`call i32 @lp_fx_sin(i32 {sh})`)
     return val(fx_div_code(s, c), "fixed")
   }
   if (meth == "atan2") {                            # atan2(y, x) -> angle in radians
     g_uses_mathrt = true
     let y = emit_expr(e.kids[0]);  let x = emit_expr(e.kids[1])
-    return val(emit_bind(`call i32 @fn_fx_atan2(i32 {y.code}, i32 {x.code})`), "fixed")
+    return val(emit_bind(`call i32 @lp_fx_atan2(i32 {y.code}, i32 {x.code})`), "fixed")
   }
   if (meth == "asin") {                             # asin(x) = atan2(x, sqrt(1 - x^2))
     g_uses_mathrt = true
     let x = emit_expr(e.kids[0])
     let xx = fx_mul_code(x.code, x.code)
     let om = emit_bind(`sub i32 65536, {xx}`)
-    let root = emit_bind(`call i32 @fn_fx_sqrt(i32 {om})`)
-    return val(emit_bind(`call i32 @fn_fx_atan2(i32 {x.code}, i32 {root})`), "fixed")
+    let root = emit_bind(`call i32 @lp_fx_sqrt(i32 {om})`)
+    return val(emit_bind(`call i32 @lp_fx_atan2(i32 {x.code}, i32 {root})`), "fixed")
   }
   if (meth == "acos") {                             # acos(x) = atan2(sqrt(1 - x^2), x)
     g_uses_mathrt = true
     let x = emit_expr(e.kids[0])
     let xx = fx_mul_code(x.code, x.code)
     let om = emit_bind(`sub i32 65536, {xx}`)
-    let root = emit_bind(`call i32 @fn_fx_sqrt(i32 {om})`)
-    return val(emit_bind(`call i32 @fn_fx_atan2(i32 {root}, i32 {x.code})`), "fixed")
+    let root = emit_bind(`call i32 @lp_fx_sqrt(i32 {om})`)
+    return val(emit_bind(`call i32 @lp_fx_atan2(i32 {root}, i32 {x.code})`), "fixed")
   }
   if (meth == "hypot") {                            # hypot(x, y) = sqrt(x*x + y*y)
     g_uses_mathrt = true
     let x = emit_expr(e.kids[0]);  let y = emit_expr(e.kids[1])
     let xx = fx_mul_code(x.code, x.code);  let yy = fx_mul_code(y.code, y.code)
     let s = emit_bind(`add i32 {xx}, {yy}`)
-    return val(emit_bind(`call i32 @fn_fx_sqrt(i32 {s})`), "fixed")
+    return val(emit_bind(`call i32 @lp_fx_sqrt(i32 {s})`), "fixed")
   }
   if (meth == "dist2") {                            # dist2(x0,y0,x1,y1) = dx*dx + dy*dy
     let x0 = emit_expr(e.kids[0]);  let y0 = emit_expr(e.kids[1])
@@ -180,26 +180,26 @@ function emit_math_ns(meth: pointer, e: Node) -> Val {
     let dy = emit_bind(`sub i32 {y1.code}, {y0.code}`)
     let xx = fx_mul_code(dx, dx);  let yy = fx_mul_code(dy, dy)
     let s = emit_bind(`add i32 {xx}, {yy}`)
-    return val(emit_bind(`call i32 @fn_fx_sqrt(i32 {s})`), "fixed")
+    return val(emit_bind(`call i32 @lp_fx_sqrt(i32 {s})`), "fixed")
   }
   if (meth == "exp") {                              # e^x = 2^(x * log2 e), log2 e = 94548 fixed
     g_uses_mathrt = true
     let a = emit_expr(e.kids[0])
     let t = fx_mul_code(a.code, "94548")
-    return val(emit_bind(`call i32 @fn_fx_exp2(i32 {t})`), "fixed")
+    return val(emit_bind(`call i32 @lp_fx_exp2(i32 {t})`), "fixed")
   }
   if (meth == "log") {                              # natural log: ln(x) = log2(x) * ln 2, ln 2 = 45426 fixed
     g_uses_mathrt = true
     let a = emit_expr(e.kids[0])
-    let l2 = emit_bind(`call i32 @fn_fx_log2(i32 {a.code})`)
+    let l2 = emit_bind(`call i32 @lp_fx_log2(i32 {a.code})`)
     return val(fx_mul_code(l2, "45426"), "fixed")
   }
   if (meth == "pow") {                              # a^b = 2^(b * log2 a); needs a > 0
     g_uses_mathrt = true
     let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1])
-    let l2 = emit_bind(`call i32 @fn_fx_log2(i32 {a.code})`)
+    let l2 = emit_bind(`call i32 @lp_fx_log2(i32 {a.code})`)
     let t = fx_mul_code(b.code, l2)
-    return val(emit_bind(`call i32 @fn_fx_exp2(i32 {t})`), "fixed")
+    return val(emit_bind(`call i32 @lp_fx_exp2(i32 {t})`), "fixed")
   }
   if (meth == "deg_to_rad") {                       # d * (pi/180), pi/180 = 1144 fixed
     let d = emit_expr(e.kids[0])
@@ -279,14 +279,14 @@ function emit_math_ns(meth: pointer, e: Node) -> Val {
 }
 
 # emit_math_prelude — the deterministic fixed-point math runtime, emitted once
-# per program that uses Math.sqrt/sin/cos/tan/exp/log/pow. @fn_fx_sqrt is a
-# 64-bit integer square root (bit-by-bit); @fn_fx_sin reads a 256-entry Q16.16
-# sine table with linear interpolation; @fn_fx_exp2/@fn_fx_log2 are range-reduced
+# per program that uses Math.sqrt/sin/cos/tan/exp/log/pow. @lp_fx_sqrt is a
+# 64-bit integer square root (bit-by-bit); @lp_fx_sin reads a 256-entry Q16.16
+# sine table with linear interpolation; @lp_fx_exp2/@lp_fx_log2 are range-reduced
 # Q16.16 polynomials (base-2 exp and log) that back exp/log/pow. All are pure
 # integer IR, so bit-identical on every platform.
 function emit_math_prelude() -> void {
   emith("@L_sin_tab = private unnamed_addr constant [256 x i32] [i32 0, i32 1608, i32 3216, i32 4821, i32 6424, i32 8022, i32 9616, i32 11204, i32 12785, i32 14359, i32 15924, i32 17479, i32 19024, i32 20557, i32 22078, i32 23586, i32 25080, i32 26558, i32 28020, i32 29466, i32 30893, i32 32303, i32 33692, i32 35062, i32 36410, i32 37736, i32 39040, i32 40320, i32 41576, i32 42806, i32 44011, i32 45190, i32 46341, i32 47464, i32 48559, i32 49624, i32 50660, i32 51665, i32 52639, i32 53581, i32 54491, i32 55368, i32 56212, i32 57022, i32 57798, i32 58538, i32 59244, i32 59914, i32 60547, i32 61145, i32 61705, i32 62228, i32 62714, i32 63162, i32 63572, i32 63944, i32 64277, i32 64571, i32 64827, i32 65043, i32 65220, i32 65358, i32 65457, i32 65516, i32 65536, i32 65516, i32 65457, i32 65358, i32 65220, i32 65043, i32 64827, i32 64571, i32 64277, i32 63944, i32 63572, i32 63162, i32 62714, i32 62228, i32 61705, i32 61145, i32 60547, i32 59914, i32 59244, i32 58538, i32 57798, i32 57022, i32 56212, i32 55368, i32 54491, i32 53581, i32 52639, i32 51665, i32 50660, i32 49624, i32 48559, i32 47464, i32 46341, i32 45190, i32 44011, i32 42806, i32 41576, i32 40320, i32 39040, i32 37736, i32 36410, i32 35062, i32 33692, i32 32303, i32 30893, i32 29466, i32 28020, i32 26558, i32 25080, i32 23586, i32 22078, i32 20557, i32 19024, i32 17479, i32 15924, i32 14359, i32 12785, i32 11204, i32 9616, i32 8022, i32 6424, i32 4821, i32 3216, i32 1608, i32 0, i32 -1608, i32 -3216, i32 -4821, i32 -6424, i32 -8022, i32 -9616, i32 -11204, i32 -12785, i32 -14359, i32 -15924, i32 -17479, i32 -19024, i32 -20557, i32 -22078, i32 -23586, i32 -25080, i32 -26558, i32 -28020, i32 -29466, i32 -30893, i32 -32303, i32 -33692, i32 -35062, i32 -36410, i32 -37736, i32 -39040, i32 -40320, i32 -41576, i32 -42806, i32 -44011, i32 -45190, i32 -46341, i32 -47464, i32 -48559, i32 -49624, i32 -50660, i32 -51665, i32 -52639, i32 -53581, i32 -54491, i32 -55368, i32 -56212, i32 -57022, i32 -57798, i32 -58538, i32 -59244, i32 -59914, i32 -60547, i32 -61145, i32 -61705, i32 -62228, i32 -62714, i32 -63162, i32 -63572, i32 -63944, i32 -64277, i32 -64571, i32 -64827, i32 -65043, i32 -65220, i32 -65358, i32 -65457, i32 -65516, i32 -65536, i32 -65516, i32 -65457, i32 -65358, i32 -65220, i32 -65043, i32 -64827, i32 -64571, i32 -64277, i32 -63944, i32 -63572, i32 -63162, i32 -62714, i32 -62228, i32 -61705, i32 -61145, i32 -60547, i32 -59914, i32 -59244, i32 -58538, i32 -57798, i32 -57022, i32 -56212, i32 -55368, i32 -54491, i32 -53581, i32 -52639, i32 -51665, i32 -50660, i32 -49624, i32 -48559, i32 -47464, i32 -46341, i32 -45190, i32 -44011, i32 -42806, i32 -41576, i32 -40320, i32 -39040, i32 -37736, i32 -36410, i32 -35062, i32 -33692, i32 -32303, i32 -30893, i32 -29466, i32 -28020, i32 -26558, i32 -25080, i32 -23586, i32 -22078, i32 -20557, i32 -19024, i32 -17479, i32 -15924, i32 -14359, i32 -12785, i32 -11204, i32 -9616, i32 -8022, i32 -6424, i32 -4821, i32 -3216, i32 -1608]\n")
-  emith("define i32 @fn_fx_sqrt(i32 %x) {\n")
+  emith("define i32 @lp_fx_sqrt(i32 %x) {\n")
   emith("entry:\n  %neg = icmp slt i32 %x, 0\n  br i1 %neg, label %ret0, label %go\n")
   emith("ret0:\n  ret i32 0\n")
   emith("go:\n  %x64 = sext i32 %x to i64\n  %n0 = shl i64 %x64, 16\n")
@@ -300,14 +300,14 @@ function emit_math_prelude() -> void {
   emith("shift:\n  %rsh2 = lshr i64 %r1, 1\n  store i64 %rsh2, ptr %rp\n  br label %next\n")
   emith("next:\n  %b4 = lshr i64 %b3, 2\n  store i64 %b4, ptr %bp\n  br label %loop\n")
   emith("done:\n  %rf = load i64, ptr %rp\n  %r32 = trunc i64 %rf to i32\n  ret i32 %r32\n}\n")
-  emith("define i32 @fn_fx_sin(i32 %x) {\n")
+  emith("define i32 @lp_fx_sin(i32 %x) {\n")
   emith("  %xe = sext i32 %x to i64\n  %m = mul i64 %xe, 2670177\n  %idxf = ashr i64 %m, 16\n")
   emith("  %i0 = ashr i64 %idxf, 16\n  %i0m = and i64 %i0, 255\n  %frac = and i64 %idxf, 65535\n")
   emith("  %i1 = add i64 %i0m, 1\n  %i1m = and i64 %i1, 255\n")
   emith("  %p0 = getelementptr [256 x i32], ptr @L_sin_tab, i64 0, i64 %i0m\n  %v0 = load i32, ptr %p0\n")
   emith("  %p1 = getelementptr [256 x i32], ptr @L_sin_tab, i64 0, i64 %i1m\n  %v1 = load i32, ptr %p1\n")
   emith("  %d = sub i32 %v1, %v0\n  %de = sext i32 %d to i64\n  %dm = mul i64 %de, %frac\n  %dsh = ashr i64 %dm, 16\n  %dsh32 = trunc i64 %dsh to i32\n  %res = add i32 %v0, %dsh32\n  ret i32 %res\n}\n")
-  emith("define i32 @fn_fx_atan2(i32 %y, i32 %x) {\n")
+  emith("define i32 @lp_fx_atan2(i32 %y, i32 %x) {\n")
   emith("entry:\n")
   emith("  %xz = icmp eq i32 %x, 0\n")
   emith("  %yz = icmp eq i32 %y, 0\n")
@@ -363,11 +363,11 @@ function emit_math_prelude() -> void {
   emith("  %res = select i1 %yneg, i32 %angneg, i32 %angle\n")
   emith("  ret i32 %res\n")
   emith("}\n")
-  # @fn_fx_exp2(x) = 2^x, Q16.16. Split x into integer part i and fraction f in
+  # @lp_fx_exp2(x) = 2^x, Q16.16. Split x into integer part i and fraction f in
   # [0,1); 2^f is a 5th-order Taylor polynomial (Horner, coefficients (ln2)^k/k!
   # in Q16.16), then shift by i. Shift amounts are clamped to a safe [0,31] so a
   # huge exponent saturates instead of hitting an undefined shift.
-  emith("define i32 @fn_fx_exp2(i32 %x) {\n")
+  emith("define i32 @lp_fx_exp2(i32 %x) {\n")
   emith("  %i = ashr i32 %x, 16\n  %f = and i32 %x, 65535\n  %fe = sext i32 %f to i64\n")
   emith("  %m5 = mul i64 %fe, 87\n  %s5 = ashr i64 %m5, 16\n  %p5 = add i64 %s5, 630\n")
   emith("  %m4 = mul i64 %fe, %p5\n  %s4 = ashr i64 %m4, 16\n  %p4 = add i64 %s4, 3638\n")
@@ -381,12 +381,12 @@ function emit_math_prelude() -> void {
   emith("  %ni = sub i32 0, %i\n  %ra0 = select i1 %ipos, i32 0, i32 %ni\n  %rahi = icmp sgt i32 %ra0, 31\n  %ra = select i1 %rahi, i32 31, i32 %ra0\n")
   emith("  %shr = ashr i32 %p, %ra\n")
   emith("  %res = select i1 %ipos, i32 %shl, i32 %shr\n  ret i32 %res\n}\n")
-  # @fn_fx_log2(x) = log2(x), Q16.16, for x > 0 (x <= 0 saturates to the most
+  # @lp_fx_log2(x) = log2(x), Q16.16, for x > 0 (x <= 0 saturates to the most
   # negative i32). ctlz finds the MSB, giving the integer part e and a mantissa
   # m in [1,2); ln(m) uses the fast-converging atanh series on r = (m-1)/(m+1),
   # then log2(m) = ln(m)/ln2. Result is e + log2(m).
   emith("declare i32 @llvm.ctlz.i32(i32, i1)\n")
-  emith("define i32 @fn_fx_log2(i32 %x) {\n")
+  emith("define i32 @lp_fx_log2(i32 %x) {\n")
   emith("entry:\n  %pos = icmp sgt i32 %x, 0\n  br i1 %pos, label %go, label %neg\n")
   emith("neg:\n  ret i32 -2147483648\n")
   emith("go:\n  %lz = call i32 @llvm.ctlz.i32(i32 %x, i1 true)\n  %pmsb = sub i32 31, %lz\n")

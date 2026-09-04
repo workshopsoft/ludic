@@ -24,7 +24,7 @@ program Demo {
     Screen.clear(0)
     Light.ambient(Color.rgb(24, 24, 32))
     Light.gel(Color.rgb(40, 60, 160))                      # cool blue rim
-    Light.point(80, 60, 70, Color.rgb(255, 200, 120), 1.0) # warm core
+    Light.point(80, 60, 70, Color.rgb(255, 200, 120), 1.0)  # warm core
     Light.clear_gel()
     Screen.show()
   }

@@ -20,6 +20,6 @@ program Demo {
     let dir = Random.sign()
   }
 }
-  }
+}
 }
 ```

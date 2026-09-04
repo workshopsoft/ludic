@@ -7,7 +7,7 @@ function emit_params_sig(d: Node) -> void {
   while i < len(d.kids) {
     if i > 0 { emit(", ") }
     emit(llty(d.kids[i].ty));  emit(" %arg_");  emit(d.kids[i].s)
-    i = i + 1
+    i += 1
   }
 }
 
@@ -28,7 +28,7 @@ function emit_fn(d: Node) -> void {
     let slot = emit_alloca(llty(p.ty))
     emit("  store ");  emit(llty(p.ty));  emit(" %arg_");  emit(p.s);  emit(", ptr ");  emit(slot);  emit("\n")
     loc_push(p.s, slot, p.ty)
-    i = i + 1
+    i += 1
   }
   emit_block(d.a)
   if not g_term { emit("  br label %ret\n") }
@@ -99,7 +99,7 @@ function emit_test_runner() -> void {
   emith("@L_test_fail = internal global i32 0\n")
   emith("@.fmt_test_sum = private unnamed_addr constant [28 x i8] c\"== %d passed, %d failed ==\\0A\\00\"\n")
   var i = 0
-  while i < len(g_tests) { emit_test_fn(g_tests[i], i);  i = i + 1 }
+  while i < len(g_tests) { emit_test_fn(g_tests[i], i);  i += 1 }
   if g_uses_expect { emith("@.fmt_expect = private unnamed_addr constant [22 x i8] c\"%s (got %d, want %d)\\0A\\00\"\n") }
 
   ll_t = 0;  ll_lbl = 0
@@ -129,7 +129,7 @@ function emit_test_runner() -> void {
     emit(`  call i32 (ptr, ...) @printf(ptr @.fmt_line, ptr {failmsg})\n`)
     emit(`  br label %{ldone}\n`)
     emit(`{ldone}:\n`)
-    i = i + 1
+    i += 1
   }
   let totf = emit_bind("load i32, ptr %failed")
   let passed = emit_bind(`sub i32 {itoa(len(g_tests))}, {totf}`)
@@ -139,7 +139,29 @@ function emit_test_runner() -> void {
   emit(`  ret i32 {rc}\n}\n`)
 }
 
+# two `function`s with one name would collide in the object file; say so in
+# source terms (and name both files) instead of leaving it to the IR assembler.
+function check_duplicate_fns() -> void {
+  var i = 0
+  while i < len(prog) {
+    let d = prog[i]
+    if d.kind == N_FN {
+      var j = i + 1
+      while j < len(prog) {
+        let o = prog[j]
+        if o.kind == N_FN and (o.s == d.s) {
+          g_err_file = o.file;  g_err_line = o.line
+          perr(`function '{d.s}' is defined twice (first in {d.file}:{itoa(d.line)})`)
+        }
+        j += 1
+      }
+    }
+    i += 1
+  }
+}
+
 function emit_program() -> void {
+  check_duplicate_fns()
   head = buf_new()
   code = buf_new()
   g_uses_str = false
@@ -167,7 +189,7 @@ function emit_program() -> void {
       emit_fn(prog[i])
       g_cov_active = true
     }
-    i = i + 1
+    i += 1
   }
   emit_global_init_fn()                           # @L_init_globals: the non-constant `var` initializers
   if len(g_events) > 0 { emit_event_fns() }       # EV0: @ev_<E> event-dispatch functions
@@ -182,31 +204,32 @@ function emit_program() -> void {
   else { if has_systems() and has_entry() {       # N5: game owns its loop via `entry`
     emit_game_defs()                              # system fns, hooks, tick helpers
     i = 0
-    while i < len(prog) { if prog[i].kind == N_MAIN { emit_main(prog[i]) };  i = i + 1 }
+    while i < len(prog) { if prog[i].kind == N_MAIN { emit_main(prog[i]) };  i += 1 }
   }
   else { if has_systems() { emit_game_main() }    # the auto frame loop
   else {
     i = 0
-    while i < len(prog) { if prog[i].kind == N_MAIN { emit_main(prog[i]) };  i = i + 1 }
+    while i < len(prog) { if prog[i].kind == N_MAIN { emit_main(prog[i]) };  i += 1 }
   } } }
   if g_uses_world_despawn { emit_world_despawn_fn() }   # #84: @fn_world_despawn, after all World.despawn / esys_bounds-kill uses are seen
   if g_uses_loopback { emit_loopback() }         # built-in transport, after all net_send/net_poll uses are seen
-  if g_uses_str { emit_str_prelude() }          # @fn_str_eq / @fn_str_concat, after all uses are seen
-  if g_uses_intstr { emit_int_str() }           # @fn_int_str, for string(int) in interpolation
-  if g_uses_longstr { emit_long_str() }         # @fn_long_str, for string(long) / long interpolation
-  if g_uses_strslice { emit_str_slice() }       # @fn_str_slice, for s[a..b]
-  if g_uses_mathrt { emit_math_prelude() }       # @fn_fx_sqrt / @fn_fx_sin + the sine table
-  if g_uses_textrt { emit_text_prelude() }       # @fn_str_upper/lower/trim/repeat/pad builders
-  if g_uses_textrt2 { emit_text2_prelude() }     # @fn_str_replace/join/split builders
-  if g_uses_hashrt { emit_hash_prelude() }       # @fn_hash_fnv1a / @fn_hash_crc32 byte hashers
-  if g_uses_cryptort { emit_crypto_prelude() }   # @fn_sha256_hex / @fn_hmac_sha256_hex + constant-time compare + CSPRNG
-  if g_uses_uuidrt { emit_uuid_prelude() }       # @fn_uuid_v4 / @fn_uuid_v7 / parse / equals (over the crypto CSPRNG)
-  if g_uses_noisert { emit_noise_prelude() }     # @fn_noise_value2/perlin2/simplex2/fbm2/cellular2 (Q16.16)
-  if g_uses_logrt { emit_log_prelude() }         # @L_log_level + @fn_log_emit (levelled stderr sink)
-  if g_uses_osrt { emit_os_prelude() }           # @fn_os_args/platform/arch/save_dir/... (libc env + uname)
-  if g_uses_unicodert { emit_unicode_prelude() } # @fn_uni_len/valid/decode/case/truncate/grapheme (UTF-8)
+  if g_uses_str { emit_str_prelude() }          # @lp_str_eq / @lp_str_concat, after all uses are seen
+  if g_uses_intstr { emit_int_str() }           # @lp_int_str, for string(int) in interpolation
+  if g_uses_longstr { emit_long_str() }         # @lp_long_str, for string(long) / long interpolation
+  if g_uses_strslice { emit_str_slice() }       # @lp_str_slice, for s[a..b]
+  if g_uses_mathrt { emit_math_prelude() }       # @lp_fx_sqrt / @lp_fx_sin + the sine table
+  if g_uses_textrt { emit_text_prelude() }       # @lp_str_upper/lower/trim/repeat/pad builders
+  if g_uses_textrt2 { emit_text2_prelude() }     # @lp_str_replace/join/split builders
+  if g_uses_hashrt { emit_hash_prelude() }       # @lp_hash_fnv1a / @lp_hash_crc32 byte hashers
+  if g_uses_cryptort { emit_crypto_prelude() }   # @lp_sha256_hex / @lp_hmac_sha256_hex + constant-time compare + CSPRNG
+  if g_uses_uuidrt { emit_uuid_prelude() }       # @lp_uuid_v4 / @lp_uuid_v7 / parse / equals (over the crypto CSPRNG)
+  if g_uses_noisert { emit_noise_prelude() }     # @lp_noise_value2/perlin2/simplex2/fbm2/cellular2 (Q16.16)
+  if g_uses_logrt { emit_log_prelude() }         # @L_log_level + @lp_log_emit (levelled stderr sink)
+  if g_uses_osrt { emit_os_prelude() }           # @lp_os_args/platform/arch/save_dir/... (libc env + uname)
+  if g_uses_pid { emith("declare i32 @getpid()\n") }
+  if g_uses_unicodert { emit_unicode_prelude() }  # @lp_uni_len/valid/decode/case/truncate/grapheme (UTF-8)
   if g_uses_fsrt { emit_fs_prelude() }           # @fn_fs_*/fn_path_*/fn_mime_* (libc + string ops)
-  if g_uses_datert { emit_datetime_prelude() }   # @fn_days_from_civil / @fn_civil_from_days conversions
+  if g_uses_datert { emit_datetime_prelude() }   # @lp_days_from_civil / @lp_civil_from_days conversions
   if g_uses_panic {                               # panic/assert: located abort to stderr
     emith("declare i32 @fprintf(ptr, ptr, ...)\n")
     emith("@.fmt_panic = private unnamed_addr constant [6 x i8] c\"%s%s\\0A\\00\"\n")
@@ -234,7 +257,7 @@ function emit_cov_runtime() -> void {
   while i < n {
     if i > 0 { emith(", ") }
     emith("i32 ");  emith(itoa(g_cov_lines[i]))
-    i = i + 1
+    i += 1
   }
   emith("]\n")
   emith("@L_cov_hits = internal global [");  emith(sn);  emith(" x i32] zeroinitializer\n")

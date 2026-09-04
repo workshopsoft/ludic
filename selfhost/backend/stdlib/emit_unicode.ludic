@@ -43,35 +43,35 @@ function emit_unicode_ns(meth: pointer, e: Node) -> Val {
   }
   if (meth == "len") {
     let s = emit_expr(e.kids[0])
-    return val(emit_bind(`call i32 @fn_uni_len(ptr {s.code})`), "int")
+    return val(emit_bind(`call i32 @lp_uni_len(ptr {s.code})`), "int")
   }
   if (meth == "is_valid_utf8") {
     let s = emit_expr(e.kids[0])
-    return val(emit_bind(`call i32 @fn_uni_valid(ptr {s.code})`), "bool")
+    return val(emit_bind(`call i32 @lp_uni_valid(ptr {s.code})`), "bool")
   }
   if (meth == "char_at") {
     let s = emit_expr(e.kids[0]);  let i = emit_expr(e.kids[1])
-    return val(emit_bind(`call i32 @fn_uni_char_at(ptr {s.code}, i32 {i.code})`), "int")
+    return val(emit_bind(`call i32 @lp_uni_char_at(ptr {s.code}, i32 {i.code})`), "int")
   }
   if (meth == "chars") {
     let s = emit_expr(e.kids[0])
-    return val(emit_bind(`call ptr @fn_uni_chars(ptr {s.code})`), "[]int")
+    return val(emit_bind(`call ptr @lp_uni_chars(ptr {s.code})`), "[]int")
   }
   if (meth == "upper") {
     let s = emit_expr(e.kids[0])
-    return val(emit_bind(`call ptr @fn_uni_case(ptr {s.code}, i32 1)`), "string")
+    return val(emit_bind(`call ptr @lp_uni_case(ptr {s.code}, i32 1)`), "string")
   }
   if (meth == "lower") {
     let s = emit_expr(e.kids[0])
-    return val(emit_bind(`call ptr @fn_uni_case(ptr {s.code}, i32 0)`), "string")
+    return val(emit_bind(`call ptr @lp_uni_case(ptr {s.code}, i32 0)`), "string")
   }
   if (meth == "truncate") {
     let s = emit_expr(e.kids[0]);  let n = emit_expr(e.kids[1])
-    return val(emit_bind(`call ptr @fn_uni_truncate(ptr {s.code}, i32 {n.code})`), "string")
+    return val(emit_bind(`call ptr @lp_uni_truncate(ptr {s.code}, i32 {n.code})`), "string")
   }
   # grapheme_len
   let s = emit_expr(e.kids[0])
-  return val(emit_bind(`call i32 @fn_uni_grapheme_len(ptr {s.code})`), "int")
+  return val(emit_bind(`call i32 @lp_uni_grapheme_len(ptr {s.code})`), "int")
 }
 
 # emit_unicode_prelude — the UTF-8 runtime, emitted once per program that uses
@@ -87,7 +87,7 @@ function emit_uni_core() -> void {
   # code-point count: every byte that is NOT a UTF-8 continuation byte
   # (0b10xxxxxx) begins a new code point. Walks byte-by-byte, so it is safe on
   # truncated/invalid input and stops exactly at the NUL.
-  emith("define i32 @fn_uni_len(ptr %s) {\n")
+  emith("define i32 @lp_uni_len(ptr %s) {\n")
   emith("entry:\n  %ip = alloca i32\n  %np = alloca i32\n  store i32 0, ptr %ip\n  store i32 0, ptr %np\n  br label %lp\n")
   emith("lp:\n  %i = load i32, ptr %ip\n  %p = getelementptr i8, ptr %s, i32 %i\n  %b = load i8, ptr %p\n  %c = zext i8 %b to i32\n")
   emith("  %z = icmp eq i32 %c, 0\n  br i1 %z, label %done, label %go\n")
@@ -100,7 +100,7 @@ function emit_uni_core() -> void {
   # offset just past it. Lenient and overrun-safe: a truncated multibyte sequence
   # (a continuation byte that is NUL) or an invalid lead byte decodes as a single
   # byte, so the walk always makes progress and never reads past the terminator.
-  emith("define i32 @fn_uni_decode(ptr %s, i32 %i, ptr %cpout) {\n")
+  emith("define i32 @lp_uni_decode(ptr %s, i32 %i, ptr %cpout) {\n")
   emith("entry:\n  %p0 = getelementptr i8, ptr %s, i32 %i\n  %b0 = load i8, ptr %p0\n  %c0 = zext i8 %b0 to i32\n")
   emith("  %a1 = icmp ult i32 %c0, 128\n  br i1 %a1, label %one, label %multi\n")
   emith("one:\n  store i32 %c0, ptr %cpout\n  %oi = add i32 %i, 1\n  ret i32 %oi\n")
@@ -135,7 +135,7 @@ function emit_uni_core() -> void {
 
   # strict UTF-8 validation: correct continuation bytes, no overlong encodings,
   # no surrogates (U+D800..U+DFFF), and nothing above U+10FFFF. Returns 1/0.
-  emith("define i32 @fn_uni_valid(ptr %s) {\n")
+  emith("define i32 @lp_uni_valid(ptr %s) {\n")
   emith("entry:\n  %ip = alloca i32\n  store i32 0, ptr %ip\n  br label %lp\n")
   emith("lp:\n  %i = load i32, ptr %ip\n  %p = getelementptr i8, ptr %s, i32 %i\n  %b = load i8, ptr %p\n  %c = zext i8 %b to i32\n")
   emith("  %z = icmp eq i32 %c, 0\n  br i1 %z, label %good, label %g\n")
@@ -180,26 +180,26 @@ function emit_uni_core() -> void {
 function emit_uni_case_fns() -> void {
   # uppercase one code point: ASCII a-z and Latin-1 a-with-diacritic .. thorn
   # (0xE0..0xFE except 0xF7). Other code points pass through unchanged (v1).
-  emith("define i32 @fn_uni_upcp(i32 %c) {\n")
+  emith("define i32 @lp_uni_upcp(i32 %c) {\n")
   emith("  %la = icmp uge i32 %c, 97\n  %lb = icmp ule i32 %c, 122\n  %asc = and i1 %la, %lb\n")
   emith("  %da = icmp uge i32 %c, 224\n  %db = icmp ule i32 %c, 254\n  %dd = icmp ne i32 %c, 247\n  %d1 = and i1 %da, %db\n  %d2 = and i1 %d1, %dd\n")
   emith("  %map = or i1 %asc, %d2\n  %up = sub i32 %c, 32\n  %r = select i1 %map, i32 %up, i32 %c\n  ret i32 %r\n}\n")
 
   # lowercase one code point: ASCII A-Z and Latin-1 A-with-diacritic .. Thorn
   # (0xC0..0xDE except 0xD7). Other code points pass through unchanged (v1).
-  emith("define i32 @fn_uni_locp(i32 %c) {\n")
+  emith("define i32 @lp_uni_locp(i32 %c) {\n")
   emith("  %ua = icmp uge i32 %c, 65\n  %ub = icmp ule i32 %c, 90\n  %asc = and i1 %ua, %ub\n")
   emith("  %da = icmp uge i32 %c, 192\n  %db = icmp ule i32 %c, 222\n  %dd = icmp ne i32 %c, 215\n  %d1 = and i1 %da, %db\n  %d2 = and i1 %d1, %dd\n")
   emith("  %map = or i1 %asc, %d2\n  %lo = add i32 %c, 32\n  %r = select i1 %map, i32 %lo, i32 %c\n  ret i32 %r\n}\n")
 
   # UTF-8 byte width needed to encode a code point
-  emith("define i32 @fn_uni_cpwidth(i32 %cp) {\n")
+  emith("define i32 @lp_uni_cpwidth(i32 %cp) {\n")
   emith("  %a = icmp ult i32 %cp, 128\n  %b = icmp ult i32 %cp, 2048\n  %c = icmp ult i32 %cp, 65536\n")
   emith("  %w34 = select i1 %c, i32 3, i32 4\n  %w234 = select i1 %b, i32 2, i32 %w34\n  %w = select i1 %a, i32 1, i32 %w234\n  ret i32 %w\n}\n")
 
   # encode a code point into %dst at byte offset %off; return the new offset
-  emith("define i32 @fn_uni_encode(ptr %dst, i32 %off, i32 %cp) {\n")
-  emith("entry:\n  %w = call i32 @fn_uni_cpwidth(i32 %cp)\n  %is1 = icmp eq i32 %w, 1\n  br i1 %is1, label %e1, label %k2\n")
+  emith("define i32 @lp_uni_encode(ptr %dst, i32 %off, i32 %cp) {\n")
+  emith("entry:\n  %w = call i32 @lp_uni_cpwidth(i32 %cp)\n  %is1 = icmp eq i32 %w, 1\n  br i1 %is1, label %e1, label %k2\n")
   emith("e1:\n  %d0 = getelementptr i8, ptr %dst, i32 %off\n  %b0 = trunc i32 %cp to i8\n  store i8 %b0, ptr %d0\n  %o1 = add i32 %off, 1\n  ret i32 %o1\n")
   emith("k2:\n  %is2 = icmp eq i32 %w, 2\n  br i1 %is2, label %e2, label %k3\n")
   emith("e2:\n  %hi2 = lshr i32 %cp, 6\n  %by0 = or i32 %hi2, 192\n  %lo2 = and i32 %cp, 63\n  %by1 = or i32 %lo2, 128\n")
@@ -220,35 +220,35 @@ function emit_uni_case_fns() -> void {
   # is this code point a grapheme "extend" (a combining mark or variation
   # selector that joins the preceding base)? An approximation of the common
   # ranges; ZWJ and regional indicators are handled by grapheme_len itself.
-  emith("define i32 @fn_uni_is_extend(i32 %c) {\n")
-  emith("  %r1 = call i32 @fn_uni_inrange(i32 %c, i32 768, i32 879)\n")       # 0300-036F combining diacritics
-  emith("  %r2 = call i32 @fn_uni_inrange(i32 %c, i32 6832, i32 6911)\n")     # 1AB0-1AFF
-  emith("  %r3 = call i32 @fn_uni_inrange(i32 %c, i32 7616, i32 7679)\n")     # 1DC0-1DFF
-  emith("  %r4 = call i32 @fn_uni_inrange(i32 %c, i32 8400, i32 8447)\n")     # 20D0-20FF
-  emith("  %r5 = call i32 @fn_uni_inrange(i32 %c, i32 65056, i32 65071)\n")   # FE20-FE2F
-  emith("  %r6 = call i32 @fn_uni_inrange(i32 %c, i32 65024, i32 65039)\n")   # FE00-FE0F variation selectors
-  emith("  %r7 = call i32 @fn_uni_inrange(i32 %c, i32 917760, i32 917999)\n") # E0100-E01EF
+  emith("define i32 @lp_uni_is_extend(i32 %c) {\n")
+  emith("  %r1 = call i32 @lp_uni_inrange(i32 %c, i32 768, i32 879)\n")       # 0300-036F combining diacritics
+  emith("  %r2 = call i32 @lp_uni_inrange(i32 %c, i32 6832, i32 6911)\n")     # 1AB0-1AFF
+  emith("  %r3 = call i32 @lp_uni_inrange(i32 %c, i32 7616, i32 7679)\n")     # 1DC0-1DFF
+  emith("  %r4 = call i32 @lp_uni_inrange(i32 %c, i32 8400, i32 8447)\n")     # 20D0-20FF
+  emith("  %r5 = call i32 @lp_uni_inrange(i32 %c, i32 65056, i32 65071)\n")   # FE20-FE2F
+  emith("  %r6 = call i32 @lp_uni_inrange(i32 %c, i32 65024, i32 65039)\n")   # FE00-FE0F variation selectors
+  emith("  %r7 = call i32 @lp_uni_inrange(i32 %c, i32 917760, i32 917999)\n")  # E0100-E01EF
   emith("  %o1 = or i32 %r1, %r2\n  %o2 = or i32 %o1, %r3\n  %o3 = or i32 %o2, %r4\n  %o4 = or i32 %o3, %r5\n  %o5 = or i32 %o4, %r6\n  %o6 = or i32 %o5, %r7\n  ret i32 %o6\n}\n")
 
-  emith("define i32 @fn_uni_inrange(i32 %c, i32 %lo, i32 %hi) {\n")
+  emith("define i32 @lp_uni_inrange(i32 %c, i32 %lo, i32 %hi) {\n")
   emith("  %a = icmp uge i32 %c, %lo\n  %b = icmp ule i32 %c, %hi\n  %x = and i1 %a, %b\n  %r = zext i1 %x to i32\n  ret i32 %r\n}\n")
 }
 
 # ---- code-point access + string builders -----------------------------------
 function emit_uni_str_fns() -> void {
   # the idx-th code point, or -1 when idx is past the end
-  emith("define i32 @fn_uni_char_at(ptr %s, i32 %idx) {\n")
+  emith("define i32 @lp_uni_char_at(ptr %s, i32 %idx) {\n")
   emith("entry:\n  %ip = alloca i32\n  %kp = alloca i32\n  %cp = alloca i32\n  store i32 0, ptr %ip\n  store i32 0, ptr %kp\n  br label %lp\n")
   emith("lp:\n  %i = load i32, ptr %ip\n  %p = getelementptr i8, ptr %s, i32 %i\n  %b = load i8, ptr %p\n  %c = zext i8 %b to i32\n")
   emith("  %z = icmp eq i32 %c, 0\n  br i1 %z, label %none, label %go\n")
-  emith("go:\n  %ni = call i32 @fn_uni_decode(ptr %s, i32 %i, ptr %cp)\n  %k = load i32, ptr %kp\n  %hit = icmp eq i32 %k, %idx\n  br i1 %hit, label %found, label %next\n")
+  emith("go:\n  %ni = call i32 @lp_uni_decode(ptr %s, i32 %i, ptr %cp)\n  %k = load i32, ptr %kp\n  %hit = icmp eq i32 %k, %idx\n  br i1 %hit, label %found, label %next\n")
   emith("found:\n  %v = load i32, ptr %cp\n  ret i32 %v\n")
   emith("next:\n  %k1 = add i32 %k, 1\n  store i32 %k1, ptr %kp\n  store i32 %ni, ptr %ip\n  br label %lp\n")
   emith("none:\n  ret i32 -1\n}\n")
 
   # chars(s) -> []int : a fresh %LSlice of every code point, in order
-  emith("define ptr @fn_uni_chars(ptr %s) {\n")
-  emith("entry:\n  %n = call i32 @fn_uni_len(ptr %s)\n  %h = call ptr @malloc(i64 16)\n")
+  emith("define ptr @lp_uni_chars(ptr %s) {\n")
+  emith("entry:\n  %n = call i32 @lp_uni_len(ptr %s)\n  %h = call ptr @malloc(i64 16)\n")
   emith("  %nz = zext i32 %n to i64\n  %bytes = mul i64 %nz, 4\n  %data = call ptr @malloc(i64 %bytes)\n")
   emith("  %d0 = getelementptr inbounds %LSlice, ptr %h, i32 0, i32 0\n  store ptr %data, ptr %d0\n")
   emith("  %d1 = getelementptr inbounds %LSlice, ptr %h, i32 0, i32 1\n  store i32 %n, ptr %d1\n")
@@ -256,31 +256,31 @@ function emit_uni_str_fns() -> void {
   emith("  %ip = alloca i32\n  %kp = alloca i32\n  %cp = alloca i32\n  store i32 0, ptr %ip\n  store i32 0, ptr %kp\n  br label %lp\n")
   emith("lp:\n  %i = load i32, ptr %ip\n  %p = getelementptr i8, ptr %s, i32 %i\n  %b = load i8, ptr %p\n  %c = zext i8 %b to i32\n")
   emith("  %z = icmp eq i32 %c, 0\n  br i1 %z, label %done, label %go\n")
-  emith("go:\n  %ni = call i32 @fn_uni_decode(ptr %s, i32 %i, ptr %cp)\n  %v = load i32, ptr %cp\n  %k = load i32, ptr %kp\n")
+  emith("go:\n  %ni = call i32 @lp_uni_decode(ptr %s, i32 %i, ptr %cp)\n  %v = load i32, ptr %cp\n  %k = load i32, ptr %kp\n")
   emith("  %slot = getelementptr i32, ptr %data, i32 %k\n  store i32 %v, ptr %slot\n  %k1 = add i32 %k, 1\n  store i32 %k1, ptr %kp\n  store i32 %ni, ptr %ip\n  br label %lp\n")
   emith("done:\n  ret ptr %h\n}\n")
 
   # case map the whole string. %up != 0 -> uppercase, else lowercase. Decodes,
   # maps each code point, and re-encodes into a fresh buffer (worst case 4 bytes
   # per code point, though ASCII/Latin-1 mapping preserves byte length).
-  emith("define ptr @fn_uni_case(ptr %s, i32 %up) {\n")
+  emith("define ptr @lp_uni_case(ptr %s, i32 %up) {\n")
   emith("entry:\n  %bl = call i64 @strlen(ptr %s)\n  %cap0 = mul i64 %bl, 4\n  %cap = add i64 %cap0, 4\n  %out = call ptr @malloc(i64 %cap)\n")
   emith("  %ip = alloca i32\n  %op = alloca i32\n  %cp = alloca i32\n  store i32 0, ptr %ip\n  store i32 0, ptr %op\n  br label %lp\n")
   emith("lp:\n  %i = load i32, ptr %ip\n  %p = getelementptr i8, ptr %s, i32 %i\n  %b = load i8, ptr %p\n  %c = zext i8 %b to i32\n")
   emith("  %z = icmp eq i32 %c, 0\n  br i1 %z, label %done, label %go\n")
-  emith("go:\n  %ni = call i32 @fn_uni_decode(ptr %s, i32 %i, ptr %cp)\n  %v = load i32, ptr %cp\n")
-  emith("  %mu = call i32 @fn_uni_upcp(i32 %v)\n  %ml = call i32 @fn_uni_locp(i32 %v)\n  %isup = icmp ne i32 %up, 0\n  %m = select i1 %isup, i32 %mu, i32 %ml\n")
-  emith("  %o = load i32, ptr %op\n  %no = call i32 @fn_uni_encode(ptr %out, i32 %o, i32 %m)\n  store i32 %no, ptr %op\n  store i32 %ni, ptr %ip\n  br label %lp\n")
+  emith("go:\n  %ni = call i32 @lp_uni_decode(ptr %s, i32 %i, ptr %cp)\n  %v = load i32, ptr %cp\n")
+  emith("  %mu = call i32 @lp_uni_upcp(i32 %v)\n  %ml = call i32 @lp_uni_locp(i32 %v)\n  %isup = icmp ne i32 %up, 0\n  %m = select i1 %isup, i32 %mu, i32 %ml\n")
+  emith("  %o = load i32, ptr %op\n  %no = call i32 @lp_uni_encode(ptr %out, i32 %o, i32 %m)\n  store i32 %no, ptr %op\n  store i32 %ni, ptr %ip\n  br label %lp\n")
   emith("done:\n  %fo = load i32, ptr %op\n  %endp = getelementptr i8, ptr %out, i32 %fo\n  store i8 0, ptr %endp\n  ret ptr %out\n}\n")
 
   # truncate(s, n) -> the first n code points as a fresh string (never splits a
   # multibyte character). n <= 0 yields the empty string.
-  emith("define ptr @fn_uni_truncate(ptr %s, i32 %n) {\n")
+  emith("define ptr @lp_uni_truncate(ptr %s, i32 %n) {\n")
   emith("entry:\n  %ip = alloca i32\n  %kp = alloca i32\n  %cp = alloca i32\n  store i32 0, ptr %ip\n  store i32 0, ptr %kp\n  br label %lp\n")
   emith("lp:\n  %k = load i32, ptr %kp\n  %enough = icmp sge i32 %k, %n\n  br i1 %enough, label %cut, label %chk\n")
   emith("chk:\n  %i = load i32, ptr %ip\n  %p = getelementptr i8, ptr %s, i32 %i\n  %b = load i8, ptr %p\n  %c = zext i8 %b to i32\n")
   emith("  %z = icmp eq i32 %c, 0\n  br i1 %z, label %cut, label %go\n")
-  emith("go:\n  %ni = call i32 @fn_uni_decode(ptr %s, i32 %i, ptr %cp)\n  %k1 = add i32 %k, 1\n  store i32 %k1, ptr %kp\n  store i32 %ni, ptr %ip\n  br label %lp\n")
+  emith("go:\n  %ni = call i32 @lp_uni_decode(ptr %s, i32 %i, ptr %cp)\n  %k1 = add i32 %k, 1\n  store i32 %k1, ptr %kp\n  store i32 %ni, ptr %ip\n  br label %lp\n")
   emith("cut:\n  %len = load i32, ptr %ip\n  %lz = zext i32 %len to i64\n  %cap = add i64 %lz, 1\n  %out = call ptr @malloc(i64 %cap)\n  %lz2 = zext i32 %len to i64\n  call ptr @memcpy(ptr %out, ptr %s, i64 %lz2)\n")
   emith("  %endp = getelementptr i8, ptr %out, i32 %len\n  store i8 0, ptr %endp\n  ret ptr %out\n}\n")
 
@@ -292,26 +292,26 @@ function emit_uni_str_fns() -> void {
 # ZWJ emoji sequences count as one); and the second regional indicator of a flag
 # pair. Simple state carried in allocas.
 function emit_uni_grapheme() -> void {
-  emith("define i32 @fn_uni_grapheme_len(ptr %s) {\n")
+  emith("define i32 @lp_uni_grapheme_len(ptr %s) {\n")
   emith("entry:\n  %ip = alloca i32\n  %np = alloca i32\n  %zp = alloca i32\n  %rp = alloca i32\n  %cp = alloca i32\n")
   emith("  store i32 0, ptr %ip\n  store i32 0, ptr %np\n  store i32 0, ptr %zp\n  store i32 0, ptr %rp\n  br label %lp\n")
   emith("lp:\n  %i = load i32, ptr %ip\n  %p = getelementptr i8, ptr %s, i32 %i\n  %b = load i8, ptr %p\n  %c = zext i8 %b to i32\n")
   emith("  %z = icmp eq i32 %c, 0\n  br i1 %z, label %done, label %go\n")
-  emith("go:\n  %ni = call i32 @fn_uni_decode(ptr %s, i32 %i, ptr %cp)\n  %v = load i32, ptr %cp\n  store i32 %ni, ptr %ip\n")
+  emith("go:\n  %ni = call i32 @lp_uni_decode(ptr %s, i32 %i, ptr %cp)\n  %v = load i32, ptr %cp\n  store i32 %ni, ptr %ip\n")
   # ZWJ (U+200D): extends the cluster and arms the join for the next code point
   emith("  %iszwj = icmp eq i32 %v, 8205\n  br i1 %iszwj, label %zwj, label %notzwj\n")
   emith("zwj:\n  %n0 = load i32, ptr %np\n  %n0z = icmp eq i32 %n0, 0\n  %n0b = zext i1 %n0z to i32\n  %n0n = add i32 %n0, %n0b\n  store i32 %n0n, ptr %np\n")   # leading ZWJ still opens one cluster
   emith("  store i32 1, ptr %zp\n  store i32 0, ptr %rp\n  br label %lp\n")
   emith("notzwj:\n  %n = load i32, ptr %np\n  %first = icmp eq i32 %n, 0\n  br i1 %first, label %open, label %cont\n")
   # first cluster
-  emith("open:\n  store i32 1, ptr %np\n  store i32 0, ptr %zp\n  %ri0 = call i32 @fn_uni_inrange(i32 %v, i32 127462, i32 127487)\n  store i32 %ri0, ptr %rp\n  br label %lp\n")
+  emith("open:\n  store i32 1, ptr %np\n  store i32 0, ptr %zp\n  %ri0 = call i32 @lp_uni_inrange(i32 %v, i32 127462, i32 127487)\n  store i32 %ri0, ptr %rp\n  br label %lp\n")
   emith("cont:\n  %zj = load i32, ptr %zp\n  %afterz = icmp ne i32 %zj, 0\n  br i1 %afterz, label %joinz, label %chkext\n")
   # code point right after a ZWJ joins the current cluster
   emith("joinz:\n  store i32 0, ptr %zp\n  store i32 0, ptr %rp\n  br label %lp\n")
-  emith("chkext:\n  %ext = call i32 @fn_uni_is_extend(i32 %v)\n  %isext = icmp ne i32 %ext, 0\n  br i1 %isext, label %joinext, label %chkri\n")
+  emith("chkext:\n  %ext = call i32 @lp_uni_is_extend(i32 %v)\n  %isext = icmp ne i32 %ext, 0\n  br i1 %isext, label %joinext, label %chkri\n")
   emith("joinext:\n  store i32 0, ptr %rp\n  br label %lp\n")
   # regional indicator: joins only as the second of a pair
-  emith("chkri:\n  %ri = call i32 @fn_uni_inrange(i32 %v, i32 127462, i32 127487)\n  %isri = icmp ne i32 %ri, 0\n  %ropen = load i32, ptr %rp\n  %ropenb = icmp ne i32 %ropen, 0\n  %pair = and i1 %isri, %ropenb\n  br i1 %pair, label %joinri, label %newcl\n")
+  emith("chkri:\n  %ri = call i32 @lp_uni_inrange(i32 %v, i32 127462, i32 127487)\n  %isri = icmp ne i32 %ri, 0\n  %ropen = load i32, ptr %rp\n  %ropenb = icmp ne i32 %ropen, 0\n  %pair = and i1 %isri, %ropenb\n  br i1 %pair, label %joinri, label %newcl\n")
   emith("joinri:\n  store i32 0, ptr %rp\n  br label %lp\n")
   emith("newcl:\n  %nn = load i32, ptr %np\n  %nn1 = add i32 %nn, 1\n  store i32 %nn1, ptr %np\n  store i32 0, ptr %zp\n  %riset = select i1 %isri, i32 1, i32 0\n  store i32 %riset, ptr %rp\n  br label %lp\n")
   emith("done:\n  %r = load i32, ptr %np\n  ret i32 %r\n}\n")

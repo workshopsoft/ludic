@@ -3,7 +3,7 @@ program T {
     print(Math.round(Math.rad_to_deg(Math.atan2(1.0, 1.0))))            # 45
     print(Math.round(Math.rad_to_deg(Math.atan2(1.0, 0.0))))            # 90
     print(Math.round(Math.rad_to_deg(Math.atan2(0.0, 0.0 - 1.0))))      # 180
-    print(Math.round(Math.rad_to_deg(Math.atan2(0.0 - 1.0, 0.0 - 1.0)))) # -135
+    print(Math.round(Math.rad_to_deg(Math.atan2(0.0 - 1.0, 0.0 - 1.0))))  # -135
     print(Math.round(Math.rad_to_deg(Math.asin(0.5))))                  # 30
     print(Math.round(Math.rad_to_deg(Math.acos(0.5))))                  # 60
     print(Math.round(Math.rad_to_deg(Math.asin(1.0))))                  # 90
