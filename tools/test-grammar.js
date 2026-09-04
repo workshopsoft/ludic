@@ -10,8 +10,9 @@
  *
  *   node tools/test-grammar.js
  *
- * Needs vscode-textmate and vscode-oniguruma; skips cleanly when they are not
- * installed, so it never blocks the suite on a machine without npm.
+ * Needs vscode-textmate and vscode-oniguruma (from the VS Code extension's
+ * node_modules, or a directory named by $LUDIC_NODE_MODULES); exits 2 when they
+ * are not installed so the caller can report a skip rather than a pass.
  * ==========================================================================*/
 const fs = require('fs');
 const path = require('path');
@@ -22,12 +23,12 @@ const SHARED = path.join(ROOT, 'tools', 'editors', 'shared');
 let vsctm, oniguruma;
 try {
   const local = path.join(ROOT, 'tools', 'editors', 'vscode', 'node_modules');
-  const paths = [local, '/tmp/tmgrammar/node_modules', ...module.paths];
+  const paths = [local, ...(process.env.LUDIC_NODE_MODULES ? [process.env.LUDIC_NODE_MODULES] : []), ...module.paths];
   vsctm = require(require.resolve('vscode-textmate', { paths }));
   oniguruma = require(require.resolve('vscode-oniguruma', { paths }));
 } catch (e) {
   console.log('  skip  TextMate grammar (npm i vscode-textmate vscode-oniguruma to run)');
-  process.exit(0);
+  process.exit(2);
 }
 
 let passed = 0;
@@ -38,7 +39,7 @@ function bad(name, detail) { failed++; console.log(`  FAIL  ${name}\n        ${d
 
 async function main() {
   const wasmPath = require.resolve('vscode-oniguruma/release/onig.wasm', {
-    paths: [path.join(ROOT, 'tools', 'editors', 'vscode', 'node_modules'), '/tmp/tmgrammar/node_modules']
+    paths: [path.join(ROOT, 'tools', 'editors', 'vscode', 'node_modules'), ...(process.env.LUDIC_NODE_MODULES ? [process.env.LUDIC_NODE_MODULES] : []), ...module.paths]
   });
   await oniguruma.loadWASM(fs.readFileSync(wasmPath).buffer);
 
@@ -96,27 +97,31 @@ async function main() {
   }
 
   expect('comment', '# a note', '# a note', 'comment.line');
-  expect('string', 'const S: str = "hi"', '"hi"', 'string.quoted.double');
-  expect('hex literal', 'clear(0x0e0e16)', '0x0e0e16', 'constant.numeric.hex');
+  expect('string', 'const S: string = "hi"', '"hi"', 'string.quoted.double');
+  expect('interpolated string', 'let m = `hp {hp}`', '`hp {hp}`', 'string.interpolated');
+  expect('hex literal', 'Screen.clear(0x0e0e16)', '0x0e0e16', 'constant.numeric.hex');
   expect('fixed literal', 'let f = 1.5', '1.5', 'constant.numeric.fixed');
-  expect('declaration keyword', 'component Pos { x: int = 0 }', 'component', 'storage.type.component');
-  expect('component name', 'component Pos { x: int = 0 }', 'Pos', 'entity.name.type.component');
-  expect('primitive type', 'component Pos { x: int = 0 }', 'int', 'support.type.primitive');
-  expect('system name', 'system Move phase Update {', 'Move', 'entity.name.function.system');
-  expect('phase name', 'system Move phase Update {', 'Update', 'constant.language.phase');
-  expect('clause keyword', '  reads [Vel]', 'reads', 'keyword.other.clause');
-  expect('annotation', 'system Move @deterministic', '@deterministic', 'entity.name.function.decorator');
-  expect('builtin call', '  clear(0x000000)', 'clear', 'support.function.builtin');
-  expect('intrinsic call', '  mem_alloc(64)', 'mem_alloc', 'support.function.intrinsic');
+  expect('declaration keyword', 'property Pos { x: int = 0 }', 'property', 'storage.type.component');
+  expect('property name', 'property Pos { x: int = 0 }', 'Pos', 'entity.name.type.component');
+  expect('primitive type', 'property Pos { x: int = 0 }', 'int', 'support.type.primitive');
+  expect('model keyword', 'model Hero { Pos, Stats }', 'model', 'storage.type.archetype');
+  expect('model name', 'model Hero { Pos, Stats }', 'Hero', 'entity.name.type.archetype');
+  expect('handler name', 'handler Move phase Update {', 'Move', 'entity.name.function.system');
+  expect('phase name', 'handler Move phase Update {', 'Update', 'constant.language.phase');
+  expect('clause keyword', 'handler Move phase Update {', 'phase', 'keyword.other.clause');
+  expect('annotation', '@Queries(Pos, Vel) handler Move phase Update {', '@Queries', 'entity.name.function.decorator');
+  expect('builtin call', '  print(1)', 'print', 'support.function.builtin');
   expect('control keyword', '  if a == 1 { }', 'if', 'keyword.control');
+  expect('become keyword', '  become Playing', 'become', 'keyword.control');
   expect('member access', '  p.x = 1', 'x', 'variable.other.property');
   expect('query tag filter', 'for (p) in query [Pos, {Player}] {', 'Player', 'entity.name.type.tag');
-  expect('query component', 'for (p) in query [Pos, {Player}] {', 'Pos', 'entity.name.type.component');
-  expect('widget type', '    button id=Go text="go"', 'button', 'support.class.widget');
-  expect('widget prop', '    button id=Go text="go"', 'id', 'variable.parameter.widget');
+  expect('query property', 'for (p) in query [Pos, {Player}] {', 'Pos', 'entity.name.type.component');
+  expect('widget type', '    button id: Go text: "go"', 'button', 'support.class.widget');
   expect('user function call', '  my_helper(1)', 'my_helper', 'entity.name.function');
-  expect('archetype in spawn', '  spawn Hero {', 'Hero', 'entity.name.type.archetype');
-  expect('scene in enter', '  enter Battle', 'Battle', 'entity.name.type.scene');
+  expect('model in spawn', '  spawn Hero {', 'Hero', 'entity.name.type.archetype');
+  expect('scene declaration', 'scene Battle {', 'Battle', 'entity.name.type');
+  expect('prefab declaration', 'prefab Orc {', 'Orc', 'entity.name.type');
+  expect('event declaration', 'event Hurt { amount: int = 0 }', 'Hurt', 'entity.name.type');
 
   // A whole file must tokenise without the engine bailing out.
   const sample = fs.readFileSync(path.join(ROOT, 'examples', 'games', 'menu.ludic'), 'utf8');
@@ -140,7 +145,7 @@ async function main() {
 
   // Drive the injection directly: feed it the fence, then the body, and check
   // the body is handed to source.ludic.
-  const lines = ['```ludic', 'component Pos { x: int = 0 }', '```'];
+  const lines = ['```ludic', 'property Pos { x: int = 0 }', '```'];
   let mdState = vsctm.INITIAL;
   const bodyScopes = [];
   lines.forEach((line, i) => {

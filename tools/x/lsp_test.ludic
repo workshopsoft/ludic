@@ -1,0 +1,373 @@
+# lsp_test.ludic — drive bin/ludic-lsp over real LSP traffic against the real
+# source tree (`x test-lsp`; replaces tools/test-lsp.py). Every assertion is
+# about a feature an editor actually calls: if this passes, VS Code, JetBrains,
+# Neovim and the rest are exercising code paths that have been checked, because
+# they all speak to this one binary.
+#
+# The server is driven in one batch: every request is framed into a single
+# stdin stream (positions are computed from the same files the server reads),
+# the server runs to `exit`, and its stdout is parsed back into a result table
+# keyed by request id plus the last publishDiagnostics per file — exactly what
+# an interactive client would have observed, without a bidirectional pipe.
+
+# ---- the request stream -------------------------------------------------------
+var lsp_req: Sb = null
+var lsp_next_id: int = 0
+
+# one framed JSON-RPC message appended to the stream
+function lsp_frame(body: pointer) -> void {
+  sb_puts(lsp_req, "Content-Length: ");  sb_puts(lsp_req, string(len(body)))
+  sb_puts(lsp_req, "\r\n\r\n");  sb_puts(lsp_req, body)
+}
+
+# queue a request; returns its id (the key into lsp_res after the run)
+function lsp_request(method: pointer, params: pointer) -> int {
+  lsp_next_id += 1
+  lsp_frame(`{{"jsonrpc":"2.0","id":{lsp_next_id},"method":"{method}","params":{params}}}`)
+  return lsp_next_id
+}
+
+function lsp_notify(method: pointer, params: pointer) -> void {
+  lsp_frame(`{{"jsonrpc":"2.0","method":"{method}","params":{params}}}`)
+}
+
+# didOpen for a file on disk; returns its text (for position lookups)
+function lsp_open(path: pointer, lang: pointer) -> pointer {
+  let text = read_file(path)
+  lsp_notify("textDocument/didOpen", `{{"textDocument":{{"uri":"file://{path}","languageId":"{lang}","version":1,"text":{j_quote(text)}}}}}`)
+  return text
+}
+
+function lsp_doc(path: pointer) -> pointer { return `{{"uri":"file://{path}"}}` }
+
+# the LSP position of the first occurrence of `needle` (+ `off` characters)
+function position_of(text: pointer, needle: pointer, off: int) -> pointer {
+  let n = len(text)
+  var line = 0;  var a = 0
+  while a <= n {
+    var b = a
+    while b < n and text[b] != '\n' { b += 1 }
+    let row = text[a..b]
+    let at = Text.index_of(row, needle)
+    if at >= 0 { return `{{"line":{line},"character":{at + off}}}` }
+    line += 1;  a = b + 1
+  }
+  err(`lsp_test: {needle} not found\n`)
+  exit(1)
+  return ""
+}
+
+# ---- the response stream ------------------------------------------------------
+property DiagSet { file: pointer = "", msgs: []pointer }
+var lsp_res: []JVal = new []JVal          # index = request id (0 unused)
+var lsp_diags: []DiagSet = new []DiagSet  # the last publish per file basename
+
+function lsp_result(id: int) -> JVal {
+  if id < len(lsp_res) { return lsp_res[id] }
+  return jval_new(JV_NULL)
+}
+
+function lsp_diag_set(file: pointer) -> DiagSet {
+  var i = 0
+  while i < len(lsp_diags) { if lsp_diags[i].file == file { return lsp_diags[i] };  i += 1 }
+  return null
+}
+
+# messages published for `file` (an empty slice when nothing was published)
+function lsp_diag_msgs(file: pointer) -> []pointer {
+  let d = lsp_diag_set(file)
+  if d == null { return new []pointer }
+  return d.msgs
+}
+
+function basename_of(uri: pointer) -> pointer {
+  var i = len(uri)
+  while i > 0 and uri[i - 1] != '/' { i -= 1 }
+  return uri[i..len(uri)]
+}
+
+function lsp_record(msg: JVal) -> void {
+  let id = j_get(msg, "id")
+  if id.t == JV_NUM {
+    while len(lsp_res) <= id.num { push(lsp_res, jval_new(JV_NULL)) }
+    lsp_res[id.num] = j_get(msg, "result")
+    return
+  }
+  if j_get(msg, "method").s == "textDocument/publishDiagnostics" {
+    let p = j_get(msg, "params")
+    let file = basename_of(j_get(p, "uri").s)
+    let msgs = new []pointer
+    let list = j_get(p, "diagnostics")
+    var i = 0
+    while i < len(list.kids) { push(msgs, j_get(list.kids[i], "message").s);  i += 1 }
+    var d = lsp_diag_set(file)
+    if d == null { d = new DiagSet;  d.file = file;  push(lsp_diags, d) }
+    d.msgs = msgs
+  }
+}
+
+# split a Content-Length framed stream into messages
+function lsp_parse_stream(s: pointer) -> void {
+  let n = len(s)
+  var p = 0
+  while p < n {
+    let h = Text.index_of(s[p..n], "Content-Length:")
+    if h < 0 { return }
+    var q = p + h + 15
+    while s[q] == ' ' { q += 1 }
+    var size = 0
+    while s[q] >= '0' and s[q] <= '9' { size = size * 10 + (s[q] - '0');  q += 1 }
+    let body_at = Text.index_of(s[q..n], "\r\n\r\n")
+    if body_at < 0 { return }
+    let start = q + body_at + 4
+    lsp_record(json_parse(s[start..start + size]))
+    p = start + size
+  }
+}
+
+# ---- JVal conveniences --------------------------------------------------------
+function j_has_key(v: JVal, key: pointer) -> bool { return j_get(v, key).t != JV_NULL }
+
+# does any element of array `arr` have field `key` equal to `want`?
+function j_any_field(arr: JVal, key: pointer, want: pointer) -> bool {
+  var i = 0
+  while i < len(arr.kids) { if j_get(arr.kids[i], key).s == want { return true };  i += 1 }
+  return false
+}
+
+# the sorted, de-duplicated start lines of a TextEdit array, as "1,7"
+function lines_key(edits: JVal) -> pointer {
+  let lines = new []int
+  var i = 0
+  while i < len(edits.kids) {
+    let l = j_get(j_get(j_get(edits.kids[i], "range"), "start"), "line").num
+    if not List.contains(lines, l) { push(lines, l) }
+    i += 1
+  }
+  List.sort(lines)
+  var out = ""
+  i = 0
+  while i < len(lines) { if i > 0 { out += "," };  out += string(lines[i]);  i += 1 }
+  return out
+}
+
+# the sorted, de-duplicated start lines of a Location array, as "2,11"
+function loc_lines_key(locs: JVal) -> pointer {
+  let lines = new []int
+  var i = 0
+  while i < len(locs.kids) {
+    let l = j_get(j_get(j_get(locs.kids[i], "range"), "start"), "line").num
+    if not List.contains(lines, l) { push(lines, l) }
+    i += 1
+  }
+  List.sort(lines)
+  var out = ""
+  i = 0
+  while i < len(lines) { if i > 0 { out += "," };  out += string(lines[i]);  i += 1 }
+  return out
+}
+
+# the edits of a WorkspaceEdit's first (only) changed document
+function first_change(ws: JVal) -> JVal {
+  let changes = j_get(ws, "changes")
+  if len(changes.kids) == 0 { return jval_new(JV_ARR) }
+  return changes.kids[0]
+}
+
+# how many distinct file basenames a Location array spans
+function distinct_files(locs: JVal) -> int {
+  let seen = new []pointer
+  var i = 0
+  while i < len(locs.kids) {
+    let f = basename_of(j_get(locs.kids[i], "uri").s)
+    if not set_has(seen, f) { push(seen, f) }
+    i += 1
+  }
+  return len(seen)
+}
+
+function check_true(label: pointer, cond: bool) -> void {
+  if cond { ok(label) } else { bad(label) }
+}
+
+# ---- the suite ----------------------------------------------------------------
+# Exit 2 when there is no server to test (the caller reports a skip, not a pass).
+function cmd_test_lsp() -> int {
+  let server = getenv_or("LUDIC_LSP", "bin/ludic-lsp")
+  if not is_exec(server) { skip("ludic-lsp missing");  return 2 }
+  let root = capture_line("pwd")
+  lsp_req = sb_new()
+
+  let init = lsp_request("initialize", `{{"rootUri":"file://{root}","capabilities":{{}},"initializationOptions":{{"compilerDiagnostics":true,"compilerPath":"{root}/bin/ludicc"}}}}`)
+  lsp_notify("initialized", "{}")
+
+  # ---- a fragment file: no `program` block, only reachable through an import --
+  let frag = `{root}/examples/games/chronorift/combat.ludic`
+  let text = lsp_open(frag, "ludic")
+  let uri = lsp_doc(frag)
+  let syms = lsp_request("textDocument/documentSymbol", `{{"textDocument":{uri}}}`)
+  # a field reached through a query binding, declared in ANOTHER file
+  let pos = position_of(text, "st.guard", 3)
+  let hov = lsp_request("textDocument/hover", `{{"textDocument":{uri},"position":{pos}}}`)
+  let def = lsp_request("textDocument/definition", `{{"textDocument":{uri},"position":{pos}}}`)
+  # a binding is not yet inside its own scope at the point it is written, so
+  # resolving it has to go through the declaration table, not scope lookup
+  let qpos = position_of(text, "for (e) in query", 5)
+  let qhov = lsp_request("textDocument/hover", `{{"textDocument":{uri},"position":{qpos}}}`)
+  let comp = lsp_request("textDocument/completion", `{{"textDocument":{uri},"position":{pos}}}`)
+
+  # a query's term list admits properties and models and nothing else —
+  # not the loop variables, not builtins, not keywords
+  let qsrc = "program QT {\n  property Pos { x: int = 0 }\n  property Vel { dx: int = 0 }\n  handler S phase Update {\n    for (a, b) in query [Pos, ] { }\n  }\n}\n"
+  let qfile = tmp_path("lsp_query.ludic")
+  write_file(qfile, qsrc)
+  lsp_open(qfile, "ludic")
+  let quri = lsp_doc(qfile)
+  let qcomp = lsp_request("textDocument/completion", `{{"textDocument":{quri},"position":{position_of(qsrc, "[Pos, ]", 6)}}}`)
+  let body = lsp_request("textDocument/completion", `{{"textDocument":{quri},"position":{position_of(qsrc, "] { }", 3)}}}`)
+
+  let refs = lsp_request("textDocument/references", `{{"textDocument":{uri},"position":{position_of(text, "query [Stats", 7)},"context":{{"includeDeclaration":true}}}}`)
+  let hints = lsp_request("textDocument/inlayHint", `{{"textDocument":{uri},"range":{{"start":{{"line":0,"character":0}},"end":{{"line":9999,"character":0}}}}}}`)
+  # a namespaced call resolves to its underlying bare-builtin signature
+  let sig = lsp_request("textDocument/signatureHelp", `{{"textDocument":{uri},"position":{position_of(text, "Random.chance(", 14)}}}`)
+  let toks = lsp_request("textDocument/semanticTokens/full", `{{"textDocument":{uri}}}`)
+  let folds = lsp_request("textDocument/foldingRange", `{{"textDocument":{uri}}}`)
+
+  # ---- structural diagnostics arrive while typing --------------------------
+  lsp_notify("textDocument/didChange", `{{"textDocument":{{"uri":"file://{frag}","version":2}},"contentChanges":[{{"text":{j_quote(text + "\n{ oops")}}}]}}`)
+  lsp_request("textDocument/documentSymbol", `{{"textDocument":{uri}}}`)
+
+  # ---- the LSP analyses opened files on its own ----------------------------
+  let badf = tmp_path("lsp_bad.ludic")
+  write_file(badf, "program Bad {\n  property P { x: nosuchtype = 0 }\n}\n")
+  lsp_open(badf, "ludic")
+  let bsyms = lsp_request("textDocument/documentSymbol", `{{"textDocument":{lsp_doc(badf)}}}`)
+
+  # ---- markdown: ```ludic fences are real Ludic ---------------------------
+  let md = tmp_path("lsp_test.md")
+  write_file(md, "# Title\n\nprose\n\n```ludic\nprogram D { property Pt { x: int = 0 } }\n```\n\n```python\nz = 1\n```\n")
+  lsp_open(md, "markdown")
+  let mduri = lsp_doc(md)
+  let mdsyms = lsp_request("textDocument/documentSymbol", `{{"textDocument":{mduri}}}`)
+  let mdtoks = lsp_request("textDocument/semanticTokens/full", `{{"textDocument":{mduri}}}`)
+  let fmt = lsp_request("textDocument/formatting", `{{"textDocument":{mduri},"options":{{"tabSize":2,"insertSpaces":true}}}}`)
+
+  # the repository's own documentation must not light up with false errors
+  let docs = ["LANGUAGE.md", "README.md", "COMPILING.md"]
+  var di = 0
+  while di < len(docs) {
+    let path = `{root}/{docs[di]}`
+    if shq(`test -f {path}`) {
+      lsp_open(path, "markdown")
+      lsp_request("textDocument/documentSymbol", `{{"textDocument":{lsp_doc(path)}}}`)
+    }
+    di += 1
+  }
+  let langdoc = lsp_doc(`{root}/LANGUAGE.md`)
+  let langtoks = lsp_request("textDocument/semanticTokens/full", `{{"textDocument":{langdoc}}}`)
+
+  # ---- rename has to be resolution-based, not textual ----------------------
+  # `x` here is a field of Pos, a field of Vel, a local, and a parameter.
+  # Renaming any one of them must leave the other three alone.
+  let amb = tmp_path("lsp_rename.ludic")
+  write_file(amb, "program R {\n  property Pos { x: int = 0, y: int = 0 }\n  property Vel { x: int = 0 }\n  function helper(x: int) -> int { return x + 1 }\n  handler A phase Update {\n    for (p) in query [Pos] {\n      let x = 5\n      p.x = p.x + x\n    }\n  }\n  handler B phase Update {\n    for (v) in query [Vel] { v.x = v.x + 1 }\n  }\n}\n")
+  let atext = lsp_open(amb, "ludic")
+  let auri = lsp_doc(amb)
+  let field = lsp_request("textDocument/rename", `{{"textDocument":{auri},"position":{position_of(atext, "property Pos { x", 15)},"newName":"ZZZ"}}`)
+  let local = lsp_request("textDocument/rename", `{{"textDocument":{auri},"position":{position_of(atext, "let x = 5", 4)},"newName":"ZZZ"}}`)
+  let param = lsp_request("textDocument/rename", `{{"textDocument":{auri},"position":{position_of(atext, "function helper(x", 16)},"newName":"ZZZ"}}`)
+  # find-usages must be equally precise
+  let refs_x = lsp_request("textDocument/references", `{{"textDocument":{auri},"position":{position_of(atext, "property Vel { x", 15)},"context":{{"includeDeclaration":true}}}}`)
+
+  # ---- the compiler's own errors arrive on save ----------------------------
+  let ccf = tmp_path("lsp_cc.ludic")
+  write_file(ccf, "program CcErr {\n  entry {\n    let x = (5 +\n  }\n}\n")
+  lsp_open(ccf, "ludic")
+  lsp_notify("textDocument/didSave", `{{"textDocument":{lsp_doc(ccf)}}}`)
+  lsp_request("textDocument/documentSymbol", `{{"textDocument":{lsp_doc(ccf)}}}`)
+
+  # ---- workspace-wide symbol search ---------------------------------------
+  let ws = lsp_request("workspace/symbol", `{{"query":"Stats"}}`)
+
+  lsp_request("shutdown", "null")
+  lsp_notify("exit", "null")
+
+  # ---- run the server over the whole stream --------------------------------
+  let req_path = tmp_path("lsp_req.bin")
+  let res_path = tmp_path("lsp_res.bin")
+  write_file(req_path, sb_str(lsp_req))
+  run(`{server} --stdio < {req_path} > {res_path} 2>{tmp_path("lsp_err.txt")}`)
+  let stream = read_file(res_path)
+  if stream == null { bad("ludic-lsp produced no output");  return report() }
+  lsp_parse_stream(stream)
+
+  # ---- and judge ----------------------------------------------------------
+  let caps = j_get(lsp_result(init), "capabilities")
+  let wanted = ["completionProvider", "hoverProvider", "definitionProvider", "referencesProvider", "renameProvider", "documentSymbolProvider", "workspaceSymbolProvider", "documentFormattingProvider", "semanticTokensProvider", "foldingRangeProvider", "signatureHelpProvider", "inlayHintProvider", "documentLinkProvider"]
+  var wi = 0
+  while wi < len(wanted) { check_true(`advertises {wanted[wi]}`, j_has_key(caps, wanted[wi]));  wi += 1 }
+
+  check_true("document symbols in an imported fragment", len(lsp_result(syms).kids) >= 3)
+  let hov_text = j_get(j_get(lsp_result(hov), "contents"), "value").s
+  check_true("hover resolves a field through a query binding", Text.contains(hov_text, "Stats.guard: int"))
+  check_true("go-to-definition crosses files", Text.ends_with(j_get(lsp_result(def), "uri").s, "world.ludic"))
+  let qhov_text = j_get(j_get(lsp_result(qhov), "contents"), "value").s
+  check_true("hover works on a query binding at its declaration site", Text.contains(qhov_text, "query binding"))
+  let items = j_get(lsp_result(comp), "items")
+  check_true("completion after '.' offers only that property's fields", j_any_field(items, "label", "guard") and j_any_field(items, "label", "hp") and not j_any_field(items, "label", "clear"))
+  let qitems = j_get(lsp_result(qcomp), "items")
+  check_true("completion inside query terms lists properties only", len(qitems.kids) == 2 and j_any_field(qitems, "label", "Pos") and j_any_field(qitems, "label", "Vel"))
+  let bitems = j_get(lsp_result(body), "items")
+  check_true("completion in the loop body still has locals and builtins", j_any_field(bitems, "label", "a") and j_any_field(bitems, "label", "clear"))
+  check_true("find-usages spans the compilation unit", distinct_files(lsp_result(refs)) >= 3)
+  check_true("inlay hints name query binding types", j_any_field(lsp_result(hints), "label", ": Stats"))
+  let sigs = j_get(lsp_result(sig), "signatures")
+  check_true("signature help for a namespaced builtin", len(sigs.kids) > 0 and Text.starts_with(j_get(sigs.kids[0], "label").s, "rng_chance("))
+  let tdata = j_get(lsp_result(toks), "data")
+  check_true("semantic tokens produced", len(tdata.kids) / 5 > 100)
+  check_true("semantic token stream is well formed", len(tdata.kids) % 5 == 0)
+  check_true("folding ranges produced", len(lsp_result(folds).kids) > 5)
+
+  let cmsgs = lsp_diag_msgs("combat.ludic")
+  var unclosed = false
+  var ci = 0
+  while ci < len(cmsgs) { if Text.contains(cmsgs[ci], "unclosed") { unclosed = true };  ci += 1 }
+  check_true("unbalanced brace reported while typing", unclosed)
+
+  check_true("LSP opens and analyses a file with no compiler present", j_any_field(lsp_result(bsyms), "name", "Bad"))
+
+  let mdnames = lsp_result(mdsyms)
+  check_true("symbols found inside a markdown fence", len(mdnames.kids) == 1 and j_get(mdnames.kids[0], "name").s == "D")
+  let mdata = j_get(lsp_result(mdtoks), "data")
+  var first_tok = -1
+  if len(mdata.kids) > 0 { first_tok = mdata.kids[0].num }
+  check("markdown tokens start on the fence body line", string(first_tok), "5")
+  # A fence is a snippet: elisions and half-shown blocks are the documentation
+  # doing its job, so errors there would be noise. Highlighting still applies.
+  check_true("no diagnostics are reported for markdown", lsp_diag_set("lsp_test.md") != null and len(lsp_diag_msgs("lsp_test.md")) == 0)
+  let fedits = lsp_result(fmt)
+  var ftext = ""
+  if len(fedits.kids) > 0 { ftext = j_get(fedits.kids[0], "newText").s }
+  check_true("markdown formatting leaves prose and other fences alone", Text.contains(ftext, "prose") and Text.contains(ftext, "z = 1"))
+
+  di = 0
+  while di < len(docs) {
+    check(`{docs[di]} opens with no diagnostics`, string(len(lsp_diag_msgs(docs[di]))), "0")
+    di += 1
+  }
+  check_true("LANGUAGE.md fences are highlighted", len(j_get(lsp_result(langtoks), "data").kids) / 5 > 100)
+
+  check("renaming Pos.x touches only its declaration and its uses", lines_key(first_change(lsp_result(field))), "1,7")
+  check("renaming a local touches only that local", lines_key(first_change(lsp_result(local))), "6,7")
+  check("renaming a parameter touches only that function", lines_key(first_change(lsp_result(param))), "3")
+  check("renaming a parameter makes exactly two edits", string(len(first_change(lsp_result(param)).kids)), "2")
+  check("find-usages of Vel.x does not pick up Pos.x", loc_lines_key(lsp_result(refs_x)), "2,11")
+  check_true("workspace symbol search finds a property", j_any_field(lsp_result(ws), "name", "Stats"))
+  let ccmsgs = lsp_diag_msgs("lsp_cc.ludic")
+  var cc_seen = false
+  ci = 0
+  while ci < len(ccmsgs) { if Text.contains(ccmsgs[ci], "expected expression") { cc_seen = true };  ci += 1 }
+  check_true("ludicc's own error is published on save (compilerDiagnostics)", cc_seen)
+
+  return report()
+}

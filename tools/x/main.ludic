@@ -18,6 +18,8 @@ program X {
   import "selfhost_test.ludic"
   import "test.ludic"
   import "json.ludic"
+  import "lsp_test.ludic"
+  import "forgejo.ludic"
   import "checks.ludic"
   import "docgen.ludic"
   import "docgen_gen.ludic"
@@ -52,6 +54,7 @@ program X {
     print("  x test --coverage             per-file line coverage over the test specs")
     print("  x selfhost-test               the self-hosting suite (correctness + bootstrap fixpoints)")
     print("  x test-tools                  the editor-toolchain suite")
+    print("  x test-lsp                    drive bin/ludic-lsp over real LSP traffic (exit 2 = no server)")
     print("  x golden                      regenerate selfhost/golden/renders.sha256 (review with git diff)")
     print("")
     print("doc / lint checks (Ludic, no Python):")
@@ -61,7 +64,7 @@ program X {
     print("  x lint-asset <file>           validate one editor .json / .xml asset")
     print("  x docs-gen [--out DIR]        generate the documentation site (default build/pages)")
     print("  x docs-check [DIR]            coverage/integrity guard over a generated docs site")
-    print("  x docs-palette                regenerate emit_color.ludic + palette.json from the palette table")
+    print("  x docs-palette [--check]      regenerate emit_color.ludic + palette.json from the palette table (--check: compare only)")
     print("")
     print("release:")
     print("  x version                     print the toolchain version (ludicc --version)")
@@ -83,53 +86,63 @@ program X {
     return dflt
   }
 
-  entry {
-    if (arg_count() < 2) { usage(); exit(1) }
-    let cmd = arg(1)
-
-    if (cmd == "build") { exit(cmd_build()) }
-    if (cmd == "build-cli") { exit(cmd_build_cli()) }
-    if (cmd == "app") { exit(cmd_app()) }
-    if (cmd == "tools") { exit(cmd_tools()) }
-    if (cmd == "clean") { exit(cmd_clean()) }
+  # route one subcommand to its implementation and return its exit code; -1 when
+  # the name is unknown. Returning (rather than exiting in place) lets entry tear
+  # down the per-process scratch directory before the process ends.
+  function dispatch(cmd: pointer) -> int {
+    if (cmd == "build") { return cmd_build() }
+    if (cmd == "build-cli") { return cmd_build_cli() }
+    if (cmd == "app") { return cmd_app() }
+    if (cmd == "tools") { return cmd_tools() }
+    if (cmd == "clean") { return cmd_clean() }
     if (cmd == "test") {
-      if (argn(2, "") == "--coverage") { exit(cmd_test_coverage()) }
-      exit(cmd_test())
+      if (argn(2, "") == "--coverage") { return cmd_test_coverage() }
+      return cmd_test()
     }
-    if (cmd == "selfhost-test") { exit(cmd_selfhost_test()) }
-    if (cmd == "test-tools") { exit(cmd_test_tools()) }
-    if (cmd == "check-docs") { exit(cmd_check_docs()) }
-    if (cmd == "check-impl") { exit(cmd_check_impl()) }
-    if (cmd == "check-vocabulary") { exit(cmd_check_vocab()) }
-    if (cmd == "lint-asset") { exit(cmd_lint_asset()) }
-    if (cmd == "docs-palette") { exit(cmd_docs_palette()) }
-    if (cmd == "docs-gen") { exit(cmd_docs_gen()) }
-    if (cmd == "docs-check") { exit(cmd_docs_check()) }
-    if (cmd == "golden") { exit(cmd_golden()) }
-    if (cmd == "bootstrap") { exit(cmd_bootstrap()) }
-    if (cmd == "bootstrap-cfree") { exit(cmd_bootstrap_cfree()) }
-    if (cmd == "reseed") { exit(cmd_reseed()) }
-    if (cmd == "selfhost-build") { exit(cmd_selfhost_build(argn(2, "bin/ludicc"), argn(3, "build/selfhost"))) }
+    if (cmd == "selfhost-test") { return cmd_selfhost_test() }
+    if (cmd == "test-tools") { return cmd_test_tools() }
+    if (cmd == "test-lsp") { return cmd_test_lsp() }
+    if (cmd == "check-docs") { return cmd_check_docs() }
+    if (cmd == "check-impl") { return cmd_check_impl() }
+    if (cmd == "check-vocabulary") { return cmd_check_vocab() }
+    if (cmd == "lint-asset") { return cmd_lint_asset() }
+    if (cmd == "docs-palette") { return cmd_docs_palette() }
+    if (cmd == "docs-gen") { return cmd_docs_gen() }
+    if (cmd == "docs-check") { return cmd_docs_check() }
+    if (cmd == "golden") { return cmd_golden() }
+    if (cmd == "bootstrap") { return cmd_bootstrap() }
+    if (cmd == "bootstrap-cfree") { return cmd_bootstrap_cfree() }
+    if (cmd == "reseed") { return cmd_reseed() }
+    if (cmd == "selfhost-build") { return cmd_selfhost_build(argn(2, "bin/ludicc"), argn(3, "build/selfhost")) }
     if (cmd == "sh-compile") {
       if (arg_count() < 5) { err("usage: x sh-compile <ludicc> <in.ludic> <out>\n"); exit(1) }
-      exit(cmd_sh_compile(arg(2), arg(3), arg(4)))
+      return cmd_sh_compile(arg(2), arg(3), arg(4))
     }
     if (cmd == "game-build") {
       if (arg_count() < 5) { err("usage: x game-build <ludicc> <game.ludic> <out>\n"); exit(1) }
-      exit(cmd_game_build(arg(2), arg(3), arg(4)))
+      return cmd_game_build(arg(2), arg(3), arg(4))
     }
-    if (cmd == "add") { exit(cmd_pkg_add()) }
-    if (cmd == "get") { exit(cmd_pkg_get()) }
-    if (cmd == "update") { exit(cmd_pkg_update()) }
-    if (cmd == "verify") { exit(cmd_pkg_verify()) }
-    if (cmd == "vendor") { exit(cmd_pkg_vendor()) }
-    if (cmd == "build-lib") { exit(cmd_pkg_build_lib()) }
-    if (cmd == "link-flags") { exit(cmd_pkg_link_flags()) }
-    if (cmd == "test-pkg") { exit(cmd_test_pkg()) }
-    if (cmd == "version") or (cmd == "--version") or (cmd == "-v") { exit(cmd_version()) }
-    if (cmd == "release") { exit(cmd_release()) }
-    if (cmd == "help") or (cmd == "--help") or (cmd == "-h") { usage(); exit(0) }
+    if (cmd == "add") { return cmd_pkg_add() }
+    if (cmd == "get") { return cmd_pkg_get() }
+    if (cmd == "update") { return cmd_pkg_update() }
+    if (cmd == "verify") { return cmd_pkg_verify() }
+    if (cmd == "vendor") { return cmd_pkg_vendor() }
+    if (cmd == "build-lib") { return cmd_pkg_build_lib() }
+    if (cmd == "link-flags") { return cmd_pkg_link_flags() }
+    if (cmd == "test-pkg") { return cmd_test_pkg() }
+    if (cmd == "version") or (cmd == "--version") or (cmd == "-v") { return cmd_version() }
+    if (cmd == "release") { return cmd_release() }
+    if (cmd == "help") or (cmd == "--help") or (cmd == "-h") { usage(); return 0 }
 
+    return -1
+  }
+
+  entry {
+    if (arg_count() < 2) { usage(); exit(1) }
+    let cmd = arg(1)
+    let code = dispatch(cmd)
+    tmp_cleanup()
+    if code >= 0 { exit(code) }
     err(`x: unknown command '{cmd}'\n`)
     usage()
     exit(1)

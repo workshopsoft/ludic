@@ -11,12 +11,12 @@
 # its stdout against the expected space-joined output.
 function feat_case(path: pointer, keys: pointer, exp: pointer, label: pointer) -> void {
   let nm = flat(path)
-  if not game_build_ok("bin/ludicc", `examples/{path}.ludic`, `/tmp/x_e_{nm}`) {
-    bad2(label, capture_line("grep -i error /tmp/x_gb.err | head -1")); return
+  if not game_build_ok("bin/ludicc", `examples/{path}.ludic`, `{tmp_dir()}/e_{nm}`) {
+    bad2(label, capture_line(`grep -i error {tmp_dir()}/gb.err | head -1`)); return
   }
   var got = ""
-  if (keys == "") { got = capture_line(`/tmp/x_e_{nm} < /dev/null`) }
-  else { got = capture_line(`printf '{keys}' | /tmp/x_e_{nm}`) }
+  if (keys == "") { got = capture_line(`{tmp_dir()}/e_{nm} < /dev/null`) }
+  else { got = capture_line(`printf '{keys}' | {tmp_dir()}/e_{nm}`) }
   if (got == exp) { ok(label) } else { bad2(label, `got [{got}] want [{exp}]`) }
 }
 
@@ -28,16 +28,16 @@ function feat_case(path: pointer, keys: pointer, exp: pointer, label: pointer) -
 function controller_case(path: pointer, keys: pointer, exp: pointer, label: pointer) -> void {
   let nm = flat(path)
   let root = capture_line("pwd")
-  let ll = `/tmp/x_c_{nm}.ll`
-  if not shq(`LUDIC_HOME={root} LUDIC_MODULES={root}/packages bin/ludicc examples/{path}.ludic > {ll} 2>/tmp/x_gb.err`) {
-    bad2(label, capture_line("grep -i error /tmp/x_gb.err | head -1")); return
+  let ll = `{tmp_dir()}/c_{nm}.ll`
+  if not shq(`LUDIC_HOME={root} LUDIC_MODULES={root}/packages bin/ludicc examples/{path}.ludic > {ll} 2>{tmp_dir()}/gb.err`) {
+    bad2(label, capture_line(`grep -i error {tmp_dir()}/gb.err | head -1`)); return
   }
-  if not shq(`{cc()} -O2 {ll} -o /tmp/x_c_{nm} 2>/tmp/x_gb.err`) {
-    bad2(label, capture_line("grep -i error /tmp/x_gb.err | head -1")); return
+  if not shq(`{cc()} -O2 {ll} -o {tmp_dir()}/c_{nm} 2>{tmp_dir()}/gb.err`) {
+    bad2(label, capture_line(`grep -i error {tmp_dir()}/gb.err | head -1`)); return
   }
   var got = ""
-  if (keys == "") { got = capture_line(`/tmp/x_c_{nm} < /dev/null`) }
-  else { got = capture_line(`printf '{keys}' | /tmp/x_c_{nm}`) }
+  if (keys == "") { got = capture_line(`{tmp_dir()}/c_{nm} < /dev/null`) }
+  else { got = capture_line(`printf '{keys}' | {tmp_dir()}/c_{nm}`) }
   if (got == exp) { ok(label) } else { bad2(label, `got [{got}] want [{exp}]`) }
 }
 
@@ -46,7 +46,7 @@ function controller_case(path: pointer, keys: pointer, exp: pointer, label: poin
 # from $LUDIC_HOME (the toolchain install), independent of the package module root.
 function runtime_home_case() -> void {
   let root = capture_line("pwd")
-  let dir = "/tmp/x_ext75"
+  let dir = `{tmp_dir()}/ext75`
   shq(`rm -rf {dir} && mkdir -p {dir}`)
   write_file(`{dir}/game.ludic`, "program Ext {\n  property Mob { hp: int = 0 }\n  model M { Mob }\n  entry {\n    spawn M { Mob { hp: 7 } }\n    let pm = World.prop_id(\"Mob\")\n    let e = World.query_next(pm, 0)\n    print(World.get(e, pm, World.field_id(pm, \"hp\")))\n  }\n}\n")
   let lbl = "runtime ships with the toolchain, resolved from LUDIC_HOME (#75)"
@@ -62,17 +62,17 @@ function runtime_home_case() -> void {
 # a "does it still compile" smoke test (parse -> lower -> link), no run
 function qsmoke(path: pointer) -> void {
   let nm = flat(path)
-  if game_build_ok("bin/ludicc", `examples/{path}.ludic`, `/tmp/x_q_{nm}`) {
+  if game_build_ok("bin/ludicc", `examples/{path}.ludic`, `{tmp_dir()}/q_{nm}`) {
     ok(`{path} compiles (@Queries desugars to S_QUERY)`)
-  } else { bad2(path, capture_line("grep -i error /tmp/x_gb.err | head -1")) }
+  } else { bad2(path, capture_line(`grep -i error {tmp_dir()}/gb.err | head -1`)) }
 }
 
 # a plain compile-only rot guard for a showcase example that has no self-asserting
 # `entry` (so net_case can't drive it): prove it still parses, lowers and links.
 function smoke(path: pointer) -> void {
   let nm = flat(path)
-  if not shq(`bin/ludicc --headless examples/{path}.ludic --emit-llvm -o /tmp/x_sm_{nm}.ll > /tmp/x_sm_{nm}.err 2>&1`) {
-    bad2(path, capture_line(`tail -1 /tmp/x_sm_{nm}.err`)); return
+  if not shq(`bin/ludicc --headless examples/{path}.ludic --emit-llvm -o {tmp_dir()}/sm_{nm}.ll > {tmp_dir()}/sm_{nm}.err 2>&1`) {
+    bad2(path, capture_line(`tail -1 {tmp_dir()}/sm_{nm}.err`)); return
   }
   ok(`{path} still compiles`)
 }
@@ -81,17 +81,17 @@ function smoke(path: pointer) -> void {
 # let clang assemble it, run, and compare stdout. No C host and no C compiled.
 function net_case(path: pointer, exp: pointer) -> void {
   let nm = flat(path)
-  let ll = `/tmp/x_n_{nm}.ll`
-  let log = `/tmp/x_n_{nm}.out`
+  let ll = `{tmp_dir()}/n_{nm}.ll`
+  let log = `{tmp_dir()}/n_{nm}.out`
   if not shq(`bin/ludicc --headless examples/{path}.ludic --emit-llvm -o {ll} > {log} 2>&1`) {
     let t = capture_line(`tail -1 {log}`)
     bad2(path, `build ({t})`); return
   }
-  if not shq(`{cc()} -O2 {ll} -o /tmp/x_nb_{nm} >> {log} 2>&1`) {
+  if not shq(`{cc()} -O2 {ll} -o {tmp_dir()}/nb_{nm} >> {log} 2>&1`) {
     let t = capture_line(`tail -1 {log}`)
     bad2(path, `build ({t})`); return
   }
-  let got = capture_line(`/tmp/x_nb_{nm} < /dev/null`)
+  let got = capture_line(`{tmp_dir()}/nb_{nm} < /dev/null`)
   if (got == exp) { ok(`{path} ({got})`) } else { bad2(path, `got [{got}] want [{exp}]`) }
 }
 
@@ -100,16 +100,16 @@ function net_case(path: pointer, exp: pointer) -> void {
 # exit (0) plus the expected `== N passed, M failed ==` summary on the last line.
 function spec_case(path: pointer, exp: pointer) -> void {
   let nm = flat(path)
-  let ll = `/tmp/x_spec_{nm}.ll`
-  let er = `/tmp/x_spec_{nm}.err`
+  let ll = `{tmp_dir()}/spec_{nm}.ll`
+  let er = `{tmp_dir()}/spec_{nm}.err`
   if not shq(`bin/ludicc examples/{path}.ludic > {ll} 2>{er}`) {
     bad2(path, capture_line(`tail -1 {er}`)); return
   }
-  if not shq(`{cc()} -O2 {ll} -o /tmp/x_spec_{nm} 2>{er}`) {
+  if not shq(`{cc()} -O2 {ll} -o {tmp_dir()}/spec_{nm} 2>{er}`) {
     bad2(path, capture_line(`tail -1 {er}`)); return
   }
-  let rc = sh(`/tmp/x_spec_{nm} > /tmp/x_spec_{nm}.out 2>&1`)
-  let summary = capture_line(`tail -1 /tmp/x_spec_{nm}.out`)
+  let rc = sh(`{tmp_dir()}/spec_{nm} > {tmp_dir()}/spec_{nm}.out 2>&1`)
+  let summary = capture_line(`tail -1 {tmp_dir()}/spec_{nm}.out`)
   if (rc == 0) and (summary == exp) { ok(`{path} ({summary})`) }
   else { bad2(path, `rc={string(rc)} last=[{summary}]`) }
 }
@@ -117,12 +117,12 @@ function spec_case(path: pointer, exp: pointer) -> void {
 # issue #8: the failure path — a panic must abort with a non-zero exit and a
 # `file:line: panic: <msg>` line on stderr (stdout is unaffected up to the panic).
 function panic_case() -> void {
-  write_file("/tmp/x_panic.ludic", "program P { entry { print(7); panic(\"boom\") } }\n")
-  if not shq("bin/ludicc /tmp/x_panic.ludic > /tmp/x_panic.ll 2>/dev/null") { bad("panic example did not compile"); return }
-  if not shq(`{cc()} -O2 /tmp/x_panic.ll -o /tmp/x_panic 2>/dev/null`) { bad("panic example did not link"); return }
-  let rc = sh("/tmp/x_panic > /tmp/x_panic.out 2>/tmp/x_panic.err")
-  let msg = capture_line("cat /tmp/x_panic.err")
-  if (rc != 0) and shq("grep -q 'panic: boom' /tmp/x_panic.err") { ok(`panic aborts non-zero with a located stderr message ({msg})`) }
+  write_file(`{tmp_dir()}/panic.ludic`, "program P { entry { print(7); panic(\"boom\") } }\n")
+  if not shq(`bin/ludicc {tmp_dir()}/panic.ludic > {tmp_dir()}/panic.ll 2>/dev/null`) { bad("panic example did not compile"); return }
+  if not shq(`{cc()} -O2 {tmp_dir()}/panic.ll -o {tmp_dir()}/panic 2>/dev/null`) { bad("panic example did not link"); return }
+  let rc = sh(`{tmp_dir()}/panic > {tmp_dir()}/panic.out 2>{tmp_dir()}/panic.err`)
+  let msg = capture_line(`cat {tmp_dir()}/panic.err`)
+  if (rc != 0) and shq(`grep -q 'panic: boom' {tmp_dir()}/panic.err`) { ok(`panic aborts non-zero with a located stderr message ({msg})`) }
   else { bad2("panic", `rc={string(rc)} err=[{msg}]`) }
 }
 
@@ -132,14 +132,14 @@ function panic_case() -> void {
 # so this reuses the same seed-built bin/ludicc the rest of the suite does.
 function cov_one(path: pointer, dir: pointer) -> int {
   let nm = flat(path)
-  let ll = `/tmp/x_cov_{nm}.ll`
-  let bin = `/tmp/x_cov_{nm}`
+  let ll = `{tmp_dir()}/cov_{nm}.ll`
+  let bin = `{tmp_dir()}/cov_{nm}`
   let cov = `{dir}/{nm}.cov`
-  if not shq(`bin/ludicc --coverage examples/{path}.ludic > {ll} 2>/tmp/x_cov.err`) {
-    bad2(path, capture_line("tail -1 /tmp/x_cov.err")); return 1
+  if not shq(`bin/ludicc --coverage examples/{path}.ludic > {ll} 2>{tmp_dir()}/cov.err`) {
+    bad2(path, capture_line(`tail -1 {tmp_dir()}/cov.err`)); return 1
   }
-  if not shq(`{cc()} -O2 {ll} -o {bin} 2>/tmp/x_cov.err`) {
-    bad2(path, capture_line("tail -1 /tmp/x_cov.err")); return 1
+  if not shq(`{cc()} -O2 {ll} -o {bin} 2>{tmp_dir()}/cov.err`) {
+    bad2(path, capture_line(`tail -1 {tmp_dir()}/cov.err`)); return 1
   }
   run(`rm -f {ll}`)
   # run the spec; its atexit hook writes the dump to $LUDIC_COVERAGE
@@ -159,8 +159,8 @@ function cov_one(path: pointer, dir: pointer) -> int {
   var line = `  examples/{path}.ludic   {string(covered)}/{string(total)} lines  {string(pct)}%`
   if not (missed == "") { line = `{line}   uncovered: {missed}` }
   print(line)
-  COV_COVERED = COV_COVERED + covered
-  COV_TOTAL = COV_TOTAL + total
+  COV_COVERED += covered
+  COV_TOTAL += total
   return 0
 }
 
@@ -170,15 +170,15 @@ var COV_TOTAL: int = 0
 function cmd_test_coverage() -> int {
   # the suite normally rebuilds bin/ludicc from the seed; do the same here so the
   # instrumentation path is exactly what a clean checkout ships.
-  run("mkdir -p bin build /tmp/x_cov_out")
+  run(`mkdir -p bin build {tmp_dir()}/cov_out`)
   if (not is_exec("bin/ludicc")) or newer("selfhost/ludicc.seed.ll", "bin/ludicc") {
     if not shq(`{cc()} selfhost/ludicc.seed.ll -o bin/ludicc`) { err("x: cannot build bin/ludicc from the seed\n"); return 1 }
   }
   COV_COVERED = 0
   COV_TOTAL = 0
   print("== line coverage (bin/x test --coverage) ==")
-  cov_one("library/coverage", "/tmp/x_cov_out")
-  cov_one("library/testing", "/tmp/x_cov_out")
+  cov_one("library/coverage", `{tmp_dir()}/cov_out`)
+  cov_one("library/testing", `{tmp_dir()}/cov_out`)
   var pct = 100
   if COV_TOTAL > 0 { pct = (COV_COVERED * 100) / COV_TOTAL }
   print(`  ----`)
@@ -209,10 +209,10 @@ function cmd_test() -> int {
   game_case("games/chronorift", "ddddwwwwaassK")
 
   print("== self-hosting and the bootstrap fixpoints ==")
-  run("bin/x selfhost-test > /tmp/x_sh.out 2>&1")
-  if shq("grep -q 'gen2.ll == gen3.ll' /tmp/x_sh.out") { ok("the compiler reproduces itself (fixpoint)") } else { bad("fixpoint") }
-  if shq("grep -q 'no C compiler' /tmp/x_sh.out") { ok("the compiler rebuilds itself from the seed, C-free") } else { bad("C-free bootstrap") }
-  let corr = capture_line("grep -c PASS /tmp/x_sh.out")
+  run(`bin/x selfhost-test > {tmp_dir()}/sh.out 2>&1`)
+  if shq(`grep -q 'gen2.ll == gen3.ll' {tmp_dir()}/sh.out`) { ok("the compiler reproduces itself (fixpoint)") } else { bad("fixpoint") }
+  if shq(`grep -q 'no C compiler' {tmp_dir()}/sh.out`) { ok("the compiler rebuilds itself from the seed, C-free") } else { bad("C-free bootstrap") }
+  let corr = capture_line(`grep -c PASS {tmp_dir()}/sh.out`)
   ok(`self-host suite: {corr} checks passed (see: x selfhost-test)`)
 
   print("== documented syntax stays compilable (guards against spec/compiler drift) ==")
@@ -221,6 +221,7 @@ function cmd_test() -> int {
   feat_case("lang/lifecycle", "", "1 700 50 950 2", "lifecycle.ludic (@OnStart/@OnAttach/@OnSpawn/@OnDespawn/@OnQuit in order)")
   feat_case("lang/toggle", "", "6 0 7 1 0", "toggle.ludic (enable/disable + @OnDisable/@OnEnable across property/model)")
   feat_case("lang/strings", "", "1 2 3 4 5 6 7 8 9", "strings.ludic (str ops, interpolation, slicing)")
+  feat_case("lang/operators", "", "1 2 3 4 5 6 7 8 9 10", "operators.ludic (compound assignment on fixed/string/long, -fixed, char escapes, list literals)")
   feat_case("lang/rng_demo", "", "69 89 6 -1 0", "rng_demo.ludic (Random.value/int/sign)")
   feat_case("lang/time_demo", "aaaaaa", "0 1 2 3 4 16", "time_demo.ludic (Time.frame/elapsed/delta)")
   feat_case("lang/scenes", "aaaaaaaaaa", "1000 1 101 102 2 3 900 201 900 202 900", "scenes.ludic (scene/layer/on enter/on exit/become)")
@@ -289,7 +290,7 @@ function cmd_test() -> int {
   # Os known-folders/arch and Fs.list read the BSD utsname/dirent layout, so
   # their asserted values are macOS-specific; skip off Darwin (see is_darwin).
   if is_darwin() {
-    feat_case("library/os", "", "1 2 3 4 5 6 7 8 9 10 11 12 13", "os.ludic (Os args/env round-trip, platform/arch, known dirs)")
+    feat_case("library/os", "", "1 2 3 4 5 6 7 8 9 10 11 12 13 14", "os.ludic (Os args/env round-trip, platform/arch, known dirs, pid)")
   } else { skip("os.ludic (Os known-folder / uname ABI is macOS/BSD-specific)") }
   feat_case("library/unicode", "", "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18", "unicode.ludic (UTF-8 len/validate/char_at/chars/case/truncate/graphemes)")
   if is_darwin() {
@@ -342,11 +343,11 @@ function cmd_test() -> int {
   # canonical `ludicc -o` path (which wires the framework) and gate on Darwin. The
   # run exercises the pure-Ludic response parser; no network is touched.
   if is_darwin() {
-    if shq("LUDIC_HOME=. bin/ludicc examples/library/http.ludic -o /tmp/x_http_demo > /tmp/x_http.out 2>&1") {
-      let got = capture_line("/tmp/x_http_demo < /dev/null")
+    if shq(`LUDIC_HOME=. bin/ludicc examples/library/http.ludic -o {tmp_dir()}/http_demo > {tmp_dir()}/http.out 2>&1`) {
+      let got = capture_line(`{tmp_dir()}/http_demo < /dev/null`)
       if (got == "200 1 5 hello 42 text/plain 404 0") { ok("http.ludic (#6 Http.parse/status/ok/text/header — pure response parser)") }
       else { bad2("http.ludic", `got [{got}]`) }
-    } else { bad2("http.ludic build", capture_line("tail -1 /tmp/x_http.out")) }
+    } else { bad2("http.ludic build", capture_line(`tail -1 {tmp_dir()}/http.out`)) }
   }
 
   feat_case("events/recurse", "", "16", "recurse.ludic (EV6: re-entrant emit is depth-bounded, no runaway cycle)")
@@ -369,37 +370,37 @@ function cmd_test() -> int {
   print("== self-hosted front-end binaries (ludicc / ludic) ==")
   # the two commands are one multi-call native binary built from the seed with
   # clang alone. ludicc compiles; ludic compiles-and-runs.
-  if shq("bin/x build-cli > /tmp/x_cli.out 2>&1") and is_exec("bin/ludicc") and is_exec("bin/ludic") {
+  if shq(`bin/x build-cli > {tmp_dir()}/cli.out 2>&1`) and is_exec("bin/ludicc") and is_exec("bin/ludic") {
     ok("x build-cli builds bin/ludicc and bin/ludic from the seed (clang-only)")
-  } else { bad2("x build-cli", capture_line("tail -1 /tmp/x_cli.out")) }
+  } else { bad2("x build-cli", capture_line(`tail -1 {tmp_dir()}/cli.out`)) }
 
   # ludicc -o drives clang to a native binary. A game links windowed by default
   # (LUDIC_HOME points the linker at runtime/native/cocoa.ll) — that path is
   # macOS-only (Cocoa), so off Darwin we prove the same "-o yields a runnable
   # native binary" with a headless link, which needs no window backend.
   if is_darwin() {
-    if shq("LUDIC_HOME=. bin/ludicc examples/games/snake.ludic -o /tmp/x_cli_snake > /tmp/x_cli.out 2>&1") and shq("file /tmp/x_cli_snake 2>/dev/null | grep -q Mach-O") {
+    if shq(`LUDIC_HOME=. bin/ludicc examples/games/snake.ludic -o {tmp_dir()}/cli_snake > {tmp_dir()}/cli.out 2>&1`) and shq(`file {tmp_dir()}/cli_snake 2>/dev/null | grep -q Mach-O`) {
       ok("ludicc app.ludic -o bin  ->  native executable")
-    } else { bad2("ludicc -o", capture_line("tail -1 /tmp/x_cli.out")) }
+    } else { bad2("ludicc -o", capture_line(`tail -1 {tmp_dir()}/cli.out`)) }
     # #51 — a windowed build must load GameController so the native gamepad
     # polling (win_pad, reached on the is_windowed branch) can see controllers.
-    if shq("otool -L /tmp/x_cli_snake 2>/dev/null | grep -q GameController") {
+    if shq(`otool -L {tmp_dir()}/cli_snake 2>/dev/null | grep -q GameController`) {
       ok("windowed link loads GameController (#51 gamepad binding)")
     } else { bad("windowed binary is missing the GameController load command") }
   } else {
-    if shq("LUDIC_HOME=. bin/ludicc --headless examples/games/snake.ludic -o /tmp/x_cli_snake > /tmp/x_cli.out 2>&1") and shq("test -x /tmp/x_cli_snake") {
+    if shq(`LUDIC_HOME=. bin/ludicc --headless examples/games/snake.ludic -o {tmp_dir()}/cli_snake > {tmp_dir()}/cli.out 2>&1`) and shq(`test -x {tmp_dir()}/cli_snake`) {
       ok("ludicc app.ludic -o bin  ->  native executable (headless)")
-    } else { bad2("ludicc -o", capture_line("tail -1 /tmp/x_cli.out")) }
+    } else { bad2("ludicc -o", capture_line(`tail -1 {tmp_dir()}/cli.out`)) }
   }
 
   # --emit-llvm stops at the IR.
-  if shq("bin/ludicc examples/games/snake.ludic --emit-llvm -o /tmp/x_cli_snake.ll > /tmp/x_cli.out 2>&1") and shq("head -1 /tmp/x_cli_snake.ll | grep -q 'LLVM IR'") {
+  if shq(`bin/ludicc examples/games/snake.ludic --emit-llvm -o {tmp_dir()}/cli_snake.ll > {tmp_dir()}/cli.out 2>&1`) and shq(`head -1 {tmp_dir()}/cli_snake.ll | grep -q 'LLVM IR'`) {
     ok("ludicc --emit-llvm  ->  LLVM IR")
-  } else { bad2("ludicc --emit-llvm", capture_line("tail -1 /tmp/x_cli.out")) }
+  } else { bad2("ludicc --emit-llvm", capture_line(`tail -1 {tmp_dir()}/cli.out`)) }
 
   # ludic compiles, runs, and forwards the program's exit code.
-  write_file("/tmp/x_cli_exit.ludic", "entry { exit(42) }\n")
-  let rc = sh("LUDIC_HOME=. bin/ludic /tmp/x_cli_exit.ludic > /tmp/x_cli.out 2>&1")
+  write_file(`{tmp_dir()}/cli_exit.ludic`, "entry { exit(42) }\n")
+  let rc = sh(`LUDIC_HOME=. bin/ludic {tmp_dir()}/cli_exit.ludic > {tmp_dir()}/cli.out 2>&1`)
   if (rc == 42) { ok("ludic app.ludic  ->  compiles, runs, forwards exit code") }
   else { bad2("ludic run: expected exit 42", `got {string(rc)}`) }
 
@@ -408,26 +409,26 @@ function cmd_test() -> int {
   # stands up throwaway git repos, so like selfhost-test it runs as a sub-process
   # and this stage checks its footer).
   print("== package manager (x test-pkg) ==")
-  run("bin/x test-pkg > /tmp/x_pkg.out 2>&1")
-  if shq("grep -q '0 failed' /tmp/x_pkg.out") {
-    let pc = capture_line("grep -c PASS /tmp/x_pkg.out")
+  run(`bin/x test-pkg > {tmp_dir()}/pkg.out 2>&1`)
+  if shq(`grep -q '0 failed' {tmp_dir()}/pkg.out`) {
+    let pc = capture_line(`grep -c PASS {tmp_dir()}/pkg.out`)
     ok(`package-manager suite: {pc} checks passed (see: x test-pkg)`)
-  } else { bad2("x test-pkg", capture_line("grep -i fail /tmp/x_pkg.out | head -1")) }
+  } else { bad2("x test-pkg", capture_line(`grep -i fail {tmp_dir()}/pkg.out | head -1`)) }
 
   # docs site generator + guard, in Ludic (no Python). docs-gen emits the whole
   # pages payload; docs-check is its coverage/integrity guard; docs-palette is
-  # the named-colour source of truth (its output is the tracked emit_color.ludic
-  # + palette.json, so a clean git diff proves it stayed byte-identical).
+  # the named-colour source of truth (its --check mode regenerates the tracked
+  # emit_color.ludic + palette.json into scratch files and compares).
   print("== docs site (Ludic generator, no Python) ==")
-  if shq("bin/x docs-gen --out /tmp/x_docs > /tmp/x_docs.out 2>&1") {
+  if shq(`bin/x docs-gen --out {tmp_dir()}/docs > {tmp_dir()}/docs.out 2>&1`) {
     ok("x docs-gen  ->  the pages-branch payload")
-  } else { bad2("x docs-gen", capture_line("tail -1 /tmp/x_docs.out")) }
-  if shq("bin/x docs-check /tmp/x_docs > /tmp/x_docs_chk.out 2>&1") {
+  } else { bad2("x docs-gen", capture_line(`tail -1 {tmp_dir()}/docs.out`)) }
+  if shq(`bin/x docs-check {tmp_dir()}/docs > {tmp_dir()}/docs_chk.out 2>&1`) {
     ok("x docs-check passes on the generated site")
-  } else { bad2("x docs-check", capture_line("tail -1 /tmp/x_docs_chk.out")) }
-  if shq("bin/x docs-palette > /dev/null 2>&1") and shq("git diff --quiet selfhost/backend/stdlib/emit_color.ludic docs/language/colors/palette.json") {
+  } else { bad2("x docs-check", capture_line(`tail -1 {tmp_dir()}/docs_chk.out`)) }
+  if shq(`bin/x docs-palette --check > {tmp_dir()}/pal.out 2>&1`) {
     ok("x docs-palette regenerates emit_color.ludic + palette.json byte-identically")
-  } else { bad("x docs-palette drifted (git diff not empty)") }
+  } else { bad2("x docs-palette --check", capture_line(`tail -1 {tmp_dir()}/pal.out`)) }
 
   return report()
 }

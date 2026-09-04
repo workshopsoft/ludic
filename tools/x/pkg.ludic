@@ -47,13 +47,13 @@ function manifest_new() -> Manifest {
 }
 
 # a bare newline string (the lexer has no reliable \n inside interpolation)
-function nl() -> pointer { let b = bytes(2);  b[0] = 10;  b[1] = 0;  return b }
+function nl() -> pointer { let b = bytes(2);  b[0] = '\n';  b[1] = 0;  return b }
 
 # ---- version arithmetic (semver major.minor.patch, pre-release ignored) ------
 
 # drop a leading 'v' (118) from a tag/version string
 function strip_v(s: pointer) -> pointer {
-  if slen(s) > 0 and s[0] == 118 { return sslice(s, 1, slen(s)) }
+  if slen(s) > 0 and s[0] == 'v' { return sslice(s, 1, slen(s)) }
   return s
 }
 
@@ -66,10 +66,10 @@ function ver_nums(s: pointer) -> []int {
   var i = 0
   while i < n {
     let c = v[i]
-    if c >= 48 and c <= 57 { cur = cur * 10 + (c - 48) }
-    else if c == 46 { push(parts, cur);  cur = 0 }
+    if c >= '0' and c <= '9' { cur = cur * 10 + (c - 48) }
+    else if c == '.' { push(parts, cur);  cur = 0 }
     else { i = n }                          # a '-'/'+' ends the numeric core
-    i = i + 1
+    i += 1
   }
   push(parts, cur)
   while len(parts) < 3 { push(parts, 0) }
@@ -82,9 +82,9 @@ function ver_cmp(a: pointer, b: pointer) -> int {
   let pb = ver_nums(b)
   var i = 0
   while i < 3 {
-    if pa[i] < pb[i] { return 0 - 1 }
+    if pa[i] < pb[i] { return -1 }
     if pa[i] > pb[i] { return 1 }
-    i = i + 1
+    i += 1
   }
   return 0
 }
@@ -94,7 +94,7 @@ function ver_gt(a: pointer, b: pointer) -> bool { return ver_cmp(a, b) > 0 }
 function is_ver_tag(s: pointer) -> bool {
   let v = strip_v(s)
   if slen(v) == 0 { return false }
-  return v[0] >= 48 and v[0] <= 57
+  return v[0] >= '0' and v[0] <= '9'
 }
 
 # ---- tiny line/token scanners for the manifest & lock ------------------------
@@ -107,17 +107,17 @@ function tok_line(line: pointer) -> []pointer {
   var i = 0
   while i < n {
     let c = line[i]
-    if c == 35 { i = n }                              # '#' comment
-    else if c == 32 or c == 9 { i = i + 1 }           # whitespace
-    else if c == 34 {                                 # "quoted"
-      i = i + 1
+    if c == '#' { i = n }                              # '#' comment
+    else if c == ' ' or c == '\t' { i += 1 }           # whitespace
+    else if c == '"' {                                 # "quoted"
+      i += 1
       let start = i
-      while i < n and line[i] != 34 { i = i + 1 }
+      while i < n and line[i] != '"' { i += 1 }
       push(toks, sslice(line, start, i))
-      if i < n { i = i + 1 }
+      if i < n { i += 1 }
     } else {                                          # bare word
       let start = i
-      while i < n and line[i] != 32 and line[i] != 9 and line[i] != 35 { i = i + 1 }
+      while i < n and line[i] != ' ' and line[i] != '\t' and line[i] != '#' { i += 1 }
       push(toks, sslice(line, start, i))
     }
   }
@@ -153,8 +153,8 @@ function parse_manifest(text: pointer) -> Manifest {
       if head == "package" { if len(ts) > 1 { m.module = ts[1] } }
       else if head == "version" { if len(ts) > 1 { m.ver = ts[1] } }
       else if head == "kind" { if len(ts) > 1 { m.kind = ts[1] } }
-      else if head == "provides" { var k = 1;  while k < len(ts) { push(m.provides, ts[k]);  k = k + 1 } }
-      else if head == "targets" { var k = 1;  while k < len(ts) { push(m.targets, ts[k]);  k = k + 1 } }
+      else if head == "provides" { var k = 1;  while k < len(ts) { push(m.provides, ts[k]);  k += 1 } }
+      else if head == "targets" { var k = 1;  while k < len(ts) { push(m.targets, ts[k]);  k += 1 } }
       else if head == "require" {
         if len(ts) > 2 { let d = new Dep;  d.module = ts[1];  d.ver = ts[2];  push(m.deps, d) }
       }
@@ -178,11 +178,11 @@ function parse_lock(text: pointer) -> []Manifest {
       var k = 2
       while k < len(ts) {
         let key = ts[k]
-        if key == "version" and k + 1 < len(ts) { m.ver = ts[k + 1];  k = k + 2 }
-        else if key == "hash" and k + 1 < len(ts) { m.hash = ts[k + 1];  k = k + 2 }
-        else if key == "kind" and k + 1 < len(ts) { m.kind = ts[k + 1];  k = k + 2 }
-        else if key == "provides" and k + 1 < len(ts) { push(m.provides, ts[k + 1]);  k = k + 2 }
-        else { k = k + 1 }
+        if key == "version" and k + 1 < len(ts) { m.ver = ts[k + 1];  k += 2 }
+        else if key == "hash" and k + 1 < len(ts) { m.hash = ts[k + 1];  k += 2 }
+        else if key == "kind" and k + 1 < len(ts) { m.kind = ts[k + 1];  k += 2 }
+        else if key == "provides" and k + 1 < len(ts) { push(m.provides, ts[k + 1]);  k += 2 }
+        else { k += 1 }
       }
       push(out, m)
     }
@@ -201,7 +201,7 @@ function store_root() -> pointer {
 function ensure_dir_slash(d: pointer) -> pointer {
   let n = slen(d)
   if n == 0 { return d }
-  if d[n - 1] == 47 { return d }
+  if d[n - 1] == '/' { return d }
   return d + "/"
 }
 
@@ -248,7 +248,7 @@ function latest_version(module: pointer) -> pointer {
       let cand = strip_v(tg)
       if best == "" or ver_gt(cand, best) { best = cand }
     }
-    k = k + 1
+    k += 1
   }
   return best
 }
@@ -317,8 +317,8 @@ function link_module(module: pointer, hash: pointer) -> void {
 
 function find_mod(mods: []pointer, m: pointer) -> int {
   var i = 0
-  while i < len(mods) { if mods[i] == m { return i };  i = i + 1 }
-  return 0 - 1
+  while i < len(mods) { if mods[i] == m { return i };  i += 1 }
+  return -1
 }
 
 # resolve a root manifest to the selected build list (one Manifest per module,
@@ -330,7 +330,7 @@ function resolve(root: Manifest) -> []Manifest {
   var fm = new []pointer            # the current requirement frontier
   var fv = new []pointer
   var di = 0
-  while di < len(root.deps) { push(fm, root.deps[di].module);  push(fv, root.deps[di].ver);  di = di + 1 }
+  while di < len(root.deps) { push(fm, root.deps[di].module);  push(fv, root.deps[di].ver);  di += 1 }
 
   while len(fm) > 0 {
     var nm = new []pointer
@@ -346,9 +346,9 @@ function resolve(root: Manifest) -> []Manifest {
       if take {
         let man = fetch_manifest(m, v)      # expand the chosen version's requires
         var k = 0
-        while k < len(man.deps) { push(nm, man.deps[k].module);  push(nv, man.deps[k].ver);  k = k + 1 }
+        while k < len(man.deps) { push(nm, man.deps[k].module);  push(nv, man.deps[k].ver);  k += 1 }
       }
-      i = i + 1
+      i += 1
     }
     fm = nm
     fv = nv
@@ -361,11 +361,11 @@ function resolve(root: Manifest) -> []Manifest {
   var seen = new []pointer
   var q = new []pointer
   var d2 = 0
-  while d2 < len(root.deps) { push(q, root.deps[d2].module);  d2 = d2 + 1 }
+  while d2 < len(root.deps) { push(q, root.deps[d2].module);  d2 += 1 }
   var qi = 0
   while qi < len(q) {
     let m = q[qi]
-    qi = qi + 1
+    qi += 1
     if find_mod(seen, m) < 0 {
       push(seen, m)
       let idx = find_mod(mods, m)
@@ -374,7 +374,7 @@ function resolve(root: Manifest) -> []Manifest {
         let man = fetch_manifest(m, ver)
         push(out, man)
         var k = 0
-        while k < len(man.deps) { push(q, man.deps[k].module);  k = k + 1 }
+        while k < len(man.deps) { push(q, man.deps[k].module);  k += 1 }
       }
     }
   }
@@ -387,9 +387,9 @@ function sort_mans(a: []Manifest) -> []Manifest {
   while i < len(a) {
     let x = a[i]
     var j = i - 1
-    while j >= 0 and (a[j].module > x.module) { a[j + 1] = a[j];  j = j - 1 }
+    while j >= 0 and (a[j].module > x.module) { a[j + 1] = a[j];  j -= 1 }
     a[j + 1] = x
-    i = i + 1
+    i += 1
   }
   return a
 }
@@ -409,9 +409,9 @@ function collision(sels: []Manifest) -> pointer {
       if at >= 0 { return `namespace {name} provided by both {owner[at]} and {sels[i].module}` }
       push(ns, name)
       push(owner, sels[i].module)
-      p = p + 1
+      p += 1
     }
-    i = i + 1
+    i += 1
   }
   return ""
 }
@@ -427,9 +427,9 @@ function write_lock(sels: []Manifest) -> bool {
     let m = sorted[i]
     var line = `module "{m.module}" version "{m.ver}" hash "{m.hash}" kind "{m.kind}"`
     var p = 0
-    while p < len(m.provides) { line = line + ` provides "{m.provides[p]}"`;  p = p + 1 }
+    while p < len(m.provides) { line += ` provides "{m.provides[p]}"`;  p += 1 }
     body = body + line + nl()
-    i = i + 1
+    i += 1
   }
   return write_file("package.lock.ludic", body)
 }
@@ -462,7 +462,7 @@ function do_install(root: Manifest) -> int {
     m.hash = `sha256:{h}`
     link_module(m.module, h)
     print(`  {m.module}  {m.ver}  ({m.kind})  sha256:{sslice(h, 0, 12)}…`)
-    i = i + 1
+    i += 1
   }
   if not write_lock(sels) { err("x: cannot write package.lock.ludic\n");  return 1 }
   print(`resolved {string(len(sels))} package(s) — see package.lock.ludic; linked under ludic_modules/`)
@@ -480,7 +480,7 @@ function target_id() -> pointer {
 }
 function has_target(m: Manifest, t: pointer) -> bool {
   var i = 0
-  while i < len(m.targets) { if m.targets[i] == t { return true };  i = i + 1 }
+  while i < len(m.targets) { if m.targets[i] == t { return true };  i += 1 }
   return false
 }
 
@@ -498,9 +498,9 @@ function read_root_manifest() -> Manifest {
 function split_spec(spec: pointer) -> []pointer {
   var out = new []pointer
   let n = slen(spec)
-  var at = 0 - 1
+  var at = -1
   var i = 0
-  while i < n { if spec[i] == 64 { at = i };  i = i + 1 }   # '@' = 64
+  while i < n { if spec[i] == '@' { at = i };  i += 1 }   # '@' = 64
   if at < 0 { push(out, spec);  push(out, "") }
   else { push(out, sslice(spec, 0, at));  push(out, sslice(spec, at + 1, n)) }
   return out
@@ -575,7 +575,7 @@ function cmd_pkg_update() -> int {
         set_require(d.module, latest)
       }
     }
-    i = i + 1
+    i += 1
   }
   return do_install(read_root_manifest())
 }
@@ -596,19 +596,19 @@ function cmd_pkg_verify() -> int {
     let dest = `{store_root()}{raw}`
     if not file_exists(dest) {
       print(`  MISSING  {m.module}@{m.ver}  (store entry {want} absent)`)
-      bad_count = bad_count + 1
+      bad_count += 1
     } else {
       let got = dir_hash(dest)
       if got == raw {
         let link = `ludic_modules/{m.module}`
         if file_exists(link) { print(`  ok       {m.module}@{m.ver}`) }
-        else { print(`  UNLINKED {m.module}@{m.ver}  (ludic_modules view missing — run x get)`);  bad_count = bad_count + 1 }
+        else { print(`  UNLINKED {m.module}@{m.ver}  (ludic_modules view missing — run x get)`);  bad_count += 1 }
       } else {
         print(`  TAMPERED {m.module}@{m.ver}  (want sha256:{sslice(raw, 0, 12)}… got sha256:{sslice(got, 0, 12)}…)`)
-        bad_count = bad_count + 1
+        bad_count += 1
       }
     }
-    i = i + 1
+    i += 1
   }
   if bad_count == 0 { print(`verified {string(len(locked))} package(s) against the store`);  return 0 }
   err(`x: {string(bad_count)} package(s) failed verification\n`)
@@ -632,7 +632,7 @@ function cmd_pkg_vendor() -> int {
     run(`mkdir -p "$(dirname {vdir})"`)
     run(`cp -R {dest} {vdir}`)
     print(`  vendored {m.module}@{m.ver}`)
-    i = i + 1
+    i += 1
   }
   print(`vendored {string(len(locked))} package(s) into ./vendor — build offline with LUDIC_MODULES=vendor`)
   return 0
@@ -656,14 +656,14 @@ function cmd_pkg_build_lib() -> int {
   let t = target_id()
   run(`mkdir -p lib/{t}`)
   let ludicc = getenv_or("LUDICC", "bin/ludicc")
-  let ll = "/tmp/x_buildlib.ll"
-  if not shq(`{ludicc} --emit-module {src} -o {ll} 2>/tmp/x_bl.err`) {
-    err(`x: build-lib compile failed — {capture_line("tail -1 /tmp/x_bl.err")}\n`);  return 1
+  let ll = `{tmp_dir()}/buildlib.ll`
+  if not shq(`{ludicc} --emit-module {src} -o {ll} 2>{tmp_dir()}/bl.err`) {
+    err(`x: build-lib compile failed — {capture_line("tail -1 {tmp_dir()}/bl.err")}\n`);  return 1
   }
   let out = `lib/{t}/lib{name}.dylib`
   # @rpath install name so a consumer resolves it via -rpath to the store dir
-  if not shq(`{cc()} -O2 -Wno-override-module -dynamiclib -undefined dynamic_lookup -Wl,-install_name,@rpath/lib{name}.dylib {ll} -o {out} 2>/tmp/x_bl.err`) {
-    err(`x: build-lib link failed — {capture_line("tail -1 /tmp/x_bl.err")}\n`);  return 1
+  if not shq(`{cc()} -O2 -Wno-override-module -dynamiclib -undefined dynamic_lookup -Wl,-install_name,@rpath/lib{name}.dylib {ll} -o {out} 2>{tmp_dir()}/bl.err`) {
+    err(`x: build-lib link failed — {capture_line("tail -1 {tmp_dir()}/bl.err")}\n`);  return 1
   }
   run(`rm -f {ll}`)
   print(`built {out}  (target {t})`)
@@ -700,12 +700,12 @@ function prebuilt_link_flags() -> pointer {
       let dir = `{store_root()}{raw}/lib/{t}`
       let libs = split_lines(capture(`ls {dir}/*.dylib 2>/dev/null`))
       var k = 0
-      while k < len(libs) { flags = flags + " " + libs[k];  any = true;  k = k + 1 }
-      if len(libs) > 0 { flags = flags + ` -Wl,-rpath,{dir}` }
+      while k < len(libs) { flags = flags + " " + libs[k];  any = true;  k += 1 }
+      if len(libs) > 0 { flags += ` -Wl,-rpath,{dir}` }
     }
-    i = i + 1
+    i += 1
   }
-  if any { flags = flags + " -Wl,-export_dynamic" }
+  if any { flags += " -Wl,-export_dynamic" }
   return flags
 }
 

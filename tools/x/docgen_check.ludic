@@ -11,7 +11,7 @@ function bucket_get(bs: []Bucket, k1: pointer, k2: pointer) -> Bucket {
   var i = 0
   while i < len(bs) {
     if bs[i].k1 == k1 and bs[i].k2 == k2 { return bs[i] }
-    i = i + 1
+    i += 1
   }
   let b = new Bucket
   b.k1 = k1
@@ -23,7 +23,7 @@ function bucket_get(bs: []Bucket, k1: pointer, k2: pointer) -> Bucket {
 function bucket_add(bs: []Bucket, k1: pointer, k2: pointer, v: pointer) -> void {
   let b = bucket_get(bs, k1, k2)
   var i = 0
-  while i < len(b.vals) { if b.vals[i] == v { return };  i = i + 1 }
+  while i < len(b.vals) { if b.vals[i] == v { return };  i += 1 }
   push(b.vals, v)
 }
 # ", ".join(sorted(vals))
@@ -34,7 +34,7 @@ function join_sorted(vals: []pointer) -> pointer {
   while i < len(vals) {
     if i > 0 { sb_puts(b, ", ") }
     sb_puts(b, vals[i])
-    i = i + 1
+    i += 1
   }
   return sb_str(b)
 }
@@ -70,7 +70,7 @@ function cp_len(s: pointer) -> int {
   let n = slen(s)
   var c = 0
   var i = 0
-  while i < n { if (s[i] & 192) != 128 { c = c + 1 };  i = i + 1 }
+  while i < n { if (s[i] & 192) != 128 { c += 1 };  i += 1 }
   return c
 }
 function replace_all(hay: pointer, needle: pointer, repl: pointer) -> pointer {
@@ -80,8 +80,8 @@ function replace_all(hay: pointer, needle: pointer, repl: pointer) -> pointer {
   let n = slen(hay)
   var i = 0
   while i < n {
-    if s_starts_at(hay, i, needle) { sb_puts(b, repl);  i = i + nl }
-    else { sb_putc(b, hay[i]);  i = i + 1 }
+    if s_starts_at(hay, i, needle) { sb_puts(b, repl);  i += nl }
+    else { sb_putc(b, hay[i]);  i += 1 }
   }
   return sb_str(b)
 }
@@ -110,14 +110,14 @@ function cmd_docs_check() -> int {
   var ci = 0
   while ci < len(cats) {
     let cat = cats[ci]
-    ci = ci + 1
+    ci += 1
     let cdir = "docs/language/" + cat
     if not is_dir(cdir) { continue }
     let files = list_sorted(cdir)
     var fi = 0
     while fi < len(files) {
       let fn = files[fi]
-      fi = fi + 1
+      fi += 1
       if not s_ends(fn, ".md") { continue }
       if fn == "_section.md" { continue }
       let d = parse_front(cdir + "/" + fn)
@@ -143,12 +143,12 @@ function cmd_docs_check() -> int {
       while k < len(inv.keys) {
         let cat = inv.keys[k]
         let ids = inv.kids[k]
-        k = k + 1
+        k += 1
         if ids.t != JV_ARR { continue }
         var m = 0
         while m < len(ids.kids) {
           let sid = ids.kids[m].s
-          m = m + 1
+          m += 1
           if meta_get(id2src, sid, "") == "" { push(problems, `no source file for inventory symbol: {sid} ({cat})`) }
           else if not file_exists(`{site}/{sid}.html`) { push(problems, `no generated page for symbol: {sid}.html`) }
         }
@@ -160,11 +160,11 @@ function cmd_docs_check() -> int {
   let tok2ids = new []Bucket    # k1=kind, k2=tok -> ids
   let ns2dirs = new []Bucket    # k1="", k2=ns -> dirs
   let id2dirs = new []Bucket    # k1="", k2=section id -> dirs
-  let title2dirs = new []Bucket # k1="", k2=lower(title) -> dirs
+  let title2dirs = new []Bucket  # k1="", k2=lower(title) -> dirs
   ci = 0
   while ci < len(cats) {
     let cat = cats[ci]
-    ci = ci + 1
+    ci += 1
     let cdir = "docs/language/" + cat
     if not is_dir(cdir) { continue }
     let secp = cdir + "/_section.md"
@@ -177,7 +177,7 @@ function cmd_docs_check() -> int {
     var fi = 0
     while fi < len(files) {
       let fn = files[fi]
-      fi = fi + 1
+      fi += 1
       if not s_ends(fn, ".md") { continue }
       if fn == "_section.md" { continue }
       let d = parse_front(cdir + "/" + fn)
@@ -185,7 +185,7 @@ function cmd_docs_check() -> int {
       let id = meta_get(d.m, "id", "")
       let toks = split_ws(meta_get(d.m, "tokens", ""))
       var ti = 0
-      while ti < len(toks) { bucket_add(tok2ids, kind, toks[ti], id);  ti = ti + 1 }
+      while ti < len(toks) { bucket_add(tok2ids, kind, toks[ti], id);  ti += 1 }
       let ns = meta_get(d.m, "ns", "")
       if slen(ns) > 0 { bucket_add(ns2dirs, "", ns, cat) }
     }
@@ -193,25 +193,25 @@ function cmd_docs_check() -> int {
   var bi = 0
   while bi < len(tok2ids) {
     let b = tok2ids[bi]
-    bi = bi + 1
+    bi += 1
     if len(b.vals) > 1 { push(problems, `token '{b.k2}' ({b.k1}) documented on multiple pages: {join_sorted(b.vals)}`) }
   }
   bi = 0
   while bi < len(ns2dirs) {
     let b = ns2dirs[bi]
-    bi = bi + 1
+    bi += 1
     if len(b.vals) > 1 { push(problems, `namespace '{b.k2}' documented from multiple dirs: {join_sorted(b.vals)}`) }
   }
   bi = 0
   while bi < len(id2dirs) {
     let b = id2dirs[bi]
-    bi = bi + 1
+    bi += 1
     if len(b.vals) > 1 { push(problems, `section id '{b.k2}' declared by multiple dirs: {join_sorted(b.vals)}`) }
   }
   bi = 0
   while bi < len(title2dirs) {
     let b = title2dirs[bi]
-    bi = bi + 1
+    bi += 1
     if slen(b.k2) > 0 and len(b.vals) > 1 { push(problems, `section title '{b.k2}' shared by multiple dirs: {join_sorted(b.vals)}`) }
   }
 
@@ -223,7 +223,7 @@ function cmd_docs_check() -> int {
     while i < len(thin) and i < 12 {
       if i > 0 { sb_puts(b, ", ") }
       sb_puts(b, thin[i])
-      i = i + 1
+      i += 1
     }
     var tail = ""
     if len(thin) > 12 { tail = " …" }
@@ -247,18 +247,18 @@ function cmd_docs_check() -> int {
     var i = 0
     while i < len(targets) {
       let tgt = targets[i]
-      i = i + 1
+      i += 1
       if not file_exists(`{site}/{tgt}.html`) { push(problems, `highlighter links to {tgt}.html but it was not generated`) }
     }
   }
 
   # report
   var wi = 0
-  while wi < len(warnings) { print(`  warning: {warnings[wi]}`);  wi = wi + 1 }
+  while wi < len(warnings) { print(`  warning: {warnings[wi]}`);  wi += 1 }
   if len(problems) > 0 {
     print("docs check FAILED:")
     var pi = 0
-    while pi < len(problems) { print(`  - {problems[pi]}`);  pi = pi + 1 }
+    while pi < len(problems) { print(`  - {problems[pi]}`);  pi += 1 }
     return 1
   }
   print(`docs check OK: {site}  ({string(len(id2src.keys))} symbols documented)`)
@@ -271,7 +271,7 @@ function collect_targets_str(o: JVal, out: []pointer) -> void {
   var i = 0
   while i < len(o.kids) {
     let v = o.kids[i]
-    i = i + 1
+    i += 1
     if v.t == JV_STR { set_add(out, v.s) }
   }
 }
@@ -281,7 +281,7 @@ function collect_targets_id(o: JVal, out: []pointer) -> void {
   var i = 0
   while i < len(o.kids) {
     let v = o.kids[i]
-    i = i + 1
+    i += 1
     let id = j_get(v, "id")
     if id.t == JV_STR { set_add(out, id.s) }
   }

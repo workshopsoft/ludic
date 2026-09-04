@@ -26,10 +26,10 @@ function sb_new() -> Sb {
 function sb_grow(s: Sb, need: int) -> void {
   if s.len + need + 1 <= s.cap { return }
   var nc = s.cap * 2
-  while nc < s.len + need + 1 { nc = nc * 2 }
+  while nc < s.len + need + 1 { nc *= 2 }
   let nd = bytes(nc)
   var i = 0
-  while i < s.len { nd[i] = s.data[i];  i = i + 1 }
+  while i < s.len { nd[i] = s.data[i];  i += 1 }
   s.data = nd
   s.cap = nc
 }
@@ -37,12 +37,12 @@ function sb_puts(s: Sb, t: pointer) -> void {
   let n = slen(t)
   sb_grow(s, n)
   var i = 0
-  while i < n { s.data[s.len] = t[i];  s.len = s.len + 1;  i = i + 1 }
+  while i < n { s.data[s.len] = t[i];  s.len += 1;  i += 1 }
 }
 function sb_putc(s: Sb, c: int) -> void {
   sb_grow(s, 1)
   s.data[s.len] = c
-  s.len = s.len + 1
+  s.len += 1
 }
 function sb_str(s: Sb) -> pointer {
   s.data[s.len] = 0
@@ -59,13 +59,13 @@ function esc_q(s: pointer, quote: bool) -> pointer {
   var i = 0
   while i < n {
     let c = s[i]
-    if c == 38 { sb_puts(b, "&amp;") }
-    else if c == 60 { sb_puts(b, "&lt;") }
-    else if c == 62 { sb_puts(b, "&gt;") }
-    else if quote and c == 34 { sb_puts(b, "&quot;") }
-    else if quote and c == 39 { sb_puts(b, "&#x27;") }
+    if c == '&' { sb_puts(b, "&amp;") }
+    else if c == '<' { sb_puts(b, "&lt;") }
+    else if c == '>' { sb_puts(b, "&gt;") }
+    else if quote and c == '"' { sb_puts(b, "&quot;") }
+    else if quote and c == '\'' { sb_puts(b, "&#x27;") }
     else { sb_putc(b, c) }
-    i = i + 1
+    i += 1
   }
   return sb_str(b)
 }
@@ -75,16 +75,16 @@ function hescattr(s: pointer) -> pointer { return esc_q(s, true) }
 # ---- generic byte/character predicates --------------------------------------
 # Python \s = [ \t\n\r\f\v]
 function is_space_all(c: int) -> bool {
-  return c == 32 or c == 9 or c == 10 or c == 13 or c == 12 or c == 11
+  return c == ' ' or c == '\t' or c == '\n' or c == '\r' or c == 12 or c == 11
 }
 # Python \w = [A-Za-z0-9_]
 function is_word(c: int) -> bool {
-  return (c >= 48 and c <= 57) or (c >= 65 and c <= 90) or (c >= 97 and c <= 122) or c == 95
+  return (c >= '0' and c <= '9') or (c >= 'A' and c <= 'Z') or (c >= 'a' and c <= 'z') or c == '_'
 }
 # strip only leading '\n' (Python str.lstrip("\n"))
 function lstrip_nl(s: pointer) -> pointer {
   var i = 0
-  while s[i] == 10 { i = i + 1 }
+  while s[i] == '\n' { i += 1 }
   return sslice(s, i, slen(s))
 }
 # lowercase ASCII A-Z
@@ -94,9 +94,9 @@ function lower_ascii(s: pointer) -> pointer {
   var i = 0
   while i < n {
     var c = s[i]
-    if c >= 65 and c <= 90 { c = c + 32 }
+    if c >= 'A' and c <= 'Z' { c += 32 }
     b[i] = c
-    i = i + 1
+    i += 1
   }
   b[n] = 0
   return b
@@ -109,14 +109,14 @@ function title_case(s: pointer) -> pointer {
   var prev_alpha = false
   while i < n {
     var c = s[i]
-    let al = (c >= 65 and c <= 90) or (c >= 97 and c <= 122)
+    let al = (c >= 'A' and c <= 'Z') or (c >= 'a' and c <= 'z')
     if al {
-      if prev_alpha { if c >= 65 and c <= 90 { c = c + 32 } }
-      else { if c >= 97 and c <= 122 { c = c - 32 } }
+      if prev_alpha { if c >= 'A' and c <= 'Z' { c += 32 } }
+      else { if c >= 'a' and c <= 'z' { c -= 32 } }
     }
     b[i] = c
     prev_alpha = al
-    i = i + 1
+    i += 1
   }
   b[n] = 0
   return b
@@ -128,7 +128,7 @@ function str_cmp(a: pointer, b: pointer) -> int {
     let ca = a[i] & 255
     let cb = b[i] & 255
     if ca != cb { return ca - cb }
-    i = i + 1
+    i += 1
   }
   return (a[i] & 255) - (b[i] & 255)
 }
@@ -146,9 +146,9 @@ function split_ws(s: pointer) -> []pointer {
   let n = slen(s)
   var i = 0
   while i < n {
-    while i < n and is_space_all(s[i]) { i = i + 1 }
+    while i < n and is_space_all(s[i]) { i += 1 }
     var e = i
-    while e < n and not is_space_all(s[e]) { e = e + 1 }
+    while e < n and not is_space_all(s[e]) { e += 1 }
     if e > i { push(out, sslice(s, i, e)) }
     i = e
   }
@@ -160,9 +160,9 @@ function strs_sort(a: []pointer) -> void {
   while i < len(a) {
     let cur = a[i]
     var j = i - 1
-    while j >= 0 and str_gt(a[j], cur) { a[j + 1] = a[j];  j = j - 1 }
+    while j >= 0 and str_gt(a[j], cur) { a[j + 1] = a[j];  j -= 1 }
     a[j + 1] = cur
-    i = i + 1
+    i += 1
   }
 }
 
@@ -173,22 +173,22 @@ function codeify(s: pointer) -> pointer {
   let b = sb_new()
   var i = 0
   while i < n {
-    if s[i] == 96 {
+    if s[i] == '`' {
       var j = i + 1
-      while j < n and s[j] != 96 { j = j + 1 }
+      while j < n and s[j] != '`' { j += 1 }
       if j < n and j > i + 1 {
         sb_puts(b, "<code>")
         var k = i + 1
-        while k < j { sb_putc(b, s[k]);  k = k + 1 }
+        while k < j { sb_putc(b, s[k]);  k += 1 }
         sb_puts(b, "</code>")
         i = j + 1
       } else {
-        sb_putc(b, 96)
-        i = i + 1
+        sb_putc(b, '`')
+        i += 1
       }
     } else {
       sb_putc(b, s[i])
-      i = i + 1
+      i += 1
     }
   }
   return sb_str(b)
@@ -204,7 +204,7 @@ function jva() -> JVal { return jval_new(JV_ARR) }
 # token collides across kinds (e.g. `exit`/`string`/`fixed`) in sym["tips"].
 function jvput(o: JVal, k: pointer, v: JVal) -> void {
   var i = 0
-  while i < len(o.keys) { if o.keys[i] == k { o.kids[i] = v;  return };  i = i + 1 }
+  while i < len(o.keys) { if o.keys[i] == k { o.kids[i] = v;  return };  i += 1 }
   push(o.keys, k)
   push(o.kids, v)
 }
@@ -215,7 +215,7 @@ function hex_lower(n: int) -> int {
   return 87 + n
 }
 function jemit_u(b: Sb, cp: int) -> void {
-  sb_putc(b, 92);  sb_putc(b, 117)                 # \u
+  sb_putc(b, '\\');  sb_putc(b, 'u')                 # \u
   sb_putc(b, hex_lower((cp >> 12) & 15))
   sb_putc(b, hex_lower((cp >> 8) & 15))
   sb_putc(b, hex_lower((cp >> 4) & 15))
@@ -228,20 +228,20 @@ function json_escape_into(b: Sb, s: pointer, ensure_ascii: bool) -> void {
   var i = 0
   while i < n {
     let c = s[i] & 255
-    if c == 34 { sb_putc(b, 92);  sb_putc(b, 34);  i = i + 1 }
-    else if c == 92 { sb_putc(b, 92);  sb_putc(b, 92);  i = i + 1 }
-    else if c == 8 { sb_putc(b, 92);  sb_putc(b, 98);  i = i + 1 }
-    else if c == 9 { sb_putc(b, 92);  sb_putc(b, 116);  i = i + 1 }
-    else if c == 10 { sb_putc(b, 92);  sb_putc(b, 110);  i = i + 1 }
-    else if c == 12 { sb_putc(b, 92);  sb_putc(b, 102);  i = i + 1 }
-    else if c == 13 { sb_putc(b, 92);  sb_putc(b, 114);  i = i + 1 }
-    else if c < 32 {
-      sb_putc(b, 92);  sb_putc(b, 117);  sb_putc(b, 48);  sb_putc(b, 48)
+    if c == '"' { sb_putc(b, '\\');  sb_putc(b, '"');  i += 1 }
+    else if c == '\\' { sb_putc(b, '\\');  sb_putc(b, '\\');  i += 1 }
+    else if c == 8 { sb_putc(b, '\\');  sb_putc(b, 'b');  i += 1 }
+    else if c == '\t' { sb_putc(b, '\\');  sb_putc(b, 't');  i += 1 }
+    else if c == '\n' { sb_putc(b, '\\');  sb_putc(b, 'n');  i += 1 }
+    else if c == 12 { sb_putc(b, '\\');  sb_putc(b, 'f');  i += 1 }
+    else if c == '\r' { sb_putc(b, '\\');  sb_putc(b, 'r');  i += 1 }
+    else if c < ' ' {
+      sb_putc(b, '\\');  sb_putc(b, 'u');  sb_putc(b, '0');  sb_putc(b, '0')
       sb_putc(b, hex_lower((c >> 4) & 15));  sb_putc(b, hex_lower(c & 15))
-      i = i + 1
+      i += 1
     }
-    else if c < 128 { sb_putc(b, c);  i = i + 1 }
-    else if not ensure_ascii { sb_putc(b, c);  i = i + 1 }
+    else if c < 128 { sb_putc(b, c);  i += 1 }
+    else if not ensure_ascii { sb_putc(b, c);  i += 1 }
     else {
       var cp = 0
       var nb = 1
@@ -249,8 +249,8 @@ function json_escape_into(b: Sb, s: pointer, ensure_ascii: bool) -> void {
       else if c < 240 { cp = c - 224;  nb = 3 }
       else { cp = c - 240;  nb = 4 }
       var k = 1
-      while k < nb and i + k < n { cp = cp * 64 + ((s[i + k] & 255) - 128);  k = k + 1 }
-      i = i + nb
+      while k < nb and i + k < n { cp = cp * 64 + ((s[i + k] & 255) - 128);  k += 1 }
+      i += nb
       if cp <= 65535 { jemit_u(b, cp) }
       else {
         let c2 = cp - 65536
@@ -262,7 +262,7 @@ function json_escape_into(b: Sb, s: pointer, ensure_ascii: bool) -> void {
 }
 function json_indent(b: Sb, depth: int) -> void {
   var i = 0
-  while i < depth { sb_putc(b, 32);  sb_putc(b, 32);  i = i + 1 }
+  while i < depth { sb_putc(b, ' ');  sb_putc(b, ' ');  i += 1 }
 }
 # pretty=true reproduces json.dumps(indent=2); pretty=false the compact default
 # (item sep ", ", key sep ": "). ensure_ascii toggles \uXXXX for non-ASCII.
@@ -273,36 +273,36 @@ function jwrite(b: Sb, v: JVal, pretty: bool, depth: int, ea: bool) -> void {
     return
   }
   if v.t == JV_NUM { sb_puts(b, string(v.num));  return }
-  if v.t == JV_STR { sb_putc(b, 34);  json_escape_into(b, v.s, ea);  sb_putc(b, 34);  return }
+  if v.t == JV_STR { sb_putc(b, '"');  json_escape_into(b, v.s, ea);  sb_putc(b, '"');  return }
   if v.t == JV_ARR {
     let m = len(v.kids)
     if m == 0 { sb_puts(b, "[]");  return }
-    sb_putc(b, 91)
+    sb_putc(b, '[')
     var i = 0
     while i < m {
-      if pretty { sb_putc(b, 10);  json_indent(b, depth + 1) }
+      if pretty { sb_putc(b, '\n');  json_indent(b, depth + 1) }
       jwrite(b, v.kids[i], pretty, depth + 1, ea)
-      if i < m - 1 { sb_putc(b, 44);  if not pretty { sb_putc(b, 32) } }
-      i = i + 1
+      if i < m - 1 { sb_putc(b, ',');  if not pretty { sb_putc(b, ' ') } }
+      i += 1
     }
-    if pretty { sb_putc(b, 10);  json_indent(b, depth) }
-    sb_putc(b, 93)
+    if pretty { sb_putc(b, '\n');  json_indent(b, depth) }
+    sb_putc(b, ']')
     return
   }
   let m = len(v.keys)
   if m == 0 { sb_puts(b, "{}");  return }
-  sb_putc(b, 123)
+  sb_putc(b, '{')
   var i = 0
   while i < m {
-    if pretty { sb_putc(b, 10);  json_indent(b, depth + 1) }
-    sb_putc(b, 34);  json_escape_into(b, v.keys[i], ea);  sb_putc(b, 34)
-    sb_putc(b, 58);  sb_putc(b, 32)
+    if pretty { sb_putc(b, '\n');  json_indent(b, depth + 1) }
+    sb_putc(b, '"');  json_escape_into(b, v.keys[i], ea);  sb_putc(b, '"')
+    sb_putc(b, ':');  sb_putc(b, ' ')
     jwrite(b, v.kids[i], pretty, depth + 1, ea)
-    if i < m - 1 { sb_putc(b, 44);  if not pretty { sb_putc(b, 32) } }
-    i = i + 1
+    if i < m - 1 { sb_putc(b, ',');  if not pretty { sb_putc(b, ' ') } }
+    i += 1
   }
-  if pretty { sb_putc(b, 10);  json_indent(b, depth) }
-  sb_putc(b, 125)
+  if pretty { sb_putc(b, '\n');  json_indent(b, depth) }
+  sb_putc(b, '}')
 }
 function json_dumps(v: JVal, pretty: bool, ea: bool) -> pointer {
   let b = sb_new()
@@ -571,11 +571,10 @@ function palette_emit_ludic(path: pointer) -> bool {
   var i = 0
   while i < len(pal_names) {
     sb_puts(b, `  if (name == "{pal_names[i]}") {{ return 0x{pal_hexes[i]} }}\n`)
-    i = i + 1
+    i += 1
   }
   sb_puts(b, "  return -1\n")
   sb_puts(b, "}\n")
-  sb_puts(b, "\n")
   return write_file(path, sb_str(b))
 }
 
@@ -609,19 +608,23 @@ function palette_emit_json(path: pointer) -> bool {
           sb_puts(b, `          "hex": "{pal_hexes[ci]}"\n`)
           sb_puts(b, "        }")
         }
-        ci = ci + 1
+        ci += 1
       }
       sb_puts(b, "\n      ]\n")
       sb_puts(b, "    }")
     }
-    gi = gi + 1
+    gi += 1
   }
   sb_puts(b, "\n  ]\n")
   sb_puts(b, "}")
   return write_file(path, sb_str(b))
 }
 
+# `x docs-palette` rewrites the two tracked outputs; `x docs-palette --check`
+# regenerates into scratch files and compares them to the tracked ones instead,
+# so the drift guard judges the working tree, not git HEAD.
 function cmd_docs_palette() -> int {
+  let check = arg_count() > 2 and arg(2) == "--check"
   palette_init()
   # guard: duplicate names
   let seen = new []pointer
@@ -629,10 +632,17 @@ function cmd_docs_palette() -> int {
   while i < len(pal_names) {
     if set_has(seen, pal_names[i]) { err(`DUPLICATE NAME: {pal_names[i]}\n`);  return 1 }
     push(seen, pal_names[i])
-    i = i + 1
+    i += 1
   }
-  if not palette_emit_ludic("selfhost/backend/stdlib/emit_color.ludic") { err("cannot write emit_color.ludic\n");  return 1 }
-  if not palette_emit_json("docs/language/colors/palette.json") { err("cannot write palette.json\n");  return 1 }
+  var ludic_out = "selfhost/backend/stdlib/emit_color.ludic"
+  var json_out = "docs/language/colors/palette.json"
+  if check { ludic_out = tmp_path("pal_emit_color.ludic");  json_out = tmp_path("pal_palette.json") }
+  if not palette_emit_ludic(ludic_out) { err("cannot write emit_color.ludic\n");  return 1 }
+  if not palette_emit_json(json_out) { err("cannot write palette.json\n");  return 1 }
+  if check {
+    if not shq(`cmp -s {ludic_out} selfhost/backend/stdlib/emit_color.ludic`) { err("emit_color.ludic drifted from the palette table (run: x docs-palette)\n");  return 1 }
+    if not shq(`cmp -s {json_out} docs/language/colors/palette.json`) { err("palette.json drifted from the palette table (run: x docs-palette)\n");  return 1 }
+  }
   print(`OK {string(len(pal_names))} colors`)
   return 0
 }

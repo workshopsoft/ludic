@@ -4,9 +4,9 @@
 
 # compile selfhost/tests/<name>.ludic with bin/ludicc, assemble, run, compare
 function sh_case(name: pointer, exp: pointer) -> void {
-  let ll = `/tmp/x_sh_{name}.ll`
-  let er = `/tmp/x_sh_{name}.err`
-  let bn = `/tmp/x_sh_{name}`
+  let ll = `{tmp_dir()}/sh_{name}.ll`
+  let er = `{tmp_dir()}/sh_{name}.err`
+  let bn = `{tmp_dir()}/sh_{name}`
   if not shq(`bin/ludicc selfhost/tests/{name}.ludic > {ll} 2>{er}`) {
     bad2(`{name}: self-host errored`, capture_line(`head -1 {er}`)); return
   }
@@ -22,9 +22,9 @@ function sh_case(name: pointer, exp: pointer) -> void {
 # `bin/x golden` (see cmd_golden below).
 function game_case(path: pointer, keys: pointer) -> void {
   let nm = flat(path)
-  if not game_build_ok("bin/ludicc", `examples/{path}.ludic`, `/tmp/x_g_{nm}`) { bad(`{path}: build`); return }
+  if not game_build_ok("bin/ludicc", `examples/{path}.ludic`, `{tmp_dir()}/g_{nm}`) { bad(`{path}: build`); return }
   run("mkdir -p build")
-  run(`printf '%s' '{keys}' | /tmp/x_g_{nm} >/dev/null 2>&1`)
+  run(`printf '%s' '{keys}' | {tmp_dir()}/g_{nm} >/dev/null 2>&1`)
   # The build + headless run above guard against a compile or runtime break on
   # every host. The pixel-exact golden comparison, though, is against a render
   # blessed on macOS; text rasterization differs by a hair on other hosts, so
@@ -41,11 +41,11 @@ function game_case(path: pointer, keys: pointer) -> void {
 # string on build failure). Shared by `bin/x golden` and nothing else.
 function bless_render(path: pointer, keys: pointer) -> pointer {
   let nm = flat(path)
-  if not game_build_ok("bin/ludicc", `examples/{path}.ludic`, `/tmp/x_bg_{nm}`) {
+  if not game_build_ok("bin/ludicc", `examples/{path}.ludic`, `{tmp_dir()}/bg_{nm}`) {
     err(`golden: {path} failed to build\n`); return ""
   }
   run("mkdir -p build")
-  run(`printf '%s' '{keys}' | /tmp/x_bg_{nm} >/dev/null 2>&1`)
+  run(`printf '%s' '{keys}' | {tmp_dir()}/bg_{nm} >/dev/null 2>&1`)
   let h = capture_line("shasum -a 256 build/out.ppm | cut -d' ' -f1")
   return `{path} {h}\n`
 }
@@ -58,10 +58,10 @@ function cmd_golden() -> int {
   ensure_ludicc()
   if not is_exec("bin/ludicc") { err("golden: bin/ludicc unavailable\n"); return 1 }
   var manifest = ""
-  manifest = manifest + bless_render("games/snake", "ddssaawwddss")
-  manifest = manifest + bless_render("games/menu", "ssss")
-  manifest = manifest + bless_render("games/chronorift", "ddddwwwwaassK")
-  manifest = manifest + bless_render("rendering/draw_prims", "")
+  manifest += bless_render("games/snake", "ddssaawwddss")
+  manifest += bless_render("games/menu", "ssss")
+  manifest += bless_render("games/chronorift", "ddddwwwwaassK")
+  manifest += bless_render("rendering/draw_prims", "")
   if not write_file("selfhost/golden/renders.sha256", manifest) {
     err("golden: could not write selfhost/golden/renders.sha256\n"); return 1
   }
@@ -117,12 +117,12 @@ function cmd_selfhost_test() -> int {
   game_case("rendering/draw_prims", "")
 
   print("== the bootstrap fixpoint (seeded from bin/ludicc) ==")
-  if shq("bin/x bootstrap > /tmp/x_boot.out 2>&1") { ok("gen2.ll == gen3.ll (compiler reproduces itself)") }
-  else { bad("fixpoint not reached"); out(capture("cat /tmp/x_boot.out")) }
+  if shq(`bin/x bootstrap > {tmp_dir()}/boot.out 2>&1`) { ok("gen2.ll == gen3.ll (compiler reproduces itself)") }
+  else { bad("fixpoint not reached"); out(capture(`cat {tmp_dir()}/boot.out`)) }
 
   print("== the C-free bootstrap (from the checked-in IR seed, no C compiler) ==")
-  if shq("bin/x bootstrap-cfree > /tmp/x_cfree.out 2>&1") { ok("seed.ll rebuilds the compiler and is its own fixed point") }
-  else { bad("C-free bootstrap failed (seed stale? run: x reseed)"); out(capture("cat /tmp/x_cfree.out")) }
+  if shq(`bin/x bootstrap-cfree > {tmp_dir()}/cfree.out 2>&1`) { ok("seed.ll rebuilds the compiler and is its own fixed point") }
+  else { bad("C-free bootstrap failed (seed stale? run: x reseed)"); out(capture(`cat {tmp_dir()}/cfree.out`)) }
 
   return report()
 }

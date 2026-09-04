@@ -59,16 +59,16 @@ function cmd_version() -> int {
 }
 
 # assemble the CHANGELOG.md section for `ver` from the pending changesets into
-# /tmp/x_rel_section.md (header + one bullet per changeset, sorted by type).
+# the scratch file rel_section.md (header + one bullet per changeset, sorted by type).
 function build_section(ver: pointer) -> void {
   let date = capture_line("date +%Y-%m-%d")
-  run(`printf '## v%s — %s\n\n' '{ver}' '{date}' > /tmp/x_rel_section.md`)
+  run(`printf '## v%s — %s\n\n' '{ver}' '{date}' > {tmp_dir()}/rel_section.md`)
   # one bullet per changeset: "- **<type>**: <body>" (body = the non-header text)
-  run("( for f in changes/*.md; do case \"$f\" in */README.md) continue;; esac; t=$(sed -n 's/^type:[[:space:]]*//p' \"$f\" | head -1); b=$(grep -vE '^(type|bump):' \"$f\" | sed '/^[[:space:]]*$/d' | tr '\\n' ' ' | sed 's/[[:space:]]*$//'); printf -- '- **%s**: %s\\n' \"$t\" \"$b\"; done | sort ) >> /tmp/x_rel_section.md")
-  run("printf '\n' >> /tmp/x_rel_section.md")
+  run(`( for f in changes/*.md; do case \"$f\" in */README.md) continue;; esac; t=$(sed -n 's/^type:[[:space:]]*//p' \"$f\" | head -1); b=$(grep -vE '^(type|bump):' \"$f\" | sed '/^[[:space:]]*$/d' | tr '\\n' ' ' | sed 's/[[:space:]]*$//'); printf -- '- **%s**: %s\\n' \"$t\" \"$b\"; done | sort ) >> {tmp_dir()}/rel_section.md`)
+  run(`printf '\n' >> {tmp_dir()}/rel_section.md`)
 }
 
-# prepend /tmp/x_rel_section.md into CHANGELOG.md, above the first existing
+# prepend the scratch rel_section.md into CHANGELOG.md, above the first existing
 # release section (or at the end of the header if this is the first release).
 function prepend_changelog() -> void {
   if not file_exists("CHANGELOG.md") {
@@ -76,19 +76,18 @@ function prepend_changelog() -> void {
   }
   let ln = capture_line("grep -n '^## ' CHANGELOG.md | head -1 | cut -d: -f1")
   if (ln == "") {
-    run("cat CHANGELOG.md /tmp/x_rel_section.md > /tmp/x_rel_new.md")
+    run(`cat CHANGELOG.md {tmp_dir()}/rel_section.md > {tmp_dir()}/rel_new.md`)
   } else {
-    run(`head -n $(expr {ln} - 1) CHANGELOG.md > /tmp/x_rel_new.md`)
-    run("cat /tmp/x_rel_section.md >> /tmp/x_rel_new.md")
-    run(`tail -n +{ln} CHANGELOG.md >> /tmp/x_rel_new.md`)
+    run(`head -n $(expr {ln} - 1) CHANGELOG.md > {tmp_dir()}/rel_new.md`)
+    run(`cat {tmp_dir()}/rel_section.md >> {tmp_dir()}/rel_new.md`)
+    run(`tail -n +{ln} CHANGELOG.md >> {tmp_dir()}/rel_new.md`)
   }
-  run("cp /tmp/x_rel_new.md CHANGELOG.md")
+  run(`cp {tmp_dir()}/rel_new.md CHANGELOG.md`)
 }
 
 # push main + the tag and create the Forgejo release with build artifacts.
 function publish_release(ver: pointer) -> int {
-  let tok = getenv_or("FORGEJO_TOKEN", "")
-  if (tok == "") { err("release --publish: set FORGEJO_TOKEN (a Forgejo access token)\n"); return 1 }
+  if getenv_or("FORGEJO_TOKEN", "") == "" { err("release --publish: set FORGEJO_TOKEN (a Forgejo access token)\n"); return 1 }
   if not shq("git push origin HEAD") { err("release: git push (main) failed\n"); return 1 }
   if not shq(`git push origin v{ver}`) { err("release: git push (tag) failed\n"); return 1 }
   # artifacts: a reproducible source+seed tarball, and the built macOS toolchain.
@@ -100,7 +99,7 @@ function publish_release(ver: pointer) -> int {
     run(`tar -czf dist/ludic-{ver}-{plat}-{arch}.tar.gz bin selfhost/ludicc.seed.ll VERSION`)
   }
   # the changelog section written by build_section is the release body
-  if not shq(`FORGEJO_TOKEN='{tok}' python3 tools/ci/forgejo_release.py v{ver} /tmp/x_rel_section.md dist`) {
+  if forgejo_publish(`v{ver}`, tmp_path("rel_section.md"), "dist") != 0 {
     err("release: creating the Forgejo release failed\n"); return 1
   }
   return 0
@@ -116,7 +115,7 @@ function cmd_release() -> int {
     if (a == "--publish") { publish = true }
     else { if (a == "major") or (a == "minor") or (a == "patch") { level = a }
     else { err(`release: unknown argument {a}\n`); return 1 } }
-    ai = ai + 1
+    ai += 1
   }
 
   if not has_changesets() {

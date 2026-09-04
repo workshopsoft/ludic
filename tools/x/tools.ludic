@@ -27,7 +27,7 @@ function sync_vscode_grammar() -> void {
 # is `flag` present anywhere in argv?
 function has_flag(flag: pointer) -> bool {
   var i = 2
-  while i < arg_count() { if (arg(i) == flag) { return true };  i = i + 1 }
+  while i < arg_count() { if (arg(i) == flag) { return true };  i += 1 }
   return false
 }
 
@@ -64,12 +64,12 @@ function cmd_test_tools() -> int {
 
   # --- idempotence: formatting twice equals formatting once ------------------
   let nsrc = capture_line("find examples runtime -name '*.ludic' | wc -l")
-  if shq(`fail=0; for f in $(find examples runtime -name '*.ludic' | sort); do {fmt} "$f" > /tmp/x_a 2>/dev/null; {fmt} /tmp/x_a > /tmp/x_b 2>/dev/null; cmp -s /tmp/x_a /tmp/x_b || fail=1; done; test $fail -eq 0`) {
+  if shq(`fail=0; for f in $(find examples runtime -name '*.ludic' | sort); do {fmt} "$f" > {tmp_dir()}/a 2>/dev/null; {fmt} {tmp_dir()}/a > {tmp_dir()}/b 2>/dev/null; cmp -s {tmp_dir()}/a {tmp_dir()}/b || fail=1; done; test $fail -eq 0`) {
     ok(`idempotent on {nsrc} files`)
   } else { bad("idempotent on the source tree") }
 
   # --- meaning preserved: reformatting a formatted file must be a no-op -------
-  if shq(`fail=0; for f in examples/ecs/hello.ludic examples/games/snake.ludic examples/games/menu.ludic examples/lang/qdecl.ludic examples/lang/scenes.ludic; do test -f "$f" || continue; {fmt} "$f" > /tmp/x_f1 2>/dev/null; {fmt} /tmp/x_f1 > /tmp/x_f2 2>/dev/null; cmp -s /tmp/x_f1 /tmp/x_f2 || fail=1; done; test $fail -eq 0`) {
+  if shq(`fail=0; for f in examples/ecs/hello.ludic examples/games/snake.ludic examples/games/menu.ludic examples/lang/qdecl.ludic examples/lang/scenes.ludic; do test -f "$f" || continue; {fmt} "$f" > {tmp_dir()}/f1 2>/dev/null; {fmt} {tmp_dir()}/f1 > {tmp_dir()}/f2 2>/dev/null; cmp -s {tmp_dir()}/f1 {tmp_dir()}/f2 || fail=1; done; test $fail -eq 0`) {
     ok("formatting is idempotent (fmt(fmt(x)) == fmt(x))")
   } else { bad("formatting is not idempotent") }
 
@@ -81,47 +81,47 @@ function cmd_test_tools() -> int {
   } else { bad("formatter altered non-whitespace bytes") }
 
   # --- multi-byte characters must survive intact -----------------------------
-  write_file("/tmp/x_utf8.ludic", "program E {\n  # … ellipsis in a comment\n  const S: string = \"café → naïve\"\n}\n")
-  if shq(`{fmt} /tmp/x_utf8.ludic > /tmp/x_utf8.out 2>/dev/null; cmp -s /tmp/x_utf8.ludic /tmp/x_utf8.out`) {
+  write_file(`{tmp_dir()}/utf8.ludic`, "program E {\n  # … ellipsis in a comment\n  const S: string = \"café → naïve\"\n}\n")
+  if shq(`{fmt} {tmp_dir()}/utf8.ludic > {tmp_dir()}/utf8.out 2>/dev/null; cmp -s {tmp_dir()}/utf8.ludic {tmp_dir()}/utf8.out`) {
     ok("UTF-8 preserved byte for byte")
   } else { bad("UTF-8 mangled") }
-  write_file("/tmp/x_utf8b.ludic", "program F {\nfn f() -> int { return … }\n}\n")
-  let ua = capture_line("tr -d ' \t\n' < /tmp/x_utf8b.ludic | shasum | cut -d' ' -f1")
-  let ub = capture_line(`{fmt} /tmp/x_utf8b.ludic | tr -d ' \t\n' | shasum | cut -d' ' -f1`)
+  write_file(`{tmp_dir()}/utf8b.ludic`, "program F {\nfn f() -> int { return … }\n}\n")
+  let ua = capture_line(`tr -d ' \t\n' < {tmp_dir()}/utf8b.ludic | shasum | cut -d' ' -f1`)
+  let ub = capture_line(`{fmt} {tmp_dir()}/utf8b.ludic | tr -d ' \t\n' | shasum | cut -d' ' -f1`)
   check("unrecognised characters pass through whole", ub, ua)
 
   # --- comments survive, the whole reason this is not `ludicc --fmt` ----------
-  write_file("/tmp/x_c.ludic", "program C {\n  # keep me\n  property P { x: int = 0 }  # and me\n}\n")
-  let ncmt = capture_line(`{fmt} /tmp/x_c.ludic | grep -c '#'`)
+  write_file(`{tmp_dir()}/c.ludic`, "program C {\n  # keep me\n  property P { x: int = 0 }  # and me\n}\n")
+  let ncmt = capture_line(`{fmt} {tmp_dir()}/c.ludic | grep -c '#'`)
   check("comments preserved", ncmt, "2")
 
   # --- messy input is normalised ---------------------------------------------
-  write_file("/tmp/x_m.ludic", "program M{\nproperty P{x:int=0}\nhandler S phase Update{let a=1+2\nif a== -1 {a=-a}}\n}\n")
-  run(`{fmt} /tmp/x_m.ludic > /tmp/x_m.out 2>/dev/null`)
-  if shq("grep -q '^  property P { x: int = 0 }$' /tmp/x_m.out") { ok("reindents and respaces") } else { bad("reindents and respaces") }
-  if shq("grep -q 'a = -a' /tmp/x_m.out") { ok("unary minus not spaced") } else { bad("unary minus not spaced") }
+  write_file(`{tmp_dir()}/m.ludic`, "program M{\nproperty P{x:int=0}\nhandler S phase Update{let a=1+2\nif a== -1 {a=-a}}\n}\n")
+  run(`{fmt} {tmp_dir()}/m.ludic > {tmp_dir()}/m.out 2>/dev/null`)
+  if shq(`grep -q '^  property P {{ x: int = 0 }}$' {tmp_dir()}/m.out`) { ok("reindents and respaces") } else { bad("reindents and respaces") }
+  if shq(`grep -q 'a = -a' {tmp_dir()}/m.out`) { ok("unary minus not spaced") } else { bad("unary minus not spaced") }
 
   # --- language conventions are respected, not overwritten -------------------
-  write_file("/tmp/x_u.ludic", "program U {\n  ui M {\n    panel id=Root w=10 {\n      button id=Go text=\"go\"\n    }\n  }\n}\n")
-  if shq(`{fmt} /tmp/x_u.ludic | grep -q 'id=Root'`) { ok("widget props stay tight (id=Root)") } else { bad("widget props stay tight") }
-  write_file("/tmp/x_q.ludic", "program Q {\n  handler S phase Update {\n    for (p) in query [Pos, {Foe}] { }\n  }\n  property Pos { x: int = 0 }\n  property Foe { }\n}\n")
-  if shq(`{fmt} /tmp/x_q.ludic | grep -q '\\[Pos, {{Foe}}\\]'`) { ok("query tags stay tight ({Foe})") } else { bad("query tags stay tight") }
-  write_file("/tmp/x_al.ludic", "program A {\n  const R_A:   int = 0    # one\n  const R_BBB: int = 1    # two\n}\n")
-  if shq(`{fmt} /tmp/x_al.ludic | grep -q 'R_A:   int = 0    # one'`) { ok("hand alignment preserved") } else { bad("hand alignment preserved") }
+  write_file(`{tmp_dir()}/u.ludic`, "program U {\n  ui M {\n    panel id: Root w: 10 {\n      button id: Go text: \"go\"\n    }\n  }\n}\n")
+  if shq(`{fmt} {tmp_dir()}/u.ludic | grep -q 'panel id: Root w: 10 {{'`) { ok("widget props keep their `key: value` spacing") } else { bad("widget props keep their `key: value` spacing") }
+  write_file(`{tmp_dir()}/q.ludic`, "program Q {\n  handler S phase Update {\n    for (p) in query [Pos, {Foe}] { }\n  }\n  property Pos { x: int = 0 }\n  property Foe { }\n}\n")
+  if shq(`{fmt} {tmp_dir()}/q.ludic | grep -q '\\[Pos, {{Foe}}\\]'`) { ok("query tags stay tight ({Foe})") } else { bad("query tags stay tight") }
+  write_file(`{tmp_dir()}/al.ludic`, "program A {\n  const R_A:   int = 0    # one\n  const R_BBB: int = 1    # two\n}\n")
+  if shq(`{fmt} {tmp_dir()}/al.ludic | grep -q 'R_A:   int = 0    # one'`) { ok("hand alignment preserved") } else { bad("hand alignment preserved") }
 
   # --- --check exit status, for CI and pre-commit hooks ----------------------
-  let chk1 = sh(`{fmt} --check -q /tmp/x_m.ludic`)
+  let chk1 = sh(`{fmt} --check -q {tmp_dir()}/m.ludic`)
   check("--check exits 1 on unformatted input", string(chk1), "1")
-  run(`{fmt} -w /tmp/x_m.ludic`)
-  let chk2 = sh(`{fmt} --check -q /tmp/x_m.ludic`)
+  run(`{fmt} -w {tmp_dir()}/m.ludic`)
+  let chk2 = sh(`{fmt} --check -q {tmp_dir()}/m.ludic`)
   check("--check exits 0 after -w", string(chk2), "0")
 
   # --- markdown: fences formatted, prose untouched ---------------------------
-  write_file("/tmp/x_d.md", "# T\n\nprose  with   spaces\n\n```ludic\nprogram D{property P{x:int=0}}\n```\n\n```python\nz  =  1\n```\n")
-  run(`{fmt} /tmp/x_d.md > /tmp/x_d.out 2>/dev/null`)
-  if shq("grep -q 'prose  with   spaces' /tmp/x_d.out") { ok("markdown prose untouched") } else { bad("markdown prose untouched") }
-  if shq("grep -q 'z  =  1' /tmp/x_d.out") { ok("non-ludic fences untouched") } else { bad("non-ludic fences untouched") }
-  if shq("grep -q 'program D { property P { x: int = 0 } }' /tmp/x_d.out") { ok("ludic fences formatted") } else { bad("ludic fences formatted") }
+  write_file(`{tmp_dir()}/d.md`, "# T\n\nprose  with   spaces\n\n```ludic\nprogram D{property P{x:int=0}}\n```\n\n```python\nz  =  1\n```\n")
+  run(`{fmt} {tmp_dir()}/d.md > {tmp_dir()}/d.out 2>/dev/null`)
+  if shq(`grep -q 'prose  with   spaces' {tmp_dir()}/d.out`) { ok("markdown prose untouched") } else { bad("markdown prose untouched") }
+  if shq(`grep -q 'z  =  1' {tmp_dir()}/d.out`) { ok("non-ludic fences untouched") } else { bad("non-ludic fences untouched") }
+  if shq(`grep -q 'program D {{ property P {{ x: int = 0 }} }}' {tmp_dir()}/d.out`) { ok("ludic fences formatted") } else { bad("ludic fences formatted") }
 
   print("language server")
   # The LSP indexes the workspace by walking directories, which reads the BSD
@@ -129,7 +129,10 @@ function cmd_test_tools() -> int {
   # features (go-to-def, find-usages, workspace symbols) can't resolve. Gate the
   # end-to-end protocol test on Darwin until the directory walk is portable.
   if is_darwin() {
-    if shq("python3 tools/test-lsp.py") { ok("language server protocol") } else { bad("language server protocol") }
+    let lrc = sh("bin/x test-lsp")
+    if lrc == 0 { ok("language server protocol") }
+    else if lrc == 2 { skip("language server protocol (bin/ludic-lsp not built)") }
+    else { bad("language server protocol") }
   } else { skip("language server protocol (workspace scan uses the macOS/BSD dirent layout)") }
 
   print("")
@@ -145,7 +148,11 @@ function cmd_test_tools() -> int {
   if shq("command -v node >/dev/null 2>&1") {
     if shq("node --check tools/editors/vscode/src/extension.js 2>/dev/null") { ok("extension.js parses") } else { bad("extension.js parses") }
     print("textmate grammar")
-    if shq("node tools/test-grammar.js") { ok("textmate grammar") } else { bad("textmate grammar") }
+    # exit 2 = the TextMate engine is not installed: a skip, never a silent pass
+    let grc = sh("node tools/test-grammar.js")
+    if grc == 0 { ok("textmate grammar") }
+    else if grc == 2 { skip("textmate grammar (npm i vscode-textmate vscode-oniguruma, or set LUDIC_NODE_MODULES)") }
+    else { bad("textmate grammar") }
   } else {
     print("  skip  extension.js and grammar tests (node not installed)")
   }

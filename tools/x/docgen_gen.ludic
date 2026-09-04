@@ -33,13 +33,13 @@ function meta_new() -> Meta {
 }
 function meta_put(m: Meta, k: pointer, v: pointer) -> void {
   var i = 0
-  while i < len(m.keys) { if m.keys[i] == k { m.vals[i] = v;  return };  i = i + 1 }
+  while i < len(m.keys) { if m.keys[i] == k { m.vals[i] = v;  return };  i += 1 }
   push(m.keys, k)
   push(m.vals, v)
 }
 function meta_get(m: Meta, k: pointer, dflt: pointer) -> pointer {
   var i = 0
-  while i < len(m.keys) { if m.keys[i] == k { return m.vals[i] };  i = i + 1 }
+  while i < len(m.keys) { if m.keys[i] == k { return m.vals[i] };  i += 1 }
   return dflt
 }
 
@@ -54,7 +54,7 @@ function read_snippet(rel: pointer) -> pointer {
   let s = read_file(rel)
   if s == null { return "" }
   var n = slen(s)
-  while n > 0 and s[n - 1] == 10 { n = n - 1 }
+  while n > 0 and s[n - 1] == '\n' { n -= 1 }
   return sslice(s, 0, n)
 }
 
@@ -90,23 +90,23 @@ function parse_doc(path: pointer) -> Doc {
 function param_match(line: pointer, p: Param) -> bool {
   let n = slen(line)
   var i = 0
-  if i < n and line[i] == 45 { i = i + 1 } else { return false }
-  while i < n and is_ws(line[i]) { i = i + 1 }
-  if i < n and line[i] == 96 { i = i + 1 }
+  if i < n and line[i] == '-' { i += 1 } else { return false }
+  while i < n and is_ws(line[i]) { i += 1 }
+  if i < n and line[i] == '`' { i += 1 }
   let ws = i
-  while i < n and is_word(line[i]) { i = i + 1 }
+  while i < n and is_word(line[i]) { i += 1 }
   if i == ws { return false }
   let name = sslice(line, ws, i)
-  if i < n and line[i] == 96 { i = i + 1 }
-  while i < n and is_ws(line[i]) { i = i + 1 }
+  if i < n and line[i] == '`' { i += 1 }
+  while i < n and is_ws(line[i]) { i += 1 }
   var sep = 0
   while i < n {
-    if line[i] == 45 { i = i + 1;  sep = sep + 1 }
-    else if (line[i] & 255) == 226 and i + 2 < n and (line[i + 1] & 255) == 128 and (line[i + 2] & 255) == 148 { i = i + 3;  sep = sep + 1 }
+    if line[i] == '-' { i += 1;  sep += 1 }
+    else if (line[i] & 255) == 226 and i + 2 < n and (line[i + 1] & 255) == 128 and (line[i + 2] & 255) == 148 { i += 3;  sep += 1 }
     else { break }
   }
   if sep == 0 { return false }
-  while i < n and is_ws(line[i]) { i = i + 1 }
+  while i < n and is_ws(line[i]) { i += 1 }
   p.name = name
   p.desc = codeify(s_trim(sslice(line, i, n)))
   return true
@@ -119,10 +119,10 @@ function split_paras(desc: pointer) -> []pointer {
   var start = 0
   var i = 0
   while i < n {
-    if desc[i] == 10 {
+    if desc[i] == '\n' {
       var jj = i
       var nl = 0
-      while jj < n and is_space_all(desc[jj]) { if desc[jj] == 10 { nl = nl + 1 };  jj = jj + 1 }
+      while jj < n and is_space_all(desc[jj]) { if desc[jj] == '\n' { nl += 1 };  jj += 1 }
       if nl >= 2 {
         let part = s_trim(sslice(desc, start, i))
         if slen(part) > 0 { push(out, part) }
@@ -132,7 +132,7 @@ function split_paras(desc: pointer) -> []pointer {
       }
       i = jj
     } else {
-      i = i + 1
+      i += 1
     }
   }
   let last = s_trim(sslice(desc, start, n))
@@ -152,16 +152,16 @@ function split_body(body: pointer) -> Split {
     let p = s_index(body, "```ludic\n", i)
     if p < 0 {
       var k = i
-      while k < n { sb_putc(wo, body[k]);  k = k + 1 }
+      while k < n { sb_putc(wo, body[k]);  k += 1 }
       i = n
     } else {
       var k = i
-      while k < p { sb_putc(wo, body[k]);  k = k + 1 }
+      while k < p { sb_putc(wo, body[k]);  k += 1 }
       let cs = p + 9
       let q = s_index(body, "\n```", cs)
       if q < 0 {
         var k2 = p
-        while k2 < cs { sb_putc(wo, body[k2]);  k2 = k2 + 1 }
+        while k2 < cs { sb_putc(wo, body[k2]);  k2 += 1 }
         i = cs
       } else {
         push(r.examples, sslice(body, cs, q))
@@ -191,10 +191,10 @@ function split_body(body: pointer) -> Split {
         if param_match(t2, pp) { push(r.params, pp) }
       }
     } else {
-      if not firstkeep { sb_putc(keep, 10) }
+      if not firstkeep { sb_putc(keep, '\n') }
       firstkeep = false
       var kk = 0
-      while kk < lnlen { sb_putc(keep, ln[kk]);  kk = kk + 1 }
+      while kk < lnlen { sb_putc(keep, ln[kk]);  kk += 1 }
     }
   }
   # 3) desc -> paragraphs joined </p><p>, each codeified
@@ -205,7 +205,7 @@ function split_body(body: pointer) -> Split {
   while pi < len(paras) {
     if pi > 0 { sb_puts(ob, "</p><p>") }
     sb_puts(ob, codeify(paras[pi]))
-    pi = pi + 1
+    pi += 1
   }
   r.desc = sb_str(ob)
   return r
@@ -217,26 +217,26 @@ function plain_text(s: pointer) -> pointer {
   let n = slen(s)
   var i = 0
   while i < n {
-    if s[i] == 60 {
-      while i < n and s[i] != 62 { i = i + 1 }
-      if i < n { i = i + 1 }
+    if s[i] == '<' {
+      while i < n and s[i] != '>' { i += 1 }
+      if i < n { i += 1 }
     } else {
       sb_putc(sb, s[i])
-      i = i + 1
+      i += 1
     }
   }
   let t0 = s_trim(sb_str(sb))
   let tn = slen(t0)
-  var cut = 0 - 1
+  var cut = -1
   var j = 0
   while j < tn {
     let c = t0[j]
-    if c == 10 { break }
-    if (c == 46 or c == 33 or c == 63) and j >= 1 {
+    if c == '\n' { break }
+    if (c == '.' or c == '!' or c == '?') and j >= 1 {
       if j + 1 >= tn { cut = j + 1;  break }
       if is_space_all(t0[j + 1]) { cut = j + 1;  break }
     }
-    j = j + 1
+    j += 1
   }
   var t = t0
   if cut >= 0 { t = sslice(t0, 0, cut) }
@@ -245,18 +245,18 @@ function plain_text(s: pointer) -> pointer {
   let tl = slen(t)
   var cpc = 0
   var bi = 0
-  while bi < tl { if (t[bi] & 192) != 128 { cpc = cpc + 1 };  bi = bi + 1 }
+  while bi < tl { if (t[bi] & 192) != 128 { cpc += 1 };  bi += 1 }
   if cpc <= 160 { return t }
   var idx = 0
   var seen = 0
   while idx < tl and seen < 160 {
-    idx = idx + 1
-    while idx < tl and (t[idx] & 192) == 128 { idx = idx + 1 }
-    seen = seen + 1
+    idx += 1
+    while idx < tl and (t[idx] & 192) == 128 { idx += 1 }
+    seen += 1
   }
   let pre = sslice(t, 0, idx)
   var sp = slen(pre) - 1
-  while sp >= 0 and pre[sp] != 32 { sp = sp - 1 }
+  while sp >= 0 and pre[sp] != ' ' { sp -= 1 }
   var head = pre
   if sp >= 0 { head = sslice(pre, 0, sp) }
   return head + "…"
@@ -305,9 +305,9 @@ function entries_sort(es: []Entry) -> void {
   while i < len(es) {
     let cur = es[i]
     var j = i - 1
-    while j >= 0 and entry_gt(es[j], cur) { es[j + 1] = es[j];  j = j - 1 }
+    while j >= 0 and entry_gt(es[j], cur) { es[j + 1] = es[j];  j -= 1 }
     es[j + 1] = cur
-    i = i + 1
+    i += 1
   }
 }
 function section_gt(a: Section, b: Section) -> bool {
@@ -319,9 +319,9 @@ function sections_sort(ss: []Section) -> void {
   while i < len(ss) {
     let cur = ss[i]
     var j = i - 1
-    while j >= 0 and section_gt(ss[j], cur) { ss[j + 1] = ss[j];  j = j - 1 }
+    while j >= 0 and section_gt(ss[j], cur) { ss[j + 1] = ss[j];  j -= 1 }
     ss[j + 1] = cur
-    i = i + 1
+    i += 1
   }
 }
 
@@ -331,7 +331,7 @@ function load_sections() -> []Section {
   var ci = 0
   while ci < len(cats) {
     let cat = cats[ci]
-    ci = ci + 1
+    ci += 1
     let cdir = "docs/language/" + cat
     if not is_dir(cdir) { continue }
     var sid = cat
@@ -351,7 +351,7 @@ function load_sections() -> []Section {
     var fi = 0
     while fi < len(files) {
       let fn = files[fi]
-      fi = fi + 1
+      fi += 1
       if not s_ends(fn, ".md") { continue }
       if fn == "_section.md" { continue }
       push(entries, build_entry(cdir + "/" + fn))
@@ -362,7 +362,7 @@ function load_sections() -> []Section {
     while ei < len(entries) {
       let e = entries[ei]
       if e.kind == "namespace-method" and slen(e.ns) > 0 { nsname = e.ns;  break }
-      ei = ei + 1
+      ei += 1
     }
     let sec = new Section
     sec.id = sid
@@ -384,7 +384,7 @@ function ns_tip(nn: pointer, sections: []Section) -> pointer {
   var i = 0
   while i < len(sections) {
     if sections[i].ns_name == nn { return plain_text(sections[i].blurb) }
-    i = i + 1
+    i += 1
   }
   return ""
 }
@@ -414,11 +414,11 @@ function build_symbols(sections: []Section) -> Symbols {
   var si = 0
   while si < len(sections) {
     let s = sections[si]
-    si = si + 1
+    si += 1
     var ei = 0
     while ei < len(s.entries) {
       let e = s.entries[ei]
-      ei = ei + 1
+      ei += 1
       let eid = e.id
       let kind = e.kind
       let tip = e.tip
@@ -444,7 +444,7 @@ function build_symbols(sections: []Section) -> Symbols {
       var ti = 0
       while ti < len(e.tokens_list) {
         let tok = e.tokens_list[ti]
-        ti = ti + 1
+        ti += 1
         if kind == "keyword" { jvput(kw, tok, jvs(eid)) }
         else if kind == "type" { jvput(types, tok, jvs(eid)) }
         else if kind == "phase" { jvput(phases, tok, jvs(eid)) }
@@ -453,7 +453,7 @@ function build_symbols(sections: []Section) -> Symbols {
           jvput(o, "id", jvs(eid))
           let pa = jva()
           var qi = 0
-          while qi < len(e.params) { jvpush(pa, jvs(e.params[qi].name));  qi = qi + 1 }
+          while qi < len(e.params) { jvpush(pa, jvs(e.params[qi].name));  qi += 1 }
           jvput(o, "params", pa)
           jvput(builtins, tok, o)
         }
@@ -462,7 +462,7 @@ function build_symbols(sections: []Section) -> Symbols {
           jvput(o, "id", jvs(eid))
           let pa = jva()
           var qi = 0
-          while qi < len(e.params) { jvpush(pa, jvs(e.params[qi].name));  qi = qi + 1 }
+          while qi < len(e.params) { jvpush(pa, jvs(e.params[qi].name));  qi += 1 }
           jvput(o, "params", pa)
           jvput(nsm, tok, o)
         }
@@ -475,7 +475,7 @@ function build_symbols(sections: []Section) -> Symbols {
   var ki = 0
   while ki < len(nsm.keys) {
     let tok = nsm.keys[ki]
-    ki = ki + 1
+    ki += 1
     let dot = s_index(tok, ".", 0)
     if dot >= 0 { set_add(nsnames, sslice(tok, 0, dot)) }
   }
@@ -484,7 +484,7 @@ function build_symbols(sections: []Section) -> Symbols {
   var ni = 0
   while ni < len(nsnames) {
     let nn = nsnames[ni]
-    ni = ni + 1
+    ni += 1
     let pg = "ns-" + lower_ascii(nn)
     jvput(namespaces, nn, jvs(pg))
     let cd = jvo()
@@ -511,7 +511,7 @@ function js_get(v: JVal, key: pointer) -> pointer {
 function j_has(v: JVal, key: pointer) -> bool {
   if v.t != JV_OBJ { return false }
   var i = 0
-  while i < len(v.keys) { if v.keys[i] == key { return true };  i = i + 1 }
+  while i < len(v.keys) { if v.keys[i] == key { return true };  i += 1 }
   return false
 }
 
@@ -527,7 +527,7 @@ function nav_html(b: Sb, links: JVal, cta_href: pointer) -> void {
   var i = 0
   while i < len(links.kids) {
     let nlk = links.kids[i]
-    i = i + 1
+    i += 1
     let href = js_get(nlk, "href")
     let label = js_get(nlk, "label")
     if href == cta_href { sb_puts(b, `<a class="nav-cta" href="{href}">{hesc(label)}</a>`) }
@@ -551,7 +551,7 @@ function render_params(e: Entry) -> pointer {
   var i = 0
   while i < len(e.params) {
     let p = e.params[i]
-    i = i + 1
+    i += 1
     sb_puts(b, `<div class="param" id="param-{p.name}"><code class="pname">{hesc(p.name)}</code><span class="pdesc">{p.desc}</span></div>`)
   }
   sb_puts(b, `</div>`)
@@ -564,7 +564,7 @@ function render_examples(e: Entry) -> pointer {
   var i = 0
   while i < len(e.examples) {
     sb_puts(b, `<pre data-lang="ludic">{hesc(e.examples[i])}</pre>`)
-    i = i + 1
+    i += 1
   }
   sb_puts(b, `</div>`)
   return sb_str(b)
@@ -575,11 +575,11 @@ function render_related(e: Entry, items: JVal) -> pointer {
   var i = 0
   while i < len(e.related_list) {
     let r = e.related_list[i]
-    i = i + 1
+    i += 1
     let it = j_get(items, r)
     if it.t == JV_NULL { continue }
     if cnt == 0 { sb_puts(b, `<div class="related"><h2>Related</h2><div class="rel-row">`) }
-    cnt = cnt + 1
+    cnt += 1
     sb_puts(b, `<a class="rel" href="{r}.html">{hesc(js_get(it,"name"))}</a>`)
   }
   if cnt == 0 { return "" }
@@ -591,7 +591,7 @@ function render_item(b: Sb, e: Entry, s: Section, cfg: JVal, items: JVal) -> voi
   emit_head(b, e.name + " — Ludic", e.tip, "item.css")
   sb_puts(b, "\n<body>\n")
   topbar(b, cfg)
-  sb_putc(b, 10)
+  sb_putc(b, '\n')
   var sechref = "api.html#" + s.id
   if slen(s.ns_name) > 0 { sechref = "ns-" + lower_ascii(s.ns_name) + ".html" }
   var kindc = e.kind
@@ -624,7 +624,7 @@ function render_ns(b: Sb, nsname: pointer, s: Section, cfg: JVal) -> void {
   emit_head(b, nsname + " — Ludic", plain_text(s.blurb), "item.css")
   sb_puts(b, "\n<body>\n")
   topbar(b, cfg)
-  sb_putc(b, 10)
+  sb_putc(b, '\n')
   sb_puts(b, `<main class="wrap item">\n`)
   sb_puts(b, `  <div class="crumbs"><a href="api.html">API Reference</a> <span>›</span> <span class="here">{hesc(nsname)}</span></div>\n`)
   sb_puts(b, `  <div class="item-head"><span class="kind-badge kind-namespace">namespace</span><h1 id="top">{hesc(nsname)}</h1></div>\n`)
@@ -633,7 +633,7 @@ function render_ns(b: Sb, nsname: pointer, s: Section, cfg: JVal) -> void {
   var i = 0
   while i < len(s.entries) {
     let e = s.entries[i]
-    i = i + 1
+    i += 1
     sb_puts(b, `<a class="ns-method" href="{e.id}.html"><code class="nm-sig">{hesc(e.sig)}</code><span class="nm-tip">{hesc(e.tip)}</span></a>`)
   }
   sb_puts(b, `</div>\n`)
@@ -650,7 +650,7 @@ function render_color(b: Sb, cfg: JVal) -> void {
   emit_head(b, "Color — Ludic", "The Ludic named-color palette.", "item.css")
   sb_puts(b, "\n<body>\n")
   topbar(b, cfg)
-  sb_putc(b, 10)
+  sb_putc(b, '\n')
   sb_puts(b, `<main class="wrap item">\n`)
   sb_puts(b, `  <div class="crumbs"><a href="api.html">API Reference</a> <span>›</span> <span class="here">Color</span></div>\n`)
   sb_puts(b, `  <div class="item-head"><span class="kind-badge kind-namespace">namespace</span><h1 id="top">Color</h1></div>\n`)
@@ -661,7 +661,7 @@ function render_color(b: Sb, cfg: JVal) -> void {
   var gi = 0
   while gi < len(pal_groups) {
     let g = pal_groups[gi]
-    gi = gi + 1
+    gi += 1
     if set_has(seen, g) { continue }
     push(seen, g)
     sb_puts(b, `<div class="swatch-group"><h3>{hesc(g)}</h3><div class="swatch-row">`)
@@ -672,7 +672,7 @@ function render_color(b: Sb, cfg: JVal) -> void {
         let hx = pal_hexes[ci]
         sb_puts(b, `<div class="swatch" id="{lower_ascii(nm)}"><span class="chip" style="background:#{hx}"></span><span class="cname">Color.{hesc(nm)}</span><span class="chex">#{hx}</span></div>`)
       }
-      ci = ci + 1
+      ci += 1
     }
     sb_puts(b, `</div></div>`)
   }
@@ -689,7 +689,7 @@ function render_api(b: Sb, sections: []Section, cfg: JVal) -> void {
   emit_head(b, "Ludic — API Reference", "The complete Ludic API Reference: every keyword, type, builtin, namespace, annotation and color, each on its own page, with fuzzy search.", "item.css")
   sb_puts(b, "\n<body>\n")
   topbar(b, cfg)
-  sb_putc(b, 10)
+  sb_putc(b, '\n')
   sb_puts(b, `<main class="wrap ref">\n`)
   sb_puts(b, `  <div class="ref-intro">\n`)
   sb_puts(b, `    <div class="kicker">Reference</div>\n`)
@@ -702,7 +702,7 @@ function render_api(b: Sb, sections: []Section, cfg: JVal) -> void {
   var si = 0
   while si < len(sections) {
     let s = sections[si]
-    si = si + 1
+    si += 1
     if s.cat == "colors" {
       sb_puts(b, `<section class="idx-sec" data-sec="{s.id}"><h2 id="{s.id}">{hesc(s.title)}</h2><p class="sec-blurb">{s.blurb}</p><div class="idx-grid"><a class="idx-item" href="ns-color.html" data-name="Color" data-tip="The named color palette."><code>Color</code><span>The named color palette (221 names).</span></a></div></section>`)
       continue
@@ -711,7 +711,7 @@ function render_api(b: Sb, sections: []Section, cfg: JVal) -> void {
     var ei = 0
     while ei < len(s.entries) {
       let e = s.entries[ei]
-      ei = ei + 1
+      ei += 1
       sb_puts(b, `<a class="idx-item" href="{e.id}.html" data-name="{hescattr(e.name)}" data-tip="{hescattr(e.tip)}"><code>{hesc(e.name)}</code><span>{hesc(e.tip)}</span></a>`)
     }
     sb_puts(b, `</div></section>`)
@@ -733,20 +733,20 @@ function pct(tmpl: pointer, mk: []pointer, mv: []pointer) -> pointer {
   let b = sb_new()
   var i = 0
   while i < n {
-    if tmpl[i] == 37 and i + 1 < n and tmpl[i + 1] == 40 {
+    if tmpl[i] == '%' and i + 1 < n and tmpl[i + 1] == '(' {
       var j = i + 2
-      while j < n and is_word(tmpl[j]) { j = j + 1 }
-      if j > i + 2 and j + 1 < n and tmpl[j] == 41 and tmpl[j + 1] == 115 {
+      while j < n and is_word(tmpl[j]) { j += 1 }
+      if j > i + 2 and j + 1 < n and tmpl[j] == ')' and tmpl[j + 1] == 's' {
         let key = sslice(tmpl, i + 2, j)
         var k = 0
         var found = false
-        while k < len(mk) { if mk[k] == key { sb_puts(b, mv[k]);  found = true;  break };  k = k + 1 }
+        while k < len(mk) { if mk[k] == key { sb_puts(b, mv[k]);  found = true;  break };  k += 1 }
         i = j + 2
         continue
       }
     }
     sb_putc(b, tmpl[i])
-    i = i + 1
+    i += 1
   }
   return sb_str(b)
 }
@@ -763,7 +763,7 @@ function build_stages(hero: JVal) -> pointer {
     if st == "ludicc" { hl = " hl" }
     sb_puts(b, `<span class="stage{hl}">{hesc(st)}</span>`)
     if i < m - 1 { sb_puts(b, `<span class="arrow">→</span>`) }
-    i = i + 1
+    i += 1
   }
   return sb_str(b)
 }
@@ -774,7 +774,7 @@ function build_feats(feats: JVal) -> pointer {
   var i = 0
   while i < len(cards.kids) {
     let c = cards.kids[i]
-    i = i + 1
+    i += 1
     sb_puts(b, `<div class="feat reveal"><div class="ico">{js_get(c,"icon")}</div><h3>{js_get(c,"title")}</h3><p>{js_get(c,"html")}</p></div>`)
   }
   return sb_str(b)
@@ -784,7 +784,7 @@ function build_phil_paras(phil: JVal) -> pointer {
   let ps = j_get(phil, "paras")
   if ps.t != JV_ARR { return "" }
   var i = 0
-  while i < len(ps.kids) { sb_puts(b, `<p>{ps.kids[i].s}</p>`);  i = i + 1 }
+  while i < len(ps.kids) { sb_puts(b, `<p>{ps.kids[i].s}</p>`);  i += 1 }
   return sb_str(b)
 }
 function build_phil_stats(phil: JVal) -> pointer {
@@ -794,7 +794,7 @@ function build_phil_stats(phil: JVal) -> pointer {
   var i = 0
   while i < len(ss.kids) {
     let s = ss.kids[i]
-    i = i + 1
+    i += 1
     sb_puts(b, `<div class="stat"><div class="big">{js_get(s,"big")}</div><div class="lbl">{hesc(js_get(s,"lbl"))}</div></div>`)
   }
   return sb_str(b)
@@ -807,7 +807,7 @@ function build_steps(start: JVal) -> pointer {
   while i < len(st.kids) {
     let s = st.kids[i]
     sb_puts(b, `<div class="step reveal"><div class="n">{string(i + 1)}</div><div><h4>{js_get(s,"title")}</h4><p>{js_get(s,"html")}</p></div></div>`)
-    i = i + 1
+    i += 1
   }
   return sb_str(b)
 }
@@ -818,9 +818,9 @@ function build_term(start: JVal) -> pointer {
   var i = 0
   while i < len(tm.kids) {
     let t = tm.kids[i]
-    i = i + 1
+    i += 1
     let bl = j_get(t, "blank")
-    if bl.t == JV_BOOL and bl.b == 1 { sb_putc(b, 10) }
+    if bl.t == JV_BOOL and bl.b == 1 { sb_putc(b, '\n') }
     else if j_has(t, "comment") { sb_puts(b, `<span class="t-com"># {hesc(js_get(t,"comment"))}</span>\n`) }
     else if j_has(t, "cmd") { sb_puts(b, `<span class="prompt">$</span> {hesc(js_get(t,"cmd"))}\n`) }
     else if j_has(t, "out") { sb_puts(b, `<span class="out">{hesc(js_get(t,"out"))}</span>\n`) }
@@ -832,7 +832,7 @@ function build_eds(ed: JVal) -> pointer {
   let ls = j_get(ed, "list")
   if ls.t != JV_ARR { return "" }
   var i = 0
-  while i < len(ls.kids) { sb_puts(b, `<div class="ed"><span class="k">◆</span> {hesc(ls.kids[i].s)}</div>`);  i = i + 1 }
+  while i < len(ls.kids) { sb_puts(b, `<div class="ed"><span class="k">◆</span> {hesc(ls.kids[i].s)}</div>`);  i += 1 }
   return sb_str(b)
 }
 function build_footlinks(cfg: JVal) -> pointer {
@@ -842,7 +842,7 @@ function build_footlinks(cfg: JVal) -> pointer {
     var i = 0
     while i < len(nl.kids) {
       let n = nl.kids[i]
-      i = i + 1
+      i += 1
       sb_puts(b, `<a href="{js_get(n,"href")}">{hesc(js_get(n,"label"))}</a>`)
     }
   }
@@ -857,7 +857,7 @@ function build_samples(cfg: JVal) -> pointer {
     var i = 0
     while i < len(sm.kids) {
       let s = sm.kids[i]
-      i = i + 1
+      i += 1
       let o = jvo()
       jvput(o, "name", jvs(js_get(s, "name")))
       jvput(o, "label", jvs(js_get(s, "label")))
@@ -938,11 +938,11 @@ function render_highlighter(sym: JVal) -> pointer {
   if p < 0 { return tmpl }
   let b = sb_new()
   var i = 0
-  while i < p { sb_putc(b, tmpl[i]);  i = i + 1 }
+  while i < p { sb_putc(b, tmpl[i]);  i += 1 }
   sb_puts(b, payload)
   var j = p + slen("/*__SYMBOLS__*/{}")
   let n = slen(tmpl)
-  while j < n { sb_putc(b, tmpl[j]);  j = j + 1 }
+  while j < n { sb_putc(b, tmpl[j]);  j += 1 }
   return sb_str(b)
 }
 
@@ -953,10 +953,10 @@ function cmd_docs_gen() -> int {
   while i < arg_count() {
     let a = arg(i)
     if a == "--out" {
-      i = i + 1
+      i += 1
       if i < arg_count() { out = arg(i) }
     }
-    i = i + 1
+    i += 1
   }
   run(`mkdir -p {out}`)
   palette_init()
@@ -969,33 +969,33 @@ function cmd_docs_gen() -> int {
   var si = 0
   while si < len(sections) {
     let s = sections[si]
-    si = si + 1
+    si += 1
     if s.cat == "colors" { continue }
     var ei = 0
     while ei < len(s.entries) {
       let e = s.entries[ei]
-      ei = ei + 1
+      ei += 1
       let pb = sb_new()
       render_item(pb, e, s, cfg, syms.items)
       write_file(`{out}/{e.id}.html`, sb_str(pb))
-      npages = npages + 1
+      npages += 1
     }
   }
   si = 0
   while si < len(sections) {
     let s = sections[si]
-    si = si + 1
+    si += 1
     if slen(s.ns_name) > 0 {
       let pb = sb_new()
       render_ns(pb, s.ns_name, s, cfg)
       write_file(`{out}/ns-{lower_ascii(s.ns_name)}.html`, sb_str(pb))
-      npages = npages + 1
+      npages += 1
     }
   }
   let cb = sb_new()
   render_color(cb, cfg)
   write_file(`{out}/ns-color.html`, sb_str(cb))
-  npages = npages + 1
+  npages += 1
   let ab = sb_new()
   render_api(ab, sections, cfg)
   write_file(`{out}/api.html`, sb_str(ab))

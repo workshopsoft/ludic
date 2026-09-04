@@ -49,9 +49,37 @@ function sh(cmd: pointer) -> int { return exit_code(run(cmd)) }
 # run a command, true when it succeeded
 function shq(cmd: pointer) -> bool { return exit_code(run(cmd)) == 0 }
 
+# ---- scratch files ------------------------------------------------------------
+# Every scratch file the runner writes lives under one per-process directory
+# (`$TMPDIR/x_<pid>`), so `x test` and an `x check-*` can run side by side without
+# clobbering each other's captures. main removes it on the way out.
+var x_tmp: pointer = null
+
+function tmp_dir() -> pointer {
+  if x_tmp == null {
+    var base = Os.temp_dir()
+    if len(base) > 1 and base[len(base) - 1] == '/' { base = base[0..len(base) - 1] }   # macOS: TMPDIR ends in '/'
+    x_tmp = `{base}/x_{Os.pid()}`
+    run(`mkdir -p {x_tmp}`)
+  }
+  return x_tmp
+}
+
+# a scratch path under tmp_dir(): tmp_path("foo.out")
+function tmp_path(name: pointer) -> pointer { return `{tmp_dir()}/{name}` }
+
+# remove the scratch directory (idempotent; a no-op when nothing was written).
+# X_KEEP_TMP=1 leaves it in place, and says where, for debugging a failing case.
+function tmp_cleanup() -> void {
+  if x_tmp == null { return }
+  if getenv_or("X_KEEP_TMP", "0") == "1" { print(`scratch kept: {x_tmp}`) }
+  else { run(`rm -rf {x_tmp}`) }
+  x_tmp = null
+}
+
 # run `cmd` and return its stdout (stderr discarded). Never null.
 function capture(cmd: pointer) -> pointer {
-  let tmp = "/tmp/x_capture.out"
+  let tmp = tmp_path("capture.out")
   run(`{cmd} > {tmp} 2>/dev/null`)
   let s = read_file(tmp)
   if (s == null) { return "" }
@@ -83,7 +111,7 @@ function flat(p: pointer) -> pointer {
   let b = bytes(n + 1)
   for i in 0 .. n {
     var c = p[i]
-    if (c == 47) { c = 95 }   # '/' (47) -> '_' (95)
+    if (c == '/') { c = 95 }   # '/' (47) -> '_' (95)
     b[i] = c
   }
   b[n] = 0
@@ -108,11 +136,11 @@ var PASS: int = 0
 var FAIL: int = 0
 
 function ok(msg: pointer) -> void {
-  PASS = PASS + 1
+  PASS += 1
   print(`  {c_green()}PASS{c_reset()} {msg}`)
 }
 function bad(msg: pointer) -> void {
-  FAIL = FAIL + 1
+  FAIL += 1
   print(`  {c_red()}FAIL{c_reset()} {msg}`)
 }
 function bad2(msg: pointer, detail: pointer) -> void {
