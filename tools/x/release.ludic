@@ -5,6 +5,8 @@
 #                          bump VERSION, commit, and tag vX.Y.Z. `level` is
 #                          major|minor|patch; omitted, it is derived from the
 #                          highest `bump:` among the pending changesets.
+#   x release [level] --dry-run   render the changelog section to stdout and
+#                          stop: nothing is written, committed, tagged or pushed.
 #   x release [level] --publish   ...then push main + the tag and create a
 #                          Forgejo release with source + toolchain tarballs.
 #                          Needs FORGEJO_TOKEN in the environment.
@@ -58,14 +60,190 @@ function cmd_version() -> int {
   return 0
 }
 
+# ---- changelog rendering ----------------------------------------------------
+#
+# One changeset becomes one bullet. The body is markdown and is kept as markdown:
+# the previous shell pipeline ran it through `tr '\n' ' '`, which collapsed every
+# multi-line changeset into a single paragraph — a nested list came out as a run
+# of inline " - " fragments, and a release with a dozen changesets read as one
+# unbroken wall. Continuation lines are indented two spaces instead, so nested
+# bullets and paragraphs stay inside their bullet.
+
+property Changeset { typ: pointer = "", body: pointer = "" }
+
+# The conventional-commit types, in the order a reader wants them: what is new,
+# what is fixed, what got faster, then the housekeeping. A type not listed here
+# still gets a group, appended after these in first-seen order.
+function type_heading(t: pointer) -> pointer {
+  if t == "feat"     { return "Features" }
+  if t == "fix"      { return "Fixes" }
+  if t == "perf"     { return "Performance" }
+  if t == "refactor" { return "Refactoring" }
+  if t == "docs"     { return "Documentation" }
+  if t == "build"    { return "Build" }
+  if t == "ci"       { return "CI" }
+  if t == "test"     { return "Tests" }
+  if t == "style"    { return "Style" }
+  if t == "revert"   { return "Reverts" }
+  if t == "chore"    { return "Chores" }
+  return title_case(t)
+}
+function type_rank(t: pointer) -> int {
+  if t == "feat"     { return 0 }
+  if t == "fix"      { return 1 }
+  if t == "perf"     { return 2 }
+  if t == "refactor" { return 3 }
+  if t == "docs"     { return 4 }
+  if t == "build"    { return 5 }
+  if t == "ci"       { return 6 }
+  if t == "test"     { return 7 }
+  if t == "style"    { return 8 }
+  if t == "revert"   { return 9 }
+  if t == "chore"    { return 10 }
+  return 50
+}
+
+# strip trailing whitespace from a line
+function rstrip(s: pointer) -> pointer {
+  var n = slen(s)
+  while n > 0 and is_space_all(s[n - 1]) { n -= 1 }
+  return sslice(s, 0, n)
+}
+
+# Parse one changeset file: the `type:`/`bump:` headers, then everything else as
+# the body. Returns a Changeset with an empty body when the file is unreadable.
+function read_changeset(path: pointer) -> Changeset {
+  let cs = new Changeset
+  cs.typ = ""
+  cs.body = ""
+  let text = read_file(path)
+  if text == null { return cs }
+  let b = sb_new()
+  let n = slen(text)
+  var i = 0
+  var seen_body = false
+  while i < n {
+    let ln = line_at(text, i)
+    i = i + slen(ln) + 1
+    if not seen_body and s_starts(ln, "type:") {
+      cs.typ = s_trim(sslice(ln, 5, slen(ln)))
+      continue
+    }
+    if not seen_body and s_starts(ln, "bump:") { continue }
+    # a leading blank line between the headers and the body is not body content
+    if not seen_body and slen(s_trim(ln)) == 0 { continue }
+    seen_body = true
+    sb_puts(b, rstrip(ln))
+    sb_putc(b, '\n')
+  }
+  # drop trailing blank lines
+  var body = sb_str(b)
+  var m = slen(body)
+  while m > 0 and is_space_all(body[m - 1]) { m -= 1 }
+  cs.body = sslice(body, 0, m)
+  if cs.typ == "" { cs.typ = "chore" }
+  return cs
+}
+
+# Render one changeset as a markdown list item: the first line after "- ", every
+# following line indented two spaces so it stays within the item. Blank lines
+# stay blank (an indented blank line is just trailing whitespace).
+function render_bullet(b: Sb, body: pointer) -> void {
+  let n = slen(body)
+  var i = 0
+  var first = true
+  while i < n {
+    let ln = line_at(body, i)
+    i = i + slen(ln) + 1
+    if first { sb_puts(b, "- ");  first = false }
+    else if slen(ln) == 0 { sb_putc(b, '\n');  continue }
+    else { sb_puts(b, "  ") }
+    sb_puts(b, ln)
+    sb_putc(b, '\n')
+  }
+}
+
+# the changesets in `dir`, README.md excluded, in filename order
+function load_changesets(dir: pointer) -> []Changeset {
+  let out = new []Changeset
+  let names = list_sorted(dir)
+  var i = 0
+  while i < len(names) {
+    let nm = names[i]
+    i += 1
+    if nm == "README.md" { continue }
+    if not s_ends(nm, ".md") { continue }
+    let cs = read_changeset(`{dir}/{nm}`)
+    if slen(cs.body) > 0 { push(out, cs) }
+  }
+  return out
+}
+
 # assemble the CHANGELOG.md section for `ver` from the pending changesets into
-# the scratch file rel_section.md (header + one bullet per changeset, sorted by type).
+# the scratch file rel_section.md: a dated header, then one "### <Heading>"
+# group per conventional-commit type, each holding its changesets as bullets.
+function render_section(ver: pointer, date: pointer, dir: pointer) -> pointer {
+  let sets = load_changesets(dir)
+  let b = sb_new()
+  sb_puts(b, `## v{ver} — {date}\n`)
+
+  # walk the type groups in rank order, then any unranked type in first-seen order
+  let done = new []pointer
+  var emitted = 0
+  while emitted < len(sets) {
+    # pick the lowest-ranked type not yet emitted, ties broken by name
+    var best = ""
+    var bestrank = 0
+    var si = 0
+    while si < len(sets) {
+      let t = sets[si].typ
+      si += 1
+      var already = false
+      var di = 0
+      while di < len(done) { if done[di] == t { already = true };  di += 1 }
+      if already { continue }
+      let r = type_rank(t)
+      if best == "" or r < bestrank or (r == bestrank and str_gt(best, t)) { best = t;  bestrank = r }
+    }
+    if best == "" { break }
+    push(done, best)
+
+    # collect this group's bodies and sort them, so a release is reproducible
+    let bodies = new []pointer
+    var k = 0
+    while k < len(sets) {
+      if sets[k].typ == best { push(bodies, sets[k].body) }
+      k += 1
+    }
+    strs_sort(bodies)
+
+    sb_puts(b, `\n### {type_heading(best)}\n\n`)
+    var j = 0
+    while j < len(bodies) {
+      render_bullet(b, bodies[j])
+      j += 1
+      emitted += 1
+    }
+  }
+  return sb_str(b)
+}
+
 function build_section(ver: pointer) -> void {
   let date = capture_line("date +%Y-%m-%d")
-  run(`printf '## v%s — %s\n\n' '{ver}' '{date}' > {tmp_dir()}/rel_section.md`)
-  # one bullet per changeset: "- **<type>**: <body>" (body = the non-header text)
-  run(`( for f in changes/*.md; do case \"$f\" in */README.md) continue;; esac; t=$(sed -n 's/^type:[[:space:]]*//p' \"$f\" | head -1); b=$(grep -vE '^(type|bump):' \"$f\" | sed '/^[[:space:]]*$/d' | tr '\\n' ' ' | sed 's/[[:space:]]*$//'); printf -- '- **%s**: %s\\n' \"$t\" \"$b\"; done | sort ) >> {tmp_dir()}/rel_section.md`)
-  run(`printf '\n' >> {tmp_dir()}/rel_section.md`)
+  write_file(tmp_path("rel_section.md"), render_section(ver, date, "changes"))
+}
+
+# x changelog-render <version> <date> <dir> — print the CHANGELOG section that
+# `dir`'s changesets would produce. Used to re-render the sections of releases
+# cut before the renderer preserved markdown structure: check the changesets out
+# of the tag's parent commit, point this at them, and splice the result back in.
+function cmd_changelog_render() -> int {
+  if arg_count() < 5 {
+    err("usage: x changelog-render <version> <date> <changesets-dir>\n")
+    return 1
+  }
+  out(render_section(arg(2), arg(3), arg(4)))
+  return 0
 }
 
 # prepend the scratch rel_section.md into CHANGELOG.md, above the first existing
@@ -85,36 +263,121 @@ function prepend_changelog() -> void {
   run(`cp {tmp_dir()}/rel_new.md CHANGELOG.md`)
 }
 
+# ---- release artifacts + publishing -----------------------------------------
+
+# Extract one release's section out of CHANGELOG.md: everything from its
+# "## vX.Y.Z" heading up to the next "## " heading. This is what a release's
+# notes are — the notes and the changelog can then never disagree.
+function changelog_section(ver: pointer) -> pointer {
+  let text = read_file("CHANGELOG.md")
+  if text == null { return "" }
+  let head = `## v{ver} `
+  let n = slen(text)
+  var i = 0
+  var start = -1
+  while i < n {
+    let ln = line_at(text, i)
+    let next = i + slen(ln) + 1
+    if start < 0 {
+      if s_starts(ln, head) { start = i }
+    } else {
+      if s_starts(ln, "## ") { return sslice(text, start, i) }
+    }
+    i = next
+  }
+  if start < 0 { return "" }
+  return sslice(text, start, n)
+}
+
+# x changelog-section <version> — print that release's CHANGELOG section.
+function cmd_changelog_section() -> int {
+  if arg_count() < 3 { err("usage: x changelog-section <version>\n");  return 1 }
+  let sec = changelog_section(arg(2))
+  if slen(sec) == 0 { err(`changelog-section: no section for v{arg(2)} in CHANGELOG.md\n`);  return 1 }
+  out(sec)
+  return 0
+}
+
+# the platform's SHA-256 tool (coreutils on Linux, shasum on macOS)
+function sha256_cmd() -> pointer {
+  if shq("command -v sha256sum >/dev/null 2>&1") { return "sha256sum" }
+  return "shasum -a 256"
+}
+
+# Build the release artifacts into dist/: a reproducible source+seed tarball from
+# the tag, the toolchain built on this host, and a SHA256SUMS covering both — a
+# release without checksums asks everyone downstream to trust the transport.
+function build_artifacts(ver: pointer) -> bool {
+  run("rm -rf dist && mkdir -p dist")
+  if not shq(`git archive --format=tar.gz --prefix=ludic-{ver}/ -o dist/ludic-{ver}-src.tar.gz v{ver}`) {
+    err(`release: git archive of v{ver} failed (is the tag present?)\n`)
+    return false
+  }
+  if is_exec("bin/ludicc") {
+    let plat = capture_line("uname -s | tr '[:upper:]' '[:lower:]'")
+    let arch = capture_line("uname -m")
+    if not shq(`tar -czf dist/ludic-{ver}-{plat}-{arch}.tar.gz bin selfhost/ludicc.seed.ll VERSION`) {
+      err("release: building the toolchain tarball failed\n")
+      return false
+    }
+  }
+  if not shq(`cd dist && {sha256_cmd()} *.tar.gz > SHA256SUMS`) {
+    err("release: writing dist/SHA256SUMS failed\n")
+    return false
+  }
+  run("ls -l dist")
+  return true
+}
+
+# x publish [vX.Y.Z] — publish an already-tagged release: build the artifacts,
+# take the notes from that version's CHANGELOG section, and create the Forgejo
+# release. Defaults to the version in VERSION. This is what CI runs on a tag
+# push, and what `x release --publish` calls once it has tagged.
+function publish_tag(ver: pointer) -> int {
+  if getenv_or("FORGEJO_TOKEN", "") == "" { err("publish: set FORGEJO_TOKEN (a Forgejo access token)\n");  return 1 }
+  let body = tmp_path("rel_notes.md")
+  let sec = changelog_section(ver)
+  if slen(sec) == 0 { err(`publish: no CHANGELOG section for v{ver}\n`);  return 1 }
+  write_file(body, sec)
+  if not build_artifacts(ver) { return 1 }
+  if forgejo_publish(`v{ver}`, body, "dist") != 0 {
+    err("publish: creating the Forgejo release failed\n")
+    return 1
+  }
+  return 0
+}
+
+function cmd_publish() -> int {
+  var ver = read_version_or("")
+  if arg_count() >= 3 {
+    var a = arg(2)
+    if s_starts(a, "v") { a = sslice(a, 1, slen(a)) }
+    ver = a
+  }
+  if ver == "" { err("publish: no version given and no VERSION file\n");  return 1 }
+  return publish_tag(ver)
+}
+
 # push main + the tag and create the Forgejo release with build artifacts.
 function publish_release(ver: pointer) -> int {
   if getenv_or("FORGEJO_TOKEN", "") == "" { err("release --publish: set FORGEJO_TOKEN (a Forgejo access token)\n"); return 1 }
   if not shq("git push origin HEAD") { err("release: git push (main) failed\n"); return 1 }
   if not shq(`git push origin v{ver}`) { err("release: git push (tag) failed\n"); return 1 }
-  # artifacts: a reproducible source+seed tarball, and the built macOS toolchain.
-  run("mkdir -p dist")
-  run(`git archive --format=tar.gz --prefix=ludic-{ver}/ -o dist/ludic-{ver}-src.tar.gz v{ver}`)
-  if is_exec("bin/ludicc") {
-    let plat = capture_line("uname -s | tr '[:upper:]' '[:lower:]'")
-    let arch = capture_line("uname -m")
-    run(`tar -czf dist/ludic-{ver}-{plat}-{arch}.tar.gz bin selfhost/ludicc.seed.ll VERSION`)
-  }
-  # the changelog section written by build_section is the release body
-  if forgejo_publish(`v{ver}`, tmp_path("rel_section.md"), "dist") != 0 {
-    err("release: creating the Forgejo release failed\n"); return 1
-  }
-  return 0
+  return publish_tag(ver)
 }
 
 function cmd_release() -> int {
   # parse args: an optional level positional, and a --publish flag
   var level = ""
   var publish = false
+  var dry = false
   var ai = 2
   while ai < arg_count() {
     let a = arg(ai)
     if (a == "--publish") { publish = true }
+    else { if (a == "--dry-run") { dry = true }
     else { if (a == "major") or (a == "minor") or (a == "patch") { level = a }
-    else { err(`release: unknown argument {a}\n`); return 1 } }
+    else { err(`release: unknown argument {a}\n`); return 1 } } }
     ai += 1
   }
 
@@ -129,6 +392,17 @@ function cmd_release() -> int {
   print(`releasing v{ver}  ({level} bump from {cur})`)
 
   build_section(ver)
+  # --dry-run stops here: the section is rendered to stdout and nothing on disk,
+  # in git, or on the remote is touched. This is the cheap way to read a release
+  # before cutting it, which the old all-or-nothing command had no answer for.
+  if dry {
+    print("")
+    let sec = read_file(tmp_path("rel_section.md"))
+    if sec != null { out(sec) }
+    print("")
+    print(`  dry run — nothing written. cut it with: x release {level}`)
+    return 0
+  }
   prepend_changelog()
   if not write_file("VERSION", `{ver}\n`) { err("release: cannot write VERSION\n"); return 1 }
   run("rm -f $(ls changes/*.md | grep -v '/README.md')")

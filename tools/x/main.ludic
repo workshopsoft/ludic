@@ -6,7 +6,7 @@
 # Bootstrap it once from a clean checkout (the only step Ludic cannot do for
 # itself, since compiling Ludic needs a compiler):
 #
-#   clang selfhost/ludicc.seed.ll -o bin/ludicc && bin/ludicc tools/x/main.ludic -o bin/x
+#   mkdir -p bin && clang selfhost/ludicc.seed.ll -o bin/ludicc && bin/ludicc tools/x/main.ludic -o bin/x
 #
 # Thereafter `bin/x build` rebuilds the whole toolchain — including bin/x itself.
 # Always run x from the repository root.
@@ -68,8 +68,12 @@ program X {
     print("")
     print("release:")
     print("  x version                     print the toolchain version (ludicc --version)")
-    print("  x release [major|minor|patch] [--publish]")
+    print("  x release [major|minor|patch] [--dry-run] [--publish]")
     print("                                cut a release: CHANGELOG + VERSION bump + tag (+ Forgejo release)")
+    print("  x publish [vX.Y.Z]            publish an already-tagged release (artifacts + notes); what CI runs on a tag push")
+    print("  x changelog-section <ver>     print that release's CHANGELOG.md section")
+    print("  x changelog-render <ver> <date> <dir>")
+    print("                                render a CHANGELOG section from a directory of changesets")
     print("")
     print("self-host internals:")
     print("  x selfhost-build [ludicc] [out]   assemble + compile the self-host compiler")
@@ -132,6 +136,9 @@ program X {
     if (cmd == "test-pkg") { return cmd_test_pkg() }
     if (cmd == "version") or (cmd == "--version") or (cmd == "-v") { return cmd_version() }
     if (cmd == "release") { return cmd_release() }
+    if (cmd == "changelog-render") { return cmd_changelog_render() }
+    if (cmd == "changelog-section") { return cmd_changelog_section() }
+    if (cmd == "publish") { return cmd_publish() }
     if (cmd == "help") or (cmd == "--help") or (cmd == "-h") { usage(); return 0 }
 
     return -1
