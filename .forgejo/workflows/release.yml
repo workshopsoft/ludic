@@ -1,0 +1,99 @@
+name: release
+
+# Cutting a release is `x release` + `git push --tags`; everything after that
+# happens here. Before this workflow existed the artifacts were built on whatever
+# machine the maintainer happened to be sitting at, from whatever was in bin/ at
+# the time, with no checksums and nothing proving the tagged tree even passed its
+# tests. Now the tag is the trigger and CI is the only thing that publishes.
+#
+# The job refuses to publish unless:
+#   * the tag matches the VERSION file in the tagged tree,
+#   * CHANGELOG.md has a section for that version (it becomes the release notes),
+#   * the toolchain builds from the IR seed and the whole suite passes,
+#   * the C-free bootstrap still reproduces the seed byte-for-byte.
+#
+# Needs a repository secret FORGEJO_TOKEN with write access to releases.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to publish (e.g. v0.4.0)'
+        required: true
+
+jobs:
+  publish:
+    runs-on: docker
+    container: node:20-bookworm
+    steps:
+      - name: Install clang-16
+        run: |
+          set -eu
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends clang-16 git ca-certificates curl
+          clang-16 --version | head -1
+
+      - name: Check out the tag
+        env:
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          set -eu
+          git config --global --add safe.directory '*'
+          # A full clone: `git archive` needs the tag object, and the tarball is
+          # built from the tag rather than from the working tree.
+          git clone "$REPO_URL" .
+          TAG="${INPUT_TAG:-${GITHUB_REF_NAME}}"
+          git checkout "$TAG"
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          # See ci.yml for why the Linux build injects the stdio shim via LUDIC_CC.
+          echo "LUDIC_CC=clang-16 $(pwd)/tools/ci/linux_stdio_shim.ll" >> "$GITHUB_ENV"
+          echo "LUDIC_HOME=$(pwd)" >> "$GITHUB_ENV"
+
+      - name: The tag, VERSION and CHANGELOG must agree
+        run: |
+          set -eu
+          VERSION="$(cat VERSION)"
+          if [ "$TAG" != "v${VERSION}" ]; then
+            echo "::error::tag ${TAG} does not match VERSION (${VERSION})"
+            exit 1
+          fi
+          if ! grep -q "^## v${VERSION} " CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no '## v${VERSION}' section to use as release notes"
+            exit 1
+          fi
+          echo "publishing ${TAG}"
+
+      - name: Build the toolchain from the IR seed (clang only)
+        run: |
+          set -eu
+          mkdir -p bin
+          clang-16 tools/ci/linux_stdio_shim.ll selfhost/ludicc.seed.ll -o bin/ludicc
+          bin/ludicc tools/x/main.ludic -o bin/x
+          bin/x build
+
+      - name: The tagged tree must pass its own suites
+        run: |
+          set -eu
+          bin/x test
+          bin/x test-tools
+          bin/x bootstrap-cfree
+
+      - name: Publish the release
+        env:
+          FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+          LUDIC_FORGEJO_API: ${{ github.server_url }}/api/v1/repos/${{ github.repository }}
+        run: |
+          set -eu
+          if [ -z "${FORGEJO_TOKEN:-}" ]; then
+            echo "::error::No FORGEJO_TOKEN secret; cannot create the release."
+            exit 1
+          fi
+          # x publish builds dist/ (source tarball from the tag, this host's
+          # toolchain, SHA256SUMS), takes the notes from the CHANGELOG section,
+          # and creates the release. Re-running it only adds missing assets, so
+          # a maintainer can afterwards attach the macOS toolchain from a Mac
+          # with the same command.
+          bin/x publish "$TAG"

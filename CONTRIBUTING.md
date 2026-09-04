@@ -18,7 +18,7 @@ runtime, and the tooling are all written in Ludic and built by Ludic.
 From a clean checkout, one line lifts the toolchain off the seed:
 
 ```bash
-clang selfhost/ludicc.seed.ll -o bin/ludicc && bin/ludicc tools/x/main.ludic -o bin/x
+mkdir -p bin && clang selfhost/ludicc.seed.ll -o bin/ludicc && bin/ludicc tools/x/main.ludic -o bin/x
 ```
 
 That gives you `bin/x`, the Ludic task runner that replaces every build/test
@@ -73,17 +73,39 @@ The toolchain is versioned with [SemVer](https://semver.org); `VERSION` is the
 single source of truth and `ludicc --version` (or `x version`) reports it.
 
 Releases are changeset-driven. Every user-facing change ships with a changeset
-(step 5 above). To cut a release:
+(step 5 above). Read the next release before cutting it:
+
+```bash
+x release --dry-run             # render the CHANGELOG section, write nothing
+```
+
+Then cut it:
 
 ```bash
 x release [major|minor|patch]   # omit the level to derive it from the changesets
+git push origin main --follow-tags
 ```
 
-That aggregates the pending changesets into a new `CHANGELOG.md` section, bumps
-`VERSION`, commits `chore(release): vX.Y.Z`, and tags it. Add `--publish` (with
-`FORGEJO_TOKEN` set) to also push and create the Forgejo release with source and
-toolchain tarballs. The tag doubles as the reproducible bootstrap point: the
-source archive plus its checked-in seed rebuild that exact toolchain.
+`x release` aggregates the pending changesets into a new `CHANGELOG.md` section
+— grouped by change type, with each changeset's markdown kept intact — bumps
+`VERSION`, commits `chore(release): vX.Y.Z`, and tags it.
+
+**Pushing the tag is what publishes.** The `release` workflow builds the
+toolchain from the IR seed, runs `x test`, `x test-tools` and `x bootstrap-cfree`
+against the tagged tree, and only then creates the Forgejo release — with the
+source tarball, a Linux toolchain build, `SHA256SUMS`, and that version's
+`CHANGELOG.md` section as the notes. It refuses to publish if the tag and
+`VERSION` disagree or the changelog has no section for it.
+
+macOS artifacts cannot be produced on the Linux runner. To attach one, run the
+same command CI runs from a Mac — it only adds assets the release is missing:
+
+```bash
+FORGEJO_TOKEN=… x publish v0.4.0
+```
+
+The tag doubles as the reproducible bootstrap point: the source archive plus its
+checked-in seed rebuild that exact toolchain.
 
 ## Conventions
 
