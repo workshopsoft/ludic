@@ -14,6 +14,14 @@ on:
       - '.forgejo/workflows/docs.yml'
   workflow_dispatch: {}
 
+# Deploying is a force-push of an orphan branch, so two runs racing can land out
+# of order and leave `pages` holding the older build — the site would silently
+# go backwards with both runs green. Serialise them, and let a newer push cancel
+# an older one that is still building rather than queue behind it.
+concurrency:
+  group: pages-deploy
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
