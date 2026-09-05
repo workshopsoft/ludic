@@ -267,7 +267,7 @@ add_line() {
     return 0
   fi
   mkdir -p "$(dirname "$_file")" 2>/dev/null || true
-  printf '\n# ludic\n%s\n' "$_line" >> "$_file" || {
+  printf '\n# ludic\n%s\n' "$_line" >> "$_file" 2>/dev/null || {
     warn "could not write ${_file}"
     return 0
   }
@@ -281,9 +281,14 @@ add_to_path() {
 
   add_line "${HOME}/.profile" "$_posix"
   add_line "${ZDOTDIR:-$HOME}/.zshenv" "$_posix"
-  # bash: only files that already exist, so we never shadow ~/.profile
+  # bash reads ~/.bashrc for a non-login interactive shell — what most Linux
+  # terminal emulators start — and it is safe to create, since its presence
+  # changes nothing else. ~/.bash_profile is only appended to when it already
+  # exists: creating that one would stop bash reading ~/.profile.
   [ -f "${HOME}/.bash_profile" ] && add_line "${HOME}/.bash_profile" "$_posix"
-  [ -f "${HOME}/.bashrc" ] && add_line "${HOME}/.bashrc" "$_posix"
+  if [ -f "${HOME}/.bashrc" ] || have bash; then
+    add_line "${HOME}/.bashrc" "$_posix"
+  fi
   if have fish || [ -f "${HOME}/.config/fish/config.fish" ]; then
     add_line "${HOME}/.config/fish/config.fish" "source \"${INSTALL_DIR}/env.fish\""
   fi
