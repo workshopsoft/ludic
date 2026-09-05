@@ -7,6 +7,15 @@ change type. Preview the next one with `ludic dev release --dry-run`.
 A released section may carry a hand-written summary paragraph above its groups
 (v0.2.0 has one); the generated bullets below it are not edited by hand.
 
+## v0.5.2 — 2026-09-05
+
+### Fixes
+
+- The installer also covers a non-login interactive `bash` — the shell most Linux
+  terminal emulators start, which reads only `~/.bashrc`. That file is now created
+  when it is missing (its presence changes nothing else about how bash starts),
+  while `~/.bash_profile` is still only appended to when it already exists, since
+  creating that one would stop bash reading `~/.profile`.
 ## v0.5.1 — 2026-09-05
 
 ### Fixes
