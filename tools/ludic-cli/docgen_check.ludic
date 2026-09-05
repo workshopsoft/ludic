@@ -1,4 +1,4 @@
-# docgen_check.ludic — `ludic dev docs-check [DIR]`: the coverage / integrity guard over
+# docgen_check.ludic — `ludic-dev docs-check [DIR]`: the coverage / integrity guard over
 # a generated docs site, ported from tools/docgen/check.py. Fails (exit 1) if the
 # pages contract is broken, an inventory symbol lacks a source file or page, a
 # token is documented on two pages, a namespace/section is split across dirs, or
@@ -94,7 +94,7 @@ function drop_md(fn: pointer) -> pointer {
 
 function cmd_docs_check() -> int {
   var site = "build/pages"
-  if arg_total() >= 3 { site = arg_n(2) }
+  if arg_count() >= 3 { site = arg(2) }
   let problems = new []pointer
   let warnings = new []pointer
 

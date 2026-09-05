@@ -23,7 +23,7 @@ for the language reference.
 Build the toolchain once, from the repository root:
 
 ```bash
-bin/ludic dev tools
+bin/ludic-dev tools
 ```
 
 That produces `bin/ludic-lsp` and `bin/ludic-fmt`, which the extension finds

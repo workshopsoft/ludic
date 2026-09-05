@@ -12,7 +12,7 @@
 #
 # This is the compiler, not the command line a user of the language meets: that
 # is `ludic` (tools/ludic-cli), which drives this. With no -o and no --run, IR
-# still goes to stdout — the contract `ludic dev reseed` and `ludic dev
+# still goes to stdout — the contract `ludic-dev reseed` and `ludic dev
 # bootstrap` rely on, so the bootstrap is untouched.
 
 # basename: the part of a path after the last '/'.
@@ -124,7 +124,7 @@ entry {
 
   # a game gets a window by default; a plain program stays headless. An explicit
   # flag always wins. The stdout-IR path (no target) also stays headless, which
-  # is what `ludic dev reseed` compiles the compiler itself with.
+  # is what `ludic-dev reseed` compiles the compiler itself with.
   let has_target = run or (out != null)
   if want == 1 { g_windowed = true }
   else if want == 2 { g_windowed = false }

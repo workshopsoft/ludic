@@ -1,9 +1,9 @@
-# docgen_gen.ludic — `ludic dev docs-gen`: the documentation-site generator, ported from
+# docgen_gen.ludic — `ludic-dev docs-gen`: the documentation-site generator, ported from
 # tools/docgen/gen.py. Parses docs/language/** (front-matter + bodies) and
 # docs/site/*, reads the asset templates in tools/docgen/assets, and emits the
 # whole pages-branch payload (per-symbol pages, namespace/color/api pages, the
 # landing page, ludic-highlight.js, symbols.json, .nojekyll) into --out. Output
-# is byte-for-byte identical to the Python generator (gated in ludic dev test).
+# is byte-for-byte identical to the Python generator (gated in ludic-dev test).
 #
 # Shared helpers (Sb, hesc/hescattr, the JSON writer, codeify, string utils)
 # live in docgen.ludic; the JSON reader (json_parse/j_get) in json.ludic.
@@ -951,11 +951,11 @@ function render_highlighter(sym: JVal) -> pointer {
 function cmd_docs_gen() -> int {
   var out = "build/pages"
   var i = 2
-  while i < arg_total() {
-    let a = arg_n(i)
+  while i < arg_count() {
+    let a = arg(i)
     if a == "--out" {
       i += 1
-      if i < arg_total() { out = arg_n(i) }
+      if i < arg_count() { out = arg(i) }
     }
     i += 1
   }

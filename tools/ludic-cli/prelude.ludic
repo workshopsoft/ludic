@@ -1,16 +1,14 @@
-# prelude.ludic — the shared runtime for `ludic`, the command-line interface.
+# prelude.ludic — the shared runtime for both command-line programs: `ludic`,
+# which a user of the language runs, and `ludic-dev`, the contributor tool that
+# builds the toolchain itself. Both are native binaries written in Ludic and
+# compiled by Ludic, driving clang, the compiler and the unix tools through
+# `run`. This fragment is the tiny standard library their commands lean on:
+# process control, file IO, strings and a colored PASS/FAIL test harness. It
+# carries no ECS, so both link as plain CLI programs.
 #
-# `ludic` is the one tool a user of the language ever runs: it creates projects,
-# compiles and runs them, resolves packages, formats, tests, and (under
-# `ludic dev`) drives every build/bootstrap/release task of the toolchain repo
-# itself. It is a single native binary written in Ludic and compiled by Ludic,
-# driving clang, the compiler and the unix tools through `run`. This fragment is
-# the tiny standard library the commands lean on: process control, file IO,
-# string trimming and a colored PASS/FAIL test harness. It carries no ECS, so it
-# links as a plain CLI program.
-#
-# The user-facing commands work from any directory. The `ludic dev` tasks run
-# relative to the current directory and expect the toolchain repo root.
+# `ludic`'s commands work from any directory, against whatever toolchain is
+# installed. `ludic-dev`'s tasks run relative to the current directory and expect
+# the toolchain repo root.
 
 # ---- file IO ----------------------------------------------------------------
 
@@ -53,7 +51,7 @@ function shq(cmd: pointer) -> bool { return exit_code(run(cmd)) == 0 }
 
 # ---- scratch files ------------------------------------------------------------
 # Every scratch file the runner writes lives under one per-process directory
-# (`$TMPDIR/x_<pid>`), so `ludic dev test` and an `x check-*` can run side by side without
+# (`$TMPDIR/x_<pid>`), so `ludic-dev test` and an `x check-*` can run side by side without
 # clobbering each other's captures. main removes it on the way out.
 var x_tmp: pointer = null
 
@@ -175,17 +173,11 @@ function report() -> int {
   return 1
 }
 
-# ---- command arguments -------------------------------------------------------
-#
-# A command reads its own arguments as arg_n(1), arg_n(2)… whether it was
-# reached as `ludic get` or as `ludic dev docs-check DIR`. main sets the shift
-# once per dispatch, so no command has to know how deep its namespace is —
-# getting that wrong is how `docs-check DIR` silently checked the wrong
-# directory.
-var g_shift: int = 0
-
-function arg_n(i: int) -> pointer { return arg(i + g_shift) }
-function arg_total() -> int { return arg_count() - g_shift }
+# a positional argument, or a default when it is absent
+function argn(i: int, dflt: pointer) -> pointer {
+  if (i < arg_count()) { return arg(i) }
+  return dflt
+}
 
 # ---- the toolchain install ---------------------------------------------------
 #
@@ -249,8 +241,121 @@ function tool(name: pointer) -> pointer {
 
 function ludicc() -> pointer { return tool("ludicc") }
 
-# true in a checkout of the toolchain repo itself, where the `ludic dev` tasks
-# have something to work on.
+# true in a checkout of the toolchain repo itself, where a seed is present to
+# assemble the compiler from.
 function in_toolchain_repo() -> bool {
   return file_exists("selfhost/ludicc.seed.ll") and file_exists("tools/ludic-cli/main.ludic")
 }
+
+# ---- strings ----------------------------------------------------------------
+# Shared by every command, so they live here rather than in whichever file
+# happened to need them first.
+
+# length of a NUL-terminated buffer
+function slen(s: pointer) -> int { var n = 0;  while s[n] != 0 { n += 1 };  return n }
+
+# a fresh NUL-terminated copy of s[start .. end) (end exclusive)
+function sslice(s: pointer, start: int, end: int) -> pointer {
+  if end < start { return "" }
+  let n = end - start
+  let b = bytes(n + 1)
+  var i = 0
+  while i < n { b[i] = s[start + i];  i += 1 }
+  b[n] = 0
+  return b
+}
+
+# index of the first byte of `needle` in `hay` at or after `from`, else -1
+function s_index(hay: pointer, needle: pointer, from: int) -> int {
+  let hn = slen(hay)
+  let nn = slen(needle)
+  if nn == 0 { return from }
+  var i = from
+  while i + nn <= hn {
+    var j = 0
+    while j < nn and hay[i + j] == needle[j] { j += 1 }
+    if j == nn { return i }
+    i += 1
+  }
+  return -1
+}
+
+function s_contains(hay: pointer, needle: pointer) -> bool { return s_index(hay, needle, 0) >= 0 }
+
+# does `hay` contain `needle` exactly at position `at`?
+function s_starts_at(hay: pointer, at: int, needle: pointer) -> bool {
+  let nn = slen(needle)
+  var i = 0
+  while i < nn { if hay[at + i] != needle[i] { return false };  i += 1 }
+  return true
+}
+
+# does `s` (a whole line) begin with `pre`?
+function s_starts(s: pointer, pre: pointer) -> bool {
+  let pn = slen(pre)
+  var i = 0
+  while i < pn { if s[i] != pre[i] { return false };  i += 1 }
+  return true
+}
+
+# is byte c an ASCII space/tab?
+function is_ws(c: int) -> bool { return c == ' ' or c == '\t' }
+
+# the substring from `start` up to the next '\n' (or end)
+function line_at(s: pointer, start: int) -> pointer {
+  var e = start
+  while s[e] != 0 and s[e] != '\n' { e += 1 }
+  return sslice(s, start, e)
+}
+
+# trim leading/trailing ASCII whitespace (space, tab, cr, nl)
+function s_trim(s: pointer) -> pointer {
+  let n = slen(s)
+  var a = 0
+  while a < n and (is_ws(s[a]) or s[a] == '\n' or s[a] == '\r') { a += 1 }
+  var b = n
+  while b > a and (is_ws(s[b - 1]) or s[b - 1] == '\n' or s[b - 1] == '\r') { b -= 1 }
+  return sslice(s, a, b)
+}
+
+# lowercase ASCII A-Z
+function lower_ascii(s: pointer) -> pointer {
+  let n = slen(s)
+  let b = bytes(n + 1)
+  var i = 0
+  while i < n {
+    var c = s[i]
+    if c >= 'A' and c <= 'Z' { c += 32 }
+    b[i] = c
+    i += 1
+  }
+  b[n] = 0
+  return b
+}
+
+# Python str.title(): capitalise the first letter of each alpha run, lower the rest
+function title_case(s: pointer) -> pointer {
+  let n = slen(s)
+  let b = bytes(n + 1)
+  var i = 0
+  var prev_alpha = false
+  while i < n {
+    var c = s[i]
+    let al = (c >= 'A' and c <= 'Z') or (c >= 'a' and c <= 'z')
+    if al {
+      if prev_alpha { if c >= 'A' and c <= 'Z' { c += 32 } }
+      else { if c >= 'a' and c <= 'z' { c -= 32 } }
+    }
+    b[i] = c
+    prev_alpha = al
+    i += 1
+  }
+  b[n] = 0
+  return b
+}
+
+# ---- the C toolchain --------------------------------------------------------
+# clang assembles the emitted IR and drives the linker. -Wno-override-module for
+# the same reason the compiler itself passes it (see selfhost/main.ludic): the IR
+# names no target triple, so clang substitutes the host's and warns every time.
+function cc() -> pointer { return getenv_or("LUDIC_CC", "clang") + " -Wno-override-module" }

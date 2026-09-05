@@ -19,23 +19,24 @@ From a clean checkout, one line lifts the toolchain off the seed:
 
 ```bash
 mkdir -p bin && clang selfhost/ludicc.seed.ll -o bin/ludicc
-bin/ludicc tools/ludic-cli/main.ludic -o bin/ludic
+bin/ludicc tools/ludic-cli/dev.ludic -o bin/ludic-dev
 ```
 
-That gives you `bin/ludic`, the CLI — the same binary users install, which also
-carries the toolchain's own tasks under `ludic dev` and replaces every build/test
-shell script in the repo. From then on it builds everything — including itself:
+That gives you `bin/ludic-dev`, the contributor tool: it replaces every
+build/test shell script in the repo and builds everything, including itself and
+`bin/ludic`. It is deliberately a separate binary from the `ludic` users install
+— that one carries none of these tasks and is never asked to.
 
 ```bash
-bin/ludic dev build      # the whole toolchain into bin/ (ludicc, ludic, ludic-fmt, ludic-lsp)
-bin/ludic dev help       # every contributor task
+bin/ludic-dev build      # the whole toolchain into bin/ (ludicc, ludic, ludic-dev, ludic-fmt, ludic-lsp)
+bin/ludic-dev help       # every contributor task
 bin/ludic help           # what a user of the language sees
 ```
 
-Always run `ludic dev` from the repository root, so `assets/` and `selfhost/`
-resolve. (A checkout is an install root: `bin/` beside `runtime/` and
-`packages/`, exactly the shape `install.sh` lays down under `~/.ludic`. That is
-why the same binary serves both.)
+Always run `ludic-dev` from the repository root, so `assets/` and `selfhost/`
+resolve. (A checkout is also an install root: `bin/` beside `runtime/` and
+`packages/`, exactly the shape `install.sh` lays down under `~/.ludic`, which is
+why `bin/ludic` behaves there exactly as an installed one does.)
 
 ## The development loop
 
@@ -43,17 +44,17 @@ When you change the compiler or runtime, prove the self-hosting fixpoint still
 holds before you push:
 
 ```bash
-bin/ludic dev reseed          # regenerate selfhost/ludicc.seed.ll after a compiler change
-bin/ludic dev bootstrap-cfree # rebuild the compiler from the seed with NO C compiler in the loop
-bin/ludic dev test            # the full regression suite
+bin/ludic-dev reseed          # regenerate selfhost/ludicc.seed.ll after a compiler change
+bin/ludic-dev bootstrap-cfree # rebuild the compiler from the seed with NO C compiler in the loop
+bin/ludic-dev test            # the full regression suite
 ```
 
 Other useful targets:
 
 ```bash
 bin/ludic build <file.ludic> [--headless]     # compile a program to a native app in build/
-bin/ludic dev selfhost-test                   # correctness + bootstrap fixpoints
-bin/ludic dev test-tools                      # the editor-toolchain suite (ludic-fmt, ludic-lsp)
+bin/ludic-dev selfhost-test                   # correctness + bootstrap fixpoints
+bin/ludic-dev test-tools                      # the editor-toolchain suite (ludic-fmt, ludic-lsp)
 bin/ludic clean                               # remove build/, out.ppm and stray artifacts
 ```
 
@@ -67,7 +68,7 @@ The stdlib lives in the runtime (`runtime/`) and is surfaced as namespaces
    and register its id in `tools/docgen/inventory.json`. Each documented
    namespace gets exactly **one** directory (the docs check enforces this).
 3. Add or extend an example under `examples/` and a case in the test suite.
-4. Run `bin/ludic dev docs-gen --out build/pages && bin/ludic dev docs-check build/pages` — the
+4. Run `bin/ludic-dev docs-gen --out build/pages && bin/ludic-dev docs-check build/pages` — the
    check fails if any inventory symbol lacks a page or is still seed text.
 5. Add a **changeset** for the user-facing change: a small file under
    [`changes/`](changes/README.md) with a `bump:` level and a one-line summary.
@@ -82,22 +83,22 @@ Releases are changeset-driven. Every user-facing change ships with a changeset
 (step 5 above). Read the next release before cutting it:
 
 ```bash
-ludic dev release --dry-run             # render the CHANGELOG section, write nothing
+ludic-dev release --dry-run             # render the CHANGELOG section, write nothing
 ```
 
 Then cut it:
 
 ```bash
-ludic dev release [major|minor|patch]   # omit the level to derive it from the changesets
+ludic-dev release [major|minor|patch]   # omit the level to derive it from the changesets
 git push origin main --follow-tags
 ```
 
-`ludic dev release` aggregates the pending changesets into a new `CHANGELOG.md` section
+`ludic-dev release` aggregates the pending changesets into a new `CHANGELOG.md` section
 — grouped by change type, with each changeset's markdown kept intact — bumps
 `VERSION`, commits `chore(release): vX.Y.Z`, and tags it.
 
 **Pushing the tag is what publishes.** The `release` workflow builds the
-toolchain from the IR seed, runs `ludic dev test`, `ludic dev test-tools` and `ludic dev bootstrap-cfree`
+toolchain from the IR seed, runs `ludic-dev test`, `ludic-dev test-tools` and `ludic-dev bootstrap-cfree`
 against the tagged tree, and only then creates the Forgejo release — with the
 source tarball, a Linux toolchain build, a `.sha256` beside each, and that version's
 `CHANGELOG.md` section as the notes. It refuses to publish if the tag and
@@ -113,10 +114,10 @@ macOS artifacts cannot be produced on the Linux runner — a `darwin-arm64` buil
 needs a macOS host, and there is no cross-compile path (it would need the Xcode
 SDK and a Mach-O linker). Attaching one therefore means either registering a
 macOS runner and giving it a job, or running the same command CI runs from a
-Mac. Either way it is `ludic dev publish`, which only adds assets the release is missing:
+Mac. Either way it is `ludic-dev publish`, which only adds assets the release is missing:
 
 ```bash
-FORGEJO_TOKEN=… ludic dev publish v0.4.0
+FORGEJO_TOKEN=… ludic-dev publish v0.4.0
 ```
 
 Checksums are one `.sha256` file per artifact rather than a single `SHA256SUMS`,
@@ -138,14 +139,14 @@ broken link at a time. Everything host-shaped has an environment override, so a
 move can be rehearsed before it is committed.
 
 **Hosts and URLs.** The install one-liner is served from the documentation site,
-which publishes `install.sh` beside the pages that quote it (`ludic dev docs-gen`
+which publishes `install.sh` beside the pages that quote it (`ludic-dev docs-gen`
 copies it in; `docs-check` fails without it). Change the host in:
 
 | Where | What |
 |---|---|
 | `install.sh` | `REPO_API`, `REPO_URL`, `INSTALL_URL` — each `${LUDIC_…:-default}`, so `LUDIC_REPO_URL=… sh install.sh` tests a move without editing anything |
 | `tools/ludic-cli/project.ludic` | `install_url()` (`$LUDIC_INSTALL_URL`), used by `ludic upgrade` and `ludic doctor` |
-| `tools/ludic-cli/forgejo.ludic` | `FORGEJO_API_DEFAULT` (`$LUDIC_FORGEJO_API`), used by `ludic dev publish` |
+| `tools/ludic-cli/forgejo.ludic` | `FORGEJO_API_DEFAULT` (`$LUDIC_FORGEJO_API`), used by `ludic-dev publish` |
 | `docs/site/site.json` | `repo_url`, the `start.terminal` one-liner, and the doc links in `nav_links` |
 | Prose | `README.md`, `COMPILING.md`, `tools/editors/README.md`, and the two editor plugins' "server not found" messages |
 
@@ -155,9 +156,10 @@ copies it in; `docs-check` fails without it). Change the host in:
   `is_ludic_file`), every editor asset (`tools/editors/shared/*.json`,
   `vscode/package.json`, the JetBrains `LudicFileType`), and every source file
   in the tree.
-- **The binaries** `ludic`, `ludicc`, `ludic-fmt`, `ludic-lsp` — `build.ludic`'s
-  `cmd_dev_build`, the release staging in `release.ludic`, `install.sh`, the
-  editors' executable-name lists.
+- **The binaries** `ludic`, `ludicc`, `ludic-dev`, `ludic-fmt`, `ludic-lsp` —
+  `cmd_dev_build` in `toolchain.ludic`, the release staging in `release.ludic`,
+  `install.sh`, the editors' executable-name lists. Only the first, third and
+  fourth of those ship: `ludic-dev` is built from a checkout and stays there.
 - **The install root** `~/.ludic` and the source directories `tools/ludic-cli/`,
   `tools/ludic-tools/`, `packages/ludic.*`.
 - **The environment variables** `LUDIC_HOME`, `LUDIC_CC`, `LUDIC_MODULES`,
@@ -167,11 +169,11 @@ copies it in; `docs-check` fails without it). Change the host in:
 - **Identifiers that are contracts with other software**: the TextMate scope
   `source.ludic`, the VS Code language id `ludic`, the JetBrains plugin id
   `io.ludic.ide`, and the `ludic` code-fence tag understood by the Markdown
-  injection and by `ludic dev check-docs`.
+  injection and by `ludic-dev check-docs`.
 - **The prose**: `README.md`, `LANGUAGE.md`, `COMPILING.md`, `docs/**`, and
   `docs/site/site.json`'s `brand`/`meta`.
 
-`ludic dev test` is the safety net for the mechanical part — it builds the
+`ludic-dev test` is the safety net for the mechanical part — it builds the
 toolchain, stages an install, and runs `new` → `build` → `test` through it, so a
 half-finished rename fails there rather than in someone's terminal.
 
@@ -239,7 +241,7 @@ non-destructive version of "tidy the history" without touching a single commit.
 ## Pull requests
 
 - Base your branch on `main`.
-- Ensure `bin/ludic dev test` (and `bin/ludic dev bootstrap-cfree` for compiler/runtime changes)
+- Ensure `bin/ludic-dev test` (and `bin/ludic-dev bootstrap-cfree` for compiler/runtime changes)
   pass, and that `ludic-fmt` leaves your files unchanged.
 - Fill in the PR template checklist. Reference the issue you close with
   `Closes #NN` in the description or a commit message.

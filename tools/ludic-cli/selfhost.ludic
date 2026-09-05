@@ -6,10 +6,6 @@
 # now lives here once, in selfhost_frags().
 
 # the C toolchain driver (clang) that assembles and links the emitted IR
-# The C toolchain used to assemble and link IR. -Wno-override-module for the
-# same reason the compiler itself passes it (see selfhost/main.ludic): the IR
-# names no target triple, so clang substitutes the host's and warns every time.
-function cc() -> pointer { return getenv_or("LUDIC_CC", "clang") + " -Wno-override-module" }
 
 # the self-host compiler's source fragments, in link order. This is THE list;
 # the old scripts each carried their own copy.
@@ -95,21 +91,9 @@ function line_count(path: pointer) -> pointer {
   return capture_line(`wc -l < {path}`)
 }
 
-# ensure bin/ludicc exists and is current with the seed. Built from the checked-in
-# IR seed with clang alone — no C compiler is ever involved.
-function ensure_ludicc() -> void {
-  if not in_toolchain_repo() { return }
-  run("mkdir -p bin build")
-  if (not is_exec("bin/ludicc")) or newer("selfhost/ludicc.seed.ll", "bin/ludicc") {
-    print("cc: selfhost/ludicc.seed.ll -> bin/ludicc  (from the IR seed, no C compiler)")
-    if not shq(`{cc()} selfhost/ludicc.seed.ll -o bin/ludicc`) {
-      err("ludic: could not assemble the seed\n"); exit(1)
-    }
-  }
-}
 
 # ---- selfhost-build: assemble + compile the self-host compiler ---------------
-# usage: ludic dev selfhost-build [ludicc] [outbin]   (defaults: bin/ludicc, build/selfhost)
+# usage: ludic-dev selfhost-build [ludicc] [outbin]   (defaults: bin/ludicc, build/selfhost)
 function cmd_selfhost_build(lc: pointer, outbin: pointer) -> int {
   run("mkdir -p build")
   let src = "build/selfhost.ludic"
@@ -123,7 +107,7 @@ function cmd_selfhost_build(lc: pointer, outbin: pointer) -> int {
 }
 
 # ---- sh-compile: compile one .ludic with a given selfhost binary and link ----
-# usage: ludic dev sh-compile <selfhost-binary> <input.ludic> <output-binary>
+# usage: ludic-dev sh-compile <selfhost-binary> <input.ludic> <output-binary>
 function cmd_sh_compile(shbin: pointer, in: pointer, outbin: pointer) -> int {
   if not shq(`{shbin} {in} > {outbin}.ll`) { return 1 }
   if not shq(`{cc()} {outbin}.ll -o {outbin}`) { return 1 }
@@ -144,7 +128,7 @@ function game_build_ok(shbin: pointer, game: pointer, outbin: pointer) -> bool {
   return true
 }
 
-# usage: ludic dev game-build <selfhost-binary> <game.ludic> <out-binary>
+# usage: ludic-dev game-build <selfhost-binary> <game.ludic> <out-binary>
 function cmd_game_build(shbin: pointer, game: pointer, outbin: pointer) -> int {
   if game_build_ok(shbin, game, outbin) { print(`built {outbin}`); return 0 }
   print("build failed:")
@@ -194,7 +178,7 @@ function cmd_bootstrap_cfree() -> int {
     print("  out.ll == seed.ll — the compiler rebuilds itself with no C compiler")
     return 0
   }
-  print("  out.ll != seed.ll (seed is stale — regenerate with: ludic dev reseed)")
+  print("  out.ll != seed.ll (seed is stale — regenerate with: ludic-dev reseed)")
   out(capture("diff build/cfree/out.ll selfhost/ludicc.seed.ll | head"))
   return 1
 }
@@ -203,7 +187,7 @@ function cmd_bootstrap_cfree() -> int {
 # Uses the CURRENT seed to build the new one, compiling twice so the seed is a
 # fixed point of the NEW compiler, not a one-step image of the old. Falls back to
 # bin/ludicc only if the seed itself no longer assembles. Verify with
-# `ludic dev bootstrap-cfree` afterwards.
+# `ludic-dev bootstrap-cfree` afterwards.
 function cmd_reseed() -> int {
   run("mkdir -p build/cfree")
   if not write_selfhost_src("build/cfree/selfhost.ludic") { print("FAIL: write source"); return 1 }

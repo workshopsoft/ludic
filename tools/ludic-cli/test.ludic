@@ -91,6 +91,16 @@ function install_layout_case() -> void {
   if ver != `ludic {s_trim(read_file("VERSION"))}` {
     bad2("an installed `ludic version` reports the install's VERSION", `got [{ver}]`); return
   }
+  # and the shipped CLI carries none of the contributor tasks: `ludic dev …` is
+  # not a command there, it is a pointer at the tool that has them.
+  let devlog = `{work}/dev.out`
+  let devrc = sh(`cd {work}/demo && {envp} ludic dev build > {devlog} 2>&1`)
+  var devout = read_file(devlog)
+  if devout == null { devout = "" }
+  if devrc == 0 or not s_contains(devout, "ludic-dev") {
+    bad2("an installed `ludic` must not carry the toolchain's own tasks", `rc {string(devrc)}, said [{s_trim(devout)}]`)
+    return
+  }
   ok(lbl)
 }
 
@@ -161,7 +171,7 @@ function panic_case() -> void {
   else { bad2("panic", `rc={string(rc)} err=[{msg}]`) }
 }
 
-# issue #45: `bin/ludic dev test --coverage`. Compile each test-spec with `--coverage`,
+# issue #45: `bin/ludic-dev test --coverage`. Compile each test-spec with `--coverage`,
 # run it with LUDIC_COVERAGE pointed at a per-file dump, then aggregate the dumps
 # into a clean per-file line-coverage report. The instrumentation is flag-gated,
 # so this reuses the same seed-built bin/ludicc the rest of the suite does.
@@ -211,7 +221,7 @@ function cmd_test_coverage() -> int {
   }
   COV_COVERED = 0
   COV_TOTAL = 0
-  print("== line coverage (bin/ludic dev test --coverage) ==")
+  print("== line coverage (bin/ludic-dev test --coverage) ==")
   cov_one("library/coverage", `{tmp_dir()}/cov_out`)
   cov_one("library/testing", `{tmp_dir()}/cov_out`)
   var pct = 100
@@ -244,11 +254,11 @@ function cmd_dev_test() -> int {
   game_case("games/chronorift", "ddddwwwwaassK")
 
   print("== self-hosting and the bootstrap fixpoints ==")
-  run(`bin/ludic dev selfhost-test > {tmp_dir()}/sh.out 2>&1`)
+  run(`bin/ludic-dev selfhost-test > {tmp_dir()}/sh.out 2>&1`)
   if shq(`grep -q 'gen2.ll == gen3.ll' {tmp_dir()}/sh.out`) { ok("the compiler reproduces itself (fixpoint)") } else { bad("fixpoint") }
   if shq(`grep -q 'no C compiler' {tmp_dir()}/sh.out`) { ok("the compiler rebuilds itself from the seed, C-free") } else { bad("C-free bootstrap") }
   let corr = capture_line(`grep -c PASS {tmp_dir()}/sh.out`)
-  ok(`self-host suite: {corr} checks passed (see: ludic dev selfhost-test)`)
+  ok(`self-host suite: {corr} checks passed (see: ludic-dev selfhost-test)`)
 
   print("== documented syntax stays compilable (guards against spec/compiler drift) ==")
   qsmoke("lang/qdecl")
@@ -405,9 +415,9 @@ function cmd_dev_test() -> int {
   print("== the compiler and the CLI (ludicc / ludic) ==")
   # ludicc comes out of the IR seed with clang alone; the CLI is then compiled
   # by it, from Ludic.
-  if shq(`bin/ludic dev build-cli > {tmp_dir()}/cli.out 2>&1`) and is_exec("bin/ludicc") {
-    ok("ludic dev build-cli builds bin/ludicc from the seed (clang-only)")
-  } else { bad2("ludic dev build-cli", capture_line(`tail -1 {tmp_dir()}/cli.out`)) }
+  if shq(`bin/ludic-dev build-cli > {tmp_dir()}/cli.out 2>&1`) and is_exec("bin/ludicc") {
+    ok("ludic-dev build-cli builds bin/ludicc from the seed (clang-only)")
+  } else { bad2("ludic-dev build-cli", capture_line(`tail -1 {tmp_dir()}/cli.out`)) }
 
   # ludicc -o drives clang to a native binary. A game links windowed by default
   # (LUDIC_HOME points the linker at runtime/native/cocoa.ll) — that path is
@@ -456,27 +466,27 @@ function cmd_dev_test() -> int {
   # store + ludic_modules/ links + build, run as its own hermetic suite (it
   # stands up throwaway git repos, so like selfhost-test it runs as a sub-process
   # and this stage checks its footer).
-  print("== package manager (ludic dev test-pkg) ==")
-  run(`bin/ludic dev test-pkg > {tmp_dir()}/pkg.out 2>&1`)
+  print("== package manager (ludic-dev test-pkg) ==")
+  run(`bin/ludic-dev test-pkg > {tmp_dir()}/pkg.out 2>&1`)
   if shq(`grep -q '0 failed' {tmp_dir()}/pkg.out`) {
     let pc = capture_line(`grep -c PASS {tmp_dir()}/pkg.out`)
-    ok(`package-manager suite: {pc} checks passed (see: ludic dev test-pkg)`)
-  } else { bad2("ludic dev test-pkg", capture_line(`grep -i fail {tmp_dir()}/pkg.out | head -1`)) }
+    ok(`package-manager suite: {pc} checks passed (see: ludic-dev test-pkg)`)
+  } else { bad2("ludic-dev test-pkg", capture_line(`grep -i fail {tmp_dir()}/pkg.out | head -1`)) }
 
   # docs site generator + guard, in Ludic (no Python). docs-gen emits the whole
   # pages payload; docs-check is its coverage/integrity guard; docs-palette is
   # the named-colour source of truth (its --check mode regenerates the tracked
   # emit_color.ludic + palette.json into scratch files and compares).
   print("== docs site (Ludic generator, no Python) ==")
-  if shq(`bin/ludic dev docs-gen --out {tmp_dir()}/docs > {tmp_dir()}/docs.out 2>&1`) {
-    ok("ludic dev docs-gen  ->  the pages-branch payload")
-  } else { bad2("ludic dev docs-gen", capture_line(`tail -1 {tmp_dir()}/docs.out`)) }
-  if shq(`bin/ludic dev docs-check {tmp_dir()}/docs > {tmp_dir()}/docs_chk.out 2>&1`) {
-    ok("ludic dev docs-check passes on the generated site")
-  } else { bad2("ludic dev docs-check", capture_line(`tail -1 {tmp_dir()}/docs_chk.out`)) }
-  if shq(`bin/ludic dev docs-palette --check > {tmp_dir()}/pal.out 2>&1`) {
-    ok("ludic dev docs-palette regenerates emit_color.ludic + palette.json byte-identically")
-  } else { bad2("ludic dev docs-palette --check", capture_line(`tail -1 {tmp_dir()}/pal.out`)) }
+  if shq(`bin/ludic-dev docs-gen --out {tmp_dir()}/docs > {tmp_dir()}/docs.out 2>&1`) {
+    ok("ludic-dev docs-gen  ->  the pages-branch payload")
+  } else { bad2("ludic-dev docs-gen", capture_line(`tail -1 {tmp_dir()}/docs.out`)) }
+  if shq(`bin/ludic-dev docs-check {tmp_dir()}/docs > {tmp_dir()}/docs_chk.out 2>&1`) {
+    ok("ludic-dev docs-check passes on the generated site")
+  } else { bad2("ludic-dev docs-check", capture_line(`tail -1 {tmp_dir()}/docs_chk.out`)) }
+  if shq(`bin/ludic-dev docs-palette --check > {tmp_dir()}/pal.out 2>&1`) {
+    ok("ludic-dev docs-palette regenerates emit_color.ludic + palette.json byte-identically")
+  } else { bad2("ludic-dev docs-palette --check", capture_line(`tail -1 {tmp_dir()}/pal.out`)) }
 
   return report()
 }

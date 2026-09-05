@@ -11,7 +11,7 @@
 #   25   @OnDetach(Shield): reads the outgoing amount 5, prints 5 + 20
 #   0    the Shield is gone — nothing matches
 #
-#   bin/ludic dev game-build bin/ludicc examples/lang/detach.ludic /tmp/detach
+#   bin/ludic-dev game-build bin/ludicc examples/lang/detach.ludic /tmp/detach
 #   /tmp/detach </dev/null
 program Detach {
   property Tag    { v: int = 0 }

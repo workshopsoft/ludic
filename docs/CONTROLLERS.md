@@ -74,7 +74,7 @@ LUDIC_MODULES=packages ludicc examples/games/platformer_demo.ludic -o platformer
 Worked, self-checking examples for every controller live in `examples/games/`
 (`platformer_demo`, `platformer_scaffolding`, `shooter_demo`, `npcai_demo`, `rpg_demo`)
 and `examples/library/gameplay_foundation.ludic`; each is a deterministic regression
-case in `ludic dev test`.
+case in `ludic-dev test`.
 
 ## What we deliberately do NOT do
 

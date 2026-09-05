@@ -77,16 +77,18 @@ of them with `ludic build examples/games/snake.ludic`.
 
 ### Building from a checkout
 
-Contributors work from the repository, where the same CLI carries the toolchain's
-own tasks under `ludic dev`. Bootstrapping is the only step Ludic cannot do for
-itself, since compiling Ludic needs a compiler — clang assembles the checked-in
-IR seed, and that compiler builds the rest:
+Contributors also get `ludic-dev`, a second binary carrying the toolchain's own
+tasks — building the compiler, the suites, the docs site, releases. It is built
+from a checkout and is not part of an install, so nothing a user runs is mixed
+up with it. Bootstrapping is the only step Ludic cannot do for itself, since
+compiling Ludic needs a compiler — clang assembles the checked-in IR seed, and
+that compiler builds the rest:
 
 ```bash
 mkdir -p bin && clang selfhost/ludicc.seed.ll -o bin/ludicc
-bin/ludicc tools/ludic-cli/main.ludic -o bin/ludic
-bin/ludic dev build     # -> bin/{ludicc,ludic,ludic-fmt,ludic-lsp}
-bin/ludic dev test      # the regression suite
+bin/ludicc tools/ludic-cli/dev.ludic -o bin/ludic-dev
+bin/ludic-dev build     # -> bin/{ludicc,ludic,ludic-dev,ludic-fmt,ludic-lsp}
+bin/ludic-dev test      # the regression suite
 ```
 
 ## The language
@@ -154,7 +156,7 @@ capability of the retired C compiler and has not been re-wired on the
 self-hosted toolchain. `--target` cross-compilation and `--shared` libraries are
 in the same position. See [COMPILING.md](COMPILING.md).
 
-Releases follow SemVer and are cut from changesets by `ludic dev release`, then built
+Releases follow SemVer and are cut from changesets by `ludic-dev release`, then built
 and published by CI from the tag; see [CHANGELOG.md](CHANGELOG.md).
 
 ## Contributing

@@ -1,0 +1,137 @@
+# ludic-dev — the contributor tool for the Ludic toolchain itself: building the
+# compiler from its IR seed, the regression suites, the docs site, releases.
+#
+# It is a separate binary from `ludic` on purpose. Those two have different
+# audiences and nothing in common but the compile step: a person who installed
+# the language cannot bootstrap a compiler they do not have the source of, and
+# should not have to read past a screen of tasks that only mean something inside
+# this repository. So `ludic` ships and `ludic-dev` does not — it is built from a
+# checkout, lives in bin/, and is left out of every release artifact.
+#
+# From a clean checkout (the one step Ludic cannot do for itself, since compiling
+# Ludic needs a compiler):
+#
+#   mkdir -p bin && clang selfhost/ludicc.seed.ll -o bin/ludicc
+#   bin/ludicc tools/ludic-cli/dev.ludic -o bin/ludic-dev
+#   bin/ludic-dev build
+#
+# Thereafter `ludic-dev build` rebuilds the whole toolchain — bin/ludic, this
+# tool, the compiler, the editor tools. Run it from the repository root.
+program LudicDev {
+  import "prelude.ludic"
+  import "build.ludic"
+  import "toolchain.ludic"
+  import "selfhost.ludic"
+  import "tools.ludic"
+  import "selfhost_test.ludic"
+  import "test.ludic"
+  import "json.ludic"
+  import "lsp_test.ludic"
+  import "forgejo.ludic"
+  import "checks.ludic"
+  import "docgen.ludic"
+  import "docgen_gen.ludic"
+  import "docgen_check.ludic"
+  import "release.ludic"
+  import "pkg.ludic"
+  import "pkg_test.ludic"
+
+  function usage() -> void {
+    print("ludic-dev — tasks for a checkout of the Ludic toolchain (run from the repository root)")
+    print("")
+    print("This is the contributor tool. The language's own command line is `ludic`,")
+    print("which ships to users and carries none of the below.")
+    print("")
+    print("build:")
+    print("  build                         build the whole toolchain into bin/ (ludicc, ludic, ludic-dev, ludic-fmt, ludic-lsp)")
+    print("  build-cli                     build just bin/ludicc from the IR seed")
+    print("  tools [--install] [--test]    build the editor toolchain (ludic-fmt, ludic-lsp)")
+    print("  clean                         remove build/")
+    print("")
+    print("test:")
+    print("  test                          the full regression suite")
+    print("  test --coverage               per-file line coverage over the test specs")
+    print("  test-pkg                      the package-manager suite (hermetic git repos, offline)")
+    print("  selfhost-test                 the self-hosting suite (correctness + bootstrap fixpoints)")
+    print("  test-tools                    the editor-toolchain suite")
+    print("  test-lsp                      drive bin/ludic-lsp over real LSP traffic (exit 2 = no server)")
+    print("  golden                        regenerate selfhost/golden/renders.sha256 (review with git diff)")
+    print("")
+    print("doc / lint checks (Ludic, no Python):")
+    print("  check-docs                    every ```ludic doc fence parses (or is marked skip/expect-error)")
+    print("  check-impl                    every implemented feature has a docs/language page")
+    print("  check-vocabulary              the vocabulary is in sync across grammar / lexer / header / parser")
+    print("  lint-asset <file>             validate one editor .json / .xml asset")
+    print("  docs-gen [--out DIR]          generate the documentation site (default build/pages)")
+    print("  docs-check [DIR]              coverage/integrity guard over a generated docs site")
+    print("  docs-palette [--check]        regenerate emit_color.ludic + palette.json from the palette table")
+    print("")
+    print("release:")
+    print("  release [major|minor|patch] [--dry-run] [--publish]")
+    print("                                cut a release: CHANGELOG + VERSION bump + tag (+ Forgejo release)")
+    print("  publish [vX.Y.Z]              publish an already-tagged release; what CI runs on a tag push")
+    print("  changelog-section <ver>       print that release's CHANGELOG.md section")
+    print("  changelog-render <ver> <date> <dir>")
+    print("                                render a CHANGELOG section from a directory of changesets")
+    print("")
+    print("self-host internals:")
+    print("  selfhost-build [ludicc] [out] assemble + compile the self-host compiler")
+    print("  bootstrap                     the self-hosting fixpoint proof (seeded from bin/ludicc)")
+    print("  bootstrap-cfree               rebuild the compiler from the seed with no C compiler")
+    print("  reseed                        regenerate selfhost/ludicc.seed.ll after a compiler change")
+    print("  game-build <ludicc> <game.ludic> <out>   compile a Ludic game (headless)")
+    print("  sh-compile <ludicc> <in.ludic> <out>     compile + link one .ludic file")
+  }
+
+  function dispatch(cmd: pointer) -> int {
+    if (cmd == "build") { return cmd_dev_build() }
+    if (cmd == "build-cli") { return cmd_dev_build_cli() }
+    if (cmd == "tools") { return cmd_tools() }
+    if (cmd == "clean") { return cmd_clean() }
+    if (cmd == "test") {
+      if (argn(2, "") == "--coverage") { return cmd_test_coverage() }
+      return cmd_dev_test()
+    }
+    if (cmd == "selfhost-test") { return cmd_selfhost_test() }
+    if (cmd == "test-tools") { return cmd_test_tools() }
+    if (cmd == "test-lsp") { return cmd_test_lsp() }
+    if (cmd == "test-pkg") { return cmd_test_pkg() }
+    if (cmd == "check-docs") { return cmd_check_docs() }
+    if (cmd == "check-impl") { return cmd_check_impl() }
+    if (cmd == "check-vocabulary") { return cmd_check_vocab() }
+    if (cmd == "lint-asset") { return cmd_lint_asset() }
+    if (cmd == "docs-palette") { return cmd_docs_palette() }
+    if (cmd == "docs-gen") { return cmd_docs_gen() }
+    if (cmd == "docs-check") { return cmd_docs_check() }
+    if (cmd == "golden") { return cmd_golden() }
+    if (cmd == "bootstrap") { return cmd_bootstrap() }
+    if (cmd == "bootstrap-cfree") { return cmd_bootstrap_cfree() }
+    if (cmd == "reseed") { return cmd_reseed() }
+    if (cmd == "selfhost-build") { return cmd_selfhost_build(argn(2, "bin/ludicc"), argn(3, "build/selfhost")) }
+    if (cmd == "sh-compile") {
+      if (arg_count() < 5) { err("usage: ludic-dev sh-compile <ludicc> <in.ludic> <out>\n");  exit(1) }
+      return cmd_sh_compile(arg(2), arg(3), arg(4))
+    }
+    if (cmd == "game-build") {
+      if (arg_count() < 5) { err("usage: ludic-dev game-build <ludicc> <game.ludic> <out>\n");  exit(1) }
+      return cmd_game_build(arg(2), arg(3), arg(4))
+    }
+    if (cmd == "release") { return cmd_release() }
+    if (cmd == "changelog-render") { return cmd_changelog_render() }
+    if (cmd == "changelog-section") { return cmd_changelog_section() }
+    if (cmd == "publish") { return cmd_publish() }
+    if (cmd == "help") or (cmd == "--help") or (cmd == "-h") { usage();  return 0 }
+    return -1
+  }
+
+  entry {
+    if (arg_count() < 2) { usage();  exit(1) }
+    let cmd = arg(1)
+    let code = dispatch(cmd)
+    tmp_cleanup()
+    if code >= 0 { exit(code) }
+    err(`ludic-dev: unknown task '{cmd}'\n`)
+    usage()
+    exit(1)
+  }
+}

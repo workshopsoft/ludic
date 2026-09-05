@@ -31,11 +31,11 @@ it needs no path configuration.
 From a checkout, build them with:
 
 ```bash
-bin/ludic dev tools
+bin/ludic-dev tools
 ```
 
 Produces `bin/ludic-fmt` and `bin/ludic-lsp`. Add `--install` to symlink both
-into `~/.local/bin`, `--test` to run `bin/ludic dev test-tools` afterwards.
+into `~/.local/bin`, `--test` to run `bin/ludic-dev test-tools` afterwards.
 
 ## What you get, in any editor
 
@@ -118,7 +118,7 @@ ln -sf ../../tools/git-hooks/pre-commit .git/hooks/pre-commit
 
 The hook runs `ludic-fmt --check` over the staged `.ludic` and `.md` files only,
 and does nothing at all when `bin/ludic-fmt` has not been built — so it never
-blocks a commit on a machine that has not run `bin/ludic dev tools`.
+blocks a commit on a machine that has not run `bin/ludic-dev tools`.
 
 ## Why the formatter is not `ludicc --fmt`
 
@@ -140,7 +140,7 @@ both spellings are what the language documents and uses:
   (`const R_DIR:   int = 0    # 0 up`) survive a save;
 - `id=Root` inside a `ui` block and `{Enemy}` inside a query stay tight.
 
-`bin/ludic dev test-tools` checks the property that matters: formatting every file in
+`bin/ludic-dev test-tools` checks the property that matters: formatting every file in
 the tree and re-running the *compiler's* canonical dump produces byte-identical
 output. The formatter cannot change what a program means.
 
@@ -149,8 +149,8 @@ output. The formatter cannot change what a program means.
 The vocabulary is written down in five places that cannot include each other —
 the compiler's two tables, `ludic_syntax.h`, the TextMate grammar (JSON), and the
 JetBrains lexer (Kotlin). Adding a builtin and forgetting the rest is silent
-failure, so `bin/ludic dev check-vocabulary` (written in Ludic) compares all five, and
-`bin/ludic dev test-tools` runs it.
+failure, so `bin/ludic-dev check-vocabulary` (written in Ludic) compares all five, and
+`bin/ludic-dev test-tools` runs it.
 
 When you add a keyword or builtin: put it in `ludic_syntax.h`, then run
-`bin/ludic dev test-tools` and let it tell you which copies still need it.
+`bin/ludic-dev test-tools` and let it tell you which copies still need it.

@@ -17,7 +17,7 @@ import java.io.File
 
 /**
  * Where to find the toolchain. Both paths may be left blank, in which case the
- * plugin looks under the project root for what `bin/ludic dev tools` produces —
+ * plugin looks under the project root for what `bin/ludic-dev tools` produces —
  * which is the case for anyone working in the Ludic repository itself.
  */
 @Service(Service.Level.PROJECT)
@@ -121,7 +121,7 @@ class LudicConnectionProvider(private val project: Project) : ProcessStreamConne
             append("  on PATH, and in ~/.ludic/bin.\n")
         }
         append("\nInstall the toolchain (curl -fsSL https://workshopsoft.pages.workshopsoft.io/ludic/install.sh | sh), ")
-        append("build it with `bin/ludic dev tools` from a checkout, ")
+        append("build it with `bin/ludic-dev tools` from a checkout, ")
         append("or set the path in Settings | Languages & Frameworks | Ludic. ")
         append("Syntax highlighting works without it; completion and diagnostics do not.")
     }

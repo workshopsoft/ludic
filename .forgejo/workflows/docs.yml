@@ -38,7 +38,7 @@ jobs:
     runs-on: docker
     # The generator is now Ludic, so this builds the toolchain from its IR seed
     # (clang assembles the seed into bin/ludicc, which compiles bin/ludic) exactly
-    # like the ci workflow, then runs `ludic dev docs-gen`. node:20-bookworm carries git
+    # like the ci workflow, then runs `ludic-dev docs-gen`. node:20-bookworm carries git
     # for the clone + publish; clang-16 is the only extra the bootstrap needs.
     container: node:20-bookworm
     steps:
@@ -67,9 +67,9 @@ jobs:
           export LUDIC_HOME="$(pwd)"
           mkdir -p bin
           clang-16 tools/ci/linux_stdio_shim.ll selfhost/ludicc.seed.ll -o bin/ludicc
-          bin/ludicc tools/ludic-cli/main.ludic -o bin/ludic
-          bin/ludic dev docs-gen --out ../public
-          bin/ludic dev docs-check ../public
+          bin/ludicc tools/ludic-cli/dev.ludic -o bin/ludic-dev
+          bin/ludic-dev docs-gen --out ../public
+          bin/ludic-dev docs-check ../public
           cd ..
           echo "--- generated files ---"
           ls -la public

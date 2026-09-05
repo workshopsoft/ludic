@@ -19,7 +19,7 @@ function sh_case(name: pointer, exp: pointer) -> void {
 # framebuffer's SHA-256 against the text baseline in selfhost/golden/renders.sha256.
 # A hash is tiny and text-diffable — a regression shows as a changed hex line in a
 # review, not an opaque "binary files differ". Regenerate the baseline with
-# `bin/ludic dev golden` (see cmd_golden below).
+# `bin/ludic-dev golden` (see cmd_golden below).
 function game_case(path: pointer, keys: pointer) -> void {
   let nm = flat(path)
   if not game_build_ok("bin/ludicc", `examples/{path}.ludic`, `{tmp_dir()}/g_{nm}`) { bad(`{path}: build`); return }
@@ -32,13 +32,13 @@ function game_case(path: pointer, keys: pointer) -> void {
   if not is_darwin() { skip(`{path} render (golden hash blessed on macOS)`); return }
   let got = capture_line("shasum -a 256 build/out.ppm | cut -d' ' -f1")
   let want = capture_line(`grep '^{path} ' selfhost/golden/renders.sha256 | cut -d' ' -f2`)
-  if (want == "") { bad2(path, "no golden hash (run: bin/ludic dev golden)"); return }
+  if (want == "") { bad2(path, "no golden hash (run: bin/ludic-dev golden)"); return }
   if (got == want) { ok(`{path} matches the golden render`) }
   else { bad2(path, `render hash {got} != golden {want}`) }
 }
 
 # render one golden game and return its "<path> <sha256>\n" manifest line (empty
-# string on build failure). Shared by `bin/ludic dev golden` and nothing else.
+# string on build failure). Shared by `bin/ludic-dev golden` and nothing else.
 function bless_render(path: pointer, keys: pointer) -> pointer {
   let nm = flat(path)
   if not game_build_ok("bin/ludicc", `examples/{path}.ludic`, `{tmp_dir()}/bg_{nm}`) {
@@ -117,12 +117,12 @@ function cmd_selfhost_test() -> int {
   game_case("rendering/draw_prims", "")
 
   print("== the bootstrap fixpoint (seeded from bin/ludicc) ==")
-  if shq(`bin/ludic dev bootstrap > {tmp_dir()}/boot.out 2>&1`) { ok("gen2.ll == gen3.ll (compiler reproduces itself)") }
+  if shq(`bin/ludic-dev bootstrap > {tmp_dir()}/boot.out 2>&1`) { ok("gen2.ll == gen3.ll (compiler reproduces itself)") }
   else { bad("fixpoint not reached"); out(capture(`cat {tmp_dir()}/boot.out`)) }
 
   print("== the C-free bootstrap (from the checked-in IR seed, no C compiler) ==")
-  if shq(`bin/ludic dev bootstrap-cfree > {tmp_dir()}/cfree.out 2>&1`) { ok("seed.ll rebuilds the compiler and is its own fixed point") }
-  else { bad("C-free bootstrap failed (seed stale? run: ludic dev reseed)"); out(capture(`cat {tmp_dir()}/cfree.out`)) }
+  if shq(`bin/ludic-dev bootstrap-cfree > {tmp_dir()}/cfree.out 2>&1`) { ok("seed.ll rebuilds the compiler and is its own fixed point") }
+  else { bad("C-free bootstrap failed (seed stale? run: ludic-dev reseed)"); out(capture(`cat {tmp_dir()}/cfree.out`)) }
 
   return report()
 }

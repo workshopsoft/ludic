@@ -25,8 +25,8 @@
 > ```bash
 > # one-time bootstrap: clang assembles the seed, then ludicc compiles bin/ludic
 > mkdir -p bin && clang selfhost/ludicc.seed.ll -o bin/ludicc
-> bin/ludicc tools/ludic-cli/main.ludic -o bin/ludic
-> bin/ludic dev build                                  # the whole toolchain into bin/
+> bin/ludicc tools/ludic-cli/dev.ludic -o bin/ludic-dev
+> bin/ludic-dev build                                  # the whole toolchain into bin/
 >                                                      #   (ludicc, ludic, ludic-fmt, ludic-lsp)
 > bin/ludicc examples/games/snake.ludic -o bin/snake   # the compiler, directly
 > bin/ludic build examples/games/snake.ludic           # or through the CLI
@@ -320,7 +320,7 @@ node tools/ludic-web/run.mjs build/web/snake_headless.wasm --stdin=ddss
 ```
 
 Because Ludic is fixed-point and its RNG is seeded, the native headless binary
-and the wasm one must render byte-identical frames from the same input. `bin/ludic dev test`
+and the wasm one must render byte-identical frames from the same input. `bin/ludic-dev test`
 asserts exactly that, which is a much stronger check on the backend than
 "it started".
 
@@ -334,13 +334,13 @@ entity allocator, save/load snapshots, the frame loop, the window, and the whole
 graphics stack — framebuffer, PNG decoding, sprites, 9-slice, TrueType text and
 the retained UI.
 
-None of it goes through C. `bin/ludic dev test` asserts that directly: no C source
+None of it goes through C. `bin/ludic-dev test` asserts that directly: no C source
 survives in `runtime/`, no C emitter survives in `ludicc`, and the examples all
 build, run and render from IR alone.
 
 ## Every flag
 
-The self-hosted `ludicc`/`ludic` (built with `bin/ludic dev build-cli`) accept:
+The self-hosted `ludicc`/`ludic` (built with `bin/ludic-dev build-cli`) accept:
 
 ```
   <file.ludic>       the program to compile (first non-flag argument)

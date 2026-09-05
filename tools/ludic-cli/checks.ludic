@@ -9,75 +9,6 @@
 # plain indexing; `==` on pointers is a byte-string compare (the whole toolchain
 # leans on this).
 
-# ---- small string helpers ---------------------------------------------------
-
-# length of a NUL-terminated buffer
-function slen(s: pointer) -> int { var n = 0;  while s[n] != 0 { n += 1 };  return n }
-
-# a fresh NUL-terminated copy of s[start .. end) (end exclusive)
-function sslice(s: pointer, start: int, end: int) -> pointer {
-  if end < start { return "" }
-  let n = end - start
-  let b = bytes(n + 1)
-  var i = 0
-  while i < n { b[i] = s[start + i];  i += 1 }
-  b[n] = 0
-  return b
-}
-
-# index of the first byte of `needle` in `hay` at or after `from`, else -1
-function s_index(hay: pointer, needle: pointer, from: int) -> int {
-  let hn = slen(hay)
-  let nn = slen(needle)
-  if nn == 0 { return from }
-  var i = from
-  while i + nn <= hn {
-    var j = 0
-    while j < nn and hay[i + j] == needle[j] { j += 1 }
-    if j == nn { return i }
-    i += 1
-  }
-  return -1
-}
-
-function s_contains(hay: pointer, needle: pointer) -> bool { return s_index(hay, needle, 0) >= 0 }
-
-# does `hay` contain `needle` exactly at position `at`?
-function s_starts_at(hay: pointer, at: int, needle: pointer) -> bool {
-  let nn = slen(needle)
-  var i = 0
-  while i < nn { if hay[at + i] != needle[i] { return false };  i += 1 }
-  return true
-}
-
-# does `s` (a whole line) begin with `pre`?
-function s_starts(s: pointer, pre: pointer) -> bool {
-  let pn = slen(pre)
-  var i = 0
-  while i < pn { if s[i] != pre[i] { return false };  i += 1 }
-  return true
-}
-
-# is byte c an ASCII space/tab?
-function is_ws(c: int) -> bool { return c == ' ' or c == '\t' }
-
-# the substring from `start` up to the next '\n' (or end)
-function line_at(s: pointer, start: int) -> pointer {
-  var e = start
-  while s[e] != 0 and s[e] != '\n' { e += 1 }
-  return sslice(s, start, e)
-}
-
-# trim leading/trailing ASCII whitespace (space, tab, cr, nl)
-function s_trim(s: pointer) -> pointer {
-  let n = slen(s)
-  var a = 0
-  while a < n and (is_ws(s[a]) or s[a] == '\n' or s[a] == '\r') { a += 1 }
-  var b = n
-  while b > a and (is_ws(s[b - 1]) or s[b - 1] == '\n' or s[b - 1] == '\r') { b -= 1 }
-  return sslice(s, a, b)
-}
-
 # ============================================================================
 # check-docs — every ```ludic fence in the docs must parse (or be marked)
 # ============================================================================
@@ -177,7 +108,7 @@ function count_nl(s: pointer, upto: int) -> int {
   return n
 }
 
-# usage: ludic dev check-docs   (scans the user-facing docs + docs/language/**)
+# usage: ludic-dev check-docs   (scans the user-facing docs + docs/language/**)
 function cmd_check_docs() -> int {
   ensure_ludicc()
   DC_OK = 0;  DC_BAD = 0;  DC_SKIP = 0;  DC_FAILS = ""
@@ -361,7 +292,7 @@ var CI_PROB: pointer = ""
 var CI_NPROB: int = 0
 function ci_problem(msg: pointer) -> void { CI_PROB = CI_PROB + "  - " + msg + "\n";  CI_NPROB += 1 }
 
-# usage: ludic dev check-impl
+# usage: ludic-dev check-impl
 function cmd_check_impl() -> int {
   CI_PROB = "";  CI_NPROB = 0
   let allsrc = read_all_selfhost()
@@ -568,7 +499,7 @@ function set_union(a: []pointer, b: []pointer) -> []pointer {
   return out
 }
 
-# usage: ludic dev check-vocabulary
+# usage: ludic-dev check-vocabulary
 function cmd_check_vocab() -> int {
   CV_PROB = "";  CV_N = 0
   let h = read_file("tools/ludic-tools/ludic_syntax.h")
@@ -702,10 +633,10 @@ function xml_valid(text: pointer) -> bool {
   return sp == 0
 }
 
-# usage: ludic dev lint-asset <file>   (validates one .json or .xml editor asset)
+# usage: ludic-dev lint-asset <file>   (validates one .json or .xml editor asset)
 function cmd_lint_asset() -> int {
-  if arg_total() < 3 { err("usage: ludic dev lint-asset <file.json|file.xml>\n");  return 2 }
-  let path = arg_n(2)
+  if arg_count() < 3 { err("usage: ludic-dev lint-asset <file.json|file.xml>\n");  return 2 }
+  let path = arg(2)
   let t = read_file(path)
   if t == null { err("lint-asset: cannot read " + path + "\n");  return 1 }
   if s_index(path, ".json", 0) >= 0 {

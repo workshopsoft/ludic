@@ -1,6 +1,6 @@
 name: release
 
-# Cutting a release is `ludic dev release` + `git push --tags`; everything after that
+# Cutting a release is `ludic-dev release` + `git push --tags`; everything after that
 # happens here. Before this workflow existed the artifacts were built on whatever
 # machine the maintainer happened to be sitting at, from whatever was in bin/ at
 # the time, with no checksums and nothing proving the tagged tree even passed its
@@ -71,15 +71,15 @@ jobs:
           set -eu
           mkdir -p bin
           clang-16 tools/ci/linux_stdio_shim.ll selfhost/ludicc.seed.ll -o bin/ludicc
-          bin/ludicc tools/ludic-cli/main.ludic -o bin/ludic
-          bin/ludic dev build
+          bin/ludicc tools/ludic-cli/dev.ludic -o bin/ludic-dev
+          bin/ludic-dev build
 
       - name: The tagged tree must pass its own suites
         run: |
           set -eu
-          bin/ludic dev test
-          bin/ludic dev test-tools
-          bin/ludic dev bootstrap-cfree
+          bin/ludic-dev test
+          bin/ludic-dev test-tools
+          bin/ludic-dev bootstrap-cfree
 
       - name: Publish the release
         env:
@@ -91,9 +91,9 @@ jobs:
             echo "::error::No FORGEJO_TOKEN secret; cannot create the release."
             exit 1
           fi
-          # ludic dev publish builds dist/ (source tarball from the tag, this host's
+          # ludic-dev publish builds dist/ (source tarball from the tag, this host's
           # toolchain, SHA256SUMS), takes the notes from the CHANGELOG section,
           # and creates the release. Re-running it only adds missing assets, so
           # a maintainer can afterwards attach the macOS toolchain from a Mac
           # with the same command.
-          bin/ludic dev publish "$TAG"
+          bin/ludic-dev publish "$TAG"

@@ -539,8 +539,8 @@ function set_require(module: pointer, ver: pointer) -> void {
 
 # ludic add <module>[@version] — add/update a dependency then install
 function cmd_pkg_add() -> int {
-  if arg_total() < 3 { err("usage: ludic add <module>[@version]\n");  return 1 }
-  let spec = split_spec(arg_n(2))
+  if arg_count() < 3 { err("usage: ludic add <module>[@version]\n");  return 1 }
+  let spec = split_spec(arg(2))
   let module = spec[0]
   var ver = spec[1]
   if slen(ver) == 0 {

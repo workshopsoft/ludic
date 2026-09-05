@@ -1031,11 +1031,11 @@ ludicc app.ludic --emit-llvm -o app.ll   # stop at LLVM IR
 ```
 
 `ludic` is the CLI (`ludic help`); `ludicc` is the compiler it drives, built from
-the IR seed by `bin/ludic dev build-cli`. **[COMPILING.md](COMPILING.md) is the
+the IR seed by `bin/ludic-dev build-cli`. **[COMPILING.md](COMPILING.md) is the
 authoritative CLI reference** — the full flag set (`-o`, `--windowed`,
 `--headless`, `--emit-llvm`, `--save-temps`, `--run`), the `LUDIC_HOME` /
 `LUDIC_CC` environment variables, and the IR-to-stdout bootstrap contract (no
-`-o`) that `bin/ludic build` / `bin/ludic dev reseed` rely on. The default mode
+`-o`) that `bin/ludic build` / `bin/ludic-dev reseed` rely on. The default mode
 is auto: a file with `handler`s links windowed, otherwise headless; an explicit
 flag always wins.
 
@@ -1053,7 +1053,7 @@ duplicate types, unknown fields, arity) are future work.
 ### Editors
 
 ```bash
-bin/ludic dev tools                            # -> bin/ludic-fmt, bin/ludic-lsp
+bin/ludic-dev tools                            # -> bin/ludic-fmt, bin/ludic-lsp
 bin/ludic-fmt -w src/                 # format in place (keeps comments)
 bin/ludic-fmt --check .               # CI: exit 1 if anything is unformatted
 bin/ludic-lsp --stdio                 # the language server, for any editor
@@ -1107,7 +1107,7 @@ self-hosting; their lowerings are in
 
 > **Implemented (S0).** `scene`, `layer`, and the `on enter` / `on exit` hooks
 > compile; [`examples/lang/scenes.ludic`](examples/lang/scenes.ludic) runs and is checked
-> by `bin/ludic dev test`. A scene lowers to a `machine` the compiler writes for you: one
+> by `bin/ludic-dev test`. A scene lowers to a `machine` the compiler writes for you: one
 > implicit active-scene register, states numbered by declaration order, and
 > `become` as two direct calls plus a store. Richer scene features (the overlay
 > stack, scene-owned entities, scene-local state, transition parameters) are

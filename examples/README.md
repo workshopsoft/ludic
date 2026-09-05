@@ -1,7 +1,7 @@
 # Examples
 
 A curated tour of Ludic, grouped by intent. Every example here is exercised by
-the test suite (`bin/ludic dev test` / `bin/ludic dev selfhost-test`), so nothing in this
+the test suite (`bin/ludic-dev test` / `bin/ludic-dev selfhost-test`), so nothing in this
 directory silently rots.
 
 Run any program straight from the repository root (so `assets/` resolves):

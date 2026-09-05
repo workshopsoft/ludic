@@ -1,13 +1,13 @@
 # release.ludic — versioning + release cutting for the toolchain.
 #
 #   ludic version              print the toolchain version (from the VERSION file)
-#   ludic dev release [level]      cut a release: aggregate changes/ into CHANGELOG.md,
+#   ludic-dev release [level]      cut a release: aggregate changes/ into CHANGELOG.md,
 #                          bump VERSION, commit, and tag vX.Y.Z. `level` is
 #                          major|minor|patch; omitted, it is derived from the
 #                          highest `bump:` among the pending changesets.
-#   ludic dev release [level] --dry-run   render the changelog section to stdout and
+#   ludic-dev release [level] --dry-run   render the changelog section to stdout and
 #                          stop: nothing is written, committed, tagged or pushed.
-#   ludic dev release [level] --publish   ...then push main + the tag and create a
+#   ludic-dev release [level] --publish   ...then push main + the tag and create a
 #                          Forgejo release with source + toolchain tarballs.
 #                          Needs FORGEJO_TOKEN in the environment.
 #
@@ -49,24 +49,6 @@ function compute_next(cur: pointer, level: pointer) -> pointer {
   return `{maj}.{min}.{p2}`
 }
 
-# ludic version — report the version of the toolchain this CLI belongs to.
-#
-# It asks the compiler (proving that path works), addressed through ludic_home()
-# rather than as a relative bin/ludicc: `ludic version` is run from a user's
-# project, not from the toolchain's own directory, and looking beside the current
-# directory found nothing there and reported "(version unknown)" for a perfectly
-# good install.
-function cmd_version() -> int {
-  let cc = ludicc()
-  if is_exec(cc) {
-    run(`{cc} --version`)
-    return 0
-  }
-  let v = read_file(`{ludic_home()}VERSION`)
-  if v != null { print(`ludic {s_trim(v)}`);  return 0 }
-  print(`ludic {read_version_or("(version unknown)")}`)
-  return 0
-}
 
 # ---- changelog rendering ----------------------------------------------------
 #
@@ -241,16 +223,16 @@ function build_section(ver: pointer) -> void {
   write_file(tmp_path("rel_section.md"), render_section(ver, date, "changes"))
 }
 
-# ludic dev changelog-render <version> <date> <dir> — print the CHANGELOG section that
+# ludic-dev changelog-render <version> <date> <dir> — print the CHANGELOG section that
 # `dir`'s changesets would produce. Used to re-render the sections of releases
 # cut before the renderer preserved markdown structure: check the changesets out
 # of the tag's parent commit, point this at them, and splice the result back in.
 function cmd_changelog_render() -> int {
-  if arg_total() < 5 {
-    err("usage: ludic dev changelog-render <version> <date> <changesets-dir>\n")
+  if arg_count() < 5 {
+    err("usage: ludic-dev changelog-render <version> <date> <changesets-dir>\n")
     return 1
   }
-  out(render_section(arg_n(2), arg_n(3), arg_n(4)))
+  out(render_section(arg(2), arg(3), arg(4)))
   return 0
 }
 
@@ -258,7 +240,7 @@ function cmd_changelog_render() -> int {
 # release section (or at the end of the header if this is the first release).
 function prepend_changelog() -> void {
   if not file_exists("CHANGELOG.md") {
-    run("printf '# Changelog\n\nAll notable changes to the Ludic toolchain, newest first. Generated from the\nchangesets under changes/ by ludic dev release; do not edit released sections by hand.\n\n' > CHANGELOG.md")
+    run("printf '# Changelog\n\nAll notable changes to the Ludic toolchain, newest first. Generated from the\nchangesets under changes/ by ludic-dev release; do not edit released sections by hand.\n\n' > CHANGELOG.md")
   }
   let ln = capture_line("grep -n '^## ' CHANGELOG.md | head -1 | cut -d: -f1")
   if (ln == "") {
@@ -297,11 +279,11 @@ function changelog_section(ver: pointer) -> pointer {
   return sslice(text, start, n)
 }
 
-# ludic dev changelog-section <version> — print that release's CHANGELOG section.
+# ludic-dev changelog-section <version> — print that release's CHANGELOG section.
 function cmd_changelog_section() -> int {
-  if arg_total() < 3 { err("usage: ludic dev changelog-section <version>\n");  return 1 }
-  let sec = changelog_section(arg_n(2))
-  if slen(sec) == 0 { err(`changelog-section: no section for v{arg_n(2)} in CHANGELOG.md\n`);  return 1 }
+  if arg_count() < 3 { err("usage: ludic-dev changelog-section <version>\n");  return 1 }
+  let sec = changelog_section(arg(2))
+  if slen(sec) == 0 { err(`changelog-section: no section for v{arg(2)} in CHANGELOG.md\n`);  return 1 }
   out(sec)
   return 0
 }
@@ -343,7 +325,7 @@ function build_artifacts(ver: pointer) -> bool {
     let stage = `{tmp_dir()}/{name}`
     run(`rm -rf {stage} && mkdir -p {stage}/bin`)
     if not shq(`cp bin/ludic bin/ludicc bin/ludic-fmt bin/ludic-lsp {stage}/bin/`) {
-      err("release: the toolchain is not built (run: ludic dev build)\n")
+      err("release: the toolchain is not built (run: ludic-dev build)\n")
       return false
     }
     run(`cp -R runtime {stage}/runtime`)
@@ -366,10 +348,10 @@ function build_artifacts(ver: pointer) -> bool {
   return true
 }
 
-# ludic dev publish [vX.Y.Z] — publish an already-tagged release: build the artifacts,
+# ludic-dev publish [vX.Y.Z] — publish an already-tagged release: build the artifacts,
 # take the notes from that version's CHANGELOG section, and create the Forgejo
 # release. Defaults to the version in VERSION. This is what CI runs on a tag
-# push, and what `ludic dev release --publish` calls once it has tagged.
+# push, and what `ludic-dev release --publish` calls once it has tagged.
 function publish_tag(ver: pointer) -> int {
   if getenv_or("FORGEJO_TOKEN", "") == "" { err("publish: set FORGEJO_TOKEN (a Forgejo access token)\n");  return 1 }
   let body = tmp_path("rel_notes.md")
@@ -386,8 +368,8 @@ function publish_tag(ver: pointer) -> int {
 
 function cmd_publish() -> int {
   var ver = read_version_or("")
-  if arg_total() >= 3 {
-    var a = arg_n(2)
+  if arg_count() >= 3 {
+    var a = arg(2)
     if s_starts(a, "v") { a = sslice(a, 1, slen(a)) }
     ver = a
   }
@@ -409,8 +391,8 @@ function cmd_release() -> int {
   var publish = false
   var dry = false
   var ai = 2
-  while ai < arg_total() {
-    let a = arg_n(ai)
+  while ai < arg_count() {
+    let a = arg(ai)
     if (a == "--publish") { publish = true }
     else { if (a == "--dry-run") { dry = true }
     else { if (a == "major") or (a == "minor") or (a == "patch") { level = a }
@@ -437,7 +419,7 @@ function cmd_release() -> int {
     let sec = read_file(tmp_path("rel_section.md"))
     if sec != null { out(sec) }
     print("")
-    print(`  dry run — nothing written. cut it with: ludic dev release {level}`)
+    print(`  dry run — nothing written. cut it with: ludic-dev release {level}`)
     return 0
   }
   prepend_changelog()
@@ -452,7 +434,7 @@ function cmd_release() -> int {
   print(`  committed + tagged v{ver}`)
 
   if publish { return publish_release(ver) }
-  print(`  local release ready. publish with: FORGEJO_TOKEN=… ludic dev release {level} --publish`)
+  print(`  local release ready. publish with: FORGEJO_TOKEN=… ludic-dev release {level} --publish`)
   print(`  (or push:  git push origin HEAD && git push origin v{ver})`)
   return 0
 }

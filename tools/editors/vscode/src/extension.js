@@ -98,7 +98,7 @@ async function start(context) {
     // Not an error worth a modal: the grammar still highlights, and plenty of
     // people open a .ludic file without having built the toolchain.
     output.appendLine(
-      'ludic-lsp not found. Install the toolchain (curl -fsSL https://ludic.dev/install.sh | sh), build it from a checkout with `bin/ludic dev tools`, or set "ludic.server.path". ' +
+      'ludic-lsp not found. Install the toolchain (curl -fsSL https://ludic.dev/install.sh | sh), build it from a checkout with `bin/ludic-dev tools`, or set "ludic.server.path". ' +
       'Syntax highlighting works without it; completion and diagnostics do not.'
     );
     return;

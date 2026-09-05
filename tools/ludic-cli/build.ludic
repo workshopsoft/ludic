@@ -1,56 +1,30 @@
-# build.ludic — compiling: a user's program (ludic build / ludic run) and the
-# toolchain's own binaries (ludic dev build).
+# build.ludic — turning a .ludic file into an executable.
 #
-# compile_app is the one place a .ludic file becomes an executable, so a project
-# build and the repo's own example builds cannot drift apart. Everything the
-# toolchain owns — the compiler, the engine runtime it splices — is addressed
-# through ludic_home(), so the same code path works from a checkout and from an
-# installed ~/.ludic.
+# compile_app is the one place that happens, shared by `ludic build` / `ludic
+# run` and by the contributor tool, so a user's build and the repo's own example
+# builds cannot drift apart. Everything the toolchain owns — the compiler, the
+# engine runtime it splices — is addressed through ludic_home(), so the same code
+# path works from a checkout and from an installed ~/.ludic.
 
-# compile a Ludic source to a native binary in bin/ via ludicc + clang (-O2).
-# Returns true on success. Used for x itself and the editor tools.
-function build_tool(name: pointer, src: pointer) -> bool {
-  let ll = `build/{name}.ll`
-  if not shq(`bin/ludicc {src} --emit-llvm -o {ll} 2>/dev/null`) { print(`build failed: {name} (compile)`); return false }
-  # write to a temp then move, so a running bin/ludic can rebuild itself in place
-  if not shq(`{cc()} -O2 {ll} -o bin/{name}.tmp`) { print(`build failed: {name} (link)`); return false }
-  run(`mv -f bin/{name}.tmp bin/{name} && rm -f {ll}`)
-  return true
-}
-
-# ---- build-cli: the self-hosted front-end binaries ---------------------------
-# Both ludicc and ludic are the SAME multi-call binary assembled from the IR seed
-# with clang alone; invoked as `ludic` it compiles-and-runs, as `ludicc` it just
-# compiles.
-function cmd_dev_build_cli() -> int {
+# ensure bin/ludicc exists and is current with the seed. Built from the checked-in
+# IR seed with clang alone — no C compiler is ever involved.
+function ensure_ludicc() -> void {
+  if not in_toolchain_repo() { return }
   run("mkdir -p bin build")
-  print("cc: selfhost/ludicc.seed.ll -> bin/ludicc  (from the IR seed, no C compiler)")
-  if not shq(`{cc()} selfhost/ludicc.seed.ll -o bin/ludicc`) { err("ludic: the seed did not assemble\n"); return 1 }
-  run("chmod +x bin/ludicc")
-  print("done. built bin/ludicc")
-  return 0
-}
-
-# ---- build: the whole toolchain (ludicc, ludic, ludic-fmt, ludic-lsp) -------
-function cmd_dev_build() -> int {
-  if cmd_dev_build_cli() != 0 { return 1 }
-  print("ludicc: tools/ludic-cli/main.ludic -> bin/ludic  (the CLI rebuilds itself)")
-  if not build_tool("ludic", "tools/ludic-cli/main.ludic") { return 1 }
-  print("ludicc: tools/ludic-tools/fmt.ludic -> bin/ludic-fmt")
-  if not build_tool("ludic-fmt", "tools/ludic-tools/fmt.ludic") { return 1 }
-  print("ludicc: tools/ludic-tools/lsp.ludic -> bin/ludic-lsp")
-  if not build_tool("ludic-lsp", "tools/ludic-tools/lsp.ludic") { return 1 }
-  sync_vscode_grammar()
-  print("done. toolchain in bin/ (ludicc, ludic, ludic-fmt, ludic-lsp)")
-  return 0
+  if (not is_exec("bin/ludicc")) or newer("selfhost/ludicc.seed.ll", "bin/ludicc") {
+    print("cc: selfhost/ludicc.seed.ll -> bin/ludicc  (from the IR seed, no C compiler)")
+    if not shq(`{cc()} selfhost/ludicc.seed.ll -o bin/ludicc`) {
+      err("ludic: could not assemble the seed\n"); exit(1)
+    }
+  }
 }
 
 # ---- compiling one program to a native binary -------------------------------
 #
 # mode 1 = windowed (a game opens a real window), 2 = headless (the last frame is
 # rendered to build/out.ppm from piped input — deterministic output for tests).
-# Returns true on success. `ludic build`, `ludic run` and `ludic dev app` all go
-# through here.
+# Returns true on success. `ludic build`, `ludic run` and the contributor tool all
+# go through here.
 function compile_app(src: pointer, out: pointer, mode: int, save: bool) -> bool {
   ensure_ludicc()                          # in a checkout: assemble the seed if bin/ludicc is missing or stale
   let home = ludic_home()
@@ -91,7 +65,7 @@ function dir_of_path(p: pointer) -> pointer {
 # build/out.ppm), and any stray *.tmp/*.ll left behind by a failed build. A
 # legacy out.ppm in the root (from an older toolchain) is swept too. Binaries in
 # bin/ are kept so the running CLI survives; in the toolchain repo, rebuild them
-# any time with `ludic dev build`.
+# any time with `ludic-dev build`.
 function cmd_clean() -> int {
   run("rm -rf build")
   run("rm -f out.ppm bin/*.tmp")

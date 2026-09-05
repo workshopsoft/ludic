@@ -199,15 +199,22 @@ install_from_source() {
   git clone --quiet --depth 1 --branch "v${VERSION}" "${REPO_URL}.git" "$_src" 2>/dev/null \
     || git clone --quiet --depth 1 "${REPO_URL}.git" "$_src" \
     || die "could not clone ${REPO_URL}"
-  # A release older than the CLI cannot produce one, and the build would fail
-  # deep inside clang with nothing pointing at the cause.
-  [ -f "${_src}/tools/ludic-cli/main.ludic" ] || die "release v${VERSION} predates the ludic CLI; install a newer one with --version X.Y.Z"
+  # Which entry point builds the toolchain depends on the age of the tag: the
+  # contributor tool was split out of the CLI after 0.5.2, so an older release
+  # still bootstraps through main.ludic. A release older than either predates the
+  # CLI entirely, and saying so beats failing deep inside clang.
+  if [ -f "${_src}/tools/ludic-cli/dev.ludic" ]; then
+    _boot='bin/ludicc tools/ludic-cli/dev.ludic -o bin/ludic-dev && bin/ludic-dev build'
+  elif [ -f "${_src}/tools/ludic-cli/main.ludic" ]; then
+    _boot='bin/ludicc tools/ludic-cli/main.ludic -o bin/ludic && bin/ludic dev build'
+  else
+    die "release v${VERSION} predates the ludic CLI; install a newer one with --version X.Y.Z"
+  fi
   CC=clang; have clang || CC=cc
   ( cd "$_src" \
     && mkdir -p bin \
     && "$CC" selfhost/ludicc.seed.ll -o bin/ludicc 2>/dev/null \
-    && bin/ludicc tools/ludic-cli/main.ludic -o bin/ludic \
-    && bin/ludic dev build >/dev/null ) || die "the source build failed"
+    && eval "$_boot" >/dev/null ) || die "the source build failed"
 
   _stage="${TMP}/stage"
   mkdir -p "${_stage}/bin"
