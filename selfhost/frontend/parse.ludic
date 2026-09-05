@@ -554,6 +554,51 @@ function join_path(dir: pointer, rel: pointer) -> pointer {
   return dir + rel
 }
 
+# The toolchain install root, with a trailing '/' ("" meaning the current
+# directory). Everything the toolchain owns rather than the project — the engine
+# runtime under runtime/native, the bundled ludic.* packages, the VERSION file,
+# cocoa.ll — is resolved against it.
+#
+# $LUDIC_HOME wins when it is set. Otherwise it is derived from the compiler
+# binary, whose directory is `bin` in both shapes that exist: an install
+# (~/.ludic/bin/ludicc, root ~/.ludic) and a repo checkout (bin/ludicc, root the
+# repo). So a directory named bin means the root is its parent; anything else is
+# taken as the root itself, which is what a loose binary beside its runtime
+# wants. Invoked through $PATH argv[0] carries no directory at all, so the PATH
+# entries are searched for the binary first — an installed `ludicc mygame.ludic`
+# has to find its own runtime with nothing in the environment.
+function ludic_home() -> pointer {
+  let env = getenv("LUDIC_HOME")
+  if (env != null) { return ensure_slash(env) }
+  var d = dir_of(arg(0))
+  if (len(d) == 0) { d = path_lookup_dir(base_name(arg(0))) }
+  if (len(d) == 0) { return "" }
+  if (len(d) >= 4) and (d[len(d) - 4..len(d)] == "bin/") { return d[0..len(d) - 4] }
+  return d
+}
+
+# the first $PATH entry holding an openable file called `name`, with a trailing
+# '/' — "" when $PATH is unset or nothing matches.
+function path_lookup_dir(name: pointer) -> pointer {
+  let p = getenv("PATH")
+  if (p == null) { return "" }
+  let n = len(p)
+  var start = 0
+  var i = 0
+  while i <= n {
+    if (i == n) or (p[i] == ':') {
+      if i > start {
+        let dir = ensure_slash(p[start..i])
+        let f = file_open(dir + name, "rb")
+        if (f != null) { file_close(f);  return dir }
+      }
+      start = i + 1
+    }
+    i += 1
+  }
+  return ""
+}
+
 var loaded_paths: []pointer
 var cur_dir: pointer
 var g_uses_regex: bool = false    # a program mentioned Regex.* -> splice the regex runtime
@@ -816,7 +861,7 @@ function parse_test() -> Node {
 # under the package module root — $LUDIC_MODULES, default "ludic_modules" — so a
 # fetched source package resolves by its import path, e.g.
 #   import "git.workshopsoft.io/user/pkg/foo.ludic"
-# materialised by `x get` at ludic_modules/git.workshopsoft.io/user/pkg/foo.ludic.
+# materialised by `ludic get` at ludic_modules/git.workshopsoft.io/user/pkg/foo.ludic.
 # The fallback only fires when the local path does not exist, so every existing
 # import resolves exactly as before (the emitted IR is byte-identical).
 # true when `rel` is an engine-runtime splice path ("runtime/..."), as opposed to
@@ -868,8 +913,7 @@ function do_import(rel: pointer) -> void {
   # place main.ludic finds cocoa.ll / audio.ll. This is tried before the package
   # module root, so $LUDIC_MODULES / ludic_modules holds only third-party packages.
   if (src == null) and (rel[0] != '/') and is_runtime_path(rel) {
-    let home = ensure_slash(getenv_or("LUDIC_HOME", dir_of(arg(0))))
-    let hc = home + rel
+    let hc = ludic_home() + rel
     let hs = read_file(hc)
     if (hs != null) { full = hc;  src = hs }
   }
@@ -877,6 +921,16 @@ function do_import(rel: pointer) -> void {
     let cand = ensure_slash(getenv_or("LUDIC_MODULES", "ludic_modules")) + rel
     let s2 = read_file(cand)
     if (s2 != null) { full = cand;  src = s2 }
+  }
+  # The ludic.* packages ship with the toolchain too, so an installed compiler
+  # resolves `import "ludic.core/components.ludic"` from $LUDIC_HOME/packages
+  # with no ludic_modules/ to set up. It is the last candidate on purpose: a
+  # project that fetched its own copy of a package (ludic_modules, above) keeps
+  # the version it pinned.
+  if (src == null) and (rel[0] != '/') {
+    let pc = ludic_home() + "packages/" + rel
+    let ps = read_file(pc)
+    if (ps != null) { full = pc;  src = ps }
   }
   if already_loaded(full) { return }
   push(loaded_paths, full)

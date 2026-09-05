@@ -8,11 +8,12 @@
 #   ludicc app.ludic -o bin/app            # native binary (windowed if a game)
 #   ludicc app.ludic -o bin/app --headless # force headless
 #   ludicc app.ludic --emit-llvm -o app.ll # stop at the IR
-#   ludic  app.ludic                       # compile to a temp binary and run it
+#   ludicc app.ludic --run                 # compile to a temp binary and run it
 #
-# The multi-call twist: when argv[0] is "ludic" it defaults to compile-and-run.
-# With no -o and no run, IR still goes to stdout — the contract `x reseed` and
-# `x bootstrap` rely on, so the bootstrap is untouched.
+# This is the compiler, not the command line a user of the language meets: that
+# is `ludic` (tools/ludic-cli), which drives this. With no -o and no --run, IR
+# still goes to stdout — the contract `ludic dev reseed` and `ludic dev
+# bootstrap` rely on, so the bootstrap is untouched.
 
 # basename: the part of a path after the last '/'.
 function base_name(path: pointer) -> pointer {
@@ -59,11 +60,10 @@ function chomp(s: pointer) -> pointer {
 }
 
 # print "ludic <version>" and exit. The version is read at runtime from the
-# VERSION file next to LUDIC_HOME (the single source of truth a release bumps),
+# VERSION file at the install root (the single source of truth a release bumps),
 # so a version change never requires reseeding the compiler.
 function show_version() -> void {
-  let home = ensure_slash(getenv_or("LUDIC_HOME", dir_of(arg(0))))
-  let v = read_file(join_path(home, "VERSION"))
+  let v = read_file(join_path(ludic_home(), "VERSION"))
   if (v == null) { print("ludic (version unknown)") }
   else { print(`ludic {chomp(v)}`) }
   exit(0)
@@ -78,9 +78,6 @@ entry {
   var save = false        # --save-temps: keep the intermediate .ll
   var run = false         # compile then execute the result
   g_coverage = false      # --coverage: instrument each statement with a per-line hit counter
-
-  # multi-call: invoked as `ludic` -> run mode by default
-  if (base_name(arg(0)) == "ludic") { run = true }
 
   var ai = 1
   while ai < arg_count() {
@@ -127,7 +124,7 @@ entry {
 
   # a game gets a window by default; a plain program stays headless. An explicit
   # flag always wins. The stdout-IR path (no target) also stays headless, which
-  # is what `x reseed` compiles the compiler itself with.
+  # is what `ludic dev reseed` compiles the compiler itself with.
   let has_target = run or (out != null)
   if want == 1 { g_windowed = true }
   else if want == 2 { g_windowed = false }
@@ -153,7 +150,7 @@ entry {
   if not ir_flush(ll) { die("ludicc: cannot write IR\n") }
 
   let cc   = getenv_or("LUDIC_CC", "clang")
-  let home = ensure_slash(getenv_or("LUDIC_HOME", dir_of(arg(0))))
+  let home = ludic_home()
 
   # clang twice: assemble the IR, then link. A windowed build adds the macOS
   # platform layer and the Cocoa framework.
