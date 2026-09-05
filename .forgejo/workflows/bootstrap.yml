@@ -43,11 +43,11 @@ jobs:
           set -eu
           mkdir -p bin
           clang-16 tools/ci/linux_stdio_shim.ll selfhost/ludicc.seed.ll -o bin/ludicc
-          bin/ludicc tools/x/main.ludic -o bin/x
+          bin/ludicc tools/ludic-cli/main.ludic -o bin/ludic
 
       - name: Rebuild the compiler from the seed and assert byte-identity
-        # `x bootstrap-cfree` assembles the seed with clang, has that seed
+        # `ludic dev bootstrap-cfree` assembles the seed with clang, has that seed
         # compiler recompile selfhost.ludic to out.ll, and `cmp`s out.ll against
         # the checked-in seed. It returns non-zero if they differ — i.e. if the
         # seed is stale relative to the compiler source.
-        run: bin/x bootstrap-cfree
+        run: bin/ludic dev bootstrap-cfree

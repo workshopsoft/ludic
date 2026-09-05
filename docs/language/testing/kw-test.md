@@ -17,12 +17,12 @@ Assertions (each records a failure and prints <code>file:line: … failed</code>
 - `expect_eq(a, b)` — `a` must equal `b`; on failure prints `(got a, want b)`.
 - `expect_near(a, b, tol)` — `a` must be within `tol` of `b` (absolute). Use it for `fixed`-point results and accumulated integer math, where an exact match is too brittle.
 
-Run a spec file directly with the compiler-runner — `ludic mymath_test.ludic` compiles it to a native binary, runs it, and forwards the pass/fail exit code — so it drops straight into `bin/x` and CI.
+Run a spec file directly with the compiler-runner — `ludic mymath_test.ludic` compiles it to a native binary, runs it, and forwards the pass/fail exit code — so it drops straight into `bin/ludic` and CI.
 
-<strong>Line coverage.</strong> Compile with the <code>--coverage</code> flag and the compiler instruments every statement with a per-source-line hit counter; at exit the counts are written to the file named by <code>$LUDIC_COVERAGE</code> (default <code>ludic.cov</code>) as a <code>FILE &lt;name&gt;</code> header followed by one <code>&lt;line&gt; &lt;hits&gt;</code> row per instrumented line. The instrumentation is flag-gated and additive, so an ordinary build — and the compiler's own self-compile — stays byte-identical. <code>bin/x test --coverage</code> compiles the test specs this way, runs them, and aggregates the dumps into a per-file report that names the lines your tests never reached:
+<strong>Line coverage.</strong> Compile with the <code>--coverage</code> flag and the compiler instruments every statement with a per-source-line hit counter; at exit the counts are written to the file named by <code>$LUDIC_COVERAGE</code> (default <code>ludic.cov</code>) as a <code>FILE &lt;name&gt;</code> header followed by one <code>&lt;line&gt; &lt;hits&gt;</code> row per instrumented line. The instrumentation is flag-gated and additive, so an ordinary build — and the compiler's own self-compile — stays byte-identical. <code>bin/ludic dev test --coverage</code> compiles the test specs this way, runs them, and aggregates the dumps into a per-file report that names the lines your tests never reached:
 
 ```
-== line coverage (bin/x test --coverage) ==
+== line coverage (bin/ludic dev test --coverage) ==
   examples/library/coverage.ludic   16/17 lines  94%   uncovered: 33
   examples/library/testing.ludic    17/17 lines  100%
   ----

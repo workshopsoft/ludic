@@ -27,12 +27,12 @@ function sync_vscode_grammar() -> void {
 # is `flag` present anywhere in argv?
 function has_flag(flag: pointer) -> bool {
   var i = 2
-  while i < arg_count() { if (arg(i) == flag) { return true };  i += 1 }
+  while i < arg_total() { if (arg_n(i) == flag) { return true };  i += 1 }
   return false
 }
 
 # ---- tools: build the editor toolchain --------------------------------------
-# usage: x tools [--install] [--test]
+# usage: ludic dev tools [--install] [--test]
 function cmd_tools() -> int {
   ensure_ludicc()
   print("ludicc: tools/ludic-tools/fmt.ludic -> bin/ludic-fmt  (Ludic -> LLVM IR -> binary, no C)")
@@ -57,8 +57,8 @@ function cmd_test_tools() -> int {
   PASS = 0
   FAIL = 0
   let fmt = "bin/ludic-fmt"
-  if not is_exec(fmt) { err("bin/ludic-fmt missing — run: x tools\n"); return 2 }
-  if not is_exec("bin/ludic-lsp") { err("bin/ludic-lsp missing — run: x tools\n"); return 2 }
+  if not is_exec(fmt) { err("bin/ludic-fmt missing — run: ludic dev tools\n"); return 2 }
+  if not is_exec("bin/ludic-lsp") { err("bin/ludic-lsp missing — run: ludic dev tools\n"); return 2 }
 
   print("formatter")
 
@@ -129,7 +129,7 @@ function cmd_test_tools() -> int {
   # features (go-to-def, find-usages, workspace symbols) can't resolve. Gate the
   # end-to-end protocol test on Darwin until the directory walk is portable.
   if is_darwin() {
-    let lrc = sh("bin/x test-lsp")
+    let lrc = sh("bin/ludic dev test-lsp")
     if lrc == 0 { ok("language server protocol") }
     else if lrc == 2 { skip("language server protocol (bin/ludic-lsp not built)") }
     else { bad("language server protocol") }
@@ -160,10 +160,10 @@ function cmd_test_tools() -> int {
   # VS Code carries its own copy of the shared grammar; catch an edit to the copy
   if shq("cmp -s tools/editors/shared/ludic.tmLanguage.json tools/editors/vscode/syntaxes/ludic.tmLanguage.json") and shq("cmp -s tools/editors/shared/ludic.markdown-injection.json tools/editors/vscode/syntaxes/ludic.markdown-injection.json") and shq("cmp -s tools/editors/shared/language-configuration.json tools/editors/vscode/language-configuration.json") {
     ok("vscode grammar copies match tools/editors/shared")
-  } else { bad2("vscode grammar copies have drifted", "run: x tools  to resync") }
+  } else { bad2("vscode grammar copies have drifted", "run: ludic dev tools  to resync") }
 
   # the JetBrains plugin is off by default (its first build pulls a gigabyte of
-  # IntelliJ SDK). One env var away: LUDIC_TEST_JETBRAINS=1 x test-tools
+  # IntelliJ SDK). One env var away: LUDIC_TEST_JETBRAINS=1 ludic dev test-tools
   if (getenv_or("LUDIC_TEST_JETBRAINS", "0") == "1") {
     if shq("test -x tools/editors/jetbrains/gradlew") {
       if shq("cd tools/editors/jetbrains && ./gradlew buildPlugin verifyPluginStructure --console=plain -q >/dev/null 2>&1 && test -f build/distributions/Ludic-1.0.0.zip") { ok("jetbrains plugin builds and verifies") } else { bad("jetbrains plugin build") }
@@ -175,19 +175,19 @@ function cmd_test_tools() -> int {
 
   # the vocabulary lives in one place; drift between it and its copies (the
   # TextMate grammar, the Kotlin lexer) is the failure mode this layout prevents.
-  # The check is written in Ludic (tools/x/checks.ludic) and runs through x — no
+  # The check is written in Ludic (tools/ludic-cli/checks.ludic) and runs through x — no
   # Python in the loop.
-  if shq("bin/x check-vocabulary 2>/dev/null") { ok("vocabulary in sync across grammar/lexer/header") } else { bad("vocabulary drifted") }
+  if shq("bin/ludic dev check-vocabulary 2>/dev/null") { ok("vocabulary in sync across grammar/lexer/header") } else { bad("vocabulary drifted") }
 
   # every feature the compiler actually implements — namespace methods, keywords,
   # types, phases — must have a docs/language page. This reads the implementation
   # (emit_ns_call + ludic_syntax.h), so shipping a feature without docs fails here.
   # Ported to Ludic; runs through x.
-  if shq("bin/x check-impl > /dev/null 2>&1") { ok("docs cover every implemented feature") } else { bad("docs drifted from the implementation") }
+  if shq("bin/ludic dev check-impl > /dev/null 2>&1") { ok("docs cover every implemented feature") } else { bad("docs drifted from the implementation") }
 
   # every ```ludic fence in the docs must parse (or be marked skip/expect-error),
   # so a documented snippet can't drift from what the compiler accepts.
-  if shq("bin/x check-docs > /dev/null 2>&1") { ok("every doc fence parses") } else { bad2("a doc fence drifted", "run: x check-docs") }
+  if shq("bin/ludic dev check-docs > /dev/null 2>&1") { ok("every doc fence parses") } else { bad2("a doc fence drifted", "run: ludic dev check-docs") }
 
   return report()
 }
@@ -195,9 +195,9 @@ function cmd_test_tools() -> int {
 # JSON/XML validity, checked by the Ludic validators in checks.ludic (no Python).
 function test_json(path: pointer) -> void {
   let bn = capture_line(`basename {path}`)
-  if shq(`bin/x lint-asset {path}`) { ok(`valid JSON: {bn}`) } else { bad(`invalid JSON: {path}`) }
+  if shq(`bin/ludic dev lint-asset {path}`) { ok(`valid JSON: {bn}`) } else { bad(`invalid JSON: {path}`) }
 }
 function test_xml(path: pointer) -> void {
   let bn = capture_line(`basename {path}`)
-  if shq(`bin/x lint-asset {path}`) { ok(`valid XML: {bn}`) } else { bad(`invalid XML: {path}`) }
+  if shq(`bin/ludic dev lint-asset {path}`) { ok(`valid XML: {bn}`) } else { bad(`invalid XML: {path}`) }
 }

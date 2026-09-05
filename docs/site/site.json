@@ -152,63 +152,69 @@
   },
   "start": {
     "kicker": "Get started",
-    "title": "From clone to a native window.",
-    "intro": "Bootstrap the task runner once from the checked-in IR seed, then build the toolchain and your game. Everything runs from the repo root.",
+    "title": "One command to install. One to play.",
+    "intro": "Install the toolchain with a single command — it brings the compiler, the <code>ludic</code> CLI, the engine runtime and the editor tooling, and needs nothing else on your machine but a C toolchain to link with. Then create a project and run it.",
     "steps": [
       {
-        "title": "Bootstrap from the seed",
-        "html": "<code>bin/</code> is not checked in, so it is created first; then <code>clang</code> assembles the compiler's own checked-in LLVM IR seed, and that compiler builds <code>bin/x</code>, the task runner. This is the only step Ludic cannot do for itself."
+        "title": "Install",
+        "html": "The installer downloads a verified toolchain for your platform into <code>~/.ludic</code> and puts it on your <code>PATH</code>. Nothing else is touched; uninstalling is <code>rm -rf ~/.ludic</code>. On a platform with no prebuilt toolchain it bootstraps from the compiler's own IR seed instead — same result, a few seconds longer."
       },
       {
-        "title": "Build the toolchain",
-        "html": "<code>bin/x build</code> produces <code>ludicc</code>, <code>ludic</code>, <code>ludic-fmt</code> and <code>ludic-lsp</code> — all compiled by Ludic, from Ludic."
+        "title": "Create a project",
+        "html": "<code>ludic new mygame</code> writes a manifest, a program that already moves something on screen, a test, and an <code>assets/</code> directory. There is no scaffolding to choose and no build file to write."
       },
       {
-        "title": "Compile &amp; run an example",
-        "html": "<code>bin/x app examples/games/snake.ludic</code> turns a <code>.ludic</code> file into a native binary. Run it to open a real window."
+        "title": "Run it",
+        "html": "<code>ludic run</code> compiles <code>src/main.ludic</code> to a native binary and launches it. <code>ludic build</code> stops at the binary — one self-contained executable, with nothing to ship beside it."
       },
       {
-        "title": "Go headless for tests",
-        "html": "<code>--headless</code> renders frames to a <code>.ppm</code> from piped input — deterministic output you can diff in CI."
+        "title": "Test it, headlessly",
+        "html": "<code>ludic test</code> compiles and runs every <code>test</code> block in the project. <code>--headless</code> renders frames to a <code>.ppm</code> from piped input, so a game is deterministic enough to diff in CI."
       }
     ],
     "terminal_name": "zsh — ludic",
     "terminal": [
       {
-        "comment": "bootstrap the task runner (clang + the IR seed, once)"
+        "comment": "install the toolchain (macOS, Linux)"
       },
       {
-        "cmd": "mkdir -p bin && clang selfhost/ludicc.seed.ll -o bin/ludicc"
+        "cmd": "curl -fsSL https://workshopsoft.pages.workshopsoft.io/ludic/install.sh | sh"
       },
       {
-        "cmd": "bin/ludicc tools/x/main.ludic -o bin/x"
-      },
-      {
-        "blank": true
-      },
-      {
-        "comment": "build the toolchain, then an example (opens a window)"
-      },
-      {
-        "cmd": "bin/x build"
-      },
-      {
-        "cmd": "bin/x app examples/games/snake.ludic"
-      },
-      {
-        "cmd": "./build/snake"
+        "out": "→ installed ludic 0.4.0 → ~/.ludic"
       },
       {
         "blank": true
       },
       {
-        "comment": "deterministic headless render for tests"
+        "comment": "a project that builds and plays as it stands"
       },
       {
-        "cmd": "bin/x app examples/games/snake.ludic --headless"
+        "cmd": "ludic new mygame"
       },
       {
-        "cmd": "printf 'ddddwww' | ./build/snake_headless"
+        "cmd": "cd mygame"
+      },
+      {
+        "cmd": "ludic run"
+      },
+      {
+        "out": "→ a native window, running your game"
+      },
+      {
+        "blank": true
+      },
+      {
+        "comment": "tests, and a deterministic headless render for CI"
+      },
+      {
+        "cmd": "ludic test"
+      },
+      {
+        "cmd": "ludic build --headless"
+      },
+      {
+        "cmd": "printf 'ddddwww' | ./build/mygame_headless"
       },
       {
         "out": "→ writes build/out.ppm"
@@ -228,6 +234,6 @@
       "Sublime Text",
       "Zed"
     ],
-    "note": "<code>bin/x tools</code> builds <span class=\"mono\">ludic-fmt</span> and <span class=\"mono\">ludic-lsp</span> — the same formatter runs as a CLI for pre-commit hooks and CI."
+    "note": "Editors spawn <code>ludic lsp</code> — it ships with the toolchain, so there is nothing extra to build or install. The same formatter runs as <code>ludic fmt</code> for pre-commit hooks and CI."
   }
 }

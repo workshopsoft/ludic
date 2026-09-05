@@ -2,7 +2,7 @@ name: ci
 
 # Build the language toolchain from its IR seed and run the regression suites on
 # every push to main and every pull request. Until this landed the only workflow
-# was docs.yml, so nothing gated a change on `x test` / `x test-tools` or on the
+# was docs.yml, so nothing gated a change on `ludic dev test` / `ludic dev test-tools` or on the
 # compiler even building from the seed. See also bootstrap.yml, which proves the
 # C-free self-rebuild reproduces the seed byte-for-byte.
 on:
@@ -45,7 +45,7 @@ jobs:
           # The toolchain is macOS-first; on this Linux runner it links against a
           # tiny C-free IR shim that supplies the Darwin standard-stream globals
           # (__stdoutp/__stderrp) over glibc's stdout/stderr. Injected through
-          # LUDIC_CC so every clang invocation — the seed bootstrap, `x build`,
+          # LUDIC_CC so every clang invocation — the seed bootstrap, `ludic dev build`,
           # and each compiled test program — picks it up. Absolute path so it
           # still resolves if a step changes directory.
           echo "LUDIC_CC=clang-16 $(pwd)/tools/ci/linux_stdio_shim.ll" >> "$GITHUB_ENV"
@@ -60,20 +60,20 @@ jobs:
           # pre-built binaries: the language builds itself from source + seed.
           mkdir -p bin
           clang-16 tools/ci/linux_stdio_shim.ll selfhost/ludicc.seed.ll -o bin/ludicc
-          bin/ludicc tools/x/main.ludic -o bin/x
-          bin/x build
+          bin/ludicc tools/ludic-cli/main.ludic -o bin/ludic
+          bin/ludic dev build
 
-      - name: Regression suite (x test)
-        run: bin/x test
+      - name: Regression suite (ludic dev test)
+        run: bin/ludic dev test
 
-      - name: Editor-toolchain suite (x test-tools)
+      - name: Editor-toolchain suite (ludic dev test-tools)
         # Grammar/lexer/vocabulary sync, ludic-fmt idempotence (the project's
         # formatting contract — hand alignment is deliberately preserved, so the
         # gate is fmt(fmt(x)) == fmt(x), not fmt(x) == x), and the JSON/XML editor
         # assets. Cross-file LSP behaviour and the golden renders are macOS-ABI
         # bound and skip here — visibly — until the runtime's directory walk and
         # windowing are portable.
-        run: bin/x test-tools
+        run: bin/ludic dev test-tools
 
       - name: Docs cover the implementation
         run: |
@@ -81,9 +81,9 @@ jobs:
           # The whole docs toolchain is written in Ludic and runs through x —
           # no Python anywhere. check-impl / check-vocabulary / check-docs guard
           # the sources; docs-gen builds the site and docs-check is its coverage
-          # + integrity guard. (check-vocabulary also runs in `x test-tools`.)
-          bin/x check-impl
-          bin/x check-vocabulary
-          bin/x check-docs
-          bin/x docs-gen --out build/pages
-          bin/x docs-check build/pages
+          # + integrity guard. (check-vocabulary also runs in `ludic dev test-tools`.)
+          bin/ludic dev check-impl
+          bin/ludic dev check-vocabulary
+          bin/ludic dev check-docs
+          bin/ludic dev docs-gen --out build/pages
+          bin/ludic dev docs-check build/pages

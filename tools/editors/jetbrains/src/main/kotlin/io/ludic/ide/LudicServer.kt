@@ -17,7 +17,7 @@ import java.io.File
 
 /**
  * Where to find the toolchain. Both paths may be left blank, in which case the
- * plugin looks under the project root for what `bin/x tools` produces —
+ * plugin looks under the project root for what `bin/ludic dev tools` produces —
  * which is the case for anyone working in the Ludic repository itself.
  */
 @Service(Service.Level.PROJECT)
@@ -60,12 +60,22 @@ internal fun findExecutable(root: String?, configured: String, names: List<Strin
 
 /** Fall back to PATH, so a system-wide install works with no configuration. */
 private fun searchPath(names: List<String>): String? {
-    val path = System.getenv("PATH") ?: return null
-    for (dir in path.split(File.pathSeparator)) {
-        for (name in names) {
-            val f = File(dir, name)
-            if (f.isFile && f.canExecute()) return f.absolutePath
+    val path = System.getenv("PATH")
+    if (path != null) {
+        for (dir in path.split(File.pathSeparator)) {
+            for (name in names) {
+                val f = File(dir, name)
+                if (f.isFile && f.canExecute()) return f.absolutePath
+            }
         }
+    }
+    // The install root, last: an IDE launched from the desktop does not inherit
+    // the PATH the installer wrote to the shell profile, so a working ~/.ludic
+    // install would otherwise look missing.
+    val home = System.getenv("LUDIC_HOME") ?: (System.getProperty("user.home") + "/.ludic")
+    for (name in names) {
+        val f = File(File(home, "bin"), name)
+        if (f.isFile && f.canExecute()) return f.absolutePath
     }
     return null
 }
@@ -108,9 +118,10 @@ class LudicConnectionProvider(private val project: Project) : ProcessStreamConne
                 append(if (root != null) File(File(root, d), "ludic-lsp").path else "<no project root>/$d/ludic-lsp")
                 append('\n')
             }
-            append("  and on PATH.\n")
+            append("  on PATH, and in ~/.ludic/bin.\n")
         }
-        append("\nBuild it with `bin/x tools` from the repository root, ")
+        append("\nInstall the toolchain (curl -fsSL https://workshopsoft.pages.workshopsoft.io/ludic/install.sh | sh), ")
+        append("build it with `bin/ludic dev tools` from a checkout, ")
         append("or set the path in Settings | Languages & Frameworks | Ludic. ")
         append("Syntax highlighting works without it; completion and diagnostics do not.")
     }

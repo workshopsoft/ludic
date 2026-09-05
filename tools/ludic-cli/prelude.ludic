@@ -1,14 +1,16 @@
-# prelude.ludic — the shared runtime for `x`, the Ludic task runner.
+# prelude.ludic — the shared runtime for `ludic`, the command-line interface.
 #
-# `x` replaces every build/test/bootstrap shell script in the repo: it is a
-# single native binary (bin/x) that drives clang, the self-host compiler and the
-# unix tools the same way the old *.sh files did — only now it is written in
-# Ludic and compiled by Ludic. This fragment is the tiny standard library the
-# commands lean on: process control, file IO, string trimming and a colored
-# PASS/FAIL test harness. It carries no ECS, so it links as a plain CLI program.
+# `ludic` is the one tool a user of the language ever runs: it creates projects,
+# compiles and runs them, resolves packages, formats, tests, and (under
+# `ludic dev`) drives every build/bootstrap/release task of the toolchain repo
+# itself. It is a single native binary written in Ludic and compiled by Ludic,
+# driving clang, the compiler and the unix tools through `run`. This fragment is
+# the tiny standard library the commands lean on: process control, file IO,
+# string trimming and a colored PASS/FAIL test harness. It carries no ECS, so it
+# links as a plain CLI program.
 #
-# Everything runs relative to the current directory, so `x` must be invoked from
-# the repository root (the one-line bootstrap in README.md does exactly that).
+# The user-facing commands work from any directory. The `ludic dev` tasks run
+# relative to the current directory and expect the toolchain repo root.
 
 # ---- file IO ----------------------------------------------------------------
 
@@ -51,7 +53,7 @@ function shq(cmd: pointer) -> bool { return exit_code(run(cmd)) == 0 }
 
 # ---- scratch files ------------------------------------------------------------
 # Every scratch file the runner writes lives under one per-process directory
-# (`$TMPDIR/x_<pid>`), so `x test` and an `x check-*` can run side by side without
+# (`$TMPDIR/x_<pid>`), so `ludic dev test` and an `x check-*` can run side by side without
 # clobbering each other's captures. main removes it on the way out.
 var x_tmp: pointer = null
 
@@ -59,7 +61,7 @@ function tmp_dir() -> pointer {
   if x_tmp == null {
     var base = Os.temp_dir()
     if len(base) > 1 and base[len(base) - 1] == '/' { base = base[0..len(base) - 1] }   # macOS: TMPDIR ends in '/'
-    x_tmp = `{base}/x_{Os.pid()}`
+    x_tmp = `{base}/ludic_{Os.pid()}`
     run(`mkdir -p {x_tmp}`)
   }
   return x_tmp
@@ -69,10 +71,10 @@ function tmp_dir() -> pointer {
 function tmp_path(name: pointer) -> pointer { return `{tmp_dir()}/{name}` }
 
 # remove the scratch directory (idempotent; a no-op when nothing was written).
-# X_KEEP_TMP=1 leaves it in place, and says where, for debugging a failing case.
+# LUDIC_KEEP_TMP=1 leaves it in place, and says where, for debugging a failing case.
 function tmp_cleanup() -> void {
   if x_tmp == null { return }
-  if getenv_or("X_KEEP_TMP", "0") == "1" { print(`scratch kept: {x_tmp}`) }
+  if getenv_or("LUDIC_KEEP_TMP", "0") == "1" { print(`scratch kept: {x_tmp}`) }
   else { run(`rm -rf {x_tmp}`) }
   x_tmp = null
 }
@@ -171,4 +173,84 @@ function report() -> int {
   print(`== {string(PASS)} passed, {string(FAIL)} failed ==`)
   if (FAIL == 0) { return 0 }
   return 1
+}
+
+# ---- command arguments -------------------------------------------------------
+#
+# A command reads its own arguments as arg_n(1), arg_n(2)… whether it was
+# reached as `ludic get` or as `ludic dev docs-check DIR`. main sets the shift
+# once per dispatch, so no command has to know how deep its namespace is —
+# getting that wrong is how `docs-check DIR` silently checked the wrong
+# directory.
+var g_shift: int = 0
+
+function arg_n(i: int) -> pointer { return arg(i + g_shift) }
+function arg_total() -> int { return arg_count() - g_shift }
+
+# ---- the toolchain install ---------------------------------------------------
+#
+# The user-facing commands run anywhere, so they cannot assume a `bin/` in the
+# current directory the way the old repo-root-only task runner did. They ask
+# here instead, and get the same answer in both layouts that exist: an install
+# (~/.ludic/bin/ludic, root ~/.ludic) and a checkout of the toolchain repo
+# (bin/ludic, root the repo). The compiler derives its own root by the identical
+# rule (see ludic_home() in selfhost/frontend/parse.ludic), so the two never
+# disagree about where the runtime and the bundled packages live.
+
+var g_home: pointer = null
+
+# the directory holding this binary, with a trailing '/'. argv[0] carries no
+# directory when the CLI was found on $PATH, which is the normal case for an
+# install — ask the shell where it found it.
+function self_dir() -> pointer {
+  var a0 = arg(0)
+  var slash = -1
+  var i = 0
+  while a0[i] != 0 { if a0[i] == '/' { slash = i };  i += 1 }
+  if slash < 0 {
+    let found = capture_line(`command -v {a0}`)
+    if found == "" { return "" }
+    a0 = found
+    slash = -1
+    i = 0
+    while a0[i] != 0 { if a0[i] == '/' { slash = i };  i += 1 }
+    if slash < 0 { return "" }
+  }
+  return a0[0..slash + 1]
+}
+
+# The toolchain install root, with a trailing '/', or "" for the current
+# directory. $LUDIC_HOME wins; otherwise the binary's own directory decides, and
+# a directory named `bin` means the root is its parent.
+function ludic_home() -> pointer {
+  if g_home != null { return g_home }
+  let env = getenv("LUDIC_HOME")
+  if env != null {
+    var e = env
+    if len(e) > 0 and e[len(e) - 1] != '/' { e = e + "/" }
+    g_home = e
+    return g_home
+  }
+  var d = self_dir()
+  if len(d) >= 4 and d[len(d) - 4..len(d)] == "bin/" { d = d[0..len(d) - 4] }
+  # a source checkout the CLI was run from elsewhere in: prefer a ./bin here
+  if not is_exec(`{d}bin/ludicc`) and is_exec("bin/ludicc") { d = "" }
+  g_home = d
+  return g_home
+}
+
+# the path to a toolchain binary (ludicc, ludic-fmt, ludic-lsp). Falls back to
+# the bare name — on $PATH — when the install root has no bin/ of its own.
+function tool(name: pointer) -> pointer {
+  let p = `{ludic_home()}bin/{name}`
+  if is_exec(p) { return p }
+  return name
+}
+
+function ludicc() -> pointer { return tool("ludicc") }
+
+# true in a checkout of the toolchain repo itself, where the `ludic dev` tasks
+# have something to work on.
+function in_toolchain_repo() -> bool {
+  return file_exists("selfhost/ludicc.seed.ll") and file_exists("tools/ludic-cli/main.ludic")
 }

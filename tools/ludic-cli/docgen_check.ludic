@@ -1,4 +1,4 @@
-# docgen_check.ludic — `x docs-check [DIR]`: the coverage / integrity guard over
+# docgen_check.ludic — `ludic dev docs-check [DIR]`: the coverage / integrity guard over
 # a generated docs site, ported from tools/docgen/check.py. Fails (exit 1) if the
 # pages contract is broken, an inventory symbol lacks a source file or page, a
 # token is documented on two pages, a namespace/section is split across dirs, or
@@ -94,7 +94,7 @@ function drop_md(fn: pointer) -> pointer {
 
 function cmd_docs_check() -> int {
   var site = "build/pages"
-  if arg_count() >= 3 { site = arg(2) }
+  if arg_total() >= 3 { site = arg_n(2) }
   let problems = new []pointer
   let warnings = new []pointer
 
@@ -102,6 +102,9 @@ function cmd_docs_check() -> int {
   if not file_exists(`{site}/index.html`) { push(problems, "missing required file: index.html") }
   if not file_exists(`{site}/api.html`) { push(problems, "missing required file: api.html") }
   if not file_exists(`{site}/.nojekyll`) { push(problems, "missing required file: .nojekyll") }
+  # the landing page tells people to curl this; a site without it publishes a
+  # broken install command
+  if not file_exists(`{site}/install.sh`) { push(problems, "missing required file: install.sh") }
 
   # 2) coverage + thin detection over docs/language/**
   let id2src = meta_new()

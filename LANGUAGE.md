@@ -1021,24 +1021,28 @@ literal; test any pointer/record/slice with `x == null` / `x != null` (an unset
 ## Tooling
 
 ```bash
-ludicc app.ludic -o build/app         # native binary (windowed for a game)
-ludicc app.ludic --headless -o app       # headless build (renders out.ppm; reads stdin)
+ludic new mygame                         # a project that builds and plays as it stands
+ludic run                                # compile src/main.ludic and run it
+ludic build --headless                   # headless build (renders out.ppm; reads stdin)
+ludic test                               # compile and run the project's `test` blocks
+
+ludicc app.ludic -o build/app            # the compiler directly: a native binary
 ludicc app.ludic --emit-llvm -o app.ll   # stop at LLVM IR
-ludic  app.ludic                       # compile AND run (forwards the exit code)
 ```
 
-`ludicc` (compile) and `ludic` (compile-and-run) are one multi-call binary built
-by `bin/x build-cli`. **[COMPILING.md](COMPILING.md) is the authoritative CLI
-reference** — the full flag set (`-o`, `--windowed`, `--headless`, `--emit-llvm`,
-`--save-temps`, `--run`), the `LUDIC_HOME` / `LUDIC_CC` environment variables,
-and the IR-to-stdout bootstrap contract (no `-o`, invoked as `ludicc`) that
-`bin/x app` / `bin/x reseed` rely on. The default mode is auto: a file with `handler`s
-links windowed, otherwise headless; an explicit flag always wins.
+`ludic` is the CLI (`ludic help`); `ludicc` is the compiler it drives, built from
+the IR seed by `bin/ludic dev build-cli`. **[COMPILING.md](COMPILING.md) is the
+authoritative CLI reference** — the full flag set (`-o`, `--windowed`,
+`--headless`, `--emit-llvm`, `--save-temps`, `--run`), the `LUDIC_HOME` /
+`LUDIC_CC` environment variables, and the IR-to-stdout bootstrap contract (no
+`-o`) that `bin/ludic build` / `bin/ludic dev reseed` rely on. The default mode
+is auto: a file with `handler`s links windowed, otherwise headless; an explicit
+flag always wins.
 
 The retired C driver's `--shared`, `--fmt`, `-c`, cross-compile (`--target`) and
 wasm modes are **not** on the self-hosted toolchain (see "Not yet implemented").
-Source formatting now lives in the standalone `bin/ludic-fmt` (below), not a
-compiler flag.
+Source formatting now lives in the standalone formatter — `ludic fmt` (below) —
+not a compiler flag.
 
 The self-hosted compiler is intentionally permissive: it has no separate
 validation pass yet, so unknown types lower to `ptr` and call arity is not
@@ -1049,7 +1053,7 @@ duplicate types, unknown fields, arity) are future work.
 ### Editors
 
 ```bash
-bin/x tools                            # -> bin/ludic-fmt, bin/ludic-lsp
+bin/ludic dev tools                            # -> bin/ludic-fmt, bin/ludic-lsp
 bin/ludic-fmt -w src/                 # format in place (keeps comments)
 bin/ludic-fmt --check .               # CI: exit 1 if anything is unformatted
 bin/ludic-lsp --stdio                 # the language server, for any editor
@@ -1076,7 +1080,7 @@ Emacs, Sublime and Zed, are in `tools/editors/` — see
 - `examples/games/snake.ludic` — Snake, no assets — same compiler, proving generality.
 
 ```bash
-bin/x app examples/games/snake.ludic && ./build/snake
+bin/ludic build examples/games/snake.ludic && ./build/snake
 ```
 
 ## Not yet implemented
@@ -1103,7 +1107,7 @@ self-hosting; their lowerings are in
 
 > **Implemented (S0).** `scene`, `layer`, and the `on enter` / `on exit` hooks
 > compile; [`examples/lang/scenes.ludic`](examples/lang/scenes.ludic) runs and is checked
-> by `bin/x test`. A scene lowers to a `machine` the compiler writes for you: one
+> by `bin/ludic dev test`. A scene lowers to a `machine` the compiler writes for you: one
 > implicit active-scene register, states numbered by declaration order, and
 > `become` as two direct calls plus a store. Richer scene features (the overlay
 > stack, scene-owned entities, scene-local state, transition parameters) are

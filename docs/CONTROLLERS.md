@@ -64,7 +64,7 @@ controller.
 
 The genre packages build on the engine's `Body`/`Collider` + `esys_move` (swept-AABB
 tile collision, in `runtime/native/systems_move.ludic`) and on `ludic.gameplay`. In a
-real project you `x add` them; in this repo the packages live under `packages/` and a
+real project you `ludic add` them; in this repo the packages live under `packages/` and a
 game compiles against them with `LUDIC_MODULES`:
 
 ```
@@ -74,7 +74,7 @@ LUDIC_MODULES=packages ludicc examples/games/platformer_demo.ludic -o platformer
 Worked, self-checking examples for every controller live in `examples/games/`
 (`platformer_demo`, `platformer_scaffolding`, `shooter_demo`, `npcai_demo`, `rpg_demo`)
 and `examples/library/gameplay_foundation.ludic`; each is a deterministic regression
-case in `x test`.
+case in `ludic dev test`.
 
 ## What we deliberately do NOT do
 

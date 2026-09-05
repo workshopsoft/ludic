@@ -4,7 +4,7 @@
 # builds from the seed, compiles every example to its byte-exact golden render,
 # self-hosts to a fixpoint, and rebuilds itself with no C compiler.
 #
-# It drives the other commands through `bin/x <sub>` exactly where test.sh used
+# It drives the other commands through `bin/ludic <sub>` exactly where test.sh used
 # to spawn a sibling script, so each stage stays an independent, observable run.
 
 # compile a feature example as a game, run it (optional keys on stdin) and match
@@ -23,7 +23,7 @@ function feat_case(path: pointer, keys: pointer, exp: pointer, label: pointer) -
 # a feature example that consumes an in-repo controller package (packages/): same
 # as feat_case, but the compiler is pointed at packages/ via LUDIC_MODULES so a
 # `import "ludic.foo/bar.ludic"` resolves, and LUDIC_HOME anchors the engine
-# runtime. This is exactly how `x app` / an external project builds against a
+# runtime. This is exactly how `ludic build` / an external project builds against a
 # fetched source package (the do_import module-root fallback, #63).
 function controller_case(path: pointer, keys: pointer, exp: pointer, label: pointer) -> void {
   let nm = flat(path)
@@ -57,6 +57,38 @@ function runtime_home_case() -> void {
   }
   let got = capture_line(`{dir}/game < /dev/null`)
   if (got == "7") { ok(lbl) } else { bad2(lbl, `got [{got}] want [7]`) }
+}
+
+# The install layout: bin/ beside runtime/ and packages/, reached through $PATH
+# from an unrelated directory, with nothing in the environment. This is what
+# `curl https://workshopsoft.pages.workshopsoft.io/ludic/install.sh | sh` lays down and the only shape most
+# users will ever run, so it is asserted rather than assumed: a staged copy of
+# the toolchain compiles and runs a project created by `ludic new`.
+function install_layout_case() -> void {
+  let root = capture_line("pwd")
+  let home = `{tmp_dir()}/install`
+  let lbl = "an installed layout (bin/ + runtime/ + packages/, found on PATH) builds a new project"
+  run(`rm -rf {home} && mkdir -p {home}/bin`)
+  run(`cp bin/ludic bin/ludicc bin/ludic-fmt {home}/bin/`)
+  run(`cp -R runtime {home}/runtime && cp -R packages {home}/packages && cp VERSION {home}/VERSION`)
+  let work = `{tmp_dir()}/installwork`
+  run(`rm -rf {work} && mkdir -p {work}`)
+  # PATH only — no LUDIC_HOME, and the current directory has no bin/ of its own.
+  let envp = `env -u LUDIC_HOME PATH={home}/bin:/usr/bin:/bin:/usr/sbin:/sbin`
+  if not shq(`cd {work} && {envp} ludic new demo > {work}/new.out 2>&1`) {
+    bad2(lbl, capture_line(`tail -1 {work}/new.out`)); return
+  }
+  if not shq(`cd {work}/demo && {envp} ludic build --headless > {work}/build.out 2>&1`) {
+    bad2(lbl, capture_line(`tail -1 {work}/build.out`)); return
+  }
+  if not shq(`cd {work}/demo && {envp} ludic test > {work}/test.out 2>&1`) {
+    bad2(lbl, capture_line(`tail -1 {work}/test.out`)); return
+  }
+  let ver = capture_line(`{envp} ludic version`)
+  if ver != `ludic {s_trim(read_file("VERSION"))}` {
+    bad2("an installed `ludic version` reports the install's VERSION", `got [{ver}]`); return
+  }
+  ok(lbl)
 }
 
 # a "does it still compile" smoke test (parse -> lower -> link), no run
@@ -126,7 +158,7 @@ function panic_case() -> void {
   else { bad2("panic", `rc={string(rc)} err=[{msg}]`) }
 }
 
-# issue #45: `bin/x test --coverage`. Compile each test-spec with `--coverage`,
+# issue #45: `bin/ludic dev test --coverage`. Compile each test-spec with `--coverage`,
 # run it with LUDIC_COVERAGE pointed at a per-file dump, then aggregate the dumps
 # into a clean per-file line-coverage report. The instrumentation is flag-gated,
 # so this reuses the same seed-built bin/ludicc the rest of the suite does.
@@ -176,7 +208,7 @@ function cmd_test_coverage() -> int {
   }
   COV_COVERED = 0
   COV_TOTAL = 0
-  print("== line coverage (bin/x test --coverage) ==")
+  print("== line coverage (bin/ludic dev test --coverage) ==")
   cov_one("library/coverage", `{tmp_dir()}/cov_out`)
   cov_one("library/testing", `{tmp_dir()}/cov_out`)
   var pct = 100
@@ -186,7 +218,7 @@ function cmd_test_coverage() -> int {
   return 0
 }
 
-function cmd_test() -> int {
+function cmd_dev_test() -> int {
   PASS = 0
   FAIL = 0
 
@@ -199,7 +231,7 @@ function cmd_test() -> int {
 
   print("== the compiler builds from the IR seed (no C compiler) ==")
   run("rm -f bin/ludicc")
-  if shq("bin/x app examples/games/snake.ludic --headless >/dev/null 2>&1") and is_exec("bin/ludicc") {
+  if shq("bin/ludic build examples/games/snake.ludic --headless >/dev/null 2>&1") and is_exec("bin/ludicc") {
     ok("clang selfhost/ludicc.seed.ll -> bin/ludicc")
   } else { bad("compiler did not build from the seed") }
 
@@ -209,11 +241,11 @@ function cmd_test() -> int {
   game_case("games/chronorift", "ddddwwwwaassK")
 
   print("== self-hosting and the bootstrap fixpoints ==")
-  run(`bin/x selfhost-test > {tmp_dir()}/sh.out 2>&1`)
+  run(`bin/ludic dev selfhost-test > {tmp_dir()}/sh.out 2>&1`)
   if shq(`grep -q 'gen2.ll == gen3.ll' {tmp_dir()}/sh.out`) { ok("the compiler reproduces itself (fixpoint)") } else { bad("fixpoint") }
   if shq(`grep -q 'no C compiler' {tmp_dir()}/sh.out`) { ok("the compiler rebuilds itself from the seed, C-free") } else { bad("C-free bootstrap") }
   let corr = capture_line(`grep -c PASS {tmp_dir()}/sh.out`)
-  ok(`self-host suite: {corr} checks passed (see: x selfhost-test)`)
+  ok(`self-host suite: {corr} checks passed (see: ludic dev selfhost-test)`)
 
   print("== documented syntax stays compilable (guards against spec/compiler drift) ==")
   qsmoke("lang/qdecl")
@@ -367,12 +399,12 @@ function cmd_test() -> int {
   smoke("networking/net_rt")
   smoke("library/cursor_capture")                    # #89 Input.cursor_mode compiles (no-op headless; windowed links cocoa.ll)
 
-  print("== self-hosted front-end binaries (ludicc / ludic) ==")
-  # the two commands are one multi-call native binary built from the seed with
-  # clang alone. ludicc compiles; ludic compiles-and-runs.
-  if shq(`bin/x build-cli > {tmp_dir()}/cli.out 2>&1`) and is_exec("bin/ludicc") and is_exec("bin/ludic") {
-    ok("x build-cli builds bin/ludicc and bin/ludic from the seed (clang-only)")
-  } else { bad2("x build-cli", capture_line(`tail -1 {tmp_dir()}/cli.out`)) }
+  print("== the compiler and the CLI (ludicc / ludic) ==")
+  # ludicc comes out of the IR seed with clang alone; the CLI is then compiled
+  # by it, from Ludic.
+  if shq(`bin/ludic dev build-cli > {tmp_dir()}/cli.out 2>&1`) and is_exec("bin/ludicc") {
+    ok("ludic dev build-cli builds bin/ludicc from the seed (clang-only)")
+  } else { bad2("ludic dev build-cli", capture_line(`tail -1 {tmp_dir()}/cli.out`)) }
 
   # ludicc -o drives clang to a native binary. A game links windowed by default
   # (LUDIC_HOME points the linker at runtime/native/cocoa.ll) — that path is
@@ -398,37 +430,50 @@ function cmd_test() -> int {
     ok("ludicc --emit-llvm  ->  LLVM IR")
   } else { bad2("ludicc --emit-llvm", capture_line(`tail -1 {tmp_dir()}/cli.out`)) }
 
-  # ludic compiles, runs, and forwards the program's exit code.
+  # `ludic <file>` compiles, runs, and forwards the program's exit code.
   write_file(`{tmp_dir()}/cli_exit.ludic`, "entry { exit(42) }\n")
-  let rc = sh(`LUDIC_HOME=. bin/ludic {tmp_dir()}/cli_exit.ludic > {tmp_dir()}/cli.out 2>&1`)
+  let rc = sh(`bin/ludic {tmp_dir()}/cli_exit.ludic --headless > {tmp_dir()}/cli.out 2>&1`)
   if (rc == 42) { ok("ludic app.ludic  ->  compiles, runs, forwards exit code") }
   else { bad2("ludic run: expected exit 42", `got {string(rc)}`) }
+
+  # The CLI has to work as an install does: from another directory, with no
+  # ./bin, finding its compiler, the engine runtime and the bundled packages
+  # from its own location. This is the shape `curl … | sh` produces.
+  install_layout_case()
+
+  # install.sh is what the landing page tells people to pipe into sh, and it is
+  # published with the docs site — so it is checked here rather than discovered
+  # broken by a first-time user. `sh -n` parses it without running anything.
+  if not file_exists("install.sh") { bad("install.sh is missing") }
+  else if shq("sh -n install.sh 2>/dev/null") and shq("sh install.sh --help >/dev/null 2>&1") {
+    ok("install.sh parses under POSIX sh and answers --help")
+  } else { bad("install.sh does not parse under POSIX sh") }
 
   # the package manager (issue #63): fetch + MVS resolve + content-addressed
   # store + ludic_modules/ links + build, run as its own hermetic suite (it
   # stands up throwaway git repos, so like selfhost-test it runs as a sub-process
   # and this stage checks its footer).
-  print("== package manager (x test-pkg) ==")
-  run(`bin/x test-pkg > {tmp_dir()}/pkg.out 2>&1`)
+  print("== package manager (ludic dev test-pkg) ==")
+  run(`bin/ludic dev test-pkg > {tmp_dir()}/pkg.out 2>&1`)
   if shq(`grep -q '0 failed' {tmp_dir()}/pkg.out`) {
     let pc = capture_line(`grep -c PASS {tmp_dir()}/pkg.out`)
-    ok(`package-manager suite: {pc} checks passed (see: x test-pkg)`)
-  } else { bad2("x test-pkg", capture_line(`grep -i fail {tmp_dir()}/pkg.out | head -1`)) }
+    ok(`package-manager suite: {pc} checks passed (see: ludic dev test-pkg)`)
+  } else { bad2("ludic dev test-pkg", capture_line(`grep -i fail {tmp_dir()}/pkg.out | head -1`)) }
 
   # docs site generator + guard, in Ludic (no Python). docs-gen emits the whole
   # pages payload; docs-check is its coverage/integrity guard; docs-palette is
   # the named-colour source of truth (its --check mode regenerates the tracked
   # emit_color.ludic + palette.json into scratch files and compares).
   print("== docs site (Ludic generator, no Python) ==")
-  if shq(`bin/x docs-gen --out {tmp_dir()}/docs > {tmp_dir()}/docs.out 2>&1`) {
-    ok("x docs-gen  ->  the pages-branch payload")
-  } else { bad2("x docs-gen", capture_line(`tail -1 {tmp_dir()}/docs.out`)) }
-  if shq(`bin/x docs-check {tmp_dir()}/docs > {tmp_dir()}/docs_chk.out 2>&1`) {
-    ok("x docs-check passes on the generated site")
-  } else { bad2("x docs-check", capture_line(`tail -1 {tmp_dir()}/docs_chk.out`)) }
-  if shq(`bin/x docs-palette --check > {tmp_dir()}/pal.out 2>&1`) {
-    ok("x docs-palette regenerates emit_color.ludic + palette.json byte-identically")
-  } else { bad2("x docs-palette --check", capture_line(`tail -1 {tmp_dir()}/pal.out`)) }
+  if shq(`bin/ludic dev docs-gen --out {tmp_dir()}/docs > {tmp_dir()}/docs.out 2>&1`) {
+    ok("ludic dev docs-gen  ->  the pages-branch payload")
+  } else { bad2("ludic dev docs-gen", capture_line(`tail -1 {tmp_dir()}/docs.out`)) }
+  if shq(`bin/ludic dev docs-check {tmp_dir()}/docs > {tmp_dir()}/docs_chk.out 2>&1`) {
+    ok("ludic dev docs-check passes on the generated site")
+  } else { bad2("ludic dev docs-check", capture_line(`tail -1 {tmp_dir()}/docs_chk.out`)) }
+  if shq(`bin/ludic dev docs-palette --check > {tmp_dir()}/pal.out 2>&1`) {
+    ok("ludic dev docs-palette regenerates emit_color.ludic + palette.json byte-identically")
+  } else { bad2("ludic dev docs-palette --check", capture_line(`tail -1 {tmp_dir()}/pal.out`)) }
 
   return report()
 }

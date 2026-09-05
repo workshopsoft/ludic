@@ -1,6 +1,6 @@
-# coverage.ludic — a spec built to be measured by `bin/x test --coverage` (issue
+# coverage.ludic — a spec built to be measured by `bin/ludic dev test --coverage` (issue
 # #45). Compiled with `--coverage`, every statement bumps a per-source-line hit
-# counter; at exit the counts are dumped and `bin/x test --coverage` turns them
+# counter; at exit the counts are dumped and `bin/ludic dev test --coverage` turns them
 # into a per-file line-coverage report.
 #
 # The tests below exercise `sign` fully but only the taken branches of `grade`,

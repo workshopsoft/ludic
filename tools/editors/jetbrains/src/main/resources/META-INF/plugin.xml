@@ -67,7 +67,7 @@
             name="Ludic"
             factoryClass="io.ludic.ide.LudicLanguageServerFactory">
             <description><![CDATA[
-            The Ludic language server. Built by <code>bin/x tools</code>.
+            The Ludic language server. Built by <code>bin/ludic dev tools</code>.
             ]]></description>
         </server>
         <languageMapping language="Ludic" serverId="ludic"/>

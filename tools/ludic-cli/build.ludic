@@ -1,0 +1,100 @@
+# build.ludic — compiling: a user's program (ludic build / ludic run) and the
+# toolchain's own binaries (ludic dev build).
+#
+# compile_app is the one place a .ludic file becomes an executable, so a project
+# build and the repo's own example builds cannot drift apart. Everything the
+# toolchain owns — the compiler, the engine runtime it splices — is addressed
+# through ludic_home(), so the same code path works from a checkout and from an
+# installed ~/.ludic.
+
+# compile a Ludic source to a native binary in bin/ via ludicc + clang (-O2).
+# Returns true on success. Used for x itself and the editor tools.
+function build_tool(name: pointer, src: pointer) -> bool {
+  let ll = `build/{name}.ll`
+  if not shq(`bin/ludicc {src} --emit-llvm -o {ll} 2>/dev/null`) { print(`build failed: {name} (compile)`); return false }
+  # write to a temp then move, so a running bin/ludic can rebuild itself in place
+  if not shq(`{cc()} -O2 {ll} -o bin/{name}.tmp`) { print(`build failed: {name} (link)`); return false }
+  run(`mv -f bin/{name}.tmp bin/{name} && rm -f {ll}`)
+  return true
+}
+
+# ---- build-cli: the self-hosted front-end binaries ---------------------------
+# Both ludicc and ludic are the SAME multi-call binary assembled from the IR seed
+# with clang alone; invoked as `ludic` it compiles-and-runs, as `ludicc` it just
+# compiles.
+function cmd_dev_build_cli() -> int {
+  run("mkdir -p bin build")
+  print("cc: selfhost/ludicc.seed.ll -> bin/ludicc  (from the IR seed, no C compiler)")
+  if not shq(`{cc()} selfhost/ludicc.seed.ll -o bin/ludicc`) { err("ludic: the seed did not assemble\n"); return 1 }
+  run("chmod +x bin/ludicc")
+  print("done. built bin/ludicc")
+  return 0
+}
+
+# ---- build: the whole toolchain (ludicc, ludic, ludic-fmt, ludic-lsp) -------
+function cmd_dev_build() -> int {
+  if cmd_dev_build_cli() != 0 { return 1 }
+  print("ludicc: tools/ludic-cli/main.ludic -> bin/ludic  (the CLI rebuilds itself)")
+  if not build_tool("ludic", "tools/ludic-cli/main.ludic") { return 1 }
+  print("ludicc: tools/ludic-tools/fmt.ludic -> bin/ludic-fmt")
+  if not build_tool("ludic-fmt", "tools/ludic-tools/fmt.ludic") { return 1 }
+  print("ludicc: tools/ludic-tools/lsp.ludic -> bin/ludic-lsp")
+  if not build_tool("ludic-lsp", "tools/ludic-tools/lsp.ludic") { return 1 }
+  sync_vscode_grammar()
+  print("done. toolchain in bin/ (ludicc, ludic, ludic-fmt, ludic-lsp)")
+  return 0
+}
+
+# ---- compiling one program to a native binary -------------------------------
+#
+# mode 1 = windowed (a game opens a real window), 2 = headless (the last frame is
+# rendered to build/out.ppm from piped input — deterministic output for tests).
+# Returns true on success. `ludic build`, `ludic run` and `ludic dev app` all go
+# through here.
+function compile_app(src: pointer, out: pointer, mode: int, save: bool) -> bool {
+  ensure_ludicc()                          # in a checkout: assemble the seed if bin/ludicc is missing or stale
+  let home = ludic_home()
+  let pbf = prebuilt_link_flags()          # #64: link resolved prebuilt module dylibs, if any
+  let odir = dir_of_path(out)
+  if len(odir) > 0 { run(`mkdir -p {odir}`) }
+  run("mkdir -p build")
+  let ll = `{out}.ll`
+
+  if mode == 2 {
+    if not shq(`{ludicc()} --headless {src} --emit-llvm -o {ll}`) { return false }
+    if not shq(`{cc()} -O2 {ll}{pbf} -o {out}`) { return false }
+    if not save { run(`rm -f {ll}`) }
+    return true
+  }
+
+  if not shq(`{ludicc()} --windowed {src} --emit-llvm -o {ll}`) { return false }
+  # audio.ll (#22) is always linked here — unused snd_* are dead-stripped; the
+  # canonical `ludicc -o` path links it only when Audio.* is used.
+  let cocoa = `{home}runtime/native/cocoa.ll`
+  let audio = `{home}runtime/native/audio.ll`
+  if not shq(`{cc()} -O2 {ll} {cocoa} {audio} -framework Cocoa -Wl,-needed_framework,GameController -Wl,-needed_framework,AVFoundation -Wl,-rpath,@loader_path{pbf} -o {out}`) { return false }
+  if not save { run(`rm -f {ll}`) }
+  return true
+}
+
+# the directory part of a path, without the trailing '/' ("" when there is none)
+function dir_of_path(p: pointer) -> pointer {
+  var last = -1
+  var i = 0
+  while p[i] != 0 { if p[i] == '/' { last = i };  i += 1 }
+  if last < 0 { return "" }
+  return p[0..last]
+}
+
+# Remove every generated artifact and leave the tracked source untouched: the
+# whole build/ tree (IR, objects, compiled apps, the headless render at
+# build/out.ppm), and any stray *.tmp/*.ll left behind by a failed build. A
+# legacy out.ppm in the root (from an older toolchain) is swept too. Binaries in
+# bin/ are kept so the running CLI survives; in the toolchain repo, rebuild them
+# any time with `ludic dev build`.
+function cmd_clean() -> int {
+  run("rm -rf build")
+  run("rm -f out.ppm bin/*.tmp")
+  print("cleaned: build/ (incl. build/out.ppm) and stray artifacts  (bin/ is left alone)")
+  return 0
+}

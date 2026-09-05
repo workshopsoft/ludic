@@ -1,37 +1,46 @@
 # Compiling Ludic
 
-> **Note (2026-08-27):** `ludicc` is now **written in Ludic** (`selfhost/*.ludic`)
-> and built from a checked-in IR seed — the C compiler this document describes has
-> been deleted. The native pipeline below (Ludic → LLVM IR → object → binary) is
-> unchanged. `ludicc` now drives clang itself (via an `os_system` intrinsic), so
-> `ludicc app.ludic -o bin/app` and `--emit-llvm` work directly, and a sibling
-> command `ludic app.ludic` compiles to a temporary binary and runs it in one
-> step. The whole toolchain is built by `bin/x build`; `bin/x app` remains as a
-> convenience wrapper over the compiler. `--fmt` is reimplemented as a lex+parse
-> gate (the doc-check hook). The `--target`/cross-compile and `--shared` paths are
-> still features of the old C driver not yet re-implemented on the self-hosted
-> toolchain. See the [Bootstrap deep-dive](https://git.workshopsoft.io/workshopsoft/ludic/wiki/Bootstrap) §5.7 on the wiki.
+> **Note:** `ludicc` is **written in Ludic** (`selfhost/*.ludic`) and built from a
+> checked-in IR seed — the C compiler this document once described has been
+> deleted. The native pipeline below (Ludic → LLVM IR → object → binary) is
+> unchanged. `ludicc` drives clang itself (via an `os_system` intrinsic), so
+> `ludicc app.ludic -o bin/app` and `--emit-llvm` work directly. `--fmt` is
+> reimplemented as a lex+parse gate (the doc-check hook). The `--target`/
+> cross-compile and `--shared` paths are still features of the old C driver not
+> yet re-implemented on the self-hosted toolchain. See the
+> [Bootstrap deep-dive](https://git.workshopsoft.io/workshopsoft/ludic/wiki/Bootstrap) §5.7 on the wiki.
 >
-> From a clean checkout, build the compiler and the task-runner in one line, then
-> let `bin/x` do the rest (run it from the repository root):
+> Most people never invoke `ludicc` directly: the `ludic` CLI drives it.
 >
 > ```bash
-> # one-time bootstrap: clang assembles the seed, then ludicc compiles bin/x
-> mkdir -p bin && clang selfhost/ludicc.seed.ll -o bin/ludicc && bin/ludicc tools/x/main.ludic -o bin/x
-> bin/x build                             # rebuild the whole toolchain into bin/
->                                         #   (ludicc, ludic, x, ludic-fmt, ludic-lsp)
-> bin/ludicc examples/games/snake.ludic -o bin/snake   # compile
-> bin/ludic  examples/games/snake.ludic                # compile + run
-> bin/x help                              # list every command
+> curl -fsSL https://workshopsoft.pages.workshopsoft.io/ludic/install.sh | sh   # the toolchain, into ~/.ludic
+> ludic new mygame && cd mygame
+> ludic run                                      # compile + run
+> ludic build --headless                         # compile, deterministic render
 > ```
 >
-> The binaries are multi-call (one native binary under two names): invoked as
-> `ludicc` it compiles, as `ludic` it compiles-and-runs. A `.ludic` file with
-> handlers is a game and links windowed by default; `--headless` and `--windowed`
-> force the mode. The runtime (`runtime/native/cocoa.ll`) is found via
-> `$LUDIC_HOME`, defaulting to the directory the binary sits in — keep them in
-> `bin/`, or set `LUDIC_HOME` and put them on `PATH`. `$LUDIC_CC` overrides the
-> assembler/linker (default `clang`).
+> From a clean checkout, the compiler and the CLI come up in two lines and the
+> CLI does the rest (run it from the repository root):
+>
+> ```bash
+> # one-time bootstrap: clang assembles the seed, then ludicc compiles bin/ludic
+> mkdir -p bin && clang selfhost/ludicc.seed.ll -o bin/ludicc
+> bin/ludicc tools/ludic-cli/main.ludic -o bin/ludic
+> bin/ludic dev build                                  # the whole toolchain into bin/
+>                                                      #   (ludicc, ludic, ludic-fmt, ludic-lsp)
+> bin/ludicc examples/games/snake.ludic -o bin/snake   # the compiler, directly
+> bin/ludic build examples/games/snake.ludic           # or through the CLI
+> bin/ludic help                                       # every command
+> ```
+>
+> A `.ludic` file with handlers is a game and links windowed by default;
+> `--headless` and `--windowed` force the mode. The engine runtime
+> (`runtime/native/cocoa.ll`, the spliced `runtime/native/*.ludic`) and the
+> bundled `ludic.*` packages are found under the **install root**: `$LUDIC_HOME`
+> if set, otherwise derived from the binary's own location — the parent of its
+> `bin/` directory, which is both `~/.ludic` for an install and the repository
+> root for a checkout. `$LUDIC_CC` overrides the assembler/linker (default
+> `clang`).
 
 
 `ludicc` is a compiler, not a translator. It lexes, parses, checks and lowers
@@ -73,17 +82,17 @@ the old C driver and are **not yet re-implemented** on the self-hosted toolchain
 (see the note at the top). The rows above the line work today via the
 self-hosted `ludicc`.
 
-`bin/x app` wraps the common cases:
+`bin/ludic build` wraps the common cases:
 
 ```bash
-bin/x app examples/games/snake.ludic              # -> build/snake        (native)
-bin/x app examples/library/combat.ludic --lib   # -> build/libcombat.*  (library)
-bin/x app examples/games/snake.ludic --headless   # -> build/snake_headless (out.ppm)
-bin/x app examples/games/snake.ludic --web        # -> build/web/            (browser)
+bin/ludic build examples/games/snake.ludic              # -> build/snake        (native)
+bin/ludic build examples/library/combat.ludic --lib   # -> build/libcombat.*  (library)
+bin/ludic build examples/games/snake.ludic --headless   # -> build/snake_headless (out.ppm)
+bin/ludic build examples/games/snake.ludic --web        # -> build/web/            (browser)
 ```
 
 The `--lib` and `--web` targets were part of the old C driver and are **not yet
-re-implemented** on the self-hosted toolchain — `bin/x app` supports the native
+re-implemented** on the self-hosted toolchain — `bin/ludic build` supports the native
 windowed and `--headless` builds today.
 
 ## Programs and libraries
@@ -223,7 +232,7 @@ only the triple changes.
 ```
 
 ```bash
-bin/x app examples/games/chronorift.ludic --web
+bin/ludic build examples/games/chronorift.ludic --web
 python3 -m http.server -d build/web 8000     # then open http://localhost:8000/
 ```
 
@@ -311,7 +320,7 @@ node tools/ludic-web/run.mjs build/web/snake_headless.wasm --stdin=ddss
 ```
 
 Because Ludic is fixed-point and its RNG is seeded, the native headless binary
-and the wasm one must render byte-identical frames from the same input. `bin/x test`
+and the wasm one must render byte-identical frames from the same input. `bin/ludic dev test`
 asserts exactly that, which is a much stronger check on the backend than
 "it started".
 
@@ -325,13 +334,13 @@ entity allocator, save/load snapshots, the frame loop, the window, and the whole
 graphics stack — framebuffer, PNG decoding, sprites, 9-slice, TrueType text and
 the retained UI.
 
-None of it goes through C. `bin/x test` asserts that directly: no C source
+None of it goes through C. `bin/ludic dev test` asserts that directly: no C source
 survives in `runtime/`, no C emitter survives in `ludicc`, and the examples all
 build, run and render from IR alone.
 
 ## Every flag
 
-The self-hosted `ludicc`/`ludic` (built with `bin/x build-cli`) accept:
+The self-hosted `ludicc`/`ludic` (built with `bin/ludic dev build-cli`) accept:
 
 ```
   <file.ludic>       the program to compile (first non-flag argument)
@@ -344,12 +353,14 @@ The self-hosted `ludicc`/`ludic` (built with `bin/x build-cli`) accept:
   --fmt              lex + parse only; exit 0 if it parses, 1 on a parse error
                      (the check-docs gate; canonical formatting not yet restored)
   --save-temps       keep the intermediate .ll
-  --run              compile then run (implicit when invoked as `ludic`)
+  --run              compile then run (what `ludic run` uses)
   (unknown -flags are ignored with a warning, never taken as the input file)
 
 environment:
   LUDIC_CC           the LLVM that assembles IR and drives the linker (clang)
-  LUDIC_HOME         where runtime/native/ lives (default: the binary's dir)
+  LUDIC_HOME         the install root — runtime/, packages/, VERSION
+                     (default: the parent of the binary's bin/ directory)
+  LUDIC_MODULES      the project's fetched packages (default: ./ludic_modules)
 ```
 
 Mode is automatic when neither `--windowed` nor `--headless` is given: a program

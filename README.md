@@ -35,34 +35,57 @@ program Hello {
 
 ## Getting started
 
-`bin/x` is the project's task runner: one native binary, written in Ludic and
-compiled by Ludic, that replaces every build and test script. Bootstrapping it
-is the only step Ludic cannot do for itself, since compiling Ludic needs a
-compiler — clang assembles the checked-in IR seed:
+Install the toolchain — the compiler, the `ludic` CLI, the engine runtime, the
+formatter and the language server — with one command:
 
 ```bash
-mkdir -p bin && clang selfhost/ludicc.seed.ll -o bin/ludicc && bin/ludicc tools/x/main.ludic -o bin/x
+curl -fsSL https://workshopsoft.pages.workshopsoft.io/ludic/install.sh | sh
 ```
 
-Then build the toolchain and run a game:
+It installs into `~/.ludic` and puts `~/.ludic/bin` on your `PATH`; nothing else
+on the machine is touched, and uninstalling is `rm -rf ~/.ludic`. Where a
+prebuilt toolchain exists for your platform it is downloaded and verified against
+a published checksum; where it does not, the installer bootstraps from the
+compiler's own IR seed with clang. Either way you need clang (or Xcode's Command
+Line Tools) to link, since Ludic emits LLVM IR and links it natively.
+
+Then make a game:
 
 ```bash
-bin/x build                             # -> bin/{ludicc,ludic,x,ludic-fmt,ludic-lsp}
-bin/x app examples/games/snake.ludic    # compile and open a native window
-./build/snake
+ludic new mygame
+cd mygame
+ludic run            # compiles src/main.ludic and opens a native window
 ```
 
-Rendering is deterministic, so a frame can be produced without a window — this
-is what CI diffs:
+`ludic new` writes a manifest, a program that already moves something on screen,
+and a test. `ludic build` stops at the binary — one self-contained executable
+with nothing to ship beside it. Rendering is deterministic, so a frame can be
+produced without a window, which is what CI diffs:
 
 ```bash
-bin/x app examples/games/snake.ludic --headless
-printf 'ddddwww' | ./build/snake_headless    # writes build/out.ppm
+ludic test
+ludic build --headless
+printf 'ddddwww' | ./build/mygame_headless    # writes build/out.ppm
 ```
 
-`bin/x help` lists every command. [`examples/`](examples/README.md) is a tour
-grouped by intent: games, rendering, ECS, events, networking, language features
-and the standard library.
+`ludic help` lists every command, and `ludic doctor` checks the install.
+[`examples/`](examples/README.md) is a tour grouped by intent: games, rendering,
+ECS, events, networking, language features and the standard library — compile any
+of them with `ludic build examples/games/snake.ludic`.
+
+### Building from a checkout
+
+Contributors work from the repository, where the same CLI carries the toolchain's
+own tasks under `ludic dev`. Bootstrapping is the only step Ludic cannot do for
+itself, since compiling Ludic needs a compiler — clang assembles the checked-in
+IR seed, and that compiler builds the rest:
+
+```bash
+mkdir -p bin && clang selfhost/ludicc.seed.ll -o bin/ludicc
+bin/ludicc tools/ludic-cli/main.ludic -o bin/ludic
+bin/ludic dev build     # -> bin/{ludicc,ludic,ludic-fmt,ludic-lsp}
+bin/ludic dev test      # the regression suite
+```
 
 ## The language
 
@@ -93,24 +116,25 @@ Dependencies are identified by URL, resolved with minimal version selection, and
 cached in a content-addressed store:
 
 ```bash
-bin/x add git.workshopsoft.io/user/pkg   # resolve, fetch, link into ludic_modules/
-bin/x get                                # install from package.ludic, write the lock
-bin/x verify                             # check locked packages against the store
+ludic add git.workshopsoft.io/user/pkg   # resolve, fetch, link into ludic_modules/
+ludic get                                # install from package.ludic, write the lock
+ludic verify                             # check locked packages against the store
 ```
+
+The `ludic.*` packages — canonical ECS components, the gameplay, platformer,
+RPG, shooter and NPC-AI modules — ship with the toolchain, so importing one needs
+no fetch step at all.
 
 See [`docs/PACKAGES.md`](docs/PACKAGES.md) for the manifest and lockfile model.
 
 ## Editor support
 
-```bash
-bin/x tools    # -> bin/ludic-fmt, bin/ludic-lsp
-```
-
-`ludic-lsp` speaks LSP 3.17 over stdio, so one binary serves every editor:
-completion, diagnostics from the compiler itself, go-to-definition and rename
-across imports, and comment-preserving formatting. `ludic-fmt` is the same
-formatter as a CLI, for pre-commit hooks. Both understand ```` ```ludic ````
-fences in Markdown. Plugins and drop-in config for VS Code, JetBrains, Neovim,
+Editors spawn `ludic lsp`; the server ships with the toolchain, so there is
+nothing extra to install. It speaks LSP 3.17 over stdio, so one binary serves
+every editor: completion, diagnostics from the compiler itself, go-to-definition
+and rename across imports, and comment-preserving formatting. `ludic fmt` runs
+the same formatter as a CLI, for pre-commit hooks. Both understand
+```` ```ludic ```` fences in Markdown. Plugins and drop-in config for VS Code, JetBrains, Neovim,
 Helix, Emacs, Sublime and Zed are in [`tools/editors/`](tools/editors/README.md).
 
 ## Status
@@ -128,7 +152,7 @@ capability of the retired C compiler and has not been re-wired on the
 self-hosted toolchain. `--target` cross-compilation and `--shared` libraries are
 in the same position. See [COMPILING.md](COMPILING.md).
 
-Releases follow SemVer and are cut from changesets by `x release`, then built
+Releases follow SemVer and are cut from changesets by `ludic dev release`, then built
 and published by CI from the tag; see [CHANGELOG.md](CHANGELOG.md).
 
 ## Contributing

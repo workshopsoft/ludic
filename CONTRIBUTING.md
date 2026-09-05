@@ -18,18 +18,24 @@ runtime, and the tooling are all written in Ludic and built by Ludic.
 From a clean checkout, one line lifts the toolchain off the seed:
 
 ```bash
-mkdir -p bin && clang selfhost/ludicc.seed.ll -o bin/ludicc && bin/ludicc tools/x/main.ludic -o bin/x
+mkdir -p bin && clang selfhost/ludicc.seed.ll -o bin/ludicc
+bin/ludicc tools/ludic-cli/main.ludic -o bin/ludic
 ```
 
-That gives you `bin/x`, the Ludic task runner that replaces every build/test
+That gives you `bin/ludic`, the CLI — the same binary users install, which also
+carries the toolchain's own tasks under `ludic dev` and replaces every build/test
 shell script in the repo. From then on it builds everything — including itself:
 
 ```bash
-bin/x build          # rebuild the whole toolchain into bin/ (ludicc, ludic, x, ludic-fmt, ludic-lsp)
-bin/x help           # list every command
+bin/ludic dev build      # the whole toolchain into bin/ (ludicc, ludic, ludic-fmt, ludic-lsp)
+bin/ludic dev help       # every contributor task
+bin/ludic help           # what a user of the language sees
 ```
 
-Always run `x` from the repository root, so `assets/` and `selfhost/` resolve.
+Always run `ludic dev` from the repository root, so `assets/` and `selfhost/`
+resolve. (A checkout is an install root: `bin/` beside `runtime/` and
+`packages/`, exactly the shape `install.sh` lays down under `~/.ludic`. That is
+why the same binary serves both.)
 
 ## The development loop
 
@@ -37,18 +43,18 @@ When you change the compiler or runtime, prove the self-hosting fixpoint still
 holds before you push:
 
 ```bash
-bin/x reseed          # regenerate selfhost/ludicc.seed.ll after a compiler change
-bin/x bootstrap-cfree # rebuild the compiler from the seed with NO C compiler in the loop
-bin/x test            # the full regression suite
+bin/ludic dev reseed          # regenerate selfhost/ludicc.seed.ll after a compiler change
+bin/ludic dev bootstrap-cfree # rebuild the compiler from the seed with NO C compiler in the loop
+bin/ludic dev test            # the full regression suite
 ```
 
 Other useful targets:
 
 ```bash
-bin/x app <file.ludic> [--headless]   # compile a program to a native app in build/
-bin/x selfhost-test                   # correctness + bootstrap fixpoints
-bin/x test-tools                      # the editor-toolchain suite (ludic-fmt, ludic-lsp)
-bin/x clean                           # remove build/, out.ppm and stray artifacts
+bin/ludic build <file.ludic> [--headless]     # compile a program to a native app in build/
+bin/ludic dev selfhost-test                   # correctness + bootstrap fixpoints
+bin/ludic dev test-tools                      # the editor-toolchain suite (ludic-fmt, ludic-lsp)
+bin/ludic clean                               # remove build/, out.ppm and stray artifacts
 ```
 
 ## Adding to the standard library
@@ -61,7 +67,7 @@ The stdlib lives in the runtime (`runtime/`) and is surfaced as namespaces
    and register its id in `tools/docgen/inventory.json`. Each documented
    namespace gets exactly **one** directory (the docs check enforces this).
 3. Add or extend an example under `examples/` and a case in the test suite.
-4. Run `bin/x docs-gen --out build/pages && bin/x docs-check build/pages` — the
+4. Run `bin/ludic dev docs-gen --out build/pages && bin/ludic dev docs-check build/pages` — the
    check fails if any inventory symbol lacks a page or is still seed text.
 5. Add a **changeset** for the user-facing change: a small file under
    [`changes/`](changes/README.md) with a `bump:` level and a one-line summary.
@@ -70,41 +76,47 @@ The stdlib lives in the runtime (`runtime/`) and is surfaced as namespaces
 ## Versioning & releases
 
 The toolchain is versioned with [SemVer](https://semver.org); `VERSION` is the
-single source of truth and `ludicc --version` (or `x version`) reports it.
+single source of truth and `ludicc --version` (or `ludic version`) reports it.
 
 Releases are changeset-driven. Every user-facing change ships with a changeset
 (step 5 above). Read the next release before cutting it:
 
 ```bash
-x release --dry-run             # render the CHANGELOG section, write nothing
+ludic dev release --dry-run             # render the CHANGELOG section, write nothing
 ```
 
 Then cut it:
 
 ```bash
-x release [major|minor|patch]   # omit the level to derive it from the changesets
+ludic dev release [major|minor|patch]   # omit the level to derive it from the changesets
 git push origin main --follow-tags
 ```
 
-`x release` aggregates the pending changesets into a new `CHANGELOG.md` section
+`ludic dev release` aggregates the pending changesets into a new `CHANGELOG.md` section
 — grouped by change type, with each changeset's markdown kept intact — bumps
 `VERSION`, commits `chore(release): vX.Y.Z`, and tags it.
 
 **Pushing the tag is what publishes.** The `release` workflow builds the
-toolchain from the IR seed, runs `x test`, `x test-tools` and `x bootstrap-cfree`
+toolchain from the IR seed, runs `ludic dev test`, `ludic dev test-tools` and `ludic dev bootstrap-cfree`
 against the tagged tree, and only then creates the Forgejo release — with the
 source tarball, a Linux toolchain build, a `.sha256` beside each, and that version's
 `CHANGELOG.md` section as the notes. It refuses to publish if the tag and
 `VERSION` disagree or the changelog has no section for it.
 
+Each toolchain artifact is a complete install root — `bin/` beside `runtime/`,
+`packages/` and `VERSION` — which is exactly what `install.sh` unpacks into
+`~/.ludic`. A release with no artifact for a platform is not a broken install
+there: the installer falls back to bootstrapping from the source tarball's IR
+seed. But the macOS artifacts are the ones most people get, so attach them.
+
 macOS artifacts cannot be produced on the Linux runner — a `darwin-arm64` build
 needs a macOS host, and there is no cross-compile path (it would need the Xcode
 SDK and a Mach-O linker). Attaching one therefore means either registering a
 macOS runner and giving it a job, or running the same command CI runs from a
-Mac. Either way it is `x publish`, which only adds assets the release is missing:
+Mac. Either way it is `ludic dev publish`, which only adds assets the release is missing:
 
 ```bash
-FORGEJO_TOKEN=… x publish v0.4.0
+FORGEJO_TOKEN=… ludic dev publish v0.4.0
 ```
 
 Checksums are one `.sha256` file per artifact rather than a single `SHA256SUMS`,
@@ -117,6 +129,51 @@ shasum -a 256 -c ludic-0.4.0-src.tar.gz.sha256
 
 The tag doubles as the reproducible bootstrap point: the source archive plus its
 checked-in seed rebuild that exact toolchain.
+
+## Where the name and the URLs live
+
+The language may yet be renamed and the project may yet move hosts, so the
+things that carry a name are kept few and listed here rather than discovered one
+broken link at a time. Everything host-shaped has an environment override, so a
+move can be rehearsed before it is committed.
+
+**Hosts and URLs.** The install one-liner is served from the documentation site,
+which publishes `install.sh` beside the pages that quote it (`ludic dev docs-gen`
+copies it in; `docs-check` fails without it). Change the host in:
+
+| Where | What |
+|---|---|
+| `install.sh` | `REPO_API`, `REPO_URL`, `INSTALL_URL` — each `${LUDIC_…:-default}`, so `LUDIC_REPO_URL=… sh install.sh` tests a move without editing anything |
+| `tools/ludic-cli/project.ludic` | `install_url()` (`$LUDIC_INSTALL_URL`), used by `ludic upgrade` and `ludic doctor` |
+| `tools/ludic-cli/forgejo.ludic` | `FORGEJO_API_DEFAULT` (`$LUDIC_FORGEJO_API`), used by `ludic dev publish` |
+| `docs/site/site.json` | `repo_url`, the `start.terminal` one-liner, and the doc links in `nav_links` |
+| Prose | `README.md`, `COMPILING.md`, `tools/editors/README.md`, and the two editor plugins' "server not found" messages |
+
+**The name itself.** A rename touches, in rough order of blast radius:
+
+- **The file extension** `.ludic` — the compiler (`strip_ludic`, `do_import`,
+  `is_ludic_file`), every editor asset (`tools/editors/shared/*.json`,
+  `vscode/package.json`, the JetBrains `LudicFileType`), and every source file
+  in the tree.
+- **The binaries** `ludic`, `ludicc`, `ludic-fmt`, `ludic-lsp` — `build.ludic`'s
+  `cmd_dev_build`, the release staging in `release.ludic`, `install.sh`, the
+  editors' executable-name lists.
+- **The install root** `~/.ludic` and the source directories `tools/ludic-cli/`,
+  `tools/ludic-tools/`, `packages/ludic.*`.
+- **The environment variables** `LUDIC_HOME`, `LUDIC_CC`, `LUDIC_MODULES`,
+  `LUDIC_STORE`, `LUDIC_PKG_PROXY`, `LUDIC_INSTALL_URL`, `LUDIC_KEEP_TMP`,
+  `LUDIC_COVERAGE` — keep the old names working for a release if anyone has them
+  in a script.
+- **Identifiers that are contracts with other software**: the TextMate scope
+  `source.ludic`, the VS Code language id `ludic`, the JetBrains plugin id
+  `io.ludic.ide`, and the `ludic` code-fence tag understood by the Markdown
+  injection and by `ludic dev check-docs`.
+- **The prose**: `README.md`, `LANGUAGE.md`, `COMPILING.md`, `docs/**`, and
+  `docs/site/site.json`'s `brand`/`meta`.
+
+`ludic dev test` is the safety net for the mechanical part — it builds the
+toolchain, stages an install, and runs `new` → `build` → `test` through it, so a
+half-finished rename fails there rather than in someone's terminal.
 
 ## Conventions
 
@@ -132,7 +189,7 @@ checked-in seed rebuild that exact toolchain.
   | `perf` | a performance improvement |
   | `docs` | documentation only (`docs/`, README, comments) |
   | `test` | tests only |
-  | `build` | the build/bootstrap machinery (seed, `bin/x`, linking) |
+  | `build` | the build/bootstrap machinery (seed, `bin/ludic`, linking) |
   | `ci` | CI workflows under `.forgejo/` |
   | `style` | formatting/whitespace, no behaviour change |
   | `chore` | routine housekeeping with no other bucket |
@@ -154,7 +211,7 @@ checked-in seed rebuild that exact toolchain.
   so a green local commit is a green CI run.
 
 - **Formatting:** `ludic-fmt` is the source of truth (2-space indent, LF, UTF-8);
-  the repo `.editorconfig` mirrors it. Run `bin/ludic-fmt -w` on files you touch.
+  the repo `.editorconfig` mirrors it. Run `bin/ludic fmt` on files you touch.
   The contract CI enforces is *idempotence* — `ludic-fmt` re-run on its own output
   is a no-op — which leaves deliberate hand alignment in place; it is not a
   blanket `fmt(x) == x`.
@@ -182,7 +239,7 @@ non-destructive version of "tidy the history" without touching a single commit.
 ## Pull requests
 
 - Base your branch on `main`.
-- Ensure `bin/x test` (and `bin/x bootstrap-cfree` for compiler/runtime changes)
+- Ensure `bin/ludic dev test` (and `bin/ludic dev bootstrap-cfree` for compiler/runtime changes)
   pass, and that `ludic-fmt` leaves your files unchanged.
 - Fill in the PR template checklist. Reference the issue you close with
   `Closes #NN` in the description or a commit message.

@@ -1,9 +1,9 @@
-# docgen_gen.ludic — `x docs-gen`: the documentation-site generator, ported from
+# docgen_gen.ludic — `ludic dev docs-gen`: the documentation-site generator, ported from
 # tools/docgen/gen.py. Parses docs/language/** (front-matter + bodies) and
 # docs/site/*, reads the asset templates in tools/docgen/assets, and emits the
 # whole pages-branch payload (per-symbol pages, namespace/color/api pages, the
 # landing page, ludic-highlight.js, symbols.json, .nojekyll) into --out. Output
-# is byte-for-byte identical to the Python generator (gated in x test).
+# is byte-for-byte identical to the Python generator (gated in ludic dev test).
 #
 # Shared helpers (Sb, hesc/hescattr, the JSON writer, codeify, string utils)
 # live in docgen.ludic; the JSON reader (json_parse/j_get) in json.ludic.
@@ -951,11 +951,11 @@ function render_highlighter(sym: JVal) -> pointer {
 function cmd_docs_gen() -> int {
   var out = "build/pages"
   var i = 2
-  while i < arg_count() {
-    let a = arg(i)
+  while i < arg_total() {
+    let a = arg_n(i)
     if a == "--out" {
       i += 1
-      if i < arg_count() { out = arg(i) }
+      if i < arg_total() { out = arg_n(i) }
     }
     i += 1
   }
@@ -1013,6 +1013,12 @@ function cmd_docs_gen() -> int {
   jvput(root, "highlight", syms.sym)
   write_file(`{out}/symbols.json`, json_dumps(root, true, false))
   write_file(`{out}/.nojekyll`, "")
+  # The install one-liner on the landing page points at this site, so the
+  # installer is published with it: the page and the script that page tells you
+  # to pipe into sh can then never be from different releases.
+  let inst = read_file("install.sh")
+  if inst == null { err("docs-gen: install.sh is missing (the landing page's one-liner serves it)\n");  return 1 }
+  write_file(`{out}/install.sh`, inst)
   print(`docs generated -> {out}`)
   print(`  pages: {string(npages)}`)
   return 0

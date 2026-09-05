@@ -38,7 +38,19 @@ function resolveServer(folders) {
       if (isExecutable(p)) return p;
     }
   }
+  // The install root, checked last: an editor launched from Finder or a desktop
+  // launcher does not inherit the PATH the installer wrote to the shell profile,
+  // so a perfectly good ~/.ludic install would otherwise look missing.
+  for (const name of names) {
+    const p = path.join(installRoot(), 'bin', name);
+    if (isExecutable(p)) return p;
+  }
   return null;
+}
+
+/** The toolchain install root: $LUDIC_HOME, else ~/.ludic (what install.sh uses). */
+function installRoot() {
+  return process.env.LUDIC_HOME || path.join(os.homedir(), '.ludic');
 }
 
 function resolveCompiler(folders) {
@@ -54,6 +66,8 @@ function resolveCompiler(folders) {
     const p = path.join(dir, 'ludicc');
     if (isExecutable(p)) return p;
   }
+  const installed = path.join(installRoot(), 'bin', 'ludicc');
+  if (isExecutable(installed)) return installed;
   return '';
 }
 
@@ -84,7 +98,7 @@ async function start(context) {
     // Not an error worth a modal: the grammar still highlights, and plenty of
     // people open a .ludic file without having built the toolchain.
     output.appendLine(
-      'ludic-lsp not found. Build it with `bin/x tools`, or set "ludic.server.path". ' +
+      'ludic-lsp not found. Install the toolchain (curl -fsSL https://ludic.dev/install.sh | sh), build it from a checkout with `bin/ludic dev tools`, or set "ludic.server.path". ' +
       'Syntax highlighting works without it; completion and diagnostics do not.'
     );
     return;

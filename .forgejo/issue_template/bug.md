@@ -24,7 +24,7 @@ labels:
 
 ## Environment
 
-- Command used (e.g. `bin/x app foo.ludic --headless`):
+- Command used (e.g. `bin/ludic build foo.ludic --headless`):
 - Target (native macOS / headless / web-wasm):
 - Commit (`git rev-parse --short HEAD`):
 - OS / arch:

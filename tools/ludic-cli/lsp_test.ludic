@@ -1,5 +1,5 @@
 # lsp_test.ludic — drive bin/ludic-lsp over real LSP traffic against the real
-# source tree (`x test-lsp`; replaces tools/test-lsp.py). Every assertion is
+# source tree (`ludic dev test-lsp`; replaces tools/test-lsp.py). Every assertion is
 # about a feature an editor actually calls: if this passes, VS Code, JetBrains,
 # Neovim and the rest are exercising code paths that have been checked, because
 # they all speak to this one binary.

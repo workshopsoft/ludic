@@ -1,14 +1,14 @@
 # Examples
 
 A curated tour of Ludic, grouped by intent. Every example here is exercised by
-the test suite (`bin/x test` / `bin/x selfhost-test`), so nothing in this
+the test suite (`bin/ludic dev test` / `bin/ludic dev selfhost-test`), so nothing in this
 directory silently rots.
 
 Run any program straight from the repository root (so `assets/` resolves):
 
 ```sh
-bin/x app examples/games/snake.ludic              # compile + open a real window
-bin/x app examples/games/snake.ludic --headless   # render one frame to build/out.ppm
+bin/ludic build examples/games/snake.ludic              # compile + open a real window
+bin/ludic build examples/games/snake.ludic --headless   # render one frame to build/out.ppm
 bin/ludic examples/lang/offline_rewards.ludic     # compile + run a plain program
 ```
 

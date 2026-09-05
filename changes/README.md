@@ -1,7 +1,7 @@
 # Changesets
 
 A **changeset** is one small Markdown file describing a single user-facing change,
-dropped in this directory. `x release` consumes every changeset here into a new
+dropped in this directory. `ludic dev release` consumes every changeset here into a new
 `CHANGELOG.md` section, bumps `VERSION`, and deletes the consumed files.
 
 ## Format
@@ -14,7 +14,7 @@ the changelog. Markdown is fine.
 ```
 
 - `bump:` — `major`, `minor`, or `patch` (SemVer). The release version is bumped
-  by the **highest** level among the pending changesets (unless `x release <level>`
+  by the **highest** level among the pending changesets (unless `ludic dev release <level>`
   overrides it).
 - `type:` — the Conventional Commit type (`feat`, `fix`, `perf`, `docs`, …). It
   decides which group the change lands in: `feat` → **Features**, `fix` →
@@ -47,5 +47,5 @@ filename works except this `README.md`, which the release step always skips.
 Preview how the next release will read before cutting it — this writes nothing:
 
 ```bash
-x release --dry-run
+ludic dev release --dry-run
 ```

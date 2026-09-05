@@ -10,7 +10,7 @@ on:
     paths:
       - 'docs/**'
       - 'tools/docgen/**'
-      - 'tools/x/**'
+      - 'tools/ludic-cli/**'
       - '.forgejo/workflows/docs.yml'
   workflow_dispatch: {}
 
@@ -33,8 +33,8 @@ jobs:
     # "Waiting" forever with "no online runner found matching this label".
     runs-on: docker
     # The generator is now Ludic, so this builds the toolchain from its IR seed
-    # (clang assembles the seed into bin/ludicc, which compiles bin/x) exactly
-    # like the ci workflow, then runs `x docs-gen`. node:20-bookworm carries git
+    # (clang assembles the seed into bin/ludicc, which compiles bin/ludic) exactly
+    # like the ci workflow, then runs `ludic dev docs-gen`. node:20-bookworm carries git
     # for the clone + publish; clang-16 is the only extra the bootstrap needs.
     container: node:20-bookworm
     steps:
@@ -63,9 +63,9 @@ jobs:
           export LUDIC_HOME="$(pwd)"
           mkdir -p bin
           clang-16 tools/ci/linux_stdio_shim.ll selfhost/ludicc.seed.ll -o bin/ludicc
-          bin/ludicc tools/x/main.ludic -o bin/x
-          bin/x docs-gen --out ../public
-          bin/x docs-check ../public
+          bin/ludicc tools/ludic-cli/main.ludic -o bin/ludic
+          bin/ludic dev docs-gen --out ../public
+          bin/ludic dev docs-check ../public
           cd ..
           echo "--- generated files ---"
           ls -la public

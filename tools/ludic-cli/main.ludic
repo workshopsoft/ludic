@@ -1,0 +1,230 @@
+# ludic — the command-line interface to the Ludic toolchain. One native binary
+# (bin/ludic) written in Ludic and compiled by Ludic; the unix tools, clang and
+# the compiler it drives are invoked through the `run` intrinsic.
+#
+# Two audiences, one binary. A user of the language sees a small surface —
+# new, build, run, test, add, fmt — that works from any directory against an
+# installed toolchain. A contributor to the toolchain itself gets everything
+# else under `ludic dev`: bootstrapping the compiler from its IR seed, the
+# regression suites, the docs site, releases. Splitting them by namespace keeps
+# `ludic help` about the language rather than about the repository.
+#
+# Installing (macOS, Linux):
+#
+#   curl -fsSL https://workshopsoft.pages.workshopsoft.io/ludic/install.sh | sh
+#
+# Building from a checkout — the one step Ludic cannot do for itself, since
+# compiling Ludic needs a compiler:
+#
+#   mkdir -p bin && clang selfhost/ludicc.seed.ll -o bin/ludicc
+#   bin/ludicc tools/ludic-cli/main.ludic -o bin/ludic
+#   bin/ludic dev build
+#
+# Thereafter `ludic dev build` rebuilds the whole toolchain — including the CLI
+# itself. The `dev` tasks run from the repository root.
+program Ludic {
+  import "prelude.ludic"
+  import "selfhost.ludic"
+  import "build.ludic"
+  import "project.ludic"
+  import "tools.ludic"
+  import "selfhost_test.ludic"
+  import "test.ludic"
+  import "json.ludic"
+  import "lsp_test.ludic"
+  import "forgejo.ludic"
+  import "checks.ludic"
+  import "docgen.ludic"
+  import "docgen_gen.ludic"
+  import "docgen_check.ludic"
+  import "release.ludic"
+  import "pkg.ludic"
+  import "pkg_test.ludic"
+
+  function usage() -> void {
+    print("ludic — the toolchain for the Ludic language")
+    print("")
+    print("usage: ludic <command> [arguments]")
+    print("")
+    print("start a game:")
+    print("  new <name>                    create a project that builds and runs as it stands")
+    print("  run [file] [--headless]       build the project and run it")
+    print("  build [file] [--headless] [-o out]")
+    print("                                compile to build/<name> (a native binary, nothing to ship beside it)")
+    print("  test [file...]                compile and run the project's tests")
+    print("  clean                         remove build/")
+    print("")
+    print("packages:")
+    print("  add <module>[@version]        add a dependency, then resolve + fetch + link")
+    print("  get                           resolve every package.ludic dependency and write the lock")
+    print("  update [module]               bump a dependency (or all) to its latest published version")
+    print("  verify                        check every locked package against the store by content hash")
+    print("  vendor                        copy the resolved packages into ./vendor for offline builds")
+    print("  build-lib <module.ludic>      compile a package's module to a prebuilt dylib in lib/<target>/")
+    print("  link-flags                    print the clang flags to link this project's prebuilt module dylibs")
+    print("")
+    print("the toolchain:")
+    print("  version                       print the toolchain version")
+    print("  upgrade [version]             reinstall from the docs site (the same script that installed it)")
+    print("  doctor                        check that the install is complete and usable")
+    print("  fmt [paths...]                format Ludic source in place")
+    print("  lsp                           run the language server on stdio (what editors spawn)")
+    print("  help                          this message")
+    print("")
+    print("contributing to the toolchain itself:")
+    print("  dev <task>                    build, test, bootstrap, docs, release  (ludic dev help)")
+    print("")
+    print("A file argument runs it:  ludic mygame.ludic")
+  }
+
+  function dev_usage() -> void {
+    print("ludic dev — tasks for a checkout of the Ludic toolchain (run from the repository root)")
+    print("")
+    print("build:")
+    print("  dev build                     build the whole toolchain into bin/ (ludicc, ludic, ludic-fmt, ludic-lsp)")
+    print("  dev build-cli                 build just bin/ludicc from the IR seed")
+    print("  dev tools [--install] [--test]  build the editor toolchain (ludic-fmt, ludic-lsp)")
+    print("")
+    print("test:")
+    print("  dev test                      the full regression suite")
+    print("  dev test --coverage           per-file line coverage over the test specs")
+    print("  dev test-pkg                  the package-manager suite (hermetic git repos, offline)")
+    print("  dev selfhost-test             the self-hosting suite (correctness + bootstrap fixpoints)")
+    print("  dev test-tools                the editor-toolchain suite")
+    print("  dev test-lsp                  drive bin/ludic-lsp over real LSP traffic (exit 2 = no server)")
+    print("  dev golden                    regenerate selfhost/golden/renders.sha256 (review with git diff)")
+    print("")
+    print("doc / lint checks (Ludic, no Python):")
+    print("  dev check-docs                every ```ludic doc fence parses (or is marked skip/expect-error)")
+    print("  dev check-impl                every implemented feature has a docs/language page")
+    print("  dev check-vocabulary          the vocabulary is in sync across grammar / lexer / header / parser")
+    print("  dev lint-asset <file>         validate one editor .json / .xml asset")
+    print("  dev docs-gen [--out DIR]      generate the documentation site (default build/pages)")
+    print("  dev docs-check [DIR]          coverage/integrity guard over a generated docs site")
+    print("  dev docs-palette [--check]    regenerate emit_color.ludic + palette.json from the palette table")
+    print("")
+    print("release:")
+    print("  dev release [major|minor|patch] [--dry-run] [--publish]")
+    print("                                cut a release: CHANGELOG + VERSION bump + tag (+ Forgejo release)")
+    print("  dev publish [vX.Y.Z]          publish an already-tagged release; what CI runs on a tag push")
+    print("  dev changelog-section <ver>   print that release's CHANGELOG.md section")
+    print("  dev changelog-render <ver> <date> <dir>")
+    print("                                render a CHANGELOG section from a directory of changesets")
+    print("")
+    print("self-host internals:")
+    print("  dev selfhost-build [ludicc] [out]   assemble + compile the self-host compiler")
+    print("  dev bootstrap                 the self-hosting fixpoint proof (seeded from bin/ludicc)")
+    print("  dev bootstrap-cfree           rebuild the compiler from the seed with no C compiler")
+    print("  dev reseed                    regenerate selfhost/ludicc.seed.ll after a compiler change")
+    print("  dev game-build <ludicc> <game.ludic> <out>   compile a Ludic game (headless)")
+    print("  dev sh-compile <ludicc> <in.ludic> <out>     compile + link one .ludic file")
+  }
+
+  # a positional argument, or a default when absent
+  function argn(i: int, dflt: pointer) -> pointer {
+    if (i < arg_count()) { return arg(i) }
+    return dflt
+  }
+
+  # does `s` end in ".ludic"? — `ludic mygame.ludic` runs that file, the shape
+  # the compiler-runner had before the CLI grew subcommands.
+  function is_ludic_file(s: pointer) -> bool {
+    let n = slen(s)
+    if n <= 6 { return false }
+    return sslice(s, n - 6, n) == ".ludic"
+  }
+
+  # ---- ludic dev <task> — the toolchain repo's own tasks ---------------------
+  # Every task here reads its arguments one position further along than a
+  # top-level command, so the shift is set once, here.
+  function dispatch_dev(cmd: pointer) -> int {
+    g_shift = 1
+    if (cmd == "build") { return cmd_dev_build() }
+    if (cmd == "build-cli") { return cmd_dev_build_cli() }
+    if (cmd == "tools") { return cmd_tools() }
+    if (cmd == "clean") { return cmd_clean() }
+    if (cmd == "test") {
+      if (argn(3, "") == "--coverage") { return cmd_test_coverage() }
+      return cmd_dev_test()
+    }
+    if (cmd == "selfhost-test") { return cmd_selfhost_test() }
+    if (cmd == "test-tools") { return cmd_test_tools() }
+    if (cmd == "test-lsp") { return cmd_test_lsp() }
+    if (cmd == "test-pkg") { return cmd_test_pkg() }
+    if (cmd == "check-docs") { return cmd_check_docs() }
+    if (cmd == "check-impl") { return cmd_check_impl() }
+    if (cmd == "check-vocabulary") { return cmd_check_vocab() }
+    if (cmd == "lint-asset") { return cmd_lint_asset() }
+    if (cmd == "docs-palette") { return cmd_docs_palette() }
+    if (cmd == "docs-gen") { return cmd_docs_gen() }
+    if (cmd == "docs-check") { return cmd_docs_check() }
+    if (cmd == "golden") { return cmd_golden() }
+    if (cmd == "bootstrap") { return cmd_bootstrap() }
+    if (cmd == "bootstrap-cfree") { return cmd_bootstrap_cfree() }
+    if (cmd == "reseed") { return cmd_reseed() }
+    if (cmd == "selfhost-build") { return cmd_selfhost_build(argn(3, "bin/ludicc"), argn(4, "build/selfhost")) }
+    if (cmd == "sh-compile") {
+      if (arg_count() < 6) { err("usage: ludic dev sh-compile <ludicc> <in.ludic> <out>\n"); exit(1) }
+      return cmd_sh_compile(arg(3), arg(4), arg(5))
+    }
+    if (cmd == "game-build") {
+      if (arg_count() < 6) { err("usage: ludic dev game-build <ludicc> <game.ludic> <out>\n"); exit(1) }
+      return cmd_game_build(arg(3), arg(4), arg(5))
+    }
+    if (cmd == "release") { return cmd_release() }
+    if (cmd == "changelog-render") { return cmd_changelog_render() }
+    if (cmd == "changelog-section") { return cmd_changelog_section() }
+    if (cmd == "publish") { return cmd_publish() }
+    if (cmd == "help") or (cmd == "--help") or (cmd == "-h") or (cmd == "") { dev_usage(); return 0 }
+    # reported here rather than by entry, so the message names the dev task the
+    # user actually typed and the usage shown is the dev one
+    err(`ludic dev: unknown task '{cmd}'\n`)
+    dev_usage()
+    return 1
+  }
+
+  # route one subcommand to its implementation and return its exit code; -1 when
+  # the name is unknown. Returning (rather than exiting in place) lets entry tear
+  # down the per-process scratch directory before the process ends.
+  function dispatch(cmd: pointer) -> int {
+    if (cmd == "new") { return cmd_new() }
+    if (cmd == "build") { return cmd_build() }
+    if (cmd == "run") { return cmd_run() }
+    if (cmd == "test") { return cmd_test() }
+    if (cmd == "clean") { return cmd_clean() }
+    if (cmd == "fmt") { return cmd_fmt() }
+    if (cmd == "lsp") { return cmd_lsp() }
+    if (cmd == "doctor") { return cmd_doctor() }
+    if (cmd == "upgrade") { return cmd_upgrade() }
+
+    if (cmd == "add") { return cmd_pkg_add() }
+    if (cmd == "get") { return cmd_pkg_get() }
+    if (cmd == "update") { return cmd_pkg_update() }
+    if (cmd == "verify") { return cmd_pkg_verify() }
+    if (cmd == "vendor") { return cmd_pkg_vendor() }
+    if (cmd == "build-lib") { return cmd_pkg_build_lib() }
+    if (cmd == "link-flags") { return cmd_pkg_link_flags() }
+
+    if (cmd == "version") or (cmd == "--version") or (cmd == "-v") { return cmd_version() }
+    if (cmd == "help") or (cmd == "--help") or (cmd == "-h") { usage(); return 0 }
+    if (cmd == "dev") { return dispatch_dev(argn(2, "")) }
+    return -1
+  }
+
+  entry {
+    if (arg_count() < 2) { usage(); exit(1) }
+    let cmd = arg(1)
+    # `ludic mygame.ludic` — build and run that file
+    if is_ludic_file(cmd) {
+      let rc = cmd_run_file()
+      tmp_cleanup()
+      exit(rc)
+    }
+    let code = dispatch(cmd)
+    tmp_cleanup()
+    if code >= 0 { exit(code) }
+    err(`ludic: unknown command '{cmd}'\n`)
+    usage()
+    exit(1)
+  }
+}

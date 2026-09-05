@@ -177,7 +177,7 @@ function count_nl(s: pointer, upto: int) -> int {
   return n
 }
 
-# usage: x check-docs   (scans the user-facing docs + docs/language/**)
+# usage: ludic dev check-docs   (scans the user-facing docs + docs/language/**)
 function cmd_check_docs() -> int {
   ensure_ludicc()
   DC_OK = 0;  DC_BAD = 0;  DC_SKIP = 0;  DC_FAILS = ""
@@ -361,7 +361,7 @@ var CI_PROB: pointer = ""
 var CI_NPROB: int = 0
 function ci_problem(msg: pointer) -> void { CI_PROB = CI_PROB + "  - " + msg + "\n";  CI_NPROB += 1 }
 
-# usage: x check-impl
+# usage: ludic dev check-impl
 function cmd_check_impl() -> int {
   CI_PROB = "";  CI_NPROB = 0
   let allsrc = read_all_selfhost()
@@ -568,7 +568,7 @@ function set_union(a: []pointer, b: []pointer) -> []pointer {
   return out
 }
 
-# usage: x check-vocabulary
+# usage: ludic dev check-vocabulary
 function cmd_check_vocab() -> int {
   CV_PROB = "";  CV_N = 0
   let h = read_file("tools/ludic-tools/ludic_syntax.h")
@@ -702,10 +702,10 @@ function xml_valid(text: pointer) -> bool {
   return sp == 0
 }
 
-# usage: x lint-asset <file>   (validates one .json or .xml editor asset)
+# usage: ludic dev lint-asset <file>   (validates one .json or .xml editor asset)
 function cmd_lint_asset() -> int {
-  if arg_count() < 3 { err("usage: x lint-asset <file.json|file.xml>\n");  return 2 }
-  let path = arg(2)
+  if arg_total() < 3 { err("usage: ludic dev lint-asset <file.json|file.xml>\n");  return 2 }
+  let path = arg_n(2)
   let t = read_file(path)
   if t == null { err("lint-asset: cannot read " + path + "\n");  return 1 }
   if s_index(path, ".json", 0) >= 0 {
