@@ -1,12 +1,95 @@
 # Changelog
 
 All notable changes to the Ludic toolchain, newest first. Each section is
-generated from the changesets under changes/ by `x release`, grouped by change
-type. Preview the next one with `x release --dry-run`.
+generated from the changesets under changes/ by `ludic dev release`, grouped by
+change type. Preview the next one with `ludic dev release --dry-run`.
 
 A released section may carry a hand-written summary paragraph above its groups
 (v0.2.0 has one); the generated bullets below it are not edited by hand.
 
+## v0.5.0 — 2026-09-05
+
+### Features
+
+- **One command installs Ludic, and `ludic` is the command you use.** Getting
+  started no longer means cloning the repository and learning a task runner called
+  `x`.
+
+  - **`curl -fsSL https://workshopsoft.pages.workshopsoft.io/ludic/install.sh | sh`** installs a complete
+    toolchain — compiler, CLI, engine runtime, bundled `ludic.*` packages,
+    formatter and language server — into `~/.ludic` and puts it on your `PATH`.
+    Prebuilt artifacts are verified against a published checksum; where none
+    exists for the platform, the installer bootstraps from the compiler's own IR
+    seed with clang. Uninstalling is `rm -rf ~/.ludic`, and `ludic upgrade`
+    re-runs the same script.
+  - **`ludic` replaces `x`** and is the only command a user of the language meets:
+    `ludic new` scaffolds a project that builds and plays as it stands, `ludic
+    run` / `ludic build` compile it (`--headless` for a deterministic render),
+    `ludic test` runs every `test` block in the project, and `ludic add` / `get` /
+    `update` / `verify` / `vendor` drive packages. `ludic fmt` and `ludic lsp` are
+    the formatter and language server, so an editor needs no path configuration.
+    `ludic doctor` reports whether the install is complete and usable.
+  - **The toolchain's own tasks moved under `ludic dev`** — `dev build`, `dev
+    test`, `dev reseed`, `dev bootstrap-cfree`, `dev docs-gen`, `dev release` and
+    the rest are unchanged apart from the namespace. `bin/x` is gone; the
+    bootstrap is now `clang selfhost/ludicc.seed.ll -o bin/ludicc && bin/ludicc
+    tools/ludic-cli/main.ludic -o bin/ludic`.
+  - **An install root is a first-class layout.** The compiler derives it from its
+    own location — the parent of its `bin/` directory — so `~/.ludic` and a repo
+    checkout are the same shape, and `$LUDIC_HOME` is no longer needed to build a
+    windowed game outside the repo. The bundled `ludic.*` packages resolve from
+    `$LUDIC_HOME/packages`, so `import "ludic.core/components.ludic"` works with no
+    `ludic_modules/` to set up. Release artifacts are complete install roots
+    (`bin/` beside `runtime/`, `packages/` and `VERSION`) rather than bare
+    binaries, and the installer ships with the documentation site it is served
+    from.
+
+### Fixes
+
+- **Token cards are back on the docs site.** Clicking a keyword, type, builtin or
+  namespace method in any code sample opens its summary card again. The card's
+  styling had been left behind in `docs.css` during the site redesign, so on the
+  landing page — which links only `base.css` and `site.css` — the card rendered
+  unstyled at the foot of the document instead of beside the token. It now lives
+  in `base.css` with the rest of the highlighter chrome, and is positioned
+  `fixed`, matching the viewport coordinates the script computes, so a card opened
+  on a scrolled reference page lands on its token rather than off it.
+- Release checksums are one `.sha256` file per artifact instead of a single
+  `SHA256SUMS`. A release is assembled from more than one host — a Linux runner
+  cannot build the macOS toolchain — and `ludic dev publish` never overwrites an asset that
+  is already attached, so a shared `SHA256SUMS` was written by whichever host
+  published first and then never covered anything added afterwards. Per-artifact
+  names compose across hosts. Verify one with
+  `shasum -a 256 -c ludic-X.Y.Z-src.tar.gz.sha256`.
+
+### Documentation
+
+- CONTRIBUTING documents what a self-hosted Forgejo runner needs for CI to work at
+  all: every workflow clones `${{ github.server_url }}`, which on a self-hosted
+  instance is an internal address, so job containers must be able to resolve it.
+  The runner's default is a fresh per-job network the Forgejo container is not on,
+  which fails the clone — intermittently, because Docker forwards unresolved names
+  to the host resolver, so CI can look healthy for a while before it stops.
+- The README is rewritten around what a reader needs first: what the language is,
+  a code sample, how to build it, and an honest status. Removed the repo-layout
+  table and the Chrono Rift keybindings (a game manual in a language README), the
+  nine links to wiki pages that no longer exist, and a "language at a glance"
+  bullet describing a retired vocabulary — it advertised `system`, `reads`,
+  `writes`, `requires` and `ensures`, none of which are keywords; the declaration
+  keyword is `handler`.
+
+### CI
+
+- The commit-lint workflow survives a force-push. It linted
+  `${{ github.event.before }}..${{ github.sha }}` without checking that `before`
+  still resolves, so rewriting or garbage-collecting that commit failed the job
+  with `fatal: Invalid revision range` on a push whose messages were all valid. It
+  now falls back to linting the tip commit when `before` is gone.
+- The docs deploy is serialised. Publishing is a force-push of an orphan `pages`
+  branch, so two runs racing could land out of order and leave the site holding the
+  older build — with both runs reporting success. A `pages-deploy` concurrency
+  group with `cancel-in-progress` means a newer push cancels an older in-flight
+  build instead of queueing behind it.
 ## v0.4.0 — 2026-09-05
 
 ### Features
