@@ -93,15 +93,26 @@ git push origin main --follow-tags
 **Pushing the tag is what publishes.** The `release` workflow builds the
 toolchain from the IR seed, runs `x test`, `x test-tools` and `x bootstrap-cfree`
 against the tagged tree, and only then creates the Forgejo release — with the
-source tarball, a Linux toolchain build, `SHA256SUMS`, and that version's
+source tarball, a Linux toolchain build, a `.sha256` beside each, and that version's
 `CHANGELOG.md` section as the notes. It refuses to publish if the tag and
 `VERSION` disagree or the changelog has no section for it.
 
-macOS artifacts cannot be produced on the Linux runner. To attach one, run the
-same command CI runs from a Mac — it only adds assets the release is missing:
+macOS artifacts cannot be produced on the Linux runner — a `darwin-arm64` build
+needs a macOS host, and there is no cross-compile path (it would need the Xcode
+SDK and a Mach-O linker). Attaching one therefore means either registering a
+macOS runner and giving it a job, or running the same command CI runs from a
+Mac. Either way it is `x publish`, which only adds assets the release is missing:
 
 ```bash
 FORGEJO_TOKEN=… x publish v0.4.0
+```
+
+Checksums are one `.sha256` file per artifact rather than a single `SHA256SUMS`,
+precisely because a release can be assembled from more than one host and an
+asset that already exists is never overwritten. Verify one with:
+
+```bash
+shasum -a 256 -c ludic-0.4.0-src.tar.gz.sha256
 ```
 
 The tag doubles as the reproducible bootstrap point: the source archive plus its

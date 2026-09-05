@@ -41,3 +41,9 @@ __pycache__/
 
 # Release artifacts produced by `x release`
 /dist/
+
+# Build/release tarballs anywhere in the tree. `git -C <repo> archive -o foo.tgz`
+# resolves -o relative to the repo, not the caller's directory, so a stray
+# archive lands in the root and a blanket `git add -A` will commit it.
+*.tar.gz
+*.tgz

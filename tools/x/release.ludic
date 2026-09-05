@@ -305,8 +305,17 @@ function sha256_cmd() -> pointer {
 }
 
 # Build the release artifacts into dist/: a reproducible source+seed tarball from
-# the tag, the toolchain built on this host, and a SHA256SUMS covering both — a
+# the tag, the toolchain built on this host, and one `.sha256` beside each — a
 # release without checksums asks everyone downstream to trust the transport.
+#
+# The checksums are per-artifact rather than a single SHA256SUMS on purpose. A
+# release is assembled from more than one host (a Linux runner cannot build the
+# macOS toolchain), and `forgejo_upload_assets` skips an asset whose name is
+# already attached — so a shared SHA256SUMS would be written by whichever host
+# published first and would then never cover anything added later. One file per
+# artifact has a unique name, so each host's contribution stands on its own.
+#
+#   shasum -a 256 -c ludic-X.Y.Z-src.tar.gz.sha256
 function build_artifacts(ver: pointer) -> bool {
   run("rm -rf dist && mkdir -p dist")
   if not shq(`git archive --format=tar.gz --prefix=ludic-{ver}/ -o dist/ludic-{ver}-src.tar.gz v{ver}`) {
@@ -321,8 +330,8 @@ function build_artifacts(ver: pointer) -> bool {
       return false
     }
   }
-  if not shq(`cd dist && {sha256_cmd()} *.tar.gz > SHA256SUMS`) {
-    err("release: writing dist/SHA256SUMS failed\n")
+  if not shq(`cd dist && for f in *.tar.gz; do {sha256_cmd()} "$f" > "$f.sha256" || exit 1; done`) {
+    err("release: writing the per-artifact .sha256 files failed\n")
     return false
   }
   run("ls -l dist")
