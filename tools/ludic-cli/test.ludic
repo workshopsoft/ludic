@@ -104,6 +104,42 @@ function install_layout_case() -> void {
   ok(lbl)
 }
 
+# `ludic new` must scaffold something that compiles, for any name a user might
+# reasonably pick. `my-game` produced `program My-Game`, which is a subtraction,
+# and `2048` produced an identifier starting with a digit — both scaffolded a
+# project that failed on the very first `ludic run`.
+function scaffold_names_case() -> void {
+  let lbl = "ludic new scaffolds a project that compiles (hyphens, digits, dots)"
+  let work = `{tmp_dir()}/scaffold`
+  run(`rm -rf {work} && mkdir -p {work}`)
+  let root = capture_line("pwd")
+  let names = new []pointer
+  push(names, "my-game")
+  push(names, "2048")
+  push(names, "a.b.c")
+  push(names, "UPPER_case")
+  var i = 0
+  while i < len(names) {
+    let nm = names[i]
+    i += 1
+    if not shq(`cd {work} && {root}/bin/ludic new {nm} > {work}/new.out 2>&1`) {
+      bad2(lbl, `ludic new {nm} failed`);  return
+    }
+    if not shq(`cd {work}/{nm} && {root}/bin/ludic build --headless > {work}/build.out 2>&1`) {
+      let why = capture_line(`tail -1 {work}/build.out`)
+      bad2(lbl, `{nm}: {why}`);  return
+    }
+    if not shq(`cd {work}/{nm} && {root}/bin/ludic test > {work}/test.out 2>&1`) {
+      bad2(lbl, `{nm}: tests failed`);  return
+    }
+  }
+  # and a name that cannot be a directory or a package is refused, not mangled
+  if shq(`cd {work} && {root}/bin/ludic new 'two words' > {work}/bad.out 2>&1`) {
+    bad2(lbl, "a name with a space was accepted");  return
+  }
+  ok(lbl)
+}
+
 # a "does it still compile" smoke test (parse -> lower -> link), no run
 function qsmoke(path: pointer) -> void {
   let nm = flat(path)
@@ -217,7 +253,7 @@ function cmd_test_coverage() -> int {
   # instrumentation path is exactly what a clean checkout ships.
   run(`mkdir -p bin build {tmp_dir()}/cov_out`)
   if (not is_exec("bin/ludicc")) or newer("selfhost/ludicc.seed.ll", "bin/ludicc") {
-    if not shq(`{cc()} selfhost/ludicc.seed.ll -o bin/ludicc`) { err("x: cannot build bin/ludicc from the seed\n"); return 1 }
+    if not shq(`{cc()} selfhost/ludicc.seed.ll -o bin/ludicc`) { err("ludic-dev: cannot build bin/ludicc from the seed\n"); return 1 }
   }
   COV_COVERED = 0
   COV_TOTAL = 0
@@ -453,6 +489,7 @@ function cmd_dev_test() -> int {
   # ./bin, finding its compiler, the engine runtime and the bundled packages
   # from its own location. This is the shape `curl … | sh` produces.
   install_layout_case()
+  scaffold_names_case()
 
   # install.sh is what the landing page tells people to pipe into sh, and it is
   # published with the docs site — so it is checked here rather than discovered

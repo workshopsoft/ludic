@@ -51,7 +51,7 @@ program Ludic {
     print("  version                       print the toolchain version")
     print("  upgrade [version]             reinstall from the docs site (the same script that installed it)")
     print("  doctor                        check that the install is complete and usable")
-    print("  fmt [paths...]                format Ludic source in place")
+    print("  fmt [--check] [paths...]      format Ludic source in place (--check: report, write nothing)")
     print("  lsp                           run the language server on stdio (what editors spawn)")
     print("  help                          this message")
     print("")

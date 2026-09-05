@@ -1,4 +1,5 @@
-# pkg.ludic — the Ludic package manager (issue #63), a set of `x` subcommands.
+# pkg.ludic — the Ludic package manager (issue #63), the `ludic add`/`get`/
+# `update`/`verify`/`vendor` commands.
 #
 # It realises the v1 direction decided in the RFC:
 #
@@ -223,7 +224,7 @@ function ensure_clone(module: pointer) -> pointer {
   }
   run(`mkdir -p {store_root()}cache`)
   if not shq(`git clone -q {repo_url(module)} {cache} 2>/dev/null`) {
-    err(`x: cannot fetch {module} (git clone {repo_url(module)} failed)\n`)
+    err(`ludic: cannot fetch {module} (git clone {repo_url(module)} failed)\n`)
     return ""
   }
   return cache
@@ -262,7 +263,7 @@ function fetch_manifest(module: pointer, ver: pointer) -> Manifest {
   m.ver = ver
   if cache == "" { return m }
   if not checkout_ver(cache, ver) {
-    err(`x: {module} has no version {ver}\n`)
+    err(`ludic: {module} has no version {ver}\n`)
     return m
   }
   let txt = read_file(`{cache}/package.ludic`)
@@ -445,7 +446,7 @@ function do_install(root: Manifest) -> int {
     return 0
   }
   let clash = collision(sels)
-  if slen(clash) > 0 { err(`x: namespace collision — {clash}\n`);  return 1 }
+  if slen(clash) > 0 { err(`ludic: namespace collision — {clash}\n`);  return 1 }
 
   var i = 0
   while i < len(sels) {
@@ -453,18 +454,18 @@ function do_install(root: Manifest) -> int {
     if m.kind == "prebuilt" {
       let t = target_id()
       if not has_target(m, t) {
-        err(`x: {m.module}@{m.ver} is a prebuilt lib and ships no artifact for target {t}\n`)
+        err(`ludic: {m.module}@{m.ver} is a prebuilt lib and ships no artifact for target {t}\n`)
         return 1
       }
     }
     let h = snapshot(m.module, m.ver)
-    if slen(h) == 0 { err(`x: failed to snapshot {m.module}@{m.ver}\n`);  return 1 }
+    if slen(h) == 0 { err(`ludic: failed to snapshot {m.module}@{m.ver}\n`);  return 1 }
     m.hash = `sha256:{h}`
     link_module(m.module, h)
     print(`  {m.module}  {m.ver}  ({m.kind})  sha256:{sslice(h, 0, 12)}…`)
     i += 1
   }
-  if not write_lock(sels) { err("x: cannot write package.lock.ludic\n");  return 1 }
+  if not write_lock(sels) { err("ludic: cannot write package.lock.ludic\n");  return 1 }
   print(`resolved {string(len(sels))} package(s) — see package.lock.ludic; linked under ludic_modules/`)
   return 0
 }
@@ -545,7 +546,7 @@ function cmd_pkg_add() -> int {
   var ver = spec[1]
   if slen(ver) == 0 {
     ver = latest_version(module)
-    if slen(ver) == 0 { err(`x: {module} has no published version tags (git tag vX.Y.Z to publish)\n`);  return 1 }
+    if slen(ver) == 0 { err(`ludic: {module} has no published version tags (git tag vX.Y.Z to publish)\n`);  return 1 }
     print(`ludic add: {module} -> latest v{ver}`)
   }
   set_require(module, ver)
@@ -555,7 +556,7 @@ function cmd_pkg_add() -> int {
 # ludic get — resolve + fetch + link every dependency in package.ludic, write lock
 function cmd_pkg_get() -> int {
   let txt = read_file("package.ludic")
-  if txt == null { err("x: no package.ludic in the current directory (ludic add <module> to start one)\n");  return 1 }
+  if txt == null { err("ludic: no package.ludic in the current directory (ludic add <module> to start one)\n");  return 1 }
   print("resolving dependencies (MVS)…")
   return do_install(parse_manifest(txt))
 }
@@ -563,7 +564,7 @@ function cmd_pkg_get() -> int {
 # ludic update [module] — bump a dep (or all) to its latest published version, relock
 function cmd_pkg_update() -> int {
   let root = read_root_manifest()
-  if len(root.deps) == 0 { err("x: package.ludic declares no dependencies\n");  return 1 }
+  if len(root.deps) == 0 { err("ludic: package.ludic declares no dependencies\n");  return 1 }
   let only = argn(2, "")
   var i = 0
   while i < len(root.deps) {
@@ -584,7 +585,7 @@ function cmd_pkg_update() -> int {
 # confirm the project view links to it
 function cmd_pkg_verify() -> int {
   let txt = read_file("package.lock.ludic")
-  if txt == null { err("x: no package.lock.ludic (run ludic get first)\n");  return 1 }
+  if txt == null { err("ludic: no package.lock.ludic (run ludic get first)\n");  return 1 }
   let locked = parse_lock(txt)
   if len(locked) == 0 { print("lockfile lists no packages");  return 0 }
   var bad_count = 0
@@ -611,7 +612,7 @@ function cmd_pkg_verify() -> int {
     i += 1
   }
   if bad_count == 0 { print(`verified {string(len(locked))} package(s) against the store`);  return 0 }
-  err(`x: {string(bad_count)} package(s) failed verification\n`)
+  err(`ludic: {string(bad_count)} package(s) failed verification\n`)
   return 1
 }
 
@@ -619,7 +620,7 @@ function cmd_pkg_verify() -> int {
 # builds. Build against them with LUDIC_MODULES=vendor.
 function cmd_pkg_vendor() -> int {
   let txt = read_file("package.lock.ludic")
-  if txt == null { err("x: no package.lock.ludic (run ludic get first)\n");  return 1 }
+  if txt == null { err("ludic: no package.lock.ludic (run ludic get first)\n");  return 1 }
   let locked = parse_lock(txt)
   run("rm -rf vendor")
   var i = 0
@@ -627,7 +628,7 @@ function cmd_pkg_vendor() -> int {
     let m = locked[i]
     let raw = strip_prefix(m.hash, "sha256:")
     let dest = `{store_root()}{raw}`
-    if not file_exists(dest) { err(`x: {m.module}@{m.ver} not in the store — run ludic get\n`);  return 1 }
+    if not file_exists(dest) { err(`ludic: {m.module}@{m.ver} not in the store — run ludic get\n`);  return 1 }
     let vdir = `vendor/{m.module}`
     run(`mkdir -p "$(dirname {vdir})"`)
     run(`cp -R {dest} {vdir}`)
@@ -647,7 +648,9 @@ function cmd_pkg_vendor() -> int {
 # with the flag set, from an installed toolchain.
 function cmd_pkg_build_lib() -> int {
   var src = argn(2, "")
-  if src == "" { src = capture_line("ls *.ludic 2>/dev/null | grep -v package.ludic | head -1") }
+  # the manifest and the lockfile are not modules: match their names exactly,
+  # rather than as a regex where `.` also matched package.lock.ludic
+  if src == "" { src = capture_line("ls *.ludic 2>/dev/null | grep -vxF -e package.ludic -e package.lock.ludic | head -1") }
   if src == "" or not file_exists(src) { err("usage: ludic build-lib <module.ludic>  (run in the package directory)\n");  return 1 }
   let man = read_root_manifest()
   var name = ""
@@ -657,13 +660,16 @@ function cmd_pkg_build_lib() -> int {
   run(`mkdir -p lib/{t}`)
   let ludicc = getenv_or("LUDICC", "bin/ludicc")
   let ll = `{tmp_dir()}/buildlib.ll`
-  if not shq(`{ludicc} --emit-module {src} -o {ll} 2>{tmp_dir()}/bl.err`) {
-    err(`x: build-lib compile failed — {capture_line("tail -1 {tmp_dir()}/bl.err")}\n`);  return 1
+  let blerr = tmp_path("bl.err")
+  if not shq(`{ludicc} --emit-module {src} -o {ll} 2>{blerr}`) {
+    let why = capture_line(`tail -1 {blerr}`)
+    err(`ludic build-lib: compile failed — {why}\n`);  return 1
   }
   let out = `lib/{t}/lib{name}.dylib`
   # @rpath install name so a consumer resolves it via -rpath to the store dir
-  if not shq(`{cc()} -O2 -Wno-override-module -dynamiclib -undefined dynamic_lookup -Wl,-install_name,@rpath/lib{name}.dylib {ll} -o {out} 2>{tmp_dir()}/bl.err`) {
-    err(`x: build-lib link failed — {capture_line("tail -1 {tmp_dir()}/bl.err")}\n`);  return 1
+  if not shq(`{cc()} -O2 -Wno-override-module -dynamiclib -undefined dynamic_lookup -Wl,-install_name,@rpath/lib{name}.dylib {ll} -o {out} 2>{blerr}`) {
+    let why2 = capture_line(`tail -1 {blerr}`)
+    err(`ludic build-lib: link failed — {why2}\n`);  return 1
   }
   run(`rm -f {ll}`)
   print(`built {out}  (target {t})`)

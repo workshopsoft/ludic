@@ -97,7 +97,7 @@ function line_count(path: pointer) -> pointer {
 function cmd_selfhost_build(lc: pointer, outbin: pointer) -> int {
   run("mkdir -p build")
   let src = "build/selfhost.ludic"
-  if not write_selfhost_src(src) { err("x: cannot write build/selfhost.ludic\n"); return 1 }
+  if not write_selfhost_src(src) { err("ludic-dev: cannot write build/selfhost.ludic\n"); return 1 }
   let ll = `{outbin}.ll`
   if not shq(`{lc} {src} > {ll} 2>/dev/null`) { run(`rm -f {ll}`); return 1 }
   let rc = shq(`{cc()} {ll} -o {outbin} 2>/dev/null`)
