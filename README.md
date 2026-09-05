@@ -1,189 +1,149 @@
 # Ludic
 
-Ludic is an **ahead-of-time compiled** language for 2D games with an
-entity-component core, a deterministic fixed-point runtime, and its graphics
-stack built into the language. `ludicc` lowers Ludic straight to LLVM IR and
-emits a native binary — and **`ludicc` is itself written in Ludic**, compiles
-its own source to a byte-exact fixpoint, and rebuilds from a checked-in IR seed
-with **no C compiler in the loop**.
+A compiled language for 2D games. The entity-component system is part of the
+syntax, the runtime is deterministic fixed-point, and `ludicc` lowers Ludic
+straight to LLVM IR — **no C is generated, compiled or linked in a build.**
 
+The compiler is written in Ludic. It compiles its own source to a byte-exact
+fixpoint and rebuilds from a checked-in IR seed with clang alone; CI asserts
+that on every push.
+
+- **Documentation:** <https://workshopsoft.pages.workshopsoft.io/ludic/>
+- **API reference:** <https://workshopsoft.pages.workshopsoft.io/ludic/api.html>
+- **Issues:** <https://git.workshopsoft.io/workshopsoft/ludic/issues>
+
+```ludic
+program Hello {
+
+  property Position { column: int = 0, row: int = 0 }
+  property Velocity { delta_x: int = 0, delta_y: int = 0 }
+
+  handler SpawnEnemies phase Start {
+    spawn Enemy { Position { column: 3, row: 4 },  Velocity { delta_x: 1, delta_y: 0 } }
+    spawn Enemy { Position { column: 10, row: 2 }, Velocity { delta_x: 0, delta_y: 1 } }
+  }
+
+  # a handler declares the entities it touches; the body runs
+  # once per match, with each property bound by name.
+  @Queries(these: [Position, Velocity])
+  handler AdvancePositions phase FixedUpdate {
+    Position.column += Velocity.delta_x
+    Position.row    += Velocity.delta_y
+  }
+}
 ```
-  .ludic  ──►  ludicc  ──►  LLVM IR  ──►  object  ──►  native binary
-             (in Ludic)
-```
 
-**No C is generated, compiled or linked in a build.** No interpreter, no
-transpiler, no C runtime: the framebuffer, sprites, PNG/DEFLATE decoding,
-TrueType text, the retained UI, the registers and the RNG are all written in
-Ludic (`runtime/native/*.ludic`); only the window seam — the `win_*` functions
-for the window, keys, mouse, cursor, gamepad and touch — is hand-written LLVM IR
-against the platform ABI (`runtime/native/cocoa.ll`),
-the same floor Rust and Swift stand on.
+## Getting started
 
-## Backends
-
-| Backend | Status |
-|---|---|
-| **Native 2D** (macOS/Cocoa window; headless render for CI) | **Shipping** — the default `bin/x app` target. |
-| **Web / wasm32** | **In progress.** The browser platform layer is in-tree and documented — `runtime/web/` (the `<canvas>` window `platform.js`, the libc-free `wasm.ll` floor) and a Node harness that diffs native vs. wasm frame-for-frame (`tools/ludic-web/run.mjs`). Emitting wasm was a capability of the retired C compiler and is **not yet re-wired on the self-hosted toolchain**; see [COMPILING.md](COMPILING.md). |
-
-The same is true of `--target` cross-compilation and `--shared` libraries: both
-are designed and documented, both lived in the old C compiler, and both are
-pending re-implementation on the self-hosted native toolchain.
-
-## Quick start
-
-`bin/x` is the project's task runner — one native binary, written in Ludic and
-compiled by Ludic, that replaces every build/test/bootstrap shell script.
-Bootstrap it once from a clean checkout (the only step Ludic can't do for
-itself, since compiling Ludic needs a compiler) with clang alone:
+`bin/x` is the project's task runner: one native binary, written in Ludic and
+compiled by Ludic, that replaces every build and test script. Bootstrapping it
+is the only step Ludic cannot do for itself, since compiling Ludic needs a
+compiler — clang assembles the checked-in IR seed:
 
 ```bash
 mkdir -p bin && clang selfhost/ludicc.seed.ll -o bin/ludicc && bin/ludicc tools/x/main.ludic -o bin/x
 ```
 
-Then build the whole toolchain and run a game:
+Then build the toolchain and run a game:
 
 ```bash
-bin/x build                                  # -> bin/{ludicc,ludic,x,ludic-fmt,ludic-lsp}
-bin/x app examples/games/snake.ludic         # compile + open a native window
+bin/x build                             # -> bin/{ludicc,ludic,x,ludic-fmt,ludic-lsp}
+bin/x app examples/games/snake.ludic    # compile and open a native window
 ./build/snake
 ```
 
-Render a frame headlessly (what CI checks) — output lands in `build/`, never the
-repo root:
+Rendering is deterministic, so a frame can be produced without a window — this
+is what CI diffs:
 
 ```bash
-bin/x app examples/games/chronorift.ludic --headless
-mkdir -p build && printf 'ddddwww' | ./build/chronorift_headless   # writes build/out.ppm
-sips -s format png build/out.ppm --out frame.png
+bin/x app examples/games/snake.ludic --headless
+printf 'ddddwww' | ./build/snake_headless    # writes build/out.ppm
 ```
 
-Run the suites:
+`bin/x help` lists every command. [`examples/`](examples/README.md) is a tour
+grouped by intent: games, rendering, ECS, events, networking, language features
+and the standard library.
+
+## The language
+
+- **ECS in the syntax.** `property`, `model` and `handler` are keywords. Query
+  with `for (a, b) in query [A, B, {Tag}] where <expr> { … }`; `spawn` and
+  `despawn` recycle entity slots; `@`-annotations drive lifecycle hooks.
+- **Deterministic by construction.** Q16.16 `fixed` arithmetic and a seeded RNG
+  give the same frame byte-for-byte on every run — the basis for replays,
+  lockstep netcode and golden-image tests.
+- **Scenes and state machines.** `scene` / `layer` / `become` model
+  mutually-exclusive game states with enter and exit hooks; `match` / `machine`
+  / `state` handle dispatch and per-entity FSMs.
+- **Events and networking.** A cancellable event bus (`event` / `emit` / `@On`)
+  and networking primitives (`@Sync`, ownership, RPCs) over a built-in transport.
+- **Batteries in the language.** Framebuffer primitives, PNG sprites, TrueType
+  text and a retained `ui` widget tree declared as data, plus a namespaced
+  standard library (`Math`, `Text`, `List`, `Random`, `Crypto`, `Tiled`, …).
+- **Whole-world snapshots.** `save()` and `load()` serialize every entity,
+  property and program `var` in one call.
+
+[LANGUAGE.md](LANGUAGE.md) is the full reference; the
+[API reference](https://workshopsoft.pages.workshopsoft.io/ludic/api.html)
+documents every symbol on its own page.
+
+## Packages
+
+Dependencies are identified by URL, resolved with minimal version selection, and
+cached in a content-addressed store:
 
 ```bash
-bin/x test            # full regression: compiler builds from seed, every example, golden renders
-bin/x selfhost-test   # correctness + the self-hosting / C-free bootstrap fixpoints
-bin/x help            # every command
+bin/x add git.workshopsoft.io/user/pkg   # resolve, fetch, link into ludic_modules/
+bin/x get                                # install from package.ludic, write the lock
+bin/x verify                             # check locked packages against the store
 ```
 
-Add a dependency (URL-as-identity, MVS resolution, content-addressed store):
-
-```bash
-bin/x add git.workshopsoft.io/user/pkg   # resolve + fetch + link into ludic_modules/
-bin/x get                                # install everything in package.ludic, write the lock
-bin/x verify                             # check the locked packages against the store
-```
-
-See [`docs/PACKAGES.md`](docs/PACKAGES.md) for the manifest, lockfile and package model.
-
-## Layout
-
-| Path | What it is |
-|------|-----------|
-| [`selfhost/*.ludic`](selfhost/) | **the compiler, written in Ludic** — lexer, parser, and the LLVM-IR backend (ECS storage, queries, spawn, `match`/`machine`, UI, scenes, save/load, fixed-point). Built from `selfhost/ludicc.seed.ll` with clang alone. |
-| [`selfhost/golden/renders.sha256`](selfhost/golden/renders.sha256) | text baseline of render-output hashes (replaces binary `.ppm` fixtures); regenerate with `bin/x golden`. |
-| [`tools/x/*.ludic`](tools/x/) | **the task runner, written in Ludic** — one binary (`bin/x`) that builds, tests, bootstraps and reseeds the project, replacing every shell script. |
-| [`runtime/native/`](runtime/native/) | the runtime **in Ludic** for the native path: `core` (framebuffer, input, RNG), `image`/`inflate` (PNG + DEFLATE, no zlib), `truetype` (glyph rasterizer), `ui` (retained widget tree); plus `cocoa.ll`, the macOS window seam in LLVM IR. |
-| [`runtime/web/`](runtime/web/) | the browser platform layer: `platform.js` (the `<canvas>` window), `wasm.ll` (the libc-free floor), `index.html`. |
-| [`examples/`](examples/README.md) | the example tour, grouped by intent — `games/`, `rendering/`, `ecs/`, `events/`, `networking/`, `lang/`, `library/`. See [examples/README.md](examples/README.md). |
-| [`tools/ludic-tools/`](tools/ludic-tools/) | the editor toolchain **in Ludic**: `ludic-fmt` (formatter) and `ludic-lsp` (language server) — one lexer, one vocabulary shared by both. |
-| [`tools/editors/`](tools/editors/README.md) | plugins for VS Code and JetBrains, plus config for Neovim, Helix, Emacs, Sublime and Zed. |
-| [`docs/`](docs/) | the per-symbol API reference, regenerated into the docs site. |
-| [`COMPILING.md`](COMPILING.md) | the native pipeline: `ludicc → LLVM IR → exe`, the `rt_*` runtime protocol, and the (pending) wasm/cross-compile/shared-library paths. |
-
-The design and roadmap material lives on the **[wiki](https://git.workshopsoft.io/workshopsoft/ludic/wiki)**:
-the [Events](https://git.workshopsoft.io/workshopsoft/ludic/wiki/Design/Events),
-[Networking](https://git.workshopsoft.io/workshopsoft/ludic/wiki/Design/Networking),
-[Scenes](https://git.workshopsoft.io/workshopsoft/ludic/wiki/Design/Scenes),
-[Lifecycle](https://git.workshopsoft.io/workshopsoft/ludic/wiki/Design/Lifecycle),
-[Mobile](https://git.workshopsoft.io/workshopsoft/ludic/wiki/Design/Mobile) and
-[Syntax-redesign](https://git.workshopsoft.io/workshopsoft/ludic/wiki/Design/Syntax-Redesign)
-design records, the [Bootstrap deep-dive](https://git.workshopsoft.io/workshopsoft/ludic/wiki/Bootstrap),
-and the [Luanti roadmap](https://git.workshopsoft.io/workshopsoft/ludic/wiki/Roadmap/Luanti).
-The root keeps only this README plus the two user-facing references,
-[`LANGUAGE.md`](LANGUAGE.md) and [`COMPILING.md`](COMPILING.md).
-
-## Language at a glance
-
-- `program` / `property` (typed fields + defaults) / `model` (named entity kinds)
-  / `system` (`phase`, `@annotations`, `reads`/`writes`).
-- ECS queries `for (a, b) in query [A, B, {Tag}] where <expr> { … }`,
-  `spawn`/`despawn` with slot reuse, `@`-driven lifecycle hooks.
-- An **event bus** (`event` / `emit` / `@On`, cancellable, `@Public` promotion)
-  and **networking** primitives (`@Sync`, ownership, RPCs) over a built-in
-  loopback transport — all deterministic, all pure Ludic.
-- `scene` / `layer` / `become`, `match` / `machine` + `state`.
-- Types `int`, `fixed` (Q16.16), `bool`, `entity`, `str`, `byte`, typed buffers;
-  a growing namespaced **standard library** (`Math`, `Vector`, `Time`/`Date`/
-  `Duration`/`Clock`, `Random`, `Hash`, `Crypto`, sorting, …).
-- Deterministic seeded RNG and `save()`/`load()` snapshot of the whole World.
-- Built-in 2D: framebuffer primitives, PNG sprites, TrueType text, 9-slice, and
-  a retained `ui` widget tree declared as data.
-
-See [LANGUAGE.md](LANGUAGE.md) for the full reference, and
-[examples/README.md](examples/README.md) for runnable demos of each feature.
+See [`docs/PACKAGES.md`](docs/PACKAGES.md) for the manifest and lockfile model.
 
 ## Editor support
 
 ```bash
-bin/x tools                     # -> bin/ludic-fmt, bin/ludic-lsp
+bin/x tools    # -> bin/ludic-fmt, bin/ludic-lsp
 ```
 
 `ludic-lsp` speaks LSP 3.17 over stdio, so one binary serves every editor:
-context-aware completion, diagnostics from the compiler itself,
-go-to-definition and rename across `import`ed files, and comment-preserving
-formatting. `ludic-fmt` is the same formatter as a CLI, for pre-commit hooks and
-CI. Both also understand ```` ```ludic ```` fences in Markdown. Plugins and
-drop-in config are in [`tools/editors/`](tools/editors/README.md).
+completion, diagnostics from the compiler itself, go-to-definition and rename
+across imports, and comment-preserving formatting. `ludic-fmt` is the same
+formatter as a CLI, for pre-commit hooks. Both understand ```` ```ludic ````
+fences in Markdown. Plugins and drop-in config for VS Code, JetBrains, Neovim,
+Helix, Emacs, Sublime and Zed are in [`tools/editors/`](tools/editors/README.md).
 
-## Chrono Rift — the flagship game
+## Status
 
-[`examples/games/chronorift.ludic`](examples/games/chronorift.ludic) is a
-playable co-op JRPG — overworld, dungeon, random encounters, a turn-based co-op
-battle, a boss, an item shop and snapshot save/load — split across modules under
-[`games/chronorift/`](examples/games/chronorift/). Its art is CC0
-[Kenney](https://kenney.nl) sprites, decoded from PNG at runtime by the
-Ludic-written PNG/DEFLATE decoder — no zlib, no external dependency.
+The native 2D backend ships: a Cocoa window on macOS, a headless renderer for
+CI, and the whole runtime — framebuffer, PNG/DEFLATE decoding, TrueType
+rasterizer, retained UI, RNG — written in Ludic under
+[`runtime/native/`](runtime/native/). Only the window seam (`win_*`: window,
+keys, mouse, cursor, gamepad, touch) is hand-written LLVM IR against the
+platform ABI, the same floor Rust and Swift stand on.
 
-- **Overworld:** `WASD` move, `K` save, `L` load.
-- **Battle (local co-op):** P1/Knight `W`/`S` select, `Space` confirm;
-  P2/Mage `I`/`K` select, `J` confirm.
+The **web/wasm32 backend is not currently available.** The browser platform
+layer is in-tree under [`runtime/web/`](runtime/web/), but emitting wasm was a
+capability of the retired C compiler and has not been re-wired on the
+self-hosted toolchain. `--target` cross-compilation and `--shared` libraries are
+in the same position. See [COMPILING.md](COMPILING.md).
 
-## Status & roadmap
-
-The compiler self-hosts to a byte-exact fixpoint and rebuilds from its IR seed
-with no C compiler; the ECS runtime, windowed + headless 2D rendering, the event
-bus, the deterministic networking stack, scenes, and save/load are all in place
-and covered by `bin/x test`. CI gates every push and PR on the build, the test
-suites, and that C-free fixpoint. The toolchain is versioned with SemVer
-(`ludicc --version`); releases and the `CHANGELOG.md` are cut from changesets by
-`x release`. Upgrading from 0.2? See the
-[0.2 → 0.3 migration guide](docs/MIGRATION-0.2-to-0.3.md).
-
-Active work and proposals — the standard library, a fuller type system,
-rendering/animation/lighting extras, input, filesystem/IO, testing, and
-re-wiring the web/wasm and cross-compile backends — are tracked as issues, not
-inlined here:
-
-- **Issues & proposals:** <https://git.workshopsoft.io/workshopsoft/ludic/issues>
-- **Docs site (API reference):** <https://workshopsoft.pages.workshopsoft.io/ludic/>
-- **Wiki (design & roadmap):** <https://git.workshopsoft.io/workshopsoft/ludic/wiki>
+Releases follow SemVer and are cut from changesets by `x release`, then built
+and published by CI from the tag; see [CHANGELOG.md](CHANGELOG.md).
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the development loop
-(`bin/x reseed` → `bin/x bootstrap-cfree` → `bin/x test`), the code and commit
-conventions, and how the bootstrap fixpoint works. Issue and pull-request
-templates live under [`.forgejo/`](.forgejo/).
+[CONTRIBUTING.md](CONTRIBUTING.md) covers the development loop, the commit and
+code conventions, how the bootstrap fixpoint works, and what a self-hosted CI
+runner needs. Issue and pull-request templates are under
+[`.forgejo/`](.forgejo/).
 
 ## License
 
-The Ludic compiler and runtime source are licensed under the
-[Apache License 2.0](LICENSE) (`SPDX-License-Identifier: Apache-2.0`) — a
-permissive license with an explicit patent grant.
+The compiler and runtime are licensed under the
+[Apache License 2.0](LICENSE) (`SPDX-License-Identifier: Apache-2.0`).
 
 The bundled [Kenney](https://kenney.nl) art under `assets/kenney/` is
-third-party and released under **CC0 1.0** (public domain); each pack keeps its
-own `License.txt`. Code and assets are licensed separately: Apache-2.0 covers
-the source, not the art.
+third-party and released under **CC0 1.0**; each pack keeps its own
+`License.txt`. Code and assets are licensed separately — Apache-2.0 covers the
+source, not the art.

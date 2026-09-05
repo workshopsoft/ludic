@@ -35,10 +35,15 @@ jobs:
           #  - pull_request: base branch .. this commit
           #  - push:         the pushed range (event.before .. this commit)
           #  - new branch / unknown: just the tip commit
+          # `event.before` is only usable if it still resolves: a force-push
+          # rewrites (and a gc can remove) the commit it names, which made this
+          # job fail with "Invalid revision range" on an otherwise clean push.
+          # Fall back to the tip commit in that case.
           if [ -n "${BASE:-}" ]; then
             git fetch --quiet origin "${BASE}" 2>/dev/null || true
             RANGE="origin/${BASE}..${GITHUB_SHA}"
-          elif [ -n "${BEFORE:-}" ] && ! printf '%s' "$BEFORE" | grep -qE '^0+$'; then
+          elif [ -n "${BEFORE:-}" ] && ! printf '%s' "$BEFORE" | grep -qE '^0+$' \
+               && git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
             RANGE="${BEFORE}..${GITHUB_SHA}"
           else
             RANGE="${GITHUB_SHA}~1..${GITHUB_SHA}"
