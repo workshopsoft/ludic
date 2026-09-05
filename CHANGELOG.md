@@ -7,6 +7,31 @@ change type. Preview the next one with `ludic dev release --dry-run`.
 A released section may carry a hand-written summary paragraph above its groups
 (v0.2.0 has one); the generated bullets below it are not edited by hand.
 
+## v0.6.0 — 2026-09-05
+
+### Refactoring
+
+- **`ludic` is only the language's command line now.** The toolchain's own tasks —
+  building the compiler from its IR seed, the regression suites, the docs site,
+  releases — moved out of it into a separate `ludic-dev` binary that is built from
+  a checkout and is not part of an install.
+
+  - **`ludic help` is what a user can actually do**: `new`, `run`, `build`, `test`,
+    `add`, `fmt`, `lsp`, `doctor`, `upgrade`. No section about a repository they do
+    not have. Typing `ludic dev …` says where those tasks went rather than failing
+    as an unknown command.
+  - **`ludic dev <task>` becomes `ludic-dev <task>`** for contributors; every task
+    is otherwise unchanged. The bootstrap is now
+    `bin/ludicc tools/ludic-cli/dev.ludic -o bin/ludic-dev && bin/ludic-dev build`.
+  - The shipped binary drops from ~880 KB to ~190 KB, since none of the release,
+    docs-generation or bootstrap machinery is linked into it any more.
+
+### CI
+
+- The docs deploy triggers on a change to `install.sh`. The site publishes the
+  installer, but the workflow's path filter did not mention it — so a release that
+  only fixed `install.sh` left the old script live at the URL the landing page
+  tells people to pipe into `sh`.
 ## v0.5.2 — 2026-09-05
 
 ### Fixes
