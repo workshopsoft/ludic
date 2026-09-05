@@ -155,6 +155,53 @@ pre::-webkit-scrollbar-thumb { background: var(--rule-2); border-radius: 5px }
 .t-punc  { color: var(--c-punc) }
 .t-arg   { color: var(--c-arg) }
 
+/* ---------- token cards ------------------------------------------------- *
+ * Every page runs the highlighter, so the card chrome lives here rather than
+ * in docs.css — the landing page links base.css and site.css only, and a card
+ * whose stylesheet never loaded renders as a static block at the end of the
+ * body instead of a panel beside the token that was clicked.
+ * ----------------------------------------------------------------------- */
+
+.tok { cursor: help; border-bottom: 1px dotted var(--rule-2) }
+a.tok { cursor: pointer }
+
+.hovercard {
+  /* the script positions this from getBoundingClientRect(), i.e. in viewport
+     coordinates, so the card must be fixed, not absolute */
+  position: fixed;
+  z-index: 90;
+  max-width: min(360px, calc(100vw - 24px));
+  background: var(--panel);
+  border: 1px solid var(--rule-2);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px -12px rgba(0, 0, 0, .35);
+  padding: 11px 13px;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.hovercard:hover { border-color: var(--accent) }
+.hc-top { display: flex; align-items: center; gap: 9px; margin-bottom: 6px }
+.hc-name { font-family: var(--mono); font-size: 13.5px; color: var(--ink) }
+.hc-sig { font-family: var(--mono); font-size: 12.5px; color: var(--muted); display: block; margin-bottom: 6px }
+.hc-tip { color: var(--ink-2) }
+.hc-foot { display: block; margin-top: 8px; font-size: 12px; color: var(--muted) }
+
+/* the kind badge is worn both by a card and by a reference page's title */
+.kind-badge {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border: 1px solid var(--rule-2);
+  border-radius: 3px;
+  padding: 2px 7px;
+  white-space: nowrap;
+}
+/* the accent is the only colour that distinguishes a kind, and only for the
+   two that are structural rather than callable */
+.kind-namespace, .kind-keyword { color: var(--accent); border-color: var(--accent) }
+
 /* ---------- header ---------- */
 
 header.nav {
