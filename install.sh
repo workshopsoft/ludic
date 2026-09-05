@@ -182,6 +182,13 @@ install_staged() {
   if [ -d "$INSTALL_DIR" ]; then
     rm -rf "${INSTALL_DIR}.old"
     mv "$INSTALL_DIR" "${INSTALL_DIR}.old"
+    # The install root is not only the artifact: `ludic add` caches packages in
+    # <root>/store, which is the user's data and takes a network round trip to
+    # rebuild. Carry it across rather than replacing the directory out from under
+    # it. (Anything else here is part of the toolchain and should be replaced.)
+    if [ -d "${INSTALL_DIR}.old/store" ]; then
+      mv "${INSTALL_DIR}.old/store" "${_staged}/store" || warn "could not carry the package store across"
+    fi
   fi
   mv "$_staged" "$INSTALL_DIR"
   rm -rf "${INSTALL_DIR}.old"
