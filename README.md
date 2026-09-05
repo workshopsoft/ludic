@@ -42,8 +42,10 @@ formatter and the language server — with one command:
 curl -fsSL https://workshopsoft.pages.workshopsoft.io/ludic/install.sh | sh
 ```
 
-It installs into `~/.ludic` and puts `~/.ludic/bin` on your `PATH`; nothing else
-on the machine is touched, and uninstalling is `rm -rf ~/.ludic`. Where a
+It installs into `~/.ludic` and puts `~/.ludic/bin` on your `PATH` in every
+shell — the PATH line lives in `~/.ludic/env`, sourced from `~/.profile`,
+`~/.zshenv` and your bash or fish config. Nothing else on the machine is touched;
+uninstalling is `rm -rf ~/.ludic` and deleting those two-line blocks. Where a
 prebuilt toolchain exists for your platform it is downloaded and verified against
 a published checksum; where it does not, the installer bootstraps from the
 compiler's own IR seed with clang. Either way you need clang (or Xcode's Command

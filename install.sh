@@ -219,35 +219,75 @@ install_from_source() {
 }
 
 # ---- PATH -------------------------------------------------------------------
+#
+# "Installed but `ludic` is not a command" is the most common way an installer
+# fails, so this is deliberate about it.
+#
+# The PATH edit itself lives in one file, <install>/env, and each shell profile
+# gets a single line that sources it. That keeps the change easy to find, easy to
+# undo (delete the line, delete ~/.ludic), and means a later install does not
+# accumulate a second export.
+#
+# Which profiles: enough to cover every shell the user actually opens, not just
+# the one $SHELL happens to name.
+#
+#   ~/.profile      sh, dash, and bash login shells that have no .bash_profile.
+#                   Created when missing — it is the portable catch-all.
+#   ~/.bash_profile bash login shells (what macOS Terminal starts). Only touched
+#   ~/.bashrc       when they already exist: creating .bash_profile would stop
+#                   bash from reading ~/.profile and silently break other tools.
+#   ~/.zshenv       zsh reads this for *every* invocation, interactive or not,
+#                   and never reads ~/.profile. Created when missing.
+#   fish config     only when fish is installed.
 
-# The shell profiles worth touching: the login shell's, plus ~/.profile as the
-# catch-all. Appending a guarded line is the least surprising thing an installer
-# can do to someone's dotfiles, and it is easy to find and delete.
-profiles() {
-  case "${SHELL:-}" in
-    */zsh)  printf '%s\n' "${ZDOTDIR:-$HOME}/.zshrc" ;;
-    */bash) printf '%s\n' "$HOME/.bashrc" ;;
-    */fish) printf '%s\n' "$HOME/.config/fish/config.fish" ;;
-  esac
-  [ -f "$HOME/.profile" ] && printf '%s\n' "$HOME/.profile"
-  return 0
+# write <install>/env and <install>/env.fish — the one place the PATH is set
+write_env_files() {
+  cat > "${INSTALL_DIR}/env" <<EOF
+# Adds the Ludic toolchain to PATH. Sourced from your shell profile; safe to
+# source more than once. Written by install.sh — edit ~/.ludic instead.
+case ":\${PATH}:" in
+  *":${INSTALL_DIR}/bin:"*) ;;
+  *) PATH="${INSTALL_DIR}/bin:\${PATH}"; export PATH ;;
+esac
+EOF
+  cat > "${INSTALL_DIR}/env.fish" <<EOF
+# Adds the Ludic toolchain to PATH (fish). Written by install.sh.
+if not contains "${INSTALL_DIR}/bin" \$PATH
+    set -gx PATH "${INSTALL_DIR}/bin" \$PATH
+end
+EOF
+}
+
+# append the source line to one profile, unless it is already there
+add_line() {
+  _file="$1"
+  _line="$2"
+  if [ -f "$_file" ] && grep -qF "$_line" "$_file" 2>/dev/null; then
+    ALREADY="${ALREADY} ${_file}"
+    return 0
+  fi
+  mkdir -p "$(dirname "$_file")" 2>/dev/null || true
+  printf '\n# ludic\n%s\n' "$_line" >> "$_file" || {
+    warn "could not write ${_file}"
+    return 0
+  }
+  TOUCHED="${TOUCHED} ${_file}"
 }
 
 add_to_path() {
-  _bin="${INSTALL_DIR}/bin"
-  case ":${PATH}:" in *":${_bin}:"*) return 0 ;; esac
   [ "$MODIFY_PATH" -eq 1 ] || return 0
-  _added=''
-  for _p in $(profiles); do
-    [ -e "$_p" ] || continue
-    if grep -q 'ludic/bin\|LUDIC_INSTALL' "$_p" 2>/dev/null; then _added="$_p"; continue; fi
-    case "$_p" in
-      */config.fish) printf '\n# Ludic\nset -gx PATH %s $PATH\n' "$_bin" >> "$_p" ;;
-      *)             printf '\n# Ludic\nexport PATH="%s:$PATH"\n' "$_bin" >> "$_p" ;;
-    esac
-    _added="$_p"
-  done
-  PATH_NOTE="$_added"
+  write_env_files
+  _posix=". \"${INSTALL_DIR}/env\""
+
+  add_line "${HOME}/.profile" "$_posix"
+  add_line "${ZDOTDIR:-$HOME}/.zshenv" "$_posix"
+  # bash: only files that already exist, so we never shadow ~/.profile
+  [ -f "${HOME}/.bash_profile" ] && add_line "${HOME}/.bash_profile" "$_posix"
+  [ -f "${HOME}/.bashrc" ] && add_line "${HOME}/.bashrc" "$_posix"
+  if have fish || [ -f "${HOME}/.config/fish/config.fish" ]; then
+    add_line "${HOME}/.config/fish/config.fish" "source \"${INSTALL_DIR}/env.fish\""
+  fi
+  return 0
 }
 
 # ---- go ---------------------------------------------------------------------
@@ -293,7 +333,8 @@ else
   fi
 fi
 
-PATH_NOTE=''
+TOUCHED=''
+ALREADY=''
 add_to_path
 
 # ---- report -----------------------------------------------------------------
@@ -314,21 +355,19 @@ if [ "$OS" != darwin ]; then
 fi
 
 say ""
-if [ -n "$PATH_NOTE" ]; then
-  say "  ${DIM}added ${INSTALL_DIR}/bin to your PATH in ${PATH_NOTE} — open a new shell, or:${R}"
-  say "  export PATH=\"${INSTALL_DIR}/bin:\$PATH\""
-  say ""
-else
-  case ":${PATH}:" in
-    *":${INSTALL_DIR}/bin:"*) ;;
-    *)
-      say "  ${DIM}add this to your shell profile:${R}"
-      say "  export PATH=\"${INSTALL_DIR}/bin:\$PATH\""
-      say ""
-      ;;
-  esac
+if [ "$MODIFY_PATH" -eq 1 ]; then
+  [ -n "${TOUCHED# }" ] && say "  ${DIM}added ${INSTALL_DIR}/bin to your PATH in:${R}${TOUCHED# }"
+  [ -n "${ALREADY# }" ] && say "  ${DIM}already on your PATH in:${R}${ALREADY# }"
 fi
-
+case ":${PATH}:" in
+  *":${INSTALL_DIR}/bin:"*) ;;
+  *)
+    say "  ${DIM}this shell was started before that, so for right now:${R}"
+    say "  export PATH=\"${INSTALL_DIR}/bin:\$PATH\""
+    say "  ${DIM}(new terminals pick it up on their own)${R}"
+    ;;
+esac
+say ""
 say "next:"
 say "  ${B}ludic new mygame${R}      create a project"
 say "  ${B}cd mygame && ludic run${R}  build it and play"
