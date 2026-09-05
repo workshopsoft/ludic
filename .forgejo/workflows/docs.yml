@@ -11,6 +11,10 @@ on:
       - 'docs/**'
       - 'tools/docgen/**'
       - 'tools/ludic-cli/**'
+      # the site publishes the installer, so a change to it has to redeploy the
+      # site — otherwise a fixed install.sh sits in main while the old one is
+      # still what `curl … | sh` fetches
+      - 'install.sh'
       - '.forgejo/workflows/docs.yml'
   workflow_dispatch: {}
 
