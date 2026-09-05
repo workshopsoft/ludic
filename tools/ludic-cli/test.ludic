@@ -84,7 +84,10 @@ function install_layout_case() -> void {
   if not shq(`cd {work}/demo && {envp} ludic test > {work}/test.out 2>&1`) {
     bad2(lbl, capture_line(`tail -1 {work}/test.out`)); return
   }
-  let ver = capture_line(`{envp} ludic version`)
+  # from the project directory, never the repo root: `ludic version` used to
+  # answer from a ./bin and ./VERSION next to the *current* directory, which made
+  # this check pass in the repo while a real install said "(version unknown)".
+  let ver = capture_line(`cd {work}/demo && {envp} ludic version`)
   if ver != `ludic {s_trim(read_file("VERSION"))}` {
     bad2("an installed `ludic version` reports the install's VERSION", `got [{ver}]`); return
   }

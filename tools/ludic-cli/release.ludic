@@ -49,13 +49,21 @@ function compute_next(cur: pointer, level: pointer) -> pointer {
   return `{maj}.{min}.{p2}`
 }
 
-# ludic version — report the toolchain version. Prefer the compiler's own --version
-# (proving that path works); fall back to the file if ludicc is not built yet.
+# ludic version — report the version of the toolchain this CLI belongs to.
+#
+# It asks the compiler (proving that path works), addressed through ludic_home()
+# rather than as a relative bin/ludicc: `ludic version` is run from a user's
+# project, not from the toolchain's own directory, and looking beside the current
+# directory found nothing there and reported "(version unknown)" for a perfectly
+# good install.
 function cmd_version() -> int {
-  if is_exec("bin/ludicc") {
-    run("LUDIC_HOME=. bin/ludicc --version")
+  let cc = ludicc()
+  if is_exec(cc) {
+    run(`{cc} --version`)
     return 0
   }
+  let v = read_file(`{ludic_home()}VERSION`)
+  if v != null { print(`ludic {s_trim(v)}`);  return 0 }
   print(`ludic {read_version_or("(version unknown)")}`)
   return 0
 }
