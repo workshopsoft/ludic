@@ -1,0 +1,706 @@
+# ============================================================================
+# terrain.ludic — the landscape: a height map generated on the GPU (R32F),
+# read back for placement queries, drawn as a lifted grid with four scanned
+# PBR materials blended by slope, altitude and the track mask.
+# ============================================================================
+
+var TERRAIN_HALF: int = 4096          # world half-size in metres (8 km square)
+const TERRAIN_RES:  int = 4096        # height-map texels per side (2 m over 8 km)
+const TERRAIN_SHADOW_RES: int = 2048  # the baked height-field shadow / cloud mask
+# CDLOD: the map is a quadtree of 32x32-cell patches; the leaf patch is 32 m (1 m cells)
+const CD_G: int = 32                  # cells per patch side
+const CD_LEVELS: int = 9              # 32 m leaves .. 8192 m root
+const CD_LEAVES: int = 256            # leaf patches per side (8192 / 32)
+var cd_mesh: Mesh = null
+var cd_range: words = null            # float bits: how far each level is drawn
+var cd_min: []words = null            # per level: min height of each patch (float bits)
+var cd_max: []words = null
+var cd_draws: int = 0
+var cd_far_draws: int = 0
+var cd_near_draws: int = 0
+var ter_force_far: bool = false
+var ter_no_split: bool = false
+var ter_force_near: bool = false
+var ter_skip: bool = false
+
+var ter_height_tex: int = 0
+var ter_heights: words = null         # CPU copy, float bits, TERRAIN_RES^2
+var ter_reflect: bool = false          # drawing the reflection: the mid mesh is plenty
+var ter_prog: int = 0
+# The far tier compiled on its own (FAR_ONLY). A patch that lies entirely beyond the
+# near/far split is drawn with it: same pixels, a shader small enough to run wide.
+var ter_prog_far: int = 0
+var ter_prog_near: int = 0           # the detailed tier alone (NEAR_ONLY)
+var ter_sun_prog: int = 0            # tersun.frag: sun visibility into a screen buffer
+var ter_sun_tgt: Target = null       # that buffer, at the frame's size
+var ter_sun_refl: Target = null      # and at the reflection's, which is smaller
+var ter_sun_dumped: bool = false
+var ter_sun_checked: bool = false
+var ter_sun_done: bool = false      # the caller already ran the pass (so it can time it)
+var ter_sun_pass: bool = false       # selection is drawing the visibility pass
+var ter_sun_tex: int = 0
+var ter_prog_cur: int = 0            # the program currently bound during selection
+var ter_smooth: bool = false   # generate the analytic test ground instead of a survey
+var ter_far_split: int = 0             # metres: beyond this the terrain takes its cheap far path (R3D_TFAR)
+var ter_far_band: int = 0              # half-width of the near/far blend (R3D_TBAND)
+var ter_snow_line: int = 0
+var ter_tex: words = null             # 11 material textures (see terrain_bind)
+var ter_ox: int = 0                   # world x/z of the terrain centre (float bits)
+var ter_oz: int = 0
+var ter_dem_tex: int = 0              # a real height map (16-bit), or 0 for the procedural valley
+var ter_dem_blur: int = 0             # gaussian texels applied to the survey (0 for lidar; ~3 for 30 m data)
+var ter_dem_min: int = 0
+var ter_dem_max: int = 0
+var ter_dem_base: int = 0
+var ter_ortho_tex: int = 0            # a photograph of the same window, draped with distance
+var ter_carpet: int = 0               # the distant-grass carpet (carpet_bake), 0 = none
+var ter_shadow_tex: int = 0           # height-field sun shadow: RG32F (lowest lit height, occluder distance)
+var ter_shadow_yaw: int = 0x7fffffff  # the sky yaw it was baked for
+var ter_shadow_gen: int = -1          # the daylight generation it was baked for
+var ter_shadow_prog: int = 0
+function terrain_set_carpet(tex: int) -> void { ter_carpet = tex }
+var ter_lake_level: int = 0           # a lake carved into the height map (float bits; ex = 0 → none)
+var ter_lake_cx: int = 0
+var ter_lake_cz: int = 0
+var ter_lake_ex: int = 0
+var ter_lake_ez: int = 0
+# Carve a lake bed below `level` inside the ellipse (cx, cz) ± (ex, ez); call before r3d_init.
+function terrain_lake(level: int, cx: int, cz: int, ex: int, ez: int) -> void {
+  ter_lake_level = level;  ter_lake_cx = cx;  ter_lake_cz = cz;  ter_lake_ex = ex;  ter_lake_ez = ez
+}
+
+# Use a real place: a 16-bit PNG height map plus its elevation range (metres). The
+# elevation `base` becomes y = 0; `ox`/`oz` put the map's centre in the world.
+var ter_ortho_px: pointer = null      # the photograph on the CPU (RGB8, TERRAIN_RES^2) for placement rules
+var ter_ortho_w: int = 0
+var ter_ortho_c: int = 3
+
+# the photograph's colour at world (x, z): packed 0xRRGGBB (0 outside the map)
+function terrain_ortho(x: int, z: int) -> int {
+  if ter_ortho_px == null { return 0 }
+  if ter_o_scale == 0 { ter_o_scale = fr(ter_ortho_w, TERRAIN_HALF * 2) }
+  let scale = ter_o_scale
+  var ix = f_to_int(f_floor(f_mul(f_add(f_sub(x, ter_ox), fi(TERRAIN_HALF)), scale)))
+  var iz = f_to_int(f_floor(f_mul(f_add(f_sub(z, ter_oz), fi(TERRAIN_HALF)), scale)))
+  if ix < 0 { ix = 0 };  if iz < 0 { iz = 0 }
+  if ix > ter_ortho_w - 1 { ix = ter_ortho_w - 1 };  if iz > ter_ortho_w - 1 { iz = ter_ortho_w - 1 }
+  let o = (iz * ter_ortho_w + ix) * ter_ortho_c
+  return (ter_ortho_px[o] << 16) | (ter_ortho_px[o + 1] << 8) | ter_ortho_px[o + 2]
+}
+# The three classifiers below all read the same pixel. A caller that wants more than
+# one should fetch the colour once with terrain_ortho() and use the *_of forms — the
+# cover generator tests all three per candidate, so this is three fetches saved out of
+# every four in the hottest loop in the program.
+function ortho_green_of(c: int) -> int {
+  let r = (c >> 16) & 255;  let g = (c >> 8) & 255;  let b = c & 255
+  var v = g - max(r, b)
+  if v < 0 { v = 0 }
+  return f_min(fr(v, 22), F_ONE)
+}
+function ortho_scree_of(c: int) -> int {
+  if c == 0 { return F_ZERO }
+  let r = (c >> 16) & 255;  let g = (c >> 8) & 255;  let b = c & 255
+  let mx = max(r, max(g, b))
+  if g - max(r, b) > 2 or mx < 60 { return F_ZERO }
+  return F_ONE
+}
+function ortho_forest_of(c: int) -> int {
+  if c == 0 { return F_ZERO }
+  let r = (c >> 16) & 255;  let g = (c >> 8) & 255;  let b = c & 255
+  let mx = max(r, max(g, b))
+  if g - max(r, b) < 3 { return F_ZERO }
+  if mx <= 80 { return F_ONE }
+  if mx <= 105 { return F_HALF }
+  return F_ZERO
+}
+
+# how green the ground is in the photograph (0..1 float bits): meadow / forest vs rock, scree, water
+function terrain_ortho_green(x: int, z: int) -> int {
+  let c = terrain_ortho(x, z)
+  let r = (c >> 16) & 255;  let g = (c >> 8) & 255;  let b = c & 255
+  var v = g - max(r, b)                 # green excess
+  if v < 0 { v = 0 }
+  return f_min(fr(v, 22), F_ONE)
+}
+# how grey and mid-bright (scree / pebbles / bare rock) the photograph is there (0..1)
+# Bare ground only where most of a 50 m neighbourhood is bare: a single 10 m trail pixel
+# must not place a boulder or bar a tree.
+function terrain_ortho_scree(x: int, z: int) -> int {
+  var votes = 0
+  for j in 0 .. 5 { for i in 0 .. 5 { if ortho_scree_of(terrain_ortho(f_add(x, fi((i - 2) * 10)), f_add(z, fi((j - 2) * 10)))) != F_ZERO { votes += 1 } } }
+  if votes >= 15 { return F_ONE }
+  return F_ZERO
+}
+function terrain_ortho_scree_pixel(x: int, z: int) -> int {
+  let c = terrain_ortho(x, z)
+  if c == 0 { return F_ZERO }
+  let r = (c >> 16) & 255;  let g = (c >> 8) & 255;  let b = c & 255
+  let mx = max(r, max(g, b))
+  # bare ground: not green-dominant (grey scree, the maroon rock, the moraine's tan gravel), lit enough not to be water
+  if g - max(r, b) > 2 or mx < 60 { return F_ZERO }
+  return F_ONE
+}
+# dense conifer forest in the photograph: green-dominant and dark (the meadows are brighter)
+function terrain_ortho_forest(x: int, z: int) -> int {
+  let c = terrain_ortho(x, z)
+  if c == 0 { return F_ZERO }
+  let r = (c >> 16) & 255;  let g = (c >> 8) & 255;  let b = c & 255
+  let mx = max(r, max(g, b))
+  if g - max(r, b) < 3 { return F_ZERO }
+  if mx <= 80 { return F_ONE }
+  if mx <= 105 { return F_HALF }
+  return F_ZERO
+}
+
+function terrain_use_ortho(path: string) -> void {
+  let px = png_decode(path)
+  if px == null { return }
+  ter_ortho_px = px
+  ter_ortho_w = tex_w
+  ter_ortho_c = tex_channels
+  ter_ortho_tex = tex_upload(px, true, true)
+  gl_bind_texture(GL_TEXTURE_2D, ter_ortho_tex)
+  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+}
+function terrain_use_dem(path: string, emin: int, emax: int, base: int, ox: int, oz: int) -> void {
+  ter_dem_tex = tex_load(path, false)
+  ter_dem_min = emin;  ter_dem_max = emax;  ter_dem_base = base
+  ter_ox = ox;  ter_oz = oz
+  gl_bind_texture(GL_TEXTURE_2D, ter_dem_tex)
+  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+}
+
+function terrain_generate() -> void {
+  var ids0: words = null
+  var defs = ""
+  if ter_dem_tex != 0 { defs = "#define DEM\n" }
+  if ter_smooth { defs = "#define SMOOTH\n" }
+  let p = r3d_program("fullscreen.vert", "heightgen.frag", defs)
+  ter_height_tex = tex_target(TERRAIN_RES, TERRAIN_RES, GL_R32F, GL_RED, GL_FLOAT, GL_LINEAR)
+  let fbo = gl_framebuffer()
+  gl_bind_framebuffer(GL_FRAMEBUFFER, fbo)
+  gl_framebuffer_texture2d(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ter_height_tex, 0)
+  gl_viewport(0, 0, TERRAIN_RES, TERRAIN_RES)
+  gl_disable(GL_DEPTH_TEST)
+  gl_use_program(p)
+  u_f(gl_uniform(p, "u_half"), fi(TERRAIN_HALF))
+  if ter_dem_tex != 0 {
+    r3d_bind_2d(p, "u_dem", 0, ter_dem_tex)
+    u_f(gl_uniform(p, "u_dem_min"), ter_dem_min)
+    u_f(gl_uniform(p, "u_dem_max"), ter_dem_max)
+    u_f(gl_uniform(p, "u_dem_base"), ter_dem_base)
+    u_f2(gl_uniform(p, "u_origin"), ter_ox, ter_oz)
+    u_f4(gl_uniform(p, "u_lake"), ter_lake_cx, ter_lake_cz, ter_lake_ex, ter_lake_ez)
+    u_f(gl_uniform(p, "u_lake_level"), ter_lake_level)
+    u_f(gl_uniform(p, "u_dem_blur"), ter_dem_blur)
+  }
+  mesh_draw(sky_fullscreen)
+  # second pass: R = height, GBA = the smooth surface normal, baked once (ternormal.frag)
+  let raw = ter_height_tex
+  ter_height_tex = tex_target(TERRAIN_RES, TERRAIN_RES, GL_RGBA32F, GL_RGBA, GL_FLOAT, GL_LINEAR)
+  gl_framebuffer_texture2d(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ter_height_tex, 0)
+  let pn = r3d_program("fullscreen.vert", "ternormal.frag", "")
+  gl_use_program(pn)
+  r3d_bind_2d(pn, "u_src", 0, raw)
+  u_f(gl_uniform(pn, "u_half"), fi(TERRAIN_HALF))
+  mesh_draw(sky_fullscreen)
+  gl_delete_program(pn)
+  ids0 = gl_scratch();  ids0[0] = raw;  gl_delete_textures(1, ids0)
+  # read the heights back for placement
+  ter_heights = words(TERRAIN_RES * TERRAIN_RES)
+  gl_bind_texture(GL_TEXTURE_2D, ter_height_tex)
+  gl_pixel_storei(GL_PACK_ALIGNMENT, 4)
+  gl_get_tex_image(GL_TEXTURE_2D, 0, GL_RED, GL_FLOAT, ter_heights)
+  gl_bind_framebuffer(GL_FRAMEBUFFER, 0)
+  let ids = gl_scratch()
+  ids[0] = fbo
+  gl_delete_framebuffers(1, ids)
+  gl_delete_program(p)
+  gl_check("terrain generate")
+}
+
+# The height field for shaders that place things on the ground (model.vert's u_ground)
+function terrain_bind_height(p: int) -> void {
+  r3d_bind_2d(p, "u_ts_height", 5, ter_height_tex)
+  u_f(gl_uniform(p, "u_ts_half"), fi(TERRAIN_HALF))
+  u_f2(gl_uniform(p, "u_ts_origin"), ter_ox, ter_oz)
+}
+
+# Bake the height-field sun shadow (see tershadow.frag). Cheap enough to redo whenever
+# the sun moves; r3d_frame calls it again when sky_set_yaw has changed the yaw.
+function terrain_bake_shadow() -> void {
+  if sun_dir == null { return }
+  if ter_shadow_tex == 0 { ter_shadow_tex = tex_target(TERRAIN_SHADOW_RES, TERRAIN_SHADOW_RES, GL_RGBA32F, GL_RGBA, GL_FLOAT, GL_LINEAR) }
+  if ter_shadow_prog == 0 { ter_shadow_prog = r3d_program("fullscreen.vert", "tershadow.frag", "#define NOISE_ONLY\n") }
+  let p = ter_shadow_prog
+  let fbo = gl_framebuffer()
+  gl_bind_framebuffer(GL_FRAMEBUFFER, fbo)
+  gl_framebuffer_texture2d(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ter_shadow_tex, 0)
+  gl_viewport(0, 0, TERRAIN_SHADOW_RES, TERRAIN_SHADOW_RES)
+  gl_disable(GL_DEPTH_TEST)
+  gl_disable(GL_BLEND)
+  gl_use_program(p)
+  r3d_bind_2d(p, "u_height", 0, ter_height_tex)
+  u_f(gl_uniform(p, "u_half"), fi(TERRAIN_HALF))
+  u_v3(gl_uniform(p, "u_sun"), sun_dir)
+  mesh_draw(sky_fullscreen)
+  gl_bind_framebuffer(GL_FRAMEBUFFER, 0)
+  let ids = gl_scratch()
+  ids[0] = fbo
+  gl_delete_framebuffers(1, ids)
+  ter_shadow_yaw = sky_yaw
+  gl_check("terrain shadow bake")
+}
+
+# height at world (x, z) — float bits, bilinear over the CPU copy
+# The height and photograph scales are constants, but they were being recomputed —
+# a fixed-point divide — on every call, and the cover generator calls terrain_height
+# five times per candidate (once directly, four more inside slope_at) across hundreds
+# of thousands of candidates per chunk. Hoisted, they cost nothing.
+var ter_h_scale: int = 0
+var ter_o_scale: int = 0
+
+function terrain_height(x: int, z: int) -> int {
+  if ter_h_scale == 0 { ter_h_scale = fr(TERRAIN_RES, TERRAIN_HALF * 2) }
+  let scale = ter_h_scale
+  let fx = f_mul(f_add(f_sub(x, ter_ox), fi(TERRAIN_HALF)), scale)
+  let fz = f_mul(f_add(f_sub(z, ter_oz), fi(TERRAIN_HALF)), scale)
+  var ix = f_to_int(f_floor(fx));  var iz = f_to_int(f_floor(fz))
+  if ix < 0 { ix = 0 };  if iz < 0 { iz = 0 }
+  if ix > TERRAIN_RES - 2 { ix = TERRAIN_RES - 2 };  if iz > TERRAIN_RES - 2 { iz = TERRAIN_RES - 2 }
+  let tx = f_clamp(f_sub(fx, fi(ix)), F_ZERO, F_ONE)
+  let tz = f_clamp(f_sub(fz, fi(iz)), F_ZERO, F_ONE)
+  let h00 = ter_heights[iz * TERRAIN_RES + ix]
+  let h10 = ter_heights[iz * TERRAIN_RES + ix + 1]
+  let h01 = ter_heights[(iz + 1) * TERRAIN_RES + ix]
+  let h11 = ter_heights[(iz + 1) * TERRAIN_RES + ix + 1]
+  return f_lerp(f_lerp(h00, h10, tx), f_lerp(h01, h11, tx), tz)
+}
+# the same for Q16.16 callers
+function terrain_height_fx(x: fixed, z: fixed) -> fixed { return f_fx(terrain_height(fl(x), fl(z))) }
+
+# The height the terrain is DRAWN at: the cubic B-spline of the texels (heightSmooth in
+# terrain.vert), not the bilinear read above. The two differ by up to half a metre on
+# rough ground, which is the difference between a character standing on the meadow
+# and one buried to the knee in it. Sixteen taps; for things that move, not for the
+# thousands of placement queries a chunk makes.
+var ter_bw: words = null
+function terrain_height_smooth(x: int, z: int) -> int {
+  if ter_h_scale == 0 { ter_h_scale = fr(TERRAIN_RES, TERRAIN_HALF * 2) }
+  if ter_bw == null { ter_bw = words(8) }
+  let scale = ter_h_scale
+  let fx = f_sub(f_mul(f_add(f_sub(x, ter_ox), fi(TERRAIN_HALF)), scale), F_HALF)
+  let fz = f_sub(f_mul(f_add(f_sub(z, ter_oz), fi(TERRAIN_HALF)), scale), F_HALF)
+  let ix = f_to_int(f_floor(fx));  let iz = f_to_int(f_floor(fz))
+  let tx = f_clamp(f_sub(fx, fi(ix)), F_ZERO, F_ONE)
+  let tz = f_clamp(f_sub(fz, fi(iz)), F_ZERO, F_ONE)
+  # the four cubic B-spline weights of a fraction, over texels i-1 .. i+2
+  for a in 0 .. 2 {
+    var t = tx
+    if a == 1 { t = tz }
+    let t2 = f_mul(t, t);  let t3 = f_mul(t2, t)
+    let one_t = f_sub(F_ONE, t)
+    let w0 = f_div(f_mul(f_mul(one_t, one_t), one_t), fi(6))
+    let w1 = f_div(f_add(f_sub(fi(4), f_mul(fi(6), t2)), f_mul(fi(3), t3)), fi(6))
+    let w3 = f_div(t3, fi(6))
+    let w2 = f_sub(f_sub(f_sub(F_ONE, w0), w1), w3)
+    ter_bw[a * 4] = w0;  ter_bw[a * 4 + 1] = w1;  ter_bw[a * 4 + 2] = w2;  ter_bw[a * 4 + 3] = w3
+  }
+  var h = F_ZERO
+  for j in 0 .. 4 {
+    var rz = iz - 1 + j
+    if rz < 0 { rz = 0 };  if rz > TERRAIN_RES - 1 { rz = TERRAIN_RES - 1 }
+    var row = F_ZERO
+    for i in 0 .. 4 {
+      var rx = ix - 1 + i
+      if rx < 0 { rx = 0 };  if rx > TERRAIN_RES - 1 { rx = TERRAIN_RES - 1 }
+      row = f_add(row, f_mul(ter_bw[i], ter_heights[rz * TERRAIN_RES + rx]))
+    }
+    h = f_add(h, f_mul(ter_bw[4 + j], row))
+  }
+  return h
+}
+
+function terrain_load_textures() -> void {
+  ter_tex = words(15)
+  let a = r3d_assets + "/textures/"
+  ter_tex[0] = tex_load(a + "aerial_grass_rock_diff_2k.png", true)
+  ter_tex[1] = tex_load(a + "aerial_grass_rock_nor_gl_2k.png", false)
+  ter_tex[2] = tex_load(a + "aerial_grass_rock_arm_2k.png", false)
+  ter_tex[3] = tex_load(a + "grass_path_2_diff_2k.png", true)
+  ter_tex[4] = tex_load(a + "grass_path_2_nor_gl_2k.png", false)
+  ter_tex[5] = tex_load(a + "grass_path_2_arm_2k.png", false)
+  ter_tex[6] = tex_load(a + "gray_rocks_diff_2k.png", true)
+  ter_tex[7] = tex_load(a + "gray_rocks_nor_gl_2k.png", false)
+  ter_tex[8] = tex_load(a + "gray_rocks_arm_2k.png", false)
+  ter_tex[9] = tex_load(a + "snow_02_diff_2k.png", true)
+  ter_tex[10] = tex_load(a + "snow_02_nor_gl_2k.png", false)
+  ter_tex[11] = tex_load(a + "snow_02_arm_2k.png", false)
+  ter_tex[12] = tex_load(a + "aerial_grass_rock_disp_2k.png", false)
+  ter_tex[13] = tex_load(a + "cliff_side_diff_2k.png", true)
+  ter_tex[14] = tex_load(a + "cliff_side_nor_gl_2k.png", false)
+  if Os.has_env("R3D_TEXDBG") { for i in 0 .. 15 { print(`ter_tex[{string(i)}] = {string(ter_tex[i])}`) } }
+}
+
+function terrain_init() -> void {
+  terrain_generate()
+  terrain_bake_shadow()
+  terrain_load_textures()
+  cdlod_init()
+  ter_wire = Os.has_env("R3D_WIRE")
+  ter_force_far = Os.has_env("R3D_TFARONLY")
+  ter_no_split = Os.has_env("R3D_NOSPLIT")
+  ter_force_near = Os.has_env("R3D_TNEARONLY")
+  ter_skip = Os.has_env("R3D_NOTERRAIN")
+  var defs = ""
+  if r3d_debug_shadow { defs = "#define DEBUG_SHADOW\n" }
+  if Os.has_env("R3D_DEBUG_MAT") { defs = "#define DEBUG_MAT\n" }
+  if Os.has_env("R3D_DEBUG_NRM") { defs = "#define DEBUG_NRM\n" }
+  if Os.has_env("R3D_DEBUG_ALB") { defs = "#define DEBUG_ALB\n" }
+  # Elimination profiling. Measure these by FRAME TIME (prof_ft_report), not by the
+  # per-pass GPU timers: this driver's timer queries attribute a pass's fragment work
+  # almost arbitrarily, and will happily report a pass at a tenth of its cost.
+  #   R3D_TFAST=1  the ground reads no sun visibility        =2  every noise field at its mean
+  #           =3  no scanned material taps                   =4  no survey photograph
+  #           =5  the detailed tier at every distance        =20 no photograph grain
+  # R3D_NOTERRAIN skips the ground entirely (what it costs); R3D_TNEARONLY / R3D_TFARONLY
+  # draw every patch with one tier's program (what each tier costs over a whole frame);
+  # R3D_NOSPLIT goes back to the single program that holds both tiers.
+  if Os.has_env("R3D_TFAST") { defs = defs + "#define TFAST_" + Os.env("R3D_TFAST") + "\n" }
+  ter_prog = r3d_program("terrain.vert", "terrain.frag", defs)
+  ter_prog_far = r3d_program("terrain.vert", "terrain.frag", defs + "#define FAR_ONLY\n")
+  ter_prog_near = r3d_program("terrain.vert", "terrain.frag", defs + "#define NEAR_ONLY\n")
+  ter_sun_prog = r3d_program("terrain.vert", "tersun.frag", "")
+  ter_far_split = fi(200)
+  if Os.has_env("R3D_TFAR") { ter_far_split = fi(Text.to_int(Os.env("R3D_TFAR"))) }
+  ter_far_band = fi(60)
+  if Os.has_env("R3D_TBAND") { ter_far_band = fi(Text.to_int(Os.env("R3D_TBAND"))) }
+  ter_snow_line = fi(880)
+  gl_check("terrain init")
+}
+
+# draw into the current cascade with the given light view-projection
+# The terrain no longer casts into the shadow map: it shadows itself by marching its
+# own height field in terrain.frag, which cannot produce the self-shadow grid a depth
+# map does, and it saves drawing the whole grid five times a frame.
+function terrain_draw_shadow(light_vp: words) -> void {
+}
+
+# Every per-frame uniform of one terrain program. Both tiers are bound up front so
+# selection can switch between them per patch without re-binding anything but the node.
+function terrain_bind_prog(p: int) -> void {
+  gl_use_program(p)
+  r3d_bind_2d(p, "u_height", 0, ter_height_tex)
+  r3d_bind_2d(p, "u_grass_d", 1, ter_tex[0]);  r3d_bind_2d(p, "u_grass_n", 2, ter_tex[1]);  r3d_bind_2d(p, "u_grass_a", 3, ter_tex[2])
+  # The cliff maps went with the dead cliff sample. Binding textures for uniforms the
+  # shader no longer declares leaves those units pointing at nothing, which the driver
+  # reports as an unloadable sampler and resolves as a zero texture.
+  # A scene with no photograph still has to bind something valid here: sampler unit
+  # pointed at texture 0 is an incomplete texture, which the driver reports as
+  # unloadable and which poisons sampling for the rest of the unit's stage.
+  var orthotex = ter_ortho_tex
+  if orthotex == 0 { orthotex = ter_tex[0] }
+  r3d_bind_2d(p, "u_ortho", 4, orthotex)
+  var oon = F_ZERO
+  if ter_ortho_tex != 0 { oon = F_ONE }
+  u_f(gl_uniform(p, "u_ortho_on"), oon)
+  r3d_bind_2d(p, "u_rock_d", 7, ter_tex[6]);   r3d_bind_2d(p, "u_rock_n", 8, ter_tex[7]);   r3d_bind_2d(p, "u_rock_a", 9, ter_tex[8])
+  r3d_bind_2d(p, "u_snow_d", 10, ter_tex[9])
+  if ter_carpet != 0 { r3d_bind_2d(p, "u_carpet", 11, ter_carpet);  u_f(gl_uniform(p, "u_carpet_on"), F_ONE) }
+  else { r3d_bind_2d(p, "u_carpet", 11, ter_tex[0]);  u_f(gl_uniform(p, "u_carpet_on"), F_ZERO) }
+  u_f(gl_uniform(p, "u_half"), fi(TERRAIN_HALF))
+  u_f(gl_uniform(p, "u_texel"), fr(1, TERRAIN_RES))
+  u_f(gl_uniform(p, "u_snow_line"), ter_snow_line)
+  var lake = fl(-100000.0)
+  if ter_lake_ex != 0 { lake = ter_lake_level }
+  u_f(gl_uniform(p, "u_lake_level"), lake)
+  u_mat4(gl_uniform(p, "u_view"), cam_view)
+  u_mat4(gl_uniform(p, "u_proj"), cam_proj)
+  u_f2(gl_uniform(p, "u_origin"), ter_ox, ter_oz)
+  u_f(gl_uniform(p, "u_far_split"), ter_far_split)
+  u_f(gl_uniform(p, "u_far_band"), ter_far_band)
+  sky_bind_lighting(p)
+  shadow_bind(p)
+  fog_bind(p)
+  u_v3(gl_uniform(p, "u_cam_pos"), cam_pos)
+  u_f(gl_uniform(p, "u_grid"), fi(CD_G))
+  # The ground reads its sun visibility out of the buffer tersun.frag filled, and has no
+  # use for the cascade array shadow_bind just put on this unit; leaving both bound under
+  # one unit is undefined ground, so the array comes off first.
+  gl_active_texture(GL_TEXTURE0 + 15)
+  gl_bind_texture(GL_TEXTURE_2D_ARRAY, 0)
+  r3d_bind_2d(p, "u_sunshadow", 15, ter_sun_tex)
+}
+
+# The visibility buffer for the size being drawn into. The reflection is rendered at its
+# own (smaller) size, so it keeps its own.
+#
+# Neither owns a depth buffer. The pass BORROWS the depth the frame is about to be drawn
+# with, so its rasterisation doubles as a depth prepass — and a borrowed texture must
+# never be written into the Target, because a Target deletes whatever its `depth` names
+# when it is freed. Storing it there deleted the frame's own depth buffer on the first
+# resize (post_init had already made the replacement, and GL hands the freed name straight
+# back, so the new one was deleted instead of the old). The scene framebuffer lost its
+# depth attachment, the sky's fullscreen quad had nothing left to fail against, and it
+# painted over the whole valley — with "gl error 1286" every frame from the passes whose
+# attachment now named a deleted texture.
+function terrain_sun_target(w: int, h: int) -> Target {
+  var t = ter_sun_tgt
+  if ter_reflect { t = ter_sun_refl }
+  if t == null or t.w != w or t.h != h {
+    target_free(t)                          # owns its colour, and nothing else
+    t = target_new(w, h, GL_R8, GL_RED, GL_UNSIGNED_BYTE, false, GL_NEAREST)
+    if ter_reflect { ter_sun_refl = t } else { ter_sun_tgt = t }
+  }
+  return t
+}
+
+# Rasterise the patches once with the small shader that reads the cascades (tersun.frag).
+function terrain_sun_pass(w: int, h: int, depth: int) -> Target {
+  let t = terrain_sun_target(w, h)
+  # Attach the frame's depth afresh every pass. It is a different texture every time the
+  # screen-sized buffers are rebuilt — a resize, a fullscreen change — and an attachment
+  # naming a texture that has been deleted leaves this framebuffer incomplete, which is
+  # an error per draw and a pass that silently does nothing. One call a pass is cheaper
+  # than any scheme for noticing.
+  target_bind(t)
+  gl_framebuffer_texture2d(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depth, 0)
+  if not ter_sun_checked {
+    ter_sun_checked = true
+    let st = gl_check_framebuffer_status(GL_FRAMEBUFFER)
+    if st != GL_FRAMEBUFFER_COMPLETE { print(`r3d: sun-visibility framebuffer incomplete {st}`) }
+  }
+  gl_enable(GL_DEPTH_TEST)
+  gl_depth_func(GL_LESS)
+  gl_depth_mask(1)
+  # the depth is the frame's own and was cleared with it; only the visibility is cleared
+  gl_clear_color(1.0, 1.0, 1.0, 1.0)      # unshadowed where nothing is drawn
+  gl_clear(GL_COLOR_BUFFER_BIT)
+  let p = ter_sun_prog
+  gl_use_program(p)
+  r3d_bind_2d(p, "u_height", 0, ter_height_tex)
+  u_f(gl_uniform(p, "u_half"), fi(TERRAIN_HALF))
+  u_mat4(gl_uniform(p, "u_view"), cam_view)
+  u_mat4(gl_uniform(p, "u_proj"), cam_proj)
+  u_f2(gl_uniform(p, "u_origin"), ter_ox, ter_oz)
+  u_v3(gl_uniform(p, "u_cam_pos"), cam_pos)
+  u_f(gl_uniform(p, "u_grid"), fi(CD_G))
+  u_f(gl_uniform(p, "u_far_split"), ter_far_split)
+  u_f(gl_uniform(p, "u_far_band"), ter_far_band)
+  u_f(gl_uniform(p, "u_clip_y"), r3d_clip_y)
+  shadow_bind(p)
+  sky_bind_lighting(p)
+  ter_sun_pass = true
+  gl_bind_vertex_array(cd_mesh.vao)
+  cdlod_select(CD_LEVELS - 1, 0, 0)
+  ter_sun_pass = false
+  if Os.has_env("R3D_DUMP_SUN") and not ter_sun_dumped and not ter_reflect { ter_sun_dumped = true;  tex_dump(t.color, w, h, "build/dbg_sun.ppm") }
+  return t
+}
+
+function terrain_sun_prepare() -> void {
+  ter_sun_tex = terrain_sun_pass(post_w, post_h, post_hdr.depth).color
+  ter_sun_done = true
+}
+
+function terrain_draw() -> void {
+  if ter_skip { return }
+  # The sun visibility first, into its own buffer; the shading pass looks it up per pixel.
+  # The pass binds its own framebuffer, so the caller's target is restored afterwards —
+  # the reflection's, or the scene's, without disturbing what is already drawn in it.
+  var vw = post_w
+  var vh = post_h
+  if ter_reflect { vw = water_refl.w;  vh = water_refl.h }
+  if not ter_sun_done {
+    var dep = post_hdr.depth
+    if ter_reflect { dep = water_refl.depth }
+    ter_sun_tex = terrain_sun_pass(vw, vh, dep).color
+  }
+  ter_sun_done = false
+  if ter_reflect { target_bind(water_refl) }
+  else {
+    target_bind(post_hdr)
+    if post_ms_fbo != 0 { gl_bind_framebuffer(GL_FRAMEBUFFER, post_ms_fbo) }
+  }
+  gl_enable(GL_DEPTH_TEST)
+  # the prepass already laid this geometry's depth down: only the frontmost fragment of
+  # each pixel has anything to shade, and it meets that depth exactly
+  gl_depth_func(GL_LEQUAL)
+  gl_depth_mask(1)
+  terrain_bind_prog(ter_prog)
+  terrain_bind_prog(ter_prog_far)
+  terrain_bind_prog(ter_prog_near)
+  ter_prog_cur = 0
+  cd_draws = 0
+  cd_far_draws = 0
+  cd_near_draws = 0
+  gl_bind_vertex_array(cd_mesh.vao)
+  if ter_wire { gl_polygon_mode(GL_FRONT_AND_BACK, GL_LINE) }
+  cdlod_select(CD_LEVELS - 1, 0, 0)
+  if ter_wire { gl_polygon_mode(GL_FRONT_AND_BACK, GL_FILL) }
+  gl_depth_func(GL_LESS)
+  if r3d_debug and not ter_printed { ter_printed = true;  print(`cdlod patches drawn: {cd_draws} (far {cd_far_draws}, near {cd_near_draws}, band {cd_draws - cd_far_draws - cd_near_draws})`) }
+}
+var ter_wire: bool = false
+var ter_printed: bool = false
+
+# ---- CDLOD --------------------------------------------------------------------------
+# One 32x32 patch mesh (a_xz in 0..1) drawn once per selected quadtree node; the vertex
+# shader places, scales and morphs it. Levels are drawn out to cd_range[k] = 48 * 2^k m,
+# so cells are 1 m within 48 m, 2 m to 96 m, 4 m to 192 m ... 256 m at the root.
+function cdlod_init() -> void {
+  let m = new Mesh
+  m.vao = gl_vao()
+  let n = CD_G + 1
+  let v = gl_floats(n * n * 2)
+  var k = 0
+  for j in 0 .. n { for i in 0 .. n { gl_put_bits(v, k, fr(i, CD_G));  gl_put_bits(v, k + 1, fr(j, CD_G));  k += 2 } }
+  m.vbo = gl_buffer()
+  gl_bind_buffer(GL_ARRAY_BUFFER, m.vbo)
+  gl_buffer_data(GL_ARRAY_BUFFER, gl_bytes_of(n * n * 2), v, GL_STATIC_DRAW)
+  gl_enable_vertex_attrib_array(0);  gl_vertex_attrib_pointer(0, 2, GL_FLOAT, 0, 8, null)
+  free(v)
+  let ni = CD_G * CD_G * 6
+  let idx = words(ni)
+  k = 0
+  for j in 0 .. CD_G {
+    for i in 0 .. CD_G {
+      let a = j * n + i
+      idx[k] = a;  idx[k + 1] = a + n;  idx[k + 2] = a + 1
+      idx[k + 3] = a + 1;  idx[k + 4] = a + n;  idx[k + 5] = a + n + 1
+      k += 6
+    }
+  }
+  m.ebo = gl_buffer()
+  gl_bind_buffer(GL_ELEMENT_ARRAY_BUFFER, m.ebo)
+  gl_buffer_data(GL_ELEMENT_ARRAY_BUFFER, ni * 4, idx, GL_STATIC_DRAW)
+  free(idx)
+  m.count = ni
+  gl_bind_vertex_array(0)
+  cd_mesh = m
+  cd_range = words(CD_LEVELS)
+  var r = fi(48)
+  if Os.has_env("R3D_CD_R0") { r = fi(Text.to_int(Os.env("R3D_CD_R0"))) }
+  for l in 0 .. CD_LEVELS { cd_range[l] = r;  r = f_mul(r, F_TWO) }
+  cdlod_bounds()
+}
+
+# min/max height per patch at every level, from the CPU copy of the height field
+function cdlod_bounds() -> void {
+  cd_min = new []words;  cd_max = new []words
+  let t = TERRAIN_RES / CD_LEAVES              # texels per leaf patch side
+  var n = CD_LEAVES
+  var lo = words(n * n);  var hi = words(n * n)
+  for j in 0 .. n {
+    for i in 0 .. n {
+      var mn = fi(100000);  var mx = fi(-100000)
+      for y in 0 .. t + 1 {
+        let ty = min(j * t + y, TERRAIN_RES - 1)
+        for x in 0 .. t + 1 {
+          let tx = min(i * t + x, TERRAIN_RES - 1)
+          let h = ter_heights[ty * TERRAIN_RES + tx]
+          mn = f_min(mn, h);  mx = f_max(mx, h)
+        }
+      }
+      lo[j * n + i] = mn;  hi[j * n + i] = mx
+    }
+  }
+  push(cd_min, lo);  push(cd_max, hi)
+  while n > 1 {
+    let m = n / 2
+    let plo = words(m * m);  let phi = words(m * m)
+    for j in 0 .. m {
+      for i in 0 .. m {
+        let a = (2 * j) * n + 2 * i
+        plo[j * m + i] = f_min(f_min(lo[a], lo[a + 1]), f_min(lo[a + n], lo[a + n + 1]))
+        phi[j * m + i] = f_max(f_max(hi[a], hi[a + 1]), f_max(hi[a + n], hi[a + n + 1]))
+      }
+    }
+    push(cd_min, plo);  push(cd_max, phi)
+    lo = plo;  hi = phi;  n = m
+  }
+}
+
+# does the patch's box come within r of the camera?
+function cd_within(x0: int, z0: int, size: int, ymin: int, ymax: int, r: int) -> bool {
+  let dx = f_max(f_max(f_sub(x0, cam_pos[0]), f_sub(cam_pos[0], f_add(x0, size))), F_ZERO)
+  let dz = f_max(f_max(f_sub(z0, cam_pos[2]), f_sub(cam_pos[2], f_add(z0, size))), F_ZERO)
+  let dy = f_max(f_max(f_sub(ymin, cam_pos[1]), f_sub(cam_pos[1], ymax)), F_ZERO)
+  return f_ls(f_add(f_add(f_mul(dx, dx), f_mul(dz, dz)), f_mul(dy, dy)), f_mul(r, r))
+}
+
+# is the patch's box entirely inside r of the camera? (its farthest corner is within r)
+function cd_inside(x0: int, z0: int, size: int, ymin: int, ymax: int, r: int) -> bool {
+  let x1 = f_add(x0, size)
+  let z1 = f_add(z0, size)
+  let dx = f_max(f_abs(f_sub(cam_pos[0], x0)), f_abs(f_sub(cam_pos[0], x1)))
+  let dz = f_max(f_abs(f_sub(cam_pos[2], z0)), f_abs(f_sub(cam_pos[2], z1)))
+  let dy = f_max(f_abs(f_sub(cam_pos[1], ymin)), f_abs(f_sub(cam_pos[1], ymax)))
+  return f_ls(f_add(f_add(f_mul(dx, dx), f_mul(dz, dz)), f_mul(dy, dy)), f_mul(r, r))
+}
+
+function cdlod_draw(level: int, ix: int, iz: int) -> void {
+  let size = fi(32 << level)
+  let x0 = f_add(f_sub(ter_ox, fi(TERRAIN_HALF)), f_mul(fi(ix), size))
+  let z0 = f_add(f_sub(ter_oz, fi(TERRAIN_HALF)), f_mul(fi(iz), size))
+  # Which tier can run inside this patch. A patch that never comes within the split takes
+  # the cheap tier at every pixel; one that lies wholly inside it takes the detailed tier
+  # at every pixel. Only a patch that straddles the band needs the program that holds both
+  # and cross-fades between them — and there are few of those, one ring of them.
+  if ter_sun_pass {
+    let t = gl_scratch()
+    t[0] = x0;  t[1] = z0;  t[2] = size
+    gl_uniform3fv(gl_uniform(ter_sun_prog, "u_node"), 1, t)
+    var st0 = F_ZERO
+    if level > 0 { st0 = cd_range[level - 1] }
+    u_f2(gl_uniform(ter_sun_prog, "u_morph"), f_lerp(st0, cd_range[level], fl(0.7)), cd_range[level])
+    gl_draw_elements(GL_TRIANGLES, cd_mesh.count, GL_UNSIGNED_INT, null)
+    return
+  }
+  let n = CD_LEAVES >> level
+  let ymin = cd_min[level][iz * n + ix]
+  let ymax = cd_max[level][iz * n + ix]
+  var p = ter_prog
+  if not cd_within(x0, z0, size, ymin, ymax, f_add(ter_far_split, ter_far_band)) { p = ter_prog_far }
+  else if cd_inside(x0, z0, size, ymin, ymax, f_sub(ter_far_split, ter_far_band)) { p = ter_prog_near }
+  if ter_force_far { p = ter_prog_far }
+  if ter_no_split { p = ter_prog }
+  if ter_force_near { p = ter_prog_near }
+  if p == ter_prog_far { cd_far_draws += 1 }
+  if p == ter_prog_near { cd_near_draws += 1 }
+  if p != ter_prog_cur { gl_use_program(p);  ter_prog_cur = p }
+  let t = gl_scratch()
+  t[0] = x0;  t[1] = z0;  t[2] = size
+  gl_uniform3fv(gl_uniform(p, "u_node"), 1, t)
+  var start = F_ZERO
+  if level > 0 { start = cd_range[level - 1] }
+  start = f_lerp(start, cd_range[level], fl(0.7))
+  u_f2(gl_uniform(p, "u_morph"), start, cd_range[level])
+  gl_draw_elements(GL_TRIANGLES, cd_mesh.count, GL_UNSIGNED_INT, null)
+  cd_draws += 1
+}
+
+# Strugar's selection: a node is drawn at its own level unless it is close enough to need
+# its children, in which case each child either selects itself or is drawn at this level.
+function cdlod_select(level: int, ix: int, iz: int) -> bool {
+  let n = CD_LEAVES >> level
+  let size = fi(32 << level)
+  let x0 = f_add(f_sub(ter_ox, fi(TERRAIN_HALF)), f_mul(fi(ix), size))
+  let z0 = f_add(f_sub(ter_oz, fi(TERRAIN_HALF)), f_mul(fi(iz), size))
+  let ymin = cd_min[level][iz * n + ix]
+  let ymax = cd_max[level][iz * n + ix]
+  if not cd_within(x0, z0, size, ymin, ymax, cd_range[level]) { return false }
+  let half = f_mul(size, F_HALF)
+  let cy = f_mul(f_add(ymin, ymax), F_HALF)
+  let rad = f_sqrt(f_add(f_mul(f_mul(half, half), F_TWO), f_mul(f_mul(f_sub(ymax, cy), f_sub(ymax, cy)), F_ONE)))
+  if not cam_sphere_visible(f_add(x0, half), cy, f_add(z0, half), f_add(rad, fi(2))) { return true }
+  if level == 0 { cdlod_draw(0, ix, iz);  return true }
+  if not cd_within(x0, z0, size, ymin, ymax, cd_range[level - 1]) { cdlod_draw(level, ix, iz);  return true }
+  for c in 0 .. 4 {
+    let cx = ix * 2 + (c & 1);  let cz = iz * 2 + (c >> 1)
+    if not cdlod_select(level - 1, cx, cz) { cdlod_draw(level - 1, cx, cz) }
+  }
+  return true
+}

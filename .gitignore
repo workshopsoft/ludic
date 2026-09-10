@@ -47,3 +47,10 @@ __pycache__/
 # archive lands in the root and a blanket `git add -A` will commit it.
 *.tar.gz
 *.tgz
+
+# The CC0 Poly Haven downloads are fetched, not committed (`ludic-dev fetch-assets`
+# reads the manifest that ships with the renderer, packages/ludic.render3d/assets.manifest,
+# so a game outside this repository fetches the same set with `ludic assets`).
+assets/polyhaven/hdri/
+assets/polyhaven/textures/
+assets/polyhaven/models/

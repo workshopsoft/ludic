@@ -81,6 +81,7 @@ declare i32 @CGWarpMouseCursorPosition(%NSPoint)
 @.s_type   = private unnamed_addr constant [5 x i8]  c"type\00"
 @.s_keycd  = private unnamed_addr constant [8 x i8]  c"keyCode\00"
 @.s_chars  = private unnamed_addr constant [28 x i8] c"charactersIgnoringModifiers\00"
+@.s_modf   = private unnamed_addr constant [14 x i8] c"modifierFlags\00"
 @.s_length = private unnamed_addr constant [7 x i8]  c"length\00"
 @.s_charat = private unnamed_addr constant [18 x i8] c"characterAtIndex:\00"
 @.s_locwin = private unnamed_addr constant [17 x i8] c"locationInWindow\00"
@@ -267,9 +268,12 @@ entry:
   %sel_alloc = call ptr @sel_registerName(ptr @.s_alloc)
   %w0 = call ptr @objc_msgSend(ptr %wincls, ptr %sel_alloc)
   %sel_initw = call ptr @sel_registerName(ptr @.s_initw)
-  ; NSWindowStyleMaskTitled|Closable = 3, NSBackingStoreBuffered = 2
-  %win = call ptr (ptr, ptr, %CGRect, i64, i64, i8) @objc_msgSend(ptr %w0, ptr %sel_initw, %CGRect %rect, i64 3, i64 2, i8 0)
+  ; NSWindowStyleMaskTitled|Closable|Resizable = 11, NSBackingStoreBuffered = 2
+  %win = call ptr (ptr, ptr, %CGRect, i64, i64, i8) @objc_msgSend(ptr %w0, ptr %sel_initw, %CGRect %rect, i64 11, i64 2, i8 0)
   store ptr %win, ptr @W_win
+  ; NSWindowCollectionBehaviorFullScreenPrimary = 1 << 7: the green button and toggleFullScreen: work
+  %sel_cb = call ptr @sel_registerName(ptr @.s_setcb)
+  %acb = call ptr (ptr, ptr, i64) @objc_msgSend(ptr %win, ptr %sel_cb, i64 128)
 
   %strcls = call ptr @objc_getClass(ptr @.c_str)
   %sel_utf8 = call ptr @sel_registerName(ptr @.s_utf8)
@@ -343,10 +347,10 @@ entry:
     i32 36,  label %vret
     i32 53,  label %vesc
   ]
-vw:     ret i32 119
-vs:     ret i32 115
-va:     ret i32 97
-vd:     ret i32 100
+vw:     ret i32 128
+vs:     ret i32 129
+va:     ret i32 130
+vd:     ret i32 131
 vspace: ret i32 32
 vret:   ret i32 10
 vesc:   ret i32 27
@@ -361,7 +365,15 @@ chars:
 take:
   %c = call i16 (ptr, ptr, i64) @objc_msgSend(ptr %s, ptr %sel_cat, i64 0)
   %c32 = zext i16 %c to i32
-  ret i32 %c32
+  ; charactersIgnoringModifiers still honours Shift, so Shift+W arrives as 'W' and a game
+  ; holding 'w' to walk stopped dead the moment the player held Shift to run. Fold A-Z to
+  ; a-z: the held set is keyed by the key, Shift itself is reported separately (code 16).
+  %isupA = icmp sge i32 %c32, 65
+  %isupB = icmp sle i32 %c32, 90
+  %isupper = and i1 %isupA, %isupB
+  %lower = add i32 %c32, 32
+  %folded = select i1 %isupper, i32 %lower, i32 %c32
+  ret i32 %folded
 none:
   ret i32 0
 }
@@ -401,10 +413,29 @@ handle:
   br i1 %iskey, label %key, label %notkey
 notkey:
   %isup = icmp eq i64 %ty, 11                  ; NSEventTypeKeyUp
-  br i1 %isup, label %keyup, label %mouse
+  br i1 %isup, label %keyup, label %notup
 keyup:                                          ; #50 — release the held key
   %uv = call i32 @ev_keyval(ptr %ev)
   call void @win_held_bit(i32 %uv, i32 0)
+  br label %forward
+notup:
+  %isflags = icmp eq i64 %ty, 12               ; NSEventTypeFlagsChanged: modifier keys
+  br i1 %isflags, label %flags, label %mouse
+flags:                                          ; Shift is held-key 16 (ctrl 17, alt 18): a run modifier
+  %sel_mf = call ptr @sel_registerName(ptr @.s_modf)
+  %mf = call i64 (ptr, ptr) @objc_msgSend(ptr %ev, ptr %sel_mf)
+  %mf_sh = and i64 %mf, 131072                  ; NSEventModifierFlagShift = 1 << 17
+  %sh_on = icmp ne i64 %mf_sh, 0
+  %sh_i = zext i1 %sh_on to i32
+  call void @win_held_bit(i32 16, i32 %sh_i)
+  %mf_ct = and i64 %mf, 262144                  ; NSEventModifierFlagControl = 1 << 18
+  %ct_on = icmp ne i64 %mf_ct, 0
+  %ct_i = zext i1 %ct_on to i32
+  call void @win_held_bit(i32 17, i32 %ct_i)
+  %mf_al = and i64 %mf, 524288                  ; NSEventModifierFlagOption = 1 << 19
+  %al_on = icmp ne i64 %mf_al, 0
+  %al_i = zext i1 %al_on to i32
+  call void @win_held_bit(i32 18, i32 %al_i)
   br label %forward
 mouse:                                          ; #50 — mouse buttons + wheel
   %ml_d = icmp eq i64 %ty, 1                    ; NSEventTypeLeftMouseDown
@@ -610,8 +641,17 @@ reldelta:
   %nmy2 = select i1 %yhi, i32 %fbhm, i32 %nmy1
   store i32 %nmx2, ptr @W_mx
   store i32 %nmy2, ptr @W_my
+  ; the raw motion too: a clamped cursor stops turning at the edge, the delta must not
+  %p4r = getelementptr i32, ptr %out, i32 4
+  store i32 %ddx, ptr %p4r
+  %p5r = getelementptr i32, ptr %out, i32 5
+  store i32 %ddy, ptr %p5r
   br label %emit
 abspos:
+  %p4a = getelementptr i32, ptr %out, i32 4
+  store i32 0, ptr %p4a
+  %p5a = getelementptr i32, ptr %out, i32 5
+  store i32 0, ptr %p5a
   %win = load ptr, ptr @W_win
   %nowin = icmp eq ptr %win, null
   br i1 %nowin, label %emit, label %qpos
@@ -1105,5 +1145,266 @@ body:
   %ni = add i32 %i, 1
   br label %loop
 ret:
+  ret void
+}
+
+; ============================================================================
+; OpenGL on the window (Gl.* — runtime/native/gl.ludic). An NSOpenGLContext is
+; attached to the existing LudicView, at the display's backing resolution, with
+; a 4.1 core profile. The CPU framebuffer path above is untouched: a Gl program
+; simply never calls Screen.show, so -drawRect: finds @W_fb null and paints
+; nothing. The window-independent GL pieces (offscreen CGL contexts, ABI thunks)
+; live in gl.ll so a headless build never references the window.
+;
+;   win_gl_attach() -> ok      create the context on @W_view (0 = no window yet)
+;   win_gl_resize(w, h)        content size in points, scale 1 (mouse mapping follows)
+;   win_gl_swap()              flushBuffer (vsync'd)
+;   win_gl_scale() -> int      backing pixels per point (2 on Retina)
+; ============================================================================
+
+@.c_pixfmt   = private unnamed_addr constant [20 x i8] c"NSOpenGLPixelFormat\00"
+@.c_glctx    = private unnamed_addr constant [16 x i8] c"NSOpenGLContext\00"
+@.s_initattr = private unnamed_addr constant [20 x i8] c"initWithAttributes:\00"
+@.s_initfmt  = private unnamed_addr constant [29 x i8] c"initWithFormat:shareContext:\00"
+@.s_setview  = private unnamed_addr constant [9 x i8]  c"setView:\00"
+@.s_makecur  = private unnamed_addr constant [19 x i8] c"makeCurrentContext\00"
+@.s_flushbuf = private unnamed_addr constant [12 x i8] c"flushBuffer\00"
+@.s_ctxupd   = private unnamed_addr constant [7 x i8]  c"update\00"
+@.s_setvals  = private unnamed_addr constant [24 x i8] c"setValues:forParameter:\00"
+@.s_bestres  = private unnamed_addr constant [37 x i8] c"setWantsBestResolutionOpenGLSurface:\00"
+@.s_bscale   = private unnamed_addr constant [19 x i8] c"backingScaleFactor\00"
+@.s_setcsize = private unnamed_addr constant [16 x i8] c"setContentSize:\00"
+@.s_togfs    = private unnamed_addr constant [18 x i8] c"toggleFullScreen:\00"
+@.s_bounds   = private unnamed_addr constant [7 x i8]  c"bounds\00"
+@.s_setcb    = private unnamed_addr constant [23 x i8] c"setCollectionBehavior:\00"
+
+@W_glctx  = internal global ptr null
+@W_glscale = internal global i32 1
+
+define i32 @win_gl_attach() {
+entry:
+  %view = load ptr, ptr @W_view
+  %noview = icmp eq ptr %view, null
+  br i1 %noview, label %fail, label %go
+go:
+  %sel_alloc = call ptr @sel_registerName(ptr @.s_alloc)
+  ; Retina: ask for a backing-resolution surface before the context is attached
+  %sel_br = call ptr @sel_registerName(ptr @.s_bestres)
+  %r0 = call ptr (ptr, ptr, i8) @objc_msgSend(ptr %view, ptr %sel_br, i8 1)
+  ; NSOpenGLPixelFormatAttribute[]: OpenGLProfile=99 -> 4.1 core (0x4100),
+  ; ColorSize=8 -> 24, AlphaSize=11 -> 8, DepthSize=12 -> 24, StencilSize=13 -> 8,
+  ; DoubleBuffer=5, Accelerated=73, 0
+  %attrs = alloca [14 x i32], align 4
+  %a0 = getelementptr [14 x i32], ptr %attrs, i32 0, i32 0
+  store i32 99, ptr %a0
+  %a1 = getelementptr [14 x i32], ptr %attrs, i32 0, i32 1
+  store i32 16640, ptr %a1
+  %a2 = getelementptr [14 x i32], ptr %attrs, i32 0, i32 2
+  store i32 8, ptr %a2
+  %a3 = getelementptr [14 x i32], ptr %attrs, i32 0, i32 3
+  store i32 24, ptr %a3
+  %a4 = getelementptr [14 x i32], ptr %attrs, i32 0, i32 4
+  store i32 11, ptr %a4
+  %a5 = getelementptr [14 x i32], ptr %attrs, i32 0, i32 5
+  store i32 8, ptr %a5
+  %a6 = getelementptr [14 x i32], ptr %attrs, i32 0, i32 6
+  store i32 12, ptr %a6
+  %a7 = getelementptr [14 x i32], ptr %attrs, i32 0, i32 7
+  store i32 24, ptr %a7
+  %a8 = getelementptr [14 x i32], ptr %attrs, i32 0, i32 8
+  store i32 13, ptr %a8
+  %a9 = getelementptr [14 x i32], ptr %attrs, i32 0, i32 9
+  store i32 8, ptr %a9
+  %a10 = getelementptr [14 x i32], ptr %attrs, i32 0, i32 10
+  store i32 5, ptr %a10
+  %a11 = getelementptr [14 x i32], ptr %attrs, i32 0, i32 11
+  store i32 73, ptr %a11
+  %a12 = getelementptr [14 x i32], ptr %attrs, i32 0, i32 12
+  store i32 0, ptr %a12
+  %a13 = getelementptr [14 x i32], ptr %attrs, i32 0, i32 13
+  store i32 0, ptr %a13
+
+  %pfcls = call ptr @objc_getClass(ptr @.c_pixfmt)
+  %pf0 = call ptr @objc_msgSend(ptr %pfcls, ptr %sel_alloc)
+  %sel_ia = call ptr @sel_registerName(ptr @.s_initattr)
+  %pf = call ptr (ptr, ptr, ptr) @objc_msgSend(ptr %pf0, ptr %sel_ia, ptr %attrs)
+  %nopf = icmp eq ptr %pf, null
+  br i1 %nopf, label %fail, label %ctx
+ctx:
+  %ccls = call ptr @objc_getClass(ptr @.c_glctx)
+  %c0 = call ptr @objc_msgSend(ptr %ccls, ptr %sel_alloc)
+  %sel_if = call ptr @sel_registerName(ptr @.s_initfmt)
+  %c = call ptr (ptr, ptr, ptr, ptr) @objc_msgSend(ptr %c0, ptr %sel_if, ptr %pf, ptr null)
+  %noc = icmp eq ptr %c, null
+  br i1 %noc, label %fail, label %attach
+attach:
+  %sel_sv = call ptr @sel_registerName(ptr @.s_setview)
+  %r1 = call ptr (ptr, ptr, ptr) @objc_msgSend(ptr %c, ptr %sel_sv, ptr %view)
+  %sel_mc = call ptr @sel_registerName(ptr @.s_makecur)
+  %r2 = call ptr @objc_msgSend(ptr %c, ptr %sel_mc)
+  ; swap interval 1 (NSOpenGLCPSwapInterval = 222)
+  %one = alloca i32, align 4
+  store i32 1, ptr %one
+  %sel_sp = call ptr @sel_registerName(ptr @.s_setvals)
+  %r3 = call ptr (ptr, ptr, ptr, i64) @objc_msgSend(ptr %c, ptr %sel_sp, ptr %one, i64 222)
+  store ptr %c, ptr @W_glctx
+  ; backing scale factor of the window (2.0 on Retina)
+  %win = load ptr, ptr @W_win
+  %sel_bs = call ptr @sel_registerName(ptr @.s_bscale)
+  %bs = call double (ptr, ptr) @objc_msgSend(ptr %win, ptr %sel_bs)
+  %bsi = fptosi double %bs to i32
+  %bsok = icmp sgt i32 %bsi, 0
+  %bsv = select i1 %bsok, i32 %bsi, i32 1
+  store i32 %bsv, ptr @W_glscale
+  ret i32 1
+fail:
+  ret i32 0
+}
+
+define void @win_gl_resize(i32 %w, i32 %h) {
+entry:
+  %win = load ptr, ptr @W_win
+  %nowin = icmp eq ptr %win, null
+  br i1 %nowin, label %out, label %go
+go:
+  store i32 %w, ptr @W_fbw
+  store i32 %h, ptr @W_fbh
+  store i32 1, ptr @W_scale
+  %wd = sitofp i32 %w to double
+  %hd = sitofp i32 %h to double
+  %s0 = insertvalue %NSPoint undef, double %wd, 0
+  %sz = insertvalue %NSPoint %s0, double %hd, 1
+  %sel_cs = call ptr @sel_registerName(ptr @.s_setcsize)
+  %r0 = call ptr (ptr, ptr, %NSPoint) @objc_msgSend(ptr %win, ptr %sel_cs, %NSPoint %sz)
+  %sel_center = call ptr @sel_registerName(ptr @.s_center)
+  %r1 = call ptr @objc_msgSend(ptr %win, ptr %sel_center)
+  %c = load ptr, ptr @W_glctx
+  %noc = icmp eq ptr %c, null
+  br i1 %noc, label %out, label %upd
+upd:
+  %sel_u = call ptr @sel_registerName(ptr @.s_ctxupd)
+  %r2 = call ptr @objc_msgSend(ptr %c, ptr %sel_u)
+  br label %out
+out:
+  ret void
+}
+
+define void @win_gl_swap() {
+entry:
+  %c = load ptr, ptr @W_glctx
+  %noc = icmp eq ptr %c, null
+  br i1 %noc, label %out, label %go
+go:
+  %sel_fb = call ptr @sel_registerName(ptr @.s_flushbuf)
+  %r = call ptr @objc_msgSend(ptr %c, ptr %sel_fb)
+  br label %out
+out:
+  ret void
+}
+
+define i32 @win_gl_scale() {
+entry:
+  %s = load i32, ptr @W_glscale
+  ret i32 %s
+}
+
+; swap interval: 1 = vsync (the default set at attach), 0 = free-running
+define void @win_gl_swap_interval(i32 %n) {
+entry:
+  %c = load ptr, ptr @W_glctx
+  %noc = icmp eq ptr %c, null
+  br i1 %noc, label %out, label %go
+go:
+  %v = alloca i32, align 4
+  store i32 %n, ptr %v
+  %sel_sp = call ptr @sel_registerName(ptr @.s_setvals)
+  %r = call ptr (ptr, ptr, ptr, i64) @objc_msgSend(ptr %c, ptr %sel_sp, ptr %v, i64 222)
+  br label %out
+out:
+  ret void
+}
+
+; ============================================================================
+; window size, full screen and the drawable (the game's video settings)
+; ============================================================================
+; the view's drawable in pixels -> out[0], out[1]; also keeps the points size the
+; mouse conversion uses in step with a window the user resized or made full screen
+define void @win_gl_drawable(ptr %out) {
+entry:
+  %view = load ptr, ptr @W_view
+  %noview = icmp eq ptr %view, null
+  br i1 %noview, label %none, label %go
+go:
+  %sel_b = call ptr @sel_registerName(ptr @.s_bounds)
+  %r = call %CGRect (ptr, ptr) @objc_msgSend(ptr %view, ptr %sel_b)
+  %w = extractvalue %CGRect %r, 2
+  %h = extractvalue %CGRect %r, 3
+  %sc = load i32, ptr @W_glscale
+  %scd = sitofp i32 %sc to double
+  %pw = fmul double %w, %scd
+  %ph = fmul double %h, %scd
+  %iw = fptosi double %pw to i32
+  %ih = fptosi double %ph to i32
+  store i32 %iw, ptr %out
+  %p1 = getelementptr i32, ptr %out, i32 1
+  store i32 %ih, ptr %p1
+  %ipw = fptosi double %w to i32
+  %iph = fptosi double %h to i32
+  store i32 %ipw, ptr @W_fbw
+  store i32 %iph, ptr @W_fbh
+  ret void
+none:
+  store i32 0, ptr %out
+  %p1n = getelementptr i32, ptr %out, i32 1
+  store i32 0, ptr %p1n
+  ret void
+}
+; tell the context its view changed size
+define void @win_gl_update() {
+entry:
+  %c = load ptr, ptr @W_glctx
+  %noc = icmp eq ptr %c, null
+  br i1 %noc, label %out, label %upd
+upd:
+  %sel_u = call ptr @sel_registerName(ptr @.s_ctxupd)
+  %r = call ptr @objc_msgSend(ptr %c, ptr %sel_u)
+  br label %out
+out:
+  ret void
+}
+define void @win_toggle_fullscreen() {
+entry:
+  %win = load ptr, ptr @W_win
+  %nowin = icmp eq ptr %win, null
+  br i1 %nowin, label %out, label %go
+go:
+  %sel_t = call ptr @sel_registerName(ptr @.s_togfs)
+  %r = call ptr (ptr, ptr, ptr) @objc_msgSend(ptr %win, ptr %sel_t, ptr null)
+  br label %out
+out:
+  ret void
+}
+; Retina (backing-resolution) drawable on or off: the pixel scale follows
+define void @win_gl_retina(i32 %on) {
+entry:
+  %view = load ptr, ptr @W_view
+  %noview = icmp eq ptr %view, null
+  br i1 %noview, label %out, label %go
+go:
+  %sel_br = call ptr @sel_registerName(ptr @.s_bestres)
+  %flag = trunc i32 %on to i8
+  %r0 = call ptr (ptr, ptr, i8) @objc_msgSend(ptr %view, ptr %sel_br, i8 %flag)
+  %win = load ptr, ptr @W_win
+  %sel_bs = call ptr @sel_registerName(ptr @.s_bscale)
+  %bs = call double (ptr, ptr) @objc_msgSend(ptr %win, ptr %sel_bs)
+  %bsi = fptosi double %bs to i32
+  %bsok = icmp sgt i32 %bsi, 0
+  %bsv = select i1 %bsok, i32 %bsi, i32 1
+  %ison = icmp ne i32 %on, 0
+  %scale = select i1 %ison, i32 %bsv, i32 1
+  store i32 %scale, ptr @W_glscale
+  call void @win_gl_update()
+  br label %out
+out:
   ret void
 }

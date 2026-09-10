@@ -22,14 +22,27 @@ function manifest_name() -> pointer {
 
 # the name to give the built binary: the manifest's module (its last dotted
 # segment, so ludic.snake builds `snake`), else the entry file's base name.
+# The built binary's name, from the manifest's module path when there is one.
+#
+# A module path is a URL — `git.host/user/maroon-lake` — so the last path segment comes
+# first: taking the last DOT of that would have cut inside the host and produced
+# `io/user/maroon-lake`, which git-hosted names all share and which `build/{name}` then
+# turned into directories. Within the segment a dot still separates a namespace from the
+# package (`ludic.render3d` builds as `render3d`).
 function project_name(entry: pointer) -> pointer {
-  let mod = manifest_name()
+  var mod = manifest_name()
   if mod != "" {
-    var last = -1
+    var n = 0
+    while mod[n] != 0 { n += 1 }
+    var slash = -1
     var i = 0
-    while mod[i] != 0 { if mod[i] == '.' { last = i };  i += 1 }
-    if last >= 0 { return mod[last + 1..i] }
-    return mod
+    while i < n { if mod[i] == '/' { slash = i };  i += 1 }
+    if slash >= 0 { mod = mod[slash + 1..n];  n = n - slash - 1 }
+    var last = -1
+    i = 0
+    while i < n { if mod[i] == '.' { last = i };  i += 1 }
+    if last >= 0 { return mod[last + 1..n] }
+    if n > 0 { return mod }
   }
   return capture_line(`basename {entry} .ludic`)
 }

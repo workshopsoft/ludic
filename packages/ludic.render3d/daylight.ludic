@@ -1,0 +1,162 @@
+# ============================================================================
+# daylight.ludic — a time of day over the HDRI sky. The photograph is one late
+# morning; the game wants a whole day. The sun's direction and colour follow a
+# simple solar arc from the time (`daylight_set`), the sky image turns to keep
+# its disc under that sun, the image-based light is scaled toward a deep-blue
+# night (`u_ibl_scale`), and after dusk the light becomes a moon so the world
+# still has shadows and form. A campfire is the one point light (`u_fire_*`).
+# The convolved sky maps are rebuilt only when the sky has turned far from the
+# angle they were baked at; the height-field shadow rebakes as the sun moves.
+# ============================================================================
+
+var day_on: bool = false
+var day_hours: int = 0            # float bits, 0 .. 24
+var day_light: int = 0            # 0 night .. 1 full day (float bits)
+var day_ibl: words = null         # rgb scale on the sky's light
+var day_sun_base: words = null    # the HDRI's sun radiance, kept
+var day_az0: int = 0              # the sun's azimuth at the reference hour (radians, yaw convention)
+var day_yaw0: int = 0             # the sky yaw the scene was tuned at
+var day_hour0: int = 0            # the hour the photograph was taken (10.5)
+var day_dir: int = 0              # +1 / -1: which way the sun travels in yaw
+var day_az: int = 0
+var day_el: int = 0
+var day_gen: int = 0              # bumps when the light moved enough to rebake the terrain shadow
+var day_baked_az: int = 0
+var day_baked_el: int = 0
+var day_sky_baked: int = 0        # the sky yaw the convolutions were baked at
+var fire_pos: words = null
+var fire_color: words = null
+var day_moon: bool = false
+var hand_pos: words = null
+var hand_color: words = null
+var hand_dir: words = null
+var hand_cone: int = 0
+var day_overcast: int = 0          # 0 clear .. 1 a low grey sky (float bits): dims the sun and the sky's light
+var day_flash: int = 0             # a lightning flash this frame (0..1): the sun brightens for it
+var day_fog_mul: int = 0x3F800000  # multiplies the base fog density (rain and snow thicken the air)
+var day_fog_base: int = 0
+
+function daylight_init() -> void {
+  day_ibl = v3_new(F_ONE, F_ONE, F_ONE)
+  day_sun_base = v3_new(sun_color[0], sun_color[1], sun_color[2])
+  fire_pos = v3_new(F_ZERO, fi(-1000), F_ZERO)
+  fire_color = v3_new(F_ZERO, F_ZERO, F_ZERO)
+  hand_pos = v3_new(F_ZERO, fi(-1000), F_ZERO);  hand_color = v3_new(F_ZERO, F_ZERO, F_ZERO);  hand_dir = v3_new(F_ZERO, F_ZERO, f_neg(F_ONE));  hand_cone = f_neg(F_TWO)
+  day_light = F_ONE
+}
+
+# Start the clock: the scene as tuned (sky yaw `yaw0`) is the photograph's hour `hour0`;
+# the sun rises and sets toward `set_yaw` (the direction it should be in at 19:00).
+function daylight_start(yaw0: int, hour0: int, set_yaw: int) -> void {
+  day_yaw0 = yaw0;  day_hour0 = hour0
+  day_az0 = f_atan2(f_neg(sun_dir[0]), f_neg(sun_dir[2]))
+  day_sky_baked = yaw0
+  # which way does the sun travel? the way that puts it nearest `set_yaw` at 19:00
+  let step = f_mul(f_sub(fl(19.0), hour0), f_rad(fi(15)))
+  let da = f_abs(day_wrap(f_sub(f_add(day_az0, step), set_yaw)))
+  let db = f_abs(day_wrap(f_sub(f_sub(day_az0, step), set_yaw)))
+  day_dir = F_ONE
+  if f_ls(db, da) { day_dir = f_neg(F_ONE) }
+  day_on = true
+  day_baked_az = fi(1000)
+  daylight_set(hour0)
+}
+function day_wrap(a: int) -> int {
+  let two_pi = f_mul(F_TWO, F_PI)
+  var d = a
+  while f_gt(d, F_PI) { d = f_sub(d, two_pi) }
+  while f_ls(d, f_neg(F_PI)) { d = f_add(d, two_pi) }
+  return d
+}
+function smoothf(a: int, b: int, x: int) -> int {
+  let t = f_clamp(f_div(f_sub(x, a), f_sub(b, a)), F_ZERO, F_ONE)
+  return f_mul(f_mul(t, t), f_sub(fi(3), f_mul(F_TWO, t)))
+}
+
+function daylight_set(hours: int) -> void {
+  var h = f_mod(hours, fi(24))
+  if f_ls(h, F_ZERO) { h = f_add(h, fi(24)) }
+  day_hours = h
+  # the arc: up at 5:30, highest (about 57 degrees) at 12:45, down at 20:00
+  let t = f_mul(f_div(f_sub(h, fl(5.5)), fl(14.5)), F_PI)
+  let el = f_rad(f_add(fi(-6), f_mul(fi(63), f_sin(t))))
+  let az = f_add(day_az0, f_mul(f_mul(f_sub(h, day_hour0), f_rad(fi(15))), day_dir))
+  day_az = az;  day_el = el
+  let d = smoothf(f_rad(fi(-8)), f_rad(fi(12)), el)
+  day_light = d
+  # the sun, warm and dim near the horizon; past dusk, the moon from across the sky
+  var laz = az;  var lel = f_max(el, f_rad(fi(3)))
+  var warm_r = F_ONE;  var warm_g = F_ONE;  var warm_b = F_ONE
+  let low = smoothf(F_ZERO, f_rad(fi(24)), el)
+  warm_g = f_lerp(fl(0.55), F_ONE, low);  warm_b = f_lerp(fl(0.28), F_ONE, low)
+  # an overcast sky: the sun goes diffuse and grey, a lightning flash brings it back white
+  let oc = f_clamp(day_overcast, F_ZERO, F_ONE)
+  let sunk = f_add(f_sub(F_ONE, f_mul(fl(0.92), oc)), f_mul(fl(2.5), day_flash))
+  var sr = f_mul(day_sun_base[0], f_mul(f_mul(d, warm_r), sunk))
+  var sg = f_mul(day_sun_base[1], f_mul(f_mul(d, warm_g), sunk))
+  var sb = f_mul(day_sun_base[2], f_mul(f_mul(d, warm_b), sunk))
+  day_moon = false
+  if f_ls(el, f_rad(fi(-7))) {
+    day_moon = true
+    laz = f_add(az, F_PI)
+    lel = f_clamp(f_neg(el), f_rad(fi(10)), f_rad(fi(55)))
+    let m = smoothf(f_rad(fi(-7)), f_rad(fi(-16)), el)
+    sr = f_mul(day_sun_base[0], f_mul(fl(0.0045), m))
+    sg = f_mul(day_sun_base[1], f_mul(fl(0.0060), m))
+    sb = f_mul(day_sun_base[2], f_mul(fl(0.0095), m))
+  }
+  let ce = f_cos(lel)
+  v3_set(sun_dir, f_neg(f_mul(f_sin(laz), ce)), f_sin(lel), f_neg(f_mul(f_cos(laz), ce)))
+  v3_set(sun_color, sr, sg, sb)
+  # the sky's light: full by day, a deep blue by night, amber through the dusk
+  let dusk = f_mul(smoothf(f_rad(fi(-10)), f_rad(fi(2)), el), f_sub(F_ONE, smoothf(f_rad(fi(2)), f_rad(fi(18)), el)))
+  v3_set(day_ibl, f_lerp(fl(0.020), F_ONE, d), f_lerp(fl(0.026), F_ONE, d), f_lerp(fl(0.045), F_ONE, d))
+  day_ibl[0] = f_mul(day_ibl[0], f_add(F_ONE, f_mul(fl(0.35), dusk)))
+  day_ibl[2] = f_mul(day_ibl[2], f_sub(F_ONE, f_mul(fl(0.25), dusk)))
+  # clouds: less light, and greyer (the blue and the warmth both fade)
+  let grey = f_add(f_mul(f_add(day_ibl[0], f_add(day_ibl[1], day_ibl[2])), fl(0.3333)), f_mul(fl(0.6), day_flash))
+  let dim = f_sub(F_ONE, f_mul(fl(0.55), oc))
+  for i in 0 .. 3 { day_ibl[i] = f_mul(f_lerp(day_ibl[i], grey, f_mul(fl(0.7), oc)), dim) }
+  if day_fog_base == 0 { day_fog_base = r3d_fog_density }
+  r3d_fog_density = f_mul(day_fog_base, day_fog_mul)
+  # exposure: auto-exposure must not turn the night into day
+  post_exposure_max = f_lerp(fl(4.5), fi(20), d)
+  # the visible sky turns with the sun (cheap); its convolutions rebake when far off
+  let sky_yaw_now = f_add(day_yaw0, f_mul(f_mul(f_sub(h, day_hour0), f_rad(fi(15))), day_dir))
+  sky_set_rot(sky_yaw_now)
+  if f_gt(f_abs(day_wrap(f_sub(sky_yaw_now, day_sky_baked))), f_rad(fi(35))) and f_gt(d, fl(0.05)) {
+    day_sky_baked = sky_yaw_now
+    sky_precompute()
+  }
+  # the terrain's baked shadow follows the light in steps
+  if f_gt(f_abs(day_wrap(f_sub(laz, day_baked_az))), f_rad(fi(4))) or f_gt(f_abs(f_sub(lel, day_baked_el)), f_rad(fi(3))) {
+    day_baked_az = laz;  day_baked_el = lel
+    day_gen += 1
+  }
+}
+
+# the weather over the valley: overcast 0..1, a fog multiplier, a lightning flash 0..1
+function daylight_weather(overcast: int, fog_mul: int, flash: int) -> void {
+  day_overcast = overcast;  day_fog_mul = fog_mul;  day_flash = flash
+}
+# the campfire: a point light at (x, y, z) of `strength` (0 = out)
+function daylight_fire(x: int, y: int, z: int, strength: int) -> void {
+  v3_set(fire_pos, x, y, z)
+  v3_set(fire_color, f_mul(fl(9.0), strength), f_mul(fl(4.6), strength), f_mul(fl(1.4), strength))
+}
+
+# the light in the hand: a point light (cone < -1) or a cone along dir (cone = cos half-angle)
+function daylight_hand(x: int, y: int, z: int, dx: int, dy: int, dz: int, cone: int, r: int, g: int, b: int) -> void {
+  v3_set(hand_pos, x, y, z);  v3_set(hand_dir, dx, dy, dz);  hand_cone = cone
+  v3_set(hand_color, r, g, b)
+}
+function daylight_bind(prog: int) -> void {
+  u_v3(gl_uniform(prog, "u_hand_pos"), hand_pos)
+  u_v3(gl_uniform(prog, "u_hand_color"), hand_color)
+  u_v3(gl_uniform(prog, "u_hand_dir"), hand_dir)
+  u_f(gl_uniform(prog, "u_hand_cone"), hand_cone)
+  u_v3(gl_uniform(prog, "u_ibl_scale"), day_ibl)
+  u_f(gl_uniform(prog, "u_daylight"), day_light)
+  u_v3(gl_uniform(prog, "u_fire_pos"), fire_pos)
+  u_v3(gl_uniform(prog, "u_fire_color"), fire_color)
+}

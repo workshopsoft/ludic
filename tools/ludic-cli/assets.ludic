@@ -1,0 +1,73 @@
+# assets.ludic — fetch the CC0 Poly Haven assets the renderer uses
+# (ported off tools/glgen/fetch_assets.sh, the last shell script in the tree).
+#
+#   ludic assets [--force]         (a game, fetching what the renderer needs)
+#   ludic dev fetch-assets [--force]   (the same thing, from a Ludic checkout)
+#
+# The manifest is `packages/ludic.render3d/assets.manifest` — one `<relative path> <url>`
+# pair per line — and it belongs to the renderer, not to any one project: the renderer
+# decides which scanned materials it wants. It ships with the package (and so with the
+# toolchain), so a game outside this repo fetches the right set without keeping its own
+# copy of the list. The files land in the PROJECT, under assets/polyhaven/: they are
+# large and redistributable from their origin, so they are fetched rather than tracked
+# by anyone.
+
+# the manifest that belongs to the renderer, in a checkout or in the install
+function assets_manifest_path() -> pointer {
+  let local = "packages/ludic.render3d/assets.manifest"
+  if file_exists(local) { return local }
+  var home = getenv("LUDIC_HOME")
+  if home == null or slen(home) == 0 { home = `{getenv_or("HOME", "")}/.ludic` }
+  let inst = `{home}/packages/ludic.render3d/assets.manifest`
+  if file_exists(inst) { return inst }
+  return ""
+}
+
+function cmd_fetch_assets() -> int {
+  let force = arg_count() > 2 and arg(2) == "--force"
+  let root = "assets/polyhaven"
+  let mpath = assets_manifest_path()
+  if mpath == "" { err("ludic assets: cannot find packages/ludic.render3d/assets.manifest (is the toolchain installed?)\n");  return 1 }
+  let manifest = read_file(mpath)
+  if manifest == null { err(`ludic assets: cannot read {mpath}\n`);  return 1 }
+
+  var got = 0
+  var had = 0
+  var failed = 0
+  let n = slen(manifest)
+  var i = 0
+  while i < n {
+    var j = i
+    while j < n and manifest[j] != 10 { j += 1 }
+    let line = Text.trim(str_sub(manifest, i, j))
+    i = j + 1
+    if slen(line) == 0 { continue }
+
+    # split the line into <relative path> <url> on the first run of whitespace
+    let ln = slen(line)
+    var k = 0
+    while k < ln and not str_space(line[k]) { k += 1 }
+    let rel = str_sub(line, 0, k)
+    while k < ln and str_space(line[k]) { k += 1 }
+    let url = Text.trim(str_sub(line, k, ln))
+    if slen(rel) == 0 or slen(url) == 0 { continue }
+
+    let dest = `{root}/{rel}`
+    if not force and shq(`test -s {dest}`) {
+      had += 1
+      continue
+    }
+    print(`fetch {rel}`)
+    run(`mkdir -p "$(dirname {dest})"`)
+    if not shq(`curl -sSL --retry 3 -o {dest} {url}`) {
+      err(`fetch-assets: cannot fetch {rel}\n`)
+      run(`rm -f {dest}`)
+      failed += 1
+    } else {
+      got += 1
+    }
+  }
+  if failed > 0 { err(`fetch-assets: {string(failed)} failed\n`);  return 1 }
+  print(`OK {string(got)} fetched, {string(had)} already present`)
+  return 0
+}

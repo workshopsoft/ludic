@@ -1,0 +1,250 @@
+# ============================================================================
+# shadow.ludic — cascaded shadow maps for the sun: four 2048^2 depth layers,
+# each an orthographic light frustum fitted to the bounding sphere of a slice
+# of the camera frustum and snapped to its own texel grid (no swimming).
+# ============================================================================
+
+const SHADOW_RES: int = 2048
+const SHADOW_CASCADES: int = 5
+
+var sh_tex: int = 0
+var sh_fbo: int = 0
+var sh_vp: words = null            # 4 x 16 float bits
+var sh_split: words = null         # view-space far distance of each cascade
+var sh_range: words = null         # 4 light-frustum depth extents (metres)
+var sh_texel: words = null         # 4 shadow texel sizes (metres)
+var sh_tmp_proj: words = null
+var sh_tmp_vp: words = null
+var sh_tmp_inv: words = null
+var sh_tmp_view: words = null
+var sh_corner: words = null
+var sh_cascade: int = 0            # the cascade being rendered (for casters that skip far ones)
+
+function shadow_init() -> void {
+  sh_tex = gl_texture()
+  gl_bind_texture(GL_TEXTURE_2D_ARRAY, sh_tex)
+  gl_tex_image3d(GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH_COMPONENT32F, SHADOW_RES, SHADOW_RES, SHADOW_CASCADES, 0, GL_DEPTH_COMPONENT, GL_FLOAT, null)
+  gl_tex_parameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+  gl_tex_parameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+  gl_tex_parameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER)
+  gl_tex_parameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER)
+  gl_tex_parameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE)
+  gl_tex_parameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL)
+  let border = gl_floats(4)
+  gl_put(border, 0, 1.0);  gl_put(border, 1, 1.0);  gl_put(border, 2, 1.0);  gl_put(border, 3, 1.0)
+  gl_tex_parameterfv(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BORDER_COLOR, border)
+  free(border)
+  sh_fbo = gl_framebuffer()
+  gl_bind_framebuffer(GL_FRAMEBUFFER, sh_fbo)
+  gl_draw_buffer(GL_NONE)
+  gl_read_buffer(GL_NONE)
+  gl_bind_framebuffer(GL_FRAMEBUFFER, 0)
+  sh_vp = words(16 * SHADOW_CASCADES)
+  sh_split = words(SHADOW_CASCADES)
+  sh_range = words(SHADOW_CASCADES)
+  sh_texel = words(SHADOW_CASCADES)
+  # the fourth slice keeps a tree-sized texel out to a kilometre; only the massif uses the last
+  sh_split[0] = fi(16);  sh_split[1] = fi(60);  sh_split[2] = fi(250);  sh_split[3] = fi(1100);  sh_split[4] = fi(6000)
+  sh_tmp_proj = m4_new();  sh_tmp_vp = m4_new();  sh_tmp_inv = m4_new();  sh_tmp_view = m4_new()
+  sh_corner = words(3)
+}
+
+# light view-projection for the camera-frustum slice [near, far]
+function shadow_fit(c: int, near: int, far: int) -> void {
+  # Fit the slice in VIEW space, not world space. The bounding sphere of a frustum
+  # slice depends only on near/far/fov/aspect — never on where the camera is pointing —
+  # so computing it here makes the radius a constant per cascade. Doing it in world
+  # space (as this did) let the radius wobble as the camera turned, which changed the
+  # texel size, which moved the grid the projection is snapped to, so the whole shadow
+  # map resampled every frame: that is the crawl and flicker seen while moving.
+  m4_perspective(sh_tmp_proj, cam_fov, cam_aspect, near, far)
+  m4_inverse(sh_tmp_inv, sh_tmp_proj)          # NDC -> view space
+  let cview = v3_new(F_ZERO, F_ZERO, F_ZERO)
+  let corners = words(24)
+  for i in 0 .. 8 {
+    var x = f_neg1();  var y = f_neg1();  var z = f_neg1()
+    if (i & 1) != 0 { x = F_ONE }
+    if (i & 2) != 0 { y = F_ONE }
+    if (i & 4) != 0 { z = F_ONE }
+    let w = m4_xform_point(sh_corner, sh_tmp_inv, x, y, z)
+    let iw = f_div(F_ONE, w)
+    corners[i * 3] = f_mul(sh_corner[0], iw);  corners[i * 3 + 1] = f_mul(sh_corner[1], iw);  corners[i * 3 + 2] = f_mul(sh_corner[2], iw)
+    cview[0] = f_add(cview[0], corners[i * 3]);  cview[1] = f_add(cview[1], corners[i * 3 + 1]);  cview[2] = f_add(cview[2], corners[i * 3 + 2])
+  }
+  v3_scale(cview, cview, fr(1, 8))
+  var radius = F_ZERO
+  for i in 0 .. 8 {
+    v3_set(sh_corner, corners[i * 3], corners[i * 3 + 1], corners[i * 3 + 2])
+    let d = v3_dist(sh_corner, cview)
+    if f_gt(d, radius) { radius = d }
+  }
+  radius = f_mul(radius, fl(1.05))
+  # the slice centre back into world space
+  m4_inverse(sh_tmp_vp, cam_view)
+  let center = words(3)
+  m4_xform_point(center, sh_tmp_vp, cview[0], cview[1], cview[2])
+  free(cview)
+  # light view: from far along the sun direction, looking at the centre
+  let eye = words(3)
+  # casters up to ~900 m toward the sun (a mountain across the valley), and the
+  # slice itself behind the centre: a tight depth range keeps the bias small
+  let back = f_add(radius, fi(900))
+  v3_madd(eye, center, sun_dir, back)
+  let up = v3_new(F_ZERO, F_ONE, F_ZERO)
+  m4_look_at(sh_tmp_view, eye, center, up)
+  # snap the ortho window to the shadow texel grid
+  let texel = f_div(f_mul(radius, F_TWO), fi(SHADOW_RES))
+  m4_xform_point(sh_corner, sh_tmp_view, center[0], center[1], center[2])
+  let ox = f_sub(f_mul(f_floor(f_div(sh_corner[0], texel)), texel), sh_corner[0])
+  let oy = f_sub(f_mul(f_floor(f_div(sh_corner[1], texel)), texel), sh_corner[1])
+  let nr = f_neg(radius)
+  let zfar = f_add(f_add(back, radius), fi(100))
+  m4_ortho(sh_tmp_proj, f_add(nr, ox), f_add(radius, ox), f_add(nr, oy), f_add(radius, oy), F_ONE, zfar)
+  sh_range[c] = f_sub(zfar, F_ONE)
+  sh_texel[c] = texel
+  let out = words(16)
+  m4_mul(out, sh_tmp_proj, sh_tmp_view)
+  for i in 0 .. 16 { sh_vp[c * 16 + i] = out[i] }
+  free(out);  free(eye);  free(up);  free(center);  free(corners)
+}
+
+function shadow_cascade_vp(c: int) -> words { return mem_off(sh_vp, c * 64) }
+
+
+# render every cascade; `draw` happens through terrain_draw_shadow + the scene's casters
+function shadow_pass() -> void {
+  var near = cam_near
+  gl_bind_framebuffer(GL_FRAMEBUFFER, sh_fbo)
+  gl_viewport(0, 0, SHADOW_RES, SHADOW_RES)
+  gl_enable(GL_DEPTH_TEST)
+  gl_depth_func(GL_LESS)
+  gl_enable(GL_POLYGON_OFFSET_FILL)
+  gl_polygon_offset(2.0, 4.0)
+  gl_disable(GL_CULL_FACE)
+  for c in 0 .. SHADOW_CASCADES {
+    sh_cascade = c
+    shadow_fit(c, near, sh_split[c])
+    near = sh_split[c]
+    gl_framebuffer_texture_layer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, sh_tex, 0, c)
+    if r3d_debug and c == 0 { let st = gl_check_framebuffer_status(GL_FRAMEBUFFER);  print(`shadow fbo status {st}`) }
+    gl_clear(GL_DEPTH_BUFFER_BIT)
+    let vp = shadow_cascade_vp(c)
+    # shadows off (a video setting): the cascades stay cleared, so everything reads lit
+    if sh_enabled {
+      if not sh_skip_terrain { terrain_draw_shadow(vp) }
+      scene_draw_casters(vp)
+    }
+  }
+  gl_disable(GL_POLYGON_OFFSET_FILL)
+  gl_bind_framebuffer(GL_FRAMEBUFFER, 0)
+  if r3d_debug_shadow { shadow_dump() }
+  if r3d_debug_shadow and not sh_printed2 {
+    sh_printed2 = true
+    let q = words(3)
+    if sh_probe_x != 0 {
+      let vp = shadow_cascade_vp(2)
+      m4_xform_point(q, vp, sh_probe_x, sh_probe_y, sh_probe_z)
+      print(`probe base ndc {f_fx(q[0])} {f_fx(q[1])} {f_fx(q[2])}`)
+      m4_xform_point(q, vp, sh_probe_x, f_add(sh_probe_y, fi(15)), sh_probe_z)
+      print(`probe top  ndc {f_fx(q[0])} {f_fx(q[1])} {f_fx(q[2])}  -> map texel {f_to_int(f_mul(f_add(f_mul(q[0], F_HALF), F_HALF), fi(SHADOW_RES)))} {f_to_int(f_mul(f_add(f_mul(q[1], F_HALF), F_HALF), fi(SHADOW_RES)))}`)
+      # where the top's shadow lands on the ground: walk down the sun ray
+      let gx = f_sub(f_add(sh_probe_x, F_ZERO), f_mul(sun_dir[0], f_div(fi(15), sun_dir[1])))
+      let gz = f_sub(sh_probe_z, f_mul(sun_dir[2], f_div(fi(15), sun_dir[1])))
+      m4_xform_point(q, vp, gx, terrain_height(gx, gz), gz)
+      print(`shadow-of-top ground ndc {f_fx(q[0])} {f_fx(q[1])} {f_fx(q[2])} at {f_fx(gx)} {f_fx(gz)}`)
+    }
+    for c in 0 .. SHADOW_CASCADES {
+      let vp = shadow_cascade_vp(c)
+      # a point 5 m ahead of the camera on the ground
+      let px = f_add(cam_pos[0], f_mul(cam_fwd[0], fi(5)));  let pz = f_add(cam_pos[2], f_mul(cam_fwd[2], fi(5)))
+      let w = m4_xform_point(q, vp, px, terrain_height(px, pz), pz)
+      print(`cascade {c}: ndc {f_fx(q[0])} {f_fx(q[1])} {f_fx(q[2])} w {f_fx(w)}  m0 {f_fx(vp[0])} m5 {f_fx(vp[5])} m14 {f_fx(vp[14])}`)
+    }
+    free(q)
+  }
+}
+var sh_printed2: bool = false
+var sh_printed3: bool = false
+var sh_enabled: bool = true
+var sh_force: int = -1   # R3D_FORCE=<c> pins every pixel to cascade c (debug)
+var sh_skip_terrain: bool = false
+var sh_probe_x: int = 0
+var sh_probe_y: int = 0
+var sh_probe_z: int = 0
+
+# Debug: cascade depths as grey PPMs (build/dbg_shadow_<c>.ppm)
+function shadow_dump() -> void {
+  let n = SHADOW_RES * SHADOW_RES
+  let buf = words(n * SHADOW_CASCADES)
+  gl_bind_texture(GL_TEXTURE_2D_ARRAY, sh_tex)
+  gl_tex_parameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_NONE)
+  gl_get_tex_image(GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH_COMPONENT, GL_FLOAT, buf)
+  gl_tex_parameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE)
+  if sh_probe_x != 0 {
+    let vp = shadow_cascade_vp(2)
+    let q = words(3)
+    m4_xform_point(q, vp, sh_probe_x, f_add(sh_probe_y, fi(12)), sh_probe_z)
+    let tx = f_to_int(f_mul(f_add(f_mul(q[0], F_HALF), F_HALF), fi(SHADOW_RES)))
+    let ty = f_to_int(f_mul(f_add(f_mul(q[1], F_HALF), F_HALF), fi(SHADOW_RES)))
+    let want = f_add(f_mul(q[2], F_HALF), F_HALF)
+    print(`probe (12 m up) texel {tx} {ty} card depth {f_fx(f_mul(want, fi(1000)))}/1000`)
+    for dy in 0 .. 5 {
+      let yy = ty - 40 + dy * 20
+      print(`  row {yy}: {f_fx(f_mul(buf[2 * n + yy * SHADOW_RES + tx - 20], fi(1000)))} {f_fx(f_mul(buf[2 * n + yy * SHADOW_RES + tx], fi(1000)))} {f_fx(f_mul(buf[2 * n + yy * SHADOW_RES + tx + 20], fi(1000)))} /1000`)
+    }
+    free(q)
+  }
+  let sm = 512
+  let row = bytes(sm * 3)
+  for c in 0 .. SHADOW_CASCADES {
+    # stretch between the map's own min and max (ignoring the far plane)
+    var lo = F_ONE;  var hi = F_ZERO
+    var i = 0
+    while i < n { let d = buf[c * n + i];  if f_ls(d, fl(0.999)) { if f_ls(d, lo) { lo = d };  if f_gt(d, hi) { hi = d } };  i += 97 }
+    print(`cascade {c} depth range {f_fx(lo)} .. {f_fx(hi)}`)
+    let f = file_open(`build/dbg_shadow_{c}.ppm`, "wb")
+    let hdr = `P6\n{sm} {sm}\n255\n`
+    file_write(f, hdr, len(hdr))
+    let st = SHADOW_RES / sm
+    for y in 0 .. sm {
+      for x in 0 .. sm {
+        let d = buf[c * n + (y * st) * SHADOW_RES + x * st]
+        let g = f_to_int(f_mul(f_clamp(f_div(f_sub(d, lo), f_max(f_sub(hi, lo), fl(0.0001))), F_ZERO, F_ONE), fi(255)))
+        row[x * 3] = g;  row[x * 3 + 1] = g;  row[x * 3 + 2] = g
+      }
+      file_write(f, row, sm * 3)
+    }
+    file_close(f)
+  }
+  free(buf);  free(row)
+}
+
+var sh_printed: bool = false
+# a uniform array's location: some drivers only answer to the "[0]" spelling
+function sh_loc(prog: int, name: string) -> int {
+  var loc = gl_uniform(prog, name + "[0]")
+  if loc < 0 { loc = gl_uniform(prog, name) }
+  return loc
+}
+function shadow_bind(prog: int) -> void {
+  r3d_bind_tex(prog, "u_shadow", 15, GL_TEXTURE_2D_ARRAY, sh_tex)
+  # the height-field shadow (terrain.ludic); a stand-in texture keeps the unit valid before the bake
+  var ts = ter_shadow_tex
+  var ts_on = F_ONE
+  if ts == 0 { ts = ter_height_tex;  ts_on = F_ZERO }
+  r3d_bind_2d(prog, "u_tershadow", 6, ts)
+  terrain_bind_height(prog)
+  u_f(gl_uniform(prog, "u_ts_on"), ts_on)
+  u_f(gl_uniform(prog, "u_ts_half"), fi(TERRAIN_HALF))
+  u_f2(gl_uniform(prog, "u_ts_origin"), ter_ox, ter_oz)
+  var loc = gl_uniform(prog, "u_cascade_vp[0]")
+  if loc < 0 { loc = gl_uniform(prog, "u_cascade_vp") }
+  if r3d_debug_shadow and not sh_printed { sh_printed = true;  print(`cascade vp loc {loc} / {gl_uniform(prog, "u_cascade_vp")}  split loc {gl_uniform(prog, "u_cascade_split")} shadow loc {gl_uniform(prog, "u_shadow")}`) }
+  gl_uniform_matrix4fv(loc, SHADOW_CASCADES, 0, sh_vp)
+  gl_uniform1fv(sh_loc(prog, "u_cascade_split"), SHADOW_CASCADES, sh_split)
+  if r3d_debug_shadow and not sh_printed3 { sh_printed3 = true;  print(`range {f_fx(sh_range[0])} {f_fx(sh_range[1])} {f_fx(sh_range[2])} {f_fx(sh_range[3])} texel*1000 {f_fx(f_mul(sh_texel[0], fi(1000)))} {f_fx(f_mul(sh_texel[1], fi(1000)))} {f_fx(f_mul(sh_texel[2], fi(1000)))} {f_fx(f_mul(sh_texel[3], fi(1000)))} locs {gl_uniform(prog, "u_cascade_range")} {gl_uniform(prog, "u_cascade_texel")}`) }
+  gl_uniform1fv(sh_loc(prog, "u_cascade_range"), SHADOW_CASCADES, sh_range)
+  if Os.has_env("R3D_FORCE") { sh_force = Text.to_int(Os.env("R3D_FORCE")) }
+  gl_uniform1i(gl_uniform(prog, "u_force_cascade"), sh_force)
+  gl_uniform1fv(sh_loc(prog, "u_cascade_texel"), SHADOW_CASCADES, sh_texel)
+}

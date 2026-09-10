@@ -1,0 +1,204 @@
+# ============================================================================
+# actor.ludic — a model placed once and moved every frame (a character, a prop
+# that animates): the counterpart of a scatter Layer for the handful of things
+# that are not instanced. Skinned models pose through their Skin (skin.ludic);
+# rigid ones take the same path with u_skinned = 0. The game draws them from
+# scene_draw / scene_draw_casters through actor_draw / actor_draw_casters.
+#
+# Uniform locations are looked up once per program (glGetUniformLocation by
+# name is slow on this driver, and a hundred actors over five cascades made it
+# the frame's biggest CPU cost); the scene's lighting is bound once per program
+# per pass, and actors outside the view or beyond their cull distance are skipped.
+# ============================================================================
+
+property Actor {
+  model:   Model,
+  x:       int = 0,        # float bits, metres
+  y:       int = 0,
+  z:       int = 0,
+  yaw:     int = 0,        # radians; 0 faces -z like the camera
+  scale:   int = 0,
+  tint:    words,
+  rough:   int = 0,
+  mat:     words,          # the model matrix
+  visible: bool = true,
+  casts:   bool = true,
+  id:      int = 0,
+  cutout:  bool = false,   # alpha-tested (a flame's cards)
+  emissive: int = 0,       # float bits: self-lit strength
+  skin:    Skin,           # this instance's own pose (skin_clone); null: the model's
+  ptint:   words,          # 4 per primitive: on flag, r, g, b (a part's own colour)
+  hide:    words,          # 1 per primitive: skip it (a cap taken off)
+  radius:  int = 0,        # float bits: bounding radius for culling (0 = never culled)
+  cull:    int = 0         # float bits: not drawn beyond this distance (0 = always)
+}
+# a program and its uniform locations
+property AcProg {
+  prog:     int = 0,
+  l_model:  int = -1,
+  l_bones:  int = -1,
+  l_skin:   int = -1,
+  l_lvp:    int = -1,
+  l_tint:   int = -1,
+  l_rough:  int = -1,
+  l_emis:   int = -1,
+  l_view:   int = -1,
+  l_proj:   int = -1,
+  l_mh:     int = -1,
+  scene_frame: int = -1    # the frame its scene uniforms were bound
+}
+
+var ac_lit: AcProg = null
+var ac_lit_cut: AcProg = null
+var ac_sh: AcProg = null
+var ac_sh_cut: AcProg = null
+var ac_actors: []Actor = null
+var ac_next_id: int = 0
+var ac_frame: int = 0
+
+function ac_prog_new(vs: string, fs: string, defs: string) -> AcProg {
+  let a = new AcProg
+  a.prog = r3d_program(vs, fs, defs)
+  let p = a.prog
+  a.l_model = gl_uniform(p, "u_model");  a.l_skin = gl_uniform(p, "u_skinned");  a.l_lvp = gl_uniform(p, "u_light_vp")
+  a.l_bones = gl_uniform(p, "u_bones[0]");  if a.l_bones < 0 { a.l_bones = gl_uniform(p, "u_bones") }
+  a.l_tint = gl_uniform(p, "u_tint");  a.l_rough = gl_uniform(p, "u_rough_scale");  a.l_emis = gl_uniform(p, "u_emissive")
+  a.l_view = gl_uniform(p, "u_view");  a.l_proj = gl_uniform(p, "u_proj");  a.l_mh = gl_uniform(p, "u_model_h")
+  # the samplers never move: units 0, 1, 2
+  gl_use_program(p)
+  gl_uniform1i(gl_uniform(p, "u_diff"), 0);  gl_uniform1i(gl_uniform(p, "u_nrm"), 1);  gl_uniform1i(gl_uniform(p, "u_arm"), 2)
+  return a
+}
+function actor_init() -> void {
+  ac_lit = ac_prog_new("skin.vert", "model.frag", "")
+  ac_lit_cut = ac_prog_new("skin.vert", "model.frag", "#define ALPHA_TEST\n")
+  ac_sh = ac_prog_new("skin.vert", "shadow.frag", "#define SHADOW_PASS\n")
+  ac_sh_cut = ac_prog_new("skin.vert", "shadow.frag", "#define SHADOW_PASS\n#define ALPHA_TEST\n")
+  ac_actors = new []Actor
+}
+function actor_remove(a: Actor) -> void {
+  if ac_actors == null { return }
+  let keep = new []Actor
+  for i in 0 .. len(ac_actors) { if ac_actors[i].id != a.id { push(keep, ac_actors[i]) } }
+  ac_actors = keep
+}
+# colour one named part of the model (a material name from the file)
+function actor_tint_part(a: Actor, name: string, r: int, g: int, b: int) -> void {
+  if a.model == null { return }
+  let n = len(a.model.prims)
+  if a.ptint == null { a.ptint = words(n * 4);  for i in 0 .. n * 4 { a.ptint[i] = 0 } }
+  for i in 0 .. n { if a.model.prims[i].name == name { a.ptint[i * 4] = 1;  a.ptint[i * 4 + 1] = r;  a.ptint[i * 4 + 2] = g;  a.ptint[i * 4 + 3] = b } }
+}
+function actor_hide_part(a: Actor, name: string, hidden: bool) -> void {
+  if a.model == null { return }
+  let n = len(a.model.prims)
+  if a.hide == null { a.hide = words(n);  for i in 0 .. n { a.hide[i] = 0 } }
+  var v = 0
+  if hidden { v = 1 }
+  for i in 0 .. n { if a.model.prims[i].name == name { a.hide[i] = v } }
+}
+
+function actor_new(model: Model) -> Actor {
+  let a = new Actor
+  a.model = model
+  a.scale = F_ONE
+  a.tint = v3_new(F_ONE, F_ONE, F_ONE)
+  a.rough = F_ONE
+  a.mat = m4_new()
+  ac_next_id += 1;  a.id = ac_next_id
+  if model != null { a.radius = f_add(f_max(model.radius, model.height), F_ONE) }
+  a.cull = fi(450)
+  if ac_actors == null { ac_actors = new []Actor }
+  push(ac_actors, a)
+  return a
+}
+
+function actor_place(a: Actor, x: int, y: int, z: int, yaw: int) -> void {
+  a.x = x;  a.y = y;  a.z = z;  a.yaw = yaw
+  m4_trs(a.mat, x, y, z, yaw, a.scale)
+}
+
+# the scene's lighting for a lit program, once per frame
+function ac_bind_scene(ap: AcProg) -> void {
+  if ap.scene_frame == ac_frame { return }
+  ap.scene_frame = ac_frame
+  let p = ap.prog
+  gl_use_program(p)
+  u_mat4(ap.l_view, cam_view)
+  u_mat4(ap.l_proj, cam_proj)
+  u_f(ap.l_mh, F_ZERO)
+  sky_bind_lighting(p)
+  shadow_bind(p)
+  fog_bind(p)
+}
+function ac_visible(a: Actor, shadow: bool) -> bool {
+  if not a.visible or a.model == null { return false }
+  if shadow and not a.casts { return false }
+  if a.cull != 0 {
+    let dx = f_sub(a.x, cam_pos[0]);  let dz = f_sub(a.z, cam_pos[2])
+    let d2 = f_add(f_mul(dx, dx), f_mul(dz, dz))
+    var c = a.cull
+    if shadow { c = f_min(c, fi(300)) }
+    if f_gt(d2, f_mul(c, c)) { return false }
+  }
+  if not shadow and a.radius != 0 {
+    let r = f_mul(a.radius, a.scale)
+    if not cam_sphere_visible(a.x, f_add(a.y, r), a.z, f_mul(r, fl(1.5))) { return false }
+  }
+  return true
+}
+function actor_draw_one(a: Actor, ap: AcProg, shadow: bool) -> void {
+  let p = ap.prog
+  gl_use_program(p)
+  u_mat4(ap.l_model, a.mat)
+  var skinned = F_ZERO
+  if a.skin != null { skinned = F_ONE;  gl_uniform_matrix4fv(ap.l_bones, a.skin.n_joints, 0, a.skin.bones) }
+  else if a.model.skin != null { skinned = F_ONE;  gl_uniform_matrix4fv(ap.l_bones, a.model.skin.n_joints, 0, a.model.skin.bones) }
+  u_f(ap.l_skin, skinned)
+  if not shadow {
+    u_f(ap.l_emis, a.emissive)
+    u_f(ap.l_rough, a.rough)
+  }
+  gl_disable(GL_CULL_FACE)
+  let model = a.model
+  for i in 0 .. len(model.prims) {
+    let pr = model.prims[i]
+    if a.hide != null and a.hide[i] != 0 { continue }
+    if not shadow {
+      if a.ptint != null and a.ptint[i * 4] != 0 { u_f3(ap.l_tint, a.ptint[i * 4 + 1], a.ptint[i * 4 + 2], a.ptint[i * 4 + 3]) }
+      else { u_v3(ap.l_tint, a.tint) }
+    }
+    gl_active_texture(GL_TEXTURE0);  gl_bind_texture(GL_TEXTURE_2D, pr.diff)
+    if not shadow {
+      gl_active_texture(GL_TEXTURE0 + 1);  gl_bind_texture(GL_TEXTURE_2D, pr.nrm)
+      gl_active_texture(GL_TEXTURE0 + 2);  gl_bind_texture(GL_TEXTURE_2D, pr.arm)
+    }
+    mesh_draw(pr.mesh)
+  }
+}
+
+function actor_draw() -> void {
+  if ac_actors == null { return }
+  ac_frame += 1
+  for i in 0 .. len(ac_actors) {
+    let a = ac_actors[i]
+    if not ac_visible(a, false) { continue }
+    var ap = ac_lit
+    if a.cutout { ap = ac_lit_cut }
+    ac_bind_scene(ap)
+    actor_draw_one(a, ap, false)
+  }
+  gl_enable(GL_CULL_FACE)
+}
+function actor_draw_casters(light_vp: words) -> void {
+  if ac_actors == null { return }
+  gl_use_program(ac_sh.prog);  u_mat4(ac_sh.l_lvp, light_vp)
+  gl_use_program(ac_sh_cut.prog);  u_mat4(ac_sh_cut.l_lvp, light_vp)
+  for i in 0 .. len(ac_actors) {
+    let a = ac_actors[i]
+    if not ac_visible(a, true) { continue }
+    var ap = ac_sh
+    if a.cutout { ap = ac_sh_cut }
+    actor_draw_one(a, ap, true)
+  }
+}

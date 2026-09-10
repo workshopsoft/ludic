@@ -1013,6 +1013,9 @@ literal; test any pointer/record/slice with `x == null` / `x != null` (an unset
 # control   quit()   print(x)          (a value + newline)
 # convert   str(x) -> str            (int/bool/fixed -> text)
 # length    len(x) -> int            (elements of a slice, or bytes of a string)
+# OpenGL    Gl.<snake_name>(…)        every OpenGL 4.1 core entry point (glBindBuffer -> Gl.bind_buffer,
+#           GL_* constants as-is)     float/double parameters take fixed; buffers are bytes/words
+#           Gl.open(width,height,title) Gl.swap() Gl.screenshot(path) Gl.program(vs,fs) Gl.vao() Gl.floats(n) …
 # process   arg_count()->int   arg(i)->str          (the command line; argv[0] included)
 #           exit(code)   run(cmd)   getenv(name)   read_char()->int
 #           file_stderr()->ptr  file_stdout()->ptr (handles for file_write)

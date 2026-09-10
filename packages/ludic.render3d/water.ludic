@@ -1,0 +1,125 @@
+# ============================================================================
+# water.ludic — still water for the valley floor: a level plane over a region,
+# drawn after the opaque scene, showing only where the ground lies below it.
+# Sky reflection with fresnel, sun glitter, scrolling ripple normals, a depth
+# tinted body read from the scene depth, and soft shores.
+# ============================================================================
+
+var water_mesh: Mesh = null
+var water_prog: int = 0
+var water_level: int = 0
+var water_cx: int = 0
+var water_cz: int = 0
+var water_ex: int = 0
+var water_ez: int = 0
+var water_on: bool = false
+var water_refl: Target = null            # the world mirrored in the surface, half resolution
+var water_refl_div: int = 2              # R3D_REFLDIV overrides: 2 = half res, 4 = quarter
+var water_saved: words = null            # the real camera's matrices, restored after the pass
+var water_dumped: bool = false
+
+# Render the scene through a camera mirrored in the water plane into water_refl,
+# clipping everything below the surface; terrain, scattered layers and sky.
+function water_reflection_pass() -> void {
+  if water_refl == null {
+    if Os.has_env("R3D_REFLDIV") { water_refl_div = Text.to_int(Os.env("R3D_REFLDIV")) }
+    if water_refl != null { target_free(water_refl) }
+    water_refl = target_new(gl_w / water_refl_div, gl_h / water_refl_div, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, true, GL_LINEAR)
+    water_saved = words(16 * 4 + 3)
+  }
+  # save the camera
+  m4_copy(water_saved, cam_view)
+  m4_copy(mem_off(water_saved, 64), cam_vp)
+  m4_copy(mem_off(water_saved, 128), cam_inv_vp)
+  let sx = cam_pos[0];  let sy = cam_pos[1];  let sz = cam_pos[2]
+  # the mirrored camera: view' = view * R, R reflecting y about the surface (y' = 2L - y).
+  # R has determinant -1, so the winding flips (front faces culled below) and the image
+  # lands exactly where the main camera's pixels expect the reflection.
+  let eye = v3_new(sx, f_sub(f_mul(F_TWO, water_level), sy), sz)
+  let refl = m4_new()
+  refl[5] = f_neg1()
+  refl[13] = f_mul(F_TWO, water_level)
+  let mv = words(16)
+  m4_mul(mv, water_saved, refl)
+  m4_copy(cam_view, mv)
+  free(mv);  free(refl)
+  let fwd = words(3);  let up = words(3);  let at = words(3)
+  m4_mul(cam_vp, cam_proj, cam_view)
+  m4_inverse(cam_inv_vp, cam_vp)
+  v3_copy(cam_pos, eye)
+  r3d_clip_y = f_sub(water_level, fl(0.05))
+  target_bind(water_refl)
+  gl_enable(GL_DEPTH_TEST)
+  gl_depth_func(GL_LESS)
+  gl_depth_mask(1)
+  gl_enable(GL_CULL_FACE)
+  gl_cull_face(GL_FRONT)                  # the mirror flips the winding
+  gl_clear_color(0.0, 0.0, 0.0, 1.0)
+  gl_clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+  sc_freeze = true
+  let sb = sc_skip_blade
+  sc_skip_blade = true                    # blades are invisible at this scale in a reflection
+  ter_reflect = true
+  terrain_draw()
+  scene_draw()
+  r3d_draw_sky()
+  ter_reflect = false
+  sc_skip_blade = sb
+  sc_freeze = false
+  gl_cull_face(GL_BACK)
+  if Os.has_env("R3D_DUMP_REFL") and not water_dumped { water_dumped = true;  tex_dump(water_refl.color, gl_w / water_refl_div, gl_h / water_refl_div, "build/dbg_refl.ppm") }
+  # restore
+  r3d_clip_y = 0xCF000000
+  m4_copy(cam_view, water_saved)
+  m4_copy(cam_vp, mem_off(water_saved, 64))
+  m4_copy(cam_inv_vp, mem_off(water_saved, 128))
+  v3_set(cam_pos, sx, sy, sz)
+  free(eye);  free(fwd);  free(up);  free(at)
+  gl_bind_framebuffer(GL_FRAMEBUFFER, 0)
+}
+
+function water_init(level: int, cx: int, cz: int, ex: int, ez: int) -> void {
+  water_mesh = mesh_grid(2, F_HALF)
+  water_prog = r3d_program("water.vert", "water.frag", "")
+  water_level = level;  water_cx = cx;  water_cz = cz;  water_ex = ex;  water_ez = ez
+  water_on = true
+}
+
+# call after the opaque pass, before the sky: blends over the resolved depth
+function water_draw(depth_tex: int) -> void {
+  if not water_on { return }
+  let p = water_prog
+  gl_use_program(p)
+  u_mat4(gl_uniform(p, "u_view"), cam_view)
+  u_mat4(gl_uniform(p, "u_proj"), cam_proj)
+  u_mat4(gl_uniform(p, "u_inv_vp"), cam_inv_vp)
+  u_f(gl_uniform(p, "u_level"), water_level)
+  u_f2(gl_uniform(p, "u_center"), water_cx, water_cz)
+  u_f2(gl_uniform(p, "u_extent"), water_ex, water_ez)
+  u_f2(gl_uniform(p, "u_screen"), fi(gl_w), fi(gl_h))
+  var ron = F_ZERO
+  if water_refl != null {
+    # bind on its own unit first: generating the mip chain re-binds the texture on the active unit,
+    # and it must not displace the depth texture the shader reads for the shore
+    r3d_bind_2d(p, "u_refl", 1, water_refl.color);  ron = F_ONE
+    gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+    gl_generate_mipmap(GL_TEXTURE_2D)
+  }
+  r3d_bind_2d(p, "u_depth", 0, depth_tex)
+  r3d_bind_2d(p, "u_scene", 2, post_scene.color)
+  u_f(gl_uniform(p, "u_refl_on"), ron)
+  sky_bind_lighting(p)
+  shadow_bind(p)
+  fog_bind(p)
+  # Opaque. The surface composites the refracted bed itself, so there is nothing for
+  # hardware blending to do — and an alpha was what left see-through gaps in the foam
+  # and a clear band at the shore wide enough to give the plane away.
+  gl_disable(GL_BLEND)
+  gl_blend_func(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+  # the surface writes depth: the ambient-occlusion and temporal passes read the frame's depth,
+  # and the bed 9 m below the shore would otherwise darken a band along the water line
+  gl_depth_mask(1)
+  gl_disable(GL_CULL_FACE)
+  mesh_draw(water_mesh)
+  gl_disable(GL_BLEND)
+}

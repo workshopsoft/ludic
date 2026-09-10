@@ -180,6 +180,13 @@ entry {
     let http = join_path(home, "runtime/native/http.ll")
     cmd = `{cmd} {http} -Wl,-needed_framework,Foundation`
   }
+  # Gl.* links the OpenGL backend: gl.ll (offscreen contexts, float helpers), the
+  # generated per-entry-point ABI thunks, and OpenGL.framework. Windowed or not.
+  if g_uses_gl {
+    let gl = join_path(home, "runtime/native/gl.ll")
+    let glt = join_path(home, "runtime/native/gl_thunks.ll")
+    cmd = `{cmd} {gl} {glt} -framework OpenGL`
+  }
   cmd = `{cmd} -o {out}`
 
   let rc = run(cmd)

@@ -35,6 +35,22 @@ function write_file(path: pointer, s: pointer) -> bool {
   return true
 }
 
+# ---- byte strings ------------------------------------------------------------------
+# s[a, b) as a fresh NUL-terminated string; out-of-range ends are clamped.
+function str_sub(s: pointer, a: int, b: int) -> pointer {
+  var lo = a
+  if lo < 0 { lo = 0 }
+  var hi = b
+  if hi < lo { hi = lo }
+  let out = bytes(hi - lo + 1)
+  var i = lo
+  var k = 0
+  while i < hi { out[k] = s[i];  k += 1;  i += 1 }
+  out[k] = 0
+  return out
+}
+function str_space(c: int) -> bool { return c == 32 or c == 9 or c == 13 }
+
 function file_exists(path: pointer) -> bool { return shq(`test -e {path}`) }
 function is_exec(path: pointer) -> bool { return shq(`test -x {path}`) }
 # is `a` newer than `b` (like the shell's `-nt`)?

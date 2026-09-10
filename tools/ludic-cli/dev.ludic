@@ -32,6 +32,8 @@ program LudicDev {
   import "docgen.ludic"
   import "docgen_gen.ludic"
   import "docgen_check.ludic"
+  import "glgen.ludic"
+  import "assets.ludic"
   import "release.ludic"
   import "pkg.ludic"
   import "pkg_test.ludic"
@@ -47,6 +49,7 @@ program LudicDev {
     print("  build-cli                     build just bin/ludicc from the IR seed")
     print("  tools [--install] [--test]    build the editor toolchain (ludic-fmt, ludic-lsp)")
     print("  clean                         remove build/")
+    print("  fetch-assets [--force]        fetch the CC0 Poly Haven assets the rendering examples use")
     print("")
     print("test:")
     print("  test                          the full regression suite")
@@ -65,6 +68,7 @@ program LudicDev {
     print("  docs-gen [--out DIR]          generate the documentation site (default build/pages)")
     print("  docs-check [DIR]              coverage/integrity guard over a generated docs site")
     print("  docs-palette [--check]        regenerate emit_color.ludic + palette.json from the palette table")
+    print("  glgen [--check]               regenerate gl_api.ludic + gl_thunks.ll from the platform gl3.h")
     print("")
     print("release:")
     print("  release [major|minor|patch] [--dry-run] [--publish]")
@@ -101,6 +105,8 @@ program LudicDev {
     if (cmd == "check-vocabulary") { return cmd_check_vocab() }
     if (cmd == "lint-asset") { return cmd_lint_asset() }
     if (cmd == "docs-palette") { return cmd_docs_palette() }
+    if (cmd == "glgen") { return cmd_glgen() }
+    if (cmd == "fetch-assets") { return cmd_fetch_assets() }
     if (cmd == "docs-gen") { return cmd_docs_gen() }
     if (cmd == "docs-check") { return cmd_docs_check() }
     if (cmd == "golden") { return cmd_golden() }

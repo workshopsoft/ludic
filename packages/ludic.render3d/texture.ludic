@@ -1,0 +1,472 @@
+# ============================================================================
+# texture.ludic — images for the GPU: PNG (8- and 16-bit, any colour type) and
+# Radiance .hdr (RGBE) decoding straight into OpenGL textures.
+#
+# The engine's own PNG reader (image.ludic) expands to 8-bit 0xAARRGGBB for the
+# 2D framebuffer; a renderer wants the file's real sample depth — normal and
+# displacement maps ship as 16-bit — so this decoder keeps 16-bit samples and
+# uploads them as GL_UNSIGNED_SHORT (big-endian, with GL_UNPACK_SWAP_BYTES) into
+# RGB16 / R16 textures, and 8-bit ones into sRGB8 or RGB8 as the caller says.
+# ============================================================================
+
+const GL_TEXTURE_MAX_ANISOTROPY_EXT: int = 0x84FE
+
+var tex_w: int = 0            # the last decoded image
+var tex_h: int = 0
+var tex_channels: int = 0
+var tex_depth: int = 0        # bits per sample (8 or 16)
+var tex_file_len: int = 0
+var tex_anisotropy: fixed = 16.0
+
+function r3d_read_file(path: pointer) -> pointer {
+  let f = file_open(path, "rb")
+  if f == null { return null }
+  file_seek(f, 0, 2)
+  let n = file_tell(f)
+  file_seek(f, 0, 0)
+  if n <= 0 { file_close(f);  return null }
+  let buf = bytes(n + 8)
+  file_read(f, buf, n)
+  file_close(f)
+  tex_file_len = n
+  return buf
+}
+
+function be32(b: pointer, at: int) -> int {
+  return (b[at] << 24) | (b[at + 1] << 16) | (b[at + 2] << 8) | b[at + 3]
+}
+function tag4(b: pointer, at: int, a: int, c: int, d: int, e: int) -> bool {
+  return b[at] == a and b[at + 1] == c and b[at + 2] == d and b[at + 3] == e
+}
+
+# Decode a PNG into tightly packed scanlines of raw samples (PNG byte order:
+# 16-bit samples big-endian). Sets tex_w / tex_h / tex_channels / tex_depth.
+# Indexed and sub-byte greyscale files are expanded to 8-bit RGB / grey.
+# Reverse one scanline's PNG filter in place (spec 9.2). The filter type is
+# loop-invariant, so it is resolved once here rather than per byte, and the
+# leading `fbpp` bytes (where the left neighbour is zero by definition) run as
+# their own prologue instead of costing a bounds test on every byte of the image.
+# The caller keeps a zeroed scanline in front of row 0, so `prev` is always a real
+# row and every filter has exactly one code path — no first-row special cases to
+# get wrong or to leave untested.
+function png_unfilter(raw: pointer, cur: int, prev: int, stride: int, fbpp: int, ft: int) -> void {
+  if ft == 0 { return }
+  var first = fbpp
+  if first > stride { first = stride }
+  var x = 0
+
+  if ft == 1 {
+    x = fbpp
+    while x < stride { raw[cur + x] = ((raw[cur + x] + raw[cur + x - fbpp]) & 255);  x += 1 }
+    return
+  }
+
+  if ft == 2 {
+    x = 0
+    while x < stride { raw[cur + x] = ((raw[cur + x] + raw[prev + x]) & 255);  x += 1 }
+    return
+  }
+
+  if ft == 3 {
+    x = 0
+    while x < first { raw[cur + x] = ((raw[cur + x] + raw[prev + x] / 2) & 255);  x += 1 }
+    while x < stride { raw[cur + x] = ((raw[cur + x] + (raw[cur + x - fbpp] + raw[prev + x]) / 2) & 255);  x += 1 }
+    return
+  }
+
+  if ft == 4 {
+    x = 0
+    while x < first { raw[cur + x] = ((raw[cur + x] + raw[prev + x]) & 255);  x += 1 }
+    while x < stride {
+      let a = raw[cur + x - fbpp]
+      let b = raw[prev + x]
+      let c = raw[prev + x - fbpp]
+      let p = a + b - c
+      let pa = abs(p - a)
+      let pb = abs(p - b)
+      let pc = abs(p - c)
+      var pick = c
+      if pb <= pc { pick = b }
+      if pa <= pb and pa <= pc { pick = a }
+      raw[cur + x] = ((raw[cur + x] + pick) & 255)
+      x += 1
+    }
+  }
+}
+
+function png_decode(path: pointer) -> pointer {
+  let d = r3d_read_file(path)
+  if d == null { print(`png: cannot read {path}`);  return null }
+  let size = tex_file_len
+  if size < 8 or d[0] != 137 or d[1] != 80 { free(d);  print(`png: not a png: {path}`);  return null }
+  var w = 0;  var h = 0;  var bd = 0;  var ct = 0
+  let plte = bytes(768)
+  let idat = bytes(size)
+  var idlen = 0
+  var i = 8
+  var done = false
+  while not done {
+    if i + 8 > size { done = true;  continue }
+    let ln = be32(d, i)
+    let typ = i + 4
+    let body = i + 8
+    if ln < 0 or body + ln > size { done = true;  continue }
+    if tag4(d, typ, 73, 72, 68, 82) { w = be32(d, body);  h = be32(d, body + 4);  bd = d[body + 8];  ct = d[body + 9] }
+    if tag4(d, typ, 80, 76, 84, 69) { let m = min(ln, 768);  for k in 0 .. m { plte[k] = d[body + k] } }
+    if tag4(d, typ, 73, 68, 65, 84) { mem_copy(mem_off(idat, idlen), mem_off(d, body), ln);  idlen += ln }
+    if tag4(d, typ, 73, 69, 78, 68) { done = true }
+    i = i + 12 + ln
+  }
+  if w <= 0 or h <= 0 { free(d);  free(idat);  free(plte);  return null }
+  var channels = 1
+  if ct == 2 { channels = 3 }
+  if ct == 4 { channels = 2 }
+  if ct == 6 { channels = 4 }
+  let bppbits = bd * channels
+  var fbpp = (bppbits + 7) / 8
+  if fbpp < 1 { fbpp = 1 }
+  let stride = (w * bppbits + 7) / 8
+  let rawlen = h * (stride + 1)
+  # one zeroed scanline in front of the data, so row 0's "row above" is real
+  let raw = bytes(stride + rawlen + 8)
+  for z in 0 .. stride { raw[z] = 0 }
+  if z_uncompress(idat, idlen, mem_off(raw, stride), rawlen) < 0 { free(d);  free(idat);  free(raw);  free(plte);  print(`png: inflate failed: {path}`);  return null }
+  free(d);  free(idat)
+  # reverse the per-scanline filters in place, then pack rows without the filter byte
+  var y = 0
+  while y < h {
+    let line = stride + y * (stride + 1)
+    png_unfilter(raw, line + 1, line + 1 - (stride + 1), stride, fbpp, raw[line])
+    y += 1
+  }
+  var out: pointer = null
+  if (ct == 3) or (bd < 8) {
+    # expand palette / sub-byte grey to 8-bit RGB (palette) or 8-bit grey
+    let maxv = (1 << bd) - 1
+    var oc = 1
+    if ct == 3 { oc = 3 }
+    out = bytes(w * h * oc)
+    for yy in 0 .. h {
+      let row = stride + yy * (stride + 1) + 1
+      for x in 0 .. w {
+        let bp = x * bd
+        let idx = ((raw[row + bp / 8] >> (8 - bd - bp % 8)) & maxv)
+        if ct == 3 { out[(yy * w + x) * 3] = plte[idx * 3];  out[(yy * w + x) * 3 + 1] = plte[idx * 3 + 1];  out[(yy * w + x) * 3 + 2] = plte[idx * 3 + 2] }
+        else { out[yy * w + x] = idx * 255 / maxv }
+      }
+    }
+    channels = oc
+    bd = 8
+    free(raw)
+  } else {
+    out = bytes(h * stride + 8)
+    for yy in 0 .. h { mem_copy(mem_off(out, yy * stride), mem_off(raw, stride + yy * (stride + 1) + 1), stride) }
+    free(raw)
+  }
+  free(plte)
+  tex_w = w;  tex_h = h;  tex_channels = channels;  tex_depth = bd
+  return out
+}
+
+# Edge padding for cut-out atlases: pixels darker than `thresh` (the unused
+# background) take the mean of their lit neighbours, repeated `passes` times, so
+# mipmaps and bilinear taps never pull black into the blades. 8-bit RGB/RGBA only.
+function tex_dilate(px: pointer, thresh: int, passes: int) -> void {
+  if tex_depth != 8 or tex_channels < 3 { return }
+  let w = tex_w;  let h = tex_h;  let c = tex_channels
+  let mask = bytes(w * h)
+  var i = 0
+  while i < w * h { let o = i * c;  if px[o] + px[o + 1] + px[o + 2] < thresh { mask[i] = 1 } else { mask[i] = 0 };  i += 1 }
+  let next = bytes(w * h)
+  for pass in 0 .. passes {
+    mem_copy(next, mask, w * h)
+    var y = 0
+    while y < h {
+      var x = 0
+      while x < w {
+        let k = y * w + x
+        if mask[k] == 1 {
+          var r = 0;  var g = 0;  var b = 0;  var n = 0
+          if x > 0 and mask[k - 1] == 0 { let o = (k - 1) * c;  r += px[o];  g += px[o + 1];  b += px[o + 2];  n += 1 }
+          if x < w - 1 and mask[k + 1] == 0 { let o = (k + 1) * c;  r += px[o];  g += px[o + 1];  b += px[o + 2];  n += 1 }
+          if y > 0 and mask[k - w] == 0 { let o = (k - w) * c;  r += px[o];  g += px[o + 1];  b += px[o + 2];  n += 1 }
+          if y < h - 1 and mask[k + w] == 0 { let o = (k + w) * c;  r += px[o];  g += px[o + 1];  b += px[o + 2];  n += 1 }
+          if n > 0 { let o = k * c;  px[o] = r / n;  px[o + 1] = g / n;  px[o + 2] = b / n;  next[k] = 0 }
+        }
+        x += 1
+      }
+      y += 1
+    }
+    mem_copy(mask, next, w * h)
+  }
+  free(mask);  free(next)
+}
+
+# Upload the last-decoded samples as a 2D texture. srgb: colour data (8-bit only).
+function tex_upload(px: pointer, srgb: bool, mips: bool) -> int {
+  let id = gl_texture()
+  gl_bind_texture(GL_TEXTURE_2D, id)
+  var fmt = GL_RED
+  if tex_channels == 2 { fmt = GL_RG }
+  if tex_channels == 3 { fmt = GL_RGB }
+  if tex_channels == 4 { fmt = GL_RGBA }
+  var ifmt = GL_R8
+  var ty = GL_UNSIGNED_BYTE
+  if tex_depth == 16 {
+    ty = GL_UNSIGNED_SHORT
+    ifmt = GL_R16
+    if tex_channels == 2 { ifmt = GL_RG16 }
+    if tex_channels == 3 { ifmt = GL_RGB16 }
+    if tex_channels == 4 { ifmt = GL_RGBA16 }
+    gl_pixel_storei(GL_UNPACK_SWAP_BYTES, 1)
+  } else {
+    if tex_channels == 2 { ifmt = GL_RG8 }
+    if tex_channels == 3 { ifmt = GL_RGB8;  if srgb { ifmt = GL_SRGB8 } }
+    if tex_channels == 4 { ifmt = GL_RGBA8;  if srgb { ifmt = GL_SRGB8_ALPHA8 } }
+    gl_pixel_storei(GL_UNPACK_SWAP_BYTES, 0)
+  }
+  gl_pixel_storei(GL_UNPACK_ALIGNMENT, 1)
+  gl_tex_image2d(GL_TEXTURE_2D, 0, ifmt, tex_w, tex_h, 0, fmt, ty, px)
+  gl_pixel_storei(GL_UNPACK_SWAP_BYTES, 0)
+  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
+  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
+  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+  if mips {
+    gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+    gl_generate_mipmap(GL_TEXTURE_2D)
+    gl_tex_parameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, tex_anisotropy)
+  } else {
+    gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+  }
+  return id
+}
+
+# Load a PNG as a mipmapped, anisotropic texture (0 on failure). srgb for albedo.
+function tex_load(path: pointer, srgb: bool) -> int { return tex_load_ex(path, srgb, 0) }
+# ... with `dilate` passes of edge padding for a cut-out atlas (0 = none)
+function tex_load_ex(path: pointer, srgb: bool, dilate: int) -> int {
+  let px = png_decode(path)
+  if px == null { return 0 }
+  if dilate > 0 { tex_dilate(px, 60, dilate) }
+  let id = tex_upload(px, srgb, true)
+  free(px)
+  return id
+}
+
+# A small solid-colour fallback texture (linear rgb 0..255), for missing maps.
+function tex_solid(r: int, g: int, b: int, a: int) -> int {
+  let px = bytes(16)
+  for i in 0 .. 4 { px[i * 4] = r;  px[i * 4 + 1] = g;  px[i * 4 + 2] = b;  px[i * 4 + 3] = a }
+  tex_w = 2;  tex_h = 2;  tex_channels = 4;  tex_depth = 8
+  let id = tex_upload(px, false, false)
+  free(px)
+  return id
+}
+
+# ---- Radiance .hdr (RGBE, new-style RLE) -> RGB float bits -------------------------
+var hdr_max_lum: int = 0      # float bits of the brightest texel (sun finding)
+var hdr_max_x: int = 0
+var hdr_max_y: int = 0
+var hdr_sun_r: int = 0        # irradiance (float bits) of everything above the IBL clip: the sun
+var hdr_sun_g: int = 0
+var hdr_sun_b: int = 0
+var hdr_clip: int = 0         # float bits; texels above this (per channel) feed the sun, not the IBL
+
+function hdr_decode(path: pointer) -> words {
+  let d = r3d_read_file(path)
+  if d == null { print(`hdr: cannot read {path}`);  return null }
+  let size = tex_file_len
+  # header: lines until an empty line, then "-Y h +X w"
+  var i = 0
+  var blank = false
+  while i < size and not blank {
+    if d[i] == 10 and d[i + 1] == 10 { blank = true;  i += 2 }
+    else { i += 1 }
+  }
+  # parse "-Y <h> +X <w>"
+  var h = 0;  var w = 0
+  i += 3
+  while d[i] >= '0' and d[i] <= '9' { h = h * 10 + (d[i] - 48);  i += 1 }
+  i += 4
+  while d[i] >= '0' and d[i] <= '9' { w = w * 10 + (d[i] - 48);  i += 1 }
+  i += 1
+  if w <= 0 or h <= 0 { free(d);  print(`hdr: bad header {path}`);  return null }
+  let out = words(w * h * 3)
+  let line = bytes(w * 4)
+  var maxl = 0
+  if hdr_clip == 0 { hdr_clip = fi(20) }
+  var sr = F_ZERO;  var sg = F_ZERO;  var sb = F_ZERO
+  var skye = F_ZERO      # sky irradiance on an upward face (clipped part only)
+  let dphi = f_div(f_mul(F_TWO, F_PI), fi(w))
+  let dth = f_div(F_PI, fi(h))
+  var y = 0
+  while y < h {
+    if d[i] == 2 and d[i + 1] == 2 and (d[i + 2] & 128) == 0 {
+      i += 4
+      for c in 0 .. 4 {
+        var x = 0
+        while x < w {
+          var n = d[i];  i += 1
+          if n > 128 {
+            n -= 128
+            let v = d[i];  i += 1
+            for k in 0 .. n { line[(x + k) * 4 + c] = v }
+            x += n
+          } else {
+            for k in 0 .. n { line[(x + k) * 4 + c] = d[i + k] }
+            i += n
+            x += n
+          }
+        }
+      }
+    } else {
+      for x in 0 .. w { for c in 0 .. 4 { line[x * 4 + c] = d[i + x * 4 + c] } }
+      i += w * 4
+    }
+    let sinth = f_sin(f_mul(f_add(fi(y), F_HALF), dth))
+    let domega = f_mul(f_mul(dphi, dth), sinth)
+    for x in 0 .. w {
+      let e = line[x * 4 + 3]
+      let o = (y * w + x) * 3
+      if e == 0 { out[o] = 0;  out[o + 1] = 0;  out[o + 2] = 0 }
+      else {
+        let sh = e - 136
+        let vr = f_ldexp(f_from_int(line[x * 4]), sh)
+        let vg = f_ldexp(f_from_int(line[x * 4 + 1]), sh)
+        let vb = f_ldexp(f_from_int(line[x * 4 + 2]), sh)
+        # the texture is capped at what a half-float holds; the sun is integrated uncapped
+        out[o] = f_min(vr, fi(60000))
+        out[o + 1] = f_min(vg, fi(60000))
+        out[o + 2] = f_min(vb, fi(60000))
+        let lum = f_add(f_add(vr, vg), vb)
+        if f_lt(maxl, lum) != 0 { maxl = lum;  hdr_max_x = x;  hdr_max_y = y }
+        if y < h / 2 { skye = f_add(skye, f_mul(f_mul(f_min(vg, hdr_clip), f_cos(f_mul(f_add(fi(y), F_HALF), dth))), domega)) }
+        if f_lt(hdr_clip, vg) != 0 or f_lt(hdr_clip, vr) != 0 {
+          sr = f_add(sr, f_mul(f_max(f_sub(vr, hdr_clip), F_ZERO), domega))
+          sg = f_add(sg, f_mul(f_max(f_sub(vg, hdr_clip), F_ZERO), domega))
+          sb = f_add(sb, f_mul(f_max(f_sub(vb, hdr_clip), F_ZERO), domega))
+        }
+      }
+    }
+    y += 1
+  }
+  free(line);  free(d)
+  tex_w = w;  tex_h = h;  tex_channels = 3;  tex_depth = 32
+  hdr_max_lum = maxl
+  hdr_sun_r = sr;  hdr_sun_g = sg;  hdr_sun_b = sb
+  print(`hdr: peak/1000 {f_fx(f_div(maxl, fi(1000)))} sky irradiance(up) {f_fx(skye)} sun irradiance {f_fx(sg)} (Q16.16 = /65536)`)
+  return out
+}
+
+# Load an equirectangular .hdr as an RGB16F texture with mips (clamped in v).
+function tex_load_hdr(path: pointer) -> int {
+  let px = hdr_decode(path)
+  if px == null { return 0 }
+  let id = gl_texture()
+  gl_bind_texture(GL_TEXTURE_2D, id)
+  gl_pixel_storei(GL_UNPACK_ALIGNMENT, 4)
+  gl_tex_image2d(GL_TEXTURE_2D, 0, GL_RGB16F, tex_w, tex_h, 0, GL_RGB, GL_FLOAT, px)
+  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
+  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+  gl_generate_mipmap(GL_TEXTURE_2D)
+  free(px)
+  return id
+}
+
+# An empty render-target texture of the given internal format (no mips, clamped).
+function tex_target(w: int, h: int, ifmt: int, fmt: int, ty: int, filter: int) -> int {
+  let id = gl_texture()
+  gl_bind_texture(GL_TEXTURE_2D, id)
+  gl_tex_image2d(GL_TEXTURE_2D, 0, ifmt, w, h, 0, fmt, ty, null)
+  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter)
+  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter)
+  return id
+}
+
+var tex_dump_alpha: bool = false
+# Debug: the brightest texel of an RGBA float texture and where it is.
+function tex_max(tex: int, w: int, h: int, tag: pointer) -> void {
+  let buf = words(w * h * 4)
+  gl_bind_texture(GL_TEXTURE_2D, tex)
+  gl_pixel_storei(GL_PACK_ALIGNMENT, 4)
+  gl_get_tex_image(GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, buf)
+  var best = F_ZERO;  var bx = 0;  var by = 0
+  var i = 0
+  while i < w * h {
+    let v = f_max(buf[i * 4], f_max(buf[i * 4 + 1], buf[i * 4 + 2]))
+    if f_gt(v, best) { best = v;  bx = i % w;  by = i / w }
+    i += 1
+  }
+  print(`{tag}: max {f_fx(f_div(best, fi(100)))}/100 at {bx} {h - 1 - by} (top-down)`)
+  let o = (by * w + bx) * 4
+  let big = fi(65000)
+  let finite = f_ls(best, big)
+  print(`  rgba (clamped/100): {f_fx(f_div(f_min(buf[o], big), fi(100)))} {f_fx(f_div(f_min(buf[o + 1], big), fi(100)))} {f_fx(f_div(f_min(buf[o + 2], big), fi(100)))} {f_fx(f_min(buf[o + 3], big))}  finite {finite}  bits {buf[o]}`)
+  free(buf)
+}
+# Debug: write a 2D texture's level 0 (RGBA8, alpha dropped) as a binary PPM.
+function tex_dump(tex: int, w: int, h: int, path: pointer) -> void {
+  let f = file_open(path, "wb")
+  if f == null { return }
+  let buf = bytes(w * h * 4)
+  gl_bind_texture(GL_TEXTURE_2D, tex)
+  gl_pixel_storei(GL_PACK_ALIGNMENT, 1)
+  gl_get_tex_image(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, buf)
+  let hdr = `P6\n{w} {h}\n255\n`
+  file_write(f, hdr, len(hdr))
+  let row = bytes(w * 3)
+  for y in 0 .. h {
+    for x in 0 .. w {
+      row[x * 3] = buf[(y * w + x) * 4];  row[x * 3 + 1] = buf[(y * w + x) * 4 + 1];  row[x * 3 + 2] = buf[(y * w + x) * 4 + 2]
+      if tex_dump_alpha { let a = buf[(y * w + x) * 4 + 3];  row[x * 3] = a;  row[x * 3 + 1] = a;  row[x * 3 + 2] = a }
+    }
+    file_write(f, row, w * 3)
+  }
+  file_close(f)
+  free(buf);  free(row)
+}
+
+# A binary PPM (P6, what Gl.screenshot writes) as an RGB8 texture, box-filtered down by
+# `shrink` (a photo thumbnail); 0 when the file is missing.
+function tex_load_ppm(path: pointer, shrink: int) -> int {
+  let d = r3d_read_file(path)
+  if d == null { return 0 }
+  let size = tex_file_len
+  var i = 2
+  var w = 0;  var h = 0;  var mx = 0
+  var field = 0
+  while i < size and field < 3 {
+    while i < size and (d[i] == 32 or d[i] == 10 or d[i] == 13 or d[i] == 9) { i += 1 }
+    var v = 0
+    while i < size and d[i] >= '0' and d[i] <= '9' { v = v * 10 + (d[i] - 48);  i += 1 }
+    if field == 0 { w = v } else if field == 1 { h = v } else { mx = v }
+    field += 1
+  }
+  i += 1
+  if w <= 0 or h <= 0 or i + w * h * 3 > size { free(d);  return 0 }
+  var k = shrink
+  if k < 1 { k = 1 }
+  let ow = w / k;  let oh = h / k
+  let px = bytes(ow * oh * 3)
+  for y in 0 .. oh {
+    for x in 0 .. ow {
+      var r = 0;  var g = 0;  var b = 0
+      for yy in 0 .. k { for xx in 0 .. k {
+        let o = i + ((y * k + yy) * w + x * k + xx) * 3
+        r += d[o];  g += d[o + 1];  b += d[o + 2]
+      } }
+      let n = k * k
+      let q = (y * ow + x) * 3
+      px[q] = r / n;  px[q + 1] = g / n;  px[q + 2] = b / n
+    }
+  }
+  free(d)
+  tex_w = ow;  tex_h = oh;  tex_channels = 3;  tex_depth = 8
+  let id = tex_upload(px, true, false)
+  free(px)
+  return id
+}

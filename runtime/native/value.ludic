@@ -221,11 +221,39 @@ function jp_number(p: JP) -> Val {
       di -= 1
     }
     var raw = ip * 65536 + frac
+    raw = jp_exponent(p, raw)
+    if neg != 0 { raw = -raw }
+    return value_fixed(raw)
+  }
+  if p.i < p.n and (p.s[p.i] == 'e' or p.s[p.i] == 'E') {   # 1e-05: an exponent makes it a fixed
+    var raw = jp_exponent(p, ip * 65536)
     if neg != 0 { raw = -raw }
     return value_fixed(raw)
   }
   if neg != 0 { ip = -ip }
   return value_int(ip)
+}
+# an optional exponent after a number's digits, applied to a raw Q16.16 value. Exporters
+# write noise like 7.49e-09 for a zero; a fixed rounds that to 0, which is what it was.
+function jp_exponent(p: JP, raw0: int) -> int {
+  var raw = raw0
+  if p.i >= p.n or (p.s[p.i] != 'e' and p.s[p.i] != 'E') { return raw }
+  p.i += 1
+  var eneg = 0
+  if p.i < p.n and p.s[p.i] == '-' { eneg = 1;  p.i += 1 }
+  else if p.i < p.n and p.s[p.i] == '+' { p.i += 1 }
+  var e = 0
+  while p.i < p.n and p.s[p.i] >= '0' and p.s[p.i] <= '9' {
+    e = e * 10 + (p.s[p.i] - 48)
+    p.i += 1
+  }
+  if e > 12 { e = 12 }
+  var k = 0
+  while k < e {
+    if eneg != 0 { raw = raw / 10 } else { raw = raw * 10 }
+    k += 1
+  }
+  return raw
 }
 
 function jp_list(p: JP) -> Val {

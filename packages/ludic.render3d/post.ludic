@@ -1,0 +1,307 @@
+# ============================================================================
+# post.ludic — the HDR frame and what happens to it: a 16-bit float scene
+# target, a mip-chain bloom (13-tap down, tent up), and the tonemap composite
+# (exposure, ACES, vignette, saturation, contrast, dither) to the screen.
+# ============================================================================
+
+const BLOOM_LEVELS: int = 6
+
+var post_hdr: Target = null
+var post_ms_fbo: int = 0          # 4x multisampled scene target, resolved into post_hdr
+var post_ms_samples: int = 1      # temporal AA carries the edges; R3D_MSAA=n to compare
+var post_bloom: []Target = null
+var post_p_down: int = 0
+var post_p_up: int = 0
+var post_p_tone: int = 0
+var post_fs: Mesh = null
+var post_exposure: int = 0
+var post_bloom_strength: int = 0
+var post_vignette: int = 0
+var post_saturation: int = 0
+var post_contrast: int = 0
+var post_w: int = 0
+var post_h: int = 0
+var post_auto: bool = true
+var post_key: int = 0             # target mean luminance after exposure (float bits)
+var post_lum: words = null
+var post_mips: int = 0
+var post_adapt: int = 0           # smoothed exposure (float bits)
+var post_exposure_max: int = 0x41A00000   # 20: the ceiling auto-exposure may reach (night lowers it)
+
+var post_ao: Target = null
+var post_ao_blur: Target = null
+var post_p_ao: int = 0
+var post_p_ao_blur: int = 0
+var post_ao_radius: int = 0
+var post_ao_intensity: int = 0
+var post_ao_strength: int = 0
+var post_gi_strength: int = 0x3ECCCCCD     # 0.4
+var post_no_gi: bool = false
+var post_ldr: Target = null
+var post_depth_copy: Target = null
+var post_prev: Target = null       # last frame's scene colour, for the SSGI bounce only
+var post_scene: Target = null      # this frame's scene colour before the water, for refraction
+var post_frame: int = 0
+var post_color: int = 0            # the HDR colour the rest of post reads      # the resolved depth, copied so passes can read it while drawing into the frame
+var post_p_sharp: int = 0
+var post_sharpen: int = 0
+var post_grain: int = 0
+
+# the screen-sized targets go away before post_init makes them at a new size
+function post_free() -> void {
+  if post_hdr == null { return }
+  target_free(post_hdr);  target_free(post_ao);  target_free(post_ao_blur);  target_free(post_ldr)
+  target_free(post_depth_copy);  target_free(post_prev);  target_free(post_scene)
+  for i in 0 .. len(post_bloom) { target_free(post_bloom[i]) }
+  post_hdr = null
+}
+function post_init(w: int, h: int) -> void {
+  post_w = w;  post_h = h
+  post_hdr = target_new(w, h, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, true, GL_LINEAR)
+  if post_ms_samples > 1 {
+    post_ms_fbo = gl_framebuffer()
+    gl_bind_framebuffer(GL_FRAMEBUFFER, post_ms_fbo)
+    let ids = gl_scratch()
+    gl_gen_renderbuffers(1, ids)
+    gl_bind_renderbuffer(GL_RENDERBUFFER, ids[0])
+    gl_renderbuffer_storage_multisample(GL_RENDERBUFFER, post_ms_samples, GL_RGBA16F, w, h)
+    gl_framebuffer_renderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, ids[0])
+    gl_gen_renderbuffers(1, ids)
+    gl_bind_renderbuffer(GL_RENDERBUFFER, ids[0])
+    gl_renderbuffer_storage_multisample(GL_RENDERBUFFER, post_ms_samples, GL_DEPTH_COMPONENT32F, w, h)
+    gl_framebuffer_renderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, ids[0])
+    let st = gl_check_framebuffer_status(GL_FRAMEBUFFER)
+    if st != GL_FRAMEBUFFER_COMPLETE { print(`r3d: msaa framebuffer incomplete {st}`);  post_ms_fbo = 0 }
+    gl_bind_framebuffer(GL_FRAMEBUFFER, 0)
+  }
+  post_bloom = new []Target
+  var bw = w / 2;  var bh = h / 2
+  for i in 0 .. BLOOM_LEVELS {
+    push(post_bloom, target_new(max(bw, 1), max(bh, 1), GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, false, GL_LINEAR))
+    bw = bw / 2;  bh = bh / 2
+  }
+  if post_p_down == 0 {
+    post_p_down = r3d_program("fullscreen.vert", "bloom_down.frag", "")
+    post_p_up = r3d_program("fullscreen.vert", "bloom_up.frag", "")
+    post_p_tone = r3d_program("fullscreen.vert", "tonemap.frag", "")
+  }
+  # Full resolution, not half. The occlusion is reconstructed from depth differences,
+  # so on a surface seen at a grazing angle its gradient is steep in screen space; at
+  # half resolution that aliased into wide, screen-crossing bands which the bilinear
+  # upsample in the tonemapper then stretched over the whole ground. They read as thin
+  # transparent black bars, appear only where there is depth (never on the sky), and
+  # are nothing to do with the shadow map or the reflection.
+  post_ao = target_new(w, h, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, false, GL_LINEAR)
+  post_ao_blur = target_new(w, h, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, false, GL_LINEAR)
+  if post_p_ao == 0 { post_p_ao = r3d_program("fullscreen.vert", "ssgi.frag", "");  post_p_ao_blur = r3d_program("fullscreen.vert", "ssao_blur.frag", "") }
+  post_ldr = target_new(w, h, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, false, GL_LINEAR)
+  post_depth_copy = target_new(w, h, GL_R8, GL_RED, GL_UNSIGNED_BYTE, true, GL_NEAREST)
+  post_prev = target_new(w, h, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, false, GL_LINEAR)
+  post_scene = target_new(w, h, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, false, GL_LINEAR)
+  if post_p_sharp == 0 { post_p_sharp = r3d_program("fullscreen.vert", "sharpen.frag", "") }
+  post_sharpen = fl(1.2)
+  post_grain = fl(0.025)
+  post_ao_radius = fl(0.7)
+  post_ao_intensity = fl(1.4)
+  post_ao_strength = fl(0.8)
+  post_fs = mesh_fullscreen()
+  post_exposure = fl(0.36)
+  post_bloom_strength = fl(0.06)
+  post_vignette = fl(0.35)
+  post_saturation = fl(1.04)
+  post_contrast = fl(1.12)
+  post_key = fl(0.19)
+  post_lum = words(4)
+  var m = 1;  var sz = max(w, h)
+  while sz > 1 { sz = sz / 2;  m += 1 }
+  post_mips = m
+  post_adapt = F_ZERO
+}
+
+# Mean scene luminance from the HDR mip chain -> exposure = key / mean, eased over
+# frames. The value comes back through a pixel buffer one frame late: a direct
+# glGetTexImage waits for the GPU to finish the whole frame, which serialised the
+# CPU and the GPU. With the fly-camera demo that cost little (the CPU had nothing
+# else to do); with the game's animals, HUD and rules on the CPU it doubled the frame
+# (60 ms -> 28 ms when the read went asynchronous, measured 2026-09-09).
+# ... and even that asynchronous read blocked on Apple's GL (glGetTexImage into a pixel
+# buffer still synchronised the texture: 50% of the CPU's frame waiting, sampled), so
+# the adaptation now stays on the GPU: a 1x1 pass (adapt.frag) eases last frame's value
+# toward key / mean and the tonemapper samples it. The CPU never waits for the picture.
+var post_adapt_t: []Target = null
+var post_adapt_i: int = 0
+var post_p_adapt: int = 0
+var post_adapt_reset: bool = true
+function post_measure() -> void {
+  gl_bind_texture(GL_TEXTURE_2D, post_hdr.color)
+  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+  gl_generate_mipmap(GL_TEXTURE_2D)
+  if post_adapt_t == null {
+    post_adapt_t = new []Target
+    for k in 0 .. 2 { push(post_adapt_t, target_new(1, 1, GL_R32F, GL_RED, GL_FLOAT, false, GL_NEAREST)) }
+    post_adapt_reset = true
+  }
+  if post_p_adapt == 0 { post_p_adapt = r3d_program("fullscreen.vert", "adapt.frag", "") }
+  let next = 1 - post_adapt_i
+  target_bind(post_adapt_t[next])
+  gl_disable(GL_DEPTH_TEST)
+  gl_use_program(post_p_adapt)
+  r3d_bind_2d(post_p_adapt, "u_scene", 0, post_hdr.color)
+  r3d_bind_2d(post_p_adapt, "u_prev", 1, post_adapt_t[post_adapt_i].color)
+  u_f(gl_uniform(post_p_adapt, "u_lod"), fi(post_mips - 1))
+  u_f(gl_uniform(post_p_adapt, "u_key"), post_key)
+  u_f(gl_uniform(post_p_adapt, "u_max"), post_exposure_max)
+  u_f(gl_uniform(post_p_adapt, "u_rate"), fl(0.08))
+  var reset = F_ZERO
+  if post_adapt_reset { reset = F_ONE;  post_adapt_reset = false }
+  u_f(gl_uniform(post_p_adapt, "u_reset"), reset)
+  mesh_draw(post_fs)
+  post_adapt_i = next
+  gl_bind_texture(GL_TEXTURE_2D, post_hdr.color)
+  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+}
+
+function post_begin_scene() -> void {
+  target_bind(post_hdr)
+  if post_ms_fbo != 0 { gl_bind_framebuffer(GL_FRAMEBUFFER, post_ms_fbo);  gl_enable(GL_MULTISAMPLE) }
+  gl_enable(GL_DEPTH_TEST)
+  gl_depth_func(GL_LESS)
+  gl_depth_mask(1)
+  gl_enable(GL_CULL_FACE)
+  gl_cull_face(GL_BACK)
+  gl_clear_color(0.0, 0.0, 0.0, 1.0)
+  gl_clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+}
+
+# resolve the multisampled scene into the plain HDR target (colour + depth)
+function post_resolve() -> void {
+  if post_ms_fbo != 0 {
+    gl_bind_framebuffer(GL_READ_FRAMEBUFFER, post_ms_fbo)
+    gl_bind_framebuffer(GL_DRAW_FRAMEBUFFER, post_hdr.fbo)
+    gl_blit_framebuffer(0, 0, post_w, post_h, 0, 0, post_w, post_h, GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT, GL_NEAREST)
+  }
+  # the depth copy every pass after this may read while the frame is still being drawn into
+  gl_bind_framebuffer(GL_READ_FRAMEBUFFER, post_hdr.fbo)
+  gl_bind_framebuffer(GL_DRAW_FRAMEBUFFER, post_depth_copy.fbo)
+  gl_blit_framebuffer(0, 0, post_w, post_h, 0, 0, post_w, post_h, GL_DEPTH_BUFFER_BIT, GL_NEAREST)
+  gl_bind_framebuffer(GL_FRAMEBUFFER, 0)
+}
+
+# There is no temporal anti-aliasing. It was reprojecting every pixel through the
+# scene depth, which on water is the surface plane while the pixel's content is the
+# reflection behind it — so the mirror image was fetched from the wrong place and, at
+# 0.92 history, dragged several frames behind the camera as it turned. Geometry edges
+# and the alpha-tested vegetation are covered by the 4x MSAA + alpha-to-coverage the
+# scene already renders with, and the projection is no longer jittered, so nothing is
+# left needing a temporal resolve.
+
+# The lake bed, as drawn, before any water goes over it. Water reads this to refract and
+# then absorb it, which is what makes the surface read as a body of water rather than a
+# sheet laid over the ground: the bottom is seen THROUGH the water, tinted and dimmed by
+# how far the light travelled, instead of being the dry terrain showing through an alpha.
+function post_capture_scene() -> void {
+  gl_bind_framebuffer(GL_READ_FRAMEBUFFER, post_hdr.fbo)
+  gl_bind_framebuffer(GL_DRAW_FRAMEBUFFER, post_scene.fbo)
+  gl_blit_framebuffer(0, 0, post_w, post_h, 0, 0, post_w, post_h, GL_COLOR_BUFFER_BIT, GL_NEAREST)
+  gl_bind_framebuffer(GL_FRAMEBUFFER, post_hdr.fbo)
+  gl_viewport(0, 0, post_w, post_h)
+}
+
+# Keep a copy of the finished scene colour: the SSGI bounce reads last frame's colour.
+function post_capture_prev() -> void {
+  gl_bind_framebuffer(GL_READ_FRAMEBUFFER, post_hdr.fbo)
+  gl_bind_framebuffer(GL_DRAW_FRAMEBUFFER, post_prev.fbo)
+  gl_blit_framebuffer(0, 0, post_w, post_h, 0, 0, post_w, post_h, GL_COLOR_BUFFER_BIT, GL_NEAREST)
+  gl_bind_framebuffer(GL_FRAMEBUFFER, 0)
+  post_frame += 1
+}
+
+function post_ssao_pass() -> void {
+  gl_disable(GL_DEPTH_TEST)
+  gl_disable(GL_BLEND)
+  target_bind(post_ao)
+  gl_use_program(post_p_ao)
+  r3d_bind_2d(post_p_ao, "u_depth", 0, post_hdr.depth)
+  r3d_bind_2d(post_p_ao, "u_prev_color", 1, post_prev.color)
+  u_f(gl_uniform(post_p_ao, "u_frame"), fi(post_frame % 64))
+  u_mat4(gl_uniform(post_p_ao, "u_inv_proj"), cam_inv_proj)
+  u_mat4(gl_uniform(post_p_ao, "u_proj"), cam_proj)
+  u_f2(gl_uniform(post_p_ao, "u_texel"), fr(1, post_w), fr(1, post_h))
+  u_f(gl_uniform(post_p_ao, "u_radius"), post_ao_radius)
+  u_f(gl_uniform(post_p_ao, "u_intensity"), post_ao_intensity)
+  mesh_draw(post_fs)
+  target_bind(post_ao_blur)
+  gl_use_program(post_p_ao_blur)
+  r3d_bind_2d(post_p_ao_blur, "u_ao", 0, post_ao.color)
+  r3d_bind_2d(post_p_ao_blur, "u_depth", 1, post_hdr.depth)
+  u_f2(gl_uniform(post_p_ao_blur, "u_texel"), fr(1, post_ao.w), fr(1, post_ao.h))
+  mesh_draw(post_fs)
+}
+
+function post_bloom_pass() -> void {
+  gl_disable(GL_DEPTH_TEST)
+  gl_disable(GL_BLEND)
+  var src = post_color
+  var sw = post_w;  var sh = post_h
+  gl_use_program(post_p_down)
+  for i in 0 .. BLOOM_LEVELS {
+    let t = post_bloom[i]
+    target_bind(t)
+    r3d_bind_2d(post_p_down, "u_src", 0, src)
+    u_f2(gl_uniform(post_p_down, "u_texel"), fr(1, sw), fr(1, sh))
+    var th = f_neg1()
+    if i == 0 { th = fl(1.2) }
+    u_f(gl_uniform(post_p_down, "u_threshold"), th)
+    mesh_draw(post_fs)
+    src = t.color;  sw = t.w;  sh = t.h
+  }
+  gl_use_program(post_p_up)
+  gl_enable(GL_BLEND)
+  gl_blend_func(GL_ONE, GL_ONE)
+  var i = BLOOM_LEVELS - 1
+  while i > 0 {
+    let from = post_bloom[i]
+    let to = post_bloom[i - 1]
+    target_bind(to)
+    r3d_bind_2d(post_p_up, "u_src", 0, from.color)
+    u_f2(gl_uniform(post_p_up, "u_texel"), fr(1, from.w), fr(1, from.h))
+    u_f(gl_uniform(post_p_up, "u_radius"), F_ONE)
+    mesh_draw(post_fs)
+    i -= 1
+  }
+  gl_disable(GL_BLEND)
+}
+
+function post_tonemap(color_tex: int) -> void {
+  if post_auto { post_measure() }
+  target_bind(post_ldr)
+  gl_disable(GL_DEPTH_TEST)
+  gl_use_program(post_p_tone)
+  r3d_bind_2d(post_p_tone, "u_hdr", 0, color_tex)
+  r3d_bind_2d(post_p_tone, "u_bloom", 1, post_bloom[0].color)
+  r3d_bind_2d(post_p_tone, "u_ao", 2, post_ao_blur.color)
+  u_f(gl_uniform(post_p_tone, "u_ao_strength"), post_ao_strength)
+  u_f(gl_uniform(post_p_tone, "u_gi_strength"), post_gi_strength)
+  u_f(gl_uniform(post_p_tone, "u_exposure"), post_exposure)
+  var auto = F_ZERO
+  if post_auto and post_adapt_t != null { auto = F_ONE;  r3d_bind_2d(post_p_tone, "u_adapt", 3, post_adapt_t[post_adapt_i].color) }
+  u_f(gl_uniform(post_p_tone, "u_auto"), auto)
+  u_f(gl_uniform(post_p_tone, "u_bloom_strength"), post_bloom_strength)
+  u_f(gl_uniform(post_p_tone, "u_vignette"), post_vignette)
+  u_f(gl_uniform(post_p_tone, "u_saturation"), post_saturation)
+  u_f(gl_uniform(post_p_tone, "u_contrast"), post_contrast)
+  u_f3(gl_uniform(post_p_tone, "u_wb"), fl(1.02), F_ONE, fl(0.97))
+  u_f3(gl_uniform(post_p_tone, "u_lift"), fl(0.004), fl(0.004), fl(0.012))
+  u_f3(gl_uniform(post_p_tone, "u_gain"), fl(0.99), fl(0.995), fl(1.0))
+  mesh_draw(post_fs)
+  # sharpen + grain onto the screen
+  gl_bind_framebuffer(GL_FRAMEBUFFER, gl_screen)
+  gl_viewport(0, 0, gl_w, gl_h)
+  gl_use_program(post_p_sharp)
+  r3d_bind_2d(post_p_sharp, "u_src", 0, post_ldr.color)
+  u_f2(gl_uniform(post_p_sharp, "u_texel"), fr(1, post_w), fr(1, post_h))
+  u_f(gl_uniform(post_p_sharp, "u_amount"), post_sharpen)
+  u_f(gl_uniform(post_p_sharp, "u_grain"), post_grain)
+  u_f(gl_uniform(post_p_sharp, "u_time"), r3d_time)
+  mesh_draw(post_fs)
+}

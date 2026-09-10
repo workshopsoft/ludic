@@ -1,0 +1,206 @@
+# ============================================================================
+# render.ludic — the frame. Shadow cascades, the HDR scene pass (terrain, the
+# scene's objects, the sky), bloom, and the tonemapped composite to the screen.
+# The scene (what the game places in the world) hooks in through scene_draw /
+# scene_draw_casters, which the demo defines.
+# ============================================================================
+
+var r3d_sky_prog: int = 0
+var r3d_fog_density: int = 0
+var r3d_fog_falloff: int = 0
+var r3d_time: int = 0
+var r3d_ready: bool = false
+# set before r3d_init to build the landscape from a real height map
+var r3d_dem_path: string = null
+var r3d_dem_min: int = 0
+var r3d_dem_max: int = 0
+var r3d_dem_base: int = 0
+var r3d_dem_ox: int = 0
+var r3d_dem_oz: int = 0
+var r3d_ortho_path: string = null
+var r3d_debug: bool = false
+var r3d_debug_shadow: bool = false
+var r3d_debug_max: bool = false
+
+var r3d_cloud_shadow: int = 0x3F000000     # 0.5
+
+var r3d_clip_y: int = 0xCF000000            # -2^31: no clipping
+function fog_bind(prog: int) -> void {
+  u_f(gl_uniform(prog, "u_clip_y"), r3d_clip_y)
+  u_f(gl_uniform(prog, "u_spec_scale"), F_ONE)
+  u_f(gl_uniform(prog, "u_fog_density"), r3d_fog_density)
+  u_f(gl_uniform(prog, "u_fog_height_falloff"), r3d_fog_falloff)
+  var cs = r3d_cloud_shadow
+  if Os.has_env("R3D_NOCLOUD") { cs = F_ZERO }
+  u_f(gl_uniform(prog, "u_cloud_shadow"), cs)
+  u_f(gl_uniform(prog, "u_time"), r3d_time)
+}
+
+# profiling switches (environment): R3D_NOSHADOW R3D_NOGI R3D_MSAA=n R3D_NOBLADES R3D_NOCARDS R3D_NOTREES R3D_NEAR=m
+var r3d_test_frame: int = 0
+var r3d_test_resize: int = 0
+var r3d_no_shadow: bool = false
+var r3d_no_trees: bool = false
+var r3d_no_refl: bool = false
+function r3d_env_flags() -> void {
+  r3d_no_shadow = Os.has_env("R3D_NOSHADOW")
+  r3d_no_trees = Os.has_env("R3D_NOTREES")
+  r3d_no_refl = Os.has_env("R3D_NOREFL")
+  if Os.has_env("R3D_DEBUG") { r3d_debug = true }
+  if Os.has_env("R3D_DBGSHADOW") { r3d_debug_shadow = true }
+  if Os.has_env("R3D_NOGI") { post_gi_strength = F_ZERO;  post_ao_strength = F_ZERO;  post_no_gi = true }
+  if Os.has_env("R3D_MSAA") { post_ms_samples = Text.to_int(Os.env("R3D_MSAA")) }
+  sc_skip_blade = Os.has_env("R3D_NOBLADES")
+  sc_skip_card = Os.has_env("R3D_NOCARDS")
+  sc_dbg_lod = Os.has_env("R3D_LODDBG")
+  if Os.has_env("R3D_ANISO") {
+    let a = Text.to_int(Os.env("R3D_ANISO"))
+    tex_anisotropy = 1.0
+    if a >= 2 { tex_anisotropy = 2.0 }
+    if a >= 4 { tex_anisotropy = 4.0 }
+    if a >= 8 { tex_anisotropy = 8.0 }
+    if a >= 16 { tex_anisotropy = 16.0 }
+  }
+}
+function r3d_init(w: int, h: int, title: string) -> bool {
+  r3d_env_flags()
+  if not gl_open(w, h, title) { print("r3d: no OpenGL context");  return false }
+  if Os.has_env("R3D_NOVSYNC") { gl_vsync(0) }
+  var renderer: string = gl_get_string(GL_RENDERER)
+  print(`r3d: {gl_w}x{gl_h} on {renderer}`)
+  prof_init()
+  cam_init(fr(gl_w, gl_h))
+  if not sky_load(r3d_assets + "/hdri/kloofendal_48d_partly_cloudy_puresky_4k.hdr") { return false }
+  daylight_init()
+  if r3d_dem_path != null { terrain_use_dem(r3d_dem_path, r3d_dem_min, r3d_dem_max, r3d_dem_base, r3d_dem_ox, r3d_dem_oz) }
+  if r3d_ortho_path != null { terrain_use_ortho(r3d_ortho_path) }
+  terrain_init()
+  shadow_init()
+  post_init(gl_w, gl_h)
+  scatter_init()
+  actor_init()
+  grass_init()
+  r3d_sky_prog = r3d_program("fullscreen.vert", "sky.frag", "")
+  r3d_fog_density = fl(0.00014)
+  r3d_fog_falloff = fl(0.002)
+  r3d_ready = true
+  gl_check("r3d init")
+  return true
+}
+
+function r3d_draw_sky() -> void {
+  gl_depth_func(GL_LEQUAL)
+  gl_depth_mask(0)
+  gl_disable(GL_CULL_FACE)
+  let p = r3d_sky_prog
+  gl_use_program(p)
+  r3d_bind_2d(p, "u_sky", 0, sky_tex)
+  sky_bind_rot(p)
+  sky_bind_lighting(p)
+  u_mat4(gl_uniform(p, "u_inv_vp"), cam_inv_vp)
+  u_f(gl_uniform(p, "u_sky_gain"), fl(0.95))
+  u_f(gl_uniform(p, "u_sky_sat"), fl(1.35))
+  u_f(gl_uniform(p, "u_time"), r3d_time)
+  mesh_draw(sky_fullscreen)
+  gl_depth_mask(1)
+  gl_depth_func(GL_LESS)
+}
+
+# the drawable changed size: the camera's aspect and every screen-sized target follow
+function r3d_resize() -> void {
+  cam_aspect = fr(gl_w, gl_h)
+  cam_update()
+  post_free()
+  post_init(gl_w, gl_h)
+  if water_refl != null { target_free(water_refl);  water_refl = null }
+  print(`r3d: resized to {gl_w}x{gl_h}`)
+}
+function r3d_frame(time: int) -> void {
+  if not r3d_ready { return }
+  if gl_resize_check() { r3d_resize() }
+  # R3D_RESIZE_AT=<frame>: rebuild every screen-sized buffer mid-run, as a window resize
+  # or a fullscreen change does. Headless has no window to resize, and this path is where
+  # a stale attachment or a texture freed twice shows up.
+  r3d_test_frame += 1
+  if r3d_test_resize == 0 and Os.has_env("R3D_RESIZE_AT") { r3d_test_resize = Text.to_int(Os.env("R3D_RESIZE_AT")) }
+  # R3D_RESIZE_AT=<n>: from frame n on, rebuild every screen-sized buffer every few
+  # frames at a different size, as dragging a window edge or entering fullscreen does.
+  if r3d_test_resize > 0 and r3d_test_frame >= r3d_test_resize and r3d_test_frame % 4 == 0 {
+    let step = (r3d_test_frame / 4) % 4
+    var w = 1920;  var h = 1080
+    if step == 1 { w = 1440;  h = 810 }
+    if step == 2 { w = 2560;  h = 1440 }
+    if step == 3 { w = 1281;  h = 721 }
+    gl_w = w;  gl_h = h
+    r3d_resize()
+  }
+  r3d_time = time
+  # the frame's counters close here, before any of its own work: the window each of them
+  # covers is exactly one frame, from this point to the same point next time
+  prof_gen_frame()
+  prof_mark_start()
+  cam_begin_frame(post_frame, gl_w, gl_h)
+  # the height-field shadow rebakes as the light moves in steps (daylight), or with the sky yaw when there is no clock
+  if (not day_on and ter_shadow_yaw != sky_yaw) or ter_shadow_gen != day_gen {
+    ter_shadow_gen = day_gen
+    let t_bk = gl_now_us()
+    terrain_bake_shadow()
+    prof_bake_add(gl_now_us() - t_bk)
+  }
+  scatter_begin_frame()
+  prof_cpu_mark("shadow rebake")
+  stream_update_all()
+  prof_cpu_mark("streaming")
+  if not r3d_no_shadow { prof_begin("shadow");  shadow_pass();  prof_end() }
+  prof_cpu_mark("shadow pass")
+  if water_on and not r3d_no_refl { prof_begin("water reflection");  water_reflection_pass();  prof_end() }
+  prof_cpu_mark("reflection")
+  post_begin_scene()
+  prof_begin("terrain sun")
+  terrain_sun_prepare()
+  prof_end()
+  prof_begin("terrain")
+  terrain_draw()
+  prof_end()
+  prof_cpu_mark("terrain")
+  prof_begin("scene (vegetation)")
+  scene_draw()
+  prof_end()
+  prof_cpu_mark("vegetation")
+  prof_begin("grass")
+  grass_draw()
+  prof_end()
+  prof_cpu_mark("grass")
+  prof_begin("sky")
+  r3d_draw_sky()
+  prof_end()
+  prof_begin("resolve MSAA")
+  post_resolve()
+  prof_end()
+  # transparent water over the resolved frame: it tests against the frame's own
+  # depth and reads a copy of it for the depth tint and soft shores
+  if water_on {
+    prof_begin("water surface")
+    post_capture_scene()
+    target_bind(post_hdr)
+    gl_enable(GL_DEPTH_TEST)
+    gl_depth_func(GL_LESS)
+    water_draw(post_depth_copy.depth)
+    prof_end()
+  }
+  post_color = post_hdr.color
+  if not post_no_gi { prof_begin("SSAO/GI");  post_ssao_pass();  prof_end() }
+  if r3d_debug_max { tex_max(post_hdr.color, post_hdr.w, post_hdr.h, "hdr") }
+  prof_begin("bloom")
+  post_bloom_pass()
+  prof_end()
+  prof_begin("tonemap+exposure")
+  post_tonemap(post_color)
+  prof_end()
+  prof_cpu_mark("post")
+  prof_begin("prev-colour copy")
+  post_capture_prev()
+  prof_end()
+  prof_collect()
+  gl_check("frame")
+}

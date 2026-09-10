@@ -1,0 +1,161 @@
+# ============================================================================
+# grass.ludic — procedural GPU ground cover with continuous density (no rings).
+#
+# The world is cut into 16 m cells; blade j of a cell always stands in the same place
+# (shaders/grass.vert). Draws are per tile: the CPU walks tiles around the camera,
+# frustum-culls them, and feeds each visible tile as many blade indices per cell as its
+# NEAREST point could need; the vertex stage then keeps only the indices that exist at
+# each blade's own distance, so density is one smooth function of distance everywhere.
+# Tiles are 16 m near, 64 m in the middle distance and 256 m far, purely to keep the
+# draw count down — the cells and their hashes are the same in every tile size.
+# ============================================================================
+
+const GRASS_CELL: int = 16
+var grass_prog: int = 0
+var grass_mesh: Mesh = null
+var grass_on: bool = true
+var grass_wind: int = 0
+var grass_s0: int = 0            # float bits: blade spacing at the camera (m)
+var grass_d0: int = 0            # the distance at which the spacing has doubled (m)
+var grass_radius: int = 0        # no blades past this (m)
+var grass_draws: int = 0
+var grass_dbg: int = 0
+
+# a blade: `rows` rows of 2 vertices (x across, y along, z bend), attribute 2 = uv
+function grass_blade_mesh(rows: int) -> Mesh {
+  let m = new Mesh
+  m.vao = gl_vao()
+  let v = gl_floats(rows * 2 * 5)
+  var k = 0
+  for r in 0 .. rows {
+    let t = fr(r, rows - 1)
+    let taper = f_max(f_sub(F_ONE, f_mul(t, f_mul(t, f_sqrt(t)))), fl(0.12))
+    let bend = f_mul(f_mul(t, t), fl(0.28))
+    for sd in 0 .. 2 {
+      var x = f_neg(F_HALF)
+      if sd == 1 { x = F_HALF }
+      gl_put_bits(v, k, f_mul(x, taper));  gl_put_bits(v, k + 1, t);  gl_put_bits(v, k + 2, bend)
+      gl_put_bits(v, k + 3, fi(sd));  gl_put_bits(v, k + 4, t)
+      k += 5
+    }
+  }
+  m.vbo = gl_buffer()
+  gl_bind_buffer(GL_ARRAY_BUFFER, m.vbo)
+  gl_buffer_data(GL_ARRAY_BUFFER, gl_bytes_of(rows * 2 * 5), v, GL_STATIC_DRAW)
+  gl_enable_vertex_attrib_array(0);  gl_vertex_attrib_pointer(0, 3, GL_FLOAT, 0, 20, null)
+  gl_enable_vertex_attrib_array(2);  gl_vertex_attrib_pointer(2, 2, GL_FLOAT, 0, 20, gl_ptr(null, 12))
+  free(v)
+  let nq = rows - 1
+  let idx = words(nq * 6)
+  for q in 0 .. nq {
+    let b = q * 2
+    idx[q * 6] = b;  idx[q * 6 + 1] = b + 1;  idx[q * 6 + 2] = b + 2
+    idx[q * 6 + 3] = b + 1;  idx[q * 6 + 4] = b + 3;  idx[q * 6 + 5] = b + 2
+  }
+  m.ebo = gl_buffer()
+  gl_bind_buffer(GL_ELEMENT_ARRAY_BUFFER, m.ebo)
+  gl_buffer_data(GL_ELEMENT_ARRAY_BUFFER, nq * 6 * 4, idx, GL_STATIC_DRAW)
+  free(idx)
+  m.count = nq * 6
+  gl_bind_vertex_array(0)
+  return m
+}
+
+function grass_init() -> void {
+  grass_prog = r3d_program("grass.vert", "model.frag", "#define FOLIAGE\n#define BLADE\n")
+  grass_mesh = grass_blade_mesh(4)
+  grass_wind = fl(2.4)
+  grass_s0 = fl(0.11)
+  grass_d0 = fi(45)
+  grass_radius = fi(1600)
+  if Os.has_env("R3D_NOBLADES") { grass_on = false }
+  if Os.has_env("R3D_GRASS_R") { grass_radius = fi(Text.to_int(Os.env("R3D_GRASS_R"))) }
+  if Os.has_env("R3D_GRASS_DBG") { grass_dbg = Text.to_int(Os.env("R3D_GRASS_DBG")) }
+}
+
+# indices per 16 m cell that could exist at distance d (the count the shader computes)
+function grass_count_at(d: int) -> int {
+  let spacing = f_mul(grass_s0, f_add(F_ONE, f_div(d, grass_d0)))
+  let n = f_div(fi(GRASS_CELL * GRASS_CELL), f_mul(spacing, spacing))
+  return f_to_int(n) + 1
+}
+
+# one tile size over one distance band
+function grass_tiles(size: int, d_min: int, d_max: int) -> void {
+  let p = grass_prog
+  let cells = size / GRASS_CELL
+  gl_uniform1i(gl_uniform(p, "u_tile_cells"), cells)
+  let sz = fi(size)
+  let half = f_mul(sz, F_HALF)
+  let reach = f_add(d_max, f_mul(half, fl(1.5)))
+  let tx0 = f_to_int(f_floor(f_div(f_sub(cam_pos[0], reach), sz)))
+  let tx1 = f_to_int(f_floor(f_div(f_add(cam_pos[0], reach), sz)))
+  let tz0 = f_to_int(f_floor(f_div(f_sub(cam_pos[2], reach), sz)))
+  let tz1 = f_to_int(f_floor(f_div(f_add(cam_pos[2], reach), sz)))
+  let corner_r = f_mul(half, fl(1.42))
+  var tz = tz0
+  while tz <= tz1 {
+    var tx = tx0
+    while tx <= tx1 {
+      let ox = f_mul(fi(tx), sz);  let oz = f_mul(fi(tz), sz)
+      let cx = f_add(ox, half);  let cz = f_add(oz, half)
+      let dx = f_sub(cx, cam_pos[0]);  let dz = f_sub(cz, cam_pos[2])
+      let dc = f_sqrt(f_add(f_mul(dx, dx), f_mul(dz, dz)))
+      # the tile's nearest and farthest points decide which band it belongs to
+      let dnear = f_max(f_sub(dc, corner_r), F_ZERO)
+      if f_ls(dc, d_min) or not f_ls(dnear, d_max) { tx += 1;  continue }
+      let cy = terrain_height(cx, cz)
+      if cam_sphere_visible(cx, cy, cz, f_add(corner_r, fi(6))) {
+        let per = grass_count_at(dnear)
+        if per > 0 {
+          u_f2(gl_uniform(p, "u_tile"), ox, oz)
+          gl_uniform1i(gl_uniform(p, "u_per_cell"), per)
+          mesh_draw_instanced(grass_mesh, per * cells * cells)
+          grass_draws += 1
+        }
+      }
+      tx += 1
+    }
+    tz += 1
+  }
+}
+
+function grass_draw() -> void {
+  if not grass_on or ter_reflect or grass_prog == 0 { return }
+  let p = grass_prog
+  gl_use_program(p)
+  u_mat4(gl_uniform(p, "u_view"), cam_view)
+  u_mat4(gl_uniform(p, "u_proj"), cam_proj)
+  u_mat4(gl_uniform(p, "u_vp"), cam_vp_clean)
+  u_f(gl_uniform(p, "u_wind"), grass_wind)
+  u_f(gl_uniform(p, "u_rough_scale"), F_ONE)
+  u_v3(gl_uniform(p, "u_tint"), sc_blade_tint)
+  u_v3(gl_uniform(p, "u_blade_base"), sc_blade_base)
+  u_v3(gl_uniform(p, "u_blade_tip"), sc_blade_tip)
+  u_f(gl_uniform(p, "u_cull"), grass_radius)
+  u_f(gl_uniform(p, "u_model_h"), F_ZERO)
+  u_f(gl_uniform(p, "u_s0"), grass_s0)
+  u_f(gl_uniform(p, "u_d0"), grass_d0)
+  u_f(gl_uniform(p, "u_radius"), grass_radius)
+  gl_uniform1i(gl_uniform(p, "u_dbg"), grass_dbg)
+  var orthotex = ter_ortho_tex
+  var oon = F_ONE
+  if orthotex == 0 { orthotex = ter_height_tex;  oon = F_ZERO }
+  r3d_bind_2d(p, "u_ortho", 4, orthotex)
+  u_f(gl_uniform(p, "u_ortho_on"), oon)
+  var lake = fl(-100000.0)
+  if ter_lake_ex != 0 { lake = ter_lake_level }
+  u_f(gl_uniform(p, "u_lake_level"), lake)
+  u_f(gl_uniform(p, "u_snow_line"), ter_snow_line)
+  sky_bind_lighting(p)
+  shadow_bind(p)
+  fog_bind(p)
+  u_f(gl_uniform(p, "u_spec_scale"), fl(0.15))
+  gl_disable(GL_CULL_FACE)
+  grass_draws = 0
+  gl_bind_vertex_array(grass_mesh.vao)
+  grass_tiles(16, F_ZERO, fi(300))
+  grass_tiles(64, fi(300), fi(1200))
+  grass_tiles(256, fi(1200), grass_radius)
+  gl_enable(GL_CULL_FACE)
+}

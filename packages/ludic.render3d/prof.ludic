@@ -1,0 +1,385 @@
+# ============================================================================
+# prof.ludic — per-pass GPU timing (R3D_PROF=1).
+#
+# Wall-clock timing of this renderer is useless at pass granularity: run-to-run
+# variance on a laptop GPU is ±15%, which is larger than most passes. GL_TIME_ELAPSED
+# queries measure what the GPU actually spent inside each pass, and averaging a few
+# hundred frames inside ONE run cancels the run-to-run noise entirely.
+#
+# Each slot owns a small ring of query objects. A query is read back only after
+# enough frames have passed that its result is certainly available, so profiling
+# never introduces the very stall it is trying to measure.
+# ============================================================================
+
+const PROF_SLOTS: int = 16
+const PROF_RING:  int = 4            # frames of latency before a result is read
+
+var prof_on:      bool = false
+var prof_names:   []pointer = null
+var prof_ids:     words = null       # PROF_SLOTS * PROF_RING query objects
+var prof_ns:      []long = null      # accumulated nanoseconds per slot
+var prof_hits:    []long = null      # samples accumulated per slot
+var prof_n:       int = 0            # slots in use
+var prof_frame:   int = 0
+var prof_active:  int = -1           # slot whose query is currently open
+var prof_scratch: words = null
+
+function prof_init() -> void {
+  prof_on = Os.has_env("R3D_PROF")
+  if not prof_on { return }
+  prof_names = new []pointer
+  prof_ns = new []long
+  prof_hits = new []long
+  prof_ids = words(PROF_SLOTS * PROF_RING)
+  prof_scratch = words(4)
+  gl_gen_queries(PROF_SLOTS * PROF_RING, prof_ids)
+  prof_n = 0
+  prof_frame = 0
+  prof_active = -1
+}
+
+# the slot index for `name`, registering it on first sight (order = frame order)
+function prof_slot(name: pointer) -> int {
+  var i = 0
+  while i < prof_n {
+    if prof_names[i] == name { return i }
+    i += 1
+  }
+  if prof_n >= PROF_SLOTS { return -1 }
+  push(prof_names, name)
+  push(prof_ns, 0)
+  push(prof_hits, 0)
+  prof_n += 1
+  return prof_n - 1
+}
+
+function prof_begin(name: pointer) -> void {
+  if not prof_on { return }
+  if prof_active >= 0 { return }        # GL_TIME_ELAPSED queries cannot nest
+  let s = prof_slot(name)
+  if s < 0 { return }
+  prof_active = s
+  gl_begin_query(GL_TIME_ELAPSED, prof_ids[s * PROF_RING + (prof_frame % PROF_RING)])
+}
+
+function prof_end() -> void {
+  if not prof_on { return }
+  if prof_active < 0 { return }
+  gl_end_query(GL_TIME_ELAPSED)
+  prof_active = -1
+}
+
+# Collect the queries issued PROF_RING-1 frames ago — long finished, so no stall.
+function prof_collect() -> void {
+  if not prof_on { return }
+  prof_frame += 1
+  if prof_frame < PROF_RING { return }
+  let slot_frame = (prof_frame + 1) % PROF_RING
+  var s = 0
+  while s < prof_n {
+    let q = prof_ids[s * PROF_RING + slot_frame]
+    gl_get_query_objectiv(q, GL_QUERY_RESULT_AVAILABLE, prof_scratch)
+    if prof_scratch[0] != 0 {
+      gl_get_query_objectui64v(q, GL_QUERY_RESULT, prof_scratch)
+      # the low 32 bits are ample: a pass is far below 4 seconds
+      prof_ns[s] = prof_ns[s] + prof_scratch[0]
+      prof_hits[s] = prof_hits[s] + 1
+    }
+    s += 1
+  }
+}
+
+function prof_report() -> void {
+  if not prof_on { return }
+  print("")
+  print("GPU time per pass (mean over the run):")
+  var total = 0
+  var s = 0
+  while s < prof_n {
+    if prof_hits[s] > 0 { total = total + prof_ns[s] / prof_hits[s] }
+    s += 1
+  }
+  s = 0
+  while s < prof_n {
+    if prof_hits[s] > 0 {
+      let us = prof_ns[s] / prof_hits[s] / 1000
+      var pct = 0
+      if total > 0 { pct = (prof_ns[s] / prof_hits[s]) * 100 / total }
+      print(`  {Text.pad_right(prof_names[s], 22)} {Text.pad_left(string(us), 7)} us   {string(pct)}%`)
+    }
+    s += 1
+  }
+  print(`  {Text.pad_right("TOTAL", 22)} {Text.pad_left(string(total / 1000), 7)} us`)
+}
+
+# ---- streaming work per frame (R3D_PROF=1) ----------------------------------
+# Stutter while walking is not visible in an average: the cover for a newly entered
+# chunk is generated in whichever frame the camera crosses a 32 m cell, so one frame
+# in fifty does all the work. `Time.delta` here is a fixed 60 Hz timestep and there is
+# no finer wall clock in the runtime, so measure the WORK instead — instances generated
+# per frame is exactly what the hitch is made of, and it needs no clock at all.
+var prof_gen: []int = null
+var prof_gen_cur: int = 0
+var prof_ft: []long = null         # real frame times, microseconds
+var prof_last_us: long = 0
+
+function prof_gen_add(n: int) -> void {
+  if not prof_on { return }
+  prof_gen_cur += n
+}
+
+# Per-chunk generation, so a hitch can be pinned on a stream and a band rather than on
+# "streaming". One chunk is generated atomically, so the worst chunk is the worst frame.
+var prof_chunk_us: []long = null
+var prof_chunk_kind: []int = null
+var prof_chunk_band: []int = null
+var prof_chunk_n: []int = null
+var prof_gen_us_cur: long = 0
+var prof_gen_us: []long = null       # generation microseconds per frame
+# CPU work that only happens on some frames — which is what a hitch is made of.
+var prof_layer_us_cur: long = 0      # rebuilding and uploading instance buffers
+var prof_bake_us_cur: long = 0       # the height-field shadow rebake
+var prof_layer_us: []long = null
+var prof_bake_us: []long = null
+var prof_dt: []long = null           # frame time, aligned with the arrays above
+var prof_up_cur: long = 0            # instance bytes uploaded this frame
+var prof_up: []long = null
+# Where a frame's time went at the coarsest useful split: work this process did, and
+# time spent waiting for the GPU to finish it. Headless drains the GPU inside swap, so
+# the two are cleanly separable there.
+var prof_pre_swap: long = 0
+var prof_cpu_us: []long = null
+function prof_before_swap() -> void { if prof_on { prof_pre_swap = gl_now_us() } }
+
+# The single most expensive CPU phase of each frame, and what it was. A hitch is one
+# phase running long on one frame, so recording the worst one per frame is enough to
+# name it without keeping a timeline.
+var prof_mark_last: long = 0
+var prof_mark_best: long = 0
+var prof_mark_name: pointer = null
+var prof_mark_us: []long = null
+var prof_mark_who: []pointer = null
+function prof_mark_start() -> void { if prof_on { prof_mark_last = gl_now_us();  prof_mark_best = 0;  prof_mark_name = null } }
+function prof_cpu_mark(name: pointer) -> void {
+  if not prof_on { return }
+  let now = gl_now_us()
+  let d = now - prof_mark_last
+  prof_mark_last = now
+  if d > prof_mark_best { prof_mark_best = d;  prof_mark_name = name }
+}
+
+# the game's own per-frame work, kept apart from the renderer's
+var prof_game_us_cur: long = 0
+var prof_game_us: []long = null
+function prof_game_add(us: long) -> void { if prof_on { prof_game_us_cur = prof_game_us_cur + us } }
+
+function prof_layer_add(us: long, bytes: long) -> void {
+  if not prof_on { return }
+  prof_layer_us_cur = prof_layer_us_cur + us
+  prof_up_cur = prof_up_cur + bytes
+}
+function prof_bake_add(us: long) -> void { if prof_on { prof_bake_us_cur = prof_bake_us_cur + us } }
+
+function prof_chunk(kind: int, band: int, count: int, us: long) -> void {
+  if not prof_on { return }
+  if prof_chunk_us == null {
+    prof_chunk_us = new []int;  prof_chunk_kind = new []int
+    prof_chunk_band = new []int;  prof_chunk_n = new []int
+  }
+  push(prof_chunk_us, us);  push(prof_chunk_kind, kind)
+  push(prof_chunk_band, band);  push(prof_chunk_n, count)
+  prof_gen_us_cur += us
+}
+
+function prof_chunk_report() -> void {
+  if not prof_on or prof_chunk_us == null { return }
+  print("")
+  print("chunk generation (one chunk is atomic, so the worst chunk is the worst frame):")
+  # totals per (kind, band)
+  var kinds = new []int
+  var bands = new []int
+  var tot = new []long
+  var cnt = new []int
+  var mx = new []long
+  var i = 0
+  while i < len(prof_chunk_us) {
+    var f = -1
+    var j = 0
+    while j < len(kinds) { if kinds[j] == prof_chunk_kind[i] and bands[j] == prof_chunk_band[i] { f = j };  j += 1 }
+    if f < 0 {
+      push(kinds, prof_chunk_kind[i]);  push(bands, prof_chunk_band[i])
+      push(tot, 0);  push(cnt, 0);  push(mx, 0)
+      f = len(kinds) - 1
+    }
+    tot[f] = tot[f] + prof_chunk_us[i]
+    cnt[f] = cnt[f] + 1
+    if prof_chunk_us[i] > mx[f] { mx[f] = prof_chunk_us[i] }
+    i += 1
+  }
+  var k = 0
+  while k < len(kinds) {
+    print(`  kind {string(kinds[k])} band {string(bands[k])}: {string(cnt[k])} chunks, mean {string(tot[k] / cnt[k])} us, worst {string(mx[k])} us, total {string(tot[k] / 1000)} ms`)
+    k += 1
+  }
+  # the per-frame distribution of generation time: this is the hitch itself
+  if prof_gen_us == null or len(prof_gen_us) < 16 { return }
+  let sorted = new []long
+  var a = 8
+  while a < len(prof_gen_us) { push(sorted, prof_gen_us[a]);  a += 1 }
+  var x = 1
+  while x < len(sorted) {
+    let v = sorted[x]
+    var y = x - 1
+    while y >= 0 and sorted[y] > v { sorted[y + 1] = sorted[y];  y -= 1 }
+    sorted[y + 1] = v
+    x += 1
+  }
+  let n = len(sorted)
+  var busy = 0
+  var t: long = 0
+  var z = 0
+  while z < n { if sorted[z] > 0 { busy += 1 };  t += sorted[z];  z += 1 }
+  print(`  generation per frame (us): p95 {string(sorted[(n * 95) / 100])}  p99 {string(sorted[(n * 99) / 100])}  worst {string(sorted[n - 1])}   frames that generated: {string(busy)} of {string(n)}  total {string(t / 1000)} ms`)
+}
+
+function prof_gen_frame() -> void {
+  if not prof_on { return }
+  if prof_gen == null {
+    prof_gen = new []int;  prof_ft = new []long
+    prof_gen_us = new []long;  prof_layer_us = new []long
+    prof_bake_us = new []long;  prof_dt = new []long;  prof_up = new []long
+    prof_cpu_us = new []long;  prof_game_us = new []long
+    prof_mark_us = new []long;  prof_mark_who = new []pointer
+  }
+  push(prof_gen, prof_gen_cur)
+  prof_gen_cur = 0
+  let now = gl_now_us()
+  var dtf: long = 0
+  if prof_last_us != 0 { push(prof_ft, now - prof_last_us);  dtf = now - prof_last_us }
+  prof_last_us = now
+  # everything the frame just ended spent on work it only does sometimes
+  push(prof_dt, dtf)
+  push(prof_gen_us, prof_gen_us_cur)
+  push(prof_layer_us, prof_layer_us_cur)
+  push(prof_bake_us, prof_bake_us_cur)
+  push(prof_up, prof_up_cur)
+  var cpu: long = 0
+  if prof_pre_swap != 0 and dtf != 0 { cpu = prof_pre_swap - (now - dtf) }
+  push(prof_cpu_us, cpu)
+  push(prof_game_us, prof_game_us_cur)
+  push(prof_mark_us, prof_mark_best)
+  if prof_mark_name == null { push(prof_mark_who, "-") } else { push(prof_mark_who, prof_mark_name) }
+  prof_gen_us_cur = 0;  prof_layer_us_cur = 0;  prof_bake_us_cur = 0;  prof_up_cur = 0;  prof_game_us_cur = 0
+}
+
+# the distribution of REAL frame times: stutter lives in the tail, not the mean
+function prof_ft_report() -> void {
+  if not prof_on { return }
+  if prof_ft == null or len(prof_ft) < 16 { return }
+  let sorted = new []long
+  var i = 8
+  while i < len(prof_ft) { push(sorted, prof_ft[i]);  i += 1 }
+  var a = 1
+  while a < len(sorted) {
+    let v = sorted[a]
+    var b = a - 1
+    while b >= 0 and sorted[b] > v { sorted[b + 1] = sorted[b];  b -= 1 }
+    sorted[b + 1] = v
+    a += 1
+  }
+  let n = len(sorted)
+  let med = sorted[n / 2]
+  var over = 0
+  var j = 0
+  while j < n { if sorted[j] > med * 2 { over += 1 };  j += 1 }
+  print("")
+  print("REAL frame time (us):")
+  print(`  median {string(med)}  p95 {string(sorted[(n * 95) / 100])}  p99 {string(sorted[(n * 99) / 100])}  worst {string(sorted[n - 1])}`)
+  # A hitch is not the mean moving: it is the count of frames that took noticeably
+  # longer than the frame before them. 1.3x median is about where it stops being smooth.
+  var o13 = 0
+  var o15 = 0
+  var q = 0
+  while q < n {
+    if sorted[q] * 10 > med * 13 { o13 += 1 }
+    if sorted[q] * 2 > med * 3 { o15 += 1 }
+    q += 1
+  }
+  # How much time the run spent being slower than itself: the sum of every frame's
+  # excess over 1.2x the median. One number that goes down when hitching goes down, and
+  # that a handful of unlucky frames cannot dominate the way a maximum can.
+  var excess: long = 0
+  q = 0
+  while q < n {
+    let lim = (med * 12) / 10
+    if sorted[q] > lim { excess = excess + (sorted[q] - lim) }
+    q += 1
+  }
+  print(`  fps at median {string(1000000 / med)}   frames over 1.3x median: {string(o13)}, over 1.5x: {string(o15)}, over 2x: {string(over)} — of {string(n)}`)
+  print(`  stutter: {string(excess / 1000)} ms of frame time beyond 1.2x median over the run`)
+  print(`  streaming totals over the run: walk {string(stream_us_walk / 1000)} ms  (generate {string(stream_us_gen / 1000)} ms, gather {string(stream_us_gather / 1000)} ms), {string(stream_walks)} stream-walks`)
+}
+
+# The slowest frames of the run, with the once-in-a-while CPU work that landed in them.
+# An average never shows a hitch; this is the list of the frames you actually felt.
+function prof_hitch_report() -> void {
+  if not prof_on or prof_dt == null or len(prof_dt) < 32 { return }
+  let n = len(prof_dt)
+  # median, for a sense of what "slow" means here
+  let sorted = new []long
+  var i = 8
+  while i < n { push(sorted, prof_dt[i]);  i += 1 }
+  var a = 1
+  while a < len(sorted) {
+    let v = sorted[a]
+    var b = a - 1
+    while b >= 0 and sorted[b] > v { sorted[b + 1] = sorted[b];  b -= 1 }
+    sorted[b + 1] = v
+    a += 1
+  }
+  let med = sorted[len(sorted) / 2]
+  print("")
+  print(`the 20 slowest frames (median {string(med / 1000)}.{string((med / 100) % 10)} ms), and what was in them:`)
+  print("   frame      dt      cpu   gpu-wait  cover-gen     game  uploaded   slowest CPU phase")
+  var shown = 0
+  var cut: long = sorted[len(sorted) - 1]
+  while shown < 20 and cut > med {
+    # the next slowest frame at or below `cut`
+    var best = -1
+    var bestv: long = -1
+    var k = 8
+    while k < n {
+      if prof_dt[k] <= cut and prof_dt[k] > bestv { bestv = prof_dt[k];  best = k }
+      k += 1
+    }
+    if best < 0 { return }
+    print(`  {Text.pad_left(string(best), 6)}  {Text.pad_left(string(prof_dt[best]), 6)}us {Text.pad_left(string(prof_cpu_us[best]), 7)}us {Text.pad_left(string(prof_dt[best] - prof_cpu_us[best]), 8)}us  {Text.pad_left(string(prof_gen_us[best]), 7)}us {Text.pad_left(string(prof_game_us[best]), 7)}us {Text.pad_left(string(prof_up[best] / 1024), 7)}KB   {Text.pad_right(prof_mark_who[best], 18)} {Text.pad_left(string(prof_mark_us[best]), 7)}us`)
+    cut = bestv - 1
+    shown += 1
+  }
+}
+
+function prof_gen_report() -> void {
+  if not prof_on { return }
+  if prof_gen == null or len(prof_gen) < 8 { return }
+  let sorted = new []int
+  var i = 8                       # skip the first frames: one-off initial fill
+  while i < len(prof_gen) { push(sorted, prof_gen[i]);  i += 1 }
+  var a = 1
+  while a < len(sorted) {
+    let v = sorted[a]
+    var b = a - 1
+    while b >= 0 and sorted[b] > v { sorted[b + 1] = sorted[b];  b -= 1 }
+    sorted[b + 1] = v
+    a += 1
+  }
+  let n = len(sorted)
+  var total = 0
+  var busy = 0
+  var j = 0
+  while j < n { total += sorted[j];  if sorted[j] > 0 { busy += 1 };  j += 1 }
+  print("")
+  print("ground cover generated per frame (the source of walking stutter):")
+  print(`  frames that generated anything: {string(busy)} of {string(n)}`)
+  print(`  median {string(sorted[n / 2])}   p95 {string(sorted[(n * 95) / 100])}   worst {string(sorted[n - 1])}   total {string(total)}`)
+}

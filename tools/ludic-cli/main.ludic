@@ -24,6 +24,7 @@ program Ludic {
   import "build.ludic"
   import "project.ludic"
   import "pkg.ludic"
+  import "assets.ludic"
 
   function usage() -> void {
     print("ludic — the toolchain for the Ludic language")
@@ -44,6 +45,7 @@ program Ludic {
     print("  update [module]               bump a dependency (or all) to its latest published version")
     print("  verify                        check every locked package against the store by content hash")
     print("  vendor                        copy the resolved packages into ./vendor for offline builds")
+    print("  assets [--force]              fetch the CC0 materials the renderer needs into assets/polyhaven/")
     print("  build-lib <module.ludic>      compile a package's module to a prebuilt dylib in lib/<target>/")
     print("  link-flags                    print the clang flags to link this project's prebuilt module dylibs")
     print("")
@@ -85,6 +87,7 @@ program Ludic {
     if (cmd == "update") { return cmd_pkg_update() }
     if (cmd == "verify") { return cmd_pkg_verify() }
     if (cmd == "vendor") { return cmd_pkg_vendor() }
+    if (cmd == "assets") { return cmd_fetch_assets() }
     if (cmd == "build-lib") { return cmd_pkg_build_lib() }
     if (cmd == "link-flags") { return cmd_pkg_link_flags() }
 

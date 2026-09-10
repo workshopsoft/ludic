@@ -1,0 +1,315 @@
+# ============================================================================
+# stream.ludic — ground cover that follows the camera anywhere on the map.
+#
+# The world is cut into square chunks. A chunk's instances are generated once
+# per distance band (a deterministic function of the chunk and the band, so the
+# same ground always grows the same grass) and cached; each frame the chunks
+# within reach are gathered into the layer's instance list. Bands thin the cover
+# with distance and grow the cards so the carpet stays continuous on screen;
+# beyond the last band nothing is placed (the terrain material carries it).
+#
+# The scene supplies the generator: stream_fill(chunk_x, chunk_z, band) calls
+# stream_emit(...) per instance. One Stream drives one Layer.
+# ============================================================================
+
+var STREAM_MAX_CHUNKS: int = 4096
+
+property Chunk {
+  key:   int = 0,          # packed (cx, cz, band)
+  used:  int = 0,          # the walk that last wanted it (for eviction)
+  data:  words,            # INST_FLOATS per instance
+  count: int = 0,
+  ymin:  int = 0,          # height range of its instances (float bits), for the frustum test
+  ymax:  int = 0
+}
+property Stream {
+  layer:   Layer,
+  size:    int = 0,        # chunk size (metres, float bits)
+  reach:   int = 0,        # radius (metres, float bits)
+  bands:   words,          # band outer radii (float bits), ascending; 4 of them
+  chunks:  []Chunk,
+  keys:    words,          # parallel to chunks for lookup
+  n:       int = 0,
+  last_cx: int = 999999,
+  last_cz: int = 999999,
+  pending: bool = false,   # chunks still to generate after the camera crossed a cell
+  cur:     Chunk,          # the chunk being filled
+  kind:    int = 0,        # the scene's generator selector for this stream
+  min_band: int = 0,       # bands below this belong to another (nearer) stream
+  view_gen: int = -1,      # sc_view_gen the layer was last gathered for (the view turned -> regather)
+  htab:    words           # open-addressed key -> chunk index + 1 (0 = empty)
+}
+
+var stream_all: []Stream = null
+var stream_cap_read: bool = false
+var stream_no_evict: bool = false   # R3D_NOEVICT: the old behaviour, for comparison
+var stream_walk_no: int = 0        # counts ring walks; a chunk's age is measured in these
+var stream_evictions: int = 0
+# microseconds spent per frame, split so the hitch can be attributed (R3D_PROF=1)
+var stream_us_gen: long = 0        # generating new chunks (stream_fill)
+var stream_us_gather: long = 0     # copying cached chunks into the layer buffer
+var stream_us_walk: long = 0       # the ring walk itself
+var stream_walks: int = 0          # streams that walked their whole ring this frame
+
+function stream_new(layer: Layer, size: int, reach: int, b0: int, b1: int, b2: int, b3: int) -> Stream {
+  if not stream_cap_read {
+    stream_cap_read = true
+    if Os.has_env("R3D_STREAM_CAP") { STREAM_MAX_CHUNKS = Text.to_int(Os.env("R3D_STREAM_CAP")) }
+    stream_no_evict = Os.has_env("R3D_NOEVICT")
+  }
+  let s = new Stream
+  s.layer = layer;  s.size = size;  s.reach = reach
+  layer.streamed = true
+  layer.grounded = true
+  s.bands = words(4)
+  s.bands[0] = b0;  s.bands[1] = b1;  s.bands[2] = b2;  s.bands[3] = b3
+  s.chunks = new []Chunk
+  s.keys = words(STREAM_MAX_CHUNKS)
+  s.htab = words(STREAM_HASH)
+  for i in 0 .. STREAM_HASH { s.htab[i] = 0 }
+  if stream_all == null { stream_all = new []Stream }
+  push(stream_all, s)
+  return s
+}
+
+function stream_key(cx: int, cz: int, band: int) -> int { return ((cx + 4096) * 8192 + (cz + 4096)) * 4 + band }
+
+# Chunk lookup is an open-addressed hash, not a scan. A cell crossing tests every cell
+# within reach — for the 800 m streams that is ~2000 cells each — and a scan over the
+# cached chunks made that O(cells x chunks), tens of millions of comparisons in the one
+# frame that crosses a 32 m boundary, growing as more ground is explored. That is the
+# stutter you feel when walking, and it never shows in a stationary profile because
+# stream_update returns immediately while the camera stays in its cell.
+const STREAM_HASH: int = 8192          # power of two, >= 2 * STREAM_MAX_CHUNKS
+
+function stream_slot(key: int) -> int {
+  var h = key * -1640531527            # Knuth's golden-ratio multiplier, as a signed i32
+  h = h ^ (h >> 15)
+  return h & (STREAM_HASH - 1)
+}
+
+function stream_find(s: Stream, key: int) -> Chunk {
+  var i = stream_slot(key)
+  while s.htab[i] != 0 {
+    let idx = s.htab[i] - 1
+    if s.keys[idx] == key { return s.chunks[idx] }
+    i = (i + 1) & (STREAM_HASH - 1)
+  }
+  return null
+}
+
+function stream_remember(s: Stream, key: int, idx: int) -> void {
+  var i = stream_slot(key)
+  while s.htab[i] != 0 { i = (i + 1) & (STREAM_HASH - 1) }
+  s.htab[i] = idx + 1
+}
+
+# the generator adds instances to the chunk being filled (into a shared scratch; the
+# chunk gets an exactly-sized copy when the fill ends)
+const STREAM_CHUNK_MAX: int = 262144
+var stream_debug_n: int = 0
+var stream_scratch: words = null
+function stream_emit(s: Stream, x: int, y: int, z: int, scale: int, yaw: int, seed: int, wind: int) -> void {
+  let c = s.cur
+  if c.count >= STREAM_CHUNK_MAX { return }
+  if stream_scratch == null { stream_scratch = words(STREAM_CHUNK_MAX * INST_FLOATS) }
+  if c.count == 0 { c.ymin = y;  c.ymax = y } else { c.ymin = f_min(c.ymin, y);  c.ymax = f_max(c.ymax, y) }
+  let o = c.count * INST_FLOATS
+  stream_scratch[o] = x;  stream_scratch[o + 1] = y;  stream_scratch[o + 2] = z;  stream_scratch[o + 3] = scale
+  stream_scratch[o + 4] = f_sin(yaw);  stream_scratch[o + 5] = f_cos(yaw);  stream_scratch[o + 6] = seed;  stream_scratch[o + 7] = wind
+  c.count += 1
+}
+
+function stream_band(s: Stream, d: int) -> int {
+  if f_ls(d, s.bands[0]) { return 0 }
+  if f_ls(d, s.bands[1]) { return 1 }
+  if f_ls(d, s.bands[2]) { return 2 }
+  if f_ls(d, s.bands[3]) { return 3 }
+  return 4
+}
+
+# gather the chunks around the camera into the layer, generating missing ones nearest
+# first within a per-frame budget so a cell crossing spreads over a few frames instead of
+# one hitch (the very first update, before anything is on screen, generates everything)
+# The budget is global, not per stream. It used to be 60000 per stream, and with the
+# thirteen streams a scene like the valley runs that let a single frame generate over
+# 700k instances — so crossing a 32 m cell put one frame's worth of cover generation
+# (height samples, ortho lookups, slope and path tests, per candidate) into one frame
+# while its neighbours did none. That one frame is the stutter you feel while walking;
+# spreading the same work over several frames costs nothing but a little pop-in at the
+# far edge of the reach, where new chunks appear.
+# A time budget, not an instance count. Instances are a poor proxy: a candidate that
+# is rejected costs nearly as much as one that is kept, and cost per instance varies
+# by band and kind. With a real microsecond clock the budget can just be the thing we
+# actually care about — how long this frame is allowed to spend growing ground cover.
+# Overshoot is bounded by one chunk, so keep chunks small on the dense near streams.
+const STREAM_BUDGET_US: int = 2500    # microseconds of generation per frame
+var stream_deadline: long = 0
+const STREAM_BUDGET: int = 8000       # kept for the work counter only
+# The worst frame is now bounded by one chunk, not by the budget: stream_fill emits a
+# whole chunk in one call, and the densest band-0 chunk is ~114k instances. Splitting a
+# chunk's generation across frames would need a resumable generator contract; that is
+# the next step if the residual hitch ever matters.
+var stream_budget_left: int = 0
+
+# Drop the half of the cache nobody has asked for in the longest time, and rebuild the
+# index over what is left.
+#
+# Before this, a full cache simply stopped remembering: the chunk was generated, used for
+# that frame and thrown away, so every walk regenerated it. That is not a slow degradation
+# — it is a cliff. Past it every frame pays the whole generation budget and the ground
+# visibly re-grows as you turn, and it arrives after enough of the map has been walked,
+# which is exactly when a player is least likely to connect it to anything.
+function stream_evict(s: Stream) -> void {
+  # the age threshold that keeps about half, found by bisection on the count (no sort)
+  var lo = 0
+  var hi = stream_walk_no
+  var keep = s.n / 2
+  var t = 0
+  var it = 0
+  while it < 24 and lo < hi {
+    t = (lo + hi + 1) / 2
+    var c = 0
+    var i = 0
+    while i < s.n { if s.chunks[i].used >= t { c += 1 };  i += 1 }
+    if c >= keep { lo = t } else { hi = t - 1 }
+    it += 1
+  }
+  t = lo
+  # everything wanted by the walk in progress stays whatever the threshold says
+  let kept = new []Chunk
+  var i = 0
+  while i < s.n {
+    let c = s.chunks[i]
+    if c.used >= t or c.used == stream_walk_no { push(kept, c) }
+    else { if c.data != null { free(c.data) } }
+    i += 1
+  }
+  s.chunks = kept
+  s.n = len(kept)
+  for h in 0 .. STREAM_HASH { s.htab[h] = 0 }
+  i = 0
+  while i < s.n { s.keys[i] = s.chunks[i].key;  stream_remember(s, s.chunks[i].key, i);  i += 1 }
+  stream_evictions += 1
+}
+
+function stream_update(s: Stream, cam_x: int, cam_z: int) -> void {
+  let ccx = f_to_int(f_floor(f_div(cam_x, s.size)))
+  let ccz = f_to_int(f_floor(f_div(cam_z, s.size)))
+  if ccx == s.last_cx and ccz == s.last_cz and not s.pending and s.view_gen == sc_view_gen { return }
+  let first = s.last_cx == 999999
+  s.view_gen = sc_view_gen
+  s.last_cx = ccx;  s.last_cz = ccz
+  let l = s.layer
+  l.count = 0
+  var missing = false
+  stream_walks += 1
+  stream_walk_no += 1
+  let tw = gl_now_us()
+  let r = f_to_int(f_div(s.reach, s.size)) + 1
+  # rings outward from the camera's cell: the nearest chunks are generated first
+  var ring = 0
+  while ring <= r {
+    var cz = ccz - ring
+    while cz <= ccz + ring {
+      var cx = ccx - ring
+      while cx <= ccx + ring {
+        let edge = (cz == ccz - ring) or (cz == ccz + ring) or (cx == ccx - ring) or (cx == ccx + ring)
+        if edge {
+          let wx = f_mul(f_add(fi(cx), F_HALF), s.size)
+          let wz = f_mul(f_add(fi(cz), F_HALF), s.size)
+          let dx = f_sub(wx, cam_x);  let dz = f_sub(wz, cam_z)
+          let d = f_sqrt(f_add(f_mul(dx, dx), f_mul(dz, dz)))
+          let band = stream_band(s, d)
+          if band < 4 and band >= s.min_band and f_ls(d, f_add(s.reach, s.size)) {
+            let key = stream_key(cx, cz, band)
+            var c = stream_find(s, key)
+            if c != null { c.used = stream_walk_no }
+            # The cell underfoot and its neighbours are never deferred: they are what you
+            # are looking at, and a hole there is the grass vanishing as you walk into it.
+            let urgent = band == 0 and ring <= 1
+            if c == null and (first or urgent or gl_now_us() < stream_deadline) {
+              c = new Chunk
+              c.key = key
+              s.cur = c
+              let t0 = gl_now_us()
+              stream_fill(s, cx, cz, band)
+              let dt = gl_now_us() - t0
+              stream_us_gen = stream_us_gen + dt
+              prof_chunk(s.kind, band, c.count, dt)
+              if r3d_debug and band == 0 and stream_debug_n < 40 { stream_debug_n += 1;  print(`stream kind {s.kind} band {band} chunk {cx},{cz}: {c.count} instances`) }
+              if c.count > 0 { c.data = words(c.count * INST_FLOATS);  mem_copy(c.data, stream_scratch, c.count * INST_FLOATS * 4) }
+              if s.n >= STREAM_MAX_CHUNKS and not stream_no_evict { stream_evict(s) }
+              # If the walk in progress wants more chunks than the cache can hold, there
+              # is nothing to evict and this one is used and dropped, as every chunk used
+              # to be. The cap has to exceed one walk's ring for the cache to work at all.
+              if s.n < STREAM_MAX_CHUNKS {
+                push(s.chunks, c);  s.keys[s.n] = key;  stream_remember(s, key, s.n);  s.n += 1
+                c.used = stream_walk_no
+              }
+
+              prof_gen_add(c.count + 512)
+            }
+            if c == null {
+              missing = true
+              # Until the finer band is generated, show the coarser one this ground had
+              # a moment ago (same cell, next band out): approaching grass thins for a
+              # few frames instead of disappearing.
+              var b2 = band + 1
+              while c == null and b2 < 4 { c = stream_find(s, stream_key(cx, cz, b2));  b2 += 1 }
+              if c != null { c.used = stream_walk_no }
+            }
+            if c != null and c.count > 0 and l.count + c.count <= l.cap and stream_chunk_visible(s, cx, cz, c) {
+              let tg = gl_now_us()
+              mem_copy(mem_off(l.inst, l.count * INST_FLOATS * 4), c.data, c.count * INST_FLOATS * 4)
+              l.count += c.count
+              stream_us_gather = stream_us_gather + (gl_now_us() - tg)
+            }
+          }
+        }
+        cx += 1
+      }
+      cz += 1
+    }
+    ring += 1
+  }
+  s.pending = missing
+  stream_us_walk = stream_us_walk + (gl_now_us() - tw)
+  # force the layer to re-partition its (new) instances
+  l.view_gen = -1
+}
+
+# Only chunks that can be seen are gathered: a sphere around the chunk's footprint and
+# height range, padded for the tallest cover and for casters just outside the frame
+# whose short shadows still fall inside it.
+function stream_chunk_visible(s: Stream, cx: int, cz: int, c: Chunk) -> bool {
+  let half = f_mul(s.size, F_HALF)
+  let wx = f_add(f_mul(fi(cx), s.size), half)
+  let wz = f_add(f_mul(fi(cz), s.size), half)
+  let hy = f_mul(f_sub(c.ymax, c.ymin), F_HALF)
+  let cy = f_add(c.ymin, hy)
+  let r = f_add(f_sqrt(f_add(f_mul(f_mul(half, half), F_TWO), f_mul(hy, hy))), fi(8))
+  return cam_sphere_visible(wx, cy, wz, r)
+}
+
+# what the caches hold, and whether they are being churned (R3D_PROF)
+function stream_census() -> void {
+  if stream_all == null { return }
+  print("")
+  print(`ground-cover chunk caches (cap {string(STREAM_MAX_CHUNKS)} each, {string(stream_evictions)} evictions over the run):`)
+  var inst = 0
+  for i in 0 .. len(stream_all) {
+    let s = stream_all[i]
+    var n = 0
+    for k in 0 .. s.n { n += s.chunks[k].count }
+    inst += n
+    print(`  stream kind {string(s.kind)}: {string(s.n)} chunks, {string(n)} instances`)
+  }
+  print(`  {string(inst)} instances held, {string(inst * INST_FLOATS * 4 / 1024)} KB`)
+}
+
+function stream_update_all() -> void {
+  if stream_all == null { return }
+  stream_deadline = gl_now_us() + STREAM_BUDGET_US
+  for i in 0 .. len(stream_all) { stream_update(stream_all[i], cam_pos[0], cam_pos[2]) }
+}

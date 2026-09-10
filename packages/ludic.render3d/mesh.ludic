@@ -1,0 +1,150 @@
+# ============================================================================
+# mesh.ludic — vertex data on the GPU: a Mesh record (VAO + buffers + a draw
+# call), and the procedural meshes the renderer needs (a grid for the terrain,
+# a full-screen triangle, a unit quad for instanced cards).
+# ============================================================================
+
+property Mesh {
+  vao:   int = 0,
+  vbo:   int = 0,
+  ebo:   int = 0,
+  count: int = 0,            # indices (ebo != 0) or vertices
+  mode:  int = 4,            # GL_TRIANGLES
+  itype: int = 0x1405        # GL_UNSIGNED_INT
+}
+
+function mesh_draw(m: Mesh) -> void {
+  gl_bind_vertex_array(m.vao)
+  if m.ebo != 0 { gl_draw_elements(m.mode, m.count, m.itype, null) }
+  else { gl_draw_arrays(m.mode, 0, m.count) }
+}
+function mesh_draw_instanced(m: Mesh, n: int) -> void {
+  gl_bind_vertex_array(m.vao)
+  if m.ebo != 0 { gl_draw_elements_instanced(m.mode, m.count, m.itype, null, n) }
+  else { gl_draw_arrays_instanced(m.mode, 0, m.count, n) }
+}
+
+# A flat n x n vertex grid over [-half, half]^2 in x/z, y = 0. Attribute 0 = (x, z).
+# The terrain vertex shader lifts it with the height map.
+function mesh_grid(n: int, half: int) -> Mesh {
+  let m = new Mesh
+  m.vao = gl_vao()
+  let nv = n * n
+  let v = gl_floats(nv * 2)
+  var k = 0
+  for j in 0 .. n {
+    for i in 0 .. n {
+      let x = f_sub(f_mul(f_mul(fr(i, n - 1), F_TWO), half), half)
+      let z = f_sub(f_mul(f_mul(fr(j, n - 1), F_TWO), half), half)
+      gl_put_bits(v, k, x);  gl_put_bits(v, k + 1, z)
+      k += 2
+    }
+  }
+  m.vbo = gl_buffer()
+  gl_bind_buffer(GL_ARRAY_BUFFER, m.vbo)
+  gl_buffer_data(GL_ARRAY_BUFFER, gl_bytes_of(nv * 2), v, GL_STATIC_DRAW)
+  gl_enable_vertex_attrib_array(0)
+  gl_vertex_attrib_pointer(0, 2, GL_FLOAT, 0, 8, null)
+  free(v)
+  let ni = (n - 1) * (n - 1) * 6
+  let idx = words(ni)
+  k = 0
+  for j in 0 .. n - 1 {
+    for i in 0 .. n - 1 {
+      let a = j * n + i
+      idx[k] = a;  idx[k + 1] = a + n;  idx[k + 2] = a + 1
+      idx[k + 3] = a + 1;  idx[k + 4] = a + n;  idx[k + 5] = a + n + 1
+      k += 6
+    }
+  }
+  m.ebo = gl_buffer()
+  gl_bind_buffer(GL_ELEMENT_ARRAY_BUFFER, m.ebo)
+  gl_buffer_data(GL_ELEMENT_ARRAY_BUFFER, ni * 4, idx, GL_STATIC_DRAW)
+  free(idx)
+  m.count = ni
+  gl_bind_vertex_array(0)
+  return m
+}
+
+# The grid as patches (4 control points per cell) for tessellation shaders.
+function mesh_grid_patches(n: int, half: int) -> Mesh {
+  let m = mesh_grid(n, half)
+  # rebuild the index buffer as quads
+  let nq = (n - 1) * (n - 1) * 4
+  let idx = words(nq)
+  var k = 0
+  for j in 0 .. n - 1 {
+    for i in 0 .. n - 1 {
+      let a = j * n + i
+      idx[k] = a;  idx[k + 1] = a + 1;  idx[k + 2] = a + n + 1;  idx[k + 3] = a + n
+      k += 4
+    }
+  }
+  gl_bind_vertex_array(m.vao)
+  gl_bind_buffer(GL_ELEMENT_ARRAY_BUFFER, m.ebo)
+  gl_buffer_data(GL_ELEMENT_ARRAY_BUFFER, nq * 4, idx, GL_STATIC_DRAW)
+  gl_bind_vertex_array(0)
+  free(idx)
+  m.count = nq
+  m.mode = GL_PATCHES
+  return m
+}
+
+# A full-screen triangle with no attributes (the vertex shader uses gl_VertexID).
+function mesh_fullscreen() -> Mesh {
+  let m = new Mesh
+  m.vao = gl_vao()
+  gl_bind_vertex_array(0)
+  m.count = 3
+  return m
+}
+
+# A unit quad in x/y ([-0.5, 0.5] x [0, 1]) with uv, attribute 0 = xy, 1 = uv.
+function mesh_card() -> Mesh {
+  let m = new Mesh
+  m.vao = gl_vao()
+  let v = gl_floats(16)
+  gl_put(v, 0, -0.5);  gl_put(v, 1, 0.0);  gl_put(v, 2, 0.0);  gl_put(v, 3, 0.0)
+  gl_put(v, 4, 0.5);   gl_put(v, 5, 0.0);  gl_put(v, 6, 1.0);  gl_put(v, 7, 0.0)
+  gl_put(v, 8, 0.5);   gl_put(v, 9, 1.0);  gl_put(v, 10, 1.0); gl_put(v, 11, 1.0)
+  gl_put(v, 12, -0.5); gl_put(v, 13, 1.0); gl_put(v, 14, 0.0); gl_put(v, 15, 1.0)
+  m.vbo = gl_buffer()
+  gl_bind_buffer(GL_ARRAY_BUFFER, m.vbo)
+  gl_buffer_data(GL_ARRAY_BUFFER, 64, v, GL_STATIC_DRAW)
+  gl_enable_vertex_attrib_array(0)
+  gl_vertex_attrib_pointer(0, 2, GL_FLOAT, 0, 16, null)
+  gl_enable_vertex_attrib_array(1)
+  gl_vertex_attrib_pointer(1, 2, GL_FLOAT, 0, 16, gl_ptr(null, 8))
+  free(v)
+  let idx = words(6)
+  idx[0] = 0;  idx[1] = 1;  idx[2] = 2;  idx[3] = 0;  idx[4] = 2;  idx[5] = 3
+  m.ebo = gl_buffer()
+  gl_bind_buffer(GL_ELEMENT_ARRAY_BUFFER, m.ebo)
+  gl_buffer_data(GL_ELEMENT_ARRAY_BUFFER, 24, idx, GL_STATIC_DRAW)
+  free(idx)
+  m.count = 6
+  gl_bind_vertex_array(0)
+  return m
+}
+
+# Attach a per-instance float buffer (n floats per instance, split into vec4
+# attributes from `first_attr`) to a mesh's VAO. Returns the buffer id.
+function mesh_instance_buffer(m: Mesh, first_attr: int, floats_per: int, data: pointer, count: int) -> int {
+  gl_bind_vertex_array(m.vao)
+  let b = gl_buffer()
+  gl_bind_buffer(GL_ARRAY_BUFFER, b)
+  gl_buffer_data(GL_ARRAY_BUFFER, gl_bytes_of(floats_per * count), data, GL_STATIC_DRAW)
+  var a = 0
+  var off = 0
+  while off < floats_per {
+    var sz = floats_per - off
+    if sz > 4 { sz = 4 }
+    gl_enable_vertex_attrib_array(first_attr + a)
+    gl_vertex_attrib_pointer(first_attr + a, sz, GL_FLOAT, 0, floats_per * 4, gl_ptr(null, off * 4))
+    gl_vertex_attrib_divisor(first_attr + a, 1)
+    a += 1
+    off += 4
+  }
+  gl_bind_vertex_array(0)
+  return b
+}

@@ -1,0 +1,335 @@
+# ============================================================================
+# overlay.ludic — 2D drawing over the finished frame, in screen pixels with the
+# origin top-left (the same space Input.mouse_x/y report): filled rectangles,
+# textured quads and text from a baked font atlas (tools/blender/font_build.py).
+# Quads are batched into one buffer for the whole frame and uploaded ONCE at ov_end;
+# a texture change only closes a draw range. (On Apple's GL every glBufferSubData
+# flushes the context and waits for the GPU; uploading per texture change made a HUD
+# with dozens of changes wait dozens of times a frame: 26 ms -> 40 ms, sampled.)
+# ============================================================================
+
+const OV_MAX_QUADS: int = 6000
+const OV_FLOATS: int = 8              # x, y, u, v, r, g, b, a
+
+var ov_prog: int = 0
+var ov_vao: int = 0
+var ov_vbo: int = 0
+var ov_buf: pointer = null
+var ov_n: int = 0
+var ov_tex: int = 0
+var ov_white: int = 0
+var ov_font: int = 0
+var ov_font_adv: words = null         # 95 float bits, em units
+var ov_font_cols: int = 16
+var ov_font_rows: int = 6
+var ov_font_cell: int = 128           # px per cell in the atlas
+var ov_font_em: int = 100             # px per em in the atlas
+var ov_pad_x: int = 0                 # float bits, em
+var ov_base_y: int = 0
+var ov_ready: bool = false
+var ov_open: bool = false
+var ov_dbg: bool = false
+const OV_MAX_RANGES: int = 512
+const OV_RANGE_W: int = 7             # texture, first quad, quad count, clip x, y, w, h (w = 0: none)
+var ov_ranges: words = null
+var ov_nr: int = 0
+var ov_range_start: int = 0
+var ov_clip_x: int = 0                # the current clip rectangle in screen pixels (top-left origin)
+var ov_clip_y: int = 0
+var ov_clip_w: int = 0
+var ov_clip_h: int = 0
+
+function overlay_init(font_dir: string) -> bool {
+  ov_prog = gl_program("#version 410 core\n" + r3d_shader_file("overlay.vert"), "#version 410 core\n" + r3d_shader_file("overlay.frag"))
+  if ov_prog == 0 { print("overlay: program failed");  return false }
+  ov_vao = gl_vao()
+  gl_bind_vertex_array(ov_vao)
+  ov_vbo = gl_buffer()
+  gl_bind_buffer(GL_ARRAY_BUFFER, ov_vbo)
+  gl_buffer_data(GL_ARRAY_BUFFER, gl_bytes_of(OV_MAX_QUADS * 6 * OV_FLOATS), null, GL_DYNAMIC_DRAW)
+  gl_enable_vertex_attrib_array(0);  gl_vertex_attrib_pointer(0, 2, GL_FLOAT, 0, OV_FLOATS * 4, null)
+  gl_enable_vertex_attrib_array(1);  gl_vertex_attrib_pointer(1, 2, GL_FLOAT, 0, OV_FLOATS * 4, gl_ptr(null, 8))
+  gl_enable_vertex_attrib_array(2);  gl_vertex_attrib_pointer(2, 4, GL_FLOAT, 0, OV_FLOATS * 4, gl_ptr(null, 16))
+  gl_bind_vertex_array(0)
+  ov_buf = gl_floats(OV_MAX_QUADS * 6 * OV_FLOATS)
+  ov_ranges = words(OV_MAX_RANGES * OV_RANGE_W)
+  ov_white = tex_solid(255, 255, 255, 255)
+  # the font
+  ov_font_adv = words(95)
+  for i in 0 .. 95 { ov_font_adv[i] = fl(0.6) }
+  ov_pad_x = fl(0.14);  ov_base_y = fl(0.30)
+  let meta = Fs.read_text(font_dir + "/font.json")
+  if meta != null {
+    let j = Json.parse(meta)
+    ov_font_cols = jint(j, "cols", 16);  ov_font_rows = jint(j, "rows", 6)
+    ov_font_cell = f_to_int(jnum(value_get(j, "cell")));  ov_font_em = f_to_int(jnum(value_get(j, "em")))
+    ov_pad_x = jnum(value_get(j, "pad_x"));  ov_base_y = jnum(value_get(j, "base_y"))
+    let adv = value_get(j, "adv")
+    for i in 0 .. 95 { if i < value_count(adv) { ov_font_adv[i] = jnum(value_at(adv, i)) } }
+    ov_font = tex_load_ex(font_dir + "/font.png", false, 0)
+  }
+  if ov_font == 0 { print("overlay: no font atlas, text disabled") }
+  ov_dbg = Os.has_env("R3D_FONTDBG")
+  ov_ready = true
+  return true
+}
+
+# start drawing onto the screen: blending on, depth off
+function ov_begin() -> void {
+  if not ov_ready { return }
+  gl_bind_framebuffer(GL_FRAMEBUFFER, gl_screen_fbo())
+  gl_viewport(0, 0, gl_w, gl_h)
+  gl_disable(GL_DEPTH_TEST)
+  gl_disable(GL_CULL_FACE)
+  gl_enable(GL_BLEND)
+  gl_blend_func(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+  gl_use_program(ov_prog)
+  u_f2(gl_uniform(ov_prog, "u_screen"), fi(gl_w), fi(gl_h))
+  ov_n = 0;  ov_nr = 0;  ov_range_start = 0
+  ov_tex = ov_white
+  ov_clip_w = 0
+  ov_open = true
+}
+# everything drawn until ov_unclip stays inside this rectangle (a scrolling list)
+function ov_clip(x: int, y: int, w: int, h: int) -> void {
+  ov_close_range()
+  ov_clip_x = x;  ov_clip_y = y;  ov_clip_w = w;  ov_clip_h = h
+}
+function ov_unclip() -> void { ov_close_range();  ov_clip_w = 0 }
+# close the current draw range (quads since its start, with the current texture)
+function ov_close_range() -> void {
+  let n = ov_n - ov_range_start
+  if n <= 0 { return }
+  if ov_nr >= OV_MAX_RANGES { ov_flush();  return }
+  let o = ov_nr * OV_RANGE_W
+  ov_ranges[o] = ov_tex;  ov_ranges[o + 1] = ov_range_start;  ov_ranges[o + 2] = n
+  ov_ranges[o + 3] = ov_clip_x;  ov_ranges[o + 4] = ov_clip_y;  ov_ranges[o + 5] = ov_clip_w;  ov_ranges[o + 6] = ov_clip_h
+  ov_nr += 1
+  ov_range_start = ov_n
+}
+# one upload of everything batched so far, then a draw per range
+function ov_flush() -> void {
+  ov_close_range()
+  if ov_n == 0 { ov_nr = 0;  ov_range_start = 0;  return }
+  gl_use_program(ov_prog)
+  gl_bind_vertex_array(ov_vao)
+  gl_bind_buffer(GL_ARRAY_BUFFER, ov_vbo)
+  gl_buffer_data(GL_ARRAY_BUFFER, gl_bytes_of(ov_n * 6 * OV_FLOATS), ov_buf, GL_STREAM_DRAW)
+  var last = -1
+  var clipped = false
+  for i in 0 .. ov_nr {
+    let o = i * OV_RANGE_W
+    let t = ov_ranges[o]
+    if t != last {
+      r3d_bind_2d(ov_prog, "u_tex", 0, t)
+      var is_font = F_ZERO
+      if t == ov_font { is_font = F_ONE }
+      u_f(gl_uniform(ov_prog, "u_is_font"), is_font)
+      last = t
+    }
+    if ov_ranges[o + 5] > 0 {
+      if not clipped { gl_enable(GL_SCISSOR_TEST);  clipped = true }
+      gl_scissor(ov_ranges[o + 3], gl_h - ov_ranges[o + 4] - ov_ranges[o + 6], ov_ranges[o + 5], ov_ranges[o + 6])
+    } else if clipped { gl_disable(GL_SCISSOR_TEST);  clipped = false }
+    gl_draw_arrays(GL_TRIANGLES, ov_ranges[o + 1] * 6, ov_ranges[o + 2] * 6)
+  }
+  if clipped { gl_disable(GL_SCISSOR_TEST) }
+  gl_bind_vertex_array(0)
+  ov_n = 0;  ov_nr = 0;  ov_range_start = 0
+}
+function ov_end() -> void {
+  if not ov_open { return }
+  ov_flush()
+  gl_disable(GL_BLEND)
+  gl_enable(GL_DEPTH_TEST)
+  ov_open = false
+}
+function ov_use_tex(t: int) -> void {
+  if t != ov_tex { ov_close_range();  ov_tex = t }
+}
+
+# one vertex into the batch
+function ov_vert(k: int, x: int, y: int, u: int, v: int, r: int, g: int, b: int, a: int) -> void {
+  let o = k * OV_FLOATS
+  gl_put_bits(ov_buf, o, x);  gl_put_bits(ov_buf, o + 1, y)
+  gl_put_bits(ov_buf, o + 2, u);  gl_put_bits(ov_buf, o + 3, v)
+  gl_put_bits(ov_buf, o + 4, r);  gl_put_bits(ov_buf, o + 5, g);  gl_put_bits(ov_buf, o + 6, b);  gl_put_bits(ov_buf, o + 7, a)
+}
+# a textured quad, float-bit pixel corners and uvs
+function ov_quad(x0: int, y0: int, x1: int, y1: int, u0: int, v0: int, u1: int, v1: int, r: int, g: int, b: int, a: int) -> void {
+  if ov_n >= OV_MAX_QUADS { ov_flush() }
+  let k = ov_n * 6
+  ov_vert(k, x0, y0, u0, v0, r, g, b, a)
+  ov_vert(k + 1, x1, y0, u1, v0, r, g, b, a)
+  ov_vert(k + 2, x1, y1, u1, v1, r, g, b, a)
+  ov_vert(k + 3, x0, y0, u0, v0, r, g, b, a)
+  ov_vert(k + 4, x1, y1, u1, v1, r, g, b, a)
+  ov_vert(k + 5, x0, y1, u0, v1, r, g, b, a)
+  ov_n += 1
+}
+
+# a filled rectangle at integer pixels; colour as float bits 0..1
+function ov_rect(x: int, y: int, w: int, h: int, r: int, g: int, b: int, a: int) -> void {
+  ov_use_tex(ov_white)
+  ov_quad(fi(x), fi(y), fi(x + w), fi(y + h), F_ZERO, F_ZERO, F_ONE, F_ONE, r, g, b, a)
+}
+function ov_frame(x: int, y: int, w: int, h: int, t: int, r: int, g: int, b: int, a: int) -> void {
+  ov_rect(x, y, w, t, r, g, b, a)
+  ov_rect(x, y + h - t, w, t, r, g, b, a)
+  ov_rect(x, y, t, h, r, g, b, a)
+  ov_rect(x + w - t, y, t, h, r, g, b, a)
+}
+# a whole texture at integer pixels
+function ov_image(tex: int, x: int, y: int, w: int, h: int, a: int) -> void {
+  ov_use_tex(tex)
+  ov_quad(fi(x), fi(y), fi(x + w), fi(y + h), F_ZERO, F_ZERO, F_ONE, F_ONE, F_ONE, F_ONE, F_ONE, a)
+}
+
+# the width in pixels of `s` at `size` pixels per em
+function ov_text_w(size: int, s: string) -> int {
+  var w = F_ZERO
+  let sp: pointer = s                      # bytes, not one-character strings
+  let n = len(sp)
+  for i in 0 .. n {
+    var c = sp[i] - 32
+    if c < 0 or c > 94 { c = 0 }
+    w = f_add(w, f_mul(ov_font_adv[c], fi(size)))
+  }
+  return f_to_int(w)
+}
+# text with its top-left at (x, y); returns the pen x after it
+function ov_text(x: int, y: int, size: int, s: string, r: int, g: int, b: int, a: int) -> int {
+  if ov_font == 0 { return x }
+  ov_use_tex(ov_font)
+  let k = fr(size, ov_font_em)                 # atlas px -> screen px
+  let cell = f_mul(fi(ov_font_cell), k)
+  var pen = fi(x)
+  let base = f_add(fi(y), f_mul(fi(size), fl(0.80)))
+  let px = f_mul(f_mul(ov_pad_x, fi(ov_font_em)), k)
+  let py = f_mul(f_mul(ov_base_y, fi(ov_font_em)), k)
+  let sp: pointer = s
+  let n = len(sp)
+  for i in 0 .. n {
+    var c = sp[i] - 32
+    if c < 0 or c > 94 { c = 0 }
+    if c != 0 {
+      let cx = c - (c / ov_font_cols) * ov_font_cols
+      let cy = c / ov_font_cols
+      let u0 = fr(cx, ov_font_cols);  let u1 = fr(cx + 1, ov_font_cols)
+      let v0 = fr(cy, ov_font_rows);  let v1 = fr(cy + 1, ov_font_rows)
+      let x0 = f_sub(pen, px);  let y1 = f_add(base, py)
+      ov_quad(x0, f_sub(y1, cell), f_add(x0, cell), y1, u0, v0, u1, v1, r, g, b, a)
+    }
+    pen = f_add(pen, f_mul(ov_font_adv[c], fi(size)))
+  }
+  return f_to_int(pen)
+}
+# text with a soft dark shadow under it (HUD over a bright meadow)
+function ov_text_sh(x: int, y: int, size: int, s: string, r: int, g: int, b: int, a: int) -> int {
+  let d = size / 18 + 1
+  ov_text(x + d, y + d, size, s, F_ZERO, F_ZERO, F_ZERO, f_mul(a, fl(0.7)))
+  return ov_text(x, y, size, s, r, g, b, a)
+}
+function ov_text_center(cx: int, y: int, size: int, s: string, r: int, g: int, b: int, a: int) -> void {
+  ov_text(cx - ov_text_w(size, s) / 2, y, size, s, r, g, b, a)
+}
+
+# text wrapped at `maxw` pixels on spaces; returns the y after the last line
+function ov_text_wrap(x: int, y: int, size: int, maxw: int, s: string, r: int, g: int, b: int, a: int) -> int {
+  let sp: pointer = s
+  let n = len(sp)
+  var first = 0
+  var ly = y
+  while first < n {
+    var last_space = -1
+    var i = first
+    var stop = n
+    while i < n {
+      if sp[i] == 10 { stop = i;  break }
+      if sp[i] == 32 { last_space = i }
+      let piece: string = s[first .. i + 1]
+      if ov_text_w(size, piece) > maxw and last_space > first { stop = last_space;  break }
+      i += 1
+    }
+    let line: string = s[first .. stop]
+    ov_text(x, ly, size, line, r, g, b, a)
+    ly += size * 13 / 10
+    first = stop
+    while first < n and (sp[first] == 32 or sp[first] == 10) { first += 1 }
+  }
+  return ly
+}
+
+# ---- more shapes for a game's interface -------------------------------------------------
+# a sub-rectangle of a texture (uv corners as float bits) tinted, at integer pixels
+function ov_sub(tex: int, x: int, y: int, w: int, h: int, u0: int, v0: int, u1: int, v1: int, r: int, g: int, b: int, a: int) -> void {
+  ov_use_tex(tex)
+  ov_quad(fi(x), fi(y), fi(x + w), fi(y + h), u0, v0, u1, v1, r, g, b, a)
+}
+# a whole texture stretched by nine slices: corners `src` texels wide in a `tw` px square
+# texture, drawn `dst` pixels wide, so rounded corners keep their shape at any size
+function ov_nine(tex: int, tw: int, src: int, x: int, y: int, w: int, h: int, dst: int, r: int, g: int, b: int, a: int) -> void {
+  ov_use_tex(tex)
+  let s = fr(src, tw)
+  let xs = words(4);  let ys = words(4);  let us = words(4);  let vs = words(4)
+  xs[0] = fi(x);  xs[1] = fi(x + dst);  xs[2] = fi(x + w - dst);  xs[3] = fi(x + w)
+  ys[0] = fi(y);  ys[1] = fi(y + dst);  ys[2] = fi(y + h - dst);  ys[3] = fi(y + h)
+  us[0] = F_ZERO;  us[1] = s;  us[2] = f_sub(F_ONE, s);  us[3] = F_ONE
+  vs[0] = F_ZERO;  vs[1] = s;  vs[2] = f_sub(F_ONE, s);  vs[3] = F_ONE
+  for j in 0 .. 3 {
+    for i in 0 .. 3 { ov_quad(xs[i], ys[j], xs[i + 1], ys[j + 1], us[i], vs[j], us[i + 1], vs[j + 1], r, g, b, a) }
+  }
+  free(xs);  free(ys);  free(us);  free(vs)
+}
+# an arbitrary quad (float-bit pixel corners, clockwise from top-left) of a texture
+function ov_quad4(x0: int, y0: int, x1: int, y1: int, x2: int, y2: int, x3: int, y3: int, u0: int, v0: int, u1: int, v1: int, r: int, g: int, b: int, a: int) -> void {
+  if ov_n >= OV_MAX_QUADS { ov_flush() }
+  let k = ov_n * 6
+  ov_vert(k, x0, y0, u0, v0, r, g, b, a)
+  ov_vert(k + 1, x1, y1, u1, v0, r, g, b, a)
+  ov_vert(k + 2, x2, y2, u1, v1, r, g, b, a)
+  ov_vert(k + 3, x0, y0, u0, v0, r, g, b, a)
+  ov_vert(k + 4, x2, y2, u1, v1, r, g, b, a)
+  ov_vert(k + 5, x3, y3, u0, v1, r, g, b, a)
+  ov_n += 1
+}
+# a line of thickness `t` pixels between two points (float-bit pixels)
+function ov_line(x0: int, y0: int, x1: int, y1: int, t: int, r: int, g: int, b: int, a: int) -> void {
+  ov_use_tex(ov_white)
+  let dx = f_sub(x1, x0);  let dy = f_sub(y1, y0)
+  let l = f_max(f_sqrt(f_add(f_mul(dx, dx), f_mul(dy, dy))), fl(0.001))
+  let nx = f_mul(f_div(f_neg(dy), l), f_mul(t, F_HALF));  let ny = f_mul(f_div(dx, l), f_mul(t, F_HALF))
+  ov_quad4(f_add(x0, nx), f_add(y0, ny), f_add(x1, nx), f_add(y1, ny), f_sub(x1, nx), f_sub(y1, ny), f_sub(x0, nx), f_sub(y0, ny), F_ZERO, F_ZERO, F_ONE, F_ONE, r, g, b, a)
+}
+# a sub-rectangle of a texture rotated by `ang` radians about its centre (cx, cy), `w` x `h` pixels
+function ov_sub_rot(tex: int, cx: int, cy: int, w: int, h: int, ang: int, u0: int, v0: int, u1: int, v1: int, r: int, g: int, b: int, a: int) -> void {
+  ov_use_tex(tex)
+  let c = f_cos(ang);  let s = f_sin(ang)
+  let hw = f_mul(fi(w), F_HALF);  let hh = f_mul(fi(h), F_HALF)
+  let fx = fi(cx);  let fy = fi(cy)
+  # corners: (-hw,-hh) (hw,-hh) (hw,hh) (-hw,hh) rotated
+  let x0 = f_add(fx, f_sub(f_mul(f_neg(hw), c), f_mul(f_neg(hh), s)));  let y0 = f_add(fy, f_add(f_mul(f_neg(hw), s), f_mul(f_neg(hh), c)))
+  let x1 = f_add(fx, f_sub(f_mul(hw, c), f_mul(f_neg(hh), s)));  let y1 = f_add(fy, f_add(f_mul(hw, s), f_mul(f_neg(hh), c)))
+  let x2 = f_add(fx, f_sub(f_mul(hw, c), f_mul(hh, s)));  let y2 = f_add(fy, f_add(f_mul(hw, s), f_mul(hh, c)))
+  let x3 = f_add(fx, f_sub(f_mul(f_neg(hw), c), f_mul(hh, s)));  let y3 = f_add(fy, f_add(f_mul(f_neg(hw), s), f_mul(hh, c)))
+  ov_quad4(x0, y0, x1, y1, x2, y2, x3, y3, u0, v0, u1, v1, r, g, b, a)
+}
+# a filled circle approximated by `n` wedges (float-bit centre and radius)
+function ov_disc(cx: int, cy: int, rad: int, n: int, r: int, g: int, b: int, a: int) -> void {
+  ov_use_tex(ov_white)
+  let step = f_div(f_mul(F_TWO, F_PI), fi(n))
+  for i in 0 .. n {
+    let a0 = f_mul(fi(i), step);  let a1 = f_add(a0, step)
+    let ax = f_add(cx, f_mul(f_cos(a0), rad));  let ay = f_add(cy, f_mul(f_sin(a0), rad))
+    let bx = f_add(cx, f_mul(f_cos(a1), rad));  let by = f_add(cy, f_mul(f_sin(a1), rad))
+    ov_quad4(cx, cy, ax, ay, bx, by, cx, cy, F_ZERO, F_ZERO, F_ONE, F_ONE, r, g, b, a)
+  }
+}
+# a ring: `n` segments of thickness `t`, from angle a0 for `span` radians (float bits)
+function ov_arc(cx: int, cy: int, rad: int, t: int, a0: int, span: int, n: int, r: int, g: int, b: int, a: int) -> void {
+  let step = f_div(span, fi(n))
+  for i in 0 .. n {
+    let b0 = f_add(a0, f_mul(fi(i), step));  let b1 = f_add(b0, step)
+    ov_line(f_add(cx, f_mul(f_cos(b0), rad)), f_add(cy, f_mul(f_sin(b0), rad)), f_add(cx, f_mul(f_cos(b1), rad)), f_add(cy, f_mul(f_sin(b1), rad)), t, r, g, b, a)
+  }
+}

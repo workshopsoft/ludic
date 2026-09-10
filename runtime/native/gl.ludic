@@ -1,0 +1,282 @@
+# ============================================================================
+# gl.ludic — Gl.*: OpenGL for Ludic.
+#
+# The whole OpenGL 4.1 core API is available as Gl.<snake_name>(...) — every
+# entry point of the platform gl3.h is bound in gl_api.ludic (generated), with
+# every GL_* constant. float/double parameters take `fixed`; buffers are the raw
+# `bytes`/`words` pointers Ludic already has, and pixel/vertex data is uploaded
+# from them as-is. This file adds the small amount of glue the API needs to be
+# usable from a game: a context on the window (or an offscreen one headless),
+# the swap, a screenshot, shader/program helpers, and IEEE float helpers so a
+# program can fill a vertex buffer with real floats from its Q16.16 math.
+#
+# Windowed: the NSOpenGLContext is attached to the existing LudicView (cocoa.ll)
+# at the display's backing resolution. Headless: a CGL context with no drawable
+# (gl.ll) and a framebuffer object that stands in for the screen, so the same
+# program renders and screenshots byte-identically under the test harness.
+# ============================================================================
+
+import "gl_api.ludic"
+
+# ---- native glue (cocoa.ll / gl.ll) -------------------------------------------
+extern function win_gl_attach() -> int = "win_gl_attach"
+extern function win_gl_resize(w: int, h: int) = "win_gl_resize"
+extern function win_gl_swap() = "win_gl_swap"
+extern function win_gl_scale() -> int = "win_gl_scale"
+extern function win_gl_swap_interval(n: int) = "win_gl_swap_interval"
+extern function win_gl_drawable(out: pointer) = "win_gl_drawable"
+extern function win_gl_update() = "win_gl_update"
+extern function win_gl_retina(on: int) = "win_gl_retina"
+extern function win_toggle_fullscreen() = "win_toggle_fullscreen"
+extern function cgl_offscreen() -> int = "cgl_offscreen"
+# wall clock in microseconds — the only sub-second clock available to a Ludic program
+extern function gl_now_us() -> long = "gl_now_us"
+extern function fx_to_f32(fx: fixed) -> int = "fx_to_f32"
+extern function f32_to_fx(bits: int) -> fixed = "f32_to_fx"
+extern function mem_off(p: pointer, off: int) -> pointer = "mem_off"
+extern function mem_get_i32(p: pointer, off: int) -> int = "mem_get_i32"
+extern function mem_put_i32(p: pointer, off: int, v: int) = "mem_put_i32"
+extern function mem_get_u16(p: pointer, off: int) -> int = "mem_get_u16"
+extern function mem_put_u16(p: pointer, off: int, v: int) = "mem_put_u16"
+extern function mem_get_u8(p: pointer, off: int) -> int = "mem_get_u8"
+extern function mem_put_u8(p: pointer, off: int, v: int) = "mem_put_u8"
+extern function mem_get_f32(p: pointer, i: int) -> fixed = "mem_get_f32"
+extern function mem_put_f32(p: pointer, i: int, v: fixed) = "mem_put_f32"
+extern function mem_get_f32_bits(p: pointer, i: int) -> int = "mem_get_f32_bits"
+extern function mem_put_f32_bits(p: pointer, i: int, bits: int) = "mem_put_f32_bits"
+extern function mem_copy(dst: pointer, src: pointer, n: int) = "mem_copy"
+extern function mem_set(dst: pointer, v: int, n: int) = "mem_set"
+# IEEE-754 single precision, carried as its bit pattern in an int
+extern function f_add(a: int, b: int) -> int = "f_add"
+extern function f_sub(a: int, b: int) -> int = "f_sub"
+extern function f_mul(a: int, b: int) -> int = "f_mul"
+extern function f_div(a: int, b: int) -> int = "f_div"
+extern function f_neg(a: int) -> int = "f_neg"
+extern function f_sqrt(a: int) -> int = "f_sqrt"
+extern function f_abs(a: int) -> int = "f_abs"
+extern function f_sin(a: int) -> int = "f_sin"
+extern function f_cos(a: int) -> int = "f_cos"
+extern function f_tan(a: int) -> int = "f_tan"
+extern function f_atan2(a: int, b: int) -> int = "f_atan2"
+extern function f_pow(a: int, b: int) -> int = "f_pow"
+extern function f_exp(a: int) -> int = "f_exp"
+extern function f_log(a: int) -> int = "f_log"
+extern function f_floor(a: int) -> int = "f_floor"
+extern function f_mod(a: int, b: int) -> int = "f_mod"
+extern function f_ldexp(a: int, e: int) -> int = "f_ldexp"
+extern function f_min(a: int, b: int) -> int = "f_min"
+extern function f_max(a: int, b: int) -> int = "f_max"
+extern function f_lt(a: int, b: int) -> int = "f_lt"
+extern function f_from_int(a: int) -> int = "f_from_int"
+extern function f_to_int(a: int) -> int = "f_to_int"
+
+# ---- state --------------------------------------------------------------------
+var gl_is_open: bool = false
+var gl_w:       int  = 0          # drawable width, in pixels
+var gl_h:       int  = 0
+var gl_scale:   int  = 1          # backing pixels per window point
+var gl_screen:  int  = 0          # the framebuffer that is "the screen" (an FBO headless)
+var gl_ids:     words = null      # one-word scratch for glGen*/glGet*
+
+function gl_scratch() -> words {
+  if gl_ids == null { gl_ids = words(4) }
+  return gl_ids
+}
+
+# Open a GL 4.1 core context on a w x h (points) window titled `title`; headless,
+# an offscreen context with a w x h framebuffer standing in for the screen.
+function gl_open(width: int, height: int, title: pointer) -> bool {
+  if gl_is_open { return true }
+  if is_windowed() {
+    if win_gl_attach() == 0 {
+      win_open(width, height, 1, title)               # a plain program: no window yet
+      if win_gl_attach() == 0 { return false }
+    }
+    win_gl_resize(width, height)
+    gl_scale = win_gl_scale()
+    gl_w = width * gl_scale
+    gl_h = height * gl_scale
+    gl_screen = 0
+  } else {
+    if cgl_offscreen() == 0 { return false }
+    gl_scale = 1
+    gl_w = width
+    gl_h = height
+    gl_screen = gl_make_screen_fbo(width, height)
+  }
+  gl_bind_framebuffer(GL_FRAMEBUFFER, gl_screen)
+  gl_viewport(0, 0, gl_w, gl_h)
+  gl_is_open = true
+  return true
+}
+
+function gl_make_screen_fbo(w: int, h: int) -> int {
+  let ids = gl_scratch()
+  gl_gen_framebuffers(1, ids)
+  let fbo = ids[0]
+  gl_bind_framebuffer(GL_FRAMEBUFFER, fbo)
+  gl_gen_textures(1, ids)
+  let tex = ids[0]
+  gl_bind_texture(GL_TEXTURE_2D, tex)
+  gl_tex_image2d(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, null)
+  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+  gl_framebuffer_texture2d(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0)
+  gl_gen_renderbuffers(1, ids)
+  let rb = ids[0]
+  gl_bind_renderbuffer(GL_RENDERBUFFER, rb)
+  gl_renderbuffer_storage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, w, h)
+  gl_framebuffer_renderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rb)
+  return fbo
+}
+
+# Did the drawable change size (a window drag, full screen, a Retina switch)? Then
+# gl_w / gl_h follow it and the caller rebuilds its screen-sized targets.
+var gl_size_buf: words = null
+function gl_resize_check() -> bool {
+  if not is_windowed() or not gl_is_open { return false }
+  if gl_size_buf == null { gl_size_buf = words(4) }
+  win_gl_drawable(gl_size_buf)
+  let w = gl_size_buf[0];  let h = gl_size_buf[1]
+  if w <= 0 or h <= 0 { return false }
+  if w == gl_w and h == gl_h { return false }
+  win_gl_update()
+  gl_w = w;  gl_h = h
+  gl_scale = win_gl_scale()
+  gl_viewport(0, 0, gl_w, gl_h)
+  return true
+}
+function gl_set_window(w: int, h: int) -> void { if is_windowed() { win_gl_resize(w, h) } }
+function gl_toggle_fullscreen() -> void { if is_windowed() { win_toggle_fullscreen() } }
+function gl_set_retina(on: bool) -> void { if is_windowed() { var v = 0;  if on { v = 1 };  win_gl_retina(v) } }
+# vsync on (1, the default) or off (0); headless has nothing to sync to
+function gl_vsync(n: int) -> void { if is_windowed() { win_gl_swap_interval(n) } }
+function gl_width() -> int { return gl_w }
+function gl_height() -> int { return gl_h }
+function gl_screen_fbo() -> int { return gl_screen }
+function gl_pixel_scale() -> int { return gl_scale }
+
+# Present the frame (vsync'd flushBuffer); headless, just finish the GPU work.
+function gl_swap() -> void {
+  if is_windowed() { win_gl_swap() }
+  else { gl_finish() }
+}
+
+# Write what is on the screen framebuffer to a binary PPM (call before Gl.swap).
+function gl_screenshot(path: pointer) -> bool {
+  let w = gl_w
+  let h = gl_h
+  let f = file_open(path, "wb")
+  if f == null { return false }
+  let buf = bytes(w * h * 3)
+  gl_bind_framebuffer(GL_READ_FRAMEBUFFER, gl_screen)
+  gl_pixel_storei(GL_PACK_ALIGNMENT, 1)
+  gl_read_pixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, buf)
+  let hdr = `P6\n{w} {h}\n255\n`
+  file_write(f, hdr, len(hdr))
+  var y = h - 1
+  while y >= 0 {
+    file_write(f, mem_off(buf, y * w * 3), w * 3)
+    y -= 1
+  }
+  file_close(f)
+  free(buf)
+  return true
+}
+
+# Print any pending GL error under a tag; returns the error code (0 = none).
+function gl_check(tag: pointer) -> int {
+  let e = gl_get_error()
+  if e != 0 { print(`gl error {e} at {tag}`) }
+  return e
+}
+
+# ---- shaders --------------------------------------------------------------------
+var gl_log_buf: string = null
+
+# Compile one shader stage from source; 0 (and the info log on stdout) on failure.
+function gl_shader(kind: int, src: pointer) -> int {
+  let id = gl_create_shader(kind)
+  var srcs: pointers = bytes(8)
+  srcs[0] = src
+  gl_shader_source(id, 1, srcs, null)
+  gl_compile_shader(id)
+  let ids = gl_scratch()
+  gl_get_shaderiv(id, GL_COMPILE_STATUS, ids)
+  if ids[0] == 0 {
+    if gl_log_buf == null { gl_log_buf = bytes(8192) }
+    gl_get_shader_info_log(id, 8191, null, gl_log_buf)
+    print("shader compile failed:")
+    print(gl_log_buf)
+    gl_delete_shader(id)
+    return 0
+  }
+  return id
+}
+
+# Link a program from a vertex + fragment source pair; 0 on failure.
+function gl_program(vs: pointer, fs: pointer) -> int {
+  return gl_program5(vs, null, null, null, fs)
+}
+
+# Link a program from up to five stages (null = stage absent).
+function gl_program5(vs: pointer, tcs: pointer, tes: pointer, gs: pointer, fs: pointer) -> int {
+  let prog = gl_create_program()
+  var ok = true
+  if vs != null  { let s = gl_shader(GL_VERTEX_SHADER, vs);           if s == 0 { ok = false } else { gl_attach_shader(prog, s) } }
+  if tcs != null { let s = gl_shader(GL_TESS_CONTROL_SHADER, tcs);    if s == 0 { ok = false } else { gl_attach_shader(prog, s) } }
+  if tes != null { let s = gl_shader(GL_TESS_EVALUATION_SHADER, tes); if s == 0 { ok = false } else { gl_attach_shader(prog, s) } }
+  if gs != null  { let s = gl_shader(GL_GEOMETRY_SHADER, gs);         if s == 0 { ok = false } else { gl_attach_shader(prog, s) } }
+  if fs != null  { let s = gl_shader(GL_FRAGMENT_SHADER, fs);         if s == 0 { ok = false } else { gl_attach_shader(prog, s) } }
+  if not ok { gl_delete_program(prog); return 0 }
+  gl_link_program(prog)
+  let ids = gl_scratch()
+  gl_get_programiv(prog, GL_LINK_STATUS, ids)
+  if ids[0] == 0 {
+    if gl_log_buf == null { gl_log_buf = bytes(8192) }
+    gl_get_program_info_log(prog, 8191, null, gl_log_buf)
+    print("program link failed:")
+    print(gl_log_buf)
+    gl_delete_program(prog)
+    return 0
+  }
+  return prog
+}
+
+function gl_uniform(prog: int, name: pointer) -> int { return gl_get_uniform_location(prog, name) }
+
+# ---- buffers of floats ------------------------------------------------------------
+# A float buffer is plain memory: n IEEE floats, filled from fixed (Gl.put) or
+# from float bits (Gl.put_bits), uploaded with Gl.buffer_data(…, Gl.bytes_of(n), buf, …).
+function gl_floats(n: int) -> pointer { return bytes(n * 4) }
+function gl_bytes_of(n: int) -> int { return n * 4 }
+function gl_put(buf: pointer, i: int, v: fixed) -> void { mem_put_f32(buf, i, v) }
+function gl_get(buf: pointer, i: int) -> fixed { return mem_get_f32(buf, i) }
+function gl_put_bits(buf: pointer, i: int, bits: int) -> void { mem_put_f32_bits(buf, i, bits) }
+function gl_get_bits(buf: pointer, i: int) -> int { return mem_get_f32_bits(buf, i) }
+function gl_ptr(buf: pointer, byte_offset: int) -> pointer { return mem_off(buf, byte_offset) }
+function gl_f32(v: fixed) -> int { return fx_to_f32(v) }
+function gl_fixed(bits: int) -> fixed { return f32_to_fx(bits) }
+
+# One VAO, one VBO helper: create a vertex array object and return it, bound.
+function gl_vao() -> int {
+  let ids = gl_scratch()
+  gl_gen_vertex_arrays(1, ids)
+  gl_bind_vertex_array(ids[0])
+  return ids[0]
+}
+function gl_buffer() -> int {
+  let ids = gl_scratch()
+  gl_gen_buffers(1, ids)
+  return ids[0]
+}
+function gl_texture() -> int {
+  let ids = gl_scratch()
+  gl_gen_textures(1, ids)
+  return ids[0]
+}
+function gl_framebuffer() -> int {
+  let ids = gl_scratch()
+  gl_gen_framebuffers(1, ids)
+  return ids[0]
+}

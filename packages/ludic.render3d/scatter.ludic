@@ -1,0 +1,1050 @@
+# ============================================================================
+# scatter.ludic — instanced vegetation and props. A Layer is one model placed
+# many times (position, scale, yaw, seed, wind weight per instance). Each frame
+# the instances are split by distance: the near ones draw as the full scanned
+# mesh, the far ones as impostor cards baked from that mesh at load.
+# ============================================================================
+
+const INST_FLOATS: int = 8
+
+property Impostor {
+  albedo: int = 0,
+  normal: int = 0,
+  tiles:  int = 16,
+  radius: int = 0,
+  height: int = 0
+}
+property Layer {
+  model:    Model,
+  imp:      Impostor,
+  foliage:  bool = false,
+  wind:     int = 0,        # float bits
+  tint:     words,
+  inst:     words,          # INST_FLOATS per instance
+  count:    int = 0,
+  cap:      int = 0,
+  near:     int = 0,        # float bits; instances beyond it draw as impostors (or not at all)
+  cull:     int = 0,        # float bits; instances beyond it are skipped (0 = never)
+  buf:      int = 0,
+  n_near:   int = 0,
+  imp_buf:  int = 0,
+  sh_buf:   int = 0,       # every instance, for shadow casting (no cull, no LOD split)
+  n_sh:     int = 0,
+  n_far:    int = 0,
+  scratch:  words,
+  last_cam: words,
+  rough:    int = 0,
+  blade:    bool = false,
+  flower:   bool = false,
+  card:     bool = false,
+  cheap:    bool = false,      # distant cover: no shadows, no wind, flat lighting
+  atlas:    Impostor,
+  streamed: bool = false,      # fed by a Stream: already frustum-culled per chunk, no split needed
+  grounded: bool = false,      # the vertex shader stands each instance on the drawn terrain
+  view_gen: int = -1,          # sc_view_gen this layer's partition was built for
+  # static layers with many instances are sorted into a cell grid once, and only the
+  # cells inside the view frustum (and within cull) are partitioned each frame
+  gcell:    int = 0,           # cell size (float bits); 0 = no grid
+  gx0:      int = 0,
+  gz0:      int = 0,
+  gnx:      int = 0,
+  gnz:      int = 0,
+  gstart:   words,             # per cell: first index into gsorted (ncell + 1 entries)
+  gsorted:  words,             # the instances, grouped by cell
+  gymin:    words,             # per cell height range (float bits)
+  gymax:    words,
+  vis:      words,             # the instances gathered from visible cells this frame
+  n_vis:    int = 0,
+  # A LOD chain: lods[k] is drawn for instances within lod_dist[k] (and beyond lod_dist[k-1]);
+  # past the last level the impostor takes over (or, if the last distance is 0, the last
+  # level runs out to the cull distance). lod_card[k] = 1 marks a level that is the layer's
+  # crossed card carrying its atlas (cover keeps its baked card as the far level).
+  lods:     []Model,
+  n_lods:   int = 0,
+  lod_dist: words,
+  lod_card: words,
+  lod_buf:  words,
+  n_lod:    words,
+  lvl:      words              # scratch: the level chosen per gathered instance
+}
+
+# Two crossed unit quads (x in [-0.5, 0.5], y in [0, 1]), attribute 0 = pos,
+# 1 = the quad's facing normal, 2 = uv. Scaled per layer to the atlas card size.
+function model_cross_card() -> Model {
+  let model = new Model
+  model.prims = new []Prim
+  let pr = new Prim
+  let m = new Mesh
+  m.vao = gl_vao()
+  let v = gl_floats(8 * 8)
+  var k = 0
+  for q in 0 .. 2 {
+    for c in 0 .. 4 {
+      var sx = f_neg(F_HALF);  var sy = F_ZERO;  var u = F_ZERO;  var vv = F_ZERO
+      if c == 1 or c == 2 { sx = F_HALF;  u = F_ONE }
+      if c == 2 or c == 3 { sy = F_ONE;  vv = F_ONE }
+      if q == 0 { gl_put_bits(v, k, sx);  gl_put_bits(v, k + 1, sy);  gl_put_bits(v, k + 2, F_ZERO);  gl_put_bits(v, k + 3, F_ZERO);  gl_put_bits(v, k + 4, F_ZERO);  gl_put_bits(v, k + 5, f_neg1()) }
+      else { gl_put_bits(v, k, F_ZERO);  gl_put_bits(v, k + 1, sy);  gl_put_bits(v, k + 2, sx);  gl_put_bits(v, k + 3, f_neg1());  gl_put_bits(v, k + 4, F_ZERO);  gl_put_bits(v, k + 5, F_ZERO) }
+      gl_put_bits(v, k + 6, u);  gl_put_bits(v, k + 7, vv)
+      k += 8
+    }
+  }
+  m.vbo = gl_buffer()
+  gl_bind_buffer(GL_ARRAY_BUFFER, m.vbo)
+  gl_buffer_data(GL_ARRAY_BUFFER, gl_bytes_of(64), v, GL_STATIC_DRAW)
+  gl_enable_vertex_attrib_array(0);  gl_vertex_attrib_pointer(0, 3, GL_FLOAT, 0, 32, null)
+  gl_enable_vertex_attrib_array(1);  gl_vertex_attrib_pointer(1, 3, GL_FLOAT, 0, 32, gl_ptr(null, 12))
+  gl_enable_vertex_attrib_array(2);  gl_vertex_attrib_pointer(2, 2, GL_FLOAT, 0, 32, gl_ptr(null, 24))
+  free(v)
+  let idx = words(12)
+  idx[0] = 0;  idx[1] = 1;  idx[2] = 2;  idx[3] = 0;  idx[4] = 2;  idx[5] = 3
+  idx[6] = 4;  idx[7] = 5;  idx[8] = 6;  idx[9] = 4;  idx[10] = 6;  idx[11] = 7
+  m.ebo = gl_buffer()
+  gl_bind_buffer(GL_ELEMENT_ARRAY_BUFFER, m.ebo)
+  gl_buffer_data(GL_ELEMENT_ARRAY_BUFFER, 48, idx, GL_STATIC_DRAW)
+  free(idx)
+  m.count = 12
+  gl_bind_vertex_array(0)
+  pr.mesh = m
+  if gltf_white == 0 { gltf_white = tex_solid(200, 200, 200, 255);  gltf_flat = tex_solid(128, 128, 255, 255) }
+  pr.diff = gltf_white;  pr.nrm = gltf_flat;  pr.arm = gltf_white
+  push(model.prims, pr)
+  model.radius = F_HALF;  model.height = F_ONE;  model.tris = 4
+  return model
+}
+
+# A card layer: crossed cards carrying a single-tile atlas baked from `scan`.
+function layer_cards(scan: Model, cap: int, wind: int, cull: int) -> Layer {
+  let l = layer_new(model_cross_card(), cap, true, wind, F_ZERO, cull)
+  l.card = true
+  l.atlas = impostor_bake(scan, 1, 512, 512)
+  return l
+}
+
+# A lupine spike (1 m tall): a stem of two crossed quads (uv.x in [0,1]) and
+# seven tiers of crossed floret quads (uv.x in [1,2]), coloured in the shader.
+function model_lupine() -> Model {
+  let model = new Model
+  model.prims = new []Prim
+  let pr = new Prim
+  let m = new Mesh
+  m.vao = gl_vao()
+  # quads: stem x2 + tiers 12 x 2 + 3 leaves = 29 quads
+  let nq = 29
+  let v = gl_floats(nq * 4 * 8)
+  let idx = words(nq * 6)
+  var k = 0
+  var qi = 0
+  for q in 0 .. nq {
+    var w = fl(0.012);  var y0 = F_ZERO;  var y1 = fl(0.62);  var ukind = F_ZERO
+    var ang = F_ZERO
+    if q >= 2 and q < 26 {
+      let tier = (q - 2) / 2
+      let t = fr(tier, 12)
+      w = f_mul(fl(0.05), f_sub(fl(1.1), t))
+      y0 = f_add(fl(0.27), f_mul(t, fl(0.36)))
+      y1 = f_add(y0, fl(0.045))
+      ukind = F_ONE
+      ang = f_mul(fr(tier, 12), fl(2.1))
+      if (q & 1) == 1 { ang = f_add(ang, f_mul(F_PI, F_HALF)) }
+    } else if q >= 26 {
+      # a rosette of three leaves near the ground
+      w = fl(0.09);  y0 = fl(0.02);  y1 = fl(0.2);  ukind = F_TWO
+      ang = f_mul(fr(q - 26, 3), f_mul(F_TWO, F_PI))
+    } else {
+      if (q & 1) == 1 { ang = f_add(ang, f_mul(F_PI, F_HALF)) }
+    }
+    let cx = f_mul(f_cos(ang), w);  let cz = f_mul(f_sin(ang), w)
+    for c in 0 .. 4 {
+      var sx = f_neg1();  var sy = y0;  var u = F_ZERO
+      if c == 1 or c == 2 { sx = F_ONE;  u = F_ONE }
+      if c == 2 or c == 3 { sy = y1 }
+      gl_put_bits(v, k, f_mul(cx, sx));  gl_put_bits(v, k + 1, sy);  gl_put_bits(v, k + 2, f_mul(cz, sx))
+      gl_put_bits(v, k + 3, f_neg(cz));  gl_put_bits(v, k + 4, fl(0.2));  gl_put_bits(v, k + 5, cx)
+      gl_put_bits(v, k + 6, f_add(ukind, u))
+      var vv = sy
+      if ukind == F_ONE { vv = f_div(f_sub(sy, fl(0.27)), fl(0.4)) }
+      if ukind == F_TWO { vv = f_div(f_sub(sy, fl(0.02)), fl(0.18)) }
+      gl_put_bits(v, k + 7, vv)
+      k += 8
+    }
+    let b = q * 4
+    idx[qi] = b;  idx[qi + 1] = b + 1;  idx[qi + 2] = b + 2;  idx[qi + 3] = b;  idx[qi + 4] = b + 2;  idx[qi + 5] = b + 3
+    qi += 6
+  }
+  m.vbo = gl_buffer()
+  gl_bind_buffer(GL_ARRAY_BUFFER, m.vbo)
+  gl_buffer_data(GL_ARRAY_BUFFER, gl_bytes_of(nq * 4 * 8), v, GL_STATIC_DRAW)
+  gl_enable_vertex_attrib_array(0);  gl_vertex_attrib_pointer(0, 3, GL_FLOAT, 0, 32, null)
+  gl_enable_vertex_attrib_array(1);  gl_vertex_attrib_pointer(1, 3, GL_FLOAT, 0, 32, gl_ptr(null, 12))
+  gl_enable_vertex_attrib_array(2);  gl_vertex_attrib_pointer(2, 2, GL_FLOAT, 0, 32, gl_ptr(null, 24))
+  free(v)
+  m.ebo = gl_buffer()
+  gl_bind_buffer(GL_ELEMENT_ARRAY_BUFFER, m.ebo)
+  gl_buffer_data(GL_ELEMENT_ARRAY_BUFFER, nq * 6 * 4, idx, GL_STATIC_DRAW)
+  free(idx)
+  m.count = nq * 6
+  gl_bind_vertex_array(0)
+  pr.mesh = m
+  if gltf_white == 0 { gltf_white = tex_solid(200, 200, 200, 255);  gltf_flat = tex_solid(128, 128, 255, 255) }
+  pr.diff = gltf_white;  pr.nrm = gltf_flat;  pr.arm = gltf_white
+  push(model.prims, pr)
+  model.radius = fl(0.08);  model.height = fl(0.65);  model.tris = nq * 2
+  return model
+}
+
+# A dense lupine for baking into a card: a stem, ~220 small floret quads in a
+# tapering spiral (uv.x in [1,2]) and five leaves (uv.x in [2,3]).
+function model_lupine_dense() -> Model {
+  let model = new Model
+  model.prims = new []Prim
+  let pr = new Prim
+  let m = new Mesh
+  m.vao = gl_vao()
+  let nfl = 220
+  let nq = 2 + nfl + 5
+  let v = gl_floats(nq * 4 * 8)
+  let idx = words(nq * 6)
+  var k = 0
+  var qi = 0
+  seed(5)
+  for q in 0 .. nq {
+    var w = fl(0.008);  var y0 = F_ZERO;  var y1 = fl(0.66);  var ukind = F_ZERO
+    var ang = F_ZERO;  var ox = F_ZERO;  var oz = F_ZERO;  var tilt = F_ZERO
+    if q >= 2 and q < 2 + nfl {
+      let t = fr(q - 2, nfl)
+      let yy = f_add(fl(0.28), f_mul(t, fl(0.4)))
+      ang = f_mul(fi(q), fl(2.39996))          # golden angle spiral
+      let rad = f_mul(fl(0.055), f_sub(fl(1.05), t))
+      ox = f_mul(f_cos(ang), rad);  oz = f_mul(f_sin(ang), rad)
+      w = f_mul(fl(0.028), f_sub(fl(1.1), f_mul(t, fl(0.5))))
+      y0 = f_sub(yy, fl(0.016));  y1 = f_add(yy, fl(0.016))
+      ukind = F_ONE
+      tilt = fl(0.6)
+    } else if q >= 2 + nfl {
+      w = fl(0.05);  y0 = fl(0.03);  y1 = fl(0.16);  ukind = F_TWO
+      ang = f_mul(fr(q - 2 - nfl, 5), f_mul(F_TWO, F_PI))
+      ox = f_mul(f_cos(ang), fl(0.05));  oz = f_mul(f_sin(ang), fl(0.05))
+    } else {
+      if (q & 1) == 1 { ang = f_mul(F_PI, F_HALF) }
+    }
+    # the quad faces outward (its normal along the spiral radius), leaning out by `tilt`
+    let nx = f_cos(ang);  let nz = f_sin(ang)
+    let tx = f_neg(nz);  let tz = nx                 # tangent (quad width direction)
+    for c in 0 .. 4 {
+      var sx = f_neg1();  var sy = y0;  var u = F_ZERO
+      if c == 1 or c == 2 { sx = F_ONE;  u = F_ONE }
+      if c == 2 or c == 3 { sy = y1 }
+      var lean = F_ZERO
+      if c == 2 or c == 3 { lean = f_mul(tilt, w) }
+      gl_put_bits(v, k, f_add(f_add(ox, f_mul(tx, f_mul(sx, w))), f_mul(nx, lean)))
+      gl_put_bits(v, k + 1, sy)
+      gl_put_bits(v, k + 2, f_add(f_add(oz, f_mul(tz, f_mul(sx, w))), f_mul(nz, lean)))
+      gl_put_bits(v, k + 3, nx);  gl_put_bits(v, k + 4, fl(0.35));  gl_put_bits(v, k + 5, nz)
+      gl_put_bits(v, k + 6, f_add(ukind, u))
+      var vv = sy
+      if ukind == F_ONE { vv = f_div(f_sub(sy, fl(0.27)), fl(0.42)) }
+      if ukind == F_TWO { vv = f_div(f_sub(sy, fl(0.03)), fl(0.19)) }
+      gl_put_bits(v, k + 7, vv)
+      k += 8
+    }
+    let b = q * 4
+    idx[qi] = b;  idx[qi + 1] = b + 1;  idx[qi + 2] = b + 2;  idx[qi + 3] = b;  idx[qi + 4] = b + 2;  idx[qi + 5] = b + 3
+    qi += 6
+  }
+  m.vbo = gl_buffer()
+  gl_bind_buffer(GL_ARRAY_BUFFER, m.vbo)
+  gl_buffer_data(GL_ARRAY_BUFFER, gl_bytes_of(nq * 4 * 8), v, GL_STATIC_DRAW)
+  gl_enable_vertex_attrib_array(0);  gl_vertex_attrib_pointer(0, 3, GL_FLOAT, 0, 32, null)
+  gl_enable_vertex_attrib_array(1);  gl_vertex_attrib_pointer(1, 3, GL_FLOAT, 0, 32, gl_ptr(null, 12))
+  gl_enable_vertex_attrib_array(2);  gl_vertex_attrib_pointer(2, 2, GL_FLOAT, 0, 32, gl_ptr(null, 24))
+  free(v)
+  m.ebo = gl_buffer()
+  gl_bind_buffer(GL_ELEMENT_ARRAY_BUFFER, m.ebo)
+  gl_buffer_data(GL_ELEMENT_ARRAY_BUFFER, nq * 6 * 4, idx, GL_STATIC_DRAW)
+  free(idx)
+  m.count = nq * 6
+  gl_bind_vertex_array(0)
+  pr.mesh = m
+  if gltf_white == 0 { gltf_white = tex_solid(200, 200, 200, 255);  gltf_flat = tex_solid(128, 128, 255, 255) }
+  pr.diff = gltf_white;  pr.nrm = gltf_flat;  pr.arm = gltf_white
+  push(model.prims, pr)
+  model.radius = fl(0.11);  model.height = fl(0.68);  model.tris = nq * 2
+  return model
+}
+
+# A procedural grass blade (1 m tall, 5 cm wide, curved): 5 rows of 2 vertices.
+function model_blade() -> Model {
+  let model = new Model
+  model.prims = new []Prim
+  let pr = new Prim
+  let m = new Mesh
+  m.vao = gl_vao()
+  let rows = 5
+  let v = gl_floats(rows * 2 * 8)
+  var k = 0
+  for r in 0 .. rows {
+    let t = fr(r, rows - 1)
+    # never a zero-width tip: a sliver triangle extrapolates its attributes wildly
+    let taper = f_max(f_sub(F_ONE, f_mul(t, f_mul(t, f_sqrt(t)))), fl(0.12))
+    let hw = f_mul(fl(0.05), taper)
+    let bend = f_mul(f_mul(t, t), fl(0.28))
+    for sd in 0 .. 2 {
+      var x = f_neg(hw)
+      if sd == 1 { x = hw }
+      gl_put_bits(v, k, x);  gl_put_bits(v, k + 1, t);  gl_put_bits(v, k + 2, bend)
+      gl_put_bits(v, k + 3, F_ZERO);  gl_put_bits(v, k + 4, fl(0.3));  gl_put_bits(v, k + 5, F_ONE)
+      gl_put_bits(v, k + 6, fi(sd));  gl_put_bits(v, k + 7, t)
+      k += 8
+    }
+  }
+  m.vbo = gl_buffer()
+  gl_bind_buffer(GL_ARRAY_BUFFER, m.vbo)
+  gl_buffer_data(GL_ARRAY_BUFFER, gl_bytes_of(rows * 2 * 8), v, GL_STATIC_DRAW)
+  gl_enable_vertex_attrib_array(0);  gl_vertex_attrib_pointer(0, 3, GL_FLOAT, 0, 32, null)
+  gl_enable_vertex_attrib_array(1);  gl_vertex_attrib_pointer(1, 3, GL_FLOAT, 0, 32, gl_ptr(null, 12))
+  gl_enable_vertex_attrib_array(2);  gl_vertex_attrib_pointer(2, 2, GL_FLOAT, 0, 32, gl_ptr(null, 24))
+  free(v)
+  let ni = (rows - 1) * 6
+  let idx = words(ni)
+  k = 0
+  for r in 0 .. rows - 1 {
+    let a = r * 2
+    idx[k] = a;  idx[k + 1] = a + 1;  idx[k + 2] = a + 2
+    idx[k + 3] = a + 1;  idx[k + 4] = a + 3;  idx[k + 5] = a + 2
+    k += 6
+  }
+  m.ebo = gl_buffer()
+  gl_bind_buffer(GL_ELEMENT_ARRAY_BUFFER, m.ebo)
+  gl_buffer_data(GL_ELEMENT_ARRAY_BUFFER, ni * 4, idx, GL_STATIC_DRAW)
+  free(idx)
+  m.count = ni
+  gl_bind_vertex_array(0)
+  pr.mesh = m
+  if gltf_white == 0 { gltf_white = tex_solid(200, 200, 200, 255);  gltf_flat = tex_solid(128, 128, 255, 255) }
+  pr.diff = gltf_white;  pr.nrm = gltf_flat;  pr.arm = gltf_white
+  push(model.prims, pr)
+  model.radius = fl(0.05);  model.height = F_ONE;  model.tris = ni / 3
+  return model
+}
+
+var sc_prog: int = 0
+var sc_prog_fol: int = 0
+var sc_prog_wind: int = 0
+var sc_prog_blade: int = 0
+var sc_prog_flower: int = 0
+var sc_prog_card: int = 0
+var sc_prog_card_shadow: int = 0
+var sc_prog_card_cheap: int = 0
+var sc_blade_base: words = null
+var sc_blade_tip: words = null
+var sc_blade_tint: words = null
+var sc_prog_shadow: int = 0
+var sc_prog_shadow_wind: int = 0
+var sc_prog_shadow_fol: int = 0     # foliage meshes: alpha-tested casters
+var sc_imp_prog: int = 0
+var sc_imp_prog_shadow: int = 0
+var sc_bake_prog: int = 0
+var sc_bake_card_prog: int = 0
+var sc_bake_flower_prog: int = 0
+var sc_card: Mesh = null
+var sc_ident_buf: int = 0
+var sc_layers: []Layer = null
+var sc_debug_dump: bool = false
+var sc_printed: bool = false
+var sc_a2c: bool = true
+
+function scatter_init() -> void {
+  sc_prog = r3d_program("model.vert", "model.frag", "")
+  sc_prog_fol = r3d_program("model.vert", "model.frag", "#define FOLIAGE\n#define WIND\n#define ALPHA_TEST\n")
+  sc_prog_wind = r3d_program("model.vert", "model.frag", "#define WIND\n")
+  sc_prog_blade = r3d_program("model.vert", "model.frag", "#define FOLIAGE\n#define WIND\n#define BLADE\n")
+  sc_prog_flower = r3d_program("model.vert", "model.frag", "#define FOLIAGE\n#define WIND\n#define FLOWER\n")
+  sc_prog_card = r3d_program("model.vert", "model.frag", "#define FOLIAGE\n#define WIND\n#define CARD\n")
+  sc_prog_card_shadow = r3d_program("model.vert", "model.frag", "#define SHADOW_PASS\n#define WIND\n#define CARD\n")
+  sc_prog_card_cheap = r3d_program("model.vert", "model.frag", "#define CARD\n#define CHEAP\n")
+  # a dry alpine meadow: brown-olive roots, straw with a little green at the tips
+  sc_blade_base = v3_new(fl(0.045), fl(0.06), fl(0.025))
+  sc_blade_tip = v3_new(fl(0.22), fl(0.27), fl(0.13))
+  sc_blade_tint = v3_new(F_ONE, F_ONE, F_ONE)
+  sc_prog_shadow = r3d_program("model.vert", "shadow.frag", "#define SHADOW_PASS\n")
+  sc_prog_shadow_wind = r3d_program("model.vert", "shadow.frag", "#define SHADOW_PASS\n#define WIND\n")
+  sc_prog_shadow_fol = r3d_program("model.vert", "shadow.frag", "#define SHADOW_PASS\n#define WIND\n#define ALPHA_TEST\n")
+  sc_imp_prog = r3d_program("impostor.vert", "impostor.frag", "")
+  sc_imp_prog_shadow = r3d_program("impostor.vert", "impostor.frag", "#define SHADOW_PASS\n")
+  sc_bake_prog = r3d_program("model.vert", "bake.frag", "")
+  sc_bake_flower_prog = r3d_program("model.vert", "bake.frag", "#define FLOWER\n")
+  sc_bake_card_prog = r3d_program("model.vert", "bake.frag", "#define CARD\n")
+  sc_card = mesh_card()
+  # a single identity instance, for baking
+  let one = gl_floats(INST_FLOATS)
+  for i in 0 .. INST_FLOATS { gl_put_bits(one, i, F_ZERO) }
+  gl_put_bits(one, 3, F_ONE);  gl_put_bits(one, 5, F_ONE)
+  sc_ident_buf = gl_buffer()
+  gl_bind_buffer(GL_ARRAY_BUFFER, sc_ident_buf)
+  gl_buffer_data(GL_ARRAY_BUFFER, INST_FLOATS * 4, one, GL_STATIC_DRAW)
+  free(one)
+  sc_layers = new []Layer
+}
+
+# attach a GL instance buffer to a VAO at attributes 3, 4
+function scatter_attach(vao: int, buf: int) -> void {
+  gl_bind_vertex_array(vao)
+  gl_bind_buffer(GL_ARRAY_BUFFER, buf)
+  gl_enable_vertex_attrib_array(3)
+  gl_vertex_attrib_pointer(3, 4, GL_FLOAT, 0, INST_FLOATS * 4, null)
+  gl_vertex_attrib_divisor(3, 1)
+  gl_enable_vertex_attrib_array(4)
+  gl_vertex_attrib_pointer(4, 4, GL_FLOAT, 0, INST_FLOATS * 4, gl_ptr(null, 16))
+  gl_vertex_attrib_divisor(4, 1)
+  gl_bind_vertex_array(0)
+}
+
+function layer_new(model: Model, cap: int, foliage: bool, wind: int, near: int, cull: int) -> Layer {
+  let l = new Layer
+  l.model = model
+  l.cap = cap
+  l.foliage = foliage
+  l.wind = wind
+  l.near = near
+  l.cull = cull
+  l.tint = v3_new(F_ONE, F_ONE, F_ONE)
+  l.inst = words(cap * INST_FLOATS)
+  l.scratch = words(cap * INST_FLOATS)
+  l.last_cam = v3_new(fi(100000), F_ZERO, F_ZERO)
+  l.buf = gl_buffer()
+  l.imp_buf = gl_buffer()
+  l.sh_buf = gl_buffer()
+  l.rough = F_ONE
+  for i in 0 .. len(model.prims) { scatter_attach(model.prims[i].mesh.vao, l.buf) }
+  push(sc_layers, l)
+  return l
+}
+
+function layer_add(l: Layer, x: int, y: int, z: int, scale: int, yaw: int, seed: int, wind: int) -> void {
+  if l.count >= l.cap { return }
+  let o = l.count * INST_FLOATS
+  l.inst[o] = x;  l.inst[o + 1] = y;  l.inst[o + 2] = z;  l.inst[o + 3] = scale
+  l.inst[o + 4] = f_sin(yaw);  l.inst[o + 5] = f_cos(yaw);  l.inst[o + 6] = seed;  l.inst[o + 7] = wind
+  l.count += 1
+}
+
+# ---- impostors ---------------------------------------------------------------------
+var sc_bake_flower: bool = false
+function impostor_bake(model: Model, tiles: int, tw: int, th: int) -> Impostor {
+  let im = new Impostor
+  im.tiles = tiles
+  im.radius = f_mul(model.radius, fl(1.02))
+  im.height = model.height
+  let aw = tiles * tw
+  im.albedo = tex_target(aw, th, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR)
+  im.normal = tex_target(aw, th, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR)
+  let fbo = gl_framebuffer()
+  gl_bind_framebuffer(GL_FRAMEBUFFER, fbo)
+  gl_framebuffer_texture2d(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, im.albedo, 0)
+  gl_framebuffer_texture2d(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, im.normal, 0)
+  let ids = gl_scratch()
+  gl_gen_renderbuffers(1, ids)
+  let rb = ids[0]
+  gl_bind_renderbuffer(GL_RENDERBUFFER, rb)
+  gl_renderbuffer_storage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, aw, th)
+  gl_framebuffer_renderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rb)
+  let bufs = words(2)
+  bufs[0] = GL_COLOR_ATTACHMENT0;  bufs[1] = GL_COLOR_ATTACHMENT1
+  gl_draw_buffers(2, bufs)
+  gl_viewport(0, 0, aw, th)
+  gl_clear_color(0.0, 0.0, 0.0, 0.0)
+  gl_clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+  gl_enable(GL_DEPTH_TEST)
+  gl_depth_func(GL_LESS)
+  gl_disable(GL_CULL_FACE)
+  gl_disable(GL_BLEND)
+  # the model's prims temporarily take the identity instance
+  for i in 0 .. len(model.prims) { scatter_attach(model.prims[i].mesh.vao, sc_ident_buf) }
+  let view = m4_new();  let proj = m4_new()
+  let eye = words(3);  let at = words(3);  let up = v3_new(F_ZERO, F_ONE, F_ZERO)
+  let cy = f_add(model.ymin, f_mul(model.height, F_HALF))
+  let r = im.radius
+  let hh = f_mul(model.height, F_HALF)
+  var bake = sc_bake_prog
+  if sc_bake_flower { bake = sc_bake_flower_prog }
+  gl_use_program(bake)
+  for t in 0 .. tiles {
+    let a = f_mul(f_mul(F_TWO, F_PI), fr(t, tiles))
+    v3_set(at, F_ZERO, cy, F_ZERO)
+    # a touch of elevation (the viewer usually looks slightly down at a tree)
+    v3_set(eye, f_mul(f_sin(a), f_mul(r, fi(4))), f_add(cy, f_mul(r, fl(0.5))), f_neg(f_mul(f_cos(a), f_mul(r, fi(4)))))
+    m4_look_at(view, eye, at, up)
+    m4_ortho(proj, f_neg(r), r, f_neg(hh), hh, fl(0.1), f_mul(r, fi(9)))
+    u_mat4(gl_uniform(bake, "u_view"), view)
+    u_mat4(gl_uniform(bake, "u_proj"), proj)
+    u_f(gl_uniform(bake, "u_wind"), F_ZERO)
+    gl_viewport(t * tw, 0, tw, th)
+    for i in 0 .. len(model.prims) {
+      let pr = model.prims[i]
+      r3d_bind_2d(bake, "u_diff", 0, pr.diff)
+      r3d_bind_2d(bake, "u_arm", 2, pr.arm)
+      mesh_draw_instanced(pr.mesh, 1)
+    }
+  }
+  free(view);  free(proj);  free(eye);  free(at);  free(up);  free(bufs)
+  gl_bind_framebuffer(GL_FRAMEBUFFER, 0)
+  ids[0] = fbo
+  gl_delete_framebuffers(1, ids)
+  ids[0] = rb
+  gl_delete_renderbuffers(1, ids)
+  gl_bind_texture(GL_TEXTURE_2D, im.albedo)
+  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+  gl_generate_mipmap(GL_TEXTURE_2D)
+  gl_bind_texture(GL_TEXTURE_2D, im.normal)
+  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+  gl_generate_mipmap(GL_TEXTURE_2D)
+  gl_check("impostor bake")
+  if sc_debug_dump { tex_dump_alpha = true;  tex_dump(im.albedo, aw, th, "build/atlas_alpha.ppm");  tex_dump_alpha = false }
+  return im
+}
+
+# Give a layer a LOD chain. `dists` (float bits) are the outer distances of each level;
+# the last one becomes the layer's `near` so the impostor (if any) starts there.
+function layer_set_lods(l: Layer, models: []Model, dists: words) -> void {
+  l.lods = models
+  l.n_lods = len(models)
+  l.lod_dist = words(l.n_lods);  l.lod_card = words(l.n_lods);  l.lod_buf = words(l.n_lods);  l.n_lod = words(l.n_lods)
+  for k in 0 .. l.n_lods {
+    l.lod_dist[k] = dists[k];  l.lod_card[k] = 0;  l.n_lod[k] = 0
+    l.lod_buf[k] = gl_buffer()
+    let m = models[k]
+    for i in 0 .. len(m.prims) { scatter_attach(m.prims[i].mesh.vao, l.lod_buf[k]) }
+  }
+  l.model = models[0]
+  l.near = dists[l.n_lods - 1]
+  if l.lvl == null { l.lvl = words(l.cap) }
+}
+# mark level k as the layer's crossed card (drawn with the card program and its atlas)
+function layer_lod_card(l: Layer, k: int) -> void { l.lod_card[k] = 1 }
+
+function layer_set_impostor(l: Layer, im: Impostor) -> void {
+  l.imp = im
+  scatter_attach(sc_card.vao, l.imp_buf)
+}
+
+# ---- per frame -----------------------------------------------------------------------
+# Partitions and gathers are redone only when the view changed enough to matter: the
+# camera moved 1.5 m or turned about 2.5 degrees. Everything culled by the frustum keys
+# off this one counter, so a turn re-gathers the streams and the grids together.
+var sc_view_gen: int = 1
+var sc_view_pos: words = null
+var sc_view_fwd: words = null
+function scatter_begin_frame() -> void {
+  if sc_view_pos == null { sc_view_pos = v3_new(fi(100000), F_ZERO, F_ZERO);  sc_view_fwd = v3_new(F_ZERO, F_ZERO, f_neg(F_ONE)) }
+  if f_gt(v3_dist(sc_view_pos, cam_pos), fl(1.5)) or f_ls(v3_dot(sc_view_fwd, cam_fwd), fl(0.999)) {
+    sc_view_gen += 1
+    v3_copy(sc_view_pos, cam_pos)
+    v3_copy(sc_view_fwd, cam_fwd)
+  }
+}
+
+# Sort a static layer's instances into square cells (call once, after placement; a
+# large layer that was never gridded gets a 96 m grid on its first update). The
+# shadow buffer is uploaded here once — casters are never culled by the view.
+function layer_grid_build(l: Layer, cell: int) -> void {
+  if l.count == 0 { return }
+  var minx = l.inst[0];  var maxx = minx;  var minz = l.inst[2];  var maxz = minz
+  for i in 0 .. l.count {
+    let o = i * INST_FLOATS
+    minx = f_min(minx, l.inst[o]);  maxx = f_max(maxx, l.inst[o])
+    minz = f_min(minz, l.inst[o + 2]);  maxz = f_max(maxz, l.inst[o + 2])
+  }
+  l.gcell = cell;  l.gx0 = minx;  l.gz0 = minz
+  l.gnx = f_to_int(f_div(f_sub(maxx, minx), cell)) + 1
+  l.gnz = f_to_int(f_div(f_sub(maxz, minz), cell)) + 1
+  let ncell = l.gnx * l.gnz
+  l.gstart = words(ncell + 1)
+  l.gymin = words(ncell);  l.gymax = words(ncell)
+  let cellof = words(l.count)
+  for c in 0 .. ncell + 1 { l.gstart[c] = 0 }
+  for i in 0 .. l.count {
+    let o = i * INST_FLOATS
+    let ix = f_to_int(f_div(f_sub(l.inst[o], minx), cell))
+    let iz = f_to_int(f_div(f_sub(l.inst[o + 2], minz), cell))
+    let c = iz * l.gnx + ix
+    cellof[i] = c
+    if l.gstart[c + 1] == 0 { l.gymin[c] = l.inst[o + 1];  l.gymax[c] = l.inst[o + 1] }
+    else { l.gymin[c] = f_min(l.gymin[c], l.inst[o + 1]);  l.gymax[c] = f_max(l.gymax[c], l.inst[o + 1]) }
+    l.gstart[c + 1] += 1
+  }
+  for c in 0 .. ncell { l.gstart[c + 1] += l.gstart[c] }
+  let fill = words(ncell)
+  for c in 0 .. ncell { fill[c] = l.gstart[c] }
+  l.gsorted = words(l.count * INST_FLOATS)
+  for i in 0 .. l.count {
+    let c = cellof[i]
+    let q = fill[c] * INST_FLOATS
+    fill[c] += 1
+    let o = i * INST_FLOATS
+    for k in 0 .. INST_FLOATS { l.gsorted[q + k] = l.inst[o + k] }
+  }
+  free(cellof);  free(fill)
+  if l.vis == null { l.vis = words(l.cap * INST_FLOATS) }
+  l.n_sh = l.count
+  gl_bind_buffer(GL_ARRAY_BUFFER, l.sh_buf)
+  gl_buffer_data(GL_ARRAY_BUFFER, l.count * INST_FLOATS * 4, l.inst, GL_STATIC_DRAW)
+}
+
+# gather the instances of the cells the camera can see (and that are within cull)
+function layer_grid_gather(l: Layer) -> void {
+  let cell = l.gcell
+  let half = f_mul(cell, F_HALF)
+  let reach = f_add(l.cull, f_mul(cell, fl(0.71)))
+  var n = 0
+  for iz in 0 .. l.gnz {
+    let wz = f_add(f_add(l.gz0, f_mul(fi(iz), cell)), half)
+    for ix in 0 .. l.gnx {
+      let c = iz * l.gnx + ix
+      let cnt = l.gstart[c + 1] - l.gstart[c]
+      if cnt == 0 { continue }
+      let wx = f_add(f_add(l.gx0, f_mul(fi(ix), cell)), half)
+      if l.cull != 0 {
+        let dx = f_sub(wx, cam_pos[0]);  let dz = f_sub(wz, cam_pos[2])
+        if f_gt(f_sqrt(f_add(f_mul(dx, dx), f_mul(dz, dz))), reach) { continue }
+      }
+      let hy = f_mul(f_sub(l.gymax[c], l.gymin[c]), F_HALF)
+      let cy = f_add(l.gymin[c], hy)
+      # pad by the tallest instance (scale 2 of the model's height) so crowns at the frame's edge stay
+      let r = f_add(f_sqrt(f_add(f_mul(f_mul(half, half), F_TWO), f_mul(hy, hy))), f_add(f_mul(l.model.height, F_TWO), fi(4)))
+      if not cam_sphere_visible(wx, cy, wz, r) { continue }
+      mem_copy(mem_off(l.vis, n * INST_FLOATS * 4), mem_off(l.gsorted, l.gstart[c] * INST_FLOATS * 4), cnt * INST_FLOATS * 4)
+      n += cnt
+    }
+  }
+  l.n_vis = n
+}
+
+# Sort the gathered instances into their LOD levels (counting sort into the scratch),
+# the impostor bucket last, and upload one buffer per level.
+function layer_partition_lods(l: Layer, src: words, total: int) -> void {
+  let n = l.n_lods
+  let counts = words(n + 2)
+  for k in 0 .. n + 2 { counts[k] = 0 }
+  let cull2 = f_mul(l.cull, l.cull)
+  let open = l.lod_dist[n - 1] == 0      # the last level runs out to the cull distance
+  for i in 0 .. total {
+    let o = i * INST_FLOATS
+    let dx = f_sub(src[o], cam_pos[0]);  let dz = f_sub(src[o + 2], cam_pos[2])
+    let d2 = f_add(f_mul(dx, dx), f_mul(dz, dz))
+    var lv = n + 1                           # n + 1 = dropped
+    if l.cull == 0 or not f_gt(d2, cull2) {
+      let d = f_sqrt(d2)
+      lv = n                                 # n = the impostor bucket
+      var k = 0
+      while k < n { if l.lod_dist[k] != 0 and f_ls(d, l.lod_dist[k]) { lv = k;  k = n } else { k += 1 } }
+      if lv == n and open { lv = n - 1 }
+      if lv == n and l.imp == null { lv = n + 1 }
+    }
+    l.lvl[i] = lv
+    counts[lv] += 1
+  }
+  # prefix offsets (in instances) per bucket
+  let start = words(n + 2)
+  var acc = 0
+  for k in 0 .. n + 2 { start[k] = acc;  acc += counts[k] }
+  let fill = words(n + 2)
+  for k in 0 .. n + 2 { fill[k] = start[k] }
+  let tmp = l.scratch
+  for i in 0 .. total {
+    let lv = l.lvl[i]
+    if lv > n { continue }
+    let q = fill[lv] * INST_FLOATS
+    fill[lv] += 1
+    let o = i * INST_FLOATS
+    for k in 0 .. INST_FLOATS { tmp[q + k] = src[o + k] }
+  }
+  for k in 0 .. n {
+    l.n_lod[k] = counts[k]
+    if counts[k] > 0 {
+      gl_bind_buffer(GL_ARRAY_BUFFER, l.lod_buf[k])
+      gl_buffer_data(GL_ARRAY_BUFFER, counts[k] * INST_FLOATS * 4, mem_off(tmp, start[k] * INST_FLOATS * 4), GL_DYNAMIC_DRAW)
+    }
+  }
+  l.n_near = counts[0]
+  l.n_far = counts[n]
+  if sc_dbg_lod and total > 1000 { print(`lod partition: total {total} dropped {counts[n + 1]} far {counts[n]} l0 {counts[0]} l1 {counts[1]} l2 {counts[2]} l3 {counts[3]} dist0 {f_fx(l.lod_dist[0])} dist3 {f_fx(l.lod_dist[n - 1])} cull {f_fx(l.cull)} cam {f_fx(cam_pos[0])} {f_fx(cam_pos[2])} first {f_fx(src[0])} {f_fx(src[2])}`) }
+  if l.n_far > 0 {
+    gl_bind_buffer(GL_ARRAY_BUFFER, l.imp_buf)
+    gl_buffer_data(GL_ARRAY_BUFFER, l.n_far * INST_FLOATS * 4, mem_off(tmp, start[n] * INST_FLOATS * 4), GL_DYNAMIC_DRAW)
+  }
+  # casters: the whole (gathered) set from the shadow buffer, unless the impostor casts
+  if l.gcell == 0 {
+    l.n_sh = total
+    if total > 0 { gl_bind_buffer(GL_ARRAY_BUFFER, l.sh_buf);  gl_buffer_data(GL_ARRAY_BUFFER, total * INST_FLOATS * 4, src, GL_DYNAMIC_DRAW) }
+  }
+  free(counts);  free(start);  free(fill)
+}
+
+# split the instances by distance to the camera (only when the view changed)
+var sc_freeze: bool = false           # a secondary pass (reflection) reuses the partition
+function layer_update(l: Layer) -> void {
+  if sc_freeze { return }
+  if l.view_gen == sc_view_gen { return }
+  l.view_gen = sc_view_gen
+  let t_lu = gl_now_us()
+  let n_lu = l.count
+  # A streamed layer's instances were already gathered per visible chunk: no split, no
+  # per-instance loop — one upload, and the same buffer casts its shadows.
+  if l.streamed and l.imp == null and l.near == 0 and l.n_lods <= 1 {
+    l.n_near = l.count;  l.n_far = 0;  l.n_sh = l.count
+    gl_bind_buffer(GL_ARRAY_BUFFER, l.buf)
+    gl_buffer_data(GL_ARRAY_BUFFER, l.count * INST_FLOATS * 4, l.inst, GL_DYNAMIC_DRAW)
+    prof_layer_add(gl_now_us() - t_lu, l.count * INST_FLOATS * 4)
+    return
+  }
+  if l.gcell == 0 and not l.streamed and l.count > 2000 { layer_grid_build(l, fi(96)) }
+  var src = l.inst
+  var total = l.count
+  if l.gcell != 0 { layer_grid_gather(l);  src = l.vis;  total = l.n_vis }
+  let near2 = f_mul(l.near, l.near)
+  let cull2 = f_mul(l.cull, l.cull)
+  var nn = 0
+  var nf = 0
+  let far_off = l.cap * INST_FLOATS    # far instances fill the scratch from its end backwards
+  let tmp = l.scratch
+  if l.n_lods > 1 {
+    layer_partition_lods(l, src, total)
+    prof_layer_add(gl_now_us() - t_lu, total * INST_FLOATS * 4)
+    return
+  }
+  var i = 0
+  while i < total {
+    let o = i * INST_FLOATS
+    let dx = f_sub(src[o], cam_pos[0])
+    let dz = f_sub(src[o + 2], cam_pos[2])
+    let d2 = f_add(f_mul(dx, dx), f_mul(dz, dz))
+    if l.cull != 0 and f_gt(d2, cull2) { i += 1;  continue }
+    if l.near == 0 or f_ls(d2, near2) {
+      let q = nn * INST_FLOATS
+      for k in 0 .. INST_FLOATS { tmp[q + k] = src[o + k] }
+      nn += 1
+    } else if l.imp != null {
+      nf += 1
+      let q = far_off - nf * INST_FLOATS
+      for k in 0 .. INST_FLOATS { tmp[q + k] = src[o + k] }
+    }
+    i += 1
+  }
+  l.n_near = nn
+  l.n_far = nf
+  if l.imp != null and nn > 0 and sc_debug_dump { print(`near full-mesh instances: {nn} (first at {f_fx(tmp[0])} {f_fx(tmp[1])} {f_fx(tmp[2])})`) }
+  if sc_debug_dump and l.imp != null {
+    print(`layer: near {nn} far {nf}`)
+    for k in 0 .. nn { let q = k * INST_FLOATS;  print(`  near {f_fx(tmp[q])} {f_fx(tmp[q + 1])} {f_fx(tmp[q + 2])} s {f_fx(tmp[q + 3])}`) }
+  }
+  # Every instance, unculled and unsplit, for the shadow pass. What the camera draws is
+  # allowed to change with distance; what casts must not, or shadows blink in and out as
+  # you walk. This is the whole set, drawn one way, into every cascade.
+  if l.gcell == 0 {
+    l.n_sh = l.count
+    if l.count > 0 {
+      gl_bind_buffer(GL_ARRAY_BUFFER, l.sh_buf)
+      gl_buffer_data(GL_ARRAY_BUFFER, l.count * INST_FLOATS * 4, l.inst, GL_DYNAMIC_DRAW)
+    }
+  }
+  gl_bind_buffer(GL_ARRAY_BUFFER, l.buf)
+  gl_buffer_data(GL_ARRAY_BUFFER, nn * INST_FLOATS * 4, tmp, GL_DYNAMIC_DRAW)
+  if nf > 0 {
+    gl_bind_buffer(GL_ARRAY_BUFFER, l.imp_buf)
+    gl_buffer_data(GL_ARRAY_BUFFER, nf * INST_FLOATS * 4, mem_off(tmp, (far_off - nf * INST_FLOATS) * 4), GL_DYNAMIC_DRAW)
+  }
+  prof_layer_add(gl_now_us() - t_lu, (nn + nf + l.n_sh) * INST_FLOATS * 4)
+}
+
+function layer_program(l: Layer, shadow: bool, card: bool) -> int {
+  if card {
+    if shadow { return sc_prog_card_shadow }
+    if l.cheap { return sc_prog_card_cheap }
+    return sc_prog_card
+  }
+  if shadow {
+    if l.foliage and not l.blade and not l.flower { return sc_prog_shadow_fol }
+    if l.wind != 0 { return sc_prog_shadow_wind }
+    return sc_prog_shadow
+  }
+  if l.blade { return sc_prog_blade }
+  if l.flower { return sc_prog_flower }
+  if l.foliage { return sc_prog_fol }
+  if l.wind != 0 { return sc_prog_wind }
+  return sc_prog
+}
+
+var sc_dbg_blade: int = 0
+# R3D_LODDBG=1 tints each LOD level (red, green, blue, yellow) and impostors magenta
+var sc_dbg_level: int = -1
+var sc_dbg_lod: bool = false
+var sc_dbg_tint: words = null
+# `full` casts the layer's entire instance list out of sh_buf instead of the near
+# partition out of l.buf. A layer with no impostor (the tree crowns' branch cards) has
+# no cheap stand-in to cast from, so without this its shadow simply began at the near
+# distance — which is the crown shadow that appeared as you walked up to a tree.
+function layer_draw_near(l: Layer, shadow: bool, light_vp: words, full: bool) -> void {
+  if l.n_lods > 1 {
+    # a LOD chain: every level from its own bucket (casters are what is drawn)
+    for k in 0 .. l.n_lods { sc_dbg_level = k;  layer_draw_model(l, l.lods[k], l.lod_buf[k], l.n_lod[k], l.lod_card[k] == 1, shadow, light_vp) }
+    sc_dbg_level = -1
+    return
+  }
+  var vb = l.buf
+  var cnt = l.n_near
+  if full and not l.streamed { vb = l.sh_buf;  cnt = l.n_sh }
+  layer_draw_model(l, l.model, vb, cnt, l.card, shadow, light_vp)
+}
+
+# draw `cnt` instances of `model` out of instance buffer `vb`, as a mesh or as the layer's card
+function layer_draw_model(l: Layer, model: Model, vb: int, cnt: int, card: bool, shadow: bool, light_vp: words) -> void {
+  if cnt == 0 { return }
+  let p = layer_program(l, shadow, card)
+  gl_use_program(p)
+  var ground = F_ZERO
+  if l.grounded { ground = F_ONE }
+  u_f(gl_uniform(p, "u_ground"), ground)
+  if l.grounded { terrain_bind_height(p) }
+  u_f(gl_uniform(p, "u_time"), r3d_time)
+  u_f(gl_uniform(p, "u_wind"), l.wind)
+  var mh = F_ZERO
+  if not card and l.foliage { mh = model.height }
+  u_f(gl_uniform(p, "u_model_h"), mh)
+  if not card and l.foliage and not shadow and sc_a2c { gl_enable(GL_SAMPLE_ALPHA_TO_COVERAGE) }
+  if card {
+    u_f(gl_uniform(p, "u_card_w"), f_mul(l.atlas.radius, F_TWO));  u_f(gl_uniform(p, "u_card_h"), l.atlas.height)
+    r3d_bind_2d(p, "u_diff", 0, l.atlas.albedo)
+    r3d_bind_2d(p, "u_nrm", 1, l.atlas.normal)
+    gl_enable(GL_SAMPLE_ALPHA_TO_COVERAGE)
+  }
+  if shadow { u_mat4(gl_uniform(p, "u_light_vp"), light_vp) }
+  else {
+    u_mat4(gl_uniform(p, "u_view"), cam_view)
+    u_mat4(gl_uniform(p, "u_proj"), cam_proj)
+    u_v3(gl_uniform(p, "u_tint"), l.tint)
+    if sc_dbg_lod and sc_dbg_level >= 0 {
+      if sc_dbg_tint == null { sc_dbg_tint = v3_new(F_ONE, F_ONE, F_ONE) }
+      let k = sc_dbg_level
+      var r = F_ZERO;  var g = F_ZERO;  var b = F_ZERO
+      if k == 0 { r = fi(3) } else if k == 1 { g = fi(3) } else if k == 2 { b = fi(3) } else { r = fi(3);  g = fi(3) }
+      v3_set(sc_dbg_tint, r, g, b)
+      u_v3(gl_uniform(p, "u_tint"), sc_dbg_tint)
+    }
+    u_f(gl_uniform(p, "u_rough_scale"), l.rough)
+    if l.blade { u_v3(gl_uniform(p, "u_blade_base"), sc_blade_base);  u_v3(gl_uniform(p, "u_blade_tip"), sc_blade_tip) }
+    u_f(gl_uniform(p, "u_cull"), l.cull)
+    sky_bind_lighting(p)
+    shadow_bind(p)
+    fog_bind(p)
+    if l.foliage { u_f(gl_uniform(p, "u_spec_scale"), fl(0.05)) }
+  }
+  gl_disable(GL_CULL_FACE)
+  for i in 0 .. len(model.prims) {
+    let pr = model.prims[i]
+    scatter_attach(pr.mesh.vao, vb)
+    if not card {
+      r3d_bind_2d(p, "u_diff", 0, pr.diff)
+      if not shadow { r3d_bind_2d(p, "u_nrm", 1, pr.nrm);  r3d_bind_2d(p, "u_arm", 2, pr.arm) }
+    }
+    mesh_draw_instanced(pr.mesh, cnt)
+  }
+  gl_disable(GL_SAMPLE_ALPHA_TO_COVERAGE)
+}
+
+function layer_draw_far(l: Layer, shadow: bool, light_vp: words) -> void {
+  if l.n_far == 0 or l.imp == null { return }
+  var p = sc_imp_prog
+  if shadow { p = sc_imp_prog_shadow }
+  gl_use_program(p)
+  let im = l.imp
+  u_f(gl_uniform(p, "u_radius"), im.radius)
+  u_f(gl_uniform(p, "u_height"), im.height)
+  u_f(gl_uniform(p, "u_tiles"), fi(im.tiles))
+  r3d_bind_2d(p, "u_atlas_albedo", 0, im.albedo)
+  if shadow {
+    u_mat4(gl_uniform(p, "u_light_vp"), light_vp)
+    u_v3(gl_uniform(p, "u_face_dir"), sun_dir)
+    if r3d_debug_shadow and not sc_printed { sc_printed = true;  print(`imp shadow prog {p} face_dir loc {gl_uniform(p, "u_face_dir")} sun {f_fx(sun_dir[0])} {f_fx(sun_dir[1])} {f_fx(sun_dir[2])} cam {f_fx(cam_pos[0])} {f_fx(cam_pos[1])} {f_fx(cam_pos[2])} n_far {l.n_far}`) }
+    u_v3(gl_uniform(p, "u_cam_pos"), cam_pos)
+  } else {
+    u_mat4(gl_uniform(p, "u_view"), cam_view)
+    u_mat4(gl_uniform(p, "u_proj"), cam_proj)
+    u_v3(gl_uniform(p, "u_tint"), l.tint)
+    if sc_dbg_lod { if sc_dbg_tint == null { sc_dbg_tint = v3_new(F_ONE, F_ONE, F_ONE) };  v3_set(sc_dbg_tint, fi(3), F_ZERO, fi(3));  u_v3(gl_uniform(p, "u_tint"), sc_dbg_tint) }
+    r3d_bind_2d(p, "u_atlas_normal", 1, im.normal)
+    sky_bind_lighting(p)
+    shadow_bind(p)
+    fog_bind(p)
+    if l.foliage { u_f(gl_uniform(p, "u_spec_scale"), fl(0.05)) }
+  }
+  gl_disable(GL_CULL_FACE)
+  if not shadow and sc_a2c { gl_enable(GL_SAMPLE_ALPHA_TO_COVERAGE) }
+  scatter_attach(sc_card.vao, l.imp_buf)
+  mesh_draw_instanced(sc_card, l.n_far)
+  gl_disable(GL_SAMPLE_ALPHA_TO_COVERAGE)
+}
+
+# Cast from the impostor card, always, for every instance in the layer. The lit pass may
+# swap a scanned mesh in up close; the shadow must not, or a tree's shadow changes shape
+# as you approach it. The card is also far the cheaper of the two, which is what pays for
+# casting the whole set into all five cascades.
+function layer_draw_shadow(l: Layer, light_vp: words) -> void {
+  if l.n_sh == 0 or l.imp == null { return }
+  let p = sc_imp_prog_shadow
+  gl_use_program(p)
+  let im = l.imp
+  u_f(gl_uniform(p, "u_radius"), im.radius)
+  u_f(gl_uniform(p, "u_height"), im.height)
+  u_f(gl_uniform(p, "u_tiles"), fi(im.tiles))
+  r3d_bind_2d(p, "u_atlas_albedo", 0, im.albedo)
+  u_mat4(gl_uniform(p, "u_light_vp"), light_vp)
+  u_v3(gl_uniform(p, "u_face_dir"), sun_dir)
+  u_v3(gl_uniform(p, "u_cam_pos"), cam_pos)
+  gl_disable(GL_CULL_FACE)
+  scatter_attach(sc_card.vao, l.sh_buf)
+  mesh_draw_instanced(sc_card, l.n_sh)
+}
+
+var sc_skip_blade: bool = false
+var sc_skip_flower: bool = false
+var sc_skip_card: bool = false
+function scatter_draw() -> void {
+  for i in 0 .. len(sc_layers) {
+    let l = sc_layers[i]
+    if sc_skip_blade and l.blade { continue }
+    if sc_skip_flower and l.flower { continue }
+    if sc_skip_card and l.card { continue }
+    if r3d_no_trees and l.imp != null and not l.card { continue }
+    layer_update(l)
+    layer_draw_near(l, false, null, false)
+    layer_draw_far(l, false, null)
+  }
+  gl_enable(GL_CULL_FACE)
+}
+# Nothing here is keyed off the cascade. Every skip that used to be — ground cover past
+# the 250 m cascade, blades past the nearest, the scanned mesh past the second — made a
+# whole class of caster vanish at a fixed distance, which is exactly the popping. A layer
+# with an impostor now casts its entire instance list from the card in every cascade;
+# only layers that have no impostor at all fall back to the mesh.
+function scatter_draw_casters(light_vp: words) -> void {
+  for i in 0 .. len(sc_layers) {
+    let l = sc_layers[i]
+    if sc_skip_blade and l.blade { continue }
+    if sc_skip_card and l.card { continue }
+    if r3d_no_trees and l.imp != null and not l.card { continue }
+    layer_update(l)
+    if l.imp != null {
+      layer_draw_shadow(l, light_vp)
+      # Shadow LOD (the practice in every production engine: a caster uses a low mesh LOD,
+      # the billboard only far away). The card alone is a side-view silhouette and a
+      # crown of drooping needle cards is mostly slivers from the side, so the sun, which
+      # sees the crown from above, cast a trunk line with a few blobs. The near levels
+      # now also cast their LOD2 mesh, alpha-tested, on top of the card.
+      if l.n_lods > 2 {
+        for k in 0 .. 3 { layer_draw_model(l, l.lods[2], l.lod_buf[k], l.n_lod[k], false, true, light_vp) }
+      }
+    }
+    else { layer_draw_near(l, true, light_vp, true) }
+  }
+}
+
+
+# ---------------------------------------------------------------------------
+# The distant-grass carpet: the clump cards rendered straight down into one tiling
+# tile, so the ground beyond the blade rings carries the same clumps, colours and
+# gaps as the near cover instead of a lawn scan (the far-field trick the big open
+# worlds use: geometry up close, an authored ground texture that matches it beyond).
+# Returns an RGBA8 texture (alpha = coverage), repeat-wrapped and mipmapped.
+var cb_state: int = 12345
+function cb_rnd() -> int {
+  cb_state = (cb_state * 1103515245 + 12345) & 0x7FFFFFFF
+  return fr((cb_state >> 8) & 0xFFFF, 65536)
+}
+function carpet_bake(layers: []Layer, count: int, tile: int, res: int) -> int {
+  let tex = tex_target(res, res, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR)
+  let fbo = gl_framebuffer()
+  gl_bind_framebuffer(GL_FRAMEBUFFER, fbo)
+  gl_framebuffer_texture2d(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0)
+  let ids = gl_scratch()
+  gl_gen_renderbuffers(1, ids)
+  let rb = ids[0]
+  gl_bind_renderbuffer(GL_RENDERBUFFER, rb)
+  gl_renderbuffer_storage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, res, res)
+  gl_framebuffer_renderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rb)
+  let bufs = words(1)
+  bufs[0] = GL_COLOR_ATTACHMENT0
+  gl_draw_buffers(1, bufs)
+  gl_viewport(0, 0, res, res)
+  gl_clear_color(0.0, 0.0, 0.0, 0.0)
+  gl_clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+  gl_enable(GL_DEPTH_TEST)
+  gl_depth_func(GL_LESS)
+  gl_disable(GL_CULL_FACE)
+  gl_disable(GL_BLEND)
+  # the clumps, and eight wrapped copies so the tile's edges continue
+  let half = f_mul(tile, F_HALF)
+  let n9 = count * 9
+  let inst = gl_floats(n9 * INST_FLOATS)
+  cb_state = 977
+  var k = 0
+  for i in 0 .. count {
+    let x = f_sub(f_mul(cb_rnd(), tile), half)
+    let z = f_sub(f_mul(cb_rnd(), tile), half)
+    let sc = f_add(fl(1.5), cb_rnd())
+    let yaw = f_mul(cb_rnd(), f_mul(F_TWO, F_PI))
+    let sd = cb_rnd()
+    for oz in 0 .. 3 {
+      for ox in 0 .. 3 {
+        let px = f_add(x, f_mul(fi(ox - 1), tile))
+        let pz = f_add(z, f_mul(fi(oz - 1), tile))
+        gl_put_bits(inst, k, px);  gl_put_bits(inst, k + 1, F_ZERO);  gl_put_bits(inst, k + 2, pz);  gl_put_bits(inst, k + 3, sc)
+        gl_put_bits(inst, k + 4, f_sin(yaw));  gl_put_bits(inst, k + 5, f_cos(yaw));  gl_put_bits(inst, k + 6, sd);  gl_put_bits(inst, k + 7, F_ZERO)
+        k += INST_FLOATS
+      }
+    }
+  }
+  let buf = gl_buffer()
+  gl_bind_buffer(GL_ARRAY_BUFFER, buf)
+  gl_buffer_data(GL_ARRAY_BUFFER, gl_bytes_of(n9 * INST_FLOATS), inst, GL_STATIC_DRAW)
+  free(inst)
+  # straight down: the window is exactly one tile
+  let view = m4_new();  let proj = m4_new()
+  let eye = v3_new(F_ZERO, fi(6), F_ZERO);  let at = v3_new(F_ZERO, F_ZERO, F_ZERO);  let up = v3_new(F_ZERO, F_ZERO, f_neg1())
+  m4_look_at(view, eye, at, up)
+  m4_ortho(proj, f_neg(half), half, f_neg(half), half, fl(0.1), fi(12))
+  let bake = sc_bake_card_prog
+  gl_use_program(bake)
+  u_mat4(gl_uniform(bake, "u_view"), view)
+  u_mat4(gl_uniform(bake, "u_proj"), proj)
+  u_f(gl_uniform(bake, "u_wind"), F_ZERO)
+  u_f(gl_uniform(bake, "u_time"), F_ZERO)
+  for li in 0 .. len(layers) {
+    let l = layers[li]
+    if l.atlas == null { continue }
+    u_f(gl_uniform(bake, "u_card_w"), f_mul(l.atlas.radius, F_TWO));  u_f(gl_uniform(bake, "u_card_h"), l.atlas.height)
+    r3d_bind_2d(bake, "u_diff", 0, l.atlas.albedo)
+    r3d_bind_2d(bake, "u_arm", 2, l.atlas.normal)
+    for i in 0 .. len(l.model.prims) {
+      let pr = l.model.prims[i]
+      scatter_attach(pr.mesh.vao, buf)
+      mesh_draw_instanced(pr.mesh, n9)
+    }
+  }
+  free(view);  free(proj);  free(eye);  free(at);  free(up);  free(bufs)
+  gl_bind_framebuffer(GL_FRAMEBUFFER, 0)
+  ids[0] = fbo
+  gl_delete_framebuffers(1, ids)
+  ids[0] = rb
+  gl_delete_renderbuffers(1, ids)
+  ids[0] = buf
+  gl_delete_buffers(1, ids)
+  gl_bind_texture(GL_TEXTURE_2D, tex)
+  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
+  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
+  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+  gl_tex_parameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, tex_anisotropy)
+  gl_generate_mipmap(GL_TEXTURE_2D)
+  gl_check("carpet bake")
+  return tex
+}

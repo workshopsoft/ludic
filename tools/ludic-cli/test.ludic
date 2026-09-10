@@ -447,6 +447,7 @@ function cmd_dev_test() -> int {
   smoke("events/events")
   smoke("networking/net_rt")
   smoke("library/cursor_capture")                    # #89 Input.cursor_mode compiles (no-op headless; windowed links cocoa.ll)
+  smoke("rendering/gl_triangle")                     # Gl.* (OpenGL 4.1 core) compiles headless; the run needs a GPU context
 
   print("== the compiler and the CLI (ludicc / ludic) ==")
   # ludicc comes out of the IR seed with clang alone; the CLI is then compiled
@@ -524,6 +525,15 @@ function cmd_dev_test() -> int {
   if shq(`bin/ludic-dev docs-palette --check > {tmp_dir()}/pal.out 2>&1`) {
     ok("ludic-dev docs-palette regenerates emit_color.ludic + palette.json byte-identically")
   } else { bad2("ludic-dev docs-palette --check", capture_line(`tail -1 {tmp_dir()}/pal.out`)) }
+
+  # the OpenGL binding generator is the same shape: gl_api.ludic + gl_thunks.ll are
+  # tracked, and --check regenerates them from the platform gl3.h and compares. The
+  # header is macOS-only, so this guard cannot run off Darwin.
+  if is_darwin() {
+    if shq(`bin/ludic-dev glgen --check > {tmp_dir()}/glgen.out 2>&1`) {
+      ok("ludic-dev glgen regenerates gl_api.ludic + gl_thunks.ll byte-identically")
+    } else { bad2("ludic-dev glgen --check", capture_line(`tail -1 {tmp_dir()}/glgen.out`)) }
+  } else { skip("ludic-dev glgen --check (needs the macOS OpenGL headers)") }
 
   return report()
 }

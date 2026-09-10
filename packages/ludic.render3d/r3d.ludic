@@ -1,0 +1,26 @@
+# ============================================================================
+# ludic.render3d — a physically based 3D renderer on Gl.* (OpenGL 4.1 core).
+# Import this one file; the game supplies scene_draw() / scene_draw_casters().
+# ============================================================================
+import "fmath.ludic"
+import "prof.ludic"
+import "programs.ludic"
+import "texture.ludic"
+import "mesh.ludic"
+import "camera.ludic"
+import "sky.ludic"
+import "daylight.ludic"
+import "terrain.ludic"
+import "collide.ludic"
+import "overlay.ludic"
+import "shadow.ludic"
+import "post.ludic"
+import "quat.ludic"
+import "gltf.ludic"
+import "skin.ludic"
+import "scatter.ludic"
+import "actor.ludic"
+import "stream.ludic"
+import "grass.ludic"
+import "water.ludic"
+import "render.ludic"

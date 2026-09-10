@@ -1,0 +1,49 @@
+# gl_triangle.ludic — the smallest Gl.* program: one shaded triangle through a
+# real OpenGL 4.1 core context. Windowed it draws to the screen each frame;
+# headless it renders into an offscreen framebuffer and screenshots it, so the
+# test harness can look at the result without a display.
+#   bin/ludic build examples/rendering/gl_triangle.ludic --headless && echo q | build/gl_triangle_headless
+program GlTriangle {
+  property Marker { on: int = 1 }
+  model Anchor { Marker }
+
+  var prog: int = 0
+  var vao:  int = 0
+  var frame: int = 0
+
+  const VS: string = "#version 410 core\nlayout(location=0) in vec2 p; layout(location=1) in vec3 c; out vec3 vc;\nvoid main(){ vc = c; gl_Position = vec4(p, 0.0, 1.0); }\n"
+  const FS: string = "#version 410 core\nin vec3 vc; out vec4 o;\nvoid main(){ o = vec4(vc, 1.0); }\n"
+
+  handler Boot phase Start {
+    spawn Anchor {}
+    if not Gl.open(width: 640, height: 360, title: "Ludic GL") { print("no GL context"); quit() }
+    print(Gl.get_string(name: GL_VERSION))
+    prog = Gl.program(vs: VS, fs: FS)
+    vao = Gl.vao()
+    let vbo = Gl.buffer()
+    Gl.bind_buffer(target: GL_ARRAY_BUFFER, buffer: vbo)
+    let v = Gl.floats(15)
+    Gl.put(v, 0, -0.8);  Gl.put(v, 1, -0.8);  Gl.put(v, 2, 1.0);  Gl.put(v, 3, 0.2);  Gl.put(v, 4, 0.1)
+    Gl.put(v, 5,  0.8);  Gl.put(v, 6, -0.8);  Gl.put(v, 7, 0.1);  Gl.put(v, 8, 1.0);  Gl.put(v, 9, 0.2)
+    Gl.put(v, 10, 0.0);  Gl.put(v, 11, 0.8);  Gl.put(v, 12, 0.2); Gl.put(v, 13, 0.3); Gl.put(v, 14, 1.0)
+    Gl.buffer_data(target: GL_ARRAY_BUFFER, size: Gl.bytes_of(15), data: v, usage: GL_STATIC_DRAW)
+    Gl.enable_vertex_attrib_array(index: 0)
+    Gl.vertex_attrib_pointer(index: 0, size: 2, type: GL_FLOAT, normalized: 0, stride: 20, offset: null)
+    Gl.enable_vertex_attrib_array(index: 1)
+    Gl.vertex_attrib_pointer(index: 1, size: 3, type: GL_FLOAT, normalized: 0, stride: 20, offset: Gl.ptr(null, 8))
+    Gl.check(tag: "boot")
+  }
+
+  handler Draw phase Render {
+    Gl.bind_framebuffer(target: GL_FRAMEBUFFER, framebuffer: Gl.screen_fbo())
+    Gl.viewport(x: 0, y: 0, width: Gl.width(), height: Gl.height())
+    Gl.clear_color(red: 0.1, green: 0.12, blue: 0.18, alpha: 1.0)
+    Gl.clear(mask: GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+    Gl.use_program(prog: prog)
+    Gl.bind_vertex_array(array: vao)
+    Gl.draw_arrays(mode: GL_TRIANGLES, first: 0, count: 3)
+    frame += 1
+    if frame == 1 { Gl.screenshot(path: "build/gl_triangle.ppm") }
+    Gl.swap()
+  }
+}

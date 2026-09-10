@@ -7,9 +7,12 @@
 # a dependency to read a sprite is a poor trade when the algorithm is this
 # small. So it lives here, in the language.
 #
-# The decoder is the canonical-Huffman formulation from Mark Adler's `puff`:
-# a symbol table plus per-length counts, walked one bit at a time. Slower than
-# a lookup-table decoder, and entirely fast enough to load sprites at startup.
+# The decoder is the canonical-Huffman formulation from Mark Adler's `puff`: a
+# symbol table plus per-length counts. Short codes (<= Z_FAST bits, which is the
+# overwhelming majority) resolve in a single lookup out of a 512-entry table built
+# with the symbol table; longer ones fall back to puff's walk, one bit at a time.
+# The walk alone was fine for sprites, but a PBR scene inflates hundreds of
+# megabytes of texture at load, and there the table is worth its 2 KB.
 # ============================================================================
 
 # ---- bit reader (DEFLATE packs bits least-significant-first) ---------------
@@ -21,12 +24,24 @@ var z_bitcnt: int = 0
 var z_err:    int = 0
 
 function z_start(src: pointer, len: int) -> void {
+  z_tables_once()
   z_src = src
   z_len = len
   z_pos = 0
   z_bitbuf = 0
   z_bitcnt = 0
   z_err = 0
+}
+
+# Fill the bit buffer to at least `n` bits without consuming any (n <= 16, so the
+# buffer never shifts a byte past bit 15 and cannot reach the sign bit).
+function z_need(n: int) -> void {
+  while z_bitcnt < n {
+    if z_pos >= z_len { return }
+    z_bitbuf = (z_bitbuf | (z_src[z_pos] << z_bitcnt))
+    z_pos += 1
+    z_bitcnt += 8
+  }
 }
 
 function z_bits(need: int) -> int {
@@ -46,10 +61,17 @@ function z_bits(need: int) -> int {
 }
 
 # ---- Huffman tables -------------------------------------------------------
-# A table is a single buffer: 16 length-counts followed by the symbols in
-# canonical order. One allocation, no structs.
+# One buffer per table: 16 length-counts, then a Z_FASTSZ-entry lookup keyed by
+# the next Z_FAST bits of the stream, then the symbols in canonical order.
+# A lookup entry is (length << 16) | symbol, or 0 when no code that short matches.
+# Z_FAST = 10 measured fastest over a 493 MB corpus (9 and 11 are both ~8% slower:
+# 9 misses the table more often, 11 spends more clearing it per dynamic block).
+const Z_FAST:   int = 10
+const Z_FASTSZ: int = 1024          # 1 << Z_FAST
+const Z_SYMS:   int = 1040         # 16 + Z_FASTSZ: where the symbols start
+
 function z_table_new(nsym: int) -> pointer {
-  return words((16 + nsym))
+  return words((Z_SYMS + nsym))
 }
 
 # lengths[i] = code length of symbol i (0 = symbol unused)
@@ -71,14 +93,65 @@ function z_table_build(table: words, lengths: words, n: int) -> void {
   for s in 0 .. n {
     let l = lengths[s]
     if l != 0 {
-      table[16 + offs[l]] = s
+      table[Z_SYMS + offs[l]] = s
       offs[l] += 1
     }
   }
   free(offs)
+
+  # ---- the fast lookup ----
+  for i in 0 .. Z_FASTSZ {
+    table[16 + i] = 0
+  }
+  # first canonical code of each length
+  let firstc: words = words(17)
+  var code = 0
+  for l in 1 .. 16 {
+    code = ((code + table[l - 1]) << 1)
+    firstc[l] = code
+  }
+  var idx = 0
+  for l in 1 .. 16 {
+    let cnt = table[l]
+    var k = 0
+    while k < cnt {
+      let sym = table[Z_SYMS + idx]
+      if l <= Z_FAST {
+        # DEFLATE reads a code most-significant-bit first out of a stream packed
+        # least-significant-bit first, so the table is keyed by the reversed code
+        let c = firstc[l] + k
+        var rev = 0
+        var b = 0
+        while b < l {
+          rev = ((rev << 1) | ((c >> b) & 1))
+          b += 1
+        }
+        let entry = ((l << 16) | sym)
+        var j = rev
+        while j < Z_FASTSZ {
+          table[16 + j] = entry
+          j += (1 << l)
+        }
+      }
+      idx += 1
+      k += 1
+    }
+  }
+  free(firstc)
 }
 
 function z_decode(table: words) -> int {
+  z_need(Z_FAST)
+  if z_bitcnt >= Z_FAST {
+    let e = table[16 + (z_bitbuf & (Z_FASTSZ - 1))]
+    if e != 0 {
+      let l = (e >> 16)
+      z_bitbuf = (z_bitbuf >> l)
+      z_bitcnt -= l
+      return (e & 65535)
+    }
+  }
+  # a code longer than Z_FAST bits (or a stream too short to peek): walk it
   var code = 0
   var first = 0
   var index = 0
@@ -86,7 +159,7 @@ function z_decode(table: words) -> int {
     code = (code | z_bits(1))
     let count = table[len]
     if code - first < count {
-      return table[16 + index + (code - first)]
+      return table[Z_SYMS + index + (code - first)]
     }
     index += count
     first = ((first + count) << 1)
@@ -123,6 +196,29 @@ function z_dist_extra(sym: int) -> int {
   return (sym - 2) / 2
 }
 
+# The RFC tables above are pure functions of the symbol; compute them once rather
+# than dividing per match.
+var z_lbase: words = null
+var z_lext:  words = null
+var z_dbase: words = null
+var z_dext:  words = null
+
+function z_tables_once() -> void {
+  if z_lbase != null { return }
+  z_lbase = words(29)
+  z_lext = words(29)
+  for s in 0 .. 29 {
+    z_lbase[s] = z_len_base(s)
+    z_lext[s] = z_len_extra(s)
+  }
+  z_dbase = words(30)
+  z_dext = words(30)
+  for s in 0 .. 30 {
+    z_dbase[s] = z_dist_base(s)
+    z_dext[s] = z_dist_extra(s)
+  }
+}
+
 # ---- block decoders -------------------------------------------------------
 # `out` is the destination window; returns the new write position, or -1.
 function z_stored(out: pointer, at: int, cap: int) -> int {
@@ -156,15 +252,20 @@ function z_codes(out: pointer, at: int, cap: int, lit: pointer, dist: pointer) -
     if sym > 256 {
       let s = sym - 257
       if s >= 29 { return -1 }
-      let length = z_len_base(s) + z_bits(z_len_extra(s))
+      let length = z_lbase[s] + z_bits(z_lext[s])
       let d = z_decode(dist)
       if d < 0 { return -1 }
-      let distance = z_dist_base(d) + z_bits(z_dist_extra(d))
+      if d >= 30 { return -1 }
+      let distance = z_dbase[d] + z_bits(z_dext[d])
       if distance > w { return -1 }
-      for k in 0 .. length {
-        if w >= cap { return -1 }
-        out[w] = out[w - distance]
+      if w + length > cap { return -1 }      # bounds once, not per byte
+      var sp = w - distance
+      var k = 0
+      while k < length {
+        out[w] = out[sp]
         w += 1
+        sp += 1
+        k += 1
       }
     }
     sym = z_decode(lit)

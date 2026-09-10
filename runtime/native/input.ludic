@@ -223,6 +223,9 @@ var in_mx0: int = 0       # x/y at the previous frame (for the delta)
 var in_my0: int = 0
 var in_mdx: int = 0       # delta this frame
 var in_mdy: int = 0
+var in_rdx: int = 0       # the raw motion the platform reports while captured
+var in_rdy: int = 0
+var in_cursor_mode: int = 0
 var in_mbtn: int = 0      # button bitmask (bit 0 left, 1 right, 2 middle)
 var in_wheel: int = 0     # wheel delta this frame
 # gamepads: connected flag, button bitmask, and IN_AXES fixed axes each
@@ -298,9 +301,11 @@ function input_device_commit(k: int, replaying: int) -> void {
     # headless, from the single polled key. Injection (in_sim) is OR-ed on top.
     if is_windowed() {
       win_held(in_dev)
-      let mbuf = words(4)                              # [x, y, button-mask, wheel]
+      let mbuf = words(6)                              # [x, y, button-mask, wheel, raw dx, raw dy]
+      mbuf[4] = 0;  mbuf[5] = 0
       win_mouse(mbuf)
       in_mx = mbuf[0];  in_my = mbuf[1];  in_mbtn = mbuf[2];  in_wheel = mbuf[3]
+      in_rdx = mbuf[4];  in_rdy = mbuf[5]
       # #51 — feed the platform gamepad + touch state into the same buffers the
       # read APIs use. Each is windowed-only glue (win_pad / win_touch are DCE'd
       # in a headless build); on hardware they overwrite the injected state.
@@ -334,6 +339,8 @@ function input_device_commit(k: int, replaying: int) -> void {
   # platform above when windowed, by Input.set_mouse before this poll otherwise).
   in_mdx = in_mx - in_mx0
   in_mdy = in_my - in_my0
+  # captured (mode 2): the cursor is a clamped reticle, the motion is the raw delta
+  if is_windowed() and in_cursor_mode == 2 { in_mdx = in_rdx;  in_mdy = in_rdy }
   in_mx0 = in_mx
   in_my0 = in_my
 }
@@ -438,6 +445,7 @@ enum CursorMode { Normal, Hidden, Locked, Confined }   # Input.cursor_mode(mode:
 enum PadButton { A, B, X, Y, LeftShoulder, RightShoulder, Back, Start }   # Input.bind_pad(button:) / pad_button
 enum MouseButton { Left, Right, Middle }                                  # Input.mouse_down(button:)
 function input_cursor_mode(mode: int) -> void {
+  in_cursor_mode = mode
   if is_windowed() { win_cursor_mode(mode) }
 }
 

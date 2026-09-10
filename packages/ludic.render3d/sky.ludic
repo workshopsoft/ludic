@@ -1,0 +1,134 @@
+# ============================================================================
+# sky.ludic — the HDRI sky and its image-based lighting: the equirect radiance
+# map (RGB16F, mipped), the sun found in it, a diffuse-convolved irradiance map,
+# a GGX-prefiltered map per roughness level (a 2D array), and the split-sum
+# BRDF lookup. All convolved on the GPU at load.
+# ============================================================================
+
+const SKY_PREFILTER_LEVELS: int = 6
+
+var sky_tex: int = 0
+var sky_w: int = 0
+var sky_h: int = 0
+var sky_irradiance: int = 0
+var sky_prefilter: int = 0        # GL_TEXTURE_2D_ARRAY
+var sky_brdf: int = 0
+var sun_dir: words = null         # toward the sun (float bits)
+var sun_color: words = null       # radiance (float bits)
+var sky_fullscreen: Mesh = null
+var sky_yaw: int = 0              # radians: the HDRI is turned by this about y
+var sky_sun_boost: int = 0x40133333   # 2.3: the photograph's thin cloud dims its sun; a crisper day wants more
+var sky_rot_s: int = 0
+var sky_rot_c: int = 0
+var sun_hdri: words = null        # the sun direction as found in the file
+var sky_p_irr: int = 0
+var sky_p_pre: int = 0
+var sky_p_brdf: int = 0
+
+# turn the HDRI so its sun sits at world azimuth `yaw` (radians, 0 = toward -z)
+function sky_set_yaw(yaw: int) -> void {
+  sky_set_rot(yaw)
+  # world sun = rotY(sun_hdri, -yaw): the lookup rotates a world direction by +yaw
+  let s = sun_hdri
+  v3_set(sun_dir, f_sub(f_mul(sky_rot_c, s[0]), f_mul(sky_rot_s, s[2])), s[1], f_add(f_mul(sky_rot_s, s[0]), f_mul(sky_rot_c, s[2])))
+  sky_precompute()
+}
+# turn only the visible sky image (cheap, per frame): the light and the convolved
+# maps stay where they are — daylight.ludic moves those on its own terms
+function sky_set_rot(yaw: int) -> void {
+  sky_yaw = yaw
+  sky_rot_s = f_sin(yaw);  sky_rot_c = f_cos(yaw)
+}
+function sky_bind_rot(prog: int) -> void { u_f2(gl_uniform(prog, "u_sky_rot"), sky_rot_s, sky_rot_c) }
+
+# direction for an equirect uv (matches equirectUV in lighting.glsl)
+function sky_dir_from_uv(o: words, u: int, v: int) -> void {
+  let phi = f_mul(f_sub(u, F_HALF), f_mul(F_TWO, F_PI))
+  let theta = f_mul(v, F_PI)
+  let st = f_sin(theta)
+  v3_set(o, f_mul(st, f_sin(phi)), f_cos(theta), f_neg(f_mul(st, f_cos(phi))))
+}
+
+function sky_load(path: string) -> bool {
+  sky_tex = tex_load_hdr(path)
+  if sky_tex == 0 { return false }
+  sky_w = tex_w;  sky_h = tex_h
+  sun_dir = words(3)
+  sun_hdri = words(3)
+  sky_dir_from_uv(sun_hdri, fr(hdr_max_x * 2 + 1, sky_w * 2), fr(hdr_max_y * 2 + 1, sky_h * 2))
+  v3_copy(sun_dir, sun_hdri)
+  sky_rot_c = F_ONE
+  # the sun's irradiance is what the IBL clip leaves out of the map; lighting it
+  # directly with that keeps sun and sky in the photograph's own proportion
+  sun_color = v3_new(f_mul(hdr_sun_r, sky_sun_boost), f_mul(hdr_sun_g, sky_sun_boost), f_mul(hdr_sun_b, sky_sun_boost))
+  print(`sun irradiance: {f_fx(hdr_sun_r)} {f_fx(hdr_sun_g)} {f_fx(hdr_sun_b)} (Q16.16), clip {f_fx(hdr_clip)}`)
+  print(`sky: {sky_w}x{sky_h}, sun at texel {hdr_max_x},{hdr_max_y}`)
+  sky_fullscreen = mesh_fullscreen()
+  sky_precompute()
+  return true
+}
+
+function sky_convolve(prog: int, target_tex: int, layer: int, w: int, h: int, rough: int) -> void {
+  let fbo = gl_framebuffer()
+  gl_bind_framebuffer(GL_FRAMEBUFFER, fbo)
+  if layer < 0 { gl_framebuffer_texture2d(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, target_tex, 0) }
+  else { gl_framebuffer_texture_layer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, target_tex, 0, layer) }
+  gl_viewport(0, 0, w, h)
+  gl_use_program(prog)
+  r3d_bind_2d(prog, "u_sky", 0, sky_tex)
+  sky_bind_rot(prog)
+  u_f(gl_uniform(prog, "u_sun_clip"), hdr_clip)
+  u_f(gl_uniform(prog, "u_rough"), rough)
+  u_f(gl_uniform(prog, "u_sky_w"), fi(sky_w))
+  mesh_draw(sky_fullscreen)
+  gl_bind_framebuffer(GL_FRAMEBUFFER, 0)
+  let ids = gl_scratch()
+  ids[0] = fbo
+  gl_delete_framebuffers(1, ids)
+}
+
+function sky_precompute() -> void {
+  gl_disable(GL_DEPTH_TEST)
+  if sky_irradiance != 0 {
+    let ids = gl_scratch()
+    ids[0] = sky_irradiance;  gl_delete_textures(1, ids)
+    ids[0] = sky_prefilter;  gl_delete_textures(1, ids)
+    ids[0] = sky_brdf;  gl_delete_textures(1, ids)
+  }
+  # irradiance: 128 x 64 equirect
+  if sky_p_irr == 0 { sky_p_irr = r3d_program("fullscreen.vert", "ibl_irradiance.frag", "");  sky_p_pre = r3d_program("fullscreen.vert", "ibl_prefilter.frag", "");  sky_p_brdf = r3d_program("fullscreen.vert", "ibl_brdf.frag", "") }
+  let p_irr = sky_p_irr
+  sky_irradiance = tex_target(128, 64, GL_RGB16F, GL_RGB, GL_FLOAT, GL_LINEAR)
+  gl_bind_texture(GL_TEXTURE_2D, sky_irradiance)
+  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
+  sky_convolve(p_irr, sky_irradiance, -1, 128, 64, F_ZERO)
+  # prefiltered specular: 6 roughness levels, 512 x 256 each, as a 2D array
+  let p_pre = sky_p_pre
+  sky_prefilter = gl_texture()
+  gl_bind_texture(GL_TEXTURE_2D_ARRAY, sky_prefilter)
+  gl_tex_image3d(GL_TEXTURE_2D_ARRAY, 0, GL_RGB16F, 512, 256, SKY_PREFILTER_LEVELS, 0, GL_RGB, GL_FLOAT, null)
+  gl_tex_parameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_REPEAT)
+  gl_tex_parameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+  gl_tex_parameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+  gl_tex_parameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+  for l in 0 .. SKY_PREFILTER_LEVELS {
+    sky_convolve(p_pre, sky_prefilter, l, 512, 256, fr(l, SKY_PREFILTER_LEVELS - 1))
+  }
+  # BRDF LUT
+  let p_brdf = sky_p_brdf
+  sky_brdf = tex_target(256, 256, GL_RG16F, GL_RG, GL_FLOAT, GL_LINEAR)
+  sky_convolve(p_brdf, sky_brdf, -1, 256, 256, F_ZERO)
+  gl_check("sky precompute")
+}
+
+# bind the IBL set + sun for a lit program (units 12..14)
+function sky_bind_lighting(prog: int) -> void {
+  r3d_bind_2d(prog, "u_irradiance", 12, sky_irradiance)
+  r3d_bind_tex(prog, "u_prefilter", 13, GL_TEXTURE_2D_ARRAY, sky_prefilter)
+  r3d_bind_2d(prog, "u_brdf", 14, sky_brdf)
+  u_v3(gl_uniform(prog, "u_sun_dir"), sun_dir)
+  u_v3(gl_uniform(prog, "u_sun_color"), sun_color)
+  u_v3(gl_uniform(prog, "u_cam_pos"), cam_pos)
+  u_f(gl_uniform(prog, "u_prefilter_levels"), fi(SKY_PREFILTER_LEVELS))
+  daylight_bind(prog)
+}
