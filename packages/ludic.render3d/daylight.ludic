@@ -27,6 +27,12 @@ var day_sky_baked: int = 0        # the sky yaw the convolutions were baked at
 var fire_pos: words = null
 var fire_color: words = null
 var day_moon: bool = false
+# The moon's place in its month, 0 new .. 0.5 full .. 1 new again. It decides the disc's
+# terminator, how much light reaches the ground, and where in the sky it rides: a full
+# moon is opposite the sun and rises at sunset, a new one travels with it.
+var day_moon_phase: int = 0x3F000000       # 0.5: full, which is where the game used to be
+var day_moon_illum: int = 0x3F800000       # the lit fraction, derived from the phase
+var day_moon_dir: words = null             # toward the moon, whether or not it is up
 var hand_pos: words = null
 var hand_color: words = null
 var hand_dir: words = null
@@ -41,6 +47,7 @@ function daylight_init() -> void {
   day_sun_base = v3_new(sun_color[0], sun_color[1], sun_color[2])
   fire_pos = v3_new(F_ZERO, fi(-1000), F_ZERO)
   fire_color = v3_new(F_ZERO, F_ZERO, F_ZERO)
+  day_moon_dir = v3_new(F_ZERO, F_ONE, F_ZERO)
   hand_pos = v3_new(F_ZERO, fi(-1000), F_ZERO);  hand_color = v3_new(F_ZERO, F_ZERO, F_ZERO);  hand_dir = v3_new(F_ZERO, F_ZERO, f_neg(F_ONE));  hand_cone = f_neg(F_TWO)
   day_light = F_ONE
 }
@@ -95,22 +102,40 @@ function daylight_set(hours: int) -> void {
   var sr = f_mul(day_sun_base[0], f_mul(f_mul(d, warm_r), sunk))
   var sg = f_mul(day_sun_base[1], f_mul(f_mul(d, warm_g), sunk))
   var sb = f_mul(day_sun_base[2], f_mul(f_mul(d, warm_b), sunk))
+  # The moon rides a lag behind the sun that is its phase: full is opposite (half a turn),
+  # new is alongside. Its elevation follows the same arc, offset by the same amount, so a
+  # full moon rises as the sun sets and a new moon is up all day and invisible.
+  # The moon is where the sun was `lag` of a day ago: at full that is half a day, so it
+  # rises as the sun sets; at new it is alongside the sun and up all day, invisible. The
+  # sign matters — a waxing crescent has to set AFTER the sun, not before it.
+  let moon_lag = f_mul(f_mul(F_TWO, F_PI), day_moon_phase)
+  let maz = f_sub(az, f_mul(moon_lag, day_dir))
+  let mel = f_rad(f_add(fi(-6), f_mul(fi(63), f_sin(f_sub(t, moon_lag)))))
+  let mce = f_cos(mel)
+  v3_set(day_moon_dir, f_neg(f_mul(f_sin(maz), mce)), f_sin(mel), f_neg(f_mul(f_cos(maz), mce)))
   day_moon = false
   if f_ls(el, f_rad(fi(-7))) {
     day_moon = true
-    laz = f_add(az, F_PI)
-    lel = f_clamp(f_neg(el), f_rad(fi(10)), f_rad(fi(55)))
+    laz = maz
+    lel = f_clamp(mel, f_rad(fi(6)), f_rad(fi(70)))
     let m = smoothf(f_rad(fi(-7)), f_rad(fi(-16)), el)
-    sr = f_mul(day_sun_base[0], f_mul(fl(0.0045), m))
-    sg = f_mul(day_sun_base[1], f_mul(fl(0.0060), m))
-    sb = f_mul(day_sun_base[2], f_mul(fl(0.0095), m))
+    # what the moon is worth on the ground, by how much of it is lit. A new moon is a
+    # properly dark night, which is what makes a torch and a lantern matter.
+    let up = smoothf(f_rad(fi(-4)), f_rad(fi(8)), mel)
+    let lit = f_mul(f_mul(m, up), f_add(fl(0.06), f_mul(fl(0.94), day_moon_illum)))
+    sr = f_mul(day_sun_base[0], f_mul(fl(0.0130), lit))
+    sg = f_mul(day_sun_base[1], f_mul(fl(0.0165), lit))
+    sb = f_mul(day_sun_base[2], f_mul(fl(0.0250), lit))
   }
   let ce = f_cos(lel)
   v3_set(sun_dir, f_neg(f_mul(f_sin(laz), ce)), f_sin(lel), f_neg(f_mul(f_cos(laz), ce)))
   v3_set(sun_color, sr, sg, sb)
   # the sky's light: full by day, a deep blue by night, amber through the dusk
   let dusk = f_mul(smoothf(f_rad(fi(-10)), f_rad(fi(2)), el), f_sub(F_ONE, smoothf(f_rad(fi(2)), f_rad(fi(18)), el)))
-  v3_set(day_ibl, f_lerp(fl(0.020), F_ONE, d), f_lerp(fl(0.026), F_ONE, d), f_lerp(fl(0.045), F_ONE, d))
+  # a full moon lifts the night's own ambient nearly threefold; a new moon leaves it alone
+  var moonlit = F_ONE
+  if day_moon { moonlit = f_add(F_ONE, f_mul(fl(1.8), day_moon_illum)) }
+  v3_set(day_ibl, f_lerp(f_mul(fl(0.020), moonlit), F_ONE, d), f_lerp(f_mul(fl(0.026), moonlit), F_ONE, d), f_lerp(f_mul(fl(0.045), moonlit), F_ONE, d))
   day_ibl[0] = f_mul(day_ibl[0], f_add(F_ONE, f_mul(fl(0.35), dusk)))
   day_ibl[2] = f_mul(day_ibl[2], f_sub(F_ONE, f_mul(fl(0.25), dusk)))
   # clouds: less light, and greyer (the blue and the warmth both fade)
@@ -120,7 +145,11 @@ function daylight_set(hours: int) -> void {
   if day_fog_base == 0 { day_fog_base = r3d_fog_density }
   r3d_fog_density = f_mul(day_fog_base, day_fog_mul)
   # exposure: auto-exposure must not turn the night into day
-  post_exposure_max = f_lerp(fl(4.5), fi(20), d)
+  # the ceiling has to move with the moon or auto-exposure eats the difference between a
+  # full-moon night and a new-moon one
+  var night_max = fl(4.5)
+  if day_moon { night_max = f_add(fl(4.5), f_mul(fl(3.5), day_moon_illum)) }
+  post_exposure_max = f_lerp(night_max, fi(20), d)
   # the visible sky turns with the sun (cheap); its convolutions rebake when far off
   let sky_yaw_now = f_add(day_yaw0, f_mul(f_mul(f_sub(h, day_hour0), f_rad(fi(15))), day_dir))
   sky_set_rot(sky_yaw_now)
@@ -133,6 +162,16 @@ function daylight_set(hours: int) -> void {
     day_baked_az = laz;  day_baked_el = lel
     day_gen += 1
   }
+}
+
+# where the moon is in its month; the game advances this each morning
+function daylight_moon(phase: int) -> void {
+  var p = f_mod(phase, F_ONE)
+  if f_ls(p, F_ZERO) { p = f_add(p, F_ONE) }
+  day_moon_phase = p
+  # illuminated fraction: (1 - cos(2 pi p)) / 2, which is 0 at new and 1 at full
+  day_moon_illum = f_mul(f_sub(F_ONE, f_cos(f_mul(f_mul(F_TWO, F_PI), p))), F_HALF)
+  daylight_set(day_hours)
 }
 
 # the weather over the valley: overcast 0..1, a fog multiplier, a lightning flash 0..1
@@ -156,6 +195,10 @@ function daylight_bind(prog: int) -> void {
   u_v3(gl_uniform(prog, "u_hand_dir"), hand_dir)
   u_f(gl_uniform(prog, "u_hand_cone"), hand_cone)
   u_v3(gl_uniform(prog, "u_ibl_scale"), day_ibl)
+  u_v3(gl_uniform(prog, "u_moon_dir"), day_moon_dir)
+  u_f(gl_uniform(prog, "u_moon_phase"), day_moon_phase)
+  u_f(gl_uniform(prog, "u_moon_illum"), day_moon_illum)
+  u_f(gl_uniform(prog, "u_moon_haze"), day_overcast)
   u_f(gl_uniform(prog, "u_daylight"), day_light)
   u_v3(gl_uniform(prog, "u_fire_pos"), fire_pos)
   u_v3(gl_uniform(prog, "u_fire_color"), fire_color)
