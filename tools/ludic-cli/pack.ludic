@@ -1,0 +1,357 @@
+# pack.ludic — `ludic pack`, the writer for the .lpak asset pack.
+#
+# The reader is in the compiler (selfhost/backend/stdlib/emit_pak.ludic), which
+# is also where the format is specified. This is the only thing that produces
+# one, and the two have exactly one contract between them: the entry table is
+# sorted by name, because the runtime binary-searches it.
+#
+#   ludic pack                      pack the manifest's `pack` roots to build/<name>.lpak
+#   ludic pack --out x.lpak a b     pack directories a and b to x.lpak
+#   ludic pack --list x.lpak        print what is in a pack
+#   ludic pack --verify x.lpak      re-hash every entry against the table
+#
+# Paths are stored exactly as the game asks for them — a file at ./assets/kit/x.png
+# is stored as "assets/kit/x.png" — so packing changes nothing about how the game
+# is written. That is the whole point: `gltf_load("assets/kit/hiker", ...)` is the
+# same line of code before and after.
+
+# ---- little-endian integers -------------------------------------------------
+#
+# The runtime reads these back with a plain i32 load, so the byte order here is
+# the byte order of the machine that runs the game. Both are little-endian on
+# every target Ludic supports today; a big-endian port would byte-swap in the
+# reader, not here.
+
+function put_u32(f: pointer, v: int) -> void {
+  let b = bytes(4)
+  b[0] = v & 255
+  b[1] = (v >> 8) & 255
+  b[2] = (v >> 16) & 255
+  b[3] = (v >> 24) & 255
+  file_write(f, b, 4)
+}
+
+# FNV-1a over `n` bytes of `buf` starting at `off`. Not a security hash - it is
+# there so `ludic pack --verify` can tell a truncated or bit-rotted pack from a
+# good one. The arithmetic wraps in 32 bits, which is exactly what FNV specifies
+# mod 2^32; the writer and the verifier compare the same bit pattern, so the
+# sign an int puts on it never matters.
+function fnv1a(buf: pointer, off: int, n: int) -> int {
+  var h = -2128831035                # 0x811C9DC5 as a signed 32-bit int
+  var i = 0
+  while i < n {
+    h = h ^ (buf[off + i] & 255)
+    h = h * 16777619
+    i += 1
+  }
+  return h
+}
+
+# ---- reading one file whole -------------------------------------------------
+#
+# read_file in the prelude NUL-terminates and does not report a length, which is
+# fine for source text and useless for a PNG. This keeps the length.
+
+var pk_len: int = 0
+
+function read_blob(path: pointer) -> pointer {
+  pk_len = 0
+  let f = file_open(path, "rb")
+  if f == null { return null }
+  file_seek(f, 0, 2)
+  let n = file_tell(f)
+  file_seek(f, 0, 0)
+  let buf = bytes(n + 1)
+  let got = file_read(f, buf, n)
+  file_close(f)
+  buf[got] = 0
+  pk_len = got
+  return buf
+}
+
+# ---- gathering the files ----------------------------------------------------
+
+# Every file under `root`, in byte order. `find | sort` rather than a walk of
+# Fs.list: the runtime binary-searches on strcmp order, and a recursive walk
+# emits "assets/a.png" after "assets/ab/x.png" because it descends per directory,
+# which is not that order. LC_ALL=C is what makes sort agree with strcmp.
+function pack_gather(root: pointer) -> []pointer {
+  var out = new []pointer
+  if not file_exists(root) {
+    err(`ludic pack: no such directory: {root}\n`)
+    return out
+  }
+  let listing = capture(`find {root} -type f ! -name '.DS_Store' | LC_ALL=C sort`)
+  let n = slen(listing)
+  var i = 0
+  while i < n {
+    let line = line_at(listing, i)
+    i = i + slen(line) + 1
+    let t = s_trim(line)
+    if slen(t) > 0 { push(out, t) }
+  }
+  return out
+}
+
+# every root's files, concatenated then re-sorted as one list, since the runtime
+# searches one table across all of them
+function pack_gather_all(roots: []pointer) -> []pointer {
+  var all = new []pointer
+  var i = 0
+  while i < len(roots) {
+    let one = pack_gather(roots[i])
+    var k = 0
+    while k < len(one) { push(all, one[k]);  k += 1 }
+    i += 1
+  }
+  return pack_sort(all)
+}
+
+# insertion sort by byte order. The lists are hundreds of entries, not millions,
+# and this keeps the one ordering guarantee the format makes in one readable place.
+function pack_sort(xs: []pointer) -> []pointer {
+  var i = 1
+  while i < len(xs) {
+    let v = xs[i]
+    var j = i - 1
+    while j >= 0 and pack_cmp(xs[j], v) > 0 {
+      xs[j + 1] = xs[j]
+      j -= 1
+    }
+    xs[j + 1] = v
+    i += 1
+  }
+  return xs
+}
+
+# strcmp order: negative, zero or positive, comparing unsigned bytes. This is the
+# ordering the format promises and the runtime's binary search assumes.
+function pack_cmp(a: pointer, b: pointer) -> int {
+  var i = 0
+  var r = 0
+  var done = false
+  while not done {
+    let ca = a[i] & 255
+    let cb = b[i] & 255
+    if ca != cb { r = ca - cb;  done = true }
+    else if ca == 0 { r = 0;  done = true }
+    else { i += 1 }
+  }
+  return r
+}
+
+# round `v` up to the next multiple of 16, so every blob starts aligned and a
+# reader can hand a mapped pointer straight to something that wants alignment
+function align16(v: int) -> int {
+  let r = v & 15
+  if r == 0 { return v }
+  return v + (16 - r)
+}
+
+# ---- writing ----------------------------------------------------------------
+
+function pack_write(out_path: pointer, files: []pointer) -> bool {
+  let n = len(files)
+  if n == 0 { err("ludic pack: nothing to pack\n");  return false }
+
+  # Layout is decided before a byte is written: the entry table has to carry
+  # absolute offsets, and those are only knowable once every size is known.
+  let names_at = 32 + 16 * n
+  var name_off = new []int
+  var names_len = 0
+  var i = 0
+  while i < n {
+    push(name_off, names_at + names_len)
+    names_len = names_len + slen(files[i]) + 1
+    i += 1
+  }
+  let data_at = align16(names_at + names_len)
+
+  var data_off = new []int
+  var data_len = new []int
+  var hash = new []int
+  var total = data_at
+  i = 0
+  while i < n {
+    let blob = read_blob(files[i])
+    if blob == null { err(`ludic pack: cannot read {files[i]}\n`);  return false }
+    push(data_off, total)
+    push(data_len, pk_len)
+    push(hash, fnv1a(blob, 0, pk_len))
+    total = align16(total + pk_len)
+    i += 1
+  }
+
+  run(`mkdir -p "$(dirname {out_path})"`)
+  let f = file_open(out_path, "wb")
+  if f == null { err(`ludic pack: cannot write {out_path}\n`);  return false }
+
+  # header
+  let magic = bytes(5);  magic[0] = 'L';  magic[1] = 'P';  magic[2] = 'A';  magic[3] = 'K';  magic[4] = 0
+  file_write(f, magic, 4)
+  put_u32(f, 1)                  # version
+  put_u32(f, n)                  # count
+  put_u32(f, names_at)
+  put_u32(f, data_at)
+  put_u32(f, 0);  put_u32(f, 0);  put_u32(f, 0)
+
+  # entry table, in the sorted order the runtime's binary search depends on
+  i = 0
+  while i < n {
+    put_u32(f, name_off[i])
+    put_u32(f, data_off[i])
+    put_u32(f, data_len[i])
+    put_u32(f, hash[i])
+    i += 1
+  }
+
+  # name heap
+  i = 0
+  while i < n {
+    file_write(f, files[i], slen(files[i]) + 1)
+    i += 1
+  }
+
+  # pad up to the first blob, then each blob followed by its alignment padding
+  pack_pad(f, data_at - (names_at + names_len))
+  var at = data_at
+  i = 0
+  while i < n {
+    let blob = read_blob(files[i])
+    if blob == null { err(`ludic pack: {files[i]} vanished mid-pack\n`);  file_close(f);  return false }
+    file_write(f, blob, pk_len)
+    at = at + pk_len
+    let want = align16(at)
+    pack_pad(f, want - at)
+    at = want
+    i += 1
+  }
+  file_close(f)
+
+  print(`packed {string(n)} files, {string(total / 1024)} KiB -> {out_path}`)
+  return true
+}
+
+function pack_pad(f: pointer, k: int) -> void {
+  if k <= 0 { return }
+  let z = bytes(k + 1)
+  var i = 0
+  while i < k { z[i] = 0;  i += 1 }
+  file_write(f, z, k)
+}
+
+# ---- reading a pack back (list / verify) ------------------------------------
+
+# the NUL-terminated name at `off`, copied out. Ludic's `+` on a pointer is
+# string concatenation, not address arithmetic, so an offset into a buffer has to
+# be sliced rather than added.
+function pack_name(buf: pointer, off: int) -> pointer {
+  var n = 0
+  while buf[off + n] != 0 { n += 1 }
+  return str_sub(buf, off, off + n)
+}
+
+function pack_u32(buf: pointer, at: int) -> int {
+  return (buf[at] & 255) | ((buf[at + 1] & 255) << 8) | ((buf[at + 2] & 255) << 16) | ((buf[at + 3] & 255) << 24)
+}
+
+function pack_open_read(path: pointer) -> pointer {
+  let buf = read_blob(path)
+  if buf == null { err(`ludic pack: cannot read {path}\n`);  return null }
+  if pk_len < 32 or buf[0] != 'L' or buf[1] != 'P' or buf[2] != 'A' or buf[3] != 'K' {
+    err(`ludic pack: {path} is not a pack\n`)
+    return null
+  }
+  return buf
+}
+
+function cmd_pack_list(path: pointer) -> int {
+  let buf = pack_open_read(path)
+  if buf == null { return 1 }
+  let n = pack_u32(buf, 8)
+  print(`{path}: {string(n)} entries`)
+  var i = 0
+  while i < n {
+    let e = 32 + 16 * i
+    let no = pack_u32(buf, e)
+    let dl = pack_u32(buf, e + 8)
+    print(`  {string(dl)}\t{pack_name(buf, no)}`)
+    i += 1
+  }
+  return 0
+}
+
+function cmd_pack_verify(path: pointer) -> int {
+  let buf = pack_open_read(path)
+  if buf == null { return 1 }
+  let n = pack_u32(buf, 8)
+  var bad = 0
+  var i = 0
+  while i < n {
+    let e = 32 + 16 * i
+    let no = pack_u32(buf, e)
+    let dof = pack_u32(buf, e + 4)
+    let dl = pack_u32(buf, e + 8)
+    let want = pack_u32(buf, e + 12)
+    if dof + dl > pk_len {
+      err(`  truncated: {pack_name(buf, no)}\n`);  bad += 1
+    } else if fnv1a(buf, dof, dl) != want {
+      err(`  corrupt: {pack_name(buf, no)}\n`);  bad += 1
+    }
+    i += 1
+  }
+  if bad > 0 { err(`ludic pack: {string(bad)} of {string(n)} entries failed\n`);  return 1 }
+  print(`OK {string(n)} entries verified`)
+  return 0
+}
+
+# ---- the command ------------------------------------------------------------
+
+# The roots to pack: an explicit list of directories on the command line, else
+# the manifest's `pack` lines, else assets/ when it exists. A game that keeps its
+# assets where the convention puts them needs no configuration at all.
+function pack_roots(m: Manifest, from: int) -> []pointer {
+  var roots = new []pointer
+  var i = from
+  while i < arg_count() {
+    let a = arg(i)
+    if a == "--out" { i += 1 }                 # its value is the pack, not a root
+    else if not s_starts(a, "--") { push(roots, a) }
+    i += 1
+  }
+  if len(roots) > 0 { return roots }
+  i = 0
+  while i < len(m.packs) { push(roots, m.packs[i]);  i += 1 }
+  if len(roots) > 0 { return roots }
+  if file_exists("assets") { push(roots, "assets") }
+  return roots
+}
+
+# the pack a project builds by default: build/<name>.lpak
+function pack_default_out(m: Manifest) -> pointer {
+  return `build/{project_name("")}.lpak`
+}
+
+function cmd_pack() -> int {
+  var out_path = ""
+  var i = 2
+  while i < arg_count() {
+    let a = arg(i)
+    if a == "--list" { return cmd_pack_list(argn(i + 1, "")) }
+    if a == "--verify" { return cmd_pack_verify(argn(i + 1, "")) }
+    if a == "--out" { out_path = argn(i + 1, "");  i += 1 }
+    i += 1
+  }
+  let m = read_root_manifest()
+  if out_path == "" { out_path = pack_default_out(m) }
+  let roots = pack_roots(m, 2)
+  if len(roots) == 0 {
+    err("ludic pack: nothing to pack.\n")
+    err("  put the assets under assets/, or name the roots in package.ludic:\n")
+    err("    pack \"assets/kit\"\n")
+    return 1
+  }
+  let files = pack_gather_all(roots)
+  if not pack_write(out_path, files) { return 1 }
+  return 0
+}

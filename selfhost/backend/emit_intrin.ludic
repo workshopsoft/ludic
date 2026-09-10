@@ -30,9 +30,16 @@ function emit_intrinsic(name: pointer, e: Node) -> Val {
     let w = emit_bind(`zext i32 {n} to i64`)
     return val(emit_bind(`call ptr @realloc(ptr {p}, i64 {w})`), "pointer")
   }
+  # Every asset a Ludic program loads arrives through here — gltf_load, tex_load,
+  # Audio.load, Fs.read_text and the renderer's own shader loads all bottom out at
+  # file_open — so this one call is where a shipped game's asset pack is spliced
+  # in. @lp_pak_open serves the bytes from a mounted pack when the path is in one
+  # and falls through to @fopen when it is not, which is every open during
+  # development. See selfhost/backend/stdlib/emit_pak.ludic.
   if (name == "file_open") {
+    use_pak()
     let p = arg_code(e, 0);  let m = arg_code(e, 1)
-    return val(emit_bind(`call ptr @fopen(ptr {p}, ptr {m})`), "pointer")
+    return val(emit_bind(`call ptr @lp_pak_open(ptr {p}, ptr {m})`), "pointer")
   }
   if (name == "file_read") or (name == "file_write") {
     let f = arg_code(e, 0);  let b = arg_code(e, 1);  let n = arg_code(e, 2)

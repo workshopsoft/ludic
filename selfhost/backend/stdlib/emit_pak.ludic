@@ -1,0 +1,262 @@
+# emit_pak.ludic — the asset pack: one file beside the binary that holds every
+# asset the game opens, and a lookup that makes `file_open` find them there
+# first.
+#
+# The problem it solves: a built game opened its assets by a path relative to the
+# working directory, so `build/mygame` only ran from the project root and there
+# was nothing to hand anyone but "the binary, and also this whole tree". A game
+# is not one file; shipping it has to be.
+#
+# The shape of the answer is deliberately small. `file_open` is the single place
+# every asset in a Ludic program comes through — gltf_load, tex_load,
+# Audio.load, Fs.read_text and the renderer's own shader loads all bottom out
+# there — so the pack is spliced in at exactly that point:
+#
+#   file_open(path, mode)  ->  @lp_pak_open
+#                                 |
+#                       mode is read and path is in a pack?
+#                          yes -> fmemopen over the mapped bytes
+#                          no  -> fopen, as before
+#
+# Nothing above it changes. A game reads "assets/kit/hiker/hiker.gltf" whether
+# that is a file on disk during development or a run of bytes inside
+# Maroon Lake.app/Contents/Resources/game.lpak, and cannot tell which.
+#
+# The pack is mmap'd, never read into memory: 165 MB of textures and terrain
+# costs one syscall at boot and pages in only what the game actually touches.
+# Entries are stored, not compressed — PNG, JPEG and glTF binary are already
+# compressed, and a decompressor on the load path would spend CPU to make the
+# file no smaller.
+#
+# ---- the format -------------------------------------------------------------
+#
+# All integers are 32-bit little-endian. The writer is `ludic pack`
+# (tools/ludic-cli/pack.ludic), which is the only thing that produces one.
+#
+#   offset  0   "LPAK"                 magic
+#           4   version                1
+#           8   count                  number of entries
+#          12   names                  absolute offset of the name heap
+#          16   data                   absolute offset of the first blob
+#          20   reserved x 3           zero
+#          32   entries[count], 16 bytes each, SORTED by name (strcmp order):
+#                  0  name offset      absolute, NUL-terminated
+#                  4  data offset      absolute
+#                  8  data length
+#                 12  FNV-1a hash of the blob
+#
+# Sorted names are what make the lookup a binary search rather than a scan, and
+# `ludic pack` sorts because the runtime is entitled to assume it.
+#
+# ---- finding the packs at boot ----------------------------------------------
+#
+# @lp_pak_boot runs from @llvm.global_ctors, before main, so a pack is mounted
+# before the first line of the game's own code. It looks beside the executable —
+# ../Resources first (where it lands inside a .app), then the executable's own
+# directory (where it lands beside a plain binary) — for `packs.index`, a plain
+# text file the bundler writes:
+#
+#   pack game.lpak            mount this, in this order
+#   home Maroon Lake          chdir to ~/Library/Application Support/Maroon Lake
+#
+# The order is explicit rather than a sorted glob because it is load-bearing:
+# packs mount in the order listed and a later one shadows an earlier one, which
+# is how a patch or an add-on replaces a file without rewriting the base pack.
+#
+# `home` is what makes a bundled game able to save. A .app launched from Finder
+# starts with the working directory at "/", so every relative write would fail;
+# pointing the process at its own Application Support directory means reads come
+# out of the pack and writes land somewhere real and per-user.
+#
+# Note the asymmetry: the pack is searched BEFORE the filesystem, so a stray or
+# corrupt file in that directory cannot shadow a shipped asset. An override is a
+# pack listed after the base one, never a loose file.
+#
+# Without a packs.index — which is every `ludic run` during development — nothing
+# is mounted, no chdir happens, and every open goes straight to fopen against the
+# working directory exactly as it did before. Packing is a shipping step, and it
+# is invisible until you ship.
+
+# The pack runtime leans on the Fs/Path prelude (lp_path_join, lp_path_dir, and
+# the libc declarations both need), so asking for one asks for the other.
+function use_pak() -> void { g_uses_pak = true;  g_uses_fsrt = true }
+
+# emit_pak_prelude — emitted once per program that opens a file, straight after
+# the Fs prelude whose helpers it calls.
+function emit_pak_prelude() -> void {
+  emith("declare i32 @open(ptr, i32, ...)\n")
+  emith("declare i32 @close(i32)\n")
+  emith("declare i64 @lseek(i32, i64, i32)\n")
+  emith("declare ptr @mmap(ptr, i64, i32, i32, i32, i64)\n")
+  emith("declare ptr @fmemopen(ptr, i64, ptr)\n")
+  emith("declare i32 @chdir(ptr)\n")
+  emith("declare i32 @_NSGetExecutablePath(ptr, ptr)\n")
+
+  emith("@.pak_rb    = private unnamed_addr constant [3 x i8] c\"rb\\00\"\n")
+  emith("@.pak_idx   = private unnamed_addr constant [12 x i8] c\"packs.index\\00\"\n")
+  emith("@.pak_res   = private unnamed_addr constant [13 x i8] c\"../Resources\\00\"\n")
+  emith("@.pak_appsup= private unnamed_addr constant [28 x i8] c\"Library/Application Support\\00\"\n")
+  emith("@.pak_home  = private unnamed_addr constant [5 x i8] c\"HOME\\00\"\n")
+
+  # up to 8 packs may be mounted; the base pointer of each mapping, in mount order
+  emith("@L_pak_base = internal global [8 x ptr] zeroinitializer\n")
+  emith("@L_pak_n    = internal global i32 0\n")
+
+  emit_pak_mount()
+  emit_pak_lookup()
+  emit_pak_open()
+  emit_pak_boot()
+
+  # run before main, in every program shape (an `entry` game, the auto-loop, the
+  # test runner) without any of them having to know about it
+  emith("@llvm.global_ctors = appending global [1 x { i32, ptr, ptr }] ")
+  emith("[{ i32, ptr, ptr } { i32 101, ptr @lp_pak_boot, ptr null }]\n")
+}
+
+# ---- mounting ---------------------------------------------------------------
+
+# mount(path): map the file and keep its base pointer if it is a pack. Returns 1
+# when it was mounted. The descriptor is closed straight away — the mapping
+# outlives it, and holding a descriptor open for the life of the process for no
+# reason is the kind of thing that runs a game out of them.
+function emit_pak_mount() -> void {
+  emith("define i32 @lp_pak_mount(ptr %path) {\n")
+  emith("entry:\n  %n = load i32, ptr @L_pak_n\n  %full = icmp sge i32 %n, 8\n  br i1 %full, label %no, label %op\n")
+  # O_RDONLY = 0
+  emith("op:\n  %fd = call i32 (ptr, i32, ...) @open(ptr %path, i32 0)\n  %bad = icmp slt i32 %fd, 0\n  br i1 %bad, label %no, label %sz\n")
+  # SEEK_END = 2; a pack is at least a header
+  emith("sz:\n  %end = call i64 @lseek(i32 %fd, i64 0, i32 2)\n  %small = icmp slt i64 %end, 32\n  br i1 %small, label %clo, label %mp\n")
+  # PROT_READ = 1, MAP_PRIVATE = 2
+  emith("mp:\n  %base = call ptr @mmap(ptr null, i64 %end, i32 1, i32 2, i32 %fd, i64 0)\n")
+  emith("  %mbad = icmp eq ptr %base, inttoptr (i64 -1 to ptr)\n  br i1 %mbad, label %clo, label %chk\n")
+  # "LPAK" read as a little-endian i32
+  emith("chk:\n  %m = load i32, ptr %base\n  %okm = icmp eq i32 %m, 1262571596\n  br i1 %okm, label %keep, label %clo\n")
+  emith("keep:\n  %slot = getelementptr [8 x ptr], ptr @L_pak_base, i32 0, i32 %n\n  store ptr %base, ptr %slot\n")
+  emith("  %n1 = add i32 %n, 1\n  store i32 %n1, ptr @L_pak_n\n  %c1 = call i32 @close(i32 %fd)\n  ret i32 1\n")
+  emith("clo:\n  %c2 = call i32 @close(i32 %fd)\n  ret i32 0\n")
+  emith("no:\n  ret i32 0\n}\n")
+}
+
+# ---- lookup -----------------------------------------------------------------
+
+function emit_pak_lookup() -> void {
+  # a leading "./" is the same path; strip any number of them so "./assets/x"
+  # and "assets/x" are one key
+  emith("define ptr @lp_pak_norm(ptr %p) {\n")
+  emith("entry:\n  %c0 = load i8, ptr %p\n  %c0i = zext i8 %c0 to i32\n  %isdot = icmp eq i32 %c0i, 46\n  br i1 %isdot, label %chk2, label %same\n")
+  emith("chk2:\n  %p1 = getelementptr i8, ptr %p, i32 1\n  %c1 = load i8, ptr %p1\n  %c1i = zext i8 %c1 to i32\n  %issl = icmp eq i32 %c1i, 47\n  br i1 %issl, label %skip, label %same\n")
+  emith("skip:\n  %p2 = getelementptr i8, ptr %p, i32 2\n  %r = call ptr @lp_pak_norm(ptr %p2)\n  ret ptr %r\n")
+  emith("same:\n  ret ptr %p\n}\n")
+
+  # binary search one pack's sorted entry table; null when the name is not in it
+  emith("define ptr @lp_pak_find1(ptr %base, ptr %name, ptr %outlen) {\n")
+  emith("entry:\n  %cntp = getelementptr i8, ptr %base, i32 8\n  %cnt = load i32, ptr %cntp\n")
+  emith("  %lop = alloca i32\n  %hip = alloca i32\n  store i32 0, ptr %lop\n  %h0 = sub i32 %cnt, 1\n  store i32 %h0, ptr %hip\n  br label %loop\n")
+  emith("loop:\n  %lo = load i32, ptr %lop\n  %hi = load i32, ptr %hip\n  %fin = icmp sgt i32 %lo, %hi\n  br i1 %fin, label %miss, label %mid\n")
+  emith("mid:\n  %sum = add i32 %lo, %hi\n  %m = sdiv i32 %sum, 2\n  %eo = mul i32 %m, 16\n  %eo2 = add i32 %eo, 32\n  %ep = getelementptr i8, ptr %base, i32 %eo2\n")
+  emith("  %noff = load i32, ptr %ep\n  %nptr = getelementptr i8, ptr %base, i32 %noff\n  %c = call i32 @strcmp(ptr %nptr, ptr %name)\n")
+  emith("  %iseq = icmp eq i32 %c, 0\n  br i1 %iseq, label %hit, label %cmp\n")
+  emith("cmp:\n  %lt = icmp slt i32 %c, 0\n  br i1 %lt, label %goup, label %godn\n")
+  emith("goup:\n  %m1 = add i32 %m, 1\n  store i32 %m1, ptr %lop\n  br label %loop\n")
+  emith("godn:\n  %m2 = sub i32 %m, 1\n  store i32 %m2, ptr %hip\n  br label %loop\n")
+  emith("hit:\n  %dop = getelementptr i8, ptr %ep, i32 4\n  %doff = load i32, ptr %dop\n  %dlp = getelementptr i8, ptr %ep, i32 8\n  %dlen = load i32, ptr %dlp\n")
+  emith("  store i32 %dlen, ptr %outlen\n  %dp = getelementptr i8, ptr %base, i32 %doff\n  ret ptr %dp\n")
+  emith("miss:\n  ret ptr null\n}\n")
+
+  # search every mounted pack, last mounted first, so a pack listed later in
+  # packs.index shadows the ones before it
+  emith("define ptr @lp_pak_find(ptr %path, ptr %outlen) {\n")
+  emith("entry:\n  %p = call ptr @lp_pak_norm(ptr %path)\n  %np = load i32, ptr @L_pak_n\n")
+  emith("  %ip = alloca i32\n  %i0 = sub i32 %np, 1\n  store i32 %i0, ptr %ip\n  br label %loop\n")
+  emith("loop:\n  %i = load i32, ptr %ip\n  %done = icmp slt i32 %i, 0\n  br i1 %done, label %miss, label %body\n")
+  emith("body:\n  %slot = getelementptr [8 x ptr], ptr @L_pak_base, i32 0, i32 %i\n  %base = load ptr, ptr %slot\n")
+  emith("  %r = call ptr @lp_pak_find1(ptr %base, ptr %p, ptr %outlen)\n  %hit = icmp ne ptr %r, null\n  br i1 %hit, label %got, label %next\n")
+  emith("got:\n  ret ptr %r\n")
+  emith("next:\n  %i1 = sub i32 %i, 1\n  store i32 %i1, ptr %ip\n  br label %loop\n")
+  emith("miss:\n  ret ptr null\n}\n")
+
+  # Fs.exists / Fs.size ask the packs before they ask the filesystem, so a game
+  # that guards a load with Fs.exists (the sound layer does) still finds it
+  emith("define i32 @lp_pak_has(ptr %path) {\n")
+  emith("entry:\n  %lp = alloca i32\n  store i32 0, ptr %lp\n  %b = call ptr @lp_pak_find(ptr %path, ptr %lp)\n")
+  emith("  %hit = icmp ne ptr %b, null\n  %r = select i1 %hit, i32 1, i32 0\n  ret i32 %r\n}\n")
+
+  emith("define i32 @lp_pak_bytes(ptr %path) {\n")
+  emith("entry:\n  %lp = alloca i32\n  store i32 0, ptr %lp\n  %b = call ptr @lp_pak_find(ptr %path, ptr %lp)\n")
+  emith("  %hit = icmp ne ptr %b, null\n  br i1 %hit, label %yes, label %no\n")
+  emith("yes:\n  %l = load i32, ptr %lp\n  ret i32 %l\n")
+  emith("no:\n  ret i32 -1\n}\n")
+}
+
+# ---- the splice into file_open ----------------------------------------------
+
+# A read of a packed path becomes a FILE* over the mapped bytes, so fread/fseek/
+# ftell above it behave exactly as they did against a real file. Anything else —
+# a write, a path that is not packed — is the fopen it always was.
+function emit_pak_open() -> void {
+  emith("define ptr @lp_pak_open(ptr %path, ptr %mode) {\n")
+  emith("entry:\n  %m0 = load i8, ptr %mode\n  %m0i = zext i8 %m0 to i32\n  %isr = icmp eq i32 %m0i, 114\n  br i1 %isr, label %try, label %real\n")
+  emith("try:\n  %lp = alloca i32\n  store i32 0, ptr %lp\n  %blob = call ptr @lp_pak_find(ptr %path, ptr %lp)\n")
+  emith("  %hit = icmp ne ptr %blob, null\n  br i1 %hit, label %mem, label %real\n")
+  emith("mem:\n  %len = load i32, ptr %lp\n  %lz = zext i32 %len to i64\n  %f = call ptr @fmemopen(ptr %blob, i64 %lz, ptr @.pak_rb)\n  ret ptr %f\n")
+  emith("real:\n  %rf = call ptr @fopen(ptr %path, ptr %mode)\n  ret ptr %rf\n}\n")
+}
+
+# ---- boot -------------------------------------------------------------------
+
+function emit_pak_boot() -> void {
+  # read a whole file into a fresh NUL-terminated buffer, or null
+  emith("define ptr @lp_pak_slurp(ptr %path) {\n")
+  emith("entry:\n  %f = call ptr @fopen(ptr %path, ptr @.pak_rb)\n  %bad = icmp eq ptr %f, null\n  br i1 %bad, label %no, label %go\n")
+  emith("go:\n  %s1 = call i32 @fseek(ptr %f, i64 0, i32 2)\n  %n64 = call i64 @ftell(ptr %f)\n  %s2 = call i32 @fseek(ptr %f, i64 0, i32 0)\n")
+  emith("  %cap = add i64 %n64, 1\n  %buf = call ptr @malloc(i64 %cap)\n  %rd = call i64 @fread(ptr %buf, i64 1, i64 %n64, ptr %f)\n")
+  emith("  %e = getelementptr i8, ptr %buf, i64 %rd\n  store i8 0, ptr %e\n  %c = call i32 @fclose(ptr %f)\n  ret ptr %buf\n")
+  emith("no:\n  ret ptr null\n}\n")
+
+  # Try one directory: mount everything its packs.index names, and honour a
+  # `home` line. Returns the number of packs mounted from it.
+  emith("define i32 @lp_pak_boot_dir(ptr %dir) {\n")
+  emith("entry:\n  %ix = call ptr @lp_path_join(ptr %dir, ptr @.pak_idx)\n  %txt = call ptr @lp_pak_slurp(ptr %ix)\n")
+  emith("  %none = icmp eq ptr %txt, null\n  br i1 %none, label %no, label %scan\n")
+  # walk the text line by line, NUL-terminating each in place (it is our copy)
+  emith("scan:\n  %ip = alloca i32\n  %got = alloca i32\n  store i32 0, ptr %ip\n  store i32 0, ptr %got\n  %jp = alloca i32\n  br label %line\n")
+  emith("line:\n  %i = load i32, ptr %ip\n  %lp = getelementptr i8, ptr %txt, i32 %i\n  %c0 = load i8, ptr %lp\n  %c0i = zext i8 %c0 to i32\n")
+  emith("  %atend = icmp eq i32 %c0i, 0\n  br i1 %atend, label %fin, label %eol\n")
+  # find the end of this line
+  emith("eol:\n  store i32 %i, ptr %jp\n  br label %escan\n")
+  emith("escan:\n  %j = load i32, ptr %jp\n  %jq = getelementptr i8, ptr %txt, i32 %j\n  %cj = load i8, ptr %jq\n  %cji = zext i8 %cj to i32\n")
+  emith("  %isnl = icmp eq i32 %cji, 10\n  %isz = icmp eq i32 %cji, 0\n  %stop = or i1 %isnl, %isz\n  br i1 %stop, label %ehave, label %eadv\n")
+  emith("eadv:\n  %j1 = add i32 %j, 1\n  store i32 %j1, ptr %jp\n  br label %escan\n")
+  emith("ehave:\n  %je = load i32, ptr %jp\n  %jep = getelementptr i8, ptr %txt, i32 %je\n  store i8 0, ptr %jep\n  %nexti = add i32 %je, 1\n  store i32 %nexti, ptr %ip\n")
+  # "pack " is 5 bytes, "home " is 5 bytes
+  emith("  %ln = getelementptr i8, ptr %txt, i32 %i\n  %isp = call i32 @strncmp(ptr %ln, ptr @.pak_kw_pack, i64 5)\n  %pk = icmp eq i32 %isp, 0\n  br i1 %pk, label %dopack, label %chkhome\n")
+  emith("dopack:\n  %pv = getelementptr i8, ptr %ln, i32 5\n  %full = call ptr @lp_path_join(ptr %dir, ptr %pv)\n  %ok = call i32 @lp_pak_mount(ptr %full)\n")
+  emith("  %g = load i32, ptr %got\n  %g1 = add i32 %g, %ok\n  store i32 %g1, ptr %got\n  br label %line\n")
+  emith("chkhome:\n  %ish = call i32 @strncmp(ptr %ln, ptr @.pak_kw_home, i64 5)\n  %hm = icmp eq i32 %ish, 0\n  br i1 %hm, label %dohome, label %line\n")
+  emith("dohome:\n  %hv = getelementptr i8, ptr %ln, i32 5\n  call void @lp_pak_sethome(ptr %hv)\n  br label %line\n")
+  emith("fin:\n  %gf = load i32, ptr %got\n  ret i32 %gf\n")
+  emith("no:\n  ret i32 0\n}\n")
+
+  emith("@.pak_kw_pack = private unnamed_addr constant [6 x i8] c\"pack \\00\"\n")
+  emith("@.pak_kw_home = private unnamed_addr constant [6 x i8] c\"home \\00\"\n")
+
+  # point the process at ~/Library/Application Support/<name>, creating it. A
+  # bundled game starts with its working directory at "/", so without this every
+  # relative write — every save — would fail.
+  emith("define void @lp_pak_sethome(ptr %name) {\n")
+  emith("entry:\n  %h = call ptr @getenv(ptr @.pak_home)\n  %nh = icmp eq ptr %h, null\n  br i1 %nh, label %out, label %go\n")
+  emith("go:\n  %a = call ptr @lp_path_join(ptr %h, ptr @.pak_appsup)\n  %b = call ptr @lp_path_join(ptr %a, ptr %name)\n")
+  emith("  %mk = call i32 @mkdir(ptr %b, i32 493)\n  %cd = call i32 @chdir(ptr %b)\n  br label %out\n")
+  emith("out:\n  ret void\n}\n")
+
+  # The constructor. Look beside the executable: ../Resources first, which is
+  # where the bundler puts things inside a .app, then the executable's own
+  # directory, which is where they land beside a plain binary.
+  emith("define void @lp_pak_boot() {\n")
+  emith("entry:\n  %buf = alloca [1024 x i8]\n  %szp = alloca i32\n  store i32 1024, ptr %szp\n")
+  emith("  %rc = call i32 @_NSGetExecutablePath(ptr %buf, ptr %szp)\n  %bad = icmp ne i32 %rc, 0\n  br i1 %bad, label %out, label %go\n")
+  emith("go:\n  %dir = call ptr @lp_path_dir(ptr %buf)\n  %res = call ptr @lp_path_join(ptr %dir, ptr @.pak_res)\n")
+  emith("  %n1 = call i32 @lp_pak_boot_dir(ptr %res)\n  %any = icmp sgt i32 %n1, 0\n  br i1 %any, label %out, label %try2\n")
+  emith("try2:\n  %n2 = call i32 @lp_pak_boot_dir(ptr %dir)\n  br label %out\n")
+  emith("out:\n  ret void\n}\n")
+}

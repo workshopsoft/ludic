@@ -108,6 +108,55 @@ function install_layout_case() -> void {
 # reasonably pick. `my-game` produced `program My-Game`, which is a subtraction,
 # and `2048` produced an identifier starting with a digit — both scaffolded a
 # project that failed on the very first `ludic run`.
+# The asset pack, end to end: `ludic pack` writes it, the runtime mounts it
+# before main from packs.index, and the game reads its assets out of it while
+# running from a directory where none of them exist on disk. That last part is
+# the whole feature - a built game used to run only from its project root.
+function pack_roundtrip_case() -> void {
+  let lbl = "ludic pack -> a game reads its assets with none of them on disk"
+  let work = `{tmp_dir()}/packrt`
+  let root = capture_line("pwd")
+  run(`rm -rf {work} && mkdir -p {work}/assets/sub {work}/ship`)
+  write_file(`{work}/assets/a.txt`, "alpha")
+  write_file(`{work}/assets/sub/b.txt`, "beta")
+  write_file(`{work}/game.ludic`, pack_probe_src())
+
+  if not shq(`cd {work} && {root}/bin/ludic pack --out ship/game.lpak assets > pack.out 2>&1`) {
+    bad2(lbl, capture_line(`tail -1 {work}/pack.out`));  return
+  }
+  if not shq(`cd {work} && {root}/bin/ludic pack --verify ship/game.lpak > verify.out 2>&1`) {
+    bad2(lbl, "the pack it just wrote does not verify");  return
+  }
+  if not shq(`cd {work} && {root}/bin/ludicc game.ludic -o ship/probe > cc.out 2>&1`) {
+    bad2(lbl, capture_line(`tail -1 {work}/cc.out`));  return
+  }
+  write_file(`{work}/ship/packs.index`, "pack game.lpak" + nl())
+
+  # the assets exist only inside the pack from here on
+  run(`rm -rf {work}/assets`)
+  # run from somewhere with no relation to the project at all
+  let got = s_trim(capture(`cd / && {work}/ship/probe 2>&1`))
+  if got != "alpha|beta|1|5|0" {
+    bad2(lbl, `read back [{got}], wanted [alpha|beta|1|5|0]`);  return
+  }
+  ok(lbl)
+}
+
+# the probe game: reads two packed files and asks after a third that is in no
+# pack, so a false hit would show up as loudly as a miss
+function pack_probe_src() -> pointer {
+  var s = "program PackProbe {" + nl()
+  s = s + "  entry {" + nl()
+  s = s + "    var a = Fs.read_text(\"assets/a.txt\")" + nl()
+  s = s + "    var b = Fs.read_text(\"assets/sub/b.txt\")" + nl()
+  s = s + "    if a == null { a = \"MISS\" }" + nl()
+  s = s + "    if b == null { b = \"MISS\" }" + nl()
+  s = s + "    print(`{a}|{b}|{string(Fs.exists(\"assets/a.txt\"))}|{string(Fs.size(\"assets/a.txt\"))}|{string(Fs.exists(\"assets/gone.txt\"))}`)" + nl()
+  s = s + "  }" + nl()
+  s = s + "}" + nl()
+  return s
+}
+
 function scaffold_names_case() -> void {
   let lbl = "ludic new scaffolds a project that compiles (hyphens, digits, dots)"
   let work = `{tmp_dir()}/scaffold`
@@ -491,6 +540,7 @@ function cmd_dev_test() -> int {
   # from its own location. This is the shape `curl … | sh` produces.
   install_layout_case()
   scaffold_names_case()
+  pack_roundtrip_case()
 
   # install.sh is what the landing page tells people to pipe into sh, and it is
   # published with the docs site — so it is checked here rather than discovered

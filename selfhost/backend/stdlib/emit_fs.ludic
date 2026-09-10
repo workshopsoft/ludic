@@ -52,7 +52,7 @@ function is_mime_ns(meth: pointer) -> bool {
 }
 
 function emit_fs_ns(meth: pointer, e: Node) -> Val {
-  g_uses_fsrt = true
+  use_pak()
   let a = emit_expr(e.kids[0])
   if (meth == "exists")      { return val(emit_bind(`call i32 @lp_fs_exists(ptr {a.code})`), "bool") }
   if (meth == "is_dir")      { return val(emit_bind(`call i32 @lp_fs_is_dir(ptr {a.code})`), "bool") }
@@ -69,7 +69,7 @@ function emit_fs_ns(meth: pointer, e: Node) -> Val {
 }
 
 function emit_path_ns(meth: pointer, e: Node) -> Val {
-  g_uses_fsrt = true
+  use_pak()
   let a = emit_expr(e.kids[0])
   if (meth == "dir")       { return val(emit_bind(`call ptr @lp_path_dir(ptr {a.code})`), "string") }
   if (meth == "base")      { return val(emit_bind(`call ptr @lp_path_base(ptr {a.code})`), "string") }
@@ -82,7 +82,7 @@ function emit_path_ns(meth: pointer, e: Node) -> Val {
 }
 
 function emit_mime_ns(meth: pointer, e: Node) -> Val {
-  g_uses_fsrt = true
+  use_pak()
   let a = emit_expr(e.kids[0])
   if (meth == "sniff") { return val(emit_bind(`call ptr @lp_mime_sniff(ptr {a.code})`), "string") }
   return val(emit_bind(`call ptr @lp_mime_of(ptr {a.code})`), "string")
@@ -240,8 +240,13 @@ function emit_fs_normalize() -> void {
 
 # ---- Fs.* (libc) -----------------------------------------------------------
 function emit_fs_io() -> void {
+  # A path that is in a mounted pack exists, whether or not anything is on disk
+  # at that name: a game that guards a load with Fs.exists (the sound layer does)
+  # has to keep finding its assets once they are packed.
   emith("define i32 @lp_fs_exists(ptr %p) {\n")
-  emith("entry:\n  %r = call i32 @access(ptr %p, i32 0)\n  %ok = icmp eq i32 %r, 0\n  %z = zext i1 %ok to i32\n  ret i32 %z\n}\n")
+  emith("entry:\n  %ip = call i32 @lp_pak_has(ptr %p)\n  %inpak = icmp ne i32 %ip, 0\n  br i1 %inpak, label %yes, label %disk\n")
+  emith("yes:\n  ret i32 1\n")
+  emith("disk:\n  %r = call i32 @access(ptr %p, i32 0)\n  %ok = icmp eq i32 %r, 0\n  %z = zext i1 %ok to i32\n  ret i32 %z\n}\n")
 
   # is_dir: opendir succeeds iff it is a directory
   emith("define i32 @lp_fs_is_dir(ptr %p) {\n")
@@ -251,7 +256,9 @@ function emit_fs_io() -> void {
 
   # size: bytes via fseek/ftell, or -1 if it cannot be opened
   emith("define i32 @lp_fs_size(ptr %p) {\n")
-  emith("entry:\n  %f = call ptr @fopen(ptr %p, ptr @fn_str_rb)\n  %nz = icmp ne ptr %f, null\n  br i1 %nz, label %ok, label %bad\n")
+  emith("entry:\n  %pn = call i32 @lp_pak_bytes(ptr %p)\n  %inpak = icmp sge i32 %pn, 0\n  br i1 %inpak, label %packed, label %disk\n")
+  emith("packed:\n  ret i32 %pn\n")
+  emith("disk:\n  %f = call ptr @fopen(ptr %p, ptr @fn_str_rb)\n  %nz = icmp ne ptr %f, null\n  br i1 %nz, label %ok, label %bad\n")
   emith("bad:\n  ret i32 -1\n")
   emith("ok:\n  call i32 @fseek(ptr %f, i64 0, i32 2)\n  %n = call i64 @ftell(ptr %f)\n  call i32 @fclose(ptr %f)\n  %ni = trunc i64 %n to i32\n  ret i32 %ni\n}\n")
 
@@ -259,7 +266,7 @@ function emit_fs_io() -> void {
   # failure. The buffer is NUL-terminated (one past the length) so text callers
   # can use it directly while binary callers use the length.
   emith("define ptr @lp_fs_readall(ptr %p, ptr %lenout) {\n")
-  emith("entry:\n  store i32 0, ptr %lenout\n  %f = call ptr @fopen(ptr %p, ptr @fn_str_rb)\n  %nz = icmp ne ptr %f, null\n  br i1 %nz, label %ok, label %bad\n")
+  emith("entry:\n  store i32 0, ptr %lenout\n  %f = call ptr @lp_pak_open(ptr %p, ptr @fn_str_rb)\n  %nz = icmp ne ptr %f, null\n  br i1 %nz, label %ok, label %bad\n")
   emith("bad:\n  ret ptr null\n")
   emith("ok:\n  call i32 @fseek(ptr %f, i64 0, i32 2)\n  %n64 = call i64 @ftell(ptr %f)\n  call i32 @fseek(ptr %f, i64 0, i32 0)\n  %n = trunc i64 %n64 to i32\n")
   emith("  %cap = add i64 %n64, 1\n  %m = call ptr @malloc(i64 %cap)\n  %rd = call i64 @fread(ptr %m, i64 1, i64 %n64, ptr %f)\n  call i32 @fclose(ptr %f)\n")

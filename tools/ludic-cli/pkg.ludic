@@ -32,7 +32,9 @@ property Manifest {
   hash: pointer = "",         # content hash, filled in after a snapshot
   provides: []pointer,        # the Foo.* namespace(s) this package registers
   targets: []pointer,         # prebuilt: the targets it ships (native-arm64, wasm32, …)
-  deps: []Dep
+  deps: []Dep,
+  packs: []pointer,           # `pack "<dir>"` — asset roots that go into the .lpak
+  app: []pointer              # `app <key> "<value>"` — flattened key, value, key, value…
 }
 
 function manifest_new() -> Manifest {
@@ -44,6 +46,8 @@ function manifest_new() -> Manifest {
   m.provides = new []pointer
   m.targets = new []pointer
   m.deps = new []Dep
+  m.packs = new []pointer
+  m.app = new []pointer
   return m
 }
 
@@ -159,9 +163,28 @@ function parse_manifest(text: pointer) -> Manifest {
       else if head == "require" {
         if len(ts) > 2 { let d = new Dep;  d.module = ts[1];  d.ver = ts[2];  push(m.deps, d) }
       }
+      # `pack "assets/kit"` — an asset root that `ludic pack` walks into the
+      # .lpak. Repeatable, and the order is the order they are walked.
+      else if head == "pack" { var k = 1;  while k < len(ts) { push(m.packs, ts[k]);  k += 1 } }
+      # `app name "Maroon Lake"` — the metadata a macOS bundle is built from.
+      # Held as a flat key/value list rather than a property per key, so a new
+      # Info.plist field is a line in the bundler and nothing here.
+      else if head == "app" {
+        if len(ts) > 2 { push(m.app, ts[1]);  push(m.app, ts[2]) }
+      }
     }
   }
   return m
+}
+
+# the value of one `app <key>` line, or "" when the manifest does not set it
+function manifest_app(m: Manifest, key: pointer) -> pointer {
+  var i = 0
+  while i + 1 < len(m.app) {
+    if m.app[i] == key { return m.app[i + 1] }
+    i += 2
+  }
+  return ""
 }
 
 # read a package.lock.ludic body into a list of pinned entries

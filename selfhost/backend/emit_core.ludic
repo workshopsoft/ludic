@@ -34,6 +34,7 @@ var g_uses_osrt: bool = false  # Os.* (prelude-backed methods) was emitted -> em
 var g_uses_pid: bool = false   # Os.pid() was emitted -> declare libc getpid
 var g_uses_unicodert: bool = false  # Unicode.* was emitted -> emit the UTF-8 runtime
 var g_uses_fsrt: bool = false  # Fs.*/Path.*/Mime.* was emitted -> emit the filesystem runtime
+var g_uses_pak: bool = false   # file_open was emitted -> emit the asset-pack runtime (implies fsrt)
 var g_uses_datert: bool = false  # Date.*/DateTime.* was emitted -> emit the civil<->epoch conversions
 var g_uses_expect: bool = false  # expect/expect_eq/expect_near was emitted -> emit the test-assert globals
 var g_uses_panic: bool = false   # panic/assert was emitted -> declare @fprintf + the panic format
