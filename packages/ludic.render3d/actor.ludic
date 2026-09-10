@@ -30,7 +30,9 @@ property Actor {
   ptint:   words,          # 4 per primitive: on flag, r, g, b (a part's own colour)
   hide:    words,          # 1 per primitive: skip it (a cap taken off)
   radius:  int = 0,        # float bits: bounding radius for culling (0 = never culled)
-  cull:    int = 0         # float bits: not drawn beyond this distance (0 = always)
+  cull:    int = 0,        # float bits: not drawn beyond this distance (0 = always)
+  outline: int = 0,        # float bits: metres of rim drawn around it (0 = none)
+  ocol:    words           # the rim's colour (null = white)
 }
 # a program and its uniform locations
 property AcProg {
@@ -44,6 +46,8 @@ property AcProg {
   l_emis:   int = -1,
   l_view:   int = -1,
   l_proj:   int = -1,
+  l_out:    int = -1,
+  l_ocol:   int = -1,
   l_mh:     int = -1,
   scene_frame: int = -1    # the frame its scene uniforms were bound
 }
@@ -52,6 +56,8 @@ var ac_lit: AcProg = null
 var ac_lit_cut: AcProg = null
 var ac_sh: AcProg = null
 var ac_sh_cut: AcProg = null
+var ac_out: AcProg = null
+var ac_out_cut: AcProg = null
 var ac_actors: []Actor = null
 var ac_next_id: int = 0
 var ac_frame: int = 0
@@ -64,6 +70,7 @@ function ac_prog_new(vs: string, fs: string, defs: string) -> AcProg {
   a.l_bones = gl_uniform(p, "u_bones[0]");  if a.l_bones < 0 { a.l_bones = gl_uniform(p, "u_bones") }
   a.l_tint = gl_uniform(p, "u_tint");  a.l_rough = gl_uniform(p, "u_rough_scale");  a.l_emis = gl_uniform(p, "u_emissive")
   a.l_view = gl_uniform(p, "u_view");  a.l_proj = gl_uniform(p, "u_proj");  a.l_mh = gl_uniform(p, "u_model_h")
+  a.l_out = gl_uniform(p, "u_outline");  a.l_ocol = gl_uniform(p, "u_outline_col")
   # the samplers never move: units 0, 1, 2
   gl_use_program(p)
   gl_uniform1i(gl_uniform(p, "u_diff"), 0);  gl_uniform1i(gl_uniform(p, "u_nrm"), 1);  gl_uniform1i(gl_uniform(p, "u_arm"), 2)
@@ -74,6 +81,8 @@ function actor_init() -> void {
   ac_lit_cut = ac_prog_new("skin.vert", "model.frag", "#define ALPHA_TEST\n")
   ac_sh = ac_prog_new("skin.vert", "shadow.frag", "#define SHADOW_PASS\n")
   ac_sh_cut = ac_prog_new("skin.vert", "shadow.frag", "#define SHADOW_PASS\n#define ALPHA_TEST\n")
+  ac_out = ac_prog_new("skin.vert", "outline.frag", "#define OUTLINE\n")
+  ac_out_cut = ac_prog_new("skin.vert", "outline.frag", "#define OUTLINE\n#define ALPHA_TEST\n")
   ac_actors = new []Actor
 }
 function actor_remove(a: Actor) -> void {
@@ -188,7 +197,45 @@ function actor_draw() -> void {
     ac_bind_scene(ap)
     actor_draw_one(a, ap, false)
   }
+  actor_draw_outlines()
   gl_enable(GL_CULL_FACE)
+}
+# The rim around a highlighted actor: the model again, its vertices pushed out along their
+# normals (skin.vert, OUTLINE) and its front faces culled, so only the far side of the
+# swollen shell survives — a silhouette exactly `outline` metres wide. Depth-tested
+# against the scene, so anything in front of the actor hides its rim too.
+function actor_draw_outlines() -> void {
+  var any = false
+  for i in 0 .. len(ac_actors) { if ac_actors[i].outline != 0 and ac_visible(ac_actors[i], false) { any = true;  break } }
+  if not any { return }
+  gl_enable(GL_CULL_FACE)
+  gl_cull_face(GL_FRONT)
+  for i in 0 .. len(ac_actors) {
+    let a = ac_actors[i]
+    if a.outline == 0 or not ac_visible(a, false) { continue }
+    var ap = ac_out
+    if a.cutout { ap = ac_out_cut }
+    gl_use_program(ap.prog)
+    u_mat4(ap.l_view, cam_view);  u_mat4(ap.l_proj, cam_proj)
+    u_f(ap.l_out, f_mul(a.outline, a.scale))
+    if a.ocol != null { u_v3(ap.l_ocol, a.ocol) } else { u_f3(ap.l_ocol, F_ONE, F_ONE, F_ONE) }
+    actor_draw_outline_one(a, ap)
+  }
+  gl_cull_face(GL_BACK)
+}
+function actor_draw_outline_one(a: Actor, ap: AcProg) -> void {
+  u_mat4(ap.l_model, a.mat)
+  var skinned = F_ZERO
+  if a.skin != null { skinned = F_ONE;  gl_uniform_matrix4fv(ap.l_bones, a.skin.n_joints, 0, a.skin.bones) }
+  else if a.model.skin != null { skinned = F_ONE;  gl_uniform_matrix4fv(ap.l_bones, a.model.skin.n_joints, 0, a.model.skin.bones) }
+  u_f(ap.l_skin, skinned)
+  let model = a.model
+  for i in 0 .. len(model.prims) {
+    let pr = model.prims[i]
+    if a.hide != null and a.hide[i] != 0 { continue }
+    if a.cutout { gl_active_texture(GL_TEXTURE0);  gl_bind_texture(GL_TEXTURE_2D, pr.diff) }
+    mesh_draw(pr.mesh)
+  }
 }
 function actor_draw_casters(light_vp: words) -> void {
   if ac_actors == null { return }

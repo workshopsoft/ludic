@@ -12,6 +12,9 @@ uniform float u_skinned;                    // 0: a rigid model on the same path
 uniform mat4 u_view;
 uniform mat4 u_proj;
 uniform mat4 u_light_vp;
+#ifdef OUTLINE
+uniform float u_outline;                    // metres the shell is pushed out
+#endif
 out vec3 v_wpos;
 out vec3 v_nrm;
 out vec2 v_uv;
@@ -28,6 +31,11 @@ void main() {
     m = u_model * sk;
   }
   vec4 w = m * vec4(a_pos, 1.0);
+#ifdef OUTLINE
+  // an inverted hull: the shell is pushed out along the world normal and drawn with the
+  // front faces culled, so what survives is a rim of `u_outline` metres around the model
+  w.xyz += normalize(mat3(m) * a_nrm) * u_outline;
+#endif
   v_wpos = w.xyz;
   v_nrm = normalize(mat3(m) * a_nrm);
   v_uv = a_uv;
