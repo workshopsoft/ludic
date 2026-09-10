@@ -10,6 +10,7 @@ uniform float u_dem_base;       // the elevation that becomes y = 0
 uniform vec2 u_origin;          // world x/z of the map's centre
 uniform vec4 u_lake;            // a lake: centre x/z, half extents (zero = none)
 uniform float u_lake_level;     // its surface height; the model records the surface, the bed is carved below it
+uniform vec4 u_isle;            // an island: centre x/z, radius, falloff width (radius 0 = none)
 // The DEM is Copernicus GLO-30 — 30 m data resampled onto this 4 m grid — so the stored
 // field is piecewise linear with a slope discontinuity every ~7 texels. Differencing it
 // for a shading normal turns each kink into a ridge, and on steep ground, where the same
@@ -57,6 +58,17 @@ void main() {
     float basin = smoothstep(u_lake_level + 0.6, u_lake_level - 0.3, raw) * inside;
     float bed = u_lake_level - 0.4 - (5.0 + 3.0 * (1.0 - dot(q, q)) + 1.5 * fbm(xz * 0.02, 3)) * basin * basin;   // a gentle gravel ramp, then the drop
     h = mix(h, bed, basin);
+  }
+  // The island. Outside the radius the terrain is scaled toward the water line and then
+  // taken below it, so the shoreline is not drawn on: it is wherever the survey's own
+  // relief, shrunk, happens to cross the water. Low ground becomes beach and shallows,
+  // high ground becomes cliff, and a bay stays a bay.
+  if (u_isle.z > 0.0) {
+    float d = distance(xz, u_isle.xy);
+    float t = smoothstep(u_isle.z, u_isle.z + u_isle.w, d);     // 0 inland, 1 past the fall
+    float shelf = 26.0 + 34.0 * smoothstep(0.0, 1.0, (d - u_isle.z - u_isle.w) / max(u_isle.w, 1.0));
+    float above = h - u_lake_level;
+    h = u_lake_level + above * (1.0 - t) - t * shelf;
   }
   o = vec4(h, 0.0, 0.0, 1.0);
 #elif defined(SMOOTH)
