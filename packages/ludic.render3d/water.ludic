@@ -24,7 +24,10 @@ function water_reflection_pass() -> void {
   if water_refl == null {
     if Os.has_env("R3D_REFLDIV") { water_refl_div = Text.to_int(Os.env("R3D_REFLDIV")) }
     if water_refl != null { target_free(water_refl) }
-    water_refl = target_new(gl_w / water_refl_div, gl_h / water_refl_div, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, true, GL_LINEAR)
+    # sized from the scene target, not the window: with a render scale below 1 the frame
+    # this reflection is composited into is smaller than the drawable, and a reflection
+    # rendered at the window's size would be paying for pixels the water never samples
+    water_refl = target_new(post_w / water_refl_div, post_h / water_refl_div, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, true, GL_LINEAR)
     water_saved = words(16 * 4 + 3)
   }
   # save the camera
@@ -67,7 +70,7 @@ function water_reflection_pass() -> void {
   sc_skip_blade = sb
   sc_freeze = false
   gl_cull_face(GL_BACK)
-  if Os.has_env("R3D_DUMP_REFL") and not water_dumped { water_dumped = true;  tex_dump(water_refl.color, gl_w / water_refl_div, gl_h / water_refl_div, "build/dbg_refl.ppm") }
+  if Os.has_env("R3D_DUMP_REFL") and not water_dumped { water_dumped = true;  tex_dump(water_refl.color, water_refl.w, water_refl.h, "build/dbg_refl.ppm") }
   # restore
   r3d_clip_y = 0xCF000000
   m4_copy(cam_view, water_saved)
@@ -96,7 +99,11 @@ function water_draw(depth_tex: int) -> void {
   u_f(gl_uniform(p, "u_level"), water_level)
   u_f2(gl_uniform(p, "u_center"), water_cx, water_cz)
   u_f2(gl_uniform(p, "u_extent"), water_ex, water_ez)
-  u_f2(gl_uniform(p, "u_screen"), fi(gl_w), fi(gl_h))
+  # gl_FragCoord here runs over the scene target, which is post_w x post_h — not the
+  # window. They are the same size only at a render scale of 1; at anything less, taking
+  # the window's size sent the refraction and depth reads into the wrong corner of the
+  # frame, and the lake showed a squashed copy of it instead of its own bed.
+  u_f2(gl_uniform(p, "u_screen"), fi(post_w), fi(post_h))
   var ron = F_ZERO
   if water_refl != null {
     # bind on its own unit first: generating the mip chain re-binds the texture on the active unit,
