@@ -7,6 +7,57 @@ change type. Preview the next one with `ludic dev release --dry-run`.
 A released section may carry a hand-written summary paragraph above its groups
 (v0.2.0 has one); the generated bullets below it are not edited by hand.
 
+## v0.8.0 — 2026-09-10
+
+### Features
+
+- **A boot splash**, customised by the game. `app splash` in `package.ludic` names
+  the artwork and `app splash_bg` the colour behind it; the runtime raises a
+  borderless window from a constructor that runs before `main`, reading the image
+  out of the asset pack, so it is on screen while the process is still starting
+  rather than after the slow part it exists to cover. Nothing hides it
+  automatically - only the game knows when its first real frame is ready, so the
+  game calls `App.splash_hide()`.
+- **Asset packs.** `ludic pack` writes every asset a game opens into one `.lpak`
+  beside the binary, and the runtime mounts it before `main`. Nothing about how a
+  game is written changes: the pack is spliced in at `file_open`, the one place
+  every asset comes through, so `gltf_load`, `tex_load`, `Audio.load`,
+  `Fs.read_text` and the renderer's own shader loads all find it without knowing
+  it exists. `Fs.exists` and `Fs.size` consult the packs too. Entries are stored
+  rather than compressed and the pack is `mmap`'d, so 165 MB of terrain costs one
+  syscall at startup and pages in only what is touched. Several packs can be
+  mounted in order, and a later one shadows an earlier one - which is how a patch
+  replaces individual files without rewriting the base pack. See `docs/SHIPPING.md`.
+- **`ludic bundle`** turns a built game into a real macOS `.app`: `Info.plist` and
+  `PkgInfo` from the manifest, an `.icns` built from one source PNG at every size
+  macOS asks for, the asset pack in `Contents/Resources`, and an ad-hoc signature
+  so it launches on Apple silicon. Everything comes from `app` lines in
+  `package.ludic`, so the command takes no arguments. A bundled game is also moved
+  to `~/Library/Application Support/<name>` at startup, because Finder starts a
+  `.app` with its working directory at `/` where no save could ever be written.
+- **`ludic.render3d`: `terrain_island(cx, cz, r, fall)`** keeps land out to `r` and then
+  scales the terrain down into the water over `fall` metres. Scaling rather than blending
+  to a fixed bed is what makes the coastline come out of the terrain already there: low
+  ground becomes beach and shallows, high ground becomes cliff. `r = 0` leaves the survey
+  untouched.
+- **`ludic.render3d`: a rim outline on an actor.** An actor gains `outline` (metres of
+  rim) and `ocol` (its colour). The pass draws the model again with its vertices pushed
+  along their normals and its front faces culled, so only the far side of the swollen
+  shell survives - a silhouette exactly `outline` wide, depth-tested against the scene, so
+  anything standing in front of the actor hides its rim too.
+- **`ludic.render3d`: the moon has a phase.** One number, 0 new .. 0.5 full .. 1 new
+  again, decides the disc's terminator, how much of its light reaches the ground, and
+  where in the sky it rides - a full moon rises as the sun sets, a new moon travels with
+  the sun and is never seen. A new moon is now a properly dark night, which is what makes
+  a carried light worth having.
+
+### Fixes
+
+- **`ludic.render3d`: water read the window's size, not the frame it drew into.** The
+  water shader's `u_screen` and the reflection target were sized from the drawable, but
+  `gl_FragCoord` there runs over the scene target. They match only at a render scale of 1;
+  below that the refraction and depth reads landed in the wrong corner of the frame and the
+  lake showed a squashed copy of it instead of its own bed.
 ## v0.7.0 — 2026-09-10
 
 ### Features
