@@ -60,9 +60,9 @@ ludic run            # compiles src/main.ludic and opens a native window
 ```
 
 `ludic new` writes a manifest, a program that already moves something on screen,
-and a test. `ludic build` stops at the binary — one self-contained executable
-with nothing to ship beside it. Rendering is deterministic, so a frame can be
-produced without a window, which is what CI diffs:
+and a test. `ludic build` stops at the binary; `ludic bundle` goes on to the
+thing you can actually give someone. Rendering is deterministic, so a frame can
+be produced without a window, which is what CI diffs:
 
 ```bash
 ludic test
@@ -113,6 +113,28 @@ bin/ludic-dev test      # the regression suite
 [LANGUAGE.md](LANGUAGE.md) is the full reference; the
 [API reference](https://workshopsoft.pages.workshopsoft.io/ludic/api.html)
 documents every symbol on its own page.
+
+## Shipping
+
+A built binary is a program, not an application: it opens its assets by a path
+relative to the working directory, so it runs from the project root and nowhere
+else, and it wears the generic executable icon.
+
+```bash
+ludic pack      # every asset the game opens, into one .lpak
+ludic bundle    # ...and that, the binary, an icon and the metadata, as a .app
+```
+
+Nothing about how the game is written changes. `gltf_load("assets/kit/hiker",
+…)` reads a file during development and a run of bytes inside the bundle once
+shipped, and cannot tell which — the pack is spliced in at `file_open`, the one
+place every asset in a Ludic program comes through. A bundled game also gets a
+boot splash it controls (`App.splash_hide()`) and a writable home under
+Application Support, because Finder starts a `.app` at `/` where no save could
+be written.
+
+Without a pack beside it — which is every `ludic run` — nothing mounts and every
+open goes to the filesystem exactly as before. See [docs/SHIPPING.md](docs/SHIPPING.md).
 
 ## Packages
 

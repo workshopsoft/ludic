@@ -234,6 +234,23 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
   # through a freelist (L_alloc pops @L_freen before growing @L_entc), and component
   # storage is fixed per-entity arrays — so there is no per-spawn heap allocation or
   # fragmentation. Pool.* just reads those counters so a game can watch reuse.
+  # App.* — the process itself, as distinct from the window. Today that is the
+  # boot splash: the runtime raises it before main from the pack, and only the
+  # game knows when its first real frame is ready to replace it, so taking it
+  # down is the game's call and never the runtime's.
+  #
+  # Headless there is no splash and no cocoa.ll to hold one, so the call lowers
+  # to nothing rather than to a symbol that would not link.
+  if (ns == "App") {
+    if (meth == "splash_hide") {
+      # the declaration lives in the pack prelude, and a splash is a packed
+      # asset, so asking to dismiss one asks for the runtime that raised it
+      use_pak()
+      if g_windowed { emit("  call void @splash_hide()\n") }
+      return val("0", "void")
+    }
+    perr(`unknown builtin App.{meth}`)
+  }
   if (ns == "Pool") {
     if (meth == "capacity") { return val(itoa(MAX_ENT), "int") }                 # max entities
     if (meth == "reserved") { return val(emit_bind("load i32, ptr @L_entc"), "int") }   # slots ever allocated (high-water)

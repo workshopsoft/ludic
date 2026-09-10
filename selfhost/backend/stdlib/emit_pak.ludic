@@ -58,6 +58,12 @@
 #
 #   pack game.lpak            mount this, in this order
 #   home Maroon Lake          chdir to ~/Library/Application Support/Maroon Lake
+#   splash assets/splash.png  show this until the game says otherwise
+#   splashbg 858370           the colour behind it, 0xRRGGBB as a decimal
+#
+# splashbg is decimal because the runtime parses it with atoi, which is already
+# declared; asking it to parse hex would be a hex parser in LLVM IR to save the
+# bundler one conversion.
 #
 # The order is explicit rather than a sorted glob because it is load-bearing:
 # packs mount in the order listed and a later one shadows an earlier one, which
@@ -101,6 +107,17 @@ function emit_pak_prelude() -> void {
   # up to 8 packs may be mounted; the base pointer of each mapping, in mount order
   emith("@L_pak_base = internal global [8 x ptr] zeroinitializer\n")
   emith("@L_pak_n    = internal global i32 0\n")
+  # the splash, named by packs.index and served out of the pack like any asset
+  emith("@L_pak_splash   = internal global ptr null\n")
+  emith("@L_pak_splashbg = internal global i32 0\n")
+
+  # The splash lives in cocoa.ll, which is linked only into a windowed binary.
+  # A headless build must not so much as name it, so the whole thing is emitted
+  # behind this flag rather than guarded at runtime.
+  if g_windowed {
+    emith("declare void @splash_show(ptr, i32, i32)\n")
+    emith("declare void @splash_hide()\n")
+  }
 
   emit_pak_mount()
   emit_pak_lookup()
@@ -232,13 +249,21 @@ function emit_pak_boot() -> void {
   emith("  %ln = getelementptr i8, ptr %txt, i32 %i\n  %isp = call i32 @strncmp(ptr %ln, ptr @.pak_kw_pack, i64 5)\n  %pk = icmp eq i32 %isp, 0\n  br i1 %pk, label %dopack, label %chkhome\n")
   emith("dopack:\n  %pv = getelementptr i8, ptr %ln, i32 5\n  %full = call ptr @lp_path_join(ptr %dir, ptr %pv)\n  %ok = call i32 @lp_pak_mount(ptr %full)\n")
   emith("  %g = load i32, ptr %got\n  %g1 = add i32 %g, %ok\n  store i32 %g1, ptr %got\n  br label %line\n")
-  emith("chkhome:\n  %ish = call i32 @strncmp(ptr %ln, ptr @.pak_kw_home, i64 5)\n  %hm = icmp eq i32 %ish, 0\n  br i1 %hm, label %dohome, label %line\n")
+  emith("chkhome:\n  %ish = call i32 @strncmp(ptr %ln, ptr @.pak_kw_home, i64 5)\n  %hm = icmp eq i32 %ish, 0\n  br i1 %hm, label %dohome, label %chkspbg\n")
   emith("dohome:\n  %hv = getelementptr i8, ptr %ln, i32 5\n  call void @lp_pak_sethome(ptr %hv)\n  br label %line\n")
+  # splashbg before splash: they share a prefix, and only the byte at 6 tells
+  # them apart, so the longer keyword has to be offered the line first
+  emith("chkspbg:\n  %isb = call i32 @strncmp(ptr %ln, ptr @.pak_kw_spbg, i64 9)\n  %bg = icmp eq i32 %isb, 0\n  br i1 %bg, label %dospbg, label %chksp\n")
+  emith("dospbg:\n  %bv = getelementptr i8, ptr %ln, i32 9\n  %bi = call i32 @atoi(ptr %bv)\n  store i32 %bi, ptr @L_pak_splashbg\n  br label %line\n")
+  emith("chksp:\n  %isS = call i32 @strncmp(ptr %ln, ptr @.pak_kw_splash, i64 7)\n  %sp = icmp eq i32 %isS, 0\n  br i1 %sp, label %dosp, label %line\n")
+  emith("dosp:\n  %sv = getelementptr i8, ptr %ln, i32 7\n  store ptr %sv, ptr @L_pak_splash\n  br label %line\n")
   emith("fin:\n  %gf = load i32, ptr %got\n  ret i32 %gf\n")
   emith("no:\n  ret i32 0\n}\n")
 
-  emith("@.pak_kw_pack = private unnamed_addr constant [6 x i8] c\"pack \\00\"\n")
-  emith("@.pak_kw_home = private unnamed_addr constant [6 x i8] c\"home \\00\"\n")
+  emith("@.pak_kw_pack   = private unnamed_addr constant [6 x i8]  c\"pack \\00\"\n")
+  emith("@.pak_kw_home   = private unnamed_addr constant [6 x i8]  c\"home \\00\"\n")
+  emith("@.pak_kw_splash = private unnamed_addr constant [8 x i8]  c\"splash \\00\"\n")
+  emith("@.pak_kw_spbg   = private unnamed_addr constant [10 x i8] c\"splashbg \\00\"\n")
 
   # point the process at ~/Library/Application Support/<name>, creating it. A
   # bundled game starts with its working directory at "/", so without this every
@@ -256,7 +281,24 @@ function emit_pak_boot() -> void {
   emith("entry:\n  %buf = alloca [1024 x i8]\n  %szp = alloca i32\n  store i32 1024, ptr %szp\n")
   emith("  %rc = call i32 @_NSGetExecutablePath(ptr %buf, ptr %szp)\n  %bad = icmp ne i32 %rc, 0\n  br i1 %bad, label %out, label %go\n")
   emith("go:\n  %dir = call ptr @lp_path_dir(ptr %buf)\n  %res = call ptr @lp_path_join(ptr %dir, ptr @.pak_res)\n")
-  emith("  %n1 = call i32 @lp_pak_boot_dir(ptr %res)\n  %any = icmp sgt i32 %n1, 0\n  br i1 %any, label %out, label %try2\n")
-  emith("try2:\n  %n2 = call i32 @lp_pak_boot_dir(ptr %dir)\n  br label %out\n")
+  emith("  %n1 = call i32 @lp_pak_boot_dir(ptr %res)\n  %any = icmp sgt i32 %n1, 0\n  br i1 %any, label %splash, label %try2\n")
+  emith("try2:\n  %n2 = call i32 @lp_pak_boot_dir(ptr %dir)\n  br label %splash\n")
+  emith("splash:\n")
+  if g_windowed { emith("  call void @lp_pak_splash_go()\n") }
+  emith("  br label %out\n")
   emith("out:\n  ret void\n}\n")
+
+  # The splash is an asset like any other: named by packs.index, found in the
+  # pack by the same lookup the game's own loads use, and handed to AppKit as
+  # bytes. Nothing here knows what format it is - NSImage reads PNG, JPEG and
+  # TIFF from the same NSData without being told.
+  if g_windowed {
+    emith("define void @lp_pak_splash_go() {\n")
+    emith("entry:\n  %sp = load ptr, ptr @L_pak_splash\n  %none = icmp eq ptr %sp, null\n  br i1 %none, label %out, label %find\n")
+    emith("find:\n  %lp = alloca i32\n  store i32 0, ptr %lp\n  %blob = call ptr @lp_pak_find(ptr %sp, ptr %lp)\n")
+    emith("  %miss = icmp eq ptr %blob, null\n  br i1 %miss, label %out, label %show\n")
+    emith("show:\n  %len = load i32, ptr %lp\n  %bg = load i32, ptr @L_pak_splashbg\n")
+    emith("  call void @splash_show(ptr %blob, i32 %len, i32 %bg)\n  br label %out\n")
+    emith("out:\n  ret void\n}\n")
+  }
 }

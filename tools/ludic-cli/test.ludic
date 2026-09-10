@@ -157,6 +157,73 @@ function pack_probe_src() -> pointer {
   return s
 }
 
+# `ludic bundle` has to produce something macOS actually accepts as an
+# application, not a directory that looks like one: a plist that plutil parses,
+# an executable where Info.plist says it is, an .icns, and a signature. The
+# app's own assets go in the pack beside it, and the display name is allowed a
+# space - which is where the shell quoting in the bundler earns its keep.
+function bundle_case() -> void {
+  let lbl = "ludic bundle -> a .app with metadata, icon, assets and a signature"
+  if not is_darwin() { skip(lbl);  return }
+  let work = `{tmp_dir()}/bundle`
+  let root = capture_line("pwd")
+  run(`rm -rf {work} && mkdir -p {work}/src {work}/assets`)
+  write_file(`{work}/assets/hello.txt`, "packed")
+  # a 64x64 source icon: small, but sips will scale it and iconutil accept it
+  run(`sips -s format png --resampleHeightWidth 64 64 /System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/GenericApplicationIcon.icns --out {work}/assets/icon.png > /dev/null 2>&1`)
+  write_file(`{work}/package.ludic`, bundle_manifest_src())
+  write_file(`{work}/src/main.ludic`, bundle_probe_src())
+
+  if not shq(`cd {work} && {root}/bin/ludic bundle > bundle.out 2>&1`) {
+    bad2(lbl, capture_line(`tail -1 {work}/bundle.out`));  return
+  }
+  let app = `{work}/build/Probe App.app`
+  # quoted: the display name has a space in it, which is the whole point, and
+  # the prelude's file_exists builds an unquoted `test -e`
+  if not there(`{app}/Contents/MacOS/Probe App`) { bad2(lbl, "no executable in Contents/MacOS");  return }
+  if not there(`{app}/Contents/Resources/game.lpak`) { bad2(lbl, "no asset pack");  return }
+  if not there(`{app}/Contents/Resources/packs.index`) { bad2(lbl, "no packs.index");  return }
+  if not there(`{app}/Contents/Resources/AppIcon.icns`) { bad2(lbl, "no icon");  return }
+  if not there(`{app}/Contents/PkgInfo`) { bad2(lbl, "no PkgInfo");  return }
+  if not shq(`plutil -lint "{app}/Contents/Info.plist" > /dev/null 2>&1`) {
+    bad2(lbl, "Info.plist does not parse");  return
+  }
+  # the identifier is derived from the package path when the manifest omits it
+  let id = capture_line(`plutil -extract CFBundleIdentifier raw "{app}/Contents/Info.plist" 2>/dev/null`)
+  if id != "io.workshopsoft.probe-app" { bad2(lbl, `bundle id came out [{id}]`);  return }
+  if not shq(`codesign --verify "{app}" > /dev/null 2>&1`) { bad2(lbl, "the signature does not verify");  return }
+  # and it runs from a directory with none of its assets, reading them from the pack
+  let got = s_trim(capture(`cd / && "{app}/Contents/MacOS/Probe App" 2>&1`))
+  if got != "packed" { bad2(lbl, `the bundled app printed [{got}], wanted [packed]`);  return }
+  ok(lbl)
+}
+
+# `test -e` with the path quoted, so a bundle whose name contains a space can
+# be inspected at all
+function there(path: pointer) -> bool { return shq(`test -e "{path}"`) }
+
+function bundle_manifest_src() -> pointer {
+  var s = "package \"git.workshopsoft.io/workshopsoft/probe-app\"" + nl()
+  s = s + "version \"2.1.0\"" + nl()
+  s = s + "kind source" + nl()
+  s = s + "app name \"Probe App\"" + nl()
+  s = s + "app icon \"assets/icon.png\"" + nl()
+  s = s + "app copyright \"(c) 2026 A & B\"" + nl()
+  s = s + "pack \"assets\"" + nl()
+  return s
+}
+
+function bundle_probe_src() -> pointer {
+  var s = "program Probe {" + nl()
+  s = s + "  entry {" + nl()
+  s = s + "    var t = Fs.read_text(\"assets/hello.txt\")" + nl()
+  s = s + "    if t == null { t = \"MISS\" }" + nl()
+  s = s + "    print(t)" + nl()
+  s = s + "  }" + nl()
+  s = s + "}" + nl()
+  return s
+}
+
 function scaffold_names_case() -> void {
   let lbl = "ludic new scaffolds a project that compiles (hyphens, digits, dots)"
   let work = `{tmp_dir()}/scaffold`
@@ -541,6 +608,7 @@ function cmd_dev_test() -> int {
   install_layout_case()
   scaffold_names_case()
   pack_roundtrip_case()
+  bundle_case()
 
   # install.sh is what the landing page tells people to pipe into sh, and it is
   # published with the docs site — so it is checked here rather than discovered

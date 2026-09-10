@@ -1,0 +1,324 @@
+# bundle.ludic — `ludic bundle`, turning a built game into a macOS .app.
+#
+# `ludic build` produces a Mach-O in build/. That is a program, not an
+# application: double-clicking it opens a Terminal window, it has the generic
+# executable icon, it reports its name as whatever the file is called, and it
+# carries none of its assets. This makes the thing you actually give someone.
+#
+#   Maroon Lake.app/
+#     Contents/
+#       Info.plist                 the metadata Finder, the Dock and Launch Services read
+#       PkgInfo                    the eight bytes that predate Info.plist and are still read
+#       MacOS/Maroon Lake          the binary `ludic build` produced
+#       Resources/
+#         AppIcon.icns             every size macOS asks for, from one source PNG
+#         game.lpak                every asset the game opens
+#         packs.index              what to mount, and where the game may write
+#
+# Everything it needs comes from package.ludic, so the same command works in any
+# project without arguments:
+#
+#   app name       "Maroon Lake"
+#   app id         "io.workshopsoft.maroon-lake"
+#   app icon       "assets/app/icon.png"
+#   app splash     "assets/app/splash.png"
+#   app splash_bg  "#0d1b2a"
+#   app category   "public.app-category.adventure-games"
+#   app copyright  "(c) 2026 Workshopsoft"
+#   app min_macos  "12.0"
+#
+# Only `app name` is really needed; everything else has a defensible default
+# derived from the manifest.
+
+# ---- reading the metadata ---------------------------------------------------
+
+# The display name: `app name`, else the package's own name. This is what shows
+# under the icon, so it is allowed spaces where the binary's name is not.
+function app_name(m: Manifest) -> pointer {
+  let n = manifest_app(m, "name")
+  if n != "" { return n }
+  return project_name("")
+}
+
+# The bundle identifier. Launch Services keys almost everything off this - the
+# Dock, saved window state, the sandbox container, TCC permissions - and two
+# apps sharing one identifier is a class of bug that looks like haunting. When
+# the manifest does not set it, the package path makes a defensible one:
+# `git.workshopsoft.io/workshopsoft/maroon-lake` -> `io.workshopsoft.maroon-lake`.
+function app_id(m: Manifest) -> pointer {
+  let id = manifest_app(m, "id")
+  if id != "" { return id }
+  let host = app_id_host(m.module)
+  if host != "" { return `{host}.{project_name("")}` }
+  return `local.ludic.{project_name("")}`
+}
+
+# the reversed host of a module path, or "" when it does not look like a URL
+function app_id_host(module: pointer) -> pointer {
+  let slash = s_index(module, "/", 0)
+  if slash <= 0 { return "" }
+  let host = sslice(module, 0, slash)
+  # reverse the dotted segments: git.workshopsoft.io -> io.workshopsoft.git
+  var parts = new []pointer
+  var start = 0
+  var i = 0
+  let n = slen(host)
+  while i <= n {
+    if i == n or host[i] == '.' {
+      if i > start { push(parts, sslice(host, start, i)) }
+      start = i + 1
+    }
+    i += 1
+  }
+  if len(parts) < 2 { return "" }
+  # drop a leading "git"/"www" host label: it names the server, not the vendor
+  var last = len(parts) - 1
+  var out = ""
+  var k = last
+  while k >= 0 {
+    let seg = parts[k]
+    if not (k == 0 and (seg == "git" or seg == "www")) {
+      if out == "" { out = seg } else { out = `{out}.{seg}` }
+    }
+    k -= 1
+  }
+  return out
+}
+
+function app_version(m: Manifest) -> pointer {
+  let v = manifest_app(m, "version")
+  if v != "" { return v }
+  if m.ver != "" { return m.ver }
+  return "0.1.0"
+}
+
+# "#0d1b2a" (or "0d1b2a") as a decimal 0xRRGGBB, which is what packs.index
+# carries and what the runtime's atoi can read back
+function hex_color(s: pointer) -> int {
+  var i = 0
+  if slen(s) > 0 and s[0] == '#' { i = 1 }
+  var v = 0
+  var seen = 0
+  while i < slen(s) and seen < 6 {
+    let d = hex_digit(s[i])
+    if d < 0 { return 0 }
+    v = v * 16 + d
+    seen += 1
+    i += 1
+  }
+  if seen != 6 { return 0 }
+  return v
+}
+
+function hex_digit(c: int) -> int {
+  if c >= '0' and c <= '9' { return c - '0' }
+  if c >= 'a' and c <= 'f' { return c - 'a' + 10 }
+  if c >= 'A' and c <= 'F' { return c - 'A' + 10 }
+  return -1
+}
+
+# ---- the icon ---------------------------------------------------------------
+
+# macOS wants ten renderings of the icon, from 16pt to 512pt at 1x and 2x, in an
+# .icns. `iconutil` builds one from a directory of exactly those PNGs, and `sips`
+# resizes. Both ship with macOS, so this needs nothing installed.
+#
+# A source icon should be 1024x1024; anything smaller is upscaled by sips and
+# will look it at the largest size.
+function build_icon(src: pointer, out_icns: pointer) -> bool {
+  if src == "" { return false }
+  if not file_exists(src) {
+    err(`ludic bundle: no icon at {src}\n`)
+    return false
+  }
+  let set = `{tmp_dir()}/AppIcon.iconset`
+  run(`rm -rf {set} && mkdir -p {set}`)
+  if not icon_size(src, set, 16, "16x16") { return false }
+  if not icon_size(src, set, 32, "16x16@2x") { return false }
+  if not icon_size(src, set, 32, "32x32") { return false }
+  if not icon_size(src, set, 64, "32x32@2x") { return false }
+  if not icon_size(src, set, 128, "128x128") { return false }
+  if not icon_size(src, set, 256, "128x128@2x") { return false }
+  if not icon_size(src, set, 256, "256x256") { return false }
+  if not icon_size(src, set, 512, "256x256@2x") { return false }
+  if not icon_size(src, set, 512, "512x512") { return false }
+  if not icon_size(src, set, 1024, "512x512@2x") { return false }
+  if not shq(`iconutil -c icns {set} -o {out_icns} 2>/dev/null`) {
+    err("ludic bundle: iconutil could not build the .icns\n")
+    return false
+  }
+  return true
+}
+
+function icon_size(src: pointer, set: pointer, px: int, name: pointer) -> bool {
+  if not shq(`sips -z {string(px)} {string(px)} {src} --out {set}/icon_{name}.png > /dev/null 2>&1`) {
+    err(`ludic bundle: sips could not make the {name} icon\n`)
+    return false
+  }
+  return true
+}
+
+# ---- Info.plist -------------------------------------------------------------
+
+# Written as XML text rather than through PlistBuddy: it is a fixed set of keys,
+# and generating it here keeps the whole bundle reproducible from the manifest
+# with no tool in between.
+function info_plist(m: Manifest, exe: pointer, has_icon: bool) -> pointer {
+  let name = app_name(m)
+  var s = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" + nl()
+  s = s + "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">" + nl()
+  s = s + "<plist version=\"1.0\">" + nl()
+  s = s + "<dict>" + nl()
+  s = s + plist_str("CFBundleName", name)
+  s = s + plist_str("CFBundleDisplayName", name)
+  s = s + plist_str("CFBundleIdentifier", app_id(m))
+  s = s + plist_str("CFBundleExecutable", exe)
+  s = s + plist_str("CFBundleVersion", app_version(m))
+  s = s + plist_str("CFBundleShortVersionString", app_version(m))
+  s = s + plist_str("CFBundlePackageType", "APPL")
+  s = s + plist_str("CFBundleSignature", "????")
+  s = s + plist_str("CFBundleInfoDictionaryVersion", "6.0")
+  if has_icon { s = s + plist_str("CFBundleIconFile", "AppIcon") }
+  s = s + plist_str("LSMinimumSystemVersion", min_macos(m))
+  let cat = manifest_app(m, "category")
+  if cat != "" { s = s + plist_str("LSApplicationCategoryType", cat) }
+  let cr = manifest_app(m, "copyright")
+  if cr != "" { s = s + plist_str("NSHumanReadableCopyright", cr) }
+  # A game renders at the display's real resolution; without this the window is
+  # upscaled from 1x and everything drawn in it is soft on any Retina screen.
+  s = s + plist_bool("NSHighResolutionCapable", true)
+  s = s + "</dict>" + nl()
+  s = s + "</plist>" + nl()
+  return s
+}
+
+function min_macos(m: Manifest) -> pointer {
+  let v = manifest_app(m, "min_macos")
+  if v != "" { return v }
+  # the OpenGL 4.1 core profile the renderer asks for, and fmemopen, are both
+  # far older than this; 11.0 is simply the oldest macOS still worth naming
+  return "11.0"
+}
+
+function plist_str(k: pointer, v: pointer) -> pointer {
+  return `  <key>{k}</key>` + nl() + `  <string>{xml_escape(v)}</string>` + nl()
+}
+
+function plist_bool(k: pointer, v: bool) -> pointer {
+  var t = "<false/>"
+  if v { t = "<true/>" }
+  return `  <key>{k}</key>` + nl() + `  {t}` + nl()
+}
+
+# &, < and > are the three that can break a plist; a copyright line with an
+# ampersand in it is not an exotic case
+function xml_escape(s: pointer) -> pointer {
+  var out = ""
+  var i = 0
+  let n = slen(s)
+  while i < n {
+    let c = s[i]
+    if c == '&' { out = out + "&amp;" }
+    else if c == '<' { out = out + "&lt;" }
+    else if c == '>' { out = out + "&gt;" }
+    else { out = out + str_sub(s, i, i + 1) }
+    i += 1
+  }
+  return out
+}
+
+# ---- the command ------------------------------------------------------------
+
+function cmd_bundle() -> int {
+  if not is_darwin() {
+    err("ludic bundle: a .app is a macOS bundle; this host is not macOS\n")
+    return 1
+  }
+  let entry = parse_build_args(2)
+  if g_argerr { return 1 }
+  if entry == "" { return no_entry() }
+
+  let m = read_root_manifest()
+  let name = app_name(m)
+  var root = manifest_app(m, "out")
+  if root == "" { root = `build/{name}.app` }
+
+  # The executable's name is what shows in Activity Monitor, in a crash report
+  # and in `ps`, so it takes the display name rather than the file name - spaces
+  # and all, which is what every shipped Mac application does.
+  let contents = `{root}/Contents`
+  run(`rm -rf "{root}"`)
+  run(`mkdir -p "{contents}/MacOS" "{contents}/Resources"`)
+
+  # 1. the binary, built windowed - a bundled game never wants the headless path.
+  #    It is compiled to a scratch path and copied in, because a display name is
+  #    allowed spaces ("Maroon Lake.app") and compile_app builds shell commands
+  #    out of the path it is given.
+  let exe = `{contents}/MacOS/{name}`
+  let staged = `{tmp_dir()}/bundle_exe`
+  if not compile_app(entry, staged, 1, false) { return 1 }
+  if not shq(`cp {staged} "{exe}"`) {
+    err("ludic bundle: could not place the executable\n")
+    return 1
+  }
+
+  # 2. the assets
+  let roots = pack_roots(m, 999)                 # manifest/convention only, no argv
+  var packed = false
+  if len(roots) > 0 {
+    let files = pack_gather_all(roots)
+    if len(files) > 0 {
+      let staged_pak = `{tmp_dir()}/game.lpak`
+      if not pack_write(staged_pak, files) { return 1 }
+      if not shq(`cp {staged_pak} "{contents}/Resources/game.lpak"`) {
+        err("ludic bundle: could not place the asset pack\n")
+        return 1
+      }
+      packed = true
+    }
+  }
+
+  # 3. what to mount, and where the game may write. Without `home` a bundled
+  #    game cannot save at all: Finder starts it with the working directory at
+  #    "/", where nothing is writable.
+  var idx = ""
+  if packed { idx = idx + "pack game.lpak" + nl() }
+  idx = idx + `home {name}` + nl()
+  let splash = manifest_app(m, "splash")
+  if splash != "" {
+    if not packed {
+      err("ludic bundle: `app splash` needs the splash to be in a pack; nothing was packed\n")
+      return 1
+    }
+    idx = idx + `splash {splash}` + nl()
+    idx = idx + `splashbg {string(hex_color(manifest_app(m, "splash_bg")))}` + nl()
+  }
+  write_file(`{contents}/Resources/packs.index`, idx)
+
+  # 4. the icon
+  var has_icon = false
+  let staged_icns = `{tmp_dir()}/AppIcon.icns`
+  if build_icon(manifest_app(m, "icon"), staged_icns) {
+    has_icon = shq(`cp {staged_icns} "{contents}/Resources/AppIcon.icns"`)
+  }
+
+  # 5. the metadata
+  write_file(`{contents}/Info.plist`, info_plist(m, name, has_icon))
+  write_file(`{contents}/PkgInfo`, "APPL????")
+
+  # 6. Sign it. Ad-hoc unless the manifest names an identity: on Apple silicon an
+  #    unsigned binary is killed outright rather than merely warned about, so this
+  #    is not optional the way it was on Intel. An ad-hoc signature does not get
+  #    the app past Gatekeeper on someone else's machine - that needs a Developer
+  #    ID and notarisation - but it does make it run here.
+  var ident = manifest_app(m, "sign")
+  if ident == "" { ident = "-" }
+  if not shq(`codesign --force --timestamp=none --sign "{ident}" "{root}" 2>/dev/null`) {
+    err(`ludic bundle: warning: codesign failed; the app may not launch\n`)
+  }
+
+  print(`bundled {root}`)
+  if not has_icon { print("  no icon: set `app icon \"path/to/icon.png\"` in package.ludic (1024x1024)") }
+  if not packed { print("  no assets packed: nothing under assets/ and no `pack` line in package.ludic") }
+  return 0
+}

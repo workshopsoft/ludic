@@ -1408,3 +1408,216 @@ go:
 out:
   ret void
 }
+
+; ============================================================================
+; The boot splash.
+;
+; A game that loads 165 MB of terrain, models and audio spends a noticeable
+; moment doing it, and until it is done there is nothing on screen: the window
+; is not open yet, because opening it is part of what the game does once it has
+; something to draw. From the outside that is indistinguishable from a launch
+; that failed.
+;
+; splash_show puts a borderless window on screen with the game's own artwork in
+; it. It is called from @lp_pak_boot, before main, so it appears while the
+; process is still starting rather than after the expensive part - which is the
+; only ordering that helps.
+;
+; The image comes from the pack as bytes rather than a path, because by the time
+; this runs the pack is mounted and the file it came from may not exist on disk
+; at all. NSImage reads PNG, JPEG and TIFF from an NSData without being told
+; which it is.
+;
+; The game decides when it goes away, with App.splash_hide(). Nothing hides it
+; automatically: only the game knows whether its first real frame is ready, and
+; a splash that vanishes before it is leaves the same black gap it was there to
+; cover.
+;
+;   splash_show(bytes, len, bg)   bg is 0xRRGGBB, painted behind the image
+;   splash_hide()                 orders it out; safe when there is no splash
+; ============================================================================
+
+@.c_image   = private unnamed_addr constant [8 x i8]  c"NSImage\00"
+@.c_imgview = private unnamed_addr constant [12 x i8] c"NSImageView\00"
+@.c_data    = private unnamed_addr constant [7 x i8]  c"NSData\00"
+@.c_color   = private unnamed_addr constant [8 x i8]  c"NSColor\00"
+@.s_datawb  = private unnamed_addr constant [22 x i8] c"dataWithBytes:length:\00"
+@.s_initdat = private unnamed_addr constant [14 x i8] c"initWithData:\00"
+@.s_size    = private unnamed_addr constant [5 x i8]  c"size\00"
+@.s_setimg  = private unnamed_addr constant [10 x i8] c"setImage:\00"
+@.s_imgscl  = private unnamed_addr constant [17 x i8] c"setImageScaling:\00"
+@.s_ofr     = private unnamed_addr constant [21 x i8] c"orderFrontRegardless\00"
+@.s_oout    = private unnamed_addr constant [10 x i8] c"orderOut:\00"
+@.s_setlvl  = private unnamed_addr constant [10 x i8] c"setLevel:\00"
+@.s_setopq  = private unnamed_addr constant [11 x i8] c"setOpaque:\00"
+@.s_shadow  = private unnamed_addr constant [14 x i8] c"setHasShadow:\00"
+@.s_srgb    = private unnamed_addr constant [35 x i8] c"colorWithSRGBRed:green:blue:alpha:\00"
+@.s_setbg   = private unnamed_addr constant [20 x i8] c"setBackgroundColor:\00"
+@.s_finlau  = private unnamed_addr constant [16 x i8] c"finishLaunching\00"
+
+@W_splash = internal global ptr null
+
+define void @splash_show(ptr %bytes, i32 %len, i32 %bg) {
+entry:
+  ; only ever one, and nothing to show without bytes
+  %had = load ptr, ptr @W_splash
+  %again = icmp ne ptr %had, null
+  %nodata = icmp eq ptr %bytes, null
+  %empty = icmp sle i32 %len, 0
+  %skip0 = or i1 %again, %nodata
+  %skip = or i1 %skip0, %empty
+  br i1 %skip, label %out, label %app
+
+app:
+  ; the shared application, as a foreground app. win_open does this too; both
+  ; are idempotent, and whichever runs first wins.
+  %appcls = call ptr @objc_getClass(ptr @.c_app)
+  %sel_sh = call ptr @sel_registerName(ptr @.s_shared)
+  %nsapp = call ptr @objc_msgSend(ptr %appcls, ptr %sel_sh)
+  %sel_pol = call ptr @sel_registerName(ptr @.s_policy)
+  %p0 = call ptr (ptr, ptr, i64) @objc_msgSend(ptr %nsapp, ptr %sel_pol, i64 0)
+
+  ; NSData over the packed bytes, then an NSImage from it
+  %datacls = call ptr @objc_getClass(ptr @.c_data)
+  %sel_dwb = call ptr @sel_registerName(ptr @.s_datawb)
+  %lz = zext i32 %len to i64
+  %data = call ptr (ptr, ptr, ptr, i64) @objc_msgSend(ptr %datacls, ptr %sel_dwb, ptr %bytes, i64 %lz)
+  %imgcls = call ptr @objc_getClass(ptr @.c_image)
+  %sel_alloc = call ptr @sel_registerName(ptr @.s_alloc)
+  %i0 = call ptr @objc_msgSend(ptr %imgcls, ptr %sel_alloc)
+  %sel_iwd = call ptr @sel_registerName(ptr @.s_initdat)
+  %img = call ptr (ptr, ptr, ptr) @objc_msgSend(ptr %i0, ptr %sel_iwd, ptr %data)
+  %noimg = icmp eq ptr %img, null
+  br i1 %noimg, label %out, label %size
+
+size:
+  ; the window takes the artwork's own size, so the game decides how big its
+  ; splash is by the pixels it ships
+  %sel_size = call ptr @sel_registerName(ptr @.s_size)
+  %sz = call %NSPoint (ptr, ptr) @objc_msgSend(ptr %img, ptr %sel_size)
+  %wd = extractvalue %NSPoint %sz, 0
+  %ht = extractvalue %NSPoint %sz, 1
+  %tiny = fcmp olt double %wd, 1.0
+  br i1 %tiny, label %out, label %mkwin
+
+mkwin:
+  %r0 = insertvalue %CGRect undef, double 0.0, 0
+  %r1 = insertvalue %CGRect %r0, double 0.0, 1
+  %r2 = insertvalue %CGRect %r1, double %wd, 2
+  %rect = insertvalue %CGRect %r2, double %ht, 3
+
+  %appcls2 = call ptr @objc_getClass(ptr @.c_app)
+  %sel_sh2 = call ptr @sel_registerName(ptr @.s_shared)
+  %nsapp2 = call ptr @objc_msgSend(ptr %appcls2, ptr %sel_sh2)
+  %wincls = call ptr @objc_getClass(ptr @.c_win)
+  %w0 = call ptr @objc_msgSend(ptr %wincls, ptr %sel_alloc)
+  %sel_initw = call ptr @sel_registerName(ptr @.s_initw)
+  ; NSWindowStyleMaskBorderless = 0, NSBackingStoreBuffered = 2
+  %win = call ptr (ptr, ptr, %CGRect, i64, i64, i8) @objc_msgSend(ptr %w0, ptr %sel_initw, %CGRect %rect, i64 0, i64 2, i8 0)
+
+  ; the colour behind the artwork, so a splash with transparent edges or a
+  ; non-matching aspect sits on the game's own backdrop rather than white
+  %rr = lshr i32 %bg, 16
+  %rm = and i32 %rr, 255
+  %gg = lshr i32 %bg, 8
+  %gm = and i32 %gg, 255
+  %bm = and i32 %bg, 255
+  %rf = sitofp i32 %rm to double
+  %gf = sitofp i32 %gm to double
+  %bf = sitofp i32 %bm to double
+  %rn = fdiv double %rf, 255.0
+  %gn = fdiv double %gf, 255.0
+  %bn = fdiv double %bf, 255.0
+  %colcls = call ptr @objc_getClass(ptr @.c_color)
+  %sel_srgb = call ptr @sel_registerName(ptr @.s_srgb)
+  %col = call ptr (ptr, ptr, double, double, double, double) @objc_msgSend(ptr %colcls, ptr %sel_srgb, double %rn, double %gn, double %bn, double 1.0)
+  %sel_setbg = call ptr @sel_registerName(ptr @.s_setbg)
+  %b0 = call ptr (ptr, ptr, ptr) @objc_msgSend(ptr %win, ptr %sel_setbg, ptr %col)
+
+  %sel_opq = call ptr @sel_registerName(ptr @.s_setopq)
+  %o0 = call ptr (ptr, ptr, i8) @objc_msgSend(ptr %win, ptr %sel_opq, i8 1)
+  %sel_shd = call ptr @sel_registerName(ptr @.s_shadow)
+  %s0 = call ptr (ptr, ptr, i8) @objc_msgSend(ptr %win, ptr %sel_shd, i8 1)
+  ; NSStatusWindowLevel = 25: above the game's own window when it opens, so the
+  ; splash is not covered by a window that has nothing in it yet
+  %sel_lvl = call ptr @sel_registerName(ptr @.s_setlvl)
+  %l0 = call ptr (ptr, ptr, i64) @objc_msgSend(ptr %win, ptr %sel_lvl, i64 25)
+
+  ; an image view filling it, scaled proportionally (NSImageScaleProportionallyUpOrDown = 3)
+  %ivcls = call ptr @objc_getClass(ptr @.c_imgview)
+  %v0 = call ptr @objc_msgSend(ptr %ivcls, ptr %sel_alloc)
+  %sel_initf = call ptr @sel_registerName(ptr @.s_initf)
+  %view = call ptr (ptr, ptr, %CGRect) @objc_msgSend(ptr %v0, ptr %sel_initf, %CGRect %rect)
+  %sel_simg = call ptr @sel_registerName(ptr @.s_setimg)
+  %v1 = call ptr (ptr, ptr, ptr) @objc_msgSend(ptr %view, ptr %sel_simg, ptr %img)
+  %sel_scl = call ptr @sel_registerName(ptr @.s_imgscl)
+  %v2 = call ptr (ptr, ptr, i64) @objc_msgSend(ptr %view, ptr %sel_scl, i64 3)
+  %sel_setcv = call ptr @sel_registerName(ptr @.s_setcv)
+  %v3 = call ptr (ptr, ptr, ptr) @objc_msgSend(ptr %win, ptr %sel_setcv, ptr %view)
+
+  %sel_center = call ptr @sel_registerName(ptr @.s_center)
+  %c0 = call ptr @objc_msgSend(ptr %win, ptr %sel_center)
+  ; orderFrontRegardless, not makeKeyAndOrderFront: the process has not finished
+  ; launching and is not the active app yet, and a splash has nothing to type into
+  ; The application has to have finished launching before AppKit will map a
+  ; window; without this the window exists, draws into its backing store, and is
+  ; never composited - which looks exactly like the splash not working.
+  %sel_fl = call ptr @sel_registerName(ptr @.s_finlau)
+  %fl = call ptr @objc_msgSend(ptr %nsapp2, ptr %sel_fl)
+  %sel_actv = call ptr @sel_registerName(ptr @.s_act)
+  %av = call ptr (ptr, ptr, i8) @objc_msgSend(ptr %nsapp2, ptr %sel_actv, i8 1)
+  %sel_ofr = call ptr @sel_registerName(ptr @.s_ofr)
+  %f0 = call ptr @objc_msgSend(ptr %win, ptr %sel_ofr)
+  %sel_disp = call ptr @sel_registerName(ptr @.s_disp)
+  %d0 = call ptr @objc_msgSend(ptr %win, ptr %sel_disp)
+
+  ; Turn the run loop a few times so the window is mapped and composited now,
+  ; rather than whenever the game next happens to pump events - which, during the
+  ; asset load this is covering, is never. Once composited the backing store
+  ; survives a busy main thread, so it stays on screen while the game loads.
+  %np = alloca i32
+  store i32 0, ptr %np
+  br label %pump
+pump:
+  %pi = load i32, ptr %np
+  %pdone = icmp sge i32 %pi, 24
+  br i1 %pdone, label %kept, label %pumpgo
+pumpgo:
+  %strcls2 = call ptr @objc_getClass(ptr @.c_str)
+  %sel_u8 = call ptr @sel_registerName(ptr @.s_utf8)
+  %mode2 = call ptr (ptr, ptr, ptr) @objc_msgSend(ptr %strcls2, ptr %sel_u8, ptr @.mode)
+  %datecls2 = call ptr @objc_getClass(ptr @.c_date)
+  %sel_dp2 = call ptr @sel_registerName(ptr @.s_dpast)
+  %date2 = call ptr @objc_msgSend(ptr %datecls2, ptr %sel_dp2)
+  %sel_nx = call ptr @sel_registerName(ptr @.s_next)
+  %ev = call ptr (ptr, ptr, i64, ptr, ptr, i8) @objc_msgSend(ptr %nsapp2, ptr %sel_nx, i64 -1, ptr %date2, ptr %mode2, i8 1)
+  %noev = icmp eq ptr %ev, null
+  br i1 %noev, label %pumpnx, label %pumpsend
+pumpsend:
+  %sel_sd = call ptr @sel_registerName(ptr @.s_send)
+  %sd = call ptr (ptr, ptr, ptr) @objc_msgSend(ptr %nsapp2, ptr %sel_sd, ptr %ev)
+  br label %pumpnx
+pumpnx:
+  %pi1 = add i32 %pi, 1
+  store i32 %pi1, ptr %np
+  br label %pump
+kept:
+  store ptr %win, ptr @W_splash
+  br label %out
+out:
+  ret void
+}
+
+define void @splash_hide() {
+entry:
+  %win = load ptr, ptr @W_splash
+  %none = icmp eq ptr %win, null
+  br i1 %none, label %out, label %go
+go:
+  %sel_oo = call ptr @sel_registerName(ptr @.s_oout)
+  %r = call ptr (ptr, ptr, ptr) @objc_msgSend(ptr %win, ptr %sel_oo, ptr null)
+  store ptr null, ptr @W_splash
+  br label %out
+out:
+  ret void
+}
