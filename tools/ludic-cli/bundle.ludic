@@ -265,17 +265,20 @@ function cmd_bundle() -> int {
   # 2. the assets
   let roots = pack_roots(m, 999)                 # manifest/convention only, no argv
   var packed = false
-  if len(roots) > 0 {
-    let files = pack_gather_all(roots)
-    if len(files) > 0 {
-      let staged_pak = `{tmp_dir()}/game.lpak`
-      if not pack_write(staged_pak, files) { return 1 }
-      if not shq(`cp {staged_pak} "{contents}/Resources/game.lpak"`) {
-        err("ludic bundle: could not place the asset pack\n")
-        return 1
-      }
-      packed = true
+  let files = pack_gather_all(roots)
+  # the resources the packages themselves load at runtime - the renderer's
+  # shaders above all, which resolve against a project or an install and would
+  # find neither inside a .app
+  pack_add_packages(files)
+  pack_sort(files)
+  if len(files.names) > 0 {
+    let staged_pak = `{tmp_dir()}/game.lpak`
+    if not pack_write(staged_pak, files) { return 1 }
+    if not shq(`cp {staged_pak} "{contents}/Resources/game.lpak"`) {
+      err("ludic bundle: could not place the asset pack\n")
+      return 1
     }
+    packed = true
   }
 
   # 3. what to mount, and where the game may write. Without `home` a bundled

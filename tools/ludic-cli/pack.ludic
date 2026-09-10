@@ -70,58 +70,97 @@ function read_blob(path: pointer) -> pointer {
 }
 
 # ---- gathering the files ----------------------------------------------------
+#
+# A pack entry has a NAME (what the game asks for) and a PATH (where the bytes
+# are right now). They are usually the same string, but not always: a package's
+# shaders live in the toolchain install and have to be stored under the
+# `packages/<module>/` name the renderer looks them up by, or a bundled game
+# cannot find them and comes up with no shaders at all.
+
+property PackList { names: []pointer, paths: []pointer }
+
+function pack_list_new() -> PackList {
+  let l = new PackList
+  l.names = new []pointer
+  l.paths = new []pointer
+  return l
+}
+
+function pack_add(l: PackList, name: pointer, path: pointer) -> void {
+  push(l.names, name)
+  push(l.paths, path)
+}
 
 # Every file under `root`, in byte order. `find | sort` rather than a walk of
 # Fs.list: the runtime binary-searches on strcmp order, and a recursive walk
 # emits "assets/a.png" after "assets/ab/x.png" because it descends per directory,
 # which is not that order. LC_ALL=C is what makes sort agree with strcmp.
-function pack_gather(root: pointer) -> []pointer {
-  var out = new []pointer
-  if not file_exists(root) {
-    err(`ludic pack: no such directory: {root}\n`)
-    return out
-  }
-  let listing = capture(`find {root} -type f ! -name '.DS_Store' | LC_ALL=C sort`)
+#
+# `base` is the directory find runs in and `prefix` what the results are stored
+# under: with both empty the name is the path, which is the ordinary case.
+function pack_gather_into(l: PackList, base: pointer, root: pointer, prefix: pointer) -> void {
+  var cd = ""
+  if base != "" { cd = `cd {base} && ` }
+  # -L follows symlinks. An asset root is very often a link to a shared or
+  # fetched tree - `ludic assets` writes one, and a game with two checkouts
+  # sharing a texture set will have several - and a plain `find` walks straight
+  # past them, packing nothing while reporting success.
+  let listing = capture(`{cd}find -L {root} -type f ! -name '.DS_Store' 2>/dev/null | LC_ALL=C sort`)
   let n = slen(listing)
   var i = 0
   while i < n {
     let line = line_at(listing, i)
     i = i + slen(line) + 1
-    let t = s_trim(line)
-    if slen(t) > 0 { push(out, t) }
+    let rel = s_trim(line)
+    if slen(rel) == 0 { continue }
+    var name = rel
+    if prefix != "" { name = `{prefix}/{rel}` }
+    var path = rel
+    if base != "" { path = `{base}/{rel}` }
+    pack_add(l, name, path)
   }
-  return out
 }
 
-# every root's files, concatenated then re-sorted as one list, since the runtime
-# searches one table across all of them
-function pack_gather_all(roots: []pointer) -> []pointer {
-  var all = new []pointer
+# the project's own asset roots, stored under the names the game already uses
+function pack_gather_all(roots: []pointer) -> PackList {
+  let l = pack_list_new()
   var i = 0
   while i < len(roots) {
-    let one = pack_gather(roots[i])
-    var k = 0
-    while k < len(one) { push(all, one[k]);  k += 1 }
+    if not file_exists(roots[i]) {
+      err(`ludic pack: no such directory: {roots[i]}\n`)
+    } else {
+      let before = len(l.names)
+      pack_gather_into(l, "", roots[i], "")
+      # A declared root that contributes nothing is almost always a mistake -
+      # a typo, or a link into a tree that was never fetched - and the failure
+      # it causes is a game that starts and then behaves as though half its
+      # assets do not exist. Say so here rather than at the player.
+      if len(l.names) == before { err(`ludic pack: warning: {roots[i]} is empty, nothing packed from it\n`) }
+    }
     i += 1
   }
-  return pack_sort(all)
+  return pack_sort(l)
 }
 
-# insertion sort by byte order. The lists are hundreds of entries, not millions,
-# and this keeps the one ordering guarantee the format makes in one readable place.
-function pack_sort(xs: []pointer) -> []pointer {
+# insertion sort by byte order, carrying each name's path along with it. The
+# lists are hundreds of entries, not millions, and this keeps the one ordering
+# guarantee the format makes in one readable place.
+function pack_sort(l: PackList) -> PackList {
   var i = 1
-  while i < len(xs) {
-    let v = xs[i]
+  while i < len(l.names) {
+    let vn = l.names[i]
+    let vp = l.paths[i]
     var j = i - 1
-    while j >= 0 and pack_cmp(xs[j], v) > 0 {
-      xs[j + 1] = xs[j]
+    while j >= 0 and pack_cmp(l.names[j], vn) > 0 {
+      l.names[j + 1] = l.names[j]
+      l.paths[j + 1] = l.paths[j]
       j -= 1
     }
-    xs[j + 1] = v
+    l.names[j + 1] = vn
+    l.paths[j + 1] = vp
     i += 1
   }
-  return xs
+  return l
 }
 
 # strcmp order: negative, zero or positive, comparing unsigned bytes. This is the
@@ -150,8 +189,10 @@ function align16(v: int) -> int {
 
 # ---- writing ----------------------------------------------------------------
 
-function pack_write(out_path: pointer, files: []pointer) -> bool {
-  let n = len(files)
+function pack_write(out_path: pointer, l: PackList) -> bool {
+  let names = l.names
+  let paths = l.paths
+  let n = len(names)
   if n == 0 { err("ludic pack: nothing to pack\n");  return false }
 
   # Layout is decided before a byte is written: the entry table has to carry
@@ -162,7 +203,7 @@ function pack_write(out_path: pointer, files: []pointer) -> bool {
   var i = 0
   while i < n {
     push(name_off, names_at + names_len)
-    names_len = names_len + slen(files[i]) + 1
+    names_len = names_len + slen(names[i]) + 1
     i += 1
   }
   let data_at = align16(names_at + names_len)
@@ -173,8 +214,8 @@ function pack_write(out_path: pointer, files: []pointer) -> bool {
   var total = data_at
   i = 0
   while i < n {
-    let blob = read_blob(files[i])
-    if blob == null { err(`ludic pack: cannot read {files[i]}\n`);  return false }
+    let blob = read_blob(paths[i])
+    if blob == null { err(`ludic pack: cannot read {paths[i]}\n`);  return false }
     push(data_off, total)
     push(data_len, pk_len)
     push(hash, fnv1a(blob, 0, pk_len))
@@ -208,7 +249,7 @@ function pack_write(out_path: pointer, files: []pointer) -> bool {
   # name heap
   i = 0
   while i < n {
-    file_write(f, files[i], slen(files[i]) + 1)
+    file_write(f, names[i], slen(names[i]) + 1)
     i += 1
   }
 
@@ -217,8 +258,8 @@ function pack_write(out_path: pointer, files: []pointer) -> bool {
   var at = data_at
   i = 0
   while i < n {
-    let blob = read_blob(files[i])
-    if blob == null { err(`ludic pack: {files[i]} vanished mid-pack\n`);  file_close(f);  return false }
+    let blob = read_blob(paths[i])
+    if blob == null { err(`ludic pack: {paths[i]} vanished mid-pack\n`);  file_close(f);  return false }
     file_write(f, blob, pk_len)
     at = at + pk_len
     let want = align16(at)
@@ -303,6 +344,48 @@ function cmd_pack_verify(path: pointer) -> int {
   if bad > 0 { err(`ludic pack: {string(bad)} of {string(n)} entries failed\n`);  return 1 }
   print(`OK {string(n)} entries verified`)
   return 0
+}
+
+# ---- the packages a shipped game still needs --------------------------------
+#
+# A package can carry runtime resources, not just code: ludic.render3d loads its
+# shaders from `packages/ludic.render3d/shaders/` at startup, resolving that
+# against the project or the toolchain install. A bundled .app has neither, so
+# without this a shipped 3D game starts, finds no shaders, and draws nothing -
+# which is a spectacular way to fail and an easy one to ship by accident.
+#
+# So the resources go in the pack under exactly the name the package looks them
+# up by. Source (.ludic) and documentation are left out: the game is already
+# compiled, and nobody reads a package's FEATURES.md out of a .app.
+function pack_add_packages(l: PackList) -> void {
+  var base = "packages"
+  if not file_exists(base) { base = `{ludic_home()}packages` }
+  if not file_exists(base) { return }
+  let mods = capture(`ls {base} 2>/dev/null`)
+  let n = slen(mods)
+  var i = 0
+  while i < n {
+    let line = line_at(mods, i)
+    i = i + slen(line) + 1
+    let mod = s_trim(line)
+    if slen(mod) == 0 { continue }
+    pack_gather_pkg(l, base, mod)
+  }
+}
+
+# one package's resource files, named `packages/<module>/<path>`
+function pack_gather_pkg(l: PackList, base: pointer, mod: pointer) -> void {
+  let listing = capture(`cd {base}/{mod} 2>/dev/null && find -L . -type f ! -name '*.ludic' ! -name '*.md' ! -path './build/*' ! -name '.DS_Store' 2>/dev/null | LC_ALL=C sort`)
+  let n = slen(listing)
+  var i = 0
+  while i < n {
+    let line = line_at(listing, i)
+    i = i + slen(line) + 1
+    var rel = s_trim(line)
+    if slen(rel) == 0 { continue }
+    if s_starts(rel, "./") { rel = sslice(rel, 2, slen(rel)) }
+    pack_add(l, `packages/{mod}/{rel}`, `{base}/{mod}/{rel}`)
+  }
 }
 
 # ---- the command ------------------------------------------------------------
