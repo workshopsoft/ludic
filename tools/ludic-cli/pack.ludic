@@ -79,6 +79,11 @@ function read_blob(path: pointer) -> pointer {
 
 property PackList { names: []pointer, paths: []pointer }
 
+# how many files `.packignore` kept out of the last gather, and whether to read one
+# at all (`ludic pack --no-ignore` turns it off to see what a rule is costing)
+var pk_skipped: int = 0
+var pk_use_ignore: bool = true
+
 function pack_list_new() -> PackList {
   let l = new PackList
   l.names = new []pointer
@@ -99,13 +104,20 @@ function pack_add(l: PackList, name: pointer, path: pointer) -> void {
 # `base` is the directory find runs in and `prefix` what the results are stored
 # under: with both empty the name is the path, which is the ordinary case.
 function pack_gather_into(l: PackList, base: pointer, root: pointer, prefix: pointer) -> void {
+  pack_gather_filtered(l, base, root, prefix, null)
+}
+# the same, with a `.packignore` set applied to the paths as they are gathered
+function pack_gather_filtered(l: PackList, base: pointer, root: pointer, prefix: pointer, ig: PackIgnore) -> void {
   var cd = ""
   if base != "" { cd = `cd {base} && ` }
   # -L follows symlinks. An asset root is very often a link to a shared or
   # fetched tree - `ludic assets` writes one, and a game with two checkouts
   # sharing a texture set will have several - and a plain `find` walks straight
   # past them, packing nothing while reporting success.
-  let listing = capture(`{cd}find -L {root} -type f ! -name '.DS_Store' 2>/dev/null | LC_ALL=C sort`)
+  # `.packignore` is a build-time control file - nothing reads one at run time - so it
+  # is dropped here rather than by the rules it carries, and `--no-ignore` does not
+  # bring it back.
+  let listing = capture(`{cd}find -L {root} -type f ! -name '.DS_Store' ! -name '.packignore' 2>/dev/null | LC_ALL=C sort`)
   let n = slen(listing)
   var i = 0
   while i < n {
@@ -113,6 +125,7 @@ function pack_gather_into(l: PackList, base: pointer, root: pointer, prefix: poi
     i = i + slen(line) + 1
     let rel = s_trim(line)
     if slen(rel) == 0 { continue }
+    if ig != null and pi_ignored(ig, rel) { pk_skipped += 1;  continue }
     var name = rel
     if prefix != "" { name = `{prefix}/{rel}` }
     var path = rel
@@ -124,18 +137,29 @@ function pack_gather_into(l: PackList, base: pointer, root: pointer, prefix: poi
 # the project's own asset roots, stored under the names the game already uses
 function pack_gather_all(roots: []pointer) -> PackList {
   let l = pack_list_new()
+  pk_skipped = 0
+  # `.packignore` (packignore.ludic): the project's own roots only. A package's
+  # resources are added after this and are not the game's to exclude.
+  var ig: PackIgnore = null
+  if pk_use_ignore {
+    ig = pi_new()
+    pi_load_dir(ig, "")
+    var r = 0
+    while r < len(roots) { pi_load_root(ig, roots[r]);  r += 1 }
+    if pi_count(ig) == 0 { ig = null }
+  }
   var i = 0
   while i < len(roots) {
     if not file_exists(roots[i]) {
       err(`ludic pack: no such directory: {roots[i]}\n`)
     } else {
       let before = len(l.names)
-      pack_gather_into(l, "", roots[i], "")
+      pack_gather_filtered(l, "", roots[i], "", ig)
       # A declared root that contributes nothing is almost always a mistake -
       # a typo, or a link into a tree that was never fetched - and the failure
       # it causes is a game that starts and then behaves as though half its
       # assets do not exist. Say so here rather than at the player.
-      if len(l.names) == before { err(`ludic pack: warning: {roots[i]} is empty, nothing packed from it\n`) }
+      if len(l.names) == before and pk_skipped == 0 { err(`ludic pack: warning: {roots[i]} is empty, nothing packed from it\n`) }
     }
     i += 1
   }
@@ -269,7 +293,9 @@ function pack_write(out_path: pointer, l: PackList) -> bool {
   }
   file_close(f)
 
-  print(`packed {string(n)} files, {string(total / 1024)} KiB -> {out_path}`)
+  var note = ""
+  if pk_skipped > 0 { note = `, {string(pk_skipped)} skipped by .packignore` }
+  print(`packed {string(n)} files, {string(total / 1024)} KiB{note} -> {out_path}`)
   return true
 }
 
@@ -423,6 +449,7 @@ function cmd_pack() -> int {
     if a == "--list" { return cmd_pack_list(argn(i + 1, "")) }
     if a == "--verify" { return cmd_pack_verify(argn(i + 1, "")) }
     if a == "--out" { out_path = argn(i + 1, "");  i += 1 }
+    if a == "--no-ignore" { pk_use_ignore = false }
     i += 1
   }
   let m = read_root_manifest()

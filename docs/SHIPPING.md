@@ -84,6 +84,59 @@ ludic pack --list build/maroon-lake.lpak     # what is in it
 ludic pack --verify build/maroon-lake.lpak   # re-hash every entry
 ```
 
+### Keeping things out: `.packignore`
+
+A pack root goes in wholesale, which is the right default and the reason a game only
+has to write `pack "assets"`. It also means everything the game does *not* open ships
+with it — the preview renders a model pipeline leaves beside its meshes, the
+intermediate a texture bake writes and never reads again, the `.blend` the `.gltf` came
+out of. Nothing errors and nothing looks wrong; the app is just bigger than the game.
+
+Put a `.packignore` beside the assets and those stop shipping:
+
+```
+# what the builders leave behind
+preview/                 # a directory, at any depth
+*.blend                  # a name, at any depth
+/scratch                 # only at this file's own level
+**/tmp                   # any depth, said explicitly
+textures/*_intermediate.png
+!textures/keep_intermediate.png   # ...except this one
+```
+
+The rules are **gitignore's**, because that is the file everyone already knows:
+
+- Blank lines and `#` comments are skipped; write `\#` or `\!` for a literal leader.
+- A pattern with **no** slash matches a name at any depth. A pattern **with** one is
+  anchored to the directory holding the `.packignore`.
+- A trailing `/` means directory-only: `preview/` never matches a *file* called
+  `preview`.
+- `*` and `?` stop at a `/`; `**` crosses one. `a/**/b` matches `a/b` too.
+- `[abc]`, `[a-z]` and `[!abc]` are character classes.
+- `!` re-includes, and within one file the **last** matching line wins.
+- A `.packignore` deeper in the tree beats a shallower one — a kit can keep something
+  the project excludes everywhere else.
+- A file under an ignored **directory** cannot be re-included, exactly as in git.
+  Ignore the files rather than the directory when that is what you meant.
+
+Two rules of its own, because a pack is not a working tree:
+
+- **`.packignore` is never packed.** Nothing reads one at run time, and `--no-ignore`
+  does not bring it back either.
+- **It applies to your roots, not to a package's.** The resources a package contributes
+  to a bundle — the renderer's shaders above all — are added after your roots are
+  gathered, so a stray `*.frag` in a game's ignore file cannot quietly un-ship them.
+
+`ludic pack` says what it left out, and `--no-ignore` packs everything so you can see
+what a rule is costing:
+
+```bash
+ludic pack                  # packed 216 files, 358377 KiB, 164 skipped by .packignore -> ...
+ludic pack --no-ignore      # packed 380 files, 390820 KiB -> ...
+```
+
+`ludic bundle` gathers assets the same way, so the two agree by construction.
+
 ### More than one pack
 
 `Contents/Resources/packs.index` is a plain list, and the order is load-bearing:

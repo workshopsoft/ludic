@@ -1,0 +1,311 @@
+# packignore.ludic — `.packignore`: what the shipped asset pack leaves out.
+#
+# A pack root is packed WHOLESALE, and that is the right default: a game says
+# `pack "assets"` and everything the game opens is in the pack. What it also puts in
+# the pack is everything the game does NOT open — the preview renders a model builder
+# writes beside its meshes, the intermediate a texture bake leaves behind, the `.blend`
+# the `.gltf` came out of. None of it errors, none of it is visible, and all of it
+# ships. The alternative the manifest offered was naming every file one by one, which
+# is worse: it is a list that goes stale the day someone adds a texture.
+#
+# So the ignore file, and deliberately the one everybody already knows:
+#
+#   # a comment
+#   preview/          # a directory, anywhere under here
+#   *.blend           # by extension, at any depth
+#   /scratch          # only at the root of this ignore file's directory
+#   **/tmp            # any depth, said explicitly
+#   !keep/important.png   # re-include something an earlier line excluded
+#
+# The semantics are gitignore's, and the ones that matter are the ones people rely on
+# without thinking about them:
+#
+#   - Blank lines and `#` comments are skipped. A literal `#` or `!` at the start of a
+#     pattern is written `\#` / `\!`.
+#   - A pattern with NO slash matches a name at ANY depth. `*.blend` catches
+#     `a/b/c.blend`.
+#   - A pattern WITH a slash is anchored to the directory holding the `.packignore`.
+#     `/scratch` is that directory's own `scratch`; `doc/tmp` is `doc/tmp` under it.
+#   - A trailing slash means "directory only": `preview/` ignores the directory and
+#     everything under it, and never a FILE called `preview`.
+#   - `*` and `?` do not cross a `/`; `**` does. `**/tmp` is any `tmp`, `a/**/b` is `b`
+#     under `a` at any depth, `a/b` included.
+#   - `[abc]`, `[a-z]` and `[!abc]` are character classes.
+#   - `!` re-includes. Within one file the LAST matching line decides.
+#   - A `.packignore` deeper in the tree beats a shallower one for the paths it covers.
+#   - A file under an ignored DIRECTORY cannot be re-included, exactly as in git: once
+#     `preview/` is out, `!preview/keep.png` does not bring it back. Ignore the files
+#     rather than the directory if that is what you meant.
+#
+# Two rules of its own, both because this is a pack and not a working tree:
+#
+#   - `.packignore` files are never packed - nothing reads one at run time. That is
+#     done in the gather (`pack.ludic`), not by a rule here, so `--no-ignore` does not
+#     bring them back either.
+#   - It applies to the PROJECT's own roots. The resources a package contributes to a
+#     bundle - the renderer's shaders, say - are that package's business and are added
+#     after this runs, so a stray `*.frag` in a game's ignore file cannot silently
+#     un-ship the shaders it needs to draw anything.
+
+const PI_UNKNOWN: int = -1
+const PI_INCLUDE: int = 0
+const PI_IGNORE: int = 1
+
+property PackIgnore {
+  base:     []pointer,   # directory the rule was read in, relative to the pack cwd ("" = root)
+  depth:    []int,       # segments in `base`; a deeper file wins over a shallower one
+  pat:      []pointer,   # the pattern, with `!`, a leading `/` and a trailing `/` stripped
+  negate:   []int,
+  dironly:  []int,
+  anchored: []int
+}
+
+function pi_new() -> PackIgnore {
+  let g = new PackIgnore
+  g.base = new []pointer
+  g.depth = new []int
+  g.pat = new []pointer
+  g.negate = new []int
+  g.dironly = new []int
+  g.anchored = new []int
+  return g
+}
+
+function pi_count(g: PackIgnore) -> int { return len(g.pat) }
+
+# how many segments deep a directory is; "" is 0
+function pi_depth_of(dir: pointer) -> int {
+  if dir == "" { return 0 }
+  var n = 1
+  var i = 0
+  let e = slen(dir)
+  while i < e {
+    if dir[i] == '/' { n += 1 }
+    i += 1
+  }
+  return n
+}
+
+# ---- reading one file -------------------------------------------------------
+
+# Parse `{dir}/.packignore` into rules tagged with `dir`. Missing file: nothing.
+function pi_load_dir(g: PackIgnore, dir: pointer) -> void {
+  var path = ".packignore"
+  if dir != "" { path = `{dir}/.packignore` }
+  if not file_exists(path) { return }
+  let text = read_file(path)
+  if text == null { return }
+  let n = slen(text)
+  let d = pi_depth_of(dir)
+  var i = 0
+  while i < n {
+    let line = line_at(text, i)
+    i = i + slen(line) + 1
+    pi_add_rule(g, dir, d, s_trim(line))
+  }
+}
+
+function pi_add_rule(g: PackIgnore, dir: pointer, depth: int, raw: pointer) -> void {
+  var p = raw
+  if slen(p) == 0 { return }
+  if p[0] == '#' { return }
+  var neg = 0
+  if p[0] == '!' { neg = 1;  p = sslice(p, 1, slen(p)) }
+  # an escaped leading marker is a literal one
+  if slen(p) > 1 and p[0] == '\\' and (p[1] == '#' or p[1] == '!') { p = sslice(p, 1, slen(p)) }
+  if slen(p) == 0 { return }
+  var dironly = 0
+  while slen(p) > 0 and p[slen(p) - 1] == '/' { dironly = 1;  p = sslice(p, 0, slen(p) - 1) }
+  if slen(p) == 0 { return }
+  # `**/x` is the explicit spelling of "x at any depth", so it is NOT anchored
+  var anchored = 1
+  if s_starts(p, "**/") { p = sslice(p, 3, slen(p));  anchored = 0 }
+  else if p[0] == '/' { p = sslice(p, 1, slen(p)) }
+  else if not s_contains(p, "/") { anchored = 0 }
+  if slen(p) == 0 { return }
+  push(g.base, dir)
+  push(g.depth, depth)
+  push(g.pat, p)
+  push(g.negate, neg)
+  push(g.dironly, dironly)
+  push(g.anchored, anchored)
+}
+
+# Every `.packignore` that can bear on `root`: the one at the pack's working
+# directory, then one per directory inside it. Call once per pack, for each root.
+function pi_load_root(g: PackIgnore, root: pointer) -> void {
+  let listing = capture(`find -L {root} -name .packignore -type f 2>/dev/null | LC_ALL=C sort`)
+  let n = slen(listing)
+  var i = 0
+  while i < n {
+    let line = line_at(listing, i)
+    i = i + slen(line) + 1
+    let rel = s_trim(line)
+    if slen(rel) == 0 { continue }
+    pi_load_dir(g, pi_dirname(rel))
+  }
+}
+
+# the directory part of a path, "" when there is none
+function pi_dirname(path: pointer) -> pointer {
+  var cut = -1
+  var i = 0
+  let e = slen(path)
+  while i < e {
+    if path[i] == '/' { cut = i }
+    i += 1
+  }
+  if cut < 0 { return "" }
+  return sslice(path, 0, cut)
+}
+
+function pi_basename(path: pointer) -> pointer {
+  var cut = -1
+  var i = 0
+  let e = slen(path)
+  while i < e {
+    if path[i] == '/' { cut = i }
+    i += 1
+  }
+  if cut < 0 { return path }
+  return sslice(path, cut + 1, e)
+}
+
+# ---- matching ---------------------------------------------------------------
+
+# One glob against one string. `*` and `?` stop at a `/`; `**` does not.
+function pi_glob(pat: pointer, txt: pointer) -> bool {
+  return pi_glob_at(pat, 0, txt, 0)
+}
+
+function pi_glob_at(p: pointer, pi: int, t: pointer, ti: int) -> bool {
+  var i = pi
+  var j = ti
+  while true {
+    if p[i] == 0 { return t[j] == 0 }
+    # `**` — crosses separators
+    if p[i] == '*' and p[i + 1] == '*' {
+      var rest = i + 2
+      if p[rest] == '/' {
+        # `a/**/b` also matches `a/b`: the zero-directory case
+        if pi_glob_at(p, rest + 1, t, j) { return true }
+        var k = j
+        while t[k] != 0 {
+          if t[k] == '/' { if pi_glob_at(p, rest + 1, t, k + 1) { return true } }
+          k += 1
+        }
+        return false
+      }
+      var k2 = j
+      if pi_glob_at(p, rest, t, k2) { return true }
+      while t[k2] != 0 {
+        k2 += 1
+        if pi_glob_at(p, rest, t, k2) { return true }
+      }
+      return false
+    }
+    if p[i] == '*' {
+      var k = j
+      if pi_glob_at(p, i + 1, t, k) { return true }
+      while t[k] != 0 and t[k] != '/' {
+        k += 1
+        if pi_glob_at(p, i + 1, t, k) { return true }
+      }
+      return false
+    }
+    if p[i] == '?' {
+      if t[j] == 0 or t[j] == '/' { return false }
+      i += 1;  j += 1;  continue
+    }
+    if p[i] == '[' {
+      if t[j] == 0 or t[j] == '/' { return false }
+      let after = pi_class(p, i, t[j] & 255)
+      if after < 0 { return false }
+      i = after;  j += 1;  continue
+    }
+    if p[i] == '\\' and p[i + 1] != 0 {
+      if t[j] != p[i + 1] { return false }
+      i += 2;  j += 1;  continue
+    }
+    if t[j] != p[i] { return false }
+    if p[i] == 0 { return true }
+    i += 1;  j += 1
+  }
+  return false
+}
+
+# A `[...]` class at p[at]. Returns the index just past the `]` on a match, or -1.
+# A `]` straight after the `[` or the `!` is a literal one, as in a shell.
+function pi_class(p: pointer, at: int, c: int) -> int {
+  var i = at + 1
+  var neg = false
+  if p[i] == '!' or p[i] == '^' { neg = true;  i += 1 }
+  var hit = false
+  var first = true
+  while p[i] != 0 and (p[i] != ']' or first) {
+    first = false
+    var lo = p[i] & 255
+    if p[i] == '\\' and p[i + 1] != 0 { i += 1;  lo = p[i] & 255 }
+    if p[i + 1] == '-' and p[i + 2] != 0 and p[i + 2] != ']' {
+      let hi = p[i + 2] & 255
+      if c >= lo and c <= hi { hit = true }
+      i += 3
+    } else {
+      if c == lo { hit = true }
+      i += 1
+    }
+  }
+  if p[i] != ']' { return -1 }          # unterminated: not a class at all
+  if neg { hit = not hit }
+  if not hit { return -1 }
+  return i + 1
+}
+
+# Does one rule bear on `path`, and does it match?
+function pi_rule_hits(g: PackIgnore, r: int, path: pointer, is_dir: bool) -> bool {
+  if g.dironly[r] == 1 and not is_dir { return false }
+  let base = g.base[r]
+  var sub = path
+  if base != "" {
+    if not s_starts(path, `{base}/`) { return false }
+    sub = sslice(path, slen(base) + 1, slen(path))
+  }
+  if g.anchored[r] == 1 { return pi_glob(g.pat[r], sub) }
+  return pi_glob(g.pat[r], pi_basename(sub))
+}
+
+# The decision for one path: the DEEPEST `.packignore` with something to say wins,
+# and within one file the LAST line that matches.
+function pi_decide(g: PackIgnore, path: pointer, is_dir: bool) -> int {
+  var best = -1
+  var out = PI_UNKNOWN
+  var r = 0
+  let n = len(g.pat)
+  while r < n {
+    if pi_rule_hits(g, r, path, is_dir) and g.depth[r] >= best {
+      best = g.depth[r]
+      if g.negate[r] == 1 { out = PI_INCLUDE } else { out = PI_IGNORE }
+    }
+    r += 1
+  }
+  return out
+}
+
+# Is this file kept out of the pack?
+#
+# An ignored DIRECTORY takes everything under it and a `!` cannot bring any of it back
+# - git's rule, and the one that makes `preview/` mean what people expect. So the
+# ancestors are tested first, shallowest down, and the file itself only if they all
+# passed.
+function pi_ignored(g: PackIgnore, path: pointer) -> bool {
+  if len(g.pat) == 0 { return false }
+  var i = 0
+  let e = slen(path)
+  while i < e {
+    if path[i] == '/' {
+      if pi_decide(g, sslice(path, 0, i), true) == PI_IGNORE { return true }
+    }
+    i += 1
+  }
+  return pi_decide(g, path, false) == PI_IGNORE
+}

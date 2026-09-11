@@ -25,6 +25,7 @@ program Ludic {
   import "project.ludic"
   import "pkg.ludic"
   import "assets.ludic"
+  import "packignore.ludic"
   import "pack.ludic"
   import "bundle.ludic"
 
@@ -52,7 +53,8 @@ program Ludic {
     print("  link-flags                    print the clang flags to link this project's prebuilt module dylibs")
     print("")
     print("shipping:")
-    print("  pack [--out FILE] [dirs...]   pack the assets into build/<name>.lpak")
+    print("  pack [--out FILE] [dirs...]   pack the assets into build/<name>.lpak (honouring .packignore)")
+    print("  pack --no-ignore ...          pack everything, ignoring .packignore")
     print("  pack --list FILE              print what is in a pack")
     print("  pack --verify FILE            re-hash every entry against the table")
     print("  bundle [file]                 build a macOS .app: icon, metadata, assets, splash")

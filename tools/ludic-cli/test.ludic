@@ -157,6 +157,70 @@ function pack_probe_src() -> pointer {
   return s
 }
 
+# `.packignore` — the pack's exclude file, with gitignore's semantics. The feature it
+# exists for is that a pack root is packed wholesale: the preview renders, bake
+# intermediates and .blend files a model pipeline leaves beside its meshes all shipped,
+# and the only alternative the manifest offered was naming every file by hand.
+#
+# The patterns below are one of each kind that people actually rely on, and the assert
+# is the exact set that comes out - both halves matter, because a rule that excludes too
+# much is as bad as one that excludes nothing and is just as quiet.
+function packignore_case() -> void {
+  let lbl = "ludic pack -> .packignore excludes, with gitignore's rules"
+  let work = `{tmp_dir()}/packign`
+  let root = capture_line("pwd")
+  run(`rm -rf {work}`)
+  run(`mkdir -p {work}/assets/kit/preview {work}/assets/deep/a/tmp {work}/assets/scratch {work}/assets/sub/scratch {work}/assets/keep`)
+  write_file(`{work}/assets/kit/preview/x.png`, "x")      # preview/   - a directory, any depth
+  write_file(`{work}/assets/kit/model.blend`, "x")        # *.blend    - a name, any depth
+  write_file(`{work}/assets/kit/hiker.png`, "x")          # kept
+  write_file(`{work}/assets/deep/a/tmp/junk.txt`, "x")    # **/tmp
+  write_file(`{work}/assets/deep/a/keep.txt`, "x")        # kept
+  write_file(`{work}/assets/scratch/s.txt`, "x")          # /assets/scratch - anchored
+  write_file(`{work}/assets/sub/scratch/keep.txt`, "x")   # kept: the anchor does not reach here
+  write_file(`{work}/assets/keep/other.png`, "x")         # assets/keep/*.png
+  write_file(`{work}/assets/keep/important.png`, "x")     # kept: re-included by !
+  write_file(`{work}/assets/preview`, "x")                # kept: a FILE, and the rule says directory
+  var ig = "# what nobody opens" + nl()
+  ig = ig + "preview/" + nl() + "*.blend" + nl() + "/assets/scratch" + nl() + "**/tmp" + nl()
+  ig = ig + "assets/keep/*.png" + nl() + "!assets/keep/important.png" + nl()
+  write_file(`{work}/.packignore`, ig)
+
+  if not shq(`cd {work} && {root}/bin/ludic pack --out o.lpak assets > pack.out 2>&1`) {
+    bad2(lbl, capture_line(`tail -1 {work}/pack.out`));  return
+  }
+  # cut, not awk: `--list` prints "<size>\t<name>" and awk's braces collide with string
+  # interpolation. capture_line joins the lines with spaces, which is the comparison.
+  let got = capture_line(`cd {work} && {root}/bin/ludic pack --list o.lpak | tail -n +2 | cut -f2 | LC_ALL=C sort`)
+  let want = "assets/deep/a/keep.txt assets/keep/important.png assets/kit/hiker.png assets/preview assets/sub/scratch/keep.txt"
+  if got != want {
+    bad2(lbl, `packed [{got}], wanted [{want}]`);  return
+  }
+
+  # a deeper .packignore wins over a shallower one, which is what makes a kit able to
+  # keep something the project excludes everywhere else
+  write_file(`{work}/assets/kit/.packignore`, "!*.blend" + nl())
+  if not shq(`cd {work} && {root}/bin/ludic pack --out o2.lpak assets > pack2.out 2>&1`) {
+    bad2(lbl, capture_line(`tail -1 {work}/pack2.out`));  return
+  }
+  if not shq(`cd {work} && {root}/bin/ludic pack --list o2.lpak | grep -q 'assets/kit/model.blend'`) {
+    bad2(lbl, "a nested !*.blend did not win over the root rule");  return
+  }
+  # and an ignore file is never itself an asset, whatever the rules say
+  if shq(`cd {work} && {root}/bin/ludic pack --list o2.lpak | grep -q packignore`) {
+    bad2(lbl, ".packignore was packed");  return
+  }
+  # --no-ignore is the escape hatch: everything, minus the control files
+  if not shq(`cd {work} && {root}/bin/ludic pack --no-ignore --out o3.lpak assets > pack3.out 2>&1`) {
+    bad2(lbl, capture_line(`tail -1 {work}/pack3.out`));  return
+  }
+  let n3 = capture_line(`cd {work} && {root}/bin/ludic pack --list o3.lpak | tail -n +2 | wc -l | tr -d ' '`)
+  if n3 != "10" {
+    bad2(lbl, `--no-ignore packed {n3} files, wanted 10`);  return
+  }
+  ok(lbl)
+}
+
 # `ludic bundle` has to produce something macOS actually accepts as an
 # application, not a directory that looks like one: a plist that plutil parses,
 # an executable where Info.plist says it is, an .icns, and a signature. The
@@ -608,6 +672,7 @@ function cmd_dev_test() -> int {
   install_layout_case()
   scaffold_names_case()
   pack_roundtrip_case()
+  packignore_case()
   bundle_case()
 
   # install.sh is what the landing page tells people to pipe into sh, and it is
