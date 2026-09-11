@@ -213,8 +213,15 @@ property OutlineReq {
 }
 var ac_oq: []OutlineReq = null
 var ac_oq_n: int = 0                 # live entries; the array is kept and reused
+# A frame is drawn by more than one pass - a shadow map, a water reflection, the scene -
+# and actor_draw runs in each of them. An Actor survives that because its rim is a field
+# on the actor; a queue does not, if the first pass empties it. So a flush CLOSES the
+# batch rather than clearing it, and the next add opens a new one: every pass in a frame
+# sees the same requests, and the caller needs no frame hook.
+var ac_oq_closed: bool = true
 function outline_model(m: Model, mat: words, width: int, r: int, g: int, b: int) -> void {
   if m == null or mat == null or width == 0 { return }
+  if ac_oq_closed { ac_oq_n = 0;  ac_oq_closed = false }
   if ac_oq == null { ac_oq = new []OutlineReq }
   var q: OutlineReq = null
   if ac_oq_n < len(ac_oq) { q = ac_oq[ac_oq_n] } else { q = new OutlineReq;  q.mat = m4_new();  push(ac_oq, q) }
@@ -222,7 +229,7 @@ function outline_model(m: Model, mat: words, width: int, r: int, g: int, b: int)
   m4_copy(q.mat, mat)
   ac_oq_n += 1
 }
-function outline_clear() -> void { ac_oq_n = 0 }
+function outline_clear() -> void { ac_oq_n = 0;  ac_oq_closed = true }
 
 function actor_draw() -> void {
   if ac_actors == null { return }
@@ -271,7 +278,7 @@ function actor_draw_outlines() -> void {
     u_f(ap.l_skin, F_ZERO)
     for k in 0 .. len(q.model.prims) { mesh_draw(q.model.prims[k].mesh) }
   }
-  ac_oq_n = 0
+  ac_oq_closed = true
   gl_cull_face(GL_BACK)
 }
 function actor_draw_outline_one(a: Actor, ap: AcProg) -> void {
