@@ -7,6 +7,51 @@ change type. Preview the next one with `ludic dev release --dry-run`.
 A released section may carry a hand-written summary paragraph above its groups
 (v0.2.0 has one); the generated bullets below it are not edited by hand.
 
+## v0.9.0 — 2026-09-11
+
+### Features
+
+- **`Audio.play_at(id, gain:, pitch:, pan:)`** — fire a one-shot with its own gain, pitch
+  and stereo position, leaving the master settings alone.
+
+  `Audio.volume` and `Audio.pitch` are global: they are there so a player can turn the game
+  down, and a game that used them to place a sound in the world would be fighting its own
+  options screen. This is the per-voice version, and it is what distance attenuation is made
+  of — a 3D game works out how far away a sound is and which side it is on, and says so.
+  `gain` rides on top of the master volume, so the options screen still wins; `pan` runs
+  -1 (hard left) to 1 (hard right).
+
+  A loaded sound is still one player, so firing the same handle again restarts it rather
+  than layering a second copy. Load a handle per variant when several need to overlap.
+- **`ludic.render3d`: `outline_model(model, mat, width, r, g, b)`** — a rim around something
+  that is not an Actor.
+
+  An Actor has had an `outline` since the outline pass landed, and everything else in a
+  scene had nothing: the pass walked the actor list and stopped. Instanced scatter was the
+  gap that mattered, because a game that highlights whatever the crosshair is on could
+  highlight every object in the world *except* the twenty thousand most common ones — the
+  trees.
+
+  `outline_model` queues a model at a transform from anywhere in the frame and the outline
+  pass flushes it alongside the actors', which is what gets the depth test right: the rim has
+  to be drawn after the scene it is tested against, and a caller does not control pass order.
+  A layer whose vertex shader moves its instances — wind, or standing them on the drawn
+  terrain — should be handed the transform that shader arrives at.
+- **`ludic.render3d`: `terrain_coast(cx, cz, margin, fall)`** — the other way to make an
+  island, and the one a real survey wants: the sea goes around the survey's **own edge**
+  rather than being cut out of the middle of it.
+
+  `terrain_island` measures a radius out from a centre, which suits a made-up map and
+  drowns most of a real one — an 8 km mountain survey loses two thirds of itself to make an
+  island of the rest. `terrain_coast` measures inward from the boundary instead: everything
+  the data covers stays land, the outer `margin` metres go under water, and the `fall` metres
+  inside that are scaled down into it. The band is wobbled by low-frequency noise, so what
+  comes out is headlands and bays rather than the square the data arrived in.
+
+  Both modes also gained a **strand**. Scaling alone hands a 500 m mountainside a 40-degree
+  plunge into the sea, which is a cliff coast and nothing else; the last few metres of height
+  either side of the water line are now compressed, which stretches them out horizontally
+  into beach and shallows. Inland lakes are untouched — they have their own bed.
 ## v0.8.0 — 2026-09-10
 
 ### Features
