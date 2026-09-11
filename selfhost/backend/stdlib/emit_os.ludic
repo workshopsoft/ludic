@@ -132,6 +132,14 @@ function emit_os_prelude() -> void {
   let k_tmpk  = emit_str_const("TMPDIR")
   let k_tmp   = emit_str_const("/tmp")
   let k_darw  = emit_str_const("Darwin")
+  # XDG (Linux): the variable, and the fallback the spec names for it
+  let k_xdg_data   = emit_str_const("XDG_DATA_HOME")
+  let k_xdg_cfg    = emit_str_const("XDG_CONFIG_HOME")
+  let k_xdg_cache  = emit_str_const("XDG_CACHE_HOME")
+  let k_dot_share  = emit_str_const("/.local/share/")
+  let k_dot_config = emit_str_const("/.config/")
+  let k_dot_cache  = emit_str_const("/.cache/")
+  let k_slash      = emit_str_const("/")
   let k_macos = emit_str_const("macos")
   let k_linux_k = emit_str_const("Linux")
   let k_linux   = emit_str_const("linux")
@@ -156,10 +164,52 @@ function emit_os_prelude() -> void {
   # the user's home directory, or "." when HOME is unset
   emith(`define ptr @lp_os_home() {{\n  %r = call ptr @lp_os_getenv_or(ptr {k_home}, ptr {k_dot})\n  ret ptr %r\n}}\n`)
 
-  # per-user known folders (macOS/BSD layout)
-  emith(`define ptr @lp_os_save_dir(ptr %app) {{\n  %h = call ptr @lp_os_home()\n  %r = call ptr @lp_os_join3(ptr %h, ptr {k_appsp}, ptr %app)\n  ret ptr %r\n}}\n`)
-  emith(`define ptr @lp_os_config_dir(ptr %app) {{\n  %h = call ptr @lp_os_home()\n  %r = call ptr @lp_os_join3(ptr %h, ptr {k_appsp}, ptr %app)\n  ret ptr %r\n}}\n`)
-  emith(`define ptr @lp_os_cache_dir(ptr %app) {{\n  %h = call ptr @lp_os_home()\n  %r = call ptr @lp_os_join3(ptr %h, ptr {k_cache}, ptr %app)\n  ret ptr %r\n}}\n`)
+  # ---- per-user known folders ------------------------------------------------
+  #
+  # These used to be the macOS layout on every platform, so a game built on Linux
+  # wrote its saves to ~/Library/Application Support - a path that means nothing
+  # there. The directory a platform keeps save games in is not a detail a game
+  # should have to know, which is the whole reason these functions exist.
+  #
+  #   macOS   save/config  ~/Library/Application Support/<app>
+  #           cache        ~/Library/Caches/<app>
+  #   Linux   save         $XDG_DATA_HOME   or ~/.local/share/<app>
+  #           config       $XDG_CONFIG_HOME or ~/.config/<app>
+  #           cache        $XDG_CACHE_HOME  or ~/.cache/<app>
+  #
+  # macOS keeps save_dir and config_dir the same path, as it always has: Apple's
+  # place for a config file that is not an NSUserDefaults plist is Application
+  # Support too, and a game that shipped on the old behaviour must not have its
+  # settings moved out from under it. On Linux XDG separates the two and so do we.
+  #
+  # An XDG variable that is set but EMPTY falls back to the default, which is what
+  # the spec says and what a shell that exports an unset variable produces.
+
+  # is this macOS? uname once, then remembered - save_dir is called per save.
+  emith("@L_os_darwin = internal global i32 -1\n")
+  emith("define i32 @lp_os_is_darwin() {\n")
+  emith("entry:\n  %c = load i32, ptr @L_os_darwin\n  %known = icmp sge i32 %c, 0\n  br i1 %known, label %done, label %probe\n")
+  emith("done:\n  ret i32 %c\n")
+  emith("probe:\n  %buf = call ptr @malloc(i64 8192)\n  call i32 @uname(ptr %buf)\n")
+  emith(`  %cd = call i32 @strncmp(ptr %buf, ptr {k_darw}, i64 6)\n  %isd = icmp eq i32 %cd, 0\n`)
+  emith("  %r = select i1 %isd, i32 1, i32 0\n  call void @free(ptr %buf)\n  store i32 %r, ptr @L_os_darwin\n  ret i32 %r\n}\n")
+
+  # $<var> when it is set and non-empty, else $HOME<rel>; the result always ends in '/'
+  emith("define ptr @lp_os_xdg(ptr %var, ptr %rel) {\n")
+  emith("entry:\n  %v = call ptr @getenv(ptr %var)\n  %z = icmp eq ptr %v, null\n  br i1 %z, label %dflt, label %chk\n")
+  emith("chk:\n  %c0 = load i8, ptr %v\n  %empty = icmp eq i8 %c0, 0\n  br i1 %empty, label %dflt, label %use\n")
+  emith(`use:\n  %u = call ptr @lp_os_join2(ptr %v, ptr {k_slash})\n  ret ptr %u\n`)
+  emith("dflt:\n  %h = call ptr @lp_os_home()\n  %d = call ptr @lp_os_join2(ptr %h, ptr %rel)\n  ret ptr %d\n}\n")
+
+  # one known folder: the macOS path, or the XDG one
+  emith("define ptr @lp_os_known(ptr %app, ptr %mac, ptr %var, ptr %rel) {\n")
+  emith("entry:\n  %d = call i32 @lp_os_is_darwin()\n  %isd = icmp ne i32 %d, 0\n  br i1 %isd, label %m, label %x\n")
+  emith("m:\n  %h = call ptr @lp_os_home()\n  %r1 = call ptr @lp_os_join3(ptr %h, ptr %mac, ptr %app)\n  ret ptr %r1\n")
+  emith("x:\n  %b = call ptr @lp_os_xdg(ptr %var, ptr %rel)\n  %r2 = call ptr @lp_os_join2(ptr %b, ptr %app)\n  ret ptr %r2\n}\n")
+
+  emith(`define ptr @lp_os_save_dir(ptr %app) {{\n  %r = call ptr @lp_os_known(ptr %app, ptr {k_appsp}, ptr {k_xdg_data}, ptr {k_dot_share})\n  ret ptr %r\n}}\n`)
+  emith(`define ptr @lp_os_config_dir(ptr %app) {{\n  %r = call ptr @lp_os_known(ptr %app, ptr {k_appsp}, ptr {k_xdg_cfg}, ptr {k_dot_config})\n  ret ptr %r\n}}\n`)
+  emith(`define ptr @lp_os_cache_dir(ptr %app) {{\n  %r = call ptr @lp_os_known(ptr %app, ptr {k_cache}, ptr {k_xdg_cache}, ptr {k_dot_cache})\n  ret ptr %r\n}}\n`)
   emith(`define ptr @lp_os_temp_dir() {{\n  %r = call ptr @lp_os_getenv_or(ptr {k_tmpk}, ptr {k_tmp})\n  ret ptr %r\n}}\n`)
 
   # Os.args() -> a %LSlice of the argv strings (data = argv, len = cap = argc), a

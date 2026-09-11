@@ -157,6 +157,51 @@ function pack_probe_src() -> pointer {
   return s
 }
 
+# Os.save_dir / config_dir / cache_dir have to name the directory the PLATFORM keeps
+# those things in - that is the entire reason a program calls them instead of building a
+# path. They were the macOS layout on every platform, so a game built on Linux wrote its
+# saves to ~/Library/Application Support, which is a directory that means nothing there.
+#
+# The assert is the host's own convention, so a macOS dev box covers the Apple branch and
+# CI covers XDG. The env cases matter as much as the defaults: XDG_* must be honoured
+# where it applies and ignored where it does not, and a variable that is set but EMPTY
+# falls back, which is what the spec says and what an exported-but-unset variable looks
+# like from a shell.
+function os_dirs_case() -> void {
+  let lbl = "Os.save_dir / config_dir / cache_dir follow the platform's own convention"
+  let work = `{tmp_dir()}/osdirs`
+  let root = capture_line("pwd")
+  run(`rm -rf {work} && mkdir -p {work}`)
+  var src = "program OsDirs {" + nl()
+  src = src + "  entry {" + nl()
+  src = src + "    print(`{Os.save_dir(\"App X\")}|{Os.config_dir(\"App X\")}|{Os.cache_dir(\"App X\")}`)" + nl()
+  src = src + "  }" + nl()
+  src = src + "}" + nl()
+  write_file(`{work}/d.ludic`, src)
+  if not shq(`cd {work} && {root}/bin/ludicc d.ludic -o d > cc.out 2>&1`) {
+    bad2(lbl, capture_line(`tail -1 {work}/cc.out`));  return
+  }
+  let home = capture_line("printf %s \"$HOME\"")
+  # with every XDG variable set: honoured on Linux, irrelevant on macOS
+  let set_env = "XDG_DATA_HOME=/x/d XDG_CONFIG_HOME=/x/c XDG_CACHE_HOME=/x/k"
+  let with_xdg = s_trim(capture(`cd {work} && env {set_env} ./d`))
+  # with none of them set, and with them set but empty
+  let no_xdg = s_trim(capture(`cd {work} && env -u XDG_DATA_HOME -u XDG_CONFIG_HOME -u XDG_CACHE_HOME ./d`))
+  let empty_xdg = s_trim(capture(`cd {work} && env XDG_DATA_HOME= XDG_CONFIG_HOME= XDG_CACHE_HOME= ./d`))
+
+  var want_plain = `{home}/.local/share/App X|{home}/.config/App X|{home}/.cache/App X`
+  var want_set = "/x/d/App X|/x/c/App X|/x/k/App X"
+  if is_darwin() {
+    # Apple keeps saves and config together; XDG has no standing here at all
+    want_plain = `{home}/Library/Application Support/App X|{home}/Library/Application Support/App X|{home}/Library/Caches/App X`
+    want_set = want_plain
+  }
+  if no_xdg != want_plain { bad2(lbl, `no XDG: got [{no_xdg}], wanted [{want_plain}]`);  return }
+  if with_xdg != want_set { bad2(lbl, `XDG set: got [{with_xdg}], wanted [{want_set}]`);  return }
+  if empty_xdg != want_plain { bad2(lbl, `XDG empty: got [{empty_xdg}], wanted [{want_plain}]`);  return }
+  ok(lbl)
+}
+
 # `.packignore` — the pack's exclude file, with gitignore's semantics. The feature it
 # exists for is that a pack root is packed wholesale: the preview renders, bake
 # intermediates and .blend files a model pipeline leaves beside its meshes all shipped,
@@ -673,6 +718,7 @@ function cmd_dev_test() -> int {
   scaffold_names_case()
   pack_roundtrip_case()
   packignore_case()
+  os_dirs_case()
   bundle_case()
 
   # install.sh is what the landing page tells people to pipe into sh, and it is
