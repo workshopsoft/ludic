@@ -95,6 +95,8 @@ Characters and moving objects
 66. A PPM reader with box-filtered downscale (photo thumbnails) and word-wrapped overlay text — `texture.ludic` `tex_load_ppm`, `overlay.ludic` `ov_text_wrap`
 67. The overlay batches a whole frame into one upload and draws per texture range with optional scissor clips (per-change uploads stalled the driver: 40 ms -> 25 ms), plus nine-slice, rotated, line, disc and arc primitives — `overlay.ludic` `ov_flush`, `ov_clip`, `ov_nine`, `ov_sub_rot`, `ov_line`, `ov_disc`, `ov_arc`
 68. Weather on the daylight: an overcast factor greys and dims the sun and the sky's light, a fog multiplier thickens the air, a lightning flash — `daylight.ludic` `daylight_weather`
+69. An outline pass: an actor carries a rim width and colour, drawn as an inverted hull depth-tested against the scene, and anything that is not an actor can queue one at a transform (a scatter instance, a tile) — `actor.ludic` `actor_draw_outlines`, `outline_model`, `shaders/outline.frag`
+70. Two ways to make an island out of a survey: a radius from a centre, or the sea put around the survey's own edge with a noise-wobbled coast, both scaling the existing relief into the water and compressing the last few metres of height either side of the line into beach and shallows — `terrain.ludic` `terrain_island`, `terrain_coast`, `shaders/heightgen.frag`
 
 ## Against Unreal Engine 5 and RAGE (RDR2), honestly
 

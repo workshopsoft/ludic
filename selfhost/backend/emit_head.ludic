@@ -115,6 +115,7 @@ function emit_header() -> void {
   emith("declare i32 @snd_playing(ptr)\n")
   emith("declare void @snd_set_volume(ptr, i32)\n")
   emith("declare void @snd_set_rate(ptr, i32)\n")
+  emith("declare void @snd_set_pan(ptr, i32)\n")
   emith("declare ptr @hs_req_new(ptr, ptr)\n")          # #6 HTTP transport (http.ll)
   emith("declare void @hs_req_header(ptr, ptr, ptr)\n")
   emith("declare void @hs_req_body(ptr, ptr, i32)\n")

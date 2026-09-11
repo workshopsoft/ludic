@@ -13,7 +13,7 @@
 ; they vanish from a headless build):
 ;   snd_load(path) -> player      snd_play(p, loops, rate, vol)
 ;   snd_stop(p)                   snd_playing(p) -> bool
-;   snd_set_volume(p, vol)        snd_set_rate(p, rate)
+;   snd_set_volume(p, vol)        snd_set_rate(p, rate)        snd_set_pan(p, pan)
 ; loops: 0 = once, -1 = forever. rate / vol are 16.16 fixed (value/65536).
 ; ============================================================================
 
@@ -37,6 +37,7 @@ declare ptr @objc_msgSend(ptr, ptr, ...)
 @.a_play  = private unnamed_addr constant [5 x i8]  c"play\00"
 @.a_stop  = private unnamed_addr constant [5 x i8]  c"stop\00"
 @.a_isply = private unnamed_addr constant [10 x i8] c"isPlaying\00"
+@.a_span  = private unnamed_addr constant [8 x i8]  c"setPan:\00"
 
 ; Load a sound file into an AVAudioPlayer; returns the player (or null).
 define ptr @snd_load(ptr %path) {
@@ -132,6 +133,22 @@ go:
   %v = fdiv float %vf, 6.5536e+04
   %sel_v = call ptr @sel_registerName(ptr @.a_svol)
   %rv = call ptr (ptr, ptr, float) @objc_msgSend(ptr %p, ptr %sel_v, float %v)
+  br label %out
+out:
+  ret void
+}
+
+; Stereo position, -1.0 (hard left) .. 1.0 (hard right). AVAudioPlayer's own pan, so it
+; costs nothing and needs no mixer: a one-shot can be placed before it is fired.
+define void @snd_set_pan(ptr %p, i32 %pan) {
+entry:
+  %nil = icmp eq ptr %p, null
+  br i1 %nil, label %out, label %go
+go:
+  %pf = sitofp i32 %pan to float
+  %v = fdiv float %pf, 6.5536e+04
+  %sel_p = call ptr @sel_registerName(ptr @.a_span)
+  %rp = call ptr (ptr, ptr, float) @objc_msgSend(ptr %p, ptr %sel_p, float %v)
   br label %out
 out:
   ret void

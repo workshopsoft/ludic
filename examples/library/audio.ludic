@@ -1,7 +1,8 @@
 # audio.ludic — the Audio.* standard library (#22). Sound effects and music over
 # the platform audio backend (AVAudioPlayer on macOS). A sound is loaded once
 # into a handle; sfx fire one-shot, music loops on a single channel; master
-# volume and pitch apply across everything.
+# volume and pitch apply across everything, and Audio.play_at fires one shot with
+# its own gain, pitch and stereo position without touching them.
 #
 # Playback is out-of-band — the audio device is real-time, not part of the
 # deterministic simulation — but every trigger is an ordinary frame-driven call,
@@ -21,6 +22,11 @@ program AudioDemo {
     Audio.volume(0.8)                                # master volume, 0.0..1.0
     Audio.pitch(1.25)                                # playback rate / pitch
     Audio.play(sfx)                                  # one-shot sound effect
+    # the per-voice version: a sound placed in the world rather than the master settings.
+    # This is what distance attenuation is made of - work out how far away and which side
+    # it is, and say so. gain rides on top of the master volume, so the options screen wins.
+    Audio.play_at(id: sfx, gain: 0.35, pitch: 0.9, pan: -0.6)
+    Audio.play_at(sfx, 0.35, 0.9, -0.6)              # or positionally, which a tight loop prefers
     Audio.play_music(mus)                            # looping background music
     print(bi(Audio.is_playing(sfx)))                 # 0 headless
 

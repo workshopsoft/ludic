@@ -474,6 +474,10 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     # Audio.play / play_music take a handle, or a name from the sound bank (Audio.define)
     if (meth == "play")       { if first_arg_is_text(e) { bare = "audio_play_named";  push(labels, "name") } else { bare = "audio_play";  push(labels, "id") } }
     if (meth == "play_sound") { bare = "audio_play";       push(labels, "id") }
+    # Audio.play_at(id, gain:, pitch:, pan:) — one shot with its own gain, pitch and
+    # stereo position. Audio.volume / Audio.pitch stay global (they are the options
+    # screen); this is the per-voice one, and it is what distance attenuation is built on.
+    if (meth == "play_at")    { bare = "audio_play_at";    push(labels, "id"); push(labels, "gain"); push(labels, "pitch"); push(labels, "pan") }
     if (meth == "play_music") { if first_arg_is_text(e) { bare = "audio_play_music_named";  push(labels, "name") } else { bare = "audio_play_music";  push(labels, "id") } }
     if (meth == "stop")       { bare = "audio_stop";       push(labels, "id") }
     if (meth == "stop_music") { bare = "audio_stop_music" }

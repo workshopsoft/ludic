@@ -15,7 +15,7 @@ function is_intrinsic2(name: pointer) -> bool {
   if (name == "win_pad") or (name == "win_touch") { return true }    # #51 gamepad / touch
   if (name == "win_cursor_mode") { return true }                     # #89 cursor capture
   if (name == "snd_load") or (name == "snd_play") or (name == "snd_stop") { return true }   # #22 audio
-  if (name == "snd_playing") or (name == "snd_set_volume") or (name == "snd_set_rate") { return true }
+  if (name == "snd_playing") or (name == "snd_set_volume") or (name == "snd_set_rate") or (name == "snd_set_pan") { return true }
   if (name == "hs_req_new") or (name == "hs_req_header") or (name == "hs_req_body") { return true }   # #6 HTTP
   if (name == "hs_send") or (name == "hs_done") or (name == "hs_status") or (name == "hs_body") { return true }
   if (name == "hs_blen") or (name == "hs_header") or (name == "hs_free") { return true }
@@ -78,6 +78,7 @@ function emit_intrinsic2(name: pointer, e: Node) -> Val {
   if (name == "snd_playing") { let a = arg_code(e, 0);  return val(emit_bind(`call i32 @snd_playing(ptr {a})`), "int") }
   if (name == "snd_set_volume") { let a = arg_code(e, 0);  let b = arg_code(e, 1);  emit("  call void @snd_set_volume(ptr ");  emit(a);  emit(", i32 ");  emit(b);  emit(")\n");  return val("0", "void") }
   if (name == "snd_set_rate") { let a = arg_code(e, 0);  let b = arg_code(e, 1);  emit("  call void @snd_set_rate(ptr ");  emit(a);  emit(", i32 ");  emit(b);  emit(")\n");  return val("0", "void") }
+  if (name == "snd_set_pan") { let a = arg_code(e, 0);  let b = arg_code(e, 1);  emit("  call void @snd_set_pan(ptr ");  emit(a);  emit(", i32 ");  emit(b);  emit(")\n");  return val("0", "void") }
   # #6 HTTP transport — NSURLConnection on a background thread (http.ll).
   if (name == "hs_req_new") { let a = arg_code(e, 0);  let b = arg_code(e, 1);  return val(emit_bind(`call ptr @hs_req_new(ptr {a}, ptr {b})`), "pointer") }
   if (name == "hs_req_header") { let a = arg_code(e, 0);  let b = arg_code(e, 1);  let c = arg_code(e, 2);  emit("  call void @hs_req_header(ptr ");  emit(a);  emit(", ptr ");  emit(b);  emit(", ptr ");  emit(c);  emit(")\n");  return val("0", "void") }

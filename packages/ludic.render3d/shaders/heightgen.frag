@@ -10,7 +10,8 @@ uniform float u_dem_base;       // the elevation that becomes y = 0
 uniform vec2 u_origin;          // world x/z of the map's centre
 uniform vec4 u_lake;            // a lake: centre x/z, half extents (zero = none)
 uniform float u_lake_level;     // its surface height; the model records the surface, the bed is carved below it
-uniform vec4 u_isle;            // an island: centre x/z, radius, falloff width (radius 0 = none)
+uniform vec4 u_isle;            // an island: centre x/z, radius (or rim margin), falloff width
+uniform float u_isle_mode;      // 0 none, 1 radial (terrain_island), 2 inward from the survey's edge (terrain_coast)
 // The DEM is Copernicus GLO-30 — 30 m data resampled onto this 4 m grid — so the stored
 // field is piecewise linear with a slope discontinuity every ~7 texels. Differencing it
 // for a shading normal turns each kink into a ridge, and on steep ground, where the same
@@ -59,16 +60,39 @@ void main() {
     float bed = u_lake_level - 0.4 - (5.0 + 3.0 * (1.0 - dot(q, q)) + 1.5 * fbm(xz * 0.02, 3)) * basin * basin;   // a gentle gravel ramp, then the drop
     h = mix(h, bed, basin);
   }
-  // The island. Outside the radius the terrain is scaled toward the water line and then
-  // taken below it, so the shoreline is not drawn on: it is wherever the survey's own
-  // relief, shrunk, happens to cross the water. Low ground becomes beach and shallows,
-  // high ground becomes cliff, and a bay stays a bay.
-  if (u_isle.z > 0.0) {
-    float d = distance(xz, u_isle.xy);
-    float t = smoothstep(u_isle.z, u_isle.z + u_isle.w, d);     // 0 inland, 1 past the fall
-    float shelf = 26.0 + 34.0 * smoothstep(0.0, 1.0, (d - u_isle.z - u_isle.w) / max(u_isle.w, 1.0));
+  // The island. The terrain is scaled toward the water line and then taken below it, so
+  // the shoreline is not drawn on: it is wherever the survey's own relief, shrunk, happens
+  // to cross the water. Low ground becomes beach and shallows, high ground becomes cliff,
+  // and a bay stays a bay.
+  //
+  // Two ways of deciding where that happens. RADIAL measures out from a centre, which
+  // suits a made-up map. COAST measures inward from the survey's own boundary, which suits
+  // a real one: everything the data covers stays land and the sea starts where the data
+  // runs out, rather than two thirds of an expensive survey being drowned to make an
+  // island of the rest.
+  if (u_isle_mode > 0.5 && u_isle.z > 0.0) {
+    float t;
+    float shelf;
+    if (u_isle_mode > 1.5) {
+      vec2 e = abs(xz - u_isle.xy);
+      float inland = u_half - max(e.x, e.y);                     // metres in from the boundary
+      inland += 180.0 * (fbm(xz * 0.00085, 4) * 2.0 - 1.0);      // headlands and bays
+      t = 1.0 - smoothstep(u_isle.z, u_isle.z + u_isle.w, inland);
+      shelf = 26.0 + 34.0 * smoothstep(u_isle.z, 0.0, inland);
+    } else {
+      float d = distance(xz, u_isle.xy);
+      t = smoothstep(u_isle.z, u_isle.z + u_isle.w, d);          // 0 inland, 1 past the fall
+      shelf = 26.0 + 34.0 * smoothstep(0.0, 1.0, (d - u_isle.z - u_isle.w) / max(u_isle.w, 1.0));
+    }
     float above = h - u_lake_level;
     h = u_lake_level + above * (1.0 - t) - t * shelf;
+    // A strand. Scaling alone hands a 500 m mountainside a 40-degree plunge into the sea,
+    // which is a cliff coast and nothing else. Real shores are cut flat by the water they
+    // meet, so the last few metres of height either side of the line are compressed —
+    // which stretches them out horizontally into beach and shallows. Only inside the
+    // coastal band: an inland lake has its own bed and wants none of this.
+    float near = 1.0 - smoothstep(0.0, 48.0, abs(h - u_lake_level));
+    h = mix(h, u_lake_level + (h - u_lake_level) * 0.30, near * smoothstep(0.02, 0.30, t));
   }
   o = vec4(h, 0.0, 0.0, 1.0);
 #elif defined(SMOOTH)

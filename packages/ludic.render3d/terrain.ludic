@@ -72,12 +72,36 @@ function terrain_lake(level: int, cx: int, cz: int, ex: int, ez: int) -> void {
 # over `fall` metres and on down to a shelf. Scaling rather than blending to a fixed bed is
 # what makes the coastline come out of the terrain that is already there — low ground turns
 # into beach and shallows, high ground into cliff. `r = 0` leaves the survey alone.
+const TER_ISLE_NONE: int = 0
+const TER_ISLE_RADIAL: int = 1
+const TER_ISLE_COAST: int = 2
 var ter_isle_cx: int = 0
 var ter_isle_cz: int = 0
 var ter_isle_r: int = 0
 var ter_isle_fall: int = 0
+var ter_isle_mode: int = 0
 function terrain_island(cx: int, cz: int, r: int, fall: int) -> void {
   ter_isle_cx = cx;  ter_isle_cz = cz;  ter_isle_r = r;  ter_isle_fall = fall
+  ter_isle_mode = TER_ISLE_RADIAL
+  if r == 0 { ter_isle_mode = TER_ISLE_NONE }
+}
+# The other way to make an island, and the one a real survey usually wants: put the sea
+# around the survey's OWN EDGE rather than cutting a circle out of the middle of it.
+# Everything the data covers stays land; the outer `margin` metres are under water and the
+# `fall` metres inside that are scaled down into it, exactly as terrain_island scales.
+#
+# The difference matters more than it sounds. Measuring a radius from a point in the middle
+# of an 8 km mountain survey drowns most of the survey to make an island of the rest —
+# you paid for the data and then threw two thirds of it away. Measuring inward from the
+# boundary keeps all of it and puts the coast where the data runs out, which is also where
+# a surveyor would tell you it runs out.
+#
+# The band is wobbled by low-frequency noise so the coastline is headlands and bays rather
+# than the square the data arrived in. `margin = 0` leaves the survey alone.
+function terrain_coast(cx: int, cz: int, margin: int, fall: int) -> void {
+  ter_isle_cx = cx;  ter_isle_cz = cz;  ter_isle_r = margin;  ter_isle_fall = fall
+  ter_isle_mode = TER_ISLE_COAST
+  if margin == 0 { ter_isle_mode = TER_ISLE_NONE }
 }
 
 # Use a real place: a 16-bit PNG height map plus its elevation range (metres). The
@@ -206,6 +230,7 @@ function terrain_generate() -> void {
     u_f4(gl_uniform(p, "u_lake"), ter_lake_cx, ter_lake_cz, ter_lake_ex, ter_lake_ez)
     u_f(gl_uniform(p, "u_lake_level"), ter_lake_level)
     u_f4(gl_uniform(p, "u_isle"), ter_isle_cx, ter_isle_cz, ter_isle_r, ter_isle_fall)
+    u_f(gl_uniform(p, "u_isle_mode"), fi(ter_isle_mode))
     u_f(gl_uniform(p, "u_dem_blur"), ter_dem_blur)
   }
   mesh_draw(sky_fullscreen)

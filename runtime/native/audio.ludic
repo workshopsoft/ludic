@@ -21,7 +21,7 @@ const AUDIO_CAP: int = 64          # max simultaneously-loaded sounds
 
 var snd_ready:   bool  = false
 var snd_tab:     pointers = null    # handle (1-based) -> AVAudioPlayer pointer
-var snd_master:  fixed = 1.0        # master volume, applied to every play
+var snd_master:  fixed = 1.0        # master volume, applied to every play (and to audio_play_at's gain)
 var snd_rate:    fixed = 1.0        # playback rate / pitch (1.0 = normal)
 var snd_music:   int   = 0          # the handle currently playing as music (0 = none)
 # the sound bank: sounds registered by name (Audio.define), played by name (Audio.play(name:))
@@ -92,7 +92,40 @@ function audio_play(id: int) -> void {
   if not is_windowed() { return }
   let p = audio_get(id)
   if p == null { return }
+  snd_set_pan(p, 0.0)
   snd_play(p, 0, snd_rate, snd_master)
+}
+
+# Fire a one-shot with its OWN gain, pitch and stereo position, leaving the master
+# settings alone.
+#
+# Audio.volume and Audio.pitch are global: they exist to let a player turn the game down,
+# and a game that used them to place a sound in the world would be fighting its own
+# options screen. This is the per-voice version, and it is what distance attenuation is
+# made of - a 3D game works out how far away and which side a sound is, and says so here.
+#
+#   gain   0.0 .. 1.0, multiplied by the master volume, so the options screen still wins
+#   pitch  1.0 is as recorded; 0.5 an octave down, 2.0 an octave up
+#   pan    -1.0 hard left .. 0.0 centred .. 1.0 hard right
+#
+# The one honest limitation: a sound is one player, so firing the same handle again
+# restarts it rather than layering a second copy. Load a handle per variant when several
+# need to overlap - which is what a game does anyway to stop a repeated sound machine-gunning.
+function audio_play_at(id: int, gain: fixed, pitch: fixed, pan: fixed) -> void {
+  if not is_windowed() { return }
+  let p = audio_get(id)
+  if p == null { return }
+  var g = gain
+  if g < 0.0 { g = 0.0 }
+  if g > 1.0 { g = 1.0 }
+  var pn = pan
+  if pn < -1.0 { pn = -1.0 }
+  if pn > 1.0 { pn = 1.0 }
+  var pt = pitch
+  if pt < 0.25 { pt = 0.25 }         # AVAudioPlayer's own rate range
+  if pt > 4.0 { pt = 4.0 }
+  snd_set_pan(p, pn)
+  snd_play(p, 0, pt, g * snd_master)
 }
 
 # Play a sound as looping background music on the single music channel; any

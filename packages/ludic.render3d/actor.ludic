@@ -186,6 +186,44 @@ function actor_draw_one(a: Actor, ap: AcProg, shadow: bool) -> void {
   }
 }
 
+# ---- outlining something that is not an actor ---------------------------------------------
+# An Actor gets its rim from its own `outline` field. Everything else in a scene - a
+# scatter instance, a tile, anything drawn by a system that owns its own transforms - had
+# no way to ask for one, because the outline pass walked the actor list and nothing else.
+# A tree is the case that matters: instanced scatter has no actor to hull, so a game that
+# highlights whatever the crosshair is on could highlight every object in the world except
+# the twenty thousand most common ones.
+#
+# So: a queue. `outline_model` says "put a rim round this model at this transform" from
+# anywhere in the frame, and the outline pass flushes it alongside the actors' - which is
+# what gets the depth test right, since the rim has to be drawn after the scene it is
+# tested against and the caller does not control pass order.
+#
+# The rim is the model's own geometry swollen along its normals. A layer whose vertex
+# shader moves its instances - wind, or standing them on the drawn terrain - will differ
+# from the rim by however much that shader moved them, so pass the transform the shader
+# would have arrived at (for a grounded layer, the terrain height at that instance).
+property OutlineReq {
+  model: Model,
+  mat:   words,
+  width: int = 0,
+  r:     int = 0,
+  g:     int = 0,
+  b:     int = 0
+}
+var ac_oq: []OutlineReq = null
+var ac_oq_n: int = 0                 # live entries; the array is kept and reused
+function outline_model(m: Model, mat: words, width: int, r: int, g: int, b: int) -> void {
+  if m == null or mat == null or width == 0 { return }
+  if ac_oq == null { ac_oq = new []OutlineReq }
+  var q: OutlineReq = null
+  if ac_oq_n < len(ac_oq) { q = ac_oq[ac_oq_n] } else { q = new OutlineReq;  q.mat = m4_new();  push(ac_oq, q) }
+  q.model = m;  q.width = width;  q.r = r;  q.g = g;  q.b = b
+  m4_copy(q.mat, mat)
+  ac_oq_n += 1
+}
+function outline_clear() -> void { ac_oq_n = 0 }
+
 function actor_draw() -> void {
   if ac_actors == null { return }
   ac_frame += 1
@@ -205,7 +243,7 @@ function actor_draw() -> void {
 # swollen shell survives — a silhouette exactly `outline` metres wide. Depth-tested
 # against the scene, so anything in front of the actor hides its rim too.
 function actor_draw_outlines() -> void {
-  var any = false
+  var any = ac_oq_n > 0
   for i in 0 .. len(ac_actors) { if ac_actors[i].outline != 0 and ac_visible(ac_actors[i], false) { any = true;  break } }
   if not any { return }
   gl_enable(GL_CULL_FACE)
@@ -221,6 +259,19 @@ function actor_draw_outlines() -> void {
     if a.ocol != null { u_v3(ap.l_ocol, a.ocol) } else { u_f3(ap.l_ocol, F_ONE, F_ONE, F_ONE) }
     actor_draw_outline_one(a, ap)
   }
+  # and whatever asked for a rim without being an actor
+  for i in 0 .. ac_oq_n {
+    let q = ac_oq[i]
+    let ap = ac_out
+    gl_use_program(ap.prog)
+    u_mat4(ap.l_view, cam_view);  u_mat4(ap.l_proj, cam_proj)
+    u_f(ap.l_out, q.width)
+    u_f3(ap.l_ocol, q.r, q.g, q.b)
+    u_mat4(ap.l_model, q.mat)
+    u_f(ap.l_skin, F_ZERO)
+    for k in 0 .. len(q.model.prims) { mesh_draw(q.model.prims[k].mesh) }
+  }
+  ac_oq_n = 0
   gl_cull_face(GL_BACK)
 }
 function actor_draw_outline_one(a: Actor, ap: AcProg) -> void {
