@@ -3,6 +3,15 @@
 # Matches compiler/back/ir_intrin.c. Reached from emit_intrinsic's fall-through.
 
 var g_windowed: bool = false     # headless by default (games read stdin / dump PPM)
+var g_target_win: bool = false   # a Windows target: the header emits emit_win_prelude and the libSystem declares are skipped
+
+# the IR that loads stdout (fd 1) or stderr (fd 2) as a FILE*. macOS names them as
+# globals; the UCRT hands them out through a function (see emit_win.ludic).
+function stdstream_rhs(fd: int) -> pointer {
+  if g_target_win { return `call ptr @lp_win_stdio(i32 {itoa(fd)})` }
+  if fd == 2 { return "load ptr, ptr @__stderrp" }
+  return "load ptr, ptr @__stdoutp"
+}
 
 function is_intrinsic2(name: pointer) -> bool {
   if (name == "free") or (name == "fill") { return true }

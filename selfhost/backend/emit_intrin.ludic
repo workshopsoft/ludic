@@ -88,8 +88,8 @@ function emit_intrinsic(name: pointer, e: Node) -> Val {
     g_term = true
     return val("0", "void")
   }
-  if (name == "file_stderr") { return val(emit_bind("load ptr, ptr @__stderrp"), "pointer") }
-  if (name == "file_stdout") { return val(emit_bind("load ptr, ptr @__stdoutp"), "pointer") }
+  if (name == "file_stderr") { return val(emit_bind(stdstream_rhs(2)), "pointer") }
+  if (name == "file_stdout") { return val(emit_bind(stdstream_rhs(1)), "pointer") }
   if (name == "run") {
     let c = arg_code(e, 0)
     return val(emit_bind(`call i32 @system(ptr {c})`), "int")

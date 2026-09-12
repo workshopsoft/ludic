@@ -81,7 +81,7 @@ function emit_log_prelude() -> void {
   emith("@.log_nl = private unnamed_addr constant [2 x i8] c\"\\0A\\00\"\n")
   emith("define void @lp_log_emit(i32 %lvl, ptr %s) {\n")
   emith("entry:\n  %th = load i32, ptr @L_log_level\n  %skip = icmp slt i32 %lvl, %th\n  br i1 %skip, label %done, label %go\n")
-  emith("go:\n  %e = load ptr, ptr @__stderrp\n  %n = call i64 @strlen(ptr %s)\n")
+  emith(`go:\n  %e = {stdstream_rhs(2)}\n  %n = call i64 @strlen(ptr %s)\n`)
   emith("  %w = call i64 @fwrite(ptr %s, i64 1, i64 %n, ptr %e)\n  %w2 = call i64 @fwrite(ptr @.log_nl, i64 1, i64 1, ptr %e)\n  br label %done\n")
   emith("done:\n  ret void\n}\n")
 }

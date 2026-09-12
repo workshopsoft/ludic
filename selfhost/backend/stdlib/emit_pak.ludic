@@ -90,13 +90,15 @@ function use_pak() -> void { g_uses_pak = true;  g_uses_fsrt = true }
 # emit_pak_prelude — emitted once per program that opens a file, straight after
 # the Fs prelude whose helpers it calls.
 function emit_pak_prelude() -> void {
-  emith("declare i32 @open(ptr, i32, ...)\n")
-  emith("declare i32 @close(i32)\n")
-  emith("declare i64 @lseek(i32, i64, i32)\n")
-  emith("declare ptr @mmap(ptr, i64, i32, i32, i32, i64)\n")
-  emith("declare ptr @fmemopen(ptr, i64, ptr)\n")
-  emith("declare i32 @chdir(ptr)\n")
-  emith("declare i32 @_NSGetExecutablePath(ptr, ptr)\n")
+  if not g_target_win {                        # defined by emit_win_prelude on Windows
+    emith("declare i32 @open(ptr, i32, ...)\n")
+    emith("declare i32 @close(i32)\n")
+    emith("declare i64 @lseek(i32, i64, i32)\n")
+    emith("declare ptr @mmap(ptr, i64, i32, i32, i32, i64)\n")
+    emith("declare ptr @fmemopen(ptr, i64, ptr)\n")
+    emith("declare i32 @chdir(ptr)\n")
+    emith("declare i32 @_NSGetExecutablePath(ptr, ptr)\n")
+  }
 
   emith("@.pak_rb    = private unnamed_addr constant [3 x i8] c\"rb\\00\"\n")
   emith("@.pak_idx   = private unnamed_addr constant [12 x i8] c\"packs.index\\00\"\n")
@@ -268,12 +270,19 @@ function emit_pak_boot() -> void {
 
   # point the process at ~/Library/Application Support/<name>, creating it. A
   # bundled game starts with its working directory at "/", so without this every
-  # relative write — every save — would fail.
+  # relative write — every save — would fail. On Windows the place is
+  # %APPDATA%\<name>, the same directory Os.save_dir names there.
   emith("define void @lp_pak_sethome(ptr %name) {\n")
-  emith("entry:\n  %h = call ptr @getenv(ptr @.pak_home)\n  %nh = icmp eq ptr %h, null\n  br i1 %nh, label %out, label %go\n")
-  emith("go:\n  %a = call ptr @lp_path_join(ptr %h, ptr @.pak_appsup)\n  %b = call ptr @lp_path_join(ptr %a, ptr %name)\n")
+  if g_target_win {
+    emith("entry:\n  %h = call ptr @getenv(ptr @.pak_appdata)\n  %nh = icmp eq ptr %h, null\n  br i1 %nh, label %out, label %go\n")
+    emith("go:\n  %b = call ptr @lp_path_join(ptr %h, ptr %name)\n  call void @lp_win_slashes(ptr %b)\n")
+  } else {
+    emith("entry:\n  %h = call ptr @getenv(ptr @.pak_home)\n  %nh = icmp eq ptr %h, null\n  br i1 %nh, label %out, label %go\n")
+    emith("go:\n  %a = call ptr @lp_path_join(ptr %h, ptr @.pak_appsup)\n  %b = call ptr @lp_path_join(ptr %a, ptr %name)\n")
+  }
   emith("  %mk = call i32 @mkdir(ptr %b, i32 493)\n  %cd = call i32 @chdir(ptr %b)\n  br label %out\n")
   emith("out:\n  ret void\n}\n")
+  emith("@.pak_appdata = private unnamed_addr constant [8 x i8] c\"APPDATA\\00\"\n")
 
   # The constructor. Look beside the executable: ../Resources first, which is
   # where the bundler puts things inside a .app, then the executable's own

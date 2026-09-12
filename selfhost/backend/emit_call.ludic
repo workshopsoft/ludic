@@ -1119,7 +1119,7 @@ function emit_call(e: Node) -> Val {
     g_uses_panic = true
     let m = emit_expr(e.kids[0])
     let prefix = emit_str_const(`{g_src_name}:{itoa(e.line)}: panic: `)
-    let se = emit_bind("load ptr, ptr @__stderrp")
+    let se = emit_bind(stdstream_rhs(2))
     emit(`  call i32 (ptr, ptr, ...) @fprintf(ptr {se}, ptr @.fmt_panic, ptr {prefix}, ptr {m.code})\n`)
     emit("  call void @exit(i32 1)\n  unreachable\n")
     g_term = true
@@ -1134,7 +1134,7 @@ function emit_call(e: Node) -> Val {
     emit(`{lbad}:\n`)
     let m = emit_expr(e.kids[1])
     let prefix = emit_str_const(`{g_src_name}:{itoa(e.line)}: assertion failed: `)
-    let se = emit_bind("load ptr, ptr @__stderrp")
+    let se = emit_bind(stdstream_rhs(2))
     emit(`  call i32 (ptr, ptr, ...) @fprintf(ptr {se}, ptr @.fmt_panic, ptr {prefix}, ptr {m.code})\n`)
     emit("  call void @exit(i32 1)\n  unreachable\n")
     emit(`{lok}:\n`)

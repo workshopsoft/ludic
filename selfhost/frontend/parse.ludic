@@ -543,16 +543,39 @@ function parse_namespace() -> void {
   }
 }
 
-# directory part of a path, including the trailing '/', or "" if none
+# Is the compiler itself running on Windows? A property of the HOST, asked at run
+# time - every Windows process inherits OS=Windows_NT - so one compiler source
+# answers correctly whichever platform its binary was built for.
+function host_is_windows() -> bool {
+  let os = getenv("OS")
+  if (os == null) { return false }
+  return os == "Windows_NT"
+}
+
+# a path separator: '/' everywhere, '\' too on Windows (argv[0] and %PATH% use it)
+function is_sep(c: int) -> bool { return (c == '/') or (c == 92) }
+
+# a copy of `s` with every '\' as '/', which Windows accepts wherever it takes a path
+function fwd_slashes(s: pointer) -> pointer {
+  let n = len(s)
+  let out = bytes(n + 1)
+  var i = 0
+  while i < n { if s[i] == 92 { out[i] = '/' } else { out[i] = s[i] };  i += 1 }
+  out[n] = 0
+  return out
+}
+
+# directory part of a path, including the trailing separator, or "" if none
 function dir_of(path: pointer) -> pointer {
   var last = -1
   var i = 0
-  while path[i] != 0 { if path[i] == '/' { last = i };  i += 1 }
+  while path[i] != 0 { if is_sep(path[i]) { last = i };  i += 1 }
   if last < 0 { return "" }
   return path[0..last + 1]
 }
 function join_path(dir: pointer, rel: pointer) -> pointer {
-  if rel[0] == '/' { return rel }              # absolute
+  if is_sep(rel[0]) { return rel }             # absolute
+  if rel[0] != 0 { if rel[1] == ':' { return rel } }   # absolute: a Windows drive
   return dir + rel
 }
 
@@ -569,30 +592,41 @@ function join_path(dir: pointer, rel: pointer) -> pointer {
 # wants. Invoked through $PATH argv[0] carries no directory at all, so the PATH
 # entries are searched for the binary first — an installed `ludicc mygame.ludic`
 # has to find its own runtime with nothing in the environment.
+#
+# On Windows argv[0] and $PATH carry backslashes, $PATH is split on ';', and a
+# binary found through it is `ludicc.exe` while argv[0] may say `ludicc`, so the
+# directory is read with forward slashes and the lookup tries both names.
 function ludic_home() -> pointer {
   let env = getenv("LUDIC_HOME")
-  if (env != null) { return ensure_slash(env) }
-  var d = dir_of(arg(0))
+  if (env != null) { return ensure_slash(fwd_slashes(env)) }
+  var d = fwd_slashes(dir_of(arg(0)))
   if (len(d) == 0) { d = path_lookup_dir(base_name(arg(0))) }
   if (len(d) == 0) { return "" }
   if (len(d) >= 4) and (d[len(d) - 4..len(d)] == "bin/") { return d[0..len(d) - 4] }
   return d
 }
 
-# the first $PATH entry holding an openable file called `name`, with a trailing
-# '/' — "" when $PATH is unset or nothing matches.
+# the first $PATH entry holding an openable file called `name` (or `name`.exe on
+# Windows), with a trailing '/' — "" when $PATH is unset or nothing matches.
 function path_lookup_dir(name: pointer) -> pointer {
   let p = getenv("PATH")
   if (p == null) { return "" }
+  let win = host_is_windows()
+  var sep = ':'
+  if win { sep = ';' }
   let n = len(p)
   var start = 0
   var i = 0
   while i <= n {
-    if (i == n) or (p[i] == ':') {
+    if (i == n) or (p[i] == sep) {
       if i > start {
-        let dir = ensure_slash(p[start..i])
+        let dir = ensure_slash(fwd_slashes(p[start..i]))
         let f = file_open(dir + name, "rb")
         if (f != null) { file_close(f);  return dir }
+        if win {
+          let fx = file_open(dir + name + ".exe", "rb")
+          if (fx != null) { file_close(fx);  return dir }
+        }
       }
       start = i + 1
     }

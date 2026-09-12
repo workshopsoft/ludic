@@ -9,17 +9,24 @@
 #   ludicc app.ludic -o bin/app --headless # force headless
 #   ludicc app.ludic --emit-llvm -o app.ll # stop at the IR
 #   ludicc app.ludic --run                 # compile to a temp binary and run it
+#   ludicc app.ludic --target x86_64-pc-windows-msvc --emit-llvm -o app.ll
+#                                          # IR for another platform
 #
 # This is the compiler, not the command line a user of the language meets: that
 # is `ludic` (tools/ludic-cli), which drives this. With no -o and no --run, IR
 # still goes to stdout — the contract `ludic-dev reseed` and `ludic dev
 # bootstrap` rely on, so the bootstrap is untouched.
+#
+# The target is the host unless --target names another. Only its platform is
+# read, and only to choose between two runtimes: macOS (libSystem, Cocoa) and
+# Windows (the UCRT and Win32, emit_win.ludic). The IR carries no triple either
+# way; clang assembles it for the machine it runs on.
 
-# basename: the part of a path after the last '/'.
+# basename: the part of a path after the last separator.
 function base_name(path: pointer) -> pointer {
   var last = -1
   var i = 0
-  while path[i] != 0 { if path[i] == '/' { last = i };  i += 1 }
+  while path[i] != 0 { if is_sep(path[i]) { last = i };  i += 1 }
   return path[last + 1..i]
 }
 
@@ -59,6 +66,56 @@ function chomp(s: pointer) -> pointer {
   return s[0..n]
 }
 
+# does `s` contain `sub`?
+function has_sub(s: pointer, sub: pointer) -> bool {
+  let n = len(s);  let m = len(sub)
+  var i = 0
+  while i + m <= n {
+    if s[i..i + m] == sub { return true }
+    i += 1
+  }
+  return false
+}
+
+# ---- the host shell ------------------------------------------------------------
+# run() is the C library's system(), which is /bin/sh on macOS and cmd.exe on
+# Windows. The compiler asks the shell for three things only - make a directory,
+# delete a file, run a program - and says each in the host's own words.
+
+# a copy of `p` with every '/' as '\', for cmd.exe, which reads '/' as a switch
+function win_path(p: pointer) -> pointer {
+  let n = len(p)
+  let out = bytes(n + 1)
+  var i = 0
+  while i < n { if p[i] == '/' { out[i] = 92 } else { out[i] = p[i] };  i += 1 }
+  out[n] = 0
+  return out
+}
+
+function make_dir(d: pointer) -> void {
+  if host_is_windows() { let w = win_path(d);  run(`if not exist "{w}" mkdir "{w}"`) }
+  else { run(`mkdir -p {d}`) }
+}
+
+function remove_file(p: pointer) -> void {
+  if host_is_windows() { run(`del /f /q "{win_path(p)}" 2>nul`) }
+  else { run(`rm -f {p}`) }
+}
+
+# the clang that assembles and links: $LUDIC_CC, else `clang` from $PATH - or, on a
+# Windows host, the LLVM installer's own location when it is there, because that
+# installer does not put clang on %PATH% unless asked to.
+function find_cc() -> pointer {
+  let env = getenv("LUDIC_CC")
+  if (env != null) { return env }
+  if host_is_windows() {
+    let llvm = "C:/Program Files/LLVM/bin/clang.exe"
+    let f = file_open(llvm, "rb")
+    if (f != null) { file_close(f);  return `"{llvm}"` }
+  }
+  return "clang"
+}
+
 # print "ludic <version>" and exit. The version is read at runtime from the
 # VERSION file at the install root (the single source of truth a release bumps),
 # so a version change never requires reseeding the compiler.
@@ -77,6 +134,7 @@ entry {
   var fmt = false         # --fmt: lex + parse only, then exit (the doc-check gate)
   var save = false        # --save-temps: keep the intermediate .ll
   var run = false         # compile then execute the result
+  var target = null       # --target <triple>: null means the host
   g_coverage = false      # --coverage: instrument each statement with a per-line hit counter
 
   var ai = 1
@@ -91,6 +149,7 @@ entry {
     else if a == "--save-temps" { save = true }
     else if a == "--run" { run = true }
     else if a == "--coverage" { g_coverage = true }
+    else if a == "--target" { ai += 1;  if ai < arg_count() { target = arg(ai) } }
     else if a == "-o" { ai += 1;  if ai < arg_count() { out = arg(ai) } }
     else if a[0] == '-' {
       # an unknown flag is ignored (with a note) rather than mistaken for the input file
@@ -102,8 +161,11 @@ entry {
   }
 
   if (path == null) {
-    die("usage: ludicc <file.ludic> [-o out] [--windowed|--headless] [--emit-llvm] [--save-temps]\n")
+    die("usage: ludicc <file.ludic> [-o out] [--windowed|--headless] [--target triple] [--emit-llvm] [--save-temps]\n")
   }
+  if (target != null) { g_target_win = has_sub(target, "windows") }
+  else { g_target_win = host_is_windows() }
+
   let src = read_file(path)
   if (src == null) { die("ludicc: cannot open input\n") }
 
@@ -137,19 +199,36 @@ entry {
   if emit_ir { ir_flush(out);  return }
   if not has_target { ir_flush(null);  return }
 
+  # The Windows runtime is the libc surface so far: a window, audio, HTTP and GL
+  # are macOS platform layers with no Windows counterpart yet, and linking one
+  # would fail on a hundred Objective-C symbols rather than say so.
+  if g_target_win {
+    if g_windowed { die("ludicc: a windowed build is not available on Windows yet; build with --headless\n") }
+    if g_uses_gl { die("ludicc: Gl.* is not available on Windows yet\n") }
+    if g_uses_http { die("ludicc: Http.* is not available on Windows yet\n") }
+  }
+
   # a run with no explicit -o lands in a temp file
   if run and (out == null) {
-    out = `/tmp/ludic-run-{strip_ludic(base_name(path))}`
+    if host_is_windows() { out = `{fwd_slashes(getenv_or("TEMP", "."))}/ludic-run-{strip_ludic(base_name(path))}` }
+    else { out = `/tmp/ludic-run-{strip_ludic(base_name(path))}` }
+  }
+  # a Windows program is found and run by its extension
+  if g_target_win {
+    let n = len(out)
+    var has_exe = false
+    if n >= 4 { has_exe = (out[n - 4..n] == ".exe") }
+    if not has_exe { out = out + ".exe" }
   }
 
   # make the output directory if the user asked for e.g. bin/app
   let odir = dir_of(out)
-  if len(odir) > 0 { run(`mkdir -p {odir}`) }
+  if len(odir) > 0 { make_dir(odir) }
 
   let ll = `{out}.ll`
   if not ir_flush(ll) { die("ludicc: cannot write IR\n") }
 
-  let cc   = getenv_or("LUDIC_CC", "clang")
+  let cc   = find_cc()
   let home = ludic_home()
 
   # clang twice: assemble the IR, then link. A windowed build adds the macOS
@@ -190,11 +269,13 @@ entry {
   cmd = `{cmd} -o {out}`
 
   let rc = run(cmd)
-  if not save { run(`rm -f {ll}`) }
+  if not save { remove_file(ll) }
   if rc != 0 { die("ludicc: link failed\n") }
 
-  # run mode: execute the binary we just built and forward its exit code
+  # run mode: execute the binary we just built and forward its exit code.
+  # system() hands back a wait status on POSIX and the exit code itself on Windows.
   if run {
+    if host_is_windows() { exit(run(`"{win_path(out)}"`)) }
     let st = run(out)
     exit(((st >> 8) & 255))
   }

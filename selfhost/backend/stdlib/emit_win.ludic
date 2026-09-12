@@ -1,0 +1,244 @@
+# emit_win.ludic — the Windows target's libc surface, in LLVM IR.
+#
+# Everything the rest of the backend emits calls POSIX by its POSIX name: fopen,
+# ftell, rename, opendir, mmap, fmemopen, _NSGetExecutablePath. On macOS those
+# are libSystem. On Windows most of them either do not exist or exist with a
+# different contract, and the dangerous ones are the second kind, because they
+# link and run and are wrong:
+#
+#   rename   fails when the target exists. Fs.write_text saves by writing <p>.tmp
+#            and renaming it over <p>, so every save after the first would fail.
+#   ftell    returns a 32-bit long; the IR reads i64, so the top half is garbage.
+#   fopen    "w" and "r" are TEXT mode: \n becomes \r\n on the way out and a
+#            byte 26 ends a read. A save file or a PNG opened "r" is corrupted.
+#   stdout   text mode too, so IR written to stdout (the reseed contract) grows
+#            a \r on every line.
+#
+# So on --target *windows* the header emits this prelude, which DEFINES those
+# names as internal functions over the UCRT and Win32, and the declare lines that
+# would name the libSystem versions are skipped at their call sites. Nothing else
+# in the backend changes: a `call ptr @fopen` binds to the definition here.
+#
+# The contracts reproduced are exactly the ones the backend relies on, not the
+# whole of POSIX:
+#
+#   readdir  returns a pointer whose d_name is at offset 21, the macOS dirent
+#            layout emit_fs reads. The pointer is placed 21 bytes before the
+#            WIN32_FIND_DATAA cFileName, so there is no copy.
+#   mmap     read-only whole-file mapping of a descriptor (the pack mount).
+#   fmemopen a read-only FILE* over bytes. The UCRT has no memory stream, so the
+#            bytes go to a delete-on-close temporary file, which the cache keeps
+#            in memory. A packed asset costs one copy per open on Windows.
+#   uname    "Windows" in field 0 and the binary's arch at offset 1024.
+#
+# Paths come back from Windows with backslashes; every path this prelude hands to
+# the rest of the runtime (the executable path, the known folders) is rewritten to
+# forward slashes, which Windows accepts everywhere, so Path.* keeps splitting on
+# '/' alone.
+
+function emit_win_prelude() -> void {
+  emith("declare ptr @__acrt_iob_func(i32)\n")
+  emith("declare i32 @_setmode(i32, i32)\n")
+  emith("declare ptr @_fsopen(ptr, ptr, i32)\n")
+  emith("declare i64 @_ftelli64(ptr)\n")
+  emith("declare i32 @_fseeki64(ptr, i64, i32)\n")
+  emith("declare i64 @_time64(ptr)\n")
+  emith("declare i32 @_access(ptr, i32)\n")
+  emith("declare i32 @_mkdir(ptr)\n")
+  emith("declare i32 @_chdir(ptr)\n")
+  emith("declare i32 @_getpid()\n")
+  emith("declare i32 @_open(ptr, i32, ...)\n")
+  emith("declare i32 @_close(i32)\n")
+  emith("declare i64 @_lseeki64(i32, i64, i32)\n")
+  emith("declare i32 @_putenv_s(ptr, ptr)\n")
+  emith("declare i64 @_get_osfhandle(i32)\n")
+  emith("declare i32 @_open_osfhandle(i64, i32)\n")
+  emith("declare ptr @_fdopen(i32, ptr)\n")
+  emith("declare i32 @MoveFileExA(ptr, ptr, i32)\n")
+  emith("declare ptr @FindFirstFileA(ptr, ptr)\n")
+  emith("declare i32 @FindNextFileA(ptr, ptr)\n")
+  emith("declare i32 @FindClose(ptr)\n")
+  emith("declare ptr @CreateFileMappingA(ptr, ptr, i32, i32, i32, ptr)\n")
+  emith("declare ptr @MapViewOfFile(ptr, i32, i32, i32, i64)\n")
+  emith("declare i32 @CloseHandle(ptr)\n")
+  emith("declare i32 @GetModuleFileNameA(ptr, ptr, i32)\n")
+  emith("declare i32 @GetTempPathA(i32, ptr)\n")
+  emith("declare i32 @GetTempFileNameA(ptr, ptr, i32, ptr)\n")
+  emith("declare ptr @CreateFileA(ptr, i32, i32, ptr, i32, i32, ptr)\n")
+  emith("declare i32 @WriteFile(ptr, ptr, i32, ptr, ptr)\n")
+  emith("declare i32 @SetFilePointer(ptr, i32, ptr, i32)\n")
+
+  emith("@.win_rb      = private unnamed_addr constant [3 x i8] c\"rb\\00\"\n")
+  emith("@.win_lpk     = private unnamed_addr constant [4 x i8] c\"lpk\\00\"\n")
+  emith("@.win_empty   = private unnamed_addr constant [1 x i8] c\"\\00\"\n")
+  emith("@.win_windows = private unnamed_addr constant [8 x i8] c\"Windows\\00\"\n")
+  emith("@.win_x64     = private unnamed_addr constant [7 x i8] c\"x86_64\\00\"\n")
+
+  emit_win_stdio()
+  emit_win_files()
+  emit_win_dirs()
+  emit_win_maps()
+  emit_win_process()
+}
+
+# ---- paths and the standard streams -------------------------------------------
+function emit_win_stdio() -> void {
+  # '\' -> '/' in place, over a buffer this runtime owns
+  emith("define internal void @lp_win_slashes(ptr %s) {\n")
+  emith("entry:\n  br label %lp\n")
+  emith("lp:\n  %p = phi ptr [ %s, %entry ], [ %p1, %nx ]\n  %c = load i8, ptr %p\n  %z = icmp eq i8 %c, 0\n  br i1 %z, label %done, label %chk\n")
+  emith("chk:\n  %bs = icmp eq i8 %c, 92\n  br i1 %bs, label %fix, label %nx\n")
+  emith("fix:\n  store i8 47, ptr %p\n  br label %nx\n")
+  emith("nx:\n  %p1 = getelementptr i8, ptr %p, i64 1\n  br label %lp\n")
+  emith("done:\n  ret void\n}\n")
+
+  # stdout/stderr as FILE*, switched to binary on first use so IR and JSON written
+  # through them keep their bytes (see the header note)
+  emith("@L_win_stdio_bin = internal global i32 0\n")
+  emith("define internal ptr @lp_win_stdio(i32 %fd) {\n")
+  emith("entry:\n  %b = load i32, ptr @L_win_stdio_bin\n  %done = icmp ne i32 %b, 0\n  br i1 %done, label %get, label %set\n")
+  emith("set:\n  store i32 1, ptr @L_win_stdio_bin\n  %s1 = call i32 @_setmode(i32 1, i32 32768)\n  %s2 = call i32 @_setmode(i32 2, i32 32768)\n  br label %get\n")
+  emith("get:\n  %f = call ptr @__acrt_iob_func(i32 %fd)\n  ret ptr %f\n}\n")
+}
+
+# ---- files --------------------------------------------------------------------
+function emit_win_files() -> void {
+  # fopen: always binary (append 'b' when the mode lacks one), and shareable, which
+  # fopen_s is not - a save being read while another handle writes it must open
+  emith("define internal ptr @fopen(ptr %p, ptr %m) {\n")
+  emith("entry:\n  %buf = alloca [8 x i8]\n  %ip = alloca i32\n  %hb = alloca i32\n  store i32 0, ptr %ip\n  store i32 0, ptr %hb\n  br label %lp\n")
+  emith("lp:\n  %i = load i32, ptr %ip\n  %src = getelementptr i8, ptr %m, i32 %i\n  %c = load i8, ptr %src\n  %z = icmp eq i8 %c, 0\n  %full = icmp sge i32 %i, 6\n  %stop = or i1 %z, %full\n  br i1 %stop, label %fin, label %cp\n")
+  emith("cp:\n  %dst = getelementptr i8, ptr %buf, i32 %i\n  store i8 %c, ptr %dst\n  %isb = icmp eq i8 %c, 98\n  %hbv = load i32, ptr %hb\n  %hbn = select i1 %isb, i32 1, i32 %hbv\n  store i32 %hbn, ptr %hb\n  %i1 = add i32 %i, 1\n  store i32 %i1, ptr %ip\n  br label %lp\n")
+  emith("fin:\n  %hbf = load i32, ptr %hb\n  %need = icmp eq i32 %hbf, 0\n  br i1 %need, label %addb, label %term\n")
+  emith("addb:\n  %bp = getelementptr i8, ptr %buf, i32 %i\n  store i8 98, ptr %bp\n  %i2 = add i32 %i, 1\n  store i32 %i2, ptr %ip\n  br label %term\n")
+  # _SH_DENYNO = 0x40
+  emith("term:\n  %ie = load i32, ptr %ip\n  %ep = getelementptr i8, ptr %buf, i32 %ie\n  store i8 0, ptr %ep\n  %f = call ptr @_fsopen(ptr %p, ptr %buf, i32 64)\n  ret ptr %f\n}\n")
+
+  emith("define internal i64 @ftell(ptr %f) {\nentry:\n  %r = call i64 @_ftelli64(ptr %f)\n  ret i64 %r\n}\n")
+  emith("define internal i32 @fseek(ptr %f, i64 %o, i32 %w) {\nentry:\n  %r = call i32 @_fseeki64(ptr %f, i64 %o, i32 %w)\n  ret i32 %r\n}\n")
+
+  # rename over an existing file: MOVEFILE_REPLACE_EXISTING | COPY_ALLOWED | WRITE_THROUGH
+  emith("define internal i32 @rename(ptr %a, ptr %b) {\nentry:\n  %r = call i32 @MoveFileExA(ptr %a, ptr %b, i32 11)\n  %ok = icmp ne i32 %r, 0\n  %v = select i1 %ok, i32 0, i32 -1\n  ret i32 %v\n}\n")
+
+  emith("define internal i32 @access(ptr %p, i32 %m) {\nentry:\n  %r = call i32 @_access(ptr %p, i32 %m)\n  ret i32 %r\n}\n")
+  emith("define internal i32 @mkdir(ptr %p, i32 %mode) {\nentry:\n  %r = call i32 @_mkdir(ptr %p)\n  ret i32 %r\n}\n")
+  # O_RDONLY is 0 on both; _O_BINARY = 0x8000
+  emith("define internal i32 @open(ptr %p, i32 %fl, ...) {\nentry:\n  %f2 = or i32 %fl, 32768\n  %r = call i32 (ptr, i32, ...) @_open(ptr %p, i32 %f2)\n  ret i32 %r\n}\n")
+  emith("define internal i32 @close(i32 %fd) {\nentry:\n  %r = call i32 @_close(i32 %fd)\n  ret i32 %r\n}\n")
+  emith("define internal i64 @lseek(i32 %fd, i64 %o, i32 %w) {\nentry:\n  %r = call i64 @_lseeki64(i32 %fd, i64 %o, i32 %w)\n  ret i64 %r\n}\n")
+}
+
+# ---- directories: opendir / readdir / closedir over FindFirstFileA --------------
+#
+# DIR is one 368-byte block: the find handle at 0, a "first entry pending" flag at
+# 8, and WIN32_FIND_DATAA at 16, whose cFileName sits at 16 + 44 = 60. readdir
+# returns block + 39 so that d_name, read at +21, is cFileName itself.
+function emit_win_dirs() -> void {
+  emith("define internal ptr @opendir(ptr %path) {\n")
+  emith("entry:\n  %l = call i64 @strlen(ptr %path)\n  %cap = add i64 %l, 3\n  %pat = call ptr @malloc(i64 %cap)\n  call ptr @memcpy(ptr %pat, ptr %path, i64 %l)\n")
+  emith("  %e0 = getelementptr i8, ptr %pat, i64 %l\n  store i8 47, ptr %e0\n  %e1 = getelementptr i8, ptr %e0, i64 1\n  store i8 42, ptr %e1\n  %e2 = getelementptr i8, ptr %e0, i64 2\n  store i8 0, ptr %e2\n")
+  emith("  %d = call ptr @malloc(i64 368)\n  %fd = getelementptr i8, ptr %d, i64 16\n  %h = call ptr @FindFirstFileA(ptr %pat, ptr %fd)\n  call void @free(ptr %pat)\n")
+  emith("  %bad = icmp eq ptr %h, inttoptr (i64 -1 to ptr)\n  br i1 %bad, label %no, label %ok\n")
+  emith("no:\n  call void @free(ptr %d)\n  ret ptr null\n")
+  emith("ok:\n  store ptr %h, ptr %d\n  %fl = getelementptr i8, ptr %d, i64 8\n  store i32 1, ptr %fl\n  ret ptr %d\n}\n")
+
+  emith("define internal ptr @readdir(ptr %d) {\n")
+  emith("entry:\n  %fl = getelementptr i8, ptr %d, i64 8\n  %f = load i32, ptr %fl\n  %first = icmp ne i32 %f, 0\n  br i1 %first, label %take, label %next\n")
+  emith("take:\n  store i32 0, ptr %fl\n  br label %give\n")
+  emith("next:\n  %h = load ptr, ptr %d\n  %fd = getelementptr i8, ptr %d, i64 16\n  %ok = call i32 @FindNextFileA(ptr %h, ptr %fd)\n  %more = icmp ne i32 %ok, 0\n  br i1 %more, label %give, label %end\n")
+  emith("give:\n  %de = getelementptr i8, ptr %d, i64 39\n  ret ptr %de\n")
+  emith("end:\n  ret ptr null\n}\n")
+
+  emith("define internal i32 @closedir(ptr %d) {\nentry:\n  %h = load ptr, ptr %d\n  %r = call i32 @FindClose(ptr %h)\n  call void @free(ptr %d)\n  ret i32 0\n}\n")
+}
+
+# ---- mapped files and memory streams -------------------------------------------
+function emit_win_maps() -> void {
+  # mmap(null, len, PROT_READ, MAP_PRIVATE, fd, 0): PAGE_READONLY = 2, FILE_MAP_READ = 4.
+  # The view outlives both the mapping handle and the descriptor.
+  emith("define internal ptr @mmap(ptr %a, i64 %len, i32 %prot, i32 %flags, i32 %fd, i64 %off) {\n")
+  emith("entry:\n  %oh = call i64 @_get_osfhandle(i32 %fd)\n  %h = inttoptr i64 %oh to ptr\n  %m = call ptr @CreateFileMappingA(ptr %h, ptr null, i32 2, i32 0, i32 0, ptr null)\n")
+  emith("  %nm = icmp eq ptr %m, null\n  br i1 %nm, label %bad, label %map\n")
+  emith("map:\n  %v = call ptr @MapViewOfFile(ptr %m, i32 4, i32 0, i32 0, i64 0)\n  %c = call i32 @CloseHandle(ptr %m)\n  %nv = icmp eq ptr %v, null\n  br i1 %nv, label %bad, label %ok\n")
+  emith("ok:\n  ret ptr %v\n")
+  emith("bad:\n  ret ptr inttoptr (i64 -1 to ptr)\n}\n")
+
+  # fmemopen(buf, len, "rb") -> a delete-on-close temporary holding the bytes.
+  # GENERIC_READ|GENERIC_WRITE = 0xC0000000, share READ|WRITE|DELETE = 7,
+  # CREATE_ALWAYS = 2, FILE_ATTRIBUTE_TEMPORARY|FILE_FLAG_DELETE_ON_CLOSE = 0x04000100.
+  emith("define internal ptr @fmemopen(ptr %buf, i64 %len, ptr %mode) {\n")
+  emith("entry:\n  %dir = alloca [270 x i8]\n  %name = alloca [270 x i8]\n  %wr = alloca i32\n  %n = call i32 @GetTempPathA(i32 260, ptr %dir)\n  %z = icmp eq i32 %n, 0\n  br i1 %z, label %bad, label %mk\n")
+  emith("mk:\n  %u = call i32 @GetTempFileNameA(ptr %dir, ptr @.win_lpk, i32 0, ptr %name)\n  %uz = icmp eq i32 %u, 0\n  br i1 %uz, label %bad, label %cr\n")
+  emith("cr:\n  %h = call ptr @CreateFileA(ptr %name, i32 -1073741824, i32 7, ptr null, i32 2, i32 67109120, ptr null)\n  %hb = icmp eq ptr %h, inttoptr (i64 -1 to ptr)\n  br i1 %hb, label %bad, label %wrt\n")
+  emith("wrt:\n  %l32 = trunc i64 %len to i32\n  %w = call i32 @WriteFile(ptr %h, ptr %buf, i32 %l32, ptr %wr, ptr null)\n  %sp = call i32 @SetFilePointer(ptr %h, i32 0, ptr null, i32 0)\n")
+  emith("  %hi = ptrtoint ptr %h to i64\n  %fd = call i32 @_open_osfhandle(i64 %hi, i32 32768)\n  %fdb = icmp slt i32 %fd, 0\n  br i1 %fdb, label %shut, label %fdo\n")
+  emith("fdo:\n  %f = call ptr @_fdopen(i32 %fd, ptr @.win_rb)\n  ret ptr %f\n")
+  emith("shut:\n  %c = call i32 @CloseHandle(ptr %h)\n  br label %bad\n")
+  emith("bad:\n  ret ptr null\n}\n")
+}
+
+# ---- the process ----------------------------------------------------------------
+function emit_win_process() -> void {
+  emith("define internal i32 @_NSGetExecutablePath(ptr %buf, ptr %szp) {\n")
+  emith("entry:\n  %sz = load i32, ptr %szp\n  %n = call i32 @GetModuleFileNameA(ptr null, ptr %buf, i32 %sz)\n  %bad = icmp eq i32 %n, 0\n  %full = icmp sge i32 %n, %sz\n  %no = or i1 %bad, %full\n  br i1 %no, label %fail, label %fix\n")
+  emith("fix:\n  call void @lp_win_slashes(ptr %buf)\n  ret i32 0\n")
+  emith("fail:\n  ret i32 -1\n}\n")
+
+  emith("define internal i32 @chdir(ptr %p) {\nentry:\n  %r = call i32 @_chdir(ptr %p)\n  ret i32 %r\n}\n")
+  emith("define internal i32 @getpid() {\nentry:\n  %r = call i32 @_getpid()\n  ret i32 %r\n}\n")
+  emith("define internal i64 @time(ptr %t) {\nentry:\n  %r = call i64 @_time64(ptr %t)\n  ret i64 %r\n}\n")
+  emith("define internal i32 @setenv(ptr %n, ptr %v, i32 %o) {\nentry:\n  %r = call i32 @_putenv_s(ptr %n, ptr %v)\n  ret i32 %r\n}\n")
+  # an empty value removes the variable
+  emith("define internal i32 @unsetenv(ptr %n) {\nentry:\n  %r = call i32 @_putenv_s(ptr %n, ptr @.win_empty)\n  ret i32 %r\n}\n")
+
+  # uname: sysname at 0, machine at 1024 (the BSD utsname offsets emit_os reads)
+  emith("define internal i32 @uname(ptr %buf) {\n")
+  emith("entry:\n  call ptr @memcpy(ptr %buf, ptr @.win_windows, i64 8)\n  %m = getelementptr i8, ptr %buf, i64 1024\n  call ptr @memcpy(ptr %m, ptr @.win_x64, i64 7)\n  ret i32 0\n}\n")
+}
+
+# ---- Os.* known folders ----------------------------------------------------------
+#
+# Called from emit_os_prelude in place of the macOS/XDG half, after the string
+# helpers it shares (lp_os_getenv_or, lp_os_join2, lp_os_join3) are emitted.
+#
+#   save/config  %APPDATA%\<app>        roaming, per-user: where a PC game's save goes
+#   cache        %LOCALAPPDATA%\<app>   machine-local, never roams
+#   temp         %TEMP%
+#   home         %USERPROFILE%
+#
+# Every one comes back as a fresh copy with forward slashes. A variable that is
+# unset falls back to the profile directory rather than the working directory.
+function emit_os_win_known(k_dot: pointer, k_slash: pointer) -> void {
+  let k_uprof   = emit_str_const("USERPROFILE")
+  let k_appdata = emit_str_const("APPDATA")
+  let k_localad = emit_str_const("LOCALAPPDATA")
+  let k_temp    = emit_str_const("TEMP")
+  let k_empty   = emit_str_const("")
+  let k_windows = emit_str_const("windows")
+  let k_x64     = emit_str_const("x86_64")
+
+  emith(`define ptr @lp_os_home() {{\n  %r = call ptr @lp_os_getenv_or(ptr {k_uprof}, ptr {k_dot})\n  ret ptr %r\n}}\n`)
+
+  emith("define ptr @lp_os_winknown(ptr %var, ptr %app) {\n")
+  emith("entry:\n  %v = call ptr @getenv(ptr %var)\n  %z = icmp eq ptr %v, null\n  br i1 %z, label %home, label %use\n")
+  emith("home:\n  %h = call ptr @lp_os_home()\n  br label %join\n")
+  emith("use:\n  br label %join\n")
+  emith(`join:\n  %b = phi ptr [ %h, %home ], [ %v, %use ]\n  %r = call ptr @lp_os_join3(ptr %b, ptr {k_slash}, ptr %app)\n  call void @lp_win_slashes(ptr %r)\n  ret ptr %r\n}}\n`)
+
+  emith(`define ptr @lp_os_save_dir(ptr %app) {{\n  %r = call ptr @lp_os_winknown(ptr {k_appdata}, ptr %app)\n  ret ptr %r\n}}\n`)
+  emith(`define ptr @lp_os_config_dir(ptr %app) {{\n  %r = call ptr @lp_os_winknown(ptr {k_appdata}, ptr %app)\n  ret ptr %r\n}}\n`)
+  emith(`define ptr @lp_os_cache_dir(ptr %app) {{\n  %r = call ptr @lp_os_winknown(ptr {k_localad}, ptr %app)\n  ret ptr %r\n}}\n`)
+  emith(`define ptr @lp_os_temp_dir() {{\n  %t = call ptr @lp_os_getenv_or(ptr {k_temp}, ptr {k_dot})\n  %r = call ptr @lp_os_join2(ptr %t, ptr {k_empty})\n  call void @lp_win_slashes(ptr %r)\n  ret ptr %r\n}}\n`)
+
+  emith(`define ptr @lp_os_platform() {{\n  ret ptr {k_windows}\n}}\n`)
+  emith(`define ptr @lp_os_arch() {{\n  ret ptr {k_x64}\n}}\n`)
+
+  # Os.args(), as emit_os_prelude defines it
+  emith("define ptr @lp_os_args() {\n")
+  emith("entry:\n  %c = load i32, ptr @L_argc\n  %v = load ptr, ptr @L_argv\n")
+  emith("  %h = call ptr @malloc(i64 16)\n")
+  emith("  %d0 = getelementptr inbounds %LSlice, ptr %h, i32 0, i32 0\n  store ptr %v, ptr %d0\n")
+  emith("  %d1 = getelementptr inbounds %LSlice, ptr %h, i32 0, i32 1\n  store i32 %c, ptr %d1\n")
+  emith("  %d2 = getelementptr inbounds %LSlice, ptr %h, i32 0, i32 2\n  store i32 %c, ptr %d2\n")
+  emith("  ret ptr %h\n}\n")
+}

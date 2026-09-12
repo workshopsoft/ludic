@@ -71,10 +71,10 @@ function emit_os_ns(meth: pointer, e: Node) -> Val {
     return val(emit_bind(`zext i1 {ne} to i32`), "bool")
   }
   if (meth == "stdout_write") or (meth == "stderr_write") {
-    var strm = "@__stdoutp"
-    if (meth == "stderr_write") { strm = "@__stderrp" }
+    var fd = 1
+    if (meth == "stderr_write") { fd = 2 }
     let s = emit_expr(e.kids[0])
-    let f = emit_bind(`load ptr, ptr {strm}`)
+    let f = emit_bind(stdstream_rhs(fd))
     let n = emit_bind(`call i64 @strlen(ptr {s.code})`)
     emit(`  call i64 @fwrite(ptr {s.code}, i64 1, i64 {n}, ptr {f})\n`)
     return val("0", "void")
@@ -120,9 +120,11 @@ function emit_os_ns(meth: pointer, e: Node) -> Val {
 # prelude-backed Os.* methods (g_uses_osrt). Pure libc over NUL-terminated
 # strings; declares the few POSIX symbols the header does not already carry.
 function emit_os_prelude() -> void {
-  emith("declare i32 @setenv(ptr, ptr, i32)\n")
-  emith("declare i32 @unsetenv(ptr)\n")
-  emith("declare i32 @uname(ptr)\n")
+  if not g_target_win {                        # defined by emit_win_prelude on Windows
+    emith("declare i32 @setenv(ptr, ptr, i32)\n")
+    emith("declare i32 @unsetenv(ptr)\n")
+    emith("declare i32 @uname(ptr)\n")
+  }
 
   # string constants (escaped + length-counted by emit_str_const)
   let k_home  = emit_str_const("HOME")
@@ -160,6 +162,9 @@ function emit_os_prelude() -> void {
 
   emith("define ptr @lp_os_join3(ptr %a, ptr %b, ptr %c) {\n")
   emith("entry:\n  %ab = call ptr @lp_os_join2(ptr %a, ptr %b)\n  %r = call ptr @lp_os_join2(ptr %ab, ptr %c)\n  ret ptr %r\n}\n")
+
+  # Windows has its own known folders and no uname; emit_win.ludic supplies them
+  if g_target_win { emit_os_win_known(k_dot, k_slash);  return }
 
   # the user's home directory, or "." when HOME is unset
   emith(`define ptr @lp_os_home() {{\n  %r = call ptr @lp_os_getenv_or(ptr {k_home}, ptr {k_dot})\n  ret ptr %r\n}}\n`)
