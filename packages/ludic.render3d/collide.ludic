@@ -72,12 +72,23 @@ function col_resolve(px: int, pz: int, pr: int) -> bool {
           let d2 = f_add(f_mul(ex, ex), f_mul(ez, ez))
           let rr = f_add(col_r[i], pr)
           if f_ls(d2, f_mul(rr, rr)) {
-            var d = f_sqrt(d2)
-            var nx = ex;  var nz = ez
-            if f_ls(d, fl(0.001)) { d = fl(0.001);  nx = F_ONE;  nz = F_ZERO }
+            let d = f_sqrt(d2)
+            # The UNIT normal out of this circle. (ex, ez) / d is always unit for d > 0,
+            # because d is its own length - there is nothing to clamp and nothing that can
+            # grow. Exactly at the centre there is no direction to be had, so any one will
+            # do and +x is as good as another.
+            #
+            # This used to clamp d to 0.001 and then divide by it, having ALREADY set the
+            # degenerate normal to (1, 0): a unit vector divided by a thousandth, so the
+            # push came out a thousand times too big. A body standing dead centre on a
+            # 0.5 m trunk was thrown roughly 800 m across the map instead of 0.85 m clear
+            # of it. Off-centre - which is how anything actually arrives at a trunk - the
+            # arithmetic was right, so it never showed up in play.
+            var ux = F_ONE;  var uz = F_ZERO
+            if f_gt(d, F_ZERO) { ux = f_div(ex, d);  uz = f_div(ez, d) }
             let push = f_sub(rr, d)
-            x = f_add(x, f_mul(f_div(nx, d), push))
-            z = f_add(z, f_mul(f_div(nz, d), push))
+            x = f_add(x, f_mul(ux, push))
+            z = f_add(z, f_mul(uz, push))
             moved = true
           }
         }
