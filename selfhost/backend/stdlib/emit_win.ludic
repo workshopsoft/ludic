@@ -55,6 +55,8 @@ function emit_win_prelude() -> void {
   emith("declare i32 @_open_osfhandle(i64, i32)\n")
   emith("declare ptr @_fdopen(i32, ptr)\n")
   emith("declare i32 @MoveFileExA(ptr, ptr, i32)\n")
+  emith("declare i32 @DeleteFileA(ptr)\n")
+  emith("declare i32 @RemoveDirectoryA(ptr)\n")
   emith("declare ptr @FindFirstFileA(ptr, ptr)\n")
   emith("declare i32 @FindNextFileA(ptr, ptr)\n")
   emith("declare i32 @FindClose(ptr)\n")
@@ -119,6 +121,15 @@ function emit_win_files() -> void {
 
   # rename over an existing file: MOVEFILE_REPLACE_EXISTING | COPY_ALLOWED | WRITE_THROUGH
   emith("define internal i32 @rename(ptr %a, ptr %b) {\nentry:\n  %r = call i32 @MoveFileExA(ptr %a, ptr %b, i32 11)\n  %ok = icmp ne i32 %r, 0\n  %v = select i1 %ok, i32 0, i32 -1\n  ret i32 %v\n}\n")
+
+  # remove: POSIX removes a file OR an empty directory; the UCRT's only removes files,
+  # so a tree deleted bottom-up (Fs.remove on each file, then on each directory) left
+  # every directory behind
+  emith("define internal i32 @remove(ptr %p) {\n")
+  emith("entry:\n  %d = call i32 @DeleteFileA(ptr %p)\n  %ok = icmp ne i32 %d, 0\n  br i1 %ok, label %yes, label %dir\n")
+  emith("dir:\n  %r = call i32 @RemoveDirectoryA(ptr %p)\n  %ok2 = icmp ne i32 %r, 0\n  br i1 %ok2, label %yes, label %no\n")
+  emith("yes:\n  ret i32 0\n")
+  emith("no:\n  ret i32 -1\n}\n")
 
   emith("define internal i32 @access(ptr %p, i32 %m) {\nentry:\n  %r = call i32 @_access(ptr %p, i32 %m)\n  ret i32 %r\n}\n")
   emith("define internal i32 @mkdir(ptr %p, i32 %mode) {\nentry:\n  %r = call i32 @_mkdir(ptr %p)\n  ret i32 %r\n}\n")

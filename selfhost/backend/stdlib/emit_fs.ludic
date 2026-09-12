@@ -91,8 +91,8 @@ function emit_mime_ns(meth: pointer, e: Node) -> Val {
 # emit_fs_prelude — the Fs/Path/Mime runtime, emitted once per program that uses
 # any of the three namespaces (g_uses_fsrt). Pure libc + byte IR.
 function emit_fs_prelude() -> void {
-  emith("declare i32 @remove(ptr)\n")
   if not g_target_win {                        # defined by emit_win_prelude on Windows
+    emith("declare i32 @remove(ptr)\n")
     emith("declare i32 @access(ptr, i32)\n")
     emith("declare i32 @mkdir(ptr, i32)\n")
     emith("declare i32 @rename(ptr, ptr)\n")
