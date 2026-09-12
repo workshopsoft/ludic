@@ -8,6 +8,7 @@
 var r3d_sky_prog: int = 0
 var r3d_fog_density: int = 0
 var r3d_fog_falloff: int = 0
+var r3d_fog_base: int = 0            # the height fog is measured from (float bits); 0 = y = 0
 var r3d_time: int = 0
 var r3d_ready: bool = false
 # set before r3d_init to build the landscape from a real height map
@@ -30,6 +31,7 @@ function fog_bind(prog: int) -> void {
   u_f(gl_uniform(prog, "u_spec_scale"), F_ONE)
   u_f(gl_uniform(prog, "u_fog_density"), r3d_fog_density)
   u_f(gl_uniform(prog, "u_fog_height_falloff"), r3d_fog_falloff)
+  u_f(gl_uniform(prog, "u_fog_base"), r3d_fog_base)
   var cs = r3d_cloud_shadow
   if Os.has_env("R3D_NOCLOUD") { cs = F_ZERO }
   u_f(gl_uniform(prog, "u_cloud_shadow"), cs)

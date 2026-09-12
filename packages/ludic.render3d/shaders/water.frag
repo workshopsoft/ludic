@@ -7,6 +7,9 @@ uniform mat4 u_inv_vp;
 uniform vec2 u_screen;
 uniform sampler2D u_refl;        // the world mirrored in the surface (rendered by the reflection pass)
 uniform float u_refl_on;
+uniform vec2 u_center;          // this body's centre and half extents (world xz)
+uniform vec2 u_extent;
+uniform float u_clip_ellipse;   // 1: the body is the ellipse inside its rectangle (a lake), 0: the whole plane (the sea)
 uniform sampler2D u_scene;       // the scene as drawn before the water: the bed, to refract
 // wind-streaked capillary ripples (stretched along the wind) over slower swells
 float waterH(vec2 p, float t) {
@@ -21,6 +24,13 @@ vec3 rippleNormal(vec2 p, float t) {
   return normalize(vec3(-(hx - h) * 0.26 / e, 1.0, -(hz - h) * 0.26 / e));
 }
 void main() {
+  // A lake is an ellipse - the carved bed, the grass and a game's own water test all use
+  // one - but its plane is the rectangle around it, and the corners between the two hold
+  // ground below the lake's level. Without this they show as sheets of water on dry land.
+  if (u_clip_ellipse > 0.5) {
+    vec2 q = (v_wpos.xz - u_center) / max(u_extent, vec2(0.001));
+    if (dot(q, q) > 1.0) discard;
+  }
   vec3 v = normalize(u_cam_pos - v_wpos);
   float dist = length(u_cam_pos - v_wpos);
   vec3 n = rippleNormal(v_wpos.xz, u_time);

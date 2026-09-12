@@ -15,6 +15,7 @@ uniform vec3 u_cam_pos;
 uniform float u_prefilter_levels;
 uniform float u_fog_density;
 uniform float u_fog_height_falloff;
+uniform float u_fog_base;          // the height the fog's density is measured from (0 = the world's y = 0)
 uniform float u_clip_y;          // planar-reflection pass: discard everything below this height
 uniform float u_spec_scale;      // 1 for surfaces; foliage crowns get a fraction: needles are
                                  // tiny rough cylinders, not sheets, and a crown of card quads
@@ -263,7 +264,9 @@ vec3 applyFog(vec3 col, vec3 wpos, float dist) {
   float hf = u_fog_height_falloff;
   float t = dir.y * hf;
   float integ = (abs(t) > 1e-4) ? (1.0 - exp(-dist * t)) / t : dist * (1.0 - 0.5 * dist * t);
-  float fogAmt = u_fog_density * exp(-u_cam_pos.y * hf) * integ;
+  // measured from u_fog_base: two maps on one height datum, one a thousand metres lower,
+  // would otherwise have that one's air exp(falloff * 1000) times thicker
+  float fogAmt = u_fog_density * exp(-(u_cam_pos.y - u_fog_base) * hf) * integ;
   float f = 1.0 - exp(-fogAmt);
   vec3 fogCol = skyPrefiltered(vec3(dir.x, max(dir.y, 0.02), dir.z), 0.6);
   float sunAmt = pow(max(dot(dir, u_sun_dir), 0.0), 8.0);

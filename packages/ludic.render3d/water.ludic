@@ -177,6 +177,10 @@ function water_draw(depth_tex: int) -> void {
     var r = F_ZERO
     if i == wb_primary { r = ron }
     u_f(gl_uniform(p, "u_refl_on"), r)
+    # every body but the mirrored sea is clipped to the ellipse inside its bounds
+    var clip = F_ONE
+    if i == wb_primary { clip = F_ZERO }
+    u_f(gl_uniform(p, "u_clip_ellipse"), clip)
     mesh_draw(water_mesh)
   }
   gl_disable(GL_BLEND)
