@@ -68,6 +68,15 @@ var ter_lake_ez: int = 0
 function terrain_lake(level: int, cx: int, cz: int, ex: int, ez: int) -> void {
   ter_lake_level = level;  ter_lake_cx = cx;  ter_lake_cz = cz;  ter_lake_ex = ex;  ter_lake_ez = ez
 }
+# The SEA's level, for the coast, the strand and the shoreline shading, when it is not the
+# carved lake's. They were one number, which holds only while the lake is at sea level: a
+# lake eighty metres up the valley drowned the whole coast toward its own surface. Unset,
+# the sea is the lake exactly as before, so a map with one water line needs no call.
+var ter_sea_level: int = 0
+var ter_sea_set: bool = false
+function terrain_sea(level: int) -> void { ter_sea_level = level;  ter_sea_set = true }
+# the level the generator scales the coast toward (it always read the lake's, set or not)
+function ter_sea_gen() -> int { if ter_sea_set { return ter_sea_level };  return ter_lake_level }
 # An island: land out to `r` from (cx, cz), then the terrain scaled down into the water
 # over `fall` metres and on down to a shelf. Scaling rather than blending to a fixed bed is
 # what makes the coastline come out of the terrain that is already there — low ground turns
@@ -229,6 +238,7 @@ function terrain_generate() -> void {
     u_f2(gl_uniform(p, "u_origin"), ter_ox, ter_oz)
     u_f4(gl_uniform(p, "u_lake"), ter_lake_cx, ter_lake_cz, ter_lake_ex, ter_lake_ez)
     u_f(gl_uniform(p, "u_lake_level"), ter_lake_level)
+    u_f(gl_uniform(p, "u_sea_level"), ter_sea_gen())
     u_f4(gl_uniform(p, "u_isle"), ter_isle_cx, ter_isle_cz, ter_isle_r, ter_isle_fall)
     u_f(gl_uniform(p, "u_isle_mode"), fi(ter_isle_mode))
     u_f(gl_uniform(p, "u_dem_blur"), ter_dem_blur)
@@ -453,6 +463,10 @@ function terrain_bind_prog(p: int) -> void {
   var lake = fl(-100000.0)
   if ter_lake_ex != 0 { lake = ter_lake_level }
   u_f(gl_uniform(p, "u_lake_level"), lake)
+  # the shoreline, forest and scree gates read the sea; unset it is what they always read
+  var sea = lake
+  if ter_sea_set { sea = ter_sea_level }
+  u_f(gl_uniform(p, "u_sea_level"), sea)
   u_mat4(gl_uniform(p, "u_view"), cam_view)
   u_mat4(gl_uniform(p, "u_proj"), cam_proj)
   u_f2(gl_uniform(p, "u_origin"), ter_ox, ter_oz)
@@ -660,6 +674,12 @@ function cdlod_bounds() -> void {
   }
 }
 
+# A patch's side in metres at a level. The quadtree is CD_LEAVES leaves a side over the whole
+# map, so a leaf is (2 * TERRAIN_HALF) / CD_LEAVES - 32 m only on the 8192 m map the numbers
+# were chosen for. Placing patches at a fixed 32 m put every bound in the wrong place on any
+# other TERRAIN_HALF.
+function cd_size(level: int) -> int { return f_mul(fi(32 << level), fr(TERRAIN_HALF * 2, 8192)) }
+
 # does the patch's box come within r of the camera?
 function cd_within(x0: int, z0: int, size: int, ymin: int, ymax: int, r: int) -> bool {
   let dx = f_max(f_max(f_sub(x0, cam_pos[0]), f_sub(cam_pos[0], f_add(x0, size))), F_ZERO)
@@ -679,7 +699,7 @@ function cd_inside(x0: int, z0: int, size: int, ymin: int, ymax: int, r: int) ->
 }
 
 function cdlod_draw(level: int, ix: int, iz: int) -> void {
-  let size = fi(32 << level)
+  let size = cd_size(level)
   let x0 = f_add(f_sub(ter_ox, fi(TERRAIN_HALF)), f_mul(fi(ix), size))
   let z0 = f_add(f_sub(ter_oz, fi(TERRAIN_HALF)), f_mul(fi(iz), size))
   # Which tier can run inside this patch. A patch that never comes within the split takes
@@ -723,7 +743,7 @@ function cdlod_draw(level: int, ix: int, iz: int) -> void {
 # its children, in which case each child either selects itself or is drawn at this level.
 function cdlod_select(level: int, ix: int, iz: int) -> bool {
   let n = CD_LEAVES >> level
-  let size = fi(32 << level)
+  let size = cd_size(level)
   let x0 = f_add(f_sub(ter_ox, fi(TERRAIN_HALF)), f_mul(fi(ix), size))
   let z0 = f_add(f_sub(ter_oz, fi(TERRAIN_HALF)), f_mul(fi(iz), size))
   let ymin = cd_min[level][iz * n + ix]
@@ -740,4 +760,43 @@ function cdlod_select(level: int, ix: int, iz: int) -> bool {
     if not cdlod_select(level - 1, cx, cz) { cdlod_draw(level - 1, cx, cz) }
   }
   return true
+}
+
+# ---- another map at run time ------------------------------------------------------------
+# What belongs to ONE map - the generated height field and its CPU copy, the survey, the
+# photograph, the patch bounds and the scales cached from TERRAIN_HALF - is released here,
+# so a different survey can be generated in its place without restarting the process. What
+# belongs to the process stays: the patch mesh, the material textures, the programs, the
+# frame-sized targets and the shadow texture, whose size does not depend on the map.
+function terrain_unload() -> void {
+  let ids = gl_scratch()
+  if ter_height_tex != 0 { ids[0] = ter_height_tex;  gl_delete_textures(1, ids);  ter_height_tex = 0 }
+  if ter_dem_tex != 0 { ids[0] = ter_dem_tex;  gl_delete_textures(1, ids);  ter_dem_tex = 0 }
+  if ter_ortho_tex != 0 { ids[0] = ter_ortho_tex;  gl_delete_textures(1, ids);  ter_ortho_tex = 0 }
+  if ter_heights != null { free(ter_heights);  ter_heights = null }
+  if ter_ortho_px != null { free(ter_ortho_px);  ter_ortho_px = null }
+  ter_ortho_w = 0
+  if cd_min != null {
+    for i in 0 .. len(cd_min) { free(cd_min[i]);  free(cd_max[i]) }
+    cd_min = null;  cd_max = null
+  }
+  # derived from TERRAIN_HALF and cached on first use: stale ones would keep the old size
+  ter_h_scale = 0;  ter_o_scale = 0
+  ter_carpet = 0
+  ter_shadow_gen = -1;  ter_shadow_yaw = 0x7fffffff
+}
+# Generate another map in place. Call terrain_lake / terrain_coast / terrain_island for it
+# first - the generator reads them - then this. `half` is the new TERRAIN_HALF in metres.
+# An empty `dem` generates the analytic ground (with ter_smooth) and an empty `ortho` drapes
+# no photograph. The shadow is rebaked and the patch bounds rebuilt before it returns.
+function terrain_reload(dem: string, emin: int, emax: int, base: int, ox: int, oz: int, ortho: string, half: int) -> void {
+  terrain_unload()
+  TERRAIN_HALF = half
+  ter_ox = ox;  ter_oz = oz
+  if len(dem) > 0 { terrain_use_dem(dem, emin, emax, base, ox, oz) }
+  if len(ortho) > 0 { terrain_use_ortho(ortho) }
+  terrain_generate()
+  terrain_bake_shadow()
+  cdlod_bounds()
+  gl_check("terrain reload")
 }

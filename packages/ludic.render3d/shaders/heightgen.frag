@@ -10,6 +10,7 @@ uniform float u_dem_base;       // the elevation that becomes y = 0
 uniform vec2 u_origin;          // world x/z of the map's centre
 uniform vec4 u_lake;            // a lake: centre x/z, half extents (zero = none)
 uniform float u_lake_level;     // its surface height; the model records the surface, the bed is carved below it
+uniform float u_sea_level;      // the sea the coast falls into (terrain_sea); the lake's level unless set
 uniform vec4 u_isle;            // an island: centre x/z, radius (or rim margin), falloff width
 uniform float u_isle_mode;      // 0 none, 1 radial (terrain_island), 2 inward from the survey's edge (terrain_coast)
 // The DEM is Copernicus GLO-30 — 30 m data resampled onto this 4 m grid — so the stored
@@ -84,15 +85,15 @@ void main() {
       t = smoothstep(u_isle.z, u_isle.z + u_isle.w, d);          // 0 inland, 1 past the fall
       shelf = 26.0 + 34.0 * smoothstep(0.0, 1.0, (d - u_isle.z - u_isle.w) / max(u_isle.w, 1.0));
     }
-    float above = h - u_lake_level;
-    h = u_lake_level + above * (1.0 - t) - t * shelf;
+    float above = h - u_sea_level;
+    h = u_sea_level + above * (1.0 - t) - t * shelf;
     // A strand. Scaling alone hands a 500 m mountainside a 40-degree plunge into the sea,
     // which is a cliff coast and nothing else. Real shores are cut flat by the water they
     // meet, so the last few metres of height either side of the line are compressed —
     // which stretches them out horizontally into beach and shallows. Only inside the
     // coastal band: an inland lake has its own bed and wants none of this.
-    float near = 1.0 - smoothstep(0.0, 48.0, abs(h - u_lake_level));
-    h = mix(h, u_lake_level + (h - u_lake_level) * 0.30, near * smoothstep(0.02, 0.30, t));
+    float near = 1.0 - smoothstep(0.0, 48.0, abs(h - u_sea_level));
+    h = mix(h, u_sea_level + (h - u_sea_level) * 0.30, near * smoothstep(0.02, 0.30, t));
   }
   o = vec4(h, 0.0, 0.0, 1.0);
 #elif defined(SMOOTH)

@@ -20,6 +20,8 @@ uniform float u_ts_half;
 uniform sampler2D u_ortho;
 uniform float u_ortho_on;
 uniform float u_lake_level;
+uniform float u_sea_level;    // the sea (terrain_sea); the lake's level when there is no separate sea
+uniform vec4 u_lake;          // the carved lake: centre x/z, half extents (z = 0: none)
 uniform float u_snow_line;
 uniform float u_wind;
 uniform vec2 u_tile;         // world xz of this tile's corner
@@ -92,7 +94,11 @@ void main() {
   if (croot.w < -1.0 || abs(croot.x) > croot.w * 1.25 + 1.5 || abs(croot.y) > croot.w * 1.4 + 1.5) { cull(); return; }
   vec3 gn = normalize(ht.gba);
   float h3 = bladeHash(ci, j, 2), h4 = bladeHash(ci, j, 3);
-  float ok = (1.0 - smoothstep(0.30, 0.55, 1.0 - gn.y)) * smoothstep(0.0, 0.6, ht.r - u_lake_level - 0.15) * smoothstep(u_snow_line - 80.0, u_snow_line - 200.0, ht.r);
+  // No blades under water: the sea's line everywhere, and the lake's inside its outline. One
+  // line for both left a lake above the sea with grass on its bed or a valley with none.
+  float wl = u_sea_level;
+  if (u_lake.z > 0.0) { vec2 q = (xz - u_lake.xy) / u_lake.zw;  if (dot(q, q) < 1.0) wl = max(wl, u_lake_level); }
+  float ok = (1.0 - smoothstep(0.30, 0.55, 1.0 - gn.y)) * smoothstep(0.0, 0.6, ht.r - wl - 0.15) * smoothstep(u_snow_line - 80.0, u_snow_line - 200.0, ht.r);
   if (u_ortho_on > 0.5) {
     vec3 oc = textureLod(u_ortho, huv, 1.5).rgb;
     ok *= 0.25 + 0.75 * smoothstep(0.0, 0.02, oc.g - max(oc.r, oc.b));

@@ -146,6 +146,10 @@ function grass_draw() -> void {
   var lake = fl(-100000.0)
   if ter_lake_ex != 0 { lake = ter_lake_level }
   u_f(gl_uniform(p, "u_lake_level"), lake)
+  var sea = lake
+  if ter_sea_set { sea = ter_sea_level }
+  u_f(gl_uniform(p, "u_sea_level"), sea)
+  u_f4(gl_uniform(p, "u_lake"), ter_lake_cx, ter_lake_cz, ter_lake_ex, ter_lake_ez)
   u_f(gl_uniform(p, "u_snow_line"), ter_snow_line)
   sky_bind_lighting(p)
   shadow_bind(p)

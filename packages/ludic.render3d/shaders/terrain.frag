@@ -18,6 +18,7 @@ uniform sampler2D u_snow_d;  uniform sampler2D u_carpet;   // the clump cards ba
 uniform float u_carpet_on;
 uniform float u_snow_line;
 uniform float u_lake_level;      // the ground just above the water is wet and dark
+uniform float u_sea_level;       // the sea's line: shore, forest and scree gates (terrain_sea)
 uniform vec2 u_origin;           // world offset of the terrain grid
 
 // The ground's own sun shadow comes from the baked height-field map (tershadow.frag),
@@ -236,14 +237,14 @@ vec3 groundShade(vec3 p, vec3 N, float slope, float dist, float viewDepth, bool 
     vec3 ocf = textureLod(u_ortho, v_huv, 2.0).rgb;
     float gx = ocf.g - max(ocf.r, ocf.b);
     // (the photograph is sampled linear: sRGB 72 is 0.06, 92 is 0.11)
-    forestW = smoothstep(0.12, 0.06, max(ocf.r, max(ocf.g, ocf.b))) * smoothstep(0.004, 0.012, gx) * smoothstep(u_lake_level + 0.8, u_lake_level + 1.8, p.y);
+    forestW = smoothstep(0.12, 0.06, max(ocf.r, max(ocf.g, ocf.b))) * smoothstep(0.004, 0.012, gx) * smoothstep(u_sea_level + 0.8, u_sea_level + 1.8, p.y);
     // Classify from a ~60 m blur, never from the pixels: the survey's 10 m pixels carry
     // a foot trail as a broken line of bare ground, and thresholding them painted it
     // across the meadow as tan dashes (and, on the CPU, lined boulders up along it).
     vec3 ocl = textureLod(u_ortho, v_huv, 2.5).rgb;
     float mxc = max(ocl.r, max(ocl.g, ocl.b)), mnc = min(ocl.r, min(ocl.g, ocl.b));
     float greenEx = ocl.g - max(ocl.r, ocl.b);
-    screeC = smoothstep(0.008, -0.002, greenEx) * smoothstep(0.06, 0.12, mxc) * (1.0 - smoothstep(0.55, 0.75, mxc)) * smoothstep(u_lake_level + 0.2, u_lake_level + 1.2, p.y);
+    screeC = smoothstep(0.008, -0.002, greenEx) * smoothstep(0.06, 0.12, mxc) * (1.0 - smoothstep(0.55, 0.75, mxc)) * smoothstep(u_sea_level + 0.2, u_sea_level + 1.2, p.y);
     snowC = smoothstep(0.08, 0.04, mxc - mnc) * smoothstep(0.55, 0.8, mxc);
   }
   // snow lingering in the high gullies is drawn further down, but whether it can be
@@ -362,7 +363,7 @@ vec3 groundShade(vec3 p, vec3 N, float slope, float dist, float viewDepth, bool 
   // the bank here: identical noise fields, identical time, identical phase, keyed off
   // height above the lake instead of depth below it. Across the seam the two agree, so
   // there is nothing there to read as an edge.
-  float above = p.y - u_lake_level;                       // >0 on land, metres
+  float above = p.y - u_sea_level;                        // >0 on land, metres
   // wet ground: darker and glossier near the water, fading out over ~1.2 m
   float wet = smoothstep(1.2, 0.0, above);
   alb *= mix(1.0, 0.5, wet * 0.85);
