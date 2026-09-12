@@ -128,6 +128,43 @@ def:
   ret i64 %r
 }
 
+declare i32 @GetDpiForSystem()
+declare i32 @GetDpiForWindow(ptr)
+
+; The display's scale as a whole number, the way macOS reports a backing scale: 96 dpi
+; is 1, 175% (168 dpi) and 200% are 2, 300% is 3 - rounded, then brought down until a
+; client area of w x h at that scale fits on the primary display. Shared with
+; win32_gl.ll. A window of "960 x 540" is then the same size on the desk on a 4K
+; panel as on a 1080p one, which is what a game asking for 960 x 540 means.
+define i32 @w_fit_scale(i32 %dpi, i32 %w, i32 %h) {
+entry:
+  %d0 = icmp slt i32 %dpi, 96
+  %d = select i1 %d0, i32 96, i32 %dpi
+  %d48 = add i32 %d, 48
+  %s0 = sdiv i32 %d48, 96
+  %sw = call i32 @GetSystemMetrics(i32 0)
+  %sh = call i32 @GetSystemMetrics(i32 1)
+  br label %fit
+fit:
+  %s = phi i32 [ %s0, %entry ], [ %s1, %shrink ]
+  %one = icmp sle i32 %s, 1
+  br i1 %one, label %done, label %test
+test:
+  %cw = mul i32 %w, %s
+  %ch = mul i32 %h, %s
+  %wide = icmp sgt i32 %cw, %sw
+  %tall = icmp sgt i32 %ch, %sh
+  %over = or i1 %wide, %tall
+  br i1 %over, label %shrink, label %done
+shrink:
+  %s1 = sub i32 %s, 1
+  br label %fit
+done:
+  %r0 = icmp slt i32 %s, 1
+  %r = select i1 %r0, i32 1, i32 %s
+  ret i32 %r
+}
+
 define void @win_open(i32 %w, i32 %h, i32 %scale, ptr %title) {
 entry:
   %wc = alloca [80 x i8], align 8
@@ -142,6 +179,13 @@ entry:
 make:
   ; DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4
   %dpi = call i32 @SetProcessDpiAwarenessContext(ptr inttoptr (i64 -4 to ptr))
+  ; the framebuffer's own scale, times the display's
+  %sysdpi = call i32 @GetDpiForSystem()
+  %gw = mul i32 %w, %scale
+  %gh = mul i32 %h, %scale
+  %ds = call i32 @w_fit_scale(i32 %sysdpi, i32 %gw, i32 %gh)
+  %scale2 = mul i32 %scale, %ds
+  store i32 %scale2, ptr @W_scale
   %inst = call ptr @GetModuleHandleA(ptr null)
   ; WNDCLASSEXA: cbSize 0, style 4, lpfnWndProc 8, hInstance 24, hCursor 40, lpszClassName 64
   call void @llvm.memset.p0.i64(ptr %wc, i8 0, i64 80, i1 false)
@@ -158,9 +202,9 @@ make:
   %wcn = getelementptr i8, ptr %wc, i64 64
   store ptr @.w_class, ptr %wcn
   %atom = call i16 @RegisterClassExA(ptr %wc)
-  ; the client area is w*scale x h*scale pixels; the frame goes round it
-  %pw = mul i32 %w, %scale
-  %ph = mul i32 %h, %scale
+  ; the client area is w x h at both scales; the frame goes round it
+  %pw = mul i32 %gw, %ds
+  %ph = mul i32 %gh, %ds
   call void @llvm.memset.p0.i64(ptr %rc, i8 0, i64 16, i1 false)
   %rcr = getelementptr i8, ptr %rc, i64 8
   store i32 %pw, ptr %rcr

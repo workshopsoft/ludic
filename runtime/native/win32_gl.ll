@@ -6,11 +6,16 @@
 ; entry-point table). A headless build links gl_win_nowin.ll in its place.
 ;
 ;   win_gl_attach() -> ok      the context on the window's DC (0 = no window yet)
-;   win_gl_resize(w, h)        client area of w x h pixels, centred
+;   win_gl_resize(w, h)        a client area of w x h at the display's scale, centred
 ;   win_gl_swap()              SwapBuffers, paced by the swap interval
-;   win_gl_scale() -> 1        the process is DPI aware: one pixel is one pixel
+;   win_gl_scale() -> int      pixels per window unit: 1 at 100%, 2 at 175-200%, ...
 ;   win_gl_drawable(out)       the client area in pixels
 ;   win_toggle_fullscreen()    borderless, over the monitor the window is on
+;
+; The units follow cocoa.ll's points and backing pixels: a game asks for a 960 x 540
+; window, the display's whole-number scale (w_fit_scale, win32.ll) turns that into
+; pixels, win_gl_scale reports the factor as the Retina backing scale is reported,
+; and the mouse keeps arriving in the game's own units because W_scale divides by it.
 ; ============================================================================
 
 @W_hwnd  = external global ptr
@@ -19,6 +24,7 @@
 @W_fbh   = external global i32
 @W_scale = external global i32
 
+declare i32 @w_fit_scale(i32, i32, i32)
 declare ptr @lgl_wgl_core(ptr, i32)
 declare ptr @wglGetProcAddress(ptr)
 declare i32 @SwapBuffers(ptr)
@@ -26,6 +32,7 @@ declare i32 @GetClientRect(ptr, ptr)
 declare i32 @AdjustWindowRectEx(ptr, i32, i32, i32)
 declare i32 @SetWindowPos(ptr, ptr, i32, i32, i32, i32, i32)
 declare i32 @GetSystemMetrics(i32)
+declare i32 @GetDpiForWindow(ptr)
 declare i64 @GetWindowLongPtrA(ptr, i32)
 declare i64 @SetWindowLongPtrA(ptr, i32, i64)
 declare i32 @GetWindowRect(ptr, ptr)
@@ -36,6 +43,7 @@ declare void @llvm.memset.p0.i64(ptr, i8, i64, i1)
 @.wgl_swapint = private unnamed_addr constant [19 x i8] c"wglSwapIntervalEXT\00"
 
 @W_glctx    = internal global ptr null
+@W_glscale  = internal global i32 1
 @W_fs       = internal global i32 0
 @W_fs_style = internal global i64 0
 @W_fs_rect  = internal global [4 x i32] zeroinitializer
@@ -71,18 +79,23 @@ entry:
   %nowin = icmp eq ptr %hwnd, null
   br i1 %nowin, label %out, label %go
 go:
+  %dpi = call i32 @GetDpiForWindow(ptr %hwnd)
+  %s = call i32 @w_fit_scale(i32 %dpi, i32 %w, i32 %h)
+  store i32 %s, ptr @W_glscale
   store i32 %w, ptr @W_fbw
   store i32 %h, ptr @W_fbh
-  store i32 1, ptr @W_scale
+  store i32 %s, ptr @W_scale
   %fs = load i32, ptr @W_fs
   %isfs = icmp ne i32 %fs, 0
   br i1 %isfs, label %out, label %size
 size:
+  %pw = mul i32 %w, %s
+  %ph = mul i32 %h, %s
   call void @llvm.memset.p0.i64(ptr %rc, i8 0, i64 16, i1 false)
   %rcr = getelementptr i8, ptr %rc, i64 8
-  store i32 %w, ptr %rcr
+  store i32 %pw, ptr %rcr
   %rcb = getelementptr i8, ptr %rc, i64 12
-  store i32 %h, ptr %rcb
+  store i32 %ph, ptr %rcb
   %style64 = call i64 @GetWindowLongPtrA(ptr %hwnd, i32 -16)   ; GWL_STYLE
   %style = trunc i64 %style64 to i32
   %adj = call i32 @AdjustWindowRectEx(ptr %rc, i32 %style, i32 0, i32 0)
@@ -124,7 +137,8 @@ out:
 
 define i32 @win_gl_scale() {
 entry:
-  ret i32 1
+  %s = load i32, ptr @W_glscale
+  ret i32 %s
 }
 
 ; 1 = vsync (set at attach), 0 = free-running; wglSwapIntervalEXT is a driver extension,
@@ -147,6 +161,8 @@ out:
   ret void
 }
 
+; the client area in pixels -> out[0], out[1]; and the window size in the game's units,
+; which the mouse mapping divides by, kept in step with a window the player resized
 define void @win_gl_drawable(ptr %out) {
 entry:
   %rc = alloca [16 x i8], align 4
@@ -162,14 +178,18 @@ go:
   store i32 %w, ptr %out
   %o1 = getelementptr i32, ptr %out, i32 1
   store i32 %h, ptr %o1
-  ; a minimised window has no client area; keep the last real size for the mouse mapping
+  ; a minimised window has no client area; keep the last real size
   %zw = icmp sle i32 %w, 0
   %zh = icmp sle i32 %h, 0
   %gone = or i1 %zw, %zh
   br i1 %gone, label %done, label %track
 track:
-  store i32 %w, ptr @W_fbw
-  store i32 %h, ptr @W_fbh
+  %s = load i32, ptr @W_glscale
+  %uw = sdiv i32 %w, %s
+  %uh = sdiv i32 %h, %s
+  store i32 %uw, ptr @W_fbw
+  store i32 %uh, ptr @W_fbh
+  store i32 %s, ptr @W_scale
   br label %done
 done:
   ret void
@@ -186,9 +206,9 @@ entry:
   ret void
 }
 
-; The Retina switch: on Windows the process is DPI aware and always draws one pixel per
-; screen pixel, which is what "on" means on macOS; there is no lower-resolution surface
-; for "off" to fall back to, so it changes nothing.
+; The Retina switch. The process is DPI aware and always draws one pixel per screen
+; pixel, which is what "on" means on macOS; there is no lower-resolution surface for
+; "off" to fall back to, so it changes nothing here.
 define void @win_gl_retina(i32 %on) {
 entry:
   ret void
