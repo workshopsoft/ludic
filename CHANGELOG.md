@@ -7,6 +7,15 @@ change type. Preview the next one with `ludic dev release --dry-run`.
 A released section may carry a hand-written summary paragraph above its groups
 (v0.2.0 has one); the generated bullets below it are not edited by hand.
 
+## v0.12.1 — 2026-09-13
+
+### Features
+
+- **ludic.render3d: `r3d_fog_base`** — the height the height fog's density is measured from (default 0, the world's y = 0). Two maps sharing one height datum, one far lower than the other, no longer give the lower one many times thicker air.
+
+### Fixes
+
+- **ludic.render3d: lakes are ellipses** — a water body other than the reflecting one was drawn as the whole rectangle of its bounds, so the corners between that rectangle and the lake's carved ellipse showed sheets of water over dry ground. Those bodies are now clipped to the ellipse; the reflecting body (the sea) still fills its rectangle.
 ## v0.12.0 — 2026-09-13
 
 ### Features
