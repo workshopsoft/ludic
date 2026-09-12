@@ -199,13 +199,9 @@ entry {
   if emit_ir { ir_flush(out);  return }
   if not has_target { ir_flush(null);  return }
 
-  # The Windows runtime is the libc surface so far: a window, audio, HTTP and GL
-  # are macOS platform layers with no Windows counterpart yet, and linking one
-  # would fail on a hundred Objective-C symbols rather than say so.
-  if g_target_win {
-    if g_windowed { die("ludicc: a windowed build is not available on Windows yet; build with --headless\n") }
-    if g_uses_http { die("ludicc: Http.* is not available on Windows yet\n") }
-  }
+  # Http.* is still a macOS platform layer (NSURLConnection) with no Windows
+  # counterpart; linking it would fail on Objective-C symbols rather than say so.
+  if g_target_win and g_uses_http { die("ludicc: Http.* is not available on Windows yet\n") }
 
   # a run with no explicit -o lands in a temp file
   if run and (out == null) {
@@ -236,7 +232,19 @@ entry {
   # substitutes the host's and warns about it on every single build. There is
   # nothing to act on — the host default is exactly what we want — so it is off.
   var cmd = `{cc} -O2 -Wno-override-module {ll}`
-  if g_windowed {
+  if g_target_win {
+    # The Windows window: win32.ll (user32, gdi32 for the software present, xinput
+    # for pads), and audio_win.ll when the program uses Audio.*, as on macOS.
+    if g_windowed {
+      let win32 = join_path(home, "runtime/native/win32.ll")
+      cmd = `{cmd} {win32} -luser32 -lgdi32 -lxinput`
+      if g_uses_audio {
+        let audiow = join_path(home, "runtime/native/audio_win.ll")
+        cmd = `{cmd} {audiow}`
+      }
+    }
+  }
+  else { if g_windowed {
     let cocoa = join_path(home, "runtime/native/cocoa.ll")
     # GameController holds no symbol cocoa.ll references directly (its classes are
     # reached by name through objc_getClass), so a plain -framework link gets
@@ -250,7 +258,7 @@ entry {
       let audio = join_path(home, "runtime/native/audio.ll")
       cmd = `{cmd} {audio} -Wl,-needed_framework,AVFoundation`
     }
-  }
+  } }
   # Http.* (#6) links the native transport and Foundation (NSURLConnection etc.,
   # reached by name). Works headless too, so it is outside the windowed block —
   # macOS-only for now, which is where the toolchain runs.
@@ -261,12 +269,15 @@ entry {
   # Gl.* links the OpenGL backend: gl.ll (offscreen contexts, float helpers), the
   # generated per-entry-point ABI thunks, and OpenGL.framework. Windowed or not.
   # On Windows the same pair is gl_win.ll (a WGL context) and gl_thunks_win.ll (the
-  # thunks through a table wglGetProcAddress fills), against opengl32/gdi32/user32.
+  # thunks through a table wglGetProcAddress fills), against opengl32/gdi32/user32,
+  # with the window half from win32_gl.ll - or, headless, gl_win_nowin.ll's stubs.
   if g_uses_gl {
     if g_target_win {
       let glw = join_path(home, "runtime/native/gl_win.ll")
       let gltw = join_path(home, "runtime/native/gl_thunks_win.ll")
-      cmd = `{cmd} {glw} {gltw} -luser32 -lgdi32 -lopengl32`
+      var glhalf = join_path(home, "runtime/native/gl_win_nowin.ll")
+      if g_windowed { glhalf = join_path(home, "runtime/native/win32_gl.ll") }
+      cmd = `{cmd} {glw} {gltw} {glhalf} -luser32 -lgdi32 -lopengl32`
     } else {
       let gl = join_path(home, "runtime/native/gl.ll")
       let glt = join_path(home, "runtime/native/gl_thunks.ll")

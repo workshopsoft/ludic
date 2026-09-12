@@ -54,25 +54,16 @@ declare float @llvm.fabs.f32(float)
 @.wgl_attrs = private unnamed_addr constant [7 x i32] [i32 8337, i32 4, i32 8338, i32 1, i32 37158, i32 1, i32 0]
 
 @L_wgl_hwnd = internal global ptr null
-@L_wgl_hdc  = internal global ptr null
 @L_wgl_ctx  = internal global ptr null
 
-define i32 @cgl_offscreen() {
+; lgl_wgl_core(hdc, alpha bits) -> context: a pixel format on the DC, a legacy context
+; (wglCreateContextAttribsARB is only reachable through one), the 4.1 core context made
+; current in its place, and the entry-point table filled. Null when any step fails.
+; Shared by cgl_offscreen (a hidden window) and win32_gl.ll (the game's window).
+define ptr @lgl_wgl_core(ptr %hdc, i32 %alpha) {
 entry:
-  %cur = load ptr, ptr @L_wgl_ctx
-  %have = icmp ne ptr %cur, null
-  br i1 %have, label %ok, label %win
-win:
-  ; WS_POPUP, never shown
-  %w = call ptr @CreateWindowExA(i32 0, ptr @.wgl_class, ptr @.wgl_title, i32 -2147483648, i32 0, i32 0, i32 16, i32 16, ptr null, ptr null, ptr null, ptr null)
-  %wn = icmp eq ptr %w, null
-  br i1 %wn, label %fail, label %pf
-pf:
-  store ptr %w, ptr @L_wgl_hwnd
-  %hdc = call ptr @GetDC(ptr %w)
-  store ptr %hdc, ptr @L_wgl_hdc
   ; PIXELFORMATDESCRIPTOR: nSize 40, nVersion 1, PFD_DRAW_TO_WINDOW|SUPPORT_OPENGL|DOUBLEBUFFER,
-  ; 32-bit colour, 24 depth, 8 stencil
+  ; 32-bit colour, alpha at 16, 24 depth, 8 stencil
   %pfd = alloca [40 x i8], align 4
   call void @llvm.memset.p0.i64(ptr %pfd, i8 0, i64 40, i1 false)
   store i16 40, ptr %pfd
@@ -82,6 +73,9 @@ pf:
   store i32 37, ptr %fl
   %cb = getelementptr i8, ptr %pfd, i64 9
   store i8 32, ptr %cb
+  %ab = getelementptr i8, ptr %pfd, i64 16
+  %a8 = trunc i32 %alpha to i8
+  store i8 %a8, ptr %ab
   %db = getelementptr i8, ptr %pfd, i64 23
   store i8 24, ptr %db
   %sb = getelementptr i8, ptr %pfd, i64 24
@@ -91,7 +85,6 @@ pf:
   %setz = icmp eq i32 %set, 0
   br i1 %setz, label %fail, label %legacy
 legacy:
-  ; a legacy context first: wglCreateContextAttribsARB is only reachable through one
   %old = call ptr @wglCreateContext(ptr %hdc)
   %oldn = icmp eq ptr %old, null
   br i1 %oldn, label %fail, label %arb
@@ -108,13 +101,35 @@ core:
 use:
   %m2 = call i32 @wglMakeCurrent(ptr %hdc, ptr %ctx)
   %d1 = call i32 @wglDeleteContext(ptr %old)
-  store ptr %ctx, ptr @L_wgl_ctx
   %n = call i32 @lgl_win_load()
-  br label %ok
+  ret ptr %ctx
 drop:
   %m3 = call i32 @wglMakeCurrent(ptr null, ptr null)
   %d2 = call i32 @wglDeleteContext(ptr %old)
   br label %fail
+fail:
+  ret ptr null
+}
+
+define i32 @cgl_offscreen() {
+entry:
+  %cur = load ptr, ptr @L_wgl_ctx
+  %have = icmp ne ptr %cur, null
+  br i1 %have, label %ok, label %win
+win:
+  ; WS_POPUP, never shown
+  %w = call ptr @CreateWindowExA(i32 0, ptr @.wgl_class, ptr @.wgl_title, i32 -2147483648, i32 0, i32 0, i32 16, i32 16, ptr null, ptr null, ptr null, ptr null)
+  %wn = icmp eq ptr %w, null
+  br i1 %wn, label %fail, label %ctx
+ctx:
+  store ptr %w, ptr @L_wgl_hwnd
+  %hdc = call ptr @GetDC(ptr %w)
+  %c = call ptr @lgl_wgl_core(ptr %hdc, i32 0)
+  %cn = icmp eq ptr %c, null
+  br i1 %cn, label %fail, label %keep
+keep:
+  store ptr %c, ptr @L_wgl_ctx
+  br label %ok
 ok:
   ret i32 1
 fail:
@@ -414,45 +429,4 @@ entry:
   %frac = udiv i64 %rus, %fv
   %t = add i64 %sus, %frac
   ret i64 %t
-}
-
-; ---- the window half, until there is one ------------------------------------
-; gl.ludic names these on its is_windowed() branch. A headless build compiles that
-; branch to nothing, but the names still have to resolve; a windowed Windows
-; build will define them in the Win32 platform layer instead of here.
-define i32 @win_gl_attach() {
-entry:
-  ret i32 0
-}
-define void @win_gl_resize(i32 %w, i32 %h) {
-entry:
-  ret void
-}
-define void @win_gl_swap() {
-entry:
-  ret void
-}
-define i32 @win_gl_scale() {
-entry:
-  ret i32 1
-}
-define void @win_gl_swap_interval(i32 %n) {
-entry:
-  ret void
-}
-define void @win_gl_drawable(ptr %out) {
-entry:
-  ret void
-}
-define void @win_gl_update() {
-entry:
-  ret void
-}
-define void @win_gl_retina(i32 %on) {
-entry:
-  ret void
-}
-define void @win_toggle_fullscreen() {
-entry:
-  ret void
 }
