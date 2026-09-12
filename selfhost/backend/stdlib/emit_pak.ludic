@@ -117,6 +117,7 @@ function emit_pak_prelude() -> void {
   if g_windowed {
     emith("declare void @splash_show(ptr, i32, i32)\n")
     emith("declare void @splash_hide()\n")
+    emith("declare void @app_set_icon(ptr, i32)\n")
   }
 
   emit_pak_mount()
@@ -299,6 +300,20 @@ function emit_pak_boot() -> void {
     emith("  %miss = icmp eq ptr %blob, null\n  br i1 %miss, label %out, label %show\n")
     emith("show:\n  %len = load i32, ptr %lp\n  %bg = load i32, ptr @L_pak_splashbg\n")
     emith("  call void @splash_show(ptr %blob, i32 %len, i32 %bg)\n  br label %out\n")
+    emith("out:\n  ret void\n}\n")
+
+    # App.set_icon(path): the Dock tile for a binary that has no bundle to take one
+    # from. Read through lp_pak_open, so a packed path and a loose one both work and
+    # this does not repeat Audio.load's trick of taking a filesystem path only.
+    # NSData copies the bytes, so the buffer goes straight back.
+    emith("define void @lp_app_icon(ptr %path) {\n")
+    emith("entry:\n  %f = call ptr @lp_pak_open(ptr %path, ptr @.pak_rb)\n  %bad = icmp eq ptr %f, null\n  br i1 %bad, label %out, label %go\n")
+    emith("go:\n  %s1 = call i32 @fseek(ptr %f, i64 0, i32 2)\n  %n64 = call i64 @ftell(ptr %f)\n  %s2 = call i32 @fseek(ptr %f, i64 0, i32 0)\n")
+    emith("  %tiny = icmp sle i64 %n64, 0\n  br i1 %tiny, label %shut, label %read\n")
+    emith("read:\n  %buf = call ptr @malloc(i64 %n64)\n  %rd = call i64 @fread(ptr %buf, i64 1, i64 %n64, ptr %f)\n")
+    emith("  %c1 = call i32 @fclose(ptr %f)\n  %n32 = trunc i64 %rd to i32\n")
+    emith("  call void @app_set_icon(ptr %buf, i32 %n32)\n  call void @free(ptr %buf)\n  ret void\n")
+    emith("shut:\n  %c2 = call i32 @fclose(ptr %f)\n  ret void\n")
     emith("out:\n  ret void\n}\n")
   }
 }

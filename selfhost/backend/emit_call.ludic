@@ -249,6 +249,15 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
       if g_windowed { emit("  call void @splash_hide()\n") }
       return val("0", "void")
     }
+    if (meth == "set_icon") {
+      # The Dock tile. A bundled app takes it from CFBundleIconFile and this is a
+      # harmless no-op there; a bare `ludic build` binary has no bundle and no icon
+      # at all without it. Headless has no AppKit, so it compiles to nothing.
+      use_pak()
+      let ip = arg_code(e, 0)
+      if g_windowed { emit(`  call void @lp_app_icon(ptr {ip})\n`) }
+      return val("0", "void")
+    }
     perr(`unknown builtin App.{meth}`)
   }
   if (ns == "Pool") {

@@ -157,6 +157,41 @@ function pack_probe_src() -> pointer {
   return s
 }
 
+# App.set_icon: the Dock tile for a binary with no bundle around it. The tile itself
+# cannot be asserted from a test process, so what is checked is the part that can go
+# wrong silently - that it compiles and runs in a windowed build, that a missing or
+# unreadable image is a no-op rather than a crash or a cleared icon, and that a headless
+# build (which has no AppKit linked at all) compiles it away to nothing.
+function app_icon_case() -> void {
+  let lbl = "App.set_icon -> an icon for a binary with no bundle, and nothing headless"
+  if not is_darwin() { skip(lbl);  return }
+  let work = `{tmp_dir()}/appicon`
+  let root = capture_line("pwd")
+  run(`rm -rf {work} && mkdir -p {work}`)
+  # a real PNG to set, made the same way the bundle test makes its icon
+  run(`sips -s format png --resampleHeightWidth 64 64 /System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/GenericApplicationIcon.icns --out {work}/icon.png > /dev/null 2>&1`)
+  var src = "program IconSet {" + nl()
+  src = src + "  entry {" + nl()
+  src = src + "    App.set_icon(\"icon.png\")" + nl()
+  src = src + "    App.set_icon(\"nope.png\")" + nl()      # missing: must not crash
+  src = src + "    print(\"ok\")" + nl()
+  src = src + "  }" + nl()
+  src = src + "}" + nl()
+  write_file(`{work}/i.ludic`, src)
+  if not shq(`cd {work} && {root}/bin/ludicc i.ludic -o i > cc.out 2>&1`) {
+    bad2(lbl, capture_line(`tail -1 {work}/cc.out`));  return
+  }
+  let got = s_trim(capture(`cd {work} && ./i 2>&1`))
+  if got != "ok" { bad2(lbl, `windowed build printed [{got}]`);  return }
+  # headless links no AppKit: it has to compile and run just the same
+  if not shq(`cd {work} && {root}/bin/ludicc i.ludic --headless -o ih > hh.out 2>&1`) {
+    bad2(lbl, capture_line(`tail -1 {work}/hh.out`));  return
+  }
+  let goth = s_trim(capture(`cd {work} && ./ih 2>&1`))
+  if goth != "ok" { bad2(lbl, `headless build printed [{goth}]`);  return }
+  ok(lbl)
+}
+
 # Os.save_dir / config_dir / cache_dir have to name the directory the PLATFORM keeps
 # those things in - that is the entire reason a program calls them instead of building a
 # path. They were the macOS layout on every platform, so a game built on Linux wrote its
@@ -719,6 +754,7 @@ function cmd_dev_test() -> int {
   pack_roundtrip_case()
   packignore_case()
   os_dirs_case()
+  app_icon_case()
   bundle_case()
 
   # install.sh is what the landing page tells people to pipe into sh, and it is

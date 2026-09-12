@@ -1455,6 +1455,49 @@ out:
 @.s_setbg   = private unnamed_addr constant [20 x i8] c"setBackgroundColor:\00"
 @.s_finlau  = private unnamed_addr constant [16 x i8] c"finishLaunching\00"
 
+@.s_setappicon = private unnamed_addr constant [25 x i8] c"setApplicationIconImage:\00"
+
+; ---------------------------------------------------------------------------
+; app_set_icon(bytes, len) - the Dock tile, the Cmd-Tab switcher, the About box.
+;
+; A BUNDLED app gets this from CFBundleIconFile and needs nothing here. A plain
+; binary - which is what `ludic build` produces and what a developer runs all day
+; - has no bundle and therefore no icon at all: macOS draws the generic green
+; "exec" tile for it. That is not a cosmetic difference to someone who only ever
+; sees the game that way.
+;
+; Bytes, not a path, for the same reason splash_show takes bytes: the caller has
+; already resolved it through the pack. NSData copies them, so the caller may free
+; its buffer immediately. Anything unreadable leaves the existing icon alone.
+define void @app_set_icon(ptr %bytes, i32 %len) {
+entry:
+  %nodata = icmp eq ptr %bytes, null
+  %empty = icmp sle i32 %len, 0
+  %skip = or i1 %nodata, %empty
+  br i1 %skip, label %out, label %go
+go:
+  %appcls = call ptr @objc_getClass(ptr @.c_app)
+  %sel_sh = call ptr @sel_registerName(ptr @.s_shared)
+  %nsapp = call ptr @objc_msgSend(ptr %appcls, ptr %sel_sh)
+  %datacls = call ptr @objc_getClass(ptr @.c_data)
+  %sel_dwb = call ptr @sel_registerName(ptr @.s_datawb)
+  %lz = zext i32 %len to i64
+  %data = call ptr (ptr, ptr, ptr, i64) @objc_msgSend(ptr %datacls, ptr %sel_dwb, ptr %bytes, i64 %lz)
+  %imgcls = call ptr @objc_getClass(ptr @.c_image)
+  %sel_alloc = call ptr @sel_registerName(ptr @.s_alloc)
+  %i0 = call ptr @objc_msgSend(ptr %imgcls, ptr %sel_alloc)
+  %sel_iwd = call ptr @sel_registerName(ptr @.s_initdat)
+  %img = call ptr (ptr, ptr, ptr) @objc_msgSend(ptr %i0, ptr %sel_iwd, ptr %data)
+  %noimg = icmp eq ptr %img, null
+  br i1 %noimg, label %out, label %set
+set:
+  %sel_seti = call ptr @sel_registerName(ptr @.s_setappicon)
+  %r = call ptr (ptr, ptr, ptr) @objc_msgSend(ptr %nsapp, ptr %sel_seti, ptr %img)
+  br label %out
+out:
+  ret void
+}
+
 @W_splash = internal global ptr null
 
 define void @splash_show(ptr %bytes, i32 %len, i32 %bg) {
