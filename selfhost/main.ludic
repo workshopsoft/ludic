@@ -237,10 +237,12 @@ entry {
     # for pads), and audio_win.ll when the program uses Audio.*, as on macOS.
     if g_windowed {
       let win32 = join_path(home, "runtime/native/win32.ll")
-      cmd = `{cmd} {win32} -luser32 -lgdi32 -lxinput`
+      # xinput.lib carries an import named DllMain, which lld skips with a warning on every
+      # link; it is the SDK's, not a mistake in the program, so it is silenced
+      cmd = `{cmd} {win32} -luser32 -lgdi32 -lxinput -Wl,/ignore:importeddllmain`
       if g_uses_audio {
         let audiow = join_path(home, "runtime/native/audio_win.ll")
-        cmd = `{cmd} {audiow}`
+        cmd = `{cmd} {audiow} -lxaudio2 -lole32`
       }
     }
   }
