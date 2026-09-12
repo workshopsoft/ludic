@@ -148,3 +148,12 @@ function mesh_instance_buffer(m: Mesh, first_attr: int, floats_per: int, data: p
   gl_bind_vertex_array(0)
   return b
 }
+
+# release a mesh's GL objects (a mesh this package built for something being thrown away)
+function mesh_free(m: Mesh) -> void {
+  if m == null { return }
+  let ids = gl_scratch()
+  if m.vbo != 0 { ids[0] = m.vbo;  gl_delete_buffers(1, ids);  m.vbo = 0 }
+  if m.ebo != 0 { ids[0] = m.ebo;  gl_delete_buffers(1, ids);  m.ebo = 0 }
+  if m.vao != 0 { ids[0] = m.vao;  gl_delete_vertex_arrays(1, ids);  m.vao = 0 }
+}

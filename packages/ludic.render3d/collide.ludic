@@ -108,3 +108,12 @@ function col_clear(x0: int, z0: int, x1: int, z1: int, r: int) -> bool {
   }
   return true
 }
+
+# No colliders, ready for another map's. The cell index is sized from TERRAIN_HALF on its
+# first build and kept, so it is released too: a larger map would overrun the old one.
+function col_reset() -> void {
+  col_n = 0
+  col_built = false
+  if col_start != null { free(col_start);  col_start = null }
+  if col_sorted != null { free(col_sorted);  col_sorted = null }
+}

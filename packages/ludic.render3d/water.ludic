@@ -17,10 +17,25 @@ var water_refl: Target = null            # the world mirrored in the surface, ha
 var water_refl_div: int = 2              # R3D_REFLDIV overrides: 2 = half res, 4 = quarter
 var water_saved: words = null            # the real camera's matrices, restored after the pass
 var water_dumped: bool = false
+# Several still-water planes, each at its own level over its own bounds: the sea round an
+# island and a lake a hundred metres above it cannot be one surface. Each draws the same way;
+# only one - the first added with `reflect` - gets the planar reflection pass, because every
+# mirrored plane is another full scene pass. water_level / water_cx ... mirror that one, so
+# code written against a single plane still reads the surface that reflects.
+const WATER_MAX: int = 8
+var wb_n: int = 0
+var wb_level: words = null
+var wb_cx: words = null
+var wb_cz: words = null
+var wb_ex: words = null
+var wb_ez: words = null
+var wb_reflect: words = null
+var wb_primary: int = -1               # the body the reflection pass mirrors, or -1
 
 # Render the scene through a camera mirrored in the water plane into water_refl,
 # clipping everything below the surface; terrain, scattered layers and sky.
 function water_reflection_pass() -> void {
+  if wb_primary < 0 { return }            # no body reflects: nothing to mirror
   if water_refl == null {
     if Os.has_env("R3D_REFLDIV") { water_refl_div = Text.to_int(Os.env("R3D_REFLDIV")) }
     if water_refl != null { target_free(water_refl) }
@@ -81,31 +96,58 @@ function water_reflection_pass() -> void {
   gl_bind_framebuffer(GL_FRAMEBUFFER, 0)
 }
 
-function water_init(level: int, cx: int, cz: int, ex: int, ez: int) -> void {
+# the program and the plane are the process's, built once; the bodies are the map's
+function water_setup() -> void {
+  if water_prog != 0 { return }
   water_mesh = mesh_grid(2, F_HALF)
   water_prog = r3d_program("water.vert", "water.frag", "")
-  water_level = level;  water_cx = cx;  water_cz = cz;  water_ex = ex;  water_ez = ez
+  wb_level = words(WATER_MAX);  wb_cx = words(WATER_MAX);  wb_cz = words(WATER_MAX)
+  wb_ex = words(WATER_MAX);  wb_ez = words(WATER_MAX);  wb_reflect = words(WATER_MAX)
+}
+function water_bodies_clear() -> void {
+  wb_n = 0
+  wb_primary = -1
+  water_on = false
+}
+# Add a plane at `level` over (cx, cz) +- (ex, ez); true `reflect` makes it the mirrored one
+# if none is yet. Returns its index, or -1 once WATER_MAX are in use.
+function water_body_add(level: int, cx: int, cz: int, ex: int, ez: int, reflect: bool) -> int {
+  water_setup()
+  if wb_n >= WATER_MAX { return -1 }
+  let i = wb_n
+  wb_level[i] = level;  wb_cx[i] = cx;  wb_cz[i] = cz;  wb_ex[i] = ex;  wb_ez[i] = ez
+  wb_reflect[i] = 0
+  if reflect { wb_reflect[i] = 1 }
+  wb_n += 1
   water_on = true
+  if reflect and wb_primary < 0 {
+    wb_primary = i
+    water_level = level;  water_cx = cx;  water_cz = cz;  water_ex = ex;  water_ez = ez
+  }
+  return i
+}
+# one reflecting plane: what this function always meant, without a new mesh and program
+# every time it is called
+function water_init(level: int, cx: int, cz: int, ex: int, ez: int) -> void {
+  water_bodies_clear()
+  water_body_add(level, cx, cz, ex, ez, true)
 }
 
 # call after the opaque pass, before the sky: blends over the resolved depth
 function water_draw(depth_tex: int) -> void {
-  if not water_on { return }
+  if not water_on or wb_n == 0 { return }
   let p = water_prog
   gl_use_program(p)
   u_mat4(gl_uniform(p, "u_view"), cam_view)
   u_mat4(gl_uniform(p, "u_proj"), cam_proj)
   u_mat4(gl_uniform(p, "u_inv_vp"), cam_inv_vp)
-  u_f(gl_uniform(p, "u_level"), water_level)
-  u_f2(gl_uniform(p, "u_center"), water_cx, water_cz)
-  u_f2(gl_uniform(p, "u_extent"), water_ex, water_ez)
   # gl_FragCoord here runs over the scene target, which is post_w x post_h — not the
   # window. They are the same size only at a render scale of 1; at anything less, taking
   # the window's size sent the refraction and depth reads into the wrong corner of the
   # frame, and the lake showed a squashed copy of it instead of its own bed.
   u_f2(gl_uniform(p, "u_screen"), fi(post_w), fi(post_h))
   var ron = F_ZERO
-  if water_refl != null {
+  if water_refl != null and wb_primary >= 0 {
     # bind on its own unit first: generating the mip chain re-binds the texture on the active unit,
     # and it must not displace the depth texture the shader reads for the shore
     r3d_bind_2d(p, "u_refl", 1, water_refl.color);  ron = F_ONE
@@ -114,7 +156,6 @@ function water_draw(depth_tex: int) -> void {
   }
   r3d_bind_2d(p, "u_depth", 0, depth_tex)
   r3d_bind_2d(p, "u_scene", 2, post_scene.color)
-  u_f(gl_uniform(p, "u_refl_on"), ron)
   sky_bind_lighting(p)
   shadow_bind(p)
   fog_bind(p)
@@ -127,6 +168,16 @@ function water_draw(depth_tex: int) -> void {
   # and the bed 9 m below the shore would otherwise darken a band along the water line
   gl_depth_mask(1)
   gl_disable(GL_CULL_FACE)
-  mesh_draw(water_mesh)
+  # every body is the same plane at its own level and bounds; only the mirrored one samples
+  # the reflection - another body reading it would show the wrong world upside down
+  for i in 0 .. wb_n {
+    u_f(gl_uniform(p, "u_level"), wb_level[i])
+    u_f2(gl_uniform(p, "u_center"), wb_cx[i], wb_cz[i])
+    u_f2(gl_uniform(p, "u_extent"), wb_ex[i], wb_ez[i])
+    var r = F_ZERO
+    if i == wb_primary { r = ron }
+    u_f(gl_uniform(p, "u_refl_on"), r)
+    mesh_draw(water_mesh)
+  }
   gl_disable(GL_BLEND)
 }

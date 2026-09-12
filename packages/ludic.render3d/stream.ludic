@@ -313,3 +313,16 @@ function stream_update_all() -> void {
   stream_deadline = gl_now_us() + STREAM_BUDGET_US
   for i in 0 .. len(stream_all) { stream_update(stream_all[i], cam_pos[0], cam_pos[2]) }
 }
+
+# every stream and its cached chunks, for a world being replaced (scatter_clear_all)
+function stream_clear_all() -> void {
+  if stream_all == null { return }
+  for i in 0 .. len(stream_all) {
+    let s = stream_all[i]
+    if s.chunks != null { for c in 0 .. len(s.chunks) { if s.chunks[c].data != null { free(s.chunks[c].data) } } }
+    if s.keys != null { free(s.keys) }
+    if s.htab != null { free(s.htab) }
+    if s.bands != null { free(s.bands) }
+  }
+  stream_all = null
+}

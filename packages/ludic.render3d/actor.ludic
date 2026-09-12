@@ -307,3 +307,10 @@ function actor_draw_casters(light_vp: words) -> void {
     actor_draw_one(a, ap, true)
   }
 }
+
+# every actor off the stage at once, for a world being replaced. Actors own no GL objects;
+# their models belong to whoever loaded them.
+function actor_clear_all() -> void {
+  ac_actors = new []Actor
+  outline_clear()
+}

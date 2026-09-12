@@ -1048,3 +1048,40 @@ function carpet_bake(layers: []Layer, count: int, tile: int, res: int) -> int {
   gl_check("carpet bake")
   return tex
 }
+
+# ---- another map at run time ------------------------------------------------------------
+# Every scattered layer released - its instance arrays and GL buffers, a card layer's own
+# crossed-card mesh and baked atlas - and every stream feeding them. The models a layer drew
+# belong to whoever loaded them and are kept, and so are the programs. A game rebuilding its
+# world calls this, then places the new map's layers exactly as it did at boot.
+function scatter_clear_all() -> void {
+  stream_clear_all()
+  if sc_layers == null { return }
+  let ids = gl_scratch()
+  for i in 0 .. len(sc_layers) {
+    let l = sc_layers[i]
+    if l.buf != 0 { ids[0] = l.buf;  gl_delete_buffers(1, ids) }
+    if l.imp_buf != 0 { ids[0] = l.imp_buf;  gl_delete_buffers(1, ids) }
+    if l.sh_buf != 0 { ids[0] = l.sh_buf;  gl_delete_buffers(1, ids) }
+    if l.lod_buf != null { for k in 0 .. l.n_lods { ids[0] = l.lod_buf[k];  gl_delete_buffers(1, ids) } }
+    if l.inst != null { free(l.inst) }
+    if l.scratch != null { free(l.scratch) }
+    if l.tint != null { free(l.tint) }
+    if l.last_cam != null { free(l.last_cam) }
+    if l.gstart != null { free(l.gstart) }
+    if l.gsorted != null { free(l.gsorted) }
+    if l.gymin != null { free(l.gymin) }
+    if l.gymax != null { free(l.gymax) }
+    if l.vis != null { free(l.vis) }
+    if l.lod_dist != null { free(l.lod_dist);  free(l.lod_card);  free(l.lod_buf);  free(l.n_lod) }
+    if l.lvl != null { free(l.lvl) }
+    # layer_cards built this layer's crossed card and its atlas itself
+    if l.card and l.n_lods == 0 and l.model != null { for k in 0 .. len(l.model.prims) { mesh_free(l.model.prims[k].mesh) } }
+    if l.card and l.atlas != null {
+      ids[0] = l.atlas.albedo;  gl_delete_textures(1, ids)
+      ids[0] = l.atlas.normal;  gl_delete_textures(1, ids)
+    }
+  }
+  sc_layers = new []Layer
+  sc_view_gen += 1
+}
