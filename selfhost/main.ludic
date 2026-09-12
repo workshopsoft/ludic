@@ -204,7 +204,6 @@ entry {
   # would fail on a hundred Objective-C symbols rather than say so.
   if g_target_win {
     if g_windowed { die("ludicc: a windowed build is not available on Windows yet; build with --headless\n") }
-    if g_uses_gl { die("ludicc: Gl.* is not available on Windows yet\n") }
     if g_uses_http { die("ludicc: Http.* is not available on Windows yet\n") }
   }
 
@@ -261,10 +260,18 @@ entry {
   }
   # Gl.* links the OpenGL backend: gl.ll (offscreen contexts, float helpers), the
   # generated per-entry-point ABI thunks, and OpenGL.framework. Windowed or not.
+  # On Windows the same pair is gl_win.ll (a WGL context) and gl_thunks_win.ll (the
+  # thunks through a table wglGetProcAddress fills), against opengl32/gdi32/user32.
   if g_uses_gl {
-    let gl = join_path(home, "runtime/native/gl.ll")
-    let glt = join_path(home, "runtime/native/gl_thunks.ll")
-    cmd = `{cmd} {gl} {glt} -framework OpenGL`
+    if g_target_win {
+      let glw = join_path(home, "runtime/native/gl_win.ll")
+      let gltw = join_path(home, "runtime/native/gl_thunks_win.ll")
+      cmd = `{cmd} {glw} {gltw} -luser32 -lgdi32 -lopengl32`
+    } else {
+      let gl = join_path(home, "runtime/native/gl.ll")
+      let glt = join_path(home, "runtime/native/gl_thunks.ll")
+      cmd = `{cmd} {gl} {glt} -framework OpenGL`
+    }
   }
   cmd = `{cmd} -o {out}`
 
