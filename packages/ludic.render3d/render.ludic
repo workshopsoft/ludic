@@ -26,6 +26,12 @@ var r3d_debug_max: bool = false
 var r3d_cloud_shadow: int = 0x3F000000     # 0.5
 
 var r3d_clip_y: int = 0xCF000000            # -2^31: no clipping
+# R3D_NOPREPASS=1: light the foliage the old way, every card behind the front one included
+var r3d_prepass_env: int = -1
+function r3d_prepass_off() -> bool {
+  if r3d_prepass_env < 0 { r3d_prepass_env = 0;  if Os.has_env("R3D_NOPREPASS") { r3d_prepass_env = 1 } }
+  return r3d_prepass_env == 1
+}
 function fog_bind(prog: int) -> void {
   u_f(gl_uniform(prog, "u_clip_y"), r3d_clip_y)
   u_f(gl_uniform(prog, "u_spec_scale"), F_ONE)
@@ -158,6 +164,19 @@ function r3d_frame(time: int) -> void {
   if water_on and not r3d_no_refl { prof_begin("water reflection");  water_reflection_pass();  prof_end() }
   prof_cpu_mark("reflection")
   post_begin_scene()
+  # the near tree foliage lays its depth down before anything is shaded, so the terrain
+  # under the stands and the cards behind the front ones are rejected before lighting.
+  # It has to come straight after post_begin_scene: terrain_sun_prepare binds its own
+  # target, and depth drawn after it lands in the sun buffer, not the scene's.
+  if not r3d_prepass_off() {
+    prof_begin("foliage prepass")
+    gl_color_mask(0, 0, 0, 0)
+    scatter_draw_depth()
+    gl_color_mask(1, 1, 1, 1)
+    prof_end()
+    sc_prepass = true
+  }
+  prof_cpu_mark("foliage prepass")
   prof_begin("terrain sun")
   terrain_sun_prepare()
   prof_end()
@@ -168,6 +187,7 @@ function r3d_frame(time: int) -> void {
   prof_begin("scene (vegetation)")
   scene_draw()
   prof_end()
+  sc_prepass = false
   prof_cpu_mark("vegetation")
   prof_begin("grass")
   grass_draw()

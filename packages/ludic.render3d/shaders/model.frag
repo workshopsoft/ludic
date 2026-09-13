@@ -32,7 +32,12 @@ mat3 cotangentFrame(vec3 N, vec3 p, vec2 uv) {
 }
 
 void main() {
+#ifndef EQ_PASS
+  // (the EQ_PASS variant draws over the foliage prepass: any discard at all would switch
+  //  early depth rejection off and bring the overdraw back, and the prepass has already
+  //  cut both the clip plane and the alpha)
   if (v_wpos.y < u_clip_y) discard;
+#endif
   vec3 N = normalize(v_nrm);
   if (!gl_FrontFacing && v_hull >= 0.0) N = -N;
 #ifdef CARD

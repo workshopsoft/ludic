@@ -342,6 +342,13 @@ var sc_blade_tint: words = null
 var sc_prog_shadow: int = 0
 var sc_prog_shadow_wind: int = 0
 var sc_prog_shadow_fol: int = 0     # foliage meshes: alpha-tested casters
+# The foliage depth prepass (render.ludic): the near tree LODs write depth first with a
+# shader that only runs the alpha test, then the lit pass shades them with no discard and
+# an equal depth test, so a pixel of needles is lit once rather than once for every card
+# stacked behind it. In a dense stand at 4K that overdraw was the largest pass in the frame.
+var sc_prog_fol_depth: int = 0
+var sc_prog_fol_eq: int = 0
+var sc_prepass: bool = false        # the main pass is drawing over what the prepass laid down
 var sc_imp_prog: int = 0
 var sc_imp_prog_shadow: int = 0
 var sc_bake_prog: int = 0
@@ -357,6 +364,8 @@ var sc_a2c: bool = true
 function scatter_init() -> void {
   sc_prog = r3d_program("model.vert", "model.frag", "")
   sc_prog_fol = r3d_program("model.vert", "model.frag", "#define FOLIAGE\n#define WIND\n#define ALPHA_TEST\n")
+  sc_prog_fol_depth = r3d_program("model.vert", "depth.frag", "#define FOLIAGE\n#define WIND\n#define ALPHA_TEST\n")
+  sc_prog_fol_eq = r3d_program("model.vert", "model.frag", "#define FOLIAGE\n#define WIND\n#define EQ_PASS\n")
   sc_prog_wind = r3d_program("model.vert", "model.frag", "#define WIND\n")
   sc_prog_blade = r3d_program("model.vert", "model.frag", "#define FOLIAGE\n#define WIND\n#define BLADE\n")
   sc_prog_flower = r3d_program("model.vert", "model.frag", "#define FOLIAGE\n#define WIND\n#define FLOWER\n")
@@ -770,7 +779,10 @@ function layer_program(l: Layer, shadow: bool, card: bool) -> int {
   }
   if l.blade { return sc_prog_blade }
   if l.flower { return sc_prog_flower }
-  if l.foliage { return sc_prog_fol }
+  if l.foliage {
+    if sc_prepass and sc_prog_fol_eq != 0 { return sc_prog_fol_eq }
+    return sc_prog_fol
+  }
   if l.wind != 0 { return sc_prog_wind }
   return sc_prog
 }
@@ -802,6 +814,9 @@ function layer_draw_model(l: Layer, model: Model, vb: int, cnt: int, card: bool,
   if cnt == 0 { return }
   let p = layer_program(l, shadow, card)
   gl_use_program(p)
+  # over the prepass: only the fragment the prepass kept, at exactly its depth (a texel
+  # it cut would otherwise pass LEQUAL over the terrain behind and draw the quad solid)
+  if p == sc_prog_fol_eq { gl_depth_func(GL_EQUAL) }
   var ground = F_ZERO
   if l.grounded { ground = F_ONE }
   u_f(gl_uniform(p, "u_ground"), ground)
@@ -850,6 +865,7 @@ function layer_draw_model(l: Layer, model: Model, vb: int, cnt: int, card: bool,
     mesh_draw_instanced(pr.mesh, cnt)
   }
   gl_disable(GL_SAMPLE_ALPHA_TO_COVERAGE)
+  if p == sc_prog_fol_eq { gl_depth_func(GL_LESS) }
 }
 
 function layer_draw_far(l: Layer, shadow: bool, light_vp: words) -> void {
@@ -909,6 +925,51 @@ function layer_draw_shadow(l: Layer, light_vp: words) -> void {
 var sc_skip_blade: bool = false
 var sc_skip_flower: bool = false
 var sc_skip_card: bool = false
+
+# ---- the foliage depth prepass -----------------------------------------------------------
+# Exactly the instances and positions layer_draw_model will light (the same LOD buckets,
+# the same vertex shader, the same ground and wind), into depth only.
+function layer_draw_depth(l: Layer, model: Model, vb: int, cnt: int) -> void {
+  if cnt == 0 or model == null or vb == 0 { return }
+  let p = sc_prog_fol_depth
+  gl_use_program(p)
+  var ground = F_ZERO
+  if l.grounded { ground = F_ONE }
+  u_f(gl_uniform(p, "u_ground"), ground)
+  if l.grounded { terrain_bind_height(p) }
+  u_f(gl_uniform(p, "u_time"), r3d_time)
+  u_f(gl_uniform(p, "u_wind"), l.wind)
+  u_f(gl_uniform(p, "u_model_h"), model.height)
+  u_mat4(gl_uniform(p, "u_view"), cam_view)
+  u_mat4(gl_uniform(p, "u_proj"), cam_proj)
+  u_f(gl_uniform(p, "u_clip_y"), r3d_clip_y)
+  gl_disable(GL_CULL_FACE)
+  for i in 0 .. len(model.prims) {
+    let pr = model.prims[i]
+    scatter_attach(pr.mesh.vao, vb)
+    r3d_bind_2d(p, "u_diff", 0, pr.diff)
+    mesh_draw_instanced(pr.mesh, cnt)
+  }
+}
+
+# every foliage mesh draw the lit pass will make with sc_prog_fol_eq: not blades, not
+# flowers, not card levels (those keep their own alpha and draw as before)
+function scatter_draw_depth() -> void {
+  if sc_prog_fol_depth == 0 { return }
+  for i in 0 .. len(sc_layers) {
+    let l = sc_layers[i]
+    if not l.foliage or l.blade or l.flower { continue }
+    if r3d_no_trees and l.imp != null { continue }
+    layer_update(l)
+    if l.n_lods > 1 {
+      # (a tree layer is flagged `card` for its distant level; its mesh levels still count)
+      for k in 0 .. l.n_lods { if l.lod_card[k] != 1 { layer_draw_depth(l, l.lods[k], l.lod_buf[k], l.n_lod[k]) } }
+    } else if not l.card {
+      layer_draw_depth(l, l.model, l.buf, l.n_near)
+    }
+  }
+  gl_enable(GL_CULL_FACE)
+}
 function scatter_draw() -> void {
   for i in 0 .. len(sc_layers) {
     let l = sc_layers[i]

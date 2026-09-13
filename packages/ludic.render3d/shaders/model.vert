@@ -40,6 +40,10 @@ float heightSmooth(sampler2D tex, vec2 uv) {
        + (texture(tex, vec2(o0.x, o1.y)).r * s0.x + texture(tex, vec2(o1.x, o1.y)).r * s1.x) * s1.y;
 }
 out vec3 v_wpos;
+// The foliage prepass (depth.frag) and the lit pass after it compile this same source
+// into two programs and compare depths for equality: the position must come out
+// bit-identical in both, which is what `invariant` promises.
+invariant gl_Position;
 out vec3 v_nrm;
 out vec2 v_uv;
 out float v_seed;
