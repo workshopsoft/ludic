@@ -7,6 +7,14 @@ change type. Preview the next one with `ludic dev release --dry-run`.
 A released section may carry a hand-written summary paragraph above its groups
 (v0.2.0 has one); the generated bullets below it are not edited by hand.
 
+## v0.14.1 — 2026-09-13
+
+### Fixes
+
+- **A rim from `outline_model` no longer stays on after the caller stops asking** — the queue
+  was only emptied by the next `outline_model` call, so a game that highlights what the
+  crosshair is on left the last highlighted tree outlined for good once the player looked
+  away. `r3d_frame` now drops a batch nobody reopened this frame (`outline_frame`).
 ## v0.14.0 — 2026-09-13
 
 ### Features
