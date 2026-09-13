@@ -61197,7 +61197,7 @@ ifend23:
   %t27 = icmp ne i32 %t26, 0
   br i1 %t27, label %then24, label %ifend26
 then24:
-  store i32 119, ptr %retval
+  store i32 128, ptr %retval
   br label %ret
 ifend26:
   %t28 = load ptr, ptr %t0
@@ -61205,7 +61205,7 @@ ifend26:
   %t30 = icmp ne i32 %t29, 0
   br i1 %t30, label %then27, label %ifend29
 then27:
-  store i32 115, ptr %retval
+  store i32 129, ptr %retval
   br label %ret
 ifend29:
   %t31 = load ptr, ptr %t0
@@ -61213,7 +61213,7 @@ ifend29:
   %t33 = icmp ne i32 %t32, 0
   br i1 %t33, label %then30, label %ifend32
 then30:
-  store i32 97, ptr %retval
+  store i32 130, ptr %retval
   br label %ret
 ifend32:
   %t34 = load ptr, ptr %t0
@@ -61221,7 +61221,7 @@ ifend32:
   %t36 = icmp ne i32 %t35, 0
   br i1 %t36, label %then33, label %ifend35
 then33:
-  store i32 100, ptr %retval
+  store i32 131, ptr %retval
   br label %ret
 ifend35:
   %t37 = load ptr, ptr %t0

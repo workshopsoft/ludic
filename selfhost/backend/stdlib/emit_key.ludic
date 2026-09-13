@@ -1,7 +1,12 @@
 # emit_key.ludic — `Key.Name` -> the key code the input layer delivers, folded at
 # compile time (like Color.*). Letters are the lowercase character (what the held-key
-# set stores), digits their ASCII, plus the specials. Arrow keys alias WASD because the
-# platform layer maps them that way; Escape is 27 (0.3, #88).
+# set stores), digits their ASCII, plus the specials; Escape is 27 (0.3, #88).
+#
+# The arrows are 128-131, the codes the platform stores them under in the held-key set
+# (cocoa.ll's ev_keyval). They used to fold to w/s/a/d, which is what the single
+# per-frame key (Input.key) reports for an arrow - but the held set never had those bits
+# for an arrow, so Input.key_down(Key.Up) and Input.move_i's arrow half never fired.
+# Input.key keeps its WASD alias, so a game comparing it with 'w' still takes the arrows.
 function key_lookup(name: pointer) -> int {
   if (name == "Space")     { return 32 }
   if (name == "Enter")     { return 10 }
@@ -11,10 +16,10 @@ function key_lookup(name: pointer) -> int {
   if (name == "Shift")     { return 16 }
   if (name == "Tab")       { return 9 }
   if (name == "Backspace") { return 8 }
-  if (name == "Up")        { return 119 }
-  if (name == "Down")      { return 115 }
-  if (name == "Left")      { return 97 }
-  if (name == "Right")     { return 100 }
+  if (name == "Up")        { return 128 }
+  if (name == "Down")      { return 129 }
+  if (name == "Left")      { return 130 }
+  if (name == "Right")     { return 131 }
   if (name == "Digit0") { return 48 }
   if (name == "Digit1") { return 49 }
   if (name == "Digit2") { return 50 }
