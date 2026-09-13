@@ -7,6 +7,17 @@ change type. Preview the next one with `ludic dev release --dry-run`.
 A released section may carry a hand-written summary paragraph above its groups
 (v0.2.0 has one); the generated bullets below it are not edited by hand.
 
+## v0.13.1 — 2026-09-13
+
+### Fixes
+
+- **The toolchain links on Linux again** — CI builds, tests and publishes releases.
+
+  The asset-pack boot finds the directory beside the executable with `_NSGetExecutablePath`,
+  which Darwin's libc has and glibc does not, so every Linux link of the compiler seed failed
+  from the release that added packs onward: CI's build, suite and C-free bootstrap jobs, and
+  every `publish` run, so no release after v0.7.0 carried a Linux toolchain or was created by
+  CI at all. `tools/ci/linux_stdio_shim.ll` now supplies it, over `/proc/self/exe`.
 ## v0.13.0 — 2026-09-13
 
 ### Features
