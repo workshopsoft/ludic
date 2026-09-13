@@ -75,7 +75,10 @@ function gl_link_flags(ll: pointer) -> pointer {
 # then, in both modes, as `ludicc -o` does (selfhost/main.ludic). Without it a Http.*
 # program built through `ludic build` failed to link on every hs_* symbol.
 function http_link_flags(ll: pointer) -> pointer {
-  if not shq(`grep -q "@hs_" {ll}`) { return "" }
+  # a CALL, not the name: every program's header declares the hs_* transport, so grepping
+  # for "@hs_" linked http.ll and Foundation into everything - harmless on macOS, a failed
+  # link on Linux. Only the Http runtime a program actually uses calls hs_send.
+  if not shq(`grep -q "call void @hs_send" {ll}`) { return "" }
   return ` {ludic_home()}runtime/native/http.ll -Wl,-needed_framework,Foundation`
 }
 
