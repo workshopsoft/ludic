@@ -19,7 +19,19 @@ var ov_n: int = 0
 var ov_tex: int = 0
 var ov_white: int = 0
 var ov_font: int = 0
-var ov_font_adv: words = null         # 95 float bits, em units
+var ov_font_adv: words = null         # float bits, em units, one per glyph in the atlas
+var ov_font_n: int = 0                # glyphs in the atlas
+# Text is UTF-8, and the atlas says which code points it holds. font.json's "codes" lists
+# them in atlas order; an older atlas without it is ASCII from "first" (32) on, which is
+# what every font built before this was. ov_font_map[cp] is glyph + 1 for a code point
+# under OV_MAP_N (0: not in the atlas); anything above is looked up in the sorted tail.
+const OV_MAP_N: int = 8192
+var ov_font_map: words = null
+var ov_font_hi_cp: words = null       # code points >= OV_MAP_N, ascending
+var ov_font_hi_g: words = null
+var ov_font_hi_n: int = 0
+var ov_font_space: int = 0            # the glyph for ' ', and for what has none: '?'
+var ov_font_qmark: int = 0
 var ov_font_cols: int = 16
 var ov_font_rows: int = 6
 var ov_font_cell: int = 128           # px per cell in the atlas
@@ -54,24 +66,92 @@ function overlay_init(font_dir: string) -> bool {
   ov_buf = gl_floats(OV_MAX_QUADS * 6 * OV_FLOATS)
   ov_ranges = words(OV_MAX_RANGES * OV_RANGE_W)
   ov_white = tex_solid(255, 255, 255, 255)
-  # the font
-  ov_font_adv = words(95)
-  for i in 0 .. 95 { ov_font_adv[i] = fl(0.6) }
-  ov_pad_x = fl(0.14);  ov_base_y = fl(0.30)
-  let meta = Fs.read_text(font_dir + "/font.json")
-  if meta != null {
-    let j = Json.parse(meta)
-    ov_font_cols = jint(j, "cols", 16);  ov_font_rows = jint(j, "rows", 6)
-    ov_font_cell = f_to_int(jnum(value_get(j, "cell")));  ov_font_em = f_to_int(jnum(value_get(j, "em")))
-    ov_pad_x = jnum(value_get(j, "pad_x"));  ov_base_y = jnum(value_get(j, "base_y"))
-    let adv = value_get(j, "adv")
-    for i in 0 .. 95 { if i < value_count(adv) { ov_font_adv[i] = jnum(value_at(adv, i)) } }
-    ov_font = tex_load_ex(font_dir + "/font.png", false, 0)
-  }
+  overlay_font(font_dir)
   if ov_font == 0 { print("overlay: no font atlas, text disabled") }
   ov_dbg = Os.has_env("R3D_FONTDBG")
   ov_ready = true
   return true
+}
+
+# Load (or swap to) the font atlas in `font_dir`: font.png and font.json. A game calls it
+# again to change fonts at run time - a language whose script the default atlas does not
+# carry brings its own. Returns false, and keeps the font it had, if there is none there.
+function overlay_font(font_dir: string) -> bool {
+  let meta = Fs.read_text(font_dir + "/font.json")
+  if meta == null { return false }
+  let tex = tex_load_ex(font_dir + "/font.png", false, 0)
+  if tex == 0 { return false }
+  let j = Json.parse(meta)
+  ov_font_cols = jint(j, "cols", 16);  ov_font_rows = jint(j, "rows", 6)
+  ov_font_cell = f_to_int(jnum(value_get(j, "cell")));  ov_font_em = f_to_int(jnum(value_get(j, "em")))
+  ov_pad_x = fl(0.14);  ov_base_y = fl(0.30)
+  if value_has(j, "pad_x") != 0 { ov_pad_x = jnum(value_get(j, "pad_x")) }
+  if value_has(j, "base_y") != 0 { ov_base_y = jnum(value_get(j, "base_y")) }
+  let adv = value_get(j, "adv")
+  let n = value_count(adv)
+  let first = jint(j, "first", 32)
+  var codes: Val = null
+  if value_has(j, "codes") != 0 { codes = value_get(j, "codes") }
+  ov_font_n = n
+  ov_font_adv = words(n + 1)
+  for i in 0 .. n { ov_font_adv[i] = jnum(value_at(adv, i)) }
+  ov_font_map = words(OV_MAP_N)
+  for c in 0 .. OV_MAP_N { ov_font_map[c] = 0 }
+  ov_font_hi_cp = words(n + 1);  ov_font_hi_g = words(n + 1);  ov_font_hi_n = 0
+  for i in 0 .. n {
+    var cp = first + i
+    if codes != null and i < value_count(codes) { cp = f_to_int(jnum(value_at(codes, i))) }
+    if cp >= 0 and cp < OV_MAP_N { ov_font_map[cp] = i + 1 }
+    else if cp >= OV_MAP_N {
+      # kept ascending: the builder writes code points in order, so this is an append
+      ov_font_hi_cp[ov_font_hi_n] = cp;  ov_font_hi_g[ov_font_hi_n] = i;  ov_font_hi_n += 1
+    }
+  }
+  ov_font_space = 0
+  if ov_font_map[32] > 0 { ov_font_space = ov_font_map[32] - 1 }
+  ov_font_qmark = ov_font_space
+  if ov_font_map[63] > 0 { ov_font_qmark = ov_font_map[63] - 1 }
+  ov_font = tex
+  return true
+}
+
+# The code point starting at sp[i], with the bytes it took in ov_u8_len. A malformed or
+# cut-off sequence is one byte of '?', so a string sliced mid-character still draws.
+var ov_u8_len: int = 1
+function ov_u8(sp: pointer, i: int, n: int) -> int {
+  let b0 = sp[i] & 255
+  ov_u8_len = 1
+  if b0 < 128 { return b0 }
+  if b0 >= 240 and b0 < 248 and i + 3 < n {
+    ov_u8_len = 4
+    return ((b0 & 7) << 18) | ((sp[i + 1] & 63) << 12) | ((sp[i + 2] & 63) << 6) | (sp[i + 3] & 63)
+  }
+  if b0 >= 224 and b0 < 240 and i + 2 < n {
+    ov_u8_len = 3
+    return ((b0 & 15) << 12) | ((sp[i + 1] & 63) << 6) | (sp[i + 2] & 63)
+  }
+  if b0 >= 192 and b0 < 224 and i + 1 < n {
+    ov_u8_len = 2
+    return ((b0 & 31) << 6) | (sp[i + 1] & 63)
+  }
+  return 63
+}
+# the atlas glyph for a code point: a control character is a space, a missing one is '?'
+function ov_glyph(cp: int) -> int {
+  if cp < 32 { return ov_font_space }
+  if cp < OV_MAP_N {
+    let g = ov_font_map[cp]
+    if g > 0 { return g - 1 }
+    return ov_font_qmark
+  }
+  var lo = 0
+  var hi = ov_font_hi_n - 1
+  while lo <= hi {
+    let mid = (lo + hi) / 2
+    if ov_font_hi_cp[mid] == cp { return ov_font_hi_g[mid] }
+    if ov_font_hi_cp[mid] < cp { lo = mid + 1 } else { hi = mid - 1 }
+  }
+  return ov_font_qmark
 }
 
 # start drawing onto the screen: blending on, depth off
@@ -187,13 +267,15 @@ function ov_image(tex: int, x: int, y: int, w: int, h: int, a: int) -> void {
 
 # the width in pixels of `s` at `size` pixels per em
 function ov_text_w(size: int, s: string) -> int {
+  if ov_font_adv == null { return 0 }
   var w = F_ZERO
-  let sp: pointer = s                      # bytes, not one-character strings
+  let sp: pointer = s                      # UTF-8 bytes, not one-character strings
   let n = len(sp)
-  for i in 0 .. n {
-    var c = sp[i] - 32
-    if c < 0 or c > 94 { c = 0 }
-    w = f_add(w, f_mul(ov_font_adv[c], fi(size)))
+  var i = 0
+  while i < n {
+    let g = ov_glyph(ov_u8(sp, i, n))
+    i += ov_u8_len
+    w = f_add(w, f_mul(ov_font_adv[g], fi(size)))
   }
   return f_to_int(w)
 }
@@ -209,10 +291,11 @@ function ov_text(x: int, y: int, size: int, s: string, r: int, g: int, b: int, a
   let py = f_mul(f_mul(ov_base_y, fi(ov_font_em)), k)
   let sp: pointer = s
   let n = len(sp)
-  for i in 0 .. n {
-    var c = sp[i] - 32
-    if c < 0 or c > 94 { c = 0 }
-    if c != 0 {
+  var i = 0
+  while i < n {
+    let c = ov_glyph(ov_u8(sp, i, n))
+    i += ov_u8_len
+    if c != ov_font_space {
       let cx = c - (c / ov_font_cols) * ov_font_cols
       let cy = c / ov_font_cols
       let u0 = fr(cx, ov_font_cols);  let u1 = fr(cx + 1, ov_font_cols)
