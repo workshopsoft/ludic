@@ -203,9 +203,6 @@ entry {
   if emit_ir { ir_flush(out);  return }
   if not has_target { ir_flush(null);  return }
 
-  # Http.* is still a macOS platform layer (NSURLConnection) with no Windows
-  # counterpart; linking it would fail on Objective-C symbols rather than say so.
-  if g_target_win and g_uses_http { die("ludicc: Http.* is not available on Windows yet\n") }
 
   # a run with no explicit -o lands in a temp file
   if run and (out == null) {
@@ -243,7 +240,8 @@ entry {
       let win32 = join_path(home, "runtime/native/win32.ll")
       # xinput.lib carries an import named DllMain, which lld skips with a warning on every
       # link; it is the SDK's, not a mistake in the program, so it is silenced
-      cmd = `{cmd} {win32} -luser32 -lgdi32 -lxinput -Wl,/ignore:importeddllmain`
+      # ole32 for WIC, which decodes the splash and the window icon
+      cmd = `{cmd} {win32} -luser32 -lgdi32 -lxinput -lole32 -Wl,/ignore:importeddllmain`
       if g_uses_audio {
         let audiow = join_path(home, "runtime/native/audio_win.ll")
         cmd = `{cmd} {audiow} -lxaudio2 -lole32`
@@ -268,9 +266,15 @@ entry {
   # Http.* (#6) links the native transport and Foundation (NSURLConnection etc.,
   # reached by name). Works headless too, so it is outside the windowed block —
   # macOS-only for now, which is where the toolchain runs.
+  # On Windows the transport is http_win.ll, over WinHTTP.
   if g_uses_http {
-    let http = join_path(home, "runtime/native/http.ll")
-    cmd = `{cmd} {http} -Wl,-needed_framework,Foundation`
+    if g_target_win {
+      let httpw = join_path(home, "runtime/native/http_win.ll")
+      cmd = `{cmd} {httpw} -lwinhttp`
+    } else {
+      let http = join_path(home, "runtime/native/http.ll")
+      cmd = `{cmd} {http} -Wl,-needed_framework,Foundation`
+    }
   }
   # Gl.* links the OpenGL backend: gl.ll (offscreen contexts, float helpers), the
   # generated per-entry-point ABI thunks, and OpenGL.framework. Windowed or not.
