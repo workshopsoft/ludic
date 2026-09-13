@@ -230,6 +230,11 @@ function outline_model(m: Model, mat: words, width: int, r: int, g: int, b: int)
   ac_oq_n += 1
 }
 function outline_clear() -> void { ac_oq_n = 0;  ac_oq_closed = true }
+# Called at the top of every frame. A batch the last frame closed and nobody has reopened
+# since is stale: the caller stopped asking. Without this it was drawn for ever - flush
+# closes a batch but only the NEXT outline_model call empties it, so looking away from a
+# highlighted tree left its rim on until something else was highlighted.
+function outline_frame() -> void { if ac_oq_closed { ac_oq_n = 0 } }
 
 function actor_draw() -> void {
   if ac_actors == null { return }

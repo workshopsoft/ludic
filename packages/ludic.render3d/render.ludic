@@ -124,6 +124,7 @@ function r3d_resize() -> void {
   print(`r3d: resized to {gl_w}x{gl_h}`)
 }
 function r3d_frame(time: int) -> void {
+  outline_frame()
   if not r3d_ready { return }
   if gl_resize_check() { r3d_resize() }
   # R3D_RESIZE_AT=<frame>: rebuild every screen-sized buffer mid-run, as a window resize
