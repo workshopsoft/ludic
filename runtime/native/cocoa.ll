@@ -346,6 +346,7 @@ entry:
     i32 49,  label %vspace
     i32 36,  label %vret
     i32 53,  label %vesc
+    i32 51,  label %vbksp
   ]
 vw:     ret i32 128
 vs:     ret i32 129
@@ -354,6 +355,9 @@ vd:     ret i32 131
 vspace: ret i32 32
 vret:   ret i32 10
 vesc:   ret i32 27
+; kVK_Delete (51), the key marked delete or backspace: AppKit reports its character as
+; NSDeleteCharacter (127), and Key.Backspace is 8
+vbksp:  ret i32 8
 chars:
   %sel_ch = call ptr @sel_registerName(ptr @.s_chars)
   %sel_len = call ptr @sel_registerName(ptr @.s_length)
@@ -493,6 +497,7 @@ key:
     i32 49,  label %k_space
     i32 36,  label %k_ret
     i32 53,  label %k_esc
+    i32 51,  label %k_bksp
   ]
 k_w:     store i32 119, ptr @W_key  br label %forward
 k_s:     store i32 115, ptr @W_key  br label %forward
@@ -500,6 +505,7 @@ k_a:     store i32 97,  ptr @W_key  br label %forward
 k_d:     store i32 100, ptr @W_key  br label %forward
 k_space: store i32 32,  ptr @W_key  br label %forward
 k_ret:   store i32 10,  ptr @W_key  br label %forward
+k_bksp:  store i32 8,   ptr @W_key  br label %forward
 k_esc:
   ; Escape is delivered as key 27 and left to the game (pause menus etc.).
   ; It used to force-quit the window, which a shipped game cannot tolerate.
