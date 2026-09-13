@@ -7,6 +7,16 @@ change type. Preview the next one with `ludic dev release --dry-run`.
 A released section may carry a hand-written summary paragraph above its groups
 (v0.2.0 has one); the generated bullets below it are not edited by hand.
 
+## v0.13.2 — 2026-09-13
+
+### Fixes
+
+- **`ludic build` links `http.ll` only into a program that uses `Http.*`.**
+
+  The check that added it grepped the IR for `@hs_`, which every program's header declares,
+  so the HTTP transport and Foundation were linked into everything. That cost nothing visible
+  on macOS and failed the link on Linux, where `ludic build`, `ludic run` and a new project all
+  broke in CI. It now looks for a call to `hs_send`.
 ## v0.13.1 — 2026-09-13
 
 ### Fixes
