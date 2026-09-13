@@ -68,11 +68,11 @@ function install_layout_case() -> void {
   let root = capture_line("pwd")
   let home = `{tmp_dir()}/install`
   let lbl = "an installed layout (bin/ + runtime/ + packages/, found on PATH) builds a new project"
-  run(`rm -rf {home} && mkdir -p {home}/bin`)
-  run(`cp bin/ludic bin/ludicc bin/ludic-fmt {home}/bin/`)
-  run(`cp -R runtime {home}/runtime && cp -R packages {home}/packages && cp VERSION {home}/VERSION`)
+  shell(`rm -rf {home} && mkdir -p {home}/bin`)
+  shell(`cp bin/ludic bin/ludicc bin/ludic-fmt {home}/bin/`)
+  shell(`cp -R runtime {home}/runtime && cp -R packages {home}/packages && cp VERSION {home}/VERSION`)
   let work = `{tmp_dir()}/installwork`
-  run(`rm -rf {work} && mkdir -p {work}`)
+  shell(`rm -rf {work} && mkdir -p {work}`)
   # PATH only — no LUDIC_HOME, and the current directory has no bin/ of its own.
   let envp = `env -u LUDIC_HOME PATH={home}/bin:/usr/bin:/bin:/usr/sbin:/sbin`
   if not shq(`cd {work} && {envp} ludic new demo > {work}/new.out 2>&1`) {
@@ -116,7 +116,7 @@ function pack_roundtrip_case() -> void {
   let lbl = "ludic pack -> a game reads its assets with none of them on disk"
   let work = `{tmp_dir()}/packrt`
   let root = capture_line("pwd")
-  run(`rm -rf {work} && mkdir -p {work}/assets/sub {work}/ship`)
+  shell(`rm -rf {work} && mkdir -p {work}/assets/sub {work}/ship`)
   write_file(`{work}/assets/a.txt`, "alpha")
   write_file(`{work}/assets/sub/b.txt`, "beta")
   write_file(`{work}/game.ludic`, pack_probe_src())
@@ -133,7 +133,7 @@ function pack_roundtrip_case() -> void {
   write_file(`{work}/ship/packs.index`, "pack game.lpak" + nl())
 
   # the assets exist only inside the pack from here on
-  run(`rm -rf {work}/assets`)
+  shell(`rm -rf {work}/assets`)
   # run from somewhere with no relation to the project at all
   let got = s_trim(capture(`cd / && {work}/ship/probe 2>&1`))
   if got != "alpha|beta|1|5|0" {
@@ -167,9 +167,9 @@ function app_icon_case() -> void {
   if not is_darwin() { skip(lbl);  return }
   let work = `{tmp_dir()}/appicon`
   let root = capture_line("pwd")
-  run(`rm -rf {work} && mkdir -p {work}`)
+  shell(`rm -rf {work} && mkdir -p {work}`)
   # a real PNG to set, made the same way the bundle test makes its icon
-  run(`sips -s format png --resampleHeightWidth 64 64 /System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/GenericApplicationIcon.icns --out {work}/icon.png > /dev/null 2>&1`)
+  shell(`sips -s format png --resampleHeightWidth 64 64 /System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/GenericApplicationIcon.icns --out {work}/icon.png > /dev/null 2>&1`)
   var src = "program IconSet {" + nl()
   src = src + "  entry {" + nl()
   src = src + "    App.set_icon(\"icon.png\")" + nl()
@@ -206,7 +206,7 @@ function os_dirs_case() -> void {
   let lbl = "Os.save_dir / config_dir / cache_dir follow the platform's own convention"
   let work = `{tmp_dir()}/osdirs`
   let root = capture_line("pwd")
-  run(`rm -rf {work} && mkdir -p {work}`)
+  shell(`rm -rf {work} && mkdir -p {work}`)
   var src = "program OsDirs {" + nl()
   src = src + "  entry {" + nl()
   src = src + "    print(`{Os.save_dir(\"App X\")}|{Os.config_dir(\"App X\")}|{Os.cache_dir(\"App X\")}`)" + nl()
@@ -249,8 +249,8 @@ function packignore_case() -> void {
   let lbl = "ludic pack -> .packignore excludes, with gitignore's rules"
   let work = `{tmp_dir()}/packign`
   let root = capture_line("pwd")
-  run(`rm -rf {work}`)
-  run(`mkdir -p {work}/assets/kit/preview {work}/assets/deep/a/tmp {work}/assets/scratch {work}/assets/sub/scratch {work}/assets/keep`)
+  shell(`rm -rf {work}`)
+  shell(`mkdir -p {work}/assets/kit/preview {work}/assets/deep/a/tmp {work}/assets/scratch {work}/assets/sub/scratch {work}/assets/keep`)
   write_file(`{work}/assets/kit/preview/x.png`, "x")      # preview/   - a directory, any depth
   write_file(`{work}/assets/kit/model.blend`, "x")        # *.blend    - a name, any depth
   write_file(`{work}/assets/kit/hiker.png`, "x")          # kept
@@ -311,10 +311,10 @@ function bundle_case() -> void {
   if not is_darwin() { skip(lbl);  return }
   let work = `{tmp_dir()}/bundle`
   let root = capture_line("pwd")
-  run(`rm -rf {work} && mkdir -p {work}/src {work}/assets`)
+  shell(`rm -rf {work} && mkdir -p {work}/src {work}/assets`)
   write_file(`{work}/assets/hello.txt`, "packed")
   # a 64x64 source icon: small, but sips will scale it and iconutil accept it
-  run(`sips -s format png --resampleHeightWidth 64 64 /System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/GenericApplicationIcon.icns --out {work}/assets/icon.png > /dev/null 2>&1`)
+  shell(`sips -s format png --resampleHeightWidth 64 64 /System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/GenericApplicationIcon.icns --out {work}/assets/icon.png > /dev/null 2>&1`)
   write_file(`{work}/package.ludic`, bundle_manifest_src())
   write_file(`{work}/src/main.ludic`, bundle_probe_src())
 
@@ -371,7 +371,7 @@ function bundle_probe_src() -> pointer {
 function scaffold_names_case() -> void {
   let lbl = "ludic new scaffolds a project that compiles (hyphens, digits, dots)"
   let work = `{tmp_dir()}/scaffold`
-  run(`rm -rf {work} && mkdir -p {work}`)
+  shell(`rm -rf {work} && mkdir -p {work}`)
   let root = capture_line("pwd")
   let names = new []pointer
   push(names, "my-game")
@@ -482,7 +482,7 @@ function cov_one(path: pointer, dir: pointer) -> int {
   if not shq(`{cc()} -O2 {ll} -o {bin} 2>{tmp_dir()}/cov.err`) {
     bad2(path, capture_line(`tail -1 {tmp_dir()}/cov.err`)); return 1
   }
-  run(`rm -f {ll}`)
+  shell(`rm -f {ll}`)
   # run the spec; its atexit hook writes the dump to $LUDIC_COVERAGE
   if not shq(`LUDIC_COVERAGE={cov} {bin} > /dev/null 2>&1`) {
     bad2(path, "spec exited non-zero"); return 1
@@ -511,7 +511,7 @@ var COV_TOTAL: int = 0
 function cmd_test_coverage() -> int {
   # the suite normally rebuilds bin/ludicc from the seed; do the same here so the
   # instrumentation path is exactly what a clean checkout ships.
-  run(`mkdir -p bin build {tmp_dir()}/cov_out`)
+  shell(`mkdir -p bin build {tmp_dir()}/cov_out`)
   if (not is_exec("bin/ludicc")) or newer("selfhost/ludicc.seed.ll", "bin/ludicc") {
     if not shq(`{cc()} selfhost/ludicc.seed.ll -o bin/ludicc`) { err("ludic-dev: cannot build bin/ludicc from the seed\n"); return 1 }
   }
@@ -539,7 +539,7 @@ function cmd_dev_test() -> int {
   ok(`the only C in the tree is any editor tooling ({cleft} .c files)`)
 
   print("== the compiler builds from the IR seed (no C compiler) ==")
-  run("rm -f bin/ludicc")
+  shell("rm -f bin/ludicc")
   if shq("bin/ludic build examples/games/snake.ludic --headless >/dev/null 2>&1") and is_exec("bin/ludicc") {
     ok("clang selfhost/ludicc.seed.ll -> bin/ludicc")
   } else { bad("compiler did not build from the seed") }
@@ -550,7 +550,7 @@ function cmd_dev_test() -> int {
   game_case("games/chronorift", "ddddwwwwaassK")
 
   print("== self-hosting and the bootstrap fixpoints ==")
-  run(`bin/ludic-dev selfhost-test > {tmp_dir()}/sh.out 2>&1`)
+  shell(`bin/ludic-dev selfhost-test > {tmp_dir()}/sh.out 2>&1`)
   if shq(`grep -q 'gen2.ll == gen3.ll' {tmp_dir()}/sh.out`) { ok("the compiler reproduces itself (fixpoint)") } else { bad("fixpoint") }
   if shq(`grep -q 'no C compiler' {tmp_dir()}/sh.out`) { ok("the compiler rebuilds itself from the seed, C-free") } else { bad("C-free bootstrap") }
   let corr = capture_line(`grep -c PASS {tmp_dir()}/sh.out`)
@@ -770,7 +770,7 @@ function cmd_dev_test() -> int {
   # stands up throwaway git repos, so like selfhost-test it runs as a sub-process
   # and this stage checks its footer).
   print("== package manager (ludic-dev test-pkg) ==")
-  run(`bin/ludic-dev test-pkg > {tmp_dir()}/pkg.out 2>&1`)
+  shell(`bin/ludic-dev test-pkg > {tmp_dir()}/pkg.out 2>&1`)
   if shq(`grep -q '0 failed' {tmp_dir()}/pkg.out`) {
     let pc = capture_line(`grep -c PASS {tmp_dir()}/pkg.out`)
     ok(`package-manager suite: {pc} checks passed (see: ludic-dev test-pkg)`)

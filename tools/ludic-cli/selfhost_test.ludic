@@ -23,8 +23,8 @@ function sh_case(name: pointer, exp: pointer) -> void {
 function game_case(path: pointer, keys: pointer) -> void {
   let nm = flat(path)
   if not game_build_ok("bin/ludicc", `examples/{path}.ludic`, `{tmp_dir()}/g_{nm}`) { bad(`{path}: build`); return }
-  run("mkdir -p build")
-  run(`printf '%s' '{keys}' | {tmp_dir()}/g_{nm} >/dev/null 2>&1`)
+  shell("mkdir -p build")
+  shell(`printf '%s' '{keys}' | {tmp_dir()}/g_{nm} >/dev/null 2>&1`)
   # The build + headless run above guard against a compile or runtime break on
   # every host. The pixel-exact golden comparison, though, is against a render
   # blessed on macOS; text rasterization differs by a hair on other hosts, so
@@ -44,8 +44,8 @@ function bless_render(path: pointer, keys: pointer) -> pointer {
   if not game_build_ok("bin/ludicc", `examples/{path}.ludic`, `{tmp_dir()}/bg_{nm}`) {
     err(`golden: {path} failed to build\n`); return ""
   }
-  run("mkdir -p build")
-  run(`printf '%s' '{keys}' | {tmp_dir()}/bg_{nm} >/dev/null 2>&1`)
+  shell("mkdir -p build")
+  shell(`printf '%s' '{keys}' | {tmp_dir()}/bg_{nm} >/dev/null 2>&1`)
   let h = capture_line("shasum -a 256 build/out.ppm | cut -d' ' -f1")
   return `{path} {h}\n`
 }

@@ -10,10 +10,12 @@
 # IR seed with clang alone — no C compiler is ever involved.
 function ensure_ludicc() -> void {
   if not in_toolchain_repo() { return }
-  run("mkdir -p bin build")
-  if (not is_exec("bin/ludicc")) or newer("selfhost/ludicc.seed.ll", "bin/ludicc") {
-    print("cc: selfhost/ludicc.seed.ll -> bin/ludicc  (from the IR seed, no C compiler)")
-    if not shq(`{cc()} selfhost/ludicc.seed.ll -o bin/ludicc`) {
+  shell("mkdir -p bin build")
+  let seed = seed_file()
+  let bin = `bin/{exe_name("ludicc")}`
+  if (not is_exec(bin)) or newer(seed, bin) {
+    print(`cc: {seed} -> {bin}  (from the IR seed, no C compiler)`)
+    if not shq(`{cc()} {seed} -o {bin}`) {
       err("ludic: could not assemble the seed\n"); exit(1)
     }
   }
@@ -30,14 +32,24 @@ function compile_app(src: pointer, out: pointer, mode: int, save: bool) -> bool 
   let home = ludic_home()
   let pbf = prebuilt_link_flags()          # #64: link resolved prebuilt module dylibs, if any
   let odir = dir_of_path(out)
-  if len(odir) > 0 { run(`mkdir -p {odir}`) }
-  run("mkdir -p build")
+  if len(odir) > 0 { shell(`mkdir -p {odir}`) }
+  shell("mkdir -p build")
   let ll = `{out}.ll`
+
+  # On Windows the compiler links too: ludicc knows the Windows runtime's files and
+  # libraries (win32.ll, xaudio2, opengl32 ...), so saying them again here would be a
+  # second copy to keep in step. It writes {out}.exe.
+  if host_windows() {
+    var flags = "--windowed"
+    if mode == 2 { flags = "--headless" }
+    if save { flags = flags + " --save-temps" }
+    return shq(`{ludicc()} {flags} {src} -o {out}`)
+  }
 
   if mode == 2 {
     if not shq(`{ludicc()} --headless {src} --emit-llvm -o {ll}`) { return false }
     if not shq(`{cc()} -O2 {ll}{gl_link_flags(ll)}{pbf} -o {out}`) { return false }
-    if not save { run(`rm -f {ll}`) }
+    if not save { shell(`rm -f {ll}`) }
     return true
   }
 
@@ -47,7 +59,7 @@ function compile_app(src: pointer, out: pointer, mode: int, save: bool) -> bool 
   let cocoa = `{home}runtime/native/cocoa.ll`
   let audio = `{home}runtime/native/audio.ll`
   if not shq(`{cc()} -O2 {ll} {cocoa} {audio} -framework Cocoa -Wl,-needed_framework,GameController -Wl,-needed_framework,AVFoundation -Wl,-rpath,@loader_path{gl_link_flags(ll)}{pbf} -o {out}`) { return false }
-  if not save { run(`rm -f {ll}`) }
+  if not save { shell(`rm -f {ll}`) }
   return true
 }
 
@@ -75,8 +87,8 @@ function dir_of_path(p: pointer) -> pointer {
 # bin/ are kept so the running CLI survives; in the toolchain repo, rebuild them
 # any time with `ludic-dev build`.
 function cmd_clean() -> int {
-  run("rm -rf build")
-  run("rm -f out.ppm bin/*.tmp")
+  shell("rm -rf build")
+  shell("rm -f out.ppm bin/*.tmp")
   print("cleaned: build/ (incl. build/out.ppm) and stray artifacts  (bin/ is left alone)")
   return 0
 }

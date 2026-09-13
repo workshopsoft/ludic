@@ -9,7 +9,7 @@
 # refresh one editor-copy of a shared grammar file if it has drifted
 function sync_one(shared: pointer, dst: pointer) -> void {
   if not shq(`cmp -s {shared} {dst}`) {
-    run(`cp {shared} {dst}`)
+    shell(`cp {shared} {dst}`)
     print(`sync: {shared} -> {dst}`)
   }
 }
@@ -18,7 +18,7 @@ function sync_one(shared: pointer, dst: pointer) -> void {
 # copy that build refreshes rather than trusts (test-tools asserts they match).
 function sync_vscode_grammar() -> void {
   if not shq("test -d tools/editors/vscode") { return }
-  run("mkdir -p tools/editors/vscode/syntaxes")
+  shell("mkdir -p tools/editors/vscode/syntaxes")
   sync_one("tools/editors/shared/ludic.tmLanguage.json", "tools/editors/vscode/syntaxes/ludic.tmLanguage.json")
   sync_one("tools/editors/shared/ludic.markdown-injection.json", "tools/editors/vscode/syntaxes/ludic.markdown-injection.json")
   sync_one("tools/editors/shared/language-configuration.json", "tools/editors/vscode/language-configuration.json")
@@ -42,9 +42,9 @@ function cmd_tools() -> int {
   sync_vscode_grammar()
 
   if has_flag("--install") {
-    run("mkdir -p \"$HOME/.local/bin\"")
-    run("ln -sf \"$PWD/bin/ludic-fmt\" \"$HOME/.local/bin/ludic-fmt\"")
-    run("ln -sf \"$PWD/bin/ludic-lsp\" \"$HOME/.local/bin/ludic-lsp\"")
+    shell("mkdir -p \"$HOME/.local/bin\"")
+    shell("ln -sf \"$PWD/bin/ludic-fmt\" \"$HOME/.local/bin/ludic-fmt\"")
+    shell("ln -sf \"$PWD/bin/ludic-lsp\" \"$HOME/.local/bin/ludic-lsp\"")
     print("linked into ~/.local/bin (make sure it is on your PATH)")
   }
   if has_flag("--test") { return cmd_test_tools() }
@@ -97,7 +97,7 @@ function cmd_test_tools() -> int {
 
   # --- messy input is normalised ---------------------------------------------
   write_file(`{tmp_dir()}/m.ludic`, "program M{\nproperty P{x:int=0}\nhandler S phase Update{let a=1+2\nif a== -1 {a=-a}}\n}\n")
-  run(`{fmt} {tmp_dir()}/m.ludic > {tmp_dir()}/m.out 2>/dev/null`)
+  shell(`{fmt} {tmp_dir()}/m.ludic > {tmp_dir()}/m.out 2>/dev/null`)
   if shq(`grep -q '^  property P {{ x: int = 0 }}$' {tmp_dir()}/m.out`) { ok("reindents and respaces") } else { bad("reindents and respaces") }
   if shq(`grep -q 'a = -a' {tmp_dir()}/m.out`) { ok("unary minus not spaced") } else { bad("unary minus not spaced") }
 
@@ -112,13 +112,13 @@ function cmd_test_tools() -> int {
   # --- --check exit status, for CI and pre-commit hooks ----------------------
   let chk1 = sh(`{fmt} --check -q {tmp_dir()}/m.ludic`)
   check("--check exits 1 on unformatted input", string(chk1), "1")
-  run(`{fmt} -w {tmp_dir()}/m.ludic`)
+  shell(`{fmt} -w {tmp_dir()}/m.ludic`)
   let chk2 = sh(`{fmt} --check -q {tmp_dir()}/m.ludic`)
   check("--check exits 0 after -w", string(chk2), "0")
 
   # --- markdown: fences formatted, prose untouched ---------------------------
   write_file(`{tmp_dir()}/d.md`, "# T\n\nprose  with   spaces\n\n```ludic\nprogram D{property P{x:int=0}}\n```\n\n```python\nz  =  1\n```\n")
-  run(`{fmt} {tmp_dir()}/d.md > {tmp_dir()}/d.out 2>/dev/null`)
+  shell(`{fmt} {tmp_dir()}/d.md > {tmp_dir()}/d.out 2>/dev/null`)
   if shq(`grep -q 'prose  with   spaces' {tmp_dir()}/d.out`) { ok("markdown prose untouched") } else { bad("markdown prose untouched") }
   if shq(`grep -q 'z  =  1' {tmp_dir()}/d.out`) { ok("non-ludic fences untouched") } else { bad("non-ludic fences untouched") }
   if shq(`grep -q 'program D {{ property P {{ x: int = 0 }} }}' {tmp_dir()}/d.out`) { ok("ludic fences formatted") } else { bad("ludic fences formatted") }

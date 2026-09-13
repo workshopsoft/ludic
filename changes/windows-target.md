@@ -26,6 +26,14 @@ type: feat
   clip, loops, volume, rate and a balance pan through the output matrix, RIFF WAVE in PCM or
   float. It reads a clip through the asset pack, so a bundled game's first `Audio.load`
   succeeds - AVAudioPlayer takes a filesystem path, which is why macOS cannot.
+- **The CLI on Windows** — `ludic build`, `ludic run` and `ludic-dev build` work from a Windows
+  checkout. Every shell command the CLI issues runs through Git for Windows' bash
+  (`$LUDIC_BASH` names another), `compile_app` links through `ludicc -o`, and a checkout
+  bootstraps from the new `selfhost/ludicc.win.seed.ll`, which `ludic-dev reseed` now
+  writes beside the macOS seed.
+- **`ludic bundle` on Windows** — `build/<name>/` holding a GUI-subsystem `<name>.exe`, the
+  `game.lpak` and `packs.index`; an `.ico` beside `app icon` is compiled with `llvm-rc` and
+  linked in. `ludicc` gains `--gui` (no console behind the window) and `--link <file>`.
 - **Not yet** — the splash and `App.set_icon` do nothing, and `Http.*` is still a macOS
   platform layer; a Windows build that uses it stops with a message saying so.
 - **`Gl.*` on Windows** — `gl_win.ll` makes a WGL 4.1 core context on a hidden window's DC,

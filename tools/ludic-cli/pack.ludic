@@ -247,7 +247,7 @@ function pack_write(out_path: pointer, l: PackList) -> bool {
     i += 1
   }
 
-  run(`mkdir -p "$(dirname {out_path})"`)
+  shell(`mkdir -p "$(dirname {out_path})"`)
   let f = file_open(out_path, "wb")
   if f == null { err(`ludic pack: cannot write {out_path}\n`);  return false }
 

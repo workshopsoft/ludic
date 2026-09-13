@@ -5,10 +5,14 @@
 # tools — every binary the toolchain builds of itself.
 function build_tool(name: pointer, src: pointer) -> bool {
   let ll = `build/{name}.ll`
-  if not shq(`bin/ludicc {src} --emit-llvm -o {ll} 2>/dev/null`) { print(`build failed: {name} (compile)`); return false }
+  let out = `bin/{exe_name(name)}`
+  if not shq(`bin/{exe_name("ludicc")} {src} --emit-llvm -o {ll} 2>/dev/null`) { print(`build failed: {name} (compile)`); return false }
   # write to a temp then move, so a running bin/ludic can rebuild itself in place
-  if not shq(`{cc()} -O2 {ll} -o bin/{name}.tmp`) { print(`build failed: {name} (link)`); return false }
-  run(`mv -f bin/{name}.tmp bin/{name} && rm -f {ll}`)
+  # (Windows lets a running executable be renamed, never replaced, so the old one
+  # steps aside first)
+  if not shq(`{cc()} -O2 {ll} -o {out}.tmp`) { print(`build failed: {name} (link)`); return false }
+  if host_windows() { shell(`rm -f {out}.old; mv -f {out} {out}.old 2>/dev/null; mv -f {out}.tmp {out} && rm -f {ll} {out}.old 2>/dev/null`) }
+  else { shell(`mv -f {out}.tmp {out} && rm -f {ll}`) }
   return true
 }
 
@@ -17,11 +21,13 @@ function build_tool(name: pointer, src: pointer) -> bool {
 # with clang alone; invoked as `ludic` it compiles-and-runs, as `ludicc` it just
 # compiles.
 function cmd_dev_build_cli() -> int {
-  run("mkdir -p bin build")
-  print("cc: selfhost/ludicc.seed.ll -> bin/ludicc  (from the IR seed, no C compiler)")
-  if not shq(`{cc()} selfhost/ludicc.seed.ll -o bin/ludicc`) { err("ludic: the seed did not assemble\n"); return 1 }
-  run("chmod +x bin/ludicc")
-  print("done. built bin/ludicc")
+  shell("mkdir -p bin build")
+  let seed = seed_file()
+  let bin = `bin/{exe_name("ludicc")}`
+  print(`cc: {seed} -> {bin}  (from the IR seed, no C compiler)`)
+  if not shq(`{cc()} {seed} -o {bin}`) { err("ludic: the seed did not assemble\n"); return 1 }
+  shell(`chmod +x {bin}`)
+  print(`done. built {bin}`)
   return 0
 }
 

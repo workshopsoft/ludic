@@ -240,17 +240,17 @@ function cmd_changelog_render() -> int {
 # release section (or at the end of the header if this is the first release).
 function prepend_changelog() -> void {
   if not file_exists("CHANGELOG.md") {
-    run("printf '# Changelog\n\nAll notable changes to the Ludic toolchain, newest first. Generated from the\nchangesets under changes/ by ludic-dev release; do not edit released sections by hand.\n\n' > CHANGELOG.md")
+    shell("printf '# Changelog\n\nAll notable changes to the Ludic toolchain, newest first. Generated from the\nchangesets under changes/ by ludic-dev release; do not edit released sections by hand.\n\n' > CHANGELOG.md")
   }
   let ln = capture_line("grep -n '^## ' CHANGELOG.md | head -1 | cut -d: -f1")
   if (ln == "") {
-    run(`cat CHANGELOG.md {tmp_dir()}/rel_section.md > {tmp_dir()}/rel_new.md`)
+    shell(`cat CHANGELOG.md {tmp_dir()}/rel_section.md > {tmp_dir()}/rel_new.md`)
   } else {
-    run(`head -n $(expr {ln} - 1) CHANGELOG.md > {tmp_dir()}/rel_new.md`)
-    run(`cat {tmp_dir()}/rel_section.md >> {tmp_dir()}/rel_new.md`)
-    run(`tail -n +{ln} CHANGELOG.md >> {tmp_dir()}/rel_new.md`)
+    shell(`head -n $(expr {ln} - 1) CHANGELOG.md > {tmp_dir()}/rel_new.md`)
+    shell(`cat {tmp_dir()}/rel_section.md >> {tmp_dir()}/rel_new.md`)
+    shell(`tail -n +{ln} CHANGELOG.md >> {tmp_dir()}/rel_new.md`)
   }
-  run(`cp {tmp_dir()}/rel_new.md CHANGELOG.md`)
+  shell(`cp {tmp_dir()}/rel_new.md CHANGELOG.md`)
 }
 
 # ---- release artifacts + publishing -----------------------------------------
@@ -313,7 +313,7 @@ function sha256_cmd() -> pointer {
 #
 #   shasum -a 256 -c ludic-X.Y.Z-src.tar.gz.sha256
 function build_artifacts(ver: pointer) -> bool {
-  run("rm -rf dist && mkdir -p dist")
+  shell("rm -rf dist && mkdir -p dist")
   if not shq(`git archive --format=tar.gz --prefix=ludic-{ver}/ -o dist/ludic-{ver}-src.tar.gz v{ver}`) {
     err(`release: git archive of v{ver} failed (is the tag present?)\n`)
     return false
@@ -323,28 +323,28 @@ function build_artifacts(ver: pointer) -> bool {
     let arch = capture_line("uname -m")
     let name = `ludic-{ver}-{plat}-{arch}`
     let stage = `{tmp_dir()}/{name}`
-    run(`rm -rf {stage} && mkdir -p {stage}/bin`)
+    shell(`rm -rf {stage} && mkdir -p {stage}/bin`)
     if not shq(`cp bin/ludic bin/ludicc bin/ludic-fmt bin/ludic-lsp {stage}/bin/`) {
       err("release: the toolchain is not built (run: ludic-dev build)\n")
       return false
     }
-    run(`cp -R runtime {stage}/runtime`)
-    run(`cp -R packages {stage}/packages`)
-    run(`cp VERSION LICENSE README.md {stage}/`)
+    shell(`cp -R runtime {stage}/runtime`)
+    shell(`cp -R packages {stage}/packages`)
+    shell(`cp VERSION LICENSE README.md {stage}/`)
     # the Linux link needs the Darwin-stdio shim injected through $LUDIC_CC; it
     # travels with the toolchain that needs it (see tools/ci/linux_stdio_shim.ll).
-    if plat == "linux" { run(`mkdir -p {stage}/lib && cp tools/ci/linux_stdio_shim.ll {stage}/lib/`) }
+    if plat == "linux" { shell(`mkdir -p {stage}/lib && cp tools/ci/linux_stdio_shim.ll {stage}/lib/`) }
     if not shq(`tar -czf dist/{name}.tar.gz -C {tmp_dir()} {name}`) {
       err("release: building the toolchain tarball failed\n")
       return false
     }
-    run(`rm -rf {stage}`)
+    shell(`rm -rf {stage}`)
   }
   if not shq(`cd dist && for f in *.tar.gz; do {sha256_cmd()} "$f" > "$f.sha256" || exit 1; done`) {
     err("release: writing the per-artifact .sha256 files failed\n")
     return false
   }
-  run("ls -l dist")
+  shell("ls -l dist")
   return true
 }
 
@@ -424,7 +424,7 @@ function cmd_release() -> int {
   }
   prepend_changelog()
   if not write_file("VERSION", `{ver}\n`) { err("release: cannot write VERSION\n"); return 1 }
-  run("rm -f $(ls changes/*.md | grep -v '/README.md')")
+  shell("rm -f $(ls changes/*.md | grep -v '/README.md')")
 
   # stage only the release artifacts — never a blanket `git add -A`, which would
   # sweep unrelated in-flight edits (this tree is worked on concurrently).

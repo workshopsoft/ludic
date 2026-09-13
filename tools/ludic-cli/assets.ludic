@@ -58,10 +58,10 @@ function cmd_fetch_assets() -> int {
       continue
     }
     print(`fetch {rel}`)
-    run(`mkdir -p "$(dirname {dest})"`)
+    shell(`mkdir -p "$(dirname {dest})"`)
     if not shq(`curl -sSL --retry 3 -o {dest} {url}`) {
       err(`fetch-assets: cannot fetch {rel}\n`)
-      run(`rm -f {dest}`)
+      shell(`rm -f {dest}`)
       failed += 1
     } else {
       got += 1

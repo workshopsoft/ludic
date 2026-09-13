@@ -132,7 +132,7 @@ function build_icon(src: pointer, out_icns: pointer) -> bool {
     return false
   }
   let set = `{tmp_dir()}/AppIcon.iconset`
-  run(`rm -rf {set} && mkdir -p {set}`)
+  shell(`rm -rf {set} && mkdir -p {set}`)
   if not icon_size(src, set, 16, "16x16") { return false }
   if not icon_size(src, set, 32, "16x16@2x") { return false }
   if not icon_size(src, set, 32, "32x32") { return false }
@@ -229,9 +229,108 @@ function xml_escape(s: pointer) -> pointer {
 
 # ---- the command ------------------------------------------------------------
 
+# ---- Windows: a folder --------------------------------------------------------
+#
+# A Windows game ships as a directory a player unzips anywhere and double-clicks
+# inside:
+#
+#   build/<name>/<name>.exe    windowed, GUI subsystem, the icon linked in as a resource
+#   build/<name>/game.lpak     the same pack a .app carries
+#   build/<name>/packs.index   pack / home / splash, read beside the executable
+#
+# `home <name>` points the game at %APPDATA%\<name>, so saves live where a Windows
+# game's saves live and the folder itself stays read-only, as a .app does.
+#
+# The icon is `app icon` with its extension changed to .ico, when that file exists:
+# Windows reads icons from a resource inside the executable, and the resource
+# compiler takes .ico only. A project makes one from the same artwork as its .icns.
+
+# an LLVM tool beside the clang this toolchain uses (llvm-rc, ...)
+function llvm_tool(name: pointer) -> pointer {
+  let env = getenv("LUDIC_CC")
+  if env == null and Fs.exists(`C:/Program Files/LLVM/bin/{name}.exe`) { return `"C:/Program Files/LLVM/bin/{name}.exe"` }
+  return name
+}
+
+# the icon resource for the executable, or "" when there is no .ico to make it from
+function windows_icon_res(icon: pointer) -> pointer {
+  if icon == "" { return "" }
+  var ico = icon
+  let n = len(icon)
+  if n > 4 and icon[n - 4..n] == ".png" { ico = icon[0..n - 4] + ".ico" }
+  if not Fs.exists(ico) { return "" }
+  let rc = tmp_path("app.rc")
+  let res = tmp_path("app.res")
+  # the resource compiler resolves a relative name against its own directory, not ours
+  let abs = win_slashes(capture_line(`cygpath -m "$(pwd)/{ico}"`))
+  if not write_file(rc, `1 ICON "{abs}"` + nl()) { return "" }
+  # -fo rather than /FO: Git Bash rewrites an argument that starts with "/" into a path
+  if not shq(`{llvm_tool("llvm-rc")} -fo "{res}" "{rc}"`) {
+    err("ludic bundle: warning: the icon resource did not compile; the game has no icon\n")
+    return ""
+  }
+  return res
+}
+
+function cmd_bundle_windows() -> int {
+  let entry = parse_build_args(2)
+  if g_argerr { return 1 }
+  if entry == "" { return no_entry() }
+
+  let m = read_root_manifest()
+  let name = app_name(m)
+  let root = `build/{name}`
+  shell(`rm -rf "{root}"`)
+  shell(`mkdir -p "{root}"`)
+
+  # 1. the executable - staged under a name with no spaces, as on macOS
+  let res = windows_icon_res(manifest_app(m, "icon"))
+  let staged = tmp_path("bundle_exe")
+  var flags = "--windowed --gui"
+  if res != "" { flags = flags + ` --link "{res}"` }
+  if not shq(`{ludicc()} {flags} {entry} -o {staged}`) { return 1 }
+  if not shq(`cp "{staged}.exe" "{root}/{name}.exe"`) {
+    err("ludic bundle: could not place the executable\n")
+    return 1
+  }
+
+  # 2. the assets, exactly as the .app packs them
+  let roots = pack_roots(m, 999)
+  var packed = false
+  let files = pack_gather_all(roots)
+  pack_add_packages(files)
+  pack_sort(files)
+  if len(files.names) > 0 {
+    let staged_pak = tmp_path("game.lpak")
+    if not pack_write(staged_pak, files) { return 1 }
+    if not shq(`cp "{staged_pak}" "{root}/game.lpak"`) {
+      err("ludic bundle: could not place the asset pack\n")
+      return 1
+    }
+    packed = true
+  }
+
+  # 3. what to mount and where the game writes
+  var idx = ""
+  if packed { idx = idx + "pack game.lpak" + nl() }
+  idx = idx + `home {name}` + nl()
+  let splash = manifest_app(m, "splash")
+  if splash != "" and packed {
+    idx = idx + `splash {splash}` + nl()
+    idx = idx + `splashbg {string(hex_color(manifest_app(m, "splash_bg")))}` + nl()
+  }
+  write_file(`{root}/packs.index`, idx)
+
+  print(`bundled {root}`)
+  if res == "" { print("  no icon: put an .ico beside `app icon` in package.ludic (assets/app/icon.ico)") }
+  if not packed { print("  no assets packed: nothing under assets/ and no `pack` line in package.ludic") }
+  return 0
+}
+
 function cmd_bundle() -> int {
+  if host_windows() { return cmd_bundle_windows() }
   if not is_darwin() {
-    err("ludic bundle: a .app is a macOS bundle; this host is not macOS\n")
+    err("ludic bundle: this host is neither macOS (a .app) nor Windows (a folder)\n")
     return 1
   }
   let entry = parse_build_args(2)
@@ -247,8 +346,8 @@ function cmd_bundle() -> int {
   # and in `ps`, so it takes the display name rather than the file name - spaces
   # and all, which is what every shipped Mac application does.
   let contents = `{root}/Contents`
-  run(`rm -rf "{root}"`)
-  run(`mkdir -p "{contents}/MacOS" "{contents}/Resources"`)
+  shell(`rm -rf "{root}"`)
+  shell(`mkdir -p "{contents}/MacOS" "{contents}/Resources"`)
 
   # 1. the binary, built windowed - a bundled game never wants the headless path.
   #    It is compiled to a scratch path and copied in, because a display name is

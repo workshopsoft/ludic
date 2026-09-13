@@ -218,7 +218,7 @@ function cmd_new() -> int {
     err(`ludic new: {name} already exists\n`)
     return 1
   }
-  run(`mkdir -p {name}/src {name}/tests {name}/assets`)
+  shell(`mkdir -p {name}/src {name}/tests {name}/assets`)
   if not write_file(`{name}/package.ludic`, template_manifest(name)) {
     err(`ludic new: cannot write {name}/package.ludic\n`)
     return 1
@@ -312,7 +312,7 @@ function cmd_run() -> int {
   if entry == "" { return no_entry() }
   let out = output_path(entry)
   if not compile_app(entry, out, g_mode, g_save) { return 1 }
-  return sh(`./{out}`)
+  return sh(`./{exe_name(out)}`)
 }
 
 # `ludic mygame.ludic` — the file is argv[1], so the scan starts there.
@@ -322,7 +322,7 @@ function cmd_run_file() -> int {
   if entry == "" { return no_entry() }
   let out = output_path(entry)
   if not compile_app(entry, out, g_mode, g_save) { return 1 }
-  return sh(`./{out}`)
+  return sh(`./{exe_name(out)}`)
 }
 
 # ---- ludic test -------------------------------------------------------------
@@ -354,7 +354,7 @@ function cmd_test() -> int {
     if not file_exists(files[mi]) { err(`ludic test: no such file: {files[mi]}\n`);  return 1 }
     mi += 1
   }
-  run("mkdir -p build")
+  shell("mkdir -p build")
   var failed = 0
   var i = 0
   while i < len(files) {
@@ -508,7 +508,7 @@ function cmd_doctor() -> int {
 function cmd_version() -> int {
   let cc = ludicc()
   if is_exec(cc) {
-    run(`{cc} --version`)
+    shell(`{cc} --version`)
     return 0
   }
   let v = read_file(`{ludic_home()}VERSION`)

@@ -57,13 +57,53 @@ function is_exec(path: pointer) -> bool { return shq(`test -x {path}`) }
 function newer(a: pointer, b: pointer) -> bool { return shq(`test {a} -nt {b}`) }
 
 # ---- process control --------------------------------------------------------
+#
+# Every command this tool issues is POSIX shell: mkdir -p, rm -rf, test -x, pipes
+# through tr and sed. On macOS and Linux the C library's system() is /bin/sh, so
+# `shell` is `run`. On Windows system() is cmd.exe, which speaks none of it, so each
+# command is written to a scratch script and handed to Git for Windows' bash - the
+# Windows toolchain's one requirement beyond LLVM; $LUDIC_BASH names another bash.
+# A script rather than `bash -c "..."`: a command line goes through cmd.exe's quoting
+# and then bash's startup parser, and a command with quotes of its own does not
+# survive both.
 
-# `run` returns the raw wait status; the program's exit code is the high byte.
-function exit_code(st: int) -> int { return (st >> 8) & 255 }
+function host_windows() -> bool {
+  let os = getenv("OS")
+  if os == null { return false }
+  return os == "Windows_NT"
+}
+
+var g_bash: pointer = null
+function win_bash() -> pointer {
+  if g_bash == null { g_bash = getenv_or("LUDIC_BASH", "C:/Program Files/Git/bin/bash.exe") }
+  return g_bash
+}
+
+var g_shell_n: int = 0
+function shell(cmd: pointer) -> int {
+  if not host_windows() { return run(cmd) }
+  # numbered, so a command that is itself running this tool's script cannot have it
+  # rewritten underneath it
+  g_shell_n += 1
+  let script = tmp_path(`sh_{string(g_shell_n)}.sh`)
+  if not write_file(script, cmd + "\n") { return 1 }
+  # cmd.exe takes the first and last quote off a line that starts with one, so the
+  # whole line wears one more pair for it to remove
+  let st = run(`""{win_bash()}" "{script}""`)
+  Fs.remove(script)
+  return st
+}
+
+# `run` returns the raw wait status on POSIX, where the exit code is the high byte;
+# Windows' system() returns the exit code itself.
+function exit_code(st: int) -> int {
+  if host_windows() { return st }
+  return (st >> 8) & 255
+}
 # run a command, returning its exit code (0 = success)
-function sh(cmd: pointer) -> int { return exit_code(run(cmd)) }
+function sh(cmd: pointer) -> int { return exit_code(shell(cmd)) }
 # run a command, true when it succeeded
-function shq(cmd: pointer) -> bool { return exit_code(run(cmd)) == 0 }
+function shq(cmd: pointer) -> bool { return exit_code(shell(cmd)) == 0 }
 
 # ---- scratch files ------------------------------------------------------------
 # Every scratch file the runner writes lives under one per-process directory
@@ -76,7 +116,7 @@ function tmp_dir() -> pointer {
     var base = Os.temp_dir()
     if len(base) > 1 and base[len(base) - 1] == '/' { base = base[0..len(base) - 1] }   # macOS: TMPDIR ends in '/'
     x_tmp = `{base}/ludic_{Os.pid()}`
-    run(`mkdir -p {x_tmp}`)
+    Fs.mkdir(x_tmp)                         # not the shell: on Windows it keeps its scripts here
   }
   return x_tmp
 }
@@ -89,6 +129,9 @@ function tmp_path(name: pointer) -> pointer { return `{tmp_dir()}/{name}` }
 function tmp_cleanup() -> void {
   if x_tmp == null { return }
   if getenv_or("LUDIC_KEEP_TMP", "0") == "1" { print(`scratch kept: {x_tmp}`) }
+  # on Windows the shell's own script is open in this directory while it runs, so it is
+  # removed by cmd.exe instead
+  else if host_windows() { run(`rmdir /s /q "{win_backslashes(x_tmp)}" 2>nul`) }
   else { run(`rm -rf {x_tmp}`) }
   x_tmp = null
 }
@@ -96,7 +139,7 @@ function tmp_cleanup() -> void {
 # run `cmd` and return its stdout (stderr discarded). Never null.
 function capture(cmd: pointer) -> pointer {
   let tmp = tmp_path("capture.out")
-  run(`{cmd} > {tmp} 2>/dev/null`)
+  shell(`{cmd} > {tmp} 2>/dev/null`)
   let s = read_file(tmp)
   if (s == null) { return "" }
   return s
@@ -214,17 +257,19 @@ function self_dir() -> pointer {
   var a0 = arg(0)
   var slash = -1
   var i = 0
-  while a0[i] != 0 { if a0[i] == '/' { slash = i };  i += 1 }
+  while a0[i] != 0 { if a0[i] == '/' or a0[i] == 92 { slash = i };  i += 1 }
   if slash < 0 {
-    let found = capture_line(`command -v {a0}`)
+    var lookup = `command -v {a0}`
+    if host_windows() { lookup = `cygpath -m "$(command -v {a0})"` }
+    let found = capture_line(lookup)
     if found == "" { return "" }
     a0 = found
     slash = -1
     i = 0
-    while a0[i] != 0 { if a0[i] == '/' { slash = i };  i += 1 }
+    while a0[i] != 0 { if a0[i] == '/' or a0[i] == 92 { slash = i };  i += 1 }
     if slash < 0 { return "" }
   }
-  return a0[0..slash + 1]
+  return win_slashes(a0[0..slash + 1])
 }
 
 # The toolchain install root, with a trailing '/', or "" for the current
@@ -242,7 +287,7 @@ function ludic_home() -> pointer {
   var d = self_dir()
   if len(d) >= 4 and d[len(d) - 4..len(d)] == "bin/" { d = d[0..len(d) - 4] }
   # a source checkout the CLI was run from elsewhere in: prefer a ./bin here
-  if not is_exec(`{d}bin/ludicc`) and is_exec("bin/ludicc") { d = "" }
+  if not is_exec(`{d}bin/{exe_name("ludicc")}`) and is_exec(`bin/{exe_name("ludicc")}`) { d = "" }
   g_home = d
   return g_home
 }
@@ -250,7 +295,7 @@ function ludic_home() -> pointer {
 # the path to a toolchain binary (ludicc, ludic-fmt, ludic-lsp). Falls back to
 # the bare name — on $PATH — when the install root has no bin/ of its own.
 function tool(name: pointer) -> pointer {
-  let p = `{ludic_home()}bin/{name}`
+  let p = `{ludic_home()}bin/{exe_name(name)}`
   if is_exec(p) { return p }
   return name
 }
@@ -259,8 +304,37 @@ function ludicc() -> pointer { return tool("ludicc") }
 
 # true in a checkout of the toolchain repo itself, where a seed is present to
 # assemble the compiler from.
+# a program's file name on this host: `name` everywhere but Windows, `name.exe` there
+function exe_name(name: pointer) -> pointer {
+  if host_windows() { return name + ".exe" }
+  return name
+}
+
+# the compiler's IR seed for this host. The IR is not portable between the two: each
+# names its own C library (see selfhost/backend/stdlib/emit_win.ludic).
+function seed_file() -> pointer {
+  if host_windows() { return "selfhost/ludicc.win.seed.ll" }
+  return "selfhost/ludicc.seed.ll"
+}
+
+# a copy of a path with every '\' as '/', and one with every '/' as '\' (for cmd.exe)
+function win_slashes(p: pointer) -> pointer {
+  let n = len(p)
+  let b = bytes(n + 1)
+  for i in 0 .. n { if p[i] == 92 { b[i] = '/' } else { b[i] = p[i] } }
+  b[n] = 0
+  return b
+}
+function win_backslashes(p: pointer) -> pointer {
+  let n = len(p)
+  let b = bytes(n + 1)
+  for i in 0 .. n { if p[i] == '/' { b[i] = 92 } else { b[i] = p[i] } }
+  b[n] = 0
+  return b
+}
+
 function in_toolchain_repo() -> bool {
-  return file_exists("selfhost/ludicc.seed.ll") and file_exists("tools/ludic-cli/main.ludic")
+  return file_exists(seed_file()) and file_exists("tools/ludic-cli/main.ludic")
 }
 
 # ---- strings ----------------------------------------------------------------
@@ -374,4 +448,13 @@ function title_case(s: pointer) -> pointer {
 # clang assembles the emitted IR and drives the linker. -Wno-override-module for
 # the same reason the compiler itself passes it (see selfhost/main.ludic): the IR
 # names no target triple, so clang substitutes the host's and warns every time.
-function cc() -> pointer { return getenv_or("LUDIC_CC", "clang") + " -Wno-override-module" }
+# On Windows the LLVM installer leaves clang off %PATH% unless asked, so its own
+# location is the default there.
+function cc() -> pointer {
+  let env = getenv("LUDIC_CC")
+  if env != null { return env + " -Wno-override-module" }
+  if host_windows() and Fs.exists("C:/Program Files/LLVM/bin/clang.exe") {
+    return "\"C:/Program Files/LLVM/bin/clang.exe\" -Wno-override-module"
+  }
+  return "clang -Wno-override-module"
+}

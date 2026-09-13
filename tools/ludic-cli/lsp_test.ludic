@@ -296,7 +296,7 @@ function cmd_test_lsp() -> int {
   let req_path = tmp_path("lsp_req.bin")
   let res_path = tmp_path("lsp_res.bin")
   write_file(req_path, sb_str(lsp_req))
-  run(`{server} --stdio < {req_path} > {res_path} 2>{tmp_path("lsp_err.txt")}`)
+  shell(`{server} --stdio < {req_path} > {res_path} 2>{tmp_path("lsp_err.txt")}`)
   let stream = read_file(res_path)
   if stream == null { bad("ludic-lsp produced no output");  return report() }
   lsp_parse_stream(stream)

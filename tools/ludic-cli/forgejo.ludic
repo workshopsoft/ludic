@@ -20,7 +20,7 @@ var forgejo_hdr: pointer = null
 function forgejo_headers() -> pointer {
   if forgejo_hdr == null {
     forgejo_hdr = tmp_path("forgejo_headers.txt")
-    run(`umask 077 && printf 'Authorization: token %s\n' "$FORGEJO_TOKEN" > {forgejo_hdr}`)
+    shell(`umask 077 && printf 'Authorization: token %s\n' "$FORGEJO_TOKEN" > {forgejo_hdr}`)
   }
   return forgejo_hdr
 }

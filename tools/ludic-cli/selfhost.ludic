@@ -97,13 +97,13 @@ function line_count(path: pointer) -> pointer {
 # ---- selfhost-build: assemble + compile the self-host compiler ---------------
 # usage: ludic-dev selfhost-build [ludicc] [outbin]   (defaults: bin/ludicc, build/selfhost)
 function cmd_selfhost_build(lc: pointer, outbin: pointer) -> int {
-  run("mkdir -p build")
+  shell("mkdir -p build")
   let src = "build/selfhost.ludic"
   if not write_selfhost_src(src) { err("ludic-dev: cannot write build/selfhost.ludic\n"); return 1 }
   let ll = `{outbin}.ll`
-  if not shq(`{lc} {src} > {ll} 2>/dev/null`) { run(`rm -f {ll}`); return 1 }
+  if not shq(`{lc} {src} > {ll} 2>/dev/null`) { shell(`rm -f {ll}`); return 1 }
   let rc = shq(`{cc()} {ll} -o {outbin} 2>/dev/null`)
-  run(`rm -f {ll}`)
+  shell(`rm -f {ll}`)
   if rc { return 0 }
   return 1
 }
@@ -126,7 +126,7 @@ function game_build_ok(shbin: pointer, game: pointer, outbin: pointer) -> bool {
   let ll = `{outbin}.ll`
   if not shq(`{shbin} {game} > {ll} 2>{tmp_dir()}/gb.err`) { return false }
   if not shq(`{cc()} -O2 {ll} -o {outbin} 2>{tmp_dir()}/gb.err`) { return false }
-  run(`rm -f {ll}`)
+  shell(`rm -f {ll}`)
   return true
 }
 
@@ -144,7 +144,7 @@ function cmd_game_build(shbin: pointer, game: pointer, outbin: pointer) -> int {
 # gen2.ll == gen3.ll is the fixpoint that proves the compiler reproduces itself.
 function cmd_bootstrap() -> int {
   ensure_ludicc()
-  run("mkdir -p build/boot")
+  shell("mkdir -p build/boot")
   if cmd_selfhost_build("bin/ludicc", "build/boot/gen1") != 0 { print("FAIL: stage0 build"); return 1 }
   print("  stage0: bin/ludicc -> gen1 (self-host compiler)")
 
@@ -156,7 +156,7 @@ function cmd_bootstrap() -> int {
   print(`  stage2: gen2 -> gen3.ll ({line_count("build/boot/gen3.ll")} lines)`)
 
   if shq("cmp -s build/boot/gen2.ll build/boot/gen3.ll") {
-    run("rm -f build/selfhost.ludic")
+    shell("rm -f build/selfhost.ludic")
     print("  FIXPOINT: gen2.ll == gen3.ll — the self-hosted compiler reproduces itself")
     return 0
   }
@@ -170,7 +170,7 @@ function cmd_bootstrap() -> int {
 # the seed-built compiler compiles its own source, and the result must equal the
 # seed byte for byte.
 function cmd_bootstrap_cfree() -> int {
-  run("mkdir -p build/cfree")
+  shell("mkdir -p build/cfree")
   if not shq(`{cc()} selfhost/ludicc.seed.ll -o build/cfree/sh_seed 2>/dev/null`) { print("FAIL: assemble seed"); return 1 }
   print("  seed.ll --clang--> sh_seed   (no C compiler used)")
   if not write_selfhost_src("build/cfree/selfhost.ludic") { print("FAIL: write source"); return 1 }
@@ -191,17 +191,20 @@ function cmd_bootstrap_cfree() -> int {
 # bin/ludicc only if the seed itself no longer assembles. Verify with
 # `ludic-dev bootstrap-cfree` afterwards.
 function cmd_reseed() -> int {
-  run("mkdir -p build/cfree")
+  shell("mkdir -p build/cfree")
   if not write_selfhost_src("build/cfree/selfhost.ludic") { print("FAIL: write source"); return 1 }
   if shq(`{cc()} selfhost/ludicc.seed.ll -o build/cfree/sh_old 2>/dev/null`) {
     if not shq("build/cfree/sh_old build/cfree/selfhost.ludic > build/cfree/step1.ll") { print("FAIL: step1"); return 1 }
     if not shq(`{cc()} build/cfree/step1.ll -o build/cfree/sh_new`) { print("FAIL: assemble sh_new"); return 1 }
     if not shq("build/cfree/sh_new build/cfree/selfhost.ludic > selfhost/ludicc.seed.ll") { print("FAIL: reseed"); return 1 }
+    # and the Windows seed, from the same compiler: a Windows checkout bootstraps from it
+    if not shq("build/cfree/sh_new --target x86_64-pc-windows-msvc build/cfree/selfhost.ludic > selfhost/ludicc.win.seed.ll") { print("FAIL: reseed (windows)"); return 1 }
   } else {
     print("seed does not build; reseeding from bin/ludicc")
     ensure_ludicc()
     if cmd_selfhost_build("bin/ludicc", "build/cfree/sh_c") != 0 { print("FAIL: build from bin/ludicc"); return 1 }
     if not shq("build/cfree/sh_c build/cfree/selfhost.ludic > selfhost/ludicc.seed.ll") { print("FAIL: reseed"); return 1 }
+    if not shq("build/cfree/sh_c --target x86_64-pc-windows-msvc build/cfree/selfhost.ludic > selfhost/ludicc.win.seed.ll") { print("FAIL: reseed (windows)"); return 1 }
   }
   print(`reseeded: {line_count("selfhost/ludicc.seed.ll")} lines`)
   return 0

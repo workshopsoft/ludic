@@ -959,7 +959,7 @@ function cmd_docs_gen() -> int {
     }
     i += 1
   }
-  run(`mkdir -p {out}`)
+  shell(`mkdir -p {out}`)
   palette_init()
   let sections = load_sections()
   let syms = build_symbols(sections)

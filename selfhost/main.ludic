@@ -135,6 +135,8 @@ entry {
   var save = false        # --save-temps: keep the intermediate .ll
   var run = false         # compile then execute the result
   var target = null       # --target <triple>: null means the host
+  var gui = false         # --gui: a Windows GUI-subsystem program (no console behind the window)
+  var links = new []pointer   # --link <file>: an extra input to the link (a compiled resource)
   g_coverage = false      # --coverage: instrument each statement with a per-line hit counter
 
   var ai = 1
@@ -150,6 +152,8 @@ entry {
     else if a == "--run" { run = true }
     else if a == "--coverage" { g_coverage = true }
     else if a == "--target" { ai += 1;  if ai < arg_count() { target = arg(ai) } }
+    else if a == "--gui" { gui = true }
+    else if a == "--link" { ai += 1;  if ai < arg_count() { push(links, arg(ai)) } }
     else if a == "-o" { ai += 1;  if ai < arg_count() { out = arg(ai) } }
     else if a[0] == '-' {
       # an unknown flag is ignored (with a note) rather than mistaken for the input file
@@ -286,9 +290,20 @@ entry {
       cmd = `{cmd} {gl} {glt} -framework OpenGL`
     }
   }
+  # A shipped Windows game is a GUI-subsystem program: started from Explorer, a
+  # console-subsystem one opens a console window behind the game. mainCRTStartup keeps
+  # the C runtime's ordinary main() entry rather than WinMain.
+  if g_target_win and gui { cmd = `{cmd} -Wl,/subsystem:windows -Wl,/entry:mainCRTStartup` }
+  var li = 0
+  while li < len(links) { cmd = `{cmd} "{links[li]}"`;  li += 1 }
   cmd = `{cmd} -o {out}`
 
-  let rc = run(cmd)
+  # cmd.exe takes the first and last quote off a line that starts with one and holds more
+  # than two - which a quoted clang path plus a quoted --link file is - so on Windows the
+  # whole line wears one more pair for it to remove
+  var line = cmd
+  if host_is_windows() { line = `"{cmd}"` }
+  let rc = run(line)
   if not save { remove_file(ll) }
   if rc != 0 { die("ludicc: link failed\n") }
 

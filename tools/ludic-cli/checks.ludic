@@ -199,7 +199,7 @@ function table_set(h: pointer, name: pointer) -> []pointer {
 
 # concatenate every selfhost/*.ludic into one buffer (via cat, then read)
 function read_all_selfhost() -> pointer {
-  run(`find selfhost -name '*.ludic' | sort | xargs cat > {tmp_dir()}/allsh.txt 2>/dev/null`)
+  shell(`find selfhost -name '*.ludic' | sort | xargs cat > {tmp_dir()}/allsh.txt 2>/dev/null`)
   let s = read_file(`{tmp_dir()}/allsh.txt`)
   if s == null { return "" }
   return s
