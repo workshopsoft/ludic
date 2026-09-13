@@ -11316,53 +11316,55 @@ declare void @hs_free(i32)
 @.str11128 = private unnamed_addr constant [108 x i8] c"usage: ludicc <file.ludic> [-o out] [--windowed|--headless] [--target triple] [--emit-llvm] [--save-temps]\0A\00"
 @.str11129 = private unnamed_addr constant [8 x i8] c"windows\00"
 @.str11130 = private unnamed_addr constant [27 x i8] c"ludicc: cannot open input\0A\00"
-@.str11131 = private unnamed_addr constant [48 x i8] c"ludicc: Http.* is not available on Windows yet\0A\00"
-@.str11132 = private unnamed_addr constant [5 x i8] c"TEMP\00"
-@.str11133 = private unnamed_addr constant [2 x i8] c".\00"
-@.str11134 = private unnamed_addr constant [12 x i8] c"/ludic-run-\00"
-@.str11135 = private unnamed_addr constant [16 x i8] c"/tmp/ludic-run-\00"
+@.str11131 = private unnamed_addr constant [5 x i8] c"TEMP\00"
+@.str11132 = private unnamed_addr constant [2 x i8] c".\00"
+@.str11133 = private unnamed_addr constant [12 x i8] c"/ludic-run-\00"
+@.str11134 = private unnamed_addr constant [16 x i8] c"/tmp/ludic-run-\00"
+@.str11135 = private unnamed_addr constant [5 x i8] c".exe\00"
 @.str11136 = private unnamed_addr constant [5 x i8] c".exe\00"
-@.str11137 = private unnamed_addr constant [5 x i8] c".exe\00"
-@.str11138 = private unnamed_addr constant [4 x i8] c".ll\00"
-@.str11139 = private unnamed_addr constant [25 x i8] c"ludicc: cannot write IR\0A\00"
-@.str11140 = private unnamed_addr constant [27 x i8] c" -O2 -Wno-override-module \00"
-@.str11141 = private unnamed_addr constant [24 x i8] c"runtime/native/win32.ll\00"
-@.str11142 = private unnamed_addr constant [2 x i8] c" \00"
-@.str11143 = private unnamed_addr constant [55 x i8] c" -luser32 -lgdi32 -lxinput -Wl,/ignore:importeddllmain\00"
-@.str11144 = private unnamed_addr constant [28 x i8] c"runtime/native/audio_win.ll\00"
-@.str11145 = private unnamed_addr constant [2 x i8] c" \00"
-@.str11146 = private unnamed_addr constant [19 x i8] c" -lxaudio2 -lole32\00"
-@.str11147 = private unnamed_addr constant [24 x i8] c"runtime/native/cocoa.ll\00"
-@.str11148 = private unnamed_addr constant [2 x i8] c" \00"
-@.str11149 = private unnamed_addr constant [79 x i8] c" -framework Cocoa -Wl,-needed_framework,GameController -Wl,-rpath,@loader_path\00"
-@.str11150 = private unnamed_addr constant [24 x i8] c"runtime/native/audio.ll\00"
-@.str11151 = private unnamed_addr constant [2 x i8] c" \00"
-@.str11152 = private unnamed_addr constant [36 x i8] c" -Wl,-needed_framework,AVFoundation\00"
-@.str11153 = private unnamed_addr constant [23 x i8] c"runtime/native/http.ll\00"
-@.str11154 = private unnamed_addr constant [2 x i8] c" \00"
-@.str11155 = private unnamed_addr constant [34 x i8] c" -Wl,-needed_framework,Foundation\00"
-@.str11156 = private unnamed_addr constant [25 x i8] c"runtime/native/gl_win.ll\00"
-@.str11157 = private unnamed_addr constant [32 x i8] c"runtime/native/gl_thunks_win.ll\00"
-@.str11158 = private unnamed_addr constant [31 x i8] c"runtime/native/gl_win_nowin.ll\00"
-@.str11159 = private unnamed_addr constant [27 x i8] c"runtime/native/win32_gl.ll\00"
-@.str11160 = private unnamed_addr constant [2 x i8] c" \00"
-@.str11161 = private unnamed_addr constant [2 x i8] c" \00"
+@.str11137 = private unnamed_addr constant [4 x i8] c".ll\00"
+@.str11138 = private unnamed_addr constant [25 x i8] c"ludicc: cannot write IR\0A\00"
+@.str11139 = private unnamed_addr constant [27 x i8] c" -O2 -Wno-override-module \00"
+@.str11140 = private unnamed_addr constant [24 x i8] c"runtime/native/win32.ll\00"
+@.str11141 = private unnamed_addr constant [2 x i8] c" \00"
+@.str11142 = private unnamed_addr constant [63 x i8] c" -luser32 -lgdi32 -lxinput -lole32 -Wl,/ignore:importeddllmain\00"
+@.str11143 = private unnamed_addr constant [28 x i8] c"runtime/native/audio_win.ll\00"
+@.str11144 = private unnamed_addr constant [2 x i8] c" \00"
+@.str11145 = private unnamed_addr constant [19 x i8] c" -lxaudio2 -lole32\00"
+@.str11146 = private unnamed_addr constant [24 x i8] c"runtime/native/cocoa.ll\00"
+@.str11147 = private unnamed_addr constant [2 x i8] c" \00"
+@.str11148 = private unnamed_addr constant [79 x i8] c" -framework Cocoa -Wl,-needed_framework,GameController -Wl,-rpath,@loader_path\00"
+@.str11149 = private unnamed_addr constant [24 x i8] c"runtime/native/audio.ll\00"
+@.str11150 = private unnamed_addr constant [2 x i8] c" \00"
+@.str11151 = private unnamed_addr constant [36 x i8] c" -Wl,-needed_framework,AVFoundation\00"
+@.str11152 = private unnamed_addr constant [27 x i8] c"runtime/native/http_win.ll\00"
+@.str11153 = private unnamed_addr constant [2 x i8] c" \00"
+@.str11154 = private unnamed_addr constant [11 x i8] c" -lwinhttp\00"
+@.str11155 = private unnamed_addr constant [23 x i8] c"runtime/native/http.ll\00"
+@.str11156 = private unnamed_addr constant [2 x i8] c" \00"
+@.str11157 = private unnamed_addr constant [34 x i8] c" -Wl,-needed_framework,Foundation\00"
+@.str11158 = private unnamed_addr constant [25 x i8] c"runtime/native/gl_win.ll\00"
+@.str11159 = private unnamed_addr constant [32 x i8] c"runtime/native/gl_thunks_win.ll\00"
+@.str11160 = private unnamed_addr constant [31 x i8] c"runtime/native/gl_win_nowin.ll\00"
+@.str11161 = private unnamed_addr constant [27 x i8] c"runtime/native/win32_gl.ll\00"
 @.str11162 = private unnamed_addr constant [2 x i8] c" \00"
-@.str11163 = private unnamed_addr constant [29 x i8] c" -luser32 -lgdi32 -lopengl32\00"
-@.str11164 = private unnamed_addr constant [21 x i8] c"runtime/native/gl.ll\00"
-@.str11165 = private unnamed_addr constant [28 x i8] c"runtime/native/gl_thunks.ll\00"
-@.str11166 = private unnamed_addr constant [2 x i8] c" \00"
-@.str11167 = private unnamed_addr constant [2 x i8] c" \00"
-@.str11168 = private unnamed_addr constant [19 x i8] c" -framework OpenGL\00"
-@.str11169 = private unnamed_addr constant [50 x i8] c" -Wl,/subsystem:windows -Wl,/entry:mainCRTStartup\00"
-@.str11170 = private unnamed_addr constant [3 x i8] c" \22\00"
-@.str11171 = private unnamed_addr constant [2 x i8] c"\22\00"
-@.str11172 = private unnamed_addr constant [5 x i8] c" -o \00"
+@.str11163 = private unnamed_addr constant [2 x i8] c" \00"
+@.str11164 = private unnamed_addr constant [2 x i8] c" \00"
+@.str11165 = private unnamed_addr constant [29 x i8] c" -luser32 -lgdi32 -lopengl32\00"
+@.str11166 = private unnamed_addr constant [21 x i8] c"runtime/native/gl.ll\00"
+@.str11167 = private unnamed_addr constant [28 x i8] c"runtime/native/gl_thunks.ll\00"
+@.str11168 = private unnamed_addr constant [2 x i8] c" \00"
+@.str11169 = private unnamed_addr constant [2 x i8] c" \00"
+@.str11170 = private unnamed_addr constant [19 x i8] c" -framework OpenGL\00"
+@.str11171 = private unnamed_addr constant [50 x i8] c" -Wl,/subsystem:windows -Wl,/entry:mainCRTStartup\00"
+@.str11172 = private unnamed_addr constant [3 x i8] c" \22\00"
 @.str11173 = private unnamed_addr constant [2 x i8] c"\22\00"
-@.str11174 = private unnamed_addr constant [2 x i8] c"\22\00"
-@.str11175 = private unnamed_addr constant [21 x i8] c"ludicc: link failed\0A\00"
+@.str11174 = private unnamed_addr constant [5 x i8] c" -o \00"
+@.str11175 = private unnamed_addr constant [2 x i8] c"\22\00"
 @.str11176 = private unnamed_addr constant [2 x i8] c"\22\00"
-@.str11177 = private unnamed_addr constant [2 x i8] c"\22\00"
+@.str11177 = private unnamed_addr constant [21 x i8] c"ludicc: link failed\0A\00"
+@.str11178 = private unnamed_addr constant [2 x i8] c"\22\00"
+@.str11179 = private unnamed_addr constant [2 x i8] c"\22\00"
 define i32 @lp_str_eq(ptr %a, ptr %b) {
 entry:
   br label %loop
@@ -12167,56 +12169,56 @@ sod:
   store i32 %fcnt, ptr %d2
   ret ptr %h
 }
-@.str11178 = private unnamed_addr constant [4 x i8] c"png\00"
-@.str11179 = private unnamed_addr constant [10 x i8] c"image/png\00"
-@.str11180 = private unnamed_addr constant [4 x i8] c"jpg\00"
-@.str11181 = private unnamed_addr constant [11 x i8] c"image/jpeg\00"
-@.str11182 = private unnamed_addr constant [5 x i8] c"jpeg\00"
+@.str11180 = private unnamed_addr constant [4 x i8] c"png\00"
+@.str11181 = private unnamed_addr constant [10 x i8] c"image/png\00"
+@.str11182 = private unnamed_addr constant [4 x i8] c"jpg\00"
 @.str11183 = private unnamed_addr constant [11 x i8] c"image/jpeg\00"
-@.str11184 = private unnamed_addr constant [4 x i8] c"gif\00"
-@.str11185 = private unnamed_addr constant [10 x i8] c"image/gif\00"
-@.str11186 = private unnamed_addr constant [4 x i8] c"bmp\00"
-@.str11187 = private unnamed_addr constant [10 x i8] c"image/bmp\00"
-@.str11188 = private unnamed_addr constant [5 x i8] c"webp\00"
-@.str11189 = private unnamed_addr constant [11 x i8] c"image/webp\00"
-@.str11190 = private unnamed_addr constant [4 x i8] c"svg\00"
-@.str11191 = private unnamed_addr constant [14 x i8] c"image/svg+xml\00"
-@.str11192 = private unnamed_addr constant [4 x i8] c"txt\00"
-@.str11193 = private unnamed_addr constant [11 x i8] c"text/plain\00"
-@.str11194 = private unnamed_addr constant [3 x i8] c"md\00"
-@.str11195 = private unnamed_addr constant [14 x i8] c"text/markdown\00"
-@.str11196 = private unnamed_addr constant [4 x i8] c"csv\00"
-@.str11197 = private unnamed_addr constant [9 x i8] c"text/csv\00"
-@.str11198 = private unnamed_addr constant [5 x i8] c"html\00"
-@.str11199 = private unnamed_addr constant [10 x i8] c"text/html\00"
-@.str11200 = private unnamed_addr constant [4 x i8] c"htm\00"
+@.str11184 = private unnamed_addr constant [5 x i8] c"jpeg\00"
+@.str11185 = private unnamed_addr constant [11 x i8] c"image/jpeg\00"
+@.str11186 = private unnamed_addr constant [4 x i8] c"gif\00"
+@.str11187 = private unnamed_addr constant [10 x i8] c"image/gif\00"
+@.str11188 = private unnamed_addr constant [4 x i8] c"bmp\00"
+@.str11189 = private unnamed_addr constant [10 x i8] c"image/bmp\00"
+@.str11190 = private unnamed_addr constant [5 x i8] c"webp\00"
+@.str11191 = private unnamed_addr constant [11 x i8] c"image/webp\00"
+@.str11192 = private unnamed_addr constant [4 x i8] c"svg\00"
+@.str11193 = private unnamed_addr constant [14 x i8] c"image/svg+xml\00"
+@.str11194 = private unnamed_addr constant [4 x i8] c"txt\00"
+@.str11195 = private unnamed_addr constant [11 x i8] c"text/plain\00"
+@.str11196 = private unnamed_addr constant [3 x i8] c"md\00"
+@.str11197 = private unnamed_addr constant [14 x i8] c"text/markdown\00"
+@.str11198 = private unnamed_addr constant [4 x i8] c"csv\00"
+@.str11199 = private unnamed_addr constant [9 x i8] c"text/csv\00"
+@.str11200 = private unnamed_addr constant [5 x i8] c"html\00"
 @.str11201 = private unnamed_addr constant [10 x i8] c"text/html\00"
-@.str11202 = private unnamed_addr constant [4 x i8] c"css\00"
-@.str11203 = private unnamed_addr constant [9 x i8] c"text/css\00"
-@.str11204 = private unnamed_addr constant [3 x i8] c"js\00"
-@.str11205 = private unnamed_addr constant [16 x i8] c"text/javascript\00"
-@.str11206 = private unnamed_addr constant [5 x i8] c"json\00"
-@.str11207 = private unnamed_addr constant [17 x i8] c"application/json\00"
-@.str11208 = private unnamed_addr constant [4 x i8] c"xml\00"
-@.str11209 = private unnamed_addr constant [16 x i8] c"application/xml\00"
-@.str11210 = private unnamed_addr constant [4 x i8] c"zip\00"
-@.str11211 = private unnamed_addr constant [16 x i8] c"application/zip\00"
-@.str11212 = private unnamed_addr constant [4 x i8] c"pdf\00"
-@.str11213 = private unnamed_addr constant [16 x i8] c"application/pdf\00"
-@.str11214 = private unnamed_addr constant [4 x i8] c"wav\00"
-@.str11215 = private unnamed_addr constant [10 x i8] c"audio/wav\00"
-@.str11216 = private unnamed_addr constant [4 x i8] c"ogg\00"
-@.str11217 = private unnamed_addr constant [10 x i8] c"audio/ogg\00"
-@.str11218 = private unnamed_addr constant [4 x i8] c"mp3\00"
-@.str11219 = private unnamed_addr constant [11 x i8] c"audio/mpeg\00"
-@.str11220 = private unnamed_addr constant [4 x i8] c"ttf\00"
-@.str11221 = private unnamed_addr constant [9 x i8] c"font/ttf\00"
-@.str11222 = private unnamed_addr constant [4 x i8] c"otf\00"
-@.str11223 = private unnamed_addr constant [9 x i8] c"font/otf\00"
-@.str11224 = private unnamed_addr constant [6 x i8] c"ludic\00"
-@.str11225 = private unnamed_addr constant [13 x i8] c"text/x-ludic\00"
-@.str11226 = private unnamed_addr constant [25 x i8] c"application/octet-stream\00"
-@mime_tbl = private unnamed_addr constant [24 x { ptr, ptr }] [{ ptr, ptr } { ptr @.str11178, ptr @.str11179 }, { ptr, ptr } { ptr @.str11180, ptr @.str11181 }, { ptr, ptr } { ptr @.str11182, ptr @.str11183 }, { ptr, ptr } { ptr @.str11184, ptr @.str11185 }, { ptr, ptr } { ptr @.str11186, ptr @.str11187 }, { ptr, ptr } { ptr @.str11188, ptr @.str11189 }, { ptr, ptr } { ptr @.str11190, ptr @.str11191 }, { ptr, ptr } { ptr @.str11192, ptr @.str11193 }, { ptr, ptr } { ptr @.str11194, ptr @.str11195 }, { ptr, ptr } { ptr @.str11196, ptr @.str11197 }, { ptr, ptr } { ptr @.str11198, ptr @.str11199 }, { ptr, ptr } { ptr @.str11200, ptr @.str11201 }, { ptr, ptr } { ptr @.str11202, ptr @.str11203 }, { ptr, ptr } { ptr @.str11204, ptr @.str11205 }, { ptr, ptr } { ptr @.str11206, ptr @.str11207 }, { ptr, ptr } { ptr @.str11208, ptr @.str11209 }, { ptr, ptr } { ptr @.str11210, ptr @.str11211 }, { ptr, ptr } { ptr @.str11212, ptr @.str11213 }, { ptr, ptr } { ptr @.str11214, ptr @.str11215 }, { ptr, ptr } { ptr @.str11216, ptr @.str11217 }, { ptr, ptr } { ptr @.str11218, ptr @.str11219 }, { ptr, ptr } { ptr @.str11220, ptr @.str11221 }, { ptr, ptr } { ptr @.str11222, ptr @.str11223 }, { ptr, ptr } { ptr @.str11224, ptr @.str11225 }]
+@.str11202 = private unnamed_addr constant [4 x i8] c"htm\00"
+@.str11203 = private unnamed_addr constant [10 x i8] c"text/html\00"
+@.str11204 = private unnamed_addr constant [4 x i8] c"css\00"
+@.str11205 = private unnamed_addr constant [9 x i8] c"text/css\00"
+@.str11206 = private unnamed_addr constant [3 x i8] c"js\00"
+@.str11207 = private unnamed_addr constant [16 x i8] c"text/javascript\00"
+@.str11208 = private unnamed_addr constant [5 x i8] c"json\00"
+@.str11209 = private unnamed_addr constant [17 x i8] c"application/json\00"
+@.str11210 = private unnamed_addr constant [4 x i8] c"xml\00"
+@.str11211 = private unnamed_addr constant [16 x i8] c"application/xml\00"
+@.str11212 = private unnamed_addr constant [4 x i8] c"zip\00"
+@.str11213 = private unnamed_addr constant [16 x i8] c"application/zip\00"
+@.str11214 = private unnamed_addr constant [4 x i8] c"pdf\00"
+@.str11215 = private unnamed_addr constant [16 x i8] c"application/pdf\00"
+@.str11216 = private unnamed_addr constant [4 x i8] c"wav\00"
+@.str11217 = private unnamed_addr constant [10 x i8] c"audio/wav\00"
+@.str11218 = private unnamed_addr constant [4 x i8] c"ogg\00"
+@.str11219 = private unnamed_addr constant [10 x i8] c"audio/ogg\00"
+@.str11220 = private unnamed_addr constant [4 x i8] c"mp3\00"
+@.str11221 = private unnamed_addr constant [11 x i8] c"audio/mpeg\00"
+@.str11222 = private unnamed_addr constant [4 x i8] c"ttf\00"
+@.str11223 = private unnamed_addr constant [9 x i8] c"font/ttf\00"
+@.str11224 = private unnamed_addr constant [4 x i8] c"otf\00"
+@.str11225 = private unnamed_addr constant [9 x i8] c"font/otf\00"
+@.str11226 = private unnamed_addr constant [6 x i8] c"ludic\00"
+@.str11227 = private unnamed_addr constant [13 x i8] c"text/x-ludic\00"
+@.str11228 = private unnamed_addr constant [25 x i8] c"application/octet-stream\00"
+@mime_tbl = private unnamed_addr constant [24 x { ptr, ptr }] [{ ptr, ptr } { ptr @.str11180, ptr @.str11181 }, { ptr, ptr } { ptr @.str11182, ptr @.str11183 }, { ptr, ptr } { ptr @.str11184, ptr @.str11185 }, { ptr, ptr } { ptr @.str11186, ptr @.str11187 }, { ptr, ptr } { ptr @.str11188, ptr @.str11189 }, { ptr, ptr } { ptr @.str11190, ptr @.str11191 }, { ptr, ptr } { ptr @.str11192, ptr @.str11193 }, { ptr, ptr } { ptr @.str11194, ptr @.str11195 }, { ptr, ptr } { ptr @.str11196, ptr @.str11197 }, { ptr, ptr } { ptr @.str11198, ptr @.str11199 }, { ptr, ptr } { ptr @.str11200, ptr @.str11201 }, { ptr, ptr } { ptr @.str11202, ptr @.str11203 }, { ptr, ptr } { ptr @.str11204, ptr @.str11205 }, { ptr, ptr } { ptr @.str11206, ptr @.str11207 }, { ptr, ptr } { ptr @.str11208, ptr @.str11209 }, { ptr, ptr } { ptr @.str11210, ptr @.str11211 }, { ptr, ptr } { ptr @.str11212, ptr @.str11213 }, { ptr, ptr } { ptr @.str11214, ptr @.str11215 }, { ptr, ptr } { ptr @.str11216, ptr @.str11217 }, { ptr, ptr } { ptr @.str11218, ptr @.str11219 }, { ptr, ptr } { ptr @.str11220, ptr @.str11221 }, { ptr, ptr } { ptr @.str11222, ptr @.str11223 }, { ptr, ptr } { ptr @.str11224, ptr @.str11225 }, { ptr, ptr } { ptr @.str11226, ptr @.str11227 }]
 define ptr @lp_mime_of(ptr %path) {
 entry:
   %ext = call ptr @lp_path_ext(ptr %path)
@@ -12244,7 +12246,7 @@ nx:
   store i32 %i1, ptr %ip
   br label %lp
 def:
-  %d = call ptr @lp_fs_strdup(ptr @.str11226)
+  %d = call ptr @lp_fs_strdup(ptr @.str11228)
   ret ptr %d
 }
 define ptr @lp_mime_lc(ptr %s) {
@@ -61919,7 +61921,7 @@ ifend23:
   %t27 = icmp ne i32 %t26, 0
   br i1 %t27, label %then24, label %ifend26
 then24:
-  store i32 119, ptr %retval
+  store i32 128, ptr %retval
   br label %ret
 ifend26:
   %t28 = load ptr, ptr %t0
@@ -61927,7 +61929,7 @@ ifend26:
   %t30 = icmp ne i32 %t29, 0
   br i1 %t30, label %then27, label %ifend29
 then27:
-  store i32 115, ptr %retval
+  store i32 129, ptr %retval
   br label %ret
 ifend29:
   %t31 = load ptr, ptr %t0
@@ -61935,7 +61937,7 @@ ifend29:
   %t33 = icmp ne i32 %t32, 0
   br i1 %t33, label %then30, label %ifend32
 then30:
-  store i32 97, ptr %retval
+  store i32 130, ptr %retval
   br label %ret
 ifend32:
   %t34 = load ptr, ptr %t0
@@ -61943,7 +61945,7 @@ ifend32:
   %t36 = icmp ne i32 %t35, 0
   br i1 %t36, label %then33, label %ifend35
 then33:
-  store i32 100, ptr %retval
+  store i32 131, ptr %retval
   br label %ret
 ifend35:
   %t37 = load ptr, ptr %t0
@@ -110131,29 +110133,29 @@ entry:
   %t179 = alloca i32
   %t188 = alloca i32
   %t205 = alloca i32
-  %t214 = alloca i32
-  %t243 = alloca i32
-  %t244 = alloca i32
-  %t263 = alloca ptr
+  %t234 = alloca i32
+  %t235 = alloca i32
+  %t254 = alloca ptr
+  %t264 = alloca ptr
+  %t271 = alloca ptr
   %t273 = alloca ptr
-  %t280 = alloca ptr
-  %t282 = alloca ptr
-  %t287 = alloca ptr
-  %t294 = alloca ptr
-  %t304 = alloca ptr
-  %t314 = alloca ptr
-  %t324 = alloca ptr
-  %t334 = alloca ptr
-  %t346 = alloca ptr
-  %t349 = alloca ptr
-  %t352 = alloca ptr
-  %t370 = alloca ptr
-  %t373 = alloca ptr
-  %t382 = alloca i32
-  %t393 = alloca i32
-  %t418 = alloca ptr
-  %t426 = alloca i32
-  %t447 = alloca i32
+  %t278 = alloca ptr
+  %t285 = alloca ptr
+  %t295 = alloca ptr
+  %t305 = alloca ptr
+  %t315 = alloca ptr
+  %t327 = alloca ptr
+  %t335 = alloca ptr
+  %t347 = alloca ptr
+  %t350 = alloca ptr
+  %t353 = alloca ptr
+  %t371 = alloca ptr
+  %t374 = alloca ptr
+  %t383 = alloca i32
+  %t394 = alloca i32
+  %t419 = alloca ptr
+  %t427 = alloca i32
+  %t448 = alloca i32
   store i32 %argc, ptr @L_argc
   store ptr %argv, ptr @L_argv
   store i32 0, ptr %retval
@@ -110561,397 +110563,395 @@ then81:
   %t204 = call i32 @fn_ir_flush(ptr null)
   br label %ret
 ifend83:
-  %t206 = load i32, ptr @g_g_target_win
+  %t206 = load i32, ptr %t6
   %t207 = icmp ne i32 %t206, 0
   %t208 = zext i1 %t207 to i32
   store i32 %t208, ptr %t205
   br i1 %t207, label %sc84, label %scend85
 sc84:
-  %t209 = load i32, ptr @g_g_uses_http
-  %t210 = icmp ne i32 %t209, 0
+  %t209 = load ptr, ptr %t1
+  %t210 = icmp eq ptr %t209, null
   %t211 = zext i1 %t210 to i32
-  store i32 %t211, ptr %t205
+  %t212 = icmp ne i32 %t211, 0
+  %t213 = zext i1 %t212 to i32
+  store i32 %t213, ptr %t205
   br label %scend85
 scend85:
-  %t212 = load i32, ptr %t205
-  %t213 = icmp ne i32 %t212, 0
-  br i1 %t213, label %then86, label %ifend88
+  %t214 = load i32, ptr %t205
+  %t215 = icmp ne i32 %t214, 0
+  br i1 %t215, label %then86, label %ifend88
 then86:
-  call void @fn_die(ptr @.str11131)
+  %t216 = call i32 @fn_host_is_windows()
+  %t217 = icmp ne i32 %t216, 0
+  br i1 %t217, label %then89, label %else90
+then89:
+  %t218 = call ptr @fn_getenv_or(ptr @.str11131, ptr @.str11132)
+  %t219 = call ptr @fn_fwd_slashes(ptr %t218)
+  %t220 = call ptr @lp_str_concat(ptr %t219, ptr @.str11133)
+  %t221 = load ptr, ptr %t0
+  %t222 = call ptr @fn_base_name(ptr %t221)
+  %t223 = call ptr @fn_strip_ludic(ptr %t222)
+  %t224 = call ptr @lp_str_concat(ptr %t220, ptr %t223)
+  store ptr %t224, ptr %t1
+  br label %ifend91
+else90:
+  %t225 = load ptr, ptr %t0
+  %t226 = call ptr @fn_base_name(ptr %t225)
+  %t227 = call ptr @fn_strip_ludic(ptr %t226)
+  %t228 = call ptr @lp_str_concat(ptr @.str11134, ptr %t227)
+  store ptr %t228, ptr %t1
+  br label %ifend91
+ifend91:
   br label %ifend88
 ifend88:
-  %t215 = load i32, ptr %t6
-  %t216 = icmp ne i32 %t215, 0
-  %t217 = zext i1 %t216 to i32
-  store i32 %t217, ptr %t214
-  br i1 %t216, label %sc89, label %scend90
-sc89:
-  %t218 = load ptr, ptr %t1
-  %t219 = icmp eq ptr %t218, null
-  %t220 = zext i1 %t219 to i32
-  %t221 = icmp ne i32 %t220, 0
-  %t222 = zext i1 %t221 to i32
-  store i32 %t222, ptr %t214
-  br label %scend90
-scend90:
-  %t223 = load i32, ptr %t214
-  %t224 = icmp ne i32 %t223, 0
-  br i1 %t224, label %then91, label %ifend93
-then91:
-  %t225 = call i32 @fn_host_is_windows()
-  %t226 = icmp ne i32 %t225, 0
-  br i1 %t226, label %then94, label %else95
-then94:
-  %t227 = call ptr @fn_getenv_or(ptr @.str11132, ptr @.str11133)
-  %t228 = call ptr @fn_fwd_slashes(ptr %t227)
-  %t229 = call ptr @lp_str_concat(ptr %t228, ptr @.str11134)
-  %t230 = load ptr, ptr %t0
-  %t231 = call ptr @fn_base_name(ptr %t230)
-  %t232 = call ptr @fn_strip_ludic(ptr %t231)
-  %t233 = call ptr @lp_str_concat(ptr %t229, ptr %t232)
-  store ptr %t233, ptr %t1
-  br label %ifend96
-else95:
-  %t234 = load ptr, ptr %t0
-  %t235 = call ptr @fn_base_name(ptr %t234)
-  %t236 = call ptr @fn_strip_ludic(ptr %t235)
-  %t237 = call ptr @lp_str_concat(ptr @.str11135, ptr %t236)
-  store ptr %t237, ptr %t1
-  br label %ifend96
-ifend96:
-  br label %ifend93
-ifend93:
-  %t238 = load i32, ptr @g_g_target_win
+  %t229 = load i32, ptr @g_g_target_win
+  %t230 = icmp ne i32 %t229, 0
+  br i1 %t230, label %then92, label %ifend94
+then92:
+  %t231 = load ptr, ptr %t1
+  %t232 = call i64 @strlen(ptr %t231)
+  %t233 = trunc i64 %t232 to i32
+  store i32 %t233, ptr %t234
+  store i32 0, ptr %t235
+  %t236 = load i32, ptr %t234
+  %t237 = icmp sge i32 %t236, 4
+  %t238 = zext i1 %t237 to i32
   %t239 = icmp ne i32 %t238, 0
-  br i1 %t239, label %then97, label %ifend99
-then97:
+  br i1 %t239, label %then95, label %ifend97
+then95:
   %t240 = load ptr, ptr %t1
-  %t241 = call i64 @strlen(ptr %t240)
-  %t242 = trunc i64 %t241 to i32
-  store i32 %t242, ptr %t243
-  store i32 0, ptr %t244
-  %t245 = load i32, ptr %t243
-  %t246 = icmp sge i32 %t245, 4
-  %t247 = zext i1 %t246 to i32
-  %t248 = icmp ne i32 %t247, 0
-  br i1 %t248, label %then100, label %ifend102
-then100:
-  %t249 = load ptr, ptr %t1
-  %t250 = load i32, ptr %t243
-  %t251 = sub i32 %t250, 4
-  %t252 = load i32, ptr %t243
-  %t253 = call ptr @lp_str_slice(ptr %t249, i32 %t251, i32 %t252)
-  %t254 = call i32 @lp_str_eq(ptr %t253, ptr @.str11136)
-  store i32 %t254, ptr %t244
-  br label %ifend102
-ifend102:
-  %t255 = load i32, ptr %t244
-  %t256 = icmp eq i32 %t255, 0
-  %t257 = zext i1 %t256 to i32
-  %t258 = icmp ne i32 %t257, 0
-  br i1 %t258, label %then103, label %ifend105
-then103:
-  %t259 = load ptr, ptr %t1
-  %t260 = call ptr @lp_str_concat(ptr %t259, ptr @.str11137)
-  store ptr %t260, ptr %t1
-  br label %ifend105
-ifend105:
-  br label %ifend99
-ifend99:
-  %t261 = load ptr, ptr %t1
-  %t262 = call ptr @fn_dir_of(ptr %t261)
-  store ptr %t262, ptr %t263
-  %t264 = load ptr, ptr %t263
-  %t265 = call i64 @strlen(ptr %t264)
-  %t266 = trunc i64 %t265 to i32
-  %t267 = icmp sgt i32 %t266, 0
+  %t241 = load i32, ptr %t234
+  %t242 = sub i32 %t241, 4
+  %t243 = load i32, ptr %t234
+  %t244 = call ptr @lp_str_slice(ptr %t240, i32 %t242, i32 %t243)
+  %t245 = call i32 @lp_str_eq(ptr %t244, ptr @.str11135)
+  store i32 %t245, ptr %t235
+  br label %ifend97
+ifend97:
+  %t246 = load i32, ptr %t235
+  %t247 = icmp eq i32 %t246, 0
+  %t248 = zext i1 %t247 to i32
+  %t249 = icmp ne i32 %t248, 0
+  br i1 %t249, label %then98, label %ifend100
+then98:
+  %t250 = load ptr, ptr %t1
+  %t251 = call ptr @lp_str_concat(ptr %t250, ptr @.str11136)
+  store ptr %t251, ptr %t1
+  br label %ifend100
+ifend100:
+  br label %ifend94
+ifend94:
+  %t252 = load ptr, ptr %t1
+  %t253 = call ptr @fn_dir_of(ptr %t252)
+  store ptr %t253, ptr %t254
+  %t255 = load ptr, ptr %t254
+  %t256 = call i64 @strlen(ptr %t255)
+  %t257 = trunc i64 %t256 to i32
+  %t258 = icmp sgt i32 %t257, 0
+  %t259 = zext i1 %t258 to i32
+  %t260 = icmp ne i32 %t259, 0
+  br i1 %t260, label %then101, label %ifend103
+then101:
+  %t261 = load ptr, ptr %t254
+  call void @fn_make_dir(ptr %t261)
+  br label %ifend103
+ifend103:
+  %t262 = load ptr, ptr %t1
+  %t263 = call ptr @lp_str_concat(ptr %t262, ptr @.str11137)
+  store ptr %t263, ptr %t264
+  %t265 = load ptr, ptr %t264
+  %t266 = call i32 @fn_ir_flush(ptr %t265)
+  %t267 = icmp eq i32 %t266, 0
   %t268 = zext i1 %t267 to i32
   %t269 = icmp ne i32 %t268, 0
-  br i1 %t269, label %then106, label %ifend108
-then106:
-  %t270 = load ptr, ptr %t263
-  call void @fn_make_dir(ptr %t270)
-  br label %ifend108
-ifend108:
-  %t271 = load ptr, ptr %t1
-  %t272 = call ptr @lp_str_concat(ptr %t271, ptr @.str11138)
+  br i1 %t269, label %then104, label %ifend106
+then104:
+  call void @fn_die(ptr @.str11138)
+  br label %ifend106
+ifend106:
+  %t270 = call ptr @fn_find_cc()
+  store ptr %t270, ptr %t271
+  %t272 = call ptr @fn_ludic_home()
   store ptr %t272, ptr %t273
-  %t274 = load ptr, ptr %t273
-  %t275 = call i32 @fn_ir_flush(ptr %t274)
-  %t276 = icmp eq i32 %t275, 0
-  %t277 = zext i1 %t276 to i32
-  %t278 = icmp ne i32 %t277, 0
-  br i1 %t278, label %then109, label %ifend111
-then109:
-  call void @fn_die(ptr @.str11139)
-  br label %ifend111
-ifend111:
-  %t279 = call ptr @fn_find_cc()
-  store ptr %t279, ptr %t280
-  %t281 = call ptr @fn_ludic_home()
-  store ptr %t281, ptr %t282
-  %t283 = load ptr, ptr %t280
-  %t284 = call ptr @lp_str_concat(ptr %t283, ptr @.str11140)
-  %t285 = load ptr, ptr %t273
-  %t286 = call ptr @lp_str_concat(ptr %t284, ptr %t285)
-  store ptr %t286, ptr %t287
-  %t288 = load i32, ptr @g_g_target_win
-  %t289 = icmp ne i32 %t288, 0
-  br i1 %t289, label %then112, label %else113
-then112:
-  %t290 = load i32, ptr @g_g_windowed
-  %t291 = icmp ne i32 %t290, 0
-  br i1 %t291, label %then115, label %ifend117
-then115:
-  %t292 = load ptr, ptr %t282
-  %t293 = call ptr @fn_join_path(ptr %t292, ptr @.str11141)
-  store ptr %t293, ptr %t294
-  %t295 = load ptr, ptr %t287
-  %t296 = call ptr @lp_str_concat(ptr %t295, ptr @.str11142)
-  %t297 = load ptr, ptr %t294
-  %t298 = call ptr @lp_str_concat(ptr %t296, ptr %t297)
-  %t299 = call ptr @lp_str_concat(ptr %t298, ptr @.str11143)
-  store ptr %t299, ptr %t287
-  %t300 = load i32, ptr @g_g_uses_audio
-  %t301 = icmp ne i32 %t300, 0
-  br i1 %t301, label %then118, label %ifend120
-then118:
-  %t302 = load ptr, ptr %t282
-  %t303 = call ptr @fn_join_path(ptr %t302, ptr @.str11144)
-  store ptr %t303, ptr %t304
-  %t305 = load ptr, ptr %t287
-  %t306 = call ptr @lp_str_concat(ptr %t305, ptr @.str11145)
-  %t307 = load ptr, ptr %t304
-  %t308 = call ptr @lp_str_concat(ptr %t306, ptr %t307)
-  %t309 = call ptr @lp_str_concat(ptr %t308, ptr @.str11146)
-  store ptr %t309, ptr %t287
-  br label %ifend120
-ifend120:
-  br label %ifend117
-ifend117:
-  br label %ifend114
-else113:
-  %t310 = load i32, ptr @g_g_windowed
-  %t311 = icmp ne i32 %t310, 0
-  br i1 %t311, label %then121, label %ifend123
-then121:
-  %t312 = load ptr, ptr %t282
-  %t313 = call ptr @fn_join_path(ptr %t312, ptr @.str11147)
-  store ptr %t313, ptr %t314
-  %t315 = load ptr, ptr %t287
-  %t316 = call ptr @lp_str_concat(ptr %t315, ptr @.str11148)
-  %t317 = load ptr, ptr %t314
-  %t318 = call ptr @lp_str_concat(ptr %t316, ptr %t317)
-  %t319 = call ptr @lp_str_concat(ptr %t318, ptr @.str11149)
-  store ptr %t319, ptr %t287
-  %t320 = load i32, ptr @g_g_uses_audio
-  %t321 = icmp ne i32 %t320, 0
-  br i1 %t321, label %then124, label %ifend126
-then124:
-  %t322 = load ptr, ptr %t282
-  %t323 = call ptr @fn_join_path(ptr %t322, ptr @.str11150)
-  store ptr %t323, ptr %t324
-  %t325 = load ptr, ptr %t287
-  %t326 = call ptr @lp_str_concat(ptr %t325, ptr @.str11151)
-  %t327 = load ptr, ptr %t324
-  %t328 = call ptr @lp_str_concat(ptr %t326, ptr %t327)
-  %t329 = call ptr @lp_str_concat(ptr %t328, ptr @.str11152)
-  store ptr %t329, ptr %t287
-  br label %ifend126
-ifend126:
-  br label %ifend123
-ifend123:
-  br label %ifend114
-ifend114:
-  %t330 = load i32, ptr @g_g_uses_http
-  %t331 = icmp ne i32 %t330, 0
-  br i1 %t331, label %then127, label %ifend129
-then127:
-  %t332 = load ptr, ptr %t282
-  %t333 = call ptr @fn_join_path(ptr %t332, ptr @.str11153)
-  store ptr %t333, ptr %t334
-  %t335 = load ptr, ptr %t287
-  %t336 = call ptr @lp_str_concat(ptr %t335, ptr @.str11154)
-  %t337 = load ptr, ptr %t334
-  %t338 = call ptr @lp_str_concat(ptr %t336, ptr %t337)
-  %t339 = call ptr @lp_str_concat(ptr %t338, ptr @.str11155)
-  store ptr %t339, ptr %t287
-  br label %ifend129
-ifend129:
-  %t340 = load i32, ptr @g_g_uses_gl
-  %t341 = icmp ne i32 %t340, 0
-  br i1 %t341, label %then130, label %ifend132
-then130:
-  %t342 = load i32, ptr @g_g_target_win
-  %t343 = icmp ne i32 %t342, 0
-  br i1 %t343, label %then133, label %else134
-then133:
-  %t344 = load ptr, ptr %t282
-  %t345 = call ptr @fn_join_path(ptr %t344, ptr @.str11156)
-  store ptr %t345, ptr %t346
-  %t347 = load ptr, ptr %t282
-  %t348 = call ptr @fn_join_path(ptr %t347, ptr @.str11157)
-  store ptr %t348, ptr %t349
-  %t350 = load ptr, ptr %t282
-  %t351 = call ptr @fn_join_path(ptr %t350, ptr @.str11158)
-  store ptr %t351, ptr %t352
-  %t353 = load i32, ptr @g_g_windowed
-  %t354 = icmp ne i32 %t353, 0
-  br i1 %t354, label %then136, label %ifend138
-then136:
-  %t355 = load ptr, ptr %t282
-  %t356 = call ptr @fn_join_path(ptr %t355, ptr @.str11159)
-  store ptr %t356, ptr %t352
-  br label %ifend138
-ifend138:
-  %t357 = load ptr, ptr %t287
-  %t358 = call ptr @lp_str_concat(ptr %t357, ptr @.str11160)
-  %t359 = load ptr, ptr %t346
-  %t360 = call ptr @lp_str_concat(ptr %t358, ptr %t359)
-  %t361 = call ptr @lp_str_concat(ptr %t360, ptr @.str11161)
-  %t362 = load ptr, ptr %t349
-  %t363 = call ptr @lp_str_concat(ptr %t361, ptr %t362)
-  %t364 = call ptr @lp_str_concat(ptr %t363, ptr @.str11162)
-  %t365 = load ptr, ptr %t352
-  %t366 = call ptr @lp_str_concat(ptr %t364, ptr %t365)
-  %t367 = call ptr @lp_str_concat(ptr %t366, ptr @.str11163)
-  store ptr %t367, ptr %t287
-  br label %ifend135
-else134:
-  %t368 = load ptr, ptr %t282
-  %t369 = call ptr @fn_join_path(ptr %t368, ptr @.str11164)
-  store ptr %t369, ptr %t370
-  %t371 = load ptr, ptr %t282
-  %t372 = call ptr @fn_join_path(ptr %t371, ptr @.str11165)
-  store ptr %t372, ptr %t373
-  %t374 = load ptr, ptr %t287
-  %t375 = call ptr @lp_str_concat(ptr %t374, ptr @.str11166)
-  %t376 = load ptr, ptr %t370
-  %t377 = call ptr @lp_str_concat(ptr %t375, ptr %t376)
-  %t378 = call ptr @lp_str_concat(ptr %t377, ptr @.str11167)
-  %t379 = load ptr, ptr %t373
-  %t380 = call ptr @lp_str_concat(ptr %t378, ptr %t379)
-  %t381 = call ptr @lp_str_concat(ptr %t380, ptr @.str11168)
-  store ptr %t381, ptr %t287
-  br label %ifend135
-ifend135:
-  br label %ifend132
-ifend132:
-  %t383 = load i32, ptr @g_g_target_win
-  %t384 = icmp ne i32 %t383, 0
-  %t385 = zext i1 %t384 to i32
-  store i32 %t385, ptr %t382
-  br i1 %t384, label %sc139, label %scend140
-sc139:
-  %t386 = load i32, ptr %t8
-  %t387 = icmp ne i32 %t386, 0
-  %t388 = zext i1 %t387 to i32
-  store i32 %t388, ptr %t382
-  br label %scend140
-scend140:
-  %t389 = load i32, ptr %t382
-  %t390 = icmp ne i32 %t389, 0
-  br i1 %t390, label %then141, label %ifend143
-then141:
-  %t391 = load ptr, ptr %t287
-  %t392 = call ptr @lp_str_concat(ptr %t391, ptr @.str11169)
-  store ptr %t392, ptr %t287
-  br label %ifend143
-ifend143:
-  store i32 0, ptr %t393
-  br label %wcond144
-wcond144:
-  %t394 = load i32, ptr %t393
-  %t395 = load ptr, ptr %t15
-  %t396 = getelementptr inbounds %LSlice, ptr %t395, i32 0, i32 1
-  %t397 = load i32, ptr %t396
-  %t398 = icmp slt i32 %t394, %t397
-  %t399 = zext i1 %t398 to i32
-  %t400 = icmp ne i32 %t399, 0
-  br i1 %t400, label %wbody145, label %wend146
-wbody145:
-  %t401 = load ptr, ptr %t287
-  %t402 = call ptr @lp_str_concat(ptr %t401, ptr @.str11170)
-  %t403 = load ptr, ptr %t15
-  %t404 = getelementptr inbounds %LSlice, ptr %t403, i32 0, i32 0
-  %t405 = load ptr, ptr %t404
-  %t406 = load i32, ptr %t393
-  %t407 = getelementptr inbounds ptr, ptr %t405, i32 %t406
-  %t408 = load ptr, ptr %t407
-  %t409 = call ptr @lp_str_concat(ptr %t402, ptr %t408)
-  %t410 = call ptr @lp_str_concat(ptr %t409, ptr @.str11171)
-  store ptr %t410, ptr %t287
-  %t411 = load i32, ptr %t393
-  %t412 = add i32 %t411, 1
-  store i32 %t412, ptr %t393
-  br label %wcond144
-wend146:
-  %t413 = load ptr, ptr %t287
-  %t414 = call ptr @lp_str_concat(ptr %t413, ptr @.str11172)
-  %t415 = load ptr, ptr %t1
-  %t416 = call ptr @lp_str_concat(ptr %t414, ptr %t415)
-  store ptr %t416, ptr %t287
-  %t417 = load ptr, ptr %t287
-  store ptr %t417, ptr %t418
-  %t419 = call i32 @fn_host_is_windows()
-  %t420 = icmp ne i32 %t419, 0
-  br i1 %t420, label %then147, label %ifend149
-then147:
-  %t421 = load ptr, ptr %t287
-  %t422 = call ptr @lp_str_concat(ptr @.str11173, ptr %t421)
-  %t423 = call ptr @lp_str_concat(ptr %t422, ptr @.str11174)
-  store ptr %t423, ptr %t418
-  br label %ifend149
-ifend149:
-  %t424 = load ptr, ptr %t418
-  %t425 = call i32 @system(ptr %t424)
-  store i32 %t425, ptr %t426
-  %t427 = load i32, ptr %t5
-  %t428 = icmp eq i32 %t427, 0
-  %t429 = zext i1 %t428 to i32
-  %t430 = icmp ne i32 %t429, 0
-  br i1 %t430, label %then150, label %ifend152
-then150:
-  %t431 = load ptr, ptr %t273
-  call void @fn_remove_file(ptr %t431)
-  br label %ifend152
-ifend152:
-  %t432 = load i32, ptr %t426
-  %t433 = icmp ne i32 %t432, 0
-  %t434 = zext i1 %t433 to i32
-  %t435 = icmp ne i32 %t434, 0
-  br i1 %t435, label %then153, label %ifend155
-then153:
-  call void @fn_die(ptr @.str11175)
-  br label %ifend155
-ifend155:
-  %t436 = load i32, ptr %t6
-  %t437 = icmp ne i32 %t436, 0
-  br i1 %t437, label %then156, label %ifend158
-then156:
-  %t438 = call i32 @fn_host_is_windows()
-  %t439 = icmp ne i32 %t438, 0
-  br i1 %t439, label %then159, label %ifend161
-then159:
-  %t440 = load ptr, ptr %t1
-  %t441 = call ptr @fn_win_path(ptr %t440)
-  %t442 = call ptr @lp_str_concat(ptr @.str11176, ptr %t441)
-  %t443 = call ptr @lp_str_concat(ptr %t442, ptr @.str11177)
-  %t444 = call i32 @system(ptr %t443)
-  call void @exit(i32 %t444)
+  %t274 = load ptr, ptr %t271
+  %t275 = call ptr @lp_str_concat(ptr %t274, ptr @.str11139)
+  %t276 = load ptr, ptr %t264
+  %t277 = call ptr @lp_str_concat(ptr %t275, ptr %t276)
+  store ptr %t277, ptr %t278
+  %t279 = load i32, ptr @g_g_target_win
+  %t280 = icmp ne i32 %t279, 0
+  br i1 %t280, label %then107, label %else108
+then107:
+  %t281 = load i32, ptr @g_g_windowed
+  %t282 = icmp ne i32 %t281, 0
+  br i1 %t282, label %then110, label %ifend112
+then110:
+  %t283 = load ptr, ptr %t273
+  %t284 = call ptr @fn_join_path(ptr %t283, ptr @.str11140)
+  store ptr %t284, ptr %t285
+  %t286 = load ptr, ptr %t278
+  %t287 = call ptr @lp_str_concat(ptr %t286, ptr @.str11141)
+  %t288 = load ptr, ptr %t285
+  %t289 = call ptr @lp_str_concat(ptr %t287, ptr %t288)
+  %t290 = call ptr @lp_str_concat(ptr %t289, ptr @.str11142)
+  store ptr %t290, ptr %t278
+  %t291 = load i32, ptr @g_g_uses_audio
+  %t292 = icmp ne i32 %t291, 0
+  br i1 %t292, label %then113, label %ifend115
+then113:
+  %t293 = load ptr, ptr %t273
+  %t294 = call ptr @fn_join_path(ptr %t293, ptr @.str11143)
+  store ptr %t294, ptr %t295
+  %t296 = load ptr, ptr %t278
+  %t297 = call ptr @lp_str_concat(ptr %t296, ptr @.str11144)
+  %t298 = load ptr, ptr %t295
+  %t299 = call ptr @lp_str_concat(ptr %t297, ptr %t298)
+  %t300 = call ptr @lp_str_concat(ptr %t299, ptr @.str11145)
+  store ptr %t300, ptr %t278
+  br label %ifend115
+ifend115:
+  br label %ifend112
+ifend112:
+  br label %ifend109
+else108:
+  %t301 = load i32, ptr @g_g_windowed
+  %t302 = icmp ne i32 %t301, 0
+  br i1 %t302, label %then116, label %ifend118
+then116:
+  %t303 = load ptr, ptr %t273
+  %t304 = call ptr @fn_join_path(ptr %t303, ptr @.str11146)
+  store ptr %t304, ptr %t305
+  %t306 = load ptr, ptr %t278
+  %t307 = call ptr @lp_str_concat(ptr %t306, ptr @.str11147)
+  %t308 = load ptr, ptr %t305
+  %t309 = call ptr @lp_str_concat(ptr %t307, ptr %t308)
+  %t310 = call ptr @lp_str_concat(ptr %t309, ptr @.str11148)
+  store ptr %t310, ptr %t278
+  %t311 = load i32, ptr @g_g_uses_audio
+  %t312 = icmp ne i32 %t311, 0
+  br i1 %t312, label %then119, label %ifend121
+then119:
+  %t313 = load ptr, ptr %t273
+  %t314 = call ptr @fn_join_path(ptr %t313, ptr @.str11149)
+  store ptr %t314, ptr %t315
+  %t316 = load ptr, ptr %t278
+  %t317 = call ptr @lp_str_concat(ptr %t316, ptr @.str11150)
+  %t318 = load ptr, ptr %t315
+  %t319 = call ptr @lp_str_concat(ptr %t317, ptr %t318)
+  %t320 = call ptr @lp_str_concat(ptr %t319, ptr @.str11151)
+  store ptr %t320, ptr %t278
+  br label %ifend121
+ifend121:
+  br label %ifend118
+ifend118:
+  br label %ifend109
+ifend109:
+  %t321 = load i32, ptr @g_g_uses_http
+  %t322 = icmp ne i32 %t321, 0
+  br i1 %t322, label %then122, label %ifend124
+then122:
+  %t323 = load i32, ptr @g_g_target_win
+  %t324 = icmp ne i32 %t323, 0
+  br i1 %t324, label %then125, label %else126
+then125:
+  %t325 = load ptr, ptr %t273
+  %t326 = call ptr @fn_join_path(ptr %t325, ptr @.str11152)
+  store ptr %t326, ptr %t327
+  %t328 = load ptr, ptr %t278
+  %t329 = call ptr @lp_str_concat(ptr %t328, ptr @.str11153)
+  %t330 = load ptr, ptr %t327
+  %t331 = call ptr @lp_str_concat(ptr %t329, ptr %t330)
+  %t332 = call ptr @lp_str_concat(ptr %t331, ptr @.str11154)
+  store ptr %t332, ptr %t278
+  br label %ifend127
+else126:
+  %t333 = load ptr, ptr %t273
+  %t334 = call ptr @fn_join_path(ptr %t333, ptr @.str11155)
+  store ptr %t334, ptr %t335
+  %t336 = load ptr, ptr %t278
+  %t337 = call ptr @lp_str_concat(ptr %t336, ptr @.str11156)
+  %t338 = load ptr, ptr %t335
+  %t339 = call ptr @lp_str_concat(ptr %t337, ptr %t338)
+  %t340 = call ptr @lp_str_concat(ptr %t339, ptr @.str11157)
+  store ptr %t340, ptr %t278
+  br label %ifend127
+ifend127:
+  br label %ifend124
+ifend124:
+  %t341 = load i32, ptr @g_g_uses_gl
+  %t342 = icmp ne i32 %t341, 0
+  br i1 %t342, label %then128, label %ifend130
+then128:
+  %t343 = load i32, ptr @g_g_target_win
+  %t344 = icmp ne i32 %t343, 0
+  br i1 %t344, label %then131, label %else132
+then131:
+  %t345 = load ptr, ptr %t273
+  %t346 = call ptr @fn_join_path(ptr %t345, ptr @.str11158)
+  store ptr %t346, ptr %t347
+  %t348 = load ptr, ptr %t273
+  %t349 = call ptr @fn_join_path(ptr %t348, ptr @.str11159)
+  store ptr %t349, ptr %t350
+  %t351 = load ptr, ptr %t273
+  %t352 = call ptr @fn_join_path(ptr %t351, ptr @.str11160)
+  store ptr %t352, ptr %t353
+  %t354 = load i32, ptr @g_g_windowed
+  %t355 = icmp ne i32 %t354, 0
+  br i1 %t355, label %then134, label %ifend136
+then134:
+  %t356 = load ptr, ptr %t273
+  %t357 = call ptr @fn_join_path(ptr %t356, ptr @.str11161)
+  store ptr %t357, ptr %t353
+  br label %ifend136
+ifend136:
+  %t358 = load ptr, ptr %t278
+  %t359 = call ptr @lp_str_concat(ptr %t358, ptr @.str11162)
+  %t360 = load ptr, ptr %t347
+  %t361 = call ptr @lp_str_concat(ptr %t359, ptr %t360)
+  %t362 = call ptr @lp_str_concat(ptr %t361, ptr @.str11163)
+  %t363 = load ptr, ptr %t350
+  %t364 = call ptr @lp_str_concat(ptr %t362, ptr %t363)
+  %t365 = call ptr @lp_str_concat(ptr %t364, ptr @.str11164)
+  %t366 = load ptr, ptr %t353
+  %t367 = call ptr @lp_str_concat(ptr %t365, ptr %t366)
+  %t368 = call ptr @lp_str_concat(ptr %t367, ptr @.str11165)
+  store ptr %t368, ptr %t278
+  br label %ifend133
+else132:
+  %t369 = load ptr, ptr %t273
+  %t370 = call ptr @fn_join_path(ptr %t369, ptr @.str11166)
+  store ptr %t370, ptr %t371
+  %t372 = load ptr, ptr %t273
+  %t373 = call ptr @fn_join_path(ptr %t372, ptr @.str11167)
+  store ptr %t373, ptr %t374
+  %t375 = load ptr, ptr %t278
+  %t376 = call ptr @lp_str_concat(ptr %t375, ptr @.str11168)
+  %t377 = load ptr, ptr %t371
+  %t378 = call ptr @lp_str_concat(ptr %t376, ptr %t377)
+  %t379 = call ptr @lp_str_concat(ptr %t378, ptr @.str11169)
+  %t380 = load ptr, ptr %t374
+  %t381 = call ptr @lp_str_concat(ptr %t379, ptr %t380)
+  %t382 = call ptr @lp_str_concat(ptr %t381, ptr @.str11170)
+  store ptr %t382, ptr %t278
+  br label %ifend133
+ifend133:
+  br label %ifend130
+ifend130:
+  %t384 = load i32, ptr @g_g_target_win
+  %t385 = icmp ne i32 %t384, 0
+  %t386 = zext i1 %t385 to i32
+  store i32 %t386, ptr %t383
+  br i1 %t385, label %sc137, label %scend138
+sc137:
+  %t387 = load i32, ptr %t8
+  %t388 = icmp ne i32 %t387, 0
+  %t389 = zext i1 %t388 to i32
+  store i32 %t389, ptr %t383
+  br label %scend138
+scend138:
+  %t390 = load i32, ptr %t383
+  %t391 = icmp ne i32 %t390, 0
+  br i1 %t391, label %then139, label %ifend141
+then139:
+  %t392 = load ptr, ptr %t278
+  %t393 = call ptr @lp_str_concat(ptr %t392, ptr @.str11171)
+  store ptr %t393, ptr %t278
+  br label %ifend141
+ifend141:
+  store i32 0, ptr %t394
+  br label %wcond142
+wcond142:
+  %t395 = load i32, ptr %t394
+  %t396 = load ptr, ptr %t15
+  %t397 = getelementptr inbounds %LSlice, ptr %t396, i32 0, i32 1
+  %t398 = load i32, ptr %t397
+  %t399 = icmp slt i32 %t395, %t398
+  %t400 = zext i1 %t399 to i32
+  %t401 = icmp ne i32 %t400, 0
+  br i1 %t401, label %wbody143, label %wend144
+wbody143:
+  %t402 = load ptr, ptr %t278
+  %t403 = call ptr @lp_str_concat(ptr %t402, ptr @.str11172)
+  %t404 = load ptr, ptr %t15
+  %t405 = getelementptr inbounds %LSlice, ptr %t404, i32 0, i32 0
+  %t406 = load ptr, ptr %t405
+  %t407 = load i32, ptr %t394
+  %t408 = getelementptr inbounds ptr, ptr %t406, i32 %t407
+  %t409 = load ptr, ptr %t408
+  %t410 = call ptr @lp_str_concat(ptr %t403, ptr %t409)
+  %t411 = call ptr @lp_str_concat(ptr %t410, ptr @.str11173)
+  store ptr %t411, ptr %t278
+  %t412 = load i32, ptr %t394
+  %t413 = add i32 %t412, 1
+  store i32 %t413, ptr %t394
+  br label %wcond142
+wend144:
+  %t414 = load ptr, ptr %t278
+  %t415 = call ptr @lp_str_concat(ptr %t414, ptr @.str11174)
+  %t416 = load ptr, ptr %t1
+  %t417 = call ptr @lp_str_concat(ptr %t415, ptr %t416)
+  store ptr %t417, ptr %t278
+  %t418 = load ptr, ptr %t278
+  store ptr %t418, ptr %t419
+  %t420 = call i32 @fn_host_is_windows()
+  %t421 = icmp ne i32 %t420, 0
+  br i1 %t421, label %then145, label %ifend147
+then145:
+  %t422 = load ptr, ptr %t278
+  %t423 = call ptr @lp_str_concat(ptr @.str11175, ptr %t422)
+  %t424 = call ptr @lp_str_concat(ptr %t423, ptr @.str11176)
+  store ptr %t424, ptr %t419
+  br label %ifend147
+ifend147:
+  %t425 = load ptr, ptr %t419
+  %t426 = call i32 @system(ptr %t425)
+  store i32 %t426, ptr %t427
+  %t428 = load i32, ptr %t5
+  %t429 = icmp eq i32 %t428, 0
+  %t430 = zext i1 %t429 to i32
+  %t431 = icmp ne i32 %t430, 0
+  br i1 %t431, label %then148, label %ifend150
+then148:
+  %t432 = load ptr, ptr %t264
+  call void @fn_remove_file(ptr %t432)
+  br label %ifend150
+ifend150:
+  %t433 = load i32, ptr %t427
+  %t434 = icmp ne i32 %t433, 0
+  %t435 = zext i1 %t434 to i32
+  %t436 = icmp ne i32 %t435, 0
+  br i1 %t436, label %then151, label %ifend153
+then151:
+  call void @fn_die(ptr @.str11177)
+  br label %ifend153
+ifend153:
+  %t437 = load i32, ptr %t6
+  %t438 = icmp ne i32 %t437, 0
+  br i1 %t438, label %then154, label %ifend156
+then154:
+  %t439 = call i32 @fn_host_is_windows()
+  %t440 = icmp ne i32 %t439, 0
+  br i1 %t440, label %then157, label %ifend159
+then157:
+  %t441 = load ptr, ptr %t1
+  %t442 = call ptr @fn_win_path(ptr %t441)
+  %t443 = call ptr @lp_str_concat(ptr @.str11178, ptr %t442)
+  %t444 = call ptr @lp_str_concat(ptr %t443, ptr @.str11179)
+  %t445 = call i32 @system(ptr %t444)
+  call void @exit(i32 %t445)
   unreachable
-ifend161:
-  %t445 = load ptr, ptr %t1
-  %t446 = call i32 @system(ptr %t445)
-  store i32 %t446, ptr %t447
-  %t448 = load i32, ptr %t447
-  %t449 = lshr i32 %t448, 8
-  %t450 = and i32 %t449, 255
-  call void @exit(i32 %t450)
+ifend159:
+  %t446 = load ptr, ptr %t1
+  %t447 = call i32 @system(ptr %t446)
+  store i32 %t447, ptr %t448
+  %t449 = load i32, ptr %t448
+  %t450 = lshr i32 %t449, 8
+  %t451 = and i32 %t450, 255
+  call void @exit(i32 %t451)
   unreachable
-ifend158:
+ifend156:
   br label %ret
 ret:
-  %t451 = load i32, ptr %retval
-  ret i32 %t451
+  %t452 = load i32, ptr %retval
+  ret i32 %t452
 }
