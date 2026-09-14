@@ -1,0 +1,44 @@
+# input_mouse_rebase.ludic — Input.mouse_dx/dy report no motion on the first frame and on the
+# frame a cursor-mode change lands, and ordinary motion on every other frame.
+#
+# The delta is this frame's position minus the last. Before any position has been read the "last"
+# one is 0,0, and across a mode change it belongs to another source (a locked cursor's virtual
+# reticle against the real cursor) - both used to come out as a jump the size of the screen.
+# Driven headless by injection:
+#   bin/ludic examples/library/input_mouse_rebase.ludic  ->  0 0 5 -2 0 0 4 3 6 0 0 0
+program InputMouseRebase {
+  entry {
+    # the first frame: the cursor is already at 300,400, which is not 300,400 of motion
+    Input.set_mouse(300, 400, 0, 0)
+    Input.poll()
+    print(Input.mouse_dx())              # 0
+    print(Input.mouse_dy())              # 0
+    # ordinary motion
+    Input.set_mouse(305, 398, 0, 0)
+    Input.poll()
+    print(Input.mouse_dx())              # 5
+    print(Input.mouse_dy())              # -2
+    # a mode change: the next position is from another source
+    Input.cursor_mode(2)
+    Input.set_mouse(900, 100, 0, 0)
+    Input.poll()
+    print(Input.mouse_dx())              # 0
+    print(Input.mouse_dy())              # 0
+    Input.set_mouse(904, 103, 0, 0)
+    Input.poll()
+    print(Input.mouse_dx())              # 4
+    print(Input.mouse_dy())              # 3
+    # asking for the mode already in force is not a change
+    Input.cursor_mode(2)
+    Input.set_mouse(910, 103, 0, 0)
+    Input.poll()
+    print(Input.mouse_dx())              # 6
+    print(Input.mouse_dy())              # 0
+    # and back: no jump from the reticle to the real cursor
+    Input.cursor_mode(0)
+    Input.set_mouse(10, 10, 0, 0)
+    Input.poll()
+    print(Input.mouse_dx())              # 0
+    print(Input.mouse_dy())              # 0
+  }
+}

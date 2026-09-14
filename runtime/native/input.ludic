@@ -226,6 +226,10 @@ var in_mdy: int = 0
 var in_rdx: int = 0       # the raw motion the platform reports while captured
 var in_rdy: int = 0
 var in_cursor_mode: int = 0
+# the next commit reports no mouse delta: true before the first position is read (the previous one
+# is not a position, it is 0,0) and after a cursor-mode change (the position source switches between
+# the virtual reticle and the real cursor, which are unrelated points)
+var in_mouse_rebase: bool = true
 var in_mbtn: int = 0      # button bitmask (bit 0 left, 1 right, 2 middle)
 var in_wheel: int = 0     # wheel delta this frame
 # gamepads: connected flag, button bitmask, and IN_AXES fixed axes each
@@ -341,6 +345,10 @@ function input_device_commit(k: int, replaying: int) -> void {
   in_mdy = in_my - in_my0
   # captured (mode 2): the cursor is a clamped reticle, the motion is the raw delta
   if is_windowed() and in_cursor_mode == 2 { in_mdx = in_rdx;  in_mdy = in_rdy }
+  # No motion on the first frame or across a cursor-mode change. The previous position there is
+  # 0,0 or a point in another coordinate source, so the difference is the cursor's whole distance
+  # from it: a camera that adds mouse_dy to its pitch came up pointing at the ground.
+  if in_mouse_rebase { in_mdx = 0;  in_mdy = 0;  in_mouse_rebase = false }
   in_mx0 = in_mx
   in_my0 = in_my
 }
@@ -445,6 +453,7 @@ enum CursorMode { Normal, Hidden, Locked, Confined }   # Input.cursor_mode(mode:
 enum PadButton { A, B, X, Y, LeftShoulder, RightShoulder, Back, Start }   # Input.bind_pad(button:) / pad_button
 enum MouseButton { Left, Right, Middle }                                  # Input.mouse_down(button:)
 function input_cursor_mode(mode: int) -> void {
+  if mode != in_cursor_mode { in_mouse_rebase = true }
   in_cursor_mode = mode
   if is_windowed() { win_cursor_mode(mode) }
 }
