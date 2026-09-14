@@ -7,6 +7,16 @@ change type. Preview the next one with `ludic dev release --dry-run`.
 A released section may carry a hand-written summary paragraph above its groups
 (v0.2.0 has one); the generated bullets below it are not edited by hand.
 
+## v0.14.2 — 2026-09-14
+
+### Fixes
+
+- **`Input.mouse_dx` / `mouse_dy` no longer jump on the first frame or when the cursor mode changes.**
+  The delta was the position minus the previous frame's, and the previous position started at 0,0,
+  so the first frame reported the cursor's whole distance from the corner as motion, and switching
+  between a locked cursor's virtual reticle and the real cursor did the same. A camera that adds
+  `mouse_dy` to its pitch came up pointing at the ground with nobody touching the mouse. Both frames
+  now report no motion; every other frame is unchanged, windowed or headless, on macOS and Windows.
 ## v0.14.1 — 2026-09-13
 
 ### Fixes
