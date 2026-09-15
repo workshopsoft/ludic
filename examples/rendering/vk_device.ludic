@@ -1,0 +1,22 @@
+# vk_device.ludic — render3d's Vulkan device on its own: gvk_init() brings up the instance, the
+# first discrete GPU, a graphics queue and a device with the Tier 1 floor switched on, then one
+# empty one-shot command buffer goes through submit and wait, and everything is torn down.
+# Run it under the validation layer on each machine the backend is meant for.
+#   bin/ludicc examples/rendering/vk_device.ludic --headless -o build/vk_device
+  import "../../packages/ludic.render3d/gpu_vk.ludic"
+
+program VkDevice {
+  property Marker { on: int = 1 }
+  model Anchor { Marker }
+
+  handler Boot phase Start {
+    spawn Anchor {}
+    if not gvk_init() { print(`VKDEVICE NONE: {gvk_why}`);  quit() }
+    let cb = gvk_once_begin()
+    let ok = cb != null and gvk_once_end(cb)
+    print(`vulkan: family {gvk_family}, {Vk.get_i32(gvk_mp, VkPhysicalDeviceMemoryProperties_memoryTypeCount)} memory types, one-shot submit {ok}`)
+    gvk_shutdown()
+    if ok { print("VKDEVICE OK") } else { print("VKDEVICE SUBMIT FAILED") }
+    quit()
+  }
+}

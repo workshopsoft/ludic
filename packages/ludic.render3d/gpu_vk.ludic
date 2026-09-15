@@ -1,0 +1,270 @@
+# gpu_vk.ludic — the Vulkan side of gpu.ludic: the device every other part of the backend
+# draws with, the memory it allocates from and the one-shot command buffers that uploads,
+# bakes and read-backs go through.
+#
+# gpu.ludic keeps the renderer's handles (a texture, a buffer, a framebuffer, a program as an
+# int) and branches on the backend; on Vulkan those ints index tables of Vulkan objects kept
+# here. Nothing in this file runs unless the Vulkan backend was chosen and came up.
+
+# ---- the device ---------------------------------------------------------------------------
+var gvk_ready: bool = false
+var gvk_inst: pointer = null
+var gvk_pd: pointer = null
+var gvk_dev: pointer = null
+var gvk_queue: pointer = null
+var gvk_family: int = -1
+var gvk_mp: bytes = null             # VkPhysicalDeviceMemoryProperties
+var gvk_device_name: string = ""
+var gvk_why: string = ""             # why the device did not come up, for the fallback notice
+
+function gvk_fail(what: string, r: int) -> bool {
+  gvk_why = `{what} failed (VkResult {r})`
+  print(`r3d: vulkan: {gvk_why}`)
+  return false
+}
+function gvk_handle(out: bytes) -> long { return Vk.get_i64(out, 0) }
+
+function gvk_ext_in(props: bytes, n: int, want: string) -> bool {
+  for i in 0 .. n {
+    if string(Vk.at(props, i * VkExtensionProperties_sizeof + VkExtensionProperties_extensionName)) == want { return true }
+  }
+  return false
+}
+
+# Instance, the first discrete GPU (else the first listed), its first graphics queue, and a
+# device with the Tier 1 floor switched on. False, with gvk_why set, if any of it is missing:
+# the caller stays on OpenGL.
+function gvk_init() -> bool {
+  if gvk_ready { return true }
+  if Vk.open() == 0 { gvk_why = "no Vulkan loader";  return false }
+
+  let cnt = bytes(4)
+  Vk.put_i32(cnt, 0, 0)
+  Vk.enumerate_instance_extension_properties(null, cnt, null)
+  let nie = Vk.get_i32(cnt, 0)
+  let iexts = bytes(nie * VkExtensionProperties_sizeof + 8)
+  Vk.enumerate_instance_extension_properties(null, cnt, iexts)
+  # MoltenVK is a portability driver, and is only listed to a program that says it knows
+  let portability = gvk_ext_in(iexts, nie, VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME)
+  let app = bytes(VkApplicationInfo_sizeof)
+  Vk.zero(app, VkApplicationInfo_sizeof)
+  Vk.put_i32(app, VkApplicationInfo_sType, VK_STRUCTURE_TYPE_APPLICATION_INFO)
+  Vk.put_ptr(app, VkApplicationInfo_pApplicationName, "ludic.render3d")
+  Vk.put_i32(app, VkApplicationInfo_apiVersion, (1 << 22) | (3 << 12))
+  let iext_names = bytes(8)
+  let ici = bytes(VkInstanceCreateInfo_sizeof)
+  Vk.zero(ici, VkInstanceCreateInfo_sizeof)
+  Vk.put_i32(ici, VkInstanceCreateInfo_sType, VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO)
+  Vk.put_ptr(ici, VkInstanceCreateInfo_pApplicationInfo, app)
+  if portability {
+    Vk.put_ptr(iext_names, 0, VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME)
+    Vk.put_i32(ici, VkInstanceCreateInfo_flags, VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR)
+    Vk.put_i32(ici, VkInstanceCreateInfo_enabledExtensionCount, 1)
+    Vk.put_ptr(ici, VkInstanceCreateInfo_ppEnabledExtensionNames, iext_names)
+  }
+  let out = bytes(8)
+  var r = Vk.create_instance(ici, null, out)
+  if r != VK_SUCCESS { return gvk_fail("vkCreateInstance", r) }
+  gvk_inst = Vk.get_ptr(out, 0)
+
+  Vk.put_i32(cnt, 0, 0)
+  Vk.enumerate_physical_devices(gvk_inst, cnt, null)
+  let nd = Vk.get_i32(cnt, 0)
+  if nd == 0 { gvk_why = "no Vulkan device";  return false }
+  let devs = bytes(nd * 8 + 8)
+  Vk.enumerate_physical_devices(gvk_inst, cnt, devs)
+  let props = bytes(VkPhysicalDeviceProperties_sizeof)
+  var pick = 0
+  for d in 0 .. nd {
+    Vk.get_physical_device_properties(Vk.get_ptr(devs, d * 8), props)
+    if Vk.get_i32(props, VkPhysicalDeviceProperties_deviceType) == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU { pick = d;  break }
+  }
+  gvk_pd = Vk.get_ptr(devs, pick * 8)
+  Vk.get_physical_device_properties(gvk_pd, props)
+  gvk_device_name = string(Vk.at(props, VkPhysicalDeviceProperties_deviceName))
+
+  Vk.put_i32(cnt, 0, 0)
+  Vk.get_physical_device_queue_family_properties(gvk_pd, cnt, null)
+  let nq = Vk.get_i32(cnt, 0)
+  let qprops = bytes(nq * VkQueueFamilyProperties_sizeof + 8)
+  Vk.get_physical_device_queue_family_properties(gvk_pd, cnt, qprops)
+  for q in 0 .. nq {
+    let flags = Vk.get_i32(qprops, q * VkQueueFamilyProperties_sizeof + VkQueueFamilyProperties_queueFlags)
+    if gvk_family < 0 and (flags & VK_QUEUE_GRAPHICS_BIT) != 0 { gvk_family = q }
+  }
+  if gvk_family < 0 { gvk_why = `{gvk_device_name} has no graphics queue`;  return false }
+
+  # what the device offers, then the same structs handed back asking for the floor
+  let f13 = bytes(VkPhysicalDeviceVulkan13Features_sizeof)
+  Vk.zero(f13, VkPhysicalDeviceVulkan13Features_sizeof)
+  Vk.put_i32(f13, VkPhysicalDeviceVulkan13Features_sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES)
+  let f12 = bytes(VkPhysicalDeviceVulkan12Features_sizeof)
+  Vk.zero(f12, VkPhysicalDeviceVulkan12Features_sizeof)
+  Vk.put_i32(f12, VkPhysicalDeviceVulkan12Features_sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES)
+  Vk.put_ptr(f12, VkPhysicalDeviceVulkan12Features_pNext, f13)
+  let f2 = bytes(VkPhysicalDeviceFeatures2_sizeof)
+  Vk.zero(f2, VkPhysicalDeviceFeatures2_sizeof)
+  Vk.put_i32(f2, VkPhysicalDeviceFeatures2_sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2)
+  Vk.put_ptr(f2, VkPhysicalDeviceFeatures2_pNext, f12)
+  Vk.get_physical_device_features2(gvk_pd, f2)
+  var missing = ""
+  if Vk.get_i32(f13, VkPhysicalDeviceVulkan13Features_dynamicRendering) != 1 { missing = missing + " dynamicRendering" }
+  if Vk.get_i32(f13, VkPhysicalDeviceVulkan13Features_synchronization2) != 1 { missing = missing + " synchronization2" }
+  if Vk.get_i32(f12, VkPhysicalDeviceVulkan12Features_descriptorIndexing) != 1 { missing = missing + " descriptorIndexing" }
+  if Vk.get_i32(f12, VkPhysicalDeviceVulkan12Features_timelineSemaphore) != 1 { missing = missing + " timelineSemaphore" }
+  if len(missing) > 0 { gvk_why = `{gvk_device_name} lacks{missing}`;  return false }
+  let want13 = bytes(VkPhysicalDeviceVulkan13Features_sizeof)
+  Vk.zero(want13, VkPhysicalDeviceVulkan13Features_sizeof)
+  Vk.put_i32(want13, VkPhysicalDeviceVulkan13Features_sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES)
+  Vk.put_i32(want13, VkPhysicalDeviceVulkan13Features_dynamicRendering, 1)
+  Vk.put_i32(want13, VkPhysicalDeviceVulkan13Features_synchronization2, 1)
+  let want12 = bytes(VkPhysicalDeviceVulkan12Features_sizeof)
+  Vk.zero(want12, VkPhysicalDeviceVulkan12Features_sizeof)
+  Vk.put_i32(want12, VkPhysicalDeviceVulkan12Features_sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES)
+  Vk.put_ptr(want12, VkPhysicalDeviceVulkan12Features_pNext, want13)
+  Vk.put_i32(want12, VkPhysicalDeviceVulkan12Features_descriptorIndexing, 1)
+  Vk.put_i32(want12, VkPhysicalDeviceVulkan12Features_timelineSemaphore, 1)
+
+  Vk.put_i32(cnt, 0, 0)
+  Vk.enumerate_device_extension_properties(gvk_pd, null, cnt, null)
+  let nde = Vk.get_i32(cnt, 0)
+  let dexts = bytes(nde * VkExtensionProperties_sizeof + 8)
+  Vk.enumerate_device_extension_properties(gvk_pd, null, cnt, dexts)
+  let prio = bytes(4)
+  Vk.put_i32(prio, 0, 0x3F800000)
+  let qci = bytes(VkDeviceQueueCreateInfo_sizeof)
+  Vk.zero(qci, VkDeviceQueueCreateInfo_sizeof)
+  Vk.put_i32(qci, VkDeviceQueueCreateInfo_sType, VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO)
+  Vk.put_i32(qci, VkDeviceQueueCreateInfo_queueFamilyIndex, gvk_family)
+  Vk.put_i32(qci, VkDeviceQueueCreateInfo_queueCount, 1)
+  Vk.put_ptr(qci, VkDeviceQueueCreateInfo_pQueuePriorities, prio)
+  let dext_names = bytes(8)
+  let dci = bytes(VkDeviceCreateInfo_sizeof)
+  Vk.zero(dci, VkDeviceCreateInfo_sizeof)
+  Vk.put_i32(dci, VkDeviceCreateInfo_sType, VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO)
+  Vk.put_ptr(dci, VkDeviceCreateInfo_pNext, want12)
+  Vk.put_i32(dci, VkDeviceCreateInfo_queueCreateInfoCount, 1)
+  Vk.put_ptr(dci, VkDeviceCreateInfo_pQueueCreateInfos, qci)
+  if gvk_ext_in(dexts, nde, "VK_KHR_portability_subset") {
+    Vk.put_ptr(dext_names, 0, "VK_KHR_portability_subset")
+    Vk.put_i32(dci, VkDeviceCreateInfo_enabledExtensionCount, 1)
+    Vk.put_ptr(dci, VkDeviceCreateInfo_ppEnabledExtensionNames, dext_names)
+  }
+  r = Vk.create_device(gvk_pd, dci, null, out)
+  if r != VK_SUCCESS { return gvk_fail("vkCreateDevice", r) }
+  gvk_dev = Vk.get_ptr(out, 0)
+  Vk.get_device_queue(gvk_dev, gvk_family, 0, out)
+  gvk_queue = Vk.get_ptr(out, 0)
+  gvk_mp = bytes(VkPhysicalDeviceMemoryProperties_sizeof)
+  Vk.get_physical_device_memory_properties(gvk_pd, gvk_mp)
+
+  if not gvk_cmd_init() { return false }
+  gvk_ready = true
+  print(`r3d: vulkan on {gvk_device_name}`)
+  return true
+}
+
+# ---- memory -------------------------------------------------------------------------------
+# The first memory type a resource allows with every property wanted; -1 if there is none.
+function gvk_mem_type(allowed: int, want: int) -> int {
+  for t in 0 .. Vk.get_i32(gvk_mp, VkPhysicalDeviceMemoryProperties_memoryTypeCount) {
+    let pf = Vk.get_i32(gvk_mp, VkPhysicalDeviceMemoryProperties_memoryTypes + t * VkMemoryType_sizeof + VkMemoryType_propertyFlags)
+    if ((allowed >> t) & 1) == 1 and (pf & want) == want { return t }
+  }
+  return -1
+}
+# Memory for one resource, from its requirements (a VkMemoryRequirements). One allocation per
+# resource while the backend comes up; the block allocator with sub-allocation replaces it
+# before the forest and the streams are on this backend, which allocate thousands.
+var gvk_n_allocs: int = 0
+function gvk_alloc(req: bytes, want: int) -> long {
+  let allowed = Vk.get_i32(req, VkMemoryRequirements_memoryTypeBits)
+  var t = gvk_mem_type(allowed, want)
+  # device-local is a preference; host-visible is a need
+  if t < 0 and want == VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT { t = gvk_mem_type(allowed, 0) }
+  let zero: long = 0
+  if t < 0 { print(`r3d: vulkan: no memory type for properties {want}`);  return zero }
+  let mai = bytes(VkMemoryAllocateInfo_sizeof)
+  Vk.zero(mai, VkMemoryAllocateInfo_sizeof)
+  Vk.put_i32(mai, VkMemoryAllocateInfo_sType, VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO)
+  Vk.put_i64(mai, VkMemoryAllocateInfo_allocationSize, Vk.get_i64(req, VkMemoryRequirements_size))
+  Vk.put_i32(mai, VkMemoryAllocateInfo_memoryTypeIndex, t)
+  let out = bytes(8)
+  let r = Vk.allocate_memory(gvk_dev, mai, null, out)
+  if r != VK_SUCCESS { print(`r3d: vulkan: vkAllocateMemory failed (VkResult {r})`);  return zero }
+  gvk_n_allocs += 1
+  return gvk_handle(out)
+}
+
+# ---- one-shot commands --------------------------------------------------------------------
+# Uploads, bakes and read-backs record into a command buffer, submit it and wait. The frame
+# itself does not go through here.
+var gvk_pool: long = 0
+var gvk_fence: bytes = null
+function gvk_cmd_init() -> bool {
+  let cpi = bytes(VkCommandPoolCreateInfo_sizeof)
+  Vk.zero(cpi, VkCommandPoolCreateInfo_sizeof)
+  Vk.put_i32(cpi, VkCommandPoolCreateInfo_sType, VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO)
+  Vk.put_i32(cpi, VkCommandPoolCreateInfo_flags, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT)
+  Vk.put_i32(cpi, VkCommandPoolCreateInfo_queueFamilyIndex, gvk_family)
+  let out = bytes(8)
+  var r = Vk.create_command_pool(gvk_dev, cpi, null, out)
+  if r != VK_SUCCESS { return gvk_fail("vkCreateCommandPool", r) }
+  gvk_pool = gvk_handle(out)
+  let fci = bytes(VkFenceCreateInfo_sizeof)
+  Vk.zero(fci, VkFenceCreateInfo_sizeof)
+  Vk.put_i32(fci, VkFenceCreateInfo_sType, VK_STRUCTURE_TYPE_FENCE_CREATE_INFO)
+  gvk_fence = bytes(8)
+  r = Vk.create_fence(gvk_dev, fci, null, gvk_fence)
+  if r != VK_SUCCESS { return gvk_fail("vkCreateFence", r) }
+  return true
+}
+# a command buffer, begun
+function gvk_once_begin() -> pointer {
+  let cbai = bytes(VkCommandBufferAllocateInfo_sizeof)
+  Vk.zero(cbai, VkCommandBufferAllocateInfo_sizeof)
+  Vk.put_i32(cbai, VkCommandBufferAllocateInfo_sType, VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO)
+  Vk.put_i64(cbai, VkCommandBufferAllocateInfo_commandPool, gvk_pool)
+  Vk.put_i32(cbai, VkCommandBufferAllocateInfo_level, VK_COMMAND_BUFFER_LEVEL_PRIMARY)
+  Vk.put_i32(cbai, VkCommandBufferAllocateInfo_commandBufferCount, 1)
+  let cbs = bytes(8)
+  if Vk.allocate_command_buffers(gvk_dev, cbai, cbs) != VK_SUCCESS { return null }
+  let cb = Vk.get_ptr(cbs, 0)
+  let cbbi = bytes(VkCommandBufferBeginInfo_sizeof)
+  Vk.zero(cbbi, VkCommandBufferBeginInfo_sizeof)
+  Vk.put_i32(cbbi, VkCommandBufferBeginInfo_sType, VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO)
+  Vk.put_i32(cbbi, VkCommandBufferBeginInfo_flags, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT)
+  Vk.begin_command_buffer(cb, cbbi)
+  return cb
+}
+# end it, submit it, wait for it, free it
+function gvk_once_end(cb: pointer) -> bool {
+  var r = Vk.end_command_buffer(cb)
+  if r != VK_SUCCESS { return gvk_fail("vkEndCommandBuffer", r) }
+  let cbs = bytes(8)
+  Vk.put_ptr(cbs, 0, cb)
+  Vk.reset_fences(gvk_dev, 1, gvk_fence)
+  let si = bytes(VkSubmitInfo_sizeof)
+  Vk.zero(si, VkSubmitInfo_sizeof)
+  Vk.put_i32(si, VkSubmitInfo_sType, VK_STRUCTURE_TYPE_SUBMIT_INFO)
+  Vk.put_i32(si, VkSubmitInfo_commandBufferCount, 1)
+  Vk.put_ptr(si, VkSubmitInfo_pCommandBuffers, cbs)
+  r = Vk.queue_submit(gvk_queue, 1, si, Vk.get_i64(gvk_fence, 0))
+  if r != VK_SUCCESS { return gvk_fail("vkQueueSubmit", r) }
+  let forever: long = -1
+  r = Vk.wait_for_fences(gvk_dev, 1, gvk_fence, 1, forever)
+  Vk.free_command_buffers(gvk_dev, gvk_pool, 1, cbs)
+  if r != VK_SUCCESS { return gvk_fail("vkWaitForFences", r) }
+  return true
+}
+
+# ---- teardown -----------------------------------------------------------------------------
+function gvk_shutdown() -> void {
+  if not gvk_ready { return }
+  Vk.device_wait_idle(gvk_dev)
+  Vk.destroy_fence(gvk_dev, Vk.get_i64(gvk_fence, 0), null)
+  Vk.destroy_command_pool(gvk_dev, gvk_pool, null)
+  Vk.destroy_device(gvk_dev, null)
+  Vk.destroy_instance(gvk_inst, null)
+  gvk_ready = false
+}
