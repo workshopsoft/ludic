@@ -376,3 +376,12 @@ define weak ptr @win_native_instance() {
 entry:
   ret ptr null
 }
+; the drawable's size, for a graphics API that follows the window without a GL context (render3d's
+; Vulkan resize check); headless there is no window, so 0 x 0. cocoa.ll's real one wins when linked.
+define weak void @win_gl_drawable(ptr %out) {
+entry:
+  store i32 0, ptr %out
+  %o1 = getelementptr i32, ptr %out, i32 1
+  store i32 0, ptr %o1
+  ret void
+}

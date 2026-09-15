@@ -52,8 +52,9 @@ function gpu_select() -> int {
   if gpu_wanted == 0 { gpu_wanted = GPU_GL }
   gpu_kind = GPU_GL
   if gpu_wanted == GPU_VK {
-    # headless for now: the swapchain on the game's window is the next milestone
-    if is_windowed() { gpu_fallback_reason = "the Vulkan window is not built yet" }
+    # a window needs a surface, and only the Win32 one is built
+    gvk_want_surface = is_windowed()
+    if is_windowed() and Os.platform() != "windows" { gpu_fallback_reason = "the Vulkan window is built for Windows only" }
     else if not gvk_init() { gpu_fallback_reason = gvk_why }
     else if not gvk_manifest() { gpu_fallback_reason = "the renderer's SPIR-V manifest is missing" }
     else { gpu_kind = GPU_VK }
@@ -228,10 +229,10 @@ function gpu_query_result(id: int, out: words) -> bool {
 }
 
 # ---- the context --------------------------------------------------------------------
-function gpu_open(w: int, h: int, title: string) -> bool { if gpu_kind == GPU_VK { return gvk_open(w, h) };  return gl_open(w, h, title) }
-function gpu_vsync(on: int) -> void { if gpu_kind == GPU_VK { return };  gl_vsync(on) }
+function gpu_open(w: int, h: int, title: string) -> bool { if gpu_kind == GPU_VK { return gvk_open(w, h, title) };  return gl_open(w, h, title) }
+function gpu_vsync(on: int) -> void { if gpu_kind == GPU_VK { gvk_vsync = on != 0;  if gvk_swap != 0 { gvk_swap_stale = true };  return };  gl_vsync(on) }
 function gpu_renderer_name() -> string { if gpu_kind == GPU_VK { return `{gvk_device_name} (Vulkan)` };  return gl_get_string(GL_RENDERER) }
-function gpu_resize_check() -> bool { if gpu_kind == GPU_VK { return false };  let r = gl_resize_check();  gpu_glcheck_after("the resize check");  return r }
+function gpu_resize_check() -> bool { if gpu_kind == GPU_VK { return gvk_resize_check() };  let r = gl_resize_check();  gpu_glcheck_after("the resize check");  return r }
 # the finished frame: presented to the window, or (headless) the GPU's work finished
 function gpu_present() -> void { if gpu_kind == GPU_VK { gvk_present();  return };  Gl.swap() }
 # the frame as it will be presented, to a binary PPM with the top row first; before gpu_present

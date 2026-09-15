@@ -17,6 +17,8 @@ var gvk_mp: bytes = null             # VkPhysicalDeviceMemoryProperties
 var gvk_device_name: string = ""
 var gvk_why: string = ""             # why the device did not come up, for the fallback notice
 var gvk_max_aniso: int = 0x3F800000  # the device's anisotropy limit as float bits; 1.0 when it has none
+var gvk_want_surface: bool = false   # set before gvk_init when the renderer will present to a window
+var gvk_has_surface: bool = false    # the instance and device can make a surface and a swapchain
 
 function gvk_fail(what: string, r: int) -> bool {
   gvk_why = `{what} failed (VkResult {r})`
@@ -52,15 +54,25 @@ function gvk_init() -> bool {
   Vk.put_i32(app, VkApplicationInfo_sType, VK_STRUCTURE_TYPE_APPLICATION_INFO)
   Vk.put_ptr(app, VkApplicationInfo_pApplicationName, "ludic.render3d")
   Vk.put_i32(app, VkApplicationInfo_apiVersion, (1 << 22) | (3 << 12))
-  let iext_names = bytes(8)
+  let iext_names = bytes(32)
+  var n_iext = 0
   let ici = bytes(VkInstanceCreateInfo_sizeof)
   Vk.zero(ici, VkInstanceCreateInfo_sizeof)
   Vk.put_i32(ici, VkInstanceCreateInfo_sType, VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO)
   Vk.put_ptr(ici, VkInstanceCreateInfo_pApplicationInfo, app)
   if portability {
-    Vk.put_ptr(iext_names, 0, VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME)
+    Vk.put_ptr(iext_names, n_iext * 8, VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);  n_iext += 1
     Vk.put_i32(ici, VkInstanceCreateInfo_flags, VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR)
-    Vk.put_i32(ici, VkInstanceCreateInfo_enabledExtensionCount, 1)
+  }
+  # a window's surface: only the Win32 one is built, so a window elsewhere stays on OpenGL
+  gvk_has_surface = gvk_want_surface and gvk_ext_in(iexts, nie, VK_KHR_SURFACE_EXTENSION_NAME) and gvk_ext_in(iexts, nie, VK_KHR_WIN32_SURFACE_EXTENSION_NAME)
+  if gvk_want_surface and not gvk_has_surface { gvk_why = "no Win32 surface in this Vulkan instance";  return false }
+  if gvk_has_surface {
+    Vk.put_ptr(iext_names, n_iext * 8, VK_KHR_SURFACE_EXTENSION_NAME);  n_iext += 1
+    Vk.put_ptr(iext_names, n_iext * 8, VK_KHR_WIN32_SURFACE_EXTENSION_NAME);  n_iext += 1
+  }
+  if n_iext > 0 {
+    Vk.put_i32(ici, VkInstanceCreateInfo_enabledExtensionCount, n_iext)
     Vk.put_ptr(ici, VkInstanceCreateInfo_ppEnabledExtensionNames, iext_names)
   }
   let out = bytes(8)
@@ -147,16 +159,21 @@ function gvk_init() -> bool {
   Vk.put_i32(qci, VkDeviceQueueCreateInfo_queueFamilyIndex, gvk_family)
   Vk.put_i32(qci, VkDeviceQueueCreateInfo_queueCount, 1)
   Vk.put_ptr(qci, VkDeviceQueueCreateInfo_pQueuePriorities, prio)
-  let dext_names = bytes(8)
+  let dext_names = bytes(32)
+  var n_dext = 0
   let dci = bytes(VkDeviceCreateInfo_sizeof)
   Vk.zero(dci, VkDeviceCreateInfo_sizeof)
   Vk.put_i32(dci, VkDeviceCreateInfo_sType, VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO)
   Vk.put_ptr(dci, VkDeviceCreateInfo_pNext, want2)
   Vk.put_i32(dci, VkDeviceCreateInfo_queueCreateInfoCount, 1)
   Vk.put_ptr(dci, VkDeviceCreateInfo_pQueueCreateInfos, qci)
-  if gvk_ext_in(dexts, nde, "VK_KHR_portability_subset") {
-    Vk.put_ptr(dext_names, 0, "VK_KHR_portability_subset")
-    Vk.put_i32(dci, VkDeviceCreateInfo_enabledExtensionCount, 1)
+  if gvk_ext_in(dexts, nde, "VK_KHR_portability_subset") { Vk.put_ptr(dext_names, n_dext * 8, "VK_KHR_portability_subset");  n_dext += 1 }
+  if gvk_has_surface {
+    if not gvk_ext_in(dexts, nde, VK_KHR_SWAPCHAIN_EXTENSION_NAME) { gvk_why = `{gvk_device_name} has no swapchain`;  return false }
+    Vk.put_ptr(dext_names, n_dext * 8, VK_KHR_SWAPCHAIN_EXTENSION_NAME);  n_dext += 1
+  }
+  if n_dext > 0 {
+    Vk.put_i32(dci, VkDeviceCreateInfo_enabledExtensionCount, n_dext)
     Vk.put_ptr(dci, VkDeviceCreateInfo_ppEnabledExtensionNames, dext_names)
   }
   r = Vk.create_device(gvk_pd, dci, null, out)

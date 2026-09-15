@@ -370,18 +370,21 @@ function gvk_pipeline(p: int, m: Mesh, st: GvkState, n_color: int, color_fmt: in
 var gvk_ublk_v: []bytes = null        # per program: the vertex stage's block as last set
 var gvk_ublk_f: []bytes = null
 var gvk_prog_tex: []words = null      # per program: the texture bound to each manifest sampler
+var gvk_prog_unit: []words = null     # per program: the unit + 1 each sampler was pointed at with u_i
 
 function gvk_uniform_blocks(p: int) -> void {
-  if gvk_ublk_v == null { gvk_ublk_v = new []bytes;  gvk_ublk_f = new []bytes;  gvk_prog_tex = new []words }
-  while len(gvk_ublk_v) <= p { push(gvk_ublk_v, null);  push(gvk_ublk_f, null);  push(gvk_prog_tex, null) }
+  if gvk_ublk_v == null { gvk_ublk_v = new []bytes;  gvk_ublk_f = new []bytes;  gvk_prog_tex = new []words;  gvk_prog_unit = new []words }
+  while len(gvk_ublk_v) <= p { push(gvk_ublk_v, null);  push(gvk_ublk_f, null);  push(gvk_prog_tex, null);  push(gvk_prog_unit, null) }
   let v = gvk_prog_var[p]
   if v == null or gvk_ublk_v[p] != null or gvk_prog_tex[p] != null { return }
   if v.vblock > 0 { let b = bytes(v.vblock);  Vk.zero(b, v.vblock);  gvk_ublk_v[p] = b }
   if v.fblock > 0 { let b = bytes(v.fblock);  Vk.zero(b, v.fblock);  gvk_ublk_f[p] = b }
   let nt = len(v.t_name) + 1
   let t = words(nt)
-  for i in 0 .. nt { t[i] = 0 }
+  let u = words(nt)
+  for i in 0 .. nt { t[i] = 0;  u[i] = 0 }
   gvk_prog_tex[p] = t
+  gvk_prog_unit[p] = u
 }
 
 function gvk_uniform(p: int, name: string) -> int {
@@ -389,6 +392,9 @@ function gvk_uniform(p: int, name: string) -> int {
   let v = gvk_prog_var[p]
   if v == null { return -1 }
   for i in 0 .. len(v.u_name) { if v.u_name[i] == name { return p * 4096 + i } }
+  # a sampler: OpenGL code points it at a texture unit once with u_i and then only binds units
+  # (the actors do), so its location is kept apart and u_i on it records the unit
+  for i in 0 .. len(v.t_name) { if v.t_name[i] == name { return p * 4096 + 2048 + i } }
   return -1
 }
 
@@ -399,6 +405,11 @@ function gvk_u_set(loc: int, src: pointer, size: int, n: int) -> void {
   let v = gvk_prog_var[p]
   if v == null { return }
   gvk_uniform_blocks(p)
+  if loc % 4096 >= 2048 {
+    let si = loc % 4096 - 2048
+    if si < len(v.t_name) { gvk_prog_unit[p][si] = Vk.get_i32(src, 0) + 1 }
+    return
+  }
   let name = v.u_name[loc % 4096]
   for j in 0 .. len(v.u_name) {
     if v.u_name[j] != name { continue }
@@ -530,6 +541,9 @@ function gvk_draw_set(p: int, tx: words, tx_w: int, tx_cap: int) -> long {
   let iw = VkDescriptorImageInfo_sizeof
   for t in 0 .. nt {
     var tex = gvk_prog_tex[p][t]
+    # nothing bound by name: the texture on the unit the sampler was pointed at, as OpenGL reads it
+    let unit1 = gvk_prog_unit[p][t]
+    if tex <= 0 and unit1 > 0 and unit1 <= 32 and gpu_unit_2d != null { tex = gpu_unit_2d[unit1 - 1] }
     if tex <= 0 or tex >= len(gvk_tex_image) or gvk_tex_image[tex] == 0 { tex = gvk_white }
     var smp: long = 0
     let o = tex * tx_w
@@ -871,8 +885,11 @@ function gvk_flush() -> void {
   gvk_cb = null
 }
 
-# the finished frame: submitted, and waited for
+# The finished frame: submitted and waited for. With a window, the screen image is blitted into
+# the swapchain's next image first - flipped, since the screen image keeps OpenGL's bottom-up rows
+# - and that image is presented.
 function gvk_present() -> void {
+  if gvk_swap != 0 { gvk_present_window();  return }
   if gvk_cb == null { return }
   gvk_pass_end()
   gvk_once_end(gvk_cb)
@@ -918,12 +935,23 @@ function gvk_manifest() -> bool {
   return gpu_manifest_load(`{gvk_spv_dir}/manifest.txt`) > 0 and len(gpu_variants) > 0
 }
 
-# headless: the screen is a colour and a depth image of the asked-for size
-function gvk_open(w: int, h: int) -> bool {
+# The screen: a colour and a depth image. Headless they are the asked-for size; with a window
+# they are its client area in pixels, and the swapchain is made on it.
+function gvk_open(w: int, h: int, title: string) -> bool {
   gl_w = w
   gl_h = h
+  if is_windowed() {
+    win_open(w, h, 1, title)
+    win_gl_resize(w, h)
+    if gvk_size_buf == null { gvk_size_buf = words(4) }
+    win_gl_drawable(gvk_size_buf)
+    if gvk_size_buf[0] > 0 and gvk_size_buf[1] > 0 { gl_w = gvk_size_buf[0];  gl_h = gvk_size_buf[1] }
+    gl_scale = win_gl_scale()
+  }
   if not gvk_frame_init() { return false }
-  return gvk_screen_make(w, h)
+  if not gvk_screen_make(gl_w, gl_h) { return false }
+  if is_windowed() { return gvk_swap_make(gl_w, gl_h) }
+  return true
 }
 
 # a program handle for a variant; the key is gpu_program's, so gpu_program_key works on both
@@ -1044,4 +1072,184 @@ function gvk_read_screen(w: int, h: int, out: pointer) -> void {
       dst[q] = px[o];  dst[q + 1] = px[o + 1];  dst[q + 2] = px[o + 2]
     }
   }
+}
+
+# ---- the window: surface and swapchain ----------------------------------------------------------
+# Windows only for now (the Win32 surface); gpu_select keeps a window elsewhere on OpenGL.
+extern function win_native_window() -> pointer = "win_native_window"
+extern function win_native_instance() -> pointer = "win_native_instance"
+
+var gvk_surface: long = 0
+var gvk_swap: long = 0
+var gvk_swap_n: int = 0
+var gvk_swap_images: bytes = null
+var gvk_swap_fmt: int = 0
+var gvk_swap_w: int = 0
+var gvk_swap_h: int = 0
+var gvk_vsync: bool = true
+var gvk_acq_fence: bytes = null
+var gvk_swap_stale: bool = false
+
+function gvk_surface_make() -> bool {
+  if gvk_surface != 0 { return true }
+  let hwnd = win_native_window()
+  if hwnd == null { gvk_why = "no window to present to";  return false }
+  let sci = bytes(VkWin32SurfaceCreateInfoKHR_sizeof)
+  Vk.zero(sci, VkWin32SurfaceCreateInfoKHR_sizeof)
+  Vk.put_i32(sci, VkWin32SurfaceCreateInfoKHR_sType, VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR)
+  Vk.put_ptr(sci, VkWin32SurfaceCreateInfoKHR_hinstance, win_native_instance())
+  Vk.put_ptr(sci, VkWin32SurfaceCreateInfoKHR_hwnd, hwnd)
+  let out = bytes(8)
+  let r = Vk.create_win32_surface_khr(gvk_inst, sci, null, out)
+  if r != VK_SUCCESS { return gvk_fail("vkCreateWin32SurfaceKHR", r) }
+  gvk_surface = gvk_handle(out)
+  let ok = bytes(4)
+  Vk.put_i32(ok, 0, 0)
+  Vk.get_physical_device_surface_support_khr(gvk_pd, gvk_family, gvk_surface, ok)
+  if Vk.get_i32(ok, 0) != 1 { gvk_why = "the graphics queue cannot present to the window";  return false }
+  let fci = bytes(VkFenceCreateInfo_sizeof)
+  Vk.zero(fci, VkFenceCreateInfo_sizeof)
+  Vk.put_i32(fci, VkFenceCreateInfo_sType, VK_STRUCTURE_TYPE_FENCE_CREATE_INFO)
+  gvk_acq_fence = bytes(8)
+  return Vk.create_fence(gvk_dev, fci, null, gvk_acq_fence) == VK_SUCCESS
+}
+
+# (Re)make the swapchain for a w x h client area. The old one is handed over and then destroyed.
+function gvk_swap_make(w: int, h: int) -> bool {
+  if not gvk_surface_make() { return false }
+  Vk.device_wait_idle(gvk_dev)
+  let caps = bytes(VkSurfaceCapabilitiesKHR_sizeof)
+  Vk.get_physical_device_surface_capabilities_khr(gvk_pd, gvk_surface, caps)
+  var ew = Vk.get_i32(caps, VkSurfaceCapabilitiesKHR_currentExtent + VkExtent2D_width)
+  var eh = Vk.get_i32(caps, VkSurfaceCapabilitiesKHR_currentExtent + VkExtent2D_height)
+  if ew == -1 or ew <= 0 { ew = w;  eh = h }
+  if ew <= 0 or eh <= 0 { return false }        # minimised: keep the old chain until it has a size
+  let cnt = bytes(4)
+  Vk.put_i32(cnt, 0, 0)
+  Vk.get_physical_device_surface_formats_khr(gvk_pd, gvk_surface, cnt, null)
+  let nf = Vk.get_i32(cnt, 0)
+  let fmts = bytes(nf * VkSurfaceFormatKHR_sizeof + 8)
+  Vk.get_physical_device_surface_formats_khr(gvk_pd, gvk_surface, cnt, fmts)
+  # the screen image holds display-ready 8-bit colour, so the swapchain takes it unconverted
+  var fmt = Vk.get_i32(fmts, VkSurfaceFormatKHR_format)
+  var cs = Vk.get_i32(fmts, VkSurfaceFormatKHR_colorSpace)
+  for i in 0 .. nf {
+    let f = Vk.get_i32(fmts, i * VkSurfaceFormatKHR_sizeof + VkSurfaceFormatKHR_format)
+    let c = Vk.get_i32(fmts, i * VkSurfaceFormatKHR_sizeof + VkSurfaceFormatKHR_colorSpace)
+    if (f == VK_FORMAT_B8G8R8A8_UNORM or f == VK_FORMAT_R8G8B8A8_UNORM) and c == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR { fmt = f;  cs = c }
+  }
+  Vk.put_i32(cnt, 0, 0)
+  Vk.get_physical_device_surface_present_modes_khr(gvk_pd, gvk_surface, cnt, null)
+  let nm = Vk.get_i32(cnt, 0)
+  let modes = bytes(nm * 4 + 8)
+  Vk.get_physical_device_surface_present_modes_khr(gvk_pd, gvk_surface, cnt, modes)
+  # vsync: FIFO, which every device has. Off: mailbox where offered (no tearing), else immediate.
+  var mode = VK_PRESENT_MODE_FIFO_KHR
+  if not gvk_vsync {
+    for i in 0 .. nm { if Vk.get_i32(modes, i * 4) == VK_PRESENT_MODE_IMMEDIATE_KHR { mode = VK_PRESENT_MODE_IMMEDIATE_KHR } }
+    for i in 0 .. nm { if Vk.get_i32(modes, i * 4) == VK_PRESENT_MODE_MAILBOX_KHR { mode = VK_PRESENT_MODE_MAILBOX_KHR } }
+  }
+  var n = Vk.get_i32(caps, VkSurfaceCapabilitiesKHR_minImageCount) + 1
+  let mx = Vk.get_i32(caps, VkSurfaceCapabilitiesKHR_maxImageCount)
+  if mx > 0 and n > mx { n = mx }
+  let sci = bytes(VkSwapchainCreateInfoKHR_sizeof)
+  Vk.zero(sci, VkSwapchainCreateInfoKHR_sizeof)
+  Vk.put_i32(sci, VkSwapchainCreateInfoKHR_sType, VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR)
+  Vk.put_i64(sci, VkSwapchainCreateInfoKHR_surface, gvk_surface)
+  Vk.put_i32(sci, VkSwapchainCreateInfoKHR_minImageCount, n)
+  Vk.put_i32(sci, VkSwapchainCreateInfoKHR_imageFormat, fmt)
+  Vk.put_i32(sci, VkSwapchainCreateInfoKHR_imageColorSpace, cs)
+  Vk.put_i32(sci, VkSwapchainCreateInfoKHR_imageExtent + VkExtent2D_width, ew)
+  Vk.put_i32(sci, VkSwapchainCreateInfoKHR_imageExtent + VkExtent2D_height, eh)
+  Vk.put_i32(sci, VkSwapchainCreateInfoKHR_imageArrayLayers, 1)
+  Vk.put_i32(sci, VkSwapchainCreateInfoKHR_imageUsage, VK_IMAGE_USAGE_TRANSFER_DST_BIT)
+  Vk.put_i32(sci, VkSwapchainCreateInfoKHR_imageSharingMode, VK_SHARING_MODE_EXCLUSIVE)
+  Vk.put_i32(sci, VkSwapchainCreateInfoKHR_preTransform, Vk.get_i32(caps, VkSurfaceCapabilitiesKHR_currentTransform))
+  Vk.put_i32(sci, VkSwapchainCreateInfoKHR_compositeAlpha, VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR)
+  Vk.put_i32(sci, VkSwapchainCreateInfoKHR_presentMode, mode)
+  Vk.put_i32(sci, VkSwapchainCreateInfoKHR_clipped, 1)
+  Vk.put_i64(sci, VkSwapchainCreateInfoKHR_oldSwapchain, gvk_swap)
+  let out = bytes(8)
+  let r = Vk.create_swapchain_khr(gvk_dev, sci, null, out)
+  if r != VK_SUCCESS { return gvk_fail("vkCreateSwapchainKHR", r) }
+  if gvk_swap != 0 { Vk.destroy_swapchain_khr(gvk_dev, gvk_swap, null) }
+  gvk_swap = gvk_handle(out)
+  Vk.put_i32(cnt, 0, 0)
+  Vk.get_swapchain_images_khr(gvk_dev, gvk_swap, cnt, null)
+  gvk_swap_n = Vk.get_i32(cnt, 0)
+  gvk_swap_images = bytes(gvk_swap_n * 8 + 8)
+  Vk.get_swapchain_images_khr(gvk_dev, gvk_swap, cnt, gvk_swap_images)
+  gvk_swap_fmt = fmt
+  gvk_swap_w = ew
+  gvk_swap_h = eh
+  gvk_swap_stale = false
+  var mname = "fifo"
+  if mode == VK_PRESENT_MODE_MAILBOX_KHR { mname = "mailbox" }
+  if mode == VK_PRESENT_MODE_IMMEDIATE_KHR { mname = "immediate" }
+  print(`r3d: vulkan swapchain {ew}x{eh}, {gvk_swap_n} images, {mname}`)
+  return true
+}
+
+function gvk_present_window() -> void {
+  let cb = gvk_frame_cb()
+  gvk_pass_end()
+  if gvk_swap_stale { gvk_once_end(cb);  gvk_cb = null;  gvk_swap_make(gvk_swap_w, gvk_swap_h);  return }
+  let idx = bytes(4)
+  Vk.reset_fences(gvk_dev, 1, gvk_acq_fence)
+  let forever: long = -1
+  let zero: long = 0
+  var r = Vk.acquire_next_image_khr(gvk_dev, gvk_swap, forever, zero, Vk.get_i64(gvk_acq_fence, 0), idx)
+  if r == VK_ERROR_OUT_OF_DATE_KHR { gvk_once_end(cb);  gvk_cb = null;  gvk_swap_make(gvk_swap_w, gvk_swap_h);  return }
+  Vk.wait_for_fences(gvk_dev, 1, gvk_acq_fence, 1, forever)
+  let i = Vk.get_i32(idx, 0)
+  let dst = Vk.get_i64(gvk_swap_images, i * 8)
+  let src = gvk_tex_image[gvk_screen_color]
+  gvk_barrier(cb, src, false, 0, 1, 1, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
+  gvk_barrier(cb, dst, false, 0, 1, 1, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+  let blit = bytes(VkImageBlit_sizeof)
+  Vk.zero(blit, VkImageBlit_sizeof)
+  Vk.put_i32(blit, VkImageBlit_srcSubresource + VkImageSubresourceLayers_aspectMask, VK_IMAGE_ASPECT_COLOR_BIT)
+  Vk.put_i32(blit, VkImageBlit_srcSubresource + VkImageSubresourceLayers_layerCount, 1)
+  # the screen image's row 0 is the bottom of the picture: read it from the top edge down
+  Vk.put_i32(blit, VkImageBlit_srcOffsets + VkOffset3D_y, gvk_screen_h)
+  Vk.put_i32(blit, VkImageBlit_srcOffsets + VkOffset3D_sizeof + VkOffset3D_x, gvk_screen_w)
+  Vk.put_i32(blit, VkImageBlit_srcOffsets + VkOffset3D_sizeof + VkOffset3D_z, 1)
+  Vk.put_i32(blit, VkImageBlit_dstSubresource + VkImageSubresourceLayers_aspectMask, VK_IMAGE_ASPECT_COLOR_BIT)
+  Vk.put_i32(blit, VkImageBlit_dstSubresource + VkImageSubresourceLayers_layerCount, 1)
+  Vk.put_i32(blit, VkImageBlit_dstOffsets + VkOffset3D_sizeof + VkOffset3D_x, gvk_swap_w)
+  Vk.put_i32(blit, VkImageBlit_dstOffsets + VkOffset3D_sizeof + VkOffset3D_y, gvk_swap_h)
+  Vk.put_i32(blit, VkImageBlit_dstOffsets + VkOffset3D_sizeof + VkOffset3D_z, 1)
+  Vk.cmd_blit_image(cb, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, blit, VK_FILTER_LINEAR)
+  gvk_barrier(cb, src, false, 0, 1, 1, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+  gvk_barrier(cb, dst, false, 0, 1, 1, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
+  gvk_once_end(cb)
+  gvk_cb = null
+  let pi = bytes(VkPresentInfoKHR_sizeof)
+  Vk.zero(pi, VkPresentInfoKHR_sizeof)
+  Vk.put_i32(pi, VkPresentInfoKHR_sType, VK_STRUCTURE_TYPE_PRESENT_INFO_KHR)
+  let chains = bytes(8)
+  Vk.put_i64(chains, 0, gvk_swap)
+  Vk.put_i32(pi, VkPresentInfoKHR_swapchainCount, 1)
+  Vk.put_ptr(pi, VkPresentInfoKHR_pSwapchains, chains)
+  Vk.put_ptr(pi, VkPresentInfoKHR_pImageIndices, idx)
+  r = Vk.queue_present_khr(gvk_queue, pi)
+  if r == VK_ERROR_OUT_OF_DATE_KHR or r == VK_SUBOPTIMAL_KHR { gvk_swap_stale = true }
+}
+
+# a window's client area changed: the screen images and the swapchain follow it
+var gvk_size_buf: words = null
+function gvk_resize_check() -> bool {
+  if gvk_swap == 0 { return false }
+  if gvk_size_buf == null { gvk_size_buf = words(4) }
+  win_gl_drawable(gvk_size_buf)
+  let w = gvk_size_buf[0]
+  let h = gvk_size_buf[1]
+  if w <= 0 or h <= 0 { return false }
+  if w == gl_w and h == gl_h and not gvk_swap_stale { return false }
+  gvk_flush()
+  gl_w = w
+  gl_h = h
+  gvk_screen_make(w, h)
+  gvk_swap_make(w, h)
+  return true
 }
