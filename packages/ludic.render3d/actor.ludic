@@ -300,6 +300,30 @@ function actor_draw_outline_one(a: Actor, ap: AcProg) -> void {
     mesh_draw(pr.mesh)
   }
 }
+# Is a sphere inside this cascade's light box? The projection is orthographic, so a point's
+# clip x and y are the matrix applied to it, and the sphere's reach along each is bounded by the
+# three axis offsets. An actor outside the box casts nothing into that layer: skipping it changes no
+# depth, only the draw. (Each actor used to draw into every cascade out to 300 m - in town that was
+# about 1500 skinned shadow draws a frame against 69 in the lit pass.)
+var ac_lp0: words = null
+var ac_lpx: words = null
+var ac_lpy: words = null
+var ac_lpz: words = null
+function ac_in_light(vp: words, x: int, y: int, z: int, r: int) -> bool {
+  if ac_lp0 == null { ac_lp0 = words(3);  ac_lpx = words(3);  ac_lpy = words(3);  ac_lpz = words(3) }
+  m4_xform_point(ac_lp0, vp, x, y, z)
+  m4_xform_point(ac_lpx, vp, f_add(x, r), y, z)
+  m4_xform_point(ac_lpy, vp, x, f_add(y, r), z)
+  m4_xform_point(ac_lpz, vp, x, y, f_add(z, r))
+  for k in 0 .. 2 {
+    let c = ac_lp0[k]
+    let e = f_add(f_add(ac_abs(f_sub(ac_lpx[k], c)), ac_abs(f_sub(ac_lpy[k], c))), ac_abs(f_sub(ac_lpz[k], c)))
+    if f_gt(f_sub(ac_abs(c), e), F_ONE) { return false }
+  }
+  return true
+}
+function ac_abs(v: int) -> int { return f_max(v, f_neg(v)) }
+
 function actor_draw_casters(light_vp: words) -> void {
   if ac_actors == null { return }
   gpu_use_program(ac_sh.prog);  u_mat4(ac_sh.l_lvp, light_vp)
@@ -307,6 +331,10 @@ function actor_draw_casters(light_vp: words) -> void {
   for i in 0 .. len(ac_actors) {
     let a = ac_actors[i]
     if not ac_visible(a, true) { continue }
+    if a.radius != 0 {
+      let r = f_mul(a.radius, a.scale)
+      if not ac_in_light(light_vp, a.x, f_add(a.y, r), a.z, f_mul(r, fl(1.5))) { continue }
+    }
     var ap = ac_sh
     if a.cutout { ap = ac_sh_cut }
     actor_draw_one(a, ap, true)
