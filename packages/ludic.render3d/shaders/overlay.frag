@@ -7,8 +7,11 @@ uniform sampler2D u_tex;
 uniform sampler2D u_font;
 out vec4 o_color;
 #ifdef HDR10
-// the interface is sRGB: drawn into an HDR10 frame it sits at paper white, as the picture's white does
-const float HDR_PAPER = 200.0;
+// the interface is sRGB: drawn into an HDR10 frame its white sits at the player's paper white, as the
+// picture's white does. u_hdr_scale multiplies that for one batch (ov_hdr_nits): a calibration
+// screen's test patches, which have to reach past paper white to the display's peak.
+uniform float u_hdr_paper;
+uniform float u_hdr_scale;
 vec3 bt709_to_2020(vec3 c) {
   return mat3(0.6274, 0.0691, 0.0164, 0.3293, 0.9195, 0.0880, 0.0433, 0.0114, 0.8956) * c;
 }
@@ -30,6 +33,7 @@ void main() {
     o_color = vec4(v_col.rgb * t.rgb, v_col.a * t.a);
   }
 #ifdef HDR10
-  o_color.rgb = pq_encode(bt709_to_2020(pow(max(o_color.rgb, vec3(0.0)), vec3(2.2))) * HDR_PAPER);
+  float nits = max(u_hdr_paper, 80.0) * max(u_hdr_scale, 0.0);
+  o_color.rgb = pq_encode(bt709_to_2020(pow(max(o_color.rgb, vec3(0.0)), vec3(2.2))) * nits);
 #endif
 }

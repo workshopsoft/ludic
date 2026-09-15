@@ -327,6 +327,10 @@ function post_tonemap(color_tex: int) -> void {
   u_f3(gpu_uniform(prog, "u_wb"), fl(1.02), F_ONE, fl(0.97))
   u_f3(gpu_uniform(prog, "u_lift"), fl(0.004), fl(0.004), fl(0.012))
   u_f3(gpu_uniform(prog, "u_gain"), fl(0.99), fl(0.995), fl(1.0))
+  # the HDR10 variant's display calibration (the SDR program has none of these, and -1 sets nothing)
+  u_f(gpu_uniform(prog, "u_hdr_peak"), r3d_hdr_peak_nits())
+  u_f(gpu_uniform(prog, "u_hdr_paper"), r3d_hdr_paper_nits())
+  u_f(gpu_uniform(prog, "u_hdr_black"), r3d_hdr_black_nits())
   mesh_draw(post_fs)
   # sharpen + grain onto the screen
   gpu_fb_bind(gpu_screen_fb())

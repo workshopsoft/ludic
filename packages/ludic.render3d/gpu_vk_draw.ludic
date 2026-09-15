@@ -973,7 +973,28 @@ function r3d_hdr(on: bool) -> void {
 function gpu_hdr_active() -> bool { return gpu_kind == GPU_VK and gvk_hdr_on }
 function gvk_screen_fmt() -> int { if gvk_hdr_on { return GL_RGB10_A2 };  return GL_RGBA8 }
 
-# what the picture is: graded in BT.709 around D65, highlights to 1000 nits, a 200-nit average
+# The player's calibration of their display, in nits (float bits): the brightest it shows, where the
+# picture's and the interface's white sit, and how far the darkest shade is lifted. Displays differ by
+# an order of magnitude - a 400-nit monitor and a 2000-nit television - and one fixed curve either
+# clips the first's highlights flat or leaves the second dim.
+var r3d_hdr_peak: int = 0             # 0 until r3d_hdr_calibrate: 1000
+var r3d_hdr_paper: int = 0            # 200
+var r3d_hdr_black: int = 0            # 0
+function r3d_hdr_peak_nits() -> int { if r3d_hdr_peak == 0 { return fi(1000) };  return r3d_hdr_peak }
+function r3d_hdr_paper_nits() -> int { if r3d_hdr_paper == 0 { return fi(200) };  return r3d_hdr_paper }
+function r3d_hdr_black_nits() -> int { return r3d_hdr_black }
+function r3d_hdr_calibrate(peak: int, paper: int, black: int) -> void {
+  var pk = f_clamp(peak, fi(100), fi(10000))
+  let pp = f_clamp(paper, fi(80), fi(1000))
+  if f_ls(pk, pp) { pk = pp }
+  let bl = f_clamp(black, F_ZERO, fi(5))
+  if pk == r3d_hdr_peak and pp == r3d_hdr_paper and bl == r3d_hdr_black { return }
+  r3d_hdr_peak = pk;  r3d_hdr_paper = pp;  r3d_hdr_black = bl
+  # the display is told what the picture now reaches
+  if gvk_hdr_on and gvk_has_hdr_meta and gvk_swap != 0 { gvk_hdr_metadata() }
+}
+
+# what the picture is: graded in BT.709 around D65, highlights to the calibrated peak, paper white average
 function gvk_hdr_metadata() -> void {
   let md = bytes(VkHdrMetadataEXT_sizeof)
   Vk.zero(md, VkHdrMetadataEXT_sizeof)
@@ -982,10 +1003,10 @@ function gvk_hdr_metadata() -> void {
   Vk.put_i32(md, VkHdrMetadataEXT_displayPrimaryGreen + VkXYColorEXT_x, fl(0.30));  Vk.put_i32(md, VkHdrMetadataEXT_displayPrimaryGreen + VkXYColorEXT_y, fl(0.60))
   Vk.put_i32(md, VkHdrMetadataEXT_displayPrimaryBlue + VkXYColorEXT_x, fl(0.15));  Vk.put_i32(md, VkHdrMetadataEXT_displayPrimaryBlue + VkXYColorEXT_y, fl(0.06))
   Vk.put_i32(md, VkHdrMetadataEXT_whitePoint + VkXYColorEXT_x, fl(0.3127));  Vk.put_i32(md, VkHdrMetadataEXT_whitePoint + VkXYColorEXT_y, fl(0.3290))
-  Vk.put_i32(md, VkHdrMetadataEXT_maxLuminance, fi(1000))
+  Vk.put_i32(md, VkHdrMetadataEXT_maxLuminance, r3d_hdr_peak_nits())
   Vk.put_i32(md, VkHdrMetadataEXT_minLuminance, fl(0.001))
-  Vk.put_i32(md, VkHdrMetadataEXT_maxContentLightLevel, fi(1000))
-  Vk.put_i32(md, VkHdrMetadataEXT_maxFrameAverageLightLevel, fi(200))
+  Vk.put_i32(md, VkHdrMetadataEXT_maxContentLightLevel, r3d_hdr_peak_nits())
+  Vk.put_i32(md, VkHdrMetadataEXT_maxFrameAverageLightLevel, r3d_hdr_paper_nits())
   let chains = bytes(8)
   Vk.put_i64(chains, 0, gvk_swap)
   Vk.set_hdr_metadata_ext(gvk_dev, 1, chains, md)
