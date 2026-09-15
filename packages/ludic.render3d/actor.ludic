@@ -236,9 +236,40 @@ function outline_clear() -> void { ac_oq_n = 0;  ac_oq_closed = true }
 # highlighted tree left its rim on until something else was highlighted.
 function outline_frame() -> void { if ac_oq_closed { ac_oq_n = 0 } }
 
+# R3D_ACTOR_CENSUS=<frame>: at that frame, the lit pass's actors grouped by model - skinned or rigid,
+# how many share it, the primitives each draws - so instancing is aimed at what repeats
+function actor_census() -> void {
+  let keys = new []Model
+  let cnt = new []int
+  let prims = new []int
+  let rigid = new []int
+  for i in 0 .. len(ac_actors) {
+    let a = ac_actors[i]
+    if not ac_visible(a, false) { continue }
+    var k = -1
+    for j in 0 .. len(keys) { if keys[j] == a.model { k = j } }
+    if k < 0 { push(keys, a.model);  push(cnt, 0);  push(prims, 0);  var r = 1;  if a.model.skin != null { r = 0 };  push(rigid, r);  k = len(keys) - 1 }
+    if a.skin != null { rigid[k] = 0 }
+    cnt[k] += 1
+    var shown = 0
+    for p in 0 .. len(a.model.prims) { if a.hide == null or a.hide[p] == 0 { shown += 1 } }
+    prims[k] += shown
+  }
+  var total = 0
+  for j in 0 .. len(keys) {
+    var kind = "skinned"
+    if rigid[j] == 1 { kind = "rigid" }
+    print(`actor census: model {j} ({kind}, {len(keys[j].prims)} prims, {keys[j].tris} tris): {cnt[j]} actors, {prims[j]} draws`)
+    total += prims[j]
+  }
+  print(`actor census: {len(keys)} models, {total} lit draws`)
+}
+var ac_census_at: int = -2
 function actor_draw() -> void {
   if ac_actors == null { return }
   ac_frame += 1
+  if ac_census_at == -2 { ac_census_at = -1;  if Os.has_env("R3D_ACTOR_CENSUS") { ac_census_at = Text.to_int(Os.env("R3D_ACTOR_CENSUS")) } }
+  if ac_census_at > 0 and ac_frame == ac_census_at { actor_census() }
   for i in 0 .. len(ac_actors) {
     let a = ac_actors[i]
     if not ac_visible(a, false) { continue }

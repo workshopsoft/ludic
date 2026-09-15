@@ -197,7 +197,7 @@ function r3d_frame(time: int) -> void {
   prof_cpu_mark("streaming")
   if not r3d_no_shadow { prof_begin("shadow");  shadow_pass();  prof_end() }
   prof_cpu_mark("shadow pass")
-  if water_on and not r3d_no_refl { prof_begin("water reflection");  water_reflection_pass();  prof_end() }
+  if water_on and not r3d_no_refl and water_reflect_visible() { prof_begin("water reflection");  water_reflection_pass();  prof_end() }
   prof_cpu_mark("reflection")
   post_begin_scene()
   # the near tree foliage lays its depth down before anything is shaded, so the terrain
