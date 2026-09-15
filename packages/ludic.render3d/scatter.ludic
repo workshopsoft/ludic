@@ -70,6 +70,11 @@ property Layer {
   g_dst:    int = 0,
   g_cmds:   int = 0,
   g_counts: int = 0,
+  g_arena:  []Prim,            # one merged mesh per material, holding every level's copy (layer_arena_build)
+  g_first:  words,             # material * 4 + level: that level's first index in the merged mesh
+  g_base:   words,             # ... and its first vertex
+  g_model:  Model,             # the merged meshes as a model the draws take (level 0's height)
+  g_model_sh: Model,           # the same with level 2's height, for the shadow LOD
   lod_dist: words,
   lod_card: words,
   lod_buf:  words,
@@ -541,27 +546,108 @@ function scatter_begin_frame() -> void {
 }
 
 # ---- the GPU-culled path ------------------------------------------------------------------
-# R3D_GPU_CULL=1 on Vulkan: a tree layer (a LOD chain of up to four levels of up to four prims,
-# with an impostor, not streamed) is culled and split into its buckets by scatter_cull.comp, and
-# its lit, prepass, impostor and shadow-LOD draws read the records that pass wrote. Nothing is
-# partitioned or uploaded on the CPU when the view moves.
+# On Vulkan (R3D_GPU_CULL=0 turns it off): a tree layer (a LOD chain of up to four levels sharing up
+# to four materials, with an impostor, not streamed) is culled and split into its buckets by
+# scatter_cull.comp, and its lit, prepass, impostor and shadow-LOD draws read the records that pass
+# wrote - one draw per material covering every level. Nothing is partitioned or uploaded on the CPU
+# when the view moves. PC camp benchmark: 2791 -> 2657 draws, 4.3 -> 4.1 s for 400 frames.
 const SC_REC_W: int = 20              # a VkDrawIndexedIndirectCommand
 const SC_RECS: int = 29               # 16 level x prim, 1 impostor, 12 shadow LOD (scatter_cull.comp)
 var sc_cull_prog: int = 0
 var sc_cull_tried: bool = false
 var sc_ind_base: int = -1             # >= 0: layer_draw_model / layer_draw_depth draw records from here
+var sc_ind_n: int = 1                 # records each of those draws covers: one per level of a material
+var sc_ind_stride: int = 4            # records between one material's first and the next's (3 for the shadow LOD)
 
 function layer_gpu_eligible(l: Layer) -> bool {
   if l.n_lods < 2 or l.n_lods > 4 or l.imp == null or l.streamed or l.flower or l.blade or l.count == 0 { return false }
-  for k in 0 .. l.n_lods { if len(l.lods[k].prims) > 4 { return false } }
+  return layer_arena_ok(l)
+}
+
+# The merged meshes. Every level of a kit tree or rock carries the same materials in the same order
+# (bark then needles; the rock's one), so each material becomes ONE mesh holding all its levels, and
+# one indirect draw of several records draws every level of it: record (material, level) names that
+# level's index and vertex range and its bucket's instances. A conifer's lit pass goes from eight
+# draws to two. Anything that does not fit - a card level, a level with other materials, other
+# attributes or 32-bit indices - keeps the CPU path.
+function layer_arena_ok(l: Layer) -> bool {
+  let n_mat = len(l.lods[0].prims)
+  if n_mat == 0 or n_mat > 4 { return false }
+  for k in 0 .. l.n_lods {
+    if l.lod_card[k] == 1 { return false }
+    let m = l.lods[k]
+    if len(m.prims) != n_mat { return false }
+    for j in 0 .. n_mat {
+      let pm = m.prims[j].mesh
+      let p0 = l.lods[0].prims[j]
+      if m.prims[j].diff != p0.diff or m.prims[j].verts == 0 or pm.ebo == 0 or pm.itype != GL_UNSIGNED_SHORT { return false }
+      if gpu_buffer_map(pm.ebo) == null { return false }
+      for a in 0 .. 3 {
+        let o = a * GPU_ATTR_W
+        if p0.mesh.attrs[o + 1] == 0 or pm.attrs[o + 1] != p0.mesh.attrs[o + 1] or pm.attrs[o + 3] != pm.attrs[o + 1] * 4 { return false }
+        if gpu_buffer_map(pm.attrs[o]) == null { return false }
+      }
+    }
+  }
   return true
+}
+
+function layer_arena_build(l: Layer) -> void {
+  let n_mat = len(l.lods[0].prims)
+  l.g_arena = new []Prim
+  l.g_first = words(16);  l.g_base = words(16)
+  for i in 0 .. 16 { l.g_first[i] = 0;  l.g_base[i] = 0 }
+  for j in 0 .. n_mat {
+    var nv = 0
+    var ni = 0
+    for k in 0 .. l.n_lods {
+      let pr = l.lods[k].prims[j]
+      l.g_first[j * 4 + k] = ni;  l.g_base[j * 4 + k] = nv
+      nv += pr.verts;  ni += pr.mesh.count
+    }
+    let p0 = l.lods[0].prims[j]
+    let m = gpu_mesh_new()
+    for a in 0 .. 3 {
+      let comps = p0.mesh.attrs[a * GPU_ATTR_W + 1]
+      let vb = bytes(nv * comps * 4 + 8)
+      for k in 0 .. l.n_lods {
+        let pr = l.lods[k].prims[j]
+        mem_copy(mem_off(vb, l.g_base[j * 4 + k] * comps * 4), gpu_buffer_map(pr.mesh.attrs[a * GPU_ATTR_W]), pr.verts * comps * 4)
+      }
+      gpu_mesh_vertices(m, vb, nv * comps * 4, GPU_STATIC)
+      gpu_mesh_attr(m, a, comps, GPU_F32, 0, 0, false)
+      free(vb)
+    }
+    let ib = bytes(ni * 2 + 8)
+    for k in 0 .. l.n_lods {
+      let pm = l.lods[k].prims[j].mesh
+      mem_copy(mem_off(ib, l.g_first[j * 4 + k] * 2), gpu_buffer_map(pm.ebo), pm.count * 2)
+    }
+    gpu_mesh_indices(m, ib, ni * 2, 2)
+    free(ib)
+    m.count = ni
+    gpu_mesh_done(m)
+    scatter_attach(m, l.g_dst)
+    let ap = new Prim
+    ap.mesh = m;  ap.diff = p0.diff;  ap.nrm = p0.nrm;  ap.arm = p0.arm;  ap.verts = nv;  ap.name = p0.name
+    push(l.g_arena, ap)
+  }
+  l.g_model = new Model
+  l.g_model.prims = l.g_arena;  l.g_model.height = l.lods[0].height;  l.g_model.radius = l.lods[0].radius;  l.g_model.ymin = l.lods[0].ymin
+  l.g_model_sh = new Model
+  var sh = l.n_lods - 1
+  if sh > 2 { sh = 2 }
+  l.g_model_sh.prims = l.g_arena;  l.g_model_sh.height = l.lods[sh].height;  l.g_model_sh.radius = l.lods[sh].radius;  l.g_model_sh.ymin = l.lods[sh].ymin
 }
 
 function layer_gpu_prepare(l: Layer) -> bool {
   if not sc_cull_tried {
     sc_cull_tried = true
     # Os.env is null when the variable is unset, and a compare reads through it: ask first
-    if gpu_has_compute() and Os.has_env("R3D_GPU_CULL") and Os.env("R3D_GPU_CULL") == "1" {
+    # on by default wherever there is compute; R3D_GPU_CULL=0 keeps the CPU partition (for comparing)
+    var off = false
+    if Os.has_env("R3D_GPU_CULL") { off = Os.env("R3D_GPU_CULL") == "0" }
+    if gpu_has_compute() and not off {
       sc_cull_prog = gpu_compute("scatter_cull", 4)
       if sc_cull_prog > 0 { print("r3d: scatter: tree layers are culled on the GPU") }
     }
@@ -576,17 +662,25 @@ function layer_gpu_prepare(l: Layer) -> bool {
   let cap = l.count
   gpu_buffer_upload(l.g_src, cap * INST_FLOATS * 4, l.inst, GPU_STATIC)
   gpu_buffer_upload(l.g_dst, (n + 1) * cap * INST_FLOATS * 4, null, GPU_DYNAMIC)
+  if l.g_arena == null { layer_arena_build(l) }
+  let n_mat = len(l.g_arena)
   let rec = words(SC_RECS * 5)
   for i in 0 .. SC_RECS * 5 { rec[i] = 0 }
-  for k in 0 .. n {
-    let m = l.lods[k]
-    for j in 0 .. len(m.prims) { rec[(k * 4 + j) * 5] = m.prims[j].mesh.count;  rec[(k * 4 + j) * 5 + 4] = k * cap }
+  # material j, level k: that level's range of the merged mesh, its instances from bucket k
+  for j in 0 .. n_mat {
+    for k in 0 .. n {
+      let r = (j * 4 + k) * 5
+      rec[r] = l.lods[k].prims[j].mesh.count;  rec[r + 2] = l.g_first[j * 4 + k];  rec[r + 3] = l.g_base[j * 4 + k];  rec[r + 4] = k * cap
+    }
   }
   rec[16 * 5] = sc_card.count;  rec[16 * 5 + 4] = n * cap
+  # the shadow LOD: level 2's range, from buckets 0 .. 2
   if n > 2 {
-    let m2 = l.lods[2]
-    for b in 0 .. 3 {
-      for j in 0 .. len(m2.prims) { rec[(17 + b * 4 + j) * 5] = m2.prims[j].mesh.count;  rec[(17 + b * 4 + j) * 5 + 4] = b * cap }
+    for j in 0 .. n_mat {
+      for b in 0 .. 3 {
+        let r = (17 + j * 3 + b) * 5
+        rec[r] = l.lods[2].prims[j].mesh.count;  rec[r + 2] = l.g_first[j * 4 + 2];  rec[r + 3] = l.g_base[j * 4 + 2];  rec[r + 4] = b * cap
+      }
     }
   }
   gpu_buffer_upload(l.g_cmds, SC_RECS * SC_REC_W, rec, GPU_DYNAMIC)
@@ -857,8 +951,10 @@ var sc_dbg_tint: words = null
 # distance — which is the crown shadow that appeared as you walked up to a tree.
 function layer_draw_near(l: Layer, shadow: bool, light_vp: words, full: bool) -> void {
   if l.n_lods > 1 and l.g_on and not shadow {
-    for k in 0 .. l.n_lods { sc_dbg_level = k;  sc_ind_base = k * 4;  layer_draw_model(l, l.lods[k], l.g_dst, 1, l.lod_card[k] == 1, shadow, light_vp) }
-    sc_ind_base = -1;  sc_dbg_level = -1
+    # one draw per material covering all of its levels (the merged meshes)
+    sc_ind_base = 0;  sc_ind_n = l.n_lods
+    layer_draw_model(l, l.g_model, l.g_dst, 1, false, shadow, light_vp)
+    sc_ind_base = -1;  sc_ind_n = 1
     return
   }
   if l.n_lods > 1 {
@@ -926,7 +1022,7 @@ function layer_draw_model(l: Layer, model: Model, vb: int, cnt: int, card: bool,
       r3d_bind_2d(p, "u_diff", 0, pr.diff)
       if not shadow { r3d_bind_2d(p, "u_nrm", 1, pr.nrm);  r3d_bind_2d(p, "u_arm", 2, pr.arm) }
     }
-    if sc_ind_base >= 0 { gpu_draw_mesh_indirect(pr.mesh, l.g_cmds, (sc_ind_base + i) * SC_REC_W, 1, 0, 0) }
+    if sc_ind_base >= 0 { gpu_draw_mesh_indirect(pr.mesh, l.g_cmds, (sc_ind_base + i * sc_ind_stride) * SC_REC_W, sc_ind_n, 0, 0) }
     else { mesh_draw_instanced(pr.mesh, cnt) }
   }
   gpu_alpha_to_coverage(false)
@@ -1018,7 +1114,7 @@ function layer_draw_depth(l: Layer, model: Model, vb: int, cnt: int) -> void {
     let pr = model.prims[i]
     scatter_attach(pr.mesh, vb)
     r3d_bind_2d(p, "u_diff", 0, pr.diff)
-    if sc_ind_base >= 0 { gpu_draw_mesh_indirect(pr.mesh, l.g_cmds, (sc_ind_base + i) * SC_REC_W, 1, 0, 0) }
+    if sc_ind_base >= 0 { gpu_draw_mesh_indirect(pr.mesh, l.g_cmds, (sc_ind_base + i * sc_ind_stride) * SC_REC_W, sc_ind_n, 0, 0) }
     else { mesh_draw_instanced(pr.mesh, cnt) }
   }
 }
@@ -1033,8 +1129,9 @@ function scatter_draw_depth() -> void {
     if r3d_no_trees and l.imp != null { continue }
     layer_update(l)
     if l.n_lods > 1 and l.g_on {
-      for k in 0 .. l.n_lods { if l.lod_card[k] != 1 { sc_ind_base = k * 4;  layer_draw_depth(l, l.lods[k], l.g_dst, 1) } }
-      sc_ind_base = -1
+      sc_ind_base = 0;  sc_ind_n = l.n_lods
+      layer_draw_depth(l, l.g_model, l.g_dst, 1)
+      sc_ind_base = -1;  sc_ind_n = 1
     } else if l.n_lods > 1 {
       # (a tree layer is flagged `card` for its distant level; its mesh levels still count)
       for k in 0 .. l.n_lods { if l.lod_card[k] != 1 { layer_draw_depth(l, l.lods[k], l.lod_buf[k], l.n_lod[k]) } }
@@ -1077,8 +1174,9 @@ function scatter_draw_casters(light_vp: words) -> void {
       # sees the crown from above, cast a trunk line with a few blobs. The near levels
       # now also cast their LOD2 mesh, alpha-tested, on top of the card.
       if l.n_lods > 2 and l.g_on {
-        for k in 0 .. 3 { sc_ind_base = 17 + k * 4;  layer_draw_model(l, l.lods[2], l.g_dst, 1, false, true, light_vp) }
-        sc_ind_base = -1
+        sc_ind_base = 17;  sc_ind_n = 3;  sc_ind_stride = 3
+        layer_draw_model(l, l.g_model_sh, l.g_dst, 1, false, true, light_vp)
+        sc_ind_base = -1;  sc_ind_n = 1;  sc_ind_stride = 4
       } else if l.n_lods > 2 {
         for k in 0 .. 3 { layer_draw_model(l, l.lods[2], l.lod_buf[k], l.n_lod[k], false, true, light_vp) }
       }
@@ -1203,6 +1301,7 @@ function scatter_clear_all() -> void {
     if l.vis != null { free(l.vis) }
     if l.lod_dist != null { free(l.lod_dist);  free(l.lod_card);  free(l.lod_buf);  free(l.n_lod) }
     if l.lvl != null { free(l.lvl) }
+    if l.g_arena != null { for k in 0 .. len(l.g_arena) { mesh_free(l.g_arena[k].mesh) } }
     # layer_cards built this layer's crossed card and its atlas itself
     if l.card and l.n_lods == 0 and l.model != null { for k in 0 .. len(l.model.prims) { mesh_free(l.model.prims[k].mesh) } }
     if l.card and l.atlas != null {

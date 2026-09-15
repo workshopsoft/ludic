@@ -10,6 +10,7 @@ property Prim {
   diff: int = 0,
   nrm:  int = 0,
   arm:  int = 0,
+  verts: int = 0,       # vertices in the mesh (each attribute buffer holds this many)
   name: string          # the material's name (a part to tint: "hk_jacket")
 }
 property Model {
@@ -134,6 +135,7 @@ function gltf_prim(p: Val) -> Prim {
   let m = gpu_mesh_new()
   let attrs = value_get(p, "attributes")
   gltf_attrib(m, attrs, "POSITION", 0)
+  let nverts = gltf_count
   gltf_attrib(m, attrs, "NORMAL", 1)
   gltf_attrib(m, attrs, "TEXCOORD_0", 2)
   skin_attribs(m, attrs)                    # JOINTS_0 / WEIGHTS_0 onto 5 / 6, when the mesh has them
@@ -145,6 +147,7 @@ function gltf_prim(p: Val) -> Prim {
   m.count = gltf_count
   gpu_mesh_done(m)
   pr.mesh = m
+  pr.verts = nverts
   # material textures
   if gltf_white == 0 { gltf_white = tex_solid(200, 200, 200, 255);  gltf_flat = tex_solid(128, 128, 255, 255) }
   pr.diff = gltf_white;  pr.nrm = gltf_flat;  pr.arm = gltf_white
