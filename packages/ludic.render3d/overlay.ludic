@@ -17,6 +17,8 @@ var ov_vbo: int = 0
 var ov_buf: pointer = null
 var ov_n: int = 0
 var ov_tex: int = 0
+var ov_mode: int = 2                  # what the next quads read: 0 the image texture, 1 the font, 2 a flat colour
+var ov_voff: int = 0                  # float bits: 4 x ov_mode, added to v (overlay.frag)
 var ov_white: int = 0
 var ov_font: int = 0
 var ov_font_adv: words = null         # float bits, em units, one per glyph in the atlas
@@ -165,6 +167,7 @@ function ov_begin() -> void {
   u_f2(gpu_uniform(ov_prog, "u_screen"), fi(gl_w), fi(gl_h))
   ov_n = 0;  ov_nr = 0;  ov_range_start = 0
   ov_tex = ov_white
+  ov_mode = 2;  ov_voff = fi(8)
   ov_clip_w = 0
   ov_open = true
 }
@@ -198,18 +201,15 @@ function ov_flush() -> void {
   gpu_use_program(ov_prog)
   gpu_mesh_bind(ov_mesh)
   gpu_buffer_upload(ov_vbo, gl_bytes_of(ov_n * 6 * OV_FLOATS), ov_buf, GPU_STREAM)
+  var font = ov_font
+  if font == 0 { font = ov_white }
+  r3d_bind_2d(ov_prog, "u_font", 1, font)
   var last = -1
   var clipped = false
   for i in 0 .. ov_nr {
     let o = i * OV_RANGE_W
     let t = ov_ranges[o]
-    if t != last {
-      r3d_bind_2d(ov_prog, "u_tex", 0, t)
-      var is_font = F_ZERO
-      if t == ov_font { is_font = F_ONE }
-      u_f(gpu_uniform(ov_prog, "u_is_font"), is_font)
-      last = t
-    }
+    if t != last { r3d_bind_2d(ov_prog, "u_tex", 0, t);  last = t }
     if ov_ranges[o + 5] > 0 {
       clipped = true
       gpu_scissor(ov_ranges[o + 3], ov_ranges[o + 4], ov_ranges[o + 5], ov_ranges[o + 6])
@@ -227,7 +227,13 @@ function ov_end() -> void {
   gpu_depth_test(true)
   ov_open = false
 }
+# Text and flat panels never end a draw: the font atlas stays bound beside the image texture and each
+# vertex says which it reads (ov_voff). Only a different image texture closes the range. A panel and
+# its label used to alternate the white and font textures, and the HUD was 77-91 draws a frame.
 function ov_use_tex(t: int) -> void {
+  if t != 0 and t == ov_font { ov_mode = 1;  ov_voff = fi(4);  return }
+  if t == ov_white { ov_mode = 2;  ov_voff = fi(8);  return }
+  ov_mode = 0;  ov_voff = F_ZERO
   if t != ov_tex { ov_close_range();  ov_tex = t }
 }
 
@@ -235,7 +241,7 @@ function ov_use_tex(t: int) -> void {
 function ov_vert(k: int, x: int, y: int, u: int, v: int, r: int, g: int, b: int, a: int) -> void {
   let o = k * OV_FLOATS
   gl_put_bits(ov_buf, o, x);  gl_put_bits(ov_buf, o + 1, y)
-  gl_put_bits(ov_buf, o + 2, u);  gl_put_bits(ov_buf, o + 3, v)
+  gl_put_bits(ov_buf, o + 2, u);  gl_put_bits(ov_buf, o + 3, f_add(v, ov_voff))
   gl_put_bits(ov_buf, o + 4, r);  gl_put_bits(ov_buf, o + 5, g);  gl_put_bits(ov_buf, o + 6, b);  gl_put_bits(ov_buf, o + 7, a)
 }
 # a textured quad, float-bit pixel corners and uvs
