@@ -255,6 +255,21 @@ out:
   ret void
 }
 
+; ---- the native window, for a graphics API that makes its own surface ------------------
+; A Vulkan swapchain is created on the window itself (VkWin32SurfaceCreateInfoKHR takes the
+; module instance and the HWND), not through a context this file attaches. Null before
+; win_open has made the window; the same names are stubs returning null in a headless build.
+define ptr @win_native_window() {
+entry:
+  %h = load ptr, ptr @W_hwnd
+  ret ptr %h
+}
+define ptr @win_native_instance() {
+entry:
+  %inst = call ptr @GetModuleHandleA(ptr null)
+  ret ptr %inst
+}
+
 ; set (%on != 0) or clear a key's bit in the 256-bit held set
 define void @win_held_bit(i32 %k, i32 %on) {
 entry:

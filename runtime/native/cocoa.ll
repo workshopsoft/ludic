@@ -1670,3 +1670,16 @@ go:
 out:
   ret void
 }
+
+; ---- the native window, for a graphics API that makes its own surface ------------------
+; win32.ll's contract: on macOS the view the game draws in (a Metal-backed layer would hang
+; off it); there is no module instance to hand over, so that one is null.
+define ptr @win_native_window() {
+entry:
+  %v = load ptr, ptr @W_view
+  ret ptr %v
+}
+define ptr @win_native_instance() {
+entry:
+  ret ptr null
+}

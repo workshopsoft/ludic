@@ -42,3 +42,13 @@ define void @win_toggle_fullscreen() {
 entry:
   ret void
 }
+
+; headless: no window, so nothing for a graphics API to make a surface on (win32.ll has the real ones)
+define ptr @win_native_window() {
+entry:
+  ret ptr null
+}
+define ptr @win_native_instance() {
+entry:
+  ret ptr null
+}

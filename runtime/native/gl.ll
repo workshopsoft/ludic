@@ -366,3 +366,13 @@ entry:
   %t = add i64 %m, %us
   ret i64 %t
 }
+
+; headless on macOS: no window, so nothing for a graphics API to make a surface on
+define weak ptr @win_native_window() {
+entry:
+  ret ptr null
+}
+define weak ptr @win_native_instance() {
+entry:
+  ret ptr null
+}
