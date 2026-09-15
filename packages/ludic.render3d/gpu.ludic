@@ -205,7 +205,7 @@ function gpu_program_key(p: int) -> string {
   for i in 0 .. len(gpu_prog_ids) { if gpu_prog_ids[i] == p { return gpu_prog_keys[i] } }
   return ""
 }
-function gpu_use_program(p: int) -> void { if gpu_kind == GPU_VK { gpu_prog_cur = p;  return };  gl_use_program(p);  gpu_prog_cur = p;  gpu_glcheck_after("use program") }
+function gpu_use_program(p: int) -> void { ds_program_change(gpu_prog_cur, p);  if gpu_kind == GPU_VK { gpu_prog_cur = p;  return };  gl_use_program(p);  gpu_prog_cur = p;  gpu_glcheck_after("use program") }
 function gpu_program_free(p: int) -> void {
   if gpu_kind == GPU_VK { return }
   if p == 0 { return }
@@ -534,6 +534,7 @@ function gpu_finish() -> void { if gpu_kind == GPU_VK { gvk_flush() } }
 # (bytes); each record's firstInstance selects its instances out of the bound instance buffer.
 # With count_buf > 0 the GPU's own count (a uint at count_off) is used, up to n.
 function gpu_draw_mesh_indirect(m: Mesh, cmds: int, offset: int, n: int, count_buf: int, count_off: int) -> void {
+  if m != null { ds_draw(DS_INDIRECT, n, m.count) }
   if gpu_kind == GPU_VK { gvk_draw_indirect_now(m, cmds, offset, n, count_buf, count_off) }
 }
 
@@ -541,6 +542,7 @@ function gpu_draw_mesh_indirect(m: Mesh, cmds: int, offset: int, n: int, count_b
 function gpu_mesh_bind(m: Mesh) -> void { if gpu_kind == GPU_VK { return };  gl_bind_vertex_array(m.vao) }
 function gpu_mesh_unbind() -> void { if gpu_kind == GPU_VK { return };  gl_bind_vertex_array(0) }
 function gpu_draw_mesh(m: Mesh) -> void {
+  ds_draw(DS_MESH, 1, m.count)
   if gpu_kind == GPU_VK { gvk_draw_now(m, 0, 0, 1);  return }
   gpu_glcheck_before("a draw")
   gl_bind_vertex_array(m.vao)
@@ -549,6 +551,7 @@ function gpu_draw_mesh(m: Mesh) -> void {
   gpu_glcheck_after("a draw")
 }
 function gpu_draw_mesh_instanced(m: Mesh, n: int) -> void {
+  ds_draw(DS_INSTANCED, n, m.count * n)
   if gpu_kind == GPU_VK { gvk_draw_now(m, 0, 0, n);  return }
   gpu_glcheck_before("an instanced draw")
   gl_bind_vertex_array(m.vao)
@@ -558,6 +561,7 @@ function gpu_draw_mesh_instanced(m: Mesh, n: int) -> void {
 }
 # the bound mesh's indices again (a patch mesh drawn once per terrain node)
 function gpu_draw_bound_elements(m: Mesh) -> void {
+  ds_draw(DS_PATCH, 1, m.count)
   if gpu_kind == GPU_VK { gvk_draw_now(m, 0, 0, 1);  return }
   gpu_glcheck_before("a terrain patch")
   gl_draw_elements(m.mode, m.count, m.itype, null)
@@ -565,6 +569,7 @@ function gpu_draw_bound_elements(m: Mesh) -> void {
 }
 # vertices [first, first + count) of the bound mesh, as triangles (the overlay's ranges)
 function gpu_draw_range(m: Mesh, first: int, count: int) -> void {
+  ds_draw(DS_RANGE, 1, count)
   if gpu_kind == GPU_VK { gvk_draw_now(m, first, count, 1);  return }
   gpu_glcheck_before("an overlay draw")
   gl_draw_arrays(GL_TRIANGLES, first, count)
@@ -623,6 +628,7 @@ var gpu_unit_2d: words = null
 var gpu_unit_cur: int = 0
 function gpu_tex_unit(unit: int) -> void { if gpu_kind == GPU_VK { gpu_unit_cur = unit;  return };  gl_active_texture(GL_TEXTURE0 + unit);  gpu_unit_cur = unit }
 function gpu_tex_bind(kind: int, tex: int) -> void {
+  ds_tex_bind()
   if gpu_kind != GPU_VK { gl_bind_texture(gpu_gl_target(kind), tex) }
   if kind == GPU_TEX2D_ARRAY { gpu_bound_array = tex } else { gpu_bound_2d = tex }
   if kind != GPU_TEX2D_ARRAY and gpu_unit_cur < 32 {

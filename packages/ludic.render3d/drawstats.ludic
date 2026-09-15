@@ -1,0 +1,204 @@
+# ============================================================================
+# drawstats.ludic — every draw a frame makes, by pass, program and kind
+# (R3D_DRAWSTATS=<frames>).
+#
+# Measurement only. Every draw on both backends goes through the five doors in
+# gpu.ludic (gpu_draw_mesh, _instanced, _bound_elements, _range, _mesh_indirect);
+# each door tallies itself here under the profiler pass that is open (prof_begin)
+# and the program that is bound. Nothing about the frame changes.
+#
+#   R3D_DRAWSTATS=<n>          count n frames (default 60 when not a number)
+#   R3D_DRAWSTATS_FROM=<f>     start at render frame f (default 90: streaming settled)
+#   R3D_DRAWSTATS_CSV=<path>   the per-row table (default build/drawstats.csv)
+#
+# The report prints when the window closes, so any run long enough to reach
+# f + n frames produces it - a headless shot, a bench, a windowed walk.
+#
+# An indirect draw is one API call carrying n command records; its "instances"
+# column is the record count, and whether the GPU's culling emptied a record is
+# not known here (see R3D_VK_PROF for the Vulkan side's own count).
+# ============================================================================
+
+const DS_MESH: int = 0
+const DS_INSTANCED: int = 1
+const DS_PATCH: int = 2
+const DS_RANGE: int = 3
+const DS_INDIRECT: int = 4
+const DS_KINDS: int = 5
+
+var ds_on: int = -1                  # -1: not read yet
+var ds_counting: bool = false
+var ds_from: int = 90
+var ds_frames: int = 60
+var ds_frame_no: int = 0
+var ds_outside: pointer = "(outside passes)"
+
+# passes, in the order the frame first opens them
+var ds_pass_names: []pointer = null
+var ds_pass_prog: []long = null      # program changes inside the pass
+var ds_pass_tex: []long = null       # texture binds inside the pass
+var ds_pass_i: int = 0
+
+# rows: (pass, program, kind)
+var ds_row_pass: []int = null
+var ds_row_prog: []int = null
+var ds_row_kind: []int = null
+var ds_row_draws: []long = null
+var ds_row_inst: []long = null
+var ds_row_idx: []long = null
+var ds_last: int = -1
+
+function ds_enabled() -> bool {
+  if ds_on < 0 {
+    ds_on = 0
+    if Os.has_env("R3D_DRAWSTATS") {
+      ds_on = 1
+      ds_frames = Text.to_int(Os.env("R3D_DRAWSTATS"))
+      if ds_frames < 2 { ds_frames = 60 }
+      if Os.has_env("R3D_DRAWSTATS_FROM") { ds_from = Text.to_int(Os.env("R3D_DRAWSTATS_FROM")) }
+      ds_pass_names = new []pointer;  ds_pass_prog = new []long;  ds_pass_tex = new []long
+      ds_row_pass = new []int;  ds_row_prog = new []int;  ds_row_kind = new []int
+      ds_row_draws = new []long;  ds_row_inst = new []long;  ds_row_idx = new []long
+      ds_set_pass(ds_outside)
+    }
+  }
+  return ds_on == 1
+}
+
+# the profiler's pass boundaries (prof_begin / prof_end), whether or not R3D_PROF is on
+function ds_set_pass(name: pointer) -> void {
+  if ds_on != 1 { return }
+  ds_last = -1
+  var i = 0
+  while i < len(ds_pass_names) {
+    if ds_pass_names[i] == name { ds_pass_i = i;  return }
+    i += 1
+  }
+  push(ds_pass_names, name);  push(ds_pass_prog, 0);  push(ds_pass_tex, 0)
+  ds_pass_i = len(ds_pass_names) - 1
+}
+
+# once per render frame, before any of its work (prof_gen_frame)
+function ds_frame() -> void {
+  if not ds_enabled() { return }
+  ds_frame_no += 1
+  ds_set_pass(ds_outside)
+  if ds_frame_no == ds_from {
+    ds_counting = true
+    print(`r3d: drawstats counting frames {ds_from}..{ds_from + ds_frames - 1}`)
+  }
+  if ds_frame_no == ds_from + ds_frames {
+    ds_counting = false
+    ds_report()
+  }
+}
+
+function ds_draw(kind: int, instances: int, indices: int) -> void {
+  if ds_on != 1 or not ds_counting { return }
+  let p = gpu_prog_cur
+  var r = ds_last
+  if r < 0 or ds_row_prog[r] != p or ds_row_kind[r] != kind or ds_row_pass[r] != ds_pass_i {
+    r = -1
+    var i = 0
+    while r < 0 and i < len(ds_row_pass) {
+      if ds_row_pass[i] == ds_pass_i and ds_row_prog[i] == p and ds_row_kind[i] == kind { r = i }
+      i += 1
+    }
+    if r < 0 {
+      push(ds_row_pass, ds_pass_i);  push(ds_row_prog, p);  push(ds_row_kind, kind)
+      push(ds_row_draws, 0);  push(ds_row_inst, 0);  push(ds_row_idx, 0)
+      r = len(ds_row_pass) - 1
+    }
+    ds_last = r
+  }
+  ds_row_draws[r] = ds_row_draws[r] + 1
+  ds_row_inst[r] = ds_row_inst[r] + instances
+  ds_row_idx[r] = ds_row_idx[r] + indices
+}
+
+function ds_program_change(from: int, to: int) -> void {
+  if ds_on != 1 or not ds_counting or from == to { return }
+  ds_pass_prog[ds_pass_i] = ds_pass_prog[ds_pass_i] + 1
+}
+function ds_tex_bind() -> void {
+  if ds_on != 1 or not ds_counting { return }
+  ds_pass_tex[ds_pass_i] = ds_pass_tex[ds_pass_i] + 1
+}
+
+function ds_kind_name(k: int) -> pointer {
+  if k == DS_MESH { return "mesh" }
+  if k == DS_INSTANCED { return "instanced" }
+  if k == DS_PATCH { return "terrain patch" }
+  if k == DS_RANGE { return "overlay range" }
+  return "indirect"
+}
+# a per-frame mean with one decimal
+function ds_per(v: long) -> string {
+  let x = (v * 10) / ds_frames
+  return `{string(x / 10)}.{string(x % 10)}`
+}
+function ds_backend() -> pointer {
+  if gpu_kind == GPU_VK { return "vulkan" }
+  return "opengl"
+}
+
+function ds_report() -> void {
+  let n_rows = len(ds_row_pass)
+  let n_pass = len(ds_pass_names)
+  var total: long = 0
+  let by_kind = new []long
+  for k in 0 .. DS_KINDS { push(by_kind, 0) }
+  let pass_draws = new []long
+  let pass_inst = new []long
+  for s in 0 .. n_pass { push(pass_draws, 0);  push(pass_inst, 0) }
+  for r in 0 .. n_rows {
+    total = total + ds_row_draws[r]
+    by_kind[ds_row_kind[r]] = by_kind[ds_row_kind[r]] + ds_row_draws[r]
+    pass_draws[ds_row_pass[r]] = pass_draws[ds_row_pass[r]] + ds_row_draws[r]
+    pass_inst[ds_row_pass[r]] = pass_inst[ds_row_pass[r]] + ds_row_inst[r]
+  }
+  print("")
+  print(`draw calls per frame ({ds_backend()}, {gl_w}x{gl_h}, mean of {ds_frames} frames from {ds_from}): {ds_per(total)}`)
+  var kinds = ""
+  for k in 0 .. DS_KINDS { kinds = kinds + `  {ds_kind_name(k)} {ds_per(by_kind[k])}` }
+  print(`  by kind:{kinds}`)
+  print("")
+  print("  pass                        draws   instances   program changes   texture binds")
+  for s in 0 .. n_pass {
+    print(`  {Text.pad_right(ds_pass_names[s], 24)} {Text.pad_left(ds_per(pass_draws[s]), 9)} {Text.pad_left(ds_per(pass_inst[s]), 11)} {Text.pad_left(ds_per(ds_pass_prog[s]), 17)} {Text.pad_left(ds_per(ds_pass_tex[s]), 15)}`)
+  }
+  # rows by draws, most first
+  let order = new []int
+  for r in 0 .. n_rows { push(order, r) }
+  var a = 1
+  while a < n_rows {
+    let v = order[a]
+    var b = a - 1
+    while b >= 0 and ds_row_draws[order[b]] < ds_row_draws[v] { order[b + 1] = order[b];  b -= 1 }
+    order[b + 1] = v
+    a += 1
+  }
+  print("")
+  print("  the 40 largest rows (pass / kind / program):")
+  print("      draws   instances      indices  pass                      kind            program")
+  var shown = 0
+  while shown < 40 and shown < n_rows {
+    let r = order[shown]
+    print(`  {Text.pad_left(ds_per(ds_row_draws[r]), 9)} {Text.pad_left(ds_per(ds_row_inst[r]), 11)} {Text.pad_left(ds_per(ds_row_idx[r]), 12)}  {Text.pad_right(ds_pass_names[ds_row_pass[r]], 24)}  {Text.pad_right(ds_kind_name(ds_row_kind[r]), 14)}  {gpu_program_key(ds_row_prog[r])}`)
+    shown += 1
+  }
+  var path = "build/drawstats.csv"
+  if Os.has_env("R3D_DRAWSTATS_CSV") { path = Os.env("R3D_DRAWSTATS_CSV") }
+  let f = file_open(path, "wb")
+  if f == null { print(`r3d: drawstats could not write {path}`);  return }
+  let head = "backend,width,height,frames,pass,kind,program,draws_per_frame,instances_per_frame,indices_per_frame,pass_program_changes_per_frame,pass_texture_binds_per_frame\n"
+  file_write(f, head, len(head))
+  for i in 0 .. n_rows {
+    let r = order[i]
+    let s = ds_row_pass[r]
+    let line = `{ds_backend()},{gl_w},{gl_h},{ds_frames},"{ds_pass_names[s]}",{ds_kind_name(ds_row_kind[r])},"{gpu_program_key(ds_row_prog[r])}",{ds_per(ds_row_draws[r])},{ds_per(ds_row_inst[r])},{ds_per(ds_row_idx[r])},{ds_per(ds_pass_prog[s])},{ds_per(ds_pass_tex[s])}\n`
+    file_write(f, line, len(line))
+  }
+  file_close(f)
+  print(`  wrote {path} ({n_rows} rows)`)
+}
