@@ -46,5 +46,8 @@ skin.vert|shadow.frag|#define SHADOW_PASS;#define ALPHA_TEST;
 terrain.vert|terrain.frag|
 terrain.vert|terrain.frag|#define FAR_ONLY;
 terrain.vert|terrain.frag|#define NEAR_ONLY;
+terrain.vert|terrain.frag|#define SUN_INLINE;
+terrain.vert|terrain.frag|#define SUN_INLINE;#define FAR_ONLY;
+terrain.vert|terrain.frag|#define SUN_INLINE;#define NEAR_ONLY;
 terrain.vert|tersun.frag|
 water.vert|water.frag|

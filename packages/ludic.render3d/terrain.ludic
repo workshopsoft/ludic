@@ -32,6 +32,7 @@ var ter_prog: int = 0
 var ter_prog_far: int = 0
 var ter_prog_near: int = 0           # the detailed tier alone (NEAR_ONLY)
 var ter_sun_prog: int = 0            # tersun.frag: sun visibility into a screen buffer
+var ter_sun_inline: bool = false     # the ground's shader reads the cascades itself (Vulkan); no sun pass
 var ter_sun_tgt: Target = null       # that buffer, at the frame's size
 var ter_sun_refl: Target = null      # and at the reflection's, which is smaller
 var ter_sun_dumped: bool = false
@@ -423,6 +424,11 @@ function terrain_init_finish() -> void {
   # draw every patch with one tier's program (what each tier costs over a whole frame);
   # R3D_NOSPLIT goes back to the single program that holds both tiers.
   if Os.has_env("R3D_TFAST") { defs = defs + "#define TFAST_" + Os.env("R3D_TFAST") + "\n" }
+  # Vulkan reads the cascades inside the ground's own shader and draws no separate sun pass
+  # (terrain.frag, SUN_INLINE): one rasterisation of the patches instead of two, in the frame and in
+  # the reflection. R3D_SUN_PASS=1 keeps the pass there too, for comparing.
+  ter_sun_inline = gpu_kind == GPU_VK and not Os.has_env("R3D_SUN_PASS")
+  if ter_sun_inline { defs = defs + "#define SUN_INLINE\n" }
   ter_prog = r3d_program("terrain.vert", "terrain.frag", defs)
   ter_prog_far = r3d_program("terrain.vert", "terrain.frag", defs + "#define FAR_ONLY\n")
   ter_prog_near = r3d_program("terrain.vert", "terrain.frag", defs + "#define NEAR_ONLY\n")
@@ -487,9 +493,12 @@ function terrain_bind_prog(p: int) -> void {
   # The ground reads its sun visibility out of the buffer tersun.frag filled, and has no
   # use for the cascade array shadow_bind just put on this unit; leaving both bound under
   # one unit is undefined ground, so the array comes off first.
-  gpu_tex_unit(15)
-  gpu_tex_bind(GPU_TEX2D_ARRAY, 0)
-  r3d_bind_2d(p, "u_sunshadow", 15, ter_sun_tex)
+  # (With the read inline, the array shadow_bind put there is exactly what the ground wants.)
+  if not ter_sun_inline {
+    gpu_tex_unit(15)
+    gpu_tex_bind(GPU_TEX2D_ARRAY, 0)
+    r3d_bind_2d(p, "u_sunshadow", 15, ter_sun_tex)
+  }
 }
 
 # The visibility buffer for the size being drawn into. The reflection is rendered at its
@@ -559,6 +568,7 @@ function terrain_sun_pass(w: int, h: int, depth: int) -> Target {
 }
 
 function terrain_sun_prepare() -> void {
+  if ter_sun_inline { return }
   ter_sun_tex = terrain_sun_pass(post_w, post_h, post_hdr.depth).color
   ter_sun_done = true
 }
@@ -571,7 +581,7 @@ function terrain_draw() -> void {
   var vw = post_w
   var vh = post_h
   if ter_reflect { vw = water_refl.w;  vh = water_refl.h }
-  if not ter_sun_done {
+  if not ter_sun_done and not ter_sun_inline {
     var dep = post_hdr.depth
     if ter_reflect { dep = water_refl.depth }
     ter_sun_tex = terrain_sun_pass(vw, vh, dep).color

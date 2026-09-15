@@ -200,6 +200,20 @@ void triC(bool cheap, sampler2D d, sampler2D nm, sampler2D am, vec3 p, vec3 dpx,
   if (cheap) { samplePlain(d, nm, am, p.xz * scale, dpx.xz * scale, dpy.xz * scale, alb, nrm, arm); nrm = normalize(vec3(nrm.x, 1.0, nrm.y) + vec3(0.0, 1e-3, 0.0)); }
   else sampleTri(d, nm, am, p, dpx, dpy, n, scale, alb, nrm, arm);
 }
+#ifdef SUN_INLINE
+// Vulkan: the cascades are read here, in the ground's own shader, and tersun.frag's pass - a second
+// rasterisation of every patch - is not drawn. The cliff tersun.frag describes is OpenGL's driver, and
+// OpenGL keeps that pass. The same normal, the same two tiers and the same cross-fade as tersun.frag.
+uniform float u_far_split;
+uniform float u_far_band;
+float sunInline(vec3 p, float dist, float viewDepth) {
+  vec3 Ng = normalize(texture(u_height, v_huv).gba);
+  if (dist > u_far_split + u_far_band) return sunShadowCheap(p, Ng, viewDepth);
+  if (dist < u_far_split - u_far_band) return sunShadow(p, Ng, viewDepth);
+  return mix(sunShadow(p, Ng, viewDepth), sunShadowCheap(p, Ng, viewDepth),
+             smoothstep(u_far_split - u_far_band, u_far_split + u_far_band, dist));
+}
+#endif
 vec3 groundShade(vec3 p, vec3 N, float slope, float dist, float viewDepth, bool cheap) {
   // ---- material weights ----
   float macro = fbmC(cheap, p.xz * 0.02, 2);
@@ -411,9 +425,11 @@ vec3 groundShade(vec3 p, vec3 N, float slope, float dist, float viewDepth, bool 
   // ground's own relief is in the baked height-field shadow that sunShadow() applies
 #ifdef TFAST_1
   float shadow = 1.0;
+#elif defined(SUN_INLINE)
+  float shadow = sunInline(p, dist, viewDepth);
 #else
   // tersun.frag computed this for exactly this pixel; see the note there for why the
-  // cascade read cannot happen in here.
+  // cascade read cannot happen in here (on OpenGL).
   float shadow = texelFetch(u_sunshadow, ivec2(gl_FragCoord.xy), 0).r;
 #endif
   vec3 col = shade(p, n, alb, rough, metal, ao, shadow, viewDepth);
@@ -421,8 +437,10 @@ vec3 groundShade(vec3 p, vec3 N, float slope, float dist, float viewDepth, bool 
   return col;
 }
 
+#ifndef SUN_INLINE
 uniform float u_far_split;
 uniform float u_far_band;
+#endif
 void main() {
   vec3 p = v_wpos;
   if (p.y < u_clip_y) discard;

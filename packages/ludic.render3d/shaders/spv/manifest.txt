@@ -2324,6 +2324,210 @@ T f4382918 u_snow_d 15
 T f4382918 u_sunshadow 16
 T f4382918 u_tershadow 17
 T f4382918 u_ts_height 18
+P f2952361 terrain.vert terrain.frag #define SUN_INLINE;
+B f2952361 vert 0 204
+U f2952361 vert u_half 0 float 1 0
+U f2952361 vert u_view 16 mat4 1 0
+U f2952361 vert u_proj 80 mat4 1 0
+U f2952361 vert u_origin 144 vec2 1 0
+U f2952361 vert u_cam_pos 160 vec3 1 0
+U f2952361 vert u_node 176 vec3 1 0
+U f2952361 vert u_morph 192 vec2 1 0
+U f2952361 vert u_grid 200 float 1 0
+I f2952361 a_xz 0 vec2
+B f2952361 frag 1 872
+U f2952361 frag u_cascade_vp 0 mat4 5 64
+U f2952361 frag u_cascade_split 320 float 5 16
+U f2952361 frag u_cascade_range 400 float 5 16
+U f2952361 frag u_cascade_texel 480 float 5 16
+U f2952361 frag u_sun_dir 560 vec3 1 0
+U f2952361 frag u_sun_color 576 vec3 1 0
+U f2952361 frag u_cam_pos 592 vec3 1 0
+U f2952361 frag u_prefilter_levels 604 float 1 0
+U f2952361 frag u_fog_density 608 float 1 0
+U f2952361 frag u_fog_height_falloff 612 float 1 0
+U f2952361 frag u_fog_base 616 float 1 0
+U f2952361 frag u_clip_y 620 float 1 0
+U f2952361 frag u_spec_scale 624 float 1 0
+U f2952361 frag u_sky_rot 632 vec2 1 0
+U f2952361 frag u_ibl_scale 640 vec3 1 0
+U f2952361 frag u_daylight 652 float 1 0
+U f2952361 frag u_fire_pos 656 vec3 1 0
+U f2952361 frag u_fire_color 672 vec3 1 0
+U f2952361 frag u_hand_pos 688 vec3 1 0
+U f2952361 frag u_hand_color 704 vec3 1 0
+U f2952361 frag u_hand_dir 720 vec3 1 0
+U f2952361 frag u_hand_cone 732 float 1 0
+U f2952361 frag u_ts_origin 736 vec2 1 0
+U f2952361 frag u_ts_half 744 float 1 0
+U f2952361 frag u_ts_on 748 float 1 0
+U f2952361 frag u_force_cascade 752 int 1 0
+U f2952361 frag u_cloud_shadow 756 float 1 0
+U f2952361 frag u_time 760 float 1 0
+U f2952361 frag u_half 764 float 1 0
+U f2952361 frag u_texel 768 float 1 0
+U f2952361 frag u_ortho_on 772 float 1 0
+U f2952361 frag u_carpet_on 776 float 1 0
+U f2952361 frag u_snow_line 780 float 1 0
+U f2952361 frag u_lake_level 784 float 1 0
+U f2952361 frag u_sea_level 788 float 1 0
+U f2952361 frag u_origin 792 vec2 1 0
+U f2952361 frag u_view 800 mat4 1 0
+U f2952361 frag u_far_split 864 float 1 0
+U f2952361 frag u_far_band 868 float 1 0
+T f2952361 u_brdf 2
+T f2952361 u_carpet 3
+T f2952361 u_grass_a 4
+T f2952361 u_grass_d 5
+T f2952361 u_grass_n 6
+T f2952361 u_height 7
+T f2952361 u_irradiance 8
+T f2952361 u_ortho 9
+T f2952361 u_prefilter 10
+T f2952361 u_rock_a 11
+T f2952361 u_rock_d 12
+T f2952361 u_rock_n 13
+T f2952361 u_shadow 14
+T f2952361 u_snow_d 15
+T f2952361 u_sunshadow 16
+T f2952361 u_tershadow 17
+T f2952361 u_ts_height 18
+P a0f2dbac terrain.vert terrain.frag #define SUN_INLINE;#define FAR_ONLY;
+B a0f2dbac vert 0 204
+U a0f2dbac vert u_half 0 float 1 0
+U a0f2dbac vert u_view 16 mat4 1 0
+U a0f2dbac vert u_proj 80 mat4 1 0
+U a0f2dbac vert u_origin 144 vec2 1 0
+U a0f2dbac vert u_cam_pos 160 vec3 1 0
+U a0f2dbac vert u_node 176 vec3 1 0
+U a0f2dbac vert u_morph 192 vec2 1 0
+U a0f2dbac vert u_grid 200 float 1 0
+I a0f2dbac a_xz 0 vec2
+B a0f2dbac frag 1 872
+U a0f2dbac frag u_cascade_vp 0 mat4 5 64
+U a0f2dbac frag u_cascade_split 320 float 5 16
+U a0f2dbac frag u_cascade_range 400 float 5 16
+U a0f2dbac frag u_cascade_texel 480 float 5 16
+U a0f2dbac frag u_sun_dir 560 vec3 1 0
+U a0f2dbac frag u_sun_color 576 vec3 1 0
+U a0f2dbac frag u_cam_pos 592 vec3 1 0
+U a0f2dbac frag u_prefilter_levels 604 float 1 0
+U a0f2dbac frag u_fog_density 608 float 1 0
+U a0f2dbac frag u_fog_height_falloff 612 float 1 0
+U a0f2dbac frag u_fog_base 616 float 1 0
+U a0f2dbac frag u_clip_y 620 float 1 0
+U a0f2dbac frag u_spec_scale 624 float 1 0
+U a0f2dbac frag u_sky_rot 632 vec2 1 0
+U a0f2dbac frag u_ibl_scale 640 vec3 1 0
+U a0f2dbac frag u_daylight 652 float 1 0
+U a0f2dbac frag u_fire_pos 656 vec3 1 0
+U a0f2dbac frag u_fire_color 672 vec3 1 0
+U a0f2dbac frag u_hand_pos 688 vec3 1 0
+U a0f2dbac frag u_hand_color 704 vec3 1 0
+U a0f2dbac frag u_hand_dir 720 vec3 1 0
+U a0f2dbac frag u_hand_cone 732 float 1 0
+U a0f2dbac frag u_ts_origin 736 vec2 1 0
+U a0f2dbac frag u_ts_half 744 float 1 0
+U a0f2dbac frag u_ts_on 748 float 1 0
+U a0f2dbac frag u_force_cascade 752 int 1 0
+U a0f2dbac frag u_cloud_shadow 756 float 1 0
+U a0f2dbac frag u_time 760 float 1 0
+U a0f2dbac frag u_half 764 float 1 0
+U a0f2dbac frag u_texel 768 float 1 0
+U a0f2dbac frag u_ortho_on 772 float 1 0
+U a0f2dbac frag u_carpet_on 776 float 1 0
+U a0f2dbac frag u_snow_line 780 float 1 0
+U a0f2dbac frag u_lake_level 784 float 1 0
+U a0f2dbac frag u_sea_level 788 float 1 0
+U a0f2dbac frag u_origin 792 vec2 1 0
+U a0f2dbac frag u_view 800 mat4 1 0
+U a0f2dbac frag u_far_split 864 float 1 0
+U a0f2dbac frag u_far_band 868 float 1 0
+T a0f2dbac u_brdf 2
+T a0f2dbac u_carpet 3
+T a0f2dbac u_grass_a 4
+T a0f2dbac u_grass_d 5
+T a0f2dbac u_grass_n 6
+T a0f2dbac u_height 7
+T a0f2dbac u_irradiance 8
+T a0f2dbac u_ortho 9
+T a0f2dbac u_prefilter 10
+T a0f2dbac u_rock_a 11
+T a0f2dbac u_rock_d 12
+T a0f2dbac u_rock_n 13
+T a0f2dbac u_shadow 14
+T a0f2dbac u_snow_d 15
+T a0f2dbac u_sunshadow 16
+T a0f2dbac u_tershadow 17
+T a0f2dbac u_ts_height 18
+P 5e4589a1 terrain.vert terrain.frag #define SUN_INLINE;#define NEAR_ONLY;
+B 5e4589a1 vert 0 204
+U 5e4589a1 vert u_half 0 float 1 0
+U 5e4589a1 vert u_view 16 mat4 1 0
+U 5e4589a1 vert u_proj 80 mat4 1 0
+U 5e4589a1 vert u_origin 144 vec2 1 0
+U 5e4589a1 vert u_cam_pos 160 vec3 1 0
+U 5e4589a1 vert u_node 176 vec3 1 0
+U 5e4589a1 vert u_morph 192 vec2 1 0
+U 5e4589a1 vert u_grid 200 float 1 0
+I 5e4589a1 a_xz 0 vec2
+B 5e4589a1 frag 1 872
+U 5e4589a1 frag u_cascade_vp 0 mat4 5 64
+U 5e4589a1 frag u_cascade_split 320 float 5 16
+U 5e4589a1 frag u_cascade_range 400 float 5 16
+U 5e4589a1 frag u_cascade_texel 480 float 5 16
+U 5e4589a1 frag u_sun_dir 560 vec3 1 0
+U 5e4589a1 frag u_sun_color 576 vec3 1 0
+U 5e4589a1 frag u_cam_pos 592 vec3 1 0
+U 5e4589a1 frag u_prefilter_levels 604 float 1 0
+U 5e4589a1 frag u_fog_density 608 float 1 0
+U 5e4589a1 frag u_fog_height_falloff 612 float 1 0
+U 5e4589a1 frag u_fog_base 616 float 1 0
+U 5e4589a1 frag u_clip_y 620 float 1 0
+U 5e4589a1 frag u_spec_scale 624 float 1 0
+U 5e4589a1 frag u_sky_rot 632 vec2 1 0
+U 5e4589a1 frag u_ibl_scale 640 vec3 1 0
+U 5e4589a1 frag u_daylight 652 float 1 0
+U 5e4589a1 frag u_fire_pos 656 vec3 1 0
+U 5e4589a1 frag u_fire_color 672 vec3 1 0
+U 5e4589a1 frag u_hand_pos 688 vec3 1 0
+U 5e4589a1 frag u_hand_color 704 vec3 1 0
+U 5e4589a1 frag u_hand_dir 720 vec3 1 0
+U 5e4589a1 frag u_hand_cone 732 float 1 0
+U 5e4589a1 frag u_ts_origin 736 vec2 1 0
+U 5e4589a1 frag u_ts_half 744 float 1 0
+U 5e4589a1 frag u_ts_on 748 float 1 0
+U 5e4589a1 frag u_force_cascade 752 int 1 0
+U 5e4589a1 frag u_cloud_shadow 756 float 1 0
+U 5e4589a1 frag u_time 760 float 1 0
+U 5e4589a1 frag u_half 764 float 1 0
+U 5e4589a1 frag u_texel 768 float 1 0
+U 5e4589a1 frag u_ortho_on 772 float 1 0
+U 5e4589a1 frag u_carpet_on 776 float 1 0
+U 5e4589a1 frag u_snow_line 780 float 1 0
+U 5e4589a1 frag u_lake_level 784 float 1 0
+U 5e4589a1 frag u_sea_level 788 float 1 0
+U 5e4589a1 frag u_origin 792 vec2 1 0
+U 5e4589a1 frag u_view 800 mat4 1 0
+U 5e4589a1 frag u_far_split 864 float 1 0
+U 5e4589a1 frag u_far_band 868 float 1 0
+T 5e4589a1 u_brdf 2
+T 5e4589a1 u_carpet 3
+T 5e4589a1 u_grass_a 4
+T 5e4589a1 u_grass_d 5
+T 5e4589a1 u_grass_n 6
+T 5e4589a1 u_height 7
+T 5e4589a1 u_irradiance 8
+T 5e4589a1 u_ortho 9
+T 5e4589a1 u_prefilter 10
+T 5e4589a1 u_rock_a 11
+T 5e4589a1 u_rock_d 12
+T 5e4589a1 u_rock_n 13
+T 5e4589a1 u_shadow 14
+T 5e4589a1 u_snow_d 15
+T 5e4589a1 u_sunshadow 16
+T 5e4589a1 u_tershadow 17
+T 5e4589a1 u_ts_height 18
 P bf3151c8 terrain.vert tersun.frag 
 B bf3151c8 vert 0 204
 U bf3151c8 vert u_half 0 float 1 0
