@@ -303,6 +303,9 @@ async function start({ wasm, canvas, manifest = null, files = {}, onExit = null,
     win_mouse: (p) => { host.sync(); const b = p >>> 2; for (let i = 0; i < 4; i++) host.u32[b + i] = 0; },
     win_pad: (p) => { host.sync(); const b = p >>> 2; for (let i = 0; i < 24; i++) host.u32[b + i] = 0; },
     win_touch: (p) => { host.sync(); const b = p >>> 2; for (let i = 0; i < 24; i++) host.u32[b + i] = 0; },
+    // what the layout types on a key position: not read in the browser, so Input.key_label
+    // names the key after its US position
+    win_key_char: (k) => 0,
   };
 
   const { instance } = await WebAssembly.instantiateStreaming(fetch(wasm), { env });

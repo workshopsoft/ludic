@@ -333,11 +333,35 @@ ret:
 ; keyDown switch: arrows -> WASD, return, escape -> 27, else the first character).
 ; #88: escape delivers key 27 (left to the game), not 'q' — so the held-key set
 ; stays consistent with @W_key and a shipped game owns Esc (pause).
+; A key in the typing block is its PHYSICAL position, named for what it types on a US
+; layout (win32.ll keys its held set the same way): keyCode is already a position, so the
+; kVK_ANSI_* codes map straight through and AZERTY's Z-labelled key is 'w' like everywhere
+; else. Anything outside the table falls back to the character it types.
+@C_kc2key = internal constant [51 x i8] [i8 97, i8 115, i8 100, i8 102, i8 104, i8 103, i8 122, i8 120, i8 99, i8 118, i8 0, i8 98, i8 113, i8 119, i8 101, i8 114, i8 121, i8 116, i8 49, i8 50, i8 51, i8 52, i8 54, i8 53, i8 61, i8 57, i8 55, i8 45, i8 56, i8 48, i8 93, i8 111, i8 117, i8 91, i8 105, i8 112, i8 0, i8 108, i8 106, i8 39, i8 107, i8 59, i8 92, i8 44, i8 47, i8 110, i8 109, i8 46, i8 0, i8 0, i8 96]
+
+; what the active layout types on a position: not read on macOS yet, so the caller names
+; the key after its US position
+define i32 @win_key_char(i32 %k) {
+entry:
+  ret i32 0
+}
+
 define i32 @ev_keyval(ptr %ev) {
 entry:
   %sel_kc = call ptr @sel_registerName(ptr @.s_keycd)
   %kc = call i16 (ptr, ptr) @objc_msgSend(ptr %ev, ptr %sel_kc)
   %kc32 = zext i16 %kc to i32
+  %inpos = icmp ult i32 %kc32, 51
+  br i1 %inpos, label %bypos, label %special
+bypos:
+  %pp = getelementptr [51 x i8], ptr @C_kc2key, i64 0, i32 %kc32
+  %p8 = load i8, ptr %pp
+  %pos = zext i8 %p8 to i32
+  %named = icmp ne i32 %pos, 0
+  br i1 %named, label %haspos, label %special
+haspos:
+  ret i32 %pos
+special:
   switch i32 %kc32, label %chars [
     i32 126, label %vw
     i32 125, label %vs
