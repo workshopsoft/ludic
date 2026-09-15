@@ -215,7 +215,7 @@ function grass_flush() -> void {
       var m = e - k
       if m > GRASS_CHUNK { m = GRASS_CHUNK }
       for q in 0 .. m * 4 { grass_chunk_tv[q] = grass_tv[k * 4 + q] }
-      u_fv(gpu_uniform(p, "u_tiles"), m * 4, grass_chunk_tv)
+      u_f4v(gpu_uniform(p, "u_tiles"), m, grass_chunk_tv)
       gpu_draw_mesh_indirect(grass_mesh, grass_cmds, k * 20, m, 0, 0)
       grass_draws += 1
       k += m

@@ -247,6 +247,10 @@ function u_f3(loc: int, x: int, y: int, z: int) -> void { if gpu_kind == GPU_VK 
 function u_f4(loc: int, x: int, y: int, z: int, w: int) -> void { if gpu_kind == GPU_VK { let t = gpu_tmp();  t[0] = x;  t[1] = y;  t[2] = z;  t[3] = w;  gvk_u_set(loc, t, 16, 1);  return };  let t = gpu_tmp();  t[0] = x;  t[1] = y;  t[2] = z;  t[3] = w;  gl_uniform4fv(loc, 1, t) }
 function u_v3(loc: int, v: words) -> void { if gpu_kind == GPU_VK { gvk_u_set(loc, v, 12, 1);  return };  gl_uniform3fv(loc, 1, v) }
 function u_fv(loc: int, n: int, v: words) -> void { if gpu_kind == GPU_VK { gvk_u_set(loc, v, 4, n);  return };  gl_uniform1fv(loc, n, v) }
+# n vec4s from 4n float bits. Not u_fv with 4n: on Vulkan an array element is copied at the size
+# given and placed at the array's stride, so a vec4 array fed floats got one float per element -
+# which drew the chunked grass with every tile at a nonsense corner and zero blades a cell.
+function u_f4v(loc: int, n: int, v: words) -> void { if gpu_kind == GPU_VK { gvk_u_set(loc, v, 16, n);  return };  gl_uniform4fv(loc, n, v) }
 function u_mat4(loc: int, m: words) -> void { if gpu_kind == GPU_VK { gvk_u_set(loc, m, 64, 1);  return };  gl_uniform_matrix4fv(loc, 1, 0, m) }
 function u_mat4n(loc: int, n: int, m: words) -> void { if gpu_kind == GPU_VK { gvk_u_set(loc, m, 64, n);  return };  gl_uniform_matrix4fv(loc, n, 0, m) }
 function u_i(loc: int, v: int) -> void { if gpu_kind == GPU_VK { let t = gpu_tmp();  t[0] = v;  gvk_u_set(loc, t, 4, 1);  return };  gl_uniform1i(loc, v) }
