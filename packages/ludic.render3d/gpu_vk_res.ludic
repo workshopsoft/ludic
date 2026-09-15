@@ -57,6 +57,8 @@ var gvk_tex_array: []int = null        # 1 for an array image
 var gvk_tex_gen: []int = null          # bumped whenever the image behind a handle is replaced
 var gvk_tex_smp_sig: []int = null      # the sampling parameters the cached sampler was made for
 var gvk_tex_smp: []long = null
+var gvk_tex_samples: []int = null      # 1, or the sample count of a multisampled renderbuffer
+var gvk_storage_samples: int = 1      # what the next gvk_tex_storage makes: gpu_rb_storage sets it around its call
 var gvk_unpack_swap: bool = false     # GL_UNPACK_SWAP_BYTES: 16-bit PNG samples arrive big-endian
 
 function gvk_tex_new() -> int {
@@ -67,6 +69,7 @@ function gvk_tex_new() -> int {
     gvk_tex_dims_w = new []int;  gvk_tex_dims_h = new []int
     gvk_tex_glfmt = new []int;  gvk_tex_array = new []int;  gvk_tex_gen = new []int
     gvk_tex_smp_sig = new []int;  gvk_tex_smp = new []long
+    gvk_tex_samples = new []int;  push(gvk_tex_samples, 0)
     push(gvk_tex_dims_w, 0);  push(gvk_tex_dims_h, 0)
     push(gvk_tex_glfmt, 0);  push(gvk_tex_array, 0);  push(gvk_tex_gen, 0)
     push(gvk_tex_smp_sig, 0);  push(gvk_tex_smp, zero)
@@ -79,6 +82,7 @@ function gvk_tex_new() -> int {
   push(gvk_tex_dims_w, 0);  push(gvk_tex_dims_h, 0)
   push(gvk_tex_glfmt, 0);  push(gvk_tex_array, 0);  push(gvk_tex_gen, 0)
   push(gvk_tex_smp_sig, 0);  push(gvk_tex_smp, zero)
+  push(gvk_tex_samples, 0)
   return len(gvk_tex_image) - 1
 }
 
@@ -162,6 +166,9 @@ function gvk_tex_storage(tex: int, array: bool, ifmt: int, w: int, h: int, layer
   let depth = gvk_is_depth(ifmt)
   var levels = 1
   if with_mips and not depth { levels = gvk_mip_levels(w, h) }
+  var samples = gvk_storage_samples
+  if samples < 1 { samples = 1 }
+  if samples > 1 { levels = 1 }
   var usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
   if depth { usage = usage | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT } else { usage = usage | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT }
   let ici = bytes(VkImageCreateInfo_sizeof)
@@ -174,7 +181,7 @@ function gvk_tex_storage(tex: int, array: bool, ifmt: int, w: int, h: int, layer
   Vk.put_i32(ici, VkImageCreateInfo_extent + VkExtent3D_depth, 1)
   Vk.put_i32(ici, VkImageCreateInfo_mipLevels, levels)
   Vk.put_i32(ici, VkImageCreateInfo_arrayLayers, layers)
-  Vk.put_i32(ici, VkImageCreateInfo_samples, VK_SAMPLE_COUNT_1_BIT)
+  Vk.put_i32(ici, VkImageCreateInfo_samples, samples)
   Vk.put_i32(ici, VkImageCreateInfo_tiling, VK_IMAGE_TILING_OPTIMAL)
   Vk.put_i32(ici, VkImageCreateInfo_usage, usage)
   Vk.put_i32(ici, VkImageCreateInfo_sharingMode, VK_SHARING_MODE_EXCLUSIVE)
@@ -212,6 +219,7 @@ function gvk_tex_storage(tex: int, array: bool, ifmt: int, w: int, h: int, layer
   gvk_tex_levels[tex] = levels;  gvk_tex_layers[tex] = layers;  gvk_tex_vkfmt[tex] = vkfmt
   gvk_tex_dims_w[tex] = w;  gvk_tex_dims_h[tex] = h
   gvk_tex_glfmt[tex] = ifmt;  gvk_tex_gen[tex] = gvk_tex_gen[tex] + 1
+  gvk_tex_samples[tex] = samples
   if array { gvk_tex_array[tex] = 1 } else { gvk_tex_array[tex] = 0 }
   # a target starts cleared-to-nothing but readable: every level in the layout samplers expect
   let cb = gvk_once_begin()

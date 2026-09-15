@@ -654,6 +654,7 @@ var gvk_ring_off: int = 0
 var gvk_ring_align: int = 256
 var gvk_dpool: long = 0
 var gvk_white: int = 0                # a 1x1 white texture for a sampler nothing was bound to
+var gvk_msaa_max: int = 0             # samples the scene may use (gvk_frame_init reads the device's limits)
 
 function gvk_frame_init() -> bool {
   let props = bytes(VkPhysicalDeviceProperties_sizeof)
@@ -661,6 +662,12 @@ function gvk_frame_init() -> bool {
   let al = Vk.get_i64(props, VkPhysicalDeviceProperties_limits + VkPhysicalDeviceLimits_minUniformBufferOffsetAlignment)
   gvk_ring_align = Text.to_int(string(al))
   if gvk_ring_align < 16 { gvk_ring_align = 16 }
+  # MSAA: the most samples (up to the 4 the scene asks for) both a colour and a depth target can take
+  let lim = VkPhysicalDeviceProperties_limits
+  let counts = Vk.get_i32(props, lim + VkPhysicalDeviceLimits_framebufferColorSampleCounts) & Vk.get_i32(props, lim + VkPhysicalDeviceLimits_framebufferDepthSampleCounts)
+  gvk_msaa_max = 1
+  if (counts & VK_SAMPLE_COUNT_2_BIT) != 0 { gvk_msaa_max = 2 }
+  if (counts & VK_SAMPLE_COUNT_4_BIT) != 0 { gvk_msaa_max = 4 }
   gvk_ring_buf = gvk_buf_new()
   if not gvk_buf_reserve(gvk_ring_buf, GVK_RING_BYTES) { return false }
   let sizes = bytes(VkDescriptorPoolSize_sizeof * 3)
@@ -921,6 +928,7 @@ var gvk_pass_h: int = 0
 var gvk_pass_ncolor: int = 0
 var gvk_pass_cfmt: int = 0
 var gvk_pass_dfmt: int = 0
+var gvk_pass_samples: int = 1         # the attachments' sample count, which every pipeline in the pass must match
 var gvk_pass_col: words = null        # the pass's colour attachments: texture, layer + 1
 var gvk_pass_dep: words = null        # its depth attachment: texture, layer + 1
 var gvk_clear_bits: int = 0           # GL_COLOR_BUFFER_BIT / GL_DEPTH_BUFFER_BIT waiting for the pass
@@ -1043,6 +1051,7 @@ function gvk_pass_begin(rec: words, rec_o: int) -> void {
   gvk_pass_h = 0
   gvk_pass_cfmt = VK_FORMAT_UNDEFINED
   gvk_pass_dfmt = VK_FORMAT_UNDEFINED
+  gvk_pass_samples = 1
   for c in 0 .. gvk_pass_ncolor {
     let tex = gvk_pass_col[c * 2]
     let layer1 = gvk_pass_col[c * 2 + 1]
@@ -1056,6 +1065,7 @@ function gvk_pass_begin(rec: words, rec_o: int) -> void {
       for k in 0 .. 4 { Vk.put_i32(catt, c * aw + VkRenderingAttachmentInfo_clearValue + k * 4, gvk_clear_rgba[k]) }
     } else { Vk.put_i32(catt, c * aw + VkRenderingAttachmentInfo_loadOp, VK_ATTACHMENT_LOAD_OP_LOAD) }
     gvk_pass_cfmt = gvk_tex_vkfmt[tex]
+    gvk_pass_samples = gvk_tex_samples_of(tex)
     if gvk_pass_w == 0 { gvk_pass_w = gvk_tex_w(tex);  gvk_pass_h = gvk_tex_h(tex) }
   }
   let datt = bytes(aw)
@@ -1072,6 +1082,7 @@ function gvk_pass_begin(rec: words, rec_o: int) -> void {
       Vk.put_i32(datt, VkRenderingAttachmentInfo_clearValue, 0x3F800000)
     } else { Vk.put_i32(datt, VkRenderingAttachmentInfo_loadOp, VK_ATTACHMENT_LOAD_OP_LOAD) }
     gvk_pass_dfmt = VK_FORMAT_D32_SFLOAT
+    gvk_pass_samples = gvk_tex_samples_of(dtex)
     if gvk_pass_w == 0 { gvk_pass_w = gvk_tex_w(dtex);  gvk_pass_h = gvk_tex_h(dtex) }
   }
   gvk_clear_bits = 0
@@ -1168,7 +1179,7 @@ function gvk_draw(p: int, m: Mesh, st: GvkState, first: int, count: int, instanc
   if prof { t0 = gl_now_us() }
   gvk_pass_begin(rec, rec_o)
   let cb = gvk_cb
-  let samples = 1
+  let samples = gvk_pass_samples
   let pipe = gvk_pipeline_fast(p, m, st, gvk_pass_ncolor, gvk_pass_cfmt, gvk_pass_dfmt, samples)
   if pipe == 0 {
     # Say so, once per program: a driver that refuses a pipeline other drivers accept (MoltenVK
@@ -1431,8 +1442,45 @@ function gvk_fb_att(fb: int, depth: bool) -> int {
   if depth { return gpu_fb[o + 2] }
   return gpu_fb[o]
 }
+function gvk_tex_samples_of(tex: int) -> int {
+  if tex <= 0 or gvk_tex_samples == null or tex >= len(gvk_tex_samples) or gvk_tex_samples[tex] < 1 { return 1 }
+  return gvk_tex_samples[tex]
+}
+# A multisampled image into a single-sampled one: a pass that draws nothing and resolves on its end -
+# colour averaged, depth from sample zero. vkCmdResolveImage cannot resolve depth; a pass can.
+function gvk_resolve(cb: pointer, src: int, dst: int, depth: bool, w: int, h: int) -> void {
+  var layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+  var mode = VK_RESOLVE_MODE_AVERAGE_BIT
+  if depth { layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;  mode = VK_RESOLVE_MODE_SAMPLE_ZERO_BIT }
+  gvk_att_barrier(cb, src, 0, depth, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, layout)
+  gvk_att_barrier(cb, dst, 0, depth, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, layout)
+  let aw = VkRenderingAttachmentInfo_sizeof
+  let att = bytes(aw)
+  Vk.zero(att, aw)
+  Vk.put_i32(att, VkRenderingAttachmentInfo_sType, VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO)
+  Vk.put_i64(att, VkRenderingAttachmentInfo_imageView, gvk_view_of(src, 0))
+  Vk.put_i32(att, VkRenderingAttachmentInfo_imageLayout, layout)
+  Vk.put_i32(att, VkRenderingAttachmentInfo_resolveMode, mode)
+  Vk.put_i64(att, VkRenderingAttachmentInfo_resolveImageView, gvk_view_of(dst, 0))
+  Vk.put_i32(att, VkRenderingAttachmentInfo_resolveImageLayout, layout)
+  Vk.put_i32(att, VkRenderingAttachmentInfo_loadOp, VK_ATTACHMENT_LOAD_OP_LOAD)
+  Vk.put_i32(att, VkRenderingAttachmentInfo_storeOp, VK_ATTACHMENT_STORE_OP_STORE)
+  let ri = bytes(VkRenderingInfo_sizeof)
+  Vk.zero(ri, VkRenderingInfo_sizeof)
+  Vk.put_i32(ri, VkRenderingInfo_sType, VK_STRUCTURE_TYPE_RENDERING_INFO)
+  Vk.put_i32(ri, VkRenderingInfo_renderArea + VkRect2D_extent + VkExtent2D_width, w)
+  Vk.put_i32(ri, VkRenderingInfo_renderArea + VkRect2D_extent + VkExtent2D_height, h)
+  Vk.put_i32(ri, VkRenderingInfo_layerCount, 1)
+  if depth { Vk.put_ptr(ri, VkRenderingInfo_pDepthAttachment, att) }
+  else { Vk.put_i32(ri, VkRenderingInfo_colorAttachmentCount, 1);  Vk.put_ptr(ri, VkRenderingInfo_pColorAttachments, att) }
+  Vk.cmd_begin_rendering(cb, ri)
+  Vk.cmd_end_rendering(cb)
+  gvk_att_barrier(cb, src, 0, depth, layout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+  gvk_att_barrier(cb, dst, 0, depth, layout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+}
 function gvk_copy(cb: pointer, src: int, dst: int, depth: bool, w: int, h: int) -> void {
   if src <= 0 or dst <= 0 or gvk_tex_image[src] == 0 or gvk_tex_image[dst] == 0 { return }
+  if gvk_tex_samples_of(src) > 1 and gvk_tex_samples_of(dst) == 1 { gvk_resolve(cb, src, dst, depth, w, h);  return }
   gvk_barrier(cb, gvk_tex_image[src], depth, 0, 1, gvk_tex_layers[src], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
   gvk_barrier(cb, gvk_tex_image[dst], depth, 0, 1, gvk_tex_layers[dst], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
   let ic = bytes(VkImageCopy_sizeof)
@@ -1737,7 +1785,7 @@ function gvk_pipeline_fast(p: int, m: Mesh, st: GvkState, n_color: int, color_fm
   var state = st.depth_test | (st.depth_write << 1) | (st.blend << 2) | (st.cull << 3) | (st.color_write << 4) | (st.a2c << 5) | (st.bias << 6) | (st.wireframe << 7)
   state = state | ((st.depth_func & 15) << 8) | ((st.cull_face & 15) << 12) | (gvk_blend_index(st.blend_src) << 16) | (gvk_blend_index(st.blend_dst) << 20)
   let bias = st.bias_factor * 31 + st.bias_units
-  let pass = ((n_color * 1000 + color_fmt) * 1000 + depth_fmt) * 8 + samples
+  let pass = ((n_color * 1000 + color_fmt) * 1000 + depth_fmt) * 64 + samples
   if gvk_pc_prog == null {
     gvk_pc_prog = new []int;  gvk_pc_layout = new []int;  gvk_pc_state = new []int;  gvk_pc_bias = new []int
     gvk_pc_pass = new []int;  gvk_pc_pipe = new []long

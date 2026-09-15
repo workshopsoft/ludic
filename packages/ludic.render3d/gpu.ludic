@@ -819,7 +819,13 @@ function gpu_rb_new() -> int {
 }
 # storage for a renderbuffer: samples > 0 makes it multisampled
 function gpu_rb_storage(rb: int, ifmt: int, w: int, h: int, samples: int) -> void {
-  if gpu_kind == GPU_VK { gvk_flush();  gpu_rb_samples = samples;  gvk_tex_storage(rb, false, ifmt, w, h, 1, false);  return }
+  if gpu_kind == GPU_VK {
+    gvk_flush();  gpu_rb_samples = samples
+    gvk_storage_samples = samples
+    gvk_tex_storage(rb, false, ifmt, w, h, 1, false)
+    gvk_storage_samples = 1
+    return
+  }
   gl_bind_renderbuffer(GL_RENDERBUFFER, rb)
   if samples > 0 { gl_renderbuffer_storage_multisample(GL_RENDERBUFFER, samples, ifmt, w, h) }
   else { gl_renderbuffer_storage(GL_RENDERBUFFER, ifmt, w, h) }
@@ -928,6 +934,9 @@ function gpu_blit(w: int, h: int, mask: int) -> void {
 # the framebuffer the finished frame is presented from (an offscreen one, headless)
 function gpu_screen_fb() -> int { if gpu_kind == GPU_VK { return 0 };  return gl_screen }
 function gpu_multisample(on: bool) -> void { if gpu_kind == GPU_VK { return };  gpu_gl_cap(GL_MULTISAMPLE, gpu_b(on));  gpu_glcheck_after("multisample") }
+# the most samples the scene may be drawn with: the device's colour-and-depth limit on Vulkan (0 before
+# it is open), 4 on OpenGL, which has always asked for up to that
+function gpu_msaa_max() -> int { if gpu_kind == GPU_VK { return gvk_msaa_max };  return 4 }
 function gpu_wireframe(on: bool) -> void {
   if gpu_kind == GPU_VK { gvk_wireframe = gpu_b(on);  return }
   if on { gl_polygon_mode(GL_FRONT_AND_BACK, GL_LINE) } else { gl_polygon_mode(GL_FRONT_AND_BACK, GL_FILL) }

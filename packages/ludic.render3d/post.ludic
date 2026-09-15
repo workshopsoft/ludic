@@ -56,13 +56,15 @@ function post_free() -> void {
   for i in 0 .. len(post_bloom) { target_free(post_bloom[i]) }
   post_hdr = null
 }
-# Multisampled scene: 1 (temporal AA alone), 2 or 4. OpenGL remakes the scene targets at once;
-# the Vulkan backend has no sample counts yet and keeps drawing single-sampled (post_msaa_live says so).
-function post_msaa_live() -> bool { return gpu_is_gl() }
+# Multisampled scene: 1 (temporal AA alone), 2 or 4, remade at once. Vulkan draws it into
+# multisampled renderbuffers and resolves them in a pass; a device that cannot take the count asked
+# for gets the most it can (gpu_msaa_max).
+function post_msaa_live() -> bool { return gpu_is_gl() or gpu_msaa_max() > 1 }
 function post_set_msaa(n: int) -> void {
   var want = n
   if want < 1 { want = 1 }
   if not post_msaa_live() { want = 1 }
+  if want > gpu_msaa_max() and gpu_msaa_max() >= 1 { want = gpu_msaa_max() }
   if want == post_ms_samples { return }
   post_ms_samples = want
   if post_hdr != null {
