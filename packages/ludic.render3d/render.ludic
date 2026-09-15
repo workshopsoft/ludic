@@ -115,6 +115,11 @@ function r3d_draw_sky() -> void {
   gpu_depth_func(GL_LESS)
 }
 
+# The end of the game's frame, whichever backend draws it: a screenshot first if one is wanted,
+# then the present. A game calls these rather than Gl.swap / Gl.screenshot.
+function r3d_screenshot(path: string) -> bool { return gpu_screenshot(path) }
+function r3d_present() -> void { gpu_present() }
+
 # the drawable changed size: the camera's aspect and every screen-sized target follow
 function r3d_resize() -> void {
   cam_aspect = fr(gl_w, gl_h)

@@ -220,6 +220,10 @@ function gpu_open(w: int, h: int, title: string) -> bool { return gl_open(w, h, 
 function gpu_vsync(on: int) -> void { gl_vsync(on) }
 function gpu_renderer_name() -> string { return gl_get_string(GL_RENDERER) }
 function gpu_resize_check() -> bool { let r = gl_resize_check();  gpu_glcheck_after("the resize check");  return r }
+# the finished frame: presented to the window, or (headless) the GPU's work finished
+function gpu_present() -> void { Gl.swap() }
+# the frame as it will be presented, to a binary PPM with the top row first; before gpu_present
+function gpu_screenshot(path: string) -> bool { return Gl.screenshot(path: path) }
 
 var gpu_u_tmp: words = null
 function gpu_tmp() -> words { if gpu_u_tmp == null { gpu_u_tmp = words(4) };  return gpu_u_tmp }
