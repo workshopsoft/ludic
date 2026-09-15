@@ -179,6 +179,7 @@ function r3d_frame(time: int) -> void {
     r3d_resize()
   }
   r3d_time = time
+  gsl_frame_start()
   # the frame's counters close here, before any of its own work: the window each of them
   # covers is exactly one frame, from this point to the same point next time
   prof_gen_frame()
@@ -246,7 +247,9 @@ function r3d_frame(time: int) -> void {
     water_draw(post_depth_copy.depth)
     prof_end()
   }
-  post_color = post_hdr.color
+  post_color = post_hdr.color;  post_color_w = post_w;  post_color_h = post_h
+  # DLSS super resolution: the lit frame up to the display's size, before anything reads it
+  if gsl_dlss_live() { prof_begin("DLSS");  post_color = gsl_dlss_eval();  prof_end() }
   if not post_no_gi { prof_begin("SSAO/GI");  post_ssao_pass();  prof_end() }
   if r3d_debug_max { tex_max(post_hdr.color, post_hdr.w, post_hdr.h, "hdr") }
   prof_begin("bloom")

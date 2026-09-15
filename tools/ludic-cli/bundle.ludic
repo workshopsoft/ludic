@@ -310,6 +310,21 @@ function cmd_bundle_windows() -> int {
     packed = true
   }
 
+  # 2b. `app native "<dir>"`: native libraries loaded at run time (NVIDIA Streamline's DLLs and
+  # their licence texts) go beside the executable, where LoadLibrary finds them. Never packed:
+  # a DLL has to be a real file.
+  let native = manifest_app(m, "native")
+  if native != "" {
+    if not Fs.exists(native) {
+      err(`ludic bundle: app native "{native}" does not exist\n`)
+      return 1
+    }
+    if not shq(`cp -R "{native}"/. "{root}/"`) {
+      err("ludic bundle: could not place the native libraries\n")
+      return 1
+    }
+  }
+
   # 3. what to mount and where the game writes
   var idx = ""
   if packed { idx = idx + "pack game.lpak" + nl() }

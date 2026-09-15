@@ -386,9 +386,10 @@ function gpu_caps_probe() -> void {
 }
 
 # Whether the renderer actually draws a feature yet. Until a feature lands, choosing it is saved and
-# shown, and says it takes effect later. The Vulkan renderer itself draws the whole game now (phase
-# 37-38); ray tracing, DLSS, Reflex, HDR output and mesh-shader grass do not yet.
-function gpu_feature_implemented(f: int) -> bool { return f == GF_VULKAN }
+# shown, and says it takes effect later. The Vulkan renderer draws the whole game (phase 37-38), and
+# DLSS super resolution and Reflex run through NVIDIA Streamline (streamline.ludic); whether this
+# machine can use one is the caps' question, not this one.
+function gpu_feature_implemented(f: int) -> bool { return f == GF_VULKAN or f == GF_DLSS or f == GF_REFLEX }
 
 # ---- vertex data --------------------------------------------------------------------
 # A Mesh is built through these and records what it is made of - which buffer feeds which

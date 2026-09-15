@@ -36,6 +36,7 @@ function cam_init(aspect: int) -> void {
   cam_update()
 }
 function cam_begin_frame(n: int, w: int, h: int) -> void {
+  gsl_jitter_frame()
   cam_update()
 }
 function cam_set(x: int, y: int, z: int, yaw_deg: int, pitch_deg: int) -> void {
@@ -56,6 +57,12 @@ function cam_update() -> void {
   m4_perspective(cam_proj, cam_fov, cam_aspect, cam_near, cam_far)
   m4_mul(cam_vp_clean, cam_proj, cam_view)
   m4_inverse(cam_inv_vp_clean, cam_vp_clean)
+  # DLSS's sub-pixel jitter (streamline.ludic), in the projection the scene draws with only:
+  # culling, depth reconstruction and last frame's matrix keep the clean one
+  if gsl_jitter_x != 0 or gsl_jitter_y != 0 {
+    cam_proj[8] = f_sub(cam_proj[8], gsl_jitter_x)
+    cam_proj[9] = f_sub(cam_proj[9], gsl_jitter_y)
+  }
   m4_mul(cam_vp, cam_proj, cam_view)
   m4_inverse(cam_inv_vp, cam_vp)
   m4_inverse(cam_inv_proj, cam_proj)

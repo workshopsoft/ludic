@@ -1678,8 +1678,10 @@ function gvk_present_window() -> void {
   Vk.put_i32(pi, VkPresentInfoKHR_swapchainCount, 1)
   Vk.put_ptr(pi, VkPresentInfoKHR_pSwapchains, chains)
   Vk.put_ptr(pi, VkPresentInfoKHR_pImageIndices, idx)
+  gsl_before_present()
   r = Vk.queue_present_khr(gvk_queue, pi)
   if r == VK_ERROR_OUT_OF_DATE_KHR or r == VK_SUBOPTIMAL_KHR { gvk_swap_stale = true }
+  gsl_after_present()
 }
 
 # a window's client area changed: the screen images and the swapchain follow it

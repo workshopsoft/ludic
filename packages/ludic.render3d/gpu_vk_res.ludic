@@ -171,6 +171,9 @@ function gvk_tex_storage(tex: int, array: bool, ifmt: int, w: int, h: int, layer
   if samples > 1 { levels = 1 }
   var usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
   if depth { usage = usage | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT } else { usage = usage | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT }
+  # DLSS reads and writes the frame from compute: a float colour target is storage too while
+  # Streamline is running (8-bit sRGB formats cannot be, so only the float ones)
+  if gsl_on and samples == 1 and (vkfmt == VK_FORMAT_R16G16B16A16_SFLOAT or vkfmt == VK_FORMAT_R32_SFLOAT) { usage = usage | VK_IMAGE_USAGE_STORAGE_BIT }
   let ici = bytes(VkImageCreateInfo_sizeof)
   Vk.zero(ici, VkImageCreateInfo_sizeof)
   Vk.put_i32(ici, VkImageCreateInfo_sType, VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO)

@@ -42,6 +42,8 @@ var post_depth_copy: Target = null
 var post_prev: Target = null       # last frame's scene colour, for the SSGI bounce only
 var post_scene: Target = null      # this frame's scene colour before the water, for refraction
 var post_frame: int = 0
+var post_color_w: int = 0          # its size: the display's when DLSS upscaled it
+var post_color_h: int = 0
 var post_color: int = 0            # the HDR colour the rest of post reads      # the resolved depth, copied so passes can read it while drawing into the frame
 var post_p_sharp: int = 0
 var post_sharpen: int = 0
@@ -258,7 +260,7 @@ function post_bloom_pass() -> void {
   gpu_depth_test(false)
   gpu_blend(false)
   var src = post_color
-  var sw = post_w;  var sh = post_h
+  var sw = post_color_w;  var sh = post_color_h
   gpu_use_program(post_p_down)
   for i in 0 .. BLOOM_LEVELS {
     let t = post_bloom[i]
@@ -315,7 +317,7 @@ function post_tonemap(color_tex: int) -> void {
   gpu_viewport(0, 0, gl_w, gl_h)
   gpu_use_program(post_p_sharp)
   r3d_bind_2d(post_p_sharp, "u_src", 0, post_ldr.color)
-  u_f2(gpu_uniform(post_p_sharp, "u_texel"), fr(1, post_w), fr(1, post_h))
+  u_f2(gpu_uniform(post_p_sharp, "u_texel"), fr(1, post_ldr.w), fr(1, post_ldr.h))
   u_f(gpu_uniform(post_p_sharp, "u_amount"), post_sharpen)
   u_f(gpu_uniform(post_p_sharp, "u_grain"), post_grain)
   u_f(gpu_uniform(post_p_sharp, "u_time"), r3d_time)

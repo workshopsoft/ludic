@@ -61,7 +61,9 @@ var gvk_has_dic: bool = false         # drawIndirectCount
 
 function gvk_init() -> bool {
   if gvk_ready { return true }
+  gsl_boot()
   if Vk.open() == 0 { gvk_why = "no Vulkan loader";  return false }
+  gsl_init()
 
   let cnt = bytes(4)
   Vk.put_i32(cnt, 0, 0)
@@ -156,6 +158,9 @@ function gvk_init() -> bool {
   Vk.put_i32(want13, VkPhysicalDeviceVulkan13Features_sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES)
   Vk.put_i32(want13, VkPhysicalDeviceVulkan13Features_dynamicRendering, 1)
   Vk.put_i32(want13, VkPhysicalDeviceVulkan13Features_synchronization2, 1)
+  # Streamline's hooks keep their own data on our objects (private data slots), and ask the device
+  # to have the feature rather than turning it on themselves
+  if gsl_on and Vk.get_i32(f13, VkPhysicalDeviceVulkan13Features_privateData) == 1 { Vk.put_i32(want13, VkPhysicalDeviceVulkan13Features_privateData, 1) }
   let want12 = bytes(VkPhysicalDeviceVulkan12Features_sizeof)
   Vk.zero(want12, VkPhysicalDeviceVulkan12Features_sizeof)
   Vk.put_i32(want12, VkPhysicalDeviceVulkan12Features_sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES)
@@ -210,6 +215,8 @@ function gvk_init() -> bool {
   if gvk_has_surface {
     if not gvk_ext_in(dexts, nde, VK_KHR_SWAPCHAIN_EXTENSION_NAME) { gvk_why = `{gvk_device_name} has no swapchain`;  return false }
     Vk.put_ptr(dext_names, n_dext * 8, VK_KHR_SWAPCHAIN_EXTENSION_NAME);  n_dext += 1
+    # Reflex: Streamline adds VK_NV_low_latency2 to this device, which needs present ids it does not add
+    if gsl_on and gvk_ext_in(dexts, nde, "VK_KHR_present_id") { Vk.put_ptr(dext_names, n_dext * 8, "VK_KHR_present_id");  n_dext += 1 }
   }
   if n_dext > 0 {
     Vk.put_i32(dci, VkDeviceCreateInfo_enabledExtensionCount, n_dext)
@@ -220,6 +227,7 @@ function gvk_init() -> bool {
   gvk_dev = Vk.get_ptr(out, 0)
   Vk.get_device_queue(gvk_dev, gvk_family, 0, out)
   gvk_queue = Vk.get_ptr(out, 0)
+  gsl_probe_device(gvk_pd)
   gvk_mp = bytes(VkPhysicalDeviceMemoryProperties_sizeof)
   Vk.get_physical_device_memory_properties(gvk_pd, gvk_mp)
 
@@ -521,6 +529,7 @@ function gvk_once_end(cb: pointer) -> bool {
 function gvk_shutdown() -> void {
   if not gvk_ready { return }
   Vk.device_wait_idle(gvk_dev)
+  gsl_shutdown()
   Vk.destroy_fence(gvk_dev, Vk.get_i64(gvk_fence, 0), null)
   Vk.destroy_command_pool(gvk_dev, gvk_pool, null)
   Vk.destroy_device(gvk_dev, null)
