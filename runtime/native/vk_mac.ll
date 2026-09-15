@@ -108,3 +108,77 @@ entry:
   %r = zext i1 %there to i32
   ret i32 %r
 }
+
+; ---- Streamline: Windows only. The same symbols, so a program that calls them links everywhere. ----
+define void @lvk_sl_prefer(i32 %on) {
+entry:
+  ret void
+}
+define i32 @lvk_sl_active() {
+entry:
+  ret i32 0
+}
+define i32 @lsl_slInit(ptr %a0, i64 %a1) {
+entry:
+  ret i32 -1
+}
+define i32 @lsl_slShutdown() {
+entry:
+  ret i32 -1
+}
+define i32 @lsl_slIsFeatureSupported(i32 %a0, ptr %a1) {
+entry:
+  ret i32 -1
+}
+define i32 @lsl_slIsFeatureLoaded(i32 %a0, ptr %a1) {
+entry:
+  ret i32 -1
+}
+define i32 @lsl_slGetFeatureRequirements(i32 %a0, ptr %a1) {
+entry:
+  ret i32 -1
+}
+define i32 @lsl_slGetFeatureFunction(i32 %a0, ptr %a1, ptr %a2) {
+entry:
+  ret i32 -1
+}
+define i32 @lsl_slGetNewFrameToken(ptr %a0, ptr %a1) {
+entry:
+  ret i32 -1
+}
+define i32 @lsl_slSetTagForFrame(ptr %a0, ptr %a1, ptr %a2, i32 %a3, ptr %a4) {
+entry:
+  ret i32 -1
+}
+define i32 @lsl_slSetConstants(ptr %a0, ptr %a1, ptr %a2) {
+entry:
+  ret i32 -1
+}
+define i32 @lsl_slEvaluateFeature(i32 %a0, ptr %a1, ptr %a2, i32 %a3, ptr %a4) {
+entry:
+  ret i32 -1
+}
+define i32 @lsl_slFreeResources(i32 %a0, ptr %a1) {
+entry:
+  ret i32 -1
+}
+define i32 @lsl_call_p(ptr %fn, ptr %a0) {
+entry:
+  %r = call i32 %fn(ptr %a0)
+  ret i32 %r
+}
+define i32 @lsl_call_pp(ptr %fn, ptr %a0, ptr %a1) {
+entry:
+  %r = call i32 %fn(ptr %a0, ptr %a1)
+  ret i32 %r
+}
+define i32 @lsl_call_ppp(ptr %fn, ptr %a0, ptr %a1, ptr %a2) {
+entry:
+  %r = call i32 %fn(ptr %a0, ptr %a1, ptr %a2)
+  ret i32 %r
+}
+define i32 @lsl_call_ip(ptr %fn, i32 %a0, ptr %a1) {
+entry:
+  %r = call i32 %fn(i32 %a0, ptr %a1)
+  ret i32 %r
+}

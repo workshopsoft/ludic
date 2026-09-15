@@ -19,3 +19,27 @@
 # ============================================================================
 
 import "vk_api.ludic"
+
+# Streamline (NVIDIA DLSS, Ray Reconstruction, Frame Generation, Reflex), Windows only: Vk.sl_prefer(1)
+# before Vk.open() loads sl.interposer.dll as the Vulkan loader when it is beside the program, and
+# Vk.sl_active() says whether it was. Each Vk.sl_* is the sl* export of the same name and returns
+# its sl::Result (0 is eOk); -1 means there is no Streamline (macOS, or the DLL missing). The
+# structs are plain memory, laid out as the SDK headers (include/sl_*.h, SDK 2.14.1) declare them.
+extern function vk_sl_prefer(on: int) = "lvk_sl_prefer"
+extern function vk_sl_active() -> int = "lvk_sl_active"
+extern function vk_sl_init(pref: pointer, sdk_version: long) -> int = "lsl_slInit"
+extern function vk_sl_shutdown() -> int = "lsl_slShutdown"
+extern function vk_sl_is_feature_supported(feature: int, adapter_info: pointer) -> int = "lsl_slIsFeatureSupported"
+extern function vk_sl_is_feature_loaded(feature: int, loaded: pointer) -> int = "lsl_slIsFeatureLoaded"
+extern function vk_sl_get_feature_requirements(feature: int, requirements: pointer) -> int = "lsl_slGetFeatureRequirements"
+extern function vk_sl_get_feature_function(feature: int, name: pointer, function_out: pointer) -> int = "lsl_slGetFeatureFunction"
+extern function vk_sl_get_new_frame_token(token_out: pointer, frame_index: pointer) -> int = "lsl_slGetNewFrameToken"
+extern function vk_sl_set_tag_for_frame(frame: pointer, viewport: pointer, tags: pointer, num_tags: int, cmd_buffer: pointer) -> int = "lsl_slSetTagForFrame"
+extern function vk_sl_set_constants(constants: pointer, frame: pointer, viewport: pointer) -> int = "lsl_slSetConstants"
+extern function vk_sl_evaluate_feature(feature: int, frame: pointer, inputs: pointer, num_inputs: int, cmd_buffer: pointer) -> int = "lsl_slEvaluateFeature"
+extern function vk_sl_free_resources(feature: int, viewport: pointer) -> int = "lsl_slFreeResources"
+# a feature function obtained with Vk.sl_get_feature_function, called with its arguments
+extern function vk_sl_call_p(fn: pointer, a: pointer) -> int = "lsl_call_p"
+extern function vk_sl_call_pp(fn: pointer, a: pointer, b: pointer) -> int = "lsl_call_pp"
+extern function vk_sl_call_ppp(fn: pointer, a: pointer, b: pointer, c: pointer) -> int = "lsl_call_ppp"
+extern function vk_sl_call_ip(fn: pointer, a: int, b: pointer) -> int = "lsl_call_ip"
