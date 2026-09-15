@@ -537,6 +537,8 @@ function gvk_pipeline(p: int, m: Mesh, st: GvkState, n_color: int, color_fmt: in
   let r = Vk.create_graphics_pipelines(gvk_dev, zero, 1, gpci, null, out)
   if r != VK_SUCCESS { gvk_fail(`vkCreateGraphicsPipelines for {v.vs} + {v.fs}`, r);  return zero }
   let pipe = gvk_handle(out)
+  # R3D_VK_PROF names each pipeline as it is made: one made during play is a stall a warm-up missed
+  if gvk_prof() { gvk_n_pipe_new += 1;  print(`r3d: vulkan pipeline {len(gvk_pipe) + 1}: {v.vs} + {v.fs}, {n_color} colour format {color_fmt}, depth {depth_fmt}, {samples}x`) }
   push(gvk_pipe_keys, key)
   push(gvk_pipe, pipe)
   return pipe
@@ -1670,6 +1672,7 @@ var gvk_n_draws: int = 0
 var gvk_n_asked: int = 0              # draws that reached gvk_draw_now: every one the renderer asked for
 var gvk_n_flush: int = 0
 var gvk_prof_frames: int = 0
+var gvk_n_pipe_new: int = 0           # pipelines made this profile window
 function gvk_prof() -> bool {
   if gvk_prof_state < 0 { gvk_prof_state = 0;  if Os.has_env("R3D_VK_PROF") { gvk_prof_state = 1 } }
   return gvk_prof_state == 1
@@ -1682,7 +1685,7 @@ function gvk_prof_frame() -> void {
   let pipe = Text.to_int(string(gvk_us_pipe)) / f
   let set = Text.to_int(string(gvk_us_set)) / f
   let draw = Text.to_int(string(gvk_us_draw)) / f
-  print(`r3d: vulkan per frame: {gvk_n_draws / f} draws, {gvk_n_flush / f} flushes; pipelines {pipe / 1000}.{(pipe / 100) % 10} ms, sets {set / 1000}.{(set / 100) % 10} ms, inside draws {draw / 1000}.{(draw / 100) % 10} ms`)
+  print(`r3d: vulkan per frame: {gvk_n_draws / f} draws, {gvk_n_flush / f} flushes; pipelines {pipe / 1000}.{(pipe / 100) % 10} ms, sets {set / 1000}.{(set / 100) % 10} ms, inside draws {draw / 1000}.{(draw / 100) % 10} ms; {gvk_n_pipe_new} pipelines made`)
   # every draw asked for should have been made: a gap is a layer missing from the frame, which is how
   # MoltenVK's refused skinned pipelines went unseen (the drawstats session found it by counting)
   if gvk_n_asked != gvk_n_draws {
@@ -1690,7 +1693,7 @@ function gvk_prof_frame() -> void {
   }
   let zero: long = 0
   gvk_us_pipe = zero;  gvk_us_set = zero;  gvk_us_draw = zero
-  gvk_n_draws = 0;  gvk_n_asked = 0;  gvk_n_flush = 0;  gvk_prof_frames = 0
+  gvk_n_draws = 0;  gvk_n_asked = 0;  gvk_n_flush = 0;  gvk_prof_frames = 0;  gvk_n_pipe_new = 0
 }
 
 # ---- the pipeline cache, by integers -----------------------------------------------------------
