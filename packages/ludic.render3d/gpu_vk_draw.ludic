@@ -50,14 +50,21 @@ function gvk_module(path: string) -> long {
 
 # The Vulkan side of a program handle the renderer already made (gpu_program): the handle's
 # manifest key finds the variant. Returns false when there is no such variant.
+# a program whose first stage is a mesh shader (its first file is *.mesh): its pipeline has no vertex
+# input, and its first stage's bindings are the mesh stage's
+var gvk_prog_mesh: []int = null
+function gvk_stage_first(p: int) -> int {
+  if gvk_prog_mesh != null and p < len(gvk_prog_mesh) and gvk_prog_mesh[p] == 1 { return VK_SHADER_STAGE_MESH_BIT_EXT }
+  return VK_SHADER_STAGE_VERTEX_BIT
+}
 function gvk_program(p: int, key: string, spv_dir: string) -> bool {
   let zero: long = 0
   if gvk_prog_var == null {
     gvk_prog_var = new []GpuVariant;  gvk_prog_vs = new []long;  gvk_prog_fs = new []long
-    gvk_prog_dsl = new []long;  gvk_prog_layout = new []long
+    gvk_prog_dsl = new []long;  gvk_prog_layout = new []long;  gvk_prog_mesh = new []int
   }
   while len(gvk_prog_var) <= p {
-    push(gvk_prog_var, null);  push(gvk_prog_vs, zero);  push(gvk_prog_fs, zero);  push(gvk_prog_dsl, zero);  push(gvk_prog_layout, zero)
+    push(gvk_prog_var, null);  push(gvk_prog_vs, zero);  push(gvk_prog_fs, zero);  push(gvk_prog_dsl, zero);  push(gvk_prog_layout, zero);  push(gvk_prog_mesh, 0)
   }
   let parts = Text.split(key, "|")
   var defs = ""
@@ -65,6 +72,7 @@ function gvk_program(p: int, key: string, spv_dir: string) -> bool {
   let v = gpu_variant_find_key(parts[0], parts[1], defs)
   if v == null { print(`r3d: vulkan: no SPIR-V variant for {key}`);  return false }
   let vs = gvk_module(`{spv_dir}/{v.id}.vert.spv`)
+  if Text.ends_with(v.vs, ".mesh") { gvk_prog_mesh[p] = 1 } else { gvk_prog_mesh[p] = 0 }
   let fs = gvk_module(`{spv_dir}/{v.id}.frag.spv`)
   if vs == 0 or fs == 0 { return false }
 
@@ -80,7 +88,7 @@ function gvk_program(p: int, key: string, spv_dir: string) -> bool {
     Vk.put_i32(binds, k * bw + VkDescriptorSetLayoutBinding_binding, 0)
     Vk.put_i32(binds, k * bw + VkDescriptorSetLayoutBinding_descriptorType, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC)
     Vk.put_i32(binds, k * bw + VkDescriptorSetLayoutBinding_descriptorCount, 1)
-    Vk.put_i32(binds, k * bw + VkDescriptorSetLayoutBinding_stageFlags, VK_SHADER_STAGE_VERTEX_BIT)
+    Vk.put_i32(binds, k * bw + VkDescriptorSetLayoutBinding_stageFlags, gvk_stage_first(p))
     k += 1
   }
   if v.fblock >= 0 {
@@ -94,7 +102,7 @@ function gvk_program(p: int, key: string, spv_dir: string) -> bool {
     Vk.put_i32(binds, k * bw + VkDescriptorSetLayoutBinding_binding, v.t_bind[t])
     Vk.put_i32(binds, k * bw + VkDescriptorSetLayoutBinding_descriptorType, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
     Vk.put_i32(binds, k * bw + VkDescriptorSetLayoutBinding_descriptorCount, 1)
-    Vk.put_i32(binds, k * bw + VkDescriptorSetLayoutBinding_stageFlags, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT)
+    Vk.put_i32(binds, k * bw + VkDescriptorSetLayoutBinding_stageFlags, gvk_stage_first(p) | VK_SHADER_STAGE_FRAGMENT_BIT)
     k += 1
   }
   let dslci = bytes(VkDescriptorSetLayoutCreateInfo_sizeof)
@@ -371,7 +379,7 @@ function gvk_pipeline(p: int, m: Mesh, st: GvkState, n_color: int, color_fmt: in
   let stages = bytes(ss * 2)
   Vk.zero(stages, ss * 2)
   Vk.put_i32(stages, VkPipelineShaderStageCreateInfo_sType, VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO)
-  Vk.put_i32(stages, VkPipelineShaderStageCreateInfo_stage, VK_SHADER_STAGE_VERTEX_BIT)
+  Vk.put_i32(stages, VkPipelineShaderStageCreateInfo_stage, gvk_stage_first(p))
   Vk.put_i64(stages, VkPipelineShaderStageCreateInfo_module, gvk_prog_vs[p])
   Vk.put_ptr(stages, VkPipelineShaderStageCreateInfo_pName, "main")
   Vk.put_i32(stages, ss + VkPipelineShaderStageCreateInfo_sType, VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO)
@@ -524,8 +532,11 @@ function gvk_pipeline(p: int, m: Mesh, st: GvkState, n_color: int, color_fmt: in
   Vk.put_ptr(gpci, VkGraphicsPipelineCreateInfo_pNext, prci)
   Vk.put_i32(gpci, VkGraphicsPipelineCreateInfo_stageCount, 2)
   Vk.put_ptr(gpci, VkGraphicsPipelineCreateInfo_pStages, stages)
-  Vk.put_ptr(gpci, VkGraphicsPipelineCreateInfo_pVertexInputState, vin)
-  Vk.put_ptr(gpci, VkGraphicsPipelineCreateInfo_pInputAssemblyState, ias)
+  # a mesh-shader pipeline has neither: the mesh stage makes its own vertices
+  if gvk_stage_first(p) == VK_SHADER_STAGE_VERTEX_BIT {
+    Vk.put_ptr(gpci, VkGraphicsPipelineCreateInfo_pVertexInputState, vin)
+    Vk.put_ptr(gpci, VkGraphicsPipelineCreateInfo_pInputAssemblyState, ias)
+  }
   Vk.put_ptr(gpci, VkGraphicsPipelineCreateInfo_pViewportState, vps)
   Vk.put_ptr(gpci, VkGraphicsPipelineCreateInfo_pRasterizationState, rs)
   Vk.put_ptr(gpci, VkGraphicsPipelineCreateInfo_pMultisampleState, ms)
@@ -1273,6 +1284,12 @@ function gvk_draw(p: int, m: Mesh, st: GvkState, first: int, count: int, instanc
   }
   var n = count
   if n == 0 and m != null { n = m.count }
+  if gvk_mesh_x > 0 {
+    # a mesh-shader dispatch (gpu_draw_mesh_tasks): the device's command, through a pointer
+    Vk.sl_call_piii(gvk_mesh_fn, cb, gvk_mesh_x, gvk_mesh_y, gvk_mesh_z)
+    if prof { gvk_n_draws += 1;  gvk_us_draw = gvk_us_draw + (gl_now_us() - t0) }
+    return
+  }
   if m != null and m.ebo != 0 {
     let zero: long = 0
     var itype = VK_INDEX_TYPE_UINT32
@@ -1461,6 +1478,16 @@ var gvk_ind_off: int = 0
 var gvk_ind_n: int = 0
 var gvk_ind_cbuf: int = 0
 var gvk_ind_coff: int = 0
+# x * y * z mesh-shader invocations with the current program (a *.mesh one) and state
+var gvk_mesh_x: int = 0
+var gvk_mesh_y: int = 0
+var gvk_mesh_z: int = 0
+function gvk_draw_mesh_tasks_now(x: int, y: int, z: int) -> void {
+  if not gvk_has_mesh or gvk_mesh_fn == null or x <= 0 or y <= 0 or z <= 0 { return }
+  gvk_mesh_x = x;  gvk_mesh_y = y;  gvk_mesh_z = z
+  gvk_draw_now(null, 0, 0, 1)
+  gvk_mesh_x = 0
+}
 function gvk_draw_indirect_now(m: Mesh, cmds: int, offset: int, n: int, count_buf: int, count_off: int) -> void {
   if m == null or m.ebo == 0 or cmds <= 0 or n <= 0 { return }
   gvk_ind_buf = cmds;  gvk_ind_off = offset;  gvk_ind_n = n;  gvk_ind_cbuf = count_buf;  gvk_ind_coff = count_off

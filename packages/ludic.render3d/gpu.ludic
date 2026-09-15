@@ -394,7 +394,7 @@ function gpu_caps_probe() -> void {
 # DLSS super resolution and Reflex run through NVIDIA Streamline (streamline.ludic), and HDR output is an
 # HDR10 swapchain (gpu_vk_draw.ludic); whether this
 # machine can use one is the caps' question, not this one.
-function gpu_feature_implemented(f: int) -> bool { return f == GF_VULKAN or f == GF_DLSS or f == GF_REFLEX or f == GF_HDR }
+function gpu_feature_implemented(f: int) -> bool { return f == GF_VULKAN or f == GF_DLSS or f == GF_REFLEX or f == GF_HDR or f == GF_MESH_GRASS }
 
 # ---- vertex data --------------------------------------------------------------------
 # A Mesh is built through these and records what it is made of - which buffer feeds which
@@ -524,6 +524,9 @@ function gpu_buffer_free(buf: int) -> void {
 function gpu_has_compute() -> bool { return gpu_kind == GPU_VK }
 # several records in one indirect draw, each with its own firstInstance
 function gpu_has_mdi() -> bool { return gpu_kind == GPU_VK and gvk_has_mdi }
+# mesh shaders (VK_EXT_mesh_shader): a *.mesh program drawn with gpu_draw_mesh_tasks
+function gpu_has_mesh() -> bool { return gpu_kind == GPU_VK and gvk_has_mesh }
+function gpu_draw_mesh_tasks(x: int, y: int, z: int) -> void { if gpu_kind == GPU_VK { gvk_draw_mesh_tasks_now(x, y, z) } }
 function gpu_compute(name: string, n_bufs: int) -> int {
   if gpu_kind != GPU_VK { return 0 }
   return gvk_compute_new(name, n_bufs)

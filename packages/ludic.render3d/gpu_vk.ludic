@@ -58,6 +58,8 @@ function gvk_ext_in(props: bytes, n: int, want: string) -> bool {
 # the caller stays on OpenGL.
 var gvk_has_mdi: bool = false         # multiDrawIndirect + drawIndirectFirstInstance
 var gvk_has_dic: bool = false         # drawIndirectCount
+var gvk_has_mesh: bool = false       # VK_EXT_mesh_shader with its meshShader feature on
+var gvk_mesh_fn: pointer = null      # vkCmdDrawMeshTasksEXT: the device's own, the interposer exports none
 
 function gvk_init() -> bool {
   if gvk_ready { return true }
@@ -161,6 +163,8 @@ function gvk_init() -> bool {
   Vk.put_i32(want13, VkPhysicalDeviceVulkan13Features_sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES)
   Vk.put_i32(want13, VkPhysicalDeviceVulkan13Features_dynamicRendering, 1)
   Vk.put_i32(want13, VkPhysicalDeviceVulkan13Features_synchronization2, 1)
+  # maintenance4: glslang's mesh stages declare their work group size with LocalSizeId, which needs it
+  if Vk.get_i32(f13, VkPhysicalDeviceVulkan13Features_maintenance4) == 1 { Vk.put_i32(want13, VkPhysicalDeviceVulkan13Features_maintenance4, 1) }
   # Streamline's hooks keep their own data on our objects (private data slots), and ask the device
   # to have the feature rather than turning it on themselves
   if gsl_on and Vk.get_i32(f13, VkPhysicalDeviceVulkan13Features_privateData) == 1 { Vk.put_i32(want13, VkPhysicalDeviceVulkan13Features_privateData, 1) }
@@ -198,6 +202,27 @@ function gvk_init() -> bool {
   let nde = Vk.get_i32(cnt, 0)
   let dexts = bytes(nde * VkExtensionProperties_sizeof + 8)
   Vk.enumerate_device_extension_properties(gvk_pd, null, cnt, dexts)
+  # mesh-shader grass: the extension, and its meshShader feature asked for where the device has it.
+  # R3D_NO_MESH=1 leaves it off.
+  gvk_has_mesh = false
+  if gvk_ext_in(dexts, nde, VK_EXT_MESH_SHADER_EXTENSION_NAME) and not Os.has_env("R3D_NO_MESH") {
+    let fm = bytes(VkPhysicalDeviceMeshShaderFeaturesEXT_sizeof)
+    Vk.zero(fm, VkPhysicalDeviceMeshShaderFeaturesEXT_sizeof)
+    Vk.put_i32(fm, VkPhysicalDeviceMeshShaderFeaturesEXT_sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT)
+    let qm = bytes(VkPhysicalDeviceFeatures2_sizeof)
+    Vk.zero(qm, VkPhysicalDeviceFeatures2_sizeof)
+    Vk.put_i32(qm, VkPhysicalDeviceFeatures2_sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2)
+    Vk.put_ptr(qm, VkPhysicalDeviceFeatures2_pNext, fm)
+    Vk.get_physical_device_features2(gvk_pd, qm)
+    if Vk.get_i32(fm, VkPhysicalDeviceMeshShaderFeaturesEXT_meshShader) == 1 {
+      let wm = bytes(VkPhysicalDeviceMeshShaderFeaturesEXT_sizeof)
+      Vk.zero(wm, VkPhysicalDeviceMeshShaderFeaturesEXT_sizeof)
+      Vk.put_i32(wm, VkPhysicalDeviceMeshShaderFeaturesEXT_sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT)
+      Vk.put_i32(wm, VkPhysicalDeviceMeshShaderFeaturesEXT_meshShader, 1)
+      Vk.put_ptr(want13, VkPhysicalDeviceVulkan13Features_pNext, wm)
+      gvk_has_mesh = true
+    }
+  }
   let prio = bytes(4)
   Vk.put_i32(prio, 0, 0x3F800000)
   let qci = bytes(VkDeviceQueueCreateInfo_sizeof)
@@ -226,6 +251,7 @@ function gvk_init() -> bool {
     gvk_has_hdr_meta = gvk_ext_in(dexts, nde, VK_EXT_HDR_METADATA_EXTENSION_NAME) and Vk.has("vkSetHdrMetadataEXT") == 1
     if gvk_has_hdr_meta { Vk.put_ptr(dext_names, n_dext * 8, VK_EXT_HDR_METADATA_EXTENSION_NAME);  n_dext += 1 }
   }
+  if gvk_has_mesh { Vk.put_ptr(dext_names, n_dext * 8, VK_EXT_MESH_SHADER_EXTENSION_NAME);  n_dext += 1 }
   if n_dext > 0 {
     Vk.put_i32(dci, VkDeviceCreateInfo_enabledExtensionCount, n_dext)
     Vk.put_ptr(dci, VkDeviceCreateInfo_ppEnabledExtensionNames, dext_names)
@@ -236,12 +262,16 @@ function gvk_init() -> bool {
   Vk.get_device_queue(gvk_dev, gvk_family, 0, out)
   gvk_queue = Vk.get_ptr(out, 0)
   gsl_probe_device(gvk_pd)
+  if gvk_has_mesh {
+    gvk_mesh_fn = Vk.get_device_proc_addr(gvk_dev, "vkCmdDrawMeshTasksEXT")
+    if gvk_mesh_fn == null { gvk_has_mesh = false }
+  }
   gvk_mp = bytes(VkPhysicalDeviceMemoryProperties_sizeof)
   Vk.get_physical_device_memory_properties(gvk_pd, gvk_mp)
 
   if not gvk_cmd_init() { return false }
   gvk_ready = true
-  print(`r3d: vulkan on {gvk_device_name}, anisotropy up to {gvk_aniso_x(gvk_max_aniso)}x, multi-draw indirect {gvk_has_mdi}, indirect count {gvk_has_dic}`)
+  print(`r3d: vulkan on {gvk_device_name}, anisotropy up to {gvk_aniso_x(gvk_max_aniso)}x, multi-draw indirect {gvk_has_mdi}, indirect count {gvk_has_dic}, mesh shaders {gvk_has_mesh}`)
   return true
 }
 

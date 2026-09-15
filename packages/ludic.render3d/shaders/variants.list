@@ -17,6 +17,7 @@ fullscreen.vert|ternormal.frag|
 fullscreen.vert|tershadow.frag|#define NOISE_ONLY;
 fullscreen.vert|tonemap.frag|
 fullscreen.vert|tonemap.frag|#define HDR10;
+grass.mesh|model.frag|#define FOLIAGE;#define BLADE;#define MESH;
 grass.vert|model.frag|#define FOLIAGE;#define BLADE;
 grass.vert|model.frag|#define FOLIAGE;#define BLADE;#define TILES;
 impostor.vert|impostor.frag|

@@ -628,6 +628,73 @@ T a4683767 u_prefilter 8
 T a4683767 u_shadow 9
 T a4683767 u_tershadow 10
 T a4683767 u_ts_height 11
+P d48d6a48 grass.mesh model.frag #define FOLIAGE;#define BLADE;#define MESH;
+B d48d6a48 vert 0 4384
+U d48d6a48 vert u_view 0 mat4 1 0
+U d48d6a48 vert u_proj 64 mat4 1 0
+U d48d6a48 vert u_vp 128 mat4 1 0
+U d48d6a48 vert u_cam_pos 192 vec3 1 0
+U d48d6a48 vert u_time 204 float 1 0
+U d48d6a48 vert u_ts_origin 208 vec2 1 0
+U d48d6a48 vert u_ts_half 216 float 1 0
+U d48d6a48 vert u_ortho_on 220 float 1 0
+U d48d6a48 vert u_lake_level 224 float 1 0
+U d48d6a48 vert u_sea_level 228 float 1 0
+U d48d6a48 vert u_lake 240 vec4 1 0
+U d48d6a48 vert u_snow_line 256 float 1 0
+U d48d6a48 vert u_wind 260 float 1 0
+U d48d6a48 vert u_tile_cells 264 int 1 0
+U d48d6a48 vert u_tiles 272 vec4 256 16
+U d48d6a48 vert u_s0 4368 float 1 0
+U d48d6a48 vert u_d0 4372 float 1 0
+U d48d6a48 vert u_radius 4376 float 1 0
+U d48d6a48 vert u_dbg 4380 int 1 0
+B d48d6a48 frag 1 892
+U d48d6a48 frag u_cascade_vp 0 mat4 5 64
+U d48d6a48 frag u_cascade_split 320 float 5 16
+U d48d6a48 frag u_cascade_range 400 float 5 16
+U d48d6a48 frag u_cascade_texel 480 float 5 16
+U d48d6a48 frag u_sun_dir 560 vec3 1 0
+U d48d6a48 frag u_sun_color 576 vec3 1 0
+U d48d6a48 frag u_cam_pos 592 vec3 1 0
+U d48d6a48 frag u_prefilter_levels 604 float 1 0
+U d48d6a48 frag u_fog_density 608 float 1 0
+U d48d6a48 frag u_fog_height_falloff 612 float 1 0
+U d48d6a48 frag u_fog_base 616 float 1 0
+U d48d6a48 frag u_clip_y 620 float 1 0
+U d48d6a48 frag u_spec_scale 624 float 1 0
+U d48d6a48 frag u_sky_rot 632 vec2 1 0
+U d48d6a48 frag u_ibl_scale 640 vec3 1 0
+U d48d6a48 frag u_daylight 652 float 1 0
+U d48d6a48 frag u_fire_pos 656 vec3 1 0
+U d48d6a48 frag u_fire_color 672 vec3 1 0
+U d48d6a48 frag u_hand_pos 688 vec3 1 0
+U d48d6a48 frag u_hand_color 704 vec3 1 0
+U d48d6a48 frag u_hand_dir 720 vec3 1 0
+U d48d6a48 frag u_hand_cone 732 float 1 0
+U d48d6a48 frag u_ts_origin 736 vec2 1 0
+U d48d6a48 frag u_ts_half 744 float 1 0
+U d48d6a48 frag u_ts_on 748 float 1 0
+U d48d6a48 frag u_force_cascade 752 int 1 0
+U d48d6a48 frag u_cloud_shadow 756 float 1 0
+U d48d6a48 frag u_time 760 float 1 0
+U d48d6a48 frag u_model_h 764 float 1 0
+U d48d6a48 frag u_view 768 mat4 1 0
+U d48d6a48 frag u_tint 832 vec3 1 0
+U d48d6a48 frag u_rough_scale 844 float 1 0
+U d48d6a48 frag u_emissive 848 float 1 0
+U d48d6a48 frag u_blade_base 864 vec3 1 0
+U d48d6a48 frag u_blade_tip 880 vec3 1 0
+T d48d6a48 u_arm 2
+T d48d6a48 u_brdf 3
+T d48d6a48 u_diff 4
+T d48d6a48 u_irradiance 5
+T d48d6a48 u_nrm 6
+T d48d6a48 u_ortho 7
+T d48d6a48 u_prefilter 8
+T d48d6a48 u_shadow 9
+T d48d6a48 u_tershadow 10
+T d48d6a48 u_ts_height 11
 P 7ed7de52 grass.vert model.frag #define FOLIAGE;#define BLADE;
 B 7ed7de52 vert 0 296
 U 7ed7de52 vert u_view 0 mat4 1 0

@@ -35,6 +35,17 @@ var grass_cmds: int = 0
 var grass_band_start: words = null    # per band: its first record
 var grass_band_cells: words = null    # ... and its 16 m cells per tile side
 var grass_band_n: int = 0
+# Mesh-shader grass (Settings, Video, Advanced): the chunked path's records, but each chunk is one
+# mesh dispatch - work group y a tile, x a batch of GRASS_MESH_BLADES of its blades - so a blade the
+# tests reject emits nothing instead of eight degenerate vertices. R3D_MESH_GRASS=1 / 0 overrides.
+const GRASS_MESH_BLADES: int = 16
+var grass_mesh_on: bool = false
+var grass_mesh_prog: int = 0
+function r3d_mesh_grass(on: bool) -> void {
+  grass_mesh_on = on
+  if Os.has_env("R3D_MESH_GRASS") { grass_mesh_on = Text.to_int(Os.env("R3D_MESH_GRASS")) != 0 }
+}
+function grass_mesh_live() -> bool { return grass_mesh_on and grass_merge and grass_mesh_prog != 0 and gpu_has_mesh() }
 
 # a blade: `rows` rows of 2 vertices (x across, y along, z bend), attribute 2 = uv
 function grass_blade_mesh(rows: int) -> Mesh {
@@ -81,6 +92,7 @@ function grass_init() -> void {
     grass_cmds = gpu_buffer_new()
   }
   grass_prog = r3d_program("grass.vert", "model.frag", defs)
+  if grass_merge and gpu_has_mesh() { grass_mesh_prog = r3d_program("grass.mesh", "model.frag", "#define FOLIAGE\n#define BLADE\n#define MESH\n") }
   grass_mesh = grass_blade_mesh(4)
   grass_wind = fl(2.4)
   grass_s0 = fl(0.11)
@@ -155,7 +167,8 @@ function grass_tiles(size: int, d_min: int, d_max: int) -> void {
 
 function grass_draw() -> void {
   if not grass_on or ter_reflect or grass_prog == 0 { return }
-  let p = grass_prog
+  var p = grass_prog
+  if grass_mesh_live() { p = grass_mesh_prog }
   gpu_use_program(p)
   u_mat4(gpu_uniform(p, "u_view"), cam_view)
   u_mat4(gpu_uniform(p, "u_proj"), cam_proj)
@@ -203,8 +216,9 @@ function grass_draw() -> void {
 # the records gathered this frame: uploaded once, then each band GRASS_CHUNK records a draw
 function grass_flush() -> void {
   if grass_n == 0 { return }
-  let p = grass_prog
-  gpu_buffer_upload(grass_cmds, grass_n * 20, grass_rec, GPU_DYNAMIC)
+  var p = grass_prog
+  let mesh = grass_mesh_live()
+  if mesh { p = grass_mesh_prog } else { gpu_buffer_upload(grass_cmds, grass_n * 20, grass_rec, GPU_DYNAMIC) }
   for b in 0 .. grass_band_n {
     let s = grass_band_start[b]
     var e = grass_n
@@ -216,7 +230,16 @@ function grass_flush() -> void {
       if m > GRASS_CHUNK { m = GRASS_CHUNK }
       for q in 0 .. m * 4 { grass_chunk_tv[q] = grass_tv[k * 4 + q] }
       u_f4v(gpu_uniform(p, "u_tiles"), m, grass_chunk_tv)
-      gpu_draw_mesh_indirect(grass_mesh, grass_cmds, k * 20, m, 0, 0)
+      if mesh {
+        # enough blade batches for the chunk's largest tile, capped as the instanced path caps a tile
+        let cells = grass_band_cells[b]
+        var most = 0
+        for q in 0 .. m { let t = f_to_int(grass_tv[(k + q) * 4 + 2]) * cells * cells;  if t > most { most = t } }
+        if most > 65535 { most = 65535 }
+        gpu_draw_mesh_tasks((most + GRASS_MESH_BLADES - 1) / GRASS_MESH_BLADES, m, 1)
+      } else {
+        gpu_draw_mesh_indirect(grass_mesh, grass_cmds, k * 20, m, 0, 0)
+      }
       grass_draws += 1
       k += m
     }
