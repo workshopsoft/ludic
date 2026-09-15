@@ -37,3 +37,460 @@ function gvk_channel_bytes(ifmt: int) -> int {
   if ifmt == GL_R32F or ifmt == GL_RGBA32F or gvk_is_depth(ifmt) { return 4 }
   return 2
 }
+
+# ---- textures -----------------------------------------------------------------------------
+# A texture handle indexes these lists. gpu.ludic's gpu_tx record keeps what the renderer said
+# about it (size, format, filters, wraps, compare, mips, anisotropy); these keep the Vulkan
+# objects. Pixels uploaded with the image get a full mip chain, allocated up front, because the
+# renderer asks for mipmaps after the upload; an image made without pixels is a target and gets
+# one level. Every level sits in SHADER_READ_ONLY_OPTIMAL between uses.
+var gvk_tex_image: []long = null
+var gvk_tex_view: []long = null
+var gvk_tex_mem: []long = null
+var gvk_tex_levels: []int = null
+var gvk_tex_layers: []int = null
+var gvk_tex_vkfmt: []int = null
+var gvk_unpack_swap: bool = false     # GL_UNPACK_SWAP_BYTES: 16-bit PNG samples arrive big-endian
+
+function gvk_tex_new() -> int {
+  let zero: long = 0
+  if gvk_tex_image == null {
+    gvk_tex_image = new []long;  gvk_tex_view = new []long;  gvk_tex_mem = new []long
+    gvk_tex_levels = new []int;  gvk_tex_layers = new []int;  gvk_tex_vkfmt = new []int
+    # handle 0 is "no texture", as it is on OpenGL
+    push(gvk_tex_image, zero);  push(gvk_tex_view, zero);  push(gvk_tex_mem, zero)
+    push(gvk_tex_levels, 0);  push(gvk_tex_layers, 0);  push(gvk_tex_vkfmt, 0)
+  }
+  push(gvk_tex_image, zero);  push(gvk_tex_view, zero);  push(gvk_tex_mem, zero)
+  push(gvk_tex_levels, 0);  push(gvk_tex_layers, 0);  push(gvk_tex_vkfmt, 0)
+  return len(gvk_tex_image) - 1
+}
+
+function gvk_mip_levels(w: int, h: int) -> int {
+  var n = 1
+  var s = w
+  if h > s { s = h }
+  while s > 1 { s = s / 2;  n += 1 }
+  return n
+}
+
+function gvk_layout_access(layout: int) -> int {
+  if layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL { return VK_ACCESS_TRANSFER_WRITE_BIT }
+  if layout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL { return VK_ACCESS_TRANSFER_READ_BIT }
+  if layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL { return VK_ACCESS_SHADER_READ_BIT }
+  if layout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL { return VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT }
+  if layout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL { return VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT }
+  return 0
+}
+# levels [base, base + n) of every layer of an image, from one layout to another
+function gvk_barrier(cb: pointer, image: long, depth: bool, base: int, n: int, layers: int, old_layout: int, new_layout: int) -> void {
+  let b = bytes(VkImageMemoryBarrier_sizeof)
+  Vk.zero(b, VkImageMemoryBarrier_sizeof)
+  Vk.put_i32(b, VkImageMemoryBarrier_sType, VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER)
+  Vk.put_i32(b, VkImageMemoryBarrier_srcAccessMask, gvk_layout_access(old_layout))
+  Vk.put_i32(b, VkImageMemoryBarrier_dstAccessMask, gvk_layout_access(new_layout))
+  Vk.put_i32(b, VkImageMemoryBarrier_oldLayout, old_layout)
+  Vk.put_i32(b, VkImageMemoryBarrier_newLayout, new_layout)
+  Vk.put_i32(b, VkImageMemoryBarrier_srcQueueFamilyIndex, VK_QUEUE_FAMILY_IGNORED)
+  Vk.put_i32(b, VkImageMemoryBarrier_dstQueueFamilyIndex, VK_QUEUE_FAMILY_IGNORED)
+  Vk.put_i64(b, VkImageMemoryBarrier_image, image)
+  let r = VkImageMemoryBarrier_subresourceRange
+  var aspect = VK_IMAGE_ASPECT_COLOR_BIT
+  if depth { aspect = VK_IMAGE_ASPECT_DEPTH_BIT }
+  Vk.put_i32(b, r + VkImageSubresourceRange_aspectMask, aspect)
+  Vk.put_i32(b, r + VkImageSubresourceRange_baseMipLevel, base)
+  Vk.put_i32(b, r + VkImageSubresourceRange_levelCount, n)
+  Vk.put_i32(b, r + VkImageSubresourceRange_baseArrayLayer, 0)
+  Vk.put_i32(b, r + VkImageSubresourceRange_layerCount, layers)
+  Vk.cmd_pipeline_barrier(cb, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, null, 0, null, 1, b)
+}
+
+# a host-visible buffer of n bytes, mapped; gvk_staging_free unmaps and frees it
+var gvk_st_buf: long = 0
+var gvk_st_mem: long = 0
+function gvk_staging(n: int, usage: int) -> pointer {
+  let size: long = n
+  let bci = bytes(VkBufferCreateInfo_sizeof)
+  Vk.zero(bci, VkBufferCreateInfo_sizeof)
+  Vk.put_i32(bci, VkBufferCreateInfo_sType, VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO)
+  Vk.put_i64(bci, VkBufferCreateInfo_size, size)
+  Vk.put_i32(bci, VkBufferCreateInfo_usage, usage)
+  Vk.put_i32(bci, VkBufferCreateInfo_sharingMode, VK_SHARING_MODE_EXCLUSIVE)
+  let out = bytes(8)
+  if Vk.create_buffer(gvk_dev, bci, null, out) != VK_SUCCESS { return null }
+  gvk_st_buf = gvk_handle(out)
+  let req = bytes(VkMemoryRequirements_sizeof)
+  Vk.get_buffer_memory_requirements(gvk_dev, gvk_st_buf, req)
+  gvk_st_mem = gvk_alloc(req, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
+  let zero: long = 0
+  Vk.bind_buffer_memory(gvk_dev, gvk_st_buf, gvk_st_mem, zero)
+  let pp = bytes(8)
+  if Vk.map_memory(gvk_dev, gvk_st_mem, zero, size, 0, pp) != VK_SUCCESS { return null }
+  return Vk.get_ptr(pp, 0)
+}
+function gvk_staging_free() -> void {
+  Vk.unmap_memory(gvk_dev, gvk_st_mem)
+  Vk.destroy_buffer(gvk_dev, gvk_st_buf, null)
+  Vk.free_memory(gvk_dev, gvk_st_mem, null)
+  gvk_n_allocs -= 1
+}
+
+# (Re)make the image behind a handle: glTexImage2D on a texture that already has one replaces it.
+function gvk_tex_storage(tex: int, array: bool, ifmt: int, w: int, h: int, layers: int, with_mips: bool) -> bool {
+  if tex <= 0 or tex >= len(gvk_tex_image) { return false }
+  let vkfmt = gvk_format(ifmt)
+  if vkfmt == VK_FORMAT_UNDEFINED { print(`r3d: vulkan: no image format for GL format {ifmt}`);  return false }
+  gvk_tex_release(tex)
+  let depth = gvk_is_depth(ifmt)
+  var levels = 1
+  if with_mips and not depth { levels = gvk_mip_levels(w, h) }
+  var usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+  if depth { usage = usage | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT } else { usage = usage | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT }
+  let ici = bytes(VkImageCreateInfo_sizeof)
+  Vk.zero(ici, VkImageCreateInfo_sizeof)
+  Vk.put_i32(ici, VkImageCreateInfo_sType, VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO)
+  Vk.put_i32(ici, VkImageCreateInfo_imageType, VK_IMAGE_TYPE_2D)
+  Vk.put_i32(ici, VkImageCreateInfo_format, vkfmt)
+  Vk.put_i32(ici, VkImageCreateInfo_extent + VkExtent3D_width, w)
+  Vk.put_i32(ici, VkImageCreateInfo_extent + VkExtent3D_height, h)
+  Vk.put_i32(ici, VkImageCreateInfo_extent + VkExtent3D_depth, 1)
+  Vk.put_i32(ici, VkImageCreateInfo_mipLevels, levels)
+  Vk.put_i32(ici, VkImageCreateInfo_arrayLayers, layers)
+  Vk.put_i32(ici, VkImageCreateInfo_samples, VK_SAMPLE_COUNT_1_BIT)
+  Vk.put_i32(ici, VkImageCreateInfo_tiling, VK_IMAGE_TILING_OPTIMAL)
+  Vk.put_i32(ici, VkImageCreateInfo_usage, usage)
+  Vk.put_i32(ici, VkImageCreateInfo_sharingMode, VK_SHARING_MODE_EXCLUSIVE)
+  Vk.put_i32(ici, VkImageCreateInfo_initialLayout, VK_IMAGE_LAYOUT_UNDEFINED)
+  let out = bytes(8)
+  var r = Vk.create_image(gvk_dev, ici, null, out)
+  if r != VK_SUCCESS { return gvk_fail(`vkCreateImage {w}x{h}x{layers} format {vkfmt}`, r) }
+  let image = gvk_handle(out)
+  let req = bytes(VkMemoryRequirements_sizeof)
+  Vk.get_image_memory_requirements(gvk_dev, image, req)
+  let mem = gvk_alloc(req, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
+  let zero: long = 0
+  r = Vk.bind_image_memory(gvk_dev, image, mem, zero)
+  if r != VK_SUCCESS { return gvk_fail("vkBindImageMemory", r) }
+  let vci = bytes(VkImageViewCreateInfo_sizeof)
+  Vk.zero(vci, VkImageViewCreateInfo_sizeof)
+  Vk.put_i32(vci, VkImageViewCreateInfo_sType, VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO)
+  Vk.put_i64(vci, VkImageViewCreateInfo_image, image)
+  if array { Vk.put_i32(vci, VkImageViewCreateInfo_viewType, VK_IMAGE_VIEW_TYPE_2D_ARRAY) } else { Vk.put_i32(vci, VkImageViewCreateInfo_viewType, VK_IMAGE_VIEW_TYPE_2D) }
+  Vk.put_i32(vci, VkImageViewCreateInfo_format, vkfmt)
+  let sr = VkImageViewCreateInfo_subresourceRange
+  if depth { Vk.put_i32(vci, sr + VkImageSubresourceRange_aspectMask, VK_IMAGE_ASPECT_DEPTH_BIT) } else { Vk.put_i32(vci, sr + VkImageSubresourceRange_aspectMask, VK_IMAGE_ASPECT_COLOR_BIT) }
+  Vk.put_i32(vci, sr + VkImageSubresourceRange_levelCount, levels)
+  Vk.put_i32(vci, sr + VkImageSubresourceRange_layerCount, layers)
+  r = Vk.create_image_view(gvk_dev, vci, null, out)
+  if r != VK_SUCCESS { return gvk_fail("vkCreateImageView", r) }
+  gvk_tex_image[tex] = image;  gvk_tex_view[tex] = gvk_handle(out);  gvk_tex_mem[tex] = mem
+  gvk_tex_levels[tex] = levels;  gvk_tex_layers[tex] = layers;  gvk_tex_vkfmt[tex] = vkfmt
+  # a target starts cleared-to-nothing but readable: every level in the layout samplers expect
+  let cb = gvk_once_begin()
+  gvk_barrier(cb, image, depth, 0, levels, layers, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+  return gvk_once_end(cb)
+}
+
+# IEEE single (as its bits) to IEEE half: out-of-range values saturate to infinity, tiny ones to zero
+function gvk_half(f: int) -> int {
+  let s = (f >> 16) & 0x8000
+  let e = ((f >> 23) & 255) - 112
+  let m = f & 0x7FFFFF
+  if e <= 0 { return s }
+  if e >= 31 { return s | 0x7C00 }
+  return s | (e << 10) | (m >> 13)
+}
+function gvk_gl_channels(fmt: int) -> int {
+  if fmt == GL_RED or fmt == GL_DEPTH_COMPONENT { return 1 }
+  if fmt == GL_RG { return 2 }
+  if fmt == GL_RGB { return 3 }
+  return 4
+}
+function gvk_gl_type_bytes(ty: int) -> int {
+  if ty == GL_UNSIGNED_SHORT or ty == GL_HALF_FLOAT { return 2 }
+  if ty == GL_FLOAT or ty == GL_UNSIGNED_INT { return 4 }
+  return 1
+}
+
+# Level 0 of every layer from pixels laid out the OpenGL way (fmt channels of type ty), converted
+# to what the image stores: a missing alpha filled opaque, 16-bit samples byte-swapped when the
+# unpack state says so, 32-bit floats into a half-float image halved.
+function gvk_tex_upload(tex: int, ifmt: int, w: int, h: int, layers: int, fmt: int, ty: int, data: pointer) -> bool {
+  let cin = gvk_gl_channels(fmt)
+  let bin = gvk_gl_type_bytes(ty)
+  let cout = gvk_channels(ifmt)
+  let bout = gvk_channel_bytes(ifmt)
+  let texels = w * h * layers
+  let n = texels * cout * bout
+  let dst = gvk_staging(n, VK_BUFFER_USAGE_TRANSFER_SRC_BIT)
+  if dst == null { print("r3d: vulkan: no staging buffer for an upload");  return false }
+  let buf = bytes(n)
+  if cin == cout and bin == bout and not (bin == 2 and gvk_unpack_swap) {
+    mem_copy(buf, data, n)
+  } else {
+    let src: pointer = data
+    for t in 0 .. texels {
+      for c in 0 .. cout {
+        let o = (t * cout + c) * bout
+        if c >= cin {
+          # the channel the source does not have: alpha, opaque
+          if bout == 1 { buf[o] = 255 }
+          if bout == 2 { if ty == GL_FLOAT or ty == GL_HALF_FLOAT { buf[o] = 0;  buf[o + 1] = 0x3C } else { buf[o] = 255;  buf[o + 1] = 255 } }
+          if bout == 4 { Vk.put_i32(buf, o, 0x3F800000) }
+        } else {
+          let i = (t * cin + c) * bin
+          if bin == bout {
+            if bin == 1 { buf[o] = src[i] }
+            if bin == 2 {
+              if gvk_unpack_swap { buf[o] = src[i + 1];  buf[o + 1] = src[i] } else { buf[o] = src[i];  buf[o + 1] = src[i + 1] }
+            }
+            if bin == 4 { Vk.put_i32(buf, o, Vk.get_i32(src, i)) }
+          } else if bin == 4 and bout == 2 {
+            let hv = gvk_half(Vk.get_i32(src, i))
+            buf[o] = hv & 255;  buf[o + 1] = (hv >> 8) & 255
+          } else {
+            print(`r3d: vulkan: no conversion from {bin}-byte to {bout}-byte samples`)
+            gvk_staging_free()
+            return false
+          }
+        }
+      }
+    }
+  }
+  mem_copy(dst, buf, n)
+  let image = gvk_tex_image[tex]
+  let depth = gvk_is_depth(ifmt)
+  let levels = gvk_tex_levels[tex]
+  let cb = gvk_once_begin()
+  gvk_barrier(cb, image, depth, 0, levels, layers, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+  let bic = bytes(VkBufferImageCopy_sizeof)
+  Vk.zero(bic, VkBufferImageCopy_sizeof)
+  if depth { Vk.put_i32(bic, VkBufferImageCopy_imageSubresource + VkImageSubresourceLayers_aspectMask, VK_IMAGE_ASPECT_DEPTH_BIT) }
+  else { Vk.put_i32(bic, VkBufferImageCopy_imageSubresource + VkImageSubresourceLayers_aspectMask, VK_IMAGE_ASPECT_COLOR_BIT) }
+  Vk.put_i32(bic, VkBufferImageCopy_imageSubresource + VkImageSubresourceLayers_layerCount, layers)
+  Vk.put_i32(bic, VkBufferImageCopy_imageExtent + VkExtent3D_width, w)
+  Vk.put_i32(bic, VkBufferImageCopy_imageExtent + VkExtent3D_height, h)
+  Vk.put_i32(bic, VkBufferImageCopy_imageExtent + VkExtent3D_depth, 1)
+  Vk.cmd_copy_buffer_to_image(cb, gvk_st_buf, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, bic)
+  gvk_barrier(cb, image, depth, 0, levels, layers, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+  let ok = gvk_once_end(cb)
+  gvk_staging_free()
+  return ok
+}
+
+# The mip chain from level 0, each level blitted down from the one above it
+function gvk_tex_mips(tex: int, w: int, h: int) -> bool {
+  let levels = gvk_tex_levels[tex]
+  if levels <= 1 { return true }
+  let image = gvk_tex_image[tex]
+  let layers = gvk_tex_layers[tex]
+  let cb = gvk_once_begin()
+  var sw = w
+  var sh = h
+  for lv in 1 .. levels {
+    var dw = sw / 2
+    if dw < 1 { dw = 1 }
+    var dh = sh / 2
+    if dh < 1 { dh = 1 }
+    gvk_barrier(cb, image, false, lv - 1, 1, layers, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
+    gvk_barrier(cb, image, false, lv, 1, layers, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+    let blit = bytes(VkImageBlit_sizeof)
+    Vk.zero(blit, VkImageBlit_sizeof)
+    Vk.put_i32(blit, VkImageBlit_srcSubresource + VkImageSubresourceLayers_aspectMask, VK_IMAGE_ASPECT_COLOR_BIT)
+    Vk.put_i32(blit, VkImageBlit_srcSubresource + VkImageSubresourceLayers_mipLevel, lv - 1)
+    Vk.put_i32(blit, VkImageBlit_srcSubresource + VkImageSubresourceLayers_layerCount, layers)
+    Vk.put_i32(blit, VkImageBlit_srcOffsets + VkOffset3D_sizeof + VkOffset3D_x, sw)
+    Vk.put_i32(blit, VkImageBlit_srcOffsets + VkOffset3D_sizeof + VkOffset3D_y, sh)
+    Vk.put_i32(blit, VkImageBlit_srcOffsets + VkOffset3D_sizeof + VkOffset3D_z, 1)
+    Vk.put_i32(blit, VkImageBlit_dstSubresource + VkImageSubresourceLayers_aspectMask, VK_IMAGE_ASPECT_COLOR_BIT)
+    Vk.put_i32(blit, VkImageBlit_dstSubresource + VkImageSubresourceLayers_mipLevel, lv)
+    Vk.put_i32(blit, VkImageBlit_dstSubresource + VkImageSubresourceLayers_layerCount, layers)
+    Vk.put_i32(blit, VkImageBlit_dstOffsets + VkOffset3D_sizeof + VkOffset3D_x, dw)
+    Vk.put_i32(blit, VkImageBlit_dstOffsets + VkOffset3D_sizeof + VkOffset3D_y, dh)
+    Vk.put_i32(blit, VkImageBlit_dstOffsets + VkOffset3D_sizeof + VkOffset3D_z, 1)
+    Vk.cmd_blit_image(cb, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, blit, VK_FILTER_LINEAR)
+    gvk_barrier(cb, image, false, lv - 1, 1, layers, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+    gvk_barrier(cb, image, false, lv, 1, layers, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+    sw = dw
+    sh = dh
+  }
+  return gvk_once_end(cb)
+}
+
+# Level 0 of layer 0 back to the CPU, laid out the OpenGL way when the layouts agree (the terrain
+# reads its height field back as R32F into GL_RED / GL_FLOAT)
+function gvk_tex_read(tex: int, ifmt: int, w: int, h: int, fmt: int, ty: int, out: pointer) -> bool {
+  let cout = gvk_channels(ifmt)
+  let bout = gvk_channel_bytes(ifmt)
+  if gvk_gl_channels(fmt) != cout or gvk_gl_type_bytes(ty) != bout {
+    print(`r3d: vulkan: no read-back conversion for GL format {ifmt} as {fmt}/{ty}`)
+    return false
+  }
+  let n = w * h * cout * bout
+  let src = gvk_staging(n, VK_BUFFER_USAGE_TRANSFER_DST_BIT)
+  if src == null { return false }
+  let image = gvk_tex_image[tex]
+  let depth = gvk_is_depth(ifmt)
+  let cb = gvk_once_begin()
+  gvk_barrier(cb, image, depth, 0, 1, 1, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
+  let bic = bytes(VkBufferImageCopy_sizeof)
+  Vk.zero(bic, VkBufferImageCopy_sizeof)
+  if depth { Vk.put_i32(bic, VkBufferImageCopy_imageSubresource + VkImageSubresourceLayers_aspectMask, VK_IMAGE_ASPECT_DEPTH_BIT) }
+  else { Vk.put_i32(bic, VkBufferImageCopy_imageSubresource + VkImageSubresourceLayers_aspectMask, VK_IMAGE_ASPECT_COLOR_BIT) }
+  Vk.put_i32(bic, VkBufferImageCopy_imageSubresource + VkImageSubresourceLayers_layerCount, 1)
+  Vk.put_i32(bic, VkBufferImageCopy_imageExtent + VkExtent3D_width, w)
+  Vk.put_i32(bic, VkBufferImageCopy_imageExtent + VkExtent3D_height, h)
+  Vk.put_i32(bic, VkBufferImageCopy_imageExtent + VkExtent3D_depth, 1)
+  Vk.cmd_copy_image_to_buffer(cb, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, gvk_st_buf, 1, bic)
+  gvk_barrier(cb, image, depth, 0, 1, 1, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+  let ok = gvk_once_end(cb)
+  if ok { mem_copy(out, src, n) }
+  gvk_staging_free()
+  return ok
+}
+
+function gvk_tex_release(tex: int) -> void {
+  if gvk_tex_image[tex] == 0 { return }
+  let zero: long = 0
+  Vk.destroy_image_view(gvk_dev, gvk_tex_view[tex], null)
+  Vk.destroy_image(gvk_dev, gvk_tex_image[tex], null)
+  Vk.free_memory(gvk_dev, gvk_tex_mem[tex], null)
+  gvk_n_allocs -= 1
+  gvk_tex_image[tex] = zero;  gvk_tex_view[tex] = zero;  gvk_tex_mem[tex] = zero
+  gvk_tex_levels[tex] = 0;  gvk_tex_layers[tex] = 0;  gvk_tex_vkfmt[tex] = 0
+}
+
+# ---- samplers -----------------------------------------------------------------------------
+# One VkSampler per distinct way of reading a texture, made the first time it is asked for.
+# The arguments are what the renderer set through gpu_tex_param (0 where it set nothing, which
+# means GL's own default).
+var gvk_smp_keys: []string = null
+var gvk_smp: []long = null
+
+function gvk_filter(f: int) -> int {
+  if f == GL_NEAREST or f == GL_NEAREST_MIPMAP_NEAREST or f == GL_NEAREST_MIPMAP_LINEAR { return VK_FILTER_NEAREST }
+  return VK_FILTER_LINEAR
+}
+function gvk_address(wrap: int) -> int {
+  if wrap == GL_CLAMP_TO_EDGE { return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE }
+  if wrap == GL_CLAMP_TO_BORDER { return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER }
+  return VK_SAMPLER_ADDRESS_MODE_REPEAT
+}
+function gvk_compare_op(f: int) -> int {
+  if f == GL_LESS { return VK_COMPARE_OP_LESS }
+  if f == GL_EQUAL { return VK_COMPARE_OP_EQUAL }
+  if f == GL_ALWAYS { return VK_COMPARE_OP_ALWAYS }
+  return VK_COMPARE_OP_LESS_OR_EQUAL
+}
+function gvk_sampler(min_f: int, mag_f: int, wrap_s: int, wrap_t: int, compare: int, aniso: int) -> long {
+  let key = `{min_f}/{mag_f}/{wrap_s}/{wrap_t}/{compare}/{aniso}`
+  if gvk_smp_keys == null { gvk_smp_keys = new []string;  gvk_smp = new []long }
+  for i in 0 .. len(gvk_smp_keys) { if gvk_smp_keys[i] == key { return gvk_smp[i] } }
+  var mn = min_f
+  if mn == 0 { mn = GL_NEAREST_MIPMAP_LINEAR }
+  var mg = mag_f
+  if mg == 0 { mg = GL_LINEAR }
+  let mipmapped = mn == GL_LINEAR_MIPMAP_LINEAR or mn == GL_NEAREST_MIPMAP_LINEAR or mn == GL_LINEAR_MIPMAP_NEAREST or mn == GL_NEAREST_MIPMAP_NEAREST
+  let sci = bytes(VkSamplerCreateInfo_sizeof)
+  Vk.zero(sci, VkSamplerCreateInfo_sizeof)
+  Vk.put_i32(sci, VkSamplerCreateInfo_sType, VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO)
+  Vk.put_i32(sci, VkSamplerCreateInfo_magFilter, gvk_filter(mg))
+  Vk.put_i32(sci, VkSamplerCreateInfo_minFilter, gvk_filter(mn))
+  if mn == GL_LINEAR_MIPMAP_LINEAR or mn == GL_NEAREST_MIPMAP_LINEAR { Vk.put_i32(sci, VkSamplerCreateInfo_mipmapMode, VK_SAMPLER_MIPMAP_MODE_LINEAR) }
+  else { Vk.put_i32(sci, VkSamplerCreateInfo_mipmapMode, VK_SAMPLER_MIPMAP_MODE_NEAREST) }
+  Vk.put_i32(sci, VkSamplerCreateInfo_addressModeU, gvk_address(wrap_s))
+  Vk.put_i32(sci, VkSamplerCreateInfo_addressModeV, gvk_address(wrap_t))
+  Vk.put_i32(sci, VkSamplerCreateInfo_addressModeW, gvk_address(wrap_t))
+  # without mipmaps, a max LOD of 0.25 samples level 0 only (the spec's own recipe for GL_LINEAR)
+  if mipmapped { Vk.put_i32(sci, VkSamplerCreateInfo_maxLod, 0x447A0000) } else { Vk.put_i32(sci, VkSamplerCreateInfo_maxLod, 0x3E800000) }
+  if aniso > 0x3F800000 and mipmapped {
+    var a = aniso
+    if a > gvk_max_aniso { a = gvk_max_aniso }
+    Vk.put_i32(sci, VkSamplerCreateInfo_anisotropyEnable, 1)
+    Vk.put_i32(sci, VkSamplerCreateInfo_maxAnisotropy, a)
+  }
+  if compare != 0 {
+    Vk.put_i32(sci, VkSamplerCreateInfo_compareEnable, 1)
+    Vk.put_i32(sci, VkSamplerCreateInfo_compareOp, gvk_compare_op(compare))
+  }
+  Vk.put_i32(sci, VkSamplerCreateInfo_borderColor, VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE)
+  let out = bytes(8)
+  let zero: long = 0
+  let r = Vk.create_sampler(gvk_dev, sci, null, out)
+  if r != VK_SUCCESS { gvk_fail("vkCreateSampler", r);  return zero }
+  let s = gvk_handle(out)
+  push(gvk_smp_keys, key)
+  push(gvk_smp, s)
+  return s
+}
+
+# ---- buffers ------------------------------------------------------------------------------
+# A buffer handle (a mesh's vertices or indices, an instance buffer, the overlay's stream)
+# indexes these lists. Every buffer can be read as vertices or as indices, so one handle serves
+# whichever the renderer binds it as. While the backend comes up every buffer is host-visible and
+# an upload maps and copies; staged device-local buffers arrive with the block allocator.
+var gvk_buf: []long = null
+var gvk_buf_mem: []long = null
+var gvk_buf_size: []int = null
+var gvk_buf_map: []pointer = null      # host-visible buffers stay mapped for their whole life
+
+function gvk_buf_new() -> int {
+  let zero: long = 0
+  if gvk_buf == null {
+    gvk_buf = new []long;  gvk_buf_mem = new []long;  gvk_buf_size = new []int;  gvk_buf_map = new []pointer
+    # handle 0 is "no buffer", as it is on OpenGL
+    push(gvk_buf, zero);  push(gvk_buf_mem, zero);  push(gvk_buf_size, 0);  push(gvk_buf_map, null)
+  }
+  push(gvk_buf, zero);  push(gvk_buf_mem, zero);  push(gvk_buf_size, 0);  push(gvk_buf_map, null)
+  return len(gvk_buf) - 1
+}
+
+function gvk_buf_release(b: int) -> void {
+  if gvk_buf[b] == 0 { return }
+  let zero: long = 0
+  Vk.unmap_memory(gvk_dev, gvk_buf_mem[b])
+  Vk.destroy_buffer(gvk_dev, gvk_buf[b], null)
+  Vk.free_memory(gvk_dev, gvk_buf_mem[b], null)
+  gvk_n_allocs -= 1
+  gvk_buf[b] = zero;  gvk_buf_mem[b] = zero;  gvk_buf_size[b] = 0;  gvk_buf_map[b] = null
+}
+
+# Room for at least n bytes behind handle b; a buffer that is already big enough is kept, so a
+# stream re-filled every frame allocates once.
+function gvk_buf_reserve(b: int, n: int) -> bool {
+  if b <= 0 or b >= len(gvk_buf) { return false }
+  if gvk_buf[b] != 0 and gvk_buf_size[b] >= n { return true }
+  gvk_buf_release(b)
+  var size = n
+  if size < 64 { size = 64 }
+  let size_l: long = size
+  let bci = bytes(VkBufferCreateInfo_sizeof)
+  Vk.zero(bci, VkBufferCreateInfo_sizeof)
+  Vk.put_i32(bci, VkBufferCreateInfo_sType, VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO)
+  Vk.put_i64(bci, VkBufferCreateInfo_size, size_l)
+  Vk.put_i32(bci, VkBufferCreateInfo_usage, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT)
+  Vk.put_i32(bci, VkBufferCreateInfo_sharingMode, VK_SHARING_MODE_EXCLUSIVE)
+  let out = bytes(8)
+  var r = Vk.create_buffer(gvk_dev, bci, null, out)
+  if r != VK_SUCCESS { return gvk_fail(`vkCreateBuffer ({size} bytes)`, r) }
+  let buf = gvk_handle(out)
+  let req = bytes(VkMemoryRequirements_sizeof)
+  Vk.get_buffer_memory_requirements(gvk_dev, buf, req)
+  let mem = gvk_alloc(req, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
+  let zero: long = 0
+  if mem == 0 { Vk.destroy_buffer(gvk_dev, buf, null);  return false }
+  r = Vk.bind_buffer_memory(gvk_dev, buf, mem, zero)
+  if r != VK_SUCCESS { return gvk_fail("vkBindBufferMemory", r) }
+  let pp = bytes(8)
+  r = Vk.map_memory(gvk_dev, mem, zero, size_l, 0, pp)
+  if r != VK_SUCCESS { return gvk_fail("vkMapMemory", r) }
+  gvk_buf[b] = buf;  gvk_buf_mem[b] = mem;  gvk_buf_size[b] = size;  gvk_buf_map[b] = Vk.get_ptr(pp, 0)
+  return true
+}
+
+# glBufferData: the whole buffer, from data (or storage only when data is null)
+function gvk_buf_upload(b: int, n: int, data: pointer) -> bool {
+  if not gvk_buf_reserve(b, n) { return false }
+  if data != null and n > 0 { mem_copy(gvk_buf_map[b], data, n) }
+  return true
+}

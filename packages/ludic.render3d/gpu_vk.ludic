@@ -16,6 +16,7 @@ var gvk_family: int = -1
 var gvk_mp: bytes = null             # VkPhysicalDeviceMemoryProperties
 var gvk_device_name: string = ""
 var gvk_why: string = ""             # why the device did not come up, for the fallback notice
+var gvk_max_aniso: int = 0x3F800000  # the device's anisotropy limit as float bits; 1.0 when it has none
 
 function gvk_fail(what: string, r: int) -> bool {
   gvk_why = `{what} failed (VkResult {r})`
@@ -113,6 +114,9 @@ function gvk_init() -> bool {
   if Vk.get_i32(f12, VkPhysicalDeviceVulkan12Features_descriptorIndexing) != 1 { missing = missing + " descriptorIndexing" }
   if Vk.get_i32(f12, VkPhysicalDeviceVulkan12Features_timelineSemaphore) != 1 { missing = missing + " timelineSemaphore" }
   if len(missing) > 0 { gvk_why = `{gvk_device_name} lacks{missing}`;  return false }
+  # anisotropic filtering is a 1.0 feature every desktop GPU has; ask for it when it is there
+  let aniso = Vk.get_i32(f2, VkPhysicalDeviceFeatures2_features + VkPhysicalDeviceFeatures_samplerAnisotropy) == 1
+  if aniso { gvk_max_aniso = Vk.get_i32(props, VkPhysicalDeviceProperties_limits + VkPhysicalDeviceLimits_maxSamplerAnisotropy) }
   let want13 = bytes(VkPhysicalDeviceVulkan13Features_sizeof)
   Vk.zero(want13, VkPhysicalDeviceVulkan13Features_sizeof)
   Vk.put_i32(want13, VkPhysicalDeviceVulkan13Features_sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES)
@@ -124,6 +128,11 @@ function gvk_init() -> bool {
   Vk.put_ptr(want12, VkPhysicalDeviceVulkan12Features_pNext, want13)
   Vk.put_i32(want12, VkPhysicalDeviceVulkan12Features_descriptorIndexing, 1)
   Vk.put_i32(want12, VkPhysicalDeviceVulkan12Features_timelineSemaphore, 1)
+  let want2 = bytes(VkPhysicalDeviceFeatures2_sizeof)
+  Vk.zero(want2, VkPhysicalDeviceFeatures2_sizeof)
+  Vk.put_i32(want2, VkPhysicalDeviceFeatures2_sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2)
+  Vk.put_ptr(want2, VkPhysicalDeviceFeatures2_pNext, want12)
+  if aniso { Vk.put_i32(want2, VkPhysicalDeviceFeatures2_features + VkPhysicalDeviceFeatures_samplerAnisotropy, 1) }
 
   Vk.put_i32(cnt, 0, 0)
   Vk.enumerate_device_extension_properties(gvk_pd, null, cnt, null)
@@ -142,7 +151,7 @@ function gvk_init() -> bool {
   let dci = bytes(VkDeviceCreateInfo_sizeof)
   Vk.zero(dci, VkDeviceCreateInfo_sizeof)
   Vk.put_i32(dci, VkDeviceCreateInfo_sType, VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO)
-  Vk.put_ptr(dci, VkDeviceCreateInfo_pNext, want12)
+  Vk.put_ptr(dci, VkDeviceCreateInfo_pNext, want2)
   Vk.put_i32(dci, VkDeviceCreateInfo_queueCreateInfoCount, 1)
   Vk.put_ptr(dci, VkDeviceCreateInfo_pQueueCreateInfos, qci)
   if gvk_ext_in(dexts, nde, "VK_KHR_portability_subset") {
@@ -160,8 +169,15 @@ function gvk_init() -> bool {
 
   if not gvk_cmd_init() { return false }
   gvk_ready = true
-  print(`r3d: vulkan on {gvk_device_name}`)
+  print(`r3d: vulkan on {gvk_device_name}, anisotropy up to {gvk_aniso_x(gvk_max_aniso)}x`)
   return true
+}
+
+# a positive float, as its bits, to a whole number (16.0 -> 16) for a message
+function gvk_aniso_x(bits: int) -> int {
+  let e = ((bits >> 23) & 255) - 127
+  if e < 0 { return 0 }
+  return ((bits & 0x7FFFFF) | 0x800000) >> (23 - e)
 }
 
 # ---- memory -------------------------------------------------------------------------------
