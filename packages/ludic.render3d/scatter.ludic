@@ -61,6 +61,15 @@ property Layer {
   # crossed card carrying its atlas (cover keeps its baked card as the far level).
   lods:     []Model,
   n_lods:   int = 0,
+  # The GPU-culled path (Vulkan, phase 38): every instance in g_src, a compute pass packs the
+  # visible ones per bucket into g_dst and writes the instance counts of the draw records in
+  # g_cmds (see scatter_cull.comp for the record layout). g_on once it is set up for g_n instances.
+  g_on:     bool = false,
+  g_n:      int = 0,
+  g_src:    int = 0,
+  g_dst:    int = 0,
+  g_cmds:   int = 0,
+  g_counts: int = 0,
   lod_dist: words,
   lod_card: words,
   lod_buf:  words,
@@ -525,6 +534,88 @@ function scatter_begin_frame() -> void {
     v3_copy(sc_view_pos, cam_pos)
     v3_copy(sc_view_fwd, cam_fwd)
   }
+  # GPU-culled layers dispatch before the first pass of the frame, so no pass is split for it
+  if sc_layers != null {
+    for i in 0 .. len(sc_layers) { if sc_layers[i].n_lods > 1 and sc_layers[i].imp != null { layer_update(sc_layers[i]) } }
+  }
+}
+
+# ---- the GPU-culled path ------------------------------------------------------------------
+# R3D_GPU_CULL=1 on Vulkan: a tree layer (a LOD chain of up to four levels of up to four prims,
+# with an impostor, not streamed) is culled and split into its buckets by scatter_cull.comp, and
+# its lit, prepass, impostor and shadow-LOD draws read the records that pass wrote. Nothing is
+# partitioned or uploaded on the CPU when the view moves.
+const SC_REC_W: int = 20              # a VkDrawIndexedIndirectCommand
+const SC_RECS: int = 29               # 16 level x prim, 1 impostor, 12 shadow LOD (scatter_cull.comp)
+var sc_cull_prog: int = 0
+var sc_cull_tried: bool = false
+var sc_ind_base: int = -1             # >= 0: layer_draw_model / layer_draw_depth draw records from here
+
+function layer_gpu_eligible(l: Layer) -> bool {
+  if l.n_lods < 2 or l.n_lods > 4 or l.imp == null or l.streamed or l.flower or l.blade or l.count == 0 { return false }
+  for k in 0 .. l.n_lods { if len(l.lods[k].prims) > 4 { return false } }
+  return true
+}
+
+function layer_gpu_prepare(l: Layer) -> bool {
+  if not sc_cull_tried {
+    sc_cull_tried = true
+    # Os.env is null when the variable is unset, and a compare reads through it: ask first
+    if gpu_has_compute() and Os.has_env("R3D_GPU_CULL") and Os.env("R3D_GPU_CULL") == "1" {
+      sc_cull_prog = gpu_compute("scatter_cull", 4)
+      if sc_cull_prog > 0 { print("r3d: scatter: tree layers are culled on the GPU") }
+    }
+  }
+  if sc_cull_prog == 0 or not layer_gpu_eligible(l) { return false }
+  if l.g_on and l.g_n == l.count { return true }
+  if l.g_src == 0 {
+    l.g_src = gpu_buffer_new();  l.g_dst = gpu_buffer_new();  l.g_cmds = gpu_buffer_new();  l.g_counts = gpu_buffer_new()
+    gpu_buffer_gpu_owned(l.g_dst);  gpu_buffer_gpu_owned(l.g_cmds);  gpu_buffer_gpu_owned(l.g_counts)
+  }
+  let n = l.n_lods
+  let cap = l.count
+  gpu_buffer_upload(l.g_src, cap * INST_FLOATS * 4, l.inst, GPU_STATIC)
+  gpu_buffer_upload(l.g_dst, (n + 1) * cap * INST_FLOATS * 4, null, GPU_DYNAMIC)
+  let rec = words(SC_RECS * 5)
+  for i in 0 .. SC_RECS * 5 { rec[i] = 0 }
+  for k in 0 .. n {
+    let m = l.lods[k]
+    for j in 0 .. len(m.prims) { rec[(k * 4 + j) * 5] = m.prims[j].mesh.count;  rec[(k * 4 + j) * 5 + 4] = k * cap }
+  }
+  rec[16 * 5] = sc_card.count;  rec[16 * 5 + 4] = n * cap
+  if n > 2 {
+    let m2 = l.lods[2]
+    for b in 0 .. 3 {
+      for j in 0 .. len(m2.prims) { rec[(17 + b * 4 + j) * 5] = m2.prims[j].mesh.count;  rec[(17 + b * 4 + j) * 5 + 4] = b * cap }
+    }
+  }
+  gpu_buffer_upload(l.g_cmds, SC_RECS * SC_REC_W, rec, GPU_DYNAMIC)
+  let zeros = words(5)
+  for i in 0 .. 5 { zeros[i] = 0 }
+  gpu_buffer_upload(l.g_counts, 20, zeros, GPU_DYNAMIC)
+  free(rec);  free(zeros)
+  # the card casts every instance, as on the CPU path (layer_grid_build uploads this there)
+  l.n_sh = l.count
+  gpu_buffer_upload(l.sh_buf, l.count * INST_FLOATS * 4, l.inst, GPU_STATIC)
+  l.g_n = l.count
+  l.g_on = true
+  return true
+}
+
+# the dispatch for the view as it stands: frustum, camera, distances, the layer's shape
+function layer_gpu_cull(l: Layer) -> void {
+  let pr = words(36)
+  for i in 0 .. 36 { pr[i] = 0 }
+  if cam_planes != null { for i in 0 .. 16 { pr[i] = cam_planes[i] } }
+  pr[16] = cam_pos[0];  pr[17] = cam_pos[1];  pr[18] = cam_pos[2];  pr[19] = l.cull
+  for k in 0 .. l.n_lods { pr[20 + k] = l.lod_dist[k];  pr[24 + k] = len(l.lods[k].prims) }
+  pr[28] = l.count;  pr[29] = l.count;  pr[30] = l.n_lods;  pr[31] = 1
+  # as layer_grid_gather pads a cell: the tallest instance, plus a margin
+  pr[32] = f_mul(l.lods[0].height, F_TWO);  pr[33] = fi(4)
+  let bufs = words(4)
+  bufs[0] = l.g_src;  bufs[1] = l.g_dst;  bufs[2] = l.g_cmds;  bufs[3] = l.g_counts
+  gpu_dispatch(sc_cull_prog, pr, 144, bufs, 1)
+  free(pr);  free(bufs)
 }
 
 # Sort a static layer's instances into square cells (call once, after placement; a
@@ -667,6 +758,7 @@ function layer_update(l: Layer) -> void {
   if sc_freeze { return }
   if l.view_gen == sc_view_gen { return }
   l.view_gen = sc_view_gen
+  if layer_gpu_prepare(l) { layer_gpu_cull(l);  return }
   let t_lu = gl_now_us()
   let n_lu = l.count
   # A streamed layer's instances were already gathered per visible chunk: no split, no
@@ -764,6 +856,11 @@ var sc_dbg_tint: words = null
 # no cheap stand-in to cast from, so without this its shadow simply began at the near
 # distance — which is the crown shadow that appeared as you walked up to a tree.
 function layer_draw_near(l: Layer, shadow: bool, light_vp: words, full: bool) -> void {
+  if l.n_lods > 1 and l.g_on and not shadow {
+    for k in 0 .. l.n_lods { sc_dbg_level = k;  sc_ind_base = k * 4;  layer_draw_model(l, l.lods[k], l.g_dst, 1, l.lod_card[k] == 1, shadow, light_vp) }
+    sc_ind_base = -1;  sc_dbg_level = -1
+    return
+  }
   if l.n_lods > 1 {
     # a LOD chain: every level from its own bucket (casters are what is drawn)
     for k in 0 .. l.n_lods { sc_dbg_level = k;  layer_draw_model(l, l.lods[k], l.lod_buf[k], l.n_lod[k], l.lod_card[k] == 1, shadow, light_vp) }
@@ -829,14 +926,15 @@ function layer_draw_model(l: Layer, model: Model, vb: int, cnt: int, card: bool,
       r3d_bind_2d(p, "u_diff", 0, pr.diff)
       if not shadow { r3d_bind_2d(p, "u_nrm", 1, pr.nrm);  r3d_bind_2d(p, "u_arm", 2, pr.arm) }
     }
-    mesh_draw_instanced(pr.mesh, cnt)
+    if sc_ind_base >= 0 { gpu_draw_mesh_indirect(pr.mesh, l.g_cmds, (sc_ind_base + i) * SC_REC_W, 1, 0, 0) }
+    else { mesh_draw_instanced(pr.mesh, cnt) }
   }
   gpu_alpha_to_coverage(false)
   if p == sc_prog_fol_eq { gpu_depth_func(GL_LESS) }
 }
 
 function layer_draw_far(l: Layer, shadow: bool, light_vp: words) -> void {
-  if l.n_far == 0 or l.imp == null { return }
+  if l.imp == null or (l.n_far == 0 and not l.g_on) { return }
   var p = sc_imp_prog
   if shadow { p = sc_imp_prog_shadow }
   gpu_use_program(p)
@@ -863,8 +961,13 @@ function layer_draw_far(l: Layer, shadow: bool, light_vp: words) -> void {
   }
   gpu_cull(false)
   if not shadow and sc_a2c { gpu_alpha_to_coverage(true) }
-  scatter_attach(sc_card, l.imp_buf)
-  mesh_draw_instanced(sc_card, l.n_far)
+  if l.g_on {
+    scatter_attach(sc_card, l.g_dst)
+    gpu_draw_mesh_indirect(sc_card, l.g_cmds, 16 * SC_REC_W, 1, 0, 0)
+  } else {
+    scatter_attach(sc_card, l.imp_buf)
+    mesh_draw_instanced(sc_card, l.n_far)
+  }
   gpu_alpha_to_coverage(false)
 }
 
@@ -915,7 +1018,8 @@ function layer_draw_depth(l: Layer, model: Model, vb: int, cnt: int) -> void {
     let pr = model.prims[i]
     scatter_attach(pr.mesh, vb)
     r3d_bind_2d(p, "u_diff", 0, pr.diff)
-    mesh_draw_instanced(pr.mesh, cnt)
+    if sc_ind_base >= 0 { gpu_draw_mesh_indirect(pr.mesh, l.g_cmds, (sc_ind_base + i) * SC_REC_W, 1, 0, 0) }
+    else { mesh_draw_instanced(pr.mesh, cnt) }
   }
 }
 
@@ -928,7 +1032,10 @@ function scatter_draw_depth() -> void {
     if not l.foliage or l.blade or l.flower { continue }
     if r3d_no_trees and l.imp != null { continue }
     layer_update(l)
-    if l.n_lods > 1 {
+    if l.n_lods > 1 and l.g_on {
+      for k in 0 .. l.n_lods { if l.lod_card[k] != 1 { sc_ind_base = k * 4;  layer_draw_depth(l, l.lods[k], l.g_dst, 1) } }
+      sc_ind_base = -1
+    } else if l.n_lods > 1 {
       # (a tree layer is flagged `card` for its distant level; its mesh levels still count)
       for k in 0 .. l.n_lods { if l.lod_card[k] != 1 { layer_draw_depth(l, l.lods[k], l.lod_buf[k], l.n_lod[k]) } }
     } else if not l.card {
@@ -969,7 +1076,10 @@ function scatter_draw_casters(light_vp: words) -> void {
       # crown of drooping needle cards is mostly slivers from the side, so the sun, which
       # sees the crown from above, cast a trunk line with a few blobs. The near levels
       # now also cast their LOD2 mesh, alpha-tested, on top of the card.
-      if l.n_lods > 2 {
+      if l.n_lods > 2 and l.g_on {
+        for k in 0 .. 3 { sc_ind_base = 17 + k * 4;  layer_draw_model(l, l.lods[2], l.g_dst, 1, false, true, light_vp) }
+        sc_ind_base = -1
+      } else if l.n_lods > 2 {
         for k in 0 .. 3 { layer_draw_model(l, l.lods[2], l.lod_buf[k], l.n_lod[k], false, true, light_vp) }
       }
     }

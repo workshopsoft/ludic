@@ -280,6 +280,32 @@ function cmd_shaders() -> int {
     }
     made += 1
   }
+  # Compute programs: compute.list names each one (name|file.comp). The renderer loads
+  # <name>.comp.spv straight from the directory; its bindings are fixed by convention - binding 0
+  # a uniform block of parameters, 1.. storage buffers - so there is nothing to reflect.
+  var made_c = 0
+  let clist = read_file("packages/ludic.render3d/shaders/compute.list")
+  if clist != null {
+    let clines = Text.split(clist, "\n")
+    var ci = 0
+    while ci < len(clines) {
+      let cl = Text.trim(clines[ci])
+      ci += 1
+      if slen(cl) == 0 or cl[0] == '#' { continue }
+      let cp = Text.split(cl, "|")
+      if len(cp) < 2 { err(`shaders: bad compute line: {cl}\n`);  return 1 }
+      let glsl = `{tmp}/{cp[0]}.comp.glsl`
+      if not write_file(glsl, "#version 460\n" + shd_file(cp[1])) { err(`shaders: cannot write {glsl}\n`);  return 1 }
+      let spv = `{outdir}/{cp[0]}.comp.spv`
+      let logf = `{tmp}/{cp[0]}.comp.log`
+      if not shq(`{shd_q(shd_bin + "/glslangValidator")} -V -S comp {shd_q(glsl)} -o {shd_q(spv)} > {shd_q(logf)} 2>&1`) {
+        err(`shaders: {cp[1]} (compute) did not compile:\n{capture("grep ERROR " + shd_q(logf) + " | head -5")}\n`)
+        return 1
+      }
+      if not shq(`{shd_q(shd_bin + "/spirv-val")} --target-env vulkan1.3 {shd_q(spv)} > /dev/null 2>&1`) { err(`shaders: {spv} fails spirv-val\n`);  return 1 }
+      made_c += 1
+    }
+  }
   if not write_file(`{outdir}/manifest.txt`, sb_str(mf)) { err("shaders: cannot write manifest.txt\n");  return 1 }
   if check {
     let real = "packages/ludic.render3d/shaders/spv"
@@ -287,6 +313,6 @@ function cmd_shaders() -> int {
   }
   var note = ""
   if check { note = " (unchanged)" }
-  print(`OK {string(made)} programs, {string(made * 2)} SPIR-V stages{note}`)
+  print(`OK {string(made)} programs, {string(made * 2 + made_c)} SPIR-V stages ({string(made_c)} compute){note}`)
   return 0
 }

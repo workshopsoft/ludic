@@ -561,12 +561,22 @@ function gvk_retire_flush() -> void {
   gvk_retired_mem = new []long
 }
 
+# A buffer a compute pass writes: a draw later in the same frame reads what the GPU put there,
+# so it is never swapped for fresh storage because it was used this frame (gvk_buf_reserve).
+var gvk_buf_gpu: []int = null
+function gvk_buf_gpu_owned(b: int) -> void {
+  if gvk_buf_gpu == null { gvk_buf_gpu = new []int }
+  while len(gvk_buf_gpu) <= b { push(gvk_buf_gpu, 0) }
+  gvk_buf_gpu[b] = 1
+}
+function gvk_buf_is_gpu(b: int) -> bool { return gvk_buf_gpu != null and b < len(gvk_buf_gpu) and gvk_buf_gpu[b] == 1 }
+
 # Room for at least n bytes behind handle b; a buffer that is already big enough is kept, so a
 # stream re-filled every frame allocates once.
 function gvk_buf_reserve(b: int, n: int) -> bool {
   if b <= 0 or b >= len(gvk_buf) { return false }
   # already big enough, and no draw this frame reads what is there: fill it in place
-  if gvk_buf[b] != 0 and gvk_buf_size[b] >= n and gvk_buf_used[b] != gvk_frame_no { return true }
+  if gvk_buf[b] != 0 and gvk_buf_size[b] >= n and (gvk_buf_used[b] != gvk_frame_no or gvk_buf_is_gpu(b)) { return true }
   gvk_buf_release(b)
   var size = n
   if size < 64 { size = 64 }
@@ -575,7 +585,7 @@ function gvk_buf_reserve(b: int, n: int) -> bool {
   Vk.zero(bci, VkBufferCreateInfo_sizeof)
   Vk.put_i32(bci, VkBufferCreateInfo_sType, VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO)
   Vk.put_i64(bci, VkBufferCreateInfo_size, size_l)
-  Vk.put_i32(bci, VkBufferCreateInfo_usage, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT)
+  Vk.put_i32(bci, VkBufferCreateInfo_usage, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT)
   Vk.put_i32(bci, VkBufferCreateInfo_sharingMode, VK_SHARING_MODE_EXCLUSIVE)
   let out = bytes(8)
   var r = Vk.create_buffer(gvk_dev, bci, null, out)

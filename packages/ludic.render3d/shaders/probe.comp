@@ -1,0 +1,10 @@
+// probe.comp - the compute path's own check (R3D_VK_PROBE=1): every float in the buffer times
+// the parameter, so a readback proves the dispatch, the bindings and the GPU-owned buffer.
+layout(local_size_x = 64) in;
+layout(set = 0, binding = 0) uniform Params { uint count; float mul; } pr;
+layout(set = 0, binding = 1) buffer Data { float v[]; } data;
+void main() {
+  uint i = gl_GlobalInvocationID.x;
+  if (i >= pr.count) { return; }
+  data.v[i] = data.v[i] * pr.mul;
+}

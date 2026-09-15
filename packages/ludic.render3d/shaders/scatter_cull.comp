@@ -1,0 +1,82 @@
+// scatter_cull.comp - a scatter layer's per-frame culling on the GPU (phase 38, stage 2).
+//
+// Every instance of the layer (8 floats: x, y, z, scale, sin yaw, cos yaw, seed, wind) is tested
+// against the view frustum and sorted into the layer's LOD buckets by distance - the same rule as
+// layer_partition_lods on the CPU. Bucket k's instances are packed from out[k * cap], and the
+// instanceCount of each indirect draw command for that bucket is written here, so the draws that
+// follow read exactly what survived. Bucket n_lods is the impostor bucket.
+//
+// One invocation walks the list in order: packing needs a running count per bucket, and a walk of
+// tens of thousands of instances is a few hundred microseconds of GPU time - far below the CPU
+// partition and upload it replaces. A parallel prefix-sum version can come later.
+layout(local_size_x = 1) in;
+
+layout(set = 0, binding = 0) uniform Params {
+  vec4 planes[4];     // the side frustum planes (cam_planes): xyz in, w distance; inside when dot >= -r
+  vec4 cam;           // xyz the camera, w the cull distance (0 = none)
+  vec4 lod_dist;      // outer distance of each level (0 = open: runs out to the cull distance)
+  uvec4 prims;        // the prims each level draws (at most 4)
+  uint count;         // instances in the layer
+  uint cap;           // instances each bucket can hold
+  uint n_lods;        // levels (1 .. 4)
+  uint has_imp;       // 1 when the layer has an impostor bucket
+  float pad;          // sphere radius per unit of instance scale (the model's bound)
+  float pad_abs;      // added to every radius (m)
+} pr;
+
+layout(set = 0, binding = 1) readonly buffer Src { float src[]; };
+layout(set = 0, binding = 2) buffer Dst { float dst[]; };
+// VkDrawIndexedIndirectCommand records, 5 uints each; the CPU fills indexCount / firstIndex /
+// vertexOffset / firstInstance once, this writes instanceCount:
+//   0 .. 15   level * 4 + prim     the lit pass and the depth prepass
+//   16        the impostor card    bucket n_lods
+//   17 .. 28  17 + bucket * 4 + prim   level 2's mesh cast from buckets 0 .. 2 (the shadow LOD)
+layout(set = 0, binding = 3) buffer Cmds { uint cmds[]; };
+// how many instances landed in each bucket (levels, then the impostor), for the CPU to read
+layout(set = 0, binding = 4) buffer Counts { uint counts[5]; };
+
+void main() {
+  uint n = pr.n_lods;
+  uint cnt[5] = uint[5](0u, 0u, 0u, 0u, 0u);
+  float cull2 = pr.cam.w * pr.cam.w;
+  bool open = pr.lod_dist[n - 1u] == 0.0;
+  for (uint i = 0u; i < pr.count; i++) {
+    uint o = i * 8u;
+    vec3 p = vec3(src[o], src[o + 1u], src[o + 2u]);
+    float dx = p.x - pr.cam.x;
+    float dz = p.z - pr.cam.z;
+    float d2 = dx * dx + dz * dz;
+    if (pr.cam.w != 0.0 && d2 > cull2) { continue; }
+    float r = pr.pad * src[o + 3u] + pr.pad_abs;
+    bool inside = true;
+    for (int k = 0; k < 4; k++) {
+      if (dot(pr.planes[k].xyz, p) + pr.planes[k].w < -r) { inside = false; break; }
+    }
+    if (!inside) { continue; }
+    float d = sqrt(d2);
+    uint lv = n;
+    for (uint k = 0u; k < n; k++) {
+      if (pr.lod_dist[k] != 0.0 && d < pr.lod_dist[k]) { lv = k; break; }
+    }
+    if (lv == n && open) { lv = n - 1u; }
+    if (lv == n && pr.has_imp == 0u) { continue; }
+    if (cnt[lv] >= pr.cap) { continue; }
+    uint q = (lv * pr.cap + cnt[lv]) * 8u;
+    for (uint k = 0u; k < 8u; k++) { dst[q + k] = src[o + k]; }
+    cnt[lv] += 1u;
+  }
+  for (uint k = 0u; k < 4u; k++) {
+    for (uint j = 0u; j < 4u; j++) {
+      uint c = (k * 4u + j) * 5u;
+      cmds[c + 1u] = (k < n && j < pr.prims[k]) ? cnt[k] : 0u;
+    }
+  }
+  cmds[16u * 5u + 1u] = (pr.has_imp != 0u) ? cnt[n] : 0u;
+  for (uint b = 0u; b < 3u; b++) {
+    for (uint j = 0u; j < 4u; j++) {
+      uint c = (17u + b * 4u + j) * 5u;
+      cmds[c + 1u] = (n > 2u && b < n && j < pr.prims[2]) ? cnt[b] : 0u;
+    }
+  }
+  for (uint k = 0u; k < 5u; k++) { counts[k] = cnt[k]; }
+}

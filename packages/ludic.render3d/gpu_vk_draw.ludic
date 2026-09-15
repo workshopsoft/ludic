@@ -118,6 +118,141 @@ function gvk_program(p: int, key: string, spv_dir: string) -> bool {
   return true
 }
 
+# ---- compute ------------------------------------------------------------------------------
+# A compute program is <name>.comp.spv beside the manifest, with bindings fixed by convention:
+# 0 the parameter block (a uniform buffer, copied into the frame's ring at the dispatch) and
+# 1 .. n storage buffers. Handles start at 1.
+var gvk_cp_pipe: []long = null
+var gvk_cp_layout: []long = null
+var gvk_cp_dsl: []long = null
+var gvk_cp_nbuf: []int = null
+
+function gvk_compute_new(name: string, n_bufs: int) -> int {
+  let zero: long = 0
+  if gvk_cp_pipe == null {
+    gvk_cp_pipe = new []long;  gvk_cp_layout = new []long;  gvk_cp_dsl = new []long;  gvk_cp_nbuf = new []int
+    push(gvk_cp_pipe, zero);  push(gvk_cp_layout, zero);  push(gvk_cp_dsl, zero);  push(gvk_cp_nbuf, 0)
+  }
+  let module = gvk_module(`{gvk_spv_dir}/{name}.comp.spv`)
+  if module == 0 { return 0 }
+  let nb = n_bufs + 1
+  let bw = VkDescriptorSetLayoutBinding_sizeof
+  let binds = bytes(bw * nb)
+  Vk.zero(binds, bw * nb)
+  for k in 0 .. nb {
+    var kind = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
+    if k == 0 { kind = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER }
+    Vk.put_i32(binds, k * bw + VkDescriptorSetLayoutBinding_binding, k)
+    Vk.put_i32(binds, k * bw + VkDescriptorSetLayoutBinding_descriptorType, kind)
+    Vk.put_i32(binds, k * bw + VkDescriptorSetLayoutBinding_descriptorCount, 1)
+    Vk.put_i32(binds, k * bw + VkDescriptorSetLayoutBinding_stageFlags, VK_SHADER_STAGE_COMPUTE_BIT)
+  }
+  let dslci = bytes(VkDescriptorSetLayoutCreateInfo_sizeof)
+  Vk.zero(dslci, VkDescriptorSetLayoutCreateInfo_sizeof)
+  Vk.put_i32(dslci, VkDescriptorSetLayoutCreateInfo_sType, VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO)
+  Vk.put_i32(dslci, VkDescriptorSetLayoutCreateInfo_bindingCount, nb)
+  Vk.put_ptr(dslci, VkDescriptorSetLayoutCreateInfo_pBindings, binds)
+  let dsl = bytes(8)
+  var r = Vk.create_descriptor_set_layout(gvk_dev, dslci, null, dsl)
+  if r != VK_SUCCESS { gvk_fail(`vkCreateDescriptorSetLayout for compute {name}`, r);  return 0 }
+  let plci = bytes(VkPipelineLayoutCreateInfo_sizeof)
+  Vk.zero(plci, VkPipelineLayoutCreateInfo_sizeof)
+  Vk.put_i32(plci, VkPipelineLayoutCreateInfo_sType, VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO)
+  Vk.put_i32(plci, VkPipelineLayoutCreateInfo_setLayoutCount, 1)
+  Vk.put_ptr(plci, VkPipelineLayoutCreateInfo_pSetLayouts, dsl)
+  let out = bytes(8)
+  r = Vk.create_pipeline_layout(gvk_dev, plci, null, out)
+  if r != VK_SUCCESS { gvk_fail(`vkCreatePipelineLayout for compute {name}`, r);  return 0 }
+  let layout = gvk_handle(out)
+  let cpci = bytes(VkComputePipelineCreateInfo_sizeof)
+  Vk.zero(cpci, VkComputePipelineCreateInfo_sizeof)
+  Vk.put_i32(cpci, VkComputePipelineCreateInfo_sType, VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO)
+  let so = VkComputePipelineCreateInfo_stage
+  Vk.put_i32(cpci, so + VkPipelineShaderStageCreateInfo_sType, VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO)
+  Vk.put_i32(cpci, so + VkPipelineShaderStageCreateInfo_stage, VK_SHADER_STAGE_COMPUTE_BIT)
+  Vk.put_i64(cpci, so + VkPipelineShaderStageCreateInfo_module, module)
+  Vk.put_ptr(cpci, so + VkPipelineShaderStageCreateInfo_pName, "main")
+  Vk.put_i64(cpci, VkComputePipelineCreateInfo_layout, layout)
+  r = Vk.create_compute_pipelines(gvk_dev, zero, 1, cpci, null, out)
+  if r != VK_SUCCESS { gvk_fail(`vkCreateComputePipelines {name}`, r);  return 0 }
+  push(gvk_cp_pipe, gvk_handle(out));  push(gvk_cp_layout, layout);  push(gvk_cp_dsl, Vk.get_i64(dsl, 0));  push(gvk_cp_nbuf, n_bufs)
+  return len(gvk_cp_pipe) - 1
+}
+
+# Record a dispatch of compute program c into the frame, between passes: params (n_params
+# bytes, std140) as binding 0 and bufs[0 .. n) as bindings 1 .. n.
+function gvk_dispatch(c: int, params: pointer, n_params: int, bufs: words, gx: int, gy: int, gz: int) -> void {
+  let zero: long = 0
+  if gvk_cp_pipe == null or c <= 0 or c >= len(gvk_cp_pipe) { return }
+  gvk_pass_end()
+  let cb = gvk_frame_cb()
+  let nb = gvk_cp_nbuf[c]
+  let dsai = bytes(VkDescriptorSetAllocateInfo_sizeof)
+  Vk.zero(dsai, VkDescriptorSetAllocateInfo_sizeof)
+  Vk.put_i32(dsai, VkDescriptorSetAllocateInfo_sType, VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO)
+  Vk.put_i64(dsai, VkDescriptorSetAllocateInfo_descriptorPool, gvk_dpool)
+  Vk.put_i32(dsai, VkDescriptorSetAllocateInfo_descriptorSetCount, 1)
+  let layouts = bytes(8)
+  Vk.put_i64(layouts, 0, gvk_cp_dsl[c])
+  Vk.put_ptr(dsai, VkDescriptorSetAllocateInfo_pSetLayouts, layouts)
+  let sets = bytes(8)
+  let r = Vk.allocate_descriptor_sets(gvk_dev, dsai, sets)
+  if r != VK_SUCCESS { gvk_fail("vkAllocateDescriptorSets (compute)", r);  return }
+  let set = Vk.get_i64(sets, 0)
+  let at = gvk_ring_put(params, n_params)
+  if at < 0 { print("r3d: vulkan: the frame's uniform ring is full");  return }
+  let ww = VkWriteDescriptorSet_sizeof
+  let bw = VkDescriptorBufferInfo_sizeof
+  let writes = bytes(ww * (nb + 1))
+  Vk.zero(writes, ww * (nb + 1))
+  let infos = bytes(bw * (nb + 1))
+  Vk.zero(infos, bw * (nb + 1))
+  for k in 0 .. nb + 1 {
+    var buf = gvk_ring_buf
+    var off: long = 0
+    var range: long = 0
+    var kind = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
+    if k == 0 { off = at;  range = n_params;  kind = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER }
+    else { buf = bufs[k - 1];  range = gvk_buf_size[buf];  gvk_buf_used[buf] = gvk_frame_no }
+    Vk.put_i64(infos, k * bw + VkDescriptorBufferInfo_buffer, gvk_buf[buf])
+    Vk.put_i64(infos, k * bw + VkDescriptorBufferInfo_offset, off)
+    Vk.put_i64(infos, k * bw + VkDescriptorBufferInfo_range, range)
+    Vk.put_i32(writes, k * ww + VkWriteDescriptorSet_sType, VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET)
+    Vk.put_i64(writes, k * ww + VkWriteDescriptorSet_dstSet, set)
+    Vk.put_i32(writes, k * ww + VkWriteDescriptorSet_dstBinding, k)
+    Vk.put_i32(writes, k * ww + VkWriteDescriptorSet_descriptorCount, 1)
+    Vk.put_i32(writes, k * ww + VkWriteDescriptorSet_descriptorType, kind)
+    Vk.put_ptr(writes, k * ww + VkWriteDescriptorSet_pBufferInfo, mem_off(infos, k * bw))
+  }
+  Vk.update_descriptor_sets(gvk_dev, nb + 1, writes, 0, null)
+  Vk.cmd_bind_pipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, gvk_cp_pipe[c])
+  Vk.cmd_bind_descriptor_sets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, gvk_cp_layout[c], 0, 1, sets, 0, null)
+  Vk.cmd_dispatch(cb, gx, gy, gz)
+}
+
+# R3D_VK_PROBE=1: one dispatch over a GPU-owned buffer, read back - the compute path end to end
+function gvk_compute_probe() -> void {
+  let c = gvk_compute_new("probe", 1)
+  if c == 0 { print("r3d: vulkan compute probe: FAILED (no program)");  return }
+  let n = 1000
+  let b = gvk_buf_new()
+  let data = bytes(n * 4)
+  for i in 0 .. n { Vk.put_i32(data, i * 4, fi(i)) }
+  gvk_buf_upload(b, n * 4, data)
+  gvk_buf_gpu_owned(b)
+  let pr = bytes(8)
+  Vk.put_i32(pr, 0, n)
+  Vk.put_i32(pr, 4, fi(3))
+  let bufs = words(1)
+  bufs[0] = b
+  gvk_dispatch(c, pr, 8, bufs, (n + 63) / 64, 1, 1)
+  gvk_flush()
+  var bad = 0
+  let mp = gvk_buf_map[b]
+  for i in 0 .. n { if Vk.get_i32(mp, i * 4) != fi(i * 3) { bad += 1 } }
+  if bad == 0 { print(`r3d: vulkan compute probe OK ({n} values)`) } else { print(`r3d: vulkan compute probe: FAILED ({bad} of {n} wrong)`) }
+}
+
 # ---- pipelines ----------------------------------------------------------------------------
 # A pipeline is everything OpenGL decides at the draw: the program, the vertex layout the mesh
 # recorded, the render state the renderer set, and the formats and sample count of the pass it
@@ -480,16 +615,18 @@ function gvk_frame_init() -> bool {
   if gvk_ring_align < 16 { gvk_ring_align = 16 }
   gvk_ring_buf = gvk_buf_new()
   if not gvk_buf_reserve(gvk_ring_buf, GVK_RING_BYTES) { return false }
-  let sizes = bytes(VkDescriptorPoolSize_sizeof * 2)
+  let sizes = bytes(VkDescriptorPoolSize_sizeof * 3)
   Vk.put_i32(sizes, VkDescriptorPoolSize_type, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
   Vk.put_i32(sizes, VkDescriptorPoolSize_descriptorCount, 32768)
   Vk.put_i32(sizes, VkDescriptorPoolSize_sizeof + VkDescriptorPoolSize_type, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
   Vk.put_i32(sizes, VkDescriptorPoolSize_sizeof + VkDescriptorPoolSize_descriptorCount, 131072)
+  Vk.put_i32(sizes, VkDescriptorPoolSize_sizeof * 2 + VkDescriptorPoolSize_type, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)
+  Vk.put_i32(sizes, VkDescriptorPoolSize_sizeof * 2 + VkDescriptorPoolSize_descriptorCount, 16384)
   let dpci = bytes(VkDescriptorPoolCreateInfo_sizeof)
   Vk.zero(dpci, VkDescriptorPoolCreateInfo_sizeof)
   Vk.put_i32(dpci, VkDescriptorPoolCreateInfo_sType, VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO)
   Vk.put_i32(dpci, VkDescriptorPoolCreateInfo_maxSets, 16384)
-  Vk.put_i32(dpci, VkDescriptorPoolCreateInfo_poolSizeCount, 2)
+  Vk.put_i32(dpci, VkDescriptorPoolCreateInfo_poolSizeCount, 3)
   Vk.put_ptr(dpci, VkDescriptorPoolCreateInfo_pPoolSizes, sizes)
   let out = bytes(8)
   let r = Vk.create_descriptor_pool(gvk_dev, dpci, null, out)
@@ -507,7 +644,7 @@ function gvk_frame_reset() -> void {
 }
 
 # a block into the ring; its offset, or -1 when the frame has used the whole ring
-function gvk_ring_put(blk: bytes, n: int) -> int {
+function gvk_ring_put(blk: pointer, n: int) -> int {
   let at = (gvk_ring_off + gvk_ring_align - 1) / gvk_ring_align * gvk_ring_align
   if at + n > GVK_RING_BYTES { return -1 }
   mem_copy(mem_off(gvk_buf_map[gvk_ring_buf], at), blk, n)
@@ -914,7 +1051,20 @@ function gvk_draw(p: int, m: Mesh, st: GvkState, first: int, count: int, instanc
     if m.itype == GL_UNSIGNED_SHORT { itype = VK_INDEX_TYPE_UINT16 }
     Vk.cmd_bind_index_buffer(cb, gvk_buf[m.ebo], zero, itype)
     gvk_buf_used[m.ebo] = gvk_frame_no
-    Vk.cmd_draw_indexed(cb, n, instances, first, 0, 0)
+    if gvk_ind_buf > 0 {
+      # the draws are records in a buffer (gvk_draw_indirect_now); the GPU may have written them
+      let ioff: long = gvk_ind_off
+      gvk_buf_used[gvk_ind_buf] = gvk_frame_no
+      if gvk_ind_cbuf > 0 and gvk_has_dic {
+        let coff: long = gvk_ind_coff
+        gvk_buf_used[gvk_ind_cbuf] = gvk_frame_no
+        Vk.cmd_draw_indexed_indirect_count(cb, gvk_buf[gvk_ind_buf], ioff, gvk_buf[gvk_ind_cbuf], coff, gvk_ind_n, VkDrawIndexedIndirectCommand_sizeof)
+      } else {
+        Vk.cmd_draw_indexed_indirect(cb, gvk_buf[gvk_ind_buf], ioff, gvk_ind_n, VkDrawIndexedIndirectCommand_sizeof)
+      }
+    } else {
+      Vk.cmd_draw_indexed(cb, n, instances, first, 0, 0)
+    }
   } else {
     Vk.cmd_draw(cb, n, instances, first, 0)
   }
@@ -1002,6 +1152,7 @@ function gvk_open(w: int, h: int, title: string) -> bool {
   }
   if not gvk_frame_init() { return false }
   if not gvk_screen_make(gl_w, gl_h) { return false }
+  if Os.has_env("R3D_VK_PROBE") { gvk_compute_probe() }
   if is_windowed() { return gvk_swap_make(gl_w, gl_h) }
   return true
 }
@@ -1073,6 +1224,20 @@ function gvk_state_now() -> GvkState {
   st.wireframe = gvk_wireframe
   return st
 }
+# An indirect draw goes through gvk_draw like any other - the same pipeline, set and buffers -
+# and only its last call differs, so the record is handed over in these for that one draw.
+var gvk_ind_buf: int = 0
+var gvk_ind_off: int = 0
+var gvk_ind_n: int = 0
+var gvk_ind_cbuf: int = 0
+var gvk_ind_coff: int = 0
+function gvk_draw_indirect_now(m: Mesh, cmds: int, offset: int, n: int, count_buf: int, count_off: int) -> void {
+  if m == null or m.ebo == 0 or cmds <= 0 or n <= 0 { return }
+  gvk_ind_buf = cmds;  gvk_ind_off = offset;  gvk_ind_n = n;  gvk_ind_cbuf = count_buf;  gvk_ind_coff = count_off
+  gvk_draw_now(m, 0, 0, 1)
+  gvk_ind_buf = 0;  gvk_ind_cbuf = 0
+}
+
 function gvk_draw_now(m: Mesh, first: int, count: int, instances: int) -> void {
   gvk_draw(gpu_prog_cur, m, gvk_state_now(), first, count, instances, gpu_tx, GPU_TX_W, gpu_tx_cap, gpu_fb, gpu_fb_at(gvk_fb_cur))
 }

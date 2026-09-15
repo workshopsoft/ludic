@@ -509,6 +509,34 @@ function gpu_buffer_free(buf: int) -> void {
   gl_delete_buffers(1, ids)
 }
 
+# ---- compute and indirect draws (Vulkan) ----------------------------------------------------
+# The GPU-driven path: a compute program writes instance lists and draw commands into buffers
+# the draws then read. OpenGL here is 4.1 (macOS) with no compute, so gpu_compute is 0 there and
+# a caller keeps its CPU path. A compute program's binding 0 is its parameter block (params,
+# copied at the dispatch); bindings 1.. are `bufs`, gpu buffers.
+function gpu_has_compute() -> bool { return gpu_kind == GPU_VK }
+function gpu_compute(name: string, n_bufs: int) -> int {
+  if gpu_kind != GPU_VK { return 0 }
+  return gvk_compute_new(name, n_bufs)
+}
+function gpu_dispatch(c: int, params: pointer, n_params: int, bufs: words, groups: int) -> void {
+  if gpu_kind == GPU_VK and c > 0 { gvk_dispatch(c, params, n_params, bufs, groups, 1, 1) }
+}
+# a buffer a compute pass writes (never reallocated under a draw that reads it)
+function gpu_buffer_gpu_owned(buf: int) -> void { if gpu_kind == GPU_VK { gvk_buf_gpu_owned(buf) } }
+# the host-visible contents of a buffer, for a readback after gpu_finish; null on OpenGL
+function gpu_buffer_map(buf: int) -> pointer {
+  if gpu_kind != GPU_VK or buf <= 0 { return null }
+  return gvk_buf_map[buf]
+}
+function gpu_finish() -> void { if gpu_kind == GPU_VK { gvk_flush() } }
+# n indexed draws of mesh m from VkDrawIndexedIndirectCommand records in buffer cmds at offset
+# (bytes); each record's firstInstance selects its instances out of the bound instance buffer.
+# With count_buf > 0 the GPU's own count (a uint at count_off) is used, up to n.
+function gpu_draw_mesh_indirect(m: Mesh, cmds: int, offset: int, n: int, count_buf: int, count_off: int) -> void {
+  if gpu_kind == GPU_VK { gvk_draw_indirect_now(m, cmds, offset, n, count_buf, count_off) }
+}
+
 # drawing
 function gpu_mesh_bind(m: Mesh) -> void { if gpu_kind == GPU_VK { return };  gl_bind_vertex_array(m.vao) }
 function gpu_mesh_unbind() -> void { if gpu_kind == GPU_VK { return };  gl_bind_vertex_array(0) }

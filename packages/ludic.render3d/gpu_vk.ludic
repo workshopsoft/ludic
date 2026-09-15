@@ -37,6 +37,9 @@ function gvk_ext_in(props: bytes, n: int, want: string) -> bool {
 # Instance, the first discrete GPU (else the first listed), its first graphics queue, and a
 # device with the Tier 1 floor switched on. False, with gvk_why set, if any of it is missing:
 # the caller stays on OpenGL.
+var gvk_has_mdi: bool = false         # multiDrawIndirect + drawIndirectFirstInstance
+var gvk_has_dic: bool = false         # drawIndirectCount
+
 function gvk_init() -> bool {
   if gvk_ready { return true }
   if Vk.open() == 0 { gvk_why = "no Vulkan loader";  return false }
@@ -145,6 +148,16 @@ function gvk_init() -> bool {
   Vk.put_i32(want2, VkPhysicalDeviceFeatures2_sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2)
   Vk.put_ptr(want2, VkPhysicalDeviceFeatures2_pNext, want12)
   if aniso { Vk.put_i32(want2, VkPhysicalDeviceFeatures2_features + VkPhysicalDeviceFeatures_samplerAnisotropy, 1) }
+  # GPU-driven drawing: one indirect buffer holds a layer's draws, and a compute pass may write
+  # how many of them there are. Asked for where the device has them; the renderer checks
+  # gvk_has_mdi / gvk_has_dic before it takes that path.
+  gvk_has_mdi = Vk.get_i32(f2, VkPhysicalDeviceFeatures2_features + VkPhysicalDeviceFeatures_multiDrawIndirect) == 1 and Vk.get_i32(f2, VkPhysicalDeviceFeatures2_features + VkPhysicalDeviceFeatures_drawIndirectFirstInstance) == 1
+  if gvk_has_mdi {
+    Vk.put_i32(want2, VkPhysicalDeviceFeatures2_features + VkPhysicalDeviceFeatures_multiDrawIndirect, 1)
+    Vk.put_i32(want2, VkPhysicalDeviceFeatures2_features + VkPhysicalDeviceFeatures_drawIndirectFirstInstance, 1)
+  }
+  gvk_has_dic = Vk.get_i32(f12, VkPhysicalDeviceVulkan12Features_drawIndirectCount) == 1
+  if gvk_has_dic { Vk.put_i32(want12, VkPhysicalDeviceVulkan12Features_drawIndirectCount, 1) }
 
   Vk.put_i32(cnt, 0, 0)
   Vk.enumerate_device_extension_properties(gvk_pd, null, cnt, null)
@@ -186,7 +199,7 @@ function gvk_init() -> bool {
 
   if not gvk_cmd_init() { return false }
   gvk_ready = true
-  print(`r3d: vulkan on {gvk_device_name}, anisotropy up to {gvk_aniso_x(gvk_max_aniso)}x`)
+  print(`r3d: vulkan on {gvk_device_name}, anisotropy up to {gvk_aniso_x(gvk_max_aniso)}x, multi-draw indirect {gvk_has_mdi}, indirect count {gvk_has_dic}`)
   return true
 }
 

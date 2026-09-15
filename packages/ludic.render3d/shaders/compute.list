@@ -1,0 +1,4 @@
+# compute.list - render3d's compute programs: name|file.comp. Built by `ludic-dev shaders` into
+# spv/<name>.comp.spv. Binding 0 is the uniform block of parameters, 1.. storage buffers.
+probe|probe.comp
+scatter_cull|scatter_cull.comp
