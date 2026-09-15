@@ -323,3 +323,11 @@ entry:
   %r = call i32 %fn(i32 %a0, ptr %a1)
   ret i32 %r
 }
+
+; a command-buffer command with three counts, through a pointer (vkCmdDrawMeshTasksEXT: the Streamline
+; interposer exports no such command, so it is looked up per device with vkGetDeviceProcAddr)
+define void @lsl_call_piii(ptr %fn, ptr %a0, i32 %a1, i32 %a2, i32 %a3) {
+entry:
+  call void %fn(ptr %a0, i32 %a1, i32 %a2, i32 %a3)
+  ret void
+}
