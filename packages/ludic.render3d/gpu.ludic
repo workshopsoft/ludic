@@ -392,9 +392,10 @@ function gpu_caps_probe() -> void {
 # Whether the renderer actually draws a feature yet. Until a feature lands, choosing it is saved and
 # shown, and says it takes effect later. The Vulkan renderer draws the whole game (phase 37-38), and
 # DLSS super resolution and Reflex run through NVIDIA Streamline (streamline.ludic), and HDR output is an
-# HDR10 swapchain (gpu_vk_draw.ludic); whether this
+# HDR10 swapchain (gpu_vk_draw.ludic). Mesh-shader grass draws but is not yet counted: at 4K on an
+# RTX 3070 Ti its grass pass took 5.0 ms against the chunked path's 1.7. Whether this
 # machine can use one is the caps' question, not this one.
-function gpu_feature_implemented(f: int) -> bool { return f == GF_VULKAN or f == GF_DLSS or f == GF_REFLEX or f == GF_HDR or f == GF_MESH_GRASS }
+function gpu_feature_implemented(f: int) -> bool { return f == GF_VULKAN or f == GF_DLSS or f == GF_REFLEX or f == GF_HDR }
 
 # ---- vertex data --------------------------------------------------------------------
 # A Mesh is built through these and records what it is made of - which buffer feeds which

@@ -229,18 +229,26 @@ function grass_flush() -> void {
       var m = e - k
       if m > GRASS_CHUNK { m = GRASS_CHUNK }
       for q in 0 .. m * 4 { grass_chunk_tv[q] = grass_tv[k * 4 + q] }
-      u_f4v(gpu_uniform(p, "u_tiles"), m, grass_chunk_tv)
       if mesh {
-        # enough blade batches for the chunk's largest tile, capped as the instanced path caps a tile
+        # one dispatch per tile, as many blade batches as that tile has: sized for a chunk's largest
+        # tile, the far tiles beside a near one ran thousands of empty invocations (9.8 ms against the
+        # chunked path's 2 at 4K on an RTX 3070 Ti)
         let cells = grass_band_cells[b]
-        var most = 0
-        for q in 0 .. m { let t = f_to_int(grass_tv[(k + q) * 4 + 2]) * cells * cells;  if t > most { most = t } }
-        if most > 65535 { most = 65535 }
-        gpu_draw_mesh_tasks((most + GRASS_MESH_BLADES - 1) / GRASS_MESH_BLADES, m, 1)
+        for q in 0 .. m {
+          var total = f_to_int(grass_tv[(k + q) * 4 + 2]) * cells * cells
+          if total > 65535 { total = 65535 }
+          if total > 0 {
+            for c in 0 .. 4 { grass_chunk_tv[c] = grass_tv[(k + q) * 4 + c] }
+            u_f4v(gpu_uniform(p, "u_tiles"), 1, grass_chunk_tv)
+            gpu_draw_mesh_tasks((total + GRASS_MESH_BLADES - 1) / GRASS_MESH_BLADES, 1, 1)
+            grass_draws += 1
+          }
+        }
       } else {
+        u_f4v(gpu_uniform(p, "u_tiles"), m, grass_chunk_tv)
         gpu_draw_mesh_indirect(grass_mesh, grass_cmds, k * 20, m, 0, 0)
       }
-      grass_draws += 1
+      if not mesh { grass_draws += 1 }
       k += m
     }
   }
