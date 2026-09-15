@@ -49,6 +49,7 @@ program Threads {
     if (Sync.cpu_count() > 1 and pooled > 0) or (Sync.cpu_count() == 1 and pooled == 0) { print(6) }
 
     Job.parallel_for(0, fn square, sq)       # nothing to do: returns at once
-    print(7)
+    let fn = 7                                # `fn` is still an ordinary name, before `and` too
+    if 0 < fn and fn < 8 { print(fn) }
   }
 }
