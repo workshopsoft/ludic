@@ -149,6 +149,10 @@ var prof_up: []long = null
 # the two are cleanly separable there.
 var prof_pre_swap: long = 0
 var prof_cpu_us: []long = null
+var prof_sum_dt: long = 0              # sums over the frames past the first eight, for the mean split
+var prof_sum_cpu: long = 0
+var prof_sum_game: long = 0
+var prof_sum_n: int = 0
 function prof_before_swap() -> void { if prof_on { prof_pre_swap = gl_now_us() } }
 
 # The single most expensive CPU phase of each frame, and what it was. A hitch is one
@@ -160,12 +164,26 @@ var prof_mark_name: pointer = null
 var prof_mark_us: []long = null
 var prof_mark_who: []pointer = null
 function prof_mark_start() -> void { if prof_on { prof_mark_last = gl_now_us();  prof_mark_best = 0;  prof_mark_name = null } }
+# ... and every phase's share of the average frame, past the first eight frames (loading, first fills)
+var prof_mk_names: []pointer = null
+var prof_mk_us: []long = null
+var prof_mk_n: int = 0
 function prof_cpu_mark(name: pointer) -> void {
   if not prof_on { return }
   let now = gl_now_us()
   let d = now - prof_mark_last
   prof_mark_last = now
   if d > prof_mark_best { prof_mark_best = d;  prof_mark_name = name }
+  var k = -1
+  var i = 0
+  while i < prof_mk_n { if prof_mk_names[i] == name { k = i };  i += 1 }
+  if k < 0 {
+    if prof_mk_names == null { prof_mk_names = new []pointer;  prof_mk_us = new []long }
+    push(prof_mk_names, name);  push(prof_mk_us, 0)
+    prof_mk_n += 1
+    k = prof_mk_n - 1
+  }
+  if prof_gen != null and len(prof_gen) > 8 { prof_mk_us[k] = prof_mk_us[k] + d }
 }
 
 # the game's own per-frame work, kept apart from the renderer's
@@ -268,6 +286,10 @@ function prof_gen_frame() -> void {
   if prof_pre_swap != 0 and dtf != 0 { cpu = prof_pre_swap - (now - dtf) }
   push(prof_cpu_us, cpu)
   push(prof_game_us, prof_game_us_cur)
+  if len(prof_gen) > 9 and dtf != 0 {
+    prof_sum_dt = prof_sum_dt + dtf;  prof_sum_cpu = prof_sum_cpu + cpu;  prof_sum_game = prof_sum_game + prof_game_us_cur
+    prof_sum_n += 1
+  }
   push(prof_mark_us, prof_mark_best)
   if prof_mark_name == null { push(prof_mark_who, "-") } else { push(prof_mark_who, prof_mark_name) }
   prof_gen_us_cur = 0;  prof_layer_us_cur = 0;  prof_bake_us_cur = 0;  prof_up_cur = 0;  prof_game_us_cur = 0
@@ -319,6 +341,21 @@ function prof_ft_report() -> void {
   print(`  fps at median {string(1000000 / med)}   frames over 1.3x median: {string(o13)}, over 1.5x: {string(o15)}, over 2x: {string(over)} — of {string(n)}`)
   print(`  stutter: {string(excess / 1000)} ms of frame time beyond 1.2x median over the run`)
   print(`  streaming totals over the run: walk {string(stream_us_walk / 1000)} ms  (generate {string(stream_us_gen / 1000)} ms, gather {string(stream_us_gather / 1000)} ms), {string(stream_walks)} stream-walks`)
+  # the average frame, split: what the process did before the swap (the game's share of it apart),
+  # the rest waiting on the GPU and the swap, and the renderer's CPU phases in frame order
+  if prof_sum_n > 0 {
+    let dt = prof_sum_dt / prof_sum_n
+    let cpu = prof_sum_cpu / prof_sum_n
+    let game = prof_sum_game / prof_sum_n
+    print("")
+    print(`MEAN frame {string(dt)} us over {string(prof_sum_n)} frames: CPU before the swap {string(cpu)} us (the game's own {string(game)} us), GPU and swap {string(dt - cpu)} us`)
+    print("  renderer CPU by phase, mean per frame:")
+    var i = 0
+    while i < prof_mk_n {
+      print(`    {Text.pad_right(prof_mk_names[i], 20)} {Text.pad_left(string(prof_mk_us[i] / prof_sum_n), 7)} us`)
+      i += 1
+    }
+  }
 }
 
 # The slowest frames of the run, with the once-in-a-while CPU work that landed in them.

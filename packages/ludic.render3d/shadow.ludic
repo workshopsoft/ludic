@@ -156,6 +156,7 @@ function shadow_pass() -> void {
   for c in 0 .. SHADOW_CASCADES {
     sh_cascade = c
     shadow_fit(c, near, sh_split[c])
+    prof_cpu_mark("shadow fit")
     near = sh_split[c]
     gpu_fb_depth_layer(sh_tex, c)
     if r3d_debug and c == 0 { let st = gpu_fb_status();  print(`shadow fbo status {st}`) }

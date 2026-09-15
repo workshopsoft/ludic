@@ -959,8 +959,17 @@ var sc_cast_gen: int = -1
 var sc_cast_dy: int = 0
 var sc_cast_k: int = 0
 function layer_level_casts_here(l: Layer, k: int) -> bool {
+  if l.lod_dist == null { return true }
+  var dmin = F_ZERO
+  if k > 0 { dmin = l.lod_dist[k - 1] }
+  return cast_band_reaches(dmin, l.lod_dist[k], l.lods[k].height)
+}
+# Can something standing between dmin and dmax metres from the camera (dmax 0: no outer limit), this
+# tall, put a shadow on anything the cascade being rendered covers? The flowers' levels ask it
+# (layer_level_casts_here), and so does every actor (actor_draw_casters).
+function cast_band_reaches(dmin: int, dmax: int, height: int) -> bool {
   if sc_cast_all < 0 { sc_cast_all = 0;  if Os.has_env("R3D_CAST_ALL") { sc_cast_all = 1 } }
-  if sc_cast_all == 1 or sh_split == null or l.lod_dist == null { return true }
+  if sc_cast_all == 1 or sh_split == null { return true }
   if sc_cast_gen != sc_view_gen {
     sc_cast_gen = sc_view_gen
     sc_cast_dy = f_add(f_abs(f_sub(cam_pos[1], terrain_height(cam_pos[0], cam_pos[2]))), fi(5))
@@ -971,12 +980,11 @@ function layer_level_casts_here(l: Layer, k: int) -> bool {
   }
   let c = sh_cascade
   var near = cam_near
-  if c > 0 { near = sh_split[c - 1] }
+  # sunShadow cross-fades into this cascade from 0.85 of the previous one's split (lighting.glsl), so
+  # its receivers start there, not at the split: starting at the split changed 19 pixels in town
+  if c > 0 { near = f_mul(sh_split[c - 1], fl(0.85)) }
   let far = sh_split[c]
-  var dmin = F_ZERO
-  if k > 0 { dmin = l.lod_dist[k - 1] }
-  let dmax = l.lod_dist[k]                 # 0: open, out to the layer's cull distance
-  let reach = f_max(f_min(f_mul(l.lods[k].height, fi(6)), fi(40)), fi(8))
+  let reach = f_max(f_min(f_mul(height, fi(6)), fi(40)), fi(8))
   if dmax != 0 and f_ls(f_add(f_add(dmax, reach), sc_cast_dy), near) { return false }
   if f_gt(f_sub(dmin, reach), f_mul(far, sc_cast_k)) { return false }
   return true
@@ -1224,6 +1232,7 @@ function scatter_draw_casters(light_vp: words) -> void {
     }
     else { layer_draw_near(l, true, light_vp, true) }
   }
+  prof_cpu_mark("shadow scatter")
 }
 
 

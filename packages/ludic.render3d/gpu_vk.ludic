@@ -177,6 +177,13 @@ function gvk_init() -> bool {
   }
   gvk_has_dic = Vk.get_i32(f12, VkPhysicalDeviceVulkan12Features_drawIndirectCount) == 1
   if gvk_has_dic { Vk.put_i32(want12, VkPhysicalDeviceVulkan12Features_drawIndirectCount, 1) }
+  # R3D_PROF: per-pass GPU time from timestamp queries (gvk_query_*). The slots are reused every few
+  # frames, so they are reset from the host - which is a feature to ask for.
+  gvk_has_hqr = Vk.get_i32(f12, VkPhysicalDeviceVulkan12Features_hostQueryReset) == 1 and Vk.get_i32(props, VkPhysicalDeviceProperties_limits + VkPhysicalDeviceLimits_timestampComputeAndGraphics) == 1
+  if gvk_has_hqr {
+    Vk.put_i32(want12, VkPhysicalDeviceVulkan12Features_hostQueryReset, 1)
+    gvk_ts_period = Vk.get_i32(props, VkPhysicalDeviceProperties_limits + VkPhysicalDeviceLimits_timestampPeriod)
+  }
 
   Vk.put_i32(cnt, 0, 0)
   Vk.enumerate_device_extension_properties(gvk_pd, null, cnt, null)
@@ -519,4 +526,49 @@ function gvk_shutdown() -> void {
   Vk.destroy_device(gvk_dev, null)
   Vk.destroy_instance(gvk_inst, null)
   gvk_ready = false
+}
+
+# ---- GPU timestamps (R3D_PROF) ------------------------------------------------------------
+# prof.ludic's query slots, each a pair of timestamps: 2 * id where the pass starts, 2 * id + 1 where it
+# ends. A slot is read back PROF_RING frames after it was written and reset just before it is written
+# again. On a device without host query reset or timestamps, every read says "not yet" and the report
+# stays empty.
+var gvk_has_hqr: bool = false
+var gvk_ts_period: int = 0             # float bits: nanoseconds per timestamp tick
+var gvk_qpool: long = 0
+var gvk_q_active: int = -1
+function gvk_query_new(n: int, ids: words) -> void {
+  for i in 0 .. n { ids[i] = i }
+  if not gvk_has_hqr or gvk_dev == null { return }
+  let qci = bytes(VkQueryPoolCreateInfo_sizeof)
+  Vk.zero(qci, VkQueryPoolCreateInfo_sizeof)
+  Vk.put_i32(qci, VkQueryPoolCreateInfo_sType, VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO)
+  Vk.put_i32(qci, VkQueryPoolCreateInfo_queryType, VK_QUERY_TYPE_TIMESTAMP)
+  Vk.put_i32(qci, VkQueryPoolCreateInfo_queryCount, n * 2)
+  let out = bytes(8)
+  if Vk.create_query_pool(gvk_dev, qci, null, out) != VK_SUCCESS { return }
+  gvk_qpool = gvk_handle(out)
+  Vk.reset_query_pool(gvk_dev, gvk_qpool, 0, n * 2)
+}
+function gvk_query_begin(id: int) -> void {
+  if gvk_qpool == 0 { return }
+  Vk.reset_query_pool(gvk_dev, gvk_qpool, id * 2, 2)
+  Vk.cmd_write_timestamp(gvk_frame_cb(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, gvk_qpool, id * 2)
+  gvk_q_active = id
+}
+function gvk_query_end() -> void {
+  if gvk_qpool == 0 or gvk_q_active < 0 { return }
+  Vk.cmd_write_timestamp(gvk_frame_cb(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, gvk_qpool, gvk_q_active * 2 + 1)
+  gvk_q_active = -1
+}
+function gvk_query_result(id: int, out: words) -> bool {
+  if gvk_qpool == 0 { return false }
+  let data = bytes(16)
+  let size: long = 16
+  let stride: long = 8
+  if Vk.get_query_pool_results(gvk_dev, gvk_qpool, id * 2, 2, size, data, stride, VK_QUERY_RESULT_64_BIT) != VK_SUCCESS { return false }
+  let ticks = Text.to_int(string(Vk.get_i64(data, 8) - Vk.get_i64(data, 0)))
+  if ticks < 0 { return false }
+  out[0] = f_to_int(f_mul(fi(ticks), gvk_ts_period))
+  return true
 }

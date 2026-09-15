@@ -370,10 +370,35 @@ function actor_draw_casters(light_vp: words) -> void {
       let r = f_max(f_mul(a.radius, a.scale), hh)
       if not ac_in_light(light_vp, a.x, f_add(a.y, hh), a.z, f_mul(r, fl(1.5))) { continue }
     }
+    # Inside the light box is not the same as able to shade anything this cascade covers: every actor
+    # within 300 m sits inside the far cascades' boxes, whose receivers start 250 and 1100 m out - at
+    # the camp 160 actors cast 300 draws into each of those, against 41 into the nearest.
+    let dxa = f_sub(a.x, cam_pos[0]);  let dza = f_sub(a.z, cam_pos[2])
+    let da = f_sqrt(f_add(f_mul(dxa, dxa), f_mul(dza, dza)))
+    let ra = f_mul(a.radius, a.scale)
+    if not cast_band_reaches(f_max(f_sub(da, ra), F_ZERO), f_add(da, ra), f_mul(a.model.height, a.scale)) { continue }
     var ap = ac_sh
     if a.cutout { ap = ac_sh_cut }
+    if ac_census_at > 0 and ac_frame == ac_census_at { ac_caster_count(a) }
     actor_draw_one(a, ap, true)
   }
+  if ac_census_at > 0 and ac_frame == ac_census_at {
+    print(`actor census, cascade {sh_cascade}: {ac_cc_actors} actors cast {ac_cc_draws} draws ({ac_cc_skinned} of them skinned, {ac_cc_cut} cutout)`)
+    ac_cc_actors = 0;  ac_cc_draws = 0;  ac_cc_skinned = 0;  ac_cc_cut = 0
+  }
+  prof_cpu_mark("shadow actors")
+}
+var ac_cc_actors: int = 0
+var ac_cc_draws: int = 0
+var ac_cc_skinned: int = 0
+var ac_cc_cut: int = 0
+function ac_caster_count(a: Actor) -> void {
+  var shown = 0
+  for p in 0 .. len(a.model.prims) { if a.hide == null or a.hide[p] == 0 { shown += 1 } }
+  ac_cc_actors += 1
+  ac_cc_draws += shown
+  if a.skin != null or a.model.skin != null { ac_cc_skinned += shown }
+  if a.cutout { ac_cc_cut += shown }
 }
 
 # every actor off the stage at once, for a world being replaced. Actors own no GL objects;

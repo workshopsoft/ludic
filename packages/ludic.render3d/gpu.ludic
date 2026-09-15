@@ -216,12 +216,12 @@ function gpu_program_free(p: int) -> void {
 }
 
 # ---- GPU timers (R3D_PROF) ----------------------------------------------------------
-function gpu_query_new(n: int, ids: words) -> void { if gpu_kind == GPU_VK { return };  gl_gen_queries(n, ids) }
-function gpu_query_begin(id: int) -> void { if gpu_kind == GPU_VK { return };  gl_begin_query(GL_TIME_ELAPSED, id) }
-function gpu_query_end() -> void { if gpu_kind == GPU_VK { return };  gl_end_query(GL_TIME_ELAPSED) }
+function gpu_query_new(n: int, ids: words) -> void { if gpu_kind == GPU_VK { gvk_query_new(n, ids);  return };  gl_gen_queries(n, ids) }
+function gpu_query_begin(id: int) -> void { if gpu_kind == GPU_VK { gvk_query_begin(id);  return };  gl_begin_query(GL_TIME_ELAPSED, id) }
+function gpu_query_end() -> void { if gpu_kind == GPU_VK { gvk_query_end();  return };  gl_end_query(GL_TIME_ELAPSED) }
 # true once the query has its result; the nanoseconds (low 32 bits) are then in out[0]
 function gpu_query_result(id: int, out: words) -> bool {
-  if gpu_kind == GPU_VK { return false }
+  if gpu_kind == GPU_VK { return gvk_query_result(id, out) }
   gl_get_query_objectiv(id, GL_QUERY_RESULT_AVAILABLE, out)
   if out[0] == 0 { return false }
   gl_get_query_objectui64v(id, GL_QUERY_RESULT, out)
