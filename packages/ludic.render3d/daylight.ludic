@@ -143,7 +143,7 @@ function daylight_set(hours: int) -> void {
   let dim = f_sub(F_ONE, f_mul(fl(0.55), oc))
   for i in 0 .. 3 { day_ibl[i] = f_mul(f_lerp(day_ibl[i], grey, f_mul(fl(0.7), oc)), dim) }
   if day_fog_base == 0 { day_fog_base = r3d_fog_density }
-  r3d_fog_density = f_mul(day_fog_base, day_fog_mul)
+  r3d_fog_density = f_mul(f_mul(day_fog_base, day_fog_mul), r3d_fog_scale)
   # exposure: auto-exposure must not turn the night into day
   # the ceiling has to move with the moon or auto-exposure eats the difference between a
   # full-moon night and a new-moon one

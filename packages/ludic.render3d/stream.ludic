@@ -143,7 +143,7 @@ function stream_band(s: Stream, d: int) -> int {
 # by band and kind. With a real microsecond clock the budget can just be the thing we
 # actually care about — how long this frame is allowed to spend growing ground cover.
 # Overshoot is bounded by one chunk, so keep chunks small on the dense near streams.
-const STREAM_BUDGET_US: int = 2500    # microseconds of generation per frame
+var STREAM_BUDGET_US: int = 2500      # microseconds of generation per frame; a setting may move it
 var stream_deadline: long = 0
 const STREAM_BUDGET: int = 8000       # kept for the work counter only
 # The worst frame is now bounded by one chunk, not by the budget: stream_fill emits a

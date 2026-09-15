@@ -50,11 +50,28 @@ var post_grain: int = 0
 # the screen-sized targets go away before post_init makes them at a new size
 function post_free() -> void {
   if post_hdr == null { return }
+  if post_ms_fbo != 0 { gpu_fb_free(post_ms_fbo);  post_ms_fbo = 0 }
   target_free(post_hdr);  target_free(post_ao);  target_free(post_ao_blur);  target_free(post_ldr)
   target_free(post_depth_copy);  target_free(post_prev);  target_free(post_scene)
   for i in 0 .. len(post_bloom) { target_free(post_bloom[i]) }
   post_hdr = null
 }
+# Multisampled scene: 1 (temporal AA alone), 2 or 4. OpenGL remakes the scene targets at once;
+# the Vulkan backend has no sample counts yet and keeps drawing single-sampled (post_msaa_live says so).
+function post_msaa_live() -> bool { return gpu_is_gl() }
+function post_set_msaa(n: int) -> void {
+  var want = n
+  if want < 1 { want = 1 }
+  if not post_msaa_live() { want = 1 }
+  if want == post_ms_samples { return }
+  post_ms_samples = want
+  if post_hdr != null {
+    let w = post_w;  let h = post_h
+    post_free()
+    post_init(w, h)
+  }
+}
+
 function post_init(w: int, h: int) -> void {
   post_w = w;  post_h = h
   post_hdr = target_new(w, h, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, true, GL_LINEAR)

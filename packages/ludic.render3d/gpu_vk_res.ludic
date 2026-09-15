@@ -585,7 +585,7 @@ function gvk_buf_reserve(b: int, n: int) -> bool {
   Vk.zero(bci, VkBufferCreateInfo_sizeof)
   Vk.put_i32(bci, VkBufferCreateInfo_sType, VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO)
   Vk.put_i64(bci, VkBufferCreateInfo_size, size_l)
-  Vk.put_i32(bci, VkBufferCreateInfo_usage, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT)
+  Vk.put_i32(bci, VkBufferCreateInfo_usage, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT)
   Vk.put_i32(bci, VkBufferCreateInfo_sharingMode, VK_SHARING_MODE_EXCLUSIVE)
   let out = bytes(8)
   var r = Vk.create_buffer(gvk_dev, bci, null, out)

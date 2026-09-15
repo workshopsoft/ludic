@@ -85,6 +85,15 @@ function sky_convolve(prog: int, target_tex: int, layer: int, w: int, h: int, ro
   gpu_fb_free(fbo)
 }
 
+# the prefiltered specular's width per level (its height is half): 256, 512 or 1024. The image
+# the reflections and the rough sheen are lit from; sky_set_quality bakes it again at a new size.
+var sky_prefilter_w: int = 512
+function sky_set_quality(w: int) -> void {
+  if w < 64 or w == sky_prefilter_w { return }
+  sky_prefilter_w = w
+  if sky_irradiance != 0 { sky_precompute() }
+}
+
 function sky_precompute() -> void {
   gpu_depth_test(false)
   if sky_irradiance != 0 {
@@ -99,17 +108,17 @@ function sky_precompute() -> void {
   gpu_tex_bind(GPU_TEX2D, sky_irradiance)
   gpu_tex_param(GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
   sky_convolve(p_irr, sky_irradiance, -1, 128, 64, F_ZERO)
-  # prefiltered specular: 6 roughness levels, 512 x 256 each, as a 2D array
+  # prefiltered specular: 6 roughness levels, sky_prefilter_w x half each, as a 2D array
   let p_pre = sky_p_pre
   sky_prefilter = gpu_tex_new()
   gpu_tex_bind(GPU_TEX2D_ARRAY, sky_prefilter)
-  gpu_tex_image3d(GL_RGB16F, 512, 256, SKY_PREFILTER_LEVELS, GL_RGB, GL_FLOAT, null)
+  gpu_tex_image3d(GL_RGB16F, sky_prefilter_w, sky_prefilter_w / 2, SKY_PREFILTER_LEVELS, GL_RGB, GL_FLOAT, null)
   gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_WRAP_S, GL_REPEAT)
   gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
   gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
   gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
   for l in 0 .. SKY_PREFILTER_LEVELS {
-    sky_convolve(p_pre, sky_prefilter, l, 512, 256, fr(l, SKY_PREFILTER_LEVELS - 1))
+    sky_convolve(p_pre, sky_prefilter, l, sky_prefilter_w, sky_prefilter_w / 2, fr(l, SKY_PREFILTER_LEVELS - 1))
   }
   # BRDF LUT
   let p_brdf = sky_p_brdf

@@ -7,6 +7,7 @@
 
 var r3d_sky_prog: int = 0
 var r3d_fog_density: int = 0
+var r3d_fog_scale: int = 0x3F800000   # float bits: a setting's multiplier over the density the day sets
 var r3d_fog_falloff: int = 0
 var r3d_fog_base: int = 0            # the height fog is measured from (float bits); 0 = y = 0
 var r3d_time: int = 0
@@ -70,7 +71,16 @@ function r3d_env_flags() -> void {
     if a >= 16 { tex_anisotropy = 16.0 }
   }
 }
+# Start the renderer in one call: the window, then every load step in order. A game that shows
+# a loading screen calls r3d_open, draws its screen, and runs r3d_load_step itself between frames.
 function r3d_init(w: int, h: int, title: string) -> bool {
+  if not r3d_open(w, h, title) { return false }
+  for i in 0 .. r3d_load_count() { if not r3d_load_step(i) { return false } }
+  return true
+}
+
+# the window and the graphics backend; nothing is baked yet, but a frame can be presented
+function r3d_open(w: int, h: int, title: string) -> bool {
   r3d_env_flags()
   gpu_select()
   if not gpu_open(w, h, title) { print("r3d: no OpenGL context");  return false }
@@ -79,21 +89,35 @@ function r3d_init(w: int, h: int, title: string) -> bool {
   print(`r3d: {gl_w}x{gl_h} on {renderer}`)
   prof_init()
   cam_init(fr(gl_w, gl_h))
-  if not sky_load(r3d_assets + "/hdri/kloofendal_48d_partly_cloudy_puresky_4k.hdr") { return false }
-  daylight_init()
-  if r3d_dem_path != null { terrain_use_dem(r3d_dem_path, r3d_dem_min, r3d_dem_max, r3d_dem_base, r3d_dem_ox, r3d_dem_oz) }
-  if r3d_ortho_path != null { terrain_use_ortho(r3d_ortho_path) }
-  terrain_init()
-  shadow_init()
-  post_init(gl_w, gl_h)
-  scatter_init()
-  actor_init()
-  grass_init()
-  r3d_sky_prog = r3d_program("fullscreen.vert", "sky.frag", "")
-  r3d_fog_density = fl(0.00014)
-  r3d_fog_falloff = fl(0.002)
-  r3d_ready = true
-  gpu_check("r3d init")
+  return true
+}
+
+# The load, as steps a loading screen can show between: 0 the sky and its image-based light,
+# 1 the terrain (height, normals, shadow, materials), 2 the shadow maps and the screen targets,
+# 3 the scattered cover and the actors, 4 the grass and the sky pass. The order is r3d_init's.
+function r3d_load_count() -> int { return 5 }
+function r3d_load_step(i: int) -> bool {
+  if i == 0 {
+    if not sky_load(r3d_assets + "/hdri/kloofendal_48d_partly_cloudy_puresky_4k.hdr") { return false }
+    daylight_init()
+  } else if i == 1 {
+    if r3d_dem_path != null { terrain_use_dem(r3d_dem_path, r3d_dem_min, r3d_dem_max, r3d_dem_base, r3d_dem_ox, r3d_dem_oz) }
+    if r3d_ortho_path != null { terrain_use_ortho(r3d_ortho_path) }
+    terrain_init()
+  } else if i == 2 {
+    shadow_init()
+    post_init(gl_w, gl_h)
+  } else if i == 3 {
+    scatter_init()
+    actor_init()
+  } else if i == 4 {
+    grass_init()
+    r3d_sky_prog = r3d_program("fullscreen.vert", "sky.frag", "")
+    r3d_fog_density = fl(0.00014)
+    r3d_fog_falloff = fl(0.002)
+    r3d_ready = true
+    gpu_check("r3d init")
+  }
   return true
 }
 
