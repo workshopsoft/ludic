@@ -84,7 +84,7 @@ function grass_count_at(d: int) -> int {
 function grass_tiles(size: int, d_min: int, d_max: int) -> void {
   let p = grass_prog
   let cells = size / GRASS_CELL
-  gl_uniform1i(gl_uniform(p, "u_tile_cells"), cells)
+  u_i(gpu_uniform(p, "u_tile_cells"), cells)
   let sz = fi(size)
   let half = f_mul(sz, F_HALF)
   let reach = f_add(d_max, f_mul(half, fl(1.5)))
@@ -108,8 +108,8 @@ function grass_tiles(size: int, d_min: int, d_max: int) -> void {
       if cam_sphere_visible(cx, cy, cz, f_add(corner_r, fi(6))) {
         let per = grass_count_at(dnear)
         if per > 0 {
-          u_f2(gl_uniform(p, "u_tile"), ox, oz)
-          gl_uniform1i(gl_uniform(p, "u_per_cell"), per)
+          u_f2(gpu_uniform(p, "u_tile"), ox, oz)
+          u_i(gpu_uniform(p, "u_per_cell"), per)
           mesh_draw_instanced(grass_mesh, per * cells * cells)
           grass_draws += 1
         }
@@ -124,42 +124,42 @@ function grass_draw() -> void {
   if not grass_on or ter_reflect or grass_prog == 0 { return }
   let p = grass_prog
   gl_use_program(p)
-  u_mat4(gl_uniform(p, "u_view"), cam_view)
-  u_mat4(gl_uniform(p, "u_proj"), cam_proj)
-  u_mat4(gl_uniform(p, "u_vp"), cam_vp_clean)
-  u_f(gl_uniform(p, "u_wind"), grass_wind)
-  u_f(gl_uniform(p, "u_rough_scale"), F_ONE)
-  u_v3(gl_uniform(p, "u_tint"), sc_blade_tint)
-  u_v3(gl_uniform(p, "u_blade_base"), sc_blade_base)
-  u_v3(gl_uniform(p, "u_blade_tip"), sc_blade_tip)
-  u_f(gl_uniform(p, "u_cull"), grass_radius)
-  u_f(gl_uniform(p, "u_model_h"), F_ZERO)
-  u_f(gl_uniform(p, "u_s0"), grass_s0)
-  u_f(gl_uniform(p, "u_d0"), grass_d0)
-  u_f(gl_uniform(p, "u_radius"), grass_radius)
-  gl_uniform1i(gl_uniform(p, "u_dbg"), grass_dbg)
+  u_mat4(gpu_uniform(p, "u_view"), cam_view)
+  u_mat4(gpu_uniform(p, "u_proj"), cam_proj)
+  u_mat4(gpu_uniform(p, "u_vp"), cam_vp_clean)
+  u_f(gpu_uniform(p, "u_wind"), grass_wind)
+  u_f(gpu_uniform(p, "u_rough_scale"), F_ONE)
+  u_v3(gpu_uniform(p, "u_tint"), sc_blade_tint)
+  u_v3(gpu_uniform(p, "u_blade_base"), sc_blade_base)
+  u_v3(gpu_uniform(p, "u_blade_tip"), sc_blade_tip)
+  u_f(gpu_uniform(p, "u_cull"), grass_radius)
+  u_f(gpu_uniform(p, "u_model_h"), F_ZERO)
+  u_f(gpu_uniform(p, "u_s0"), grass_s0)
+  u_f(gpu_uniform(p, "u_d0"), grass_d0)
+  u_f(gpu_uniform(p, "u_radius"), grass_radius)
+  u_i(gpu_uniform(p, "u_dbg"), grass_dbg)
   var orthotex = ter_ortho_tex
   var oon = F_ONE
   if orthotex == 0 { orthotex = ter_height_tex;  oon = F_ZERO }
   r3d_bind_2d(p, "u_ortho", 4, orthotex)
-  u_f(gl_uniform(p, "u_ortho_on"), oon)
+  u_f(gpu_uniform(p, "u_ortho_on"), oon)
   var lake = fl(-100000.0)
   if ter_lake_ex != 0 { lake = ter_lake_level }
-  u_f(gl_uniform(p, "u_lake_level"), lake)
+  u_f(gpu_uniform(p, "u_lake_level"), lake)
   var sea = lake
   if ter_sea_set { sea = ter_sea_level }
-  u_f(gl_uniform(p, "u_sea_level"), sea)
-  u_f4(gl_uniform(p, "u_lake"), ter_lake_cx, ter_lake_cz, ter_lake_ex, ter_lake_ez)
-  u_f(gl_uniform(p, "u_snow_line"), ter_snow_line)
+  u_f(gpu_uniform(p, "u_sea_level"), sea)
+  u_f4(gpu_uniform(p, "u_lake"), ter_lake_cx, ter_lake_cz, ter_lake_ex, ter_lake_ez)
+  u_f(gpu_uniform(p, "u_snow_line"), ter_snow_line)
   sky_bind_lighting(p)
   shadow_bind(p)
   fog_bind(p)
-  u_f(gl_uniform(p, "u_spec_scale"), fl(0.15))
-  gl_disable(GL_CULL_FACE)
+  u_f(gpu_uniform(p, "u_spec_scale"), fl(0.15))
+  gpu_cull(false)
   grass_draws = 0
   gl_bind_vertex_array(grass_mesh.vao)
   grass_tiles(16, F_ZERO, fi(300))
   grass_tiles(64, fi(300), fi(1200))
   grass_tiles(256, fi(1200), grass_radius)
-  gl_enable(GL_CULL_FACE)
+  gpu_cull(true)
 }

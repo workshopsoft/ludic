@@ -159,12 +159,12 @@ function ov_begin() -> void {
   if not ov_ready { return }
   gl_bind_framebuffer(GL_FRAMEBUFFER, gl_screen_fbo())
   gl_viewport(0, 0, gl_w, gl_h)
-  gl_disable(GL_DEPTH_TEST)
-  gl_disable(GL_CULL_FACE)
-  gl_enable(GL_BLEND)
-  gl_blend_func(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+  gpu_depth_test(false)
+  gpu_cull(false)
+  gpu_blend(true)
+  gpu_blend_func(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
   gl_use_program(ov_prog)
-  u_f2(gl_uniform(ov_prog, "u_screen"), fi(gl_w), fi(gl_h))
+  u_f2(gpu_uniform(ov_prog, "u_screen"), fi(gl_w), fi(gl_h))
   ov_n = 0;  ov_nr = 0;  ov_range_start = 0
   ov_tex = ov_white
   ov_clip_w = 0
@@ -204,24 +204,24 @@ function ov_flush() -> void {
       r3d_bind_2d(ov_prog, "u_tex", 0, t)
       var is_font = F_ZERO
       if t == ov_font { is_font = F_ONE }
-      u_f(gl_uniform(ov_prog, "u_is_font"), is_font)
+      u_f(gpu_uniform(ov_prog, "u_is_font"), is_font)
       last = t
     }
     if ov_ranges[o + 5] > 0 {
-      if not clipped { gl_enable(GL_SCISSOR_TEST);  clipped = true }
-      gl_scissor(ov_ranges[o + 3], gl_h - ov_ranges[o + 4] - ov_ranges[o + 6], ov_ranges[o + 5], ov_ranges[o + 6])
-    } else if clipped { gl_disable(GL_SCISSOR_TEST);  clipped = false }
+      clipped = true
+      gpu_scissor(ov_ranges[o + 3], ov_ranges[o + 4], ov_ranges[o + 5], ov_ranges[o + 6])
+    } else if clipped { gpu_scissor_off();  clipped = false }
     gl_draw_arrays(GL_TRIANGLES, ov_ranges[o + 1] * 6, ov_ranges[o + 2] * 6)
   }
-  if clipped { gl_disable(GL_SCISSOR_TEST) }
+  if clipped { gpu_scissor_off() }
   gl_bind_vertex_array(0)
   ov_n = 0;  ov_nr = 0;  ov_range_start = 0
 }
 function ov_end() -> void {
   if not ov_open { return }
   ov_flush()
-  gl_disable(GL_BLEND)
-  gl_enable(GL_DEPTH_TEST)
+  gpu_blend(false)
+  gpu_depth_test(true)
   ov_open = false
 }
 function ov_use_tex(t: int) -> void {

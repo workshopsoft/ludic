@@ -75,7 +75,7 @@ function r3d_program(vs: string, fs: string, defines: string) -> int {
 function r3d_bind_tex(prog: int, name: string, unit: int, target: int, tex: int) -> void {
   gl_active_texture(GL_TEXTURE0 + unit)
   gl_bind_texture(target, tex)
-  gl_uniform1i(gl_get_uniform_location(prog, name), unit)
+  u_i(gpu_uniform(prog, name), unit)
 }
 function r3d_bind_2d(prog: int, name: string, unit: int, tex: int) -> void { r3d_bind_tex(prog, name, unit, GL_TEXTURE_2D, tex) }
 

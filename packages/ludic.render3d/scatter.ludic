@@ -464,10 +464,10 @@ function impostor_bake(model: Model, tiles: int, tw: int, th: int) -> Impostor {
   gl_viewport(0, 0, aw, th)
   gl_clear_color(0.0, 0.0, 0.0, 0.0)
   gl_clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-  gl_enable(GL_DEPTH_TEST)
-  gl_depth_func(GL_LESS)
-  gl_disable(GL_CULL_FACE)
-  gl_disable(GL_BLEND)
+  gpu_depth_test(true)
+  gpu_depth_func(GL_LESS)
+  gpu_cull(false)
+  gpu_blend(false)
   # the model's prims temporarily take the identity instance
   for i in 0 .. len(model.prims) { scatter_attach(model.prims[i].mesh.vao, sc_ident_buf) }
   let view = m4_new();  let proj = m4_new()
@@ -485,9 +485,9 @@ function impostor_bake(model: Model, tiles: int, tw: int, th: int) -> Impostor {
     v3_set(eye, f_mul(f_sin(a), f_mul(r, fi(4))), f_add(cy, f_mul(r, fl(0.5))), f_neg(f_mul(f_cos(a), f_mul(r, fi(4)))))
     m4_look_at(view, eye, at, up)
     m4_ortho(proj, f_neg(r), r, f_neg(hh), hh, fl(0.1), f_mul(r, fi(9)))
-    u_mat4(gl_uniform(bake, "u_view"), view)
-    u_mat4(gl_uniform(bake, "u_proj"), proj)
-    u_f(gl_uniform(bake, "u_wind"), F_ZERO)
+    u_mat4(gpu_uniform(bake, "u_view"), view)
+    u_mat4(gpu_uniform(bake, "u_proj"), proj)
+    u_f(gpu_uniform(bake, "u_wind"), F_ZERO)
     gl_viewport(t * tw, 0, tw, th)
     for i in 0 .. len(model.prims) {
       let pr = model.prims[i]
@@ -816,45 +816,45 @@ function layer_draw_model(l: Layer, model: Model, vb: int, cnt: int, card: bool,
   gl_use_program(p)
   # over the prepass: only the fragment the prepass kept, at exactly its depth (a texel
   # it cut would otherwise pass LEQUAL over the terrain behind and draw the quad solid)
-  if p == sc_prog_fol_eq { gl_depth_func(GL_EQUAL) }
+  if p == sc_prog_fol_eq { gpu_depth_func(GL_EQUAL) }
   var ground = F_ZERO
   if l.grounded { ground = F_ONE }
-  u_f(gl_uniform(p, "u_ground"), ground)
+  u_f(gpu_uniform(p, "u_ground"), ground)
   if l.grounded { terrain_bind_height(p) }
-  u_f(gl_uniform(p, "u_time"), r3d_time)
-  u_f(gl_uniform(p, "u_wind"), l.wind)
+  u_f(gpu_uniform(p, "u_time"), r3d_time)
+  u_f(gpu_uniform(p, "u_wind"), l.wind)
   var mh = F_ZERO
   if not card and l.foliage { mh = model.height }
-  u_f(gl_uniform(p, "u_model_h"), mh)
-  if not card and l.foliage and not shadow and sc_a2c { gl_enable(GL_SAMPLE_ALPHA_TO_COVERAGE) }
+  u_f(gpu_uniform(p, "u_model_h"), mh)
+  if not card and l.foliage and not shadow and sc_a2c { gpu_alpha_to_coverage(true) }
   if card {
-    u_f(gl_uniform(p, "u_card_w"), f_mul(l.atlas.radius, F_TWO));  u_f(gl_uniform(p, "u_card_h"), l.atlas.height)
+    u_f(gpu_uniform(p, "u_card_w"), f_mul(l.atlas.radius, F_TWO));  u_f(gpu_uniform(p, "u_card_h"), l.atlas.height)
     r3d_bind_2d(p, "u_diff", 0, l.atlas.albedo)
     r3d_bind_2d(p, "u_nrm", 1, l.atlas.normal)
-    gl_enable(GL_SAMPLE_ALPHA_TO_COVERAGE)
+    gpu_alpha_to_coverage(true)
   }
-  if shadow { u_mat4(gl_uniform(p, "u_light_vp"), light_vp) }
+  if shadow { u_mat4(gpu_uniform(p, "u_light_vp"), light_vp) }
   else {
-    u_mat4(gl_uniform(p, "u_view"), cam_view)
-    u_mat4(gl_uniform(p, "u_proj"), cam_proj)
-    u_v3(gl_uniform(p, "u_tint"), l.tint)
+    u_mat4(gpu_uniform(p, "u_view"), cam_view)
+    u_mat4(gpu_uniform(p, "u_proj"), cam_proj)
+    u_v3(gpu_uniform(p, "u_tint"), l.tint)
     if sc_dbg_lod and sc_dbg_level >= 0 {
       if sc_dbg_tint == null { sc_dbg_tint = v3_new(F_ONE, F_ONE, F_ONE) }
       let k = sc_dbg_level
       var r = F_ZERO;  var g = F_ZERO;  var b = F_ZERO
       if k == 0 { r = fi(3) } else if k == 1 { g = fi(3) } else if k == 2 { b = fi(3) } else { r = fi(3);  g = fi(3) }
       v3_set(sc_dbg_tint, r, g, b)
-      u_v3(gl_uniform(p, "u_tint"), sc_dbg_tint)
+      u_v3(gpu_uniform(p, "u_tint"), sc_dbg_tint)
     }
-    u_f(gl_uniform(p, "u_rough_scale"), l.rough)
-    if l.blade { u_v3(gl_uniform(p, "u_blade_base"), sc_blade_base);  u_v3(gl_uniform(p, "u_blade_tip"), sc_blade_tip) }
-    u_f(gl_uniform(p, "u_cull"), l.cull)
+    u_f(gpu_uniform(p, "u_rough_scale"), l.rough)
+    if l.blade { u_v3(gpu_uniform(p, "u_blade_base"), sc_blade_base);  u_v3(gpu_uniform(p, "u_blade_tip"), sc_blade_tip) }
+    u_f(gpu_uniform(p, "u_cull"), l.cull)
     sky_bind_lighting(p)
     shadow_bind(p)
     fog_bind(p)
-    if l.foliage { u_f(gl_uniform(p, "u_spec_scale"), fl(0.05)) }
+    if l.foliage { u_f(gpu_uniform(p, "u_spec_scale"), fl(0.05)) }
   }
-  gl_disable(GL_CULL_FACE)
+  gpu_cull(false)
   for i in 0 .. len(model.prims) {
     let pr = model.prims[i]
     scatter_attach(pr.mesh.vao, vb)
@@ -864,8 +864,8 @@ function layer_draw_model(l: Layer, model: Model, vb: int, cnt: int, card: bool,
     }
     mesh_draw_instanced(pr.mesh, cnt)
   }
-  gl_disable(GL_SAMPLE_ALPHA_TO_COVERAGE)
-  if p == sc_prog_fol_eq { gl_depth_func(GL_LESS) }
+  gpu_alpha_to_coverage(false)
+  if p == sc_prog_fol_eq { gpu_depth_func(GL_LESS) }
 }
 
 function layer_draw_far(l: Layer, shadow: bool, light_vp: words) -> void {
@@ -874,31 +874,31 @@ function layer_draw_far(l: Layer, shadow: bool, light_vp: words) -> void {
   if shadow { p = sc_imp_prog_shadow }
   gl_use_program(p)
   let im = l.imp
-  u_f(gl_uniform(p, "u_radius"), im.radius)
-  u_f(gl_uniform(p, "u_height"), im.height)
-  u_f(gl_uniform(p, "u_tiles"), fi(im.tiles))
+  u_f(gpu_uniform(p, "u_radius"), im.radius)
+  u_f(gpu_uniform(p, "u_height"), im.height)
+  u_f(gpu_uniform(p, "u_tiles"), fi(im.tiles))
   r3d_bind_2d(p, "u_atlas_albedo", 0, im.albedo)
   if shadow {
-    u_mat4(gl_uniform(p, "u_light_vp"), light_vp)
-    u_v3(gl_uniform(p, "u_face_dir"), sun_dir)
-    if r3d_debug_shadow and not sc_printed { sc_printed = true;  print(`imp shadow prog {p} face_dir loc {gl_uniform(p, "u_face_dir")} sun {f_fx(sun_dir[0])} {f_fx(sun_dir[1])} {f_fx(sun_dir[2])} cam {f_fx(cam_pos[0])} {f_fx(cam_pos[1])} {f_fx(cam_pos[2])} n_far {l.n_far}`) }
-    u_v3(gl_uniform(p, "u_cam_pos"), cam_pos)
+    u_mat4(gpu_uniform(p, "u_light_vp"), light_vp)
+    u_v3(gpu_uniform(p, "u_face_dir"), sun_dir)
+    if r3d_debug_shadow and not sc_printed { sc_printed = true;  print(`imp shadow prog {p} face_dir loc {gpu_uniform(p, "u_face_dir")} sun {f_fx(sun_dir[0])} {f_fx(sun_dir[1])} {f_fx(sun_dir[2])} cam {f_fx(cam_pos[0])} {f_fx(cam_pos[1])} {f_fx(cam_pos[2])} n_far {l.n_far}`) }
+    u_v3(gpu_uniform(p, "u_cam_pos"), cam_pos)
   } else {
-    u_mat4(gl_uniform(p, "u_view"), cam_view)
-    u_mat4(gl_uniform(p, "u_proj"), cam_proj)
-    u_v3(gl_uniform(p, "u_tint"), l.tint)
-    if sc_dbg_lod { if sc_dbg_tint == null { sc_dbg_tint = v3_new(F_ONE, F_ONE, F_ONE) };  v3_set(sc_dbg_tint, fi(3), F_ZERO, fi(3));  u_v3(gl_uniform(p, "u_tint"), sc_dbg_tint) }
+    u_mat4(gpu_uniform(p, "u_view"), cam_view)
+    u_mat4(gpu_uniform(p, "u_proj"), cam_proj)
+    u_v3(gpu_uniform(p, "u_tint"), l.tint)
+    if sc_dbg_lod { if sc_dbg_tint == null { sc_dbg_tint = v3_new(F_ONE, F_ONE, F_ONE) };  v3_set(sc_dbg_tint, fi(3), F_ZERO, fi(3));  u_v3(gpu_uniform(p, "u_tint"), sc_dbg_tint) }
     r3d_bind_2d(p, "u_atlas_normal", 1, im.normal)
     sky_bind_lighting(p)
     shadow_bind(p)
     fog_bind(p)
-    if l.foliage { u_f(gl_uniform(p, "u_spec_scale"), fl(0.05)) }
+    if l.foliage { u_f(gpu_uniform(p, "u_spec_scale"), fl(0.05)) }
   }
-  gl_disable(GL_CULL_FACE)
-  if not shadow and sc_a2c { gl_enable(GL_SAMPLE_ALPHA_TO_COVERAGE) }
+  gpu_cull(false)
+  if not shadow and sc_a2c { gpu_alpha_to_coverage(true) }
   scatter_attach(sc_card.vao, l.imp_buf)
   mesh_draw_instanced(sc_card, l.n_far)
-  gl_disable(GL_SAMPLE_ALPHA_TO_COVERAGE)
+  gpu_alpha_to_coverage(false)
 }
 
 # Cast from the impostor card, always, for every instance in the layer. The lit pass may
@@ -910,14 +910,14 @@ function layer_draw_shadow(l: Layer, light_vp: words) -> void {
   let p = sc_imp_prog_shadow
   gl_use_program(p)
   let im = l.imp
-  u_f(gl_uniform(p, "u_radius"), im.radius)
-  u_f(gl_uniform(p, "u_height"), im.height)
-  u_f(gl_uniform(p, "u_tiles"), fi(im.tiles))
+  u_f(gpu_uniform(p, "u_radius"), im.radius)
+  u_f(gpu_uniform(p, "u_height"), im.height)
+  u_f(gpu_uniform(p, "u_tiles"), fi(im.tiles))
   r3d_bind_2d(p, "u_atlas_albedo", 0, im.albedo)
-  u_mat4(gl_uniform(p, "u_light_vp"), light_vp)
-  u_v3(gl_uniform(p, "u_face_dir"), sun_dir)
-  u_v3(gl_uniform(p, "u_cam_pos"), cam_pos)
-  gl_disable(GL_CULL_FACE)
+  u_mat4(gpu_uniform(p, "u_light_vp"), light_vp)
+  u_v3(gpu_uniform(p, "u_face_dir"), sun_dir)
+  u_v3(gpu_uniform(p, "u_cam_pos"), cam_pos)
+  gpu_cull(false)
   scatter_attach(sc_card.vao, l.sh_buf)
   mesh_draw_instanced(sc_card, l.n_sh)
 }
@@ -935,15 +935,15 @@ function layer_draw_depth(l: Layer, model: Model, vb: int, cnt: int) -> void {
   gl_use_program(p)
   var ground = F_ZERO
   if l.grounded { ground = F_ONE }
-  u_f(gl_uniform(p, "u_ground"), ground)
+  u_f(gpu_uniform(p, "u_ground"), ground)
   if l.grounded { terrain_bind_height(p) }
-  u_f(gl_uniform(p, "u_time"), r3d_time)
-  u_f(gl_uniform(p, "u_wind"), l.wind)
-  u_f(gl_uniform(p, "u_model_h"), model.height)
-  u_mat4(gl_uniform(p, "u_view"), cam_view)
-  u_mat4(gl_uniform(p, "u_proj"), cam_proj)
-  u_f(gl_uniform(p, "u_clip_y"), r3d_clip_y)
-  gl_disable(GL_CULL_FACE)
+  u_f(gpu_uniform(p, "u_time"), r3d_time)
+  u_f(gpu_uniform(p, "u_wind"), l.wind)
+  u_f(gpu_uniform(p, "u_model_h"), model.height)
+  u_mat4(gpu_uniform(p, "u_view"), cam_view)
+  u_mat4(gpu_uniform(p, "u_proj"), cam_proj)
+  u_f(gpu_uniform(p, "u_clip_y"), r3d_clip_y)
+  gpu_cull(false)
   for i in 0 .. len(model.prims) {
     let pr = model.prims[i]
     scatter_attach(pr.mesh.vao, vb)
@@ -968,7 +968,7 @@ function scatter_draw_depth() -> void {
       layer_draw_depth(l, l.model, l.buf, l.n_near)
     }
   }
-  gl_enable(GL_CULL_FACE)
+  gpu_cull(true)
 }
 function scatter_draw() -> void {
   for i in 0 .. len(sc_layers) {
@@ -981,7 +981,7 @@ function scatter_draw() -> void {
     layer_draw_near(l, false, null, false)
     layer_draw_far(l, false, null)
   }
-  gl_enable(GL_CULL_FACE)
+  gpu_cull(true)
 }
 # Nothing here is keyed off the cascade. Every skip that used to be — ground cover past
 # the 250 m cascade, blades past the nearest, the scanned mesh past the second — made a
@@ -1039,10 +1039,10 @@ function carpet_bake(layers: []Layer, count: int, tile: int, res: int) -> int {
   gl_viewport(0, 0, res, res)
   gl_clear_color(0.0, 0.0, 0.0, 0.0)
   gl_clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-  gl_enable(GL_DEPTH_TEST)
-  gl_depth_func(GL_LESS)
-  gl_disable(GL_CULL_FACE)
-  gl_disable(GL_BLEND)
+  gpu_depth_test(true)
+  gpu_depth_func(GL_LESS)
+  gpu_cull(false)
+  gpu_blend(false)
   # the clumps, and eight wrapped copies so the tile's edges continue
   let half = f_mul(tile, F_HALF)
   let n9 = count * 9
@@ -1076,14 +1076,14 @@ function carpet_bake(layers: []Layer, count: int, tile: int, res: int) -> int {
   m4_ortho(proj, f_neg(half), half, f_neg(half), half, fl(0.1), fi(12))
   let bake = sc_bake_card_prog
   gl_use_program(bake)
-  u_mat4(gl_uniform(bake, "u_view"), view)
-  u_mat4(gl_uniform(bake, "u_proj"), proj)
-  u_f(gl_uniform(bake, "u_wind"), F_ZERO)
-  u_f(gl_uniform(bake, "u_time"), F_ZERO)
+  u_mat4(gpu_uniform(bake, "u_view"), view)
+  u_mat4(gpu_uniform(bake, "u_proj"), proj)
+  u_f(gpu_uniform(bake, "u_wind"), F_ZERO)
+  u_f(gpu_uniform(bake, "u_time"), F_ZERO)
   for li in 0 .. len(layers) {
     let l = layers[li]
     if l.atlas == null { continue }
-    u_f(gl_uniform(bake, "u_card_w"), f_mul(l.atlas.radius, F_TWO));  u_f(gl_uniform(bake, "u_card_h"), l.atlas.height)
+    u_f(gpu_uniform(bake, "u_card_w"), f_mul(l.atlas.radius, F_TWO));  u_f(gpu_uniform(bake, "u_card_h"), l.atlas.height)
     r3d_bind_2d(bake, "u_diff", 0, l.atlas.albedo)
     r3d_bind_2d(bake, "u_arm", 2, l.atlas.normal)
     for i in 0 .. len(l.model.prims) {

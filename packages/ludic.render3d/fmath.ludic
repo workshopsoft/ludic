@@ -196,11 +196,4 @@ function m4_xform_point(o: words, m: words, x: int, y: int, z: int) -> int {
   return f_add(f_add(f_mul(m[3], x), f_mul(m[7], y)), f_add(f_mul(m[11], z), m[15]))
 }
 
-# ---- uniforms ------------------------------------------------------------------
-function u_mat4(loc: int, m: words) -> void { gl_uniform_matrix4fv(loc, 1, 0, m) }
-function u_f(loc: int, v: int) -> void { let t = gl_scratch();  t[0] = v;  gl_uniform1fv(loc, 1, t) }
-function u_f2(loc: int, x: int, y: int) -> void { let t = gl_scratch();  t[0] = x;  t[1] = y;  gl_uniform2fv(loc, 1, t) }
-function u_f3(loc: int, x: int, y: int, z: int) -> void { let t = gl_scratch();  t[0] = x;  t[1] = y;  t[2] = z;  gl_uniform3fv(loc, 1, t) }
-function u_f4(loc: int, x: int, y: int, z: int, w: int) -> void { let t = gl_scratch();  t[0] = x;  t[1] = y;  t[2] = z;  t[3] = w;  gl_uniform4fv(loc, 1, t) }
-function u_v3(loc: int, v: words) -> void { gl_uniform3fv(loc, 1, v) }
-function u_i(loc: int, v: int) -> void { gl_uniform1i(loc, v) }
+# ---- uniforms: see gpu.ludic (gpu_uniform and the u_* setters) ----

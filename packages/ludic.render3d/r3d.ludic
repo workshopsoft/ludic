@@ -3,6 +3,7 @@
 # Import this one file; the game supplies scene_draw() / scene_draw_casters().
 # ============================================================================
 import "fmath.ludic"
+import "gpu.ludic"
 import "prof.ludic"
 import "programs.ludic"
 import "texture.ludic"

@@ -39,7 +39,7 @@ function sky_set_rot(yaw: int) -> void {
   sky_yaw = yaw
   sky_rot_s = f_sin(yaw);  sky_rot_c = f_cos(yaw)
 }
-function sky_bind_rot(prog: int) -> void { u_f2(gl_uniform(prog, "u_sky_rot"), sky_rot_s, sky_rot_c) }
+function sky_bind_rot(prog: int) -> void { u_f2(gpu_uniform(prog, "u_sky_rot"), sky_rot_s, sky_rot_c) }
 
 # direction for an equirect uv (matches equirectUV in lighting.glsl)
 function sky_dir_from_uv(o: words, u: int, v: int) -> void {
@@ -77,9 +77,9 @@ function sky_convolve(prog: int, target_tex: int, layer: int, w: int, h: int, ro
   gl_use_program(prog)
   r3d_bind_2d(prog, "u_sky", 0, sky_tex)
   sky_bind_rot(prog)
-  u_f(gl_uniform(prog, "u_sun_clip"), hdr_clip)
-  u_f(gl_uniform(prog, "u_rough"), rough)
-  u_f(gl_uniform(prog, "u_sky_w"), fi(sky_w))
+  u_f(gpu_uniform(prog, "u_sun_clip"), hdr_clip)
+  u_f(gpu_uniform(prog, "u_rough"), rough)
+  u_f(gpu_uniform(prog, "u_sky_w"), fi(sky_w))
   mesh_draw(sky_fullscreen)
   gl_bind_framebuffer(GL_FRAMEBUFFER, 0)
   let ids = gl_scratch()
@@ -88,7 +88,7 @@ function sky_convolve(prog: int, target_tex: int, layer: int, w: int, h: int, ro
 }
 
 function sky_precompute() -> void {
-  gl_disable(GL_DEPTH_TEST)
+  gpu_depth_test(false)
   if sky_irradiance != 0 {
     let ids = gl_scratch()
     ids[0] = sky_irradiance;  gl_delete_textures(1, ids)
@@ -126,9 +126,9 @@ function sky_bind_lighting(prog: int) -> void {
   r3d_bind_2d(prog, "u_irradiance", 12, sky_irradiance)
   r3d_bind_tex(prog, "u_prefilter", 13, GL_TEXTURE_2D_ARRAY, sky_prefilter)
   r3d_bind_2d(prog, "u_brdf", 14, sky_brdf)
-  u_v3(gl_uniform(prog, "u_sun_dir"), sun_dir)
-  u_v3(gl_uniform(prog, "u_sun_color"), sun_color)
-  u_v3(gl_uniform(prog, "u_cam_pos"), cam_pos)
-  u_f(gl_uniform(prog, "u_prefilter_levels"), fi(SKY_PREFILTER_LEVELS))
+  u_v3(gpu_uniform(prog, "u_sun_dir"), sun_dir)
+  u_v3(gpu_uniform(prog, "u_sun_color"), sun_color)
+  u_v3(gpu_uniform(prog, "u_cam_pos"), cam_pos)
+  u_f(gpu_uniform(prog, "u_prefilter_levels"), fi(SKY_PREFILTER_LEVELS))
   daylight_bind(prog)
 }
