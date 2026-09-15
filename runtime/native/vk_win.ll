@@ -331,3 +331,35 @@ entry:
   call void %fn(ptr %a0, i32 %a1, i32 %a2, i32 %a3)
   ret void
 }
+
+; ---- acceleration structures: commands the Streamline interposer does not export --------------------
+; vkCreateAccelerationStructureKHR(device, info, allocator, out) -> VkResult
+define i32 @lsl_call_pppp(ptr %fn, ptr %a0, ptr %a1, ptr %a2, ptr %a3) {
+entry:
+  %r = call i32 %fn(ptr %a0, ptr %a1, ptr %a2, ptr %a3)
+  ret i32 %r
+}
+; vkDestroyAccelerationStructureKHR(device, handle, allocator)
+define void @lsl_call_plp(ptr %fn, ptr %a0, i64 %a1, ptr %a2) {
+entry:
+  call void %fn(ptr %a0, i64 %a1, ptr %a2)
+  ret void
+}
+; vkGetAccelerationStructureBuildSizesKHR(device, buildType, info, maxPrimitiveCounts, sizes)
+define void @lsl_call_pippp(ptr %fn, ptr %a0, i32 %a1, ptr %a2, ptr %a3, ptr %a4) {
+entry:
+  call void %fn(ptr %a0, i32 %a1, ptr %a2, ptr %a3, ptr %a4)
+  ret void
+}
+; vkCmdBuildAccelerationStructuresKHR(commandBuffer, infoCount, infos, buildRangeInfos)
+define void @lsl_call_pipp(ptr %fn, ptr %a0, i32 %a1, ptr %a2, ptr %a3) {
+entry:
+  call void %fn(ptr %a0, i32 %a1, ptr %a2, ptr %a3)
+  ret void
+}
+; vkGetAccelerationStructureDeviceAddressKHR(device, info) -> VkDeviceAddress
+define i64 @lsl_call_pp_l(ptr %fn, ptr %a0, ptr %a1) {
+entry:
+  %r = call i64 %fn(ptr %a0, ptr %a1)
+  ret i64 %r
+}

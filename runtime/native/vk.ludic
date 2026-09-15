@@ -46,3 +46,10 @@ extern function vk_sl_call_ip(fn: pointer, a: int, b: pointer) -> int = "lsl_cal
 # a command-buffer command with three counts through a pointer (vkCmdDrawMeshTasksEXT, which the
 # Streamline interposer does not export; looked up with vkGetDeviceProcAddr)
 extern function vk_sl_call_piii(fn: pointer, a: pointer, b: int, c: int, d: int) = "lsl_call_piii"
+
+# acceleration-structure commands through a pointer from vkGetDeviceProcAddr (the interposer exports none)
+extern function vk_sl_call_pppp(fn: pointer, a: pointer, b: pointer, c: pointer, d: pointer) -> int = "lsl_call_pppp"
+extern function vk_sl_call_plp(fn: pointer, a: pointer, b: long, c: pointer) = "lsl_call_plp"
+extern function vk_sl_call_pippp(fn: pointer, a: pointer, b: int, c: pointer, d: pointer, e: pointer) = "lsl_call_pippp"
+extern function vk_sl_call_pipp(fn: pointer, a: pointer, b: int, c: pointer, d: pointer) = "lsl_call_pipp"
+extern function vk_sl_call_pp_l(fn: pointer, a: pointer, b: pointer) -> long = "lsl_call_pp_l"
