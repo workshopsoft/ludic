@@ -50,6 +50,8 @@ var gvk_tex_mem: []long = null
 var gvk_tex_levels: []int = null
 var gvk_tex_layers: []int = null
 var gvk_tex_vkfmt: []int = null
+var gvk_tex_dims_w: []int = null
+var gvk_tex_dims_h: []int = null
 var gvk_unpack_swap: bool = false     # GL_UNPACK_SWAP_BYTES: 16-bit PNG samples arrive big-endian
 
 function gvk_tex_new() -> int {
@@ -57,12 +59,15 @@ function gvk_tex_new() -> int {
   if gvk_tex_image == null {
     gvk_tex_image = new []long;  gvk_tex_view = new []long;  gvk_tex_mem = new []long
     gvk_tex_levels = new []int;  gvk_tex_layers = new []int;  gvk_tex_vkfmt = new []int
+    gvk_tex_dims_w = new []int;  gvk_tex_dims_h = new []int
+    push(gvk_tex_dims_w, 0);  push(gvk_tex_dims_h, 0)
     # handle 0 is "no texture", as it is on OpenGL
     push(gvk_tex_image, zero);  push(gvk_tex_view, zero);  push(gvk_tex_mem, zero)
     push(gvk_tex_levels, 0);  push(gvk_tex_layers, 0);  push(gvk_tex_vkfmt, 0)
   }
   push(gvk_tex_image, zero);  push(gvk_tex_view, zero);  push(gvk_tex_mem, zero)
   push(gvk_tex_levels, 0);  push(gvk_tex_layers, 0);  push(gvk_tex_vkfmt, 0)
+  push(gvk_tex_dims_w, 0);  push(gvk_tex_dims_h, 0)
   return len(gvk_tex_image) - 1
 }
 
@@ -185,6 +190,7 @@ function gvk_tex_storage(tex: int, array: bool, ifmt: int, w: int, h: int, layer
   if r != VK_SUCCESS { return gvk_fail("vkCreateImageView", r) }
   gvk_tex_image[tex] = image;  gvk_tex_view[tex] = gvk_handle(out);  gvk_tex_mem[tex] = mem
   gvk_tex_levels[tex] = levels;  gvk_tex_layers[tex] = layers;  gvk_tex_vkfmt[tex] = vkfmt
+  gvk_tex_dims_w[tex] = w;  gvk_tex_dims_h[tex] = h
   # a target starts cleared-to-nothing but readable: every level in the layout samplers expect
   let cb = gvk_once_begin()
   gvk_barrier(cb, image, depth, 0, levels, layers, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)

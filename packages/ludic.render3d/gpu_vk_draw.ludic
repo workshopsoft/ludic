@@ -1,0 +1,885 @@
+# gpu_vk_draw.ludic — the Vulkan backend's drawing: programs as manifest variants, pipelines
+# built from what OpenGL decides at the draw, uniform blocks and descriptor sets per draw, and the
+# frame's passes with dynamic rendering, through to the present and the screenshot.
+#
+# It reads render3d's own records - the SPIR-V manifest (gpu_manifest.ludic), a Mesh's recorded
+# vertex layout, gpu.ludic's texture and framebuffer records - so it is compiled only inside
+# render3d, after gpu_vk.ludic and gpu_vk_res.ludic.
+
+# ---- programs -----------------------------------------------------------------------------
+# A program handle is a manifest variant on Vulkan: its two SPIR-V modules, a descriptor set
+# layout (binding 0 the vertex stage's uniform block, 1 the fragment stage's, the samplers at
+# the manifest's bindings from 2) and the pipeline layout over it. Programs are never compiled
+# here; one whose variant is not in the manifest cannot draw, and says so once.
+var gvk_prog_var: []GpuVariant = null
+var gvk_prog_vs: []long = null
+var gvk_prog_fs: []long = null
+var gvk_prog_dsl: []long = null
+var gvk_prog_layout: []long = null
+var gvk_spv_dir: string = ""
+
+function gvk_read_spv(path: string) -> bytes {
+  let f = file_open(path, "rb")
+  if f == null { return null }
+  file_seek(f, 0, 2)
+  let n = file_tell(f)
+  file_seek(f, 0, 0)
+  let b = bytes(n + 4)
+  file_read(f, b, n)
+  file_close(f)
+  gvk_spv_len = n
+  return b
+}
+var gvk_spv_len: int = 0
+
+function gvk_module(path: string) -> long {
+  let zero: long = 0
+  let spv = gvk_read_spv(path)
+  if spv == null { print(`r3d: vulkan: no SPIR-V at {path}`);  return zero }
+  let smci = bytes(VkShaderModuleCreateInfo_sizeof)
+  Vk.zero(smci, VkShaderModuleCreateInfo_sizeof)
+  Vk.put_i32(smci, VkShaderModuleCreateInfo_sType, VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO)
+  let code_size: long = gvk_spv_len
+  Vk.put_i64(smci, VkShaderModuleCreateInfo_codeSize, code_size)
+  Vk.put_ptr(smci, VkShaderModuleCreateInfo_pCode, spv)
+  let out = bytes(8)
+  let r = Vk.create_shader_module(gvk_dev, smci, null, out)
+  if r != VK_SUCCESS { gvk_fail(`vkCreateShaderModule {path}`, r);  return zero }
+  return gvk_handle(out)
+}
+
+# The Vulkan side of a program handle the renderer already made (gpu_program): the handle's
+# manifest key finds the variant. Returns false when there is no such variant.
+function gvk_program(p: int, key: string, spv_dir: string) -> bool {
+  let zero: long = 0
+  if gvk_prog_var == null {
+    gvk_prog_var = new []GpuVariant;  gvk_prog_vs = new []long;  gvk_prog_fs = new []long
+    gvk_prog_dsl = new []long;  gvk_prog_layout = new []long
+  }
+  while len(gvk_prog_var) <= p {
+    push(gvk_prog_var, null);  push(gvk_prog_vs, zero);  push(gvk_prog_fs, zero);  push(gvk_prog_dsl, zero);  push(gvk_prog_layout, zero)
+  }
+  let parts = Text.split(key, "|")
+  var defs = ""
+  if len(parts) > 2 { defs = parts[2] }
+  let v = gpu_variant_find_key(parts[0], parts[1], defs)
+  if v == null { print(`r3d: vulkan: no SPIR-V variant for {key}`);  return false }
+  let vs = gvk_module(`{spv_dir}/{v.id}.vert.spv`)
+  let fs = gvk_module(`{spv_dir}/{v.id}.frag.spv`)
+  if vs == 0 or fs == 0 { return false }
+
+  let nt = len(v.t_name)
+  var nb = nt
+  if v.vblock >= 0 { nb += 1 }
+  if v.fblock >= 0 { nb += 1 }
+  let bw = VkDescriptorSetLayoutBinding_sizeof
+  let binds = bytes(bw * (nb + 1))
+  Vk.zero(binds, bw * (nb + 1))
+  var k = 0
+  if v.vblock >= 0 {
+    Vk.put_i32(binds, k * bw + VkDescriptorSetLayoutBinding_binding, 0)
+    Vk.put_i32(binds, k * bw + VkDescriptorSetLayoutBinding_descriptorType, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
+    Vk.put_i32(binds, k * bw + VkDescriptorSetLayoutBinding_descriptorCount, 1)
+    Vk.put_i32(binds, k * bw + VkDescriptorSetLayoutBinding_stageFlags, VK_SHADER_STAGE_VERTEX_BIT)
+    k += 1
+  }
+  if v.fblock >= 0 {
+    Vk.put_i32(binds, k * bw + VkDescriptorSetLayoutBinding_binding, 1)
+    Vk.put_i32(binds, k * bw + VkDescriptorSetLayoutBinding_descriptorType, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
+    Vk.put_i32(binds, k * bw + VkDescriptorSetLayoutBinding_descriptorCount, 1)
+    Vk.put_i32(binds, k * bw + VkDescriptorSetLayoutBinding_stageFlags, VK_SHADER_STAGE_FRAGMENT_BIT)
+    k += 1
+  }
+  for t in 0 .. nt {
+    Vk.put_i32(binds, k * bw + VkDescriptorSetLayoutBinding_binding, v.t_bind[t])
+    Vk.put_i32(binds, k * bw + VkDescriptorSetLayoutBinding_descriptorType, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+    Vk.put_i32(binds, k * bw + VkDescriptorSetLayoutBinding_descriptorCount, 1)
+    Vk.put_i32(binds, k * bw + VkDescriptorSetLayoutBinding_stageFlags, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT)
+    k += 1
+  }
+  let dslci = bytes(VkDescriptorSetLayoutCreateInfo_sizeof)
+  Vk.zero(dslci, VkDescriptorSetLayoutCreateInfo_sizeof)
+  Vk.put_i32(dslci, VkDescriptorSetLayoutCreateInfo_sType, VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO)
+  Vk.put_i32(dslci, VkDescriptorSetLayoutCreateInfo_bindingCount, nb)
+  Vk.put_ptr(dslci, VkDescriptorSetLayoutCreateInfo_pBindings, binds)
+  let dsl = bytes(8)
+  var r = Vk.create_descriptor_set_layout(gvk_dev, dslci, null, dsl)
+  if r != VK_SUCCESS { return gvk_fail(`vkCreateDescriptorSetLayout for {key}`, r) }
+  let plci = bytes(VkPipelineLayoutCreateInfo_sizeof)
+  Vk.zero(plci, VkPipelineLayoutCreateInfo_sizeof)
+  Vk.put_i32(plci, VkPipelineLayoutCreateInfo_sType, VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO)
+  Vk.put_i32(plci, VkPipelineLayoutCreateInfo_setLayoutCount, 1)
+  Vk.put_ptr(plci, VkPipelineLayoutCreateInfo_pSetLayouts, dsl)
+  let out = bytes(8)
+  r = Vk.create_pipeline_layout(gvk_dev, plci, null, out)
+  if r != VK_SUCCESS { return gvk_fail(`vkCreatePipelineLayout for {key}`, r) }
+  gvk_prog_var[p] = v;  gvk_prog_vs[p] = vs;  gvk_prog_fs[p] = fs
+  gvk_prog_dsl[p] = Vk.get_i64(dsl, 0);  gvk_prog_layout[p] = gvk_handle(out)
+  return true
+}
+
+# ---- pipelines ----------------------------------------------------------------------------
+# A pipeline is everything OpenGL decides at the draw: the program, the vertex layout the mesh
+# recorded, the render state the renderer set, and the formats and sample count of the pass it
+# draws into. Each distinct combination is built once, the first time it is drawn.
+property GvkState {
+  depth_test: int = 0,
+  depth_write: int = 1,
+  depth_func: int = 0x0201,        # GL_LESS
+  blend: int = 0,
+  blend_src: int = 1,              # GL_ONE
+  blend_dst: int = 0,              # GL_ZERO
+  cull: int = 0,
+  cull_face: int = 0x0405,         # GL_BACK
+  color_write: int = 1,
+  a2c: int = 0,
+  bias: int = 0,
+  bias_factor: int = 0,            # float bits
+  bias_units: int = 0,             # float bits
+  wireframe: int = 0
+}
+var gvk_pipe_keys: []string = null
+var gvk_pipe: []long = null
+
+function gvk_attr_format(comps: int, type: int, normalized: int) -> int {
+  if type == GPU_U8 {
+    if normalized == 1 { if comps == 4 { return VK_FORMAT_R8G8B8A8_UNORM };  if comps == 3 { return VK_FORMAT_R8G8B8_UNORM };  if comps == 2 { return VK_FORMAT_R8G8_UNORM };  return VK_FORMAT_R8_UNORM }
+    if comps == 4 { return VK_FORMAT_R8G8B8A8_UINT };  if comps == 2 { return VK_FORMAT_R8G8_UINT };  return VK_FORMAT_R8_UINT
+  }
+  if type == GPU_U16 {
+    if normalized == 1 { if comps == 4 { return VK_FORMAT_R16G16B16A16_UNORM };  if comps == 2 { return VK_FORMAT_R16G16_UNORM };  return VK_FORMAT_R16_UNORM }
+    if comps == 4 { return VK_FORMAT_R16G16B16A16_UINT };  if comps == 2 { return VK_FORMAT_R16G16_UINT };  return VK_FORMAT_R16_UINT
+  }
+  if comps == 4 { return VK_FORMAT_R32G32B32A32_SFLOAT }
+  if comps == 3 { return VK_FORMAT_R32G32B32_SFLOAT }
+  if comps == 2 { return VK_FORMAT_R32G32_SFLOAT }
+  return VK_FORMAT_R32_SFLOAT
+}
+function gvk_blend_factor(f: int) -> int {
+  if f == GL_ONE { return VK_BLEND_FACTOR_ONE }
+  if f == GL_SRC_ALPHA { return VK_BLEND_FACTOR_SRC_ALPHA }
+  if f == GL_ONE_MINUS_SRC_ALPHA { return VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA }
+  if f == GL_DST_ALPHA { return VK_BLEND_FACTOR_DST_ALPHA }
+  if f == GL_ONE_MINUS_DST_ALPHA { return VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA }
+  if f == GL_SRC_COLOR { return VK_BLEND_FACTOR_SRC_COLOR }
+  if f == GL_ONE_MINUS_SRC_COLOR { return VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR }
+  return VK_BLEND_FACTOR_ZERO
+}
+function gvk_depth_op(f: int) -> int {
+  if f == GL_LEQUAL { return VK_COMPARE_OP_LESS_OR_EQUAL }
+  if f == GL_EQUAL { return VK_COMPARE_OP_EQUAL }
+  if f == GL_ALWAYS { return VK_COMPARE_OP_ALWAYS }
+  if f == GL_GREATER { return VK_COMPARE_OP_GREATER }
+  if f == GL_GEQUAL { return VK_COMPARE_OP_GREATER_OR_EQUAL }
+  if f == GL_NEVER { return VK_COMPARE_OP_NEVER }
+  if f == GL_NOTEQUAL { return VK_COMPARE_OP_NOT_EQUAL }
+  return VK_COMPARE_OP_LESS
+}
+# the vertex layout a mesh recorded (gpu.ludic's attrs), as part of a pipeline key
+function gvk_layout_key(m: Mesh) -> string {
+  if m == null or m.attrs == null { return "none" }
+  var k = ""
+  for i in 0 .. m.n_attrs {
+    let o = i * GPU_ATTR_W
+    if m.attrs[o + 1] == 0 { continue }
+    k = k + `{i}:{m.attrs[o]}:{m.attrs[o + 1]}:{m.attrs[o + 2]}:{m.attrs[o + 3]}:{m.attrs[o + 4]}:{m.attrs[o + 5]}:{m.attrs[o + 6]};`
+  }
+  return k
+}
+
+# The pipeline for program p drawing mesh m (null for a draw without vertex input, like the
+# full-screen triangle) with state st into a pass of n_color colour attachments of format
+# color_fmt, a depth attachment of depth_fmt (VK_FORMAT_UNDEFINED for none) at `samples`.
+function gvk_pipeline(p: int, m: Mesh, st: GvkState, n_color: int, color_fmt: int, depth_fmt: int, samples: int) -> long {
+  let zero: long = 0
+  let v = gvk_prog_var[p]
+  if v == null { return zero }
+  let key = `{p}|{gvk_layout_key(m)}|{st.depth_test},{st.depth_write},{st.depth_func},{st.blend},{st.blend_src},{st.blend_dst},{st.cull},{st.cull_face},{st.color_write},{st.a2c},{st.bias},{st.bias_factor},{st.bias_units},{st.wireframe}|{n_color},{color_fmt},{depth_fmt},{samples}`
+  if gvk_pipe_keys == null { gvk_pipe_keys = new []string;  gvk_pipe = new []long }
+  for i in 0 .. len(gvk_pipe_keys) { if gvk_pipe_keys[i] == key { return gvk_pipe[i] } }
+
+  let ss = VkPipelineShaderStageCreateInfo_sizeof
+  let stages = bytes(ss * 2)
+  Vk.zero(stages, ss * 2)
+  Vk.put_i32(stages, VkPipelineShaderStageCreateInfo_sType, VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO)
+  Vk.put_i32(stages, VkPipelineShaderStageCreateInfo_stage, VK_SHADER_STAGE_VERTEX_BIT)
+  Vk.put_i64(stages, VkPipelineShaderStageCreateInfo_module, gvk_prog_vs[p])
+  Vk.put_ptr(stages, VkPipelineShaderStageCreateInfo_pName, "main")
+  Vk.put_i32(stages, ss + VkPipelineShaderStageCreateInfo_sType, VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO)
+  Vk.put_i32(stages, ss + VkPipelineShaderStageCreateInfo_stage, VK_SHADER_STAGE_FRAGMENT_BIT)
+  Vk.put_i64(stages, ss + VkPipelineShaderStageCreateInfo_module, gvk_prog_fs[p])
+  Vk.put_ptr(stages, ss + VkPipelineShaderStageCreateInfo_pName, "main")
+
+  # vertex input: one binding per distinct buffer the mesh's attributes read, in the order met;
+  # an attribute the shader does not read is left out
+  let aw = VkVertexInputAttributeDescription_sizeof
+  let bdw = VkVertexInputBindingDescription_sizeof
+  let attrs = bytes(aw * (GPU_MAX_ATTRS + 1))
+  let bnds = bytes(bdw * (GPU_MAX_VBUFS + 1))
+  Vk.zero(attrs, aw * (GPU_MAX_ATTRS + 1))
+  Vk.zero(bnds, bdw * (GPU_MAX_VBUFS + 1))
+  var na = 0
+  var nbd = 0
+  if m != null and m.attrs != null {
+    let bufs = words(GPU_MAX_VBUFS)
+    for i in 0 .. m.n_attrs {
+      let o = i * GPU_ATTR_W
+      if m.attrs[o + 1] == 0 { continue }
+      var wanted = false
+      for q in 0 .. len(v.i_loc) { if v.i_loc[q] == i { wanted = true } }
+      if not wanted { continue }
+      var bi = -1
+      for q in 0 .. nbd { if bufs[q] == m.attrs[o] and bi < 0 { bi = q } }
+      if bi < 0 and nbd < GPU_MAX_VBUFS {
+        bi = nbd
+        bufs[nbd] = m.attrs[o]
+        Vk.put_i32(bnds, nbd * bdw + VkVertexInputBindingDescription_binding, nbd)
+        Vk.put_i32(bnds, nbd * bdw + VkVertexInputBindingDescription_stride, m.attrs[o + 3])
+        if m.attrs[o + 6] == 1 { Vk.put_i32(bnds, nbd * bdw + VkVertexInputBindingDescription_inputRate, VK_VERTEX_INPUT_RATE_INSTANCE) }
+        nbd += 1
+      }
+      Vk.put_i32(attrs, na * aw + VkVertexInputAttributeDescription_location, i)
+      Vk.put_i32(attrs, na * aw + VkVertexInputAttributeDescription_binding, bi)
+      Vk.put_i32(attrs, na * aw + VkVertexInputAttributeDescription_format, gvk_attr_format(m.attrs[o + 1], m.attrs[o + 2], m.attrs[o + 5]))
+      Vk.put_i32(attrs, na * aw + VkVertexInputAttributeDescription_offset, m.attrs[o + 4])
+      na += 1
+    }
+  }
+  let vin = bytes(VkPipelineVertexInputStateCreateInfo_sizeof)
+  Vk.zero(vin, VkPipelineVertexInputStateCreateInfo_sizeof)
+  Vk.put_i32(vin, VkPipelineVertexInputStateCreateInfo_sType, VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO)
+  Vk.put_i32(vin, VkPipelineVertexInputStateCreateInfo_vertexBindingDescriptionCount, nbd)
+  Vk.put_ptr(vin, VkPipelineVertexInputStateCreateInfo_pVertexBindingDescriptions, bnds)
+  Vk.put_i32(vin, VkPipelineVertexInputStateCreateInfo_vertexAttributeDescriptionCount, na)
+  Vk.put_ptr(vin, VkPipelineVertexInputStateCreateInfo_pVertexAttributeDescriptions, attrs)
+
+  let ias = bytes(VkPipelineInputAssemblyStateCreateInfo_sizeof)
+  Vk.zero(ias, VkPipelineInputAssemblyStateCreateInfo_sizeof)
+  Vk.put_i32(ias, VkPipelineInputAssemblyStateCreateInfo_sType, VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO)
+  Vk.put_i32(ias, VkPipelineInputAssemblyStateCreateInfo_topology, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+  let vps = bytes(VkPipelineViewportStateCreateInfo_sizeof)
+  Vk.zero(vps, VkPipelineViewportStateCreateInfo_sizeof)
+  Vk.put_i32(vps, VkPipelineViewportStateCreateInfo_sType, VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO)
+  Vk.put_i32(vps, VkPipelineViewportStateCreateInfo_viewportCount, 1)
+  Vk.put_i32(vps, VkPipelineViewportStateCreateInfo_scissorCount, 1)
+
+  let rs = bytes(VkPipelineRasterizationStateCreateInfo_sizeof)
+  Vk.zero(rs, VkPipelineRasterizationStateCreateInfo_sizeof)
+  Vk.put_i32(rs, VkPipelineRasterizationStateCreateInfo_sType, VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO)
+  if st.wireframe == 1 { Vk.put_i32(rs, VkPipelineRasterizationStateCreateInfo_polygonMode, VK_POLYGON_MODE_LINE) } else { Vk.put_i32(rs, VkPipelineRasterizationStateCreateInfo_polygonMode, VK_POLYGON_MODE_FILL) }
+  if st.cull == 1 {
+    if st.cull_face == GL_FRONT { Vk.put_i32(rs, VkPipelineRasterizationStateCreateInfo_cullMode, VK_CULL_MODE_FRONT_BIT) } else { Vk.put_i32(rs, VkPipelineRasterizationStateCreateInfo_cullMode, VK_CULL_MODE_BACK_BIT) }
+  }
+  # no y flip between the APIs' clip spaces and their framebuffers' rows, so a triangle that is
+  # counter-clockwise on OpenGL's bottom-up window is clockwise in Vulkan's top-down one
+  Vk.put_i32(rs, VkPipelineRasterizationStateCreateInfo_frontFace, VK_FRONT_FACE_CLOCKWISE)
+  Vk.put_i32(rs, VkPipelineRasterizationStateCreateInfo_lineWidth, 0x3F800000)
+  if st.bias == 1 {
+    Vk.put_i32(rs, VkPipelineRasterizationStateCreateInfo_depthBiasEnable, 1)
+    Vk.put_i32(rs, VkPipelineRasterizationStateCreateInfo_depthBiasSlopeFactor, st.bias_factor)
+    Vk.put_i32(rs, VkPipelineRasterizationStateCreateInfo_depthBiasConstantFactor, st.bias_units)
+  }
+  let ms = bytes(VkPipelineMultisampleStateCreateInfo_sizeof)
+  Vk.zero(ms, VkPipelineMultisampleStateCreateInfo_sizeof)
+  Vk.put_i32(ms, VkPipelineMultisampleStateCreateInfo_sType, VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO)
+  Vk.put_i32(ms, VkPipelineMultisampleStateCreateInfo_rasterizationSamples, samples)
+  Vk.put_i32(ms, VkPipelineMultisampleStateCreateInfo_alphaToCoverageEnable, st.a2c)
+  let ds = bytes(VkPipelineDepthStencilStateCreateInfo_sizeof)
+  Vk.zero(ds, VkPipelineDepthStencilStateCreateInfo_sizeof)
+  Vk.put_i32(ds, VkPipelineDepthStencilStateCreateInfo_sType, VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO)
+  if depth_fmt != VK_FORMAT_UNDEFINED {
+    Vk.put_i32(ds, VkPipelineDepthStencilStateCreateInfo_depthTestEnable, st.depth_test)
+    # OpenGL writes no depth with the test off, whatever the mask says
+    if st.depth_test == 1 { Vk.put_i32(ds, VkPipelineDepthStencilStateCreateInfo_depthWriteEnable, st.depth_write) }
+    Vk.put_i32(ds, VkPipelineDepthStencilStateCreateInfo_depthCompareOp, gvk_depth_op(st.depth_func))
+  }
+  let cbw = VkPipelineColorBlendAttachmentState_sizeof
+  let cba = bytes(cbw * (n_color + 1))
+  Vk.zero(cba, cbw * (n_color + 1))
+  for c in 0 .. n_color {
+    if st.color_write == 1 { Vk.put_i32(cba, c * cbw + VkPipelineColorBlendAttachmentState_colorWriteMask, 15) }
+    if st.blend == 1 {
+      Vk.put_i32(cba, c * cbw + VkPipelineColorBlendAttachmentState_blendEnable, 1)
+      Vk.put_i32(cba, c * cbw + VkPipelineColorBlendAttachmentState_srcColorBlendFactor, gvk_blend_factor(st.blend_src))
+      Vk.put_i32(cba, c * cbw + VkPipelineColorBlendAttachmentState_dstColorBlendFactor, gvk_blend_factor(st.blend_dst))
+      Vk.put_i32(cba, c * cbw + VkPipelineColorBlendAttachmentState_srcAlphaBlendFactor, gvk_blend_factor(st.blend_src))
+      Vk.put_i32(cba, c * cbw + VkPipelineColorBlendAttachmentState_dstAlphaBlendFactor, gvk_blend_factor(st.blend_dst))
+    }
+  }
+  let cbs = bytes(VkPipelineColorBlendStateCreateInfo_sizeof)
+  Vk.zero(cbs, VkPipelineColorBlendStateCreateInfo_sizeof)
+  Vk.put_i32(cbs, VkPipelineColorBlendStateCreateInfo_sType, VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO)
+  Vk.put_i32(cbs, VkPipelineColorBlendStateCreateInfo_attachmentCount, n_color)
+  Vk.put_ptr(cbs, VkPipelineColorBlendStateCreateInfo_pAttachments, cba)
+  let dyn_states = bytes(8)
+  Vk.put_i32(dyn_states, 0, VK_DYNAMIC_STATE_VIEWPORT)
+  Vk.put_i32(dyn_states, 4, VK_DYNAMIC_STATE_SCISSOR)
+  let dys = bytes(VkPipelineDynamicStateCreateInfo_sizeof)
+  Vk.zero(dys, VkPipelineDynamicStateCreateInfo_sizeof)
+  Vk.put_i32(dys, VkPipelineDynamicStateCreateInfo_sType, VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO)
+  Vk.put_i32(dys, VkPipelineDynamicStateCreateInfo_dynamicStateCount, 2)
+  Vk.put_ptr(dys, VkPipelineDynamicStateCreateInfo_pDynamicStates, dyn_states)
+  let formats = bytes(4 * (n_color + 1))
+  for c in 0 .. n_color { Vk.put_i32(formats, c * 4, color_fmt) }
+  let prci = bytes(VkPipelineRenderingCreateInfo_sizeof)
+  Vk.zero(prci, VkPipelineRenderingCreateInfo_sizeof)
+  Vk.put_i32(prci, VkPipelineRenderingCreateInfo_sType, VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO)
+  Vk.put_i32(prci, VkPipelineRenderingCreateInfo_colorAttachmentCount, n_color)
+  Vk.put_ptr(prci, VkPipelineRenderingCreateInfo_pColorAttachmentFormats, formats)
+  Vk.put_i32(prci, VkPipelineRenderingCreateInfo_depthAttachmentFormat, depth_fmt)
+
+  let gpci = bytes(VkGraphicsPipelineCreateInfo_sizeof)
+  Vk.zero(gpci, VkGraphicsPipelineCreateInfo_sizeof)
+  Vk.put_i32(gpci, VkGraphicsPipelineCreateInfo_sType, VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO)
+  Vk.put_ptr(gpci, VkGraphicsPipelineCreateInfo_pNext, prci)
+  Vk.put_i32(gpci, VkGraphicsPipelineCreateInfo_stageCount, 2)
+  Vk.put_ptr(gpci, VkGraphicsPipelineCreateInfo_pStages, stages)
+  Vk.put_ptr(gpci, VkGraphicsPipelineCreateInfo_pVertexInputState, vin)
+  Vk.put_ptr(gpci, VkGraphicsPipelineCreateInfo_pInputAssemblyState, ias)
+  Vk.put_ptr(gpci, VkGraphicsPipelineCreateInfo_pViewportState, vps)
+  Vk.put_ptr(gpci, VkGraphicsPipelineCreateInfo_pRasterizationState, rs)
+  Vk.put_ptr(gpci, VkGraphicsPipelineCreateInfo_pMultisampleState, ms)
+  Vk.put_ptr(gpci, VkGraphicsPipelineCreateInfo_pDepthStencilState, ds)
+  Vk.put_ptr(gpci, VkGraphicsPipelineCreateInfo_pColorBlendState, cbs)
+  Vk.put_ptr(gpci, VkGraphicsPipelineCreateInfo_pDynamicState, dys)
+  Vk.put_i64(gpci, VkGraphicsPipelineCreateInfo_layout, gvk_prog_layout[p])
+  let out = bytes(8)
+  let r = Vk.create_graphics_pipelines(gvk_dev, zero, 1, gpci, null, out)
+  if r != VK_SUCCESS { gvk_fail(`vkCreateGraphicsPipelines for {v.vs} + {v.fs}`, r);  return zero }
+  let pipe = gvk_handle(out)
+  push(gvk_pipe_keys, key)
+  push(gvk_pipe, pipe)
+  return pipe
+}
+
+# ---- uniforms -----------------------------------------------------------------------------
+# On Vulkan a loose uniform is a place in its program's uniform block: glslang's relaxed mode
+# gathered each stage's loose uniforms into one block and the manifest says where each one sits.
+# A uniform "location" is program * 4096 + the index of its first manifest entry, so -1 still
+# means "not in this program". Writing one writes every stage that declares it; the blocks go to
+# the GPU at the draw.
+var gvk_ublk_v: []bytes = null        # per program: the vertex stage's block as last set
+var gvk_ublk_f: []bytes = null
+var gvk_prog_tex: []words = null      # per program: the texture bound to each manifest sampler
+
+function gvk_uniform_blocks(p: int) -> void {
+  if gvk_ublk_v == null { gvk_ublk_v = new []bytes;  gvk_ublk_f = new []bytes;  gvk_prog_tex = new []words }
+  while len(gvk_ublk_v) <= p { push(gvk_ublk_v, null);  push(gvk_ublk_f, null);  push(gvk_prog_tex, null) }
+  let v = gvk_prog_var[p]
+  if v == null or gvk_ublk_v[p] != null or gvk_prog_tex[p] != null { return }
+  if v.vblock > 0 { let b = bytes(v.vblock);  Vk.zero(b, v.vblock);  gvk_ublk_v[p] = b }
+  if v.fblock > 0 { let b = bytes(v.fblock);  Vk.zero(b, v.fblock);  gvk_ublk_f[p] = b }
+  let nt = len(v.t_name) + 1
+  let t = words(nt)
+  for i in 0 .. nt { t[i] = 0 }
+  gvk_prog_tex[p] = t
+}
+
+function gvk_uniform(p: int, name: string) -> int {
+  if gvk_prog_var == null or p <= 0 or p >= len(gvk_prog_var) { return -1 }
+  let v = gvk_prog_var[p]
+  if v == null { return -1 }
+  for i in 0 .. len(v.u_name) { if v.u_name[i] == name { return p * 4096 + i } }
+  return -1
+}
+
+# n elements of `size` bytes each from src into every block that declares the uniform at loc
+function gvk_u_set(loc: int, src: pointer, size: int, n: int) -> void {
+  if loc < 0 { return }
+  let p = loc / 4096
+  let v = gvk_prog_var[p]
+  if v == null { return }
+  gvk_uniform_blocks(p)
+  let name = v.u_name[loc % 4096]
+  for j in 0 .. len(v.u_name) {
+    if v.u_name[j] != name { continue }
+    var blk = gvk_ublk_v[p]
+    var cap = v.vblock
+    if v.u_stage[j] == 1 { blk = gvk_ublk_f[p];  cap = v.fblock }
+    if blk == null { continue }
+    var stride = v.u_stride[j]
+    if stride == 0 { stride = size }
+    var count = n
+    if count > v.u_count[j] { count = v.u_count[j] }
+    for k in 0 .. count {
+      let at = v.u_off[j] + k * stride
+      if at + size <= cap { mem_copy(mem_off(blk, at), mem_off(src, k * size), size) }
+    }
+  }
+}
+
+# a sampler uniform: the texture for the manifest binding with that name
+function gvk_bind_texture(p: int, name: string, tex: int) -> void {
+  if gvk_prog_var == null or p <= 0 or p >= len(gvk_prog_var) { return }
+  let v = gvk_prog_var[p]
+  if v == null { return }
+  gvk_uniform_blocks(p)
+  for i in 0 .. len(v.t_name) { if v.t_name[i] == name { gvk_prog_tex[p][i] = tex } }
+}
+
+# ---- per-frame uniform ring and descriptor sets -------------------------------------------
+# Each draw's blocks are copied into one host-visible ring buffer at the device's alignment and
+# its descriptor set comes from a pool that is reset with the frame. Both are rewound at
+# gvk_frame_reset.
+const GVK_RING_BYTES: int = 64 * 1024 * 1024
+var gvk_ring_buf: int = 0             # a gvk_buf handle
+var gvk_ring_off: int = 0
+var gvk_ring_align: int = 256
+var gvk_dpool: long = 0
+var gvk_white: int = 0                # a 1x1 white texture for a sampler nothing was bound to
+
+function gvk_frame_init() -> bool {
+  let props = bytes(VkPhysicalDeviceProperties_sizeof)
+  Vk.get_physical_device_properties(gvk_pd, props)
+  let al = Vk.get_i64(props, VkPhysicalDeviceProperties_limits + VkPhysicalDeviceLimits_minUniformBufferOffsetAlignment)
+  gvk_ring_align = Text.to_int(string(al))
+  if gvk_ring_align < 16 { gvk_ring_align = 16 }
+  gvk_ring_buf = gvk_buf_new()
+  if not gvk_buf_reserve(gvk_ring_buf, GVK_RING_BYTES) { return false }
+  let sizes = bytes(VkDescriptorPoolSize_sizeof * 2)
+  Vk.put_i32(sizes, VkDescriptorPoolSize_type, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
+  Vk.put_i32(sizes, VkDescriptorPoolSize_descriptorCount, 32768)
+  Vk.put_i32(sizes, VkDescriptorPoolSize_sizeof + VkDescriptorPoolSize_type, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+  Vk.put_i32(sizes, VkDescriptorPoolSize_sizeof + VkDescriptorPoolSize_descriptorCount, 131072)
+  let dpci = bytes(VkDescriptorPoolCreateInfo_sizeof)
+  Vk.zero(dpci, VkDescriptorPoolCreateInfo_sizeof)
+  Vk.put_i32(dpci, VkDescriptorPoolCreateInfo_sType, VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO)
+  Vk.put_i32(dpci, VkDescriptorPoolCreateInfo_maxSets, 16384)
+  Vk.put_i32(dpci, VkDescriptorPoolCreateInfo_poolSizeCount, 2)
+  Vk.put_ptr(dpci, VkDescriptorPoolCreateInfo_pPoolSizes, sizes)
+  let out = bytes(8)
+  let r = Vk.create_descriptor_pool(gvk_dev, dpci, null, out)
+  if r != VK_SUCCESS { return gvk_fail("vkCreateDescriptorPool", r) }
+  gvk_dpool = gvk_handle(out)
+  gvk_white = gvk_tex_new()
+  let px = bytes(4)
+  px[0] = 255;  px[1] = 255;  px[2] = 255;  px[3] = 255
+  return gvk_tex_storage(gvk_white, false, GL_RGBA8, 1, 1, 1, false) and gvk_tex_upload(gvk_white, GL_RGBA8, 1, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px)
+}
+
+function gvk_frame_reset() -> void {
+  gvk_ring_off = 0
+  Vk.reset_descriptor_pool(gvk_dev, gvk_dpool, 0)
+}
+
+# a block into the ring; its offset, or -1 when the frame has used the whole ring
+function gvk_ring_put(blk: bytes, n: int) -> int {
+  let at = (gvk_ring_off + gvk_ring_align - 1) / gvk_ring_align * gvk_ring_align
+  if at + n > GVK_RING_BYTES { return -1 }
+  mem_copy(mem_off(gvk_buf_map[gvk_ring_buf], at), blk, n)
+  gvk_ring_off = at + n
+  return at
+}
+
+# The descriptor set for program p as its uniforms and textures stand now. tx is gpu.ludic's
+# texture record (kind, w, h, layers, ifmt, min, mag, wrap s, wrap t, compare, mips, aniso).
+function gvk_draw_set(p: int, tx: words, tx_w: int, tx_cap: int) -> long {
+  let zero: long = 0
+  let v = gvk_prog_var[p]
+  gvk_uniform_blocks(p)
+  let dsai = bytes(VkDescriptorSetAllocateInfo_sizeof)
+  Vk.zero(dsai, VkDescriptorSetAllocateInfo_sizeof)
+  Vk.put_i32(dsai, VkDescriptorSetAllocateInfo_sType, VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO)
+  Vk.put_i64(dsai, VkDescriptorSetAllocateInfo_descriptorPool, gvk_dpool)
+  Vk.put_i32(dsai, VkDescriptorSetAllocateInfo_descriptorSetCount, 1)
+  let layouts = bytes(8)
+  Vk.put_i64(layouts, 0, gvk_prog_dsl[p])
+  Vk.put_ptr(dsai, VkDescriptorSetAllocateInfo_pSetLayouts, layouts)
+  let sets = bytes(8)
+  let r = Vk.allocate_descriptor_sets(gvk_dev, dsai, sets)
+  if r != VK_SUCCESS { gvk_fail("vkAllocateDescriptorSets", r);  return zero }
+  let set = Vk.get_i64(sets, 0)
+
+  let nt = len(v.t_name)
+  let ww = VkWriteDescriptorSet_sizeof
+  let writes = bytes(ww * (nt + 3))
+  Vk.zero(writes, ww * (nt + 3))
+  let bis = bytes(VkDescriptorBufferInfo_sizeof * 2)
+  let iis = bytes(VkDescriptorImageInfo_sizeof * (nt + 1))
+  var nw = 0
+  for stage in 0 .. 2 {
+    var blk = gvk_ublk_v[p]
+    var size = v.vblock
+    if stage == 1 { blk = gvk_ublk_f[p];  size = v.fblock }
+    if blk == null or size <= 0 { continue }
+    let at = gvk_ring_put(blk, size)
+    if at < 0 { print("r3d: vulkan: the frame's uniform ring is full");  return zero }
+    let bi = stage * VkDescriptorBufferInfo_sizeof
+    let at_l: long = at
+    let size_l: long = size
+    Vk.put_i64(bis, bi + VkDescriptorBufferInfo_buffer, gvk_buf[gvk_ring_buf])
+    Vk.put_i64(bis, bi + VkDescriptorBufferInfo_offset, at_l)
+    Vk.put_i64(bis, bi + VkDescriptorBufferInfo_range, size_l)
+    Vk.put_i32(writes, nw * ww + VkWriteDescriptorSet_sType, VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET)
+    Vk.put_i64(writes, nw * ww + VkWriteDescriptorSet_dstSet, set)
+    Vk.put_i32(writes, nw * ww + VkWriteDescriptorSet_dstBinding, stage)
+    Vk.put_i32(writes, nw * ww + VkWriteDescriptorSet_descriptorCount, 1)
+    Vk.put_i32(writes, nw * ww + VkWriteDescriptorSet_descriptorType, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
+    Vk.put_ptr(writes, nw * ww + VkWriteDescriptorSet_pBufferInfo, mem_off(bis, bi))
+    nw += 1
+  }
+  let iw = VkDescriptorImageInfo_sizeof
+  for t in 0 .. nt {
+    var tex = gvk_prog_tex[p][t]
+    if tex <= 0 or tex >= len(gvk_tex_image) or gvk_tex_image[tex] == 0 { tex = gvk_white }
+    var smp: long = 0
+    let o = tex * tx_w
+    if tex != gvk_white and tex < tx_cap {
+      smp = gvk_sampler(tx[o + 5], tx[o + 6], tx[o + 7], tx[o + 8], tx[o + 9], tx[o + 11])
+    } else {
+      smp = gvk_sampler(GL_LINEAR, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, 0, 0)
+    }
+    Vk.put_i64(iis, t * iw + VkDescriptorImageInfo_sampler, smp)
+    Vk.put_i64(iis, t * iw + VkDescriptorImageInfo_imageView, gvk_tex_view[tex])
+    Vk.put_i32(iis, t * iw + VkDescriptorImageInfo_imageLayout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+    Vk.put_i32(writes, nw * ww + VkWriteDescriptorSet_sType, VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET)
+    Vk.put_i64(writes, nw * ww + VkWriteDescriptorSet_dstSet, set)
+    Vk.put_i32(writes, nw * ww + VkWriteDescriptorSet_dstBinding, v.t_bind[t])
+    Vk.put_i32(writes, nw * ww + VkWriteDescriptorSet_descriptorCount, 1)
+    Vk.put_i32(writes, nw * ww + VkWriteDescriptorSet_descriptorType, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+    Vk.put_ptr(writes, nw * ww + VkWriteDescriptorSet_pImageInfo, mem_off(iis, t * iw))
+    nw += 1
+  }
+  if nw > 0 { Vk.update_descriptor_sets(gvk_dev, nw, writes, 0, null) }
+  return set
+}
+
+# ---- the frame and its passes -------------------------------------------------------------
+# One command buffer records the whole frame. Binding a framebuffer ends the pass in progress;
+# the next one begins at its first clear or draw, so a clear that comes first becomes the pass's
+# load op. For the length of a pass its attachments sit in the attachment layouts, and between
+# passes every image is back in SHADER_READ_ONLY where samplers expect it. The present submits
+# and waits: the frame is finished before the next one starts, as it is on OpenGL.
+#
+# Framebuffer 0 is the screen: a colour and a depth image made at gvk_screen_make. Headless that
+# is all the screen there is; with a window the present copies it to the swapchain.
+var gvk_cb: pointer = null
+var gvk_in_pass: bool = false
+var gvk_fb_cur: int = 0
+var gvk_fb_read: int = 0
+var gvk_fb_draw: int = 0
+var gvk_pass_w: int = 0
+var gvk_pass_h: int = 0
+var gvk_pass_ncolor: int = 0
+var gvk_pass_cfmt: int = 0
+var gvk_pass_dfmt: int = 0
+var gvk_pass_col: words = null        # the pass's colour attachments: texture, layer + 1
+var gvk_pass_dep: words = null        # its depth attachment: texture, layer + 1
+var gvk_clear_bits: int = 0           # GL_COLOR_BUFFER_BIT / GL_DEPTH_BUFFER_BIT waiting for the pass
+var gvk_clear_rgba: words = null      # float bits
+var gvk_vp: words = null              # x, y, w, h
+var gvk_sc: words = null              # scissor on, x, y (OpenGL rows), w, h
+var gvk_screen_color: int = 0
+var gvk_screen_depth: int = 0
+var gvk_screen_w: int = 0
+var gvk_screen_h: int = 0
+var gvk_layer_views: []string = null  # "tex:layer" -> index into gvk_layer_view
+var gvk_layer_view: []long = null
+var gvk_fb_ncolor: words = null       # per framebuffer: colour slots drawn (draw buffers; 0 = none)
+
+function gvk_screen_make(w: int, h: int) -> bool {
+  if gvk_vp == null {
+    gvk_vp = words(4);  gvk_sc = words(5);  gvk_clear_rgba = words(4)
+    gvk_pass_col = words(4);  gvk_pass_dep = words(2)
+    gvk_fb_ncolor = words(4096)
+    for i in 0 .. 4096 { gvk_fb_ncolor[i] = 1 }
+    for i in 0 .. 5 { gvk_sc[i] = 0 }
+  }
+  gvk_screen_w = w
+  gvk_screen_h = h
+  if gvk_screen_color == 0 { gvk_screen_color = gvk_tex_new();  gvk_screen_depth = gvk_tex_new() }
+  gvk_vp[0] = 0;  gvk_vp[1] = 0;  gvk_vp[2] = w;  gvk_vp[3] = h
+  return gvk_tex_storage(gvk_screen_color, false, GL_RGBA8, w, h, 1, false) and gvk_tex_storage(gvk_screen_depth, false, GL_DEPTH_COMPONENT32F, w, h, 1, false)
+}
+
+function gvk_frame_cb() -> pointer {
+  if gvk_cb == null {
+    gvk_frame_reset()
+    gvk_cb = gvk_once_begin()
+  }
+  return gvk_cb
+}
+
+# a view of one layer of an array image, for a cascade drawn into on its own
+function gvk_view_of(tex: int, layer1: int) -> long {
+  if layer1 == 0 { return gvk_tex_view[tex] }
+  let key = `{tex}:{layer1}`
+  if gvk_layer_views == null { gvk_layer_views = new []string;  gvk_layer_view = new []long }
+  for i in 0 .. len(gvk_layer_views) { if gvk_layer_views[i] == key { return gvk_layer_view[i] } }
+  let depth = gvk_tex_vkfmt[tex] == VK_FORMAT_D32_SFLOAT
+  let vci = bytes(VkImageViewCreateInfo_sizeof)
+  Vk.zero(vci, VkImageViewCreateInfo_sizeof)
+  Vk.put_i32(vci, VkImageViewCreateInfo_sType, VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO)
+  Vk.put_i64(vci, VkImageViewCreateInfo_image, gvk_tex_image[tex])
+  Vk.put_i32(vci, VkImageViewCreateInfo_viewType, VK_IMAGE_VIEW_TYPE_2D)
+  Vk.put_i32(vci, VkImageViewCreateInfo_format, gvk_tex_vkfmt[tex])
+  let sr = VkImageViewCreateInfo_subresourceRange
+  if depth { Vk.put_i32(vci, sr + VkImageSubresourceRange_aspectMask, VK_IMAGE_ASPECT_DEPTH_BIT) } else { Vk.put_i32(vci, sr + VkImageSubresourceRange_aspectMask, VK_IMAGE_ASPECT_COLOR_BIT) }
+  Vk.put_i32(vci, sr + VkImageSubresourceRange_levelCount, 1)
+  Vk.put_i32(vci, sr + VkImageSubresourceRange_baseArrayLayer, layer1 - 1)
+  Vk.put_i32(vci, sr + VkImageSubresourceRange_layerCount, 1)
+  let out = bytes(8)
+  let zero: long = 0
+  if Vk.create_image_view(gvk_dev, vci, null, out) != VK_SUCCESS { return zero }
+  push(gvk_layer_views, key)
+  push(gvk_layer_view, gvk_handle(out))
+  return gvk_handle(out)
+}
+# the layer range a barrier for an attachment covers: the whole image unless one layer is drawn
+function gvk_att_barrier(cb: pointer, tex: int, layer1: int, depth: bool, old_layout: int, new_layout: int) -> void {
+  let b = bytes(VkImageMemoryBarrier_sizeof)
+  Vk.zero(b, VkImageMemoryBarrier_sizeof)
+  Vk.put_i32(b, VkImageMemoryBarrier_sType, VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER)
+  Vk.put_i32(b, VkImageMemoryBarrier_srcAccessMask, gvk_layout_access(old_layout))
+  Vk.put_i32(b, VkImageMemoryBarrier_dstAccessMask, gvk_layout_access(new_layout))
+  Vk.put_i32(b, VkImageMemoryBarrier_oldLayout, old_layout)
+  Vk.put_i32(b, VkImageMemoryBarrier_newLayout, new_layout)
+  Vk.put_i32(b, VkImageMemoryBarrier_srcQueueFamilyIndex, VK_QUEUE_FAMILY_IGNORED)
+  Vk.put_i32(b, VkImageMemoryBarrier_dstQueueFamilyIndex, VK_QUEUE_FAMILY_IGNORED)
+  Vk.put_i64(b, VkImageMemoryBarrier_image, gvk_tex_image[tex])
+  let r = VkImageMemoryBarrier_subresourceRange
+  if depth { Vk.put_i32(b, r + VkImageSubresourceRange_aspectMask, VK_IMAGE_ASPECT_DEPTH_BIT) } else { Vk.put_i32(b, r + VkImageSubresourceRange_aspectMask, VK_IMAGE_ASPECT_COLOR_BIT) }
+  Vk.put_i32(b, r + VkImageSubresourceRange_levelCount, 1)
+  if layer1 == 0 { Vk.put_i32(b, r + VkImageSubresourceRange_layerCount, gvk_tex_layers[tex]) }
+  else { Vk.put_i32(b, r + VkImageSubresourceRange_baseArrayLayer, layer1 - 1);  Vk.put_i32(b, r + VkImageSubresourceRange_layerCount, 1) }
+  Vk.cmd_pipeline_barrier(cb, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, null, 0, null, 1, b)
+}
+
+# fb's attachments from gpu.ludic's record (colour 0, colour 1, depth texture, depth layer + 1,
+# colour rb, depth rb, samples, colour layer + 1), framebuffer 0 being the screen
+function gvk_pass_collect(fb: int, rec: words, rec_o: int) -> void {
+  for i in 0 .. 4 { gvk_pass_col[i] = 0 }
+  gvk_pass_dep[0] = 0;  gvk_pass_dep[1] = 0
+  gvk_pass_ncolor = 0
+  if fb == 0 {
+    gvk_pass_col[0] = gvk_screen_color;  gvk_pass_ncolor = 1
+    gvk_pass_dep[0] = gvk_screen_depth
+    return
+  }
+  if rec_o < 0 { return }
+  var want = 1
+  if fb < 4096 { want = gvk_fb_ncolor[fb] }
+  for slot in 0 .. 2 {
+    if slot < want and rec[rec_o + slot] > 0 {
+      gvk_pass_col[gvk_pass_ncolor * 2] = rec[rec_o + slot]
+      if slot == 0 { gvk_pass_col[gvk_pass_ncolor * 2 + 1] = rec[rec_o + 7] }
+      gvk_pass_ncolor += 1
+    }
+  }
+  gvk_pass_dep[0] = rec[rec_o + 2]
+  gvk_pass_dep[1] = rec[rec_o + 3]
+}
+
+function gvk_pass_begin(rec: words, rec_o: int) -> void {
+  if gvk_in_pass { return }
+  let cb = gvk_frame_cb()
+  gvk_pass_collect(gvk_fb_cur, rec, rec_o)
+  let aw = VkRenderingAttachmentInfo_sizeof
+  let catt = bytes(aw * 3)
+  Vk.zero(catt, aw * 3)
+  gvk_pass_w = 0
+  gvk_pass_h = 0
+  gvk_pass_cfmt = VK_FORMAT_UNDEFINED
+  gvk_pass_dfmt = VK_FORMAT_UNDEFINED
+  for c in 0 .. gvk_pass_ncolor {
+    let tex = gvk_pass_col[c * 2]
+    let layer1 = gvk_pass_col[c * 2 + 1]
+    gvk_att_barrier(cb, tex, layer1, false, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
+    Vk.put_i32(catt, c * aw + VkRenderingAttachmentInfo_sType, VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO)
+    Vk.put_i64(catt, c * aw + VkRenderingAttachmentInfo_imageView, gvk_view_of(tex, layer1))
+    Vk.put_i32(catt, c * aw + VkRenderingAttachmentInfo_imageLayout, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
+    Vk.put_i32(catt, c * aw + VkRenderingAttachmentInfo_storeOp, VK_ATTACHMENT_STORE_OP_STORE)
+    if (gvk_clear_bits & GL_COLOR_BUFFER_BIT) != 0 {
+      Vk.put_i32(catt, c * aw + VkRenderingAttachmentInfo_loadOp, VK_ATTACHMENT_LOAD_OP_CLEAR)
+      for k in 0 .. 4 { Vk.put_i32(catt, c * aw + VkRenderingAttachmentInfo_clearValue + k * 4, gvk_clear_rgba[k]) }
+    } else { Vk.put_i32(catt, c * aw + VkRenderingAttachmentInfo_loadOp, VK_ATTACHMENT_LOAD_OP_LOAD) }
+    gvk_pass_cfmt = gvk_tex_vkfmt[tex]
+    if gvk_pass_w == 0 { gvk_pass_w = gvk_tex_w(tex);  gvk_pass_h = gvk_tex_h(tex) }
+  }
+  let datt = bytes(aw)
+  Vk.zero(datt, aw)
+  let dtex = gvk_pass_dep[0]
+  if dtex > 0 {
+    gvk_att_barrier(cb, dtex, gvk_pass_dep[1], true, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL)
+    Vk.put_i32(datt, VkRenderingAttachmentInfo_sType, VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO)
+    Vk.put_i64(datt, VkRenderingAttachmentInfo_imageView, gvk_view_of(dtex, gvk_pass_dep[1]))
+    Vk.put_i32(datt, VkRenderingAttachmentInfo_imageLayout, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL)
+    Vk.put_i32(datt, VkRenderingAttachmentInfo_storeOp, VK_ATTACHMENT_STORE_OP_STORE)
+    if (gvk_clear_bits & GL_DEPTH_BUFFER_BIT) != 0 {
+      Vk.put_i32(datt, VkRenderingAttachmentInfo_loadOp, VK_ATTACHMENT_LOAD_OP_CLEAR)
+      Vk.put_i32(datt, VkRenderingAttachmentInfo_clearValue, 0x3F800000)
+    } else { Vk.put_i32(datt, VkRenderingAttachmentInfo_loadOp, VK_ATTACHMENT_LOAD_OP_LOAD) }
+    gvk_pass_dfmt = VK_FORMAT_D32_SFLOAT
+    if gvk_pass_w == 0 { gvk_pass_w = gvk_tex_w(dtex);  gvk_pass_h = gvk_tex_h(dtex) }
+  }
+  gvk_clear_bits = 0
+  let ri = bytes(VkRenderingInfo_sizeof)
+  Vk.zero(ri, VkRenderingInfo_sizeof)
+  Vk.put_i32(ri, VkRenderingInfo_sType, VK_STRUCTURE_TYPE_RENDERING_INFO)
+  Vk.put_i32(ri, VkRenderingInfo_renderArea + VkRect2D_extent + VkExtent2D_width, gvk_pass_w)
+  Vk.put_i32(ri, VkRenderingInfo_renderArea + VkRect2D_extent + VkExtent2D_height, gvk_pass_h)
+  Vk.put_i32(ri, VkRenderingInfo_layerCount, 1)
+  Vk.put_i32(ri, VkRenderingInfo_colorAttachmentCount, gvk_pass_ncolor)
+  Vk.put_ptr(ri, VkRenderingInfo_pColorAttachments, catt)
+  if dtex > 0 { Vk.put_ptr(ri, VkRenderingInfo_pDepthAttachment, datt) }
+  Vk.cmd_begin_rendering(cb, ri)
+  gvk_in_pass = true
+}
+
+function gvk_pass_end() -> void {
+  if not gvk_in_pass { return }
+  let cb = gvk_cb
+  Vk.cmd_end_rendering(cb)
+  for c in 0 .. gvk_pass_ncolor {
+    gvk_att_barrier(cb, gvk_pass_col[c * 2], gvk_pass_col[c * 2 + 1], false, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+  }
+  if gvk_pass_dep[0] > 0 {
+    gvk_att_barrier(cb, gvk_pass_dep[0], gvk_pass_dep[1], true, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+  }
+  gvk_in_pass = false
+}
+
+# a clear: the load op of a pass that has not begun, an explicit clear inside one that has
+function gvk_clear(mask: int, rec: words, rec_o: int) -> void {
+  if not gvk_in_pass { gvk_clear_bits = gvk_clear_bits | mask;  return }
+  let cb = gvk_cb
+  let caw = VkClearAttachment_sizeof
+  let atts = bytes(caw * 4)
+  Vk.zero(atts, caw * 4)
+  var n = 0
+  if (mask & GL_COLOR_BUFFER_BIT) != 0 {
+    for c in 0 .. gvk_pass_ncolor {
+      Vk.put_i32(atts, n * caw + VkClearAttachment_aspectMask, VK_IMAGE_ASPECT_COLOR_BIT)
+      Vk.put_i32(atts, n * caw + VkClearAttachment_colorAttachment, c)
+      for k in 0 .. 4 { Vk.put_i32(atts, n * caw + VkClearAttachment_clearValue + k * 4, gvk_clear_rgba[k]) }
+      n += 1
+    }
+  }
+  if (mask & GL_DEPTH_BUFFER_BIT) != 0 and gvk_pass_dep[0] > 0 {
+    Vk.put_i32(atts, n * caw + VkClearAttachment_aspectMask, VK_IMAGE_ASPECT_DEPTH_BIT)
+    Vk.put_i32(atts, n * caw + VkClearAttachment_clearValue, 0x3F800000)
+    n += 1
+  }
+  if n == 0 { return }
+  let rect = bytes(VkClearRect_sizeof)
+  Vk.zero(rect, VkClearRect_sizeof)
+  Vk.put_i32(rect, VkClearRect_rect + VkRect2D_extent + VkExtent2D_width, gvk_pass_w)
+  Vk.put_i32(rect, VkClearRect_rect + VkRect2D_extent + VkExtent2D_height, gvk_pass_h)
+  Vk.put_i32(rect, VkClearRect_layerCount, 1)
+  Vk.cmd_clear_attachments(cb, n, atts, 1, rect)
+}
+
+function gvk_tex_w(tex: int) -> int { return gvk_tex_dims_w[tex] }
+function gvk_tex_h(tex: int) -> int { return gvk_tex_dims_h[tex] }
+
+# viewport and scissor for the draw; OpenGL's rows count from the bottom and so do a Vulkan
+# target's here (no y flip), so both pass straight through
+function gvk_set_view(cb: pointer) -> void {
+  let vp = bytes(VkViewport_sizeof)
+  Vk.zero(vp, VkViewport_sizeof)
+  Vk.put_i32(vp, VkViewport_x, fi(gvk_vp[0]))
+  Vk.put_i32(vp, VkViewport_y, fi(gvk_vp[1]))
+  Vk.put_i32(vp, VkViewport_width, fi(gvk_vp[2]))
+  Vk.put_i32(vp, VkViewport_height, fi(gvk_vp[3]))
+  Vk.put_i32(vp, VkViewport_maxDepth, 0x3F800000)
+  Vk.cmd_set_viewport(cb, 0, 1, vp)
+  let sc = bytes(VkRect2D_sizeof)
+  Vk.zero(sc, VkRect2D_sizeof)
+  if gvk_sc[0] == 1 {
+    Vk.put_i32(sc, VkRect2D_offset + VkOffset2D_x, gvk_sc[1])
+    Vk.put_i32(sc, VkRect2D_offset + VkOffset2D_y, gvk_sc[2])
+    Vk.put_i32(sc, VkRect2D_extent + VkExtent2D_width, gvk_sc[3])
+    Vk.put_i32(sc, VkRect2D_extent + VkExtent2D_height, gvk_sc[4])
+  } else {
+    Vk.put_i32(sc, VkRect2D_extent + VkExtent2D_width, gvk_pass_w)
+    Vk.put_i32(sc, VkRect2D_extent + VkExtent2D_height, gvk_pass_h)
+  }
+  Vk.cmd_set_scissor(cb, 0, 1, sc)
+}
+
+# A draw of mesh m with program p and state st: the pipeline, the view, the set, the buffers.
+# first / count select vertices or indices; count 0 means the mesh's own count. instances >= 1.
+function gvk_draw(p: int, m: Mesh, st: GvkState, first: int, count: int, instances: int, tx: words, tx_w: int, tx_cap: int, rec: words, rec_o: int) -> void {
+  if gvk_prog_var == null or p <= 0 or p >= len(gvk_prog_var) or gvk_prog_var[p] == null { return }
+  gvk_pass_begin(rec, rec_o)
+  let cb = gvk_cb
+  let samples = 1
+  let pipe = gvk_pipeline(p, m, st, gvk_pass_ncolor, gvk_pass_cfmt, gvk_pass_dfmt, samples)
+  if pipe == 0 { return }
+  Vk.cmd_bind_pipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe)
+  gvk_set_view(cb)
+  let set = gvk_draw_set(p, tx, tx_w, tx_cap)
+  if set == 0 { return }
+  let sets = bytes(8)
+  Vk.put_i64(sets, 0, set)
+  Vk.cmd_bind_descriptor_sets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, gvk_prog_layout[p], 0, 1, sets, 0, null)
+  let v = gvk_prog_var[p]
+  if m != null and m.attrs != null {
+    # the same bindings, in the same order, as gvk_pipeline gave the layout
+    let bufs = bytes(8 * (GPU_MAX_VBUFS + 1))
+    let offs = bytes(8 * (GPU_MAX_VBUFS + 1))
+    Vk.zero(offs, 8 * (GPU_MAX_VBUFS + 1))
+    let seen = words(GPU_MAX_VBUFS)
+    var nbd = 0
+    for i in 0 .. m.n_attrs {
+      let o = i * GPU_ATTR_W
+      if m.attrs[o + 1] == 0 { continue }
+      var wanted = false
+      for q in 0 .. len(v.i_loc) { if v.i_loc[q] == i { wanted = true } }
+      if not wanted { continue }
+      var known = false
+      for q in 0 .. nbd { if seen[q] == m.attrs[o] { known = true } }
+      if not known and nbd < GPU_MAX_VBUFS {
+        seen[nbd] = m.attrs[o]
+        Vk.put_i64(bufs, nbd * 8, gvk_buf[m.attrs[o]])
+        nbd += 1
+      }
+    }
+    if nbd > 0 { Vk.cmd_bind_vertex_buffers(cb, 0, nbd, bufs, offs) }
+  }
+  var n = count
+  if n == 0 and m != null { n = m.count }
+  if m != null and m.ebo != 0 {
+    let zero: long = 0
+    var itype = VK_INDEX_TYPE_UINT32
+    if m.itype == GL_UNSIGNED_SHORT { itype = VK_INDEX_TYPE_UINT16 }
+    Vk.cmd_bind_index_buffer(cb, gvk_buf[m.ebo], zero, itype)
+    Vk.cmd_draw_indexed(cb, n, instances, first, 0, 0)
+  } else {
+    Vk.cmd_draw(cb, n, instances, first, 0)
+  }
+}
+
+# the finished frame: submitted, and waited for
+function gvk_present() -> void {
+  if gvk_cb == null { return }
+  gvk_pass_end()
+  gvk_once_end(gvk_cb)
+  gvk_cb = null
+}
+
+# The screen as a binary PPM, top row first. The frame so far is finished first, then read back;
+# row 0 of the image is OpenGL's bottom row, so rows are written last to first, as gl_screenshot does.
+function gvk_screenshot(path: string) -> bool {
+  gvk_present()
+  let w = gvk_screen_w
+  let h = gvk_screen_h
+  let px = bytes(w * h * 4)
+  if not gvk_tex_read(gvk_screen_color, GL_RGBA8, w, h, GL_RGBA, GL_UNSIGNED_BYTE, px) { return false }
+  let f = file_open(path, "wb")
+  if f == null { return false }
+  let hdr = `P6\n{w} {h}\n255\n`
+  file_write(f, hdr, len(hdr))
+  let row = bytes(w * 3)
+  var y = h - 1
+  while y >= 0 {
+    for x in 0 .. w {
+      let o = (y * w + x) * 4
+      row[x * 3] = px[o];  row[x * 3 + 1] = px[o + 1];  row[x * 3 + 2] = px[o + 2]
+    }
+    file_write(f, row, w * 3)
+    y -= 1
+  }
+  file_close(f)
+  return true
+}
