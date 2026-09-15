@@ -155,8 +155,8 @@ function ov_glyph(cp: int) -> int {
 # start drawing onto the screen: blending on, depth off
 function ov_begin() -> void {
   if not ov_ready { return }
-  gl_bind_framebuffer(GL_FRAMEBUFFER, gl_screen_fbo())
-  gl_viewport(0, 0, gl_w, gl_h)
+  gpu_fb_bind(gpu_screen_fb())
+  gpu_viewport(0, 0, gl_w, gl_h)
   gpu_depth_test(false)
   gpu_cull(false)
   gpu_blend(true)

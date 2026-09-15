@@ -34,11 +34,10 @@ function shadow_init() -> void {
   gl_put(border, 0, 1.0);  gl_put(border, 1, 1.0);  gl_put(border, 2, 1.0);  gl_put(border, 3, 1.0)
   gpu_tex_border(GPU_TEX2D_ARRAY, border)
   free(border)
-  sh_fbo = gl_framebuffer()
-  gl_bind_framebuffer(GL_FRAMEBUFFER, sh_fbo)
-  gl_draw_buffer(GL_NONE)
-  gl_read_buffer(GL_NONE)
-  gl_bind_framebuffer(GL_FRAMEBUFFER, 0)
+  sh_fbo = gpu_fb_new()
+  gpu_fb_bind(sh_fbo)
+  gpu_fb_no_color()
+  gpu_fb_bind(0)
   sh_vp = words(16 * SHADOW_CASCADES)
   sh_split = words(SHADOW_CASCADES)
   sh_range = words(SHADOW_CASCADES)
@@ -114,8 +113,8 @@ function shadow_cascade_vp(c: int) -> words { return mem_off(sh_vp, c * 64) }
 # render every cascade; `draw` happens through terrain_draw_shadow + the scene's casters
 function shadow_pass() -> void {
   var near = cam_near
-  gl_bind_framebuffer(GL_FRAMEBUFFER, sh_fbo)
-  gl_viewport(0, 0, SHADOW_RES, SHADOW_RES)
+  gpu_fb_bind(sh_fbo)
+  gpu_viewport(0, 0, SHADOW_RES, SHADOW_RES)
   gpu_depth_test(true)
   gpu_depth_func(GL_LESS)
   gpu_depth_bias(2.0, 4.0)
@@ -124,9 +123,9 @@ function shadow_pass() -> void {
     sh_cascade = c
     shadow_fit(c, near, sh_split[c])
     near = sh_split[c]
-    gl_framebuffer_texture_layer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, sh_tex, 0, c)
-    if r3d_debug and c == 0 { let st = gl_check_framebuffer_status(GL_FRAMEBUFFER);  print(`shadow fbo status {st}`) }
-    gl_clear(GL_DEPTH_BUFFER_BIT)
+    gpu_fb_depth_layer(sh_tex, c)
+    if r3d_debug and c == 0 { let st = gpu_fb_status();  print(`shadow fbo status {st}`) }
+    gpu_clear(GL_DEPTH_BUFFER_BIT)
     let vp = shadow_cascade_vp(c)
     # shadows off (a video setting): the cascades stay cleared, so everything reads lit
     if sh_enabled {
@@ -135,7 +134,7 @@ function shadow_pass() -> void {
     }
   }
   gpu_depth_bias(0.0, 0.0)
-  gl_bind_framebuffer(GL_FRAMEBUFFER, 0)
+  gpu_fb_bind(0)
   if r3d_debug_shadow { shadow_dump() }
   if r3d_debug_shadow and not sh_printed2 {
     sh_printed2 = true

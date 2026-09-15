@@ -13,6 +13,7 @@
 #   - uniforms: looked up by program and name (gpu_uniform), set by the u_* setters
 #   - vertex data: meshes, their attribute layouts, instance and stream buffers, draws
 #   - textures: creation, upload, sampler state, mipmaps, units, read-back, freeing
+#   - render targets and passes: framebuffers, attachments, blits, viewports, clears, the screen
 #
 # Render state is cached. A pipeline API bakes this state into an object picked by
 # key; OpenGL gets the same effect by only telling the driver what changed. The
@@ -430,17 +431,25 @@ function gpu_buffer_free(buf: int) -> void {
 function gpu_mesh_bind(m: Mesh) -> void { gl_bind_vertex_array(m.vao) }
 function gpu_mesh_unbind() -> void { gl_bind_vertex_array(0) }
 function gpu_draw_mesh(m: Mesh) -> void {
+  gpu_glcheck_before("a draw")
   gl_bind_vertex_array(m.vao)
   if m.ebo != 0 { gl_draw_elements(m.mode, m.count, m.itype, null) }
   else { gl_draw_arrays(m.mode, 0, m.count) }
+  gpu_glcheck_after("a draw")
 }
 function gpu_draw_mesh_instanced(m: Mesh, n: int) -> void {
+  gpu_glcheck_before("an instanced draw")
   gl_bind_vertex_array(m.vao)
   if m.ebo != 0 { gl_draw_elements_instanced(m.mode, m.count, m.itype, null, n) }
   else { gl_draw_arrays_instanced(m.mode, 0, m.count, n) }
+  gpu_glcheck_after("an instanced draw")
 }
 # the bound mesh's indices again (a patch mesh drawn once per terrain node)
-function gpu_draw_bound_elements(m: Mesh) -> void { gl_draw_elements(m.mode, m.count, m.itype, null) }
+function gpu_draw_bound_elements(m: Mesh) -> void {
+  gpu_glcheck_before("a terrain patch")
+  gl_draw_elements(m.mode, m.count, m.itype, null)
+  gpu_glcheck_after("a terrain patch")
+}
 # vertices [first, first + count) of the bound mesh, as triangles (the overlay's ranges)
 function gpu_draw_range(m: Mesh, first: int, count: int) -> void { gl_draw_arrays(GL_TRIANGLES, first, count) }
 
@@ -546,4 +555,167 @@ function gpu_bind_sampler(prog: int, name: string, unit: int, kind: int, tex: in
   gpu_tex_unit(unit)
   gpu_tex_bind(kind, tex)
   u_i(gpu_uniform(prog, name), unit)
+}
+
+# ---- render targets and passes -------------------------------------------------------------
+# A framebuffer is a handle (OpenGL's name). What is attached to it - colour textures in slots,
+# a depth texture or one layer of an array, renderbuffers and their sample count - is recorded as
+# it is attached, which is what a backend with render passes and image views builds from. Each
+# call is the GL call it replaces, in the renderer's order.
+#
+# gpu_check(tag) reports a pending error under a name, as gl_check did. R3D_GLCHECK=1 adds a
+# completeness check of the bound framebuffer whenever a viewport is set, naming the handle, so
+# a pass drawing into an incomplete target says which one; unset, it calls nothing.
+const GPU_FB_W: int = 8           # per handle: colour 0, colour 1, depth texture, depth layer + 1, colour rb, depth rb, samples, colour layer + 1
+var gpu_fb: words = null
+var gpu_fb_cap: int = 0
+var gpu_fb_cur: int = 0
+var gpu_glcheck: int = -1
+var gpu_rb_samples: int = 0
+var gpu_drawbufs: words = null
+
+function gpu_fb_at(fb: int) -> int {
+  if fb <= 0 { return -1 }
+  if fb >= gpu_fb_cap {
+    var cap = gpu_fb_cap * 2
+    if cap < 64 { cap = 64 }
+    while cap <= fb { cap = cap * 2 }
+    let t = words(cap * GPU_FB_W)
+    for i in 0 .. cap * GPU_FB_W { t[i] = 0 }
+    if gpu_fb != null { mem_copy(t, gpu_fb, gpu_fb_cap * GPU_FB_W * 4);  free(gpu_fb) }
+    gpu_fb = t
+    gpu_fb_cap = cap
+  }
+  return fb * GPU_FB_W
+}
+function gpu_glcheck_on() -> bool {
+  if gpu_glcheck < 0 { gpu_glcheck = 0;  if Os.has_env("R3D_GLCHECK") { gpu_glcheck = 1 } }
+  return gpu_glcheck == 1
+}
+function gpu_check(tag: string) -> int { return gl_check(tag) }
+# a named checkpoint that costs nothing unless R3D_GLCHECK is set
+function gpu_debug_check(tag: string) -> void { if gpu_glcheck_on() { gl_check(tag) } }
+
+function gpu_fb_new() -> int { return gl_framebuffer() }
+function gpu_fb_bind(fb: int) -> void {
+  gl_bind_framebuffer(GL_FRAMEBUFFER, fb)
+  gpu_fb_cur = fb
+}
+function gpu_fb_bind_read(fb: int) -> void { gl_bind_framebuffer(GL_READ_FRAMEBUFFER, fb) }
+function gpu_fb_bind_draw(fb: int) -> void { gl_bind_framebuffer(GL_DRAW_FRAMEBUFFER, fb) }
+function gpu_fb_color(slot: int, tex: int) -> void {
+  gl_framebuffer_texture2d(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + slot, GL_TEXTURE_2D, tex, 0)
+  let o = gpu_fb_at(gpu_fb_cur)
+  if o >= 0 and slot < 2 { gpu_fb[o + slot] = tex;  if slot == 0 { gpu_fb[o + 7] = 0 } }
+}
+function gpu_fb_color_layer(slot: int, tex: int, layer: int) -> void {
+  gl_framebuffer_texture_layer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + slot, tex, 0, layer)
+  let o = gpu_fb_at(gpu_fb_cur)
+  if o >= 0 and slot < 2 { gpu_fb[o + slot] = tex;  if slot == 0 { gpu_fb[o + 7] = layer + 1 } }
+}
+function gpu_fb_depth(tex: int) -> void {
+  gl_framebuffer_texture2d(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, tex, 0)
+  let o = gpu_fb_at(gpu_fb_cur)
+  if o >= 0 { gpu_fb[o + 2] = tex;  gpu_fb[o + 3] = 0 }
+}
+function gpu_fb_depth_layer(tex: int, layer: int) -> void {
+  gl_framebuffer_texture_layer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, tex, 0, layer)
+  let o = gpu_fb_at(gpu_fb_cur)
+  if o >= 0 { gpu_fb[o + 2] = tex;  gpu_fb[o + 3] = layer + 1 }
+}
+function gpu_rb_new() -> int {
+  let ids = gpu_tmp()
+  gl_gen_renderbuffers(1, ids)
+  return ids[0]
+}
+# storage for a renderbuffer: samples > 0 makes it multisampled
+function gpu_rb_storage(rb: int, ifmt: int, w: int, h: int, samples: int) -> void {
+  gl_bind_renderbuffer(GL_RENDERBUFFER, rb)
+  if samples > 0 { gl_renderbuffer_storage_multisample(GL_RENDERBUFFER, samples, ifmt, w, h) }
+  else { gl_renderbuffer_storage(GL_RENDERBUFFER, ifmt, w, h) }
+  gpu_rb_samples = samples
+}
+function gpu_fb_color_rb(slot: int, rb: int) -> void {
+  gl_framebuffer_renderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + slot, GL_RENDERBUFFER, rb)
+  let o = gpu_fb_at(gpu_fb_cur)
+  if o >= 0 { gpu_fb[o + 4] = rb;  gpu_fb[o + 6] = gpu_rb_samples }
+}
+function gpu_fb_depth_rb(rb: int) -> void {
+  gl_framebuffer_renderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rb)
+  let o = gpu_fb_at(gpu_fb_cur)
+  if o >= 0 { gpu_fb[o + 5] = rb;  gpu_fb[o + 6] = gpu_rb_samples }
+}
+# colour slots 0 .. n-1 are drawn into (several: an MRT bake)
+function gpu_fb_draw_buffers(n: int) -> void {
+  if gpu_drawbufs == null { gpu_drawbufs = words(8) }
+  for i in 0 .. n { gpu_drawbufs[i] = GL_COLOR_ATTACHMENT0 + i }
+  gl_draw_buffers(n, gpu_drawbufs)
+}
+# a depth-only target: no colour is drawn or read
+function gpu_fb_no_color() -> void {
+  gl_draw_buffer(GL_NONE)
+  gl_read_buffer(GL_NONE)
+}
+function gpu_fb_status() -> int { return gl_check_framebuffer_status(GL_FRAMEBUFFER) }
+function gpu_fb_free(fb: int) -> void {
+  if fb == 0 { return }
+  let ids = gpu_tmp()
+  ids[0] = fb
+  gl_delete_framebuffers(1, ids)
+  let o = gpu_fb_at(fb)
+  if o >= 0 { for i in 0 .. GPU_FB_W { gpu_fb[o + i] = 0 } }
+}
+function gpu_rb_free(rb: int) -> void {
+  if rb == 0 { return }
+  let ids = gpu_tmp()
+  ids[0] = rb
+  gl_delete_renderbuffers(1, ids)
+}
+function gpu_viewport(x: int, y: int, w: int, h: int) -> void { gl_viewport(x, y, w, h) }
+
+# R3D_GLCHECK: before a draw or a clear, the bound framebuffer must be complete; after it, no
+# error may be pending. Each report names the framebuffer and what was being done, once per
+# distinct message, so the first bad pass is found without a flood. (Checking when a viewport
+# is set reported the shadow pass, which sets its viewport before attaching a cascade.)
+var gpu_glcheck_seen: []string = null
+function gpu_glcheck_say(msg: string) -> void {
+  if gpu_glcheck_seen == null { gpu_glcheck_seen = new []string }
+  for i in 0 .. len(gpu_glcheck_seen) { if gpu_glcheck_seen[i] == msg { return } }
+  push(gpu_glcheck_seen, msg)
+  print(msg)
+}
+function gpu_glcheck_before(what: string) -> void {
+  if not gpu_glcheck_on() { return }
+  let pending = gl_get_error()
+  if pending != 0 { gpu_glcheck_say(`gpu: error {pending} pending before {what} into framebuffer {gpu_fb_cur}`) }
+  let st = gl_check_framebuffer_status(GL_FRAMEBUFFER)
+  if st != GL_FRAMEBUFFER_COMPLETE { gpu_glcheck_say(`gpu: framebuffer {gpu_fb_cur} incomplete ({st}) at {what}`) }
+}
+function gpu_glcheck_after(what: string) -> void {
+  if not gpu_glcheck_on() { return }
+  let e = gl_get_error()
+  if e != 0 { gpu_glcheck_say(`gpu: error {e} from {what} into framebuffer {gpu_fb_cur}`) }
+}
+function gpu_clear_color(r: fixed, g: fixed, b: fixed, a: fixed) -> void { gl_clear_color(r, g, b, a) }
+function gpu_clear(mask: int) -> void {
+  gpu_glcheck_before("a clear")
+  gl_clear(mask)
+  gpu_glcheck_after("a clear")
+}
+# the bound read framebuffer's [0, w) x [0, h) into the bound draw framebuffer's, unscaled
+function gpu_blit(w: int, h: int, mask: int) -> void {
+  gl_blit_framebuffer(0, 0, w, h, 0, 0, w, h, mask, GL_NEAREST)
+  gpu_glcheck_after("a blit")
+}
+# the framebuffer the finished frame is presented from (an offscreen one, headless)
+function gpu_screen_fb() -> int { return gl_screen }
+function gpu_multisample(on: bool) -> void { gpu_gl_cap(GL_MULTISAMPLE, gpu_b(on)) }
+function gpu_wireframe(on: bool) -> void {
+  if on { gl_polygon_mode(GL_FRONT_AND_BACK, GL_LINE) } else { gl_polygon_mode(GL_FRONT_AND_BACK, GL_FILL) }
+}
+# the presented frame as RGB8, bottom row first (a photograph)
+function gpu_read_screen(w: int, h: int, out: pointer) -> void {
+  gl_bind_framebuffer(GL_READ_FRAMEBUFFER, gl_screen)
+  gl_pixel_storei(GL_PACK_ALIGNMENT, 1)
+  gl_read_pixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, out)
 }

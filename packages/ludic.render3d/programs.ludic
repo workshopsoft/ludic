@@ -101,27 +101,26 @@ property Target {
 function target_new(w: int, h: int, ifmt: int, fmt: int, ty: int, with_depth: bool, filter: int) -> Target {
   let t = new Target
   t.w = w;  t.h = h
-  t.fbo = gl_framebuffer()
-  gl_bind_framebuffer(GL_FRAMEBUFFER, t.fbo)
+  t.fbo = gpu_fb_new()
+  gpu_fb_bind(t.fbo)
   t.color = tex_target(w, h, ifmt, fmt, ty, filter)
-  gl_framebuffer_texture2d(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, t.color, 0)
+  gpu_fb_color(0, t.color)
   if with_depth {
     t.depth = tex_target(w, h, GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT, GL_NEAREST)
-    gl_framebuffer_texture2d(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, t.depth, 0)
+    gpu_fb_depth(t.depth)
   }
-  let st = gl_check_framebuffer_status(GL_FRAMEBUFFER)
+  let st = gpu_fb_status()
   if st != GL_FRAMEBUFFER_COMPLETE { print(`r3d: framebuffer incomplete {st} ({w}x{h})`) }
-  gl_bind_framebuffer(GL_FRAMEBUFFER, 0)
+  gpu_fb_bind(0)
   return t
 }
 function target_free(t: Target) -> void {
   if t == null { return }
-  let ids = gl_scratch()
-  ids[0] = t.fbo;  gl_delete_framebuffers(1, ids)
+  gpu_fb_free(t.fbo)
   gpu_tex_free(t.color)
   if t.depth != 0 { gpu_tex_free(t.depth) }
 }
 function target_bind(t: Target) -> void {
-  gl_bind_framebuffer(GL_FRAMEBUFFER, t.fbo)
-  gl_viewport(0, 0, t.w, t.h)
+  gpu_fb_bind(t.fbo)
+  gpu_viewport(0, 0, t.w, t.h)
 }

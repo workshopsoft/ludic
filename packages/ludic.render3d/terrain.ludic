@@ -222,10 +222,10 @@ function terrain_generate() -> void {
   if ter_smooth { defs = "#define SMOOTH\n" }
   let p = r3d_program("fullscreen.vert", "heightgen.frag", defs)
   ter_height_tex = tex_target(TERRAIN_RES, TERRAIN_RES, GL_R32F, GL_RED, GL_FLOAT, GL_LINEAR)
-  let fbo = gl_framebuffer()
-  gl_bind_framebuffer(GL_FRAMEBUFFER, fbo)
-  gl_framebuffer_texture2d(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ter_height_tex, 0)
-  gl_viewport(0, 0, TERRAIN_RES, TERRAIN_RES)
+  let fbo = gpu_fb_new()
+  gpu_fb_bind(fbo)
+  gpu_fb_color(0, ter_height_tex)
+  gpu_viewport(0, 0, TERRAIN_RES, TERRAIN_RES)
   gpu_depth_test(false)
   gl_use_program(p)
   u_f(gpu_uniform(p, "u_half"), fi(TERRAIN_HALF))
@@ -246,7 +246,7 @@ function terrain_generate() -> void {
   # second pass: R = height, GBA = the smooth surface normal, baked once (ternormal.frag)
   let raw = ter_height_tex
   ter_height_tex = tex_target(TERRAIN_RES, TERRAIN_RES, GL_RGBA32F, GL_RGBA, GL_FLOAT, GL_LINEAR)
-  gl_framebuffer_texture2d(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ter_height_tex, 0)
+  gpu_fb_color(0, ter_height_tex)
   let pn = r3d_program("fullscreen.vert", "ternormal.frag", "")
   gl_use_program(pn)
   r3d_bind_2d(pn, "u_src", 0, raw)
@@ -259,12 +259,10 @@ function terrain_generate() -> void {
   gpu_tex_bind(GPU_TEX2D, ter_height_tex)
   gpu_pixel_store(GL_PACK_ALIGNMENT, 4)
   gpu_tex_read(GPU_TEX2D, GL_RED, GL_FLOAT, ter_heights)
-  gl_bind_framebuffer(GL_FRAMEBUFFER, 0)
-  let ids = gl_scratch()
-  ids[0] = fbo
-  gl_delete_framebuffers(1, ids)
+  gpu_fb_bind(0)
+  gpu_fb_free(fbo)
   gl_delete_program(p)
-  gl_check("terrain generate")
+  gpu_check("terrain generate")
 }
 
 # The height field for shaders that place things on the ground (model.vert's u_ground)
@@ -281,10 +279,10 @@ function terrain_bake_shadow() -> void {
   if ter_shadow_tex == 0 { ter_shadow_tex = tex_target(TERRAIN_SHADOW_RES, TERRAIN_SHADOW_RES, GL_RGBA32F, GL_RGBA, GL_FLOAT, GL_LINEAR) }
   if ter_shadow_prog == 0 { ter_shadow_prog = r3d_program("fullscreen.vert", "tershadow.frag", "#define NOISE_ONLY\n") }
   let p = ter_shadow_prog
-  let fbo = gl_framebuffer()
-  gl_bind_framebuffer(GL_FRAMEBUFFER, fbo)
-  gl_framebuffer_texture2d(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ter_shadow_tex, 0)
-  gl_viewport(0, 0, TERRAIN_SHADOW_RES, TERRAIN_SHADOW_RES)
+  let fbo = gpu_fb_new()
+  gpu_fb_bind(fbo)
+  gpu_fb_color(0, ter_shadow_tex)
+  gpu_viewport(0, 0, TERRAIN_SHADOW_RES, TERRAIN_SHADOW_RES)
   gpu_depth_test(false)
   gpu_blend(false)
   gl_use_program(p)
@@ -292,12 +290,10 @@ function terrain_bake_shadow() -> void {
   u_f(gpu_uniform(p, "u_half"), fi(TERRAIN_HALF))
   u_v3(gpu_uniform(p, "u_sun"), sun_dir)
   mesh_draw(sky_fullscreen)
-  gl_bind_framebuffer(GL_FRAMEBUFFER, 0)
-  let ids = gl_scratch()
-  ids[0] = fbo
-  gl_delete_framebuffers(1, ids)
+  gpu_fb_bind(0)
+  gpu_fb_free(fbo)
   ter_shadow_yaw = sky_yaw
-  gl_check("terrain shadow bake")
+  gpu_check("terrain shadow bake")
 }
 
 # height at world (x, z) — float bits, bilinear over the CPU copy
@@ -424,7 +420,7 @@ function terrain_init() -> void {
   ter_far_band = fi(60)
   if Os.has_env("R3D_TBAND") { ter_far_band = fi(Text.to_int(Os.env("R3D_TBAND"))) }
   ter_snow_line = fi(880)
-  gl_check("terrain init")
+  gpu_check("terrain init")
 }
 
 # draw into the current cascade with the given light view-projection
@@ -516,18 +512,18 @@ function terrain_sun_pass(w: int, h: int, depth: int) -> Target {
   # an error per draw and a pass that silently does nothing. One call a pass is cheaper
   # than any scheme for noticing.
   target_bind(t)
-  gl_framebuffer_texture2d(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depth, 0)
+  gpu_fb_depth(depth)
   if not ter_sun_checked {
     ter_sun_checked = true
-    let st = gl_check_framebuffer_status(GL_FRAMEBUFFER)
+    let st = gpu_fb_status()
     if st != GL_FRAMEBUFFER_COMPLETE { print(`r3d: sun-visibility framebuffer incomplete {st}`) }
   }
   gpu_depth_test(true)
   gpu_depth_func(GL_LESS)
   gpu_depth_write(true)
   # the depth is the frame's own and was cleared with it; only the visibility is cleared
-  gl_clear_color(1.0, 1.0, 1.0, 1.0)      # unshadowed where nothing is drawn
-  gl_clear(GL_COLOR_BUFFER_BIT)
+  gpu_clear_color(1.0, 1.0, 1.0, 1.0)      # unshadowed where nothing is drawn
+  gpu_clear(GL_COLOR_BUFFER_BIT)
   let p = ter_sun_prog
   gl_use_program(p)
   r3d_bind_2d(p, "u_height", 0, ter_height_tex)
@@ -572,7 +568,7 @@ function terrain_draw() -> void {
   if ter_reflect { target_bind(water_refl) }
   else {
     target_bind(post_hdr)
-    if post_ms_fbo != 0 { gl_bind_framebuffer(GL_FRAMEBUFFER, post_ms_fbo) }
+    if post_ms_fbo != 0 { gpu_fb_bind(post_ms_fbo) }
   }
   gpu_depth_test(true)
   # the prepass already laid this geometry's depth down: only the frontmost fragment of
@@ -587,9 +583,9 @@ function terrain_draw() -> void {
   cd_far_draws = 0
   cd_near_draws = 0
   gpu_mesh_bind(cd_mesh)
-  if ter_wire { gl_polygon_mode(GL_FRONT_AND_BACK, GL_LINE) }
+  if ter_wire { gpu_wireframe(true) }
   cdlod_select(CD_LEVELS - 1, 0, 0)
-  if ter_wire { gl_polygon_mode(GL_FRONT_AND_BACK, GL_FILL) }
+  if ter_wire { gpu_wireframe(false) }
   gpu_depth_func(GL_LESS)
   if r3d_debug and not ter_printed { ter_printed = true;  print(`cdlod patches drawn: {cd_draws} (far {cd_far_draws}, near {cd_near_draws}, band {cd_draws - cd_far_draws - cd_near_draws})`) }
 }
@@ -763,7 +759,6 @@ function cdlod_select(level: int, ix: int, iz: int) -> bool {
 # belongs to the process stays: the patch mesh, the material textures, the programs, the
 # frame-sized targets and the shadow texture, whose size does not depend on the map.
 function terrain_unload() -> void {
-  let ids = gl_scratch()
   if ter_height_tex != 0 { gpu_tex_free(ter_height_tex);  ter_height_tex = 0 }
   if ter_dem_tex != 0 { gpu_tex_free(ter_dem_tex);  ter_dem_tex = 0 }
   if ter_ortho_tex != 0 { gpu_tex_free(ter_ortho_tex);  ter_ortho_tex = 0 }
@@ -792,5 +787,5 @@ function terrain_reload(dem: string, emin: int, emax: int, base: int, ox: int, o
   terrain_generate()
   terrain_bake_shadow()
   cdlod_bounds()
-  gl_check("terrain reload")
+  gpu_check("terrain reload")
 }

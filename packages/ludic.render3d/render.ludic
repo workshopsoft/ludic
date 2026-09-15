@@ -93,7 +93,7 @@ function r3d_init(w: int, h: int, title: string) -> bool {
   r3d_fog_density = fl(0.00014)
   r3d_fog_falloff = fl(0.002)
   r3d_ready = true
-  gl_check("r3d init")
+  gpu_check("r3d init")
   return true
 }
 
@@ -226,5 +226,5 @@ function r3d_frame(time: int) -> void {
   post_capture_prev()
   prof_end()
   prof_collect()
-  gl_check("frame")
+  gpu_check("frame")
 }

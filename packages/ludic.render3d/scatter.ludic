@@ -421,22 +421,17 @@ function impostor_bake(model: Model, tiles: int, tw: int, th: int) -> Impostor {
   let aw = tiles * tw
   im.albedo = tex_target(aw, th, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR)
   im.normal = tex_target(aw, th, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR)
-  let fbo = gl_framebuffer()
-  gl_bind_framebuffer(GL_FRAMEBUFFER, fbo)
-  gl_framebuffer_texture2d(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, im.albedo, 0)
-  gl_framebuffer_texture2d(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, im.normal, 0)
-  let ids = gl_scratch()
-  gl_gen_renderbuffers(1, ids)
-  let rb = ids[0]
-  gl_bind_renderbuffer(GL_RENDERBUFFER, rb)
-  gl_renderbuffer_storage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, aw, th)
-  gl_framebuffer_renderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rb)
-  let bufs = words(2)
-  bufs[0] = GL_COLOR_ATTACHMENT0;  bufs[1] = GL_COLOR_ATTACHMENT1
-  gl_draw_buffers(2, bufs)
-  gl_viewport(0, 0, aw, th)
-  gl_clear_color(0.0, 0.0, 0.0, 0.0)
-  gl_clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+  let fbo = gpu_fb_new()
+  gpu_fb_bind(fbo)
+  gpu_fb_color(0, im.albedo)
+  gpu_fb_color(1, im.normal)
+  let rb = gpu_rb_new()
+  gpu_rb_storage(rb, GL_DEPTH_COMPONENT24, aw, th, 0)
+  gpu_fb_depth_rb(rb)
+  gpu_fb_draw_buffers(2)
+  gpu_viewport(0, 0, aw, th)
+  gpu_clear_color(0.0, 0.0, 0.0, 0.0)
+  gpu_clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
   gpu_depth_test(true)
   gpu_depth_func(GL_LESS)
   gpu_cull(false)
@@ -461,7 +456,7 @@ function impostor_bake(model: Model, tiles: int, tw: int, th: int) -> Impostor {
     u_mat4(gpu_uniform(bake, "u_view"), view)
     u_mat4(gpu_uniform(bake, "u_proj"), proj)
     u_f(gpu_uniform(bake, "u_wind"), F_ZERO)
-    gl_viewport(t * tw, 0, tw, th)
+    gpu_viewport(t * tw, 0, tw, th)
     for i in 0 .. len(model.prims) {
       let pr = model.prims[i]
       r3d_bind_2d(bake, "u_diff", 0, pr.diff)
@@ -469,19 +464,17 @@ function impostor_bake(model: Model, tiles: int, tw: int, th: int) -> Impostor {
       mesh_draw_instanced(pr.mesh, 1)
     }
   }
-  free(view);  free(proj);  free(eye);  free(at);  free(up);  free(bufs)
-  gl_bind_framebuffer(GL_FRAMEBUFFER, 0)
-  ids[0] = fbo
-  gl_delete_framebuffers(1, ids)
-  ids[0] = rb
-  gl_delete_renderbuffers(1, ids)
+  free(view);  free(proj);  free(eye);  free(at);  free(up)
+  gpu_fb_bind(0)
+  gpu_fb_free(fbo)
+  gpu_rb_free(rb)
   gpu_tex_bind(GPU_TEX2D, im.albedo)
   gpu_tex_param(GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
   gpu_tex_mips(GPU_TEX2D)
   gpu_tex_bind(GPU_TEX2D, im.normal)
   gpu_tex_param(GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
   gpu_tex_mips(GPU_TEX2D)
-  gl_check("impostor bake")
+  gpu_check("impostor bake")
   if sc_debug_dump { tex_dump_alpha = true;  tex_dump(im.albedo, aw, th, "build/atlas_alpha.ppm");  tex_dump_alpha = false }
   return im
 }
@@ -990,21 +983,16 @@ function cb_rnd() -> int {
 }
 function carpet_bake(layers: []Layer, count: int, tile: int, res: int) -> int {
   let tex = tex_target(res, res, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR)
-  let fbo = gl_framebuffer()
-  gl_bind_framebuffer(GL_FRAMEBUFFER, fbo)
-  gl_framebuffer_texture2d(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0)
-  let ids = gl_scratch()
-  gl_gen_renderbuffers(1, ids)
-  let rb = ids[0]
-  gl_bind_renderbuffer(GL_RENDERBUFFER, rb)
-  gl_renderbuffer_storage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, res, res)
-  gl_framebuffer_renderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rb)
-  let bufs = words(1)
-  bufs[0] = GL_COLOR_ATTACHMENT0
-  gl_draw_buffers(1, bufs)
-  gl_viewport(0, 0, res, res)
-  gl_clear_color(0.0, 0.0, 0.0, 0.0)
-  gl_clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+  let fbo = gpu_fb_new()
+  gpu_fb_bind(fbo)
+  gpu_fb_color(0, tex)
+  let rb = gpu_rb_new()
+  gpu_rb_storage(rb, GL_DEPTH_COMPONENT24, res, res, 0)
+  gpu_fb_depth_rb(rb)
+  gpu_fb_draw_buffers(1)
+  gpu_viewport(0, 0, res, res)
+  gpu_clear_color(0.0, 0.0, 0.0, 0.0)
+  gpu_clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
   gpu_depth_test(true)
   gpu_depth_func(GL_LESS)
   gpu_cull(false)
@@ -1057,12 +1045,10 @@ function carpet_bake(layers: []Layer, count: int, tile: int, res: int) -> int {
       mesh_draw_instanced(pr.mesh, n9)
     }
   }
-  free(view);  free(proj);  free(eye);  free(at);  free(up);  free(bufs)
-  gl_bind_framebuffer(GL_FRAMEBUFFER, 0)
-  ids[0] = fbo
-  gl_delete_framebuffers(1, ids)
-  ids[0] = rb
-  gl_delete_renderbuffers(1, ids)
+  free(view);  free(proj);  free(eye);  free(at);  free(up)
+  gpu_fb_bind(0)
+  gpu_fb_free(fbo)
+  gpu_rb_free(rb)
   gpu_buffer_free(buf)
   gpu_tex_bind(GPU_TEX2D, tex)
   gpu_tex_param(GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
@@ -1070,7 +1056,7 @@ function carpet_bake(layers: []Layer, count: int, tile: int, res: int) -> int {
   gpu_tex_param(GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
   gpu_tex_paramf(GPU_TEX2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, tex_anisotropy)
   gpu_tex_mips(GPU_TEX2D)
-  gl_check("carpet bake")
+  gpu_check("carpet bake")
   return tex
 }
 
@@ -1082,7 +1068,6 @@ function carpet_bake(layers: []Layer, count: int, tile: int, res: int) -> int {
 function scatter_clear_all() -> void {
   stream_clear_all()
   if sc_layers == null { return }
-  let ids = gl_scratch()
   for i in 0 .. len(sc_layers) {
     let l = sc_layers[i]
     if l.buf != 0 { gpu_buffer_free(l.buf) }

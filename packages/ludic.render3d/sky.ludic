@@ -69,11 +69,11 @@ function sky_load(path: string) -> bool {
 }
 
 function sky_convolve(prog: int, target_tex: int, layer: int, w: int, h: int, rough: int) -> void {
-  let fbo = gl_framebuffer()
-  gl_bind_framebuffer(GL_FRAMEBUFFER, fbo)
-  if layer < 0 { gl_framebuffer_texture2d(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, target_tex, 0) }
-  else { gl_framebuffer_texture_layer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, target_tex, 0, layer) }
-  gl_viewport(0, 0, w, h)
+  let fbo = gpu_fb_new()
+  gpu_fb_bind(fbo)
+  if layer < 0 { gpu_fb_color(0, target_tex) }
+  else { gpu_fb_color_layer(0, target_tex, layer) }
+  gpu_viewport(0, 0, w, h)
   gl_use_program(prog)
   r3d_bind_2d(prog, "u_sky", 0, sky_tex)
   sky_bind_rot(prog)
@@ -81,16 +81,13 @@ function sky_convolve(prog: int, target_tex: int, layer: int, w: int, h: int, ro
   u_f(gpu_uniform(prog, "u_rough"), rough)
   u_f(gpu_uniform(prog, "u_sky_w"), fi(sky_w))
   mesh_draw(sky_fullscreen)
-  gl_bind_framebuffer(GL_FRAMEBUFFER, 0)
-  let ids = gl_scratch()
-  ids[0] = fbo
-  gl_delete_framebuffers(1, ids)
+  gpu_fb_bind(0)
+  gpu_fb_free(fbo)
 }
 
 function sky_precompute() -> void {
   gpu_depth_test(false)
   if sky_irradiance != 0 {
-    let ids = gl_scratch()
     gpu_tex_free(sky_irradiance)
     gpu_tex_free(sky_prefilter)
     gpu_tex_free(sky_brdf)
@@ -118,7 +115,7 @@ function sky_precompute() -> void {
   let p_brdf = sky_p_brdf
   sky_brdf = tex_target(256, 256, GL_RG16F, GL_RG, GL_FLOAT, GL_LINEAR)
   sky_convolve(p_brdf, sky_brdf, -1, 256, 256, F_ZERO)
-  gl_check("sky precompute")
+  gpu_check("sky precompute")
 }
 
 # bind the IBL set + sun for a lit program (units 12..14)

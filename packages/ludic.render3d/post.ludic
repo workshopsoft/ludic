@@ -59,20 +59,17 @@ function post_init(w: int, h: int) -> void {
   post_w = w;  post_h = h
   post_hdr = target_new(w, h, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, true, GL_LINEAR)
   if post_ms_samples > 1 {
-    post_ms_fbo = gl_framebuffer()
-    gl_bind_framebuffer(GL_FRAMEBUFFER, post_ms_fbo)
-    let ids = gl_scratch()
-    gl_gen_renderbuffers(1, ids)
-    gl_bind_renderbuffer(GL_RENDERBUFFER, ids[0])
-    gl_renderbuffer_storage_multisample(GL_RENDERBUFFER, post_ms_samples, GL_RGBA16F, w, h)
-    gl_framebuffer_renderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, ids[0])
-    gl_gen_renderbuffers(1, ids)
-    gl_bind_renderbuffer(GL_RENDERBUFFER, ids[0])
-    gl_renderbuffer_storage_multisample(GL_RENDERBUFFER, post_ms_samples, GL_DEPTH_COMPONENT32F, w, h)
-    gl_framebuffer_renderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, ids[0])
-    let st = gl_check_framebuffer_status(GL_FRAMEBUFFER)
+    post_ms_fbo = gpu_fb_new()
+    gpu_fb_bind(post_ms_fbo)
+    let rbc = gpu_rb_new()
+    gpu_rb_storage(rbc, GL_RGBA16F, w, h, post_ms_samples)
+    gpu_fb_color_rb(0, rbc)
+    let rbd = gpu_rb_new()
+    gpu_rb_storage(rbd, GL_DEPTH_COMPONENT32F, w, h, post_ms_samples)
+    gpu_fb_depth_rb(rbd)
+    let st = gpu_fb_status()
     if st != GL_FRAMEBUFFER_COMPLETE { print(`r3d: msaa framebuffer incomplete {st}`);  post_ms_fbo = 0 }
-    gl_bind_framebuffer(GL_FRAMEBUFFER, 0)
+    gpu_fb_bind(0)
   }
   post_bloom = new []Target
   var bw = w / 2;  var bh = h / 2
@@ -163,28 +160,28 @@ function post_measure() -> void {
 
 function post_begin_scene() -> void {
   target_bind(post_hdr)
-  if post_ms_fbo != 0 { gl_bind_framebuffer(GL_FRAMEBUFFER, post_ms_fbo);  gl_enable(GL_MULTISAMPLE) }
+  if post_ms_fbo != 0 { gpu_fb_bind(post_ms_fbo);  gpu_multisample(true) }
   gpu_depth_test(true)
   gpu_depth_func(GL_LESS)
   gpu_depth_write(true)
   gpu_cull(true)
   gpu_cull_face(GL_BACK)
-  gl_clear_color(0.0, 0.0, 0.0, 1.0)
-  gl_clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+  gpu_clear_color(0.0, 0.0, 0.0, 1.0)
+  gpu_clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 }
 
 # resolve the multisampled scene into the plain HDR target (colour + depth)
 function post_resolve() -> void {
   if post_ms_fbo != 0 {
-    gl_bind_framebuffer(GL_READ_FRAMEBUFFER, post_ms_fbo)
-    gl_bind_framebuffer(GL_DRAW_FRAMEBUFFER, post_hdr.fbo)
-    gl_blit_framebuffer(0, 0, post_w, post_h, 0, 0, post_w, post_h, GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT, GL_NEAREST)
+    gpu_fb_bind_read(post_ms_fbo)
+    gpu_fb_bind_draw(post_hdr.fbo)
+    gpu_blit(post_w, post_h, GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
   }
   # the depth copy every pass after this may read while the frame is still being drawn into
-  gl_bind_framebuffer(GL_READ_FRAMEBUFFER, post_hdr.fbo)
-  gl_bind_framebuffer(GL_DRAW_FRAMEBUFFER, post_depth_copy.fbo)
-  gl_blit_framebuffer(0, 0, post_w, post_h, 0, 0, post_w, post_h, GL_DEPTH_BUFFER_BIT, GL_NEAREST)
-  gl_bind_framebuffer(GL_FRAMEBUFFER, 0)
+  gpu_fb_bind_read(post_hdr.fbo)
+  gpu_fb_bind_draw(post_depth_copy.fbo)
+  gpu_blit(post_w, post_h, GL_DEPTH_BUFFER_BIT)
+  gpu_fb_bind(0)
 }
 
 # There is no temporal anti-aliasing. It was reprojecting every pixel through the
@@ -200,19 +197,19 @@ function post_resolve() -> void {
 # sheet laid over the ground: the bottom is seen THROUGH the water, tinted and dimmed by
 # how far the light travelled, instead of being the dry terrain showing through an alpha.
 function post_capture_scene() -> void {
-  gl_bind_framebuffer(GL_READ_FRAMEBUFFER, post_hdr.fbo)
-  gl_bind_framebuffer(GL_DRAW_FRAMEBUFFER, post_scene.fbo)
-  gl_blit_framebuffer(0, 0, post_w, post_h, 0, 0, post_w, post_h, GL_COLOR_BUFFER_BIT, GL_NEAREST)
-  gl_bind_framebuffer(GL_FRAMEBUFFER, post_hdr.fbo)
-  gl_viewport(0, 0, post_w, post_h)
+  gpu_fb_bind_read(post_hdr.fbo)
+  gpu_fb_bind_draw(post_scene.fbo)
+  gpu_blit(post_w, post_h, GL_COLOR_BUFFER_BIT)
+  gpu_fb_bind(post_hdr.fbo)
+  gpu_viewport(0, 0, post_w, post_h)
 }
 
 # Keep a copy of the finished scene colour: the SSGI bounce reads last frame's colour.
 function post_capture_prev() -> void {
-  gl_bind_framebuffer(GL_READ_FRAMEBUFFER, post_hdr.fbo)
-  gl_bind_framebuffer(GL_DRAW_FRAMEBUFFER, post_prev.fbo)
-  gl_blit_framebuffer(0, 0, post_w, post_h, 0, 0, post_w, post_h, GL_COLOR_BUFFER_BIT, GL_NEAREST)
-  gl_bind_framebuffer(GL_FRAMEBUFFER, 0)
+  gpu_fb_bind_read(post_hdr.fbo)
+  gpu_fb_bind_draw(post_prev.fbo)
+  gpu_blit(post_w, post_h, GL_COLOR_BUFFER_BIT)
+  gpu_fb_bind(0)
   post_frame += 1
 }
 
@@ -295,8 +292,8 @@ function post_tonemap(color_tex: int) -> void {
   u_f3(gpu_uniform(post_p_tone, "u_gain"), fl(0.99), fl(0.995), fl(1.0))
   mesh_draw(post_fs)
   # sharpen + grain onto the screen
-  gl_bind_framebuffer(GL_FRAMEBUFFER, gl_screen)
-  gl_viewport(0, 0, gl_w, gl_h)
+  gpu_fb_bind(gpu_screen_fb())
+  gpu_viewport(0, 0, gl_w, gl_h)
   gl_use_program(post_p_sharp)
   r3d_bind_2d(post_p_sharp, "u_src", 0, post_ldr.color)
   u_f2(gpu_uniform(post_p_sharp, "u_texel"), fr(1, post_w), fr(1, post_h))

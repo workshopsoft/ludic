@@ -72,8 +72,8 @@ function water_reflection_pass() -> void {
   gpu_depth_write(true)
   gpu_cull(true)
   gpu_cull_face(GL_FRONT)                  # the mirror flips the winding
-  gl_clear_color(0.0, 0.0, 0.0, 1.0)
-  gl_clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+  gpu_clear_color(0.0, 0.0, 0.0, 1.0)
+  gpu_clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
   sc_freeze = true
   let sb = sc_skip_blade
   sc_skip_blade = true                    # blades are invisible at this scale in a reflection
@@ -93,7 +93,7 @@ function water_reflection_pass() -> void {
   m4_copy(cam_inv_vp, mem_off(water_saved, 128))
   v3_set(cam_pos, sx, sy, sz)
   free(eye);  free(fwd);  free(up);  free(at)
-  gl_bind_framebuffer(GL_FRAMEBUFFER, 0)
+  gpu_fb_bind(0)
 }
 
 # the program and the plane are the process's, built once; the bodies are the map's
