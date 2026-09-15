@@ -1,0 +1,115 @@
+# ============================================================================
+# gpu_manifest.ludic — the shader variants a pipeline API draws with.
+#
+# OpenGL compiles each program's GLSL when the game starts; Vulkan cannot, so every
+# program render3d builds is compiled ahead of time by `ludic-dev shaders` into
+# shaders/spv/<id>.vert.spv and .frag.spv, with shaders/spv/manifest.txt saying what a
+# backend needs to draw with it:
+#   P <id> <vertex> <fragment> <defines>        a program (defines with ';' for newlines)
+#   B <id> <stage> <binding> <size>             a stage's uniform block
+#   U <id> <stage> <name> <offset> <type> <count> <stride>
+#   T <id> <name> <binding>                     a sampler, one binding across both stages
+#   I <id> <name> <location> <type>             a vertex input
+# This reads it, and answers the questions a backend asks while drawing: which variant a
+# program is, where a uniform lives in its stage's block, which binding a sampler has.
+# ============================================================================
+
+property GpuVariant {
+  id:     string,
+  vs:     string,
+  fs:     string,
+  defs:   string,          # the defines as variants.list writes them: ';' for newlines
+  vblock: int = -1,        # the vertex stage's uniform block size in bytes (-1: none)
+  fblock: int = -1,
+  u_name:   []string,
+  u_stage:  []int,         # 0 vertex, 1 fragment
+  u_off:    []int,
+  u_type:   []string,
+  u_count:  []int,
+  u_stride: []int,
+  t_name: []string,
+  t_bind: []int,
+  i_name: []string,
+  i_loc:  []int,
+  i_type: []string
+}
+
+var gpu_variants: []GpuVariant = null
+
+function gpu_variant_new(id: string, vs: string, fs: string, defs: string) -> GpuVariant {
+  let v = new GpuVariant
+  v.id = id;  v.vs = vs;  v.fs = fs;  v.defs = defs
+  v.u_name = new []string;  v.u_stage = new []int;  v.u_off = new []int;  v.u_type = new []string
+  v.u_count = new []int;  v.u_stride = new []int
+  v.t_name = new []string;  v.t_bind = new []int
+  v.i_name = new []string;  v.i_loc = new []int;  v.i_type = new []string
+  return v
+}
+
+# Read a manifest; returns how many programs it holds (0: none, or no file).
+function gpu_manifest_load(path: string) -> int {
+  gpu_variants = new []GpuVariant
+  let text = Fs.read_text(path)
+  if text == null { return 0 }
+  let lines = Text.split(text, "\n")
+  var cur: GpuVariant = null
+  for li in 0 .. len(lines) {
+    let ln = lines[li]
+    let lp: pointer = ln
+    if len(lp) < 2 or lp[0] == '#' { continue }
+    let f = Text.split(ln, " ")
+    if lp[0] == 'P' and len(f) >= 4 {
+      # the defines are the rest of the line, spaces and all
+      var defs = ""
+      var k = 4
+      while k < len(f) {
+        if k > 4 { defs = defs + " " }
+        defs = defs + f[k]
+        k += 1
+      }
+      cur = gpu_variant_new(f[1], f[2], f[3], defs)
+      push(gpu_variants, cur)
+      continue
+    }
+    if cur == null { continue }
+    if lp[0] == 'B' and len(f) >= 5 {
+      if f[2] == "vert" { cur.vblock = Text.to_int(f[4]) } else { cur.fblock = Text.to_int(f[4]) }
+    } else if lp[0] == 'U' and len(f) >= 8 {
+      var stage = 1
+      if f[2] == "vert" { stage = 0 }
+      push(cur.u_stage, stage);  push(cur.u_name, f[3]);  push(cur.u_off, Text.to_int(f[4]))
+      push(cur.u_type, f[5]);  push(cur.u_count, Text.to_int(f[6]));  push(cur.u_stride, Text.to_int(f[7]))
+    } else if lp[0] == 'T' and len(f) >= 4 {
+      push(cur.t_name, f[2]);  push(cur.t_bind, Text.to_int(f[3]))
+    } else if lp[0] == 'I' and len(f) >= 5 {
+      push(cur.i_name, f[2]);  push(cur.i_loc, Text.to_int(f[3]));  push(cur.i_type, f[4])
+    }
+  }
+  return len(gpu_variants)
+}
+
+# the variant for a program as r3d_program names it (defines with real newlines)
+function gpu_variant_find(vs: string, fs: string, defines: string) -> GpuVariant {
+  return gpu_variant_find_key(vs, fs, Text.replace(defines, "\n", ";"))
+}
+# ... or as variants.list writes it (';' for newlines)
+function gpu_variant_find_key(vs: string, fs: string, defs: string) -> GpuVariant {
+  if gpu_variants == null { return null }
+  for i in 0 .. len(gpu_variants) {
+    let v = gpu_variants[i]
+    if v.vs == vs and v.fs == fs and v.defs == defs { return v }
+  }
+  return null
+}
+
+# a uniform's index in the variant's table for a stage (0 vertex, 1 fragment), or -1;
+# a program sets a uniform in whichever stages declare it, so a backend asks both
+function gpu_variant_uniform(v: GpuVariant, stage: int, name: string) -> int {
+  for i in 0 .. len(v.u_name) { if v.u_stage[i] == stage and v.u_name[i] == name { return i } }
+  return -1
+}
+# a sampler's binding, or -1 when neither stage declares it
+function gpu_variant_sampler(v: GpuVariant, name: string) -> int {
+  for i in 0 .. len(v.t_name) { if v.t_name[i] == name { return v.t_bind[i] } }
+  return -1
+}

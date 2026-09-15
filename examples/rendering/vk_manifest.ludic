@@ -1,0 +1,49 @@
+# vk_manifest.ludic — reads render3d's SPIR-V manifest the way the Vulkan backend will,
+# and checks every program in variants.list resolves, with its uniforms and samplers.
+#   bin/ludicc examples/rendering/vk_manifest.ludic --headless -o build/vk_manifest && build/vk_manifest
+program VkManifest {
+  import "../../packages/ludic.render3d/gpu_manifest.ludic"
+
+  property Marker { on: int = 1 }
+  model Anchor { Marker }
+
+  handler Boot phase Start {
+    spawn Anchor {}
+    let n = gpu_manifest_load("packages/ludic.render3d/shaders/spv/manifest.txt")
+    print(`manifest: {n} programs`)
+    var ok = n > 0
+    let list = Fs.read_text("packages/ludic.render3d/shaders/variants.list")
+    let lines = Text.split(list, "\n")
+    var listed = 0
+    var found = 0
+    for i in 0 .. len(lines) {
+      let ln = Text.trim(lines[i])
+      let lp: pointer = ln
+      if len(lp) == 0 or lp[0] == '#' { continue }
+      let parts = Text.split(ln, "|")
+      var defs = ""
+      if len(parts) > 2 { defs = parts[2] }
+      listed += 1
+      let v = gpu_variant_find_key(parts[0], parts[1], defs)
+      if v == null { print(`  NOT FOUND: {ln}`);  ok = false } else { found += 1 }
+    }
+    print(`variants.list: {listed} listed, {found} resolved`)
+    if found != listed { ok = false }
+    # spot checks against what the tool wrote: the lit foliage program as scatter builds it
+    let fol = gpu_variant_find("model.vert", "model.frag", "#define FOLIAGE\n#define WIND\n#define ALPHA_TEST\n")
+    if fol == null { print("  the foliage program did not resolve");  ok = false }
+    else {
+      let uv = gpu_variant_uniform(fol, 0, "u_view")
+      let us = gpu_variant_uniform(fol, 1, "u_sun_dir")
+      print(`foliage {fol.id}: vertex block {fol.vblock} bytes, fragment block {fol.fblock} bytes, {len(fol.u_name)} uniforms, {len(fol.t_name)} samplers, {len(fol.i_name)} vertex inputs`)
+      if uv >= 0 { print(`  u_view (vertex) at {fol.u_off[uv]}, {fol.u_type[uv]}`) } else { print("  u_view missing from the vertex stage");  ok = false }
+      if us >= 0 { print(`  u_sun_dir (fragment) at {fol.u_off[us]}, {fol.u_type[us]}`) } else { print("  u_sun_dir missing from the fragment stage");  ok = false }
+      let bd = gpu_variant_sampler(fol, "u_diff")
+      let bs = gpu_variant_sampler(fol, "u_shadow")
+      print(`  u_diff binding {bd}, u_shadow binding {bs}`)
+      if bd < 2 or bs < 2 or bd == bs { ok = false }
+    }
+    if ok { print("VKMANIFEST OK") } else { print("VKMANIFEST FAILED") }
+    quit()
+  }
+}
