@@ -385,9 +385,10 @@ function gpu_caps_probe() -> void {
   print(`r3d: gpu caps: {gpu_cap_device} vulkan {gpu_cap_vulkan} floor {gpu_cap_floor} rt {gpu_cap_rt} mesh {gpu_cap_mesh} rtx {gpu_cap_rtx} reflex {gpu_cap_reflex} hdr {gpu_cap_hdr}`)
 }
 
-# Whether the renderer actually draws a feature yet. The Vulkan renderer is being built;
-# until a feature lands, choosing it is saved and shown, and says it takes effect later.
-function gpu_feature_implemented(f: int) -> bool { return false }
+# Whether the renderer actually draws a feature yet. Until a feature lands, choosing it is saved and
+# shown, and says it takes effect later. The Vulkan renderer itself draws the whole game now (phase
+# 37-38); ray tracing, DLSS, Reflex, HDR output and mesh-shader grass do not yet.
+function gpu_feature_implemented(f: int) -> bool { return f == GF_VULKAN }
 
 # ---- vertex data --------------------------------------------------------------------
 # A Mesh is built through these and records what it is made of - which buffer feeds which
