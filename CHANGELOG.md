@@ -7,6 +7,85 @@ change type. Preview the next one with `ludic dev release --dry-run`.
 A released section may carry a hand-written summary paragraph above its groups
 (v0.2.0 has one); the generated bullets below it are not edited by hand.
 
+## v0.16.0 — 2026-09-15
+
+### Features
+
+- **A loading screen can show the renderer's start-up as it happens.** `r3d_open(w, h, title)` opens
+  the window and the graphics backend with nothing baked, and `r3d_load_count()` / `r3d_load_step(i)`
+  run the rest - the sky and its light, the terrain, the shadow and screen targets, the scattered cover
+  and actors, the grass - one step at a time, so a game can draw and present a frame between them.
+  `r3d_init` is those same calls in a row and is unchanged for everything that uses it.
+- **HDR10 output on the Vulkan renderer** — `r3d_hdr(on)` asks for an ST 2084 / BT.2020 swapchain where the
+  display offers one.
+
+  The tonemap's HDR10 variant keeps the SDR picture up to a 200-nit paper white and rolls highlights on to
+  1000 nits; the overlay converts the interface to the same white; HDR metadata is set where the loader has
+  the command. The screen and LDR images are 10-bit while it is on, and screenshots refuse rather than write
+  a PQ image as SDR. OpenGL and the Vulkan SDR frame are unchanged. `R3D_HDR` overrides the setting.
+- **Mesh-shader grass** — on a card with `VK_EXT_mesh_shader`, `r3d_mesh_grass(on)` draws each grass tile as one
+  mesh-shader dispatch sized to that tile's blades, and a blade that is culled emits no vertices at all.
+
+  - **`ludic-dev shaders`** — a variant whose first file is `*.mesh` compiles that stage as a Vulkan 1.3 mesh
+    shader; its SPIR-V keeps the `.vert` name, so the manifest is unchanged.
+  - **The seam** — `gpu_has_mesh()` and `gpu_draw_mesh_tasks(x, y, z)`; a mesh program's pipeline has no
+    vertex input and its bindings the mesh stage. The device enables `meshShader` and `maintenance4`.
+
+  Not yet faster: at 4K on an RTX 3070 Ti the grass pass takes 5.0 ms against the chunked path's 1.7, so
+  `gpu_feature_implemented(GF_MESH_GRASS)` stays false and a game should not offer it as a finished setting.
+- **More of the renderer's quality is a switch a game can offer.**
+
+  - `sky_set_quality(width)`: the prefiltered sky light at 256, 512 or 1024 wide (half as tall),
+    baked again at once.
+  - `post_set_msaa(samples)`: 1, 2 or 4 samples for the scene on OpenGL, remaking the screen targets in
+    place (`post_msaa_live()` is false on Vulkan, which has no sample counts yet); `post_free` now
+    frees the multisampled framebuffer too.
+  - `STREAM_BUDGET_US` is a variable: the microseconds a frame may spend generating streamed cover.
+  - `r3d_fog_scale`: a multiplier over the fog density the daylight and the weather set.
+- **NVIDIA DLSS super resolution and Reflex on the Vulkan renderer** — through NVIDIA Streamline 2.14.1.
+
+  - **The loader** — on Windows `Vk.open()` takes `sl.interposer.dll` beside the executable in place of
+    `vulkan-1.dll` when a program asks (`Vk.sl_prefer`), falling back to plain Vulkan without it; the `sl*`
+    exports and feature functions are reachable from Ludic.
+  - **render3d** — `r3d_dlss(mode)` upscales the lit HDR frame before bloom and the tonemap, jittered on a
+    Halton cycle, with preset K in every mode (the default M cost 18 ms a frame at 4K on an RTX 3070 Ti);
+    `r3d_dlss_render_w/h` give the size to render at. `r3d_reflex(mode)` sleeps each frame and marks
+    simulation, submit and present. `R3D_DLSS`, `R3D_REFLEX`, `R3D_DLSS_PRESET`, `R3D_SL_LOG` for tests.
+  - **Commands the interposer lacks** — it exports no `vkSetHdrMetadataEXT`, `vkCmdDrawMeshTasksEXT` or
+    acceleration-structure command; `Vk.has` checks one and `vkGetDeviceProcAddr` reaches it.
+- **Real OS threads behind `Job.*` and `Sync.*`** — `Job.parallel_for` runs work across every core.
+
+  - **`fn name`** — an expression naming a top-level function as a value, for a worker's entry point.
+    No closures: the data a worker needs is passed in.
+  - **`Job.parallel_for(count, fn work, ctx)`** — `work(i, ctx)` for every `i` in `[0, count)`, split
+    into chunks across a worker pool (one thread per core but one, pthreads or Win32) and the calling
+    thread; returns when all are done. `Job.is_worker()` says whether code is on a pool thread.
+  - **`Sync.*` is thread-safe** — mutexes are real mutexes, atomics are compare-and-swap, channels are
+    guarded, and `Sync.cpu_count()` reports the machine's cores.
+  - **A worker must not change the world** — `spawn` and `despawn` on a pool thread stop the program with
+    a located message.
+- **Texture filtering and shadow resolution as settings a game can change while it runs.**
+
+  - `r3d_set_anisotropy(level)` sets the anisotropic filtering of every mipmapped texture already
+    loaded, not only of later uploads, on OpenGL and Vulkan.
+  - `shadow_set_res(size)` remakes the cascades' depth layers at 1024, 2048 or 4096 (`shadow_res`
+    replaces the `SHADOW_RES` constant); the lighting reads the texel size from the map.
+- **`app native "<dir>"` in `package.ludic`** — `ludic bundle` on Windows copies that directory's files beside
+  the executable: native libraries loaded at run time (NVIDIA Streamline's DLLs, say) and their licence texts,
+  which cannot live in the pack.
+
+### Fixes
+
+- **The meadow's grass draws on the Vulkan renderer again** — the chunked grass path uploaded its `vec4` tile
+  table with `u_fv`, which on Vulkan copies one float per array element, so every tile had no blades.
+  `u_f4v` uploads arrays of `vec4`.
+
+### Performance
+
+- **The sky's light is baked once at start, not twice.** A game that turns the sky at boot sets
+  `sky_start_yaw` before `r3d_init`, and `sky_load` bakes the image-based light at that yaw; turning to
+  a yaw the light is already baked at (`sky_set_yaw`) no longer bakes it again. Without it, nothing
+  changes.
 ## v0.15.0 — 2026-09-15
 
 ### Features
