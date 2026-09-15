@@ -1,0 +1,481 @@
+# vk_triangle.ludic — the graphics half of what vk_compute proved: a Slang vertex and
+# fragment shader (vk_triangle.slang) draw a triangle into an image with dynamic rendering,
+# the image is copied to a host-visible buffer and written as a PPM. No window, so it runs
+# headless over SSH and under the validation layer.
+#
+# This is the path the Vulkan renderer's passes take: an image and its view, a graphics
+# pipeline built for a colour format rather than a render pass, image barriers for the
+# layouts, vkCmdBeginRendering, a draw, and a read-back for screenshots.
+#   slangc examples/rendering/vk_triangle.slang -target spirv -profile spirv_1_5
+#          -entry vsMain -stage vertex -o build/vk_triangle_vs.spv
+#   slangc examples/rendering/vk_triangle.slang -target spirv -profile spirv_1_5
+#          -entry fsMain -stage fragment -o build/vk_triangle_fs.spv
+#   bin/ludicc examples/rendering/vk_triangle.ludic --headless   (Vk.* links the Vulkan runtime)
+#   macOS: VULKAN_SDK set to the SDK's macOS directory, VK_DRIVER_FILES to MoltenVK's ICD json
+program VkTriangle {
+
+  property Marker { on: int = 1 }
+  model Anchor { Marker }
+
+  const W: int = 320
+  const H: int = 240
+  const FMT: int = VK_FORMAT_R8G8B8A8_UNORM
+
+  function fail(what: string, r: int) -> void { print(`vulkan: {what} failed, VkResult {r}`);  quit() }
+  function handle(out: bytes) -> long { return vk_get_i64(out, 0) }
+  function has_ext(props: bytes, n: int, want: string) -> bool {
+    for i in 0 .. n {
+      if string(vk_at(props, i * VkExtensionProperties_sizeof + VkExtensionProperties_extensionName)) == want { return true }
+    }
+    return false
+  }
+  var spv_len: int = 0
+  function read_all(path: string) -> bytes {
+    let f = file_open(path, "rb")
+    if f == null { return null }
+    file_seek(f, 0, 2)
+    let n = file_tell(f)
+    file_seek(f, 0, 0)
+    let b = bytes(n + 4)
+    file_read(f, b, n)
+    file_close(f)
+    spv_len = n
+    return b
+  }
+  # the first memory type the resource allows that has every property wanted
+  function mem_type(mp: bytes, allowed: int, want: int) -> int {
+    for t in 0 .. vk_get_i32(mp, VkPhysicalDeviceMemoryProperties_memoryTypeCount) {
+      let pf = vk_get_i32(mp, VkPhysicalDeviceMemoryProperties_memoryTypes + t * VkMemoryType_sizeof + VkMemoryType_propertyFlags)
+      if ((allowed >> t) & 1) == 1 and (pf & want) == want { return t }
+    }
+    return -1
+  }
+  # one colour image, one mip, one layer
+  function color_range(at: bytes, off: int) -> void {
+    vk_put_i32(at, off + VkImageSubresourceRange_aspectMask, VK_IMAGE_ASPECT_COLOR_BIT)
+    vk_put_i32(at, off + VkImageSubresourceRange_baseMipLevel, 0)
+    vk_put_i32(at, off + VkImageSubresourceRange_levelCount, 1)
+    vk_put_i32(at, off + VkImageSubresourceRange_baseArrayLayer, 0)
+    vk_put_i32(at, off + VkImageSubresourceRange_layerCount, 1)
+  }
+  function barrier(cb: pointer, image: long, old_layout: int, new_layout: int, src_access: int, dst_access: int, src_stage: int, dst_stage: int) -> void {
+    let b = bytes(VkImageMemoryBarrier_sizeof)
+    vk_zero(b, VkImageMemoryBarrier_sizeof)
+    vk_put_i32(b, VkImageMemoryBarrier_sType, VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER)
+    vk_put_i32(b, VkImageMemoryBarrier_srcAccessMask, src_access)
+    vk_put_i32(b, VkImageMemoryBarrier_dstAccessMask, dst_access)
+    vk_put_i32(b, VkImageMemoryBarrier_oldLayout, old_layout)
+    vk_put_i32(b, VkImageMemoryBarrier_newLayout, new_layout)
+    vk_put_i32(b, VkImageMemoryBarrier_srcQueueFamilyIndex, VK_QUEUE_FAMILY_IGNORED)
+    vk_put_i32(b, VkImageMemoryBarrier_dstQueueFamilyIndex, VK_QUEUE_FAMILY_IGNORED)
+    vk_put_i64(b, VkImageMemoryBarrier_image, image)
+    color_range(b, VkImageMemoryBarrier_subresourceRange)
+    vk_cmd_pipeline_barrier(cb, src_stage, dst_stage, 0, 0, null, 0, null, 1, b)
+  }
+  function shader_module(dev: pointer, path: string) -> long {
+    let spv = read_all(path)
+    if spv == null { print(`vulkan: no SPIR-V at {path} (compile vk_triangle.slang with slangc)`);  quit() }
+    let smci = bytes(VkShaderModuleCreateInfo_sizeof)
+    vk_zero(smci, VkShaderModuleCreateInfo_sizeof)
+    vk_put_i32(smci, VkShaderModuleCreateInfo_sType, VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO)
+    let code_size: long = spv_len
+    vk_put_i64(smci, VkShaderModuleCreateInfo_codeSize, code_size)
+    vk_put_ptr(smci, VkShaderModuleCreateInfo_pCode, spv)
+    let out = bytes(8)
+    let r = vk_create_shader_module(dev, smci, null, out)
+    if r != VK_SUCCESS { fail("vkCreateShaderModule", r) }
+    return handle(out)
+  }
+
+  handler Boot phase Start {
+    spawn Anchor {}
+    var vs_path = "build/vk_triangle_vs.spv"
+    var fs_path = "build/vk_triangle_fs.spv"
+    if Os.has_env("VKT_VS") { vs_path = Os.env("VKT_VS") }
+    if Os.has_env("VKT_FS") { fs_path = Os.env("VKT_FS") }
+    if Vk.open() == 0 { print("vulkan: no loader");  quit() }
+
+    # ---- instance: Vulkan 1.3 (dynamic rendering is core), portability enumeration where offered
+    let cnt = bytes(4)
+    vk_put_i32(cnt, 0, 0)
+    vk_enumerate_instance_extension_properties(null, cnt, null)
+    let nie = vk_get_i32(cnt, 0)
+    let iexts = bytes(nie * VkExtensionProperties_sizeof + 8)
+    vk_enumerate_instance_extension_properties(null, cnt, iexts)
+    let portability = has_ext(iexts, nie, VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME)
+    let app = bytes(VkApplicationInfo_sizeof)
+    vk_zero(app, VkApplicationInfo_sizeof)
+    vk_put_i32(app, VkApplicationInfo_sType, VK_STRUCTURE_TYPE_APPLICATION_INFO)
+    vk_put_ptr(app, VkApplicationInfo_pApplicationName, "vk_triangle")
+    vk_put_i32(app, VkApplicationInfo_apiVersion, (1 << 22) | (3 << 12))
+    let iext_names = bytes(8)
+    let ici = bytes(VkInstanceCreateInfo_sizeof)
+    vk_zero(ici, VkInstanceCreateInfo_sizeof)
+    vk_put_i32(ici, VkInstanceCreateInfo_sType, VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO)
+    vk_put_ptr(ici, VkInstanceCreateInfo_pApplicationInfo, app)
+    if portability {
+      vk_put_ptr(iext_names, 0, VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME)
+      vk_put_i32(ici, VkInstanceCreateInfo_flags, VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR)
+      vk_put_i32(ici, VkInstanceCreateInfo_enabledExtensionCount, 1)
+      vk_put_ptr(ici, VkInstanceCreateInfo_ppEnabledExtensionNames, iext_names)
+    }
+    let out = bytes(8)
+    var r = vk_create_instance(ici, null, out)
+    if r != VK_SUCCESS { fail("vkCreateInstance", r) }
+    let inst = vk_get_ptr(out, 0)
+
+    # ---- the first device, its first queue family that draws
+    vk_put_i32(cnt, 0, 1)
+    let devs = bytes(8)
+    vk_enumerate_physical_devices(inst, cnt, devs)
+    let pd = vk_get_ptr(devs, 0)
+    let props = bytes(VkPhysicalDeviceProperties_sizeof)
+    vk_get_physical_device_properties(pd, props)
+    print(`vulkan: {string(vk_at(props, VkPhysicalDeviceProperties_deviceName))}`)
+    vk_put_i32(cnt, 0, 0)
+    vk_get_physical_device_queue_family_properties(pd, cnt, null)
+    let nq = vk_get_i32(cnt, 0)
+    let qprops = bytes(nq * VkQueueFamilyProperties_sizeof + 8)
+    vk_get_physical_device_queue_family_properties(pd, cnt, qprops)
+    var family = -1
+    for q in 0 .. nq {
+      let flags = vk_get_i32(qprops, q * VkQueueFamilyProperties_sizeof + VkQueueFamilyProperties_queueFlags)
+      if family < 0 and (flags & VK_QUEUE_GRAPHICS_BIT) != 0 { family = q }
+    }
+    if family < 0 { print("vulkan: no graphics queue");  quit() }
+    vk_put_i32(cnt, 0, 0)
+    vk_enumerate_device_extension_properties(pd, null, cnt, null)
+    let nde = vk_get_i32(cnt, 0)
+    let dexts = bytes(nde * VkExtensionProperties_sizeof + 8)
+    vk_enumerate_device_extension_properties(pd, null, cnt, dexts)
+    let prio = bytes(4)
+    vk_put_i32(prio, 0, 0x3F800000)
+    let qci = bytes(VkDeviceQueueCreateInfo_sizeof)
+    vk_zero(qci, VkDeviceQueueCreateInfo_sizeof)
+    vk_put_i32(qci, VkDeviceQueueCreateInfo_sType, VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO)
+    vk_put_i32(qci, VkDeviceQueueCreateInfo_queueFamilyIndex, family)
+    vk_put_i32(qci, VkDeviceQueueCreateInfo_queueCount, 1)
+    vk_put_ptr(qci, VkDeviceQueueCreateInfo_pQueuePriorities, prio)
+    # dynamic rendering is a 1.3 feature, and a feature is off until it is asked for
+    let f13 = bytes(VkPhysicalDeviceVulkan13Features_sizeof)
+    vk_zero(f13, VkPhysicalDeviceVulkan13Features_sizeof)
+    vk_put_i32(f13, VkPhysicalDeviceVulkan13Features_sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES)
+    vk_put_i32(f13, VkPhysicalDeviceVulkan13Features_dynamicRendering, 1)
+    let dext_names = bytes(8)
+    let dci = bytes(VkDeviceCreateInfo_sizeof)
+    vk_zero(dci, VkDeviceCreateInfo_sizeof)
+    vk_put_i32(dci, VkDeviceCreateInfo_sType, VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO)
+    vk_put_ptr(dci, VkDeviceCreateInfo_pNext, f13)
+    vk_put_i32(dci, VkDeviceCreateInfo_queueCreateInfoCount, 1)
+    vk_put_ptr(dci, VkDeviceCreateInfo_pQueueCreateInfos, qci)
+    if has_ext(dexts, nde, "VK_KHR_portability_subset") {
+      vk_put_ptr(dext_names, 0, "VK_KHR_portability_subset")
+      vk_put_i32(dci, VkDeviceCreateInfo_enabledExtensionCount, 1)
+      vk_put_ptr(dci, VkDeviceCreateInfo_ppEnabledExtensionNames, dext_names)
+    }
+    r = vk_create_device(pd, dci, null, out)
+    if r != VK_SUCCESS { fail("vkCreateDevice", r) }
+    let dev = vk_get_ptr(out, 0)
+    vk_get_device_queue(dev, family, 0, out)
+    let queue = vk_get_ptr(out, 0)
+    let mp = bytes(VkPhysicalDeviceMemoryProperties_sizeof)
+    vk_get_physical_device_memory_properties(pd, mp)
+    let zero: long = 0
+
+    # ---- the colour image the triangle is drawn into, on device-local memory
+    let imci = bytes(VkImageCreateInfo_sizeof)
+    vk_zero(imci, VkImageCreateInfo_sizeof)
+    vk_put_i32(imci, VkImageCreateInfo_sType, VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO)
+    vk_put_i32(imci, VkImageCreateInfo_imageType, VK_IMAGE_TYPE_2D)
+    vk_put_i32(imci, VkImageCreateInfo_format, FMT)
+    vk_put_i32(imci, VkImageCreateInfo_extent + VkExtent3D_width, W)
+    vk_put_i32(imci, VkImageCreateInfo_extent + VkExtent3D_height, H)
+    vk_put_i32(imci, VkImageCreateInfo_extent + VkExtent3D_depth, 1)
+    vk_put_i32(imci, VkImageCreateInfo_mipLevels, 1)
+    vk_put_i32(imci, VkImageCreateInfo_arrayLayers, 1)
+    vk_put_i32(imci, VkImageCreateInfo_samples, VK_SAMPLE_COUNT_1_BIT)
+    vk_put_i32(imci, VkImageCreateInfo_tiling, VK_IMAGE_TILING_OPTIMAL)
+    vk_put_i32(imci, VkImageCreateInfo_usage, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT)
+    vk_put_i32(imci, VkImageCreateInfo_sharingMode, VK_SHARING_MODE_EXCLUSIVE)
+    vk_put_i32(imci, VkImageCreateInfo_initialLayout, VK_IMAGE_LAYOUT_UNDEFINED)
+    r = vk_create_image(dev, imci, null, out)
+    if r != VK_SUCCESS { fail("vkCreateImage", r) }
+    let image = handle(out)
+    let ireq = bytes(VkMemoryRequirements_sizeof)
+    vk_get_image_memory_requirements(dev, image, ireq)
+    var itype = mem_type(mp, vk_get_i32(ireq, VkMemoryRequirements_memoryTypeBits), VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
+    if itype < 0 { itype = mem_type(mp, vk_get_i32(ireq, VkMemoryRequirements_memoryTypeBits), 0) }
+    let imai = bytes(VkMemoryAllocateInfo_sizeof)
+    vk_zero(imai, VkMemoryAllocateInfo_sizeof)
+    vk_put_i32(imai, VkMemoryAllocateInfo_sType, VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO)
+    vk_put_i64(imai, VkMemoryAllocateInfo_allocationSize, vk_get_i64(ireq, VkMemoryRequirements_size))
+    vk_put_i32(imai, VkMemoryAllocateInfo_memoryTypeIndex, itype)
+    r = vk_allocate_memory(dev, imai, null, out)
+    if r != VK_SUCCESS { fail("vkAllocateMemory (image)", r) }
+    let imem = handle(out)
+    r = vk_bind_image_memory(dev, image, imem, zero)
+    if r != VK_SUCCESS { fail("vkBindImageMemory", r) }
+    let ivci = bytes(VkImageViewCreateInfo_sizeof)
+    vk_zero(ivci, VkImageViewCreateInfo_sizeof)
+    vk_put_i32(ivci, VkImageViewCreateInfo_sType, VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO)
+    vk_put_i64(ivci, VkImageViewCreateInfo_image, image)
+    vk_put_i32(ivci, VkImageViewCreateInfo_viewType, VK_IMAGE_VIEW_TYPE_2D)
+    vk_put_i32(ivci, VkImageViewCreateInfo_format, FMT)
+    color_range(ivci, VkImageViewCreateInfo_subresourceRange)
+    r = vk_create_image_view(dev, ivci, null, out)
+    if r != VK_SUCCESS { fail("vkCreateImageView", r) }
+    let view = handle(out)
+
+    # ---- the host-visible buffer the picture is copied into
+    let nbytes: long = W * H * 4
+    let bci = bytes(VkBufferCreateInfo_sizeof)
+    vk_zero(bci, VkBufferCreateInfo_sizeof)
+    vk_put_i32(bci, VkBufferCreateInfo_sType, VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO)
+    vk_put_i64(bci, VkBufferCreateInfo_size, nbytes)
+    vk_put_i32(bci, VkBufferCreateInfo_usage, VK_BUFFER_USAGE_TRANSFER_DST_BIT)
+    vk_put_i32(bci, VkBufferCreateInfo_sharingMode, VK_SHARING_MODE_EXCLUSIVE)
+    r = vk_create_buffer(dev, bci, null, out)
+    if r != VK_SUCCESS { fail("vkCreateBuffer", r) }
+    let buf = handle(out)
+    let breq = bytes(VkMemoryRequirements_sizeof)
+    vk_get_buffer_memory_requirements(dev, buf, breq)
+    let btype = mem_type(mp, vk_get_i32(breq, VkMemoryRequirements_memoryTypeBits), VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
+    if btype < 0 { print("vulkan: no host-visible memory type");  quit() }
+    let bmai = bytes(VkMemoryAllocateInfo_sizeof)
+    vk_zero(bmai, VkMemoryAllocateInfo_sizeof)
+    vk_put_i32(bmai, VkMemoryAllocateInfo_sType, VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO)
+    vk_put_i64(bmai, VkMemoryAllocateInfo_allocationSize, vk_get_i64(breq, VkMemoryRequirements_size))
+    vk_put_i32(bmai, VkMemoryAllocateInfo_memoryTypeIndex, btype)
+    r = vk_allocate_memory(dev, bmai, null, out)
+    if r != VK_SUCCESS { fail("vkAllocateMemory (buffer)", r) }
+    let bmem = handle(out)
+    r = vk_bind_buffer_memory(dev, buf, bmem, zero)
+    if r != VK_SUCCESS { fail("vkBindBufferMemory", r) }
+
+    # ---- the pipeline: two stages, no vertex input, dynamic viewport and scissor, one colour format
+    let vs = shader_module(dev, vs_path)
+    let fs = shader_module(dev, fs_path)
+    let plci = bytes(VkPipelineLayoutCreateInfo_sizeof)
+    vk_zero(plci, VkPipelineLayoutCreateInfo_sizeof)
+    vk_put_i32(plci, VkPipelineLayoutCreateInfo_sType, VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO)
+    r = vk_create_pipeline_layout(dev, plci, null, out)
+    if r != VK_SUCCESS { fail("vkCreatePipelineLayout", r) }
+    let layout = handle(out)
+
+    let ss = VkPipelineShaderStageCreateInfo_sizeof
+    let stages = bytes(ss * 2)
+    vk_zero(stages, ss * 2)
+    vk_put_i32(stages, VkPipelineShaderStageCreateInfo_sType, VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO)
+    vk_put_i32(stages, VkPipelineShaderStageCreateInfo_stage, VK_SHADER_STAGE_VERTEX_BIT)
+    vk_put_i64(stages, VkPipelineShaderStageCreateInfo_module, vs)
+    vk_put_ptr(stages, VkPipelineShaderStageCreateInfo_pName, "main")
+    vk_put_i32(stages, ss + VkPipelineShaderStageCreateInfo_sType, VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO)
+    vk_put_i32(stages, ss + VkPipelineShaderStageCreateInfo_stage, VK_SHADER_STAGE_FRAGMENT_BIT)
+    vk_put_i64(stages, ss + VkPipelineShaderStageCreateInfo_module, fs)
+    vk_put_ptr(stages, ss + VkPipelineShaderStageCreateInfo_pName, "main")
+
+    let vin = bytes(VkPipelineVertexInputStateCreateInfo_sizeof)
+    vk_zero(vin, VkPipelineVertexInputStateCreateInfo_sizeof)
+    vk_put_i32(vin, VkPipelineVertexInputStateCreateInfo_sType, VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO)
+    let ias = bytes(VkPipelineInputAssemblyStateCreateInfo_sizeof)
+    vk_zero(ias, VkPipelineInputAssemblyStateCreateInfo_sizeof)
+    vk_put_i32(ias, VkPipelineInputAssemblyStateCreateInfo_sType, VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO)
+    vk_put_i32(ias, VkPipelineInputAssemblyStateCreateInfo_topology, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+    let vps = bytes(VkPipelineViewportStateCreateInfo_sizeof)
+    vk_zero(vps, VkPipelineViewportStateCreateInfo_sizeof)
+    vk_put_i32(vps, VkPipelineViewportStateCreateInfo_sType, VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO)
+    vk_put_i32(vps, VkPipelineViewportStateCreateInfo_viewportCount, 1)
+    vk_put_i32(vps, VkPipelineViewportStateCreateInfo_scissorCount, 1)
+    let rs = bytes(VkPipelineRasterizationStateCreateInfo_sizeof)
+    vk_zero(rs, VkPipelineRasterizationStateCreateInfo_sizeof)
+    vk_put_i32(rs, VkPipelineRasterizationStateCreateInfo_sType, VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO)
+    vk_put_i32(rs, VkPipelineRasterizationStateCreateInfo_polygonMode, VK_POLYGON_MODE_FILL)
+    vk_put_i32(rs, VkPipelineRasterizationStateCreateInfo_cullMode, VK_CULL_MODE_NONE)
+    vk_put_i32(rs, VkPipelineRasterizationStateCreateInfo_frontFace, VK_FRONT_FACE_COUNTER_CLOCKWISE)
+    vk_put_i32(rs, VkPipelineRasterizationStateCreateInfo_lineWidth, 0x3F800000)
+    let ms = bytes(VkPipelineMultisampleStateCreateInfo_sizeof)
+    vk_zero(ms, VkPipelineMultisampleStateCreateInfo_sizeof)
+    vk_put_i32(ms, VkPipelineMultisampleStateCreateInfo_sType, VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO)
+    vk_put_i32(ms, VkPipelineMultisampleStateCreateInfo_rasterizationSamples, VK_SAMPLE_COUNT_1_BIT)
+    let cba = bytes(VkPipelineColorBlendAttachmentState_sizeof)
+    vk_zero(cba, VkPipelineColorBlendAttachmentState_sizeof)
+    vk_put_i32(cba, VkPipelineColorBlendAttachmentState_colorWriteMask,
+               VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT)
+    let cbs = bytes(VkPipelineColorBlendStateCreateInfo_sizeof)
+    vk_zero(cbs, VkPipelineColorBlendStateCreateInfo_sizeof)
+    vk_put_i32(cbs, VkPipelineColorBlendStateCreateInfo_sType, VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO)
+    vk_put_i32(cbs, VkPipelineColorBlendStateCreateInfo_attachmentCount, 1)
+    vk_put_ptr(cbs, VkPipelineColorBlendStateCreateInfo_pAttachments, cba)
+    let dyn_states = bytes(8)
+    vk_put_i32(dyn_states, 0, VK_DYNAMIC_STATE_VIEWPORT)
+    vk_put_i32(dyn_states, 4, VK_DYNAMIC_STATE_SCISSOR)
+    let dys = bytes(VkPipelineDynamicStateCreateInfo_sizeof)
+    vk_zero(dys, VkPipelineDynamicStateCreateInfo_sizeof)
+    vk_put_i32(dys, VkPipelineDynamicStateCreateInfo_sType, VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO)
+    vk_put_i32(dys, VkPipelineDynamicStateCreateInfo_dynamicStateCount, 2)
+    vk_put_ptr(dys, VkPipelineDynamicStateCreateInfo_pDynamicStates, dyn_states)
+    # no render pass object: the pipeline names the formats it renders to
+    let formats = bytes(4)
+    vk_put_i32(formats, 0, FMT)
+    let prci = bytes(VkPipelineRenderingCreateInfo_sizeof)
+    vk_zero(prci, VkPipelineRenderingCreateInfo_sizeof)
+    vk_put_i32(prci, VkPipelineRenderingCreateInfo_sType, VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO)
+    vk_put_i32(prci, VkPipelineRenderingCreateInfo_colorAttachmentCount, 1)
+    vk_put_ptr(prci, VkPipelineRenderingCreateInfo_pColorAttachmentFormats, formats)
+
+    let gpci = bytes(VkGraphicsPipelineCreateInfo_sizeof)
+    vk_zero(gpci, VkGraphicsPipelineCreateInfo_sizeof)
+    vk_put_i32(gpci, VkGraphicsPipelineCreateInfo_sType, VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO)
+    vk_put_ptr(gpci, VkGraphicsPipelineCreateInfo_pNext, prci)
+    vk_put_i32(gpci, VkGraphicsPipelineCreateInfo_stageCount, 2)
+    vk_put_ptr(gpci, VkGraphicsPipelineCreateInfo_pStages, stages)
+    vk_put_ptr(gpci, VkGraphicsPipelineCreateInfo_pVertexInputState, vin)
+    vk_put_ptr(gpci, VkGraphicsPipelineCreateInfo_pInputAssemblyState, ias)
+    vk_put_ptr(gpci, VkGraphicsPipelineCreateInfo_pViewportState, vps)
+    vk_put_ptr(gpci, VkGraphicsPipelineCreateInfo_pRasterizationState, rs)
+    vk_put_ptr(gpci, VkGraphicsPipelineCreateInfo_pMultisampleState, ms)
+    vk_put_ptr(gpci, VkGraphicsPipelineCreateInfo_pColorBlendState, cbs)
+    vk_put_ptr(gpci, VkGraphicsPipelineCreateInfo_pDynamicState, dys)
+    vk_put_i64(gpci, VkGraphicsPipelineCreateInfo_layout, layout)
+    r = vk_create_graphics_pipelines(dev, zero, 1, gpci, null, out)
+    if r != VK_SUCCESS { fail("vkCreateGraphicsPipelines", r) }
+    let pipeline = handle(out)
+
+    # ---- record: clear, draw, then copy the image out
+    let cpi = bytes(VkCommandPoolCreateInfo_sizeof)
+    vk_zero(cpi, VkCommandPoolCreateInfo_sizeof)
+    vk_put_i32(cpi, VkCommandPoolCreateInfo_sType, VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO)
+    vk_put_i32(cpi, VkCommandPoolCreateInfo_queueFamilyIndex, family)
+    r = vk_create_command_pool(dev, cpi, null, out)
+    if r != VK_SUCCESS { fail("vkCreateCommandPool", r) }
+    let cmd_pool = handle(out)
+    let cbai = bytes(VkCommandBufferAllocateInfo_sizeof)
+    vk_zero(cbai, VkCommandBufferAllocateInfo_sizeof)
+    vk_put_i32(cbai, VkCommandBufferAllocateInfo_sType, VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO)
+    vk_put_i64(cbai, VkCommandBufferAllocateInfo_commandPool, cmd_pool)
+    vk_put_i32(cbai, VkCommandBufferAllocateInfo_level, VK_COMMAND_BUFFER_LEVEL_PRIMARY)
+    vk_put_i32(cbai, VkCommandBufferAllocateInfo_commandBufferCount, 1)
+    let cmds = bytes(8)
+    r = vk_allocate_command_buffers(dev, cbai, cmds)
+    if r != VK_SUCCESS { fail("vkAllocateCommandBuffers", r) }
+    let cb = vk_get_ptr(cmds, 0)
+    let cbbi = bytes(VkCommandBufferBeginInfo_sizeof)
+    vk_zero(cbbi, VkCommandBufferBeginInfo_sizeof)
+    vk_put_i32(cbbi, VkCommandBufferBeginInfo_sType, VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO)
+    vk_put_i32(cbbi, VkCommandBufferBeginInfo_flags, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT)
+    r = vk_begin_command_buffer(cb, cbbi)
+    if r != VK_SUCCESS { fail("vkBeginCommandBuffer", r) }
+
+    barrier(cb, image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            0, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT)
+    let att = bytes(VkRenderingAttachmentInfo_sizeof)
+    vk_zero(att, VkRenderingAttachmentInfo_sizeof)
+    vk_put_i32(att, VkRenderingAttachmentInfo_sType, VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO)
+    vk_put_i64(att, VkRenderingAttachmentInfo_imageView, view)
+    vk_put_i32(att, VkRenderingAttachmentInfo_imageLayout, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
+    vk_put_i32(att, VkRenderingAttachmentInfo_loadOp, VK_ATTACHMENT_LOAD_OP_CLEAR)
+    vk_put_i32(att, VkRenderingAttachmentInfo_storeOp, VK_ATTACHMENT_STORE_OP_STORE)
+    # the clear colour, float bits: 0.08, 0.10, 0.14, 1.0
+    vk_put_i32(att, VkRenderingAttachmentInfo_clearValue, 0x3DA3D70A)
+    vk_put_i32(att, VkRenderingAttachmentInfo_clearValue + 4, 0x3DCCCCCD)
+    vk_put_i32(att, VkRenderingAttachmentInfo_clearValue + 8, 0x3E0F5C29)
+    vk_put_i32(att, VkRenderingAttachmentInfo_clearValue + 12, 0x3F800000)
+    let ri = bytes(VkRenderingInfo_sizeof)
+    vk_zero(ri, VkRenderingInfo_sizeof)
+    vk_put_i32(ri, VkRenderingInfo_sType, VK_STRUCTURE_TYPE_RENDERING_INFO)
+    vk_put_i32(ri, VkRenderingInfo_renderArea + VkRect2D_extent + VkExtent2D_width, W)
+    vk_put_i32(ri, VkRenderingInfo_renderArea + VkRect2D_extent + VkExtent2D_height, H)
+    vk_put_i32(ri, VkRenderingInfo_layerCount, 1)
+    vk_put_i32(ri, VkRenderingInfo_colorAttachmentCount, 1)
+    vk_put_ptr(ri, VkRenderingInfo_pColorAttachments, att)
+    vk_cmd_begin_rendering(cb, ri)
+    vk_cmd_bind_pipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline)
+    let vp = bytes(VkViewport_sizeof)
+    vk_zero(vp, VkViewport_sizeof)
+    vk_put_i32(vp, VkViewport_width, 0x43A00000)       # 320.0
+    vk_put_i32(vp, VkViewport_height, 0x43700000)      # 240.0
+    vk_put_i32(vp, VkViewport_maxDepth, 0x3F800000)
+    vk_cmd_set_viewport(cb, 0, 1, vp)
+    let sc = bytes(VkRect2D_sizeof)
+    vk_zero(sc, VkRect2D_sizeof)
+    vk_put_i32(sc, VkRect2D_extent + VkExtent2D_width, W)
+    vk_put_i32(sc, VkRect2D_extent + VkExtent2D_height, H)
+    vk_cmd_set_scissor(cb, 0, 1, sc)
+    vk_cmd_draw(cb, 3, 1, 0, 0)
+    vk_cmd_end_rendering(cb)
+
+    barrier(cb, image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT)
+    let bic = bytes(VkBufferImageCopy_sizeof)
+    vk_zero(bic, VkBufferImageCopy_sizeof)
+    vk_put_i32(bic, VkBufferImageCopy_imageSubresource + VkImageSubresourceLayers_aspectMask, VK_IMAGE_ASPECT_COLOR_BIT)
+    vk_put_i32(bic, VkBufferImageCopy_imageSubresource + VkImageSubresourceLayers_layerCount, 1)
+    vk_put_i32(bic, VkBufferImageCopy_imageExtent + VkExtent3D_width, W)
+    vk_put_i32(bic, VkBufferImageCopy_imageExtent + VkExtent3D_height, H)
+    vk_put_i32(bic, VkBufferImageCopy_imageExtent + VkExtent3D_depth, 1)
+    vk_cmd_copy_image_to_buffer(cb, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, buf, 1, bic)
+    r = vk_end_command_buffer(cb)
+    if r != VK_SUCCESS { fail("vkEndCommandBuffer", r) }
+
+    let fci = bytes(VkFenceCreateInfo_sizeof)
+    vk_zero(fci, VkFenceCreateInfo_sizeof)
+    vk_put_i32(fci, VkFenceCreateInfo_sType, VK_STRUCTURE_TYPE_FENCE_CREATE_INFO)
+    let fences = bytes(8)
+    r = vk_create_fence(dev, fci, null, fences)
+    if r != VK_SUCCESS { fail("vkCreateFence", r) }
+    let si = bytes(VkSubmitInfo_sizeof)
+    vk_zero(si, VkSubmitInfo_sizeof)
+    vk_put_i32(si, VkSubmitInfo_sType, VK_STRUCTURE_TYPE_SUBMIT_INFO)
+    vk_put_i32(si, VkSubmitInfo_commandBufferCount, 1)
+    vk_put_ptr(si, VkSubmitInfo_pCommandBuffers, cmds)
+    r = vk_queue_submit(queue, 1, si, vk_get_i64(fences, 0))
+    if r != VK_SUCCESS { fail("vkQueueSubmit", r) }
+    let forever: long = -1
+    r = vk_wait_for_fences(dev, 1, fences, 1, forever)
+    if r != VK_SUCCESS { fail("vkWaitForFences", r) }
+
+    # ---- read the picture back; the corner must be the clear colour, the middle the triangle
+    let pp = bytes(8)
+    r = vk_map_memory(dev, bmem, zero, nbytes, 0, pp)
+    if r != VK_SUCCESS { fail("vkMapMemory", r) }
+    let px = vk_get_ptr(pp, 0)
+    var out_path = "build/vk_triangle.ppm"
+    if Os.has_env("VKT_OUT") { out_path = Os.env("VKT_OUT") }
+    let f = file_open(out_path, "wb")
+    let hdr = `P6\n{W} {H}\n255\n`
+    file_write(f, hdr, len(hdr))
+    let row = bytes(W * 3)
+    var covered = 0
+    for y in 0 .. H {
+      for x in 0 .. W {
+        let v = vk_get_i32(px, (y * W + x) * 4)
+        row[x * 3] = v & 255;  row[x * 3 + 1] = (v >> 8) & 255;  row[x * 3 + 2] = (v >> 16) & 255
+        if (v & 255) > 40 or ((v >> 8) & 255) > 60 { covered += 1 }
+      }
+      file_write(f, row, W * 3)
+    }
+    file_close(f)
+    let corner = vk_get_i32(px, (2 * W + 2) * 4)
+    let middle = vk_get_i32(px, ((H / 2 + 20) * W + W / 2) * 4)
+    vk_unmap_memory(dev, bmem)
+    print(`vulkan: corner {corner & 255},{(corner >> 8) & 255},{(corner >> 16) & 255}  middle {middle & 255},{(middle >> 8) & 255},{(middle >> 16) & 255}  covered {covered} of {W * H} -> {out_path}`)
+    let corner_clear = (corner & 255) >= 19 and (corner & 255) <= 22 and ((corner >> 16) & 255) >= 34 and ((corner >> 16) & 255) <= 37
+    let middle_drawn = (middle & 255) > 40 or ((middle >> 8) & 255) > 60
+
+    vk_destroy_fence(dev, vk_get_i64(fences, 0), null)
+    vk_destroy_command_pool(dev, cmd_pool, null)
+    vk_destroy_pipeline(dev, pipeline, null)
+    vk_destroy_pipeline_layout(dev, layout, null)
+    vk_destroy_shader_module(dev, vs, null)
+    vk_destroy_shader_module(dev, fs, null)
+    vk_destroy_buffer(dev, buf, null)
+    vk_free_memory(dev, bmem, null)
+    vk_destroy_image_view(dev, view, null)
+    vk_destroy_image(dev, image, null)
+    vk_free_memory(dev, imem, null)
+    vk_destroy_device(dev, null)
+    vk_destroy_instance(inst, null)
+    if corner_clear and middle_drawn { print("VKTRIANGLE OK") } else { print("VKTRIANGLE WRONG") }
+    quit()
+  }
+}
