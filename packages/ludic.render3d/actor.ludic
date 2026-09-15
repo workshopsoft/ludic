@@ -152,7 +152,13 @@ function ac_visible(a: Actor, shadow: bool) -> bool {
   }
   if not shadow and a.radius != 0 {
     let r = f_mul(a.radius, a.scale)
-    if not cam_sphere_visible(a.x, f_add(a.y, r), a.z, f_mul(r, fl(1.5))) { return false }
+    var cy = f_add(a.y, r)
+    # In the water reflection what reaches the picture is the actor's mirror image, 2L - y. The pass
+    # keeps the main camera's frustum planes, so the image is what has to be tested against them: the
+    # actor itself was, and the town's people - far above the lake, their images far below the frame -
+    # all drew again into the reflection.
+    if ter_reflect { cy = f_sub(f_mul(F_TWO, water_level), cy) }
+    if not cam_sphere_visible(a.x, cy, a.z, f_mul(r, fl(1.5))) { return false }
   }
   return true
 }
