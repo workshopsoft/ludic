@@ -176,13 +176,20 @@ function gvk_depth_op(f: int) -> int {
   return VK_COMPARE_OP_LESS
 }
 # the vertex layout a mesh recorded (gpu.ludic's attrs), as part of a pipeline key
+# Buffers are named by the order they are first read in, not by handle: a scatter mesh re-pointed
+# at another instance buffer keeps its layout, and so its pipeline.
 function gvk_layout_key(m: Mesh) -> string {
   if m == null or m.attrs == null { return "none" }
   var k = ""
+  let seen = words(GPU_MAX_ATTRS)
+  var ns = 0
   for i in 0 .. m.n_attrs {
     let o = i * GPU_ATTR_W
     if m.attrs[o + 1] == 0 { continue }
-    k = k + `{i}:{m.attrs[o]}:{m.attrs[o + 1]}:{m.attrs[o + 2]}:{m.attrs[o + 3]}:{m.attrs[o + 4]}:{m.attrs[o + 5]}:{m.attrs[o + 6]};`
+    var bi = -1
+    for q in 0 .. ns { if seen[q] == m.attrs[o] and bi < 0 { bi = q } }
+    if bi < 0 { bi = ns;  seen[ns] = m.attrs[o];  ns += 1 }
+    k = k + `{i}:{bi}:{m.attrs[o + 1]}:{m.attrs[o + 2]}:{m.attrs[o + 3]}:{m.attrs[o + 4]}:{m.attrs[o + 5]}:{m.attrs[o + 6]};`
   }
   return k
 }
@@ -850,6 +857,16 @@ function gvk_draw(p: int, m: Mesh, st: GvkState, first: int, count: int, instanc
   }
 }
 
+# The frame so far, submitted and waited for, so work that submits on its own - an upload, a
+# read-back, a new or freed image or buffer - happens after the draws recorded before it, in the
+# order OpenGL would have done them. Costs a submit per such call while the backend comes up.
+function gvk_flush() -> void {
+  if gvk_cb == null { return }
+  gvk_pass_end()
+  gvk_once_end(gvk_cb)
+  gvk_cb = null
+}
+
 # the finished frame: submitted, and waited for
 function gvk_present() -> void {
   if gvk_cb == null { return }
@@ -882,4 +899,137 @@ function gvk_screenshot(path: string) -> bool {
   }
   file_close(f)
   return true
+}
+
+# ---- what gpu.ludic's Vulkan branches call -----------------------------------------------------
+var gvk_fb_counter: int = 0
+var gvk_prog_counter: int = 0
+var gvk_wireframe: int = 0
+var gvk_state: GvkState = null
+
+# the manifest the programs are looked up in, from the renderer's own shader directory
+function gvk_manifest() -> bool {
+  r3d_find_root()
+  gvk_spv_dir = `{r3d_root}/shaders/spv`
+  return gpu_manifest_load(`{gvk_spv_dir}/manifest.txt`) > 0 and len(gpu_variants) > 0
+}
+
+# headless: the screen is a colour and a depth image of the asked-for size
+function gvk_open(w: int, h: int) -> bool {
+  gl_w = w
+  gl_h = h
+  if not gvk_frame_init() { return false }
+  return gvk_screen_make(w, h)
+}
+
+# a program handle for a variant; the key is gpu_program's, so gpu_program_key works on both
+function gvk_program_new(vs: string, fs: string, defines: string) -> int {
+  gvk_prog_counter += 1
+  let p = gvk_prog_counter
+  let key = `{vs}|{fs}|{Text.replace(defines, "\n", ";")}`
+  if gpu_prog_ids == null { gpu_prog_ids = new []int;  gpu_prog_keys = new []string }
+  push(gpu_prog_ids, p)
+  push(gpu_prog_keys, key)
+  if not gvk_program(p, key, gvk_spv_dir) { return 0 }
+  return p
+}
+
+function gvk_mesh_free(m: Mesh) -> void {
+  if m == null { return }
+  if m.vbufs != null { for i in 0 .. m.n_vbufs { if m.vbufs[i] > 0 { gvk_buf_release(m.vbufs[i]) } } }
+  m.n_vbufs = 0
+  m.vbo = 0
+  if m.ebo > 0 { gvk_buf_release(m.ebo);  m.ebo = 0 }
+}
+
+function gvk_scissor(x: int, y: int, w: int, h: int) -> void {
+  if gvk_sc == null { return }
+  gvk_sc[0] = 1;  gvk_sc[1] = x;  gvk_sc[2] = y;  gvk_sc[3] = w;  gvk_sc[4] = h
+}
+function gvk_scissor_off() -> void { if gvk_sc != null { gvk_sc[0] = 0 } }
+function gvk_viewport(x: int, y: int, w: int, h: int) -> void {
+  if gvk_vp == null { return }
+  gvk_vp[0] = x;  gvk_vp[1] = y;  gvk_vp[2] = w;  gvk_vp[3] = h
+}
+function gvk_clear_color(r: int, g: int, b: int, a: int) -> void {
+  if gvk_clear_rgba == null { return }
+  gvk_clear_rgba[0] = r;  gvk_clear_rgba[1] = g;  gvk_clear_rgba[2] = b;  gvk_clear_rgba[3] = a
+}
+function gvk_fb_colors(fb: int, n: int) -> void { if gvk_fb_ncolor != null and fb >= 0 and fb < 4096 { gvk_fb_ncolor[fb] = n } }
+function gvk_fb_forget(fb: int) -> void {
+  if fb == gvk_fb_cur { gvk_pass_end() }
+  gvk_fb_colors(fb, 1)
+}
+
+# the render state gpu.ludic has cached, with OpenGL's defaults where nothing was set yet
+function gvk_state_now() -> GvkState {
+  if gvk_state == null { gvk_state = new GvkState }
+  let st = gvk_state
+  st.depth_test = 0;  if gpu_s_depth_test == 1 { st.depth_test = 1 }
+  st.depth_write = 1;  if gpu_s_depth_write == 0 { st.depth_write = 0 }
+  st.depth_func = GL_LESS;  if gpu_s_depth_func > 0 { st.depth_func = gpu_s_depth_func }
+  st.blend = 0;  if gpu_s_blend == 1 { st.blend = 1 }
+  st.blend_src = GL_ONE;  if gpu_s_blend_src >= 0 { st.blend_src = gpu_s_blend_src }
+  st.blend_dst = GL_ZERO;  if gpu_s_blend_dst >= 0 { st.blend_dst = gpu_s_blend_dst }
+  st.cull = 0;  if gpu_s_cull == 1 { st.cull = 1 }
+  st.cull_face = GL_BACK;  if gpu_s_cull_face > 0 { st.cull_face = gpu_s_cull_face }
+  st.color_write = 1;  if gpu_s_color_write == 0 { st.color_write = 0 }
+  st.a2c = 0;  if gpu_s_a2c == 1 { st.a2c = 1 }
+  st.bias = 0;  if gpu_s_bias == 1 { st.bias = 1 }
+  st.bias_factor = gpu_s_bias_f
+  st.bias_units = gpu_s_bias_u
+  st.wireframe = gvk_wireframe
+  return st
+}
+function gvk_draw_now(m: Mesh, first: int, count: int, instances: int) -> void {
+  gvk_draw(gpu_prog_cur, m, gvk_state_now(), first, count, instances, gpu_tx, GPU_TX_W, gpu_tx_cap, gpu_fb, gpu_fb_at(gvk_fb_cur))
+}
+
+# the colour (and / or depth) of the read framebuffer into the draw framebuffer, same size
+function gvk_fb_att(fb: int, depth: bool) -> int {
+  if fb == 0 { if depth { return gvk_screen_depth };  return gvk_screen_color }
+  let o = gpu_fb_at(fb)
+  if o < 0 { return 0 }
+  if depth { return gpu_fb[o + 2] }
+  return gpu_fb[o]
+}
+function gvk_copy(cb: pointer, src: int, dst: int, depth: bool, w: int, h: int) -> void {
+  if src <= 0 or dst <= 0 or gvk_tex_image[src] == 0 or gvk_tex_image[dst] == 0 { return }
+  gvk_barrier(cb, gvk_tex_image[src], depth, 0, 1, gvk_tex_layers[src], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
+  gvk_barrier(cb, gvk_tex_image[dst], depth, 0, 1, gvk_tex_layers[dst], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+  let ic = bytes(VkImageCopy_sizeof)
+  Vk.zero(ic, VkImageCopy_sizeof)
+  var aspect = VK_IMAGE_ASPECT_COLOR_BIT
+  if depth { aspect = VK_IMAGE_ASPECT_DEPTH_BIT }
+  Vk.put_i32(ic, VkImageCopy_srcSubresource + VkImageSubresourceLayers_aspectMask, aspect)
+  Vk.put_i32(ic, VkImageCopy_srcSubresource + VkImageSubresourceLayers_layerCount, 1)
+  Vk.put_i32(ic, VkImageCopy_dstSubresource + VkImageSubresourceLayers_aspectMask, aspect)
+  Vk.put_i32(ic, VkImageCopy_dstSubresource + VkImageSubresourceLayers_layerCount, 1)
+  Vk.put_i32(ic, VkImageCopy_extent + VkExtent3D_width, w)
+  Vk.put_i32(ic, VkImageCopy_extent + VkExtent3D_height, h)
+  Vk.put_i32(ic, VkImageCopy_extent + VkExtent3D_depth, 1)
+  Vk.cmd_copy_image(cb, gvk_tex_image[src], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, gvk_tex_image[dst], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, ic)
+  gvk_barrier(cb, gvk_tex_image[src], depth, 0, 1, gvk_tex_layers[src], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+  gvk_barrier(cb, gvk_tex_image[dst], depth, 0, 1, gvk_tex_layers[dst], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+}
+function gvk_blit(w: int, h: int, mask: int) -> void {
+  gvk_pass_end()
+  let cb = gvk_frame_cb()
+  if (mask & GL_COLOR_BUFFER_BIT) != 0 { gvk_copy(cb, gvk_fb_att(gvk_fb_read, false), gvk_fb_att(gvk_fb_draw, false), false, w, h) }
+  if (mask & GL_DEPTH_BUFFER_BIT) != 0 { gvk_copy(cb, gvk_fb_att(gvk_fb_read, true), gvk_fb_att(gvk_fb_draw, true), true, w, h) }
+}
+
+# the screen as RGB8, bottom row first, as glReadPixels hands it back (a photograph)
+function gvk_read_screen(w: int, h: int, out: pointer) -> void {
+  gvk_present()
+  let px = bytes(gvk_screen_w * gvk_screen_h * 4)
+  if not gvk_tex_read(gvk_screen_color, GL_RGBA8, gvk_screen_w, gvk_screen_h, GL_RGBA, GL_UNSIGNED_BYTE, px) { return }
+  let dst: pointer = out
+  for y in 0 .. h {
+    for x in 0 .. w {
+      let o = (y * gvk_screen_w + x) * 4
+      let q = (y * w + x) * 3
+      dst[q] = px[o];  dst[q + 1] = px[o + 1];  dst[q + 2] = px[o + 2]
+    }
+  }
 }

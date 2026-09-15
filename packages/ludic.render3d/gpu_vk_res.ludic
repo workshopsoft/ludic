@@ -328,7 +328,10 @@ function gvk_tex_mips(tex: int, w: int, h: int) -> bool {
 function gvk_tex_read(tex: int, ifmt: int, w: int, h: int, fmt: int, ty: int, out: pointer) -> bool {
   let cout = gvk_channels(ifmt)
   let bout = gvk_channel_bytes(ifmt)
-  if gvk_gl_channels(fmt) != cout or gvk_gl_type_bytes(ty) != bout {
+  let cwant = gvk_gl_channels(fmt)
+  # a read may ask for fewer channels than the image has (the height field's R of an RGBA32F
+  # bake), never more, and only in the sample size the image stores
+  if cwant > cout or gvk_gl_type_bytes(ty) != bout {
     print(`r3d: vulkan: no read-back conversion for GL format {ifmt} as {fmt}/{ty}`)
     return false
   }
@@ -350,7 +353,12 @@ function gvk_tex_read(tex: int, ifmt: int, w: int, h: int, fmt: int, ty: int, ou
   Vk.cmd_copy_image_to_buffer(cb, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, gvk_st_buf, 1, bic)
   gvk_barrier(cb, image, depth, 0, 1, 1, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
   let ok = gvk_once_end(cb)
-  if ok { mem_copy(out, src, n) }
+  if ok and cwant == cout { mem_copy(out, src, n) }
+  if ok and cwant < cout {
+    let texel = cout * bout
+    let keep = cwant * bout
+    for t in 0 .. w * h { mem_copy(mem_off(out, t * keep), mem_off(src, t * texel), keep) }
+  }
   gvk_staging_free()
   return ok
 }

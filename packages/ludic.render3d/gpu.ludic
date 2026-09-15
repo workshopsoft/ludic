@@ -52,8 +52,12 @@ function gpu_select() -> int {
   if gpu_wanted == 0 { gpu_wanted = GPU_GL }
   gpu_kind = GPU_GL
   if gpu_wanted == GPU_VK {
-    gpu_fallback_reason = "the Vulkan renderer is not built yet"
-    print(`r3d: vulkan requested: {gpu_fallback_reason}; using opengl`)
+    # headless for now: the swapchain on the game's window is the next milestone
+    if is_windowed() { gpu_fallback_reason = "the Vulkan window is not built yet" }
+    else if not gvk_init() { gpu_fallback_reason = gvk_why }
+    else if not gvk_manifest() { gpu_fallback_reason = "the renderer's SPIR-V manifest is missing" }
+    else { gpu_kind = GPU_VK }
+    if gpu_kind == GPU_GL { print(`r3d: vulkan requested: {gpu_fallback_reason}; using opengl`) }
   }
   return gpu_kind
 }
@@ -84,7 +88,7 @@ function gpu_state_forget() -> void {
   gpu_s_cull = -1;  gpu_s_cull_face = -1;  gpu_s_color_write = -1;  gpu_s_a2c = -1
 }
 
-function gpu_gl_cap(cap: int, on: int) -> void { if on == 1 { gl_enable(cap) } else { gl_disable(cap) } }
+function gpu_gl_cap(cap: int, on: int) -> void { if gpu_kind == GPU_VK { return };  if on == 1 { gl_enable(cap) } else { gl_disable(cap) } }
 
 function gpu_depth_test(on: bool) -> void {
   let v = gpu_b(on)
@@ -96,13 +100,13 @@ function gpu_depth_test(on: bool) -> void {
 function gpu_depth_func(f: int) -> void {
   if f == gpu_s_depth_func { return }
   gpu_s_depth_func = f
-  gl_depth_func(f)
+  if gpu_kind != GPU_VK { gl_depth_func(f) }
 }
 function gpu_depth_write(on: bool) -> void {
   let v = gpu_b(on)
   if v == gpu_s_depth_write { return }
   gpu_s_depth_write = v
-  gl_depth_mask(v)
+  if gpu_kind != GPU_VK { gl_depth_mask(v) }
 }
 function gpu_blend(on: bool) -> void {
   let v = gpu_b(on)
@@ -113,7 +117,7 @@ function gpu_blend(on: bool) -> void {
 function gpu_blend_func(src: int, dst: int) -> void {
   if src == gpu_s_blend_src and dst == gpu_s_blend_dst { return }
   gpu_s_blend_src = src;  gpu_s_blend_dst = dst
-  gl_blend_func(src, dst)
+  if gpu_kind != GPU_VK { gl_blend_func(src, dst) }
 }
 function gpu_cull(on: bool) -> void {
   let v = gpu_b(on)
@@ -125,14 +129,14 @@ function gpu_cull(on: bool) -> void {
 function gpu_cull_face(face: int) -> void {
   if face == gpu_s_cull_face { return }
   gpu_s_cull_face = face
-  gl_cull_face(face)
+  if gpu_kind != GPU_VK { gl_cull_face(face) }
 }
 # all four channels together: nothing in the renderer writes a partial mask
 function gpu_color_write(on: bool) -> void {
   let v = gpu_b(on)
   if v == gpu_s_color_write { return }
   gpu_s_color_write = v
-  gl_color_mask(v, v, v, v)
+  if gpu_kind != GPU_VK { gl_color_mask(v, v, v, v) }
 }
 function gpu_alpha_to_coverage(on: bool) -> void {
   let v = gpu_b(on)
@@ -144,22 +148,27 @@ function gpu_alpha_to_coverage(on: bool) -> void {
 # Depth bias for the shadow casters; (0, 0) turns it off. factor/units are fixed, as
 # gl_polygon_offset takes them. A pipeline API bakes the bias into the pipeline.
 var gpu_s_bias: int = -1
+var gpu_s_bias_f: int = 0         # float bits, for a backend that bakes the bias into a pipeline
+var gpu_s_bias_u: int = 0
 function gpu_depth_bias(factor: fixed, units: fixed) -> void {
   var v = 1
   if factor == 0.0 and units == 0.0 { v = 0 }
   if v != gpu_s_bias { gpu_s_bias = v;  gpu_gl_cap(GL_POLYGON_OFFSET_FILL, v) }
-  if v == 1 { gl_polygon_offset(factor, units) }
+  gpu_s_bias_f = fx_to_f32(factor);  gpu_s_bias_u = fx_to_f32(units)
+  if v == 1 and gpu_kind != GPU_VK { gl_polygon_offset(factor, units) }
 }
 
 # A scissor rectangle in top-down pixels (x, y from the top-left of the drawable), or
 # off. Every API but OpenGL counts rows from the top; the GL backend flips it.
 var gpu_s_scissor: int = -1
 function gpu_scissor(x: int, y_top: int, w: int, h: int) -> void {
+  if gpu_kind == GPU_VK { gpu_s_scissor = 1;  gvk_scissor(x, gl_h - y_top - h, w, h);  return }
   if gpu_s_scissor != 1 { gpu_s_scissor = 1;  gl_enable(GL_SCISSOR_TEST) }
   gl_scissor(x, gl_h - y_top - h, w, h)
   gpu_glcheck_after("scissor")
 }
 function gpu_scissor_off() -> void {
+  if gpu_kind == GPU_VK { gpu_s_scissor = 0;  gvk_scissor_off();  return }
   if gpu_s_scissor == 0 { return }
   gpu_s_scissor = 0
   gl_disable(GL_SCISSOR_TEST)
@@ -171,7 +180,7 @@ function gpu_scissor_off() -> void {
 # the handle is the location. On a pipeline API it will name a slot in the program's
 # uniform block, so the u_* setters below are the only code that knows which. Arrays
 # are looked up by their first element ("u_bones[0]"), as every GL driver accepts.
-function gpu_uniform(prog: int, name: string) -> int { return gl_get_uniform_location(prog, name) }
+function gpu_uniform(prog: int, name: string) -> int { if gpu_kind == GPU_VK { return gvk_uniform(prog, name) };  return gl_get_uniform_location(prog, name) }
 
 # ---- programs ----------------------------------------------------------------------
 # A program remembers the variant it was built from - vertex file, fragment file and the
@@ -181,6 +190,7 @@ var gpu_prog_ids: []int = null
 var gpu_prog_keys: []string = null
 var gpu_prog_cur: int = 0
 function gpu_program(vs_src: string, fs_src: string, vs: string, fs: string, defines: string) -> int {
+  if gpu_kind == GPU_VK { return gvk_program_new(vs, fs, defines) }
   let p = gl_program(vs_src, fs_src)
   if p == 0 { return 0 }
   if gpu_prog_ids == null { gpu_prog_ids = new []int;  gpu_prog_keys = new []string }
@@ -194,8 +204,9 @@ function gpu_program_key(p: int) -> string {
   for i in 0 .. len(gpu_prog_ids) { if gpu_prog_ids[i] == p { return gpu_prog_keys[i] } }
   return ""
 }
-function gpu_use_program(p: int) -> void { gl_use_program(p);  gpu_prog_cur = p;  gpu_glcheck_after("use program") }
+function gpu_use_program(p: int) -> void { if gpu_kind == GPU_VK { gpu_prog_cur = p;  return };  gl_use_program(p);  gpu_prog_cur = p;  gpu_glcheck_after("use program") }
 function gpu_program_free(p: int) -> void {
+  if gpu_kind == GPU_VK { return }
   if p == 0 { return }
   gl_delete_program(p)
   if gpu_prog_cur == p { gpu_prog_cur = 0 }
@@ -204,11 +215,12 @@ function gpu_program_free(p: int) -> void {
 }
 
 # ---- GPU timers (R3D_PROF) ----------------------------------------------------------
-function gpu_query_new(n: int, ids: words) -> void { gl_gen_queries(n, ids) }
-function gpu_query_begin(id: int) -> void { gl_begin_query(GL_TIME_ELAPSED, id) }
-function gpu_query_end() -> void { gl_end_query(GL_TIME_ELAPSED) }
+function gpu_query_new(n: int, ids: words) -> void { if gpu_kind == GPU_VK { return };  gl_gen_queries(n, ids) }
+function gpu_query_begin(id: int) -> void { if gpu_kind == GPU_VK { return };  gl_begin_query(GL_TIME_ELAPSED, id) }
+function gpu_query_end() -> void { if gpu_kind == GPU_VK { return };  gl_end_query(GL_TIME_ELAPSED) }
 # true once the query has its result; the nanoseconds (low 32 bits) are then in out[0]
 function gpu_query_result(id: int, out: words) -> bool {
+  if gpu_kind == GPU_VK { return false }
   gl_get_query_objectiv(id, GL_QUERY_RESULT_AVAILABLE, out)
   if out[0] == 0 { return false }
   gl_get_query_objectui64v(id, GL_QUERY_RESULT, out)
@@ -216,27 +228,27 @@ function gpu_query_result(id: int, out: words) -> bool {
 }
 
 # ---- the context --------------------------------------------------------------------
-function gpu_open(w: int, h: int, title: string) -> bool { return gl_open(w, h, title) }
-function gpu_vsync(on: int) -> void { gl_vsync(on) }
-function gpu_renderer_name() -> string { return gl_get_string(GL_RENDERER) }
-function gpu_resize_check() -> bool { let r = gl_resize_check();  gpu_glcheck_after("the resize check");  return r }
+function gpu_open(w: int, h: int, title: string) -> bool { if gpu_kind == GPU_VK { return gvk_open(w, h) };  return gl_open(w, h, title) }
+function gpu_vsync(on: int) -> void { if gpu_kind == GPU_VK { return };  gl_vsync(on) }
+function gpu_renderer_name() -> string { if gpu_kind == GPU_VK { return `{gvk_device_name} (Vulkan)` };  return gl_get_string(GL_RENDERER) }
+function gpu_resize_check() -> bool { if gpu_kind == GPU_VK { return false };  let r = gl_resize_check();  gpu_glcheck_after("the resize check");  return r }
 # the finished frame: presented to the window, or (headless) the GPU's work finished
-function gpu_present() -> void { Gl.swap() }
+function gpu_present() -> void { if gpu_kind == GPU_VK { gvk_present();  return };  Gl.swap() }
 # the frame as it will be presented, to a binary PPM with the top row first; before gpu_present
-function gpu_screenshot(path: string) -> bool { return Gl.screenshot(path: path) }
+function gpu_screenshot(path: string) -> bool { if gpu_kind == GPU_VK { return gvk_screenshot(path) };  return Gl.screenshot(path: path) }
 
 var gpu_u_tmp: words = null
 function gpu_tmp() -> words { if gpu_u_tmp == null { gpu_u_tmp = words(4) };  return gpu_u_tmp }
 # float bits (IEEE singles in an int), like every other number in the renderer
-function u_f(loc: int, v: int) -> void { let t = gpu_tmp();  t[0] = v;  gl_uniform1fv(loc, 1, t) }
-function u_f2(loc: int, x: int, y: int) -> void { let t = gpu_tmp();  t[0] = x;  t[1] = y;  gl_uniform2fv(loc, 1, t) }
-function u_f3(loc: int, x: int, y: int, z: int) -> void { let t = gpu_tmp();  t[0] = x;  t[1] = y;  t[2] = z;  gl_uniform3fv(loc, 1, t) }
-function u_f4(loc: int, x: int, y: int, z: int, w: int) -> void { let t = gpu_tmp();  t[0] = x;  t[1] = y;  t[2] = z;  t[3] = w;  gl_uniform4fv(loc, 1, t) }
-function u_v3(loc: int, v: words) -> void { gl_uniform3fv(loc, 1, v) }
-function u_fv(loc: int, n: int, v: words) -> void { gl_uniform1fv(loc, n, v) }
-function u_mat4(loc: int, m: words) -> void { gl_uniform_matrix4fv(loc, 1, 0, m) }
-function u_mat4n(loc: int, n: int, m: words) -> void { gl_uniform_matrix4fv(loc, n, 0, m) }
-function u_i(loc: int, v: int) -> void { gl_uniform1i(loc, v) }
+function u_f(loc: int, v: int) -> void { if gpu_kind == GPU_VK { let t = gpu_tmp();  t[0] = v;  gvk_u_set(loc, t, 4, 1);  return };  let t = gpu_tmp();  t[0] = v;  gl_uniform1fv(loc, 1, t) }
+function u_f2(loc: int, x: int, y: int) -> void { if gpu_kind == GPU_VK { let t = gpu_tmp();  t[0] = x;  t[1] = y;  gvk_u_set(loc, t, 8, 1);  return };  let t = gpu_tmp();  t[0] = x;  t[1] = y;  gl_uniform2fv(loc, 1, t) }
+function u_f3(loc: int, x: int, y: int, z: int) -> void { if gpu_kind == GPU_VK { let t = gpu_tmp();  t[0] = x;  t[1] = y;  t[2] = z;  gvk_u_set(loc, t, 12, 1);  return };  let t = gpu_tmp();  t[0] = x;  t[1] = y;  t[2] = z;  gl_uniform3fv(loc, 1, t) }
+function u_f4(loc: int, x: int, y: int, z: int, w: int) -> void { if gpu_kind == GPU_VK { let t = gpu_tmp();  t[0] = x;  t[1] = y;  t[2] = z;  t[3] = w;  gvk_u_set(loc, t, 16, 1);  return };  let t = gpu_tmp();  t[0] = x;  t[1] = y;  t[2] = z;  t[3] = w;  gl_uniform4fv(loc, 1, t) }
+function u_v3(loc: int, v: words) -> void { if gpu_kind == GPU_VK { gvk_u_set(loc, v, 12, 1);  return };  gl_uniform3fv(loc, 1, v) }
+function u_fv(loc: int, n: int, v: words) -> void { if gpu_kind == GPU_VK { gvk_u_set(loc, v, 4, n);  return };  gl_uniform1fv(loc, n, v) }
+function u_mat4(loc: int, m: words) -> void { if gpu_kind == GPU_VK { gvk_u_set(loc, m, 64, 1);  return };  gl_uniform_matrix4fv(loc, 1, 0, m) }
+function u_mat4n(loc: int, n: int, m: words) -> void { if gpu_kind == GPU_VK { gvk_u_set(loc, m, 64, n);  return };  gl_uniform_matrix4fv(loc, n, 0, m) }
+function u_i(loc: int, v: int) -> void { if gpu_kind == GPU_VK { let t = gpu_tmp();  t[0] = v;  gvk_u_set(loc, t, 4, 1);  return };  gl_uniform1i(loc, v) }
 
 # ---- what this machine can do ----------------------------------------------------
 # The advanced graphics features are Windows features: the Vulkan renderer, ray tracing,
@@ -413,14 +425,18 @@ function gpu_mesh_new() -> Mesh {
   m.attrs = words(GPU_MAX_ATTRS * GPU_ATTR_W)
   for i in 0 .. GPU_MAX_ATTRS * GPU_ATTR_W { m.attrs[i] = 0 }
   m.vbufs = words(GPU_MAX_VBUFS)
-  m.vao = gl_vao()
+  if gpu_kind != GPU_VK { m.vao = gl_vao() }
   return m
 }
 # a vertex buffer for the mesh being built (data may be null: storage only); returns it
 function gpu_mesh_vertices(m: Mesh, data: pointer, nbytes: int, usage: int) -> int {
-  let b = gl_buffer()
-  gl_bind_buffer(GL_ARRAY_BUFFER, b)
-  gl_buffer_data(GL_ARRAY_BUFFER, nbytes, data, gpu_gl_usage(usage))
+  var b = 0
+  if gpu_kind == GPU_VK { gvk_flush();  b = gvk_buf_new();  gvk_buf_upload(b, nbytes, data) }
+  else {
+    b = gl_buffer()
+    gl_bind_buffer(GL_ARRAY_BUFFER, b)
+    gl_buffer_data(GL_ARRAY_BUFFER, nbytes, data, gpu_gl_usage(usage))
+  }
   if m.vbo == 0 { m.vbo = b }
   if m.n_vbufs < GPU_MAX_VBUFS { m.vbufs[m.n_vbufs] = b;  m.n_vbufs += 1 }
   m.cur_buf = b
@@ -437,44 +453,53 @@ function gpu_mesh_record(m: Mesh, index: int, comps: int, type: int, stride: int
 }
 # attribute `index` read from the last vertex buffer (stride 0: tightly packed)
 function gpu_mesh_attr(m: Mesh, index: int, comps: int, type: int, stride: int, offset: int, normalized: bool) -> void {
-  gl_enable_vertex_attrib_array(index)
-  gl_vertex_attrib_pointer(index, comps, gpu_gl_type(type), gpu_b(normalized), stride, gl_ptr(null, offset))
+  if gpu_kind != GPU_VK {
+    gl_enable_vertex_attrib_array(index)
+    gl_vertex_attrib_pointer(index, comps, gpu_gl_type(type), gpu_b(normalized), stride, gl_ptr(null, offset))
+  }
   gpu_mesh_record(m, index, comps, type, stride, offset, normalized, false)
 }
 # the index buffer: 4-byte or 2-byte indices
 function gpu_mesh_indices(m: Mesh, data: pointer, nbytes: int, index_bytes: int) -> void {
   m.itype = GL_UNSIGNED_INT
   if index_bytes == 2 { m.itype = GL_UNSIGNED_SHORT }
+  if gpu_kind == GPU_VK { gvk_flush();  m.ebo = gvk_buf_new();  gvk_buf_upload(m.ebo, nbytes, data);  return }
   m.ebo = gl_buffer()
   gl_bind_buffer(GL_ELEMENT_ARRAY_BUFFER, m.ebo)
   gl_buffer_data(GL_ELEMENT_ARRAY_BUFFER, nbytes, data, GL_STATIC_DRAW)
 }
 # finished describing: nothing else is bound to it by accident
-function gpu_mesh_done(m: Mesh) -> void { gl_bind_vertex_array(0) }
+function gpu_mesh_done(m: Mesh) -> void { if gpu_kind == GPU_VK { return };  gl_bind_vertex_array(0) }
 
 # Per-instance data: `buf` feeds the attributes named next, one element per instance. A mesh
 # drawn from different instance buffers (the scatter layers' LOD buckets) is re-pointed here
 # before each draw; on Vulkan that is a vertex-buffer binding, not a change of layout.
 function gpu_mesh_bind_instances(m: Mesh, buf: int) -> void {
-  gl_bind_vertex_array(m.vao)
-  gl_bind_buffer(GL_ARRAY_BUFFER, buf)
+  if gpu_kind != GPU_VK {
+    gl_bind_vertex_array(m.vao)
+    gl_bind_buffer(GL_ARRAY_BUFFER, buf)
+  }
   m.cur_buf = buf
   m.ibuf = buf
 }
 function gpu_mesh_attr_inst(m: Mesh, index: int, comps: int, type: int, stride: int, offset: int) -> void {
-  gl_enable_vertex_attrib_array(index)
-  gl_vertex_attrib_pointer(index, comps, gpu_gl_type(type), 0, stride, gl_ptr(null, offset))
-  gl_vertex_attrib_divisor(index, 1)
+  if gpu_kind != GPU_VK {
+    gl_enable_vertex_attrib_array(index)
+    gl_vertex_attrib_pointer(index, comps, gpu_gl_type(type), 0, stride, gl_ptr(null, offset))
+    gl_vertex_attrib_divisor(index, 1)
+  }
   gpu_mesh_record(m, index, comps, type, stride, offset, false, true)
 }
 
 # a buffer on its own (instances, a stream): made, filled whole, freed
-function gpu_buffer_new() -> int { return gl_buffer() }
+function gpu_buffer_new() -> int { if gpu_kind == GPU_VK { return gvk_buf_new() };  return gl_buffer() }
 function gpu_buffer_upload(buf: int, nbytes: int, data: pointer, usage: int) -> void {
+  if gpu_kind == GPU_VK { gvk_flush();  gvk_buf_upload(buf, nbytes, data);  return }
   gl_bind_buffer(GL_ARRAY_BUFFER, buf)
   gl_buffer_data(GL_ARRAY_BUFFER, nbytes, data, gpu_gl_usage(usage))
 }
 function gpu_buffer_free(buf: int) -> void {
+  if gpu_kind == GPU_VK { gvk_flush();  if buf > 0 { gvk_buf_release(buf) };  return }
   if buf == 0 { return }
   let ids = gpu_tmp()
   ids[0] = buf
@@ -482,9 +507,10 @@ function gpu_buffer_free(buf: int) -> void {
 }
 
 # drawing
-function gpu_mesh_bind(m: Mesh) -> void { gl_bind_vertex_array(m.vao) }
-function gpu_mesh_unbind() -> void { gl_bind_vertex_array(0) }
+function gpu_mesh_bind(m: Mesh) -> void { if gpu_kind == GPU_VK { return };  gl_bind_vertex_array(m.vao) }
+function gpu_mesh_unbind() -> void { if gpu_kind == GPU_VK { return };  gl_bind_vertex_array(0) }
 function gpu_draw_mesh(m: Mesh) -> void {
+  if gpu_kind == GPU_VK { gvk_draw_now(m, 0, 0, 1);  return }
   gpu_glcheck_before("a draw")
   gl_bind_vertex_array(m.vao)
   if m.ebo != 0 { gl_draw_elements(m.mode, m.count, m.itype, null) }
@@ -492,6 +518,7 @@ function gpu_draw_mesh(m: Mesh) -> void {
   gpu_glcheck_after("a draw")
 }
 function gpu_draw_mesh_instanced(m: Mesh, n: int) -> void {
+  if gpu_kind == GPU_VK { gvk_draw_now(m, 0, 0, n);  return }
   gpu_glcheck_before("an instanced draw")
   gl_bind_vertex_array(m.vao)
   if m.ebo != 0 { gl_draw_elements_instanced(m.mode, m.count, m.itype, null, n) }
@@ -500,18 +527,21 @@ function gpu_draw_mesh_instanced(m: Mesh, n: int) -> void {
 }
 # the bound mesh's indices again (a patch mesh drawn once per terrain node)
 function gpu_draw_bound_elements(m: Mesh) -> void {
+  if gpu_kind == GPU_VK { gvk_draw_now(m, 0, 0, 1);  return }
   gpu_glcheck_before("a terrain patch")
   gl_draw_elements(m.mode, m.count, m.itype, null)
   gpu_glcheck_after("a terrain patch")
 }
 # vertices [first, first + count) of the bound mesh, as triangles (the overlay's ranges)
 function gpu_draw_range(m: Mesh, first: int, count: int) -> void {
+  if gpu_kind == GPU_VK { gvk_draw_now(m, first, count, 1);  return }
   gpu_glcheck_before("an overlay draw")
   gl_draw_arrays(GL_TRIANGLES, first, count)
   gpu_glcheck_after("an overlay draw")
 }
 
 function gpu_mesh_free(m: Mesh) -> void {
+  if gpu_kind == GPU_VK { gvk_flush();  gvk_mesh_free(m);  return }
   if m == null { return }
   let ids = gpu_tmp()
   if m.vbufs != null {
@@ -556,13 +586,13 @@ function gpu_tx_at(tex: int) -> int {
 }
 function gpu_bound(kind: int) -> int { if kind == GPU_TEX2D_ARRAY { return gpu_bound_array };  return gpu_bound_2d }
 
-function gpu_tex_new() -> int { return gl_texture() }
+function gpu_tex_new() -> int { if gpu_kind == GPU_VK { return gvk_tex_new() };  return gl_texture() }
 # what GL has on each unit's 2D target, for R3D_GLCHECK: deleting a texture unbinds it everywhere
 var gpu_unit_2d: words = null
 var gpu_unit_cur: int = 0
-function gpu_tex_unit(unit: int) -> void { gl_active_texture(GL_TEXTURE0 + unit);  gpu_unit_cur = unit }
+function gpu_tex_unit(unit: int) -> void { if gpu_kind == GPU_VK { gpu_unit_cur = unit;  return };  gl_active_texture(GL_TEXTURE0 + unit);  gpu_unit_cur = unit }
 function gpu_tex_bind(kind: int, tex: int) -> void {
-  gl_bind_texture(gpu_gl_target(kind), tex)
+  if gpu_kind != GPU_VK { gl_bind_texture(gpu_gl_target(kind), tex) }
   if kind == GPU_TEX2D_ARRAY { gpu_bound_array = tex } else { gpu_bound_2d = tex }
   if kind != GPU_TEX2D_ARRAY and gpu_unit_cur < 32 {
     if gpu_unit_2d == null { gpu_unit_2d = words(32);  for i in 0 .. 32 { gpu_unit_2d[i] = -1 } }
@@ -570,21 +600,29 @@ function gpu_tex_bind(kind: int, tex: int) -> void {
   }
 }
 # pixel transfer packing (alignment, byte swap) for the uploads and read-backs that follow
-function gpu_pixel_store(pname: int, value: int) -> void { gl_pixel_storei(pname, value);  gpu_glcheck_after("pixel store") }
+function gpu_pixel_store(pname: int, value: int) -> void { if gpu_kind == GPU_VK { if pname == GL_UNPACK_SWAP_BYTES { gvk_unpack_swap = value == 1 };  return };  gl_pixel_storei(pname, value);  gpu_glcheck_after("pixel store") }
 function gpu_tex_image2d(ifmt: int, w: int, h: int, fmt: int, ty: int, data: pointer) -> void {
-  gl_tex_image2d(GL_TEXTURE_2D, 0, ifmt, w, h, 0, fmt, ty, data)
+  if gpu_kind == GPU_VK {
+    gvk_flush()
+    gvk_tex_storage(gpu_bound_2d, false, ifmt, w, h, 1, data != null)
+    if data != null { gvk_tex_upload(gpu_bound_2d, ifmt, w, h, 1, fmt, ty, data) }
+  } else { gl_tex_image2d(GL_TEXTURE_2D, 0, ifmt, w, h, 0, fmt, ty, data) }
   gpu_glcheck_after(`a {w}x{h} texture upload (format {ifmt})`)
   let o = gpu_tx_at(gpu_bound_2d)
   if o >= 0 { gpu_tx[o] = GPU_TEX2D;  gpu_tx[o + 1] = w;  gpu_tx[o + 2] = h;  gpu_tx[o + 3] = 1;  gpu_tx[o + 4] = ifmt }
 }
 function gpu_tex_image3d(ifmt: int, w: int, h: int, layers: int, fmt: int, ty: int, data: pointer) -> void {
-  gl_tex_image3d(GL_TEXTURE_2D_ARRAY, 0, ifmt, w, h, layers, 0, fmt, ty, data)
+  if gpu_kind == GPU_VK {
+    gvk_flush()
+    gvk_tex_storage(gpu_bound_array, true, ifmt, w, h, layers, data != null)
+    if data != null { gvk_tex_upload(gpu_bound_array, ifmt, w, h, layers, fmt, ty, data) }
+  } else { gl_tex_image3d(GL_TEXTURE_2D_ARRAY, 0, ifmt, w, h, layers, 0, fmt, ty, data) }
   gpu_glcheck_after(`a {w}x{h}x{layers} array upload (format {ifmt})`)
   let o = gpu_tx_at(gpu_bound_array)
   if o >= 0 { gpu_tx[o] = GPU_TEX2D_ARRAY;  gpu_tx[o + 1] = w;  gpu_tx[o + 2] = h;  gpu_tx[o + 3] = layers;  gpu_tx[o + 4] = ifmt }
 }
 function gpu_tex_param(kind: int, pname: int, value: int) -> void {
-  gl_tex_parameteri(gpu_gl_target(kind), pname, value)
+  if gpu_kind != GPU_VK { gl_tex_parameteri(gpu_gl_target(kind), pname, value) }
   let o = gpu_tx_at(gpu_bound(kind))
   if o < 0 { return }
   if pname == GL_TEXTURE_MIN_FILTER { gpu_tx[o + 5] = value }
@@ -597,21 +635,27 @@ function gpu_tex_param(kind: int, pname: int, value: int) -> void {
 }
 # a float parameter (fixed, as Gl.* takes it): anisotropy is the one the renderer sets
 function gpu_tex_paramf(kind: int, pname: int, value: fixed) -> void {
-  gl_tex_parameterf(gpu_gl_target(kind), pname, value)
+  if gpu_kind != GPU_VK { gl_tex_parameterf(gpu_gl_target(kind), pname, value) }
   let o = gpu_tx_at(gpu_bound(kind))
   if o >= 0 and pname == 0x84FE { gpu_tx[o + 11] = fx_to_f32(value) }
   gpu_glcheck_after("tex paramf")
 }
 # the border colour clamp-to-border reads (four fixed values in `rgba`)
-function gpu_tex_border(kind: int, rgba: pointer) -> void { gl_tex_parameterfv(gpu_gl_target(kind), GL_TEXTURE_BORDER_COLOR, rgba) }
+function gpu_tex_border(kind: int, rgba: pointer) -> void { if gpu_kind == GPU_VK { return };  gl_tex_parameterfv(gpu_gl_target(kind), GL_TEXTURE_BORDER_COLOR, rgba) }
 function gpu_tex_mips(kind: int) -> void {
-  gl_generate_mipmap(gpu_gl_target(kind))
+  if gpu_kind == GPU_VK {
+    gvk_flush()
+    let mt = gpu_bound(kind)
+    let mo = gpu_tx_at(mt)
+    if mo >= 0 { gvk_tex_mips(mt, gpu_tx[mo + 1], gpu_tx[mo + 2]) }
+  } else { gl_generate_mipmap(gpu_gl_target(kind)) }
   gpu_glcheck_after(`mipmaps for texture {gpu_bound(kind)}`)
   let o = gpu_tx_at(gpu_bound(kind))
   if o >= 0 { gpu_tx[o + 10] = 1 }
 }
 # level 0 of the bound texture into `out`
 function gpu_tex_read(kind: int, fmt: int, ty: int, out: pointer) -> void {
+  if gpu_kind == GPU_VK { gvk_flush();  let rt = gpu_bound(kind);  let ro = gpu_tx_at(rt);  if ro >= 0 { gvk_tex_read(rt, gpu_tx[ro + 4], gpu_tx[ro + 1], gpu_tx[ro + 2], fmt, ty, out) };  return }
   gl_get_tex_image(gpu_gl_target(kind), 0, fmt, ty, out)
   gpu_glcheck_after(`a read-back of texture {gpu_bound(kind)}`)
 }
@@ -619,7 +663,7 @@ function gpu_tex_free(tex: int) -> void {
   if tex == 0 { return }
   let ids = gpu_tmp()
   ids[0] = tex
-  gl_delete_textures(1, ids)
+  if gpu_kind == GPU_VK { gvk_flush();  if tex < len(gvk_tex_image) { gvk_tex_release(tex) } } else { gl_delete_textures(1, ids) }
   if gpu_unit_2d != null { for i in 0 .. 32 { if gpu_unit_2d[i] == tex { gpu_unit_2d[i] = 0;  if gpu_glcheck_on() { gpu_glcheck_say(`gpu: texture {tex} freed while bound on unit {i}`) } } } }
   if gpu_bound_2d == tex { gpu_bound_2d = 0 }
   let o = gpu_tx_at(tex)
@@ -627,6 +671,7 @@ function gpu_tex_free(tex: int) -> void {
 }
 # a texture on a unit for a program's sampler, by the sampler's name
 function gpu_bind_sampler(prog: int, name: string, unit: int, kind: int, tex: int) -> void {
+  if gpu_kind == GPU_VK { gvk_bind_texture(prog, name, tex);  return }
   gpu_tex_unit(unit)
   gpu_tex_bind(kind, tex)
   u_i(gpu_uniform(prog, name), unit)
@@ -687,49 +732,51 @@ function gpu_glcheck_on() -> bool {
   if gpu_glcheck < 0 { gpu_glcheck = 0;  if Os.has_env("R3D_GLCHECK") { gpu_glcheck = 1 } }
   return gpu_glcheck == 1
 }
-function gpu_check(tag: string) -> int { return gl_check(tag) }
+function gpu_check(tag: string) -> int { if gpu_kind == GPU_VK { return 0 };  return gl_check(tag) }
 # a named checkpoint that costs nothing unless R3D_GLCHECK is set
-function gpu_debug_check(tag: string) -> void { if gpu_glcheck_on() { gl_check(tag) } }
+function gpu_debug_check(tag: string) -> void { if gpu_kind == GPU_VK { return };  if gpu_glcheck_on() { gl_check(tag) } }
 
-function gpu_fb_new() -> int { return gl_framebuffer() }
+function gpu_fb_new() -> int { if gpu_kind == GPU_VK { gvk_fb_counter += 1;  return gvk_fb_counter };  return gl_framebuffer() }
 function gpu_fb_bind(fb: int) -> void {
-  gl_bind_framebuffer(GL_FRAMEBUFFER, fb)
+  if gpu_kind == GPU_VK { if fb != gvk_fb_cur { gvk_pass_end() };  gvk_fb_cur = fb } else { gl_bind_framebuffer(GL_FRAMEBUFFER, fb) }
   gpu_fb_cur = fb
   gpu_glcheck_after("fb bind")
 }
-function gpu_fb_bind_read(fb: int) -> void { gl_bind_framebuffer(GL_READ_FRAMEBUFFER, fb);  gpu_glcheck_after("fb bind read") }
-function gpu_fb_bind_draw(fb: int) -> void { gl_bind_framebuffer(GL_DRAW_FRAMEBUFFER, fb);  gpu_glcheck_after("fb bind draw") }
+function gpu_fb_bind_read(fb: int) -> void { if gpu_kind == GPU_VK { gvk_fb_read = fb;  return };  gl_bind_framebuffer(GL_READ_FRAMEBUFFER, fb);  gpu_glcheck_after("fb bind read") }
+function gpu_fb_bind_draw(fb: int) -> void { if gpu_kind == GPU_VK { gvk_fb_draw = fb;  return };  gl_bind_framebuffer(GL_DRAW_FRAMEBUFFER, fb);  gpu_glcheck_after("fb bind draw") }
 function gpu_fb_color(slot: int, tex: int) -> void {
-  gl_framebuffer_texture2d(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + slot, GL_TEXTURE_2D, tex, 0)
+  if gpu_kind == GPU_VK { gvk_pass_end() } else { gl_framebuffer_texture2d(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + slot, GL_TEXTURE_2D, tex, 0) }
   let o = gpu_fb_at(gpu_fb_cur)
   if o >= 0 and slot < 2 { gpu_fb[o + slot] = tex;  if slot == 0 { gpu_fb[o + 7] = 0 } }
   gpu_glcheck_after("attaching to {gpu_fb_describe(gpu_fb_cur)}")
 }
 function gpu_fb_color_layer(slot: int, tex: int, layer: int) -> void {
-  gl_framebuffer_texture_layer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + slot, tex, 0, layer)
+  if gpu_kind == GPU_VK { gvk_pass_end() } else { gl_framebuffer_texture_layer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + slot, tex, 0, layer) }
   let o = gpu_fb_at(gpu_fb_cur)
   if o >= 0 and slot < 2 { gpu_fb[o + slot] = tex;  if slot == 0 { gpu_fb[o + 7] = layer + 1 } }
   gpu_glcheck_after("attaching to {gpu_fb_describe(gpu_fb_cur)}")
 }
 function gpu_fb_depth(tex: int) -> void {
-  gl_framebuffer_texture2d(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, tex, 0)
+  if gpu_kind == GPU_VK { gvk_pass_end() } else { gl_framebuffer_texture2d(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, tex, 0) }
   let o = gpu_fb_at(gpu_fb_cur)
   if o >= 0 { gpu_fb[o + 2] = tex;  gpu_fb[o + 3] = 0 }
   gpu_glcheck_after("attaching to {gpu_fb_describe(gpu_fb_cur)}")
 }
 function gpu_fb_depth_layer(tex: int, layer: int) -> void {
-  gl_framebuffer_texture_layer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, tex, 0, layer)
+  if gpu_kind == GPU_VK { gvk_pass_end() } else { gl_framebuffer_texture_layer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, tex, 0, layer) }
   let o = gpu_fb_at(gpu_fb_cur)
   if o >= 0 { gpu_fb[o + 2] = tex;  gpu_fb[o + 3] = layer + 1 }
   gpu_glcheck_after("attaching to {gpu_fb_describe(gpu_fb_cur)}")
 }
 function gpu_rb_new() -> int {
+  if gpu_kind == GPU_VK { return gvk_tex_new() }
   let ids = gpu_tmp()
   gl_gen_renderbuffers(1, ids)
   return ids[0]
 }
 # storage for a renderbuffer: samples > 0 makes it multisampled
 function gpu_rb_storage(rb: int, ifmt: int, w: int, h: int, samples: int) -> void {
+  if gpu_kind == GPU_VK { gvk_flush();  gpu_rb_samples = samples;  gvk_tex_storage(rb, false, ifmt, w, h, 1, false);  return }
   gl_bind_renderbuffer(GL_RENDERBUFFER, rb)
   if samples > 0 { gl_renderbuffer_storage_multisample(GL_RENDERBUFFER, samples, ifmt, w, h) }
   else { gl_renderbuffer_storage(GL_RENDERBUFFER, ifmt, w, h) }
@@ -737,17 +784,20 @@ function gpu_rb_storage(rb: int, ifmt: int, w: int, h: int, samples: int) -> voi
   gpu_glcheck_after("rb storage")
 }
 function gpu_fb_color_rb(slot: int, rb: int) -> void {
+  if gpu_kind == GPU_VK { gvk_pass_end();  let co = gpu_fb_at(gpu_fb_cur);  if co >= 0 and slot < 2 { gpu_fb[co + slot] = rb };  return }
   gl_framebuffer_renderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + slot, GL_RENDERBUFFER, rb)
   let o = gpu_fb_at(gpu_fb_cur)
   if o >= 0 { gpu_fb[o + 4] = rb;  gpu_fb[o + 6] = gpu_rb_samples }
 }
 function gpu_fb_depth_rb(rb: int) -> void {
+  if gpu_kind == GPU_VK { gvk_pass_end();  let dop = gpu_fb_at(gpu_fb_cur);  if dop >= 0 { gpu_fb[dop + 2] = rb;  gpu_fb[dop + 3] = 0 };  return }
   gl_framebuffer_renderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rb)
   let o = gpu_fb_at(gpu_fb_cur)
   if o >= 0 { gpu_fb[o + 5] = rb;  gpu_fb[o + 6] = gpu_rb_samples }
 }
 # colour slots 0 .. n-1 are drawn into (several: an MRT bake)
 function gpu_fb_draw_buffers(n: int) -> void {
+  if gpu_kind == GPU_VK { gvk_fb_colors(gpu_fb_cur, n);  return }
   if gpu_drawbufs == null { gpu_drawbufs = words(8) }
   for i in 0 .. n { gpu_drawbufs[i] = GL_COLOR_ATTACHMENT0 + i }
   gl_draw_buffers(n, gpu_drawbufs)
@@ -755,12 +805,14 @@ function gpu_fb_draw_buffers(n: int) -> void {
 }
 # a depth-only target: no colour is drawn or read
 function gpu_fb_no_color() -> void {
+  if gpu_kind == GPU_VK { gvk_fb_colors(gpu_fb_cur, 0);  return }
   gl_draw_buffer(GL_NONE)
   gl_read_buffer(GL_NONE)
   gpu_glcheck_after("fb no color")
 }
-function gpu_fb_status() -> int { return gl_check_framebuffer_status(GL_FRAMEBUFFER) }
+function gpu_fb_status() -> int { if gpu_kind == GPU_VK { return GL_FRAMEBUFFER_COMPLETE };  return gl_check_framebuffer_status(GL_FRAMEBUFFER) }
 function gpu_fb_free(fb: int) -> void {
+  if gpu_kind == GPU_VK { gvk_fb_forget(fb);  let fo = gpu_fb_at(fb);  if fo >= 0 { for i in 0 .. GPU_FB_W { gpu_fb[fo + i] = 0 } };  return }
   if fb == 0 { return }
   let ids = gpu_tmp()
   ids[0] = fb
@@ -770,13 +822,14 @@ function gpu_fb_free(fb: int) -> void {
   gpu_glcheck_after("fb free")
 }
 function gpu_rb_free(rb: int) -> void {
+  if gpu_kind == GPU_VK { gvk_flush();  if rb > 0 and rb < len(gvk_tex_image) { gvk_tex_release(rb) };  return }
   if rb == 0 { return }
   let ids = gpu_tmp()
   ids[0] = rb
   gl_delete_renderbuffers(1, ids)
   gpu_glcheck_after("rb free")
 }
-function gpu_viewport(x: int, y: int, w: int, h: int) -> void { gl_viewport(x, y, w, h);  gpu_glcheck_after("viewport") }
+function gpu_viewport(x: int, y: int, w: int, h: int) -> void { if gpu_kind == GPU_VK { gvk_viewport(x, y, w, h);  return };  gl_viewport(x, y, w, h);  gpu_glcheck_after("viewport") }
 
 # R3D_GLCHECK: before a draw or a clear, the bound framebuffer must be complete; after it, no
 # error may be pending. Each report names the framebuffer and what was being done, once per
@@ -802,6 +855,7 @@ function gpu_fb_describe(fb: int) -> string {
   return `framebuffer {fb} ({what} texture {tex}, {gpu_tx[t + 1]}x{gpu_tx[t + 2]}, format {gpu_tx[t + 4]})`
 }
 function gpu_glcheck_before(what: string) -> void {
+  if gpu_kind == GPU_VK { return }
   if not gpu_glcheck_on() { return }
   let pending = gl_get_error()
   if pending != 0 { gpu_glcheck_say(`gpu: error {pending} pending before {what} into {gpu_fb_describe(gpu_fb_cur)}`) }
@@ -810,30 +864,35 @@ function gpu_glcheck_before(what: string) -> void {
   if st != GL_FRAMEBUFFER_COMPLETE { gpu_glcheck_say(`gpu: {gpu_fb_describe(gpu_fb_cur)} incomplete ({st}) at {what}`) }
 }
 function gpu_glcheck_after(what: string) -> void {
+  if gpu_kind == GPU_VK { return }
   if not gpu_glcheck_on() { return }
   let e = gl_get_error()
   if e != 0 { gpu_glcheck_say(`gpu: error {e} from {what} into {gpu_fb_describe(gpu_fb_cur)}`) }
 }
-function gpu_clear_color(r: fixed, g: fixed, b: fixed, a: fixed) -> void { gl_clear_color(r, g, b, a) }
+function gpu_clear_color(r: fixed, g: fixed, b: fixed, a: fixed) -> void { if gpu_kind == GPU_VK { gvk_clear_color(fx_to_f32(r), fx_to_f32(g), fx_to_f32(b), fx_to_f32(a));  return };  gl_clear_color(r, g, b, a) }
 function gpu_clear(mask: int) -> void {
+  if gpu_kind == GPU_VK { gvk_clear(mask, gpu_fb, gpu_fb_at(gvk_fb_cur));  return }
   gpu_glcheck_before("a clear")
   gl_clear(mask)
   gpu_glcheck_after("a clear")
 }
 # the bound read framebuffer's [0, w) x [0, h) into the bound draw framebuffer's, unscaled
 function gpu_blit(w: int, h: int, mask: int) -> void {
+  if gpu_kind == GPU_VK { gvk_blit(w, h, mask);  return }
   gl_blit_framebuffer(0, 0, w, h, 0, 0, w, h, mask, GL_NEAREST)
   gpu_glcheck_after("a blit")
 }
 # the framebuffer the finished frame is presented from (an offscreen one, headless)
-function gpu_screen_fb() -> int { return gl_screen }
-function gpu_multisample(on: bool) -> void { gpu_gl_cap(GL_MULTISAMPLE, gpu_b(on));  gpu_glcheck_after("multisample") }
+function gpu_screen_fb() -> int { if gpu_kind == GPU_VK { return 0 };  return gl_screen }
+function gpu_multisample(on: bool) -> void { if gpu_kind == GPU_VK { return };  gpu_gl_cap(GL_MULTISAMPLE, gpu_b(on));  gpu_glcheck_after("multisample") }
 function gpu_wireframe(on: bool) -> void {
+  if gpu_kind == GPU_VK { gvk_wireframe = gpu_b(on);  return }
   if on { gl_polygon_mode(GL_FRONT_AND_BACK, GL_LINE) } else { gl_polygon_mode(GL_FRONT_AND_BACK, GL_FILL) }
   gpu_glcheck_after("wireframe")
 }
 # the presented frame as RGB8, bottom row first (a photograph)
 function gpu_read_screen(w: int, h: int, out: pointer) -> void {
+  if gpu_kind == GPU_VK { gvk_read_screen(w, h, out);  return }
   gl_bind_framebuffer(GL_READ_FRAMEBUFFER, gl_screen)
   gl_pixel_storei(GL_PACK_ALIGNMENT, 1)
   gl_read_pixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, out)
