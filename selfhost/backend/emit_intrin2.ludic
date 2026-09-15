@@ -21,6 +21,7 @@ function is_intrinsic2(name: pointer) -> bool {
   if (name == "win_open") or (name == "win_poll") or (name == "win_present") { return true }
   if (name == "win_running") or (name == "win_close") { return true }
   if (name == "win_held") or (name == "win_mouse") { return true }   # #50 device layer
+  if (name == "win_key_char") { return true }                        # Input.key_label
   if (name == "win_pad") or (name == "win_touch") { return true }    # #51 gamepad / touch
   if (name == "win_cursor_mode") { return true }                     # #89 cursor capture
   if (name == "snd_load") or (name == "snd_play") or (name == "snd_stop") { return true }   # #22 audio
@@ -71,6 +72,9 @@ function emit_intrinsic2(name: pointer, e: Node) -> Val {
   # button-mask, wheel-delta].
   if (name == "win_held")  { let a = arg_code(e, 0);  emit("  call void @win_held(ptr ");  emit(a);  emit(")\n");  return val("0", "void") }
   if (name == "win_mouse") { let a = arg_code(e, 0);  emit("  call void @win_mouse(ptr ");  emit(a);  emit(")\n");  return val("0", "void") }
+  # what the active keyboard layout types on a held-set key position (windowed only,
+  # DCE'd headless): a code point, 0 for none.
+  if (name == "win_key_char") { let a = arg_code(e, 0);  return val(emit_bind(`call i32 @win_key_char(i32 {a})`), "int") }
   # #51 — win_pad: 6 words/pad [connected, mask, lx, ly, rx, ry]; win_touch: 3
   # words/point [active, x, y]. Both windowed-only, DCE'd headless.
   if (name == "win_pad")   { let a = arg_code(e, 0);  emit("  call void @win_pad(ptr ");  emit(a);  emit(")\n");  return val("0", "void") }

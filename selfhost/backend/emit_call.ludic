@@ -449,6 +449,7 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "key_down")     { bare = "input_key_down";     push(labels, "key") }
     if (meth == "key_pressed")  { bare = "input_key_pressed";  push(labels, "key") }
     if (meth == "key_released") { bare = "input_key_released"; push(labels, "key") }
+    if (meth == "key_label")    { bare = "input_key_label";    push(labels, "key") }
     if (meth == "press")        { bare = "input_press";        push(labels, "key") }
     if (meth == "release")      { bare = "input_release";      push(labels, "key") }
     if (meth == "axis")         { bare = "input_axis";         push(labels, "neg"); push(labels, "pos") }

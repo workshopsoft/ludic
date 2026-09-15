@@ -17,7 +17,12 @@
 ;   held keys   a 256-bit set of Ludic key codes: letters lowercase, digits and
 ;               punctuation as their unshifted character, Space 32, Enter 10,
 ;               Esc 27, Backspace 8, Tab 9, Shift 16, Ctrl 17, Alt 18, and the
-;               arrows at 128 129 130 131 (up down left right)
+;               arrows at 128 129 130 131 (up down left right). A key in the
+;               typing block is its PHYSICAL position, named for what it types
+;               on a US layout: 'w' is the key right of Tab's row start on every
+;               layout, language, input method and Caps Lock state
+;   key char    win_key_char(code): what the active layout types on that key,
+;               upper case, 0 when it types nothing or the code is not a position
 ;   frame key   the last key pressed this frame, arrows reported as w s a d
 ;   mouse       framebuffer pixels (client pixels / scale), top-left origin;
 ;               buttons bit0 left, bit1 right; wheel in notches, up positive
@@ -27,8 +32,13 @@
 ; backing scale is 1, and a 1280x720 window is 1280x720 pixels on any display.
 ;
 ; Keys are read from the message queue before dispatch rather than from WM_CHAR:
-; TranslateMessage is never called, so no character messages are produced, and a
-; key's character comes from MapVirtualKeyA. The system keys (Alt, F10) are never
+; TranslateMessage is never called, so no character messages are produced. The held
+; set is keyed by the scancode in lParam, not by the virtual key: a virtual key is
+; the layout's idea of the key, so on AZERTY the key where W is printed on a US
+; board arrives as VK_Z, and an input method turns every letter into VK_PROCESSKEY
+; (229) - WASD simply stopped existing for those players. Keys outside the table
+; (arrows, the numpad, F-keys, the ISO key) still go by virtual key, and the frame
+; key keeps the layout's character, because that one is typing. The system keys (Alt, F10) are never
 ; handed to DefWindowProc, whose menu loop would stall the game's frame loop -
 ; Alt+F4 is honoured here instead.
 ; ============================================================================
@@ -56,6 +66,8 @@ declare i32 @IsWindow(ptr)
 declare ptr @SetCapture(ptr)
 declare i32 @ReleaseCapture()
 declare i32 @MapVirtualKeyA(i32, i32)
+declare i32 @MapVirtualKeyW(i32, i32)
+declare ptr @CharUpperW(ptr)
 declare i16 @GetKeyState(i32)
 declare i32 @RegisterRawInputDevices(ptr, i32, i32)
 declare i32 @GetRawInputData(ptr, i32, ptr, ptr, i32)
@@ -306,9 +318,32 @@ entry:
   ret i32 %c7
 }
 
-; the held-set code of a virtual key (cocoa.ll's ev_keyval)
-define internal i32 @w_keyval(i64 %vk64) {
+; The typing block by position: a set-1 scancode (non-extended) to the key code it is on a
+; US layout, and back. 0 is a key the table does not name.
+@W_sc2key = internal constant [128 x i8] [i8 0, i8 0, i8 49, i8 50, i8 51, i8 52, i8 53, i8 54, i8 55, i8 56, i8 57, i8 48, i8 45, i8 61, i8 0, i8 0, i8 113, i8 119, i8 101, i8 114, i8 116, i8 121, i8 117, i8 105, i8 111, i8 112, i8 91, i8 93, i8 0, i8 0, i8 97, i8 115, i8 100, i8 102, i8 103, i8 104, i8 106, i8 107, i8 108, i8 59, i8 39, i8 96, i8 0, i8 92, i8 122, i8 120, i8 99, i8 118, i8 98, i8 110, i8 109, i8 44, i8 46, i8 47, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0]
+@W_key2sc = internal constant [128 x i8] [i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 40, i8 0, i8 0, i8 0, i8 0, i8 51, i8 12, i8 52, i8 53, i8 11, i8 2, i8 3, i8 4, i8 5, i8 6, i8 7, i8 8, i8 9, i8 10, i8 0, i8 39, i8 0, i8 13, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 0, i8 26, i8 43, i8 27, i8 0, i8 0, i8 41, i8 30, i8 48, i8 46, i8 32, i8 18, i8 33, i8 34, i8 35, i8 23, i8 36, i8 37, i8 38, i8 50, i8 49, i8 24, i8 25, i8 16, i8 19, i8 31, i8 20, i8 22, i8 47, i8 17, i8 45, i8 21, i8 44, i8 0, i8 0, i8 0, i8 0, i8 0]
+
+; the held-set code of a key message: the scancode's position when the table names it,
+; the virtual key otherwise (cocoa.ll's ev_keyval)
+define internal i32 @w_keyval(i64 %vk64, i64 %lp) {
 entry:
+  %sc64 = lshr i64 %lp, 16
+  %sc = and i64 %sc64, 255
+  %ext64 = lshr i64 %lp, 24
+  %ext = and i64 %ext64, 1
+  %plain = icmp eq i64 %ext, 0
+  %inrange = icmp ult i64 %sc, 128
+  %lookup = and i1 %plain, %inrange
+  br i1 %lookup, label %bypos, label %byvk
+bypos:
+  %sp = getelementptr [128 x i8], ptr @W_sc2key, i64 0, i64 %sc
+  %s8 = load i8, ptr %sp
+  %pos = zext i8 %s8 to i32
+  %named = icmp ne i32 %pos, 0
+  br i1 %named, label %haspos, label %byvk
+haspos:
+  ret i32 %pos
+byvk:
   %vk = trunc i64 %vk64 to i32
   switch i32 %vk, label %chars [
     i32 38, label %up
@@ -345,6 +380,39 @@ chars:
   %lower = add i32 %c, 32
   %f = select i1 %upper, i32 %lower, i32 %c
   ret i32 %f
+}
+
+; What the active layout types on the key at held-set code %k, upper case: 'W' for 'w' on a
+; US layout, 'Z' on AZERTY, 0x131 for 'i' on Turkish F... 0 when %k is not a position in the
+; table or the key types nothing. A dead key reports its accent; the top bit that marks it is
+; dropped.
+define i32 @win_key_char(i32 %k) {
+entry:
+  %inrange = icmp ult i32 %k, 128
+  br i1 %inrange, label %look, label %none
+look:
+  %kp = getelementptr [128 x i8], ptr @W_key2sc, i64 0, i32 %k
+  %s8 = load i8, ptr %kp
+  %sc = zext i8 %s8 to i32
+  %has = icmp ne i32 %sc, 0
+  br i1 %has, label %map, label %none
+map:
+  %vk = call i32 @MapVirtualKeyW(i32 %sc, i32 1)  ; MAPVK_VSC_TO_VK
+  %c = call i32 @MapVirtualKeyW(i32 %vk, i32 2)   ; MAPVK_VK_TO_CHAR
+  %c16 = and i32 %c, 65535
+  %types = icmp ne i32 %c16, 0
+  br i1 %types, label %up, label %none
+up:
+  ; CharUpperW takes a single character in the low word of its pointer argument
+  %cz = zext i32 %c16 to i64
+  %cp = inttoptr i64 %cz to ptr
+  %uq = call ptr @CharUpperW(ptr %cp)
+  %ui = ptrtoint ptr %uq to i64
+  %u16 = and i64 %ui, 65535
+  %u = trunc i64 %u16 to i32
+  ret i32 %u
+none:
+  ret i32 0
 }
 
 ; the frame key of a virtual key (cocoa.ll's win_poll): arrows as wasd, a letter in the
@@ -422,7 +490,7 @@ handle:
     i32 255, label %raw                           ; WM_INPUT
   ]
 kdown:
-  %hv = call i32 @w_keyval(i64 %wp)
+  %hv = call i32 @w_keyval(i64 %wp, i64 %lp)
   call void @win_held_bit(i32 %hv, i32 1)
   %isf4 = icmp eq i64 %wp, 115                    ; VK_F4
   %issys = icmp eq i32 %m, 260
@@ -439,7 +507,7 @@ setfk:
   store i32 %fk, ptr @W_key
   br label %pump
 kup:
-  %uv = call i32 @w_keyval(i64 %wp)
+  %uv = call i32 @w_keyval(i64 %wp, i64 %lp)
   call void @win_held_bit(i32 %uv, i32 0)
   br label %pump
 ldown:
