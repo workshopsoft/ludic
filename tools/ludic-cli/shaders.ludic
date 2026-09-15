@@ -167,7 +167,13 @@ function cmd_shaders() -> int {
     if len(parts) > 2 { defs = parts[2] }
     let id = shd_id(line)
     let defines = Text.replace(defs, ";", "\n")
-    let vsrc = "#version 460\n" + defines + shd_file(parts[0])
+    # The renderer's projections are OpenGL's: clip-space depth runs from -w to w, and Vulkan clips
+    # everything below 0 - the near half of every frustum. The vertex stage is wrapped so its own
+    # main runs first and depth is then remapped to [0, w]; the GLSL the OpenGL renderer compiles
+    # is untouched. No y flip: a Vulkan target's row 0 is where OpenGL's is (NDC y = -1), so render
+    # to texture, sampling and gl_FragCoord agree; only the present and the screenshot flip.
+    let depth_remap = "\n#undef main\nvoid main() {\n  ludic_gl_main();\n  gl_Position.z = (gl_Position.z + gl_Position.w) * 0.5;\n}\n"
+    let vsrc = "#version 460\n" + defines + "#define main ludic_gl_main\n" + shd_file(parts[0]) + depth_remap
     let fsrc = "#version 460\n" + defines + shd_noise + shd_lighting + shd_file(parts[1])
     # one binding table for both stages
     shd_names = new []pointer
