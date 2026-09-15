@@ -18,6 +18,30 @@ var tex_depth: int = 0        # bits per sample (8 or 16)
 var tex_file_len: int = 0
 var tex_anisotropy: fixed = 16.0
 
+# The anisotropic filtering level for every mipmapped texture, loaded or not: 1 (off), 2, 4, 8
+# or 16. Textures uploaded before a change are updated in place - on OpenGL by setting the
+# parameter again, on Vulkan by rewriting the record the sampler cache reads - so a settings
+# screen can offer it live instead of on the next start.
+function r3d_set_anisotropy(level: int) -> void {
+  var a: fixed = 1.0
+  if level >= 2 { a = 2.0 }
+  if level >= 4 { a = 4.0 }
+  if level >= 8 { a = 8.0 }
+  if level >= 16 { a = 16.0 }
+  if a == tex_anisotropy { return }
+  tex_anisotropy = a
+  if gpu_tx == null { return }
+  let keep = gpu_bound_2d
+  for t in 1 .. gpu_tx_cap {
+    let o = t * GPU_TX_W
+    # a 2D texture with mipmaps that was given a level when it was uploaded
+    if gpu_tx[o] != GPU_TEX2D or gpu_tx[o + 10] != 1 or gpu_tx[o + 11] == 0 { continue }
+    gpu_tex_bind(GPU_TEX2D, t)
+    gpu_tex_paramf(GPU_TEX2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, a)
+  }
+  if keep > 0 { gpu_tex_bind(GPU_TEX2D, keep) }
+}
+
 function r3d_read_file(path: pointer) -> pointer {
   let f = file_open(path, "rb")
   if f == null { return null }

@@ -4,7 +4,8 @@
 # of the camera frustum and snapped to its own texel grid (no swimming).
 # ============================================================================
 
-const SHADOW_RES: int = 2048
+# the size of each cascade's depth layer; shadow_set_res changes it at run time
+var shadow_res: int = 2048
 const SHADOW_CASCADES: int = 5
 
 var sh_tex: int = 0
@@ -21,19 +22,7 @@ var sh_corner: words = null
 var sh_cascade: int = 0            # the cascade being rendered (for casters that skip far ones)
 
 function shadow_init() -> void {
-  sh_tex = gpu_tex_new()
-  gpu_tex_bind(GPU_TEX2D_ARRAY, sh_tex)
-  gpu_tex_image3d(GL_DEPTH_COMPONENT32F, SHADOW_RES, SHADOW_RES, SHADOW_CASCADES, GL_DEPTH_COMPONENT, GL_FLOAT, null)
-  gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
-  gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-  gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER)
-  gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER)
-  gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE)
-  gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL)
-  let border = gl_floats(4)
-  gl_put(border, 0, 1.0);  gl_put(border, 1, 1.0);  gl_put(border, 2, 1.0);  gl_put(border, 3, 1.0)
-  gpu_tex_border(GPU_TEX2D_ARRAY, border)
-  free(border)
+  shadow_make_tex()
   sh_fbo = gpu_fb_new()
   gpu_fb_bind(sh_fbo)
   gpu_fb_no_color()
@@ -46,6 +35,33 @@ function shadow_init() -> void {
   sh_split[0] = fi(16);  sh_split[1] = fi(60);  sh_split[2] = fi(250);  sh_split[3] = fi(1100);  sh_split[4] = fi(6000)
   sh_tmp_proj = m4_new();  sh_tmp_vp = m4_new();  sh_tmp_inv = m4_new();  sh_tmp_view = m4_new()
   sh_corner = words(3)
+}
+
+# A shadow resolution setting: 1024, 2048 or 4096 per cascade. The depth layers are made again at
+# the new size; the pass attaches a layer per cascade every frame, and the lighting reads the
+# texel size from the map itself, so nothing else has to follow.
+function shadow_set_res(r: int) -> void {
+  if r < 256 or r == shadow_res { return }
+  shadow_res = r
+  if sh_tex == 0 { return }
+  gpu_tex_free(sh_tex)
+  shadow_make_tex()
+}
+
+function shadow_make_tex() -> void {
+  sh_tex = gpu_tex_new()
+  gpu_tex_bind(GPU_TEX2D_ARRAY, sh_tex)
+  gpu_tex_image3d(GL_DEPTH_COMPONENT32F, shadow_res, shadow_res, SHADOW_CASCADES, GL_DEPTH_COMPONENT, GL_FLOAT, null)
+  gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+  gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+  gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER)
+  gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER)
+  gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE)
+  gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL)
+  let border = gl_floats(4)
+  gl_put(border, 0, 1.0);  gl_put(border, 1, 1.0);  gl_put(border, 2, 1.0);  gl_put(border, 3, 1.0)
+  gpu_tex_border(GPU_TEX2D_ARRAY, border)
+  free(border)
 }
 
 # light view-projection for the camera-frustum slice [near, far]
@@ -92,7 +108,7 @@ function shadow_fit(c: int, near: int, far: int) -> void {
   let up = v3_new(F_ZERO, F_ONE, F_ZERO)
   m4_look_at(sh_tmp_view, eye, center, up)
   # snap the ortho window to the shadow texel grid
-  let texel = f_div(f_mul(radius, F_TWO), fi(SHADOW_RES))
+  let texel = f_div(f_mul(radius, F_TWO), fi(shadow_res))
   m4_xform_point(sh_corner, sh_tmp_view, center[0], center[1], center[2])
   let ox = f_sub(f_mul(f_floor(f_div(sh_corner[0], texel)), texel), sh_corner[0])
   let oy = f_sub(f_mul(f_floor(f_div(sh_corner[1], texel)), texel), sh_corner[1])
@@ -114,7 +130,7 @@ function shadow_cascade_vp(c: int) -> words { return mem_off(sh_vp, c * 64) }
 function shadow_pass() -> void {
   var near = cam_near
   gpu_fb_bind(sh_fbo)
-  gpu_viewport(0, 0, SHADOW_RES, SHADOW_RES)
+  gpu_viewport(0, 0, shadow_res, shadow_res)
   gpu_depth_test(true)
   gpu_depth_func(GL_LESS)
   gpu_depth_bias(2.0, 4.0)
@@ -144,7 +160,7 @@ function shadow_pass() -> void {
       m4_xform_point(q, vp, sh_probe_x, sh_probe_y, sh_probe_z)
       print(`probe base ndc {f_fx(q[0])} {f_fx(q[1])} {f_fx(q[2])}`)
       m4_xform_point(q, vp, sh_probe_x, f_add(sh_probe_y, fi(15)), sh_probe_z)
-      print(`probe top  ndc {f_fx(q[0])} {f_fx(q[1])} {f_fx(q[2])}  -> map texel {f_to_int(f_mul(f_add(f_mul(q[0], F_HALF), F_HALF), fi(SHADOW_RES)))} {f_to_int(f_mul(f_add(f_mul(q[1], F_HALF), F_HALF), fi(SHADOW_RES)))}`)
+      print(`probe top  ndc {f_fx(q[0])} {f_fx(q[1])} {f_fx(q[2])}  -> map texel {f_to_int(f_mul(f_add(f_mul(q[0], F_HALF), F_HALF), fi(shadow_res)))} {f_to_int(f_mul(f_add(f_mul(q[1], F_HALF), F_HALF), fi(shadow_res)))}`)
       # where the top's shadow lands on the ground: walk down the sun ray
       let gx = f_sub(f_add(sh_probe_x, F_ZERO), f_mul(sun_dir[0], f_div(fi(15), sun_dir[1])))
       let gz = f_sub(sh_probe_z, f_mul(sun_dir[2], f_div(fi(15), sun_dir[1])))
@@ -172,7 +188,7 @@ var sh_probe_z: int = 0
 
 # Debug: cascade depths as grey PPMs (build/dbg_shadow_<c>.ppm)
 function shadow_dump() -> void {
-  let n = SHADOW_RES * SHADOW_RES
+  let n = shadow_res * shadow_res
   let buf = words(n * SHADOW_CASCADES)
   gpu_tex_bind(GPU_TEX2D_ARRAY, sh_tex)
   gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_NONE)
@@ -182,13 +198,13 @@ function shadow_dump() -> void {
     let vp = shadow_cascade_vp(2)
     let q = words(3)
     m4_xform_point(q, vp, sh_probe_x, f_add(sh_probe_y, fi(12)), sh_probe_z)
-    let tx = f_to_int(f_mul(f_add(f_mul(q[0], F_HALF), F_HALF), fi(SHADOW_RES)))
-    let ty = f_to_int(f_mul(f_add(f_mul(q[1], F_HALF), F_HALF), fi(SHADOW_RES)))
+    let tx = f_to_int(f_mul(f_add(f_mul(q[0], F_HALF), F_HALF), fi(shadow_res)))
+    let ty = f_to_int(f_mul(f_add(f_mul(q[1], F_HALF), F_HALF), fi(shadow_res)))
     let want = f_add(f_mul(q[2], F_HALF), F_HALF)
     print(`probe (12 m up) texel {tx} {ty} card depth {f_fx(f_mul(want, fi(1000)))}/1000`)
     for dy in 0 .. 5 {
       let yy = ty - 40 + dy * 20
-      print(`  row {yy}: {f_fx(f_mul(buf[2 * n + yy * SHADOW_RES + tx - 20], fi(1000)))} {f_fx(f_mul(buf[2 * n + yy * SHADOW_RES + tx], fi(1000)))} {f_fx(f_mul(buf[2 * n + yy * SHADOW_RES + tx + 20], fi(1000)))} /1000`)
+      print(`  row {yy}: {f_fx(f_mul(buf[2 * n + yy * shadow_res + tx - 20], fi(1000)))} {f_fx(f_mul(buf[2 * n + yy * shadow_res + tx], fi(1000)))} {f_fx(f_mul(buf[2 * n + yy * shadow_res + tx + 20], fi(1000)))} /1000`)
     }
     free(q)
   }
@@ -203,10 +219,10 @@ function shadow_dump() -> void {
     let f = file_open(`build/dbg_shadow_{c}.ppm`, "wb")
     let hdr = `P6\n{sm} {sm}\n255\n`
     file_write(f, hdr, len(hdr))
-    let st = SHADOW_RES / sm
+    let st = shadow_res / sm
     for y in 0 .. sm {
       for x in 0 .. sm {
-        let d = buf[c * n + (y * st) * SHADOW_RES + x * st]
+        let d = buf[c * n + (y * st) * shadow_res + x * st]
         let g = f_to_int(f_mul(f_clamp(f_div(f_sub(d, lo), f_max(f_sub(hi, lo), fl(0.0001))), F_ZERO, F_ONE), fi(255)))
         row[x * 3] = g;  row[x * 3 + 1] = g;  row[x * 3 + 2] = g
       }

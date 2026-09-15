@@ -109,7 +109,7 @@ float shadowSample(int c, vec3 wpos, float biasWorld) {
   vec3 p = lp.xyz / lp.w * 0.5 + 0.5;
   if (p.x < 0.0 || p.x > 1.0 || p.y < 0.0 || p.y > 1.0 || p.z > 1.0) return 1.0;
   float bias = biasWorld / cascadeRange(c);
-  float texel = 1.0 / 2048.0;
+  float texel = 1.0 / float(textureSize(u_shadow, 0).x);   // the shadow resolution setting
   float r = ign(gl_FragCoord.xy) * 6.2831853;
   float cs = cos(r), sn = sin(r);
   mat2 rot = mat2(cs, sn, -sn, cs);
