@@ -331,9 +331,16 @@ function gvk_tex_mips(tex: int, w: int, h: int) -> bool {
   }
   let levels = gvk_tex_levels[tex]
   if levels <= 1 { return true }
+  let cb = gvk_once_begin()
+  gvk_tex_mips_into(cb, tex, w, h)
+  return gvk_once_end(cb)
+}
+# the chain's blits and barriers recorded into cb (the frame's own, when one is open)
+function gvk_tex_mips_into(cb: pointer, tex: int, w: int, h: int) -> void {
+  let levels = gvk_tex_levels[tex]
+  if levels <= 1 { return }
   let image = gvk_tex_image[tex]
   let layers = gvk_tex_layers[tex]
-  let cb = gvk_once_begin()
   var sw = w
   var sh = h
   for lv in 1 .. levels {
@@ -363,7 +370,6 @@ function gvk_tex_mips(tex: int, w: int, h: int) -> bool {
     sw = dw
     sh = dh
   }
-  return gvk_once_end(cb)
 }
 
 # Level 0 of layer 0 back to the CPU, laid out the OpenGL way when the layouts agree (the terrain
@@ -491,33 +497,58 @@ var gvk_buf: []long = null
 var gvk_buf_mem: []long = null
 var gvk_buf_size: []int = null
 var gvk_buf_map: []pointer = null      # host-visible buffers stay mapped for their whole life
+var gvk_buf_used: []int = null         # the frame (gvk_frame_no) a draw last bound the buffer in
+var gvk_frame_no: int = 1
+# Storage a buffer was moved off, or freed, while the frame that used it has not been submitted:
+# destroyed at gvk_retire_flush, after the frame's work is done.
+var gvk_retired_buf: []long = null
+var gvk_retired_mem: []long = null
 
 function gvk_buf_new() -> int {
   let zero: long = 0
   if gvk_buf == null {
     gvk_buf = new []long;  gvk_buf_mem = new []long;  gvk_buf_size = new []int;  gvk_buf_map = new []pointer
+    gvk_buf_used = new []int;  gvk_retired_buf = new []long;  gvk_retired_mem = new []long
     # handle 0 is "no buffer", as it is on OpenGL
-    push(gvk_buf, zero);  push(gvk_buf_mem, zero);  push(gvk_buf_size, 0);  push(gvk_buf_map, null)
+    push(gvk_buf, zero);  push(gvk_buf_mem, zero);  push(gvk_buf_size, 0);  push(gvk_buf_map, null);  push(gvk_buf_used, 0)
   }
-  push(gvk_buf, zero);  push(gvk_buf_mem, zero);  push(gvk_buf_size, 0);  push(gvk_buf_map, null)
+  push(gvk_buf, zero);  push(gvk_buf_mem, zero);  push(gvk_buf_size, 0);  push(gvk_buf_map, null);  push(gvk_buf_used, 0)
   return len(gvk_buf) - 1
 }
 
 function gvk_buf_release(b: int) -> void {
   if gvk_buf[b] == 0 { return }
   let zero: long = 0
-  Vk.unmap_memory(gvk_dev, gvk_buf_mem[b])
-  Vk.destroy_buffer(gvk_dev, gvk_buf[b], null)
-  Vk.free_memory(gvk_dev, gvk_buf_mem[b], null)
-  gvk_n_allocs -= 1
-  gvk_buf[b] = zero;  gvk_buf_mem[b] = zero;  gvk_buf_size[b] = 0;  gvk_buf_map[b] = null
+  if gvk_buf_used[b] == gvk_frame_no {
+    # a draw recorded this frame still reads it: destroy it once the frame has been submitted
+    push(gvk_retired_buf, gvk_buf[b]);  push(gvk_retired_mem, gvk_buf_mem[b])
+  } else {
+    Vk.unmap_memory(gvk_dev, gvk_buf_mem[b])
+    Vk.destroy_buffer(gvk_dev, gvk_buf[b], null)
+    Vk.free_memory(gvk_dev, gvk_buf_mem[b], null)
+    gvk_n_allocs -= 1
+  }
+  gvk_buf[b] = zero;  gvk_buf_mem[b] = zero;  gvk_buf_size[b] = 0;  gvk_buf_map[b] = null;  gvk_buf_used[b] = 0
+}
+# the frame's submitted work is done: storage retired during it can go
+function gvk_retire_flush() -> void {
+  if gvk_retired_buf == null { return }
+  for i in 0 .. len(gvk_retired_buf) {
+    Vk.unmap_memory(gvk_dev, gvk_retired_mem[i])
+    Vk.destroy_buffer(gvk_dev, gvk_retired_buf[i], null)
+    Vk.free_memory(gvk_dev, gvk_retired_mem[i], null)
+    gvk_n_allocs -= 1
+  }
+  gvk_retired_buf = new []long
+  gvk_retired_mem = new []long
 }
 
 # Room for at least n bytes behind handle b; a buffer that is already big enough is kept, so a
 # stream re-filled every frame allocates once.
 function gvk_buf_reserve(b: int, n: int) -> bool {
   if b <= 0 or b >= len(gvk_buf) { return false }
-  if gvk_buf[b] != 0 and gvk_buf_size[b] >= n { return true }
+  # already big enough, and no draw this frame reads what is there: fill it in place
+  if gvk_buf[b] != 0 and gvk_buf_size[b] >= n and gvk_buf_used[b] != gvk_frame_no { return true }
   gvk_buf_release(b)
   var size = n
   if size < 64 { size = 64 }

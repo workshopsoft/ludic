@@ -432,7 +432,7 @@ function gpu_mesh_new() -> Mesh {
 # a vertex buffer for the mesh being built (data may be null: storage only); returns it
 function gpu_mesh_vertices(m: Mesh, data: pointer, nbytes: int, usage: int) -> int {
   var b = 0
-  if gpu_kind == GPU_VK { gvk_flush();  b = gvk_buf_new();  gvk_buf_upload(b, nbytes, data) }
+  if gpu_kind == GPU_VK { b = gvk_buf_new();  gvk_buf_upload(b, nbytes, data) }
   else {
     b = gl_buffer()
     gl_bind_buffer(GL_ARRAY_BUFFER, b)
@@ -464,7 +464,7 @@ function gpu_mesh_attr(m: Mesh, index: int, comps: int, type: int, stride: int, 
 function gpu_mesh_indices(m: Mesh, data: pointer, nbytes: int, index_bytes: int) -> void {
   m.itype = GL_UNSIGNED_INT
   if index_bytes == 2 { m.itype = GL_UNSIGNED_SHORT }
-  if gpu_kind == GPU_VK { gvk_flush();  m.ebo = gvk_buf_new();  gvk_buf_upload(m.ebo, nbytes, data);  return }
+  if gpu_kind == GPU_VK { m.ebo = gvk_buf_new();  gvk_buf_upload(m.ebo, nbytes, data);  return }
   m.ebo = gl_buffer()
   gl_bind_buffer(GL_ELEMENT_ARRAY_BUFFER, m.ebo)
   gl_buffer_data(GL_ELEMENT_ARRAY_BUFFER, nbytes, data, GL_STATIC_DRAW)
@@ -495,12 +495,12 @@ function gpu_mesh_attr_inst(m: Mesh, index: int, comps: int, type: int, stride: 
 # a buffer on its own (instances, a stream): made, filled whole, freed
 function gpu_buffer_new() -> int { if gpu_kind == GPU_VK { return gvk_buf_new() };  return gl_buffer() }
 function gpu_buffer_upload(buf: int, nbytes: int, data: pointer, usage: int) -> void {
-  if gpu_kind == GPU_VK { gvk_flush();  gvk_buf_upload(buf, nbytes, data);  return }
+  if gpu_kind == GPU_VK { gvk_buf_upload(buf, nbytes, data);  return }
   gl_bind_buffer(GL_ARRAY_BUFFER, buf)
   gl_buffer_data(GL_ARRAY_BUFFER, nbytes, data, gpu_gl_usage(usage))
 }
 function gpu_buffer_free(buf: int) -> void {
-  if gpu_kind == GPU_VK { gvk_flush();  if buf > 0 { gvk_buf_release(buf) };  return }
+  if gpu_kind == GPU_VK { if buf > 0 { gvk_buf_release(buf) };  return }
   if buf == 0 { return }
   let ids = gpu_tmp()
   ids[0] = buf
@@ -542,7 +542,7 @@ function gpu_draw_range(m: Mesh, first: int, count: int) -> void {
 }
 
 function gpu_mesh_free(m: Mesh) -> void {
-  if gpu_kind == GPU_VK { gvk_flush();  gvk_mesh_free(m);  return }
+  if gpu_kind == GPU_VK { gvk_mesh_free(m);  return }
   if m == null { return }
   let ids = gpu_tmp()
   if m.vbufs != null {
@@ -645,10 +645,9 @@ function gpu_tex_paramf(kind: int, pname: int, value: fixed) -> void {
 function gpu_tex_border(kind: int, rgba: pointer) -> void { if gpu_kind == GPU_VK { return };  gl_tex_parameterfv(gpu_gl_target(kind), GL_TEXTURE_BORDER_COLOR, rgba) }
 function gpu_tex_mips(kind: int) -> void {
   if gpu_kind == GPU_VK {
-    gvk_flush()
     let mt = gpu_bound(kind)
     let mo = gpu_tx_at(mt)
-    if mo >= 0 { gvk_tex_mips(mt, gpu_tx[mo + 1], gpu_tx[mo + 2]) }
+    if mo >= 0 { gvk_mips_now(mt, gpu_tx[mo + 1], gpu_tx[mo + 2]) }
   } else { gl_generate_mipmap(gpu_gl_target(kind)) }
   gpu_glcheck_after(`mipmaps for texture {gpu_bound(kind)}`)
   let o = gpu_tx_at(gpu_bound(kind))
