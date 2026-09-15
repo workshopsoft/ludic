@@ -960,6 +960,14 @@ function gvk_clear_color(r: int, g: int, b: int, a: int) -> void {
   gvk_clear_rgba[0] = r;  gvk_clear_rgba[1] = g;  gvk_clear_rgba[2] = b;  gvk_clear_rgba[3] = a
 }
 function gvk_fb_colors(fb: int, n: int) -> void { if gvk_fb_ncolor != null and fb >= 0 and fb < 4096 { gvk_fb_ncolor[fb] = n } }
+# The framebuffer changes: a clear still waiting for this one's pass runs now, on this target,
+# rather than becoming the load op of whichever pass begins next.
+function gvk_rebind(fb: int) -> void {
+  if fb == gvk_fb_cur { return }
+  if not gvk_in_pass and gvk_clear_bits != 0 { gvk_pass_begin(gpu_fb, gpu_fb_at(gvk_fb_cur)) }
+  gvk_pass_end()
+  gvk_fb_cur = fb
+}
 function gvk_fb_forget(fb: int) -> void {
   if fb == gvk_fb_cur { gvk_pass_end() }
   gvk_fb_colors(fb, 1)

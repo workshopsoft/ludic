@@ -93,6 +93,63 @@ function shd_bind_samplers(src: pointer, collect: bool) -> pointer {
   return sb_str(b)
 }
 
+# Varyings: OpenGL links a vertex output to a fragment input by NAME; SPIR-V links by location,
+# and glslang's --auto-map-locations numbers each stage in its own declaration order. A fragment
+# shader that declares fewer inputs, or declares them in another order - the foliage prepass's
+# depth.frag reads v_wpos then v_uv, where model.vert writes v_wpos, v_nrm, v_uv - read the wrong
+# varying, and the prepass cut every alpha-tested texel. So both stages get explicit locations:
+# the vertex stage's `out` order numbers them, and the fragment stage looks each `in` up by name.
+var shd_vary: []pointer = null
+function shd_vary_index(name: pointer) -> int {
+  var k = 0
+  while k < len(shd_vary) { if shd_vary[k] == name { return k };  k += 1 }
+  return -1
+}
+# `word` at the start of a line (spaces before it allowed), then whitespace, a type, a name, then
+# ';' or '[' - a global declaration, never a function parameter. The rewritten text carries an
+# explicit layout; with `collect`, a vertex stage's out names are recorded in order instead.
+function shd_bind_varyings(src: pointer, word: pointer, collect: bool) -> pointer {
+  let b = sb_new()
+  let n = slen(src)
+  let wl = slen(word)
+  var i = 0
+  var extra = 0
+  while i < n {
+    let at = s_index(src, word, i)
+    if at < 0 { sb_puts(b, str_sub(src, i, n));  break }
+    sb_puts(b, str_sub(src, i, at))
+    var q = at - 1
+    while q >= 0 and (src[q] == ' ' or src[q] == '\t') { q -= 1 }
+    var ok = (q < 0 or src[q] == '\n') and at + wl < n and str_space(src[at + wl])
+    var p = at + wl
+    while ok and p < n and str_space(src[p]) { p += 1 }
+    let ts = p
+    while ok and p < n and shd_is_ident(src[p]) { p += 1 }
+    let ty = str_sub(src, ts, p)
+    if ok { ok = slen(ty) > 0 }
+    while ok and p < n and str_space(src[p]) { p += 1 }
+    let ns = p
+    while ok and p < n and shd_is_ident(src[p]) { p += 1 }
+    let name = str_sub(src, ns, p)
+    if ok { ok = slen(name) > 0 }
+    var e = p
+    while ok and e < n and str_space(src[e]) { e += 1 }
+    if ok { ok = e < n and (src[e] == ';' or src[e] == '[') }
+    if not ok { sb_puts(b, word);  i = at + wl;  continue }
+    if collect {
+      if shd_vary_index(name) < 0 { push(shd_vary, name) }
+      sb_puts(b, str_sub(src, at, p))
+    } else {
+      var loc = shd_vary_index(name)
+      # an input no vertex stage writes still needs a location of its own
+      if loc < 0 { loc = len(shd_vary) + extra;  extra += 1 }
+      sb_puts(b, `layout(location = {string(loc)}) {word} {ty} {name}`)
+    }
+    i = p
+  }
+  return sb_str(b)
+}
+
 var shd_noise: pointer = null
 var shd_lighting: pointer = null
 function shd_file(name: pointer) -> pointer {
@@ -177,8 +234,10 @@ function cmd_shaders() -> int {
     # and without it the compiler may compute their positions a hair apart and fail the test
     let vsrc = "#version 460\n" + defines + "invariant gl_Position;\n#define main ludic_gl_main\n" + shd_file(parts[0]) + depth_remap
     let fsrc = "#version 460\n" + defines + shd_noise + shd_lighting + shd_file(parts[1])
-    # one binding table for both stages
+    # one binding table for both stages, and one location table for the varyings between them
     shd_names = new []pointer
+    shd_vary = new []pointer
+    shd_bind_varyings(vsrc, "out", true)
     shd_bind_samplers(vsrc, true)
     shd_bind_samplers(fsrc, true)
     # name order, so the table does not depend on which stage met a sampler first
@@ -199,7 +258,9 @@ function cmd_shaders() -> int {
       var src = vsrc
       if stage == "frag" { src = fsrc }
       let glsl = `{tmp}/{id}.{stage}.glsl`
-      if not write_file(glsl, shd_bind_samplers(src, false)) { err(`shaders: cannot write {glsl}\n`);  return 1 }
+      var staged = shd_bind_samplers(src, false)
+      if stage == "vert" { staged = shd_bind_varyings(staged, "out", false) } else { staged = shd_bind_varyings(staged, "in", false) }
+      if not write_file(glsl, staged) { err(`shaders: cannot write {glsl}\n`);  return 1 }
       let spv = `{outdir}/{id}.{stage}.spv`
       var extra = ""
       if stage == "frag" { extra = " --shift-UBO-binding frag 1" }

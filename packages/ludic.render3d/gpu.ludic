@@ -738,7 +738,7 @@ function gpu_debug_check(tag: string) -> void { if gpu_kind == GPU_VK { return }
 
 function gpu_fb_new() -> int { if gpu_kind == GPU_VK { gvk_fb_counter += 1;  return gvk_fb_counter };  return gl_framebuffer() }
 function gpu_fb_bind(fb: int) -> void {
-  if gpu_kind == GPU_VK { if fb != gvk_fb_cur { gvk_pass_end() };  gvk_fb_cur = fb } else { gl_bind_framebuffer(GL_FRAMEBUFFER, fb) }
+  if gpu_kind == GPU_VK { gvk_rebind(fb) } else { gl_bind_framebuffer(GL_FRAMEBUFFER, fb) }
   gpu_fb_cur = fb
   gpu_glcheck_after("fb bind")
 }
