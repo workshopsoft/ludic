@@ -6,6 +6,7 @@
 
 # the size of each cascade's depth layer; shadow_set_res changes it at run time
 var shadow_res: int = 2048
+var shadow_refused: int = 0          # the last size the graphics card had no memory for (0: none)
 const SHADOW_CASCADES: int = 5
 
 var sh_tex: int = 0
@@ -42,10 +43,27 @@ function shadow_init() -> void {
 # texel size from the map itself, so nothing else has to follow.
 function shadow_set_res(r: int) -> void {
   if r < 256 or r == shadow_res { return }
+  let was = shadow_res
   shadow_res = r
   if sh_tex == 0 { return }
   gpu_tex_free(sh_tex)
   shadow_make_tex()
+  # not enough video memory for that size: go back to the one that worked, and smaller again if even
+  # that is refused now, rather than ending with no shadow map at all
+  if not gpu_tex_ok(sh_tex) {
+    shadow_refused = r
+    print(`r3d: shadows: no memory for {r} x {r} cascades; keeping {was}`)
+    var size = was
+    shadow_res = size
+    gpu_tex_free(sh_tex)
+    shadow_make_tex()
+    while not gpu_tex_ok(sh_tex) and size > 512 {
+      size = size / 2
+      shadow_res = size
+      gpu_tex_free(sh_tex)
+      shadow_make_tex()
+    }
+  }
 }
 
 function shadow_make_tex() -> void {

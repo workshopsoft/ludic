@@ -22,8 +22,27 @@ var gvk_has_surface: bool = false    # the instance and device can make a surfac
 
 function gvk_fail(what: string, r: int) -> bool {
   gvk_why = `{what} failed (VkResult {r})`
-  print(`r3d: vulkan: {gvk_why}`)
+  gvk_note(`r3d: vulkan: {gvk_why}`)
   return false
+}
+
+# A Vulkan failure is printed, and with R3D_VK_ERRLOG=<file> also appended to that file, opened and
+# closed for each line: stdout is buffered, and a crash straight after a failure (an image that was
+# never made, then used) used to take the one line that explained it with it.
+var gvk_errlog: string = null
+var gvk_errlog_read: bool = false
+function gvk_note(msg: string) -> void {
+  print(msg)
+  if not gvk_errlog_read {
+    gvk_errlog_read = true
+    if Os.has_env("R3D_VK_ERRLOG") { gvk_errlog = Os.env("R3D_VK_ERRLOG") }
+  }
+  if gvk_errlog == null { return }
+  let f = file_open(gvk_errlog, "ab")
+  if f == null { return }
+  let line = msg + "\n"
+  file_write(f, line, len(line))
+  file_close(f)
 }
 function gvk_handle(out: bytes) -> long { return Vk.get_i64(out, 0) }
 
@@ -241,6 +260,193 @@ function gvk_alloc(req: bytes, want: int) -> long {
   gvk_n_allocs += 1
   return gvk_handle(out)
 }
+
+# ---- sub-allocation ----------------------------------------------------------------------
+# Device memory in blocks, resources carved out of them: one vkAllocateMemory per resource met the
+# driver's limit in the self-tests' second world (8735 live allocations and a shadow map refused).
+# Blocks are 64 MB of device-local memory or of host-visible, kept apart for images and for
+# buffers (so the driver's granularity between the two never matters), first fit with alignment,
+# and a freed range merges with its neighbours. A host-visible block is mapped once; a buffer's
+# pointer is the block's plus its offset. Anything over 16 MB still gets an allocation of its own:
+# bigger blocks held back video memory a second world then could not get (a 4096^2 shadow map and
+# then its 2048^2 fallback were refused with 71 allocations live on an 8 GB card).
+# An allocation is an id (0 is none), kept where a memory handle used to be.
+const GVK_BLOCK_DEVICE: int = 67108864
+const GVK_BLOCK_HOST: int = 67108864
+const GVK_OWN_OVER: int = 16777216
+var gvk_blk_mem: []long = null
+var gvk_blk_kind: []int = null        # memory type * 2, + 1 for images
+var gvk_blk_size: []int = null
+var gvk_blk_map: []pointer = null
+var gvk_fr_blk: []int = null          # free ranges: block, offset, length (0 = an unused slot)
+var gvk_fr_off: []int = null
+var gvk_fr_len: []int = null
+var gvk_al_blk: []int = null          # per allocation id: its block, or -1 for its own memory
+var gvk_al_mem: []long = null         # its own memory when it has one
+var gvk_al_off: []int = null
+var gvk_al_len: []int = null
+var gvk_al_map: []pointer = null
+var gvk_al_spare: []int = null        # ids to reuse
+
+function gvk_mem_init() -> void {
+  if gvk_al_blk != null { return }
+  let zero: long = 0
+  gvk_blk_mem = new []long;  gvk_blk_kind = new []int;  gvk_blk_size = new []int;  gvk_blk_map = new []pointer
+  gvk_fr_blk = new []int;  gvk_fr_off = new []int;  gvk_fr_len = new []int
+  gvk_al_blk = new []int;  gvk_al_mem = new []long;  gvk_al_off = new []int;  gvk_al_len = new []int
+  gvk_al_map = new []pointer;  gvk_al_spare = new []int
+  push(gvk_al_blk, -1);  push(gvk_al_mem, zero);  push(gvk_al_off, 0);  push(gvk_al_len, 0);  push(gvk_al_map, null)
+}
+
+# one vkAllocateMemory of `size` bytes of memory type t, mapped when host-visible; 0 on failure
+function gvk_mem_raw(t: int, size: int, host: bool, out_map: []pointer) -> long {
+  let zero: long = 0
+  let mai = bytes(VkMemoryAllocateInfo_sizeof)
+  Vk.zero(mai, VkMemoryAllocateInfo_sizeof)
+  Vk.put_i32(mai, VkMemoryAllocateInfo_sType, VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO)
+  let size_l: long = size
+  Vk.put_i64(mai, VkMemoryAllocateInfo_allocationSize, size_l)
+  Vk.put_i32(mai, VkMemoryAllocateInfo_memoryTypeIndex, t)
+  let out = bytes(8)
+  let r = Vk.allocate_memory(gvk_dev, mai, null, out)
+  if r != VK_SUCCESS { gvk_note(`r3d: vulkan: vkAllocateMemory of {size} bytes failed (VkResult {r}, {gvk_n_allocs} allocations live)`);  return zero }
+  gvk_n_allocs += 1
+  let mem = gvk_handle(out)
+  out_map[0] = null
+  if host {
+    let pp = bytes(8)
+    if Vk.map_memory(gvk_dev, mem, zero, size_l, 0, pp) != VK_SUCCESS { gvk_note("r3d: vulkan: vkMapMemory failed");  return zero }
+    out_map[0] = Vk.get_ptr(pp, 0)
+  }
+  return mem
+}
+
+function gvk_fr_put(b: int, off: int, len_: int) -> void {
+  if len_ <= 0 { return }
+  for i in 0 .. len(gvk_fr_blk) { if gvk_fr_len[i] == 0 { gvk_fr_blk[i] = b;  gvk_fr_off[i] = off;  gvk_fr_len[i] = len_;  return } }
+  push(gvk_fr_blk, b);  push(gvk_fr_off, off);  push(gvk_fr_len, len_)
+}
+
+# Memory for a resource from its requirements (a VkMemoryRequirements): an allocation id, 0 if none.
+function gvk_mem_new(req: bytes, want: int, image: bool) -> int {
+  gvk_mem_init()
+  let allowed = Vk.get_i32(req, VkMemoryRequirements_memoryTypeBits)
+  var t = gvk_mem_type(allowed, want)
+  if t < 0 and want == VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT { t = gvk_mem_type(allowed, 0) }
+  if t < 0 { gvk_note(`r3d: vulkan: no memory type for properties {want}`);  return 0 }
+  let host = (want & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0
+  let size = Text.to_int(string(Vk.get_i64(req, VkMemoryRequirements_size)))
+  var align = Text.to_int(string(Vk.get_i64(req, VkMemoryRequirements_alignment)))
+  if align < 1 { align = 1 }
+  var blk = -1
+  var off = 0
+  let zero: long = 0
+  let mp = new []pointer
+  push(mp, null)
+  if size <= GVK_OWN_OVER {
+    var kind = t * 2
+    if image { kind += 1 }
+    var i = 0
+    while i < len(gvk_fr_blk) and blk < 0 {
+      let n = gvk_fr_len[i]
+      if n > 0 and gvk_blk_kind[gvk_fr_blk[i]] == kind {
+        let start = (gvk_fr_off[i] + align - 1) / align * align
+        let end = gvk_fr_off[i] + n
+        if start + size <= end {
+          blk = gvk_fr_blk[i];  off = start
+          let front = start - gvk_fr_off[i]
+          let back = end - (start + size)
+          if front > 0 { gvk_fr_len[i] = front } else { gvk_fr_len[i] = 0 }
+          gvk_fr_put(blk, start + size, back)
+        }
+      }
+      i += 1
+    }
+    if blk < 0 {
+      var bsize = GVK_BLOCK_DEVICE
+      if host { bsize = GVK_BLOCK_HOST }
+      let mem = gvk_mem_raw(t, bsize, host, mp)
+      if mem != 0 {
+        push(gvk_blk_mem, mem);  push(gvk_blk_kind, kind);  push(gvk_blk_size, bsize);  push(gvk_blk_map, mp[0])
+        blk = len(gvk_blk_mem) - 1;  off = 0
+        gvk_fr_put(blk, size, bsize - size)
+      }
+    }
+  }
+  var own: long = 0
+  var map: pointer = null
+  if blk < 0 {
+    own = gvk_mem_raw(t, size, host, mp)
+    if own == 0 { return 0 }
+    map = mp[0]
+  } else if gvk_blk_map[blk] != null {
+    map = mem_off(gvk_blk_map[blk], off)
+  }
+  var a = 0
+  if len(gvk_al_spare) > 0 {
+    a = gvk_al_spare[len(gvk_al_spare) - 1]
+    gvk_al_spare = gvk_list_drop_last(gvk_al_spare)
+  } else {
+    push(gvk_al_blk, -1);  push(gvk_al_mem, zero);  push(gvk_al_off, 0);  push(gvk_al_len, 0);  push(gvk_al_map, null)
+    a = len(gvk_al_blk) - 1
+  }
+  gvk_al_blk[a] = blk;  gvk_al_mem[a] = own;  gvk_al_off[a] = off;  gvk_al_len[a] = size;  gvk_al_map[a] = map
+  return a
+}
+
+function gvk_list_drop_last(l: []int) -> []int {
+  let out = new []int
+  for i in 0 .. len(l) - 1 { push(out, l[i]) }
+  return out
+}
+
+function gvk_mem_handle(a: int) -> long {
+  if gvk_al_blk[a] < 0 { return gvk_al_mem[a] }
+  return gvk_blk_mem[gvk_al_blk[a]]
+}
+function gvk_mem_offset(a: int) -> long {
+  let o: long = gvk_al_off[a]
+  return o
+}
+function gvk_mem_ptr(a: int) -> pointer { return gvk_al_map[a] }
+
+# give an allocation back: its own memory is freed, a range returns to its block and merges
+function gvk_mem_free(a: int) -> void {
+  if gvk_al_blk == null or a <= 0 or a >= len(gvk_al_blk) or gvk_al_len[a] == 0 { return }
+  let b = gvk_al_blk[a]
+  let zero: long = 0
+  if b < 0 {
+    if gvk_al_map[a] != null { Vk.unmap_memory(gvk_dev, gvk_al_mem[a]) }
+    Vk.free_memory(gvk_dev, gvk_al_mem[a], null)
+    gvk_n_allocs -= 1
+  } else {
+    var off = gvk_al_off[a]
+    var n = gvk_al_len[a]
+    # merge with a free range that ends where this starts, and one that starts where this ends
+    for i in 0 .. len(gvk_fr_blk) {
+      if gvk_fr_len[i] > 0 and gvk_fr_blk[i] == b and gvk_fr_off[i] + gvk_fr_len[i] == off {
+        off = gvk_fr_off[i];  n += gvk_fr_len[i];  gvk_fr_len[i] = 0
+      }
+    }
+    for i in 0 .. len(gvk_fr_blk) {
+      if gvk_fr_len[i] > 0 and gvk_fr_blk[i] == b and gvk_fr_off[i] == off + n {
+        n += gvk_fr_len[i];  gvk_fr_len[i] = 0
+      }
+    }
+    if off == 0 and n == gvk_blk_size[b] {
+      # the block is empty again: give it back, or a world swapped out keeps its memory for good
+      if gvk_blk_map[b] != null { Vk.unmap_memory(gvk_dev, gvk_blk_mem[b]) }
+      Vk.free_memory(gvk_dev, gvk_blk_mem[b], null)
+      gvk_n_allocs -= 1
+      gvk_blk_mem[b] = zero;  gvk_blk_map[b] = null;  gvk_blk_kind[b] = -1;  gvk_blk_size[b] = 0
+    } else {
+      gvk_fr_put(b, off, n)
+    }
+  }
+  gvk_al_len[a] = 0;  gvk_al_mem[a] = zero;  gvk_al_map[a] = null;  gvk_al_blk[a] = -1
+  push(gvk_al_spare, a)
+}
+function gvk_mem_id(x: long) -> int { return Text.to_int(string(x)) }
 
 # ---- one-shot commands --------------------------------------------------------------------
 # Uploads, bakes and read-backs record into a command buffer, submit it and wait. The frame

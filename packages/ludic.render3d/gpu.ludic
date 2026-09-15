@@ -623,6 +623,12 @@ function gpu_tx_at(tex: int) -> int {
 function gpu_bound(kind: int) -> int { if kind == GPU_TEX2D_ARRAY { return gpu_bound_array };  return gpu_bound_2d }
 
 function gpu_tex_new() -> int { if gpu_kind == GPU_VK { return gvk_tex_new() };  return gl_texture() }
+# does texture `tex` have an image behind it? Always on OpenGL; on Vulkan an image whose memory could
+# not be had is never made, and a caller that can fall back (a smaller shadow map) asks here.
+function gpu_tex_ok(tex: int) -> bool {
+  if gpu_kind != GPU_VK { return tex > 0 }
+  return tex > 0 and tex < len(gvk_tex_image) and gvk_tex_image[tex] != 0
+}
 # what GL has on each unit's 2D target, for R3D_GLCHECK: deleting a texture unbinds it everywhere
 var gpu_unit_2d: words = null
 var gpu_unit_cur: int = 0

@@ -100,6 +100,8 @@ function gvk_layout_access(layout: int) -> int {
 }
 # levels [base, base + n) of every layer of an image, from one layout to another
 function gvk_barrier(cb: pointer, image: long, depth: bool, base: int, n: int, layers: int, old_layout: int, new_layout: int) -> void {
+  # an image that was never made (its memory could not be had) has nothing to transition
+  if image == 0 { return }
   let b = bytes(VkImageMemoryBarrier_sizeof)
   Vk.zero(b, VkImageMemoryBarrier_sizeof)
   Vk.put_i32(b, VkImageMemoryBarrier_sType, VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER)
@@ -183,7 +185,8 @@ function gvk_tex_storage(tex: int, array: bool, ifmt: int, w: int, h: int, layer
   let image = gvk_handle(out)
   let req = bytes(VkMemoryRequirements_sizeof)
   Vk.get_image_memory_requirements(gvk_dev, image, req)
-  let mem = gvk_alloc(req, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
+  let ma = gvk_mem_new(req, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, true)
+  let mem: long = ma                    # the allocation id (gvk_mem_new), kept where the memory was
   let zero: long = 0
   # no memory for it (one allocation per resource meets the driver's allocation limit long before
   # the card is full): say so instead of binding a null allocation, which the driver may accept
@@ -191,7 +194,7 @@ function gvk_tex_storage(tex: int, array: bool, ifmt: int, w: int, h: int, layer
     Vk.destroy_image(gvk_dev, image, null)
     return gvk_fail(`no device memory for a {w}x{h}x{layers} image ({gvk_n_allocs} allocations live)`, VK_ERROR_OUT_OF_DEVICE_MEMORY)
   }
-  r = Vk.bind_image_memory(gvk_dev, image, mem, zero)
+  r = Vk.bind_image_memory(gvk_dev, image, gvk_mem_handle(ma), gvk_mem_offset(ma))
   if r != VK_SUCCESS { return gvk_fail("vkBindImageMemory", r) }
   let vci = bytes(VkImageViewCreateInfo_sizeof)
   Vk.zero(vci, VkImageViewCreateInfo_sizeof)
@@ -331,8 +334,7 @@ function gvk_tex_grow_mips(tex: int, w: int, h: int) -> bool {
   let ok = gvk_once_end(cb)
   Vk.destroy_image_view(gvk_dev, old_view, null)
   Vk.destroy_image(gvk_dev, old_image, null)
-  Vk.free_memory(gvk_dev, old_mem, null)
-  gvk_n_allocs -= 1
+  gvk_mem_free(gvk_mem_id(old_mem))
   return ok
 }
 
@@ -428,8 +430,7 @@ function gvk_tex_release(tex: int) -> void {
   let zero: long = 0
   Vk.destroy_image_view(gvk_dev, gvk_tex_view[tex], null)
   Vk.destroy_image(gvk_dev, gvk_tex_image[tex], null)
-  Vk.free_memory(gvk_dev, gvk_tex_mem[tex], null)
-  gvk_n_allocs -= 1
+  gvk_mem_free(gvk_mem_id(gvk_tex_mem[tex]))
   gvk_tex_image[tex] = zero;  gvk_tex_view[tex] = zero;  gvk_tex_mem[tex] = zero
   gvk_tex_levels[tex] = 0;  gvk_tex_layers[tex] = 0;  gvk_tex_vkfmt[tex] = 0
   gvk_tex_gen[tex] = gvk_tex_gen[tex] + 1
@@ -547,10 +548,8 @@ function gvk_buf_release(b: int) -> void {
     # a draw recorded this frame still reads it: destroy it once the frame has been submitted
     push(gvk_retired_buf, gvk_buf[b]);  push(gvk_retired_mem, gvk_buf_mem[b])
   } else {
-    Vk.unmap_memory(gvk_dev, gvk_buf_mem[b])
     Vk.destroy_buffer(gvk_dev, gvk_buf[b], null)
-    Vk.free_memory(gvk_dev, gvk_buf_mem[b], null)
-    gvk_n_allocs -= 1
+    gvk_mem_free(gvk_mem_id(gvk_buf_mem[b]))
   }
   gvk_buf[b] = zero;  gvk_buf_mem[b] = zero;  gvk_buf_size[b] = 0;  gvk_buf_map[b] = null;  gvk_buf_used[b] = 0
 }
@@ -558,10 +557,8 @@ function gvk_buf_release(b: int) -> void {
 function gvk_retire_flush() -> void {
   if gvk_retired_buf == null { return }
   for i in 0 .. len(gvk_retired_buf) {
-    Vk.unmap_memory(gvk_dev, gvk_retired_mem[i])
     Vk.destroy_buffer(gvk_dev, gvk_retired_buf[i], null)
-    Vk.free_memory(gvk_dev, gvk_retired_mem[i], null)
-    gvk_n_allocs -= 1
+    gvk_mem_free(gvk_mem_id(gvk_retired_mem[i]))
   }
   gvk_retired_buf = new []long
   gvk_retired_mem = new []long
@@ -599,15 +596,13 @@ function gvk_buf_reserve(b: int, n: int) -> bool {
   let buf = gvk_handle(out)
   let req = bytes(VkMemoryRequirements_sizeof)
   Vk.get_buffer_memory_requirements(gvk_dev, buf, req)
-  let mem = gvk_alloc(req, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
+  let ma = gvk_mem_new(req, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, false)
   let zero: long = 0
-  if mem == 0 { Vk.destroy_buffer(gvk_dev, buf, null);  return false }
-  r = Vk.bind_buffer_memory(gvk_dev, buf, mem, zero)
+  if ma == 0 { Vk.destroy_buffer(gvk_dev, buf, null);  return false }
+  let mem: long = ma
+  r = Vk.bind_buffer_memory(gvk_dev, buf, gvk_mem_handle(ma), gvk_mem_offset(ma))
   if r != VK_SUCCESS { return gvk_fail("vkBindBufferMemory", r) }
-  let pp = bytes(8)
-  r = Vk.map_memory(gvk_dev, mem, zero, size_l, 0, pp)
-  if r != VK_SUCCESS { return gvk_fail("vkMapMemory", r) }
-  gvk_buf[b] = buf;  gvk_buf_mem[b] = mem;  gvk_buf_size[b] = size;  gvk_buf_map[b] = Vk.get_ptr(pp, 0)
+  gvk_buf[b] = buf;  gvk_buf_mem[b] = mem;  gvk_buf_size[b] = size;  gvk_buf_map[b] = gvk_mem_ptr(ma)
   return true
 }
 

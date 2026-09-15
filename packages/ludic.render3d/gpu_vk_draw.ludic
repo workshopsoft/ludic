@@ -985,6 +985,8 @@ function gvk_view_of(tex: int, layer1: int) -> long {
 }
 # the layer range a barrier for an attachment covers: the whole image unless one layer is drawn
 function gvk_att_barrier(cb: pointer, tex: int, layer1: int, depth: bool, old_layout: int, new_layout: int) -> void {
+  # an attachment whose image was never made (no memory for it) has nothing to transition
+  if tex <= 0 or tex >= len(gvk_tex_image) or gvk_tex_image[tex] == 0 { return }
   let b = bytes(VkImageMemoryBarrier_sizeof)
   Vk.zero(b, VkImageMemoryBarrier_sizeof)
   Vk.put_i32(b, VkImageMemoryBarrier_sType, VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER)
@@ -1415,6 +1417,7 @@ function gvk_draw_indirect_now(m: Mesh, cmds: int, offset: int, n: int, count_bu
 }
 
 function gvk_draw_now(m: Mesh, first: int, count: int, instances: int) -> void {
+  if gvk_prof() { gvk_n_asked += 1 }
   gvk_draw(gpu_prog_cur, m, gvk_state_now(), first, count, instances, gpu_tx, GPU_TX_W, gpu_tx_cap, gpu_fb, gpu_fb_at(gvk_fb_cur))
 }
 
@@ -1664,6 +1667,7 @@ var gvk_us_pipe: long = 0
 var gvk_us_set: long = 0
 var gvk_us_draw: long = 0
 var gvk_n_draws: int = 0
+var gvk_n_asked: int = 0              # draws that reached gvk_draw_now: every one the renderer asked for
 var gvk_n_flush: int = 0
 var gvk_prof_frames: int = 0
 function gvk_prof() -> bool {
@@ -1679,9 +1683,14 @@ function gvk_prof_frame() -> void {
   let set = Text.to_int(string(gvk_us_set)) / f
   let draw = Text.to_int(string(gvk_us_draw)) / f
   print(`r3d: vulkan per frame: {gvk_n_draws / f} draws, {gvk_n_flush / f} flushes; pipelines {pipe / 1000}.{(pipe / 100) % 10} ms, sets {set / 1000}.{(set / 100) % 10} ms, inside draws {draw / 1000}.{(draw / 100) % 10} ms`)
+  # every draw asked for should have been made: a gap is a layer missing from the frame, which is how
+  # MoltenVK's refused skinned pipelines went unseen (the drawstats session found it by counting)
+  if gvk_n_asked != gvk_n_draws {
+    print(`r3d: vulkan: {(gvk_n_asked - gvk_n_draws) / f} draws a frame were asked for and not made ({gvk_n_asked / f} asked, {gvk_n_draws / f} made)`)
+  }
   let zero: long = 0
   gvk_us_pipe = zero;  gvk_us_set = zero;  gvk_us_draw = zero
-  gvk_n_draws = 0;  gvk_n_flush = 0;  gvk_prof_frames = 0
+  gvk_n_draws = 0;  gvk_n_asked = 0;  gvk_n_flush = 0;  gvk_prof_frames = 0
 }
 
 # ---- the pipeline cache, by integers -----------------------------------------------------------
