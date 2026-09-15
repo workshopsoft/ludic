@@ -33,6 +33,7 @@ program LudicDev {
   import "docgen_gen.ludic"
   import "docgen_check.ludic"
   import "glgen.ludic"
+  import "vkgen.ludic"
   import "assets.ludic"
   import "release.ludic"
   import "pkg.ludic"
@@ -69,6 +70,7 @@ program LudicDev {
     print("  docs-check [DIR]              coverage/integrity guard over a generated docs site")
     print("  docs-palette [--check]        regenerate emit_color.ludic + palette.json from the palette table")
     print("  glgen [--check]               regenerate gl_api.ludic + gl_thunks.ll from the platform gl3.h")
+    print("  vkgen [--xml f] [--check]     regenerate vk_api.ludic + vk_thunks.ll from the Vulkan registry")
     print("")
     print("release:")
     print("  release [major|minor|patch] [--dry-run] [--publish]")
@@ -106,6 +108,7 @@ program LudicDev {
     if (cmd == "lint-asset") { return cmd_lint_asset() }
     if (cmd == "docs-palette") { return cmd_docs_palette() }
     if (cmd == "glgen") { return cmd_glgen() }
+    if (cmd == "vkgen") { return cmd_vkgen() }
     if (cmd == "fetch-assets") { return cmd_fetch_assets() }
     if (cmd == "docs-gen") { return cmd_docs_gen() }
     if (cmd == "docs-check") { return cmd_docs_check() }

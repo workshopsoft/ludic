@@ -294,6 +294,15 @@ entry {
       cmd = `{cmd} {gl} {glt} -framework OpenGL`
     }
   }
+  # Vk.* links the generated thunks and the loader that fills them at run time:
+  # vk_win.ll (vulkan-1.dll) on Windows, vk_mac.ll (libvulkan.1.dylib, MoltenVK) on
+  # macOS. Neither links a Vulkan library, so the program starts without one.
+  if g_uses_vk {
+    let vkt = join_path(home, "runtime/native/vk_thunks.ll")
+    var vkl = join_path(home, "runtime/native/vk_mac.ll")
+    if g_target_win { vkl = join_path(home, "runtime/native/vk_win.ll") }
+    cmd = `{cmd} {vkt} {vkl}`
+  }
   # A shipped Windows game is a GUI-subsystem program: started from Explorer, a
   # console-subsystem one opens a console window behind the game. mainCRTStartup keeps
   # the C runtime's ordinary main() entry rather than WinMain.

@@ -1,0 +1,159 @@
+# vk_probe.ludic — what a machine's Vulkan can do, through the generated bindings.
+#
+# Opens the loader at run time, makes an instance (with portability enumeration
+# where the loader offers it, which is how MoltenVK is found on a Mac), and for
+# every GPU says whether it meets the Vulkan renderer's floor - Vulkan 1.3 with
+# dynamic rendering, synchronization2, descriptor indexing, buffer device
+# addresses, timeline semaphores and indirect count draws - and which optional
+# features it would take. Then it opens a device with a graphics queue.
+#   Windows: bin/ludicc examples/rendering/vk_probe.ludic --headless
+#              (Vk.* links the Vulkan runtime)
+#   macOS:   the same with vk_mac.ll, and VULKAN_SDK set to the SDK's macOS directory
+program VkProbe {
+
+  property Marker { on: int = 1 }
+  model Anchor { Marker }
+
+  const API_1_0: int = 4194304      # VK_MAKE_API_VERSION(0, 1, 0, 0)
+
+  function api_text(v: int) -> string { return `{(v >> 22) & 127}.{(v >> 12) & 1023}.{v & 4095}` }
+  function yes(b: bool) -> string { if b { return "yes" };  return "no " }
+
+  # a name in an array of VkExtensionProperties
+  function has_ext(props: bytes, n: int, want: string) -> bool {
+    for i in 0 .. n {
+      let at = vk_at(props, i * VkExtensionProperties_sizeof + VkExtensionProperties_extensionName)
+      if string(at) == want { return true }
+    }
+    return false
+  }
+
+  handler Boot phase Start {
+    spawn Anchor {}
+    if Vk.open() == 0 { print("vulkan: no loader on this machine - it would run OpenGL");  quit() }
+    let ver = bytes(4)
+    vk_put_i32(ver, 0, API_1_0)
+    if vk_has("vkEnumerateInstanceVersion") == 1 { vk_enumerate_instance_version(ver) }
+    print(`vulkan: loader {api_text(vk_get_i32(ver, 0))}`)
+
+    let cnt = bytes(4)
+    vk_put_i32(cnt, 0, 0)
+    vk_enumerate_instance_extension_properties(null, cnt, null)
+    let nie = vk_get_i32(cnt, 0)
+    let iexts = bytes(nie * VkExtensionProperties_sizeof + 8)
+    vk_enumerate_instance_extension_properties(null, cnt, iexts)
+    let portability = has_ext(iexts, nie, VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME)
+    let colorspace = has_ext(iexts, nie, VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME)
+
+    let app = bytes(VkApplicationInfo_sizeof)
+    vk_zero(app, VkApplicationInfo_sizeof)
+    vk_put_i32(app, VkApplicationInfo_sType, VK_STRUCTURE_TYPE_APPLICATION_INFO)
+    vk_put_ptr(app, VkApplicationInfo_pApplicationName, "Ludic")
+    vk_put_ptr(app, VkApplicationInfo_pEngineName, "Ludic")
+    vk_put_i32(app, VkApplicationInfo_apiVersion, (1 << 22) | (3 << 12))
+    let names = bytes(16)
+    var nnames = 0
+    if portability { vk_put_ptr(names, 0, VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);  nnames = 1 }
+    let ici = bytes(VkInstanceCreateInfo_sizeof)
+    vk_zero(ici, VkInstanceCreateInfo_sizeof)
+    vk_put_i32(ici, VkInstanceCreateInfo_sType, VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO)
+    vk_put_ptr(ici, VkInstanceCreateInfo_pApplicationInfo, app)
+    if portability { vk_put_i32(ici, VkInstanceCreateInfo_flags, VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR) }
+    vk_put_i32(ici, VkInstanceCreateInfo_enabledExtensionCount, nnames)
+    vk_put_ptr(ici, VkInstanceCreateInfo_ppEnabledExtensionNames, names)
+    let out = bytes(8)
+    let r = vk_create_instance(ici, null, out)
+    if r != VK_SUCCESS { print(`vulkan: vkCreateInstance failed, VkResult {r}`);  quit() }
+    let inst = vk_get_ptr(out, 0)
+    print(`vulkan: instance (portability {yes(portability)}, HDR colour spaces {yes(colorspace)})`)
+
+    vk_put_i32(cnt, 0, 0)
+    vk_enumerate_physical_devices(inst, cnt, null)
+    let ndev = vk_get_i32(cnt, 0)
+    let devs = bytes(ndev * 8 + 8)
+    vk_enumerate_physical_devices(inst, cnt, devs)
+    let props = bytes(VkPhysicalDeviceProperties_sizeof)
+    for d in 0 .. ndev {
+      let pd = vk_get_ptr(devs, d * 8)
+      vk_get_physical_device_properties(pd, props)
+      let api = vk_get_i32(props, VkPhysicalDeviceProperties_apiVersion)
+      print(`vulkan: device {d}: {string(vk_at(props, VkPhysicalDeviceProperties_deviceName))} (type {vk_get_i32(props, VkPhysicalDeviceProperties_deviceType)}, api {api_text(api)})`)
+
+      let f13 = bytes(VkPhysicalDeviceVulkan13Features_sizeof)
+      vk_zero(f13, VkPhysicalDeviceVulkan13Features_sizeof)
+      vk_put_i32(f13, VkPhysicalDeviceVulkan13Features_sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES)
+      let f12 = bytes(VkPhysicalDeviceVulkan12Features_sizeof)
+      vk_zero(f12, VkPhysicalDeviceVulkan12Features_sizeof)
+      vk_put_i32(f12, VkPhysicalDeviceVulkan12Features_sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES)
+      vk_put_ptr(f12, VkPhysicalDeviceVulkan12Features_pNext, f13)
+      let f2 = bytes(VkPhysicalDeviceFeatures2_sizeof)
+      vk_zero(f2, VkPhysicalDeviceFeatures2_sizeof)
+      vk_put_i32(f2, VkPhysicalDeviceFeatures2_sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2)
+      vk_put_ptr(f2, VkPhysicalDeviceFeatures2_pNext, f12)
+      vk_get_physical_device_features2(pd, f2)
+      let dyn = vk_get_i32(f13, VkPhysicalDeviceVulkan13Features_dynamicRendering) == 1
+      let sync2 = vk_get_i32(f13, VkPhysicalDeviceVulkan13Features_synchronization2) == 1
+      let bindless = vk_get_i32(f12, VkPhysicalDeviceVulkan12Features_descriptorIndexing) == 1 and vk_get_i32(f12, VkPhysicalDeviceVulkan12Features_runtimeDescriptorArray) == 1
+      let bda = vk_get_i32(f12, VkPhysicalDeviceVulkan12Features_bufferDeviceAddress) == 1
+      let timeline = vk_get_i32(f12, VkPhysicalDeviceVulkan12Features_timelineSemaphore) == 1
+      let indirect = vk_get_i32(f12, VkPhysicalDeviceVulkan12Features_drawIndirectCount) == 1
+      let major = (api >> 22) & 127
+      let minor = (api >> 12) & 1023
+      let is13 = major > 1 or (major == 1 and minor >= 3)
+      let floor = is13 and dyn and sync2 and bindless and bda and timeline and indirect
+      print(`vulkan:   floor (1.3): {yes(floor)} | api {yes(is13)} dynamic rendering {yes(dyn)} sync2 {yes(sync2)} bindless {yes(bindless)} buffer addresses {yes(bda)} timeline {yes(timeline)} indirect count {yes(indirect)}`)
+
+      vk_put_i32(cnt, 0, 0)
+      vk_enumerate_device_extension_properties(pd, null, cnt, null)
+      let nde = vk_get_i32(cnt, 0)
+      let dexts = bytes(nde * VkExtensionProperties_sizeof + 8)
+      vk_enumerate_device_extension_properties(pd, null, cnt, dexts)
+      let rt = has_ext(dexts, nde, VK_KHR_RAY_QUERY_EXTENSION_NAME) and has_ext(dexts, nde, VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME)
+      print(`vulkan:   optional: ray query {yes(rt)} | mesh shaders {yes(has_ext(dexts, nde, VK_EXT_MESH_SHADER_EXTENSION_NAME))} | opacity micromaps {yes(has_ext(dexts, nde, VK_EXT_OPACITY_MICROMAP_EXTENSION_NAME))} | shading rate {yes(has_ext(dexts, nde, VK_KHR_FRAGMENT_SHADING_RATE_EXTENSION_NAME))} | memory budget {yes(has_ext(dexts, nde, VK_EXT_MEMORY_BUDGET_EXTENSION_NAME))} | pipeline library {yes(has_ext(dexts, nde, VK_EXT_GRAPHICS_PIPELINE_LIBRARY_EXTENSION_NAME))} | Reflex {yes(has_ext(dexts, nde, VK_NV_LOW_LATENCY_2_EXTENSION_NAME))}`)
+
+      vk_put_i32(cnt, 0, 0)
+      vk_get_physical_device_queue_family_properties(pd, cnt, null)
+      let nq = vk_get_i32(cnt, 0)
+      let qprops = bytes(nq * VkQueueFamilyProperties_sizeof + 8)
+      vk_get_physical_device_queue_family_properties(pd, cnt, qprops)
+      var gfx = -1
+      var compute_only = -1
+      var transfer_only = -1
+      for q in 0 .. nq {
+        let flags = vk_get_i32(qprops, q * VkQueueFamilyProperties_sizeof + VkQueueFamilyProperties_queueFlags)
+        if gfx < 0 and (flags & VK_QUEUE_GRAPHICS_BIT) != 0 { gfx = q }
+        if compute_only < 0 and (flags & VK_QUEUE_GRAPHICS_BIT) == 0 and (flags & VK_QUEUE_COMPUTE_BIT) != 0 { compute_only = q }
+        if transfer_only < 0 and (flags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) == 0 and (flags & VK_QUEUE_TRANSFER_BIT) != 0 { transfer_only = q }
+      }
+      print(`vulkan:   queues: {nq} families, graphics {gfx}, dedicated compute {compute_only}, dedicated transfer {transfer_only}`)
+      if gfx >= 0 {
+        let prio = bytes(4)
+        vk_put_i32(prio, 0, 0x3F800000)
+        let qci = bytes(VkDeviceQueueCreateInfo_sizeof)
+        vk_zero(qci, VkDeviceQueueCreateInfo_sizeof)
+        vk_put_i32(qci, VkDeviceQueueCreateInfo_sType, VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO)
+        vk_put_i32(qci, VkDeviceQueueCreateInfo_queueFamilyIndex, gfx)
+        vk_put_i32(qci, VkDeviceQueueCreateInfo_queueCount, 1)
+        vk_put_ptr(qci, VkDeviceQueueCreateInfo_pQueuePriorities, prio)
+        let dci = bytes(VkDeviceCreateInfo_sizeof)
+        vk_zero(dci, VkDeviceCreateInfo_sizeof)
+        vk_put_i32(dci, VkDeviceCreateInfo_sType, VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO)
+        vk_put_i32(dci, VkDeviceCreateInfo_queueCreateInfoCount, 1)
+        vk_put_ptr(dci, VkDeviceCreateInfo_pQueueCreateInfos, qci)
+        let dout = bytes(8)
+        let dr = vk_create_device(pd, dci, null, dout)
+        if dr != VK_SUCCESS { print(`vulkan:   vkCreateDevice failed, VkResult {dr}`) }
+        else {
+          let dev = vk_get_ptr(dout, 0)
+          let qout = bytes(8)
+          vk_get_device_queue(dev, gfx, 0, qout)
+          print(`vulkan:   device opened, graphics queue {yes(vk_get_ptr(qout, 0) != null)}`)
+          vk_destroy_device(dev, null)
+        }
+      }
+    }
+    vk_destroy_instance(inst, null)
+    print("VKPROBE OK")
+    quit()
+  }
+}

@@ -1,0 +1,349 @@
+# vk_compute.ludic — the first work a Ludic program hands a GPU through Vulkan: a
+# Slang compute shader (vk_compute.slang) fills a storage buffer with a picture, the
+# CPU maps the buffer and writes it as a PPM. No window, so it runs headless over SSH
+# and under the validation layer.
+#
+# Every struct is filled by field name from the generated layouts (vk_api.ludic), and
+# every call goes through the generated thunks - this is the whole path the Vulkan
+# renderer will use, end to end: loader, instance, device, memory, shader module,
+# descriptor set, push constants, pipeline, command buffer, submit, fence, map.
+#   slangc examples/rendering/vk_compute.slang -target spirv -profile spirv_1_5
+#          -entry main -stage compute -o build/vk_compute.spv
+#   Windows: bin/ludicc examples/rendering/vk_compute.ludic --headless
+#            (Vk.* links the Vulkan runtime)
+#   macOS:   the same with vk_mac.ll; VULKAN_SDK set to the SDK's macOS directory
+program VkCompute {
+
+  property Marker { on: int = 1 }
+  model Anchor { Marker }
+
+  const W: int = 640
+  const H: int = 360
+
+  var dev: pointer = null
+
+  function fail(what: string, r: int) -> void { print(`vulkan: {what} failed, VkResult {r}`);  quit() }
+  function handle(out: bytes) -> long { return vk_get_i64(out, 0) }
+  function has_ext(props: bytes, n: int, want: string) -> bool {
+    for i in 0 .. n {
+      if string(vk_at(props, i * VkExtensionProperties_sizeof + VkExtensionProperties_extensionName)) == want { return true }
+    }
+    return false
+  }
+  function read_all(path: string) -> bytes {
+    let f = file_open(path, "rb")
+    if f == null { return null }
+    file_seek(f, 0, 2)
+    let n = file_tell(f)
+    file_seek(f, 0, 0)
+    let b = bytes(n + 4)
+    file_read(f, b, n)
+    file_close(f)
+    spv_len = n
+    return b
+  }
+  var spv_len: int = 0
+
+  handler Boot phase Start {
+    spawn Anchor {}
+    var spv_path = "build/vk_compute.spv"
+    if Os.has_env("VKC_SPV") { spv_path = Os.env("VKC_SPV") }
+    let spv = read_all(spv_path)
+    if spv == null { print(`vulkan: no SPIR-V at {spv_path} (compile vk_compute.slang with slangc)`);  quit() }
+    if Vk.open() == 0 { print("vulkan: no loader");  quit() }
+
+    # ---- instance (portability enumeration where offered: MoltenVK)
+    let cnt = bytes(4)
+    vk_put_i32(cnt, 0, 0)
+    vk_enumerate_instance_extension_properties(null, cnt, null)
+    let nie = vk_get_i32(cnt, 0)
+    let iexts = bytes(nie * VkExtensionProperties_sizeof + 8)
+    vk_enumerate_instance_extension_properties(null, cnt, iexts)
+    let portability = has_ext(iexts, nie, VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME)
+    let app = bytes(VkApplicationInfo_sizeof)
+    vk_zero(app, VkApplicationInfo_sizeof)
+    vk_put_i32(app, VkApplicationInfo_sType, VK_STRUCTURE_TYPE_APPLICATION_INFO)
+    vk_put_ptr(app, VkApplicationInfo_pApplicationName, "vk_compute")
+    vk_put_i32(app, VkApplicationInfo_apiVersion, (1 << 22) | (3 << 12))
+    let iext_names = bytes(8)
+    let ici = bytes(VkInstanceCreateInfo_sizeof)
+    vk_zero(ici, VkInstanceCreateInfo_sizeof)
+    vk_put_i32(ici, VkInstanceCreateInfo_sType, VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO)
+    vk_put_ptr(ici, VkInstanceCreateInfo_pApplicationInfo, app)
+    if portability {
+      vk_put_ptr(iext_names, 0, VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME)
+      vk_put_i32(ici, VkInstanceCreateInfo_flags, VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR)
+      vk_put_i32(ici, VkInstanceCreateInfo_enabledExtensionCount, 1)
+      vk_put_ptr(ici, VkInstanceCreateInfo_ppEnabledExtensionNames, iext_names)
+    }
+    let out = bytes(8)
+    var r = vk_create_instance(ici, null, out)
+    if r != VK_SUCCESS { fail("vkCreateInstance", r) }
+    let inst = vk_get_ptr(out, 0)
+
+    # ---- the first device, its first queue family that computes
+    vk_put_i32(cnt, 0, 1)
+    let devs = bytes(8)
+    vk_enumerate_physical_devices(inst, cnt, devs)
+    let pd = vk_get_ptr(devs, 0)
+    let props = bytes(VkPhysicalDeviceProperties_sizeof)
+    vk_get_physical_device_properties(pd, props)
+    print(`vulkan: {string(vk_at(props, VkPhysicalDeviceProperties_deviceName))}`)
+    vk_put_i32(cnt, 0, 0)
+    vk_get_physical_device_queue_family_properties(pd, cnt, null)
+    let nq = vk_get_i32(cnt, 0)
+    let qprops = bytes(nq * VkQueueFamilyProperties_sizeof + 8)
+    vk_get_physical_device_queue_family_properties(pd, cnt, qprops)
+    var family = -1
+    for q in 0 .. nq {
+      let flags = vk_get_i32(qprops, q * VkQueueFamilyProperties_sizeof + VkQueueFamilyProperties_queueFlags)
+      if family < 0 and (flags & VK_QUEUE_COMPUTE_BIT) != 0 { family = q }
+    }
+    vk_put_i32(cnt, 0, 0)
+    vk_enumerate_device_extension_properties(pd, null, cnt, null)
+    let nde = vk_get_i32(cnt, 0)
+    let dexts = bytes(nde * VkExtensionProperties_sizeof + 8)
+    vk_enumerate_device_extension_properties(pd, null, cnt, dexts)
+    let prio = bytes(4)
+    vk_put_i32(prio, 0, 0x3F800000)
+    let qci = bytes(VkDeviceQueueCreateInfo_sizeof)
+    vk_zero(qci, VkDeviceQueueCreateInfo_sizeof)
+    vk_put_i32(qci, VkDeviceQueueCreateInfo_sType, VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO)
+    vk_put_i32(qci, VkDeviceQueueCreateInfo_queueFamilyIndex, family)
+    vk_put_i32(qci, VkDeviceQueueCreateInfo_queueCount, 1)
+    vk_put_ptr(qci, VkDeviceQueueCreateInfo_pQueuePriorities, prio)
+    let dext_names = bytes(8)
+    let dci = bytes(VkDeviceCreateInfo_sizeof)
+    vk_zero(dci, VkDeviceCreateInfo_sizeof)
+    vk_put_i32(dci, VkDeviceCreateInfo_sType, VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO)
+    vk_put_i32(dci, VkDeviceCreateInfo_queueCreateInfoCount, 1)
+    vk_put_ptr(dci, VkDeviceCreateInfo_pQueueCreateInfos, qci)
+    # a portability driver must be told the program knows it is one
+    if has_ext(dexts, nde, "VK_KHR_portability_subset") {
+      vk_put_ptr(dext_names, 0, "VK_KHR_portability_subset")
+      vk_put_i32(dci, VkDeviceCreateInfo_enabledExtensionCount, 1)
+      vk_put_ptr(dci, VkDeviceCreateInfo_ppEnabledExtensionNames, dext_names)
+    }
+    r = vk_create_device(pd, dci, null, out)
+    if r != VK_SUCCESS { fail("vkCreateDevice", r) }
+    dev = vk_get_ptr(out, 0)
+    vk_get_device_queue(dev, family, 0, out)
+    let queue = vk_get_ptr(out, 0)
+
+    # ---- a host-visible storage buffer for the picture
+    let nbytes: long = W * H * 4
+    let bci = bytes(VkBufferCreateInfo_sizeof)
+    vk_zero(bci, VkBufferCreateInfo_sizeof)
+    vk_put_i32(bci, VkBufferCreateInfo_sType, VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO)
+    vk_put_i64(bci, VkBufferCreateInfo_size, nbytes)
+    vk_put_i32(bci, VkBufferCreateInfo_usage, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)
+    vk_put_i32(bci, VkBufferCreateInfo_sharingMode, VK_SHARING_MODE_EXCLUSIVE)
+    r = vk_create_buffer(dev, bci, null, out)
+    if r != VK_SUCCESS { fail("vkCreateBuffer", r) }
+    let buf = handle(out)
+    let req = bytes(VkMemoryRequirements_sizeof)
+    vk_get_buffer_memory_requirements(dev, buf, req)
+    let mp = bytes(VkPhysicalDeviceMemoryProperties_sizeof)
+    vk_get_physical_device_memory_properties(pd, mp)
+    let want = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+    let allowed = vk_get_i32(req, VkMemoryRequirements_memoryTypeBits)
+    var mtype = -1
+    for t in 0 .. vk_get_i32(mp, VkPhysicalDeviceMemoryProperties_memoryTypeCount) {
+      let pf = vk_get_i32(mp, VkPhysicalDeviceMemoryProperties_memoryTypes + t * VkMemoryType_sizeof + VkMemoryType_propertyFlags)
+      if mtype < 0 and ((allowed >> t) & 1) == 1 and (pf & want) == want { mtype = t }
+    }
+    if mtype < 0 { print("vulkan: no host-visible memory type");  quit() }
+    let mai = bytes(VkMemoryAllocateInfo_sizeof)
+    vk_zero(mai, VkMemoryAllocateInfo_sizeof)
+    vk_put_i32(mai, VkMemoryAllocateInfo_sType, VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO)
+    vk_put_i64(mai, VkMemoryAllocateInfo_allocationSize, vk_get_i64(req, VkMemoryRequirements_size))
+    vk_put_i32(mai, VkMemoryAllocateInfo_memoryTypeIndex, mtype)
+    r = vk_allocate_memory(dev, mai, null, out)
+    if r != VK_SUCCESS { fail("vkAllocateMemory", r) }
+    let mem = handle(out)
+    let zero: long = 0
+    r = vk_bind_buffer_memory(dev, buf, mem, zero)
+    if r != VK_SUCCESS { fail("vkBindBufferMemory", r) }
+
+    # ---- the shader, its layout, the pipeline
+    let smci = bytes(VkShaderModuleCreateInfo_sizeof)
+    vk_zero(smci, VkShaderModuleCreateInfo_sizeof)
+    vk_put_i32(smci, VkShaderModuleCreateInfo_sType, VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO)
+    let code_size: long = spv_len
+    vk_put_i64(smci, VkShaderModuleCreateInfo_codeSize, code_size)
+    vk_put_ptr(smci, VkShaderModuleCreateInfo_pCode, spv)
+    r = vk_create_shader_module(dev, smci, null, out)
+    if r != VK_SUCCESS { fail("vkCreateShaderModule", r) }
+    let module = handle(out)
+
+    let binding = bytes(VkDescriptorSetLayoutBinding_sizeof)
+    vk_zero(binding, VkDescriptorSetLayoutBinding_sizeof)
+    vk_put_i32(binding, VkDescriptorSetLayoutBinding_binding, 0)
+    vk_put_i32(binding, VkDescriptorSetLayoutBinding_descriptorType, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)
+    vk_put_i32(binding, VkDescriptorSetLayoutBinding_descriptorCount, 1)
+    vk_put_i32(binding, VkDescriptorSetLayoutBinding_stageFlags, VK_SHADER_STAGE_COMPUTE_BIT)
+    let dslci = bytes(VkDescriptorSetLayoutCreateInfo_sizeof)
+    vk_zero(dslci, VkDescriptorSetLayoutCreateInfo_sizeof)
+    vk_put_i32(dslci, VkDescriptorSetLayoutCreateInfo_sType, VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO)
+    vk_put_i32(dslci, VkDescriptorSetLayoutCreateInfo_bindingCount, 1)
+    vk_put_ptr(dslci, VkDescriptorSetLayoutCreateInfo_pBindings, binding)
+    let set_layouts = bytes(8)
+    r = vk_create_descriptor_set_layout(dev, dslci, null, set_layouts)
+    if r != VK_SUCCESS { fail("vkCreateDescriptorSetLayout", r) }
+
+    let pcr = bytes(VkPushConstantRange_sizeof)
+    vk_put_i32(pcr, VkPushConstantRange_stageFlags, VK_SHADER_STAGE_COMPUTE_BIT)
+    vk_put_i32(pcr, VkPushConstantRange_offset, 0)
+    vk_put_i32(pcr, VkPushConstantRange_size, 12)
+    let plci = bytes(VkPipelineLayoutCreateInfo_sizeof)
+    vk_zero(plci, VkPipelineLayoutCreateInfo_sizeof)
+    vk_put_i32(plci, VkPipelineLayoutCreateInfo_sType, VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO)
+    vk_put_i32(plci, VkPipelineLayoutCreateInfo_setLayoutCount, 1)
+    vk_put_ptr(plci, VkPipelineLayoutCreateInfo_pSetLayouts, set_layouts)
+    vk_put_i32(plci, VkPipelineLayoutCreateInfo_pushConstantRangeCount, 1)
+    vk_put_ptr(plci, VkPipelineLayoutCreateInfo_pPushConstantRanges, pcr)
+    r = vk_create_pipeline_layout(dev, plci, null, out)
+    if r != VK_SUCCESS { fail("vkCreatePipelineLayout", r) }
+    let layout = handle(out)
+
+    let cpci = bytes(VkComputePipelineCreateInfo_sizeof)
+    vk_zero(cpci, VkComputePipelineCreateInfo_sizeof)
+    vk_put_i32(cpci, VkComputePipelineCreateInfo_sType, VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO)
+    let st = VkComputePipelineCreateInfo_stage
+    vk_put_i32(cpci, st + VkPipelineShaderStageCreateInfo_sType, VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO)
+    vk_put_i32(cpci, st + VkPipelineShaderStageCreateInfo_stage, VK_SHADER_STAGE_COMPUTE_BIT)
+    vk_put_i64(cpci, st + VkPipelineShaderStageCreateInfo_module, module)
+    vk_put_ptr(cpci, st + VkPipelineShaderStageCreateInfo_pName, "main")
+    vk_put_i64(cpci, VkComputePipelineCreateInfo_layout, layout)
+    r = vk_create_compute_pipelines(dev, zero, 1, cpci, null, out)
+    if r != VK_SUCCESS { fail("vkCreateComputePipelines", r) }
+    let pipeline = handle(out)
+
+    # ---- the descriptor set that points the shader at the buffer
+    let psz = bytes(VkDescriptorPoolSize_sizeof)
+    vk_put_i32(psz, VkDescriptorPoolSize_type, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)
+    vk_put_i32(psz, VkDescriptorPoolSize_descriptorCount, 1)
+    let dpci = bytes(VkDescriptorPoolCreateInfo_sizeof)
+    vk_zero(dpci, VkDescriptorPoolCreateInfo_sizeof)
+    vk_put_i32(dpci, VkDescriptorPoolCreateInfo_sType, VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO)
+    vk_put_i32(dpci, VkDescriptorPoolCreateInfo_maxSets, 1)
+    vk_put_i32(dpci, VkDescriptorPoolCreateInfo_poolSizeCount, 1)
+    vk_put_ptr(dpci, VkDescriptorPoolCreateInfo_pPoolSizes, psz)
+    r = vk_create_descriptor_pool(dev, dpci, null, out)
+    if r != VK_SUCCESS { fail("vkCreateDescriptorPool", r) }
+    let pool = handle(out)
+    let dsai = bytes(VkDescriptorSetAllocateInfo_sizeof)
+    vk_zero(dsai, VkDescriptorSetAllocateInfo_sizeof)
+    vk_put_i32(dsai, VkDescriptorSetAllocateInfo_sType, VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO)
+    vk_put_i64(dsai, VkDescriptorSetAllocateInfo_descriptorPool, pool)
+    vk_put_i32(dsai, VkDescriptorSetAllocateInfo_descriptorSetCount, 1)
+    vk_put_ptr(dsai, VkDescriptorSetAllocateInfo_pSetLayouts, set_layouts)
+    let sets = bytes(8)
+    r = vk_allocate_descriptor_sets(dev, dsai, sets)
+    if r != VK_SUCCESS { fail("vkAllocateDescriptorSets", r) }
+    let dbi = bytes(VkDescriptorBufferInfo_sizeof)
+    vk_put_i64(dbi, VkDescriptorBufferInfo_buffer, buf)
+    vk_put_i64(dbi, VkDescriptorBufferInfo_offset, zero)
+    vk_put_i64(dbi, VkDescriptorBufferInfo_range, nbytes)
+    let wds = bytes(VkWriteDescriptorSet_sizeof)
+    vk_zero(wds, VkWriteDescriptorSet_sizeof)
+    vk_put_i32(wds, VkWriteDescriptorSet_sType, VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET)
+    vk_put_i64(wds, VkWriteDescriptorSet_dstSet, vk_get_i64(sets, 0))
+    vk_put_i32(wds, VkWriteDescriptorSet_dstBinding, 0)
+    vk_put_i32(wds, VkWriteDescriptorSet_descriptorCount, 1)
+    vk_put_i32(wds, VkWriteDescriptorSet_descriptorType, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)
+    vk_put_ptr(wds, VkWriteDescriptorSet_pBufferInfo, dbi)
+    vk_update_descriptor_sets(dev, 1, wds, 0, null)
+
+    # ---- record, submit, wait
+    let cpi = bytes(VkCommandPoolCreateInfo_sizeof)
+    vk_zero(cpi, VkCommandPoolCreateInfo_sizeof)
+    vk_put_i32(cpi, VkCommandPoolCreateInfo_sType, VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO)
+    vk_put_i32(cpi, VkCommandPoolCreateInfo_queueFamilyIndex, family)
+    r = vk_create_command_pool(dev, cpi, null, out)
+    if r != VK_SUCCESS { fail("vkCreateCommandPool", r) }
+    let cmd_pool = handle(out)
+    let cbai = bytes(VkCommandBufferAllocateInfo_sizeof)
+    vk_zero(cbai, VkCommandBufferAllocateInfo_sizeof)
+    vk_put_i32(cbai, VkCommandBufferAllocateInfo_sType, VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO)
+    vk_put_i64(cbai, VkCommandBufferAllocateInfo_commandPool, cmd_pool)
+    vk_put_i32(cbai, VkCommandBufferAllocateInfo_level, VK_COMMAND_BUFFER_LEVEL_PRIMARY)
+    vk_put_i32(cbai, VkCommandBufferAllocateInfo_commandBufferCount, 1)
+    let cbs = bytes(8)
+    r = vk_allocate_command_buffers(dev, cbai, cbs)
+    if r != VK_SUCCESS { fail("vkAllocateCommandBuffers", r) }
+    let cb = vk_get_ptr(cbs, 0)
+    let cbbi = bytes(VkCommandBufferBeginInfo_sizeof)
+    vk_zero(cbbi, VkCommandBufferBeginInfo_sizeof)
+    vk_put_i32(cbbi, VkCommandBufferBeginInfo_sType, VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO)
+    vk_put_i32(cbbi, VkCommandBufferBeginInfo_flags, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT)
+    r = vk_begin_command_buffer(cb, cbbi)
+    if r != VK_SUCCESS { fail("vkBeginCommandBuffer", r) }
+    vk_cmd_bind_pipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline)
+    vk_cmd_bind_descriptor_sets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, layout, 0, 1, sets, 0, null)
+    let pc = bytes(12)
+    vk_put_i32(pc, 0, 0x3FC00000)      # time = 1.5, as float bits
+    vk_put_i32(pc, 4, W)
+    vk_put_i32(pc, 8, H)
+    vk_cmd_push_constants(cb, layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, 12, pc)
+    vk_cmd_dispatch(cb, (W + 15) / 16, (H + 15) / 16, 1)
+    r = vk_end_command_buffer(cb)
+    if r != VK_SUCCESS { fail("vkEndCommandBuffer", r) }
+
+    let fci = bytes(VkFenceCreateInfo_sizeof)
+    vk_zero(fci, VkFenceCreateInfo_sizeof)
+    vk_put_i32(fci, VkFenceCreateInfo_sType, VK_STRUCTURE_TYPE_FENCE_CREATE_INFO)
+    let fences = bytes(8)
+    r = vk_create_fence(dev, fci, null, fences)
+    if r != VK_SUCCESS { fail("vkCreateFence", r) }
+    let si = bytes(VkSubmitInfo_sizeof)
+    vk_zero(si, VkSubmitInfo_sizeof)
+    vk_put_i32(si, VkSubmitInfo_sType, VK_STRUCTURE_TYPE_SUBMIT_INFO)
+    vk_put_i32(si, VkSubmitInfo_commandBufferCount, 1)
+    vk_put_ptr(si, VkSubmitInfo_pCommandBuffers, cbs)
+    r = vk_queue_submit(queue, 1, si, vk_get_i64(fences, 0))
+    if r != VK_SUCCESS { fail("vkQueueSubmit", r) }
+    let forever: long = -1
+    r = vk_wait_for_fences(dev, 1, fences, 1, forever)
+    if r != VK_SUCCESS { fail("vkWaitForFences", r) }
+    print(`vulkan: dispatched {(W + 15) / 16}x{(H + 15) / 16} groups and waited for the fence`)
+
+    # ---- read the picture back
+    let pp = bytes(8)
+    r = vk_map_memory(dev, mem, zero, nbytes, 0, pp)
+    if r != VK_SUCCESS { fail("vkMapMemory", r) }
+    let px = vk_get_ptr(pp, 0)
+    var out_path = "build/vk_compute.ppm"
+    if Os.has_env("VKC_OUT") { out_path = Os.env("VKC_OUT") }
+    let f = file_open(out_path, "wb")
+    let hdr = `P6\n{W} {H}\n255\n`
+    file_write(f, hdr, len(hdr))
+    let row = bytes(W * 3)
+    var lit = 0
+    for y in 0 .. H {
+      for x in 0 .. W {
+        let v = vk_get_i32(px, (y * W + x) * 4)
+        row[x * 3] = v & 255;  row[x * 3 + 1] = (v >> 8) & 255;  row[x * 3 + 2] = (v >> 16) & 255
+        if ((v >> 24) & 255) == 255 { lit += 1 }
+      }
+      file_write(f, row, W * 3)
+    }
+    file_close(f)
+    vk_unmap_memory(dev, mem)
+    print(`vulkan: {lit} of {W * H} pixels written by the shader -> {out_path}`)
+
+    vk_destroy_fence(dev, vk_get_i64(fences, 0), null)
+    vk_destroy_command_pool(dev, cmd_pool, null)
+    vk_destroy_descriptor_pool(dev, pool, null)
+    vk_destroy_pipeline(dev, pipeline, null)
+    vk_destroy_pipeline_layout(dev, layout, null)
+    vk_destroy_descriptor_set_layout(dev, vk_get_i64(set_layouts, 0), null)
+    vk_destroy_shader_module(dev, module, null)
+    vk_destroy_buffer(dev, buf, null)
+    vk_free_memory(dev, mem, null)
+    vk_destroy_device(dev, null)
+    vk_destroy_instance(inst, null)
+    if lit == W * H { print("VKCOMPUTE OK") } else { print("VKCOMPUTE INCOMPLETE") }
+    quit()
+  }
+}
