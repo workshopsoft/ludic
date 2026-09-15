@@ -118,7 +118,27 @@ function prefab_record(name: pointer, cn: pointer) -> Node {
   return merge_records(prefab_record(p.ty, cn), spawn_record(p, cn))
 }
 
+# The threads rule's debug guard: a Job.parallel_for worker computes on what it was handed and
+# never changes the world, so spawn and despawn stop the program when a pool thread reaches them.
+# Emitted only into programs that use Job/Promise/Sync, which are the only ones with a pool.
+function emit_worker_guard(what: pointer, line: int) -> void {
+  if not g_uses_jobs { return }
+  g_uses_panic = true
+  let w = emit_bind("call i32 @thr_is_worker()")
+  let on = emit_bind(`icmp ne i32 {w}, 0`)
+  let lok = lbl("wgok");  let lbad = lbl("wgbad")
+  emit(`  br i1 {on}, label %{lbad}, label %{lok}\n`)
+  emit(`{lbad}:\n`)
+  let prefix = emit_str_const(`{g_src_name}:{itoa(line)}: panic: `)
+  let m = emit_str_const(`{what} on a Job.parallel_for worker thread (workers must not change the world)`)
+  let se = emit_bind(stdstream_rhs(2))
+  emit(`  call i32 (ptr, ptr, ...) @fprintf(ptr {se}, ptr @.fmt_panic, ptr {prefix}, ptr {m})\n`)
+  emit("  call void @exit(i32 1)\n  unreachable\n")
+  emit(`{lok}:\n`)
+}
+
 function emit_spawn(st: Node) -> pointer {
+  emit_worker_guard("spawn", st.line)
   let e = emit_bind("call i32 @L_alloc()")
   let model = spawn_model(st.s)
   let ak = find_arch_id(model)
@@ -153,6 +173,7 @@ function emit_spawn(st: Node) -> pointer {
 }
 
 function emit_despawn(st: Node) -> void {
+  emit_worker_guard("despawn", st.line)
   let v = emit_expr(st.a)
   # @OnDespawn: dispatch on the entity's kind and run the matching model's hook
   if len(g_ondespawn) > 0 {

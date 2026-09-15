@@ -37,6 +37,7 @@ const E_TRY:    int = 52         # try EXPR else { ... } — recover a fallible 
                                  #   a=the fallible (result-typed) expression  b=else block (its
                                  #   trailing expression is the fallback)  line=source line
 const E_LIST:   int = 54         # [a, b, c] — a slice literal; kids=the elements, all of one type
+const E_FNREF:  int = 55         # fn name — a top-level function as a value (s=the name); a worker entry point
 # statements
 const S_LET:      int = 10
 const S_ASSIGN:   int = 11

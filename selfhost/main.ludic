@@ -267,6 +267,12 @@ entry {
   # reached by name). Works headless too, so it is outside the windowed block —
   # macOS-only for now, which is where the toolchain runs.
   # On Windows the transport is http_win.ll, over WinHTTP.
+  # Job.* / Promise.* / Sync.* link the OS threads behind Job.parallel_for and Sync.*:
+  # threads.ll (pthreads) or threads_win.ll (Win32).
+  if g_uses_jobs {
+    if g_target_win { cmd = `{cmd} {join_path(home, "runtime/native/threads_win.ll")}` }
+    else { cmd = `{cmd} {join_path(home, "runtime/native/threads.ll")}` }
+  }
   if g_uses_http {
     if g_target_win {
       let httpw = join_path(home, "runtime/native/http_win.ll")

@@ -665,6 +665,8 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "error")     { bare = "job_error";    push(labels, "handle") }
     if (meth == "pending")   { bare = "job_pending" }
     if (meth == "free")      { bare = "job_free";     push(labels, "handle") }
+    if (meth == "parallel_for") { bare = "job_parallel_for";  push(labels, "count"); push(labels, "work"); push(labels, "ctx") }
+    if (meth == "is_worker") { bare = "job_is_worker" }
   }
   if (ns == "Promise") {
     if (meth == "all")        { bare = "prom_all";        push(labels, "handles") }
@@ -1363,6 +1365,16 @@ function emit_expr(e: Node) -> Val {
     return emit_new_struct(e.s, e.a)
   }
   if e.kind == E_LIST { return emit_list(e) }        # [a, b, c] -> a fresh slice
+  # fn name -> the function's address, for a worker entry point. The OS-thread runtime calls it
+  # as void(i32, ptr), so that is the only signature a reference may have.
+  if e.kind == E_FNREF {
+    let d = find_fn(e.s)
+    if d == null { perr(`fn {e.s}: no function called {e.s}`) }
+    var ok = len(d.kids) == 2 and llty(d.ty) == "void"
+    if ok { ok = llty(d.kids[0].ty) == "i32" and llty(d.kids[1].ty) == "ptr" }
+    if not ok { perr(`fn {e.s}: a worker function takes (i: int, ctx: pointer) and returns nothing`) }
+    return val(`@fn_{e.s}`, "pointer")
+  }
   if e.kind == E_ID {
     let li = loc_find(e.s)
     if li >= 0 { return emit_load_at(loc_reg[li], loc_ty[li]) }

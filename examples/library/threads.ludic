@@ -1,0 +1,54 @@
+# threads.ludic — Job.parallel_for on real OS threads, with Sync.* made safe to share.
+# Each assertion that holds prints its number, so a full run prints:
+#   1 2 3 4 5 6 7
+# A worker is a top-level function taking (i: int, ctx: pointer-like) that computes on what ctx
+# points at; `fn name` passes it. Workers never touch the world or a list another thread can see.
+program Threads {
+  const N: int = 20000
+
+  var calls: int = 0        # an atomic handle, made on the main thread before any work
+  var lock: int = 0         # a mutex handle
+  var total: long = 0       # guarded by `lock`
+
+  # out[i] = i * i: every index written exactly once, by whichever thread claimed it
+  function square(i: int, out: words) -> void { out[i] = i * i }
+
+  # count the call atomically, and add i to a shared total under the mutex
+  function tally(i: int, ctx: pointer) -> void {
+    Sync.add(calls, 1)
+    Sync.lock(lock)
+    total = total + i
+    Sync.unlock(lock)
+  }
+
+  # remember which calls ran on a pool thread
+  function placed(i: int, out: words) -> void { if Job.is_worker() { out[i] = 1 } else { out[i] = 0 } }
+
+  entry {
+    if Sync.cpu_count() >= 1 { print(1) }
+    if not Job.is_worker() { print(2) }
+
+    let sq = words(N)
+    Job.parallel_for(N, fn square, sq)
+    var right = true
+    for i in 0 .. N { if sq[i] != i * i { right = false } }
+    if right { print(3) }
+
+    calls = Sync.atomic()
+    lock = Sync.mutex()
+    Job.parallel_for(N, fn tally, null)
+    if Sync.get(calls) == N { print(4) }
+    let want: long = N * (N - 1) / 2
+    if total == want { print(5) }
+
+    let ran = words(N)
+    Job.parallel_for(N, fn placed, ran)
+    var pooled = 0
+    for i in 0 .. N { pooled += ran[i] }
+    # with more than one core some calls ran on workers; with one, all ran here
+    if (Sync.cpu_count() > 1 and pooled > 0) or (Sync.cpu_count() == 1 and pooled == 0) { print(6) }
+
+    Job.parallel_for(0, fn square, sq)       # nothing to do: returns at once
+    print(7)
+  }
+}

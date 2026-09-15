@@ -125,7 +125,7 @@ function cmd_sh_compile(shbin: pointer, in: pointer, outbin: pointer) -> int {
 function game_build_ok(shbin: pointer, game: pointer, outbin: pointer) -> bool {
   let ll = `{outbin}.ll`
   if not shq(`{shbin} {game} > {ll} 2>{tmp_dir()}/gb.err`) { return false }
-  if not shq(`{cc()} -O2 {ll} -o {outbin} 2>{tmp_dir()}/gb.err`) { return false }
+  if not shq(`{cc()} -O2 {ll}{threads_link_flags(ll)} -o {outbin} 2>{tmp_dir()}/gb.err`) { return false }
   shell(`rm -f {ll}`)
   return true
 }

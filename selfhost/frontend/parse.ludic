@@ -192,6 +192,8 @@ function p_primary() -> Node {
     if (t.text == "null")  { pi += 1; return node(E_NULL) }
     if (t.text == "new")   { pi += 1;  let n = node(E_NEW); n.s = ptype();  if is_op("{") { n.a = record() };  return n }
     if (t.text == "spawn") { return parse_spawn() }    # spawn as an expression: the new entity
+    # fn name — a top-level function as a value, for a worker entry point (Job.parallel_for)
+    if (t.text == "fn") and (toks[pi + 1].kind == TK_ID) { pi += 1;  let n = node(E_FNREF);  n.line = t.line;  n.s = eat_id();  return n }
     # try EXPR else { ... } — evaluate a fallible (result-typed) expression; on
     # `ok` the whole expression is its payload, on `err` the else block runs (with
     # the message bound to `error`) and its trailing expression is the fallback.
