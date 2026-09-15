@@ -387,9 +387,21 @@ function terrain_load_textures() -> void {
 }
 
 function terrain_init() -> void {
-  terrain_generate()
-  terrain_bake_shadow()
-  terrain_load_textures()
+  for i in 0 .. TERRAIN_INIT_STEPS { terrain_init_step(i) }
+}
+
+# The terrain's start-up as steps a loading screen can show between, in terrain_init's order:
+# 0 the height field and its normals (and the read-back for placement), 1 the sun's height-field
+# shadow, 2 the ground's materials, 3 the patch tree and the terrain programs.
+const TERRAIN_INIT_STEPS: int = 4
+function terrain_init_step(i: int) -> void {
+  if i == 0 { terrain_generate();  return }
+  if i == 1 { terrain_bake_shadow();  return }
+  if i == 2 { terrain_load_textures();  return }
+  terrain_init_finish()
+}
+
+function terrain_init_finish() -> void {
   cdlod_init()
   ter_wire = Os.has_env("R3D_WIRE")
   ter_force_far = Os.has_env("R3D_TFARONLY")

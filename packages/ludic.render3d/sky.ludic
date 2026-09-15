@@ -21,6 +21,12 @@ var sky_sun_boost: int = 0x40133333   # 2.3: the photograph's thin cloud dims it
 var sky_rot_s: int = 0
 var sky_rot_c: int = 0
 var sun_hdri: words = null        # the sun direction as found in the file
+# The yaw to bake the light at the first time (radians, float bits). A game that turns the sky at
+# start sets it before r3d_init, so the image-based light is baked once at that yaw rather than at
+# 0 and then again - which is what sky_set_yaw at boot used to cost.
+var sky_start_yaw: int = 0
+var sky_baked: bool = false      # the IBL set exists, baked at sky_baked_yaw
+var sky_baked_yaw: int = 0
 var sky_p_irr: int = 0
 var sky_p_pre: int = 0
 var sky_p_brdf: int = 0
@@ -31,6 +37,8 @@ function sky_set_yaw(yaw: int) -> void {
   # world sun = rotY(sun_hdri, -yaw): the lookup rotates a world direction by +yaw
   let s = sun_hdri
   v3_set(sun_dir, f_sub(f_mul(sky_rot_c, s[0]), f_mul(sky_rot_s, s[2])), s[1], f_add(f_mul(sky_rot_s, s[0]), f_mul(sky_rot_c, s[2])))
+  # the light is already baked at this yaw: turning to it again bakes nothing
+  if sky_baked and yaw == sky_baked_yaw { return }
   sky_precompute()
 }
 # turn only the visible sky image (cheap, per frame): the light and the convolved
@@ -64,7 +72,7 @@ function sky_load(path: string) -> bool {
   print(`sun irradiance: {f_fx(hdr_sun_r)} {f_fx(hdr_sun_g)} {f_fx(hdr_sun_b)} (Q16.16), clip {f_fx(hdr_clip)}`)
   print(`sky: {sky_w}x{sky_h}, sun at texel {hdr_max_x},{hdr_max_y}`)
   sky_fullscreen = mesh_fullscreen()
-  sky_precompute()
+  if sky_start_yaw != 0 { sky_set_yaw(sky_start_yaw) } else { sky_precompute() }
   return true
 }
 
@@ -124,6 +132,8 @@ function sky_precompute() -> void {
   let p_brdf = sky_p_brdf
   sky_brdf = tex_target(256, 256, GL_RG16F, GL_RG, GL_FLOAT, GL_LINEAR)
   sky_convolve(p_brdf, sky_brdf, -1, 256, 256, F_ZERO)
+  sky_baked = true
+  sky_baked_yaw = sky_yaw
   gpu_check("sky precompute")
 }
 

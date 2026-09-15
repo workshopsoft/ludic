@@ -93,24 +93,28 @@ function r3d_open(w: int, h: int, title: string) -> bool {
 }
 
 # The load, as steps a loading screen can show between: 0 the sky and its image-based light,
-# 1 the terrain (height, normals, shadow, materials), 2 the shadow maps and the screen targets,
-# 3 the scattered cover and the actors, 4 the grass and the sky pass. The order is r3d_init's.
-function r3d_load_count() -> int { return 5 }
+# 1 - 4 the terrain (the height field and normals, its sun shadow, its materials, its patches and
+# programs), 5 the shadow maps and the screen targets, 6 the scattered cover and the actors, 7 the
+# grass and the sky pass. The order is r3d_init's.
+function r3d_load_count() -> int { return 4 + TERRAIN_INIT_STEPS }
 function r3d_load_step(i: int) -> bool {
+  let t = i - 1
   if i == 0 {
     if not sky_load(r3d_assets + "/hdri/kloofendal_48d_partly_cloudy_puresky_4k.hdr") { return false }
     daylight_init()
-  } else if i == 1 {
-    if r3d_dem_path != null { terrain_use_dem(r3d_dem_path, r3d_dem_min, r3d_dem_max, r3d_dem_base, r3d_dem_ox, r3d_dem_oz) }
-    if r3d_ortho_path != null { terrain_use_ortho(r3d_ortho_path) }
-    terrain_init()
-  } else if i == 2 {
+  } else if t >= 0 and t < TERRAIN_INIT_STEPS {
+    if t == 0 {
+      if r3d_dem_path != null { terrain_use_dem(r3d_dem_path, r3d_dem_min, r3d_dem_max, r3d_dem_base, r3d_dem_ox, r3d_dem_oz) }
+      if r3d_ortho_path != null { terrain_use_ortho(r3d_ortho_path) }
+    }
+    terrain_init_step(t)
+  } else if i == 1 + TERRAIN_INIT_STEPS {
     shadow_init()
     post_init(gl_w, gl_h)
-  } else if i == 3 {
+  } else if i == 2 + TERRAIN_INIT_STEPS {
     scatter_init()
     actor_init()
-  } else if i == 4 {
+  } else if i == 3 + TERRAIN_INIT_STEPS {
     grass_init()
     r3d_sky_prog = r3d_program("fullscreen.vert", "sky.frag", "")
     r3d_fog_density = fl(0.00014)

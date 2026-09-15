@@ -332,8 +332,12 @@ function actor_draw_casters(light_vp: words) -> void {
     let a = ac_actors[i]
     if not ac_visible(a, true) { continue }
     if a.radius != 0 {
-      let r = f_mul(a.radius, a.scale)
-      if not ac_in_light(light_vp, a.x, f_add(a.y, r), a.z, f_mul(r, fl(1.5))) { continue }
+      # the radius is the horizontal extent: a person is far taller than wide, so the sphere is
+      # centred at half the model's height and reaches the larger of the two, with a margin for
+      # the pose (a first version centred it at the radius and dropped a head at a cascade's edge)
+      let hh = f_mul(f_mul(a.model.height, F_HALF), a.scale)
+      let r = f_max(f_mul(a.radius, a.scale), hh)
+      if not ac_in_light(light_vp, a.x, f_add(a.y, hh), a.z, f_mul(r, fl(1.5))) { continue }
     }
     var ap = ac_sh
     if a.cutout { ap = ac_sh_cut }
