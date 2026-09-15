@@ -445,7 +445,7 @@ function impostor_bake(model: Model, tiles: int, tw: int, th: int) -> Impostor {
   let hh = f_mul(model.height, F_HALF)
   var bake = sc_bake_prog
   if sc_bake_flower { bake = sc_bake_flower_prog }
-  gl_use_program(bake)
+  gpu_use_program(bake)
   for t in 0 .. tiles {
     let a = f_mul(f_mul(F_TWO, F_PI), fr(t, tiles))
     v3_set(at, F_ZERO, cy, F_ZERO)
@@ -772,7 +772,7 @@ function layer_draw_near(l: Layer, shadow: bool, light_vp: words, full: bool) ->
 function layer_draw_model(l: Layer, model: Model, vb: int, cnt: int, card: bool, shadow: bool, light_vp: words) -> void {
   if cnt == 0 { return }
   let p = layer_program(l, shadow, card)
-  gl_use_program(p)
+  gpu_use_program(p)
   # over the prepass: only the fragment the prepass kept, at exactly its depth (a texel
   # it cut would otherwise pass LEQUAL over the terrain behind and draw the quad solid)
   if p == sc_prog_fol_eq { gpu_depth_func(GL_EQUAL) }
@@ -831,7 +831,7 @@ function layer_draw_far(l: Layer, shadow: bool, light_vp: words) -> void {
   if l.n_far == 0 or l.imp == null { return }
   var p = sc_imp_prog
   if shadow { p = sc_imp_prog_shadow }
-  gl_use_program(p)
+  gpu_use_program(p)
   let im = l.imp
   u_f(gpu_uniform(p, "u_radius"), im.radius)
   u_f(gpu_uniform(p, "u_height"), im.height)
@@ -867,7 +867,7 @@ function layer_draw_far(l: Layer, shadow: bool, light_vp: words) -> void {
 function layer_draw_shadow(l: Layer, light_vp: words) -> void {
   if l.n_sh == 0 or l.imp == null { return }
   let p = sc_imp_prog_shadow
-  gl_use_program(p)
+  gpu_use_program(p)
   let im = l.imp
   u_f(gpu_uniform(p, "u_radius"), im.radius)
   u_f(gpu_uniform(p, "u_height"), im.height)
@@ -891,7 +891,7 @@ var sc_skip_card: bool = false
 function layer_draw_depth(l: Layer, model: Model, vb: int, cnt: int) -> void {
   if cnt == 0 or model == null or vb == 0 { return }
   let p = sc_prog_fol_depth
-  gl_use_program(p)
+  gpu_use_program(p)
   var ground = F_ZERO
   if l.grounded { ground = F_ONE }
   u_f(gpu_uniform(p, "u_ground"), ground)
@@ -1028,7 +1028,7 @@ function carpet_bake(layers: []Layer, count: int, tile: int, res: int) -> int {
   m4_look_at(view, eye, at, up)
   m4_ortho(proj, f_neg(half), half, f_neg(half), half, fl(0.1), fi(12))
   let bake = sc_bake_card_prog
-  gl_use_program(bake)
+  gpu_use_program(bake)
   u_mat4(gpu_uniform(bake, "u_view"), view)
   u_mat4(gpu_uniform(bake, "u_proj"), proj)
   u_f(gpu_uniform(bake, "u_wind"), F_ZERO)

@@ -72,7 +72,7 @@ function ac_prog_new(vs: string, fs: string, defs: string) -> AcProg {
   a.l_view = gpu_uniform(p, "u_view");  a.l_proj = gpu_uniform(p, "u_proj");  a.l_mh = gpu_uniform(p, "u_model_h")
   a.l_out = gpu_uniform(p, "u_outline");  a.l_ocol = gpu_uniform(p, "u_outline_col")
   # the samplers never move: units 0, 1, 2
-  gl_use_program(p)
+  gpu_use_program(p)
   u_i(gpu_uniform(p, "u_diff"), 0);  u_i(gpu_uniform(p, "u_nrm"), 1);  u_i(gpu_uniform(p, "u_arm"), 2)
   return a
 }
@@ -132,7 +132,7 @@ function ac_bind_scene(ap: AcProg) -> void {
   if ap.scene_frame == ac_frame { return }
   ap.scene_frame = ac_frame
   let p = ap.prog
-  gl_use_program(p)
+  gpu_use_program(p)
   u_mat4(ap.l_view, cam_view)
   u_mat4(ap.l_proj, cam_proj)
   u_f(ap.l_mh, F_ZERO)
@@ -158,7 +158,7 @@ function ac_visible(a: Actor, shadow: bool) -> bool {
 }
 function actor_draw_one(a: Actor, ap: AcProg, shadow: bool) -> void {
   let p = ap.prog
-  gl_use_program(p)
+  gpu_use_program(p)
   u_mat4(ap.l_model, a.mat)
   var skinned = F_ZERO
   if a.skin != null { skinned = F_ONE;  u_mat4n(ap.l_bones, a.skin.n_joints, a.skin.bones) }
@@ -265,7 +265,7 @@ function actor_draw_outlines() -> void {
     if a.outline == 0 or not ac_visible(a, false) { continue }
     var ap = ac_out
     if a.cutout { ap = ac_out_cut }
-    gl_use_program(ap.prog)
+    gpu_use_program(ap.prog)
     u_mat4(ap.l_view, cam_view);  u_mat4(ap.l_proj, cam_proj)
     u_f(ap.l_out, f_mul(a.outline, a.scale))
     if a.ocol != null { u_v3(ap.l_ocol, a.ocol) } else { u_f3(ap.l_ocol, F_ONE, F_ONE, F_ONE) }
@@ -275,7 +275,7 @@ function actor_draw_outlines() -> void {
   for i in 0 .. ac_oq_n {
     let q = ac_oq[i]
     let ap = ac_out
-    gl_use_program(ap.prog)
+    gpu_use_program(ap.prog)
     u_mat4(ap.l_view, cam_view);  u_mat4(ap.l_proj, cam_proj)
     u_f(ap.l_out, q.width)
     u_f3(ap.l_ocol, q.r, q.g, q.b)
@@ -302,8 +302,8 @@ function actor_draw_outline_one(a: Actor, ap: AcProg) -> void {
 }
 function actor_draw_casters(light_vp: words) -> void {
   if ac_actors == null { return }
-  gl_use_program(ac_sh.prog);  u_mat4(ac_sh.l_lvp, light_vp)
-  gl_use_program(ac_sh_cut.prog);  u_mat4(ac_sh_cut.l_lvp, light_vp)
+  gpu_use_program(ac_sh.prog);  u_mat4(ac_sh.l_lvp, light_vp)
+  gpu_use_program(ac_sh_cut.prog);  u_mat4(ac_sh_cut.l_lvp, light_vp)
   for i in 0 .. len(ac_actors) {
     let a = ac_actors[i]
     if not ac_visible(a, true) { continue }

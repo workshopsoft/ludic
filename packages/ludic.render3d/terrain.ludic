@@ -227,7 +227,7 @@ function terrain_generate() -> void {
   gpu_fb_color(0, ter_height_tex)
   gpu_viewport(0, 0, TERRAIN_RES, TERRAIN_RES)
   gpu_depth_test(false)
-  gl_use_program(p)
+  gpu_use_program(p)
   u_f(gpu_uniform(p, "u_half"), fi(TERRAIN_HALF))
   if ter_dem_tex != 0 {
     r3d_bind_2d(p, "u_dem", 0, ter_dem_tex)
@@ -248,11 +248,11 @@ function terrain_generate() -> void {
   ter_height_tex = tex_target(TERRAIN_RES, TERRAIN_RES, GL_RGBA32F, GL_RGBA, GL_FLOAT, GL_LINEAR)
   gpu_fb_color(0, ter_height_tex)
   let pn = r3d_program("fullscreen.vert", "ternormal.frag", "")
-  gl_use_program(pn)
+  gpu_use_program(pn)
   r3d_bind_2d(pn, "u_src", 0, raw)
   u_f(gpu_uniform(pn, "u_half"), fi(TERRAIN_HALF))
   mesh_draw(sky_fullscreen)
-  gl_delete_program(pn)
+  gpu_program_free(pn)
   gpu_tex_free(raw)
   # read the heights back for placement
   ter_heights = words(TERRAIN_RES * TERRAIN_RES)
@@ -261,7 +261,7 @@ function terrain_generate() -> void {
   gpu_tex_read(GPU_TEX2D, GL_RED, GL_FLOAT, ter_heights)
   gpu_fb_bind(0)
   gpu_fb_free(fbo)
-  gl_delete_program(p)
+  gpu_program_free(p)
   gpu_check("terrain generate")
 }
 
@@ -285,7 +285,7 @@ function terrain_bake_shadow() -> void {
   gpu_viewport(0, 0, TERRAIN_SHADOW_RES, TERRAIN_SHADOW_RES)
   gpu_depth_test(false)
   gpu_blend(false)
-  gl_use_program(p)
+  gpu_use_program(p)
   r3d_bind_2d(p, "u_height", 0, ter_height_tex)
   u_f(gpu_uniform(p, "u_half"), fi(TERRAIN_HALF))
   u_v3(gpu_uniform(p, "u_sun"), sun_dir)
@@ -433,7 +433,7 @@ function terrain_draw_shadow(light_vp: words) -> void {
 # Every per-frame uniform of one terrain program. Both tiers are bound up front so
 # selection can switch between them per patch without re-binding anything but the node.
 function terrain_bind_prog(p: int) -> void {
-  gl_use_program(p)
+  gpu_use_program(p)
   r3d_bind_2d(p, "u_height", 0, ter_height_tex)
   r3d_bind_2d(p, "u_grass_d", 1, ter_tex[0]);  r3d_bind_2d(p, "u_grass_n", 2, ter_tex[1]);  r3d_bind_2d(p, "u_grass_a", 3, ter_tex[2])
   # The cliff maps went with the dead cliff sample. Binding textures for uniforms the
@@ -525,7 +525,7 @@ function terrain_sun_pass(w: int, h: int, depth: int) -> Target {
   gpu_clear_color(1.0, 1.0, 1.0, 1.0)      # unshadowed where nothing is drawn
   gpu_clear(GL_COLOR_BUFFER_BIT)
   let p = ter_sun_prog
-  gl_use_program(p)
+  gpu_use_program(p)
   r3d_bind_2d(p, "u_height", 0, ter_height_tex)
   u_f(gpu_uniform(p, "u_half"), fi(TERRAIN_HALF))
   u_mat4(gpu_uniform(p, "u_view"), cam_view)
@@ -717,7 +717,7 @@ function cdlod_draw(level: int, ix: int, iz: int) -> void {
   if ter_force_near { p = ter_prog_near }
   if p == ter_prog_far { cd_far_draws += 1 }
   if p == ter_prog_near { cd_near_draws += 1 }
-  if p != ter_prog_cur { gl_use_program(p);  ter_prog_cur = p }
+  if p != ter_prog_cur { gpu_use_program(p);  ter_prog_cur = p }
   let t = gl_scratch()
   t[0] = x0;  t[1] = z0;  t[2] = size
   u_v3(gpu_uniform(p, "u_node"), t)

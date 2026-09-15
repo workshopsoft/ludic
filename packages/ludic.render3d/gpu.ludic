@@ -157,11 +157,13 @@ var gpu_s_scissor: int = -1
 function gpu_scissor(x: int, y_top: int, w: int, h: int) -> void {
   if gpu_s_scissor != 1 { gpu_s_scissor = 1;  gl_enable(GL_SCISSOR_TEST) }
   gl_scissor(x, gl_h - y_top - h, w, h)
+  gpu_glcheck_after("scissor")
 }
 function gpu_scissor_off() -> void {
   if gpu_s_scissor == 0 { return }
   gpu_s_scissor = 0
   gl_disable(GL_SCISSOR_TEST)
+  gpu_glcheck_after("scissor off")
 }
 
 # ---- uniforms --------------------------------------------------------------------
@@ -170,6 +172,54 @@ function gpu_scissor_off() -> void {
 # uniform block, so the u_* setters below are the only code that knows which. Arrays
 # are looked up by their first element ("u_bones[0]"), as every GL driver accepts.
 function gpu_uniform(prog: int, name: string) -> int { return gl_get_uniform_location(prog, name) }
+
+# ---- programs ----------------------------------------------------------------------
+# A program remembers the variant it was built from - vertex file, fragment file and the
+# defines on one line, the key the SPIR-V manifest uses - which is how a backend that cannot
+# compile shaders at run time finds its pipeline for the same handle.
+var gpu_prog_ids: []int = null
+var gpu_prog_keys: []string = null
+var gpu_prog_cur: int = 0
+function gpu_program(vs_src: string, fs_src: string, vs: string, fs: string, defines: string) -> int {
+  let p = gl_program(vs_src, fs_src)
+  if p == 0 { return 0 }
+  if gpu_prog_ids == null { gpu_prog_ids = new []int;  gpu_prog_keys = new []string }
+  push(gpu_prog_ids, p)
+  push(gpu_prog_keys, `{vs}|{fs}|{Text.replace(defines, "\n", ";")}`)
+  return p
+}
+# the manifest key a program was built from; "" for one this layer did not build
+function gpu_program_key(p: int) -> string {
+  if gpu_prog_ids == null { return "" }
+  for i in 0 .. len(gpu_prog_ids) { if gpu_prog_ids[i] == p { return gpu_prog_keys[i] } }
+  return ""
+}
+function gpu_use_program(p: int) -> void { gl_use_program(p);  gpu_prog_cur = p;  gpu_glcheck_after("use program") }
+function gpu_program_free(p: int) -> void {
+  if p == 0 { return }
+  gl_delete_program(p)
+  if gpu_prog_cur == p { gpu_prog_cur = 0 }
+  if gpu_prog_ids != null { for i in 0 .. len(gpu_prog_ids) { if gpu_prog_ids[i] == p { gpu_prog_ids[i] = 0;  gpu_prog_keys[i] = "" } } }
+  gpu_glcheck_after("program free")
+}
+
+# ---- GPU timers (R3D_PROF) ----------------------------------------------------------
+function gpu_query_new(n: int, ids: words) -> void { gl_gen_queries(n, ids) }
+function gpu_query_begin(id: int) -> void { gl_begin_query(GL_TIME_ELAPSED, id) }
+function gpu_query_end() -> void { gl_end_query(GL_TIME_ELAPSED) }
+# true once the query has its result; the nanoseconds (low 32 bits) are then in out[0]
+function gpu_query_result(id: int, out: words) -> bool {
+  gl_get_query_objectiv(id, GL_QUERY_RESULT_AVAILABLE, out)
+  if out[0] == 0 { return false }
+  gl_get_query_objectui64v(id, GL_QUERY_RESULT, out)
+  return true
+}
+
+# ---- the context --------------------------------------------------------------------
+function gpu_open(w: int, h: int, title: string) -> bool { return gl_open(w, h, title) }
+function gpu_vsync(on: int) -> void { gl_vsync(on) }
+function gpu_renderer_name() -> string { return gl_get_string(GL_RENDERER) }
+function gpu_resize_check() -> bool { let r = gl_resize_check();  gpu_glcheck_after("the resize check");  return r }
 
 var gpu_u_tmp: words = null
 function gpu_tmp() -> words { if gpu_u_tmp == null { gpu_u_tmp = words(4) };  return gpu_u_tmp }
@@ -516,7 +566,7 @@ function gpu_tex_bind(kind: int, tex: int) -> void {
   }
 }
 # pixel transfer packing (alignment, byte swap) for the uploads and read-backs that follow
-function gpu_pixel_store(pname: int, value: int) -> void { gl_pixel_storei(pname, value) }
+function gpu_pixel_store(pname: int, value: int) -> void { gl_pixel_storei(pname, value);  gpu_glcheck_after("pixel store") }
 function gpu_tex_image2d(ifmt: int, w: int, h: int, fmt: int, ty: int, data: pointer) -> void {
   gl_tex_image2d(GL_TEXTURE_2D, 0, ifmt, w, h, 0, fmt, ty, data)
   gpu_glcheck_after(`a {w}x{h} texture upload (format {ifmt})`)
@@ -539,12 +589,14 @@ function gpu_tex_param(kind: int, pname: int, value: int) -> void {
   if pname == GL_TEXTURE_WRAP_T { gpu_tx[o + 8] = value }
   if pname == GL_TEXTURE_COMPARE_MODE { if value == GL_NONE { gpu_tx[o + 9] = 0 } }
   if pname == GL_TEXTURE_COMPARE_FUNC { gpu_tx[o + 9] = value }
+  gpu_glcheck_after("tex param")
 }
 # a float parameter (fixed, as Gl.* takes it): anisotropy is the one the renderer sets
 function gpu_tex_paramf(kind: int, pname: int, value: fixed) -> void {
   gl_tex_parameterf(gpu_gl_target(kind), pname, value)
   let o = gpu_tx_at(gpu_bound(kind))
   if o >= 0 and pname == 0x84FE { gpu_tx[o + 11] = fx_to_f32(value) }
+  gpu_glcheck_after("tex paramf")
 }
 # the border colour clamp-to-border reads (four fixed values in `rgba`)
 function gpu_tex_border(kind: int, rgba: pointer) -> void { gl_tex_parameterfv(gpu_gl_target(kind), GL_TEXTURE_BORDER_COLOR, rgba) }
@@ -639,9 +691,10 @@ function gpu_fb_new() -> int { return gl_framebuffer() }
 function gpu_fb_bind(fb: int) -> void {
   gl_bind_framebuffer(GL_FRAMEBUFFER, fb)
   gpu_fb_cur = fb
+  gpu_glcheck_after("fb bind")
 }
-function gpu_fb_bind_read(fb: int) -> void { gl_bind_framebuffer(GL_READ_FRAMEBUFFER, fb) }
-function gpu_fb_bind_draw(fb: int) -> void { gl_bind_framebuffer(GL_DRAW_FRAMEBUFFER, fb) }
+function gpu_fb_bind_read(fb: int) -> void { gl_bind_framebuffer(GL_READ_FRAMEBUFFER, fb);  gpu_glcheck_after("fb bind read") }
+function gpu_fb_bind_draw(fb: int) -> void { gl_bind_framebuffer(GL_DRAW_FRAMEBUFFER, fb);  gpu_glcheck_after("fb bind draw") }
 function gpu_fb_color(slot: int, tex: int) -> void {
   gl_framebuffer_texture2d(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + slot, GL_TEXTURE_2D, tex, 0)
   let o = gpu_fb_at(gpu_fb_cur)
@@ -677,6 +730,7 @@ function gpu_rb_storage(rb: int, ifmt: int, w: int, h: int, samples: int) -> voi
   if samples > 0 { gl_renderbuffer_storage_multisample(GL_RENDERBUFFER, samples, ifmt, w, h) }
   else { gl_renderbuffer_storage(GL_RENDERBUFFER, ifmt, w, h) }
   gpu_rb_samples = samples
+  gpu_glcheck_after("rb storage")
 }
 function gpu_fb_color_rb(slot: int, rb: int) -> void {
   gl_framebuffer_renderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + slot, GL_RENDERBUFFER, rb)
@@ -693,11 +747,13 @@ function gpu_fb_draw_buffers(n: int) -> void {
   if gpu_drawbufs == null { gpu_drawbufs = words(8) }
   for i in 0 .. n { gpu_drawbufs[i] = GL_COLOR_ATTACHMENT0 + i }
   gl_draw_buffers(n, gpu_drawbufs)
+  gpu_glcheck_after("fb draw buffers")
 }
 # a depth-only target: no colour is drawn or read
 function gpu_fb_no_color() -> void {
   gl_draw_buffer(GL_NONE)
   gl_read_buffer(GL_NONE)
+  gpu_glcheck_after("fb no color")
 }
 function gpu_fb_status() -> int { return gl_check_framebuffer_status(GL_FRAMEBUFFER) }
 function gpu_fb_free(fb: int) -> void {
@@ -707,14 +763,16 @@ function gpu_fb_free(fb: int) -> void {
   gl_delete_framebuffers(1, ids)
   let o = gpu_fb_at(fb)
   if o >= 0 { for i in 0 .. GPU_FB_W { gpu_fb[o + i] = 0 } }
+  gpu_glcheck_after("fb free")
 }
 function gpu_rb_free(rb: int) -> void {
   if rb == 0 { return }
   let ids = gpu_tmp()
   ids[0] = rb
   gl_delete_renderbuffers(1, ids)
+  gpu_glcheck_after("rb free")
 }
-function gpu_viewport(x: int, y: int, w: int, h: int) -> void { gl_viewport(x, y, w, h) }
+function gpu_viewport(x: int, y: int, w: int, h: int) -> void { gl_viewport(x, y, w, h);  gpu_glcheck_after("viewport") }
 
 # R3D_GLCHECK: before a draw or a clear, the bound framebuffer must be complete; after it, no
 # error may be pending. Each report names the framebuffer and what was being done, once per
@@ -765,9 +823,10 @@ function gpu_blit(w: int, h: int, mask: int) -> void {
 }
 # the framebuffer the finished frame is presented from (an offscreen one, headless)
 function gpu_screen_fb() -> int { return gl_screen }
-function gpu_multisample(on: bool) -> void { gpu_gl_cap(GL_MULTISAMPLE, gpu_b(on)) }
+function gpu_multisample(on: bool) -> void { gpu_gl_cap(GL_MULTISAMPLE, gpu_b(on));  gpu_glcheck_after("multisample") }
 function gpu_wireframe(on: bool) -> void {
   if on { gl_polygon_mode(GL_FRONT_AND_BACK, GL_LINE) } else { gl_polygon_mode(GL_FRONT_AND_BACK, GL_FILL) }
+  gpu_glcheck_after("wireframe")
 }
 # the presented frame as RGB8, bottom row first (a photograph)
 function gpu_read_screen(w: int, h: int, out: pointer) -> void {

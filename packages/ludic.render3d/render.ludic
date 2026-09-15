@@ -73,9 +73,9 @@ function r3d_env_flags() -> void {
 function r3d_init(w: int, h: int, title: string) -> bool {
   r3d_env_flags()
   gpu_select()
-  if not gl_open(w, h, title) { print("r3d: no OpenGL context");  return false }
-  if Os.has_env("R3D_NOVSYNC") { gl_vsync(0) }
-  var renderer: string = gl_get_string(GL_RENDERER)
+  if not gpu_open(w, h, title) { print("r3d: no OpenGL context");  return false }
+  if Os.has_env("R3D_NOVSYNC") { gpu_vsync(0) }
+  var renderer: string = gpu_renderer_name()
   print(`r3d: {gl_w}x{gl_h} on {renderer}`)
   prof_init()
   cam_init(fr(gl_w, gl_h))
@@ -102,7 +102,7 @@ function r3d_draw_sky() -> void {
   gpu_depth_write(false)
   gpu_cull(false)
   let p = r3d_sky_prog
-  gl_use_program(p)
+  gpu_use_program(p)
   r3d_bind_2d(p, "u_sky", 0, sky_tex)
   sky_bind_rot(p)
   sky_bind_lighting(p)
@@ -125,9 +125,10 @@ function r3d_resize() -> void {
   print(`r3d: resized to {gl_w}x{gl_h}`)
 }
 function r3d_frame(time: int) -> void {
+  gpu_glcheck_after("the time between frames")
   outline_frame()
   if not r3d_ready { return }
-  if gl_resize_check() { r3d_resize() }
+  if gpu_resize_check() { r3d_resize() }
   # R3D_RESIZE_AT=<frame>: rebuild every screen-sized buffer mid-run, as a window resize
   # or a fullscreen change does. Headless has no window to resize, and this path is where
   # a stale attachment or a texture freed twice shows up.

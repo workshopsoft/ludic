@@ -137,7 +137,7 @@ function water_init(level: int, cx: int, cz: int, ex: int, ez: int) -> void {
 function water_draw(depth_tex: int) -> void {
   if not water_on or wb_n == 0 { return }
   let p = water_prog
-  gl_use_program(p)
+  gpu_use_program(p)
   u_mat4(gpu_uniform(p, "u_view"), cam_view)
   u_mat4(gpu_uniform(p, "u_proj"), cam_proj)
   u_mat4(gpu_uniform(p, "u_inv_vp"), cam_inv_vp)

@@ -74,7 +74,7 @@ function sky_convolve(prog: int, target_tex: int, layer: int, w: int, h: int, ro
   if layer < 0 { gpu_fb_color(0, target_tex) }
   else { gpu_fb_color_layer(0, target_tex, layer) }
   gpu_viewport(0, 0, w, h)
-  gl_use_program(prog)
+  gpu_use_program(prog)
   r3d_bind_2d(prog, "u_sky", 0, sky_tex)
   sky_bind_rot(prog)
   u_f(gpu_uniform(prog, "u_sun_clip"), hdr_clip)

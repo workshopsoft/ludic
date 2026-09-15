@@ -142,7 +142,7 @@ function post_measure() -> void {
   let next = 1 - post_adapt_i
   target_bind(post_adapt_t[next])
   gpu_depth_test(false)
-  gl_use_program(post_p_adapt)
+  gpu_use_program(post_p_adapt)
   r3d_bind_2d(post_p_adapt, "u_scene", 0, post_hdr.color)
   r3d_bind_2d(post_p_adapt, "u_prev", 1, post_adapt_t[post_adapt_i].color)
   u_f(gpu_uniform(post_p_adapt, "u_lod"), fi(post_mips - 1))
@@ -217,7 +217,7 @@ function post_ssao_pass() -> void {
   gpu_depth_test(false)
   gpu_blend(false)
   target_bind(post_ao)
-  gl_use_program(post_p_ao)
+  gpu_use_program(post_p_ao)
   r3d_bind_2d(post_p_ao, "u_depth", 0, post_hdr.depth)
   r3d_bind_2d(post_p_ao, "u_prev_color", 1, post_prev.color)
   u_f(gpu_uniform(post_p_ao, "u_frame"), fi(post_frame % 64))
@@ -228,7 +228,7 @@ function post_ssao_pass() -> void {
   u_f(gpu_uniform(post_p_ao, "u_intensity"), post_ao_intensity)
   mesh_draw(post_fs)
   target_bind(post_ao_blur)
-  gl_use_program(post_p_ao_blur)
+  gpu_use_program(post_p_ao_blur)
   r3d_bind_2d(post_p_ao_blur, "u_ao", 0, post_ao.color)
   r3d_bind_2d(post_p_ao_blur, "u_depth", 1, post_hdr.depth)
   u_f2(gpu_uniform(post_p_ao_blur, "u_texel"), fr(1, post_ao.w), fr(1, post_ao.h))
@@ -240,7 +240,7 @@ function post_bloom_pass() -> void {
   gpu_blend(false)
   var src = post_color
   var sw = post_w;  var sh = post_h
-  gl_use_program(post_p_down)
+  gpu_use_program(post_p_down)
   for i in 0 .. BLOOM_LEVELS {
     let t = post_bloom[i]
     target_bind(t)
@@ -252,7 +252,7 @@ function post_bloom_pass() -> void {
     mesh_draw(post_fs)
     src = t.color;  sw = t.w;  sh = t.h
   }
-  gl_use_program(post_p_up)
+  gpu_use_program(post_p_up)
   gpu_blend(true)
   gpu_blend_func(GL_ONE, GL_ONE)
   var i = BLOOM_LEVELS - 1
@@ -273,7 +273,7 @@ function post_tonemap(color_tex: int) -> void {
   if post_auto { post_measure() }
   target_bind(post_ldr)
   gpu_depth_test(false)
-  gl_use_program(post_p_tone)
+  gpu_use_program(post_p_tone)
   r3d_bind_2d(post_p_tone, "u_hdr", 0, color_tex)
   r3d_bind_2d(post_p_tone, "u_bloom", 1, post_bloom[0].color)
   r3d_bind_2d(post_p_tone, "u_ao", 2, post_ao_blur.color)
@@ -294,7 +294,7 @@ function post_tonemap(color_tex: int) -> void {
   # sharpen + grain onto the screen
   gpu_fb_bind(gpu_screen_fb())
   gpu_viewport(0, 0, gl_w, gl_h)
-  gl_use_program(post_p_sharp)
+  gpu_use_program(post_p_sharp)
   r3d_bind_2d(post_p_sharp, "u_src", 0, post_ldr.color)
   u_f2(gpu_uniform(post_p_sharp, "u_texel"), fr(1, post_w), fr(1, post_h))
   u_f(gpu_uniform(post_p_sharp, "u_amount"), post_sharpen)

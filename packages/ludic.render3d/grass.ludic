@@ -118,7 +118,7 @@ function grass_tiles(size: int, d_min: int, d_max: int) -> void {
 function grass_draw() -> void {
   if not grass_on or ter_reflect or grass_prog == 0 { return }
   let p = grass_prog
-  gl_use_program(p)
+  gpu_use_program(p)
   u_mat4(gpu_uniform(p, "u_view"), cam_view)
   u_mat4(gpu_uniform(p, "u_proj"), cam_proj)
   u_mat4(gpu_uniform(p, "u_vp"), cam_vp_clean)

@@ -32,7 +32,7 @@ function prof_init() -> void {
   prof_hits = new []long
   prof_ids = words(PROF_SLOTS * PROF_RING)
   prof_scratch = words(4)
-  gl_gen_queries(PROF_SLOTS * PROF_RING, prof_ids)
+  gpu_query_new(PROF_SLOTS * PROF_RING, prof_ids)
   prof_n = 0
   prof_frame = 0
   prof_active = -1
@@ -59,13 +59,13 @@ function prof_begin(name: pointer) -> void {
   let s = prof_slot(name)
   if s < 0 { return }
   prof_active = s
-  gl_begin_query(GL_TIME_ELAPSED, prof_ids[s * PROF_RING + (prof_frame % PROF_RING)])
+  gpu_query_begin(prof_ids[s * PROF_RING + (prof_frame % PROF_RING)])
 }
 
 function prof_end() -> void {
   if not prof_on { return }
   if prof_active < 0 { return }
-  gl_end_query(GL_TIME_ELAPSED)
+  gpu_query_end()
   prof_active = -1
 }
 
@@ -78,9 +78,7 @@ function prof_collect() -> void {
   var s = 0
   while s < prof_n {
     let q = prof_ids[s * PROF_RING + slot_frame]
-    gl_get_query_objectiv(q, GL_QUERY_RESULT_AVAILABLE, prof_scratch)
-    if prof_scratch[0] != 0 {
-      gl_get_query_objectui64v(q, GL_QUERY_RESULT, prof_scratch)
+    if gpu_query_result(q, prof_scratch) {
       # the low 32 bits are ample: a pass is far below 4 seconds
       prof_ns[s] = prof_ns[s] + prof_scratch[0]
       prof_hits[s] = prof_hits[s] + 1

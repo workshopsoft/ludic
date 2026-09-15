@@ -53,7 +53,7 @@ var ov_clip_h: int = 0
 
 function overlay_init(font_dir: string) -> bool {
   r3d_program_log("overlay.vert", "overlay.frag", "")
-  ov_prog = gl_program("#version 410 core\n" + r3d_shader_file("overlay.vert"), "#version 410 core\n" + r3d_shader_file("overlay.frag"))
+  ov_prog = gpu_program("#version 410 core\n" + r3d_shader_file("overlay.vert"), "#version 410 core\n" + r3d_shader_file("overlay.frag"), "overlay.vert", "overlay.frag", "")
   if ov_prog == 0 { print("overlay: program failed");  return false }
   ov_mesh = gpu_mesh_new()
   ov_vbo = gpu_mesh_vertices(ov_mesh, null, gl_bytes_of(OV_MAX_QUADS * 6 * OV_FLOATS), GPU_DYNAMIC)
@@ -161,7 +161,7 @@ function ov_begin() -> void {
   gpu_cull(false)
   gpu_blend(true)
   gpu_blend_func(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-  gl_use_program(ov_prog)
+  gpu_use_program(ov_prog)
   u_f2(gpu_uniform(ov_prog, "u_screen"), fi(gl_w), fi(gl_h))
   ov_n = 0;  ov_nr = 0;  ov_range_start = 0
   ov_tex = ov_white
@@ -195,7 +195,7 @@ function ov_flush() -> void {
   # framebuffer operation. Saying the target at each flush is what a render pass says anyway.
   gpu_fb_bind(gpu_screen_fb())
   gpu_viewport(0, 0, gl_w, gl_h)
-  gl_use_program(ov_prog)
+  gpu_use_program(ov_prog)
   gpu_mesh_bind(ov_mesh)
   gpu_buffer_upload(ov_vbo, gl_bytes_of(ov_n * 6 * OV_FLOATS), ov_buf, GPU_STREAM)
   var last = -1

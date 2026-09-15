@@ -56,14 +56,6 @@ function r3d_shader_src(name: string, defines: string, is_frag: bool) -> string 
   return s + r3d_shader_file(name)
 }
 
-# Build a program with tessellation control/evaluation between vertex and fragment.
-function r3d_program_tess(vs: string, tcs: string, tes: string, fs: string, defines: string) -> int {
-  let p = gl_program5(r3d_shader_src(vs, defines, false), r3d_shader_src(tcs, defines, false),
-                      r3d_shader_src(tes, defines, false), null, r3d_shader_src(fs, defines, true))
-  if p == 0 { print(`r3d: tess program failed: {vs} + {tcs} + {tes} + {fs}`) }
-  return p
-}
-
 # Build a program from a vertex + fragment file pair (defines apply to both).
 # R3D_PROGRAMS_LOG=<file>: append every program built (vertex, fragment, defines) - the list a
 # backend that cannot compile shaders at run time (Vulkan: SPIR-V is built ahead) must cover
@@ -81,7 +73,7 @@ function r3d_program_log(vs: string, fs: string, defines: string) -> void {
 }
 function r3d_program(vs: string, fs: string, defines: string) -> int {
   r3d_program_log(vs, fs, defines)
-  let p = gl_program(r3d_shader_src(vs, defines, false), r3d_shader_src(fs, defines, true))
+  let p = gpu_program(r3d_shader_src(vs, defines, false), r3d_shader_src(fs, defines, true), vs, fs, `{r3d_global_defs}{defines}`)
   if p == 0 { print(`r3d: program failed: {vs} + {fs}`) }
   return p
 }
