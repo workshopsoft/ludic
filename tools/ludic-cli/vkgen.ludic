@@ -1,0 +1,928 @@
+# vkgen.ludic — the Vulkan binding generator, in Ludic (glgen.ludic's sibling).
+#
+#   ludic-dev vkgen [--xml <vk.xml>] [--check]
+#       read the Vulkan registry and emit
+#         runtime/native/vk_api.ludic   constants, struct sizes and field offsets, externs
+#         runtime/native/vk_thunks.ll   one thunk per command, calling through a table
+#                                       that @lvk_bind fills from the platform loader
+#
+# Vulkan is too large to bind by hand: the renderer fills hundreds of structs, and a
+# wrong offset raises no error - the driver reads garbage. So the layout is computed
+# here from the registry, once, with the x64 / arm64 C rules (both LP64 for this
+# purpose: pointers and handles 8 bytes, enums 4), and Ludic code writes fields by
+# name: vk_put_i32(ci, VkDeviceCreateInfo_queueCreateInfoCount, 1), and sizes them
+# with <Struct>_sizeof (not _size: VkBufferCreateInfo has a field called size).
+#
+# What is bound is Vulkan 1.0-1.4 core plus the extensions in VKG_EXTENSIONS - the
+# ones the Vulkan renderer is designed around. Numbers follow the renderer's rules:
+# a C float parameter is an IEEE bit pattern in an int (not fixed), a 64-bit value
+# (uint64_t, VkDeviceSize, a non-dispatchable handle) is a `long`.
+#
+# The registry is found at --xml, else $VULKAN_SDK/share/vulkan/registry/vk.xml,
+# else the newest ~/VulkanSDK/*/macOS/share/vulkan/registry/vk.xml.
+
+const VKG_EXTENSIONS: string = "VK_KHR_surface VK_KHR_win32_surface VK_EXT_metal_surface VK_KHR_portability_enumeration VK_KHR_portability_subset VK_EXT_debug_utils VK_KHR_swapchain VK_EXT_swapchain_colorspace VK_EXT_hdr_metadata VK_KHR_present_id VK_KHR_present_wait VK_NV_low_latency2 VK_EXT_memory_budget VK_EXT_mesh_shader VK_KHR_deferred_host_operations VK_KHR_acceleration_structure VK_KHR_ray_query VK_EXT_opacity_micromap VK_KHR_fragment_shading_rate VK_KHR_pipeline_library VK_EXT_graphics_pipeline_library VK_EXT_descriptor_buffer VK_KHR_dynamic_rendering_local_read VK_EXT_pageable_device_local_memory VK_KHR_pipeline_binary VK_EXT_calibrated_timestamps VK_KHR_get_surface_capabilities2 VK_EXT_memory_priority"
+
+# ---- a string -> int map --------------------------------------------------------------
+# (the tools already define a set_has, so the spliced Dict runtime cannot come in here)
+property VkMap { keys: pointers, vals: words, cap: int = 0, count: int = 0 }
+function vkm_new() -> VkMap {
+  let m = new VkMap
+  m.cap = 16384
+  m.keys = bytes(m.cap * 8)
+  for i in 0 .. m.cap { m.keys[i] = null }
+  m.vals = words(m.cap)
+  return m
+}
+function vkm_slot(m: VkMap, key: pointer) -> int {
+  var h = 5381
+  let n = slen(key)
+  for i in 0 .. n { h = ((h * 33) + key[i]) & 0x7FFFFFFF }
+  var at = h % m.cap
+  while m.keys[at] != null and not (m.keys[at] == key) { at = (at + 1) % m.cap }
+  return at
+}
+function vkm_grow(m: VkMap) -> void {
+  let ok = m.keys;  let ov = m.vals;  let oc = m.cap
+  m.cap = oc * 2
+  m.keys = bytes(m.cap * 8)
+  for i in 0 .. m.cap { m.keys[i] = null }
+  m.vals = words(m.cap)
+  m.count = 0
+  for i in 0 .. oc { if ok[i] != null { vkm_set(m, ok[i], ov[i]) } }
+}
+function vkm_set(m: VkMap, key: pointer, v: int) -> void {
+  if (m.count + 1) * 10 > m.cap * 7 { vkm_grow(m) }
+  let at = vkm_slot(m, key)
+  if m.keys[at] == null { m.keys[at] = key;  m.count += 1 }
+  m.vals[at] = v
+}
+function vkm_get_or(m: VkMap, key: pointer, dflt: int) -> int {
+  let at = vkm_slot(m, key)
+  if m.keys[at] == null { return dflt }
+  return m.vals[at]
+}
+
+# ---- xml helpers --------------------------------------------------------------
+# The registry is regular enough to scan: every tag this generator reads opens and
+# closes the way the spec's own generators expect.
+
+# the value of attribute `name` inside the tag text `tag`, or null
+function vkg_attr(tag: pointer, name: pointer) -> pointer {
+  let key = ` {name}="`
+  let at = s_index(tag, key, 0)
+  if at < 0 { return null }
+  let from = at + slen(key)
+  let to = s_index(tag, "\"", from)
+  if to < 0 { return null }
+  return str_sub(tag, from, to)
+}
+
+# string equality that treats a missing value (null) as equal to nothing: Ludic's `==`
+# on strings reads through both sides, and an absent attribute is null
+function vkg_eq(a: pointer, b: pointer) -> bool {
+  if a == null or b == null { return false }
+  return a == b
+}
+
+# whole-token membership in a comma-separated list ("vulkan,vulkansc")
+function vkg_in_csv(list: pointer, want: pointer) -> bool {
+  if list == null { return false }
+  let n = slen(list)
+  var p = 0
+  while p <= n {
+    var q = p
+    while q < n and list[q] != ',' { q += 1 }
+    if str_sub(list, p, q) == want { return true }
+    if q >= n { break }
+    p = q + 1
+  }
+  return false
+}
+
+# a tag or element applies to desktop Vulkan when it names no api, or names "vulkan"
+function vkg_api_ok(tag: pointer) -> bool {
+  let api = vkg_attr(tag, "api")
+  if api == null { return true }
+  return vkg_in_csv(api, "vulkan")
+}
+
+# text with <comment>...</comment> removed and every other tag replaced by a space
+function vkg_strip(s: pointer) -> pointer {
+  let b = sb_new()
+  let n = slen(s)
+  var i = 0
+  while i < n {
+    if s[i] == '<' {
+      if s_starts_at(s, i, "<comment>") {
+        let e = s_index(s, "</comment>", i)
+        if e < 0 { break }
+        i = e + 10
+        continue
+      }
+      while i < n and s[i] != '>' { i += 1 }
+      sb_putc(b, 32)
+      i += 1
+      continue
+    }
+    sb_putc(b, s[i])
+    i += 1
+  }
+  return sb_str(b)
+}
+
+# the text between <tag> and </tag> after `from`, or null
+function vkg_inner(s: pointer, tag: pointer) -> pointer {
+  # <name> or <name alias="...">: the registry puts attributes on inner tags too
+  var a = s_index(s, `<{tag}>`, 0)
+  let b = s_index(s, `<{tag} `, 0)
+  if a < 0 or (b >= 0 and b < a) { a = b }
+  if a < 0 { return null }
+  let gt = s_index(s, ">", a)
+  if gt < 0 { return null }
+  let from = gt + 1
+  let e = s_index(s, `</{tag}>`, from)
+  if e < 0 { return null }
+  return str_sub(s, from, e)
+}
+
+function vkg_unquote(v: pointer) -> pointer {
+  if v == null { return null }
+  if s_starts(v, "&quot;") and slen(v) >= 12 { return str_sub(v, 6, slen(v) - 6) }
+  return v
+}
+
+# ---- one declarator: <member>/<param> -> base type, pointer depth, name, array, bits
+var vkg_d_base: pointer = null
+var vkg_d_star: int = 0
+var vkg_d_name: pointer = null
+var vkg_d_count: int = 1        # product of every [N]; 1 when not an array
+var vkg_d_array: bool = false
+var vkg_d_bits: int = 0         # a bitfield width, 0 when not one
+
+function vkg_decl(body: pointer) -> void {
+  vkg_d_base = vkg_inner(body, "type")
+  vkg_d_name = vkg_inner(body, "name")
+  vkg_d_star = 0
+  vkg_d_count = 1
+  vkg_d_array = false
+  vkg_d_bits = 0
+  let flat = vkg_strip(body)
+  let n = slen(flat)
+  var i = 0
+  while i < n {
+    if flat[i] == '*' { vkg_d_star += 1 }
+    i += 1
+  }
+  # everything after the name: [N], [ENUM], :bits
+  let ne = s_index(body, "</name>", 0)
+  if ne < 0 { return }
+  let tail = vkg_strip(str_sub(body, ne + 7, slen(body)))
+  let tn = slen(tail)
+  i = 0
+  while i < tn {
+    if tail[i] == '[' {
+      var j = i + 1
+      while j < tn and tail[j] != ']' { j += 1 }
+      let dim = s_trim(str_sub(tail, i + 1, j))
+      vkg_d_array = true
+      vkg_d_count = vkg_d_count * vkg_const_int(dim)
+      i = j + 1
+      continue
+    }
+    if tail[i] == ':' {
+      var j = i + 1
+      while j < tn and tail[j] >= '0' and tail[j] <= '9' { j += 1 }
+      vkg_d_bits = Text.to_int(str_sub(tail, i + 1, j))
+      i = j
+      continue
+    }
+    i += 1
+  }
+}
+
+# ---- the type table ---------------------------------------------------------------
+const VK_T_OPAQUE: int = 0     # size unknown: only ever behind a pointer
+const VK_T_SCALAR: int = 1     # a C scalar, size in vkg_ty_size
+const VK_T_PTR: int = 2        # a pointer: typedef'd pointers, function pointers, ObjC ids
+const VK_T_HANDLE: int = 3     # a dispatchable handle (a pointer)
+const VK_T_NDHANDLE: int = 4   # a non-dispatchable handle (uint64_t)
+const VK_T_ENUM: int = 5       # 4 bytes
+const VK_T_STRUCT: int = 6
+const VK_T_UNION: int = 7
+const VK_T_ALIAS: int = 8      # another type's name, in vkg_ty_alias
+
+var vkg_types: VkMap = null
+var vkg_ty_name:  []pointer = null
+var vkg_ty_kind:  []int = null
+var vkg_ty_size:  []int = null     # -1 not laid out yet, -2 being laid out
+var vkg_ty_align: []int = null
+var vkg_ty_alias: []pointer = null
+var vkg_ty_moff:  []int = null     # a struct's members: first index into vkg_m_*
+var vkg_ty_mcnt:  []int = null
+var vkg_ty_float: []bool = null    # a float scalar (bound as float bits)
+
+var vkg_m_base:  []pointer = null
+var vkg_m_star:  []int = null
+var vkg_m_name:  []pointer = null
+var vkg_m_count: []int = null
+var vkg_m_array: []bool = null
+var vkg_m_bits:  []int = null
+var vkg_m_off:   []int = null
+
+function vkg_ty_add(name: pointer, kind: int, size: int) -> int {
+  let i = len(vkg_ty_name)
+  push(vkg_ty_name, name);  push(vkg_ty_kind, kind);  push(vkg_ty_size, size);  push(vkg_ty_align, size)
+  push(vkg_ty_alias, null);  push(vkg_ty_moff, 0);  push(vkg_ty_mcnt, 0);  push(vkg_ty_float, false)
+  vkm_set(vkg_types, name, i + 1)
+  return i
+}
+function vkg_ty_find(name: pointer) -> int {
+  if name == null { return -1 }
+  return vkm_get_or(vkg_types, name, 0) - 1
+}
+# follow aliases to the type that has a layout
+function vkg_ty_real(i0: int) -> int {
+  var i = i0
+  var guard = 0
+  while i >= 0 and vkg_ty_kind[i] == VK_T_ALIAS and guard < 16 { i = vkg_ty_find(vkg_ty_alias[i]);  guard += 1 }
+  return i
+}
+
+function vkg_scalars() -> void {
+  vkg_ty_add("void", VK_T_OPAQUE, 0)
+  let one = "char int8_t uint8_t"
+  let two = "int16_t uint16_t"
+  let four = "int int32_t uint32_t DWORD"
+  let eight = "int64_t uint64_t size_t double"
+  for k in 0 .. 4 {
+    var set = one;  var sz = 1
+    if k == 1 { set = two;  sz = 2 }
+    if k == 2 { set = four;  sz = 4 }
+    if k == 3 { set = eight;  sz = 8 }
+    let parts = Text.split(set, " ")
+    for p in 0 .. len(parts) { vkg_ty_add(parts[p], VK_T_SCALAR, sz) }
+  }
+  let f = vkg_ty_add("float", VK_T_SCALAR, 4)
+  vkg_ty_float[f] = true
+  let ptrs = Text.split("HINSTANCE HWND HMONITOR HANDLE LPCWSTR", " ")
+  for p in 0 .. len(ptrs) { vkg_ty_add(ptrs[p], VK_T_PTR, 8) }
+}
+
+# the end of the element that opened at `at` in the <types> block: the last
+# </type> before the next <type opens (struct bodies hold inner <type> elements)
+function vkg_elem_end(x: pointer, at: int, stop: int) -> int {
+  var next = s_index(x, "<type ", at + 6)
+  if next < 0 or next > stop { next = stop }
+  var last = -1
+  var p = s_index(x, "</type>", at)
+  while p >= 0 and p < next { last = p;  p = s_index(x, "</type>", p + 7) }
+  return last
+}
+
+function vkg_parse_types(x: pointer) -> void {
+  let start = s_index(x, "<types", 0)
+  let stop = s_index(x, "</types>", start)
+  var at = s_index(x, "<type ", start)
+  while at >= 0 and at < stop {
+    let te = s_index(x, ">", at)
+    let tag = str_sub(x, at, te + 1)
+    let selfclose = x[te - 1] == '/'
+    var body: pointer = ""
+    var next_at = te + 1
+    if not selfclose {
+      let e = vkg_elem_end(x, at, stop)
+      if e > te { body = str_sub(x, te + 1, e);  next_at = e + 7 }
+    }
+    if vkg_api_ok(tag) { vkg_type_one(tag, body) }
+    at = s_index(x, "<type ", next_at)
+  }
+}
+
+function vkg_type_one(tag: pointer, body: pointer) -> void {
+  let cat = vkg_attr(tag, "category")
+  var name = vkg_attr(tag, "name")
+  if name == null { name = vkg_inner(body, "name") }
+  if name == null { return }
+  let alias = vkg_attr(tag, "alias")
+  if alias != null {
+    if vkg_ty_find(name) < 0 { let i = vkg_ty_add(name, VK_T_ALIAS, -1);  vkg_ty_alias[i] = alias }
+    return
+  }
+  if vkg_ty_find(name) >= 0 { return }
+  if cat == null {
+    # requires="..." platform names this generator does not already know
+    vkg_ty_add(name, VK_T_OPAQUE, 0)
+    return
+  }
+  if cat == "struct" or cat == "union" {
+    var kind = VK_T_STRUCT
+    if cat == "union" { kind = VK_T_UNION }
+    let i = vkg_ty_add(name, kind, -1)
+    vkg_ty_moff[i] = len(vkg_m_name)
+    var cnt = 0
+    var m = s_index(body, "<member", 0)
+    while m >= 0 {
+      let me = s_index(body, ">", m)
+      let mtag = str_sub(body, m, me + 1)
+      let close = s_index(body, "</member>", me)
+      if close < 0 { break }
+      if vkg_api_ok(mtag) {
+        vkg_decl(str_sub(body, me + 1, close))
+        push(vkg_m_base, vkg_d_base);  push(vkg_m_star, vkg_d_star);  push(vkg_m_name, vkg_d_name)
+        push(vkg_m_count, vkg_d_count);  push(vkg_m_array, vkg_d_array);  push(vkg_m_bits, vkg_d_bits)
+        push(vkg_m_off, -1)
+        cnt += 1
+      }
+      m = s_index(body, "<member", close)
+    }
+    vkg_ty_mcnt[i] = cnt
+    return
+  }
+  if cat == "handle" {
+    if s_contains(body, "NON_DISPATCHABLE") { vkg_ty_add(name, VK_T_NDHANDLE, 8) } else { vkg_ty_add(name, VK_T_HANDLE, 8) }
+    return
+  }
+  if cat == "enum" { vkg_ty_add(name, VK_T_ENUM, 4);  return }
+  if cat == "bitmask" {
+    if s_contains(body, "VkFlags64") { vkg_ty_add(name, VK_T_SCALAR, 8) } else { vkg_ty_add(name, VK_T_SCALAR, 4) }
+    return
+  }
+  if cat == "funcpointer" { vkg_ty_add(name, VK_T_PTR, 8);  return }
+  if cat == "basetype" {
+    let flat = vkg_strip(body)
+    if s_contains(flat, "*") or s_contains(body, "__OBJC__") { vkg_ty_add(name, VK_T_PTR, 8);  return }
+    let base = vkg_inner(body, "type")
+    if base != null and s_contains(flat, "typedef") {
+      let i = vkg_ty_add(name, VK_T_ALIAS, -1)
+      vkg_ty_alias[i] = base
+      return
+    }
+    vkg_ty_add(name, VK_T_OPAQUE, 0)
+    return
+  }
+  # include / define: nothing to bind
+}
+
+# ---- layout -------------------------------------------------------------------------
+# C rules: each member at the next multiple of its alignment, the struct padded to its
+# largest; consecutive bitfields share a unit of their declared type while they fit.
+function vkg_layout(i0: int) -> bool {
+  let i = vkg_ty_real(i0)
+  if i < 0 { return false }
+  let k = vkg_ty_kind[i]
+  if k != VK_T_STRUCT and k != VK_T_UNION { return vkg_ty_size[i] > 0 }
+  if vkg_ty_size[i] > 0 { return true }
+  if vkg_ty_size[i] == -2 or vkg_ty_size[i] == -3 { return false }
+  vkg_ty_size[i] = -2
+  var off = 0
+  var maxal = 1
+  var unit_at = -1;  var unit_sz = 0;  var unit_used = 0
+  let m0 = vkg_ty_moff[i]
+  for m in m0 .. m0 + vkg_ty_mcnt[i] {
+    var sz = 8;  var al = 8
+    if vkg_m_star[m] == 0 {
+      let t = vkg_ty_real(vkg_ty_find(vkg_m_base[m]))
+      if t < 0 or not vkg_layout(t) { vkg_ty_size[i] = -3;  return false }
+      sz = vkg_ty_size[t];  al = vkg_ty_align[t]
+    }
+    if al > maxal { maxal = al }
+    if vkg_m_bits[m] > 0 {
+      if unit_at >= 0 and unit_sz == sz and unit_used + vkg_m_bits[m] <= sz * 8 {
+        vkg_m_off[m] = unit_at
+        unit_used += vkg_m_bits[m]
+        continue
+      }
+      off = (off + al - 1) / al * al
+      unit_at = off;  unit_sz = sz;  unit_used = vkg_m_bits[m]
+      vkg_m_off[m] = off
+      off += sz
+      continue
+    }
+    unit_at = -1
+    let total = sz * vkg_m_count[m]
+    if k == VK_T_UNION {
+      vkg_m_off[m] = 0
+      if total > off { off = total }
+    } else {
+      off = (off + al - 1) / al * al
+      vkg_m_off[m] = off
+      off += total
+    }
+  }
+  vkg_ty_size[i] = (off + maxal - 1) / maxal * maxal
+  vkg_ty_align[i] = maxal
+  return true
+}
+
+# ---- constants and enums -------------------------------------------------------------
+var vkg_enums: VkMap = null          # name -> index + 1 into vkg_e_*
+var vkg_e_name: []pointer = null
+var vkg_e_ty:   []pointer = null     # "int" | "long" | "string"
+var vkg_e_val:  []pointer = null     # the literal as emitted
+var vkg_wide: VkMap = null            # enum type names with bitwidth="64"
+
+function vkg_enum_add(name: pointer, ty: pointer, val: pointer) -> void {
+  if name == null or val == null { return }
+  if vkm_get_or(vkg_enums, name, 0) > 0 { return }
+  push(vkg_e_name, name);  push(vkg_e_ty, ty);  push(vkg_e_val, val)
+  vkm_set(vkg_enums, name, len(vkg_e_name))
+}
+
+function vkg_const_int(dim: pointer) -> int {
+  if slen(dim) > 0 and dim[0] >= '0' and dim[0] <= '9' { return Text.to_int(dim) }
+  let i = vkm_get_or(vkg_enums, dim, 0)
+  if i == 0 { err(`vkgen: unknown array size {dim}\n`);  return 1 }
+  return Text.to_int(vkg_e_val[i - 1])
+}
+
+# 2^b as decimal text (b < 64), for 64-bit flag bits
+function vkg_pow2(b: int) -> pointer {
+  if b < 31 { return string(1 << b) }
+  # decimal doubling on a digit string, least significant digit first
+  let d = words(24)
+  for z in 0 .. 24 { d[z] = 0 }
+  d[0] = 1
+  for s in 0 .. b {
+    var carry = 0
+    for z in 0 .. 24 { let v = d[z] * 2 + carry;  d[z] = v % 10;  carry = v / 10 }
+  }
+  var top = 23
+  while top > 0 and d[top] == 0 { top -= 1 }
+  let sb = sb_new()
+  var z = top
+  while z >= 0 { sb_putc(sb, '0' + d[z]);  z -= 1 }
+  return sb_str(sb)
+}
+
+# one <enum .../> of a block or a require: its value as literal text and type
+var vkg_v_ty: pointer = null
+function vkg_enum_value(tag: pointer, wide: bool, extnum: int) -> pointer {
+  vkg_v_ty = "int"
+  if wide { vkg_v_ty = "long" }
+  let alias = vkg_attr(tag, "alias")
+  if alias != null {
+    let i = vkm_get_or(vkg_enums, alias, 0)
+    if i == 0 { return null }
+    vkg_v_ty = vkg_e_ty[i - 1]
+    return vkg_e_val[i - 1]
+  }
+  let bp = vkg_attr(tag, "bitpos")
+  if bp != null {
+    let b = Text.to_int(bp)
+    if b == 31 and not wide { return "-2147483648" }
+    if b >= 31 { vkg_v_ty = "long" }
+    return vkg_pow2(b)
+  }
+  let off = vkg_attr(tag, "offset")
+  if off != null {
+    var en = extnum
+    let ex = vkg_attr(tag, "extnumber")
+    if ex != null { en = Text.to_int(ex) }
+    let v = 1000000000 + (en - 1) * 1000 + Text.to_int(off)
+    if vkg_eq(vkg_attr(tag, "dir"), "-") { return string(0 - v) }
+    return string(v)
+  }
+  let raw = vkg_attr(tag, "value")
+  if raw == null { return null }
+  if s_starts(raw, "&quot;") { vkg_v_ty = "string";  return `"{vkg_unquote(raw)}"` }
+  if raw == "(~0U)" { vkg_v_ty = "int";  return "-1" }
+  if raw == "(~1U)" { vkg_v_ty = "int";  return "-2" }
+  if raw == "(~2U)" { vkg_v_ty = "int";  return "-3" }
+  if raw == "(~0ULL)" { vkg_v_ty = "long";  return "-1" }
+  if raw == "1000.0F" { vkg_v_ty = "int";  return "1148846080" }     # float bits of 1000.0
+  # a float constant other than the one above has no integer meaning to bind
+  if s_contains(raw, ".") { return null }
+  var t = raw
+  if s_starts(t, "0x") or s_starts(t, "-") or (slen(t) > 0 and t[0] >= '0' and t[0] <= '9') {
+    while slen(t) > 0 and (t[slen(t) - 1] == 'U' or t[slen(t) - 1] == 'L') { t = str_sub(t, 0, slen(t) - 1) }
+    return t
+  }
+  return null
+}
+
+# every <enums> block: API Constants and each enum type's own values
+function vkg_parse_enum_blocks(x: pointer) -> void {
+  var at = s_index(x, "<enums ", 0)
+  while at >= 0 {
+    let te = s_index(x, ">", at)
+    let tag = str_sub(x, at, te + 1)
+    let close = s_index(x, "</enums>", te)
+    if close < 0 { break }
+    let ename = vkg_attr(tag, "name")
+    let wide = vkg_eq(vkg_attr(tag, "bitwidth"), "64")
+    if wide and ename != null { vkm_set(vkg_wide, ename, 1) }
+    var e = s_index(x, "<enum ", te)
+    while e >= 0 and e < close {
+      let ee = s_index(x, ">", e)
+      let etag = str_sub(x, e, ee + 1)
+      if vkg_api_ok(etag) {
+        let v = vkg_enum_value(etag, wide, 0)
+        vkg_enum_add(vkg_attr(etag, "name"), vkg_v_ty, v)
+      }
+      e = s_index(x, "<enum ", ee)
+    }
+    at = s_index(x, "<enums ", close)
+  }
+}
+
+# ---- what is bound ------------------------------------------------------------------
+var vkg_want_cmd: VkMap = null
+var vkg_cmd_order: []pointer = null
+var vkg_want_type: VkMap = null
+var vkg_type_order: []pointer = null
+
+function vkg_take_require(x: pointer, from: int, to: int, extnum: int) -> void {
+  var r = s_index(x, "<require", from)
+  while r >= 0 and r < to {
+    let re = s_index(x, ">", r)
+    let rtag = str_sub(x, r, re + 1)
+    var rclose = s_index(x, "</require>", re)
+    if x[re - 1] == '/' { rclose = re }
+    if rclose < 0 or rclose > to { rclose = to }
+    if vkg_api_ok(rtag) {
+      var p = s_index(x, "<", re + 1)
+      while p >= 0 and p < rclose {
+        let pe = s_index(x, ">", p)
+        let ptag = str_sub(x, p, pe + 1)
+        let nm = vkg_attr(ptag, "name")
+        if vkg_api_ok(ptag) and nm != null {
+          if s_starts(ptag, "<command ") and vkm_get_or(vkg_want_cmd, nm, 0) == 0 { vkm_set(vkg_want_cmd, nm, 1);  push(vkg_cmd_order, nm) }
+          if s_starts(ptag, "<type ") and vkm_get_or(vkg_want_type, nm, 0) == 0 { vkm_set(vkg_want_type, nm, 1);  push(vkg_type_order, nm) }
+          if s_starts(ptag, "<enum ") {
+            let ext = vkg_attr(ptag, "extends")
+            var wide = false
+            if ext != null { wide = vkm_get_or(vkg_wide, ext, 0) == 1 }
+            let v = vkg_enum_value(ptag, wide, extnum)
+            vkg_enum_add(nm, vkg_v_ty, v)
+          }
+        }
+        p = s_index(x, "<", pe + 1)
+      }
+    }
+    r = s_index(x, "<require", rclose)
+  }
+}
+
+function vkg_parse_selection(x: pointer) -> void {
+  var at = s_index(x, "<feature ", 0)
+  while at >= 0 {
+    let te = s_index(x, ">", at)
+    let tag = str_sub(x, at, te + 1)
+    let close = s_index(x, "</feature>", te)
+    if close < 0 { break }
+    if vkg_api_ok(tag) { vkg_take_require(x, te, close, 0) }
+    at = s_index(x, "<feature ", close)
+  }
+  let wanted = Text.split(VKG_EXTENSIONS, " ")
+  at = s_index(x, "<extension ", 0)
+  while at >= 0 {
+    let te = s_index(x, ">", at)
+    let tag = str_sub(x, at, te + 1)
+    var close = s_index(x, "</extension>", te)
+    if x[te - 1] == '/' { close = te }
+    if close < 0 { break }
+    let nm = vkg_attr(tag, "name")
+    var take = false
+    for w in 0 .. len(wanted) { if vkg_eq(wanted[w], nm) { take = true } }
+    if take and vkg_in_csv(vkg_attr(tag, "supported"), "vulkan") {
+      vkg_take_require(x, te, close, Text.to_int(vkg_attr(tag, "number")))
+    }
+    at = s_index(x, "<extension ", close)
+  }
+}
+
+# ---- commands -----------------------------------------------------------------------
+var vkg_cmds: VkMap = null
+var vkg_c_name:  []pointer = null
+var vkg_c_rbase: []pointer = null
+var vkg_c_rstar: []int = null
+var vkg_c_poff:  []int = null
+var vkg_c_pcnt:  []int = null
+var vkg_p_base:  []pointer = null
+var vkg_p_star:  []int = null
+var vkg_p_name:  []pointer = null
+var vkg_p_array: []bool = null
+var vkg_c_alias: VkMap = null          # alias command name -> index + 1 of the command it names
+var vkg_alias_from: []pointer = null
+var vkg_alias_to:   []pointer = null
+
+function vkg_parse_commands(x: pointer) -> void {
+  let start = s_index(x, "<commands", 0)
+  let stop = s_index(x, "</commands>", start)
+  var at = s_index(x, "<command", start + 9)
+  while at >= 0 and at < stop {
+    let te = s_index(x, ">", at)
+    let tag = str_sub(x, at, te + 1)
+    if x[te - 1] == '/' {
+      let a = vkg_attr(tag, "alias")
+      if a != null { push(vkg_alias_from, vkg_attr(tag, "name"));  push(vkg_alias_to, a) }
+      at = s_index(x, "<command", te)
+      continue
+    }
+    let close = s_index(x, "</command>", te)
+    if close < 0 { break }
+    let body = str_sub(x, te + 1, close)
+    if vkg_api_ok(tag) {
+      let proto = vkg_inner(body, "proto")
+      vkg_decl(proto)
+      let name = vkg_d_name
+      if name != null and vkm_get_or(vkg_cmds, name, 0) == 0 {
+        push(vkg_c_name, name);  push(vkg_c_rbase, vkg_d_base);  push(vkg_c_rstar, vkg_d_star)
+        push(vkg_c_poff, len(vkg_p_name))
+        var cnt = 0
+        var p = s_index(body, "<param", 0)
+        while p >= 0 {
+          let pe = s_index(body, ">", p)
+          let ptag = str_sub(body, p, pe + 1)
+          let pc = s_index(body, "</param>", pe)
+          if pc < 0 { break }
+          # <implicitexternsyncparams> holds <param> prose, with no <type>: not a parameter
+          let pbody = str_sub(body, pe + 1, pc)
+          if vkg_api_ok(ptag) and s_contains(pbody, "<type>") {
+            vkg_decl(pbody)
+            push(vkg_p_base, vkg_d_base);  push(vkg_p_star, vkg_d_star);  push(vkg_p_name, vkg_d_name);  push(vkg_p_array, vkg_d_array)
+            cnt += 1
+          }
+          p = s_index(body, "<param", pc)
+        }
+        push(vkg_c_pcnt, cnt)
+        vkm_set(vkg_cmds, name, len(vkg_c_name))
+      }
+    }
+    at = s_index(x, "<command", close)
+  }
+  for k in 0 .. len(vkg_alias_from) {
+    let t = vkm_get_or(vkg_cmds, vkg_alias_to[k], 0)
+    if t > 0 { vkm_set(vkg_c_alias, vkg_alias_from[k], t) }
+  }
+}
+
+# the LLVM type of a C parameter or return; null when this generator cannot bind it
+function vkg_ir(base: pointer, star: int, array: bool) -> pointer {
+  if star > 0 or array { return "ptr" }
+  if base == null { return null }
+  if base == "void" { return "void" }
+  let t = vkg_ty_real(vkg_ty_find(base))
+  if t < 0 { return null }
+  let k = vkg_ty_kind[t]
+  if k == VK_T_HANDLE or k == VK_T_PTR { return "ptr" }
+  if k == VK_T_NDHANDLE { return "i64" }
+  if k == VK_T_ENUM { return "i32" }
+  if k == VK_T_SCALAR {
+    let sz = vkg_ty_size[t]
+    if sz == 1 { return "i8" }
+    if sz == 2 { return "i16" }
+    if sz == 4 { if vkg_ty_float[t] { return "float" };  return "i32" }
+    if sz == 8 { if vkg_ty_name[t] == "double" { return null };  return "i64" }
+  }
+  return null
+}
+# what carries it across the Ludic boundary
+function vkg_abi(ir: pointer) -> pointer {
+  if ir == "ptr" or ir == "i64" or ir == "void" { return ir }
+  return "i32"
+}
+function vkg_ludic(ir: pointer) -> pointer {
+  if ir == "ptr" { return "pointer" }
+  if ir == "i64" { return "long" }
+  if ir == "void" { return "void" }
+  return "int"
+}
+
+# CamelCase -> snake_case, with digits counted as the end of a word ("Win32Surface")
+function vkg_snake(n: pointer) -> pointer {
+  let b = sb_new()
+  let m = slen(n)
+  for i in 0 .. m {
+    let c = n[i]
+    if glg_upper(c) and i > 0 {
+      let prev = n[i - 1]
+      var cut = glg_lower(prev) or glg_digit(prev)
+      if glg_upper(prev) and i + 1 < m and glg_lower(n[i + 1]) { cut = true }
+      if cut { sb_putc(b, '_') }
+    }
+    if glg_upper(c) { sb_putc(b, c + 32) } else { sb_putc(b, c) }
+  }
+  return sb_str(b)
+}
+function vkg_pname(raw: pointer, i: int) -> pointer {
+  if raw == null { return `a{string(i)}` }
+  let n = vkg_snake(raw)
+  if glg_reserved(n) { return n + "_" }
+  return n
+}
+
+# the command a wanted name resolves to (itself, or the core command it aliases)
+function vkg_cmd_of(name: pointer) -> int {
+  let i = vkm_get_or(vkg_cmds, name, 0)
+  if i > 0 { return i - 1 }
+  return vkm_get_or(vkg_c_alias, name, 0) - 1
+}
+function vkg_cmd_ok(c: int) -> bool {
+  if vkg_ir(vkg_c_rbase[c], vkg_c_rstar[c], false) == null { return false }
+  for p in vkg_c_poff[c] .. vkg_c_poff[c] + vkg_c_pcnt[c] {
+    let ir = vkg_ir(vkg_p_base[p], vkg_p_star[p], vkg_p_array[p])
+    if ir == null or ir == "void" { return false }
+  }
+  return true
+}
+
+# ---- emit vk_api.ludic ---------------------------------------------------------------
+var vkg_n_layouts: int = 0
+var vkg_n_cmds: int = 0
+
+function vkg_emit_ludic(path: pointer) -> bool {
+  let b = sb_new()
+  sb_puts(b, "# ============================================================================\n")
+  sb_puts(b, "# vk_api.ludic — Vulkan 1.0-1.4 and the renderer's extensions, bound for Ludic.\n")
+  sb_puts(b, "# GENERATED by `ludic-dev vkgen` from the Vulkan registry (vk.xml). Do not edit.\n")
+  sb_puts(b, "# Constants; every struct's size (<Struct>_sizeof) and field offsets (<Struct>_<field>,\n")
+  sb_puts(b, "# a bitfield at the offset of its storage unit); one extern per command. A C float\n")
+  sb_puts(b, "# is float bits in an int; uint64_t, VkDeviceSize and non-dispatchable handles are long.\n")
+  sb_puts(b, "# ============================================================================\n\n")
+  for i in 0 .. len(vkg_e_name) {
+    sb_puts(b, `const {vkg_e_name[i]}: {vkg_e_ty[i]} = {vkg_e_val[i]}\n`)
+  }
+  sb_puts(b, "\n")
+  vkg_n_layouts = 0
+  for k in 0 .. len(vkg_type_order) {
+    let name = vkg_type_order[k]
+    let t = vkg_ty_real(vkg_ty_find(name))
+    if t < 0 { continue }
+    if vkg_ty_kind[t] != VK_T_STRUCT and vkg_ty_kind[t] != VK_T_UNION { continue }
+    if not vkg_layout(t) { continue }
+    vkg_n_layouts += 1
+    sb_puts(b, `const {name}_sizeof: int = {string(vkg_ty_size[t])}\n`)
+    let m0 = vkg_ty_moff[t]
+    for m in m0 .. m0 + vkg_ty_mcnt[t] {
+      if vkg_m_name[m] != null { sb_puts(b, `const {name}_{vkg_m_name[m]}: int = {string(vkg_m_off[m])}\n`) }
+    }
+  }
+  sb_puts(b, "\n# the loader (vk_win.ll / vk_mac.ll) and memory access for filling structs (vk_thunks.ll)\n")
+  sb_puts(b, "extern function vk_open() -> int = \"lvk_open\"\n")
+  sb_puts(b, "extern function vk_has(name: pointer) -> int = \"lvk_has\"\n")
+  sb_puts(b, "extern function vk_zero(p: pointer, n: int) = \"lvk_zero\"\n")
+  sb_puts(b, "extern function vk_at(p: pointer, off: int) -> pointer = \"lvk_at\"\n")
+  sb_puts(b, "extern function vk_put_i32(p: pointer, off: int, v: int) = \"lvk_put_i32\"\n")
+  sb_puts(b, "extern function vk_put_i64(p: pointer, off: int, v: long) = \"lvk_put_i64\"\n")
+  sb_puts(b, "extern function vk_put_ptr(p: pointer, off: int, v: pointer) = \"lvk_put_ptr\"\n")
+  sb_puts(b, "extern function vk_get_i32(p: pointer, off: int) -> int = \"lvk_get_i32\"\n")
+  sb_puts(b, "extern function vk_get_i64(p: pointer, off: int) -> long = \"lvk_get_i64\"\n")
+  sb_puts(b, "extern function vk_get_ptr(p: pointer, off: int) -> pointer = \"lvk_get_ptr\"\n\n")
+  vkg_n_cmds = 0
+  for k in 0 .. len(vkg_cmd_order) {
+    let want = vkg_cmd_order[k]
+    let c = vkg_cmd_of(want)
+    if c < 0 or not vkg_cmd_ok(c) { continue }
+    vkg_n_cmds += 1
+    let bare = str_sub(want, 2, slen(want))
+    let ps = sb_new()
+    var n = 0
+    for p in vkg_c_poff[c] .. vkg_c_poff[c] + vkg_c_pcnt[c] {
+      if n > 0 { sb_puts(ps, ", ") }
+      sb_puts(ps, `{vkg_pname(vkg_p_name[p], n)}: {vkg_ludic(vkg_ir(vkg_p_base[p], vkg_p_star[p], vkg_p_array[p]))}`)
+      n += 1
+    }
+    let rt = vkg_ludic(vkg_ir(vkg_c_rbase[c], vkg_c_rstar[c], false))
+    var rets = ""
+    if rt != "void" { rets = " -> " + rt }
+    sb_puts(b, `extern function vk_{vkg_snake(bare)}({sb_str(ps)}){rets} = "lvk_{bare}"\n`)
+  }
+  return write_file(path, sb_str(b))
+}
+
+# ---- emit vk_thunks.ll ---------------------------------------------------------------
+function vkg_emit_thunks(path: pointer) -> bool {
+  let b = sb_new()
+  let bind = sb_new()
+  sb_puts(b, "; ============================================================================\n")
+  sb_puts(b, "; vk_thunks.ll — one thunk per bound Vulkan command. GENERATED by `ludic-dev vkgen`.\n")
+  sb_puts(b, "; Each @lvk_<Name> takes the Ludic ABI (i32 / i64 / ptr; a float as its bits) and\n")
+  sb_puts(b, "; calls through @lvk_p_<Name>, which @lvk_bind fills from the platform loader's\n")
+  sb_puts(b, "; @lvk_sym (vk_win.ll: GetProcAddress, vk_mac.ll: dlsym). A command the loader\n")
+  sb_puts(b, "; lacks stays null; ask vk_has(name) before calling an extension's command.\n")
+  sb_puts(b, "; ============================================================================\n\n")
+  sb_puts(b, "declare ptr @lvk_sym(ptr)\n")
+  sb_puts(b, "declare void @llvm.memset.p0.i64(ptr, i8, i64, i1)\n\n")
+  sb_puts(bind, "define i32 @lvk_bind() {\nentry:\n")
+  var found = 0
+  for k in 0 .. len(vkg_cmd_order) {
+    let want = vkg_cmd_order[k]
+    let c = vkg_cmd_of(want)
+    if c < 0 or not vkg_cmd_ok(c) { continue }
+    let bare = str_sub(want, 2, slen(want))
+    sb_puts(b, `@.lvkn_{bare} = private unnamed_addr constant [{string(slen(want) + 1)} x i8] c"{want}\\00"\n`)
+    sb_puts(b, `@lvk_p_{bare} = internal global ptr null\n`)
+    let cret = vkg_ir(vkg_c_rbase[c], vkg_c_rstar[c], false)
+    let lret = vkg_abi(cret)
+    let sig = sb_new();  let body = sb_new();  let call = sb_new()
+    var n = 0
+    for p in vkg_c_poff[c] .. vkg_c_poff[c] + vkg_c_pcnt[c] {
+      let ct = vkg_ir(vkg_p_base[p], vkg_p_star[p], vkg_p_array[p])
+      let lt = vkg_abi(ct)
+      let a = `%a{string(n)}`
+      if n > 0 { sb_puts(sig, ", ");  sb_puts(call, ", ") }
+      sb_puts(sig, `{lt} {a}`)
+      if ct == lt { sb_puts(call, `{ct} {a}`) }
+      else if ct == "float" {
+        sb_puts(body, `  %c{string(n)} = bitcast i32 {a} to float\n`)
+        sb_puts(call, `float %c{string(n)}`)
+      } else {
+        sb_puts(body, `  %c{string(n)} = trunc i32 {a} to {ct}\n`)
+        sb_puts(call, `{ct} %c{string(n)}`)
+      }
+      n += 1
+    }
+    sb_puts(b, `define {lret} @lvk_{bare}({sb_str(sig)}) `)
+    sb_puts(b, "{\nentry:\n")
+    sb_puts(b, `  %fp = load ptr, ptr @lvk_p_{bare}\n`)
+    sb_puts(b, sb_str(body))
+    let invoke = `call {cret} %fp({sb_str(call)})`
+    if cret == "void" { sb_puts(b, `  {invoke}\n  ret void\n`) }
+    else if cret == lret { sb_puts(b, `  %r = {invoke}\n  ret {lret} %r\n`) }
+    else if cret == "float" { sb_puts(b, `  %r = {invoke}\n  %z = bitcast float %r to i32\n  ret i32 %z\n`) }
+    else { sb_puts(b, `  %r = {invoke}\n  %z = zext {cret} %r to i32\n  ret i32 %z\n`) }
+    sb_puts(b, "}\n")
+    let f = string(found)
+    sb_puts(bind, `  %s{f} = call ptr @lvk_sym(ptr @.lvkn_{bare})\n  store ptr %s{f}, ptr @lvk_p_{bare}\n`)
+    found += 1
+  }
+  sb_puts(bind, `  ret i32 {string(found)}\n`)
+  sb_puts(bind, "}\n")
+  sb_puts(b, "\n")
+  sb_puts(b, sb_str(bind))
+  sb_puts(b, "\ndefine void @lvk_zero(ptr %p, i32 %n) {\nentry:\n  %w = sext i32 %n to i64\n  call void @llvm.memset.p0.i64(ptr %p, i8 0, i64 %w, i1 false)\n  ret void\n}\n")
+  sb_puts(b, "define ptr @lvk_at(ptr %p, i32 %o) {\nentry:\n  %q = getelementptr i8, ptr %p, i32 %o\n  ret ptr %q\n}\n")
+  let kinds = Text.split("i32 i64 ptr", " ")
+  for k in 0 .. 3 {
+    let t = kinds[k]
+    sb_puts(b, `define void @lvk_put_{t}(ptr %p, i32 %o, {t} %v) `)
+    sb_puts(b, "{\nentry:\n")
+    sb_puts(b, `  %q = getelementptr i8, ptr %p, i32 %o\n  store {t} %v, ptr %q, align 1\n  ret void\n`)
+    sb_puts(b, "}\n")
+    sb_puts(b, `define {t} @lvk_get_{t}(ptr %p, i32 %o) `)
+    sb_puts(b, "{\nentry:\n")
+    sb_puts(b, `  %q = getelementptr i8, ptr %p, i32 %o\n  %v = load {t}, ptr %q, align 1\n  ret {t} %v\n`)
+    sb_puts(b, "}\n")
+  }
+  return write_file(path, sb_str(b))
+}
+
+# ---- the task ------------------------------------------------------------------------
+function vkg_find_xml() -> pointer {
+  var i = 2
+  while i < arg_count() {
+    if arg(i) == "--xml" and i + 1 < arg_count() { return arg(i + 1) }
+    i += 1
+  }
+  let sdk = getenv_or("VULKAN_SDK", "")
+  if sdk != "" and file_exists(`{sdk}/share/vulkan/registry/vk.xml`) { return `{sdk}/share/vulkan/registry/vk.xml` }
+  let found = Text.trim(capture("ls -d $HOME/VulkanSDK/*/macOS/share/vulkan/registry/vk.xml /c/VulkanSDK/*/share/vulkan/registry/vk.xml 2>/dev/null | tail -1"))
+  if found != "" { return found }
+  return null
+}
+
+function cmd_vkgen() -> int {
+  var check = false
+  var i = 2
+  while i < arg_count() { if arg(i) == "--check" { check = true };  i += 1 }
+  let xpath = vkg_find_xml()
+  if xpath == null { err("vkgen: no vk.xml (install the Vulkan SDK, set VULKAN_SDK, or pass --xml)\n");  return 1 }
+  let x = read_file(xpath)
+  if x == null { err(`vkgen: cannot read {xpath}\n`);  return 1 }
+  vkg_types = vkm_new();  vkg_enums = vkm_new();  vkg_wide = vkm_new()
+  vkg_want_cmd = vkm_new();  vkg_want_type = vkm_new();  vkg_cmds = vkm_new();  vkg_c_alias = vkm_new()
+  vkg_ty_name = new []pointer;  vkg_ty_kind = new []int;  vkg_ty_size = new []int;  vkg_ty_align = new []int
+  vkg_ty_alias = new []pointer;  vkg_ty_moff = new []int;  vkg_ty_mcnt = new []int;  vkg_ty_float = new []bool
+  vkg_m_base = new []pointer;  vkg_m_star = new []int;  vkg_m_name = new []pointer;  vkg_m_count = new []int
+  vkg_m_array = new []bool;  vkg_m_bits = new []int;  vkg_m_off = new []int
+  vkg_e_name = new []pointer;  vkg_e_ty = new []pointer;  vkg_e_val = new []pointer
+  vkg_cmd_order = new []pointer;  vkg_type_order = new []pointer
+  vkg_c_name = new []pointer;  vkg_c_rbase = new []pointer;  vkg_c_rstar = new []int;  vkg_c_poff = new []int;  vkg_c_pcnt = new []int
+  vkg_p_base = new []pointer;  vkg_p_star = new []int;  vkg_p_name = new []pointer;  vkg_p_array = new []bool
+  vkg_alias_from = new []pointer;  vkg_alias_to = new []pointer
+
+  vkg_scalars()
+  vkg_parse_enum_blocks(x)
+  vkg_parse_types(x)
+  vkg_parse_selection(x)
+  vkg_parse_commands(x)
+
+  var skipped = 0
+  for k in 0 .. len(vkg_cmd_order) {
+    let c = vkg_cmd_of(vkg_cmd_order[k])
+    if c < 0 or not vkg_cmd_ok(c) { skipped += 1;  err(`vkgen: not bound: {vkg_cmd_order[k]}\n`) }
+  }
+  var api_out = "runtime/native/vk_api.ludic"
+  var thunk_out = "runtime/native/vk_thunks.ll"
+  if check { api_out = tmp_path("vk_api.ludic");  thunk_out = tmp_path("vk_thunks.ll") }
+  if not vkg_emit_ludic(api_out) { err("vkgen: cannot write vk_api.ludic\n");  return 1 }
+  if not vkg_emit_thunks(thunk_out) { err("vkgen: cannot write vk_thunks.ll\n");  return 1 }
+  if check {
+    if not shq(`cmp -s {api_out} runtime/native/vk_api.ludic`) { err("vk_api.ludic drifted from vk.xml (run: ludic-dev vkgen)\n");  return 1 }
+    if not shq(`cmp -s {thunk_out} runtime/native/vk_thunks.ll`) { err("vk_thunks.ll drifted from vk.xml (run: ludic-dev vkgen)\n");  return 1 }
+  }
+  print(`OK {string(len(vkg_e_name))} constants, {string(vkg_n_layouts)} struct layouts, {string(vkg_n_cmds)} commands ({string(skipped)} not bound) from {xpath}`)
+  return 0
+}

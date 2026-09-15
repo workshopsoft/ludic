@@ -116,11 +116,10 @@ function shadow_pass() -> void {
   var near = cam_near
   gl_bind_framebuffer(GL_FRAMEBUFFER, sh_fbo)
   gl_viewport(0, 0, SHADOW_RES, SHADOW_RES)
-  gl_enable(GL_DEPTH_TEST)
-  gl_depth_func(GL_LESS)
-  gl_enable(GL_POLYGON_OFFSET_FILL)
-  gl_polygon_offset(2.0, 4.0)
-  gl_disable(GL_CULL_FACE)
+  gpu_depth_test(true)
+  gpu_depth_func(GL_LESS)
+  gpu_depth_bias(2.0, 4.0)
+  gpu_cull(false)
   for c in 0 .. SHADOW_CASCADES {
     sh_cascade = c
     shadow_fit(c, near, sh_split[c])
@@ -135,7 +134,7 @@ function shadow_pass() -> void {
       scene_draw_casters(vp)
     }
   }
-  gl_disable(GL_POLYGON_OFFSET_FILL)
+  gpu_depth_bias(0.0, 0.0)
   gl_bind_framebuffer(GL_FRAMEBUFFER, 0)
   if r3d_debug_shadow { shadow_dump() }
   if r3d_debug_shadow and not sh_printed2 {
@@ -222,8 +221,8 @@ function shadow_dump() -> void {
 var sh_printed: bool = false
 # a uniform array's location: some drivers only answer to the "[0]" spelling
 function sh_loc(prog: int, name: string) -> int {
-  var loc = gl_uniform(prog, name + "[0]")
-  if loc < 0 { loc = gl_uniform(prog, name) }
+  var loc = gpu_uniform(prog, name + "[0]")
+  if loc < 0 { loc = gpu_uniform(prog, name) }
   return loc
 }
 function shadow_bind(prog: int) -> void {
@@ -234,17 +233,17 @@ function shadow_bind(prog: int) -> void {
   if ts == 0 { ts = ter_height_tex;  ts_on = F_ZERO }
   r3d_bind_2d(prog, "u_tershadow", 6, ts)
   terrain_bind_height(prog)
-  u_f(gl_uniform(prog, "u_ts_on"), ts_on)
-  u_f(gl_uniform(prog, "u_ts_half"), fi(TERRAIN_HALF))
-  u_f2(gl_uniform(prog, "u_ts_origin"), ter_ox, ter_oz)
-  var loc = gl_uniform(prog, "u_cascade_vp[0]")
-  if loc < 0 { loc = gl_uniform(prog, "u_cascade_vp") }
-  if r3d_debug_shadow and not sh_printed { sh_printed = true;  print(`cascade vp loc {loc} / {gl_uniform(prog, "u_cascade_vp")}  split loc {gl_uniform(prog, "u_cascade_split")} shadow loc {gl_uniform(prog, "u_shadow")}`) }
-  gl_uniform_matrix4fv(loc, SHADOW_CASCADES, 0, sh_vp)
-  gl_uniform1fv(sh_loc(prog, "u_cascade_split"), SHADOW_CASCADES, sh_split)
-  if r3d_debug_shadow and not sh_printed3 { sh_printed3 = true;  print(`range {f_fx(sh_range[0])} {f_fx(sh_range[1])} {f_fx(sh_range[2])} {f_fx(sh_range[3])} texel*1000 {f_fx(f_mul(sh_texel[0], fi(1000)))} {f_fx(f_mul(sh_texel[1], fi(1000)))} {f_fx(f_mul(sh_texel[2], fi(1000)))} {f_fx(f_mul(sh_texel[3], fi(1000)))} locs {gl_uniform(prog, "u_cascade_range")} {gl_uniform(prog, "u_cascade_texel")}`) }
-  gl_uniform1fv(sh_loc(prog, "u_cascade_range"), SHADOW_CASCADES, sh_range)
+  u_f(gpu_uniform(prog, "u_ts_on"), ts_on)
+  u_f(gpu_uniform(prog, "u_ts_half"), fi(TERRAIN_HALF))
+  u_f2(gpu_uniform(prog, "u_ts_origin"), ter_ox, ter_oz)
+  var loc = gpu_uniform(prog, "u_cascade_vp[0]")
+  if loc < 0 { loc = gpu_uniform(prog, "u_cascade_vp") }
+  if r3d_debug_shadow and not sh_printed { sh_printed = true;  print(`cascade vp loc {loc} / {gpu_uniform(prog, "u_cascade_vp")}  split loc {gpu_uniform(prog, "u_cascade_split")} shadow loc {gpu_uniform(prog, "u_shadow")}`) }
+  u_mat4n(loc, SHADOW_CASCADES, sh_vp)
+  u_fv(sh_loc(prog, "u_cascade_split"), SHADOW_CASCADES, sh_split)
+  if r3d_debug_shadow and not sh_printed3 { sh_printed3 = true;  print(`range {f_fx(sh_range[0])} {f_fx(sh_range[1])} {f_fx(sh_range[2])} {f_fx(sh_range[3])} texel*1000 {f_fx(f_mul(sh_texel[0], fi(1000)))} {f_fx(f_mul(sh_texel[1], fi(1000)))} {f_fx(f_mul(sh_texel[2], fi(1000)))} {f_fx(f_mul(sh_texel[3], fi(1000)))} locs {gpu_uniform(prog, "u_cascade_range")} {gpu_uniform(prog, "u_cascade_texel")}`) }
+  u_fv(sh_loc(prog, "u_cascade_range"), SHADOW_CASCADES, sh_range)
   if Os.has_env("R3D_FORCE") { sh_force = Text.to_int(Os.env("R3D_FORCE")) }
-  gl_uniform1i(gl_uniform(prog, "u_force_cascade"), sh_force)
-  gl_uniform1fv(sh_loc(prog, "u_cascade_texel"), SHADOW_CASCADES, sh_texel)
+  u_i(gpu_uniform(prog, "u_force_cascade"), sh_force)
+  u_fv(sh_loc(prog, "u_cascade_texel"), SHADOW_CASCADES, sh_texel)
 }

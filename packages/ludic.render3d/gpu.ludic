@@ -1,0 +1,320 @@
+# ============================================================================
+# gpu.ludic — the seam between the renderer and a graphics API.
+#
+# render3d was written straight against OpenGL, so there was nowhere to put a second
+# API. This file is where that stops: the renderer asks for what it wants here, and
+# the backend decides how to say it. OpenGL is the default and the fallback; Vulkan
+# is the second backend (docs: maroon-lake docs/plan/37-vulkan.md).
+#
+# The port is incremental. What has moved behind the seam so far:
+#   - the choice of backend (R3D_GFX=gl|vk, or gpu_request before r3d_init)
+#   - the fixed-function render state: depth test/func/write, blending, face
+#     culling, colour writes, alpha-to-coverage, depth bias, scissor
+#   - uniforms: looked up by program and name (gpu_uniform), set by the u_* setters
+#
+# Render state is cached. A pipeline API bakes this state into an object picked by
+# key; OpenGL gets the same effect by only telling the driver what changed. The
+# cache is only right if NOTHING else in the renderer touches that state, so no
+# gl_enable / gl_disable / gl_depth_func / gl_depth_mask / gl_blend_func /
+# gl_cull_face / gl_color_mask / gl_scissor / gl_polygon_offset may appear outside
+# this file, and neither may any gl_uniform* call.
+# ============================================================================
+
+const GPU_GL: int = 1
+const GPU_VK: int = 2
+
+var gpu_kind: int = 0                 # the backend running; 0 until gpu_select
+var gpu_wanted: int = 0               # what was asked for (setting or R3D_GFX)
+var gpu_fallback_reason: string = null # why the wanted backend is not the one running
+
+# Ask for a backend before r3d_init ("gl", "opengl", "vk", "vulkan"). The environment
+# (R3D_GFX) wins over it, so a test or a take can force one whatever the setting says.
+function gpu_request(name: string) -> void { gpu_wanted = gpu_kind_of(name) }
+
+function gpu_kind_of(name: string) -> int {
+  if name == "vk" or name == "vulkan" { return GPU_VK }
+  if name == "gl" or name == "opengl" { return GPU_GL }
+  return GPU_GL
+}
+function gpu_name(kind: int) -> string {
+  if kind == GPU_VK { return "vulkan" }
+  return "opengl"
+}
+
+# Settle the backend. Anything that cannot run lands on OpenGL with a reason a
+# caller can show the player (gpu_fallback_reason).
+function gpu_select() -> int {
+  if gpu_kind != 0 { return gpu_kind }
+  if Os.has_env("R3D_GFX") { gpu_wanted = gpu_kind_of(Os.env("R3D_GFX")) }
+  if gpu_wanted == 0 { gpu_wanted = GPU_GL }
+  gpu_kind = GPU_GL
+  if gpu_wanted == GPU_VK {
+    gpu_fallback_reason = "the Vulkan renderer is not built yet"
+    print(`r3d: vulkan requested: {gpu_fallback_reason}; using opengl`)
+  }
+  return gpu_kind
+}
+function gpu_backend() -> string { return gpu_name(gpu_kind) }
+function gpu_is_gl() -> bool { return gpu_kind != GPU_VK }
+
+# ---- render state ----------------------------------------------------------------
+# -1 = not known yet: the first set always reaches the driver, so the cache never
+# assumes a default the context might not have.
+var gpu_s_depth_test: int = -1
+var gpu_s_depth_func: int = -1
+var gpu_s_depth_write: int = -1
+var gpu_s_blend: int = -1
+var gpu_s_blend_src: int = -1
+var gpu_s_blend_dst: int = -1
+var gpu_s_cull: int = -1
+var gpu_s_cull_face: int = -1
+var gpu_s_color_write: int = -1
+var gpu_s_a2c: int = -1
+
+function gpu_b(on: bool) -> int { if on { return 1 };  return 0 }
+
+# Forget the cache: after anything outside the renderer may have changed GL state
+# (a context rebuilt, a foreign library drawing into the frame).
+function gpu_state_forget() -> void {
+  gpu_s_depth_test = -1;  gpu_s_depth_func = -1;  gpu_s_depth_write = -1
+  gpu_s_blend = -1;  gpu_s_blend_src = -1;  gpu_s_blend_dst = -1
+  gpu_s_cull = -1;  gpu_s_cull_face = -1;  gpu_s_color_write = -1;  gpu_s_a2c = -1
+}
+
+function gpu_gl_cap(cap: int, on: int) -> void { if on == 1 { gl_enable(cap) } else { gl_disable(cap) } }
+
+function gpu_depth_test(on: bool) -> void {
+  let v = gpu_b(on)
+  if v == gpu_s_depth_test { return }
+  gpu_s_depth_test = v
+  gpu_gl_cap(GL_DEPTH_TEST, v)
+}
+# GL_LESS, GL_LEQUAL, GL_EQUAL, GL_ALWAYS, ... (the comparison names are the same in every API)
+function gpu_depth_func(f: int) -> void {
+  if f == gpu_s_depth_func { return }
+  gpu_s_depth_func = f
+  gl_depth_func(f)
+}
+function gpu_depth_write(on: bool) -> void {
+  let v = gpu_b(on)
+  if v == gpu_s_depth_write { return }
+  gpu_s_depth_write = v
+  gl_depth_mask(v)
+}
+function gpu_blend(on: bool) -> void {
+  let v = gpu_b(on)
+  if v == gpu_s_blend { return }
+  gpu_s_blend = v
+  gpu_gl_cap(GL_BLEND, v)
+}
+function gpu_blend_func(src: int, dst: int) -> void {
+  if src == gpu_s_blend_src and dst == gpu_s_blend_dst { return }
+  gpu_s_blend_src = src;  gpu_s_blend_dst = dst
+  gl_blend_func(src, dst)
+}
+function gpu_cull(on: bool) -> void {
+  let v = gpu_b(on)
+  if v == gpu_s_cull { return }
+  gpu_s_cull = v
+  gpu_gl_cap(GL_CULL_FACE, v)
+}
+# GL_BACK or GL_FRONT
+function gpu_cull_face(face: int) -> void {
+  if face == gpu_s_cull_face { return }
+  gpu_s_cull_face = face
+  gl_cull_face(face)
+}
+# all four channels together: nothing in the renderer writes a partial mask
+function gpu_color_write(on: bool) -> void {
+  let v = gpu_b(on)
+  if v == gpu_s_color_write { return }
+  gpu_s_color_write = v
+  gl_color_mask(v, v, v, v)
+}
+function gpu_alpha_to_coverage(on: bool) -> void {
+  let v = gpu_b(on)
+  if v == gpu_s_a2c { return }
+  gpu_s_a2c = v
+  gpu_gl_cap(GL_SAMPLE_ALPHA_TO_COVERAGE, v)
+}
+
+# Depth bias for the shadow casters; (0, 0) turns it off. factor/units are fixed, as
+# gl_polygon_offset takes them. A pipeline API bakes the bias into the pipeline.
+var gpu_s_bias: int = -1
+function gpu_depth_bias(factor: fixed, units: fixed) -> void {
+  var v = 1
+  if factor == 0.0 and units == 0.0 { v = 0 }
+  if v != gpu_s_bias { gpu_s_bias = v;  gpu_gl_cap(GL_POLYGON_OFFSET_FILL, v) }
+  if v == 1 { gl_polygon_offset(factor, units) }
+}
+
+# A scissor rectangle in top-down pixels (x, y from the top-left of the drawable), or
+# off. Every API but OpenGL counts rows from the top; the GL backend flips it.
+var gpu_s_scissor: int = -1
+function gpu_scissor(x: int, y_top: int, w: int, h: int) -> void {
+  if gpu_s_scissor != 1 { gpu_s_scissor = 1;  gl_enable(GL_SCISSOR_TEST) }
+  gl_scissor(x, gl_h - y_top - h, w, h)
+}
+function gpu_scissor_off() -> void {
+  if gpu_s_scissor == 0 { return }
+  gpu_s_scissor = 0
+  gl_disable(GL_SCISSOR_TEST)
+}
+
+# ---- uniforms --------------------------------------------------------------------
+# A uniform is found by its program and its name, and set through a handle. On OpenGL
+# the handle is the location. On a pipeline API it will name a slot in the program's
+# uniform block, so the u_* setters below are the only code that knows which. Arrays
+# are looked up by their first element ("u_bones[0]"), as every GL driver accepts.
+function gpu_uniform(prog: int, name: string) -> int { return gl_get_uniform_location(prog, name) }
+
+var gpu_u_tmp: words = null
+function gpu_tmp() -> words { if gpu_u_tmp == null { gpu_u_tmp = words(4) };  return gpu_u_tmp }
+# float bits (IEEE singles in an int), like every other number in the renderer
+function u_f(loc: int, v: int) -> void { let t = gpu_tmp();  t[0] = v;  gl_uniform1fv(loc, 1, t) }
+function u_f2(loc: int, x: int, y: int) -> void { let t = gpu_tmp();  t[0] = x;  t[1] = y;  gl_uniform2fv(loc, 1, t) }
+function u_f3(loc: int, x: int, y: int, z: int) -> void { let t = gpu_tmp();  t[0] = x;  t[1] = y;  t[2] = z;  gl_uniform3fv(loc, 1, t) }
+function u_f4(loc: int, x: int, y: int, z: int, w: int) -> void { let t = gpu_tmp();  t[0] = x;  t[1] = y;  t[2] = z;  t[3] = w;  gl_uniform4fv(loc, 1, t) }
+function u_v3(loc: int, v: words) -> void { gl_uniform3fv(loc, 1, v) }
+function u_fv(loc: int, n: int, v: words) -> void { gl_uniform1fv(loc, n, v) }
+function u_mat4(loc: int, m: words) -> void { gl_uniform_matrix4fv(loc, 1, 0, m) }
+function u_mat4n(loc: int, n: int, m: words) -> void { gl_uniform_matrix4fv(loc, n, 0, m) }
+function u_i(loc: int, v: int) -> void { gl_uniform1i(loc, v) }
+
+# ---- what this machine can do ----------------------------------------------------
+# The advanced graphics features are Windows features: the Vulkan renderer, ray tracing,
+# DLSS, Reflex, HDR output, mesh-shader ground cover. gpu_caps_probe() asks Vulkan what
+# the GPU offers - on Windows only - and a game's settings screen greys out whatever this
+# machine cannot use, with the most specific reason. Detected every start, never saved:
+# a settings file carried to another machine must not carry a stale "supported".
+const GF_VULKAN: int = 0
+const GF_RT_SHADOWS: int = 1
+const GF_RT_REFLECTIONS: int = 2
+const GF_RT_AO: int = 3
+const GF_DLSS: int = 4
+const GF_DLSS_RR: int = 5
+const GF_DLSS_FG: int = 6
+const GF_DLSS5: int = 7
+const GF_REFLEX: int = 8
+const GF_HDR: int = 9
+const GF_MESH_GRASS: int = 10
+const GF_COUNT: int = 11
+
+var gpu_cap_probed: bool = false
+var gpu_cap_windows: bool = false      # the advanced features exist on this platform at all
+var gpu_cap_vulkan: bool = false       # a Vulkan loader, an instance and a device
+var gpu_cap_floor: bool = false        # Vulkan 1.3 with everything the renderer's floor needs
+var gpu_cap_rt: bool = false           # ray query + acceleration structures
+var gpu_cap_mesh: bool = false         # VK_EXT_mesh_shader
+var gpu_cap_nvidia: bool = false
+var gpu_cap_rtx: int = 0               # the RTX generation (20, 30, 40, 50); 0 = not RTX
+var gpu_cap_reflex: bool = false       # VK_NV_low_latency2
+var gpu_cap_hdr: bool = false          # the instance offers HDR colour spaces
+var gpu_cap_device: string = ""
+
+# 20 for "NVIDIA GeForce RTX 2080", 50 for "RTX 5090"; 30 for a workstation "RTX A4000"
+function gpu_rtx_generation(name: string) -> int {
+  let at = Text.index_of(name, "RTX ")
+  if at < 0 { return 0 }
+  let p: pointer = name
+  let c = p[at + 4]
+  if c >= '0' and c <= '9' { return (c - '0') * 10 }
+  return 30
+}
+
+function gpu_ext_in(props: bytes, n: int, want: string) -> bool {
+  for i in 0 .. n {
+    if string(Vk.at(props, i * VkExtensionProperties_sizeof + VkExtensionProperties_extensionName)) == want { return true }
+  }
+  return false
+}
+
+# R3D_CAPS=rtx50|rtx40|rtx30|amd|intel|none pretends to be a Windows machine with that GPU,
+# so the settings screen can be shot and tested anywhere
+function gpu_caps_fake(kind: string) -> void {
+  gpu_cap_windows = true
+  if kind == "none" { return }
+  gpu_cap_vulkan = true;  gpu_cap_floor = true;  gpu_cap_hdr = true
+  if kind == "amd" or kind == "intel" { gpu_cap_rt = true;  gpu_cap_mesh = true;  gpu_cap_device = `test {kind} GPU`;  return }
+  gpu_cap_nvidia = true;  gpu_cap_rt = true;  gpu_cap_mesh = true;  gpu_cap_reflex = true
+  gpu_cap_rtx = gpu_rtx_generation(`RTX {kind[3 .. 5]}`)
+  gpu_cap_device = `test NVIDIA GeForce RTX {kind[3 .. 5]}`
+}
+
+function gpu_caps_probe() -> void {
+  if gpu_cap_probed { return }
+  gpu_cap_probed = true
+  if Os.has_env("R3D_CAPS") { gpu_caps_fake(Os.env("R3D_CAPS"));  return }
+  gpu_cap_windows = Os.platform() == "windows"
+  if not gpu_cap_windows { return }
+  if Vk.open() == 0 { return }
+  let cnt = bytes(4)
+  Vk.put_i32(cnt, 0, 0)
+  Vk.enumerate_instance_extension_properties(null, cnt, null)
+  let nie = Vk.get_i32(cnt, 0)
+  let iexts = bytes(nie * VkExtensionProperties_sizeof + 8)
+  Vk.enumerate_instance_extension_properties(null, cnt, iexts)
+  gpu_cap_hdr = gpu_ext_in(iexts, nie, VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME)
+  let app = bytes(VkApplicationInfo_sizeof)
+  Vk.zero(app, VkApplicationInfo_sizeof)
+  Vk.put_i32(app, VkApplicationInfo_sType, VK_STRUCTURE_TYPE_APPLICATION_INFO)
+  Vk.put_i32(app, VkApplicationInfo_apiVersion, (1 << 22) | (3 << 12))
+  let ici = bytes(VkInstanceCreateInfo_sizeof)
+  Vk.zero(ici, VkInstanceCreateInfo_sizeof)
+  Vk.put_i32(ici, VkInstanceCreateInfo_sType, VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO)
+  Vk.put_ptr(ici, VkInstanceCreateInfo_pApplicationInfo, app)
+  let out = bytes(8)
+  if Vk.create_instance(ici, null, out) != VK_SUCCESS { return }
+  let inst = Vk.get_ptr(out, 0)
+  Vk.put_i32(cnt, 0, 0)
+  Vk.enumerate_physical_devices(inst, cnt, null)
+  let nd = Vk.get_i32(cnt, 0)
+  let devs = bytes(nd * 8 + 8)
+  Vk.enumerate_physical_devices(inst, cnt, devs)
+  let props = bytes(VkPhysicalDeviceProperties_sizeof)
+  # the renderer runs on the first discrete GPU, else the first one listed
+  var pick = -1
+  for d in 0 .. nd {
+    Vk.get_physical_device_properties(Vk.get_ptr(devs, d * 8), props)
+    if pick < 0 and Vk.get_i32(props, VkPhysicalDeviceProperties_deviceType) == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU { pick = d }
+  }
+  if pick < 0 and nd > 0 { pick = 0 }
+  if pick >= 0 {
+    let pd = Vk.get_ptr(devs, pick * 8)
+    gpu_cap_vulkan = true
+    Vk.get_physical_device_properties(pd, props)
+    gpu_cap_device = string(Vk.at(props, VkPhysicalDeviceProperties_deviceName))
+    gpu_cap_nvidia = Vk.get_i32(props, VkPhysicalDeviceProperties_vendorID) == 4318
+    if gpu_cap_nvidia { gpu_cap_rtx = gpu_rtx_generation(gpu_cap_device) }
+    let api = Vk.get_i32(props, VkPhysicalDeviceProperties_apiVersion)
+    let f13 = bytes(VkPhysicalDeviceVulkan13Features_sizeof)
+    Vk.zero(f13, VkPhysicalDeviceVulkan13Features_sizeof)
+    Vk.put_i32(f13, VkPhysicalDeviceVulkan13Features_sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES)
+    let f12 = bytes(VkPhysicalDeviceVulkan12Features_sizeof)
+    Vk.zero(f12, VkPhysicalDeviceVulkan12Features_sizeof)
+    Vk.put_i32(f12, VkPhysicalDeviceVulkan12Features_sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES)
+    Vk.put_ptr(f12, VkPhysicalDeviceVulkan12Features_pNext, f13)
+    let f2 = bytes(VkPhysicalDeviceFeatures2_sizeof)
+    Vk.zero(f2, VkPhysicalDeviceFeatures2_sizeof)
+    Vk.put_i32(f2, VkPhysicalDeviceFeatures2_sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2)
+    Vk.put_ptr(f2, VkPhysicalDeviceFeatures2_pNext, f12)
+    Vk.get_physical_device_features2(pd, f2)
+    let major = (api >> 22) & 127
+    let minor = (api >> 12) & 1023
+    gpu_cap_floor = (major > 1 or (major == 1 and minor >= 3)) and Vk.get_i32(f13, VkPhysicalDeviceVulkan13Features_dynamicRendering) == 1 and Vk.get_i32(f13, VkPhysicalDeviceVulkan13Features_synchronization2) == 1 and Vk.get_i32(f12, VkPhysicalDeviceVulkan12Features_descriptorIndexing) == 1 and Vk.get_i32(f12, VkPhysicalDeviceVulkan12Features_bufferDeviceAddress) == 1 and Vk.get_i32(f12, VkPhysicalDeviceVulkan12Features_timelineSemaphore) == 1
+    Vk.put_i32(cnt, 0, 0)
+    Vk.enumerate_device_extension_properties(pd, null, cnt, null)
+    let ne = Vk.get_i32(cnt, 0)
+    let dexts = bytes(ne * VkExtensionProperties_sizeof + 8)
+    Vk.enumerate_device_extension_properties(pd, null, cnt, dexts)
+    gpu_cap_rt = gpu_ext_in(dexts, ne, VK_KHR_RAY_QUERY_EXTENSION_NAME) and gpu_ext_in(dexts, ne, VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME)
+    gpu_cap_mesh = gpu_ext_in(dexts, ne, VK_EXT_MESH_SHADER_EXTENSION_NAME)
+    gpu_cap_reflex = gpu_ext_in(dexts, ne, VK_NV_LOW_LATENCY_2_EXTENSION_NAME)
+  }
+  Vk.destroy_instance(inst, null)
+  print(`r3d: gpu caps: {gpu_cap_device} vulkan {gpu_cap_vulkan} floor {gpu_cap_floor} rt {gpu_cap_rt} mesh {gpu_cap_mesh} rtx {gpu_cap_rtx} reflex {gpu_cap_reflex} hdr {gpu_cap_hdr}`)
+}
+
+# Whether the renderer actually draws a feature yet. The Vulkan renderer is being built;
+# until a feature lands, choosing it is saved and shown, and says it takes effect later.
+function gpu_feature_implemented(f: int) -> bool { return false }

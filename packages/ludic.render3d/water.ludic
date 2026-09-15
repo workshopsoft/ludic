@@ -67,11 +67,11 @@ function water_reflection_pass() -> void {
   v3_copy(cam_pos, eye)
   r3d_clip_y = f_sub(water_level, fl(0.05))
   target_bind(water_refl)
-  gl_enable(GL_DEPTH_TEST)
-  gl_depth_func(GL_LESS)
-  gl_depth_mask(1)
-  gl_enable(GL_CULL_FACE)
-  gl_cull_face(GL_FRONT)                  # the mirror flips the winding
+  gpu_depth_test(true)
+  gpu_depth_func(GL_LESS)
+  gpu_depth_write(true)
+  gpu_cull(true)
+  gpu_cull_face(GL_FRONT)                  # the mirror flips the winding
   gl_clear_color(0.0, 0.0, 0.0, 1.0)
   gl_clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
   sc_freeze = true
@@ -84,7 +84,7 @@ function water_reflection_pass() -> void {
   ter_reflect = false
   sc_skip_blade = sb
   sc_freeze = false
-  gl_cull_face(GL_BACK)
+  gpu_cull_face(GL_BACK)
   if Os.has_env("R3D_DUMP_REFL") and not water_dumped { water_dumped = true;  tex_dump(water_refl.color, water_refl.w, water_refl.h, "build/dbg_refl.ppm") }
   # restore
   r3d_clip_y = 0xCF000000
@@ -138,14 +138,14 @@ function water_draw(depth_tex: int) -> void {
   if not water_on or wb_n == 0 { return }
   let p = water_prog
   gl_use_program(p)
-  u_mat4(gl_uniform(p, "u_view"), cam_view)
-  u_mat4(gl_uniform(p, "u_proj"), cam_proj)
-  u_mat4(gl_uniform(p, "u_inv_vp"), cam_inv_vp)
+  u_mat4(gpu_uniform(p, "u_view"), cam_view)
+  u_mat4(gpu_uniform(p, "u_proj"), cam_proj)
+  u_mat4(gpu_uniform(p, "u_inv_vp"), cam_inv_vp)
   # gl_FragCoord here runs over the scene target, which is post_w x post_h — not the
   # window. They are the same size only at a render scale of 1; at anything less, taking
   # the window's size sent the refraction and depth reads into the wrong corner of the
   # frame, and the lake showed a squashed copy of it instead of its own bed.
-  u_f2(gl_uniform(p, "u_screen"), fi(post_w), fi(post_h))
+  u_f2(gpu_uniform(p, "u_screen"), fi(post_w), fi(post_h))
   var ron = F_ZERO
   if water_refl != null and wb_primary >= 0 {
     # bind on its own unit first: generating the mip chain re-binds the texture on the active unit,
@@ -162,26 +162,26 @@ function water_draw(depth_tex: int) -> void {
   # Opaque. The surface composites the refracted bed itself, so there is nothing for
   # hardware blending to do — and an alpha was what left see-through gaps in the foam
   # and a clear band at the shore wide enough to give the plane away.
-  gl_disable(GL_BLEND)
-  gl_blend_func(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+  gpu_blend(false)
+  gpu_blend_func(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
   # the surface writes depth: the ambient-occlusion and temporal passes read the frame's depth,
   # and the bed 9 m below the shore would otherwise darken a band along the water line
-  gl_depth_mask(1)
-  gl_disable(GL_CULL_FACE)
+  gpu_depth_write(true)
+  gpu_cull(false)
   # every body is the same plane at its own level and bounds; only the mirrored one samples
   # the reflection - another body reading it would show the wrong world upside down
   for i in 0 .. wb_n {
-    u_f(gl_uniform(p, "u_level"), wb_level[i])
-    u_f2(gl_uniform(p, "u_center"), wb_cx[i], wb_cz[i])
-    u_f2(gl_uniform(p, "u_extent"), wb_ex[i], wb_ez[i])
+    u_f(gpu_uniform(p, "u_level"), wb_level[i])
+    u_f2(gpu_uniform(p, "u_center"), wb_cx[i], wb_cz[i])
+    u_f2(gpu_uniform(p, "u_extent"), wb_ex[i], wb_ez[i])
     var r = F_ZERO
     if i == wb_primary { r = ron }
-    u_f(gl_uniform(p, "u_refl_on"), r)
+    u_f(gpu_uniform(p, "u_refl_on"), r)
     # every body but the mirrored sea is clipped to the ellipse inside its bounds
     var clip = F_ONE
     if i == wb_primary { clip = F_ZERO }
-    u_f(gl_uniform(p, "u_clip_ellipse"), clip)
+    u_f(gpu_uniform(p, "u_clip_ellipse"), clip)
     mesh_draw(water_mesh)
   }
-  gl_disable(GL_BLEND)
+  gpu_blend(false)
 }

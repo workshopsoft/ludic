@@ -227,21 +227,21 @@ function terrain_generate() -> void {
   gl_bind_framebuffer(GL_FRAMEBUFFER, fbo)
   gl_framebuffer_texture2d(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ter_height_tex, 0)
   gl_viewport(0, 0, TERRAIN_RES, TERRAIN_RES)
-  gl_disable(GL_DEPTH_TEST)
+  gpu_depth_test(false)
   gl_use_program(p)
-  u_f(gl_uniform(p, "u_half"), fi(TERRAIN_HALF))
+  u_f(gpu_uniform(p, "u_half"), fi(TERRAIN_HALF))
   if ter_dem_tex != 0 {
     r3d_bind_2d(p, "u_dem", 0, ter_dem_tex)
-    u_f(gl_uniform(p, "u_dem_min"), ter_dem_min)
-    u_f(gl_uniform(p, "u_dem_max"), ter_dem_max)
-    u_f(gl_uniform(p, "u_dem_base"), ter_dem_base)
-    u_f2(gl_uniform(p, "u_origin"), ter_ox, ter_oz)
-    u_f4(gl_uniform(p, "u_lake"), ter_lake_cx, ter_lake_cz, ter_lake_ex, ter_lake_ez)
-    u_f(gl_uniform(p, "u_lake_level"), ter_lake_level)
-    u_f(gl_uniform(p, "u_sea_level"), ter_sea_gen())
-    u_f4(gl_uniform(p, "u_isle"), ter_isle_cx, ter_isle_cz, ter_isle_r, ter_isle_fall)
-    u_f(gl_uniform(p, "u_isle_mode"), fi(ter_isle_mode))
-    u_f(gl_uniform(p, "u_dem_blur"), ter_dem_blur)
+    u_f(gpu_uniform(p, "u_dem_min"), ter_dem_min)
+    u_f(gpu_uniform(p, "u_dem_max"), ter_dem_max)
+    u_f(gpu_uniform(p, "u_dem_base"), ter_dem_base)
+    u_f2(gpu_uniform(p, "u_origin"), ter_ox, ter_oz)
+    u_f4(gpu_uniform(p, "u_lake"), ter_lake_cx, ter_lake_cz, ter_lake_ex, ter_lake_ez)
+    u_f(gpu_uniform(p, "u_lake_level"), ter_lake_level)
+    u_f(gpu_uniform(p, "u_sea_level"), ter_sea_gen())
+    u_f4(gpu_uniform(p, "u_isle"), ter_isle_cx, ter_isle_cz, ter_isle_r, ter_isle_fall)
+    u_f(gpu_uniform(p, "u_isle_mode"), fi(ter_isle_mode))
+    u_f(gpu_uniform(p, "u_dem_blur"), ter_dem_blur)
   }
   mesh_draw(sky_fullscreen)
   # second pass: R = height, GBA = the smooth surface normal, baked once (ternormal.frag)
@@ -251,7 +251,7 @@ function terrain_generate() -> void {
   let pn = r3d_program("fullscreen.vert", "ternormal.frag", "")
   gl_use_program(pn)
   r3d_bind_2d(pn, "u_src", 0, raw)
-  u_f(gl_uniform(pn, "u_half"), fi(TERRAIN_HALF))
+  u_f(gpu_uniform(pn, "u_half"), fi(TERRAIN_HALF))
   mesh_draw(sky_fullscreen)
   gl_delete_program(pn)
   ids0 = gl_scratch();  ids0[0] = raw;  gl_delete_textures(1, ids0)
@@ -271,8 +271,8 @@ function terrain_generate() -> void {
 # The height field for shaders that place things on the ground (model.vert's u_ground)
 function terrain_bind_height(p: int) -> void {
   r3d_bind_2d(p, "u_ts_height", 5, ter_height_tex)
-  u_f(gl_uniform(p, "u_ts_half"), fi(TERRAIN_HALF))
-  u_f2(gl_uniform(p, "u_ts_origin"), ter_ox, ter_oz)
+  u_f(gpu_uniform(p, "u_ts_half"), fi(TERRAIN_HALF))
+  u_f2(gpu_uniform(p, "u_ts_origin"), ter_ox, ter_oz)
 }
 
 # Bake the height-field sun shadow (see tershadow.frag). Cheap enough to redo whenever
@@ -286,12 +286,12 @@ function terrain_bake_shadow() -> void {
   gl_bind_framebuffer(GL_FRAMEBUFFER, fbo)
   gl_framebuffer_texture2d(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ter_shadow_tex, 0)
   gl_viewport(0, 0, TERRAIN_SHADOW_RES, TERRAIN_SHADOW_RES)
-  gl_disable(GL_DEPTH_TEST)
-  gl_disable(GL_BLEND)
+  gpu_depth_test(false)
+  gpu_blend(false)
   gl_use_program(p)
   r3d_bind_2d(p, "u_height", 0, ter_height_tex)
-  u_f(gl_uniform(p, "u_half"), fi(TERRAIN_HALF))
-  u_v3(gl_uniform(p, "u_sun"), sun_dir)
+  u_f(gpu_uniform(p, "u_half"), fi(TERRAIN_HALF))
+  u_v3(gpu_uniform(p, "u_sun"), sun_dir)
   mesh_draw(sky_fullscreen)
   gl_bind_framebuffer(GL_FRAMEBUFFER, 0)
   let ids = gl_scratch()
@@ -452,31 +452,31 @@ function terrain_bind_prog(p: int) -> void {
   r3d_bind_2d(p, "u_ortho", 4, orthotex)
   var oon = F_ZERO
   if ter_ortho_tex != 0 { oon = F_ONE }
-  u_f(gl_uniform(p, "u_ortho_on"), oon)
+  u_f(gpu_uniform(p, "u_ortho_on"), oon)
   r3d_bind_2d(p, "u_rock_d", 7, ter_tex[6]);   r3d_bind_2d(p, "u_rock_n", 8, ter_tex[7]);   r3d_bind_2d(p, "u_rock_a", 9, ter_tex[8])
   r3d_bind_2d(p, "u_snow_d", 10, ter_tex[9])
-  if ter_carpet != 0 { r3d_bind_2d(p, "u_carpet", 11, ter_carpet);  u_f(gl_uniform(p, "u_carpet_on"), F_ONE) }
-  else { r3d_bind_2d(p, "u_carpet", 11, ter_tex[0]);  u_f(gl_uniform(p, "u_carpet_on"), F_ZERO) }
-  u_f(gl_uniform(p, "u_half"), fi(TERRAIN_HALF))
-  u_f(gl_uniform(p, "u_texel"), fr(1, TERRAIN_RES))
-  u_f(gl_uniform(p, "u_snow_line"), ter_snow_line)
+  if ter_carpet != 0 { r3d_bind_2d(p, "u_carpet", 11, ter_carpet);  u_f(gpu_uniform(p, "u_carpet_on"), F_ONE) }
+  else { r3d_bind_2d(p, "u_carpet", 11, ter_tex[0]);  u_f(gpu_uniform(p, "u_carpet_on"), F_ZERO) }
+  u_f(gpu_uniform(p, "u_half"), fi(TERRAIN_HALF))
+  u_f(gpu_uniform(p, "u_texel"), fr(1, TERRAIN_RES))
+  u_f(gpu_uniform(p, "u_snow_line"), ter_snow_line)
   var lake = fl(-100000.0)
   if ter_lake_ex != 0 { lake = ter_lake_level }
-  u_f(gl_uniform(p, "u_lake_level"), lake)
+  u_f(gpu_uniform(p, "u_lake_level"), lake)
   # the shoreline, forest and scree gates read the sea; unset it is what they always read
   var sea = lake
   if ter_sea_set { sea = ter_sea_level }
-  u_f(gl_uniform(p, "u_sea_level"), sea)
-  u_mat4(gl_uniform(p, "u_view"), cam_view)
-  u_mat4(gl_uniform(p, "u_proj"), cam_proj)
-  u_f2(gl_uniform(p, "u_origin"), ter_ox, ter_oz)
-  u_f(gl_uniform(p, "u_far_split"), ter_far_split)
-  u_f(gl_uniform(p, "u_far_band"), ter_far_band)
+  u_f(gpu_uniform(p, "u_sea_level"), sea)
+  u_mat4(gpu_uniform(p, "u_view"), cam_view)
+  u_mat4(gpu_uniform(p, "u_proj"), cam_proj)
+  u_f2(gpu_uniform(p, "u_origin"), ter_ox, ter_oz)
+  u_f(gpu_uniform(p, "u_far_split"), ter_far_split)
+  u_f(gpu_uniform(p, "u_far_band"), ter_far_band)
   sky_bind_lighting(p)
   shadow_bind(p)
   fog_bind(p)
-  u_v3(gl_uniform(p, "u_cam_pos"), cam_pos)
-  u_f(gl_uniform(p, "u_grid"), fi(CD_G))
+  u_v3(gpu_uniform(p, "u_cam_pos"), cam_pos)
+  u_f(gpu_uniform(p, "u_grid"), fi(CD_G))
   # The ground reads its sun visibility out of the buffer tersun.frag filled, and has no
   # use for the cascade array shadow_bind just put on this unit; leaving both bound under
   # one unit is undefined ground, so the array comes off first.
@@ -523,24 +523,24 @@ function terrain_sun_pass(w: int, h: int, depth: int) -> Target {
     let st = gl_check_framebuffer_status(GL_FRAMEBUFFER)
     if st != GL_FRAMEBUFFER_COMPLETE { print(`r3d: sun-visibility framebuffer incomplete {st}`) }
   }
-  gl_enable(GL_DEPTH_TEST)
-  gl_depth_func(GL_LESS)
-  gl_depth_mask(1)
+  gpu_depth_test(true)
+  gpu_depth_func(GL_LESS)
+  gpu_depth_write(true)
   # the depth is the frame's own and was cleared with it; only the visibility is cleared
   gl_clear_color(1.0, 1.0, 1.0, 1.0)      # unshadowed where nothing is drawn
   gl_clear(GL_COLOR_BUFFER_BIT)
   let p = ter_sun_prog
   gl_use_program(p)
   r3d_bind_2d(p, "u_height", 0, ter_height_tex)
-  u_f(gl_uniform(p, "u_half"), fi(TERRAIN_HALF))
-  u_mat4(gl_uniform(p, "u_view"), cam_view)
-  u_mat4(gl_uniform(p, "u_proj"), cam_proj)
-  u_f2(gl_uniform(p, "u_origin"), ter_ox, ter_oz)
-  u_v3(gl_uniform(p, "u_cam_pos"), cam_pos)
-  u_f(gl_uniform(p, "u_grid"), fi(CD_G))
-  u_f(gl_uniform(p, "u_far_split"), ter_far_split)
-  u_f(gl_uniform(p, "u_far_band"), ter_far_band)
-  u_f(gl_uniform(p, "u_clip_y"), r3d_clip_y)
+  u_f(gpu_uniform(p, "u_half"), fi(TERRAIN_HALF))
+  u_mat4(gpu_uniform(p, "u_view"), cam_view)
+  u_mat4(gpu_uniform(p, "u_proj"), cam_proj)
+  u_f2(gpu_uniform(p, "u_origin"), ter_ox, ter_oz)
+  u_v3(gpu_uniform(p, "u_cam_pos"), cam_pos)
+  u_f(gpu_uniform(p, "u_grid"), fi(CD_G))
+  u_f(gpu_uniform(p, "u_far_split"), ter_far_split)
+  u_f(gpu_uniform(p, "u_far_band"), ter_far_band)
+  u_f(gpu_uniform(p, "u_clip_y"), r3d_clip_y)
   shadow_bind(p)
   sky_bind_lighting(p)
   ter_sun_pass = true
@@ -575,11 +575,11 @@ function terrain_draw() -> void {
     target_bind(post_hdr)
     if post_ms_fbo != 0 { gl_bind_framebuffer(GL_FRAMEBUFFER, post_ms_fbo) }
   }
-  gl_enable(GL_DEPTH_TEST)
+  gpu_depth_test(true)
   # the prepass already laid this geometry's depth down: only the frontmost fragment of
   # each pixel has anything to shade, and it meets that depth exactly
-  gl_depth_func(GL_LEQUAL)
-  gl_depth_mask(1)
+  gpu_depth_func(GL_LEQUAL)
+  gpu_depth_write(true)
   terrain_bind_prog(ter_prog)
   terrain_bind_prog(ter_prog_far)
   terrain_bind_prog(ter_prog_near)
@@ -591,7 +591,7 @@ function terrain_draw() -> void {
   if ter_wire { gl_polygon_mode(GL_FRONT_AND_BACK, GL_LINE) }
   cdlod_select(CD_LEVELS - 1, 0, 0)
   if ter_wire { gl_polygon_mode(GL_FRONT_AND_BACK, GL_FILL) }
-  gl_depth_func(GL_LESS)
+  gpu_depth_func(GL_LESS)
   if r3d_debug and not ter_printed { ter_printed = true;  print(`cdlod patches drawn: {cd_draws} (far {cd_far_draws}, near {cd_near_draws}, band {cd_draws - cd_far_draws - cd_near_draws})`) }
 }
 var ter_wire: bool = false
@@ -709,10 +709,10 @@ function cdlod_draw(level: int, ix: int, iz: int) -> void {
   if ter_sun_pass {
     let t = gl_scratch()
     t[0] = x0;  t[1] = z0;  t[2] = size
-    gl_uniform3fv(gl_uniform(ter_sun_prog, "u_node"), 1, t)
+    u_v3(gpu_uniform(ter_sun_prog, "u_node"), t)
     var st0 = F_ZERO
     if level > 0 { st0 = cd_range[level - 1] }
-    u_f2(gl_uniform(ter_sun_prog, "u_morph"), f_lerp(st0, cd_range[level], fl(0.7)), cd_range[level])
+    u_f2(gpu_uniform(ter_sun_prog, "u_morph"), f_lerp(st0, cd_range[level], fl(0.7)), cd_range[level])
     gl_draw_elements(GL_TRIANGLES, cd_mesh.count, GL_UNSIGNED_INT, null)
     return
   }
@@ -730,11 +730,11 @@ function cdlod_draw(level: int, ix: int, iz: int) -> void {
   if p != ter_prog_cur { gl_use_program(p);  ter_prog_cur = p }
   let t = gl_scratch()
   t[0] = x0;  t[1] = z0;  t[2] = size
-  gl_uniform3fv(gl_uniform(p, "u_node"), 1, t)
+  u_v3(gpu_uniform(p, "u_node"), t)
   var start = F_ZERO
   if level > 0 { start = cd_range[level - 1] }
   start = f_lerp(start, cd_range[level], fl(0.7))
-  u_f2(gl_uniform(p, "u_morph"), start, cd_range[level])
+  u_f2(gpu_uniform(p, "u_morph"), start, cd_range[level])
   gl_draw_elements(GL_TRIANGLES, cd_mesh.count, GL_UNSIGNED_INT, null)
   cd_draws += 1
 }

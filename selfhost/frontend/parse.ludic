@@ -251,6 +251,8 @@ function p_postfix() -> Node {
       if e.a.kind == E_ID and e.a.s == "Http" { g_uses_http = true }
       # Gl.* — any Gl method splices the OpenGL runtime (and links the GL backend).
       if e.a.kind == E_ID and e.a.s == "Gl" { g_uses_gl = true }
+      # Vk.* — any Vk method splices the Vulkan runtime (and links its loader)
+      if e.a.kind == E_ID and e.a.s == "Vk" { g_uses_vk = true }
       # Tween.to/chain/delay/value/stop/parallel (#48): the fluent stateful handles
       # live in tween.ludic, advanced by an engine-owned system each Update tick.
       if e.a.kind == E_ID and e.a.s == "Tween" and (e.s == "to" or e.s == "chain" or e.s == "delay" or e.s == "value" or e.s == "stop" or e.s == "parallel") { g_uses_tween_rt = true }
@@ -673,6 +675,7 @@ var g_uses_fx: bool = false       # Fx.sparks/number/clear -> splice fx.ludic; f
 var g_uses_audio: bool = false    # Audio.* (#22) -> splice audio.ludic; a windowed build also links audio.ll + AVFoundation
 var g_uses_http:  bool = false    # Http.* (#6) -> splice http.ludic; links http.ll + Foundation (macOS)
 var g_uses_gl:    bool = false    # Gl.* -> splice gl.ludic (+ generated gl_api.ludic); links gl.ll + gl_thunks.ll + OpenGL
+var g_uses_vk:    bool = false    # Vk.* -> splice vk.ludic (+ generated vk_api.ludic); links vk_thunks.ll + the platform loader
 # issue #64: functions marked @System(Phase) in a prebuilt binary module — the
 # compiler registers each with the host at load (it supplies the fn address,
 # which Ludic source cannot take). Parallel arrays: fn name -> phase name.
@@ -1168,6 +1171,13 @@ function maybe_splice_runtime() -> void {
     do_import("runtime/native/gl.ludic")
     cur_dir = saved
   }
+  # Vk.*: splice the Vulkan surface (vk.ludic + the generated vk_api.ludic). The
+  # loader is opened at run time, so a program that never calls Vk.open needs none.
+  if g_uses_vk {
+    cur_dir = ""
+    do_import("runtime/native/vk.ludic")
+    cur_dir = saved
+  }
   # Anim.play/Motion.to sugar (#48): the writes live in systems.ludic and use the
   # reflection ABI, so splice it and force the world table even when the game does
   # not otherwise trip uses_engine_systems.
@@ -1239,6 +1249,7 @@ function parse_program() -> void {
   g_toggled_layers = new []pointer
   g_uses_regex = false
   g_uses_gl = false
+  g_uses_vk = false
   g_uses_bignum = false
   g_uses_dict = false
   g_uses_numeric = false

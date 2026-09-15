@@ -909,6 +909,18 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
   # 478 gl3.h entry points bound as externs gl_<snake_name>, plus the Ludic
   # helpers (gl_open / gl_swap / gl_screenshot / gl_program / …). Labels are the
   # declaration's parameter names, so `Gl.clear_color(red: 0.1, …)` works.
+  # Vk.* — Vulkan (runtime/native/vk.ludic + the generated vk_api.ludic): the
+  # registry's commands as externs vk_<snake_name>, and the loader and struct helpers.
+  if (ns == "Vk") and (bare == null) {
+    bare = "vk_" + meth
+    var vdecl = find_fn(bare)
+    if (vdecl == null) { vdecl = find_extern(bare) }
+    if (vdecl != null) {
+      let vnames = param_labels(vdecl)
+      var vi = 0
+      while vi < len(vnames) { push(labels, vnames[vi]);  vi += 1 }
+    }
+  }
   if (ns == "Gl") and (bare == null) {
     bare = "gl_" + meth
     var gdecl = find_fn(bare)

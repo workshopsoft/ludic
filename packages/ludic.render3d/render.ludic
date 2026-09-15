@@ -33,15 +33,15 @@ function r3d_prepass_off() -> bool {
   return r3d_prepass_env == 1
 }
 function fog_bind(prog: int) -> void {
-  u_f(gl_uniform(prog, "u_clip_y"), r3d_clip_y)
-  u_f(gl_uniform(prog, "u_spec_scale"), F_ONE)
-  u_f(gl_uniform(prog, "u_fog_density"), r3d_fog_density)
-  u_f(gl_uniform(prog, "u_fog_height_falloff"), r3d_fog_falloff)
-  u_f(gl_uniform(prog, "u_fog_base"), r3d_fog_base)
+  u_f(gpu_uniform(prog, "u_clip_y"), r3d_clip_y)
+  u_f(gpu_uniform(prog, "u_spec_scale"), F_ONE)
+  u_f(gpu_uniform(prog, "u_fog_density"), r3d_fog_density)
+  u_f(gpu_uniform(prog, "u_fog_height_falloff"), r3d_fog_falloff)
+  u_f(gpu_uniform(prog, "u_fog_base"), r3d_fog_base)
   var cs = r3d_cloud_shadow
   if Os.has_env("R3D_NOCLOUD") { cs = F_ZERO }
-  u_f(gl_uniform(prog, "u_cloud_shadow"), cs)
-  u_f(gl_uniform(prog, "u_time"), r3d_time)
+  u_f(gpu_uniform(prog, "u_cloud_shadow"), cs)
+  u_f(gpu_uniform(prog, "u_time"), r3d_time)
 }
 
 # profiling switches (environment): R3D_NOSHADOW R3D_NOGI R3D_MSAA=n R3D_NOBLADES R3D_NOCARDS R3D_NOTREES R3D_NEAR=m
@@ -72,6 +72,7 @@ function r3d_env_flags() -> void {
 }
 function r3d_init(w: int, h: int, title: string) -> bool {
   r3d_env_flags()
+  gpu_select()
   if not gl_open(w, h, title) { print("r3d: no OpenGL context");  return false }
   if Os.has_env("R3D_NOVSYNC") { gl_vsync(0) }
   var renderer: string = gl_get_string(GL_RENDERER)
@@ -97,21 +98,21 @@ function r3d_init(w: int, h: int, title: string) -> bool {
 }
 
 function r3d_draw_sky() -> void {
-  gl_depth_func(GL_LEQUAL)
-  gl_depth_mask(0)
-  gl_disable(GL_CULL_FACE)
+  gpu_depth_func(GL_LEQUAL)
+  gpu_depth_write(false)
+  gpu_cull(false)
   let p = r3d_sky_prog
   gl_use_program(p)
   r3d_bind_2d(p, "u_sky", 0, sky_tex)
   sky_bind_rot(p)
   sky_bind_lighting(p)
-  u_mat4(gl_uniform(p, "u_inv_vp"), cam_inv_vp)
-  u_f(gl_uniform(p, "u_sky_gain"), fl(0.95))
-  u_f(gl_uniform(p, "u_sky_sat"), fl(1.35))
-  u_f(gl_uniform(p, "u_time"), r3d_time)
+  u_mat4(gpu_uniform(p, "u_inv_vp"), cam_inv_vp)
+  u_f(gpu_uniform(p, "u_sky_gain"), fl(0.95))
+  u_f(gpu_uniform(p, "u_sky_sat"), fl(1.35))
+  u_f(gpu_uniform(p, "u_time"), r3d_time)
   mesh_draw(sky_fullscreen)
-  gl_depth_mask(1)
-  gl_depth_func(GL_LESS)
+  gpu_depth_write(true)
+  gpu_depth_func(GL_LESS)
 }
 
 # the drawable changed size: the camera's aspect and every screen-sized target follow
@@ -171,9 +172,9 @@ function r3d_frame(time: int) -> void {
   # target, and depth drawn after it lands in the sun buffer, not the scene's.
   if not r3d_prepass_off() {
     prof_begin("foliage prepass")
-    gl_color_mask(0, 0, 0, 0)
+    gpu_color_write(false)
     scatter_draw_depth()
-    gl_color_mask(1, 1, 1, 1)
+    gpu_color_write(true)
     prof_end()
     sc_prepass = true
   }
@@ -206,8 +207,8 @@ function r3d_frame(time: int) -> void {
     prof_begin("water surface")
     post_capture_scene()
     target_bind(post_hdr)
-    gl_enable(GL_DEPTH_TEST)
-    gl_depth_func(GL_LESS)
+    gpu_depth_test(true)
+    gpu_depth_func(GL_LESS)
     water_draw(post_depth_copy.depth)
     prof_end()
   }

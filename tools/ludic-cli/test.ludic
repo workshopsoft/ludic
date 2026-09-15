@@ -809,5 +809,13 @@ function cmd_dev_test() -> int {
     } else { bad2("ludic-dev glgen --check", capture_line(`tail -1 {tmp_dir()}/glgen.out`)) }
   } else { skip("ludic-dev glgen --check (needs the macOS OpenGL headers)") }
 
+  # and the Vulkan one: vk_api.ludic + vk_thunks.ll regenerated from the registry's vk.xml,
+  # which comes with the Vulkan SDK - so this guard runs wherever the SDK is installed
+  if shq("ls $VULKAN_SDK/share/vulkan/registry/vk.xml $HOME/VulkanSDK/*/macOS/share/vulkan/registry/vk.xml >/dev/null 2>&1") {
+    if shq(`bin/ludic-dev vkgen --check > {tmp_dir()}/vkgen.out 2>&1`) {
+      ok("ludic-dev vkgen regenerates vk_api.ludic + vk_thunks.ll byte-identically")
+    } else { bad2("ludic-dev vkgen --check", capture_line(`tail -1 {tmp_dir()}/vkgen.out`)) }
+  } else { skip("ludic-dev vkgen --check (needs the Vulkan SDK's vk.xml)") }
+
   return report()
 }

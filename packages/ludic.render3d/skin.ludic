@@ -204,9 +204,9 @@ function skin_pose(sk: Skin) -> void {
 
 # the joint matrices onto a program's u_bones[]
 function skin_bind(sk: Skin, prog: int) -> void {
-  var loc = gl_uniform(prog, "u_bones[0]")
-  if loc < 0 { loc = gl_uniform(prog, "u_bones") }
-  gl_uniform_matrix4fv(loc, sk.n_joints, 0, sk.bones)
+  var loc = gpu_uniform(prog, "u_bones[0]")
+  if loc < 0 { loc = gpu_uniform(prog, "u_bones") }
+  u_mat4n(loc, sk.n_joints, sk.bones)
 }
 
 # the same skeleton posed on its own: shares the rest data, owns the pose and the matrices
