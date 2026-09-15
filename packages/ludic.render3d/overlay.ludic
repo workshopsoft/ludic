@@ -53,10 +53,40 @@ var ov_clip_y: int = 0
 var ov_clip_w: int = 0
 var ov_clip_h: int = 0
 
+# The interface is sRGB. While the output is HDR10 the overlay draws with its HDR10 variant, which puts
+# the interface at the picture's paper white; the SDR program there sent sRGB values as PQ, and the
+# menu's yellow read as red on an HDR display.
+var ov_prog_sdr: int = 0
+var ov_prog_hdr: int = 0
+# How bright the interface's white is while HDR10 is on, as a multiple of paper white. It is 1 for the
+# interface; a calibration screen draws its test patches at a number of nits with ov_hdr_nits, which
+# closes the batch so far - the multiple is one uniform per flush. On an SDR frame it does nothing.
+var ov_hdr_scale: int = 0             # float bits; 0 until ov_begin sets 1
+function ov_hdr_nits(nits: int) -> void {
+  var s = F_ONE
+  if nits != 0 { s = f_div(nits, r3d_hdr_paper_nits()) }
+  if s == ov_hdr_scale { return }
+  if ov_open { ov_flush() }
+  ov_hdr_scale = s
+}
+# back to the interface's own white
+function ov_hdr_paper() -> void { ov_hdr_nits(0) }
+function ov_pick_prog() -> void {
+  if gpu_hdr_active() {
+    if ov_prog_hdr == 0 {
+      r3d_program_log("overlay.vert", "overlay.frag", "#define HDR10\n")
+      ov_prog_hdr = gpu_program("#version 410 core\n#define HDR10\n" + r3d_shader_file("overlay.vert"), "#version 410 core\n#define HDR10\n" + r3d_shader_file("overlay.frag"), "overlay.vert", "overlay.frag", "#define HDR10\n")
+    }
+    if ov_prog_hdr != 0 { ov_prog = ov_prog_hdr;  return }
+  }
+  ov_prog = ov_prog_sdr
+}
+
 function overlay_init(font_dir: string) -> bool {
   r3d_program_log("overlay.vert", "overlay.frag", "")
   ov_prog = gpu_program("#version 410 core\n" + r3d_shader_file("overlay.vert"), "#version 410 core\n" + r3d_shader_file("overlay.frag"), "overlay.vert", "overlay.frag", "")
   if ov_prog == 0 { print("overlay: program failed");  return false }
+  ov_prog_sdr = ov_prog
   ov_mesh = gpu_mesh_new()
   ov_vbo = gpu_mesh_vertices(ov_mesh, null, gl_bytes_of(OV_MAX_QUADS * 6 * OV_FLOATS), GPU_DYNAMIC)
   gpu_mesh_attr(ov_mesh, 0, 2, GPU_F32, OV_FLOATS * 4, 0, false)
@@ -163,12 +193,14 @@ function ov_begin() -> void {
   gpu_cull(false)
   gpu_blend(true)
   gpu_blend_func(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+  ov_pick_prog()
   gpu_use_program(ov_prog)
   u_f2(gpu_uniform(ov_prog, "u_screen"), fi(gl_w), fi(gl_h))
   ov_n = 0;  ov_nr = 0;  ov_range_start = 0
   ov_tex = ov_white
   ov_mode = 2;  ov_voff = fi(8)
   ov_clip_w = 0
+  ov_hdr_scale = F_ONE
   ov_open = true
 }
 # everything drawn until ov_unclip stays inside this rectangle (a scrolling list)
@@ -198,12 +230,17 @@ function ov_flush() -> void {
   # framebuffer operation. Saying the target at each flush is what a render pass says anyway.
   gpu_fb_bind(gpu_screen_fb())
   gpu_viewport(0, 0, gl_w, gl_h)
+  ov_pick_prog()
   gpu_use_program(ov_prog)
   gpu_mesh_bind(ov_mesh)
   gpu_buffer_upload(ov_vbo, gl_bytes_of(ov_n * 6 * OV_FLOATS), ov_buf, GPU_STREAM)
   var font = ov_font
   if font == 0 { font = ov_white }
   r3d_bind_2d(ov_prog, "u_font", 1, font)
+  var hs = ov_hdr_scale
+  if hs == 0 { hs = F_ONE }
+  u_f(gpu_uniform(ov_prog, "u_hdr_paper"), r3d_hdr_paper_nits())
+  u_f(gpu_uniform(ov_prog, "u_hdr_scale"), hs)
   var last = -1
   var clipped = false
   for i in 0 .. ov_nr {

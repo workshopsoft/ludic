@@ -578,7 +578,7 @@ T 725523d9 u_shadow 9
 T 725523d9 u_tershadow 10
 T 725523d9 u_ts_height 11
 P a4683767 fullscreen.vert tonemap.frag #define HDR10;
-B a4683767 frag 1 852
+B a4683767 frag 1 864
 U a4683767 frag u_cascade_vp 0 mat4 5 64
 U a4683767 frag u_cascade_split 320 float 5 16
 U a4683767 frag u_cascade_range 400 float 5 16
@@ -618,6 +618,9 @@ U a4683767 frag u_bloom_strength 836 float 1 0
 U a4683767 frag u_vignette 840 float 1 0
 U a4683767 frag u_saturation 844 float 1 0
 U a4683767 frag u_contrast 848 float 1 0
+U a4683767 frag u_hdr_paper 852 float 1 0
+U a4683767 frag u_hdr_peak 856 float 1 0
+U a4683767 frag u_hdr_black 860 float 1 0
 T a4683767 u_adapt 2
 T a4683767 u_ao 3
 T a4683767 u_bloom 4
@@ -1932,7 +1935,7 @@ U e86f78e8 vert u_screen 0 vec2 1 0
 I e86f78e8 a_pos 0 vec2
 I e86f78e8 a_uv 1 vec2
 I e86f78e8 a_col 2 vec4
-B e86f78e8 frag 0 764
+B e86f78e8 frag 1 772
 U e86f78e8 frag u_cascade_vp 0 mat4 5 64
 U e86f78e8 frag u_cascade_split 320 float 5 16
 U e86f78e8 frag u_cascade_range 400 float 5 16
@@ -1961,6 +1964,8 @@ U e86f78e8 frag u_ts_on 748 float 1 0
 U e86f78e8 frag u_force_cascade 752 int 1 0
 U e86f78e8 frag u_cloud_shadow 756 float 1 0
 U e86f78e8 frag u_time 760 float 1 0
+U e86f78e8 frag u_hdr_paper 764 float 1 0
+U e86f78e8 frag u_hdr_scale 768 float 1 0
 T e86f78e8 u_brdf 2
 T e86f78e8 u_font 3
 T e86f78e8 u_irradiance 4

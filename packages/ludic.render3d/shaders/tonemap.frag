@@ -22,9 +22,11 @@ vec3 aces(vec3 x) {
 }
 float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 #ifdef HDR10
-// HDR10 output: nits in BT.2020 primaries, encoded with the SMPTE ST 2084 (PQ) curve
-const float HDR_PAPER = 200.0;   // nits the SDR picture's white sits at
-const float HDR_PEAK = 1000.0;   // nits the brightest highlight rolls on to
+// HDR10 output: nits in BT.2020 primaries, encoded with the SMPTE ST 2084 (PQ) curve. The three
+// numbers are the player's calibration of their display (r3d_hdr_calibrate).
+uniform float u_hdr_paper;        // nits the SDR picture's white sits at
+uniform float u_hdr_peak;         // nits the brightest highlight rolls on to: what the display reaches
+uniform float u_hdr_black;        // nits the darkest shade is lifted to, fading out toward paper white
 vec3 bt709_to_2020(vec3 c) {
   return mat3(0.6274, 0.0691, 0.0164, 0.3293, 0.9195, 0.0880, 0.0433, 0.0114, 0.8956) * c;
 }
@@ -57,9 +59,16 @@ void main() {
   float vig = 1.0 - u_vignette * dot(q, q) * 0.5;
   c *= vig;
 #ifdef HDR10
-  // up to paper white the SDR picture as it is; past it, what ACES clipped runs on to the peak
-  vec3 hi = max(pre - 1.0, vec3(0.0));
-  vec3 nits = (c + hi / (hi + 1.0) * (HDR_PEAK / HDR_PAPER - 1.0) * vig) * HDR_PAPER;
+  // up to paper white the SDR picture as it is; past it, the whole graded colour is brightened by one
+  // factor from its brightest channel. Extending each channel on its own boosted a bright yellow's red
+  // far more than its green, and yellow read as red on an HDR display.
+  float paper = max(u_hdr_paper, 80.0);
+  float peak = max(u_hdr_peak, paper);
+  float over = max(max(pre.r, max(pre.g, pre.b)) - 1.0, 0.0);
+  float lift = 1.0 + over / (over + 1.0) * (peak / paper - 1.0);
+  vec3 nits = c * lift * paper;
+  // the black level: the shadows' floor raised for a display that crushes them, gone by paper white
+  nits += max(u_hdr_black, 0.0) * (1.0 - clamp(nits / paper, 0.0, 1.0));
   vec3 e = pq_encode(bt709_to_2020(nits));
   e += (hash(gl_FragCoord.xy) - 0.5) / 1023.0;
   o_color = vec4(e, 1.0);

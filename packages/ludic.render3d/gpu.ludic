@@ -337,9 +337,18 @@ function gpu_caps_probe() -> void {
   Vk.zero(ici, VkInstanceCreateInfo_sizeof)
   Vk.put_i32(ici, VkInstanceCreateInfo_sType, VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO)
   Vk.put_ptr(ici, VkInstanceCreateInfo_pApplicationInfo, app)
-  let out = bytes(8)
-  if Vk.create_instance(ici, null, out) != VK_SUCCESS { return }
-  let inst = Vk.get_ptr(out, 0)
+  # With the Vulkan renderer running, ask its own instance: the renderer's loader is NVIDIA Streamline's
+  # interposer, and a second instance made and destroyed under it is what this avoids.
+  var inst: pointer = null
+  var own = false
+  if gpu_kind == GPU_VK and gvk_ready {
+    inst = gvk_inst
+  } else {
+    let out = bytes(8)
+    if Vk.create_instance(ici, null, out) != VK_SUCCESS { return }
+    inst = Vk.get_ptr(out, 0)
+    own = true
+  }
   Vk.put_i32(cnt, 0, 0)
   Vk.enumerate_physical_devices(inst, cnt, null)
   let nd = Vk.get_i32(cnt, 0)
@@ -385,7 +394,7 @@ function gpu_caps_probe() -> void {
     gpu_cap_mesh = gpu_ext_in(dexts, ne, VK_EXT_MESH_SHADER_EXTENSION_NAME)
     gpu_cap_reflex = gpu_ext_in(dexts, ne, VK_NV_LOW_LATENCY_2_EXTENSION_NAME)
   }
-  Vk.destroy_instance(inst, null)
+  if own { Vk.destroy_instance(inst, null) }
   print(`r3d: gpu caps: {gpu_cap_device} vulkan {gpu_cap_vulkan} floor {gpu_cap_floor} rt {gpu_cap_rt} mesh {gpu_cap_mesh} rtx {gpu_cap_rtx} reflex {gpu_cap_reflex} hdr {gpu_cap_hdr}`)
 }
 
