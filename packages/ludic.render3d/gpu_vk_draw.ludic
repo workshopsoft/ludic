@@ -78,14 +78,14 @@ function gvk_program(p: int, key: string, spv_dir: string) -> bool {
   var k = 0
   if v.vblock >= 0 {
     Vk.put_i32(binds, k * bw + VkDescriptorSetLayoutBinding_binding, 0)
-    Vk.put_i32(binds, k * bw + VkDescriptorSetLayoutBinding_descriptorType, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
+    Vk.put_i32(binds, k * bw + VkDescriptorSetLayoutBinding_descriptorType, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC)
     Vk.put_i32(binds, k * bw + VkDescriptorSetLayoutBinding_descriptorCount, 1)
     Vk.put_i32(binds, k * bw + VkDescriptorSetLayoutBinding_stageFlags, VK_SHADER_STAGE_VERTEX_BIT)
     k += 1
   }
   if v.fblock >= 0 {
     Vk.put_i32(binds, k * bw + VkDescriptorSetLayoutBinding_binding, 1)
-    Vk.put_i32(binds, k * bw + VkDescriptorSetLayoutBinding_descriptorType, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
+    Vk.put_i32(binds, k * bw + VkDescriptorSetLayoutBinding_descriptorType, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC)
     Vk.put_i32(binds, k * bw + VkDescriptorSetLayoutBinding_descriptorCount, 1)
     Vk.put_i32(binds, k * bw + VkDescriptorSetLayoutBinding_stageFlags, VK_SHADER_STAGE_FRAGMENT_BIT)
     k += 1
@@ -276,14 +276,41 @@ property GvkState {
 var gvk_pipe_keys: []string = null
 var gvk_pipe: []long = null
 
+# does the mesh leave shader input `loc` unfed (no attribute recorded there)?
+function gvk_input_unfed(m: Mesh, loc: int) -> bool {
+  if m == null or m.attrs == null or loc < 0 or loc >= m.n_attrs { return true }
+  return m.attrs[loc * GPU_ATTR_W + 1] == 0
+}
+# the float format a zero-fed shader input reads, from its manifest type
+function gvk_input_format(t: string) -> int {
+  if t == "float" { return VK_FORMAT_R32_SFLOAT }
+  if t == "vec2" { return VK_FORMAT_R32G32_SFLOAT }
+  if t == "vec3" { return VK_FORMAT_R32G32B32_SFLOAT }
+  return VK_FORMAT_R32G32B32A32_SFLOAT
+}
+# 64 KB of zeros, the buffer every unfed input reads (one vec4 per instance, up to 4096)
+var gvk_zero_vbuf: int = 0
+var gvk_skip_said: words = null       # per program: its skipped draws have been reported
+function gvk_zero_vbuf_get() -> int {
+  if gvk_zero_vbuf == 0 {
+    gvk_zero_vbuf = gvk_buf_new()
+    let z = bytes(65536)
+    Vk.zero(z, 65536)
+    gvk_buf_upload(gvk_zero_vbuf, 65536, z)
+  }
+  return gvk_zero_vbuf
+}
+
 function gvk_attr_format(comps: int, type: int, normalized: int) -> int {
   if type == GPU_U8 {
     if normalized == 1 { if comps == 4 { return VK_FORMAT_R8G8B8A8_UNORM };  if comps == 3 { return VK_FORMAT_R8G8B8_UNORM };  if comps == 2 { return VK_FORMAT_R8G8_UNORM };  return VK_FORMAT_R8_UNORM }
-    if comps == 4 { return VK_FORMAT_R8G8B8A8_UINT };  if comps == 2 { return VK_FORMAT_R8G8_UINT };  return VK_FORMAT_R8_UINT
+    # not normalised, read by a float input (a_joints is a vec4): OpenGL converts the integer to a
+    # float, and Vulkan's form of that is USCALED - a UINT format against a float input is invalid
+    if comps == 4 { return VK_FORMAT_R8G8B8A8_USCALED };  if comps == 2 { return VK_FORMAT_R8G8_USCALED };  return VK_FORMAT_R8_USCALED
   }
   if type == GPU_U16 {
     if normalized == 1 { if comps == 4 { return VK_FORMAT_R16G16B16A16_UNORM };  if comps == 2 { return VK_FORMAT_R16G16_UNORM };  return VK_FORMAT_R16_UNORM }
-    if comps == 4 { return VK_FORMAT_R16G16B16A16_UINT };  if comps == 2 { return VK_FORMAT_R16G16_UINT };  return VK_FORMAT_R16_UINT
+    if comps == 4 { return VK_FORMAT_R16G16B16A16_USCALED };  if comps == 2 { return VK_FORMAT_R16G16_USCALED };  return VK_FORMAT_R16_USCALED
   }
   if comps == 4 { return VK_FORMAT_R32G32B32A32_SFLOAT }
   if comps == 3 { return VK_FORMAT_R32G32B32_SFLOAT }
@@ -387,6 +414,25 @@ function gvk_pipeline(p: int, m: Mesh, st: GvkState, n_color: int, color_fmt: in
       na += 1
     }
   }
+  # A shader input the mesh does not provide (a_joints on a mesh without a skin) reads zeros from a
+  # shared buffer, as OpenGL's disabled attribute reads its default. Vulkan requires every input the
+  # vertex stage declares to be fed (VUID-VkGraphicsPipelineCreateInfo-Input-07904).
+  var need_zero = false
+  for q in 0 .. len(v.i_loc) {
+    if not gvk_input_unfed(m, v.i_loc[q]) or na >= GPU_MAX_ATTRS { continue }
+    if not need_zero {
+      need_zero = true
+      Vk.put_i32(bnds, nbd * bdw + VkVertexInputBindingDescription_binding, nbd)
+      Vk.put_i32(bnds, nbd * bdw + VkVertexInputBindingDescription_stride, 16)
+      Vk.put_i32(bnds, nbd * bdw + VkVertexInputBindingDescription_inputRate, VK_VERTEX_INPUT_RATE_INSTANCE)
+    }
+    Vk.put_i32(attrs, na * aw + VkVertexInputAttributeDescription_location, v.i_loc[q])
+    Vk.put_i32(attrs, na * aw + VkVertexInputAttributeDescription_binding, nbd)
+    Vk.put_i32(attrs, na * aw + VkVertexInputAttributeDescription_format, gvk_input_format(v.i_type[q]))
+    Vk.put_i32(attrs, na * aw + VkVertexInputAttributeDescription_offset, 0)
+    na += 1
+  }
+  if need_zero { nbd += 1 }
   let vin = bytes(VkPipelineVertexInputStateCreateInfo_sizeof)
   Vk.zero(vin, VkPipelineVertexInputStateCreateInfo_sizeof)
   Vk.put_i32(vin, VkPipelineVertexInputStateCreateInfo_sType, VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO)
@@ -632,6 +678,7 @@ function gvk_frame_init() -> bool {
   let r = Vk.create_descriptor_pool(gvk_dev, dpci, null, out)
   if r != VK_SUCCESS { return gvk_fail("vkCreateDescriptorPool", r) }
   gvk_dpool = gvk_handle(out)
+  if not gvk_kpool_make() { return false }
   gvk_white = gvk_tex_new()
   let px = bytes(4)
   px[0] = 255;  px[1] = 255;  px[2] = 255;  px[3] = 255
@@ -652,64 +699,78 @@ function gvk_ring_put(blk: pointer, n: int) -> int {
   return at
 }
 
-# The descriptor set for program p as its uniforms and textures stand now. tx is gpu.ludic's
-# texture record (kind, w, h, layers, ifmt, min, mag, wrap s, wrap t, compare, mips, aniso).
+# ---- descriptor sets that survive the frame -------------------------------------------------
+# A draw's set carries its textures; its uniform blocks are dynamic uniform buffers into the
+# frame's ring, bound with this draw's offsets. So one set serves every draw of a program with the
+# same textures, this frame and the frames after it, and a draw that changes only uniforms allocates
+# and writes no set at all - which was about half of a Vulkan frame's CPU time (8.5 ms at the camp).
+# The sets live in a pool of their own that is only reset when it fills. The key holds each
+# texture's handle and generation (bumped when the image behind a handle is replaced) and its
+# sampler, so a set is never matched against a texture it no longer describes.
+const GVK_KPOOL_SETS: int = 8192
+var gvk_kpool: long = 0
+var gvk_sc_prog: []int = null        # per cached set: its program
+var gvk_sc_koff: []int = null        # per cached set: where its key starts in gvk_sc_keys
+var gvk_sc_set: []long = null
+var gvk_sc_next: []int = null        # the program's next cached set, -1 at the end
+var gvk_sc_keys: []long = null       # per texture of a key: handle * 65536 + generation, sampler
+var gvk_sc_head: words = null        # per program (< 4096): its most recently made set, -1 if none
+var gvk_sc_tmp: []long = null        # this draw's key while it is looked up
+var gvk_set_offs: bytes = null       # this draw's dynamic offsets, in binding order
+var gvk_set_ndyn: int = 0
+var gvk_ub_frame: []int = null       # per program: the frame its blocks were last copied into the ring
+var gvk_ub_offv: []int = null
+var gvk_ub_offf: []int = null
+var gvk_sc_made: int = 0             # sets made since start (R3D_VK_PROF)
+var gvk_default_smp: long = 0         # linear, clamped: for a texture slot nothing was bound to
+
+function gvk_kpool_make() -> bool {
+  let sizes = bytes(VkDescriptorPoolSize_sizeof * 2)
+  Vk.put_i32(sizes, VkDescriptorPoolSize_type, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC)
+  Vk.put_i32(sizes, VkDescriptorPoolSize_descriptorCount, GVK_KPOOL_SETS * 2)
+  Vk.put_i32(sizes, VkDescriptorPoolSize_sizeof + VkDescriptorPoolSize_type, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+  Vk.put_i32(sizes, VkDescriptorPoolSize_sizeof + VkDescriptorPoolSize_descriptorCount, GVK_KPOOL_SETS * 8)
+  let dpci = bytes(VkDescriptorPoolCreateInfo_sizeof)
+  Vk.zero(dpci, VkDescriptorPoolCreateInfo_sizeof)
+  Vk.put_i32(dpci, VkDescriptorPoolCreateInfo_sType, VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO)
+  Vk.put_i32(dpci, VkDescriptorPoolCreateInfo_maxSets, GVK_KPOOL_SETS)
+  Vk.put_i32(dpci, VkDescriptorPoolCreateInfo_poolSizeCount, 2)
+  Vk.put_ptr(dpci, VkDescriptorPoolCreateInfo_pPoolSizes, sizes)
+  let out = bytes(8)
+  let r = Vk.create_descriptor_pool(gvk_dev, dpci, null, out)
+  if r != VK_SUCCESS { return gvk_fail("vkCreateDescriptorPool (kept sets)", r) }
+  gvk_kpool = gvk_handle(out)
+  gvk_sc_clear()
+  return true
+}
+
+function gvk_sc_clear() -> void {
+  gvk_sc_prog = new []int;  gvk_sc_koff = new []int;  gvk_sc_set = new []long;  gvk_sc_next = new []int
+  gvk_sc_keys = new []long
+  if gvk_sc_head == null { gvk_sc_head = words(4096) }
+  for i in 0 .. 4096 { gvk_sc_head[i] = -1 }
+}
+
+# the pool is full: finish the frame recorded so far (it may use sets from it), then start again
+function gvk_kpool_reset() -> void {
+  gvk_flush()
+  Vk.reset_descriptor_pool(gvk_dev, gvk_kpool, 0)
+  gvk_sc_clear()
+}
+
 function gvk_draw_set(p: int, tx: words, tx_w: int, tx_cap: int) -> long {
   let zero: long = 0
   let v = gvk_prog_var[p]
   gvk_uniform_blocks(p)
-  let nt0 = len(v.t_name)
-  # the textures this draw reads, resolved the way the set below binds them
-  var same_tex = true
-  for t in 0 .. nt0 {
-    var tt = gvk_prog_tex[p][t]
-    let u1 = gvk_prog_unit[p][t]
-    if tt <= 0 and u1 > 0 and u1 <= 32 and gpu_unit_2d != null { tt = gpu_unit_2d[u1 - 1] }
-    if gvk_set_tex[p][t] != tt { same_tex = false;  gvk_set_tex[p][t] = tt }
+  if gvk_sc_tmp == null {
+    gvk_sc_tmp = new []long
+    gvk_set_offs = bytes(16)
+    gvk_ub_frame = new []int;  gvk_ub_offv = new []int;  gvk_ub_offf = new []int
   }
-  if same_tex and gvk_prog_dirty[p] == 0 and gvk_set_frame[p] == gvk_frame_no and gvk_set_last[p] != 0 { return gvk_set_last[p] }
-  let dsai = bytes(VkDescriptorSetAllocateInfo_sizeof)
-  Vk.zero(dsai, VkDescriptorSetAllocateInfo_sizeof)
-  Vk.put_i32(dsai, VkDescriptorSetAllocateInfo_sType, VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO)
-  Vk.put_i64(dsai, VkDescriptorSetAllocateInfo_descriptorPool, gvk_dpool)
-  Vk.put_i32(dsai, VkDescriptorSetAllocateInfo_descriptorSetCount, 1)
-  let layouts = bytes(8)
-  Vk.put_i64(layouts, 0, gvk_prog_dsl[p])
-  Vk.put_ptr(dsai, VkDescriptorSetAllocateInfo_pSetLayouts, layouts)
-  let sets = bytes(8)
-  let r = Vk.allocate_descriptor_sets(gvk_dev, dsai, sets)
-  if r != VK_SUCCESS { gvk_fail("vkAllocateDescriptorSets", r);  return zero }
-  let set = Vk.get_i64(sets, 0)
-
+  while len(gvk_ub_frame) <= p { push(gvk_ub_frame, 0);  push(gvk_ub_offv, 0);  push(gvk_ub_offf, 0) }
   let nt = len(v.t_name)
-  let ww = VkWriteDescriptorSet_sizeof
-  let writes = bytes(ww * (nt + 3))
-  Vk.zero(writes, ww * (nt + 3))
-  let bis = bytes(VkDescriptorBufferInfo_sizeof * 2)
-  let iis = bytes(VkDescriptorImageInfo_sizeof * (nt + 1))
-  var nw = 0
-  for stage in 0 .. 2 {
-    var blk = gvk_ublk_v[p]
-    var size = v.vblock
-    if stage == 1 { blk = gvk_ublk_f[p];  size = v.fblock }
-    if blk == null or size <= 0 { continue }
-    let at = gvk_ring_put(blk, size)
-    if at < 0 { print("r3d: vulkan: the frame's uniform ring is full");  return zero }
-    let bi = stage * VkDescriptorBufferInfo_sizeof
-    let at_l: long = at
-    let size_l: long = size
-    Vk.put_i64(bis, bi + VkDescriptorBufferInfo_buffer, gvk_buf[gvk_ring_buf])
-    Vk.put_i64(bis, bi + VkDescriptorBufferInfo_offset, at_l)
-    Vk.put_i64(bis, bi + VkDescriptorBufferInfo_range, size_l)
-    Vk.put_i32(writes, nw * ww + VkWriteDescriptorSet_sType, VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET)
-    Vk.put_i64(writes, nw * ww + VkWriteDescriptorSet_dstSet, set)
-    Vk.put_i32(writes, nw * ww + VkWriteDescriptorSet_dstBinding, stage)
-    Vk.put_i32(writes, nw * ww + VkWriteDescriptorSet_descriptorCount, 1)
-    Vk.put_i32(writes, nw * ww + VkWriteDescriptorSet_descriptorType, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
-    Vk.put_ptr(writes, nw * ww + VkWriteDescriptorSet_pBufferInfo, mem_off(bis, bi))
-    nw += 1
-  }
-  let iw = VkDescriptorImageInfo_sizeof
+  # the key: every texture as this draw resolves it, and its sampler
+  while len(gvk_sc_tmp) < nt * 2 + 2 { push(gvk_sc_tmp, zero) }
   for t in 0 .. nt {
     var tex = gvk_prog_tex[p][t]
     # nothing bound by name: the texture on the unit the sampler was pointed at, as OpenGL reads it
@@ -721,9 +782,103 @@ function gvk_draw_set(p: int, tx: words, tx_w: int, tx_cap: int) -> long {
     if tex != gvk_white and tex < tx_cap {
       smp = gvk_tex_sampler(tex, tx[o + 5], tx[o + 6], tx[o + 7], tx[o + 8], tx[o + 9], tx[o + 11])
     } else {
-      smp = gvk_sampler(GL_LINEAR, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, 0, 0)
+      # the sampler for a slot nothing was bound to, made once: looking it up by its string key on
+      # every draw was the costly part of the key for the shadow and depth variants
+      if gvk_default_smp == 0 { gvk_default_smp = gvk_sampler(GL_LINEAR, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, 0, 0) }
+      smp = gvk_default_smp
     }
-    Vk.put_i64(iis, t * iw + VkDescriptorImageInfo_sampler, smp)
+    let tg: long = tex * 65536 + gvk_tex_gen[tex]
+    gvk_sc_tmp[t * 2] = tg
+    gvk_sc_tmp[t * 2 + 1] = smp
+  }
+  var set: long = 0
+  var e = -1
+  if p < 4096 { e = gvk_sc_head[p] }
+  while e >= 0 and set == 0 {
+    let ko = gvk_sc_koff[e]
+    var same = true
+    var t = 0
+    while same and t < nt * 2 { if gvk_sc_keys[ko + t] != gvk_sc_tmp[t] { same = false };  t += 1 }
+    if same { set = gvk_sc_set[e] } else { e = gvk_sc_next[e] }
+  }
+  if set == 0 {
+    set = gvk_sc_make(p, nt)
+    if set == 0 { return zero }
+  }
+  # the uniform blocks: copied into the ring once per frame, and again only when a value changed
+  if gvk_prog_dirty[p] == 1 or gvk_ub_frame[p] != gvk_frame_no {
+    if gvk_ublk_v[p] != null and v.vblock > 0 {
+      let at = gvk_ring_put(gvk_ublk_v[p], v.vblock)
+      if at < 0 { print("r3d: vulkan: the frame's uniform ring is full");  return zero }
+      gvk_ub_offv[p] = at
+    }
+    if gvk_ublk_f[p] != null and v.fblock > 0 {
+      let at = gvk_ring_put(gvk_ublk_f[p], v.fblock)
+      if at < 0 { print("r3d: vulkan: the frame's uniform ring is full");  return zero }
+      gvk_ub_offf[p] = at
+    }
+    gvk_ub_frame[p] = gvk_frame_no
+    gvk_prog_dirty[p] = 0
+  }
+  gvk_set_ndyn = 0
+  if v.vblock >= 0 { Vk.put_i32(gvk_set_offs, gvk_set_ndyn * 4, gvk_ub_offv[p]);  gvk_set_ndyn += 1 }
+  if v.fblock >= 0 { Vk.put_i32(gvk_set_offs, gvk_set_ndyn * 4, gvk_ub_offf[p]);  gvk_set_ndyn += 1 }
+  gvk_buf_used[gvk_ring_buf] = gvk_frame_no
+  return set
+}
+
+# a new kept set for program p with the textures in gvk_sc_tmp, written and cached
+function gvk_sc_make(p: int, nt: int) -> long {
+  let zero: long = 0
+  let v = gvk_prog_var[p]
+  let dsai = bytes(VkDescriptorSetAllocateInfo_sizeof)
+  let layouts = bytes(8)
+  let sets = bytes(8)
+  var r = 0
+  var tries = 0
+  while tries < 2 {
+    Vk.zero(dsai, VkDescriptorSetAllocateInfo_sizeof)
+    Vk.put_i32(dsai, VkDescriptorSetAllocateInfo_sType, VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO)
+    Vk.put_i64(dsai, VkDescriptorSetAllocateInfo_descriptorPool, gvk_kpool)
+    Vk.put_i32(dsai, VkDescriptorSetAllocateInfo_descriptorSetCount, 1)
+    Vk.put_i64(layouts, 0, gvk_prog_dsl[p])
+    Vk.put_ptr(dsai, VkDescriptorSetAllocateInfo_pSetLayouts, layouts)
+    r = Vk.allocate_descriptor_sets(gvk_dev, dsai, sets)
+    if r == VK_SUCCESS { tries = 2 } else { gvk_kpool_reset();  tries += 1 }
+  }
+  if r != VK_SUCCESS { gvk_fail("vkAllocateDescriptorSets (kept sets)", r);  return zero }
+  let set = Vk.get_i64(sets, 0)
+  let ww = VkWriteDescriptorSet_sizeof
+  let writes = bytes(ww * (nt + 3))
+  Vk.zero(writes, ww * (nt + 3))
+  let bis = bytes(VkDescriptorBufferInfo_sizeof * 2)
+  let iis = bytes(VkDescriptorImageInfo_sizeof * (nt + 1))
+  var nw = 0
+  var bi = 0
+  for stage in 0 .. 2 {
+    var size = v.vblock
+    if stage == 1 { size = v.fblock }
+    if size < 0 { continue }
+    let at = bi * VkDescriptorBufferInfo_sizeof
+    let off0: long = 0
+    var range: long = size
+    if size == 0 { range = 16 }
+    Vk.put_i64(bis, at + VkDescriptorBufferInfo_buffer, gvk_buf[gvk_ring_buf])
+    Vk.put_i64(bis, at + VkDescriptorBufferInfo_offset, off0)
+    Vk.put_i64(bis, at + VkDescriptorBufferInfo_range, range)
+    Vk.put_i32(writes, nw * ww + VkWriteDescriptorSet_sType, VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET)
+    Vk.put_i64(writes, nw * ww + VkWriteDescriptorSet_dstSet, set)
+    Vk.put_i32(writes, nw * ww + VkWriteDescriptorSet_dstBinding, stage)
+    Vk.put_i32(writes, nw * ww + VkWriteDescriptorSet_descriptorCount, 1)
+    Vk.put_i32(writes, nw * ww + VkWriteDescriptorSet_descriptorType, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC)
+    Vk.put_ptr(writes, nw * ww + VkWriteDescriptorSet_pBufferInfo, mem_off(bis, at))
+    nw += 1
+    bi += 1
+  }
+  let iw = VkDescriptorImageInfo_sizeof
+  for t in 0 .. nt {
+    let tex = Text.to_int(string(gvk_sc_tmp[t * 2] / 65536))
+    Vk.put_i64(iis, t * iw + VkDescriptorImageInfo_sampler, gvk_sc_tmp[t * 2 + 1])
     Vk.put_i64(iis, t * iw + VkDescriptorImageInfo_imageView, gvk_tex_view[tex])
     Vk.put_i32(iis, t * iw + VkDescriptorImageInfo_imageLayout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
     Vk.put_i32(writes, nw * ww + VkWriteDescriptorSet_sType, VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET)
@@ -735,9 +890,13 @@ function gvk_draw_set(p: int, tx: words, tx_w: int, tx_cap: int) -> long {
     nw += 1
   }
   if nw > 0 { Vk.update_descriptor_sets(gvk_dev, nw, writes, 0, null) }
-  gvk_set_last[p] = set
-  gvk_set_frame[p] = gvk_frame_no
-  gvk_prog_dirty[p] = 0
+  let e = len(gvk_sc_set)
+  push(gvk_sc_prog, p);  push(gvk_sc_koff, len(gvk_sc_keys));  push(gvk_sc_set, set)
+  for t in 0 .. nt * 2 { push(gvk_sc_keys, gvk_sc_tmp[t]) }
+  var head = -1
+  if p < 4096 { head = gvk_sc_head[p];  gvk_sc_head[p] = e }
+  push(gvk_sc_next, head)
+  gvk_sc_made += 1
   return set
 }
 
@@ -1007,7 +1166,16 @@ function gvk_draw(p: int, m: Mesh, st: GvkState, first: int, count: int, instanc
   let cb = gvk_cb
   let samples = 1
   let pipe = gvk_pipeline_fast(p, m, st, gvk_pass_ncolor, gvk_pass_cfmt, gvk_pass_dfmt, samples)
-  if pipe == 0 { return }
+  if pipe == 0 {
+    # Say so, once per program: a driver that refuses a pipeline other drivers accept (MoltenVK
+    # rejected every skinned one) otherwise leaves a whole layer missing from the frame in silence.
+    if gvk_skip_said == null { gvk_skip_said = words(4096);  for i in 0 .. 4096 { gvk_skip_said[i] = 0 } }
+    if p < 4096 and gvk_skip_said[p] == 0 {
+      gvk_skip_said[p] = 1
+      print(`r3d: vulkan: no pipeline for {gpu_program_key(p)}; its draws are skipped`)
+    }
+    return
+  }
   var t1: long = 0
   if prof { t1 = gl_now_us();  gvk_us_pipe = gvk_us_pipe + (t1 - t0) }
   Vk.cmd_bind_pipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe)
@@ -1017,7 +1185,7 @@ function gvk_draw(p: int, m: Mesh, st: GvkState, first: int, count: int, instanc
   if prof { gvk_us_set = gvk_us_set + (gl_now_us() - t1) }
   let sets = bytes(8)
   Vk.put_i64(sets, 0, set)
-  Vk.cmd_bind_descriptor_sets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, gvk_prog_layout[p], 0, 1, sets, 0, null)
+  Vk.cmd_bind_descriptor_sets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, gvk_prog_layout[p], 0, 1, sets, gvk_set_ndyn, gvk_set_offs)
   let v = gvk_prog_var[p]
   if m != null and m.attrs != null {
     # the same bindings, in the same order, as gvk_pipeline gave the layout
@@ -1040,6 +1208,14 @@ function gvk_draw(p: int, m: Mesh, st: GvkState, first: int, count: int, instanc
         gvk_buf_used[m.attrs[o]] = gvk_frame_no
         nbd += 1
       }
+    }
+    var unfed = false
+    for q in 0 .. len(v.i_loc) { if gvk_input_unfed(m, v.i_loc[q]) { unfed = true } }
+    if unfed and nbd <= GPU_MAX_VBUFS {
+      let zb = gvk_zero_vbuf_get()
+      Vk.put_i64(bufs, nbd * 8, gvk_buf[zb])
+      gvk_buf_used[zb] = gvk_frame_no
+      nbd += 1
     }
     if nbd > 0 { Vk.cmd_bind_vertex_buffers(cb, 0, nbd, bufs, offs) }
   }

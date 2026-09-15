@@ -185,6 +185,12 @@ function gvk_tex_storage(tex: int, array: bool, ifmt: int, w: int, h: int, layer
   Vk.get_image_memory_requirements(gvk_dev, image, req)
   let mem = gvk_alloc(req, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
   let zero: long = 0
+  # no memory for it (one allocation per resource meets the driver's allocation limit long before
+  # the card is full): say so instead of binding a null allocation, which the driver may accept
+  if mem == 0 {
+    Vk.destroy_image(gvk_dev, image, null)
+    return gvk_fail(`no device memory for a {w}x{h}x{layers} image ({gvk_n_allocs} allocations live)`, VK_ERROR_OUT_OF_DEVICE_MEMORY)
+  }
   r = Vk.bind_image_memory(gvk_dev, image, mem, zero)
   if r != VK_SUCCESS { return gvk_fail("vkBindImageMemory", r) }
   let vci = bytes(VkImageViewCreateInfo_sizeof)
