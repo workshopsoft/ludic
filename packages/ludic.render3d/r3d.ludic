@@ -4,6 +4,8 @@
 # ============================================================================
 import "fmath.ludic"
 import "gpu.ludic"
+import "gpu_vk.ludic"
+import "gpu_vk_res.ludic"
 import "prof.ludic"
 import "programs.ludic"
 import "texture.ludic"
