@@ -16,7 +16,8 @@ property Mesh {
   vbufs: words,              # every vertex buffer the mesh owns, freed with it
   n_vbufs: int = 0,
   cur_buf: int = 0,          # the buffer the next attribute reads (while building)
-  ibuf:  int = 0             # the instance buffer attached last
+  ibuf:  int = 0,            # the instance buffer attached last
+  vk_layout: int = 0         # the Vulkan backend's interned id for the recorded layout (0: not yet)
 }
 
 function mesh_draw(m: Mesh) -> void { gpu_draw_mesh(m) }

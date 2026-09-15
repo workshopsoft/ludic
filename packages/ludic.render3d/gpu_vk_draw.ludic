@@ -371,10 +371,27 @@ var gvk_ublk_v: []bytes = null        # per program: the vertex stage's block as
 var gvk_ublk_f: []bytes = null
 var gvk_prog_tex: []words = null      # per program: the texture bound to each manifest sampler
 var gvk_prog_unit: []words = null     # per program: the unit + 1 each sampler was pointed at with u_i
+var gvk_prog_dirty: []int = null      # per program: its blocks or textures changed since its last set
+var gvk_set_last: []long = null       # per program: the descriptor set its last draw used
+var gvk_set_frame: []int = null       # per program: the frame that set belongs to
+var gvk_set_tex: []words = null       # per program: the textures that set was filled with
+
+function gvk_same(a: pointer, b: pointer, n: int) -> bool {
+  var i = 0
+  while i < n { if Vk.get_i32(a, i) != Vk.get_i32(b, i) { return false };  i += 4 }
+  return true
+}
 
 function gvk_uniform_blocks(p: int) -> void {
-  if gvk_ublk_v == null { gvk_ublk_v = new []bytes;  gvk_ublk_f = new []bytes;  gvk_prog_tex = new []words;  gvk_prog_unit = new []words }
-  while len(gvk_ublk_v) <= p { push(gvk_ublk_v, null);  push(gvk_ublk_f, null);  push(gvk_prog_tex, null);  push(gvk_prog_unit, null) }
+  if gvk_ublk_v == null {
+    gvk_ublk_v = new []bytes;  gvk_ublk_f = new []bytes;  gvk_prog_tex = new []words;  gvk_prog_unit = new []words
+    gvk_prog_dirty = new []int;  gvk_set_last = new []long;  gvk_set_frame = new []int;  gvk_set_tex = new []words
+  }
+  let zero: long = 0
+  while len(gvk_ublk_v) <= p {
+    push(gvk_ublk_v, null);  push(gvk_ublk_f, null);  push(gvk_prog_tex, null);  push(gvk_prog_unit, null)
+    push(gvk_prog_dirty, 1);  push(gvk_set_last, zero);  push(gvk_set_frame, 0);  push(gvk_set_tex, null)
+  }
   let v = gvk_prog_var[p]
   if v == null or gvk_ublk_v[p] != null or gvk_prog_tex[p] != null { return }
   if v.vblock > 0 { let b = bytes(v.vblock);  Vk.zero(b, v.vblock);  gvk_ublk_v[p] = b }
@@ -385,6 +402,9 @@ function gvk_uniform_blocks(p: int) -> void {
   for i in 0 .. nt { t[i] = 0;  u[i] = 0 }
   gvk_prog_tex[p] = t
   gvk_prog_unit[p] = u
+  let st = words(nt)
+  for i in 0 .. nt { st[i] = -1 }
+  gvk_set_tex[p] = st
 }
 
 function gvk_uniform(p: int, name: string) -> int {
@@ -407,7 +427,7 @@ function gvk_u_set(loc: int, src: pointer, size: int, n: int) -> void {
   gvk_uniform_blocks(p)
   if loc % 4096 >= 2048 {
     let si = loc % 4096 - 2048
-    if si < len(v.t_name) { gvk_prog_unit[p][si] = Vk.get_i32(src, 0) + 1 }
+    if si < len(v.t_name) and gvk_prog_unit[p][si] != Vk.get_i32(src, 0) + 1 { gvk_prog_unit[p][si] = Vk.get_i32(src, 0) + 1;  gvk_prog_dirty[p] = 1 }
     return
   }
   let name = v.u_name[loc % 4096]
@@ -423,7 +443,11 @@ function gvk_u_set(loc: int, src: pointer, size: int, n: int) -> void {
     if count > v.u_count[j] { count = v.u_count[j] }
     for k in 0 .. count {
       let at = v.u_off[j] + k * stride
-      if at + size <= cap { mem_copy(mem_off(blk, at), mem_off(src, k * size), size) }
+      # the same value again (most per-draw uniforms repeat) leaves the program's set reusable
+      if at + size <= cap and not gvk_same(mem_off(blk, at), mem_off(src, k * size), size) {
+        mem_copy(mem_off(blk, at), mem_off(src, k * size), size)
+        gvk_prog_dirty[p] = 1
+      }
     }
   }
 }
@@ -434,7 +458,7 @@ function gvk_bind_texture(p: int, name: string, tex: int) -> void {
   let v = gvk_prog_var[p]
   if v == null { return }
   gvk_uniform_blocks(p)
-  for i in 0 .. len(v.t_name) { if v.t_name[i] == name { gvk_prog_tex[p][i] = tex } }
+  for i in 0 .. len(v.t_name) { if v.t_name[i] == name and gvk_prog_tex[p][i] != tex { gvk_prog_tex[p][i] = tex;  gvk_prog_dirty[p] = 1 } }
 }
 
 # ---- per-frame uniform ring and descriptor sets -------------------------------------------
@@ -497,6 +521,16 @@ function gvk_draw_set(p: int, tx: words, tx_w: int, tx_cap: int) -> long {
   let zero: long = 0
   let v = gvk_prog_var[p]
   gvk_uniform_blocks(p)
+  let nt0 = len(v.t_name)
+  # the textures this draw reads, resolved the way the set below binds them
+  var same_tex = true
+  for t in 0 .. nt0 {
+    var tt = gvk_prog_tex[p][t]
+    let u1 = gvk_prog_unit[p][t]
+    if tt <= 0 and u1 > 0 and u1 <= 32 and gpu_unit_2d != null { tt = gpu_unit_2d[u1 - 1] }
+    if gvk_set_tex[p][t] != tt { same_tex = false;  gvk_set_tex[p][t] = tt }
+  }
+  if same_tex and gvk_prog_dirty[p] == 0 and gvk_set_frame[p] == gvk_frame_no and gvk_set_last[p] != 0 { return gvk_set_last[p] }
   let dsai = bytes(VkDescriptorSetAllocateInfo_sizeof)
   Vk.zero(dsai, VkDescriptorSetAllocateInfo_sizeof)
   Vk.put_i32(dsai, VkDescriptorSetAllocateInfo_sType, VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO)
@@ -548,7 +582,7 @@ function gvk_draw_set(p: int, tx: words, tx_w: int, tx_cap: int) -> long {
     var smp: long = 0
     let o = tex * tx_w
     if tex != gvk_white and tex < tx_cap {
-      smp = gvk_sampler(tx[o + 5], tx[o + 6], tx[o + 7], tx[o + 8], tx[o + 9], tx[o + 11])
+      smp = gvk_tex_sampler(tex, tx[o + 5], tx[o + 6], tx[o + 7], tx[o + 8], tx[o + 9], tx[o + 11])
     } else {
       smp = gvk_sampler(GL_LINEAR, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, 0, 0)
     }
@@ -564,6 +598,9 @@ function gvk_draw_set(p: int, tx: words, tx_w: int, tx_cap: int) -> long {
     nw += 1
   }
   if nw > 0 { Vk.update_descriptor_sets(gvk_dev, nw, writes, 0, null) }
+  gvk_set_last[p] = set
+  gvk_set_frame[p] = gvk_frame_no
+  gvk_prog_dirty[p] = 0
   return set
 }
 
@@ -832,7 +869,7 @@ function gvk_draw(p: int, m: Mesh, st: GvkState, first: int, count: int, instanc
   gvk_pass_begin(rec, rec_o)
   let cb = gvk_cb
   let samples = 1
-  let pipe = gvk_pipeline(p, m, st, gvk_pass_ncolor, gvk_pass_cfmt, gvk_pass_dfmt, samples)
+  let pipe = gvk_pipeline_fast(p, m, st, gvk_pass_ncolor, gvk_pass_cfmt, gvk_pass_dfmt, samples)
   if pipe == 0 { return }
   var t1: long = 0
   if prof { t1 = gl_now_us();  gvk_us_pipe = gvk_us_pipe + (t1 - t0) }
@@ -1304,4 +1341,70 @@ function gvk_prof_frame() -> void {
   let zero: long = 0
   gvk_us_pipe = zero;  gvk_us_set = zero;  gvk_us_draw = zero
   gvk_n_draws = 0;  gvk_n_flush = 0;  gvk_prof_frames = 0
+}
+
+# ---- the pipeline cache, by integers -----------------------------------------------------------
+# gvk_pipeline builds and keys pipelines by a string; a draw only needs to find one it already has.
+# A mesh carries an interned layout id (its recorded layout, buffers named by order), the render
+# state packs into one int, and the pass's formats into another; the program's last hit is tried
+# first, then the entries it owns.
+var gvk_layout_keys: []string = null
+var gvk_pc_prog: []int = null
+var gvk_pc_layout: []int = null
+var gvk_pc_state: []int = null
+var gvk_pc_bias: []int = null
+var gvk_pc_pass: []int = null
+var gvk_pc_pipe: []long = null
+var gvk_pc_last: words = null
+
+function gvk_layout_id(m: Mesh) -> int {
+  if m == null or m.attrs == null { return 1 }
+  if m.vk_layout > 0 { return m.vk_layout }
+  let key = gvk_layout_key(m)
+  if gvk_layout_keys == null { gvk_layout_keys = new []string }
+  var id = 0
+  for i in 0 .. len(gvk_layout_keys) { if id == 0 and gvk_layout_keys[i] == key { id = i + 2 } }
+  if id == 0 { push(gvk_layout_keys, key);  id = len(gvk_layout_keys) + 1 }
+  m.vk_layout = id
+  return id
+}
+function gvk_blend_index(f: int) -> int {
+  if f == GL_ZERO { return 0 }
+  if f == GL_ONE { return 1 }
+  if f == GL_SRC_ALPHA { return 2 }
+  if f == GL_ONE_MINUS_SRC_ALPHA { return 3 }
+  if f == GL_DST_ALPHA { return 4 }
+  if f == GL_ONE_MINUS_DST_ALPHA { return 5 }
+  if f == GL_SRC_COLOR { return 6 }
+  if f == GL_ONE_MINUS_SRC_COLOR { return 7 }
+  return 8
+}
+function gvk_pipeline_fast(p: int, m: Mesh, st: GvkState, n_color: int, color_fmt: int, depth_fmt: int, samples: int) -> long {
+  let layout = gvk_layout_id(m)
+  var state = st.depth_test | (st.depth_write << 1) | (st.blend << 2) | (st.cull << 3) | (st.color_write << 4) | (st.a2c << 5) | (st.bias << 6) | (st.wireframe << 7)
+  state = state | ((st.depth_func & 15) << 8) | ((st.cull_face & 15) << 12) | (gvk_blend_index(st.blend_src) << 16) | (gvk_blend_index(st.blend_dst) << 20)
+  let bias = st.bias_factor * 31 + st.bias_units
+  let pass = ((n_color * 1000 + color_fmt) * 1000 + depth_fmt) * 8 + samples
+  if gvk_pc_prog == null {
+    gvk_pc_prog = new []int;  gvk_pc_layout = new []int;  gvk_pc_state = new []int;  gvk_pc_bias = new []int
+    gvk_pc_pass = new []int;  gvk_pc_pipe = new []long
+    gvk_pc_last = words(4096)
+    for i in 0 .. 4096 { gvk_pc_last[i] = -1 }
+  }
+  if p < 4096 {
+    let k = gvk_pc_last[p]
+    if k >= 0 and gvk_pc_layout[k] == layout and gvk_pc_state[k] == state and gvk_pc_pass[k] == pass and gvk_pc_bias[k] == bias { return gvk_pc_pipe[k] }
+  }
+  for k in 0 .. len(gvk_pc_prog) {
+    if gvk_pc_prog[k] == p and gvk_pc_layout[k] == layout and gvk_pc_state[k] == state and gvk_pc_pass[k] == pass and gvk_pc_bias[k] == bias {
+      if p < 4096 { gvk_pc_last[p] = k }
+      return gvk_pc_pipe[k]
+    }
+  }
+  let pipe = gvk_pipeline(p, m, st, n_color, color_fmt, depth_fmt, samples)
+  if pipe == 0 { return pipe }
+  push(gvk_pc_prog, p);  push(gvk_pc_layout, layout);  push(gvk_pc_state, state)
+  push(gvk_pc_bias, bias);  push(gvk_pc_pass, pass);  push(gvk_pc_pipe, pipe)
+  if p < 4096 { gvk_pc_last[p] = len(gvk_pc_prog) - 1 }
+  return pipe
 }

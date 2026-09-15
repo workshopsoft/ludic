@@ -55,6 +55,8 @@ var gvk_tex_dims_h: []int = null
 var gvk_tex_glfmt: []int = null        # the format the renderer asked for (gpu.ludic's vocabulary)
 var gvk_tex_array: []int = null        # 1 for an array image
 var gvk_tex_gen: []int = null          # bumped whenever the image behind a handle is replaced
+var gvk_tex_smp_sig: []int = null      # the sampling parameters the cached sampler was made for
+var gvk_tex_smp: []long = null
 var gvk_unpack_swap: bool = false     # GL_UNPACK_SWAP_BYTES: 16-bit PNG samples arrive big-endian
 
 function gvk_tex_new() -> int {
@@ -64,8 +66,10 @@ function gvk_tex_new() -> int {
     gvk_tex_levels = new []int;  gvk_tex_layers = new []int;  gvk_tex_vkfmt = new []int
     gvk_tex_dims_w = new []int;  gvk_tex_dims_h = new []int
     gvk_tex_glfmt = new []int;  gvk_tex_array = new []int;  gvk_tex_gen = new []int
+    gvk_tex_smp_sig = new []int;  gvk_tex_smp = new []long
     push(gvk_tex_dims_w, 0);  push(gvk_tex_dims_h, 0)
     push(gvk_tex_glfmt, 0);  push(gvk_tex_array, 0);  push(gvk_tex_gen, 0)
+    push(gvk_tex_smp_sig, 0);  push(gvk_tex_smp, zero)
     # handle 0 is "no texture", as it is on OpenGL
     push(gvk_tex_image, zero);  push(gvk_tex_view, zero);  push(gvk_tex_mem, zero)
     push(gvk_tex_levels, 0);  push(gvk_tex_layers, 0);  push(gvk_tex_vkfmt, 0)
@@ -74,6 +78,7 @@ function gvk_tex_new() -> int {
   push(gvk_tex_levels, 0);  push(gvk_tex_layers, 0);  push(gvk_tex_vkfmt, 0)
   push(gvk_tex_dims_w, 0);  push(gvk_tex_dims_h, 0)
   push(gvk_tex_glfmt, 0);  push(gvk_tex_array, 0);  push(gvk_tex_gen, 0)
+  push(gvk_tex_smp_sig, 0);  push(gvk_tex_smp, zero)
   return len(gvk_tex_image) - 1
 }
 
@@ -445,6 +450,19 @@ function gvk_compare_op(f: int) -> int {
   if f == GL_EQUAL { return VK_COMPARE_OP_EQUAL }
   if f == GL_ALWAYS { return VK_COMPARE_OP_ALWAYS }
   return VK_COMPARE_OP_LESS_OR_EQUAL
+}
+# the sampler for texture tex's parameters, from the texture's own one-entry cache when they have
+# not changed since it last asked - a draw asks for every texture it binds
+function gvk_tex_sampler(tex: int, min_f: int, mag_f: int, wrap_s: int, wrap_t: int, compare: int, aniso: int) -> long {
+  var sig = min_f * 31 + mag_f
+  sig = sig * 31 + wrap_s
+  sig = sig * 31 + wrap_t
+  sig = sig * 31 + compare
+  sig = (sig * 31 + aniso) | 1
+  if tex > 0 and tex < len(gvk_tex_smp_sig) and gvk_tex_smp_sig[tex] == sig { return gvk_tex_smp[tex] }
+  let s = gvk_sampler(min_f, mag_f, wrap_s, wrap_t, compare, aniso)
+  if tex > 0 and tex < len(gvk_tex_smp_sig) { gvk_tex_smp_sig[tex] = sig;  gvk_tex_smp[tex] = s }
+  return s
 }
 function gvk_sampler(min_f: int, mag_f: int, wrap_s: int, wrap_t: int, compare: int, aniso: int) -> long {
   let key = `{min_f}/{mag_f}/{wrap_s}/{wrap_t}/{compare}/{aniso}`

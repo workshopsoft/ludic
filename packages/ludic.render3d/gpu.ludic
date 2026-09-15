@@ -448,6 +448,8 @@ function gpu_mesh_record(m: Mesh, index: int, comps: int, type: int, stride: int
   let o = index * GPU_ATTR_W
   var st = stride
   if st == 0 { st = comps * gpu_type_bytes(type) }
+  # re-pointing an attribute at another buffer keeps the layout; changing its shape does not
+  if m.attrs[o + 1] != comps or m.attrs[o + 2] != type or m.attrs[o + 3] != st or m.attrs[o + 4] != offset or m.attrs[o + 5] != gpu_b(normalized) or m.attrs[o + 6] != gpu_b(inst) or (m.attrs[o] == m.attrs[0]) != (m.cur_buf == m.attrs[0]) { m.vk_layout = 0 }
   m.attrs[o] = m.cur_buf;  m.attrs[o + 1] = comps;  m.attrs[o + 2] = type;  m.attrs[o + 3] = st
   m.attrs[o + 4] = offset;  m.attrs[o + 5] = gpu_b(normalized);  m.attrs[o + 6] = gpu_b(inst)
   if index + 1 > m.n_attrs { m.n_attrs = index + 1 }
