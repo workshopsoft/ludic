@@ -189,6 +189,12 @@ function ov_close_range() -> void {
 function ov_flush() -> void {
   ov_close_range()
   if ov_n == 0 { ov_nr = 0;  ov_range_start = 0;  return }
+  # The overlay draws onto the screen, whatever was bound since ov_begin: a render-scale change
+  # rebuilds the scene targets mid-frame and leaves framebuffer 0 bound, and on a headless run
+  # (where the screen is an offscreen framebuffer) every overlay draw after it was an invalid
+  # framebuffer operation. Saying the target at each flush is what a render pass says anyway.
+  gpu_fb_bind(gpu_screen_fb())
+  gpu_viewport(0, 0, gl_w, gl_h)
   gl_use_program(ov_prog)
   gpu_mesh_bind(ov_mesh)
   gpu_buffer_upload(ov_vbo, gl_bytes_of(ov_n * 6 * OV_FLOATS), ov_buf, GPU_STREAM)

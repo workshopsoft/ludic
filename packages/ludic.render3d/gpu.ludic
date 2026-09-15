@@ -451,7 +451,11 @@ function gpu_draw_bound_elements(m: Mesh) -> void {
   gpu_glcheck_after("a terrain patch")
 }
 # vertices [first, first + count) of the bound mesh, as triangles (the overlay's ranges)
-function gpu_draw_range(m: Mesh, first: int, count: int) -> void { gl_draw_arrays(GL_TRIANGLES, first, count) }
+function gpu_draw_range(m: Mesh, first: int, count: int) -> void {
+  gpu_glcheck_before("an overlay draw")
+  gl_draw_arrays(GL_TRIANGLES, first, count)
+  gpu_glcheck_after("an overlay draw")
+}
 
 function gpu_mesh_free(m: Mesh) -> void {
   if m == null { return }
@@ -499,20 +503,29 @@ function gpu_tx_at(tex: int) -> int {
 function gpu_bound(kind: int) -> int { if kind == GPU_TEX2D_ARRAY { return gpu_bound_array };  return gpu_bound_2d }
 
 function gpu_tex_new() -> int { return gl_texture() }
-function gpu_tex_unit(unit: int) -> void { gl_active_texture(GL_TEXTURE0 + unit) }
+# what GL has on each unit's 2D target, for R3D_GLCHECK: deleting a texture unbinds it everywhere
+var gpu_unit_2d: words = null
+var gpu_unit_cur: int = 0
+function gpu_tex_unit(unit: int) -> void { gl_active_texture(GL_TEXTURE0 + unit);  gpu_unit_cur = unit }
 function gpu_tex_bind(kind: int, tex: int) -> void {
   gl_bind_texture(gpu_gl_target(kind), tex)
   if kind == GPU_TEX2D_ARRAY { gpu_bound_array = tex } else { gpu_bound_2d = tex }
+  if kind != GPU_TEX2D_ARRAY and gpu_unit_cur < 32 {
+    if gpu_unit_2d == null { gpu_unit_2d = words(32);  for i in 0 .. 32 { gpu_unit_2d[i] = -1 } }
+    gpu_unit_2d[gpu_unit_cur] = tex
+  }
 }
 # pixel transfer packing (alignment, byte swap) for the uploads and read-backs that follow
 function gpu_pixel_store(pname: int, value: int) -> void { gl_pixel_storei(pname, value) }
 function gpu_tex_image2d(ifmt: int, w: int, h: int, fmt: int, ty: int, data: pointer) -> void {
   gl_tex_image2d(GL_TEXTURE_2D, 0, ifmt, w, h, 0, fmt, ty, data)
+  gpu_glcheck_after(`a {w}x{h} texture upload (format {ifmt})`)
   let o = gpu_tx_at(gpu_bound_2d)
   if o >= 0 { gpu_tx[o] = GPU_TEX2D;  gpu_tx[o + 1] = w;  gpu_tx[o + 2] = h;  gpu_tx[o + 3] = 1;  gpu_tx[o + 4] = ifmt }
 }
 function gpu_tex_image3d(ifmt: int, w: int, h: int, layers: int, fmt: int, ty: int, data: pointer) -> void {
   gl_tex_image3d(GL_TEXTURE_2D_ARRAY, 0, ifmt, w, h, layers, 0, fmt, ty, data)
+  gpu_glcheck_after(`a {w}x{h}x{layers} array upload (format {ifmt})`)
   let o = gpu_tx_at(gpu_bound_array)
   if o >= 0 { gpu_tx[o] = GPU_TEX2D_ARRAY;  gpu_tx[o + 1] = w;  gpu_tx[o + 2] = h;  gpu_tx[o + 3] = layers;  gpu_tx[o + 4] = ifmt }
 }
@@ -537,16 +550,22 @@ function gpu_tex_paramf(kind: int, pname: int, value: fixed) -> void {
 function gpu_tex_border(kind: int, rgba: pointer) -> void { gl_tex_parameterfv(gpu_gl_target(kind), GL_TEXTURE_BORDER_COLOR, rgba) }
 function gpu_tex_mips(kind: int) -> void {
   gl_generate_mipmap(gpu_gl_target(kind))
+  gpu_glcheck_after(`mipmaps for texture {gpu_bound(kind)}`)
   let o = gpu_tx_at(gpu_bound(kind))
   if o >= 0 { gpu_tx[o + 10] = 1 }
 }
 # level 0 of the bound texture into `out`
-function gpu_tex_read(kind: int, fmt: int, ty: int, out: pointer) -> void { gl_get_tex_image(gpu_gl_target(kind), 0, fmt, ty, out) }
+function gpu_tex_read(kind: int, fmt: int, ty: int, out: pointer) -> void {
+  gl_get_tex_image(gpu_gl_target(kind), 0, fmt, ty, out)
+  gpu_glcheck_after(`a read-back of texture {gpu_bound(kind)}`)
+}
 function gpu_tex_free(tex: int) -> void {
   if tex == 0 { return }
   let ids = gpu_tmp()
   ids[0] = tex
   gl_delete_textures(1, ids)
+  if gpu_unit_2d != null { for i in 0 .. 32 { if gpu_unit_2d[i] == tex { gpu_unit_2d[i] = 0;  if gpu_glcheck_on() { gpu_glcheck_say(`gpu: texture {tex} freed while bound on unit {i}`) } } } }
+  if gpu_bound_2d == tex { gpu_bound_2d = 0 }
   let o = gpu_tx_at(tex)
   if o >= 0 { for i in 0 .. GPU_TX_W { gpu_tx[o + i] = 0 } }
 }
@@ -555,6 +574,26 @@ function gpu_bind_sampler(prog: int, name: string, unit: int, kind: int, tex: in
   gpu_tex_unit(unit)
   gpu_tex_bind(kind, tex)
   u_i(gpu_uniform(prog, name), unit)
+  if gpu_glcheck_on() {
+    # a sampler reading a texture nobody made (0 or freed) is the "unloadable" the driver warns of
+    let o = gpu_tx_at(tex)
+    if tex == 0 or o < 0 or gpu_tx[o] == 0 { gpu_glcheck_say(`gpu: {name} on unit {unit} of program {prog} samples texture {tex}, which has no image`) }
+    else {
+      # incomplete: a min filter that reads mipmaps (GL's default does, when none was set) on a
+      # texture that never had them generated - the driver samples zero ("unloadable")
+      let mn = gpu_tx[o + 5]
+      let wants_mips = mn == 0 or mn == 0x2700 or mn == 0x2701 or mn == 0x2702 or mn == 0x2703
+      if wants_mips and gpu_tx[o + 10] == 0 {
+        var why = "a mipmap filter"
+        if mn == 0 { why = "no min filter set (GL's default reads mipmaps)" }
+        gpu_glcheck_say(`gpu: {name} on unit {unit} of program {prog} samples texture {tex} ({gpu_tx[o + 1]}x{gpu_tx[o + 2]}, format {gpu_tx[o + 4]}) with {why} but no mipmaps`)
+      }
+      # compare mode on: only a shadow sampler may read it; a plain one reads zero ("unloadable")
+      if gpu_tx[o + 9] != 0 and not Text.contains(name, "shadow") { gpu_glcheck_say(`gpu: {name} on unit {unit} of program {prog} samples texture {tex} ({gpu_tx[o + 1]}x{gpu_tx[o + 2]}, format {gpu_tx[o + 4]}) with depth compare on`) }
+
+    }
+    gpu_glcheck_after(`binding {name} (texture {tex}) on unit {unit}`)
+  }
 }
 
 # ---- render targets and passes -------------------------------------------------------------
@@ -607,21 +646,25 @@ function gpu_fb_color(slot: int, tex: int) -> void {
   gl_framebuffer_texture2d(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + slot, GL_TEXTURE_2D, tex, 0)
   let o = gpu_fb_at(gpu_fb_cur)
   if o >= 0 and slot < 2 { gpu_fb[o + slot] = tex;  if slot == 0 { gpu_fb[o + 7] = 0 } }
+  gpu_glcheck_after("attaching to {gpu_fb_describe(gpu_fb_cur)}")
 }
 function gpu_fb_color_layer(slot: int, tex: int, layer: int) -> void {
   gl_framebuffer_texture_layer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + slot, tex, 0, layer)
   let o = gpu_fb_at(gpu_fb_cur)
   if o >= 0 and slot < 2 { gpu_fb[o + slot] = tex;  if slot == 0 { gpu_fb[o + 7] = layer + 1 } }
+  gpu_glcheck_after("attaching to {gpu_fb_describe(gpu_fb_cur)}")
 }
 function gpu_fb_depth(tex: int) -> void {
   gl_framebuffer_texture2d(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, tex, 0)
   let o = gpu_fb_at(gpu_fb_cur)
   if o >= 0 { gpu_fb[o + 2] = tex;  gpu_fb[o + 3] = 0 }
+  gpu_glcheck_after("attaching to {gpu_fb_describe(gpu_fb_cur)}")
 }
 function gpu_fb_depth_layer(tex: int, layer: int) -> void {
   gl_framebuffer_texture_layer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, tex, 0, layer)
   let o = gpu_fb_at(gpu_fb_cur)
   if o >= 0 { gpu_fb[o + 2] = tex;  gpu_fb[o + 3] = layer + 1 }
+  gpu_glcheck_after("attaching to {gpu_fb_describe(gpu_fb_cur)}")
 }
 function gpu_rb_new() -> int {
   let ids = gpu_tmp()
@@ -684,17 +727,30 @@ function gpu_glcheck_say(msg: string) -> void {
   push(gpu_glcheck_seen, msg)
   print(msg)
 }
+# a framebuffer as a person reads it: its handle and its colour (or depth) attachment's size and format
+function gpu_fb_describe(fb: int) -> string {
+  if fb == 0 { return "the default framebuffer" }
+  let o = gpu_fb_at(fb)
+  if o < 0 { return `framebuffer {fb}` }
+  var tex = gpu_fb[o]
+  var what = "colour"
+  if tex == 0 { tex = gpu_fb[o + 2];  what = "depth" }
+  let t = gpu_tx_at(tex)
+  if tex == 0 or t < 0 { return `framebuffer {fb} (nothing recorded attached)` }
+  return `framebuffer {fb} ({what} texture {tex}, {gpu_tx[t + 1]}x{gpu_tx[t + 2]}, format {gpu_tx[t + 4]})`
+}
 function gpu_glcheck_before(what: string) -> void {
   if not gpu_glcheck_on() { return }
   let pending = gl_get_error()
-  if pending != 0 { gpu_glcheck_say(`gpu: error {pending} pending before {what} into framebuffer {gpu_fb_cur}`) }
+  if pending != 0 { gpu_glcheck_say(`gpu: error {pending} pending before {what} into {gpu_fb_describe(gpu_fb_cur)}`) }
+  if gpu_unit_2d != null and gpu_unit_2d[0] == 0 { gpu_glcheck_say(`gpu: {what} into {gpu_fb_describe(gpu_fb_cur)} with unit 0's 2D texture deleted`) }
   let st = gl_check_framebuffer_status(GL_FRAMEBUFFER)
-  if st != GL_FRAMEBUFFER_COMPLETE { gpu_glcheck_say(`gpu: framebuffer {gpu_fb_cur} incomplete ({st}) at {what}`) }
+  if st != GL_FRAMEBUFFER_COMPLETE { gpu_glcheck_say(`gpu: {gpu_fb_describe(gpu_fb_cur)} incomplete ({st}) at {what}`) }
 }
 function gpu_glcheck_after(what: string) -> void {
   if not gpu_glcheck_on() { return }
   let e = gl_get_error()
-  if e != 0 { gpu_glcheck_say(`gpu: error {e} from {what} into framebuffer {gpu_fb_cur}`) }
+  if e != 0 { gpu_glcheck_say(`gpu: error {e} from {what} into {gpu_fb_describe(gpu_fb_cur)}`) }
 }
 function gpu_clear_color(r: fixed, g: fixed, b: fixed, a: fixed) -> void { gl_clear_color(r, g, b, a) }
 function gpu_clear(mask: int) -> void {
@@ -718,4 +774,5 @@ function gpu_read_screen(w: int, h: int, out: pointer) -> void {
   gl_bind_framebuffer(GL_READ_FRAMEBUFFER, gl_screen)
   gl_pixel_storei(GL_PACK_ALIGNMENT, 1)
   gl_read_pixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, out)
+  gpu_glcheck_after(`a {w}x{h} read of the screen`)
 }
