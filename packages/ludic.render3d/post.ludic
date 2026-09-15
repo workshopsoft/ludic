@@ -46,6 +46,10 @@ var post_color_w: int = 0          # its size: the display's when DLSS upscaled 
 var post_color_h: int = 0
 var post_color: int = 0            # the HDR colour the rest of post reads      # the resolved depth, copied so passes can read it while drawing into the frame
 var post_p_sharp: int = 0
+var post_p_tone_hdr: int = 0        # the tonemap's HDR10 variant, made the first time HDR is on
+var post_ldr_hdr: bool = false       # post_ldr was made for HDR10 output (10-bit)
+# the LDR image is 10-bit while the output is HDR10: PQ in 8 bits bands
+function post_ldr_fmt() -> int { if gpu_hdr_active() { return GL_RGB10_A2 };  return GL_RGBA8 }
 var post_sharpen: int = 0
 var post_grain: int = 0
 
@@ -112,7 +116,8 @@ function post_init(w: int, h: int) -> void {
   post_ao = target_new(w, h, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, false, GL_LINEAR)
   post_ao_blur = target_new(w, h, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, false, GL_LINEAR)
   if post_p_ao == 0 { post_p_ao = r3d_program("fullscreen.vert", "ssgi.frag", "");  post_p_ao_blur = r3d_program("fullscreen.vert", "ssao_blur.frag", "") }
-  post_ldr = target_new(w, h, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, false, GL_LINEAR)
+  post_ldr = target_new(w, h, post_ldr_fmt(), GL_RGBA, GL_UNSIGNED_BYTE, false, GL_LINEAR)
+  post_ldr_hdr = gpu_hdr_active()
   post_depth_copy = target_new(w, h, GL_R8, GL_RED, GL_UNSIGNED_BYTE, true, GL_NEAREST)
   post_prev = target_new(w, h, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, false, GL_LINEAR)
   post_scene = target_new(w, h, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, false, GL_LINEAR)
@@ -291,26 +296,37 @@ function post_bloom_pass() -> void {
 }
 
 function post_tonemap(color_tex: int) -> void {
+  var prog = post_p_tone
+  if gpu_hdr_active() {
+    if post_p_tone_hdr == 0 { post_p_tone_hdr = r3d_program("fullscreen.vert", "tonemap.frag", "#define HDR10\n") }
+    prog = post_p_tone_hdr
+  }
+  if post_ldr_hdr != gpu_hdr_active() {
+    let w = post_ldr.w;  let h = post_ldr.h
+    target_free(post_ldr)
+    post_ldr = target_new(w, h, post_ldr_fmt(), GL_RGBA, GL_UNSIGNED_BYTE, false, GL_LINEAR)
+    post_ldr_hdr = gpu_hdr_active()
+  }
   if post_auto { post_measure() }
   target_bind(post_ldr)
   gpu_depth_test(false)
-  gpu_use_program(post_p_tone)
-  r3d_bind_2d(post_p_tone, "u_hdr", 0, color_tex)
-  r3d_bind_2d(post_p_tone, "u_bloom", 1, post_bloom[0].color)
-  r3d_bind_2d(post_p_tone, "u_ao", 2, post_ao_blur.color)
-  u_f(gpu_uniform(post_p_tone, "u_ao_strength"), post_ao_strength)
-  u_f(gpu_uniform(post_p_tone, "u_gi_strength"), post_gi_strength)
-  u_f(gpu_uniform(post_p_tone, "u_exposure"), post_exposure)
+  gpu_use_program(prog)
+  r3d_bind_2d(prog, "u_hdr", 0, color_tex)
+  r3d_bind_2d(prog, "u_bloom", 1, post_bloom[0].color)
+  r3d_bind_2d(prog, "u_ao", 2, post_ao_blur.color)
+  u_f(gpu_uniform(prog, "u_ao_strength"), post_ao_strength)
+  u_f(gpu_uniform(prog, "u_gi_strength"), post_gi_strength)
+  u_f(gpu_uniform(prog, "u_exposure"), post_exposure)
   var auto = F_ZERO
-  if post_auto and post_adapt_t != null { auto = F_ONE;  r3d_bind_2d(post_p_tone, "u_adapt", 3, post_adapt_t[post_adapt_i].color) }
-  u_f(gpu_uniform(post_p_tone, "u_auto"), auto)
-  u_f(gpu_uniform(post_p_tone, "u_bloom_strength"), post_bloom_strength)
-  u_f(gpu_uniform(post_p_tone, "u_vignette"), post_vignette)
-  u_f(gpu_uniform(post_p_tone, "u_saturation"), post_saturation)
-  u_f(gpu_uniform(post_p_tone, "u_contrast"), post_contrast)
-  u_f3(gpu_uniform(post_p_tone, "u_wb"), fl(1.02), F_ONE, fl(0.97))
-  u_f3(gpu_uniform(post_p_tone, "u_lift"), fl(0.004), fl(0.004), fl(0.012))
-  u_f3(gpu_uniform(post_p_tone, "u_gain"), fl(0.99), fl(0.995), fl(1.0))
+  if post_auto and post_adapt_t != null { auto = F_ONE;  r3d_bind_2d(prog, "u_adapt", 3, post_adapt_t[post_adapt_i].color) }
+  u_f(gpu_uniform(prog, "u_auto"), auto)
+  u_f(gpu_uniform(prog, "u_bloom_strength"), post_bloom_strength)
+  u_f(gpu_uniform(prog, "u_vignette"), post_vignette)
+  u_f(gpu_uniform(prog, "u_saturation"), post_saturation)
+  u_f(gpu_uniform(prog, "u_contrast"), post_contrast)
+  u_f3(gpu_uniform(prog, "u_wb"), fl(1.02), F_ONE, fl(0.97))
+  u_f3(gpu_uniform(prog, "u_lift"), fl(0.004), fl(0.004), fl(0.012))
+  u_f3(gpu_uniform(prog, "u_gain"), fl(0.99), fl(0.995), fl(1.0))
   mesh_draw(post_fs)
   # sharpen + grain onto the screen
   gpu_fb_bind(gpu_screen_fb())
@@ -319,7 +335,10 @@ function post_tonemap(color_tex: int) -> void {
   r3d_bind_2d(post_p_sharp, "u_src", 0, post_ldr.color)
   u_f2(gpu_uniform(post_p_sharp, "u_texel"), fr(1, post_ldr.w), fr(1, post_ldr.h))
   u_f(gpu_uniform(post_p_sharp, "u_amount"), post_sharpen)
-  u_f(gpu_uniform(post_p_sharp, "u_grain"), post_grain)
+  # R3D_NOGRAIN=1: no film grain, so two frames of a still camera can be compared for what else moves
+  var grain = post_grain
+  if Os.has_env("R3D_NOGRAIN") { grain = F_ZERO }
+  u_f(gpu_uniform(post_p_sharp, "u_grain"), grain)
   u_f(gpu_uniform(post_p_sharp, "u_time"), r3d_time)
   mesh_draw(post_fs)
 }

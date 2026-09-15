@@ -95,6 +95,9 @@ function gvk_init() -> bool {
     Vk.put_ptr(iext_names, n_iext * 8, VK_KHR_SURFACE_EXTENSION_NAME);  n_iext += 1
     Vk.put_ptr(iext_names, n_iext * 8, VK_KHR_WIN32_SURFACE_EXTENSION_NAME);  n_iext += 1
   }
+  # HDR output: an instance only lists the HDR colour spaces when it asks for them
+  gvk_has_colorspace = gvk_has_surface and gvk_ext_in(iexts, nie, VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME)
+  if gvk_has_colorspace { Vk.put_ptr(iext_names, n_iext * 8, VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME);  n_iext += 1 }
   if n_iext > 0 {
     Vk.put_i32(ici, VkInstanceCreateInfo_enabledExtensionCount, n_iext)
     Vk.put_ptr(ici, VkInstanceCreateInfo_ppEnabledExtensionNames, iext_names)
@@ -203,7 +206,7 @@ function gvk_init() -> bool {
   Vk.put_i32(qci, VkDeviceQueueCreateInfo_queueFamilyIndex, gvk_family)
   Vk.put_i32(qci, VkDeviceQueueCreateInfo_queueCount, 1)
   Vk.put_ptr(qci, VkDeviceQueueCreateInfo_pQueuePriorities, prio)
-  let dext_names = bytes(32)
+  let dext_names = bytes(48)
   var n_dext = 0
   let dci = bytes(VkDeviceCreateInfo_sizeof)
   Vk.zero(dci, VkDeviceCreateInfo_sizeof)
@@ -217,6 +220,11 @@ function gvk_init() -> bool {
     Vk.put_ptr(dext_names, n_dext * 8, VK_KHR_SWAPCHAIN_EXTENSION_NAME);  n_dext += 1
     # Reflex: Streamline adds VK_NV_low_latency2 to this device, which needs present ids it does not add
     if gsl_on and gvk_ext_in(dexts, nde, "VK_KHR_present_id") { Vk.put_ptr(dext_names, n_dext * 8, "VK_KHR_present_id");  n_dext += 1 }
+    # HDR output tells the display what the picture holds
+    # and only where the loader has the command: Streamline's interposer exports no vkSetHdrMetadataEXT,
+    # and calling its thunk there crashed the game the moment the swapchain came up HDR10
+    gvk_has_hdr_meta = gvk_ext_in(dexts, nde, VK_EXT_HDR_METADATA_EXTENSION_NAME) and Vk.has("vkSetHdrMetadataEXT") == 1
+    if gvk_has_hdr_meta { Vk.put_ptr(dext_names, n_dext * 8, VK_EXT_HDR_METADATA_EXTENSION_NAME);  n_dext += 1 }
   }
   if n_dext > 0 {
     Vk.put_i32(dci, VkDeviceCreateInfo_enabledExtensionCount, n_dext)

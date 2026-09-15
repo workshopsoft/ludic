@@ -6,6 +6,18 @@ in vec4 v_col;
 uniform sampler2D u_tex;
 uniform sampler2D u_font;
 out vec4 o_color;
+#ifdef HDR10
+// the interface is sRGB: drawn into an HDR10 frame it sits at paper white, as the picture's white does
+const float HDR_PAPER = 200.0;
+vec3 bt709_to_2020(vec3 c) {
+  return mat3(0.6274, 0.0691, 0.0164, 0.3293, 0.9195, 0.0880, 0.0433, 0.0114, 0.8956) * c;
+}
+vec3 pq_encode(vec3 nits) {
+  const float m1 = 0.1593017578125, m2 = 78.84375, c1 = 0.8359375, c2 = 18.8515625, c3 = 18.6875;
+  vec3 yp = pow(clamp(nits / 10000.0, 0.0, 1.0), vec3(m1));
+  return pow((c1 + c2 * yp) / (1.0 + c3 * yp), vec3(m2));
+}
+#endif
 void main() {
   float mode = floor((v_uv.y + 0.5) * 0.25);
   vec2 uv = vec2(v_uv.x, v_uv.y - 4.0 * mode);
@@ -17,4 +29,7 @@ void main() {
     vec4 t = texture(u_tex, uv);
     o_color = vec4(v_col.rgb * t.rgb, v_col.a * t.a);
   }
+#ifdef HDR10
+  o_color.rgb = pq_encode(bt709_to_2020(pow(max(o_color.rgb, vec3(0.0)), vec3(2.2))) * HDR_PAPER);
+#endif
 }

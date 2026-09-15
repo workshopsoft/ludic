@@ -943,6 +943,43 @@ var gvk_layer_views: []string = null  # "tex:layer" -> index into gvk_layer_view
 var gvk_layer_view: []long = null
 var gvk_fb_ncolor: words = null       # per framebuffer: colour slots drawn (draw buffers; 0 = none)
 
+# ---- HDR output ------------------------------------------------------------------------------
+# HDR10 (ST 2084 over BT.2020) when the player asks for it and the surface offers it. The screen
+# image and the tonemap's LDR image go 10-bit with it; the tonemap and the overlay switch to their
+# HDR10 variants (gpu_hdr_active). Headless there is no surface, so never.
+var gvk_hdr_want: bool = false        # r3d_hdr: the setting
+var gvk_hdr_on: bool = false          # the swapchain is HDR10 now
+var gvk_has_colorspace: bool = false  # the instance took VK_EXT_swapchain_colorspace
+var gvk_has_hdr_meta: bool = false    # the device took VK_EXT_hdr_metadata
+# R3D_HDR=1 / 0 overrides the setting, for a desktop test
+function r3d_hdr(on: bool) -> void {
+  var want = on
+  if Os.has_env("R3D_HDR") { want = Text.to_int(Os.env("R3D_HDR")) != 0 }
+  if want == gvk_hdr_want { return }
+  gvk_hdr_want = want
+  if gvk_swap != 0 { gvk_swap_stale = true }
+}
+function gpu_hdr_active() -> bool { return gpu_kind == GPU_VK and gvk_hdr_on }
+function gvk_screen_fmt() -> int { if gvk_hdr_on { return GL_RGB10_A2 };  return GL_RGBA8 }
+
+# what the picture is: graded in BT.709 around D65, highlights to 1000 nits, a 200-nit average
+function gvk_hdr_metadata() -> void {
+  let md = bytes(VkHdrMetadataEXT_sizeof)
+  Vk.zero(md, VkHdrMetadataEXT_sizeof)
+  Vk.put_i32(md, VkHdrMetadataEXT_sType, VK_STRUCTURE_TYPE_HDR_METADATA_EXT)
+  Vk.put_i32(md, VkHdrMetadataEXT_displayPrimaryRed + VkXYColorEXT_x, fl(0.64));  Vk.put_i32(md, VkHdrMetadataEXT_displayPrimaryRed + VkXYColorEXT_y, fl(0.33))
+  Vk.put_i32(md, VkHdrMetadataEXT_displayPrimaryGreen + VkXYColorEXT_x, fl(0.30));  Vk.put_i32(md, VkHdrMetadataEXT_displayPrimaryGreen + VkXYColorEXT_y, fl(0.60))
+  Vk.put_i32(md, VkHdrMetadataEXT_displayPrimaryBlue + VkXYColorEXT_x, fl(0.15));  Vk.put_i32(md, VkHdrMetadataEXT_displayPrimaryBlue + VkXYColorEXT_y, fl(0.06))
+  Vk.put_i32(md, VkHdrMetadataEXT_whitePoint + VkXYColorEXT_x, fl(0.3127));  Vk.put_i32(md, VkHdrMetadataEXT_whitePoint + VkXYColorEXT_y, fl(0.3290))
+  Vk.put_i32(md, VkHdrMetadataEXT_maxLuminance, fi(1000))
+  Vk.put_i32(md, VkHdrMetadataEXT_minLuminance, fl(0.001))
+  Vk.put_i32(md, VkHdrMetadataEXT_maxContentLightLevel, fi(1000))
+  Vk.put_i32(md, VkHdrMetadataEXT_maxFrameAverageLightLevel, fi(200))
+  let chains = bytes(8)
+  Vk.put_i64(chains, 0, gvk_swap)
+  Vk.set_hdr_metadata_ext(gvk_dev, 1, chains, md)
+}
+
 function gvk_screen_make(w: int, h: int) -> bool {
   if gvk_vp == null {
     gvk_vp = words(4);  gvk_sc = words(5);  gvk_clear_rgba = words(4)
@@ -955,7 +992,7 @@ function gvk_screen_make(w: int, h: int) -> bool {
   gvk_screen_h = h
   if gvk_screen_color == 0 { gvk_screen_color = gvk_tex_new();  gvk_screen_depth = gvk_tex_new() }
   gvk_vp[0] = 0;  gvk_vp[1] = 0;  gvk_vp[2] = w;  gvk_vp[3] = h
-  return gvk_tex_storage(gvk_screen_color, false, GL_RGBA8, w, h, 1, false) and gvk_tex_storage(gvk_screen_depth, false, GL_DEPTH_COMPONENT32F, w, h, 1, false)
+  return gvk_tex_storage(gvk_screen_color, false, gvk_screen_fmt(), w, h, 1, false) and gvk_tex_storage(gvk_screen_depth, false, GL_DEPTH_COMPONENT32F, w, h, 1, false)
 }
 
 function gvk_frame_cb() -> pointer {
@@ -1292,6 +1329,8 @@ function gvk_present() -> void {
 # The screen as a binary PPM, top row first. The frame so far is finished first, then read back;
 # row 0 of the image is OpenGL's bottom row, so rows are written last to first, as gl_screenshot does.
 function gvk_screenshot(path: string) -> bool {
+  # the screen image is PQ-encoded 10-bit while HDR is on, which an 8-bit PPM would misread
+  if gvk_hdr_on { print("r3d: vulkan: screenshots are SDR only - turn HDR output off to take one");  return false }
   gvk_present()
   let w = gvk_screen_w
   let h = gvk_screen_h
@@ -1584,6 +1623,17 @@ function gvk_swap_make(w: int, h: int) -> bool {
     let c = Vk.get_i32(fmts, i * VkSurfaceFormatKHR_sizeof + VkSurfaceFormatKHR_colorSpace)
     if (f == VK_FORMAT_B8G8R8A8_UNORM or f == VK_FORMAT_R8G8B8A8_UNORM) and c == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR { fmt = f;  cs = c }
   }
+  var hdr = false
+  if gvk_hdr_want and gvk_has_colorspace {
+    for i in 0 .. nf {
+      let f = Vk.get_i32(fmts, i * VkSurfaceFormatKHR_sizeof + VkSurfaceFormatKHR_format)
+      let c = Vk.get_i32(fmts, i * VkSurfaceFormatKHR_sizeof + VkSurfaceFormatKHR_colorSpace)
+      if f == VK_FORMAT_A2B10G10R10_UNORM_PACK32 and c == VK_COLOR_SPACE_HDR10_ST2084_EXT { fmt = f;  cs = c;  hdr = true }
+    }
+    if not hdr { print("r3d: vulkan: HDR output asked for, but this display offers no HDR10 swapchain") }
+  }
+  # the screen image carries the swapchain's depth of colour: remade when HDR comes or goes
+  if hdr != gvk_hdr_on { gvk_hdr_on = hdr;  gvk_screen_make(gvk_screen_w, gvk_screen_h) }
   Vk.put_i32(cnt, 0, 0)
   Vk.get_physical_device_surface_present_modes_khr(gvk_pd, gvk_surface, cnt, null)
   let nm = Vk.get_i32(cnt, 0)
@@ -1620,6 +1670,7 @@ function gvk_swap_make(w: int, h: int) -> bool {
   if r != VK_SUCCESS { return gvk_fail("vkCreateSwapchainKHR", r) }
   if gvk_swap != 0 { Vk.destroy_swapchain_khr(gvk_dev, gvk_swap, null) }
   gvk_swap = gvk_handle(out)
+  if gvk_hdr_on and gvk_has_hdr_meta { gvk_hdr_metadata() }
   Vk.put_i32(cnt, 0, 0)
   Vk.get_swapchain_images_khr(gvk_dev, gvk_swap, cnt, null)
   gvk_swap_n = Vk.get_i32(cnt, 0)
@@ -1632,7 +1683,9 @@ function gvk_swap_make(w: int, h: int) -> bool {
   var mname = "fifo"
   if mode == VK_PRESENT_MODE_MAILBOX_KHR { mname = "mailbox" }
   if mode == VK_PRESENT_MODE_IMMEDIATE_KHR { mname = "immediate" }
-  print(`r3d: vulkan swapchain {ew}x{eh}, {gvk_swap_n} images, {mname}`)
+  var cname = "SDR"
+  if gvk_hdr_on { cname = "HDR10" }
+  print(`r3d: vulkan swapchain {ew}x{eh}, {gvk_swap_n} images, {mname}, {cname}`)
   return true
 }
 

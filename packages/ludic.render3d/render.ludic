@@ -157,6 +157,7 @@ function r3d_resize() -> void {
   if water_refl != null { target_free(water_refl);  water_refl = null }
   print(`r3d: resized to {gl_w}x{gl_h}`)
 }
+var r3d_cam_log: int = -1
 function r3d_frame(time: int) -> void {
   gpu_glcheck_after("the time between frames")
   outline_frame()
@@ -185,6 +186,12 @@ function r3d_frame(time: int) -> void {
   prof_gen_frame()
   prof_mark_start()
   cam_begin_frame(post_frame, gl_w, gl_h)
+  # R3D_CAM_LOG=1: the camera each frame, in millimetres and thousandths of a radian - to tell a
+  # camera that moves while the hiker stands still from a picture that shakes on its own
+  if r3d_cam_log < 0 { r3d_cam_log = 0;  if Os.has_env("R3D_CAM_LOG") { r3d_cam_log = 1 } }
+  if r3d_cam_log == 1 {
+    print(`cam {r3d_test_frame} pos {f_to_int(f_mul(cam_pos[0], fi(1000)))} {f_to_int(f_mul(cam_pos[1], fi(1000)))} {f_to_int(f_mul(cam_pos[2], fi(1000)))} yaw {f_to_int(f_mul(cam_yaw, fi(1000)))} pitch {f_to_int(f_mul(cam_pitch, fi(1000)))} jitter {f_to_int(f_mul(gsl_jitter_x, fi(1000000)))} {f_to_int(f_mul(gsl_jitter_y, fi(1000000)))} render {post_w}x{post_h} reset {gsl_reset} evalok {gsl_eval_ok} fresh {gsl_fresh}`)
+  }
   # the height-field shadow rebakes as the light moves in steps (daylight), or with the sky yaw when there is no clock
   if (not day_on and ter_shadow_yaw != sky_yaw) or ter_shadow_gen != day_gen {
     ter_shadow_gen = day_gen

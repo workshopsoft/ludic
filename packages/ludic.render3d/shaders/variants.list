@@ -16,6 +16,7 @@ fullscreen.vert|ssgi.frag|
 fullscreen.vert|ternormal.frag|
 fullscreen.vert|tershadow.frag|#define NOISE_ONLY;
 fullscreen.vert|tonemap.frag|
+fullscreen.vert|tonemap.frag|#define HDR10;
 grass.vert|model.frag|#define FOLIAGE;#define BLADE;
 grass.vert|model.frag|#define FOLIAGE;#define BLADE;#define TILES;
 impostor.vert|impostor.frag|
@@ -37,6 +38,7 @@ model.vert|shadow.frag|#define SHADOW_PASS;
 model.vert|shadow.frag|#define SHADOW_PASS;#define WIND;
 model.vert|shadow.frag|#define SHADOW_PASS;#define WIND;#define ALPHA_TEST;
 overlay.vert|overlay.frag|
+overlay.vert|overlay.frag|#define HDR10;
 skin.vert|model.frag|
 skin.vert|model.frag|#define ALPHA_TEST;
 skin.vert|outline.frag|#define OUTLINE;

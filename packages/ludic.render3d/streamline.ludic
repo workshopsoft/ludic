@@ -243,6 +243,7 @@ var gsl_jitter_x: int = 0             # float bits, NDC offsets the projection c
 var gsl_jitter_y: int = 0
 var gsl_jpx: int = 0                  # float bits, the same in pixels
 var gsl_jpy: int = 0
+var gsl_eval_ok: bool = true         # the last evaluate worked: only then is the next frame jittered
 
 # R3D_DLSS=0..4 overrides the setting, for a headless take
 function r3d_dlss(mode: int) -> void {
@@ -273,6 +274,13 @@ function gsl_fill_options(w: int, h: int) -> void {
   Vk.put_i32(gsl_opts, 48, F_ONE)                   # preExposure
   Vk.put_i32(gsl_opts, 52, F_ONE)                   # exposureScale
   Vk.put_i32(gsl_opts, 56, 1)                       # colorBuffersHDR eTrue
+  # The model: preset K (the transformer NVIDIA calls its best image quality) in every mode. The
+  # defaults put Performance on preset M, which on an RTX 3070 Ti at 4K evaluated in 18 ms against
+  # K's 2.8 - slower than no DLSS at all (33 fps against 41; with K, 60). R3D_DLSS_PRESET=<n>
+  # (sl::DLSSPreset: 11 K, 12 L, 13 M) sets every mode's, to measure them against each other.
+  var preset = 11
+  if Os.has_env("R3D_DLSS_PRESET") { preset = Text.to_int(Os.env("R3D_DLSS_PRESET")) }
+  if preset > 0 { for f in 0 .. 6 { Vk.put_i32(gsl_opts, 60 + f * 4, preset) } }   # dlaa, quality, balanced, performance, ultra performance, ultra quality
 }
 
 # the render size for the display's size and the mode, asked once per change
@@ -311,7 +319,10 @@ function gsl_halton(i: int, b: int) -> int {
 # cam_begin_frame: this frame's sub-pixel offset, before the camera builds its matrices
 function gsl_jitter_frame() -> void {
   gsl_jitter_x = F_ZERO;  gsl_jitter_y = F_ZERO;  gsl_jpx = F_ZERO;  gsl_jpy = F_ZERO
-  if not r3d_dlss_live() or post_w <= 0 or post_h <= 0 { return }
+  # a jittered frame nobody resolves shakes on screen however still the camera is: jitter only while
+  # this frame holds a DLSS token and the last evaluate worked. (Not gsl_fresh: gsl_frame_start has
+  # already taken the token and cleared it by the time the camera asks, which turned jitter off.)
+  if not r3d_dlss_live() or not gsl_eval_ok or gsl_token == null or post_w <= 0 or post_h <= 0 { return }
   # DLSS wants at least 8 x (display / render)^2 phases; 32 covers performance mode
   let i = (gsl_frame_n % 32) + 1
   gsl_jpx = f_sub(gsl_halton(i, 2), F_HALF)
@@ -400,9 +411,16 @@ function gsl_constants() -> void {
   m4_inverse(p2c, c2p)
   gsl_put_m4(k, 224, c2p)                           # clipToPrevClip
   gsl_put_m4(k, 288, p2c)                           # prevClipToClip
-  # the sample's offset from the pixel centre, in the flipped image
-  Vk.put_i32(k, 352, f_neg(gsl_jpx))
-  Vk.put_i32(k, 356, gsl_jpy)
+  # the sample's offset from the pixel centre, in the image Streamline sees: row 0 at the top, so the
+  # vertical offset flips with it. With jy unflipped DLSS resolved the ground into concentric
+  # rings; with jx flipped too, thin stems doubled sideways (PC shots, 2026-09-15).
+  var jx = f_neg(gsl_jpx)
+  var jy = f_neg(gsl_jpy)
+  # R3D_DLSS_JX / R3D_DLSS_JY = -1 flip a sign, to check the convention against the picture
+  if Os.has_env("R3D_DLSS_JX") and Text.to_int(Os.env("R3D_DLSS_JX")) < 0 { jx = f_neg(jx) }
+  if Os.has_env("R3D_DLSS_JY") and Text.to_int(Os.env("R3D_DLSS_JY")) < 0 { jy = f_neg(jy) }
+  Vk.put_i32(k, 352, jx)
+  Vk.put_i32(k, 356, jy)
   Vk.put_i32(k, 360, F_ONE)                         # mvecScale
   Vk.put_i32(k, 364, F_ONE)
   gsl_put_v3(k, 376, cam_pos)
@@ -438,7 +456,8 @@ function gsl_targets() -> void {
   # the LDR image the tonemap writes follows the upscaled size
   if post_ldr.w != gl_w or post_ldr.h != gl_h {
     target_free(post_ldr)
-    post_ldr = target_new(gl_w, gl_h, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, false, GL_LINEAR)
+    post_ldr = target_new(gl_w, gl_h, post_ldr_fmt(), GL_RGBA, GL_UNSIGNED_BYTE, false, GL_LINEAR)
+    post_ldr_hdr = gpu_hdr_active()
   }
   if gsl_res == null { gsl_res = gsl_struct(4 * 112);  gsl_tags = gsl_struct(4 * 64);  gsl_inputs = bytes(8) }
 }
@@ -470,6 +489,7 @@ function gsl_dlss_eval() -> int {
   gsl_reset = false
   # Streamline records its own pipeline and descriptors into the command buffer; nothing needs
   # forgetting, because every gvk_draw binds its pipeline, view and set afresh
+  gsl_eval_ok = r == 0
   if r != 0 {
     if not gsl_said { print(`r3d: streamline: DLSS evaluate failed ({r}); drawing without it`);  gsl_said = true }
     post_color_w = post_w;  post_color_h = post_h
