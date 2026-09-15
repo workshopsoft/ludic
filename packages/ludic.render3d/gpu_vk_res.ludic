@@ -52,6 +52,9 @@ var gvk_tex_layers: []int = null
 var gvk_tex_vkfmt: []int = null
 var gvk_tex_dims_w: []int = null
 var gvk_tex_dims_h: []int = null
+var gvk_tex_glfmt: []int = null        # the format the renderer asked for (gpu.ludic's vocabulary)
+var gvk_tex_array: []int = null        # 1 for an array image
+var gvk_tex_gen: []int = null          # bumped whenever the image behind a handle is replaced
 var gvk_unpack_swap: bool = false     # GL_UNPACK_SWAP_BYTES: 16-bit PNG samples arrive big-endian
 
 function gvk_tex_new() -> int {
@@ -60,7 +63,9 @@ function gvk_tex_new() -> int {
     gvk_tex_image = new []long;  gvk_tex_view = new []long;  gvk_tex_mem = new []long
     gvk_tex_levels = new []int;  gvk_tex_layers = new []int;  gvk_tex_vkfmt = new []int
     gvk_tex_dims_w = new []int;  gvk_tex_dims_h = new []int
+    gvk_tex_glfmt = new []int;  gvk_tex_array = new []int;  gvk_tex_gen = new []int
     push(gvk_tex_dims_w, 0);  push(gvk_tex_dims_h, 0)
+    push(gvk_tex_glfmt, 0);  push(gvk_tex_array, 0);  push(gvk_tex_gen, 0)
     # handle 0 is "no texture", as it is on OpenGL
     push(gvk_tex_image, zero);  push(gvk_tex_view, zero);  push(gvk_tex_mem, zero)
     push(gvk_tex_levels, 0);  push(gvk_tex_layers, 0);  push(gvk_tex_vkfmt, 0)
@@ -68,6 +73,7 @@ function gvk_tex_new() -> int {
   push(gvk_tex_image, zero);  push(gvk_tex_view, zero);  push(gvk_tex_mem, zero)
   push(gvk_tex_levels, 0);  push(gvk_tex_layers, 0);  push(gvk_tex_vkfmt, 0)
   push(gvk_tex_dims_w, 0);  push(gvk_tex_dims_h, 0)
+  push(gvk_tex_glfmt, 0);  push(gvk_tex_array, 0);  push(gvk_tex_gen, 0)
   return len(gvk_tex_image) - 1
 }
 
@@ -191,6 +197,8 @@ function gvk_tex_storage(tex: int, array: bool, ifmt: int, w: int, h: int, layer
   gvk_tex_image[tex] = image;  gvk_tex_view[tex] = gvk_handle(out);  gvk_tex_mem[tex] = mem
   gvk_tex_levels[tex] = levels;  gvk_tex_layers[tex] = layers;  gvk_tex_vkfmt[tex] = vkfmt
   gvk_tex_dims_w[tex] = w;  gvk_tex_dims_h[tex] = h
+  gvk_tex_glfmt[tex] = ifmt;  gvk_tex_gen[tex] = gvk_tex_gen[tex] + 1
+  if array { gvk_tex_array[tex] = 1 } else { gvk_tex_array[tex] = 0 }
   # a target starts cleared-to-nothing but readable: every level in the layout samplers expect
   let cb = gvk_once_begin()
   gvk_barrier(cb, image, depth, 0, levels, layers, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
@@ -285,7 +293,42 @@ function gvk_tex_upload(tex: int, ifmt: int, w: int, h: int, layers: int, fmt: i
 }
 
 # The mip chain from level 0, each level blitted down from the one above it
+# A target made without pixels has one level; the renderer asking it for mipmaps (the exposure
+# measure reads the HDR scene's smallest level every frame) grows it a full chain, level 0 kept.
+function gvk_tex_grow_mips(tex: int, w: int, h: int) -> bool {
+  let old_image = gvk_tex_image[tex]
+  let old_view = gvk_tex_view[tex]
+  let old_mem = gvk_tex_mem[tex]
+  let layers = gvk_tex_layers[tex]
+  let zero: long = 0
+  gvk_tex_image[tex] = zero
+  if not gvk_tex_storage(tex, gvk_tex_array[tex] == 1, gvk_tex_glfmt[tex], w, h, layers, true) { return false }
+  let cb = gvk_once_begin()
+  gvk_barrier(cb, old_image, false, 0, 1, layers, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
+  gvk_barrier(cb, gvk_tex_image[tex], false, 0, 1, layers, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+  let ic = bytes(VkImageCopy_sizeof)
+  Vk.zero(ic, VkImageCopy_sizeof)
+  Vk.put_i32(ic, VkImageCopy_srcSubresource + VkImageSubresourceLayers_aspectMask, VK_IMAGE_ASPECT_COLOR_BIT)
+  Vk.put_i32(ic, VkImageCopy_srcSubresource + VkImageSubresourceLayers_layerCount, layers)
+  Vk.put_i32(ic, VkImageCopy_dstSubresource + VkImageSubresourceLayers_aspectMask, VK_IMAGE_ASPECT_COLOR_BIT)
+  Vk.put_i32(ic, VkImageCopy_dstSubresource + VkImageSubresourceLayers_layerCount, layers)
+  Vk.put_i32(ic, VkImageCopy_extent + VkExtent3D_width, w)
+  Vk.put_i32(ic, VkImageCopy_extent + VkExtent3D_height, h)
+  Vk.put_i32(ic, VkImageCopy_extent + VkExtent3D_depth, 1)
+  Vk.cmd_copy_image(cb, old_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, gvk_tex_image[tex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, ic)
+  gvk_barrier(cb, gvk_tex_image[tex], false, 0, 1, layers, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+  let ok = gvk_once_end(cb)
+  Vk.destroy_image_view(gvk_dev, old_view, null)
+  Vk.destroy_image(gvk_dev, old_image, null)
+  Vk.free_memory(gvk_dev, old_mem, null)
+  gvk_n_allocs -= 1
+  return ok
+}
+
 function gvk_tex_mips(tex: int, w: int, h: int) -> bool {
+  if gvk_tex_levels[tex] <= 1 and (w > 1 or h > 1) and not gvk_is_depth(gvk_tex_glfmt[tex]) {
+    if not gvk_tex_grow_mips(tex, w, h) { return false }
+  }
   let levels = gvk_tex_levels[tex]
   if levels <= 1 { return true }
   let image = gvk_tex_image[tex]
@@ -372,6 +415,7 @@ function gvk_tex_release(tex: int) -> void {
   gvk_n_allocs -= 1
   gvk_tex_image[tex] = zero;  gvk_tex_view[tex] = zero;  gvk_tex_mem[tex] = zero
   gvk_tex_levels[tex] = 0;  gvk_tex_layers[tex] = 0;  gvk_tex_vkfmt[tex] = 0
+  gvk_tex_gen[tex] = gvk_tex_gen[tex] + 1
 }
 
 # ---- samplers -----------------------------------------------------------------------------

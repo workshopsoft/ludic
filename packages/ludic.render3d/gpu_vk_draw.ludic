@@ -290,7 +290,9 @@ function gvk_pipeline(p: int, m: Mesh, st: GvkState, n_color: int, color_fmt: in
   Vk.zero(ms, VkPipelineMultisampleStateCreateInfo_sizeof)
   Vk.put_i32(ms, VkPipelineMultisampleStateCreateInfo_sType, VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO)
   Vk.put_i32(ms, VkPipelineMultisampleStateCreateInfo_rasterizationSamples, samples)
-  Vk.put_i32(ms, VkPipelineMultisampleStateCreateInfo_alphaToCoverageEnable, st.a2c)
+  # OpenGL ignores alpha to coverage without a multisampled target; Vulkan with one sample would
+  # instead drop every fragment under half alpha, which erased the meadow's flowers
+  if samples > 1 { Vk.put_i32(ms, VkPipelineMultisampleStateCreateInfo_alphaToCoverageEnable, st.a2c) }
   let ds = bytes(VkPipelineDepthStencilStateCreateInfo_sizeof)
   Vk.zero(ds, VkPipelineDepthStencilStateCreateInfo_sizeof)
   Vk.put_i32(ds, VkPipelineDepthStencilStateCreateInfo_sType, VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO)
@@ -607,10 +609,12 @@ function gvk_frame_cb() -> pointer {
   return gvk_cb
 }
 
-# a view of one layer of an array image, for a cascade drawn into on its own
+# The view a pass draws into: level 0 only (an attachment view has exactly one level, and a target
+# the exposure measure mipmaps has several), and one layer of an array image for a cascade drawn
+# on its own. Keyed by the image's generation, so a replaced image never reuses a stale view.
 function gvk_view_of(tex: int, layer1: int) -> long {
-  if layer1 == 0 { return gvk_tex_view[tex] }
-  let key = `{tex}:{layer1}`
+  if layer1 == 0 and gvk_tex_levels[tex] <= 1 and gvk_tex_layers[tex] <= 1 { return gvk_tex_view[tex] }
+  let key = `{tex}:{gvk_tex_gen[tex]}:{layer1}`
   if gvk_layer_views == null { gvk_layer_views = new []string;  gvk_layer_view = new []long }
   for i in 0 .. len(gvk_layer_views) { if gvk_layer_views[i] == key { return gvk_layer_view[i] } }
   let depth = gvk_tex_vkfmt[tex] == VK_FORMAT_D32_SFLOAT
@@ -623,7 +627,7 @@ function gvk_view_of(tex: int, layer1: int) -> long {
   let sr = VkImageViewCreateInfo_subresourceRange
   if depth { Vk.put_i32(vci, sr + VkImageSubresourceRange_aspectMask, VK_IMAGE_ASPECT_DEPTH_BIT) } else { Vk.put_i32(vci, sr + VkImageSubresourceRange_aspectMask, VK_IMAGE_ASPECT_COLOR_BIT) }
   Vk.put_i32(vci, sr + VkImageSubresourceRange_levelCount, 1)
-  Vk.put_i32(vci, sr + VkImageSubresourceRange_baseArrayLayer, layer1 - 1)
+  if layer1 > 0 { Vk.put_i32(vci, sr + VkImageSubresourceRange_baseArrayLayer, layer1 - 1) }
   Vk.put_i32(vci, sr + VkImageSubresourceRange_layerCount, 1)
   let out = bytes(8)
   let zero: long = 0

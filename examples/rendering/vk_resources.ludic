@@ -61,6 +61,19 @@ program VkResources {
     check("RGB16F from floats (halved)", gvk_tex_storage(t4, false, GL_RGB16F, w, h, 1, true) and gvk_tex_upload(t4, GL_RGB16F, w, h, 1, GL_RGB, GL_FLOAT, fl))
     check("half of 1.5 is 0x3E00", gvk_half(0x3FC00000) == 0x3E00)
 
+    # a 16-bit RGB PNG (a normal map): big-endian samples, swapped on upload, alpha filled opaque
+    let n16 = bytes(w * h * 6)
+    for i in 0 .. w * h * 3 { n16[i * 2] = (i >> 8) & 255;  n16[i * 2 + 1] = i & 255 }
+    let t7 = gvk_tex_new()
+    gvk_unpack_swap = true
+    check("RGB16 swapped upload", gvk_tex_storage(t7, false, GL_RGB16, w, h, 1, true) and gvk_tex_upload(t7, GL_RGB16, w, h, 1, GL_RGB, GL_UNSIGNED_SHORT, n16))
+    gvk_unpack_swap = false
+    let b16 = bytes(w * h * 6)
+    check("RGB16 read-back call", gvk_tex_read(t7, GL_RGB16, w, h, GL_RGB, GL_UNSIGNED_SHORT, b16))
+    var s16 = true
+    for i in 0 .. w * h * 3 { if b16[i * 2] != (i & 255) or b16[i * 2 + 1] != ((i >> 8) & 255) { s16 = false } }
+    check("RGB16 samples arrive little-endian", s16)
+
     # the shadow cascades: a depth array, and a render-sized half-float target with no pixels
     let t5 = gvk_tex_new()
     check("D32 array of 4", gvk_tex_storage(t5, true, GL_DEPTH_COMPONENT32F, 256, 256, 4, false))
@@ -85,7 +98,7 @@ program VkResources {
     check("a smaller upload keeps the buffer", gvk_buf_upload(b, 512, data) and gvk_buf[b] == first)
     check("a larger upload grows it", gvk_buf_upload(b, 4096, data) and gvk_buf_size[b] >= 4096)
 
-    for t in 1 .. 7 { gvk_tex_release(t) }
+    for t in 1 .. 8 { gvk_tex_release(t) }
     gvk_buf_release(b)
     for i in 0 .. len(gvk_smp) { Vk.destroy_sampler(gvk_dev, gvk_smp[i], null) }
     print(`vulkan: {gvk_n_allocs} allocations left after freeing`)
