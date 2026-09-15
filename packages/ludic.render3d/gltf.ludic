@@ -123,20 +123,15 @@ function gltf_accessor(idx: int) -> pointer {
 function gltf_attrib(m: Mesh, attrs: Val, name: pointer, loc: int) -> bool {
   if value_has(attrs, name) == 0 { return false }
   let data = gltf_accessor(value_as_int(value_get(attrs, name)))
-  let b = gl_buffer()
-  gl_bind_buffer(GL_ARRAY_BUFFER, b)
-  gl_buffer_data(GL_ARRAY_BUFFER, gltf_count * gltf_comps * 4, data, GL_STATIC_DRAW)
-  gl_enable_vertex_attrib_array(loc)
-  gl_vertex_attrib_pointer(loc, gltf_comps, GL_FLOAT, 0, 0, null)
+  gpu_mesh_vertices(m, data, gltf_count * gltf_comps * 4, GPU_STATIC)
+  gpu_mesh_attr(m, loc, gltf_comps, GPU_F32, 0, 0, false)
   free(data)
-  if loc == 0 { m.vbo = b }
   return true
 }
 
 function gltf_prim(p: Val) -> Prim {
   let pr = new Prim
-  let m = new Mesh
-  m.vao = gl_vao()
+  let m = gpu_mesh_new()
   let attrs = value_get(p, "attributes")
   gltf_attrib(m, attrs, "POSITION", 0)
   gltf_attrib(m, attrs, "NORMAL", 1)
@@ -144,14 +139,11 @@ function gltf_prim(p: Val) -> Prim {
   skin_attribs(m, attrs)                    # JOINTS_0 / WEIGHTS_0 onto 5 / 6, when the mesh has them
   let idx = gltf_accessor(value_as_int(value_get(p, "indices")))
   var isz = 4
-  m.itype = GL_UNSIGNED_INT
-  if gltf_ctype == 5123 { isz = 2;  m.itype = GL_UNSIGNED_SHORT }
-  m.ebo = gl_buffer()
-  gl_bind_buffer(GL_ELEMENT_ARRAY_BUFFER, m.ebo)
-  gl_buffer_data(GL_ELEMENT_ARRAY_BUFFER, gltf_count * isz, idx, GL_STATIC_DRAW)
+  if gltf_ctype == 5123 { isz = 2 }
+  gpu_mesh_indices(m, idx, gltf_count * isz, isz)
   free(idx)
   m.count = gltf_count
-  gl_bind_vertex_array(0)
+  gpu_mesh_done(m)
   pr.mesh = m
   # material textures
   if gltf_white == 0 { gltf_white = tex_solid(200, 200, 200, 255);  gltf_flat = tex_solid(128, 128, 255, 255) }

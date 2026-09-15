@@ -11,6 +11,7 @@
 #   - the fixed-function render state: depth test/func/write, blending, face
 #     culling, colour writes, alpha-to-coverage, depth bias, scissor
 #   - uniforms: looked up by program and name (gpu_uniform), set by the u_* setters
+#   - vertex data: meshes, their attribute layouts, instance and stream buffers, draws
 #
 # Render state is cached. A pipeline API bakes this state into an object picked by
 # key; OpenGL gets the same effect by only telling the driver what changed. The
@@ -318,3 +319,138 @@ function gpu_caps_probe() -> void {
 # Whether the renderer actually draws a feature yet. The Vulkan renderer is being built;
 # until a feature lands, choosing it is saved and shown, and says it takes effect later.
 function gpu_feature_implemented(f: int) -> bool { return false }
+
+# ---- vertex data --------------------------------------------------------------------
+# A Mesh is built through these and records what it is made of - which buffer feeds which
+# attribute, at what stride and offset, per vertex or per instance - so a backend that bakes
+# vertex input into a pipeline (Vulkan) can read the layout back. On OpenGL each call is the
+# GL it replaces, in the same order: a vertex array object per mesh, bound while it is built.
+const GPU_F32: int = 1
+const GPU_U8: int = 2
+const GPU_U16: int = 3
+const GPU_STATIC: int = 0
+const GPU_DYNAMIC: int = 1
+const GPU_STREAM: int = 2
+const GPU_MAX_ATTRS: int = 8
+const GPU_ATTR_W: int = 7         # per attribute index: buffer, comps, type, stride, offset, normalized, per instance
+const GPU_MAX_VBUFS: int = 8
+
+function gpu_gl_type(t: int) -> int {
+  if t == GPU_U8 { return GL_UNSIGNED_BYTE }
+  if t == GPU_U16 { return GL_UNSIGNED_SHORT }
+  return GL_FLOAT
+}
+function gpu_type_bytes(t: int) -> int {
+  if t == GPU_U8 { return 1 }
+  if t == GPU_U16 { return 2 }
+  return 4
+}
+function gpu_gl_usage(u: int) -> int {
+  if u == GPU_DYNAMIC { return GL_DYNAMIC_DRAW }
+  if u == GPU_STREAM { return GL_STREAM_DRAW }
+  return GL_STATIC_DRAW
+}
+
+# a new mesh, its vertex array bound: the vertex, attribute and index calls below describe it
+function gpu_mesh_new() -> Mesh {
+  let m = new Mesh
+  m.attrs = words(GPU_MAX_ATTRS * GPU_ATTR_W)
+  for i in 0 .. GPU_MAX_ATTRS * GPU_ATTR_W { m.attrs[i] = 0 }
+  m.vbufs = words(GPU_MAX_VBUFS)
+  m.vao = gl_vao()
+  return m
+}
+# a vertex buffer for the mesh being built (data may be null: storage only); returns it
+function gpu_mesh_vertices(m: Mesh, data: pointer, nbytes: int, usage: int) -> int {
+  let b = gl_buffer()
+  gl_bind_buffer(GL_ARRAY_BUFFER, b)
+  gl_buffer_data(GL_ARRAY_BUFFER, nbytes, data, gpu_gl_usage(usage))
+  if m.vbo == 0 { m.vbo = b }
+  if m.n_vbufs < GPU_MAX_VBUFS { m.vbufs[m.n_vbufs] = b;  m.n_vbufs += 1 }
+  m.cur_buf = b
+  return b
+}
+function gpu_mesh_record(m: Mesh, index: int, comps: int, type: int, stride: int, offset: int, normalized: bool, inst: bool) -> void {
+  if index < 0 or index >= GPU_MAX_ATTRS { return }
+  let o = index * GPU_ATTR_W
+  var st = stride
+  if st == 0 { st = comps * gpu_type_bytes(type) }
+  m.attrs[o] = m.cur_buf;  m.attrs[o + 1] = comps;  m.attrs[o + 2] = type;  m.attrs[o + 3] = st
+  m.attrs[o + 4] = offset;  m.attrs[o + 5] = gpu_b(normalized);  m.attrs[o + 6] = gpu_b(inst)
+  if index + 1 > m.n_attrs { m.n_attrs = index + 1 }
+}
+# attribute `index` read from the last vertex buffer (stride 0: tightly packed)
+function gpu_mesh_attr(m: Mesh, index: int, comps: int, type: int, stride: int, offset: int, normalized: bool) -> void {
+  gl_enable_vertex_attrib_array(index)
+  gl_vertex_attrib_pointer(index, comps, gpu_gl_type(type), gpu_b(normalized), stride, gl_ptr(null, offset))
+  gpu_mesh_record(m, index, comps, type, stride, offset, normalized, false)
+}
+# the index buffer: 4-byte or 2-byte indices
+function gpu_mesh_indices(m: Mesh, data: pointer, nbytes: int, index_bytes: int) -> void {
+  m.itype = GL_UNSIGNED_INT
+  if index_bytes == 2 { m.itype = GL_UNSIGNED_SHORT }
+  m.ebo = gl_buffer()
+  gl_bind_buffer(GL_ELEMENT_ARRAY_BUFFER, m.ebo)
+  gl_buffer_data(GL_ELEMENT_ARRAY_BUFFER, nbytes, data, GL_STATIC_DRAW)
+}
+# finished describing: nothing else is bound to it by accident
+function gpu_mesh_done(m: Mesh) -> void { gl_bind_vertex_array(0) }
+
+# Per-instance data: `buf` feeds the attributes named next, one element per instance. A mesh
+# drawn from different instance buffers (the scatter layers' LOD buckets) is re-pointed here
+# before each draw; on Vulkan that is a vertex-buffer binding, not a change of layout.
+function gpu_mesh_bind_instances(m: Mesh, buf: int) -> void {
+  gl_bind_vertex_array(m.vao)
+  gl_bind_buffer(GL_ARRAY_BUFFER, buf)
+  m.cur_buf = buf
+  m.ibuf = buf
+}
+function gpu_mesh_attr_inst(m: Mesh, index: int, comps: int, type: int, stride: int, offset: int) -> void {
+  gl_enable_vertex_attrib_array(index)
+  gl_vertex_attrib_pointer(index, comps, gpu_gl_type(type), 0, stride, gl_ptr(null, offset))
+  gl_vertex_attrib_divisor(index, 1)
+  gpu_mesh_record(m, index, comps, type, stride, offset, false, true)
+}
+
+# a buffer on its own (instances, a stream): made, filled whole, freed
+function gpu_buffer_new() -> int { return gl_buffer() }
+function gpu_buffer_upload(buf: int, nbytes: int, data: pointer, usage: int) -> void {
+  gl_bind_buffer(GL_ARRAY_BUFFER, buf)
+  gl_buffer_data(GL_ARRAY_BUFFER, nbytes, data, gpu_gl_usage(usage))
+}
+function gpu_buffer_free(buf: int) -> void {
+  if buf == 0 { return }
+  let ids = gpu_tmp()
+  ids[0] = buf
+  gl_delete_buffers(1, ids)
+}
+
+# drawing
+function gpu_mesh_bind(m: Mesh) -> void { gl_bind_vertex_array(m.vao) }
+function gpu_mesh_unbind() -> void { gl_bind_vertex_array(0) }
+function gpu_draw_mesh(m: Mesh) -> void {
+  gl_bind_vertex_array(m.vao)
+  if m.ebo != 0 { gl_draw_elements(m.mode, m.count, m.itype, null) }
+  else { gl_draw_arrays(m.mode, 0, m.count) }
+}
+function gpu_draw_mesh_instanced(m: Mesh, n: int) -> void {
+  gl_bind_vertex_array(m.vao)
+  if m.ebo != 0 { gl_draw_elements_instanced(m.mode, m.count, m.itype, null, n) }
+  else { gl_draw_arrays_instanced(m.mode, 0, m.count, n) }
+}
+# the bound mesh's indices again (a patch mesh drawn once per terrain node)
+function gpu_draw_bound_elements(m: Mesh) -> void { gl_draw_elements(m.mode, m.count, m.itype, null) }
+# vertices [first, first + count) of the bound mesh, as triangles (the overlay's ranges)
+function gpu_draw_range(m: Mesh, first: int, count: int) -> void { gl_draw_arrays(GL_TRIANGLES, first, count) }
+
+function gpu_mesh_free(m: Mesh) -> void {
+  if m == null { return }
+  let ids = gpu_tmp()
+  if m.vbufs != null {
+    for i in 0 .. m.n_vbufs { ids[0] = m.vbufs[i];  gl_delete_buffers(1, ids) }
+    m.n_vbufs = 0
+  } else if m.vbo != 0 { ids[0] = m.vbo;  gl_delete_buffers(1, ids) }
+  m.vbo = 0
+  if m.ebo != 0 { ids[0] = m.ebo;  gl_delete_buffers(1, ids);  m.ebo = 0 }
+  if m.vao != 0 { ids[0] = m.vao;  gl_delete_vertex_arrays(1, ids);  m.vao = 0 }
+}

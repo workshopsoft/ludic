@@ -51,25 +51,19 @@ function skin_attribs(m: Mesh, attrs: Val) -> bool {
   if value_has(attrs, "JOINTS_0") == 0 or value_has(attrs, "WEIGHTS_0") == 0 { return false }
   let jd = gltf_accessor(value_as_int(value_get(attrs, "JOINTS_0")))
   var jsz = 1
-  var jtype = GL_UNSIGNED_BYTE
-  if gltf_ctype == 5123 { jsz = 2;  jtype = GL_UNSIGNED_SHORT }
-  let jb = gl_buffer()
-  gl_bind_buffer(GL_ARRAY_BUFFER, jb)
-  gl_buffer_data(GL_ARRAY_BUFFER, gltf_count * gltf_comps * jsz, jd, GL_STATIC_DRAW)
-  gl_enable_vertex_attrib_array(5)
-  gl_vertex_attrib_pointer(5, gltf_comps, jtype, 0, 0, null)      # integers, read as floats
+  var jtype = GPU_U8
+  if gltf_ctype == 5123 { jsz = 2;  jtype = GPU_U16 }
+  gpu_mesh_vertices(m, jd, gltf_count * gltf_comps * jsz, GPU_STATIC)
+  gpu_mesh_attr(m, 5, gltf_comps, jtype, 0, 0, false)             # integers, read as floats
   free(jd)
   let wd = gltf_accessor(value_as_int(value_get(attrs, "WEIGHTS_0")))
   var wsz = 4
-  var wtype = GL_FLOAT
-  var norm = 0
-  if gltf_ctype == 5123 { wsz = 2;  wtype = GL_UNSIGNED_SHORT;  norm = 1 }
-  if gltf_ctype == 5121 { wsz = 1;  wtype = GL_UNSIGNED_BYTE;  norm = 1 }
-  let wb = gl_buffer()
-  gl_bind_buffer(GL_ARRAY_BUFFER, wb)
-  gl_buffer_data(GL_ARRAY_BUFFER, gltf_count * gltf_comps * wsz, wd, GL_STATIC_DRAW)
-  gl_enable_vertex_attrib_array(6)
-  gl_vertex_attrib_pointer(6, gltf_comps, wtype, norm, 0, null)
+  var wtype = GPU_F32
+  var norm = false
+  if gltf_ctype == 5123 { wsz = 2;  wtype = GPU_U16;  norm = true }
+  if gltf_ctype == 5121 { wsz = 1;  wtype = GPU_U8;  norm = true }
+  gpu_mesh_vertices(m, wd, gltf_count * gltf_comps * wsz, GPU_STATIC)
+  gpu_mesh_attr(m, 6, gltf_comps, wtype, 0, 0, norm)
   free(wd)
   return true
 }

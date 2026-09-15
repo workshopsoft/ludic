@@ -544,7 +544,7 @@ function terrain_sun_pass(w: int, h: int, depth: int) -> Target {
   shadow_bind(p)
   sky_bind_lighting(p)
   ter_sun_pass = true
-  gl_bind_vertex_array(cd_mesh.vao)
+  gpu_mesh_bind(cd_mesh)
   cdlod_select(CD_LEVELS - 1, 0, 0)
   ter_sun_pass = false
   if Os.has_env("R3D_DUMP_SUN") and not ter_sun_dumped and not ter_reflect { ter_sun_dumped = true;  tex_dump(t.color, w, h, "build/dbg_sun.ppm") }
@@ -587,7 +587,7 @@ function terrain_draw() -> void {
   cd_draws = 0
   cd_far_draws = 0
   cd_near_draws = 0
-  gl_bind_vertex_array(cd_mesh.vao)
+  gpu_mesh_bind(cd_mesh)
   if ter_wire { gl_polygon_mode(GL_FRONT_AND_BACK, GL_LINE) }
   cdlod_select(CD_LEVELS - 1, 0, 0)
   if ter_wire { gl_polygon_mode(GL_FRONT_AND_BACK, GL_FILL) }
@@ -602,16 +602,13 @@ var ter_printed: bool = false
 # shader places, scales and morphs it. Levels are drawn out to cd_range[k] = 48 * 2^k m,
 # so cells are 1 m within 48 m, 2 m to 96 m, 4 m to 192 m ... 256 m at the root.
 function cdlod_init() -> void {
-  let m = new Mesh
-  m.vao = gl_vao()
+  let m = gpu_mesh_new()
   let n = CD_G + 1
   let v = gl_floats(n * n * 2)
   var k = 0
   for j in 0 .. n { for i in 0 .. n { gl_put_bits(v, k, fr(i, CD_G));  gl_put_bits(v, k + 1, fr(j, CD_G));  k += 2 } }
-  m.vbo = gl_buffer()
-  gl_bind_buffer(GL_ARRAY_BUFFER, m.vbo)
-  gl_buffer_data(GL_ARRAY_BUFFER, gl_bytes_of(n * n * 2), v, GL_STATIC_DRAW)
-  gl_enable_vertex_attrib_array(0);  gl_vertex_attrib_pointer(0, 2, GL_FLOAT, 0, 8, null)
+  gpu_mesh_vertices(m, v, gl_bytes_of(n * n * 2), GPU_STATIC)
+  gpu_mesh_attr(m, 0, 2, GPU_F32, 8, 0, false)
   free(v)
   let ni = CD_G * CD_G * 6
   let idx = words(ni)
@@ -624,12 +621,10 @@ function cdlod_init() -> void {
       k += 6
     }
   }
-  m.ebo = gl_buffer()
-  gl_bind_buffer(GL_ELEMENT_ARRAY_BUFFER, m.ebo)
-  gl_buffer_data(GL_ELEMENT_ARRAY_BUFFER, ni * 4, idx, GL_STATIC_DRAW)
+  gpu_mesh_indices(m, idx, ni * 4, 4)
   free(idx)
   m.count = ni
-  gl_bind_vertex_array(0)
+  gpu_mesh_done(m)
   cd_mesh = m
   cd_range = words(CD_LEVELS)
   var r = fi(48)
@@ -713,7 +708,7 @@ function cdlod_draw(level: int, ix: int, iz: int) -> void {
     var st0 = F_ZERO
     if level > 0 { st0 = cd_range[level - 1] }
     u_f2(gpu_uniform(ter_sun_prog, "u_morph"), f_lerp(st0, cd_range[level], fl(0.7)), cd_range[level])
-    gl_draw_elements(GL_TRIANGLES, cd_mesh.count, GL_UNSIGNED_INT, null)
+    gpu_draw_bound_elements(cd_mesh)
     return
   }
   let n = CD_LEAVES >> level
@@ -735,7 +730,7 @@ function cdlod_draw(level: int, ix: int, iz: int) -> void {
   if level > 0 { start = cd_range[level - 1] }
   start = f_lerp(start, cd_range[level], fl(0.7))
   u_f2(gpu_uniform(p, "u_morph"), start, cd_range[level])
-  gl_draw_elements(GL_TRIANGLES, cd_mesh.count, GL_UNSIGNED_INT, null)
+  gpu_draw_bound_elements(cd_mesh)
   cd_draws += 1
 }
 

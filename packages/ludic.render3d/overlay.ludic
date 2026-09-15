@@ -12,7 +12,7 @@ const OV_MAX_QUADS: int = 6000
 const OV_FLOATS: int = 8              # x, y, u, v, r, g, b, a
 
 var ov_prog: int = 0
-var ov_vao: int = 0
+var ov_mesh: Mesh = null
 var ov_vbo: int = 0
 var ov_buf: pointer = null
 var ov_n: int = 0
@@ -55,15 +55,12 @@ function overlay_init(font_dir: string) -> bool {
   r3d_program_log("overlay.vert", "overlay.frag", "")
   ov_prog = gl_program("#version 410 core\n" + r3d_shader_file("overlay.vert"), "#version 410 core\n" + r3d_shader_file("overlay.frag"))
   if ov_prog == 0 { print("overlay: program failed");  return false }
-  ov_vao = gl_vao()
-  gl_bind_vertex_array(ov_vao)
-  ov_vbo = gl_buffer()
-  gl_bind_buffer(GL_ARRAY_BUFFER, ov_vbo)
-  gl_buffer_data(GL_ARRAY_BUFFER, gl_bytes_of(OV_MAX_QUADS * 6 * OV_FLOATS), null, GL_DYNAMIC_DRAW)
-  gl_enable_vertex_attrib_array(0);  gl_vertex_attrib_pointer(0, 2, GL_FLOAT, 0, OV_FLOATS * 4, null)
-  gl_enable_vertex_attrib_array(1);  gl_vertex_attrib_pointer(1, 2, GL_FLOAT, 0, OV_FLOATS * 4, gl_ptr(null, 8))
-  gl_enable_vertex_attrib_array(2);  gl_vertex_attrib_pointer(2, 4, GL_FLOAT, 0, OV_FLOATS * 4, gl_ptr(null, 16))
-  gl_bind_vertex_array(0)
+  ov_mesh = gpu_mesh_new()
+  ov_vbo = gpu_mesh_vertices(ov_mesh, null, gl_bytes_of(OV_MAX_QUADS * 6 * OV_FLOATS), GPU_DYNAMIC)
+  gpu_mesh_attr(ov_mesh, 0, 2, GPU_F32, OV_FLOATS * 4, 0, false)
+  gpu_mesh_attr(ov_mesh, 1, 2, GPU_F32, OV_FLOATS * 4, 8, false)
+  gpu_mesh_attr(ov_mesh, 2, 4, GPU_F32, OV_FLOATS * 4, 16, false)
+  gpu_mesh_done(ov_mesh)
   ov_buf = gl_floats(OV_MAX_QUADS * 6 * OV_FLOATS)
   ov_ranges = words(OV_MAX_RANGES * OV_RANGE_W)
   ov_white = tex_solid(255, 255, 255, 255)
@@ -193,9 +190,8 @@ function ov_flush() -> void {
   ov_close_range()
   if ov_n == 0 { ov_nr = 0;  ov_range_start = 0;  return }
   gl_use_program(ov_prog)
-  gl_bind_vertex_array(ov_vao)
-  gl_bind_buffer(GL_ARRAY_BUFFER, ov_vbo)
-  gl_buffer_data(GL_ARRAY_BUFFER, gl_bytes_of(ov_n * 6 * OV_FLOATS), ov_buf, GL_STREAM_DRAW)
+  gpu_mesh_bind(ov_mesh)
+  gpu_buffer_upload(ov_vbo, gl_bytes_of(ov_n * 6 * OV_FLOATS), ov_buf, GPU_STREAM)
   var last = -1
   var clipped = false
   for i in 0 .. ov_nr {
@@ -212,10 +208,10 @@ function ov_flush() -> void {
       clipped = true
       gpu_scissor(ov_ranges[o + 3], ov_ranges[o + 4], ov_ranges[o + 5], ov_ranges[o + 6])
     } else if clipped { gpu_scissor_off();  clipped = false }
-    gl_draw_arrays(GL_TRIANGLES, ov_ranges[o + 1] * 6, ov_ranges[o + 2] * 6)
+    gpu_draw_range(ov_mesh, ov_ranges[o + 1] * 6, ov_ranges[o + 2] * 6)
   }
   if clipped { gpu_scissor_off() }
-  gl_bind_vertex_array(0)
+  gpu_mesh_unbind()
   ov_n = 0;  ov_nr = 0;  ov_range_start = 0
 }
 function ov_end() -> void {

@@ -23,8 +23,7 @@ var grass_dbg: int = 0
 
 # a blade: `rows` rows of 2 vertices (x across, y along, z bend), attribute 2 = uv
 function grass_blade_mesh(rows: int) -> Mesh {
-  let m = new Mesh
-  m.vao = gl_vao()
+  let m = gpu_mesh_new()
   let v = gl_floats(rows * 2 * 5)
   var k = 0
   for r in 0 .. rows {
@@ -39,11 +38,9 @@ function grass_blade_mesh(rows: int) -> Mesh {
       k += 5
     }
   }
-  m.vbo = gl_buffer()
-  gl_bind_buffer(GL_ARRAY_BUFFER, m.vbo)
-  gl_buffer_data(GL_ARRAY_BUFFER, gl_bytes_of(rows * 2 * 5), v, GL_STATIC_DRAW)
-  gl_enable_vertex_attrib_array(0);  gl_vertex_attrib_pointer(0, 3, GL_FLOAT, 0, 20, null)
-  gl_enable_vertex_attrib_array(2);  gl_vertex_attrib_pointer(2, 2, GL_FLOAT, 0, 20, gl_ptr(null, 12))
+  gpu_mesh_vertices(m, v, gl_bytes_of(rows * 2 * 5), GPU_STATIC)
+  gpu_mesh_attr(m, 0, 3, GPU_F32, 20, 0, false)
+  gpu_mesh_attr(m, 2, 2, GPU_F32, 20, 12, false)
   free(v)
   let nq = rows - 1
   let idx = words(nq * 6)
@@ -52,12 +49,10 @@ function grass_blade_mesh(rows: int) -> Mesh {
     idx[q * 6] = b;  idx[q * 6 + 1] = b + 1;  idx[q * 6 + 2] = b + 2
     idx[q * 6 + 3] = b + 1;  idx[q * 6 + 4] = b + 3;  idx[q * 6 + 5] = b + 2
   }
-  m.ebo = gl_buffer()
-  gl_bind_buffer(GL_ELEMENT_ARRAY_BUFFER, m.ebo)
-  gl_buffer_data(GL_ELEMENT_ARRAY_BUFFER, nq * 6 * 4, idx, GL_STATIC_DRAW)
+  gpu_mesh_indices(m, idx, nq * 6 * 4, 4)
   free(idx)
   m.count = nq * 6
-  gl_bind_vertex_array(0)
+  gpu_mesh_done(m)
   return m
 }
 
@@ -157,7 +152,7 @@ function grass_draw() -> void {
   u_f(gpu_uniform(p, "u_spec_scale"), fl(0.15))
   gpu_cull(false)
   grass_draws = 0
-  gl_bind_vertex_array(grass_mesh.vao)
+  gpu_mesh_bind(grass_mesh)
   grass_tiles(16, F_ZERO, fi(300))
   grass_tiles(64, fi(300), fi(1200))
   grass_tiles(256, fi(1200), grass_radius)
