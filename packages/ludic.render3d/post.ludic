@@ -133,9 +133,9 @@ var post_adapt_i: int = 0
 var post_p_adapt: int = 0
 var post_adapt_reset: bool = true
 function post_measure() -> void {
-  gl_bind_texture(GL_TEXTURE_2D, post_hdr.color)
-  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
-  gl_generate_mipmap(GL_TEXTURE_2D)
+  gpu_tex_bind(GPU_TEX2D, post_hdr.color)
+  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+  gpu_tex_mips(GPU_TEX2D)
   if post_adapt_t == null {
     post_adapt_t = new []Target
     for k in 0 .. 2 { push(post_adapt_t, target_new(1, 1, GL_R32F, GL_RED, GL_FLOAT, false, GL_NEAREST)) }
@@ -157,8 +157,8 @@ function post_measure() -> void {
   u_f(gpu_uniform(post_p_adapt, "u_reset"), reset)
   mesh_draw(post_fs)
   post_adapt_i = next
-  gl_bind_texture(GL_TEXTURE_2D, post_hdr.color)
-  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+  gpu_tex_bind(GPU_TEX2D, post_hdr.color)
+  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
 }
 
 function post_begin_scene() -> void {

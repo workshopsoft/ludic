@@ -177,10 +177,10 @@ function actor_draw_one(a: Actor, ap: AcProg, shadow: bool) -> void {
       if a.ptint != null and a.ptint[i * 4] != 0 { u_f3(ap.l_tint, a.ptint[i * 4 + 1], a.ptint[i * 4 + 2], a.ptint[i * 4 + 3]) }
       else { u_v3(ap.l_tint, a.tint) }
     }
-    gl_active_texture(GL_TEXTURE0);  gl_bind_texture(GL_TEXTURE_2D, pr.diff)
+    gpu_tex_unit(0);  gpu_tex_bind(GPU_TEX2D, pr.diff)
     if not shadow {
-      gl_active_texture(GL_TEXTURE0 + 1);  gl_bind_texture(GL_TEXTURE_2D, pr.nrm)
-      gl_active_texture(GL_TEXTURE0 + 2);  gl_bind_texture(GL_TEXTURE_2D, pr.arm)
+      gpu_tex_unit(1);  gpu_tex_bind(GPU_TEX2D, pr.nrm)
+      gpu_tex_unit(2);  gpu_tex_bind(GPU_TEX2D, pr.arm)
     }
     mesh_draw(pr.mesh)
   }
@@ -296,7 +296,7 @@ function actor_draw_outline_one(a: Actor, ap: AcProg) -> void {
   for i in 0 .. len(model.prims) {
     let pr = model.prims[i]
     if a.hide != null and a.hide[i] != 0 { continue }
-    if a.cutout { gl_active_texture(GL_TEXTURE0);  gl_bind_texture(GL_TEXTURE_2D, pr.diff) }
+    if a.cutout { gpu_tex_unit(0);  gpu_tex_bind(GPU_TEX2D, pr.diff) }
     mesh_draw(pr.mesh)
   }
 }

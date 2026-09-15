@@ -21,18 +21,18 @@ var sh_corner: words = null
 var sh_cascade: int = 0            # the cascade being rendered (for casters that skip far ones)
 
 function shadow_init() -> void {
-  sh_tex = gl_texture()
-  gl_bind_texture(GL_TEXTURE_2D_ARRAY, sh_tex)
-  gl_tex_image3d(GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH_COMPONENT32F, SHADOW_RES, SHADOW_RES, SHADOW_CASCADES, 0, GL_DEPTH_COMPONENT, GL_FLOAT, null)
-  gl_tex_parameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
-  gl_tex_parameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-  gl_tex_parameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER)
-  gl_tex_parameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER)
-  gl_tex_parameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE)
-  gl_tex_parameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL)
+  sh_tex = gpu_tex_new()
+  gpu_tex_bind(GPU_TEX2D_ARRAY, sh_tex)
+  gpu_tex_image3d(GL_DEPTH_COMPONENT32F, SHADOW_RES, SHADOW_RES, SHADOW_CASCADES, GL_DEPTH_COMPONENT, GL_FLOAT, null)
+  gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+  gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+  gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER)
+  gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER)
+  gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE)
+  gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL)
   let border = gl_floats(4)
   gl_put(border, 0, 1.0);  gl_put(border, 1, 1.0);  gl_put(border, 2, 1.0);  gl_put(border, 3, 1.0)
-  gl_tex_parameterfv(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BORDER_COLOR, border)
+  gpu_tex_border(GPU_TEX2D_ARRAY, border)
   free(border)
   sh_fbo = gl_framebuffer()
   gl_bind_framebuffer(GL_FRAMEBUFFER, sh_fbo)
@@ -175,10 +175,10 @@ var sh_probe_z: int = 0
 function shadow_dump() -> void {
   let n = SHADOW_RES * SHADOW_RES
   let buf = words(n * SHADOW_CASCADES)
-  gl_bind_texture(GL_TEXTURE_2D_ARRAY, sh_tex)
-  gl_tex_parameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_NONE)
-  gl_get_tex_image(GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH_COMPONENT, GL_FLOAT, buf)
-  gl_tex_parameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE)
+  gpu_tex_bind(GPU_TEX2D_ARRAY, sh_tex)
+  gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_NONE)
+  gpu_tex_read(GPU_TEX2D_ARRAY, GL_DEPTH_COMPONENT, GL_FLOAT, buf)
+  gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE)
   if sh_probe_x != 0 {
     let vp = shadow_cascade_vp(2)
     let q = words(3)
@@ -226,7 +226,7 @@ function sh_loc(prog: int, name: string) -> int {
   return loc
 }
 function shadow_bind(prog: int) -> void {
-  r3d_bind_tex(prog, "u_shadow", 15, GL_TEXTURE_2D_ARRAY, sh_tex)
+  r3d_bind_tex(prog, "u_shadow", 15, GPU_TEX2D_ARRAY, sh_tex)
   # the height-field shadow (terrain.ludic); a stand-in texture keeps the unit valid before the bake
   var ts = ter_shadow_tex
   var ts_on = F_ONE

@@ -203,21 +203,20 @@ function terrain_use_ortho(path: string) -> void {
   ter_ortho_w = tex_w
   ter_ortho_c = tex_channels
   ter_ortho_tex = tex_upload(px, true, true)
-  gl_bind_texture(GL_TEXTURE_2D, ter_ortho_tex)
-  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
-  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+  gpu_tex_bind(GPU_TEX2D, ter_ortho_tex)
+  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
 }
 function terrain_use_dem(path: string, emin: int, emax: int, base: int, ox: int, oz: int) -> void {
   ter_dem_tex = tex_load(path, false)
   ter_dem_min = emin;  ter_dem_max = emax;  ter_dem_base = base
   ter_ox = ox;  ter_oz = oz
-  gl_bind_texture(GL_TEXTURE_2D, ter_dem_tex)
-  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
-  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+  gpu_tex_bind(GPU_TEX2D, ter_dem_tex)
+  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
 }
 
 function terrain_generate() -> void {
-  var ids0: words = null
   var defs = ""
   if ter_dem_tex != 0 { defs = "#define DEM\n" }
   if ter_smooth { defs = "#define SMOOTH\n" }
@@ -254,12 +253,12 @@ function terrain_generate() -> void {
   u_f(gpu_uniform(pn, "u_half"), fi(TERRAIN_HALF))
   mesh_draw(sky_fullscreen)
   gl_delete_program(pn)
-  ids0 = gl_scratch();  ids0[0] = raw;  gl_delete_textures(1, ids0)
+  gpu_tex_free(raw)
   # read the heights back for placement
   ter_heights = words(TERRAIN_RES * TERRAIN_RES)
-  gl_bind_texture(GL_TEXTURE_2D, ter_height_tex)
-  gl_pixel_storei(GL_PACK_ALIGNMENT, 4)
-  gl_get_tex_image(GL_TEXTURE_2D, 0, GL_RED, GL_FLOAT, ter_heights)
+  gpu_tex_bind(GPU_TEX2D, ter_height_tex)
+  gpu_pixel_store(GL_PACK_ALIGNMENT, 4)
+  gpu_tex_read(GPU_TEX2D, GL_RED, GL_FLOAT, ter_heights)
   gl_bind_framebuffer(GL_FRAMEBUFFER, 0)
   let ids = gl_scratch()
   ids[0] = fbo
@@ -480,8 +479,8 @@ function terrain_bind_prog(p: int) -> void {
   # The ground reads its sun visibility out of the buffer tersun.frag filled, and has no
   # use for the cascade array shadow_bind just put on this unit; leaving both bound under
   # one unit is undefined ground, so the array comes off first.
-  gl_active_texture(GL_TEXTURE0 + 15)
-  gl_bind_texture(GL_TEXTURE_2D_ARRAY, 0)
+  gpu_tex_unit(15)
+  gpu_tex_bind(GPU_TEX2D_ARRAY, 0)
   r3d_bind_2d(p, "u_sunshadow", 15, ter_sun_tex)
 }
 
@@ -765,9 +764,9 @@ function cdlod_select(level: int, ix: int, iz: int) -> bool {
 # frame-sized targets and the shadow texture, whose size does not depend on the map.
 function terrain_unload() -> void {
   let ids = gl_scratch()
-  if ter_height_tex != 0 { ids[0] = ter_height_tex;  gl_delete_textures(1, ids);  ter_height_tex = 0 }
-  if ter_dem_tex != 0 { ids[0] = ter_dem_tex;  gl_delete_textures(1, ids);  ter_dem_tex = 0 }
-  if ter_ortho_tex != 0 { ids[0] = ter_ortho_tex;  gl_delete_textures(1, ids);  ter_ortho_tex = 0 }
+  if ter_height_tex != 0 { gpu_tex_free(ter_height_tex);  ter_height_tex = 0 }
+  if ter_dem_tex != 0 { gpu_tex_free(ter_dem_tex);  ter_dem_tex = 0 }
+  if ter_ortho_tex != 0 { gpu_tex_free(ter_ortho_tex);  ter_ortho_tex = 0 }
   if ter_heights != null { free(ter_heights);  ter_heights = null }
   if ter_ortho_px != null { free(ter_ortho_px);  ter_ortho_px = null }
   ter_ortho_w = 0

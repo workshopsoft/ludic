@@ -12,6 +12,7 @@
 #     culling, colour writes, alpha-to-coverage, depth bias, scissor
 #   - uniforms: looked up by program and name (gpu_uniform), set by the u_* setters
 #   - vertex data: meshes, their attribute layouts, instance and stream buffers, draws
+#   - textures: creation, upload, sampler state, mipmaps, units, read-back, freeing
 #
 # Render state is cached. A pipeline API bakes this state into an object picked by
 # key; OpenGL gets the same effect by only telling the driver what changed. The
@@ -453,4 +454,96 @@ function gpu_mesh_free(m: Mesh) -> void {
   m.vbo = 0
   if m.ebo != 0 { ids[0] = m.ebo;  gl_delete_buffers(1, ids);  m.ebo = 0 }
   if m.vao != 0 { ids[0] = m.vao;  gl_delete_vertex_arrays(1, ids);  m.vao = 0 }
+}
+
+# ---- textures -----------------------------------------------------------------------------
+# A texture is a handle (on OpenGL, the texture name). Each call below is the one GL call it
+# replaces, in the renderer's own order, so OpenGL draws exactly what it drew. What those calls
+# say about a texture - its size, format, filters, wraps, comparison, mipmaps, anisotropy - is
+# recorded per handle as it is set, because a backend with immutable images and separate
+# sampler objects (Vulkan) creates both from exactly that. Parameters apply to the texture last
+# bound for that kind, which is how every call site here already works.
+const GPU_TEX2D: int = 1
+const GPU_TEX2D_ARRAY: int = 2
+const GPU_TX_W: int = 12          # per handle: kind, w, h, layers, ifmt, min, mag, wrap s, wrap t, compare, mips, aniso
+var gpu_tx: words = null
+var gpu_tx_cap: int = 0
+var gpu_bound_2d: int = 0
+var gpu_bound_array: int = 0
+
+function gpu_gl_target(kind: int) -> int { if kind == GPU_TEX2D_ARRAY { return GL_TEXTURE_2D_ARRAY };  return GL_TEXTURE_2D }
+# the record for a handle, growing the table when a new name is larger than it
+function gpu_tx_at(tex: int) -> int {
+  if tex <= 0 { return -1 }
+  if tex >= gpu_tx_cap {
+    var cap = gpu_tx_cap * 2
+    if cap < 256 { cap = 256 }
+    while cap <= tex { cap = cap * 2 }
+    let t = words(cap * GPU_TX_W)
+    for i in 0 .. cap * GPU_TX_W { t[i] = 0 }
+    if gpu_tx != null { mem_copy(t, gpu_tx, gpu_tx_cap * GPU_TX_W * 4);  free(gpu_tx) }
+    gpu_tx = t
+    gpu_tx_cap = cap
+  }
+  return tex * GPU_TX_W
+}
+function gpu_bound(kind: int) -> int { if kind == GPU_TEX2D_ARRAY { return gpu_bound_array };  return gpu_bound_2d }
+
+function gpu_tex_new() -> int { return gl_texture() }
+function gpu_tex_unit(unit: int) -> void { gl_active_texture(GL_TEXTURE0 + unit) }
+function gpu_tex_bind(kind: int, tex: int) -> void {
+  gl_bind_texture(gpu_gl_target(kind), tex)
+  if kind == GPU_TEX2D_ARRAY { gpu_bound_array = tex } else { gpu_bound_2d = tex }
+}
+# pixel transfer packing (alignment, byte swap) for the uploads and read-backs that follow
+function gpu_pixel_store(pname: int, value: int) -> void { gl_pixel_storei(pname, value) }
+function gpu_tex_image2d(ifmt: int, w: int, h: int, fmt: int, ty: int, data: pointer) -> void {
+  gl_tex_image2d(GL_TEXTURE_2D, 0, ifmt, w, h, 0, fmt, ty, data)
+  let o = gpu_tx_at(gpu_bound_2d)
+  if o >= 0 { gpu_tx[o] = GPU_TEX2D;  gpu_tx[o + 1] = w;  gpu_tx[o + 2] = h;  gpu_tx[o + 3] = 1;  gpu_tx[o + 4] = ifmt }
+}
+function gpu_tex_image3d(ifmt: int, w: int, h: int, layers: int, fmt: int, ty: int, data: pointer) -> void {
+  gl_tex_image3d(GL_TEXTURE_2D_ARRAY, 0, ifmt, w, h, layers, 0, fmt, ty, data)
+  let o = gpu_tx_at(gpu_bound_array)
+  if o >= 0 { gpu_tx[o] = GPU_TEX2D_ARRAY;  gpu_tx[o + 1] = w;  gpu_tx[o + 2] = h;  gpu_tx[o + 3] = layers;  gpu_tx[o + 4] = ifmt }
+}
+function gpu_tex_param(kind: int, pname: int, value: int) -> void {
+  gl_tex_parameteri(gpu_gl_target(kind), pname, value)
+  let o = gpu_tx_at(gpu_bound(kind))
+  if o < 0 { return }
+  if pname == GL_TEXTURE_MIN_FILTER { gpu_tx[o + 5] = value }
+  if pname == GL_TEXTURE_MAG_FILTER { gpu_tx[o + 6] = value }
+  if pname == GL_TEXTURE_WRAP_S { gpu_tx[o + 7] = value }
+  if pname == GL_TEXTURE_WRAP_T { gpu_tx[o + 8] = value }
+  if pname == GL_TEXTURE_COMPARE_MODE { if value == GL_NONE { gpu_tx[o + 9] = 0 } }
+  if pname == GL_TEXTURE_COMPARE_FUNC { gpu_tx[o + 9] = value }
+}
+# a float parameter (fixed, as Gl.* takes it): anisotropy is the one the renderer sets
+function gpu_tex_paramf(kind: int, pname: int, value: fixed) -> void {
+  gl_tex_parameterf(gpu_gl_target(kind), pname, value)
+  let o = gpu_tx_at(gpu_bound(kind))
+  if o >= 0 and pname == 0x84FE { gpu_tx[o + 11] = fx_to_f32(value) }
+}
+# the border colour clamp-to-border reads (four fixed values in `rgba`)
+function gpu_tex_border(kind: int, rgba: pointer) -> void { gl_tex_parameterfv(gpu_gl_target(kind), GL_TEXTURE_BORDER_COLOR, rgba) }
+function gpu_tex_mips(kind: int) -> void {
+  gl_generate_mipmap(gpu_gl_target(kind))
+  let o = gpu_tx_at(gpu_bound(kind))
+  if o >= 0 { gpu_tx[o + 10] = 1 }
+}
+# level 0 of the bound texture into `out`
+function gpu_tex_read(kind: int, fmt: int, ty: int, out: pointer) -> void { gl_get_tex_image(gpu_gl_target(kind), 0, fmt, ty, out) }
+function gpu_tex_free(tex: int) -> void {
+  if tex == 0 { return }
+  let ids = gpu_tmp()
+  ids[0] = tex
+  gl_delete_textures(1, ids)
+  let o = gpu_tx_at(tex)
+  if o >= 0 { for i in 0 .. GPU_TX_W { gpu_tx[o + i] = 0 } }
+}
+# a texture on a unit for a program's sampler, by the sampler's name
+function gpu_bind_sampler(prog: int, name: string, unit: int, kind: int, tex: int) -> void {
+  gpu_tex_unit(unit)
+  gpu_tex_bind(kind, tex)
+  u_i(gpu_uniform(prog, name), unit)
 }

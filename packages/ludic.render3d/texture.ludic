@@ -204,8 +204,8 @@ function tex_dilate(px: pointer, thresh: int, passes: int) -> void {
 
 # Upload the last-decoded samples as a 2D texture. srgb: colour data (8-bit only).
 function tex_upload(px: pointer, srgb: bool, mips: bool) -> int {
-  let id = gl_texture()
-  gl_bind_texture(GL_TEXTURE_2D, id)
+  let id = gpu_tex_new()
+  gpu_tex_bind(GPU_TEX2D, id)
   var fmt = GL_RED
   if tex_channels == 2 { fmt = GL_RG }
   if tex_channels == 3 { fmt = GL_RGB }
@@ -218,25 +218,25 @@ function tex_upload(px: pointer, srgb: bool, mips: bool) -> int {
     if tex_channels == 2 { ifmt = GL_RG16 }
     if tex_channels == 3 { ifmt = GL_RGB16 }
     if tex_channels == 4 { ifmt = GL_RGBA16 }
-    gl_pixel_storei(GL_UNPACK_SWAP_BYTES, 1)
+    gpu_pixel_store(GL_UNPACK_SWAP_BYTES, 1)
   } else {
     if tex_channels == 2 { ifmt = GL_RG8 }
     if tex_channels == 3 { ifmt = GL_RGB8;  if srgb { ifmt = GL_SRGB8 } }
     if tex_channels == 4 { ifmt = GL_RGBA8;  if srgb { ifmt = GL_SRGB8_ALPHA8 } }
-    gl_pixel_storei(GL_UNPACK_SWAP_BYTES, 0)
+    gpu_pixel_store(GL_UNPACK_SWAP_BYTES, 0)
   }
-  gl_pixel_storei(GL_UNPACK_ALIGNMENT, 1)
-  gl_tex_image2d(GL_TEXTURE_2D, 0, ifmt, tex_w, tex_h, 0, fmt, ty, px)
-  gl_pixel_storei(GL_UNPACK_SWAP_BYTES, 0)
-  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
-  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
-  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+  gpu_pixel_store(GL_UNPACK_ALIGNMENT, 1)
+  gpu_tex_image2d(ifmt, tex_w, tex_h, fmt, ty, px)
+  gpu_pixel_store(GL_UNPACK_SWAP_BYTES, 0)
+  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
+  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
+  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
   if mips {
-    gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
-    gl_generate_mipmap(GL_TEXTURE_2D)
-    gl_tex_parameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, tex_anisotropy)
+    gpu_tex_param(GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+    gpu_tex_mips(GPU_TEX2D)
+    gpu_tex_paramf(GPU_TEX2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, tex_anisotropy)
   } else {
-    gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+    gpu_tex_param(GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
   }
   return id
 }
@@ -362,28 +362,28 @@ function hdr_decode(path: pointer) -> words {
 function tex_load_hdr(path: pointer) -> int {
   let px = hdr_decode(path)
   if px == null { return 0 }
-  let id = gl_texture()
-  gl_bind_texture(GL_TEXTURE_2D, id)
-  gl_pixel_storei(GL_UNPACK_ALIGNMENT, 4)
-  gl_tex_image2d(GL_TEXTURE_2D, 0, GL_RGB16F, tex_w, tex_h, 0, GL_RGB, GL_FLOAT, px)
-  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
-  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
-  gl_generate_mipmap(GL_TEXTURE_2D)
+  let id = gpu_tex_new()
+  gpu_tex_bind(GPU_TEX2D, id)
+  gpu_pixel_store(GL_UNPACK_ALIGNMENT, 4)
+  gpu_tex_image2d(GL_RGB16F, tex_w, tex_h, GL_RGB, GL_FLOAT, px)
+  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
+  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+  gpu_tex_mips(GPU_TEX2D)
   free(px)
   return id
 }
 
 # An empty render-target texture of the given internal format (no mips, clamped).
 function tex_target(w: int, h: int, ifmt: int, fmt: int, ty: int, filter: int) -> int {
-  let id = gl_texture()
-  gl_bind_texture(GL_TEXTURE_2D, id)
-  gl_tex_image2d(GL_TEXTURE_2D, 0, ifmt, w, h, 0, fmt, ty, null)
-  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
-  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter)
-  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter)
+  let id = gpu_tex_new()
+  gpu_tex_bind(GPU_TEX2D, id)
+  gpu_tex_image2d(ifmt, w, h, fmt, ty, null)
+  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_MAG_FILTER, filter)
+  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_MIN_FILTER, filter)
   return id
 }
 
@@ -391,9 +391,9 @@ var tex_dump_alpha: bool = false
 # Debug: the brightest texel of an RGBA float texture and where it is.
 function tex_max(tex: int, w: int, h: int, tag: pointer) -> void {
   let buf = words(w * h * 4)
-  gl_bind_texture(GL_TEXTURE_2D, tex)
-  gl_pixel_storei(GL_PACK_ALIGNMENT, 4)
-  gl_get_tex_image(GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, buf)
+  gpu_tex_bind(GPU_TEX2D, tex)
+  gpu_pixel_store(GL_PACK_ALIGNMENT, 4)
+  gpu_tex_read(GPU_TEX2D, GL_RGBA, GL_FLOAT, buf)
   var best = F_ZERO;  var bx = 0;  var by = 0
   var i = 0
   while i < w * h {
@@ -413,9 +413,9 @@ function tex_dump(tex: int, w: int, h: int, path: pointer) -> void {
   let f = file_open(path, "wb")
   if f == null { return }
   let buf = bytes(w * h * 4)
-  gl_bind_texture(GL_TEXTURE_2D, tex)
-  gl_pixel_storei(GL_PACK_ALIGNMENT, 1)
-  gl_get_tex_image(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, buf)
+  gpu_tex_bind(GPU_TEX2D, tex)
+  gpu_pixel_store(GL_PACK_ALIGNMENT, 1)
+  gpu_tex_read(GPU_TEX2D, GL_RGBA, GL_UNSIGNED_BYTE, buf)
   let hdr = `P6\n{w} {h}\n255\n`
   file_write(f, hdr, len(hdr))
   let row = bytes(w * 3)

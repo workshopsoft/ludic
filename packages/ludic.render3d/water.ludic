@@ -151,8 +151,8 @@ function water_draw(depth_tex: int) -> void {
     # bind on its own unit first: generating the mip chain re-binds the texture on the active unit,
     # and it must not displace the depth texture the shader reads for the shore
     r3d_bind_2d(p, "u_refl", 1, water_refl.color);  ron = F_ONE
-    gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
-    gl_generate_mipmap(GL_TEXTURE_2D)
+    gpu_tex_param(GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+    gpu_tex_mips(GPU_TEX2D)
   }
   r3d_bind_2d(p, "u_depth", 0, depth_tex)
   r3d_bind_2d(p, "u_scene", 2, post_scene.color)

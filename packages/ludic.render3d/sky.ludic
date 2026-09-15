@@ -91,26 +91,26 @@ function sky_precompute() -> void {
   gpu_depth_test(false)
   if sky_irradiance != 0 {
     let ids = gl_scratch()
-    ids[0] = sky_irradiance;  gl_delete_textures(1, ids)
-    ids[0] = sky_prefilter;  gl_delete_textures(1, ids)
-    ids[0] = sky_brdf;  gl_delete_textures(1, ids)
+    gpu_tex_free(sky_irradiance)
+    gpu_tex_free(sky_prefilter)
+    gpu_tex_free(sky_brdf)
   }
   # irradiance: 128 x 64 equirect
   if sky_p_irr == 0 { sky_p_irr = r3d_program("fullscreen.vert", "ibl_irradiance.frag", "");  sky_p_pre = r3d_program("fullscreen.vert", "ibl_prefilter.frag", "");  sky_p_brdf = r3d_program("fullscreen.vert", "ibl_brdf.frag", "") }
   let p_irr = sky_p_irr
   sky_irradiance = tex_target(128, 64, GL_RGB16F, GL_RGB, GL_FLOAT, GL_LINEAR)
-  gl_bind_texture(GL_TEXTURE_2D, sky_irradiance)
-  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
+  gpu_tex_bind(GPU_TEX2D, sky_irradiance)
+  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
   sky_convolve(p_irr, sky_irradiance, -1, 128, 64, F_ZERO)
   # prefiltered specular: 6 roughness levels, 512 x 256 each, as a 2D array
   let p_pre = sky_p_pre
-  sky_prefilter = gl_texture()
-  gl_bind_texture(GL_TEXTURE_2D_ARRAY, sky_prefilter)
-  gl_tex_image3d(GL_TEXTURE_2D_ARRAY, 0, GL_RGB16F, 512, 256, SKY_PREFILTER_LEVELS, 0, GL_RGB, GL_FLOAT, null)
-  gl_tex_parameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_REPEAT)
-  gl_tex_parameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-  gl_tex_parameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-  gl_tex_parameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+  sky_prefilter = gpu_tex_new()
+  gpu_tex_bind(GPU_TEX2D_ARRAY, sky_prefilter)
+  gpu_tex_image3d(GL_RGB16F, 512, 256, SKY_PREFILTER_LEVELS, GL_RGB, GL_FLOAT, null)
+  gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_WRAP_S, GL_REPEAT)
+  gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+  gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+  gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
   for l in 0 .. SKY_PREFILTER_LEVELS {
     sky_convolve(p_pre, sky_prefilter, l, 512, 256, fr(l, SKY_PREFILTER_LEVELS - 1))
   }
@@ -124,7 +124,7 @@ function sky_precompute() -> void {
 # bind the IBL set + sun for a lit program (units 12..14)
 function sky_bind_lighting(prog: int) -> void {
   r3d_bind_2d(prog, "u_irradiance", 12, sky_irradiance)
-  r3d_bind_tex(prog, "u_prefilter", 13, GL_TEXTURE_2D_ARRAY, sky_prefilter)
+  r3d_bind_tex(prog, "u_prefilter", 13, GPU_TEX2D_ARRAY, sky_prefilter)
   r3d_bind_2d(prog, "u_brdf", 14, sky_brdf)
   u_v3(gpu_uniform(prog, "u_sun_dir"), sun_dir)
   u_v3(gpu_uniform(prog, "u_sun_color"), sun_color)

@@ -87,12 +87,8 @@ function r3d_program(vs: string, fs: string, defines: string) -> int {
 }
 
 # Bind a texture to a unit and point a sampler uniform at it.
-function r3d_bind_tex(prog: int, name: string, unit: int, target: int, tex: int) -> void {
-  gl_active_texture(GL_TEXTURE0 + unit)
-  gl_bind_texture(target, tex)
-  u_i(gpu_uniform(prog, name), unit)
-}
-function r3d_bind_2d(prog: int, name: string, unit: int, tex: int) -> void { r3d_bind_tex(prog, name, unit, GL_TEXTURE_2D, tex) }
+function r3d_bind_tex(prog: int, name: string, unit: int, kind: int, tex: int) -> void { gpu_bind_sampler(prog, name, unit, kind, tex) }
+function r3d_bind_2d(prog: int, name: string, unit: int, tex: int) -> void { gpu_bind_sampler(prog, name, unit, GPU_TEX2D, tex) }
 
 # A framebuffer with one colour texture (and optionally a depth texture).
 property Target {
@@ -122,8 +118,8 @@ function target_free(t: Target) -> void {
   if t == null { return }
   let ids = gl_scratch()
   ids[0] = t.fbo;  gl_delete_framebuffers(1, ids)
-  ids[0] = t.color;  gl_delete_textures(1, ids)
-  if t.depth != 0 { ids[0] = t.depth;  gl_delete_textures(1, ids) }
+  gpu_tex_free(t.color)
+  if t.depth != 0 { gpu_tex_free(t.depth) }
 }
 function target_bind(t: Target) -> void {
   gl_bind_framebuffer(GL_FRAMEBUFFER, t.fbo)

@@ -475,12 +475,12 @@ function impostor_bake(model: Model, tiles: int, tw: int, th: int) -> Impostor {
   gl_delete_framebuffers(1, ids)
   ids[0] = rb
   gl_delete_renderbuffers(1, ids)
-  gl_bind_texture(GL_TEXTURE_2D, im.albedo)
-  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
-  gl_generate_mipmap(GL_TEXTURE_2D)
-  gl_bind_texture(GL_TEXTURE_2D, im.normal)
-  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
-  gl_generate_mipmap(GL_TEXTURE_2D)
+  gpu_tex_bind(GPU_TEX2D, im.albedo)
+  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+  gpu_tex_mips(GPU_TEX2D)
+  gpu_tex_bind(GPU_TEX2D, im.normal)
+  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+  gpu_tex_mips(GPU_TEX2D)
   gl_check("impostor bake")
   if sc_debug_dump { tex_dump_alpha = true;  tex_dump(im.albedo, aw, th, "build/atlas_alpha.ppm");  tex_dump_alpha = false }
   return im
@@ -1064,12 +1064,12 @@ function carpet_bake(layers: []Layer, count: int, tile: int, res: int) -> int {
   ids[0] = rb
   gl_delete_renderbuffers(1, ids)
   gpu_buffer_free(buf)
-  gl_bind_texture(GL_TEXTURE_2D, tex)
-  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
-  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
-  gl_tex_parameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
-  gl_tex_parameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, tex_anisotropy)
-  gl_generate_mipmap(GL_TEXTURE_2D)
+  gpu_tex_bind(GPU_TEX2D, tex)
+  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
+  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
+  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+  gpu_tex_paramf(GPU_TEX2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, tex_anisotropy)
+  gpu_tex_mips(GPU_TEX2D)
   gl_check("carpet bake")
   return tex
 }
@@ -1103,8 +1103,8 @@ function scatter_clear_all() -> void {
     # layer_cards built this layer's crossed card and its atlas itself
     if l.card and l.n_lods == 0 and l.model != null { for k in 0 .. len(l.model.prims) { mesh_free(l.model.prims[k].mesh) } }
     if l.card and l.atlas != null {
-      ids[0] = l.atlas.albedo;  gl_delete_textures(1, ids)
-      ids[0] = l.atlas.normal;  gl_delete_textures(1, ids)
+      gpu_tex_free(l.atlas.albedo)
+      gpu_tex_free(l.atlas.normal)
     }
   }
   sc_layers = new []Layer
