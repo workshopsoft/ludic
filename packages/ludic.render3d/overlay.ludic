@@ -52,6 +52,7 @@ var ov_clip_w: int = 0
 var ov_clip_h: int = 0
 
 function overlay_init(font_dir: string) -> bool {
+  r3d_program_log("overlay.vert", "overlay.frag", "")
   ov_prog = gl_program("#version 410 core\n" + r3d_shader_file("overlay.vert"), "#version 410 core\n" + r3d_shader_file("overlay.frag"))
   if ov_prog == 0 { print("overlay: program failed");  return false }
   ov_vao = gl_vao()

@@ -817,5 +817,13 @@ function cmd_dev_test() -> int {
     } else { bad2("ludic-dev vkgen --check", capture_line(`tail -1 {tmp_dir()}/vkgen.out`)) }
   } else { skip("ludic-dev vkgen --check (needs the Vulkan SDK's vk.xml)") }
 
+  # render3d's shader variants as SPIR-V: tracked, so a change to a shader or to variants.list
+  # that nobody rebuilt fails here, wherever the Vulkan SDK (glslangValidator) is installed
+  if shq("ls $VULKAN_SDK/bin/glslangValidator $HOME/VulkanSDK/*/macOS/bin/glslangValidator 2>/dev/null | grep -q glslangValidator") {
+    if shq(`bin/ludic-dev shaders --check > {tmp_dir()}/shaders.out 2>&1`) {
+      ok("ludic-dev shaders rebuilds render3d's SPIR-V byte-identically")
+    } else { bad2("ludic-dev shaders --check", capture_line(`tail -1 {tmp_dir()}/shaders.out`)) }
+  } else { skip("ludic-dev shaders --check (needs the Vulkan SDK's glslangValidator)") }
+
   return report()
 }

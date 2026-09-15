@@ -1,0 +1,49 @@
+# variants.list - every program render3d builds: vertex|fragment|defines (one line; newlines
+# in the defines are written as ";"). A backend that cannot compile shaders at run time
+# (Vulkan: SPIR-V is built ahead) must cover all of them. Regenerate by running the game and
+# its self-tests with R3D_PROGRAMS_LOG=<file> and sorting the result.
+fullscreen.vert|adapt.frag|
+fullscreen.vert|bloom_down.frag|
+fullscreen.vert|bloom_up.frag|
+fullscreen.vert|heightgen.frag|#define DEM;
+fullscreen.vert|ibl_brdf.frag|
+fullscreen.vert|ibl_irradiance.frag|
+fullscreen.vert|ibl_prefilter.frag|
+fullscreen.vert|sharpen.frag|
+fullscreen.vert|sky.frag|
+fullscreen.vert|ssao_blur.frag|
+fullscreen.vert|ssgi.frag|
+fullscreen.vert|ternormal.frag|
+fullscreen.vert|tershadow.frag|#define NOISE_ONLY;
+fullscreen.vert|tonemap.frag|
+grass.vert|model.frag|#define FOLIAGE;#define BLADE;
+impostor.vert|impostor.frag|
+impostor.vert|impostor.frag|#define SHADOW_PASS;
+model.vert|bake.frag|
+model.vert|bake.frag|#define CARD;
+model.vert|bake.frag|#define FLOWER;
+model.vert|depth.frag|#define FOLIAGE;#define WIND;#define ALPHA_TEST;
+model.vert|model.frag|
+model.vert|model.frag|#define CARD;#define CHEAP;
+model.vert|model.frag|#define FOLIAGE;#define WIND;#define ALPHA_TEST;
+model.vert|model.frag|#define FOLIAGE;#define WIND;#define BLADE;
+model.vert|model.frag|#define FOLIAGE;#define WIND;#define CARD;
+model.vert|model.frag|#define FOLIAGE;#define WIND;#define EQ_PASS;
+model.vert|model.frag|#define FOLIAGE;#define WIND;#define FLOWER;
+model.vert|model.frag|#define SHADOW_PASS;#define WIND;#define CARD;
+model.vert|model.frag|#define WIND;
+model.vert|shadow.frag|#define SHADOW_PASS;
+model.vert|shadow.frag|#define SHADOW_PASS;#define WIND;
+model.vert|shadow.frag|#define SHADOW_PASS;#define WIND;#define ALPHA_TEST;
+overlay.vert|overlay.frag|
+skin.vert|model.frag|
+skin.vert|model.frag|#define ALPHA_TEST;
+skin.vert|outline.frag|#define OUTLINE;
+skin.vert|outline.frag|#define OUTLINE;#define ALPHA_TEST;
+skin.vert|shadow.frag|#define SHADOW_PASS;
+skin.vert|shadow.frag|#define SHADOW_PASS;#define ALPHA_TEST;
+terrain.vert|terrain.frag|
+terrain.vert|terrain.frag|#define FAR_ONLY;
+terrain.vert|terrain.frag|#define NEAR_ONLY;
+terrain.vert|tersun.frag|
+water.vert|water.frag|

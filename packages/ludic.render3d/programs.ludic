@@ -65,7 +65,22 @@ function r3d_program_tess(vs: string, tcs: string, tes: string, fs: string, defi
 }
 
 # Build a program from a vertex + fragment file pair (defines apply to both).
+# R3D_PROGRAMS_LOG=<file>: append every program built (vertex, fragment, defines) - the list a
+# backend that cannot compile shaders at run time (Vulkan: SPIR-V is built ahead) must cover
+var r3d_prog_log: int = -1
+function r3d_program_log(vs: string, fs: string, defines: string) -> void {
+  if r3d_prog_log < 0 { r3d_prog_log = 0;  if Os.has_env("R3D_PROGRAMS_LOG") { r3d_prog_log = 1 } }
+  if r3d_prog_log == 0 { return }
+  let f = file_open(Os.env("R3D_PROGRAMS_LOG"), "ab")
+  if f == null { return }
+  # one line per program: the defines' newlines become ';' so a variant is one line
+  let defs = Text.replace(`{r3d_global_defs}{defines}`, "\n", ";")
+  let line = `{vs}|{fs}|{defs}\n`
+  file_write(f, line, len(line))
+  file_close(f)
+}
 function r3d_program(vs: string, fs: string, defines: string) -> int {
+  r3d_program_log(vs, fs, defines)
   let p = gl_program(r3d_shader_src(vs, defines, false), r3d_shader_src(fs, defines, true))
   if p == 0 { print(`r3d: program failed: {vs} + {fs}`) }
   return p

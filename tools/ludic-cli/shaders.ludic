@@ -1,0 +1,223 @@
+# shaders.ludic — render3d's shaders as Vulkan SPIR-V, built ahead of time.
+#
+#   ludic-dev shaders [--check]
+#       read packages/ludic.render3d/shaders/variants.list and write, per variant,
+#         packages/ludic.render3d/shaders/spv/<id>.vert.spv and <id>.frag.spv
+#       and one packages/ludic.render3d/shaders/spv/manifest.txt the renderer reads:
+#         P <id> <vertex> <fragment> <defines>      a program (defines with ';' for newlines)
+#         B <id> <stage> <binding> <size>           a stage's uniform block
+#         U <id> <stage> <name> <offset> <type> <count> <stride>
+#         T <id> <name> <binding> <sampler type>    a sampler, the same binding in both stages
+#         I <id> <name> <location> <type>           a vertex input
+#
+# OpenGL compiles GLSL when the game starts; Vulkan cannot, so every program the renderer
+# builds (variants.list, from R3D_PROGRAMS_LOG) is compiled here. The GLSL is the renderer's
+# own, assembled exactly as programs.ludic assembles it, through glslang's relaxed Vulkan mode:
+# the loose uniforms of each stage land in one uniform block whose offsets come from the
+# reflection, which is what gpu_uniform / u_* write through on Vulkan.
+#
+# Bindings are assigned here, not by glslang: its automatic numbering gave several samplers of
+# one stage the same binding. The vertex stage's block is 0, the fragment stage's is 1, and the
+# samplers of both stages are numbered from 2 in name order, so a sampler both stages use has
+# one binding and one pipeline layout covers the program.
+#
+# Needs the Vulkan SDK (glslangValidator, spirv-cross, spirv-val): $VULKAN_SDK/bin, else the
+# newest ~/VulkanSDK/*/macOS/bin, else C:/VulkanSDK/*/Bin. The outputs are tracked, so building a
+# game never runs this.
+
+var shd_bin: pointer = null
+
+function shd_find_sdk() -> bool {
+  let sdk = getenv_or("VULKAN_SDK", "")
+  if sdk != "" and file_exists(`{sdk}/bin/glslangValidator`) { shd_bin = `{sdk}/bin`;  return true }
+  if sdk != "" and file_exists(`{sdk}/Bin/glslangValidator.exe`) { shd_bin = `{sdk}/Bin`;  return true }
+  let found = Text.trim(capture("ls -d $HOME/VulkanSDK/*/macOS/bin /c/VulkanSDK/*/Bin 2>/dev/null | tail -1"))
+  if found != "" { shd_bin = found;  return true }
+  return false
+}
+
+# FNV-1a over the variant line, as eight hex digits: the id is stable across runs and machines
+function shd_id(line: pointer) -> pointer {
+  var h = 0x811C9DC5
+  let n = slen(line)
+  var i = 0
+  while i < n { h = (h ^ line[i]) * 16777619;  i += 1 }
+  let hex = "0123456789abcdef"
+  let b = sb_new()
+  var k = 0
+  while k < 8 { sb_putc(b, hex[(h >> (28 - k * 4)) & 15]);  k += 1 }
+  return sb_str(b)
+}
+
+function shd_is_ident(c: int) -> bool { return (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or (c >= '0' and c <= '9') or c == '_' }
+
+# the sampler declarations of a source: names (in order met) into shd_names, deduplicated
+var shd_names: []pointer = null
+function shd_note_name(n: pointer) -> void {
+  var i = 0
+  while i < len(shd_names) { if shd_names[i] == n { return };  i += 1 }
+  push(shd_names, n)
+}
+
+# Rewrite every `uniform <[iu]sampler...> <name>[...];` anywhere in the text (several share a line
+# in terrain.frag) as `layout(set = 0, binding = N) uniform ...`. With `collect`, only record names.
+function shd_bind_samplers(src: pointer, collect: bool) -> pointer {
+  let b = sb_new()
+  let n = slen(src)
+  var i = 0
+  while i < n {
+    let at = s_index(src, "uniform", i)
+    if at < 0 { sb_puts(b, str_sub(src, i, n));  break }
+    sb_puts(b, str_sub(src, i, at))
+    # a whole word "uniform", then whitespace, then a sampler type
+    var ok = (at == 0 or not shd_is_ident(src[at - 1])) and at + 7 < n and str_space(src[at + 7])
+    var p = at + 7
+    while ok and p < n and str_space(src[p]) { p += 1 }
+    let ts = p
+    while ok and p < n and shd_is_ident(src[p]) { p += 1 }
+    let ty = str_sub(src, ts, p)
+    if ok { ok = s_starts(ty, "sampler") or s_starts(ty, "isampler") or s_starts(ty, "usampler") }
+    while ok and p < n and str_space(src[p]) { p += 1 }
+    let ns = p
+    while ok and p < n and shd_is_ident(src[p]) { p += 1 }
+    let name = str_sub(src, ns, p)
+    if ok { ok = slen(name) > 0 }
+    if not ok { sb_puts(b, "uniform");  i = at + 7;  continue }
+    if collect { shd_note_name(name) }
+    var bind = 0
+    var k = 0
+    while k < len(shd_names) { if shd_names[k] == name { bind = k + 2 };  k += 1 }
+    sb_puts(b, `layout(set = 0, binding = {string(bind)}) uniform {ty} {name}`)
+    i = p
+  }
+  return sb_str(b)
+}
+
+var shd_noise: pointer = null
+var shd_lighting: pointer = null
+function shd_file(name: pointer) -> pointer {
+  let s = read_file(`packages/ludic.render3d/shaders/{name}`)
+  if s == null { err(`shaders: missing packages/ludic.render3d/shaders/{name}\n`);  return "" }
+  return s
+}
+
+function shd_q(p: pointer) -> pointer { return `"{p}"` }
+
+function shd_reflect_stage(mf: pointer, id: pointer, stage: pointer, spv: pointer, tmp: pointer) -> bool {
+  let js = `{tmp}/{id}.{stage}.json`
+  if not shq(`{shd_q(shd_bin + "/spirv-cross")} {shd_q(spv)} --reflect > {shd_q(js)} 2>/dev/null`) { err(`shaders: spirv-cross failed on {spv}\n`);  return false }
+  let d = json_parse(read_file(js))
+  let ubos = j_get(d, "ubos")
+  if ubos.t == JV_ARR and len(ubos.kids) > 0 {
+    let u = ubos.kids[0]
+    sb_puts(mf, `B {id} {stage} {string(j_get(u, "binding").num)} {string(j_get(u, "block_size").num)}\n`)
+    let ty = j_get(j_get(d, "types"), j_get(u, "type").s)
+    let mem = j_get(ty, "members")
+    var i = 0
+    while i < len(mem.kids) {
+      let m = mem.kids[i]
+      var count = 1
+      let arr = j_get(m, "array")
+      if arr.t == JV_ARR and len(arr.kids) > 0 { count = arr.kids[0].num }
+      var stride = 0
+      let st = j_get(m, "array_stride")
+      if st.t == JV_NUM { stride = st.num }
+      sb_puts(mf, `U {id} {stage} {j_get(m, "name").s} {string(j_get(m, "offset").num)} {j_get(m, "type").s} {string(count)} {string(stride)}\n`)
+      i += 1
+    }
+  }
+  if stage == "vert" {
+    let ins = j_get(d, "inputs")
+    var i = 0
+    while i < len(ins.kids) {
+      let v = ins.kids[i]
+      sb_puts(mf, `I {id} {j_get(v, "name").s} {string(j_get(v, "location").num)} {j_get(v, "type").s}\n`)
+      i += 1
+    }
+  }
+  return true
+}
+
+function cmd_shaders() -> int {
+  var check = false
+  var ai = 2
+  while ai < arg_count() { if arg(ai) == "--check" { check = true };  ai += 1 }
+  if not shd_find_sdk() { err("shaders: no Vulkan SDK (glslangValidator); set VULKAN_SDK\n");  return 1 }
+  let list = read_file("packages/ludic.render3d/shaders/variants.list")
+  if list == null { err("shaders: no packages/ludic.render3d/shaders/variants.list\n");  return 1 }
+  shd_noise = shd_file("noise.glsl")
+  shd_lighting = shd_file("lighting.glsl")
+  var outdir = "packages/ludic.render3d/shaders/spv"
+  let tmp = tmp_path("shaders")
+  if check { outdir = tmp_path("shaders-check") }
+  shell(`rm -rf {shd_q(tmp)} && mkdir -p {shd_q(tmp)} {shd_q(outdir)}`)
+  if not check { shell(`rm -f {shd_q(outdir)}/*.spv`) }
+  let mf = sb_new()
+  sb_puts(mf, "# manifest.txt - GENERATED by `ludic-dev shaders` from variants.list. Do not edit.\n")
+  let lines = Text.split(list, "\n")
+  var made = 0
+  var li = 0
+  while li < len(lines) {
+    let line = Text.trim(lines[li])
+    li += 1
+    if slen(line) == 0 or line[0] == '#' { continue }
+    let parts = Text.split(line, "|")
+    if len(parts) < 2 { err(`shaders: bad variant line: {line}\n`);  return 1 }
+    var defs = ""
+    if len(parts) > 2 { defs = parts[2] }
+    let id = shd_id(line)
+    let defines = Text.replace(defs, ";", "\n")
+    let vsrc = "#version 460\n" + defines + shd_file(parts[0])
+    let fsrc = "#version 460\n" + defines + shd_noise + shd_lighting + shd_file(parts[1])
+    # one binding table for both stages
+    shd_names = new []pointer
+    shd_bind_samplers(vsrc, true)
+    shd_bind_samplers(fsrc, true)
+    # name order, so the table does not depend on which stage met a sampler first
+    var x = 0
+    while x < len(shd_names) {
+      var y = x + 1
+      while y < len(shd_names) {
+        if str_cmp(shd_names[y], shd_names[x]) < 0 { let t = shd_names[x];  shd_names[x] = shd_names[y];  shd_names[y] = t }
+        y += 1
+      }
+      x += 1
+    }
+    sb_puts(mf, `P {id} {parts[0]} {parts[1]} {defs}\n`)
+    let stages = Text.split("vert frag", " ")
+    var si = 0
+    while si < 2 {
+      let stage = stages[si]
+      var src = vsrc
+      if stage == "frag" { src = fsrc }
+      let glsl = `{tmp}/{id}.{stage}.glsl`
+      if not write_file(glsl, shd_bind_samplers(src, false)) { err(`shaders: cannot write {glsl}\n`);  return 1 }
+      let spv = `{outdir}/{id}.{stage}.spv`
+      var extra = ""
+      if stage == "frag" { extra = " --shift-UBO-binding frag 1" }
+      let logf = `{tmp}/{id}.{stage}.log`
+      if not shq(`{shd_q(shd_bin + "/glslangValidator")} -V -R --auto-map-bindings --auto-map-locations{extra} -S {stage} {shd_q(glsl)} -o {shd_q(spv)} > {shd_q(logf)} 2>&1`) {
+        err(`shaders: {parts[0]} + {parts[1]} [{defs}] ({stage}) did not compile:\n{capture("grep ERROR " + shd_q(logf) + " | head -5")}\n`)
+        return 1
+      }
+      if not shq(`{shd_q(shd_bin + "/spirv-val")} --target-env vulkan1.3 {shd_q(spv)} > /dev/null 2>&1`) { err(`shaders: {spv} fails spirv-val\n`);  return 1 }
+      if not shd_reflect_stage(mf, id, stage, spv, tmp) { return 1 }
+      si += 1
+    }
+    var t = 0
+    while t < len(shd_names) {
+      sb_puts(mf, `T {id} {shd_names[t]} {string(t + 2)}\n`)
+      t += 1
+    }
+    made += 1
+  }
+  if not write_file(`{outdir}/manifest.txt`, sb_str(mf)) { err("shaders: cannot write manifest.txt\n");  return 1 }
+  if check {
+    let real = "packages/ludic.render3d/shaders/spv"
+    if not shq(`diff -r {shd_q(outdir)} {shd_q(real)} > /dev/null 2>&1`) { err("shaders: spv/ drifted from variants.list and the GLSL (run: ludic-dev shaders)\n");  return 1 }
+  }
+  var note = ""
+  if check { note = " (unchanged)" }
+  print(`OK {string(made)} programs, {string(made * 2)} SPIR-V stages{note}`)
+  return 0
+}
