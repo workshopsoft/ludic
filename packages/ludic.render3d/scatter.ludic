@@ -647,7 +647,7 @@ function layer_gpu_prepare(l: Layer) -> bool {
     # on by default wherever there is compute; R3D_GPU_CULL=0 keeps the CPU partition (for comparing)
     var off = false
     if Os.has_env("R3D_GPU_CULL") { off = Os.env("R3D_GPU_CULL") == "0" }
-    if gpu_has_compute() and not off {
+    if gpu_has_compute() and gpu_has_mdi() and not off {
       sc_cull_prog = gpu_compute("scatter_cull", 4)
       if sc_cull_prog > 0 { print("r3d: scatter: tree layers are culled on the GPU") }
     }
@@ -945,6 +945,43 @@ var sc_dbg_blade: int = 0
 var sc_dbg_level: int = -1
 var sc_dbg_lod: bool = false
 var sc_dbg_tint: words = null
+# Can level k's casters (its instances lie between the previous level's distance and its own) put a
+# shadow on anything the cascade being rendered covers? A receiver in that slice of view depth
+# [near, far] stands between near - dy and far * K metres away on the ground: dy is the camera's height
+# over the ground, K how far the frustum's corners reach past its depth. A prop's shadow falls at most
+# about six times its height past it (the sun near ten degrees). A level outside that range cannot
+# touch a pixel of the cascade, so leaving it out changes no shadow - unlike the old per-class skips
+# at fixed distances, which dropped casters that did cast (see scatter_draw_casters). The flowers'
+# mesh levels (6 - 30 m) stop being drawn into the three outer cascades. R3D_CAST_ALL=1 draws every
+# level into every cascade, for comparing.
+var sc_cast_all: int = -1
+var sc_cast_gen: int = -1
+var sc_cast_dy: int = 0
+var sc_cast_k: int = 0
+function layer_level_casts_here(l: Layer, k: int) -> bool {
+  if sc_cast_all < 0 { sc_cast_all = 0;  if Os.has_env("R3D_CAST_ALL") { sc_cast_all = 1 } }
+  if sc_cast_all == 1 or sh_split == null or l.lod_dist == null { return true }
+  if sc_cast_gen != sc_view_gen {
+    sc_cast_gen = sc_view_gen
+    sc_cast_dy = f_add(f_abs(f_sub(cam_pos[1], terrain_height(cam_pos[0], cam_pos[2]))), fi(5))
+    let half = f_mul(cam_fov, F_HALF)
+    let t = f_div(f_sin(half), f_cos(half))
+    let ta = f_mul(t, cam_aspect)
+    sc_cast_k = f_mul(f_sqrt(f_add(F_ONE, f_add(f_mul(t, t), f_mul(ta, ta)))), fl(1.1))
+  }
+  let c = sh_cascade
+  var near = cam_near
+  if c > 0 { near = sh_split[c - 1] }
+  let far = sh_split[c]
+  var dmin = F_ZERO
+  if k > 0 { dmin = l.lod_dist[k - 1] }
+  let dmax = l.lod_dist[k]                 # 0: open, out to the layer's cull distance
+  let reach = f_max(f_min(f_mul(l.lods[k].height, fi(6)), fi(40)), fi(8))
+  if dmax != 0 and f_ls(f_add(f_add(dmax, reach), sc_cast_dy), near) { return false }
+  if f_gt(f_sub(dmin, reach), f_mul(far, sc_cast_k)) { return false }
+  return true
+}
+
 # `full` casts the layer's entire instance list out of sh_buf instead of the near
 # partition out of l.buf. A layer with no impostor (the tree crowns' branch cards) has
 # no cheap stand-in to cast from, so without this its shadow simply began at the near
@@ -958,8 +995,12 @@ function layer_draw_near(l: Layer, shadow: bool, light_vp: words, full: bool) ->
     return
   }
   if l.n_lods > 1 {
-    # a LOD chain: every level from its own bucket (casters are what is drawn)
-    for k in 0 .. l.n_lods { sc_dbg_level = k;  layer_draw_model(l, l.lods[k], l.lod_buf[k], l.n_lod[k], l.lod_card[k] == 1, shadow, light_vp) }
+    # a LOD chain: every level from its own bucket (casters are what is drawn), and a caster level
+    # only into the cascades it can put a shadow in
+    for k in 0 .. l.n_lods {
+      if shadow and not layer_level_casts_here(l, k) { continue }
+      sc_dbg_level = k;  layer_draw_model(l, l.lods[k], l.lod_buf[k], l.n_lod[k], l.lod_card[k] == 1, shadow, light_vp)
+    }
     sc_dbg_level = -1
     return
   }

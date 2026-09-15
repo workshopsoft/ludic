@@ -17,6 +17,7 @@ fullscreen.vert|ternormal.frag|
 fullscreen.vert|tershadow.frag|#define NOISE_ONLY;
 fullscreen.vert|tonemap.frag|
 grass.vert|model.frag|#define FOLIAGE;#define BLADE;
+grass.vert|model.frag|#define FOLIAGE;#define BLADE;#define TILES;
 impostor.vert|impostor.frag|
 impostor.vert|impostor.frag|#define SHADOW_PASS;
 model.vert|bake.frag|

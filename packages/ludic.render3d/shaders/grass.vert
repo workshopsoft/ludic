@@ -27,6 +27,9 @@ uniform float u_wind;
 uniform vec2 u_tile;         // world xz of this tile's corner
 uniform int u_tile_cells;    // 16 m cells per tile side
 uniform int u_per_cell;      // indices drawn per cell in this tile
+#ifdef TILES
+uniform vec4 u_tiles[256];   // per tile of the draw: corner x, corner z, indices per cell
+#endif
 uniform float u_s0;          // blade spacing at the camera (m)
 uniform float u_d0;          // distance at which the spacing has doubled (m)
 uniform float u_radius;      // no blades past this
@@ -66,10 +69,21 @@ float heightSmooth(sampler2D tex, vec2 uv) {
 void cull() { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); v_wpos = vec3(0.0); v_nrm = vec3(0.0, 1.0, 0.0); v_uv = vec2(0.0); v_seed = 0.0; v_rot = vec2(0.0, 1.0); v_hull = 1.0; }
 
 void main() {
+#ifdef TILES
+  // Vulkan: one draw covers a chunk of tiles. Each record's firstInstance is its place in the chunk
+  // times 65536 (grass.ludic), and u_tiles holds that place's corner and indices per cell.
+  int ti = gl_InstanceIndex / 65536;
+  int i = gl_InstanceIndex - ti * 65536;
+  vec2 tile = u_tiles[ti].xy;
+  int per_cell = int(u_tiles[ti].z + 0.5);
+#else
   int i = gl_InstanceID;
-  int c = i / u_per_cell;
-  int j = i - c * u_per_cell;
-  vec2 cell = u_tile + vec2(float(c % u_tile_cells), float(c / u_tile_cells)) * CELL;
+  vec2 tile = u_tile;
+  int per_cell = u_per_cell;
+#endif
+  int c = i / per_cell;
+  int j = i - c * per_cell;
+  vec2 cell = tile + vec2(float(c % u_tile_cells), float(c / u_tile_cells)) * CELL;
   vec2 cid = floor(cell / CELL + 0.5);
   ivec2 ci = ivec2(cid);
   float fj = float(j);

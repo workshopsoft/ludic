@@ -20,6 +20,21 @@ var grass_d0: int = 0            # the distance at which the spacing has doubled
 var grass_radius: int = 0        # no blades past this (m)
 var grass_draws: int = 0
 var grass_dbg: int = 0
+# Vulkan with multi-draw indirect: every visible tile is a record in one buffer, uploaded once a
+# frame, and each band draws its records GRASS_CHUNK at a time - one draw for up to 256 tiles. A
+# record's firstInstance is its place in its chunk times 65536; grass.vert's TILES variant reads that
+# place's corner and indices per cell from u_tiles. R3D_GRASS_TILES=1 keeps a draw per tile.
+const GRASS_CHUNK: int = 256
+const GRASS_RECS: int = 8192
+var grass_merge: bool = false
+var grass_rec: words = null           # VkDrawIndexedIndirectCommand records, 5 words each
+var grass_tv: words = null            # per record: corner x, corner z, indices per cell, 0 (float bits)
+var grass_chunk_tv: words = null
+var grass_n: int = 0
+var grass_cmds: int = 0
+var grass_band_start: words = null    # per band: its first record
+var grass_band_cells: words = null    # ... and its 16 m cells per tile side
+var grass_band_n: int = 0
 
 # a blade: `rows` rows of 2 vertices (x across, y along, z bend), attribute 2 = uv
 function grass_blade_mesh(rows: int) -> Mesh {
@@ -57,7 +72,15 @@ function grass_blade_mesh(rows: int) -> Mesh {
 }
 
 function grass_init() -> void {
-  grass_prog = r3d_program("grass.vert", "model.frag", "#define FOLIAGE\n#define BLADE\n")
+  grass_merge = gpu_has_mdi() and not Os.has_env("R3D_GRASS_TILES")
+  var defs = "#define FOLIAGE\n#define BLADE\n"
+  if grass_merge {
+    defs = defs + "#define TILES\n"
+    grass_rec = words(GRASS_RECS * 5);  grass_tv = words(GRASS_RECS * 4);  grass_chunk_tv = words(GRASS_CHUNK * 4)
+    grass_band_start = words(4);  grass_band_cells = words(4)
+    grass_cmds = gpu_buffer_new()
+  }
+  grass_prog = r3d_program("grass.vert", "model.frag", defs)
   grass_mesh = grass_blade_mesh(4)
   grass_wind = fl(2.4)
   grass_s0 = fl(0.11)
@@ -79,7 +102,11 @@ function grass_count_at(d: int) -> int {
 function grass_tiles(size: int, d_min: int, d_max: int) -> void {
   let p = grass_prog
   let cells = size / GRASS_CELL
-  u_i(gpu_uniform(p, "u_tile_cells"), cells)
+  if grass_merge {
+    grass_band_start[grass_band_n] = grass_n;  grass_band_cells[grass_band_n] = cells;  grass_band_n += 1
+  } else {
+    u_i(gpu_uniform(p, "u_tile_cells"), cells)
+  }
   let sz = fi(size)
   let half = f_mul(sz, F_HALF)
   let reach = f_add(d_max, f_mul(half, fl(1.5)))
@@ -102,7 +129,18 @@ function grass_tiles(size: int, d_min: int, d_max: int) -> void {
       let cy = terrain_height(cx, cz)
       if cam_sphere_visible(cx, cy, cz, f_add(corner_r, fi(6))) {
         let per = grass_count_at(dnear)
-        if per > 0 {
+        if per > 0 and grass_merge {
+          if grass_n < GRASS_RECS {
+            var inst = per * cells * cells
+            if inst > 65535 { inst = 65535 }
+            let r = grass_n * 5
+            grass_rec[r] = grass_mesh.count;  grass_rec[r + 1] = inst;  grass_rec[r + 2] = 0;  grass_rec[r + 3] = 0
+            grass_rec[r + 4] = ((grass_n - grass_band_start[grass_band_n - 1]) % GRASS_CHUNK) * 65536
+            let t = grass_n * 4
+            grass_tv[t] = ox;  grass_tv[t + 1] = oz;  grass_tv[t + 2] = fi(per);  grass_tv[t + 3] = F_ZERO
+            grass_n += 1
+          }
+        } else if per > 0 {
           u_f2(gpu_uniform(p, "u_tile"), ox, oz)
           u_i(gpu_uniform(p, "u_per_cell"), per)
           mesh_draw_instanced(grass_mesh, per * cells * cells)
@@ -152,9 +190,35 @@ function grass_draw() -> void {
   u_f(gpu_uniform(p, "u_spec_scale"), fl(0.15))
   gpu_cull(false)
   grass_draws = 0
+  grass_n = 0
+  grass_band_n = 0
   gpu_mesh_bind(grass_mesh)
   grass_tiles(16, F_ZERO, fi(300))
   grass_tiles(64, fi(300), fi(1200))
   grass_tiles(256, fi(1200), grass_radius)
+  if grass_merge { grass_flush() }
   gpu_cull(true)
+}
+
+# the records gathered this frame: uploaded once, then each band GRASS_CHUNK records a draw
+function grass_flush() -> void {
+  if grass_n == 0 { return }
+  let p = grass_prog
+  gpu_buffer_upload(grass_cmds, grass_n * 20, grass_rec, GPU_DYNAMIC)
+  for b in 0 .. grass_band_n {
+    let s = grass_band_start[b]
+    var e = grass_n
+    if b + 1 < grass_band_n { e = grass_band_start[b + 1] }
+    if e > s { u_i(gpu_uniform(p, "u_tile_cells"), grass_band_cells[b]) }
+    var k = s
+    while k < e {
+      var m = e - k
+      if m > GRASS_CHUNK { m = GRASS_CHUNK }
+      for q in 0 .. m * 4 { grass_chunk_tv[q] = grass_tv[k * 4 + q] }
+      u_fv(gpu_uniform(p, "u_tiles"), m * 4, grass_chunk_tv)
+      gpu_draw_mesh_indirect(grass_mesh, grass_cmds, k * 20, m, 0, 0)
+      grass_draws += 1
+      k += m
+    }
+  }
 }

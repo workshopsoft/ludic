@@ -516,6 +516,8 @@ function gpu_buffer_free(buf: int) -> void {
 # a caller keeps its CPU path. A compute program's binding 0 is its parameter block (params,
 # copied at the dispatch); bindings 1.. are `bufs`, gpu buffers.
 function gpu_has_compute() -> bool { return gpu_kind == GPU_VK }
+# several records in one indirect draw, each with its own firstInstance
+function gpu_has_mdi() -> bool { return gpu_kind == GPU_VK and gvk_has_mdi }
 function gpu_compute(name: string, n_bufs: int) -> int {
   if gpu_kind != GPU_VK { return 0 }
   return gvk_compute_new(name, n_bufs)
