@@ -2297,7 +2297,7 @@ U 2e2908c8 vert u_node 176 vec3 1 0
 U 2e2908c8 vert u_morph 192 vec2 1 0
 U 2e2908c8 vert u_grid 200 float 1 0
 I 2e2908c8 a_xz 0 vec2
-B 2e2908c8 frag 1 872
+B 2e2908c8 frag 1 904
 U 2e2908c8 frag u_cascade_vp 0 mat4 5 64
 U 2e2908c8 frag u_cascade_split 320 float 5 16
 U 2e2908c8 frag u_cascade_range 400 float 5 16
@@ -2333,10 +2333,11 @@ U 2e2908c8 frag u_carpet_on 776 float 1 0
 U 2e2908c8 frag u_snow_line 780 float 1 0
 U 2e2908c8 frag u_lake_level 784 float 1 0
 U 2e2908c8 frag u_sea_level 788 float 1 0
-U 2e2908c8 frag u_origin 792 vec2 1 0
-U 2e2908c8 frag u_view 800 mat4 1 0
-U 2e2908c8 frag u_far_split 864 float 1 0
-U 2e2908c8 frag u_far_band 868 float 1 0
+U 2e2908c8 frag u_lake 800 vec4 1 0
+U 2e2908c8 frag u_origin 816 vec2 1 0
+U 2e2908c8 frag u_view 832 mat4 1 0
+U 2e2908c8 frag u_far_split 896 float 1 0
+U 2e2908c8 frag u_far_band 900 float 1 0
 T 2e2908c8 u_brdf 2
 T 2e2908c8 u_carpet 3
 T 2e2908c8 u_grass_a 4
@@ -2365,7 +2366,7 @@ U 1f95f31b vert u_node 176 vec3 1 0
 U 1f95f31b vert u_morph 192 vec2 1 0
 U 1f95f31b vert u_grid 200 float 1 0
 I 1f95f31b a_xz 0 vec2
-B 1f95f31b frag 1 872
+B 1f95f31b frag 1 904
 U 1f95f31b frag u_cascade_vp 0 mat4 5 64
 U 1f95f31b frag u_cascade_split 320 float 5 16
 U 1f95f31b frag u_cascade_range 400 float 5 16
@@ -2401,10 +2402,11 @@ U 1f95f31b frag u_carpet_on 776 float 1 0
 U 1f95f31b frag u_snow_line 780 float 1 0
 U 1f95f31b frag u_lake_level 784 float 1 0
 U 1f95f31b frag u_sea_level 788 float 1 0
-U 1f95f31b frag u_origin 792 vec2 1 0
-U 1f95f31b frag u_view 800 mat4 1 0
-U 1f95f31b frag u_far_split 864 float 1 0
-U 1f95f31b frag u_far_band 868 float 1 0
+U 1f95f31b frag u_lake 800 vec4 1 0
+U 1f95f31b frag u_origin 816 vec2 1 0
+U 1f95f31b frag u_view 832 mat4 1 0
+U 1f95f31b frag u_far_split 896 float 1 0
+U 1f95f31b frag u_far_band 900 float 1 0
 T 1f95f31b u_brdf 2
 T 1f95f31b u_carpet 3
 T 1f95f31b u_grass_a 4
@@ -2433,7 +2435,7 @@ U f4382918 vert u_node 176 vec3 1 0
 U f4382918 vert u_morph 192 vec2 1 0
 U f4382918 vert u_grid 200 float 1 0
 I f4382918 a_xz 0 vec2
-B f4382918 frag 1 872
+B f4382918 frag 1 904
 U f4382918 frag u_cascade_vp 0 mat4 5 64
 U f4382918 frag u_cascade_split 320 float 5 16
 U f4382918 frag u_cascade_range 400 float 5 16
@@ -2469,10 +2471,11 @@ U f4382918 frag u_carpet_on 776 float 1 0
 U f4382918 frag u_snow_line 780 float 1 0
 U f4382918 frag u_lake_level 784 float 1 0
 U f4382918 frag u_sea_level 788 float 1 0
-U f4382918 frag u_origin 792 vec2 1 0
-U f4382918 frag u_view 800 mat4 1 0
-U f4382918 frag u_far_split 864 float 1 0
-U f4382918 frag u_far_band 868 float 1 0
+U f4382918 frag u_lake 800 vec4 1 0
+U f4382918 frag u_origin 816 vec2 1 0
+U f4382918 frag u_view 832 mat4 1 0
+U f4382918 frag u_far_split 896 float 1 0
+U f4382918 frag u_far_band 900 float 1 0
 T f4382918 u_brdf 2
 T f4382918 u_carpet 3
 T f4382918 u_grass_a 4
@@ -2501,7 +2504,7 @@ U f2952361 vert u_node 176 vec3 1 0
 U f2952361 vert u_morph 192 vec2 1 0
 U f2952361 vert u_grid 200 float 1 0
 I f2952361 a_xz 0 vec2
-B f2952361 frag 1 872
+B f2952361 frag 1 904
 U f2952361 frag u_cascade_vp 0 mat4 5 64
 U f2952361 frag u_cascade_split 320 float 5 16
 U f2952361 frag u_cascade_range 400 float 5 16
@@ -2537,10 +2540,11 @@ U f2952361 frag u_carpet_on 776 float 1 0
 U f2952361 frag u_snow_line 780 float 1 0
 U f2952361 frag u_lake_level 784 float 1 0
 U f2952361 frag u_sea_level 788 float 1 0
-U f2952361 frag u_origin 792 vec2 1 0
-U f2952361 frag u_view 800 mat4 1 0
-U f2952361 frag u_far_split 864 float 1 0
-U f2952361 frag u_far_band 868 float 1 0
+U f2952361 frag u_lake 800 vec4 1 0
+U f2952361 frag u_origin 816 vec2 1 0
+U f2952361 frag u_view 832 mat4 1 0
+U f2952361 frag u_far_split 896 float 1 0
+U f2952361 frag u_far_band 900 float 1 0
 T f2952361 u_brdf 2
 T f2952361 u_carpet 3
 T f2952361 u_grass_a 4
@@ -2569,7 +2573,7 @@ U a0f2dbac vert u_node 176 vec3 1 0
 U a0f2dbac vert u_morph 192 vec2 1 0
 U a0f2dbac vert u_grid 200 float 1 0
 I a0f2dbac a_xz 0 vec2
-B a0f2dbac frag 1 872
+B a0f2dbac frag 1 904
 U a0f2dbac frag u_cascade_vp 0 mat4 5 64
 U a0f2dbac frag u_cascade_split 320 float 5 16
 U a0f2dbac frag u_cascade_range 400 float 5 16
@@ -2605,10 +2609,11 @@ U a0f2dbac frag u_carpet_on 776 float 1 0
 U a0f2dbac frag u_snow_line 780 float 1 0
 U a0f2dbac frag u_lake_level 784 float 1 0
 U a0f2dbac frag u_sea_level 788 float 1 0
-U a0f2dbac frag u_origin 792 vec2 1 0
-U a0f2dbac frag u_view 800 mat4 1 0
-U a0f2dbac frag u_far_split 864 float 1 0
-U a0f2dbac frag u_far_band 868 float 1 0
+U a0f2dbac frag u_lake 800 vec4 1 0
+U a0f2dbac frag u_origin 816 vec2 1 0
+U a0f2dbac frag u_view 832 mat4 1 0
+U a0f2dbac frag u_far_split 896 float 1 0
+U a0f2dbac frag u_far_band 900 float 1 0
 T a0f2dbac u_brdf 2
 T a0f2dbac u_carpet 3
 T a0f2dbac u_grass_a 4
@@ -2637,7 +2642,7 @@ U 5e4589a1 vert u_node 176 vec3 1 0
 U 5e4589a1 vert u_morph 192 vec2 1 0
 U 5e4589a1 vert u_grid 200 float 1 0
 I 5e4589a1 a_xz 0 vec2
-B 5e4589a1 frag 1 872
+B 5e4589a1 frag 1 904
 U 5e4589a1 frag u_cascade_vp 0 mat4 5 64
 U 5e4589a1 frag u_cascade_split 320 float 5 16
 U 5e4589a1 frag u_cascade_range 400 float 5 16
@@ -2673,10 +2678,11 @@ U 5e4589a1 frag u_carpet_on 776 float 1 0
 U 5e4589a1 frag u_snow_line 780 float 1 0
 U 5e4589a1 frag u_lake_level 784 float 1 0
 U 5e4589a1 frag u_sea_level 788 float 1 0
-U 5e4589a1 frag u_origin 792 vec2 1 0
-U 5e4589a1 frag u_view 800 mat4 1 0
-U 5e4589a1 frag u_far_split 864 float 1 0
-U 5e4589a1 frag u_far_band 868 float 1 0
+U 5e4589a1 frag u_lake 800 vec4 1 0
+U 5e4589a1 frag u_origin 816 vec2 1 0
+U 5e4589a1 frag u_view 832 mat4 1 0
+U 5e4589a1 frag u_far_split 896 float 1 0
+U 5e4589a1 frag u_far_band 900 float 1 0
 T 5e4589a1 u_brdf 2
 T 5e4589a1 u_carpet 3
 T 5e4589a1 u_grass_a 4

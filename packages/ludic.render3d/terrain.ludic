@@ -480,6 +480,7 @@ function terrain_bind_prog(p: int) -> void {
   var sea = lake
   if ter_sea_set { sea = ter_sea_level }
   u_f(gpu_uniform(p, "u_sea_level"), sea)
+  u_f4(gpu_uniform(p, "u_lake"), ter_lake_cx, ter_lake_cz, ter_lake_ex, ter_lake_ez)
   u_mat4(gpu_uniform(p, "u_view"), cam_view)
   u_mat4(gpu_uniform(p, "u_proj"), cam_proj)
   u_f2(gpu_uniform(p, "u_origin"), ter_ox, ter_oz)
