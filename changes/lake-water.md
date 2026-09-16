@@ -6,3 +6,6 @@ its lake no longer floods every hollow in the survey with that lake's level; and
 terrain's wet shore, forest and scree gates read the carved lake's line inside its outline
 (`u_lake`), the rule the grass already used, so a lake above the sea keeps its wet bank and
 no forest is painted down its bed.
+
+`terrain_lake_carve(false)` keeps a lake's line, outline and shore but skips carving its
+bed, for a height map that already carries a shaped one.

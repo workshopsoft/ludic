@@ -10,6 +10,7 @@ uniform float u_dem_base;       // the elevation that becomes y = 0
 uniform vec2 u_origin;          // world x/z of the map's centre
 uniform vec4 u_lake;            // a lake: centre x/z, half extents (zero = none)
 uniform float u_lake_level;     // its surface height; the model records the surface, the bed is carved below it
+uniform float u_lake_carve;     // 0: the height map carries its own bed (terrain_lake_carve)
 uniform float u_sea_level;      // the sea the coast falls into (terrain_sea); the lake's level unless set
 uniform vec4 u_isle;            // an island: centre x/z, radius (or rim margin), falloff width
 uniform float u_isle_mode;      // 0 none, 1 radial (terrain_island), 2 inward from the survey's edge (terrain_coast)
@@ -50,7 +51,7 @@ void main() {
   float raw = demRaw(v_uv) * (u_dem_max - u_dem_min) + u_dem_min - u_dem_base;
   // the survey carries its own relief at this resolution; only the foot track is added
   h -= 0.25 * smoothstep(6.0, 1.5, pathDist(xz));
-  if (u_lake.z > 0.0) {
+  if (u_lake.z > 0.0 && u_lake_carve > 0.5) {
     // the elevation model samples the water surface as flat ground: inside the lake's
     // outline sink it into a bed, deepest in the middle, with a gentle gravel ramp at the shore
     vec2 q = (xz - u_lake.xy) / u_lake.zw;

@@ -69,6 +69,12 @@ var ter_lake_ez: int = 0
 function terrain_lake(level: int, cx: int, cz: int, ex: int, ez: int) -> void {
   ter_lake_level = level;  ter_lake_cx = cx;  ter_lake_cz = cz;  ter_lake_ex = ex;  ter_lake_ez = ez
 }
+# Whether the generator carves that bed. A height map that already carries a shaped bed
+# turns it off and keeps the lake for everything else (its line, its outline, its shore):
+# the carve drops the bed metres within the survey's last 0.9 m of shore, which reads as a
+# cut edge on a lake whose own bank was shaped to come down gently.
+var ter_lake_carve: bool = true
+function terrain_lake_carve(on: bool) -> void { ter_lake_carve = on }
 # The SEA's level, for the coast, the strand and the shoreline shading, when it is not the
 # carved lake's. They were one number, which holds only while the lake is at sea level: a
 # lake eighty metres up the valley drowned the whole coast toward its own surface. Unset,
@@ -238,6 +244,9 @@ function terrain_generate() -> void {
     u_f2(gpu_uniform(p, "u_origin"), ter_ox, ter_oz)
     u_f4(gpu_uniform(p, "u_lake"), ter_lake_cx, ter_lake_cz, ter_lake_ex, ter_lake_ez)
     u_f(gpu_uniform(p, "u_lake_level"), ter_lake_level)
+    var carve = F_ONE
+    if not ter_lake_carve { carve = F_ZERO }
+    u_f(gpu_uniform(p, "u_lake_carve"), carve)
     u_f(gpu_uniform(p, "u_sea_level"), ter_sea_gen())
     u_f4(gpu_uniform(p, "u_isle"), ter_isle_cx, ter_isle_cz, ter_isle_r, ter_isle_fall)
     u_f(gpu_uniform(p, "u_isle_mode"), fi(ter_isle_mode))

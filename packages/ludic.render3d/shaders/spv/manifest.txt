@@ -157,7 +157,8 @@ U 4be7acd9 frag u_dem_base 776 float 1 0
 U 4be7acd9 frag u_origin 784 vec2 1 0
 U 4be7acd9 frag u_lake 800 vec4 1 0
 U 4be7acd9 frag u_lake_level 816 float 1 0
-U 4be7acd9 frag u_sea_level 820 float 1 0
+U 4be7acd9 frag u_lake_carve 820 float 1 0
+U 4be7acd9 frag u_sea_level 824 float 1 0
 U 4be7acd9 frag u_isle 832 vec4 1 0
 U 4be7acd9 frag u_isle_mode 848 float 1 0
 U 4be7acd9 frag u_dem_blur 852 float 1 0
