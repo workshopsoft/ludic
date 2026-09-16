@@ -1011,7 +1011,8 @@ are **`& | ^ << >> ~`** (`>>` is a logical/unsigned shift).
 **Strings are values.** `a + b` concatenates two strings, and `a == b` / `a != b`
 compare them **by content** (not by pointer). `"go" + dir == "goleft"` works as
 written. (Under the hood these call a small emitted string runtime; a `==`/`!=`
-against `null` is still a pointer test.)
+against `null` is still a pointer test. Every other reference — records, slices,
+enums — compares by identity, and comparing a string with one is a compile error.)
 
 **Interpolation is the readable way to build them.** A backtick string
 `` `text {expr} text` `` embeds any expression in `{…}` — numbers, bools and

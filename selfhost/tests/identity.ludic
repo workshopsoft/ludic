@@ -1,0 +1,21 @@
+program T {
+  # `==` / `!=` on two references is identity; only strings compare by content.
+  # The records below start with a zero/equal field, which a byte compare would
+  # have called equal.
+  property Thing { kind: int = 0, name: string = "" }
+  entry {
+    let a = new Thing
+    let b = new Thing
+    print(a == b)        # 0: distinct records, same (zero) leading field
+    print(a == a)        # 1: the same record
+    a.kind = 3
+    b.kind = 3
+    print(a != b)        # 1: equal fields, still distinct
+    let c = a
+    print(c == a)        # 1: an alias is the same record
+    let xs: []Thing = [a, b]
+    print(xs[1] == b)    # 1: identity through a slice
+    let s = "ab"
+    print(s + "c" == "abc")   # 1: strings still compare by content
+  }
+}
