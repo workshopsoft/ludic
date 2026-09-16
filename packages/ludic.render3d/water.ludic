@@ -361,9 +361,12 @@ function water_draw(depth_tex: int) -> void {
     var r = F_ZERO
     if i == wb_primary { r = ron }
     u_f(gpu_uniform(p, "u_refl_on"), r)
-    # every body but the mirrored sea is clipped to the ellipse inside its bounds
+    # Every body is clipped to the ellipse inside its bounds but an unbounded mirrored sea,
+    # whose rectangle is the point. A mirrored LAKE is clipped like any other: a map whose
+    # reflection belongs to its lake (the Bells in Maroon Lake) would otherwise draw that
+    # lake's level over every hollow in the survey.
     var clip = F_ONE
-    if i == wb_primary { clip = F_ZERO }
+    if i == wb_primary and f_gt(f_max(wb_ex[i], wb_ez[i]), fi(10000)) { clip = F_ZERO }
     u_f(gpu_uniform(p, "u_clip_ellipse"), clip)
     mesh_draw(water_mesh)
   }
