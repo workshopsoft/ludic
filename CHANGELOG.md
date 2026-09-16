@@ -7,6 +7,78 @@ change type. Preview the next one with `ludic dev release --dry-run`.
 A released section may carry a hand-written summary paragraph above its groups
 (v0.2.0 has one); the generated bullets below it are not edited by hand.
 
+## v0.18.0 — 2026-09-16
+
+### Features
+
+- Run a single test by name: a compiled test program takes the test's exact name as its
+  first argument (`./tests "adds"`), and `ludic test` gains `--test NAME` to pass it through.
+  A name that matches no test is reported and fails the run. `ludic test --verbose` (`-v`)
+  prints every test's `ok`/`FAIL` line, framed by `RUN <file>` … `PASS|FAIL <file>`, which is
+  what editor test views parse.
+- The JetBrains plugin covers much more of the IDE:
+  - Run configurations for `ludic run`/`build`/`test` (plus any other `ludic` command), with
+    gutter run buttons on `program` and on every `test "name"` block.
+  - Test results appear in the IDE's test tree, with navigation back to each test block.
+  - `file.ludic:line` locations are clickable in every console.
+  - Smart indentation on Enter and when typing a closing bracket; quotes pair up.
+  - A Color Scheme page and a Code Style page.
+  - Live templates, New Ludic File templates, and a Ludic project in File | New | Project.
+  - A Tools | Ludic menu, and a warning when the toolchain is missing.
+  - `package.ludic` is treated as a package manifest:
+    - a banner offers Fetch, Update, Verify, Run, Test, Build and Bundle, and warns when the lock is
+      missing or older than the manifest;
+    - gutter actions on `package` and `require` lines;
+    - completion and quick documentation for directives and `app` keys;
+    - its own icon.
+  - `script` and `hook` lines complete and are validated; each script has a run button, the
+    package banner has script shortcuts, and Tools | Ludic | Run Script… lists them all.
+  - The toolchain's and the project's packages are listed under External Libraries.
+  - The Structure view, parameter info and code-block navigation now come from `ludic-lsp`.
+  - The plugin is now 1.5.0 and requires IntelliJ Platform 2024.2 or newer and LSP4IJ 0.21.
+  - Fixed: Enter no longer inserts an extra `}`, and Comment Line no longer writes two spaces.
+- `float` and `double`: IEEE floating point with ordinary operators, so renderer math reads
+  `a * b + c` instead of `f_add(f_mul(a, b), c)`.
+  - Decimal literals take their type from context (`let s: float = 0.1` is exactly 0.1), and
+    stay `fixed` elsewhere, so existing programs keep their meaning.
+  - `int`/`long` promote; `float(x)`, `double(x)`, `int(x)`, `long(x)` and `fixed(x)` convert.
+  - `floats(n)` / `doubles(n)` buffers; float fields, globals, constants and parameters.
+  - `Math.*` computes in float when given one; `string`/`print`/interpolation write the
+    shortest round-tripping decimal; `float_bits` / `float_from_bits` expose the IEEE pattern.
+  - `@deterministic` code may not use floats (it is now checked).
+- `import "camp"` imports a directory through its barrel, `camp/index.ludic` (a fragment
+  listing the directory's own imports). A directory without one is a clear error. Packages
+  resolve the same way: `import "ludic.render3d"` reads `ludic.render3d/index.ludic`.
+- `ludic-lsp` navigates like the compiler resolves:
+  - Package imports (`import "ludic.render3d/r3d.ludic"`) resolve from `ludic_modules/` and the
+    toolchain's `packages/`, so their names hover, complete and jump. Import strings are links.
+  - `var` locals are tracked (declaration, usages, rename).
+  - Hover shows the declared or inferred type of locals, parameters and globals.
+  - Hover and go-to-definition on built-ins, built-in types and namespaces show the reference
+    page, with a link to the online docs. Release archives now ship `docs/language` for this.
+  - Go to type declaration (`textDocument/typeDefinition`) is supported.
+  - Signature help carries per-parameter ranges and follows named arguments.
+  - Completion inside a call offers the parameter names not given yet, `Namespace.` offers its
+    members, and results are ranked: locals first, then globals, built-ins and keywords.
+- `package.ludic` gains `entry`, scripts and lifecycle hooks:
+  - `entry "src/game.ludic"` names the program `ludic run`/`build`/`bundle` compile. Without
+    it, the one file under `src/` that declares a `program` is used.
+  - `script "dev" "ludic run --headless"` defines a command: `ludic dev` (or `ludic script dev`)
+    runs it with any extra arguments, and `ludic scripts` lists them.
+  - `hook before|after <command> "…"` wraps `build`, `run`, `test`, `bundle`, `pack`, `get`, …
+    or a script. A failing `before` hook stops the command; `after` hooks run only on success.
+  - Quoted manifest values accept `\"` and `\\` escapes.
+
+### Fixes
+
+- **`==` / `!=` on records is identity again** — only two strings compare by content.
+
+  Every pointer-typed comparison used to be lowered to a C-string content compare,
+  so two distinct records (properties, slices, enums) compared their bytes up to
+  the first zero byte: `a == b` could be true for different objects that shared a
+  leading field, depending on layout. References now compare by identity
+  (`icmp eq ptr`); `string` (and untyped `pointer`/`pointers` text) still compares by content,
+  and comparing a `string` with a non-string reference is a compile error.
 ## v0.17.0 — 2026-09-16
 
 ### Features
