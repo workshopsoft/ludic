@@ -1,0 +1,277 @@
+# lsp/types.ludic — what type a name has, for hover and go-to-type.
+#
+# Declared types are taken as written (`var hp: int`, `sk: Skin`). An
+# undeclared one (`let i = skin_joint(sk, "hip")`) is inferred from its
+# initializer, shallowly: literals, `new T`, calls to functions and builtins
+# with a known return type, other names, fields, and comparisons. Anything
+# cleverer is the compiler's job; an unknown type is simply left out.
+
+# the return type written after the last `->` of a signature label, or ""
+function sig_return(sig: pointer) -> pointer {
+  if (sig == null) { return "" }
+  let n = cstr_len(sig)
+  var at = -1
+  var i = 0
+  while i + 1 < n {
+    if sig[i] == '-' and sig[i + 1] == '>' { at = i }
+    i += 1
+  }
+  if at < 0 { return "" }
+  var s = at + 2
+  while s < n and sig[s] == ' ' { s += 1 }
+  var e = n
+  while e > s and sig[e - 1] == ' ' { e -= 1 }
+  return sig[s..e]
+}
+
+function is_compare_op(D: Doc, t: int) -> bool {
+  return tis(D, t, "==") or tis(D, t, "!=") or tis(D, t, "<") or tis(D, t, ">") or tis(D, t, "<=") or tis(D, t, ">=") or tis(D, t, "and") or tis(D, t, "or")
+}
+
+# does the expression starting at t contain a top-level comparison before it ends?
+function expr_is_boolean(D: Doc, t: int) -> bool {
+  var depth = 0
+  var k = t
+  let line = D.tk_line[t]
+  while k >= 0 and k < ntok(D) {
+    let kind = D.tk_kind[k]
+    if kind == LT_NL or kind == LT_EOF or kind == LT_COMMENT { return false }
+    if tis(D, k, "(") or tis(D, k, "[") { depth += 1 }
+    else if tis(D, k, ")") or tis(D, k, "]") { if depth == 0 { return false };  depth -= 1 }
+    else if tis(D, k, "{") or tis(D, k, "}") or tis(D, k, ";") or tis(D, k, ",") { if depth == 0 { return false } }
+    else if depth == 0 and is_compare_op(D, k) { return true }
+    if D.tk_line[k] != line { return false }
+    k += 1
+  }
+  return false
+}
+
+# the declared or inferred type of symbol y (which lives in doc O), or ""
+function sym_type(O: Doc, si: int, depth: int) -> pointer {
+  let y = O.syms[si]
+  if (y.ty != null) and not (y.ty == "") { return y.ty }
+  if y.init >= 0 and depth < 8 { return infer_type(O, y.init, depth + 1) }
+  return ""
+}
+
+# the type of the expression whose first token is t, or ""
+function infer_type(D: Doc, t: int, depth: int) -> pointer {
+  if t < 0 or t >= ntok(D) or depth > 8 { return "" }
+  if expr_is_boolean(D, t) { return "bool" }
+  let k = D.tk_kind[t]
+  if k == LT_INT { return "int" }
+  if k == LT_FLOAT { return "fixed" }
+  if k == LT_STR { return "string" }
+  if k == LT_CHAR { return "int" }
+  if k == LT_BOOL { return "bool" }
+  if tis(D, t, "not") { return "bool" }
+  if tis(D, t, "(") { return infer_type(D, t + 1, depth + 1) }
+  if tis(D, t, "-") { return infer_type(D, next_sig(D, t), depth + 1) }
+  if tis(D, t, "new") {
+    let n = next_sig(D, t)
+    if n < 0 { return "" }
+    if tis(D, n, "[") {
+      let close = D.tmatch[n]
+      if close >= 0 { let el = next_sig(D, close);  if el >= 0 { return "[]" + ttext(D, el) } }
+      return ""
+    }
+    return ttext(D, n)
+  }
+  if tis(D, t, "[") {
+    let first = next_sig(D, t)
+    if first >= 0 and not tis(D, first, "]") { let et = infer_type(D, first, depth + 1);  if not (et == "") { return "[]" + et } }
+    return ""
+  }
+  if k != LT_ID and k != LT_TYPE { return "" }
+  let name = ttext(D, t)
+  let nx = next_sig(D, t)
+  # a call: its return type
+  if nx >= 0 and tis(D, nx, "(") {
+    if k == LT_TYPE { return name }                     # int(x), string(n)
+    let top = find_top(D, name)
+    if top >= 0 {
+      let ow = g_owner
+      if ow.syms[top].kind == LS_FN or ow.syms[top].kind == LS_EXTERN {
+        let r = ow.syms[top].ty
+        if (r == "") { return "void" }
+        return r
+      }
+    }
+    let r2 = sig_return(docs_sig(name))
+    if not (r2 == "") { return r2 }
+    return sig_return(builtin_sig(name))
+  }
+  # Name.member: a namespace call, or a field of a typed receiver
+  if nx >= 0 and tis(D, nx, ".") {
+    let m = next_sig(D, nx)
+    if m < 0 { return "" }
+    let mn = next_sig(D, m)
+    if mn >= 0 and tis(D, mn, "(") {
+      let r = sig_return(docs_sig(name + "." + ttext(D, m)))
+      if not (r == "") { return r }
+      return sig_return(ns_method_sig(name, ttext(D, m)))
+    }
+    let comp = receiver_component(D, nx)
+    if comp >= 0 and (g_owner != null) {
+      let co = g_owner
+      var f = 0
+      while f < len(co.syms) {
+        if co.syms[f].kind == LS_FIELD and co.syms[f].parent == comp and (co.syms[f].name == ttext(D, m)) { return co.syms[f].ty }
+        f += 1
+      }
+    }
+    return ""
+  }
+  # a record literal: `Pos { x: 1 }`
+  if nx >= 0 and tis(D, nx, "{") and name[0] >= 'A' and name[0] <= 'Z' { return name }
+  if k == LT_TYPE { return name }
+  # another name
+  let l = find_local(D, name, D.tk_start[t])
+  if l >= 0 {
+    if D.syms[l].init == t { return "" }
+    return sym_type(D, l, depth + 1)
+  }
+  let top = find_top(D, name)
+  if top >= 0 {
+    let ow = g_owner
+    let yk = ow.syms[top].kind
+    if yk == LS_VAR or yk == LS_CONST { return sym_type(ow, top, depth + 1) }
+    if yk == LS_FN or yk == LS_EXTERN { return ow.syms[top].detail }
+  }
+  return ""
+}
+
+# the hover code line for a symbol: `var hp: int`, `param sk: Skin`, …
+function sym_hover_code(O: Doc, si: int) -> pointer {
+  let y = O.syms[si]
+  let k = y.kind
+  if k == LS_QUERYVAR and not (y.detail == "") { return y.detail }
+  if k == LS_LOCAL or k == LS_PARAM or k == LS_VAR or k == LS_CONST or k == LS_QUERYVAR {
+    let ty = sym_type(O, si, 0)
+    var head = "let "
+    if k == LS_LOCAL and y.mutable == 1 { head = "var " }
+    if k == LS_PARAM { head = "param " }
+    if k == LS_VAR { head = "var " }
+    if k == LS_CONST { head = "const " }
+    if k == LS_QUERYVAR { head = "query " }
+    if (ty == "") { return head + y.name }
+    return head + y.name + ": " + ty
+  }
+  if k == LS_COMPONENT or k == LS_ARCHETYPE { return record_hover_code(O, si) }
+  if (y.detail == "") { return y.name }
+  return y.detail
+}
+
+# `property Actor {` with one field per line, the way it is written
+function record_hover_code(O: Doc, si: int) -> pointer {
+  let y = O.syms[si]
+  let b = buf_new()
+  if y.kind == LS_COMPONENT { buf_puts(b, "property ") } else { buf_puts(b, "model ") }
+  buf_puts(b, y.name)
+  buf_puts(b, " {")
+  var n = 0
+  var f = 0
+  while f < len(O.syms) {
+    let fy = O.syms[f]
+    if fy.kind == LS_FIELD and fy.parent == si {
+      buf_puts(b, "\n  ")
+      buf_puts(b, fy.name)
+      if not (fy.ty == "") { buf_puts(b, ": ");  buf_puts(b, fy.ty) }
+      n += 1
+    }
+    f += 1
+  }
+  if n == 0 { buf_puts(b, " }") } else { buf_puts(b, "\n}") }
+  return buf_str(b)
+}
+
+# the declaration of a symbol's type: a model/property in the workspace, else
+# the reference page of a built-in type. Location JSON or null.
+function type_definition_of(O: Doc, si: int, from: Doc) -> pointer {
+  var ty = sym_type(O, si, 0)
+  if (ty == "") { return null }
+  while starts_with(ty, "[]") { ty = ty[2..cstr_len(ty)] }
+  let top = find_top(from, ty)
+  if top >= 0 {
+    let ow = g_owner
+    let o = buf_new()
+    put_location(o, ow, ow.syms[top].start, ow.syms[top].end)
+    return buf_str(o)
+  }
+  let i = docs_index(ty)
+  if i < 0 { return null }
+  let o = buf_new()
+  buf_puts(o, "{\"uri\":")
+  jstr_out(o, path_to_uri(g_dx_file[i]))
+  buf_puts(o, ",\"range\":{\"start\":{\"line\":0,\"character\":0},\"end\":{\"line\":0,\"character\":0}}}")
+  return buf_str(o)
+}
+
+function on_type_definition(msg: JVal, id: JVal) -> void {
+  let D = doc_of(msg)
+  if (D == null) { send_result(id, "null");  return }
+  let off = off_of(msg, D, "params.position")
+  resolve_at(D, off)
+  if (g_owner == null) or g_symidx < 0 { on_definition(msg, id);  return }
+  let r = type_definition_of(g_owner, g_symidx, D)
+  if (r == null) { on_definition(msg, id);  return }
+  send_result(id, r)
+}
+
+# ---- contextual keywords ------------------------------------------------------
+# The compiler reserves its declaration words only as function names
+# (is_reserved_word in selfhost/frontend/parse.ludic): `var model = …`,
+# `model: Model` and `a.model` are all ordinary names. A word is a keyword only
+# where it could start or continue a declaration.
+
+function is_contextual_word(w: pointer) -> bool {
+  if (w == "program") or (w == "import") or (w == "property") or (w == "model") or (w == "enum") or (w == "ui") { return true }
+  if (w == "function") or (w == "extern") or (w == "handler") or (w == "entry") or (w == "event") or (w == "scene") { return true }
+  if (w == "phase") or (w == "query") or (w == "on") or (w == "cancellable") or (w == "public") or (w == "layer") or (w == "start") { return true }
+  if (w == "state") or (w == "machine") or (w == "prefab") or (w == "namespace") or (w == "test") { return true }
+  return false
+}
+
+function demote_contextual_keywords(D: Doc) -> void {
+  let N = ntok(D)
+  var i = 0
+  while i < N {
+    if D.tk_kind[i] == LT_KW and is_contextual_word(ttext(D, i)) and used_as_name(D, i) { D.tk_kind[i] = LT_ID }
+    i += 1
+  }
+}
+
+function used_as_name(D: Doc, i: int) -> bool {
+  let p = prev_sig(D, i)
+  if p >= 0 {
+    if tis(D, p, ".") or tis(D, p, "var") or tis(D, p, "let") or tis(D, p, "const") or tis(D, p, "return") { return true }
+    if D.tk_kind[p] == LT_OP and not (tis(D, p, "{") or tis(D, p, "}") or tis(D, p, ";") or tis(D, p, ")") or tis(D, p, "]")) {
+      # `import` after `(` never happens; `query` after `in` is not an op
+      return true
+    }
+  }
+  let n = next_sig(D, i)
+  if n >= 0 and D.tk_kind[n] == LT_OP {
+    if tis(D, n, ":") or tis(D, n, ".") or tis(D, n, "=") or tis(D, n, ")") or tis(D, n, ",") or tis(D, n, "]") { return true }
+    if tis(D, n, "+=") or tis(D, n, "-=") or tis(D, n, "==") or tis(D, n, "!=") { return true }
+  }
+  return false
+}
+
+# is this a documented standard-library namespace (Screen, Color, Math, …)?
+function is_namespace_name(w: pointer) -> bool {
+  if cstr_len(w) == 0 or w[0] < 'A' or w[0] > 'Z' { return false }
+  docs_load()
+  if docs_ns_index(w) >= 0 { return true }
+  return ns_method_sig(w, "") != null
+}
+
+# SEM_VENDOR when a symbol lives in a package (the toolchain's or ludic_modules/)
+function vendor_mod(O: Doc) -> int {
+  if (O == null) { return 0 }
+  if Text.contains(O.path, "/ludic_modules/") { return SEM_VENDOR }
+  let home = lsp_home()
+  if not (home == "") and starts_with(O.path, home + "packages/") { return SEM_VENDOR }
+  if not (home == "") and starts_with(O.path, home + "runtime/") { return SEM_DEFAULT_LIBRARY }
+  return 0
+}

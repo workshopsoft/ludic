@@ -11,6 +11,8 @@ order: 10
 
 An <code>import</code> pulls the declarations of another Ludic file into this program, letting you split a game across many files instead of one giant block. The imported file is a <b>fragment</b> — bare declarations with no `program` wrapper — and its contents are spliced in as if written here. Paths resolve relative to the importing file, imports may nest, and each resolved path is include-guarded, so importing the same file twice (even through different chains) pulls it in exactly once. Diagnostics still point at the real source file, so errors in an imported fragment report that file's name and line.
 
+A path without <code>.ludic</code> names a directory through its barrel, <code>index.ludic</code>: <code>import "camp"</code> reads <code>camp/index.ludic</code>, which lists the directory's modules with imports relative to itself. <code>import "dir/*.ludic"</code> instead takes every file in the directory, in name order.
+
 ```ludic
 # doc-check: skip — illustrative; the imported paths are example files, not
 # resolvable when this snippet is checked in isolation.

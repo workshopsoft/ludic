@@ -289,6 +289,54 @@ function cmd_test_lsp() -> int {
   # ---- workspace-wide symbol search ---------------------------------------
   let ws = lsp_request("workspace/symbol", `{{"query":"Stats"}}`)
 
+  # ---- navigation an IDE leans on --------------------------------------------
+  # package imports resolve from the toolchain's packages/, import strings are
+  # links, locals of both kinds have a type, built-ins lead to their reference
+  # page, and a call's argument list completes its parameter names.
+  let nsrc = "program Nav {\n  import \"ludic.render3d/fmath.ludic\"\n  function area(width: int, height: int) -> int { return width * height }\n  entry {\n    var total = 0\n    let name = \"x\"\n    total = total + area(width: 2, )\n    Screen.fill_circle(x: 1, y: f_clamp(1, 0, 2), )\n    let s = Screen.\n  }\n}\n"
+  let nfile = tmp_path("lsp_nav.ludic")
+  write_file(nfile, nsrc)
+  lsp_open(nfile, "ludic")
+  let nuri = lsp_doc(nfile)
+  let links = lsp_request("textDocument/documentLink", `{{"textDocument":{nuri}}}`)
+  let pkgdef = lsp_request("textDocument/definition", `{{"textDocument":{nuri},"position":{position_of(nsrc, "ludic.render3d", 3)}}}`)
+  let xdef = lsp_request("textDocument/definition", `{{"textDocument":{nuri},"position":{position_of(nsrc, "f_clamp", 2)}}}`)
+  let vhov = lsp_request("textDocument/hover", `{{"textDocument":{nuri},"position":{position_of(nsrc, "total = total", 10)}}}`)
+  let lhov = lsp_request("textDocument/hover", `{{"textDocument":{nuri},"position":{position_of(nsrc, "name = ", 1)}}}`)
+  let vrefs = lsp_request("textDocument/references", `{{"textDocument":{nuri},"position":{position_of(nsrc, "var total", 5)},"context":{{"includeDeclaration":true}}}}`)
+  let bdef = lsp_request("textDocument/definition", `{{"textDocument":{nuri},"position":{position_of(nsrc, "fill_circle", 2)}}}`)
+  let bhov = lsp_request("textDocument/hover", `{{"textDocument":{nuri},"position":{position_of(nsrc, "fill_circle", 2)}}}`)
+  let tdef = lsp_request("textDocument/definition", `{{"textDocument":{nuri},"position":{position_of(nsrc, "int, height", 1)}}}`)
+  let acomp = lsp_request("textDocument/completion", `{{"textDocument":{nuri},"position":{position_of(nsrc, "2, )", 3)}}}`)
+  let nscomp = lsp_request("textDocument/completion", `{{"textDocument":{nuri},"position":{position_of(nsrc, "= Screen.", 9)}}}`)
+  let ahelp = lsp_request("textDocument/signatureHelp", `{{"textDocument":{nuri},"position":{position_of(nsrc, "2), )", 4)}}}`)
+
+  # contextual keywords, highlights, barrels, semantic modifiers
+  let kdir = tmp_path("lsp_barrel")
+  shell(`mkdir -p {kdir}/camp`)
+  write_file(`{kdir}/camp/index.ludic`, "import \"tent.ludic\"\n")
+  write_file(`{kdir}/camp/tent.ludic`, "function pitch(size: int) -> int { return size }\n")
+  let ksrc = "program K {\n  import \"camp\"\n  import \"ludic.render3d/fmath.ludic\"\n  function go() -> int {\n    var model = pitch(2)\n    model = model + f_clamp(1, 0, 2)\n    Screen.clear(0)\n    return model\n  }\n}\n"
+  let kfile = `{kdir}/k.ludic`
+  write_file(kfile, ksrc)
+  lsp_open(kfile, "ludic")
+  let kuri = lsp_doc(kfile)
+  let khov = lsp_request("textDocument/hover", `{{"textDocument":{kuri},"position":{position_of(ksrc, "var model", 5)}}}`)
+  let krefs = lsp_request("textDocument/references", `{{"textDocument":{kuri},"position":{position_of(ksrc, "var model", 5)},"context":{{"includeDeclaration":true}}}}`)
+  let kbarrel = lsp_request("textDocument/definition", `{{"textDocument":{kuri},"position":{position_of(ksrc, "pitch(2)", 1)}}}`)
+  let khl = lsp_request("textDocument/documentHighlight", `{{"textDocument":{kuri},"position":{position_of(ksrc, "f_clamp", 1)}}}`)
+  let ktoks = lsp_request("textDocument/semanticTokens/full", `{{"textDocument":{kuri}}}`)
+
+  # names inside `template {holes}`, and positions after a multi-line template
+  let tsrc = "program TT {\n  function tag(variant: int) -> pointer {\n    let multi = `a\nb {variant}`\n    return `rock_{variant}` + multi\n  }\n}\n"
+  let tfile = tmp_path("lsp_tmpl.ludic")
+  write_file(tfile, tsrc)
+  lsp_open(tfile, "ludic")
+  let turi = lsp_doc(tfile)
+  let thov = lsp_request("textDocument/hover", `{{"textDocument":{turi},"position":{position_of(tsrc, "rock_{variant", 7)}}}`)
+  let trefs = lsp_request("textDocument/references", `{{"textDocument":{turi},"position":{position_of(tsrc, "tag(variant", 5)},"context":{{"includeDeclaration":true}}}}`)
+  let tafter = lsp_request("textDocument/hover", `{{"textDocument":{turi},"position":{position_of(tsrc, "+ multi", 3)}}}`)
+
   lsp_request("shutdown", "null")
   lsp_notify("exit", "null")
 
@@ -322,7 +370,10 @@ function cmd_test_lsp() -> int {
   check_true("find-usages spans the compilation unit", distinct_files(lsp_result(refs)) >= 3)
   check_true("inlay hints name query binding types", j_any_field(lsp_result(hints), "label", ": Stats"))
   let sigs = j_get(lsp_result(sig), "signatures")
-  check_true("signature help for a namespaced builtin", len(sigs.kids) > 0 and Text.starts_with(j_get(sigs.kids[0], "label").s, "rng_chance("))
+  # the documented, namespaced spelling (docs/language) when the reference is
+  # present, else the builtin the method lowers to
+  check_true("signature help for a namespaced builtin", len(sigs.kids) > 0 and (Text.starts_with(j_get(sigs.kids[0], "label").s, "Random.chance(") or Text.starts_with(j_get(sigs.kids[0], "label").s, "rng_chance(")))
+  check_true("signature help splits the parameters", len(sigs.kids) > 0 and len(j_get(sigs.kids[0], "parameters").kids) == 1)
   let tdata = j_get(lsp_result(toks), "data")
   check_true("semantic tokens produced", len(tdata.kids) / 5 > 100)
   check_true("semantic token stream is well formed", len(tdata.kids) % 5 == 0)
@@ -369,5 +420,41 @@ function cmd_test_lsp() -> int {
   while ci < len(ccmsgs) { if Text.contains(ccmsgs[ci], "expected expression") { cc_seen = true };  ci += 1 }
   check_true("ludicc's own error is published on save (compilerDiagnostics)", cc_seen)
 
+  let link0 = lsp_result(links)
+  check_true("an import string is a link to its file", len(link0.kids) == 1 and Text.ends_with(j_get(link0.kids[0], "target").s, "packages/ludic.render3d/fmath.ludic"))
+  let pd = lsp_result(pkgdef)
+  check_true("go-to-definition on a package import opens the package file", len(pd.kids) == 1 and Text.ends_with(j_get(pd.kids[0], "uri").s, "packages/ludic.render3d/fmath.ludic"))
+  check_true("a name from an imported package resolves into it", Text.ends_with(j_get(lsp_result(xdef), "uri").s, "fmath.ludic"))
+  check_true("hover gives a var local its inferred type", Text.contains(j_get(j_get(lsp_result(vhov), "contents"), "value").s, "var total: int"))
+  check_true("hover gives a let local its inferred type", Text.contains(j_get(j_get(lsp_result(lhov), "contents"), "value").s, "let name: string"))
+  check("find-usages of a var local", loc_lines_key(lsp_result(vrefs)), "4,6")
+  check_true("go-to-definition on a namespace method opens its reference page", Text.ends_with(j_get(lsp_result(bdef), "uri").s, "screen-fill_circle.md"))
+  check_true("hover on a namespace method links its documentation", Text.contains(j_get(j_get(lsp_result(bhov), "contents"), "value").s, "screen-fill_circle.html"))
+  check_true("go-to-definition on a built-in type opens its reference page", Text.ends_with(j_get(lsp_result(tdef), "uri").s, "type-int.md"))
+  let aitems = j_get(lsp_result(acomp), "items")
+  check_true("an argument list completes the parameters not given yet", j_any_field(aitems, "label", "height:") and not j_any_field(aitems, "label", "width:") and not j_any_field(aitems, "label", "let"))
+  check_true("Namespace. completes its members", j_any_field(j_get(lsp_result(nscomp), "items"), "label", "fill_circle"))
+  let ah = lsp_result(ahelp)
+  check_true("signature help tracks the argument after a named one", j_get(ah, "activeParameter").num == 2 and len(j_get(j_get(ah, "signatures").kids[0], "parameters").kids) == 4)
+
+  check_true("a declaration word used as a variable is a variable", Text.contains(j_get(j_get(lsp_result(khov), "contents"), "value").s, "var model: int"))
+  check("find-usages of a local named like a keyword", loc_lines_key(lsp_result(krefs)), "4,5,7")
+  check_true("an import of a directory reads its index.ludic barrel", Text.ends_with(j_get(lsp_result(kbarrel), "uri").s, "camp/tent.ludic"))
+  let hl = lsp_result(khl)
+  check_true("highlight usages stays inside the document", len(hl.kids) == 1 and j_get(j_get(j_get(hl.kids[0], "range"), "start"), "line").num == 5)
+  let kd = j_get(lsp_result(ktoks), "data")
+  var vendor_seen = false
+  var lib_seen = false
+  var ti = 0
+  while ti + 4 < len(kd.kids) {
+    if (kd.kids[ti + 4].num & 8) != 0 { vendor_seen = true }
+    if (kd.kids[ti + 4].num & 4) != 0 and kd.kids[ti + 3].num == 5 { lib_seen = true }
+    ti += 5
+  }
+  check_true("semantic tokens mark package symbols as vendor", vendor_seen)
+  check_true("semantic tokens mark library calls as defaultLibrary", lib_seen)
+  check_true("a name inside a template hole resolves", Text.contains(j_get(j_get(lsp_result(thov), "contents"), "value").s, "param variant: int"))
+  check("find-usages reaches into template holes", loc_lines_key(lsp_result(trefs)), "1,3,4")
+  check_true("positions after a multi-line template stay on the right line", Text.contains(j_get(j_get(lsp_result(tafter), "contents"), "value").s, "let multi"))
   return report()
 }

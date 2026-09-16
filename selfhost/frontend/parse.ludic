@@ -945,8 +945,25 @@ function do_import_dir(rel: pointer) -> void {
   }
 }
 
+# `import "camp"` names a directory: its index.ludic is the barrel that lists
+# what the directory exports (its own imports, relative to itself).
+function barrel_of(rel: pointer) -> pointer {
+  let n = len(rel)
+  if (n > 6) and (rel[n - 6..n] == ".ludic") { return "" }
+  if rel[n - 1] == '/' { return rel + "index.ludic" }
+  return rel + "/index.ludic"
+}
+
 function do_import(rel: pointer) -> void {
   if (len(rel) > 8) and (rel[len(rel) - 8..len(rel)] == "/*.ludic") { do_import_dir(rel);  return }
+  let barrel = barrel_of(rel)
+  if barrel != "" {
+    if (read_file(join_path(cur_dir, barrel)) == null) and Fs.is_dir(join_path(cur_dir, rel)) {
+      perr(`import: {rel} is a directory with no index.ludic (add {barrel} listing its imports)`)
+    }
+    do_import(barrel)
+    return
+  }
   var full = join_path(cur_dir, rel)
   var src = read_file(full)
   # #75 — the engine runtime (runtime/native/*) ships with the toolchain, not the

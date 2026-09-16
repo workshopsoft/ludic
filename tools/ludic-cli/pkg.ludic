@@ -33,8 +33,11 @@ property Manifest {
   provides: []pointer,        # the Foo.* namespace(s) this package registers
   targets: []pointer,         # prebuilt: the targets it ships (native-arm64, wasm32, …)
   deps: []Dep,
+  entry: pointer = "",        # `entry "src/game.ludic"` — the program run/build/bundle compile
   packs: []pointer,           # `pack "<dir>"` — asset roots that go into the .lpak
-  app: []pointer              # `app <key> "<value>"` — flattened key, value, key, value…
+  app: []pointer,             # `app <key> "<value>"` — flattened key, value, key, value…
+  scripts: []pointer,         # `script "<name>" "<command>"` — flattened name, command, …
+  hooks: []pointer            # `hook <before|after> <event> "<command>"` — flattened triples
 }
 
 function manifest_new() -> Manifest {
@@ -43,11 +46,14 @@ function manifest_new() -> Manifest {
   m.ver = ""
   m.kind = "source"
   m.hash = ""
+  m.entry = ""
   m.provides = new []pointer
   m.targets = new []pointer
   m.deps = new []Dep
   m.packs = new []pointer
   m.app = new []pointer
+  m.scripts = new []pointer
+  m.hooks = new []pointer
   return m
 }
 
@@ -114,11 +120,18 @@ function tok_line(line: pointer) -> []pointer {
     let c = line[i]
     if c == '#' { i = n }                              # '#' comment
     else if c == ' ' or c == '\t' { i += 1 }           # whitespace
-    else if c == '"' {                                 # "quoted"
+    else if c == '"' {                                 # "quoted", with \" and \\ escapes
       i += 1
-      let start = i
-      while i < n and line[i] != '"' { i += 1 }
-      push(toks, sslice(line, start, i))
+      var word = ""
+      var start = i
+      while i < n and line[i] != '"' {
+        if line[i] == 92 and i + 1 < n {
+          word = word + sslice(line, start, i) + sslice(line, i + 1, i + 2)
+          i += 2
+          start = i
+        } else { i += 1 }
+      }
+      push(toks, word + sslice(line, start, i))
       if i < n { i += 1 }
     } else {                                          # bare word
       let start = i
@@ -158,6 +171,7 @@ function parse_manifest(text: pointer) -> Manifest {
       if head == "package" { if len(ts) > 1 { m.module = ts[1] } }
       else if head == "version" { if len(ts) > 1 { m.ver = ts[1] } }
       else if head == "kind" { if len(ts) > 1 { m.kind = ts[1] } }
+      else if head == "entry" { if len(ts) > 1 { m.entry = ts[1] } }
       else if head == "provides" { var k = 1;  while k < len(ts) { push(m.provides, ts[k]);  k += 1 } }
       else if head == "targets" { var k = 1;  while k < len(ts) { push(m.targets, ts[k]);  k += 1 } }
       else if head == "require" {
@@ -169,6 +183,12 @@ function parse_manifest(text: pointer) -> Manifest {
       # `app name "Maroon Lake"` — the metadata a macOS bundle is built from.
       # Held as a flat key/value list rather than a property per key, so a new
       # Info.plist field is a line in the bundler and nothing here.
+      else if head == "script" {
+        if len(ts) > 2 { push(m.scripts, ts[1]);  push(m.scripts, ts[2]) }
+      }
+      else if head == "hook" {
+        if len(ts) > 3 { push(m.hooks, ts[1]);  push(m.hooks, ts[2]);  push(m.hooks, ts[3]) }
+      }
       else if head == "app" {
         if len(ts) > 2 { push(m.app, ts[1]);  push(m.app, ts[2]) }
       }

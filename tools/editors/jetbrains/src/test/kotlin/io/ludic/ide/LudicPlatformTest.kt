@@ -15,15 +15,15 @@ import com.intellij.testFramework.fixtures.BasePlatformTestCase
 class LudicPlatformTest : BasePlatformTestCase() {
 
     private val sample = """
-        game Hello {
-          component Pos { x: int = 0, y: int = 0 }
-          archetype Mob { Pos }
+        program Hello {
+          property Pos { x: int = 0, y: int = 0 }
+          model Mob { hp: int }
 
           # move everything that has a position
-          system Move phase FixedUpdate
-            query (p) [Pos, {Player}]
-          {
-            p.x = p.x + 1
+          handler Move phase FixedUpdate {
+            for (p) in query [Pos] {
+              p.x = p.x + 1
+            }
           }
         }
     """.trimIndent()
@@ -65,8 +65,9 @@ class LudicPlatformTest : BasePlatformTestCase() {
             LudicTokens.PRIMITIVE, LudicTokens.PHASE, LudicTokens.BOOLEAN,
             LudicTokens.BUILTIN, LudicTokens.TYPE_NAME, LudicTokens.STRING,
             LudicTokens.NUMBER, LudicTokens.COMMENT, LudicTokens.ANNOTATION,
-            LudicTokens.OPERATOR, LudicTokens.BRACE, LudicTokens.BRACKET,
-            LudicTokens.PAREN, LudicTokens.COMMA, LudicTokens.IDENTIFIER
+            LudicTokens.OPERATOR, LudicTokens.LBRACE, LudicTokens.RBRACE, LudicTokens.LBRACKET,
+            LudicTokens.RBRACKET, LudicTokens.LPAREN, LudicTokens.RPAREN, LudicTokens.COMMA,
+            LudicTokens.IDENTIFIER, LudicTokens.MANIFEST_KEYWORD
         )
         for (token in coloured) {
             val keys = highlighter.getTokenHighlights(token)
@@ -78,14 +79,14 @@ class LudicPlatformTest : BasePlatformTestCase() {
         val file = ludicFile()
         val regions = LudicFoldingBuilder().buildFoldRegions(file.node, file.viewProvider.document!!)
 
-        // The sample has exactly two blocks that span lines: the `game` body and
-        // the `system` body. `component Pos { … }`, `archetype Mob { … }` and the
-        // `{Player}` query filter all fit on one line, and folding a single line
-        // gains nothing, so they are deliberately skipped.
-        assertEquals("multi-line blocks only", 2, regions.size)
+        // The sample has exactly three blocks that span lines: the `program`
+        // body, the `handler` body and the `for` loop. `property Pos { … }` and
+        // `model Mob { … }` fit on one line, and folding a single line gains
+        // nothing, so they are deliberately skipped.
+        assertEquals("multi-line blocks only", 3, regions.size)
 
         val outermost = regions.maxByOrNull { it.range.length }!!
-        assertEquals("outermost fold starts at the game block's brace",
+        assertEquals("outermost fold starts at the program block's brace",
             sample.indexOf('{'), outermost.range.startOffset)
         assertEquals("outermost fold ends at the last brace",
             sample.length, outermost.range.endOffset)
@@ -97,26 +98,25 @@ class LudicPlatformTest : BasePlatformTestCase() {
     }
 
     fun testCommenterUsesHashWithASpace() {
-        // The trailing space is deliberate: Ctrl+/ should produce "# code",
-        // which is how every comment in the runtime and examples is written.
+        // No trailing space in the prefix: the code style's "add a space"
+        // option supplies it, so Ctrl+/ gives "# code" and not "#  code".
         val commenter = LudicCommenter()
-        assertEquals("# ", commenter.lineCommentPrefix)
+        assertEquals("#", commenter.lineCommentPrefix)
         assertNull("Ludic has no block comments", commenter.blockCommentPrefix)
     }
 
-    fun testBraceMatcherPairsAllThreeBracketKinds() {
+    fun testBraceMatcherPairsEveryBracketKind() {
         val matcher = LudicBraceMatcher()
         val pairs = matcher.pairs
         val open = pairs.map { it.leftBraceType }.toSet()
-        assertTrue(open.contains(LudicTokens.BRACE))
-        assertTrue(open.contains(LudicTokens.BRACKET))
-        assertTrue(open.contains(LudicTokens.PAREN))
+        assertEquals(setOf(LudicTokens.LBRACE, LudicTokens.LBRACKET, LudicTokens.LPAREN, LudicTokens.TEMPLATE_HOLE_START), open)
+        assertEquals(setOf(LudicTokens.RBRACE, LudicTokens.RBRACKET, LudicTokens.RPAREN, LudicTokens.TEMPLATE_HOLE_END), pairs.map { it.rightBraceType }.toSet())
     }
 
     fun testHalfTypedFileStillProducesAPsiTree() {
         // The IDE must survive what a file looks like mid-keystroke; a parser
         // that throws here takes highlighting and indexing down with it.
-        val broken = "game X {\n  component P { x: int =\n  system"
+        val broken = "program X {\n  property P { x: int =\n  handler"
         val file = myFixture.configureByText("broken.ludic", broken)
         assertEquals(broken.length, file.textLength)
         assertEquals(LudicLanguage, file.language)

@@ -1,0 +1,16 @@
+# ${NAME}.ludic
+program ${PROGRAM_NAME} {
+
+  handler Boot phase Start {
+    print("${PROGRAM_NAME} started")
+  }
+
+  handler Draw phase Render {
+    Screen.clear(0x101820)
+    Screen.show()
+  }
+
+  handler Keys phase Input {
+    if Input.key() == 'q' { quit() }
+  }
+}

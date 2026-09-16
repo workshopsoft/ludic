@@ -18,7 +18,7 @@ import com.intellij.psi.tree.IElementType
  * this needs the language server, so none of it waits for one.
  */
 class LudicCommenter : Commenter {
-    override fun getLineCommentPrefix() = "# "
+    override fun getLineCommentPrefix() = "#"
     override fun getBlockCommentPrefix(): String? = null
     override fun getBlockCommentSuffix(): String? = null
     override fun getCommentedBlockCommentPrefix(): String? = null
@@ -37,9 +37,10 @@ class LudicBraceMatcher : PairedBraceMatcher {
         // marking them all structural would make the "matched brace" gutter
         // noisy inside `spawn Hero { Pos { x: 1 } }`.
         val PAIRS = arrayOf(
-            BracePair(LudicTokens.BRACE, LudicTokens.BRACE, true),
-            BracePair(LudicTokens.BRACKET, LudicTokens.BRACKET, false),
-            BracePair(LudicTokens.PAREN, LudicTokens.PAREN, false)
+            BracePair(LudicTokens.LBRACE, LudicTokens.RBRACE, true),
+            BracePair(LudicTokens.LBRACKET, LudicTokens.RBRACKET, false),
+            BracePair(LudicTokens.LPAREN, LudicTokens.RPAREN, false),
+            BracePair(LudicTokens.TEMPLATE_HOLE_START, LudicTokens.TEMPLATE_HOLE_END, false)
         )
     }
 }
@@ -60,17 +61,15 @@ class LudicFoldingBuilder : FoldingBuilderEx(), DumbAware {
         val node = root.node ?: return emptyArray()
 
         while (lexer.tokenType != null) {
-            if (lexer.tokenType == LudicTokens.BRACE) {
-                when (text[lexer.tokenStart]) {
-                    '{' -> opens.addLast(lexer.tokenStart)
-                    '}' -> {
-                        val open = opens.removeLastOrNull()
-                        if (open != null) {
-                            val end = lexer.tokenEnd
-                            // only worth folding when it actually spans lines
-                            if (document.getLineNumber(end) > document.getLineNumber(open)) {
-                                regions += FoldingDescriptor(node, TextRange(open, end))
-                            }
+            when (lexer.tokenType) {
+                LudicTokens.LBRACE -> opens.addLast(lexer.tokenStart)
+                LudicTokens.RBRACE -> {
+                    val open = opens.removeLastOrNull()
+                    if (open != null) {
+                        val end = lexer.tokenEnd
+                        // only worth folding when it actually spans lines
+                        if (document.getLineNumber(end) > document.getLineNumber(open)) {
+                            regions += FoldingDescriptor(node, TextRange(open, end))
                         }
                     }
                 }

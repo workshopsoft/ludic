@@ -7,6 +7,11 @@
 # whole compilation unit. Ground-truth compilation stays with ludicc; this layer
 # supplies structure, not judgement.
 program LudicLsp {
+  import "lsp/imports.ludic"
+  import "lsp/docs.ludic"
+  import "lsp/types.ludic"
+  import "lsp/sighelp.ludic"
+
   # ---- token kinds ----
   const LT_EOF: int = 0
   const LT_NL: int = 1
@@ -70,6 +75,13 @@ program LudicLsp {
   const SC_OPERATOR: int = 22
   const SC_ANNOTATION: int = 23
   const SC_UNKNOWN: int = 24
+  const SC_NAMESPACE: int = 25
+
+  # semantic token modifier bits (the legend's order)
+  const SEM_DECLARATION: int = 1
+  const SEM_READONLY: int = 2
+  const SEM_DEFAULT_LIBRARY: int = 4
+  const SEM_VENDOR: int = 8
 
   # ---- tiny helpers ----
   function read_file(path: pointer) -> pointer {
@@ -161,6 +173,8 @@ program LudicLsp {
     bend: int = 0
     parent: int = 0
     exported: int = 0
+    init: int = 0               # first token of the initializer (let/var/const), or -1
+    mutable: int = 0            # a `var` local
   }
   property Doc {
     path: pointer = null
@@ -179,6 +193,7 @@ program LudicLsp {
     linestart: []int
     tmatch: []int
     cls: []int
+    clsmods: []int              # extra semantic modifiers per token (declaration, vendor, …)
     syms: []Sym
     imports: []pointer
     had_diags: int = 0
@@ -236,6 +251,8 @@ program LudicLsp {
     D.linestart = new []int
     push(D.linestart, 0)
     var i = 0;  var line = 0
+    var tmode = 0      # 0 code, 1 template text, 2 inside a template hole
+    var tdepth = 0     # braces opened inside the current hole
     while s[i] != 0 {
       let c = s[i]
       if c == '\n' { push(D.tk_kind, LT_NL); push(D.tk_start, i); push(D.tk_end, i + 1); push(D.tk_line, line);  i += 1;  line += 1;  push(D.linestart, i);  continue }
@@ -243,7 +260,33 @@ program LudicLsp {
       var st = i
       if c == '#' { while s[i] != 0 and s[i] != '\n' { i += 1 };  push(D.tk_kind, LT_COMMENT); push(D.tk_start, st); push(D.tk_end, i); push(D.tk_line, line);  continue }
       if c == '"' { i += 1;  while s[i] != 0 and s[i] != '"' and s[i] != '\n' { if s[i] == '\\' and s[i + 1] != 0 { i += 2 } else { i += 1 } };  if s[i] == '"' { i += 1 };  push(D.tk_kind, LT_STR); push(D.tk_start, st); push(D.tk_end, i); push(D.tk_line, line);  continue }
-      if c == '`' { i += 1;  while s[i] != 0 and s[i] != '`' { if s[i] == '\\' and s[i + 1] != 0 { i += 2 } else { i += 1 } };  if s[i] == '`' { i += 1 };  push(D.tk_kind, LT_STR); push(D.tk_start, st); push(D.tk_end, i); push(D.tk_line, line);  continue }
+      # `text {hole} text`: the text runs are string tokens (the hole's braces
+      # ride on them), the hole is lexed as code, so its names resolve
+      if c == '`' or (tmode == 2 and c == '}' and tdepth == 0) {
+        if c == '`' and tmode == 2 { i += 1;  tmode = 0;  push(D.tk_kind, LT_STR); push(D.tk_start, st); push(D.tk_end, i); push(D.tk_line, line);  continue }
+        i += 1
+        tmode = 1
+        var seg_line = line
+        while s[i] != 0 and tmode == 1 {
+          if s[i] == '`' { i += 1;  tmode = 0 }
+          else if s[i] == '{' and s[i + 1] == '{' { i += 2 }
+          else if s[i] == '}' and s[i + 1] == '}' { i += 2 }
+          else if s[i] == '{' { i += 1;  tmode = 2;  tdepth = 0 }
+          else if s[i] == '\\' and s[i + 1] != 0 { i += 2 }
+          else if s[i] == '\n' {
+            # a template may span lines: close this run, keep the line table right
+            if i > st { push(D.tk_kind, LT_STR); push(D.tk_start, st); push(D.tk_end, i); push(D.tk_line, seg_line) }
+            i += 1;  line += 1;  push(D.linestart, i)
+            st = i;  seg_line = line
+          }
+          else { i += 1 }
+        }
+        if tmode == 1 { tmode = 0 }
+        if i > st { push(D.tk_kind, LT_STR); push(D.tk_start, st); push(D.tk_end, i); push(D.tk_line, seg_line) }
+        continue
+      }
+      if tmode == 2 and c == '{' { tdepth += 1 }
+      if tmode == 2 and c == '}' { tdepth -= 1 }
       if c == '\'' { i += 1;  if s[i] == '\\' and s[i + 1] != 0 { i += 2 } else { if s[i] != 0 and s[i] != '\n' { i += 1 } };  if s[i] == '\'' { i += 1 };  push(D.tk_kind, LT_CHAR); push(D.tk_start, st); push(D.tk_end, i); push(D.tk_line, line);  continue }
       if char_is_digit(c) {
         if c == '0' and (s[i + 1] == 'x' or s[i + 1] == 'X') { i += 2;  while char_is_hex(s[i]) { i += 1 };  push(D.tk_kind, LT_INT); push(D.tk_start, st); push(D.tk_end, i); push(D.tk_line, line);  continue }
@@ -271,6 +314,7 @@ program LudicLsp {
       push(D.tk_kind, LT_ERR); push(D.tk_start, i); push(D.tk_end, i + ln); push(D.tk_line, line);  i += ln
     }
     push(D.tk_kind, LT_EOF); push(D.tk_start, i); push(D.tk_end, i); push(D.tk_line, line)
+    demote_contextual_keywords(D)
   }
 
   function ntok(D: Doc) -> int { return len(D.tk_kind) }
@@ -373,8 +417,13 @@ program LudicLsp {
       if D.tk_kind[i] == LT_COMMENT {
         var s = D.tk_start[i] + 1
         while s < D.tk_end[i] and (D.text[s] == ' ' or D.text[s] == '\t' or D.text[s] == '#' or D.text[s] == '*') { s += 1 }
-        buf_addrange(out, D.text, s, D.tk_end[i])
-        buf_putc(out, '\n')
+        var rule = true
+        var r = s
+        while r < D.tk_end[i] { let rc = D.text[r];  if not (rc == '=' or rc == '-' or rc == '~' or rc == ' ') { rule = false };  r += 1 }
+        if not rule or s == D.tk_end[i] {
+          buf_addrange(out, D.text, s, D.tk_end[i])
+          buf_putc(out, '\n')
+        }
       }
       i += 1
     }
@@ -400,7 +449,7 @@ program LudicLsp {
   function sym_add(kind: int, nametok: int, parent: int) -> int {
     let s = new Sym
     s.kind = kind;  s.tok = nametok;  s.parent = parent
-    s.name = "";  s.ty = "";  s.detail = "";  s.doc = ""
+    s.name = "";  s.ty = "";  s.detail = "";  s.doc = "";  s.init = -1;  s.mutable = 0
     if nametok >= 0 { s.start = pD.tk_start[nametok];  s.end = pD.tk_end[nametok];  s.name = ttext(pD, nametok) }
     s.bstart = 0;  s.bend = cstr_len(pD.text)
     push(pD.syms, s)
@@ -425,6 +474,7 @@ program LudicLsp {
       if pis(":") { padv();  let tt = pname();  if tt >= 0 { ty = ttext(pD, tt) } }
       let sidx = sym_add(kind, nt, owner)
       pD.syms[sidx].ty = ty
+      pD.syms[sidx].detail = concat3("param ", pD.syms[sidx].name, concat3(": ", ty, ""))
       if not first { buf_puts(sig, ", ") }
       buf_puts(sig, pD.syms[sidx].name);  buf_puts(sig, ": ")
       if ty == "" { buf_puts(sig, "?") } else { buf_puts(sig, ty) }
@@ -433,6 +483,17 @@ program LudicLsp {
     if close >= 0 { pi = close + 1 }
     pskipnl()
     buf_putc(sig, ')')                      # ')'
+  }
+
+  # the type written at pi (`int`, `[]Doc`, `?Actor`), consumed; "" when none
+  function lp_type_text() -> pointer {
+    var pre = ""
+    while pis("[") or pis("?") {
+      if pis("[") { let m = cur_match();  if m < 0 { return "" };  pi = m + 1;  pre = pre + "[]" } else { pi += 1;  pre = pre + "?" }
+    }
+    let tt = pname()
+    if tt < 0 { return "" }
+    return pre + ttext(pD, tt)
   }
 
   # (a, b) variable list -> token indices into out; returns count
@@ -496,12 +557,15 @@ program LudicLsp {
     pskipnl()
   }
   function lp_stmt(owner: int, scope_end: int) -> void {
-    if pis("let") {
+    if pis("let") or pis("var") {
+      let is_var = pis("var")
       padv();  let nt = pname();  if nt < 0 { return }
       var ty = ""
-      if pis(":") { padv();  let tt = pname();  if tt >= 0 { ty = ttext(pD, tt) } }
+      if pis(":") { padv();  ty = lp_type_text() }
       let sidx = sym_add(LS_LOCAL, nt, owner)
       pD.syms[sidx].ty = ty
+      if is_var { pD.syms[sidx].mutable = 1 }
+      if pis("=") { padv();  pD.syms[sidx].init = pi }
       pD.syms[sidx].bstart = pD.tk_start[nt];  pD.syms[sidx].bend = scope_end
       return
     }
@@ -612,19 +676,14 @@ program LudicLsp {
         if pis(",") { padv();  continue }
         while pk() == LT_ANNO { padv() }               # @Sync / @Computed on a field
         let ft = pname();  if ft < 0 { padv();  continue }
-        if is_comp {
-          let f = sym_add(LS_FIELD, ft, sidx)
-          var fty = ""
-          if pis(":") { padv();  let tt = pname();  if tt >= 0 { fty = ttext(pD, tt) } }
-          pD.syms[f].ty = fty
-          pD.syms[f].detail = concat3(pD.syms[sidx].name, ".", concat3(pD.syms[f].name, ": ", fty))
-          if pis("=") { padv();  while pi < ntok(pD) and not pis(",") and not pis("}") and pk() != LT_EOF { if pis("(") or pis("{") or pis("[") { skip_group() } else { padv() } } }
-          if not first { buf_putc(det, ',') }
-          buf_putc(det, ' ');  buf_puts(det, pD.syms[f].name);  buf_puts(det, ": ");  buf_puts(det, fty)
-        } else {
-          if not first { buf_putc(det, ',') }
-          buf_putc(det, ' ');  buf_puts(det, ttext(pD, ft))
-        }
+        let f = sym_add(LS_FIELD, ft, sidx)
+        var fty = ""
+        if pis(":") { padv();  fty = lp_type_text() }
+        pD.syms[f].ty = fty
+        pD.syms[f].detail = concat3(pD.syms[sidx].name, ".", concat3(pD.syms[f].name, ": ", fty))
+        if pis("=") { padv();  while pi < ntok(pD) and not pis(",") and not pis("}") and pk() != LT_EOF { if pis("(") or pis("{") or pis("[") { skip_group() } else { padv() } } }
+        if not first { buf_putc(det, ',') }
+        buf_putc(det, ' ');  buf_puts(det, pD.syms[f].name);  buf_puts(det, ": ");  buf_puts(det, fty)
         first = false
       }
       buf_puts(det, " }")
@@ -639,7 +698,8 @@ program LudicLsp {
       padv();  let nt = pname();  if nt < 0 { return }
       let sidx = sym_add(kind, nt, parent)
       pD.syms[sidx].doc = collect_doc(pD, decl_tok)
-      if pis(":") { padv();  let tt = pname();  if tt >= 0 { pD.syms[sidx].ty = ttext(pD, tt) } }
+      if pis(":") { padv();  pD.syms[sidx].ty = lp_type_text() }
+      if pis("=") { padv();  pD.syms[sidx].init = pi }
       pD.syms[sidx].detail = concat3(w, " ", concat3(pD.syms[sidx].name, ": ", pD.syms[sidx].ty))
       while pi < ntok(pD) and pk() != LT_NL and pk() != LT_EOF { if pis("(") or pis("{") or pis("[") { skip_group() } else { pi += 1 } }
       pskipnl()
@@ -1052,13 +1112,17 @@ program LudicLsp {
   function imports_of(D: Doc, out: []Doc) -> void {
     var i = 0
     while i < len(D.imports) {
-      let full = join_path(dirname(D.path), D.imports[i])
-      let I = ensure_doc(full)
-      if (I != null) {
-        var seen = false
-        var k = 0
-        while k < len(out) { if (out[k].path == I.path) { seen = true };  k += 1 }
-        if not seen { push(out, I);  imports_of(I, out) }
+      let files = resolve_import_all(D.path, D.imports[i])
+      var f = 0
+      while f < len(files) {
+        let I = ensure_doc(files[f])
+        if (I != null) {
+          var seen = false
+          var k = 0
+          while k < len(out) { if (out[k].path == I.path) { seen = true };  k += 1 }
+          if not seen { push(out, I);  imports_of(I, out) }
+        }
+        f += 1
       }
       i += 1
     }
@@ -1585,6 +1649,9 @@ program LudicLsp {
   function classify(D: Doc) -> void {
     let N = ntok(D)
     if len(D.cls) < N { D.cls = new []int;  var z = 0;  while z < N { push(D.cls, SC_NONE);  z += 1 } }
+    D.clsmods = new []int
+    var zm = 0
+    while zm < N { push(D.clsmods, 0);  zm += 1 }
     var i = 0
     while i < N {
       let k = D.tk_kind[i]
@@ -1603,9 +1670,26 @@ program LudicLsp {
       var decl = -1
       var s = 0
       while s < len(D.syms) { if D.syms[s].tok == i { decl = s;  break };  s += 1 }
-      if decl >= 0 { D.cls[i] = class_of_symkind(D.syms[decl].kind);  i += 1;  continue }
+      if decl >= 0 {
+        D.cls[i] = class_of_symkind(D.syms[decl].kind)
+        D.clsmods[i] = SEM_DECLARATION | vendor_mod(D)
+        i += 1;  continue
+      }
       let prev = prev_sig(D, i)
-      if prev >= 0 and tis(D, prev, ".") { D.cls[i] = SC_FIELD;  i += 1;  continue }
+      if prev >= 0 and tis(D, prev, ".") {
+        # Namespace.member: a standard-library call or constant
+        let recv = prev_sig(D, prev)
+        if recv >= 0 and D.tk_kind[recv] == LT_ID and is_namespace_name(ttext(D, recv)) {
+          let nx = next_sig(D, i)
+          if nx >= 0 and tis(D, nx, "(") { D.cls[i] = SC_BUILTIN } else { D.cls[i] = SC_CONST;  D.clsmods[i] = SEM_DEFAULT_LIBRARY }
+          i += 1;  continue
+        }
+        D.cls[i] = SC_FIELD;  i += 1;  continue
+      }
+      if is_namespace_name(name) and find_top(D, name) < 0 {
+        let nx = next_sig(D, i)
+        if nx >= 0 and tis(D, nx, ".") { D.cls[i] = SC_NAMESPACE;  i += 1;  continue }
+      }
       let nxt = next_sig(D, i)
       var followed_eq = false
       if nxt >= 0 and tis(D, nxt, "=") { followed_eq = true }
@@ -1619,8 +1703,8 @@ program LudicLsp {
       let l = find_local(D, name, D.tk_start[i])
       if l >= 0 { if D.syms[l].kind == LS_PARAM { D.cls[i] = SC_PARAM } else { D.cls[i] = SC_VARIABLE };  i += 1;  continue }
       let top = find_top(D, name)
-      if top >= 0 { D.cls[i] = class_of_symkind(g_owner.syms[top].kind);  i += 1;  continue }
-      if is_builtin_name(name) { D.cls[i] = SC_BUILTIN;  i += 1;  continue }
+      if top >= 0 { D.cls[i] = class_of_symkind(g_owner.syms[top].kind);  D.clsmods[i] = vendor_mod(g_owner);  i += 1;  continue }
+      if is_builtin_name(name) or docs_index(name) >= 0 { D.cls[i] = SC_BUILTIN;  i += 1;  continue }
       if followed_eq { D.cls[i] = SC_FIELD;  i += 1;  continue }
       D.cls[i] = SC_UNKNOWN
       i += 1
@@ -1639,13 +1723,13 @@ program LudicLsp {
     if cls == SC_LAYER { return 4 }
     if cls == SC_UI { return 3 }
     if cls == SC_WIDGET { g_semmods = 4;  return 3 }
-    if cls == SC_SYSTEM { return 5 }
+    if cls == SC_SYSTEM { g_semmods = 2;  return 5 }        # a handler: readonly function
     if cls == SC_FUNCTION { return 5 }
     if cls == SC_BUILTIN { g_semmods = 4;  return 5 }
     if cls == SC_PARAM { return 6 }
     if cls == SC_VARIABLE { return 7 }
-    if cls == SC_MODVAR { return 7 }
-    if cls == SC_CONST { g_semmods = 2;  return 7 }
+    if cls == SC_MODVAR { g_semmods = 16;  return 7 }
+    if cls == SC_CONST { g_semmods = 18;  return 7 }
     if cls == SC_PROP { return 8 }
     if cls == SC_FIELD { return 8 }
     if cls == SC_PHASE { g_semmods = 6;  return 9 }
@@ -1654,6 +1738,7 @@ program LudicLsp {
     if cls == SC_COMMENT { return 12 }
     if cls == SC_OPERATOR { return 13 }
     if cls == SC_ANNOTATION { return 14 }
+    if cls == SC_NAMESPACE { g_semmods = 4;  return 4 }
     return -1
   }
 
@@ -2275,16 +2360,28 @@ program LudicLsp {
     let off = off_of(msg, D, "params.position")
     let tok = tok_at(D, off)
     if tok < 0 { send_result(id, "null");  return }
+    if is_import_string(D, tok) {
+      let files = resolve_import_all(D.path, import_rel_of(D, tok))
+      let o = buf_new()
+      if len(files) == 0 { hover_md(o, "import " + ttext(D, tok), "_not found: not beside this file, in ludic_modules/, or in the toolchain's packages/_") }
+      else { hover_md(o, "import " + ttext(D, tok), "`" + files[0] + "`") }
+      send_result(id, buf_str(o));  return
+    }
     resolve_at(D, off)
     if (g_owner != null) and g_symidx >= 0 {
       let ow = g_owner
-      let y = ow.syms[g_symidx]
-      var code = y.detail
-      if code == "" { code = y.name }
+      let si = g_symidx
+      let y = ow.syms[si]
+      let code = sym_hover_code(ow, si)
       var docstr = y.doc
-      if not (ow.path == D.path) { docstr = concat3(docstr, "\n\n_declared in ", concat3(basename(ow.path), "_", "")) }
+      if not (ow.path == D.path) {
+        let where = concat3("_declared in ", basename(ow.path), "_")
+        if (docstr == "") { docstr = where } else { docstr = concat3(docstr, "\n\n", where) }
+      }
       let o = buf_new();  hover_md(o, code, docstr);  send_result(id, buf_str(o));  return
     }
+    let dh = docs_hover(D, tok)
+    if (dh != null) { send_result(id, dh);  return }
     let name = ttext(D, tok)
     let sig = builtin_sig(name)
     if (sig != null) { let o = buf_new();  hover_md(o, sig, "");  send_result(id, buf_str(o));  return }
@@ -2299,18 +2396,17 @@ program LudicLsp {
     if (D == null) { send_result(id, "null");  return }
     let off = off_of(msg, D, "params.position")
     let tok = tok_at(D, off)
-    if tok >= 0 and D.tk_kind[tok] == LT_STR {
-      let p = prev_sig(D, tok)
-      if p >= 0 and tis(D, p, "import") {
-        var n = tlen(D, tok) - 2;  if n < 0 { n = 0 }
-        let rel = D.src[D.tk_start[tok] + 1..D.tk_start[tok] + 1 + n]
-        let full = join_path(dirname(D.path), rel)
-        let T = ensure_doc(full)
-        if (T != null) { let o = buf_new();  put_location(o, T, 0, 0);  send_result(id, buf_str(o));  return }
-      }
+    if is_import_string(D, tok) {
+      let r = import_definition(D, tok)
+      if (r != null) { send_result(id, r);  return }
+      send_result(id, "null");  return
     }
     resolve_at(D, off)
-    if (g_owner == null) or g_symidx < 0 { send_result(id, "null");  return }
+    if (g_owner == null) or g_symidx < 0 {
+      # a built-in, a built-in type or a namespace: its reference page
+      if tok >= 0 { let dd = docs_definition(D, tok);  if (dd != null) { send_result(id, dd);  return } }
+      send_result(id, "null");  return
+    }
     let ow = g_owner
     let y = ow.syms[g_symidx]
     let o = buf_new();  put_location(o, ow, y.start, y.end);  send_result(id, buf_str(o))
@@ -2356,6 +2452,35 @@ program LudicLsp {
     }
     buf_putc(o, ']');  send_result(id, buf_str(o))
   }
+  # highlight usages: only the occurrences in THIS document — a highlight has no
+  # uri, so a range from another file would be painted onto this one
+  function on_document_highlight(msg: JVal, id: JVal) -> void {
+    let D = doc_of(msg)
+    if (D == null) { send_result(id, "[]");  return }
+    let off = off_of(msg, D, "params.position")
+    let tok = resolve_at(D, off)
+    if tok < 0 or (g_owner == null) or g_symidx < 0 { send_result(id, "[]");  return }
+    let tdoc = g_owner;  let tsym = g_symidx
+    find_occurrences(D, tdoc, tsym)
+    let o = buf_new();  buf_putc(o, '[')
+    var first = true
+    var i = 0
+    while i < len(g_occ_doc) {
+      if (g_occ_doc[i].path == D.path) {
+        let k = g_occ_tok[i]
+        if not first { buf_putc(o, ',') }
+        first = false
+        buf_puts(o, "{\"range\":");  put_range(o, D, D.tk_start[k], D.tk_end[k])
+        var kind = 1
+        let nx = next_sig(D, k)
+        if D.tk_start[k] == tdoc.syms[tsym].start and (tdoc.path == D.path) { kind = 3 }
+        else if nx >= 0 and (tis(D, nx, "=") or tis(D, nx, "+=") or tis(D, nx, "-=") or tis(D, nx, "*=") or tis(D, nx, "/=")) { kind = 3 }
+        buf_puts(o, ",\"kind\":");  buf_puti(o, kind);  buf_putc(o, '}')
+      }
+      i += 1
+    }
+    buf_putc(o, ']');  send_result(id, buf_str(o))
+  }
   function on_rename(msg: JVal, id: JVal) -> void {
     let D = doc_of(msg)
     let newname = jstr(jpath(msg, "params.newName"), null)
@@ -2397,25 +2522,34 @@ program LudicLsp {
 
   # ---- completion ----
   var g_first: int = 1
+  # the rank prefix for the next items: in-scope names before globals before
+  # builtins before keywords
+  var g_rank: pointer = "5"
   function comp_item(o: Buf, label: pointer, kind: int, detail: pointer) -> void {
+    comp_item_full(o, label, kind, detail, g_rank + label, "")
+  }
+  function comp_item_full(o: Buf, label: pointer, kind: int, detail: pointer, sort: pointer, insert: pointer) -> void {
     if g_first == 0 { buf_putc(o, ',') }
     g_first = 0
     buf_puts(o, "{\"label\":");  jstr_out(o, label);  buf_puts(o, ",\"kind\":");  buf_puti(o, kind)
     if (detail != null) and (detail[0] != 0) { buf_puts(o, ",\"detail\":");  jstr_out(o, detail) }
+    buf_puts(o, ",\"sortText\":");  jstr_out(o, sort)
+    if (insert != null) and (insert[0] != 0) { buf_puts(o, ",\"insertText\":");  jstr_out(o, insert) }
     buf_putc(o, '}')
   }
   function comp_scope(o: Buf, D: Doc, off: int, types_only: int) -> void {
     if types_only == 0 {
+      g_rank = "1"
       var i = 0
       while i < len(D.syms) {
         let y = D.syms[i]
-        if is_local_kind(y.kind) and off >= y.bstart and off <= y.bend {
-          var det = y.detail;  if det == "" { det = y.ty }
-          comp_item(o, y.name, 6, det)
+        if is_local_kind(y.kind) and off >= y.bstart and off <= y.bend and y.bstart <= off {
+          comp_item(o, y.name, 6, sym_type(D, i, 0))
         }
         i += 1
       }
     }
+    g_rank = "2"
     let rel = related(D)
     var r = 0
     while r < len(rel) {
@@ -2436,7 +2570,7 @@ program LudicLsp {
     comp_item(o, "int", 14, "built-in type");  comp_item(o, "long", 14, "built-in type");  comp_item(o, "fixed", 14, "built-in type");  comp_item(o, "bool", 14, "built-in type")
     comp_item(o, "entity", 14, "built-in type");  comp_item(o, "string", 14, "built-in type");  comp_item(o, "pointer", 14, "built-in type");  comp_item(o, "Vector", 14, "built-in type");  comp_item(o, "IVec2", 14, "built-in type");  comp_item(o, "Rect", 14, "built-in type");  comp_item(o, "void", 14, "built-in type")
   }
-  function comp_builtins(o: Buf) -> void { var i = 0;  while i < len(g_builtins) { comp_item(o, g_builtins[i], 3, g_bsigs[i]);  i += 1 } }
+  function comp_builtins(o: Buf) -> void { g_rank = "3";  var i = 0;  while i < len(g_builtins) { comp_item(o, g_builtins[i], 3, g_bsigs[i]);  i += 1 } }
   function on_completion(msg: JVal, id: JVal) -> void {
     let D = doc_of(msg)
     if (D == null) { send_result(id, "{\"isIncomplete\":false,\"items\":[]}");  return }
@@ -2469,6 +2603,8 @@ program LudicLsp {
     if in_qt == 1 { comp_scope(o, D, off, 1);  done = 1 }
     else { if anchor >= 0 {
       if tis(D, anchor, ".") {
+        let recv = prev_sig(D, anchor)
+        if recv >= 0 and D.tk_kind[recv] == LT_ID { if comp_ns_members(o, ttext(D, recv)) { done = 1 } }
         let comp = receiver_component(D, anchor)
         if comp >= 0 and (g_owner != null) {
           let co = g_owner
@@ -2486,11 +2622,23 @@ program LudicLsp {
     if done == 0 and in_ui_body(D, off) {
       comp_item(o, "panel", 7, "widget");  comp_item(o, "col", 7, "widget");  comp_item(o, "row", 7, "widget");  comp_item(o, "label", 7, "widget");  comp_item(o, "button", 7, "widget");  comp_item(o, "image", 7, "widget");  comp_item(o, "spacer", 7, "widget")
     }
+    var in_args = false
+    if done == 0 and find_call_at(D, off) {
+      in_args = true
+      if anchor >= 0 and (tis(D, anchor, "(") or tis(D, anchor, ",")) { if comp_call_args(o, D, off) { } }
+    }
+    if done == 0 and in_args {
+      comp_builtins(o)
+      comp_scope(o, D, off, 0)
+      done = 1
+    }
     if done == 0 {
-      comp_item(o, "let", 14, "statement");  comp_item(o, "if", 14, "statement");  comp_item(o, "for", 14, "statement");  comp_item(o, "while", 14, "statement");  comp_item(o, "return", 14, "statement");  comp_item(o, "spawn", 14, "statement");  comp_item(o, "handler", 14, "declaration");  comp_item(o, "property", 14, "declaration");  comp_item(o, "model", 14, "declaration")
+      g_rank = "4"
+      comp_item(o, "let", 14, "statement");  comp_item(o, "var", 14, "statement");  comp_item(o, "if", 14, "statement");  comp_item(o, "for", 14, "statement");  comp_item(o, "while", 14, "statement");  comp_item(o, "return", 14, "statement");  comp_item(o, "spawn", 14, "statement");  comp_item(o, "handler", 14, "declaration");  comp_item(o, "property", 14, "declaration");  comp_item(o, "model", 14, "declaration")
       comp_types(o)
       comp_builtins(o)
       comp_scope(o, D, off, 0)
+      g_rank = "5"
     }
     buf_puts(o, "]}")
     send_result(id, buf_str(o))
@@ -2514,51 +2662,6 @@ program LudicLsp {
     }
     buf_putc(o, ']');  send_result(id, buf_str(o))
   }
-  function on_signature_help(msg: JVal, id: JVal) -> void {
-    let D = doc_of(msg)
-    if (D == null) { send_result(id, "null");  return }
-    let off = off_of(msg, D, "params.position")
-    var depth = 0;  var callee = -1;  var arg = 0
-    var i = ntok(D) - 1
-    while i >= 0 {
-      let t = i
-      if D.tk_start[t] >= off { i -= 1;  continue }
-      if D.tk_kind[t] == LT_OP and tlen(D, t) == 1 {
-        let c = D.src[D.tk_start[t]]
-        if c == ')' { depth += 1 }
-        else { if c == '(' {
-          if depth == 0 {
-            callee = prev_sig(D, t)
-            var k = t + 1
-            while k < ntok(D) and D.tk_start[k] < off { if tis(D, k, ",") { arg += 1 };  k += 1 }
-            i = -1
-          } else { depth -= 1 }
-        } }
-      }
-      i -= 1
-    }
-    if callee < 0 or D.tk_kind[callee] != LT_ID { send_result(id, "null");  return }
-    let name = ttext(D, callee)
-    var sig: pointer = null
-    # a namespaced call `Namespace.method(` resolves through the ns surface first
-    let dot = prev_sig(D, callee)
-    if dot >= 0 and tis(D, dot, ".") {
-      let nsi = prev_sig(D, dot)
-      if nsi >= 0 and D.tk_kind[nsi] == LT_ID { sig = ns_method_sig(ttext(D, nsi), name) }
-    }
-    if (sig == null) { sig = builtin_sig(name) }
-    var docstr = ""
-    if (sig == null) {
-      let t = find_top(D, name)
-      if t >= 0 and (g_owner.syms[t].kind == LS_FN or g_owner.syms[t].kind == LS_EXTERN) { sig = g_owner.syms[t].detail;  docstr = g_owner.syms[t].doc }
-    }
-    if (sig == null) { send_result(id, "null");  return }
-    let o = buf_new()
-    buf_puts(o, "{\"signatures\":[{\"label\":");  jstr_out(o, sig)
-    if (docstr != null) and (docstr[0] != 0) { buf_puts(o, ",\"documentation\":");  jstr_out(o, docstr) }
-    buf_puts(o, "}],\"activeSignature\":0,\"activeParameter\":");  buf_puti(o, arg);  buf_putc(o, '}')
-    send_result(id, buf_str(o))
-  }
   function on_semantic_tokens(msg: JVal, id: JVal) -> void {
     let D = doc_of(msg)
     if (D == null) { send_result(id, "null");  return }
@@ -2580,7 +2683,9 @@ program LudicLsp {
             if dl == 0 { dc = ch - prev_char }
             if first == 0 { buf_putc(o, ',') }
             first = 0
-            buf_puti(o, dl);  buf_putc(o, ',');  buf_puti(o, dc);  buf_putc(o, ',');  buf_puti(o, ln);  buf_putc(o, ',');  buf_puti(o, ty);  buf_putc(o, ',');  buf_puti(o, g_semmods)
+            var mods = g_semmods
+            if i < len(D.clsmods) { mods = mods | D.clsmods[i] }
+            buf_puti(o, dl);  buf_putc(o, ',');  buf_puti(o, dc);  buf_putc(o, ',');  buf_puti(o, ln);  buf_putc(o, ',');  buf_puti(o, ty);  buf_putc(o, ',');  buf_puti(o, mods)
             prev_line = line;  prev_char = ch
           }
         }
@@ -2703,6 +2808,7 @@ program LudicLsp {
     buf_puts(o, ",\"documentSymbolProvider\":true")
     buf_puts(o, ",\"workspaceSymbolProvider\":true")
     buf_puts(o, ",\"definitionProvider\":true")
+    buf_puts(o, ",\"typeDefinitionProvider\":true")
     buf_puts(o, ",\"declarationProvider\":true")
     buf_puts(o, ",\"referencesProvider\":true")
     buf_puts(o, ",\"documentHighlightProvider\":true")
@@ -2715,7 +2821,7 @@ program LudicLsp {
     buf_puts(o, ",\"inlayHintProvider\":true")
     buf_puts(o, ",\"completionProvider\":{\"triggerCharacters\":[\".\",\"@\",\"[\",\" \"],\"resolveProvider\":false}")
     buf_puts(o, ",\"signatureHelpProvider\":{\"triggerCharacters\":[\"(\",\",\"]}")
-    buf_puts(o, ",\"semanticTokensProvider\":{\"legend\":{\"tokenTypes\":[\"keyword\",\"type\",\"struct\",\"class\",\"namespace\",\"function\",\"parameter\",\"variable\",\"property\",\"enumMember\",\"number\",\"string\",\"comment\",\"operator\",\"decorator\"],\"tokenModifiers\":[\"declaration\",\"readonly\",\"defaultLibrary\"]},\"full\":true,\"range\":true}")
+    buf_puts(o, ",\"semanticTokensProvider\":{\"legend\":{\"tokenTypes\":[\"keyword\",\"type\",\"struct\",\"class\",\"namespace\",\"function\",\"parameter\",\"variable\",\"property\",\"enumMember\",\"number\",\"string\",\"comment\",\"operator\",\"decorator\"],\"tokenModifiers\":[\"declaration\",\"readonly\",\"defaultLibrary\",\"vendor\",\"static\"]},\"full\":true,\"range\":true}")
     buf_puts(o, "},\"serverInfo\":{\"name\":\"ludic-lsp\",\"version\":\"1.0.0\"}}")
     return buf_str(o)
   }
@@ -2754,18 +2860,19 @@ program LudicLsp {
     if (method == "textDocument/didSave") { on_did_save(msg);  return }
     if (method == "textDocument/documentSymbol") { let D = doc_of(msg);  if (D == null) { send_result(id, "[]");  return };  let o = buf_new();  put_doc_symbols(o, D, -1);  send_result(id, buf_str(o));  return }
     if (method == "workspace/symbol") { on_workspace_symbol(msg, id);  return }
-    if (method == "textDocument/definition") or (method == "textDocument/declaration") or (method == "textDocument/typeDefinition") { on_definition(msg, id);  return }
+    if (method == "textDocument/definition") or (method == "textDocument/declaration") { on_definition(msg, id);  return }
+    if (method == "textDocument/typeDefinition") { on_type_definition(msg, id);  return }
     if (method == "textDocument/hover") { on_hover(msg, id);  return }
     if (method == "textDocument/references") { on_references(msg, id);  return }
-    if (method == "textDocument/documentHighlight") { on_references(msg, id);  return }
+    if (method == "textDocument/documentHighlight") { on_document_highlight(msg, id);  return }
     if (method == "textDocument/rename") { on_rename(msg, id);  return }
     if (method == "textDocument/prepareRename") { let D = doc_of(msg);  if (D == null) { send_result(id, "null");  return };  let off = off_of(msg, D, "params.position");  let tok = resolve_at(D, off);  if tok < 0 or (g_owner == null) or g_symidx < 0 or D.tk_kind[tok] != LT_ID { send_result(id, "null");  return };  let o = buf_new();  buf_puts(o, "{\"range\":");  put_range(o, D, D.tk_start[tok], D.tk_end[tok]);  buf_puts(o, ",\"placeholder\":");  jstr_out(o, ttext(D, tok));  buf_putc(o, '}');  send_result(id, buf_str(o));  return }
     if (method == "textDocument/formatting") or (method == "textDocument/rangeFormatting") { on_formatting(msg, id);  return }
     if (method == "textDocument/foldingRange") { on_folding(msg, id);  return }
     if (method == "textDocument/inlayHint") { on_inlay_hint(msg, id);  return }
-    if (method == "textDocument/signatureHelp") { on_signature_help(msg, id);  return }
+    if (method == "textDocument/signatureHelp") { on_signature_help2(msg, id);  return }
     if (method == "textDocument/completion") { on_completion(msg, id);  return }
-    if (method == "textDocument/documentLink") { send_result(id, "[]");  return }
+    if (method == "textDocument/documentLink") { on_document_link(msg, id);  return }
     if (method == "textDocument/semanticTokens/full") or (method == "textDocument/semanticTokens/range") { on_semantic_tokens(msg, id);  return }
     if (id != null) { send_result(id, "null") }
   }

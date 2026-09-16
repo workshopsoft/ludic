@@ -330,6 +330,9 @@ function build_artifacts(ver: pointer) -> bool {
     }
     shell(`cp -R runtime {stage}/runtime`)
     shell(`cp -R packages {stage}/packages`)
+    # the language reference: ludic-lsp indexes it for hover and go-to-definition
+    # on built-ins (docs/language/**.md, ~4 MB of markdown)
+    shell(`mkdir -p {stage}/docs && cp -R docs/language {stage}/docs/language`)
     shell(`cp VERSION LICENSE README.md {stage}/`)
     # the Linux link needs the Darwin-stdio shim injected through $LUDIC_CC; it
     # travels with the toolchain that needs it (see tools/ci/linux_stdio_shim.ll).

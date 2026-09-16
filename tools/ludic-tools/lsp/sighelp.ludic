@@ -1,0 +1,226 @@
+# lsp/sighelp.ludic — the call the cursor is inside: signature help with
+# per-parameter ranges (so the editor bolds the active one), and named-argument
+# completion (`Screen.fill_circle(x: …, radius: …)`).
+
+# the call around off: sets g_call_* and returns true when there is one
+var g_call_callee: int = -1     # token of the function name
+var g_call_open: int = -1       # token of its `(`
+var g_call_arg: int = 0         # which argument (0-based) the cursor is in
+var g_call_named: pointer = ""  # `name:` written at the start of that argument, if any
+var g_call_used: []pointer      # names already given in earlier arguments
+
+function find_call_at(D: Doc, off: int) -> bool {
+  g_call_callee = -1;  g_call_open = -1;  g_call_arg = 0;  g_call_named = ""
+  g_call_used = new []pointer
+  var depth = 0
+  var i = ntok(D) - 1
+  while i >= 0 and D.tk_start[i] >= off { i -= 1 }
+  while i >= 0 {
+    if D.tk_kind[i] == LT_OP and tlen(D, i) == 1 {
+      let c = D.src[D.tk_start[i]]
+      if c == ')' or c == ']' { depth += 1 }
+      else if c == '[' { if depth == 0 { return false };  depth -= 1 }
+      else if c == '{' or c == '}' { if depth == 0 { return false } }
+      else if c == '(' {
+        if depth == 0 {
+          let callee = prev_sig(D, i)
+          if callee < 0 or D.tk_kind[callee] != LT_ID { return false }
+          g_call_callee = callee
+          g_call_open = i
+          call_args_before(D, i, off)
+          return true
+        }
+        depth -= 1
+      }
+    }
+    i -= 1
+  }
+  return false
+}
+
+# count the arguments before off and collect `name:` labels
+function call_args_before(D: Doc, open: int, off: int) -> void {
+  var depth = 0
+  var arg_start = open + 1
+  var k = open + 1
+  while k < ntok(D) and D.tk_start[k] < off {
+    if D.tk_kind[k] == LT_OP and tlen(D, k) == 1 {
+      let c = D.src[D.tk_start[k]]
+      if c == '(' or c == '[' or c == '{' { depth += 1 }
+      else if c == ')' or c == ']' or c == '}' { depth -= 1 }
+      else if c == ',' and depth == 0 {
+        let lbl = arg_label(D, arg_start)
+        if not (lbl == "") { push(g_call_used, lbl) }
+        g_call_arg += 1
+        arg_start = k + 1
+      }
+    }
+    k += 1
+  }
+  let here = arg_label(D, arg_start)
+  if not (here == "") and D.tk_end[arg_start] <= off { g_call_named = here }
+}
+
+# `name:` at the start of an argument -> name, else ""
+function arg_label(D: Doc, t: int) -> pointer {
+  var s = t
+  while s < ntok(D) and (D.tk_kind[s] == LT_NL or D.tk_kind[s] == LT_COMMENT) { s += 1 }
+  if s >= ntok(D) or D.tk_kind[s] != LT_ID { return "" }
+  let c = next_sig(D, s)
+  if c >= 0 and tis(D, c, ":") { return ttext(D, s) }
+  return ""
+}
+
+# the signature label and documentation for the call's callee
+var g_call_doc: pointer = ""
+function call_signature(D: Doc) -> pointer {
+  g_call_doc = ""
+  let name = ttext(D, g_call_callee)
+  let dot = prev_sig(D, g_call_callee)
+  if dot >= 0 and tis(D, dot, ".") {
+    let nsi = prev_sig(D, dot)
+    if nsi >= 0 and D.tk_kind[nsi] == LT_ID {
+      let key = ttext(D, nsi) + "." + name
+      let ds = docs_sig(key)
+      if (ds != null) { g_call_doc = docs_tip(key);  return ds }
+      let ns = ns_method_sig(ttext(D, nsi), name)
+      if (ns != null) { return ns }
+    }
+    return null
+  }
+  let t = find_top(D, name)
+  if t >= 0 and (g_owner.syms[t].kind == LS_FN or g_owner.syms[t].kind == LS_EXTERN) {
+    g_call_doc = g_owner.syms[t].doc
+    return g_owner.syms[t].detail
+  }
+  let ds = docs_sig(name)
+  if (ds != null) { g_call_doc = docs_tip(name);  return ds }
+  return builtin_sig(name)
+}
+
+# [start, end) of each parameter inside the label's outermost ( )
+var g_ps: []int
+var g_pe: []int
+function split_params(label: pointer) -> void {
+  g_ps = new []int;  g_pe = new []int
+  let n = cstr_len(label)
+  var open = 0
+  while open < n and label[open] != '(' { open += 1 }
+  if open >= n { return }
+  var depth = 0
+  var s = open + 1
+  var i = open + 1
+  while i < n {
+    let c = label[i]
+    if c == '(' or c == '[' { depth += 1 }
+    else if (c == ')' and depth == 0) or (c == ',' and depth == 0) {
+      var a = s
+      while a < i and label[a] == ' ' { a += 1 }
+      var b = i
+      while b > a and label[b - 1] == ' ' { b -= 1 }
+      if b > a { push(g_ps, a);  push(g_pe, b) }
+      if c == ')' { return }
+      s = i + 1
+    }
+    else if c == ')' or c == ']' { depth -= 1 }
+    i += 1
+  }
+}
+
+# the parameter name in label[a..b): `radius`, `sk: Skin` -> sk
+function param_name(label: pointer, a: int, b: int) -> pointer {
+  var e = a
+  while e < b and label[e] != ':' and label[e] != ' ' and label[e] != '=' { e += 1 }
+  return label[a..e]
+}
+
+function param_type(label: pointer, a: int, b: int) -> pointer {
+  var c = a
+  while c < b and label[c] != ':' { c += 1 }
+  if c >= b { return "" }
+  c += 1
+  while c < b and label[c] == ' ' { c += 1 }
+  return label[c..b]
+}
+
+function on_signature_help2(msg: JVal, id: JVal) -> void {
+  let D = doc_of(msg)
+  if (D == null) { send_result(id, "null");  return }
+  let off = off_of(msg, D, "params.position")
+  if not find_call_at(D, off) { send_result(id, "null");  return }
+  let sig = call_signature(D)
+  if (sig == null) { send_result(id, "null");  return }
+  split_params(sig)
+  var active = g_call_arg
+  if not (g_call_named == "") {
+    var p = 0
+    while p < len(g_ps) { if (param_name(sig, g_ps[p], g_pe[p]) == g_call_named) { active = p };  p += 1 }
+  }
+  let o = buf_new()
+  buf_puts(o, "{\"signatures\":[{\"label\":")
+  jstr_out(o, sig)
+  if (g_call_doc != null) and not (g_call_doc == "") {
+    buf_puts(o, ",\"documentation\":{\"kind\":\"markdown\",\"value\":")
+    jstr_out(o, g_call_doc)
+    buf_putc(o, '}')
+  }
+  buf_puts(o, ",\"parameters\":[")
+  var i = 0
+  while i < len(g_ps) {
+    if i > 0 { buf_putc(o, ',') }
+    buf_puts(o, "{\"label\":[")
+    buf_puti(o, utf16_len(sig, 0, g_ps[i]))
+    buf_putc(o, ',')
+    buf_puti(o, utf16_len(sig, 0, g_pe[i]))
+    buf_puts(o, "]")
+    let ty = param_type(sig, g_ps[i], g_pe[i])
+    if not (ty == "") { buf_puts(o, ",\"documentation\":");  jstr_out(o, ty) }
+    buf_putc(o, '}')
+    i += 1
+  }
+  buf_puts(o, "]}],\"activeSignature\":0,\"activeParameter\":")
+  buf_puti(o, active)
+  buf_putc(o, '}')
+  send_result(id, buf_str(o))
+}
+
+# completion inside a call's argument list: `name: ` for every parameter not
+# given yet, ranked first. Returns true when it added anything.
+function comp_call_args(o: Buf, D: Doc, off: int) -> bool {
+  if not find_call_at(D, off) { return false }
+  if not (g_call_named == "") { return false }
+  let sig = call_signature(D)
+  if (sig == null) { return false }
+  split_params(sig)
+  var added = false
+  var i = 0
+  while i < len(g_ps) {
+    let pn = param_name(sig, g_ps[i], g_pe[i])
+    var used = false
+    var u = 0
+    while u < len(g_call_used) { if (g_call_used[u] == pn) { used = true };  u += 1 }
+    if not used and cstr_len(pn) > 0 {
+      comp_item_full(o, pn + ":", 5, param_type(sig, g_ps[i], g_pe[i]), "0" + itoa(i + 10), pn + ": ")
+      added = true
+    }
+    i += 1
+  }
+  return added
+}
+
+# completion for `Namespace.`: its documented members
+function comp_ns_members(o: Buf, ns: pointer) -> bool {
+  let idx = new []int
+  docs_ns_members(ns, idx)
+  var i = 0
+  while i < len(idx) {
+    let k = idx[i]
+    let full = g_dx_token[k]
+    let member = full[cstr_len(ns) + 1..cstr_len(full)]
+    var sig = g_dx_sig[k]
+    if (sig == "") { sig = g_dx_tip[k] }
+    comp_item_full(o, member, 2, sig, "0" + member, "")
+    i += 1
+  }
+  return len(idx) > 0
+}

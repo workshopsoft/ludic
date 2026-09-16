@@ -37,7 +37,7 @@ class LudicParserDefinition : ParserDefinition {
 
     override fun getFileNodeType(): IFileElementType = LudicTokens.FILE
     override fun getCommentTokens(): TokenSet = TokenSet.create(LudicTokens.COMMENT)
-    override fun getStringLiteralElements(): TokenSet = TokenSet.create(LudicTokens.STRING, LudicTokens.CHAR)
+    override fun getStringLiteralElements(): TokenSet = TokenSet.create(LudicTokens.STRING, LudicTokens.CHAR, LudicTokens.TEMPLATE_TEXT)
     override fun getWhitespaceTokens(): TokenSet = TokenSet.create(TokenType.WHITE_SPACE)
     // Only ever reached for composite nodes, and this grammar marks none beyond
     // the file itself — but the platform requires an answer, so give it a real

@@ -21,6 +21,8 @@ object LudicColors {
     val COMMENT = key("LUDIC_COMMENT", D.LINE_COMMENT)
     val STRING = key("LUDIC_STRING", D.STRING)
     val NUMBER = key("LUDIC_NUMBER", D.NUMBER)
+    val STRING_ESCAPE = key("LUDIC_STRING_ESCAPE", D.VALID_STRING_ESCAPE)
+    val TEMPLATE_BRACES = key("LUDIC_TEMPLATE_BRACES", D.KEYWORD)
     val KEYWORD = key("LUDIC_KEYWORD", D.KEYWORD)
     val DECL_KEYWORD = key("LUDIC_DECL_KEYWORD", D.KEYWORD)
     val CLAUSE = key("LUDIC_CLAUSE", D.METADATA)
@@ -36,18 +38,43 @@ object LudicColors {
     val BRACKET = key("LUDIC_BRACKET", D.BRACKETS)
     val PAREN = key("LUDIC_PAREN", D.PARENTHESES)
     val COMMA = key("LUDIC_COMMA", D.COMMA)
+    val MANIFEST = key("LUDIC_MANIFEST_DIRECTIVE", D.KEYWORD)
+
+    // Semantic colours, painted from ludic-lsp's tokens. "Built-in" is the
+    // language and its standard library, "package" a ludic.* or fetched
+    // package, and the plain key the program's own code.
+    val FUNCTION_DECLARATION = key("LUDIC_FUNCTION_DECLARATION", D.FUNCTION_DECLARATION)
+    val FUNCTION_CALL = key("LUDIC_FUNCTION_CALL", D.FUNCTION_CALL)
+    val FUNCTION_PACKAGE = key("LUDIC_FUNCTION_PACKAGE", D.FUNCTION_CALL)
+    val FUNCTION_BUILTIN = key("LUDIC_FUNCTION_BUILTIN", D.PREDEFINED_SYMBOL)
+    val HANDLER = key("LUDIC_HANDLER", D.FUNCTION_DECLARATION)
+    val CONSTANT = key("LUDIC_CONSTANT", D.CONSTANT)
+    val CONSTANT_PACKAGE = key("LUDIC_CONSTANT_PACKAGE", D.CONSTANT)
+    val CONSTANT_BUILTIN = key("LUDIC_CONSTANT_BUILTIN", D.STATIC_FIELD)
+    val GLOBAL_VARIABLE = key("LUDIC_GLOBAL_VARIABLE", D.GLOBAL_VARIABLE)
+    val GLOBAL_VARIABLE_PACKAGE = key("LUDIC_GLOBAL_VARIABLE_PACKAGE", D.GLOBAL_VARIABLE)
+    val LOCAL_VARIABLE = key("LUDIC_LOCAL_VARIABLE", D.LOCAL_VARIABLE)
+    val PARAMETER = key("LUDIC_PARAMETER", D.PARAMETER)
+    val FIELD = key("LUDIC_FIELD", D.INSTANCE_FIELD)
+    val PROPERTY_TYPE = key("LUDIC_PROPERTY_TYPE", D.CLASS_NAME)
+    val MODEL_TYPE = key("LUDIC_MODEL_TYPE", D.CLASS_NAME)
+    val TYPE_PACKAGE = key("LUDIC_TYPE_PACKAGE", D.CLASS_REFERENCE)
+    val NAMESPACE = key("LUDIC_NAMESPACE", D.CLASS_REFERENCE)
+    val NAMESPACE_BUILTIN = key("LUDIC_NAMESPACE_BUILTIN", D.PREDEFINED_SYMBOL)
     val BAD = createTextAttributesKey("LUDIC_BAD_CHARACTER", HighlighterColors.BAD_CHARACTER)
 
     private fun key(name: String, base: TextAttributesKey) = createTextAttributesKey(name, base)
 }
 
-class LudicSyntaxHighlighter : SyntaxHighlighterBase() {
-    override fun getHighlightingLexer(): Lexer = LudicLexer()
+class LudicSyntaxHighlighter(private val manifest: Boolean = false) : SyntaxHighlighterBase() {
+    override fun getHighlightingLexer(): Lexer = LudicLexer(manifest)
 
     override fun getTokenHighlights(tokenType: IElementType): Array<TextAttributesKey> = pack(
         when (tokenType) {
             LudicTokens.COMMENT -> LudicColors.COMMENT
-            LudicTokens.STRING, LudicTokens.CHAR -> LudicColors.STRING
+            LudicTokens.STRING, LudicTokens.CHAR, LudicTokens.TEMPLATE_QUOTE, LudicTokens.TEMPLATE_TEXT -> LudicColors.STRING
+            LudicTokens.TEMPLATE_ESCAPE -> LudicColors.STRING_ESCAPE
+            LudicTokens.TEMPLATE_HOLE_START, LudicTokens.TEMPLATE_HOLE_END -> LudicColors.TEMPLATE_BRACES
             LudicTokens.NUMBER -> LudicColors.NUMBER
             LudicTokens.KEYWORD -> LudicColors.KEYWORD
             LudicTokens.DECL_KEYWORD -> LudicColors.DECL_KEYWORD
@@ -60,10 +87,11 @@ class LudicSyntaxHighlighter : SyntaxHighlighterBase() {
             LudicTokens.IDENTIFIER -> LudicColors.IDENTIFIER
             LudicTokens.ANNOTATION -> LudicColors.ANNOTATION
             LudicTokens.OPERATOR -> LudicColors.OPERATOR
-            LudicTokens.BRACE -> LudicColors.BRACE
-            LudicTokens.BRACKET -> LudicColors.BRACKET
-            LudicTokens.PAREN -> LudicColors.PAREN
+            LudicTokens.LBRACE, LudicTokens.RBRACE -> LudicColors.BRACE
+            LudicTokens.LBRACKET, LudicTokens.RBRACKET -> LudicColors.BRACKET
+            LudicTokens.LPAREN, LudicTokens.RPAREN -> LudicColors.PAREN
             LudicTokens.COMMA -> LudicColors.COMMA
+            LudicTokens.MANIFEST_KEYWORD -> LudicColors.MANIFEST
             LudicTokens.BAD -> LudicColors.BAD
             else -> null
         }
@@ -72,5 +100,5 @@ class LudicSyntaxHighlighter : SyntaxHighlighterBase() {
 
 class LudicSyntaxHighlighterFactory : SyntaxHighlighterFactory() {
     override fun getSyntaxHighlighter(project: Project?, virtualFile: VirtualFile?): SyntaxHighlighter =
-        LudicSyntaxHighlighter()
+        LudicSyntaxHighlighter(manifest = virtualFile?.name == "package.ludic" || virtualFile?.name == "package.lock.ludic")
 }

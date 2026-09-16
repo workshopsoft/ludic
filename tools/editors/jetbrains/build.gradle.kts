@@ -1,3 +1,4 @@
+import java.time.Duration
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 
@@ -8,6 +9,8 @@ plugins {
     // is superseded and does not run on current Gradle.
     id("org.jetbrains.intellij.platform") version "2.18.1"
 }
+
+val localIde = providers.gradleProperty("localIde")
 
 group = providers.gradleProperty("pluginGroup").get()
 version = providers.gradleProperty("pluginVersion").get()
@@ -65,6 +68,9 @@ intellijPlatform {
             create(IntelliJPlatformType.IntellijIdeaCommunity, providers.gradleProperty("platformVersion").get()) {
                 useInstaller = false
             }
+            // -PlocalIde=/path/to/IDE.app also checks against an installed IDE,
+            // e.g. the newer one a developer actually uses
+            localIde.orNull?.let { local(it) }
         }
     }
 
@@ -87,8 +93,32 @@ tasks.named<JavaExec>("runIde") {
     args = listOf(repoRoot.absolutePath)
 }
 
+// `./gradlew runLocalIde -PlocalIde=/Applications/IntelliJ IDEA.app [-PopenProject=dir]`:
+// the same sandbox as runIde, booted from an installed IDE instead of the
+// downloaded one, so the plugin can be tried on exactly that build.
+val runLocalIde by intellijPlatformTesting.runIde.registering {
+    localPath = localIde.map { file(it) }
+    task {
+        args = listOf(providers.gradleProperty("openProject").getOrElse(repoRoot.absolutePath))
+    }
+    plugins {
+        plugin("com.redhat.devtools.lsp4ij", providers.gradleProperty("lsp4ijVersion").get())
+    }
+}
+
+
+// The palette Color.* resolves against, straight from the docs it is generated
+// into (`ludic-dev docs-palette`), so the swatches cannot drift from the compiler.
+tasks.named<ProcessResources>("processResources") {
+    from(File(repoRoot, "docs/language/colors/palette.json"))
+}
+
 tasks.test {
     useJUnit()
+    // a platform test that waits on a modal dialog or an event that never
+    // comes blocks forever; fail the run instead of hanging it
+    timeout.set(Duration.ofMinutes(10))
+    systemProperty("idea.test.timeout", "120")
     testLogging {
         events("passed", "failed", "skipped")
         showStandardStreams = false

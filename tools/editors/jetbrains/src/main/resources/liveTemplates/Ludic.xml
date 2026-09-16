@@ -1,0 +1,85 @@
+<templateSet group="Ludic">
+  <template name="prog" value="program $NAME$ {&#10;  $END$&#10;}" description="program block" toReformat="false" toShortenFQNames="false">
+    <variable name="NAME" expression="capitalize(camelCase(fileNameWithoutExtension()))" defaultValue="&quot;Game&quot;" alwaysStopAt="true" />
+    <context><option name="Ludic" value="true" /></context>
+  </template>
+  <template name="entry" value="entry {&#10;  $END$&#10;}" description="entry block (runs once, for a program with no phases)" toReformat="false" toShortenFQNames="false">
+    <context><option name="Ludic" value="true" /></context>
+  </template>
+  <template name="handler" value="handler $NAME$ phase $PHASE$ {&#10;  $END$&#10;}" description="phase handler" toReformat="false" toShortenFQNames="false">
+    <variable name="NAME" expression="" defaultValue="&quot;Tick&quot;" alwaysStopAt="true" />
+    <variable name="PHASE" expression="enum(&quot;Update&quot;, &quot;FixedUpdate&quot;, &quot;LateUpdate&quot;, &quot;Start&quot;, &quot;Input&quot;, &quot;Render&quot;, &quot;Overlay&quot;)" defaultValue="&quot;Update&quot;" alwaysStopAt="true" />
+    <context><option name="Ludic" value="true" /></context>
+  </template>
+  <template name="on" value="@On($EVENT$) handler $NAME$ {&#10;  $END$&#10;}" description="event handler" toReformat="false" toShortenFQNames="false">
+    <variable name="EVENT" expression="" defaultValue="&quot;Hit&quot;" alwaysStopAt="true" />
+    <variable name="NAME" expression="" defaultValue="&quot;OnHit&quot;" alwaysStopAt="true" />
+    <context><option name="Ludic" value="true" /></context>
+  </template>
+  <template name="event" value="event $NAME$ { $FIELD$: int = 0 }" description="event declaration" toReformat="false" toShortenFQNames="false">
+    <variable name="NAME" expression="" defaultValue="&quot;Hit&quot;" alwaysStopAt="true" />
+    <variable name="FIELD" expression="" defaultValue="&quot;amount&quot;" alwaysStopAt="true" />
+    <context><option name="Ludic" value="true" /></context>
+  </template>
+  <template name="prop" value="property $NAME$ { $FIELD$: $TYPE$ = $VALUE$ }" description="property (a component)" toReformat="false" toShortenFQNames="false">
+    <variable name="NAME" expression="" defaultValue="&quot;Pos&quot;" alwaysStopAt="true" />
+    <variable name="FIELD" expression="" defaultValue="&quot;x&quot;" alwaysStopAt="true" />
+    <variable name="TYPE" expression="enum(&quot;int&quot;, &quot;fixed&quot;, &quot;bool&quot;, &quot;string&quot;, &quot;entity&quot;)" defaultValue="&quot;int&quot;" alwaysStopAt="true" />
+    <variable name="VALUE" expression="" defaultValue="&quot;0&quot;" alwaysStopAt="true" />
+    <context><option name="Ludic" value="true" /></context>
+  </template>
+  <template name="model" value="model $NAME$ {&#10;  $FIELD$: $TYPE$$END$&#10;}" description="model (a record type)" toReformat="false" toShortenFQNames="false">
+    <variable name="NAME" expression="" defaultValue="&quot;Stats&quot;" alwaysStopAt="true" />
+    <variable name="FIELD" expression="" defaultValue="&quot;hp&quot;" alwaysStopAt="true" />
+    <variable name="TYPE" expression="enum(&quot;int&quot;, &quot;fixed&quot;, &quot;bool&quot;, &quot;string&quot;, &quot;entity&quot;)" defaultValue="&quot;int&quot;" alwaysStopAt="true" />
+    <context><option name="Ludic" value="true" /></context>
+  </template>
+  <template name="fn" value="function $NAME$($PARAMS$) -> $RET$ {&#10;  $END$&#10;}" description="function" toReformat="false" toShortenFQNames="false">
+    <variable name="NAME" expression="" defaultValue="&quot;helper&quot;" alwaysStopAt="true" />
+    <variable name="PARAMS" expression="" defaultValue="&quot;&quot;" alwaysStopAt="true" />
+    <variable name="RET" expression="enum(&quot;void&quot;, &quot;int&quot;, &quot;fixed&quot;, &quot;bool&quot;, &quot;string&quot;)" defaultValue="&quot;void&quot;" alwaysStopAt="true" />
+    <context><option name="Ludic" value="true" /></context>
+  </template>
+  <template name="test" value="test &quot;$NAME$&quot; {&#10;  $END$&#10;}" description="test block" toReformat="false" toShortenFQNames="false">
+    <variable name="NAME" expression="" defaultValue="&quot;it works&quot;" alwaysStopAt="true" />
+    <context><option name="Ludic" value="true" /></context>
+  </template>
+  <template name="expeq" value="expect_eq($ACTUAL$, $EXPECTED$)" description="expect_eq assertion" toReformat="false" toShortenFQNames="false">
+    <variable name="ACTUAL" expression="" defaultValue="" alwaysStopAt="true" />
+    <variable name="EXPECTED" expression="" defaultValue="" alwaysStopAt="true" />
+    <context><option name="Ludic" value="true" /></context>
+  </template>
+  <template name="forq" value="for ($VARS$) in query [$PROPS$] {&#10;  $END$&#10;}" description="for over an entity query" toReformat="false" toShortenFQNames="false">
+    <variable name="VARS" expression="" defaultValue="&quot;p&quot;" alwaysStopAt="true" />
+    <variable name="PROPS" expression="" defaultValue="&quot;Pos&quot;" alwaysStopAt="true" />
+    <context><option name="Ludic" value="true" /></context>
+  </template>
+  <template name="fori" value="for $I$ in $FROM$ .. $TO$ {&#10;  $END$&#10;}" description="for over a range" toReformat="false" toShortenFQNames="false">
+    <variable name="I" expression="" defaultValue="&quot;i&quot;" alwaysStopAt="true" />
+    <variable name="FROM" expression="" defaultValue="&quot;0&quot;" alwaysStopAt="true" />
+    <variable name="TO" expression="" defaultValue="&quot;10&quot;" alwaysStopAt="true" />
+    <context><option name="Ludic" value="true" /></context>
+  </template>
+  <template name="if" value="if $COND$ {&#10;  $END$&#10;}" description="if block" toReformat="false" toShortenFQNames="false">
+    <variable name="COND" expression="" defaultValue="" alwaysStopAt="true" />
+    <context><option name="Ludic" value="true" /></context>
+  </template>
+  <template name="ife" value="if $COND$ {&#10;  $THEN$&#10;} else {&#10;  $END$&#10;}" description="if / else" toReformat="false" toShortenFQNames="false">
+    <variable name="COND" expression="" defaultValue="" alwaysStopAt="true" />
+    <variable name="THEN" expression="" defaultValue="" alwaysStopAt="true" />
+    <context><option name="Ludic" value="true" /></context>
+  </template>
+  <template name="while" value="while $COND$ {&#10;  $END$&#10;}" description="while loop" toReformat="false" toShortenFQNames="false">
+    <variable name="COND" expression="" defaultValue="" alwaysStopAt="true" />
+    <context><option name="Ludic" value="true" /></context>
+  </template>
+  <template name="spawn" value="spawn $NAME$ { $PROP$ { $END$ } }" description="spawn an entity" toReformat="false" toShortenFQNames="false">
+    <variable name="NAME" expression="" defaultValue="&quot;Thing&quot;" alwaysStopAt="true" />
+    <variable name="PROP" expression="" defaultValue="&quot;Pos&quot;" alwaysStopAt="true" />
+    <context><option name="Ludic" value="true" /></context>
+  </template>
+  <template name="imp" value="import &quot;$PATH$&quot;" description="import a module" toReformat="false" toShortenFQNames="false">
+    <variable name="PATH" expression="" defaultValue="&quot;module.ludic&quot;" alwaysStopAt="true" />
+    <context><option name="Ludic" value="true" /></context>
+  </template>
+</templateSet>

@@ -1,0 +1,253 @@
+# lsp/docs.ludic — the language reference, indexed for hover and go-to.
+#
+# docs/language/**.md (shipped in the install root) holds one page per symbol,
+# with front matter:
+#
+#   id: screen-fill_circle          -> <DOCS_URL><id>.html
+#   tokens: Screen.fill_circle      the source spellings it documents
+#   sig: / tip: / kind: / ns:
+#
+# Built-ins, built-in types and namespace methods therefore get a signature, a
+# one-line summary and a link in hover, and go-to-definition opens the page.
+# Loaded once, on first use; a toolchain without docs simply has no entries.
+
+var DOCS_URL: pointer = "https://workshopsoft.pages.workshopsoft.io/ludic/"
+
+var g_docs_loaded: bool = false
+var g_dx_token: []pointer
+var g_dx_file: []pointer
+var g_dx_id: []pointer
+var g_dx_sig: []pointer
+var g_dx_tip: []pointer
+var g_dx_kind: []pointer
+# namespace name -> its section page
+var g_dxn_name: []pointer
+var g_dxn_file: []pointer
+var g_dxn_id: []pointer
+
+# the value of `key: …` in a front-matter block, or ""
+function fm_get(fm: pointer, key: pointer) -> pointer {
+  let n = cstr_len(fm)
+  let kl = cstr_len(key)
+  var i = 0
+  while i < n {
+    var e = i
+    while e < n and fm[e] != '\n' { e += 1 }
+    if e - i > kl and fm[i..i + kl] == key and fm[i + kl] == ':' {
+      var s = i + kl + 1
+      while s < e and fm[s] == ' ' { s += 1 }
+      var t = e
+      while t > s and (fm[t - 1] == ' ' or fm[t - 1] == '\r') { t -= 1 }
+      return fm[s..t]
+    }
+    i = e + 1
+  }
+  return ""
+}
+
+# the front matter of a page (between the leading `---` lines), or ""
+function fm_of(text: pointer) -> pointer {
+  if not starts_with(text, "---\n") { return "" }
+  let n = cstr_len(text)
+  var i = 4
+  while i < n {
+    if text[i] == '-' and text[i - 1] == '\n' and i + 3 <= n and text[i..i + 3] == "---" { return text[4..i] }
+    i += 1
+  }
+  return ""
+}
+
+# the body after the front matter
+function fm_body(text: pointer) -> pointer {
+  let fm = fm_of(text)
+  if (fm == "") { return text }
+  var i = 4 + cstr_len(fm) + 3
+  while text[i] == '\n' or text[i] == '\r' { i += 1 }
+  return text[i..cstr_len(text)]
+}
+
+function docs_add(tok: pointer, file: pointer, fm: pointer) -> void {
+  push(g_dx_token, tok)
+  push(g_dx_file, file)
+  push(g_dx_id, fm_get(fm, "id"))
+  push(g_dx_sig, fm_get(fm, "sig"))
+  push(g_dx_tip, fm_get(fm, "tip"))
+  push(g_dx_kind, fm_get(fm, "kind"))
+}
+
+function docs_load() -> void {
+  if g_docs_loaded { return }
+  g_docs_loaded = true
+  g_dx_token = new []pointer;  g_dx_file = new []pointer;  g_dx_id = new []pointer
+  g_dx_sig = new []pointer;  g_dx_tip = new []pointer;  g_dx_kind = new []pointer
+  g_dxn_name = new []pointer;  g_dxn_file = new []pointer;  g_dxn_id = new []pointer
+  let root = lsp_home() + "docs/language"
+  if not Fs.is_dir(root) { return }
+  let listfile = `{Os.temp_dir()}/ludic_lsp_docs_{Os.pid()}.txt`
+  run(`find '{root}' -name '*.md' > '{listfile}' 2>/dev/null`)
+  let list = read_file(listfile)
+  run(`rm -f '{listfile}'`)
+  if (list == null) { return }
+  var i = 0
+  var start = 0
+  while list[i] != 0 {
+    if list[i] == '\n' {
+      if i > start { docs_index_file(list[start..i]) }
+      start = i + 1
+    }
+    i += 1
+  }
+  if i > start { docs_index_file(list[start..i]) }
+}
+
+function docs_index_file(path: pointer) -> void {
+  if ends_with(path, "/_section.md") { return }
+  let text = read_file(path)
+  if (text == null) { return }
+  let fm = fm_of(text)
+  if (fm == "") { return }
+  let toks = fm_get(fm, "tokens")
+  var i = 0
+  let n = cstr_len(toks)
+  while i < n {
+    while i < n and toks[i] == ' ' { i += 1 }
+    let s = i
+    while i < n and toks[i] != ' ' { i += 1 }
+    if i > s { docs_add(toks[s..i], path, fm) }
+  }
+  # a namespace method also tells us where its namespace's section page is
+  let ns = fm_get(fm, "ns")
+  if not (ns == "") and docs_ns_index(ns) < 0 {
+    let sec = dirname(path) + "/_section.md"
+    if Fs.exists(sec) {
+      push(g_dxn_name, ns)
+      push(g_dxn_file, sec)
+      push(g_dxn_id, "ns-" + lower_str(ns))
+    }
+  }
+}
+
+function lower_str(s: pointer) -> pointer {
+  let n = cstr_len(s)
+  let b = bytes(n + 1)
+  var i = 0
+  while i < n { b[i] = lower(s[i]);  i += 1 }
+  b[n] = 0
+  return b
+}
+
+function docs_index(tok: pointer) -> int {
+  docs_load()
+  var i = 0
+  while i < len(g_dx_token) { if (g_dx_token[i] == tok) { return i };  i += 1 }
+  return -1
+}
+
+function docs_ns_index(ns: pointer) -> int {
+  var i = 0
+  while i < len(g_dxn_name) { if (g_dxn_name[i] == ns) { return i };  i += 1 }
+  return -1
+}
+
+function docs_url(i: int) -> pointer { return DOCS_URL + g_dx_id[i] + ".html" }
+
+# the spelling a token is documented under: `Screen.fill_circle` for the
+# method name in `Screen.fill_circle(…)`, else the word itself
+function doc_key_at(D: Doc, tok: int) -> pointer {
+  let name = ttext(D, tok)
+  let dot = prev_sig(D, tok)
+  if dot >= 0 and tis(D, dot, ".") {
+    let recv = prev_sig(D, dot)
+    if recv >= 0 { return ttext(D, recv) + "." + name }
+  }
+  return name
+}
+
+# a hover for a documented name, or null
+function docs_hover(D: Doc, tok: int) -> pointer {
+  let key = doc_key_at(D, tok)
+  let i = docs_index(key)
+  if i >= 0 {
+    var sig = g_dx_sig[i]
+    if (sig == "") { sig = key }
+    let m = buf_new()
+    buf_puts(m, g_dx_tip[i])
+    let body = docs_first_paragraph(g_dx_file[i])
+    if not (body == "") and not (body == g_dx_tip[i]) { buf_puts(m, "\n\n");  buf_puts(m, body) }
+    buf_puts(m, "\n\n[Documentation](")
+    buf_puts(m, docs_url(i))
+    buf_puts(m, ")")
+    let o = buf_new()
+    hover_md(o, sig, buf_str(m))
+    return buf_str(o)
+  }
+  let n = docs_ns_index(ttext(D, tok))
+  if n >= 0 {
+    let o = buf_new()
+    let body = docs_first_paragraph(g_dxn_file[n])
+    hover_md(o, "namespace " + g_dxn_name[n], body + "\n\n[Documentation](" + DOCS_URL + g_dxn_id[n] + ".html)")
+    return buf_str(o)
+  }
+  return null
+}
+
+# go-to-definition for a documented name: its page
+function docs_definition(D: Doc, tok: int) -> pointer {
+  var file: pointer = null
+  let i = docs_index(doc_key_at(D, tok))
+  if i >= 0 { file = g_dx_file[i] }
+  else {
+    let n = docs_ns_index(ttext(D, tok))
+    if n >= 0 { file = g_dxn_file[n] }
+  }
+  if (file == null) { return null }
+  let o = buf_new()
+  buf_puts(o, "{\"uri\":")
+  jstr_out(o, path_to_uri(file))
+  buf_puts(o, ",\"range\":{\"start\":{\"line\":0,\"character\":0},\"end\":{\"line\":0,\"character\":0}}}")
+  return buf_str(o)
+}
+
+# the first prose paragraph of a page, markup kept (the editor renders markdown)
+function docs_first_paragraph(path: pointer) -> pointer {
+  let text = read_file(path)
+  if (text == null) { return "" }
+  let body = fm_body(text)
+  let n = cstr_len(body)
+  var i = 0
+  while i < n and (body[i] == '\n' or body[i] == ' ') { i += 1 }
+  if i + 2 < n and body[i..i + 3] == "```" { return "" }
+  let s = i
+  while i < n {
+    if body[i] == '\n' and i + 1 < n and body[i + 1] == '\n' { break }
+    i += 1
+  }
+  var p = body[s..i]
+  if cstr_len(p) > 600 { p = p[0..600] + "…" }
+  return p
+}
+
+# the documented signature of a namespace method or builtin, or null
+function docs_sig(key: pointer) -> pointer {
+  let i = docs_index(key)
+  if i < 0 { return null }
+  if (g_dx_sig[i] == "") { return null }
+  return g_dx_sig[i]
+}
+
+function docs_tip(key: pointer) -> pointer {
+  let i = docs_index(key)
+  if i < 0 { return "" }
+  return g_dx_tip[i]
+}
+
+# every documented member of a namespace: `Screen` -> fill_circle, show, …
+function docs_ns_members(ns: pointer, out: []int) -> void {
+  docs_load()
+  let pre = ns + "."
+  var i = 0
+  while i < len(g_dx_token) {
+    if starts_with(g_dx_token[i], pre) { push(out, i) }
+    i += 1
+  }
+}

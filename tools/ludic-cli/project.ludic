@@ -47,14 +47,25 @@ function project_name(entry: pointer) -> pointer {
   return capture_line(`basename {entry} .ludic`)
 }
 
-# The program to compile. An explicit path always wins; otherwise the
-# conventional entry points are tried in order, and finally a lone .ludic file in
-# the current directory (so a scratch directory needs no ceremony). "" when
-# nothing was found.
+# The program to compile. An explicit path always wins; then package.ludic's
+# `entry "…"`; then the conventional entry points in order; then the one file
+# under src/ that declares a `program` (the rest being modules it imports); and
+# finally a lone .ludic file in the current directory (so a scratch directory
+# needs no ceremony). "" when nothing was found.
 function find_entry(explicit: pointer) -> pointer {
   if explicit != "" { return explicit }
+  if file_exists("package.ludic") {
+    let m = read_root_manifest()
+    if m.entry != "" {
+      if file_exists(m.entry) { return m.entry }
+      err(`ludic: package.ludic names entry "{m.entry}", which does not exist\n`)
+      return ""
+    }
+  }
   if file_exists("src/main.ludic") { return "src/main.ludic" }
   if file_exists("main.ludic") { return "main.ludic" }
+  let progs = split_lines(capture("grep -rlE --include='*.ludic' '^program[[:space:]]' src 2>/dev/null | sort"))
+  if len(progs) == 1 { return progs[0] }
   let one = capture_line("ls *.ludic 2>/dev/null")
   if one != "" and not shq("ls *.ludic 2>/dev/null | tail -n +2 | grep -q .") { return one }
   return ""
@@ -63,7 +74,8 @@ function find_entry(explicit: pointer) -> pointer {
 # report the "no entry point" case the same way everywhere
 function no_entry() -> int {
   err("ludic: no program to build here.\n")
-  err("  expected src/main.ludic (or main.ludic), or name a file: ludic build path/to/game.ludic\n")
+  err("  expected `entry \"src/game.ludic\"` in package.ludic, src/main.ludic (or main.ludic),\n")
+  err("  a single program under src/, or name a file: ludic build path/to/game.ludic\n")
   err("  start a new project with: ludic new <name>\n")
   return 1
 }
@@ -337,13 +349,35 @@ function test_files() -> []pointer {
   return files
 }
 
-# ludic test [file...] — compile each test program headlessly and run it. A test
-# program's own runner prints ok/FAIL per test block and exits non-zero if any
-# failed, so this reports one line per file and forwards the failure.
+# ludic test [file...] [--verbose] [--test NAME] — compile each test program
+# headlessly and run it. A test program's own runner prints ok/FAIL per test
+# block and exits non-zero if any failed, so this reports one line per file and
+# forwards the failure.
+#
+# --verbose streams every runner line, framed by `RUN <file>` ... `PASS|FAIL
+# <file>`: the shape an IDE test view parses. --test NAME runs only the test
+# block with exactly that name (the runner's argv[1]).
 function cmd_test() -> int {
   var files = new []pointer
+  var verbose = false
+  var only = ""
   var ai = 2
-  while ai < arg_count() { if arg(ai)[0] != '-' { push(files, arg(ai)) };  ai += 1 }
+  while ai < arg_count() {
+    let a = arg(ai)
+    if (a == "--verbose") or (a == "-v") { verbose = true }
+    else if a == "--test" {
+      if ai + 1 >= arg_count() { err("ludic test: --test needs a test name\n");  return 1 }
+      ai += 1
+      only = arg(ai)
+    }
+    else if a[0] == '-' {
+      err(`ludic test: unknown option {a}\n`)
+      err("  usage: ludic test [file...] [--verbose] [--test NAME]\n")
+      return 1
+    }
+    else { push(files, a) }
+    ai += 1
+  }
   if len(files) == 0 { files = test_files() }
   if len(files) == 0 {
     err("ludic test: no tests found (expected tests/*.ludic or src/**/*_test.ludic)\n")
@@ -355,19 +389,27 @@ function cmd_test() -> int {
     mi += 1
   }
   shell("mkdir -p build")
+  var filter = ""
+  if only != "" { filter = ` {sh_single(only)}` }
   var failed = 0
   var i = 0
   while i < len(files) {
     let f = files[i]
     let bin = `{tmp_dir()}/{flat(strip_ext(f))}`
+    if verbose { say(`  RUN  {f}`) }
     if not compile_app(f, bin, 2, false) {
-      print(`  {c_red()}FAIL{c_reset()} {f}  (did not compile)`)
+      let line = `  {c_red()}FAIL{c_reset()} {f}  (did not compile)`
+      if verbose { say(line) } else { print(line) }
       failed += 1
+    } else if verbose {
+      let rc = sh(`{bin}{filter} < /dev/null 2>&1`)
+      if rc == 0 { say(`  {c_green()}PASS{c_reset()} {f}`) }
+      else { say(`  {c_red()}FAIL{c_reset()} {f}  (exit {string(rc)})`);  failed += 1 }
     } else {
       # a test program prints one line per test block; that belongs on screen
       # when something failed and nowhere when everything passed.
       let log = `{bin}.out`
-      let rc = sh(`{bin} < /dev/null > {log} 2>&1`)
+      let rc = sh(`{bin}{filter} < /dev/null > {log} 2>&1`)
       if rc == 0 { print(`  {c_green()}PASS{c_reset()} {f}`) }
       else {
         print(`  {c_red()}FAIL{c_reset()} {f}  (exit {string(rc)})`)
@@ -385,6 +427,22 @@ function cmd_test() -> int {
   }
   print(`== {string(failed)} of {string(len(files))} test files failed ==`)
   return 1
+}
+
+# print a line through the shell. The runner's own stdout is buffered, so a
+# print() made between two child processes would surface after both of them;
+# under --verbose the framing has to interleave with the runner output exactly.
+function say(line: pointer) -> void { shell(`printf '%s\\n' {sh_single(line)}`) }
+
+# one shell word, whatever it contains: 'it'\''s' for it's
+function sh_single(s: pointer) -> pointer {
+  var o = "'"
+  var i = 0
+  while i < len(s) {
+    if s[i] == 39 { o = o + "'\\''" } else { o = o + s[i..i + 1] }
+    i += 1
+  }
+  return o + "'"
 }
 
 # drop the extension from a path ("tests/combat.ludic" -> "tests/combat")

@@ -75,6 +75,8 @@ function emit_main(d: Node) -> void {
 # A `test "name" { ... }` block lowers to a void function; `expect*` assertions
 # inside it flip @L_test_fail. A synthetic runner @main runs every test, prints
 # `ok   - name` / `FAIL - name`, a summary, and exits non-zero if any failed.
+# `./tests "name"` runs only the test with exactly that name (what an editor's
+# per-test run button passes); naming a test that does not exist is a failure.
 
 # one test block -> a void function @fn__test_<idx> (mirrors emit_fn's shape).
 function emit_test_fn(t: Node, idx: int) -> void {
@@ -98,6 +100,7 @@ function emit_test_fn(t: Node, idx: int) -> void {
 function emit_test_runner() -> void {
   emith("@L_test_fail = internal global i32 0\n")
   emith("@.fmt_test_sum = private unnamed_addr constant [28 x i8] c\"== %d passed, %d failed ==\\0A\\00\"\n")
+  emith("@.fmt_test_none = private unnamed_addr constant [20 x i8] c\"no test named \\22%s\\22\\0A\\00\"\n")
   var i = 0
   while i < len(g_tests) { emit_test_fn(g_tests[i], i);  i += 1 }
   if g_uses_expect { emith("@.fmt_expect = private unnamed_addr constant [22 x i8] c\"%s (got %d, want %d)\\0A\\00\"\n") }
@@ -107,12 +110,37 @@ function emit_test_runner() -> void {
   emit("  store i32 %argc, ptr @L_argc\n")
   emit("  store ptr %argv, ptr @L_argv\n")
   emit("  %failed = alloca i32\n  store i32 0, ptr %failed\n")
+  emit("  %ran = alloca i32\n  store i32 0, ptr %ran\n")
+  # argv[1], when given, names the one test to run
+  emit("  %filter = alloca ptr\n  store ptr null, ptr %filter\n")
+  let lhas = lbl("tfilt");  let lstart = lbl("tbegin")
+  let hasf = emit_bind("icmp sgt i32 %argc, 1")
+  emit(`  br i1 {hasf}, label %{lhas}, label %{lstart}\n`)
+  emit(`{lhas}:\n`)
+  let fslot = emit_bind("getelementptr ptr, ptr %argv, i64 1")
+  let fval = emit_bind(`load ptr, ptr {fslot}`)
+  emit(`  store ptr {fval}, ptr %filter\n`)
+  emit(`  br label %{lstart}\n`)
+  emit(`{lstart}:\n`)
   if has_ecs() { emit("  call void @rt_init()\n") }
   emit("  call void @L_init_globals()\n")
   i = 0
   while i < len(g_tests) {
     let okmsg = emit_str_const(`ok   - {g_tests[i].s}`)
     let failmsg = emit_str_const(`FAIL - {g_tests[i].s}`)
+    let tname = emit_str_const(g_tests[i].s)
+    let lcmp = lbl("tcmp");  let lrun = lbl("trun");  let lskip = lbl("tskip")
+    let fl = emit_bind("load ptr, ptr %filter")
+    let nof = emit_bind(`icmp eq ptr {fl}, null`)
+    emit(`  br i1 {nof}, label %{lrun}, label %{lcmp}\n`)
+    emit(`{lcmp}:\n`)
+    let cmp = emit_bind(`call i32 @strcmp(ptr {fl}, ptr {tname})`)
+    let same = emit_bind(`icmp eq i32 {cmp}, 0`)
+    emit(`  br i1 {same}, label %{lrun}, label %{lskip}\n`)
+    emit(`{lrun}:\n`)
+    let rn = emit_bind("load i32, ptr %ran")
+    let rn1 = emit_bind(`add i32 {rn}, 1`)
+    emit(`  store i32 {rn1}, ptr %ran\n`)
     emit("  store i32 0, ptr @L_test_fail\n")
     emit(`  call void @fn__test_{itoa(i)}()\n`)
     let f = emit_bind("load i32, ptr @L_test_fail")
@@ -129,10 +157,24 @@ function emit_test_runner() -> void {
     emit(`  call i32 (ptr, ...) @printf(ptr @.fmt_line, ptr {failmsg})\n`)
     emit(`  br label %{ldone}\n`)
     emit(`{ldone}:\n`)
+    emit(`  br label %{lskip}\n`)
+    emit(`{lskip}:\n`)
     i += 1
   }
+  # a filter that matched nothing is a typo, not a pass
+  let lnone = lbl("tnone");  let lsum = lbl("tsum")
+  let ran = emit_bind("load i32, ptr %ran")
+  let fl = emit_bind("load ptr, ptr %filter")
+  let hasfilter = emit_bind(`icmp ne ptr {fl}, null`)
+  let noran = emit_bind(`icmp eq i32 {ran}, 0`)
+  let missed = emit_bind(`and i1 {hasfilter}, {noran}`)
+  emit(`  br i1 {missed}, label %{lnone}, label %{lsum}\n`)
+  emit(`{lnone}:\n`)
+  emit(`  call i32 (ptr, ...) @printf(ptr @.fmt_test_none, ptr {fl})\n`)
+  emit("  ret i32 1\n")
+  emit(`{lsum}:\n`)
   let totf = emit_bind("load i32, ptr %failed")
-  let passed = emit_bind(`sub i32 {itoa(len(g_tests))}, {totf}`)
+  let passed = emit_bind(`sub i32 {ran}, {totf}`)
   emit(`  call i32 (ptr, ...) @printf(ptr @.fmt_test_sum, i32 {passed}, i32 {totf})\n`)
   let allok = emit_bind(`icmp eq i32 {totf}, 0`)
   let rc = emit_bind(`select i1 {allok}, i32 0, i32 1`)

@@ -7,6 +7,7 @@ import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLabel
 import com.intellij.util.ui.FormBuilder
+import com.redhat.devtools.lsp4ij.LanguageServerManager
 import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.JSpinner
@@ -16,6 +17,7 @@ import javax.swing.SpinnerNumberModel
 class LudicConfigurable(private val project: Project) : Configurable {
     private val serverField = TextFieldWithBrowseButton()
     private val compilerField = TextFieldWithBrowseButton()
+    private val cliField = TextFieldWithBrowseButton()
     private val diagnostics = JBCheckBox("Report compiler errors on save")
     private val indent = JSpinner(SpinnerNumberModel(2, 1, 8, 1))
     private var panel: JPanel? = null
@@ -33,6 +35,10 @@ class LudicConfigurable(private val project: Project) : Configurable {
             project,
             FileChooserDescriptorFactory.createSingleFileNoJarsDescriptor().withTitle("Path to ludicc")
         )
+        cliField.addBrowseFolderListener(
+            project,
+            FileChooserDescriptorFactory.createSingleFileNoJarsDescriptor().withTitle("Path to ludic")
+        )
 
         panel = FormBuilder.createFormBuilder()
             .addLabeledComponent(JBLabel("Language server (ludic-lsp):"), serverField, 1, false)
@@ -42,6 +48,10 @@ class LudicConfigurable(private val project: Project) : Configurable {
             .addLabeledComponent(JBLabel("Compiler (ludicc):"), compilerField, 1, false)
             .addComponentToRightColumn(
                 JBLabel("Used for authoritative diagnostics. Empty means bin/ludicc.")
+            )
+            .addLabeledComponent(JBLabel("Command line (ludic):"), cliField, 1, false)
+            .addComponentToRightColumn(
+                JBLabel("Runs, builds, tests and new projects. Empty means bin/ludic, then PATH, then ~/.ludic.")
             )
             .addComponent(diagnostics)
             .addLabeledComponent(JBLabel("Formatter indent:"), indent, 1, false)
@@ -57,22 +67,37 @@ class LudicConfigurable(private val project: Project) : Configurable {
         val s = settings()
         return serverField.text != s.serverPath ||
             compilerField.text != s.compilerPath ||
+            cliField.text != s.cliPath ||
             diagnostics.isSelected != s.compilerDiagnostics ||
             (indent.value as Int) != s.indentSize
     }
 
     override fun apply() {
         val s = settings()
+        val restart = serverField.text.trim() != s.serverPath ||
+            compilerField.text.trim() != s.compilerPath ||
+            diagnostics.isSelected != s.compilerDiagnostics ||
+            (indent.value as Int) != s.indentSize
         s.serverPath = serverField.text.trim()
         s.compilerPath = compilerField.text.trim()
+        s.cliPath = cliField.text.trim()
         s.compilerDiagnostics = diagnostics.isSelected
         s.indentSize = indent.value as Int
+        // the server reads all of these once, at initialize
+        if (restart) restartServer()
+    }
+
+    private fun restartServer() {
+        val manager = LanguageServerManager.getInstance(project)
+        manager.stop("ludic")
+        manager.start("ludic")
     }
 
     override fun reset() {
         val s = settings()
         serverField.text = s.serverPath
         compilerField.text = s.compilerPath
+        cliField.text = s.cliPath
         diagnostics.isSelected = s.compilerDiagnostics
         indent.value = s.indentSize
     }

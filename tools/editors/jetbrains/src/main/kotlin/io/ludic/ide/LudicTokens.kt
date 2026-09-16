@@ -2,6 +2,7 @@ package io.ludic.ide
 
 import com.intellij.psi.tree.IElementType
 import com.intellij.psi.tree.IFileElementType
+import com.intellij.psi.tree.TokenSet
 
 /**
  * One token type per thing the highlighter needs to tell apart. This is a
@@ -16,6 +17,13 @@ object LudicTokens {
     val COMMENT = LudicTokenType("COMMENT")
     val STRING = LudicTokenType("STRING")
     val CHAR = LudicTokenType("CHAR")
+    // `text {hole} text`: the pieces of a template string
+    val TEMPLATE_QUOTE = LudicTokenType("TEMPLATE_QUOTE")
+    val TEMPLATE_TEXT = LudicTokenType("TEMPLATE_TEXT")
+    val TEMPLATE_ESCAPE = LudicTokenType("TEMPLATE_ESCAPE")      // {{ }} \n
+    val TEMPLATE_HOLE_START = LudicTokenType("TEMPLATE_HOLE_START")
+    val TEMPLATE_HOLE_END = LudicTokenType("TEMPLATE_HOLE_END")
+    val TEMPLATE_PARTS = TokenSet.create(TEMPLATE_QUOTE, TEMPLATE_TEXT, TEMPLATE_ESCAPE)
     val NUMBER = LudicTokenType("NUMBER")
     val IDENTIFIER = LudicTokenType("IDENTIFIER")
     val TYPE_NAME = LudicTokenType("TYPE_NAME")       // Capitalised: component, archetype, scene
@@ -27,10 +35,21 @@ object LudicTokens {
     val BOOLEAN = LudicTokenType("BOOLEAN")
     val BUILTIN = LudicTokenType("BUILTIN")           // runtime surface + compiler intrinsics
     val ANNOTATION = LudicTokenType("ANNOTATION")     // @deterministic
+    val MANIFEST_KEYWORD = LudicTokenType("MANIFEST_KEYWORD") // package.ludic: package, require, app, ...
     val OPERATOR = LudicTokenType("OPERATOR")
-    val BRACE = LudicTokenType("BRACE")
-    val BRACKET = LudicTokenType("BRACKET")
-    val PAREN = LudicTokenType("PAREN")
+    // Opening and closing delimiters are distinct types: the platform's brace
+    // matching (and Enter's "close the unmatched brace") cannot tell `{` from
+    // `}` by text, only by token type.
+    val LBRACE = LudicTokenType("LBRACE")
+    val RBRACE = LudicTokenType("RBRACE")
+    val LBRACKET = LudicTokenType("LBRACKET")
+    val RBRACKET = LudicTokenType("RBRACKET")
+    val LPAREN = LudicTokenType("LPAREN")
+    val RPAREN = LudicTokenType("RPAREN")
+    val BRACES = TokenSet.create(LBRACE, RBRACE)
+    val BRACKETS = TokenSet.create(LBRACKET, RBRACKET)
+    val PARENS = TokenSet.create(LPAREN, RPAREN)
+    val DELIMITERS = TokenSet.orSet(BRACES, BRACKETS, PARENS)
     val COMMA = LudicTokenType("COMMA")
     val BAD = LudicTokenType("BAD_CHARACTER")
 }
@@ -73,6 +92,26 @@ object LudicVocabulary {
         "as_fixed", "as_int", "file_open", "file_read", "file_write",
         "file_seek", "file_tell", "file_close", "read_char",         "exit",         "is_windowed", "game_title", "win_open", "win_poll", "win_present",
         "win_running", "win_close"
+    )
+
+    /**
+     * Declaration and clause words the compiler does not reserve as names
+     * (selfhost/frontend/parse.ludic is_reserved_word only guards function
+     * names): they are keywords only where a declaration can start.
+     */
+    val CONTEXTUAL = setOf(
+        "program", "import", "property", "model", "enum", "ui", "namespace", "function", "extern",
+        "handler", "entry", "event", "scene", "test", "phase", "query", "on", "cancellable", "public",
+        "layer", "start"
+    )
+
+    /**
+     * The directives parse_manifest (tools/ludic-cli/pkg.ludic) understands,
+     * and the words of the lock file parse_lock reads.
+     */
+    val MANIFEST = setOf(
+        "package", "version", "kind", "entry", "provides", "targets", "require", "pack", "app", "script", "hook",
+        "lock", "module", "hash"
     )
 
     fun isKeyword(w: String) = w in DECL || w in CLAUSE || w in STMT

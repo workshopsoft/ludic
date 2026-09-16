@@ -45,7 +45,11 @@ program ChronoRift {
 ```
 
 `import "emberdepths/*.ludic"` imports every `.ludic` file of a directory, in name
-order — a game lists its modules once. An imported file is a **fragment**: bare
+order — a game lists its modules once. `import "camp"` names a directory through its
+**barrel**, `camp/index.ludic`: a fragment that lists the directory's own imports
+(relative to itself), in the order it wants them. A directory with no `index.ludic`
+is an error that says so. Packages resolve the same way: `import "ludic.render3d"`
+reads `ludic.render3d/index.ludic` from `ludic_modules/` or the toolchain. An imported file is a **fragment**: bare
 declarations, no `program` wrapper. Its
 declarations are spliced into the importing program. Imports may appear inside
 the `program` block or before it, they may nest (a fragment may import fragments),
@@ -1028,6 +1032,7 @@ ludic new mygame                         # a project that builds and plays as it
 ludic run                                # compile src/main.ludic and run it
 ludic build --headless                   # headless build (renders out.ppm; reads stdin)
 ludic test                               # compile and run the project's `test` blocks
+ludic test tests/math.ludic --test adds  # just the test named "adds" (-v: every result line)
 
 ludicc app.ludic -o build/app            # the compiler directly: a native binary
 ludicc app.ludic --emit-llvm -o app.ll   # stop at LLVM IR

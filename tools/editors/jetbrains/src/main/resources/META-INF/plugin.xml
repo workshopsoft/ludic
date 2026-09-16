@@ -6,17 +6,25 @@
     <description><![CDATA[
     <p>Language support for <b>Ludic</b>, the AI-first, ECS-native game language.</p>
     <ul>
-      <li>Syntax highlighting, brace matching, commenting and folding, implemented natively so a
-          <code>.ludic</code> file is coloured with no external process.</li>
-      <li>Completion, diagnostics, hover, go-to-definition, find usages, rename and formatting via
-          the <code>ludic-lsp</code> language server, through LSP4IJ, so this works in Community
-          editions as well as the paid IDEs.</li>
+      <li>Syntax highlighting (customisable under Color Scheme), brace matching and auto-closing,
+          quote pairing, commenting, folding and smart indentation, implemented natively so a
+          <code>.ludic</code> file is edited well with no external process.</li>
+      <li>Completion, diagnostics, hover docs, parameter info, go-to-definition, find usages,
+          highlight usages, rename, formatting, inlay hints, semantic highlighting, the Structure
+          view, breadcrumbs and Go to Symbol via the <code>ludic-lsp</code> language server,
+          through LSP4IJ, so this works in the free IDEs as well as the paid ones.</li>
       <li>Errors from the Ludic compiler itself, reported on save.</li>
-      <li>Highlighting of <code>```ludic</code> fenced blocks in Markdown.</li>
+      <li>Run configurations for <code>ludic run</code>, <code>build</code> and <code>test</code>,
+          with gutter run buttons on programs and on every <code>test "name"</code> block,
+          results in the test runner tree, and clickable <code>file.ludic:line</code> locations
+          in every console.</li>
+      <li>New Project wizard (<code>ludic new</code>), New Ludic File templates, live templates,
+          and a Tools | Ludic menu (format, fetch packages, pack, bundle, doctor).</li>
+      <li><code>package.ludic</code> manifest highlighting, and <code>```ludic</code> fences in Markdown.</li>
     </ul>
     <p>Set the paths under <b>Settings &rarr; Languages &amp; Frameworks &rarr; Ludic</b>, or leave
-       them blank to use <code>bin/ludic-lsp</code> and <code>bin/ludicc</code> under the
-       project root.</p>
+       them blank to use <code>bin/</code> under the project root, then <code>PATH</code>, then
+       <code>~/.ludic/bin</code>.</p>
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
@@ -54,12 +62,103 @@
             language="Ludic"
             implementationClass="io.ludic.ide.LudicFoldingBuilder"/>
 
+        <lang.quoteHandler
+            language="Ludic"
+            implementationClass="io.ludic.ide.editor.LudicQuoteHandler"/>
+
+        <lineIndentProvider implementation="io.ludic.ide.editor.LudicLineIndentProvider"/>
+        <typedHandler implementation="io.ludic.ide.editor.LudicCloserTypedHandler" id="ludicCloser"/>
+
+        <colorSettingsPage implementation="io.ludic.ide.editor.LudicColorSettingsPage"/>
+        <langCodeStyleSettingsProvider implementation="io.ludic.ide.editor.LudicCodeStyleSettingsProvider"/>
+
+        <liveTemplateContext contextId="Ludic" implementation="io.ludic.ide.editor.LudicTemplateContext"/>
+        <defaultLiveTemplates file="/liveTemplates/Ludic.xml"/>
+        <internalFileTemplate name="Ludic Program"/>
+        <internalFileTemplate name="Ludic Module"/>
+        <internalFileTemplate name="Ludic Test"/>
+        <internalFileTemplate name="Ludic File"/>
+
+        <!-- Language-server features LSP4IJ only wires up by itself for TEXT and
+             TextMate files; a language with its own parser opts in per feature. -->
+        <lang.psiStructureViewFactory
+            language="Ludic"
+            implementationClass="com.redhat.devtools.lsp4ij.features.documentSymbol.LSPDocumentSymbolStructureViewFactory"/>
+        <codeInsight.parameterInfo
+            language="Ludic"
+            implementationClass="com.redhat.devtools.lsp4ij.features.signatureHelp.LSPParameterInfoHandler"/>
+        <codeBlockProvider
+            language="Ludic"
+            implementationClass="com.redhat.devtools.lsp4ij.features.codeBlockProvider.LSPCodeBlockProvider"/>
+
+        <configurationType implementation="io.ludic.ide.run.LudicConfigurationType"/>
+        <runConfigurationProducer implementation="io.ludic.ide.run.LudicRunConfigurationProducer"/>
+        <runLineMarkerContributor language="Ludic" implementationClass="io.ludic.ide.run.LudicRunLineMarker"/>
+        <consoleFilterProvider implementation="io.ludic.ide.run.LudicConsoleFilterProvider"/>
+
+        <moduleBuilder builderClass="io.ludic.ide.project.LudicModuleBuilder"/>
+
+        <!-- package.ludic: the package manifest -->
+        <editorNotificationProvider implementation="io.ludic.ide.project.LudicPackageNotificationProvider"/>
+        <runLineMarkerContributor language="Ludic" implementationClass="io.ludic.ide.project.LudicManifestLineMarker"/>
+        <completion.contributor language="Ludic" implementationClass="io.ludic.ide.project.LudicManifestCompletion" order="first"/>
+        <lang.documentationProvider language="Ludic" implementationClass="io.ludic.ide.project.LudicManifestDocumentation" order="first"/>
+        <gotoDeclarationHandler implementation="io.ludic.ide.project.LudicManifestGotoHandler" order="first"/>
+        <annotator language="Ludic" implementationClass="io.ludic.ide.project.LudicManifestAnnotator"/>
+        <iconProvider implementation="io.ludic.ide.project.LudicManifestIconProvider" order="first"/>
+        <additionalLibraryRootsProvider implementation="io.ludic.ide.project.LudicPackagesLibraryProvider"/>
+        <notificationGroup id="Ludic" displayType="BALLOON"/>
+        <postStartupActivity implementation="io.ludic.ide.project.LudicToolchainCheck"/>
+
+        <colorProvider implementation="io.ludic.ide.editor.LudicColorPreview"/>
+        <!-- built-in reference pages as documentation, whatever element points at them -->
+        <documentationProvider implementation="io.ludic.ide.editor.LudicDocPageDocumentation" order="first"/>
+        <!-- a declaration the language server navigated to, described by the server -->
+        <documentationProvider implementation="io.ludic.ide.editor.LudicTargetDocumentation" order="first"/>
+
         <projectConfigurable
             parentId="language"
             instance="io.ludic.ide.LudicConfigurable"
             id="io.ludic.ide.settings"
             displayName="Ludic"/>
     </extensions>
+
+    <projectListeners>
+        <listener class="io.ludic.ide.project.LudicManifestWatcher"
+                  topic="com.intellij.openapi.vfs.newvfs.BulkFileListener"/>
+    </projectListeners>
+
+    <actions>
+        <action id="Ludic.NewFile" class="io.ludic.ide.editor.CreateLudicFileAction"
+                text="Ludic File" description="Create a Ludic program, module or test" icon="/icons/ludic.svg">
+            <add-to-group group-id="NewGroup" anchor="before" relative-to-action="NewFromTemplate"/>
+        </action>
+        <group id="Ludic.Tools" text="Ludic" popup="true" icon="/icons/ludic.svg">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+            <action id="Ludic.Run" class="io.ludic.ide.run.LudicRunProjectAction"
+                    text="Run Project" description="ludic run"/>
+            <action id="Ludic.Build" class="io.ludic.ide.run.LudicBuildProjectAction"
+                    text="Build Project" description="ludic build"/>
+            <action id="Ludic.Test" class="io.ludic.ide.run.LudicTestProjectAction"
+                    text="Run All Tests" description="ludic test"/>
+            <action id="Ludic.RunScript" class="io.ludic.ide.run.LudicRunScriptAction"
+                    text="Run Script…" description="Run one of package.ludic's scripts"/>
+            <separator/>
+            <action id="Ludic.Format" class="io.ludic.ide.run.LudicFormatProjectAction"
+                    text="Format Project" description="ludic fmt: format src/ and tests/ in place"/>
+            <action id="Ludic.Get" class="io.ludic.ide.run.LudicGetPackagesAction"
+                    text="Fetch Packages" description="ludic get: resolve and fetch package.ludic dependencies"/>
+            <action id="Ludic.Pack" class="io.ludic.ide.run.LudicPackAction"
+                    text="Pack Assets" description="ludic pack: build the .lpak asset pack"/>
+            <action id="Ludic.Bundle" class="io.ludic.ide.run.LudicBundleAction"
+                    text="Bundle App" description="ludic bundle: build a macOS .app"/>
+            <action id="Ludic.Clean" class="io.ludic.ide.run.LudicCleanAction"
+                    text="Clean" description="ludic clean: remove build/"/>
+            <separator/>
+            <action id="Ludic.Doctor" class="io.ludic.ide.run.LudicDoctorAction"
+                    text="Check Toolchain (Doctor)" description="ludic doctor"/>
+        </group>
+    </actions>
 
     <extensions defaultExtensionNs="com.redhat.devtools.lsp4ij">
         <server

@@ -1,0 +1,6 @@
+# ${NAME}.ludic - run with: ludic test ${NAME}.ludic
+program ${PROGRAM_NAME}Spec {
+  test "${NAME} works" {
+    expect_eq(2 + 2, 4)
+  }
+}

@@ -28,6 +28,7 @@ program Ludic {
   import "packignore.ludic"
   import "pack.ludic"
   import "bundle.ludic"
+  import "scripts.ludic"
 
   function usage() -> void {
     print("ludic — the toolchain for the Ludic language")
@@ -39,7 +40,8 @@ program Ludic {
     print("  run [file] [--headless]       build the project and run it")
     print("  build [file] [--headless] [-o out]")
     print("                                compile to build/<name> (a native binary, nothing to ship beside it)")
-    print("  test [file...]                compile and run the project's tests")
+    print("  test [file...] [-v] [--test NAME]")
+    print("                                compile and run the project's tests (-v: every test's line)")
     print("  clean                         remove build/")
     print("")
     print("packages:")
@@ -67,6 +69,11 @@ program Ludic {
     print("  lsp                           run the language server on stdio (what editors spawn)")
     print("  help                          this message")
     print("")
+    print("package scripts (package.ludic):")
+    print("  script <name> [args]          run a `script \"name\" \"command\"` line (or just: ludic <name>)")
+    print("  scripts                       list the package's scripts and hooks")
+    print("                                `hook before|after <command> \"…\"` wraps build, run, test, bundle, …")
+    print("")
     print("A file argument runs it:  ludic mygame.ludic")
   }
 
@@ -91,6 +98,8 @@ program Ludic {
     if (cmd == "lsp") { return cmd_lsp() }
     if (cmd == "doctor") { return cmd_doctor() }
     if (cmd == "upgrade") { return cmd_upgrade() }
+    if (cmd == "script") { return cmd_script() }
+    if (cmd == "scripts") { return cmd_scripts() }
 
     if (cmd == "add") { return cmd_pkg_add() }
     if (cmd == "get") { return cmd_pkg_get() }
@@ -128,7 +137,16 @@ program Ludic {
       tmp_cleanup()
       exit(rc)
     }
-    let code = dispatch(cmd)
+    # package.ludic hooks wrap the built-in commands: `before` can veto,
+    # `after` runs only when the command succeeded
+    if is_hookable(cmd) {
+      let pre = run_hooks("before", cmd)
+      if pre != 0 { tmp_cleanup();  exit(pre) }
+    }
+    var code = dispatch(cmd)
+    if code == 0 and is_hookable(cmd) { code = run_hooks("after", cmd) }
+    # an unknown command may be one of the package's scripts
+    if code == -1 { code = run_script(cmd, 2) }
     tmp_cleanup()
     if code >= 0 { exit(code) }
     err(`ludic: unknown command '{cmd}'\n`)

@@ -33,8 +33,8 @@ class LudicLexerTest {
     @Test
     fun `declaration keywords are distinct from statement keywords`() {
         assertEquals(
-            listOf(LudicTokens.DECL_KEYWORD, LudicTokens.TYPE_NAME, LudicTokens.BRACE),
-            typesOf("game Hello {")
+            listOf(LudicTokens.DECL_KEYWORD, LudicTokens.TYPE_NAME, LudicTokens.LBRACE),
+            typesOf("program Hello {")
         )
         assertEquals(LudicTokens.KEYWORD, typesOf("if x { }").first())
     }
@@ -42,10 +42,10 @@ class LudicLexerTest {
     @Test
     fun `clause keywords are their own class`() {
         // `phase` and `query` colour differently from `if`/`let`, which is the
-        // whole reason a system signature reads as a signature.
+        // whole reason a handler signature reads as a signature.
         assertEquals(
             listOf(LudicTokens.DECL_KEYWORD, LudicTokens.TYPE_NAME, LudicTokens.CLAUSE, LudicTokens.PHASE),
-            typesOf("system Move phase FixedUpdate")
+            typesOf("handler Move phase FixedUpdate")
         )
     }
 
@@ -60,8 +60,85 @@ class LudicLexerTest {
     @Test
     fun `builtins are recognised, unknown calls are not`() {
         assertEquals(LudicTokens.BUILTIN, typesOf("rng_chance").single())
-        assertEquals(LudicTokens.BUILTIN, typesOf("peek32").single())   // intrinsic
+        assertEquals(LudicTokens.BUILTIN, typesOf("arg_count").single())   // intrinsic
         assertEquals(LudicTokens.IDENTIFIER, typesOf("my_helper").single())
+    }
+
+    @Test
+    fun `declaration words used as names are names`() {
+        // the compiler reserves these only as function names
+        assertEquals(LudicTokens.IDENTIFIER, lex("var model = look_model(x)")[1].first)
+        assertEquals(LudicTokens.IDENTIFIER, lex("  model: Model,")[0].first)
+        assertEquals(LudicTokens.IDENTIFIER, lex("a.model = m")[2].first)
+        assertEquals(LudicTokens.IDENTIFIER, lex("if model == null { }")[1].first)
+        assertEquals(LudicTokens.IDENTIFIER, lex("f(model, 1)")[2].first)
+        assertEquals(LudicTokens.DECL_KEYWORD, lex("model Actor {")[0].first)
+        assertEquals(LudicTokens.DECL_KEYWORD, lex("{\n  model Score { a: int }")[1].first)
+        assertEquals(LudicTokens.CLAUSE, lex("for (p) in query [Pos] { }").first { it.second == "query" }.first)
+        assertEquals(LudicTokens.DECL_KEYWORD, lex("@On(Hit) handler Armor { }").first { it.second == "handler" }.first)
+    }
+
+    @Test
+    fun `restarting mid-file with the saved state lexes the same`() {
+        val text = "program X {\n  var model = 1\n  model Foo { model: int }\n}"
+        val full = LudicLexer()
+        full.start(text, 0, text.length, 0)
+        val states = mutableListOf<Triple<Int, Int, IElementType>>()
+        while (full.tokenType != null) { states += Triple(full.tokenStart, full.state, full.tokenType!!); full.advance() }
+        for ((start, state, _) in states) {
+            val part = LudicLexer()
+            part.start(text, start, text.length, state)
+            val rest = states.filter { it.first >= start }.map { it.third }
+            val got = mutableListOf<IElementType>()
+            while (part.tokenType != null) { got += part.tokenType!!; part.advance() }
+            assertEquals("restart at $start", rest, got)
+        }
+    }
+
+    @Test
+    fun `template strings lex their holes as code`() {
+        val toks = lex("push(lods, gltf_load(dir, \"rock.gltf\", `rock_{variant}_LOD{k}`))")
+        val t = toks.dropWhile { it.first != LudicTokens.TEMPLATE_QUOTE }
+        assertEquals(
+            listOf(
+                LudicTokens.TEMPLATE_QUOTE to "`", LudicTokens.TEMPLATE_TEXT to "rock_",
+                LudicTokens.TEMPLATE_HOLE_START to "{", LudicTokens.IDENTIFIER to "variant", LudicTokens.TEMPLATE_HOLE_END to "}",
+                LudicTokens.TEMPLATE_TEXT to "_LOD",
+                LudicTokens.TEMPLATE_HOLE_START to "{", LudicTokens.IDENTIFIER to "k", LudicTokens.TEMPLATE_HOLE_END to "}",
+                LudicTokens.TEMPLATE_QUOTE to "`", LudicTokens.RPAREN to ")", LudicTokens.RPAREN to ")",
+            ),
+            t
+        )
+    }
+
+    @Test
+    fun `template escapes, nested braces and strings in holes`() {
+        val toks = lex("`a {{b}} \\n {Pos { x: 1 }.x} {f(\"}\")}`")
+        assertEquals(2, toks.count { it.first == LudicTokens.TEMPLATE_QUOTE })
+        assertEquals(listOf("{{", "}}", "\\n"), toks.filter { it.first == LudicTokens.TEMPLATE_ESCAPE }.map { it.second })
+        assertEquals(listOf(LudicTokens.LBRACE, LudicTokens.RBRACE), toks.filter { it.first == LudicTokens.LBRACE || it.first == LudicTokens.RBRACE }.map { it.first })
+        assertEquals(2, toks.count { it.first == LudicTokens.TEMPLATE_HOLE_END })
+        assertEquals("\"}\"", toks.single { it.first == LudicTokens.STRING }.second)
+        // code after the template is code again
+        val after = lex("`x {y}` let z = 1")
+        assertEquals(LudicTokens.KEYWORD, after.first { it.second == "let" }.first)
+    }
+
+    @Test
+    fun `a multi-line template restarts correctly mid-text`() {
+        val text = "let s = `one {a}\ntwo {b} three`\nlet t = 1"
+        val full = LudicLexer()
+        full.start(text, 0, text.length, 0)
+        val all = mutableListOf<Triple<Int, Int, IElementType>>()
+        while (full.tokenType != null) { all += Triple(full.tokenStart, full.state, full.tokenType!!); full.advance() }
+        for ((start, state, _) in all) {
+            val part = LudicLexer()
+            part.start(text, start, text.length, state)
+            val got = mutableListOf<IElementType>()
+            while (part.tokenType != null) { got += part.tokenType!!; part.advance() }
+            assertEquals("restart at $start", all.filter { it.first >= start }.map { it.third }, got)
+        }
+        assertEquals(LudicTokens.KEYWORD, lex(text).last { it.second == "let" }.first)
     }
 
     @Test
@@ -127,7 +204,7 @@ class LudicLexerTest {
     fun `the lexer always terminates and covers every character`() {
         // The IDE lexes half-typed text constantly; a lexer that stalls hangs
         // the editor, and one that skips bytes corrupts every offset after it.
-        val nasty = "game X { component ¿ { a: int = ' } # é\n query [{Tag}] \"unclosed"
+        val nasty = "program X { property ¿ { a: int = ' } # é\n query [{Tag}] \"unclosed"
         val lexer = LudicLexer()
         lexer.start(nasty, 0, nasty.length, 0)
         var covered = 0
@@ -145,16 +222,19 @@ class LudicLexerTest {
     @Test
     fun `a real source file lexes with no bad characters`() {
         val src = """
-            game Hello {
-              component Pos { x: int = 0, y: int = 0 }
-              archetype Mob { Pos }
+            program Hello {
+              property Pos { x: int = 0, y: int = 0 }
+              model Mob { a: int, b: fixed }
 
-              system Move phase FixedUpdate
-                query (p) [Pos, {Player}] where p.x > 0
-              {
-                p.x = p.x + 1
-                for i in 0 .. 10 { print_int(i) }
+              handler Move phase FixedUpdate {
+                for (p) in query [Pos] where p.x > 0 {
+                  p.x = p.x + 1
+                  Screen.fill_rectangle(x: p.x, y: 0, width: 4, height: 4, color: Color.White)
+                }
+                for i in 0 .. 10 { print(string(i)) }
               }
+
+              test "adds" { expect_eq(1 + 1, 2) }
 
               ui Menu {
                 panel id=Root w=288 pad=16 {

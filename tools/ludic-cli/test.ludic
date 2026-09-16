@@ -400,6 +400,35 @@ function scaffold_names_case() -> void {
   ok(lbl)
 }
 
+# package.ludic drives the CLI: `entry` (or the one program under src/) is what
+# build compiles, scripts run by name, and hooks wrap commands — a failing
+# `before` stops the command, `after` runs only on success.
+function package_scripts_case() -> void {
+  let lbl = "package.ludic entry, scripts and hooks"
+  let work = `{tmp_dir()}/pkgscripts`
+  shell(`rm -rf {work} && mkdir -p {work}`)
+  let root = capture_line("pwd")
+  let L = `{root}/bin/ludic`
+  if not shq(`cd {work} && {L} new g > /dev/null 2>&1 && mv g/src/main.ludic g/src/game.ludic`) { bad2(lbl, "setup failed");  return }
+  # no src/main.ludic: the single program under src/ is found
+  if not shq(`cd {work}/g && {L} build --headless > {work}/b1.out 2>&1`) { bad2(lbl, "the lone src/ program was not found");  return }
+  # a second program makes it ambiguous; `entry` settles it
+  write_file(`{work}/g/src/other.ludic`, "program Other {\n  entry { }\n}\n")
+  if shq(`cd {work}/g && {L} build --headless > {work}/b2.out 2>&1`) { bad2(lbl, "two programs and no entry should not build");  return }
+  var man = read_file(`{work}/g/package.ludic`)
+  man = man + "entry \"src/game.ludic\"\n"
+  man = man + "script \"greet\" \"echo hi-$LUDIC_EVENT\"\n"
+  man = man + "hook before build \"echo pre > hook.log\"\n"
+  man = man + "hook after build \"echo post >> hook.log\"\n"
+  man = man + "hook before test \"exit 7\"\n"
+  write_file(`{work}/g/package.ludic`, man)
+  if not shq(`cd {work}/g && {L} build --headless > {work}/b3.out 2>&1`) { bad2(lbl, "entry was not honoured");  return }
+  if not (capture_line(`tr '\n' ' ' < {work}/g/hook.log`) == "pre post") { bad2(lbl, "build hooks did not run in order");  return }
+  if not (capture_line(`cd {work}/g && {L} greet | tail -1`) == "hi-greet") { bad2(lbl, "a script did not run by name");  return }
+  if not (capture_line(`cd {work}/g && {L} test > /dev/null 2>&1; echo $?`) == "7") { bad2(lbl, "a failing before hook did not stop the command");  return }
+  ok(lbl)
+}
+
 # a "does it still compile" smoke test (parse -> lower -> link), no run
 function qsmoke(path: pointer) -> void {
   let nm = flat(path)
@@ -762,6 +791,7 @@ function cmd_dev_test() -> int {
   # from its own location. This is the shape `curl … | sh` produces.
   install_layout_case()
   scaffold_names_case()
+  package_scripts_case()
   pack_roundtrip_case()
   packignore_case()
   os_dirs_case()

@@ -1,0 +1,127 @@
+# scripts.ludic — package.ludic scripts and lifecycle hooks.
+#
+#   script "dev"   "ludic run --headless"          # ludic dev   /  ludic script dev
+#   script "shots" "tools/shots.sh"                # extra arguments are passed on
+#   hook before build  "tools/gen_atlas.sh"        # runs first; failing stops the build
+#   hook after  bundle "tools/notarize.sh"         # runs only when the bundle succeeded
+#   hook before dev    "ludic fmt --check"         # a script is an event too
+#
+# Commands run through the shell in the package root, with the toolchain's bin/
+# first on PATH and LUDIC_PACKAGE_ROOT, LUDIC_EVENT and LUDIC_PHASE set. Hooks of
+# one event run in the order written.
+
+# the built-in commands a hook can wrap (every user command that does work)
+function is_hookable(cmd: pointer) -> bool {
+  return (cmd == "build") or (cmd == "run") or (cmd == "test") or (cmd == "bundle") or (cmd == "pack") or (cmd == "clean") or (cmd == "fmt") or (cmd == "get") or (cmd == "add") or (cmd == "update") or (cmd == "verify") or (cmd == "vendor") or (cmd == "assets") or (cmd == "build-lib")
+}
+
+# the directory this `ludic` binary lives in, with no trailing slash
+function ludic_bin_dir() -> pointer {
+  let me = arg(0)
+  var i = slen(me)
+  while i > 0 and me[i - 1] != '/' { i -= 1 }
+  if i > 0 { return capture_line(`cd {sh_single(sslice(me, 0, i))} && pwd`) }
+  return capture_line(`dirname "$(command -v {sh_single(me)})"`)
+}
+
+# the shell prelude every script and hook runs under
+function script_env(event: pointer, phase: pointer) -> pointer {
+  let bin = ludic_bin_dir()
+  var env = `export LUDIC_PACKAGE_ROOT="$(pwd)"; export LUDIC_EVENT={sh_single(event)}; export LUDIC_PHASE={sh_single(phase)}; `
+  if bin != "" { env = env + `export PATH={sh_single(bin)}:"$PATH"; ` }
+  return env
+}
+
+# run every `hook <phase> <event>` in order; the first failure's exit code, or 0
+function run_hooks(phase: pointer, event: pointer) -> int {
+  if not file_exists("package.ludic") { return 0 }
+  let m = read_root_manifest()
+  var i = 0
+  while i + 2 < len(m.hooks) {
+    if m.hooks[i] == phase and m.hooks[i + 1] == event {
+      let cmd = m.hooks[i + 2]
+      say(`> {phase} {event}: {cmd}`)
+      let rc = sh(`{script_env(event, phase)}{cmd}`)
+      if rc != 0 {
+        err(`ludic: the {phase} {event} hook failed (exit {string(rc)}): {cmd}\n`)
+        return rc
+      }
+    }
+    i += 3
+  }
+  return 0
+}
+
+# the command a script names, or "" when package.ludic has no such script
+function script_command(name: pointer) -> pointer {
+  if not file_exists("package.ludic") { return "" }
+  let m = read_root_manifest()
+  var i = 0
+  while i + 1 < len(m.scripts) {
+    if m.scripts[i] == name { return m.scripts[i + 1] }
+    i += 2
+  }
+  return ""
+}
+
+# run script `name` with the arguments from argv[first] on, wrapped in its hooks.
+# -1 when there is no such script.
+function run_script(name: pointer, first: int) -> int {
+  let cmd = script_command(name)
+  if cmd == "" { return -1 }
+  var extra = ""
+  var ai = first
+  while ai < arg_count() { extra = extra + " " + sh_single(arg(ai));  ai += 1 }
+  let pre = run_hooks("before", name)
+  if pre != 0 { return pre }
+  say(`> {name}: {cmd}{extra}`)
+  let rc = sh(`{script_env(name, "run")}{cmd}{extra}`)
+  if rc != 0 { return rc }
+  return run_hooks("after", name)
+}
+
+# ludic script [name [args…]] — run a script, or list them
+function cmd_script() -> int {
+  if arg_count() < 3 { return cmd_scripts() }
+  let rc = run_script(arg(2), 3)
+  if rc == -1 {
+    err(`ludic script: package.ludic has no script '{arg(2)}'\n`)
+    cmd_scripts()
+    return 1
+  }
+  return rc
+}
+
+# ludic scripts — what package.ludic defines
+function cmd_scripts() -> int {
+  if not file_exists("package.ludic") {
+    err("ludic scripts: no package.ludic here\n")
+    return 1
+  }
+  let m = read_root_manifest()
+  if len(m.scripts) == 0 and len(m.hooks) == 0 {
+    print("package.ludic defines no scripts or hooks")
+    print("  add one:  script \"dev\" \"ludic run --headless\"")
+    print("            hook before build \"tools/prepare.sh\"")
+    return 0
+  }
+  if len(m.scripts) > 0 { print("scripts:") }
+  var i = 0
+  while i + 1 < len(m.scripts) {
+    print(`  {pad_right(m.scripts[i], 14)} {m.scripts[i + 1]}`)
+    i += 2
+  }
+  if len(m.hooks) > 0 { print("hooks:") }
+  i = 0
+  while i + 2 < len(m.hooks) {
+    print(`  {pad_right(m.hooks[i] + " " + m.hooks[i + 1], 20)} {m.hooks[i + 2]}`)
+    i += 3
+  }
+  return 0
+}
+
+function pad_right(s: pointer, w: int) -> pointer {
+  var o = s
+  while slen(o) < w { o = o + " " }
+  return o
+}

@@ -1,0 +1,215 @@
+# lsp/imports.ludic — where an `import "…"` string points, resolved the way the
+# compiler's do_import (selfhost/frontend/parse.ludic) resolves it:
+#
+#   1. relative to the importing file            import "camp/save.ludic"
+#   2. the package's ludic_modules/ (or $LUDIC_MODULES)   third-party packages
+#   3. the install root: runtime/… and packages/…  import "ludic.render3d/r3d.ludic"
+#
+# `dir/*.ludic` imports every .ludic in the directory, sorted by name.
+
+var g_home: pointer = null
+
+# the install root with a trailing '/': $LUDIC_HOME, else the directory above
+# this binary's bin/ (a checkout's bin/ludic-lsp gives the checkout itself)
+function lsp_home() -> pointer {
+  if (g_home != null) { return g_home }
+  var h = Os.env_or("LUDIC_HOME", "")
+  if not (h == "") {
+    if not ends_with(h, "/") { h = h + "/" }
+    g_home = h
+    return h
+  }
+  let me = arg(0)
+  var i = cstr_len(me)
+  while i > 0 and me[i - 1] != '/' { i -= 1 }
+  var d = ""
+  if i > 0 { d = me[0..i] }
+  else { d = path_dir_holding(me) }                 # started by name, from $PATH
+  if not (d == "") and d[0] != '/' {                # started by a relative path
+    let cwd = Os.env_or("PWD", "")
+    if not (cwd == "") { d = cwd + "/" + d }
+  }
+  if not (d == "") { d = normpath(d) + "/" }
+  if ends_with(d, "/bin/") { d = d[0..len(d) - 4] }
+  g_home = d
+  return d
+}
+
+# the first $PATH directory holding `name`, with a trailing '/', or ""
+function path_dir_holding(name: pointer) -> pointer {
+  let p = Os.env_or("PATH", "")
+  let n = cstr_len(p)
+  var a = 0
+  while a < n {
+    var b = a
+    while b < n and p[b] != ':' { b += 1 }
+    if b > a {
+      let dir = p[a..b]
+      if Fs.exists(dir + "/" + name) { return dir + "/" }
+    }
+    a = b + 1
+  }
+  return ""
+}
+
+# the nearest directory at or above dir holding a package.ludic, or null
+function package_root_of(dir: pointer) -> pointer {
+  var d = dir
+  var guard = 0
+  while guard < 64 {
+    if Fs.exists(d + "/package.ludic") { return d }
+    if (d == "/") or (d == ".") or (d == "") { return null }
+    d = dirname(d)
+    guard += 1
+  }
+  return null
+}
+
+function modules_dir_for(from: pointer) -> pointer {
+  let env = Os.env_or("LUDIC_MODULES", "")
+  if not (env == "") {
+    if env[0] == '/' { return env }
+    let r = package_root_of(dirname(from))
+    if (r != null) { return join_path(r, env) }
+    return null
+  }
+  let root = package_root_of(dirname(from))
+  if (root == null) { return null }
+  return root + "/ludic_modules"
+}
+
+# one file an import names, or null when it cannot be found anywhere
+function resolve_import(from: pointer, rel: pointer) -> pointer {
+  if (rel == "") { return null }
+  # `import "camp"`: the directory's barrel
+  if not ends_with(rel, ".ludic") {
+    if ends_with(rel, "/") { return resolve_import(from, rel + "index.ludic") }
+    return resolve_import(from, rel + "/index.ludic")
+  }
+  let direct = join_path(dirname(from), rel)
+  if Fs.exists(direct) and not Fs.is_dir(direct) { return direct }
+  if rel[0] == '/' { return null }
+  let mods = modules_dir_for(from)
+  if (mods != null) {
+    let m = join_path(mods, rel)
+    if Fs.exists(m) and not Fs.is_dir(m) { return m }
+  }
+  let home = lsp_home()
+  if not (home == "") {
+    if starts_with(rel, "runtime/") {
+      let rt = join_path(home, rel)
+      if Fs.exists(rt) { return rt }
+    }
+    let pk = join_path(home + "packages", rel)
+    if Fs.exists(pk) and not Fs.is_dir(pk) { return pk }
+  }
+  return null
+}
+
+function is_glob_import(rel: pointer) -> bool { return ends_with(rel, "/*.ludic") }
+
+# every file an import names: one for a plain import, the sorted directory
+# listing for `dir/*.ludic`
+function resolve_import_all(from: pointer, rel: pointer) -> []pointer {
+  let out = new []pointer
+  if not is_glob_import(rel) {
+    let one = resolve_import(from, rel)
+    if (one != null) { push(out, one) }
+    return out
+  }
+  let dirrel = rel[0..len(rel) - 8]
+  var dir = join_path(dirname(from), dirrel)
+  if not Fs.is_dir(dir) {
+    let home = lsp_home()
+    dir = join_path(home + "packages", dirrel)
+    if not Fs.is_dir(dir) { return out }
+  }
+  let names = Fs.list(dir)
+  if (names == null) { return out }
+  var i = 0
+  while i < len(names) {
+    var best = i
+    var j = i + 1
+    while j < len(names) { if str_before(names[j], names[best]) { best = j };  j += 1 }
+    let t = names[i];  names[i] = names[best];  names[best] = t
+    i += 1
+  }
+  i = 0
+  while i < len(names) {
+    if ends_with(names[i], ".ludic") { push(out, join_path(dir, names[i])) }
+    i += 1
+  }
+  return out
+}
+
+function str_before(a: pointer, b: pointer) -> bool {
+  var i = 0
+  while a[i] != 0 and b[i] != 0 {
+    if a[i] != b[i] { return a[i] < b[i] }
+    i += 1
+  }
+  return a[i] == 0 and b[i] != 0
+}
+
+# the text inside an import's string token (no quotes)
+function import_rel_of(D: Doc, tok: int) -> pointer {
+  var n = tlen(D, tok) - 2
+  if n < 0 { n = 0 }
+  return D.src[D.tk_start[tok] + 1..D.tk_start[tok] + 1 + n]
+}
+
+# is tok the string of an `import "…"`?
+function is_import_string(D: Doc, tok: int) -> bool {
+  if tok < 0 or D.tk_kind[tok] != LT_STR { return false }
+  let p = prev_sig(D, tok)
+  return p >= 0 and tis(D, p, "import")
+}
+
+# textDocument/documentLink: every import string links to its file, so the
+# editor underlines it and Cmd/Ctrl-click opens it
+function on_document_link(msg: JVal, id: JVal) -> void {
+  let D = doc_of(msg)
+  if (D == null) { send_result(id, "[]");  return }
+  let o = buf_new()
+  buf_putc(o, '[')
+  var first = true
+  var t = 0
+  while t < ntok(D) {
+    if is_import_string(D, t) {
+      let files = resolve_import_all(D.path, import_rel_of(D, t))
+      if len(files) > 0 and tlen(D, t) > 2 {
+        if not first { buf_putc(o, ',') }
+        first = false
+        buf_puts(o, "{\"range\":")
+        put_range(o, D, D.tk_start[t] + 1, D.tk_end[t] - 1)
+        buf_puts(o, ",\"target\":")
+        jstr_out(o, path_to_uri(files[0]))
+        buf_puts(o, ",\"tooltip\":")
+        jstr_out(o, files[0])
+        buf_putc(o, '}')
+      }
+    }
+    t += 1
+  }
+  buf_putc(o, ']')
+  send_result(id, buf_str(o))
+}
+
+# go-to-definition on an import string: the file (every file, for a glob)
+function import_definition(D: Doc, tok: int) -> pointer {
+  let files = resolve_import_all(D.path, import_rel_of(D, tok))
+  if len(files) == 0 { return null }
+  let o = buf_new()
+  buf_putc(o, '[')
+  var i = 0
+  while i < len(files) {
+    let T = ensure_doc(files[i])
+    if (T != null) {
+      if o.len > 1 { buf_putc(o, ',') }
+      put_location(o, T, 0, 0)
+    }
+    i += 1
+  }
+  buf_putc(o, ']')
+  return buf_str(o)
+}
