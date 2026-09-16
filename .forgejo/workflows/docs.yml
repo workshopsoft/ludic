@@ -63,7 +63,7 @@ jobs:
           # tiny C-free IR shim supplying the Darwin stdout/stderr globals over
           # glibc's, injected through LUDIC_CC. docs-gen is a pure CLI (no
           # windowing), so the C-free bootstrap is all it needs.
-          export LUDIC_CC="clang-16 $(pwd)/tools/ci/linux_stdio_shim.ll"
+          export LUDIC_CC="clang-16 $(pwd)/tools/ci/linux_stdio_shim.ll -lm"
           export LUDIC_HOME="$(pwd)"
           mkdir -p bin
           clang-16 tools/ci/linux_stdio_shim.ll selfhost/ludicc.seed.ll -o bin/ludicc

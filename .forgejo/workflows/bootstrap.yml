@@ -35,7 +35,7 @@ jobs:
           git checkout "${GITHUB_SHA}" 2>/dev/null || git checkout "${GITHUB_REF_NAME:-main}"
           git log --oneline -1
           # See ci.yml for why the Linux build injects the stdio shim via LUDIC_CC.
-          echo "LUDIC_CC=clang-16 $(pwd)/tools/ci/linux_stdio_shim.ll" >> "$GITHUB_ENV"
+          echo "LUDIC_CC=clang-16 $(pwd)/tools/ci/linux_stdio_shim.ll -lm" >> "$GITHUB_ENV"
           echo "LUDIC_HOME=$(pwd)" >> "$GITHUB_ENV"
 
       - name: Bootstrap x from the seed

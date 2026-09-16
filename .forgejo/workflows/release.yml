@@ -49,7 +49,7 @@ jobs:
           git checkout "$TAG"
           echo "TAG=$TAG" >> "$GITHUB_ENV"
           # See ci.yml for why the Linux build injects the stdio shim via LUDIC_CC.
-          echo "LUDIC_CC=clang-16 $(pwd)/tools/ci/linux_stdio_shim.ll" >> "$GITHUB_ENV"
+          echo "LUDIC_CC=clang-16 $(pwd)/tools/ci/linux_stdio_shim.ll -lm" >> "$GITHUB_ENV"
           echo "LUDIC_HOME=$(pwd)" >> "$GITHUB_ENV"
 
       - name: The tag, VERSION and CHANGELOG must agree

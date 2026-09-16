@@ -48,7 +48,7 @@ jobs:
           # LUDIC_CC so every clang invocation — the seed bootstrap, `ludic-dev build`,
           # and each compiled test program — picks it up. Absolute path so it
           # still resolves if a step changes directory.
-          echo "LUDIC_CC=clang-16 $(pwd)/tools/ci/linux_stdio_shim.ll" >> "$GITHUB_ENV"
+          echo "LUDIC_CC=clang-16 $(pwd)/tools/ci/linux_stdio_shim.ll -lm" >> "$GITHUB_ENV"
           echo "LUDIC_HOME=$(pwd)" >> "$GITHUB_ENV"
 
       - name: Bootstrap the toolchain from the IR seed (clang only)
