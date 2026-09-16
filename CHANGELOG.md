@@ -7,6 +7,14 @@ change type. Preview the next one with `ludic dev release --dry-run`.
 A released section may carry a hand-written summary paragraph above its groups
 (v0.2.0 has one); the generated bullets below it are not edited by hand.
 
+## v0.18.1 — 2026-09-16
+
+### Fixes
+
+- The release build links libm on Linux, which `float`/`double` code needs (glibc keeps
+  `sinf`, `sqrtf` and the rest there). 0.18.0's release job stopped on this before
+  publishing, so 0.18.1 is the first published build with float types, barrel imports,
+  package scripts and hooks, and the JetBrains 1.5.0 support.
 ## v0.18.0 — 2026-09-16
 
 ### Features
