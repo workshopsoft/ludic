@@ -25,7 +25,7 @@ var prof_active:  int = -1           # slot whose query is currently open
 var prof_scratch: words = null
 
 function prof_init() -> void {
-  prof_on = Os.has_env("R3D_PROF")
+  prof_on = r3d_env_has("R3D_PROF")
   if not prof_on { return }
   prof_names = new []pointer
   prof_ns = new []long

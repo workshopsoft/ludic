@@ -2,6 +2,7 @@
 # ludic.render3d — a physically based 3D renderer on Gl.* (OpenGL 4.1 core).
 # Import this one file; the game supplies scene_draw() / scene_draw_casters().
 # ============================================================================
+import "env.ludic"
 import "fmath.ludic"
 import "gpu.ludic"
 import "gpu_manifest.ludic"

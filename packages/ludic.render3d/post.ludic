@@ -341,7 +341,7 @@ function post_tonemap(color_tex: int) -> void {
   u_f(gpu_uniform(post_p_sharp, "u_amount"), post_sharpen)
   # R3D_NOGRAIN=1: no film grain, so two frames of a still camera can be compared for what else moves
   var grain = post_grain
-  if Os.has_env("R3D_NOGRAIN") { grain = F_ZERO }
+  if r3d_env_has("R3D_NOGRAIN") { grain = F_ZERO }
   u_f(gpu_uniform(post_p_sharp, "u_grain"), grain)
   u_f(gpu_uniform(post_p_sharp, "u_time"), r3d_time)
   mesh_draw(post_fs)

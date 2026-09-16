@@ -98,7 +98,7 @@ function overlay_init(font_dir: string) -> bool {
   ov_white = tex_solid(255, 255, 255, 255)
   overlay_font(font_dir)
   if ov_font == 0 { print("overlay: no font atlas, text disabled") }
-  ov_dbg = Os.has_env("R3D_FONTDBG")
+  ov_dbg = r3d_env_has("R3D_FONTDBG")
   ov_ready = true
   return true
 }

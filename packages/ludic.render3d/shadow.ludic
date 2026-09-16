@@ -277,7 +277,7 @@ function shadow_bind(prog: int) -> void {
   u_fv(sh_loc(prog, "u_cascade_split"), SHADOW_CASCADES, sh_split)
   if r3d_debug_shadow and not sh_printed3 { sh_printed3 = true;  print(`range {f_fx(sh_range[0])} {f_fx(sh_range[1])} {f_fx(sh_range[2])} {f_fx(sh_range[3])} texel*1000 {f_fx(f_mul(sh_texel[0], fi(1000)))} {f_fx(f_mul(sh_texel[1], fi(1000)))} {f_fx(f_mul(sh_texel[2], fi(1000)))} {f_fx(f_mul(sh_texel[3], fi(1000)))} locs {gpu_uniform(prog, "u_cascade_range")} {gpu_uniform(prog, "u_cascade_texel")}`) }
   u_fv(sh_loc(prog, "u_cascade_range"), SHADOW_CASCADES, sh_range)
-  if Os.has_env("R3D_FORCE") { sh_force = Text.to_int(Os.env("R3D_FORCE")) }
+  if r3d_env_has("R3D_FORCE") { sh_force = Text.to_int(r3d_env("R3D_FORCE")) }
   u_i(gpu_uniform(prog, "u_force_cascade"), sh_force)
   u_fv(sh_loc(prog, "u_cascade_texel"), SHADOW_CASCADES, sh_texel)
 }

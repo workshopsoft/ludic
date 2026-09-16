@@ -965,7 +965,7 @@ var gvk_has_hdr_meta: bool = false    # the device took VK_EXT_hdr_metadata
 # R3D_HDR=1 / 0 overrides the setting, for a desktop test
 function r3d_hdr(on: bool) -> void {
   var want = on
-  if Os.has_env("R3D_HDR") { want = Text.to_int(Os.env("R3D_HDR")) != 0 }
+  if r3d_env_has("R3D_HDR") { want = Text.to_int(r3d_env("R3D_HDR")) != 0 }
   if want == gvk_hdr_want { return }
   gvk_hdr_want = want
   if gvk_swap != 0 { gvk_swap_stale = true }
@@ -1420,7 +1420,7 @@ function gvk_open(w: int, h: int, title: string) -> bool {
   }
   if not gvk_frame_init() { return false }
   if not gvk_screen_make(gl_w, gl_h) { return false }
-  if Os.has_env("R3D_VK_PROBE") { gvk_compute_probe() }
+  if r3d_env_has("R3D_VK_PROBE") { gvk_compute_probe() }
   if is_windowed() { return gvk_swap_make(gl_w, gl_h) }
   return true
 }
@@ -1825,7 +1825,7 @@ var gvk_n_flush: int = 0
 var gvk_prof_frames: int = 0
 var gvk_n_pipe_new: int = 0           # pipelines made this profile window
 function gvk_prof() -> bool {
-  if gvk_prof_state < 0 { gvk_prof_state = 0;  if Os.has_env("R3D_VK_PROF") { gvk_prof_state = 1 } }
+  if gvk_prof_state < 0 { gvk_prof_state = 0;  if r3d_env_has("R3D_VK_PROF") { gvk_prof_state = 1 } }
   return gvk_prof_state == 1
 }
 function gvk_prof_frame() -> void {

@@ -356,7 +356,7 @@ var sc_a2c: bool = true
 
 function scatter_init() -> void {
   # R3D_DUMP_ATLAS: every impostor and card atlas the run bakes, to build/atlas_<n>_{color,alpha}.ppm
-  sc_debug_dump = Os.has_env("R3D_DUMP_ATLAS")
+  sc_debug_dump = r3d_env_has("R3D_DUMP_ATLAS")
   sc_prog = r3d_program("model.vert", "model.frag", "")
   sc_prog_fol = r3d_program("model.vert", "model.frag", "#define FOLIAGE\n#define WIND\n#define ALPHA_TEST\n")
   sc_prog_fol_depth = r3d_program("model.vert", "depth.frag", "#define FOLIAGE\n#define WIND\n#define ALPHA_TEST\n")
@@ -646,7 +646,7 @@ function layer_gpu_prepare(l: Layer) -> bool {
     # Os.env is null when the variable is unset, and a compare reads through it: ask first
     # on by default wherever there is compute; R3D_GPU_CULL=0 keeps the CPU partition (for comparing)
     var off = false
-    if Os.has_env("R3D_GPU_CULL") { off = Os.env("R3D_GPU_CULL") == "0" }
+    if r3d_env_has("R3D_GPU_CULL") { off = r3d_env("R3D_GPU_CULL") == "0" }
     if gpu_has_compute() and gpu_has_mdi() and not off {
       sc_cull_prog = gpu_compute("scatter_cull", 4)
       if sc_cull_prog > 0 { print("r3d: scatter: tree layers are culled on the GPU") }
@@ -968,7 +968,7 @@ function layer_level_casts_here(l: Layer, k: int) -> bool {
 # tall, put a shadow on anything the cascade being rendered covers? The flowers' levels ask it
 # (layer_level_casts_here), and so does every actor (actor_draw_casters).
 function cast_band_reaches(dmin: int, dmax: int, height: int) -> bool {
-  if sc_cast_all < 0 { sc_cast_all = 0;  if Os.has_env("R3D_CAST_ALL") { sc_cast_all = 1 } }
+  if sc_cast_all < 0 { sc_cast_all = 0;  if r3d_env_has("R3D_CAST_ALL") { sc_cast_all = 1 } }
   if sc_cast_all == 1 or sh_split == null { return true }
   if sc_cast_gen != sc_view_gen {
     sc_cast_gen = sc_view_gen

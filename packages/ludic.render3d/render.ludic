@@ -30,7 +30,7 @@ var r3d_clip_y: int = 0xCF000000            # -2^31: no clipping
 # R3D_NOPREPASS=1: light the foliage the old way, every card behind the front one included
 var r3d_prepass_env: int = -1
 function r3d_prepass_off() -> bool {
-  if r3d_prepass_env < 0 { r3d_prepass_env = 0;  if Os.has_env("R3D_NOPREPASS") { r3d_prepass_env = 1 } }
+  if r3d_prepass_env < 0 { r3d_prepass_env = 0;  if r3d_env_has("R3D_NOPREPASS") { r3d_prepass_env = 1 } }
   return r3d_prepass_env == 1
 }
 function fog_bind(prog: int) -> void {
@@ -40,7 +40,7 @@ function fog_bind(prog: int) -> void {
   u_f(gpu_uniform(prog, "u_fog_height_falloff"), r3d_fog_falloff)
   u_f(gpu_uniform(prog, "u_fog_base"), r3d_fog_base)
   var cs = r3d_cloud_shadow
-  if Os.has_env("R3D_NOCLOUD") { cs = F_ZERO }
+  if r3d_env_has("R3D_NOCLOUD") { cs = F_ZERO }
   u_f(gpu_uniform(prog, "u_cloud_shadow"), cs)
   u_f(gpu_uniform(prog, "u_time"), r3d_time)
 }
@@ -52,18 +52,18 @@ var r3d_no_shadow: bool = false
 var r3d_no_trees: bool = false
 var r3d_no_refl: bool = false
 function r3d_env_flags() -> void {
-  r3d_no_shadow = Os.has_env("R3D_NOSHADOW")
-  r3d_no_trees = Os.has_env("R3D_NOTREES")
-  r3d_no_refl = Os.has_env("R3D_NOREFL")
-  if Os.has_env("R3D_DEBUG") { r3d_debug = true }
-  if Os.has_env("R3D_DBGSHADOW") { r3d_debug_shadow = true }
-  if Os.has_env("R3D_NOGI") { post_gi_strength = F_ZERO;  post_ao_strength = F_ZERO;  post_no_gi = true }
-  if Os.has_env("R3D_MSAA") { post_ms_samples = Text.to_int(Os.env("R3D_MSAA")) }
-  sc_skip_blade = Os.has_env("R3D_NOBLADES")
-  sc_skip_card = Os.has_env("R3D_NOCARDS")
-  sc_dbg_lod = Os.has_env("R3D_LODDBG")
-  if Os.has_env("R3D_ANISO") {
-    let a = Text.to_int(Os.env("R3D_ANISO"))
+  r3d_no_shadow = r3d_env_has("R3D_NOSHADOW")
+  r3d_no_trees = r3d_env_has("R3D_NOTREES")
+  r3d_no_refl = r3d_env_has("R3D_NOREFL")
+  if r3d_env_has("R3D_DEBUG") { r3d_debug = true }
+  if r3d_env_has("R3D_DBGSHADOW") { r3d_debug_shadow = true }
+  if r3d_env_has("R3D_NOGI") { post_gi_strength = F_ZERO;  post_ao_strength = F_ZERO;  post_no_gi = true }
+  if r3d_env_has("R3D_MSAA") { post_ms_samples = Text.to_int(r3d_env("R3D_MSAA")) }
+  sc_skip_blade = r3d_env_has("R3D_NOBLADES")
+  sc_skip_card = r3d_env_has("R3D_NOCARDS")
+  sc_dbg_lod = r3d_env_has("R3D_LODDBG")
+  if r3d_env_has("R3D_ANISO") {
+    let a = Text.to_int(r3d_env("R3D_ANISO"))
     tex_anisotropy = 1.0
     if a >= 2 { tex_anisotropy = 2.0 }
     if a >= 4 { tex_anisotropy = 4.0 }
@@ -84,7 +84,7 @@ function r3d_open(w: int, h: int, title: string) -> bool {
   r3d_env_flags()
   gpu_select()
   if not gpu_open(w, h, title) { print("r3d: no OpenGL context");  return false }
-  if Os.has_env("R3D_NOVSYNC") { gpu_vsync(0) }
+  if r3d_env_has("R3D_NOVSYNC") { gpu_vsync(0) }
   var renderer: string = gpu_renderer_name()
   print(`r3d: {gl_w}x{gl_h} on {renderer}`)
   prof_init()
@@ -167,7 +167,7 @@ function r3d_frame(time: int) -> void {
   # or a fullscreen change does. Headless has no window to resize, and this path is where
   # a stale attachment or a texture freed twice shows up.
   r3d_test_frame += 1
-  if r3d_test_resize == 0 and Os.has_env("R3D_RESIZE_AT") { r3d_test_resize = Text.to_int(Os.env("R3D_RESIZE_AT")) }
+  if r3d_test_resize == 0 and r3d_env_has("R3D_RESIZE_AT") { r3d_test_resize = Text.to_int(r3d_env("R3D_RESIZE_AT")) }
   # R3D_RESIZE_AT=<n>: from frame n on, rebuild every screen-sized buffer every few
   # frames at a different size, as dragging a window edge or entering fullscreen does.
   if r3d_test_resize > 0 and r3d_test_frame >= r3d_test_resize and r3d_test_frame % 4 == 0 {
@@ -188,7 +188,7 @@ function r3d_frame(time: int) -> void {
   cam_begin_frame(post_frame, gl_w, gl_h)
   # R3D_CAM_LOG=1: the camera each frame, in millimetres and thousandths of a radian - to tell a
   # camera that moves while the hiker stands still from a picture that shakes on its own
-  if r3d_cam_log < 0 { r3d_cam_log = 0;  if Os.has_env("R3D_CAM_LOG") { r3d_cam_log = 1 } }
+  if r3d_cam_log < 0 { r3d_cam_log = 0;  if r3d_env_has("R3D_CAM_LOG") { r3d_cam_log = 1 } }
   if r3d_cam_log == 1 {
     print(`cam {r3d_test_frame} pos {f_to_int(f_mul(cam_pos[0], fi(1000)))} {f_to_int(f_mul(cam_pos[1], fi(1000)))} {f_to_int(f_mul(cam_pos[2], fi(1000)))} yaw {f_to_int(f_mul(cam_yaw, fi(1000)))} pitch {f_to_int(f_mul(cam_pitch, fi(1000)))} jitter {f_to_int(f_mul(gsl_jitter_x, fi(1000000)))} {f_to_int(f_mul(gsl_jitter_y, fi(1000000)))} render {post_w}x{post_h} reset {gsl_reset} evalok {gsl_eval_ok} fresh {gsl_fresh}`)
   }
