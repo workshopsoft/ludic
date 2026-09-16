@@ -54,8 +54,8 @@ var stream_walks: int = 0          # streams that walked their whole ring this f
 function stream_new(layer: Layer, size: int, reach: int, b0: int, b1: int, b2: int, b3: int) -> Stream {
   if not stream_cap_read {
     stream_cap_read = true
-    if Os.has_env("R3D_STREAM_CAP") { STREAM_MAX_CHUNKS = Text.to_int(Os.env("R3D_STREAM_CAP")) }
-    stream_no_evict = Os.has_env("R3D_NOEVICT")
+    if r3d_env_has("R3D_STREAM_CAP") { STREAM_MAX_CHUNKS = Text.to_int(r3d_env("R3D_STREAM_CAP")) }
+    stream_no_evict = r3d_env_has("R3D_NOEVICT")
   }
   let s = new Stream
   s.layer = layer;  s.size = size;  s.reach = reach

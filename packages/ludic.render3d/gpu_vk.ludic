@@ -35,7 +35,7 @@ function gvk_note(msg: string) -> void {
   print(msg)
   if not gvk_errlog_read {
     gvk_errlog_read = true
-    if Os.has_env("R3D_VK_ERRLOG") { gvk_errlog = Os.env("R3D_VK_ERRLOG") }
+    if r3d_env_has("R3D_VK_ERRLOG") { gvk_errlog = r3d_env("R3D_VK_ERRLOG") }
   }
   if gvk_errlog == null { return }
   let f = file_open(gvk_errlog, "ab")
@@ -205,7 +205,7 @@ function gvk_init() -> bool {
   # mesh-shader grass: the extension, and its meshShader feature asked for where the device has it.
   # R3D_NO_MESH=1 leaves it off.
   gvk_has_mesh = false
-  if gvk_ext_in(dexts, nde, VK_EXT_MESH_SHADER_EXTENSION_NAME) and not Os.has_env("R3D_NO_MESH") {
+  if gvk_ext_in(dexts, nde, VK_EXT_MESH_SHADER_EXTENSION_NAME) and not r3d_env_has("R3D_NO_MESH") {
     let fm = bytes(VkPhysicalDeviceMeshShaderFeaturesEXT_sizeof)
     Vk.zero(fm, VkPhysicalDeviceMeshShaderFeaturesEXT_sizeof)
     Vk.put_i32(fm, VkPhysicalDeviceMeshShaderFeaturesEXT_sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT)

@@ -48,7 +48,7 @@ function gpu_name(kind: int) -> string {
 # caller can show the player (gpu_fallback_reason).
 function gpu_select() -> int {
   if gpu_kind != 0 { return gpu_kind }
-  if Os.has_env("R3D_GFX") { gpu_wanted = gpu_kind_of(Os.env("R3D_GFX")) }
+  if r3d_env_has("R3D_GFX") { gpu_wanted = gpu_kind_of(r3d_env("R3D_GFX")) }
   if gpu_wanted == 0 { gpu_wanted = GPU_GL }
   gpu_kind = GPU_GL
   if gpu_wanted == GPU_VK {
@@ -318,7 +318,7 @@ function gpu_caps_fake(kind: string) -> void {
 function gpu_caps_probe() -> void {
   if gpu_cap_probed { return }
   gpu_cap_probed = true
-  if Os.has_env("R3D_CAPS") { gpu_caps_fake(Os.env("R3D_CAPS"));  return }
+  if r3d_env_has("R3D_CAPS") { gpu_caps_fake(r3d_env("R3D_CAPS"));  return }
   gpu_cap_windows = Os.platform() == "windows"
   if not gpu_cap_windows { return }
   if Vk.open() == 0 { return }
@@ -793,7 +793,7 @@ function gpu_fb_at(fb: int) -> int {
   return fb * GPU_FB_W
 }
 function gpu_glcheck_on() -> bool {
-  if gpu_glcheck < 0 { gpu_glcheck = 0;  if Os.has_env("R3D_GLCHECK") { gpu_glcheck = 1 } }
+  if gpu_glcheck < 0 { gpu_glcheck = 0;  if r3d_env_has("R3D_GLCHECK") { gpu_glcheck = 1 } }
   return gpu_glcheck == 1
 }
 function gpu_check(tag: string) -> int { if gpu_kind == GPU_VK { return 0 };  return gl_check(tag) }

@@ -76,7 +76,7 @@ function gsl_fn(feature: int, name: string) -> pointer {
 # Before Vk.open(): ask the loader for the interposer. R3D_NO_STREAMLINE=1 keeps plain Vulkan.
 function gsl_boot() -> void {
   if Os.platform() != "windows" { return }
-  if Os.has_env("R3D_NO_STREAMLINE") { return }
+  if r3d_env_has("R3D_NO_STREAMLINE") { return }
   Vk.sl_prefer(1)
 }
 
@@ -91,10 +91,10 @@ function gsl_init() -> void {
   gsl_header(pref, 0x1ca1, 0x0965, 0xbf8e, 0x432b, 0x8da1, 0x6716, 0xd879, 0xfb14, 1)
   # logLevel eOff; R3D_SL_LOG=<directory> writes Streamline's own verbose log (sl.log) there
   var level = 0
-  if Os.has_env("R3D_SL_LOG") {
+  if r3d_env_has("R3D_SL_LOG") {
     level = 2
-    let dir: pointer = Os.env("R3D_SL_LOG")
-    let n = Text.length(Os.env("R3D_SL_LOG"))
+    let dir: pointer = r3d_env("R3D_SL_LOG")
+    let n = Text.length(r3d_env("R3D_SL_LOG"))
     gsl_logdir = gsl_struct(n * 2 + 8)             # pathToLogsAndData is a wide string
     for i in 0 .. n { Vk.put_i32(gsl_logdir, i * 2, dir[i] & 255) }
     Vk.put_ptr(pref, 56, gsl_logdir)
@@ -159,7 +159,7 @@ var gsl_f_marker: pointer = null
 
 function r3d_reflex(mode: int) -> void {
   gsl_reflex_mode = mode
-  if Os.has_env("R3D_REFLEX") { gsl_reflex_mode = Text.to_int(Os.env("R3D_REFLEX")) }
+  if r3d_env_has("R3D_REFLEX") { gsl_reflex_mode = Text.to_int(r3d_env("R3D_REFLEX")) }
 }
 function r3d_reflex_live() -> bool { return gsl_on and gsl_reflex_ok and gsl_reflex_mode > 0 }
 
@@ -248,7 +248,7 @@ var gsl_eval_ok: bool = true         # the last evaluate worked: only then is th
 # R3D_DLSS=0..4 overrides the setting, for a headless take
 function r3d_dlss(mode: int) -> void {
   var m = mode
-  if Os.has_env("R3D_DLSS") { m = Text.to_int(Os.env("R3D_DLSS")) }
+  if r3d_env_has("R3D_DLSS") { m = Text.to_int(r3d_env("R3D_DLSS")) }
   if m != gsl_dlss_mode { gsl_reset = true }
   gsl_dlss_mode = m
 }
@@ -279,7 +279,7 @@ function gsl_fill_options(w: int, h: int) -> void {
   # K's 2.8 - slower than no DLSS at all (33 fps against 41; with K, 60). R3D_DLSS_PRESET=<n>
   # (sl::DLSSPreset: 11 K, 12 L, 13 M) sets every mode's, to measure them against each other.
   var preset = 11
-  if Os.has_env("R3D_DLSS_PRESET") { preset = Text.to_int(Os.env("R3D_DLSS_PRESET")) }
+  if r3d_env_has("R3D_DLSS_PRESET") { preset = Text.to_int(r3d_env("R3D_DLSS_PRESET")) }
   if preset > 0 { for f in 0 .. 6 { Vk.put_i32(gsl_opts, 60 + f * 4, preset) } }   # dlaa, quality, balanced, performance, ultra performance, ultra quality
 }
 
@@ -417,8 +417,8 @@ function gsl_constants() -> void {
   var jx = f_neg(gsl_jpx)
   var jy = f_neg(gsl_jpy)
   # R3D_DLSS_JX / R3D_DLSS_JY = -1 flip a sign, to check the convention against the picture
-  if Os.has_env("R3D_DLSS_JX") and Text.to_int(Os.env("R3D_DLSS_JX")) < 0 { jx = f_neg(jx) }
-  if Os.has_env("R3D_DLSS_JY") and Text.to_int(Os.env("R3D_DLSS_JY")) < 0 { jy = f_neg(jy) }
+  if r3d_env_has("R3D_DLSS_JX") and Text.to_int(r3d_env("R3D_DLSS_JX")) < 0 { jx = f_neg(jx) }
+  if r3d_env_has("R3D_DLSS_JY") and Text.to_int(r3d_env("R3D_DLSS_JY")) < 0 { jy = f_neg(jy) }
   Vk.put_i32(k, 352, jx)
   Vk.put_i32(k, 356, jy)
   Vk.put_i32(k, 360, F_ONE)                         # mvecScale

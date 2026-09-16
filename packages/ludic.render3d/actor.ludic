@@ -274,7 +274,7 @@ var ac_census_at: int = -2
 function actor_draw() -> void {
   if ac_actors == null { return }
   ac_frame += 1
-  if ac_census_at == -2 { ac_census_at = -1;  if Os.has_env("R3D_ACTOR_CENSUS") { ac_census_at = Text.to_int(Os.env("R3D_ACTOR_CENSUS")) } }
+  if ac_census_at == -2 { ac_census_at = -1;  if r3d_env_has("R3D_ACTOR_CENSUS") { ac_census_at = Text.to_int(r3d_env("R3D_ACTOR_CENSUS")) } }
   if ac_census_at > 0 and ac_frame == ac_census_at { actor_census() }
   for i in 0 .. len(ac_actors) {
     let a = ac_actors[i]

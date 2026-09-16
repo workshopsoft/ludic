@@ -43,7 +43,7 @@ var grass_mesh_on: bool = false
 var grass_mesh_prog: int = 0
 function r3d_mesh_grass(on: bool) -> void {
   grass_mesh_on = on
-  if Os.has_env("R3D_MESH_GRASS") { grass_mesh_on = Text.to_int(Os.env("R3D_MESH_GRASS")) != 0 }
+  if r3d_env_has("R3D_MESH_GRASS") { grass_mesh_on = Text.to_int(r3d_env("R3D_MESH_GRASS")) != 0 }
 }
 function grass_mesh_live() -> bool { return grass_mesh_on and grass_merge and grass_mesh_prog != 0 and gpu_has_mesh() }
 
@@ -83,7 +83,7 @@ function grass_blade_mesh(rows: int) -> Mesh {
 }
 
 function grass_init() -> void {
-  grass_merge = gpu_has_mdi() and not Os.has_env("R3D_GRASS_TILES")
+  grass_merge = gpu_has_mdi() and not r3d_env_has("R3D_GRASS_TILES")
   var defs = "#define FOLIAGE\n#define BLADE\n"
   if grass_merge {
     defs = defs + "#define TILES\n"
@@ -98,9 +98,9 @@ function grass_init() -> void {
   grass_s0 = fl(0.11)
   grass_d0 = fi(45)
   grass_radius = fi(1600)
-  if Os.has_env("R3D_NOBLADES") { grass_on = false }
-  if Os.has_env("R3D_GRASS_R") { grass_radius = fi(Text.to_int(Os.env("R3D_GRASS_R"))) }
-  if Os.has_env("R3D_GRASS_DBG") { grass_dbg = Text.to_int(Os.env("R3D_GRASS_DBG")) }
+  if r3d_env_has("R3D_NOBLADES") { grass_on = false }
+  if r3d_env_has("R3D_GRASS_R") { grass_radius = fi(Text.to_int(r3d_env("R3D_GRASS_R"))) }
+  if r3d_env_has("R3D_GRASS_DBG") { grass_dbg = Text.to_int(r3d_env("R3D_GRASS_DBG")) }
 }
 
 # indices per 16 m cell that could exist at distance d (the count the shader computes)

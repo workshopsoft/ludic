@@ -190,6 +190,28 @@ which is every `ludic run` - nothing mounts, no directory change happens, no
 splash appears, and every open goes to the filesystem exactly as before.
 Packing is a shipping step, and it is invisible until you ship.
 
+### Renderer switches in a shipped game
+
+`ludic.render3d` has about seventy `R3D_*` environment switches - debug views
+(`R3D_WIRE`, `R3D_DEBUG*`, `R3D_LODDBG`, ...), feature kills (`R3D_NOSHADOW`,
+`R3D_NOTERRAIN`, ...), file writers (`R3D_DUMP_*`, `R3D_DRAWSTATS_CSV`, ...),
+hardware fakes (`R3D_CAPS`, `R3D_FORCE`, `R3D_GFX`) and the Windows feature
+overrides (`R3D_DLSS*`, `R3D_REFLEX`, `R3D_HDR`, `R3D_MESH_GRASS`). They are
+developer tools, so a player cannot trip them by accident:
+
+- a **headless** build always honours them - tests, benchmarks and frame dumps
+  work exactly as before;
+- a **windowed** build ignores every one of them unless `R3D_DEV` is set to
+  anything but `0`.
+
+```bash
+R3D_DEV=1 R3D_WIRE=1 ./MyGame.app/Contents/MacOS/MyGame
+```
+
+A game that has its own switches should gate them the same way. Inside render3d,
+read a new switch with `r3d_env_has("R3D_FOO")` / `r3d_env("R3D_FOO")`, never
+`Os.has_env` / `Os.env`.
+
 ## Signing and distribution
 
 `ludic bundle` ad-hoc signs the result. On Apple silicon that is not optional

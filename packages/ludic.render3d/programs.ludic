@@ -61,9 +61,9 @@ function r3d_shader_src(name: string, defines: string, is_frag: bool) -> string 
 # backend that cannot compile shaders at run time (Vulkan: SPIR-V is built ahead) must cover
 var r3d_prog_log: int = -1
 function r3d_program_log(vs: string, fs: string, defines: string) -> void {
-  if r3d_prog_log < 0 { r3d_prog_log = 0;  if Os.has_env("R3D_PROGRAMS_LOG") { r3d_prog_log = 1 } }
+  if r3d_prog_log < 0 { r3d_prog_log = 0;  if r3d_env_has("R3D_PROGRAMS_LOG") { r3d_prog_log = 1 } }
   if r3d_prog_log == 0 { return }
-  let f = file_open(Os.env("R3D_PROGRAMS_LOG"), "ab")
+  let f = file_open(r3d_env("R3D_PROGRAMS_LOG"), "ab")
   if f == null { return }
   # one line per program: the defines' newlines become ';' so a variant is one line
   let defs = Text.replace(`{r3d_global_defs}{defines}`, "\n", ";")

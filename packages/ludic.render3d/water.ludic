@@ -37,7 +37,7 @@ var wb_primary: int = -1               # the body the reflection pass mirrors, o
 function water_reflection_pass() -> void {
   if wb_primary < 0 { return }            # no body reflects: nothing to mirror
   if water_refl == null {
-    if Os.has_env("R3D_REFLDIV") { water_refl_div = Text.to_int(Os.env("R3D_REFLDIV")) }
+    if r3d_env_has("R3D_REFLDIV") { water_refl_div = Text.to_int(r3d_env("R3D_REFLDIV")) }
     if water_refl != null { target_free(water_refl) }
     # sized from the scene target, not the window: with a render scale below 1 the frame
     # this reflection is composited into is smaller than the drawable, and a reflection
@@ -89,7 +89,7 @@ function water_reflection_pass() -> void {
   sc_skip_blade = sb
   sc_freeze = false
   gpu_cull_face(GL_BACK)
-  if Os.has_env("R3D_DUMP_REFL") and not water_dumped { water_dumped = true;  tex_dump(water_refl.color, water_refl.w, water_refl.h, "build/dbg_refl.ppm") }
+  if r3d_env_has("R3D_DUMP_REFL") and not water_dumped { water_dumped = true;  tex_dump(water_refl.color, water_refl.w, water_refl.h, "build/dbg_refl.ppm") }
   # restore
   r3d_clip_y = 0xCF000000
   m4_copy(cam_view, water_saved)
@@ -118,10 +118,10 @@ var wb_dbg: int = -1
 var wb_build_us: long = 0              # how long the last water_cells_build took (R3D_REFL_DBG prints it)
 function water_reflect_visible() -> bool {
   if wb_primary < 0 { return false }
-  if wb_refl_always < 0 { wb_refl_always = 0;  if Os.has_env("R3D_REFL_ALWAYS") { wb_refl_always = 1 } }
+  if wb_refl_always < 0 { wb_refl_always = 0;  if r3d_env_has("R3D_REFL_ALWAYS") { wb_refl_always = 1 } }
   if wb_refl_always == 1 or ter_heights == null { return true }
   if wb_ncells < 0 { let t0 = gl_now_us();  water_cells_build();  wb_build_us = gl_now_us() - t0 }
-  if wb_dbg < 0 { wb_dbg = 0;  if Os.has_env("R3D_REFL_DBG") { wb_dbg = 1 } }
+  if wb_dbg < 0 { wb_dbg = 0;  if r3d_env_has("R3D_REFL_DBG") { wb_dbg = 1 } }
   if wb_dbg == 1 {
     # R3D_REFL_DBG: once, what the test is made of and how much of it is in view
     wb_dbg = 2

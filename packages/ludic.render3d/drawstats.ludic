@@ -51,11 +51,11 @@ var ds_last: int = -1
 function ds_enabled() -> bool {
   if ds_on < 0 {
     ds_on = 0
-    if Os.has_env("R3D_DRAWSTATS") {
+    if r3d_env_has("R3D_DRAWSTATS") {
       ds_on = 1
-      ds_frames = Text.to_int(Os.env("R3D_DRAWSTATS"))
+      ds_frames = Text.to_int(r3d_env("R3D_DRAWSTATS"))
       if ds_frames < 2 { ds_frames = 60 }
-      if Os.has_env("R3D_DRAWSTATS_FROM") { ds_from = Text.to_int(Os.env("R3D_DRAWSTATS_FROM")) }
+      if r3d_env_has("R3D_DRAWSTATS_FROM") { ds_from = Text.to_int(r3d_env("R3D_DRAWSTATS_FROM")) }
       ds_pass_names = new []pointer;  ds_pass_prog = new []long;  ds_pass_tex = new []long
       ds_row_pass = new []int;  ds_row_prog = new []int;  ds_row_kind = new []int
       ds_row_draws = new []long;  ds_row_inst = new []long;  ds_row_idx = new []long
@@ -188,7 +188,7 @@ function ds_report() -> void {
     shown += 1
   }
   var path = "build/drawstats.csv"
-  if Os.has_env("R3D_DRAWSTATS_CSV") { path = Os.env("R3D_DRAWSTATS_CSV") }
+  if r3d_env_has("R3D_DRAWSTATS_CSV") { path = r3d_env("R3D_DRAWSTATS_CSV") }
   let f = file_open(path, "wb")
   if f == null { print(`r3d: drawstats could not write {path}`);  return }
   let head = "backend,width,height,frames,pass,kind,program,draws_per_frame,instances_per_frame,indices_per_frame,pass_program_changes_per_frame,pass_texture_binds_per_frame\n"

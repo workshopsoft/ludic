@@ -393,7 +393,7 @@ function terrain_load_textures() -> void {
   ter_tex[12] = tex_load(a + "aerial_grass_rock_disp_2k.png", false)
   ter_tex[13] = tex_load(a + "cliff_side_diff_2k.png", true)
   ter_tex[14] = tex_load(a + "cliff_side_nor_gl_2k.png", false)
-  if Os.has_env("R3D_TEXDBG") { for i in 0 .. 15 { print(`ter_tex[{string(i)}] = {string(ter_tex[i])}`) } }
+  if r3d_env_has("R3D_TEXDBG") { for i in 0 .. 15 { print(`ter_tex[{string(i)}] = {string(ter_tex[i])}`) } }
 }
 
 function terrain_init() -> void {
@@ -413,16 +413,16 @@ function terrain_init_step(i: int) -> void {
 
 function terrain_init_finish() -> void {
   cdlod_init()
-  ter_wire = Os.has_env("R3D_WIRE")
-  ter_force_far = Os.has_env("R3D_TFARONLY")
-  ter_no_split = Os.has_env("R3D_NOSPLIT")
-  ter_force_near = Os.has_env("R3D_TNEARONLY")
-  ter_skip = Os.has_env("R3D_NOTERRAIN")
+  ter_wire = r3d_env_has("R3D_WIRE")
+  ter_force_far = r3d_env_has("R3D_TFARONLY")
+  ter_no_split = r3d_env_has("R3D_NOSPLIT")
+  ter_force_near = r3d_env_has("R3D_TNEARONLY")
+  ter_skip = r3d_env_has("R3D_NOTERRAIN")
   var defs = ""
   if r3d_debug_shadow { defs = "#define DEBUG_SHADOW\n" }
-  if Os.has_env("R3D_DEBUG_MAT") { defs = "#define DEBUG_MAT\n" }
-  if Os.has_env("R3D_DEBUG_NRM") { defs = "#define DEBUG_NRM\n" }
-  if Os.has_env("R3D_DEBUG_ALB") { defs = "#define DEBUG_ALB\n" }
+  if r3d_env_has("R3D_DEBUG_MAT") { defs = "#define DEBUG_MAT\n" }
+  if r3d_env_has("R3D_DEBUG_NRM") { defs = "#define DEBUG_NRM\n" }
+  if r3d_env_has("R3D_DEBUG_ALB") { defs = "#define DEBUG_ALB\n" }
   # Elimination profiling. Measure these by FRAME TIME (prof_ft_report), not by the
   # per-pass GPU timers: this driver's timer queries attribute a pass's fragment work
   # almost arbitrarily, and will happily report a pass at a tenth of its cost.
@@ -432,20 +432,20 @@ function terrain_init_finish() -> void {
   # R3D_NOTERRAIN skips the ground entirely (what it costs); R3D_TNEARONLY / R3D_TFARONLY
   # draw every patch with one tier's program (what each tier costs over a whole frame);
   # R3D_NOSPLIT goes back to the single program that holds both tiers.
-  if Os.has_env("R3D_TFAST") { defs = defs + "#define TFAST_" + Os.env("R3D_TFAST") + "\n" }
+  if r3d_env_has("R3D_TFAST") { defs = defs + "#define TFAST_" + r3d_env("R3D_TFAST") + "\n" }
   # Vulkan reads the cascades inside the ground's own shader and draws no separate sun pass
   # (terrain.frag, SUN_INLINE): one rasterisation of the patches instead of two, in the frame and in
   # the reflection. R3D_SUN_PASS=1 keeps the pass there too, for comparing.
-  ter_sun_inline = gpu_kind == GPU_VK and not Os.has_env("R3D_SUN_PASS")
+  ter_sun_inline = gpu_kind == GPU_VK and not r3d_env_has("R3D_SUN_PASS")
   if ter_sun_inline { defs = defs + "#define SUN_INLINE\n" }
   ter_prog = r3d_program("terrain.vert", "terrain.frag", defs)
   ter_prog_far = r3d_program("terrain.vert", "terrain.frag", defs + "#define FAR_ONLY\n")
   ter_prog_near = r3d_program("terrain.vert", "terrain.frag", defs + "#define NEAR_ONLY\n")
   ter_sun_prog = r3d_program("terrain.vert", "tersun.frag", "")
   ter_far_split = fi(200)
-  if Os.has_env("R3D_TFAR") { ter_far_split = fi(Text.to_int(Os.env("R3D_TFAR"))) }
+  if r3d_env_has("R3D_TFAR") { ter_far_split = fi(Text.to_int(r3d_env("R3D_TFAR"))) }
   ter_far_band = fi(60)
-  if Os.has_env("R3D_TBAND") { ter_far_band = fi(Text.to_int(Os.env("R3D_TBAND"))) }
+  if r3d_env_has("R3D_TBAND") { ter_far_band = fi(Text.to_int(r3d_env("R3D_TBAND"))) }
   ter_snow_line = fi(880)
   gpu_check("terrain init")
 }
@@ -573,7 +573,7 @@ function terrain_sun_pass(w: int, h: int, depth: int) -> Target {
   gpu_mesh_bind(cd_mesh)
   cdlod_select(CD_LEVELS - 1, 0, 0)
   ter_sun_pass = false
-  if Os.has_env("R3D_DUMP_SUN") and not ter_sun_dumped and not ter_reflect { ter_sun_dumped = true;  tex_dump(t.color, w, h, "build/dbg_sun.ppm") }
+  if r3d_env_has("R3D_DUMP_SUN") and not ter_sun_dumped and not ter_reflect { ter_sun_dumped = true;  tex_dump(t.color, w, h, "build/dbg_sun.ppm") }
   return t
 }
 
@@ -655,7 +655,7 @@ function cdlod_init() -> void {
   cd_mesh = m
   cd_range = words(CD_LEVELS)
   var r = fi(48)
-  if Os.has_env("R3D_CD_R0") { r = fi(Text.to_int(Os.env("R3D_CD_R0"))) }
+  if r3d_env_has("R3D_CD_R0") { r = fi(Text.to_int(r3d_env("R3D_CD_R0"))) }
   for l in 0 .. CD_LEVELS { cd_range[l] = r;  r = f_mul(r, F_TWO) }
   cdlod_bounds()
 }
