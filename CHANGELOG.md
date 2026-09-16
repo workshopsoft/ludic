@@ -7,6 +7,26 @@ change type. Preview the next one with `ludic dev release --dry-run`.
 A released section may carry a hand-written summary paragraph above its groups
 (v0.2.0 has one); the generated bullets below it are not edited by hand.
 
+## v0.17.0 — 2026-09-16
+
+### Features
+
+- **Renderer switches stay out of shipped games** — every `R3D_*` environment switch in
+  `ludic.render3d` (debug views, feature kills, file writers, hardware fakes, the Windows
+  feature overrides) now goes through one gate: a headless build honours them as before, a
+  windowed build only when `R3D_DEV` is set to anything but `0`. See `docs/SHIPPING.md`.
+
+### Fixes
+
+- **A lake can be the water that mirrors the world** — a reflecting body is clipped to its
+  ellipse like any other unless it is an unbounded sea, so a map whose reflection belongs to
+  its lake no longer floods every hollow in the survey with that lake's level; and the
+  terrain's wet shore, forest and scree gates read the carved lake's line inside its outline
+  (`u_lake`), the rule the grass already used, so a lake above the sea keeps its wet bank and
+  no forest is painted down its bed.
+
+  `terrain_lake_carve(false)` keeps a lake's line, outline and shore but skips carving its
+  bed, for a height map that already carries a shaped one.
 ## v0.16.2 — 2026-09-15
 
 ### Fixes
