@@ -26,9 +26,8 @@ function emit_init_component(e: pointer, comp: pointer, rec: Node) -> void {
     let addr = nreg()
     emit("  ");  emit(addr);  emit(" = getelementptr inbounds %Cmp_");  emit(comp);  emit(", ptr ");  emit(slot);  emit(", i32 0, i32 ");  emit(itoa(f));  emit("\n")
     let lt = llty(fd.ty)
-    var v = "0"
-    if (lt == "ptr") { v = "null" }
-    if (fd.a != null) { let dv = emit_expr(fd.a);  v = dv.code }
+    var v = zero_of(lt)
+    if (fd.a != null) { let dv = emit_expr(fd.a);  v = coerce_code(dv, fd.ty) }
     emit("  store ");  emit(lt);  emit(" ");  emit(v);  emit(", ptr ");  emit(addr);  emit("\n")
     f += 1
   }
@@ -42,7 +41,9 @@ function emit_init_component(e: pointer, comp: pointer, rec: Node) -> void {
         let addr = nreg()
         emit("  ");  emit(addr);  emit(" = getelementptr inbounds %Cmp_");  emit(comp);  emit(", ptr ");  emit(slot);  emit(", i32 0, i32 ");  emit(itoa(fidx));  emit("\n")
         let dv = emit_expr(fi.a)
-        emit("  store ");  emit(llty(field_type(c, fi.s)));  emit(" ");  emit(dv.code);  emit(", ptr ");  emit(addr);  emit("\n")
+        let fty = field_type(c, fi.s)
+        let dcode = coerce_code(dv, fty)
+        emit("  store ");  emit(llty(fty));  emit(" ");  emit(dcode);  emit(", ptr ");  emit(addr);  emit("\n")
       }
       j += 1
     }

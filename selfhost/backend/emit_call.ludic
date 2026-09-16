@@ -1067,12 +1067,14 @@ function emit_call(e: Node) -> Val {
   if (name == "string") {                            # string(x): int/bool/fixed/long -> text, a string passes through
     let a = emit_expr(e.kids[0])
     if (llty(a.ty) == "ptr") { return a }
+    if is_fp(a.ty) { return emit_fp_str(a) }
     if (llty(a.ty) == "i64") { g_uses_longstr = true;  return val(emit_bind(`call ptr @lp_long_str(i64 {a.code})`), "string") }
     g_uses_intstr = true
     return val(emit_bind(`call ptr @lp_int_str(i32 {a.code})`), "string")
   }
   if (name == "print") {                          # print(x): a value + newline (string, long, or int)
-    let a = emit_expr(e.kids[0])
+    var a = emit_expr(e.kids[0])
+    if is_fp(a.ty) { a = emit_fp_str(a) }
     if (llty(a.ty) == "ptr") { emit("  call i32 (ptr, ...) @printf(ptr @.fmt_line, ptr " + `{a.code})\n`) }
     else { if (llty(a.ty) == "i64") { emit("  call i32 (ptr, ...) @printf(ptr @.fmt_long, i64 " + `{a.code})\n`) }
       else { emit("  call i32 (ptr, ...) @printf(ptr @.fmt_int, i32 " + `{a.code})\n`) } }
@@ -1089,7 +1091,37 @@ function emit_call(e: Node) -> Val {
     let w = emit_bind(`zext i32 {by} to i64`)
     return val(emit_bind(`call ptr @malloc(i64 {w})`), "words")
   }
-  if (name == "fixed") { let a = emit_expr(e.kids[0]);  return val(emit_bind(`shl i32 {a.code}, 16`), "fixed") }
+  if (name == "fixed") {
+    let a = emit_expr(e.kids[0])
+    if is_fp(a.ty) { return emit_fp_to_fixed(a) }
+    if (a.lit != null) { return val(a.code, "fixed") }   # fixed(1.5) is the literal itself
+    return val(emit_bind(`shl i32 {a.code}, 16`), "fixed")
+  }
+  # float(x) / double(x) / int(x) / long(x): explicit numeric conversions
+  if ((name == "float") or (name == "double")) and (find_fn(name) == null) and len(e.kids) == 1 {
+    return emit_fp_convert(name, emit_expr(e.kids[0]))
+  }
+  if (name == "int") and (find_fn(name) == null) and len(e.kids) == 1 {
+    let a = emit_expr(e.kids[0])
+    if is_fp(a.ty) { return emit_fp_to_int(a) }
+    if (a.ty == "fixed") { return val(emit_bind(`ashr i32 {a.code}, 16`), "int") }
+    if (llty(a.ty) == "i64") { return val(emit_bind(`trunc i64 {a.code} to i32`), "int") }
+    return val(a.code, "int")
+  }
+  if (name == "long") and (find_fn(name) == null) and len(e.kids) == 1 {
+    let a = emit_expr(e.kids[0])
+    if is_fp(a.ty) { return emit_fp_to_long(a) }
+    return val(to_long(a), "long")
+  }
+  if (name == "float_bits") and (find_fn(name) == null) { return emit_float_bits(emit_expr(e.kids[0])) }
+  if (name == "float_from_bits") and (find_fn(name) == null) { return emit_float_from_bits(emit_expr(e.kids[0])) }
+  if (name == "double_bits") and (find_fn(name) == null) { return emit_double_bits(emit_expr(e.kids[0])) }
+  if (name == "double_from_bits") and (find_fn(name) == null) { return emit_double_from_bits(emit_expr(e.kids[0])) }
+  if ((name == "floats") or (name == "doubles")) and (find_fn(name) == null) {
+    var ft = "float"
+    if (name == "doubles") { ft = "double" }
+    return emit_fp_buffer(ft, emit_expr(e.kids[0]))
+  }
   if (name == "floor") { let a = emit_expr(e.kids[0]);  return val(emit_bind(`ashr i32 {a.code}, 16`), "int") }
   # --- the testing framework's assertions (see emit_test_runner) --------------
   # expect(cond) / expect_eq(a, b) / expect_near(a, b, tol): on failure they set
@@ -1349,7 +1381,8 @@ function emit_call(e: Node) -> Val {
 function emit_expr(e: Node) -> Val {
   if (e == null) { return val("0", "int") }
   if e.kind == E_INT  { return val(itoa(e.ival), "int") }
-  if e.kind == E_FLOAT { return val(itoa(e.ival), "fixed") }
+  if e.kind == E_FLOAT { let fv = val(itoa(e.ival), "fixed");  fv.lit = e;  return fv }
+  if e.kind == E_PREVAL { return g_prevals[e.ival] }
   if e.kind == E_BOOL { return val(itoa(e.ival), "bool") }
   if e.kind == E_NULL { return val("null", "pointer") }
   if e.kind == S_SPAWN { return val(emit_spawn(e), "entity") }   # `let e = spawn Model { … }`
@@ -1385,7 +1418,11 @@ function emit_expr(e: Node) -> Val {
       # expression's real type — so `const X: fixed = 10.0` yields a `fixed`, not
       # the raw Q16.16 bits mislabelled `int`. Every existing const is an int
       # literal, for which this is byte-identical to the old immediate.
-      if g.kind == N_CONST { return emit_expr(g.a) }
+      if g.kind == N_CONST {
+        let cv = emit_expr(g.a)
+        if is_fp(g.ty) { return val(to_fp(cv, g.ty, `const {e.s}`), g.ty) }
+        return cv
+      }
       let r = emit_bind(`load {llty(g.ty)}, ptr @g_{e.s}`)
       return val(r, g.ty)
     }
@@ -1438,6 +1475,15 @@ function emit_expr(e: Node) -> Val {
   if e.kind == E_BIN    { return emit_bin(e) }
   if e.kind == E_UN {
     let a = emit_expr(e.a)
+    if is_fp(a.ty) {
+      if (e.s == ("-")) { return val(emit_bind(`fneg {a.ty} {a.code}`), a.ty) }
+      perr(`operator {e.s} does not apply to {a.ty}`)
+    }
+    if (e.s == ("-")) and (a.lit != null) {         # -1.5 stays a literal: exact in a float context
+      let nv = val(emit_bind(`sub i32 0, {a.code}`), "fixed")
+      nv.lit = e
+      return nv
+    }
     if (llty(a.ty) == "i64") {                       # negate / bit-flip a long, staying 64-bit
       if (e.s == ("-")) { return val(emit_bind(`sub i64 0, {a.code}`), "long") }
       if (e.s == "~") { return val(emit_bind(`xor i64 {a.code}, -1`), "long") }

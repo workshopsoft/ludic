@@ -191,7 +191,9 @@ for a complete title screen.
 | `countdown` | an `int` component field the engine steps toward 0 once per Update | `i32` |
 | a bare `enum` | its variants, as an `int` | `i32` |
 | `IVec2` | an integer (x, y) pair by value — `v.x`, `v.y`, `IVec2.make/add/sub/…` | `i64` |
-| `fixed` | Q16.16 fixed-point | `i32` |
+| `fixed` | Q16.16 fixed-point — deterministic | `i32` |
+| `float` | IEEE single-precision floating point | `float` |
+| `double` | IEEE double-precision floating point | `double` |
 | `bool` | boolean | `i32` |
 | `entity` | entity handle | `i32` |
 | `string` | text (a string literal, an interpolation, a concatenation) | `ptr` |
@@ -201,6 +203,7 @@ for a complete title screen.
 | `words` | buffer of 32-bit words — `w[i]` reads/writes an `int` | `ptr` |
 | `fixeds` | buffer of `fixed` values — `f[i]` reads/writes a `fixed` | `ptr` |
 | `pointers` | buffer of pointers — `p[i]` reads/writes a `pointer` | `ptr` |
+| `floats` / `doubles` | buffer of floats / doubles — `floats(n)`, `v[i]` | `ptr` |
 
 Allocate raw buffers with `bytes(n)` (n bytes) or `words(n)` (n 32-bit words);
 both return a pointer you index with `buf[i]` — retype the binding (`words` /
@@ -213,6 +216,44 @@ Numeric literals: `42` and `0x1affff` are `int`; a literal with a decimal
 point (`1.5`) is `fixed`. Arithmetic on two `fixed` values lowers to
 `fxmul`/`fxdiv`; mixing `int` and `fixed` promotes the `int`. Convert with
 `fixed(i)` (int→fixed) and `floor(f)` (fixed→int).
+
+### Floating point
+
+`float` and `double` are ordinary IEEE numbers with ordinary operators, for
+rendering, GPU data and any math that needs more range than `fixed`:
+
+```ludic
+program Shade {
+  function falloff(dist: float, radius: float) -> float {
+    let k = Math.clamp(1.0 - dist / radius, 0, 1)
+    return k * k
+  }
+  entry {
+    let light: float = falloff(2, 8)          # ints promote to float
+    print(light * 0.5)                        # 0.28125
+  }
+}
+```
+
+- **Literals take their type from context.** `1.5` is a `float` where a float is
+  expected — a typed binding, a parameter, a field, the other operand — and
+  exactly that decimal, not its Q16.16 approximation. With no float in sight it
+  stays `fixed`, so existing code keeps its meaning. A whole literal expression
+  (`1.0 / 3.0`) is evaluated in the context's type.
+- **Promotion.** `int` and `long` promote to the float type of the other operand;
+  `float` with `double` promotes to `double`.
+- **Explicit conversions.** `float(x)`, `double(x)`, `int(x)` (truncates toward
+  zero), `long(x)`, `fixed(x)` (truncated to Q16.16). `fixed` and the float types never
+  mix silently, and a `double` narrows to `float` only through `float(x)`.
+- **`Math.*`** computes in float when given one (`Math.sqrt(2.0 * x)`) and answers
+  in that type — `Math.floor(x)` of a float is a float; `sign` returns `int`.
+- **Text.** `string(x)`, `print(x)` and interpolation write the shortest decimal
+  that reads back as the same value: `0.3`, `2.0`, `0.30000000000000004`.
+- **Bits.** `float_bits(x)` / `float_from_bits(i)` (and the `double_` pair) move
+  the IEEE pattern to and from an integer, for files and packets.
+- **Determinism.** A `@deterministic` function or handler cannot compute with
+  floats — the compiler says so — because IEEE results can differ between
+  machines. Lockstep simulation stays in `fixed`.
 
 ## Properties, entities, queries
 

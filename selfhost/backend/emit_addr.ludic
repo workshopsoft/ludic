@@ -33,6 +33,13 @@ function emit_index_addr(e: Node) -> pointer {
       g_addr_ty = "fixed"
       return rf
     }
+    if (base.ty == "floats") or (base.ty == "doubles") {   # IEEE float / double elements
+      var et = "float"
+      if (base.ty == "doubles") { et = "double" }
+      let rd = emit_bind(`getelementptr inbounds {et}, ptr {base.code}, i32 {bi.code}`)
+      g_addr_ty = et
+      return rd
+    }
     if (base.ty == "pointers") {                   # a `pointers` buffer: pointer elements
       let rp = emit_bind(`getelementptr inbounds ptr, ptr {base.code}, i32 {bi.code}`)
       g_addr_ty = "ptr"

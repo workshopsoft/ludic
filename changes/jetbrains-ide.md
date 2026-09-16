@@ -19,5 +19,5 @@ The JetBrains plugin covers much more of the IDE:
   package banner has script shortcuts, and Tools | Ludic | Run Script… lists them all.
 - The toolchain's and the project's packages are listed under External Libraries.
 - The Structure view, parameter info and code-block navigation now come from `ludic-lsp`.
-- The plugin is now 1.4.0 and requires IntelliJ Platform 2024.2 or newer and LSP4IJ 0.21.
+- The plugin is now 1.5.0 and requires IntelliJ Platform 2024.2 or newer and LSP4IJ 0.21.
 - Fixed: Enter no longer inserts an extra `}`, and Comment Line no longer writes two spaces.

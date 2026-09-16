@@ -36,11 +36,10 @@ function emit_new_struct(name: pointer, rec: Node) -> Val {
     emit("  ");  emit(addr);  emit(" = getelementptr inbounds ");  emit(lty)
     emit(", ptr ");  emit(obj);  emit(", i32 0, i32 ");  emit(itoa(f));  emit("\n")
     let lt = llty(fd.ty)
-    var v = "0"
-    if (lt == "ptr") { v = "null" }
-    if (fd.a != null) { let dv = emit_expr(fd.a);  v = dv.code }
+    var v = zero_of(lt)
+    if (fd.a != null) { let dv = emit_expr(fd.a);  v = coerce_code(dv, fd.ty) }
     let ov = rec_field(rec, fd.s)               # explicit override wins over the default
-    if (ov != null) { let dv = emit_expr(ov);  v = dv.code }
+    if (ov != null) { let dv = emit_expr(ov);  v = coerce_code(dv, fd.ty) }
     emit("  store ");  emit(lt);  emit(" ");  emit(v);  emit(", ptr ");  emit(addr);  emit("\n")
     f += 1
   }

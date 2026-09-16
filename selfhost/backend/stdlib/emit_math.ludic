@@ -10,6 +10,16 @@ function is_math_builtin(name: pointer) -> bool {
 }
 
 function emit_math_builtin(name: pointer, e: Node) -> Val {
+  if len(e.kids) == 0 { return emit_math_builtin_fixed(name, e) }
+  let orig = e.kids[0]
+  let fpv = math_fp_route(name, e)
+  if (fpv != null) { return fpv }
+  let r = emit_math_builtin_fixed(name, e)
+  e.kids[0] = orig                                # the node may be emitted again elsewhere
+  return r
+}
+
+function emit_math_builtin_fixed(name: pointer, e: Node) -> Val {
   if (name == "abs") {
     let a = emit_expr(e.kids[0])
     let c = emit_bind(`icmp slt i32 {a.code}, 0`)
@@ -79,9 +89,31 @@ function is_math_ns(meth: pointer) -> bool {
   return false
 }
 
+# a float/double call goes to emit_fp_math; otherwise the evaluated first
+# argument is left in place (E_PREVAL) for the fixed-point path. null = fixed.
+function math_fp_route(meth: pointer, e: Node) -> Val {
+  if len(e.kids) == 0 { return null }
+  if (e.kids[0].kind == E_PREVAL) { return null }
+  let first = emit_expr(e.kids[0])
+  let t = fp_math_type(first, e)
+  if not (t == "") { return emit_fp_math(meth, t, first, e) }
+  e.kids[0] = preval_node(first)
+  return null
+}
+
 function emit_math_ns(meth: pointer, e: Node) -> Val {
+  if len(e.kids) == 0 { return emit_math_ns_fixed(meth, e) }
+  let orig = e.kids[0]
+  let fpv = math_fp_route(meth, e)
+  if (fpv != null) { return fpv }
+  let r = emit_math_ns_fixed(meth, e)
+  e.kids[0] = orig                                # the node may be emitted again elsewhere
+  return r
+}
+
+function emit_math_ns_fixed(meth: pointer, e: Node) -> Val {
   if (meth == "min") or (meth == "max") or (meth == "abs") or (meth == "clamp") {
-    return emit_math_builtin(meth, e)
+    return emit_math_builtin_fixed(meth, e)
   }
   if (meth == "sign") {                             # sign(x) -> -1 / 0 / 1 (int)
     let a = emit_expr(e.kids[0])

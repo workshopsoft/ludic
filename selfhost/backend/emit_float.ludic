@@ -1,0 +1,457 @@
+# emit_float.ludic — IEEE floating point: `float` (32-bit) and `double` (64-bit).
+#
+# Rules (LANGUAGE.md, "Floating point"):
+#   - an int (or long) operand promotes to the float type of the other side;
+#     float with double promotes to double
+#   - a decimal literal (`1.5`) takes a float type from its context — an
+#     operand, a typed binding, a parameter — and is `fixed` otherwise
+#   - fixed never mixes with float silently: float(x) / fixed(x) convert
+#   - float -> int, double -> float are explicit: int(x), float(x)
+#
+# The compiler has no floating point of its own, so a literal travels as its
+# decimal text and LLVM parses it (a `double` constant, fptrunc'd to `float`).
+
+function is_fp(t: pointer) -> bool { return (t == "float") or (t == "double") }
+
+# @deterministic functions and handlers compute the same bits on every machine,
+# which IEEE float (fused multiply-adds, libm differences) does not promise
+var g_det_names: []pointer = new []pointer
+var g_det_ctx: pointer = ""             # the @deterministic declaration being emitted, or ""
+
+function det_enter(name: pointer) -> void {
+  g_det_ctx = ""
+  var i = 0
+  while i < len(g_det_names) { if (g_det_names[i] == name) { g_det_ctx = name };  i += 1 }
+}
+
+function fp_guard(t: pointer) -> void {
+  if not (g_det_ctx == "") {
+    perr(`@deterministic {g_det_ctx} cannot compute with {t}: floating point differs between machines — use fixed`)
+  }
+}
+
+# the wider of two operand types, when at least one is float/double
+function fp_result(a: pointer, b: pointer) -> pointer {
+  if (a == "double") or (b == "double") { return "double" }
+  return "float"
+}
+
+# a literal-only expression (Val.lit) evaluated exactly in float type t
+function fp_const(e: Node, t: pointer) -> pointer {
+  if e.kind == E_FLOAT { return fp_lit_code(e.s, t) }
+  if e.kind == E_INT { return fp_lit_code(itoa(e.ival), t) }
+  if e.kind == E_UN {
+    let x = fp_const(e.a, t)
+    return emit_bind(`fneg {t} {x}`)
+  }
+  if e.kind == E_BIN {
+    let a = fp_const(e.a, t)
+    let b = fp_const(e.b, t)
+    var inst = "fadd"
+    if (e.s == ("-")) { inst = "fsub" }
+    if (e.s == ("*")) { inst = "fmul" }
+    if (e.s == ("/")) { inst = "fdiv" }
+    if (e.s == ("%")) { inst = "frem" }
+    return emit_bind(`{inst} {t} {a}, {b}`)
+  }
+  perr("internal: not a literal expression")
+  return "0.0"
+}
+
+# the zero a slot of LLVM type lt starts at
+function zero_of(lt: pointer) -> pointer {
+  if (lt == "ptr") { return "null" }
+  if (lt == "float") or (lt == "double") { return "0.0" }
+  return "0"
+}
+
+# a literal's decimal text as a value of type t
+function fp_lit_code(text: pointer, t: pointer) -> pointer {
+  var d = text
+  if not str_has(d, '.') { d = d + ".0" }
+  if (t == "double") { return d }
+  return emit_bind(`fptrunc double {d} to float`)
+}
+
+function str_has(s: pointer, ch: int) -> bool {
+  var i = 0
+  while i < len(s) { if s[i] == ch { return true };  i += 1 }
+  return false
+}
+
+# is this register text an integer constant (`42`, `-7`)?
+function is_int_const(code: pointer) -> bool {
+  let n = len(code)
+  if n == 0 { return false }
+  var i = 0
+  if code[0] == '-' { i = 1 }
+  if i >= n { return false }
+  while i < n { if code[i] < '0' or code[i] > '9' { return false };  i += 1 }
+  return true
+}
+
+# v as a value of float type t (implicit conversions only). `what` names the
+# context for the error message.
+function to_fp(v: Val, t: pointer, what: pointer) -> pointer {
+  fp_guard(t)
+  if (v.ty == t) { return v.code }
+  if (v.ty == "float") and (t == "double") { return emit_bind(`fpext float {v.code} to double`) }
+  if (v.ty == "double") and (t == "float") {
+    perr(`{what}: a double does not narrow to float implicitly — write float(x)`)
+  }
+  if (v.lit != null) { return fp_const(v.lit, t) }
+  if (v.ty == "fixed") {
+    perr(`{what}: fixed and {t} do not mix implicitly — convert with {t}(x) or fixed(x)`)
+  }
+  let lt = llty(v.ty)
+  if (lt == "i64") { fp_promote_note(v.ty, t);  return emit_bind(`sitofp i64 {v.code} to {t}`) }
+  if (lt == "i32") {
+    if is_int_const(v.code) { return fp_lit_code(v.code, t) }
+    fp_promote_note(v.ty, t)
+    return emit_bind(`sitofp i32 {v.code} to {t}`)
+  }
+  perr(`{what}: a {v.ty} is not a number`)
+  return v.code
+}
+
+# LUDIC_WARN_FLOAT_PROMOTE=1: report every implicit promotion of a computed
+# (non-constant) integer to float — the audit a migration from float bit
+# patterns in ints relies on, since such a value would silently change meaning
+var g_warn_promote: int = -1
+function fp_promote_note(from: pointer, t: pointer) -> void {
+  if g_warn_promote < 0 {
+    g_warn_promote = 0
+    if (getenv("LUDIC_WARN_FLOAT_PROMOTE") != null) { g_warn_promote = 1 }
+  }
+  if g_warn_promote == 0 { return }
+  var file = g_err_file
+  if (file == null) { file = "" }
+  let m = `{file}:{itoa(g_err_line)}: warning: a computed {from} is promoted to {t}\n`
+  file_write(file_stderr(), m, len(m))
+}
+
+function fcmp_code(op: pointer) -> pointer {
+  if (op == ("<"))  { return "olt" }
+  if (op == ("<=")) { return "ole" }
+  if (op == (">"))  { return "ogt" }
+  if (op == (">=")) { return "oge" }
+  if (op == ("==")) { return "oeq" }
+  return "une"                                     # != is true for NaN, as everywhere
+}
+
+# `a <op> b` where at least one side is float/double
+function emit_fp_bin(op: pointer, a: Val, b: Val) -> Val {
+  var t = "float"
+  if is_fp(a.ty) and is_fp(b.ty) { t = fp_result(a.ty, b.ty) }
+  else { if is_fp(a.ty) { t = a.ty } else { t = b.ty } }
+  let ac = to_fp(a, t, `the left side of {op}`)
+  let bc = to_fp(b, t, `the right side of {op}`)
+  if is_cmp(op) {
+    let c = emit_bind(`fcmp {fcmp_code(op)} {t} {ac}, {bc}`)
+    return val(emit_bind(`zext i1 {c} to i32`), "bool")
+  }
+  var inst = ""
+  if (op == ("+")) { inst = "fadd" }
+  if (op == ("-")) { inst = "fsub" }
+  if (op == ("*")) { inst = "fmul" }
+  if (op == ("/")) { inst = "fdiv" }
+  if (op == ("%")) { inst = "frem" }
+  if (inst == "") { perr(`operator {op} does not apply to {t}`) }
+  return val(emit_bind(`{inst} {t} {ac}, {bc}`), t)
+}
+
+# float(x) / double(x): any number to that float type, explicitly
+function emit_fp_convert(t: pointer, v: Val) -> Val {
+  fp_guard(t)
+  if (v.lit != null) { return val(fp_const(v.lit, t), t) }
+  if is_fp(v.ty) {
+    if (v.ty == t) { return v }
+    if (t == "double") { return val(emit_bind(`fpext float {v.code} to double`), t) }
+    return val(emit_bind(`fptrunc double {v.code} to float`), t)
+  }
+  if (v.ty == "fixed") {
+    let f = emit_bind(`sitofp i32 {v.code} to {t}`)
+    return val(emit_bind(`fdiv {t} {f}, 65536.0`), t)
+  }
+  return val(to_fp(v, t, `{t}(x)`), t)
+}
+
+# int(x) on a float: truncates toward zero, as C does
+function emit_fp_to_int(v: Val) -> Val {
+  return val(emit_bind(`fptosi {v.ty} {v.code} to i32`), "int")
+}
+
+# long(x) on a float
+function emit_fp_to_long(v: Val) -> Val {
+  return val(emit_bind(`fptosi {v.ty} {v.code} to i64`), "long")
+}
+
+# fixed(x) on a float: truncated toward zero to Q16.16, as int(x) truncates
+function emit_fp_to_fixed(v: Val) -> Val {
+  let m = emit_bind(`fmul {v.ty} {v.code}, 65536.0`)
+  return val(emit_bind(`fptosi {v.ty} {m} to i32`), "fixed")
+}
+
+# float_bits(x) / float_from_bits(i): the IEEE bit pattern of a float, both
+# ways — what a GPU buffer or a file holds
+function emit_float_bits(v: Val) -> Val {
+  let f = to_fp(v, "float", "float_bits(x)")
+  return val(emit_bind(`bitcast float {f} to i32`), "int")
+}
+function emit_float_from_bits(v: Val) -> Val {
+  return val(emit_bind(`bitcast i32 {v.code} to float`), "float")
+}
+function emit_double_bits(v: Val) -> Val {
+  let f = to_fp(v, "double", "double_bits(x)")
+  return val(emit_bind(`bitcast double {f} to i64`), "long")
+}
+function emit_double_from_bits(v: Val) -> Val {
+  return val(emit_bind(`bitcast i64 {to_long(v)} to double`), "double")
+}
+
+# ---- text -------------------------------------------------------------------
+var g_uses_fpstr: bool = false
+
+# string(x) for a float/double: the shortest text that reads back as x
+function emit_fp_str(v: Val) -> Val {
+  g_uses_fpstr = true
+  var d = v.code
+  var single = "0"
+  if (v.ty == "float") { d = emit_bind(`fpext float {v.code} to double`);  single = "1" }
+  return val(emit_bind(`call ptr @lp_fp_str(double {d}, i32 {single})`), "string")
+}
+
+# @lp_fp_str(v, single): "%.*g" with the fewest digits that round-trip (through
+# float when single), plus ".0" when the text would read as an int
+function emit_fp_str_fn() -> void {
+  fp_declare("declare i32 @snprintf(ptr, i64, ptr, ...)\n")
+  fp_declare("declare double @strtod(ptr, ptr)\n")
+  fp_declare("declare ptr @strpbrk(ptr, ptr)\n")
+  emith("@.fmt_fpg = private unnamed_addr constant [5 x i8] c\"%.*g\\00\"\n")
+  emith("@.fp_marks = private unnamed_addr constant [8 x i8] c\".eEnNiI\\00\"\n")
+  emith("define ptr @lp_fp_str(double %v, i32 %single) {\n")
+  emith("entry:\n  %buf = call ptr @malloc(i64 40)\n  br label %try\n")
+  emith("try:\n  %p = phi i32 [ 6, %entry ], [ %p1, %again ]\n")
+  emith("  %w = call i32 (ptr, i64, ptr, ...) @snprintf(ptr %buf, i64 36, ptr @.fmt_fpg, i32 %p, double %v)\n")
+  emith("  %r = call double @strtod(ptr %buf, ptr null)\n")
+  emith("  %rf = fptrunc double %r to float\n  %vf = fptrunc double %v to float\n")
+  emith("  %eqf = fcmp oeq float %rf, %vf\n  %eqd = fcmp oeq double %r, %v\n")
+  emith("  %is1 = icmp ne i32 %single, 0\n  %eq = select i1 %is1, i1 %eqf, i1 %eqd\n")
+  emith("  %p1 = add i32 %p, 1\n  %last = icmp sge i32 %p, 17\n  %stop = or i1 %eq, %last\n")
+  emith("  br i1 %stop, label %done, label %again\n")
+  emith("again:\n  br label %try\n")
+  emith("done:\n  %mark = call ptr @strpbrk(ptr %buf, ptr @.fp_marks)\n  %whole = icmp eq ptr %mark, null\n")
+  emith("  br i1 %whole, label %dot, label %out\n")
+  emith("dot:\n  %n64 = call i64 @strlen(ptr %buf)\n  %e0 = getelementptr inbounds i8, ptr %buf, i64 %n64\n")
+  emith("  store i8 46, ptr %e0\n  %n1 = add i64 %n64, 1\n  %e1 = getelementptr inbounds i8, ptr %buf, i64 %n1\n")
+  emith("  store i8 48, ptr %e1\n  %n2 = add i64 %n64, 2\n  %e2 = getelementptr inbounds i8, ptr %buf, i64 %n2\n")
+  emith("  store i8 0, ptr %e2\n  br label %out\n")
+  emith("out:\n  ret ptr %buf\n}\n")
+}
+
+# ---- buffers ----------------------------------------------------------------
+# floats(n) / doubles(n): n uninitialised elements, indexed like words
+function emit_fp_buffer(t: pointer, n: Val) -> Val {
+  var sz = "4";  var ty = "floats"
+  if (t == "double") { sz = "8";  ty = "doubles" }
+  let by = emit_bind(`mul i32 {n.code}, {sz}`)
+  let w = emit_bind(`zext i32 {by} to i64`)
+  return val(emit_bind(`call ptr @malloc(i64 {w})`), ty)
+}
+
+# ---- Math.* on floats ---------------------------------------------------------
+var g_fp_decls: []pointer
+
+# declare a libm function once per program
+function fp_declare(line: pointer) -> void {
+  var i = 0
+  while i < len(g_fp_decls) { if (g_fp_decls[i] == line) { return };  i += 1 }
+  push(g_fp_decls, line)
+  emith(line)
+}
+
+# call a one-argument libm/intrinsic function of type t
+function fp_call1(base: pointer, t: pointer, x: pointer) -> pointer {
+  var fname = base
+  if (t == "float") { fname = base + "f" }
+  fp_declare(`declare {t} @{fname}({t})\n`)
+  return emit_bind(`call {t} @{fname}({t} {x})`)
+}
+function fp_call2(base: pointer, t: pointer, x: pointer, y: pointer) -> pointer {
+  var fname = base
+  if (t == "float") { fname = base + "f" }
+  fp_declare(`declare {t} @{fname}({t}, {t})\n`)
+  return emit_bind(`call {t} @{fname}({t} {x}, {t} {y})`)
+}
+function fp_intrinsic1(name: pointer, t: pointer, x: pointer) -> pointer {
+  var sfx = "f64"
+  if (t == "float") { sfx = "f32" }
+  fp_declare(`declare {t} @llvm.{name}.{sfx}({t})\n`)
+  return emit_bind(`call {t} @llvm.{name}.{sfx}({t} {x})`)
+}
+function fp_intrinsic2(name: pointer, t: pointer, x: pointer, y: pointer) -> pointer {
+  var sfx = "f64"
+  if (t == "float") { sfx = "f32" }
+  fp_declare(`declare {t} @llvm.{name}.{sfx}({t}, {t})\n`)
+  return emit_bind(`call {t} @llvm.{name}.{sfx}({t} {x}, {t} {y})`)
+}
+
+# min / max as a comparison and a select: `x < y ? x : y`
+function fp_pick(meth: pointer, t: pointer, x: pointer, y: pointer) -> pointer {
+  var cc = "olt"
+  if (meth == "max") { cc = "ogt" }
+  let c = emit_bind(`fcmp {cc} {t} {x}, {y}`)
+  return emit_bind(`select i1 {c}, {t} {x}, {t} {y}`)
+}
+
+# the float type a Math call works in, given its already-evaluated first
+# argument and the static types of the rest; "" when it is not a float call
+function fp_math_type(first: Val, e: Node) -> pointer {
+  var t = ""
+  if is_fp(first.ty) { t = first.ty }
+  var i = 1
+  while i < len(e.kids) {
+    let st = static_type(e.kids[i])
+    if (st != null) and is_fp(st) {
+      if (t == "") { t = st } else { t = fp_result(t, st) }
+    }
+    i += 1
+  }
+  return t
+}
+
+function fp_arg(e: Node, i: int, t: pointer, meth: pointer) -> pointer {
+  let v = emit_expr(e.kids[i])
+  return to_fp(v, t, `Math.{meth}`)
+}
+
+# Math.<meth>(…) in float type t; the first argument is already evaluated
+function emit_fp_math(meth: pointer, t: pointer, first: Val, e: Node) -> Val {
+  let x = to_fp(first, t, `Math.{meth}`)
+  if (meth == "abs") { return val(fp_intrinsic1("fabs", t, x), t) }
+  if (meth == "sqrt") { return val(fp_intrinsic1("sqrt", t, x), t) }
+  if (meth == "sin") { return val(fp_call1("sin", t, x), t) }
+  if (meth == "cos") { return val(fp_call1("cos", t, x), t) }
+  if (meth == "exp") { return val(fp_call1("exp", t, x), t) }
+  if (meth == "log") { return val(fp_call1("log", t, x), t) }
+  if (meth == "tan") { return val(fp_call1("tan", t, x), t) }
+  if (meth == "asin") { return val(fp_call1("asin", t, x), t) }
+  if (meth == "acos") { return val(fp_call1("acos", t, x), t) }
+  if (meth == "atan") { return val(fp_call1("atan", t, x), t) }
+  if (meth == "floor") { return val(fp_call1("floor", t, x), t) }
+  if (meth == "ceil") { return val(fp_call1("ceil", t, x), t) }
+  if (meth == "round") { return val(fp_call1("round", t, x), t) }
+  if (meth == "trunc") { return val(fp_intrinsic1("trunc", t, x), t) }
+  if (meth == "sign") {
+    let pos = emit_bind(`fcmp ogt {t} {x}, 0.0`)
+    let neg = emit_bind(`fcmp olt {t} {x}, 0.0`)
+    let lo = emit_bind(`select i1 {neg}, i32 -1, i32 0`)
+    return val(emit_bind(`select i1 {pos}, i32 1, i32 {lo}`), "int")
+  }
+  if (meth == "deg_to_rad") {                     # x * (pi / 180), computed in t
+    let k = emit_bind(`fdiv {t} {fp_lit_code("3.141592653589793", t)}, 180.0`)
+    return val(emit_bind(`fmul {t} {x}, {k}`), t)
+  }
+  if (meth == "rad_to_deg") {                     # x * (180 / pi), computed in t
+    let k = emit_bind(`fdiv {t} 180.0, {fp_lit_code("3.141592653589793", t)}`)
+    return val(emit_bind(`fmul {t} {x}, {k}`), t)
+  }
+  if (meth == "min") or (meth == "max") {         # the first unless the second is strictly smaller (larger)
+    let y = fp_arg(e, 1, t, meth)
+    return val(fp_pick(meth, t, x, y), t)
+  }
+  if (meth == "pow") { return val(fp_intrinsic2("pow", t, x, fp_arg(e, 1, t, meth)), t) }
+  if (meth == "atan2") { return val(fp_call2("atan2", t, x, fp_arg(e, 1, t, meth)), t) }
+  if (meth == "hypot") { return val(fp_call2("hypot", t, x, fp_arg(e, 1, t, meth)), t) }
+  if (meth == "posmod") or (meth == "wrap") {
+    # a result with the sign of the divisor: ((x % m) + m) % m
+    let m = fp_arg(e, 1, t, meth)
+    let r = emit_bind(`frem {t} {x}, {m}`)
+    let s = emit_bind(`fadd {t} {r}, {m}`)
+    return val(emit_bind(`frem {t} {s}, {m}`), t)
+  }
+  if (meth == "clamp") {
+    let lo = fp_arg(e, 1, t, meth)
+    let hi = fp_arg(e, 2, t, meth)
+    let a = fp_pick("max", t, x, lo)               # min(max(x, lo), hi)
+    return val(fp_pick("min", t, a, hi), t)
+  }
+  if (meth == "lerp") {                             # lerp(a, b, t)
+    let b = fp_arg(e, 1, t, meth)
+    let k = fp_arg(e, 2, t, meth)
+    let d = emit_bind(`fsub {t} {b}, {x}`)
+    let dk = emit_bind(`fmul {t} {d}, {k}`)
+    return val(emit_bind(`fadd {t} {x}, {dk}`), t)
+  }
+  if (meth == "inverse_lerp") {                     # inverse_lerp(a, b, v)
+    let b = fp_arg(e, 1, t, meth)
+    let v = fp_arg(e, 2, t, meth)
+    let num = emit_bind(`fsub {t} {v}, {x}`)
+    let den = emit_bind(`fsub {t} {b}, {x}`)
+    return val(emit_bind(`fdiv {t} {num}, {den}`), t)
+  }
+  if (meth == "remap") {                            # remap(v, a0, a1, b0, b1)
+    let a0 = fp_arg(e, 1, t, meth)
+    let a1 = fp_arg(e, 2, t, meth)
+    let b0 = fp_arg(e, 3, t, meth)
+    let b1 = fp_arg(e, 4, t, meth)
+    let num = emit_bind(`fsub {t} {x}, {a0}`)
+    let den = emit_bind(`fsub {t} {a1}, {a0}`)
+    let k = emit_bind(`fdiv {t} {num}, {den}`)
+    let span = emit_bind(`fsub {t} {b1}, {b0}`)
+    let off = emit_bind(`fmul {t} {span}, {k}`)
+    return val(emit_bind(`fadd {t} {b0}, {off}`), t)
+  }
+  if (meth == "smoothstep") {                       # smoothstep(e0, e1, v)
+    let e1 = fp_arg(e, 1, t, meth)
+    let v = fp_arg(e, 2, t, meth)
+    let num = emit_bind(`fsub {t} {v}, {x}`)
+    let den = emit_bind(`fsub {t} {e1}, {x}`)
+    let k0 = emit_bind(`fdiv {t} {num}, {den}`)
+    let k1 = fp_pick("max", t, k0, "0.0")
+    let k = fp_pick("min", t, k1, "1.0")
+    let kk = emit_bind(`fmul {t} {k}, {k}`)
+    let tk = emit_bind(`fmul {t} {k}, 2.0`)
+    let three = emit_bind(`fsub {t} 3.0, {tk}`)
+    return val(emit_bind(`fmul {t} {kk}, {three}`), t)
+  }
+  if (meth == "move_toward") {                      # move_toward(from, to, step)
+    let to = fp_arg(e, 1, t, meth)
+    let st = fp_arg(e, 2, t, meth)
+    let d = emit_bind(`fsub {t} {to}, {x}`)
+    let ad = fp_intrinsic1("fabs", t, d)
+    let reach = emit_bind(`fcmp ole {t} {ad}, {st}`)
+    let neg = emit_bind(`fcmp olt {t} {d}, 0.0`)
+    let nst = emit_bind(`fneg {t} {st}`)
+    let dir = emit_bind(`select i1 {neg}, {t} {nst}, {t} {st}`)
+    let moved = emit_bind(`fadd {t} {x}, {dir}`)
+    return val(emit_bind(`select i1 {reach}, {t} {to}, {t} {moved}`), t)
+  }
+  if (meth == "dist") or (meth == "dist2") {        # dist(x1, y1, x2, y2)
+    let y1 = fp_arg(e, 1, t, meth)
+    let x2 = fp_arg(e, 2, t, meth)
+    let y2 = fp_arg(e, 3, t, meth)
+    let dx = emit_bind(`fsub {t} {x2}, {x}`)
+    let dy = emit_bind(`fsub {t} {y2}, {y1}`)
+    let dx2 = emit_bind(`fmul {t} {dx}, {dx}`)
+    let dy2 = emit_bind(`fmul {t} {dy}, {dy}`)
+    let s = emit_bind(`fadd {t} {dx2}, {dy2}`)
+    if (meth == "dist2") { return val(s, t) }
+    return val(fp_intrinsic1("sqrt", t, s), t)
+  }
+  perr(`Math.{meth} has no {t} form`)
+  return val(x, t)
+}
+
+# ---- pre-evaluated arguments ------------------------------------------------
+# A call that has to look at its first argument's type before choosing a
+# lowering evaluates it once and swaps in an E_PREVAL node, so the chosen path
+# does not evaluate it (and its side effects) a second time.
+var g_prevals: []Val
+
+function preval_node(v: Val) -> Node {
+  push(g_prevals, v)
+  let n = node(E_PREVAL)
+  n.ival = len(g_prevals) - 1
+  return n
+}

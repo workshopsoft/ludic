@@ -4,15 +4,15 @@ name: fixed
 category: builtins
 kind: builtin
 tokens: fixed
-sig: fixed(n) -> fixed
-tip: Lift an integer into a Q16.16 fixed-point value.
+sig: fixed(x) -> fixed
+tip: Convert an int (or a float) into a Q16.16 fixed-point value.
 order: 50
 ---
 
-Converts an integer into a <code>fixed</code> value (Ludic's Q16.16 fixed-point type), so it can take part in fractional arithmetic. Ludic has no floating point; <code>fixed</code> is how you carry sub-pixel precision for smooth movement and physics-like accumulation. Use <code>fixed</code> when you need to combine an <code>int</code> with fixed-point values or divide to get a fraction — for example <code>fixed(1) / fixed(4)</code> is <code>0.25</code>. Convert back to a whole number for drawing with <code>flr</code>.
+Converts an integer into a <code>fixed</code> value (Ludic's Q16.16 fixed-point type), so it can take part in fractional arithmetic. <code>fixed</code> is how you carry deterministic sub-pixel precision for smooth movement and physics-like accumulation; a <code>float</code> or <code>double</code> converts too, truncated toward zero to Q16.16. Use <code>fixed</code> when you need to combine an <code>int</code> with fixed-point values or divide to get a fraction — for example <code>fixed(1) / fixed(4)</code> is <code>0.25</code>. Convert back to a whole number for drawing with <code>flr</code>.
 
 Parameters:
-- `n` — the integer to lift into fixed-point
+- `x` — the integer (or float) to convert
 
 ```ludic
 program SmoothAccumulate {

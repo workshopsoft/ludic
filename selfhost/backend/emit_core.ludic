@@ -2,8 +2,11 @@
 # module header. Mirrors the pieces of compiler/back/ that this subset needs.
 # structs and slices are references, so every non-scalar type lowers to `ptr`.
 
-property Val { code: pointer = null, ty: pointer = null }
-function val(code: pointer, ty: pointer) -> Val { let v = new Val;  v.code = code;  v.ty = ty;  return v }
+# lit: the expression of a value made only of numeric literals with at least one
+# decimal among them (`1.5`, `-0.25`, `1.0 / 3.0`). It is `fixed` on its own and
+# is re-evaluated exactly in a float context — see emit_float.ludic.
+property Val { code: pointer = null, ty: pointer = null, lit: Node = null }
+function val(code: pointer, ty: pointer) -> Val { let v = new Val;  v.code = code;  v.ty = ty;  v.lit = null;  return v }
 
 var head: Buf                 # module-level: types, globals, string constants
 var code: Buf                 # function bodies
@@ -125,11 +128,13 @@ function llty(t: pointer) -> pointer {
   if is_bare_enum(t) { return "i32" }             # a payload-free enum is an int by another name
   if (t == "countdown") { return "i32" }          # an int the engine counts down to 0 each Update
   if (t == "long") { return "i64" }               # a 64-bit signed integer
+  if (t == "float") { return "float" }            # IEEE single precision
+  if (t == "double") { return "double" }          # IEEE double precision
   if (t == "Vector") { return "i64" }             # a 2D vector: (x, y) fixeds packed into one i64
   if (t == "IVec2") { return "i64" }              # an integer 2D vector: (x, y) ints packed into one i64
   if (t == "Rect") { return "i128" }              # a rectangle: (x, y, w, h) fixeds packed into one i128
   if (t == "byte") { return "i8" }                # a single byte (p[i] on a raw ptr)
-  if (t == "words") or (t == "fixeds") or (t == "pointers") { return "ptr" }   # typed buffers
+  if (t == "words") or (t == "fixeds") or (t == "pointers") or (t == "floats") or (t == "doubles") { return "ptr" }   # typed buffers
   if (t == "void") { return "void" }
   return "ptr"
 }

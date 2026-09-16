@@ -166,7 +166,7 @@ function cmd_test_tools() -> int {
   # IntelliJ SDK). One env var away: LUDIC_TEST_JETBRAINS=1 ludic-dev test-tools
   if (getenv_or("LUDIC_TEST_JETBRAINS", "0") == "1") {
     if shq("test -x tools/editors/jetbrains/gradlew") {
-      if shq("cd tools/editors/jetbrains && ./gradlew buildPlugin verifyPluginStructure --console=plain -q >/dev/null 2>&1 && test -f build/distributions/Ludic-1.4.0.zip") { ok("jetbrains plugin builds and verifies") } else { bad("jetbrains plugin build") }
+      if shq("cd tools/editors/jetbrains && ./gradlew buildPlugin verifyPluginStructure --console=plain -q >/dev/null 2>&1 && test -f build/distributions/Ludic-1.5.0.zip") { ok("jetbrains plugin builds and verifies") } else { bad("jetbrains plugin build") }
       if shq("cd tools/editors/jetbrains && ./gradlew test --console=plain -q >/dev/null 2>&1") { ok("jetbrains platform tests (lexer, file type, PSI, folding)") } else { bad("jetbrains platform tests") }
     } else { print("  skip  jetbrains plugin (no gradle wrapper)") }
   } else {

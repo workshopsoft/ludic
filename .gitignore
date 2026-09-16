@@ -26,6 +26,7 @@ tools/editors/vscode/node_modules/
 tools/editors/vscode/*.vsix
 tools/editors/jetbrains/.gradle/
 tools/editors/jetbrains/build/
+tools/editors/jetbrains/.kotlin/
 
 # IntelliJ plugin SDK sandbox (tools/editors/jetbrains)
 .intellijPlatform/

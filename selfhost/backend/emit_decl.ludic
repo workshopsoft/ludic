@@ -13,6 +13,7 @@ function emit_params_sig(d: Node) -> void {
 
 function emit_fn(d: Node) -> void {
   ll_t = 0;  ll_lbl = 0;  g_term = false;  loc_reset();  nloop = 0
+  det_enter(d.s)
   g_cur_scene = null                            # a function belongs to no scene: `become` leaves the live one
   ret_ty = d.ty
   let fbody = buf_new()
@@ -40,6 +41,7 @@ function emit_fn(d: Node) -> void {
   emit(buf_str(falloc))
   emit(buf_str(fbody))
   emit("}\n\n")
+  g_det_ctx = ""
 }
 
 function emit_main(d: Node) -> void {
@@ -208,6 +210,9 @@ function emit_program() -> void {
   code = buf_new()
   g_uses_str = false
   g_uses_intstr = false
+  g_uses_fpstr = false
+  g_fp_decls = new []pointer
+  g_prevals = new []Val
   g_uses_strslice = false
   g_uses_loopback = false
   g_uses_expect = false
@@ -256,7 +261,8 @@ function emit_program() -> void {
   if g_uses_world_despawn { emit_world_despawn_fn() }   # #84: @fn_world_despawn, after all World.despawn / esys_bounds-kill uses are seen
   if g_uses_loopback { emit_loopback() }         # built-in transport, after all net_send/net_poll uses are seen
   if g_uses_str { emit_str_prelude() }          # @lp_str_eq / @lp_str_concat, after all uses are seen
-  if g_uses_intstr { emit_int_str() }           # @lp_int_str, for string(int) in interpolation
+  if g_uses_intstr { emit_int_str() }
+  if g_uses_fpstr { emit_fp_str_fn() }           # @lp_int_str, for string(int) in interpolation
   if g_uses_longstr { emit_long_str() }         # @lp_long_str, for string(long) / long interpolation
   if g_uses_strslice { emit_str_slice() }       # @lp_str_slice, for s[a..b]
   if g_uses_mathrt { emit_math_prelude() }       # @lp_fx_sqrt / @lp_fx_sin + the sine table

@@ -26,7 +26,7 @@ function emit_str_const(s: pointer) -> pointer {
 
 # the constant initializer for a global var: a literal, or 0/null
 function global_init(d: Node) -> pointer {
-  if (d.a == null) { if (llty(d.ty) == "ptr") { return "null" };  return "0" }
+  if (d.a == null) or is_fp(d.ty) { return zero_of(llty(d.ty)) }   # a float's value is set by L_init_globals
   let e = d.a
   if e.kind == E_INT or e.kind == E_FLOAT or e.kind == E_BOOL { return itoa(e.ival) }
   if e.kind == E_UN and (e.s == ("-")) and e.a.kind == E_INT { return (("-") + itoa(e.a.ival)) }
@@ -40,6 +40,7 @@ function global_init(d: Node) -> pointer {
 # does a global's initializer need code at startup (anything global_init cannot fold)?
 function global_needs_init_code(d: Node) -> bool {
   if (d.a == null) { return false }
+  if is_fp(d.ty) { return true }
   let e = d.a
   if e.kind == E_INT or e.kind == E_FLOAT or e.kind == E_BOOL or e.kind == E_NULL { return false }
   if e.kind == E_UN and (e.s == ("-")) and e.a.kind == E_INT { return false }
@@ -62,7 +63,8 @@ function emit_global_init_fn() -> void {
     let d = prog[i]
     if d.kind == N_VAR and global_needs_init_code(d) {
       let v = emit_expr(d.a)
-      emit("  store ");  emit(llty(d.ty));  emit(" ");  emit(coerce_code(v, d.ty));  emit(", ptr @g_");  emit(d.s);  emit("\n")
+      let cv = coerce_code(v, d.ty)                 # any conversion is its own line, before the store
+      emit("  store ");  emit(llty(d.ty));  emit(" ");  emit(cv);  emit(", ptr @g_");  emit(d.s);  emit("\n")
     }
     i += 1
   }

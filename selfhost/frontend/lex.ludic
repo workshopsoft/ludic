@@ -136,8 +136,10 @@ function lex_at(src: pointer, first_line: int) -> void {
         continue
       }
       var v = 0
+      let nstart = i
       while i < n and char_is_digit(src[i]) { v = v * 10 + (src[i] - 48); i += 1 }
-      # a fractional part makes it a Q16.16 fixed literal
+      # a fractional part makes it a Q16.16 fixed literal (its text is kept: in a
+      # float context the literal is exactly that decimal instead)
       if i < n and src[i] == '.' and char_is_digit(src[i + 1]) {
         i += 1
         # Accumulate only the first 4 fractional digits: `fnum << 16` must stay
@@ -149,7 +151,7 @@ function lex_at(src: pointer, first_line: int) -> void {
           i += 1
         }
         let bits = (v << 16) + ((fnum << 16) + (fden >> 1)) / fden
-        tok_push(TK_FLOAT, null, bits, line)
+        tok_push(TK_FLOAT, src[nstart..i], bits, line)
         continue
       }
       tok_push(TK_INT, null, v, line)

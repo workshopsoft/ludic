@@ -316,9 +316,7 @@ function emit_stmt(st: Node) -> void {
       let slot = emit_alloca(llty(ty));  store_at(llty(ty), v0.code, slot);  loc_push(st.s, slot, ty);  loc_set_mut(st.ival);  return }
     let slot = emit_alloca(llty(ty))
     if (st.a == null) {
-      var z = "0"
-      if (llty(ty) == "ptr") { z = "null" }
-      store_at(llty(ty), z, slot)
+      store_at(llty(ty), zero_of(llty(ty)), slot)
     } else { let v = emit_expr(st.a);  store_at(llty(ty), coerce_code(v, ty), slot) }
     loc_push(st.s, slot, ty)
     loc_set_mut(st.ival)

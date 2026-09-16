@@ -108,6 +108,10 @@ function to_fixed(v: Val) -> pointer {
 # pair the language has: int (i32) <-> long (i64). int widens with sext, long
 # narrows with trunc; everything else (same width, or ptr) passes through.
 function coerce_code(v: Val, target: pointer) -> pointer {
+  if is_fp(target) { return to_fp(v, target, `a {target} slot`) }
+  if is_fp(v.ty) and not is_fp(target) and (llty(target) != "ptr") {
+    perr(`a {v.ty} does not convert to {target} implicitly — write int(x) or fixed(x)`)
+  }
   let lt = llty(target)
   let vt = llty(v.ty)
   if (lt == vt) { return v.code }
@@ -140,7 +144,7 @@ function emit_str_op(op: pointer, a: Val, b: Val) -> Val {
 # the result type of a unary arithmetic operator on a value of type `ty`: fixed
 # and long survive, every other 32-bit scalar (int/bool/enum) collapses to int
 function arith_ty(ty: pointer) -> pointer {
-  if (ty == "fixed") or (ty == "long") { return ty }
+  if (ty == "fixed") or (ty == "long") or is_fp(ty) { return ty }
   return "int"
 }
 
@@ -149,7 +153,12 @@ function emit_bin(e: Node) -> Val {
   let a = emit_expr(e.a)
   let b = emit_expr(e.b)
   let isnull = e.a.kind == E_NULL or e.b.kind == E_NULL
-  return emit_bin_vals(e.s, a, b, isnull)
+  let r = emit_bin_vals(e.s, a, b, isnull)
+  # literal arithmetic stays a literal (for a float context) when a decimal is in it
+  if not is_cmp(e.s) and not is_fp(r.ty) and (a.lit != null or b.lit != null) {
+    if (a.lit != null or e.a.kind == E_INT) and (b.lit != null or e.b.kind == E_INT) { r.lit = e }
+  }
+  return r
 }
 
 # lower `a <op> b` on two already-evaluated operands. Shared by binary expressions
@@ -170,6 +179,7 @@ function emit_bin_vals(op: pointer, a: Val, b: Val, isnull: bool) -> Val {
   # a 64-bit operand (and no fixed/ptr involved) promotes the whole expression to
   # i64: the other side widens with sext, and the result stays `long`.
   let lng = ((llty(a.ty) == "i64") or (llty(b.ty) == "i64")) and not fx and not ptrish
+  if is_fp(a.ty) or is_fp(b.ty) { return emit_fp_bin(op, a, b) }
   if is_cmp(op) {
     var ac = a.code;  var bc = b.code
     var ct = "i32"

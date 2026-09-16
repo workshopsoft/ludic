@@ -591,6 +591,7 @@ function cmd_dev_test() -> int {
   feat_case("lang/lifecycle", "", "1 700 50 950 2", "lifecycle.ludic (@OnStart/@OnAttach/@OnSpawn/@OnDespawn/@OnQuit in order)")
   feat_case("lang/toggle", "", "6 0 7 1 0", "toggle.ludic (enable/disable + @OnDisable/@OnEnable across property/model)")
   feat_case("lang/strings", "", "1 2 3 4 5 6 7 8 9", "strings.ludic (str ops, interpolation, slicing)")
+  feat_case("lang/floats", "", "1 2 3 4 5 6 7 8 9 10 11 12", "floats.ludic (float/double: operators, context-typed literals, conversions, Math)")
   feat_case("lang/operators", "", "1 2 3 4 5 6 7 8 9 10", "operators.ludic (compound assignment on fixed/string/long, -fixed, char escapes, list literals)")
   feat_case("lang/rng_demo", "", "69 89 6 -1 0", "rng_demo.ludic (Random.value/int/sign)")
   feat_case("lang/time_demo", "aaaaaa", "0 1 2 3 4 16", "time_demo.ludic (Time.frame/elapsed/delta)")

@@ -17,7 +17,7 @@ packages cleanly can still fail to load:
   scheduled-for-removal API usages.
 - `./gradlew runIde` boots a real IDEA 2025.3 with the plugin installed. The
   sandbox log line to look for is
-  `Loaded custom plugins: LSP4IJ (0.20.1), Ludic (1.4.0)` in
+  `Loaded custom plugins: LSP4IJ (0.20.1), Ludic (1.5.0)` in
   `.intellijPlatform/sandbox/Ludic/IC-2025.3/log/idea.log`.
 
 **If the plugin does not appear in Settings -> Plugins after installing**, the
@@ -35,7 +35,7 @@ as the error message, which is not obvious the first time you see it:
 ```bash
 export JAVA_HOME=$(/usr/libexec/java_home -v 21)     # macOS
 cd tools/editors/jetbrains
-./gradlew buildPlugin        # -> build/distributions/Ludic-1.4.0.zip
+./gradlew buildPlugin        # -> build/distributions/Ludic-1.5.0.zip
 ./gradlew runIde             # try it in a sandbox IDE
 ```
 

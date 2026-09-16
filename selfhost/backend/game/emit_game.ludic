@@ -4,6 +4,7 @@
 # called only when the runtime defines them.
 
 function emit_system_fn(sys: Node) -> void {
+  det_enter(sys.s)
   g_cur_scene = sys.c                          # scene owning this handler (null if global) — for `become`
   ll_t = 0;  ll_lbl = 0;  g_term = false;  loc_reset();  nloop = 0;  nself = 0
   ret_ty = "void"
@@ -19,6 +20,7 @@ function emit_system_fn(sys: Node) -> void {
   emit(buf_str(falloc))
   emit(buf_str(fbody))
   emit("}\n\n")
+  g_det_ctx = ""
 }
 
 # one enable-gated call to @sys_<d.s> (skipped while the handler is disabled).

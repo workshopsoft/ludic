@@ -1,0 +1,38 @@
+# floats.ludic — float (32-bit) and double (64-bit): ordinary operators, literals
+# typed by their context, int promotion, conversions and Math.* in float.
+# Running it prints: 1 2 3 4 5 6 7 8 9 10 11 12
+program Floats {
+  const HALF: float = 0.5
+  var g_gravity: float = -9.81
+
+  property Body { x: float = 1.25, vy: float, mass: double = 70.5 }
+
+  function lerp(a: float, b: float, t: float) -> float { return a + (b - a) * t }
+
+  entry {
+    let a: float = 0.1
+    if a * 3 > 0.29 and a * 3 < 0.31 { print(1) }            # the int 3 promotes
+    if lerp(0, 10, 0.25) == 2.5 { print(2) }                  # ints and literals as floats
+    let d: double = 0.1
+    if string(d + 0.2) == "0.30000000000000004" { print(3) }  # doubles keep their digits
+    if string(a + 0.2) == "0.3" { print(4) }                  # shortest text that reads back
+
+    let b = new Body
+    b.vy = b.vy + g_gravity * HALF
+    if b.vy < -4.9 and b.vy > -4.91 and b.mass == 70.5 { print(5) }
+
+    let v = floats(3)
+    v[0] = 1.5
+    v[1] = v[0] * v[0]
+    if v[1] == 2.25 { print(6) }
+
+    let up: float = 2.9
+    let down: float = -2.9
+    if int(up) == 2 and int(down) == -2 { print(7) }         # a float truncates toward zero
+    if fixed(HALF) == fixed(0.5) and float(fixed(1)) / 4.0 == 0.25 { print(8) }
+    if Math.sqrt(16.0) == 4.0 and Math.abs(-a) == a { print(9) }
+    if Math.floor(a * 25) == 2.0 and Math.clamp(a * 100, 0, 5) == 5.0 { print(10) }
+    if float_bits(1.0) == 0x3F800000 and float_from_bits(0x40000000) == 2.0 { print(11) }
+    if `{HALF} and {double(1) / 4}` == "0.5 and 0.25" { print(12) }
+  }
+}

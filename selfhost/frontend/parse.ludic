@@ -184,7 +184,7 @@ function p_primary() -> Node {
   if is_op("[") { return parse_list() }
   if t.kind == TK_ID and (t.text == "emit") and (toks[pi + 1].kind == TK_ID) { return parse_emit() }
   if t.kind == TK_INT { let n = node(E_INT); n.ival = t.ival; pi += 1; return n }
-  if t.kind == TK_FLOAT { let n = node(E_FLOAT); n.ival = t.ival; pi += 1; return n }
+  if t.kind == TK_FLOAT { let n = node(E_FLOAT); n.ival = t.ival; n.s = t.text; pi += 1; return n }
   if t.kind == TK_STR { let n = node(E_STR); n.s = t.text; pi += 1; return n }
   if t.kind == TK_ID {
     if (t.text == "true")  { let n = node(E_BOOL); n.ival = 1; pi += 1; return n }
@@ -769,6 +769,7 @@ function parse_one_decl() -> void {
   var esys_comp: pointer = null             # @EngineSystem(Comp, Phase) — a package compile-time engine system (#62)
   var esys_phase: pointer = null
   var ns_name: pointer = null               # @Namespace(Name) — a package-provided Foo.* namespace (#62)
+  var is_det = false                    # @deterministic — no floating point inside (emit_float.ludic)
   while is_op("@") {
     pi += 1; let a = eat_id()             # collect a leading @annotation
     if a == "export" { is_export = true }
@@ -796,6 +797,7 @@ function parse_one_decl() -> void {
     else if a == "System" { sys_phase = "Update"; if is_op("(") { pi += 1; sys_phase = eat_id(); eat_op(")") } }   # @System(Phase) binary-module system (#64)
     else if a == "EngineSystem" { eat_op("("); esys_comp = eat_id(); eat_op(","); esys_phase = eat_id(); eat_op(")") }   # @EngineSystem(Comp, Phase) package engine system (#62)
     else if a == "Namespace" { eat_op("("); ns_name = eat_id(); eat_op(")") }   # @Namespace(Name) package Foo.* namespace (#62)
+    else if a == "deterministic" { is_det = true }
     else if a == "ClearColor" {                    # @ClearColor(colour) — Render auto-clear + auto-present (#86)
       eat_op("(")
       g_clear_color = expr()                        # a literal, a `const`, or a Color.Name — resolved when emitted
@@ -835,6 +837,7 @@ function parse_one_decl() -> void {
   if is_id("prefab") { push(prog, parse_prefab()); return }   # a model with preset component fields
   if is_id("handler") {
     let h = parse_system()
+    if is_det { push(g_det_names, h.s) }
     if (role != null) { if (role == "server") { h.ival = 1 } else { h.ival = 2 } }      # N5: @Server=1 / @Predicted=2
     if (on_event != null) { register_onlisten(on_event, h.a); return }                 # @On(Event) listener
     if (onspawn_model != null) {
@@ -870,6 +873,7 @@ function parse_one_decl() -> void {
   if is_id("const")  { push(prog, parse_const()); return }
   if is_id("function") {
     let f = parse_fn()
+    if is_det { push(g_det_names, f.s) }
     if is_export { f.ival = 1 }
     if (sys_phase != null) { push(g_mod_sys_fn, f.s);  push(g_mod_sys_phase, sys_phase) }   # #64: register at load
     if (esys_comp != null) { push(g_esys_comp, esys_comp);  push(g_esys_fn, f.s);  push(g_esys_phase, esys_phase) }   # #62: package engine system
