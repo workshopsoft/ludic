@@ -15,6 +15,8 @@ Starts the program at <code>path</code> with the arguments in <code>args</code> 
 
 No shell is involved, so every argument reaches the child exactly as written: spaces, quotes and <code>$</code> are not interpreted. The child inherits this process's environment and working directory. On Windows the arguments are joined into one command line quoted so the child's C runtime splits it back into the same list, the path and arguments cross as UTF-8 and are converted to UTF-16, and the child is started without a console window (a GUI program is unaffected; a console program runs hidden). Use an absolute path: there is no <code>PATH</code> search.
 
+On macOS the child writes to this process's standard output and error. On Windows it inherits no handles, so a console child's output goes nowhere; nothing is captured on either platform.
+
 ```ludic
 program Demo {
   entry {
