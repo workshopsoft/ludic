@@ -1,0 +1,134 @@
+# ============================================================================
+# process.ludic — the Process.* standard library.
+#
+# Child processes, started and polled, never waited on. Process.spawn(path, args) starts a
+# program directly - no shell, so nothing in an argument is interpreted - with this
+# process's environment and working directory, and returns at once with a handle. Each
+# frame the game asks Process.poll(h): -1 while the child runs, then its exit code. A child
+# killed by a signal (POSIX) answers 128 + the signal, as a shell would report it, and
+# Process.kill answers 137 on both platforms. Process.free lets the handle go; it does not
+# stop a child that is still running.
+#
+# This is what a launcher is made of: start the game, hide the launcher's window
+# (App.window_hide), notice the game has gone - and whether it crashed - and come back.
+#
+# The argument list is turned into what each platform wants here, in Ludic: an argv array
+# for posix_spawn (process.ll), and one command line quoted by the MSVC rules for
+# CreateProcessW (process_win.ll), which starts the child with no console window. Linked
+# only into a program that uses Process.*.
+#
+# Like Http.* and Time.now it is OUT-OF-BAND and must never feed a deterministic
+# lockstep/replay simulation.
+# ============================================================================
+
+extern function lu_proc_spawn(path: pointer, argv: pointer, cmdline: pointer) -> int = "lu_proc_spawn"
+extern function lu_proc_poll(h: int) -> int = "lu_proc_poll"
+extern function lu_proc_kill(h: int) -> void = "lu_proc_kill"
+extern function lu_proc_free(h: int) -> void = "lu_proc_free"
+
+function proc_cstr_len(p: pointer) -> int {
+  if p == null { return 0 }
+  var n = 0
+  while p[n] != 0 { n += 1 }
+  return n
+}
+
+# does an argument need quoting on a Windows command line?
+function proc_needs_quote(a: pointer) -> bool {
+  if (a == null) or (a[0] == 0) { return true }
+  var i = 0
+  while a[i] != 0 {
+    let c = a[i]
+    if (c == ' ') or (c == 9) or (c == 10) or (c == 11) or (c == '"') { return true }
+    i += 1
+  }
+  return false
+}
+
+# append `a` to `out` at `o`, quoted so CommandLineToArgvW / the MSVC CRT read it back as
+# exactly `a`: backslashes are literal unless they run into a quote, where they double
+function proc_put_arg(out: pointer, o: int, a: pointer) -> int {
+  var k = o
+  if not proc_needs_quote(a) {
+    var j = 0
+    while a[j] != 0 { out[k] = a[j];  k += 1;  j += 1 }
+    return k
+  }
+  out[k] = '"';  k += 1
+  var i = 0
+  var slashes = 0
+  while (a != null) and (a[i] != 0) {
+    let c = a[i]
+    if c == 92 {
+      slashes += 1
+    } else if c == '"' {
+      var s = 0
+      while s < (slashes * 2) + 1 { out[k] = 92;  k += 1;  s += 1 }
+      out[k] = '"';  k += 1
+      slashes = 0
+    } else {
+      var s2 = 0
+      while s2 < slashes { out[k] = 92;  k += 1;  s2 += 1 }
+      out[k] = c;  k += 1
+      slashes = 0
+    }
+    i += 1
+  }
+  # before the closing quote the backslashes double
+  var s3 = 0
+  while s3 < slashes * 2 { out[k] = 92;  k += 1;  s3 += 1 }
+  out[k] = '"';  k += 1
+  return k
+}
+
+# The Windows command line for path + args. argv[0] follows its own rule (quotes toggle,
+# backslashes are always literal), and a path cannot hold a quote, so it is simply quoted.
+function proc_cmdline(path: pointer, args: []pointer) -> pointer {
+  let n = len(args)
+  var cap = proc_cstr_len(path) + 4
+  var i = 0
+  while i < n { cap += (proc_cstr_len(args[i]) * 2) + 4;  i += 1 }
+  let out = bytes(cap)
+  var k = 0
+  out[k] = '"';  k += 1
+  var j = 0
+  while path[j] != 0 { out[k] = path[j];  k += 1;  j += 1 }
+  out[k] = '"';  k += 1
+  i = 0
+  while i < n {
+    out[k] = ' ';  k += 1
+    k = proc_put_arg(out, k, args[i])
+    i += 1
+  }
+  out[k] = 0
+  return out
+}
+
+# Start `path` with `args` (argv[0] is `path`), inheriting the environment and the working
+# directory. Never blocks. A handle >= 0, or -1 when the program could not be started.
+function process_spawn(path: pointer, args: []pointer) -> int {
+  if (path == null) or (path[0] == 0) { return -1 }
+  let n = len(args)
+  var argv: pointers = bytes((n + 2) * 8)
+  argv[0] = path
+  var i = 0
+  while i < n {
+    var a: pointer = args[i]
+    if a == null { a = "" }
+    argv[i + 1] = a
+    i += 1
+  }
+  argv[n + 1] = null
+  let cmd = proc_cmdline(path, args)
+  let h = lu_proc_spawn(path, argv, cmd)
+  free(cmd)
+  free(argv)
+  return h
+}
+
+# -1 while the child runs, then its exit code (128 + signal for a child a signal ended)
+function process_poll(h: int) -> int { return lu_proc_poll(h) }
+# end the child now; a later poll answers 137
+function process_kill(h: int) -> void { lu_proc_kill(h) }
+# let the handle go (a running child keeps running, and is reaped when it ends)
+function process_free(h: int) -> void { lu_proc_free(h) }

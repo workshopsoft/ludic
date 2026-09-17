@@ -18,6 +18,14 @@
 # any target and is what the test suite exercises without touching the network.
 # ============================================================================
 
+# Streaming downloads (Http.save_to): the body goes to a file as it arrives, and
+# Http.received / Http.expected report progress while the request is pending. These
+# natives live beside the hs_* transport in http.ll / http_win.ll.
+extern function hs_save_to(slot: int, path: pointer) -> void = "hs_save_to"
+extern function hs_received(slot: int) -> int = "hs_received"
+extern function hs_expected(slot: int) -> int = "hs_expected"
+extern function hs_cancel(slot: int) -> void = "hs_cancel"
+
 const HTTP_SLOTS: int = 8
 
 var h_ready:  bool     = false
@@ -30,6 +38,7 @@ var h_blen:   words    = null      # body length
 var h_req:    pointers = null      # the pending NSURLRequest (native, before send)
 var h_body:   pointers = null      # body bytes (NUL-terminated); owned by the slot
 var h_hdr:    pointers = null      # raw header block (parsed handles only); owned by the slot
+var h_save:   words    = null      # 1 = the body streams to a file (Http.save_to)
 
 function http_init() -> void {
   if h_ready { return }
@@ -42,11 +51,13 @@ function http_init() -> void {
   h_req    = bytes(HTTP_SLOTS * 8)
   h_body   = bytes(HTTP_SLOTS * 8)
   h_hdr    = bytes(HTTP_SLOTS * 8)
+  h_save   = words(HTTP_SLOTS)
   var i = 0
   while i < HTTP_SLOTS {
     h_used[i] = 0;  h_native[i] = 0;  h_sent[i] = 0;  h_res[i] = 0
     h_status[i] = 0;  h_blen[i] = 0
     h_req[i] = null;  h_body[i] = null;  h_hdr[i] = null
+    h_save[i] = 0
     i += 1
   }
   h_ready = true
@@ -60,6 +71,7 @@ function http_slot_alloc() -> int {
       h_used[i] = 1;  h_native[i] = 0;  h_sent[i] = 0;  h_res[i] = 0
       h_status[i] = 0;  h_blen[i] = 0
       h_req[i] = null;  h_body[i] = null;  h_hdr[i] = null
+      h_save[i] = 0
       return i
     }
     i += 1
@@ -70,7 +82,22 @@ function http_slot_alloc() -> int {
 function http_valid(h: int) -> bool {
   http_init()
   if (h < 1) or (h > HTTP_SLOTS) { return false }
-  return h_used[h - 1] != 0
+  return h_used[h - 1] == 1
+}
+
+# A native request freed while its worker was still running is parked (h_used 2) rather
+# than released, so the worker never writes into a slot a new request has taken. Once the
+# worker has finished, the slot's native resources are freed and it is free again.
+function http_reap() -> void {
+  http_init()
+  var i = 0
+  while i < HTTP_SLOTS {
+    if (h_used[i] == 2) and (hs_done(i) != 0) {
+      hs_free(i)
+      h_used[i] = 0
+    }
+    i += 1
+  }
 }
 
 # ---- length of a NUL-terminated C string -----------------------------------
@@ -84,6 +111,7 @@ function http_cstr_len(p: pointer) -> int {
 # ---- request construction (native) -----------------------------------------
 # Open a request without sending it, so headers / a body can be added first.
 function http_open(method: pointer, url: pointer) -> int {
+  http_reap()
   let req = hs_req_new(method, url)
   if req == null { return 0 }
   let s = http_slot_alloc()
@@ -108,6 +136,45 @@ function http_body_n(h: int, bytes_ptr: pointer, len: int) -> void {
 
 function http_body(h: int, body: pointer) -> void {
   http_body_n(h, body, http_cstr_len(body))
+}
+
+# Stream the response body to the file at `path` instead of keeping it in memory. Must be
+# called before Http.send. The file is created (or truncated) when the request is sent,
+# and written directly - no temporary name - so a failed or cancelled download leaves
+# whatever arrived there; the caller picks the name and renames it once the status is
+# good. Http.text of such a request is empty (null) and Http.body_len is the bytes written.
+function http_save_to(h: int, path: pointer) -> void {
+  if not http_valid(h) { return }
+  let s = h - 1
+  if (h_native[s] == 1) and (h_sent[s] == 0) and (path != null) {
+    hs_save_to(s, path)
+    h_save[s] = 1
+  }
+}
+
+# Body bytes received so far. Live while a Http.save_to request is pending; for an
+# in-memory request it is 0 until the reply lands, then the body length.
+function http_received(h: int) -> int {
+  if not http_valid(h) { return 0 }
+  let s = h - 1
+  if h_native[s] == 0 { return h_blen[s] }
+  if h_sent[s] == 0 { return 0 }
+  if h_save[s] == 1 { return hs_received(s) }
+  if h_res[s] == 1 { return h_blen[s] }
+  return 0
+}
+
+# The body's announced length (Content-Length), or -1 while it is not known. For a
+# Http.save_to request it is known as soon as the headers arrive; for an in-memory request
+# it is -1 until the reply lands, then the body length.
+function http_expected(h: int) -> int {
+  if not http_valid(h) { return -1 }
+  let s = h - 1
+  if h_native[s] == 0 { return h_blen[s] }
+  if h_sent[s] == 0 { return -1 }
+  if h_save[s] == 1 { return hs_expected(s) }
+  if h_res[s] == 1 { return h_blen[s] }
+  return -1
 }
 
 # Dispatch the request onto the background worker.
@@ -188,7 +255,16 @@ function http_header_of(h: int, name: pointer) -> pointer {
 function http_close(h: int) -> void {
   if not http_valid(h) { return }
   let s = h - 1
-  if h_native[s] == 1 { hs_free(s) }
+  if h_native[s] == 1 {
+    if (h_sent[s] == 1) and (h_res[s] == 0) and (hs_done(s) == 0) {
+      # still running: stop it, and park the slot until the worker has let go
+      hs_cancel(s)
+      h_used[s] = 2
+      h_req[s] = null;  h_body[s] = null;  h_hdr[s] = null
+      return
+    }
+    hs_free(s)
+  }
   else {
     if h_body[s] != null { free(h_body[s]) }
     if h_hdr[s] != null { free(h_hdr[s]) }

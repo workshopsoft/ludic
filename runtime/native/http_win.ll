@@ -18,6 +18,11 @@
 ;   hs_body(slot) -> ptr                 hs_blen(slot) -> int
 ;   hs_header(slot, name) -> cstr        hs_free(slot)
 ;
+; Streaming (Http.save_to): hs_save_to(slot, path) before hs_send makes the worker create
+; the file first and write each chunk into it as it is read, counting the bytes in an
+; atomic the poller reads (hs_received); hs_expected is the Content-Length, or -1.
+; hs_cancel asks the worker to stop between chunks.
+;
 ; WinHTTP speaks UTF-16; every string crosses in UTF-8 and is converted at the call.
 ; A request record: method 0, url 8, header lines 16 ("Name: value\r\n"...), body 24,
 ; body length 32.
@@ -44,6 +49,8 @@ declare i32 @WinHttpQueryHeaders(ptr, i32, ptr, ptr, ptr, ptr)
 declare i32 @WinHttpQueryDataAvailable(ptr, ptr)
 declare i32 @WinHttpReadData(ptr, ptr, i32, ptr)
 declare i32 @WinHttpCloseHandle(ptr)
+declare ptr @CreateFileW(ptr, i32, i32, ptr, i32, i32, ptr)
+declare i32 @WriteFile(ptr, ptr, i32, ptr, ptr)
 
 @.h_agent = private unnamed_addr constant [6 x i16] [i16 76, i16 117, i16 100, i16 105, i16 99, i16 0]   ; L"Ludic"
 @.h_empty = private unnamed_addr constant [1 x i8] c"\00"
@@ -60,6 +67,12 @@ declare i32 @WinHttpCloseHandle(ptr)
 @H_status = internal global [8 x i32] zeroinitializer
 @H_done   = internal global [8 x i32] zeroinitializer
 @H_hdr    = internal global [8 x ptr] zeroinitializer
+; streaming (Http.save_to)
+@H_path   = internal global [8 x ptr] zeroinitializer   ; UTF-8 file path, set before send
+@H_fileh  = internal global [8 x ptr] zeroinitializer   ; the file's HANDLE while the worker writes
+@H_recv   = internal global [8 x i32] zeroinitializer   ; body bytes written (atomic)
+@H_exp    = internal global [8 x i32] zeroinitializer   ; Content-Length or -1 (atomic)
+@H_cancel = internal global [8 x i32] zeroinitializer   ; stop between chunks (atomic)
 
 ; ---- strings -----------------------------------------------------------------
 
@@ -220,6 +233,23 @@ entry:
   %murl = load ptr, ptr %murlp
   %wurl = call ptr @h_wide(ptr %murl)
   store ptr %wurl, ptr %wurlp
+  ; a streaming request creates (truncates) its file before anything goes on the wire
+  %spathp = getelementptr [8 x ptr], ptr @H_path, i32 0, i32 %slot
+  %spath = load ptr, ptr %spathp
+  %strm = icmp ne ptr %spath, null
+  br i1 %strm, label %mkfile, label %opensess
+mkfile:
+  %wpath = call ptr @h_wide(ptr %spath)
+  ; GENERIC_WRITE, FILE_SHARE_READ, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL
+  %fh = call ptr @CreateFileW(ptr %wpath, i32 1073741824, i32 1, ptr null, i32 2, i32 128, ptr null)
+  call void @free(ptr %wpath)
+  %badfh = icmp eq ptr %fh, inttoptr (i64 -1 to ptr)
+  br i1 %badfh, label %done, label %keepfh
+keepfh:
+  %fhp = getelementptr [8 x ptr], ptr @H_fileh, i32 0, i32 %slot
+  store ptr %fh, ptr %fhp
+  br label %opensess
+opensess:
   ; WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY: the system's proxy settings, as NSURLConnection uses
   %sess = call ptr @WinHttpOpen(ptr @.h_agent, i32 4, ptr null, ptr null, i32 0)
   %sessp = getelementptr [8 x ptr], ptr @H_sess, i32 0, i32 %slot
@@ -307,6 +337,71 @@ status:
   %st = load i32, ptr %num
   %stp = getelementptr [8 x i32], ptr @H_status, i32 0, i32 %slot
   store i32 %st, ptr %stp
+  br i1 %strm, label %stream, label %inmem
+stream:
+  ; WINHTTP_QUERY_CONTENT_LENGTH | WINHTTP_QUERY_FLAG_NUMBER
+  store i32 -1, ptr %num
+  store i32 4, ptr %numlen
+  %qcl = call i32 @WinHttpQueryHeaders(ptr %hreq, i32 536870917, ptr null, ptr %num, ptr %numlen, ptr null)
+  %cl = load i32, ptr %num
+  %noclq = icmp eq i32 %qcl, 0
+  %clv = select i1 %noclq, i32 -1, i32 %cl
+  %xp = getelementptr [8 x i32], ptr @H_exp, i32 0, i32 %slot
+  store atomic i32 %clv, ptr %xp release, align 4
+  %sbuf = call ptr @malloc(i64 65536)
+  store ptr %sbuf, ptr %bufp
+  %sfhp = getelementptr [8 x ptr], ptr @H_fileh, i32 0, i32 %slot
+  %sfh = load ptr, ptr %sfhp
+  %rcp = getelementptr [8 x i32], ptr @H_recv, i32 0, i32 %slot
+  %canp = getelementptr [8 x i32], ptr @H_cancel, i32 0, i32 %slot
+  br label %sloop
+sloop:
+  %cn = load atomic i32, ptr %canp acquire, align 4
+  %cancelled = icmp ne i32 %cn, 0
+  br i1 %cancelled, label %sfail, label %savail
+savail:
+  store i32 0, ptr %avail
+  %sqa = call i32 @WinHttpQueryDataAvailable(ptr %hreq, ptr %avail)
+  %sav = load i32, ptr %avail
+  %sqfail = icmp eq i32 %sqa, 0
+  br i1 %sqfail, label %sfail, label %sany
+sany:
+  %snone = icmp eq i32 %sav, 0
+  br i1 %snone, label %sdone, label %sread
+sread:
+  %sbig = icmp ugt i32 %sav, 65536
+  %sn = select i1 %sbig, i32 65536, i32 %sav
+  store i32 0, ptr %got
+  %srd = call i32 @WinHttpReadData(ptr %hreq, ptr %sbuf, i32 %sn, ptr %got)
+  %sg = load i32, ptr %got
+  %srfail = icmp eq i32 %srd, 0
+  br i1 %srfail, label %sfail, label %sgot
+sgot:
+  %sg0 = icmp eq i32 %sg, 0
+  br i1 %sg0, label %sdone, label %swrite
+swrite:
+  store i32 0, ptr %num
+  %wr = call i32 @WriteFile(ptr %sfh, ptr %sbuf, i32 %sg, ptr %num, ptr null)
+  %wn = load i32, ptr %num
+  %wfail = icmp eq i32 %wr, 0
+  %wshort = icmp ne i32 %wn, %sg
+  %wbad = or i1 %wfail, %wshort
+  br i1 %wbad, label %sfail, label %scount
+scount:
+  %r0 = load atomic i32, ptr %rcp acquire, align 4
+  %r1 = add i32 %r0, %sg
+  store atomic i32 %r1, ptr %rcp release, align 4
+  br label %sloop
+sfail:
+  store i32 0, ptr %stp
+  br label %sdone
+sdone:
+  call void @free(ptr %sbuf)
+  %total = load atomic i32, ptr %rcp acquire, align 4
+  %sblenslot = getelementptr [8 x i32], ptr @H_blen, i32 0, i32 %slot
+  store i32 %total, ptr %sblenslot
+  br label %done
+inmem:
   %b0 = call ptr @malloc(i64 4097)
   store ptr %b0, ptr %bufp
   store i64 0, ptr %lenp
@@ -369,6 +464,17 @@ done:
   call void @h_free_if(ptr %f3)
   %f4 = load ptr, ptr %whdrp
   call void @h_free_if(ptr %f4)
+  ; a streaming request's file is closed before done is published: done means the bytes
+  ; are on disk
+  %dfhp = getelementptr [8 x ptr], ptr @H_fileh, i32 0, i32 %slot
+  %dfh = load ptr, ptr %dfhp
+  %nodfh = icmp eq ptr %dfh, null
+  br i1 %nodfh, label %publish, label %closefh
+closefh:
+  %cfh = call i32 @CloseHandle(ptr %dfh)
+  store ptr null, ptr %dfhp
+  br label %publish
+publish:
   %donep = getelementptr [8 x i32], ptr @H_done, i32 0, i32 %slot
   store atomic i32 1, ptr %donep release, align 4
   ret i32 0
@@ -387,6 +493,12 @@ entry:
   store i32 0, ptr %blenp
   %reqp = getelementptr [8 x ptr], ptr @H_req, i32 0, i32 %slot
   store ptr %req, ptr %reqp
+  %rcp = getelementptr [8 x i32], ptr @H_recv, i32 0, i32 %slot
+  store atomic i32 0, ptr %rcp release, align 4
+  %xp = getelementptr [8 x i32], ptr @H_exp, i32 0, i32 %slot
+  store atomic i32 -1, ptr %xp release, align 4
+  %canp = getelementptr [8 x i32], ptr @H_cancel, i32 0, i32 %slot
+  store atomic i32 0, ptr %canp release, align 4
   %nil = icmp eq ptr %req, null
   br i1 %nil, label %nothing, label %start
 nothing:
@@ -510,6 +622,10 @@ entry:
   %ss = load ptr, ptr %ssp
   call void @h_close_if(ptr %ss)
   store ptr null, ptr %ssp
+  %pthp = getelementptr [8 x ptr], ptr @H_path, i32 0, i32 %slot
+  %pth = load ptr, ptr %pthp
+  call void @h_free_if(ptr %pth)
+  store ptr null, ptr %pthp
   %recp = getelementptr [8 x ptr], ptr @H_req, i32 0, i32 %slot
   %rec = load ptr, ptr %recp
   %norec = icmp eq ptr %rec, null
@@ -530,5 +646,40 @@ freerec:
   store ptr null, ptr %recp
   br label %out
 out:
+  ret void
+}
+
+; ---- streaming (Http.save_to) ---------------------------------------------------------
+
+define void @hs_save_to(i32 %slot, ptr %path) {
+entry:
+  %pp = getelementptr [8 x ptr], ptr @H_path, i32 0, i32 %slot
+  %old = load ptr, ptr %pp
+  call void @h_free_if(ptr %old)
+  %cp = call ptr @h_dup(ptr %path)
+  store ptr %cp, ptr %pp
+  ret void
+}
+
+define i32 @hs_received(i32 %slot) {
+entry:
+  %p = getelementptr [8 x i32], ptr @H_recv, i32 0, i32 %slot
+  %v = load atomic i32, ptr %p acquire, align 4
+  ret i32 %v
+}
+
+define i32 @hs_expected(i32 %slot) {
+entry:
+  %p = getelementptr [8 x i32], ptr @H_exp, i32 0, i32 %slot
+  %v = load atomic i32, ptr %p acquire, align 4
+  ret i32 %v
+}
+
+; ask a streaming worker to stop before its next chunk (it then publishes status 0); an
+; in-memory request runs to its end
+define void @hs_cancel(i32 %slot) {
+entry:
+  %p = getelementptr [8 x i32], ptr @H_cancel, i32 0, i32 %slot
+  store atomic i32 1, ptr %p release, align 4
   ret void
 }

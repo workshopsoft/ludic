@@ -163,7 +163,7 @@ function pack_probe_src() -> pointer {
 # unreadable image is a no-op rather than a crash or a cleared icon, and that a headless
 # build (which has no AppKit linked at all) compiles it away to nothing.
 function app_icon_case() -> void {
-  let lbl = "App.set_icon -> an icon for a binary with no bundle, and nothing headless"
+  let lbl = "App.set_icon / window_hide / window_show -> windowed no-ops without a window, nothing headless"
   if not is_darwin() { skip(lbl);  return }
   let work = `{tmp_dir()}/appicon`
   let root = capture_line("pwd")
@@ -174,6 +174,8 @@ function app_icon_case() -> void {
   src = src + "  entry {" + nl()
   src = src + "    App.set_icon(\"icon.png\")" + nl()
   src = src + "    App.set_icon(\"nope.png\")" + nl()      # missing: must not crash
+  src = src + "    App.window_hide()" + nl()                 # no window yet: both are no-ops
+  src = src + "    App.window_show()" + nl()
   src = src + "    print(\"ok\")" + nl()
   src = src + "  }" + nl()
   src = src + "}" + nl()
@@ -730,6 +732,16 @@ function cmd_dev_test() -> int {
       if (got2 == "200 1 5 hello 42 text/plain 404 0") { ok("ludic build links http.ll for a program that uses Http.*") }
       else { bad2("http.ludic via ludic build", `got [{got2}]`) }
     } else { bad2("ludic build of an Http.* program", capture_line(`tail -1 {tmp_dir()}/http_lb.out`)) }
+    # Http.save_to: a body streamed to a file, counted as it goes - through a file:// URL,
+    # so no network is touched; the copy has to be byte-identical
+    if shq(`LUDIC_HOME=. bin/ludicc examples/library/http_save.ludic -o {tmp_dir()}/http_save > {tmp_dir()}/http_save.out 2>&1`) {
+      let root = capture_line("pwd")
+      shell(`rm -f {tmp_dir()}/http_save.copy`)
+      let got3 = capture_line(`{tmp_dir()}/http_save {root}/selfhost/ludicc.seed.ll {tmp_dir()}/http_save.copy < /dev/null`)
+      let same = shq(`cmp -s {root}/selfhost/ludicc.seed.ll {tmp_dir()}/http_save.copy`)
+      if (got3 == "0 -1 200 1 1 1 1") and same { ok("http_save.ludic (Http.save_to/received/expected - a streamed download, byte for byte)") }
+      else { bad2("http_save.ludic", `got [{got3}] identical {same}`) }
+    } else { bad2("http_save.ludic build", capture_line(`tail -1 {tmp_dir()}/http_save.out`)) }
   }
   # Udp.*: two sockets on the loopback, a datagram each way, through ludicc and ludic build
   if is_darwin() {
@@ -744,6 +756,21 @@ function cmd_dev_test() -> int {
       if (got2 == udp_want) { ok("ludic build links udp.ll for a program that uses Udp.*") }
       else { bad2("udp.ludic via ludic build", `got [{got2}]`) }
     } else { bad2("ludic build of a Udp.* program", capture_line(`tail -1 {tmp_dir()}/udp_lb.out`)) }
+  }
+  # Process.*: a child polled to its exit code without blocking, argv passed untouched, a
+  # kill, a missing program - through ludicc and ludic build (the children are /bin/sh)
+  if is_darwin() {
+    let proc_want = "3 1 7 137 -1 255"
+    if shq(`LUDIC_HOME=. bin/ludicc examples/library/process.ludic -o {tmp_dir()}/proc_demo > {tmp_dir()}/proc.out 2>&1`) {
+      let got = capture_line(`{tmp_dir()}/proc_demo < /dev/null`)
+      if (got == proc_want) { ok("process.ludic (Process.spawn/poll/kill/free - child processes, polled)") }
+      else { bad2("process.ludic", `got [{got}]`) }
+    } else { bad2("process.ludic build", capture_line(`tail -1 {tmp_dir()}/proc.out`)) }
+    if shq(`LUDIC_HOME=. bin/ludic build examples/library/process.ludic --headless -o {tmp_dir()}/proc_lb > {tmp_dir()}/proc_lb.out 2>&1`) {
+      let got2 = capture_line(`{tmp_dir()}/proc_lb < /dev/null`)
+      if (got2 == proc_want) { ok("ludic build links process.ll for a program that uses Process.*") }
+      else { bad2("process.ludic via ludic build", `got [{got2}]`) }
+    } else { bad2("ludic build of a Process.* program", capture_line(`tail -1 {tmp_dir()}/proc_lb.out`)) }
   }
 
   feat_case("events/recurse", "", "16", "recurse.ludic (EV6: re-entrant emit is depth-bounded, no runaway cycle)")

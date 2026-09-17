@@ -48,7 +48,7 @@ function compile_app(src: pointer, out: pointer, mode: int, save: bool) -> bool 
 
   if mode == 2 {
     if not shq(`{ludicc()} --headless {src} --emit-llvm -o {ll}`) { return false }
-    if not shq(`{cc()} -O2 {ll}{gl_link_flags(ll)}{vk_link_flags(ll)}{http_link_flags(ll)}{udp_link_flags(ll)}{threads_link_flags(ll)}{pbf} -o {out}`) { return false }
+    if not shq(`{cc()} -O2 {ll}{gl_link_flags(ll)}{vk_link_flags(ll)}{http_link_flags(ll)}{udp_link_flags(ll)}{process_link_flags(ll)}{threads_link_flags(ll)}{pbf} -o {out}`) { return false }
     if not save { shell(`rm -f {ll}`) }
     return true
   }
@@ -58,7 +58,7 @@ function compile_app(src: pointer, out: pointer, mode: int, save: bool) -> bool 
   # canonical `ludicc -o` path links it only when Audio.* is used.
   let cocoa = `{home}runtime/native/cocoa.ll`
   let audio = `{home}runtime/native/audio.ll`
-  if not shq(`{cc()} -O2 {ll} {cocoa} {audio} -framework Cocoa -Wl,-needed_framework,GameController -Wl,-needed_framework,AVFoundation -Wl,-rpath,@loader_path{gl_link_flags(ll)}{vk_link_flags(ll)}{http_link_flags(ll)}{udp_link_flags(ll)}{threads_link_flags(ll)}{pbf} -o {out}`) { return false }
+  if not shq(`{cc()} -O2 {ll} {cocoa} {audio} -framework Cocoa -Wl,-needed_framework,GameController -Wl,-needed_framework,AVFoundation -Wl,-rpath,@loader_path{gl_link_flags(ll)}{vk_link_flags(ll)}{http_link_flags(ll)}{udp_link_flags(ll)}{process_link_flags(ll)}{threads_link_flags(ll)}{pbf} -o {out}`) { return false }
   if not save { shell(`rm -f {ll}`) }
   return true
 }
@@ -96,6 +96,13 @@ function http_link_flags(ll: pointer) -> pointer {
 function udp_link_flags(ll: pointer) -> pointer {
   if not shq(`grep -q "call .*@lu_udp_" {ll}`) { return "" }
   return ` {ludic_home()}runtime/native/udp.ll`
+}
+
+# A program that uses Process.* calls the lu_proc_* layer; link process.ll only then, as
+# `ludicc -o` does (Windows links through ludicc, with process_win.ll).
+function process_link_flags(ll: pointer) -> pointer {
+  if not shq(`grep -q "call .*@lu_proc_" {ll}`) { return "" }
+  return ` {ludic_home()}runtime/native/process.ll`
 }
 
 # A program that uses Job.* / Promise.* / Sync.* calls the thr_* OS-thread runtime; link

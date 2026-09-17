@@ -49,6 +49,7 @@ declare ptr @CreateWindowExA(i32, ptr, ptr, i32, i32, i32, i32, i32, ptr, ptr, p
 declare i64 @DefWindowProcA(ptr, i32, i64, i64)
 declare i32 @ShowWindow(ptr, i32)
 declare i32 @SetForegroundWindow(ptr)
+declare i32 @BringWindowToTop(ptr)
 declare i32 @PeekMessageA(ptr, ptr, i32, i32, i32)
 declare i64 @DispatchMessageA(ptr)
 declare ptr @GetDC(ptr)
@@ -262,6 +263,39 @@ show:
   store ptr %hwnd, ptr %rh
   %reg = call i32 @RegisterRawInputDevices(ptr %rid, i32 1, i32 16)
   store i32 1, ptr @W_running
+  br label %out
+out:
+  ret void
+}
+
+; ---- App.window_hide / App.window_show ------------------------------------------------
+; The game's window leaves the screen and comes back with its GL context or Vulkan surface
+; untouched: a launcher steps aside while the game it started runs. A hidden window is
+; still a window, so the run goes on. Both are no-ops before there is a window.
+define void @app_window_hide() {
+entry:
+  %h = load ptr, ptr @W_hwnd
+  %none = icmp eq ptr %h, null
+  br i1 %none, label %out, label %go
+go:
+  %r = call i32 @ShowWindow(ptr %h, i32 0)        ; SW_HIDE
+  ; keys held as it went never send their key-up here
+  call void @llvm.memset.p0.i64(ptr @W_held, i8 0, i64 32, i1 false)
+  store i32 0, ptr @W_mbtn
+  br label %out
+out:
+  ret void
+}
+
+define void @app_window_show() {
+entry:
+  %h = load ptr, ptr @W_hwnd
+  %none = icmp eq ptr %h, null
+  br i1 %none, label %out, label %go
+go:
+  %r = call i32 @ShowWindow(ptr %h, i32 5)        ; SW_SHOW
+  %t = call i32 @BringWindowToTop(ptr %h)
+  %f = call i32 @SetForegroundWindow(ptr %h)
   br label %out
 out:
   ret void

@@ -1,0 +1,33 @@
+# http_save.ludic — Http.save_to / received / expected: a download streamed to a file.
+#
+#   let h = Http.open("GET", "https://example.com/big.nupkg")
+#   Http.save_to(h, "big.nupkg.part")      # before send: the body goes to the file
+#   Http.send(h)
+#   handler Update {
+#     if Http.poll(h) < 0 {                # pending: a progress bar
+#       draw_bar(Http.received(h), Http.expected(h))   # expected is -1 until known
+#     }
+#   }
+#
+# Run as: http_save <source file> <destination file>. The source is read through a
+# file:// URL (macOS reads those with the same streaming transport), so the check needs
+# no network: it copies the file and prints the status, the byte counts and whether the
+# body stayed out of memory. `cmp` the two files afterwards.
+program HttpSave {
+  function bi(b: bool) -> int { if b { return 1 };  return 0 }
+
+  entry {
+    let src = Os.arg(1)
+    let dst = Os.arg(2)
+    let h = Http.open("GET", `file://{src}`)
+    Http.save_to(h, dst)
+    let before = Http.received(h)
+    let unknown = Http.expected(h)
+    Http.send(h)
+    var st = Http.poll(h)
+    while st < 0 { st = Http.poll(h) }
+    let n = Http.received(h)
+    print(`{before} {unknown} {st} {bi(n > 0)} {bi(Http.expected(h) == n)} {bi(Http.body_len(h) == n)} {bi(Http.text(h) == null)}`)
+    Http.free(h)
+  }
+}

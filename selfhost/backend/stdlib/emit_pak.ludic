@@ -120,6 +120,8 @@ function emit_pak_prelude() -> void {
     emith("declare void @splash_show(ptr, i32, i32)\n")
     emith("declare void @splash_hide()\n")
     emith("declare void @app_set_icon(ptr, i32)\n")
+    emith("declare void @app_window_hide()\n")
+    emith("declare void @app_window_show()\n")
   }
 
   emit_pak_mount()

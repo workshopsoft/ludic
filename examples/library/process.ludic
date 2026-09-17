@@ -1,0 +1,42 @@
+# process.ludic — Process.* : start a child, poll it without waiting, read its exit code.
+#
+#   let h = Process.spawn("/path/to/game", ["--profile", "Maroon Lake"])
+#   handler Update {                     # each frame, never blocking
+#     let code = Process.poll(h)         # -1 while it runs, then the exit code
+#     if code >= 0 { Process.free(h) }
+#   }
+#
+# No shell is involved: every argument arrives in the child exactly as given. This run
+# uses /bin/sh as the child (so it is a POSIX check) and prints:
+#   3 1 7 137 -1 255
+program ProcessDemo {
+  function bi(b: bool) -> int { if b { return 1 };  return 0 }
+
+  entry {
+    # a child that takes a second and exits 3: poll answers -1 many times, then 3
+    let a = Process.spawn("/bin/sh", ["-c", "sleep 1; exit 3"])
+    var polls = 0
+    var code = Process.poll(a)
+    while code < 0 { polls += 1;  code = Process.poll(a) }
+    Process.free(a)
+
+    # arguments are passed through untouched - spaces, quotes and all
+    let b = Process.spawn("/bin/sh", ["-c", "test \"$1\" = 'a b\"c' && exit 7; exit 1", "sh", "a b\"c"])
+    var cb = Process.poll(b)
+    while cb < 0 { cb = Process.poll(b) }
+    Process.free(b)
+
+    # a long child, killed: 128 + SIGKILL
+    let c = Process.spawn("/bin/sleep", ["30"])
+    let running = Process.poll(c)
+    Process.kill(c)
+    var cc = Process.poll(c)
+    while cc < 0 { cc = Process.poll(c) }
+    Process.free(c)
+
+    # a program that is not there, and a handle that is not one
+    let d = Process.spawn("/definitely/not/here", new []string)
+    print(`{code} {bi(polls > 100)} {cb} {cc} {d} {Process.poll(99)}`)
+    if running != -1 { print("sleep was not running") }
+  }
+}

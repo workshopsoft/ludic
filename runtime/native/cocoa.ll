@@ -147,6 +147,7 @@ declare i32 @CGWarpMouseCursorPosition(%NSPoint)
 @W_scale   = internal global i32 3
 @W_key     = internal global i32 0
 @W_running = internal global i32 1
+@W_apphidden = internal global i32 0   ; App.window_hide: an ordered-out window is not a closed one
 ; #50 device layer — a 256-bit held-key set (8 i32) tracked from keyDown/keyUp,
 ; and the mouse state (position, button mask, per-frame wheel delta).
 @W_held    = internal global [8 x i32] zeroinitializer
@@ -565,6 +566,10 @@ finish:
   %hw = icmp ne ptr %win, null
   br i1 %hw, label %checkvis, label %done
 checkvis:
+  %ah = load i32, ptr @W_apphidden
+  %byapp = icmp ne i32 %ah, 0
+  br i1 %byapp, label %done, label %checkvis2
+checkvis2:
   %sel_vis = call ptr @sel_registerName(ptr @.s_visib)
   %vis = call i8 (ptr, ptr) @objc_msgSend(ptr %win, ptr %sel_vis)
   %gone = icmp eq i8 %vis, 0
@@ -1690,6 +1695,47 @@ go:
   %sel_oo = call ptr @sel_registerName(ptr @.s_oout)
   %r = call ptr (ptr, ptr, ptr) @objc_msgSend(ptr %win, ptr %sel_oo, ptr null)
   store ptr null, ptr @W_splash
+  br label %out
+out:
+  ret void
+}
+
+; ---- App.window_hide / App.window_show ------------------------------------------------
+; The game's window leaves the screen and comes back with its view, layer and GL context
+; untouched: a launcher steps aside while the game it started runs. The run does not end
+; while the window is hidden this way (win_poll's closed-window check skips it). Both are
+; no-ops before there is a window.
+define void @app_window_hide() {
+entry:
+  %win = load ptr, ptr @W_win
+  %none = icmp eq ptr %win, null
+  br i1 %none, label %out, label %go
+go:
+  store i32 1, ptr @W_apphidden
+  %sel_oo = call ptr @sel_registerName(ptr @.s_oout)
+  %r = call ptr (ptr, ptr, ptr) @objc_msgSend(ptr %win, ptr %sel_oo, ptr null)
+  br label %out
+out:
+  ret void
+}
+
+define void @app_window_show() {
+entry:
+  %win = load ptr, ptr @W_win
+  %none = icmp eq ptr %win, null
+  br i1 %none, label %out, label %go
+go:
+  %sel_mk = call ptr @sel_registerName(ptr @.s_mkey)
+  %r = call ptr (ptr, ptr, ptr) @objc_msgSend(ptr %win, ptr %sel_mk, ptr null)
+  %app = load ptr, ptr @W_app
+  %noapp = icmp eq ptr %app, null
+  br i1 %noapp, label %shown, label %activate
+activate:
+  %sel_act = call ptr @sel_registerName(ptr @.s_act)
+  %a = call ptr (ptr, ptr, i8) @objc_msgSend(ptr %app, ptr %sel_act, i8 1)
+  br label %shown
+shown:
+  store i32 0, ptr @W_apphidden
   br label %out
 out:
   ret void

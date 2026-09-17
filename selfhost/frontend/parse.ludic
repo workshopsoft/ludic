@@ -254,6 +254,8 @@ function p_postfix() -> Node {
       if e.a.kind == E_ID and e.a.s == "Http" { g_uses_http = true }
       # Udp.* — any Udp method splices the datagram runtime (and links udp.ll / udp_win.ll).
       if e.a.kind == E_ID and e.a.s == "Udp" { g_uses_udp = true }
+      # Process.* — any Process method splices the child-process runtime (process.ll / process_win.ll).
+      if e.a.kind == E_ID and e.a.s == "Process" { g_uses_process = true }
       # Gl.* — any Gl method splices the OpenGL runtime (and links the GL backend).
       if e.a.kind == E_ID and e.a.s == "Gl" { g_uses_gl = true }
       # Vk.* — any Vk method splices the Vulkan runtime (and links its loader)
@@ -680,6 +682,7 @@ var g_uses_fx: bool = false       # Fx.sparks/number/clear -> splice fx.ludic; f
 var g_uses_audio: bool = false    # Audio.* (#22) -> splice audio.ludic; a windowed build also links audio.ll + AVFoundation
 var g_uses_http:  bool = false    # Http.* (#6) -> splice http.ludic; links http.ll + Foundation (macOS)
 var g_uses_udp:   bool = false    # Udp.* -> splice udp.ludic; links udp.ll (macOS) / udp_win.ll + ws2_32
+var g_uses_process: bool = false  # Process.* -> splice process.ludic; links process.ll (macOS) / process_win.ll
 var g_uses_gl:    bool = false    # Gl.* -> splice gl.ludic (+ generated gl_api.ludic); links gl.ll + gl_thunks.ll + OpenGL
 var g_uses_vk:    bool = false    # Vk.* -> splice vk.ludic (+ generated vk_api.ludic); links vk_thunks.ll + the platform loader
 # issue #64: functions marked @System(Phase) in a prebuilt binary module — the
@@ -1195,6 +1198,13 @@ function maybe_splice_runtime() -> void {
   if g_uses_udp {
     cur_dir = ""
     do_import("runtime/native/udp.ludic")
+    cur_dir = saved
+  }
+  # Process.*: splice the child-process library. Spawning is native (process.ll /
+  # process_win.ll); the argv array and the Windows command line are built in Ludic.
+  if g_uses_process {
+    cur_dir = ""
+    do_import("runtime/native/process.ludic")
     cur_dir = saved
   }
   # Gl.*: splice the OpenGL surface (gl.ludic + the generated gl_api.ludic). The

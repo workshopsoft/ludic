@@ -258,6 +258,14 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
       if g_windowed { emit(`  call void @lp_app_icon(ptr {ip})\n`) }
       return val("0", "void")
     }
+    if (meth == "window_hide") or (meth == "window_show") {
+      # Hide / show the game's own window (not the splash) without tearing down its
+      # GL / Vulkan surface - a launcher steps aside while the game it started runs.
+      # Headless there is no window, and the call lowers to nothing.
+      use_pak()
+      if g_windowed { emit(`  call void @app_{meth}()\n`) }
+      return val("0", "void")
+    }
     perr(`unknown builtin App.{meth}`)
   }
   if (ns == "Pool") {
@@ -516,6 +524,9 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "header")    { bare = "http_header_of";   push(labels, "handle"); push(labels, "name") }
     if (meth == "free")      { bare = "http_close";       push(labels, "handle") }
     if (meth == "parse")     { bare = "http_parse";       push(labels, "bytes"); push(labels, "len") }
+    if (meth == "save_to")   { bare = "http_save_to";     push(labels, "handle"); push(labels, "path") }
+    if (meth == "received")  { bare = "http_received";    push(labels, "handle") }
+    if (meth == "expected")  { bare = "http_expected";    push(labels, "handle") }
   }
   # Udp.* — polled IPv4 datagrams (runtime/native/udp.ludic + udp.ll / udp_win.ll).
   # Out-of-band like Http.*: the transport under a game's own netcode.
@@ -531,6 +542,14 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "local_ip")  { bare = "udp_local_ip" }
     if (meth == "ip")        { bare = "udp_ip";         push(labels, "text") }
     if (meth == "ip_text")   { bare = "udp_ip_text";    push(labels, "ip") }
+  }
+  # Process.* — child processes, started and polled (runtime/native/process.ludic +
+  # process.ll / process_win.ll). Out-of-band, like Http.*.
+  if (ns == "Process") {
+    if (meth == "spawn") { bare = "process_spawn";  push(labels, "path"); push(labels, "args") }
+    if (meth == "poll")  { bare = "process_poll";   push(labels, "handle") }
+    if (meth == "kill")  { bare = "process_kill";   push(labels, "handle") }
+    if (meth == "free")  { bare = "process_free";   push(labels, "handle") }
   }
   # Phase 3: the bare reflection / networking / process builtins, namespaced.
   # Each is a pure alias — the callee is rewritten to the bare name below.
