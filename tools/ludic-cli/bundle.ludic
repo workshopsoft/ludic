@@ -288,7 +288,7 @@ function cmd_bundle_windows() -> int {
   let staged = tmp_path("bundle_exe")
   var flags = "--windowed --gui"
   if res != "" { flags = flags + ` --link "{res}"` }
-  if not shq(`{ludicc()} {flags} {entry} -o {staged}`) { return 1 }
+  if not shq(`{ludicc()} {flags}{title_flag()} {entry} -o {staged}`) { return 1 }
   if not shq(`cp "{staged}.exe" "{root}/{name}.exe"`) {
     err("ludic bundle: could not place the executable\n")
     return 1

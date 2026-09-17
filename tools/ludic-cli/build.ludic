@@ -43,17 +43,17 @@ function compile_app(src: pointer, out: pointer, mode: int, save: bool) -> bool 
     var flags = "--windowed"
     if mode == 2 { flags = "--headless" }
     if save { flags = flags + " --save-temps" }
-    return shq(`{ludicc()} {flags} {src} -o {out}`)
+    return shq(`{ludicc()} {flags}{title_flag()} {src} -o {out}`)
   }
 
   if mode == 2 {
-    if not shq(`{ludicc()} --headless {src} --emit-llvm -o {ll}`) { return false }
+    if not shq(`{ludicc()} --headless{title_flag()} {src} --emit-llvm -o {ll}`) { return false }
     if not shq(`{cc()} -O2 {ll}{gl_link_flags(ll)}{vk_link_flags(ll)}{http_link_flags(ll)}{udp_link_flags(ll)}{process_link_flags(ll)}{threads_link_flags(ll)}{pbf} -o {out}`) { return false }
     if not save { shell(`rm -f {ll}`) }
     return true
   }
 
-  if not shq(`{ludicc()} --windowed {src} --emit-llvm -o {ll}`) { return false }
+  if not shq(`{ludicc()} --windowed{title_flag()} {src} --emit-llvm -o {ll}`) { return false }
   # audio.ll (#22) is always linked here — unused snd_* are dead-stripped; the
   # canonical `ludicc -o` path links it only when Audio.* is used.
   let cocoa = `{home}runtime/native/cocoa.ll`
@@ -61,6 +61,21 @@ function compile_app(src: pointer, out: pointer, mode: int, save: bool) -> bool 
   if not shq(`{cc()} -O2 {ll} {cocoa} {audio} -framework Cocoa -Wl,-needed_framework,GameController -Wl,-needed_framework,AVFoundation -Wl,-rpath,@loader_path{gl_link_flags(ll)}{vk_link_flags(ll)}{http_link_flags(ll)}{udp_link_flags(ll)}{process_link_flags(ll)}{threads_link_flags(ll)}{pbf} -o {out}`) { return false }
   if not save { shell(`rm -f {ll}`) }
   return true
+}
+
+# ` --title "<app name>"` when the project's package.ludic names the app, so the window
+# opens under that name rather than the `program` name; "" otherwise, and for a name the
+# shell line could not carry safely.
+function title_flag() -> pointer {
+  let name = manifest_app(read_root_manifest(), "name")
+  if name == "" { return "" }
+  var i = 0
+  while name[i] != 0 {
+    let c = name[i]
+    if c == '"' or c == '`' or c == '$' or c == 92 or c == '%' or c < ' ' { return "" }
+    i += 1
+  }
+  return ` --title "{name}"`
 }
 
 # A program that uses Gl.* references the @lgl_* thunks; link the OpenGL backend

@@ -135,6 +135,7 @@ entry {
   var save = false        # --save-temps: keep the intermediate .ll
   var run = false         # compile then execute the result
   var target = null       # --target <triple>: null means the host
+  var title = null        # --title <name>: game_title() - the window's first title - instead of the program name
   var gui = false         # --gui: a Windows GUI-subsystem program (no console behind the window)
   var links = new []pointer   # --link <file>: an extra input to the link (a compiled resource)
   g_coverage = false      # --coverage: instrument each statement with a per-line hit counter
@@ -153,6 +154,7 @@ entry {
     else if a == "--coverage" { g_coverage = true }
     else if a == "--target" { ai += 1;  if ai < arg_count() { target = arg(ai) } }
     else if a == "--gui" { gui = true }
+    else if a == "--title" { ai += 1;  if ai < arg_count() { title = arg(ai) } }
     else if a == "--link" { ai += 1;  if ai < arg_count() { push(links, arg(ai)) } }
     else if a == "-o" { ai += 1;  if ai < arg_count() { out = arg(ai) } }
     else if a[0] == '-' {
@@ -178,7 +180,10 @@ entry {
   g_parse_file = path                             # for the compiler's own file:line diagnostics
   lex(src)
   parse_program()
-  g_prog_user_end = len(prog)                     # decls from the user's source; runtime splice appends after
+  g_prog_user_end = len(prog)
+  # `ludic build` passes the package's `app name`, so the window opens under the name the
+  # player knows rather than the `program` name and is not retitled a moment later
+  if (title != null) and (len(title) > 0) { g_game_name = title }                     # decls from the user's source; runtime splice appends after
 
   # --fmt is the doc-check gate: reaching here means it lexed and parsed. A parse
   # error would already have exited nonzero, so a clean parse exits 0. (Canonical
@@ -281,6 +286,8 @@ entry {
   }
   # Process.* links the child-process layer: posix_spawn from libSystem on macOS,
   # CreateProcessW from kernel32 on Windows.
+  # Crypto.random_* / Uuid.* read RtlGenRandom on Windows, which advapi32 exports
+  if g_target_win and g_uses_cryptort { cmd = `{cmd} -ladvapi32` }
   if g_uses_process {
     if g_target_win { cmd = `{cmd} {join_path(home, "runtime/native/process_win.ll")}` }
     else { cmd = `{cmd} {join_path(home, "runtime/native/process.ll")}` }

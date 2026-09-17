@@ -293,14 +293,28 @@ function emit_secure_rand_prelude() -> void {
   emith("@.ludic_rbmode = private unnamed_addr constant [3 x i8] c\"rb\\00\"\n")
   emith("@.ludic_b64tab = private unnamed_addr constant [64 x i8] c\"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/\"\n")
 
-  # fill %n bytes at %out from the OS CSPRNG. If /dev/urandom cannot be opened the
-  # buffer is zeroed (documented degraded mode — e.g. wasm), never left uninit.
-  emith("define void @lp_secure_bytes(ptr %out, i64 %n) {\n")
-  emith("entry:\n  call ptr @memset(ptr %out, i32 0, i64 %n)\n")
-  emith("  %fp = call ptr @fopen(ptr @.ludic_urandom, ptr @.ludic_rbmode)\n")
-  emith("  %isnull = icmp eq ptr %fp, null\n  br i1 %isnull, label %fail, label %ok\n")
-  emith("ok:\n  %rd = call i64 @fread(ptr %out, i64 1, i64 %n, ptr %fp)\n  %cl = call i32 @fclose(ptr %fp)\n  ret void\n")
-  emith("fail:\n  ret void\n}\n")
+  # Windows has no /dev/urandom (fopen fails, and every byte came back zero): there the
+  # bytes come from RtlGenRandom (advapi32's SystemFunction036), the system CSPRNG,
+  # in chunks that fit its ULONG length. main.ludic links advapi32 for it.
+  if g_target_win {
+    emith("declare i8 @SystemFunction036(ptr, i32)\n")
+    emith("define void @lp_secure_bytes(ptr %out, i64 %n) {\n")
+    emith("entry:\n  call ptr @memset(ptr %out, i32 0, i64 %n)\n  %op = alloca i64\n  store i64 0, ptr %op\n  br label %c\n")
+    emith("c:\n  %o = load i64, ptr %op\n  %left = sub i64 %n, %o\n  %more = icmp sgt i64 %left, 0\n  br i1 %more, label %b, label %d\n")
+    emith("b:\n  %big = icmp sgt i64 %left, 65536\n  %k = select i1 %big, i64 65536, i64 %left\n  %k32 = trunc i64 %k to i32\n")
+    emith("  %p = getelementptr i8, ptr %out, i64 %o\n  %ok = call i8 @SystemFunction036(ptr %p, i32 %k32)\n")
+    emith("  %on = add i64 %o, %k\n  store i64 %on, ptr %op\n  br label %c\n")
+    emith("d:\n  ret void\n}\n")
+  } else {
+    # fill %n bytes at %out from the OS CSPRNG. If /dev/urandom cannot be opened the
+    # buffer is zeroed (documented degraded mode — e.g. wasm), never left uninit.
+    emith("define void @lp_secure_bytes(ptr %out, i64 %n) {\n")
+    emith("entry:\n  call ptr @memset(ptr %out, i32 0, i64 %n)\n")
+    emith("  %fp = call ptr @fopen(ptr @.ludic_urandom, ptr @.ludic_rbmode)\n")
+    emith("  %isnull = icmp eq ptr %fp, null\n  br i1 %isnull, label %fail, label %ok\n")
+    emith("ok:\n  %rd = call i64 @fread(ptr %out, i64 1, i64 %n, ptr %fp)\n  %cl = call i32 @fclose(ptr %fp)\n  ret void\n")
+    emith("fail:\n  ret void\n}\n")
+  }
 
   # %n secure bytes -> a fresh 2n-char lowercase hex string
   emith("define ptr @lp_random_hex(i64 %n) {\n")

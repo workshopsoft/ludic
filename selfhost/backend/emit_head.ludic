@@ -10,6 +10,14 @@ function emit_str_const(s: pointer) -> pointer {
   let n = len(s)
   emith(name);  emith(" = private unnamed_addr constant [")
   emith(itoa(n + 1));  emith(" x i8] c\"")
+  emit_escaped(s)
+  emith("\\00\"\n")
+  return name
+}
+
+# the bytes of s as the body of an IR c"..." string: " \ and non-print -> \XX
+function emit_escaped(s: pointer) -> void {
+  let n = len(s)
   var i = 0
   while i < n {
     let c = s[i]
@@ -20,8 +28,6 @@ function emit_str_const(s: pointer) -> pointer {
     } else { buf_putc(head, c) }
     i += 1
   }
-  emith("\\00\"\n")
-  return name
 }
 
 # the constant initializer for a global var: a literal, or 0/null
@@ -144,7 +150,7 @@ function emit_header() -> void {
   emith("@L_argv = internal global ptr null\n")
   emith("@L_clock = internal global i32 0\n")       # Clock.* — the game-controlled simulated clock
   emith("@.gametitle = private unnamed_addr constant [")
-  emith(itoa(len(g_game_name) + 1));  emith(" x i8] c\"");  emith(g_game_name);  emith("\\00\"\n")
+  emith(itoa(len(g_game_name) + 1));  emith(" x i8] c\"");  emit_escaped(g_game_name);  emith("\\00\"\n")
   emith("%LSlice = type { ptr, i32, i32 }\n")
   # property layouts — a %Cmp_ record of named fields, emitted here so `new`
   # works whether or not the program runs the ECS. The per-entity @S_/@H_ arrays
