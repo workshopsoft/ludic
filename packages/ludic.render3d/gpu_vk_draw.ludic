@@ -1411,7 +1411,7 @@ function gvk_open(w: int, h: int, title: string) -> bool {
   gl_w = w
   gl_h = h
   if is_windowed() {
-    win_open(w, h, 1, title)
+    win_open(w, h, 1, title)          # the window exists before main: this retitles it
     win_gl_resize(w, h)
     if gvk_size_buf == null { gvk_size_buf = words(4) }
     win_gl_drawable(gvk_size_buf)

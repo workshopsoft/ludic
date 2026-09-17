@@ -20,6 +20,7 @@ import "gl_api.ludic"
 
 # ---- native glue (cocoa.ll / gl.ll) -------------------------------------------
 extern function win_gl_attach() -> int = "win_gl_attach"
+extern function win_set_title(title: pointer) -> void = "win_set_title"
 extern function win_gl_resize(w: int, h: int) = "win_gl_resize"
 extern function win_gl_swap() = "win_gl_swap"
 extern function win_gl_scale() -> int = "win_gl_scale"
@@ -91,6 +92,10 @@ function gl_open(width: int, height: int, title: pointer) -> bool {
     if win_gl_attach() == 0 {
       win_open(width, height, 1, title)               # a plain program: no window yet
       if win_gl_attach() == 0 { return false }
+    } else {
+      # a game's window was opened before main, titled with the program's name: give it
+      # the title this call asks for
+      win_set_title(title)
     }
     win_gl_resize(width, height)
     gl_scale = win_gl_scale()

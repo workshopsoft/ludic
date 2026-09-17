@@ -52,3 +52,8 @@ define ptr @win_native_instance() {
 entry:
   ret ptr null
 }
+
+define void @win_set_title(ptr %title) {
+entry:
+  ret void
+}

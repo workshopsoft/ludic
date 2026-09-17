@@ -50,6 +50,8 @@ declare i64 @DefWindowProcA(ptr, i32, i64, i64)
 declare i32 @ShowWindow(ptr, i32)
 declare i32 @SetForegroundWindow(ptr)
 declare i32 @BringWindowToTop(ptr)
+declare i32 @SetWindowTextW(ptr, ptr)
+declare i32 @MultiByteToWideChar(i32, i32, ptr, i32, ptr, i32)
 declare i32 @PeekMessageA(ptr, ptr, i32, i32, i32)
 declare i64 @DispatchMessageA(ptr)
 declare ptr @GetDC(ptr)
@@ -188,7 +190,11 @@ entry:
   store i32 %scale, ptr @W_scale
   %have = load ptr, ptr @W_hwnd
   %again = icmp ne ptr %have, null
-  br i1 %again, label %out, label %make
+  br i1 %again, label %retitle, label %make
+retitle:
+  ; already open (before main, for a game): take the title this call asks for
+  call void @win_set_title(ptr %title)
+  br label %out
 make:
   ; DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4
   %dpi = call i32 @SetProcessDpiAwarenessContext(ptr inttoptr (i64 -4 to ptr))
@@ -263,6 +269,33 @@ show:
   store ptr %hwnd, ptr %rh
   %reg = call i32 @RegisterRawInputDevices(ptr %rid, i32 1, i32 16)
   store i32 1, ptr @W_running
+  br label %out
+out:
+  ret void
+}
+
+; ---- win_set_title --------------------------------------------------------------------
+; Retitle the window opened before main (gl_open / gvk_open attach to it rather than opening
+; one, and would otherwise leave the program's name on it). UTF-8 in, UTF-16 to the window.
+; A no-op without a window.
+define void @win_set_title(ptr %title) {
+entry:
+  %h = load ptr, ptr @W_hwnd
+  %nowin = icmp eq ptr %h, null
+  %notitle = icmp eq ptr %title, null
+  %skip = or i1 %nowin, %notitle
+  br i1 %skip, label %out, label %size
+size:
+  %n = call i32 @MultiByteToWideChar(i32 65001, i32 0, ptr %title, i32 -1, ptr null, i32 0)
+  %bad = icmp sle i32 %n, 0
+  br i1 %bad, label %out, label %conv
+conv:
+  %n64 = sext i32 %n to i64
+  %bytes = mul i64 %n64, 2
+  %w = call ptr @malloc(i64 %bytes)
+  %c = call i32 @MultiByteToWideChar(i32 65001, i32 0, ptr %title, i32 -1, ptr %w, i32 %n)
+  %r = call i32 @SetWindowTextW(ptr %h, ptr %w)
+  call void @free(ptr %w)
   br label %out
 out:
   ret void

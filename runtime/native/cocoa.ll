@@ -229,7 +229,15 @@ entry:
   store i32 %w, ptr @W_fbw
   store i32 %h, ptr @W_fbh
   store i32 %scale, ptr @W_scale
-
+  ; a window already open (the runtime opens a game's before main) is retitled, not
+  ; opened again - as win32.ll's win_open does
+  %have = load ptr, ptr @W_win
+  %again = icmp ne ptr %have, null
+  br i1 %again, label %retitle, label %make
+retitle:
+  call void @win_set_title(ptr %title)
+  ret void
+make:
   %appcls = call ptr @objc_getClass(ptr @.c_app)
   %sel_sh = call ptr @sel_registerName(ptr @.s_shared)
   %app = call ptr @objc_msgSend(ptr %appcls, ptr %sel_sh)
@@ -1695,6 +1703,31 @@ go:
   %sel_oo = call ptr @sel_registerName(ptr @.s_oout)
   %r = call ptr (ptr, ptr, ptr) @objc_msgSend(ptr %win, ptr %sel_oo, ptr null)
   store ptr null, ptr @W_splash
+  br label %out
+out:
+  ret void
+}
+
+; ---- win_set_title --------------------------------------------------------------------
+; Retitle the window the runtime opened before main: gl_open / gvk_open attach to that window
+; rather than opening one, and the title the program asked for would otherwise be dropped in
+; favour of the program's name. A no-op without a window.
+define void @win_set_title(ptr %title) {
+entry:
+  %win = load ptr, ptr @W_win
+  %nowin = icmp eq ptr %win, null
+  %notitle = icmp eq ptr %title, null
+  %skip = or i1 %nowin, %notitle
+  br i1 %skip, label %out, label %go
+go:
+  %strcls = call ptr @objc_getClass(ptr @.c_str)
+  %sel_utf8 = call ptr @sel_registerName(ptr @.s_utf8)
+  %ns = call ptr (ptr, ptr, ptr) @objc_msgSend(ptr %strcls, ptr %sel_utf8, ptr %title)
+  %none = icmp eq ptr %ns, null
+  br i1 %none, label %out, label %set
+set:
+  %sel_title = call ptr @sel_registerName(ptr @.s_title)
+  %r = call ptr (ptr, ptr, ptr) @objc_msgSend(ptr %win, ptr %sel_title, ptr %ns)
   br label %out
 out:
   ret void
