@@ -517,6 +517,21 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "free")      { bare = "http_close";       push(labels, "handle") }
     if (meth == "parse")     { bare = "http_parse";       push(labels, "bytes"); push(labels, "len") }
   }
+  # Udp.* — polled IPv4 datagrams (runtime/native/udp.ludic + udp.ll / udp_win.ll).
+  # Out-of-band like Http.*: the transport under a game's own netcode.
+  if (ns == "Udp") {
+    if (meth == "open")      { bare = "udp_open";       push(labels, "port") }
+    if (meth == "port")      { bare = "udp_port";       push(labels, "socket") }
+    if (meth == "send")      { bare = "udp_send";       push(labels, "socket"); push(labels, "ip"); push(labels, "port"); push(labels, "bytes"); push(labels, "len") }
+    if (meth == "recv")      { bare = "udp_recv";       push(labels, "socket"); push(labels, "bytes"); push(labels, "cap") }
+    if (meth == "from_ip")   { bare = "udp_from_ip";    push(labels, "socket") }
+    if (meth == "from_port") { bare = "udp_from_port";  push(labels, "socket") }
+    if (meth == "close")     { bare = "udp_close";      push(labels, "socket") }
+    if (meth == "resolve")   { bare = "udp_resolve";    push(labels, "name") }
+    if (meth == "local_ip")  { bare = "udp_local_ip" }
+    if (meth == "ip")        { bare = "udp_ip";         push(labels, "text") }
+    if (meth == "ip_text")   { bare = "udp_ip_text";    push(labels, "ip") }
+  }
   # Phase 3: the bare reflection / networking / process builtins, namespaced.
   # Each is a pure alias — the callee is rewritten to the bare name below.
   if (ns == "World") {

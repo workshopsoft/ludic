@@ -1,0 +1,124 @@
+# ============================================================================
+# udp.ludic — the Udp.* standard library.
+#
+# Plain IPv4 datagrams, polled. A socket is opened on a port (0 lets the system pick one),
+# datagrams are sent to an address and a port, and each frame the game drains what arrived
+# with Udp.recv, which never blocks: it returns 0 when nothing is waiting. The sender of the
+# last datagram read on a socket is Udp.from_ip / Udp.from_port. This is the transport under
+# a game's own netcode - peer-to-peer play, a LAN lobby, a STUN query - and it carries no
+# guarantees of its own: datagrams can be lost, repeated and reordered, and a protocol built
+# on it says what to do about that.
+#
+# Like Http.* and Time.now it is OUT-OF-BAND: it depends on the network and the wall clock
+# and must never feed a deterministic lockstep/replay simulation directly.
+#
+# An address is an int: a.b.c.d is (a << 24) | (b << 16) | (c << 8) | d. Udp.ip("10.0.0.2")
+# and Udp.ip_text(ip) convert, Udp.resolve("example.com") looks a host name up (it blocks
+# for as long as the system's resolver takes), and Udp.local_ip() is the address this
+# machine reaches the internet from - the one a player on the same network would dial.
+#
+# The transport is native: udp.ll (BSD sockets, macOS) and udp_win.ll (Winsock), linked
+# only into a program that uses Udp.*.
+# ============================================================================
+
+extern function lu_udp_open(port: int) -> int = "lu_udp_open"
+extern function lu_udp_port(h: int) -> int = "lu_udp_port"
+extern function lu_udp_send(h: int, ip: int, port: int, buf: pointer, n: int) -> int = "lu_udp_send"
+extern function lu_udp_recv(h: int, buf: pointer, cap: int, ipport: pointer) -> int = "lu_udp_recv"
+extern function lu_udp_close(h: int) -> void = "lu_udp_close"
+extern function lu_udp_resolve(name: pointer) -> int = "lu_udp_resolve"
+extern function lu_udp_local_ip() -> int = "lu_udp_local_ip"
+
+const UDP_HANDLES: int = 16
+
+var u_ready: bool = false
+var u_ipport: pointer = null     # the native side writes the sender here (two i32s)
+var u_from_ip: words = null      # per handle: the sender of the last datagram read
+var u_from_port: words = null
+
+function udp_init() -> void {
+  if u_ready { return }
+  u_ipport = bytes(8)
+  u_from_ip = words(UDP_HANDLES + 1)
+  u_from_port = words(UDP_HANDLES + 1)
+  var i = 0
+  while i <= UDP_HANDLES { u_from_ip[i] = 0;  u_from_port[i] = 0;  i += 1 }
+  u_ready = true
+}
+
+# a socket bound to `port` on every interface (0 = any free port): a handle, or 0
+function udp_open(port: int) -> int {
+  udp_init()
+  if (port < 0) or (port > 65535) { return 0 }
+  return lu_udp_open(port)
+}
+# the port a socket is bound to (the one the system picked, for port 0)
+function udp_port(h: int) -> int { return lu_udp_port(h) }
+# one datagram of `n` bytes from `buf` to ip:port: the bytes sent, or -1
+function udp_send(h: int, ip: int, port: int, buf: pointer, n: int) -> int {
+  if (buf == null) or (n <= 0) { return -1 }
+  return lu_udp_send(h, ip, port, buf, n)
+}
+# the next waiting datagram, up to `cap` bytes, into `buf`: its length, or 0 when none waits
+function udp_recv(h: int, buf: pointer, cap: int) -> int {
+  udp_init()
+  if (buf == null) or (cap <= 0) { return 0 }
+  let n = lu_udp_recv(h, buf, cap, u_ipport)
+  if (n > 0) and (h >= 1) and (h <= UDP_HANDLES) {
+    u_from_ip[h] = udp_le32(u_ipport, 0)
+    u_from_port[h] = udp_le32(u_ipport, 4)
+  }
+  return n
+}
+function udp_from_ip(h: int) -> int {
+  udp_init()
+  if (h < 1) or (h > UDP_HANDLES) { return 0 }
+  return u_from_ip[h]
+}
+function udp_from_port(h: int) -> int {
+  udp_init()
+  if (h < 1) or (h > UDP_HANDLES) { return 0 }
+  return u_from_port[h]
+}
+function udp_close(h: int) -> void { lu_udp_close(h) }
+function udp_resolve(name: pointer) -> int {
+  if name == null { return 0 }
+  return lu_udp_resolve(name)
+}
+function udp_local_ip() -> int { return lu_udp_local_ip() }
+
+# a little-endian i32 out of a byte buffer
+function udp_le32(p: pointer, o: int) -> int {
+  return p[o] | (p[o + 1] << 8) | (p[o + 2] << 16) | (p[o + 3] << 24)
+}
+# "a.b.c.d" to an address; 0 when it is not one
+function udp_ip(text: pointer) -> int {
+  if text == null { return 0 }
+  var ip = 0
+  var part = 0
+  var digits = 0
+  var dots = 0
+  var i = 0
+  while text[i] != 0 {
+    let c = text[i]
+    if (c >= '0') and (c <= '9') {
+      part = part * 10 + (c - '0')
+      digits += 1
+      if (part > 255) or (digits > 3) { return 0 }
+    } else if c == '.' {
+      if (digits == 0) or (dots == 3) { return 0 }
+      ip = (ip << 8) | part
+      part = 0;  digits = 0;  dots += 1
+    } else { return 0 }
+    i += 1
+  }
+  if (dots != 3) or (digits == 0) { return 0 }
+  return (ip << 8) | part
+}
+function udp_ip_text(ip: int) -> string {
+  let a = (ip >> 24) & 255
+  let b = (ip >> 16) & 255
+  let c = (ip >> 8) & 255
+  let d = ip & 255
+  return `{a}.{b}.{c}.{d}`
+}

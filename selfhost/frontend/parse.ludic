@@ -252,6 +252,8 @@ function p_postfix() -> Node {
       if e.a.kind == E_ID and e.a.s == "Audio" { g_uses_audio = true }
       # Http.* (#6) — any Http method splices the HTTP client runtime.
       if e.a.kind == E_ID and e.a.s == "Http" { g_uses_http = true }
+      # Udp.* — any Udp method splices the datagram runtime (and links udp.ll / udp_win.ll).
+      if e.a.kind == E_ID and e.a.s == "Udp" { g_uses_udp = true }
       # Gl.* — any Gl method splices the OpenGL runtime (and links the GL backend).
       if e.a.kind == E_ID and e.a.s == "Gl" { g_uses_gl = true }
       # Vk.* — any Vk method splices the Vulkan runtime (and links its loader)
@@ -677,6 +679,7 @@ var g_uses_tween_rt: bool = false  # Tween.to/chain/delay/… (#48) -> splice tw
 var g_uses_fx: bool = false       # Fx.sparks/number/clear -> splice fx.ludic; fx_tick each Update, fx_draw each Render
 var g_uses_audio: bool = false    # Audio.* (#22) -> splice audio.ludic; a windowed build also links audio.ll + AVFoundation
 var g_uses_http:  bool = false    # Http.* (#6) -> splice http.ludic; links http.ll + Foundation (macOS)
+var g_uses_udp:   bool = false    # Udp.* -> splice udp.ludic; links udp.ll (macOS) / udp_win.ll + ws2_32
 var g_uses_gl:    bool = false    # Gl.* -> splice gl.ludic (+ generated gl_api.ludic); links gl.ll + gl_thunks.ll + OpenGL
 var g_uses_vk:    bool = false    # Vk.* -> splice vk.ludic (+ generated vk_api.ludic); links vk_thunks.ll + the platform loader
 # issue #64: functions marked @System(Phase) in a prebuilt binary module — the
@@ -1185,6 +1188,13 @@ function maybe_splice_runtime() -> void {
   if g_uses_http {
     cur_dir = ""
     do_import("runtime/native/http.ludic")
+    cur_dir = saved
+  }
+  # Udp.*: splice the datagram library. The sockets are native (udp.ll / udp_win.ll, bound
+  # by `extern function` in udp.ludic); the address helpers are pure Ludic.
+  if g_uses_udp {
+    cur_dir = ""
+    do_import("runtime/native/udp.ludic")
     cur_dir = saved
   }
   # Gl.*: splice the OpenGL surface (gl.ludic + the generated gl_api.ludic). The

@@ -273,6 +273,12 @@ entry {
     if g_target_win { cmd = `{cmd} {join_path(home, "runtime/native/threads_win.ll")}` }
     else { cmd = `{cmd} {join_path(home, "runtime/native/threads.ll")}` }
   }
+  # Udp.* links the socket layer: BSD sockets from libSystem on macOS, Winsock (ws2_32) on
+  # Windows.
+  if g_uses_udp {
+    if g_target_win { cmd = `{cmd} {join_path(home, "runtime/native/udp_win.ll")} -lws2_32` }
+    else { cmd = `{cmd} {join_path(home, "runtime/native/udp.ll")}` }
+  }
   if g_uses_http {
     if g_target_win {
       let httpw = join_path(home, "runtime/native/http_win.ll")
