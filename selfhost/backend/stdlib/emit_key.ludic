@@ -20,6 +20,42 @@ function key_lookup(name: pointer) -> int {
   if (name == "Down")      { return 129 }
   if (name == "Left")      { return 130 }
   if (name == "Right")     { return 131 }
+  # the keys that type nothing on any layout (0.22): the F-row, the six-pack, Caps Lock and
+  # the numpad. Before these the platform gave them no code at all, so nothing could bind one.
+  if (name == "F1")  { return 132 }
+  if (name == "F2")  { return 133 }
+  if (name == "F3")  { return 134 }
+  if (name == "F4")  { return 135 }
+  if (name == "F5")  { return 136 }
+  if (name == "F6")  { return 137 }
+  if (name == "F7")  { return 138 }
+  if (name == "F8")  { return 139 }
+  if (name == "F9")  { return 140 }
+  if (name == "F10") { return 141 }
+  if (name == "F11") { return 142 }
+  if (name == "F12") { return 143 }
+  if (name == "Home")     { return 144 }
+  if (name == "End")      { return 145 }
+  if (name == "PageUp")   { return 146 }
+  if (name == "PageDown") { return 147 }
+  if (name == "Insert")   { return 148 }
+  if (name == "Delete")   { return 149 }
+  if (name == "CapsLock") { return 150 }
+  if (name == "Numpad0") { return 152 }
+  if (name == "Numpad1") { return 153 }
+  if (name == "Numpad2") { return 154 }
+  if (name == "Numpad3") { return 155 }
+  if (name == "Numpad4") { return 156 }
+  if (name == "Numpad5") { return 157 }
+  if (name == "Numpad6") { return 158 }
+  if (name == "Numpad7") { return 159 }
+  if (name == "Numpad8") { return 160 }
+  if (name == "Numpad9") { return 161 }
+  if (name == "NumpadMultiply") { return 162 }
+  if (name == "NumpadAdd")      { return 163 }
+  if (name == "NumpadSubtract") { return 164 }
+  if (name == "NumpadDecimal")  { return 165 }
+  if (name == "NumpadDivide")   { return 166 }
   if (name == "Digit0") { return 48 }
   if (name == "Digit1") { return 49 }
   if (name == "Digit2") { return 50 }

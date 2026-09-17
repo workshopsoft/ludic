@@ -380,6 +380,45 @@ special:
     i32 36,  label %vret
     i32 53,  label %vesc
     i32 51,  label %vbksp
+    ; the keys that type nothing: charactersIgnoringModifiers answers them with
+    ; NSF1FunctionKey and its neighbours, 0xF700 and up, which is outside the 256-bit held
+    ; set - so a game could not bind an F-key, Home, Delete or the numpad at all. They get
+    ; the same codes win32.ll's w_keyval gives them.
+    i32 122, label %vf1
+    i32 120, label %vf2
+    i32 99,  label %vf3
+    i32 118, label %vf4
+    i32 96,  label %vf5
+    i32 97,  label %vf6
+    i32 98,  label %vf7
+    i32 100, label %vf8
+    i32 101, label %vf9
+    i32 109, label %vf10
+    i32 103, label %vf11
+    i32 111, label %vf12
+    i32 115, label %vhome
+    i32 119, label %vend
+    i32 116, label %vpgup
+    i32 121, label %vpgdn
+    i32 114, label %vins
+    i32 117, label %vdel
+    i32 57,  label %vcaps
+    i32 82,  label %vnp0
+    i32 83,  label %vnp1
+    i32 84,  label %vnp2
+    i32 85,  label %vnp3
+    i32 86,  label %vnp4
+    i32 87,  label %vnp5
+    i32 88,  label %vnp6
+    i32 89,  label %vnp7
+    i32 91,  label %vnp8
+    i32 92,  label %vnp9
+    i32 67,  label %vnpmul
+    i32 69,  label %vnpadd
+    i32 78,  label %vnpsub
+    i32 65,  label %vnpdec
+    i32 75,  label %vnpdiv
+    i32 76,  label %vret
   ]
 vw:     ret i32 128
 vs:     ret i32 129
@@ -388,6 +427,40 @@ vd:     ret i32 131
 vspace: ret i32 32
 vret:   ret i32 10
 vesc:   ret i32 27
+vf1:    ret i32 132
+vf2:    ret i32 133
+vf3:    ret i32 134
+vf4:    ret i32 135
+vf5:    ret i32 136
+vf6:    ret i32 137
+vf7:    ret i32 138
+vf8:    ret i32 139
+vf9:    ret i32 140
+vf10:   ret i32 141
+vf11:   ret i32 142
+vf12:   ret i32 143
+vhome:  ret i32 144
+vend:   ret i32 145
+vpgup:  ret i32 146
+vpgdn:  ret i32 147
+vins:   ret i32 148
+vdel:   ret i32 149
+vcaps:  ret i32 150
+vnp0:   ret i32 152
+vnp1:   ret i32 153
+vnp2:   ret i32 154
+vnp3:   ret i32 155
+vnp4:   ret i32 156
+vnp5:   ret i32 157
+vnp6:   ret i32 158
+vnp7:   ret i32 159
+vnp8:   ret i32 160
+vnp9:   ret i32 161
+vnpmul: ret i32 162
+vnpadd: ret i32 163
+vnpsub: ret i32 164
+vnpdec: ret i32 165
+vnpdiv: ret i32 166
 ; kVK_Delete (51), the key marked delete or backspace: AppKit reports its character as
 ; NSDeleteCharacter (127), and Key.Backspace is 8
 vbksp:  ret i32 8

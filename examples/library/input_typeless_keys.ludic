@@ -1,0 +1,38 @@
+# input_typeless_keys.ludic — the keys that type no character: the F-row, the six-pack,
+# Caps Lock and the numpad. Until 0.22 the platform gave them no code at all - Windows
+# asked the layout what they type and got nothing, macOS got NSF1FunctionKey (0xF704 and
+# up, outside the 256-bit held set) - so a game could not bind one and nothing said why.
+# They are codes 132-166 now, the same on both, with a name that is not asked of the
+# layout because it is the same on every layout.
+#
+# Deterministic; a full run prints:  132 143 144 149 150 152 161 F1 F12 Home Delete CapsLock Num 0 Num / 1 0 1
+program InputTypelessKeys {
+  function bi(b: bool) -> int { if b { return 1 };  return 0 }
+
+  entry {
+    print(Key.F1)
+    print(Key.F12)
+    print(Key.Home)
+    print(Key.Delete)
+    print(Key.CapsLock)
+    print(Key.Numpad0)
+    print(Key.Numpad9)
+
+    print(Input.key_label(Key.F1))
+    print(Input.key_label(Key.F12))
+    print(Input.key_label(Key.Home))
+    print(Input.key_label(Key.Delete))
+    print(Input.key_label(Key.CapsLock))
+    print(Input.key_label(Key.Numpad0))
+    print(Input.key_label(Key.NumpadDivide))
+
+    Input.press(Key.F5)                    # hold F5
+    Input.poll()
+    print(bi(Input.key_down(Key.F5)))      # 1 — it is in the held set like any other key
+    print(bi(Input.key_down(Key.F6)))      # 0 — and only that one
+    Input.release(Key.F5)
+    Input.press(Key.PageDown)
+    Input.poll()
+    print(bi(Input.key_pressed(Key.PageDown)))   # 1 — the edge fires for it too
+  }
+}

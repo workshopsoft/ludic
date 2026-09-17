@@ -715,6 +715,7 @@ function cmd_dev_test() -> int {
   feat_case("library/input_movement", "", "1 0 -1 -1 0", "input_movement.ludic (#79 Input.axis_i turns WASD into a -1/0/1 movement intent, no bool->int glue)")
   feat_case("library/input_arrows", "", "128 129 130 131 1 0 -1 1 0", "input_arrows.ludic (Key.Up/Down/Left/Right are the held set's 128-131: key_down and move_i take the arrows)")
   feat_case("library/input_key_label", "", "W A ; 1 Space Esc Shift Left Right 0 1", "input_key_label.ludic (Input.key_label names a physical key: the US character headless, words for the named keys and arrows)")
+  feat_case("library/input_typeless_keys", "", "132 143 144 149 150 152 161 F1 F12 Home Delete CapsLock Num 0 Num / 1 0 1", "input_typeless_keys.ludic (the F-row, the six-pack, Caps Lock and the numpad are codes 132-166: bindable, in the held set, and named without asking the layout)")
   feat_case("library/audio", "", "0 0 0 0 1", "audio.ludic (#22 Audio.* load/play/music/volume/pitch/stop/is_playing — headless no-op)")
   # #6 Http.* — the client links Foundation (macOS-only), so build it through the
   # canonical `ludicc -o` path (which wires the framework) and gate on Darwin. The

@@ -425,6 +425,42 @@ byvk:
     i32 18, label %alt
     i32 8,  label %bksp
     i32 9,  label %tab
+    ; the keys that type nothing, so w_vk_char answers 0 for them and they had no code at
+    ; all: a game could not bind an F-key, Home, Delete or the numpad, and nothing said why
+    i32 112, label %f1
+    i32 113, label %f2
+    i32 114, label %f3
+    i32 115, label %f4
+    i32 116, label %f5
+    i32 117, label %f6
+    i32 118, label %f7
+    i32 119, label %f8
+    i32 120, label %f9
+    i32 121, label %f10
+    i32 122, label %f11
+    i32 123, label %f12
+    i32 36,  label %khome
+    i32 35,  label %kend
+    i32 33,  label %kpgup
+    i32 34,  label %kpgdn
+    i32 45,  label %kins
+    i32 46,  label %kdel
+    i32 20,  label %kcaps
+    i32 96,  label %np0
+    i32 97,  label %np1
+    i32 98,  label %np2
+    i32 99,  label %np3
+    i32 100, label %np4
+    i32 101, label %np5
+    i32 102, label %np6
+    i32 103, label %np7
+    i32 104, label %np8
+    i32 105, label %np9
+    i32 106, label %npmul
+    i32 107, label %npadd
+    i32 109, label %npsub
+    i32 110, label %npdec
+    i32 111, label %npdiv
   ]
 up:    ret i32 128
 down:  ret i32 129
@@ -438,6 +474,40 @@ ctrl:  ret i32 17
 alt:   ret i32 18
 bksp:  ret i32 8
 tab:   ret i32 9
+f1:    ret i32 132
+f2:    ret i32 133
+f3:    ret i32 134
+f4:    ret i32 135
+f5:    ret i32 136
+f6:    ret i32 137
+f7:    ret i32 138
+f8:    ret i32 139
+f9:    ret i32 140
+f10:   ret i32 141
+f11:   ret i32 142
+f12:   ret i32 143
+khome: ret i32 144
+kend:  ret i32 145
+kpgup: ret i32 146
+kpgdn: ret i32 147
+kins:  ret i32 148
+kdel:  ret i32 149
+kcaps: ret i32 150
+np0:   ret i32 152
+np1:   ret i32 153
+np2:   ret i32 154
+np3:   ret i32 155
+np4:   ret i32 156
+np5:   ret i32 157
+np6:   ret i32 158
+np7:   ret i32 159
+np8:   ret i32 160
+np9:   ret i32 161
+npmul: ret i32 162
+npadd: ret i32 163
+npsub: ret i32 164
+npdec: ret i32 165
+npdiv: ret i32 166
 chars:
   %c = call i32 @w_vk_char(i32 %vk)
   ; the held set is keyed by the key, not the case: fold A-Z (Shift is its own code)

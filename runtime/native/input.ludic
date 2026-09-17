@@ -390,6 +390,22 @@ function input_key_label(k: int) -> string {
   if k == 129 { return "Down" }
   if k == 130 { return "Left" }
   if k == 131 { return "Right" }
+  # the keys that type nothing on any layout, so there is no character to show: the name is
+  # the same everywhere, which is why it is not asked of the layout
+  if k >= 132 and k <= 143 { return "F" + string(k - 131) }
+  if k == 144 { return "Home" }
+  if k == 145 { return "End" }
+  if k == 146 { return "PageUp" }
+  if k == 147 { return "PageDown" }
+  if k == 148 { return "Insert" }
+  if k == 149 { return "Delete" }
+  if k == 150 { return "CapsLock" }
+  if k >= 152 and k <= 161 { return "Num " + string(k - 152) }
+  if k == 162 { return "Num *" }
+  if k == 163 { return "Num +" }
+  if k == 164 { return "Num -" }
+  if k == 165 { return "Num ." }
+  if k == 166 { return "Num /" }
   var c = 0
   if is_windowed() { c = win_key_char(k) }
   if c <= 0 and k > 32 and k < 127 {
