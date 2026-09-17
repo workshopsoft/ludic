@@ -100,12 +100,64 @@ class LudicManifestTest : BasePlatformTestCase() {
         assertNotNull(LudicManifestDocumentation().generateDoc(comment, comment))
     }
 
-    fun testBannerAppearsOnlyOnTheManifest() {
+    fun testBannerOnlyPromptsWhenSomethingNeedsDoing() {
         val provider = LudicPackageNotificationProvider()
-        val man = myFixture.configureByText("package.ludic", manifest).virtualFile
-        assertNotNull(provider.collectNotificationData(project, man))
         val src = myFixture.configureByText("main.ludic", "program X {}").virtualFile
         assertNull(provider.collectNotificationData(project, src))
+        // the everyday commands moved to the tool window: no bar for a healthy package
+        assertNull(LudicPackageNotificationProvider.bannerReason(true, null))
+        assertTrue(LudicPackageNotificationProvider.bannerReason(true, "There is no lock.")!!.contains("Fetch"))
+        assertTrue(LudicPackageNotificationProvider.bannerReason(false, null)!!.contains("'ludic'"))
+    }
+
+    fun testToolWindowPanelBuilds() {
+        myFixture.configureByText("package.ludic", manifest)
+        val panel = io.ludic.ide.project.LudicToolWindowPanel(project)
+        try {
+            assertNotNull(panel.toolbar)
+            assertNotNull(panel.content)
+        } finally {
+            com.intellij.openapi.util.Disposer.dispose(panel)
+        }
+    }
+
+    fun testToolWindowModelReadsPackageLockAndLinks() {
+        val dir = java.nio.file.Files.createTempDirectory("ludicpkg").toFile()
+        try {
+            java.io.File(dir, "package.ludic").writeText(
+                "package \"git.x/me/game\"\nversion \"0.2.0\"\nentry \"src/g.ludic\"\n" +
+                    "require \"git.x/me/util\" \"1.1.0\"\nrequire \"git.x/me/net\" \"2.0.0\"\n" +
+                    "script \"check\" \"tests/check.sh\"\nhook before bundle \"tests/pre.sh\"\napp name \"Game\"\npack \"assets\"\n"
+            )
+            java.io.File(dir, "package.lock.ludic").writeText(
+                "lock 1\nmodule \"git.x/me/util\" version \"1.0.0\" hash \"h1\" kind \"source\"\n" +
+                    "module \"git.x/me/deep\" version \"0.3.0\" hash \"h2\" kind \"source\"\n"
+            )
+            java.io.File(dir, "ludic_modules/git.x/me/util").mkdirs()
+            java.io.File(dir, "sub/lib").mkdirs()
+            java.io.File(dir, "sub/lib/package.ludic").writeText("package \"git.x/me/lib\"\n")
+            java.io.File(dir, "ludic_modules/git.x/me/util/package.ludic").writeText("package \"git.x/me/util\"\n")
+
+            val found = io.ludic.ide.project.LudicPackageInfo.discover(dir)
+            assertEquals("the root first, fetched modules skipped", listOf(dir, java.io.File(dir, "sub/lib")), found.map { it.dir })
+            val p = found.first()
+            assertEquals("game", p.name)
+            val (util, net) = p.manifest.requires
+            assertEquals(io.ludic.ide.project.LudicPackageInfo.DepStatus.BELOW_MINIMUM, p.status(util))
+            assertEquals(io.ludic.ide.project.LudicPackageInfo.DepStatus.NOT_LOCKED, p.status(net))
+            assertEquals(listOf("git.x/me/deep"), p.transitive.map { it.module })
+            assertEquals(listOf("tests/pre.sh"), p.hooksOf("bundle").map { it.command })
+
+            val html = io.ludic.ide.project.LudicPackageHtml.overview(p)
+            assertTrue(html, html.contains("Game") && html.contains("src/g.ludic") && html.contains("check"))
+            assertTrue(io.ludic.ide.project.LudicPackageHtml.dependency(p, util).contains("locked below the minimum"))
+            val cmd = io.ludic.ide.project.LudicPackageInfo.COMMANDS.first { it.verb == "bundle" }
+            assertTrue(io.ludic.ide.project.LudicPackageHtml.command(p, cmd).contains("tests/pre.sh"))
+            assertTrue(io.ludic.ide.project.LudicAppPreview.html(p.manifest, p.dir).contains("Game.app"))
+            assertTrue(io.ludic.ide.project.LudicPackageInfo.versionLess("1.2.9", "1.10.0"))
+        } finally {
+            dir.deleteRecursively()
+        }
     }
 
     fun testPathValuesNavigateAndMissingOnesAreErrors() {

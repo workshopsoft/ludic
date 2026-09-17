@@ -100,6 +100,8 @@
 
         <!-- package.ludic: the package manifest -->
         <editorNotificationProvider implementation="io.ludic.ide.project.LudicPackageNotificationProvider"/>
+        <toolWindow id="Ludic" anchor="right" secondary="false" icon="/icons/ludicToolWindow.svg"
+                    factoryClass="io.ludic.ide.project.LudicToolWindowFactory"/>
         <runLineMarkerContributor language="Ludic" implementationClass="io.ludic.ide.project.LudicManifestLineMarker"/>
         <completion.contributor language="Ludic" implementationClass="io.ludic.ide.project.LudicManifestCompletion" order="first"/>
         <lang.documentationProvider language="Ludic" implementationClass="io.ludic.ide.project.LudicManifestDocumentation" order="first"/>

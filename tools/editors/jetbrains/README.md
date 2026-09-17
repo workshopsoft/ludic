@@ -17,7 +17,7 @@ packages cleanly can still fail to load:
   scheduled-for-removal API usages.
 - `./gradlew runIde` boots a real IDEA 2025.3 with the plugin installed. The
   sandbox log line to look for is
-  `Loaded custom plugins: LSP4IJ (0.20.1), Ludic (1.5.0)` in
+  `Loaded custom plugins: LSP4IJ (0.20.1), Ludic (1.6.0)` in
   `.intellijPlatform/sandbox/Ludic/IC-2025.3/log/idea.log`.
 
 **If the plugin does not appear in Settings -> Plugins after installing**, the
@@ -35,7 +35,7 @@ as the error message, which is not obvious the first time you see it:
 ```bash
 export JAVA_HOME=$(/usr/libexec/java_home -v 21)     # macOS
 cd tools/editors/jetbrains
-./gradlew buildPlugin        # -> build/distributions/Ludic-1.5.0.zip
+./gradlew buildPlugin        # -> build/distributions/Ludic-1.6.0.zip
 ./gradlew runIde             # try it in a sandbox IDE
 ```
 
@@ -70,6 +70,12 @@ LSP4IJ is a required dependency; the IDE offers to install it for you.
 - **Project**: File | New | Project | Ludic (runs `ludic new`), File | New |
   Ludic File (program, module, test), Tools | Ludic (run, build, test, fmt,
   get, pack, bundle, clean, doctor).
+- **Ludic tool window** (right side, like Gradle's): the package's overview; its
+  commands, scripts and hooks, run by double-click; its dependencies against
+  `package.lock.ludic` (locked version, fetched or not, indirect ones) with Fetch,
+  Update, Verify, Vendor, Add and Remove; the app preview; the asset roots. The bar
+  over `package.ludic` only appears when something needs doing (fetch, or no
+  toolchain found).
 
 There is no debugger: `ludicc` does not emit debug info yet.
 

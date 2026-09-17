@@ -352,39 +352,7 @@ class LudicManifestDocumentation : AbstractDocumentationProvider() {
 
     /** The app the `app` lines describe, as `ludic bundle` would build it. */
     private fun appPreview(file: PsiFile, highlight: String?): String {
-        val m = LudicManifest.parse(file.text)
-        val app = m.app
-        val name = app["name"] ?: m.module?.substringAfterLast('/') ?: file.virtualFile?.parent?.name ?: "app"
-        fun img(key: String, size: Int): String? {
-            val f = app[key]?.let { resolveManifestPath(file, it) }?.takeIf { it.isFile } ?: return null
-            return "<img src='${f.toURI()}' width='$size' height='$size'>"
-        }
-        fun mark(k: String, v: String) = if (k == highlight) "<b>$v</b>" else v
-        return buildString {
-            append("<div class='definition'><pre>").append(esc(name)).append(".app</pre></div>")
-            append("<div class='content'><table><tr><td valign='top'>")
-            append(img("icon", 64) ?: "")
-            append("</td><td valign='top'><p><b>").append(esc(name)).append("</b></p><p>")
-            append(esc(app["id"] ?: "(no bundle id)")).append("<br>version ")
-            append(esc(app["version"] ?: m.version ?: "0.1.0"))
-            app["category"]?.let { append("<br>").append(esc(it.removePrefix("public.app-category."))) }
-            app["min_macos"]?.let { append("<br>macOS ").append(esc(it)).append("+") }
-            append("</p></td></tr></table>")
-            app["splash"]?.let { s ->
-                val f = resolveManifestPath(file, s)
-                val bg = app["splash_bg"] ?: "#000000"
-                append("<p>Splash</p><table><tr><td bgcolor='").append(esc(bg)).append("'>")
-                if (f?.isFile == true) append("<img src='").append(f.toURI()).append("' width='240'>") else append("&nbsp;missing: ").append(esc(s))
-                append("</td></tr></table>")
-            }
-            append("</div><table class='sections'>")
-            for ((k, help) in LudicManifest.APP_KEYS) {
-                val v = app[k] ?: continue
-                val shown = if (k == "splash_bg") "<span style='background-color:${esc(v)}'>&nbsp;&nbsp;&nbsp;&nbsp;</span> ${esc(v)}" else esc(v)
-                row(mark(k, k), mark(k, shown) + "<br><span class='grayed'>${esc(help)}</span>")
-            }
-            append("</table>")
-            m.entry?.let { append("<div class='bottom'>entry ").append(esc(it)).append("</div>") }
-        }
+        val dir = file.virtualFile?.parent?.path?.let(::File)
+        return LudicAppPreview.html(LudicManifest.parse(file.text), dir, highlight)
     }
 }

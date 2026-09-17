@@ -5,6 +5,7 @@ import com.intellij.icons.AllIcons
 import com.intellij.ide.IconProvider
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditor
@@ -18,6 +19,7 @@ import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.newvfs.BulkFileListener
 import com.intellij.openapi.vfs.newvfs.events.VFileEvent
+import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
@@ -72,12 +74,11 @@ internal data class ManifestLine(val index: Int, val range: TextRange, val text:
 }
 
 /**
- * The bar across the top of package.ludic and package.lock.ludic.
- *
- * On the manifest: the package's identity and the commands that act on it,
- * turning into a prompt to fetch when the lock is missing or older than the
- * manifest, the way a build-file sync does. On the lock: a reminder that it is
- * generated, with the commands that regenerate and check it.
+ * The bar across the top of package.ludic and package.lock.ludic, shown only
+ * when something needs doing: the toolchain is missing, or the dependencies
+ * need fetching (the way a build-file sync prompts). Everything else — the
+ * package overview, commands, scripts, dependencies, app — lives in the Ludic
+ * tool window, which the lock's bar also points to.
  */
 class LudicPackageNotificationProvider : EditorNotificationProvider, DumbAware {
     override fun collectNotificationData(project: Project, file: VirtualFile): Function<in FileEditor, out JComponent?>? {
@@ -89,40 +90,20 @@ class LudicPackageNotificationProvider : EditorNotificationProvider, DumbAware {
 
         val text = FileDocumentManager.getInstance().getCachedDocument(file)?.charsSequence
             ?: runCatching { String(file.contentsToByteArray(), Charsets.UTF_8) }.getOrNull() ?: return null
-        val manifest = LudicManifest.parse(text)
-        val stale = LudicManifest.staleReason(File(dir), manifest)
+        val stale = LudicManifest.staleReason(File(dir), LudicManifest.parse(text))
+        val reason = bannerReason(cli != null, stale) ?: return null
         return Function { editor ->
-            val panel = if (stale != null) EditorNotificationPanel(editor, EditorNotificationPanel.Status.Warning)
-            else EditorNotificationPanel(editor, EditorNotificationPanel.Status.Info)
+            val panel = EditorNotificationPanel(editor, EditorNotificationPanel.Status.Warning)
             panel.icon(LudicPackageIcons.MANIFEST)
-            val name = manifest.module ?: File(dir).name
-            val ver = manifest.version?.let { " $it" } ?: ""
-            val deps = manifest.requires.size.let { if (it == 1) "1 dependency" else "$it dependencies" }
-            val entry = manifest.entry?.let { " · entry $it" } ?: ""
-            panel.text = when {
-                cli == null -> "Ludic package $name$ver — the 'ludic' command was not found."
-                stale != null -> "$stale Fetch the dependencies so builds and code insight see them."
-                else -> "Ludic package $name$ver · $deps$entry"
-            }
+            panel.text = reason
             if (cli != null) {
-                val get = if (stale != null) "Fetch Dependencies" else "Fetch"
-                panel.createActionLabel(get) { runLudic(project, LudicCommand.CUSTOM, "get", dir) }
-                if (manifest.requires.isNotEmpty()) {
-                    panel.createActionLabel("Update All") { runLudic(project, LudicCommand.CUSTOM, "update", dir) }
-                    panel.createActionLabel("Verify") { runLudic(project, LudicCommand.CUSTOM, "verify", dir) }
-                }
-                panel.createActionLabel("Run") { runLudic(project, LudicCommand.RUN, "", dir) }
-                panel.createActionLabel("Test") { runLudic(project, LudicCommand.TEST, "", dir) }
-                panel.createActionLabel("Build") { runLudic(project, LudicCommand.BUILD, "", dir) }
-                panel.createActionLabel("Bundle") { runLudic(project, LudicCommand.CUSTOM, "bundle", dir) }
-                manifest.scripts.take(4).forEach { s ->
-                    panel.createActionLabel("▶ ${s.name}") { runLudic(project, LudicCommand.CUSTOM, "script ${s.name}", dir) }
-                }
+                panel.createActionLabel("Fetch Dependencies") { runLudic(project, LudicCommand.CUSTOM, "get", dir) }
             } else {
                 panel.createActionLabel("Set Paths…") {
                     ShowSettingsUtil.getInstance().showSettingsDialog(project, LudicConfigurable::class.java)
                 }
             }
+            panel.createActionLabel("Ludic Tool Window") { LudicToolWindowFactory.show(project) }
             panel
         }
     }
@@ -136,12 +117,18 @@ class LudicPackageNotificationProvider : EditorNotificationProvider, DumbAware {
                 OpenFileDescriptor(project, it).navigate(true)
             }
         }
-        if (hasCli) {
-            panel.createActionLabel("Regenerate") { runLudic(project, LudicCommand.CUSTOM, "get", dir) }
-            panel.createActionLabel("Verify Hashes") { runLudic(project, LudicCommand.CUSTOM, "verify", dir) }
-            panel.createActionLabel("Vendor") { runLudic(project, LudicCommand.CUSTOM, "vendor", dir) }
-        }
+        if (hasCli) panel.createActionLabel("Regenerate") { runLudic(project, LudicCommand.CUSTOM, "get", dir) }
+        panel.createActionLabel("Ludic Tool Window") { LudicToolWindowFactory.show(project) }
         panel
+    }
+
+    companion object {
+        /** The manifest bar's message, or null when there is nothing to prompt for. */
+        fun bannerReason(hasCli: Boolean, stale: String?): String? = when {
+            !hasCli -> "The 'ludic' command was not found, so this package cannot be run or fetched."
+            stale != null -> "$stale Fetch the dependencies so builds and code insight see them."
+            else -> null
+        }
     }
 }
 
@@ -152,7 +139,14 @@ class LudicManifestWatcher(private val project: Project) : BulkFileListener {
             val n = e.path.substringAfterLast('/')
             n == LudicManifest.FILE_NAME || n == LudicManifest.LOCK_NAME || n == "ludic_modules" || n == "vendor"
         }
-        if (relevant && !project.isDisposed) EditorNotifications.getInstance(project).updateAllNotifications()
+        if (!relevant || project.isDisposed) return
+        EditorNotifications.getInstance(project).updateAllNotifications()
+        // a package.ludic that just appeared makes the Ludic tool window available
+        if (events.any { it.path.endsWith("/" + LudicManifest.FILE_NAME) }) {
+            ApplicationManager.getApplication().invokeLater({
+                ToolWindowManager.getInstance(project).getToolWindow(LudicToolWindowFactory.ID)?.let { if (!it.isAvailable) it.isAvailable = true }
+            }, project.disposed)
+        }
     }
 }
 
