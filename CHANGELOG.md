@@ -7,6 +7,18 @@ change type. Preview the next one with `ludic dev release --dry-run`.
 A released section may carry a hand-written summary paragraph above its groups
 (v0.2.0 has one); the generated bullets below it are not edited by hand.
 
+## v0.21.1 — 2026-09-17
+
+### Fixes
+
+- A windowed game opens under its package's `app name`. `ludic build`, `ludic run` and
+  `ludic bundle` pass it to the compiler (`ludicc --title <name>`), so `game_title()` - the
+  window's first title - is the name the player knows rather than the `program` name, which
+  showed for up to two seconds before the renderer retitled the window. Without an `app name`
+  it is the `program` name, as before.
+- `Crypto.random_bytes`, `Crypto.random_hex`, `Crypto.random_u32` and `Uuid.*` draw from the
+  system CSPRNG on Windows (`RtlGenRandom`, advapi32). They read `/dev/urandom`, which Windows
+  does not have, and every byte came back zero.
 ## v0.21.0 — 2026-09-17
 
 ### Features
