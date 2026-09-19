@@ -41,6 +41,7 @@ out vec2 v_uv;
 out float v_seed;
 out vec2 v_rot;
 out float v_hull;
+out float v_quake;   // only aspens quake; written so model.frag can read it
 
 const float CELL = 16.0;
 float hash1(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
@@ -67,7 +68,7 @@ float heightSmooth(sampler2D tex, vec2 uv) {
   return (texture(tex, vec2(o0.x, o0.y)).r * s0.x + texture(tex, vec2(o1.x, o0.y)).r * s1.x) * s0.y
        + (texture(tex, vec2(o0.x, o1.y)).r * s0.x + texture(tex, vec2(o1.x, o1.y)).r * s1.x) * s1.y;
 }
-void cull() { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); v_wpos = vec3(0.0); v_nrm = vec3(0.0, 1.0, 0.0); v_uv = vec2(0.0); v_seed = 0.0; v_rot = vec2(0.0, 1.0); v_hull = 1.0; }
+void cull() { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); v_wpos = vec3(0.0); v_nrm = vec3(0.0, 1.0, 0.0); v_uv = vec2(0.0); v_seed = 0.0; v_rot = vec2(0.0, 1.0); v_hull = 1.0; v_quake = 0.0; }
 
 void main() {
 #ifdef TILES
@@ -198,6 +199,7 @@ void main() {
   v_uv = far ? vec2(a_uv.x, 0.45 + 0.2 * a_uv.y) : a_uv;
   v_seed = seed;
   v_rot = vec2(s, c_);
+  v_quake = 0.0;
   v_hull = (dist > 2.0 || far || (u_dbg & 2) != 0) ? -1.0 : 1.0;   // no back-face flip, no rounding past arm's reach
   gl_Position = u_proj * u_view * vec4(w, 1.0);
 }

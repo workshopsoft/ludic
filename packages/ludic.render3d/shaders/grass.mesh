@@ -38,6 +38,7 @@ out vec2 v_uv[];
 out float v_seed[];
 out vec2 v_rot[];
 out float v_hull[];
+out float v_quake[];   // grass does not quake; written so model.frag can read it
 
 const float CELL = 16.0;
 float hash1(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
@@ -153,6 +154,7 @@ void main() {
         v_seed[o] = seed;
         v_rot[o] = vec2(s, c_);
         v_hull[o] = hull;
+        v_quake[o] = 0.0;
       }
     }
     for (int q = 0; q < ROWS - 1; q++) {

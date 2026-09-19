@@ -21,6 +21,7 @@ out vec2 v_uv;
 out float v_seed;
 out vec2 v_rot;
 out float v_hull;
+out float v_quake;   // only aspens quake; written so model.frag can read it
 void main() {
   mat4 m = u_model;
   if (u_skinned > 0.5) {
@@ -43,6 +44,7 @@ void main() {
   v_seed = 0.0701;
   v_rot = vec2(0.0, 1.0);
   v_hull = 1.0;
+  v_quake = 0.0;
 #ifdef SHADOW_PASS
   gl_Position = u_light_vp * w;
 #else

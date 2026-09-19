@@ -4,6 +4,7 @@ in vec2 v_uv;
 in float v_seed;
 in vec2 v_rot;
 in float v_hull;
+in float v_quake;   // an aspen leaf turning its pale side up
 uniform float u_model_h;
 out vec4 o_color;
 uniform sampler2D u_diff;
@@ -147,6 +148,11 @@ void main() {
   if (u_model_h > 2.0) arm.r *= mix(0.5, 1.0, v_hull);
 #endif
   alb *= u_tint * (0.85 + 0.3 * fract(v_seed * 7.13));
+  // The quake made visible. A turning aspen leaf shows its pale, almost white underside, so
+  // the crown does not merely move - it GLITTERS, leaf by leaf, and that is what reads at a
+  // distance and in a still frame. Toward the viewer is the pale side; away is the face.
+  if (v_quake > 0.0) alb = mix(alb, alb * 0.55 + vec3(0.42, 0.45, 0.33), min(v_quake * 2.6, 0.75));
+  else if (v_quake < 0.0) alb *= 1.0 + v_quake * 0.28;   // the dark half stays gentle: a crown should shimmer, not flicker
 #if defined(FOLIAGE) && !defined(BLADE)
   // Per-plant HUE, not only per-plant brightness. The line above varies value by +-15% and
   // nothing else, so a stand of one species was one colour at fifteen different exposures -

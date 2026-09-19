@@ -19,6 +19,7 @@ property Layer {
   imp:      Impostor,
   foliage:  bool = false,
   wind:     int = 0,        # float bits
+  flutter:  int = 0,        # float bits; per-leaf tremble (aspen), 0 = none
   tint:     words,
   inst:     words,          # INST_FLOATS per instance
   count:    int = 0,
@@ -128,6 +129,11 @@ function model_cross_card() -> Model {
 }
 
 # A card layer: crossed cards carrying a single-tile atlas baked from `scan`.
+# An aspen leaf hangs on a flattened stalk and turns in air nothing else feels. Give the
+# layer a flutter and its leaves tremble and flash their pale undersides; everything else
+# leaves it at zero. It is per layer rather than per instance because a species quakes or
+# it does not.
+function layer_flutter(l: Layer, v: int) -> void { l.flutter = v }
 function layer_cards(scan: Model, cap: int, wind: int, cull: int) -> Layer {
   let l = layer_new(model_cross_card(), cap, true, wind, F_ZERO, cull)
   l.card = true
@@ -473,6 +479,7 @@ function impostor_bake(model: Model, tiles: int, tw: int, th: int) -> Impostor {
     u_mat4(gpu_uniform(bake, "u_view"), view)
     u_mat4(gpu_uniform(bake, "u_proj"), proj)
     u_f(gpu_uniform(bake, "u_wind"), F_ZERO)
+    u_f(gpu_uniform(bake, "u_flutter"), F_ZERO)
     gpu_viewport(t * tw, 0, tw, th)
     for i in 0 .. len(model.prims) {
       let pr = model.prims[i]
@@ -1032,6 +1039,7 @@ function layer_draw_model(l: Layer, model: Model, vb: int, cnt: int, card: bool,
   if l.grounded { terrain_bind_height(p) }
   u_f(gpu_uniform(p, "u_time"), r3d_time)
   u_f(gpu_uniform(p, "u_wind"), l.wind)
+  u_f(gpu_uniform(p, "u_flutter"), l.flutter)
   var mh = F_ZERO
   if not card and l.foliage { mh = model.height }
   u_f(gpu_uniform(p, "u_model_h"), mh)
@@ -1154,6 +1162,7 @@ function layer_draw_depth(l: Layer, model: Model, vb: int, cnt: int) -> void {
   if l.grounded { terrain_bind_height(p) }
   u_f(gpu_uniform(p, "u_time"), r3d_time)
   u_f(gpu_uniform(p, "u_wind"), l.wind)
+  u_f(gpu_uniform(p, "u_flutter"), l.flutter)
   u_f(gpu_uniform(p, "u_model_h"), model.height)
   u_mat4(gpu_uniform(p, "u_view"), cam_view)
   u_mat4(gpu_uniform(p, "u_proj"), cam_proj)
@@ -1298,6 +1307,7 @@ function carpet_bake(layers: []Layer, count: int, tile: int, res: int) -> int {
   u_mat4(gpu_uniform(bake, "u_view"), view)
   u_mat4(gpu_uniform(bake, "u_proj"), proj)
   u_f(gpu_uniform(bake, "u_wind"), F_ZERO)
+  u_f(gpu_uniform(bake, "u_flutter"), F_ZERO)
   u_f(gpu_uniform(bake, "u_time"), F_ZERO)
   for li in 0 .. len(layers) {
     let l = layers[li]

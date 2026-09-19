@@ -54,8 +54,15 @@ out vec2 v_rot;
 // have been shaded since SpeedTree; without it a card crown reads as frosted.
 uniform float u_model_h;     // the model's height (m), 0 = not a crown
 out float v_hull;            // 0 at the crown's axis .. 1 at its rim
+// An aspen leaf hangs on a flattened stalk, so it twists in air a conifer does not feel at
+// all. u_flutter is per layer: 0 for everything else, and the quake is written out as a
+// varying so the fragment stage can flash the leaf's pale underside as it turns - which is
+// the part you actually SEE. A still frame of a tremble is a still frame of nothing.
+uniform float u_flutter;
+out float v_quake;
 void main() {
   float s = i_rot.x, c = i_rot.y;
+  v_quake = 0.0;
   vec3 p = a_pos * i_pos.w;
 #ifdef CARD
   p = vec3(p.x * u_card_w, p.y * u_card_h, p.z * u_card_w);
@@ -81,8 +88,28 @@ void main() {
   // read at the tree's own place in the world, so a gust crosses the grass and goes on into
   // the trees. `stiff` is 0.35 because a bole resists what a blade cannot.
   float sway = windSway(i_pos.xz, u_time, ph, 0.35) * u_wind * i_rot.w;
-  p.x += sway * hgt * hgt * 0.35;
-  p.z += sway * hgt * hgt * 0.15 * cos(ph * 0.7);
+  // The bend is a FRACTION OF THE TREE, not a number of metres. `hgt * hgt` in metres is
+  // fine for a 40 cm flower and ruinous for a 14 m aspen - it put ten metres of sideways
+  // into a trunk and bent it over like a fishing rod, which is what standing under one and
+  // looking up finally showed. Normalised, the tip moves a few per cent of the tree's own
+  // height whatever the tree is, and the base does not move at all.
+  float th = max(u_model_h * i_pos.w, 0.001);
+  float hn = (u_model_h > 2.0) ? clamp(hgt / th, 0.0, 1.0) : min(hgt, 1.0);
+  float reach = (u_model_h > 2.0) ? th * 0.22 : 0.35;
+  p.x += sway * hn * hn * reach;
+  p.z += sway * hn * hn * reach * 0.43 * cos(ph * 0.7);
+  if (u_flutter > 0.0) {
+    // per-leaf, not per-tree: the phase comes from the vertex's own place on the card, so
+    // neighbouring leaves are never in step - a crown that trembles as one block reads as
+    // the whole tree shivering.
+    float qp = u_time * 8.5 + a_pos.x * 11.3 + a_pos.z * 9.7 + a_pos.y * 4.1 + i_rot.z * 6.2831;
+    float q = sin(qp) * 0.65 + sin(qp * 1.73 + 1.1) * 0.35;
+    float amp = u_flutter * (0.40 + 0.60 * windGust(i_pos.xz, u_time)) * smoothstep(0.0, 1.2, hgt);
+    p.x += q * amp * 0.10;
+    p.y += q * amp * 0.05;
+    p.z += cos(qp * 0.9) * amp * 0.10;
+    v_quake = q * amp;
+  }
 #endif
   v_hull = 1.0;
   if (u_model_h > 2.0) {
