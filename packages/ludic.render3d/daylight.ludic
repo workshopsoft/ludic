@@ -37,6 +37,7 @@ var hand_pos: words = null
 var hand_color: words = null
 var hand_dir: words = null
 var hand_cone: int = 0
+var hand_reach: int = 0          # metres the hand light reaches (float bits)
 var day_overcast: int = 0          # 0 clear .. 1 a low grey sky (float bits): dims the sun and the sky's light
 var day_flash: int = 0             # a lightning flash this frame (0..1): the sun brightens for it
 var day_fog_mul: int = 0x3F800000  # multiplies the base fog density (rain and snow thicken the air)
@@ -48,7 +49,7 @@ function daylight_init() -> void {
   fire_pos = v3_new(F_ZERO, fi(-1000), F_ZERO)
   fire_color = v3_new(F_ZERO, F_ZERO, F_ZERO)
   day_moon_dir = v3_new(F_ZERO, F_ONE, F_ZERO)
-  hand_pos = v3_new(F_ZERO, fi(-1000), F_ZERO);  hand_color = v3_new(F_ZERO, F_ZERO, F_ZERO);  hand_dir = v3_new(F_ZERO, F_ZERO, f_neg(F_ONE));  hand_cone = f_neg(F_TWO)
+  hand_pos = v3_new(F_ZERO, fi(-1000), F_ZERO);  hand_color = v3_new(F_ZERO, F_ZERO, F_ZERO);  hand_dir = v3_new(F_ZERO, F_ZERO, f_neg(F_ONE));  hand_cone = f_neg(F_TWO);  hand_reach = fi(12)
   day_light = F_ONE
 }
 
@@ -274,15 +275,22 @@ function daylight_fire(x: int, y: int, z: int, strength: int) -> void {
 }
 
 # the light in the hand: a point light (cone < -1) or a cone along dir (cone = cos half-angle)
-function daylight_hand(x: int, y: int, z: int, dx: int, dy: int, dz: int, cone: int, r: int, g: int, b: int) -> void {
+# A torch or a flashlight in the hand. `reach` is how far it carries, in metres: the
+# falloff is a gentle power out to it and nothing past it (lighting.glsl handLight), which
+# is what a pool of firelight looks like. It used to be a windowed inverse square with the
+# window and the scale both hard-coded, so every hand light in every game had the reach of
+# a candle whatever it was meant to be.
+function daylight_hand(x: int, y: int, z: int, dx: int, dy: int, dz: int, cone: int, reach: int, r: int, g: int, b: int) -> void {
   v3_set(hand_pos, x, y, z);  v3_set(hand_dir, dx, dy, dz);  hand_cone = cone
   v3_set(hand_color, r, g, b)
+  hand_reach = reach
 }
 function daylight_bind(prog: int) -> void {
   u_v3(gpu_uniform(prog, "u_hand_pos"), hand_pos)
   u_v3(gpu_uniform(prog, "u_hand_color"), hand_color)
   u_v3(gpu_uniform(prog, "u_hand_dir"), hand_dir)
   u_f(gpu_uniform(prog, "u_hand_cone"), hand_cone)
+  u_f(gpu_uniform(prog, "u_hand_reach"), hand_reach)
   u_v3(gpu_uniform(prog, "u_ibl_scale"), day_ibl)
   u_v3(gpu_uniform(prog, "u_moon_dir"), day_moon_dir)
   u_f(gpu_uniform(prog, "u_moon_phase"), day_moon_phase)

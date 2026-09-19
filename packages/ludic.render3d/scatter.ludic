@@ -364,9 +364,9 @@ function scatter_init() -> void {
   # R3D_DUMP_ATLAS: every impostor and card atlas the run bakes, to build/atlas_<n>_{color,alpha}.ppm
   sc_debug_dump = r3d_env_has("R3D_DUMP_ATLAS")
   sc_prog = r3d_program("model.vert", "model.frag", "")
-  sc_prog_fol = r3d_program("model.vert", "model.frag", "#define FOLIAGE\n#define WIND\n#define ALPHA_TEST\n")
-  sc_prog_fol_depth = r3d_program("model.vert", "depth.frag", "#define FOLIAGE\n#define WIND\n#define ALPHA_TEST\n")
-  sc_prog_fol_eq = r3d_program("model.vert", "model.frag", "#define FOLIAGE\n#define WIND\n#define EQ_PASS\n")
+  sc_prog_fol = r3d_program("model.vert", "model.frag", "#define FOLIAGE\n#define WIND\n#define ALPHA_TEST\n#define NEAR_FADE\n")
+  sc_prog_fol_depth = r3d_program("model.vert", "depth.frag", "#define FOLIAGE\n#define WIND\n#define ALPHA_TEST\n#define NEAR_FADE\n")
+  sc_prog_fol_eq = r3d_program("model.vert", "model.frag", "#define FOLIAGE\n#define WIND\n#define EQ_PASS\n#define NEAR_FADE\n")
   sc_prog_wind = r3d_program("model.vert", "model.frag", "#define WIND\n")
   sc_prog_blade = r3d_program("model.vert", "model.frag", "#define FOLIAGE\n#define WIND\n#define BLADE\n")
   sc_prog_flower = r3d_program("model.vert", "model.frag", "#define FOLIAGE\n#define WIND\n#define FLOWER\n")

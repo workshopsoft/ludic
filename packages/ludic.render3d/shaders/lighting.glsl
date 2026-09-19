@@ -63,6 +63,7 @@ uniform vec3 u_hand_pos;          // a torch or flashlight in the hand
 uniform vec3 u_hand_color;
 uniform vec3 u_hand_dir;
 uniform float u_hand_cone;        // cos of the half-angle; <= -1: a point light
+uniform float u_hand_reach;       // metres to where it dies out entirely
 vec3 skyIrradianceRaw(vec3 n) { return texture(u_irradiance, equirectUV(n)).rgb * u_ibl_scale; }
 vec3 skyIrradiance(vec3 n) {
   vec3 up = skyIrradianceRaw(vec3(n.x, max(n.y, 0.0), n.z));
@@ -88,7 +89,13 @@ vec3 handLight(vec3 wpos, vec3 n, vec3 albedo) {
   vec3 d = u_hand_pos - wpos;
   float r2 = max(dot(d, d), 0.04);
   vec3 l = d * inversesqrt(r2);
-  float att = smoothstep(26.0, 6.0, sqrt(r2)) / (0.5 + r2 * 0.35);
+  // A torch is not a point source in free air, and lighting it as one made it useless.
+  // The old curve was an inverse square windowed off between 26 and 6 metres: two per cent
+  // of its own near field by ten metres out, so carrying fire at night lit your boots and
+  // nothing else. This is a reach and a gentle power falloff instead - about nine tenths at
+  // a metre, half at half the reach, a tenth at nine tenths of it, nothing past it - which
+  // is a pool of light with a gradient in it rather than a hotspot with a cliff.
+  float att = pow(max(1.0 - sqrt(r2) / max(u_hand_reach, 0.001), 0.0), 1.25);
   if (u_hand_cone > -1.0) {
     float c = dot(-l, u_hand_dir);
     att *= smoothstep(u_hand_cone, u_hand_cone + 0.12, c);

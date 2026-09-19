@@ -5,6 +5,7 @@ in float v_seed;
 in vec2 v_rot;
 in float v_hull;
 in float v_quake;   // an aspen leaf turning its pale side up
+in float v_near;    // 0 in the camera's face, 1 past arm's length (NEAR_FADE)
 uniform float u_model_h;
 out vec4 o_color;
 uniform sampler2D u_diff;
@@ -38,6 +39,10 @@ void main() {
   //  early depth rejection off and bring the overdraw back, and the prepass has already
   //  cut both the clip plane and the alpha)
   if (v_wpos.y < u_clip_y) discard;
+#ifdef NEAR_FADE
+  // the same dither as the prepass, for the draws that have no prepass in front of them
+  if (v_near < 0.999 && v_near < fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453)) discard;
+#endif
 #endif
   vec3 N = normalize(v_nrm);
   if (!gl_FrontFacing && v_hull >= 0.0) N = -N;

@@ -59,6 +59,7 @@ out float v_hull;            // 0 at the crown's axis .. 1 at its rim
 // varying so the fragment stage can flash the leaf's pale underside as it turns - which is
 // the part you actually SEE. A still frame of a tremble is a still frame of nothing.
 uniform float u_flutter;
+out float v_near;                // 0 in the camera's face, 1 past arm's length (NEAR_FADE)
 out float v_quake;
 void main() {
   float s = i_rot.x, c = i_rot.y;
@@ -104,7 +105,14 @@ void main() {
     // the whole tree shivering.
     float qp = u_time * 8.5 + a_pos.x * 11.3 + a_pos.z * 9.7 + a_pos.y * 4.1 + i_rot.z * 6.2831;
     float q = sin(qp) * 0.65 + sin(qp * 1.73 + 1.1) * 0.35;
-    float amp = u_flutter * (0.40 + 0.60 * windGust(i_pos.xz, u_time)) * smoothstep(0.0, 1.2, hgt);
+    // ...and only out on the CROWN. The mask was height alone, so on an aspen every vertex
+    // of a ten metre bole above 1.2 m trembled along with the leaves and the TRUNK moved
+    // like cloth. What separates a leaf from a bole is not height, it is distance from the
+    // model's own centre line: the leaves are out at the edge of the crown and the trunk is
+    // on the axis. Small plants keep the old mask - a flower is all leaf.
+    float rmask = 1.0;
+    if (u_model_h > 2.0) rmask = smoothstep(0.22, 0.75, length(a_pos.xz) / max(u_model_h * 0.22, 0.05));
+    float amp = u_flutter * (0.40 + 0.60 * windGust(i_pos.xz, u_time)) * smoothstep(0.0, 1.2, hgt) * rmask;
     p.x += q * amp * 0.10;
     p.y += q * amp * 0.05;
     p.z += cos(qp * 0.9) * amp * 0.10;
@@ -133,5 +141,25 @@ void main() {
   gl_Position = u_light_vp * vec4(w, 1.0);
 #else
   gl_Position = u_proj * u_view * vec4(w, 1.0);
+#endif
+  // Leaves in the camera's face. A third-person camera walks through a crown and the
+  // branch between it and the body is an opaque wall a metre from the lens; in first
+  // person it is the whole screen. Tree foliage within arm's length of the CAMERA fades
+  // out - w is the view-space depth for a perspective projection, so this costs nothing
+  // and needs no uniform. Blades, cards and flowers are excluded on purpose: they live at
+  // the player's feet, they are always this close, and fading them opens a hole in the
+  // meadow. The shadow pass keeps every leaf, or a tree would stop shading the ground it
+  // is standing on as you walked up to it.
+  v_near = 1.0;
+#if defined(NEAR_FADE) && !defined(SHADOW_PASS)
+  // The BOLE is never faded, only what hangs off it. A conifer's trunk and its needle
+  // cards are one mesh drawn by one program, so the first cut dissolved the trunk into a
+  // dither pattern as you walked up to it - a solid tree you can see through reads as a
+  // fault, where a branch getting out of your way reads as the camera being polite. Same
+  // signal as the quake's crown mask: the trunk is on the model's axis and the foliage is
+  // out from it.
+  float ax = 1.0;
+  if (u_model_h > 2.0) ax = smoothstep(0.12, 0.30, length(a_pos.xz) / max(u_model_h * 0.22, 0.05));
+  v_near = mix(1.0, clamp((gl_Position.w - 0.5) / 1.7, 0.0, 1.0), ax);
 #endif
 }

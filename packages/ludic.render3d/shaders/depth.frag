@@ -12,9 +12,17 @@
 // because without MSAA a fragment is either there or not.
 in vec3 v_wpos;
 in vec2 v_uv;
+in float v_near;
 uniform sampler2D u_diff;
 void main() {
   if (v_wpos.y < u_clip_y) discard;
+#ifdef NEAR_FADE
+  // Leaves in the camera's face (model.vert's v_near). Dithered out rather than blended:
+  // no sorting, no second pass and no halo, and because it happens in the PREPASS the lit
+  // pass never sees those pixels either - its equal-depth test simply finds nothing to
+  // match. A branch a metre from the lens stops being an opaque wall in front of the body.
+  if (v_near < 0.999 && v_near < fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453)) discard;
+#endif
   vec4 d = texture(u_diff, v_uv);
   float lod = textureQueryLod(u_diff, v_uv).x;
   float a = min(d.a * (1.0 + 0.45 * max(lod, 0.0)), 1.0);

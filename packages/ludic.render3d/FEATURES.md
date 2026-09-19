@@ -90,7 +90,8 @@ Characters and moving objects
 61. Static collision: ground circles in a cell grid with push-out and a segment test — `collide.ludic`
 62. Cut-out and emissive actors (a flame's cards) — `actor.ludic`, `shaders/model.frag` `u_emissive`
 63. Per-instance skin clones (a herd posed individually), per-part tints and hidden parts on actors, uniform-location caching with frustum and distance culling — `skin.ludic` `skin_clone`, `actor.ludic`
-64. A second point / cone light (a torch or flashlight in the hand) — `daylight.ludic` `daylight_hand`, `shaders/lighting.glsl` `handLight`
+64. A second point / cone light (a torch or flashlight in the hand) with a reach in metres and a gentle falloff to it — `daylight.ludic` `daylight_hand`, `shaders/lighting.glsl` `handLight`
+64a. Tree foliage dithered out inside arm's length of the camera, in the depth prepass — `shaders/model.vert` `v_near`, `shaders/depth.frag`, `#define NEAR_FADE`
 65. Auto-exposure adapted on the GPU: a 1x1 pass eases last frame's value toward key / mean and the tonemapper samples it, so nothing is read back (a pixel-buffer read still synchronised on Apple's GL) — `post.ludic` `post_measure`, `shaders/adapt.frag`
 66. A PPM reader with box-filtered downscale (photo thumbnails) and word-wrapped overlay text — `texture.ludic` `tex_load_ppm`, `overlay.ludic` `ov_text_wrap`
 67. The overlay batches a whole frame into one upload and draws per texture range with optional scissor clips (per-change uploads stalled the driver: 40 ms -> 25 ms), plus nine-slice, rotated, line, disc and arc primitives — `overlay.ludic` `ov_flush`, `ov_clip`, `ov_nine`, `ov_sub_rot`, `ov_line`, `ov_disc`, `ov_arc`
