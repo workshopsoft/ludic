@@ -298,7 +298,7 @@ vec3 groundShade(vec3 p, vec3 N, float slope, float dist, float viewDepth, bool 
   // mountain the range is named for. The file's own rule a hundred lines up says the cheap
   // tier must keep the near tier's MEAN COLOUR or the boundary shows as a ring; this is that
   // rule applied to the one material where the mean is not grey.
-  vec3 rA = vec3(0.26, 0.13, 0.10), rN = vec3(0.0, 1.0, 0.0), rR = vec3(1.0, 0.8, 0.0);
+  vec3 rA = vec3(0.24, 0.085, 0.065), rN = vec3(0.0, 1.0, 0.0), rR = vec3(1.0, 0.8, 0.0);
   vec3 sA = vec3(0.86, 0.88, 0.92), sN = vec3(0.0, 0.0, 1.0), sR = vec3(1.0, 0.55, 0.0);
   vec3 pA, pN, pR;
   vec2 uvg = p.xz * 0.28;
@@ -360,7 +360,11 @@ vec3 groundShade(vec3 p, vec3 N, float slope, float dist, float viewDepth, bool 
     // These were tuned while 55% of a grey photograph was mixed over them, so they had to
     // be dark and timid to survive it; with the rock now mostly its own colour they can be
     // the colour the range is named for.
-    rA *= mix(vec3(0.38, 0.17, 0.13), vec3(0.58, 0.31, 0.23), fbmC(cheap, p.xz * 0.003, 2) * 0.5 + 0.5);
+    // Darker AND more saturated, which are different knobs and I moved the wrong one first:
+    // raising the magnitude from 0.14 to 0.38 made the face lighter, not redder, and it came
+    // out pale tan. The albedo debug view measured red:blue at 1.56 where maroon mudstone wants
+    // nearer 4, so what this needed was the GREEN and BLUE pulled down, not the red pushed up.
+    rA *= mix(vec3(0.30, 0.085, 0.065), vec3(0.47, 0.155, 0.115), fbmC(cheap, p.xz * 0.003, 2) * 0.5 + 0.5);
   }
   if (needSnow > 0.002) {
     sA = textureGrad(u_snow_d, p.xz * 0.25, dpx.xz * 0.25, dpy.xz * 0.25).rgb * 0.8;
