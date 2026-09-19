@@ -13,6 +13,11 @@ var water_cz: int = 0
 var water_ex: int = 0
 var water_ez: int = 0
 var water_on: bool = false
+# Where a body is standing in the water and how hard it is disturbing it. The game sets it;
+# strength 0 means nobody is in the water and the whole term is skipped.
+var wt_wade_x: int = 0
+var wt_wade_z: int = 0
+var wt_wade_s: int = 0
 var water_refl: Target = null            # the world mirrored in the surface, half resolution
 var water_refl_div: int = 2              # R3D_REFLDIV overrides: 2 = half res, 4 = quarter
 var water_saved: words = null            # the real camera's matrices, restored after the pass
@@ -330,6 +335,18 @@ function water_draw(depth_tex: int) -> void {
   # the window's size sent the refraction and depth reads into the wrong corner of the
   # frame, and the lake showed a squashed copy of it instead of its own bed.
   u_f2(gpu_uniform(p, "u_screen"), fi(post_w), fi(post_h))
+  # Read into locals first. Passing these three globals straight into the call gives the
+  # shader wrong values - the whole lake churns instead of a patch of it - and a single dead
+  # `let junk = wt_wade_x` above the same unchanged call is enough to make it correct again.
+  # It is a codegen fault, not a fact about this shader: the values print identically either
+  # way at the line above, and it is not the position in the function (it does the same bound
+  # right after gpu_use_program) nor the nested gpu_uniform call (hoisting that changes
+  # nothing). Verified by picture, both backends. Read a global into a local before handing it
+  # to a uniform call.
+  let wx = wt_wade_x
+  let wz = wt_wade_z
+  let ws = wt_wade_s
+  u_f3(gpu_uniform(p, "u_wade"), wx, wz, ws)
   var ron = F_ZERO
   if water_refl != null and wb_primary >= 0 {
     # bind on its own unit first: generating the mip chain re-binds the texture on the active unit,

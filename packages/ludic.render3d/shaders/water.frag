@@ -2,6 +2,7 @@
 in vec3 v_wpos;
 out vec4 o_color;
 uniform mat4 u_view;
+uniform vec3 u_wade;       // x, z, strength: a body standing in the water
 uniform sampler2D u_depth;        // scene depth (resolved) for shore softness / depth tint
 uniform mat4 u_inv_vp;
 uniform vec2 u_screen;
@@ -40,6 +41,24 @@ void main() {
   float dist = length(u_cam_pos - v_wpos);
   vec3 n = rippleNormal(v_wpos.xz, u_time);
   n = normalize(mix(n, vec3(0, 1, 0), smoothstep(60.0, 400.0, dist)));   // flat sooner: past a few tens of metres a still lake has no texture at all
+  // ---- A BODY IN THE WATER ------------------------------------------------------------
+  // You waded into a mountain lake and the surface did not notice. Rings spreading from the
+  // legs and a patch of churn around them is the whole of it, and it is the difference
+  // between standing in water and standing in a picture of water.
+  //
+  // Applied AFTER the distance flattening on purpose: the flattening is there because a
+  // sheltered lake really is glass at forty metres, but what you yourself are doing to the
+  // water is by definition within arm's reach, and it must not be flattened away.
+  if (u_wade.z > 0.0) {
+    float rd = length(v_wpos.xz - u_wade.xy);
+    // rings travelling outward, dying off within a few metres
+    float ring = sin(rd * 6.5 - u_time * 8.0) * exp(-rd * 0.5);
+    // and the disturbed patch right at the body, which is not a ring but a mess
+    float churn = exp(-rd * 1.8) * (sin(u_time * 13.0 + rd * 9.0) * 0.5 + 0.5);
+    vec2 away = (rd > 1e-3) ? (v_wpos.xz - u_wade.xy) / rd : vec2(1.0, 0.0);
+    float amp = u_wade.z * (ring * 0.9 + churn * 0.7);
+    n = normalize(n + vec3(away.x * amp, 0.0, away.y * amp) * 0.55);
+  }
   // how deep the ground is under this pixel: from the scene depth
   vec2 suv = gl_FragCoord.xy / u_screen;
   float sd = texture(u_depth, suv).r;
