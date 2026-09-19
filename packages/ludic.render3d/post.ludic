@@ -56,6 +56,19 @@ var post_gi_strength: int = 0x3ECCCCCD     # 0.4
 var post_no_gi: bool = false
 var post_ldr: Target = null
 var post_depth_copy: Target = null
+# ---- volumetric light ----------------------------------------------------------------------
+# Half resolution on purpose: in-scattered light is smooth, a shaft has no sharp edge, and the
+# march is the whole cost of the pass. post_vol_steps is the quality dial; 0 switches it off
+# and the pass is skipped entirely rather than run at one step.
+var post_vol: Target = null
+var post_p_vol: int = 0
+var post_vol_steps: int = 0x41C00000        # 24
+var post_vol_density: int = 0x3B03126F      # 0.002
+var post_vol_falloff: int = 0x3BA3D70A      # 0.005
+var post_vol_far: int = 0x44480000          # 800 m
+var post_vol_g: int = 0x3F19999A            # 0.6: air throws light forward
+var post_vol_mist: int = 0                  # the day sets these two
+var post_vol_mist_h: int = 0x42200000       # 40 m
 var post_prev: Target = null       # last frame's scene colour, for the SSGI bounce only
 var post_scene: Target = null      # this frame's scene colour before the water, for refraction
 var post_frame: int = 0
@@ -75,7 +88,7 @@ function post_free() -> void {
   if post_hdr == null { return }
   if post_ms_fbo != 0 { gpu_fb_free(post_ms_fbo);  post_ms_fbo = 0 }
   target_free(post_hdr);  target_free(post_ao);  target_free(post_ao_blur);  target_free(post_ldr)
-  target_free(post_depth_copy);  target_free(post_prev);  target_free(post_scene)
+  target_free(post_depth_copy);  target_free(post_prev);  target_free(post_scene);  target_free(post_vol)
   for i in 0 .. len(post_bloom) { target_free(post_bloom[i]) }
   post_hdr = null
 }
@@ -136,6 +149,8 @@ function post_init(w: int, h: int) -> void {
   post_ldr = target_new(w, h, post_ldr_fmt(), GL_RGBA, GL_UNSIGNED_BYTE, false, GL_LINEAR)
   post_ldr_hdr = gpu_hdr_active()
   post_depth_copy = target_new(w, h, GL_R8, GL_RED, GL_UNSIGNED_BYTE, true, GL_NEAREST)
+  post_vol = target_new(max(w / 2, 1), max(h / 2, 1), GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, false, GL_LINEAR)
+  if post_p_vol == 0 { post_p_vol = r3d_program("fullscreen.vert", "volumetric.frag", "") }
   post_prev = target_new(w, h, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, false, GL_LINEAR)
   post_scene = target_new(w, h, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, false, GL_LINEAR)
   if post_p_sharp == 0 { post_p_sharp = r3d_program("fullscreen.vert", "sharpen.frag", "") }
@@ -276,6 +291,48 @@ function post_ssao_pass() -> void {
   r3d_bind_2d(post_p_ao_blur, "u_depth", 1, post_hdr.depth)
   u_f2(gpu_uniform(post_p_ao_blur, "u_texel"), fr(1, post_ao.w), fr(1, post_ao.h))
   mesh_draw(post_fs)
+}
+
+# The march, then the composite. It is added to the scene BEFORE bloom on purpose: a shaft of
+# light is a bright thing in the air and should bloom like one, and compositing it after the
+# bloom pyramid would give hard-edged rays with no glow at all.
+function post_volumetric_pass() -> void {
+  if post_vol_steps <= 0 { return }
+  if r3d_env_has("R3D_NOVOL") { return }
+  gpu_depth_test(false)
+  gpu_blend(false)
+  target_bind(post_vol)
+  gpu_use_program(post_p_vol)
+  r3d_bind_2d(post_p_vol, "u_depth", 0, post_hdr.depth)
+  shadow_bind(post_p_vol)
+  sky_bind_lighting(post_p_vol)
+  sky_bind_rot(post_p_vol)
+  fog_bind(post_p_vol)
+  u_mat4(gpu_uniform(post_p_vol, "u_inv_vp"), cam_inv_vp)
+  u_v3(gpu_uniform(post_p_vol, "u_cam_pos"), cam_pos)
+  u_v3(gpu_uniform(post_p_vol, "u_sun_dir"), sun_dir)
+  u_v3(gpu_uniform(post_p_vol, "u_sun_color"), sun_color)
+  u_f(gpu_uniform(post_p_vol, "u_vol_steps"), post_vol_steps)
+  u_f(gpu_uniform(post_p_vol, "u_vol_density"), post_vol_density)
+  u_f(gpu_uniform(post_p_vol, "u_vol_falloff"), post_vol_falloff)
+  u_f(gpu_uniform(post_p_vol, "u_vol_far"), post_vol_far)
+  u_f(gpu_uniform(post_p_vol, "u_vol_g"), post_vol_g)
+  u_f(gpu_uniform(post_p_vol, "u_vol_mist"), post_vol_mist)
+  u_f(gpu_uniform(post_p_vol, "u_vol_mist_h"), post_vol_mist_h)
+  mesh_draw(post_fs)
+  # Composite into the HDR scene with the bloom pyramid's own upsample - a 3x3 tent under
+  # ONE/ONE blending, which is exactly what is wanted here and already exists, rather than a
+  # blit shader written for one caller. Into post_hdr, not post_scene: post_scene is the copy
+  # the water refracts, so adding shafts there would put them UNDER the lake.
+  target_bind(post_hdr)
+  gpu_blend(true)
+  gpu_blend_func(GL_ONE, GL_ONE)
+  gpu_use_program(post_p_up)
+  r3d_bind_2d(post_p_up, "u_src", 0, post_vol.color)
+  u_f2(gpu_uniform(post_p_up, "u_texel"), fr(1, post_vol.w), fr(1, post_vol.h))
+  u_f(gpu_uniform(post_p_up, "u_radius"), F_ONE)
+  mesh_draw(post_fs)
+  gpu_blend(false)
 }
 
 function post_bloom_pass() -> void {

@@ -201,6 +201,17 @@ function daylight_set(hours: int) -> void {
   # zenith onto a grey day.
   r3d_sky_relight = f_mul(smoothf(f_rad(fi(-10)), f_rad(fi(1)), el), f_sub(F_ONE, f_mul(fl(0.75), oc)))
 
+  # ---- what is IN the air -------------------------------------------------------------
+  # The volumetric march (post.ludic) needs the same story the analytic fog tells, or the
+  # shafts and the haze disagree. Density rides the sun's elevation like everything else; the
+  # MIST is separate and is the thing a valley actually does - a shallow layer that forms in
+  # the cold at either end of the day, lies ON the ground rather than filling the basin, and
+  # burns off by mid-morning. Cloud thickens the air and kills the shafts, because a shaft
+  # needs a disc to come from.
+  post_vol_density = f_mul(f_add(fl(0.00030), f_mul(fl(0.00070), lowsun)), f_sub(F_ONE, f_mul(fl(0.55), oc)))
+  post_vol_mist = f_mul(f_mul(fl(0.40), lowsun), f_sub(F_ONE, f_mul(fl(0.4), oc)))
+  post_vol_falloff = f_add(fl(0.006), f_mul(fl(0.004), lowsun))
+
   # R3D_NOAIR=1: the air as it was before any of the above - one density, one falloff, the
   # inscatter the shader used to hard-code, and no distance desaturation at all. It is here
   # so a before-and-after can be shot from ONE binary at one hour, which is the only kind of
@@ -215,6 +226,7 @@ function daylight_set(hours: int) -> void {
     post_gain_r = fl(0.99);    post_gain_g = fl(0.995);  post_gain_b = F_ONE
     post_contrast = fl(1.12);  post_saturation = fl(1.04)
     r3d_sky_relight = F_ZERO
+    post_vol_density = F_ZERO;  post_vol_mist = F_ZERO
   }
   # exposure: auto-exposure must not turn the night into day
   # the ceiling has to move with the moon or auto-exposure eats the difference between a

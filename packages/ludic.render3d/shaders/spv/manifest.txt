@@ -3117,3 +3117,54 @@ T 46e2325c u_scene 7
 T 46e2325c u_shadow 8
 T 46e2325c u_tershadow 9
 T 46e2325c u_ts_height 10
+P 74258189 fullscreen.vert volumetric.frag 
+B 74258189 frag 1 924
+U 74258189 frag u_cascade_vp 0 mat4 5 64
+U 74258189 frag u_cascade_split 320 float 5 16
+U 74258189 frag u_cascade_range 400 float 5 16
+U 74258189 frag u_cascade_texel 480 float 5 16
+U 74258189 frag u_sun_dir 560 vec3 1 0
+U 74258189 frag u_sun_color 576 vec3 1 0
+U 74258189 frag u_cam_pos 592 vec3 1 0
+U 74258189 frag u_prefilter_levels 604 float 1 0
+U 74258189 frag u_fog_density 608 float 1 0
+U 74258189 frag u_fog_height_falloff 612 float 1 0
+U 74258189 frag u_fog_base 616 float 1 0
+U 74258189 frag u_clip_y 620 float 1 0
+U 74258189 frag u_spec_scale 624 float 1 0
+U 74258189 frag u_sky_rot 632 vec2 1 0
+U 74258189 frag u_ground_alb 640 vec3 1 0
+U 74258189 frag u_ground_alb_hi 656 vec3 1 0
+U 74258189 frag u_ground_hi_y 668 float 1 0
+U 74258189 frag u_ground_hi_w 672 float 1 0
+U 74258189 frag u_ibl_scale 688 vec3 1 0
+U 74258189 frag u_daylight 700 float 1 0
+U 74258189 frag u_fire_pos 704 vec3 1 0
+U 74258189 frag u_fire_color 720 vec3 1 0
+U 74258189 frag u_hand_pos 736 vec3 1 0
+U 74258189 frag u_hand_color 752 vec3 1 0
+U 74258189 frag u_hand_dir 768 vec3 1 0
+U 74258189 frag u_hand_cone 780 float 1 0
+U 74258189 frag u_ts_origin 784 vec2 1 0
+U 74258189 frag u_ts_half 792 float 1 0
+U 74258189 frag u_ts_on 796 float 1 0
+U 74258189 frag u_force_cascade 800 int 1 0
+U 74258189 frag u_cloud_shadow 804 float 1 0
+U 74258189 frag u_time 808 float 1 0
+U 74258189 frag u_fog_inscatter 812 float 1 0
+U 74258189 frag u_fog_desat 816 float 1 0
+U 74258189 frag u_inv_vp 832 mat4 1 0
+U 74258189 frag u_vol_steps 896 float 1 0
+U 74258189 frag u_vol_density 900 float 1 0
+U 74258189 frag u_vol_falloff 904 float 1 0
+U 74258189 frag u_vol_far 908 float 1 0
+U 74258189 frag u_vol_g 912 float 1 0
+U 74258189 frag u_vol_mist 916 float 1 0
+U 74258189 frag u_vol_mist_h 920 float 1 0
+T 74258189 u_brdf 2
+T 74258189 u_depth 3
+T 74258189 u_irradiance 4
+T 74258189 u_prefilter 5
+T 74258189 u_shadow 6
+T 74258189 u_tershadow 7
+T 74258189 u_ts_height 8
