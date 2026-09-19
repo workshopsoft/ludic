@@ -45,6 +45,8 @@ var ter_smooth: bool = false   # generate the analytic test ground instead of a 
 var ter_far_split: int = 0             # metres: beyond this the terrain takes its cheap far path (R3D_TFAR)
 var ter_far_band: int = 0              # half-width of the near/far blend (R3D_TBAND)
 var ter_snow_line: int = 0
+# 0 dry .. 1 soaked. The game sets it from the weather and lets it dry out.
+var ter_wet: int = 0
 var ter_tex: words = null             # 11 material textures (see terrain_bind)
 var ter_ox: int = 0                   # world x/z of the terrain centre (float bits)
 var ter_oz: int = 0
@@ -483,6 +485,7 @@ function terrain_bind_prog(p: int) -> void {
   u_f(gpu_uniform(p, "u_half"), fi(TERRAIN_HALF))
   u_f(gpu_uniform(p, "u_texel"), fr(1, TERRAIN_RES))
   u_f(gpu_uniform(p, "u_snow_line"), ter_snow_line)
+  u_f(gpu_uniform(p, "u_wet"), ter_wet)
   var lake = fl(-100000.0)
   if ter_lake_ex != 0 { lake = ter_lake_level }
   u_f(gpu_uniform(p, "u_lake_level"), lake)

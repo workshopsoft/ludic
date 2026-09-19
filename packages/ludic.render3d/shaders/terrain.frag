@@ -18,6 +18,13 @@ uniform sampler2D u_snow_d;  uniform sampler2D u_carpet;   // the clump cards ba
 uniform float u_carpet_on;
 uniform float u_snow_line;
 uniform float u_lake_level;      // the ground just above the water is wet and dark
+// ---- RAIN THAT LEAVES SOMETHING BEHIND -----------------------------------------------------
+// Rain fell and the ground did not change: the weather was a curtain of particles in front of a
+// dry valley. This is one scalar, 0 dry to 1 soaked, and it does three things a wet surface
+// does - darkens the albedo, drops the roughness so the sky glances off it, and pools in the
+// low places. It dries out over minutes after the rain stops, which is the part that makes a
+// player notice the weather happened at all.
+uniform float u_wet;
 uniform float u_sea_level;       // the sea's line: shore, forest and scree gates (terrain_sea)
 uniform vec4 u_lake;             // the carved lake's outline: centre x/z, half extents (zero = none)
 // The water line that applies here: the sea everywhere, the lake's own inside its outline -
@@ -437,7 +444,18 @@ vec3 groundShade(vec3 p, vec3 N, float slope, float dist, float viewDepth, bool 
   float above = p.y - waterLine(p.xz);                    // >0 on land, metres
   // wet ground: darker and glossier near the water, fading out over ~1.2 m
   float wet = smoothstep(1.2, 0.0, above);
+  // the rain's wetness joins the shore's: the same term, from a different cause
+  wet = max(wet, u_wet);
   alb *= mix(1.0, 0.5, wet * 0.85);
+  // Puddles. A soaked ground does not darken evenly - water finds the low places, and the flat
+  // ground holds it while a slope sheds it. The noise is the same macro field the materials
+  // already use, so a puddle sits where the ground is genuinely dished rather than in a
+  // pattern of its own.
+  float pud = 0.0;
+  if (u_wet > 0.01) {
+    float lowness = smoothstep(0.35, 0.0, slope);
+    pud = smoothstep(0.45, 0.72, fbmC(cheap, p.xz * 0.35 + 17.0, 2) * 0.5 + 0.5) * lowness * u_wet;
+  }
   // A sheet of water actually runs up the bank ahead of the foam, so the ground inside
   // the wash is seen through water, not bare. Without this the gaps between the foam
   // streaks showed dry grass and the wash looked like white paint on a lawn.
@@ -477,6 +495,15 @@ vec3 groundShade(vec3 p, vec3 N, float slope, float dist, float viewDepth, bool 
   n = normalize(mix(n, N, smoothstep(150.0, 900.0, dist)));
   float ao = arm.r;
   float rough = clamp(arm.g, 0.3, 1.0);
+  // Wet ground is SMOOTH. That is what makes a soaked meadow read as soaked rather than as
+  // dark: the sky glances off it. A puddle is smoother still and flat, so its normal is the
+  // world's up rather than the ground's relief.
+  rough = mix(rough, 0.28, wet * 0.8);
+  if (pud > 0.01) {
+    rough = mix(rough, 0.06, pud);
+    n = normalize(mix(n, vec3(0.0, 1.0, 0.0), pud * 0.9));
+    alb = mix(alb, alb * 0.55, pud);
+  }
   float metal = 0.0;
   // the shadow map carries the objects standing on the ground (trees, rocks); the
   // ground's own relief is in the baked height-field shadow that sunShadow() applies
