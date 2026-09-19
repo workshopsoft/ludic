@@ -50,6 +50,7 @@ var post_ao_blur: Target = null
 var post_p_ao: int = 0
 var post_p_ao_blur: int = 0
 var post_ao_radius: int = 0
+var post_contact: int = 0x3FA00000   # 1.25: how hard a thing is darkened where it meets the ground
 var post_ao_intensity: int = 0
 var post_ao_strength: int = 0
 var post_gi_strength: int = 0x3ECCCCCD     # 0.4
@@ -297,6 +298,9 @@ function post_ssao_pass() -> void {
   u_f2(gpu_uniform(post_p_ao, "u_texel"), fr(1, post_w), fr(1, post_h))
   u_f(gpu_uniform(post_p_ao, "u_radius"), post_ao_radius)
   u_f(gpu_uniform(post_p_ao, "u_intensity"), post_ao_intensity)
+  var contact = post_contact
+  if r3d_env_has("R3D_NOCONTACT") { contact = F_ZERO }
+  u_f(gpu_uniform(post_p_ao, "u_contact"), contact)
   mesh_draw(post_fs)
   target_bind(post_ao_blur)
   gpu_use_program(post_p_ao_blur)

@@ -9,6 +9,7 @@ uniform mat4 u_proj;
 uniform vec2 u_texel;
 uniform float u_radius;
 uniform float u_intensity;
+uniform float u_contact;    // the tight contact pass; 0 switches it off entirely
 uniform float u_frame;
 vec3 viewPos(vec2 uv) {
   float d = texture(u_depth, uv).r;
@@ -59,6 +60,36 @@ void main() {
     }
   }
   ao = 1.0 - u_intensity * ao / float(S);
+  // ---- CONTACT -----------------------------------------------------------------------
+  // The occlusion above is tuned as AMBIENT occlusion: a wide radius that answers "how open
+  // is the sky here". It is the right question and it leaves every object in the frame
+  // hovering, because the thing that says a log is ON the ground rather than in front of it
+  // is a hard, narrow darkening in the last few centimetres where the two meet - and at a
+  // metre and a half of radius that darkening is spread so thin it is not there.
+  //
+  // So a second, tight pass. It is cheap because it is SHORT: eight taps inside a quarter of
+  // a metre, which at any normal distance is a handful of pixels and stays in cache.
+  if (u_contact > 0.0) {
+    float cao = 0.0;
+    const int CS = 8;
+    float crad = 0.40 * (1.0 + 0.004 * -P.z);
+    for (int i = 0; i < CS; i++) {
+      float a2 = (float(i) + noise) * 2.3999632;
+      float r2 = sqrt((float(i) + 0.5 + noise) / float(CS));
+      vec3 dir2 = vec3(cos(a2) * r2, sin(a2) * r2, sqrt(max(0.0, 1.0 - r2 * r2)));
+      vec3 s2 = P + (t * dir2.x + b * dir2.y + N * dir2.z) * crad;
+      vec4 c2 = u_proj * vec4(s2, 1.0);
+      vec2 uv2 = c2.xy / c2.w * 0.5 + 0.5;
+      if (uv2.x < 0.0 || uv2.x > 1.0 || uv2.y < 0.0 || uv2.y > 1.0) continue;
+      float sz2 = viewPos(uv2).z;
+      // a tight range check: only something genuinely touching counts, or a wall across the
+      // room darkens the floor in front of it
+      float rc2 = smoothstep(0.0, 1.0, crad / max(abs(P.z - sz2), 1e-4));
+      cao += (sz2 >= s2.z + 0.004 * crad ? 1.0 : 0.0) * rc2;
+    }
+    cao = 1.0 - u_contact * cao / float(CS);
+    ao = min(ao, clamp(cao, 0.0, 1.0));
+  }
   float fade = smoothstep(120.0, 350.0, -P.z);
   ao = mix(clamp(ao, 0.0, 1.0), 1.0, fade);
   gi = (giW > 0.0 ? gi / float(S) : vec3(0.0)) * (1.0 - fade);
