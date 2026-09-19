@@ -30,3 +30,10 @@ night lit your boots and nothing else. `daylight_hand` takes a `reach` in metres
 the falloff is a gentle power out to it — about nine tenths at a metre, half at half the
 reach, a tenth at nine tenths of it, nothing past it. A pool of light with a gradient in
 it rather than a hotspot with a cliff.
+
+**And the wheel on macOS did nothing, or everything.** `scrollingDeltaY` is a double, and
+the Cocoa event pump truncated it to an int PER EVENT before accumulating: a trackpad or a
+Magic Mouse sends a stream of fractions of a line, every one of which truncated to zero, so
+the wheel was dead; a notched mouse sends three to ten lines at once, so it jumped. The
+fraction is accumulated now, a precise delta is scaled from points to notches, and the
+remainder carries to the next frame - one gesture, one step, on both kinds of mouse.

@@ -59,6 +59,8 @@ declare i32 @CGWarpMouseCursorPosition(%NSPoint)
 @.s_cpts   = private unnamed_addr constant [22 x i8] c"convertPointToScreen:\00"
 @.s_main   = private unnamed_addr constant [11 x i8] c"mainScreen\00"
 @.s_frame  = private unnamed_addr constant [6 x i8]  c"frame\00"
+@.s_screens = private unnamed_addr constant [8 x i8]  c"screens\00"
+@.s_setorg  = private unnamed_addr constant [16 x i8] c"setFrameOrigin:\00"
 @.s_hide   = private unnamed_addr constant [5 x i8]  c"hide\00"
 @.s_unhide = private unnamed_addr constant [7 x i8]  c"unhide\00"
 @.s_iskey  = private unnamed_addr constant [12 x i8] c"isKeyWindow\00"
@@ -67,6 +69,8 @@ declare i32 @CGWarpMouseCursorPosition(%NSPoint)
 @.s_policy = private unnamed_addr constant [21 x i8] c"setActivationPolicy:\00"
 @.s_alloc  = private unnamed_addr constant [6 x i8]  c"alloc\00"
 @.s_initw  = private unnamed_addr constant [45 x i8] c"initWithContentRect:styleMask:backing:defer:\00"
+@.s_setsm  = private unnamed_addr constant [14 x i8] c"setStyleMask:\00"
+@.s_getsm  = private unnamed_addr constant [10 x i8] c"styleMask\00"
 @.s_initf  = private unnamed_addr constant [15 x i8] c"initWithFrame:\00"
 @.s_title  = private unnamed_addr constant [10 x i8] c"setTitle:\00"
 @.s_utf8   = private unnamed_addr constant [22 x i8] c"stringWithUTF8String:\00"
@@ -81,11 +85,15 @@ declare i32 @CGWarpMouseCursorPosition(%NSPoint)
 @.s_type   = private unnamed_addr constant [5 x i8]  c"type\00"
 @.s_keycd  = private unnamed_addr constant [8 x i8]  c"keyCode\00"
 @.s_chars  = private unnamed_addr constant [28 x i8] c"charactersIgnoringModifiers\00"
+; `characters` is what the key actually TYPED - the layout, the modifiers and any dead key applied -
+; where charactersIgnoringModifiers is the key's own label. A name field wants the first.
+@.s_charsr = private unnamed_addr constant [11 x i8] c"characters\00"
 @.s_modf   = private unnamed_addr constant [14 x i8] c"modifierFlags\00"
 @.s_length = private unnamed_addr constant [7 x i8]  c"length\00"
 @.s_charat = private unnamed_addr constant [18 x i8] c"characterAtIndex:\00"
 @.s_locwin = private unnamed_addr constant [17 x i8] c"locationInWindow\00"
 @.s_scrly  = private unnamed_addr constant [16 x i8] c"scrollingDeltaY\00"
+@.s_prec   = private unnamed_addr constant [26 x i8] c"hasPreciseScrollingDeltas\00"
 @.s_disp   = private unnamed_addr constant [8 x i8]  c"display\00"
 @.s_visib  = private unnamed_addr constant [10 x i8] c"isVisible\00"
 @.s_curctx = private unnamed_addr constant [15 x i8] c"currentContext\00"
@@ -146,6 +154,9 @@ declare i32 @CGWarpMouseCursorPosition(%NSPoint)
 @W_fbh     = internal global i32 240
 @W_scale   = internal global i32 3
 @W_key     = internal global i32 0
+; typed UTF-16 code units since the game last took them (win32.ll keeps the same shape)
+@C_text    = internal global [64 x i32] zeroinitializer
+@C_textn   = internal global i32 0
 @W_running = internal global i32 1
 @W_apphidden = internal global i32 0   ; App.window_hide: an ordered-out window is not a closed one
 ; #50 device layer — a 256-bit held-key set (8 i32) tracked from keyDown/keyUp,
@@ -155,6 +166,12 @@ declare i32 @CGWarpMouseCursorPosition(%NSPoint)
 @W_my      = internal global i32 0
 @W_mbtn    = internal global i32 0
 @W_wheel   = internal global i32 0
+; The wheel's REMAINDER, as a double. scrollingDeltaY is a double and it was truncated to
+; an int per event: on a trackpad or a Magic Mouse every event is a fraction of a line, so
+; every one of them truncated to zero and the wheel did nothing at all, while a notched
+; mouse sends three to ten lines at once and jumped. Accumulating the fraction and handing
+; over whole notches is what makes one gesture one step on both.
+@W_wheelf  = internal global double 0.0
 ; #51 — up to 8 trackpad touch points, [active, x, y] each (framebuffer pixels),
 ; refreshed by the view's touchesBegan/Moved/Ended handlers.
 @W_touch   = internal global [24 x i32] zeroinitializer
@@ -585,14 +602,56 @@ scroll:
 wdo:
   %sel_sy = call ptr @sel_registerName(ptr @.s_scrly)
   %dy = call double (ptr, ptr) @objc_msgSend(ptr %ev, ptr %sel_sy)
-  %dyi = fptosi double %dy to i32
-  %wv = load i32, ptr @W_wheel
-  %wv2 = add i32 %wv, %dyi
-  store i32 %wv2, ptr @W_wheel
+  ; a precise delta is in POINTS (a trackpad flick is tens or hundreds of them); a coarse
+  ; one is already in lines, one per notch. Scale the first to notches and leave the second.
+  %sel_pr = call ptr @sel_registerName(ptr @.s_prec)
+  %prec8 = call i8 (ptr, ptr) @objc_msgSend(ptr %ev, ptr %sel_pr)
+  %prec = icmp ne i8 %prec8, 0
+  %scale = select i1 %prec, double 0.0833333333, double 1.0
+  %dyn = fmul double %dy, %scale
+  %wf = load double, ptr @W_wheelf
+  %wf2 = fadd double %wf, %dyn
+  store double %wf2, ptr @W_wheelf
   br label %forward
 key:
   %kdv = call i32 @ev_keyval(ptr %ev)          ; #50 — press the held key
   call void @win_held_bit(i32 %kdv, i32 1)
+  ; what this keystroke TYPED, for Input.text. Control characters are not text: Enter, Tab,
+  ; Backspace and Esc are read as keys and a glyph for them would land in the name.
+  %txsel = call ptr @sel_registerName(ptr @.s_charsr)
+  %txcs = call ptr (ptr, ptr) @objc_msgSend(ptr %ev, ptr %txsel)
+  %txcsnull = icmp eq ptr %txcs, null
+  br i1 %txcsnull, label %txdone, label %txlen
+txlen:
+  %txclen = call i64 (ptr, ptr) @objc_msgSend(ptr %txcs, ptr %sel_len)
+  %txclen32 = trunc i64 %txclen to i32
+  br label %txloop
+txloop:
+  %ti = phi i32 [ 0, %txlen ], [ %ti1, %txnext ]
+  %tgo = icmp slt i32 %ti, %txclen32
+  br i1 %tgo, label %txbody, label %txdone
+txbody:
+  %ti64 = sext i32 %ti to i64
+  %txu16 = call i16 (ptr, ptr, i64) @objc_msgSend(ptr %txcs, ptr %sel_cat, i64 %ti64)
+  %txu32 = zext i16 %txu16 to i32
+  %tctl = icmp ult i32 %txu32, 32
+  %tdel = icmp eq i32 %txu32, 127
+  %tskip = or i1 %tctl, %tdel
+  br i1 %tskip, label %txnext, label %txput
+txput:
+  %tn = load i32, ptr @C_textn
+  %troom = icmp slt i32 %tn, 64
+  br i1 %troom, label %txstore, label %txnext
+txstore:
+  %tp = getelementptr [64 x i32], ptr @C_text, i64 0, i32 %tn
+  store i32 %txu32, ptr %tp
+  %tn1 = add i32 %tn, 1
+  store i32 %tn1, ptr @C_textn
+  br label %txnext
+txnext:
+  %ti1 = add i32 %ti, 1
+  br label %txloop
+txdone:
   %kc = call i16 (ptr, ptr) @objc_msgSend(ptr %ev, ptr %sel_kc)
   %kc32 = zext i16 %kc to i32
   switch i32 %kc32, label %fromchars [
@@ -696,6 +755,29 @@ entry:
 }
 
 ; #50 — copy the 8-word held-key set into the caller's buffer.
+; take what has been typed since the last call (win32.ll's win_text, same contract)
+define i32 @win_text(ptr %out, i32 %max) {
+entry:
+  %n = load i32, ptr @C_textn
+  %fits = icmp sle i32 %n, %max
+  %cnt = select i1 %fits, i32 %n, i32 %max
+  br label %loop
+loop:
+  %i = phi i32 [ 0, %entry ], [ %i1, %body ]
+  %go = icmp slt i32 %i, %cnt
+  br i1 %go, label %body, label %done
+body:
+  %sp = getelementptr [64 x i32], ptr @C_text, i64 0, i32 %i
+  %v = load i32, ptr %sp
+  %dp = getelementptr i32, ptr %out, i32 %i
+  store i32 %v, ptr %dp
+  %i1 = add i32 %i, 1
+  br label %loop
+done:
+  store i32 0, ptr @C_textn
+  ret i32 %cnt
+}
+
 define void @win_held(ptr %out) {
 entry:
   br label %loop
@@ -811,9 +893,14 @@ emit:
   %mb = load i32, ptr @W_mbtn
   %p2 = getelementptr i32, ptr %out, i32 2
   store i32 %mb, ptr %p2
-  %wh = load i32, ptr @W_wheel
+  ; whole notches out of the accumulator, and the fraction stays for the next frame
+  %wf = load double, ptr @W_wheelf
+  %wn = fptosi double %wf to i32
+  %wnd = sitofp i32 %wn to double
+  %wrem = fsub double %wf, %wnd
+  store double %wrem, ptr @W_wheelf
   %p3 = getelementptr i32, ptr %out, i32 3
-  store i32 %wh, ptr %p3
+  store i32 %wn, ptr %p3
   store i32 0, ptr @W_wheel
   ret void
 }
@@ -1811,6 +1898,95 @@ out:
 ; untouched: a launcher steps aside while the game it started runs. The run does not end
 ; while the window is hidden this way (win_poll's closed-window check skips it). Both are
 ; no-ops before there is a window.
+; App.window_fixed(on): drop NSWindowStyleMaskResizable (8) so the launcher's small panel cannot be
+; dragged bigger or zoomed. win32.ll carries the same call and the same reason.
+; The displays, from [NSScreen screens]. win32.ll walks them by index with EnumDisplayDevicesW;
+; here it is an ordinary array, so the numbering is AppKit's own and matches System Settings.
+define i32 @win_monitor_count() {
+entry:
+  %cls = call ptr @objc_getClass(ptr @.c_screen)
+  %sel = call ptr @sel_registerName(ptr @.s_screens)
+  %arr = call ptr (ptr, ptr) @objc_msgSend(ptr %cls, ptr %sel)
+  %none = icmp eq ptr %arr, null
+  br i1 %none, label %one, label %ask
+ask:
+  %seln = call ptr @sel_registerName(ptr @.s_count)
+  %n64 = call i64 (ptr, ptr) @objc_msgSend(ptr %arr, ptr %seln)
+  %n = trunc i64 %n64 to i32
+  %empty = icmp slt i32 %n, 1
+  br i1 %empty, label %one, label %out
+one:
+  ret i32 1
+out:
+  ret i32 %n
+}
+; Centre the window on display i. NSScreen's frame is already in AppKit's coordinates, which is
+; what setFrameOrigin: wants, so there is no flip to do here.
+define void @app_window_to_monitor(i32 %i) {
+entry:
+  %win = load ptr, ptr @W_win
+  %nowin = icmp eq ptr %win, null
+  br i1 %nowin, label %done, label %go
+go:
+  %cls = call ptr @objc_getClass(ptr @.c_screen)
+  %sels = call ptr @sel_registerName(ptr @.s_screens)
+  %arr = call ptr (ptr, ptr) @objc_msgSend(ptr %cls, ptr %sels)
+  %noarr = icmp eq ptr %arr, null
+  br i1 %noarr, label %done, label %count
+count:
+  %seln = call ptr @sel_registerName(ptr @.s_count)
+  %n64 = call i64 (ptr, ptr) @objc_msgSend(ptr %arr, ptr %seln)
+  %i64v = sext i32 %i to i64
+  %bad = icmp sge i64 %i64v, %n64
+  %neg = icmp slt i32 %i, 0
+  %skip = or i1 %bad, %neg
+  br i1 %skip, label %done, label %pick
+pick:
+  %selo = call ptr @sel_registerName(ptr @.s_objidx)
+  %scr = call ptr (ptr, ptr, i64) @objc_msgSend(ptr %arr, ptr %selo, i64 %i64v)
+  %selfr = call ptr @sel_registerName(ptr @.s_frame)
+  %sf = call %CGRect (ptr, ptr) @objc_msgSend(ptr %scr, ptr %selfr)
+  %wf = call %CGRect (ptr, ptr) @objc_msgSend(ptr %win, ptr %selfr)
+  %sx = extractvalue %CGRect %sf, 0
+  %sy = extractvalue %CGRect %sf, 1
+  %sw = extractvalue %CGRect %sf, 2
+  %sh = extractvalue %CGRect %sf, 3
+  %ww = extractvalue %CGRect %wf, 2
+  %wh = extractvalue %CGRect %wf, 3
+  %dw = fsub double %sw, %ww
+  %dh = fsub double %sh, %wh
+  %hw = fmul double %dw, 5.000000e-01
+  %hh = fmul double %dh, 5.000000e-01
+  %nx = fadd double %sx, %hw
+  %ny = fadd double %sy, %hh
+  %p0 = insertvalue %NSPoint undef, double %nx, 0
+  %p1 = insertvalue %NSPoint %p0, double %ny, 1
+  %selset = call ptr @sel_registerName(ptr @.s_setorg)
+  call void (ptr, ptr, %NSPoint) @objc_msgSend(ptr %win, ptr %selset, %NSPoint %p1)
+  br label %done
+done:
+  ret void
+}
+
+define void @app_window_fixed(i32 %on) {
+entry:
+  %win = load ptr, ptr @W_win
+  %none = icmp eq ptr %win, null
+  br i1 %none, label %out, label %go
+go:
+  %sel_get = call ptr @sel_registerName(ptr @.s_getsm)
+  %sel_set = call ptr @sel_registerName(ptr @.s_setsm)
+  %cur = call i64 (ptr, ptr) @objc_msgSend(ptr %win, ptr %sel_get)
+  %fixed = icmp ne i32 %on, 0
+  %off = and i64 %cur, -9
+  %onm = or i64 %cur, 8
+  %new = select i1 %fixed, i64 %off, i64 %onm
+  call void (ptr, ptr, i64) @objc_msgSend(ptr %win, ptr %sel_set, i64 %new)
+  br label %out
+out:
+  ret void
+}
+
 define void @app_window_hide() {
 entry:
   %win = load ptr, ptr @W_win
