@@ -24,6 +24,7 @@ uniform float u_sea_level;    // the sea (terrain_sea); the lake's level when th
 uniform vec4 u_lake;          // the carved lake: centre x/z, half extents (z = 0: none)
 uniform float u_snow_line;
 uniform float u_wind;
+uniform vec3 u_push;      // x, z, radius: a body standing in the grass
 uniform vec2 u_tile;         // world xz of this tile's corner
 uniform int u_tile_cells;    // 16 m cells per tile side
 uniform int u_per_cell;      // indices drawn per cell in this tile
@@ -157,6 +158,23 @@ void main() {
   p.x += sway * hgt * hgt * 0.35;
   p.z += sway * hgt * hgt * 0.15 * cos(ph * 0.7);
   p = vec3(c_ * p.x + s * p.z, p.y, -s * p.x + c_ * p.z);
+  // A BODY STANDING IN IT. Applied here, after the blade's own yaw has put p into world axes
+  // and before it is tipped onto the ground normal, so the push is a world direction rather
+  // than something in the blade's private frame. The blade bends AWAY and DOWN - a trodden
+  // stem is shorter as well as leaning, and leaving the height alone made them splay outward
+  // like a fan instead of being walked through.
+  if (u_push.z > 0.0) {
+    vec2 away = xz - u_push.xy;
+    float pd = length(away);
+    float push = smoothstep(u_push.z, u_push.z * 0.2, pd);
+    if (push > 0.0) {
+      vec2 pdir = (pd > 1e-3) ? away / pd : vec2(1.0, 0.0);
+      float bh = max(p.y, 0.0);
+      p.x += pdir.x * push * bh * 1.05;
+      p.z += pdir.y * push * bh * 1.05;
+      p.y -= push * bh * 0.40;
+    }
+  }
   n = normalize(vec3(c_ * n.x + s * n.z, n.y, -s * n.x + c_ * n.z));
   // stand on the ground: rotate the blade's frame from world-up to the surface normal
   {

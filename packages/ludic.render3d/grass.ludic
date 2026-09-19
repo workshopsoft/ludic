@@ -15,6 +15,13 @@ var grass_prog: int = 0
 var grass_mesh: Mesh = null
 var grass_on: bool = true
 var grass_wind: int = 0
+# Where a body is standing, and how wide it pushes. The grass has never known the player was
+# in it: you walked through a meadow and every blade ignored you, which is the single most
+# noticeable thing missing from every step the game asks you to take. The game sets this each
+# frame; radius 0 means nobody is there.
+var grass_push_x: int = 0
+var grass_push_z: int = 0
+var grass_push_r: int = 0
 var grass_s0: int = 0            # float bits: blade spacing at the camera (m)
 var grass_d0: int = 0            # the distance at which the spacing has doubled (m)
 var grass_radius: int = 0        # no blades past this (m)
@@ -174,6 +181,7 @@ function grass_draw() -> void {
   u_mat4(gpu_uniform(p, "u_proj"), cam_proj)
   u_mat4(gpu_uniform(p, "u_vp"), cam_vp_clean)
   u_f(gpu_uniform(p, "u_wind"), grass_wind)
+  u_f3(gpu_uniform(p, "u_push"), grass_push_x, grass_push_z, grass_push_r)
   u_f(gpu_uniform(p, "u_rough_scale"), F_ONE)
   u_v3(gpu_uniform(p, "u_tint"), sc_blade_tint)
   u_v3(gpu_uniform(p, "u_blade_base"), sc_blade_base)
