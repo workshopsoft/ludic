@@ -147,6 +147,17 @@ void main() {
   if (u_model_h > 2.0) arm.r *= mix(0.5, 1.0, v_hull);
 #endif
   alb *= u_tint * (0.85 + 0.3 * fract(v_seed * 7.13));
+#if defined(FOLIAGE) && !defined(BLADE)
+  // Per-plant HUE, not only per-plant brightness. The line above varies value by +-15% and
+  // nothing else, so a stand of one species was one colour at fifteen different exposures -
+  // and a real stand is not: neighbouring trees of the same species sit anywhere from
+  // yellow-green to blue-green depending on age, aspect and how dry the ground under them is.
+  // Trading red against blue is a hue rotation about green, which is the axis that matters for
+  // foliage and costs two multiplies. Blades are excluded: they get their own patchy field
+  // and regionTint already, and doubling up on them reads as noise rather than variety.
+  float hj = fract(v_seed * 3.71) - 0.5;
+  alb *= vec3(1.0 + 0.20 * hj, 1.0, 1.0 - 0.20 * hj);
+#endif
 #ifdef CARD
   // a card is its own caster: look up the shadow a little above and in front of it, and let
   // light bleed through the thin clump as real grass does
@@ -173,11 +184,34 @@ void main() {
   // Only a thin leaf a few metres away is translucent. A clump card at 200 m is a whole
   // bush in two pixels, and giving it the leaf's glow toward the sun painted the
   // backlit hillsides with lime discs. The term fades out with distance.
-  float thin = 1.0 - smoothstep(30.0, 140.0, dist);
+  // A backlit stand glows for as far as you can see it, not 140 m. The cap below is what
+  // keeps a two-pixel clump card at distance from becoming a lime disc.
+  float thin = 1.0 - smoothstep(60.0, 260.0, dist);
   // a dense crown of cards is not a thin leaf: much less light comes through it
-  if (u_model_h > 2.0) thin *= 0.3;
-  col += alb * u_sun_color * (0.14 * back + 0.05 * wrap) * thin * shadow * cloudShadow(v_wpos);
+  if (u_model_h > 2.0) thin *= 0.45;
+  col += alb * u_sun_color * (0.24 * back + 0.07 * wrap) * thin * shadow * cloudShadow(v_wpos);
   col += alb * skyIrradiance(vec3(0, 1, 0)) * 0.12 * arm.r;
+  // ---- leaf sheen ---------------------------------------------------------------------
+  // A LEAF IS NOT MATTE. Foliage roughness is pinned to 1.0 just above and grazing Fresnel
+  // is switched off, so nothing green in this game has ever had a highlight - and the glint
+  // off wet needles and waxy leaves is most of what makes a real stand look alive rather
+  // than painted. The reason it was switched off is real, though: a crown is card quads, and
+  // at a grazing angle the card's normal is a lie, so a plain specular lobe frosted whole
+  // crowns white against the sky.
+  //
+  // So the sheen is added back as its own term and gated on exactly that: it fades out as
+  // the card turns edge-on (NoV), which is where its normal stops meaning anything. A tight
+  // lobe for the glint, a weak wide one for the waxy rim, and nothing at all at the angles
+  // that used to frost.
+  {
+    vec3 vv = normalize(u_cam_pos - v_wpos);
+    vec3 hh = normalize(vv + u_sun_dir);
+    float NoH = max(dot(n, hh), 0.0);
+    float NoV = max(dot(n, vv), 0.0);
+    float sheen = pow(NoH, 26.0) * 0.55 + pow(1.0 - NoV, 4.0) * 0.05;
+    sheen *= smoothstep(0.10, 0.42, NoV);
+    col += u_sun_color * sheen * shadow * cloudShadow(v_wpos) * 0.4 * (0.45 + 0.55 * arm.r);
+  }
 #endif
   col += alb * u_emissive;
   if (any(isnan(col))) col = vec3(0.0);
