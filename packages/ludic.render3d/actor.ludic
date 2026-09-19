@@ -22,6 +22,12 @@ property Actor {
   rough:   int = 0,
   mat:     words,          # the model matrix
   visible: bool = true,
+  # Drawn and CASTING are not the same question. An actor hidden because the camera is inside
+  # its head still stands in the sun, and a body that stops casting the moment you look out of
+  # its own eyes loses its shadow - which in a game played in a sunlit basin is the one thing
+  # that tells you where you are standing. Set this on anything hidden for a reason the sun
+  # does not share; everything else keeps stopping its shadow when it is hidden.
+  cast_hidden: bool = false,
   casts:   bool = true,
   id:      int = 0,
   cutout:  bool = false,   # alpha-tested (a flame's cards)
@@ -141,7 +147,8 @@ function ac_bind_scene(ap: AcProg) -> void {
   fog_bind(p)
 }
 function ac_visible(a: Actor, shadow: bool) -> bool {
-  if not a.visible or a.model == null { return false }
+  if a.model == null { return false }
+  if not a.visible and not (shadow and a.cast_hidden) { return false }
   if shadow and not a.casts { return false }
   if a.cull != 0 {
     let dx = f_sub(a.x, cam_pos[0]);  let dz = f_sub(a.z, cam_pos[2])
