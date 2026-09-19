@@ -115,7 +115,15 @@ void main() {
   float ok = (1.0 - smoothstep(0.30, 0.55, 1.0 - gn.y)) * smoothstep(0.0, 0.6, ht.r - wl - 0.15) * smoothstep(u_snow_line - 80.0, u_snow_line - 200.0, ht.r);
   if (u_ortho_on > 0.5) {
     vec3 oc = textureLod(u_ortho, huv, 1.5).rgb;
-    ok *= 0.25 + 0.75 * smoothstep(0.0, 0.02, oc.g - max(oc.r, oc.b));
+    // Is this ground vegetated, by the photograph? The test used to be green DOMINANCE -
+    // g - max(r, b) - which is a test for lush green and nothing else. A dry alpine meadow
+    // is yellow-green: its red is as high as its green, so the whole meadow scored zero and
+    // was thinned to the floor, a quarter of the blades, on exactly the ground that should
+    // be thickest. Measured on Maroon's own ortho, g - max(r, b) reads +0.026 at the camp
+    // and -0.002 six hundred metres away, flipping between full density and a quarter over
+    // open meadow; g - b reads +0.076 and +0.014 and separates plant from rock and snow
+    // just as well, because rock and snow are neutral and vegetation is not.
+    ok *= 0.40 + 0.60 * smoothstep(0.0, 0.025, oc.g - oc.b);
   }
   if (h4 > ok) { cull(); return; }
   // the root on the drawn surface: the CDLOD mesh follows the B-spline to within
@@ -129,7 +137,13 @@ void main() {
   float ang = hv.y * 6.2831853;
   float s = sin(ang), c_ = cos(ang);
   float grow = spacing / u_s0;                       // 1 at the camera, growing with distance
-  float tall = mix(0.18, 0.42, h3) * mix(0.8, 1.2, hash1(cid * 0.1)) * (1.0 + 0.35 * smoothstep(1.0, 12.0, grow)) * life;
+  // Height is biased SHORT rather than spread evenly. A meadow is not one length of grass: it
+  // is a dense mat with taller stems and seed heads standing out of it, and h3 * h3 gives that
+  // for nothing - half the blades come out under a quarter of the range, and the few long ones
+  // are what carry the silhouette against the light. An even 0.18-0.42 spread read as a lawn
+  // that had been cut, which is the one thing an alpine meadow is not.
+  float hh = h3 * h3;
+  float tall = mix(0.09, 0.60, hh) * mix(0.8, 1.2, hash1(cid * 0.1)) * (1.0 + 0.35 * smoothstep(1.0, 12.0, grow)) * life;
   float bw = 0.028 * mix(1.0, 0.45 * grow, smoothstep(1.0, 4.0, grow));
   if (far) { bw = max(bw, spacing * 0.35); tall = min(tall, spacing * 0.3); }
   vec3 p = vec3(a_pos.x * bw, a_pos.y * tall, a_pos.z * tall * (0.6 + 0.8 * h4));
