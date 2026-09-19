@@ -27,6 +27,23 @@ var post_lum: words = null
 var post_mips: int = 0
 var post_adapt: int = 0           # smoothed exposure (float bits)
 var post_exposure_max: int = 0x41A00000   # 20: the ceiling auto-exposure may reach (night lowers it)
+# ---- the grade ------------------------------------------------------------------------------
+# White balance, the shadows' floor and the highlights' gain. These were nine literals bound at
+# the draw, so the game had the same colour at seven in the morning as at one in the afternoon -
+# every knob a grade needs, and no hand on any of them. daylight.ludic owns them now and writes
+# them from the sun's own elevation; the values here are what they used to be hard-coded to, so a
+# program that never starts a day looks exactly as it did.
+# They are plain ints rather than a v3 on purpose: a grade is written by daylight_set, which can
+# run before post_init has allocated anything, and nine ints cannot be null.
+var post_wb_r: int = 0x3F828F5C      # 1.02
+var post_wb_g: int = 0x3F800000      # 1.0
+var post_wb_b: int = 0x3F7851EC      # 0.97
+var post_lift_r: int = 0x3B83126F    # 0.004
+var post_lift_g: int = 0x3B83126F    # 0.004
+var post_lift_b: int = 0x3C449BA6    # 0.012
+var post_gain_r: int = 0x3F7D70A4    # 0.99
+var post_gain_g: int = 0x3F7EB852    # 0.995
+var post_gain_b: int = 0x3F800000    # 1.0
 
 var post_ao: Target = null
 var post_ao_blur: Target = null
@@ -324,9 +341,9 @@ function post_tonemap(color_tex: int) -> void {
   u_f(gpu_uniform(prog, "u_vignette"), post_vignette)
   u_f(gpu_uniform(prog, "u_saturation"), post_saturation)
   u_f(gpu_uniform(prog, "u_contrast"), post_contrast)
-  u_f3(gpu_uniform(prog, "u_wb"), fl(1.02), F_ONE, fl(0.97))
-  u_f3(gpu_uniform(prog, "u_lift"), fl(0.004), fl(0.004), fl(0.012))
-  u_f3(gpu_uniform(prog, "u_gain"), fl(0.99), fl(0.995), fl(1.0))
+  u_f3(gpu_uniform(prog, "u_wb"), post_wb_r, post_wb_g, post_wb_b)
+  u_f3(gpu_uniform(prog, "u_lift"), post_lift_r, post_lift_g, post_lift_b)
+  u_f3(gpu_uniform(prog, "u_gain"), post_gain_r, post_gain_g, post_gain_b)
   # the HDR10 variant's display calibration (the SDR program has none of these, and -1 sets nothing)
   u_f(gpu_uniform(prog, "u_hdr_peak"), r3d_hdr_peak_nits())
   u_f(gpu_uniform(prog, "u_hdr_paper"), r3d_hdr_paper_nits())

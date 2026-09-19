@@ -142,8 +142,80 @@ function daylight_set(hours: int) -> void {
   let grey = f_add(f_mul(f_add(day_ibl[0], f_add(day_ibl[1], day_ibl[2])), fl(0.3333)), f_mul(fl(0.6), day_flash))
   let dim = f_sub(F_ONE, f_mul(fl(0.55), oc))
   for i in 0 .. 3 { day_ibl[i] = f_mul(f_lerp(day_ibl[i], grey, f_mul(fl(0.7), oc)), dim) }
+  # ---- the air ---------------------------------------------------------------------------
+  # Aerial perspective is a CURVE, not the one constant it was. A low sun is shining through
+  # far more air than a high one, and it is shining ALONG the ground rather than down onto it,
+  # so three things move together with its elevation: how much air there is, how hard that air
+  # scatters the sun forward, and how low in the valley it lies. `lowsun` peaks at the horizon
+  # and falls away on both sides - it has to fall away BELOW it too, or the middle of the night
+  # gets a dawn's haze with no dawn to justify it. Overcast thickens the air and flattens the
+  # scatter, because a grey sky has no disc to scatter from. The player's slider still
+  # multiplies the result, so nobody loses the setting they chose.
   if day_fog_base == 0 { day_fog_base = r3d_fog_density }
-  r3d_fog_density = f_mul(f_mul(day_fog_base, day_fog_mul), r3d_fog_scale)
+  let fog_rise = smoothf(f_rad(fi(-12)), f_rad(fi(1)), el)
+  let fog_high = smoothf(f_rad(fi(2)), f_rad(fi(26)), el)
+  let lowsun = f_mul(fog_rise, f_sub(F_ONE, fog_high))
+  var dens = f_mul(day_fog_base, f_add(F_ONE, f_mul(fl(1.5), lowsun)))
+  dens = f_mul(dens, f_add(F_ONE, f_mul(fl(1.2), oc)))
+  r3d_fog_density = f_mul(f_mul(dens, day_fog_mul), r3d_fog_scale)
+  # how fast the haze thins with height: a settled morning's lies IN the valley, a noon sky is
+  # thin all the way up, so the falloff rises as the sun drops
+  r3d_fog_falloff = f_mul(fl(0.002), f_add(F_ONE, f_mul(fl(1.6), lowsun)))
+  # the glow a ridge is silhouetted against when you look into a low sun
+  r3d_fog_inscatter = f_mul(f_add(fl(0.012), f_mul(fl(0.16), lowsun)), f_sub(F_ONE, f_mul(fl(0.7), oc)))
+  # and distance takes colour away at every hour, harder under cloud
+  r3d_fog_desat = f_add(fl(1.9), f_mul(fl(0.6), oc))
+  # ---- the grade -------------------------------------------------------------------------
+  # The look of an hour is not only how much air is in front of the mountain; it is what colour
+  # the light is and what the shadows are filled with. Noon is the case worth naming: direct
+  # sun is warm-white and the ONLY thing filling a midday shadow is a blue sky, so a midday
+  # frame wants a cool, lifted shadow and a hard contrast between it and the lit ground. Dawn
+  # and dusk are the opposite - a warm low sun, warm shadow fill off the whole sky, and less
+  # contrast because the light is coming through so much air. Overcast flattens and drains both.
+  # `night` is deliberately NOT `1 - d`: d is already falling while the sun is still on the
+  # horizon, so the two curves would fight and the warmest minute of the day would come out
+  # half-cooled. It only begins under the horizon.
+  let night = f_sub(F_ONE, smoothf(f_rad(fi(-14)), f_rad(fi(-4)), el))
+  let hi = fog_high
+  post_wb_r = f_add(fl(1.02), f_sub(f_mul(fl(0.10), lowsun), f_add(f_mul(fl(0.03), hi), f_mul(fl(0.06), night))))
+  post_wb_g = f_add(F_ONE, f_mul(fl(0.012), lowsun))
+  post_wb_b = f_add(fl(0.97), f_sub(f_add(f_mul(fl(0.055), hi), f_mul(fl(0.13), night)), f_mul(fl(0.09), lowsun)))
+  # the shadows' floor: warm and open into a low sun, blue at noon, cold and crushed at night
+  post_lift_r = f_sub(f_add(fl(0.004), f_mul(fl(0.013), lowsun)), f_mul(fl(0.002), f_add(hi, night)))
+  post_lift_g = f_sub(f_add(fl(0.004), f_mul(fl(0.008), lowsun)), f_mul(fl(0.001), night))
+  post_lift_b = f_add(fl(0.012), f_add(f_mul(fl(0.004), lowsun), f_mul(fl(0.013), hi)))
+  # Gain is left alone on purpose. It looks like a highlight control and is not: the grade is
+  # `c * gain + lift * (1 - c)`, so warming the gain warms the WHOLE frame, and warming it at
+  # noon undid the cool white balance above and turned one o'clock yellower than seven in the
+  # morning - the opposite of the thing this grade exists to do. Midday's punch comes from
+  # contrast, and midday's colour from a cool balance over a blue shadow.
+  post_gain_r = fl(0.99)
+  post_gain_g = fl(0.995)
+  post_gain_b = F_ONE
+  post_contrast = f_sub(f_add(fl(1.12), f_mul(fl(0.11), hi)), f_add(f_mul(fl(0.17), oc), f_mul(fl(0.06), night)))
+  post_saturation = f_sub(f_add(fl(1.04), f_mul(fl(0.12), lowsun)), f_add(f_mul(fl(0.20), oc), f_mul(fl(0.12), night)))
+
+  # The visible sky is relit by the hour (sky.frag). It fades out under the horizon, where the
+  # night's own tint, stars and moon take over, and it eases off under heavy cloud - a relit
+  # overcast is still overcast, and driving a clear-sky model hard through one paints a blue
+  # zenith onto a grey day.
+  r3d_sky_relight = f_mul(smoothf(f_rad(fi(-10)), f_rad(fi(1)), el), f_sub(F_ONE, f_mul(fl(0.75), oc)))
+
+  # R3D_NOAIR=1: the air as it was before any of the above - one density, one falloff, the
+  # inscatter the shader used to hard-code, and no distance desaturation at all. It is here
+  # so a before-and-after can be shot from ONE binary at one hour, which is the only kind of
+  # comparison worth looking at, and it joins R3D_NOCLOUD / R3D_NOSHADOW / R3D_NOGI.
+  if r3d_env_has("R3D_NOAIR") {
+    r3d_fog_density = f_mul(f_mul(day_fog_base, day_fog_mul), r3d_fog_scale)
+    r3d_fog_falloff = fl(0.002)
+    r3d_fog_inscatter = fl(0.02)
+    r3d_fog_desat = F_ZERO
+    post_wb_r = fl(1.02);      post_wb_g = F_ONE;        post_wb_b = fl(0.97)
+    post_lift_r = fl(0.004);   post_lift_g = fl(0.004);  post_lift_b = fl(0.012)
+    post_gain_r = fl(0.99);    post_gain_g = fl(0.995);  post_gain_b = F_ONE
+    post_contrast = fl(1.12);  post_saturation = fl(1.04)
+    r3d_sky_relight = F_ZERO
+  }
   # exposure: auto-exposure must not turn the night into day
   # the ceiling has to move with the moon or auto-exposure eats the difference between a
   # full-moon night and a new-moon one

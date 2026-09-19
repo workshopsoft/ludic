@@ -59,11 +59,43 @@ vec3 moonColour(vec3 dir, float night) {
   return col * night * (1.0 - 0.9 * u_moon_haze);
 }
 
+// ---- relighting the photograph ---------------------------------------------------------------
+// The sky is ONE HDRI - a South African morning - turned on its axis so its sun disc sits where
+// the hour wants it. Turning a photograph does not change what colour it was taken at, so every
+// hour of the day was lit by the same late morning: a sunset with a mid-morning blue overhead.
+//
+// What is worth keeping from the photograph is its STRUCTURE - the cloud, the gradient, the
+// sun's own disc - and what is worth replacing is its COLOUR. So the analytic sky below supplies
+// the chroma and the photograph keeps the luminance: clouds stay exactly where they are and go
+// orange at dusk the way real ones do, and the zenith goes deep blue at noon without a second
+// photograph being shipped.
+uniform float u_sky_relight;     // 0 leaves the photograph alone; the day fades this in
+vec3 analyticSky(vec3 dir) {
+  float ct = clamp(dir.y, 0.0, 1.0);
+  float cs = clamp(dot(dir, u_sun_dir), -1.0, 1.0);
+  float lowsun = 1.0 - smoothstep(0.0, 0.45, u_sun_dir.y);
+  // Rayleigh: deep overhead, pale at the horizon where the line of sight is longest
+  vec3 base = mix(vec3(0.60, 0.70, 0.85), vec3(0.16, 0.33, 0.74), pow(ct, 0.55));
+  // the sun's warmth spreads into the sky around it, and spreads FURTHER the lower it is
+  float glow = pow(max(cs, 0.0), mix(9.0, 2.0, lowsun));
+  base = mix(base, vec3(1.0, 0.55, 0.22), glow * mix(0.22, 0.88, lowsun));
+  // and at dusk the whole horizon band warms, not only the part near the sun
+  float band = (1.0 - smoothstep(0.0, 0.32, ct)) * lowsun;
+  base = mix(base, vec3(0.96, 0.52, 0.28), band * 0.55);
+  return base;
+}
+
 void main() {
   vec4 a = u_inv_vp * vec4(v_uv * 2.0 - 1.0, 1.0, 1.0);
   vec3 dir = normalize(a.xyz / a.w - u_cam_pos);
   // level 0: the equirect seam (atan wraps) would otherwise pick the smallest mip along one column
   vec3 col = min(textureLod(u_sky, skyUV(dir), 0.0).rgb, vec3(4096.0)) * u_sky_gain;
+  if (u_sky_relight > 0.001) {
+    vec3 sk = analyticSky(dir);
+    float sl = max(dot(sk, vec3(0.2126, 0.7152, 0.0722)), 1e-4);
+    float cl = dot(col, vec3(0.2126, 0.7152, 0.0722));
+    col = mix(col, sk * (cl / sl), u_sky_relight);
+  }
   float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
   col = max(mix(vec3(l), col, u_sky_sat), vec3(0.0));
   // the photograph's sky dims with the day (daylight.ludic); the night adds its own

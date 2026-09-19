@@ -39,6 +39,20 @@ vec2 skyUV(vec3 d) {
 // whose normal points down — the underside of a needle card, the lower half of a crown —
 // was lighting itself from that grey and came out white. Below the horizon the light is
 // what the ground reflects: the horizon sky times a meadow albedo.
+// What the ground under a surface reflects back up at it. It was one green constant for the
+// whole world, which is right in a meadow, wrong on scree, and wrong under a cliff - and on a
+// map that is not this one it is wrong everywhere. The colours are the map's now, and they
+// cross over at its treeline, so a boulder's underside up in the talus is filled with grey
+// rock light and one down by the lake is filled with green.
+// (Sampling the terrain's own albedo would be better still and wants a texture bound to every
+// program; that is phase 60's, where the terrain materials are being reworked anyway.)
+uniform vec3 u_ground_alb;       // the low ground: meadow and forest
+uniform vec3 u_ground_alb_hi;    // above the treeline: rock, scree, snow
+uniform float u_ground_hi_y;     // the height they cross at (world units)
+uniform float u_ground_hi_w;     // over how many metres
+vec3 groundAlbAt(float y) {
+  return mix(u_ground_alb, u_ground_alb_hi, smoothstep(u_ground_hi_y, u_ground_hi_y + u_ground_hi_w, y));
+}
 const vec3 GROUND_ALB = vec3(0.30, 0.34, 0.14);
 // the time of day (daylight.ludic): the sky's light scaled toward night, and the campfire
 uniform vec3 u_ibl_scale;
@@ -248,7 +262,7 @@ vec3 shade(vec3 wpos, vec3 n, vec3 albedo, float rough, float metal, float ao, f
   vec2 brdf = texture(u_brdf, vec2(NoV, rough)).rg;
   vec3 specIBL = pre * (Fr * brdf.x + brdf.y) * u_spec_scale;
   // one bounce off the sunlit ground onto whatever faces it (a warm fill from below)
-  vec3 groundAlb = vec3(0.16, 0.2, 0.07);
+  vec3 groundAlb = groundAlbAt(wpos.y) * 0.55;
   vec3 bounce = kdi * albedo * groundAlb * (u_sun_color * max(u_sun_dir.y, 0.0) / PI + irr) * clamp(0.5 - 0.5 * n.y, 0.0, 1.0) * 0.5;
   // specular occlusion from ao
   float so = clamp(pow(NoV + ao, exp2(-16.0 * rough - 1.0)) - 1.0 + ao, 0.0, 1.0);
@@ -258,7 +272,12 @@ vec3 shade(vec3 wpos, vec3 n, vec3 albedo, float rough, float metal, float ao, f
   return sane(min(c, vec3(4096.0)));
 }
 
-// aerial perspective: exponential height fog toward the horizon sky, with sun inscatter
+// aerial perspective: exponential height fog toward the horizon sky, with sun inscatter.
+// The strength of all three terms is the DAY's (daylight.ludic), not a constant: a low sun
+// is shining through far more air than a high one, and the whole look of a valley at dawn
+// is that air.
+uniform float u_fog_inscatter;   // how hard the air scatters the sun forward
+uniform float u_fog_desat;       // how fast distance takes a surface's own colour away
 vec3 applyFog(vec3 col, vec3 wpos, float dist) {
   vec3 dir = normalize(wpos - u_cam_pos);
   float hf = u_fog_height_falloff;
@@ -267,9 +286,18 @@ vec3 applyFog(vec3 col, vec3 wpos, float dist) {
   // measured from u_fog_base: two maps on one height datum, one a thousand metres lower,
   // would otherwise have that one's air exp(falloff * 1000) times thicker
   float fogAmt = u_fog_density * exp(-(u_cam_pos.y - u_fog_base) * hf) * integ;
-  float f = 1.0 - exp(-fogAmt);
+  float f = clamp(1.0 - exp(-fogAmt), 0.0, 1.0);
   vec3 fogCol = skyPrefiltered(vec3(dir.x, max(dir.y, 0.02), dir.z), 0.6);
   float sunAmt = pow(max(dot(dir, u_sun_dir), 0.0), 8.0);
-  fogCol += u_sun_color * 0.02 * sunAmt;
-  return mix(col, fogCol, clamp(f, 0.0, 1.0));
+  fogCol += u_sun_color * u_fog_inscatter * sunAmt;
+  // DISTANCE TAKES SATURATION BEFORE IT TAKES CONTRAST, and the mix below cannot do that on
+  // its own: blending a saturated green ridge toward a saturated blue sky leaves a saturated
+  // ridge. That is why the noon frame had a mountain three kilometres off reading as vividly
+  // as the workbench two metres from the camera, while the same scene at dusk - where the fog
+  // colour happens to be a warm grey - looked like a photograph. Pull the surface toward its
+  // own luminance first, faster than the fog itself arrives, and the ridge recedes at every
+  // hour rather than only at the one where the sky was already grey.
+  float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
+  col = mix(col, vec3(l), clamp(f * u_fog_desat, 0.0, 1.0));
+  return mix(col, fogCol, f);
 }
