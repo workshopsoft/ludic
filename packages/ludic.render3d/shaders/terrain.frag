@@ -268,18 +268,37 @@ vec3 groundShade(vec3 p, vec3 N, float slope, float dist, float viewDepth, bool 
     float mxc = max(ocl.r, max(ocl.g, ocl.b)), mnc = min(ocl.r, min(ocl.g, ocl.b));
     float greenEx = ocl.g - max(ocl.r, ocl.b);
     screeC = smoothstep(0.008, -0.002, greenEx) * smoothstep(0.06, 0.12, mxc) * (1.0 - smoothstep(0.55, 0.75, mxc)) * smoothstep(waterLine(p.xz) + 0.2, waterLine(p.xz) + 1.2, p.y);
-    snowC = smoothstep(0.08, 0.04, mxc - mnc) * smoothstep(0.55, 0.8, mxc);
+    // Snow, according to the photograph: bright and unsaturated. Both of which a SUNLIT ROCK
+    // FACE also is, seen from a satellite through several kilometres of air - so the Bells'
+    // own faces classified as snow and were painted 90% white, which is the real reason the
+    // range named for the colour of its rock rendered as a white cone. It needs the elevation
+    // gate the terrain's own snow has: snow does not lie below the snow line in July, however
+    // pale the photograph is there.
+    snowC = smoothstep(0.08, 0.04, mxc - mnc) * smoothstep(0.62, 0.84, mxc)
+          * smoothstep(u_snow_line - 260.0, u_snow_line - 40.0, p.y);
   }
   // snow lingering in the high gullies is drawn further down, but whether it can be
   // there at all is known now, and it is the third caller of the snow sample
-  float gullyGate = smoothstep(450.0, 650.0, p.y) * smoothstep(0.75, 0.35, slope);
+  // Snow lingering in the high gullies, and it has to be gated on THE SNOW LINE rather than on
+  // two absolute heights. At 450-650 m it started five hundred metres below where snow can lie,
+  // covered most of the upper mountain at nine tenths opacity, and is the single biggest reason
+  // the Bells rendered as a white cone: the mean colour of that peak measured 208/255 and
+  // neutral, which is not rock under any light, it is snow. Gullies hold snow NEAR the line,
+  // not half a kilometre under it.
+  float gullyGate = smoothstep(u_snow_line - 340.0, u_snow_line - 120.0, p.y) * smoothstep(0.75, 0.35, slope);
 
   // ---- samples ---------------------------------------------------------------------
   // World-space derivatives, taken once and in unbranched control flow: every sample
   // below is in a branch and takes its gradients from these.
   vec3 dpx = dFdx(p), dpy = dFdy(p);
   vec3 gA = vec3(0.3, 0.4, 0.2), gN = vec3(0.0, 0.0, 1.0), gR = vec3(1.0, 0.8, 0.0);
-  vec3 rA = vec3(0.3), rN = vec3(0.0, 1.0, 0.0), rR = vec3(1.0, 0.8, 0.0);
+  // The rock's fallback is the MAROON MEAN, not a neutral grey. The far tier (TFAST_3) skips
+  // the rock sample altogether and leaves this constant standing in for it, so a neutral grey
+  // here is what the mountain three kilometres away is actually painted - and it is the
+  // mountain the range is named for. The file's own rule a hundred lines up says the cheap
+  // tier must keep the near tier's MEAN COLOUR or the boundary shows as a ring; this is that
+  // rule applied to the one material where the mean is not grey.
+  vec3 rA = vec3(0.26, 0.13, 0.10), rN = vec3(0.0, 1.0, 0.0), rR = vec3(1.0, 0.8, 0.0);
   vec3 sA = vec3(0.86, 0.88, 0.92), sN = vec3(0.0, 0.0, 1.0), sR = vec3(1.0, 0.55, 0.0);
   vec3 pA, pN, pR;
   vec2 uvg = p.xz * 0.28;
@@ -337,7 +356,11 @@ vec3 groundShade(vec3 p, vec3 N, float slope, float dist, float viewDepth, bool 
     rA *= mix(1.0, 0.75 + 0.5 * smoothstep(0.35, 0.65, strata), 0.5 * smoothstep(0.3, 0.6, slope));
     rN = normalize(rN + vec3(rN2.x, 0.0, rN2.y) * 0.6 * smoothstep(80.0, 400.0, dist));
     // the Bells are maroon mudstone: warm red-brown rock with grey scree below
-    rA *= mix(vec3(0.14, 0.08, 0.06), vec3(0.24, 0.15, 0.11), fbmC(cheap, p.xz * 0.003, 2) * 0.5 + 0.5);
+    // The Bells are maroon mudstone: warm red-brown rock, with grey weathered scree below.
+    // These were tuned while 55% of a grey photograph was mixed over them, so they had to
+    // be dark and timid to survive it; with the rock now mostly its own colour they can be
+    // the colour the range is named for.
+    rA *= mix(vec3(0.38, 0.17, 0.13), vec3(0.58, 0.31, 0.23), fbmC(cheap, p.xz * 0.003, 2) * 0.5 + 0.5);
   }
   if (needSnow > 0.002) {
     sA = textureGrad(u_snow_d, p.xz * 0.25, dpx.xz * 0.25, dpy.xz * 0.25).rgb * 0.8;
@@ -370,7 +393,28 @@ vec3 groundShade(vec3 p, vec3 N, float slope, float dist, float viewDepth, bool 
     // flown, so grass that was plain up close grew dark patches as you backed away, and
     // those patches slid and changed shape as you walked. A constant keeps the
     // photograph's large-scale colour without tying any of it to the camera.
-    float orthoW = 0.55;
+    // How much of the photograph shows through, and it is NOT one number any more.
+    //
+    // The Maroon Bells are named for the colour of their mudstone and rendered grey, and
+    // this line was why: the maroon tint two hundred lines up is real, and then 55% of a
+    // hazy, sun-washed aerial photograph was mixed over the top of it everywhere. A survey
+    // image is a good record of WHERE the forest and the scree are and a poor record of
+    // what a steep rock face is coloured - it is shot through kilometres of atmosphere at
+    // an angle no player ever stands at.
+    //
+    // So the photograph keeps the meadow and the forest, where it carries real variation
+    // nothing else knows about, and gives the rock back to the rock. Deliberately NOT a
+    // distance fade: one used to live here and was removed because the photograph has the
+    // day's own shadows baked into it, so grass that was plain up close grew dark patches
+    // as you backed away and those patches slid as you walked. This keys off the material,
+    // which does not move when the camera does.
+    float orthoW = 0.55 * (1.0 - 0.62 * rockW);
+    // ...and it falls away with HEIGHT as well. A survey image is least trustworthy exactly
+    // where it matters most here: a high face is shot through the most air, at the most
+    // oblique angle, and comes back pale and grey whatever colour the rock is. Down in the
+    // valley the same image is the best record there is of where the meadow, the duff and the
+    // gravel actually are, so it keeps the valley and gives up the mountain.
+    orthoW *= 1.0 - 0.72 * smoothstep(280.0, 720.0, p.y);
     // grain at three scales so the far slopes keep structure the photograph's pixels cannot carry
 #ifdef TFAST_20
     float grain = 0.82;

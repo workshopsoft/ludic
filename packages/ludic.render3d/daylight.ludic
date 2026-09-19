@@ -164,7 +164,12 @@ function daylight_set(hours: int) -> void {
   # the glow a ridge is silhouetted against when you look into a low sun
   r3d_fog_inscatter = f_mul(f_add(fl(0.012), f_mul(fl(0.16), lowsun)), f_sub(F_ONE, f_mul(fl(0.7), oc)))
   # and distance takes colour away at every hour, harder under cloud
-  r3d_fog_desat = f_add(fl(1.9), f_mul(fl(0.6), oc))
+  # 1.9 was tuned on a valley whose rock was grey anyway. Maroon's air is thin, dry and at
+  # 2900 m, and the Bells are only a couple of kilometres from the lake - in the photograph
+  # everybody knows, they are still plainly RED at that distance. Desaturating them to a pale
+  # grey-pink is physically defensible and loses the one thing the range is named for, so the
+  # basin's own air gets a gentler figure and overcast still takes colour away faster.
+  r3d_fog_desat = f_add(fl(1.15), f_mul(fl(0.7), oc))
   # ---- the grade -------------------------------------------------------------------------
   # The look of an hour is not only how much air is in front of the mountain; it is what colour
   # the light is and what the shadows are filled with. Noon is the case worth naming: direct
