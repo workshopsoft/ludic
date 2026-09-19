@@ -536,6 +536,11 @@ void main() {
 #ifdef DEBUG_MAT
   col = dbg_mat;
 #endif
+#ifdef DEBUG_WIND
+  // The wind field itself, painted on the ground: R3D_DEBUG_WIND=1 with two shots a moment
+  // apart shows the gust fronts and shows them MOVING, which no still of grass ever will.
+  col = vec3(windGust(p.xz, u_time)) * vec3(1.0, 0.95, 0.75);
+#endif
 #ifdef DEBUG_ALB
   col = dbg_alb * 3.0;
 #endif

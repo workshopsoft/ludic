@@ -148,9 +148,11 @@ void main() {
   if (far) { bw = max(bw, spacing * 0.35); tall = min(tall, spacing * 0.3); }
   vec3 p = vec3(a_pos.x * bw, a_pos.y * tall, a_pos.z * tall * (0.6 + 0.8 * h4));
   vec3 n = vec3(0.0, 0.3, 1.0);
-  float gust = sin(xz.x * 0.09 + u_time * 1.1) * 0.5 + sin(xz.y * 0.13 - u_time * 0.8 + xz.x * 0.05) * 0.5;
+  // The shared field (wind.glsl), so the gust that crosses this meadow is the same gust that
+  // reaches the trees behind it a moment later. The two sines that used to live here were a
+  // standing wobble: the grass moved, but nothing ever travelled.
   float ph = u_time * 1.7 + seed * 6.2831 + xz.x * 0.05 + xz.y * 0.07;
-  float sway = (sin(ph) * 0.6 + sin(ph * 2.3 + 1.0) * 0.4 + gust) * u_wind;
+  float sway = windSway(xz, u_time, ph, 0.0) * u_wind;
   float hgt = max(p.y, 0.0);
   p.x += sway * hgt * hgt * 0.35;
   p.z += sway * hgt * hgt * 0.15 * cos(ph * 0.7);

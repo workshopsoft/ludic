@@ -421,6 +421,7 @@ function terrain_init_finish() -> void {
   var defs = ""
   if r3d_debug_shadow { defs = "#define DEBUG_SHADOW\n" }
   if r3d_env_has("R3D_DEBUG_MAT") { defs = "#define DEBUG_MAT\n" }
+  if r3d_env_has("R3D_DEBUG_WIND") { defs = "#define DEBUG_WIND\n" }
   if r3d_env_has("R3D_DEBUG_NRM") { defs = "#define DEBUG_NRM\n" }
   if r3d_env_has("R3D_DEBUG_ALB") { defs = "#define DEBUG_ALB\n" }
   # Elimination profiling. Measure these by FRAME TIME (prof_ft_report), not by the

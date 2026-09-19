@@ -76,7 +76,11 @@ void main() {
   // sway grows with height above the base; gust phase from the instance seed
   float hgt = max(p.y, 0.0);
   float ph = u_time * 1.7 + i_rot.z * 6.2831 + i_pos.x * 0.05 + i_pos.z * 0.07;
-  float sway = (sin(ph) * 0.6 + sin(ph * 2.3 + 1.0) * 0.4) * u_wind * i_rot.w;
+  // A crown had NO gust at all - only this per-instance wobble - so the canopy swayed to a
+  // rhythm of its own while the meadow under it rippled to another. It is the same field now,
+  // read at the tree's own place in the world, so a gust crosses the grass and goes on into
+  // the trees. `stiff` is 0.35 because a bole resists what a blade cannot.
+  float sway = windSway(i_pos.xz, u_time, ph, 0.35) * u_wind * i_rot.w;
   p.x += sway * hgt * hgt * 0.35;
   p.z += sway * hgt * hgt * 0.15 * cos(ph * 0.7);
 #endif

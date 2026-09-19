@@ -17,6 +17,7 @@ var r3d_root_found: bool = false
 var r3d_global_defs: string = ""
 var r3d_noise_src:    string = null
 var r3d_lighting_src: string = null
+var r3d_wind_src: string = null
 
 function r3d_set_paths(root: string, assets: string) -> void { r3d_root = root;  r3d_assets = assets }
 
@@ -51,7 +52,11 @@ function r3d_shader_file(name: string) -> string {
 function r3d_shader_src(name: string, defines: string, is_frag: bool) -> string {
   if r3d_noise_src == null { r3d_noise_src = r3d_shader_file("noise.glsl") }
   if r3d_lighting_src == null { r3d_lighting_src = r3d_shader_file("lighting.glsl") }
-  var s = "#version 410 core\n" + r3d_global_defs + defines
+  # the wind goes to BOTH stages: the grass and the crowns move in the vertex shader, the water
+  # ripples in the fragment one, and they have to be reading the same field or the meadow and
+  # the lake disagree about the weather
+  if r3d_wind_src == null { r3d_wind_src = r3d_shader_file("wind.glsl") }
+  var s = "#version 410 core\n" + r3d_global_defs + defines + r3d_wind_src
   if is_frag { s = s + r3d_noise_src + r3d_lighting_src }
   return s + r3d_shader_file(name)
 }

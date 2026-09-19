@@ -152,6 +152,7 @@ function shd_bind_varyings(src: pointer, word: pointer, collect: bool) -> pointe
 
 var shd_noise: pointer = null
 var shd_lighting: pointer = null
+var shd_wind: pointer = null
 function shd_file(name: pointer) -> pointer {
   let s = read_file(`packages/ludic.render3d/shaders/{name}`)
   if s == null { err(`shaders: missing packages/ludic.render3d/shaders/{name}\n`);  return "" }
@@ -204,6 +205,7 @@ function cmd_shaders() -> int {
   if list == null { err("shaders: no packages/ludic.render3d/shaders/variants.list\n");  return 1 }
   shd_noise = shd_file("noise.glsl")
   shd_lighting = shd_file("lighting.glsl")
+  shd_wind = shd_file("wind.glsl")
   var outdir = "packages/ludic.render3d/shaders/spv"
   let tmp = tmp_path("shaders")
   if check { outdir = tmp_path("shaders-check") }
@@ -232,13 +234,13 @@ function cmd_shaders() -> int {
     let depth_remap = "\n#undef main\nvoid main() {\n  ludic_gl_main();\n  gl_Position.z = (gl_Position.z + gl_Position.w) * 0.5;\n}\n"
     # invariant: the foliage's depth prepass and its lit pass (depth EQUAL) are different variants,
     # and without it the compiler may compute their positions a hair apart and fail the test
-    var vsrc = "#version 460\n" + defines + "invariant gl_Position;\n#define main ludic_gl_main\n" + shd_file(parts[0]) + depth_remap
+    var vsrc = "#version 460\n" + defines + shd_wind + "invariant gl_Position;\n#define main ludic_gl_main\n" + shd_file(parts[0]) + depth_remap
     # A mesh shader stands in for the vertex stage (a variant whose first file is *.mesh): it writes an
     # array of positions, so it cannot be wrapped for the depth remap or take invariant gl_Position -
     # it remaps depth itself. Its SPIR-V keeps the .vert name, so the manifest and loader are unchanged.
     let is_mesh = Text.ends_with(parts[0], ".mesh")
-    if is_mesh { vsrc = "#version 460\n#extension GL_EXT_mesh_shader : require\n" + defines + shd_file(parts[0]) }
-    let fsrc = "#version 460\n" + defines + shd_noise + shd_lighting + shd_file(parts[1])
+    if is_mesh { vsrc = "#version 460\n#extension GL_EXT_mesh_shader : require\n" + defines + shd_wind + shd_file(parts[0]) }
+    let fsrc = "#version 460\n" + defines + shd_wind + shd_noise + shd_lighting + shd_file(parts[1])
     # one binding table for both stages, and one location table for the varyings between them
     shd_names = new []pointer
     shd_vary = new []pointer
