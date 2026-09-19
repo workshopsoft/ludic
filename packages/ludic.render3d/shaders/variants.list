@@ -55,3 +55,4 @@ terrain.vert|terrain.frag|#define SUN_INLINE;#define NEAR_ONLY;
 terrain.vert|tersun.frag|
 water.vert|water.frag|
 fullscreen.vert|volumetric.frag|
+fullscreen.vert|dof.frag|

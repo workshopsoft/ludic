@@ -288,6 +288,7 @@ function r3d_frame(time: int) -> void {
   # Before bloom and before the tonemap: a shaft of light is a bright thing in the air and
   # should bloom like one.
   prof_begin("volumetric");  post_volumetric_pass();  prof_end()
+  prof_begin("dof");  post_dof_pass();  prof_end()
   if not post_no_gi { prof_begin("SSAO/GI");  post_ssao_pass();  prof_end() }
   if r3d_debug_max { tex_max(post_hdr.color, post_hdr.w, post_hdr.h, "hdr") }
   prof_begin("bloom")

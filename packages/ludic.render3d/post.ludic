@@ -76,6 +76,17 @@ var post_color_w: int = 0          # its size: the display's when DLSS upscaled 
 var post_color_h: int = 0
 var post_color: int = 0            # the HDR colour the rest of post reads      # the resolved depth, copied so passes can read it while drawing into the frame
 var post_p_sharp: int = 0
+# Spatial anti-aliasing, in the sharpen pass because that pass already reads this pixel's
+# neighbourhood and runs last on the LDR image. 1 on, 0 off; the game's setting drives it.
+var post_fxaa: int = 0x3F800000
+# ---- depth of field ------------------------------------------------------------------------
+# Off in ordinary play - the pass is skipped whole, not run at zero radius. The game turns it on
+# behind the viewfinder and says what to focus on.
+var post_p_dof: int = 0
+var post_dof: Target = null
+var post_dof_focus: int = 0x41200000      # 10 m
+var post_dof_aperture: int = 0            # 0 = no lens, and no pass
+var post_dof_max: int = 0x41400000        # 12 px
 var post_p_tone_hdr: int = 0        # the tonemap's HDR10 variant, made the first time HDR is on
 var post_ldr_hdr: bool = false       # post_ldr was made for HDR10 output (10-bit)
 # the LDR image is 10-bit while the output is HDR10: PQ in 8 bits bands
@@ -88,7 +99,7 @@ function post_free() -> void {
   if post_hdr == null { return }
   if post_ms_fbo != 0 { gpu_fb_free(post_ms_fbo);  post_ms_fbo = 0 }
   target_free(post_hdr);  target_free(post_ao);  target_free(post_ao_blur);  target_free(post_ldr)
-  target_free(post_depth_copy);  target_free(post_prev);  target_free(post_scene);  target_free(post_vol)
+  target_free(post_depth_copy);  target_free(post_prev);  target_free(post_scene);  target_free(post_vol);  target_free(post_dof)
   for i in 0 .. len(post_bloom) { target_free(post_bloom[i]) }
   post_hdr = null
 }
@@ -149,6 +160,8 @@ function post_init(w: int, h: int) -> void {
   post_ldr = target_new(w, h, post_ldr_fmt(), GL_RGBA, GL_UNSIGNED_BYTE, false, GL_LINEAR)
   post_ldr_hdr = gpu_hdr_active()
   post_depth_copy = target_new(w, h, GL_R8, GL_RED, GL_UNSIGNED_BYTE, true, GL_NEAREST)
+  post_dof = target_new(w, h, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, false, GL_LINEAR)
+  if post_p_dof == 0 { post_p_dof = r3d_program("fullscreen.vert", "dof.frag", "") }
   post_vol = target_new(max(w / 2, 1), max(h / 2, 1), GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, false, GL_LINEAR)
   if post_p_vol == 0 { post_p_vol = r3d_program("fullscreen.vert", "volumetric.frag", "") }
   post_prev = target_new(w, h, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, false, GL_LINEAR)
@@ -335,6 +348,25 @@ function post_volumetric_pass() -> void {
   gpu_blend(false)
 }
 
+# The lens, between the scene and the bloom: a blurred highlight should still bloom, and a
+# bloom smeared by the lens afterwards would be a halo round nothing.
+function post_dof_pass() -> void {
+  if post_dof_aperture == 0 { return }
+  gpu_depth_test(false)
+  gpu_blend(false)
+  target_bind(post_dof)
+  gpu_use_program(post_p_dof)
+  r3d_bind_2d(post_p_dof, "u_src", 0, post_color)
+  r3d_bind_2d(post_p_dof, "u_depth", 1, post_hdr.depth)
+  u_mat4(gpu_uniform(post_p_dof, "u_inv_proj"), cam_inv_proj)
+  u_f2(gpu_uniform(post_p_dof, "u_texel"), fr(1, post_w), fr(1, post_h))
+  u_f(gpu_uniform(post_p_dof, "u_focus"), post_dof_focus)
+  u_f(gpu_uniform(post_p_dof, "u_aperture"), post_dof_aperture)
+  u_f(gpu_uniform(post_p_dof, "u_max_coc"), post_dof_max)
+  mesh_draw(post_fs)
+  post_color = post_dof.color
+}
+
 function post_bloom_pass() -> void {
   gpu_depth_test(false)
   gpu_blend(false)
@@ -413,6 +445,9 @@ function post_tonemap(color_tex: int) -> void {
   r3d_bind_2d(post_p_sharp, "u_src", 0, post_ldr.color)
   u_f2(gpu_uniform(post_p_sharp, "u_texel"), fr(1, post_ldr.w), fr(1, post_ldr.h))
   u_f(gpu_uniform(post_p_sharp, "u_amount"), post_sharpen)
+  var fx = post_fxaa
+  if r3d_env_has("R3D_NOFXAA") { fx = F_ZERO }
+  u_f(gpu_uniform(post_p_sharp, "u_fxaa"), fx)
   # R3D_NOGRAIN=1: no film grain, so two frames of a still camera can be compared for what else moves
   var grain = post_grain
   if r3d_env_has("R3D_NOGRAIN") { grain = F_ZERO }
