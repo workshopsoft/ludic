@@ -217,6 +217,7 @@ function emit_program() -> void {
   g_uses_loopback = false
   g_uses_expect = false
   g_uses_panic = false
+  g_fprintf_declared = false
   g_uses_result = false
   g_uses_option = false
   g_uses_world_despawn = false                   # #84: set when a world_despawn call is emitted (below)
@@ -281,7 +282,12 @@ function emit_program() -> void {
   if g_uses_datert { emit_datetime_prelude() }   # @lp_days_from_civil / @lp_civil_from_days conversions
   if g_uses_panic {                               # panic/assert: located abort to stderr
     emith("declare i32 @fprintf(ptr, ptr, ...)\n")
+    g_fprintf_declared = true
     emith("@.fmt_panic = private unnamed_addr constant [6 x i8] c\"%s%s\\0A\\00\"\n")
+  }
+  if g_uses_bounds {                              # a slice index out of range: located abort
+    if not g_fprintf_declared { emith("declare i32 @fprintf(ptr, ptr, ...)\n");  g_fprintf_declared = true }
+    emith("@.fmt_bounds = private unnamed_addr constant [14 x i8] c\"%s%d, len %d\\0A\\00\"\n")
   }
   if g_uses_result { emith("%Result = type { i32, i32, ptr }\n") }   # issue #46: ok/err/try value
   if g_uses_option { emith("%Option = type { i32, i32 }\n") }         # issue #53: some/none value
@@ -318,7 +324,7 @@ function emit_cov_runtime() -> void {
   let modec = emit_str_const("w")
   emith("@.cov_filefmt = private unnamed_addr constant [9 x i8] c\"FILE %s\\0A\\00\"\n")
   emith("@.cov_rowfmt = private unnamed_addr constant [7 x i8] c\"%d %d\\0A\\00\"\n")
-  if not g_uses_panic { emith("declare i32 @fprintf(ptr, ptr, ...)\n") }
+  if not g_fprintf_declared { emith("declare i32 @fprintf(ptr, ptr, ...)\n");  g_fprintf_declared = true }
   emith("declare i32 @atexit(ptr)\n")
 
   # @cov_dump: open $LUDIC_COVERAGE (or "ludic.cov"), write a FILE header then one

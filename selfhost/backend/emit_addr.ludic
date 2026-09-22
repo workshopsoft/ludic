@@ -57,6 +57,28 @@ function emit_index_addr(e: Node) -> pointer {
   let data = nreg()
   emit("  ");  emit(data);  emit(" = load ptr, ptr ");  emit(dp);  emit("\n")
   let ix = emit_expr(e.b)                          # (evaluate index BEFORE setting
+  # THE INDEX IS CHECKED AGAINST THE LENGTH. A slice has carried { ptr, len, cap } since it
+  # existed, and nothing ever read the len: every index was a bare getelementptr, so running
+  # off the end of one wrote into whatever the allocator had put next and the program died
+  # somewhere else entirely, minutes later, with a stack that named an innocent function.
+  # The comparison is UNSIGNED, which rejects a negative index in the same instruction.
+  if g_bounds {
+    g_uses_bounds = true
+    let lnp = nreg()
+    emit("  ");  emit(lnp);  emit(" = getelementptr inbounds %LSlice, ptr ")
+    emit(base.code);  emit(", i32 0, i32 1\n")
+    let lnv = emit_bind(`load i32, ptr {lnp}`)
+    let okc = emit_bind(`icmp ult i32 {ix.code}, {lnv}`)
+    let lok = lbl("ixok")
+    let lbad = lbl("ixbad")
+    emit(`  br i1 {okc}, label %{lok}, label %{lbad}\n`)
+    emit(`{lbad}:\n`)
+    let bmsg = emit_str_const(`{g_src_name}:{itoa(e.line)}: index out of range: `)
+    let bse = emit_bind(stdstream_rhs(2))
+    emit(`  call i32 (ptr, ptr, ...) @fprintf(ptr {bse}, ptr @.fmt_bounds, ptr {bmsg}, i32 {ix.code}, i32 {lnv})\n`)
+    emit("  call void @exit(i32 1)\n  unreachable\n")
+    emit(`{lok}:\n`)
+  }
   let r = nreg()                                   #  g_addr_ty — a member-access index
   emit("  ");  emit(r);  emit(" = getelementptr inbounds ");  emit(llty(el))   # overwrites it)
   emit(", ptr ");  emit(data);  emit(", i32 ");  emit(ix.code);  emit("\n")

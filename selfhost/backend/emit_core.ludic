@@ -41,6 +41,9 @@ var g_uses_pak: bool = false   # file_open was emitted -> emit the asset-pack ru
 var g_uses_datert: bool = false  # Date.*/DateTime.* was emitted -> emit the civil<->epoch conversions
 var g_uses_expect: bool = false  # expect/expect_eq/expect_near was emitted -> emit the test-assert globals
 var g_uses_panic: bool = false   # panic/assert was emitted -> declare @fprintf + the panic format
+var g_uses_bounds: bool = false  # a checked slice index was emitted -> declare the bounds format
+var g_fprintf_declared: bool = false  # @fprintf is declared once, by whoever needs it first
+var g_bounds: bool = true        # check every slice index (--no-bounds turns it off)
 var g_uses_result: bool = false  # ok()/err()/try was emitted -> define the %Result value type (issue #46)
 var g_uses_option: bool = false  # some()/none() was emitted -> define the %Option value type (issue #53)
 var g_tests: []Node              # test "name" { ... } blocks collected by the parser
