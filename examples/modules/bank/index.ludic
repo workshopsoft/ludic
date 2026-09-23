@@ -1,0 +1,3 @@
+# bank/index.ludic - a module: only what it exports is reachable from outside
+module bank
+import "ledger.ludic"

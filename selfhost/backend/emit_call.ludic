@@ -1409,6 +1409,7 @@ function emit_call(e: Node) -> Val {
     if (fn2 == null) { perr(`unknown function {name}`) }
     cname = rtname
   }
+  vis_check(fn2, name)
   reorder_named(e, param_labels(fn2))
   # evaluate args first (their IR is emitted before the call instruction), coercing
   # each to the parameter's declared type so an int passed for a `long` widens.
@@ -1471,6 +1472,7 @@ function emit_expr(e: Node) -> Val {
     if li >= 0 { return emit_load_at(loc_reg[li], loc_ty[li]) }
     let g = find_global(e.s)
     if (g != null) {
+      vis_check(g, e.s)
       # a const reference IS its initializer expression, carrying that
       # expression's real type — so `const X: fixed = 10.0` yields a `fixed`, not
       # the raw Q16.16 bits mislabelled `int`. Every existing const is an int

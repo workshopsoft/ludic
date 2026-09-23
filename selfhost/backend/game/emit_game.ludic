@@ -658,6 +658,8 @@ function emit_event_fns() -> void {
         g_term = false
         let next = lbl("evnext")
         g_ret_label = next
+        g_err_file = g_onlisten[i].file
+        vis_check(ev, en)
         emit_block(g_onlisten[i].a)
         g_ret_label = "ret"
         if not g_term { emit(`  br label %{next}\n`) }

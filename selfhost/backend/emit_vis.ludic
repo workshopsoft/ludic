@@ -1,0 +1,37 @@
+# emit_vis.ludic — L3: module scope. A file belongs to the module its own `module NAME` line or
+# its importer's names (frontend/parse.ludic, module_of); a file in no module is public. A
+# reference from one module to another module's function, global, record or event needs that
+# declaration `export`ed, unless the referring module is a `friend module` (a test harness).
+# LUDIC_VIS_REPORT=1 prints every violation as `vis: <file>: <module>.<name>` and goes on, so a
+# tool can add the exports a codebase needs before the rule is switched on for it.
+var g_vis_report: int = -1
+function vis_reporting() -> bool {
+  if g_vis_report < 0 {
+    g_vis_report = 0
+    if getenv("LUDIC_VIS_REPORT") != null { g_vis_report = 1 }
+  }
+  return g_vis_report == 1
+}
+function vis_allowed(d: Node, from: pointer) -> bool {
+  if d.vis == 1 { return true }
+  if d.file == null { return true }
+  let to = module_of(d.file)
+  if to == "" { return true }
+  if from == to { return true }
+  return module_is_friend(from)
+}
+# `what` is the name as written at the reference
+function vis_check(d: Node, what: pointer) -> void {
+  if d == null { return }
+  var here = g_err_file
+  if here == null { return }
+  let from = module_of(here)
+  if vis_allowed(d, from) { return }
+  let to = module_of(d.file)
+  if vis_reporting() {
+    let m = `vis: {d.file}:{itoa(d.line)}: {to}.{what} used from {here}\n`
+    file_write(file_stderr(), m, len(m))
+    return
+  }
+  perr(`{what} is private to module {to}; mark it 'export' where it is declared ({d.file})`)
+}

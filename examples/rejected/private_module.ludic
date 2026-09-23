@@ -1,0 +1,8 @@
+# L3: `add` is private to module bank; calling it from outside the module is refused
+import "private_bank"
+program Private {
+  entry {
+    add(5)
+    print(total())
+  }
+}

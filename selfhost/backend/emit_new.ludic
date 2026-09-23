@@ -26,6 +26,7 @@ function rec_field(rec: Node, fname: pointer) -> Node {
 function emit_new_struct(name: pointer, rec: Node) -> Val {
   let s = layout_node(name)                     # a struct or a property — same shape
   if (s == null) { perr("unknown record type in new") }
+  vis_check(s, name)
   let lty = layout_ty(name)
   let sz = emit_sizeof(lty)
   let obj = emit_bind(`call ptr @malloc(i64 {sz})`)

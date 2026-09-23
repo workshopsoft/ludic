@@ -706,6 +706,8 @@ function cmd_dev_test() -> int {
   reject_case("rejected/missing_return", "can reach its end without returning", "a function that can run off its end without its result is refused")
   feat_case("functions/values", "", "42 10 25 49 81 1.5 1", "values.ludic (L2: fn types, fn name, calls through a local, global, field, element, parameter, result)")
   reject_case("rejected/fn_type_mismatch", "is not a fn(int)->int", "a function of the wrong type is refused")
+  feat_case("modules/visible", "", "42 42", "visible.ludic (L3: a module's exported function and event used from outside it)")
+  reject_case("rejected/private_module", "add is private to module bank", "a private function of another module is refused")
 
   # EV2 the world table: the mod reflection ABI, callable from Ludic by name.
   net_case("ecs/world_get", "50 1 7")

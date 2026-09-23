@@ -14,6 +14,32 @@ var g_parse_file: pointer = ""     # the file whose tokens are being parsed
 # `numbers float`: files whose bare decimal literals are float, not fixed. A file that says
 # so is listed, and so is every non-runtime file it imports (a barrel passes it on).
 var g_float_files: []pointer = new []pointer
+# L3 modules: `module NAME` at the top of a file names the module it and everything it imports
+# belong to, until an import names its own; `friend module NAME` may see every module's private
+# names (a test harness). A file in no module - the runtime, a program's root - is public.
+var g_mod_file: []pointer = new []pointer
+var g_mod_name: []pointer = new []pointer
+var g_mod_friends: []pointer = new []pointer
+function module_of(f: pointer) -> pointer {
+  var i = len(g_mod_file) - 1
+  while i >= 0 {
+    if (g_mod_file[i] == f) { return g_mod_name[i] }
+    i -= 1
+  }
+  return ""
+}
+function module_set(f: pointer, name: pointer) -> void {
+  push(g_mod_file, f)
+  push(g_mod_name, name)
+}
+function module_is_friend(name: pointer) -> bool {
+  var i = 0
+  while i < len(g_mod_friends) {
+    if (g_mod_friends[i] == name) { return true }
+    i += 1
+  }
+  return false
+}
 function is_float_file(f: pointer) -> bool {
   if (f == null) { return false }
   var i = 0
@@ -847,6 +873,36 @@ function parse_one_decl() -> void {
     }
     skipnl()
   }
+  if is_id("friend") and (toks[pi + 1].text == "module") {
+    pi += 2
+    let fm = eat_id()
+    module_set(g_parse_file, fm)
+    push(g_mod_friends, fm)
+    return
+  }
+  if is_id("module") and toks[pi + 1].kind == TK_ID {
+    pi += 1
+    module_set(g_parse_file, eat_id())
+    return
+  }
+  # `export function f`, `export var v`, ...: visible from other modules (L3)
+  if is_id("export") and (toks[pi + 1].kind == TK_ID) {
+    pi += 1
+    let p0 = len(prog)
+    let e0 = len(g_events)
+    parse_one_decl()
+    var k = p0
+    while k < len(prog) {
+      prog[k].vis = 1
+      k += 1
+    }
+    k = e0
+    while k < len(g_events) {
+      g_events[k].vis = 1
+      k += 1
+    }
+    return
+  }
   if is_id("numbers") and (toks[pi + 1].text == "float") {
     pi += 2
     if not is_float_file(g_parse_file) { push(g_float_files, g_parse_file) }
@@ -1041,6 +1097,10 @@ function do_import(rel: pointer) -> void {
   if already_loaded(full) { return }
   push(loaded_paths, full)
   if is_float_file(g_parse_file) and not is_runtime_path(rel) and not is_float_file(full) { push(g_float_files, full) }
+  # a module reaches as far as its own files: a package found through $LUDIC_HOME or
+  # ludic_modules is not beside its importer and keeps its own module (or none)
+  let beside = full == join_path(cur_dir, rel)
+  if beside and not is_runtime_path(rel) and not (module_of(g_parse_file) == "") { module_set(full, module_of(g_parse_file)) }
   if (src == null) { perr(`cannot open import {full}`) }
   # the audio runtime can arrive through atlas.ludic's own import or the Assets
   # splice, not only through an Audio.* call in the game; a windowed build must

@@ -85,6 +85,7 @@ property Node {
   kids: []Node                # variadic children
   line: int = 0
   file: pointer = null        # the source file the node was parsed from (for diagnostics)
+  vis:  int = 0               # L3: 1 when the declaration is `export`ed from its module
 }
 
 # every node remembers where it was parsed (file + the line of the token the

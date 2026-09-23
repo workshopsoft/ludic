@@ -1,0 +1,14 @@
+# visible.ludic — L3: a program in no module uses what module bank exports: a function to call
+# and an event to listen to. Its private `add` and `balance` stay out of reach.
+#
+# Running it prints:  42 42
+import "bank"
+program Visible {
+  var heard: int = 0
+  @On(Deposited) handler Heard { heard += amount }
+  entry {
+    deposit(30)
+    deposit(12)
+    print(`{total()} {heard}`)
+  }
+}

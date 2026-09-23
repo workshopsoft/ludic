@@ -41,6 +41,7 @@ function emit_assign(st: Node) -> void {
     else {
       let g = find_global(t.s)
       if (g == null) { perr(`assign to unknown {t.s}`) }
+      vis_check(g, t.s)
       addr = `@g_{t.s}`;  ty = g.ty
     }
   } else {
@@ -291,6 +292,7 @@ function emit_match(st: Node) -> void {
 function emit_emit(st: Node) -> Val {
   let ev = find_event(st.s)
   if (ev == null) { perr(`emit: unknown event {st.s}`) }
+  vis_check(ev, st.s)
   # evaluate each payload field in declared order (default for a missing arg)
   let fcodes = new []pointer
   let ftys = new []pointer

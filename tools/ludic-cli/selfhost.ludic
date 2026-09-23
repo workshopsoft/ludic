@@ -54,6 +54,7 @@ function selfhost_frags() -> []pointer {
   push(f, "selfhost/backend/emit_expr.ludic")
   push(f, "selfhost/backend/emit_call.ludic")
   push(f, "selfhost/backend/emit_fnval.ludic")
+  push(f, "selfhost/backend/emit_vis.ludic")
   push(f, "selfhost/backend/emit_stmt.ludic")
   push(f, "selfhost/backend/game/emit_ecs.ludic")
   push(f, "selfhost/backend/game/emit_query.ludic")

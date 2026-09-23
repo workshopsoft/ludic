@@ -70,6 +70,46 @@ The same holds inside a function: a `let` or `var` declares its name once per bl
 block, a loop variable or a parameter may reuse it), and a function with a result type must
 `return` one on every path - running off the end of its body is an error, not a zero.
 
+### Modules (`module`, `export`, `friend module`)
+
+One namespace is not the same as one room. A barrel that says `module bank` makes its
+directory a **module**: the barrel, every file it imports, and every file those import - until
+one says `module` of its own - belong to `bank`. Inside a module every name is visible as
+before. From anywhere else, a module's `function`, `var`, `const`, `property` or `event` is
+reachable only if its declaration says `export`:
+
+```ludic
+# doc-check: skip — a module spans files
+# bank/index.ludic
+module bank
+import "ledger.ludic"
+
+# bank/ledger.ludic
+var balance: int = 0                     # private: only module bank sees it
+export event Deposited { amount: int }
+function add(n: int) -> void { balance += n }
+export function deposit(n: int) -> void {
+  add(n)
+  emit Deposited(amount: n)
+}
+```
+
+A program that imports `bank` may call `deposit` and listen to `Deposited`; calling `add` is
+
+```
+visible.ludic:5: error: add is private to module bank; mark it 'export' where it is declared (bank/ledger.ludic)
+```
+
+A file in no module - the program's own file, the runtime - is public, and a package found
+through `ludic_modules` or the toolchain keeps its own module rather than its importer's. A
+program that says `friend module lab` sees every module's private names: that is for a test
+harness, which has to reach inside what it tests. `export` is a keyword before a declaration
+and is not the `@export` annotation, which names a C symbol.
+
+To move an existing codebase onto modules, build it once with `LUDIC_VIS_REPORT=1`: every
+reference that would be refused is printed as `vis: <file>:<line>: <module>.<name> used from
+<file>` and the build goes on, so a script can add the `export`s the program already relies on.
+
 ## Models (entity kinds)
 
 An `model` names a *kind* of entity and the fixed set of properties it

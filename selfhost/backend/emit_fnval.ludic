@@ -62,6 +62,7 @@ function fn_ty_ret(t: pointer) -> pointer {
 function emit_fnref(e: Node) -> Val {
   let d = find_fn(e.s)
   if d == null { perr(`fn {e.s}: no function called {e.s}`) }
+  vis_check(d, e.s)
   return val(`@fn_{e.s}`, fn_sig_of(d))
 }
 # a call through a value of a function type
