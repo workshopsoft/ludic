@@ -34,7 +34,11 @@ function compile_app(src: pointer, out: pointer, mode: int, save: bool) -> bool 
   let odir = dir_of_path(out)
   if len(odir) > 0 { shell(`mkdir -p {odir}`) }
   shell("mkdir -p build")
-  let ll = `{out}.ll`
+  # The IR is a scratch file: it goes to this run's own temp directory, never beside the
+  # binary, so a project's tree never holds one and two builds at once cannot delete each
+  # other's. --save-temps asks to read it, and keeps it at {out}.ll.
+  var ll = `{out}.ll`
+  if not save { ll = tmp_path(`{file_of_path(out)}.ll`) }
 
   # On Windows the compiler links too: ludicc knows the Windows runtime's files and
   # libraries (win32.ll, xaudio2, opengl32 ...), so saying them again here would be a
@@ -126,6 +130,13 @@ function threads_link_flags(ll: pointer) -> pointer {
   if not shq(`grep -q "call .*@thr_" {ll}`) { return "" }
   if host_windows() { return ` {ludic_home()}runtime/native/threads_win.ll` }
   return ` {ludic_home()}runtime/native/threads.ll`
+}
+
+# the file part of a path: everything after the last '/'
+function file_of_path(p: pointer) -> pointer {
+  let d = dir_of_path(p)
+  if len(d) == 0 { return p }
+  return p[len(d) + 1..len(p)]
 }
 
 # the directory part of a path, without the trailing '/' ("" when there is none)
