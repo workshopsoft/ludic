@@ -358,6 +358,7 @@ function static_type(e: Node) -> pointer {
   }
   if e.kind == E_STR or e.kind == E_SLICE { return "string" }
   if e.kind == E_INT { return "int" }
+  if e.kind == E_FLOAT and is_float_file(e.file) { return "float" }
   if e.kind == E_FLOAT { return "fixed" }
   if e.kind == E_BOOL { return "bool" }
   return null

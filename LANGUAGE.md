@@ -240,6 +240,9 @@ program Shade {
   exactly that decimal, not its Q16.16 approximation. With no float in sight it
   stays `fixed`, so existing code keeps its meaning. A whole literal expression
   (`1.0 / 3.0`) is evaluated in the context's type.
+- **`numbers float`.** A file that begins with `numbers float` (or has it inside its `program`
+  block) takes bare decimal literals as `float`, not `fixed`; the files it imports inherit the
+  mode (runtime files never do). One line in a package's barrel makes the package float.
 - **Promotion.** `int` and `long` promote to the float type of the other operand;
   `float` with `double` promotes to `double`.
 - **Explicit conversions.** `float(x)`, `double(x)`, `int(x)` (truncates toward

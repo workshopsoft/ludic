@@ -1437,6 +1437,11 @@ function emit_call(e: Node) -> Val {
 function emit_expr(e: Node) -> Val {
   if (e == null) { return val("0", "int") }
   if e.kind == E_INT  { return val(itoa(e.ival), "int") }
+  if e.kind == E_FLOAT and is_float_file(e.file) {
+    let ff = val(fp_lit_code(e.s, "float"), "float")
+    ff.lit = e
+    return ff
+  }
   if e.kind == E_FLOAT { let fv = val(itoa(e.ival), "fixed");  fv.lit = e;  return fv }
   if e.kind == E_PREVAL { return g_prevals[e.ival] }
   if e.kind == E_BOOL { return val(itoa(e.ival), "bool") }
