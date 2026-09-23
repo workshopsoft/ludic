@@ -35,23 +35,28 @@ function emit_noise_ns(meth: pointer, e: Node) -> Val {
   }
   g_uses_noisert = true
   if (meth == "value2") {
+    noise_arity(e, "value2", 3)
     let x = emit_expr(e.kids[0]);  let y = emit_expr(e.kids[1]);  let s = emit_expr(e.kids[2])
     return val(emit_bind(`call i32 @lp_noise_value2(i32 {x.code}, i32 {y.code}, i32 {s.code})`), "fixed")
   }
   if (meth == "perlin2") {
+    noise_arity(e, "perlin2", 3)
     let x = emit_expr(e.kids[0]);  let y = emit_expr(e.kids[1]);  let s = emit_expr(e.kids[2])
     return val(emit_bind(`call i32 @lp_noise_perlin2(i32 {x.code}, i32 {y.code}, i32 {s.code})`), "fixed")
   }
   if (meth == "simplex2") {
+    noise_arity(e, "simplex2", 3)
     let x = emit_expr(e.kids[0]);  let y = emit_expr(e.kids[1]);  let s = emit_expr(e.kids[2])
     return val(emit_bind(`call i32 @lp_noise_simplex2(i32 {x.code}, i32 {y.code}, i32 {s.code})`), "fixed")
   }
   if (meth == "fbm2") {
+    noise_arity(e, "fbm2", 4)
     g_uses_mathrt = true                            # simplex path is standalone; fbm needs fx_div only (local)
     let x = emit_expr(e.kids[0]);  let y = emit_expr(e.kids[1]);  let s = emit_expr(e.kids[2]);  let o = emit_expr(e.kids[3])
     return val(emit_bind(`call i32 @lp_noise_fbm2(i32 {x.code}, i32 {y.code}, i32 {s.code}, i32 {o.code})`), "fixed")
   }
   if (meth == "cellular2") {
+    noise_arity(e, "cellular2", 3)
     g_uses_mathrt = true                            # F1 distance needs @lp_fx_sqrt
     let x = emit_expr(e.kids[0]);  let y = emit_expr(e.kids[1]);  let s = emit_expr(e.kids[2])
     return val(emit_bind(`call i32 @lp_noise_cellular2(i32 {x.code}, i32 {y.code}, i32 {s.code})`), "fixed")
@@ -214,4 +219,14 @@ function emit_noise_cellular() -> void {
   emith("define i32 @lp_noise_cellular2_id(i32 %x, i32 %y, i32 %seed) {\n")
   emith("  %d2 = alloca i32\n  %id = alloca i32\n  call void @lp_noise_cell_scan(i32 %x, i32 %y, i32 %seed, ptr %d2, ptr %id)\n")
   emith("  %r = load i32, ptr %id\n  ret i32 %r\n}\n")
+}
+# Noise.* take their arguments by position, and fbm2's fourth is the octave count: a call one short
+# used to read past its arguments and crash the compiler - or, where the call happened to fit,
+# put the octaves in the seed and give a flat 0.5 everywhere
+function noise_arity(e: Node, meth: pointer, n: int) -> void {
+  if len(e.kids) != n { perr(`Noise.{meth} takes {itoa(n)} arguments (x, y, seed{noise_arity_more(n)}), and this call gives {itoa(len(e.kids))}`) }
+}
+function noise_arity_more(n: int) -> pointer {
+  if n == 4 { return ", octaves" }
+  return ""
 }

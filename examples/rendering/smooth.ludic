@@ -7,6 +7,7 @@
 #
 #   bin/ludic build examples/rendering/smooth.ludic && ./build/smooth
 program Smooth {
+  numbers float
   import "ludic.render3d/r3d.ludic"
 
   property Marker { on: int = 1 }
@@ -24,88 +25,94 @@ program Smooth {
   var s_cards_b: Stream = null
   var l_trees: Layer = null
 
-  function rnd() -> int { return fr(rng_range(0, 9999), 10000) }
-  function rnd_range(a: int, b: int) -> int { return f_lerp(a, b, rnd()) }
-  function smooth(a: int, b: int, x: int) -> int {
-    let t = f_clamp(f_div(f_sub(x, a), f_sub(b, a)), F_ZERO, F_ONE)
-    return f_mul(f_mul(t, t), f_sub(fi(3), f_mul(F_TWO, t)))
+  function rnd() -> float { return float(rng_range(0, 9999)) / 10000.0 }
+  function rnd_range(a: float, b: float) -> float { return Math.lerp(a, b, rnd()) }
+  function smooth(a: float, b: float, x: float) -> float {
+    let t = Math.clamp((x - a) / (b - a), 0.0, 1.0)
+    return t * t * (3.0 - 2.0 * t)
   }
-  function slope_at(x: int, z: int) -> int {
-    let e = F_TWO
-    let dx = f_sub(terrain_height(f_add(x, e), z), terrain_height(f_sub(x, e), z))
-    let dz = f_sub(terrain_height(x, f_add(z, e)), terrain_height(x, f_sub(z, e)))
-    let ny = f_div(fi(4), f_sqrt(f_add(f_add(f_mul(dx, dx), f_mul(dz, dz)), fi(16))))
-    return f_sub(F_ONE, ny)
+  function slope_at(x: float, z: float) -> float {
+    let e = 2.0
+    let dx = terrain_height(x + e, z) - terrain_height(x - e, z)
+    let dz = terrain_height(x, z + e) - terrain_height(x, z - e)
+    let ny = 4.0 / Math.sqrt(dx * dx + dz * dz + 16.0)
+    return 1.0 - ny
   }
-  function noise01(x: int, z: int, scale: fixed) -> int {
-    let n = Noise.fbm2(f_fx(x) * scale, f_fx(z) * scale, 4)
-    return fl(n * 0.5 + 0.5)
+  function noise01(x: float, z: float, scale: fixed) -> float {
+    let n = Noise.fbm2(fixed(x) * scale, fixed(z) * scale, 0, 4)
+    return float(n * 0.5 + 0.5)
   }
 
   # grass only where the ground is grassy: gentle, above the water, below the mountain
   function stream_fill(s: Stream, cx: int, cz: int, band: int) -> void {
     seed((cx * 73856093) ^ (cz * 19349663) ^ (band * 83492791) ^ (s.kind * 2654435761))
     let size = s.size
-    let x0 = f_mul(fi(cx), size);  let z0 = f_mul(fi(cz), size)
+    let x0 = float(cx) * size;  let z0 = float(cz) * size
     # Candidate spacing. These are metres between attempts, so halving one quadruples the
     # work and the instance count: the first pass here was dense enough to bury the scene
     # and cost most of the frame. Blades are only placed close to the eye, where they read
     # as individual grass; past that the cards carry the cover.
-    var step = fl(1.0)
-    if s.kind == 0 { if band == 0 { step = fl(0.22) } else if band == 1 { step = fl(0.45) } else { step = fl(1.1) } }
-    else { if band == 0 { step = fl(0.9) } else if band == 1 { step = fl(1.8) } else { step = fl(4.0) } }
+    var step = 1.0
+    if s.kind == 0 { if band == 0 { step = 0.22 } else if band == 1 { step = 0.45 } else { step = 1.1 } }
+    else { if band == 0 { step = 0.9 } else if band == 1 { step = 1.8 } else { step = 4.0 } }
     var z = z0
-    while f_ls(z, f_add(z0, size)) {
+    while z < z0 + size {
       var x = x0
-      while f_ls(x, f_add(x0, size)) {
-        let px = f_add(x, f_mul(rnd(), step))
-        let pz = f_add(z, f_mul(rnd(), step))
+      while x < x0 + size {
+        let px = x + rnd() * step
+        let pz = z + rnd() * step
         let h = terrain_height(px, pz)
         # Grassy ground only: above the water, off the steep parts, below the rim. Every
         # test is a smooth ramp — a hard height cut carves the cover into contour rings,
         # because the cut lands on a line of constant elevation.
-        var keep = smooth(fl(0.2), fl(1.6), h)                       # out of the water
-        keep = f_mul(keep, smooth(fi(90), fi(45), h))                # below the mountain
-        keep = f_mul(keep, smooth(fl(0.42), fl(0.16), slope_at(px, pz)))
-        keep = f_mul(keep, f_add(fl(0.25), f_mul(fl(0.9), noise01(px, pz, 0.02))))
-        keep = f_mul(keep, fl(0.75))
-        var sc = rnd_range(fl(0.16), fl(0.4))
-        if s.kind != 0 { sc = f_mul(rnd_range(fl(1.5), fl(2.5)), f_add(F_ONE, f_mul(fl(0.5), fi(band)))) }
-        if f_ls(rnd(), keep) {
-          stream_emit(s, px, f_sub(h, fl(0.03)), pz, sc, f_mul(rnd(), f_mul(F_TWO, F_PI)), rnd(), rnd_range(fl(0.6), F_ONE))
+        var keep = smooth(0.2, 1.6, h)                       # out of the water
+        keep = keep * smooth(90.0, 45.0, h)                # below the mountain
+        keep = keep * smooth(0.42, 0.16, slope_at(px, pz))
+        keep = keep * (0.25 + 0.9 * noise01(px, pz, 0.02))
+        keep = keep * 0.75
+        var sc = rnd_range(0.16, 0.4)
+        if s.kind != 0 { sc = rnd_range(1.5, 2.5) * (1.0 + 0.5 * float(band)) }
+        if rnd() < keep {
+          stream_emit(s, px, h - 0.03, pz, sc, rnd() * (2.0 * PI), rnd(), rnd_range(0.6, 1.0))
         }
-        x = f_add(x, step)
+        x = x + step
       }
-      z = f_add(z, step)
+      z = z + step
     }
   }
 
   function scene_draw() -> void { scatter_draw() }
-  function scene_draw_casters() -> void { scatter_draw_casters(shadow_cascade_vp(sh_cascade)) }
+  function scene_draw_casters(light_vp: floats) -> void { scatter_draw_casters(light_vp) }
 
   handler Boot phase Start {
     spawn Anchor {}
+    r3d_on_draw(fn scene_draw)
+    r3d_on_casters(fn scene_draw_casters)
+    r3d_on_stream_fill(fn stream_fill)
     # 2 km square, generated analytically
     TERRAIN_HALF = 1000
     ter_smooth = true
-    if not r3d_init(1920, 1080, "Smooth") { quit() }
+    if not r3d_init(1920, 1080, "Smooth") {
+      quit()
+      return
+    }
     walk = Os.has_env("R3D_WALK")
     spin = Os.has_env("R3D_SPIN")
     if Os.has_env("R3D_SHOT") { shot_at = Text.to_int(Os.env("R3D_SHOT")) }
 
-    var cx = fi(0);  var cz = fi(260)
-    if Os.has_env("R3D_CAM_X") { cx = fi(Text.to_int(Os.env("R3D_CAM_X"))) }
-    if Os.has_env("R3D_CAM_Z") { cz = fi(Text.to_int(Os.env("R3D_CAM_Z"))) }
-    var ch = fl(1.8);  var cp = f_neg(fi(3));  var cy = fi(180)
-    if Os.has_env("R3D_CAM_H") { ch = fi(Text.to_int(Os.env("R3D_CAM_H"))) }
-    if Os.has_env("R3D_CAM_PITCH") { cp = fi(Text.to_int(Os.env("R3D_CAM_PITCH"))) }
-    if Os.has_env("R3D_CAM_YAW") { cy = fi(Text.to_int(Os.env("R3D_CAM_YAW"))) }
-    cam_set(cx, f_add(terrain_height(cx, cz), ch), cz, cy, cp)
+    var cx = 0.0;  var cz = 260.0
+    if Os.has_env("R3D_CAM_X") { cx = float(Text.to_int(Os.env("R3D_CAM_X"))) }
+    if Os.has_env("R3D_CAM_Z") { cz = float(Text.to_int(Os.env("R3D_CAM_Z"))) }
+    var ch = 1.8;  var cp = -3.0;  var cy = 180.0
+    if Os.has_env("R3D_CAM_H") { ch = float(Text.to_int(Os.env("R3D_CAM_H"))) }
+    if Os.has_env("R3D_CAM_PITCH") { cp = float(Text.to_int(Os.env("R3D_CAM_PITCH"))) }
+    if Os.has_env("R3D_CAM_YAW") { cy = float(Text.to_int(Os.env("R3D_CAM_YAW"))) }
+    cam_set(cx, terrain_height(cx, cz) + ch, cz, cy, cp)
 
     # a small pond in the middle of the meadow — the plane self-clips to the basin, so
     # its extent only has to cover the hollow, not the map
-    water_init(fl(4.0), F_ZERO, F_ZERO, fi(200), fi(200))
-    sky_set_yaw(f_rad(fi(120)))
+    water_init(4.0, 0.0, 0.0, 200.0, 200.0)
+    sky_set_yaw(Math.deg_to_rad(120.0))
 
     # grass: blades underfoot, cards beyond
     let dir = r3d_assets + "/models/grass_medium_01"
@@ -113,16 +120,16 @@ program Smooth {
     let gb = gltf_load(dir, "grass_medium_01_1k.gltf", "grass_medium_01_mid_a_LOD0")
     if ga == null or gb == null { print("smooth: no grass models");  return }
     # blades are the expensive layer: keep them near, and cap them low
-    l_blades = layer_new(model_blade(), 400000, true, fl(3.0), F_ZERO, fi(70))
+    l_blades = layer_new(model_blade(), 400000, true, 3.0, 0.0, 70.0)
     l_blades.blade = true
-    l_grass_a = layer_cards(ga, 200000, fl(0.3), fi(260))
-    l_grass_b = layer_cards(gb, 200000, fl(0.3), fi(260))
-    v3_set(l_grass_a.tint, fl(0.95), F_ONE, fl(0.85))
-    v3_set(l_grass_b.tint, fl(0.9), fl(0.98), fl(0.8))
-    l_grass_a.rough = fl(1.6);  l_grass_b.rough = fl(1.6)
-    s_blades = stream_new(l_blades, fi(8), fi(60), fi(12), fi(28), fi(60), fi(60))
-    s_cards_a = stream_new(l_grass_a, fi(32), fi(240), fi(45), fi(110), fi(240), fi(240))
-    s_cards_b = stream_new(l_grass_b, fi(32), fi(240), fi(45), fi(110), fi(240), fi(240))
+    l_grass_a = layer_cards(ga, 200000, 0.3, 260.0)
+    l_grass_b = layer_cards(gb, 200000, 0.3, 260.0)
+    v3_set(l_grass_a.tint, 0.95, 1.0, 0.85)
+    v3_set(l_grass_b.tint, 0.9, 0.98, 0.8)
+    l_grass_a.rough = 1.6;  l_grass_b.rough = 1.6
+    s_blades = stream_new(l_blades, 8.0, 60.0, 12.0, 28.0, 60.0, 60.0)
+    s_cards_a = stream_new(l_grass_a, 32.0, 240.0, 45.0, 110.0, 240.0, 240.0)
+    s_cards_b = stream_new(l_grass_b, 32.0, 240.0, 45.0, 110.0, 240.0, 240.0)
     s_blades.kind = 0;  s_cards_a.kind = 1;  s_cards_b.kind = 2
     place_trees()
   }
@@ -131,57 +138,57 @@ program Smooth {
   function place_trees() -> void {
     let model = gltf_load(r3d_assets + "/models/fir_tree_01", "fir_tree_01_1k.gltf", "fir_tree_01_c_LOD0")
     if model == null { print("smooth: no fir model");  return }
-    l_trees = layer_new(model, 20000, false, F_ZERO, fi(90), F_ZERO)
+    l_trees = layer_new(model, 20000, false, 0.0, 90.0, 0.0)
     layer_set_impostor(l_trees, impostor_bake(model, 12, 512, 1024))
-    v3_set(l_trees.tint, fl(0.9), F_ONE, fl(0.85))
+    v3_set(l_trees.tint, 0.9, 1.0, 0.85)
     seed(4242)
-    var z = f_neg(fi(900))
-    while f_ls(z, fi(900)) {
-      var x = f_neg(fi(900))
-      while f_ls(x, fi(900)) {
-        let px = f_add(x, f_mul(rnd(), fi(14)));  let pz = f_add(z, f_mul(rnd(), fi(14)))
+    var z = -900.0
+    while z < 900.0 {
+      var x = -900.0
+      while x < 900.0 {
+        let px = x + rnd() * 14.0;  let pz = z + rnd() * 14.0
         let h = terrain_height(px, pz)
-        var keep = smooth(fi(7), fi(14), h)                 # above the pond shore
-        keep = f_mul(keep, smooth(fi(120), fi(60), h))      # below the rim
-        keep = f_mul(keep, smooth(fl(0.45), fl(0.2), slope_at(px, pz)))
-        keep = f_mul(keep, smooth(fl(0.45), fl(0.75), noise01(px, pz, 0.004)))
-        if f_ls(rnd(), f_mul(keep, fl(0.5))) {
-          let sc = rnd_range(fl(0.7), fl(1.35))
-          layer_add(l_trees, px, f_sub(h, fl(0.2)), pz, sc, f_mul(rnd(), f_mul(F_TWO, F_PI)), rnd(), F_ZERO)
+        var keep = smooth(7.0, 14.0, h)                 # above the pond shore
+        keep = keep * smooth(120.0, 60.0, h)      # below the rim
+        keep = keep * smooth(0.45, 0.2, slope_at(px, pz))
+        keep = keep * smooth(0.45, 0.75, noise01(px, pz, 0.004))
+        if rnd() < keep * 0.5 {
+          let sc = rnd_range(0.7, 1.35)
+          layer_add(l_trees, px, h - 0.2, pz, sc, rnd() * (2.0 * PI), rnd(), 0.0)
         }
-        x = f_add(x, fi(14))
+        x = x + 14.0
       }
-      z = f_add(z, fi(14))
+      z = z + 14.0
     }
   }
 
   handler Fly phase Input {
-    if walk { cam_move(fl(1.0), F_ZERO, F_ZERO, fl(0.003), F_ZERO);  return }
-    if spin { cam_move(F_ZERO, F_ZERO, F_ZERO, fl(0.02), F_ZERO);  return }
+    if walk { cam_move(1.0, 0.0, 0.0, 0.003, 0.0);  return }
+    if spin { cam_move(0.0, 0.0, 0.0, 0.02, 0.0);  return }
     if not is_windowed() { return }
     Input.poll()
-    var fwd = F_ZERO;  var side = F_ZERO;  var up = F_ZERO
-    let speed = fl(0.6)
+    var fwd = 0.0;  var side = 0.0;  var up = 0.0
+    let speed = 0.6
     if Input.key_down(key: 'w') { fwd = speed }
-    if Input.key_down(key: 's') { fwd = f_neg(speed) }
+    if Input.key_down(key: 's') { fwd = -speed }
     if Input.key_down(key: 'd') { side = speed }
-    if Input.key_down(key: 'a') { side = f_neg(speed) }
+    if Input.key_down(key: 'a') { side = -speed }
     if Input.key_down(key: 'e') { up = speed }
-    if Input.key_down(key: 'q') { up = f_neg(speed) }
-    var dyaw = F_ZERO;  var dpitch = F_ZERO
+    if Input.key_down(key: 'q') { up = -speed }
+    var dyaw = 0.0;  var dpitch = 0.0
     if Input.mouse_down(button: 0) {
-      dyaw = f_mul(fi(Input.mouse_dx()), fl(-0.004))
-      dpitch = f_mul(fi(Input.mouse_dy()), fl(-0.004))
+      dyaw = float(Input.mouse_dx()) * -0.004
+      dpitch = float(Input.mouse_dy()) * -0.004
     }
     if fwd != 0 or side != 0 or up != 0 or dyaw != 0 or dpitch != 0 { cam_move(fwd, side, up, dyaw, dpitch) }
     if Input.key_pressed(key: 'p') {
       let gy = terrain_height(cam_pos[0], cam_pos[2])
-      print(`R3D_CAM_X={string(f_to_int(cam_pos[0]))} R3D_CAM_Z={string(f_to_int(cam_pos[2]))} R3D_CAM_H={string(f_to_int(f_sub(cam_pos[1], gy)))} R3D_CAM_YAW={string(f_to_int(f_mul(cam_yaw, f_div(fi(180), F_PI))))} R3D_CAM_PITCH={string(f_to_int(f_mul(cam_pitch, f_div(fi(180), F_PI))))}`)
+      print(`R3D_CAM_X={string(int(cam_pos[0]))} R3D_CAM_Z={string(int(cam_pos[2]))} R3D_CAM_H={string(int(cam_pos[1] - gy))} R3D_CAM_YAW={string(int(cam_yaw * (180.0 / PI)))} R3D_CAM_PITCH={string(int(cam_pitch * (180.0 / PI)))}`)
     }
   }
 
   handler Draw phase Render {
-    r3d_frame(fl(Time.elapsed()))
+    r3d_frame(float(Time.elapsed()))
     frame += 1
     if frame == shot_at { Gl.screenshot(path: "build/smooth.ppm") }
     Gl.swap()

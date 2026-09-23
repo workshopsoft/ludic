@@ -65,8 +65,27 @@ function eat_id() -> pointer {
 }
 function skipnl() -> void { while toks[pi].kind == TK_NL { pi += 1 } }
 
-# a type: `[]T` slice, or a plain name (int/ptr/str/bool/struct)
+# a type: `[]T` slice, `fn(T, U) -> R` function, or a plain name (int/ptr/str/bool/struct)
 function ptype() -> pointer {
+  if (toks[pi].text == "fn") and (toks[pi + 1].text == "(") {
+    pi += 1
+    eat_op("(")
+    var out = "fn("
+    var first = true
+    while not is_op(")") {
+      if not first { out = out + "," }
+      out = out + ptype()
+      first = false
+      if is_op(",") { pi += 1 }
+    }
+    eat_op(")")
+    var r = "void"
+    if is_op("->") {
+      pi += 1
+      r = ptype()
+    }
+    return out + ")->" + r
+  }
   if is_op("[") {
     pi += 1
     eat_op("]")

@@ -53,6 +53,7 @@ function selfhost_frags() -> []pointer {
   push(f, "selfhost/backend/emit_new.ludic")
   push(f, "selfhost/backend/emit_expr.ludic")
   push(f, "selfhost/backend/emit_call.ludic")
+  push(f, "selfhost/backend/emit_fnval.ludic")
   push(f, "selfhost/backend/emit_stmt.ludic")
   push(f, "selfhost/backend/game/emit_ecs.ludic")
   push(f, "selfhost/backend/game/emit_query.ludic")
@@ -102,8 +103,14 @@ function cmd_selfhost_build(lc: pointer, outbin: pointer) -> int {
   let src = "build/selfhost.ludic"
   if not write_selfhost_src(src) { err("ludic-dev: cannot write build/selfhost.ludic\n"); return 1 }
   let ll = `{outbin}.ll`
-  if not shq(`{lc} {src} > {ll} 2>/dev/null`) { shell(`rm -f {ll}`); return 1 }
-  let rc = shq(`{cc()} {ll} -o {outbin} 2>/dev/null`)
+  # say why when it fails: it used to exit 1 with nothing on the screen
+  if not shq(`{lc} {src} > {ll} 2>{tmp_dir()}/shb.err`) {
+    shell(`rm -f {ll}`)
+    err(capture(`grep -i error {tmp_dir()}/shb.err | head -5`))
+    return 1
+  }
+  let rc = shq(`{cc()} {ll} -o {outbin} 2>{tmp_dir()}/shb.err`)
+  if not rc { err(capture(`grep -i error {tmp_dir()}/shb.err | head -5`)) }
   shell(`rm -f {ll}`)
   if rc { return 0 }
   return 1

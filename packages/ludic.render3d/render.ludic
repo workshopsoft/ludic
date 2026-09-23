@@ -257,7 +257,7 @@ function r3d_frame(time: float) -> void {
   prof_end()
   prof_cpu_mark("terrain")
   prof_begin("scene (vegetation)")
-  scene_draw()
+  r3d_scene_draw()
   prof_end()
   sc_prepass = false
   prof_cpu_mark("vegetation")

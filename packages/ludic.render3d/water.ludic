@@ -86,7 +86,7 @@ function water_reflection_pass() -> void {
   prof_cpu_mark("reflection setup")
   terrain_draw()
   prof_cpu_mark("reflection terrain")
-  scene_draw()
+  r3d_scene_draw()
   prof_cpu_mark("reflection scene")
   r3d_draw_sky()
   prof_cpu_mark("reflection sky")

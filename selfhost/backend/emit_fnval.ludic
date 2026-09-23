@@ -1,0 +1,131 @@
+# emit_fnval.ludic — L2: functions as values. A function type is written `fn(int, float) -> bool`
+# and carried as the text "fn(int,float)->bool" (ptype normalises it); its value is the function's
+# address, `fn name` takes one, and a call through anything of a function type is an indirect call.
+
+function is_fn_type(t: pointer) -> bool {
+  if t == null { return false }
+  return len(t) > 3 and t[0] == 'f' and t[1] == 'n' and t[2] == '('
+}
+# the function type of a declared function, in ptype's own spelling
+function fn_sig_of(d: Node) -> pointer {
+  var out = "fn("
+  var i = 0
+  while i < len(d.kids) {
+    if i > 0 { out = out + "," }
+    out = out + d.kids[i].ty
+    i += 1
+  }
+  var r = d.ty
+  if r == null { r = "void" }
+  return out + ")->" + r
+}
+# the parameter types of a function type: split at its top-level commas (a parameter may be a
+# function type itself, whose commas are inside its own parentheses)
+function fn_ty_params(t: pointer) -> []pointer {
+  let out = new []pointer
+  var depth = 0
+  var start = 3
+  var i = 3
+  while t[i] != 0 {
+    let c = t[i]
+    if c == '(' { depth += 1 }
+    if c == ')' {
+      if depth == 0 {
+        if i > start { push(out, t[start..i]) }
+        return out
+      }
+      depth -= 1
+    }
+    if c == ',' and depth == 0 {
+      push(out, t[start..i])
+      start = i + 1
+    }
+    i += 1
+  }
+  return out
+}
+# the result type: everything after the ")->" that closes the parameters
+function fn_ty_ret(t: pointer) -> pointer {
+  var depth = 0
+  var i = 3
+  while t[i] != 0 {
+    if t[i] == '(' { depth += 1 }
+    if t[i] == ')' {
+      if depth == 0 { return t[i + 3..len(t)] }
+      depth -= 1
+    }
+    i += 1
+  }
+  return "void"
+}
+# `fn name`: the function's address, typed by its signature
+function emit_fnref(e: Node) -> Val {
+  let d = find_fn(e.s)
+  if d == null { perr(`fn {e.s}: no function called {e.s}`) }
+  return val(`@fn_{e.s}`, fn_sig_of(d))
+}
+# a call through a value of a function type
+function emit_indirect_call(fv: Val, e: Node) -> Val {
+  let ptys = fn_ty_params(fv.ty)
+  let ret = fn_ty_ret(fv.ty)
+  if len(e.kids) != len(ptys) { perr(`a {fv.ty} takes {itoa(len(ptys))} argument(s), and this call gives {itoa(len(e.kids))}`) }
+  let args = new []pointer
+  var i = 0
+  while i < len(e.kids) {
+    let v = emit_expr(e.kids[i])
+    push(args, coerce_code(v, ptys[i]))
+    i += 1
+  }
+  let rl = llty(ret)
+  emit("  ")
+  var rreg = "0"
+  if not (rl == "void") {
+    rreg = nreg()
+    emit(rreg)
+    emit(" = ")
+  }
+  emit(`call {rl} {fv.code}(`)
+  i = 0
+  while i < len(args) {
+    if i > 0 { emit(", ") }
+    emit(`{llty(ptys[i])} {args[i]}`)
+    i += 1
+  }
+  emit(")\n")
+  return val(rreg, ret)
+}
+# a callee that is a value rather than a name: a local, a global, a field or an element of a
+# function type. null when the callee names a function (or a namespace) the ordinary way.
+function callee_value(e: Node) -> Val {
+  let c = e.a
+  if c.kind == E_ID {
+    let li = loc_find(c.s)
+    if li >= 0 and is_fn_type(loc_ty[li]) { return emit_expr(c) }
+    if li < 0 {
+      let g = find_global(c.s)
+      if g != null and is_fn_type(g.ty) { return emit_expr(c) }
+    }
+    return null
+  }
+  if c.kind == E_MEMBER {
+    # `obj.field(...)`: obj is a local or a global, never a namespace; a field that is not a
+    # function leaves the call to the ordinary path (loading it had no side effect)
+    if c.a.kind == E_ID and loc_find(c.a.s) < 0 and find_global(c.a.s) == null { return null }
+    let mv = emit_expr(c)
+    if is_fn_type(mv.ty) { return mv }
+    return null
+  }
+  let v = emit_expr(c)
+  if not is_fn_type(v.ty) { perr(`a {v.ty} is not a function and cannot be called`) }
+  return v
+}
+# Job.parallel_for runs its worker on OS threads that call it as void(i32, ptr)
+function check_worker_ref(e: Node) -> void {
+  if e.kind != E_FNREF { return }
+  let d = find_fn(e.s)
+  if d == null { return }
+  # the thread calls it as void(i32, ptr): any pointer-sized context will do (words, a record)
+  var ok = len(d.kids) == 2 and llty(d.ty) == "void"
+  if ok { ok = llty(d.kids[0].ty) == "i32" and llty(d.kids[1].ty) == "ptr" }
+  if not ok { perr(`fn {e.s}: a worker function takes (i: int, ctx: pointer) and returns nothing`) }
+}

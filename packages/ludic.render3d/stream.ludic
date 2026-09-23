@@ -233,7 +233,7 @@ function stream_update(s: Stream, cam_x: float, cam_z: float) -> void {
               c.key = key
               s.cur = c
               let t0 = gl_now_us()
-              stream_fill(s, cx, cz, band)
+              r3d_stream_fill(s, cx, cz, band)
               let dt = gl_now_us() - t0
               stream_us_gen = stream_us_gen + dt
               prof_chunk(s.kind, band, c.count, dt)

@@ -165,7 +165,7 @@ function shadow_pass() -> void {
     # shadows off (a video setting): the cascades stay cleared, so everything reads lit
     if sh_enabled {
       if not sh_skip_terrain { terrain_draw_shadow(vp) }
-      scene_draw_casters(vp)
+      r3d_scene_casters(vp)
     }
   }
   gpu_depth_bias(0.0, 0.0)

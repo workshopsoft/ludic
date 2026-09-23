@@ -704,6 +704,8 @@ function cmd_dev_test() -> int {
   reject_case("rejected/duplicate_property", "'Look' is defined twice", "a property defined twice is refused")
   reject_case("rejected/redeclared_local", "'v0' is declared twice in this block", "a local declared twice in one block is refused")
   reject_case("rejected/missing_return", "can reach its end without returning", "a function that can run off its end without its result is refused")
+  feat_case("functions/values", "", "42 10 25 49 81 1.5 1", "values.ludic (L2: fn types, fn name, calls through a local, global, field, element, parameter, result)")
+  reject_case("rejected/fn_type_mismatch", "is not a fn(int)->int", "a function of the wrong type is refused")
 
   # EV2 the world table: the mod reflection ABI, callable from Ludic by name.
   net_case("ecs/world_get", "50 1 7")

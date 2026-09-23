@@ -87,6 +87,11 @@ class Program:
         self.uf = UF()
         self.types = {}          # key -> declared type text
         for d in self.all_decls(): self.types[d.key] = d.ty
+        # a declaration that already says float is evidence of its own: code converted earlier
+        # (render3d, once the game had moved) is read as it is written
+        for d in self.all_decls():
+            if d.ty == 'float': self.uf.mark(d.key, 'f', 'declared float')
+            elif d.ty in ('floats', '[]float'): self.uf.mark(('E', d.key), 'f', 'declared floats')
         self.calls = []          # (callee Func, arg index, arg key, node)
         self.bound_args = []     # (call node, arg node, arg key): a float going into a runtime call
         self.bound_rets = {}     # call node id -> key of a runtime result

@@ -15,7 +15,7 @@ program Reload {
   # (the parser's g_uses_gl), so even a check that draws nothing presents its frame.
   # render3d calls back into the program for what stands on the terrain
   function scene_draw() -> void { scatter_draw() }
-  function scene_draw_casters() -> void { scatter_draw_casters(shadow_cascade_vp(sh_cascade)) }
+  function scene_draw_casters(light_vp: floats) -> void { scatter_draw_casters(light_vp) }
   # no streamed cover here, but stream.ludic names the generator, so every program supplies one
   function stream_fill(s: Stream, cx: int, cz: int, band: int) -> void { }
 
@@ -39,9 +39,15 @@ program Reload {
 
   handler Boot phase Start {
     spawn Anchor {}
+    r3d_on_draw(fn scene_draw)
+    r3d_on_casters(fn scene_draw_casters)
+    r3d_on_stream_fill(fn stream_fill)
     TERRAIN_HALF = 1000
     ter_smooth = true
-    if not r3d_init(640, 360, "Reload") { quit() }
+    if not r3d_init(640, 360, "Reload") {
+      quit()
+      return
+    }
     cam_set(F_ZERO, fi(80), fi(300), fi(180), f_neg(fi(10)))
     water_init(fl(4.0), F_ZERO, F_ZERO, fi(200), fi(200))
     populate()

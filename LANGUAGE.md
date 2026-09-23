@@ -815,6 +815,20 @@ fields: `toks[i].kind = T_ID` is a single address computation.
 
 ## Functions & FFI
 
+**Functions are values.** `fn(int, float) -> bool` is a type (no `->` means it returns
+nothing), `fn name` is any top-level function as a value of its own type, and a call through a
+local, a global, a record field, a slice element, a parameter or a result of a function type
+calls whatever it holds. Two function types mix only when they are the same, and a value may be
+`null`. A registry holds behaviour this way, and a package takes a callback:
+
+```ludic
+# doc-check: skip — illustrative
+property Kind { name: string = "", use: fn(Thing) -> bool = null }
+function kind_def(name: string, use: fn(Thing) -> bool) -> void { ... }
+kind_def("bush", fn bush_use)
+if kinds[k].use(t) { sound_pickup() }
+```
+
 ```ludic
 function heal(amount: int) -> int { return amount * 2 }
 ```

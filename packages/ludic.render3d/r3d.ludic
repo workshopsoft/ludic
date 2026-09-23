@@ -1,8 +1,11 @@
 # ============================================================================
 # ludic.render3d — a physically based 3D renderer on Gl.* (OpenGL 4.1 core).
-# Import this one file; the game supplies scene_draw() / scene_draw_casters().
+# Import this one file, and register what a frame draws: r3d_on_draw, r3d_on_casters and, for a
+# streamed layer, r3d_on_stream_fill (hooks.ludic).
 # ============================================================================
+numbers float                    # the renderer's numbers are floats whoever imports it
 import "env.ludic"
+import "hooks.ludic"
 import "fmath.ludic"
 import "gpu.ludic"
 import "gpu_manifest.ludic"

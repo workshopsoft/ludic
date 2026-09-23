@@ -1,0 +1,31 @@
+# values.ludic — L2: a function is a value. `fn(int) -> int` is a type; `fn name` is any
+# top-level function's value; a call through a local, a global, a field or an element of a
+# function type is an indirect call. A registry can hold behaviour, and a package can take one.
+#
+# Running it prints:  42 10 25 49 81 1.5 1
+program FunctionValues {
+  numbers float
+  property Kind { name: string = "", use: fn(int) -> int = null }
+  function double(x: int) -> int { return x * 2 }
+  function square(x: int) -> int { return x * x }
+  function half(x: float) -> float { return x / 2.0 }
+  var op: fn(int) -> int = null
+  function run_with(f: fn(int) -> int, v: int) -> int { return f(v) }
+  function pass_on(f: fn(float) -> float) -> fn(float) -> float { return f }
+  entry {
+    op = fn double
+    print(op(21))
+    let ops = new []fn(int) -> int
+    push(ops, fn double)
+    push(ops, fn square)
+    for i in 0 .. len(ops) { print(ops[i](5)) }
+    let k = new Kind
+    k.name = "square"
+    k.use = fn square
+    print(k.use(7))
+    print(run_with(fn square, 9))
+    let h = pass_on(fn half)
+    print(h(3.0))
+    if op != null { print(1) }
+  }
+}
