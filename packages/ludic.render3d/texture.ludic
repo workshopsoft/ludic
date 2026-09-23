@@ -288,15 +288,15 @@ function tex_solid(r: int, g: int, b: int, a: int) -> int {
 }
 
 # ---- Radiance .hdr (RGBE, new-style RLE) -> RGB float bits -------------------------
-var hdr_max_lum: int = 0      # float bits of the brightest texel (sun finding)
+var hdr_max_lum: float = 0.0      # float bits of the brightest texel (sun finding)
 var hdr_max_x: int = 0
 var hdr_max_y: int = 0
-var hdr_sun_r: int = 0        # irradiance (float bits) of everything above the IBL clip: the sun
-var hdr_sun_g: int = 0
-var hdr_sun_b: int = 0
-var hdr_clip: int = 0         # float bits; texels above this (per channel) feed the sun, not the IBL
+var hdr_sun_r: float = 0.0        # irradiance (float bits) of everything above the IBL clip: the sun
+var hdr_sun_g: float = 0.0
+var hdr_sun_b: float = 0.0
+var hdr_clip: float = 0.0         # float bits; texels above this (per channel) feed the sun, not the IBL
 
-function hdr_decode(path: pointer) -> words {
+function hdr_decode(path: pointer) -> floats {
   let d = r3d_read_file(path)
   if d == null { print(`hdr: cannot read {path}`);  return null }
   let size = tex_file_len
@@ -315,14 +315,14 @@ function hdr_decode(path: pointer) -> words {
   while d[i] >= '0' and d[i] <= '9' { w = w * 10 + (d[i] - 48);  i += 1 }
   i += 1
   if w <= 0 or h <= 0 { free(d);  print(`hdr: bad header {path}`);  return null }
-  let out = words(w * h * 3)
+  let out = floats(w * h * 3)
   let line = bytes(w * 4)
-  var maxl = 0
-  if hdr_clip == 0 { hdr_clip = fi(20) }
-  var sr = F_ZERO;  var sg = F_ZERO;  var sb = F_ZERO
-  var skye = F_ZERO      # sky irradiance on an upward face (clipped part only)
-  let dphi = f_div(f_mul(F_TWO, F_PI), fi(w))
-  let dth = f_div(F_PI, fi(h))
+  var maxl = 0.0
+  if hdr_clip == 0.0 { hdr_clip = 20.0 }
+  var sr = 0.0;  var sg = 0.0;  var sb = 0.0
+  var skye = 0.0      # sky irradiance on an upward face (clipped part only)
+  let dphi = 2.0 * PI / float(w)
+  let dth = PI / float(h)
   var y = 0
   while y < h {
     if d[i] == 2 and d[i + 1] == 2 and (d[i + 2] & 128) == 0 {
@@ -347,28 +347,28 @@ function hdr_decode(path: pointer) -> words {
       for x in 0 .. w { for c in 0 .. 4 { line[x * 4 + c] = d[i + x * 4 + c] } }
       i += w * 4
     }
-    let sinth = f_sin(f_mul(f_add(fi(y), F_HALF), dth))
-    let domega = f_mul(f_mul(dphi, dth), sinth)
+    let sinth = Math.sin((float(y) + 0.5) * dth)
+    let domega = dphi * dth * sinth
     for x in 0 .. w {
       let e = line[x * 4 + 3]
       let o = (y * w + x) * 3
-      if e == 0 { out[o] = 0;  out[o + 1] = 0;  out[o + 2] = 0 }
+      if e == 0 { out[o] = 0.0;  out[o + 1] = 0.0;  out[o + 2] = 0.0 }
       else {
         let sh = e - 136
-        let vr = f_ldexp(f_from_int(line[x * 4]), sh)
-        let vg = f_ldexp(f_from_int(line[x * 4 + 1]), sh)
-        let vb = f_ldexp(f_from_int(line[x * 4 + 2]), sh)
+        let vr = float_from_bits(f_ldexp(float_bits(float(line[x * 4])), sh))
+        let vg = float_from_bits(f_ldexp(float_bits(float(line[x * 4 + 1])), sh))
+        let vb = float_from_bits(f_ldexp(float_bits(float(line[x * 4 + 2])), sh))
         # the texture is capped at what a half-float holds; the sun is integrated uncapped
-        out[o] = f_min(vr, fi(60000))
-        out[o + 1] = f_min(vg, fi(60000))
-        out[o + 2] = f_min(vb, fi(60000))
-        let lum = f_add(f_add(vr, vg), vb)
+        out[o] = Math.min(vr, 60000.0)
+        out[o + 1] = Math.min(vg, 60000.0)
+        out[o + 2] = Math.min(vb, 60000.0)
+        let lum = vr + vg + vb
         if f_lt(maxl, lum) != 0 { maxl = lum;  hdr_max_x = x;  hdr_max_y = y }
-        if y < h / 2 { skye = f_add(skye, f_mul(f_mul(f_min(vg, hdr_clip), f_cos(f_mul(f_add(fi(y), F_HALF), dth))), domega)) }
+        if y < h / 2 { skye = skye + Math.min(vg, hdr_clip) * Math.cos((float(y) + 0.5) * dth) * domega }
         if f_lt(hdr_clip, vg) != 0 or f_lt(hdr_clip, vr) != 0 {
-          sr = f_add(sr, f_mul(f_max(f_sub(vr, hdr_clip), F_ZERO), domega))
-          sg = f_add(sg, f_mul(f_max(f_sub(vg, hdr_clip), F_ZERO), domega))
-          sb = f_add(sb, f_mul(f_max(f_sub(vb, hdr_clip), F_ZERO), domega))
+          sr = sr + Math.max(vr - hdr_clip, 0.0) * domega
+          sg = sg + Math.max(vg - hdr_clip, 0.0) * domega
+          sb = sb + Math.max(vb - hdr_clip, 0.0) * domega
         }
       }
     }
@@ -378,7 +378,7 @@ function hdr_decode(path: pointer) -> words {
   tex_w = w;  tex_h = h;  tex_channels = 3;  tex_depth = 32
   hdr_max_lum = maxl
   hdr_sun_r = sr;  hdr_sun_g = sg;  hdr_sun_b = sb
-  print(`hdr: peak/1000 {f_fx(f_div(maxl, fi(1000)))} sky irradiance(up) {f_fx(skye)} sun irradiance {f_fx(sg)} (Q16.16 = /65536)`)
+  print(`hdr: peak/1000 {fixed(maxl / 1000.0)} sky irradiance(up) {fixed(skye)} sun irradiance {fixed(sg)} (Q16.16 = /65536)`)
   return out
 }
 
@@ -414,22 +414,22 @@ function tex_target(w: int, h: int, ifmt: int, fmt: int, ty: int, filter: int) -
 var tex_dump_alpha: bool = false
 # Debug: the brightest texel of an RGBA float texture and where it is.
 function tex_max(tex: int, w: int, h: int, tag: pointer) -> void {
-  let buf = words(w * h * 4)
+  let buf = floats(w * h * 4)
   gpu_tex_bind(GPU_TEX2D, tex)
   gpu_pixel_store(GL_PACK_ALIGNMENT, 4)
   gpu_tex_read(GPU_TEX2D, GL_RGBA, GL_FLOAT, buf)
-  var best = F_ZERO;  var bx = 0;  var by = 0
+  var best = 0.0;  var bx = 0;  var by = 0
   var i = 0
   while i < w * h {
-    let v = f_max(buf[i * 4], f_max(buf[i * 4 + 1], buf[i * 4 + 2]))
-    if f_gt(v, best) { best = v;  bx = i % w;  by = i / w }
+    let v = Math.max(buf[i * 4], Math.max(buf[i * 4 + 1], buf[i * 4 + 2]))
+    if v > best { best = v;  bx = i % w;  by = i / w }
     i += 1
   }
-  print(`{tag}: max {f_fx(f_div(best, fi(100)))}/100 at {bx} {h - 1 - by} (top-down)`)
+  print(`{tag}: max {fixed(best / 100.0)}/100 at {bx} {h - 1 - by} (top-down)`)
   let o = (by * w + bx) * 4
-  let big = fi(65000)
-  let finite = f_ls(best, big)
-  print(`  rgba (clamped/100): {f_fx(f_div(f_min(buf[o], big), fi(100)))} {f_fx(f_div(f_min(buf[o + 1], big), fi(100)))} {f_fx(f_div(f_min(buf[o + 2], big), fi(100)))} {f_fx(f_min(buf[o + 3], big))}  finite {finite}  bits {buf[o]}`)
+  let big = 65000.0
+  let finite = best < big
+  print(`  rgba (clamped/100): {fixed(Math.min(buf[o], big) / 100.0)} {fixed(Math.min(buf[o + 1], big) / 100.0)} {fixed(Math.min(buf[o + 2], big) / 100.0)} {fixed(Math.min(buf[o + 3], big))}  finite {finite}  bits {buf[o]}`)
   free(buf)
 }
 # Debug: write a 2D texture's level 0 (RGBA8, alpha dropped) as a binary PPM.

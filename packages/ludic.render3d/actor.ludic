@@ -13,14 +13,14 @@
 
 property Actor {
   model:   Model,
-  x:       int = 0,        # float bits, metres
-  y:       int = 0,
-  z:       int = 0,
-  yaw:     int = 0,        # radians; 0 faces -z like the camera
-  scale:   int = 0,
-  tint:    words,
-  rough:   int = 0,
-  mat:     words,          # the model matrix
+  x:       float = 0.0,        # float bits, metres
+  y:       float = 0.0,
+  z:       float = 0.0,
+  yaw:     float = 0.0,        # radians; 0 faces -z like the camera
+  scale:   float = 0.0,
+  tint:    floats,
+  rough:   float = 0.0,
+  mat:     floats,          # the model matrix
   visible: bool = true,
   # Drawn and CASTING are not the same question. An actor hidden because the camera is inside
   # its head still stands in the sun, and a body that stops casting the moment you look out of
@@ -31,14 +31,14 @@ property Actor {
   casts:   bool = true,
   id:      int = 0,
   cutout:  bool = false,   # alpha-tested (a flame's cards)
-  emissive: int = 0,       # float bits: self-lit strength
+  emissive: float = 0.0,       # float bits: self-lit strength
   skin:    Skin,           # this instance's own pose (skin_clone); null: the model's
   ptint:   words,          # 4 per primitive: on flag, r, g, b (a part's own colour)
   hide:    words,          # 1 per primitive: skip it (a cap taken off)
-  radius:  int = 0,        # float bits: bounding radius for culling (0 = never culled)
-  cull:    int = 0,        # float bits: not drawn beyond this distance (0 = always)
-  outline: int = 0,        # float bits: metres of rim drawn around it (0 = none)
-  ocol:    words           # the rim's colour (null = white)
+  radius:  float = 0.0,        # float bits: bounding radius for culling (0 = never culled)
+  cull:    float = 0.0,        # float bits: not drawn beyond this distance (0 = always)
+  outline: float = 0.0,        # float bits: metres of rim drawn around it (0 = none)
+  ocol:    floats           # the rim's colour (null = white)
 }
 # a program and its uniform locations
 property AcProg {
@@ -98,11 +98,11 @@ function actor_remove(a: Actor) -> void {
   ac_actors = keep
 }
 # colour one named part of the model (a material name from the file)
-function actor_tint_part(a: Actor, name: string, r: int, g: int, b: int) -> void {
+function actor_tint_part(a: Actor, name: string, r: float, g: float, b: float) -> void {
   if a.model == null { return }
   let n = len(a.model.prims)
   if a.ptint == null { a.ptint = words(n * 4);  for i in 0 .. n * 4 { a.ptint[i] = 0 } }
-  for i in 0 .. n { if a.model.prims[i].name == name { a.ptint[i * 4] = 1;  a.ptint[i * 4 + 1] = r;  a.ptint[i * 4 + 2] = g;  a.ptint[i * 4 + 3] = b } }
+  for i in 0 .. n { if a.model.prims[i].name == name { a.ptint[i * 4] = 1;  a.ptint[i * 4 + 1] = float_bits(r);  a.ptint[i * 4 + 2] = float_bits(g);  a.ptint[i * 4 + 3] = float_bits(b) } }
 }
 function actor_hide_part(a: Actor, name: string, hidden: bool) -> void {
   if a.model == null { return }
@@ -116,19 +116,19 @@ function actor_hide_part(a: Actor, name: string, hidden: bool) -> void {
 function actor_new(model: Model) -> Actor {
   let a = new Actor
   a.model = model
-  a.scale = F_ONE
-  a.tint = v3_new(F_ONE, F_ONE, F_ONE)
-  a.rough = F_ONE
+  a.scale = 1.0
+  a.tint = v3_new(1.0, 1.0, 1.0)
+  a.rough = 1.0
   a.mat = m4_new()
   ac_next_id += 1;  a.id = ac_next_id
-  if model != null { a.radius = f_add(f_max(model.radius, model.height), F_ONE) }
-  a.cull = fi(450)
+  if model != null { a.radius = Math.max(model.radius, model.height) + 1.0 }
+  a.cull = 450.0
   if ac_actors == null { ac_actors = new []Actor }
   push(ac_actors, a)
   return a
 }
 
-function actor_place(a: Actor, x: int, y: int, z: int, yaw: int) -> void {
+function actor_place(a: Actor, x: float, y: float, z: float, yaw: float) -> void {
   a.x = x;  a.y = y;  a.z = z;  a.yaw = yaw
   m4_trs(a.mat, x, y, z, yaw, a.scale)
 }
@@ -141,7 +141,7 @@ function ac_bind_scene(ap: AcProg) -> void {
   gpu_use_program(p)
   u_mat4(ap.l_view, cam_view)
   u_mat4(ap.l_proj, cam_proj)
-  u_f(ap.l_mh, F_ZERO)
+  u_f(ap.l_mh, 0.0)
   sky_bind_lighting(p)
   shadow_bind(p)
   fog_bind(p)
@@ -150,22 +150,22 @@ function ac_visible(a: Actor, shadow: bool) -> bool {
   if a.model == null { return false }
   if not a.visible and not (shadow and a.cast_hidden) { return false }
   if shadow and not a.casts { return false }
-  if a.cull != 0 {
-    let dx = f_sub(a.x, cam_pos[0]);  let dz = f_sub(a.z, cam_pos[2])
-    let d2 = f_add(f_mul(dx, dx), f_mul(dz, dz))
+  if a.cull != 0.0 {
+    let dx = a.x - cam_pos[0];  let dz = a.z - cam_pos[2]
+    let d2 = dx * dx + dz * dz
     var c = a.cull
-    if shadow { c = f_min(c, fi(300)) }
-    if f_gt(d2, f_mul(c, c)) { return false }
+    if shadow { c = Math.min(c, 300.0) }
+    if d2 > c * c { return false }
   }
-  if not shadow and a.radius != 0 {
-    let r = f_mul(a.radius, a.scale)
-    var cy = f_add(a.y, r)
+  if not shadow and a.radius != 0.0 {
+    let r = a.radius * a.scale
+    var cy = a.y + r
     # In the water reflection what reaches the picture is the actor's mirror image, 2L - y. The pass
     # keeps the main camera's frustum planes, so the image is what has to be tested against them: the
     # actor itself was, and the town's people - far above the lake, their images far below the frame -
     # all drew again into the reflection.
-    if ter_reflect { cy = f_sub(f_mul(F_TWO, water_level), cy) }
-    if not cam_sphere_visible(a.x, cy, a.z, f_mul(r, fl(1.5))) { return false }
+    if ter_reflect { cy = 2.0 * water_level - cy }
+    if not cam_sphere_visible(a.x, cy, a.z, r * 1.5) { return false }
   }
   return true
 }
@@ -173,9 +173,9 @@ function actor_draw_one(a: Actor, ap: AcProg, shadow: bool) -> void {
   let p = ap.prog
   gpu_use_program(p)
   u_mat4(ap.l_model, a.mat)
-  var skinned = F_ZERO
-  if a.skin != null { skinned = F_ONE;  u_mat4n(ap.l_bones, a.skin.n_joints, a.skin.bones) }
-  else if a.model.skin != null { skinned = F_ONE;  u_mat4n(ap.l_bones, a.model.skin.n_joints, a.model.skin.bones) }
+  var skinned = 0.0
+  if a.skin != null { skinned = 1.0;  u_mat4n(ap.l_bones, a.skin.n_joints, a.skin.bones) }
+  else if a.model.skin != null { skinned = 1.0;  u_mat4n(ap.l_bones, a.model.skin.n_joints, a.model.skin.bones) }
   u_f(ap.l_skin, skinned)
   if not shadow {
     u_f(ap.l_emis, a.emissive)
@@ -187,7 +187,7 @@ function actor_draw_one(a: Actor, ap: AcProg, shadow: bool) -> void {
     let pr = model.prims[i]
     if a.hide != null and a.hide[i] != 0 { continue }
     if not shadow {
-      if a.ptint != null and a.ptint[i * 4] != 0 { u_f3(ap.l_tint, a.ptint[i * 4 + 1], a.ptint[i * 4 + 2], a.ptint[i * 4 + 3]) }
+      if a.ptint != null and a.ptint[i * 4] != 0 { u_f3(ap.l_tint, float_from_bits(a.ptint[i * 4 + 1]), float_from_bits(a.ptint[i * 4 + 2]), float_from_bits(a.ptint[i * 4 + 3])) }
       else { u_v3(ap.l_tint, a.tint) }
     }
     gpu_tex_unit(0);  gpu_tex_bind(GPU_TEX2D, pr.diff)
@@ -218,11 +218,11 @@ function actor_draw_one(a: Actor, ap: AcProg, shadow: bool) -> void {
 # would have arrived at (for a grounded layer, the terrain height at that instance).
 property OutlineReq {
   model: Model,
-  mat:   words,
-  width: int = 0,
-  r:     int = 0,
-  g:     int = 0,
-  b:     int = 0
+  mat:   floats,
+  width: float = 0.0,
+  r:     float = 0.0,
+  g:     float = 0.0,
+  b:     float = 0.0
 }
 var ac_oq: []OutlineReq = null
 var ac_oq_n: int = 0                 # live entries; the array is kept and reused
@@ -232,8 +232,8 @@ var ac_oq_n: int = 0                 # live entries; the array is kept and reuse
 # batch rather than clearing it, and the next add opens a new one: every pass in a frame
 # sees the same requests, and the caller needs no frame hook.
 var ac_oq_closed: bool = true
-function outline_model(m: Model, mat: words, width: int, r: int, g: int, b: int) -> void {
-  if m == null or mat == null or width == 0 { return }
+function outline_model(m: Model, mat: floats, width: float, r: float, g: float, b: float) -> void {
+  if m == null or mat == null or width == 0.0 { return }
   if ac_oq_closed { ac_oq_n = 0;  ac_oq_closed = false }
   if ac_oq == null { ac_oq = new []OutlineReq }
   var q: OutlineReq = null
@@ -300,19 +300,19 @@ function actor_draw() -> void {
 # against the scene, so anything in front of the actor hides its rim too.
 function actor_draw_outlines() -> void {
   var any = ac_oq_n > 0
-  for i in 0 .. len(ac_actors) { if ac_actors[i].outline != 0 and ac_visible(ac_actors[i], false) { any = true;  break } }
+  for i in 0 .. len(ac_actors) { if ac_actors[i].outline != 0.0 and ac_visible(ac_actors[i], false) { any = true;  break } }
   if not any { return }
   gpu_cull(true)
   gpu_cull_face(GL_FRONT)
   for i in 0 .. len(ac_actors) {
     let a = ac_actors[i]
-    if a.outline == 0 or not ac_visible(a, false) { continue }
+    if a.outline == 0.0 or not ac_visible(a, false) { continue }
     var ap = ac_out
     if a.cutout { ap = ac_out_cut }
     gpu_use_program(ap.prog)
     u_mat4(ap.l_view, cam_view);  u_mat4(ap.l_proj, cam_proj)
-    u_f(ap.l_out, f_mul(a.outline, a.scale))
-    if a.ocol != null { u_v3(ap.l_ocol, a.ocol) } else { u_f3(ap.l_ocol, F_ONE, F_ONE, F_ONE) }
+    u_f(ap.l_out, a.outline * a.scale)
+    if a.ocol != null { u_v3(ap.l_ocol, a.ocol) } else { u_f3(ap.l_ocol, 1.0, 1.0, 1.0) }
     actor_draw_outline_one(a, ap)
   }
   # and whatever asked for a rim without being an actor
@@ -324,7 +324,7 @@ function actor_draw_outlines() -> void {
     u_f(ap.l_out, q.width)
     u_f3(ap.l_ocol, q.r, q.g, q.b)
     u_mat4(ap.l_model, q.mat)
-    u_f(ap.l_skin, F_ZERO)
+    u_f(ap.l_skin, 0.0)
     for k in 0 .. len(q.model.prims) { mesh_draw(q.model.prims[k].mesh) }
   }
   ac_oq_closed = true
@@ -332,9 +332,9 @@ function actor_draw_outlines() -> void {
 }
 function actor_draw_outline_one(a: Actor, ap: AcProg) -> void {
   u_mat4(ap.l_model, a.mat)
-  var skinned = F_ZERO
-  if a.skin != null { skinned = F_ONE;  u_mat4n(ap.l_bones, a.skin.n_joints, a.skin.bones) }
-  else if a.model.skin != null { skinned = F_ONE;  u_mat4n(ap.l_bones, a.model.skin.n_joints, a.model.skin.bones) }
+  var skinned = 0.0
+  if a.skin != null { skinned = 1.0;  u_mat4n(ap.l_bones, a.skin.n_joints, a.skin.bones) }
+  else if a.model.skin != null { skinned = 1.0;  u_mat4n(ap.l_bones, a.model.skin.n_joints, a.model.skin.bones) }
   u_f(ap.l_skin, skinned)
   let model = a.model
   for i in 0 .. len(model.prims) {
@@ -349,47 +349,47 @@ function actor_draw_outline_one(a: Actor, ap: AcProg) -> void {
 # three axis offsets. An actor outside the box casts nothing into that layer: skipping it changes no
 # depth, only the draw. (Each actor used to draw into every cascade out to 300 m - in town that was
 # about 1500 skinned shadow draws a frame against 69 in the lit pass.)
-var ac_lp0: words = null
-var ac_lpx: words = null
-var ac_lpy: words = null
-var ac_lpz: words = null
-function ac_in_light(vp: words, x: int, y: int, z: int, r: int) -> bool {
-  if ac_lp0 == null { ac_lp0 = words(3);  ac_lpx = words(3);  ac_lpy = words(3);  ac_lpz = words(3) }
+var ac_lp0: floats = null
+var ac_lpx: floats = null
+var ac_lpy: floats = null
+var ac_lpz: floats = null
+function ac_in_light(vp: floats, x: float, y: float, z: float, r: float) -> bool {
+  if ac_lp0 == null { ac_lp0 = floats(3);  ac_lpx = floats(3);  ac_lpy = floats(3);  ac_lpz = floats(3) }
   m4_xform_point(ac_lp0, vp, x, y, z)
-  m4_xform_point(ac_lpx, vp, f_add(x, r), y, z)
-  m4_xform_point(ac_lpy, vp, x, f_add(y, r), z)
-  m4_xform_point(ac_lpz, vp, x, y, f_add(z, r))
+  m4_xform_point(ac_lpx, vp, x + r, y, z)
+  m4_xform_point(ac_lpy, vp, x, y + r, z)
+  m4_xform_point(ac_lpz, vp, x, y, z + r)
   for k in 0 .. 2 {
     let c = ac_lp0[k]
-    let e = f_add(f_add(ac_abs(f_sub(ac_lpx[k], c)), ac_abs(f_sub(ac_lpy[k], c))), ac_abs(f_sub(ac_lpz[k], c)))
-    if f_gt(f_sub(ac_abs(c), e), F_ONE) { return false }
+    let e = ac_abs(ac_lpx[k] - c) + ac_abs(ac_lpy[k] - c) + ac_abs(ac_lpz[k] - c)
+    if ac_abs(c) - e > 1.0 { return false }
   }
   return true
 }
-function ac_abs(v: int) -> int { return f_max(v, f_neg(v)) }
+function ac_abs(v: float) -> float { return Math.max(v, -v) }
 
-function actor_draw_casters(light_vp: words) -> void {
+function actor_draw_casters(light_vp: floats) -> void {
   if ac_actors == null { return }
   gpu_use_program(ac_sh.prog);  u_mat4(ac_sh.l_lvp, light_vp)
   gpu_use_program(ac_sh_cut.prog);  u_mat4(ac_sh_cut.l_lvp, light_vp)
   for i in 0 .. len(ac_actors) {
     let a = ac_actors[i]
     if not ac_visible(a, true) { continue }
-    if a.radius != 0 {
+    if a.radius != 0.0 {
       # the radius is the horizontal extent: a person is far taller than wide, so the sphere is
       # centred at half the model's height and reaches the larger of the two, with a margin for
       # the pose (a first version centred it at the radius and dropped a head at a cascade's edge)
-      let hh = f_mul(f_mul(a.model.height, F_HALF), a.scale)
-      let r = f_max(f_mul(a.radius, a.scale), hh)
-      if not ac_in_light(light_vp, a.x, f_add(a.y, hh), a.z, f_mul(r, fl(1.5))) { continue }
+      let hh = a.model.height * 0.5 * a.scale
+      let r = Math.max(a.radius * a.scale, hh)
+      if not ac_in_light(light_vp, a.x, a.y + hh, a.z, r * 1.5) { continue }
     }
     # Inside the light box is not the same as able to shade anything this cascade covers: every actor
     # within 300 m sits inside the far cascades' boxes, whose receivers start 250 and 1100 m out - at
     # the camp 160 actors cast 300 draws into each of those, against 41 into the nearest.
-    let dxa = f_sub(a.x, cam_pos[0]);  let dza = f_sub(a.z, cam_pos[2])
-    let da = f_sqrt(f_add(f_mul(dxa, dxa), f_mul(dza, dza)))
-    let ra = f_mul(a.radius, a.scale)
-    if not cast_band_reaches(f_max(f_sub(da, ra), F_ZERO), f_add(da, ra), f_mul(a.model.height, a.scale)) { continue }
+    let dxa = a.x - cam_pos[0];  let dza = a.z - cam_pos[2]
+    let da = Math.sqrt(dxa * dxa + dza * dza)
+    let ra = a.radius * a.scale
+    if not cast_band_reaches(Math.max(da - ra, 0.0), da + ra, a.model.height * a.scale) { continue }
     var ap = ac_sh
     if a.cutout { ap = ac_sh_cut }
     if ac_census_at > 0 and ac_frame == ac_census_at { ac_caster_count(a) }

@@ -104,6 +104,9 @@ function to_fp(v: Val, t: pointer, what: pointer) -> pointer {
     perr(`{what}: fixed and {t} do not mix implicitly — convert with {t}(x) or fixed(x)`)
   }
   let lt = llty(v.ty)
+  if ((lt == "i64") or (lt == "i32")) and not is_int_const(v.code) and strict_numbers() {
+    perr(`{what}: an {v.ty} does not become a {t} implicitly in a numbers float file — write {t}(x)`)
+  }
   if (lt == "i64") { fp_promote_note(v.ty, t);  return emit_bind(`sitofp i64 {v.code} to {t}`) }
   if (lt == "i32") {
     if is_int_const(v.code) { return fp_lit_code(v.code, t) }
@@ -118,6 +121,12 @@ function to_fp(v: Val, t: pointer, what: pointer) -> pointer {
 # (non-constant) integer to float — the audit a migration from float bit
 # patterns in ints relies on, since such a value would silently change meaning
 var g_warn_promote: int = -1
+# a `numbers float` file promotes no computed integer: there it is usually bits, not a count
+function strict_numbers() -> bool {
+  if (g_err_file == null) { return false }
+  return is_float_file(g_err_file)
+}
+
 function fp_promote_note(from: pointer, t: pointer) -> void {
   if g_warn_promote < 0 {
     g_warn_promote = 0
@@ -139,8 +148,26 @@ function fcmp_code(op: pointer) -> pointer {
   return "une"                                     # != is true for NaN, as everywhere
 }
 
+# A bare decimal literal that met a fixed-point value: in a `numbers float` module the literal
+# is float by default, and a fixed operand or slot beside it takes it back as fixed - the same
+# context rule a float context applies to a fixed module's literals.
+function fixed_lit_code(v: Val) -> pointer {
+  if (v.lit == null) or not is_fp(v.ty) { return "" }
+  if v.lit.kind == E_FLOAT { return itoa(v.lit.ival) }
+  if (v.lit.kind == E_UN) and (v.lit.a != null) and (v.lit.a.kind == E_FLOAT) { return itoa(0 - v.lit.a.ival) }
+  return ""
+}
+function lit_as_fixed(v: Val) -> Val {
+  let c = fixed_lit_code(v)
+  if (c == "") { return v }
+  let f = val(c, "fixed")
+  return f
+}
+
 # `a <op> b` where at least one side is float/double
 function emit_fp_bin(op: pointer, a: Val, b: Val) -> Val {
+  if (a.ty == "fixed") and not (fixed_lit_code(b) == "") { return emit_bin_vals(op, a, lit_as_fixed(b), false) }
+  if (b.ty == "fixed") and not (fixed_lit_code(a) == "") { return emit_bin_vals(op, lit_as_fixed(a), b, false) }
   var t = "float"
   if is_fp(a.ty) and is_fp(b.ty) { t = fp_result(a.ty, b.ty) }
   else { if is_fp(a.ty) { t = a.ty } else { t = b.ty } }
@@ -173,6 +200,8 @@ function emit_fp_convert(t: pointer, v: Val) -> Val {
     let f = emit_bind(`sitofp i32 {v.code} to {t}`)
     return val(emit_bind(`fdiv {t} {f}, 65536.0`), t)
   }
+  let lt = llty(v.ty)
+  if (lt == "i32") or (lt == "i64") { return val(emit_bind(`sitofp {lt} {v.code} to {t}`), t) }
   return val(to_fp(v, t, `{t}(x)`), t)
 }
 

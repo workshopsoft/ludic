@@ -109,6 +109,7 @@ function to_fixed(v: Val) -> pointer {
 # narrows with trunc; everything else (same width, or ptr) passes through.
 function coerce_code(v: Val, target: pointer) -> pointer {
   if is_fp(target) { return to_fp(v, target, `a {target} slot`) }
+  if (target == "fixed") and not (fixed_lit_code(v) == "") { return fixed_lit_code(v) }
   if is_fp(v.ty) and not is_fp(target) and (llty(target) != "ptr") {
     perr(`a {v.ty} does not convert to {target} implicitly — write int(x) or fixed(x)`)
   }

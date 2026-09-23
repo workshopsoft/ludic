@@ -14,19 +14,19 @@ var post_p_down: int = 0
 var post_p_up: int = 0
 var post_p_tone: int = 0
 var post_fs: Mesh = null
-var post_exposure: int = 0
+var post_exposure: float = 0.0
 var post_bloom_strength: int = 0
-var post_vignette: int = 0
-var post_saturation: int = 0
-var post_contrast: int = 0
+var post_vignette: float = 0.0
+var post_saturation: float = 0.0
+var post_contrast: float = 0.0
 var post_w: int = 0
 var post_h: int = 0
 var post_auto: bool = true
-var post_key: int = 0             # target mean luminance after exposure (float bits)
+var post_key: float = 0.0             # target mean luminance after exposure (float bits)
 var post_lum: words = null
 var post_mips: int = 0
-var post_adapt: int = 0           # smoothed exposure (float bits)
-var post_exposure_max: int = 0x41A00000   # 20: the ceiling auto-exposure may reach (night lowers it)
+var post_adapt: float = 0.0           # smoothed exposure (float bits)
+var post_exposure_max: float = 20.0   # 20: the ceiling auto-exposure may reach (night lowers it)
 # ---- the grade ------------------------------------------------------------------------------
 # White balance, the shadows' floor and the highlights' gain. These were nine literals bound at
 # the draw, so the game had the same colour at seven in the morning as at one in the afternoon -
@@ -35,25 +35,25 @@ var post_exposure_max: int = 0x41A00000   # 20: the ceiling auto-exposure may re
 # program that never starts a day looks exactly as it did.
 # They are plain ints rather than a v3 on purpose: a grade is written by daylight_set, which can
 # run before post_init has allocated anything, and nine ints cannot be null.
-var post_wb_r: int = 0x3F828F5C      # 1.02
-var post_wb_g: int = 0x3F800000      # 1.0
-var post_wb_b: int = 0x3F7851EC      # 0.97
-var post_lift_r: int = 0x3B83126F    # 0.004
-var post_lift_g: int = 0x3B83126F    # 0.004
-var post_lift_b: int = 0x3C449BA6    # 0.012
-var post_gain_r: int = 0x3F7D70A4    # 0.99
-var post_gain_g: int = 0x3F7EB852    # 0.995
-var post_gain_b: int = 0x3F800000    # 1.0
+var post_wb_r: float = 1.02      # 1.02
+var post_wb_g: float = 1.0      # 1.0
+var post_wb_b: float = 0.97      # 0.97
+var post_lift_r: float = 0.004    # 0.004
+var post_lift_g: float = 0.004    # 0.004
+var post_lift_b: float = 0.012    # 0.012
+var post_gain_r: float = 0.99    # 0.99
+var post_gain_g: float = 0.995    # 0.995
+var post_gain_b: float = 1.0    # 1.0
 
 var post_ao: Target = null
 var post_ao_blur: Target = null
 var post_p_ao: int = 0
 var post_p_ao_blur: int = 0
-var post_ao_radius: int = 0
-var post_contact: int = 0x3FA00000   # 1.25: how hard a thing is darkened where it meets the ground
-var post_ao_intensity: int = 0
-var post_ao_strength: int = 0
-var post_gi_strength: int = 0x3ECCCCCD     # 0.4
+var post_ao_radius: float = 0.0
+var post_contact: float = 1.25   # 1.25: how hard a thing is darkened where it meets the ground
+var post_ao_intensity: float = 0.0
+var post_ao_strength: float = 0.0
+var post_gi_strength: float = 0.4     # 0.4
 var post_no_gi: bool = false
 var post_ldr: Target = null
 var post_depth_copy: Target = null
@@ -63,13 +63,13 @@ var post_depth_copy: Target = null
 # and the pass is skipped entirely rather than run at one step.
 var post_vol: Target = null
 var post_p_vol: int = 0
-var post_vol_steps: int = 0x41C00000        # 24
-var post_vol_density: int = 0x3B03126F      # 0.002
-var post_vol_falloff: int = 0x3BA3D70A      # 0.005
-var post_vol_far: int = 0x44480000          # 800 m
-var post_vol_g: int = 0x3F19999A            # 0.6: air throws light forward
-var post_vol_mist: int = 0                  # the day sets these two
-var post_vol_mist_h: int = 0x42200000       # 40 m
+var post_vol_steps: float = 24.0        # 24
+var post_vol_density: float = 0.002      # 0.002
+var post_vol_falloff: float = 0.005      # 0.005
+var post_vol_far: float = 800.0          # 800 m
+var post_vol_g: float = 0.6            # 0.6: air throws light forward
+var post_vol_mist: float = 0.0                  # the day sets these two
+var post_vol_mist_h: float = 40.0       # 40 m
 var post_prev: Target = null       # last frame's scene colour, for the SSGI bounce only
 var post_scene: Target = null      # this frame's scene colour before the water, for refraction
 var post_frame: int = 0
@@ -79,20 +79,20 @@ var post_color: int = 0            # the HDR colour the rest of post reads      
 var post_p_sharp: int = 0
 # Spatial anti-aliasing, in the sharpen pass because that pass already reads this pixel's
 # neighbourhood and runs last on the LDR image. 1 on, 0 off; the game's setting drives it.
-var post_fxaa: int = 0x3F800000
+var post_fxaa: float = 1.0
 # ---- depth of field ------------------------------------------------------------------------
 # Off in ordinary play - the pass is skipped whole, not run at zero radius. The game turns it on
 # behind the viewfinder and says what to focus on.
 var post_p_dof: int = 0
 var post_dof: Target = null
-var post_dof_focus: int = 0x41200000      # 10 m
-var post_dof_aperture: int = 0            # 0 = no lens, and no pass
-var post_dof_max: int = 0x41400000        # 12 px
+var post_dof_focus: float = 10.0      # 10 m
+var post_dof_aperture: float = 0.0            # 0 = no lens, and no pass
+var post_dof_max: float = 12.0        # 12 px
 var post_p_tone_hdr: int = 0        # the tonemap's HDR10 variant, made the first time HDR is on
 var post_ldr_hdr: bool = false       # post_ldr was made for HDR10 output (10-bit)
 # the LDR image is 10-bit while the output is HDR10: PQ in 8 bits bands
 function post_ldr_fmt() -> int { if gpu_hdr_active() { return GL_RGB10_A2 };  return GL_RGBA8 }
-var post_sharpen: int = 0
+var post_sharpen: float = 0.0
 var post_grain: int = 0
 
 # the screen-sized targets go away before post_init makes them at a new size
@@ -168,23 +168,23 @@ function post_init(w: int, h: int) -> void {
   post_prev = target_new(w, h, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, false, GL_LINEAR)
   post_scene = target_new(w, h, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, false, GL_LINEAR)
   if post_p_sharp == 0 { post_p_sharp = r3d_program("fullscreen.vert", "sharpen.frag", "") }
-  post_sharpen = fl(1.2)
-  post_grain = fl(0.025)
-  post_ao_radius = fl(0.7)
-  post_ao_intensity = fl(1.4)
-  post_ao_strength = fl(0.8)
+  post_sharpen = 1.2
+  post_grain = float_bits(0.025)
+  post_ao_radius = 0.7
+  post_ao_intensity = 1.4
+  post_ao_strength = 0.8
   post_fs = mesh_fullscreen()
-  post_exposure = fl(0.36)
-  post_bloom_strength = fl(0.06)
-  post_vignette = fl(0.35)
-  post_saturation = fl(1.04)
-  post_contrast = fl(1.12)
-  post_key = fl(0.19)
+  post_exposure = 0.36
+  post_bloom_strength = float_bits(0.06)
+  post_vignette = 0.35
+  post_saturation = 1.04
+  post_contrast = 1.12
+  post_key = 0.19
   post_lum = words(4)
   var m = 1;  var sz = max(w, h)
   while sz > 1 { sz = sz / 2;  m += 1 }
   post_mips = m
-  post_adapt = F_ZERO
+  post_adapt = 0.0
 }
 
 # Mean scene luminance from the HDR mip chain -> exposure = key / mean, eased over
@@ -217,12 +217,12 @@ function post_measure() -> void {
   gpu_use_program(post_p_adapt)
   r3d_bind_2d(post_p_adapt, "u_scene", 0, post_hdr.color)
   r3d_bind_2d(post_p_adapt, "u_prev", 1, post_adapt_t[post_adapt_i].color)
-  u_f(gpu_uniform(post_p_adapt, "u_lod"), fi(post_mips - 1))
+  u_f(gpu_uniform(post_p_adapt, "u_lod"), float(post_mips - 1))
   u_f(gpu_uniform(post_p_adapt, "u_key"), post_key)
   u_f(gpu_uniform(post_p_adapt, "u_max"), post_exposure_max)
-  u_f(gpu_uniform(post_p_adapt, "u_rate"), fl(0.08))
-  var reset = F_ZERO
-  if post_adapt_reset { reset = F_ONE;  post_adapt_reset = false }
+  u_f(gpu_uniform(post_p_adapt, "u_rate"), 0.08)
+  var reset = 0.0
+  if post_adapt_reset { reset = 1.0;  post_adapt_reset = false }
   u_f(gpu_uniform(post_p_adapt, "u_reset"), reset)
   mesh_draw(post_fs)
   post_adapt_i = next
@@ -292,21 +292,21 @@ function post_ssao_pass() -> void {
   gpu_use_program(post_p_ao)
   r3d_bind_2d(post_p_ao, "u_depth", 0, post_hdr.depth)
   r3d_bind_2d(post_p_ao, "u_prev_color", 1, post_prev.color)
-  u_f(gpu_uniform(post_p_ao, "u_frame"), fi(post_frame % 64))
+  u_f(gpu_uniform(post_p_ao, "u_frame"), float(post_frame % 64))
   u_mat4(gpu_uniform(post_p_ao, "u_inv_proj"), cam_inv_proj)
   u_mat4(gpu_uniform(post_p_ao, "u_proj"), cam_proj)
-  u_f2(gpu_uniform(post_p_ao, "u_texel"), fr(1, post_w), fr(1, post_h))
+  u_f2(gpu_uniform(post_p_ao, "u_texel"), 1.0 / float(post_w), 1.0 / float(post_h))
   u_f(gpu_uniform(post_p_ao, "u_radius"), post_ao_radius)
   u_f(gpu_uniform(post_p_ao, "u_intensity"), post_ao_intensity)
   var contact = post_contact
-  if r3d_env_has("R3D_NOCONTACT") { contact = F_ZERO }
+  if r3d_env_has("R3D_NOCONTACT") { contact = 0.0 }
   u_f(gpu_uniform(post_p_ao, "u_contact"), contact)
   mesh_draw(post_fs)
   target_bind(post_ao_blur)
   gpu_use_program(post_p_ao_blur)
   r3d_bind_2d(post_p_ao_blur, "u_ao", 0, post_ao.color)
   r3d_bind_2d(post_p_ao_blur, "u_depth", 1, post_hdr.depth)
-  u_f2(gpu_uniform(post_p_ao_blur, "u_texel"), fr(1, post_ao.w), fr(1, post_ao.h))
+  u_f2(gpu_uniform(post_p_ao_blur, "u_texel"), 1.0 / float(post_ao.w), 1.0 / float(post_ao.h))
   mesh_draw(post_fs)
 }
 
@@ -314,7 +314,7 @@ function post_ssao_pass() -> void {
 # light is a bright thing in the air and should bloom like one, and compositing it after the
 # bloom pyramid would give hard-edged rays with no glow at all.
 function post_volumetric_pass() -> void {
-  if post_vol_steps <= 0 { return }
+  if post_vol_steps <= 0.0 { return }
   if r3d_env_has("R3D_NOVOL") { return }
   gpu_depth_test(false)
   gpu_blend(false)
@@ -346,8 +346,8 @@ function post_volumetric_pass() -> void {
   gpu_blend_func(GL_ONE, GL_ONE)
   gpu_use_program(post_p_up)
   r3d_bind_2d(post_p_up, "u_src", 0, post_vol.color)
-  u_f2(gpu_uniform(post_p_up, "u_texel"), fr(1, post_vol.w), fr(1, post_vol.h))
-  u_f(gpu_uniform(post_p_up, "u_radius"), F_ONE)
+  u_f2(gpu_uniform(post_p_up, "u_texel"), 1.0 / float(post_vol.w), 1.0 / float(post_vol.h))
+  u_f(gpu_uniform(post_p_up, "u_radius"), 1.0)
   mesh_draw(post_fs)
   gpu_blend(false)
 }
@@ -355,7 +355,7 @@ function post_volumetric_pass() -> void {
 # The lens, between the scene and the bloom: a blurred highlight should still bloom, and a
 # bloom smeared by the lens afterwards would be a halo round nothing.
 function post_dof_pass() -> void {
-  if post_dof_aperture == 0 { return }
+  if post_dof_aperture == 0.0 { return }
   gpu_depth_test(false)
   gpu_blend(false)
   target_bind(post_dof)
@@ -363,7 +363,7 @@ function post_dof_pass() -> void {
   r3d_bind_2d(post_p_dof, "u_src", 0, post_color)
   r3d_bind_2d(post_p_dof, "u_depth", 1, post_hdr.depth)
   u_mat4(gpu_uniform(post_p_dof, "u_inv_proj"), cam_inv_proj)
-  u_f2(gpu_uniform(post_p_dof, "u_texel"), fr(1, post_w), fr(1, post_h))
+  u_f2(gpu_uniform(post_p_dof, "u_texel"), 1.0 / float(post_w), 1.0 / float(post_h))
   u_f(gpu_uniform(post_p_dof, "u_focus"), post_dof_focus)
   u_f(gpu_uniform(post_p_dof, "u_aperture"), post_dof_aperture)
   u_f(gpu_uniform(post_p_dof, "u_max_coc"), post_dof_max)
@@ -381,9 +381,9 @@ function post_bloom_pass() -> void {
     let t = post_bloom[i]
     target_bind(t)
     r3d_bind_2d(post_p_down, "u_src", 0, src)
-    u_f2(gpu_uniform(post_p_down, "u_texel"), fr(1, sw), fr(1, sh))
-    var th = f_neg1()
-    if i == 0 { th = fl(1.2) }
+    u_f2(gpu_uniform(post_p_down, "u_texel"), 1.0 / float(sw), 1.0 / float(sh))
+    var th = -1.0
+    if i == 0 { th = 1.2 }
     u_f(gpu_uniform(post_p_down, "u_threshold"), th)
     mesh_draw(post_fs)
     src = t.color;  sw = t.w;  sh = t.h
@@ -397,8 +397,8 @@ function post_bloom_pass() -> void {
     let to = post_bloom[i - 1]
     target_bind(to)
     r3d_bind_2d(post_p_up, "u_src", 0, from.color)
-    u_f2(gpu_uniform(post_p_up, "u_texel"), fr(1, from.w), fr(1, from.h))
-    u_f(gpu_uniform(post_p_up, "u_radius"), F_ONE)
+    u_f2(gpu_uniform(post_p_up, "u_texel"), 1.0 / float(from.w), 1.0 / float(from.h))
+    u_f(gpu_uniform(post_p_up, "u_radius"), 1.0)
     mesh_draw(post_fs)
     i -= 1
   }
@@ -427,10 +427,10 @@ function post_tonemap(color_tex: int) -> void {
   u_f(gpu_uniform(prog, "u_ao_strength"), post_ao_strength)
   u_f(gpu_uniform(prog, "u_gi_strength"), post_gi_strength)
   u_f(gpu_uniform(prog, "u_exposure"), post_exposure)
-  var auto = F_ZERO
-  if post_auto and post_adapt_t != null { auto = F_ONE;  r3d_bind_2d(prog, "u_adapt", 3, post_adapt_t[post_adapt_i].color) }
+  var auto = 0.0
+  if post_auto and post_adapt_t != null { auto = 1.0;  r3d_bind_2d(prog, "u_adapt", 3, post_adapt_t[post_adapt_i].color) }
   u_f(gpu_uniform(prog, "u_auto"), auto)
-  u_f(gpu_uniform(prog, "u_bloom_strength"), post_bloom_strength)
+  u_f(gpu_uniform(prog, "u_bloom_strength"), float_from_bits(post_bloom_strength))
   u_f(gpu_uniform(prog, "u_vignette"), post_vignette)
   u_f(gpu_uniform(prog, "u_saturation"), post_saturation)
   u_f(gpu_uniform(prog, "u_contrast"), post_contrast)
@@ -447,15 +447,15 @@ function post_tonemap(color_tex: int) -> void {
   gpu_viewport(0, 0, gl_w, gl_h)
   gpu_use_program(post_p_sharp)
   r3d_bind_2d(post_p_sharp, "u_src", 0, post_ldr.color)
-  u_f2(gpu_uniform(post_p_sharp, "u_texel"), fr(1, post_ldr.w), fr(1, post_ldr.h))
+  u_f2(gpu_uniform(post_p_sharp, "u_texel"), 1.0 / float(post_ldr.w), 1.0 / float(post_ldr.h))
   u_f(gpu_uniform(post_p_sharp, "u_amount"), post_sharpen)
   var fx = post_fxaa
-  if r3d_env_has("R3D_NOFXAA") { fx = F_ZERO }
+  if r3d_env_has("R3D_NOFXAA") { fx = 0.0 }
   u_f(gpu_uniform(post_p_sharp, "u_fxaa"), fx)
   # R3D_NOGRAIN=1: no film grain, so two frames of a still camera can be compared for what else moves
   var grain = post_grain
-  if r3d_env_has("R3D_NOGRAIN") { grain = F_ZERO }
-  u_f(gpu_uniform(post_p_sharp, "u_grain"), grain)
+  if r3d_env_has("R3D_NOGRAIN") { grain = float_bits(0.0) }
+  u_f(gpu_uniform(post_p_sharp, "u_grain"), float_from_bits(grain))
   u_f(gpu_uniform(post_p_sharp, "u_time"), r3d_time)
   mesh_draw(post_fs)
 }

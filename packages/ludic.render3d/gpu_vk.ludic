@@ -194,7 +194,7 @@ function gvk_init() -> bool {
   gvk_has_hqr = Vk.get_i32(f12, VkPhysicalDeviceVulkan12Features_hostQueryReset) == 1 and Vk.get_i32(props, VkPhysicalDeviceProperties_limits + VkPhysicalDeviceLimits_timestampComputeAndGraphics) == 1
   if gvk_has_hqr {
     Vk.put_i32(want12, VkPhysicalDeviceVulkan12Features_hostQueryReset, 1)
-    gvk_ts_period = Vk.get_i32(props, VkPhysicalDeviceProperties_limits + VkPhysicalDeviceLimits_timestampPeriod)
+    gvk_ts_period = float_from_bits(Vk.get_i32(props, VkPhysicalDeviceProperties_limits + VkPhysicalDeviceLimits_timestampPeriod))
   }
 
   Vk.put_i32(cnt, 0, 0)
@@ -581,7 +581,7 @@ function gvk_shutdown() -> void {
 # again. On a device without host query reset or timestamps, every read says "not yet" and the report
 # stays empty.
 var gvk_has_hqr: bool = false
-var gvk_ts_period: int = 0             # float bits: nanoseconds per timestamp tick
+var gvk_ts_period: float = 0.0             # float bits: nanoseconds per timestamp tick
 var gvk_qpool: long = 0
 var gvk_q_active: int = -1
 function gvk_query_new(n: int, ids: words) -> void {
@@ -616,6 +616,6 @@ function gvk_query_result(id: int, out: words) -> bool {
   if Vk.get_query_pool_results(gvk_dev, gvk_qpool, id * 2, 2, size, data, stride, VK_QUERY_RESULT_64_BIT) != VK_SUCCESS { return false }
   let ticks = Text.to_int(string(Vk.get_i64(data, 8) - Vk.get_i64(data, 0)))
   if ticks < 0 { return false }
-  out[0] = f_to_int(f_mul(fi(ticks), gvk_ts_period))
+  out[0] = int(float(ticks) * gvk_ts_period)
   return true
 }

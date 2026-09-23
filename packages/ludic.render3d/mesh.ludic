@@ -25,16 +25,16 @@ function mesh_draw_instanced(m: Mesh, n: int) -> void { gpu_draw_mesh_instanced(
 
 # A flat n x n vertex grid over [-half, half]^2 in x/z, y = 0. Attribute 0 = (x, z).
 # The terrain vertex shader lifts it with the height map.
-function mesh_grid(n: int, half: int) -> Mesh {
+function mesh_grid(n: int, half: float) -> Mesh {
   let m = gpu_mesh_new()
   let nv = n * n
   let v = gl_floats(nv * 2)
   var k = 0
   for j in 0 .. n {
     for i in 0 .. n {
-      let x = f_sub(f_mul(f_mul(fr(i, n - 1), F_TWO), half), half)
-      let z = f_sub(f_mul(f_mul(fr(j, n - 1), F_TWO), half), half)
-      gl_put_bits(v, k, x);  gl_put_bits(v, k + 1, z)
+      let x = float(i) / float(n - 1) * 2.0 * half - half
+      let z = float(j) / float(n - 1) * 2.0 * half - half
+      gl_put_bits(v, k, float_bits(x));  gl_put_bits(v, k + 1, float_bits(z))
       k += 2
     }
   }

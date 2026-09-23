@@ -12,9 +12,9 @@ const CD_G: int = 32                  # cells per patch side
 const CD_LEVELS: int = 9              # 32 m leaves .. 8192 m root
 const CD_LEAVES: int = 256            # leaf patches per side (8192 / 32)
 var cd_mesh: Mesh = null
-var cd_range: words = null            # float bits: how far each level is drawn
-var cd_min: []words = null            # per level: min height of each patch (float bits)
-var cd_max: []words = null
+var cd_range: floats = null            # float bits: how far each level is drawn
+var cd_min: []floats = null            # per level: min height of each patch (float bits)
+var cd_max: []floats = null
 var cd_draws: int = 0
 var cd_far_draws: int = 0
 var cd_near_draws: int = 0
@@ -24,7 +24,7 @@ var ter_force_near: bool = false
 var ter_skip: bool = false
 
 var ter_height_tex: int = 0
-var ter_heights: words = null         # CPU copy, float bits, TERRAIN_RES^2
+var ter_heights: floats = null         # CPU copy, float bits, TERRAIN_RES^2
 var ter_reflect: bool = false          # drawing the reflection: the mid mesh is plenty
 var ter_prog: int = 0
 # The far tier compiled on its own (FAR_ONLY). A patch that lies entirely beyond the
@@ -42,33 +42,33 @@ var ter_sun_pass: bool = false       # selection is drawing the visibility pass
 var ter_sun_tex: int = 0
 var ter_prog_cur: int = 0            # the program currently bound during selection
 var ter_smooth: bool = false   # generate the analytic test ground instead of a survey
-var ter_far_split: int = 0             # metres: beyond this the terrain takes its cheap far path (R3D_TFAR)
-var ter_far_band: int = 0              # half-width of the near/far blend (R3D_TBAND)
-var ter_snow_line: int = 0
+var ter_far_split: float = 0.0             # metres: beyond this the terrain takes its cheap far path (R3D_TFAR)
+var ter_far_band: float = 0.0              # half-width of the near/far blend (R3D_TBAND)
+var ter_snow_line: float = 0.0
 # 0 dry .. 1 soaked. The game sets it from the weather and lets it dry out.
-var ter_wet: int = 0
+var ter_wet: float = 0.0
 var ter_tex: words = null             # 11 material textures (see terrain_bind)
-var ter_ox: int = 0                   # world x/z of the terrain centre (float bits)
-var ter_oz: int = 0
+var ter_ox: float = 0.0                   # world x/z of the terrain centre (float bits)
+var ter_oz: float = 0.0
 var ter_dem_tex: int = 0              # a real height map (16-bit), or 0 for the procedural valley
-var ter_dem_blur: int = 0             # gaussian texels applied to the survey (0 for lidar; ~3 for 30 m data)
-var ter_dem_min: int = 0
-var ter_dem_max: int = 0
-var ter_dem_base: int = 0
+var ter_dem_blur: float = 0.0             # gaussian texels applied to the survey (0 for lidar; ~3 for 30 m data)
+var ter_dem_min: float = 0.0
+var ter_dem_max: float = 0.0
+var ter_dem_base: float = 0.0
 var ter_ortho_tex: int = 0            # a photograph of the same window, draped with distance
 var ter_carpet: int = 0               # the distant-grass carpet (carpet_bake), 0 = none
 var ter_shadow_tex: int = 0           # height-field sun shadow: RG32F (lowest lit height, occluder distance)
-var ter_shadow_yaw: int = 0x7fffffff  # the sky yaw it was baked for
+var ter_shadow_yaw: float = 1000000000.0  # the sky yaw it was baked for
 var ter_shadow_gen: int = -1          # the daylight generation it was baked for
 var ter_shadow_prog: int = 0
 function terrain_set_carpet(tex: int) -> void { ter_carpet = tex }
-var ter_lake_level: int = 0           # a lake carved into the height map (float bits; ex = 0 → none)
-var ter_lake_cx: int = 0
-var ter_lake_cz: int = 0
-var ter_lake_ex: int = 0
-var ter_lake_ez: int = 0
+var ter_lake_level: float = 0.0           # a lake carved into the height map (float bits; ex = 0 → none)
+var ter_lake_cx: float = 0.0
+var ter_lake_cz: float = 0.0
+var ter_lake_ex: float = 0.0
+var ter_lake_ez: float = 0.0
 # Carve a lake bed below `level` inside the ellipse (cx, cz) ± (ex, ez); call before r3d_init.
-function terrain_lake(level: int, cx: int, cz: int, ex: int, ez: int) -> void {
+function terrain_lake(level: float, cx: float, cz: float, ex: float, ez: float) -> void {
   ter_lake_level = level;  ter_lake_cx = cx;  ter_lake_cz = cz;  ter_lake_ex = ex;  ter_lake_ez = ez
 }
 # Whether the generator carves that bed. A height map that already carries a shaped bed
@@ -81,11 +81,11 @@ function terrain_lake_carve(on: bool) -> void { ter_lake_carve = on }
 # carved lake's. They were one number, which holds only while the lake is at sea level: a
 # lake eighty metres up the valley drowned the whole coast toward its own surface. Unset,
 # the sea is the lake exactly as before, so a map with one water line needs no call.
-var ter_sea_level: int = 0
+var ter_sea_level: float = 0.0
 var ter_sea_set: bool = false
-function terrain_sea(level: int) -> void { ter_sea_level = level;  ter_sea_set = true }
+function terrain_sea(level: float) -> void { ter_sea_level = level;  ter_sea_set = true }
 # the level the generator scales the coast toward (it always read the lake's, set or not)
-function ter_sea_gen() -> int { if ter_sea_set { return ter_sea_level };  return ter_lake_level }
+function ter_sea_gen() -> float { if ter_sea_set { return ter_sea_level };  return ter_lake_level }
 # An island: land out to `r` from (cx, cz), then the terrain scaled down into the water
 # over `fall` metres and on down to a shelf. Scaling rather than blending to a fixed bed is
 # what makes the coastline come out of the terrain that is already there — low ground turns
@@ -93,15 +93,15 @@ function ter_sea_gen() -> int { if ter_sea_set { return ter_sea_level };  return
 const TER_ISLE_NONE: int = 0
 const TER_ISLE_RADIAL: int = 1
 const TER_ISLE_COAST: int = 2
-var ter_isle_cx: int = 0
-var ter_isle_cz: int = 0
-var ter_isle_r: int = 0
-var ter_isle_fall: int = 0
+var ter_isle_cx: float = 0.0
+var ter_isle_cz: float = 0.0
+var ter_isle_r: float = 0.0
+var ter_isle_fall: float = 0.0
 var ter_isle_mode: int = 0
-function terrain_island(cx: int, cz: int, r: int, fall: int) -> void {
+function terrain_island(cx: float, cz: float, r: float, fall: float) -> void {
   ter_isle_cx = cx;  ter_isle_cz = cz;  ter_isle_r = r;  ter_isle_fall = fall
   ter_isle_mode = TER_ISLE_RADIAL
-  if r == 0 { ter_isle_mode = TER_ISLE_NONE }
+  if r == 0.0 { ter_isle_mode = TER_ISLE_NONE }
 }
 # The other way to make an island, and the one a real survey usually wants: put the sea
 # around the survey's OWN EDGE rather than cutting a circle out of the middle of it.
@@ -116,10 +116,10 @@ function terrain_island(cx: int, cz: int, r: int, fall: int) -> void {
 #
 # The band is wobbled by low-frequency noise so the coastline is headlands and bays rather
 # than the square the data arrived in. `margin = 0` leaves the survey alone.
-function terrain_coast(cx: int, cz: int, margin: int, fall: int) -> void {
+function terrain_coast(cx: float, cz: float, margin: float, fall: float) -> void {
   ter_isle_cx = cx;  ter_isle_cz = cz;  ter_isle_r = margin;  ter_isle_fall = fall
   ter_isle_mode = TER_ISLE_COAST
-  if margin == 0 { ter_isle_mode = TER_ISLE_NONE }
+  if margin == 0.0 { ter_isle_mode = TER_ISLE_NONE }
 }
 
 # Use a real place: a 16-bit PNG height map plus its elevation range (metres). The
@@ -129,12 +129,12 @@ var ter_ortho_w: int = 0
 var ter_ortho_c: int = 3
 
 # the photograph's colour at world (x, z): packed 0xRRGGBB (0 outside the map)
-function terrain_ortho(x: int, z: int) -> int {
+function terrain_ortho(x: float, z: float) -> int {
   if ter_ortho_px == null { return 0 }
-  if ter_o_scale == 0 { ter_o_scale = fr(ter_ortho_w, TERRAIN_HALF * 2) }
+  if ter_o_scale == 0.0 { ter_o_scale = float(ter_ortho_w) / float(TERRAIN_HALF * 2) }
   let scale = ter_o_scale
-  var ix = f_to_int(f_floor(f_mul(f_add(f_sub(x, ter_ox), fi(TERRAIN_HALF)), scale)))
-  var iz = f_to_int(f_floor(f_mul(f_add(f_sub(z, ter_oz), fi(TERRAIN_HALF)), scale)))
+  var ix = int(Math.floor((x - ter_ox + float(TERRAIN_HALF)) * scale))
+  var iz = int(Math.floor((z - ter_oz + float(TERRAIN_HALF)) * scale))
   if ix < 0 { ix = 0 };  if iz < 0 { iz = 0 }
   if ix > ter_ortho_w - 1 { ix = ter_ortho_w - 1 };  if iz > ter_ortho_w - 1 { iz = ter_ortho_w - 1 }
   let o = (iz * ter_ortho_w + ix) * ter_ortho_c
@@ -144,65 +144,65 @@ function terrain_ortho(x: int, z: int) -> int {
 # one should fetch the colour once with terrain_ortho() and use the *_of forms — the
 # cover generator tests all three per candidate, so this is three fetches saved out of
 # every four in the hottest loop in the program.
-function ortho_green_of(c: int) -> int {
+function ortho_green_of(c: int) -> float {
   let r = (c >> 16) & 255;  let g = (c >> 8) & 255;  let b = c & 255
   var v = g - max(r, b)
   if v < 0 { v = 0 }
-  return f_min(fr(v, 22), F_ONE)
+  return Math.min(float(v) / 22.0, 1.0)
 }
-function ortho_scree_of(c: int) -> int {
-  if c == 0 { return F_ZERO }
+function ortho_scree_of(c: int) -> float {
+  if c == 0 { return 0.0 }
   let r = (c >> 16) & 255;  let g = (c >> 8) & 255;  let b = c & 255
   let mx = max(r, max(g, b))
-  if g - max(r, b) > 2 or mx < 60 { return F_ZERO }
-  return F_ONE
+  if g - max(r, b) > 2 or mx < 60 { return 0.0 }
+  return 1.0
 }
-function ortho_forest_of(c: int) -> int {
-  if c == 0 { return F_ZERO }
+function ortho_forest_of(c: int) -> float {
+  if c == 0 { return 0.0 }
   let r = (c >> 16) & 255;  let g = (c >> 8) & 255;  let b = c & 255
   let mx = max(r, max(g, b))
-  if g - max(r, b) < 3 { return F_ZERO }
-  if mx <= 80 { return F_ONE }
-  if mx <= 105 { return F_HALF }
-  return F_ZERO
+  if g - max(r, b) < 3 { return 0.0 }
+  if mx <= 80 { return 1.0 }
+  if mx <= 105 { return 0.5 }
+  return 0.0
 }
 
 # how green the ground is in the photograph (0..1 float bits): meadow / forest vs rock, scree, water
-function terrain_ortho_green(x: int, z: int) -> int {
+function terrain_ortho_green(x: float, z: float) -> float {
   let c = terrain_ortho(x, z)
   let r = (c >> 16) & 255;  let g = (c >> 8) & 255;  let b = c & 255
   var v = g - max(r, b)                 # green excess
   if v < 0 { v = 0 }
-  return f_min(fr(v, 22), F_ONE)
+  return Math.min(float(v) / 22.0, 1.0)
 }
 # how grey and mid-bright (scree / pebbles / bare rock) the photograph is there (0..1)
 # Bare ground only where most of a 50 m neighbourhood is bare: a single 10 m trail pixel
 # must not place a boulder or bar a tree.
-function terrain_ortho_scree(x: int, z: int) -> int {
+function terrain_ortho_scree(x: float, z: float) -> float {
   var votes = 0
-  for j in 0 .. 5 { for i in 0 .. 5 { if ortho_scree_of(terrain_ortho(f_add(x, fi((i - 2) * 10)), f_add(z, fi((j - 2) * 10)))) != F_ZERO { votes += 1 } } }
-  if votes >= 15 { return F_ONE }
-  return F_ZERO
+  for j in 0 .. 5 { for i in 0 .. 5 { if ortho_scree_of(terrain_ortho(x + float((i - 2) * 10), z + float((j - 2) * 10))) != 0.0 { votes += 1 } } }
+  if votes >= 15 { return 1.0 }
+  return 0.0
 }
-function terrain_ortho_scree_pixel(x: int, z: int) -> int {
+function terrain_ortho_scree_pixel(x: float, z: float) -> float {
   let c = terrain_ortho(x, z)
-  if c == 0 { return F_ZERO }
+  if c == 0 { return 0.0 }
   let r = (c >> 16) & 255;  let g = (c >> 8) & 255;  let b = c & 255
   let mx = max(r, max(g, b))
   # bare ground: not green-dominant (grey scree, the maroon rock, the moraine's tan gravel), lit enough not to be water
-  if g - max(r, b) > 2 or mx < 60 { return F_ZERO }
-  return F_ONE
+  if g - max(r, b) > 2 or mx < 60 { return 0.0 }
+  return 1.0
 }
 # dense conifer forest in the photograph: green-dominant and dark (the meadows are brighter)
-function terrain_ortho_forest(x: int, z: int) -> int {
+function terrain_ortho_forest(x: float, z: float) -> float {
   let c = terrain_ortho(x, z)
-  if c == 0 { return F_ZERO }
+  if c == 0 { return 0.0 }
   let r = (c >> 16) & 255;  let g = (c >> 8) & 255;  let b = c & 255
   let mx = max(r, max(g, b))
-  if g - max(r, b) < 3 { return F_ZERO }
-  if mx <= 80 { return F_ONE }
-  if mx <= 105 { return F_HALF }
-  return F_ZERO
+  if g - max(r, b) < 3 { return 0.0 }
+  if mx <= 80 { return 1.0 }
+  if mx <= 105 { return 0.5 }
+  return 0.0
 }
 
 function terrain_use_ortho(path: string) -> void {
@@ -216,7 +216,7 @@ function terrain_use_ortho(path: string) -> void {
   gpu_tex_param(GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
   gpu_tex_param(GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
 }
-function terrain_use_dem(path: string, emin: int, emax: int, base: int, ox: int, oz: int) -> void {
+function terrain_use_dem(path: string, emin: float, emax: float, base: float, ox: float, oz: float) -> void {
   ter_dem_tex = tex_load(path, false)
   ter_dem_min = emin;  ter_dem_max = emax;  ter_dem_base = base
   ter_ox = ox;  ter_oz = oz
@@ -237,7 +237,7 @@ function terrain_generate() -> void {
   gpu_viewport(0, 0, TERRAIN_RES, TERRAIN_RES)
   gpu_depth_test(false)
   gpu_use_program(p)
-  u_f(gpu_uniform(p, "u_half"), fi(TERRAIN_HALF))
+  u_f(gpu_uniform(p, "u_half"), float(TERRAIN_HALF))
   if ter_dem_tex != 0 {
     r3d_bind_2d(p, "u_dem", 0, ter_dem_tex)
     u_f(gpu_uniform(p, "u_dem_min"), ter_dem_min)
@@ -246,13 +246,13 @@ function terrain_generate() -> void {
     u_f2(gpu_uniform(p, "u_origin"), ter_ox, ter_oz)
     u_f4(gpu_uniform(p, "u_lake"), ter_lake_cx, ter_lake_cz, ter_lake_ex, ter_lake_ez)
     u_f(gpu_uniform(p, "u_lake_level"), ter_lake_level)
-    var carve = F_ONE
-    if not ter_lake_carve { carve = F_ZERO }
+    var carve = 1.0
+    if not ter_lake_carve { carve = 0.0 }
     u_f(gpu_uniform(p, "u_lake_carve"), carve)
     u_f(gpu_uniform(p, "u_sea_level"), ter_sea_gen())
     u_f4(gpu_uniform(p, "u_isle"), ter_isle_cx, ter_isle_cz, ter_isle_r, ter_isle_fall)
-    u_f(gpu_uniform(p, "u_isle_mode"), fi(ter_isle_mode))
-    u_f(gpu_uniform(p, "u_dem_blur"), ter_dem_blur)
+    u_f(gpu_uniform(p, "u_isle_mode"), float(ter_isle_mode))
+    u_f(gpu_uniform(p, "u_dem_blur"), float(ter_dem_blur))
   }
   mesh_draw(sky_fullscreen)
   # second pass: R = height, GBA = the smooth surface normal, baked once (ternormal.frag)
@@ -262,12 +262,12 @@ function terrain_generate() -> void {
   let pn = r3d_program("fullscreen.vert", "ternormal.frag", "")
   gpu_use_program(pn)
   r3d_bind_2d(pn, "u_src", 0, raw)
-  u_f(gpu_uniform(pn, "u_half"), fi(TERRAIN_HALF))
+  u_f(gpu_uniform(pn, "u_half"), float(TERRAIN_HALF))
   mesh_draw(sky_fullscreen)
   gpu_program_free(pn)
   gpu_tex_free(raw)
   # read the heights back for placement
-  ter_heights = words(TERRAIN_RES * TERRAIN_RES)
+  ter_heights = floats(TERRAIN_RES * TERRAIN_RES)
   gpu_tex_bind(GPU_TEX2D, ter_height_tex)
   gpu_pixel_store(GL_PACK_ALIGNMENT, 4)
   gpu_tex_read(GPU_TEX2D, GL_RED, GL_FLOAT, ter_heights)
@@ -280,7 +280,7 @@ function terrain_generate() -> void {
 # The height field for shaders that place things on the ground (model.vert's u_ground)
 function terrain_bind_height(p: int) -> void {
   r3d_bind_2d(p, "u_ts_height", 5, ter_height_tex)
-  u_f(gpu_uniform(p, "u_ts_half"), fi(TERRAIN_HALF))
+  u_f(gpu_uniform(p, "u_ts_half"), float(TERRAIN_HALF))
   u_f2(gpu_uniform(p, "u_ts_origin"), ter_ox, ter_oz)
 }
 
@@ -299,7 +299,7 @@ function terrain_bake_shadow() -> void {
   gpu_blend(false)
   gpu_use_program(p)
   r3d_bind_2d(p, "u_height", 0, ter_height_tex)
-  u_f(gpu_uniform(p, "u_half"), fi(TERRAIN_HALF))
+  u_f(gpu_uniform(p, "u_half"), float(TERRAIN_HALF))
   u_v3(gpu_uniform(p, "u_sun"), sun_dir)
   mesh_draw(sky_fullscreen)
   gpu_fb_bind(0)
@@ -313,66 +313,66 @@ function terrain_bake_shadow() -> void {
 # a fixed-point divide — on every call, and the cover generator calls terrain_height
 # five times per candidate (once directly, four more inside slope_at) across hundreds
 # of thousands of candidates per chunk. Hoisted, they cost nothing.
-var ter_h_scale: int = 0
-var ter_o_scale: int = 0
+var ter_h_scale: float = 0.0
+var ter_o_scale: float = 0.0
 
-function terrain_height(x: int, z: int) -> int {
-  if ter_h_scale == 0 { ter_h_scale = fr(TERRAIN_RES, TERRAIN_HALF * 2) }
+function terrain_height(x: float, z: float) -> float {
+  if ter_h_scale == 0.0 { ter_h_scale = float(TERRAIN_RES) / float(TERRAIN_HALF * 2) }
   let scale = ter_h_scale
-  let fx = f_mul(f_add(f_sub(x, ter_ox), fi(TERRAIN_HALF)), scale)
-  let fz = f_mul(f_add(f_sub(z, ter_oz), fi(TERRAIN_HALF)), scale)
-  var ix = f_to_int(f_floor(fx));  var iz = f_to_int(f_floor(fz))
+  let fx = (x - ter_ox + float(TERRAIN_HALF)) * scale
+  let fz = (z - ter_oz + float(TERRAIN_HALF)) * scale
+  var ix = int(Math.floor(fx));  var iz = int(Math.floor(fz))
   if ix < 0 { ix = 0 };  if iz < 0 { iz = 0 }
   if ix > TERRAIN_RES - 2 { ix = TERRAIN_RES - 2 };  if iz > TERRAIN_RES - 2 { iz = TERRAIN_RES - 2 }
-  let tx = f_clamp(f_sub(fx, fi(ix)), F_ZERO, F_ONE)
-  let tz = f_clamp(f_sub(fz, fi(iz)), F_ZERO, F_ONE)
+  let tx = Math.clamp(fx - float(ix), 0.0, 1.0)
+  let tz = Math.clamp(fz - float(iz), 0.0, 1.0)
   let h00 = ter_heights[iz * TERRAIN_RES + ix]
   let h10 = ter_heights[iz * TERRAIN_RES + ix + 1]
   let h01 = ter_heights[(iz + 1) * TERRAIN_RES + ix]
   let h11 = ter_heights[(iz + 1) * TERRAIN_RES + ix + 1]
-  return f_lerp(f_lerp(h00, h10, tx), f_lerp(h01, h11, tx), tz)
+  return Math.lerp(Math.lerp(h00, h10, tx), Math.lerp(h01, h11, tx), tz)
 }
 # the same for Q16.16 callers
-function terrain_height_fx(x: fixed, z: fixed) -> fixed { return f_fx(terrain_height(fl(x), fl(z))) }
+function terrain_height_fx(x: fixed, z: fixed) -> fixed { return fixed(terrain_height(float(x), float(z))) }
 
 # The height the terrain is DRAWN at: the cubic B-spline of the texels (heightSmooth in
 # terrain.vert), not the bilinear read above. The two differ by up to half a metre on
 # rough ground, which is the difference between a character standing on the meadow
 # and one buried to the knee in it. Sixteen taps; for things that move, not for the
 # thousands of placement queries a chunk makes.
-var ter_bw: words = null
-function terrain_height_smooth(x: int, z: int) -> int {
-  if ter_h_scale == 0 { ter_h_scale = fr(TERRAIN_RES, TERRAIN_HALF * 2) }
-  if ter_bw == null { ter_bw = words(8) }
+var ter_bw: floats = null
+function terrain_height_smooth(x: float, z: float) -> float {
+  if ter_h_scale == 0.0 { ter_h_scale = float(TERRAIN_RES) / float(TERRAIN_HALF * 2) }
+  if ter_bw == null { ter_bw = floats(8) }
   let scale = ter_h_scale
-  let fx = f_sub(f_mul(f_add(f_sub(x, ter_ox), fi(TERRAIN_HALF)), scale), F_HALF)
-  let fz = f_sub(f_mul(f_add(f_sub(z, ter_oz), fi(TERRAIN_HALF)), scale), F_HALF)
-  let ix = f_to_int(f_floor(fx));  let iz = f_to_int(f_floor(fz))
-  let tx = f_clamp(f_sub(fx, fi(ix)), F_ZERO, F_ONE)
-  let tz = f_clamp(f_sub(fz, fi(iz)), F_ZERO, F_ONE)
+  let fx = (x - ter_ox + float(TERRAIN_HALF)) * scale - 0.5
+  let fz = (z - ter_oz + float(TERRAIN_HALF)) * scale - 0.5
+  let ix = int(Math.floor(fx));  let iz = int(Math.floor(fz))
+  let tx = Math.clamp(fx - float(ix), 0.0, 1.0)
+  let tz = Math.clamp(fz - float(iz), 0.0, 1.0)
   # the four cubic B-spline weights of a fraction, over texels i-1 .. i+2
   for a in 0 .. 2 {
     var t = tx
     if a == 1 { t = tz }
-    let t2 = f_mul(t, t);  let t3 = f_mul(t2, t)
-    let one_t = f_sub(F_ONE, t)
-    let w0 = f_div(f_mul(f_mul(one_t, one_t), one_t), fi(6))
-    let w1 = f_div(f_add(f_sub(fi(4), f_mul(fi(6), t2)), f_mul(fi(3), t3)), fi(6))
-    let w3 = f_div(t3, fi(6))
-    let w2 = f_sub(f_sub(f_sub(F_ONE, w0), w1), w3)
+    let t2 = t * t;  let t3 = t2 * t
+    let one_t = 1.0 - t
+    let w0 = one_t * one_t * one_t / 6.0
+    let w1 = (4.0 - 6.0 * t2 + 3.0 * t3) / 6.0
+    let w3 = t3 / 6.0
+    let w2 = 1.0 - w0 - w1 - w3
     ter_bw[a * 4] = w0;  ter_bw[a * 4 + 1] = w1;  ter_bw[a * 4 + 2] = w2;  ter_bw[a * 4 + 3] = w3
   }
-  var h = F_ZERO
+  var h = 0.0
   for j in 0 .. 4 {
     var rz = iz - 1 + j
     if rz < 0 { rz = 0 };  if rz > TERRAIN_RES - 1 { rz = TERRAIN_RES - 1 }
-    var row = F_ZERO
+    var row = 0.0
     for i in 0 .. 4 {
       var rx = ix - 1 + i
       if rx < 0 { rx = 0 };  if rx > TERRAIN_RES - 1 { rx = TERRAIN_RES - 1 }
-      row = f_add(row, f_mul(ter_bw[i], ter_heights[rz * TERRAIN_RES + rx]))
+      row = row + ter_bw[i] * ter_heights[rz * TERRAIN_RES + rx]
     }
-    h = f_add(h, f_mul(ter_bw[4 + j], row))
+    h = h + ter_bw[4 + j] * row
   }
   return h
 }
@@ -445,11 +445,11 @@ function terrain_init_finish() -> void {
   ter_prog_far = r3d_program("terrain.vert", "terrain.frag", defs + "#define FAR_ONLY\n")
   ter_prog_near = r3d_program("terrain.vert", "terrain.frag", defs + "#define NEAR_ONLY\n")
   ter_sun_prog = r3d_program("terrain.vert", "tersun.frag", "")
-  ter_far_split = fi(200)
-  if r3d_env_has("R3D_TFAR") { ter_far_split = fi(Text.to_int(r3d_env("R3D_TFAR"))) }
-  ter_far_band = fi(60)
-  if r3d_env_has("R3D_TBAND") { ter_far_band = fi(Text.to_int(r3d_env("R3D_TBAND"))) }
-  ter_snow_line = fi(880)
+  ter_far_split = 200.0
+  if r3d_env_has("R3D_TFAR") { ter_far_split = float(Text.to_int(r3d_env("R3D_TFAR"))) }
+  ter_far_band = 60.0
+  if r3d_env_has("R3D_TBAND") { ter_far_band = float(Text.to_int(r3d_env("R3D_TBAND"))) }
+  ter_snow_line = 880.0
   gpu_check("terrain init")
 }
 
@@ -457,7 +457,7 @@ function terrain_init_finish() -> void {
 # The terrain no longer casts into the shadow map: it shadows itself by marching its
 # own height field in terrain.frag, which cannot produce the self-shadow grid a depth
 # map does, and it saves drawing the whole grid five times a frame.
-function terrain_draw_shadow(light_vp: words) -> void {
+function terrain_draw_shadow(light_vp: floats) -> void {
 }
 
 # Every per-frame uniform of one terrain program. Both tiers are bound up front so
@@ -475,19 +475,19 @@ function terrain_bind_prog(p: int) -> void {
   var orthotex = ter_ortho_tex
   if orthotex == 0 { orthotex = ter_tex[0] }
   r3d_bind_2d(p, "u_ortho", 4, orthotex)
-  var oon = F_ZERO
-  if ter_ortho_tex != 0 { oon = F_ONE }
+  var oon = 0.0
+  if ter_ortho_tex != 0 { oon = 1.0 }
   u_f(gpu_uniform(p, "u_ortho_on"), oon)
   r3d_bind_2d(p, "u_rock_d", 7, ter_tex[6]);   r3d_bind_2d(p, "u_rock_n", 8, ter_tex[7]);   r3d_bind_2d(p, "u_rock_a", 9, ter_tex[8])
   r3d_bind_2d(p, "u_snow_d", 10, ter_tex[9])
-  if ter_carpet != 0 { r3d_bind_2d(p, "u_carpet", 11, ter_carpet);  u_f(gpu_uniform(p, "u_carpet_on"), F_ONE) }
-  else { r3d_bind_2d(p, "u_carpet", 11, ter_tex[0]);  u_f(gpu_uniform(p, "u_carpet_on"), F_ZERO) }
-  u_f(gpu_uniform(p, "u_half"), fi(TERRAIN_HALF))
-  u_f(gpu_uniform(p, "u_texel"), fr(1, TERRAIN_RES))
+  if ter_carpet != 0 { r3d_bind_2d(p, "u_carpet", 11, ter_carpet);  u_f(gpu_uniform(p, "u_carpet_on"), 1.0) }
+  else { r3d_bind_2d(p, "u_carpet", 11, ter_tex[0]);  u_f(gpu_uniform(p, "u_carpet_on"), 0.0) }
+  u_f(gpu_uniform(p, "u_half"), float(TERRAIN_HALF))
+  u_f(gpu_uniform(p, "u_texel"), 1.0 / float(TERRAIN_RES))
   u_f(gpu_uniform(p, "u_snow_line"), ter_snow_line)
   u_f(gpu_uniform(p, "u_wet"), ter_wet)
-  var lake = fl(-100000.0)
-  if ter_lake_ex != 0 { lake = ter_lake_level }
+  var lake = -100000.0
+  if ter_lake_ex != 0.0 { lake = ter_lake_level }
   u_f(gpu_uniform(p, "u_lake_level"), lake)
   # the shoreline, forest and scree gates read the sea; unset it is what they always read
   var sea = lake
@@ -512,9 +512,9 @@ function terrain_bind_prog(p: int) -> void {
   # Set before fog_bind it measured as EXACTLY zero pixels changed, which is the same
   # shape of mistake as setting r3d_fog_scale before gfx_apply: the value was right and
   # something downstream put it back.
-  u_f(gpu_uniform(p, "u_spec_scale"), fl(0.22))
+  u_f(gpu_uniform(p, "u_spec_scale"), 0.22)
   u_v3(gpu_uniform(p, "u_cam_pos"), cam_pos)
-  u_f(gpu_uniform(p, "u_grid"), fi(CD_G))
+  u_f(gpu_uniform(p, "u_grid"), float(CD_G))
   # The ground reads its sun visibility out of the buffer tersun.frag filled, and has no
   # use for the cascade array shadow_bind just put on this unit; leaving both bound under
   # one unit is undefined ground, so the array comes off first.
@@ -573,12 +573,12 @@ function terrain_sun_pass(w: int, h: int, depth: int) -> Target {
   let p = ter_sun_prog
   gpu_use_program(p)
   r3d_bind_2d(p, "u_height", 0, ter_height_tex)
-  u_f(gpu_uniform(p, "u_half"), fi(TERRAIN_HALF))
+  u_f(gpu_uniform(p, "u_half"), float(TERRAIN_HALF))
   u_mat4(gpu_uniform(p, "u_view"), cam_view)
   u_mat4(gpu_uniform(p, "u_proj"), cam_proj)
   u_f2(gpu_uniform(p, "u_origin"), ter_ox, ter_oz)
   u_v3(gpu_uniform(p, "u_cam_pos"), cam_pos)
-  u_f(gpu_uniform(p, "u_grid"), fi(CD_G))
+  u_f(gpu_uniform(p, "u_grid"), float(CD_G))
   u_f(gpu_uniform(p, "u_far_split"), ter_far_split)
   u_f(gpu_uniform(p, "u_far_band"), ter_far_band)
   u_f(gpu_uniform(p, "u_clip_y"), r3d_clip_y)
@@ -648,7 +648,7 @@ function cdlod_init() -> void {
   let n = CD_G + 1
   let v = gl_floats(n * n * 2)
   var k = 0
-  for j in 0 .. n { for i in 0 .. n { gl_put_bits(v, k, fr(i, CD_G));  gl_put_bits(v, k + 1, fr(j, CD_G));  k += 2 } }
+  for j in 0 .. n { for i in 0 .. n { gl_put_bits(v, k, float_bits(float(i) / float(CD_G)));  gl_put_bits(v, k + 1, float_bits(float(j) / float(CD_G)));  k += 2 } }
   gpu_mesh_vertices(m, v, gl_bytes_of(n * n * 2), GPU_STATIC)
   gpu_mesh_attr(m, 0, 2, GPU_F32, 8, 0, false)
   free(v)
@@ -668,28 +668,28 @@ function cdlod_init() -> void {
   m.count = ni
   gpu_mesh_done(m)
   cd_mesh = m
-  cd_range = words(CD_LEVELS)
-  var r = fi(48)
-  if r3d_env_has("R3D_CD_R0") { r = fi(Text.to_int(r3d_env("R3D_CD_R0"))) }
-  for l in 0 .. CD_LEVELS { cd_range[l] = r;  r = f_mul(r, F_TWO) }
+  cd_range = floats(CD_LEVELS)
+  var r = 48.0
+  if r3d_env_has("R3D_CD_R0") { r = float(Text.to_int(r3d_env("R3D_CD_R0"))) }
+  for l in 0 .. CD_LEVELS { cd_range[l] = r;  r = r * 2.0 }
   cdlod_bounds()
 }
 
 # min/max height per patch at every level, from the CPU copy of the height field
 function cdlod_bounds() -> void {
-  cd_min = new []words;  cd_max = new []words
+  cd_min = new []floats;  cd_max = new []floats
   let t = TERRAIN_RES / CD_LEAVES              # texels per leaf patch side
   var n = CD_LEAVES
-  var lo = words(n * n);  var hi = words(n * n)
+  var lo = floats(n * n);  var hi = floats(n * n)
   for j in 0 .. n {
     for i in 0 .. n {
-      var mn = fi(100000);  var mx = fi(-100000)
+      var mn = 100000.0;  var mx = -100000.0
       for y in 0 .. t + 1 {
         let ty = min(j * t + y, TERRAIN_RES - 1)
         for x in 0 .. t + 1 {
           let tx = min(i * t + x, TERRAIN_RES - 1)
           let h = ter_heights[ty * TERRAIN_RES + tx]
-          mn = f_min(mn, h);  mx = f_max(mx, h)
+          mn = Math.min(mn, h);  mx = Math.max(mx, h)
         }
       }
       lo[j * n + i] = mn;  hi[j * n + i] = mx
@@ -698,12 +698,12 @@ function cdlod_bounds() -> void {
   push(cd_min, lo);  push(cd_max, hi)
   while n > 1 {
     let m = n / 2
-    let plo = words(m * m);  let phi = words(m * m)
+    let plo = floats(m * m);  let phi = floats(m * m)
     for j in 0 .. m {
       for i in 0 .. m {
         let a = (2 * j) * n + 2 * i
-        plo[j * m + i] = f_min(f_min(lo[a], lo[a + 1]), f_min(lo[a + n], lo[a + n + 1]))
-        phi[j * m + i] = f_max(f_max(hi[a], hi[a + 1]), f_max(hi[a + n], hi[a + n + 1]))
+        plo[j * m + i] = Math.min(Math.min(lo[a], lo[a + 1]), Math.min(lo[a + n], lo[a + n + 1]))
+        phi[j * m + i] = Math.max(Math.max(hi[a], hi[a + 1]), Math.max(hi[a + n], hi[a + n + 1]))
       }
     }
     push(cd_min, plo);  push(cd_max, phi)
@@ -715,41 +715,41 @@ function cdlod_bounds() -> void {
 # map, so a leaf is (2 * TERRAIN_HALF) / CD_LEAVES - 32 m only on the 8192 m map the numbers
 # were chosen for. Placing patches at a fixed 32 m put every bound in the wrong place on any
 # other TERRAIN_HALF.
-function cd_size(level: int) -> int { return f_mul(fi(32 << level), fr(TERRAIN_HALF * 2, 8192)) }
+function cd_size(level: int) -> float { return float(32 << level) * (float(TERRAIN_HALF * 2) / 8192.0) }
 
 # does the patch's box come within r of the camera?
-function cd_within(x0: int, z0: int, size: int, ymin: int, ymax: int, r: int) -> bool {
-  let dx = f_max(f_max(f_sub(x0, cam_pos[0]), f_sub(cam_pos[0], f_add(x0, size))), F_ZERO)
-  let dz = f_max(f_max(f_sub(z0, cam_pos[2]), f_sub(cam_pos[2], f_add(z0, size))), F_ZERO)
-  let dy = f_max(f_max(f_sub(ymin, cam_pos[1]), f_sub(cam_pos[1], ymax)), F_ZERO)
-  return f_ls(f_add(f_add(f_mul(dx, dx), f_mul(dz, dz)), f_mul(dy, dy)), f_mul(r, r))
+function cd_within(x0: float, z0: float, size: float, ymin: float, ymax: float, r: float) -> bool {
+  let dx = Math.max(Math.max(x0 - cam_pos[0], cam_pos[0] - (x0 + size)), 0.0)
+  let dz = Math.max(Math.max(z0 - cam_pos[2], cam_pos[2] - (z0 + size)), 0.0)
+  let dy = Math.max(Math.max(ymin - cam_pos[1], cam_pos[1] - ymax), 0.0)
+  return dx * dx + dz * dz + dy * dy < r * r
 }
 
 # is the patch's box entirely inside r of the camera? (its farthest corner is within r)
-function cd_inside(x0: int, z0: int, size: int, ymin: int, ymax: int, r: int) -> bool {
-  let x1 = f_add(x0, size)
-  let z1 = f_add(z0, size)
-  let dx = f_max(f_abs(f_sub(cam_pos[0], x0)), f_abs(f_sub(cam_pos[0], x1)))
-  let dz = f_max(f_abs(f_sub(cam_pos[2], z0)), f_abs(f_sub(cam_pos[2], z1)))
-  let dy = f_max(f_abs(f_sub(cam_pos[1], ymin)), f_abs(f_sub(cam_pos[1], ymax)))
-  return f_ls(f_add(f_add(f_mul(dx, dx), f_mul(dz, dz)), f_mul(dy, dy)), f_mul(r, r))
+function cd_inside(x0: float, z0: float, size: float, ymin: float, ymax: float, r: float) -> bool {
+  let x1 = x0 + size
+  let z1 = z0 + size
+  let dx = Math.max(Math.abs(cam_pos[0] - x0), Math.abs(cam_pos[0] - x1))
+  let dz = Math.max(Math.abs(cam_pos[2] - z0), Math.abs(cam_pos[2] - z1))
+  let dy = Math.max(Math.abs(cam_pos[1] - ymin), Math.abs(cam_pos[1] - ymax))
+  return dx * dx + dz * dz + dy * dy < r * r
 }
 
 function cdlod_draw(level: int, ix: int, iz: int) -> void {
   let size = cd_size(level)
-  let x0 = f_add(f_sub(ter_ox, fi(TERRAIN_HALF)), f_mul(fi(ix), size))
-  let z0 = f_add(f_sub(ter_oz, fi(TERRAIN_HALF)), f_mul(fi(iz), size))
+  let x0 = ter_ox - float(TERRAIN_HALF) + float(ix) * size
+  let z0 = ter_oz - float(TERRAIN_HALF) + float(iz) * size
   # Which tier can run inside this patch. A patch that never comes within the split takes
   # the cheap tier at every pixel; one that lies wholly inside it takes the detailed tier
   # at every pixel. Only a patch that straddles the band needs the program that holds both
   # and cross-fades between them — and there are few of those, one ring of them.
   if ter_sun_pass {
-    let t = gl_scratch()
+    let t = ter_scratch()
     t[0] = x0;  t[1] = z0;  t[2] = size
     u_v3(gpu_uniform(ter_sun_prog, "u_node"), t)
-    var st0 = F_ZERO
+    var st0 = 0.0
     if level > 0 { st0 = cd_range[level - 1] }
-    u_f2(gpu_uniform(ter_sun_prog, "u_morph"), f_lerp(st0, cd_range[level], fl(0.7)), cd_range[level])
+    u_f2(gpu_uniform(ter_sun_prog, "u_morph"), Math.lerp(st0, cd_range[level], 0.7), cd_range[level])
     gpu_draw_bound_elements(cd_mesh)
     return
   }
@@ -757,20 +757,20 @@ function cdlod_draw(level: int, ix: int, iz: int) -> void {
   let ymin = cd_min[level][iz * n + ix]
   let ymax = cd_max[level][iz * n + ix]
   var p = ter_prog
-  if not cd_within(x0, z0, size, ymin, ymax, f_add(ter_far_split, ter_far_band)) { p = ter_prog_far }
-  else if cd_inside(x0, z0, size, ymin, ymax, f_sub(ter_far_split, ter_far_band)) { p = ter_prog_near }
+  if not cd_within(x0, z0, size, ymin, ymax, ter_far_split + ter_far_band) { p = ter_prog_far }
+  else if cd_inside(x0, z0, size, ymin, ymax, ter_far_split - ter_far_band) { p = ter_prog_near }
   if ter_force_far { p = ter_prog_far }
   if ter_no_split { p = ter_prog }
   if ter_force_near { p = ter_prog_near }
   if p == ter_prog_far { cd_far_draws += 1 }
   if p == ter_prog_near { cd_near_draws += 1 }
   if p != ter_prog_cur { gpu_use_program(p);  ter_prog_cur = p }
-  let t = gl_scratch()
+  let t = ter_scratch()
   t[0] = x0;  t[1] = z0;  t[2] = size
   u_v3(gpu_uniform(p, "u_node"), t)
-  var start = F_ZERO
+  var start = 0.0
   if level > 0 { start = cd_range[level - 1] }
-  start = f_lerp(start, cd_range[level], fl(0.7))
+  start = Math.lerp(start, cd_range[level], 0.7)
   u_f2(gpu_uniform(p, "u_morph"), start, cd_range[level])
   gpu_draw_bound_elements(cd_mesh)
   cd_draws += 1
@@ -781,15 +781,15 @@ function cdlod_draw(level: int, ix: int, iz: int) -> void {
 function cdlod_select(level: int, ix: int, iz: int) -> bool {
   let n = CD_LEAVES >> level
   let size = cd_size(level)
-  let x0 = f_add(f_sub(ter_ox, fi(TERRAIN_HALF)), f_mul(fi(ix), size))
-  let z0 = f_add(f_sub(ter_oz, fi(TERRAIN_HALF)), f_mul(fi(iz), size))
+  let x0 = ter_ox - float(TERRAIN_HALF) + float(ix) * size
+  let z0 = ter_oz - float(TERRAIN_HALF) + float(iz) * size
   let ymin = cd_min[level][iz * n + ix]
   let ymax = cd_max[level][iz * n + ix]
   if not cd_within(x0, z0, size, ymin, ymax, cd_range[level]) { return false }
-  let half = f_mul(size, F_HALF)
-  let cy = f_mul(f_add(ymin, ymax), F_HALF)
-  let rad = f_sqrt(f_add(f_mul(f_mul(half, half), F_TWO), f_mul(f_mul(f_sub(ymax, cy), f_sub(ymax, cy)), F_ONE)))
-  if not cam_sphere_visible(f_add(x0, half), cy, f_add(z0, half), f_add(rad, fi(2))) { return true }
+  let half = size * 0.5
+  let cy = (ymin + ymax) * 0.5
+  let rad = Math.sqrt(half * half * 2.0 + (ymax - cy) * (ymax - cy) * 1.0)
+  if not cam_sphere_visible(x0 + half, cy, z0 + half, rad + 2.0) { return true }
   if level == 0 { cdlod_draw(0, ix, iz);  return true }
   if not cd_within(x0, z0, size, ymin, ymax, cd_range[level - 1]) { cdlod_draw(level, ix, iz);  return true }
   for c in 0 .. 4 {
@@ -817,15 +817,15 @@ function terrain_unload() -> void {
     cd_min = null;  cd_max = null
   }
   # derived from TERRAIN_HALF and cached on first use: stale ones would keep the old size
-  ter_h_scale = 0;  ter_o_scale = 0
+  ter_h_scale = 0.0;  ter_o_scale = 0.0
   ter_carpet = 0
-  ter_shadow_gen = -1;  ter_shadow_yaw = 0x7fffffff
+  ter_shadow_gen = -1;  ter_shadow_yaw = 1000000000.0
 }
 # Generate another map in place. Call terrain_lake / terrain_coast / terrain_island for it
 # first - the generator reads them - then this. `half` is the new TERRAIN_HALF in metres.
 # An empty `dem` generates the analytic ground (with ter_smooth) and an empty `ortho` drapes
 # no photograph. The shadow is rebaked and the patch bounds rebuilt before it returns.
-function terrain_reload(dem: string, emin: int, emax: int, base: int, ox: int, oz: int, ortho: string, half: int) -> void {
+function terrain_reload(dem: string, emin: float, emax: float, base: float, ox: float, oz: float, ortho: string, half: int) -> void {
   terrain_unload()
   TERRAIN_HALF = half
   ter_ox = ox;  ter_oz = oz
@@ -835,4 +835,10 @@ function terrain_reload(dem: string, emin: int, emax: int, base: int, ox: int, o
   terrain_bake_shadow()
   cdlod_bounds()
   gpu_check("terrain reload")
+}
+
+var ter_scr: floats = null
+function ter_scratch() -> floats {
+  if ter_scr == null { ter_scr = floats(16) }
+  return ter_scr
 }

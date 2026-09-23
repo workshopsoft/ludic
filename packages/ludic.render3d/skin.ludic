@@ -19,28 +19,28 @@ property Skin {
   n_nodes:  int = 0,
   par:      words,        # parent node per node, -1 at a root
   walk:     words,        # the nodes ordered parents-first
-  rest_t:   words,        # 3 per node
-  rest_r:   words,        # 4 per node (x, y, z, w)
-  rest_s:   words,        # 3 per node
-  rest_g:   words,        # 4 per node: the global rest rotation
+  rest_t:   floats,        # 3 per node
+  rest_r:   floats,        # 4 per node (x, y, z, w)
+  rest_s:   floats,        # 3 per node
+  rest_g:   floats,        # 4 per node: the global rest rotation
   names:    []string,
-  pose_r:   words,        # 4 per node: the pose rotation, model frame
-  pose_t:   words,        # 3 per node: the pose offset, model frame (metres)
+  pose_r:   floats,        # 4 per node: the pose rotation, model frame
+  pose_t:   floats,        # 3 per node: the pose offset, model frame (metres)
   gmat:     words,        # 16 per node: global matrix this pose
   n_joints: int = 0,
   joints:   words,        # node index per joint
   inv_bind: words,        # 16 per joint
-  bones:    words,        # 16 per joint: what the vertex shader skins with
-  tmp_l:    words,
-  tmp_q:    words,
-  tmp_a:    words,
-  tmp_b:    words,
-  tmp_c:    words,
-  tmp_v:    words
+  bones:    floats,        # 16 per joint: what the vertex shader skins with
+  tmp_l:    floats,
+  tmp_q:    floats,
+  tmp_a:    floats,
+  tmp_b:    floats,
+  tmp_c:    floats,
+  tmp_v:    floats
 }
 
 # a 3-vector of a JSON array (float bits), or a default
-function skin_jv3(o: words, at: int, nd: Val, key: pointer, dx: int, dy: int, dz: int) -> void {
+function skin_jv3(o: floats, at: int, nd: Val, key: pointer, dx: float, dy: float, dz: float) -> void {
   if value_has(nd, key) == 0 { o[at] = dx;  o[at + 1] = dy;  o[at + 2] = dz;  return }
   let arr = value_get(nd, key)
   for i in 0 .. 3 { o[at + i] = jnum(value_at(arr, i)) }
@@ -75,22 +75,22 @@ function skin_load(idx: int) -> Skin {
   let n = value_count(nodes)
   sk.n_nodes = n
   sk.par = words(n);  sk.walk = words(n)
-  sk.rest_t = words(n * 3);  sk.rest_r = words(n * 4);  sk.rest_s = words(n * 3);  sk.rest_g = words(n * 4)
-  sk.pose_r = words(n * 4);  sk.pose_t = words(n * 3);  sk.gmat = words(n * 16)
+  sk.rest_t = floats(n * 3);  sk.rest_r = floats(n * 4);  sk.rest_s = floats(n * 3);  sk.rest_g = floats(n * 4)
+  sk.pose_r = floats(n * 4);  sk.pose_t = floats(n * 3);  sk.gmat = words(n * 16)
   sk.names = new []string
-  sk.tmp_l = m4_new();  sk.tmp_q = q_new();  sk.tmp_a = q_new();  sk.tmp_b = q_new();  sk.tmp_c = q_new();  sk.tmp_v = words(3)
+  sk.tmp_l = m4_new();  sk.tmp_q = q_new();  sk.tmp_a = q_new();  sk.tmp_b = q_new();  sk.tmp_c = q_new();  sk.tmp_v = floats(3)
   for i in 0 .. n { sk.par[i] = -1 }
   for i in 0 .. n {
     let nd = value_at(nodes, i)
     var nm: string = ""
     if value_has(nd, "name") != 0 { nm = value_as_str(value_get(nd, "name")) }
     push(sk.names, nm)
-    skin_jv3(sk.rest_t, i * 3, nd, "translation", F_ZERO, F_ZERO, F_ZERO)
-    skin_jv3(sk.rest_s, i * 3, nd, "scale", F_ONE, F_ONE, F_ONE)
+    skin_jv3(sk.rest_t, i * 3, nd, "translation", 0.0, 0.0, 0.0)
+    skin_jv3(sk.rest_s, i * 3, nd, "scale", 1.0, 1.0, 1.0)
     if value_has(nd, "rotation") != 0 {
       let r = value_get(nd, "rotation")
       for k in 0 .. 4 { sk.rest_r[i * 4 + k] = jnum(value_at(r, k)) }
-    } else { sk.rest_r[i * 4] = F_ZERO;  sk.rest_r[i * 4 + 1] = F_ZERO;  sk.rest_r[i * 4 + 2] = F_ZERO;  sk.rest_r[i * 4 + 3] = F_ONE }
+    } else { sk.rest_r[i * 4] = 0.0;  sk.rest_r[i * 4 + 1] = 0.0;  sk.rest_r[i * 4 + 2] = 0.0;  sk.rest_r[i * 4 + 3] = 1.0 }
     if value_has(nd, "matrix") != 0 { print(`skin: node {nm} uses a matrix transform (unsupported, treated as identity)`) }
     if value_has(nd, "children") != 0 {
       let ch = value_get(nd, "children")
@@ -124,7 +124,7 @@ function skin_load(idx: int) -> Skin {
   sk.n_joints = nj
   sk.joints = words(nj)
   sk.inv_bind = words(nj * 16)
-  sk.bones = words(nj * 16)
+  sk.bones = floats(nj * 16)
   for j in 0 .. nj { sk.joints[j] = value_as_int(value_at(jl, j)) }
   if value_has(skv, "inverseBindMatrices") != 0 {
     let ib = gltf_accessor(value_as_int(value_get(skv, "inverseBindMatrices")))
@@ -144,24 +144,24 @@ function skin_find(sk: Skin, name: string) -> int {
   print(`skin: no node {name}`)
   return -1
 }
-function skin_mat(sk: Skin, node: int) -> words { return mem_off(sk.gmat, node * 64) }
+function skin_mat(sk: Skin, node: int) -> floats { return mem_off(sk.gmat, node * 64) }
 
 # back to the rest pose
 function skin_reset(sk: Skin) -> void {
   for i in 0 .. sk.n_nodes {
-    sk.pose_r[i * 4] = F_ZERO;  sk.pose_r[i * 4 + 1] = F_ZERO;  sk.pose_r[i * 4 + 2] = F_ZERO;  sk.pose_r[i * 4 + 3] = F_ONE
-    sk.pose_t[i * 3] = F_ZERO;  sk.pose_t[i * 3 + 1] = F_ZERO;  sk.pose_t[i * 3 + 2] = F_ZERO
+    sk.pose_r[i * 4] = 0.0;  sk.pose_r[i * 4 + 1] = 0.0;  sk.pose_r[i * 4 + 2] = 0.0;  sk.pose_r[i * 4 + 3] = 1.0
+    sk.pose_t[i * 3] = 0.0;  sk.pose_t[i * 3 + 1] = 0.0;  sk.pose_t[i * 3 + 2] = 0.0
   }
 }
 # a node's pose rotation in the model frame: pitch about X, yaw about Y, roll about Z (radians)
-function skin_set_rot(sk: Skin, node: int, pitch: int, yaw: int, roll: int) -> void {
+function skin_set_rot(sk: Skin, node: int, pitch: float, yaw: float, roll: float) -> void {
   if node < 0 { return }
   q_euler(sk.tmp_q, pitch, yaw, roll)
   q_store(sk.pose_r, node, sk.tmp_q)
 }
-function skin_set_quat(sk: Skin, node: int, q: words) -> void { if node >= 0 { q_store(sk.pose_r, node, q) } }
+function skin_set_quat(sk: Skin, node: int, q: floats) -> void { if node >= 0 { q_store(sk.pose_r, node, q) } }
 # a node's pose offset in the model frame (metres)
-function skin_set_offset(sk: Skin, node: int, x: int, y: int, z: int) -> void {
+function skin_set_offset(sk: Skin, node: int, x: float, y: float, z: float) -> void {
   if node < 0 { return }
   sk.pose_t[node * 3] = x;  sk.pose_t[node * 3 + 1] = y;  sk.pose_t[node * 3 + 2] = z
 }
@@ -179,12 +179,12 @@ function skin_pose(sk: Skin) -> void {
       q_conj(sk.tmp_c, sk.tmp_b)                         # G_p^-1
       q_mul(sk.tmp_q, sk.tmp_c, sk.tmp_a)
       q_mul(sk.tmp_a, sk.tmp_q, sk.tmp_b)                # G_p^-1 D G_p
-      if ox != 0 or oy != 0 or oz != 0 {
+      if ox != 0.0 or oy != 0.0 or oz != 0.0 {
         v3_set(sk.tmp_v, ox, oy, oz)
         q_rotate(sk.tmp_v, sk.tmp_c, sk.tmp_v)           # the offset in the parent's frame
-        tx = f_add(tx, sk.tmp_v[0]);  ty = f_add(ty, sk.tmp_v[1]);  tz = f_add(tz, sk.tmp_v[2])
+        tx = tx + sk.tmp_v[0];  ty = ty + sk.tmp_v[1];  tz = tz + sk.tmp_v[2]
       }
-    } else { tx = f_add(tx, ox);  ty = f_add(ty, oy);  tz = f_add(tz, oz) }
+    } else { tx = tx + ox;  ty = ty + oy;  tz = tz + oz }
     q_load(sk.tmp_b, sk.rest_r, i)
     q_mul(sk.tmp_q, sk.tmp_a, sk.tmp_b)                  # local rotation
     m4_trs_q(sk.tmp_l, tx, ty, tz, sk.tmp_q, sk.rest_s[i * 3], sk.rest_s[i * 3 + 1], sk.rest_s[i * 3 + 2])
@@ -211,9 +211,9 @@ function skin_clone(src: Skin) -> Skin {
   sk.names = src.names
   sk.n_joints = src.n_joints;  sk.joints = src.joints;  sk.inv_bind = src.inv_bind
   let n = src.n_nodes
-  sk.pose_r = words(n * 4);  sk.pose_t = words(n * 3);  sk.gmat = words(n * 16)
-  sk.bones = words(src.n_joints * 16)
-  sk.tmp_l = m4_new();  sk.tmp_q = q_new();  sk.tmp_a = q_new();  sk.tmp_b = q_new();  sk.tmp_c = q_new();  sk.tmp_v = words(3)
+  sk.pose_r = floats(n * 4);  sk.pose_t = floats(n * 3);  sk.gmat = words(n * 16)
+  sk.bones = floats(src.n_joints * 16)
+  sk.tmp_l = m4_new();  sk.tmp_q = q_new();  sk.tmp_a = q_new();  sk.tmp_b = q_new();  sk.tmp_c = q_new();  sk.tmp_v = floats(3)
   skin_reset(sk)
   skin_pose(sk)
   return sk

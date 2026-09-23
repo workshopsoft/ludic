@@ -4,92 +4,92 @@
 # major matrices, o may alias its inputs unless stated.
 # ============================================================================
 
-function q_new() -> words { let q = words(4);  q_identity(q);  return q }
-function q_identity(q: words) -> void { q[0] = F_ZERO;  q[1] = F_ZERO;  q[2] = F_ZERO;  q[3] = F_ONE }
+function q_new() -> floats { let q = floats(4);  q_identity(q);  return q }
+function q_identity(q: floats) -> void { q[0] = 0.0;  q[1] = 0.0;  q[2] = 0.0;  q[3] = 1.0 }
 function q_set(q: words, x: int, y: int, z: int, w: int) -> void { q[0] = x;  q[1] = y;  q[2] = z;  q[3] = w }
-function q_copy(o: words, a: words) -> void { o[0] = a[0];  o[1] = a[1];  o[2] = a[2];  o[3] = a[3] }
+function q_copy(o: floats, a: floats) -> void { o[0] = a[0];  o[1] = a[1];  o[2] = a[2];  o[3] = a[3] }
 # the idx-th quaternion of a packed buffer
-function q_load(o: words, src: words, idx: int) -> void { for i in 0 .. 4 { o[i] = src[idx * 4 + i] } }
-function q_store(dst: words, idx: int, a: words) -> void { for i in 0 .. 4 { dst[idx * 4 + i] = a[i] } }
+function q_load(o: floats, src: floats, idx: int) -> void { for i in 0 .. 4 { o[i] = src[idx * 4 + i] } }
+function q_store(dst: floats, idx: int, a: floats) -> void { for i in 0 .. 4 { dst[idx * 4 + i] = a[i] } }
 
 # a rotation of `angle` radians about the unit axis (ax, ay, az)
-function q_axis_angle(o: words, ax: int, ay: int, az: int, angle: int) -> void {
-  let h = f_mul(angle, F_HALF)
-  let s = f_sin(h)
-  o[0] = f_mul(ax, s);  o[1] = f_mul(ay, s);  o[2] = f_mul(az, s);  o[3] = f_cos(h)
+function q_axis_angle(o: floats, ax: float, ay: float, az: float, angle: float) -> void {
+  let h = angle * 0.5
+  let s = Math.sin(h)
+  o[0] = ax * s;  o[1] = ay * s;  o[2] = az * s;  o[3] = Math.cos(h)
 }
 # o = a * b (apply b first, then a); o may alias a or b
-function q_mul(o: words, a: words, b: words) -> void {
+function q_mul(o: floats, a: floats, b: floats) -> void {
   let ax = a[0];  let ay = a[1];  let az = a[2];  let aw = a[3]
   let bx = b[0];  let by = b[1];  let bz = b[2];  let bw = b[3]
-  let x = f_sub(f_add(f_add(f_mul(aw, bx), f_mul(ax, bw)), f_mul(ay, bz)), f_mul(az, by))
-  let y = f_add(f_add(f_sub(f_mul(aw, by), f_mul(ax, bz)), f_mul(ay, bw)), f_mul(az, bx))
-  let z = f_add(f_sub(f_add(f_mul(aw, bz), f_mul(ax, by)), f_mul(ay, bx)), f_mul(az, bw))
-  let w = f_sub(f_sub(f_sub(f_mul(aw, bw), f_mul(ax, bx)), f_mul(ay, by)), f_mul(az, bz))
+  let x = aw * bx + ax * bw + ay * bz - az * by
+  let y = aw * by - ax * bz + ay * bw + az * bx
+  let z = aw * bz + ax * by - ay * bx + az * bw
+  let w = aw * bw - ax * bx - ay * by - az * bz
   o[0] = x;  o[1] = y;  o[2] = z;  o[3] = w
 }
-function q_conj(o: words, a: words) -> void { o[0] = f_neg(a[0]);  o[1] = f_neg(a[1]);  o[2] = f_neg(a[2]);  o[3] = a[3] }
-function q_normalize(q: words) -> void {
-  let l = f_sqrt(f_add(f_add(f_mul(q[0], q[0]), f_mul(q[1], q[1])), f_add(f_mul(q[2], q[2]), f_mul(q[3], q[3]))))
-  if l == 0 { q_identity(q);  return }
-  let inv = f_div(F_ONE, l)
-  for i in 0 .. 4 { q[i] = f_mul(q[i], inv) }
+function q_conj(o: floats, a: floats) -> void { o[0] = -a[0];  o[1] = -a[1];  o[2] = -a[2];  o[3] = a[3] }
+function q_normalize(q: floats) -> void {
+  let l = Math.sqrt(q[0] * q[0] + q[1] * q[1] + (q[2] * q[2] + q[3] * q[3]))
+  if l == 0.0 { q_identity(q);  return }
+  let inv = 1.0 / l
+  for i in 0 .. 4 { q[i] = q[i] * inv }
 }
 # normalised linear blend from a to b (shortest arc), fine for the small steps a pose takes
-function q_nlerp(o: words, a: words, b: words, t: int) -> void {
-  var d = f_add(f_add(f_mul(a[0], b[0]), f_mul(a[1], b[1])), f_add(f_mul(a[2], b[2]), f_mul(a[3], b[3])))
-  var sg = F_ONE
-  if f_ls(d, F_ZERO) { sg = f_neg(F_ONE) }
-  for i in 0 .. 4 { o[i] = f_lerp(a[i], f_mul(b[i], sg), t) }
+function q_nlerp(o: floats, a: floats, b: floats, t: float) -> void {
+  var d = a[0] * b[0] + a[1] * b[1] + (a[2] * b[2] + a[3] * b[3])
+  var sg = 1.0
+  if d < 0.0 { sg = -1.0 }
+  for i in 0 .. 4 { o[i] = Math.lerp(a[i], b[i] * sg, t) }
   q_normalize(o)
 }
 # rotate the vector v by q: o = q v q*
-function q_rotate(o: words, q: words, v: words) -> void {
+function q_rotate(o: floats, q: floats, v: floats) -> void {
   let qx = q[0];  let qy = q[1];  let qz = q[2];  let qw = q[3]
   # t = 2 * cross(q.xyz, v)
-  let tx = f_mul(F_TWO, f_sub(f_mul(qy, v[2]), f_mul(qz, v[1])))
-  let ty = f_mul(F_TWO, f_sub(f_mul(qz, v[0]), f_mul(qx, v[2])))
-  let tz = f_mul(F_TWO, f_sub(f_mul(qx, v[1]), f_mul(qy, v[0])))
+  let tx = 2.0 * (qy * v[2] - qz * v[1])
+  let ty = 2.0 * (qz * v[0] - qx * v[2])
+  let tz = 2.0 * (qx * v[1] - qy * v[0])
   # o = v + w t + cross(q.xyz, t)
-  let x = f_add(f_add(v[0], f_mul(qw, tx)), f_sub(f_mul(qy, tz), f_mul(qz, ty)))
-  let y = f_add(f_add(v[1], f_mul(qw, ty)), f_sub(f_mul(qz, tx), f_mul(qx, tz)))
-  let z = f_add(f_add(v[2], f_mul(qw, tz)), f_sub(f_mul(qx, ty), f_mul(qy, tx)))
+  let x = v[0] + qw * tx + (qy * tz - qz * ty)
+  let y = v[1] + qw * ty + (qz * tx - qx * tz)
+  let z = v[2] + qw * tz + (qx * ty - qy * tx)
   o[0] = x;  o[1] = y;  o[2] = z
 }
 # pitch about X, yaw about Y, roll about Z, composed as yaw * pitch * roll
-var q_scratch: words = null
-function q_euler(o: words, pitch: int, yaw: int, roll: int) -> void {
-  if q_scratch == null { q_scratch = words(16) }
+var q_scratch: floats = null
+function q_euler(o: floats, pitch: float, yaw: float, roll: float) -> void {
+  if q_scratch == null { q_scratch = floats(16) }
   let qx = q_scratch;  let qy = mem_off(q_scratch, 16);  let qz = mem_off(q_scratch, 32);  let t = mem_off(q_scratch, 48)
-  q_axis_angle(qx, F_ONE, F_ZERO, F_ZERO, pitch)
-  q_axis_angle(qy, F_ZERO, F_ONE, F_ZERO, yaw)
-  q_axis_angle(qz, F_ZERO, F_ZERO, F_ONE, roll)
+  q_axis_angle(qx, 1.0, 0.0, 0.0, pitch)
+  q_axis_angle(qy, 0.0, 1.0, 0.0, yaw)
+  q_axis_angle(qz, 0.0, 0.0, 1.0, roll)
   q_mul(t, qy, qx)
   q_mul(o, t, qz)
 }
 # the rotation matrix of q (column-major, translation cleared)
-function q_to_m4(m: words, q: words) -> void {
+function q_to_m4(m: floats, q: floats) -> void {
   let x = q[0];  let y = q[1];  let z = q[2];  let w = q[3]
-  let xx = f_mul(x, x);  let yy = f_mul(y, y);  let zz = f_mul(z, z)
-  let xy = f_mul(x, y);  let xz = f_mul(x, z);  let yz = f_mul(y, z)
-  let wx = f_mul(w, x);  let wy = f_mul(w, y);  let wz = f_mul(w, z)
-  m[0] = f_sub(F_ONE, f_mul(F_TWO, f_add(yy, zz)))
-  m[1] = f_mul(F_TWO, f_add(xy, wz))
-  m[2] = f_mul(F_TWO, f_sub(xz, wy))
-  m[3] = F_ZERO
-  m[4] = f_mul(F_TWO, f_sub(xy, wz))
-  m[5] = f_sub(F_ONE, f_mul(F_TWO, f_add(xx, zz)))
-  m[6] = f_mul(F_TWO, f_add(yz, wx))
-  m[7] = F_ZERO
-  m[8] = f_mul(F_TWO, f_add(xz, wy))
-  m[9] = f_mul(F_TWO, f_sub(yz, wx))
-  m[10] = f_sub(F_ONE, f_mul(F_TWO, f_add(xx, yy)))
-  m[11] = F_ZERO
-  m[12] = F_ZERO;  m[13] = F_ZERO;  m[14] = F_ZERO;  m[15] = F_ONE
+  let xx = x * x;  let yy = y * y;  let zz = z * z
+  let xy = x * y;  let xz = x * z;  let yz = y * z
+  let wx = w * x;  let wy = w * y;  let wz = w * z
+  m[0] = 1.0 - 2.0 * (yy + zz)
+  m[1] = 2.0 * (xy + wz)
+  m[2] = 2.0 * (xz - wy)
+  m[3] = 0.0
+  m[4] = 2.0 * (xy - wz)
+  m[5] = 1.0 - 2.0 * (xx + zz)
+  m[6] = 2.0 * (yz + wx)
+  m[7] = 0.0
+  m[8] = 2.0 * (xz + wy)
+  m[9] = 2.0 * (yz - wx)
+  m[10] = 1.0 - 2.0 * (xx + yy)
+  m[11] = 0.0
+  m[12] = 0.0;  m[13] = 0.0;  m[14] = 0.0;  m[15] = 1.0
 }
 # m = translate(t) * rotate(q) * scale(s)
-function m4_trs_q(m: words, tx: int, ty: int, tz: int, q: words, sx: int, sy: int, sz: int) -> void {
+function m4_trs_q(m: floats, tx: float, ty: float, tz: float, q: floats, sx: float, sy: float, sz: float) -> void {
   q_to_m4(m, q)
-  for r in 0 .. 3 { m[r] = f_mul(m[r], sx);  m[4 + r] = f_mul(m[4 + r], sy);  m[8 + r] = f_mul(m[8 + r], sz) }
+  for r in 0 .. 3 { m[r] = m[r] * sx;  m[4 + r] = m[4 + r] * sy;  m[8 + r] = m[8 + r] * sz }
   m[12] = tx;  m[13] = ty;  m[14] = tz
 }

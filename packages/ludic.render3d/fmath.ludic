@@ -16,59 +16,60 @@ const F_ZERO: int = 0x00000000
 const F_ONE:  int = 0x3F800000
 const F_TWO:  int = 0x40000000
 const F_HALF: int = 0x3F000000
+const PI: float = 3.1415927
 const F_PI:   int = 0x40490FDB
 
-function fl(x: fixed) -> int { return fx_to_f32(x) }
-function fi(n: int) -> int { return f_from_int(n) }
-function fr(n: int, d: int) -> int { return f_div(f_from_int(n), f_from_int(d)) }
-function f_neg1() -> int { return f_neg(F_ONE) }
-function f_clamp(x: int, lo: int, hi: int) -> int { return f_min(f_max(x, lo), hi) }
-function f_lerp(a: int, b: int, t: int) -> int { return f_add(a, f_mul(f_sub(b, a), t)) }
-function f_gt(a: int, b: int) -> bool { return f_lt(b, a) != 0 }
-function f_ls(a: int, b: int) -> bool { return f_lt(a, b) != 0 }
-function f_rad(deg: int) -> int { return f_mul(deg, f_div(F_PI, fi(180))) }
-function f_fx(x: int) -> fixed { return f32_to_fx(x) }
+function fl(x: fixed) -> float { return float(x) }
+function fi(n: int) -> float { return float(n) }
+function fr(n: int, d: int) -> float { return float(n) / float(d) }
+function f_neg1() -> float { return -1.0 }
+function f_clamp(x: float, lo: float, hi: float) -> float { return Math.min(Math.max(x, lo), hi) }
+function f_lerp(a: float, b: float, t: float) -> float { return a + (b - a) * t }
+function f_gt(a: float, b: float) -> bool { return f_lt(b, a) != 0 }
+function f_ls(a: float, b: float) -> bool { return f_lt(a, b) != 0 }
+function f_rad(deg: float) -> float { return deg * (PI / 180.0) }
+function f_fx(x: float) -> fixed { return fixed(x) }
 
 # ---- vectors ----------------------------------------------------------------
-function v3_new(x: int, y: int, z: int) -> words {
-  let v = words(3)
+function v3_new(x: float, y: float, z: float) -> floats {
+  let v = floats(3)
   v[0] = x
   v[1] = y
   v[2] = z
   return v
 }
-function v3_set(v: words, x: int, y: int, z: int) -> void { v[0] = x;  v[1] = y;  v[2] = z }
-function v3_copy(o: words, a: words) -> void { o[0] = a[0];  o[1] = a[1];  o[2] = a[2] }
-function v3_add(o: words, a: words, b: words) -> void {
-  o[0] = f_add(a[0], b[0]);  o[1] = f_add(a[1], b[1]);  o[2] = f_add(a[2], b[2])
+function v3_set(v: floats, x: float, y: float, z: float) -> void { v[0] = x;  v[1] = y;  v[2] = z }
+function v3_copy(o: floats, a: floats) -> void { o[0] = a[0];  o[1] = a[1];  o[2] = a[2] }
+function v3_add(o: floats, a: floats, b: floats) -> void {
+  o[0] = a[0] + b[0];  o[1] = a[1] + b[1];  o[2] = a[2] + b[2]
 }
-function v3_sub(o: words, a: words, b: words) -> void {
-  o[0] = f_sub(a[0], b[0]);  o[1] = f_sub(a[1], b[1]);  o[2] = f_sub(a[2], b[2])
+function v3_sub(o: floats, a: floats, b: floats) -> void {
+  o[0] = a[0] - b[0];  o[1] = a[1] - b[1];  o[2] = a[2] - b[2]
 }
-function v3_scale(o: words, a: words, s: int) -> void {
-  o[0] = f_mul(a[0], s);  o[1] = f_mul(a[1], s);  o[2] = f_mul(a[2], s)
+function v3_scale(o: floats, a: floats, s: float) -> void {
+  o[0] = a[0] * s;  o[1] = a[1] * s;  o[2] = a[2] * s
 }
-function v3_madd(o: words, a: words, b: words, s: int) -> void {   # o = a + b*s
-  o[0] = f_add(a[0], f_mul(b[0], s));  o[1] = f_add(a[1], f_mul(b[1], s));  o[2] = f_add(a[2], f_mul(b[2], s))
+function v3_madd(o: floats, a: floats, b: floats, s: float) -> void {   # o = a + b*s
+  o[0] = a[0] + b[0] * s;  o[1] = a[1] + b[1] * s;  o[2] = a[2] + b[2] * s
 }
-function v3_dot(a: words, b: words) -> int {
-  return f_add(f_add(f_mul(a[0], b[0]), f_mul(a[1], b[1])), f_mul(a[2], b[2]))
+function v3_dot(a: floats, b: floats) -> float {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
-function v3_cross(o: words, a: words, b: words) -> void {
-  let x = f_sub(f_mul(a[1], b[2]), f_mul(a[2], b[1]))
-  let y = f_sub(f_mul(a[2], b[0]), f_mul(a[0], b[2]))
-  let z = f_sub(f_mul(a[0], b[1]), f_mul(a[1], b[0]))
+function v3_cross(o: floats, a: floats, b: floats) -> void {
+  let x = a[1] * b[2] - a[2] * b[1]
+  let y = a[2] * b[0] - a[0] * b[2]
+  let z = a[0] * b[1] - a[1] * b[0]
   o[0] = x;  o[1] = y;  o[2] = z
 }
-function v3_len(a: words) -> int { return f_sqrt(v3_dot(a, a)) }
-function v3_normalize(o: words, a: words) -> void {
+function v3_len(a: floats) -> float { return Math.sqrt(v3_dot(a, a)) }
+function v3_normalize(o: floats, a: floats) -> void {
   let l = v3_len(a)
-  if l == 0 { o[0] = 0;  o[1] = 0;  o[2] = 0;  return }
-  let inv = f_div(F_ONE, l)
+  if l == 0.0 { o[0] = 0.0;  o[1] = 0.0;  o[2] = 0.0;  return }
+  let inv = 1.0 / l
   v3_scale(o, a, inv)
 }
-function v3_dist(a: words, b: words) -> int {
-  let t = words(3)
+function v3_dist(a: floats, b: floats) -> float {
+  let t = floats(3)
   v3_sub(t, a, b)
   let d = v3_len(t)
   free(t)
@@ -76,78 +77,78 @@ function v3_dist(a: words, b: words) -> int {
 }
 
 # ---- matrices (column-major, m[col*4 + row]) ------------------------------------
-function m4_new() -> words { let m = words(16);  m4_identity(m);  return m }
-function m4_identity(m: words) -> void {
-  for i in 0 .. 16 { m[i] = F_ZERO }
-  m[0] = F_ONE;  m[5] = F_ONE;  m[10] = F_ONE;  m[15] = F_ONE
+function m4_new() -> floats { let m = floats(16);  m4_identity(m);  return m }
+function m4_identity(m: floats) -> void {
+  for i in 0 .. 16 { m[i] = 0.0 }
+  m[0] = 1.0;  m[5] = 1.0;  m[10] = 1.0;  m[15] = 1.0
 }
-function m4_copy(o: words, a: words) -> void { for i in 0 .. 16 { o[i] = a[i] } }
+function m4_copy(o: floats, a: floats) -> void { for i in 0 .. 16 { o[i] = a[i] } }
 # o = a * b (o may not alias a or b)
-function m4_mul(o: words, a: words, b: words) -> void {
+function m4_mul(o: floats, a: floats, b: floats) -> void {
   for c in 0 .. 4 {
     for r in 0 .. 4 {
-      var s = F_ZERO
-      for k in 0 .. 4 { s = f_add(s, f_mul(a[k * 4 + r], b[c * 4 + k])) }
+      var s = 0.0
+      for k in 0 .. 4 { s = s + a[k * 4 + r] * b[c * 4 + k] }
       o[c * 4 + r] = s
     }
   }
 }
-function m4_mul_into(a: words, b: words) -> void {    # a = a * b
-  let t = words(16)
+function m4_mul_into(a: floats, b: floats) -> void {    # a = a * b
+  let t = floats(16)
   m4_mul(t, a, b)
   m4_copy(a, t)
   free(t)
 }
-function m4_translation(m: words, x: int, y: int, z: int) -> void {
+function m4_translation(m: floats, x: float, y: float, z: float) -> void {
   m4_identity(m)
   m[12] = x;  m[13] = y;  m[14] = z
 }
-function m4_scaling(m: words, x: int, y: int, z: int) -> void {
+function m4_scaling(m: floats, x: float, y: float, z: float) -> void {
   m4_identity(m)
   m[0] = x;  m[5] = y;  m[10] = z
 }
-function m4_rotation_y(m: words, angle: int) -> void {
+function m4_rotation_y(m: floats, angle: float) -> void {
   m4_identity(m)
-  let c = f_cos(angle);  let s = f_sin(angle)
-  m[0] = c;  m[2] = f_neg(s);  m[8] = s;  m[10] = c
+  let c = Math.cos(angle);  let s = Math.sin(angle)
+  m[0] = c;  m[2] = -s;  m[8] = s;  m[10] = c
 }
-function m4_rotation_x(m: words, angle: int) -> void {
+function m4_rotation_x(m: floats, angle: float) -> void {
   m4_identity(m)
-  let c = f_cos(angle);  let s = f_sin(angle)
-  m[5] = c;  m[6] = s;  m[9] = f_neg(s);  m[10] = c
+  let c = Math.cos(angle);  let s = Math.sin(angle)
+  m[5] = c;  m[6] = s;  m[9] = -s;  m[10] = c
 }
-function m4_rotation_z(m: words, angle: int) -> void {
+function m4_rotation_z(m: floats, angle: float) -> void {
   m4_identity(m)
-  let c = f_cos(angle);  let s = f_sin(angle)
-  m[0] = c;  m[1] = s;  m[4] = f_neg(s);  m[5] = c
+  let c = Math.cos(angle);  let s = Math.sin(angle)
+  m[0] = c;  m[1] = s;  m[4] = -s;  m[5] = c
 }
 # a model matrix: translate * rotate_y * uniform scale
-function m4_trs(m: words, x: int, y: int, z: int, yaw: int, s: int) -> void {
+function m4_trs(m: floats, x: float, y: float, z: float, yaw: float, s: float) -> void {
   m4_rotation_y(m, yaw)
-  for i in 0 .. 12 { m[i] = f_mul(m[i], s) }
+  for i in 0 .. 12 { m[i] = m[i] * s }
   m[12] = x;  m[13] = y;  m[14] = z
 }
 # OpenGL clip space (z in [-1, 1]); fovy in radians
-function m4_perspective(m: words, fovy: int, aspect: int, near: int, far: int) -> void {
-  for i in 0 .. 16 { m[i] = F_ZERO }
-  let f = f_div(F_ONE, f_tan(f_mul(fovy, F_HALF)))
-  m[0] = f_div(f, aspect)
+function m4_perspective(m: floats, fovy: float, aspect: float, near: float, far: float) -> void {
+  for i in 0 .. 16 { m[i] = 0.0 }
+  let f = 1.0 / Math.tan(fovy * 0.5)
+  m[0] = f / aspect
   m[5] = f
-  m[10] = f_div(f_add(far, near), f_sub(near, far))
-  m[11] = f_neg(F_ONE)
-  m[14] = f_div(f_mul(f_mul(F_TWO, far), near), f_sub(near, far))
+  m[10] = (far + near) / (near - far)
+  m[11] = -1.0
+  m[14] = 2.0 * far * near / (near - far)
 }
-function m4_ortho(m: words, l: int, r: int, b: int, t: int, n: int, f: int) -> void {
+function m4_ortho(m: floats, l: float, r: float, b: float, t: float, n: float, f: float) -> void {
   m4_identity(m)
-  m[0] = f_div(F_TWO, f_sub(r, l))
-  m[5] = f_div(F_TWO, f_sub(t, b))
-  m[10] = f_div(f_neg(F_TWO), f_sub(f, n))
-  m[12] = f_neg(f_div(f_add(r, l), f_sub(r, l)))
-  m[13] = f_neg(f_div(f_add(t, b), f_sub(t, b)))
-  m[14] = f_neg(f_div(f_add(f, n), f_sub(f, n)))
+  m[0] = 2.0 / (r - l)
+  m[5] = 2.0 / (t - b)
+  m[10] = -2.0 / (f - n)
+  m[12] = -((r + l) / (r - l))
+  m[13] = -((t + b) / (t - b))
+  m[14] = -((f + n) / (f - n))
 }
-function m4_look_at(m: words, eye: words, at: words, up: words) -> void {
-  let fwd = words(3);  let side = words(3);  let u = words(3);  let t = words(3)
+function m4_look_at(m: floats, eye: floats, at: floats, up: floats) -> void {
+  let fwd = floats(3);  let side = floats(3);  let u = floats(3);  let t = floats(3)
   v3_sub(t, at, eye)
   v3_normalize(fwd, t)
   v3_cross(t, fwd, up)
@@ -156,44 +157,44 @@ function m4_look_at(m: words, eye: words, at: words, up: words) -> void {
   m4_identity(m)
   m[0] = side[0];  m[4] = side[1];  m[8] = side[2]
   m[1] = u[0];     m[5] = u[1];     m[9] = u[2]
-  m[2] = f_neg(fwd[0]);  m[6] = f_neg(fwd[1]);  m[10] = f_neg(fwd[2])
-  m[12] = f_neg(v3_dot(side, eye))
-  m[13] = f_neg(v3_dot(u, eye))
+  m[2] = -fwd[0];  m[6] = -fwd[1];  m[10] = -fwd[2]
+  m[12] = -v3_dot(side, eye)
+  m[13] = -v3_dot(u, eye)
   m[14] = v3_dot(fwd, eye)
   free(fwd);  free(side);  free(u);  free(t)
 }
 # general 4x4 inverse (cofactor expansion); o may not alias a
-function m4_inverse(o: words, a: words) -> bool {
-  let inv = words(16)
-  inv[0] = f_add(f_sub(f_add(f_mul(a[5], f_mul(a[10], a[15])), f_neg(f_mul(a[5], f_mul(a[11], a[14])))), f_mul(a[9], f_mul(a[6], a[15]))), f_add(f_mul(a[9], f_mul(a[7], a[14])), f_sub(f_mul(a[13], f_mul(a[6], a[11])), f_mul(a[13], f_mul(a[7], a[10])))))
-  inv[4] = f_add(f_sub(f_add(f_neg(f_mul(a[4], f_mul(a[10], a[15]))), f_mul(a[4], f_mul(a[11], a[14]))), f_mul(a[8], f_mul(a[7], a[14]))), f_add(f_mul(a[8], f_mul(a[6], a[15])), f_sub(f_mul(a[12], f_mul(a[7], a[10])), f_mul(a[12], f_mul(a[6], a[11])))))
-  inv[8] = f_add(f_sub(f_add(f_mul(a[4], f_mul(a[9], a[15])), f_neg(f_mul(a[4], f_mul(a[11], a[13])))), f_mul(a[8], f_mul(a[5], a[15]))), f_add(f_mul(a[8], f_mul(a[7], a[13])), f_sub(f_mul(a[12], f_mul(a[5], a[11])), f_mul(a[12], f_mul(a[7], a[9])))))
-  inv[12] = f_add(f_sub(f_add(f_neg(f_mul(a[4], f_mul(a[9], a[14]))), f_mul(a[4], f_mul(a[10], a[13]))), f_mul(a[8], f_mul(a[6], a[13]))), f_add(f_mul(a[8], f_mul(a[5], a[14])), f_sub(f_mul(a[12], f_mul(a[6], a[9])), f_mul(a[12], f_mul(a[5], a[10])))))
-  inv[1] = f_add(f_sub(f_add(f_neg(f_mul(a[1], f_mul(a[10], a[15]))), f_mul(a[1], f_mul(a[11], a[14]))), f_mul(a[9], f_mul(a[3], a[14]))), f_add(f_mul(a[9], f_mul(a[2], a[15])), f_sub(f_mul(a[13], f_mul(a[3], a[10])), f_mul(a[13], f_mul(a[2], a[11])))))
-  inv[5] = f_add(f_sub(f_add(f_mul(a[0], f_mul(a[10], a[15])), f_neg(f_mul(a[0], f_mul(a[11], a[14])))), f_mul(a[8], f_mul(a[2], a[15]))), f_add(f_mul(a[8], f_mul(a[3], a[14])), f_sub(f_mul(a[12], f_mul(a[2], a[11])), f_mul(a[12], f_mul(a[3], a[10])))))
-  inv[9] = f_add(f_sub(f_add(f_neg(f_mul(a[0], f_mul(a[9], a[15]))), f_mul(a[0], f_mul(a[11], a[13]))), f_mul(a[8], f_mul(a[3], a[13]))), f_add(f_mul(a[8], f_mul(a[1], a[15])), f_sub(f_mul(a[12], f_mul(a[3], a[9])), f_mul(a[12], f_mul(a[1], a[11])))))
-  inv[13] = f_add(f_sub(f_add(f_mul(a[0], f_mul(a[9], a[14])), f_neg(f_mul(a[0], f_mul(a[10], a[13])))), f_mul(a[8], f_mul(a[1], a[14]))), f_add(f_mul(a[8], f_mul(a[2], a[13])), f_sub(f_mul(a[12], f_mul(a[1], a[10])), f_mul(a[12], f_mul(a[2], a[9])))))
-  inv[2] = f_add(f_sub(f_add(f_mul(a[1], f_mul(a[6], a[15])), f_neg(f_mul(a[1], f_mul(a[7], a[14])))), f_mul(a[5], f_mul(a[2], a[15]))), f_add(f_mul(a[5], f_mul(a[3], a[14])), f_sub(f_mul(a[13], f_mul(a[2], a[7])), f_mul(a[13], f_mul(a[3], a[6])))))
-  inv[6] = f_add(f_sub(f_add(f_neg(f_mul(a[0], f_mul(a[6], a[15]))), f_mul(a[0], f_mul(a[7], a[14]))), f_mul(a[4], f_mul(a[3], a[14]))), f_add(f_mul(a[4], f_mul(a[2], a[15])), f_sub(f_mul(a[12], f_mul(a[3], a[6])), f_mul(a[12], f_mul(a[2], a[7])))))
-  inv[10] = f_add(f_sub(f_add(f_mul(a[0], f_mul(a[5], a[15])), f_neg(f_mul(a[0], f_mul(a[7], a[13])))), f_mul(a[4], f_mul(a[1], a[15]))), f_add(f_mul(a[4], f_mul(a[3], a[13])), f_sub(f_mul(a[12], f_mul(a[1], a[7])), f_mul(a[12], f_mul(a[3], a[5])))))
-  inv[14] = f_add(f_sub(f_add(f_neg(f_mul(a[0], f_mul(a[5], a[14]))), f_mul(a[0], f_mul(a[6], a[13]))), f_mul(a[4], f_mul(a[2], a[13]))), f_add(f_mul(a[4], f_mul(a[1], a[14])), f_sub(f_mul(a[12], f_mul(a[2], a[5])), f_mul(a[12], f_mul(a[1], a[6])))))
-  inv[3] = f_add(f_sub(f_add(f_neg(f_mul(a[1], f_mul(a[6], a[11]))), f_mul(a[1], f_mul(a[7], a[10]))), f_mul(a[5], f_mul(a[3], a[10]))), f_add(f_mul(a[5], f_mul(a[2], a[11])), f_sub(f_mul(a[9], f_mul(a[3], a[6])), f_mul(a[9], f_mul(a[2], a[7])))))
-  inv[7] = f_add(f_sub(f_add(f_mul(a[0], f_mul(a[6], a[11])), f_neg(f_mul(a[0], f_mul(a[7], a[10])))), f_mul(a[4], f_mul(a[2], a[11]))), f_add(f_mul(a[4], f_mul(a[3], a[10])), f_sub(f_mul(a[8], f_mul(a[2], a[7])), f_mul(a[8], f_mul(a[3], a[6])))))
-  inv[11] = f_add(f_sub(f_add(f_neg(f_mul(a[0], f_mul(a[5], a[11]))), f_mul(a[0], f_mul(a[7], a[9]))), f_mul(a[4], f_mul(a[3], a[9]))), f_add(f_mul(a[4], f_mul(a[1], a[11])), f_sub(f_mul(a[8], f_mul(a[3], a[5])), f_mul(a[8], f_mul(a[1], a[7])))))
-  inv[15] = f_add(f_sub(f_add(f_mul(a[0], f_mul(a[5], a[10])), f_neg(f_mul(a[0], f_mul(a[6], a[9])))), f_mul(a[4], f_mul(a[1], a[10]))), f_add(f_mul(a[4], f_mul(a[2], a[9])), f_sub(f_mul(a[8], f_mul(a[1], a[6])), f_mul(a[8], f_mul(a[2], a[5])))))
-  let det = f_add(f_add(f_mul(a[0], inv[0]), f_mul(a[1], inv[4])), f_add(f_mul(a[2], inv[8]), f_mul(a[3], inv[12])))
-  if det == 0 { free(inv);  return false }
-  let id = f_div(F_ONE, det)
-  for i in 0 .. 16 { o[i] = f_mul(inv[i], id) }
+function m4_inverse(o: floats, a: floats) -> bool {
+  let inv = floats(16)
+  inv[0] = a[5] * (a[10] * a[15]) + -(a[5] * (a[11] * a[14])) - a[9] * (a[6] * a[15]) + (a[9] * (a[7] * a[14]) + (a[13] * (a[6] * a[11]) - a[13] * (a[7] * a[10])))
+  inv[4] = -(a[4] * (a[10] * a[15])) + a[4] * (a[11] * a[14]) - a[8] * (a[7] * a[14]) + (a[8] * (a[6] * a[15]) + (a[12] * (a[7] * a[10]) - a[12] * (a[6] * a[11])))
+  inv[8] = a[4] * (a[9] * a[15]) + -(a[4] * (a[11] * a[13])) - a[8] * (a[5] * a[15]) + (a[8] * (a[7] * a[13]) + (a[12] * (a[5] * a[11]) - a[12] * (a[7] * a[9])))
+  inv[12] = -(a[4] * (a[9] * a[14])) + a[4] * (a[10] * a[13]) - a[8] * (a[6] * a[13]) + (a[8] * (a[5] * a[14]) + (a[12] * (a[6] * a[9]) - a[12] * (a[5] * a[10])))
+  inv[1] = -(a[1] * (a[10] * a[15])) + a[1] * (a[11] * a[14]) - a[9] * (a[3] * a[14]) + (a[9] * (a[2] * a[15]) + (a[13] * (a[3] * a[10]) - a[13] * (a[2] * a[11])))
+  inv[5] = a[0] * (a[10] * a[15]) + -(a[0] * (a[11] * a[14])) - a[8] * (a[2] * a[15]) + (a[8] * (a[3] * a[14]) + (a[12] * (a[2] * a[11]) - a[12] * (a[3] * a[10])))
+  inv[9] = -(a[0] * (a[9] * a[15])) + a[0] * (a[11] * a[13]) - a[8] * (a[3] * a[13]) + (a[8] * (a[1] * a[15]) + (a[12] * (a[3] * a[9]) - a[12] * (a[1] * a[11])))
+  inv[13] = a[0] * (a[9] * a[14]) + -(a[0] * (a[10] * a[13])) - a[8] * (a[1] * a[14]) + (a[8] * (a[2] * a[13]) + (a[12] * (a[1] * a[10]) - a[12] * (a[2] * a[9])))
+  inv[2] = a[1] * (a[6] * a[15]) + -(a[1] * (a[7] * a[14])) - a[5] * (a[2] * a[15]) + (a[5] * (a[3] * a[14]) + (a[13] * (a[2] * a[7]) - a[13] * (a[3] * a[6])))
+  inv[6] = -(a[0] * (a[6] * a[15])) + a[0] * (a[7] * a[14]) - a[4] * (a[3] * a[14]) + (a[4] * (a[2] * a[15]) + (a[12] * (a[3] * a[6]) - a[12] * (a[2] * a[7])))
+  inv[10] = a[0] * (a[5] * a[15]) + -(a[0] * (a[7] * a[13])) - a[4] * (a[1] * a[15]) + (a[4] * (a[3] * a[13]) + (a[12] * (a[1] * a[7]) - a[12] * (a[3] * a[5])))
+  inv[14] = -(a[0] * (a[5] * a[14])) + a[0] * (a[6] * a[13]) - a[4] * (a[2] * a[13]) + (a[4] * (a[1] * a[14]) + (a[12] * (a[2] * a[5]) - a[12] * (a[1] * a[6])))
+  inv[3] = -(a[1] * (a[6] * a[11])) + a[1] * (a[7] * a[10]) - a[5] * (a[3] * a[10]) + (a[5] * (a[2] * a[11]) + (a[9] * (a[3] * a[6]) - a[9] * (a[2] * a[7])))
+  inv[7] = a[0] * (a[6] * a[11]) + -(a[0] * (a[7] * a[10])) - a[4] * (a[2] * a[11]) + (a[4] * (a[3] * a[10]) + (a[8] * (a[2] * a[7]) - a[8] * (a[3] * a[6])))
+  inv[11] = -(a[0] * (a[5] * a[11])) + a[0] * (a[7] * a[9]) - a[4] * (a[3] * a[9]) + (a[4] * (a[1] * a[11]) + (a[8] * (a[3] * a[5]) - a[8] * (a[1] * a[7])))
+  inv[15] = a[0] * (a[5] * a[10]) + -(a[0] * (a[6] * a[9])) - a[4] * (a[1] * a[10]) + (a[4] * (a[2] * a[9]) + (a[8] * (a[1] * a[6]) - a[8] * (a[2] * a[5])))
+  let det = a[0] * inv[0] + a[1] * inv[4] + (a[2] * inv[8] + a[3] * inv[12])
+  if det == 0.0 { free(inv);  return false }
+  let id = 1.0 / det
+  for i in 0 .. 16 { o[i] = inv[i] * id }
   free(inv)
   return true
 }
 # transform a point (w = 1) by m: o = m * (x, y, z, 1), returns w
-function m4_xform_point(o: words, m: words, x: int, y: int, z: int) -> int {
-  o[0] = f_add(f_add(f_mul(m[0], x), f_mul(m[4], y)), f_add(f_mul(m[8], z), m[12]))
-  o[1] = f_add(f_add(f_mul(m[1], x), f_mul(m[5], y)), f_add(f_mul(m[9], z), m[13]))
-  o[2] = f_add(f_add(f_mul(m[2], x), f_mul(m[6], y)), f_add(f_mul(m[10], z), m[14]))
-  return f_add(f_add(f_mul(m[3], x), f_mul(m[7], y)), f_add(f_mul(m[11], z), m[15]))
+function m4_xform_point(o: floats, m: floats, x: float, y: float, z: float) -> float {
+  o[0] = m[0] * x + m[4] * y + (m[8] * z + m[12])
+  o[1] = m[1] * x + m[5] * y + (m[9] * z + m[13])
+  o[2] = m[2] * x + m[6] * y + (m[10] * z + m[14])
+  return m[3] * x + m[7] * y + (m[11] * z + m[15])
 }
 
 # ---- uniforms: see gpu.ludic (gpu_uniform and the u_* setters) ----

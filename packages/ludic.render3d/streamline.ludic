@@ -237,12 +237,12 @@ var gsl_consts: bytes = null
 var gsl_tags: bytes = null
 var gsl_res: bytes = null
 var gsl_inputs: bytes = null
-var gsl_prev_vp: words = null
+var gsl_prev_vp: floats = null
 var gsl_reset: bool = true
-var gsl_jitter_x: int = 0             # float bits, NDC offsets the projection carries this frame
-var gsl_jitter_y: int = 0
-var gsl_jpx: int = 0                  # float bits, the same in pixels
-var gsl_jpy: int = 0
+var gsl_jitter_x: float = 0.0             # float bits, NDC offsets the projection carries this frame
+var gsl_jitter_y: float = 0.0
+var gsl_jpx: float = 0.0                  # float bits, the same in pixels
+var gsl_jpy: float = 0.0
 var gsl_eval_ok: bool = true         # the last evaluate worked: only then is the next frame jittered
 
 # R3D_DLSS=0..4 overrides the setting, for a headless take
@@ -271,8 +271,8 @@ function gsl_fill_options(w: int, h: int) -> void {
   Vk.put_i32(gsl_opts, 32, gsl_sl_mode(gsl_dlss_mode))
   Vk.put_i32(gsl_opts, 36, w)
   Vk.put_i32(gsl_opts, 40, h)
-  Vk.put_i32(gsl_opts, 48, F_ONE)                   # preExposure
-  Vk.put_i32(gsl_opts, 52, F_ONE)                   # exposureScale
+  Vk.put_i32(gsl_opts, 48, float_bits(1.0))                   # preExposure
+  Vk.put_i32(gsl_opts, 52, float_bits(1.0))                   # exposureScale
   Vk.put_i32(gsl_opts, 56, 1)                       # colorBuffersHDR eTrue
   # The model: preset K (the transformer NVIDIA calls its best image quality) in every mode. The
   # defaults put Performance on preset M, which on an RTX 3070 Ti at 4K evaluated in 18 ms against
@@ -303,14 +303,14 @@ function r3d_dlss_render_w() -> int { if not r3d_dlss_live() { return gl_w };  g
 function r3d_dlss_render_h() -> int { if not r3d_dlss_live() { return gl_h };  gsl_optimal();  return gsl_rh }
 
 # a radical-inverse sample in [0, 1), float bits
-function gsl_halton(i: int, b: int) -> int {
-  var f = F_ONE
-  var r = F_ZERO
+function gsl_halton(i: int, b: int) -> float {
+  var f = 1.0
+  var r = 0.0
   var k = i
-  let fb = fi(b)
+  let fb = float(b)
   while k > 0 {
-    f = f_div(f, fb)
-    r = f_add(r, f_mul(f, fi(k % b)))
+    f = f / fb
+    r = r + f * float(k % b)
     k = k / b
   }
   return r
@@ -318,17 +318,17 @@ function gsl_halton(i: int, b: int) -> int {
 
 # cam_begin_frame: this frame's sub-pixel offset, before the camera builds its matrices
 function gsl_jitter_frame() -> void {
-  gsl_jitter_x = F_ZERO;  gsl_jitter_y = F_ZERO;  gsl_jpx = F_ZERO;  gsl_jpy = F_ZERO
+  gsl_jitter_x = 0.0;  gsl_jitter_y = 0.0;  gsl_jpx = 0.0;  gsl_jpy = 0.0
   # a jittered frame nobody resolves shakes on screen however still the camera is: jitter only while
   # this frame holds a DLSS token and the last evaluate worked. (Not gsl_fresh: gsl_frame_start has
   # already taken the token and cleared it by the time the camera asks, which turned jitter off.)
   if not r3d_dlss_live() or not gsl_eval_ok or gsl_token == null or post_w <= 0 or post_h <= 0 { return }
   # DLSS wants at least 8 x (display / render)^2 phases; 32 covers performance mode
   let i = (gsl_frame_n % 32) + 1
-  gsl_jpx = f_sub(gsl_halton(i, 2), F_HALF)
-  gsl_jpy = f_sub(gsl_halton(i, 3), F_HALF)
-  gsl_jitter_x = f_div(f_mul(F_TWO, gsl_jpx), fi(post_w))
-  gsl_jitter_y = f_div(f_mul(F_TWO, gsl_jpy), fi(post_h))
+  gsl_jpx = gsl_halton(i, 2) - 0.5
+  gsl_jpy = gsl_halton(i, 3) - 0.5
+  gsl_jitter_x = 2.0 * gsl_jpx / float(post_w)
+  gsl_jitter_y = 2.0 * gsl_jpy / float(post_h)
 }
 
 # sl::Resource for one of the renderer's textures, in the layout every pass leaves them in
@@ -370,21 +370,21 @@ function gsl_tag(i: int, buffer: int, w: int, h: int) -> void {
 }
 
 # a column-major matrix into a row-major sl::float4x4
-function gsl_put_m4(p: pointer, at: int, m: words) -> void {
-  for r in 0 .. 4 { for c in 0 .. 4 { Vk.put_i32(p, at + (r * 4 + c) * 4, m[c * 4 + r]) } }
+function gsl_put_m4(p: pointer, at: int, m: floats) -> void {
+  for r in 0 .. 4 { for c in 0 .. 4 { Vk.put_i32(p, at + (r * 4 + c) * 4, float_bits(m[c * 4 + r])) } }
 }
-function gsl_put_v3(p: pointer, at: int, v: words) -> void {
-  Vk.put_i32(p, at, v[0]);  Vk.put_i32(p, at + 4, v[1]);  Vk.put_i32(p, at + 8, v[2])
+function gsl_put_v3(p: pointer, at: int, v: floats) -> void {
+  Vk.put_i32(p, at, float_bits(v[0]));  Vk.put_i32(p, at + 4, float_bits(v[1]));  Vk.put_i32(p, at + 8, float_bits(v[2]))
 }
 
 # The renderer's clip space is OpenGL's; what Vulkan stores is depth remapped to [0, 1] and
 # row 0 at NDC y = -1. Streamline reads images with row 0 at the top, so the matrices it is
 # given carry both: y flipped, z' = (z + w) / 2.
-function gsl_clip_fix(m: words) -> void {
+function gsl_clip_fix(m: floats) -> void {
   m4_identity(m)
-  m[5] = f_neg(F_ONE)
-  m[10] = F_HALF
-  m[14] = F_HALF
+  m[5] = -1.0
+  m[10] = 0.5
+  m[14] = 0.5
 }
 
 function gsl_constants() -> void {
@@ -414,30 +414,30 @@ function gsl_constants() -> void {
   # the sample's offset from the pixel centre, in the image Streamline sees: row 0 at the top, so the
   # vertical offset flips with it. With jy unflipped DLSS resolved the ground into concentric
   # rings; with jx flipped too, thin stems doubled sideways (PC shots, 2026-09-15).
-  var jx = f_neg(gsl_jpx)
-  var jy = f_neg(gsl_jpy)
+  var jx = -gsl_jpx
+  var jy = -gsl_jpy
   # R3D_DLSS_JX / R3D_DLSS_JY = -1 flip a sign, to check the convention against the picture
-  if r3d_env_has("R3D_DLSS_JX") and Text.to_int(r3d_env("R3D_DLSS_JX")) < 0 { jx = f_neg(jx) }
-  if r3d_env_has("R3D_DLSS_JY") and Text.to_int(r3d_env("R3D_DLSS_JY")) < 0 { jy = f_neg(jy) }
-  Vk.put_i32(k, 352, jx)
-  Vk.put_i32(k, 356, jy)
-  Vk.put_i32(k, 360, F_ONE)                         # mvecScale
-  Vk.put_i32(k, 364, F_ONE)
+  if r3d_env_has("R3D_DLSS_JX") and Text.to_int(r3d_env("R3D_DLSS_JX")) < 0 { jx = -jx }
+  if r3d_env_has("R3D_DLSS_JY") and Text.to_int(r3d_env("R3D_DLSS_JY")) < 0 { jy = -jy }
+  Vk.put_i32(k, 352, float_bits(jx))
+  Vk.put_i32(k, 356, float_bits(jy))
+  Vk.put_i32(k, 360, float_bits(1.0))                         # mvecScale
+  Vk.put_i32(k, 364, float_bits(1.0))
   gsl_put_v3(k, 376, cam_pos)
-  let up = words(3)
+  let up = floats(3)
   v3_cross(up, cam_right, cam_fwd)
   gsl_put_v3(k, 388, up)
   gsl_put_v3(k, 400, cam_right)
   gsl_put_v3(k, 412, cam_fwd)
-  Vk.put_i32(k, 424, cam_near)
-  Vk.put_i32(k, 428, cam_far)
-  Vk.put_i32(k, 432, cam_fov)
-  Vk.put_i32(k, 436, cam_aspect)
-  Vk.put_i32(k, 440, F_ZERO)                        # motionVectorsInvalidValue
+  Vk.put_i32(k, 424, float_bits(cam_near))
+  Vk.put_i32(k, 428, float_bits(cam_far))
+  Vk.put_i32(k, 432, float_bits(cam_fov))
+  Vk.put_i32(k, 436, float_bits(cam_aspect))
+  Vk.put_i32(k, 440, float_bits(0.0))                        # motionVectorsInvalidValue
   # depthInverted, cameraMotionIncluded, motionVectors3D false; reset on a cut; not orthographic,
   # not dilated, not jittered
   if gsl_reset { Vk.put_i32(k, 444, 256 * 256 * 256) }
-  Vk.put_i32(k, 452, fi(40))                        # minRelativeLinearDepthObjectSeparation
+  Vk.put_i32(k, 452, float_bits(40.0))                        # minRelativeLinearDepthObjectSeparation
   free(fix);  free(proj);  free(v2c);  free(c2v);  free(cur);  free(prev);  free(inv_cur);  free(c2p);  free(p2c);  free(ident);  free(up)
 }
 

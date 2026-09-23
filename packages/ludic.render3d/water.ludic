@@ -7,20 +7,20 @@
 
 var water_mesh: Mesh = null
 var water_prog: int = 0
-var water_level: int = 0
-var water_cx: int = 0
-var water_cz: int = 0
-var water_ex: int = 0
-var water_ez: int = 0
+var water_level: float = 0.0
+var water_cx: float = 0.0
+var water_cz: float = 0.0
+var water_ex: float = 0.0
+var water_ez: float = 0.0
 var water_on: bool = false
 # Where a body is standing in the water and how hard it is disturbing it. The game sets it;
 # strength 0 means nobody is in the water and the whole term is skipped.
-var wt_wade_x: int = 0
-var wt_wade_z: int = 0
-var wt_wade_s: int = 0
+var wt_wade_x: float = 0.0
+var wt_wade_z: float = 0.0
+var wt_wade_s: float = 0.0
 var water_refl: Target = null            # the world mirrored in the surface, half resolution
 var water_refl_div: int = 2              # R3D_REFLDIV overrides: 2 = half res, 4 = quarter
-var water_saved: words = null            # the real camera's matrices, restored after the pass
+var water_saved: floats = null            # the real camera's matrices, restored after the pass
 var water_dumped: bool = false
 # Several still-water planes, each at its own level over its own bounds: the sea round an
 # island and a lake a hundred metres above it cannot be one surface. Each draws the same way;
@@ -29,11 +29,11 @@ var water_dumped: bool = false
 # code written against a single plane still reads the surface that reflects.
 const WATER_MAX: int = 8
 var wb_n: int = 0
-var wb_level: words = null
-var wb_cx: words = null
-var wb_cz: words = null
-var wb_ex: words = null
-var wb_ez: words = null
+var wb_level: floats = null
+var wb_cx: floats = null
+var wb_cz: floats = null
+var wb_ex: floats = null
+var wb_ez: floats = null
 var wb_reflect: words = null
 var wb_primary: int = -1               # the body the reflection pass mirrors, or -1
 
@@ -48,7 +48,7 @@ function water_reflection_pass() -> void {
     # this reflection is composited into is smaller than the drawable, and a reflection
     # rendered at the window's size would be paying for pixels the water never samples
     water_refl = target_new(post_w / water_refl_div, post_h / water_refl_div, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, true, GL_LINEAR)
-    water_saved = words(16 * 4 + 3)
+    water_saved = floats(16 * 4 + 3)
   }
   # save the camera
   m4_copy(water_saved, cam_view)
@@ -58,11 +58,11 @@ function water_reflection_pass() -> void {
   # the mirrored camera: view' = view * R, R reflecting y about the surface (y' = 2L - y).
   # R has determinant -1, so the winding flips (front faces culled below) and the image
   # lands exactly where the main camera's pixels expect the reflection.
-  let eye = v3_new(sx, f_sub(f_mul(F_TWO, water_level), sy), sz)
+  let eye = v3_new(sx, 2.0 * water_level - sy, sz)
   let refl = m4_new()
-  refl[5] = f_neg1()
-  refl[13] = f_mul(F_TWO, water_level)
-  let mv = words(16)
+  refl[5] = -1.0
+  refl[13] = 2.0 * water_level
+  let mv = floats(16)
   m4_mul(mv, water_saved, refl)
   m4_copy(cam_view, mv)
   free(mv);  free(refl)
@@ -70,7 +70,7 @@ function water_reflection_pass() -> void {
   m4_mul(cam_vp, cam_proj, cam_view)
   m4_inverse(cam_inv_vp, cam_vp)
   v3_copy(cam_pos, eye)
-  r3d_clip_y = f_sub(water_level, fl(0.05))
+  r3d_clip_y = water_level - 0.05
   target_bind(water_refl)
   gpu_depth_test(true)
   gpu_depth_func(GL_LESS)
@@ -96,7 +96,7 @@ function water_reflection_pass() -> void {
   gpu_cull_face(GL_BACK)
   if r3d_env_has("R3D_DUMP_REFL") and not water_dumped { water_dumped = true;  tex_dump(water_refl.color, water_refl.w, water_refl.h, "build/dbg_refl.ppm") }
   # restore
-  r3d_clip_y = 0xCF000000
+  r3d_clip_y = -2147483600.0
   m4_copy(cam_view, water_saved)
   m4_copy(cam_vp, mem_off(water_saved, 64))
   m4_copy(cam_inv_vp, mem_off(water_saved, 128))
@@ -114,7 +114,7 @@ function water_reflection_pass() -> void {
 # asking, so it errs on the side of running. R3D_REFL_ALWAYS=1 runs it on every frame, for comparing.
 # Mac, the five shot viewpoints: looking down at the meadow (c) 225 reflection draws -> none; every view
 # with the lake in it unchanged, byte-identical frames.
-var wb_cells: words = null             # x0, z0, x1, z1 of each rectangle with water showing
+var wb_cells: floats = null             # x0, z0, x1, z1 of each rectangle with water showing
 var wb_ncells: int = -1                # -1: not built for the current mirrored body
 var wb_blocks: words = null            # x0, z0, x1, z1, first cell, cells past the last - of each block
 var wb_nblocks: int = 0
@@ -141,7 +141,7 @@ function water_reflect_visible() -> bool {
   var checked = 0
   for b in 0 .. wb_nblocks {
     let o = b * 6
-    if not wb_rect_visible(wb_blocks[o], wb_blocks[o + 1], wb_blocks[o + 2], wb_blocks[o + 3]) { continue }
+    if not wb_rect_visible(float_from_bits(wb_blocks[o]), float_from_bits(wb_blocks[o + 1]), float_from_bits(wb_blocks[o + 2]), float_from_bits(wb_blocks[o + 3])) { continue }
     for i in wb_blocks[o + 4] .. wb_blocks[o + 5] {
       if not wb_cell_visible(i) { continue }
       if checked >= 16 { return true }
@@ -154,14 +154,14 @@ function water_reflect_visible() -> bool {
 # A flat rectangle at the water's level against the view's side planes: hidden when all four corners
 # lie outside one plane. (A bounding sphere was the first version: a 156 m cell's sphere reached into
 # the view from a lake the camera had its back to, and the pass never skipped.)
-function wb_rect_visible(x0: int, z0: int, x1: int, z1: int) -> bool {
+function wb_rect_visible(x0: float, z0: float, x1: float, z1: float) -> bool {
   if cam_planes == null { return true }
   for p in 0 .. 4 {
     let q = p * 4
     let a = cam_planes[q];  let c = cam_planes[q + 2]
-    let by = f_add(f_mul(cam_planes[q + 1], water_level), cam_planes[q + 3])
-    let ax0 = f_mul(a, x0);  let ax1 = f_mul(a, x1);  let cz0 = f_mul(c, z0);  let cz1 = f_mul(c, z1)
-    if f_ls(f_add(f_add(ax0, cz0), by), F_ZERO) and f_ls(f_add(f_add(ax1, cz0), by), F_ZERO) and f_ls(f_add(f_add(ax0, cz1), by), F_ZERO) and f_ls(f_add(f_add(ax1, cz1), by), F_ZERO) { return false }
+    let by = cam_planes[q + 1] * water_level + cam_planes[q + 3]
+    let ax0 = a * x0;  let ax1 = a * x1;  let cz0 = c * z0;  let cz1 = c * z1
+    if ax0 + cz0 + by < 0.0 and ax1 + cz0 + by < 0.0 and ax0 + cz1 + by < 0.0 and ax1 + cz1 + by < 0.0 { return false }
   }
   return true
 }
@@ -173,17 +173,17 @@ function wb_cell_visible(i: int) -> bool {
 # sight line is sampled at seven points short of both ends, with half a metre (and a little more with
 # distance) of margin, so a far ridge the drawn terrain rounds off never hides real water. A camera at
 # or under the surface hides nothing behind the ground.
-function wb_point_hidden(x: int, z: int) -> bool {
-  if f_gt(terrain_height(x, z), f_add(water_level, fl(0.05))) { return true }
-  if not cam_sphere_visible(x, water_level, z, F_HALF) { return true }
+function wb_point_hidden(x: float, z: float) -> bool {
+  if terrain_height(x, z) > water_level + 0.05 { return true }
+  if not cam_sphere_visible(x, water_level, z, 0.5) { return true }
   let ey = cam_pos[1]
-  if not f_gt(ey, water_level) { return false }
-  let dx = f_sub(x, cam_pos[0]);  let dz = f_sub(z, cam_pos[2])
-  let margin = f_add(F_HALF, f_mul(f_sqrt(f_add(f_mul(dx, dx), f_mul(dz, dz))), fl(0.004)))
+  if not (ey > water_level) { return false }
+  let dx = x - cam_pos[0];  let dz = z - cam_pos[2]
+  let margin = 0.5 + Math.sqrt(dx * dx + dz * dz) * 0.004
   for k in 1 .. 8 {
-    let t = fr(k, 8)
-    let sy = f_add(ey, f_mul(f_sub(water_level, ey), t))
-    if f_gt(terrain_height(f_add(cam_pos[0], f_mul(dx, t)), f_add(cam_pos[2], f_mul(dz, t))), f_add(sy, margin)) { return true }
+    let t = float(k) / 8.0
+    let sy = ey + (water_level - ey) * t
+    if terrain_height(cam_pos[0] + dx * t, cam_pos[2] + dz * t) > sy + margin { return true }
   }
   return false
 }
@@ -191,33 +191,33 @@ function wb_point_hidden(x: int, z: int) -> bool {
 function wb_cell_occluded(i: int) -> bool {
   let o = i * 4
   let x0 = wb_cells[o];  let z0 = wb_cells[o + 1];  let x1 = wb_cells[o + 2];  let z1 = wb_cells[o + 3]
-  let cx = f_mul(f_add(x0, x1), F_HALF);  let cz = f_mul(f_add(z0, z1), F_HALF)
-  let ox = f_mul(f_sub(x1, x0), fl(0.45));  let oz = f_mul(f_sub(z1, z0), fl(0.45))
+  let cx = (x0 + x1) * 0.5;  let cz = (z0 + z1) * 0.5
+  let ox = (x1 - x0) * 0.45;  let oz = (z1 - z0) * 0.45
   if not wb_point_hidden(cx, cz) { return false }
-  if not wb_point_hidden(f_sub(cx, ox), f_sub(cz, oz)) { return false }
-  if not wb_point_hidden(f_add(cx, ox), f_sub(cz, oz)) { return false }
-  if not wb_point_hidden(f_sub(cx, ox), f_add(cz, oz)) { return false }
-  return wb_point_hidden(f_add(cx, ox), f_add(cz, oz))
+  if not wb_point_hidden(cx - ox, cz - oz) { return false }
+  if not wb_point_hidden(cx + ox, cz - oz) { return false }
+  if not wb_point_hidden(cx - ox, cz + oz) { return false }
+  return wb_point_hidden(cx + ox, cz + oz)
 }
-function wb_cell_add(x0: int, z0: int, x1: int, z1: int) -> void {
+function wb_cell_add(x0: float, z0: float, x1: float, z1: float) -> void {
   let o = wb_ncells * 4
   wb_cells[o] = x0;  wb_cells[o + 1] = z0;  wb_cells[o + 2] = x1;  wb_cells[o + 3] = z1
   wb_ncells += 1
 }
-function wb_block_add(x0: int, z0: int, x1: int, z1: int, first: int) -> void {
+function wb_block_add(x0: float, z0: float, x1: float, z1: float, first: int) -> void {
   if wb_ncells <= first { return }
   let o = wb_nblocks * 6
-  wb_blocks[o] = x0;  wb_blocks[o + 1] = z0;  wb_blocks[o + 2] = x1;  wb_blocks[o + 3] = z1
+  wb_blocks[o] = float_bits(x0);  wb_blocks[o + 1] = float_bits(z0);  wb_blocks[o + 2] = float_bits(x1);  wb_blocks[o + 3] = float_bits(z1)
   wb_blocks[o + 4] = first;  wb_blocks[o + 5] = wb_ncells
   wb_nblocks += 1
 }
-function wb_wet(x: int, z: int, off: int) -> bool {
-  if f_ls(terrain_height(x, z), water_level) { return true }
-  if off == 0 { return false }
-  if f_ls(terrain_height(f_sub(x, off), f_sub(z, off)), water_level) { return true }
-  if f_ls(terrain_height(f_add(x, off), f_sub(z, off)), water_level) { return true }
-  if f_ls(terrain_height(f_sub(x, off), f_add(z, off)), water_level) { return true }
-  return f_ls(terrain_height(f_add(x, off), f_add(z, off)), water_level)
+function wb_wet(x: float, z: float, off: float) -> bool {
+  if terrain_height(x, z) < water_level { return true }
+  if off == 0.0 { return false }
+  if terrain_height(x - off, z - off) < water_level { return true }
+  if terrain_height(x + off, z - off) < water_level { return true }
+  if terrain_height(x - off, z + off) < water_level { return true }
+  return terrain_height(x + off, z + off) < water_level
 }
 # Over the height map, 32 m rectangles (at most 512 a side) tested at five points and kept in blocks of
 # 8 x 8, so a block out of view skips its rectangles in one test - looking away from the water was a
@@ -225,59 +225,59 @@ function wb_wet(x: int, z: int, off: int) -> bool {
 # coarse rectangles tested at their centre, in one last block, which only ever matter kilometres away.
 const WB_BLOCK: int = 8
 function water_cells_build() -> void {
-  let bx0 = f_sub(water_cx, water_ex);  let bx1 = f_add(water_cx, water_ex)
-  let bz0 = f_sub(water_cz, water_ez);  let bz1 = f_add(water_cz, water_ez)
-  let th = fi(TERRAIN_HALF)
-  let tx0 = f_max(bx0, f_sub(ter_ox, th));  let tx1 = f_min(bx1, f_add(ter_ox, th))
-  let tz0 = f_max(bz0, f_sub(ter_oz, th));  let tz1 = f_min(bz1, f_add(ter_oz, th))
-  let inside = f_gt(tx1, tx0) and f_gt(tz1, tz0)
-  var cell = fi(32)
+  let bx0 = water_cx - water_ex;  let bx1 = water_cx + water_ex
+  let bz0 = water_cz - water_ez;  let bz1 = water_cz + water_ez
+  let th = float(TERRAIN_HALF)
+  let tx0 = Math.max(bx0, ter_ox - th);  let tx1 = Math.min(bx1, ter_ox + th)
+  let tz0 = Math.max(bz0, ter_oz - th);  let tz1 = Math.min(bz1, ter_oz + th)
+  let inside = tx1 > tx0 and tz1 > tz0
+  var cell = 32.0
   var nx = 0
   var nz = 0
   if inside {
-    let span = f_max(f_sub(tx1, tx0), f_sub(tz1, tz0))
-    if f_gt(f_div(span, cell), fi(512)) { cell = f_div(span, fi(512)) }
-    nx = f_to_int(f_div(f_sub(tx1, tx0), cell)) + 1
-    nz = f_to_int(f_div(f_sub(tz1, tz0), cell)) + 1
+    let span = Math.max(tx1 - tx0, tz1 - tz0)
+    if span / cell > 512.0 { cell = span / 512.0 }
+    nx = int((tx1 - tx0) / cell) + 1
+    nz = int((tz1 - tz0) / cell) + 1
   }
   if wb_cells != null { free(wb_cells) }
   if wb_blocks != null { free(wb_blocks) }
-  wb_cells = words((nx * nz + 64 * 64) * 4)
+  wb_cells = floats((nx * nz + 64 * 64) * 4)
   let nbx = (nx + WB_BLOCK - 1) / WB_BLOCK
   let nbz = (nz + WB_BLOCK - 1) / WB_BLOCK
   wb_blocks = words((nbx * nbz + 1) * 6)
   wb_ncells = 0
   wb_nblocks = 0
-  let off = f_mul(cell, fl(0.45))
-  let half = f_mul(cell, F_HALF)
+  let off = cell * 0.45
+  let half = cell * 0.5
   for bz in 0 .. nbz {
     for bx in 0 .. nbx {
       let first = wb_ncells
       var iz = bz * WB_BLOCK
       while iz < (bz + 1) * WB_BLOCK and iz < nz {
-        let z0 = f_add(tz0, f_mul(fi(iz), cell))
+        let z0 = tz0 + float(iz) * cell
         var ix = bx * WB_BLOCK
         while ix < (bx + 1) * WB_BLOCK and ix < nx {
-          let x0 = f_add(tx0, f_mul(fi(ix), cell))
-          if wb_wet(f_add(x0, half), f_add(z0, half), off) { wb_cell_add(x0, z0, f_add(x0, cell), f_add(z0, cell)) }
+          let x0 = tx0 + float(ix) * cell
+          if wb_wet(x0 + half, z0 + half, off) { wb_cell_add(x0, z0, x0 + cell, z0 + cell) }
           ix += 1
         }
         iz += 1
       }
-      let x0 = f_add(tx0, f_mul(fi(bx * WB_BLOCK), cell));  let z0 = f_add(tz0, f_mul(fi(bz * WB_BLOCK), cell))
-      wb_block_add(x0, z0, f_add(x0, f_mul(fi(WB_BLOCK), cell)), f_add(z0, f_mul(fi(WB_BLOCK), cell)), first)
+      let x0 = tx0 + float(bx * WB_BLOCK) * cell;  let z0 = tz0 + float(bz * WB_BLOCK) * cell
+      wb_block_add(x0, z0, x0 + float(WB_BLOCK) * cell, z0 + float(WB_BLOCK) * cell, first)
     }
   }
   let first = wb_ncells
-  let cw = f_div(f_sub(bx1, bx0), fi(64))
-  let ch = f_div(f_sub(bz1, bz0), fi(64))
+  let cw = (bx1 - bx0) / 64.0
+  let ch = (bz1 - bz0) / 64.0
   for iz in 0 .. 64 {
-    let z0 = f_add(bz0, f_mul(fi(iz), ch));  let z1 = f_add(z0, ch)
+    let z0 = bz0 + float(iz) * ch;  let z1 = z0 + ch
     for ix in 0 .. 64 {
-      let x0 = f_add(bx0, f_mul(fi(ix), cw));  let x1 = f_add(x0, cw)
+      let x0 = bx0 + float(ix) * cw;  let x1 = x0 + cw
       # inside the height map's rectangle: the fine cells above cover it
-      if inside and not f_ls(x0, tx0) and not f_gt(x1, tx1) and not f_ls(z0, tz0) and not f_gt(z1, tz1) { continue }
-      if wb_wet(f_add(x0, f_mul(cw, F_HALF)), f_add(z0, f_mul(ch, F_HALF)), 0) { wb_cell_add(x0, z0, x1, z1) }
+      if inside and not (x0 < tx0) and not (x1 > tx1) and not (z0 < tz0) and not (z1 > tz1) { continue }
+      if wb_wet(x0 + cw * 0.5, z0 + ch * 0.5, 0.0) { wb_cell_add(x0, z0, x1, z1) }
     }
   }
   wb_block_add(bx0, bz0, bx1, bz1, first)
@@ -286,10 +286,10 @@ function water_cells_build() -> void {
 # the program and the plane are the process's, built once; the bodies are the map's
 function water_setup() -> void {
   if water_prog != 0 { return }
-  water_mesh = mesh_grid(2, F_HALF)
+  water_mesh = mesh_grid(2, 0.5)
   water_prog = r3d_program("water.vert", "water.frag", "")
-  wb_level = words(WATER_MAX);  wb_cx = words(WATER_MAX);  wb_cz = words(WATER_MAX)
-  wb_ex = words(WATER_MAX);  wb_ez = words(WATER_MAX);  wb_reflect = words(WATER_MAX)
+  wb_level = floats(WATER_MAX);  wb_cx = floats(WATER_MAX);  wb_cz = floats(WATER_MAX)
+  wb_ex = floats(WATER_MAX);  wb_ez = floats(WATER_MAX);  wb_reflect = words(WATER_MAX)
 }
 function water_bodies_clear() -> void {
   wb_n = 0
@@ -299,7 +299,7 @@ function water_bodies_clear() -> void {
 }
 # Add a plane at `level` over (cx, cz) +- (ex, ez); true `reflect` makes it the mirrored one
 # if none is yet. Returns its index, or -1 once WATER_MAX are in use.
-function water_body_add(level: int, cx: int, cz: int, ex: int, ez: int, reflect: bool) -> int {
+function water_body_add(level: float, cx: float, cz: float, ex: float, ez: float, reflect: bool) -> int {
   water_setup()
   if wb_n >= WATER_MAX { return -1 }
   let i = wb_n
@@ -317,7 +317,7 @@ function water_body_add(level: int, cx: int, cz: int, ex: int, ez: int, reflect:
 }
 # one reflecting plane: what this function always meant, without a new mesh and program
 # every time it is called
-function water_init(level: int, cx: int, cz: int, ex: int, ez: int) -> void {
+function water_init(level: float, cx: float, cz: float, ex: float, ez: float) -> void {
   water_bodies_clear()
   water_body_add(level, cx, cz, ex, ez, true)
 }
@@ -334,7 +334,7 @@ function water_draw(depth_tex: int) -> void {
   # window. They are the same size only at a render scale of 1; at anything less, taking
   # the window's size sent the refraction and depth reads into the wrong corner of the
   # frame, and the lake showed a squashed copy of it instead of its own bed.
-  u_f2(gpu_uniform(p, "u_screen"), fi(post_w), fi(post_h))
+  u_f2(gpu_uniform(p, "u_screen"), float(post_w), float(post_h))
   # Read into locals first. Passing these three globals straight into the call gives the
   # shader wrong values - the whole lake churns instead of a patch of it - and a single dead
   # `let junk = wt_wade_x` above the same unchanged call is enough to make it correct again.
@@ -347,11 +347,11 @@ function water_draw(depth_tex: int) -> void {
   let wz = wt_wade_z
   let ws = wt_wade_s
   u_f3(gpu_uniform(p, "u_wade"), wx, wz, ws)
-  var ron = F_ZERO
+  var ron = 0.0
   if water_refl != null and wb_primary >= 0 {
     # bind on its own unit first: generating the mip chain re-binds the texture on the active unit,
     # and it must not displace the depth texture the shader reads for the shore
-    r3d_bind_2d(p, "u_refl", 1, water_refl.color);  ron = F_ONE
+    r3d_bind_2d(p, "u_refl", 1, water_refl.color);  ron = 1.0
     gpu_tex_param(GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
     gpu_tex_mips(GPU_TEX2D)
   }
@@ -375,15 +375,15 @@ function water_draw(depth_tex: int) -> void {
     u_f(gpu_uniform(p, "u_level"), wb_level[i])
     u_f2(gpu_uniform(p, "u_center"), wb_cx[i], wb_cz[i])
     u_f2(gpu_uniform(p, "u_extent"), wb_ex[i], wb_ez[i])
-    var r = F_ZERO
+    var r = 0.0
     if i == wb_primary { r = ron }
     u_f(gpu_uniform(p, "u_refl_on"), r)
     # Every body is clipped to the ellipse inside its bounds but an unbounded mirrored sea,
     # whose rectangle is the point. A mirrored LAKE is clipped like any other: a map whose
     # reflection belongs to its lake (the Bells in Maroon Lake) would otherwise draw that
     # lake's level over every hollow in the survey.
-    var clip = F_ONE
-    if i == wb_primary and f_gt(f_max(wb_ex[i], wb_ez[i]), fi(10000)) { clip = F_ZERO }
+    var clip = 1.0
+    if i == wb_primary and Math.max(wb_ex[i], wb_ez[i]) > 10000.0 { clip = 0.0 }
     u_f(gpu_uniform(p, "u_clip_ellipse"), clip)
     mesh_draw(water_mesh)
   }

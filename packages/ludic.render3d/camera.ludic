@@ -3,35 +3,35 @@
 # projection matrices. Float bits throughout; see fmath.ludic.
 # ============================================================================
 
-var cam_pos:   words = null      # x, y, z
-var cam_yaw:   int = 0           # radians, 0 = looking down -z
-var cam_pitch: int = 0
-var cam_fov:   int = 0           # vertical, radians
-var cam_near:  int = 0
-var cam_far:   int = 0
-var cam_aspect: int = 0
-var cam_view:  words = null
-var cam_proj:  words = null
-var cam_vp:    words = null
-var cam_inv_vp: words = null
-var cam_inv_proj: words = null
-var cam_vp_clean: words = null       # view-projection, kept for depth reconstruction
-var cam_inv_vp_clean: words = null
-var cam_fwd:   words = null
-var cam_right: words = null
+var cam_pos:   floats = null      # x, y, z
+var cam_yaw:   float = 0.0           # radians, 0 = looking down -z
+var cam_pitch: float = 0.0
+var cam_fov:   float = 0.0           # vertical, radians
+var cam_near:  float = 0.0
+var cam_far:   float = 0.0
+var cam_aspect: float = 0.0
+var cam_view:  floats = null
+var cam_proj:  floats = null
+var cam_vp:    floats = null
+var cam_inv_vp: floats = null
+var cam_inv_proj: floats = null
+var cam_vp_clean: floats = null       # view-projection, kept for depth reconstruction
+var cam_inv_vp_clean: floats = null
+var cam_fwd:   floats = null
+var cam_right: floats = null
 # the view frustum's four side planes (a, b, c, d), float bits: left, right, bottom, top;
 # from the clean (unjittered) view-projection, column-major m[col * 4 + row]
-var cam_planes: words = null
+var cam_planes: floats = null
 
-function cam_init(aspect: int) -> void {
-  cam_pos = v3_new(F_ZERO, fi(2), F_ZERO)
+function cam_init(aspect: float) -> void {
+  cam_pos = v3_new(0.0, 2.0, 0.0)
   cam_view = m4_new();  cam_proj = m4_new();  cam_vp = m4_new();  cam_inv_vp = m4_new();  cam_inv_proj = m4_new()
   cam_vp_clean = m4_new();  cam_inv_vp_clean = m4_new()
-  cam_fwd = v3_new(F_ZERO, F_ZERO, f_neg1())
-  cam_right = v3_new(F_ONE, F_ZERO, F_ZERO)
-  cam_fov = f_rad(fi(42))
-  cam_near = fl(0.3)
-  cam_far = fi(14000)
+  cam_fwd = v3_new(0.0, 0.0, -1.0)
+  cam_right = v3_new(1.0, 0.0, 0.0)
+  cam_fov = Math.deg_to_rad(42.0)
+  cam_near = 0.3
+  cam_far = 14000.0
   cam_aspect = aspect
   cam_update()
 }
@@ -39,29 +39,29 @@ function cam_begin_frame(n: int, w: int, h: int) -> void {
   gsl_jitter_frame()
   cam_update()
 }
-function cam_set(x: int, y: int, z: int, yaw_deg: int, pitch_deg: int) -> void {
+function cam_set(x: float, y: float, z: float, yaw_deg: float, pitch_deg: float) -> void {
   v3_set(cam_pos, x, y, z)
-  cam_yaw = f_rad(yaw_deg)
-  cam_pitch = f_rad(pitch_deg)
+  cam_yaw = Math.deg_to_rad(yaw_deg)
+  cam_pitch = Math.deg_to_rad(pitch_deg)
   cam_update()
 }
 function cam_update() -> void {
-  let cy = f_cos(cam_yaw);  let sy = f_sin(cam_yaw)
-  let cp = f_cos(cam_pitch);  let sp = f_sin(cam_pitch)
-  v3_set(cam_fwd, f_neg(f_mul(sy, cp)), sp, f_neg(f_mul(cy, cp)))
-  v3_set(cam_right, cy, F_ZERO, f_neg(sy))
-  let at = words(3)
+  let cy = Math.cos(cam_yaw);  let sy = Math.sin(cam_yaw)
+  let cp = Math.cos(cam_pitch);  let sp = Math.sin(cam_pitch)
+  v3_set(cam_fwd, -(sy * cp), sp, -(cy * cp))
+  v3_set(cam_right, cy, 0.0, -sy)
+  let at = floats(3)
   v3_add(at, cam_pos, cam_fwd)
-  let up = v3_new(F_ZERO, F_ONE, F_ZERO)
+  let up = v3_new(0.0, 1.0, 0.0)
   m4_look_at(cam_view, cam_pos, at, up)
   m4_perspective(cam_proj, cam_fov, cam_aspect, cam_near, cam_far)
   m4_mul(cam_vp_clean, cam_proj, cam_view)
   m4_inverse(cam_inv_vp_clean, cam_vp_clean)
   # DLSS's sub-pixel jitter (streamline.ludic), in the projection the scene draws with only:
   # culling, depth reconstruction and last frame's matrix keep the clean one
-  if gsl_jitter_x != 0 or gsl_jitter_y != 0 {
-    cam_proj[8] = f_sub(cam_proj[8], gsl_jitter_x)
-    cam_proj[9] = f_sub(cam_proj[9], gsl_jitter_y)
+  if gsl_jitter_x != 0.0 or gsl_jitter_y != 0.0 {
+    cam_proj[8] = cam_proj[8] - gsl_jitter_x
+    cam_proj[9] = cam_proj[9] - gsl_jitter_y
   }
   m4_mul(cam_vp, cam_proj, cam_view)
   m4_inverse(cam_inv_vp, cam_vp)
@@ -70,39 +70,39 @@ function cam_update() -> void {
   cam_planes_update()
 }
 function cam_planes_update() -> void {
-  if cam_planes == null { cam_planes = words(16) }
+  if cam_planes == null { cam_planes = floats(16) }
   let m = cam_vp_clean
   for p in 0 .. 4 {
     var r = 0
     if p >= 2 { r = 1 }
-    var sg = F_ONE
-    if p == 1 or p == 3 { sg = f_neg(F_ONE) }
-    var a = f_add(m[3], f_mul(sg, m[r]))
-    var b = f_add(m[7], f_mul(sg, m[4 + r]))
-    var c = f_add(m[11], f_mul(sg, m[8 + r]))
-    var d = f_add(m[15], f_mul(sg, m[12 + r]))
-    let inv = f_div(F_ONE, f_sqrt(f_add(f_add(f_mul(a, a), f_mul(b, b)), f_mul(c, c))))
-    cam_planes[p * 4] = f_mul(a, inv);  cam_planes[p * 4 + 1] = f_mul(b, inv)
-    cam_planes[p * 4 + 2] = f_mul(c, inv);  cam_planes[p * 4 + 3] = f_mul(d, inv)
+    var sg = 1.0
+    if p == 1 or p == 3 { sg = -1.0 }
+    var a = m[3] + sg * m[r]
+    var b = m[7] + sg * m[4 + r]
+    var c = m[11] + sg * m[8 + r]
+    var d = m[15] + sg * m[12 + r]
+    let inv = 1.0 / Math.sqrt(a * a + b * b + c * c)
+    cam_planes[p * 4] = a * inv;  cam_planes[p * 4 + 1] = b * inv
+    cam_planes[p * 4 + 2] = c * inv;  cam_planes[p * 4 + 3] = d * inv
   }
 }
 # is a sphere (float bits) at least partly inside the side planes of the view?
-function cam_sphere_visible(x: int, y: int, z: int, r: int) -> bool {
+function cam_sphere_visible(x: float, y: float, z: float, r: float) -> bool {
   if cam_planes == null { return true }
-  let nr = f_neg(r)
+  let nr = -r
   for p in 0 .. 4 {
     let o = p * 4
-    let dist = f_add(f_add(f_add(f_mul(cam_planes[o], x), f_mul(cam_planes[o + 1], y)), f_mul(cam_planes[o + 2], z)), cam_planes[o + 3])
-    if f_ls(dist, nr) { return false }
+    let dist = cam_planes[o] * x + cam_planes[o + 1] * y + cam_planes[o + 2] * z + cam_planes[o + 3]
+    if dist < nr { return false }
   }
   return true
 }
 # fly: forward/strafe in metres, turn in radians
-function cam_move(fwd: int, strafe: int, up: int, dyaw: int, dpitch: int) -> void {
-  cam_yaw = f_add(cam_yaw, dyaw)
-  cam_pitch = f_clamp(f_add(cam_pitch, dpitch), f_neg(fl(1.5)), fl(1.5))
+function cam_move(fwd: float, strafe: float, up: float, dyaw: float, dpitch: float) -> void {
+  cam_yaw = cam_yaw + dyaw
+  cam_pitch = Math.clamp(cam_pitch + dpitch, -1.5, 1.5)
   v3_madd(cam_pos, cam_pos, cam_fwd, fwd)
   v3_madd(cam_pos, cam_pos, cam_right, strafe)
-  cam_pos[1] = f_add(cam_pos[1], up)
+  cam_pos[1] = cam_pos[1] + up
   cam_update()
 }

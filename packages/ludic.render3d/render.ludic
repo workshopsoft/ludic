@@ -6,44 +6,44 @@
 # ============================================================================
 
 var r3d_sky_prog: int = 0
-var r3d_fog_density: int = 0
-var r3d_fog_scale: int = 0x3F800000   # float bits: a setting's multiplier over the density the day sets
-var r3d_fog_falloff: int = 0
-var r3d_fog_base: int = 0            # the height fog is measured from (float bits); 0 = y = 0
+var r3d_fog_density: float = 0.0
+var r3d_fog_scale: float = 1.0   # float bits: a setting's multiplier over the density the day sets
+var r3d_fog_falloff: float = 0.0
+var r3d_fog_base: float = 0.0            # the height fog is measured from (float bits); 0 = y = 0
 # Both of these are the DAY's, set by daylight_set from the sun's own elevation. The inscatter
 # is how hard the air scatters the sun forward - nearly nothing at noon, and the glow a ridge
 # is silhouetted against at dusk. The desaturation is how fast distance takes a surface's own
 # colour away, which is the term that was missing entirely and is most of why a midday frame
 # had no depth in it at all.
-var r3d_fog_inscatter: int = 0x3CA3D70A   # 0.02, what the shader used to hard-code
-var r3d_fog_desat: int = 0x3FACCCCD       # 1.35
+var r3d_fog_inscatter: float = 0.02   # 0.02, what the shader used to hard-code
+var r3d_fog_desat: float = 1.35       # 1.35
 # How much of the visible sky's colour comes from the analytic model rather than from the
 # photograph (sky.frag). The day fades it in: at night the sky has its own tint, a star field
 # and a moon, and relighting on top of those would only wash them out.
-var r3d_sky_relight: int = 0
+var r3d_sky_relight: float = 0.0
 # What the ground reflects back up, low and high, and the height they cross at. The defaults
 # are Maroon Lake's - a green basin under a grey-rock treeline at about 480 m over the datum.
-var r3d_ground_alb_r: int = 0x3E99999A;  var r3d_ground_alb_g: int = 0x3EAE147B;  var r3d_ground_alb_b: int = 0x3E0F5C29
-var r3d_ground_hi_r: int = 0x3E93F7CF;  var r3d_ground_hi_g: int = 0x3E8F5C29;  var r3d_ground_hi_b: int = 0x3E851EB8
-var r3d_ground_hi_y: int = 0x43F00000    # 480
-var r3d_ground_hi_w: int = 0x43160000    # 150
-var r3d_time: int = 0
+var r3d_ground_alb_r: float = 0.3;  var r3d_ground_alb_g: float = 0.34;  var r3d_ground_alb_b: float = 0.14
+var r3d_ground_hi_r: float = 0.289;  var r3d_ground_hi_g: float = 0.28;  var r3d_ground_hi_b: float = 0.26
+var r3d_ground_hi_y: float = 480.0    # 480
+var r3d_ground_hi_w: float = 150.0    # 150
+var r3d_time: float = 0.0
 var r3d_ready: bool = false
 # set before r3d_init to build the landscape from a real height map
 var r3d_dem_path: string = null
-var r3d_dem_min: int = 0
-var r3d_dem_max: int = 0
-var r3d_dem_base: int = 0
-var r3d_dem_ox: int = 0
-var r3d_dem_oz: int = 0
+var r3d_dem_min: float = 0.0
+var r3d_dem_max: float = 0.0
+var r3d_dem_base: float = 0.0
+var r3d_dem_ox: float = 0.0
+var r3d_dem_oz: float = 0.0
 var r3d_ortho_path: string = null
 var r3d_debug: bool = false
 var r3d_debug_shadow: bool = false
 var r3d_debug_max: bool = false
 
-var r3d_cloud_shadow: int = 0x3F000000     # 0.5
+var r3d_cloud_shadow: float = 0.5     # 0.5
 
-var r3d_clip_y: int = 0xCF000000            # -2^31: no clipping
+var r3d_clip_y: float = -2147483600.0            # -2^31: no clipping
 # R3D_NOPREPASS=1: light the foliage the old way, every card behind the front one included
 var r3d_prepass_env: int = -1
 function r3d_prepass_off() -> bool {
@@ -52,7 +52,7 @@ function r3d_prepass_off() -> bool {
 }
 function fog_bind(prog: int) -> void {
   u_f(gpu_uniform(prog, "u_clip_y"), r3d_clip_y)
-  u_f(gpu_uniform(prog, "u_spec_scale"), F_ONE)
+  u_f(gpu_uniform(prog, "u_spec_scale"), 1.0)
   u_f(gpu_uniform(prog, "u_fog_density"), r3d_fog_density)
   u_f(gpu_uniform(prog, "u_fog_height_falloff"), r3d_fog_falloff)
   u_f(gpu_uniform(prog, "u_fog_base"), r3d_fog_base)
@@ -63,7 +63,7 @@ function fog_bind(prog: int) -> void {
   u_f(gpu_uniform(prog, "u_ground_hi_y"), r3d_ground_hi_y)
   u_f(gpu_uniform(prog, "u_ground_hi_w"), r3d_ground_hi_w)
   var cs = r3d_cloud_shadow
-  if r3d_env_has("R3D_NOCLOUD") { cs = F_ZERO }
+  if r3d_env_has("R3D_NOCLOUD") { cs = 0.0 }
   u_f(gpu_uniform(prog, "u_cloud_shadow"), cs)
   u_f(gpu_uniform(prog, "u_time"), r3d_time)
 }
@@ -80,7 +80,7 @@ function r3d_env_flags() -> void {
   r3d_no_refl = r3d_env_has("R3D_NOREFL")
   if r3d_env_has("R3D_DEBUG") { r3d_debug = true }
   if r3d_env_has("R3D_DBGSHADOW") { r3d_debug_shadow = true }
-  if r3d_env_has("R3D_NOGI") { post_gi_strength = F_ZERO;  post_ao_strength = F_ZERO;  post_no_gi = true }
+  if r3d_env_has("R3D_NOGI") { post_gi_strength = 0.0;  post_ao_strength = 0.0;  post_no_gi = true }
   if r3d_env_has("R3D_MSAA") { post_ms_samples = Text.to_int(r3d_env("R3D_MSAA")) }
   sc_skip_blade = r3d_env_has("R3D_NOBLADES")
   sc_skip_card = r3d_env_has("R3D_NOCARDS")
@@ -111,7 +111,7 @@ function r3d_open(w: int, h: int, title: string) -> bool {
   var renderer: string = gpu_renderer_name()
   print(`r3d: {gl_w}x{gl_h} on {renderer}`)
   prof_init()
-  cam_init(fr(gl_w, gl_h))
+  cam_init(float(gl_w) / float(gl_h))
   return true
 }
 
@@ -144,8 +144,8 @@ function r3d_load_step(i: int) -> bool {
     # was doing its whole job through colour and could not be raised without the valley going
     # blue. With the desaturation term carrying the depth, the air can be as thick as real air
     # at 2900 m and the far ridge recedes instead of tinting.
-    r3d_fog_density = fl(0.00024)
-    r3d_fog_falloff = fl(0.002)
+    r3d_fog_density = 0.00024
+    r3d_fog_falloff = 0.002
     r3d_ready = true
     gpu_check("r3d init")
   }
@@ -162,9 +162,9 @@ function r3d_draw_sky() -> void {
   sky_bind_rot(p)
   sky_bind_lighting(p)
   u_mat4(gpu_uniform(p, "u_inv_vp"), cam_inv_vp)
-  u_f(gpu_uniform(p, "u_sky_gain"), fl(0.95))
+  u_f(gpu_uniform(p, "u_sky_gain"), 0.95)
   u_f(gpu_uniform(p, "u_sky_relight"), r3d_sky_relight)
-  u_f(gpu_uniform(p, "u_sky_sat"), fl(1.35))
+  u_f(gpu_uniform(p, "u_sky_sat"), 1.35)
   u_f(gpu_uniform(p, "u_time"), r3d_time)
   mesh_draw(sky_fullscreen)
   gpu_depth_write(true)
@@ -178,7 +178,7 @@ function r3d_present() -> void { gpu_present() }
 
 # the drawable changed size: the camera's aspect and every screen-sized target follow
 function r3d_resize() -> void {
-  cam_aspect = fr(gl_w, gl_h)
+  cam_aspect = float(gl_w) / float(gl_h)
   cam_update()
   post_free()
   post_init(gl_w, gl_h)
@@ -186,7 +186,7 @@ function r3d_resize() -> void {
   print(`r3d: resized to {gl_w}x{gl_h}`)
 }
 var r3d_cam_log: int = -1
-function r3d_frame(time: int) -> void {
+function r3d_frame(time: float) -> void {
   gpu_glcheck_after("the time between frames")
   outline_frame()
   if not r3d_ready { return }
@@ -218,7 +218,7 @@ function r3d_frame(time: int) -> void {
   # camera that moves while the hiker stands still from a picture that shakes on its own
   if r3d_cam_log < 0 { r3d_cam_log = 0;  if r3d_env_has("R3D_CAM_LOG") { r3d_cam_log = 1 } }
   if r3d_cam_log == 1 {
-    print(`cam {r3d_test_frame} pos {f_to_int(f_mul(cam_pos[0], fi(1000)))} {f_to_int(f_mul(cam_pos[1], fi(1000)))} {f_to_int(f_mul(cam_pos[2], fi(1000)))} yaw {f_to_int(f_mul(cam_yaw, fi(1000)))} pitch {f_to_int(f_mul(cam_pitch, fi(1000)))} jitter {f_to_int(f_mul(gsl_jitter_x, fi(1000000)))} {f_to_int(f_mul(gsl_jitter_y, fi(1000000)))} render {post_w}x{post_h} reset {gsl_reset} evalok {gsl_eval_ok} fresh {gsl_fresh}`)
+    print(`cam {r3d_test_frame} pos {int(cam_pos[0] * 1000.0)} {int(cam_pos[1] * 1000.0)} {int(cam_pos[2] * 1000.0)} yaw {int(cam_yaw * 1000.0)} pitch {int(cam_pitch * 1000.0)} jitter {int(gsl_jitter_x * 1000000.0)} {int(gsl_jitter_y * 1000000.0)} render {post_w}x{post_h} reset {gsl_reset} evalok {gsl_eval_ok} fresh {gsl_fresh}`)
   }
   # the height-field shadow rebakes as the light moves in steps (daylight), or with the sky yaw when there is no clock
   if (not day_on and ter_shadow_yaw != sky_yaw) or ter_shadow_gen != day_gen {

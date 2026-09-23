@@ -1537,7 +1537,11 @@ function emit_expr(e: Node) -> Val {
   if e.kind == E_UN {
     let a = emit_expr(e.a)
     if is_fp(a.ty) {
-      if (e.s == ("-")) { return val(emit_bind(`fneg {a.ty} {a.code}`), a.ty) }
+      if (e.s == ("-")) {
+        let nf = val(emit_bind(`fneg {a.ty} {a.code}`), a.ty)
+        if (a.lit != null) { nf.lit = e }            # -1.5 stays a literal: a fixed slot can still take it
+        return nf
+      }
       perr(`operator {e.s} does not apply to {a.ty}`)
     }
     if (e.s == ("-")) and (a.lit != null) {         # -1.5 stays a literal: exact in a float context

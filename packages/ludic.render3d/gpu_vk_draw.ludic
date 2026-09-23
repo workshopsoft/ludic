@@ -245,19 +245,19 @@ function gvk_compute_probe() -> void {
   let n = 1000
   let b = gvk_buf_new()
   let data = bytes(n * 4)
-  for i in 0 .. n { Vk.put_i32(data, i * 4, fi(i)) }
+  for i in 0 .. n { Vk.put_i32(data, i * 4, float_bits(float(i))) }
   gvk_buf_upload(b, n * 4, data)
   gvk_buf_gpu_owned(b)
   let pr = bytes(8)
   Vk.put_i32(pr, 0, n)
-  Vk.put_i32(pr, 4, fi(3))
+  Vk.put_i32(pr, 4, float_bits(3.0))
   let bufs = words(1)
   bufs[0] = b
   gvk_dispatch(c, pr, 8, bufs, (n + 63) / 64, 1, 1)
   gvk_flush()
   var bad = 0
   let mp = gvk_buf_map[b]
-  for i in 0 .. n { if Vk.get_i32(mp, i * 4) != fi(i * 3) { bad += 1 } }
+  for i in 0 .. n { if float_from_bits(Vk.get_i32(mp, i * 4)) != float(i * 3) { bad += 1 } }
   if bad == 0 { print(`r3d: vulkan compute probe OK ({n} values)`) } else { print(`r3d: vulkan compute probe: FAILED ({bad} of {n} wrong)`) }
 }
 
@@ -943,7 +943,7 @@ var gvk_pass_samples: int = 1         # the attachments' sample count, which eve
 var gvk_pass_col: words = null        # the pass's colour attachments: texture, layer + 1
 var gvk_pass_dep: words = null        # its depth attachment: texture, layer + 1
 var gvk_clear_bits: int = 0           # GL_COLOR_BUFFER_BIT / GL_DEPTH_BUFFER_BIT waiting for the pass
-var gvk_clear_rgba: words = null      # float bits
+var gvk_clear_rgba: floats = null      # float bits
 var gvk_vp: words = null              # x, y, w, h
 var gvk_sc: words = null              # scissor on, x, y (OpenGL rows), w, h
 var gvk_screen_color: int = 0
@@ -977,17 +977,17 @@ function gvk_screen_fmt() -> int { if gvk_hdr_on { return GL_RGB10_A2 };  return
 # picture's and the interface's white sit, and how far the darkest shade is lifted. Displays differ by
 # an order of magnitude - a 400-nit monitor and a 2000-nit television - and one fixed curve either
 # clips the first's highlights flat or leaves the second dim.
-var r3d_hdr_peak: int = 0             # 0 until r3d_hdr_calibrate: 1000
-var r3d_hdr_paper: int = 0            # 200
-var r3d_hdr_black: int = 0            # 0
-function r3d_hdr_peak_nits() -> int { if r3d_hdr_peak == 0 { return fi(1000) };  return r3d_hdr_peak }
-function r3d_hdr_paper_nits() -> int { if r3d_hdr_paper == 0 { return fi(200) };  return r3d_hdr_paper }
-function r3d_hdr_black_nits() -> int { return r3d_hdr_black }
-function r3d_hdr_calibrate(peak: int, paper: int, black: int) -> void {
-  var pk = f_clamp(peak, fi(100), fi(10000))
-  let pp = f_clamp(paper, fi(80), fi(1000))
-  if f_ls(pk, pp) { pk = pp }
-  let bl = f_clamp(black, F_ZERO, fi(5))
+var r3d_hdr_peak: float = 0.0             # 0 until r3d_hdr_calibrate: 1000
+var r3d_hdr_paper: float = 0.0            # 200
+var r3d_hdr_black: float = 0.0            # 0
+function r3d_hdr_peak_nits() -> float { if r3d_hdr_peak == 0.0 { return 1000.0 };  return r3d_hdr_peak }
+function r3d_hdr_paper_nits() -> float { if r3d_hdr_paper == 0.0 { return 200.0 };  return r3d_hdr_paper }
+function r3d_hdr_black_nits() -> float { return r3d_hdr_black }
+function r3d_hdr_calibrate(peak: float, paper: float, black: float) -> void {
+  var pk = Math.clamp(peak, 100.0, 10000.0)
+  let pp = Math.clamp(paper, 80.0, 1000.0)
+  if pk < pp { pk = pp }
+  let bl = Math.clamp(black, 0.0, 5.0)
   if pk == r3d_hdr_peak and pp == r3d_hdr_paper and bl == r3d_hdr_black { return }
   r3d_hdr_peak = pk;  r3d_hdr_paper = pp;  r3d_hdr_black = bl
   # the display is told what the picture now reaches
@@ -999,14 +999,14 @@ function gvk_hdr_metadata() -> void {
   let md = bytes(VkHdrMetadataEXT_sizeof)
   Vk.zero(md, VkHdrMetadataEXT_sizeof)
   Vk.put_i32(md, VkHdrMetadataEXT_sType, VK_STRUCTURE_TYPE_HDR_METADATA_EXT)
-  Vk.put_i32(md, VkHdrMetadataEXT_displayPrimaryRed + VkXYColorEXT_x, fl(0.64));  Vk.put_i32(md, VkHdrMetadataEXT_displayPrimaryRed + VkXYColorEXT_y, fl(0.33))
-  Vk.put_i32(md, VkHdrMetadataEXT_displayPrimaryGreen + VkXYColorEXT_x, fl(0.30));  Vk.put_i32(md, VkHdrMetadataEXT_displayPrimaryGreen + VkXYColorEXT_y, fl(0.60))
-  Vk.put_i32(md, VkHdrMetadataEXT_displayPrimaryBlue + VkXYColorEXT_x, fl(0.15));  Vk.put_i32(md, VkHdrMetadataEXT_displayPrimaryBlue + VkXYColorEXT_y, fl(0.06))
-  Vk.put_i32(md, VkHdrMetadataEXT_whitePoint + VkXYColorEXT_x, fl(0.3127));  Vk.put_i32(md, VkHdrMetadataEXT_whitePoint + VkXYColorEXT_y, fl(0.3290))
-  Vk.put_i32(md, VkHdrMetadataEXT_maxLuminance, r3d_hdr_peak_nits())
-  Vk.put_i32(md, VkHdrMetadataEXT_minLuminance, fl(0.001))
-  Vk.put_i32(md, VkHdrMetadataEXT_maxContentLightLevel, r3d_hdr_peak_nits())
-  Vk.put_i32(md, VkHdrMetadataEXT_maxFrameAverageLightLevel, r3d_hdr_paper_nits())
+  Vk.put_i32(md, VkHdrMetadataEXT_displayPrimaryRed + VkXYColorEXT_x, float_bits(0.64));  Vk.put_i32(md, VkHdrMetadataEXT_displayPrimaryRed + VkXYColorEXT_y, float_bits(0.33))
+  Vk.put_i32(md, VkHdrMetadataEXT_displayPrimaryGreen + VkXYColorEXT_x, float_bits(0.30));  Vk.put_i32(md, VkHdrMetadataEXT_displayPrimaryGreen + VkXYColorEXT_y, float_bits(0.60))
+  Vk.put_i32(md, VkHdrMetadataEXT_displayPrimaryBlue + VkXYColorEXT_x, float_bits(0.15));  Vk.put_i32(md, VkHdrMetadataEXT_displayPrimaryBlue + VkXYColorEXT_y, float_bits(0.06))
+  Vk.put_i32(md, VkHdrMetadataEXT_whitePoint + VkXYColorEXT_x, float_bits(0.3127));  Vk.put_i32(md, VkHdrMetadataEXT_whitePoint + VkXYColorEXT_y, float_bits(0.3290))
+  Vk.put_i32(md, VkHdrMetadataEXT_maxLuminance, float_bits(r3d_hdr_peak_nits()))
+  Vk.put_i32(md, VkHdrMetadataEXT_minLuminance, float_bits(0.001))
+  Vk.put_i32(md, VkHdrMetadataEXT_maxContentLightLevel, float_bits(r3d_hdr_peak_nits()))
+  Vk.put_i32(md, VkHdrMetadataEXT_maxFrameAverageLightLevel, float_bits(r3d_hdr_paper_nits()))
   let chains = bytes(8)
   Vk.put_i64(chains, 0, gvk_swap)
   Vk.set_hdr_metadata_ext(gvk_dev, 1, chains, md)
@@ -1014,7 +1014,7 @@ function gvk_hdr_metadata() -> void {
 
 function gvk_screen_make(w: int, h: int) -> bool {
   if gvk_vp == null {
-    gvk_vp = words(4);  gvk_sc = words(5);  gvk_clear_rgba = words(4)
+    gvk_vp = words(4);  gvk_sc = words(5);  gvk_clear_rgba = floats(4)
     gvk_pass_col = words(4);  gvk_pass_dep = words(2)
     gvk_fb_ncolor = words(4096)
     for i in 0 .. 4096 { gvk_fb_ncolor[i] = 1 }
@@ -1131,7 +1131,7 @@ function gvk_pass_begin(rec: words, rec_o: int) -> void {
     Vk.put_i32(catt, c * aw + VkRenderingAttachmentInfo_storeOp, VK_ATTACHMENT_STORE_OP_STORE)
     if (gvk_clear_bits & GL_COLOR_BUFFER_BIT) != 0 {
       Vk.put_i32(catt, c * aw + VkRenderingAttachmentInfo_loadOp, VK_ATTACHMENT_LOAD_OP_CLEAR)
-      for k in 0 .. 4 { Vk.put_i32(catt, c * aw + VkRenderingAttachmentInfo_clearValue + k * 4, gvk_clear_rgba[k]) }
+      for k in 0 .. 4 { Vk.put_i32(catt, c * aw + VkRenderingAttachmentInfo_clearValue + k * 4, float_bits(gvk_clear_rgba[k])) }
     } else { Vk.put_i32(catt, c * aw + VkRenderingAttachmentInfo_loadOp, VK_ATTACHMENT_LOAD_OP_LOAD) }
     gvk_pass_cfmt = gvk_tex_vkfmt[tex]
     gvk_pass_samples = gvk_tex_samples_of(tex)
@@ -1193,7 +1193,7 @@ function gvk_clear(mask: int, rec: words, rec_o: int) -> void {
     for c in 0 .. gvk_pass_ncolor {
       Vk.put_i32(atts, n * caw + VkClearAttachment_aspectMask, VK_IMAGE_ASPECT_COLOR_BIT)
       Vk.put_i32(atts, n * caw + VkClearAttachment_colorAttachment, c)
-      for k in 0 .. 4 { Vk.put_i32(atts, n * caw + VkClearAttachment_clearValue + k * 4, gvk_clear_rgba[k]) }
+      for k in 0 .. 4 { Vk.put_i32(atts, n * caw + VkClearAttachment_clearValue + k * 4, float_bits(gvk_clear_rgba[k])) }
       n += 1
     }
   }
@@ -1219,10 +1219,10 @@ function gvk_tex_h(tex: int) -> int { return gvk_tex_dims_h[tex] }
 function gvk_set_view(cb: pointer) -> void {
   let vp = bytes(VkViewport_sizeof)
   Vk.zero(vp, VkViewport_sizeof)
-  Vk.put_i32(vp, VkViewport_x, fi(gvk_vp[0]))
-  Vk.put_i32(vp, VkViewport_y, fi(gvk_vp[1]))
-  Vk.put_i32(vp, VkViewport_width, fi(gvk_vp[2]))
-  Vk.put_i32(vp, VkViewport_height, fi(gvk_vp[3]))
+  Vk.put_i32(vp, VkViewport_x, float_bits(float(gvk_vp[0])))
+  Vk.put_i32(vp, VkViewport_y, float_bits(float(gvk_vp[1])))
+  Vk.put_i32(vp, VkViewport_width, float_bits(float(gvk_vp[2])))
+  Vk.put_i32(vp, VkViewport_height, float_bits(float(gvk_vp[3])))
   Vk.put_i32(vp, VkViewport_maxDepth, 0x3F800000)
   Vk.cmd_set_viewport(cb, 0, 1, vp)
   let sc = bytes(VkRect2D_sizeof)
@@ -1454,7 +1454,7 @@ function gvk_viewport(x: int, y: int, w: int, h: int) -> void {
   if gvk_vp == null { return }
   gvk_vp[0] = x;  gvk_vp[1] = y;  gvk_vp[2] = w;  gvk_vp[3] = h
 }
-function gvk_clear_color(r: int, g: int, b: int, a: int) -> void {
+function gvk_clear_color(r: float, g: float, b: float, a: float) -> void {
   if gvk_clear_rgba == null { return }
   gvk_clear_rgba[0] = r;  gvk_clear_rgba[1] = g;  gvk_clear_rgba[2] = b;  gvk_clear_rgba[3] = a
 }
@@ -1487,8 +1487,8 @@ function gvk_state_now() -> GvkState {
   st.color_write = 1;  if gpu_s_color_write == 0 { st.color_write = 0 }
   st.a2c = 0;  if gpu_s_a2c == 1 { st.a2c = 1 }
   st.bias = 0;  if gpu_s_bias == 1 { st.bias = 1 }
-  st.bias_factor = gpu_s_bias_f
-  st.bias_units = gpu_s_bias_u
+  st.bias_factor = float_bits(gpu_s_bias_f)
+  st.bias_units = float_bits(gpu_s_bias_u)
   st.wireframe = gvk_wireframe
   return st
 }

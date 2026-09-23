@@ -15,9 +15,9 @@ property Prim {
 }
 property Model {
   prims:  []Prim,
-  radius: int = 0,       # float bits: max horizontal extent from the origin
-  height: int = 0,       # float bits: y extent above ymin
-  ymin:   int = 0,
+  radius: float = 0.0,       # float bits: max horizontal extent from the origin
+  height: float = 0.0,       # float bits: y extent above ymin
+  ymin:   float = 0.0,
   tris:   int = 0,
   skin:   Skin           # the skeleton, for a skinned node (skin.ludic); null for a rigid model
 }
@@ -35,9 +35,9 @@ var gltf_white: int = 0
 var gltf_flat: int = 0
 
 # a JSON number as float bits (ints and fixed-point decimals both)
-function jnum(v: Val) -> int {
-  if v.tag == 2 { return fx_to_f32(v.num) }
-  return f_from_int(v.num)
+function jnum(v: Val) -> float {
+  if v.tag == 2 { return float(v.num) / 65536.0 }
+  return float(v.num)
 }
 function jint(v: Val, key: pointer, fallback: int) -> int {
   if value_has(v, key) == 0 { return fallback }
@@ -197,7 +197,7 @@ function gltf_load(dir: string, file: string, node_name: string) -> Model {
   model.prims = new []Prim
   let mesh = value_at(value_get(gltf_doc, "meshes"), mesh_idx)
   let prims = value_get(mesh, "primitives")
-  var r2 = F_ZERO;  var ymin = fi(1000);  var ymax = fi(-1000)
+  var r2 = 0.0;  var ymin = 1000.0;  var ymax = -1000.0
   for i in 0 .. value_count(prims) {
     let p = value_at(prims, i)
     push(model.prims, gltf_prim(p))
@@ -205,20 +205,20 @@ function gltf_load(dir: string, file: string, node_name: string) -> Model {
     # bounds from the accessor min/max
     let acc = value_at(value_get(gltf_doc, "accessors"), value_as_int(value_get(value_get(p, "attributes"), "POSITION")))
     let mn = value_get(acc, "min");  let mx = value_get(acc, "max")
-    let x0 = f_abs(jnum(value_at(mn, 0)));  let x1 = f_abs(jnum(value_at(mx, 0)))
-    let z0 = f_abs(jnum(value_at(mn, 2)));  let z1 = f_abs(jnum(value_at(mx, 2)))
-    let rx = f_max(x0, x1);  let rz = f_max(z0, z1)
-    let rr = f_add(f_mul(rx, rx), f_mul(rz, rz))
-    if f_gt(rr, r2) { r2 = rr }
+    let x0 = Math.abs(jnum(value_at(mn, 0)));  let x1 = Math.abs(jnum(value_at(mx, 0)))
+    let z0 = Math.abs(jnum(value_at(mn, 2)));  let z1 = Math.abs(jnum(value_at(mx, 2)))
+    let rx = Math.max(x0, x1);  let rz = Math.max(z0, z1)
+    let rr = rx * rx + rz * rz
+    if rr > r2 { r2 = rr }
     let y0 = jnum(value_at(mn, 1));  let y1 = jnum(value_at(mx, 1))
-    if f_ls(y0, ymin) { ymin = y0 }
-    if f_gt(y1, ymax) { ymax = y1 }
+    if y0 < ymin { ymin = y0 }
+    if y1 > ymax { ymax = y1 }
   }
   if skin_idx >= 0 { model.skin = skin_load(skin_idx) }
   file_close(gltf_bin)
-  model.radius = f_sqrt(r2)
+  model.radius = Math.sqrt(r2)
   model.ymin = ymin
-  model.height = f_sub(ymax, ymin)
+  model.height = ymax - ymin
   print(`gltf: {node_name}: {len(model.prims)} prims, {model.tris} tris`)
   return model
 }
