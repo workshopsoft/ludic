@@ -1,0 +1,57 @@
+# check_env.ludic — L4: the checker's scopes and its errors. A scope is a mark in one list of
+# (name, type) pairs; a lookup walks it from the end, so an inner name hides an outer one.
+var ck_names: []pointer = new []pointer
+var ck_tys: []pointer = new []pointer
+var ck_ret: pointer = "void"            # the result type of the function being checked
+var ck_errors: int = 0
+var ck_report: int = -1                 # LUDIC_CHECK_REPORT=1: list every mix-up by category, fail nothing
+
+var ck_top: int = 0                     # the scope stack's height; the lists only grow
+function ck_bind(name: pointer, ty: pointer) -> void {
+  var t = ty
+  if (t == "null") or t == null { t = "?" }
+  if ck_top < len(ck_names) {
+    ck_names[ck_top] = name
+    ck_tys[ck_top] = t
+  } else {
+    push(ck_names, name)
+    push(ck_tys, t)
+  }
+  ck_top += 1
+}
+function ck_mark() -> int { return ck_top }
+function ck_pop(m: int) -> void { ck_top = m }
+function ck_local(name: pointer) -> int {
+  var i = ck_top - 1
+  while i >= 0 {
+    if ck_names[i] == name { return i }
+    i -= 1
+  }
+  return -1
+}
+function ck_reporting() -> bool {
+  if ck_report < 0 {
+    ck_report = 0
+    if getenv("LUDIC_CHECK_REPORT") != null { ck_report = 1 }
+  }
+  return ck_report == 1
+}
+# every mix-up is reported, not only the first: a type change shows everything it breaks at once
+function ck_err(cat: pointer, n: Node, msg: pointer) -> void {
+  var file: pointer = ""
+  var line = 0
+  if n != null {
+    if n.file != null { file = n.file }
+    line = n.line
+  }
+  var m = `{file}:{itoa(line)}: error: {msg}\n`
+  if ck_reporting() { m = `check[{cat}]: {file}:{itoa(line)}: {msg}\n` }
+  file_write(file_stderr(), m, len(m))
+  ck_errors += 1
+}
+# a value given where a type is wanted: `what` says where ("argument 2 of f", "x")
+function ck_give(to: pointer, from: pointer, e: Node, what: pointer) -> void {
+  let cat = ck_mismatch(to, from, e)
+  if cat == null { return }
+  ck_err(cat, e, `{what} wants {ck_a(to)} and this is {ck_a(from)}`)
+}

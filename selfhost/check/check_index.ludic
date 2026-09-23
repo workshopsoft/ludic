@@ -1,0 +1,74 @@
+# check_index.ludic — L4: the checker's name index. The emitter finds a declaration by scanning
+# every one (find_fn, find_global, find_comp); a pass that asks about every call and every name
+# builds a hash of them once instead. One table per kind of declaration.
+const CK_SLOTS: int = 65536
+var ck_fn_k: []pointer = new []pointer
+var ck_fn_v: []Node = new []Node
+var ck_gl_k: []pointer = new []pointer
+var ck_gl_v: []Node = new []Node
+var ck_rec_k: []pointer = new []pointer
+var ck_rec_v: []Node = new []Node
+var ck_en_k: []pointer = new []pointer
+var ck_en_v: []Node = new []Node
+var ck_ex_k: []pointer = new []pointer
+var ck_ex_v: []Node = new []Node
+
+function ck_hash(s: pointer) -> int {
+  var h = 5381
+  var i = 0
+  let n = len(s)
+  while i < n {
+    h = (h * 33 + s[i]) % 1000003
+    i += 1
+  }
+  return h % CK_SLOTS
+}
+function ck_tab_init(k: []pointer, v: []Node) -> void {
+  var i = 0
+  while i < CK_SLOTS {
+    push(k, null)
+    push(v, null)
+    i += 1
+  }
+}
+# the first declaration of a name wins, as it does in the emitter
+function ck_tab_put(k: []pointer, v: []Node, name: pointer, d: Node) -> void {
+  var h = ck_hash(name)
+  while k[h] != null {
+    if k[h] == name { return }
+    h = (h + 1) % CK_SLOTS
+  }
+  k[h] = name
+  v[h] = d
+}
+function ck_tab_get(k: []pointer, v: []Node, name: pointer) -> Node {
+  if name == null { return null }
+  var h = ck_hash(name)
+  while k[h] != null {
+    if k[h] == name { return v[h] }
+    h = (h + 1) % CK_SLOTS
+  }
+  return null
+}
+function ck_index() -> void {
+  ck_tab_init(ck_fn_k, ck_fn_v)
+  ck_tab_init(ck_gl_k, ck_gl_v)
+  ck_tab_init(ck_rec_k, ck_rec_v)
+  ck_tab_init(ck_en_k, ck_en_v)
+  ck_tab_init(ck_ex_k, ck_ex_v)
+  var i = 0
+  while i < len(prog) {
+    let d = prog[i]
+    if d.kind == N_FN { ck_tab_put(ck_fn_k, ck_fn_v, d.s, d) }
+    if d.kind == N_VAR or d.kind == N_CONST { ck_tab_put(ck_gl_k, ck_gl_v, d.s, d) }
+    if d.kind == N_COMP { ck_tab_put(ck_rec_k, ck_rec_v, d.s, d) }
+    if d.kind == N_ENUM { ck_tab_put(ck_en_k, ck_en_v, d.s, d) }
+    if d.kind == N_EXTERN { ck_tab_put(ck_ex_k, ck_ex_v, d.s, d) }
+    i += 1
+  }
+}
+function ck_fn(name: pointer) -> Node { return ck_tab_get(ck_fn_k, ck_fn_v, name) }
+function ck_global(name: pointer) -> Node { return ck_tab_get(ck_gl_k, ck_gl_v, name) }
+function ck_record(name: pointer) -> Node { return ck_tab_get(ck_rec_k, ck_rec_v, name) }
+function ck_enum(name: pointer) -> Node { return ck_tab_get(ck_en_k, ck_en_v, name) }
+function ck_extern(name: pointer) -> Node { return ck_tab_get(ck_ex_k, ck_ex_v, name) }

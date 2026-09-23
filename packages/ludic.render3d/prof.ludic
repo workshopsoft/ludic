@@ -201,7 +201,7 @@ function prof_bake_add(us: long) -> void { if prof_on { prof_bake_us_cur = prof_
 function prof_chunk(kind: int, band: int, count: int, us: long) -> void {
   if not prof_on { return }
   if prof_chunk_us == null {
-    prof_chunk_us = new []int;  prof_chunk_kind = new []int
+    prof_chunk_us = new []long;  prof_chunk_kind = new []int
     prof_chunk_band = new []int;  prof_chunk_n = new []int
   }
   push(prof_chunk_us, us);  push(prof_chunk_kind, kind)

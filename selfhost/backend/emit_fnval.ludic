@@ -79,7 +79,7 @@ function emit_indirect_call(fv: Val, e: Node) -> Val {
   }
   let rl = llty(ret)
   emit("  ")
-  var rreg = "0"
+  var rreg: pointer = "0"
   if not (rl == "void") {
     rreg = nreg()
     emit(rreg)

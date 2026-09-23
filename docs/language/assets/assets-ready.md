@@ -4,8 +4,8 @@ name: Assets.ready
 category: assets
 kind: namespace-method
 tokens: Assets.ready
-sig: Assets.ready() -> int
-tip: 1 once every enqueued asset has loaded.
+sig: Assets.ready() -> bool
+tip: true once every enqueued asset has loaded.
 order: 8
 ns: Assets
 member: ready

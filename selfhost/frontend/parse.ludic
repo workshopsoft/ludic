@@ -105,7 +105,7 @@ function ptype() -> pointer {
       if is_op(",") { pi += 1 }
     }
     eat_op(")")
-    var r = "void"
+    var r: pointer = "void"
     if is_op("->") {
       pi += 1
       r = ptype()

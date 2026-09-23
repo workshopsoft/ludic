@@ -417,7 +417,7 @@ function sh_half_w(e: int) -> int {
     if mode == AimMode.RightStick {
       let ax = Input.pad_axis(0, STICK_RIGHT_X)
       let ay = Input.pad_axis(0, STICK_RIGHT_Y)
-      if (ax != 0) or (ay != 0) { target = sh_dir_angle(ax, ay);  have = 1 }
+      if (ax != 0) or (ay != 0) { target = sh_dir_angle_fx(ax, ay);  have = 1 }
     }
     if mode == AimMode.MoveDirection {              # from the movement intent
       let wx = td_get(e, "want_x")
@@ -473,6 +473,12 @@ function sh_dir_angle(dx: int, dy: int) -> int {
   let r = Math.atan2(fixed(dy), fixed(dx))
   return sh_wrap_deg(floor(Math.rad_to_deg(r)))
 }
+# a stick's deflection is already fixed: fixed(dy) on it would scale it by 65536 again and
+# overflow past half a push, turning the aim round
+function sh_dir_angle_fx(dx: fixed, dy: fixed) -> int {
+  let r = Math.atan2(dy, dx)
+  return sh_wrap_deg(floor(Math.rad_to_deg(r)))
+}
 function sh_wrap_deg(d: int) -> int {
   var a = d
   while a < 0 { a += 360 }
@@ -494,8 +500,9 @@ function sh_spawn_bullet(owner: int, fac: int, px: int, py: int, deg: int, speed
   pos_set(b, "x", px)
   pos_set(b, "y", py)
   let rad = Angle.from_degrees(fixed(deg))
-  pr_set(b, "vx", Angle.cos(rad) * fixed(speed))
-  pr_set(b, "vy", Angle.sin(rad) * fixed(speed))
+  # World.set stores a field's raw word: a fixed field is handed its bits by name
+  pr_set(b, "vx", as_int(Angle.cos(rad) * fixed(speed)))
+  pr_set(b, "vy", as_int(Angle.sin(rad) * fixed(speed)))
   pr_set(b, "dir", deg)
   pr_set(b, "speed", speed)
   pr_set(b, "damage", dmg)
@@ -621,8 +628,8 @@ function sh_fire(owner: int, id: int) -> void {
         let rad = Angle.from_degrees(fixed(na))
         let nvx = Angle.cos(rad) * fixed(sp)
         let nvy = Angle.sin(rad) * fixed(sp)
-        pr_set(e, "vx", nvx)
-        pr_set(e, "vy", nvy)
+        pr_set(e, "vx", as_int(nvx))
+        pr_set(e, "vy", as_int(nvy))
       }
     }
     # integrate (Q16.16 with subpixel remainder)

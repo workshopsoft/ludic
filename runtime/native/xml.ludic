@@ -34,8 +34,8 @@ function xml_new(tag: pointer) -> Xml {
 }
 
 # --- accessors --------------------------------------------------------------
-function xml_tag(n: Xml) -> pointer { if n.tag == null { return "" };  return n.tag }
-function xml_text(n: Xml) -> pointer { if n.text == null { return "" };  return n.text }
+function xml_tag(n: Xml) -> string { if n.tag == null { return "" };  return n.tag }
+function xml_text(n: Xml) -> string { if n.text == null { return "" };  return n.text }
 function xml_child_count(n: Xml) -> int { return len(n.kids) }
 function xml_child(n: Xml, i: int) -> Xml {
   if i < 0 or i >= len(n.kids) { return xml_new("") }
@@ -47,7 +47,7 @@ function xml_has(n: Xml, key: pointer) -> int {
   while i < len(n.akeys) { if n.akeys[i] == key { return 1 };  i += 1 }
   return 0
 }
-function xml_attr(n: Xml, key: pointer) -> pointer {
+function xml_attr(n: Xml, key: pointer) -> string {
   var i = 0
   while i < len(n.akeys) { if n.akeys[i] == key { return n.avals[i] };  i += 1 }
   return ""
@@ -92,7 +92,7 @@ function xml_atoi(s: pointer) -> int {
 # raw run. Only bytes 0..255 of a character reference are emitted (Ludic strings
 # are byte strings); a code point above that is written as its low byte, which is
 # ample for the ASCII/Latin-1 text Tiled attributes carry.
-function xml_unescape(s: pointer) -> pointer {
+function xml_unescape(s: pointer) -> string {
   # fast path: no '&' means nothing to expand
   var k = 0
   let m = len(s)
@@ -153,7 +153,7 @@ function xml_hexval(c: int) -> int {
 # a one-byte string holding byte value `b` (1..255); "" for 0 (a NUL can't sit in
 # a Ludic string). Built by slicing a 256-byte table of every byte value.
 var xml_bytetab: pointer = null
-function xml_byte(b: int) -> pointer {
+function xml_byte(b: int) -> string {
   if b <= 0 { return "" }
   if xml_bytetab == null {
     let t = bytes(257)
@@ -202,7 +202,7 @@ function xp_skip_misc(p: XP) -> bool {
 }
 
 # read a name (element or attribute): letters, digits, '_', '-', ':', '.'
-function xp_name(p: XP) -> pointer {
+function xp_name(p: XP) -> string {
   let start = p.i
   while p.i < p.n {
     let c = p.s[p.i]

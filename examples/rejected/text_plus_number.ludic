@@ -1,0 +1,7 @@
+# L4: text joins text only; a number is written with string(n) or a template
+program TextPlusNumber {
+  entry {
+    let n = 3
+    print("apples: " + n)
+  }
+}

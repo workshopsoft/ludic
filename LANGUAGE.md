@@ -110,6 +110,35 @@ To move an existing codebase onto modules, build it once with `LUDIC_VIS_REPORT=
 reference that would be refused is printed as `vis: <file>:<line>: <module>.<name> used from
 <file>` and the build goes on, so a script can add the `export`s the program already relies on.
 
+### Types are checked before anything is emitted
+
+Between the parse and the emitter a checker walks every function, the entry, the tests, the
+globals' initializers and every `@On` listener, and refuses a program whose types do not agree -
+all of its mix-ups at once, each at its own line:
+
+```
+trip.ludic:12: error: metres wants an int and this is a float
+trip.ludic:14: error: area takes 2 argument(s) and this call gives 1
+trip.ludic:20: error: + of a string and an int: text joins text only - write string(x) for a number
+3 type error(s)
+```
+
+What it holds apart: `int`, `float`, `fixed` and `bool` (a float or a fixed into an int is
+`int(x)`; a float and a fixed never meet but by a literal, which takes whichever kind its slot is);
+text and numbers (`string(n)` or a template); one record type and another; slices of different
+elements; functions of different types. A call gives exactly as many arguments as there are
+parameters, a `return` gives the declared result, and `push` gives the slice's own element.
+
+`pointer` is untyped, as `void *` is in C: it goes wherever a reference is wanted and takes any
+reference, and a `[]pointer` any slice of references. Restricting what a raw pointer may reach is
+`unsafe`'s job, not the checker's. Bits cross between kinds by name - `as_int(x)` / `as_fixed(n)`
+reinterpret a word, `float_bits(f)` / `float_from_bits(i)` a float's - never by a slot's type.
+
+A name the checker cannot type (an engine namespace's arguments, a query's bindings) agrees with
+everything, so it only ever reports what it can prove; the emitter keeps its own checks behind
+it. `LUDIC_CHECK_REPORT=1` lists every mix-up by category and fails nothing, which is how an
+existing program is measured before it has to pass.
+
 ## Models (entity kinds)
 
 An `model` names a *kind* of entity and the fixed set of properties it

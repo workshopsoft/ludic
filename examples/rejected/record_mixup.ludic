@@ -1,0 +1,10 @@
+# L4: one record is not another, whatever their fields
+program RecordMixup {
+  property Door { open: bool = false }
+  property Key { cut: int = 0 }
+  entry {
+    let k = new Key
+    let d: Door = k
+    print(d.open)
+  }
+}

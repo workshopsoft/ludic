@@ -54,12 +54,12 @@ function value_put(obj: Val, key: pointer, item: Val) -> Val {
 function value_kind(v: Val) -> int { return v.tag }
 function value_count(v: Val) -> int { return len(v.kids) }
 function value_as_int(v: Val) -> int { return v.num }
-function value_as_str(v: Val) -> pointer { if v.txt == null { return "" };  return v.txt }
+function value_as_str(v: Val) -> string { if v.txt == null { return "" };  return v.txt }
 function value_at(list: Val, i: int) -> Val {
   if i < 0 or i >= len(list.kids) { return value_null() }
   return list.kids[i]
 }
-function value_key_at(obj: Val, i: int) -> pointer {
+function value_key_at(obj: Val, i: int) -> string {
   if i < 0 or i >= len(obj.keys) { return "" }
   return obj.keys[i]
 }
@@ -76,7 +76,7 @@ function value_has(obj: Val, key: pointer) -> int {
 
 # --- JSON encode ------------------------------------------------------------
 # escape a string's `"` `\` and newline, wrapping it in quotes.
-function json_quote(s: pointer) -> pointer {
+function json_quote(s: pointer) -> string {
   var out = "\""
   var i = 0
   let n = len(s)
@@ -96,7 +96,7 @@ function json_quote(s: pointer) -> pointer {
 # remainder hits zero. This is the exact inverse of jp_number's fixed decode, so
 # a value_fixed round-trips through JSON bit-for-bit; short values (0.5, 2.0) stay
 # short. Each step keeps frac < 655360, well within i32.
-function json_fixed_str(raw: int) -> pointer {
+function json_fixed_str(raw: int) -> string {
   var a = raw
   var sign = ""
   if a < 0 { sign = "-";  a = -a }
@@ -112,7 +112,7 @@ function json_fixed_str(raw: int) -> pointer {
   return sign + string(ip) + "." + fs
 }
 
-function json_encode(v: Val) -> pointer {
+function json_encode(v: Val) -> string {
   if v.tag == 0 { return "null" }
   if v.tag == 1 { return string(v.num) }
   if v.tag == 2 { return json_fixed_str(v.num) }
@@ -172,7 +172,7 @@ function jp_value(p: JP) -> Val {
 }
 
 # read a quoted string (cursor on the opening quote) -> the unescaped contents.
-function jp_string(p: JP) -> pointer {
+function jp_string(p: JP) -> string {
   p.i += 1                                    # skip opening quote
   var out = ""
   while p.i < p.n {

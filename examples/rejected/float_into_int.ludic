@@ -1,0 +1,10 @@
+# L4: a float computed into an int slot is refused - write int(x)
+program FloatIntoInt {
+  numbers float
+  entry {
+    let speed: float = 3.2
+    var metres: int = 0
+    metres = speed * 2.0
+    print(metres)
+  }
+}

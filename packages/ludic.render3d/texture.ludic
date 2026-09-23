@@ -363,9 +363,9 @@ function hdr_decode(path: pointer) -> floats {
         out[o + 1] = Math.min(vg, 60000.0)
         out[o + 2] = Math.min(vb, 60000.0)
         let lum = vr + vg + vb
-        if f_lt(maxl, lum) != 0 { maxl = lum;  hdr_max_x = x;  hdr_max_y = y }
+        if maxl < lum { maxl = lum;  hdr_max_x = x;  hdr_max_y = y }
         if y < h / 2 { skye = skye + Math.min(vg, hdr_clip) * Math.cos((float(y) + 0.5) * dth) * domega }
-        if f_lt(hdr_clip, vg) != 0 or f_lt(hdr_clip, vr) != 0 {
+        if hdr_clip < vg or hdr_clip < vr {
           sr = sr + Math.max(vr - hdr_clip, 0.0) * domega
           sg = sg + Math.max(vg - hdr_clip, 0.0) * domega
           sb = sb + Math.max(vb - hdr_clip, 0.0) * domega

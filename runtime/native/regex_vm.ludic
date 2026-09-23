@@ -150,7 +150,7 @@ function regex_end(m: Match, n: int) -> int {
   if m == null or n < 0 or n > m.ng { return -1 }
   return m.caps[2 * n + 1]
 }
-function regex_group(m: Match, n: int) -> pointer {
+function regex_group(m: Match, n: int) -> string {
   if m == null or n < 0 or n > m.ng { return "" }
   let a = m.caps[2 * n]
   let b = m.caps[2 * n + 1]
@@ -169,7 +169,7 @@ function rx_append(out: IVec, s: pointer, a: int, b: int) -> void {
   var i = a
   while i < b { iv_push(out, s[i] & 255);  i += 1 }
 }
-function regex_replace(str: pointer, pattern: pointer, repl: pointer) -> pointer {
+function regex_replace(str: pointer, pattern: pointer, repl: pointer) -> string {
   let p = regex_compile(pattern)
   if p == null { return str }
   let n = rx_slen(str)

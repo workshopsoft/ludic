@@ -1,0 +1,5 @@
+# L4: a call gives as many arguments as the function has parameters
+program WrongArity {
+  function area(w: int, h: int) -> int { return w * h }
+  entry { print(area(3)) }
+}

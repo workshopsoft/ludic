@@ -13,7 +13,7 @@
 # ---- file IO ----------------------------------------------------------------
 
 # read a whole file into a fresh NUL-terminated buffer (null if it cannot open)
-function read_file(path: pointer) -> pointer {
+function read_file(path: pointer) -> string {
   let f = file_open(path, "rb")
   if (f == null) { return null }
   file_seek(f, 0, 2)
@@ -122,7 +122,7 @@ function tmp_dir() -> pointer {
 }
 
 # a scratch path under tmp_dir(): tmp_path("foo.out")
-function tmp_path(name: pointer) -> pointer { return `{tmp_dir()}/{name}` }
+function tmp_path(name: pointer) -> string { return `{tmp_dir()}/{name}` }
 
 # remove the scratch directory (idempotent; a no-op when nothing was written).
 # LUDIC_KEEP_TMP=1 leaves it in place, and says where, for debugging a failing case.
@@ -147,7 +147,7 @@ function capture(cmd: pointer) -> pointer {
 
 # run `cmd`, join its output lines with single spaces and trim — the Ludic twin
 # of the shell idiom `$(cmd | tr '\n' ' ' | sed 's/ *$//')`.
-function capture_line(cmd: pointer) -> pointer {
+function capture_line(cmd: pointer) -> string {
   return capture(`{cmd} | tr '\n' ' ' | sed 's/ *$//'`)
 }
 
@@ -233,7 +233,7 @@ function report() -> int {
 }
 
 # a positional argument, or a default when it is absent
-function argn(i: int, dflt: pointer) -> pointer {
+function argn(i: int, dflt: pointer) -> string {
   if (i < arg_count()) { return arg(i) }
   return dflt
 }
@@ -399,7 +399,7 @@ function line_at(s: pointer, start: int) -> pointer {
 }
 
 # trim leading/trailing ASCII whitespace (space, tab, cr, nl)
-function s_trim(s: pointer) -> pointer {
+function s_trim(s: pointer) -> string {
   let n = slen(s)
   var a = 0
   while a < n and (is_ws(s[a]) or s[a] == '\n' or s[a] == '\r') { a += 1 }

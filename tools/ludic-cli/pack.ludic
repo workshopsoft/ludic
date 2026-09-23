@@ -437,7 +437,7 @@ function pack_roots(m: Manifest, from: int) -> []pointer {
 }
 
 # the pack a project builds by default: build/<name>.lpak
-function pack_default_out(m: Manifest) -> pointer {
+function pack_default_out(m: Manifest) -> string {
   return `build/{project_name("")}.lpak`
 }
 

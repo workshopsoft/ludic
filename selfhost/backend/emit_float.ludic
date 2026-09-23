@@ -168,7 +168,7 @@ function lit_as_fixed(v: Val) -> Val {
 function emit_fp_bin(op: pointer, a: Val, b: Val) -> Val {
   if (a.ty == "fixed") and not (fixed_lit_code(b) == "") { return emit_bin_vals(op, a, lit_as_fixed(b), false) }
   if (b.ty == "fixed") and not (fixed_lit_code(a) == "") { return emit_bin_vals(op, lit_as_fixed(a), b, false) }
-  var t = "float"
+  var t: pointer = "float"
   if is_fp(a.ty) and is_fp(b.ty) { t = fp_result(a.ty, b.ty) }
   else { if is_fp(a.ty) { t = a.ty } else { t = b.ty } }
   let ac = to_fp(a, t, `the left side of {op}`)
@@ -336,7 +336,7 @@ function fp_pick(meth: pointer, t: pointer, x: pointer, y: pointer) -> pointer {
 # the float type a Math call works in, given its already-evaluated first
 # argument and the static types of the rest; "" when it is not a float call
 function fp_math_type(first: Val, e: Node) -> pointer {
-  var t = ""
+  var t: pointer = ""
   if is_fp(first.ty) { t = first.ty }
   var i = 1
   while i < len(e.kids) {

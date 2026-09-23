@@ -1,0 +1,84 @@
+# check_ops.ludic — L4: operators. Arithmetic keeps to one kind of number (a float never meets a
+# fixed but by a literal), text joins text only, a bool is not a number, and a comparison is
+# between two things of one class.
+function ck_cond(e: Node, t: pointer) -> void {
+  if ck_unknown(t) or (t == "bool") { return }
+  ck_err("cond", e, `a condition wants a bool and this is {ck_a(t)}`)
+}
+function ck_bin(e: Node) -> pointer {
+  let op = e.s
+  let l = ck_expr(e.a)
+  let r = ck_expr(e.b)
+  return ck_binop(e, op, l, r, e.a, e.b)
+}
+function ck_binop(e: Node, op: pointer, l: pointer, r: pointer, a: Node, b: Node) -> pointer {
+  if (op == "and") or (op == "or") or (op == "&&") or (op == "||") {
+    ck_cond(a, l)
+    ck_cond(b, r)
+    return "bool"
+  }
+  if (op == "==") or (op == "!=") or (op == "<") or (op == ">") or (op == "<=") or (op == ">=") {
+    ck_compare(e, op, l, r, a, b)
+    return "bool"
+  }
+  if (op == "+") or (op == "-") or (op == "*") or (op == "/") or (op == "%") { return ck_arith(e, op, l, r, a, b) }
+  if (op == "&") or (op == "|") or (op == "^") or (op == "<<") or (op == ">>") {
+    if (l == "long") or (r == "long") { return "long" }
+    return "int"
+  }
+  return "?"
+}
+function ck_compare(e: Node, op: pointer, l: pointer, r: pointer, a: Node, b: Node) -> void {
+  if ck_unknown(l) or ck_unknown(r) or (l == "null") or (r == "null") { return }
+  let cl = ck_class(l)
+  let cr = ck_class(r)
+  # a pointer holding text is compared with a string all through the runtime and the compiler
+  if ((l == "pointer") and (cr == "string")) or ((r == "pointer") and (cl == "string")) { return }
+  if cl != cr {
+    ck_err("compare", e, `{op} between {ck_a(l)} and {ck_a(r)}`)
+    return
+  }
+  if ck_is_rec(l) and ck_is_rec(r) and (l != r) { ck_err("compare", e, `{op} between {ck_a(l)} and {ck_a(r)} can never be true`) }
+  if ck_is_lit(a) or ck_is_lit(b) { return }
+  if (l == "fixed") and ck_is_float(r) { ck_err("fixed", e, `{op} between a fixed and {ck_a(r)}`) }
+  if (r == "fixed") and ck_is_float(l) { ck_err("fixed", e, `{op} between {ck_a(l)} and a fixed`) }
+}
+# `string` and the untyped `pointer` are both text to an operator (the emitter's is_textish)
+function ck_is_text(t: pointer) -> bool { return (t == "string") or (t == "pointer") }
+function ck_arith(e: Node, op: pointer, l: pointer, r: pointer, a: Node, b: Node) -> pointer {
+  if ck_is_text(l) or ck_is_text(r) {
+    if ck_unknown(l) or ck_unknown(r) { return "string" }
+    if ck_is_text(l) and ck_is_text(r) and (op == "+") { return "string" }
+    ck_err("text", e, `{op} of {ck_a(l)} and {ck_a(r)}: text joins text only - write string(x) for a number`)
+    return "?"
+  }
+  if ck_unknown(l) or ck_unknown(r) { return "?" }
+  if (l == "bool") or (r == "bool") {
+    ck_err("bool", e, `{op} on a bool`)
+    return "?"
+  }
+  if ck_is_num(l) and ck_is_num(r) { return ck_num_result(e, op, l, r, a, b) }
+  ck_err("kind", e, `{op} of {ck_a(l)} and {ck_a(r)}`)
+  return "?"
+}
+# a decimal literal is whichever of float and fixed the other side is
+function ck_num_result(e: Node, op: pointer, l: pointer, r: pointer, a: Node, b: Node) -> pointer {
+  if (l == "fixed") and ck_is_float(r) {
+    if ck_is_lit(b) { return "fixed" }
+    if ck_is_lit(a) { return r }
+    ck_err("fixed", e, `{op} of a fixed and {ck_a(r)}: convert one with float(x) or fixed(x)`)
+    return "?"
+  }
+  if (r == "fixed") and ck_is_float(l) {
+    if ck_is_lit(a) { return "fixed" }
+    if ck_is_lit(b) { return l }
+    ck_err("fixed", e, `{op} of {ck_a(l)} and a fixed: convert one with float(x) or fixed(x)`)
+    return "?"
+  }
+  if (l == "double") or (r == "double") { return "double" }
+  if ck_is_float(l) { return l }
+  if ck_is_float(r) { return r }
+  if (l == "fixed") or (r == "fixed") { return "fixed" }
+  if (l == "long") or (r == "long") { return "long" }
+  return "int"
+}

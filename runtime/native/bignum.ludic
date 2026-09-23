@@ -279,7 +279,7 @@ function bigint_to_int(a: BigNum) -> int {
 }
 
 # a limb (< 1e9) as exactly nine digits, left-padded with zeros
-function bn_pad9(x: int) -> pointer {
+function bn_pad9(x: int) -> string {
   var s = string(x)
   var pad = 9 - len(s)
   var out = ""
@@ -287,7 +287,7 @@ function bn_pad9(x: int) -> pointer {
   return out + s
 }
 
-function bigint_str(a: BigNum) -> pointer {
+function bigint_str(a: BigNum) -> string {
   if a.sign == 0 { return "0" }
   var out = ""
   if a.sign < 0 { out = "-" }
@@ -364,7 +364,7 @@ function decimal_rescale(d: Dec, places: int) -> Dec {
   return dec_make(m, places)
 }
 
-function decimal_str(d: Dec) -> pointer {
+function decimal_str(d: Dec) -> string {
   var neg = ""
   var m = d.m
   if m.sign < 0 { neg = "-";  m = bigint_neg(m) }

@@ -1,0 +1,23 @@
+# checked.ludic — L4: what the checker lets through. A decimal literal is whichever of float and
+# fixed its slot is, an int widens into a float, a string is a pointer, a []string is a
+# []pointer, null is any reference, string(p) says a pointer is text, and a named argument is
+# checked against its own parameter.
+#
+# Running it prints:  7.5 3 12 hi 2 ok
+program Checked {
+  numbers float
+  property Box { w: float = 0.0 }
+  function scale(by: float, n: int) -> float { return by * float(n) }
+  function raw_text() -> pointer { return "hi" }
+  function count(xs: []pointer) -> int { return len(xs) }
+  entry {
+    let f: fixed = 1.5
+    let x: float = 2.5
+    var b: Box = null
+    b = new Box { w: 3 }
+    let p: pointer = "any string"
+    let s: string = string(raw_text())
+    print(`{scale(by: x, n: 3)} {int(b.w)} {int(f * 8)} {s} {count(["a", "b"])} ok`)
+    if p == null { print("none") }
+  }
+}

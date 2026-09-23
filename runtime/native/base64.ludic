@@ -62,7 +62,7 @@ function base64_decode(src: pointer) -> pointer {
 }
 
 # encode the bytes of NUL-terminated `src` as standard base64 (with '=' padding).
-function base64_encode(src: pointer) -> pointer {
+function base64_encode(src: pointer) -> string {
   let tab = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
   let n = len(src)
   var out = ""

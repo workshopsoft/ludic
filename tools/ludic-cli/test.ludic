@@ -31,6 +31,17 @@ function reject_case(path: pointer, want: pointer, label: pointer) -> void {
   if s_contains(got, want) { ok(label) } else { bad2(label, `refused, but said [{got}]`) }
 }
 
+# a program the checker refuses for exactly `n` reasons, all of them reported in one run
+function reject_count(path: pointer, n: int, label: pointer) -> void {
+  let ll = `{tmp_dir()}/rj_{flat(path)}.ll`
+  if shq(`bin/ludicc examples/{path}.ludic --emit-llvm -o {ll} 2>{tmp_dir()}/rj.err`) {
+    bad2(label, "compiled, and should have been refused")
+    return
+  }
+  let got = capture_line(`grep -c ': error:' {tmp_dir()}/rj.err`)
+  if (got == string(n)) { ok(label) } else { bad2(label, `reported {got} error(s), not {n}`) }
+}
+
 # a feature example that consumes an in-repo controller package (packages/): same
 # as feat_case, but the compiler is pointed at packages/ via LUDIC_MODULES so a
 # `import "ludic.foo/bar.ludic"` resolves, and LUDIC_HOME anchors the engine
@@ -705,9 +716,16 @@ function cmd_dev_test() -> int {
   reject_case("rejected/redeclared_local", "'v0' is declared twice in this block", "a local declared twice in one block is refused")
   reject_case("rejected/missing_return", "can reach its end without returning", "a function that can run off its end without its result is refused")
   feat_case("functions/values", "", "42 10 25 49 81 1.5 1", "values.ludic (L2: fn types, fn name, calls through a local, global, field, element, parameter, result)")
-  reject_case("rejected/fn_type_mismatch", "is not a fn(int)->int", "a function of the wrong type is refused")
+  reject_case("rejected/fn_type_mismatch", "op wants a fn(int)->int and this is a fn(float)->float", "a function of the wrong type is refused")
   feat_case("modules/visible", "", "42 42", "visible.ludic (L3: a module's exported function and event used from outside it)")
   reject_case("rejected/private_module", "add is private to module bank", "a private function of another module is refused")
+  feat_case("lang/checked", "", "7.5 3 12 hi 2 ok", "checked.ludic (L4: literals take their slot's kind, string(p), []string as []pointer, null, named args)")
+  reject_case("rejected/wrong_arity", "area takes 2 argument(s) and this call gives 1", "a call with the wrong number of arguments is refused")
+  reject_case("rejected/float_into_int", "metres wants an int and this is a float", "a float computed into an int is refused")
+  reject_case("rejected/record_mixup", "d wants a Door and this is a Key", "one record type is not another")
+  reject_case("rejected/record_as_text", "argument 1 of sign wants a string and this is a Trail", "a record is not text")
+  reject_case("rejected/text_plus_number", "text joins text only", "text plus a number is refused")
+  reject_count("rejected/every_error", 3, "every type error in a program is reported at once, not only the first")
 
   # EV2 the world table: the mod reflection ABI, callable from Ludic by name.
   net_case("ecs/world_get", "50 1 7")

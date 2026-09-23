@@ -405,7 +405,9 @@ function glg_emit_ludic(path: pointer) -> bool {
       sb_puts(ps, `{glg_pname(glg_ppname[ix], p)}: {lt}`)
       p += 1
     }
-    let rt = glg_ludic_ty(glg_frbase[i], glg_frstar[i])
+    var rt = glg_ludic_ty(glg_frbase[i], glg_frstar[i])
+    # a returned `const GLubyte *` is the driver's text (glGetString): a string, not memory
+    if glg_frstar[i] == 1 and (glg_frbase[i] == "GLubyte" or glg_frbase[i] == "GLchar") { rt = "string" }
     var rets = ""
     if rt != "void" { rets = " -> " + rt }
     sb_puts(b, `extern function {lname}({sb_str(ps)}){rets} = "lgl_{glg_fname[i]}"\n`)

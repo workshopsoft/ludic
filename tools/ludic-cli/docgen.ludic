@@ -44,7 +44,7 @@ function sb_putc(s: Sb, c: int) -> void {
   s.data[s.len] = c
   s.len += 1
 }
-function sb_str(s: Sb) -> pointer {
+function sb_str(s: Sb) -> string {
   s.data[s.len] = 0
   return s.data
 }
@@ -134,7 +134,7 @@ function strs_sort(a: []pointer) -> void {
 
 # `<code>` backtick spans: `x` -> <code>x</code> (inner text NOT escaped).
 # Mirrors codeify's re.sub(r"`([^`]+)`", ...): needs >=1 non-backtick inside.
-function codeify(s: pointer) -> pointer {
+function codeify(s: pointer) -> string {
   let n = slen(s)
   let b = sb_new()
   var i = 0

@@ -161,7 +161,7 @@ function shd_file(name: pointer) -> pointer {
 
 function shd_q(p: pointer) -> pointer { return `"{p}"` }
 
-function shd_reflect_stage(mf: pointer, id: pointer, stage: pointer, spv: pointer, tmp: pointer) -> bool {
+function shd_reflect_stage(mf: Sb, id: pointer, stage: pointer, spv: pointer, tmp: pointer) -> bool {
   let js = `{tmp}/{id}.{stage}.json`
   if not shq(`{shd_q(shd_bin + "/spirv-cross")} {shd_q(spv)} --reflect > {shd_q(js)} 2>/dev/null`) { err(`shaders: spirv-cross failed on {spv}\n`);  return false }
   let d = json_parse(read_file(js))

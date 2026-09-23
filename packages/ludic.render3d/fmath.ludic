@@ -25,8 +25,6 @@ function fr(n: int, d: int) -> float { return float(n) / float(d) }
 function f_neg1() -> float { return -1.0 }
 function f_clamp(x: float, lo: float, hi: float) -> float { return Math.min(Math.max(x, lo), hi) }
 function f_lerp(a: float, b: float, t: float) -> float { return a + (b - a) * t }
-function f_gt(a: float, b: float) -> bool { return f_lt(b, a) != 0 }
-function f_ls(a: float, b: float) -> bool { return f_lt(a, b) != 0 }
 function f_rad(deg: float) -> float { return deg * (PI / 180.0) }
 function f_fx(x: float) -> fixed { return fixed(x) }
 

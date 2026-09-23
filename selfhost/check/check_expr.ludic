@@ -1,0 +1,132 @@
+# check_expr.ludic — L4: the type of an expression, and every mix-up inside it. Each form works
+# out its operands' types first, so an error deep in an argument is found as well as one at the top.
+function ck_field(r: Node, name: pointer) -> pointer {
+  var i = 0
+  while i < len(r.kids) {
+    if (r.kids[i].s == name) { return r.kids[i].ty }
+    i += 1
+  }
+  return null
+}
+# anything the checker does not type is still walked for the errors inside it
+function ck_walk(e: Node) -> void {
+  if e == null { return }
+  ck_any(e.a)
+  ck_any(e.b)
+  ck_any(e.c)
+  var i = 0
+  while i < len(e.kids) {
+    ck_any(e.kids[i])
+    i += 1
+  }
+}
+function ck_any(n: Node) -> void {
+  if n == null { return }
+  if n.kind == N_BLOCK { ck_block(n);  return }
+  if n.kind == E_FINIT { ck_expr(n.a);  return }
+  if (n.kind >= S_LET and n.kind <= S_BECOME) or n.kind == S_EMIT { ck_stmt(n);  return }
+  ck_expr(n)
+}
+function ck_expr(e: Node) -> pointer {
+  if e == null { return "?" }
+  let k = e.kind
+  if k == E_INT { return "int" }
+  if k == E_FLOAT {
+    if is_float_file(e.file) { return "float" }
+    return "fixed"
+  }
+  if k == E_STR { return "string" }
+  if k == E_SLICE { ck_walk(e);  return "string" }
+  if k == E_BOOL { return "bool" }
+  if k == E_NULL { return "null" }
+  if k == E_ID { return ck_id(e) }
+  if k == E_FNREF {
+    let f = ck_fn(e.s)
+    if f != null { return fn_sig_of(f) }
+    return "?"
+  }
+  if k == E_NEW { return ck_new(e) }
+  if k == E_LIST { return ck_list(e) }
+  if k == E_BIN { return ck_bin(e) }
+  if k == E_UN { return ck_un(e) }
+  if k == E_MEMBER { return ck_member(e) }
+  if k == E_INDEX { return ck_index_of(e) }
+  if k == E_CALL { return ck_call(e) }
+  if k == S_EMIT { ck_emit(e);  return "?" }
+  ck_walk(e)
+  return "?"
+}
+function ck_id(e: Node) -> pointer {
+  let li = ck_local(e.s)
+  if li >= 0 { return ck_tys[li] }
+  let g = ck_global(e.s)
+  if g != null { return g.ty }
+  return "?"
+}
+function ck_new(e: Node) -> pointer {
+  let r = ck_record(e.s)
+  if e.a != null {
+    var i = 0
+    while i < len(e.a.kids) {
+      let fi = e.a.kids[i]
+      let vt = ck_expr(fi.a)
+      if r != null and fi.kind == E_FINIT {
+        let ft = ck_field(r, fi.s)
+        if ft != null { ck_give(ft, vt, fi.a, `field {fi.s} of {e.s}`) }
+      }
+      i += 1
+    }
+  }
+  return e.s
+}
+function ck_list(e: Node) -> pointer {
+  var t: pointer = "?"
+  var i = 0
+  while i < len(e.kids) {
+    let et = ck_expr(e.kids[i])
+    if ck_unknown(t) { t = et }
+    else { ck_give(t, et, e.kids[i], `an element of a []{t}`) }
+    i += 1
+  }
+  if ck_unknown(t) or (t == "null") { return "?" }
+  return "[]" + t
+}
+function ck_un(e: Node) -> pointer {
+  let t = ck_expr(e.a)
+  if (e.s == "not") or (e.s == "!") {
+    ck_cond(e.a, t)
+    return "bool"
+  }
+  if (e.s == "-") and (t == "bool") { ck_err("bool", e, "- on a bool") }
+  return t
+}
+function ck_member(e: Node) -> pointer {
+  let b = e.a
+  if b.kind == E_ID and ck_local(b.s) < 0 and ck_global(b.s) == null {
+    # a namespace, an enum or a component name: Math.PI, Color.Red, Thing.of
+    let en = ck_enum(b.s)
+    if en != null and not enum_is_tagged(en) { return b.s }
+    return "?"
+  }
+  let bt = ck_expr(b)
+  if ck_unknown(bt) { return "?" }
+  let r = ck_record(bt)
+  if r != null {
+    let ft = ck_field(r, e.s)
+    if ft != null { return ft }
+  }
+  return "?"
+}
+function ck_index_of(e: Node) -> pointer {
+  let bt = ck_expr(e.a)
+  let it = ck_expr(e.b)
+  if not ck_unknown(it) and not ck_is_int(it) { ck_err("index", e.b, `an index wants an int and this is {ck_a(it)}`) }
+  if ck_unknown(bt) { return "?" }
+  if is_slice_ty(bt) { return slice_elem(bt) }
+  if (bt == "string") or (bt == "words") { return "int" }
+  if (bt == "floats") { return "float" }
+  if (bt == "doubles") { return "double" }
+  if (bt == "fixeds") { return "fixed" }
+  if (bt == "pointers") { return "pointer" }
+  return "?"
+}

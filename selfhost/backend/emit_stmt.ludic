@@ -28,8 +28,8 @@ function compound_op(tok: pointer) -> pointer {
 function emit_assign(st: Node) -> void {
   # resolve the target's address and type
   let t = st.a
-  var addr = "0"
-  var ty = "int"
+  var addr: pointer = "0"
+  var ty: pointer = "int"
   if t.kind == E_ID {
     let li = loc_find(t.s)
     if li >= 0 {
@@ -209,7 +209,7 @@ function emit_match_tagged(st: Node, sv: Val, en: Node) -> void {
     let arm = st.kids[i]
     if arm_is_default(arm) { deflt = arm }
     else {
-      var acc = "0"
+      var acc: pointer = "0"
       var first = true
       var bindPat: Node = null
       var p = 0
@@ -262,7 +262,7 @@ function emit_match(st: Node) -> void {
     let arm = st.kids[i]
     if arm_is_default(arm) { deflt = arm }
     else {
-      var acc = "0"
+      var acc: pointer = "0"
       var first = true
       var p = 0
       while p < len(arm.kids) {
@@ -303,7 +303,7 @@ function emit_emit(st: Node) -> Val {
     var j = 0
     while j < len(st.a.kids) { if (st.a.kids[j].s == fd.s) { av = st.a.kids[j].a };  j += 1 }
     let lt = llty(fd.ty)
-    var code = "0"
+    var code: pointer = "0"
     if (lt == "ptr") { code = "null" }
     if (av != null) { let v = emit_expr(av);  code = v.code }
     else { if (fd.a != null) { let dv = emit_expr(fd.a);  code = dv.code } }   # declared default

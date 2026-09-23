@@ -1377,13 +1377,24 @@ function emit_call(e: Node) -> Val {
   let ext = find_extern(name)
   if (ext != null) {
     reorder_named(e, param_labels(ext))
+    # each argument is coerced to its parameter, as a function's are: passed as its own
+    # type, a float given to an int parameter arrived in a float register the callee
+    # never reads, and the callee compared whatever the integer register held
+    let eptys = param_types(ext)
     let eargs = new []pointer
     let eatys = new []pointer
     var ei = 0
-    while ei < len(e.kids) { let v = emit_expr(e.kids[ei]);  push(eargs, v.code);  push(eatys, v.ty);  ei += 1 }
+    while ei < len(e.kids) {
+      let v = emit_expr(e.kids[ei])
+      var pty = v.ty
+      if ei < len(eptys) { pty = eptys[ei] }
+      push(eargs, coerce_code(v, pty))
+      push(eatys, pty)
+      ei += 1
+    }
     let erl = llty(ext.ty)
     emit("  ")
-    var erreg = "0"
+    var erreg: pointer = "0"
     if not (erl == "void") { erreg = nreg();  emit(erreg);  emit(" = ") }
     emit("call ");  emit(erl);  emit(" @");  emit(ext.a.s);  emit("(")
     ei = 0
@@ -1425,7 +1436,7 @@ function emit_call(e: Node) -> Val {
   }
   let rl = llty(fn2.ty)
   emit("  ")
-  var rreg = "0"
+  var rreg: pointer = "0"
   if not (rl == "void") { rreg = nreg();  emit(rreg);  emit(" = ") }
   emit("call ");  emit(rl);  emit(" @fn_");  emit(cname);  emit("(")
   i = 0

@@ -31,7 +31,7 @@ function has_changesets() -> bool {
 # the highest bump level requested across the pending changesets ("" if none).
 # README.md is excluded — its format example carries a literal `bump:` line that
 # must not count as a real changeset.
-function highest_bump() -> pointer {
+function highest_bump() -> string {
   if shq("grep -rhqE '^bump:[[:space:]]*major' --include='*.md' --exclude='README.md' changes 2>/dev/null") { return "major" }
   if shq("grep -rhqE '^bump:[[:space:]]*minor' --include='*.md' --exclude='README.md' changes 2>/dev/null") { return "minor" }
   if shq("grep -rhqE '^bump:[[:space:]]*patch' --include='*.md' --exclude='README.md' changes 2>/dev/null") { return "patch" }

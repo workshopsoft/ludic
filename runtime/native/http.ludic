@@ -235,7 +235,7 @@ function http_ok(h: int) -> bool {
   return (st >= 200) and (st < 300)
 }
 
-function http_text(h: int) -> pointer {
+function http_text(h: int) -> string {
   if not http_valid(h) { return null }
   return h_body[h - 1]
 }
@@ -245,7 +245,7 @@ function http_body_len(h: int) -> int {
   return h_blen[h - 1]
 }
 
-function http_header_of(h: int, name: pointer) -> pointer {
+function http_header_of(h: int, name: pointer) -> string {
   if not http_valid(h) { return null }
   let s = h - 1
   if h_native[s] == 1 { return hs_header(s, name) }
@@ -332,7 +332,7 @@ function http_parse(resp: pointer, len: int) -> int {
 
 # Look up a header value in a raw header block (case-insensitive), returning a
 # fresh NUL-terminated copy, or null if absent. Lines are "Name: value\r\n".
-function http_find_header(hdr: pointer, name: pointer) -> pointer {
+function http_find_header(hdr: pointer, name: pointer) -> string {
   if hdr == null { return null }
   let nlen = http_cstr_len(name)
   let hlen = http_cstr_len(hdr)

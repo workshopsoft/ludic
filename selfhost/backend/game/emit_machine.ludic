@@ -30,7 +30,7 @@ function machine_state_value(m: Node, state: Node) -> pointer {
 
 function emit_machine(st: Node) -> void {
   let gv = machine_var(st.a)
-  var s = ""
+  var s: pointer = ""
   if (gv != null) { s = emit_bind(`load i32, ptr @g_{st.a.s}`) }
   else {
     let regv = emit_expr(st.a)

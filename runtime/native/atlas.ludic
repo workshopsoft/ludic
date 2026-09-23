@@ -398,7 +398,7 @@ function assets_font(name: pointer) -> int {
 
 function assets_total()  -> int { atlas_init();  return at_q_n }
 function assets_loaded() -> int { atlas_init();  return at_q_pos }
-function assets_ready()  -> int { atlas_init();  if at_q_pos >= at_q_n { return 1 };  return 0 }
+function assets_ready()  -> bool { atlas_init();  return at_q_pos >= at_q_n }
 
 # loading progress as a whole-number percent (0..100); an empty queue is 100.
 function assets_progress() -> int {

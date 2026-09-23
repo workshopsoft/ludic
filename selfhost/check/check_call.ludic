@@ -1,0 +1,150 @@
+# check_call.ludic — L4: a call gives each parameter the type it asks for, and as many arguments
+# as there are parameters. A function, an extern, a function value (a local, a global or a
+# record's field) and the builtins that convert are checked; a namespace call (Input.pad_axis)
+# gives the result type of the Ludic function behind it, and its arguments are the emitter's.
+function ck_params(f: Node, labels: []pointer, tys: []pointer) -> void {
+  var i = 0
+  while i < len(f.kids) {
+    if f.kids[i].kind == N_PARAM {
+      push(labels, f.kids[i].s)
+      push(tys, f.kids[i].ty)
+    }
+    i += 1
+  }
+}
+function ck_call_fn(e: Node, name: pointer, f: Node) -> pointer {
+  let labels = new []pointer
+  let tys = new []pointer
+  ck_params(f, labels, tys)
+  ck_args(e, name, labels, tys)
+  if f.ty == null { return "void" }
+  return f.ty
+}
+function ck_call_sig(e: Node, name: pointer, t: pointer) -> pointer {
+  ck_args(e, name, new []pointer, fn_ty_params(t))
+  return fn_ty_ret(t)
+}
+function ck_label_at(labels: []pointer, s: pointer) -> int {
+  var i = 0
+  while i < len(labels) {
+    if labels[i] == s { return i }
+    i += 1
+  }
+  return -1
+}
+function ck_args(e: Node, name: pointer, labels: []pointer, tys: []pointer) -> void {
+  let n = len(e.kids)
+  if n > 0 and e.kids[0].kind == E_FINIT {
+    var j = 0
+    while j < n {
+      let fi = e.kids[j]
+      let vt = ck_expr(fi.a)
+      let at = ck_label_at(labels, fi.s)
+      if at >= 0 { ck_give(tys[at], vt, fi.a, `argument {fi.s} of {name}`) }
+      j += 1
+    }
+    return
+  }
+  if n != len(tys) { ck_err("arity", e, `{name} takes {itoa(len(tys))} argument(s) and this call gives {itoa(n)}`) }
+  var i = 0
+  while i < n {
+    let at = ck_expr(e.kids[i])
+    if i < len(tys) { ck_give(tys[i], at, e.kids[i], `argument {itoa(i + 1)} of {name}`) }
+    i += 1
+  }
+}
+function ck_walk_args(e: Node) -> void {
+  var i = 0
+  while i < len(e.kids) {
+    ck_any(e.kids[i])
+    i += 1
+  }
+}
+# the builtins whose type is their name, and push, whose element must fit the slice
+function ck_builtin(e: Node, name: pointer) -> pointer {
+  if (name == "string") or (name == "int") or (name == "float") or (name == "fixed") or (name == "long") or (name == "double") {
+    ck_walk_args(e)
+    return name
+  }
+  if (name == "as_int") or (name == "as_fixed") {
+    ck_walk_args(e)
+    return name[3..len(name)]
+  }
+  if (name == "len") or (name == "float_bits") {
+    ck_walk_args(e)
+    return "int"
+  }
+  if (name == "float_from_bits") {
+    ck_walk_args(e)
+    return "float"
+  }
+  if (name == "print") {
+    ck_walk_args(e)
+    return "void"
+  }
+  if (name == "push") and len(e.kids) == 2 {
+    let st = ck_expr(e.kids[0])
+    let vt = ck_expr(e.kids[1])
+    if not ck_unknown(st) and is_slice_ty(st) { ck_give(slice_elem(st), vt, e.kids[1], `push onto {ck_a(st)}`) }
+    return "void"
+  }
+  return null
+}
+function ck_call(e: Node) -> pointer {
+  let c = e.a
+  if c.kind == E_ID { return ck_call_named(e, c.s) }
+  if c.kind == E_MEMBER {
+    let b = c.a
+    if b.kind == E_ID and ck_local(b.s) < 0 and ck_global(b.s) == null {
+      # Ns.fn: the emitter's own table lowers it, supplying defaults and reordering, so the
+      # Ludic function behind it gives the result's type and nothing about the arguments
+      ck_walk_args(e)
+      let nf = ck_fn(ns_lower(b.s) + "_" + c.s)
+      if nf != null and nf.ty != null { return nf.ty }
+      return "?"
+    }
+    let r = ck_record(ck_expr(b))
+    if r != null {
+      let ft = ck_field(r, c.s)
+      if ft != null and is_fn_type(ft) { return ck_call_sig(e, c.s, ft) }
+    }
+    ck_walk_args(e)
+    return "?"
+  }
+  ck_expr(c)
+  ck_walk_args(e)
+  return "?"
+}
+function ck_call_named(e: Node, name: pointer) -> pointer {
+  let li = ck_local(name)
+  if li >= 0 {
+    if is_fn_type(ck_tys[li]) { return ck_call_sig(e, name, ck_tys[li]) }
+    ck_walk_args(e)
+    return "?"
+  }
+  let bt = ck_builtin(e, name)
+  if bt != null { return bt }
+  let f = ck_fn(name)
+  if f != null { return ck_call_fn(e, name, f) }
+  let x = ck_extern(name)
+  if x != null { return ck_call_fn(e, name, x) }
+  let g = ck_global(name)
+  if g != null and is_fn_type(g.ty) { return ck_call_sig(e, name, g.ty) }
+  ck_walk_args(e)
+  return "?"
+}
+# emit E(field: v): each field gets the type the event declares for it
+function ck_emit(s: Node) -> void {
+  let ev = find_event(s.s)
+  if s.a == null { return }
+  var i = 0
+  while i < len(s.a.kids) {
+    let fi = s.a.kids[i]
+    let vt = ck_expr(fi.a)
+    if ev != null {
+      let ft = ck_field(ev, fi.s)
+      if ft != null { ck_give(ft, vt, fi.a, `field {fi.s} of {s.s}`) }
+    }
+    i += 1
+  }
+}

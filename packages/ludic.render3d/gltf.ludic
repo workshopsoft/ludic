@@ -66,7 +66,7 @@ function gltf_mat_remember(name: string, diff: int, nrm: int, arm: int) -> void 
 }
 
 var gltf_cutout: bool = false     # the material being loaded is alpha-blended (a cut-out atlas)
-function gltf_texture(uri: pointer, srgb: bool) -> int {
+function gltf_texture(uri: string, srgb: bool) -> int {
   if gltf_tex_paths == null { gltf_tex_paths = new []pointer;  gltf_tex_ids = words(256) }
   var png: string = uri
   let n = len(uri)
@@ -82,7 +82,7 @@ function gltf_texture(uri: pointer, srgb: bool) -> int {
 }
 
 # the image uri behind materials[m].<slot>.index, or null
-function gltf_mat_uri(mat: Val, slot: pointer) -> pointer {
+function gltf_mat_uri(mat: Val, slot: pointer) -> string {
   var holder = mat
   if slot == "baseColorTexture" or slot == "metallicRoughnessTexture" {
     if value_has(mat, "pbrMetallicRoughness") == 0 { return null }

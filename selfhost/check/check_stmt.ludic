@@ -1,0 +1,158 @@
+# check_stmt.ludic — L4: statements, and the pass itself. check_program runs between the parse and
+# the emitter over everything the program wrote (not the runtime spliced in after it): every
+# function, the entry, the tests, the globals' initializers and every @On listener with its
+# event's fields in scope. ECS handler, query, spawn and machine bodies bind names the checker
+# does not model, so they are left to the emitter.
+function ck_block(b: Node) -> void {
+  if b == null { return }
+  if b.kind != N_BLOCK {
+    ck_stmt(b)
+    return
+  }
+  let m = ck_mark()
+  var i = 0
+  while i < len(b.kids) {
+    ck_stmt(b.kids[i])
+    i += 1
+  }
+  ck_pop(m)
+}
+function ck_target(t: Node) -> pointer {
+  if t.kind == E_ID { return ck_id(t) }
+  return ck_expr(t)
+}
+function ck_let(s: Node) -> void {
+  var t: pointer = "?"
+  if s.a != null { t = ck_expr(s.a) }
+  if s.ty != null {
+    if s.a != null { ck_give(s.ty, t, s.a, s.s) }
+    ck_bind(s.s, s.ty)
+    return
+  }
+  ck_bind(s.s, t)
+}
+function ck_assign(s: Node) -> void {
+  let lt = ck_target(s.a)
+  let rt = ck_expr(s.b)
+  var what: pointer = "this assignment"
+  if s.a.kind == E_ID { what = s.a.s }
+  if s.a.kind == E_MEMBER { what = `field {s.a.s}` }
+  if (s.s == "=") {
+    ck_give(lt, rt, s.b, what)
+    return
+  }
+  let op = s.s[0..1]
+  let res = ck_binop(s, op, lt, rt, s.a, s.b)
+  ck_give(lt, res, s.b, what)
+}
+function ck_match(s: Node) -> void {
+  ck_expr(s.a)
+  var i = 0
+  while i < len(s.kids) {
+    let arm = s.kids[i]
+    let m = ck_mark()
+    var p = 0
+    while p < len(arm.kids) {
+      let pat = arm.kids[p]
+      # `Door(n) =>` binds its payload's names
+      if pat.kind == E_CALL {
+        var q = 0
+        while q < len(pat.kids) {
+          if pat.kids[q].kind == E_ID { ck_bind(pat.kids[q].s, "?") }
+          q += 1
+        }
+      }
+      p += 1
+    }
+    ck_block(arm.a)
+    ck_pop(m)
+    i += 1
+  }
+}
+function ck_stmt(s: Node) -> void {
+  if s == null { return }
+  let k = s.kind
+  if k == N_BLOCK { ck_block(s);  return }
+  if k == S_LET { ck_let(s);  return }
+  if k == S_ASSIGN { ck_assign(s);  return }
+  if k == S_IF {
+    ck_cond(s.a, ck_expr(s.a))
+    ck_block(s.b)
+    ck_block(s.c)
+    return
+  }
+  if k == S_WHILE {
+    ck_cond(s.a, ck_expr(s.a))
+    ck_block(s.b)
+    return
+  }
+  if k == S_FOR {
+    ck_expr(s.a)
+    ck_expr(s.b)
+    let m = ck_mark()
+    ck_bind(s.s, "int")
+    ck_block(s.c)
+    ck_pop(m)
+    return
+  }
+  if k == S_RETURN {
+    if s.a == null { return }
+    let t = ck_expr(s.a)
+    if (ck_ret != "void") { ck_give(ck_ret, t, s.a, "the result") }
+    return
+  }
+  if k == S_EXPR { ck_expr(s.a);  return }
+  if k == S_MATCH { ck_match(s);  return }
+  if k == S_EMIT { ck_emit(s);  return }
+}
+function ck_fn_body(d: Node) -> void {
+  let m = ck_mark()
+  var i = 0
+  while i < len(d.kids) {
+    if d.kids[i].kind == N_PARAM { ck_bind(d.kids[i].s, d.kids[i].ty) }
+    i += 1
+  }
+  ck_ret = d.ty
+  if ck_ret == null { ck_ret = "void" }
+  ck_block(d.a)
+  ck_ret = "void"
+  ck_pop(m)
+}
+function ck_listener(l: Node) -> void {
+  let ev = find_event(l.s)
+  let m = ck_mark()
+  if ev != null {
+    var i = 0
+    while i < len(ev.kids) {
+      ck_bind(ev.kids[i].s, ev.kids[i].ty)
+      i += 1
+    }
+  }
+  ck_ret = "void"
+  ck_block(l.a)
+  ck_pop(m)
+}
+# LUDIC_CHECK=0 turns the pass off, for bisecting a checker fault; nothing else should need it
+function check_program() -> void {
+  let off = getenv("LUDIC_CHECK")
+  if off != null and (off == "0") { return }
+  ck_index()
+  var i = 0
+  while i < g_prog_user_end {
+    let d = prog[i]
+    if d.kind == N_FN { ck_fn_body(d) }
+    if d.kind == N_MAIN or d.kind == N_TEST { ck_block(d.a) }
+    if (d.kind == N_VAR or d.kind == N_CONST) and d.a != null { ck_give(d.ty, ck_expr(d.a), d.a, d.s) }
+    i += 1
+  }
+  var j = 0
+  while j < len(g_onlisten) {
+    ck_listener(g_onlisten[j])
+    j += 1
+  }
+  if ck_errors > 0 and not ck_reporting() {
+    let m = `{itoa(ck_errors)} type error(s)\n`
+    file_write(file_stderr(), m, len(m))
+    exit(1)
+  }
+}

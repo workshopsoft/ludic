@@ -38,7 +38,7 @@ function emit_query(st: Node) -> void {
   while t < len(terms.kids) {
     let tm = terms.kids[t]
     let ak = find_arch_id(tm.s)
-    var ok = "0"
+    var ok: pointer = "0"
     if ak > 0 {
       let kp = nreg();  emit("  ");  emit(kp);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_kind, i32 0, i32 ");  emit(i1);  emit("\n")
       let kv = emit_bind(`load i32, ptr {kp}`)

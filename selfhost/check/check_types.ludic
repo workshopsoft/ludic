@@ -1,0 +1,84 @@
+# check_types.ludic — L4: what a type is, and what may be given where. A type is its written
+# form ("int", "[]Thing", "fn(int)->bool"); "?" is a type the checker could not work out, and it
+# agrees with everything, so the checker only ever reports a mix-up it can prove. "null" is the
+# type of the null literal, and `pointer` is untyped: numbers, bools, text, records, slices and
+# functions are kept apart, and a pointer is trusted to be whatever it is given as.
+function ck_unknown(t: pointer) -> bool { return t == null or (t == "?") }
+function ck_is_int(t: pointer) -> bool {
+  if (t == "int") or (t == "long") or (t == "byte") or (t == "i64") or (t == "u8") { return true }
+  let en = ck_enum(t)
+  if en != null { return not enum_is_tagged(en) }
+  return false
+}
+# "an int", "a float": the article a message puts before a type
+function ck_a(t: pointer) -> pointer {
+  let c = t[0]
+  if c == 'a' or c == 'e' or c == 'i' or c == 'o' or c == 'u' or c == 'A' or c == 'E' or c == 'I' or c == 'O' or c == 'U' { return `an {t}` }
+  return `a {t}`
+}
+function ck_is_float(t: pointer) -> bool { return (t == "float") or (t == "double") }
+function ck_is_num(t: pointer) -> bool { return ck_is_int(t) or ck_is_float(t) or (t == "fixed") }
+function ck_is_rec(t: pointer) -> bool { return ck_record(t) != null }
+# a value that is an address: a string, a record, a slice, a buffer, a function, a boxed enum
+function ck_is_ref(t: pointer) -> bool {
+  if ck_is_num(t) or (t == "bool") or (t == "void") or (t == "null") { return false }
+  return true
+}
+# a literal takes the kind of the slot it is written into: `1` is a float in a float slot and
+# `1.5` a fixed in a fixed one, and `-1` is as much a literal as `1`
+function ck_is_lit(e: Node) -> bool {
+  if e == null { return false }
+  if e.kind == E_INT or e.kind == E_FLOAT { return true }
+  if e.kind == E_UN and (e.s == "-") { return ck_is_lit(e.a) }
+  return false
+}
+# the class a type belongs to, for an operator: n(umber) s(tring) b(ool) r(eference)
+function ck_class(t: pointer) -> pointer {
+  if ck_is_num(t) { return "number" }
+  if (t == "string") { return "string" }
+  if (t == "bool") { return "bool" }
+  return "reference"
+}
+
+# may a value of type `from` (the expression `e`) be given where `to` is wanted? null when it
+# may; otherwise the category of the mix-up, which is also how the report groups them
+function ck_mismatch(to: pointer, from: pointer, e: Node) -> pointer {
+  if ck_unknown(to) or ck_unknown(from) { return null }
+  if (to == from) or (to == "void") { return null }
+  if (from == "null") {
+    if ck_is_ref(to) { return null }
+    return "null"
+  }
+  if (to == "bool") or (from == "bool") { return "bool" }
+  # a decimal literal is whichever of float and fixed its slot is
+  if ck_is_lit(e) and ((from == "fixed") or ck_is_float(from)) and ((to == "fixed") or ck_is_float(to)) { return null }
+  if ck_is_int(to) {
+    if ck_is_int(from) { return null }
+    if ck_is_num(from) { return "narrowing" }
+    return "kind"
+  }
+  if ck_is_float(to) {
+    if ck_is_int(from) or ck_is_float(from) { return null }
+    if (from == "fixed") { return "fixed" }
+    return "kind"
+  }
+  if (to == "fixed") {
+    if ck_is_int(from) { return null }
+    if ck_is_float(from) and ck_is_lit(e) { return null }
+    if ck_is_float(from) { return "fixed" }
+    return "kind"
+  }
+  if ck_is_num(from) { return "kind" }
+  # `pointer` is the untyped reference, C's void *: it goes anywhere a reference does, and a
+  # reference goes into it. What it may hold is L7's question (unsafe), not this pass's.
+  if (to == "pointer") or (from == "pointer") { return null }
+  if (to == "string") { return "kind" }
+  if ck_is_rec(to) and ck_is_rec(from) { return "record" }
+  if ck_is_rec(to) and ((from == "string") or is_slice_ty(from)) { return "kind" }
+  # a []string is a []pointer that holds only text, and a []pointer is untyped
+  if (to == "[]pointer") or (from == "[]pointer") { return null }
+  if is_slice_ty(to) and is_slice_ty(from) { return "slice" }
+  if is_fn_type(to) and is_fn_type(from) { return "fn" }
+  if (from == "string") and (ck_is_rec(to) or is_slice_ty(to) or is_fn_type(to)) { return "kind" }
+  return null
+}

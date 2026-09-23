@@ -1,0 +1,9 @@
+# L4: a record is not text; say which of its fields is meant
+program RecordAsText {
+  property Trail { name: string = "Crater Lake" }
+  function sign(s: string) -> string { return "To " + s }
+  entry {
+    let t = new Trail
+    print(sign(t))
+  }
+}

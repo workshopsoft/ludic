@@ -133,7 +133,7 @@ function threads_link_flags(ll: pointer) -> pointer {
 }
 
 # the file part of a path: everything after the last '/'
-function file_of_path(p: pointer) -> pointer {
+function file_of_path(p: pointer) -> string {
   let d = dir_of_path(p)
   if len(d) == 0 { return p }
   return p[len(d) + 1..len(p)]

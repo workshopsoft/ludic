@@ -647,7 +647,7 @@ function tmap_resolve(m: Tmap, gid: int) -> GidInfo {
 function tmap_width(m: Tmap) -> int { return m.w }
 function tmap_height(m: Tmap) -> int { return m.h }
 function tmap_layer_count(m: Tmap) -> int { return len(m.layers) }
-function tmap_layer_name(m: Tmap, i: int) -> pointer {
+function tmap_layer_name(m: Tmap, i: int) -> string {
   if i < 0 or i >= len(m.layers) { return "" }
   if m.layers[i].name == null { return "" }
   return m.layers[i].name
@@ -855,7 +855,7 @@ function tmap_tileset_from_value(tv: Val) -> TmTileset {
   return ts
 }
 
-function tiled_join(a: pointer, b: pointer) -> pointer { return Path.normalize(Path.join(a, b)) }
+function tiled_join(a: pointer, b: pointer) -> string { return Path.normalize(Path.join(a, b)) }
 
 # build the runtime map from an intermediate tree, resolving external tilesets
 # and loading tileset images relative to `basedir`.
@@ -1105,7 +1105,7 @@ function tmap_object(m: Tmap, layer: int, i: int) -> Val {
 
 # the shape of an object: "tile" (a gid object), "point", "ellipse", "polygon",
 # "polyline", "text", or "rectangle" (the default).
-function tiled_object_shape(obj: Val) -> pointer {
+function tiled_object_shape(obj: Val) -> string {
   if value_has(obj, "gid") == 1 { return "tile" }
   if value_has(obj, "point") == 1 { return "point" }
   if value_has(obj, "ellipse") == 1 { return "ellipse" }
@@ -1132,7 +1132,7 @@ function tiled_prop_node(container: Val, name: pointer) -> Val {
 
 # a property's raw string value, with a fallback to the object's custom-type
 # default (objecttypes.xml, via the type table). "" when absent everywhere.
-function tiled_prop_str(container: Val, name: pointer) -> pointer {
+function tiled_prop_str(container: Val, name: pointer) -> string {
   let p = tiled_prop_node(container, name)
   if value_kind(p) == 6 { return value_as_str(value_get(p, "value")) }
   # fall back to the container's class default
@@ -1153,7 +1153,7 @@ function tiled_prop_int(container: Val, name: pointer) -> int {
   return xml_atoi(s)
 }
 
-function tiled_prop_type(container: Val, name: pointer) -> pointer {
+function tiled_prop_type(container: Val, name: pointer) -> string {
   let p = tiled_prop_node(container, name)
   if value_kind(p) == 6 { return value_as_str(value_get(p, "type")) }
   let cls = value_as_str(value_get(container, "type"))
@@ -1353,13 +1353,13 @@ function tmap_layer_kind(m: Tmap, layer: int) -> int {
   if layer < 0 or layer >= len(m.layers) { return -1 }
   return m.layers[layer].kind
 }
-function tmap_layer_opacity(m: Tmap, layer: int) -> pointer {
+function tmap_layer_opacity(m: Tmap, layer: int) -> string {
   if layer < 0 or layer >= len(m.layers) { return "" }
   let op = value_get(m.layers[layer].data, "opacity")
   if value_kind(op) == 0 { return "1" }
   return value_as_str(op)
 }
-function tmap_layer_tint(m: Tmap, layer: int) -> pointer {
+function tmap_layer_tint(m: Tmap, layer: int) -> string {
   if layer < 0 or layer >= len(m.layers) { return "" }
   return value_as_str(value_get(m.layers[layer].data, "tintcolor"))
 }

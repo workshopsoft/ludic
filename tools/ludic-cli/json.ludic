@@ -51,7 +51,7 @@ function utf8_put(b: pointer, n: int, cp: int) -> int {
 }
 
 # parse a JSON string starting at the opening quote; returns a fresh buffer
-function j_string() -> pointer {
+function j_string() -> string {
   jpos += 1                                   # opening quote
   # over-allocate: escapes only ever shrink the byte count
   let cap = slen(jbuf) - jpos + 1

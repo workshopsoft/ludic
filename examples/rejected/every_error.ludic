@@ -1,0 +1,11 @@
+# L4: every mix-up in a program is reported at once, not only the first
+program EveryError {
+  function half(n: int) -> int { return n / 2 }
+  function name() -> int { return "seven" }
+  entry {
+    let on = true
+    print(on + 1)
+    print(half(1, 2))
+    print(name())
+  }
+}
