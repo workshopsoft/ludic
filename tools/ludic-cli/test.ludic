@@ -688,6 +688,7 @@ function cmd_dev_test() -> int {
 
   feat_case("events/promote", "", "100 101 200 201", "promote.ludic (@Public -> model_<M>_spawn/despawn events)")
   feat_case("events/cancel", "", "0 1 92", "cancel.ludic (cancellable event + cancel + emit-as-expression)")
+  feat_case("events/answer", "", "10 20 0", "answer.ludic (a listener's return ends that listener, not the dispatch)")
 
   # EV2 the world table: the mod reflection ABI, callable from Ludic by name.
   net_case("ecs/world_get", "50 1 7")

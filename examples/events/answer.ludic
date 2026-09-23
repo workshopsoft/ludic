@@ -1,0 +1,24 @@
+# answer.ludic — one listener per kind: each answers only for its own and returns early for
+# every other. A `return` ends that listener, never the dispatch, so the listener for kind 2
+# still hears the event after the one for kind 1 has returned.
+#
+# Running it prints:  10 20 0
+program Answer {
+  event cancellable Ask { kind: int }
+  var answer: int = 0
+
+  @On(Ask) handler One { if kind != 1 { return };  answer = 10;  cancel }
+  @On(Ask) handler Two { if kind != 2 { return };  answer = 20;  cancel }
+
+  function ask(k: int) -> int {
+    answer = 0
+    if emit Ask(kind: k) != 0 { return answer }
+    return 0
+  }
+
+  entry {
+    print(ask(1))
+    print(ask(2))
+    print(ask(3))
+  }
+}

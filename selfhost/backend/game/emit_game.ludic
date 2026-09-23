@@ -652,7 +652,18 @@ function emit_event_fns() -> void {
     let base = nloc                               # listeners share the params but not each other's locals
     var i = 0
     while i < len(g_onlisten) {
-      if (g_onlisten[i].s == en) { nloc = base;  g_term = false;  emit_block(g_onlisten[i].a) }
+      if (g_onlisten[i].s == en) {
+        # a `return` ends this listener, not the dispatch: the next one and the foreign ones still run
+        nloc = base
+        g_term = false
+        let next = lbl("evnext")
+        g_ret_label = next
+        emit_block(g_onlisten[i].a)
+        g_ret_label = "ret"
+        if not g_term { emit(`  br label %{next}\n`) }
+        emit(`{next}:\n`)
+        g_term = false
+      }
       i += 1
     }
     # the open half: walk the foreign callback array in registration order

@@ -441,6 +441,7 @@ function ondisable_body(prop: pointer) -> Node {
 # Gated on `len(g_events) > 0`, so a program with no events is byte-identical.
 var g_events: []Node            # each: an N_EVENT node (s = name, kids = payload fields, ival=1 if cancellable)
 var g_onlisten: []Node          # each: N_BLOCK, s = event name, a = listener body block
+var g_ret_label: pointer = "ret"   # where `return` goes: the function's exit, or inside an event dispatch the end of the one listener
 var g_cancel_addr: pointer = null   # EV3: address of the current cancellable dispatch's flag (null outside one)
 
 function register_event(n: Node) -> void { push(g_events, n) }

@@ -121,7 +121,7 @@ function emit_return(st: Node) -> void {
     let v = emit_expr(st.a)
     store_at(llty(ret_ty), coerce_code(v, ret_ty), "%retval")
   }
-  emit("  br label %ret\n")
+  emit(`  br label %{g_ret_label}\n`)
   g_term = true
 }
 
