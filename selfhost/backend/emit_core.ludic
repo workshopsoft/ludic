@@ -496,10 +496,28 @@ function loc_reset() -> void { nloc = 0 }
 # push a local. Defaults to mutable (params, loop and query bindings are all
 # reassignable/rebindable); a `let` binding marks its slot immutable afterward
 # via loc_set_mut, so a later `name = …` can be rejected.
+var loc_blk: []int = null            # the block each local was declared in
+var g_blk_cur: int = 0
+var g_blk_next: int = 0
 function loc_push(name: pointer, r: pointer, ty: pointer) -> void {
+  if loc_blk == null { loc_blk = new []int }
   if nloc < len(loc_name) { loc_name[nloc] = name;  loc_reg[nloc] = r;  loc_ty[nloc] = ty;  loc_mut[nloc] = 1 }
   else { push(loc_name, name);  push(loc_reg, r);  push(loc_ty, ty);  push(loc_mut, 1) }
+  while len(loc_blk) <= nloc { push(loc_blk, 0) }
+  loc_blk[nloc] = -1                     # a parameter, a loop variable, a binding: not a declaration
   nloc += 1
+}
+# the local just pushed was a `let` / `var`: it is declared in this block
+function loc_mark_declared() -> void { if nloc > 0 { loc_blk[nloc - 1] = g_blk_cur } }
+# a `let` / `var` of a name this very block already declared: the second silently shadowed the
+# first, and a settings page compared a vegetation setting against the volumetric one for it
+function loc_check_redeclared(name: pointer) -> void {
+  if loc_blk == null { return }
+  var i = 0
+  while i < nloc {
+    if (loc_name[i] == name) and loc_blk[i] == g_blk_cur { perr(`'{name}' is declared twice in this block`) }
+    i += 1
+  }
 }
 function loc_set_mut(m: int) -> void { if nloc > 0 { loc_mut[nloc - 1] = m } }
 function loc_find(name: pointer) -> int {

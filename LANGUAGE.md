@@ -62,6 +62,14 @@ parse:
 chronorift/world.ludic:1: error: expected expression
 ```
 
+All of a program's files share one namespace, so **a name is defined once**: two functions, two
+`var`s or `const`s (or an `enum` and a `const`), or two `property` / `event` records with one name
+are an error that names both places. Declarations the runtime splices in are its own and are not
+checked against each other.
+The same holds inside a function: a `let` or `var` declares its name once per block (another
+block, a loop variable or a parameter may reuse it), and a function with a result type must
+`return` one on every path - running off the end of its body is an error, not a zero.
+
 ## Models (entity kinds)
 
 An `model` names a *kind* of entity and the fixed set of properties it

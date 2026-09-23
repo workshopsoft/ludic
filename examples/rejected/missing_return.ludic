@@ -1,0 +1,8 @@
+# missing_return.ludic - a function with a result that can run off its end. It used to return
+# whatever the slot held; a split self-test lost its last `return ok` and reported FAILED.
+program MissingReturn {
+  function checked(n: int) -> bool {
+    if n > 0 { return true }
+  }
+  entry { print(checked(1)) }
+}

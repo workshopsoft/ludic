@@ -1,0 +1,9 @@
+# redeclared_local.ludic - one block declaring a name twice. The second used to shadow the first
+# silently: a settings page compared its vegetation setting against the volumetric one for it.
+program RedeclaredLocal {
+  entry {
+    let v0 = 1
+    let v0 = 2
+    print(v0)
+  }
+}

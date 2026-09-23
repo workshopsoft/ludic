@@ -20,6 +20,17 @@ function feat_case(path: pointer, keys: pointer, exp: pointer, label: pointer) -
   if (got == exp) { ok(label) } else { bad2(label, `got [{got}] want [{exp}]`) }
 }
 
+# an example the compiler must REFUSE, with `want` in the message
+function reject_case(path: pointer, want: pointer, label: pointer) -> void {
+  let ll = `{tmp_dir()}/rj_{flat(path)}.ll`
+  if shq(`bin/ludicc examples/{path}.ludic --emit-llvm -o {ll} 2>{tmp_dir()}/rj.err`) {
+    bad2(label, "compiled, and should have been refused")
+    return
+  }
+  let got = capture_line(`grep -i error {tmp_dir()}/rj.err | head -1`)
+  if s_contains(got, want) { ok(label) } else { bad2(label, `refused, but said [{got}]`) }
+}
+
 # a feature example that consumes an in-repo controller package (packages/): same
 # as feat_case, but the compiler is pointed at packages/ via LUDIC_MODULES so a
 # `import "ludic.foo/bar.ludic"` resolves, and LUDIC_HOME anchors the engine
@@ -689,6 +700,10 @@ function cmd_dev_test() -> int {
   feat_case("events/promote", "", "100 101 200 201", "promote.ludic (@Public -> model_<M>_spawn/despawn events)")
   feat_case("events/cancel", "", "0 1 92", "cancel.ludic (cancellable event + cancel + emit-as-expression)")
   feat_case("events/answer", "", "10 20 0", "answer.ludic (a listener's return ends that listener, not the dispatch)")
+  reject_case("rejected/duplicate_const", "'KEY_LEFT' is defined twice", "a const defined twice is refused, naming both places")
+  reject_case("rejected/duplicate_property", "'Look' is defined twice", "a property defined twice is refused")
+  reject_case("rejected/redeclared_local", "'v0' is declared twice in this block", "a local declared twice in one block is refused")
+  reject_case("rejected/missing_return", "can reach its end without returning", "a function that can run off its end without its result is refused")
 
   # EV2 the world table: the mod reflection ABI, callable from Ludic by name.
   net_case("ecs/world_get", "50 1 7")

@@ -1,0 +1,6 @@
+# duplicate_property.ludic - one record name defined twice; refused like a duplicate function
+program DuplicateProperty {
+  property Look { hair: int = 0 }
+  property Look { top: int = 0 }
+  entry { print(1) }
+}

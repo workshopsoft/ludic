@@ -32,6 +32,7 @@ function emit_fn(d: Node) -> void {
     i += 1
   }
   emit_block(d.a)
+  if not (rl == "void") and not block_ends(d.a) { perr(`function '{d.s}' can reach its end without returning a {ret_ty}`) }
   if not g_term { emit("  br label %ret\n") }
   emit("ret:\n")
   if (rl == "void") { emit("  ret void\n") }
@@ -204,8 +205,39 @@ function check_duplicate_fns() -> void {
   }
 }
 
+# the program's own globals and types, each name once: the first definition used to win
+# silently, and a game read an arrow key as a binding slot's number for months because two files
+# both said KEY_LEFT. Declarations spliced in from the runtime are the runtime's business.
+function decl_group(k: int) -> int {
+  if k == N_VAR or k == N_CONST or k == N_ENUM { return 1 }
+  if k == N_STRUCT or k == N_COMP or k == N_EVENT { return 2 }
+  return 0
+}
+function check_duplicate_decls() -> void {
+  let n = g_prog_user_end
+  var i = 0
+  while i < n and i < len(prog) {
+    let d = prog[i]
+    let g = decl_group(d.kind)
+    if g > 0 {
+      var j = i + 1
+      while j < n and j < len(prog) {
+        let o = prog[j]
+        if decl_group(o.kind) == g and (o.s == d.s) {
+          g_err_file = o.file
+          g_err_line = o.line
+          perr(`'{d.s}' is defined twice (first in {d.file}:{itoa(d.line)})`)
+        }
+        j += 1
+      }
+    }
+    i += 1
+  }
+}
+
 function emit_program() -> void {
   check_duplicate_fns()
+  check_duplicate_decls()
   head = buf_new()
   code = buf_new()
   g_uses_str = false

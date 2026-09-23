@@ -1,0 +1,8 @@
+# duplicate_const.ludic - two files that both define KEY_LEFT. The compiler refuses it and names
+# both places; it used to keep the first silently, and a game read an arrow key as a binding
+# slot's number for months. (Rejected on purpose: tools/ludic-cli/test.ludic, reject_case.)
+program DuplicateConst {
+  const KEY_LEFT: int = 130
+  const KEY_LEFT: int = 2
+  entry { print(KEY_LEFT) }
+}
