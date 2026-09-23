@@ -1,0 +1,19 @@
+# aliases.ludic — L6: a namespace method that is a name for a function. `alias` gives the method,
+# the labels a call may use (in the target's parameter order) and the function it calls; without a
+# label list the target's own parameter names are the labels. This is how the engine declares
+# Http, Screen, Json and the rest (runtime/native/namespaces.ludic), and how a package owns an API.
+#
+# Running it prints:  10 5 3
+program Aliases {
+  namespace Trail {
+    export alias length(from, to) = trail_distance
+    alias km = trail_km
+    alias stops() = trail_stops
+  }
+  function trail_distance(a: int, b: int) -> int { return b - a }
+  function trail_km(metres: int) -> int { return metres / 1000 }
+  function trail_stops() -> int { return 3 }
+  entry {
+    print(`{Trail.length(to: 12, from: 2)} {Trail.km(metres: 5000)} {Trail.stops()}`)
+  }
+}

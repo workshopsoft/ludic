@@ -144,6 +144,11 @@ error naming both modules.
 
 ## Package-declarable namespaces and engine systems (issue #62)
 
+A package's namespace can also be an `alias` block (L6): `namespace Weapon { alias fire(slot) =
+wp_fire_slot }` names each method and the function it calls, with its own labels, so the public
+names need not be the implementation's. The engine's own `Http.*`, `Json.*`, `Screen.*` and the
+rest are declared exactly this way, in `runtime/native/namespaces.ludic`.
+
 A package can register two things that used to be compiler-hardcoded — a `Foo.*`
 namespace and an engine-owned system — with **no compiler edit**, via two
 keyword-free annotations. This is what lets gameplay-controller libraries ship as

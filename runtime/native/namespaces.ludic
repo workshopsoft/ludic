@@ -1,0 +1,544 @@
+# namespaces.ludic — the engine's namespaces that are a name for a runtime function: `Http.get`
+# is `http_get`, `Screen.fill_rectangle` is `fill_rect`. Each `alias` names the method, the labels
+# a call may name its arguments by (in the target's parameter order), and the function it calls.
+# Spliced into every program, and costs nothing until a method is called: the file that defines
+# the target is spliced by its own use. A package declares its namespace the same way (L6).
+namespace Screen {
+  alias clear(color) = clear
+  alias fill_rectangle(x, y, width, height, color) = fill_rect
+  alias bar(x, y, width, height, value, max, color, back) = bar
+  alias draw_rectangle(x, y, width, height, color) = frame_rect
+  alias put_pixel(x, y, color) = put_px
+  alias draw_text(x, y, text, color, scale) = text
+  alias draw_number(x, y, value, color, scale) = text_int
+  alias show() = present
+  alias width() = screen_w
+  alias height() = screen_h
+  alias status(text) = status
+  alias line(x1, y1, x2, y2, color) = line
+  alias circle(x, y, radius, color) = circle
+  alias fill_circle(x, y, radius, color) = fill_circle
+  alias triangle(x1, y1, x2, y2, x3, y3, color) = triangle
+  alias fill_triangle(x1, y1, x2, y2, x3, y3, color) = fill_triangle
+  alias sprite(id, x, y) = draw_sprite
+  alias sprite_scaled(id, x, y, scale) = draw_sprite_scaled
+  alias oval(x, y, rx, ry, color) = oval
+  alias camera(x, y) = camera
+  alias clip(x, y, width, height) = clip
+  alias clip_reset() = clip_reset
+  alias blend_mode(mode) = blend_mode
+  alias measure_text(text) = measure_text
+  alias pixel(x, y) = get_px
+}
+namespace Sprite {
+  alias sheet(path, cellw, cellh) = atlas_sheet
+  alias cell(sheet, col, row) = atlas_cell
+  alias cell_span(sheet, col, row, cols, rows) = atlas_cell_span
+  alias strip(sheet, col, row, count, rows) = atlas_strip
+  alias define(name, sheet, col, row) = atlas_define
+  alias named(name) = atlas_named
+  alias draw(id, x, y) = atlas_draw
+  alias draw_scaled(id, x, y, scale) = atlas_draw_scaled
+  alias draw_meter(x, y, value, max, per_icon, spacing, full, half, empty) = atlas_draw_meter
+  alias width(id) = atlas_width
+  alias height(id) = atlas_height
+}
+namespace Font {
+  alias load(path) = font_load
+}
+namespace Ui {
+  alias build() = ui_build
+  alias open(id) = ui_open
+  alias close() = ui_close
+  alias tick(key) = ui_tick
+  alias clicked(id) = ui_clicked
+  alias set_text(id, text) = ui_set_text
+  alias render() = ui_render
+}
+namespace File {
+  alias open(path, mode) = file_open
+  alias read(file, buffer, count) = file_read
+  alias write(file, buffer, count) = file_write
+  alias seek(file, offset, whence) = file_seek
+  alias tell(file) = file_tell
+  alias close(file) = file_close
+}
+namespace Fx {
+  alias sparks(x, y, color, count) = fx_sparks
+  alias number(x, y, value, color) = fx_number
+  alias clear() = fx_clear
+}
+namespace Assets {
+  alias font(name) = assets_font  # a .ttf loaded through the queue
+  alias enqueue_dir(path) = assets_enqueue_dir  # every file of a directory, by base name
+  alias image(path) = atlas_image
+  alias load(path) = atlas_image  # alias
+  alias get(name) = atlas_named  # alias of Sprite.named
+  # #82 — incremental preload queue + progress for a loading scene.
+  alias enqueue(name, path) = assets_enqueue
+  alias pump(max) = assets_pump
+  alias total() = assets_total
+  alias loaded() = assets_loaded
+  alias ready() = assets_ready
+  alias progress() = assets_progress
+}
+namespace Camera {
+  alias set(x, y) = camera
+  alias follow(x, y, lerp) = camera_follow
+  alias shake(amount) = camera_shake
+  alias shake_for(amount, frames) = camera_shake_for  # a timed shake the engine decays
+  alias zoom(scale) = camera_zoom  # #78 deterministic Q16.16 zoom
+}
+namespace Map {
+  alias size(width, height) = map_size
+  alias row(y, cells) = map_row
+  alias tile(x, y) = tile
+  alias get(x, y) = tile
+  # the cell API: edit the grid in place, ask it what is where
+  alias set(x, y, glyph) = map_set
+  alias fill(glyph) = map_fill
+  alias rect(x, y, width, height, glyph) = map_rect
+  alias border(glyph) = map_border
+  alias random_cell(glyph) = map_random_cell
+  alias random_cell_far(glyph, from, min_tiles) = map_random_cell_far
+  alias is_solid(x, y) = map_is_solid
+  alias is_solid_at(x, y) = map_is_solid_at
+  alias to_tile(pixel) = map_to_tile
+  alias width() = map_width
+  alias height() = map_height
+}
+namespace Random {
+  alias range(low, high) = rng_range
+  alias weighted(weights) = rng_weighted  # an index in proportion to its weight
+  alias chance(percent) = rng_chance
+  alias seed(value) = seed
+  alias value() = rng_value
+  alias int(max) = rng_int
+  alias sign() = rng_sign
+}
+namespace Input {
+  alias key() = key
+  # action maps + deterministic record/replay (#7) — spliced runtime in
+  # runtime/native/input.ludic, reached as ordinary @fn_input_* calls.
+  alias bind(action, key) = input_bind
+  alias rebind(action, old, new) = input_rebind
+  alias poll() = input_poll
+  alias down() = input_down
+  alias pressed() = input_pressed
+  alias record() = input_record
+  alias replay() = input_replay
+  # Input Manager (#83): default bindings + device-agnostic actions that read the
+  # multi-key device layer (the frame loop now commits it automatically).
+  alias action(action, key) = input_default
+  alias bind_pad(action, button) = input_bind_pad
+  alias active(action) = input_active
+  alias just_pressed(action) = input_just_pressed
+  alias just_released(action) = input_just_released
+  # device layer (#50): multi-key held state, analog axes/vectors, mouse,
+  # gamepads, touch — reached as ordinary @fn_input_* calls into input.ludic.
+  alias key_down(key) = input_key_down
+  alias key_pressed(key) = input_key_pressed
+  alias key_released(key) = input_key_released
+  alias key_label(key) = input_key_label
+  alias text() = input_text  # what was TYPED, UTF-8
+  alias press(key) = input_press
+  alias release(key) = input_release
+  alias axis(neg, pos) = input_axis
+  alias axis_i(neg, pos) = input_axis_i  # #79 directional int (-1/0/1)
+  alias move_i() = input_move_i  # WASD / arrows / left stick -> IVec2
+  alias vector(left, right, up, down) = input_vector
+  alias strength(action) = input_strength
+  alias mouse_x() = input_mouse_x
+  alias mouse_y() = input_mouse_y
+  alias mouse_dx() = input_mouse_dx
+  alias mouse_dy() = input_mouse_dy
+  alias mouse_down(button) = input_mouse_down
+  alias wheel() = input_wheel
+  alias set_mouse(x, y, buttons, wheel) = input_set_mouse
+  alias pad_connected(pad) = input_pad_connected
+  alias pad_button(pad, button) = input_pad_button
+  alias pad_axis(pad, axis) = input_pad_axis
+  alias set_pad(pad, connected, buttons, lx, ly, rx, ry) = input_set_pad
+  alias touch_count() = input_touch_count
+  alias touch_x(index) = input_touch_x
+  alias touch_y(index) = input_touch_y
+  alias set_touch(index, x, y, active) = input_set_touch
+  alias cursor_mode(mode) = input_cursor_mode  # #89 cursor capture
+}
+namespace Audio {
+  alias load(path) = audio_load
+  alias define(name, path) = audio_define
+  alias named(name) = audio_named
+  alias play_sound(id) = audio_play
+  # Audio.play_at(id, gain:, pitch:, pan:) — one shot with its own gain, pitch and
+  # stereo position. Audio.volume / Audio.pitch stay global (they are the options
+  # screen); this is the per-voice one, and it is what distance attenuation is built on.
+  alias play_at(id, gain, pitch, pan) = audio_play_at
+  alias stop(id) = audio_stop
+  alias stop_music() = audio_stop_music
+  alias stop_all() = audio_stop_all
+  alias volume(v) = audio_volume
+  alias pitch(v) = audio_pitch
+  alias is_playing(id) = audio_is_playing
+}
+namespace Http {
+  alias get(url) = http_get
+  alias post(url, body) = http_post
+  alias request(method, url, body) = http_request
+  alias open(method, url) = http_open
+  alias set(handle, name, value) = http_set_header
+  alias body(handle, body) = http_body
+  alias body_bytes(handle, bytes, len) = http_body_n
+  alias send(handle) = http_send_req
+  alias poll(handle) = http_poll
+  alias status(handle) = http_status_of
+  alias ok(handle) = http_ok
+  alias text(handle) = http_text
+  alias body_len(handle) = http_body_len
+  alias header(handle, name) = http_header_of
+  alias free(handle) = http_close
+  alias parse(bytes, len) = http_parse
+  alias save_to(handle, path) = http_save_to
+  alias received(handle) = http_received
+  alias expected(handle) = http_expected
+}
+namespace Udp {
+  alias open(port) = udp_open
+  alias port(socket) = udp_port
+  alias send(socket, ip, port, bytes, len) = udp_send
+  alias recv(socket, bytes, cap) = udp_recv
+  alias from_ip(socket) = udp_from_ip
+  alias from_port(socket) = udp_from_port
+  alias close(socket) = udp_close
+  alias resolve(name) = udp_resolve
+  alias local_ip() = udp_local_ip
+  alias ip(text) = udp_ip
+  alias ip_text(ip) = udp_ip_text
+}
+namespace Process {
+  alias spawn(path, args) = process_spawn
+  alias poll(handle) = process_poll
+  alias kill(handle) = process_kill
+  alias free(handle) = process_free
+}
+namespace World {
+  alias get() = world_get
+  alias set() = world_set
+  alias has() = world_has
+  alias count() = world_count
+  alias size() = world_size
+  alias spawn() = world_spawn
+  alias despawn() = world_despawn  # #84 — despawn an entity by id (runs @OnDespawn + frees)
+  alias save() = world_save
+  alias load() = world_load
+  alias prop_id() = world_prop_id
+  alias field_id() = world_field_id
+  alias model_id() = world_model_id
+  alias kind() = world_kind
+  alias register_prop() = world_register_prop
+  alias attach() = world_attach_dyn
+  alias detach() = world_detach_dyn
+  alias query_next() = world_query_next
+}
+namespace Network {
+  alias send() = net_send
+  alias poll() = net_poll
+  alias serialize() = serialize
+  alias apply() = apply
+  alias owner() = owner
+  alias set_owner() = set_owner
+  alias is_server() = is_server
+  alias is_owner() = is_owner
+  alias local_id() = local_id
+}
+namespace System {
+  # System.* is the low-level file/process surface only. The environment slice
+  # (arg/arg_count/env/exit) and the standard streams (stdout/stderr) were
+  # duplicated by the canonical Os.* namespace and have been retired — see
+  # Os.arg/arg_count/env/exit and Os.stdout_write/stderr_write (issue #40).
+  alias run() = run
+  alias read_char() = read_char
+  alias file_open() = file_open
+  alias file_read() = file_read
+  alias file_write() = file_write
+  alias file_seek() = file_seek
+  alias file_tell() = file_tell
+  alias file_close() = file_close
+}
+namespace Save {
+  alias write() = save
+  alias read() = load
+}
+namespace Regex {
+  alias compile(pattern) = regex_compile
+  alias valid(pattern) = regex_valid
+  alias matches(text, pattern) = regex_matches
+  alias test(text, re) = regex_test
+  alias find(text, pattern) = regex_find
+  alias exec(text, re) = regex_exec
+  alias next(text, re, from) = regex_next
+  alias replace(text, pattern, replacement) = regex_replace
+  alias group(match, n) = regex_group
+  alias group_count(match) = regex_group_count
+  alias start(match, n) = regex_start
+  alias end(match, n) = regex_end
+  alias ok(match) = regex_ok
+}
+namespace BigInt {
+  alias from(value) = bigint_from
+  alias parse(text) = bigint_from_str
+  alias add(a, b) = bigint_add
+  alias sub(a, b) = bigint_sub
+  alias mul(a, b) = bigint_mul
+  alias neg(a) = bigint_neg
+  alias pow(a, exp) = bigint_pow
+  alias div(a, d) = bigint_div_int
+  alias mod(a, d) = bigint_mod_int
+  alias cmp(a, b) = bigint_cmp
+  alias eq(a, b) = bigint_eq
+  alias is_zero(a) = bigint_is_zero
+  alias to_int(a) = bigint_to_int
+  alias str(a) = bigint_str
+}
+namespace Decimal {
+  alias from(value) = decimal_from
+  alias parse(text) = decimal_from_str
+  alias add(a, b) = decimal_add
+  alias sub(a, b) = decimal_sub
+  alias mul(a, b) = decimal_mul
+  alias neg(a) = decimal_neg
+  alias cmp(a, b) = decimal_cmp
+  alias eq(a, b) = decimal_eq
+  alias scale(d) = decimal_scale
+  alias rescale(d, places) = decimal_rescale
+  alias str(d) = decimal_str
+}
+namespace Dict {
+  alias new() = dict_new
+  alias set(d, key, value) = dict_set
+  alias get(d, key) = dict_get
+  alias get_or(d, key, fallback) = dict_get_or
+  alias has(d, key) = dict_has
+  alias remove(d, key) = dict_remove
+  alias size(d) = dict_size
+  alias clear(d) = dict_clear
+  alias keys(d) = dict_keys
+}
+namespace Set {
+  alias new() = set_new
+  alias add(s, key) = set_add
+  alias has(s, key) = set_has
+  alias remove(s, key) = set_remove
+  alias size(s) = set_size
+  alias clear(s) = set_clear
+  alias members(s) = set_members
+}
+namespace Job {
+  alias defer() = job_defer
+  alias run(kind, arg) = job_run
+  alias fulfill(handle, value) = job_fulfill
+  alias fail(handle, error) = job_fail
+  alias cancel(handle) = job_cancel
+  alias pump(budget) = job_pump
+  alias done(handle) = job_done
+  alias ok(handle) = job_ok
+  alias failed(handle) = job_failed
+  alias cancelled(handle) = job_cancelled
+  alias result(handle) = job_result
+  alias error(handle) = job_error
+  alias pending() = job_pending
+  alias free(handle) = job_free
+  alias is_worker() = job_is_worker
+}
+namespace Promise {
+  alias all(handles) = prom_all
+  alias race(handles) = prom_race
+  alias count_done(handles) = prom_count_done
+  alias all_done(handles) = prom_all_done
+}
+namespace Sync {
+  alias mutex() = sync_mutex
+  alias lock(mutex) = sync_lock
+  alias unlock(mutex) = sync_unlock
+  alias try_lock(mutex) = sync_try_lock
+  alias atomic() = sync_atomic
+  alias get(atomic) = sync_get
+  alias set(atomic, value) = sync_set
+  alias add(atomic, delta) = sync_add
+  alias cas(atomic, expect, next) = sync_cas
+  alias channel() = sync_channel
+  alias send(channel, value) = sync_send
+  alias recv(channel) = sync_recv
+  alias can_recv(channel) = sync_can_recv
+  alias len(channel) = sync_len
+  alias cpu_count() = sync_cpu_count
+}
+namespace Huge {
+  alias from(value) = huge_from
+  alias add(a, b) = huge_add
+  alias sub(a, b) = huge_sub
+  alias mul(a, b) = huge_mul
+  alias neg(a) = huge_neg
+  alias cmp(a, b) = huge_cmp
+  alias sign(a) = huge_sign
+  alias mantissa(a) = huge_mantissa
+  alias exp(a) = huge_exp
+  alias str(a) = huge_str
+}
+namespace Angle {
+  alias from_degrees(d) = angle_from_degrees
+  alias to_degrees(a) = angle_to_degrees
+  alias wrap(a) = angle_wrap
+  alias sin(a) = angle_sin
+  alias cos(a) = angle_cos
+  alias add(a, b) = angle_add
+  alias diff(a, b) = angle_diff
+  alias diff_degrees(a, b) = angle_diff_degrees  # signed, -180..180, ints
+  alias lerp(a, b, t) = angle_lerp
+}
+namespace Percent {
+  alias clamp(v) = percent_clamp
+  alias of(num, den) = percent_of
+  alias lerp(a, b, t) = percent_lerp
+  alias apply(value, p) = percent_apply
+}
+namespace Grid {
+  alias line(x0, y0, x1, y1) = grid_line
+  alias blocked(x, y, wall) = grid_blocked
+  alias line_of_sight(x0, y0, x1, y1, wall) = grid_line_of_sight
+  alias flood(x, y, wall) = grid_flood
+  alias a_star(x0, y0, x1, y1, wall) = path_a_star
+}
+namespace Light {
+  alias ambient(color) = light_ambient
+  alias point(x, y, radius, color, energy) = light_point
+  alias spot(x, y, radius, color, energy, direction, spread) = light_spot
+  alias occlude(x, y, width, height) = light_occlude
+  alias clear_occluders() = light_clear_occluders
+  alias falloff(exponent) = light_set_falloff
+  alias soft(radius) = light_set_soft
+  alias gel(color) = light_set_gel
+  alias clear_gel() = light_clear_gel
+  alias height(height) = light_set_height
+  alias normal(x, y, width, height, nx, ny) = light_normal_rect
+  alias clear_normals() = light_clear_normals
+  alias time_of_day(t) = light_time_of_day
+}
+namespace Motion {
+  alias to(entity, from, to, dur, ease) = motion_to
+}
+namespace Tween {
+  alias to(from, to, dur, ease) = tween_to
+  alias chain(handle, to, dur, ease) = tween_chain
+  alias delay(handle, ticks) = tween_delay
+  alias value(handle) = tween_value
+  alias stop(handle) = tween_stop
+  alias parallel(a, b) = tween_parallel
+}
+namespace Query {
+  alias count(prop) = query_count
+  alias first(prop) = query_first
+  alias nearest(prop, pos, x_field, y_field, x, y) = query_nearest
+  alias within(prop, pos, x, y, radius, x_field, y_field) = query_within
+}
+namespace Reflect {
+  alias prop(name) = world_prop_id
+  alias field(prop, name) = world_field_id
+  alias prop_count() = world_prop_count
+  alias prop_name(index) = world_prop_name
+  alias field_count(prop) = world_field_count
+  alias field_name(prop, index) = world_field_name
+  alias field_type(prop, index) = world_field_type
+  alias get(entity, prop, field) = world_get
+  alias set(entity, prop, field, value) = world_set
+  alias has(entity, prop) = world_has
+  alias kind(entity) = world_kind
+  alias model(name) = world_model_id
+  # #44 — serialize an entity to a value tree and apply one back (reflect_io.ludic)
+  alias serialize(entity) = reflect_serialize
+  alias apply(entity, value) = reflect_apply
+}
+namespace Value {
+  alias null() = value_null
+  alias int(n) = value_int
+  alias fixed(f) = value_fixed
+  alias bool(b) = value_bool
+  alias str(s) = value_str
+  alias list() = value_list
+  alias object() = value_object
+  alias add(list, item) = value_add
+  alias put(obj, key, item) = value_put
+  alias get(obj, key) = value_get
+  alias has(obj, key) = value_has
+  alias at(list, index) = value_at
+  alias key_at(obj, index) = value_key_at
+  alias count(value) = value_count
+  alias kind(value) = value_kind
+  alias as_int(value) = value_as_int
+  alias as_str(value) = value_as_str
+}
+namespace Json {
+  alias encode(value) = json_encode
+  alias parse(text) = json_parse
+}
+namespace Xml {
+  alias parse(text) = xml_parse
+  alias tag(node) = xml_tag
+  alias text(node) = xml_text
+  alias attr(node, key) = xml_attr
+  alias attr_int(node, key, dflt) = xml_attr_int
+  alias has(node, key) = xml_has
+  alias attr_count(node) = xml_attr_count
+  alias child_count(node) = xml_child_count
+  alias child(node, index) = xml_child
+  alias find(node, tag) = xml_find
+  alias count(node, tag) = xml_count
+}
+namespace Base64 {
+  alias decode(src) = base64_decode
+  alias encode(src) = base64_encode
+}
+namespace Tiled {
+  alias read(path) = tiled_read
+  alias read_tsx(path) = tiled_read_tsx
+  alias load(path) = tiled_load
+  alias gid(map, layer, x, y) = tmap_gid
+  alias resolve(map, gid) = tmap_resolve
+  alias width(map) = tmap_width
+  alias height(map) = tmap_height
+  alias layer_count(map) = tmap_layer_count
+  alias layer_name(map, index) = tmap_layer_name
+  alias draw(map, camx, camy) = tmap_draw
+  alias draw_anim(map, camx, camy, frame) = tmap_draw_anim
+  alias frame_gid(map, gid, frame) = tmap_frame_gid
+  alias animated(map, gid) = tmap_is_animated
+  alias project(map, layer) = tmap_project
+  alias collide(map, layer) = tmap_collide
+  alias collision_kind(map, gid) = tmap_collision_kind
+  alias tree(map) = tmap_tree
+  alias tile_prop(map, gid, name) = tmap_tile_prop
+  alias tile_shapes(map, gid) = tmap_tile_has_shapes
+  # P4 (#72): objects / properties / custom types / templates / opt-in spawn
+  alias object_count(map, layer) = tmap_object_count
+  alias object(map, layer, index) = tmap_object
+  alias object_shape(object) = tiled_object_shape
+  alias prop(container, name) = tiled_prop_str
+  alias prop_int(container, name) = tiled_prop_int
+  alias prop_type(container, name) = tiled_prop_type
+  alias load_types(path) = tiled_load_types
+  alias template(path) = tiled_read_template
+  alias spawn(map, object, model) = tiled_spawn_object
+  alias spawn_layer(map, layer, model) = tiled_spawn_layer
+  # P5 (#73): orientation coords + image/group-layer accessors
+  alias cell_x(map, x, y) = tmap_cell_sx
+  alias cell_y(map, x, y) = tmap_cell_sy
+  alias layer_kind(map, layer) = tmap_layer_kind
+  alias layer_opacity(map, layer) = tmap_layer_opacity
+  alias layer_tint(map, layer) = tmap_layer_tint
+  alias layer_offsetx(map, layer) = tmap_layer_offsetx
+  alias layer_offsety(map, layer) = tmap_layer_offsety
+  # P6 (#74): .world stitching
+  alias world(path) = tiled_read_world
+  alias world_count(world) = tiled_world_count
+  alias world_map(world, index) = tiled_world_map
+}

@@ -731,6 +731,9 @@ function cmd_dev_test() -> int {
   reject_case("rejected/generic_mismatch", "words wants a Pool<string> and this is a Pool<int>", "two instances of one generic are two types")
   reject_case("rejected/generic_arity", "Pool takes 1 type argument(s) and Pool<int, string> gives 2", "a generic takes as many type arguments as it has parameters")
   reject_case("rejected/private_generic", "grow is private to module kit", "an instance of a private generic is private to its module")
+  feat_case("lang/aliases", "", "10 5 3", "aliases.ludic (L6: a namespace method declared as an alias of a function, labelled or by its parameters)")
+  reject_case("rejected/alias_arity", "Trail.length takes 2 argument(s) and this call gives 1", "an alias's arguments are checked against its target")
+  reject_case("rejected/alias_twice", "Trail.length is declared twice", "a namespace method is declared once")
 
   # EV2 the world table: the mod reflection ABI, callable from Ludic by name.
   net_case("ecs/world_get", "50 1 7")

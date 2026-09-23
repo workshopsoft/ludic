@@ -1,0 +1,74 @@
+# aliases.ludic — L6: a namespace method that is a name for a function. Inside a namespace block,
+#   alias fill_rectangle(x, y, width, height, color) = fill_rect
+# makes `Screen.fill_rectangle(...)` a call to `fill_rect`, taking named arguments by those labels
+# in the target's parameter order. With no label list the target's own parameter names are the
+# labels; an empty one, `alias show() = present`, takes no named arguments. The engine declares
+# its namespaces this way in runtime/native/namespaces.ludic, and a package owns an API the same
+# way, in its own files - neither needs a line in the compiler.
+var g_al_ns: []pointer = new []pointer
+var g_al_meth: []pointer = new []pointer
+var g_al_target: []pointer = new []pointer
+var g_al_labels: []pointer = new []pointer    # "a|b|c"; "" for none; null for the target's own
+
+function ns_parse_alias(nsname: pointer, is_exp: int) -> void {
+  pi += 1
+  let meth = eat_id()
+  var labels: pointer = null
+  if is_op("(") {
+    pi += 1
+    labels = ""
+    while not is_op(")") {
+      if len(labels) > 0 { labels = labels + "|" }
+      labels = labels + eat_id()
+      if is_op(",") { pi += 1 }
+    }
+    eat_op(")")
+  }
+  eat_op("=")
+  let target = eat_id()
+  register_namespace(nsname)
+  if is_exp == 0 { return }
+  if ns_alias_find(nsname, meth) >= 0 { perr(`{nsname}.{meth} is declared twice`) }
+  push(g_al_ns, nsname)
+  push(g_al_meth, meth)
+  push(g_al_target, target)
+  push(g_al_labels, labels)
+}
+function ns_alias_find(ns: pointer, meth: pointer) -> int {
+  var i = 0
+  while i < len(g_al_ns) {
+    if (g_al_meth[i] == meth) and (g_al_ns[i] == ns) { return i }
+    i += 1
+  }
+  return -1
+}
+function ns_alias_labels(i: int) -> []pointer {
+  let out = new []pointer
+  let ls = g_al_labels[i]
+  if ls == null {
+    var d = find_fn(g_al_target[i])
+    if d == null { d = find_extern(g_al_target[i]) }
+    if d != null { return param_labels(d) }
+    return out
+  }
+  var a = 0
+  var j = 0
+  let n = len(ls)
+  while j <= n {
+    if j == n or ls[j] == '|' {
+      if j > a { push(out, ls[a .. j]) }
+      a = j + 1
+    }
+    j += 1
+  }
+  return out
+}
+function emit_alias_call(i: int, e: Node) -> Val {
+  reorder_named(e, ns_alias_labels(i))
+  let id = node(E_ID)
+  id.s = g_al_target[i]
+  id.file = e.file
+  id.line = e.line
+  e.a = id
+  return emit_call(e)
+}

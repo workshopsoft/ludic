@@ -1,0 +1,9 @@
+# L6: a namespace method is declared once
+program AliasTwice {
+  namespace Trail {
+    alias length(from, to) = trail_distance
+    alias length(a, b) = trail_distance
+  }
+  function trail_distance(a: int, b: int) -> int { return b - a }
+  entry { print(Trail.length(1, 2)) }
+}

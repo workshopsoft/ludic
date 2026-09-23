@@ -300,80 +300,19 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     }
     perr(`unknown builtin Pool.{meth}`)
   }
+  # L6: a method declared by `alias` in a namespace block - the engine's own in
+  # runtime/native/namespaces.ludic, a package's in its files - is a call to its target
+  let al = ns_alias_find(ns, meth)
+  if al >= 0 { return emit_alias_call(al, e) }
   var bare: pointer = null
   let labels = new []pointer
-  if (ns == "Screen") {
-    if (meth == "clear")          { bare = "clear";      push(labels, "color") }
-    if (meth == "fill_rectangle") { bare = "fill_rect";  push(labels, "x"); push(labels, "y"); push(labels, "width"); push(labels, "height"); push(labels, "color") }
-    if (meth == "bar")            { bare = "bar";        push(labels, "x"); push(labels, "y"); push(labels, "width"); push(labels, "height"); push(labels, "value"); push(labels, "max"); push(labels, "color"); push(labels, "back") }
-    if (meth == "draw_rectangle") { bare = "frame_rect"; push(labels, "x"); push(labels, "y"); push(labels, "width"); push(labels, "height"); push(labels, "color") }
-    if (meth == "put_pixel")      { bare = "put_px";     push(labels, "x"); push(labels, "y"); push(labels, "color") }
-    if (meth == "draw_text")      { bare = "text";       push(labels, "x"); push(labels, "y"); push(labels, "text"); push(labels, "color"); push(labels, "scale") }
-    if (meth == "draw_number")    { bare = "text_int";   push(labels, "x"); push(labels, "y"); push(labels, "value"); push(labels, "color"); push(labels, "scale") }
-    if (meth == "show")           { bare = "present" }
-    if (meth == "width")          { bare = "screen_w" }
-    if (meth == "height")         { bare = "screen_h" }
-    if (meth == "status")         { bare = "status";  push(labels, "text") }
-    if (meth == "line")           { bare = "line";      push(labels, "x1"); push(labels, "y1"); push(labels, "x2"); push(labels, "y2"); push(labels, "color") }
-    if (meth == "circle")         { bare = "circle";    push(labels, "x"); push(labels, "y"); push(labels, "radius"); push(labels, "color") }
-    if (meth == "fill_circle")    { bare = "fill_circle"; push(labels, "x"); push(labels, "y"); push(labels, "radius"); push(labels, "color") }
-    if (meth == "triangle")       { bare = "triangle";  push(labels, "x1"); push(labels, "y1"); push(labels, "x2"); push(labels, "y2"); push(labels, "x3"); push(labels, "y3"); push(labels, "color") }
-    if (meth == "fill_triangle")  { bare = "fill_triangle"; push(labels, "x1"); push(labels, "y1"); push(labels, "x2"); push(labels, "y2"); push(labels, "x3"); push(labels, "y3"); push(labels, "color") }
-    if (meth == "sprite")         { bare = "draw_sprite"; push(labels, "id"); push(labels, "x"); push(labels, "y") }
-    if (meth == "sprite_scaled")  { bare = "draw_sprite_scaled"; push(labels, "id"); push(labels, "x"); push(labels, "y"); push(labels, "scale") }
-    if (meth == "oval")           { bare = "oval";      push(labels, "x"); push(labels, "y"); push(labels, "rx"); push(labels, "ry"); push(labels, "color") }
-    if (meth == "camera")         { bare = "camera";    push(labels, "x"); push(labels, "y") }
-    if (meth == "clip")           { bare = "clip";      push(labels, "x"); push(labels, "y"); push(labels, "width"); push(labels, "height") }
-    if (meth == "clip_reset")     { bare = "clip_reset" }
-    if (meth == "blend_mode")     { bare = "blend_mode"; push(labels, "mode") }
-    if (meth == "measure_text")   { bare = "measure_text"; push(labels, "text") }
-    if (meth == "pixel")          { bare = "get_px";    push(labels, "x"); push(labels, "y") }
-  }
   # Sprite.* / Assets.* — the namespaced spritesheet / atlas API (#81), a runtime
   # in atlas.ludic over the variable-size image loader. A cell (or multi-cell span)
   # is a sub-rect of a loaded sheet; draws go through rt_put_px so camera/zoom/clip
   # apply. Distinct from the `Sprite` engine component (#85) — same name, different
   # namespace (a namespaced builtin, never an entity).
-  if (ns == "Sprite") {
-    if (meth == "sheet")       { bare = "atlas_sheet";       push(labels, "path"); push(labels, "cellw"); push(labels, "cellh") }
-    if (meth == "cell")        { bare = "atlas_cell";        push(labels, "sheet"); push(labels, "col"); push(labels, "row") }
-    if (meth == "cell_span")   { bare = "atlas_cell_span";   push(labels, "sheet"); push(labels, "col"); push(labels, "row"); push(labels, "cols"); push(labels, "rows") }
-    if (meth == "strip")       { bare = "atlas_strip";       push(labels, "sheet"); push(labels, "col"); push(labels, "row"); push(labels, "count"); push(labels, "rows") }
-    if (meth == "define")      { bare = "atlas_define";      push(labels, "name"); push(labels, "sheet"); push(labels, "col"); push(labels, "row") }
-    if (meth == "named")       { bare = "atlas_named";       push(labels, "name") }
-    if (meth == "draw")        { bare = "atlas_draw";        push(labels, "id"); push(labels, "x"); push(labels, "y") }
-    if (meth == "draw_scaled") { bare = "atlas_draw_scaled"; push(labels, "id"); push(labels, "x"); push(labels, "y"); push(labels, "scale") }
-    if (meth == "draw_meter")  { bare = "atlas_draw_meter";  push(labels, "x"); push(labels, "y"); push(labels, "value"); push(labels, "max"); push(labels, "per_icon"); push(labels, "spacing"); push(labels, "full"); push(labels, "half"); push(labels, "empty") }
-    if (meth == "width")       { bare = "atlas_width";       push(labels, "id") }
-    if (meth == "height")      { bare = "atlas_height";      push(labels, "id") }
-  }
-  if (ns == "Font") {
-    if (meth == "load")        { bare = "font_load";         push(labels, "path") }
-  }
   # Ui.* — the retained UI (ui blocks): navigation is engine-ticked (esys_ui) and
   # activations arrive as UiClicked events; these are the remaining verbs.
-  if (ns == "Ui") {
-    if (meth == "build")       { bare = "ui_build" }
-    if (meth == "open")        { bare = "ui_open";           push(labels, "id") }
-    if (meth == "close")       { bare = "ui_close" }
-    if (meth == "tick")        { bare = "ui_tick";           push(labels, "key") }
-    if (meth == "clicked")     { bare = "ui_clicked";        push(labels, "id") }
-    if (meth == "set_text")    { bare = "ui_set_text";       push(labels, "id"); push(labels, "text") }
-    if (meth == "render")      { bare = "ui_render" }
-  }
-  if (ns == "File") {
-    if (meth == "open")        { bare = "file_open";         push(labels, "path"); push(labels, "mode") }
-    if (meth == "read")        { bare = "file_read";         push(labels, "file"); push(labels, "buffer"); push(labels, "count") }
-    if (meth == "write")       { bare = "file_write";        push(labels, "file"); push(labels, "buffer"); push(labels, "count") }
-    if (meth == "seek")        { bare = "file_seek";         push(labels, "file"); push(labels, "offset"); push(labels, "whence") }
-    if (meth == "tell")        { bare = "file_tell";         push(labels, "file") }
-    if (meth == "close")       { bare = "file_close";        push(labels, "file") }
-  }
-  if (ns == "Fx") {                             # engine-owned sparks and floating numbers (fx.ludic)
-    if (meth == "sparks")      { bare = "fx_sparks";         push(labels, "x"); push(labels, "y"); push(labels, "color"); push(labels, "count") }
-    if (meth == "number")      { bare = "fx_number";         push(labels, "x"); push(labels, "y"); push(labels, "value"); push(labels, "color") }
-    if (meth == "clear")       { bare = "fx_clear" }
-  }
   if (ns == "Prefab") {                         # spawn a prefab by name at runtime (see emit_prefab_fns)
     if (meth == "spawn_at") {                   # Prefab.spawn_at(name:, at: IVec2) — spawned, then placed
       if not has_prefabs() { perr("Prefab.spawn_at: the program declares no prefab") }
@@ -404,243 +343,29 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     }
     perr(`unknown builtin Prefab.{meth}`)
   }
-  if (ns == "Assets") {
-    if (meth == "font")        { bare = "assets_font";       push(labels, "name") }   # a .ttf loaded through the queue
-    if (meth == "enqueue_dir") { bare = "assets_enqueue_dir"; push(labels, "path") }   # every file of a directory, by base name
-    if (meth == "image")       { bare = "atlas_image";       push(labels, "path") }
-    if (meth == "load")        { bare = "atlas_image";       push(labels, "path") }   # alias
-    if (meth == "get")         { bare = "atlas_named";       push(labels, "name") }    # alias of Sprite.named
-    # #82 — incremental preload queue + progress for a loading scene.
-    if (meth == "enqueue")     { bare = "assets_enqueue";    push(labels, "name"); push(labels, "path") }
-    if (meth == "pump")        { bare = "assets_pump";       push(labels, "max") }
-    if (meth == "total")       { bare = "assets_total" }
-    if (meth == "loaded")      { bare = "assets_loaded" }
-    if (meth == "ready")       { bare = "assets_ready" }
-    if (meth == "progress")    { bare = "assets_progress" }
-  }
   # Camera.* — the world-space camera: a draw offset threaded through the render
   # path (runtime/native/core.ludic). set/follow move it; shake jitters it from
   # the seeded RNG, so a replay shakes identically.
-  if (ns == "Camera") {
-    if (meth == "set")    { bare = "camera";        push(labels, "x"); push(labels, "y") }
-    if (meth == "follow") { bare = "camera_follow"; push(labels, "x"); push(labels, "y"); push(labels, "lerp") }
-    if (meth == "shake")  { bare = "camera_shake";  push(labels, "amount") }
-    if (meth == "shake_for") { bare = "camera_shake_for";  push(labels, "amount"); push(labels, "frames") }   # a timed shake the engine decays
-    if (meth == "zoom")   { bare = "camera_zoom";   push(labels, "scale") }   # #78 deterministic Q16.16 zoom
-  }
-  if (ns == "Map") {
-    if (meth == "size") { bare = "map_size"; push(labels, "width"); push(labels, "height") }
-    if (meth == "row")  { bare = "map_row";  push(labels, "y"); push(labels, "cells") }
-    if (meth == "tile") { bare = "tile";     push(labels, "x"); push(labels, "y") }
-    if (meth == "get")  { bare = "tile";     push(labels, "x"); push(labels, "y") }
-    # the cell API: edit the grid in place, ask it what is where
-    if (meth == "set")         { bare = "map_set";         push(labels, "x"); push(labels, "y"); push(labels, "glyph") }
-    if (meth == "fill")        { bare = "map_fill";        push(labels, "glyph") }
-    if (meth == "rect")        { bare = "map_rect";        push(labels, "x"); push(labels, "y"); push(labels, "width"); push(labels, "height"); push(labels, "glyph") }
-    if (meth == "border")      { bare = "map_border";      push(labels, "glyph") }
-    if (meth == "random_cell") { bare = "map_random_cell"; push(labels, "glyph") }
-    if (meth == "random_cell_far") { bare = "map_random_cell_far"; push(labels, "glyph"); push(labels, "from"); push(labels, "min_tiles") }
-    if (meth == "is_solid")    { bare = "map_is_solid";    push(labels, "x"); push(labels, "y") }
-    if (meth == "is_solid_at") { bare = "map_is_solid_at"; push(labels, "x"); push(labels, "y") }
-    if (meth == "to_tile")     { bare = "map_to_tile";     push(labels, "pixel") }
-    if (meth == "width")       { bare = "map_width" }
-    if (meth == "height")      { bare = "map_height" }
-  }
-  if (ns == "Random") {
-    if (meth == "range")  { bare = "rng_range";  push(labels, "low"); push(labels, "high") }
-    if (meth == "weighted") { bare = "rng_weighted";  push(labels, "weights") }   # an index in proportion to its weight
-    if (meth == "chance") { bare = "rng_chance"; push(labels, "percent") }
-    if (meth == "seed")   { bare = "seed";       push(labels, "value") }
-    if (meth == "value")  { bare = "rng_value" }
-    if (meth == "int")    { bare = "rng_int";    push(labels, "max") }
-    if (meth == "sign")   { bare = "rng_sign" }
-  }
-  if (ns == "Input") {
-    if (meth == "key") { bare = "key" }
-    # action maps + deterministic record/replay (#7) — spliced runtime in
-    # runtime/native/input.ludic, reached as ordinary @fn_input_* calls.
-    if (meth == "bind")    { bare = "input_bind";    push(labels, "action"); push(labels, "key") }
-    if (meth == "rebind")  { bare = "input_rebind";  push(labels, "action"); push(labels, "old"); push(labels, "new") }
-    if (meth == "poll")    { bare = "input_poll" }
-    if (meth == "down")    { bare = "input_down" }
-    if (meth == "pressed") { bare = "input_pressed" }
-    if (meth == "record")  { bare = "input_record" }
-    if (meth == "replay")  { bare = "input_replay" }
-    # Input Manager (#83): default bindings + device-agnostic actions that read the
-    # multi-key device layer (the frame loop now commits it automatically).
-    if (meth == "action")        { bare = "input_default";       push(labels, "action"); push(labels, "key") }
-    if (meth == "bind_pad")      { bare = "input_bind_pad";      push(labels, "action"); push(labels, "button") }
-    if (meth == "active")        { bare = "input_active";        push(labels, "action") }
-    if (meth == "just_pressed")  { bare = "input_just_pressed";  push(labels, "action") }
-    if (meth == "just_released") { bare = "input_just_released"; push(labels, "action") }
-    # device layer (#50): multi-key held state, analog axes/vectors, mouse,
-    # gamepads, touch — reached as ordinary @fn_input_* calls into input.ludic.
-    if (meth == "key_down")     { bare = "input_key_down";     push(labels, "key") }
-    if (meth == "key_pressed")  { bare = "input_key_pressed";  push(labels, "key") }
-    if (meth == "key_released") { bare = "input_key_released"; push(labels, "key") }
-    if (meth == "key_label")    { bare = "input_key_label";    push(labels, "key") }
-    if (meth == "text")         { bare = "input_text" }                        # what was TYPED, UTF-8
-    if (meth == "press")        { bare = "input_press";        push(labels, "key") }
-    if (meth == "release")      { bare = "input_release";      push(labels, "key") }
-    if (meth == "axis")         { bare = "input_axis";         push(labels, "neg"); push(labels, "pos") }
-    if (meth == "axis_i")       { bare = "input_axis_i";       push(labels, "neg"); push(labels, "pos") }   # #79 directional int (-1/0/1)
-    if (meth == "move_i")        { bare = "input_move_i" }                     # WASD / arrows / left stick -> IVec2
-    if (meth == "vector")       { bare = "input_vector";       push(labels, "left"); push(labels, "right"); push(labels, "up"); push(labels, "down") }
-    if (meth == "strength")     { bare = "input_strength";     push(labels, "action") }
-    if (meth == "mouse_x")      { bare = "input_mouse_x" }
-    if (meth == "mouse_y")      { bare = "input_mouse_y" }
-    if (meth == "mouse_dx")     { bare = "input_mouse_dx" }
-    if (meth == "mouse_dy")     { bare = "input_mouse_dy" }
-    if (meth == "mouse_down")   { bare = "input_mouse_down";   push(labels, "button") }
-    if (meth == "wheel")        { bare = "input_wheel" }
-    if (meth == "set_mouse")    { bare = "input_set_mouse";    push(labels, "x"); push(labels, "y"); push(labels, "buttons"); push(labels, "wheel") }
-    if (meth == "pad_connected") { bare = "input_pad_connected"; push(labels, "pad") }
-    if (meth == "pad_button")   { bare = "input_pad_button";   push(labels, "pad"); push(labels, "button") }
-    if (meth == "pad_axis")     { bare = "input_pad_axis";     push(labels, "pad"); push(labels, "axis") }
-    if (meth == "set_pad")      { bare = "input_set_pad";      push(labels, "pad"); push(labels, "connected"); push(labels, "buttons"); push(labels, "lx"); push(labels, "ly"); push(labels, "rx"); push(labels, "ry") }
-    if (meth == "touch_count")  { bare = "input_touch_count" }
-    if (meth == "touch_x")      { bare = "input_touch_x";      push(labels, "index") }
-    if (meth == "touch_y")      { bare = "input_touch_y";      push(labels, "index") }
-    if (meth == "set_touch")    { bare = "input_set_touch";    push(labels, "index"); push(labels, "x"); push(labels, "y"); push(labels, "active") }
-    if (meth == "cursor_mode")  { bare = "input_cursor_mode";  push(labels, "mode") }   # #89 cursor capture
-  }
   # Audio.* (#22) — sfx/music playback over the platform audio backend
   # (runtime/native/audio.ludic + audio.ll). Playback is out-of-band; the
   # triggers are ordinary frame-driven calls, so a replay fires the same sounds.
   if (ns == "Audio") {
-    if (meth == "load")       { bare = "audio_load";       push(labels, "path") }
-    if (meth == "define")     { bare = "audio_define";     push(labels, "name"); push(labels, "path") }
-    if (meth == "named")      { bare = "audio_named";      push(labels, "name") }
     # Audio.play / play_music take a handle, or a name from the sound bank (Audio.define)
     if (meth == "play")       { if first_arg_is_text(e) { bare = "audio_play_named";  push(labels, "name") } else { bare = "audio_play";  push(labels, "id") } }
-    if (meth == "play_sound") { bare = "audio_play";       push(labels, "id") }
-    # Audio.play_at(id, gain:, pitch:, pan:) — one shot with its own gain, pitch and
-    # stereo position. Audio.volume / Audio.pitch stay global (they are the options
-    # screen); this is the per-voice one, and it is what distance attenuation is built on.
-    if (meth == "play_at")    { bare = "audio_play_at";    push(labels, "id"); push(labels, "gain"); push(labels, "pitch"); push(labels, "pan") }
     if (meth == "play_music") { if first_arg_is_text(e) { bare = "audio_play_music_named";  push(labels, "name") } else { bare = "audio_play_music";  push(labels, "id") } }
-    if (meth == "stop")       { bare = "audio_stop";       push(labels, "id") }
-    if (meth == "stop_music") { bare = "audio_stop_music" }
-    if (meth == "stop_all")   { bare = "audio_stop_all" }
-    if (meth == "volume")     { bare = "audio_volume";     push(labels, "v") }
-    if (meth == "pitch")      { bare = "audio_pitch";      push(labels, "v") }
-    if (meth == "is_playing") { bare = "audio_is_playing"; push(labels, "id") }
   }
   # Http.* (#6) — a poll-based HTTP/HTTPS client (runtime/native/http.ludic +
   # http.ll). Out-of-band, never part of the deterministic sim. Pairs with Json.*
   # (#44) for (de)serialization: Json.parse(Http.text(h)).
-  if (ns == "Http") {
-    if (meth == "get")       { bare = "http_get";        push(labels, "url") }
-    if (meth == "post")      { bare = "http_post";       push(labels, "url"); push(labels, "body") }
-    if (meth == "request")   { bare = "http_request";    push(labels, "method"); push(labels, "url"); push(labels, "body") }
-    if (meth == "open")      { bare = "http_open";        push(labels, "method"); push(labels, "url") }
-    if (meth == "set")       { bare = "http_set_header";  push(labels, "handle"); push(labels, "name"); push(labels, "value") }
-    if (meth == "body")      { bare = "http_body";        push(labels, "handle"); push(labels, "body") }
-    if (meth == "body_bytes") { bare = "http_body_n";      push(labels, "handle"); push(labels, "bytes"); push(labels, "len") }
-    if (meth == "send")      { bare = "http_send_req";    push(labels, "handle") }
-    if (meth == "poll")      { bare = "http_poll";        push(labels, "handle") }
-    if (meth == "status")    { bare = "http_status_of";   push(labels, "handle") }
-    if (meth == "ok")        { bare = "http_ok";          push(labels, "handle") }
-    if (meth == "text")      { bare = "http_text";        push(labels, "handle") }
-    if (meth == "body_len")  { bare = "http_body_len";    push(labels, "handle") }
-    if (meth == "header")    { bare = "http_header_of";   push(labels, "handle"); push(labels, "name") }
-    if (meth == "free")      { bare = "http_close";       push(labels, "handle") }
-    if (meth == "parse")     { bare = "http_parse";       push(labels, "bytes"); push(labels, "len") }
-    if (meth == "save_to")   { bare = "http_save_to";     push(labels, "handle"); push(labels, "path") }
-    if (meth == "received")  { bare = "http_received";    push(labels, "handle") }
-    if (meth == "expected")  { bare = "http_expected";    push(labels, "handle") }
-  }
   # Udp.* — polled IPv4 datagrams (runtime/native/udp.ludic + udp.ll / udp_win.ll).
   # Out-of-band like Http.*: the transport under a game's own netcode.
-  if (ns == "Udp") {
-    if (meth == "open")      { bare = "udp_open";       push(labels, "port") }
-    if (meth == "port")      { bare = "udp_port";       push(labels, "socket") }
-    if (meth == "send")      { bare = "udp_send";       push(labels, "socket"); push(labels, "ip"); push(labels, "port"); push(labels, "bytes"); push(labels, "len") }
-    if (meth == "recv")      { bare = "udp_recv";       push(labels, "socket"); push(labels, "bytes"); push(labels, "cap") }
-    if (meth == "from_ip")   { bare = "udp_from_ip";    push(labels, "socket") }
-    if (meth == "from_port") { bare = "udp_from_port";  push(labels, "socket") }
-    if (meth == "close")     { bare = "udp_close";      push(labels, "socket") }
-    if (meth == "resolve")   { bare = "udp_resolve";    push(labels, "name") }
-    if (meth == "local_ip")  { bare = "udp_local_ip" }
-    if (meth == "ip")        { bare = "udp_ip";         push(labels, "text") }
-    if (meth == "ip_text")   { bare = "udp_ip_text";    push(labels, "ip") }
-  }
   # Process.* — child processes, started and polled (runtime/native/process.ludic +
   # process.ll / process_win.ll). Out-of-band, like Http.*.
-  if (ns == "Process") {
-    if (meth == "spawn") { bare = "process_spawn";  push(labels, "path"); push(labels, "args") }
-    if (meth == "poll")  { bare = "process_poll";   push(labels, "handle") }
-    if (meth == "kill")  { bare = "process_kill";   push(labels, "handle") }
-    if (meth == "free")  { bare = "process_free";   push(labels, "handle") }
-  }
   # Phase 3: the bare reflection / networking / process builtins, namespaced.
   # Each is a pure alias — the callee is rewritten to the bare name below.
-  if (ns == "World") {
-    if (meth == "get")           { bare = "world_get" }
-    if (meth == "set")           { bare = "world_set" }
-    if (meth == "has")           { bare = "world_has" }
-    if (meth == "count")         { bare = "world_count" }
-    if (meth == "size")          { bare = "world_size" }
-    if (meth == "spawn")         { bare = "world_spawn" }
-    if (meth == "despawn")       { bare = "world_despawn" }   # #84 — despawn an entity by id (runs @OnDespawn + frees)
-    if (meth == "save")          { bare = "world_save" }
-    if (meth == "load")          { bare = "world_load" }
-    if (meth == "prop_id")       { bare = "world_prop_id" }
-    if (meth == "field_id")      { bare = "world_field_id" }
-    if (meth == "model_id")      { bare = "world_model_id" }
-    if (meth == "kind")          { bare = "world_kind" }
-    if (meth == "register_prop") { bare = "world_register_prop" }
-    if (meth == "attach")        { bare = "world_attach_dyn" }
-    if (meth == "detach")        { bare = "world_detach_dyn" }
-    if (meth == "query_next")    { bare = "world_query_next" }
-  }
-  if (ns == "Network") {
-    if (meth == "send")      { bare = "net_send" }
-    if (meth == "poll")      { bare = "net_poll" }
-    if (meth == "serialize") { bare = "serialize" }
-    if (meth == "apply")     { bare = "apply" }
-    if (meth == "owner")     { bare = "owner" }
-    if (meth == "set_owner") { bare = "set_owner" }
-    if (meth == "is_server") { bare = "is_server" }
-    if (meth == "is_owner")  { bare = "is_owner" }
-    if (meth == "local_id")  { bare = "local_id" }
-  }
-  if (ns == "System") {
-    # System.* is the low-level file/process surface only. The environment slice
-    # (arg/arg_count/env/exit) and the standard streams (stdout/stderr) were
-    # duplicated by the canonical Os.* namespace and have been retired — see
-    # Os.arg/arg_count/env/exit and Os.stdout_write/stderr_write (issue #40).
-    if (meth == "run")        { bare = "run" }
-    if (meth == "read_char")  { bare = "read_char" }
-    if (meth == "file_open")  { bare = "file_open" }
-    if (meth == "file_read")  { bare = "file_read" }
-    if (meth == "file_write") { bare = "file_write" }
-    if (meth == "file_seek")  { bare = "file_seek" }
-    if (meth == "file_tell")  { bare = "file_tell" }
-    if (meth == "file_close") { bare = "file_close" }
-  }
-  if (ns == "Save") {
-    if (meth == "write") { bare = "save" }
-    if (meth == "read")  { bare = "load" }
-  }
   # Regex.* -> the regex_* engine functions (spliced from runtime/native/regex*.ludic
   # when a program mentions Regex.*). Each is a plain alias; the engine functions
   # are ordinary Ludic, so the generic call path resolves them to @fn_regex_*.
-  if (ns == "Regex") {
-    if (meth == "compile")     { bare = "regex_compile";     push(labels, "pattern") }
-    if (meth == "valid")       { bare = "regex_valid";       push(labels, "pattern") }
-    if (meth == "matches")     { bare = "regex_matches";     push(labels, "text"); push(labels, "pattern") }
-    if (meth == "test")        { bare = "regex_test";        push(labels, "text"); push(labels, "re") }
-    if (meth == "find")        { bare = "regex_find";        push(labels, "text"); push(labels, "pattern") }
-    if (meth == "exec")        { bare = "regex_exec";        push(labels, "text"); push(labels, "re") }
-    if (meth == "next")        { bare = "regex_next";        push(labels, "text"); push(labels, "re"); push(labels, "from") }
-    if (meth == "replace")     { bare = "regex_replace";     push(labels, "text"); push(labels, "pattern"); push(labels, "replacement") }
-    if (meth == "group")       { bare = "regex_group";       push(labels, "match"); push(labels, "n") }
-    if (meth == "group_count") { bare = "regex_group_count"; push(labels, "match") }
-    if (meth == "start")       { bare = "regex_start";       push(labels, "match"); push(labels, "n") }
-    if (meth == "end")         { bare = "regex_end";         push(labels, "match"); push(labels, "n") }
-    if (meth == "ok")          { bare = "regex_ok";          push(labels, "match") }
-  }
   # Grid.* — tile geometry and pathfinding over the Map tilemap, from
   # runtime/native/grid.ludic (spliced with core.ludic). `wall` is the impassable
   # tile char, e.g. '#'. line/flood/a_star return []Cell slices. (Pathfinding
@@ -650,162 +375,24 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
   # spliced on demand). These are ordinary Ludic functions, so the generic call
   # path resolves them to @fn_bigint_* / @fn_decimal_* and keeps their return
   # types (BigNum / Dec / int / bool / string).
-  if (ns == "BigInt") {
-    if (meth == "from")    { bare = "bigint_from";     push(labels, "value") }
-    if (meth == "parse")   { bare = "bigint_from_str"; push(labels, "text") }
-    if (meth == "add")     { bare = "bigint_add";      push(labels, "a"); push(labels, "b") }
-    if (meth == "sub")     { bare = "bigint_sub";      push(labels, "a"); push(labels, "b") }
-    if (meth == "mul")     { bare = "bigint_mul";      push(labels, "a"); push(labels, "b") }
-    if (meth == "neg")     { bare = "bigint_neg";      push(labels, "a") }
-    if (meth == "pow")     { bare = "bigint_pow";      push(labels, "a"); push(labels, "exp") }
-    if (meth == "div")     { bare = "bigint_div_int";  push(labels, "a"); push(labels, "d") }
-    if (meth == "mod")     { bare = "bigint_mod_int";  push(labels, "a"); push(labels, "d") }
-    if (meth == "cmp")     { bare = "bigint_cmp";      push(labels, "a"); push(labels, "b") }
-    if (meth == "eq")      { bare = "bigint_eq";       push(labels, "a"); push(labels, "b") }
-    if (meth == "is_zero") { bare = "bigint_is_zero";  push(labels, "a") }
-    if (meth == "to_int")  { bare = "bigint_to_int";   push(labels, "a") }
-    if (meth == "str")     { bare = "bigint_str";      push(labels, "a") }
-  }
-  if (ns == "Decimal") {
-    if (meth == "from")    { bare = "decimal_from";     push(labels, "value") }
-    if (meth == "parse")   { bare = "decimal_from_str"; push(labels, "text") }
-    if (meth == "add")     { bare = "decimal_add";      push(labels, "a"); push(labels, "b") }
-    if (meth == "sub")     { bare = "decimal_sub";      push(labels, "a"); push(labels, "b") }
-    if (meth == "mul")     { bare = "decimal_mul";      push(labels, "a"); push(labels, "b") }
-    if (meth == "neg")     { bare = "decimal_neg";      push(labels, "a") }
-    if (meth == "cmp")     { bare = "decimal_cmp";      push(labels, "a"); push(labels, "b") }
-    if (meth == "eq")      { bare = "decimal_eq";       push(labels, "a"); push(labels, "b") }
-    if (meth == "scale")   { bare = "decimal_scale";    push(labels, "d") }
-    if (meth == "rescale") { bare = "decimal_rescale";  push(labels, "d"); push(labels, "places") }
-    if (meth == "str")     { bare = "decimal_str";      push(labels, "d") }
-  }
   # Dict.* / Set.* -> the hash-table engine (runtime/native/dict.ludic, spliced
   # on demand). Ordinary Ludic functions, so the generic call path resolves them
   # to @fn_dict_* / @fn_set_* and keeps their return types (Dict / int / bool /
   # []pointer).
-  if (ns == "Dict") {
-    if (meth == "new")     { bare = "dict_new" }
-    if (meth == "set")     { bare = "dict_set";    push(labels, "d"); push(labels, "key"); push(labels, "value") }
-    if (meth == "get")     { bare = "dict_get";    push(labels, "d"); push(labels, "key") }
-    if (meth == "get_or")  { bare = "dict_get_or"; push(labels, "d"); push(labels, "key"); push(labels, "fallback") }
-    if (meth == "has")     { bare = "dict_has";    push(labels, "d"); push(labels, "key") }
-    if (meth == "remove")  { bare = "dict_remove"; push(labels, "d"); push(labels, "key") }
-    if (meth == "size")    { bare = "dict_size";   push(labels, "d") }
-    if (meth == "clear")   { bare = "dict_clear";  push(labels, "d") }
-    if (meth == "keys")    { bare = "dict_keys";   push(labels, "d") }
-  }
-  if (ns == "Set") {
-    if (meth == "new")     { bare = "set_new" }
-    if (meth == "add")     { bare = "set_add";     push(labels, "s"); push(labels, "key") }
-    if (meth == "has")     { bare = "set_has";     push(labels, "s"); push(labels, "key") }
-    if (meth == "remove")  { bare = "set_remove";  push(labels, "s"); push(labels, "key") }
-    if (meth == "size")    { bare = "set_size";    push(labels, "s") }
-    if (meth == "clear")   { bare = "set_clear";   push(labels, "s") }
-    if (meth == "members") { bare = "set_members"; push(labels, "s") }
-  }
   # Job.* / Promise.* / Sync.* -> the concurrency runtime (runtime/native/jobs.ludic,
   # spliced on demand). Ordinary Ludic functions, so the generic call path keeps
   # their return types (int / bool). The safe tier (Job/Promise) is a deterministic
   # cooperative scheduler; Sync.* is the advanced, opt-in message-passing tier. #14.
   if (ns == "Job") {
-    if (meth == "defer")     { bare = "job_defer" }
-    if (meth == "run")       { bare = "job_run";      push(labels, "kind"); push(labels, "arg") }
-    if (meth == "fulfill")   { bare = "job_fulfill";  push(labels, "handle"); push(labels, "value") }
-    if (meth == "fail")      { bare = "job_fail";     push(labels, "handle"); push(labels, "error") }
-    if (meth == "cancel")    { bare = "job_cancel";   push(labels, "handle") }
-    if (meth == "pump")      { bare = "job_pump";     push(labels, "budget") }
-    if (meth == "done")      { bare = "job_done";     push(labels, "handle") }
-    if (meth == "ok")        { bare = "job_ok";       push(labels, "handle") }
-    if (meth == "failed")    { bare = "job_failed";   push(labels, "handle") }
-    if (meth == "cancelled") { bare = "job_cancelled"; push(labels, "handle") }
-    if (meth == "result")    { bare = "job_result";   push(labels, "handle") }
-    if (meth == "error")     { bare = "job_error";    push(labels, "handle") }
-    if (meth == "pending")   { bare = "job_pending" }
-    if (meth == "free")      { bare = "job_free";     push(labels, "handle") }
     if (meth == "parallel_for") { bare = "job_parallel_for";  push(labels, "count"); push(labels, "work"); push(labels, "ctx");  if len(e.kids) > 1 { check_worker_ref(e.kids[1]) } }
-    if (meth == "is_worker") { bare = "job_is_worker" }
-  }
-  if (ns == "Promise") {
-    if (meth == "all")        { bare = "prom_all";        push(labels, "handles") }
-    if (meth == "race")       { bare = "prom_race";       push(labels, "handles") }
-    if (meth == "count_done") { bare = "prom_count_done"; push(labels, "handles") }
-    if (meth == "all_done")   { bare = "prom_all_done";   push(labels, "handles") }
-  }
-  if (ns == "Sync") {
-    if (meth == "mutex")     { bare = "sync_mutex" }
-    if (meth == "lock")      { bare = "sync_lock";     push(labels, "mutex") }
-    if (meth == "unlock")    { bare = "sync_unlock";   push(labels, "mutex") }
-    if (meth == "try_lock")  { bare = "sync_try_lock"; push(labels, "mutex") }
-    if (meth == "atomic")    { bare = "sync_atomic" }
-    if (meth == "get")       { bare = "sync_get";      push(labels, "atomic") }
-    if (meth == "set")       { bare = "sync_set";      push(labels, "atomic"); push(labels, "value") }
-    if (meth == "add")       { bare = "sync_add";      push(labels, "atomic"); push(labels, "delta") }
-    if (meth == "cas")       { bare = "sync_cas";      push(labels, "atomic"); push(labels, "expect"); push(labels, "next") }
-    if (meth == "channel")   { bare = "sync_channel" }
-    if (meth == "send")      { bare = "sync_send";     push(labels, "channel"); push(labels, "value") }
-    if (meth == "recv")      { bare = "sync_recv";     push(labels, "channel") }
-    if (meth == "can_recv")  { bare = "sync_can_recv"; push(labels, "channel") }
-    if (meth == "len")       { bare = "sync_len";      push(labels, "channel") }
-    if (meth == "cpu_count") { bare = "sync_cpu_count" }
   }
   # Huge.* / Angle.* / Percent.* -> the numeric runtime (runtime/native/numeric.ludic,
   # spliced on demand). Ordinary Ludic functions, so the generic call path keeps
   # their return types (Huge / fixed / int / bool).
-  if (ns == "Huge") {
-    if (meth == "from")     { bare = "huge_from";     push(labels, "value") }
-    if (meth == "add")      { bare = "huge_add";      push(labels, "a"); push(labels, "b") }
-    if (meth == "sub")      { bare = "huge_sub";      push(labels, "a"); push(labels, "b") }
-    if (meth == "mul")      { bare = "huge_mul";      push(labels, "a"); push(labels, "b") }
-    if (meth == "neg")      { bare = "huge_neg";      push(labels, "a") }
-    if (meth == "cmp")      { bare = "huge_cmp";      push(labels, "a"); push(labels, "b") }
-    if (meth == "sign")     { bare = "huge_sign";     push(labels, "a") }
-    if (meth == "mantissa") { bare = "huge_mantissa"; push(labels, "a") }
-    if (meth == "exp")      { bare = "huge_exp";      push(labels, "a") }
-    if (meth == "str")      { bare = "huge_str";      push(labels, "a") }
-  }
-  if (ns == "Angle") {
-    if (meth == "from_degrees") { bare = "angle_from_degrees"; push(labels, "d") }
-    if (meth == "to_degrees")   { bare = "angle_to_degrees";   push(labels, "a") }
-    if (meth == "wrap")         { bare = "angle_wrap";         push(labels, "a") }
-    if (meth == "sin")          { bare = "angle_sin";          push(labels, "a") }
-    if (meth == "cos")          { bare = "angle_cos";          push(labels, "a") }
-    if (meth == "add")          { bare = "angle_add";          push(labels, "a"); push(labels, "b") }
-    if (meth == "diff")         { bare = "angle_diff";         push(labels, "a"); push(labels, "b") }
-    if (meth == "diff_degrees") { bare = "angle_diff_degrees"; push(labels, "a"); push(labels, "b") }   # signed, -180..180, ints
-    if (meth == "lerp")         { bare = "angle_lerp";         push(labels, "a"); push(labels, "b"); push(labels, "t") }
-  }
-  if (ns == "Percent") {
-    if (meth == "clamp") { bare = "percent_clamp"; push(labels, "v") }
-    if (meth == "of")    { bare = "percent_of";    push(labels, "num"); push(labels, "den") }
-    if (meth == "lerp")  { bare = "percent_lerp";  push(labels, "a"); push(labels, "b"); push(labels, "t") }
-    if (meth == "apply") { bare = "percent_apply"; push(labels, "value"); push(labels, "p") }
-  }
-  if (ns == "Grid") {
-    if (meth == "line")          { bare = "grid_line";          push(labels, "x0"); push(labels, "y0"); push(labels, "x1"); push(labels, "y1") }
-    if (meth == "blocked")       { bare = "grid_blocked";       push(labels, "x"); push(labels, "y"); push(labels, "wall") }
-    if (meth == "line_of_sight") { bare = "grid_line_of_sight"; push(labels, "x0"); push(labels, "y0"); push(labels, "x1"); push(labels, "y1"); push(labels, "wall") }
-    if (meth == "flood")         { bare = "grid_flood";         push(labels, "x"); push(labels, "y"); push(labels, "wall") }
-    if (meth == "a_star")        { bare = "path_a_star";        push(labels, "x0"); push(labels, "y0"); push(labels, "x1"); push(labels, "y1"); push(labels, "wall") }
-  }
   # Light.* — the 2D light-accumulation pass (runtime/native/light.ludic, spliced
   # on demand). A game runs it in its render phase: ambient multiplies the scene
   # down, point adds a radial glow (blocked by occluders -> hard shadows). Screen
   # space, deterministic (integer + Q16.16), diffable. `energy` is a fixed.
-  if (ns == "Light") {
-    if (meth == "ambient")         { bare = "light_ambient";         push(labels, "color") }
-    if (meth == "point")           { bare = "light_point";           push(labels, "x"); push(labels, "y"); push(labels, "radius"); push(labels, "color"); push(labels, "energy") }
-    if (meth == "spot")            { bare = "light_spot";            push(labels, "x"); push(labels, "y"); push(labels, "radius"); push(labels, "color"); push(labels, "energy"); push(labels, "direction"); push(labels, "spread") }
-    if (meth == "occlude")         { bare = "light_occlude";         push(labels, "x"); push(labels, "y"); push(labels, "width"); push(labels, "height") }
-    if (meth == "clear_occluders") { bare = "light_clear_occluders" }
-    if (meth == "falloff")         { bare = "light_set_falloff";     push(labels, "exponent") }
-    if (meth == "soft")            { bare = "light_set_soft";        push(labels, "radius") }
-    if (meth == "gel")             { bare = "light_set_gel";         push(labels, "color") }
-    if (meth == "clear_gel")       { bare = "light_clear_gel" }
-    if (meth == "height")          { bare = "light_set_height";      push(labels, "height") }
-    if (meth == "normal")          { bare = "light_normal_rect";     push(labels, "x"); push(labels, "y"); push(labels, "width"); push(labels, "height"); push(labels, "nx"); push(labels, "ny") }
-    if (meth == "clear_normals")   { bare = "light_clear_normals" }
-    if (meth == "time_of_day")     { bare = "light_time_of_day";     push(labels, "t") }
-  }
   # Anim.* / Motion.* ergonomic writes over the engine components (#48), spliced
   # from runtime/native/systems.ludic. Anim.play(entity, "run") plays a named clip
   # registered with Anim.clip; the four-arg Anim.play sets fps/frames/mode
@@ -820,147 +407,29 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
       else { bare = "anim_play"; push(labels, "entity"); push(labels, "fps"); push(labels, "frames"); push(labels, "mode") }
     }
   }
-  if (ns == "Motion") {
-    if (meth == "to") { bare = "motion_to"; push(labels, "entity"); push(labels, "from"); push(labels, "to"); push(labels, "dur"); push(labels, "ease") }
-  }
   # Tween.* fluent stateful handles (#48), spliced from runtime/native/tween.ludic
   # and advanced each Update tick by esys_tween. These stand alongside the pure
   # Tween.* interpolators (emit_anim.ludic): the stateful ones take/return a handle.
-  if (ns == "Tween") {
-    if (meth == "to")       { bare = "tween_to";       push(labels, "from"); push(labels, "to"); push(labels, "dur"); push(labels, "ease") }
-    if (meth == "chain")    { bare = "tween_chain";    push(labels, "handle"); push(labels, "to"); push(labels, "dur"); push(labels, "ease") }
-    if (meth == "delay")    { bare = "tween_delay";    push(labels, "handle"); push(labels, "ticks") }
-    if (meth == "value")    { bare = "tween_value";    push(labels, "handle") }
-    if (meth == "stop")     { bare = "tween_stop";     push(labels, "handle") }
-    if (meth == "parallel") { bare = "tween_parallel"; push(labels, "a"); push(labels, "b") }
-  }
   # Query.* — ECS spatial queries over the reflection ABI (runtime/native/query.ludic,
   # spliced on demand). `prop` is a property id (World.prop_id); the spatial forms
   # read two int fields (field ids) as (x, y). nearest/first return an entity (-1 =
   # none); within returns a []int of entities. A linear scan — ample for the entity
   # counts Ludic targets, like the grid pathfinder's open set.
-  if (ns == "Query") {
-    if (meth == "count")   { bare = "query_count";   push(labels, "prop") }
-    if (meth == "first")   { bare = "query_first";   push(labels, "prop") }
-    if (meth == "nearest") { bare = "query_nearest"; push(labels, "prop"); push(labels, "pos"); push(labels, "x_field"); push(labels, "y_field"); push(labels, "x"); push(labels, "y") }
-    if (meth == "within")  { bare = "query_within";  push(labels, "prop"); push(labels, "pos"); push(labels, "x"); push(labels, "y"); push(labels, "radius"); push(labels, "x_field"); push(labels, "y_field") }
-  }
   # Reflect.* — runtime type reflection over the world schema (the EV2/EV8 ABI).
   # Enumerate properties and fields by index, resolve ids by name, and read/write
   # a field by (prop, field) id — the foundation for auto-serialization and debug
   # inspectors. Reads the same generated metadata a foreign mod binds.
-  if (ns == "Reflect") {
-    if (meth == "prop")        { bare = "world_prop_id";     push(labels, "name") }
-    if (meth == "field")       { bare = "world_field_id";    push(labels, "prop"); push(labels, "name") }
-    if (meth == "prop_count")  { bare = "world_prop_count" }
-    if (meth == "prop_name")   { bare = "world_prop_name";   push(labels, "index") }
-    if (meth == "field_count") { bare = "world_field_count"; push(labels, "prop") }
-    if (meth == "field_name")  { bare = "world_field_name";  push(labels, "prop"); push(labels, "index") }
-    if (meth == "field_type")  { bare = "world_field_type";  push(labels, "prop"); push(labels, "index") }
-    if (meth == "get")         { bare = "world_get";         push(labels, "entity"); push(labels, "prop"); push(labels, "field") }
-    if (meth == "set")         { bare = "world_set";         push(labels, "entity"); push(labels, "prop"); push(labels, "field"); push(labels, "value") }
-    if (meth == "has")         { bare = "world_has";         push(labels, "entity"); push(labels, "prop") }
-    if (meth == "kind")        { bare = "world_kind";        push(labels, "entity") }
-    if (meth == "model")       { bare = "world_model_id";    push(labels, "name") }
-    # #44 — serialize an entity to a value tree and apply one back (reflect_io.ludic)
-    if (meth == "serialize")   { bare = "reflect_serialize"; push(labels, "entity") }
-    if (meth == "apply")       { bare = "reflect_apply";     push(labels, "entity"); push(labels, "value") }
-  }
   # Value.* — the generic value tree (runtime/native/value.ludic, spliced on
   # demand). Nodes are int/fixed/bool/str/list/object; the methods map straight
   # to the spliced value_* functions, whose signatures carry the return types.
-  if (ns == "Value") {
-    if (meth == "null")    { bare = "value_null" }
-    if (meth == "int")     { bare = "value_int";     push(labels, "n") }
-    if (meth == "fixed")   { bare = "value_fixed";   push(labels, "f") }
-    if (meth == "bool")    { bare = "value_bool";    push(labels, "b") }
-    if (meth == "str")     { bare = "value_str";     push(labels, "s") }
-    if (meth == "list")    { bare = "value_list" }
-    if (meth == "object")  { bare = "value_object" }
-    if (meth == "add")     { bare = "value_add";     push(labels, "list"); push(labels, "item") }
-    if (meth == "put")     { bare = "value_put";     push(labels, "obj"); push(labels, "key"); push(labels, "item") }
-    if (meth == "get")     { bare = "value_get";     push(labels, "obj"); push(labels, "key") }
-    if (meth == "has")     { bare = "value_has";     push(labels, "obj"); push(labels, "key") }
-    if (meth == "at")      { bare = "value_at";      push(labels, "list"); push(labels, "index") }
-    if (meth == "key_at")  { bare = "value_key_at";  push(labels, "obj"); push(labels, "index") }
-    if (meth == "count")   { bare = "value_count";   push(labels, "value") }
-    if (meth == "kind")    { bare = "value_kind";    push(labels, "value") }
-    if (meth == "as_int")  { bare = "value_as_int";  push(labels, "value") }
-    if (meth == "as_str")  { bare = "value_as_str";  push(labels, "value") }
-  }
   # Json.* — the text bridge over the value tree (runtime/native/value.ludic).
-  if (ns == "Json") {
-    if (meth == "encode")  { bare = "json_encode";   push(labels, "value") }
-    if (meth == "parse")   { bare = "json_parse";    push(labels, "text") }
-  }
   # Xml.* — the minimal XML reader (runtime/native/xml.ludic, spliced on demand).
   # parse returns an Xml node; the accessors read tag/text/attributes/children.
-  if (ns == "Xml") {
-    if (meth == "parse")       { bare = "xml_parse";       push(labels, "text") }
-    if (meth == "tag")         { bare = "xml_tag";         push(labels, "node") }
-    if (meth == "text")        { bare = "xml_text";        push(labels, "node") }
-    if (meth == "attr")        { bare = "xml_attr";        push(labels, "node"); push(labels, "key") }
-    if (meth == "attr_int")    { bare = "xml_attr_int";    push(labels, "node"); push(labels, "key"); push(labels, "dflt") }
-    if (meth == "has")         { bare = "xml_has";         push(labels, "node"); push(labels, "key") }
-    if (meth == "attr_count")  { bare = "xml_attr_count";  push(labels, "node") }
-    if (meth == "child_count") { bare = "xml_child_count"; push(labels, "node") }
-    if (meth == "child")       { bare = "xml_child";       push(labels, "node"); push(labels, "index") }
-    if (meth == "find")        { bare = "xml_find";        push(labels, "node"); push(labels, "tag") }
-    if (meth == "count")       { bare = "xml_count";       push(labels, "node"); push(labels, "tag") }
-  }
   # Base64.* — standard base64 codec (runtime/native/base64.ludic, spliced on
   # demand). decode/encode round-trip through NUL-terminated strings.
-  if (ns == "Base64") {
-    if (meth == "decode")  { bare = "base64_decode";  push(labels, "src") }
-    if (meth == "encode")  { bare = "base64_encode";  push(labels, "src") }
-  }
   # Tiled.* — Tiled map support (runtime/native/tiled.ludic, spliced on demand).
   # read/read_tsx produce the intermediate Value tree (#68); load/gid/resolve/
   # draw/prop operate on the loaded map model (#69+).
-  if (ns == "Tiled") {
-    if (meth == "read")        { bare = "tiled_read";        push(labels, "path") }
-    if (meth == "read_tsx")    { bare = "tiled_read_tsx";    push(labels, "path") }
-    if (meth == "load")        { bare = "tiled_load";        push(labels, "path") }
-    if (meth == "gid")         { bare = "tmap_gid";          push(labels, "map"); push(labels, "layer"); push(labels, "x"); push(labels, "y") }
-    if (meth == "resolve")     { bare = "tmap_resolve";      push(labels, "map"); push(labels, "gid") }
-    if (meth == "width")       { bare = "tmap_width";        push(labels, "map") }
-    if (meth == "height")      { bare = "tmap_height";       push(labels, "map") }
-    if (meth == "layer_count") { bare = "tmap_layer_count";  push(labels, "map") }
-    if (meth == "layer_name")  { bare = "tmap_layer_name";   push(labels, "map"); push(labels, "index") }
-    if (meth == "draw")        { bare = "tmap_draw";         push(labels, "map"); push(labels, "camx"); push(labels, "camy") }
-    if (meth == "draw_anim")   { bare = "tmap_draw_anim";    push(labels, "map"); push(labels, "camx"); push(labels, "camy"); push(labels, "frame") }
-    if (meth == "frame_gid")   { bare = "tmap_frame_gid";    push(labels, "map"); push(labels, "gid"); push(labels, "frame") }
-    if (meth == "animated")    { bare = "tmap_is_animated";  push(labels, "map"); push(labels, "gid") }
-    if (meth == "project")     { bare = "tmap_project";      push(labels, "map"); push(labels, "layer") }
-    if (meth == "collide")     { bare = "tmap_collide";      push(labels, "map"); push(labels, "layer") }
-    if (meth == "collision_kind") { bare = "tmap_collision_kind"; push(labels, "map"); push(labels, "gid") }
-    if (meth == "tree")        { bare = "tmap_tree";         push(labels, "map") }
-    if (meth == "tile_prop")   { bare = "tmap_tile_prop";    push(labels, "map"); push(labels, "gid"); push(labels, "name") }
-    if (meth == "tile_shapes") { bare = "tmap_tile_has_shapes"; push(labels, "map"); push(labels, "gid") }
-    # P4 (#72): objects / properties / custom types / templates / opt-in spawn
-    if (meth == "object_count") { bare = "tmap_object_count"; push(labels, "map"); push(labels, "layer") }
-    if (meth == "object")       { bare = "tmap_object";       push(labels, "map"); push(labels, "layer"); push(labels, "index") }
-    if (meth == "object_shape") { bare = "tiled_object_shape"; push(labels, "object") }
-    if (meth == "prop")         { bare = "tiled_prop_str";    push(labels, "container"); push(labels, "name") }
-    if (meth == "prop_int")     { bare = "tiled_prop_int";    push(labels, "container"); push(labels, "name") }
-    if (meth == "prop_type")    { bare = "tiled_prop_type";   push(labels, "container"); push(labels, "name") }
-    if (meth == "load_types")   { bare = "tiled_load_types";  push(labels, "path") }
-    if (meth == "template")     { bare = "tiled_read_template"; push(labels, "path") }
-    if (meth == "spawn")        { bare = "tiled_spawn_object"; push(labels, "map"); push(labels, "object"); push(labels, "model") }
-    if (meth == "spawn_layer")  { bare = "tiled_spawn_layer"; push(labels, "map"); push(labels, "layer"); push(labels, "model") }
-    # P5 (#73): orientation coords + image/group-layer accessors
-    if (meth == "cell_x")       { bare = "tmap_cell_sx";      push(labels, "map"); push(labels, "x"); push(labels, "y") }
-    if (meth == "cell_y")       { bare = "tmap_cell_sy";      push(labels, "map"); push(labels, "x"); push(labels, "y") }
-    if (meth == "layer_kind")   { bare = "tmap_layer_kind";   push(labels, "map"); push(labels, "layer") }
-    if (meth == "layer_opacity") { bare = "tmap_layer_opacity"; push(labels, "map"); push(labels, "layer") }
-    if (meth == "layer_tint")   { bare = "tmap_layer_tint";   push(labels, "map"); push(labels, "layer") }
-    if (meth == "layer_offsetx") { bare = "tmap_layer_offsetx"; push(labels, "map"); push(labels, "layer") }
-    if (meth == "layer_offsety") { bare = "tmap_layer_offsety"; push(labels, "map"); push(labels, "layer") }
-    # P6 (#74): .world stitching
-    if (meth == "world")       { bare = "tiled_read_world";  push(labels, "path") }
-    if (meth == "world_count") { bare = "tiled_world_count"; push(labels, "world") }
-    if (meth == "world_map")   { bare = "tiled_world_map";   push(labels, "world"); push(labels, "index") }
-  }
   # #62: a package-provided namespace (declared with @Namespace(Foo)) that none
   # of the hardcoded core blocks matched — alias Foo.method to the bare function
   # foo_method (positional args), the same generic path the core aliases use.

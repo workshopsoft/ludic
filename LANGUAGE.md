@@ -187,6 +187,34 @@ Generics are compiled by instantiation: each instance the program uses is an ord
 function, made and checked once, so it costs exactly what writing it out by hand would. A generic
 nothing instantiates is not compiled at all.
 
+### Namespaces declared in Ludic (`alias`)
+
+A namespace method can be a name for a function. Inside a `namespace` block,
+
+```ludic
+program Trails {
+  namespace Trail {
+    export alias length(from, to) = trail_distance
+    alias km = trail_km
+  }
+  function trail_distance(a: int, b: int) -> int { return b - a }
+  function trail_km(metres: int) -> int { return metres / 1000 }
+  entry { print(Trail.length(to: 12, from: 2) + Trail.km(metres: 5000)) }
+}
+```
+
+makes `Trail.length(...)` a call to `trail_distance`: the list after the method is the labels a call
+may name its arguments by, in the target's parameter order, and without one the target's own
+parameter names are the labels (`alias show() = present` takes none). The call is the target's -
+same arguments, same checks, same code - so a namespace costs nothing over calling the function.
+
+This is how the engine declares its own namespaces: `Http`, `Udp`, `Process`, `Json`, `Value`,
+`Screen`, `Input`, `Audio`, `World`, `Tiled` and the rest are `alias` blocks in
+`runtime/native/namespaces.ludic`, not branches in the compiler, and a package owns an API the same
+way in its own files. What is still built into the compiler is the namespaces that compute inline -
+`Math`, `Text`, `List`, `Vector`, `Color`, `Time`, `Date` - and the few methods that choose their
+target by an argument's type (`Audio.play` of a handle or a name).
+
 ## Models (entity kinds)
 
 An `model` names a *kind* of entity and the fixed set of properties it

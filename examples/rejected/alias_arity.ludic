@@ -1,0 +1,8 @@
+# L6: an alias is its target, so a call gives it the target's arguments
+program AliasArity {
+  namespace Trail {
+    alias length(from, to) = trail_distance
+  }
+  function trail_distance(a: int, b: int) -> int { return b - a }
+  entry { print(Trail.length(4)) }
+}

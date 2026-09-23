@@ -340,6 +340,8 @@ function static_type(e: Node) -> pointer {
       if (e.a.a.s == "Map") and ((e.a.s == "random_cell") or (e.a.s == "random_cell_far") or (e.a.s == "to_tile")) { return "IVec2" }
       if (e.a.a.s == "Collider") and (e.a.s == "center") { return "IVec2" }
       if (e.a.a.s == "Input") and (e.a.s == "move_i") { return "IVec2" }
+      let al = ns_alias_find(e.a.a.s, e.a.s)
+      if al >= 0 { let af = find_fn(g_al_target[al]);  if (af != null) { return af.ty } }
       let nf = find_fn(ns_lower(e.a.a.s) + ("_") + e.a.s);  if (nf != null) { return nf.ty }
     }
   }

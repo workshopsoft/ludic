@@ -594,7 +594,12 @@ function parse_namespace() -> void {
     var is_exp = 1                                   # default: exported (public)
     if is_id("export") { pi += 1 }
     else { if is_id("internal") { pi += 1;  is_exp = 0 } }
-    if not is_id("function") { perr("a namespace body holds functions: expected `function`") }
+    if is_id("alias") {
+      ns_parse_alias(nsname, is_exp)
+      skipnl()
+      continue
+    }
+    if not is_id("function") { perr("a namespace body holds functions or aliases: expected `function` or `alias`") }
     let f = parse_fn()
     push(fns, f);  push(shorts, f.s);  push(exps, is_exp)
     skipnl()
@@ -1130,6 +1135,10 @@ function do_import(rel: pointer) -> void {
 # Tools (an `entry` block, no ECS) get nothing.
 function maybe_splice_runtime() -> void {
   let saved = cur_dir
+  # L6: the engine's namespaces that are aliases of runtime functions, declared in Ludic
+  cur_dir = ""
+  do_import("runtime/native/namespaces.ludic")
+  cur_dir = saved
   # a game (has systems/components) links the Ludic runtime.
   if has_ecs() {
     cur_dir = ""
