@@ -470,21 +470,45 @@ function gvk_compare_op(f: int) -> int {
   if f == GL_ALWAYS { return VK_COMPARE_OP_ALWAYS }
   return VK_COMPARE_OP_LESS_OR_EQUAL
 }
+# The texture mip bias DLSS needs. DLSS draws the scene at a fraction of the output resolution, so
+# every texture picks its mip for THAT resolution - and then the upscaler has no detail left to
+# reconstruct, which is what "blurry and muddy" is. NVIDIA's requirement is to bias the mip
+# selection back toward the output resolution:
+#
+#     bias = log2(renderWidth / displayWidth) - 1
+#
+# which is -2.0 at Performance and about -1.6 at Quality. It is applied ONLY while DLSS is live: a
+# plain spatial upscale has no temporal accumulation to hide the aliasing a negative bias brings,
+# so biasing there would trade blur for shimmer.
+function gvk_mip_bias() -> int {
+  # R3D_NO_MIPBIAS=1 puts it back the way it was, so one build can be compared against itself
+  if r3d_env_has("R3D_NO_MIPBIAS") { return F_ZERO }
+  if not r3d_dlss_live() { return F_ZERO }
+  let rw = r3d_dlss_render_w()
+  if rw <= 0 or gl_w <= 0 or rw >= gl_w { return F_ZERO }
+  # log2 from the natural log the runtime has: log2(x) = ln(x) * 1/ln(2)
+  return f_sub(f_mul(f_log(f_div(fi(rw), fi(gl_w))), fl(1.4426950408889634)), F_ONE)
+}
 # the sampler for texture tex's parameters, from the texture's own one-entry cache when they have
 # not changed since it last asked - a draw asks for every texture it binds
 function gvk_tex_sampler(tex: int, min_f: int, mag_f: int, wrap_s: int, wrap_t: int, compare: int, aniso: int) -> long {
+  let bias = gvk_mip_bias()
   var sig = min_f * 31 + mag_f
   sig = sig * 31 + wrap_s
   sig = sig * 31 + wrap_t
   sig = sig * 31 + compare
-  sig = (sig * 31 + aniso) | 1
+  sig = sig * 31 + aniso
+  # the bias is part of what the sampler IS, so it has to invalidate this cache too - otherwise
+  # turning DLSS on mid-session keeps every sampler already made at the old bias
+  sig = (sig * 31 + bias) | 1
   if tex > 0 and tex < len(gvk_tex_smp_sig) and gvk_tex_smp_sig[tex] == sig { return gvk_tex_smp[tex] }
   let s = gvk_sampler(min_f, mag_f, wrap_s, wrap_t, compare, aniso)
   if tex > 0 and tex < len(gvk_tex_smp_sig) { gvk_tex_smp_sig[tex] = sig;  gvk_tex_smp[tex] = s }
   return s
 }
 function gvk_sampler(min_f: int, mag_f: int, wrap_s: int, wrap_t: int, compare: int, aniso: int) -> long {
-  let key = `{min_f}/{mag_f}/{wrap_s}/{wrap_t}/{compare}/{aniso}`
+  let bias = gvk_mip_bias()
+  let key = `{min_f}/{mag_f}/{wrap_s}/{wrap_t}/{compare}/{aniso}/{bias}`
   if gvk_smp_keys == null { gvk_smp_keys = new []string;  gvk_smp = new []long }
   for i in 0 .. len(gvk_smp_keys) { if gvk_smp_keys[i] == key { return gvk_smp[i] } }
   var mn = min_f
@@ -504,6 +528,7 @@ function gvk_sampler(min_f: int, mag_f: int, wrap_s: int, wrap_t: int, compare: 
   Vk.put_i32(sci, VkSamplerCreateInfo_addressModeW, gvk_address(wrap_t))
   # without mipmaps, a max LOD of 0.25 samples level 0 only (the spec's own recipe for GL_LINEAR)
   if mipmapped { Vk.put_i32(sci, VkSamplerCreateInfo_maxLod, 0x447A0000) } else { Vk.put_i32(sci, VkSamplerCreateInfo_maxLod, 0x3E800000) }
+  if mipmapped { Vk.put_i32(sci, VkSamplerCreateInfo_mipLodBias, bias) }
   if aniso > 0x3F800000 and mipmapped {
     var a = aniso
     if a > gvk_max_aniso { a = gvk_max_aniso }

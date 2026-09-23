@@ -15,6 +15,14 @@ var grass_prog: int = 0
 var grass_mesh: Mesh = null
 var grass_on: bool = true
 var grass_wind: int = 0
+# A photographed blade, as an atlas of straightened blades side by side (the game sets
+# this; the renderer does not name a game asset). 0 = the procedural gradient, which is
+# what this was for a year: a two-tone ramp with a hard edge, and every blade in the
+# valley the same blade. A real blade has a midrib, a colour that runs olive to straw,
+# browning where it has dried and a tip that is its own shape - none of which can be
+# written down, only photographed.
+var grass_blade_tex: int = 0
+var grass_blade_cols: int = 8
 # Where a body is standing, and how wide it pushes. The grass has never known the player was
 # in it: you walked through a meadow and every blade ignored you, which is the single most
 # noticeable thing missing from every step the game asks you to take. The game sets this each
@@ -59,10 +67,25 @@ function grass_blade_mesh(rows: int) -> Mesh {
   let m = gpu_mesh_new()
   let v = gl_floats(rows * 2 * 5)
   var k = 0
+  # The blade's PROFILE, and it is the whole difference between grass and a green spike.
+  # It used to be `1 - t^2.5` floored at 0.12 with a bend of 0.28t^2: widest at the very
+  # bottom, narrowing to a needle, and standing almost straight. That is the silhouette of
+  # a pine needle, and eighty of them to the square metre read as a bed of nails.
+  #
+  # A real blade is narrow where it leaves the sheath, WIDEST about a fifth of the way up,
+  # and then tapers the rest of the way to a fine point - and it arches over under its own
+  # weight. Both terms below say that. The tip is floored just off zero rather than at 0.12
+  # so the point is a point and not a cut-off stub, but not so low that the last quad is
+  # degenerate.
+  #
+  # grass.mesh carries A COPY of these two lines for the mesh-shader path; change both or
+  # the Windows blades stop matching the ones everywhere else.
   for r in 0 .. rows {
     let t = fr(r, rows - 1)
-    let taper = f_max(f_sub(F_ONE, f_mul(t, f_mul(t, f_sqrt(t)))), fl(0.12))
-    let bend = f_mul(f_mul(t, t), fl(0.28))
+    let grow = f_min(f_div(t, fl(0.22)), F_ONE)
+    let wide = f_mul(f_add(fl(0.50), f_mul(fl(0.33), grow)), f_sub(F_ONE, f_mul(t, f_mul(t, t))))
+    let taper = f_max(wide, fl(0.05))
+    let bend = f_mul(f_mul(t, t), fl(0.52))
     for sd in 0 .. 2 {
       var x = f_neg(F_HALF)
       if sd == 1 { x = F_HALF }
@@ -100,9 +123,17 @@ function grass_init() -> void {
   }
   grass_prog = r3d_program("grass.vert", "model.frag", defs)
   if grass_merge and gpu_has_mesh() { grass_mesh_prog = r3d_program("grass.mesh", "model.frag", "#define FOLIAGE\n#define BLADE\n#define MESH\n") }
-  grass_mesh = grass_blade_mesh(4)
+  # five rows, four quads: the arch above needs somewhere to bend, and at four rows a
+  # blade that leans over is three straight segments and shows every join
+  grass_mesh = grass_blade_mesh(5)
   grass_wind = fl(2.4)
-  grass_s0 = fl(0.11)
+  # Matched to the blade's width: a 1 cm blade at 0.11 m spacing covers a third of what a
+  # 2.8 cm blade did, and the meadow goes bare. The game's graphics settings override this
+  # (gfx_grass_spacing), but only once game_init has run - a plain headless render never
+  # gets there, so the two have to agree or a shot shows something no player will see.
+  # That is exactly how the last change measured as "no effect": the render was identical
+  # because this line, not the settings, was deciding.
+  grass_s0 = fl(0.066)
   grass_d0 = fi(45)
   grass_radius = fi(1600)
   if r3d_env_has("R3D_NOBLADES") { grass_on = false }
@@ -181,6 +212,14 @@ function grass_draw() -> void {
   u_mat4(gpu_uniform(p, "u_proj"), cam_proj)
   u_mat4(gpu_uniform(p, "u_vp"), cam_vp_clean)
   u_f(gpu_uniform(p, "u_wind"), grass_wind)
+  # copied into a local first: a global reaching a uniform call is the codegen fault
+  # CLAUDE.md records against u_wade and u_flutter, and it costs a day every time
+  let btex = grass_blade_tex
+  let bcols = grass_blade_cols
+  u_f(gpu_uniform(p, "u_blade_cols"), fi(bcols))
+  var bon = F_ZERO
+  if btex != 0 { bon = F_ONE;  r3d_bind_2d(p, "u_blade_tex", 12, btex) }
+  u_f(gpu_uniform(p, "u_blade_tex_on"), bon)
   u_f3(gpu_uniform(p, "u_push"), grass_push_x, grass_push_z, grass_push_r)
   u_f(gpu_uniform(p, "u_rough_scale"), F_ONE)
   u_v3(gpu_uniform(p, "u_tint"), sc_blade_tint)
@@ -208,7 +247,12 @@ function grass_draw() -> void {
   sky_bind_lighting(p)
   shadow_bind(p)
   fog_bind(p)
-  u_f(gpu_uniform(p, "u_spec_scale"), fl(0.15))
+  # 0.15 was enough to put a hard white highlight down the length of a blade whenever it
+  # caught the sun, and a white blade of grass is the one thing grass is never. Measured:
+  # at 0.15, 0.70% of a near-ground frame was over 210 of 255; at 0.0 it is 0.05%. A blade
+  # does have a faint sheen, so this is small rather than nothing - the foliage layers have
+  # used 0.05 all along and never showed the fault.
+  u_f(gpu_uniform(p, "u_spec_scale"), fl(0.008))
   gpu_cull(false)
   grass_draws = 0
   grass_n = 0

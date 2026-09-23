@@ -30,6 +30,10 @@ declare i32 @wglMakeCurrent(ptr, ptr)
 declare i32 @wglDeleteContext(ptr)
 declare ptr @wglGetProcAddress(ptr)
 declare i32 @QueryPerformanceCounter(ptr)
+declare void @Sleep(i32)
+declare ptr @CreateWaitableTimerExW(ptr, ptr, i32, i32)
+declare i32 @SetWaitableTimerEx(ptr, ptr, i32, ptr, ptr, ptr, i32)
+declare i32 @WaitForSingleObject(ptr, i32)
 declare i32 @QueryPerformanceFrequency(ptr)
 declare i32 @lgl_win_load()
 declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)
@@ -414,6 +418,55 @@ entry:
 ; gl.ll reads gettimeofday; Windows has QueryPerformanceCounter, which is
 ; monotonic as well as fine-grained. Split into whole seconds and remainder so
 ; the multiply cannot overflow however long the machine has been up.
+; Give the CPU back for `us` microseconds (gl.ll's gl_sleep_us on Windows).
+;
+; Not Sleep and not timeBeginPeriod: Sleep takes whole milliseconds and the scheduler's default
+; granularity can be 15 ms, which no 60 fps limiter survives, and timeBeginPeriod lives in winmm,
+; which this runtime does not link. A HIGH RESOLUTION waitable timer is kernel32 and is accurate to
+; well under a millisecond. Older Windows without the high-resolution flag falls back to Sleep, and
+; the caller's spin covers the slack either way.
+@G_timer = internal global ptr null
+define void @gl_sleep_us(i64 %us) {
+entry:
+  %pos = icmp sgt i64 %us, 0
+  br i1 %pos, label %get, label %out
+get:
+  %have = load ptr, ptr @G_timer
+  %need = icmp eq ptr %have, null
+  br i1 %need, label %make, label %ready
+make:
+  ; CREATE_WAITABLE_TIMER_HIGH_RESOLUTION 2, TIMER_ALL_ACCESS 0x1F0003
+  %t = call ptr @CreateWaitableTimerExW(ptr null, ptr null, i32 2, i32 2031619)
+  store ptr %t, ptr @G_timer
+  br label %ready
+ready:
+  %h = load ptr, ptr @G_timer
+  %nohandle = icmp eq ptr %h, null
+  br i1 %nohandle, label %doze, label %wait
+wait:
+  ; a NEGATIVE due time is relative, in 100 ns units
+  %due = alloca i64, align 8
+  %hundreds = mul i64 %us, 10
+  %neg = sub i64 0, %hundreds
+  store i64 %neg, ptr %due
+  %set = call i32 @SetWaitableTimerEx(ptr %h, ptr %due, i32 0, ptr null, ptr null, ptr null, i32 0)
+  %setok = icmp ne i32 %set, 0
+  br i1 %setok, label %block, label %doze
+block:
+  %w = call i32 @WaitForSingleObject(ptr %h, i32 -1)
+  br label %out
+doze:
+  %ms = sdiv i64 %us, 1000
+  %mspos = icmp sgt i64 %ms, 0
+  br i1 %mspos, label %ms_go, label %out
+ms_go:
+  %ms32 = trunc i64 %ms to i32
+  call void @Sleep(i32 %ms32)
+  br label %out
+out:
+  ret void
+}
+
 define i64 @gl_now_us() {
 entry:
   %c = alloca i64, align 8

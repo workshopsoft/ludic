@@ -32,6 +32,7 @@ extern function win_toggle_fullscreen() = "win_toggle_fullscreen"
 extern function cgl_offscreen() -> int = "cgl_offscreen"
 # wall clock in microseconds — the only sub-second clock available to a Ludic program
 extern function gl_now_us() -> long = "gl_now_us"
+extern function gl_sleep_us(us: long) -> void = "gl_sleep_us"
 extern function fx_to_f32(fx: fixed) -> int = "fx_to_f32"
 extern function f32_to_fx(bits: int) -> fixed = "f32_to_fx"
 extern function mem_off(p: pointer, off: int) -> pointer = "mem_off"

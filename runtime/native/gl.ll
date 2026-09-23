@@ -352,6 +352,28 @@ entry:
 ; macOS arm64: struct timeval is { time_t tv_sec (i64), suseconds_t tv_usec (i32) }
 %struct.timeval64 = type { i64, i32 }
 declare i32 @gettimeofday(ptr, ptr)
+declare i32 @nanosleep(ptr, ptr)
+
+; Give the CPU back for `us` microseconds. A frame limiter needs this: without a way to wait, a
+; cap can only be a spin, which burns a core and cooks a laptop. The caller sleeps SHORT of its
+; target and spins the last stretch, because no OS sleep is exact.
+define void @gl_sleep_us(i64 %us) {
+entry:
+  %pos = icmp sgt i64 %us, 0
+  br i1 %pos, label %go, label %out
+go:
+  %ts = alloca [16 x i8], align 8
+  %sec = sdiv i64 %us, 1000000
+  %rem = srem i64 %us, 1000000
+  %nsec = mul i64 %rem, 1000
+  store i64 %sec, ptr %ts
+  %np = getelementptr i8, ptr %ts, i64 8
+  store i64 %nsec, ptr %np
+  %r = call i32 @nanosleep(ptr %ts, ptr null)
+  br label %out
+out:
+  ret void
+}
 
 define i64 @gl_now_us() {
 entry:

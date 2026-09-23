@@ -415,6 +415,32 @@ function input_key_label(k: int) -> string {
   if c <= 0 { return "" }
   return in_utf8(c)
 }
+# What the player has TYPED since the last call, as UTF-8. This is a different question from which
+# keys are DOWN, and both are needed: a binding is a physical key (input_key_down, so WASD is where
+# W-A-S-D sit on any layout), while text is whatever the layout, the modifiers and any dead key
+# actually produce. Building text out of key codes instead meant a Turkish player could not type
+# c-cedilla, g-breve, dotless i, o-umlaut, s-cedilla or u-umlaut anywhere - their own name included.
+# Empty headless, and where the platform has no text channel.
+var in_text_buf: words = null
+function input_text() -> string {
+  if not is_windowed() { return "" }
+  if in_text_buf == null { in_text_buf = words(64) }
+  let n = win_text(in_text_buf, 64)
+  if n <= 0 { return "" }
+  var out = ""
+  var i = 0
+  while i < n {
+    var c = in_text_buf[i]
+    # a code point outside the BMP arrives as a surrogate PAIR - two units, one character
+    if c >= 55296 and c < 56320 and i + 1 < n {
+      let lo = in_text_buf[i + 1]
+      if lo >= 56320 and lo < 57344 { c = 65536 + ((c - 55296) * 1024) + (lo - 56320);  i = i + 1 }
+    }
+    out = out + in_utf8(c)
+    i = i + 1
+  }
+  return out
+}
 # one code point as a UTF-8 string
 function in_utf8(c: int) -> string {
   let out = bytes(5)

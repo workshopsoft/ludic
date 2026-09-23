@@ -100,8 +100,16 @@ void main() {
   // of the count shrinks to nothing so a blade never pops.
   float spacing = u_s0 * (1.0 + dist / u_d0);
   float count = CELL * CELL / (spacing * spacing) * (1.0 - smoothstep(u_radius * 0.7, u_radius, dist));
-  if (fj >= count) { cull(); return; }
-  float life = 1.0 - smoothstep(0.8, 1.0, fj / max(count, 1.0));
+  // WHICH blades thin out has to be random, not the last indices. `fj >= count` keeps
+  // blades 0..N-1, and as N falls by one with distance, the SAME index dies in every
+  // cell at the same radius - one blade in a fixed place per cell, over a whole ring.
+  // Seen from above that is a set of arcs centred on the camera, and at eye level it is
+  // the banding that reads as a ploughed field. Giving each blade its own fixed number
+  // and comparing that against the density makes the thinning scatter instead.
+  float keep = count / float(max(per_cell, 1));
+  float r = bladeHash(ci, j, 5);
+  if (r > keep) { cull(); return; }
+  float life = 1.0 - smoothstep(keep * 0.75, keep, r);
   // the ground under it
   vec2 huv = (xz - u_ts_origin) / (2.0 * u_ts_half) + 0.5;
   if (huv.x < 0.0 || huv.x > 1.0 || huv.y < 0.0 || huv.y > 1.0) { cull(); return; }
@@ -136,7 +144,11 @@ void main() {
   if ((u_dbg & 1) != 0) h += 0.3;
   // the blade: sized so that coverage stays level as the spacing grows
   float seed = hv.x * 0.7 + hv.y * 0.3;
-  float ang = hv.y * 6.2831853;
+  // A BLADE'S YAW MUST NOT BE ITS POSITION. This was `hv.y * 2pi`, and hv.y is the same
+  // number that places the blade along the cell's z - so every blade at the same depth
+  // in a cell faced the same way, in rows, sixteen metres wide. That is the single thing
+  // that made the meadow look ploughed. Its own hash costs nothing.
+  float ang = bladeHash(ci, j, 6) * 6.2831853;
   float s = sin(ang), c_ = cos(ang);
   float grow = spacing / u_s0;                       // 1 at the camera, growing with distance
   // Height is biased SHORT rather than spread evenly. A meadow is not one length of grass: it
@@ -146,7 +158,12 @@ void main() {
   // that had been cut, which is the one thing an alpine meadow is not.
   float hh = h3 * h3;
   float tall = mix(0.09, 0.60, hh) * mix(0.8, 1.2, hash1(cid * 0.1)) * (1.0 + 0.35 * smoothstep(1.0, 12.0, grow)) * life;
-  float bw = 0.028 * mix(1.0, 0.45 * grow, smoothstep(1.0, 4.0, grow));
+  // 2.8 cm was FIVE TIMES a blade of meadow grass, which is 3-6 mm. At 2 m from the
+  // camera that is a broad dark scimitar lying along the ground rather than a blade
+  // standing in a sward, and no amount of profile or colour work fixes a blade that is
+  // the wrong size. Measured, not guessed: it is the one number behind every "too wide
+  // and too flat" note in this stage.
+  float bw = 0.010 * mix(1.0, 0.45 * grow, smoothstep(1.0, 4.0, grow));
   if (far) { bw = max(bw, spacing * 0.35); tall = min(tall, spacing * 0.3); }
   vec3 p = vec3(a_pos.x * bw, a_pos.y * tall, a_pos.z * tall * (0.6 + 0.8 * h4));
   vec3 n = vec3(0.0, 0.3, 1.0);

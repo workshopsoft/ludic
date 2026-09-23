@@ -31,8 +31,17 @@
 ; The process is per-monitor DPI aware: a client pixel is a screen pixel, the
 ; backing scale is 1, and a 1280x720 window is 1280x720 pixels on any display.
 ;
-; Keys are read from the message queue before dispatch rather than from WM_CHAR:
-; TranslateMessage is never called, so no character messages are produced. The held
+; The window is a UNICODE window - RegisterClassExW, CreateWindowExW, PeekMessageW,
+; DispatchMessageW, DefWindowProcW - and that is not cosmetic: only a Unicode window's WM_CHAR
+; carries a UTF-16 code unit. Registered the ANSI way, TranslateMessage hands back one byte in the
+; machine's code page, and a Turkish s-cedilla has nowhere to go.
+;
+; Keys are read from the message queue before dispatch rather than from WM_CHAR, so a BINDING is
+; always the physical key. TranslateMessage IS called for key messages now, which adds WM_CHAR
+; alongside - that is the only way to know what the player actually TYPED. Bindings read the
+; scancode before dispatch and are unaffected; typing reads the characters. A player on a Turkish
+; layout could not type c-cedilla, g-breve, dotless i, o, s-cedilla or u-umlaut at all before this,
+; because the game built text from US-layout key CODES - their own name was unreachable. The held
 ; set is keyed by the scancode in lParam, not by the virtual key: a virtual key is
 ; the layout's idea of the key, so on AZERTY the key where W is printed on a US
 ; board arrives as VK_Z, and an input method turns every letter into VK_PROCESSKEY
@@ -45,15 +54,27 @@
 
 declare ptr @GetModuleHandleA(ptr)
 declare i16 @RegisterClassExA(ptr)
+declare i16 @RegisterClassExW(ptr)
 declare ptr @CreateWindowExA(i32, ptr, ptr, i32, i32, i32, i32, i32, ptr, ptr, ptr, ptr)
+declare ptr @CreateWindowExW(i32, ptr, ptr, i32, i32, i32, i32, i32, ptr, ptr, ptr, ptr)
 declare i64 @DefWindowProcA(ptr, i32, i64, i64)
+declare i64 @DefWindowProcW(ptr, i32, i64, i64)
 declare i32 @ShowWindow(ptr, i32)
+declare i64 @GetWindowLongPtrW(ptr, i32)
+declare i64 @SetWindowLongPtrW(ptr, i32, i64)
+declare i32 @SetWindowPos(ptr, ptr, i32, i32, i32, i32, i32)
+declare i32 @GetWindowRect(ptr, ptr)
+declare i32 @EnumDisplayDevicesW(ptr, i32, ptr, i32)
+declare i32 @EnumDisplaySettingsW(ptr, i32, ptr)
 declare i32 @SetForegroundWindow(ptr)
 declare i32 @BringWindowToTop(ptr)
 declare i32 @SetWindowTextW(ptr, ptr)
 declare i32 @MultiByteToWideChar(i32, i32, ptr, i32, ptr, i32)
 declare i32 @PeekMessageA(ptr, ptr, i32, i32, i32)
+declare i32 @PeekMessageW(ptr, ptr, i32, i32, i32)
 declare i64 @DispatchMessageA(ptr)
+declare i64 @DispatchMessageW(ptr)
+declare i32 @TranslateMessage(ptr)
 declare ptr @GetDC(ptr)
 declare i32 @AdjustWindowRectEx(ptr, i32, i32, i32)
 declare i32 @GetSystemMetrics(i32)
@@ -81,6 +102,11 @@ declare i32 @XInputGetState(i32, ptr)
 declare void @llvm.memset.p0.i64(ptr, i8, i64, i1)
 
 @.w_class = private unnamed_addr constant [12 x i8] c"LudicWindow\00"
+; the same name as UTF-16. A window is a UNICODE window only if its class was registered with
+; RegisterClassExW, and only a Unicode window gets WM_CHAR carrying a UTF-16 code unit - on an
+; ANSI window TranslateMessage hands back a byte in the machine's code page, which has nowhere to
+; put a Turkish s-cedilla. That single fact is why a player could not type their own name.
+@.w_classw = private unnamed_addr constant [24 x i8] c"L\00u\00d\00i\00c\00W\00i\00n\00d\00o\00w\00\00\00"
 
 ; shared with win32_gl.ll, which declares them external
 @W_hwnd    = global ptr null
@@ -91,6 +117,11 @@ declare void @llvm.memset.p0.i64(ptr, i8, i64, i1)
 
 @W_fb      = internal global ptr null
 @W_key     = internal global i32 0
+; what the player has typed since the game last took it: UTF-16 code units, oldest first. 64 is far
+; more than a frame can produce, and an overflow drops the newest rather than wrapping onto the
+; oldest - a dropped keystroke is better than a scrambled name.
+@W_text    = internal global [64 x i32] zeroinitializer
+@W_textn   = internal global i32 0
 @W_running = internal global i32 1
 @W_held    = internal global [8 x i32] zeroinitializer
 @W_mx      = internal global i32 0
@@ -139,7 +170,7 @@ nocur:
   %c = call ptr @SetCursor(ptr null)
   ret i64 1
 def:
-  %r = call i64 @DefWindowProcA(ptr %hwnd, i32 %msg, i64 %wp, i64 %lp)
+  %r = call i64 @DefWindowProcW(ptr %hwnd, i32 %msg, i64 %wp, i64 %lp)
   ret i64 %r
 }
 
@@ -183,6 +214,7 @@ done:
 define void @win_open(i32 %w, i32 %h, i32 %scale, ptr %title) {
 entry:
   %wc = alloca [80 x i8], align 8
+  %tw = alloca [256 x i16], align 2          ; the window title as UTF-16, for CreateWindowExW
   %rc = alloca [16 x i8], align 4
   %rid = alloca [16 x i8], align 8
   store i32 %w, ptr @W_fbw
@@ -219,8 +251,8 @@ make:
   %whc = getelementptr i8, ptr %wc, i64 40
   store ptr %arrow, ptr %whc
   %wcn = getelementptr i8, ptr %wc, i64 64
-  store ptr @.w_class, ptr %wcn
-  %atom = call i16 @RegisterClassExA(ptr %wc)
+  store ptr @.w_classw, ptr %wcn
+  %atom = call i16 @RegisterClassExW(ptr %wc)
   ; the client area is w x h at both scales; the frame goes round it
   %pw = mul i32 %gw, %ds
   %ph = mul i32 %gh, %ds
@@ -249,7 +281,16 @@ make:
   %yneg = icmp slt i32 %y0, 0
   %y = select i1 %yneg, i32 0, i32 %y0
   ; WS_OVERLAPPEDWINDOW | WS_VISIBLE
-  %hwnd = call ptr @CreateWindowExA(i32 0, ptr @.w_class, ptr %title, i32 282001408, i32 %x, i32 %y, i32 %ww, i32 %wh, ptr null, ptr null, ptr %inst, ptr null)
+  ; the title arrives as UTF-8 and CreateWindowExW wants UTF-16. The buffer is zeroed first, so a
+  ; title that will not convert leaves an empty one rather than whatever was on the stack.
+  call void @llvm.memset.p0.i64(ptr %tw, i8 0, i64 512, i1 false)
+  %tnull = icmp eq ptr %title, null
+  br i1 %tnull, label %mkwin, label %conv
+conv:
+  %cvn = call i32 @MultiByteToWideChar(i32 65001, i32 0, ptr %title, i32 -1, ptr %tw, i32 255)
+  br label %mkwin
+mkwin:
+  %hwnd = call ptr @CreateWindowExW(i32 0, ptr @.w_classw, ptr %tw, i32 282001408, i32 %x, i32 %y, i32 %ww, i32 %wh, ptr null, ptr null, ptr %inst, ptr null)
   %nowin = icmp eq ptr %hwnd, null
   br i1 %nowin, label %out, label %show
 show:
@@ -305,6 +346,164 @@ out:
 ; The game's window leaves the screen and comes back with its GL context or Vulkan surface
 ; untouched: a launcher steps aside while the game it started runs. A hidden window is
 ; still a window, so the run goes on. Both are no-ops before there is a window.
+; App.window_fixed(on): take the resize grip and the maximise button off this window, or put them
+; back. The LAUNCHER is not the game - it is a small fixed panel - but it carried the game's name in
+; huge letters and a picture of the Bells, so players took it for the game and tried to make it full
+; screen, then wondered why the video settings they had just changed had done nothing. A window you
+; cannot maximise says what it is before any label does.
+; ---- which display the window is on ---------------------------------------------------------
+; Enumerated by INDEX, not through EnumDisplayMonitors, which wants a callback: EnumDisplayDevicesW
+; walks the adapters by number and EnumDisplaySettingsW gives each one's position and size, so no
+; function pointer has to cross the IR boundary. Only displays attached to the desktop count, so the
+; numbering matches what the player sees in Windows' own display settings.
+;
+; DISPLAY_DEVICEW: cb 0, DeviceName 4 (32 wide chars), StateFlags 324.
+; DEVMODEW:        dmSize 68, dmFields 72, dmPosition 76 (x) 80 (y), dmPelsWidth 156, dmPelsHeight 160.
+; DISPLAY_DEVICE_ATTACHED_TO_DESKTOP = 1; ENUM_CURRENT_SETTINGS = -1.
+define i32 @win_monitor_rect(i32 %want, ptr %out) {
+entry:
+  %dd = alloca [840 x i8], align 8
+  %dm = alloca [220 x i8], align 8
+  br label %loop
+loop:
+  %j = phi i32 [ 0, %entry ], [ %j1, %cont ]
+  %found = phi i32 [ 0, %entry ], [ %found2, %cont ]
+  %toomany = icmp sge i32 %j, 64
+  br i1 %toomany, label %none, label %ask
+ask:
+  call void @llvm.memset.p0.i64(ptr %dd, i8 0, i64 840, i1 false)
+  store i32 840, ptr %dd
+  %ok = call i32 @EnumDisplayDevicesW(ptr null, i32 %j, ptr %dd, i32 0)
+  %gone = icmp eq i32 %ok, 0
+  br i1 %gone, label %none, label %flags
+flags:
+  %sfp = getelementptr i8, ptr %dd, i64 324
+  %sf = load i32, ptr %sfp
+  %att = and i32 %sf, 1
+  %live = icmp ne i32 %att, 0
+  br i1 %live, label %count, label %skip
+count:
+  %isit = icmp eq i32 %found, %want
+  br i1 %isit, label %settings, label %inc
+settings:
+  call void @llvm.memset.p0.i64(ptr %dm, i8 0, i64 220, i1 false)
+  %szp = getelementptr i8, ptr %dm, i64 68
+  store i16 220, ptr %szp
+  %namep = getelementptr i8, ptr %dd, i64 4
+  %got = call i32 @EnumDisplaySettingsW(ptr %namep, i32 -1, ptr %dm)
+  %bad = icmp eq i32 %got, 0
+  br i1 %bad, label %none, label %fill
+fill:
+  %pxp = getelementptr i8, ptr %dm, i64 76
+  %pyp = getelementptr i8, ptr %dm, i64 80
+  %pwp = getelementptr i8, ptr %dm, i64 156
+  %php = getelementptr i8, ptr %dm, i64 160
+  %px = load i32, ptr %pxp
+  %py = load i32, ptr %pyp
+  %pw = load i32, ptr %pwp
+  %ph = load i32, ptr %php
+  store i32 %px, ptr %out
+  %o1 = getelementptr i32, ptr %out, i32 1
+  store i32 %py, ptr %o1
+  %o2 = getelementptr i32, ptr %out, i32 2
+  store i32 %pw, ptr %o2
+  %o3 = getelementptr i32, ptr %out, i32 3
+  store i32 %ph, ptr %o3
+  ret i32 1
+inc:                                   ; a display, but not the one asked for
+  %foundinc = add i32 %found, 1
+  br label %cont
+skip:                                  ; an adapter with no desktop on it: not a display at all
+  br label %cont
+cont:
+  %found2 = phi i32 [ %foundinc, %inc ], [ %found, %skip ]
+  %j1 = add i32 %j, 1
+  br label %loop
+none:
+  ret i32 0
+}
+
+; how many displays the desktop is spread over
+define i32 @win_monitor_count() {
+entry:
+  %r = alloca [16 x i8], align 4
+  br label %loop
+loop:
+  %i = phi i32 [ 0, %entry ], [ %i1, %more ]
+  %ok = call i32 @win_monitor_rect(i32 %i, ptr %r)
+  %has = icmp ne i32 %ok, 0
+  br i1 %has, label %more, label %done
+more:
+  %i1 = add i32 %i, 1
+  br label %loop
+done:
+  ret i32 %i
+}
+; Put the window on display `i`, centred. A player with two screens had no way to say which one the
+; game should use: the window opened where it opened, and going full screen only ever covered the
+; display it was already on.
+define void @app_window_to_monitor(i32 %i) {
+entry:
+  %h = load ptr, ptr @W_hwnd
+  %none = icmp eq ptr %h, null
+  br i1 %none, label %out, label %go
+go:
+  %mr = alloca [16 x i8], align 4
+  %wr = alloca [16 x i8], align 4
+  %ok = call i32 @win_monitor_rect(i32 %i, ptr %mr)
+  %bad = icmp eq i32 %ok, 0
+  br i1 %bad, label %out, label %move
+move:
+  %gw = call i32 @GetWindowRect(ptr %h, ptr %wr)
+  %l = load i32, ptr %wr
+  %t1p = getelementptr i32, ptr %wr, i32 1
+  %t = load i32, ptr %t1p
+  %r2p = getelementptr i32, ptr %wr, i32 2
+  %rr = load i32, ptr %r2p
+  %b3p = getelementptr i32, ptr %wr, i32 3
+  %bb = load i32, ptr %b3p
+  %ww = sub i32 %rr, %l
+  %wh = sub i32 %bb, %t
+  %mx = load i32, ptr %mr
+  %my1p = getelementptr i32, ptr %mr, i32 1
+  %my = load i32, ptr %my1p
+  %mw2p = getelementptr i32, ptr %mr, i32 2
+  %mw = load i32, ptr %mw2p
+  %mh3p = getelementptr i32, ptr %mr, i32 3
+  %mh = load i32, ptr %mh3p
+  %dx = sub i32 %mw, %ww
+  %dy = sub i32 %mh, %wh
+  %hx = sdiv i32 %dx, 2
+  %hy = sdiv i32 %dy, 2
+  %nx = add i32 %mx, %hx
+  %ny = add i32 %my, %hy
+  ; SWP_NOSIZE 1 | SWP_NOZORDER 4
+  %sp = call i32 @SetWindowPos(ptr %h, ptr null, i32 %nx, i32 %ny, i32 0, i32 0, i32 5)
+  br label %out
+out:
+  ret void
+}
+
+define void @app_window_fixed(i32 %on) {
+entry:
+  %h = load ptr, ptr @W_hwnd
+  %none = icmp eq ptr %h, null
+  br i1 %none, label %out, label %go
+go:
+  %st = call i64 @GetWindowLongPtrW(ptr %h, i32 -16)          ; GWL_STYLE
+  ; WS_THICKFRAME 0x00040000 | WS_MAXIMIZEBOX 0x00010000
+  %fixed = icmp ne i32 %on, 0
+  %cleared = and i64 %st, -327681                             ; ~0x00050000
+  %restored = or i64 %st, 327680                              ; |  0x00050000
+  %new = select i1 %fixed, i64 %cleared, i64 %restored
+  %old = call i64 @SetWindowLongPtrW(ptr %h, i32 -16, i64 %new)
+  ; SWP_NOMOVE 2 | SWP_NOSIZE 1 | SWP_NOZORDER 4 | SWP_FRAMECHANGED 32
+  %r = call i32 @SetWindowPos(ptr %h, ptr null, i32 0, i32 0, i32 0, i32 0, i32 39)
+  br label %out
+out:
+  ret void
+}
+
 define void @app_window_hide() {
 entry:
   %h = load ptr, ptr @W_hwnd
@@ -604,7 +803,7 @@ entry:
   %nohwnd = icmp eq ptr %hwnd, null
   br i1 %nohwnd, label %done, label %pump
 pump:
-  %got = call i32 @PeekMessageA(ptr %msg, ptr null, i32 0, i32 0, i32 1)   ; PM_REMOVE
+  %got = call i32 @PeekMessageW(ptr %msg, ptr null, i32 0, i32 0, i32 1)   ; PM_REMOVE
   %any = icmp ne i32 %got, 0
   br i1 %any, label %handle, label %finish
 handle:
@@ -625,8 +824,29 @@ handle:
     i32 517, label %rup                           ; WM_RBUTTONUP
     i32 522, label %wheel                         ; WM_MOUSEWHEEL
     i32 255, label %raw                           ; WM_INPUT
+    i32 258, label %wchar                         ; WM_CHAR
   ]
+wchar:
+  ; wParam is one UTF-16 code unit. Control characters are not text: Backspace, Enter, Tab and Esc
+  ; are actions the menu kit reads as keys, and letting them through would put a glyph in the name.
+  %ch = trunc i64 %wp to i32
+  %isctl = icmp ult i32 %ch, 32
+  %isdel = icmp eq i32 %ch, 127
+  %skip = or i1 %isctl, %isdel
+  br i1 %skip, label %pump, label %wput
+wput:
+  %tn = load i32, ptr @W_textn
+  %room = icmp slt i32 %tn, 64
+  br i1 %room, label %wstore, label %pump
+wstore:
+  %tp = getelementptr [64 x i32], ptr @W_text, i64 0, i32 %tn
+  store i32 %ch, ptr %tp
+  %tn1 = add i32 %tn, 1
+  store i32 %tn1, ptr @W_textn
+  br label %pump
 kdown:
+  ; produces the WM_CHAR above for whatever this key types on the player's own layout
+  %tm = call i32 @TranslateMessage(ptr %msg)
   %hv = call i32 @w_keyval(i64 %wp, i64 %lp)
   call void @win_held_bit(i32 %hv, i32 1)
   %isf4 = icmp eq i64 %wp, 115                    ; VK_F4
@@ -714,7 +934,7 @@ rawadd:
   store i32 %ay2, ptr @W_rawdy
   br label %dispatch
 dispatch:
-  %dm = call i64 @DispatchMessageA(ptr %msg)
+  %dm = call i64 @DispatchMessageW(ptr %msg)
   br label %pump
 finish:
   call void @win_cursor_maintain()
@@ -773,6 +993,31 @@ entry:
   call void @win_cursor_maintain()
   store i32 0, ptr @W_running
   ret void
+}
+
+; Take what has been typed since the last call: UTF-16 code units into `out` (one per word),
+; returning how many. Draining here rather than in the pump keeps a frame that never asks from
+; growing the ring for ever.
+define i32 @win_text(ptr %out, i32 %max) {
+entry:
+  %n = load i32, ptr @W_textn
+  %fits = icmp sle i32 %n, %max
+  %cnt = select i1 %fits, i32 %n, i32 %max
+  br label %loop
+loop:
+  %i = phi i32 [ 0, %entry ], [ %i1, %body ]
+  %go = icmp slt i32 %i, %cnt
+  br i1 %go, label %body, label %done
+body:
+  %sp = getelementptr [64 x i32], ptr @W_text, i64 0, i32 %i
+  %v = load i32, ptr %sp
+  %dp = getelementptr i32, ptr %out, i32 %i
+  store i32 %v, ptr %dp
+  %i1 = add i32 %i, 1
+  br label %loop
+done:
+  store i32 0, ptr @W_textn
+  ret i32 %cnt
 }
 
 define void @win_held(ptr %out) {
@@ -1337,7 +1582,7 @@ endp:
   %e = call i32 @EndPaint(ptr %hwnd, ptr %ps)
   ret i64 0
 def:
-  %d = call i64 @DefWindowProcA(ptr %hwnd, i32 %msg, i64 %wp, i64 %lp)
+  %d = call i64 @DefWindowProcW(ptr %hwnd, i32 %msg, i64 %wp, i64 %lp)
   ret i64 %d
 }
 

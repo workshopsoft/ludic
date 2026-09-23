@@ -45,16 +45,27 @@ void main() {
   vec3 toCam = normalize(u_cam_pos - v_wpos); toCam.y = 0.0; toCam = normalize(toCam);
   vec3 right = vec3(-toCam.z, 0.0, toCam.x);
   vec3 hull = normalize(right * q.x * 0.8 + vec3(0.0, 1.0, 0.0) * (q.y * 0.6 + 0.35) + toCam * 0.7);
-  n = normalize(mix(hull, n, mix(0.65, 0.35, far)));
+  // Keep the BAKED normal. This was mix(0.65, 0.35, far), so past a few hundred metres
+  // only a third of the foliage's own normal survived and two thirds was a smooth
+  // rounded shell - which shades evenly and turns a canopy into a flat coloured blob.
+  // Impostors draw nearly all the forest a player ever sees (turn them off and the
+  // valley is bare), so that shell was most of the tree line.
+  n = normalize(mix(hull, n, mix(0.88, 0.70, far)));
   float dist = length(v_wpos - u_cam_pos);
   float viewDepth = -(u_view * vec4(v_wpos, 1.0)).z;
   vec3 alb = a.rgb * u_tint * (0.85 + 0.3 * fract(v_seed * 7.13)) * regionTint(v_wpos, 0.4);
-  // a distant stand reads as a dark mass, not as bright separate sprites
-  alb = mix(alb, alb * vec3(0.72, 0.78, 0.72), far);
+  // A distant stand reads as a dark mass, not as bright separate sprites - but this was
+  // also pulling the colour out of it. Darken without desaturating: the same factor on
+  // all three channels, and a touch of saturation put back, because the thing that makes
+  // a far tree line read as forest rather than as a wash is that it is still GREEN.
+  alb = mix(alb, alb * 0.72, far);
+  float lum = dot(alb, vec3(0.2126, 0.7152, 0.0722));
+  alb = mix(vec3(lum), alb, 1.45);          // conifer foliage is SATURATED, not grey-green
+  alb *= 0.78;                               // and it is dark: a spruce canopy is not a lawn
   // the card itself is the caster: look up the shadow a little toward the sun so it does not self-shadow
   float shadow = sunShadow(v_wpos + u_sun_dir * u_radius * 0.7, vec3(0, 1, 0), viewDepth);
   // crowns are dense: darken toward the centre of the card as a cheap interior occlusion
-  float interior = 1.0 - 0.45 * smoothstep(0.9, 0.3, abs(q.x)) * smoothstep(1.0, 0.2, v_uv.y);
+  float interior = 1.0 - 0.22 * smoothstep(0.9, 0.3, abs(q.x)) * smoothstep(1.0, 0.2, v_uv.y);
   // ground contact: the lowest part of anything sitting on the ground is occluded by it
   // (a boulder's underside, a trunk's base); without it a far boulder is a sticker on the grass
   interior *= mix(0.55, 1.0, smoothstep(0.0, 0.3, v_uv.y));

@@ -117,6 +117,7 @@ function emit_header() -> void {
   emith("declare void @win_close()\n")
   emith("declare void @win_held(ptr)\n")
   emith("declare i32 @win_key_char(i32)\n")
+  emith("declare i32 @win_text(ptr, i32)\n")
   emith("declare void @win_mouse(ptr)\n")
   emith("declare void @win_pad(ptr)\n")
   emith("declare void @win_touch(ptr)\n")

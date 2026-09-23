@@ -12,6 +12,12 @@ const COL_CAP: int = 120000
 var col_x: words = null
 var col_z: words = null
 var col_r: words = null
+# What a collider occupies VERTICALLY: y0 its base, y1 its top, metres, float bits. A circle used
+# to be an infinite pillar - you could not climb a boulder, and a knee-high rock stopped you dead,
+# because there was no height to compare against. col_add keeps that shape (a span from far below
+# to far above) so every existing caller behaves exactly as it did; col_add_h gives a real one.
+var col_y0: words = null
+var col_y1: words = null
 var col_n: int = 0
 var col_side: int = 0             # cells per side
 var col_start: words = null       # per cell: first index into col_sorted (side*side + 1)
@@ -19,10 +25,19 @@ var col_sorted: words = null
 var col_built: bool = false
 var col_out: words = null         # the resolved position (x, z)
 
-function col_add(x: int, z: int, r: int) -> void {
-  if col_x == null { col_x = words(COL_CAP);  col_z = words(COL_CAP);  col_r = words(COL_CAP);  col_out = words(2) }
+const COL_LOW: int = 0xCB800000    # -16777216.0: below any ground
+const COL_HIGH: int = 0x4B800000   #  16777216.0: above any sky
+function col_add(x: int, z: int, r: int) -> void { col_add_h(x, z, r, COL_LOW, COL_HIGH) }
+# a collider that occupies only y0 .. y1: a body above its top walks over it, a body below its base
+# passes under, and col_top_at reports it as something to stand on
+function col_add_h(x: int, z: int, r: int, y0: int, y1: int) -> void {
+  if col_x == null {
+    col_x = words(COL_CAP);  col_z = words(COL_CAP);  col_r = words(COL_CAP)
+    col_y0 = words(COL_CAP);  col_y1 = words(COL_CAP);  col_out = words(2)
+  }
   if col_n >= COL_CAP { return }
   col_x[col_n] = x;  col_z[col_n] = z;  col_r[col_n] = r
+  col_y0[col_n] = y0;  col_y1[col_n] = y1
   col_n += 1
   col_built = false
 }
@@ -52,7 +67,10 @@ function col_build() -> void {
 }
 
 # push (px, pz) with radius pr out of every circle it overlaps; the result is in col_out
-function col_resolve(px: int, pz: int, pr: int) -> bool {
+function col_resolve(px: int, pz: int, pr: int) -> bool { return col_resolve_at(px, pz, pr, COL_LOW, COL_HIGH) }
+# the same, for a body that occupies feet .. head: a collider whose span misses that is not in the
+# way at all. This is what lets a hiker stand on top of a boulder rather than inside it.
+function col_resolve_at(px: int, pz: int, pr: int, feet: int, head: int) -> bool {
   col_out[0] = px;  col_out[1] = pz
   if not col_built or col_n == 0 { return false }
   var x = px;  var z = pz
@@ -71,6 +89,9 @@ function col_resolve(px: int, pz: int, pr: int) -> bool {
           let ex = f_sub(x, col_x[i]);  let ez = f_sub(z, col_z[i])
           let d2 = f_add(f_mul(ex, ex), f_mul(ez, ez))
           let rr = f_add(col_r[i], pr)
+          # nothing to push out of if the body is wholly above its top or below its base
+          if not f_ls(feet, col_y1[i]) { continue }
+          if not f_gt(head, col_y0[i]) { continue }
           if f_ls(d2, f_mul(rr, rr)) {
             let d = f_sqrt(d2)
             # The UNIT normal out of this circle. (ex, ez) / d is always unit for d > 0,
@@ -97,6 +118,35 @@ function col_resolve(px: int, pz: int, pr: int) -> bool {
   }
   col_out[0] = x;  col_out[1] = z
   return moved
+}
+# The highest collider top under (px, pz) that a body at `feet` could be standing on or step up to:
+# tops above `reach` are a wall, not a step. F_ZERO-safe: returns `floor` when there is nothing, so
+# a caller can pass the terrain height and use the answer directly as the ground.
+function col_top_at(px: int, pz: int, pr: int, feet: int, reach: int, floor: int) -> int {
+  var top = floor
+  if not col_built or col_n == 0 { return top }
+  let cx = col_cell_of(px, ter_ox);  let cz = col_cell_of(pz, ter_oz)
+  let limit = f_add(feet, reach)
+  for dz in 0 .. 3 {
+    let zc = cz + dz - 1
+    if zc < 0 or zc >= col_side { continue }
+    for dx in 0 .. 3 {
+      let xc = cx + dx - 1
+      if xc < 0 or xc >= col_side { continue }
+      let c = zc * col_side + xc
+      for k in col_start[c] .. col_start[c + 1] {
+        let i = col_sorted[k]
+        let ex = f_sub(px, col_x[i]);  let ez = f_sub(pz, col_z[i])
+        let d2 = f_add(f_mul(ex, ex), f_mul(ez, ez))
+        let rr = f_add(col_r[i], pr)
+        if not f_ls(d2, f_mul(rr, rr)) { continue }
+        let t = col_y1[i]
+        if f_gt(t, limit) { continue }          # too tall to step onto: it is a wall
+        if f_gt(t, top) { top = t }
+      }
+    }
+  }
+  return top
 }
 # is the segment from (x0,z0) to (x1,z1) clear of every circle (a camera line of sight)?
 function col_clear(x0: int, z0: int, x1: int, z1: int, r: int) -> bool {

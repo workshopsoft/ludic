@@ -18,6 +18,9 @@ uniform float u_emissive;     // self-lit (a flame): albedo added back after sha
 #ifdef BLADE
 uniform vec3 u_blade_base;
 uniform vec3 u_blade_tip;
+uniform sampler2D u_blade_tex;   // straightened photographic blades, side by side
+uniform float u_blade_cols;      // how many are in it
+uniform float u_blade_tex_on;
 #endif
 #ifdef CARD
 uniform float u_cull;        // the layer's cull distance (m); 0 = none
@@ -80,6 +83,33 @@ void main() {
   alb = mix(u_blade_base, u_blade_tip, t * t) * regionTint(v_wpos, 0.35);
   float dry = smoothstep(0.7, 0.8, fract(v_seed * 3.17));
   alb = mix(alb, vec3(0.40, 0.36, 0.13) * (0.45 + 0.55 * t), dry * 0.75);
+  // A REAL BLADE, if the game gave us one. Each blade picks a column of the atlas from
+  // its own seed and runs v from sheath to tip, so a meadow is eight different plants
+  // rather than one plant ten thousand times. The photograph carries the midrib, the
+  // olive-to-straw run and the dry browning; the gradient above stays as the tint that
+  // the season and the lushness drive, so nothing that used to control the colour stops
+  // working - the picture multiplies it rather than replacing it.
+  if (u_blade_tex_on > 0.5) {
+    float col = floor(fract(v_seed * 7.31) * u_blade_cols);
+    vec2 buv = vec2((col + clamp(v_uv.x, 0.0, 1.0)) / u_blade_cols, 1.0 - t);
+    vec3 photo = texture(u_blade_tex, buv).rgb;
+    // Normalised by the atlas's OWN MEAN LUMINANCE - a measured constant, 0.3736 over the
+    // opaque pixels - and not by each pixel's mean. Dividing by the per-pixel mean was the
+    // bug: it cancels exactly the thing the photograph was fetched for. What survives is
+    // the hue ratio, so every blade comes back out at the same brightness and the midrib,
+    // the dry browning and the sheath-to-tip run all vanish. It looked like a faint tint
+    // over the old procedural blade, which is precisely what it was.
+    // Blended, not applied whole. At full strength a photo pixel brighter than the
+    // atlas's mean is multiplied by up to 1.9, and the bright blades came out white -
+    // straws in a green sward. Three quarters of the photograph keeps the midrib, the
+    // browning and the sheath-to-tip run and leaves the extremes alone.
+    // CLAMPED. The atlas's mean luminance is 0.3736, so a blade pixel brighter than the
+    // mean is multiplied by up to 2.7 and comes out white - and a white blade is the one
+    // thing grass never is. Holding the factor to 1.15 keeps the midrib and the browning,
+    // which are the parts of the photograph worth having, and refuses the bleach.
+    vec3 g = photo * (1.0 / 0.3736);
+    alb *= mix(vec3(1.0), min(g, vec3(1.15)), 0.85);
+  }
   float patchy = fbm(v_wpos.xz * 0.045, 3) * 0.5 + 0.5;
   alb *= mix(vec3(0.7, 0.8, 0.55), vec3(1.1, 1.05, 0.85), patchy);
   // a far tuft is a patch of the meadow, darker than a lit blade tip and never straw
@@ -87,7 +117,15 @@ void main() {
   // a rounded cross-section reads softer than a flat card
   vec3 side = normalize(cross(N, vec3(0.0, 1.0, 0.0)) + vec3(1e-4));
   n = (v_hull < 0.0) ? N : normalize(N + side * (v_uv.x * 2.0 - 1.0) * 0.6);
-  arm = vec3(mix(0.2, 1.0, t * t), 0.85, 0.0);
+  // A blade's own ambient occlusion. This was mix(0.2, 1.0, t*t): 80% occluded at the
+  // sheath and still 60% at half height, because t*t holds the curve down. Measured in a
+  // walking-distance shot the blades came out at 24-31 of 255 against a ground of 143 -
+  // near-black on light earth - and at that contrast the eye reads every blade as a hard
+  // EDGE rather than as a mass of vegetation, whatever shape it is. No albedo can answer
+  // an occlusion term; grass albedo is capped near 0.5 and this was dividing it by five.
+  // A blade is a thin thing standing in open air: shaded at the root by its neighbours,
+  // not buried.
+  arm = vec3(mix(0.55, 1.0, t), 0.85, 0.0);
 #elif defined(CARD)
   // thin grass is lit from either side: face the card toward the sun before shading
   if (dot(N, u_sun_dir) < 0.0) N = -N;
@@ -156,8 +194,20 @@ void main() {
   // The quake made visible. A turning aspen leaf shows its pale, almost white underside, so
   // the crown does not merely move - it GLITTERS, leaf by leaf, and that is what reads at a
   // distance and in a still frame. Toward the viewer is the pale side; away is the face.
-  if (v_quake > 0.0) alb = mix(alb, alb * 0.55 + vec3(0.42, 0.45, 0.33), min(v_quake * 2.6, 0.75));
-  else if (v_quake < 0.0) alb *= 1.0 + v_quake * 0.28;   // the dark half stays gentle: a crown should shimmer, not flicker
+  // The quake, as a LIGHTENING rather than a repaint. This used to mix up to 75% toward
+  // a fixed near-white (0.42,0.45,0.33), which was written for a hand-painted leaf atlas
+  // that had no pale underside of its own. On a photographed leaf it does not read as a
+  // turning leaf at all - it reads as parts of the tree going WHITE, because that is
+  // exactly what it does: it replaces three quarters of the leaf's colour with a constant.
+  // Nothing in a wood turns white in the sun. A real turning leaf shows a paler, greyer
+  // version of ITSELF, so lift and desaturate the leaf's own colour instead.
+  if (v_quake > 0.0) {
+    float q = min(v_quake * 2.6, 0.75);
+    float l = dot(alb, vec3(0.2126, 0.7152, 0.0722));
+    alb = mix(alb, mix(alb, vec3(l), 0.45) * 1.30, q);
+  } else if (v_quake < 0.0) {
+    alb *= 1.0 + v_quake * 0.28;   // the dark half stays gentle: a crown should shimmer, not flicker
+  }
 #if defined(FOLIAGE) && !defined(BLADE)
   // Per-plant HUE, not only per-plant brightness. The line above varies value by +-15% and
   // nothing else, so a stand of one species was one colour at fifteen different exposures -

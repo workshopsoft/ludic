@@ -502,6 +502,17 @@ function terrain_bind_prog(p: int) -> void {
   sky_bind_lighting(p)
   shadow_bind(p)
   fog_bind(p)
+  # GROUND IS NOT A MIRROR, and this has to come AFTER fog_bind, which hands every
+  # program u_spec_scale = 1. That is right for water and for a varnished prop and wrong
+  # for a hillside: the image-based specular lays a broad reflection of a bright sky over
+  # every square metre of rock and meadow and washes them toward the sky's own colour.
+  # It is why the range named for the colour of its rock rendered pale lilac rather than
+  # maroon - the maroon was under a sheet of reflected sky. Foliage already gets 0.05.
+  #
+  # Set before fog_bind it measured as EXACTLY zero pixels changed, which is the same
+  # shape of mistake as setting r3d_fog_scale before gfx_apply: the value was right and
+  # something downstream put it back.
+  u_f(gpu_uniform(p, "u_spec_scale"), fl(0.22))
   u_v3(gpu_uniform(p, "u_cam_pos"), cam_pos)
   u_f(gpu_uniform(p, "u_grid"), fi(CD_G))
   # The ground reads its sun visibility out of the buffer tersun.frag filled, and has no

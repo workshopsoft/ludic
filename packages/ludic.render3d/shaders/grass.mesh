@@ -8,7 +8,7 @@
 // count is skipped.
 layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 const int BLADES = 16;                 // blades an invocation may emit
-const int ROWS = 4;                    // grass_blade_mesh(4): two vertices a row, three quads
+const int ROWS = 5;                    // grass_blade_mesh(5): two vertices a row, four quads
 layout(triangles, max_vertices = 128, max_primitives = 96) out;
 
 uniform mat4 u_view;
@@ -129,11 +129,13 @@ void main() {
     if (tilt) n = normalize(n * ck + cross(k, n) * sk + k * dot(k, n) * (1.0 - ck));
     n = normalize(mix(n, gn, smoothstep(2.0, 12.0, dist)));
     float hull = (dist > 2.0 || far || (u_dbg & 2) != 0) ? -1.0 : 1.0;
-    // the blade: grass_blade_mesh(4)'s vertices, placed as grass.vert places them
+    // the blade: grass_blade_mesh(5)'s vertices, placed as grass.vert places them
     for (int r = 0; r < ROWS; r++) {
       float t = float(r) / float(ROWS - 1);
-      float taper = max(1.0 - t * t * sqrt(t), 0.12);
-      float bend = t * t * 0.28;
+      // A COPY of grass_blade_mesh's profile in grass.ludic - narrow at the sheath,
+      // widest a fifth of the way up, a fine point, and arched. Change both together.
+      float taper = max((0.50 + 0.33 * min(t / 0.22, 1.0)) * (1.0 - t * t * t), 0.05);
+      float bend = t * t * 0.52;
       for (int sd = 0; sd < 2; sd++) {
         vec3 a_pos = vec3((float(sd) - 0.5) * taper, t, bend);
         vec2 a_uv = vec2(float(sd), t);

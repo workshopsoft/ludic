@@ -258,6 +258,27 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
       if g_windowed { emit(`  call void @lp_app_icon(ptr {ip})\n`) }
       return val("0", "void")
     }
+    if (meth == "monitor_count") {
+      # how many displays the desktop spans (1 where the platform does not say)
+      use_pak()
+      if g_windowed { return val(emit_bind("call i32 @win_monitor_count()"), "int") }
+      return val("1", "int")
+    }
+    if (meth == "window_to_monitor") {
+      # put the window on that display, centred
+      use_pak()
+      let mp = arg_code(e, 0)
+      if g_windowed { emit(`  call void @app_window_to_monitor(i32 {mp})\n`) }
+      return val("0", "void")
+    }
+    if (meth == "window_fixed") {
+      # take the resize grip and the maximise button off this window (or put them back): the
+      # launcher is a fixed panel, not the game, and a window you cannot maximise says so.
+      use_pak()
+      let fp = arg_code(e, 0)
+      if g_windowed { emit(`  call void @app_window_fixed(i32 {fp})\n`) }
+      return val("0", "void")
+    }
     if (meth == "window_hide") or (meth == "window_show") {
       # Hide / show the game's own window (not the splash) without tearing down its
       # GL / Vulkan surface - a launcher steps aside while the game it started runs.
@@ -458,6 +479,7 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (meth == "key_pressed")  { bare = "input_key_pressed";  push(labels, "key") }
     if (meth == "key_released") { bare = "input_key_released"; push(labels, "key") }
     if (meth == "key_label")    { bare = "input_key_label";    push(labels, "key") }
+    if (meth == "text")         { bare = "input_text" }                        # what was TYPED, UTF-8
     if (meth == "press")        { bare = "input_press";        push(labels, "key") }
     if (meth == "release")      { bare = "input_release";      push(labels, "key") }
     if (meth == "axis")         { bare = "input_axis";         push(labels, "neg"); push(labels, "pos") }

@@ -120,6 +120,9 @@ function emit_pak_prelude() -> void {
     emith("declare void @splash_show(ptr, i32, i32)\n")
     emith("declare void @splash_hide()\n")
     emith("declare void @app_set_icon(ptr, i32)\n")
+    emith("declare void @app_window_fixed(i32)\n")
+    emith("declare i32 @win_monitor_count()\n")
+    emith("declare void @app_window_to_monitor(i32)\n")
     emith("declare void @app_window_hide()\n")
     emith("declare void @app_window_show()\n")
   }
