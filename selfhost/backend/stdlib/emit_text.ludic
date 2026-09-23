@@ -6,6 +6,7 @@
 function is_text_ns(meth: pointer) -> bool {
   if (meth == "length") or (meth == "char_at") or (meth == "slice") { return true }
   if (meth == "equals") or (meth == "concat") or (meth == "to_int") or (meth == "from_int") { return true }
+  if (meth == "to_float") { return true }
   if (meth == "starts_with") or (meth == "ends_with") { return true }
   if (meth == "contains") or (meth == "index_of") { return true }
   if (meth == "upper") or (meth == "lower") or (meth == "trim") or (meth == "repeat") { return true }
@@ -46,6 +47,11 @@ function emit_text_ns(meth: pointer, e: Node) -> Val {
     let a = emit_bind(`getelementptr inbounds i8, ptr {s.code}, i32 {i.code}`)
     let c = emit_bind(`load i8, ptr {a}`)
     return val(emit_bind(`zext i8 {c} to i32`), "int")
+  }
+  if (meth == "to_float") {                          # parse a leading decimal number, 0.0 if none
+    fp_declare("declare double @strtod(ptr, ptr)\n")
+    let d = emit_bind(`call double @strtod(ptr {s.code}, ptr null)`)
+    return val(emit_bind(`fptrunc double {d} to float`), "float")
   }
   if (meth == "to_int") {                            # parse a leading integer, 0 if none
     return val(emit_bind(`call i32 @atoi(ptr {s.code})`), "int")

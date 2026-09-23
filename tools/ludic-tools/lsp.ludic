@@ -1352,6 +1352,7 @@ program LudicLsp {
       if (meth == "equals")       { return "Text.equals(a, b) -> bool" }
       if (meth == "concat")       { return "Text.concat(a, b) -> string" }
       if (meth == "to_int")       { return "Text.to_int(s) -> int" }
+      if (meth == "to_float")     { return "Text.to_float(s) -> float" }
       if (meth == "from_int")     { return "Text.from_int(n) -> string" }
       if (meth == "upper")        { return "Text.upper(s) -> string" }
       if (meth == "lower")        { return "Text.lower(s) -> string" }

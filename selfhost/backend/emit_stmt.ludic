@@ -117,6 +117,7 @@ function emit_for(st: Node) -> void {
 }
 
 function emit_return(st: Node) -> void {
+  if (st.a != null) and (ret_ty == "void") { perr("a function that returns nothing cannot return a value") }
   if (st.a != null) {
     let v = emit_expr(st.a)
     store_at(llty(ret_ty), coerce_code(v, ret_ty), "%retval")
