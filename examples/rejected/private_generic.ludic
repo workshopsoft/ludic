@@ -1,0 +1,9 @@
+# L5 + L3: an instance keeps its generic's module and export - a private generic stays private
+import "private_kit"
+program PrivateGeneric {
+  entry {
+    let p = new Pool<int>
+    grow(p)
+    print(pool_len(p))
+  }
+}

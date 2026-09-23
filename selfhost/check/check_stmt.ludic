@@ -23,6 +23,7 @@ function ck_target(t: Node) -> pointer {
 }
 function ck_let(s: Node) -> void {
   var t: pointer = "?"
+  ck_expect = s.ty
   if s.a != null { t = ck_expr(s.a) }
   if s.ty != null {
     if s.a != null { ck_give(s.ty, t, s.a, s.s) }
@@ -33,6 +34,7 @@ function ck_let(s: Node) -> void {
 }
 function ck_assign(s: Node) -> void {
   let lt = ck_target(s.a)
+  if (s.s == "=") { ck_expect = lt }
   let rt = ck_expr(s.b)
   var what: pointer = "this assignment"
   if s.a.kind == E_ID { what = s.a.s }
@@ -97,6 +99,7 @@ function ck_stmt(s: Node) -> void {
   }
   if k == S_RETURN {
     if s.a == null { return }
+    ck_expect = ck_ret
     let t = ck_expr(s.a)
     if (ck_ret != "void") { ck_give(ck_ret, t, s.a, "the result") }
     return
@@ -132,10 +135,9 @@ function ck_listener(l: Node) -> void {
   ck_block(l.a)
   ck_pop(m)
 }
-# LUDIC_CHECK=0 turns the pass off, for bisecting a checker fault; nothing else should need it
+# the pass also makes the generics real (check_gen.ludic), so it always runs
 function check_program() -> void {
-  let off = getenv("LUDIC_CHECK")
-  if off != null and (off == "0") { return }
+  gen_collect()
   ck_index()
   var i = 0
   while i < g_prog_user_end {
@@ -150,6 +152,7 @@ function check_program() -> void {
     ck_listener(g_onlisten[j])
     j += 1
   }
+  gen_finish()
   if ck_errors > 0 and not ck_reporting() {
     let m = `{itoa(ck_errors)} type error(s)\n`
     file_write(file_stderr(), m, len(m))

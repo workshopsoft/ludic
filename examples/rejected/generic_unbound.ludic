@@ -1,0 +1,9 @@
+# L5: a call whose type arguments nothing decides is refused - give the result a declared type
+program GenericUnbound {
+  property Pool<T> { n: int = 0 }
+  function pool_new<T>() -> Pool<T> { return new Pool<T> }
+  entry {
+    let p = pool_new()
+    print(p.n)
+  }
+}

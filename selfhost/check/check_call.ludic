@@ -48,6 +48,7 @@ function ck_args(e: Node, name: pointer, labels: []pointer, tys: []pointer) -> v
   if n != len(tys) { ck_err("arity", e, `{name} takes {itoa(len(tys))} argument(s) and this call gives {itoa(n)}`) }
   var i = 0
   while i < n {
+    if i < len(tys) { ck_expect = tys[i] }
     let at = ck_expr(e.kids[i])
     if i < len(tys) { ck_give(tys[i], at, e.kids[i], `argument {itoa(i + 1)} of {name}`) }
     i += 1
@@ -126,6 +127,8 @@ function ck_call_named(e: Node, name: pointer) -> pointer {
   if bt != null { return bt }
   let f = ck_fn(name)
   if f != null { return ck_call_fn(e, name, f) }
+  let gt = gen_template(g_gen_fns, name)
+  if gt != null { return gen_call(e, name, gt) }
   let x = ck_extern(name)
   if x != null { return ck_call_fn(e, name, x) }
   let g = ck_global(name)

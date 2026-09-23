@@ -1,0 +1,9 @@
+# L5: two instances of one generic are two types
+program GenericMismatch {
+  property Pool<T> { n: int = 0 }
+  entry {
+    let ints = new Pool<int>
+    let words: Pool<string> = ints
+    print(words.n)
+  }
+}

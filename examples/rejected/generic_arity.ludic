@@ -1,0 +1,8 @@
+# L5: a generic takes as many type arguments as it has parameters
+program GenericArity {
+  property Pool<T> { n: int = 0 }
+  entry {
+    let p = new Pool<int, string>
+    print(p.n)
+  }
+}

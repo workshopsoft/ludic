@@ -87,6 +87,7 @@ program LudicFmt {
   var tk_end: []int
   var tk_line: []int
   var linestart: []int
+  var tk_gen: []int                       # 1 on a `<`, `>` or `>>` that brackets type arguments
 
   function ntok() -> int { return len(tk_kind) }
   function tok_len(i: int) -> int { return tk_end[i] - tk_start[i] }
@@ -197,6 +198,51 @@ program LudicFmt {
       push_tok(LT_ERR, i, i + ln, line);  i += ln
     }
     push_tok(LT_EOF, i, i, line)
+    mark_generics()
+  }
+
+  # ---- generics: Pool<Thing>, first<T>(, Map<string, []int> ----
+  function op_is(i: int, t: pointer) -> bool { return tk_kind[i] == LT_OP and (tok_text(i) == t) }
+  # a token that may stand inside a type argument list
+  function type_ish(i: int) -> bool {
+    let k = tk_kind[i]
+    if k == LT_ID or k == LT_TYPE { return true }
+    if k == LT_KW { return (tok_text(i) == "fn") }
+    if k != LT_OP { return false }
+    return op_is(i, ",") or op_is(i, "[") or op_is(i, "]") or op_is(i, "<") or op_is(i, ">") or op_is(i, ">>") or op_is(i, "(") or op_is(i, ")") or op_is(i, "->")
+  }
+  # a `<` written against a name, closed by a matching `>` on the same line with only a type
+  # between, opens type arguments; anything else is a comparison or a shift
+  function mark_generics() -> void {
+    tk_gen = new []int
+    var i = 0
+    while i < ntok() { push(tk_gen, 0);  i += 1 }
+    i = 1
+    while i < ntok() {
+      let p = i - 1
+      if op_is(i, "<") and tk_gen[i] == 0 and (tk_kind[p] == LT_ID or tk_kind[p] == LT_TYPE) and tk_end[p] == tk_start[i] {
+        var depth = 1
+        var j = i + 1
+        var ok = true
+        while j < ntok() and depth > 0 and ok {
+          if not type_ish(j) or tk_line[j] != tk_line[i] { ok = false }
+          else {
+            if op_is(j, "<") { depth += 1 }
+            if op_is(j, ">") { depth -= 1 }
+            if op_is(j, ">>") { depth -= 2 }
+            if depth > 0 { j += 1 }
+          }
+        }
+        if ok and depth == 0 {
+          var m = i
+          while m <= j {
+            if op_is(m, "<") or op_is(m, ">") or op_is(m, ">>") { tk_gen[m] = 1 }
+            m += 1
+          }
+        }
+      }
+      i += 1
+    }
   }
 
   # ---- token-stream helpers ----
@@ -249,6 +295,10 @@ program LudicFmt {
     let p0 = src[tk_start[prev]];  let c0 = src[tk_start[cur]]
     let p1 = (plen == 1);  let c1 = (clen == 1)
     if pk == LT_ERR or ck == LT_ERR { return tk_start[cur] - tk_end[prev] }   # preserve an error token's spacing
+    # type arguments hug: Pool<Thing>, first<T>(xs), Pool<Pool<int>>
+    if tk_gen[cur] == 1 { return 0 }
+    if tk_gen[prev] == 1 and op_is(prev, "<") { return 0 }
+    if tk_gen[prev] == 1 and c1 and c0 == '(' { return 0 }
     if c1 and (c0 == ')' or c0 == ']' or c0 == ',' or c0 == ':' or c0 == ';') { return 0 }   # ) ] , : ;
     if c1 and c0 == '.' and ck == LT_OP and dot_tight(prev) { return 0 }
     if p1 and p0 == '.' and pk == LT_OP and dot_tight(cur) { return 0 }

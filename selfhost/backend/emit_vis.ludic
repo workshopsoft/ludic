@@ -21,8 +21,18 @@ function vis_allowed(d: Node, from: pointer) -> bool {
   return module_is_friend(from)
 }
 # `what` is the name as written at the reference
-function vis_check(d: Node, what: pointer) -> void {
+# a generic function's instance is named for its type arguments (grow$int); a message names grow
+function vis_plain(what: pointer) -> pointer {
+  var i = 0
+  while i < len(what) {
+    if what[i] == '$' { return what[0 .. i] }
+    i += 1
+  }
+  return what
+}
+function vis_check(d: Node, what0: pointer) -> void {
   if d == null { return }
+  let what = vis_plain(what0)
   var here = g_err_file
   if here == null { return }
   let from = module_of(here)

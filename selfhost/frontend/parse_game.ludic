@@ -2,7 +2,10 @@
 # enum declarations, `for (vars) in query [terms] where cond`, spawn and prefab.
 
 function parse_component() -> Node {
-  pi += 1; let n = node(N_COMP); n.s = eat_id(); skipnl(); eat_op("{")
+  pi += 1; let n = node(N_COMP); n.s = eat_id()
+  if is_op("<") { n.tps = gen_params() }            # L5: property Pool<T> { ... }
+  gen_enter(n.tps)
+  skipnl(); eat_op("{")
   while true { skipnl(); if is_op("}") { break }
     var is_computed = false
     var is_sync = false                              # @Sync — this field replicates (NETWORKING N2)
@@ -13,7 +16,9 @@ function parse_component() -> Node {
     if is_computed { register_computed(n.s, f.s, f.ty, f.a) }   # derived: no storage
     else { push(n.kids, f) }
     if is_op(",") { pi += 1 } }
-  eat_op("}"); return n
+  eat_op("}")
+  gen_enter(null)
+  return n
 }
 
 # event Name { field: T = default, ... } — a public event's POD payload. Same

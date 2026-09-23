@@ -69,6 +69,10 @@ function ck_index() -> void {
 }
 function ck_fn(name: pointer) -> Node { return ck_tab_get(ck_fn_k, ck_fn_v, name) }
 function ck_global(name: pointer) -> Node { return ck_tab_get(ck_gl_k, ck_gl_v, name) }
-function ck_record(name: pointer) -> Node { return ck_tab_get(ck_rec_k, ck_rec_v, name) }
+function ck_record(name: pointer) -> Node {
+  let r = ck_tab_get(ck_rec_k, ck_rec_v, name)
+  if r != null { return r }
+  return gen_record(name)
+}
 function ck_enum(name: pointer) -> Node { return ck_tab_get(ck_en_k, ck_en_v, name) }
 function ck_extern(name: pointer) -> Node { return ck_tab_get(ck_ex_k, ck_ex_v, name) }

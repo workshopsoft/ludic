@@ -1,0 +1,173 @@
+# check_gen.ludic — L5: generic records and functions, made real. A generic declaration is taken
+# out of the program before anything is checked; each instance the program names is a copy of it
+# with its type parameters replaced, checked like any other declaration and put back before the
+# emitter runs - so the emitter only ever sees `Pool$Thing` and `first$int`, never a `T`.
+#
+# A record's instances are every `Pool<...>` the program writes. A function's are found at its
+# calls: the types of the arguments decide its parameters, and where they cannot (a function
+# that takes no T), the slot the call is written into does - `let p: Pool<Thing> = pool_new()`.
+var g_gen_recs: []Node = new []Node      # the generic records, as written
+var g_gen_fns: []Node = new []Node       # the generic functions, as written
+var g_gen_out: []Node = new []Node       # the instances made, in order: spliced into prog
+var g_gen_work: []Node = new []Node      # function instances whose bodies still need checking
+var ck_expect: pointer = null            # the type the expression being checked is written into
+var ck_call_expect: pointer = null       # ... as it stood when the call now being checked began
+
+function gen_template(list: []Node, name: pointer) -> Node {
+  var i = 0
+  while i < len(list) {
+    if (list[i].s == name) { return list[i] }
+    i += 1
+  }
+  return null
+}
+# the generic declarations leave the program; what the emitter meets is only ever an instance
+function gen_collect() -> void {
+  let keep = new []Node
+  var gone_before = 0
+  var i = 0
+  while i < len(prog) {
+    let d = prog[i]
+    if (d.kind == N_COMP or d.kind == N_FN) and d.tps != null {
+      if d.kind == N_COMP { push(g_gen_recs, d) } else { push(g_gen_fns, d) }
+      if i < g_prog_user_end { gone_before += 1 }
+    } else {
+      push(keep, d)
+    }
+    i += 1
+  }
+  prog = keep
+  g_prog_user_end = g_prog_user_end - gone_before
+}
+function gen_index(xs: []pointer, s: pointer) -> int {
+  var i = 0
+  while i < len(xs) {
+    if (xs[i] == s) { return i }
+    i += 1
+  }
+  return -1
+}
+# a type with the parameters replaced by the arguments: T, []T, fn(T)->T, Pool<T>
+function gen_subst(t: pointer, tps: []pointer, args: []pointer) -> pointer {
+  if t == null { return null }
+  let at = gen_index(tps, t)
+  if at >= 0 { return args[at] }
+  if is_slice_ty(t) { return "[]" + gen_subst(slice_elem(t), tps, args) }
+  if is_fn_type(t) {
+    let ps = fn_ty_params(t)
+    var out: pointer = "fn("
+    var i = 0
+    while i < len(ps) {
+      if i > 0 { out = out + "," }
+      out = out + gen_subst(ps[i], tps, args)
+      i += 1
+    }
+    return out + ")->" + gen_subst(fn_ty_ret(t), tps, args)
+  }
+  let gi = gen_find(t)
+  if gi >= 0 and g_gi_open[gi] == 1 {
+    let inner = gen_split(g_gi_args[gi])
+    let now = new []pointer
+    var j = 0
+    while j < len(inner) {
+      push(now, gen_subst(inner[j], tps, args))
+      j += 1
+    }
+    return gen_instance(g_gi_gen[gi], now)
+  }
+  return t
+}
+function gen_clone(n: Node, tps: []pointer, args: []pointer) -> Node {
+  if n == null { return null }
+  let c = new Node
+  c.kind = n.kind
+  c.s = n.s
+  if n.kind == E_NEW { c.s = gen_subst(n.s, tps, args) }
+  c.ival = n.ival
+  c.ty = gen_subst(n.ty, tps, args)
+  c.line = n.line
+  c.file = n.file
+  c.vis = n.vis
+  c.a = gen_clone(n.a, tps, args)
+  c.b = gen_clone(n.b, tps, args)
+  c.c = gen_clone(n.c, tps, args)
+  c.kids = new []Node
+  var i = 0
+  while i < len(n.kids) {
+    push(c.kids, gen_clone(n.kids[i], tps, args))
+    i += 1
+  }
+  return c
+}
+# the instance record a name stands for, made the first time it is asked for
+function gen_record(name: pointer) -> Node {
+  let gi = gen_find(name)
+  if gi < 0 or g_gi_open[gi] == 1 { return null }
+  let t = gen_template(g_gen_recs, g_gi_gen[gi])
+  if t == null { return null }
+  let args = gen_split(g_gi_args[gi])
+  let tps = gen_split(t.tps)
+  if len(args) != len(tps) {
+    let at = new Node
+    at.file = g_gi_file[gi]
+    at.line = g_gi_line[gi]
+    ck_err("generic", at, `{t.s} takes {itoa(len(tps))} type argument(s) and {gen_show(name)} gives {itoa(len(args))}`)
+    return null
+  }
+  let r = gen_clone(t, tps, args)
+  r.s = name
+  push(g_gen_out, r)
+  ck_tab_put(ck_rec_k, ck_rec_v, name, r)
+  return r
+}
+# what a template's parameter types learn from the argument types
+function gen_unify(p: pointer, a: pointer, tps: []pointer, binds: []pointer) -> void {
+  if p == null or ck_unknown(a) or (a == "null") { return }
+  let at = gen_index(tps, p)
+  if at >= 0 {
+    if binds[at] == null { binds[at] = a }
+    return
+  }
+  if is_slice_ty(p) and is_slice_ty(a) {
+    gen_unify(slice_elem(p), slice_elem(a), tps, binds)
+    return
+  }
+  if is_fn_type(p) and is_fn_type(a) {
+    let pp = fn_ty_params(p)
+    let ap = fn_ty_params(a)
+    var i = 0
+    while i < len(pp) and i < len(ap) {
+      gen_unify(pp[i], ap[i], tps, binds)
+      i += 1
+    }
+    gen_unify(fn_ty_ret(p), fn_ty_ret(a), tps, binds)
+    return
+  }
+  let pi2 = gen_find(p)
+  let ai = gen_find(a)
+  if pi2 >= 0 and ai >= 0 and (g_gi_gen[pi2] == g_gi_gen[ai]) {
+    let pa = gen_split(g_gi_args[pi2])
+    let aa = gen_split(g_gi_args[ai])
+    var j = 0
+    while j < len(pa) and j < len(aa) {
+      gen_unify(pa[j], aa[j], tps, binds)
+      j += 1
+    }
+  }
+}
+# Pool$Thing as the program wrote it: Pool<Thing>
+function gen_show(t: pointer) -> pointer {
+  if t == null { return "?" }
+  if is_slice_ty(t) { return "[]" + gen_show(slice_elem(t)) }
+  let gi = gen_find(t)
+  if gi < 0 { return t }
+  let args = gen_split(g_gi_args[gi])
+  var out: pointer = g_gi_gen[gi] + "<"
+  var i = 0
+  while i < len(args) {
+    if i > 0 { out = out + ", " }
+    out = out + gen_show(args[i])
+    i += 1
+  }
+  return out + ">"
+}

@@ -1,0 +1,11 @@
+export property Pool<T> {
+  items: []T = null
+}
+function grow<T>(p: Pool<T>) -> void {
+  if p.items == null { p.items = new []T }
+}
+export function pool_add<T>(p: Pool<T>, x: T) -> void {
+  grow(p)
+  push(p.items, x)
+}
+export function pool_len<T>(p: Pool<T>) -> int { return len(p.items) }

@@ -1,0 +1,66 @@
+# generics.ludic — L5: generic records and functions. A record takes type parameters
+# (`property Pool<T>`), a function takes them after its name (`function first<T>`), and a call's
+# are worked out from its arguments or, where there are none to say, from the slot its result is
+# written into. Each instance is an ordinary record or function the compiler makes once.
+#
+# Running it prints:  7 Crater Lake a 2 west 7 0.75 2.5 1
+program Generics {
+  numbers float
+  property Pool<T> {
+    items: []T = null
+    n: int = 0
+  }
+  property Pair<A, B> {
+    a: A
+    b: B
+  }
+  property Maker<T> { make: fn(int) -> T }
+  property Trail { name: string = "", weight: float = 0.0 }
+  function pool_new<T>() -> Pool<T> {
+    let p = new Pool<T>
+    p.items = new []T
+    return p
+  }
+  function pool_add<T>(p: Pool<T>, x: T) -> void {
+    push(p.items, x)
+    p.n += 1
+  }
+  function pool_at<T>(p: Pool<T>, i: int) -> T { return p.items[i] }
+  function last_of<T>(p: Pool<T>) -> T { return pool_at(p, p.n - 1) }
+  function first<T>(xs: []T) -> T { return xs[0] }
+  function map<T, U>(xs: []T, f: fn(T) -> U) -> []U {
+    let out = new []U
+    var i = 0
+    while i < len(xs) {
+      push(out, f(xs[i]))
+      i += 1
+    }
+    return out
+  }
+  function half(n: int) -> float { return float(n) / 2.0 }
+  function size(s: string) -> int { return len(s) }
+  function rope(n: int) -> Trail {
+    let t = new Trail
+    t.name = "rope"
+    t.weight = float(n) * 0.25
+    return t
+  }
+  entry {
+    let ints: Pool<int> = pool_new()
+    pool_add(ints, 3)
+    pool_add(ints, 4)
+    let trails: Pool<Trail> = pool_new()
+    let t = new Trail
+    t.name = "Crater Lake"
+    pool_add(trails, t)
+    let nested: Pool<Pool<int>> = pool_new()
+    pool_add(nested, ints)
+    let pr = new Pair<string, int>
+    pr.a = "west"
+    pr.b = 7
+    let m = new Maker<Trail>
+    m.make = fn rope
+    let hs = map([2, 5], fn half)
+    print(`{pool_at(ints, 0) + last_of(ints)} {pool_at(trails, 0).name} {first(["a", "b"])} {last_of(nested).n} {pr.a} {pr.b} {m.make(3).weight} {hs[1]} {len(map(["a"], fn size))}`)
+  }
+}

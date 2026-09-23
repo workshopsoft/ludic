@@ -139,6 +139,54 @@ everything, so it only ever reports what it can prove; the emitter keeps its own
 it. `LUDIC_CHECK_REPORT=1` lists every mix-up by category and fails nothing, which is how an
 existing program is measured before it has to pass.
 
+### Generic records and functions
+
+A record or a function can take type parameters, written after its name:
+
+```ludic
+program Pools {
+  property Pool<T> {
+    items: []T = null
+    n: int = 0
+  }
+  function pool_new<T>() -> Pool<T> {
+    let p = new Pool<T>
+    p.items = new []T
+    return p
+  }
+  function pool_add<T>(p: Pool<T>, x: T) -> void {
+    push(p.items, x)
+    p.n += 1
+  }
+  function map<T, U>(xs: []T, f: fn(T) -> U) -> []U {
+    let out = new []U
+    var i = 0
+    while i < len(xs) {
+      push(out, f(xs[i]))
+      i += 1
+    }
+    return out
+  }
+  entry {
+    let names: Pool<string> = pool_new()
+    pool_add(names, "Crater Lake")
+    print(names.n)
+  }
+}
+```
+
+A type names an instance with its arguments - `Pool<Thing>`, `Pair<string, int>`,
+`Pool<Pool<int>>`, `[]Pool<float>` - and two instances of one generic are two types. A call's
+type arguments are worked out from its arguments (`pool_add(names, "x")` is `pool_add` at
+`string`), a literal deciding only what nothing else did; a call with nothing to say it, like
+`pool_new()`, takes them from the slot its result is written into - a `let` with a declared type,
+an assignment, an argument, a `return`. Where neither decides, the call is refused and says which
+parameter it could not tell.
+
+Generics are compiled by instantiation: each instance the program uses is an ordinary record or
+function, made and checked once, so it costs exactly what writing it out by hand would. A generic
+nothing instantiates is not compiled at all.
+
 ## Models (entity kinds)
 
 An `model` names a *kind* of entity and the fixed set of properties it

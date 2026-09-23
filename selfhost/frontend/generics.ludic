@@ -1,0 +1,140 @@
+# generics.ludic — L5: the parser's half of generic records and functions. `Pool<Thing>` in a type
+# position becomes the name `Pool$Thing`, and a table remembers which generic and which arguments
+# that name stands for. Every later stage sees an ordinary name - `%Cmp_Pool$Thing`,
+# `@fn_first$int` are valid LLVM - and the checker (check/check_gen.ludic) makes each one real.
+var g_gi_name: []pointer = new []pointer     # an instance's name: Pool$Thing
+var g_gi_gen: []pointer = new []pointer      # the generic it is of: Pool
+var g_gi_args: []pointer = new []pointer     # its arguments, joined with '|': Thing
+var g_gi_open: []int = new []int             # 1 when an argument names a type parameter (Pool$T)
+var g_gi_file: []pointer = new []pointer     # where the instance was first written, for its errors
+var g_gi_line: []int = new []int
+var g_gen_tps: pointer = null                # the type parameters of the declaration being parsed
+
+function gen_enter(tps: pointer) -> void { g_gen_tps = tps }
+
+# <T, U> after a declaration's name: its type parameters, "T|U"
+function gen_params() -> pointer {
+  eat_op("<")
+  var out: pointer = ""
+  while not is_op(">") {
+    if len(out) > 0 { out = out + "|" }
+    out = out + eat_id()
+    if is_op(",") { pi += 1 }
+  }
+  eat_op(">")
+  return out
+}
+# a character that may stand in an instance's name: an LLVM identifier's, less '.', which the
+# compiler reads as a separator in a few names of its own
+function gen_name_ch(c: int) -> bool {
+  if c >= 'a' and c <= 'z' { return true }
+  if c >= 'A' and c <= 'Z' { return true }
+  if c >= '0' and c <= '9' { return true }
+  return c == '_' or c == '$'
+}
+function gen_mangle(t: pointer) -> pointer {
+  var out: pointer = ""
+  var i = 0
+  let n = len(t)
+  while i < n {
+    if t[i] == '[' and i + 1 < n and t[i + 1] == ']' {
+      out = out + "Sl_"
+      i += 2
+      continue
+    }
+    if gen_name_ch(t[i]) { out = out + t[i .. i + 1] } else { out = out + "_" }
+    i += 1
+  }
+  return out
+}
+function gen_split(s: pointer) -> []pointer {
+  let out = new []pointer
+  var a = 0
+  var i = 0
+  let n = len(s)
+  while i <= n {
+    if i == n or s[i] == '|' {
+      push(out, s[a .. i])
+      a = i + 1
+    }
+    i += 1
+  }
+  return out
+}
+function gen_is_param(name: pointer, tps: pointer) -> bool {
+  if tps == null { return false }
+  let ps = gen_split(tps)
+  var i = 0
+  while i < len(ps) {
+    if ps[i] == name { return true }
+    i += 1
+  }
+  return false
+}
+# does the type text mention one of the parameters as a whole name
+function gen_mentions(t: pointer, tps: pointer) -> bool {
+  if tps == null { return false }
+  var a = 0
+  var i = 0
+  let n = len(t)
+  while i <= n {
+    if i == n or not (gen_name_ch(t[i]) and t[i] != '$') {
+      if i > a and gen_is_param(t[a .. i], tps) { return true }
+      a = i + 1
+    }
+    i += 1
+  }
+  return false
+}
+function gen_find(name: pointer) -> int {
+  var i = 0
+  while i < len(g_gi_name) {
+    if (g_gi_name[i] == name) { return i }
+    i += 1
+  }
+  return -1
+}
+# the instance of generic `gen` at `args`, registered on first sight
+function gen_instance(gen: pointer, args: []pointer) -> pointer {
+  var name: pointer = gen
+  var joined: pointer = ""
+  var open = 0
+  var i = 0
+  while i < len(args) {
+    name = name + "$" + gen_mangle(args[i])
+    if i > 0 { joined = joined + "|" }
+    joined = joined + args[i]
+    if gen_mentions(args[i], g_gen_tps) { open = 1 }
+    if gen_find(args[i]) >= 0 and g_gi_open[gen_find(args[i])] == 1 { open = 1 }
+    i += 1
+  }
+  if gen_find(name) < 0 {
+    push(g_gi_name, name)
+    push(g_gi_gen, gen)
+    push(g_gi_args, joined)
+    push(g_gi_open, open)
+    push(g_gi_file, g_parse_file)
+    var ln = 0
+    if g_parsing and pi < len(toks) { ln = toks[pi].line }
+    push(g_gi_line, ln)
+  }
+  return name
+}
+# after the name in a type: <A, B>. `>>` closing two lists at once is split in two.
+function gen_type_args(gen: pointer) -> pointer {
+  eat_op("<")
+  let args = new []pointer
+  while true {
+    if is_op(">>") {
+      toks[pi].text = ">"
+      break
+    }
+    if is_op(">") {
+      pi += 1
+      break
+    }
+    push(args, ptype())
+    if is_op(",") { pi += 1 }
+  }
+  return gen_instance(gen, args)
+}

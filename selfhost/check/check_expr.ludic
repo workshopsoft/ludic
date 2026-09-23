@@ -29,6 +29,8 @@ function ck_any(n: Node) -> void {
 }
 function ck_expr(e: Node) -> pointer {
   if e == null { return "?" }
+  let ex = ck_expect
+  ck_expect = null
   let k = e.kind
   if k == E_INT { return "int" }
   if k == E_FLOAT {
@@ -51,7 +53,10 @@ function ck_expr(e: Node) -> pointer {
   if k == E_UN { return ck_un(e) }
   if k == E_MEMBER { return ck_member(e) }
   if k == E_INDEX { return ck_index_of(e) }
-  if k == E_CALL { return ck_call(e) }
+  if k == E_CALL {
+    ck_call_expect = ex
+    return ck_call(e)
+  }
   if k == S_EMIT { ck_emit(e);  return "?" }
   ck_walk(e)
   return "?"

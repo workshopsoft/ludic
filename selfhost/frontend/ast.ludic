@@ -86,6 +86,7 @@ property Node {
   line: int = 0
   file: pointer = null        # the source file the node was parsed from (for diagnostics)
   vis:  int = 0               # L3: 1 when the declaration is `export`ed from its module
+  tps:  pointer = null        # L5: a generic declaration's type parameters, "T|U"; null when not generic
 }
 
 # every node remembers where it was parsed (file + the line of the token the

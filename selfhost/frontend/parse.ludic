@@ -123,7 +123,9 @@ function ptype() -> pointer {
     out[2 + i] = 0
     return out
   }
-  return eat_id()
+  let tn = eat_id()
+  if is_op("<") { return gen_type_args(tn) }
+  return tn
 }
 
 # ---- expressions -----------------------------------------------------------
@@ -535,7 +537,10 @@ function is_reserved_word(w: pointer) -> bool {
 }
 
 function parse_fn() -> Node {
-  pi += 1; let n = node(N_FN); n.s = eat_id(); eat_op("(")
+  pi += 1; let n = node(N_FN); n.s = eat_id()
+  if is_op("<") { n.tps = gen_params() }            # L5: function first<T>(xs: []T) -> T
+  gen_enter(n.tps)
+  eat_op("(")
   if is_reserved_word(n.s) { perr(`'{n.s}' is a reserved word and cannot name a function`) }
   while not is_op(")") {
     let p = node(N_PARAM); p.s = eat_id(); eat_op(":"); p.ty = ptype(); push(n.kids, p)
@@ -545,6 +550,7 @@ function parse_fn() -> Node {
   n.ty = "void"
   if is_op("->") { pi += 1; n.ty = ptype() }
   n.a = block()
+  gen_enter(null)
   return n
 }
 function parse_main() -> Node { pi += 1; let n = node(N_MAIN); n.a = block(); return n }

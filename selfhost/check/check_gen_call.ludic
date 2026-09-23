@@ -1,0 +1,132 @@
+# check_gen_call.ludic — L5: a call to a generic function. Its arguments' types bind the type
+# parameters (a literal only binds what nothing else did, so first(xs, 0) is decided by xs), the
+# slot the call is written into binds what they cannot, and the call is rewritten to name the
+# instance: `first(xs)` on a []int calls first$int, which is made and checked once however many
+# calls reach it.
+function gen_instance_name(name: pointer, binds: []pointer) -> pointer {
+  var out: pointer = name
+  var i = 0
+  while i < len(binds) {
+    out = out + "$" + gen_mangle(binds[i])
+    i += 1
+  }
+  return out
+}
+function gen_fn_instance(t: Node, iname: pointer, binds: []pointer) -> Node {
+  let have = ck_fn(iname)
+  if have != null { return have }
+  let f = gen_clone(t, gen_split(t.tps), binds)
+  f.s = iname
+  push(g_gen_out, f)
+  push(g_gen_work, f)
+  ck_tab_put(ck_fn_k, ck_fn_v, iname, f)
+  return f
+}
+# each parameter's argument node, positional or named
+function gen_arg_nodes(e: Node, labels: []pointer) -> []Node {
+  let out = new []Node
+  var i = 0
+  while i < len(labels) {
+    push(out, null)
+    i += 1
+  }
+  var j = 0
+  while j < len(e.kids) {
+    let k = e.kids[j]
+    if k.kind == E_FINIT {
+      let at = gen_index(labels, k.s)
+      if at >= 0 { out[at] = k.a }
+    } else {
+      if j < len(out) { out[j] = k }
+    }
+    j += 1
+  }
+  return out
+}
+function gen_call(e: Node, name: pointer, t: Node) -> pointer {
+  let expect = ck_call_expect
+  let tps = gen_split(t.tps)
+  let labels = new []pointer
+  let ptys = new []pointer
+  ck_params(t, labels, ptys)
+  if len(e.kids) != len(ptys) { ck_err("arity", e, `{name} takes {itoa(len(ptys))} argument(s) and this call gives {itoa(len(e.kids))}`) }
+  let nodes = gen_arg_nodes(e, labels)
+  let atys = new []pointer
+  let binds = new []pointer
+  var i = 0
+  while i < len(tps) {
+    push(binds, null)
+    i += 1
+  }
+  i = 0
+  while i < len(nodes) {
+    var at: pointer = "?"
+    if nodes[i] != null { at = ck_expr(nodes[i]) }
+    push(atys, at)
+    if nodes[i] != null and not ck_is_lit(nodes[i]) { gen_unify(ptys[i], at, tps, binds) }
+    i += 1
+  }
+  gen_unify(t.ty, expect, tps, binds)
+  i = 0
+  while i < len(nodes) {
+    if nodes[i] != null and ck_is_lit(nodes[i]) { gen_unify(ptys[i], atys[i], tps, binds) }
+    i += 1
+  }
+  var k = 0
+  while k < len(tps) {
+    if binds[k] == null {
+      ck_err("generic", e, `cannot tell what {tps[k]} is in this call to {name}: pass it an argument that says, or write the call where its result has a declared type`)
+      return "?"
+    }
+    k += 1
+  }
+  let f = gen_fn_instance(t, gen_instance_name(name, binds), binds)
+  e.a.s = f.s
+  let fl = new []pointer
+  let fp = new []pointer
+  ck_params(f, fl, fp)
+  var j = 0
+  while j < len(nodes) {
+    if nodes[j] != null { ck_give(fp[j], atys[j], nodes[j], `argument {itoa(j + 1)} of {name}`) }
+    j += 1
+  }
+  return f.ty
+}
+# every instance a generic body asks for is made and checked in turn; then the records the
+# program only ever names in a type, and the instances go back in where the program's own
+# declarations end
+function gen_finish() -> void {
+  var w = 0
+  while w < len(g_gen_work) {
+    ck_fn_body(g_gen_work[w])
+    w += 1
+  }
+  var r = 0
+  while r < len(g_gi_name) {
+    if g_gi_open[r] == 0 and gen_template(g_gen_recs, g_gi_gen[r]) != null { ck_record(g_gi_name[r]) }
+    r += 1
+  }
+  if len(g_gen_out) == 0 { return }
+  let np = new []Node
+  var i = 0
+  while i < len(prog) {
+    if i == g_prog_user_end {
+      var o = 0
+      while o < len(g_gen_out) {
+        push(np, g_gen_out[o])
+        o += 1
+      }
+    }
+    push(np, prog[i])
+    i += 1
+  }
+  if g_prog_user_end >= len(prog) {
+    var o2 = 0
+    while o2 < len(g_gen_out) {
+      push(np, g_gen_out[o2])
+      o2 += 1
+    }
+  }
+  prog = np
+  g_prog_user_end += len(g_gen_out)
+}

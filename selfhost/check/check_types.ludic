@@ -11,7 +11,8 @@ function ck_is_int(t: pointer) -> bool {
   return false
 }
 # "an int", "a float": the article a message puts before a type
-function ck_a(t: pointer) -> pointer {
+function ck_a(t0: pointer) -> pointer {
+  let t = gen_show(t0)
   let c = t[0]
   if c == 'a' or c == 'e' or c == 'i' or c == 'o' or c == 'u' or c == 'A' or c == 'E' or c == 'I' or c == 'O' or c == 'U' { return `an {t}` }
   return `a {t}`
