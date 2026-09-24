@@ -1,0 +1,4 @@
+<div style="gap: var(--gap)">
+  <p style="color: var(--accent)">hot</p>
+  <p>plain</p>
+</div>

@@ -1,0 +1,15 @@
+# ui_theme.ludic — a component with no stylesheet of its own still reads the theme's :root variables,
+# inherited from the screen that uses it, in its style="..." declarations.
+import "ludic.ui"
+import "ui_theme_parts/Bare.ludic"
+import "ui_theme_parts/Shell.ludic"
+program UiTheme {
+  numbers float
+  entry {
+    ui_backend(new UiBackend)
+    let root: UiNode = ui_nodes("Shell", null)
+    ui_place(root, 0.0, 0.0, 400.0, 400.0)
+    let bare = root.children[0].children[0]
+    print(`accent {ui_hex(bare.children[0].fg)} gap {int(bare.gap)}`)
+  }
+}

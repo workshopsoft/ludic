@@ -423,7 +423,8 @@ applies to both:
     A library's components keep the styles of the file they were written in.
 - **More CSS.**
   - Custom properties: `--accent: #fc0` on any element or `:root`, read with `var(--accent)` or
-    `var(--accent, gold)`, and inherited by what is inside.
+    `var(--accent, gold)`, and inherited by what is inside - a component with no stylesheet of its
+    own included, which reads a theme's `:root` variables from the screen it is used in.
   - `position: relative|absolute|fixed` with `top`, `right`, `bottom`, `left` and `inset`, and
     `z-index`. An absolute element sits in its parent's box, a fixed one in the screen's, and
     neither takes room in the flow.

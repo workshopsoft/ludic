@@ -1,0 +1,2 @@
+@import "theme.lss";
+.shell { width: 300px }

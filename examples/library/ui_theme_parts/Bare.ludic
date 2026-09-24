@@ -1,0 +1,3 @@
+# Bare.ludic - a component with no stylesheet: it reads the theme's variables from where it is used
+component Bare {
+}
