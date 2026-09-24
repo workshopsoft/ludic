@@ -11,7 +11,7 @@ function ly_place(n: UiNode, x: float, y: float, w: float, h: float) -> void {
   let inner_w = w - ly_hin(n)
   var inner_h = h - ly_vin(n)
   if n.kind == UI_SCROLL { inner_h = Math.max(n.content_h, h) - ly_vin(n) }
-  let top = n.y + n.pt + n.border
+  let top = n.y + n.pt + n.bt
   if n.dir == UI_ROW and n.wrap { ly_place_wrap(n, top, inner_w) } else if n.dir == UI_ROW { ly_place_line(n, 0, len(n.children), top, inner_w, inner_h) } else { ly_place_line(n, 0, len(n.children), top, inner_h, inner_w) }
   for i in 0 .. len(n.children) {
     if n.children[i].pos >= 2 { ly_place_abs(n, n.children[i]) }
@@ -76,7 +76,7 @@ function ly_place_child(n: UiNode, c: UiNode, at: float, top: float, m: float, c
   var off = 0.0
   if a == UI_CENTER { off = (cross_room - cr) / 2.0 }
   if a == UI_END { off = cross_room - cr }
-  let left = n.x + n.pl + n.border
+  let left = n.x + n.pl + n.bl
   if n.dir == UI_ROW {
     let cw = ly_clamp(m - c.ml - c.mr, c.min_w, c.max_w)
     ly_place(c, left + at + c.ml, top + off + c.mt, cw, ly_clamp(cr - c.mt - c.mb, c.min_h, c.max_h))

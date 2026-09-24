@@ -42,8 +42,8 @@ function ly_measure(n: UiNode, avail: float, size: float, fg: int) -> void {
   n.mh = ly_clamp(n.mh, n.min_h, n.max_h)
 }
 var ly_fg_a: float = 1.0
-function ly_hin(n: UiNode) -> float { return n.pl + n.pr + n.border * 2.0 }
-function ly_vin(n: UiNode) -> float { return n.pt + n.pb + n.border * 2.0 }
+function ly_hin(n: UiNode) -> float { return n.pl + n.pr + n.bl + n.br }
+function ly_vin(n: UiNode) -> float { return n.pt + n.pb + n.bt + n.bb }
 function ly_clamp(v: float, lo: float, hi: float) -> float {
   var out = v
   if hi > 0.0 and out > hi { out = hi }

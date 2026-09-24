@@ -31,7 +31,11 @@ export property UiNode {
   mr: float = 0.0
   mb: float = 0.0
   ml: float = 0.0
-  border: float = 0.0
+  border: float = 0.0           # border-width, all four sides; bt br bb bl are each side's own
+  bt: float = 0.0
+  br: float = 0.0
+  bb: float = 0.0
+  bl: float = 0.0
   border_c: int = -2
   gap: float = 0.0
   align: int = 0

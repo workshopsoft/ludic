@@ -24,10 +24,10 @@ function ly_place_wrap(n: UiNode, top0: float, inner_w: float) -> void {
 # position: absolute (in the parent's padding box) or fixed (in the screen): the insets say where,
 # and two opposite ones say how big; relative is placed as usual and moved by its insets
 function ly_place_abs(n: UiNode, c: UiNode) -> void {
-  var bx = n.x + n.border
-  var by = n.y + n.border
-  var bw = n.cw - n.border * 2.0
-  var bh = n.ch - n.border * 2.0
+  var bx = n.x + n.bl
+  var by = n.y + n.bt
+  var bw = n.cw - n.bl - n.br
+  var bh = n.ch - n.bt - n.bb
   if c.pos == 3 {
     bx = ly_vp_x
     by = ly_vp_y
