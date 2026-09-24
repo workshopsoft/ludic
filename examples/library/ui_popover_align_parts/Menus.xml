@@ -1,0 +1,12 @@
+<div class="page">
+  <div id="panel" class="panel">
+    <button id="a" class="a">a</button>
+    <div popover anchor="a" placement="right" align="center" within="panel" class="p1"></div>
+    <div popover anchor="a" placement="bottom" align="end" class="p2"></div>
+  </div>
+  <div class="list">
+    <p class="gap">x</p>
+    <button id="b">b</button>
+    <div popover anchor="b" placement="bottom" class="p3"></div>
+  </div>
+</div>

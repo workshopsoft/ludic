@@ -1,0 +1,20 @@
+# ui_popover_align.ludic — anchored popovers aligned along their side (start, center, end), kept
+# within a named container (within="panel") and, by default, within the scroll box they are in,
+# flipping to the other side against it rather than against the screen.
+import "ludic.ui"
+import "ui_popover_align_parts/Menus.ludic"
+program UiPopoverAlign {
+  numbers float
+  function at(n: UiNode, base: UiNode) -> string { return `{int(n.x - base.x)},{int(n.y - base.y)}` }
+  entry {
+    ui_backend(new UiBackend)
+    ui_show("Menus", null, 0.0, 0.0, 400.0, 400.0)
+    let root: UiNode = ui_nodes("Menus", null)
+    ui_place(root, 0.0, 0.0, 400.0, 400.0)
+    let panel = root.children[0].children[0]
+    let list = root.children[0].children[1]
+    let b = list.children[1]
+    let p3 = list.children[2]
+    print(`centred, flipped in the panel {at(panel.children[1], panel)} | end below {at(panel.children[2], panel)} | above b in the list {int(p3.y + p3.ch - b.y)} inside {p3.y >= list.y}`)
+  }
+}

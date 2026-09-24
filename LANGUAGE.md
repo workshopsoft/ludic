@@ -495,8 +495,10 @@ applies to both:
     press outside it only closes it.
   - `anchor="cell"` puts a popover beside the element with that id (the nearest, looking out from
     the popover), and a bare `anchor` beside the element before it. `placement` is `right` (the
-    default), `left`, `bottom` or `top`, its margin on that side is the gap, and where it would
-    leave the screen it opens to the other side and is kept on it.
+    default), `left`, `bottom` or `top`, its margin on that side is the gap, and `align` is `start`
+    (the default), `center` or `end` along that side. Where it would leave its bounds it opens to
+    the other side and is kept inside them: `within="panel"` names the element, and by default it
+    is the nearest scroll box (or `overflow` box) around it, else the screen.
   - `title="..."` shows a tooltip (`.ui-tooltip`) after the pointer rests for half a second. A
     newline or a written `\n` in it starts another line (`.ui-tooltip-text` each).
   - `<progress value max>` and `<meter value min max>` fill (`.ui-fill`) as far as their value.

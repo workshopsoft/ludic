@@ -1,0 +1,39 @@
+# popover_within.ludic - what an anchored popover is kept inside: the element named by within="id",
+# else the nearest scroll box (or overflow box) around it, else the screen; it flips against the same
+var pp_bx: float = 0.0
+var pp_by: float = 0.0
+var pp_bw: float = 0.0
+var pp_bh: float = 0.0
+function pp_bounds(p: UiNode) -> void {
+  pp_bx = ly_vp_x
+  pp_by = ly_vp_y
+  pp_bw = ly_vp_w
+  pp_bh = ly_vp_h
+  var box: UiNode = null
+  let id = ui_attr_text(p, "within")
+  if id != "" {
+    var at = p.parent
+    while at != null and box == null {
+      box = pp_by_id(at, id, p)
+      at = at.parent
+    }
+    if box == null { ui_err(`within="{id}": no element has that id`) }
+  } else {
+    var at = p.parent
+    while at != null and box == null {
+      if at.kind == UI_SCROLL { box = at }
+      at = at.parent
+    }
+  }
+  if box == null { return }
+  pp_bx = box.x
+  pp_by = box.y
+  pp_bw = box.cw
+  pp_bh = box.ch
+}
+# where a popover of `size` starts along its anchor's side: level with its start, centred, or its end
+function pp_along(align: string, at: float, span: float, size: float) -> float {
+  if align == "center" { return at + (span - size) / 2.0 }
+  if align == "end" { return at + span - size }
+  return at
+}

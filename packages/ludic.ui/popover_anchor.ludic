@@ -1,7 +1,6 @@
-# popover_anchor.ludic - a popover beside what it belongs to: `<div popover anchor="cell">` sits beside
-# the element with that id (the nearest one, looking out from the popover), and a bare `anchor` beside
-# the element just before it. `placement` is right (the default), left, bottom or top; its margin on
-# that side is the gap. Where it would leave the screen it goes to the other side, and it is kept on it.
+# popover_anchor.ludic - `<div popover anchor="cell">` sits beside the element with that id (the
+# nearest), a bare `anchor` beside the one before it: `placement` right, left, bottom or top (its margin
+# is the gap), `align` start, center or end along that side, flipped and kept within its bounds.
 function pp_anchor_all(n: UiNode) -> void {
   if n.children == null { return }
   for i in 0 .. len(n.children) {
@@ -42,6 +41,8 @@ function pp_by_id(n: UiNode, id: string, skip: UiNode) -> UiNode {
 function pp_anchor(p: UiNode, a: UiNode) -> void {
   if a == null { return }
   let side = ui_attr_text(p, "placement")
+  let align = ui_attr_text(p, "align")
+  pp_bounds(p)
   let w = p.cw
   let h = p.ch
   var x = a.x
@@ -49,16 +50,16 @@ function pp_anchor(p: UiNode, a: UiNode) -> void {
   if side == "top" or side == "bottom" {
     let below = a.y + a.ch + p.mt
     let above = a.y - h - p.mb
-    y = pp_side(side == "top", above, below, h, ly_vp_y, ly_vp_h)
-    x = a.x + p.ml
+    y = pp_side(side == "top", above, below, h, pp_by, pp_bh)
+    x = pp_along(align, a.x, a.cw, w) + p.ml
   } else {
     let right = a.x + a.cw + p.ml
     let left = a.x - w - p.mr
-    x = pp_side(side == "left", left, right, w, ly_vp_x, ly_vp_w)
-    y = a.y + p.mt
+    x = pp_side(side == "left", left, right, w, pp_bx, pp_bw)
+    y = pp_along(align, a.y, a.ch, h) + p.mt
   }
-  x = Math.max(ly_vp_x, Math.min(x, ly_vp_x + ly_vp_w - w))
-  y = Math.max(ly_vp_y, Math.min(y, ly_vp_y + ly_vp_h - h))
+  x = Math.max(pp_bx, Math.min(x, pp_bx + pp_bw - w))
+  y = Math.max(pp_by, Math.min(y, pp_by + pp_bh - h))
   ly_place(p, x, y, w, h)
   sc_apply(p)
 }

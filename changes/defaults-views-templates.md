@@ -87,6 +87,8 @@ What a game's screens found missing, now in `ludic.ui`:
   `pointer-events: none` lets it through;
 - `on-down` and `on-up` on a button (the pointer, Enter or A), with `:active` true while it is held
   there rather than whenever the pointer is down over it;
+- an anchored popover's `align="start|center|end"`, and `within="id"` (by default the nearest
+  scroll box around it) for the bounds it is flipped against and kept inside;
 - a transition lands exactly on its end value (it had stopped a rounding error short of it, at every
   frame rate).
 

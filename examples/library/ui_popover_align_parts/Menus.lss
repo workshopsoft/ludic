@@ -1,0 +1,8 @@
+.page { width: 400px; height: 400px }
+.panel { width: 200px; height: 150px; position: relative }
+.a { position: absolute; left: 150px; top: 50px; width: 40px; height: 20px; padding: 0 }
+.p1 { width: 60px; height: 40px }
+.p2 { width: 80px; height: 30px }
+.list { overflow: auto; width: 150px; height: 100px }
+.gap { height: 60px }
+.p3 { width: 50px; height: 40px }
