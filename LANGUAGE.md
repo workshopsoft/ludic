@@ -376,8 +376,12 @@ applies to both:
   - A length is `12`, `12px`, `50%`, `fit`/`auto`, `fill` or `calc()`. `width: 0` and `height: 0`
     are 0, not unset.
   - `calc()` takes `+`, `-`, `*` and `/` and brackets over `px`, `em`, `rem`, `vw`, `vh`, plain
-    numbers and `var()`; in a `width` or `height` it may also hold a percentage of the room
-    (`calc(50% - 10px)`).
+    numbers and `var()`; in a `width`, `height`, `top`, `right`, `bottom` or `left` it may also hold
+    a percentage of the room or of the containing block (`calc(50% - 10px)`). `min()`, `max()` and
+    `clamp(least, want, most)` pick among lengths, inside `calc()` or on their own
+    (`width: min(300px, 50vw)`); a percentage cannot be compared there.
+  - `top`, `right`, `bottom` and `left` take a percentage of the containing block: its width for
+    left and right, its height for top and bottom.
   - `flex-grow` (or `flex`) shares out the spare room along `flex-direction`, and `fill` is a share
     of 1. `justify-content` takes `flex-start`/`start`, `center`, `end`, `space-between`,
     `space-around` or `space-evenly`.

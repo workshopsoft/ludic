@@ -6,7 +6,7 @@ function el_place_prop(n: UiNode, key: string, v: Val) -> bool {
     if s == "relative" { n.pos = 1 }
     if s == "absolute" { n.pos = 2 }
     if s == "fixed" { n.pos = 3 }
-  } else if key == "top" { n.top = el_inset(v) } else if key == "right" { n.right = el_inset(v) } else if key == "bottom" { n.bottom = el_inset(v) } else if key == "left" { n.left = el_inset(v) } else if key == "inset" {
+  } else if key == "top" { n.top = el_inset(n, 0, v) } else if key == "right" { n.right = el_inset(n, 1, v) } else if key == "bottom" { n.bottom = el_inset(n, 2, v) } else if key == "left" { n.left = el_inset(n, 3, v) } else if key == "inset" {
     el_sides(v)
     n.top = el_s0
     n.right = el_s1
@@ -16,8 +16,4 @@ function el_place_prop(n: UiNode, key: string, v: Val) -> bool {
     if (s == "auto" or s == "scroll" or s == "hidden") and n.kind == UI_BOX { n.kind = UI_SCROLL }
   } else if key == "white-space" { n.nowrap = s == "nowrap" or s == "pre" } else if key == "text-overflow" { n.ellipsis = s == "ellipsis" } else { return false }
   return true
-}
-function el_inset(v: Val) -> float {
-  if vl_text(v) == "auto" { return UI_AUTO }
-  return el_len(v)
 }

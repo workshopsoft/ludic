@@ -1,0 +1,20 @@
+# ui_calc.ludic — min(), max() and clamp() (on their own and inside calc()), and top, right, bottom
+# and left as percentages and calc() of the containing block, for absolute and relative elements.
+import "ludic.ui"
+program UiCalc {
+  numbers float
+  const STYLE: string = "<style>.a { width: min(300px, 50vw) }\n.b { width: max(10px, calc(5em + 2px)) }\n.c { width: clamp(50px, 10vw, 100px) }\n.d { height: calc(clamp(1px, 2em, 20px) + 1px) }\n.box { width: 300px; height: 200px; position: relative }\n.p { position: absolute; left: 50%; top: calc(25% + 10px); width: 20px; height: 20px }\n.q { position: absolute; right: calc(10% - 5px); bottom: 50%; width: 20px; height: 20px }\n.r { position: relative; left: 10%; width: 20px; height: 20px }</style>"
+  const BODY: string = "<screen name='c'><div class='a'/><div class='b'/><div class='c'/><div class='d'/><div class='box'><div class='p'/><div class='q'/><div class='r'/></div></screen>"
+  entry {
+    ui_backend(new UiBackend)
+    ui_load_text("<ui>" + STYLE + BODY + "</ui>", "c.xml")
+    ui_show("c", null, 0.0, 0.0, 400.0, 600.0)
+    let r: UiNode = ui_nodes("c", null)
+    ui_place(r, 0.0, 0.0, 400.0, 600.0)
+    let box = r.children[4]
+    let p = box.children[0]
+    let q = box.children[1]
+    let rel = box.children[2]
+    print(`min {int(r.children[0].cw)} max {int(r.children[1].cw)} clamp {int(r.children[2].cw)} {int(r.children[3].ch)} | p {int(p.x - box.x)},{int(p.y - box.y)} q {int(q.x - box.x)},{int(q.y - box.y)} r {int(rel.x - box.x)}`)
+  }
+}

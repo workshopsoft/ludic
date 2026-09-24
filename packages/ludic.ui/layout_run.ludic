@@ -64,7 +64,7 @@ function ly_place_line(n: UiNode, from: int, to: int, top: float, main_room: flo
     var m = sizes[i - from]
     if grows > 0.0 and free > 0.0 { m = m + free * ly_grow(c, n.dir) / grows }
     ly_place_child(n, c, at, top, m, cross_room)
-    if c.pos == 1 { ly_offset(c, ly_or0(c.left) - ly_or0(c.right), ly_or0(c.top) - ly_or0(c.bottom)) }
+    if c.pos == 1 { ly_nudge(n, c) }
     at = at + m + n.gap + extra
   }
 }

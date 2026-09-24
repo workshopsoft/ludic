@@ -43,7 +43,9 @@ function ca_factor() -> CaVal {
     ca_i += 1
     return ca_scale(ca_factor(), -1.0)
   }
-  if c == 40 or (ca_i + 5 <= len(ca_s) and ca_s[ca_i..ca_i + 5] == "calc(") {
+  let f = ca_fn_at(ca_s, ca_i)
+  if f == "min" or f == "max" or f == "clamp" { return ca_fn(f) }
+  if c == 40 or f == "calc" {
     while ca_s[ca_i] != 40 { ca_i += 1 }
     ca_i += 1
     let v = ca_sum()

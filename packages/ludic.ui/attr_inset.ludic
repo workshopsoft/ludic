@@ -1,0 +1,47 @@
+# attr_inset.ludic - top, right, bottom and left as lengths, percentages or calc() of both: the
+# percentage is kept apart and taken of the containing block's width (left, right) or height (top,
+# bottom) when the element is placed
+function el_inset(n: UiNode, side: int, v: Val) -> float {
+  let s = vl_text(v)
+  var pct = 0.0
+  var px = UI_AUTO
+  if s != "auto" {
+    if ca_is(s) {
+      px = 0.0
+      if ca_eval(s) {
+        pct = ca_pct
+        px = ca_px
+      }
+    } else if len(s) > 1 and s[len(s) - 1] == 37 {
+      pct = el_num(s)
+      px = 0.0
+    } else { px = el_len(v) }
+  }
+  if pct != 0.0 or n.ex != null {
+    let x = nx(n)
+    if side == 0 { x.ip_t = pct }
+    if side == 1 { x.ip_r = pct }
+    if side == 2 { x.ip_b = pct }
+    if side == 3 { x.ip_l = pct }
+  }
+  return px
+}
+# an inset in px against a containing block `base` wide (or high), or UI_AUTO
+function ly_ins(c: UiNode, side: int, base: float) -> float {
+  var v = c.top
+  if side == 1 { v = c.right }
+  if side == 2 { v = c.bottom }
+  if side == 3 { v = c.left }
+  if v == UI_AUTO or c.ex == null { return v }
+  var p = c.ex.ip_t
+  if side == 1 { p = c.ex.ip_r }
+  if side == 2 { p = c.ex.ip_b }
+  if side == 3 { p = c.ex.ip_l }
+  return v + base * p / 100.0
+}
+# position: relative moves an element by its insets, a percentage taken of its parent's content box
+function ly_nudge(n: UiNode, c: UiNode) -> void {
+  let bw = n.cw - ly_hin(n)
+  let bh = n.ch - ly_vin(n)
+  ly_offset(c, ly_or0(ly_ins(c, 3, bw)) - ly_or0(ly_ins(c, 1, bw)), ly_or0(ly_ins(c, 0, bh)) - ly_or0(ly_ins(c, 2, bh)))
+}

@@ -38,12 +38,16 @@ function ly_place_abs(n: UiNode, c: UiNode) -> void {
   var h = c.mh
   if c.w_pct > 0.0 { w = ly_pw(c, bw) }
   if c.h_pct > 0.0 { h = ly_ph(c, bh) }
-  if c.w == UI_FILL or (c.left != UI_AUTO and c.right != UI_AUTO and c.w == UI_AUTO) { w = bw - ly_or0(c.left) - ly_or0(c.right) - c.ml - c.mr }
-  if c.h == UI_FILL or (c.top != UI_AUTO and c.bottom != UI_AUTO and c.h == UI_AUTO) { h = bh - ly_or0(c.top) - ly_or0(c.bottom) - c.mt - c.mb }
+  let l = ly_ins(c, 3, bw)
+  let r = ly_ins(c, 1, bw)
+  let t = ly_ins(c, 0, bh)
+  let b = ly_ins(c, 2, bh)
+  if c.w == UI_FILL or (l != UI_AUTO and r != UI_AUTO and c.w == UI_AUTO) { w = bw - ly_or0(l) - ly_or0(r) - c.ml - c.mr }
+  if c.h == UI_FILL or (t != UI_AUTO and b != UI_AUTO and c.h == UI_AUTO) { h = bh - ly_or0(t) - ly_or0(b) - c.mt - c.mb }
   var x = bx + n.pl + c.ml
-  if c.left != UI_AUTO { x = bx + c.left + c.ml } else if c.right != UI_AUTO { x = bx + bw - c.right - c.mr - w }
+  if l != UI_AUTO { x = bx + l + c.ml } else if r != UI_AUTO { x = bx + bw - r - c.mr - w }
   var y = by + n.pt + c.mt
-  if c.top != UI_AUTO { y = by + c.top + c.mt } else if c.bottom != UI_AUTO { y = by + bh - c.bottom - c.mb - h }
+  if t != UI_AUTO { y = by + t + c.mt } else if b != UI_AUTO { y = by + bh - b - c.mb - h }
   ly_place(c, x, y, w, h)
 }
 function ly_or0(v: float) -> float {

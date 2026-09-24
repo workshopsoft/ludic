@@ -1,21 +1,20 @@
-# calc.ludic - CSS's calc(): + - * / and brackets over lengths (px, em, rem, vw, vh, or a bare
-# number, which is px as everywhere here), percentages and plain numbers; var() is already read by
-# then. A width or height keeps its percentage apart (w_pct plus an offset) to be taken of the room
-# the element is given; anywhere else a percentage in calc() has nothing to be a share of.
+# calc.ludic - CSS's calc(), min(), max() and clamp(): + - * / and brackets over lengths (px, em, rem,
+# vw, vh, a bare number is px), percentages and plain numbers. A width, height or inset keeps its
+# percentage apart, to be taken of the room it is given; elsewhere a percentage has nothing to share.
 var ca_s: string = ""
 var ca_i: int = 0
 var ca_bad: string = ""
 var ca_px: float = 0.0            # the result: its lengths, its percentage, and whether it had units
 var ca_pct: float = 0.0
-function ca_is(s: string) -> bool { return len(s) > 5 and s[0..5] == "calc(" }
+function ca_is(s: string) -> bool { return ca_fn_at(s, 0) != "" }
 # calc(...) worked out into ca_px and ca_pct; false (with the reason said) when it cannot be
 function ca_eval(s: string) -> bool {
-  ca_s = s[5..len(s)]
+  ca_s = s
   ca_i = 0
   ca_bad = ""
-  let v = ca_sum()
+  let v = ca_factor()
   ca_ws()
-  if ca_bad == "" and (ca_i >= len(ca_s) or ca_s[ca_i] != 41) { ca_bad = "a closing )" }
+  if ca_bad == "" and ca_i < len(ca_s) { ca_bad = "nothing after its closing )" }
   if ca_bad != "" {
     ui_err(`{s}: calc() expected {ca_bad}`)
     return false
