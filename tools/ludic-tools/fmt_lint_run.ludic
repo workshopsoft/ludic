@@ -1,0 +1,117 @@
+# fmt_lint_run.ludic — L10: walking a project, and the baseline that lets a rule arrive in a
+# codebase that breaks it today without letting it get worse
+var bl_file: []string = new []string
+var bl_rule: []string = new []string
+var bl_count: []int = new []int
+var lt_partial: bool = false            # --check of some files: the baseline is read, never written
+
+function lint_walk(dir: string, out: []string) -> void {
+  let names = Fs.list(dir)
+  if names == null { return }
+  var i = 0
+  while i < len(names) {
+    let p = `{dir}/{names[i]}`
+    if Fs.is_dir(p) { lint_walk(p, out) }
+    else { if ends_with(p, ".ludic") { push(out, p) } }
+    i += 1
+  }
+}
+function lt_baseline_read() -> void {
+  if len(lt_baseline) == 0 { return }
+  let t = read_file(lt_baseline)
+  if t == null { return }
+  let ls = lt_lines(string(t))
+  var i = 0
+  while i < len(ls) {
+    let w = lt_words(ls[i])
+    if len(w) == 3 {
+      push(bl_count, lt_atoi(w[0]))
+      push(bl_rule, w[1])
+      push(bl_file, w[2])
+    }
+    i += 1
+  }
+}
+function lt_allowed(path: string, rule: string) -> int {
+  var i = 0
+  while i < len(bl_file) {
+    if bl_file[i] == path and bl_rule[i] == rule { return bl_count[i] }
+    i += 1
+  }
+  return 0
+}
+# how many violations of `rule` the file has now
+function lt_count(path: string, rule: string) -> int {
+  var n = 0
+  var i = 0
+  while i < len(lr_file) {
+    if lr_file[i] == path and lr_rule[i] == rule { n += 1 }
+    i += 1
+  }
+  return n
+}
+function lt_seen(fs: []string, rs: []string, path: string, rule: string) -> bool {
+  var i = 0
+  while i < len(fs) {
+    if fs[i] == path and rs[i] == rule { return true }
+    i += 1
+  }
+  return false
+}
+# true when every file is within its allowance; prints what is not
+function lint_judge(init: bool) -> bool {
+  lt_baseline_read()
+  let pf = new []string
+  let pr = new []string
+  var i = 0
+  while i < len(lr_file) {
+    if not lt_seen(pf, pr, lr_file[i], lr_rule[i]) {
+      push(pf, lr_file[i])
+      push(pr, lr_rule[i])
+    }
+    i += 1
+  }
+  var ok = true
+  var lowered = false
+  var total = 0
+  let out = buf_new()
+  buf_puts(out, "# lint baseline: the violations each file had when a rule came in (ludic-fmt --lint); only ever lowered\n")
+  var p = 0
+  while p < len(pf) {
+    let now = lt_count(pf[p], pr[p])
+    let allow = lt_allowed(pf[p], pr[p])
+    total += now
+    if not init and now > allow {
+      ok = false
+      lt_print_pair(pf[p], pr[p], now, allow)
+    }
+    var keep = now
+    if not init and now > allow { keep = allow }
+    if not init and now < allow { lowered = true }
+    if keep > 0 { buf_puts(out, `{keep} {pr[p]} {pf[p]}\n`) }
+    p += 1
+  }
+  var b = 0
+  while b < len(bl_file) {
+    if lt_count(bl_file[b], bl_rule[b]) == 0 and bl_count[b] > 0 and not init { lowered = true }
+    b += 1
+  }
+  if len(lt_baseline) > 0 and (init or lowered) and not lt_partial {
+    let f = file_open(lt_baseline, "wb")
+    if f != null {
+      let s = buf_str(out)
+      file_write(f, s, cstr_len(s))
+      file_close(f)
+    }
+  }
+  print(`  lint: {total} violation(s) in the baseline, {len(pf)} file/rule pair(s)`)
+  return ok
+}
+function lt_print_pair(path: string, rule: string, now: int, allow: int) -> void {
+  var i = 0
+  while i < len(lr_file) {
+    if lr_file[i] == path and lr_rule[i] == rule { print(`{path}:{lr_line[i]}: {rule}: {lr_msg[i]}`) }
+    i += 1
+  }
+  if allow > 0 { print(`  ({path} may have {allow} of {rule}, and has {now})`) }
+}

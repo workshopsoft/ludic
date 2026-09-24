@@ -1,0 +1,109 @@
+# fmt_lint_rules.ludic — L10: the rules themselves, over one file's text and its tokens
+function lint_file(path: string, text: string) -> void {
+  let ls = lt_lines(text)
+  if lt_max_file > 0 and len(ls) > lt_max_file { lt_report(path, "max_file_lines", len(ls), `{len(ls)} lines (the limit is {lt_max_file})`) }
+  lint_comments(path, ls)
+  lex(text)
+  if lt_one { lint_statements(path) }
+  if lt_max_fn > 0 { lint_functions(path) }
+}
+function lint_comments(path: string, ls: []string) -> void {
+  var run = 0
+  var start = 0
+  var code_seen = false
+  var i = 0
+  while i <= len(ls) {
+    var is_c = false
+    var blank = true
+    if i < len(ls) {
+      let w = lt_words_raw(ls[i])
+      is_c = w == 1
+      blank = w == 0
+    }
+    if is_c {
+      if run == 0 { start = i }
+      run += 1
+    } else {
+      if run > 0 {
+        let header = not code_seen and start == 0
+        if header and lt_max_header > 0 and run > lt_max_header { lt_report(path, "max_header_lines", start + 1, `the opening comment is {run} lines (the limit is {lt_max_header})`) }
+        if not header and lt_max_comment > 0 and run > lt_max_comment { lt_report(path, "max_comment_lines", start + 1, `a comment of {run} lines (the limit is {lt_max_comment}): say why in a line or two; the story goes in the commit or docs/`) }
+        run = 0
+      }
+      if not blank { code_seen = true }
+    }
+    i += 1
+  }
+}
+# 0 a blank line, 1 a comment line, 2 code
+function lt_words_raw(line: string) -> int {
+  var i = 0
+  while i < len(line) and (line[i] == ' ' or line[i] == 9) { i += 1 }
+  if i >= len(line) { return 0 }
+  if line[i] == '#' { return 1 }
+  return 2
+}
+function lint_statements(path: string) -> void {
+  var i = 0
+  while i < ntok() {
+    if tk_kind[i] == LT_OP and tok_len(i) == 1 and src[tk_start[i]] == ';' {
+      let k = tk_kind[i + 1]
+      if k != LT_NL and k != LT_COMMENT and k != LT_EOF { lt_report(path, "one_statement", tk_line[i] + 1, "two statements on one line") }
+    }
+    i += 1
+  }
+}
+function lint_functions(path: string) -> void {
+  var i = 0
+  while i < ntok() {
+    if tk_kind[i] == LT_KW and (tok_text(i) == "function") {
+      let end = lt_fn_end(i)
+      if end >= 0 {
+        let n = tk_line[end] - tk_line[i] + 1
+        if n > lt_max_fn { lt_report(path, "max_function_lines", tk_line[i] + 1, `{lt_fn_name(i)} is {n} lines (the limit is {lt_max_fn})`) }
+      }
+    }
+    i += 1
+  }
+}
+function lt_fn_name(i: int) -> string {
+  if i + 1 < ntok() { return string(tok_text(i + 1)) }
+  return "a function"
+}
+# the token closing a function's body, or -1 for one with none (an extern)
+function lt_fn_end(i: int) -> int {
+  var j = i + 1
+  var paren = 0
+  var closed = false
+  while j < ntok() {
+    let k = tk_kind[j]
+    if k == LT_OP and tok_len(j) == 1 {
+      let c = src[tk_start[j]]
+      if c == '(' { paren += 1 }
+      if c == ')' {
+        paren -= 1
+        if paren == 0 { closed = true }
+      }
+      if c == '{' and paren == 0 and closed { return lt_close(j) }
+    }
+    if (k == LT_NL or k == LT_EOF) and paren == 0 and closed { return -1 }
+    j += 1
+  }
+  return -1
+}
+function lt_close(open: int) -> int {
+  var depth = 0
+  var j = open
+  while j < ntok() {
+    if tk_kind[j] == LT_OP and tok_len(j) == 1 {
+      let c = src[tk_start[j]]
+      if c == '{' { depth += 1 }
+      if c == '}' {
+        depth -= 1
+        if depth == 0 { return j }
+      }
+    }
+    j += 1
+  }
+  return ntok() - 1
+}

@@ -10,6 +10,9 @@
 #   ludic-fmt a.md               format the ```ludic fences in a document
 #   cat a.ludic | ludic-fmt -    filter mode (stdin -> stdout)
 program LudicFmt {
+  import "fmt_lint.ludic"
+  import "fmt_lint_rules.ludic"
+  import "fmt_lint_run.ludic"
   # ---- token kinds (mirror ludic_syntax.h) ----
   const LT_EOF: int = 0
   const LT_NL: int = 1
@@ -589,6 +592,8 @@ program LudicFmt {
     var quiet = false
     var changed = false
     var failed = false
+    var lint_only = false
+    var lint_init = false
     let files = new []pointer
     var ai = 1
     while ai < arg_count() {
@@ -597,11 +602,32 @@ program LudicFmt {
       else { if (a == "--check") or (a == "-l") { check = true }
       else { if (a == "-q") or (a == "--quiet") { quiet = true }
       else { if (a == "--indent") { ai += 1;  if ai < arg_count() { indent = 0;  let d = arg(ai);  var di = 0;  while d[di] != 0 { indent = indent * 10 + (d[di] - 48);  di += 1 } } }
-      else { if (a == "-h") or (a == "--help") { print("ludic-fmt — format Ludic source");  return }
-      else { push(files, a) } } } } }
+      else { if (a == "--lint") { lint_only = true }
+      else { if (a == "--init-baseline") { lint_only = true;  lint_init = true }
+      else { if (a == "-h") or (a == "--help") { print("ludic-fmt — format Ludic source; --check also checks package.ludic's lint rules, --lint checks the project");  return }
+      else { push(files, a) } } } } } } }
       ai += 1
     }
     if indent < 1 or indent > 8 { indent = 2 }
+    # --lint: the project's rules over its paths, against the baseline (L10)
+    if lint_only {
+      if not lint_config() { print("ludic-fmt --lint: package.ludic states no `lint` rules");  exit(2) }
+      let all = new []string
+      var li = 0
+      while li < len(lt_paths) {
+        lint_walk(lt_paths[li], all)
+        li += 1
+      }
+      var lj = 0
+      while lj < len(all) {
+        let t = read_file(all[lj])
+        if t != null { lint_file(all[lj], string(t)) }
+        lj += 1
+      }
+      if not lint_judge(lint_init) { exit(1) }
+      return
+    }
+    let linting = check and lint_config()
 
     # stdin filter mode
     if len(files) == 0 or (len(files) == 1 and (files[0] == "-")) {
@@ -620,6 +646,7 @@ program LudicFmt {
         file_write(file_stderr(), m, cstr_len(m));  failed = true
       } else {
         let is_md = ends_with(path, ".md") or ends_with(path, ".markdown")
+        if linting and not is_md { lint_file(path, string(text)) }
         let out = format_source(text, is_md, indent)
         let same = (out == text)
         if check {
@@ -638,6 +665,11 @@ program LudicFmt {
       fi += 1
     }
     if failed { exit(2) }
+    # the files named are part of a project: judge them, but never rewrite its baseline
+    if linting {
+      lt_partial = true
+      if not lint_judge(false) { exit(1) }
+    }
     if check and changed { exit(1) }
   }
 }

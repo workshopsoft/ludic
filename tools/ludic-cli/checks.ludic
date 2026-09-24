@@ -239,6 +239,30 @@ function collect_impl_pairs(allsrc: pointer, pairs: []pointer) -> void {
   }
 }
 
+# {ns}.{method} pairs a namespace declares with `alias` (L6) - the engine's in
+# runtime/native/namespaces.ludic - which the compiler dispatches as surely as its own
+function collect_alias_pairs(pairs: []pointer) -> void {
+  let src = read_file("runtime/native/namespaces.ludic")
+  if src == null { return }
+  var ns = ""
+  let n = slen(src)
+  var i = 0
+  while i < n {
+    let ln = s_trim(line_at(src, i))
+    i = i + slen(line_at(src, i)) + 1
+    if s_starts(ln, "namespace ") {
+      var e = 10
+      while e < slen(ln) and ln[e] != ' ' and ln[e] != '{' { e += 1 }
+      ns = sslice(ln, 10, e)
+    }
+    if s_starts(ln, "alias ") and slen(ns) > 0 {
+      var e = 6
+      while e < slen(ln) and ln[e] != '(' and ln[e] != ' ' and ln[e] != '=' { e += 1 }
+      set_add(pairs, ns + "." + sslice(ln, 6, e))
+    }
+  }
+}
+
 # gather the docs facts: token set, and the (ns.member) pairs of ns-method pages
 function collect_docs(tokens: []pointer, docpairs: []pointer) -> void {
   let list = capture("find docs/language -name '*.md' ! -name '_section.md' 2>/dev/null")
@@ -298,6 +322,7 @@ function cmd_check_impl() -> int {
   let allsrc = read_all_selfhost()
   let impl = new []pointer
   collect_impl_pairs(allsrc, impl)
+  collect_alias_pairs(impl)
   let tokens = new []pointer
   let docpairs = new []pointer
   collect_docs(tokens, docpairs)

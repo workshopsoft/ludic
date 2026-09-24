@@ -1360,6 +1360,23 @@ checked. Diagnostics are limited to parse-level errors, reported as
 `file:line: error: message`; richer static checks (unknown identifiers,
 duplicate types, unknown fields, arity) are future work.
 
+`ludic-fmt --check` also enforces a project's style, stated in its `package.ludic`:
+
+```
+lint one_statement              # two statements on one line
+lint max_file_lines 100
+lint max_function_lines 50
+lint max_comment_lines 2        # a comment says why, in a line or two
+lint max_header_lines 3         # the comment that opens a file
+lint paths "src" "lab"          # what `ludic-fmt --lint` walks
+lint baseline "tests/lint-baseline.txt"
+```
+
+`ludic-fmt --lint` checks the project's paths; the baseline is a ratchet - the violations each file
+had when a rule came in, which it may keep but not add to, lowered automatically as they are
+fixed - so a rule can arrive in a codebase that breaks it today (`ludic-fmt --init-baseline`
+writes it). A `;` or a `#` inside a string does not count.
+
 ### Editors
 
 ```bash

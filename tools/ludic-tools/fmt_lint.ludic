@@ -1,0 +1,111 @@
+# fmt_lint.ludic — L10: the style rules, checked by the formatter. A project states them in its
+# package.ludic, and `ludic-fmt --check` (the files given) or `ludic-fmt --lint` (the project's
+# paths) fails a file that breaks one:
+#   lint one_statement              two statements on one line (`a();  b()`)
+#   lint max_file_lines 100         a file's length
+#   lint max_function_lines 50      a function's, from `function` to its closing brace
+#   lint max_comment_lines 2        a block of comment lines - a comment says why, in a line or two
+#   lint max_header_lines 6         the block that opens a file, which says what the file is
+#   lint paths "src" "lab"          what --lint walks
+#   lint baseline "tests/lint-baseline.txt"
+# The baseline is a ratchet: `<count> <rule> <file>` lines, the violations a file had when a rule
+# came in. A file may have that many and no more; when it has fewer the baseline is lowered, and
+# `--init-baseline` writes it from what is there now.
+var lt_one: bool = false
+var lt_max_file: int = 0
+var lt_max_fn: int = 0
+var lt_max_comment: int = 0
+var lt_max_header: int = 0
+var lt_baseline: string = ""
+var lt_paths: []string = new []string
+var lr_file: []string = new []string
+var lr_rule: []string = new []string
+var lr_line: []int = new []int
+var lr_msg: []string = new []string
+
+function lt_atoi(s: string) -> int {
+  var n = 0
+  var i = 0
+  while i < len(s) {
+    let c = s[i]
+    if c >= '0' and c <= '9' { n = n * 10 + (c - '0') }
+    i += 1
+  }
+  return n
+}
+function lt_unquote(s: string) -> string {
+  let n = len(s)
+  if n >= 2 and s[0] == '"' and s[n - 1] == '"' { return s[1 .. n - 1] }
+  return s
+}
+# the words of a line, a "quoted" one kept whole, a # ending it
+function lt_words(line: string) -> []string {
+  let out = new []string
+  var i = 0
+  let n = len(line)
+  while i < n {
+    while i < n and (line[i] == ' ' or line[i] == 9) { i += 1 }
+    if i >= n or line[i] == '#' { break }
+    var j = i
+    if line[i] == '"' {
+      j = i + 1
+      while j < n and line[j] != '"' { j += 1 }
+      if j < n { j += 1 }
+    } else {
+      while j < n and line[j] != ' ' and line[j] != 9 { j += 1 }
+    }
+    push(out, lt_unquote(line[i .. j]))
+    i = j
+  }
+  return out
+}
+function lt_lines(text: string) -> []string {
+  let out = new []string
+  var a = 0
+  var i = 0
+  let n = len(text)
+  while i < n {
+    if text[i] == '\n' {
+      push(out, text[a .. i])
+      a = i + 1
+    }
+    i += 1
+  }
+  if a < n { push(out, text[a .. n]) }
+  return out
+}
+# the project's rules, from package.ludic in the directory ludic-fmt runs in
+function lint_config() -> bool {
+  let man = read_file("package.ludic")
+  if man == null { return false }
+  var any = false
+  let ls = lt_lines(string(man))
+  var i = 0
+  while i < len(ls) {
+    let w = lt_words(ls[i])
+    if len(w) >= 2 and w[0] == "lint" {
+      any = true
+      if w[1] == "one_statement" { lt_one = true }
+      if w[1] == "max_file_lines" and len(w) > 2 { lt_max_file = lt_atoi(w[2]) }
+      if w[1] == "max_function_lines" and len(w) > 2 { lt_max_fn = lt_atoi(w[2]) }
+      if w[1] == "max_comment_lines" and len(w) > 2 { lt_max_comment = lt_atoi(w[2]) }
+      if w[1] == "max_header_lines" and len(w) > 2 { lt_max_header = lt_atoi(w[2]) }
+      if w[1] == "baseline" and len(w) > 2 { lt_baseline = w[2] }
+      if w[1] == "paths" {
+        var k = 2
+        while k < len(w) {
+          push(lt_paths, w[k])
+          k += 1
+        }
+      }
+    }
+    i += 1
+  }
+  return any
+}
+function lt_report(path: string, rule: string, line: int, msg: string) -> void {
+  push(lr_file, path)
+  push(lr_rule, rule)
+  push(lr_line, line)
+  push(lr_msg, msg)
+}

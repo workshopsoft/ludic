@@ -108,6 +108,26 @@ function cmd_test_tools() -> int {
   if shq(`{fmt} {tmp_dir()}/q.ludic | grep -q '\\[Pos, {{Foe}}\\]'`) { ok("query tags stay tight ({Foe})") } else { bad("query tags stay tight") }
   write_file(`{tmp_dir()}/al.ludic`, "program A {\n  const R_A:   int = 0    # one\n  const R_BBB: int = 1    # two\n}\n")
   if shq(`{fmt} {tmp_dir()}/al.ludic | grep -q 'R_A:   int = 0    # one'`) { ok("hand alignment preserved") } else { bad("hand alignment preserved") }
+  write_file(`{tmp_dir()}/gen.ludic`, "program G {\n  function f<T>(p: Pool<T>, m: Map<string, []int>) -> Pool<Pool<T>> {\n    let ok = a < b and c > d\n    return null\n  }\n}\n")
+  if shq(`{fmt} {tmp_dir()}/gen.ludic | cmp -s - {tmp_dir()}/gen.ludic`) { ok("type arguments stay together, comparisons keep their spaces (L5)") } else { bad("type arguments stay together (L5)") }
+
+  # --- the style rules a project states (L10) --------------------------------
+  let lp = `{tmp_dir()}/lintproj`
+  let lfmt = `{capture_line("pwd")}/{fmt}`       # the tests below run from inside the project
+  shell(`rm -rf {lp} && mkdir -p {lp}/src`)
+  write_file(`{lp}/package.ludic`, "package \"t\"\nlint one_statement\nlint max_file_lines 20\nlint max_function_lines 5\nlint max_comment_lines 2\nlint max_header_lines 3\nlint paths \"src\"\nlint baseline \"lint-baseline.txt\"\n")
+  write_file(`{lp}/src/a.ludic`, "# a.ludic - a file\nfunction f() -> int {\n  # one\n  # two\n  # three\n  let a = 1;  return a\n}\n")
+  if not shq(`cd {lp} && {lfmt} --lint > out.txt 2>&1`) and shq(`grep -q 'src/a.ludic:3: max_comment_lines' {lp}/out.txt`) and shq(`grep -q 'src/a.ludic:6: one_statement' {lp}/out.txt`) {
+    ok("--lint fails a comment over the limit and two statements on a line, at their lines")
+  } else { bad("--lint fails a comment over the limit and two statements on a line") }
+  if shq(`cd {lp} && {lfmt} --init-baseline > /dev/null && {lfmt} --lint > /dev/null`) { ok("--init-baseline allows what is there") } else { bad("--init-baseline allows what is there") }
+  write_file(`{lp}/src/b.ludic`, "function g() -> int {\n  let b = 2;  return b\n}\n")
+  if not shq(`cd {lp} && {lfmt} --lint > /dev/null 2>&1`) { ok("a new violation fails, whatever the baseline allows elsewhere") } else { bad("a new violation fails") }
+  write_file(`{lp}/src/b.ludic`, "function g() -> int { return 2 }\n")
+  write_file(`{lp}/src/a.ludic`, "# a.ludic - a file\nfunction f() -> int {\n  let a = 1;  return a\n}\n")
+  if shq(`cd {lp} && {lfmt} --lint > /dev/null && ! grep -q max_comment_lines lint-baseline.txt`) { ok("fixing one lowers the baseline, and it stays lowered") } else { bad("fixing one lowers the baseline") }
+  write_file(`{lp}/src/c.ludic`, "function h() -> string { return \"a; b\" }\n")
+  if shq(`cd {lp} && {lfmt} --lint > /dev/null`) { ok("a ; inside a string is not a statement") } else { bad("a ; inside a string is not a statement") }
 
   # --- --check exit status, for CI and pre-commit hooks ----------------------
   let chk1 = sh(`{fmt} --check -q {tmp_dir()}/m.ludic`)
