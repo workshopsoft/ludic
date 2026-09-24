@@ -38,6 +38,7 @@ function ly_measure(n: UiNode, avail: float, size: float, fg: int) -> void {
   n.content_h = n.mh
   if fixed_w >= 0.0 { n.mw = fixed_w }
   if n.h >= 0.0 { n.mh = n.h }
+  ly_ratio(n, fixed_w, avail)
   n.mw = ly_clamp(n.mw, n.min_w, n.max_w)
   n.mh = ly_clamp(n.mh, n.min_h, n.max_h)
   ly_min_note(n)

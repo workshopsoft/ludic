@@ -532,6 +532,13 @@ applies to both:
 - **The look is CSS.**
   - Colours: `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`, `rgb()`, `rgba()` and the basic names,
     usually through `var(--...)` from a theme.
+  - `background` (or `background-image`) may be `linear-gradient(to right, #000, rgba(0,0,0,0) 80%)`:
+    `to top|bottom|left|right` or an angle taken to the nearest side, and stops with or without a
+    place. It is drawn as whole-pixel bands with square corners.
+  - `aspect-ratio: 16 / 9` (or `1.5`) makes an element's height from its width (fixed, a share or
+    `fill`), or its width from a fixed height. `object-fit: fill|contain|cover|none|scale-down`
+    places a picture in its box by the picture's own size (a renderer's `image_w` / `image_h`;
+    `cover` is clipped to the box); a native places its own content with `ui_object_fit(n, w, h)`.
   - Boxes: `border-radius`, `box-shadow` (sharp, offset), `background-image: url(...)`, and
     `border-image: url(...) slice / width` as a nine-slice. With no background colour a nine-slice
     is drawn as painted, as CSS draws one; with one it is tinted by it, so one rounded texture serves

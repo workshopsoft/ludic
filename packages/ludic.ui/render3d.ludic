@@ -31,6 +31,8 @@ export function ui_render3d() -> void {
   b.text = fn r3u_text
   b.measure = fn r3u_measure
   b.image = fn r3u_image
+  b.image_w = fn r3u_image_w
+  b.image_h = fn r3u_image_h
   b.nine = fn r3u_nine
   b.clip = fn r3u_clip
   b.unclip = fn r3u_unclip

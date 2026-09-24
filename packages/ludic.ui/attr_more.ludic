@@ -2,7 +2,7 @@
 # shorthand, flex-shrink, order, text-shadow, pointer-events, text-fit and line-height (text_fit.ludic)
 function el_more(n: UiNode, key: string, v: Val) -> bool {
   let s = vl_text(v)
-  if key == "shrink" { nx(n).shrink = Math.max(el_num(s), 0.0) } else if key == "order" { nx(n).order = int(el_num(s)) } else if key == "text-shadow" { el_text_shadow(n, s) } else if key == "pointer-events" { nx(n).no_pointer = tpl_words(s) == "none" } else if key == "text-fit" { el_text_fit(n, s) } else if key == "line-height" { el_line_h(n, s) } else { return false }
+  if key == "shrink" { nx(n).shrink = Math.max(el_num(s), 0.0) } else if key == "order" { nx(n).order = int(el_num(s)) } else if key == "text-shadow" { el_text_shadow(n, s) } else if key == "pointer-events" { nx(n).no_pointer = tpl_words(s) == "none" } else if key == "text-fit" { el_text_fit(n, s) } else if key == "line-height" { el_line_h(n, s) } else { return el_fit_props(n, key, s) }
   return true
 }
 # width or height: a length (0 included), fill, a percentage, calc(), or auto/fit (none)

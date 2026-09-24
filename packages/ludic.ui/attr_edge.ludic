@@ -8,7 +8,7 @@ function el_edge(n: UiNode, key: string, v: Val) -> bool {
     let parts = lss_split(s, 32)
     if len(parts) > 0 { n.bar_c = ui_color(parts[0]) }
     if len(parts) > 1 { n.bar_track = ui_color(parts[1]) }
-  } else if key == "background-image" { n.bg_img = el_url(s) } else if key == "border-image" { el_border_image(n, s) } else if key == "box-shadow" { el_shadow(n, s) } else if key == "animation" { el_animation(n, s) } else if key == "transition" { n.tr_dur = el_secs(s) } else { return false }
+  } else if key == "background-image" and gr_is(tpl_words(s)) { nx(n).grad = gr_parse(s) } else if key == "background-image" { n.bg_img = el_url(s) } else if key == "border-image" { el_border_image(n, s) } else if key == "box-shadow" { el_shadow(n, s) } else if key == "animation" { el_animation(n, s) } else if key == "transition" { n.tr_dur = el_secs(s) } else { return false }
   return true
 }
 # url(path) or url("path") -> path

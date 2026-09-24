@@ -26,6 +26,9 @@ export property UiNodeX {
   ip_r: float = 0.0
   ip_b: float = 0.0
   ip_l: float = 0.0
+  grad: UiGradient = null       # background: linear-gradient(...)
+  ratio: float = 0.0            # aspect-ratio, width over height; 0 none
+  fit_obj: int = 0              # object-fit: 0 fill, 1 contain, 2 cover, 3 none, 4 scale-down
 }
 function nx(n: UiNode) -> UiNodeX {
   if n.ex == null { n.ex = new UiNodeX }

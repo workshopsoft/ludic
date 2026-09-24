@@ -8,6 +8,8 @@ export property UiBackend {
   text: fn(float, float, string, float, int, float) -> void = null                # x y text size rgb alpha
   measure: fn(string, float) -> float = null
   image: fn(string, float, float, float, float, int, float) -> void = null        # src x y w h tint alpha
+  image_w: fn(string) -> float = null     # a picture's own size, for object-fit
+  image_h: fn(string) -> float = null
   nine: fn(string, float, float, float, float, float, float, int, float) -> void = null  # src slice x y w h width tint alpha (ui_nine_cuts)
   clip: fn(float, float, float, float) -> void = null
   unclip: fn() -> void = null

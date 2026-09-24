@@ -1,0 +1,38 @@
+# layout_fit.ludic - aspect-ratio in layout: a width (fixed, a share, or fill) makes the height, a
+# height the width, and neither the height from the content's width; object-fit in drawing: where a
+# picture (or a native's content) of a natural size goes in the element's content box
+function ly_ratio(n: UiNode, fixed_w: float, avail: float) -> void {
+  if n.ex == null or n.ex.ratio <= 0.0 { return }
+  let r = n.ex.ratio
+  if n.h < 0.0 and n.h_pct <= 0.0 {
+    var w = n.mw
+    if fixed_w >= 0.0 { w = fixed_w } else if n.w == UI_FILL { w = avail - n.ml - n.mr }
+    n.mw = w
+    n.mh = w / r
+  } else if fixed_w < 0.0 and n.w != UI_FILL and n.h >= 0.0 { n.mw = n.h * r }
+}
+# x, y, w, h: a `nat_w` x `nat_h` picture in the node's content box by its object-fit
+export function ui_object_fit(n: UiNode, nat_w: float, nat_h: float) -> []float {
+  let bx = n.x + n.pl + n.bl
+  let by = n.y + n.pt + n.bt
+  let bw = n.cw - ly_hin(n)
+  let bh = n.ch - ly_vin(n)
+  var k = 0
+  if n.ex != null { k = n.ex.fit_obj }
+  var w = bw
+  var h = bh
+  if k != 0 and nat_w > 0.0 and nat_h > 0.0 {
+    var s = Math.min(bw / nat_w, bh / nat_h)
+    if k == 2 { s = Math.max(bw / nat_w, bh / nat_h) }
+    if k == 3 { s = 1.0 }
+    if k == 4 { s = Math.min(s, 1.0) }
+    w = nat_w * s
+    h = nat_h * s
+  }
+  let out = new []float
+  push(out, bx + (bw - w) / 2.0)
+  push(out, by + (bh - h) / 2.0)
+  push(out, w)
+  push(out, h)
+  return out
+}

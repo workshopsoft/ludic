@@ -50,7 +50,17 @@ function fr_image(n: UiNode) -> void {
     c = n.rfg
     a = fr_ga * n.rfg_a
   }
-  ui_be.image(n.src, n.x + n.pl + n.bl, n.y + n.pt + n.bt, n.cw - ly_hin(n), n.ch - ly_vin(n), c, a)
+  var nat_w = 0.0
+  var nat_h = 0.0
+  if ui_be.image_w != null and ui_be.image_h != null {
+    nat_w = ui_be.image_w(n.src)
+    nat_h = ui_be.image_h(n.src)
+  }
+  let r = ui_object_fit(n, nat_w, nat_h)
+  let clipped = ui_be.clip != null and (r[2] > n.cw - ly_hin(n) or r[3] > n.ch - ly_vin(n))
+  if clipped { fr_clip_push(n.x + n.pl + n.bl, n.y + n.pt + n.bt, n.cw - ly_hin(n), n.ch - ly_vin(n)) }
+  ui_be.image(n.src, r[0], r[1], r[2], r[3], c, a)
+  if clipped { fr_clip_pop() }
 }
 # prefix:name, and not a path (C:/... is a drive, not an atlas)
 function fr_is_cell(src: string) -> bool {

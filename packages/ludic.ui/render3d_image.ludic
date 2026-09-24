@@ -61,6 +61,22 @@ function r3u_image(src: string, x: float, y: float, w: float, h: float, c: int, 
   let t = r3u_tex(src)
   if t != 0 { ov_sub(t, int(x), int(y), int(w), int(h), 0.0, 0.0, 1.0, 1.0, r3u_r(c), r3u_g(c), r3u_b(c), a) }
 }
+# a picture's own size, for object-fit; an atlas cell is drawn square
+function r3u_image_w(src: string) -> float {
+  if r3u_is_cell(src) { return 1.0 }
+  return float(tex_width(r3u_tex(src)))
+}
+function r3u_image_h(src: string) -> float {
+  if r3u_is_cell(src) { return 1.0 }
+  return float(tex_height(r3u_tex(src)))
+}
+function r3u_is_cell(src: string) -> bool {
+  for k in 0 .. len(r3u_atlas) {
+    let p = r3u_atlas[k]
+    if len(src) > len(p) and src[0..len(p)] == p and src[len(p)] == 58 { return true }
+  }
+  return false
+}
 function r3u_cell(k: int, name: string, x: float, y: float, w: float, h: float, c: int, a: float) -> void {
   let names = r3u_atlas_names[k]
   var idx = -1

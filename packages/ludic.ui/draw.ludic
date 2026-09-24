@@ -38,6 +38,7 @@ function fr_background(n: UiNode) -> void {
     }
     if a > 0.0 { fr_fill(n, n.x, n.y, c, a) }
   }
+  if n.ex != null and n.ex.grad != null { gr_draw(n.ex.grad, n.x, n.y, n.cw, n.ch, fr_ga) }
   if n.bg_img != "" and ui_be.image != null { ui_be.image(n.bg_img, n.x, n.y, n.cw, n.ch, 16777215, fr_ga) }
 }
 function fr_fill(n: UiNode, x: float, y: float, c: int, a: float) -> void {
