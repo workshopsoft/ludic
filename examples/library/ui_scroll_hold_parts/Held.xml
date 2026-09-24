@@ -1,0 +1,6 @@
+<div class="page">
+  <div class="list" id="log" scroll-top="{top}" on-scroll="set top = event.value"><each in="{range(10)}" as="r"><p>{r}</p></each></div>
+  <div class="list" id="fixed" scroll-top="50"><each in="{range(10)}" as="r"><p>{r}</p></each></div>
+  <div class="list" id="free"><each in="{range(10)}" as="r"><p>{r}</p></each></div>
+  <p>top {top}</p>
+</div>

@@ -32,9 +32,11 @@ function sc_walk(n: UiNode, live: bool) -> void {
   if n.kind == UI_SCROLL {
     let room = n.ch - ly_vin(n)
     let most = Math.max(n.content_h - ly_vin(n) - room, 0.0)
-    var off = sc_get(n.key)
+    let held = sc_held(n, sc_get(n.key), live)
+    var off = held
     if live { off = sc_input(n, off, room, most) }
     off = Math.clamp(off, 0.0, most)
+    if live and off != Math.clamp(held, 0.0, most) { ui_fire(n, "scroll", Value.float(off / ui_px(1.0))) }
     sc_put(n.key, off)
     n.scroll_y = off
     if off != 0.0 {

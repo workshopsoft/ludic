@@ -457,6 +457,9 @@ applies to both:
     anywhere) or by Enter or the pad's A held on it; it is `:active` in between.
   - A scroll box (`overflow: auto` or `<scroll>`) takes the wheel, has a scrollbar that can be
     dragged (`scrollbar-color`), clips what it holds and pulls the focused control into view.
+  - `scroll-top="{px}"` holds a scroll box at that offset every frame; the wheel, the bar and the
+    focus still move it for the frame and say so with `on-scroll` (`event.value`), for the program
+    to keep. `ui_scroll_set("id", px)` (an id or a key) moves a box once.
   - The scrollbar is `.ui-scrollbar` with a `.ui-thumb`, styled like a control's parts. A press on
     the thumb holds it where it was taken and the pointer moves it in proportion; a press on the
     track jumps the thumb's middle there and holds it. A press on the bar presses nothing under it.

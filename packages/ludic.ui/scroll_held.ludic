@@ -1,0 +1,29 @@
+# scroll_held.ludic - a scroll box held at an offset: scroll-top="{px}" puts it there every frame
+# (the wheel, the bar and the focus still move it, and say so with on-scroll and event.value, for
+# the program to keep or not), and ui_scroll_set(id or key, px) moves it once
+var sc_want_keys: []string = new []string
+var sc_want_px: []float = new []float
+export function ui_scroll_set(key: string, px: float) -> void {
+  push(sc_want_keys, key)
+  push(sc_want_px, px)
+}
+# how far a box is scrolled before this frame's input: what it was, what ui_scroll_set asked for,
+# or what its scroll-top says
+function sc_held(n: UiNode, off: float, live: bool) -> float {
+  var at = off
+  if live {
+    let keys = new []string
+    let pxs = new []float
+    for i in 0 .. len(sc_want_keys) {
+      if sc_want_keys[i] == n.key or (n.id != "" and sc_want_keys[i] == n.id) { at = ui_px(sc_want_px[i]) } else {
+        push(keys, sc_want_keys[i])
+        push(pxs, sc_want_px[i])
+      }
+    }
+    sc_want_keys = keys
+    sc_want_px = pxs
+  }
+  let v = ui_attr(n, "scroll-top")
+  if Value.kind(v) != 0 { at = ui_px(el_num(vl_text(v))) }
+  return at
+}

@@ -96,6 +96,8 @@ What a game's screens found missing, now in `ludic.ui`:
   as a percentage or a `calc()` of one, of the containing block;
 - a nine-slice's corners are clamped to half the box in each direction on its own and cut on whole
   pixels (`ui_nine_cuts`), so a small key cap has no seam;
+- `scroll-top="{px}"` holds a scroll box at an offset, with `on-scroll` when the player moves it;
+  `ui_scroll_set(id, px)` moves one once;
 - a transition lands exactly on its end value (it had stopped a rounding error short of it, at every
   frame rate).
 

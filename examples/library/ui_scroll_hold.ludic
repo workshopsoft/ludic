@@ -1,0 +1,32 @@
+# ui_scroll_hold.ludic — scroll-top holds a box at an offset: one follows its state, which on-scroll
+# keeps in step with the wheel; one stays where it is held; and ui_scroll_set moves another once.
+import "ludic.ui"
+import "ui_scroll_hold_parts/Held.ludic"
+program UiScrollHold {
+  numbers float
+  function frame(x: float, y: float, wheel: float) -> UiNode {
+    let i = new UiInput
+    i.x = x
+    i.y = y
+    i.wheel = wheel
+    ui_input(i)
+    ui_show("Held", null, 0.0, 0.0, 400.0, 600.0)
+    let root: UiNode = ui_nodes("Held", null)
+    ui_place(root, 0.0, 0.0, 400.0, 600.0)
+    return root.children[0]
+  }
+  function at(p: UiNode) -> string { return `{int(p.children[0].scroll_y)} {int(p.children[1].scroll_y)} {int(p.children[2].scroll_y)} {p.children[3].text}` }
+  entry {
+    ui_backend(new UiBackend)
+    let p = frame(-1.0, -1.0, 0.0)
+    let first = at(frame(-1.0, -1.0, 0.0))
+    frame(p.children[0].x + 5.0, p.children[0].y + 5.0, 1.0)
+    let followed = at(frame(-1.0, -1.0, 0.0))
+    frame(p.children[1].x + 5.0, p.children[1].y + 5.0, -1.0)
+    let fixed = at(frame(-1.0, -1.0, 0.0))
+    ui_scroll_set("free", 70.0)
+    let set = at(frame(-1.0, -1.0, 0.0))
+    frame(p.children[2].x + 5.0, p.children[2].y + 5.0, 1.0)
+    print(`{first} | {followed} | {fixed} | {set} | {at(frame(-1.0, -1.0, 0.0))}`)
+  }
+}

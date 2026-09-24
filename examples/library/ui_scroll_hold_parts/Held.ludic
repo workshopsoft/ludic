@@ -1,0 +1,5 @@
+# Held.ludic - three scroll boxes: one held at its state's offset and told when it moves, one held
+# at a fixed offset, and one the program moves once
+component Held {
+  state top: float = 120.0
+}
