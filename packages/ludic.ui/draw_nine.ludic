@@ -1,0 +1,19 @@
+# draw_nine.ludic - where a nine-slice is cut: its corners as wide as border-image says, but never
+# more than half the box across or half of it down (each direction on its own, so a small key cap
+# keeps its round ends and has no seam), on whole pixels so the nine pieces meet exactly
+# x0 x1 x2 x3 then y0 y1 y2 y3: the columns' and the rows' edges
+export function ui_nine_cuts(x: float, y: float, w: float, h: float, dst: float) -> []float {
+  let dx = Math.max(Math.min(dst, w / 2.0), 0.0)
+  let dy = Math.max(Math.min(dst, h / 2.0), 0.0)
+  let out = new []float
+  push(out, nn_px(x))
+  push(out, nn_px(x + dx))
+  push(out, nn_px(x + w - dx))
+  push(out, nn_px(x + w))
+  push(out, nn_px(y))
+  push(out, nn_px(y + dy))
+  push(out, nn_px(y + h - dy))
+  push(out, nn_px(y + h))
+  return out
+}
+function nn_px(v: float) -> float { return Math.floor(v + 0.5) }

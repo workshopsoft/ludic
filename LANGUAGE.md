@@ -532,7 +532,9 @@ applies to both:
   - Boxes: `border-radius`, `box-shadow` (sharp, offset), `background-image: url(...)`, and
     `border-image: url(...) slice / width` as a nine-slice. With no background colour a nine-slice
     is drawn as painted, as CSS draws one; with one it is tinted by it, so one rounded texture serves
-    every colour, and `transparent` (or any colour with no alpha) leaves nothing to see.
+    every colour, and `transparent` (or any colour with no alpha) leaves nothing to see. Its
+    corners are at most half the box across and half of it down, each way on its own, and cut on
+    whole pixels (`ui_nine_cuts(x, y, w, h, width)` for a renderer of its own).
   - Text: `text-shadow: x y blur colour` draws the text again under itself, offset (the blur is
     drawn sharp), and is inherited. `text-fit: shrink 12px` draws a line too long for its box
     smaller, down to that size, then cuts what still does not fit with an ellipsis (for a chip

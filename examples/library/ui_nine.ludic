@@ -1,0 +1,19 @@
+# ui_nine.ludic — a nine-slice's cuts: its corners are at most half the box across and half of it
+# down, each direction on its own, so a key cap shorter than two corners keeps them across; the cuts
+# land on whole pixels so the pieces meet.
+import "ludic.ui"
+program UiNine {
+  numbers float
+  function cuts(x: float, y: float, w: float, h: float, dst: float) -> string {
+    let c = ui_nine_cuts(x, y, w, h, dst)
+    var s = ""
+    for i in 0 .. 8 {
+      if i == 4 { s = s + "/" }
+      s = s + ` {int(c[i])}`
+    }
+    return s
+  }
+  entry {
+    print(`cap{cuts(0.0, 0.0, 30.0, 16.0, 12.0)} | wide{cuts(0.0, 0.0, 100.0, 40.0, 12.0)} | odd{cuts(10.4, 3.6, 20.3, 9.0, 14.0)}`)
+  }
+}

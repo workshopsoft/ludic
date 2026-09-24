@@ -42,7 +42,7 @@ function fr_background(n: UiNode) -> void {
 }
 function fr_fill(n: UiNode, x: float, y: float, c: int, a: float) -> void {
   if n.bi_src != "" and ui_be.nine != null {
-    ui_be.nine(n.bi_src, n.bi_slice, x, y, n.cw, n.ch, Math.min(n.bi_width, Math.min(n.cw, n.ch) / 2.0), c, a)
+    ui_be.nine(n.bi_src, n.bi_slice, x, y, n.cw, n.ch, n.bi_width, c, a)
     return
   }
   fr_box(x, y, n.cw, n.ch, n.radius, c, a)
