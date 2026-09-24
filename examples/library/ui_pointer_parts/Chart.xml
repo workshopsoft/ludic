@@ -1,0 +1,9 @@
+<div class="page">
+  <div class="box">
+    <chartmap class="map"/>
+    <button class="zoom" on-click="set zoomed = zoomed + 1">+</button>
+  </div>
+  <div class="pad" on-pointerdown="set px = event.x" on-drag="set dragx = dragx + event.dx" on-pointerup="set ups = ups + 1" on-wheel="set wh = wh + event.wheel"></div>
+  <button class="hold" on-down="set holding = true" on-up="set holding = false; set held = held + 1" on-click="set clicked = clicked + 1">Hold</button>
+  <p>zoomed {zoomed} pad {px} {dragx} {ups} {wh} hold {holding} {held} {clicked}</p>
+</div>

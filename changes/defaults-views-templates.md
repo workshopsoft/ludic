@@ -81,6 +81,12 @@ What a game's screens found missing, now in `ludic.ui`:
 - the first gamepad moves the focus (d-pad, left stick), steps ranges and selects, and presses (A)
   and goes back (B); a held direction, on the pad or the arrow keys, repeats after 0.42 s and then
   every 0.11 s on the ui clock (`UiInput.held_*`, `pad_a`, `pad_b` for a host);
+- pointer events: `on-pointerdown` / `pointermove` / `pointerup` / `drag` / `wheel` with `event.x`,
+  `y`, `dx`, `dy`, `button` and `wheel`, and `ui_native_input(tag, fn)` for a native; a press captures
+  the pointer until release; the pointer hits the topmost element in painting order, and
+  `pointer-events: none` lets it through;
+- `on-down` and `on-up` on a button (the pointer, Enter or A), with `:active` true while it is held
+  there rather than whenever the pointer is down over it;
 - a transition lands exactly on its end value (it had stopped a rounding error short of it, at every
   frame rate).
 

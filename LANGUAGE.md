@@ -441,7 +441,16 @@ applies to both:
   - Tab and Shift+Tab, or the arrows, move focus through the controls in document order. Enter
     and Space activate what has it, and `autofocus` picks where a screen starts.
   - The pointer hovers, presses (`:active`) and clicks on release; a drag keeps the pointer until
-    it is let go.
+    it is let go. What it is on is the topmost element in painting order (positioned ones by
+    `z-index`), so a button over something else takes its own press; `pointer-events: none` lets
+    the pointer through an element.
+  - `on-pointerdown`, `on-pointermove`, `on-pointerup`, `on-drag` and `on-wheel` on any element
+    read `event.x` / `event.y` (inside the element), `event.dx` / `event.dy`, `event.button` (0 left,
+    1 right, 2 middle) and `event.wheel`. A press captures the pointer: its moves, drags and release
+    go to that element until it is let go, wherever the pointer is. A scroll box leaves the wheel to
+    an element inside it that takes `on-wheel`.
+  - `on-down` and `on-up` say when a button goes down and comes up again, by the pointer (released
+    anywhere) or by Enter or the pad's A held on it; it is `:active` in between.
   - A scroll box (`overflow: auto` or `<scroll>`) takes the wheel, has a scrollbar that can be
     dragged (`scrollbar-color`), clips what it holds and pulls the focused control into view.
   - The scrollbar is `.ui-scrollbar` with a `.ui-thumb`, styled like a control's parts. A press on
@@ -493,7 +502,10 @@ applies to both:
   - `<progress value max>` and `<meter value min max>` fill (`.ui-fill`) as far as their value.
 - **Natives** are for what markup cannot say. `ui_native("minimap", measure, draw)` makes
   `<minimap>` an element the program draws itself, laid out and styled like any other. It reports
-  with `ui_fire(n, "change", value)` and reads its attributes with `ui_attr` / `ui_attr_on`. Its
+  with `ui_fire(n, "change", value)` and reads its attributes with `ui_attr` / `ui_attr_on`.
+  `ui_native_input("minimap", fn(n: UiNode, e: UiPointer) -> bool)` gives it the pointer events
+  above as a `UiPointer` (`kind`, `x`, `y`, `dx`, `dy`, `button`, `wheel`); answering false to a
+  `pointerdown` leaves the pointer uncaptured. Its
   draw reads `ui_opacity()`, the opacity it is drawn at (every group `opacity` around it, its own
   included).
 - **Renderers.** `ui_backend(b)` takes any renderer with `rect`, `text` and `measure`, and uses

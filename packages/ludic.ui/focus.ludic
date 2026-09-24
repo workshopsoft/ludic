@@ -42,10 +42,23 @@ function fc_keys(root: UiNode) -> void {
   if i.down_key or (i.right and not horizontal) { fc_move(1) }
   ct_num_blur(root)
   if n == null { return }
+  fc_hold(root, n)
   if i.enter or (i.space and not ct_takes_space(n)) { ct_activate(n) }
   if horizontal and i.left { ct_step(n, -1) }
   if horizontal and i.right { ct_step(n, 1) }
   ct_typed(n)
+}
+# Enter or A held on a control: its on-down, and on-up when let go (or the focus moves away)
+function fc_hold(root: UiNode, n: UiNode) -> void {
+  if fr_key_press != "" and (in_act_up or n.key != fr_key_press) {
+    let was = fr_node(root, fr_key_press)
+    if was != null { ui_fire(was, "up", Value.null()) }
+    fr_key_press = ""
+  }
+  if in_act_down and n.enabled {
+    fr_key_press = n.key
+    ui_fire(n, "down", Value.null())
+  }
 }
 export function ui_focus(key: string) -> void {
   fc_key = key

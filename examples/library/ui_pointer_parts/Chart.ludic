@@ -1,0 +1,12 @@
+# Chart.ludic - a native map with a zoom button over it, a pad that takes pointer events in markup,
+# and a hold button that says when it goes down and comes up
+component Chart {
+  state zoomed: int = 0
+  state px: float = -1.0
+  state dragx: float = 0.0
+  state ups: int = 0
+  state wh: float = 0.0
+  state holding: bool = false
+  state held: int = 0
+  state clicked: int = 0
+}

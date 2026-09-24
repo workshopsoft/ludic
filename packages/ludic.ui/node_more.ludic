@@ -18,6 +18,7 @@ export property UiNodeX {
   tsh_y: float = 0.0
   tsh_c: int = -2
   tsh_a: float = 1.0
+  no_pointer: bool = false      # pointer-events: none - the pointer goes through it
 }
 function nx(n: UiNode) -> UiNodeX {
   if n.ex == null { n.ex = new UiNodeX }

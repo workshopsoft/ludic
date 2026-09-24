@@ -1,8 +1,8 @@
 # attr_more.ludic - width and height (where 0 is 0 and calc() may hold a percentage), the flex
-# shorthand, flex-shrink, order and text-shadow
+# shorthand, flex-shrink, order, text-shadow and pointer-events
 function el_more(n: UiNode, key: string, v: Val) -> bool {
   let s = vl_text(v)
-  if key == "shrink" { nx(n).shrink = Math.max(el_num(s), 0.0) } else if key == "order" { nx(n).order = int(el_num(s)) } else if key == "text-shadow" { el_text_shadow(n, s) } else { return false }
+  if key == "shrink" { nx(n).shrink = Math.max(el_num(s), 0.0) } else if key == "order" { nx(n).order = int(el_num(s)) } else if key == "text-shadow" { el_text_shadow(n, s) } else if key == "pointer-events" { nx(n).no_pointer = tpl_words(s) == "none" } else { return false }
   return true
 }
 # width or height: a length (0 included), fill, a percentage, calc(), or auto/fit (none)

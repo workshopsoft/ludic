@@ -7,6 +7,9 @@ const PAD_STICK: float = 0.5
 var rp_next: []float = [-1.0, -1.0, -1.0, -1.0]
 var rp_a: bool = false
 var rp_b: bool = false
+var rp_act: bool = false
+var in_act_down: bool = false   # A or Enter went down this frame, or came up
+var in_act_up: bool = false
 # what is held this frame: the arrow keys, the d-pad (SDL's order: 11 up, 12 down, 13 left, 14
 # right) and the stick past half way along its larger axis
 function in_held(i: UiInput) -> void {
@@ -14,6 +17,7 @@ function in_held(i: UiInput) -> void {
   i.held_down = Input.key_down(Key.Down)
   i.held_left = Input.key_down(Key.Left)
   i.held_right = Input.key_down(Key.Right)
+  i.held_enter = Input.key_down(Key.Enter)
   if not Input.pad_connected(0) { return }
   let ax = float(Input.pad_axis(0, 0))
   let ay = float(Input.pad_axis(0, 1))
@@ -36,6 +40,10 @@ function in_repeat(i: UiInput) -> void {
   if i.pad_b and not rp_b { i.escape = true }
   rp_a = i.pad_a
   rp_b = i.pad_b
+  let act = i.pad_a or i.held_enter
+  in_act_down = act and not rp_act
+  in_act_up = rp_act and not act
+  rp_act = act
 }
 function rp_fire(k: int, held: bool, now: float) -> bool {
   if not held {

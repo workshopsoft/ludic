@@ -24,9 +24,13 @@ export property UiInput {
   held_right: bool = false
   pad_a: bool = false           # the pad's south button held: Enter
   pad_b: bool = false           # its east button held: Escape
+  held_enter: bool = false      # Enter held (with pad_a: a button's on-down, then its on-up)
+  down_right: bool = false      # the other mouse buttons held
+  down_middle: bool = false
 }
 var in_now: UiInput = new UiInput
 var in_was_down: bool = false
+var in_last: UiInput = new UiInput
 var in_given: bool = false
 function in_read() -> void {
   if in_given {
@@ -34,11 +38,14 @@ function in_read() -> void {
     return
   }
   in_was_down = in_now.down
+  in_last = in_now
   let i = new UiInput
   if ui_be != null and ui_be.input {
     i.x = float(Input.mouse_x())
     i.y = float(Input.mouse_y())
     i.down = Input.mouse_down(0)
+    i.down_right = Input.mouse_down(1)
+    i.down_middle = Input.mouse_down(2)
     i.wheel = float(Input.wheel())
     i.tab = Input.key_pressed(Key.Tab)
     i.shift = Input.key_down(Key.Shift)
@@ -66,6 +73,7 @@ function in_any_key() -> int {
 # this frame's input, given by a test or a host that reads its own
 export function ui_input(i: UiInput) -> void {
   in_was_down = in_now.down
+  in_last = in_now
   in_repeat(i)
   in_now = i
   in_given = true

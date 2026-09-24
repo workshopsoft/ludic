@@ -50,7 +50,7 @@ function sc_input(n: UiNode, off0: float, room: float, most: float) -> float {
   if sc_scope != null and not sc_within(n, sc_scope) { return sc_into_view(n, off, room) }
   let i = in_now
   let over = i.x >= n.x and i.y >= n.y and i.x < n.x + n.cw and i.y < n.y + n.ch
-  if over and i.wheel != 0.0 { off = off - i.wheel * ui_px(40.0) }
+  if over and i.wheel != 0.0 and not pe_takes_wheel(n, i.x, i.y + off0) { off = off - i.wheel * ui_px(40.0) }
   off = sb_input(n, off, room, most)
   return sc_into_view(n, off, room)
 }

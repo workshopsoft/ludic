@@ -4,6 +4,7 @@
 var fr_hover: []string = new []string
 var fr_press_key: string = ""
 var fr_down_now: bool = false
+var fr_key_press: string = ""   # the control Enter or the pad's A is holding down
 function fr_was_hovered(key: string) -> bool { return sel_has(fr_hover, key) }
 function fr_pointer(root: UiNode) -> void {
   let i = in_now
@@ -18,40 +19,44 @@ function fr_pointer(root: UiNode) -> void {
   if top != null and pp_pointer(top) { return }
   if sc_drag != "" { return }
   let hit = fr_hit(scope, i.x, i.y)
-  if i.down and not in_was_down {
-    ct_key_pressed_away(hit)
-    fr_press_key = ""
-    if hit != null {
-      fr_press_key = hit.key
-      if hit.focusable { ui_focus(hit.key) }
-      ct_press(hit, i.x, i.y)
-    }
-  }
+  pe_frame(root, scope)
+  if i.down and not in_was_down { fr_press(hit, i.x, i.y) }
   if i.down and fr_press_key != "" { ct_drag(root, fr_press_key, i.x, i.y) }
   if not i.down and in_was_down {
+    let was = fr_node(root, fr_press_key)
+    if was != null { ui_fire(was, "up", Value.null()) }
     if hit != null and hit.key == fr_press_key and hit.enabled { ct_activate(hit) }
     fr_press_key = ""
   }
+}
+function fr_press(hit: UiNode, x: float, y: float) -> void {
+  ct_key_pressed_away(hit)
+  fr_press_key = ""
+  if hit == null { return }
+  fr_press_key = hit.key
+  if hit.focusable { ui_focus(hit.key) }
+  if hit.enabled { ui_fire(hit, "down", Value.null()) }
+  ct_press(hit, x, y)
+}
+# :active - the press began on it, or inside it, and is still held (by the pointer, Enter or A)
+function fr_active(n: UiNode) -> bool {
+  if fr_down_now and fr_press_key != "" and lc_mine(fr_press_key, n.key) { return true }
+  if pe_key != "" and lc_mine(pe_key, n.key) { return true }
+  return fr_key_press != "" and lc_mine(fr_key_press, n.key)
 }
 function fr_under(n: UiNode, px: float, py: float, keys: []string) -> void {
   if px < n.x or py < n.y or px >= n.x + n.cw or py >= n.y + n.ch { return }
   if n.key != "" { push(keys, n.key) }
   for i in 0 .. len(n.children) { fr_under(n.children[i], px, py, keys) }
 }
-# the deepest control (or pressable element) under the pointer
+# the control (or pressable element) the pointer is on: out from the topmost element under it
 function fr_hit(n: UiNode, px: float, py: float) -> UiNode {
-  if px < n.x or py < n.y or px >= n.x + n.cw or py >= n.y + n.ch { return null }
-  var i = len(n.children) - 1
-  while i >= 0 {
-    let h = fr_hit(n.children[i], px, py)
-    if h != null { return h }
-    i -= 1
-  }
-  if n.focusable or n.act != null { return n }
-  return null
+  if not fr_in(n, px, py) { return null }
+  return fr_pick(n, px, py, PK_CONTROL)
 }
 export function ui_hit(root: UiNode, px: float, py: float) -> UiNode { return fr_hit(root, px, py) }
 function fr_node(n: UiNode, key: string) -> UiNode {
+  if key == "" { return null }
   if n.key == key { return n }
   for i in 0 .. len(n.children) {
     let f = fr_node(n.children[i], key)

@@ -1,0 +1,59 @@
+# pointer_pick.ludic - what the pointer is on: the topmost element under it in painting order (a
+# positioned one by its z-index over the flow), and from there out to the nearest element that wants
+# what is asked - a control to press, or pointer events. pointer-events: none lets it through.
+const PK_CONTROL: int = 0
+const PK_POINTER: int = 1
+const PK_WHEEL: int = 2
+function fr_in(n: UiNode, px: float, py: float) -> bool {
+  if n.ex != null and n.ex.no_pointer { return false }
+  return px >= n.x and py >= n.y and px < n.x + n.cw and py < n.y + n.ch
+}
+# the nearest element that wants `kind`, out from the topmost one under the point
+function fr_pick(n: UiNode, px: float, py: float, kind: int) -> UiNode {
+  let kids = fr_paint_rev(n)
+  for i in 0 .. len(kids) {
+    if fr_in(kids[i], px, py) {
+      let r = fr_pick(kids[i], px, py, kind)
+      if r != null { return r }
+      return fr_wants(n, kind)
+    }
+  }
+  return fr_wants(n, kind)
+}
+function fr_wants(n: UiNode, kind: int) -> UiNode {
+  if kind == PK_CONTROL and (n.focusable or n.act != null) { return n }
+  if kind == PK_POINTER and pe_wants(n, false) { return n }
+  if kind == PK_WHEEL and pe_wants(n, true) { return n }
+  return null
+}
+# the children the other way from how they are painted: positioned ones by z-index, highest first,
+# then the flow, last first; a popover is on the top layer, not here
+function fr_paint_rev(n: UiNode) -> []UiNode {
+  let out = new []UiNode
+  if n.children == null { return out }
+  var lo = 1000000
+  var hi = -1000000
+  for i in 0 .. len(n.children) {
+    let c = n.children[i]
+    if c.pos != 0 and not c.popover {
+      lo = Math.min(lo, c.z)
+      hi = Math.max(hi, c.z)
+    }
+  }
+  var z = hi
+  while z >= lo {
+    var i = len(n.children) - 1
+    while i >= 0 {
+      let c = n.children[i]
+      if c.pos != 0 and not c.popover and c.z == z { push(out, c) }
+      i -= 1
+    }
+    z -= 1
+  }
+  var k = len(n.children) - 1
+  while k >= 0 {
+    if n.children[k].pos == 0 and not n.children[k].popover { push(out, n.children[k]) }
+    k -= 1
+  }
+  return out
+}

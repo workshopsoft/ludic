@@ -6,6 +6,7 @@ export property UiNative {
   tag: string = ""
   measure: fn(UiNode, float) -> void = null   # the content's size into n.mw, n.mh; avail is the room
   draw: fn(UiNode) -> void = null
+  input: fn(UiNode, UiPointer) -> bool = null    # the pointer on it (pointer_events.ludic)
 }
 var nt_list: []UiNative = new []UiNative
 export function ui_native(tag: string, measure: fn(UiNode, float) -> void, draw: fn(UiNode) -> void) -> void {
@@ -15,11 +16,22 @@ export function ui_native(tag: string, measure: fn(UiNode, float) -> void, draw:
   nv.draw = draw
   for i in 0 .. len(nt_list) {
     if nt_list[i].tag == tag {
+      nv.input = nt_list[i].input
       nt_list[i] = nv
       return
     }
   }
   push(nt_list, nv)
+}
+# the pointer on a native: its presses, moves, drags, releases and the wheel, while it is over it or
+# has it captured; answering false to a pointerdown leaves the pointer free
+export function ui_native_input(tag: string, f: fn(UiNode, UiPointer) -> bool) -> void {
+  let nv = nt_find(tag)
+  if nv == null {
+    ui_err(`ui_native_input: there is no native <{tag}> - ui_native it first`)
+    return
+  }
+  nv.input = f
 }
 function nt_find(tag: string) -> UiNative {
   for i in 0 .. len(nt_list) {
@@ -52,7 +64,8 @@ function nt_run(n: UiNode, name: string, value: Val) -> void {
   if n.on_names == null or not n.enabled { return }
   for i in 0 .. len(n.on_names) {
     if n.on_names[i] == name {
-      let ev = Value.object()
+      var ev = Value.object()
+      if lk_in(PE_NAMES, name) and Value.kind(value) == 6 { ev = value }
       Value.put(ev, "name", Value.str(name))
       Value.put(ev, "value", value)
       let e = env_new(n.env)

@@ -1,0 +1,7 @@
+.page { width: 400px; gap: 4px }
+.box { width: 200px; height: 100px; position: relative }
+.map { width: 200px; height: 100px }
+.zoom { position: absolute; top: 10px; left: 10px; width: 30px; height: 30px; padding: 0 }
+.pad { width: 100px; height: 50px }
+.hold { width: 80px; height: 30px }
+.hold:active { background: #ff0000 }
