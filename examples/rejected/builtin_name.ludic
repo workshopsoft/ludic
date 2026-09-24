@@ -1,0 +1,7 @@
+# builtin_name.ludic - a function named like a compiler built-in. `run` is the low-level System.run
+# (C's system()): every call to a program's own `run` compiled into that instead, and the program
+# failed in clang with a type error in the IR. (Rejected on purpose: tools/ludic-cli/test.ludic.)
+program BuiltinName {
+  function run(hz: int) -> string { return `{hz}` }
+  entry { print(run(60)) }
+}

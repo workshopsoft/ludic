@@ -148,8 +148,15 @@ function ck_listener(l: Node) -> void {
   ck_pop(m)
 }
 # a program's function named like one of the runtime's takes every call the runtime makes to its
-# own - the runtime's ui_measure started answering to a package's - so the name is refused
+# own - the runtime's ui_measure started answering to a package's - so the name is refused; one
+# named like a compiler built-in never ran at all (every call to `run` was C's system()), so too
 function ck_runtime_shadows() -> void {
+  var u = 0
+  while u < g_prog_user_end {
+    let d = prog[u]
+    if d.kind == N_FN and (is_intrinsic(d.s) or is_intrinsic2(d.s)) { ck_err("shadow", d, `{d.s} is a built-in of the compiler, and a call to it would never reach this function; choose another name`) }
+    u += 1
+  }
   var r = g_prog_user_end
   while r < len(prog) {
     let d = prog[r]

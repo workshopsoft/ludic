@@ -717,6 +717,7 @@ function cmd_dev_test() -> int {
   feat_case("events/answer", "", "10 20 0", "answer.ludic (a listener's return ends that listener, not the dispatch)")
   reject_case("rejected/duplicate_const", "'KEY_LEFT' is defined twice", "a const defined twice is refused, naming both places")
   reject_case("rejected/duplicate_property", "'Look' is defined twice", "a property defined twice is refused")
+  reject_case("rejected/builtin_name", "run is a built-in of the compiler", "a function named like a compiler built-in (run, exit, free...) is refused")
   reject_case("rejected/redeclared_local", "'v0' is declared twice in this block", "a local declared twice in one block is refused")
   reject_case("rejected/missing_return", "can reach its end without returning", "a function that can run off its end without its result is refused")
   feat_case("functions/values", "", "42 10 25 49 81 1.5 1", "values.ludic (L2: fn types, fn name, calls through a local, global, field, element, parameter, result)")

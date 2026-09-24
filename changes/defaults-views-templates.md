@@ -120,7 +120,8 @@ Screens are drawn through a registered renderer. `Value` gains a float kind.
 
 Also:
 - A program's function named like one of the runtime's is refused; it had been silently taking the
-  runtime's own calls.
+  runtime's own calls. So is one named like a compiler built-in (`run`, `exit`, `free`, `fill`,
+  ...): every call to a program's own `run` compiled into C's `system()`, and clang failed on the IR.
 - An index is evaluated before the slice's elements are read. A `xs[f()]` whose `f` grew `xs`
   read stale memory.
 - A runtime error names the file its expression is in, not the program's.
