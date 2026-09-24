@@ -8,9 +8,19 @@ function ly_measure(n: UiNode, avail: float, size: float, fg: int) -> void {
   if n.fg != UI_INHERIT { n.rfg = n.fg }
   n.mw = ly_hin(n)
   n.mh = ly_vin(n)
-  if n.kind == UI_TEXT or n.kind == UI_BUTTON {
+  if n.kind == UI_BUTTON {
     n.mw = n.mw + ly_text_w(n.text, n.rsize)
     n.mh = n.mh + n.rsize * 1.25
+  }
+  if n.kind == UI_TEXT { ly_measure_text(n, avail) }
+  if n.kind == UI_NATIVE and n.native.measure != null {
+    let base_w = n.mw
+    let base_h = n.mh
+    n.mw = 0.0
+    n.mh = 0.0
+    n.native.measure(n, avail)
+    n.mw = n.mw + base_w
+    n.mh = n.mh + base_h
   }
   if n.kind == UI_IMAGE {
     n.mw = n.mw + n.rsize
@@ -24,6 +34,7 @@ function ly_measure(n: UiNode, avail: float, size: float, fg: int) -> void {
     inner = ly_clamp(inner, n.min_w, n.max_w) - ly_hin(n)
     if n.dir == UI_ROW and n.wrap { ly_measure_wrap(n, inner) } else { ly_measure_box(n, inner) }
   }
+  n.content_h = n.mh
   if fixed_w > 0.0 { n.mw = fixed_w }
   if n.h > 0.0 { n.mh = n.h }
   n.mw = ly_clamp(n.mw, n.min_w, n.max_w)
@@ -40,12 +51,16 @@ function ly_clamp(v: float, lo: float, hi: float) -> float {
 function ly_measure_box(n: UiNode, inner: float) -> void {
   var main = 0.0
   var cross = 0.0
+  var count = 0
   for i in 0 .. len(n.children) {
     let c = n.children[i]
     ly_measure(c, inner, n.rsize, n.rfg)
-    main = main + ly_main(c, n.dir)
-    if i > 0 { main = main + n.gap }
-    cross = Math.max(cross, ly_cross(c, n.dir))
+    if c.pos < 2 {
+      main = main + ly_main(c, n.dir)
+      if count > 0 { main = main + n.gap }
+      cross = Math.max(cross, ly_cross(c, n.dir))
+      count += 1
+    }
   }
   if n.dir == UI_ROW {
     n.mw = n.mw + main
@@ -65,6 +80,7 @@ function ly_measure_wrap(n: UiNode, inner: float) -> void {
   for i in 0 .. len(n.children) {
     let c = n.children[i]
     ly_measure(c, inner, n.rsize, n.rfg)
+    if c.pos >= 2 { continue }
     let cw = ly_main(c, UI_ROW)
     if count > 0 and line_w + n.gap + cw > inner {
       widest = Math.max(widest, line_w)
@@ -80,17 +96,4 @@ function ly_measure_wrap(n: UiNode, inner: float) -> void {
   }
   n.mw = n.mw + Math.max(widest, line_w)
   n.mh = n.mh + total + line_h
-}
-function ly_text_w(s: string, size: float) -> float {
-  if ui_be != null and ui_be.measure != null { return ui_be.measure(s, size) }
-  return float(len(s)) * size * 0.5
-}
-# a child's size along and across a direction, margins included
-function ly_main(c: UiNode, dir: int) -> float {
-  if dir == UI_ROW { return c.mw + c.ml + c.mr }
-  return c.mh + c.mt + c.mb
-}
-function ly_cross(c: UiNode, dir: int) -> float {
-  if dir == UI_ROW { return c.mh + c.mt + c.mb }
-  return c.mw + c.ml + c.mr
 }

@@ -5,6 +5,7 @@
 export property UiRule {
   sel: UiSel = null
   spec: int = 0
+  md: UiMedia = null            # the @media it sits in, if any
   keys: []string = null
   vals: []UiExpr = null
 }
@@ -21,14 +22,20 @@ function lss_is(path: string) -> bool { return len(path) > 4 and path[len(path) 
 # a stylesheet file: a file with rules and imports and nothing else
 function lss_file(src: string, path: string) -> UiFile {
   let f = lib_new(path)
+  f.src = src
   lss_text(f, src)
   f.sheet = sheet_of(f)
   return f
 }
 function lss_text(f: UiFile, src: string) -> void {
   let err = new []string
+  lss_block(f, lss_strip(src), null, err)
+  for i in 0 .. len(err) { ui_err(`{f.path}: <style> {err[i]}`) }
+}
+# rules, @imports and @media blocks; the rules in a @media block carry its condition
+function lss_block(f: UiFile, src: string, md: UiMedia, err: []string) -> void {
   let r = new UiRd
-  r.s = lss_strip(src)
+  r.s = src
   while r.err == "" {
     rd_ws(r)
     if r.i >= len(r.s) { break }
@@ -36,11 +43,18 @@ function lss_text(f: UiFile, src: string) -> void {
       lss_import(f, lss_upto(r, 59))
       continue
     }
+    if rd_op(r, "@media") {
+      let cond = md_parse(lss_upto(r, 123))
+      lss_block(f, lss_upto(r, 125), cond, err)
+      continue
+    }
     let sels = lss_upto(r, 123)
     let body = lss_upto(r, 125)
+    let at = len(f.own)
     lss_rule(f, sels, body, err)
+    for i in at .. len(f.own) { f.own[i].md = md }
   }
-  for i in 0 .. len(err) { ui_err(`{f.path}: <style> {err[i]}`) }
+  if r.err != "" { push(err, r.err) }
 }
 # @import "base.lss"; - its rules come before this file's own
 function lss_import(f: UiFile, what: string) -> void {

@@ -23,11 +23,18 @@ function cs_node(n: UiNode) -> void {
 }
 function cs_sheet(n: UiNode, sh: UiSheet) -> void {
   for i in 0 .. len(sh.rules) {
-    if sel_match(sh.rules[i].sel, n) { cs_rule(n, sh.rules[i]) }
+    let r = sh.rules[i]
+    if md_ok(r) and sel_match(r.sel, n) { cs_rule(n, r) }
   }
 }
+# a rule's custom properties first, so its other declarations can read them
 function cs_rule(n: UiNode, r: UiRule) -> void {
-  for j in 0 .. len(r.keys) { el_attr(n, r.keys[j], ui_eval(r.vals[j], n.env)) }
+  for j in 0 .. len(r.keys) {
+    if len(r.keys[j]) > 2 and r.keys[j][0..2] == "--" { el_attr(n, r.keys[j], ui_eval(r.vals[j], n.env)) }
+  }
+  for j in 0 .. len(r.keys) {
+    if not (len(r.keys[j]) > 2 and r.keys[j][0..2] == "--") { el_attr(n, r.keys[j], ui_eval(r.vals[j], n.env)) }
+  }
 }
 # what every element looks like before anyone styles it, as a browser's own sheet does
 const UA_LSS: string = "h1 { font-size: 32 } h2 { font-size: 26 } h3 { font-size: 22 } h4 { font-size: 19 } h5 { font-size: 16 } h6 { font-size: 14 } small { font-size: 13 } button { padding: 5 10 } hr { height: 1; width: fill; background: #808080; margin: 4 0 } scroll { width: fill; height: fill } img { width: 24; height: 24 }"

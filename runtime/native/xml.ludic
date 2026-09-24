@@ -21,6 +21,7 @@ property Xml {
   akeys: []pointer           # attribute names
   avals: []pointer           # attribute values (entity-decoded)
   kids:  []Xml               # child elements, in document order
+  at:    int = 0             # where its '<' is in the text, for an error that names a line
 }
 
 function xml_new(tag: pointer) -> Xml {
@@ -243,9 +244,11 @@ function xp_attrs(p: XP, node: Xml) -> void {
 
 # parse one element (cursor on its opening '<'). Recurses for children.
 function xp_element(p: XP) -> Xml {
+  let at = p.i
   p.i += 1                                           # skip '<'
   let name = xp_name(p)
   let node = xml_new(name)
+  node.at = at
   xp_attrs(p, node)
   # self-closing '/>'
   if p.i < p.n and p.s[p.i] == '/' {                       # '/'

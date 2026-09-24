@@ -1,0 +1,64 @@
+# life.ludic - on-mount and on-unmount: an element or component that appears in a frame it was not
+# in last frame is mounted, and one that is gone is unmounted, each once, after the frame is drawn
+var lc_keys: []string = new []string
+var lc_mounts: []UiAct = new []UiAct
+var lc_unmounts: []UiAct = new []UiAct
+var lc_envs: []UiEnv = new []UiEnv
+var lc_prev_keys: []string = new []string
+var lc_prev_unmounts: []UiAct = new []UiAct
+var lc_prev_envs: []UiEnv = new []UiEnv
+# a build starts its own records: a screen built twice keeps only the last build's
+function lc_begin() -> void {
+  lc_keys = new []string
+  lc_mounts = new []UiAct
+  lc_unmounts = new []UiAct
+  lc_envs = new []UiEnv
+}
+function lc_note(key: string, names: []string, acts: []UiAct, e: UiEnv) -> void {
+  var m: UiAct = null
+  var u: UiAct = null
+  for i in 0 .. len(names) {
+    if names[i] == "mount" { m = acts[i] }
+    if names[i] == "unmount" { u = acts[i] }
+  }
+  if m == null and u == null { return }
+  push(lc_keys, key)
+  push(lc_mounts, m)
+  push(lc_unmounts, u)
+  push(lc_envs, e)
+}
+function lc_mine(key: string, screen: string) -> bool {
+  let n = len(screen)
+  return key == screen or (len(key) > n and key[0..n] == screen and key[n] == 47)
+}
+# the screen's mounts and unmounts since its last frame; other screens' records are kept
+function lc_run(screen: string) -> void {
+  for i in 0 .. len(lc_keys) {
+    if lc_mounts[i] != null and not sel_has(lc_prev_keys, lc_keys[i]) { act_run(lc_mounts[i], lc_envs[i]) }
+  }
+  let keys = new []string
+  let unmounts = new []UiAct
+  let envs = new []UiEnv
+  for i in 0 .. len(lc_prev_keys) {
+    let k = lc_prev_keys[i]
+    if lc_mine(k, screen) {
+      if lc_prev_unmounts[i] != null and not sel_has(lc_keys, k) { act_run(lc_prev_unmounts[i], lc_prev_envs[i]) }
+    } else {
+      push(keys, k)
+      push(unmounts, lc_prev_unmounts[i])
+      push(envs, lc_prev_envs[i])
+    }
+  }
+  for i in 0 .. len(lc_keys) {
+    push(keys, lc_keys[i])
+    push(unmounts, lc_unmounts[i])
+    push(envs, lc_envs[i])
+  }
+  lc_prev_keys = keys
+  lc_prev_unmounts = unmounts
+  lc_prev_envs = envs
+  lc_keys = new []string
+  lc_mounts = new []UiAct
+  lc_unmounts = new []UiAct
+  lc_envs = new []UiEnv
+}

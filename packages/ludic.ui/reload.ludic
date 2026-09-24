@@ -1,0 +1,27 @@
+# reload.ludic - a developer's templates and stylesheets read again when they change on disk: every
+# file is re-read in the order it was first loaded (so an import is there before its importer), and
+# the screens' state is kept, as React's fast refresh keeps it. True when anything changed.
+export function ui_reload() -> bool {
+  var changed = false
+  for i in 0 .. len(lib_files) {
+    let f = lib_files[i]
+    if f.disk and lib_text(f.path) != f.src { changed = true }
+  }
+  if not changed { return false }
+  let old = lib_files
+  lib_files = new []UiFile
+  lib_screen_names = new []string
+  lib_screens = new []UiTpl
+  ui_errs = new []string
+  for i in 0 .. len(old) {
+    let f = old[i]
+    var have = false
+    for k in 0 .. len(lib_files) {
+      if lib_files[k].path == f.path { have = true }
+    }
+    if have { continue }
+    if f.disk { lib_file(f.path) } else { ui_load_text(f.src, f.path) }
+  }
+  print(`ui: templates reloaded`)
+  return true
+}

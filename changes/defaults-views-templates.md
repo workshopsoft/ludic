@@ -27,6 +27,15 @@ with:
   `:hover`, `:disabled`, `:first-child`, `:last-child`, `:nth-child`, `:not` and more, weighed by
   specificity.
 
+- more CSS: custom properties and `var()`, `position` with insets and `z-index`, `em`/`rem`/`vw`/`vh`,
+  `@media`, wrapping text and ellipsis, `overflow`, `+`/`~`, `:nth-child(an+b)`, `:checked`, `:active`;
+- more React: keyed lists, `<let>`, `<provide>` context, `<fragment>`, named slots, `on-mount` and
+  `on-unmount`;
+- native elements a program draws itself (`ui_native`, `ui_fire`), and form controls;
+- errors with file and line, hot reload (`ui_reload`), and an inspector-style dump.
+
+A `view` field set to a literal or a named function's result needs no type.
+
 Screens are drawn through a registered renderer. `Value` gains a float kind.
 
 Also:

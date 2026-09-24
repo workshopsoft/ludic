@@ -1,0 +1,49 @@
+# forms.ludic - <input>, <select> and <textarea> for a renderer that has none of its own: a value
+# drawn in a box, a checkbox or radio pressed to change it, a select stepping through its options.
+# A game registers its own with ui_native under the same tags and these give way.
+var nt_ready: bool = false
+function nt_defaults() -> void {
+  if nt_ready { return }
+  nt_ready = true
+  ui_native("input", fn fm_measure, fn fm_draw)
+  ui_native("select", fn fm_measure, fn fm_draw)
+  ui_native("textarea", fn fm_measure, fn fm_draw)
+}
+# what the control shows: a checkbox its tick, a select its chosen option's text, else its value
+function fm_shown(n: UiNode) -> string {
+  let t = ui_attr_text(n, "type")
+  if t == "checkbox" or t == "radio" {
+    if ui_attr_on(n, "checked") { return "[x]" }
+    return "[ ]"
+  }
+  if n.tag == "select" {
+    let v = ui_attr_text(n, "value")
+    for i in 0 .. len(n.children) {
+      if ui_attr_text(n.children[i], "value") == v { return n.children[i].text }
+    }
+  }
+  return ui_attr_text(n, "value")
+}
+function fm_measure(n: UiNode, avail: float) -> void {
+  n.mw = Math.max(ly_text_w(fm_shown(n), n.rsize), n.rsize * 2.0)
+  n.mh = n.rsize * 1.25
+}
+function fm_draw(n: UiNode) -> void {
+  if ui_be.rect != null { ui_be.rect(n.x, n.y, n.cw, n.ch, 2105376, n.alpha) }
+  fr_border(n)
+  ui_be.text(n.x + n.pl + n.border, n.y + n.pt + n.border, fm_shown(n), n.rsize, n.rfg)
+}
+# the default pointer presses a control: a checkbox flips, a select moves to its next option
+function fm_press(n: UiNode) -> void {
+  let t = ui_attr_text(n, "type")
+  if t == "checkbox" { ui_fire(n, "change", vl_bool(not ui_attr_on(n, "checked"))) }
+  if t == "radio" { ui_fire(n, "change", ui_attr(n, "value")) }
+  if n.tag == "select" and len(n.children) > 0 {
+    let v = ui_attr_text(n, "value")
+    var at = 0
+    for i in 0 .. len(n.children) {
+      if ui_attr_text(n.children[i], "value") == v { at = (i + 1) % len(n.children) }
+    }
+    ui_fire(n, "change", ui_attr(n.children[at], "value"))
+  }
+}

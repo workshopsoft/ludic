@@ -13,6 +13,24 @@ export property UiTpl {
   sheet: UiSheet = null         # the styles of the file it was written in
   style: UiRule = null          # its style="..." attribute, read as declarations
   raw: string = ""              # a <style>'s text, which is not a template's
+  where: string = ""            # file:line, for an error
+}
+# the text being read, and where its lines start, so an element can say which line it is on
+var tp_nl: []int = new []int
+function tp_lines(src: string) -> void {
+  tp_nl = new []int
+  for i in 0 .. len(src) {
+    if src[i] == 10 { push(tp_nl, i) }
+  }
+}
+function tp_line(at: int) -> int {
+  var lo = 0
+  var hi = len(tp_nl)
+  while lo < hi {
+    let mid = (lo + hi) / 2
+    if tp_nl[mid] < at { lo = mid + 1 } else { hi = mid }
+  }
+  return lo + 1
 }
 
 function tpl_read(x: Xml, file: string) -> UiTpl {
@@ -23,6 +41,7 @@ function tpl_read(x: Xml, file: string) -> UiTpl {
   t.on_keys = new []string
   t.on_acts = new []UiAct
   t.kids = new []UiTpl
+  t.where = `{file}:{tp_line(x.at)}`
   let err = new []string
   for i in 0 .. len(x.akeys) {
     let k: string = x.akeys[i]
@@ -45,7 +64,7 @@ function tpl_read(x: Xml, file: string) -> UiTpl {
   }
   let words = tpl_words(Xml.text(x))
   if len(words) > 0 and len(t.kids) == 0 { t.text = ex_text(words, err) }
-  for i in 0 .. len(err) { ui_err(`{file}: <{t.tag}> {err[i]}`) }
+  for i in 0 .. len(err) { ui_err(`{t.where}: <{t.tag}> {err[i]}`) }
   return t
 }
 # on-click is on-press, as a browser would have it

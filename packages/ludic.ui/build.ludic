@@ -1,19 +1,26 @@
 # build.ludic - a template and the model, made into this frame's nodes. <if>/<else> and
 # <each in= as= index=> are the template's own; a tag its file linked to a component is that one,
-# given its attributes as props, its on-* as what `emit` runs, and its content as <slot/>.
-function bd_kids(kids: []UiTpl, e: UiEnv, key: string, out: []UiNode) -> void {
+# given its attributes as props (over the defaults its own tag gives: <component name="Card"
+# sub="">), its on-* as what `emit` runs, and its content as <slot/>.
+function bd_kids(kids: []UiTpl, e0: UiEnv, key: string, out: []UiNode) -> void {
   var last_if = true
+  var e = e0
   for i in 0 .. len(kids) {
     let k = kids[i]
+    ui_at = k.where
     let ck = `{key}/{i}`
-    if k.tag == "state" { continue }
-    if k.tag == "if" {
+    if k.tag == "state" or k.tag == "style" { continue }
+    if k.tag == "let" {
+      e = bd_let(k, e)
+      continue
+    }
+    if k.tag == "fragment" or (k.tag == "template" and tpl_attr(k, "slot") == null) { bd_group(k, e, ck, out) } else if k.tag == "provide" { bd_provide(k, e, ck, out) } else if k.tag == "template" { continue } else if k.tag == "if" {
       last_if = bd_test(k, e)
       if last_if { bd_kids(k.kids, e, ck, out) }
     } else if k.tag == "else" {
       if not last_if { bd_kids(k.kids, e, ck, out) }
       last_if = true
-    } else if k.tag == "each" { bd_each(k, e, ck, out) } else if k.tag == "slot" { bd_slot(e, ck, out) } else if not bd_comp(k, e, ck, out) { push(out, bd_elem(k, e, ck)) }
+    } else if k.tag == "each" { bd_each(k, e, ck, out) } else if k.tag == "slot" { bd_slot(k, e, ck, out) } else if not bd_comp(k, e, ck, out) { push(out, bd_elem(k, e, ck)) }
   }
 }
 function bd_test(k: UiTpl, e: UiEnv) -> bool {
@@ -38,23 +45,40 @@ function bd_each(k: UiTpl, e: UiEnv, key: string, out: []UiNode) -> void {
   let list = ui_eval(src, e)
   let as_name = bd_name(k, "as", "item")
   let at_name = bd_name(k, "index", "index")
+  let by = tpl_attr(k, "key")
   for j in 0 .. Value.count(list) {
     let le = env_new(e)
     env_bind(le, as_name, Value.at(list, j))
     env_bind(le, at_name, Value.int(j))
-    bd_kids(k.kids, le, `{key}#{j}`, out)
+    var id = string(j)
+    if by != null { id = ui_eval_text(by, le) }
+    bd_kids(k.kids, le, `{key}#{id}`, out)
   }
 }
-function bd_slot(e: UiEnv, key: string, out: []UiNode) -> void {
+# <slot/> is what the component's user put inside it; <slot name="x"/> their <template slot="x">
+function bd_slot(k: UiTpl, e: UiEnv, key: string, out: []UiNode) -> void {
   var at = e
   while at != null and at.slot == null { at = at.parent }
-  if at != null { bd_kids(at.slot.kids, at.slot_env, key, out) }
+  if at == null { return }
+  let name = bd_name(k, "name", "")
+  if name == "" {
+    bd_kids(at.slot.kids, at.slot_env, key, out)
+    return
+  }
+  for i in 0 .. len(at.slot.kids) {
+    let t = at.slot.kids[i]
+    if t.tag == "template" and bd_name(t, "slot", "") == name { bd_group(t, at.slot_env, key, out) }
+  }
 }
 function bd_comp(k: UiTpl, e: UiEnv, key: string, out: []UiNode) -> bool {
   if k.comp == null { return false }
   let c = k.comp
   let ce = env_new(null)
   ce.model = e.model
+  ce.ctx = e.ctx
+  for i in 0 .. len(c.keys) {
+    if c.keys[i] != "name" and c.keys[i] != "export" { env_bind(ce, c.keys[i], ui_eval(c.vals[i], ce)) }
+  }
   for i in 0 .. len(k.keys) { env_bind(ce, k.keys[i], ui_eval(k.vals[i], e)) }
   ce.on_names = k.on_keys
   ce.on_acts = k.on_acts
@@ -62,7 +86,9 @@ function bd_comp(k: UiTpl, e: UiEnv, key: string, out: []UiNode) -> bool {
   for i in 0 .. len(k.on_keys) { push(ce.on_envs, e) }
   ce.slot = k
   ce.slot_env = e
+  ce.ctx = e.ctx
   ce.state = st_for(key, c, ce)
+  lc_note(key, k.on_keys, k.on_acts, e)
   bd_kids(c.kids, ce, key, out)
   return true
 }

@@ -11,6 +11,8 @@ export property UiFile {
   imp: []UiFile = null
   own: []UiRule = null
   sheet: UiSheet = null
+  src: string = ""              # the text it was read from
+  disk: bool = false            # read from a file (ui_reload looks again), or handed over as text
 }
 var lib_files: []UiFile = new []UiFile
 var lib_screen_names: []string = new []string
@@ -26,8 +28,10 @@ function lib_file(path: string) -> UiFile {
     ui_err(`{path}: cannot read it`)
     return null
   }
-  if lss_is(path) { return lss_file(src, path) }
-  return lib_read(src, path)
+  var f: UiFile = null
+  if lss_is(path) { f = lss_file(src, path) } else { f = lib_read(src, path) }
+  f.disk = true
+  return f
 }
 # a file's text, as if read from `path` (its imports are found beside it)
 export function ui_load_text(src: string, path: string) -> void {
@@ -35,6 +39,8 @@ export function ui_load_text(src: string, path: string) -> void {
 }
 function lib_read(src: string, path: string) -> UiFile {
   let f = lib_new(path)
+  f.src = src
+  tp_lines(src)
   let root = tpl_read(Xml.parse(src), path)
   var tops = root.kids
   if root.tag != "ui" { tops = [root] }

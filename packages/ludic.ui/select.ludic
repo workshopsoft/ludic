@@ -11,7 +11,7 @@ export property UiSel {
   pargs: []string = null
   nots: []UiSel = null
   prev: UiSel = null
-  comb: int = 0                 # 0: prev is an ancestor, 1: prev is the parent
+  comb: int = 0                 # prev is: 0 an ancestor, 1 the parent, 2 the sibling before, 3 any sibling before
 }
 function sel_new() -> UiSel {
   let s = new UiSel
@@ -34,6 +34,14 @@ function sel_parse(src: string, err: []string) -> UiSel {
     if r.i >= len(r.s) { break }
     if rd_op(r, ">") {
       comb = 1
+      continue
+    }
+    if rd_op(r, "+") {
+      comb = 2
+      continue
+    }
+    if rd_op(r, "~") {
+      comb = 3
       continue
     }
     let c = sel_compound(r)

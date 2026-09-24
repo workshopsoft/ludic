@@ -35,12 +35,20 @@ function vw_finish(v: int) -> void {
   vw_parse(model, head.file, head.line, head.vis)
   vw_parse(vw_call_src(v, px, head), head.file, head.line, head.vis)
 }
-# a field written `name = some_global` has that global's declared type
+# a field's type when it is not said: a global's, a literal's, or a named function's result
 function vw_infer(v: int, g: Node, fname: pointer) -> pointer {
   let e = g.a.kids[0].a
   if e.kind == E_ID {
     let d = find_global(e.s)
     if d != null and d.ty != null { return d.ty }
+  }
+  if e.kind == E_INT { return "int" }
+  if e.kind == E_FLOAT { return "float" }
+  if e.kind == E_BOOL { return "bool" }
+  if e.kind == E_STR { return "string" }
+  if e.kind == E_CALL and e.a != null and e.a.kind == E_ID {
+    let f = find_fn(e.a.s)
+    if f != null and f.ty != null and not (f.ty == "void") { return f.ty }
   }
   g_vw_node[v].line = g.line
   vw_err(v, `say what type {fname} is - {fname}: int = ...`)

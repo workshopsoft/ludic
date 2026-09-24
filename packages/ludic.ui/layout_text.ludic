@@ -1,0 +1,55 @@
+# layout_text.ludic - a text's size: one line, or as many as it takes to fit its room (white-space
+# normal), breaking between words; nowrap keeps one line, and text-overflow: ellipsis cuts it
+function ly_measure_text(n: UiNode, avail: float) -> void {
+  n.lines = null
+  let lh = n.rsize * 1.25
+  let one = ly_text_w(n.text, n.rsize)
+  var room = avail - n.ml - n.mr - ly_hin(n)
+  if n.w > 0.0 { room = n.w - ly_hin(n) }
+  if n.nowrap or room <= 0.0 or one <= room {
+    n.mw = n.mw + one
+    n.mh = n.mh + lh
+    return
+  }
+  n.lines = ly_wrap(n.text, n.rsize, room)
+  var widest = 0.0
+  for i in 0 .. len(n.lines) { widest = Math.max(widest, ly_text_w(n.lines[i], n.rsize)) }
+  n.mw = n.mw + widest
+  n.mh = n.mh + lh * float(len(n.lines))
+}
+function ly_wrap(s: string, size: float, room: float) -> []string {
+  let words = lss_split(s, 32)
+  let out = new []string
+  var line = ""
+  for i in 0 .. len(words) {
+    if len(words[i]) == 0 { continue }
+    var next = words[i]
+    if len(line) > 0 { next = line + " " + words[i] }
+    if len(line) > 0 and ly_text_w(next, size) > room {
+      push(out, line)
+      line = words[i]
+    } else { line = next }
+  }
+  if len(line) > 0 { push(out, line) }
+  return out
+}
+# a line cut to `room` with an ellipsis, when it does not fit
+function ly_ellipsis(s: string, size: float, room: float) -> string {
+  if ly_text_w(s, size) <= room { return s }
+  var n = len(s)
+  while n > 0 and ly_text_w(s[0..n] + "...", size) > room { n -= 1 }
+  return s[0..n] + "..."
+}
+function ly_text_w(s: string, size: float) -> float {
+  if ui_be != null and ui_be.measure != null { return ui_be.measure(s, size) }
+  return float(len(s)) * size * 0.5
+}
+# a child's size along and across a direction, margins included
+function ly_main(c: UiNode, dir: int) -> float {
+  if dir == UI_ROW { return c.mw + c.ml + c.mr }
+  return c.mh + c.mt + c.mb
+}
+function ly_cross(c: UiNode, dir: int) -> float {
+  if dir == UI_ROW { return c.mh + c.mt + c.mb }
+  return c.mw + c.ml + c.mr
+}

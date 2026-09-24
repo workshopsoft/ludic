@@ -1,0 +1,88 @@
+# units.ludic - lengths in px (the renderer's scale), em (the font size here), rem (the root's),
+# vw and vh (the screen's), and custom properties: --name set on an element, read by var(--name)
+# in it and everything inside it
+var el_cur: UiNode = null
+var el_key: string = ""
+var ly_vp_x: float = 0.0
+var ly_vp_y: float = 0.0
+var ly_vp_w: float = 0.0
+var ly_vp_h: float = 0.0
+function el_unit(s: string) -> float {
+  let f = el_num(s)
+  let n = len(s)
+  if n > 3 and s[n - 3..n] == "rem" { return f * ui_px(16.0) }
+  if n > 2 and s[n - 2..n] == "em" {
+    if el_cur == null { return f * ui_px(16.0) }
+    if el_key == "size" and el_cur.parent != null { return f * cs_fs(el_cur.parent) }
+    return f * cs_fs(el_cur)
+  }
+  if n > 2 and s[n - 2..n] == "vw" { return f * ly_vp_w / 100.0 }
+  if n > 2 and s[n - 2..n] == "vh" { return f * ly_vp_h / 100.0 }
+  return ui_px(f)
+}
+# the font size an element has so far in its cascade (its own, else its parent's)
+function cs_fs(n: UiNode) -> float {
+  if n.size > 0.0 { return n.size }
+  if n.parent != null { return cs_fs(n.parent) }
+  return ui_px(16.0)
+}
+function cs_var_set(n: UiNode, name: string, value: string) -> void {
+  if n.var_names == null {
+    n.var_names = new []string
+    n.var_vals = new []string
+  }
+  for i in 0 .. len(n.var_names) {
+    if n.var_names[i] == name {
+      n.var_vals[i] = value
+      return
+    }
+  }
+  push(n.var_names, name)
+  push(n.var_vals, value)
+}
+function cs_var(n: UiNode, name: string) -> string {
+  var at = n
+  while at != null {
+    if at.var_names != null {
+      for i in 0 .. len(at.var_names) {
+        if at.var_names[i] == name { return at.var_vals[i] }
+      }
+    }
+    at = at.parent
+  }
+  return null
+}
+# a value with var(--name) or var(--name, fallback) in it, with each replaced by what it names
+function cs_vars_in(n: UiNode, v: Val) -> Val {
+  if Value.kind(v) != 4 { return v }
+  let s = Value.as_str(v)
+  var at = 0
+  var out = ""
+  var found = false
+  var i = 0
+  while i + 4 <= len(s) {
+    if s[i..i + 4] == "var(" {
+      found = true
+      var j = i + 4
+      var depth = 1
+      while j < len(s) and depth > 0 {
+        if s[j] == 40 { depth += 1 }
+        if s[j] == 41 { depth -= 1 }
+        j += 1
+      }
+      out = out + s[at..i] + cs_var_ref(n, s[i + 4..j - 1])
+      at = j
+      i = j
+    } else { i += 1 }
+  }
+  if not found { return v }
+  return Value.str(tpl_words(out + s[at..len(s)]))
+}
+function cs_var_ref(n: UiNode, inner: string) -> string {
+  let parts = lss_split(inner, 44)
+  let v = cs_var(n, tpl_words(parts[0]))
+  if v != null { return v }
+  if len(parts) > 1 { return tpl_words(inner[len(parts[0]) + 1..len(inner)]) }
+  ui_err(`var({tpl_words(parts[0])}): no element here or above sets it`)
+  return ""
+}

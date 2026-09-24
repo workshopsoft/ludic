@@ -26,7 +26,7 @@ function el_sides(v: Val) -> void {
   if vl_num(v) { push(parts, ui_px(Value.as_float(v))) } else {
     let words = lss_split(vl_text(v), 32)
     for i in 0 .. len(words) {
-      if len(words[i]) > 0 { push(parts, ui_px(el_num(words[i]))) }
+      if len(words[i]) > 0 { push(parts, el_unit(words[i])) }
     }
   }
   while len(parts) < 4 {
@@ -37,13 +37,13 @@ function el_sides(v: Val) -> void {
   el_s2 = parts[2]
   el_s3 = parts[3]
 }
-# a length: a number, 10px, fill, fit or auto (a percentage is el_pct's)
+# a length: a number, 10px, 1.5em, 2rem, 50vw, fill, fit or auto (a percentage is el_pct's)
 function el_len(v: Val) -> float {
   if vl_num(v) { return ui_px(Value.as_float(v)) }
   let s = vl_text(v)
   if s == "fill" { return UI_FILL }
   if s == "fit" or s == "auto" or (len(s) > 0 and s[len(s) - 1] == 37) { return 0.0 }
-  return ui_px(el_num(s))
+  return el_unit(s)
 }
 function el_pct(v: Val) -> float {
   let s = vl_text(v)

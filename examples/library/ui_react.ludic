@@ -1,0 +1,59 @@
+# ui_react.ludic — ludic.ui's React side without a renderer: keyed lists keep each item's state when
+# the list is reordered, <let> names a value, context reaches through a component, named slots,
+# on-mount and on-unmount, and a native element of the program's own firing on-change with a value.
+import "ludic.ui"
+program UiReact {
+  numbers float
+  var names: []string = new []string
+  var volume: int = 3
+  var mounted: int = 0
+  var unmounted: int = 0
+  var show_extra: bool = true
+  view Mixer {
+    names = names
+    volume = volume
+    extra = show_extra
+    on set_volume(v: int) { volume = v }
+    on mount() { mounted += 1 }
+    on unmount() { unmounted += 1 }
+  }
+  # a dial the program draws itself: it measures 40 square and, pressed, turns up by one
+  function dial_measure(n: UiNode, avail: float) -> void {
+    n.mw = 40.0
+    n.mh = 40.0
+  }
+  function dial_draw(n: UiNode) -> void { }
+  const PAGE: string = "<ui>\n<component name='Card'>\n  <div class='card'><h3><slot name='title'/></h3><slot/><p>{theme}</p></div>\n</component>\n<component name='Item'>\n  <state taps='{0}'/>\n  <button on-click='set taps = taps + 1'>{label} {taps}</button>\n</component>\n<screen name='mix'>\n  <let loud='{volume > 5}'/>\n  <provide theme='dark'>\n    <Card>\n      <template slot='title'>Mixer</template>\n      <fragment><p>{loud ? 'loud' : 'quiet'}</p></fragment>\n    </Card>\n  </provide>\n  <each in='{names}' as='n' key='{n}'><Item label='{n}'/></each>\n  <dial value='{volume}' on-change='set_volume(event.value)'/>\n  <input type='checkbox' checked='{extra}' on-change='set on = event.value'/>\n  <if test='{extra}'><p on-mount='mount()' on-unmount='unmount()'>extra</p></if>\n  <state on='{false}'/>\n  <p>checkbox {on}</p>\n</screen>\n</ui>\n"
+  function texts(n: UiNode, out: []string) -> void {
+    if n.text != "" { push(out, n.text) }
+    for i in 0 .. len(n.children) { texts(n.children[i], out) }
+  }
+  function frame() -> UiNode {
+    ui_show("mix", view_mixer(), 0.0, 0.0, 400.0, 400.0)
+    let root: UiNode = ui_nodes("mix", view_mixer())
+    ui_place(root, 0.0, 0.0, 400.0, 400.0)
+    return root
+  }
+  entry {
+    ui_native("dial", fn dial_measure, fn dial_draw)
+    push(names, "bass")
+    push(names, "drums")
+    ui_load_text(PAGE, "ui/mix.xml")
+    var root = frame()
+    ui_press(root.children[2])
+    names[0] = "drums"
+    names[1] = "bass"
+    root = frame()
+    let dial = root.children[3]
+    ui_event(dial, "change", Value.int(volume + 4))
+    ui_event(root.children[4], "change", Value.bool(1))
+    show_extra = false
+    root = frame()
+    let out = new []string
+    texts(root, out)
+    var joined = ""
+    for i in 0 .. len(out) { joined = joined + out[i] + "|" }
+    print(joined)
+    print(`volume {volume}; dial {int(dial.cw)}x{int(dial.ch)}; mounted {mounted}, unmounted {unmounted}`)
+  }
+}

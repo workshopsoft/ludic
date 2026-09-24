@@ -10,13 +10,12 @@ function ly_place(n: UiNode, x: float, y: float, w: float, h: float) -> void {
   if (n.kind != UI_BOX and n.kind != UI_SCROLL) or n.children == null { return }
   let inner_w = w - ly_hin(n)
   var inner_h = h - ly_vin(n)
-  if n.kind == UI_SCROLL { inner_h = Math.max(n.mh, h) - ly_vin(n) }
+  if n.kind == UI_SCROLL { inner_h = Math.max(n.content_h, h) - ly_vin(n) }
   let top = n.y + n.pt + n.border
-  if n.dir == UI_ROW and n.wrap {
-    ly_place_wrap(n, top, inner_w)
-    return
+  if n.dir == UI_ROW and n.wrap { ly_place_wrap(n, top, inner_w) } else if n.dir == UI_ROW { ly_place_line(n, 0, len(n.children), top, inner_w, inner_h) } else { ly_place_line(n, 0, len(n.children), top, inner_h, inner_w) }
+  for i in 0 .. len(n.children) {
+    if n.children[i].pos >= 2 { ly_place_abs(n, n.children[i]) }
   }
-  if n.dir == UI_ROW { ly_place_line(n, 0, len(n.children), top, inner_w, inner_h) } else { ly_place_line(n, 0, len(n.children), top, inner_h, inner_w) }
 }
 function ly_fills(c: UiNode, dir: int) -> bool {
   if dir == UI_ROW { return c.w == UI_FILL }
@@ -43,20 +42,26 @@ function ly_stretches(n: UiNode, c: UiNode) -> bool {
 function ly_place_line(n: UiNode, from: int, to: int, top: float, main_room: float, cross_room: float) -> void {
   var used = 0.0
   var grows = 0.0
+  var count = 0
   for i in from .. to {
-    used = used + ly_basis(n.children[i], n.dir, main_room)
-    grows = grows + ly_grow(n.children[i], n.dir)
+    if n.children[i].pos < 2 {
+      used = used + ly_basis(n.children[i], n.dir, main_room)
+      grows = grows + ly_grow(n.children[i], n.dir)
+      count += 1
+    }
   }
-  used = used + n.gap * float(Math.max(to - from - 1, 0))
+  used = used + n.gap * float(Math.max(count - 1, 0))
   let free = main_room - used
-  ly_justify(n, free, to - from, grows)
+  ly_justify(n, free, count, grows)
   let extra = ly_extra
   var at = ly_lead
   for i in from .. to {
     let c = n.children[i]
+    if c.pos >= 2 { continue }
     var m = ly_basis(c, n.dir, main_room)
     if grows > 0.0 and free > 0.0 { m = m + free * ly_grow(c, n.dir) / grows }
     ly_place_child(n, c, at, top, m, cross_room)
+    if c.pos == 1 { ly_offset(c, ly_or0(c.left) - ly_or0(c.right), ly_or0(c.top) - ly_or0(c.bottom)) }
     at = at + m + n.gap + extra
   }
 }
@@ -78,22 +83,5 @@ function ly_place_child(n: UiNode, c: UiNode, at: float, top: float, m: float, c
   } else {
     let chh = ly_clamp(m - c.mt - c.mb, c.min_h, c.max_h)
     ly_place(c, left + off + c.ml, top + at + c.mt, ly_clamp(cr - c.ml - c.mr, c.min_w, c.max_w), chh)
-  }
-}
-# where the first child starts and what goes between, when nothing grows into the spare room
-function ly_justify(n: UiNode, free: float, count: int, grows: float) -> void {
-  ly_lead = 0.0
-  ly_extra = 0.0
-  if grows > 0.0 or free <= 0.0 or count == 0 { return }
-  if n.justify == UI_CENTER { ly_lead = free / 2.0 }
-  if n.justify == UI_END { ly_lead = free }
-  if n.justify == UI_BETWEEN and count > 1 { ly_extra = free / float(count - 1) }
-  if n.justify == UI_AROUND {
-    ly_extra = free / float(count)
-    ly_lead = ly_extra / 2.0
-  }
-  if n.justify == UI_EVENLY {
-    ly_extra = free / float(count + 1)
-    ly_lead = ly_extra
   }
 }

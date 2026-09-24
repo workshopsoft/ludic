@@ -1,8 +1,9 @@
 # elem.ludic - an element made from its template: what kind of node its tag is, its id, classes
 # and attributes (kept for selectors, applied after every rule), its text, and its children
 const EL_BOXES: string = " col div section header footer nav main article aside ul ol li form box "
-const EL_TEXTS: string = " text span p label h1 h2 h3 h4 h5 h6 strong em small b i a "
+const EL_TEXTS: string = " text span p label h1 h2 h3 h4 h5 h6 strong em small b i a option "
 function bd_elem(k: UiTpl, e: UiEnv, key: string) -> UiNode {
+  ui_at = k.where
   let n = new UiNode
   n.key = key
   n.tag = k.tag
@@ -17,18 +18,23 @@ function bd_elem(k: UiTpl, e: UiEnv, key: string) -> UiNode {
   el_kind(n, k.tag)
   for i in 0 .. len(k.keys) { el_keep(n, k.keys[i], ui_eval(k.vals[i], e)) }
   n.hovered = fr_was_hovered(key)
+  n.on_names = k.on_keys
+  n.on_acts = k.on_acts
   for i in 0 .. len(k.on_keys) {
-    if k.on_keys[i] == "press" {
-      n.act = k.on_acts[i]
-      n.env = e
-    } else { ui_err(`on-{k.on_keys[i]}: an element answers on-press (or onclick); a component's other events are its user's`) }
+    if k.on_keys[i] == "press" { n.act = k.on_acts[i] }
   }
+  lc_note(key, k.on_keys, k.on_acts, e)
   bd_kids(k.kids, e, key, n.children)
   if k.text != null { el_text(n, ui_eval_text(k.text, e)) }
+  el_inline(n)
   return n
 }
 function el_kind(n: UiNode, tag: string) -> void {
-  if lk_in(EL_TEXTS, tag) { n.kind = UI_TEXT } else if tag == "row" { n.dir = UI_ROW } else if tag == "button" { n.kind = UI_BUTTON } else if tag == "spacer" { n.kind = UI_SPACER } else if tag == "scroll" { n.kind = UI_SCROLL } else if tag == "img" { n.kind = UI_IMAGE } else if tag == "hr" { n.kind = UI_RULE } else if not lk_in(EL_BOXES, tag) { ui_err(`<{tag}>: there is no such element`) }
+  let nv = nt_find(tag)
+  if nv != null {
+    n.kind = UI_NATIVE
+    n.native = nv
+  } else if lk_in(EL_TEXTS, tag) { n.kind = UI_TEXT } else if tag == "row" { n.dir = UI_ROW } else if tag == "button" { n.kind = UI_BUTTON } else if tag == "spacer" { n.kind = UI_SPACER } else if tag == "scroll" { n.kind = UI_SCROLL } else if tag == "img" { n.kind = UI_IMAGE } else if tag == "hr" { n.kind = UI_RULE } else if not lk_in(EL_BOXES, tag) { ui_err(`<{tag}>: there is no such element`) }
 }
 # a box with words in it holds them as a text of its own, as <div>words</div> does
 function el_text(n: UiNode, s: string) -> void {

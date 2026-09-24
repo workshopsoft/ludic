@@ -4,27 +4,62 @@ function fr_draw(n: UiNode) -> void {
     fr_button(n)
     return
   }
+  if n.kind == UI_NATIVE {
+    n.native.draw(n)
+    return
+  }
   if n.bg >= 0 and ui_be.rect != null { ui_be.rect(n.x, n.y, n.cw, n.ch, n.bg, n.alpha) }
   fr_border(n)
-  if n.kind == UI_TEXT { ui_be.text(fr_text_x(n), n.y + n.pt + n.border, n.text, n.rsize, n.rfg) }
+  if n.kind == UI_TEXT { fr_text(n) }
   if n.kind == UI_IMAGE and ui_be.image != null { ui_be.image(n.src, n.x + n.pl + n.border, n.y + n.pt + n.border, n.cw - ly_hin(n), n.ch - ly_vin(n), n.rfg, n.alpha) }
   var off = 0.0
-  if n.kind == UI_SCROLL and ui_be.scroll_begin != null { off = ui_be.scroll_begin(n.key, n.x, n.y, n.cw, n.ch, n.mh) }
+  if n.kind == UI_SCROLL and ui_be.scroll_begin != null { off = ui_be.scroll_begin(n.key, n.x, n.y, n.cw, n.ch, n.content_h) }
   if off != 0.0 {
     for i in 0 .. len(n.children) { fr_shift(n.children[i], off) }
   }
-  if n.children != null {
-    for i in 0 .. len(n.children) { fr_draw(n.children[i]) }
-  }
+  if n.children != null { fr_children(n) }
   if n.kind == UI_SCROLL and ui_be.scroll_end != null { ui_be.scroll_end() }
 }
-# where a text starts: text-align within the room the box gives it
-function fr_text_x(n: UiNode) -> float {
+# a text's lines (one, or the wrapped ones), each placed by text-align, the last cut by an ellipsis
+function fr_text(n: UiNode) -> void {
+  let y = n.y + n.pt + n.border
+  if n.lines == null {
+    var s = n.text
+    if n.ellipsis { s = ly_ellipsis(s, n.rsize, n.cw - ly_hin(n)) }
+    ui_be.text(fr_line_x(n, s), y, s, n.rsize, n.rfg)
+    return
+  }
+  for i in 0 .. len(n.lines) { ui_be.text(fr_line_x(n, n.lines[i]), y + float(i) * n.rsize * 1.25, n.lines[i], n.rsize, n.rfg) }
+}
+function fr_text_x(n: UiNode) -> float { return fr_line_x(n, n.text) }
+# where a line starts: text-align within the room the box gives it
+function fr_line_x(n: UiNode, s: string) -> float {
   let x = n.x + n.pl + n.border
   if n.talign == UI_START { return x }
-  let spare = n.cw - ly_hin(n) - ly_text_w(n.text, n.rsize)
+  let spare = n.cw - ly_hin(n) - ly_text_w(s, n.rsize)
   if n.talign == UI_CENTER { return x + spare / 2.0 }
   return x + spare
+}
+# the children in painting order: those in the flow first, then positioned ones by z-index
+function fr_children(n: UiNode) -> void {
+  var positioned = 0
+  for i in 0 .. len(n.children) {
+    if n.children[i].pos == 0 { fr_draw(n.children[i]) } else { positioned += 1 }
+  }
+  if positioned == 0 { return }
+  var lo = 1000000
+  var hi = -1000000
+  for i in 0 .. len(n.children) {
+    if n.children[i].pos != 0 {
+      lo = Math.min(lo, n.children[i].z)
+      hi = Math.max(hi, n.children[i].z)
+    }
+  }
+  for z in lo .. hi + 1 {
+    for i in 0 .. len(n.children) {
+      if n.children[i].pos != 0 and n.children[i].z == z { fr_draw(n.children[i]) }
+    }
+  }
 }
 function fr_border(n: UiNode) -> void {
   if n.border <= 0.0 or ui_be.rect == null { return }
@@ -39,7 +74,7 @@ function fr_border(n: UiNode) -> void {
 # the renderer's own button when it has one: it draws, focuses and answers the press
 function fr_button(n: UiNode) -> void {
   if ui_be.button != null {
-    if ui_be.button(n.x, n.y, n.cw, n.ch, n.text, n.enabled) and n.enabled { push(fr_pressed, n) }
+    if ui_be.button(n.x, n.y, n.cw, n.ch, n.text, n.enabled) and n.enabled { ui_fire(n, "press", Value.null()) }
     return
   }
   var bg = n.bg
@@ -53,14 +88,4 @@ function fr_shift(n: UiNode, off: float) -> void {
   if n.children != null {
     for i in 0 .. len(n.children) { fr_shift(n.children[i], off) }
   }
-}
-# every node and where it went, one line each - for a test, or a look at a layout
-export function ui_dump(n: UiNode, depth: int) -> string {
-  var pad = ""
-  for d in 0 .. depth { pad = pad + "  " }
-  var out = `{pad}{n.kind} {int(n.x)},{int(n.y)} {int(n.cw)}x{int(n.ch)} {n.text}\n`
-  if n.children != null {
-    for i in 0 .. len(n.children) { out = out + ui_dump(n.children[i], depth + 1) }
-  }
-  return out
 }

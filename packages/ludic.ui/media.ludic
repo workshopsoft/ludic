@@ -1,0 +1,36 @@
+# media.ludic - @media (min-width: 1280px) and (max-height: 720px) { ... }: rules that hold only
+# while the screen's area is that size
+export property UiMedia {
+  min_w: float = 0.0
+  max_w: float = 0.0
+  min_h: float = 0.0
+  max_h: float = 0.0
+}
+function md_parse(cond: string) -> UiMedia {
+  let m = new UiMedia
+  let parts = lss_split(cond, 40)
+  for i in 0 .. len(parts) {
+    let p = parts[i]
+    var colon = -1
+    for k in 0 .. len(p) {
+      if colon < 0 and p[k] == 58 { colon = k }
+    }
+    if colon < 0 { continue }
+    let key = tpl_words(p[0..colon])
+    let v = el_num(tpl_words(p[colon + 1..len(p)]))
+    if key == "min-width" { m.min_w = v }
+    if key == "max-width" { m.max_w = v }
+    if key == "min-height" { m.min_h = v }
+    if key == "max-height" { m.max_h = v }
+  }
+  return m
+}
+function md_ok(r: UiRule) -> bool {
+  let m = r.md
+  if m == null { return true }
+  if m.min_w > 0.0 and ly_vp_w < m.min_w { return false }
+  if m.max_w > 0.0 and ly_vp_w > m.max_w { return false }
+  if m.min_h > 0.0 and ly_vp_h < m.min_h { return false }
+  if m.max_h > 0.0 and ly_vp_h > m.max_h { return false }
+  return true
+}

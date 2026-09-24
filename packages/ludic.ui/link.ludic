@@ -1,15 +1,15 @@
 # link.ludic - each tag in a file that is not an element names a component: the file's own, an
 # unnamed import's exported one, or `as:Name` from the import called `as`
-const LK_OWN: string = " row button spacer scroll img hr if else each slot state style component screen import "
+const LK_OWN: string = " row button spacer scroll img hr if else each slot state style component screen import let fragment template provide "
 function lib_link(f: UiFile, t: UiTpl) -> void {
   t.sheet = f.sheet
   if not lk_element(t.tag) {
     t.comp = lk_find(f, t.tag, false)
-    if t.comp == null and lk_find(f, t.tag, true) != null { ui_err(`{f.path}: <{t.tag}>: that component is not exported - export="true" on it lets other files use it`) } else if t.comp == null { ui_err(`{f.path}: <{t.tag}>: there is no such element, and no component of that name here or exported by an import`) }
+    if t.comp == null and lk_find(f, t.tag, true) != null { ui_err(`{t.where}: <{t.tag}>: that component is not exported - export="true" on it lets other files use it`) } else if t.comp == null { ui_err(`{t.where}: <{t.tag}>: there is no such element, and no component of that name here or exported by an import`) }
   }
   for i in 0 .. len(t.kids) { lib_link(f, t.kids[i]) }
 }
-function lk_element(tag: string) -> bool { return lk_in(LK_OWN, tag) or lk_in(EL_BOXES, tag) or lk_in(EL_TEXTS, tag) }
+function lk_element(tag: string) -> bool { return lk_in(LK_OWN, tag) or lk_in(EL_BOXES, tag) or lk_in(EL_TEXTS, tag) or nt_find(tag) != null }
 # a word in a list of words written " a b c "
 function lk_in(words: string, w: string) -> bool {
   let pat = ` {w} `

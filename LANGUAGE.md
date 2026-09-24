@@ -388,6 +388,37 @@ string.
   - A file's cascade is its imports' rules, then its own. `<import src="look.lss"/>` brings a
     stylesheet in, and one stylesheet can `@import` another, so a look is a file others can use.
     A library's components keep the styles of the file they were written in.
+- **More CSS.**
+  - Custom properties: `--accent: #fc0` on any element or `:root`, read with `var(--accent)` or
+    `var(--accent, gold)`, and inherited by what is inside.
+  - `position: relative|absolute|fixed` with `top`, `right`, `bottom`, `left` and `inset`, and
+    `z-index`. An absolute element sits in its parent's box, a fixed one in the screen's, and
+    neither takes room in the flow.
+  - Units: `em`, `rem`, `vw` and `vh`.
+  - `@media (min-width: ..) and (max-height: ..) { ... }`.
+  - Text wraps between words to fit its box; `white-space: nowrap` keeps one line and
+    `text-overflow: ellipsis` cuts it.
+  - `overflow: auto|scroll|hidden` makes a box scroll.
+  - Selectors also take `+` and `~`, `:nth-child(2n+1)`, `:checked` and `:active`.
+- **More React.**
+  - `<each ... key="{item.id}">` keeps an item's state when the list is reordered.
+  - `<let name="{value}"/>` names a value for the siblings after it.
+  - `<provide name="{value}">` gives a value to everything inside, components included.
+  - `<fragment>` groups without a box.
+  - `<slot name="title"/>` takes the user's `<template slot="title">`.
+  - `on-mount` and `on-unmount` run when an element or component appears and goes.
+  - Words inside a text element read as one line: `<p>Hi <b>there</b></p>`.
+- **Natives and forms.** `ui_native("dial", measure, draw)` makes `<dial>` an element the program
+  draws itself, laid out and styled like any other. It reports with `ui_fire(n, "change",
+  value)`, which runs the element's `on-change` with `event.value`, and it reads its attributes
+  with `ui_attr`. `<input type="checkbox|radio|text|range">`, `<select>` with `<option
+  value>`, and `<textarea>` are natives with simple defaults, which a renderer replaces with its
+  own.
+- **Developing.**
+  - Every error names the template's file and line, and `ui_errors()` lists them for a host to show.
+  - `ui_reload()` reads changed templates and stylesheets again and keeps each screen's state.
+  - `ui_dump` prints the tree the way an inspector would (`div#id.class`, its box and its
+    computed styles).
 - **Bindings.** Any attribute and any text can hold `{expressions}`. An attribute that is one
   `{expression}` and nothing else keeps its type. Expressions read loop names, props, state and the
   model, and support `.field`, `[index]`, arithmetic, comparisons, `and` / `or` / `not`,

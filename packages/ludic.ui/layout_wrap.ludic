@@ -6,7 +6,11 @@ function ly_place_wrap(n: UiNode, top0: float, inner_w: float) -> void {
     var to = from
     var line_w = 0.0
     var line_h = 0.0
-    while to < len(n.children) and (to == from or line_w + n.gap + ly_main(n.children[to], UI_ROW) <= inner_w) {
+    while to < len(n.children) and (to == from or n.children[to].pos >= 2 or line_w + n.gap + ly_main(n.children[to], UI_ROW) <= inner_w) {
+      if n.children[to].pos >= 2 {
+        to += 1
+        continue
+      }
       if to > from { line_w = line_w + n.gap }
       line_w = line_w + ly_main(n.children[to], UI_ROW)
       line_h = Math.max(line_h, ly_cross(n.children[to], UI_ROW))
@@ -15,5 +19,56 @@ function ly_place_wrap(n: UiNode, top0: float, inner_w: float) -> void {
     ly_place_line(n, from, to, top, inner_w, line_h)
     top = top + line_h + n.gap
     from = to
+  }
+}
+# position: absolute (in the parent's padding box) or fixed (in the screen): the insets say where,
+# and two opposite ones say how big; relative is placed as usual and moved by its insets
+function ly_place_abs(n: UiNode, c: UiNode) -> void {
+  var bx = n.x + n.border
+  var by = n.y + n.border
+  var bw = n.cw - n.border * 2.0
+  var bh = n.ch - n.border * 2.0
+  if c.pos == 3 {
+    bx = ly_vp_x
+    by = ly_vp_y
+    bw = ly_vp_w
+    bh = ly_vp_h
+  }
+  var w = c.mw
+  var h = c.mh
+  if c.w_pct > 0.0 { w = bw * c.w_pct / 100.0 }
+  if c.h_pct > 0.0 { h = bh * c.h_pct / 100.0 }
+  if c.w == UI_FILL or (c.left != UI_AUTO and c.right != UI_AUTO and c.w <= 0.0) { w = bw - ly_or0(c.left) - ly_or0(c.right) - c.ml - c.mr }
+  if c.h == UI_FILL or (c.top != UI_AUTO and c.bottom != UI_AUTO and c.h <= 0.0) { h = bh - ly_or0(c.top) - ly_or0(c.bottom) - c.mt - c.mb }
+  var x = bx + n.pl + c.ml
+  if c.left != UI_AUTO { x = bx + c.left + c.ml } else if c.right != UI_AUTO { x = bx + bw - c.right - c.mr - w }
+  var y = by + n.pt + c.mt
+  if c.top != UI_AUTO { y = by + c.top + c.mt } else if c.bottom != UI_AUTO { y = by + bh - c.bottom - c.mb - h }
+  ly_place(c, x, y, w, h)
+}
+function ly_or0(v: float) -> float {
+  if v == UI_AUTO { return 0.0 }
+  return v
+}
+function ly_offset(n: UiNode, dx: float, dy: float) -> void {
+  n.x = n.x + dx
+  n.y = n.y + dy
+  for i in 0 .. len(n.children) { ly_offset(n.children[i], dx, dy) }
+}
+# where the first child starts and what goes between, when nothing grows into the spare room
+function ly_justify(n: UiNode, free: float, count: int, grows: float) -> void {
+  ly_lead = 0.0
+  ly_extra = 0.0
+  if grows > 0.0 or free <= 0.0 or count == 0 { return }
+  if n.justify == UI_CENTER { ly_lead = free / 2.0 }
+  if n.justify == UI_END { ly_lead = free }
+  if n.justify == UI_BETWEEN and count > 1 { ly_extra = free / float(count - 1) }
+  if n.justify == UI_AROUND {
+    ly_extra = free / float(count)
+    ly_lead = ly_extra / 2.0
+  }
+  if n.justify == UI_EVENLY {
+    ly_extra = free / float(count + 1)
+    ly_lead = ly_extra
   }
 }

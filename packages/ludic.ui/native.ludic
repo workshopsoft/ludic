@@ -1,0 +1,77 @@
+# native.ludic - elements the host draws itself: ui_native("keybind", measure, draw) makes
+# <keybind> a tag like any other, laid out and styled by the template, drawn by the host. A native
+# says what happened with ui_fire(n, "change", value): the element's on-change runs once the frame
+# is drawn, with `event.value` (and `event.name`) to read.
+export property UiNative {
+  tag: string = ""
+  measure: fn(UiNode, float) -> void = null   # the content's size into n.mw, n.mh; avail is the room
+  draw: fn(UiNode) -> void = null
+}
+var nt_list: []UiNative = new []UiNative
+export function ui_native(tag: string, measure: fn(UiNode, float) -> void, draw: fn(UiNode) -> void) -> void {
+  let nv = new UiNative
+  nv.tag = tag
+  nv.measure = measure
+  nv.draw = draw
+  for i in 0 .. len(nt_list) {
+    if nt_list[i].tag == tag {
+      nt_list[i] = nv
+      return
+    }
+  }
+  push(nt_list, nv)
+}
+function nt_find(tag: string) -> UiNative {
+  nt_defaults()
+  for i in 0 .. len(nt_list) {
+    if nt_list[i].tag == tag { return nt_list[i] }
+  }
+  return null
+}
+var nt_q_nodes: []UiNode = new []UiNode
+var nt_q_names: []string = new []string
+var nt_q_vals: []Val = new []Val
+function nt_fired_clear() -> void {
+  nt_q_nodes = new []UiNode
+  nt_q_names = new []string
+  nt_q_vals = new []Val
+}
+export function ui_fire(n: UiNode, name: string, value: Val) -> void {
+  push(nt_q_nodes, n)
+  push(nt_q_names, name)
+  push(nt_q_vals, value)
+}
+function nt_fired_run() -> void {
+  let nodes = nt_q_nodes
+  let names = nt_q_names
+  let vals = nt_q_vals
+  nt_fired_clear()
+  for i in 0 .. len(nodes) { nt_run(nodes[i], names[i], vals[i]) }
+}
+# the element's on-<name>, with `event` bound to what happened
+function nt_run(n: UiNode, name: string, value: Val) -> void {
+  if n.on_names == null or not n.enabled { return }
+  for i in 0 .. len(n.on_names) {
+    if n.on_names[i] == name {
+      let ev = Value.object()
+      Value.put(ev, "name", Value.str(name))
+      Value.put(ev, "value", value)
+      let e = env_new(n.env)
+      env_bind(e, "event", ev)
+      act_run(n.on_acts[i], e)
+    }
+  }
+}
+# an attribute of an element, as the template gave it (null when it has none) - for a native
+export function ui_attr(n: UiNode, key: string) -> Val {
+  if n.akeys == null { return Value.null() }
+  for i in 0 .. len(n.akeys) {
+    if n.akeys[i] == key { return n.vals[i] }
+  }
+  return Value.null()
+}
+export function ui_attr_text(n: UiNode, key: string) -> string { return vl_text(ui_attr(n, key)) }
+export function ui_attr_on(n: UiNode, key: string) -> bool {
+  let v = ui_attr(n, key)
+  return vl_truthy(v) and vl_text(v) != "false"
+}

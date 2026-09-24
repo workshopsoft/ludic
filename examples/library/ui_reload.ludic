@@ -1,0 +1,27 @@
+# ui_reload.ludic — a template read from disk, changed there, and read again by ui_reload: the new
+# text shows at once, and the screen's state (a counter pressed before the change) is kept.
+import "ludic.ui"
+program UiReload {
+  numbers float
+  view Note {
+    title = "note"
+  }
+  const PATH: string = "build/ui_reload_example.xml"
+  const V1: string = "<ui><screen name='note'><state n='{0}'/><button on-click='set n = n + 1'>{title} {n}</button></screen></ui>"
+  const V2: string = "<ui><screen name='note'><state n='{0}'/><h1>{title} again {n}</h1></screen></ui>"
+  function shown() -> string {
+    let root: UiNode = ui_nodes("note", view_note())
+    return root.children[0].text
+  }
+  entry {
+    Fs.write_text(PATH, V1)
+    ui_load(PATH)
+    let root: UiNode = ui_nodes("note", view_note())
+    ui_press(root.children[0])
+    let before = shown()
+    let same = ui_reload()
+    Fs.write_text(PATH, V2)
+    let changed = ui_reload()
+    print(`{before} | reloaded {same} then {changed} | {shown()}`)
+  }
+}
