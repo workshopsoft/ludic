@@ -755,6 +755,8 @@ function cmd_dev_test() -> int {
   controller_case("library/ui_react", "", "Mixer|loud|dark|drums 1|bass 0|checkbox true| volume 7; dial 40x40; mounted 1, unmounted 1", "ui_react.ludic (L11: keyed lists, let, context, named slots, mount and unmount, native elements and form controls)")
   controller_case("library/ui_css", "", "badge at 255,175 bg 16746496; nudged 17,13; big 32; corner 0,0 40x32 media keeps narrow; li gaps 6 0; li colours 255 -1 255; after 16746496; fallback 65280 checked opacity 0.25; list scrolls 1 50 of 80; para lines 5", "ui_css.ludic (L11: var(), positioning, em/rem/vw, @media, wrapping, sibling combinators, :nth-child formulas, :checked, overflow)")
   controller_case("library/ui_reload", "", "ui: templates reloaded note 1 | reloaded 0 then 1 | note again 1", "ui_reload.ludic (L11: a template changed on disk is read again, and its state kept)")
+  controller_case("library/ui_component", "", "counters|a: 1 (2)|+|reset|b: 10 (20) big|+|reset|outside| b margin 9; b text 16711680; outside -1; button 30 b: 0 (0)", "ui_component.ludic (L11: components as NAME.ludic + .xml + .lss - props, state, fields, events, scoped styles, @import, class passed down)")
+  reject_case("rejected/component_no_template", "there is no Lonely.xml beside it", "a component needs its template beside it")
   reject_case("rejected/view_untyped", "view Sums: say what type total is", "a view field that is not a bare global says its type")
   reject_case("rejected/view_without_ui", "a view is shown by ludic.ui", "a view needs ludic.ui to show it")
 

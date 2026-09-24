@@ -5,8 +5,16 @@ function lib_link(f: UiFile, t: UiTpl) -> void {
   t.sheet = f.sheet
   if not lk_element(t.tag) {
     t.comp = lk_find(f, t.tag, false)
+    if t.comp == null { t.cls = uc_find(t.tag) }
+    if t.cls != null {
+      lk_kids(f, t)
+      return
+    }
     if t.comp == null and lk_find(f, t.tag, true) != null { ui_err(`{t.where}: <{t.tag}>: that component is not exported - export="true" on it lets other files use it`) } else if t.comp == null { ui_err(`{t.where}: <{t.tag}>: there is no such element, and no component of that name here or exported by an import`) }
   }
+  lk_kids(f, t)
+}
+function lk_kids(f: UiFile, t: UiTpl) -> void {
   for i in 0 .. len(t.kids) { lib_link(f, t.kids[i]) }
 }
 function lk_element(tag: string) -> bool { return lk_in(LK_OWN, tag) or lk_in(EL_BOXES, tag) or lk_in(EL_TEXTS, tag) or nt_find(tag) != null }

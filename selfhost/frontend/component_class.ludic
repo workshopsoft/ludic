@@ -1,0 +1,78 @@
+# component_class.ludic — L11: a component's class: its name, its template and styles as read from
+# beside it (and where they are, for a developer's build to read again), and its functions; the
+# registration is a global, so every component is known before the program's first frame
+function cm_class(c: int, px: pointer, head: Node) -> void {
+  let name = g_cm_name[c]
+  let dir = dir_of(g_cm_file[c])
+  let xml_path = join_path(dir, name + ".xml")
+  let lss_path = join_path(dir, name + ".lss")
+  let xml = read_file(xml_path)
+  if xml == null { cm_err(c, `there is no {name}.xml beside it - a component's template is NAME.xml in its directory`) }
+  var lss = read_file(lss_path)
+  var lss_at = lss_path
+  if lss == null {
+    lss = ""
+    lss_at = ""
+  } else { lss = cm_lss_inline(c, lss, dir, 0) }
+  var src = `function {px}class() -> UiClass {{\n  let k = new UiClass\n  k.name = "{name}"\n`
+  src = src + `  k.xml_path = "{xml_path}"\n  k.xml = {px}xml_text()\n  k.lss_path = "{lss_at}"\n  k.lss = {px}lss_text()\n`
+  src = src + `  k.make = fn {px}new\n  k.props = fn {px}props\n  k.model = fn {px}model\n  k.call = fn {px}call\n  return k\n}}\n`
+  vw_parse(src, g_cm_file[c], g_cm_line[c], head.vis)
+  cm_text_fn(c, px + "xml_text", xml, head)
+  cm_text_fn(c, px + "lss_text", lss, head)
+  let reg = node(E_CALL)
+  let callee = node(E_ID)
+  callee.s = "ui_register"
+  reg.a = callee
+  let arg = node(E_CALL)
+  let make = node(E_ID)
+  make.s = px + "class"
+  arg.a = make
+  arg.kids = new []Node
+  reg.kids = new []Node
+  push(reg.kids, arg)
+  head.a = reg
+}
+# a function answering a file's text, carried in the program as it was read
+function cm_text_fn(c: int, name: pointer, text: pointer, head: Node) -> void {
+  let at = len(prog)
+  vw_parse(`function {name}() -> string {{\n  return ""\n}}\n`, g_cm_file[c], g_cm_line[c], head.vis)
+  prog[at].a.kids[0].a.s = text
+}
+# a stylesheet with each `@import "x.lss";` replaced by that file (beside it, or from the project's
+# root when it starts with /), so the program carries its whole look
+function cm_lss_inline(c: int, text: pointer, dir: pointer, depth: int) -> pointer {
+  if depth > 8 { cm_err(c, "its stylesheets @import each other in a circle") }
+  var out = ""
+  var i = 0
+  let n = len(text)
+  while i < n {
+    var j = i
+    while j < n and text[j] != '\n' { j += 1 }
+    let line: pointer = text[i..j]
+    let path = cm_import_of(line)
+    if path == null { out = out + line + "\n" } else {
+      var at = join_path(dir, path)
+      if path[0] == '/' { at = path[1..len(path)] }
+      let inner = read_file(at)
+      if inner == null { cm_err(c, `its stylesheet imports {path}, which is not there`) }
+      out = out + cm_lss_inline(c, inner, dir_of(at), depth + 1) + "\n"
+    }
+    i = j + 1
+  }
+  return out
+}
+# the path in `@import "x";` (or with single quotes), or null for any other line
+function cm_import_of(line: pointer) -> pointer {
+  var i = 0
+  while i < len(line) and (line[i] == ' ' or line[i] == '\t') { i += 1 }
+  if i + 7 > len(line) { return null }
+  if not (line[i..i + 7] == "@import") { return null }
+  var a = i + 7
+  while a < len(line) and line[a] != '"' and line[a] != '\'' { a += 1 }
+  if a >= len(line) { return null }
+  let q = line[a]
+  var b = a + 1
+  while b < len(line) and line[b] != q { b += 1 }
+  return line[a + 1..b]
+}

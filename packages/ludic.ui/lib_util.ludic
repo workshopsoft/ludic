@@ -1,4 +1,5 @@
-# lib_util.ludic - a file made, found, read, and a path beside another
+# lib_util.ludic - a file made, found, read, and a path beside another (or from the project's
+# root, when it starts with /)
 function lib_find(names: []string, name: string) -> int {
   for i in 0 .. len(names) {
     if names[i] == name { return i }
@@ -6,6 +7,12 @@ function lib_find(names: []string, name: string) -> int {
   return -1
 }
 function lib_new(path: string) -> UiFile {
+  let f = lib_blank(path)
+  push(lib_files, f)
+  return f
+}
+# a file that is not one of the loaded ones (a component's own)
+function lib_blank(path: string) -> UiFile {
   let f = new UiFile
   f.path = path
   f.names = new []string
@@ -14,7 +21,6 @@ function lib_new(path: string) -> UiFile {
   f.imp_as = new []string
   f.imp = new []UiFile
   f.own = new []UiRule
-  push(lib_files, f)
   return f
 }
 function lib_text(path: string) -> string {
@@ -29,6 +35,7 @@ function lib_beside(path: string, src: string) -> string {
   for i in 0 .. len(path) {
     if path[i] == 47 { cut = i }
   }
-  if cut < 0 or (len(src) > 0 and src[0] == 47) { return src }
+  if len(src) > 0 and src[0] == 47 { return src[1..len(src)] }
+  if cut < 0 { return src }
   return path[0..cut + 1] + src
 }

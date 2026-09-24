@@ -1,0 +1,91 @@
+# component_gen.ludic — L11: when the program is read, each component gets its record, its
+# constructor, a props setter, a model, a call and its class, registered with ludic.ui at start
+function components_finish() -> void {
+  var c = 0
+  while c < len(g_cm_name) {
+    cm_finish(c)
+    c += 1
+  }
+}
+function cm_err(c: int, msg: pointer) -> void {
+  g_err_file = g_cm_file[c]
+  g_err_line = g_cm_line[c]
+  g_parsing = false
+  perr(`component {g_cm_name[c]}: {msg}`)
+}
+function cm_finish(c: int) -> void {
+  if find_comp("UiClass") == null { cm_err(c, `a component is shown by ludic.ui - import "ludic.ui"`) }
+  let name = g_cm_name[c]
+  let px = cm_prefix(name)
+  let rec = "Cmp" + name
+  let head = g_cm_head[c]
+  let file = g_cm_file[c]
+  let line = g_cm_line[c]
+  var src = `property {rec} {{\n`
+  var i = 0
+  while i < len(g_cm_keep[c]) {
+    src = src + `  {g_cm_keep[c][i]}: {g_cm_keep_ty[c][i]}\n`
+    i += 1
+  }
+  vw_parse(src + "}\n", file, line, head.vis)
+  cm_bodies(c, rec)
+  vw_parse(cm_new_src(c, px, rec), file, line, head.vis)
+  vw_parse(cm_props_src(c, px, rec), file, line, head.vis)
+  vw_parse(cm_model_src(c, px, rec, head), file, line, head.vis)
+  vw_parse(cm_call_src(c, px, rec, head), file, line, head.vis)
+  cm_class(c, px, head)
+}
+# every function of the component (getters, defaults, functions, events) takes the instance
+function cm_bodies(c: int, rec: pointer) -> void {
+  var i = 0
+  while i < len(g_cm_defs[c]) {
+    if g_cm_defs[c][i] != null { cm_rewrite(c, g_cm_defs[c][i], rec) }
+    i += 1
+  }
+  i = 0
+  while i < len(g_cm_fields[c]) {
+    let g = g_cm_fields[c][i]
+    if g.ty == null { g.ty = cm_infer(c, g, g_cm_fnames[c][i]) }
+    cm_rewrite(c, g, rec)
+    i += 1
+  }
+  i = 0
+  while i < len(g_cm_calls[c]) {
+    cm_rewrite(c, g_cm_calls[c][i], rec)
+    i += 1
+  }
+}
+function cm_infer(c: int, g: Node, fname: pointer) -> pointer {
+  let e = g.a.kids[0].a
+  if e.kind == E_ID and cm_is_keep(c, e.s) {
+    var i = 0
+    while i < len(g_cm_keep[c]) {
+      if (g_cm_keep[c][i] == e.s) { return g_cm_keep_ty[c][i] }
+      i += 1
+    }
+  }
+  if e.kind == E_ID {
+    let d = find_global(e.s)
+    if d != null and d.ty != null { return d.ty }
+  }
+  if e.kind == E_INT { return "int" }
+  if e.kind == E_FLOAT { return "float" }
+  if e.kind == E_BOOL { return "bool" }
+  if e.kind == E_STR { return "string" }
+  if e.kind == E_CALL and e.a != null and e.a.kind == E_ID {
+    let f = find_fn(e.a.s)
+    if f != null and f.ty != null and not (f.ty == "void") { return f.ty }
+  }
+  g_cm_line[c] = g.line
+  cm_err(c, `say what type {fname} is - {fname}: int = ...`)
+  return "int"
+}
+function cm_new_src(c: int, px: pointer, rec: pointer) -> pointer {
+  var src = `function {px}new() -> pointer {{\n  let s = new {rec}\n`
+  var i = 0
+  while i < len(g_cm_keep[c]) {
+    if g_cm_defs[c][i] != null { src = src + `  s.{g_cm_keep[c][i]} = {px}def_{g_cm_keep[c][i]}(s)\n` }
+    i += 1
+  }
+  return src + "  return s\n}\n"
+}

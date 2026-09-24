@@ -1,0 +1,37 @@
+# ui_component.ludic — components as files: Counter.ludic declares props, state, a field, a function
+# and an event; Counter.xml is its template; Counter.lss its scoped styles (which @import a theme).
+# Two counters keep their own state, a parent's class reaches the child's root, and the child's
+# `p { color }` does not leak into the parent.
+import "ludic.ui"
+import "ui_component_parts/Counter.ludic"
+import "ui_component_parts/App.ludic"
+program UiComponent {
+  numbers float
+  function texts(n: UiNode, out: []string) -> void {
+    if n.text != "" { push(out, n.text) }
+    for i in 0 .. len(n.children) { texts(n.children[i], out) }
+  }
+  function frame() -> UiNode {
+    let root: UiNode = ui_nodes("App", null)
+    ui_place(root, 0.0, 0.0, 400.0, 400.0)
+    return root
+  }
+  entry {
+    var root = frame()
+    let b = root.children[0].children[2]
+    ui_press(b.children[1])
+    ui_press(b.children[1])
+    ui_press(root.children[0].children[1].children[1])
+    root = frame()
+    let out = new []string
+    texts(root, out)
+    var joined = ""
+    for i in 0 .. len(out) { joined = joined + out[i] + "|" }
+    print(joined)
+    let b2 = root.children[0].children[2]
+    print(`b margin {int(b2.mt)}; b text {b2.children[0].fg}; outside {root.children[0].children[3].fg}; button {int(b2.children[1].ch)}`)
+    ui_press(b2.children[2])
+    root = frame()
+    print(root.children[0].children[2].children[0].text)
+  }
+}

@@ -1,0 +1,72 @@
+# class.ludic - components declared in Ludic (`component Name { ... }` beside Name.xml and
+# Name.lss): the compiler registers each at start with its template, its styles and its functions,
+# and a tag of its name anywhere is an instance of it
+export property UiClass {
+  name: string = ""
+  xml_path: string = ""         # where the template is, for a developer's build to read again
+  xml: string = ""
+  lss_path: string = ""
+  lss: string = ""
+  make: fn() -> pointer = null
+  props: fn(pointer, Val) -> void = null
+  model: fn(pointer) -> Val = null
+  call: fn(pointer, string, Val) -> Val = null
+  root: UiTpl = null            # the template, once read
+  sheet: UiSheet = null
+  seen_xml: string = ""         # the files as a developer's build last found them on disk
+  seen_lss: string = ""
+}
+var uc_list: []UiClass = null     # filled by the compiler's registrations, before the program's globals
+export function ui_register(k: UiClass) -> int {
+  if uc_list == null { uc_list = new []UiClass }
+  push(uc_list, k)
+  return len(uc_list)
+}
+function uc_find(name: string) -> UiClass {
+  if uc_list == null { return null }
+  for i in 0 .. len(uc_list) {
+    if uc_list[i].name == name { return uc_list[i] }
+  }
+  return null
+}
+# the class's template and styles, read the first time it is shown
+function uc_load(k: UiClass) -> void {
+  if k.root != null { return }
+  let f = lib_blank(k.xml_path)
+  f.src = k.xml
+  if k.lss != "" { lss_text(f, k.lss) }
+  f.sheet = sheet_of(f)
+  tp_lines(k.xml)
+  let root = tpl_read(Xml.parse(k.xml), k.xml_path)
+  k.sheet = f.sheet
+  lib_link(f, root)
+  k.root = root
+}
+# a developer's build reads a class's files again when they change on disk: the first look is what
+# they are, and a later one that differs is taken (an @import in the styles is read from disk too)
+function uc_reload() -> bool {
+  if uc_list == null { return false }
+  var changed = false
+  for i in 0 .. len(uc_list) {
+    let k = uc_list[i]
+    if k.xml_path != "" and Fs.exists(k.xml_path) {
+      let x = lib_text(k.xml_path)
+      var l = ""
+      if k.lss_path != "" and Fs.exists(k.lss_path) { l = lib_text(k.lss_path) }
+      if k.seen_xml != "" and (x != k.seen_xml or l != k.seen_lss) {
+        k.xml = x
+        k.lss = l
+        k.root = null
+        changed = true
+      }
+      k.seen_xml = x
+      k.seen_lss = l
+    }
+  }
+  return changed
+}
+# every class reads its template and styles again, as when a stylesheet they import has changed
+function uc_invalidate() -> void {
+  if uc_list == null { return }
+  for i in 0 .. len(uc_list) { uc_list[i].root = null }
+}

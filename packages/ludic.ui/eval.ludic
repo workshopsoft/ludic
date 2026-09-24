@@ -42,8 +42,16 @@ function ev_call(x: UiExpr, e: UiEnv) -> Val {
     for i in 0 .. Value.as_int(Value.at(args, 0)) { Value.add(out, Value.int(i)) }
     return out
   }
+  var at = e
+  while at != null {
+    if at.inst != null {
+      let r = at.inst.cls.call(at.inst.ptr, x.s, args)
+      if Value.kind(r) != 99 { return r }
+    }
+    at = at.parent
+  }
   if ui_view == null or ui_view.call == null {
-    ui_err(`{x.s}(): no view is showing to ask`)
+    ui_err(`{x.s}(): there is no function or event of that name here`)
     return Value.null()
   }
   return ui_view.call(x.s, args)

@@ -1,33 +1,4 @@
 # node.ludic - what a template becomes each frame, the view it reads, and the renderer seam
-export const UI_BOX: int = 0
-export const UI_TEXT: int = 1
-export const UI_SPACER: int = 2
-export const UI_BUTTON: int = 3
-export const UI_SCROLL: int = 4
-export const UI_IMAGE: int = 5
-export const UI_RULE: int = 6         # <hr>: a line across
-export const UI_NATIVE: int = 7       # an element the host draws itself (ui_native)
-export const UI_AUTO: float = -1000000.0   # an inset that is not set
-export const UI_COL: int = 0
-export const UI_ROW: int = 1
-export const UI_FILL: float = -1.0
-export const UI_START: int = 0
-export const UI_CENTER: int = 1
-export const UI_END: int = 2
-export const UI_STRETCH: int = 3      # align: the whole cross axis
-export const UI_BETWEEN: int = 3      # justify: the spare room between, around or evenly
-export const UI_AROUND: int = 4
-export const UI_EVENLY: int = 5
-export const UI_INHERIT: int = -1
-export const UI_NONE: int = -2
-
-# what a program lets its templates see: `view Name { ... }` writes view_name() -> UiView
-export property UiView {
-  name: string = ""
-  model: fn() -> Val = null
-  call: fn(string, Val) -> Val = null
-}
-
 export property UiNode {
   kind: int = 0
   dir: int = 0
@@ -41,6 +12,9 @@ export property UiNode {
   vals: []Val = null            # the same, as values, applied after every rule
   style: UiRule = null          # its style="..." declarations
   sheet: UiSheet = null         # the stylesheets of the file it was written in
+  sheet2: UiSheet = null        # a component's root: its user's sheet too, and their style="..."
+  style2: UiRule = null
+  env2: UiEnv = null
   parent: UiNode = null
   index: int = 0                # its place among its parent's children, for :first-child and the rest
   src: string = ""              # an <img>'s picture

@@ -1,0 +1,23 @@
+# consts.ludic - the kinds of node, directions and the words that place things
+export const UI_BOX: int = 0
+export const UI_TEXT: int = 1
+export const UI_SPACER: int = 2
+export const UI_BUTTON: int = 3
+export const UI_SCROLL: int = 4
+export const UI_IMAGE: int = 5
+export const UI_RULE: int = 6         # <hr>: a line across
+export const UI_NATIVE: int = 7       # an element the host draws itself (ui_native)
+export const UI_AUTO: float = -1000000.0   # an inset that is not set
+export const UI_COL: int = 0
+export const UI_ROW: int = 1
+export const UI_FILL: float = -1.0
+export const UI_START: int = 0
+export const UI_CENTER: int = 1
+export const UI_END: int = 2
+export const UI_STRETCH: int = 3      # align: the whole cross axis
+export const UI_BETWEEN: int = 3      # justify: the spare room between, around or evenly
+export const UI_AROUND: int = 4
+export const UI_EVENLY: int = 5
+export const UI_INHERIT: int = -1
+export const UI_NONE: int = -2
+

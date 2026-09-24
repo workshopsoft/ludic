@@ -1,0 +1,116 @@
+# component.ludic — L11: a UI component is three files side by side: NAME.ludic declares it, NAME.xml
+# is its template and NAME.lss its styles (optional). The declaration says what it takes, keeps and
+# does, in Ludic:
+#
+#   component ShopRow {
+#     prop item: Val                 # given by the parent's template, as an attribute
+#     prop picked: bool = false
+#     state taps: int = 0            # the instance's own, kept while it is mounted
+#     price: int = cost_of(item)     # worked out each frame
+#     function label() -> string { return `{taps}` }
+#     on buy() { taps += 1 }         # props and state are plain names here
+#   }
+#
+# Each mounted instance is a record of its props and state. The compiler reads the template and the
+# styles into the program, so a missing template fails the build and nothing more has to ship, and
+# registers the component with ludic.ui when the program starts.
+var g_cm_name: []pointer = new []pointer
+var g_cm_file: []pointer = new []pointer
+var g_cm_line: []int = new []int
+var g_cm_vis: []int = new []int
+var g_cm_keep: [][]pointer = new [][]pointer   # props and state, which are fields of the record
+var g_cm_keep_ty: [][]pointer = new [][]pointer
+var g_cm_prop: [][]bool = new [][]bool
+var g_cm_defs: [][]Node = new [][]Node        # a getter per default, or null
+var g_cm_fields: [][]Node = new [][]Node
+var g_cm_fnames: [][]pointer = new [][]pointer
+var g_cm_calls: [][]Node = new [][]Node
+var g_cm_cnames: [][]pointer = new [][]pointer
+var g_cm_head: []Node = new []Node
+
+function cm_prefix(name: pointer) -> pointer { return `cmp_{reg_lower(name)}_` }
+
+# component NAME { members }
+function parse_ui_component() -> void {
+  pi += 1
+  let name = eat_id()
+  let px = cm_prefix(name)
+  g_uses_value = true
+  let c = len(g_cm_name)
+  push(g_cm_name, name)
+  push(g_cm_file, g_parse_file)
+  push(g_cm_line, toks[pi].line)
+  push(g_cm_keep, new []pointer)
+  push(g_cm_keep_ty, new []pointer)
+  push(g_cm_prop, new []bool)
+  push(g_cm_defs, new []Node)
+  push(g_cm_fields, new []Node)
+  push(g_cm_fnames, new []pointer)
+  push(g_cm_calls, new []Node)
+  push(g_cm_cnames, new []pointer)
+  skipnl()
+  eat_op("{")
+  while true {
+    skipnl()
+    if is_op("}") { break }
+    cm_member(c, px)
+  }
+  eat_op("}")
+  let head = node(N_VAR)
+  head.s = px + "reg"
+  head.ty = "int"
+  push(g_cm_head, head)
+  push(prog, head)
+}
+function cm_member(c: int, px: pointer) -> void {
+  if is_id("prop") or is_id("state") {
+    let is_prop = is_id("prop")
+    pi += 1
+    let fname = eat_id()
+    eat_op(":")
+    let ty = ptype()
+    push(g_cm_keep[c], fname)
+    push(g_cm_keep_ty[c], ty)
+    push(g_cm_prop[c], is_prop)
+    var def: Node = null
+    if is_op("=") {
+      pi += 1
+      def = cm_getter(px + "def_" + fname, ty, expr())
+    }
+    push(g_cm_defs[c], def)
+    return
+  }
+  if is_id("function") or is_id("on") {
+    let ev = is_id("on")
+    if ev { toks[pi].text = "function" }
+    let f = parse_fn()
+    push(g_cm_cnames[c], f.s)
+    if ev { f.s = px + "on_" + f.s } else { f.s = px + f.s }
+    push(g_cm_calls[c], f)
+    push(prog, f)
+    return
+  }
+  let fname = eat_id()
+  var ty: pointer = null
+  if is_op(":") {
+    pi += 1
+    ty = ptype()
+  }
+  if not is_op("=") { perr(`component field {fname}: say what it is - {fname} = some_global`) }
+  pi += 1
+  push(g_cm_fnames[c], fname)
+  push(g_cm_fields[c], cm_getter(px + "get_" + fname, ty, expr()))
+}
+# a function of the instance that answers one expression (a field, or a default)
+function cm_getter(name: pointer, ty: pointer, e: Node) -> Node {
+  let g = node(N_FN)
+  g.s = name
+  g.ty = ty
+  let r = node(S_RETURN)
+  r.a = e
+  let body = node(N_BLOCK)
+  push(body.kids, r)
+  g.a = body
+  push(prog, g)
+  return g
+}

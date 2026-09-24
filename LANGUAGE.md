@@ -299,27 +299,42 @@ A default is an expression written with the function and evaluated for each call
 out. A call that leaves out a parameter with no default, names one the function does not have, or
 puts a positional argument after a named one is refused with that said.
 
-### Views and templates (`ludic.ui`)
+### Components and templates (`ludic.ui`)
 
-A screen is not code. It is a template - markup in a file the program loads at run time - and it
-sees only what the program's `view` lets it: its fields to read, its functions to ask, and its
-`on` events to send. Nothing else crosses in either direction.
+A UI is components, and a component is three files side by side:
+- `Name.ludic` declares what it takes, keeps and does;
+- `Name.xml` is its HTML-shaped template;
+- `Name.lss` holds its CSS-shaped styles, which apply to its own elements only.
 
 ```ludic
 # doc-check: skip — a fragment of a program that imports ludic.ui
-view Shop {
-  purse = purse                         # a global's own type
-  stock = stock                         # a list of records is a list of objects
-  owned: int = len(bought)              # any expression, with its type said
-  function afford(i: int) -> bool { return purse >= stock[i].cost }
-  on buy(i: int) { purse -= stock[i].cost }
+component Counter {
+  prop label: string            # its parent passes it: <Counter label="a" step="{5}"/>
+  prop step: int = 1            # with a default
+  state count: int = 0          # the instance's own, kept while it is on screen
+  doubled: int = count * 2      # worked out every frame
+  function big() -> bool { return count > 3 }   # callable from the template
+  on bump() { count += step }   # an event: on-click="bump()"
 }
 ```
 
-`view Shop` writes `view_shop() -> UiView`. Its model is a `Value` object of every field, with a
-record as an object of the fields a template can read and a list or registry as a list. Its `call`
-runs a function or an event by name with arguments from the template: an int, a float, a bool or a
-string.
+- **Props and state** are plain names in the component's code; each mounted instance is a record
+  of them. A prop or state is an `int`, a `float`, a `bool`, a `string` or a `Val`. A field is
+  anything a template can read, and records and lists become objects and lists.
+- **The template** has one root (use `<fragment>` for several). A component is used by its name as
+  a tag. `set count = 0` in an action sets its state, and `emit close` runs what its parent passed
+  as `on-close`. `class`, `style` and `id` on a component's tag land on its root element, styled by
+  the parent's sheet as well as its own.
+- **Compiled in.** The compiler reads the template and the styles from beside the declaration and
+  inlines each `@import` (a path starting with `/` is from the project's root), so a missing
+  template fails the build and nothing has to ship beside the program. `ui_reload()` reads the
+  files again when they change on disk and keeps every instance's state.
+- **A screen is a component** with no props: `ui_show("Counter", null, x, y, w, h)`, or
+  `ui_nodes("Counter", null)` for a test.
+
+An older, lighter bridge remains: `view Name { ... }` gives a whole template file of `<screen>`s
+and `<component>`s (loaded with `ui_load`) one model and one call, and the rest of this section
+applies to both:
 
 ```xml
 <ui>

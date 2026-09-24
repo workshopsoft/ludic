@@ -1,0 +1,8 @@
+# a component's template is NAME.xml beside it; this one has none
+import "ludic.ui"
+program ComponentNoTemplate {
+  component Lonely {
+    prop name: string
+  }
+  entry { print("never") }
+}

@@ -71,6 +71,10 @@ function bd_slot(k: UiTpl, e: UiEnv, key: string, out: []UiNode) -> void {
   }
 }
 function bd_comp(k: UiTpl, e: UiEnv, key: string, out: []UiNode) -> bool {
+  if k.cls != null {
+    bd_class(k, e, key, out)
+    return true
+  }
   if k.comp == null { return false }
   let c = k.comp
   let ce = env_new(null)

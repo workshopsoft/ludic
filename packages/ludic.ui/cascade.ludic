@@ -18,7 +18,9 @@ function cs_tree(n: UiNode) -> void {
 function cs_node(n: UiNode) -> void {
   cs_sheet(n, ua_sheet())
   if n.sheet != null { cs_sheet(n, n.sheet) }
+  if n.sheet2 != null and n.sheet2 != n.sheet { cs_sheet(n, n.sheet2) }
   if n.style != null { cs_rule(n, n.style) }
+  if n.style2 != null { cs_rule_in(n, n.style2, n.env2) }
   for i in 0 .. len(n.akeys) { el_apply(n, n.akeys[i], n.vals[i]) }
 }
 function cs_sheet(n: UiNode, sh: UiSheet) -> void {
@@ -27,13 +29,14 @@ function cs_sheet(n: UiNode, sh: UiSheet) -> void {
     if md_ok(r) and sel_match(r.sel, n) { cs_rule(n, r) }
   }
 }
-# a rule's custom properties first, so its other declarations can read them
-function cs_rule(n: UiNode, r: UiRule) -> void {
+function cs_rule(n: UiNode, r: UiRule) -> void { cs_rule_in(n, r, n.env) }
+# a rule's custom properties first, so its other declarations can read them; values read in `e`
+function cs_rule_in(n: UiNode, r: UiRule, e: UiEnv) -> void {
   for j in 0 .. len(r.keys) {
-    if len(r.keys[j]) > 2 and r.keys[j][0..2] == "--" { el_attr(n, r.keys[j], ui_eval(r.vals[j], n.env)) }
+    if len(r.keys[j]) > 2 and r.keys[j][0..2] == "--" { el_attr(n, r.keys[j], ui_eval(r.vals[j], e)) }
   }
   for j in 0 .. len(r.keys) {
-    if not (len(r.keys[j]) > 2 and r.keys[j][0..2] == "--") { el_attr(n, r.keys[j], ui_eval(r.vals[j], n.env)) }
+    if not (len(r.keys[j]) > 2 and r.keys[j][0..2] == "--") { el_attr(n, r.keys[j], ui_eval(r.vals[j], e)) }
   }
 }
 # what every element looks like before anyone styles it, as a browser's own sheet does

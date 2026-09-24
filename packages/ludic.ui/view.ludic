@@ -1,0 +1,8 @@
+# view.ludic - a `view` declaration's bridge, for a screen written as a template file of its own
+# what a program lets its templates see: `view Name { ... }` writes view_name() -> UiView
+export property UiView {
+  name: string = ""
+  model: fn() -> Val = null
+  call: fn(string, Val) -> Val = null
+}
+

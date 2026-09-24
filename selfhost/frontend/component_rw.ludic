@@ -1,0 +1,99 @@
+# component_rw.ludic — L11: a component's code names its props, state, fields and functions plainly;
+# each becomes the instance's: `taps += 1` is `self.taps += 1`, `label()` is cmp_x_label(self), a
+# field is its getter called on self. Every function of the component takes `self` first.
+function cm_rewrite(c: int, f: Node, self_ty: pointer) -> void {
+  var i = 0
+  while i < len(f.kids) {
+    let p = f.kids[i]
+    if cm_is_keep(c, p.s) or cm_is_field(c, p.s) {
+      g_err_file = f.file
+      g_err_line = f.line
+      g_parsing = false
+      perr(`component {g_cm_name[c]}: the parameter {p.s} has the name of its prop, state or field; call it something else`)
+    }
+    i += 1
+  }
+  let me = node(N_PARAM)
+  me.s = "self"
+  me.ty = self_ty
+  let kids = new []Node
+  push(kids, me)
+  i = 0
+  while i < len(f.kids) {
+    push(kids, f.kids[i])
+    i += 1
+  }
+  f.kids = kids
+  cm_rw(c, f.a)
+}
+function cm_is_keep(c: int, s: pointer) -> bool {
+  var i = 0
+  while i < len(g_cm_keep[c]) {
+    if (g_cm_keep[c][i] == s) { return true }
+    i += 1
+  }
+  return false
+}
+function cm_is_field(c: int, s: pointer) -> bool {
+  var i = 0
+  while i < len(g_cm_fnames[c]) {
+    if (g_cm_fnames[c][i] == s) { return true }
+    i += 1
+  }
+  return false
+}
+function cm_is_call(c: int, s: pointer) -> bool {
+  var i = 0
+  while i < len(g_cm_cnames[c]) {
+    if (g_cm_cnames[c][i] == s) { return true }
+    i += 1
+  }
+  return false
+}
+function cm_self() -> Node {
+  let e = node(E_ID)
+  e.s = "self"
+  return e
+}
+function cm_rw(c: int, n: Node) -> void {
+  if n == null { return }
+  if (n.kind == S_LET or n.kind == S_FOR) and n.s != null and (cm_is_keep(c, n.s) or cm_is_field(c, n.s)) {
+    g_err_file = n.file
+    g_err_line = n.line
+    g_parsing = false
+    perr(`component {g_cm_name[c]}: {n.s} is its own prop, state or field; name the local something else`)
+  }
+  if n.kind == E_ID and cm_is_keep(c, n.s) {
+    n.kind = E_MEMBER
+    n.a = cm_self()
+    return
+  }
+  if n.kind == E_ID and cm_is_field(c, n.s) {
+    n.kind = E_CALL
+    let callee = node(E_ID)
+    callee.s = cm_prefix(g_cm_name[c]) + "get_" + n.s
+    n.a = callee
+    n.kids = new []Node
+    push(n.kids, cm_self())
+    return
+  }
+  if n.kind == E_CALL and n.a != null and n.a.kind == E_ID and cm_is_call(c, n.a.s) and not cm_is_keep(c, n.a.s) {
+    n.a.s = cm_prefix(g_cm_name[c]) + n.a.s
+    let args = new []Node
+    push(args, cm_self())
+    var i = 0
+    while i < len(n.kids) {
+      push(args, n.kids[i])
+      i += 1
+    }
+    n.kids = args
+  }
+  cm_rw(c, n.a)
+  cm_rw(c, n.b)
+  cm_rw(c, n.c)
+  var i = 0
+  while i < len(n.kids) {
+    cm_rw(c, n.kids[i])
+    i += 1
+  }
+}

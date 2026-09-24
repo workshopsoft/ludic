@@ -1,0 +1,19 @@
+# tpl_lines.ludic - which line of its file an element is on
+# the text being read, and where its lines start, so an element can say which line it is on
+var tp_nl: []int = new []int
+function tp_lines(src: string) -> void {
+  tp_nl = new []int
+  for i in 0 .. len(src) {
+    if src[i] == 10 { push(tp_nl, i) }
+  }
+}
+function tp_line(at: int) -> int {
+  var lo = 0
+  var hi = len(tp_nl)
+  while lo < hi {
+    let mid = (lo + hi) / 2
+    if tp_nl[mid] < at { lo = mid + 1 } else { hi = mid }
+  }
+  return lo + 1
+}
+

@@ -1,0 +1,6 @@
+<div>
+  <h1>{title}</h1>
+  <Counter label="a"/>
+  <Counter label="b" step="{5}" class="wide"/>
+  <p>outside</p>
+</div>

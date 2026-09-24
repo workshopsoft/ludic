@@ -1,12 +1,17 @@
 bump: minor
 type: feature
-**Default parameters, views and templates.** A parameter can have a default (`pad: float = 8.0`).
+**Default parameters, components, views and templates.** A parameter can have a default (`pad: float = 8.0`).
 A call leaves out what it does not change, and may pass its first arguments by position and the
 rest by name.
 
 A `view` declaration is the one bridge between a program and its UI. It names the fields a
 template may read, the functions it may ask and the `on` events it may send, and it writes
 `view_<name>() -> UiView`.
+
+A `component Name { prop, state, fields, functions, on events }` declaration beside `Name.xml` and
+`Name.lss` is a UI component. Its template and styles are compiled in (with `@import` inlined), each
+mounted instance keeps its own props and state, styles are scoped to it, and a parent's `class`,
+`style` and `id` land on its root.
 
 `ludic.ui` is now a template runtime. Screens and components are XML files loaded at run time,
 with:

@@ -1,0 +1,4 @@
+# App.ludic — a screen is a component too: this one has no props, only what it shows
+component App {
+  title: string = "counters"
+}

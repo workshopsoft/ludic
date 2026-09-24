@@ -1,0 +1,90 @@
+# component_gen2.ludic — L11: a component's props from the parent's attributes, its model for the
+# template (props, state and fields), and its call (functions, events, and `set` of a state)
+function cm_props_src(c: int, px: pointer, rec: pointer) -> pointer {
+  var src = `function {px}props(p: pointer, v: Val) -> void {{\n  let s: {rec} = p\n`
+  var i = 0
+  while i < len(g_cm_keep[c]) {
+    if g_cm_prop[c][i] {
+      let k = g_cm_keep[c][i]
+      let got = cm_from(c, g_cm_keep_ty[c][i], "value_get(v, \"" + k + "\")")
+      src = src + `  if value_has(v, "{k}") != 0 {{ s.{k} = {got} }}\n`
+    }
+    i += 1
+  }
+  return src + "}\n"
+}
+# a template's value as a prop or state of the component's own type
+function cm_from(c: int, ty: pointer, x: pointer) -> pointer {
+  if (ty == "Val") { return x }
+  if (ty == "int") { return `value_as_int({x})` }
+  if (ty == "float") { return `value_as_float({x})` }
+  if (ty == "bool") { return `value_as_int({x}) != 0` }
+  if (ty == "string") { return `value_as_str({x})` }
+  cm_err(c, `a prop or state is an int, a float, a bool, a string or a Val, not a {ty}`)
+  return x
+}
+function cm_model_src(c: int, px: pointer, rec: pointer, head: Node) -> pointer {
+  var src = `function {px}model(p: pointer) -> Val {{\n  let s: {rec} = p\n  let o = value_object()\n`
+  var i = 0
+  while i < len(g_cm_keep[c]) {
+    let k = g_cm_keep[c][i]
+    let put = cm_to(c, g_cm_keep_ty[c][i], "s." + k, head)
+    src = src + `  value_put(o, "{k}", {put})\n`
+    i += 1
+  }
+  i = 0
+  while i < len(g_cm_fields[c]) {
+    let g = g_cm_fields[c][i]
+    let put = cm_to(c, g.ty, g.s + "(s)", head)
+    src = src + `  value_put(o, "{g_cm_fnames[c][i]}", {put})\n`
+    i += 1
+  }
+  return src + "  return o\n}\n"
+}
+function cm_to(c: int, ty: pointer, x: pointer, head: Node) -> pointer {
+  if (ty == "Val") { return x }
+  let conv = vw_conv(0, ty, x, head)
+  if conv == null { cm_err(c, `a {ty} is something a template cannot read`) }
+  return conv
+}
+# call(name, args): a function or an event by name, or "set:NAME" for a state the template sets.
+# A name it does not know answers a Value of kind 99, which the runtime reports.
+function cm_call_src(c: int, px: pointer, rec: pointer, head: Node) -> pointer {
+  var src = `function {px}call(p: pointer, name: string, args: Val) -> Val {{\n  let s: {rec} = p\n`
+  let calls = g_cm_calls[c]
+  var i = 0
+  while i < len(calls) {
+    let f = calls[i]
+    var args = "s"
+    var k = 1
+    while k < len(f.kids) {
+      args = args + ", " + cm_arg(c, f.kids[k], k - 1)
+      k += 1
+    }
+    src = src + `  if name == "{g_cm_cnames[c][i]}" {{\n`
+    let call = f.s + "(" + args + ")"
+    if f.ty == "void" { src = src + `    {call}\n    return value_null()\n` } else {
+      let back = cm_to(c, f.ty, call, head)
+      src = src + `    return {back}\n`
+    }
+    src = src + "  }\n"
+    i += 1
+  }
+  i = 0
+  while i < len(g_cm_keep[c]) {
+    if not g_cm_prop[c][i] {
+      let k = g_cm_keep[c][i]
+      let got = cm_from(c, g_cm_keep_ty[c][i], "value_at(args, 0)")
+      src = src + `  if name == "set:{k}" {{\n    s.{k} = {got}\n    return value_null()\n  }}\n`
+    }
+    i += 1
+  }
+  return src + "  return value_new(99)\n}\n"
+}
+# a parameter out of the template's argument list
+function cm_arg(c: int, p: Node, i: int) -> pointer {
+  let at = `value_at(args, {i})`
+  if (p.ty == "int") or (p.ty == "float") or (p.ty == "bool") or (p.ty == "string") or (p.ty == "Val") { return cm_from(c, p.ty, at) }
+  cm_err(c, `{p.s} is a {p.ty}; a template can pass an int, a float, a bool, a string or a Val`)
+  return ""
+}

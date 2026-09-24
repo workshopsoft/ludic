@@ -17,6 +17,8 @@ export function ui_show(screen: string, view: UiView, x: float, y: float, w: flo
 # the screen's nodes for this frame, not yet laid out - for a test, or a host that places them
 export function ui_nodes(screen: string, view: UiView) -> UiNode {
   let si = lib_find(lib_screen_names, screen)
+  let cls = uc_find(screen)
+  if si < 0 and cls != null { return fr_class_nodes(cls) }
   if si < 0 {
     ui_err(`there is no screen {screen} - ui_load the file that has it`)
     return null
@@ -65,46 +67,3 @@ export function ui_press(n: UiNode) -> void {
 }
 # any event, as if the element had fired it - for a test
 export function ui_event(n: UiNode, name: string, value: Val) -> void { nt_run(n, name, value) }
-# the pointer: what it is over is :hover next frame (the element and all around it, as in CSS),
-# and without a renderer's own button a press on the deepest pressable thing is a press
-var fr_hover: []string = new []string
-function fr_was_hovered(key: string) -> bool { return sel_has(fr_hover, key) }
-function fr_pointer(root: UiNode) -> void {
-  if ui_be == null or ui_be.pointer_x == null {
-    fr_hover = new []string
-    return
-  }
-  let px = ui_be.pointer_x()
-  let py = ui_be.pointer_y()
-  let keys = new []string
-  fr_under(root, px, py, keys)
-  fr_hover = keys
-  if ui_be.pointer_down == null { return }
-  let down = ui_be.pointer_down()
-  fr_down_now = down
-  if ui_be.button != null { return }
-  let hit = fr_hit(root, px, py)
-  if hit != null and down and not fr_was_down and hit.enabled {
-    if hit.kind == UI_NATIVE { fm_press(hit) } else { ui_fire(hit, "press", Value.null()) }
-  }
-  fr_was_down = down
-}
-function fr_under(n: UiNode, px: float, py: float, keys: []string) -> void {
-  if px < n.x or py < n.y or px >= n.x + n.cw or py >= n.y + n.ch { return }
-  if n.key != "" { push(keys, n.key) }
-  for i in 0 .. len(n.children) { fr_under(n.children[i], px, py, keys) }
-}
-function fr_hit(n: UiNode, px: float, py: float) -> UiNode {
-  if px < n.x or py < n.y or px >= n.x + n.cw or py >= n.y + n.ch { return null }
-  if n.children != null {
-    var i = len(n.children) - 1
-    while i >= 0 {
-      let h = fr_hit(n.children[i], px, py)
-      if h != null { return h }
-      i -= 1
-    }
-  }
-  if n.act != null or (n.kind == UI_NATIVE and n.on_names != null and len(n.on_names) > 0) { return n }
-  return null
-}
-export function ui_hit(root: UiNode, px: float, py: float) -> UiNode { return fr_hit(root, px, py) }
