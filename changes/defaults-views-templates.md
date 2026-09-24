@@ -102,6 +102,8 @@ What a game's screens found missing, now in `ludic.ui`:
   `image_w` / `image_h`) and `ui_object_fit` for natives;
 - `translate="no"` keeps an element's text as written; a title of several lines is translated whole,
   else line by line;
+- `<input type="key">` takes a mouse button (`UI_MOUSE_LEFT` / `RIGHT` / `MIDDLE`, 256-258) and is
+  `:capturing` while it listens;
 - a transition lands exactly on its end value (it had stopped a rounding error short of it, at every
   frame rate).
 

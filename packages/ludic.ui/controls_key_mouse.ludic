@@ -1,0 +1,22 @@
+# controls_key_mouse.ludic - a key field listening takes a mouse button too: the left, right or
+# middle button pressed anywhere is its value, as UI_MOUSE_LEFT, UI_MOUSE_RIGHT or UI_MOUSE_MIDDLE
+# (past every key code, for the host to map), and that press does nothing else
+export const UI_MOUSE_LEFT: int = 256
+export const UI_MOUSE_RIGHT: int = 257
+export const UI_MOUSE_MIDDLE: int = 258
+function ct_key_mouse(root: UiNode) -> bool {
+  if ct_capture == "" or ct_capture_at == an_frame { return false }
+  let b = pe_pressed(in_now, in_last)
+  if b < 0 { return false }
+  let n = fr_node(root, ct_capture)
+  ct_capture = ""
+  ct_capture_seen = an_frame
+  fr_press_key = ""
+  if n != null { ct_change(n, Value.int(UI_MOUSE_LEFT + b)) }
+  return true
+}
+function ct_mouse_name(v: int) -> string {
+  if v == UI_MOUSE_RIGHT { return ui_tr("Right click") }
+  if v == UI_MOUSE_MIDDLE { return ui_tr("Middle click") }
+  return ui_tr("Left click")
+}

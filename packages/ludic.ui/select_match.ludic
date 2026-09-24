@@ -76,6 +76,7 @@ function sel_pseudo_ok(p: string, arg: string, n: UiNode) -> bool {
   if p == "root" { return n.parent == null }
   if p == "checked" { return ui_attr_on(n, "checked") }
   if p == "active" { return fr_active(n) }
+  if p == "capturing" { return ct_capture != "" and n.key == ct_capture }
   if p == "nth-child" { return sel_nth(arg, n.index + 1) }
   ui_err(`:{p}: there is no such pseudo-class here`)
   return false

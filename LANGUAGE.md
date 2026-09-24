@@ -488,7 +488,10 @@ applies to both:
   - `<input type="key" label value shown>`: Enter or a click starts it listening, and the next key
     is its value - Tab, the arrows and Enter included. Esc stops it listening, Backspace clears it
     (0), and `shown` is what it says for its value instead of the keyboard's label. While it
-    listens `ui_capturing()` is true, so the program can leave its own keys alone.
+    listens `ui_capturing()` is true, so the program can leave its own keys alone, and it is
+    `:capturing` for a stylesheet. A mouse button pressed while it listens is its value too:
+    `UI_MOUSE_LEFT` (256), `UI_MOUSE_RIGHT` (257) or `UI_MOUSE_MIDDLE` (258), past every key code,
+    shown as "Left click", "Right click" or "Middle click"; that press does nothing else.
 
   Any control's `note="..."` is a line of help under its label: `.ui-labels > .ui-label +
   .ui-note`.

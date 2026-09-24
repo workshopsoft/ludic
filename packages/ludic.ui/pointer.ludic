@@ -17,7 +17,7 @@ function fr_pointer(root: UiNode) -> void {
   fr_hover = keys
   tt_track(scope, i.x, i.y)
   if top != null and pp_pointer(top) { return }
-  if sc_drag != "" { return }
+  if sc_drag != "" or ct_key_mouse(root) { return }
   let hit = fr_hit(scope, i.x, i.y)
   pe_frame(root, scope)
   if i.down and not in_was_down { fr_press(hit, i.x, i.y) }

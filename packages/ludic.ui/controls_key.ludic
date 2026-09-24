@@ -46,7 +46,9 @@ function ct_key_pressed_away(hit: UiNode) -> void {
 function ct_key_text(n: UiNode) -> string {
   if ct_capture == n.key { return ui_tr("press a key...") }
   if Value.kind(ui_attr(n, "shown")) != 0 { return ui_tr(ui_attr_text(n, "shown")) }
-  return Input.key_label(Value.as_int(ui_attr(n, "value")))
+  let v = Value.as_int(ui_attr(n, "value"))
+  if v >= UI_MOUSE_LEFT and v <= UI_MOUSE_MIDDLE { return ct_mouse_name(v) }
+  return Input.key_label(v)
 }
 # a key field is listening: the host should leave the keys alone until it is done (it stays true
 # for the frame in which Esc or a key ended it, so that key is not read twice)

@@ -1,0 +1,55 @@
+# ui_keycap.ludic — a key field takes a mouse button as well as a key: listening (and :capturing,
+# which a stylesheet can colour), the next press of the left, right or middle button anywhere is its
+# value (UI_MOUSE_LEFT / RIGHT / MIDDLE), named for what it is, and that press presses nothing else.
+import "ludic.ui"
+program UiKeycap {
+  numbers float
+  var bind: int = 32
+  var pressed: int = 0
+  view Keys {
+    bind = bind
+    pressed = pressed
+    on set_bind(v: int) { bind = v }
+    on press() { pressed = pressed + 1 }
+  }
+  const PAGE: string = "<ui><style>.k:capturing { background: #ff0000 }</style><screen name='k'><input type='key' class='k' label='Jump' value='{bind}' on-change='set_bind(event.value)'/><button on-click='press()'>b</button></screen></ui>"
+  function frame(x: float, y: float, b: int) -> UiNode {
+    let i = new UiInput
+    i.x = x
+    i.y = y
+    i.down = b == 0
+    i.down_right = b == 1
+    i.down_middle = b == 2
+    ui_input(i)
+    ui_show("k", view_keys(), 0.0, 0.0, 400.0, 400.0)
+    let r: UiNode = ui_nodes("k", view_keys())
+    ui_place(r, 0.0, 0.0, 400.0, 400.0)
+    return r
+  }
+  function listen(k: UiNode) -> int {
+    frame(k.x + 5.0, k.y + 5.0, 0)
+    frame(k.x + 5.0, k.y + 5.0, -1)
+    return frame(-1.0, -1.0, -1).children[0].bg
+  }
+  function take(at: UiNode, b: int) -> string {
+    frame(at.x + 5.0, at.y + 5.0, b)
+    frame(at.x + 5.0, at.y + 5.0, -1)
+    let r = frame(-1.0, -1.0, -1)
+    let f = r.children[0]
+    return `{bind} {f.children[1].children[0].text} {f.bg}`
+  }
+  entry {
+    ui_backend(new UiBackend)
+    ui_load_text(PAGE, "k.xml")
+    let r = frame(-1.0, -1.0, -1)
+    let k = r.children[0]
+    let btn = r.children[1]
+    let red = listen(k)
+    let right = take(btn, 1)
+    listen(k)
+    let middle = take(btn, 2)
+    listen(k)
+    let left = take(btn, 0)
+    print(`listening {red} | {right} | {middle} | {left} | pressed {pressed}`)
+  }
+}
