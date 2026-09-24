@@ -9,9 +9,14 @@ function fr_pointer(root: UiNode) -> void {
   let i = in_now
   fr_down_now = i.down
   let keys = new []string
-  fr_under(root, i.x, i.y, keys)
+  let top = pp_top(root)
+  var scope = root
+  if top != null { scope = top }
+  fr_under(scope, i.x, i.y, keys)
   fr_hover = keys
-  let hit = fr_hit(root, i.x, i.y)
+  tt_track(scope, i.x, i.y)
+  if top != null and pp_pointer(top) { return }
+  let hit = fr_hit(scope, i.x, i.y)
   if i.down and not in_was_down {
     fr_press_key = ""
     if hit != null {

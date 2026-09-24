@@ -203,6 +203,8 @@ entry {
   else { g_windowed = has_target and has_systems() }
 
   g_parsing = false                               # lowering errors now locate by statement, not token
+  check_duplicate_fns()                           # two declarations of one name: the cause, before its symptoms
+  check_duplicate_decls()
   check_program()                                 # L4: the types agree before anything is emitted
   emit_program()
 

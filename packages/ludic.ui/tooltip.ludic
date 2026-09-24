@@ -1,0 +1,47 @@
+# tooltip.ludic - an element's title="..." shown beside the pointer once it has rested on the
+# element for half a second, in a box styled by .ui-tooltip (the default sheet's, or a theme's)
+var tt_key: string = ""
+var tt_since: float = 0.0
+var tt_text: string = ""
+var tt_x: float = 0.0
+var tt_y: float = 0.0
+function tt_track(scope: UiNode, x: float, y: float) -> void {
+  let n = tt_under(scope, x, y)
+  if n == null {
+    tt_key = ""
+    return
+  }
+  if n.key != tt_key {
+    tt_key = n.key
+    tt_since = an_now()
+  }
+  tt_text = ui_tr(ui_attr_text(n, "title"))
+  tt_x = x
+  tt_y = y
+}
+# the deepest element under the point that has a title
+function tt_under(n: UiNode, x: float, y: float) -> UiNode {
+  if x < n.x or y < n.y or x >= n.x + n.cw or y >= n.y + n.ch { return null }
+  var i = len(n.children) - 1
+  while i >= 0 {
+    let t = tt_under(n.children[i], x, y)
+    if t != null { return t }
+    i -= 1
+  }
+  if n.akeys != null and ui_attr_text(n, "title") != "" { return n }
+  return null
+}
+function tt_draw(root: UiNode) -> void {
+  if tt_key == "" or tt_text == "" or an_now() - tt_since < 0.5 { return }
+  let n = ct_part(root, "ui-tooltip", "")
+  n.tag = "div"
+  n.parent = root
+  n.children = new []UiNode
+  push(n.children, ct_part(root, "ui-tooltip-text", tt_text))
+  cs_tree(n)
+  ly_measure(n, ly_vp_w * 0.4, ui_px(16.0), root.rfg)
+  let x = Math.min(tt_x + ui_px(16.0), ly_vp_x + ly_vp_w - n.mw)
+  let y = Math.min(tt_y + ui_px(20.0), ly_vp_y + ly_vp_h - n.mh)
+  ly_place(n, x, y, n.mw, n.mh)
+  fr_draw(n)
+}

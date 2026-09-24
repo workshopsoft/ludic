@@ -103,5 +103,6 @@ export property UiNode {
   anim_loop: bool = false
   anim_alt: bool = false
   tr_dur: float = 0.0           # transition: how long a change of opacity takes
+  popover: bool = false         # drawn on the top layer; a press outside it or Esc closes it
 }
 

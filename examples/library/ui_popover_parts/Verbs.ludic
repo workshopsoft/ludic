@@ -1,0 +1,6 @@
+# Verbs.ludic - a grid cell that opens a popover of verbs
+component Verbs {
+  state open: bool = false
+  state used: string = "none"
+  state health: int = 30
+}

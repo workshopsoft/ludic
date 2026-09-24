@@ -13088,7 +13088,7 @@ entry:
 @.str12493 = private unnamed_addr constant [2 x i8] c" \00"
 @.str12494 = private unnamed_addr constant [50 x i8] c" -Wl,/subsystem:windows -Wl,/entry:mainCRTStartup\00"
 @.str12495 = private unnamed_addr constant [3 x i8] c" \22\00"
-@.str12496 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17806: index out of range: \00"
+@.str12496 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17808: index out of range: \00"
 @.str12497 = private unnamed_addr constant [2 x i8] c"\22\00"
 @.str12498 = private unnamed_addr constant [5 x i8] c" -o \00"
 @.str12499 = private unnamed_addr constant [2 x i8] c"\22\00"
@@ -134538,6 +134538,8 @@ ifend89:
   br label %ifend86
 ifend86:
   store i32 0, ptr @g_g_parsing
+  call void @fn_check_duplicate_fns()
+  call void @fn_check_duplicate_decls()
   call void @fn_check_program()
   call void @fn_emit_program()
   %t230 = load i32, ptr %t3

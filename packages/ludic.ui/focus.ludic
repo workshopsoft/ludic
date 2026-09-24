@@ -27,7 +27,9 @@ function fc_move(step: int) -> void {
 # the keys, after the tree is laid out: moving, then acting on what has the focus
 function fc_keys(root: UiNode) -> void {
   fc_list = new []UiNode
-  fc_collect(root)
+  let top = pp_top(root)
+  if top != null and in_now.escape { ui_fire(top, "close", Value.null()) }
+  if top != null { fc_collect(top) } else { fc_collect(root) }
   let i = in_now
   if fc_find() < 0 { fc_autofocus() }
   let at = fc_find()

@@ -1,5 +1,5 @@
 # render3d.ludic - ludic.ui drawn with ludic.render3d's overlay. A program that draws with render3d
-# imports this and calls ui_render3d() once; its templates then draw in the overlay pass, sized in
+# imports this, and its templates draw in the overlay pass (ui_render3d() installs it again), sized in
 # design pixels of a 1080-line screen (ui_render3d_scale sets the player's own interface size).
 #   <img src="path/to/picture.png">      a texture, loaded once
 #   <img src="icon:tent">                 a cell of an atlas the program named with ui_atlas
@@ -12,7 +12,14 @@ var r3u_tex_ids: []int = new []int
 var r3u_atlas: []string = new []string
 var r3u_atlas_tex: []int = new []int
 var r3u_atlas_cols: []int = new []int
+var r3u_atlas_rows: []int = new []int
 var r3u_atlas_names: [][]string = new [][]string
+var r3u_installed: bool = r3u_install()
+# importing this file is enough: it is the renderer from the program's first frame
+function r3u_install() -> bool {
+  ui_render3d()
+  return true
+}
 export function ui_render3d() -> void {
   let b = new UiBackend
   b.rect = fn r3u_rect
@@ -30,11 +37,13 @@ export function ui_render3d() -> void {
 }
 # the player's interface size, 1.0 as designed
 export function ui_render3d_scale(s: float) -> void { r3u_user = s }
-# a grid atlas: `names` are its cells, row by row, `cols` to a row; <img src="prefix:name"> draws one
-export function ui_atlas(prefix: string, tex: int, cols: int, names: []string) -> void {
+# a grid atlas: `names` are its cells, row by row, `cols` across and `rows` down; <img
+# src="prefix:name"> draws one (by its name, or by its number: "item:12")
+export function ui_atlas(prefix: string, tex: int, cols: int, rows: int, names: []string) -> void {
   push(r3u_atlas, prefix)
   push(r3u_atlas_tex, tex)
   push(r3u_atlas_cols, cols)
+  push(r3u_atlas_rows, Math.max(rows, 1))
   push(r3u_atlas_names, names)
 }
 function r3u_now() -> float { return float(Time.now_us() / 1000) / 1000.0 }

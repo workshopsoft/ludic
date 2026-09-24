@@ -29,20 +29,20 @@ function fr_clip_pop() -> void {
 function fr_children(n: UiNode) -> void {
   var positioned = 0
   for i in 0 .. len(n.children) {
-    if n.children[i].pos == 0 { fr_draw(n.children[i]) } else { positioned += 1 }
+    if n.children[i].popover { push(pop_list, n.children[i]) } else if n.children[i].pos == 0 { fr_draw(n.children[i]) } else { positioned += 1 }
   }
   if positioned == 0 { return }
   var lo = 1000000
   var hi = -1000000
   for i in 0 .. len(n.children) {
-    if n.children[i].pos != 0 {
+    if n.children[i].pos != 0 and not n.children[i].popover {
       lo = Math.min(lo, n.children[i].z)
       hi = Math.max(hi, n.children[i].z)
     }
   }
   for z in lo .. hi + 1 {
     for i in 0 .. len(n.children) {
-      if n.children[i].pos != 0 and n.children[i].z == z { fr_draw(n.children[i]) }
+      if n.children[i].pos != 0 and not n.children[i].popover and n.children[i].z == z { fr_draw(n.children[i]) }
     }
   }
 }

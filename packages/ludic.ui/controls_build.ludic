@@ -21,7 +21,21 @@ function ct_part(n: UiNode, cls: string, text: string) -> UiNode {
   }
   return p
 }
+# <progress value max> and <meter value min max>: a track with a fill as far as the value
+function ct_build_bar(n: UiNode) -> void {
+  n.dir = UI_ROW
+  let lo = Value.as_float(ui_attr(n, "min"))
+  var hi = Value.as_float(ui_attr(n, "max"))
+  if hi <= lo { hi = lo + 1.0 }
+  let fill = ct_part(n, "ui-fill", "")
+  fill.w_pct = Math.clamp((Value.as_float(ui_attr(n, "value")) - lo) / (hi - lo), 0.0, 1.0) * 100.0
+  push(n.children, fill)
+}
 function ct_build(n: UiNode) -> void {
+  if n.tag == "progress" or n.tag == "meter" {
+    ct_build_bar(n)
+    return
+  }
   n.dir = UI_ROW
   n.focusable = true
   let t = ui_attr_text(n, "type")

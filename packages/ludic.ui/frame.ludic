@@ -14,7 +14,11 @@ export function ui_show(screen: string, view: UiView, x: float, y: float, w: flo
   sc_update(root)
   fr_pointer(root)
   fc_keys(root)
-  if ui_be != null and ui_be.text != null { fr_draw(root) }
+  if ui_be != null and ui_be.text != null {
+    fr_draw(root)
+    pp_draw_top()
+    tt_draw(root)
+  }
   dv_after(screen, root)
   lc_run(screen)
   nt_fired_run()

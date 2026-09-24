@@ -759,6 +759,7 @@ function cmd_dev_test() -> int {
   reject_case("rejected/component_no_template", "there is no Lonely.xml beside it", "a component needs its template beside it")
   controller_case("library/ui_controls", "", "1 false 7 2 Adalove 70 1 false 8 2 Adalove 70; scrolled 40", "ui_controls.ludic (L11: focus and keys, the built-in controls, a range dragged, a box scrolled)")
   controller_case("library/ui_anim", "", "0 100 100 | 49 50 100 | 100 100 61", "ui_anim.ludic (L11: @keyframes and animation, looping and alternating, and a transition)")
+  controller_case("library/ui_popover", "", "drop false | drop true | drop false | drop false | fill 60 of 200", "ui_popover.ludic (L11: a popover keeps the keys and closes on a press outside or Esc; progress fills)")
   reject_case("rejected/view_untyped", "view Sums: say what type total is", "a view field that is not a bare global says its type")
   reject_case("rejected/view_without_ui", "a view is shown by ludic.ui", "a view needs ludic.ui to show it")
 

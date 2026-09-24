@@ -1,0 +1,11 @@
+<div class="page">
+  <button id="cell" on-click="set open = true">Axe</button>
+  <if test="{open}">
+    <div popover class="verbs" on-close="set open = false">
+      <button on-click="set used = 'drop'; set open = false">Drop</button>
+      <button on-click="set used = 'give'; set open = false">Give</button>
+    </div>
+  </if>
+  <progress value="{health}" max="{100}"/>
+  <p title="how much is left">{used} {open}</p>
+</div>

@@ -446,14 +446,20 @@ applies to both:
 
   Each reports with `on-change` and `event.value`, and plays `sound="..."` (or "click") through
   the program's `ui_sounds`.
+- **Popovers, tooltips and bars.**
+  - `<div popover on-close="...">` sits absolutely in its parent and draws on the top layer. While
+    it is up, the pointer and Tab stay inside it, and a press outside it or Esc closes it.
+  - `title="..."` shows a tooltip (`.ui-tooltip`) after the pointer rests for half a second.
+  - `<progress value max>` and `<meter value min max>` fill (`.ui-fill`) as far as their value.
 - **Natives** are for what markup cannot say. `ui_native("minimap", measure, draw)` makes
   `<minimap>` an element the program draws itself, laid out and styled like any other. It reports
   with `ui_fire(n, "change", value)` and reads its attributes with `ui_attr` / `ui_attr_on`.
 - **Renderers.** `ui_backend(b)` takes any renderer with `rect`, `text` and `measure`, and uses
   `round`, `ring`, `image`, `nine`, `clip`, `scale` and `now` when it has them.
-  `import "ludic.ui/render3d.ludic"` and `ui_render3d()` draw with render3d's overlay:
-  - images by path, cells of an atlas named with `ui_atlas(prefix, texture, cols, names)` as
-    `<img src="prefix:name">`, and nine-slices for `border-image`;
+  Importing `ludic.ui/render3d.ludic` makes render3d's overlay the renderer:
+  - images by path, and cells of an atlas named with `ui_atlas(prefix, texture, cols, rows,
+    names)` as `<img src="prefix:name">` (or `prefix:12`);
+  - nine-slices for `border-image`;
   - a scale from the screen's height (`ui_render3d_scale` for the player's interface size).
 
   `ui_translator(fn)`, `ui_sounds(fn)` and `ui_clock(fn)` hand the runtime the program's

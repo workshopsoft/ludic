@@ -48,6 +48,9 @@ The runtime is a UI framework, not only a template engine:
 - more CSS: `rgba()`/`#rrggbbaa`, `border-radius`, `outline`, `box-shadow`, `background-image`,
   `border-image`, group `opacity`, `@keyframes` / `animation` / `transition`;
 - HTML mixed content, and boolean attributes;
+- `popover` (a top layer that keeps the pointer and keys, with light dismissal), `title` tooltips,
+  and `<progress>` / `<meter>`;
+- importing `ludic.ui/render3d.ludic` installs the backend, and atlases take rows;
 - hooks for the program's language, sounds and clock.
 
 render3d gains `tex_width` / `tex_height`, and the XML reader keeps text runs among elements in
@@ -63,3 +66,6 @@ Also:
 - An index is evaluated before the slice's elements are read. A `xs[f()]` whose `f` grew `xs`
   read stale memory.
 - A runtime error names the file its expression is in, not the program's.
+
+Two declarations with one name (a package's private global and a program's, say) are reported as
+such before type checking. They used to surface as a page of type errors about the wrong type.

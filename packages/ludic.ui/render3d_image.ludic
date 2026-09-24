@@ -37,17 +37,19 @@ function r3u_cell(k: int, name: string, x: float, y: float, w: float, h: float, 
   for i in 0 .. len(names) {
     if names[i] == name { idx = i }
   }
+  if idx < 0 and len(name) > 0 and name[0] >= 48 and name[0] <= 57 { idx = int(el_num(name)) }
   if idx < 0 {
     ui_err(`{r3u_atlas[k]}:{name}: the atlas has no such picture`)
     return
   }
   let cols = r3u_atlas_cols[k]
+  let rows = r3u_atlas_rows[k]
   let cx = idx % cols
   let cy = idx / cols
   let u0 = float(cx) / float(cols)
-  let v0 = float(cy) / float(cols)
+  let v0 = float(cy) / float(rows)
   let s = Math.min(w, h)
-  ov_sub(r3u_atlas_tex[k], int(x + (w - s) / 2.0), int(y + (h - s) / 2.0), int(s), int(s), u0, v0, u0 + 1.0 / float(cols), v0 + 1.0 / float(cols), r3u_r(c), r3u_g(c), r3u_b(c), a)
+  ov_sub(r3u_atlas_tex[k], int(x + (w - s) / 2.0), int(y + (h - s) / 2.0), int(s), int(s), u0, v0, u0 + 1.0 / float(cols), v0 + 1.0 / float(rows), r3u_r(c), r3u_g(c), r3u_b(c), a)
 }
 # border-image: the texture's `slice`-pixel corners kept, the rest stretched, drawn `dst` wide
 function r3u_nine(src: string, slice: float, x: float, y: float, w: float, h: float, dst: float, c: int, a: float) -> void {
