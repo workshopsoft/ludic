@@ -296,6 +296,7 @@ function p_primary() -> Node {
     let n = node(E_ID); n.s = t.text; pi += 1; return n
   }
   if is_op("(") { pi += 1; skipnl(); let e = expr(); skipnl(); eat_op(")"); return e }
+  if g_res_mode and is_op("{") { return record() }   # L9: a resource's nested record, typed by its field
   perr("expected expression")
   return node(E_INT)
 }

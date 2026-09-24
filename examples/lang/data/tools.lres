@@ -1,0 +1,11 @@
+# tools.lres - the tools a camp keeps, read by resources.ludic's registry when it is compiled
+axe {
+  name: "Axe"
+  weight: 1.5
+  uses: [{ verb: "Chop", minutes: 20 }, { verb: "Split", minutes: 10 }]
+}
+lantern {
+  name: "Lantern"
+  weight: 0.75
+  uses: []
+}

@@ -1,0 +1,87 @@
+# resource.ludic — L9: a registry's entries can live in a resource file.
+#
+#   registry Items of Item as IT from "assets/data/items.lres"
+#
+# The file is a list of entries, each a key and a record, `rope { name: "Rope", weight: 0.4 }`, with
+# `#` comments; a field whose type is a record, or a list of records, takes a bare `{ ... }` or a
+# `[{ ... }, ...]`, because the schema - the registry's record - says what it is. The file is read
+# when the program is: every entry is checked like a `def` (a misspelt field, a string for an int,
+# a key twice) and an error names the line in the resource file. Its values are Ludic expressions
+# in the registry's module, so an entry names another table's entry by its constant (VD_STORE).
+# The path is the project's (the directory the build runs in), else beside the declaring file.
+var g_res_mode: bool = false
+
+function res_path(from: pointer, declaring: pointer) -> pointer {
+  if read_file(from) != null { return from }
+  return join_path(dir_of(declaring), from)
+}
+function res_read(v: Node, from: pointer) -> void {
+  let path = res_path(from, g_parse_file)
+  let src = read_file(path)
+  if src == null { perr(`registry {v.s}: cannot read the resource file {from}`) }
+  let saved_toks = toks
+  let saved_pi = pi
+  let saved_file = g_parse_file
+  let saved_parsing = g_parsing
+  if not (module_of(saved_file) == "") { module_set(path, module_of(saved_file)) }
+  if is_float_file(saved_file) and not is_float_file(path) { push(g_float_files, path) }
+  g_parse_file = path
+  g_parsing = true
+  g_res_mode = true
+  lex_at(src, 1)
+  pi = 0
+  while true {
+    skipnl()
+    if toks[pi].kind == TK_EOF { break }
+    let key = eat_id()
+    skipnl()
+    let rec = record()
+    push(g_df_reg, v.s)
+    push(g_df_key, key)
+    push(g_df_rec, rec)
+  }
+  g_res_mode = false
+  toks = saved_toks
+  pi = saved_pi
+  g_parse_file = saved_file
+  g_parsing = saved_parsing
+}
+# a bare record, or a list of them, becomes a `new` of the type its field declares
+function res_type(e: Node, ty: pointer) -> Node {
+  if e == null or ty == null { return e }
+  if e.kind == E_REC {
+    let comp = find_comp(ty)
+    if comp == null { return e }
+    res_type_fields(e, comp)
+    let nw = node(E_NEW)
+    nw.s = ty
+    nw.a = e
+    nw.file = e.file
+    nw.line = e.line
+    return nw
+  }
+  if e.kind == E_LIST and is_slice_ty(ty) {
+    if len(e.kids) == 0 {
+      let empty = node(E_NEW)
+      empty.s = ty
+      empty.file = e.file
+      empty.line = e.line
+      return empty
+    }
+    var i = 0
+    while i < len(e.kids) {
+      e.kids[i] = res_type(e.kids[i], slice_elem(ty))
+      i += 1
+    }
+  }
+  return e
+}
+function res_type_fields(rec: Node, comp: Node) -> void {
+  var i = 0
+  while i < len(rec.kids) {
+    let fi = rec.kids[i]
+    let fx = field_index(comp, fi.s)
+    if fx >= 0 { fi.a = res_type(fi.a, comp.kids[fx].ty) }
+    i += 1
+  }
+}

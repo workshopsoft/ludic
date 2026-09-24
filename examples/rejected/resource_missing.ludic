@@ -1,0 +1,6 @@
+# L9: a registry's resource file must exist
+program ResourceMissing {
+  property Tool { key: string = "" }
+  registry Tools of Tool from "data/no_such.lres"
+  entry { print(TOOLS_COUNT) }
+}

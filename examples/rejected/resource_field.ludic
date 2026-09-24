@@ -1,0 +1,11 @@
+# L9: a resource file's entries are checked against the record, at the file's own line
+program ResourceField {
+  numbers float
+  property Tool {
+    key: string = ""
+    name: string = ""
+    weight: float = 0.0
+  }
+  registry Tools of Tool from "data/bad_tools.lres"
+  entry { print(TOOLS_COUNT) }
+}

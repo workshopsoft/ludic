@@ -50,6 +50,7 @@ function reg_fill(r: int) -> void {
         fi.a = ks
         push(rec.kids, fi)
       }
+      if comp != null { res_type_fields(rec, comp) }   # L9: nested records take their field's type
       let nw = node(E_NEW)
       nw.s = t
       nw.a = rec

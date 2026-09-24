@@ -246,6 +246,35 @@ the rule it always had: add an entry at the end, never between two. The order is
 compiler reads them in, and an `import` is read where it stands: a file's imported defs come before
 the defs written after the import line.
 
+### Resource files (`registry ... from`)
+
+A registry's entries can live in a data file instead of the source:
+
+```ludic
+# doc-check: skip — the file it names is beside the example
+registry Tools of Tool as TL from "data/tools.lres"
+```
+
+```
+# tools.lres
+axe {
+  name: "Axe"
+  weight: 1.5
+  uses: [{ verb: "Chop", minutes: 20 }, { verb: "Split", minutes: 10 }]
+}
+lantern { name: "Lantern", weight: 0.75, uses: [] }
+```
+
+The file is a list of entries, each a key and a record, with `#` comments. It is read when the
+program is compiled: the registry's record is its schema, so every entry is checked as a `def` is
+- a field the record does not have, a string where it wants a number, a key twice - and the error
+names the line in the resource file. A field whose type is a record takes a bare `{ ... }`, and one
+typed as a list of records takes `[{ ... }, ...]`; the schema supplies the type. Values are Ludic
+expressions in the registry's module, so an entry refers to another table's entry by its constant.
+The entries are compiled in: nothing is parsed at start-up, and a build that succeeds has checked
+every resource it uses. The path is the project's (where the build runs), else beside the file that
+declares the registry.
+
 ### Memory is safe unless it says `unsafe`
 
 The typed buffers are slices: `words(n)`, `floats(n)`, `fixeds(n)`, `doubles(n)` and

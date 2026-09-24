@@ -742,6 +742,9 @@ function cmd_dev_test() -> int {
   reject_case("rejected/registry_unknown", "there is no registry Tables", "a def names a registry that exists")
   reject_case("rejected/registry_twice", "def Furnishings crate is declared twice", "a registry's key is declared once")
   reject_case("rejected/registry_field", "Furnishing has no field colour", "a def's fields are the record's")
+  feat_case("lang/resources", "", "2 Axe 2 Split 10 0 1", "resources.ludic (L9: a registry read from a resource file at compile time, nested records typed by the schema)")
+  reject_case("rejected/resource_field", "bad_tools.lres:3: error: field weight of Tool wants a float", "a resource file's entry is checked at its own line")
+  reject_case("rejected/resource_missing", "cannot read the resource file data/no_such.lres", "a registry's resource file must exist")
 
   # EV2 the world table: the mod reflection ABI, callable from Ludic by name.
   net_case("ecs/world_get", "50 1 7")

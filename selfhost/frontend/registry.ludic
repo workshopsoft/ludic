@@ -58,12 +58,19 @@ function parse_registry() -> void {
     pi += 1
     prefix = eat_id()
   }
+  var from: pointer = null
+  if is_id("from") {
+    pi += 1
+    from = toks[pi].text
+    pi += 1
+  }
   v.ty = "[]" + t
   push(prog, v)
   push(g_rg_name, v.s)
   push(g_rg_type, t)
   push(g_rg_prefix, prefix)
   push(g_rg_var, v)
+  if from != null { res_read(v, from) }
 }
 # def REGISTRY key { field: value, ... }
 function parse_def() -> void {

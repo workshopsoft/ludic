@@ -1,0 +1,24 @@
+# resources.ludic — L9: a registry whose entries live in a resource file. `from` names the file;
+# it is read when the program is compiled, every entry checked against the record (the schema),
+# and compiled in - so a mistake is a compile error at the resource file's line, and nothing parses
+# at start-up. A field whose type is a record, or a list of them, takes a bare `{ ... }`.
+#
+# Running it prints:  2 Axe 2 Split 10 0 1
+program Resources {
+  numbers float
+  property Use {
+    verb: string = ""
+    minutes: int = 0
+  }
+  property Tool {
+    key: string = ""
+    name: string = ""
+    weight: float = 0.0
+    uses: []Use = null
+  }
+  registry Tools of Tool as TL from "data/tools.lres"
+  entry {
+    let axe = Tools[TL_AXE]
+    print(`{TL_COUNT} {axe.name} {len(axe.uses)} {axe.uses[1].verb} {axe.uses[1].minutes} {len(Tools[TL_LANTERN].uses)} {tools_find("lantern")}`)
+  }
+}
