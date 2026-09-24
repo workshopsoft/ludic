@@ -1,5 +1,6 @@
 # input.ludic - what the player did this frame, read once from the runtime's Input: the pointer, its
-# button, the wheel, the keys a UI answers and what was typed. A test or a host can set it instead.
+# button, the wheel, the keys a UI answers, the first pad and what was typed. A test or a host can set
+# it instead (input_pad.ludic makes a held direction repeat).
 export property UiInput {
   x: float = -1.0
   y: float = -1.0
@@ -17,6 +18,12 @@ export property UiInput {
   backspace: bool = false
   typed: string = ""
   key: int = 0                  # any key pressed this frame, for a key-capture field
+  held_up: bool = false         # a direction held - an arrow key, the d-pad or the left stick -
+  held_down: bool = false       # which presses its arrow now and repeats while it is held
+  held_left: bool = false
+  held_right: bool = false
+  pad_a: bool = false           # the pad's south button held: Enter
+  pad_b: bool = false           # its east button held: Escape
 }
 var in_now: UiInput = new UiInput
 var in_was_down: bool = false
@@ -45,7 +52,9 @@ function in_read() -> void {
     i.backspace = Input.key_pressed(Key.Backspace)
     i.typed = Input.text()
     i.key = in_any_key()
+    in_held(i)
   }
+  in_repeat(i)
   in_now = i
 }
 function in_any_key() -> int {
@@ -57,6 +66,7 @@ function in_any_key() -> int {
 # this frame's input, given by a test or a host that reads its own
 export function ui_input(i: UiInput) -> void {
   in_was_down = in_now.down
+  in_repeat(i)
   in_now = i
   in_given = true
 }

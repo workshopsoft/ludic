@@ -1,0 +1,7 @@
+# Pad.ludic - eight buttons, a range, a select and a button that opens a popover, for a gamepad
+component Pad {
+  state last: int = -1
+  state vol: int = 0
+  state q: int = 0
+  state open: bool = false
+}

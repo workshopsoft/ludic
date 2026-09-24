@@ -1,0 +1,53 @@
+# input_pad.ludic - the first gamepad, and a held direction: the d-pad and the left stick move the
+# focus as the arrows do, A is Enter and B is Escape; any direction held presses once, then again
+# after 0.42 s and every 0.11 s after that, on the ui clock
+const RP_FIRST: float = 0.42
+const RP_EVERY: float = 0.11
+const PAD_STICK: float = 0.5
+var rp_next: []float = [-1.0, -1.0, -1.0, -1.0]
+var rp_a: bool = false
+var rp_b: bool = false
+# what is held this frame: the arrow keys, the d-pad (SDL's order: 11 up, 12 down, 13 left, 14
+# right) and the stick past half way along its larger axis
+function in_held(i: UiInput) -> void {
+  i.held_up = Input.key_down(Key.Up)
+  i.held_down = Input.key_down(Key.Down)
+  i.held_left = Input.key_down(Key.Left)
+  i.held_right = Input.key_down(Key.Right)
+  if not Input.pad_connected(0) { return }
+  let ax = float(Input.pad_axis(0, 0))
+  let ay = float(Input.pad_axis(0, 1))
+  let flat = Math.abs(ax) >= Math.abs(ay)
+  i.held_up = i.held_up or Input.pad_button(0, 11) or (not flat and ay < 0.0 - PAD_STICK)
+  i.held_down = i.held_down or Input.pad_button(0, 12) or (not flat and ay > PAD_STICK)
+  i.held_left = i.held_left or Input.pad_button(0, 13) or (flat and ax < 0.0 - PAD_STICK)
+  i.held_right = i.held_right or Input.pad_button(0, 14) or (flat and ax > PAD_STICK)
+  i.pad_a = Input.pad_button(0, 0)
+  i.pad_b = Input.pad_button(0, 1)
+}
+# the held directions and buttons as this frame's presses
+function in_repeat(i: UiInput) -> void {
+  let now = an_now()
+  if rp_fire(0, i.held_up, now) { i.up = true }
+  if rp_fire(1, i.held_down, now) { i.down_key = true }
+  if rp_fire(2, i.held_left, now) { i.left = true }
+  if rp_fire(3, i.held_right, now) { i.right = true }
+  if i.pad_a and not rp_a { i.enter = true }
+  if i.pad_b and not rp_b { i.escape = true }
+  rp_a = i.pad_a
+  rp_b = i.pad_b
+}
+function rp_fire(k: int, held: bool, now: float) -> bool {
+  if not held {
+    rp_next[k] = -1.0
+    return false
+  }
+  if rp_next[k] < 0.0 {
+    rp_next[k] = now + RP_FIRST
+    return true
+  }
+  if now + 0.000001 < rp_next[k] { return false }
+  rp_next[k] = rp_next[k] + RP_EVERY
+  if rp_next[k] <= now { rp_next[k] = now + RP_EVERY }
+  return true
+}

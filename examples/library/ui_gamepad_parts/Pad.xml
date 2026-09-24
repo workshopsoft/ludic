@@ -1,0 +1,8 @@
+<div class="page">
+  <each in="{range(8)}" as="r"><button on-click="set last = r">{r}</button></each>
+  <input type="range" min="{0}" max="{10}" value="{vol}" on-change="set vol = event.value"/>
+  <select value="{q}" on-change="set q = event.value"><option>a</option><option>b</option><option>c</option></select>
+  <button on-click="set open = true">more</button>
+  <if test="{open}"><div popover on-close="set open = false"><button>x</button></div></if>
+  <p>last {last} vol {vol} q {q} open {open}</p>
+</div>

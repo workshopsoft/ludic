@@ -449,6 +449,11 @@ applies to both:
     track jumps the thumb's middle there and holds it. A press on the bar presses nothing under it.
   - `:focus`, `:focus-visible` and `:focus-within` style the focus, and `outline` (which follows
     `border-radius`) draws the ring.
+  - The first gamepad works it too: the d-pad and the left stick move the focus as the arrows do,
+    left and right step a range or a select, A is Enter and B is Escape (it closes a popover). A
+    direction held, on the pad or the keyboard, presses once, again after 0.42 s and then every
+    0.11 s, on the ui clock. A host sets `held_up` / `held_down` / `held_left` / `held_right`,
+    `pad_a` and `pad_b` on a `UiInput` to drive the same.
   - A test drives all of it with `ui_input(i)`.
 - **Controls are built in**, each made of plain parts a stylesheet styles (`.ui-label`,
   `.ui-track`, `.ui-knob`, `.ui-fill`, `.ui-thumb`, `.ui-field`, `.ui-value`, `.ui-caret`,

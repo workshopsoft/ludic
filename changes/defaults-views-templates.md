@@ -78,6 +78,9 @@ What a game's screens found missing, now in `ludic.ui`:
   a press on the track jumps the thumb's middle there, and neither presses what is under the bar;
 - a popover's own controls take its presses whatever lies under it, a press outside only closes it,
   and while one is up the scroll boxes outside it do not take the pointer;
+- the first gamepad moves the focus (d-pad, left stick), steps ranges and selects, and presses (A)
+  and goes back (B); a held direction, on the pad or the arrow keys, repeats after 0.42 s and then
+  every 0.11 s on the ui clock (`UiInput.held_*`, `pad_a`, `pad_b` for a host);
 - a transition lands exactly on its end value (it had stopped a rounding error short of it, at every
   frame rate).
 
