@@ -1,0 +1,46 @@
+# controls_parts.ludic - what a control shows besides its own parts: its label, with a `note` (a line
+# of help under it) in .ui-labels > .ui-label + .ui-note, and a range's or a number's value as text:
+# `decimals="1"` places, `format="percent"` its place between min and max, and a `unit` after it
+function ct_label(n: UiNode) -> void {
+  let label = ui_attr_text(n, "label")
+  let note = ui_attr_text(n, "note")
+  if note == "" {
+    if label != "" { push(n.children, ct_part(n, "ui-label", ui_tr(label))) }
+    return
+  }
+  let both = ct_part(n, "ui-labels", "")
+  if label != "" { push(both.children, ct_part(n, "ui-label", ui_tr(label))) }
+  push(both.children, ct_part(n, "ui-note", ui_tr(note)))
+  push(n.children, both)
+}
+function ct_value_text(n: UiNode) -> string {
+  let v = ui_attr(n, "value")
+  if Value.kind(v) == 0 { return "" }
+  var f = Value.as_float(v)
+  let fmt = ui_attr_text(n, "format")
+  if fmt == "percent" {
+    let lo = Value.as_float(ui_attr(n, "min"))
+    var hi = Value.as_float(ui_attr(n, "max"))
+    if hi <= lo { hi = lo + 1.0 }
+    f = (f - lo) / (hi - lo) * 100.0
+  }
+  var s = ""
+  if Value.kind(ui_attr(n, "decimals")) != 0 { s = ct_fixed(f, Value.as_int(ui_attr(n, "decimals"))) } else if fmt == "percent" { s = string(int(Math.round(f))) } else { s = vl_text(v) }
+  if fmt == "percent" { s = s + "%" }
+  return s + ui_attr_text(n, "unit")
+}
+# a number with `places` digits after the point, rounded
+function ct_fixed(f: float, places: int) -> string {
+  var k = 1
+  for i in 0 .. Math.max(places, 0) { k = k * 10 }
+  let neg = f < 0.0
+  let whole = int(Math.round(Math.abs(f) * float(k)))
+  var s = string(whole / k)
+  if places > 0 {
+    var frac = string(whole % k)
+    while len(frac) < places { frac = "0" + frac }
+    s = s + "." + frac
+  }
+  if neg and whole != 0 { s = "-" + s }
+  return s
+}

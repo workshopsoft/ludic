@@ -1,5 +1,6 @@
 # tooltip.ludic - an element's title="..." shown beside the pointer once it has rested on the
-# element for half a second, in a box styled by .ui-tooltip (the default sheet's, or a theme's)
+# element for half a second, in a box styled by .ui-tooltip (the default sheet's, or a theme's); a
+# title of several lines (a newline, or \n) is one .ui-tooltip-text a line
 var tt_key: string = ""
 var tt_since: float = 0.0
 var tt_text: string = ""
@@ -37,11 +38,28 @@ function tt_draw(root: UiNode) -> void {
   n.tag = "div"
   n.parent = root
   n.children = new []UiNode
-  push(n.children, ct_part(root, "ui-tooltip-text", tt_text))
+  let lines = tt_lines(tt_text)
+  for i in 0 .. len(lines) { push(n.children, ct_part(root, "ui-tooltip-text", lines[i])) }
   cs_tree(n)
   ly_measure(n, ly_vp_w * 0.4, ui_px(16.0), root.rfg)
   let x = Math.min(tt_x + ui_px(16.0), ly_vp_x + ly_vp_w - n.mw)
   let y = Math.min(tt_y + ui_px(20.0), ly_vp_y + ly_vp_h - n.mh)
   ly_place(n, x, y, n.mw, n.mh)
   fr_draw(n)
+}
+# a title's lines: apart at a newline, or at a written \n (which an attribute cannot hold otherwise)
+function tt_lines(s: string) -> []string {
+  let out = new []string
+  var at = 0
+  var i = 0
+  while i < len(s) {
+    if s[i] == 10 or (s[i] == 92 and i + 1 < len(s) and s[i + 1] == 110) {
+      push(out, s[at..i])
+      if s[i] == 92 { i += 1 }
+      at = i + 1
+    }
+    i += 1
+  }
+  push(out, s[at..len(s)])
+  return out
 }

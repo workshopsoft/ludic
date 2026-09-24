@@ -18,6 +18,7 @@ function fr_pointer(root: UiNode) -> void {
   if top != null and pp_pointer(top) { return }
   let hit = fr_hit(scope, i.x, i.y)
   if i.down and not in_was_down {
+    ct_key_pressed_away(hit)
     fr_press_key = ""
     if hit != null {
       fr_press_key = hit.key

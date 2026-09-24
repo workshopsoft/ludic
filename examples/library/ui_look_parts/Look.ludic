@@ -1,0 +1,5 @@
+# Look.ludic - what is drawn: a nested component's root styled by every sheet above it, a shadow
+# under text, a native at its group's opacity, border-images, pictures, and a tooltip of two lines
+component Look {
+  state n: int = 0
+}

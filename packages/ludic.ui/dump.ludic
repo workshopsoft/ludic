@@ -24,7 +24,7 @@ function dp_style(n: UiNode) -> string {
   var s = ""
   if n.size > 0.0 { s = s + ` font {int(n.size)}` }
   if n.fg >= 0 { s = s + ` color {ui_hex(n.fg)}` }
-  if n.bg >= 0 { s = s + ` bg {ui_hex(n.bg)}` }
+  if n.bg >= 0 and n.bg_a > 0.0 { s = s + ` bg {ui_hex(n.bg)}` }
   if n.alpha < 1.0 { s = s + ` opacity {n.alpha}` }
   if n.pt + n.pr + n.pb + n.pl > 0.0 { s = s + ` pad {int(n.pt)} {int(n.pr)} {int(n.pb)} {int(n.pl)}` }
   if n.mt + n.mr + n.mb + n.ml > 0.0 { s = s + ` margin {int(n.mt)} {int(n.mr)} {int(n.mb)} {int(n.ml)}` }

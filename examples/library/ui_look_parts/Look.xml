@@ -1,0 +1,10 @@
+<div class="page">
+  <Middle class="m"/>
+  <div class="shade"><p>Hi</p></div>
+  <div class="dim"><gauge class="dim"/></div>
+  <div class="chip clear"></div>
+  <div class="chip"></div>
+  <div class="chip red"></div>
+  <div class="pics"><img src="photo.png"/><img src="icon:tent"/></div>
+  <p class="tip" title="first line\nsecond line">rest here</p>
+</div>

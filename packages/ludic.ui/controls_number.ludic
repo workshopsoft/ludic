@@ -1,0 +1,73 @@
+# controls_number.ludic - <input type="number" min max step>: digits typed into it (a minus when min
+# allows one, a point when step has a fraction) replace its value with a draft, which Enter or leaving
+# the field commits, held between min and max; Backspace takes a digit back (of the value, when it is
+# the first key), and the left and right arrows step it. Each commit is one on-change with the
+# number: an int when step and the value are whole.
+var ct_num_key: string = ""
+var ct_num_text: string = ""
+function ct_num_bound(n: UiNode, key: string) -> bool { return Value.kind(ui_attr(n, key)) != 0 }
+function ct_num_step_of(n: UiNode) -> float {
+  let s = Value.as_float(ui_attr(n, "step"))
+  if s <= 0.0 { return 1.0 }
+  return s
+}
+function ct_num_clamp(n: UiNode, v0: float) -> float {
+  var v = v0
+  if ct_num_bound(n, "max") { v = Math.min(v, Value.as_float(ui_attr(n, "max"))) }
+  if ct_num_bound(n, "min") { v = Math.max(v, Value.as_float(ui_attr(n, "min"))) }
+  return v
+}
+function ct_num_set(n: UiNode, v0: float) -> void {
+  let v = ct_num_clamp(n, v0)
+  let step = ct_num_step_of(n)
+  let was = ui_attr(n, "value")
+  if Value.kind(was) != 0 and Value.as_float(was) == v { return }
+  if step == float(int(step)) and v == float(int(v)) { ct_change(n, Value.int(int(v))) } else { ct_change(n, Value.float(v)) }
+}
+# Enter, or the focus leaving it: the draft becomes the value (a draft of nothing changes nothing)
+function ct_num_commit(n: UiNode) -> void {
+  if ct_num_key != n.key { return }
+  let s = ct_num_text
+  ct_num_key = ""
+  if s == "" or s == "-" or s == "." or s == "-." { return }
+  ct_num_set(n, el_num(s))
+}
+function ct_num_step(n: UiNode, d: int) -> void {
+  var base = Value.as_float(ui_attr(n, "value"))
+  if ct_num_key == n.key and ct_num_text != "" and ct_num_text != "-" { base = el_num(ct_num_text) }
+  ct_num_key = ""
+  ct_num_set(n, base + ct_num_step_of(n) * float(d))
+}
+# what was typed this frame, the characters a number can hold; Backspace takes one back
+function ct_num_typed(n: UiNode) -> void {
+  if fc_key != n.key or (in_now.typed == "" and not in_now.backspace) { return }
+  if ct_num_key != n.key {
+    ct_num_key = n.key
+    ct_num_text = ""
+    if in_now.typed == "" { ct_num_text = ui_attr_text(n, "value") }
+  }
+  if in_now.backspace and len(ct_num_text) > 0 { ct_num_text = ct_num_text[0..len(ct_num_text) - 1] }
+  let step = ct_num_step_of(n)
+  let lo = Value.as_float(ui_attr(n, "min"))
+  for i in 0 .. len(in_now.typed) {
+    let c = in_now.typed[i]
+    let digit = c >= 48 and c <= 57
+    let minus = c == 45 and ct_num_text == "" and (not ct_num_bound(n, "min") or lo < 0.0)
+    let point = c == 46 and step != float(int(step)) and not ui_has(ct_num_text, ".")
+    if (digit or minus or point) and len(ct_num_text) < 24 { ct_num_text = ct_num_text + in_now.typed[i..i + 1] }
+  }
+}
+# the focus has gone from the field being typed in: what was typed is kept
+function ct_num_blur(root: UiNode) -> void {
+  if ct_num_key == "" or ct_num_key == fc_key { return }
+  let n = fr_node(root, ct_num_key)
+  if n == null {
+    ct_num_key = ""
+    return
+  }
+  ct_num_commit(n)
+}
+function ct_num_shown(n: UiNode) -> string {
+  if ct_num_key == n.key { return ct_num_text }
+  return ct_value_text(n)
+}

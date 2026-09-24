@@ -53,6 +53,28 @@ The runtime is a UI framework, not only a template engine:
 - importing `ludic.ui/render3d.ludic` installs the backend, and atlases take rows;
 - hooks for the program's language, sounds and clock.
 
+What a game's screens found missing, now in `ludic.ui`:
+- `<input type="number" min max step>`: typed digits, Enter or leaving it commits them clamped, the
+  arrows step it;
+- `<input type="key">` listens for any key (Tab and the arrows included) once Enter or a click starts
+  it; Esc stops it, Backspace clears it, `shown` names the value, and `ui_capturing()` tells the host;
+- `note="..."` under any control's label (`.ui-note`); a range's `decimals`, `format="percent"` and
+  `unit`; a track laid out as a row, with the range's fill as tall as it;
+- popovers anchored beside an element (`anchor="id"`, or a bare `anchor` for the element before it,
+  `placement`), flipped to the other side and kept on the screen;
+- `flex-shrink` (a scroll box in a column takes the room its siblings leave), `flex: grow shrink`,
+  `order`, and text in a row wrapping in the room its siblings leave;
+- `calc()` over px, %, em, rem, vw, vh and `var()`; `width: 0` and `height: 0` mean 0;
+- `text-shadow`; tooltips of several lines; `ui_opacity()` for a native's draw;
+- `border-image` drawn as painted with no background colour, tinted by one, and not at all under
+  `transparent`; a picture file drawn untinted (an atlas cell still takes `color`);
+- the render3d backend loads a picture again when its file changes (`ui_image_reload`), draws a path
+  with a drive letter as a path, and slices a nine-slice by its texture's own width and height;
+- a component root that is itself a component takes every user's class, style and id, and the
+  sheets that style it are weighed together by specificity;
+- a component's event may be called `set`; a `string` prop given a number reads it as text; two
+  components of one name are an error naming both files.
+
 render3d gains `tex_width` / `tex_height`, and the XML reader keeps text runs among elements in
 order (`mixed`).
 

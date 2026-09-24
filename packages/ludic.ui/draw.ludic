@@ -16,7 +16,7 @@ function fr_draw_in(n: UiNode) -> void {
   fr_background(n)
   fr_border(n)
   if n.kind == UI_TEXT { fr_text(n) }
-  if n.kind == UI_IMAGE and ui_be.image != null { ui_be.image(n.src, n.x + n.pl + n.bl, n.y + n.pt + n.bt, n.cw - ly_hin(n), n.ch - ly_vin(n), n.rfg, fr_ga * n.rfg_a) }
+  if n.kind == UI_IMAGE and ui_be.image != null { fr_image(n) }
   let clipped = n.kind == UI_SCROLL and ui_be.clip != null
   if clipped { fr_clip_push(n.x, n.y, n.cw, n.ch) }
   if n.children != null { fr_children(n) }
@@ -24,8 +24,9 @@ function fr_draw_in(n: UiNode) -> void {
   if n.kind == UI_SCROLL { sc_bar(n) }
   if n.outline_w > 0.0 { fr_outline(n) }
 }
-# the shadow, then the background: a nine-slice tinted by the background colour, or the colour
-# (rounded), then a picture over it
+# the shadow, then the background: the colour (rounded), or a border-image's nine-slice - drawn as
+# painted, as CSS draws one, or tinted by a background colour when there is one (so `transparent`,
+# or any colour with no alpha, leaves nothing to see) - then a picture over it
 function fr_background(n: UiNode) -> void {
   if n.sh_c >= 0 { fr_fill(n, n.x + n.sh_x, n.y + n.sh_y, n.sh_c, fr_ga * n.sh_a) }
   if n.bg >= 0 or n.bi_src != "" {
@@ -35,7 +36,7 @@ function fr_background(n: UiNode) -> void {
       c = 16777215
       a = fr_ga
     }
-    fr_fill(n, n.x, n.y, c, a)
+    if a > 0.0 { fr_fill(n, n.x, n.y, c, a) }
   }
   if n.bg_img != "" and ui_be.image != null { ui_be.image(n.bg_img, n.x, n.y, n.cw, n.ch, 16777215, fr_ga) }
 }
@@ -79,24 +80,4 @@ function fr_outline(n: UiNode) -> void {
     return
   }
   fr_frame(n.x - o, n.y - o, n.cw + o * 2.0, n.ch + o * 2.0, n.outline_w, c, a)
-}
-# a text's lines (one, or the wrapped ones), each placed by text-align, the last cut by an ellipsis
-function fr_text(n: UiNode) -> void {
-  let y = n.y + n.pt + n.bt
-  let a = n.rfg_a * fr_ga
-  if n.lines == null {
-    var s = n.text
-    if n.ellipsis { s = ly_ellipsis(s, n.rsize, n.cw - ly_hin(n)) }
-    ui_be.text(fr_line_x(n, s), y, s, n.rsize, n.rfg, a)
-    return
-  }
-  for i in 0 .. len(n.lines) { ui_be.text(fr_line_x(n, n.lines[i]), y + float(i) * n.rsize * 1.25, n.lines[i], n.rsize, n.rfg, a) }
-}
-# where a line starts: text-align within the room the box gives it
-function fr_line_x(n: UiNode, s: string) -> float {
-  let x = n.x + n.pl + n.bl
-  if n.talign == UI_START { return x }
-  let spare = n.cw - ly_hin(n) - ly_text_w(s, n.rsize)
-  if n.talign == UI_CENTER { return x + spare / 2.0 }
-  return x + spare
 }

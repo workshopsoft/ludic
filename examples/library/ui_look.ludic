@@ -1,0 +1,65 @@
+# ui_look.ludic — what ludic.ui draws, through a backend that writes each call down: a component
+# whose root is another component, styled by every sheet above it by specificity; text-shadow under
+# text; a native reading the opacity it is drawn at (ui_opacity); border-image as painted, tinted by
+# a background colour, and gone under `transparent`; a picture drawn as it is and an atlas cell in
+# the text's colour; a tooltip of two lines; and popovers placed beside their anchors, one flipped.
+import "ludic.ui"
+import "ui_look_parts/Look.ludic"
+import "ui_look_parts/Middle.ludic"
+import "ui_look_parts/Inner.ludic"
+import "ui_look_parts/Menu.ludic"
+program UiLook {
+  numbers float
+  var said: []string = new []string
+  var seen: float = 0.0
+  function rec_rect(x: float, y: float, w: float, h: float, c: int, a: float) -> void { }
+  function rec_text(x: float, y: float, s: string, size: float, c: int, a: float) -> void { push(said, `text {s} {int(x)},{int(y)} {ui_hex(c)}`) }
+  function rec_image(src: string, x: float, y: float, w: float, h: float, c: int, a: float) -> void { push(said, `image {src} {ui_hex(c)}`) }
+  function rec_nine(src: string, slice: float, x: float, y: float, w: float, h: float, dst: float, c: int, a: float) -> void { push(said, `nine {int(w)} {ui_hex(c)}`) }
+  function gauge_measure(n: UiNode, avail: float) -> void { }
+  function gauge_draw(n: UiNode) -> void { seen = ui_opacity() }
+  function count(s: string) -> int {
+    var n = 0
+    for i in 0 .. len(said) {
+      if Text.starts_with(said[i], s) { n += 1 }
+    }
+    return n
+  }
+  function has(s: string) -> string {
+    for i in 0 .. len(said) {
+      if Text.starts_with(said[i], s) { return said[i] }
+    }
+    return "-"
+  }
+  function show(name: string, i: UiInput) -> UiNode {
+    ui_input(i)
+    said = new []string
+    ui_show(name, null, 0.0, 0.0, 400.0, 300.0)
+    let root: UiNode = ui_nodes(name, null)
+    ui_place(root, 0.0, 0.0, 400.0, 300.0)
+    return root.children[0]
+  }
+  entry {
+    let b = new UiBackend
+    b.rect = fn rec_rect
+    b.text = fn rec_text
+    b.image = fn rec_image
+    b.nine = fn rec_nine
+    ui_backend(b)
+    ui_native("gauge", fn gauge_measure, fn gauge_draw)
+    var page = show("Look", new UiInput)
+    let inner = page.children[0]
+    let tip = page.children[7]
+    let rest = new UiInput
+    rest.x = tip.x + 2.0
+    rest.y = tip.y + 2.0
+    for f in 0 .. 40 { page = show("Look", rest) }
+    print(`root {inner.tag}.{inner.classes[0]}.{inner.classes[1]}.{inner.classes[2]} pad {int(inner.pt)} margin {int(inner.mt)} color {ui_hex(inner.fg)}`)
+    print(`{has("text Hi")} | {has("text Hi 0")} | opacity {seen} | {has("nine 40 #ffffff")} {has("nine 40 #ff0000")} of {count("nine")}`)
+    print(`{has("image photo")} | {has("image icon")} | {has("text first")} | {has("text second")}`)
+    let menu = show("Menu", new UiInput)
+    let a = menu.children[1]
+    let c = menu.children[3]
+    print(`by id at {int(a.x)},{int(a.y)} | flipped at {int(c.x)},{int(c.y)} {int(c.cw)}x{int(c.ch)}`)
+  }
+}

@@ -1,8 +1,9 @@
 # controls_build.ludic - a control's parts, made as plain child boxes a stylesheet can style:
 #   input[type=checkbox|radio]  .ui-label  .ui-track > .ui-knob
 #   input[type=range]           .ui-label  .ui-track > .ui-fill, .ui-thumb   .ui-value
-#   input[type=text|key]        .ui-label  .ui-field > .ui-value (+ .ui-caret while focused)
+#   input[type=text|number|key] .ui-label  .ui-field > .ui-value (+ .ui-caret while focused)
 #   select                      .ui-label  .ui-prev  .ui-value  .ui-next   (its <option>s hidden)
+# with a note="...", the label is .ui-labels > .ui-label + .ui-note
 function ct_part(n: UiNode, cls: string, text: string) -> UiNode {
   let p = new UiNode
   p.key = `{n.key}/{cls}`
@@ -39,12 +40,11 @@ function ct_build(n: UiNode) -> void {
   n.dir = UI_ROW
   n.focusable = true
   let t = ui_attr_text(n, "type")
-  let label = ui_attr_text(n, "label")
-  if label != "" { push(n.children, ct_part(n, "ui-label", ui_tr(label))) }
   if n.tag == "select" {
     ct_build_select(n)
     return
   }
+  ct_label(n)
   if t == "checkbox" or t == "radio" {
     let track = ct_part(n, "ui-track", "")
     push(track.children, ct_part(n, "ui-knob", ""))
@@ -69,13 +69,12 @@ function ct_build_range(n: UiNode) -> void {
   push(track.children, fill)
   push(track.children, ct_part(n, "ui-thumb", ""))
   push(n.children, track)
-  push(n.children, ct_part(n, "ui-value", ui_attr_text(n, "value")))
+  push(n.children, ct_part(n, "ui-value", ct_value_text(n)))
 }
 function ct_build_select(n: UiNode) -> void {
   let opts = n.children
   n.children = new []UiNode
-  let label = ui_attr_text(n, "label")
-  if label != "" { push(n.children, ct_part(n, "ui-label", ui_tr(label))) }
+  ct_label(n)
   var shown = ""
   let at = ct_option_at(n, opts)
   if at >= 0 { shown = opts[at].text }
@@ -94,7 +93,8 @@ function ct_option_at(n: UiNode, opts: []UiNode) -> int {
   return -1
 }
 function ct_field_text(n: UiNode) -> string {
-  if ui_attr_text(n, "type") != "key" { return ui_attr_text(n, "value") }
-  if ct_capture == n.key { return ui_tr("press a key...") }
-  return Input.key_label(Value.as_int(ui_attr(n, "value")))
+  let t = ui_attr_text(n, "type")
+  if t == "key" { return ct_key_text(n) }
+  if t == "number" { return ct_num_shown(n) }
+  return ui_attr_text(n, "value")
 }

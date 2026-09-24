@@ -324,7 +324,12 @@ component Counter {
 - **The template** has one root (use `<fragment>` for several). A component is used by its name as
   a tag. `set count = 0` in an action sets its state, and `emit close` runs what its parent passed
   as `on-close`. `class`, `style` and `id` on a component's tag land on its root element, styled by
-  the parent's sheet as well as its own.
+  the parent's sheet as well as its own; when that root is itself a component, every user in turn
+  passes theirs down (the outermost's `id` wins). The rules of all those sheets that match the root
+  are weighed together by specificity, as one sheet's are, and a user's rule wins a tie.
+- **A component's names.** An event may be called anything, `set` included (`on set(v: int)`,
+  pressed as `set(4)`; `set x = ...` is still the action). A `string` prop given a number reads it
+  as text (`label="{3}"` is `"3"`). Two components of one name are an error that names both files.
 - **Compiled in.** The compiler reads the template and the styles from beside the declaration and
   inlines each `@import` (a path starting with `/` is from the project's root), so a missing
   template fails the build and nothing has to ship beside the program. `ui_reload()` reads the
@@ -368,12 +373,21 @@ applies to both:
 - **The box model and flex.** Sizes are border boxes.
   - `padding` and `margin` take one to four lengths, or one side by name (`padding-left`).
   - `border` is `2px solid #ffcc00`, or `border-width` and `border-color`.
-  - A length is `12`, `12px`, `50%`, `fit`/`auto` or `fill`.
+  - A length is `12`, `12px`, `50%`, `fit`/`auto`, `fill` or `calc()`. `width: 0` and `height: 0`
+    are 0, not unset.
+  - `calc()` takes `+`, `-`, `*` and `/` and brackets over `px`, `em`, `rem`, `vw`, `vh`, plain
+    numbers and `var()`; in a `width` or `height` it may also hold a percentage of the room
+    (`calc(50% - 10px)`).
   - `flex-grow` (or `flex`) shares out the spare room along `flex-direction`, and `fill` is a share
     of 1. `justify-content` takes `flex-start`/`start`, `center`, `end`, `space-between`,
     `space-around` or `space-evenly`.
   - `align-items` and `align-self` take `start`, `center`, `end` or `stretch`. `flex-wrap: wrap`
     breaks a row into lines, and `min-`/`max-width`/`-height` bound it.
+  - `flex-shrink` gives up room when a line's children want more than it has, each in proportion
+    to its shrink times its size, and none below its min size, a fixed size or its content. A scroll
+    box shrinks (and scrolls) and a box in a column shrinks as far as the scroll boxes in it let it,
+    so a list in a column takes the room its siblings leave with no height of its own. `flex: 1 0`
+    is the grow and the shrink. `order` rearranges a box's children without touching the tree.
   - `gap`, `text-align`, `display: none`, `background(-color)`, `color`, `opacity` and `font-size`
     are CSS's.
 
@@ -411,8 +425,8 @@ applies to both:
     neither takes room in the flow.
   - Units: `em`, `rem`, `vw` and `vh`.
   - `@media (min-width: ..) and (max-height: ..) { ... }`.
-  - Text wraps between words to fit its box; `white-space: nowrap` keeps one line and
-    `text-overflow: ellipsis` cuts it.
+  - Text wraps between words to fit its box - in a row, in the room its siblings leave it;
+    `white-space: nowrap` keeps one line and `text-overflow: ellipsis` cuts it.
   - `overflow: auto|scroll|hidden` makes a box scroll.
   - Selectors also take `+` and `~`, `:nth-child(2n+1)`, `:checked` and `:active`.
 - **More React.**
@@ -435,31 +449,51 @@ applies to both:
   - A test drives all of it with `ui_input(i)`.
 - **Controls are built in**, each made of plain parts a stylesheet styles (`.ui-label`,
   `.ui-track`, `.ui-knob`, `.ui-fill`, `.ui-thumb`, `.ui-field`, `.ui-value`, `.ui-caret`,
-  `.ui-prev`, `.ui-next`):
+  `.ui-prev`, `.ui-next`; a track is a row, and a range's fill is as tall as its track):
   - `<button>`;
   - `<input type="checkbox|radio" label checked>`;
-  - `<input type="range" label min max step value>`, dragged or stepped with the arrows;
+  - `<input type="range" label min max step value>`, dragged or stepped with the arrows. Its value
+    shows with `decimals="{2}"`, as `format="percent"` of the way from min to max, and with a
+    `unit=" s"` after it;
   - `<select label value>` with `<option value>`s;
   - `<input type="text" label value maxlength>`, which takes typing, and Backspace takes a letter
     back;
-  - `<input type="key" label value>`, which takes the next key pressed.
+  - `<input type="number" label min max step value>`: typed digits (a minus when min allows one, a
+    point when step has a fraction) replace the value, Enter or leaving the field commits them held
+    between min and max, and the left and right arrows step it (`decimals`, `unit` as a range's);
+  - `<input type="key" label value shown>`: Enter or a click starts it listening, and the next key
+    is its value - Tab, the arrows and Enter included. Esc stops it listening, Backspace clears it
+    (0), and `shown` is what it says for its value instead of the keyboard's label. While it
+    listens `ui_capturing()` is true, so the program can leave its own keys alone.
+
+  Any control's `note="..."` is a line of help under its label: `.ui-labels > .ui-label +
+  .ui-note`.
 
   Each reports with `on-change` and `event.value`, and plays `sound="..."` (or "click") through
   the program's `ui_sounds`.
 - **Popovers, tooltips and bars.**
   - `<div popover on-close="...">` sits absolutely in its parent and draws on the top layer. While
     it is up, the pointer and Tab stay inside it, and a press outside it or Esc closes it.
-  - `title="..."` shows a tooltip (`.ui-tooltip`) after the pointer rests for half a second.
+  - `anchor="cell"` puts a popover beside the element with that id (the nearest, looking out from
+    the popover), and a bare `anchor` beside the element before it. `placement` is `right` (the
+    default), `left`, `bottom` or `top`, its margin on that side is the gap, and where it would
+    leave the screen it opens to the other side and is kept on it.
+  - `title="..."` shows a tooltip (`.ui-tooltip`) after the pointer rests for half a second. A
+    newline or a written `\n` in it starts another line (`.ui-tooltip-text` each).
   - `<progress value max>` and `<meter value min max>` fill (`.ui-fill`) as far as their value.
 - **Natives** are for what markup cannot say. `ui_native("minimap", measure, draw)` makes
   `<minimap>` an element the program draws itself, laid out and styled like any other. It reports
-  with `ui_fire(n, "change", value)` and reads its attributes with `ui_attr` / `ui_attr_on`.
+  with `ui_fire(n, "change", value)` and reads its attributes with `ui_attr` / `ui_attr_on`. Its
+  draw reads `ui_opacity()`, the opacity it is drawn at (every group `opacity` around it, its own
+  included).
 - **Renderers.** `ui_backend(b)` takes any renderer with `rect`, `text` and `measure`, and uses
   `round`, `ring`, `image`, `nine`, `clip`, `scale` and `now` when it has them.
   Importing `ludic.ui/render3d.ludic` makes render3d's overlay the renderer:
   - images by path, and cells of an atlas named with `ui_atlas(prefix, texture, cols, rows,
-    names)` as `<img src="prefix:name">` (or `prefix:12`);
-  - nine-slices for `border-image`;
+    names)` as `<img src="prefix:name">` (or `prefix:12`). A path is read as sRGB, the interface's
+    own space, so its colours arrive as painted. A file that changes on disk (or appears) is loaded
+    again within half a second, and `ui_image_reload(path)` asks for it at once;
+  - nine-slices for `border-image`, sliced by the texture's own width and height;
   - a scale from the screen's height (`ui_render3d_scale` for the player's interface size).
 
   `ui_translator(fn)`, `ui_sounds(fn)` and `ui_clock(fn)` hand the runtime the program's
@@ -468,8 +502,13 @@ applies to both:
   - Colours: `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`, `rgb()`, `rgba()` and the basic names,
     usually through `var(--...)` from a theme.
   - Boxes: `border-radius`, `box-shadow` (sharp, offset), `background-image: url(...)`, and
-    `border-image: url(...) slice / width` as a nine-slice. A nine-slice is tinted by the
-    background colour, so one rounded texture serves every colour.
+    `border-image: url(...) slice / width` as a nine-slice. With no background colour a nine-slice
+    is drawn as painted, as CSS draws one; with one it is tinted by it, so one rounded texture serves
+    every colour, and `transparent` (or any colour with no alpha) leaves nothing to see.
+  - Text: `text-shadow: x y blur colour` draws the text again under itself, offset (the blur is
+    drawn sharp), and is inherited.
+  - Pictures: an `<img>` of a file is drawn as it is; a cell of an atlas is a glyph and takes the
+    `color` around it, as text does. An `<img>` with a `color` of its own is tinted by it.
   - Motion: `opacity` fades the element and everything inside it. `@keyframes` with `animation:
     name 0.25s [infinite] [alternate]` animate numeric properties from when the element first
     appeared, and `transition: opacity 0.2s` eases a changed opacity.

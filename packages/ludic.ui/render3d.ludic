@@ -6,9 +6,12 @@
 #   border-image: url(button.png) 14     a nine-slice background
 module ludic_ui
 import "render3d_image.ludic"
+import "render3d_nine.ludic"
 var r3u_user: float = 1.0
 var r3u_tex_paths: []string = new []string
 var r3u_tex_ids: []int = new []int
+var r3u_tex_sizes: []int = new []int
+var r3u_tex_seen: []float = new []float
 var r3u_atlas: []string = new []string
 var r3u_atlas_tex: []int = new []int
 var r3u_atlas_cols: []int = new []int

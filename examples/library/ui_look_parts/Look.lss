@@ -1,0 +1,9 @@
+.page { width: 400px; gap: 2px }
+.m { margin: 9px }
+.shade { text-shadow: 2px 3px 4px #102030 }
+.dim { opacity: 0.5 }
+gauge { width: 10px; height: 10px }
+.chip { width: 40px; height: 20px; border-image: url(chip.png) 8 }
+.clear { background: transparent }
+.red { background: #ff0000 }
+.pics { flex-direction: row; color: #00ff00 }

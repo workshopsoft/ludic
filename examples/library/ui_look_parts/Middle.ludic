@@ -1,0 +1,4 @@
+# Middle.ludic - a component whose root is another component
+component Middle {
+  state n: int = 0
+}

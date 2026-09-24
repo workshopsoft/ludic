@@ -1,6 +1,6 @@
 # focus.ludic - the keyboard's place: focus moves through the controls in document order (Tab and
 # Shift+Tab, or the arrows), Enter and Space activate what has it, and a pointer press focuses what
-# it presses. A key that is gone from the screen leaves nothing focused.
+# it presses; a key field that is listening has every key to itself. A key that is gone from the screen leaves nothing focused.
 var fc_key: string = ""
 var fc_visible: bool = false    # focus came from the keyboard: :focus-visible, and the ring
 var fc_list: []UiNode = new []UiNode
@@ -28,8 +28,9 @@ function fc_move(step: int) -> void {
 function fc_keys(root: UiNode) -> void {
   fc_list = new []UiNode
   let top = pp_top(root)
-  if top != null and in_now.escape { ui_fire(top, "close", Value.null()) }
   if top != null { fc_collect(top) } else { fc_collect(root) }
+  if ct_key_capture(fc_list) { return }
+  if top != null and in_now.escape { ui_fire(top, "close", Value.null()) }
   let i = in_now
   if fc_find() < 0 { fc_autofocus() }
   let at = fc_find()
@@ -39,6 +40,7 @@ function fc_keys(root: UiNode) -> void {
   let horizontal = n != null and ct_takes_arrows(n)
   if i.up or (i.left and not horizontal) { fc_move(-1) }
   if i.down_key or (i.right and not horizontal) { fc_move(1) }
+  ct_num_blur(root)
   if n == null { return }
   if i.enter or (i.space and not ct_takes_space(n)) { ct_activate(n) }
   if horizontal and i.left { ct_step(n, -1) }

@@ -1,0 +1,4 @@
+# Tag.ludic - a string prop, which a number given to it arrives in as text
+component Tag {
+  prop text: string = "none"
+}

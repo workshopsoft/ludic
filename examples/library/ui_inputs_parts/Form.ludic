@@ -1,0 +1,9 @@
+# Form.ludic - a number, a key binding, two ranges with their values formatted, a note under a label,
+# and an event called set
+component Form {
+  state count: int = 5
+  state bind: int = 32
+  state vol: float = 0.5
+  state said: int = 0
+  on set(v: int) { said = v }
+}

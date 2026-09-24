@@ -1,0 +1,29 @@
+# render3d_nine.ludic - border-image for the render3d backend: a nine-slice of a texture
+module ludic_ui
+# border-image: the texture's `slice`-pixel corners kept, the rest stretched, drawn `dst` wide; the
+# slice is a share of the texture's own width across and its own height down, so it need not be square
+function r3u_nine(src: string, slice: float, x: float, y: float, w: float, h: float, dst: float, c: int, a: float) -> void {
+  let t = r3u_tex(src)
+  if t == 0 { return }
+  let su = slice / float(Math.max(tex_width(t), 1))
+  let sv = slice / float(Math.max(tex_height(t), 1))
+  let xs = r3u_four(x, x + dst, x + w - dst, x + w)
+  let ys = r3u_four(y, y + dst, y + h - dst, y + h)
+  let us = r3u_four(0.0, su, 1.0 - su, 1.0)
+  let vs = r3u_four(0.0, sv, 1.0 - sv, 1.0)
+  for j in 0 .. 3 {
+    for i in 0 .. 3 {
+      let x0 = int(xs[i])
+      let y0 = int(ys[j])
+      ov_sub(t, x0, y0, int(xs[i + 1]) - x0, int(ys[j + 1]) - y0, us[i], vs[j], us[i + 1], vs[j + 1], r3u_r(c), r3u_g(c), r3u_b(c), a)
+    }
+  }
+}
+function r3u_four(a: float, b: float, c: float, d: float) -> []float {
+  let out = new []float
+  push(out, a)
+  push(out, b)
+  push(out, c)
+  push(out, d)
+  return out
+}

@@ -1,0 +1,4 @@
+# Inner.ludic - the innermost root: its own rule is more specific than Middle's, so it holds
+component Inner {
+  state n: int = 0
+}

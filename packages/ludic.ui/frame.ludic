@@ -70,6 +70,7 @@ export function ui_place(root: UiNode, x: float, y: float, w: float, h: float) -
   ly_measure(root, w, ui_px(16.0), fg)
   ly_place(root, x, y, w, h)
   sc_apply(root)
+  pp_anchor_all(root)
 }
 # a press, as if the pointer had made it
 export function ui_press(n: UiNode) -> void {

@@ -1,0 +1,5 @@
+# Menu.ludic - popovers beside what they belong to: one by the anchor's id, one beside the element
+# before it, which has no room on its right and opens to the left
+component Menu {
+  state n: int = 0
+}

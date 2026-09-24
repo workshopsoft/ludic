@@ -1,0 +1,2 @@
+.page { width: 400px; gap: 4px }
+input { width: fill }

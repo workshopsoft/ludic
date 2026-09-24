@@ -1,0 +1,61 @@
+# draw_content.ludic - what is inside a box drawn: a text's lines, placed by text-align, each over its
+# text-shadow, and a picture
+# a text's lines (one, or the wrapped ones), each placed by text-align, the last cut by an ellipsis
+function fr_text(n: UiNode) -> void {
+  let y = n.y + n.pt + n.bt
+  let a = n.rfg_a * fr_ga
+  let sh = fr_text_shadow(n)
+  if n.lines == null {
+    var s = n.text
+    if n.ellipsis { s = ly_ellipsis(s, n.rsize, n.cw - ly_hin(n)) }
+    fr_line(n, sh, fr_line_x(n, s), y, s, a)
+    return
+  }
+  for i in 0 .. len(n.lines) { fr_line(n, sh, fr_line_x(n, n.lines[i]), y + float(i) * n.rsize * 1.25, n.lines[i], a) }
+}
+# one line, over its shadow when it has one
+function fr_line(n: UiNode, sh: UiNodeX, x: float, y: float, s: string, a: float) -> void {
+  if sh != null { ui_be.text(x + sh.tsh_x, y + sh.tsh_y, s, n.rsize, sh.tsh_c, sh.tsh_a * fr_ga) }
+  ui_be.text(x, y, s, n.rsize, n.rfg, a)
+}
+# text-shadow is inherited: the nearest element that says it, or null (none)
+function fr_text_shadow(n: UiNode) -> UiNodeX {
+  var at = n
+  while at != null {
+    if at.ex != null and at.ex.tsh_set {
+      if at.ex.tsh_c < 0 { return null }
+      return at.ex
+    }
+    at = at.parent
+  }
+  return null
+}
+# the opacity a native's draw is at: every group opacity around it, its own included
+export function ui_opacity() -> float { return fr_ga }
+# where a line starts: text-align within the room the box gives it
+function fr_line_x(n: UiNode, s: string) -> float {
+  let x = n.x + n.pl + n.bl
+  if n.talign == UI_START { return x }
+  let spare = n.cw - ly_hin(n) - ly_text_w(s, n.rsize)
+  if n.talign == UI_CENTER { return x + spare / 2.0 }
+  return x + spare
+}
+# an <img>: a picture file drawn as it is, as a browser draws one (unless the img sets its own
+# color); a cell of an atlas ("icon:tent") is a glyph, and takes the color around it as text does
+function fr_image(n: UiNode) -> void {
+  var c = 16777215
+  var a = fr_ga
+  if n.fg != UI_INHERIT or fr_is_cell(n.src) {
+    c = n.rfg
+    a = fr_ga * n.rfg_a
+  }
+  ui_be.image(n.src, n.x + n.pl + n.bl, n.y + n.pt + n.bt, n.cw - ly_hin(n), n.ch - ly_vin(n), c, a)
+}
+# prefix:name, and not a path (C:/... is a drive, not an atlas)
+function fr_is_cell(src: string) -> bool {
+  for i in 0 .. len(src) {
+    if src[i] == 47 or src[i] == 92 { return false }
+    if src[i] == 58 { return i > 1 }
+  }
+  return false
+}

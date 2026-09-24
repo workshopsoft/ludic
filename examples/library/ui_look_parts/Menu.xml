@@ -1,0 +1,6 @@
+<div class="page">
+  <button id="cell" class="cell">Axe</button>
+  <div popover anchor="cell" class="verbs"><button>Drop</button></div>
+  <button class="edge">Rope</button>
+  <div popover anchor placement="right" class="verbs"><button>Give</button></div>
+</div>
