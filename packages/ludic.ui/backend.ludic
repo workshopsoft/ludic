@@ -1,26 +1,45 @@
-# backend.ludic - the renderer seam
-# the renderer. Only rect, text and measure are needed; the rest improve on a default:
-# button draws, focuses and answers a press itself; color names a colour (else #rrggbb);
-# image draws an <img src>; px scales a template's lengths; scroll_begin answers how far a region is scrolled; read
-# reads a template file (else Fs.read_text)
+# backend.ludic - the renderer seam: what a renderer draws, and nothing more. Only rect, text and
+# measure are needed; the rest improve on a default (a rounded rect falls back to a square one, an
+# image to nothing). Input is the runtime's own (Input.*), so no renderer has to supply it.
 export property UiBackend {
-  rect: fn(float, float, float, float, int, float) -> void = null
-  text: fn(float, float, string, float, int) -> void = null
+  rect: fn(float, float, float, float, int, float) -> void = null                 # x y w h rgb alpha
+  round: fn(float, float, float, float, float, int, float) -> void = null         # ... radius rgb alpha
+  ring: fn(float, float, float, float, float, float, int, float) -> void = null  # x y w h radius width rgb alpha
+  text: fn(float, float, string, float, int, float) -> void = null                # x y text size rgb alpha
   measure: fn(string, float) -> float = null
-  pointer_x: fn() -> float = null
-  pointer_y: fn() -> float = null
-  pointer_down: fn() -> bool = null
-  button: fn(float, float, float, float, string, bool) -> bool = null
-  image: fn(string, float, float, float, float, int, float) -> void = null   # src x y w h tint alpha
-  color: fn(string) -> int = null
-  px: fn(float) -> float = null
-  scroll_begin: fn(string, float, float, float, float, float) -> float = null
-  scroll_end: fn() -> void = null
-  read: fn(string) -> string = null
+  image: fn(string, float, float, float, float, int, float) -> void = null        # src x y w h tint alpha
+  nine: fn(string, float, float, float, float, float, float, int, float) -> void = null  # src slice x y w h width tint alpha
+  clip: fn(float, float, float, float) -> void = null
+  unclip: fn() -> void = null
+  scale: fn() -> float = null      # screen pixels per design pixel
+  translate: fn(string) -> string = null   # the program's language, for every text a template shows
+  sound: fn(string) -> void = null         # a control was used: "click", or its sound="..."
+  read: fn(string) -> string = null        # a template file's text (else Fs.read_text)
+  now: fn() -> float = null                # seconds, for animation (else frames at 60 a second)
+  input: bool = true               # false: take no input from Input.* (a test drives it)
 }
 var ui_be: UiBackend = null
 export function ui_backend(b: UiBackend) -> void { ui_be = b }
 function ui_px(v: float) -> float {
-  if ui_be != null and ui_be.px != null { return ui_be.px(v) }
+  if ui_be != null and ui_be.scale != null { return v * ui_be.scale() }
   return v
+}
+function ui_tr(s: string) -> string {
+  if ui_be != null and ui_be.translate != null { return ui_be.translate(s) }
+  return s
+}
+function ui_sound(name: string) -> void {
+  if ui_be != null and ui_be.sound != null { ui_be.sound(name) }
+}
+# the program's language: every text a template shows goes through `f` before it is measured
+export function ui_translator(f: fn(string) -> string) -> void {
+  if ui_be != null { ui_be.translate = f }
+}
+# the program's sounds: "click" when a control is used, or the control's own sound="..."
+export function ui_sounds(f: fn(string) -> void) -> void {
+  if ui_be != null { ui_be.sound = f }
+}
+# the program's clock, in seconds, for animation (a game's own time, which a headless run counts)
+export function ui_clock(f: fn() -> float) -> void {
+  if ui_be != null { ui_be.now = f }
 }

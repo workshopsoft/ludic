@@ -43,6 +43,11 @@ function lss_block(f: UiFile, src: string, md: UiMedia, err: []string) -> void {
       lss_import(f, lss_upto(r, 59))
       continue
     }
+    if rd_op(r, "@keyframes") {
+      let name = lss_upto(r, 123)
+      an_read(name, lss_upto(r, 125), err)
+      continue
+    }
     if rd_op(r, "@media") {
       let cond = md_parse(lss_upto(r, 123))
       lss_block(f, lss_upto(r, 125), cond, err)

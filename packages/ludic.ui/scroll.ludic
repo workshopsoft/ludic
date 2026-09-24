@@ -1,0 +1,84 @@
+# scroll.ludic - a box with overflow (or <scroll>) scrolls itself: the wheel over it, a scrollbar
+# thumb dragged, and the focused control pulled into view. Its content is shifted by how far it is
+# scrolled and clipped to it, and the offset is kept by its key from frame to frame.
+var sc_keys: []string = new []string
+var sc_offs: []float = new []float
+var sc_drag: string = ""
+function sc_get(key: string) -> float {
+  for i in 0 .. len(sc_keys) {
+    if sc_keys[i] == key { return sc_offs[i] }
+  }
+  return 0.0
+}
+function sc_put(key: string, v: float) -> void {
+  for i in 0 .. len(sc_keys) {
+    if sc_keys[i] == key {
+      sc_offs[i] = v
+      return
+    }
+  }
+  push(sc_keys, key)
+  push(sc_offs, v)
+}
+# every scroll box, outermost first: its offset (from input, when `live`), then its content moved
+function sc_update(n: UiNode) -> void { sc_walk(n, true) }
+function sc_apply(n: UiNode) -> void { sc_walk(n, false) }
+function sc_walk(n: UiNode, live: bool) -> void {
+  if n.kind == UI_SCROLL {
+    let room = n.ch - ly_vin(n)
+    let most = Math.max(n.content_h - ly_vin(n) - room, 0.0)
+    var off = sc_get(n.key)
+    if live { off = sc_input(n, off, room, most) }
+    off = Math.clamp(off, 0.0, most)
+    sc_put(n.key, off)
+    n.scroll_y = off
+    if off != 0.0 {
+      for k in 0 .. len(n.children) { ly_offset(n.children[k], 0.0, 0.0 - off) }
+    }
+  }
+  for k in 0 .. len(n.children) { sc_walk(n.children[k], live) }
+}
+# the wheel over it, its thumb dragged, the keyboard's focus pulled into view
+function sc_input(n: UiNode, off0: float, room: float, most: float) -> float {
+  var off = off0
+  let i = in_now
+  let over = i.x >= n.x and i.y >= n.y and i.x < n.x + n.cw and i.y < n.y + n.ch
+  if over and i.wheel != 0.0 { off = off - i.wheel * ui_px(40.0) }
+  if i.down and not in_was_down and over and i.x >= n.x + n.cw - ui_px(14.0) and most > 0.0 { sc_drag = n.key }
+  if not i.down { sc_drag = "" }
+  if sc_drag == n.key and room > 0.0 { off = (i.y - n.y) / room * (most + room) - room / 2.0 }
+  return sc_into_view(n, off, room)
+}
+# the focused control, moved by the keyboard, is brought into the box's view
+function sc_into_view(n: UiNode, off: float, room: float) -> float {
+  if not fc_visible or fc_key == "" or not lc_mine(fc_key, n.key) { return off }
+  let f = fr_node(n, fc_key)
+  if f == null { return off }
+  let top = f.y - n.y - n.pt
+  if top < off { return top - ui_px(8.0) }
+  if top + f.ch > off + room { return top + f.ch - room + ui_px(8.0) }
+  return off
+}
+# the scrollbar: a thumb on a track down the box's right edge, when there is more than it shows
+function sc_bar(n: UiNode) -> void {
+  let room = n.ch - ly_vin(n)
+  let total = n.content_h - ly_vin(n)
+  if total <= room or ui_be.rect == null { return }
+  let w = ui_px(6.0)
+  let x = n.x + n.cw - w - ui_px(2.0)
+  var track = n.bar_track
+  if track == -2 { track = 3355443 }
+  var thumb = n.bar_c
+  if thumb < 0 { thumb = 10066329 }
+  if track >= 0 { ui_be.rect(x, n.y, w, n.ch, track, 0.4 * fr_ga) }
+  let th = Math.max(n.ch * room / total, ui_px(24.0))
+  let ty = n.y + (n.ch - th) * n.scroll_y / (total - room)
+  ui_be.rect(x, ty, w, th, thumb, 0.85 * fr_ga)
+}
+# ui_place moved every box by its stored offset; the frame takes that back before moving it again
+function sc_undo(n: UiNode) -> void {
+  if n.kind == UI_SCROLL and n.scroll_y != 0.0 {
+    for k in 0 .. len(n.children) { ly_offset(n.children[k], 0.0, n.scroll_y) }
+  }
+  for k in 0 .. len(n.children) { sc_undo(n.children[k]) }
+}

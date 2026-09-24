@@ -1,0 +1,58 @@
+# color.ludic - CSS colours: #rgb, #rgba, #rrggbb, #rrggbbaa, rgb(r, g, b), rgba(r, g, b, a), the
+# basic names, transparent and none. A colour is 0xRRGGBB; its alpha is left in cl_alpha.
+var cl_alpha: float = 1.0
+const CL_NAMES: string = " black=000000 white=ffffff red=ff0000 green=008000 lime=00ff00 blue=0000ff yellow=ffff00 cyan=00ffff aqua=00ffff magenta=ff00ff fuchsia=ff00ff gray=808080 grey=808080 silver=c0c0c0 maroon=800000 olive=808000 navy=000080 purple=800080 teal=008080 orange=ffa500 "
+function ui_color(name0: string) -> int {
+  let name = tpl_words(name0)
+  cl_alpha = 1.0
+  if name == "none" or name == "" or name == "transparent" { return UI_NONE }
+  if name[0] == 35 { return cl_hex(name[1..len(name)]) }
+  if len(name) > 4 and (name[0..4] == "rgb(" or name[0..5] == "rgba(") { return cl_rgb(name) }
+  let pat = ` {name}=`
+  let n = len(pat)
+  for i in 0 .. len(CL_NAMES) - n + 1 {
+    if CL_NAMES[i..i + n] == pat { return cl_hex(CL_NAMES[i + n..i + n + 6]) }
+  }
+  ui_err(`{name}: not a colour - #rrggbb, rgb(), rgba(), a name, or var(--a-colour)`)
+  return 15658734
+}
+function cl_digit(c: int) -> int {
+  if c >= 97 { return c - 87 }
+  if c >= 65 { return c - 55 }
+  return c - 48
+}
+function cl_hex(h: string) -> int {
+  var c = 0
+  let n = len(h)
+  if n == 3 or n == 4 {
+    for i in 0 .. 3 { c = c * 256 + cl_digit(h[i]) * 17 }
+    if n == 4 { cl_alpha = float(cl_digit(h[3]) * 17) / 255.0 }
+    return c
+  }
+  for i in 0 .. 3 { c = c * 256 + cl_digit(h[i * 2]) * 16 + cl_digit(h[i * 2 + 1]) }
+  if n == 8 { cl_alpha = float(cl_digit(h[6]) * 16 + cl_digit(h[7])) / 255.0 }
+  return c
+}
+# rgb(217, 165, 74) or rgba(0, 0, 0, 0.55)
+function cl_rgb(s: string) -> int {
+  var open = 0
+  while open < len(s) and s[open] != 40 { open += 1 }
+  let parts = lss_split(s[open + 1..len(s) - 1], 44)
+  var c = 0
+  for i in 0 .. Math.min(3, len(parts)) { c = c * 256 + Math.clamp(int(el_num(tpl_words(parts[i]))), 0, 255) }
+  if len(parts) > 3 { cl_alpha = el_num(tpl_words(parts[3])) }
+  return c
+}
+# a colour as #rrggbb, for a dump or a test
+export function ui_hex(c: int) -> string {
+  if c < 0 { return "none" }
+  let digits = "0123456789abcdef"
+  var out = "#"
+  var div = 1048576
+  while div >= 1 {
+    let d = (c / div) % 16
+    out = out + digits[d..d + 1]
+    div = div / 16
+  }
+  return out
+}

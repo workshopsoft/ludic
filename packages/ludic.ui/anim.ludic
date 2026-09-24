@@ -1,0 +1,89 @@
+# anim.ludic - CSS animation: `@keyframes fade { from { opacity: 0 } to { opacity: 1 } }` and
+# `animation: fade 0.25s [infinite] [alternate]` interpolate numeric properties from when the
+# element first appeared; `transition: opacity 0.2s` eases a property that changed. Wall-clock time.
+export property UiKeyframes {
+  name: string = ""
+  stops: []float = null
+  rules: []UiRule = null
+}
+var an_frames: []UiKeyframes = new []UiKeyframes
+var an_keys: []string = new []string
+var an_start: []float = new []float
+var an_frame: int = 0
+# the renderer's clock in seconds, or the frames shown at sixty a second (a test, a still picture)
+function an_now() -> float {
+  if ui_be != null and ui_be.now != null { return ui_be.now() }
+  return float(an_frame) / 60.0
+}
+# @keyframes NAME { from {...} 50% {...} to {...} }
+function an_read(name: string, body: string, err: []string) -> void {
+  let k = new UiKeyframes
+  k.name = tpl_words(name)
+  k.stops = new []float
+  k.rules = new []UiRule
+  let r = new UiRd
+  r.s = body
+  while r.err == "" {
+    rd_ws(r)
+    if r.i >= len(r.s) { break }
+    let stop = tpl_words(lss_upto(r, 123))
+    let decls = lss_decls(lss_upto(r, 125), err)
+    var at = el_num(stop) / 100.0
+    if stop == "from" { at = 0.0 }
+    if stop == "to" { at = 1.0 }
+    push(k.stops, at)
+    push(k.rules, decls)
+  }
+  push(an_frames, k)
+}
+function an_find(name: string) -> UiKeyframes {
+  for i in 0 .. len(an_frames) {
+    if an_frames[i].name == name { return an_frames[i] }
+  }
+  return null
+}
+# when this element's animation began: the first frame it was seen with it
+function an_began(key: string) -> float {
+  for i in 0 .. len(an_keys) {
+    if an_keys[i] == key { return an_start[i] }
+  }
+  push(an_keys, key)
+  push(an_start, an_now())
+  return an_now()
+}
+# the element's animation at this moment: each property between the stops around it
+function an_apply(n: UiNode) -> void {
+  if n.anim == "" or n.anim_dur <= 0.0 { return }
+  let k = an_find(n.anim)
+  if k == null {
+    ui_err(`animation {n.anim}: there is no @keyframes of that name`)
+    return
+  }
+  var t = (an_now() - an_began(`{n.key}@{n.anim}`)) / n.anim_dur
+  if n.anim_loop {
+    let lap = int(t)
+    t = t - float(lap)
+    if n.anim_alt and lap % 2 == 1 { t = 1.0 - t }
+  } else { t = Math.clamp(t, 0.0, 1.0) }
+  an_at(n, k, t)
+}
+function an_at(n: UiNode, k: UiKeyframes, t: float) -> void {
+  var lo = 0
+  var hi = len(k.stops) - 1
+  for i in 0 .. len(k.stops) {
+    if k.stops[i] <= t and k.stops[i] >= k.stops[lo] { lo = i }
+    if k.stops[i] >= t and k.stops[i] <= k.stops[hi] { hi = i }
+  }
+  var f = 0.0
+  if k.stops[hi] > k.stops[lo] { f = (t - k.stops[lo]) / (k.stops[hi] - k.stops[lo]) }
+  let a = k.rules[lo]
+  let b = k.rules[hi]
+  for i in 0 .. len(a.keys) {
+    let va = el_num(vl_text(ui_eval(a.vals[i], n.env)))
+    var vb = va
+    for j in 0 .. len(b.keys) {
+      if b.keys[j] == a.keys[i] { vb = el_num(vl_text(ui_eval(b.vals[j], n.env))) }
+    }
+    el_apply(n, a.keys[i], Value.float(va + (vb - va) * f))
+  }
+}

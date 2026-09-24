@@ -1,0 +1,57 @@
+# render3d_image.ludic - pictures for the render3d backend: a texture by path (loaded once, linear as
+# the overlay wants, clamped at its edges), a cell of a named atlas, and a nine-slice for border-image
+module ludic_ui
+function r3u_tex(path: string) -> int {
+  for i in 0 .. len(r3u_tex_paths) {
+    if r3u_tex_paths[i] == path { return r3u_tex_ids[i] }
+  }
+  let t = tex_load(path, false)
+  if t != 0 {
+    gpu_tex_bind(GPU_TEX2D, t)
+    gpu_tex_param(GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+    gpu_tex_param(GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+  }
+  push(r3u_tex_paths, path)
+  push(r3u_tex_ids, t)
+  return t
+}
+function r3u_image(src: string, x: float, y: float, w: float, h: float, c: int, a: float) -> void {
+  var colon = -1
+  for i in 0 .. len(src) {
+    if colon < 0 and src[i] == 58 { colon = i }
+  }
+  if colon > 0 {
+    let prefix: string = src[0..colon]
+    let name: string = src[colon + 1..len(src)]
+    for k in 0 .. len(r3u_atlas) {
+      if r3u_atlas[k] == prefix { r3u_cell(k, name, x, y, w, h, c, a) }
+    }
+    return
+  }
+  let t = r3u_tex(src)
+  if t != 0 { ov_sub(t, int(x), int(y), int(w), int(h), 0.0, 0.0, 1.0, 1.0, r3u_r(c), r3u_g(c), r3u_b(c), a) }
+}
+function r3u_cell(k: int, name: string, x: float, y: float, w: float, h: float, c: int, a: float) -> void {
+  let names = r3u_atlas_names[k]
+  var idx = -1
+  for i in 0 .. len(names) {
+    if names[i] == name { idx = i }
+  }
+  if idx < 0 {
+    ui_err(`{r3u_atlas[k]}:{name}: the atlas has no such picture`)
+    return
+  }
+  let cols = r3u_atlas_cols[k]
+  let cx = idx % cols
+  let cy = idx / cols
+  let u0 = float(cx) / float(cols)
+  let v0 = float(cy) / float(cols)
+  let s = Math.min(w, h)
+  ov_sub(r3u_atlas_tex[k], int(x + (w - s) / 2.0), int(y + (h - s) / 2.0), int(s), int(s), u0, v0, u0 + 1.0 / float(cols), v0 + 1.0 / float(cols), r3u_r(c), r3u_g(c), r3u_b(c), a)
+}
+# border-image: the texture's `slice`-pixel corners kept, the rest stretched, drawn `dst` wide
+function r3u_nine(src: string, slice: float, x: float, y: float, w: float, h: float, dst: float, c: int, a: float) -> void {
+  let t = r3u_tex(src)
+  if t == 0 { return }
+  ov_nine(t, tex_width(t), int(slice), int(x), int(y), int(w), int(h), int(dst), r3u_r(c), r3u_g(c), r3u_b(c), a)
+}

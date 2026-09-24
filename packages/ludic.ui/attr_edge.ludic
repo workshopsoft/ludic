@@ -1,0 +1,86 @@
+# attr_edge.ludic - border-radius, outline (and its width, colour and offset), scrollbar-color
+function el_edge(n: UiNode, key: string, v: Val) -> bool {
+  let s = vl_text(v)
+  if key == "border-radius" { n.radius = el_len(v) } else if key == "outline" { el_outline(n, s) } else if key == "outline-width" { n.outline_w = el_len(v) } else if key == "outline-offset" { n.outline_off = el_len(v) } else if key == "outline-color" {
+    n.outline_c = ui_color(s)
+    n.outline_a = cl_alpha
+  } else if key == "scrollbar-color" {
+    let parts = lss_split(s, 32)
+    if len(parts) > 0 { n.bar_c = ui_color(parts[0]) }
+    if len(parts) > 1 { n.bar_track = ui_color(parts[1]) }
+  } else if key == "background-image" { n.bg_img = el_url(s) } else if key == "border-image" { el_border_image(n, s) } else if key == "box-shadow" { el_shadow(n, s) } else if key == "animation" { el_animation(n, s) } else if key == "transition" { n.tr_dur = el_secs(s) } else { return false }
+  return true
+}
+# url(path) or url("path") -> path
+function el_url(s: string) -> string {
+  var t = tpl_words(s)
+  if len(t) > 5 and t[0..4] == "url(" { t = tpl_words(t[4..len(t) - 1]) }
+  if len(t) >= 2 and (t[0] == 34 or t[0] == 39) { t = t[1..len(t) - 1] }
+  if t == "none" { return "" }
+  return t
+}
+# border-image: url(chip.png) 14 / 12px  - the source's corner size, then how wide they are drawn
+function el_border_image(n: UiNode, s: string) -> void {
+  var close = 0
+  while close < len(s) and s[close] != 41 { close += 1 }
+  n.bi_src = el_url(s[0..Math.min(close + 1, len(s))])
+  let rest = lss_split(s[Math.min(close + 1, len(s))..len(s)], 47)
+  n.bi_slice = el_num(tpl_words(rest[0]))
+  n.bi_width = ui_px(n.bi_slice)
+  if len(rest) > 1 { n.bi_width = el_unit(tpl_words(rest[1])) }
+}
+# box-shadow: 6px 10px 0 rgba(0, 0, 0, 0.45)  - x, y, a blur this renderer draws sharp, the colour
+function el_shadow(n: UiNode, s: string) -> void {
+  if tpl_words(s) == "none" {
+    n.sh_c = -2
+    return
+  }
+  let parts = lss_split(s, 32)
+  var nums = 0
+  var col = ""
+  for i in 0 .. len(parts) {
+    let p = parts[i]
+    if len(p) == 0 { continue }
+    if col == "" and ((p[0] >= 48 and p[0] <= 57) or p[0] == 45 or p[0] == 46) {
+      if nums == 0 { n.sh_x = el_unit(p) }
+      if nums == 1 { n.sh_y = el_unit(p) }
+      nums += 1
+    } else if col == "" { col = p } else { col = col + " " + p }
+  }
+  if col == "" { col = "rgba(0,0,0,0.5)" }
+  n.sh_c = ui_color(col)
+  n.sh_a = cl_alpha
+}
+# outline: 2px solid #ffcc00, or none
+function el_outline(n: UiNode, s: string) -> void {
+  let parts = lss_split(s, 32)
+  n.outline_w = 0.0
+  for i in 0 .. len(parts) {
+    let p = parts[i]
+    if len(p) > 0 and ((p[0] >= 48 and p[0] <= 57) or p[0] == 46) { n.outline_w = el_unit(p) } else if len(p) > 0 and p != "solid" and p != "none" {
+      n.outline_c = ui_color(p)
+      n.outline_a = cl_alpha
+    }
+  }
+}
+# animation: fade 0.25s infinite alternate
+function el_animation(n: UiNode, s: string) -> void {
+  let parts = lss_split(s, 32)
+  n.anim = ""
+  for i in 0 .. len(parts) {
+    let p = parts[i]
+    if p == "infinite" { n.anim_loop = true } else if p == "alternate" { n.anim_alt = true } else if len(p) > 0 and ((p[0] >= 48 and p[0] <= 57) or p[0] == 46) { n.anim_dur = el_secs(p) } else if len(p) > 0 and n.anim == "" and p != "none" { n.anim = p }
+  }
+}
+# the first time in `0.25s` or `250ms`
+function el_secs(s: string) -> float {
+  let parts = lss_split(s, 32)
+  for i in 0 .. len(parts) {
+    let p = parts[i]
+    if len(p) > 1 and p[0] >= 48 and p[0] <= 57 or len(p) > 1 and p[0] == 46 {
+      if len(p) > 2 and p[len(p) - 2..len(p)] == "ms" { return el_num(p) / 1000.0 }
+      return el_num(p)
+    }
+  }
+  return 0.0
+}

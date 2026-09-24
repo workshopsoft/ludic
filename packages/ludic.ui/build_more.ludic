@@ -21,7 +21,7 @@ function bd_group(k: UiTpl, e: UiEnv, key: string, out: []UiNode) -> void {
   let t = new UiNode
   t.kind = UI_TEXT
   t.key = key
-  t.text = ui_eval_text(k.text, e)
+  t.text = ui_tr(ui_eval_text(k.text, e))
   t.env = e
   t.children = new []UiNode
   push(out, t)

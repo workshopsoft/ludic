@@ -1,0 +1,4 @@
+.page { width: 400px; gap: 4px }
+input, select { width: fill; height: 30px }
+.list { overflow: auto; height: 60px }
+p { height: 20px }

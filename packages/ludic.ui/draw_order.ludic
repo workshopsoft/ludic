@@ -1,0 +1,48 @@
+# draw_order.ludic - painting order, and clipping that nests
+var fr_clips: []float = new []float
+function fr_clip_push(x: float, y: float, w: float, h: float) -> void {
+  var x0 = x
+  var y0 = y
+  var x1 = x + w
+  var y1 = y + h
+  let n = len(fr_clips)
+  if n >= 4 {
+    x0 = Math.max(x0, fr_clips[n - 4])
+    y0 = Math.max(y0, fr_clips[n - 3])
+    x1 = Math.min(x1, fr_clips[n - 2])
+    y1 = Math.min(y1, fr_clips[n - 1])
+  }
+  push(fr_clips, x0)
+  push(fr_clips, y0)
+  push(fr_clips, x1)
+  push(fr_clips, y1)
+  ui_be.clip(x0, y0, Math.max(x1 - x0, 0.0), Math.max(y1 - y0, 0.0))
+}
+function fr_clip_pop() -> void {
+  var keep = new []float
+  for i in 0 .. len(fr_clips) - 4 { push(keep, fr_clips[i]) }
+  fr_clips = keep
+  let n = len(fr_clips)
+  if n >= 4 { ui_be.clip(fr_clips[n - 4], fr_clips[n - 3], fr_clips[n - 2] - fr_clips[n - 4], fr_clips[n - 1] - fr_clips[n - 3]) } else if ui_be.unclip != null { ui_be.unclip() }
+}
+# the children in painting order: those in the flow first, then positioned ones by z-index
+function fr_children(n: UiNode) -> void {
+  var positioned = 0
+  for i in 0 .. len(n.children) {
+    if n.children[i].pos == 0 { fr_draw(n.children[i]) } else { positioned += 1 }
+  }
+  if positioned == 0 { return }
+  var lo = 1000000
+  var hi = -1000000
+  for i in 0 .. len(n.children) {
+    if n.children[i].pos != 0 {
+      lo = Math.min(lo, n.children[i].z)
+      hi = Math.max(hi, n.children[i].z)
+    }
+  }
+  for z in lo .. hi + 1 {
+    for i in 0 .. len(n.children) {
+      if n.children[i].pos != 0 and n.children[i].z == z { fr_draw(n.children[i]) }
+    }
+  }
+}

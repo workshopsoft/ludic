@@ -22,6 +22,7 @@ property Xml {
   avals: []pointer           # attribute values (entity-decoded)
   kids:  []Xml               # child elements, in document order
   at:    int = 0             # where its '<' is in the text, for an error that names a line
+  mixed: []Xml               # its elements and its runs of text ("#text"), in document order
 }
 
 function xml_new(tag: pointer) -> Xml {
@@ -31,6 +32,7 @@ function xml_new(tag: pointer) -> Xml {
   n.akeys = new []pointer
   n.avals = new []pointer
   n.kids = new []Xml
+  n.mixed = new []Xml
   return n
 }
 
@@ -276,16 +278,37 @@ function xp_element(p: XP) -> Xml {
         p.i += 3                                     # past "]]>"
       } else {
         if xp_skip_misc(p) { }                            # comment / PI inside content
-        else { push(node.kids, xp_element(p)) }
+        else {
+          let kid = xp_element(p)
+          push(node.kids, kid)
+          push(node.mixed, kid)
+        }
       }
     } else {
       # character data run up to the next '<'
       let start = p.i
       while p.i < p.n and p.s[p.i] != '<' { p.i += 1 }
-      node.text += xml_unescape(p.s[start..p.i])
+      let run = xml_unescape(p.s[start..p.i])
+      node.text += run
+      xp_text_run(node, run)
     }
   }
   return node
+}
+
+# a run of text among an element's children, kept in order unless it is only white space
+function xp_text_run(node: Xml, run: string) -> void {
+  var blank = true
+  var i = 0
+  while i < len(run) {
+    let c = run[i]
+    if not (c == ' ' or c == '\t' or c == '\n' or c == '\r') { blank = false }
+    i += 1
+  }
+  if blank { return }
+  let t = xml_new("#text")
+  t.text = run
+  push(node.mixed, t)
 }
 
 # parse a whole document -> its root element (or the synthetic empty node).

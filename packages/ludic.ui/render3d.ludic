@@ -1,0 +1,79 @@
+# render3d.ludic - ludic.ui drawn with ludic.render3d's overlay. A program that draws with render3d
+# imports this and calls ui_render3d() once; its templates then draw in the overlay pass, sized in
+# design pixels of a 1080-line screen (ui_render3d_scale sets the player's own interface size).
+#   <img src="path/to/picture.png">      a texture, loaded once
+#   <img src="icon:tent">                 a cell of an atlas the program named with ui_atlas
+#   border-image: url(button.png) 14     a nine-slice background
+module ludic_ui
+import "render3d_image.ludic"
+var r3u_user: float = 1.0
+var r3u_tex_paths: []string = new []string
+var r3u_tex_ids: []int = new []int
+var r3u_atlas: []string = new []string
+var r3u_atlas_tex: []int = new []int
+var r3u_atlas_cols: []int = new []int
+var r3u_atlas_names: [][]string = new [][]string
+export function ui_render3d() -> void {
+  let b = new UiBackend
+  b.rect = fn r3u_rect
+  b.round = fn r3u_round
+  b.ring = fn r3u_ring
+  b.text = fn r3u_text
+  b.measure = fn r3u_measure
+  b.image = fn r3u_image
+  b.nine = fn r3u_nine
+  b.clip = fn r3u_clip
+  b.unclip = fn r3u_unclip
+  b.scale = fn r3u_scale
+  b.now = fn r3u_now
+  ui_backend(b)
+}
+# the player's interface size, 1.0 as designed
+export function ui_render3d_scale(s: float) -> void { r3u_user = s }
+# a grid atlas: `names` are its cells, row by row, `cols` to a row; <img src="prefix:name"> draws one
+export function ui_atlas(prefix: string, tex: int, cols: int, names: []string) -> void {
+  push(r3u_atlas, prefix)
+  push(r3u_atlas_tex, tex)
+  push(r3u_atlas_cols, cols)
+  push(r3u_atlas_names, names)
+}
+function r3u_now() -> float { return float(Time.now_us() / 1000) / 1000.0 }
+function r3u_scale() -> float { return float(gl_h) / 1080.0 * r3u_user }
+function r3u_r(c: int) -> float { return float((c / 65536) % 256) / 255.0 }
+function r3u_g(c: int) -> float { return float((c / 256) % 256) / 255.0 }
+function r3u_b(c: int) -> float { return float(c % 256) / 255.0 }
+function r3u_rect(x: float, y: float, w: float, h: float, c: int, a: float) -> void { ov_rect(int(x), int(y), int(w), int(h), r3u_r(c), r3u_g(c), r3u_b(c), a) }
+# a rounded rectangle: a cross of two rects and a disc in each corner
+function r3u_round(x: float, y: float, w: float, h: float, rad0: float, c: int, a: float) -> void {
+  let rad = Math.min(rad0, Math.min(w, h) / 2.0)
+  let r = r3u_r(c)
+  let g = r3u_g(c)
+  let b = r3u_b(c)
+  ov_rect(int(x + rad), int(y), int(w - rad * 2.0), int(h), r, g, b, a)
+  ov_rect(int(x), int(y + rad), int(rad), int(h - rad * 2.0), r, g, b, a)
+  ov_rect(int(x + w - rad), int(y + rad), int(rad), int(h - rad * 2.0), r, g, b, a)
+  ov_disc(x + rad, y + rad, rad, 12, r, g, b, a)
+  ov_disc(x + w - rad, y + rad, rad, 12, r, g, b, a)
+  ov_disc(x + rad, y + h - rad, rad, 12, r, g, b, a)
+  ov_disc(x + w - rad, y + h - rad, rad, 12, r, g, b, a)
+}
+# a rounded frame: four straight edges and a quarter arc at each corner
+function r3u_ring(x: float, y: float, w: float, h: float, rad0: float, t: float, c: int, a: float) -> void {
+  let rad = Math.min(rad0, Math.min(w, h) / 2.0)
+  let r = r3u_r(c)
+  let g = r3u_g(c)
+  let b = r3u_b(c)
+  ov_rect(int(x + rad), int(y), int(w - rad * 2.0), int(t), r, g, b, a)
+  ov_rect(int(x + rad), int(y + h - t), int(w - rad * 2.0), int(t), r, g, b, a)
+  ov_rect(int(x), int(y + rad), int(t), int(h - rad * 2.0), r, g, b, a)
+  ov_rect(int(x + w - t), int(y + rad), int(t), int(h - rad * 2.0), r, g, b, a)
+  let q = 1.5707964
+  ov_arc(x + rad, y + rad, rad - t / 2.0, t, q * 2.0, q, 8, r, g, b, a)
+  ov_arc(x + w - rad, y + rad, rad - t / 2.0, t, q * 3.0, q, 8, r, g, b, a)
+  ov_arc(x + w - rad, y + h - rad, rad - t / 2.0, t, 0.0, q, 8, r, g, b, a)
+  ov_arc(x + rad, y + h - rad, rad - t / 2.0, t, q, q, 8, r, g, b, a)
+}
+function r3u_text(x: float, y: float, s: string, size: float, c: int, a: float) -> void { ov_text(int(x), int(y), int(size), s, r3u_r(c), r3u_g(c), r3u_b(c), a) }
+function r3u_measure(s: string, size: float) -> float { return float(ov_text_w(int(size), s)) }
+function r3u_clip(x: float, y: float, w: float, h: float) -> void { ov_clip(int(x), int(y), int(w), int(h)) }
+function r3u_unclip() -> void { ov_unclip() }

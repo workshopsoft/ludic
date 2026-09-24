@@ -1,0 +1,10 @@
+# Settings.ludic - a screen of controls: every change comes back as an event with its value
+component Settings {
+  state music: bool = true
+  state volume: int = 5
+  state quality: int = 1
+  state name: string = "Ada"
+  state jump: int = 32
+  state pressed: int = 0
+  on go() { pressed += 1 }
+}

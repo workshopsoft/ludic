@@ -1,0 +1,62 @@
+# input.ludic - what the player did this frame, read once from the runtime's Input: the pointer, its
+# button, the wheel, the keys a UI answers and what was typed. A test or a host can set it instead.
+export property UiInput {
+  x: float = -1.0
+  y: float = -1.0
+  down: bool = false
+  wheel: float = 0.0
+  tab: bool = false
+  shift: bool = false
+  up: bool = false
+  down_key: bool = false
+  left: bool = false
+  right: bool = false
+  enter: bool = false
+  space: bool = false
+  escape: bool = false
+  backspace: bool = false
+  typed: string = ""
+  key: int = 0                  # any key pressed this frame, for a key-capture field
+}
+var in_now: UiInput = new UiInput
+var in_was_down: bool = false
+var in_given: bool = false
+function in_read() -> void {
+  if in_given {
+    in_given = false
+    return
+  }
+  in_was_down = in_now.down
+  let i = new UiInput
+  if ui_be != null and ui_be.input {
+    i.x = float(Input.mouse_x())
+    i.y = float(Input.mouse_y())
+    i.down = Input.mouse_down(0)
+    i.wheel = float(Input.wheel())
+    i.tab = Input.key_pressed(Key.Tab)
+    i.shift = Input.key_down(Key.Shift)
+    i.up = Input.key_pressed(Key.Up)
+    i.down_key = Input.key_pressed(Key.Down)
+    i.left = Input.key_pressed(Key.Left)
+    i.right = Input.key_pressed(Key.Right)
+    i.enter = Input.key_pressed(Key.Enter)
+    i.space = Input.key_pressed(Key.Space)
+    i.escape = Input.key_pressed(Key.Escape)
+    i.backspace = Input.key_pressed(Key.Backspace)
+    i.typed = Input.text()
+    i.key = in_any_key()
+  }
+  in_now = i
+}
+function in_any_key() -> int {
+  for k in 8 .. 167 {
+    if Input.key_pressed(k) { return k }
+  }
+  return 0
+}
+# this frame's input, given by a test or a host that reads its own
+export function ui_input(i: UiInput) -> void {
+  in_was_down = in_now.down
+  in_now = i
+  in_given = true
+}

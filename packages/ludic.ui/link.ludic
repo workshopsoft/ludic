@@ -1,6 +1,6 @@
 # link.ludic - each tag in a file that is not an element names a component: the file's own, an
 # unnamed import's exported one, or `as:Name` from the import called `as`
-const LK_OWN: string = " row button spacer scroll img hr if else each slot state style component screen import let fragment template provide "
+const LK_OWN: string = " row button input select textarea spacer scroll img hr if else each slot state style component screen import let fragment template provide #text "
 function lib_link(f: UiFile, t: UiTpl) -> void {
   t.sheet = f.sheet
   if not lk_element(t.tag) {

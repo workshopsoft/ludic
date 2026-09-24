@@ -64,6 +64,9 @@ function sel_attr_of(n: UiNode, key: string) -> string {
 }
 function sel_pseudo_ok(p: string, arg: string, n: UiNode) -> bool {
   if p == "hover" { return n.hovered }
+  if p == "focus" { return fc_key != "" and n.key == fc_key }
+  if p == "focus-visible" { return fc_visible and fc_key != "" and n.key == fc_key }
+  if p == "focus-within" { return fc_key != "" and lc_mine(fc_key, n.key) }
   if p == "disabled" { return not n.enabled }
   if p == "enabled" { return n.enabled }
   if p == "first-child" { return n.index == 0 }

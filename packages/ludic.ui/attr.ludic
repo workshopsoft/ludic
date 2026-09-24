@@ -1,7 +1,7 @@
 # attr.ludic - what a property sets, by its CSS name or the short one (width or w, background or
 # bg, font-size or size, ...). An attribute on an element is the same property, applied last.
 const AT_ALIAS: string = " width=w height=h min-width=min-w max-width=max-w min-height=min-h max-height=max-h padding=pad background=bg background-color=bg font-size=size opacity=alpha flex-grow=grow flex-direction=dir flex-wrap=wrap justify-content=justify align-items=align align-self=self row-gap=gap column-gap=gap text-align=talign "
-const AT_UNDRAWN: string = " border-radius font-weight font-family font-style box-shadow text-shadow cursor transition animation line-height letter-spacing text-decoration "
+const AT_UNDRAWN: string = " font-weight font-family font-style box-shadow text-shadow cursor transition animation line-height letter-spacing text-decoration "
 # a stylesheet's property: one that means nothing is said
 function el_attr(n: UiNode, key: string, v: Val) -> void {
   if el_apply(n, key, v) { return }
@@ -17,7 +17,7 @@ function el_apply(n: UiNode, key: string, v0: Val) -> bool {
     return true
   }
   let v = cs_vars_in(n, v0)
-  return el_size(n, k, v) or el_box(n, k, v) or el_flex(n, k, v) or el_look(n, k, v) or el_place_prop(n, k, v)
+  return el_size(n, k, v) or el_box(n, k, v) or el_flex(n, k, v) or el_look(n, k, v) or el_place_prop(n, k, v) or el_edge(n, k, v)
 }
 function at_alias(key: string) -> string {
   let pat = ` {key}=`
@@ -51,7 +51,18 @@ function el_flex(n: UiNode, key: string, v: Val) -> bool {
 }
 function el_look(n: UiNode, key: string, v: Val) -> bool {
   let s = vl_text(v)
-  if key == "size" { n.size = el_len(v) } else if key == "color" { n.fg = ui_color(s) } else if key == "bg" { n.bg = ui_color(s) } else if key == "alpha" { n.alpha = el_num(s) } else if key == "enabled" { n.enabled = vl_truthy(v) and s != "false" } else if key == "border-color" { n.border_c = ui_color(s) } else if key == "border-width" { n.border = el_len(v) } else if key == "border" { el_border(n, s) } else { return false }
+  if key == "size" { n.size = el_len(v) } else if key == "color" {
+    n.fg = ui_color(s)
+    n.fg_a = cl_alpha
+  } else if key == "bg" {
+    if len(s) > 4 and s[0..4] == "url(" { n.bg_img = el_url(s) } else {
+      n.bg = ui_color(s)
+      n.bg_a = cl_alpha
+    }
+  } else if key == "alpha" { n.alpha = el_num(s) } else if key == "enabled" { n.enabled = vl_truthy(v) and s != "false" } else if key == "border-color" {
+    n.border_c = ui_color(s)
+    n.border_a = cl_alpha
+  } else if key == "border-width" { n.border = el_len(v) } else if key == "border" { el_border(n, s) } else { return false }
   return true
 }
 # border: 1 #ffcc00, or 1px solid accent
@@ -59,7 +70,10 @@ function el_border(n: UiNode, s: string) -> void {
   let parts = lss_split(s, 32)
   for i in 0 .. len(parts) {
     let p = parts[i]
-    if len(p) > 0 and ((p[0] >= 48 and p[0] <= 57) or p[0] == 46) { n.border = el_unit(p) } else if p == "none" { n.border = 0.0 } else if len(p) > 0 and p != "solid" { n.border_c = ui_color(p) }
+    if len(p) > 0 and ((p[0] >= 48 and p[0] <= 57) or p[0] == 46) { n.border = el_unit(p) } else if p == "none" { n.border = 0.0 } else if len(p) > 0 and p != "solid" {
+      n.border_c = ui_color(p)
+      n.border_a = cl_alpha
+    }
   }
   if n.border_c == UI_NONE { n.border_c = n.rfg }
 }

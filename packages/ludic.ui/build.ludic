@@ -14,7 +14,7 @@ function bd_kids(kids: []UiTpl, e0: UiEnv, key: string, out: []UiNode) -> void {
       e = bd_let(k, e)
       continue
     }
-    if k.tag == "fragment" or (k.tag == "template" and tpl_attr(k, "slot") == null) { bd_group(k, e, ck, out) } else if k.tag == "provide" { bd_provide(k, e, ck, out) } else if k.tag == "template" { continue } else if k.tag == "if" {
+    if k.tag == "fragment" or k.tag == "#text" or (k.tag == "template" and tpl_attr(k, "slot") == null) { bd_group(k, e, ck, out) } else if k.tag == "provide" { bd_provide(k, e, ck, out) } else if k.tag == "template" { continue } else if k.tag == "if" {
       last_if = bd_test(k, e)
       if last_if { bd_kids(k.kids, e, ck, out) }
     } else if k.tag == "else" {

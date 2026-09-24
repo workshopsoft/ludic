@@ -1,0 +1,12 @@
+<div class="page">
+  <button id="go" on-click="go()">Go</button>
+  <input type="checkbox" label="Music" checked="{music}" on-change="set music = event.value"/>
+  <input type="range" label="Volume" min="{0}" max="{10}" value="{volume}" on-change="set volume = event.value"/>
+  <select label="Quality" value="{quality}" on-change="set quality = event.value">
+    <option>Low</option><option>Medium</option><option>High</option>
+  </select>
+  <input type="text" label="Name" value="{name}" maxlength="{8}" on-change="set name = event.value"/>
+  <input type="key" label="Jump" value="{jump}" on-change="set jump = event.value"/>
+  <div class="list"><p>1</p><p>2</p><p>3</p><p>4</p><p>5</p><p>6</p><p>7</p><p>8</p></div>
+  <p class="state">{pressed} {music} {volume} {quality} {name} {jump}</p>
+</div>

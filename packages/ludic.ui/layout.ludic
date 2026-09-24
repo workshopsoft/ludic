@@ -5,13 +5,14 @@ function ly_measure(n: UiNode, avail: float, size: float, fg: int) -> void {
   n.rsize = size
   if n.size > 0.0 { n.rsize = n.size }
   n.rfg = fg
-  if n.fg != UI_INHERIT { n.rfg = n.fg }
+  n.rfg_a = ly_fg_a
+  if n.fg != UI_INHERIT {
+    n.rfg = n.fg
+    n.rfg_a = n.fg_a
+  }
+  ly_fg_a = n.rfg_a
   n.mw = ly_hin(n)
   n.mh = ly_vin(n)
-  if n.kind == UI_BUTTON {
-    n.mw = n.mw + ly_text_w(n.text, n.rsize)
-    n.mh = n.mh + n.rsize * 1.25
-  }
   if n.kind == UI_TEXT { ly_measure_text(n, avail) }
   if n.kind == UI_NATIVE and n.native.measure != null {
     let base_w = n.mw
@@ -40,6 +41,7 @@ function ly_measure(n: UiNode, avail: float, size: float, fg: int) -> void {
   n.mw = ly_clamp(n.mw, n.min_w, n.max_w)
   n.mh = ly_clamp(n.mh, n.min_h, n.max_h)
 }
+var ly_fg_a: float = 1.0
 function ly_hin(n: UiNode) -> float { return n.pl + n.pr + n.border * 2.0 }
 function ly_vin(n: UiNode) -> float { return n.pt + n.pb + n.border * 2.0 }
 function ly_clamp(v: float, lo: float, hi: float) -> float {
@@ -54,6 +56,7 @@ function ly_measure_box(n: UiNode, inner: float) -> void {
   var count = 0
   for i in 0 .. len(n.children) {
     let c = n.children[i]
+    ly_fg_a = n.rfg_a
     ly_measure(c, inner, n.rsize, n.rfg)
     if c.pos < 2 {
       main = main + ly_main(c, n.dir)
@@ -79,6 +82,7 @@ function ly_measure_wrap(n: UiNode, inner: float) -> void {
   var count = 0
   for i in 0 .. len(n.children) {
     let c = n.children[i]
+    ly_fg_a = n.rfg_a
     ly_measure(c, inner, n.rsize, n.rfg)
     if c.pos >= 2 { continue }
     let cw = ly_main(c, UI_ROW)

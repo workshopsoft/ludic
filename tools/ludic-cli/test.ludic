@@ -757,6 +757,8 @@ function cmd_dev_test() -> int {
   controller_case("library/ui_reload", "", "ui: templates reloaded note 1 | reloaded 0 then 1 | note again 1", "ui_reload.ludic (L11: a template changed on disk is read again, and its state kept)")
   controller_case("library/ui_component", "", "counters|a: 1 (2)|+|reset|b: 10 (20) big|+|reset|outside| b margin 9; b text 16711680; outside -1; button 30 b: 0 (0)", "ui_component.ludic (L11: components as NAME.ludic + .xml + .lss - props, state, fields, events, scoped styles, @import, class passed down)")
   reject_case("rejected/component_no_template", "there is no Lonely.xml beside it", "a component needs its template beside it")
+  controller_case("library/ui_controls", "", "1 false 7 2 Adalove 70 1 false 8 2 Adalove 70; scrolled 40", "ui_controls.ludic (L11: focus and keys, the built-in controls, a range dragged, a box scrolled)")
+  controller_case("library/ui_anim", "", "0 100 100 | 49 50 100 | 100 100 61", "ui_anim.ludic (L11: @keyframes and animation, looping and alternating, and a transition)")
   reject_case("rejected/view_untyped", "view Sums: say what type total is", "a view field that is not a bare global says its type")
   reject_case("rejected/view_without_ui", "a view is shown by ludic.ui", "a view needs ludic.ui to show it")
 

@@ -423,15 +423,59 @@ applies to both:
   - `<slot name="title"/>` takes the user's `<template slot="title">`.
   - `on-mount` and `on-unmount` run when an element or component appears and goes.
   - Words inside a text element read as one line: `<p>Hi <b>there</b></p>`.
-- **Natives and forms.** `ui_native("dial", measure, draw)` makes `<dial>` an element the program
-  draws itself, laid out and styled like any other. It reports with `ui_fire(n, "change",
-  value)`, which runs the element's `on-change` with `event.value`, and it reads its attributes
-  with `ui_attr`. `<input type="checkbox|radio|text|range">`, `<select>` with `<option
-  value>`, and `<textarea>` are natives with simple defaults, which a renderer replaces with its
-  own.
-- **Developing.**
-  - Every error names the template's file and line, and `ui_errors()` lists them for a host to show.
-  - `ui_reload()` reads changed templates and stylesheets again and keeps each screen's state.
+- **Interaction is the runtime's.** It reads the runtime's `Input`, so a renderer only draws.
+  - Tab and Shift+Tab, or the arrows, move focus through the controls in document order. Enter
+    and Space activate what has it, and `autofocus` picks where a screen starts.
+  - The pointer hovers, presses (`:active`) and clicks on release; a drag keeps the pointer until
+    it is let go.
+  - A scroll box (`overflow: auto` or `<scroll>`) takes the wheel, has a scrollbar that can be
+    dragged (`scrollbar-color`), clips what it holds and pulls the focused control into view.
+  - `:focus`, `:focus-visible` and `:focus-within` style the focus, and `outline` (which follows
+    `border-radius`) draws the ring.
+  - A test drives all of it with `ui_input(i)`.
+- **Controls are built in**, each made of plain parts a stylesheet styles (`.ui-label`,
+  `.ui-track`, `.ui-knob`, `.ui-fill`, `.ui-thumb`, `.ui-field`, `.ui-value`, `.ui-caret`,
+  `.ui-prev`, `.ui-next`):
+  - `<button>`;
+  - `<input type="checkbox|radio" label checked>`;
+  - `<input type="range" label min max step value>`, dragged or stepped with the arrows;
+  - `<select label value>` with `<option value>`s;
+  - `<input type="text" label value maxlength>`, which takes typing, and Backspace takes a letter
+    back;
+  - `<input type="key" label value>`, which takes the next key pressed.
+
+  Each reports with `on-change` and `event.value`, and plays `sound="..."` (or "click") through
+  the program's `ui_sounds`.
+- **Natives** are for what markup cannot say. `ui_native("minimap", measure, draw)` makes
+  `<minimap>` an element the program draws itself, laid out and styled like any other. It reports
+  with `ui_fire(n, "change", value)` and reads its attributes with `ui_attr` / `ui_attr_on`.
+- **Renderers.** `ui_backend(b)` takes any renderer with `rect`, `text` and `measure`, and uses
+  `round`, `ring`, `image`, `nine`, `clip`, `scale` and `now` when it has them.
+  `import "ludic.ui/render3d.ludic"` and `ui_render3d()` draw with render3d's overlay:
+  - images by path, cells of an atlas named with `ui_atlas(prefix, texture, cols, names)` as
+    `<img src="prefix:name">`, and nine-slices for `border-image`;
+  - a scale from the screen's height (`ui_render3d_scale` for the player's interface size).
+
+  `ui_translator(fn)`, `ui_sounds(fn)` and `ui_clock(fn)` hand the runtime the program's
+  language, sounds and time. `import "ludic.ui/screen.ludic"` is the 2D screen's renderer.
+- **The look is CSS.**
+  - Colours: `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`, `rgb()`, `rgba()` and the basic names,
+    usually through `var(--...)` from a theme.
+  - Boxes: `border-radius`, `box-shadow` (sharp, offset), `background-image: url(...)`, and
+    `border-image: url(...) slice / width` as a nine-slice. A nine-slice is tinted by the
+    background colour, so one rounded texture serves every colour.
+  - Motion: `opacity` fades the element and everything inside it. `@keyframes` with `animation:
+    name 0.25s [infinite] [alternate]` animate numeric properties from when the element first
+    appeared, and `transition: opacity 0.2s` eases a changed opacity.
+- **Mixed content.** Text beside elements keeps its place: `<button><img src="icon:arrow"/>Resume
+  </button>`, `<p>Hi <b>there</b></p>`. A boolean attribute present with no value is true, as in
+  HTML (`<button autofocus>`).
+- **Developing.** `ui_dev(true)` turns on the runtime's own tools:
+  - it re-reads changed templates and stylesheets once a second (`ui_reload`), keeping every
+    instance's state;
+  - it draws template errors over the screen, each with its file and line (`ui_errors()` lists
+    them);
+  - `LUDIC_UI_DUMP=<screen>` prints that screen's tree once.
   - `ui_dump` prints the tree the way an inspector would (`div#id.class`, its box and its
     computed styles).
 - **Bindings.** Any attribute and any text can hold `{expressions}`. An attribute that is one

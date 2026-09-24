@@ -1,0 +1,71 @@
+# ui_controls.ludic — ludic.ui's own controls, driven as a player would drive them: Tab and the
+# arrows move the focus, Enter presses and flips, the arrows move a range and step a select, typing
+# fills a text field and Backspace takes a letter back, a key field takes the next key, the pointer
+# drags a range, and the wheel scrolls a box. Every change reaches the component as an event.
+import "ludic.ui"
+import "ui_controls_parts/Settings.ludic"
+program UiControls {
+  numbers float
+  function frame(i: UiInput) -> UiNode {
+    ui_input(i)
+    ui_show("Settings", null, 0.0, 0.0, 400.0, 400.0)
+    let root: UiNode = ui_nodes("Settings", null)
+    ui_place(root, 0.0, 0.0, 400.0, 400.0)
+    return root
+  }
+  function press(tab: bool, down: bool, right: bool, enter: bool) -> UiInput {
+    let i = new UiInput
+    i.tab = tab
+    i.down_key = down
+    i.right = right
+    i.enter = enter
+    return i
+  }
+  function state(root: UiNode) -> string {
+    let page = root.children[0]
+    let last = page.children[len(page.children) - 1]
+    return last.text
+  }
+  entry {
+    ui_backend(new UiBackend)
+    var root = frame(new UiInput)
+    root = frame(press(true, false, false, false))
+    root = frame(press(false, false, false, true))
+    root = frame(press(false, true, false, false))
+    root = frame(press(false, false, false, true))
+    root = frame(press(false, true, false, false))
+    root = frame(press(false, false, true, false))
+    root = frame(press(false, false, true, false))
+    root = frame(press(false, true, false, false))
+    root = frame(press(false, false, true, false))
+    root = frame(press(false, true, false, false))
+    let typed = new UiInput
+    typed.typed = "lovelace"
+    root = frame(typed)
+    let back = new UiInput
+    back.backspace = true
+    root = frame(back)
+    root = frame(press(false, true, false, false))
+    root = frame(press(false, false, false, true))
+    let k = new UiInput
+    k.key = 70
+    root = frame(k)
+    print(state(root))
+    let range = root.children[0].children[2]
+    let track = range.children[1]
+    let at = new UiInput
+    at.x = track.x + track.cw * 0.8
+    at.y = track.y + 2.0
+    at.down = true
+    root = frame(at)
+    root = frame(new UiInput)
+    let list = root.children[0].children[6]
+    let w = new UiInput
+    w.x = list.x + 5.0
+    w.y = list.y + 5.0
+    w.wheel = -1.0
+    root = frame(w)
+    root = frame(new UiInput)
+    print(`{state(root)}; scrolled {int(root.children[0].children[6].scroll_y)}`)
+  }
+}

@@ -11,7 +11,9 @@ program UiReload {
   const V2: string = "<ui><screen name='note'><state n='{0}'/><h1>{title} again {n}</h1></screen></ui>"
   function shown() -> string {
     let root: UiNode = ui_nodes("note", view_note())
-    return root.children[0].text
+    let first = root.children[0]
+    if len(first.children) > 0 { return first.children[0].text }
+    return first.text
   }
   entry {
     Fs.write_text(PATH, V1)

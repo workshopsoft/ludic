@@ -1,0 +1,91 @@
+# controls.ludic - what a control does: a button (or anything with on-click) is pressed, a checkbox
+# flips, a radio chooses its value, a select steps through its options, a range moves by its step
+# (or to where the pointer is on its track), a text field takes what is typed, a key field the next
+# key. Each says so with on-change and event.value, after the frame is drawn.
+var ct_capture: string = ""
+function ct_type(n: UiNode) -> string {
+  if n.tag == "select" { return "select" }
+  if n.tag != "input" { return "" }
+  let t = ui_attr_text(n, "type")
+  if t == "" { return "text" }
+  return t
+}
+function ct_takes_arrows(n: UiNode) -> bool { return ct_type(n) == "range" or ct_type(n) == "select" }
+function ct_takes_space(n: UiNode) -> bool { return ct_type(n) == "text" }
+function ct_change(n: UiNode, v: Val) -> void {
+  ui_sound(ct_sound(n))
+  ui_fire(n, "change", v)
+}
+function ct_sound(n: UiNode) -> string {
+  let s = ui_attr_text(n, "sound")
+  if s == "" { return "click" }
+  return s
+}
+function ct_activate(n: UiNode) -> void {
+  if not n.enabled { return }
+  let t = ct_type(n)
+  if t == "checkbox" { ct_change(n, vl_bool(not ui_attr_on(n, "checked"))) } else if t == "radio" { ct_change(n, ui_attr(n, "value")) } else if t == "select" { ct_step(n, 1) } else if t == "key" { ct_capture = n.key } else if t == "" {
+    ui_sound(ct_sound(n))
+    ui_fire(n, "press", Value.null())
+  }
+}
+function ct_step(n: UiNode, d: int) -> void {
+  let t = ct_type(n)
+  if t == "select" and n.opts != null and len(n.opts) > 0 {
+    let at = (ct_option_at(n, n.opts) + d + len(n.opts)) % len(n.opts)
+    let ov = ui_attr(n.opts[at], "value")
+    if Value.kind(ov) == 0 { ct_change(n, Value.int(at)) } else { ct_change(n, ov) }
+  }
+  if t == "range" {
+    var step = Value.as_float(ui_attr(n, "step"))
+    if step <= 0.0 { step = 1.0 }
+    ct_range_set(n, Value.as_float(ui_attr(n, "value")) + step * float(d))
+  }
+}
+function ct_range_set(n: UiNode, v0: float) -> void {
+  let lo = Value.as_float(ui_attr(n, "min"))
+  let hi = Value.as_float(ui_attr(n, "max"))
+  let v = Math.clamp(v0, lo, Math.max(hi, lo))
+  if v != Value.as_float(ui_attr(n, "value")) { ui_fire(n, "change", Value.float(v)) }
+}
+# a range's track pressed or dragged: the value where the pointer is
+function ct_press(n: UiNode, x: float, y: float) -> void {
+  if ct_type(n) != "range" { return }
+  for i in 0 .. len(n.children) {
+    let t = n.children[i]
+    if sel_has(t.classes, "ui-track") and t.cw > 0.0 {
+      let lo = Value.as_float(ui_attr(n, "min"))
+      let hi = Value.as_float(ui_attr(n, "max"))
+      var step = Value.as_float(ui_attr(n, "step"))
+      if step <= 0.0 { step = 1.0 }
+      let raw = lo + Math.clamp((x - t.x) / t.cw, 0.0, 1.0) * (hi - lo)
+      ct_range_set(n, lo + float(int((raw - lo) / step + 0.5)) * step)
+    }
+  }
+}
+function ct_drag(root: UiNode, key: string, x: float, y: float) -> void {
+  let n = fr_node(root, key)
+  if n != null { ct_press(n, x, y) }
+}
+# typing into a focused text field, or the key a key field is waiting for
+function ct_typed(n: UiNode) -> void {
+  let t = ct_type(n)
+  if t == "key" and ct_capture == n.key and in_now.key != 0 and not in_now.enter {
+    ct_capture = ""
+    ct_change(n, Value.int(in_now.key))
+    return
+  }
+  if t != "text" or (in_now.typed == "" and not in_now.backspace) { return }
+  var s = ui_attr_text(n, "value")
+  if in_now.backspace and len(s) > 0 { s = s[0..ct_char_start(s)] }
+  var max = Value.as_int(ui_attr(n, "maxlength"))
+  if max <= 0 { max = 1000 }
+  if len(in_now.typed) > 0 and len(s) < max { s = s + in_now.typed[0..Math.min(len(in_now.typed), max - len(s))] }
+  ui_fire(n, "change", Value.str(s))
+}
+# where the last UTF-8 character starts, so Backspace takes a whole letter
+function ct_char_start(s: string) -> int {
+  var i = len(s) - 1
+  while i > 0 and s[i] >= 128 and s[i] < 192 { i -= 1 }
+  return i
+}

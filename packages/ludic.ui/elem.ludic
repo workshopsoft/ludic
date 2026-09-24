@@ -25,8 +25,9 @@ function bd_elem(k: UiTpl, e: UiEnv, key: string) -> UiNode {
   }
   lc_note(key, k.on_keys, k.on_acts, e)
   bd_kids(k.kids, e, key, n.children)
-  if k.text != null { el_text(n, ui_eval_text(k.text, e)) }
+  if k.text != null { el_text(n, ui_tr(ui_eval_text(k.text, e))) }
   el_inline(n)
+  if k.tag == "input" or k.tag == "select" { ct_build(n) }
   return n
 }
 function el_kind(n: UiNode, tag: string) -> void {
@@ -34,7 +35,10 @@ function el_kind(n: UiNode, tag: string) -> void {
   if nv != null {
     n.kind = UI_NATIVE
     n.native = nv
-  } else if lk_in(EL_TEXTS, tag) { n.kind = UI_TEXT } else if tag == "row" { n.dir = UI_ROW } else if tag == "button" { n.kind = UI_BUTTON } else if tag == "spacer" { n.kind = UI_SPACER } else if tag == "scroll" { n.kind = UI_SCROLL } else if tag == "img" { n.kind = UI_IMAGE } else if tag == "hr" { n.kind = UI_RULE } else if not lk_in(EL_BOXES, tag) { ui_err(`<{tag}>: there is no such element`) }
+  } else if lk_in(EL_TEXTS, tag) { n.kind = UI_TEXT } else if tag == "row" { n.dir = UI_ROW } else if tag == "button" {
+    n.dir = UI_ROW
+    n.focusable = true
+  } else if tag == "input" or tag == "select" { n.focusable = true } else if tag == "spacer" { n.kind = UI_SPACER } else if tag == "scroll" { n.kind = UI_SCROLL } else if tag == "img" { n.kind = UI_IMAGE } else if tag == "hr" { n.kind = UI_RULE } else if not lk_in(EL_BOXES, tag) { ui_err(`<{tag}>: there is no such element`) }
 }
 # a box with words in it holds them as a text of its own, as <div>words</div> does
 function el_text(n: UiNode, s: string) -> void {
@@ -57,27 +61,10 @@ function el_keep(n: UiNode, key: string, v: Val) -> void {
     for i in 0 .. len(parts) {
       if len(parts[i]) > 0 { push(n.classes, parts[i]) }
     }
-  } else if key == "hidden" { n.hidden = vl_truthy(v) and s != "false" } else if key == "disabled" { n.enabled = not (vl_truthy(v) and s != "false") } else if key == "src" { n.src = s } else {
-    if key == "enabled" { n.enabled = vl_truthy(v) and s != "false" }
+  } else if key == "tabindex" { n.focusable = s != "-1" } else if key == "hidden" { n.hidden = el_flag(v) } else if key == "disabled" { n.enabled = not el_flag(v) } else if key == "src" { n.src = s } else {
+    if key == "enabled" { n.enabled = el_flag(v) }
     push(n.akeys, key)
     push(n.avals, s)
     push(n.vals, v)
   }
-}
-# a colour by the renderer's name for it, else #rrggbb (or #rgb)
-function ui_color(name: string) -> int {
-  if name == "none" or name == "" or name == "transparent" { return UI_NONE }
-  if name[0] != 35 {
-    if ui_be != null and ui_be.color != null { return ui_be.color(name) }
-    return 15658734
-  }
-  var c = 0
-  for i in 1 .. len(name) {
-    var d = name[i] - 48
-    if name[i] >= 97 { d = name[i] - 87 }
-    if name[i] >= 65 and name[i] < 97 { d = name[i] - 55 }
-    c = c * 16 + d
-    if len(name) == 4 { c = c * 16 + d }
-  }
-  return c
 }

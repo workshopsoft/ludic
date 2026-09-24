@@ -40,13 +40,15 @@ function tpl_read(x: Xml, file: string) -> UiTpl {
       push(t.vals, tpl_value(v, err))
     }
   }
-  for i in 0 .. Xml.child_count(x) { push(t.kids, tpl_read(Xml.child(x, i), file)) }
+  if tp_mixed(x) { tp_read_mixed(t, x, file, err) } else {
+    for i in 0 .. Xml.child_count(x) { push(t.kids, tpl_read(Xml.child(x, i), file)) }
+  }
   if t.tag == "style" {
     t.raw = Xml.text(x)
     return t
   }
   let words = tpl_words(Xml.text(x))
-  if len(words) > 0 and len(t.kids) == 0 { t.text = ex_text(words, err) }
+  if len(words) > 0 and Xml.child_count(x) == 0 { t.text = ex_text(words, err) }
   for i in 0 .. len(err) { ui_err(`{t.where}: <{t.tag}> {err[i]}`) }
   return t
 }

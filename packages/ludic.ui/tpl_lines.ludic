@@ -17,3 +17,28 @@ function tp_line(at: int) -> int {
   return lo + 1
 }
 
+# text beside elements (<button><img/>Resume</button>): each run of it a text of its own, in order
+function tp_mixed(x: Xml) -> bool {
+  if Xml.child_count(x) == 0 or x.tag == "style" { return false }
+  for i in 0 .. len(x.mixed) {
+    if x.mixed[i].tag == "#text" { return true }
+  }
+  return false
+}
+function tp_read_mixed(t: UiTpl, x: Xml, file: string, err: []string) -> void {
+  for i in 0 .. len(x.mixed) {
+    let m = x.mixed[i]
+    if m.tag == "#text" {
+      let r = new UiTpl
+      r.tag = "#text"
+      r.where = t.where
+      r.keys = new []string
+      r.vals = new []UiExpr
+      r.on_keys = new []string
+      r.on_acts = new []UiAct
+      r.kids = new []UiTpl
+      r.text = ex_text(tpl_words(m.text), err)
+      push(t.kids, r)
+    } else { push(t.kids, tpl_read(m, file)) }
+  }
+}

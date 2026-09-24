@@ -1,0 +1,24 @@
+# dev.ludic - a developer's build: templates and stylesheets read again when they change (once a
+# second), template errors drawn over the screen, and LUDIC_UI_DUMP=<screen> printing that screen's
+# tree once, with every element's box and computed style
+var dv_on: bool = false
+var dv_frames: int = 0
+var dv_dumped: bool = false
+export function ui_dev(on: bool) -> void { dv_on = on }
+function dv_before() -> void {
+  if not dv_on { return }
+  dv_frames += 1
+  if dv_frames % 60 == 0 { ui_reload() }
+}
+function dv_after(screen: string, root: UiNode) -> void {
+  if not dv_on { return }
+  if not dv_dumped and Os.has_env("LUDIC_UI_DUMP") and Os.env("LUDIC_UI_DUMP") == screen {
+    dv_dumped = true
+    print(ui_dump(root, 0))
+  }
+  if len(ui_errs) == 0 or ui_be == null or ui_be.rect == null { return }
+  let n = Math.min(len(ui_errs), 8)
+  let line = ui_px(26.0)
+  ui_be.rect(0.0, 0.0, 4000.0, line * float(n) + ui_px(8.0), 4194304, 0.85)
+  for i in 0 .. n { ui_be.text(ui_px(12.0), ui_px(6.0) + line * float(i), ui_errs[len(ui_errs) - n + i], ui_px(18.0), 16767449, 1.0) }
+}

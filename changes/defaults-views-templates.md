@@ -39,6 +39,20 @@ with:
 - native elements a program draws itself (`ui_native`, `ui_fire`), and form controls;
 - errors with file and line, hot reload (`ui_reload`), and an inspector-style dump.
 
+The runtime is a UI framework, not only a template engine:
+- it takes input itself: focus and keyboard navigation, the pointer, scroll boxes, `autofocus`;
+- it has built-in controls (button, checkbox, radio, range, select, text, key), styled as CSS
+  parts;
+- `ludic.ui/render3d.ludic` is a render3d backend, with textures, atlases, nine-slices, clipping
+  and scale;
+- more CSS: `rgba()`/`#rrggbbaa`, `border-radius`, `outline`, `box-shadow`, `background-image`,
+  `border-image`, group `opacity`, `@keyframes` / `animation` / `transition`;
+- HTML mixed content, and boolean attributes;
+- hooks for the program's language, sounds and clock.
+
+render3d gains `tex_width` / `tex_height`, and the XML reader keeps text runs among elements in
+order (`mixed`).
+
 A `view` field set to a literal or a named function's result needs no type.
 
 Screens are drawn through a registered renderer. `Value` gains a float kind.
