@@ -80,5 +80,5 @@ function fr_outline(n: UiNode) -> void {
     ui_be.ring(n.x - o, n.y - o, n.cw + o * 2.0, n.ch + o * 2.0, n.radius + o, n.outline_w, c, a)
     return
   }
-  fr_frame(n.x - o, n.y - o, n.cw + o * 2.0, n.ch + o * 2.0, n.outline_w, c, a)
+  if ui_be.rect != null { fr_frame(n.x - o, n.y - o, n.cw + o * 2.0, n.ch + o * 2.0, n.outline_w, c, a) }
 }

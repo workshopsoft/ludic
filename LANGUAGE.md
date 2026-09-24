@@ -509,7 +509,9 @@ applies to both:
     (the default), `center` or `end` along that side. Where it would leave its bounds it opens to
     the other side and is kept inside them: `within="panel"` names the element, and by default it
     is the nearest scroll box (or `overflow` box) around it, else the screen.
-  - `title="..."` shows a tooltip (`.ui-tooltip`) after the pointer rests for half a second. A
+  - `title="..."` shows a tooltip (`.ui-tooltip`) after the pointer rests for half a second, or
+    under the element when the keyboard's focus (`:focus-visible`) has rested on it as long; moving
+    the pointer gives the tooltip back to the pointer. A
     newline or a written `\n` in it starts another line (`.ui-tooltip-text` each).
   - `<progress value max>` and `<meter value min max>` fill (`.ui-fill`) as far as their value.
 - **Natives** are for what markup cannot say. `ui_native("minimap", measure, draw)` makes

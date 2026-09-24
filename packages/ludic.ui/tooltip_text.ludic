@@ -1,5 +1,17 @@
-# tooltip_text.ludic - a title in the program's language: the whole of it when the translator knows
-# it, else line by line; and not at all inside translate="no" (the nearest translate= out from it)
+# tooltip_text.ludic - a title in the program's language (whole when the translator knows it whole,
+# else line by line, and not inside translate="no"), and a title for the keyboard's focus
+var tt_by_keys: bool = false    # the focus moved by the keyboard since the pointer last moved
+var tt_focus_seen: string = ""
+# the focused element, when the keyboard put the focus there and it has a title; else null
+function tt_focused(scope: UiNode, x: float, y: float) -> UiNode {
+  if in_last.x != x or in_last.y != y { tt_by_keys = false }
+  if fc_visible and fc_key != "" and fc_key != tt_focus_seen { tt_by_keys = true }
+  tt_focus_seen = fc_key
+  if not tt_by_keys or not fc_visible { return null }
+  let n = fr_node(scope, fc_key)
+  if n == null or n.akeys == null or ui_attr_text(n, "title") == "" { return null }
+  return n
+}
 function tt_translate(n: UiNode, s: string) -> string {
   var at = n
   while at != null {

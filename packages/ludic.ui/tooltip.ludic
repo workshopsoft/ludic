@@ -1,13 +1,23 @@
-# tooltip.ludic - an element's title="..." shown beside the pointer once it has rested on the
-# element for half a second, in a box styled by .ui-tooltip (the default sheet's, or a theme's); a
-# title of several lines (a newline, or \n) is one .ui-tooltip-text a line
+# tooltip.ludic - an element's title="..." shown beside the pointer once it has rested on it for half
+# a second (or under it, when the keyboard's focus has), in a box styled by .ui-tooltip; a title of
+# several lines (a newline, or \n) is one .ui-tooltip-text a line
 var tt_key: string = ""
 var tt_since: float = 0.0
 var tt_text: string = ""
 var tt_x: float = 0.0
 var tt_y: float = 0.0
-function tt_track(scope: UiNode, x: float, y: float) -> void {
-  let n = tt_under(scope, x, y)
+function tt_track(root: UiNode, x: float, y: float) -> void {
+  var scope = pp_top(root)
+  if scope == null { scope = root }
+  var n = tt_under(scope, x, y)
+  var px = x
+  var py = y
+  let k = tt_focused(scope, x, y)
+  if k != null {
+    n = k
+    px = k.x
+    py = k.y + k.ch - ui_px(14.0)
+  }
   if n == null {
     tt_key = ""
     return
@@ -17,8 +27,8 @@ function tt_track(scope: UiNode, x: float, y: float) -> void {
     tt_since = an_now()
   }
   tt_text = tt_translate(n, ui_attr_text(n, "title"))
-  tt_x = x
-  tt_y = y
+  tt_x = px
+  tt_y = py
 }
 # the deepest element under the point that has a title
 function tt_under(n: UiNode, x: float, y: float) -> UiNode {

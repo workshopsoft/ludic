@@ -15,7 +15,6 @@ function fr_pointer(root: UiNode) -> void {
   if top != null { scope = top }
   fr_under(scope, i.x, i.y, keys)
   fr_hover = keys
-  tt_track(scope, i.x, i.y)
   if top != null and pp_pointer(top) { return }
   if sc_drag != "" or ct_key_mouse(root) { return }
   let hit = fr_hit(scope, i.x, i.y)

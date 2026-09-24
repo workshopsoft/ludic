@@ -1,0 +1,39 @@
+# ui_focus_tip.ludic — a title shows for the keyboard's focus as it does for the pointer: after the
+# focus has rested half a second on an element with one, under that element; moving the pointer
+# hands the tooltip back to the pointer.
+import "ludic.ui"
+program UiFocusTip {
+  numbers float
+  var said: []string = new []string
+  var now: float = 0.0
+  const PAGE: string = "<ui><screen name='f'><button title='Drop it'>a</button><button title='Give it away'>b</button></screen></ui>"
+  function rec_text(x: float, y: float, s: string, size: float, c: int, a: float) -> void { push(said, `{s} {int(x)},{int(y)}`) }
+  function clock() -> float { return now }
+  function frame(i: UiInput, secs: float) -> string {
+    now = now + secs
+    said = new []string
+    ui_input(i)
+    ui_show("f", null, 0.0, 0.0, 400.0, 400.0)
+    return said[len(said) - 1]
+  }
+  entry {
+    let b = new UiBackend
+    b.text = fn rec_text
+    ui_backend(b)
+    ui_clock(fn clock)
+    ui_load_text(PAGE, "f.xml")
+    frame(new UiInput, 0.0)
+    let tab = new UiInput
+    tab.tab = true
+    frame(tab, 0.0)
+    let early = frame(new UiInput, 0.2)
+    let shown = frame(new UiInput, 0.4)
+    frame(tab, 0.0)
+    let next = frame(new UiInput, 0.6)
+    let moved = new UiInput
+    moved.x = 390.0
+    moved.y = 390.0
+    let gone = frame(moved, 0.6)
+    print(`{early} | {shown} | {next} | {gone}`)
+  }
+}
