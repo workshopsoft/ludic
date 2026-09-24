@@ -105,7 +105,7 @@ function grass_blade_mesh(rows: int) -> Mesh {
     idx[q * 6] = b;  idx[q * 6 + 1] = b + 1;  idx[q * 6 + 2] = b + 2
     idx[q * 6 + 3] = b + 1;  idx[q * 6 + 4] = b + 3;  idx[q * 6 + 5] = b + 2
   }
-  gpu_mesh_indices(m, idx, nq * 6 * 4, 4)
+  gpu_mesh_indices(m, data_of(idx), nq * 6 * 4, 4)
   free(idx)
   m.count = nq * 6
   gpu_mesh_done(m)
@@ -270,7 +270,7 @@ function grass_flush() -> void {
   if grass_n == 0 { return }
   var p = grass_prog
   let mesh = grass_mesh_live()
-  if mesh { p = grass_mesh_prog } else { gpu_buffer_upload(grass_cmds, grass_n * 20, grass_rec, GPU_DYNAMIC) }
+  if mesh { p = grass_mesh_prog } else { gpu_buffer_upload(grass_cmds, grass_n * 20, data_of(grass_rec), GPU_DYNAMIC) }
   for b in 0 .. grass_band_n {
     let s = grass_band_start[b]
     var e = grass_n

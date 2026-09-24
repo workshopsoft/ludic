@@ -27,7 +27,7 @@ property Dict { keys: pointers, vals: words, used: words, cap: int = 0, count: i
 # (re)allocate the three parallel arrays to `cap` slots, all cleared
 function dict_init(d: Dict, cap: int) -> void {
   d.cap = cap;  d.count = 0
-  d.keys = bytes(cap * 8);  fill(d.keys, 0, cap * 8)   # null slots
+  d.keys = pointers(cap);  fill(d.keys, 0, cap * 8)   # null slots
   d.vals = words(cap);      fill(d.vals, 0, cap * 4)
   d.used = words(cap);      fill(d.used, 0, cap * 4)
 }

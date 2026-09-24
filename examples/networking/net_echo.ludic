@@ -8,17 +8,19 @@
 # them back through the loopback: prints 4, then 10 20 30 42.
 program NetEcho {
   entry {
-    let out = bytes(4)
-    out[0] = '\n'
-    out[1] = 20
-    out[2] = 30
-    out[3] = '*'
-    net_send(0, out, 4)                  # onto the wire (the built-in loopback)
+    unsafe {                                 # raw buffers on purpose: built with --unsafe (L7)
+      let out = bytes(4)
+      out[0] = '\n'
+      out[1] = 20
+      out[2] = 30
+      out[3] = '*'
+      net_send(0, out, 4)                  # onto the wire (the built-in loopback)
 
-    let inb = bytes(64)
-    let n = net_poll(inb, 64)            # take the next datagram back off
-    print(n)                             # 4
-    var i = 0
-    while i < n { print(inb[i]);  i += 1 }   # 10 20 30 42
+      let inb = bytes(64)
+      let n = net_poll(inb, 64)            # take the next datagram back off
+      print(n)                             # 4
+      var i = 0
+      while i < n { print(inb[i]);  i += 1 }   # 10 20 30 42
+    }
   }
 }

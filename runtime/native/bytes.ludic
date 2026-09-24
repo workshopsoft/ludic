@@ -1,0 +1,43 @@
+# bytes.ludic — L7: bytes a program can hold without raw memory. A `[]byte` from buffer(n) is
+# bounds-checked like any slice; these turn one into text and move one to and from a file. The
+# runtime is the platform, so the raw calls underneath (file_read, the NUL-terminated copy) are
+# its business, not the caller's.
+
+# the first n bytes of b as text (it stops at b's end, and the text ends at a zero byte if one comes first)
+function text_of(b: []byte, n: int) -> string {
+  var k = n
+  if b == null { k = 0 }
+  if k > len(b) { k = len(b) }
+  if k < 0 { k = 0 }
+  let out = bytes(k + 1)
+  var i = 0
+  while i < k {
+    out[i] = b[i]
+    i += 1
+  }
+  out[k] = 0
+  return out
+}
+# a whole file as bytes - through the asset pack when the file is in one - or null
+function fs_read_bytes(path: string) -> []byte {
+  let f = file_open(path, "rb")
+  if f == null { return null }
+  file_seek(f, 0, 2)
+  let n = file_tell(f)
+  file_seek(f, 0, 0)
+  let b = buffer(n)
+  let got = file_read(f, b, n)
+  file_close(f)
+  if got < n { return view(b, 0, got) }
+  return b
+}
+# the first `count` bytes of b to a file, replacing it; false when it cannot be written whole
+function fs_write_bytes(path: string, b: []byte, count: int) -> bool {
+  var k = count
+  if k > len(b) { k = len(b) }
+  let f = file_open(path, "wb")
+  if f == null { return false }
+  let put = file_write(f, b, k)
+  file_close(f)
+  return put == k
+}

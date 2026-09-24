@@ -146,6 +146,7 @@ function block_ends(b: Node) -> bool {
 }
 function stmt_ends(st: Node) -> bool {
   if st.kind == S_RETURN { return true }
+  if st.kind == S_UNSAFE { return block_ends(st.a) }
   if st.kind == S_IF {
     if st.c == null or not block_ends(st.b) { return false }
     if st.c.kind == S_IF { return stmt_ends(st.c) }
@@ -377,6 +378,7 @@ function emit_stmt(st: Node) -> void {
   if st.kind == S_SPAWN { let se = emit_spawn(st);  return }
   if st.kind == S_DESPAWN { emit_despawn(st);  return }
   if st.kind == S_TOGGLE { emit_toggle(st);  return }
+  if st.kind == S_UNSAFE { emit_block(st.a);  return }
   if st.kind == S_ATTACH { emit_attach(st);  return }
   if st.kind == S_DETACH { emit_detach(st);  return }
   if st.kind == S_EMIT { let v = emit_emit(st);  return }         # statement form: discard the flag

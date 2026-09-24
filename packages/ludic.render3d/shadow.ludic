@@ -11,7 +11,8 @@ const SHADOW_CASCADES: int = 5
 
 var sh_tex: int = 0
 var sh_fbo: int = 0
-var sh_vp: floats = null            # 4 x 16 float bits
+var sh_vp: floats = null            # the cascades' view-projections, 16 floats each
+var sh_vp_v: [][]float = null       # a view of each
 var sh_split: floats = null         # view-space far distance of each cascade
 var sh_range: floats = null         # 4 light-frustum depth extents (metres)
 var sh_texel: floats = null         # 4 shadow texel sizes (metres)
@@ -29,6 +30,7 @@ function shadow_init() -> void {
   gpu_fb_no_color()
   gpu_fb_bind(0)
   sh_vp = floats(16 * SHADOW_CASCADES)
+  sh_vp_v = m4_views(sh_vp, SHADOW_CASCADES)
   sh_split = floats(SHADOW_CASCADES)
   sh_range = floats(SHADOW_CASCADES)
   sh_texel = floats(SHADOW_CASCADES)
@@ -141,7 +143,7 @@ function shadow_fit(c: int, near: float, far: float) -> void {
   free(out);  free(eye);  free(up);  free(center);  free(corners)
 }
 
-function shadow_cascade_vp(c: int) -> floats { return mem_off(sh_vp, c * 64) }
+function shadow_cascade_vp(c: int) -> floats { return sh_vp_v[c] }
 
 
 # render every cascade; `draw` happens through terrain_draw_shadow + the scene's casters
@@ -211,7 +213,7 @@ function shadow_dump() -> void {
   let buf = floats(n * SHADOW_CASCADES)
   gpu_tex_bind(GPU_TEX2D_ARRAY, sh_tex)
   gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_NONE)
-  gpu_tex_read(GPU_TEX2D_ARRAY, GL_DEPTH_COMPONENT, GL_FLOAT, buf)
+  gpu_tex_read(GPU_TEX2D_ARRAY, GL_DEPTH_COMPONENT, GL_FLOAT, data_of(buf))
   gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE)
   if sh_probe_x != 0.0 {
     let vp = shadow_cascade_vp(2)

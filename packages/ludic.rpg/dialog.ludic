@@ -23,8 +23,8 @@ function dlg_ensure() -> void {
   if dlg_reg == null {
     dlg_reg = Dict.new()
     dlg_tree_start = words(DLG_TREE_MAX)
-    dlg_node_tree = words(DLG_NODE_MAX);  dlg_node_text = bytes(DLG_NODE_MAX * 8)
-    dlg_choice_node = words(DLG_CHOICE_MAX);  dlg_choice_label = bytes(DLG_CHOICE_MAX * 8);  dlg_choice_next = words(DLG_CHOICE_MAX)
+    dlg_node_tree = words(DLG_NODE_MAX);  dlg_node_text = pointers(DLG_NODE_MAX)
+    dlg_choice_node = words(DLG_CHOICE_MAX);  dlg_choice_label = pointers(DLG_CHOICE_MAX);  dlg_choice_next = words(DLG_CHOICE_MAX)
   }
 }
 

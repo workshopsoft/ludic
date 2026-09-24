@@ -3,6 +3,7 @@
 # agrees with everything, so the checker only ever reports a mix-up it can prove. "null" is the
 # type of the null literal, and `pointer` is untyped: numbers, bools, text, records, slices and
 # functions are kept apart, and a pointer is trusted to be whatever it is given as.
+var ck_extern_arg: bool = false          # an extern's arguments are being given: a slice goes as its data
 function ck_unknown(t: pointer) -> bool { return t == null or (t == "?") }
 function ck_is_int(t: pointer) -> bool {
   if (t == "int") or (t == "long") or (t == "byte") or (t == "i64") or (t == "u8") { return true }
@@ -72,6 +73,17 @@ function ck_mismatch(to: pointer, from: pointer, e: Node) -> pointer {
   if ck_is_num(from) { return "kind" }
   # `pointer` is the untyped reference, C's void *: it goes anywhere a reference does, and a
   # reference goes into it. What it may hold is L7's question (unsafe), not this pass's.
+  # `bytes` is a raw buffer, a pointer by another name: the same rules
+  if (to == "bytes") and is_slice_ty(from) {
+    if ck_extern_arg { return null }
+    return "slice-pointer"
+  }
+  if (from == "bytes") and is_slice_ty(to) { return "pointer-slice" }
+  if (to == "pointer") and is_slice_ty(from) {
+    if ck_extern_arg { return null }
+    return "slice-pointer"
+  }
+  if (from == "pointer") and is_slice_ty(to) { return "pointer-slice" }
   if (to == "pointer") or (from == "pointer") { return null }
   if (to == "string") { return "kind" }
   if ck_is_rec(to) and ck_is_rec(from) { return "record" }

@@ -108,7 +108,7 @@ function rt_ui_init() -> void {
   ui_fired = words(UI_MAX)
   ui_hasdyn = words(UI_MAX)
   ui_dyn = bytes(UI_MAX * 96)
-  ui_text = bytes(UI_MAX * 8)
+  ui_text = pointers(UI_MAX)
 }
 
 # ---- build-time interface (called by compiler-emitted code) ---------------

@@ -21,8 +21,8 @@ var ing_qty:  words = null
 function craft_ensure() -> void {
   if recipe_reg == null {
     recipe_reg = Dict.new()
-    recipe_out = bytes(CRAFT_MAX * 8);  recipe_outqty = words(CRAFT_MAX)
-    ing_rid = words(CRAFT_ING_MAX);  ing_name = bytes(CRAFT_ING_MAX * 8);  ing_qty = words(CRAFT_ING_MAX)
+    recipe_out = pointers(CRAFT_MAX);  recipe_outqty = words(CRAFT_MAX)
+    ing_rid = words(CRAFT_ING_MAX);  ing_name = pointers(CRAFT_ING_MAX);  ing_qty = words(CRAFT_ING_MAX)
   }
 }
 

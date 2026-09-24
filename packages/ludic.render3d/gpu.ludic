@@ -241,19 +241,19 @@ function gpu_screenshot(path: string) -> bool { if gpu_kind == GPU_VK { return g
 var gpu_u_tmp: words = null
 function gpu_tmp() -> words { if gpu_u_tmp == null { gpu_u_tmp = words(4) };  return gpu_u_tmp }
 # float bits (IEEE singles in an int), like every other number in the renderer
-function u_f(loc: int, v: float) -> void { if gpu_kind == GPU_VK { let t = gpu_tmp();  t[0] = float_bits(v);  gvk_u_set(loc, t, 4, 1);  return };  let t = gpu_tmp();  t[0] = float_bits(v);  gl_uniform1fv(loc, 1, t) }
-function u_f2(loc: int, x: float, y: float) -> void { if gpu_kind == GPU_VK { let t = gpu_tmp();  t[0] = float_bits(x);  t[1] = float_bits(y);  gvk_u_set(loc, t, 8, 1);  return };  let t = gpu_tmp();  t[0] = float_bits(x);  t[1] = float_bits(y);  gl_uniform2fv(loc, 1, t) }
-function u_f3(loc: int, x: float, y: float, z: float) -> void { if gpu_kind == GPU_VK { let t = gpu_tmp();  t[0] = float_bits(x);  t[1] = float_bits(y);  t[2] = float_bits(z);  gvk_u_set(loc, t, 12, 1);  return };  let t = gpu_tmp();  t[0] = float_bits(x);  t[1] = float_bits(y);  t[2] = float_bits(z);  gl_uniform3fv(loc, 1, t) }
-function u_f4(loc: int, x: float, y: float, z: float, w: float) -> void { if gpu_kind == GPU_VK { let t = gpu_tmp();  t[0] = float_bits(x);  t[1] = float_bits(y);  t[2] = float_bits(z);  t[3] = float_bits(w);  gvk_u_set(loc, t, 16, 1);  return };  let t = gpu_tmp();  t[0] = float_bits(x);  t[1] = float_bits(y);  t[2] = float_bits(z);  t[3] = float_bits(w);  gl_uniform4fv(loc, 1, t) }
-function u_v3(loc: int, v: floats) -> void { if gpu_kind == GPU_VK { gvk_u_set(loc, v, 12, 1);  return };  gl_uniform3fv(loc, 1, v) }
-function u_fv(loc: int, n: int, v: floats) -> void { if gpu_kind == GPU_VK { gvk_u_set(loc, v, 4, n);  return };  gl_uniform1fv(loc, n, v) }
+function u_f(loc: int, v: float) -> void { if gpu_kind == GPU_VK { let t = gpu_tmp();  t[0] = float_bits(v);  gvk_u_set(loc, data_of(t), 4, 1);  return };  let t = gpu_tmp();  t[0] = float_bits(v);  gl_uniform1fv(loc, 1, t) }
+function u_f2(loc: int, x: float, y: float) -> void { if gpu_kind == GPU_VK { let t = gpu_tmp();  t[0] = float_bits(x);  t[1] = float_bits(y);  gvk_u_set(loc, data_of(t), 8, 1);  return };  let t = gpu_tmp();  t[0] = float_bits(x);  t[1] = float_bits(y);  gl_uniform2fv(loc, 1, t) }
+function u_f3(loc: int, x: float, y: float, z: float) -> void { if gpu_kind == GPU_VK { let t = gpu_tmp();  t[0] = float_bits(x);  t[1] = float_bits(y);  t[2] = float_bits(z);  gvk_u_set(loc, data_of(t), 12, 1);  return };  let t = gpu_tmp();  t[0] = float_bits(x);  t[1] = float_bits(y);  t[2] = float_bits(z);  gl_uniform3fv(loc, 1, t) }
+function u_f4(loc: int, x: float, y: float, z: float, w: float) -> void { if gpu_kind == GPU_VK { let t = gpu_tmp();  t[0] = float_bits(x);  t[1] = float_bits(y);  t[2] = float_bits(z);  t[3] = float_bits(w);  gvk_u_set(loc, data_of(t), 16, 1);  return };  let t = gpu_tmp();  t[0] = float_bits(x);  t[1] = float_bits(y);  t[2] = float_bits(z);  t[3] = float_bits(w);  gl_uniform4fv(loc, 1, t) }
+function u_v3(loc: int, v: floats) -> void { if gpu_kind == GPU_VK { gvk_u_set(loc, data_of(v), 12, 1);  return };  gl_uniform3fv(loc, 1, v) }
+function u_fv(loc: int, n: int, v: floats) -> void { if gpu_kind == GPU_VK { gvk_u_set(loc, data_of(v), 4, n);  return };  gl_uniform1fv(loc, n, v) }
 # n vec4s from 4n float bits. Not u_fv with 4n: on Vulkan an array element is copied at the size
 # given and placed at the array's stride, so a vec4 array fed floats got one float per element -
 # which drew the chunked grass with every tile at a nonsense corner and zero blades a cell.
-function u_f4v(loc: int, n: int, v: floats) -> void { if gpu_kind == GPU_VK { gvk_u_set(loc, v, 16, n);  return };  gl_uniform4fv(loc, n, v) }
-function u_mat4(loc: int, m: floats) -> void { if gpu_kind == GPU_VK { gvk_u_set(loc, m, 64, 1);  return };  gl_uniform_matrix4fv(loc, 1, 0, m) }
-function u_mat4n(loc: int, n: int, m: floats) -> void { if gpu_kind == GPU_VK { gvk_u_set(loc, m, 64, n);  return };  gl_uniform_matrix4fv(loc, n, 0, m) }
-function u_i(loc: int, v: int) -> void { if gpu_kind == GPU_VK { let t = gpu_tmp();  t[0] = v;  gvk_u_set(loc, t, 4, 1);  return };  gl_uniform1i(loc, v) }
+function u_f4v(loc: int, n: int, v: floats) -> void { if gpu_kind == GPU_VK { gvk_u_set(loc, data_of(v), 16, n);  return };  gl_uniform4fv(loc, n, v) }
+function u_mat4(loc: int, m: floats) -> void { if gpu_kind == GPU_VK { gvk_u_set(loc, data_of(m), 64, 1);  return };  gl_uniform_matrix4fv(loc, 1, 0, m) }
+function u_mat4n(loc: int, n: int, m: floats) -> void { if gpu_kind == GPU_VK { gvk_u_set(loc, data_of(m), 64, n);  return };  gl_uniform_matrix4fv(loc, n, 0, m) }
+function u_i(loc: int, v: int) -> void { if gpu_kind == GPU_VK { let t = gpu_tmp();  t[0] = v;  gvk_u_set(loc, data_of(t), 4, 1);  return };  gl_uniform1i(loc, v) }
 
 # ---- what this machine can do ----------------------------------------------------
 # The advanced graphics features are Windows features: the Vulkan renderer, ray tracing,

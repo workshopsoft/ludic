@@ -29,7 +29,7 @@ property VkMap { keys: pointers, vals: words, cap: int = 0, count: int = 0 }
 function vkm_new() -> VkMap {
   let m = new VkMap
   m.cap = 16384
-  m.keys = bytes(m.cap * 8)
+  m.keys = pointers(m.cap)
   for i in 0 .. m.cap { m.keys[i] = null }
   m.vals = words(m.cap)
   return m
@@ -45,7 +45,7 @@ function vkm_slot(m: VkMap, key: pointer) -> int {
 function vkm_grow(m: VkMap) -> void {
   let ok = m.keys;  let ov = m.vals;  let oc = m.cap
   m.cap = oc * 2
-  m.keys = bytes(m.cap * 8)
+  m.keys = pointers(m.cap)
   for i in 0 .. m.cap { m.keys[i] = null }
   m.vals = words(m.cap)
   m.count = 0

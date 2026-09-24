@@ -275,6 +275,7 @@ function parse_build_args(start: int) -> pointer {
     if a == "--headless" { g_mode = 2 }
     else if a == "--windowed" { g_mode = 1 }
     else if a == "--save-temps" { g_save = true }
+    else if a == "--unsafe" { g_unsafe_build = true }
     else if a == "-o" {
       ai += 1
       if ai < arg_count() { g_out = arg(ai) }

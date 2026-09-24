@@ -6,11 +6,11 @@ program UdpDemo {
     let pa = Udp.port(a)
     let pb = Udp.port(b)
     let lo = Udp.ip("127.0.0.1")
-    let out = Memory.bytes(16)
-    Memory.poke(out, 0, 104)
-    Memory.poke(out, 1, 105)
+    let out = buffer(16)
+    out[0] = 104
+    out[1] = 105
     let sent = Udp.send(a, lo, pb, out, 2)
-    let inb = Memory.bytes(64)
+    let inb = buffer(64)
     var got = 0
     var tries = 0
     while got == 0 and tries < 200000 { got = Udp.recv(b, inb, 64);  tries += 1 }
@@ -20,7 +20,7 @@ program UdpDemo {
     tries = 0
     while back == 0 and tries < 200000 { back = Udp.recv(a, out, 16);  tries += 1 }
     let bad = Udp.ip("1.2.3") == 0 and Udp.ip("300.1.1.1") == 0
-    print(`{sent} {got} {Memory.peek(inb, 0)} {Memory.peek(inb, 1)} {from_ok} {back} {Udp.ip_text(lo)} {bad} {Udp.recv(a, out, 16)} {pa > 0}`)
+    print(`{sent} {got} {inb[0]} {inb[1]} {from_ok} {back} {Udp.ip_text(lo)} {bad} {Udp.recv(a, out, 16)} {pa > 0}`)
     Udp.close(a)
     Udp.close(b)
   }

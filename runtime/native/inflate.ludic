@@ -70,7 +70,7 @@ const Z_FAST:   int = 10
 const Z_FASTSZ: int = 1024          # 1 << Z_FAST
 const Z_SYMS:   int = 1040         # 16 + Z_FASTSZ: where the symbols start
 
-function z_table_new(nsym: int) -> pointer {
+function z_table_new(nsym: int) -> words {
   return words((Z_SYMS + nsym))
 }
 
@@ -238,7 +238,7 @@ function z_stored(out: pointer, at: int, cap: int) -> int {
   return w
 }
 
-function z_codes(out: pointer, at: int, cap: int, lit: pointer, dist: pointer) -> int {
+function z_codes(out: pointer, at: int, cap: int, lit: words, dist: words) -> int {
   var w = at
   var sym = z_decode(lit)
   while sym != 256 {
@@ -273,7 +273,7 @@ function z_codes(out: pointer, at: int, cap: int, lit: pointer, dist: pointer) -
   return w
 }
 
-function z_fixed_tables(lit: pointer, dist: pointer) -> void {
+function z_fixed_tables(lit: words, dist: words) -> void {
   let lengths: words = words(288)
   for i in 0 .. 144 { lengths[i] = 8 }
   for i in 144 .. 256 { lengths[i] = 9 }
@@ -285,7 +285,7 @@ function z_fixed_tables(lit: pointer, dist: pointer) -> void {
   free(lengths)
 }
 
-function z_dynamic_tables(lit: pointer, dist: pointer) -> int {
+function z_dynamic_tables(lit: words, dist: words) -> int {
   let nlen = z_bits(5) + 257
   let ndist = z_bits(5) + 1
   let ncode = z_bits(4) + 4

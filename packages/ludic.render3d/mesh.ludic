@@ -52,7 +52,7 @@ function mesh_grid(n: int, half: float) -> Mesh {
       k += 6
     }
   }
-  gpu_mesh_indices(m, idx, ni * 4, 4)
+  gpu_mesh_indices(m, data_of(idx), ni * 4, 4)
   free(idx)
   m.count = ni
   gpu_mesh_done(m)
@@ -81,7 +81,7 @@ function mesh_card() -> Mesh {
   free(v)
   let idx = words(6)
   idx[0] = 0;  idx[1] = 1;  idx[2] = 2;  idx[3] = 0;  idx[4] = 2;  idx[5] = 3
-  gpu_mesh_indices(m, idx, 24, 4)
+  gpu_mesh_indices(m, data_of(idx), 24, 4)
   free(idx)
   m.count = 6
   gpu_mesh_done(m)

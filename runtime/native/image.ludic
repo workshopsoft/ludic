@@ -13,7 +13,7 @@ const IMG_MAX: int = 32
 const SPR_MAX: int = 160
 const SPR_SZ:  int = 16
 
-var img_px:   pointers = null     # IMG_MAX pointers to RGBA buffers
+var img_px:   [][]int = null      # IMG_MAX RGBA buffers
 var img_w:    words = null
 var img_h:    words = null
 var img_n:    int = 0
@@ -22,7 +22,12 @@ var spr_px:   words = null     # SPR_MAX * 16 * 16 RGBA pixels, one block
 var spr_n:    int = 0
 
 function rt_image_init() -> void {
-  img_px = bytes(IMG_MAX * 8)
+  img_px = new [][]int
+  var pi0 = 0
+  while pi0 < IMG_MAX {
+    push(img_px, null)
+    pi0 += 1
+  }
   img_w = words(IMG_MAX)
   img_h = words(IMG_MAX)
   spr_px = words(SPR_MAX * SPR_SZ * SPR_SZ)

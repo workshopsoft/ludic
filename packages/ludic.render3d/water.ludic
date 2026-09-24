@@ -21,6 +21,8 @@ var wt_wade_s: float = 0.0
 var water_refl: Target = null            # the world mirrored in the surface, half resolution
 var water_refl_div: int = 2              # R3D_REFLDIV overrides: 2 = half res, 4 = quarter
 var water_saved: floats = null            # the real camera's matrices, restored after the pass
+var water_saved_vp: floats = null         # views of its second and third matrices
+var water_saved_ivp: floats = null
 var water_dumped: bool = false
 # Several still-water planes, each at its own level over its own bounds: the sea round an
 # island and a lake a hundred metres above it cannot be one surface. Each draws the same way;
@@ -49,11 +51,13 @@ function water_reflection_pass() -> void {
     # rendered at the window's size would be paying for pixels the water never samples
     water_refl = target_new(post_w / water_refl_div, post_h / water_refl_div, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, true, GL_LINEAR)
     water_saved = floats(16 * 4 + 3)
+    water_saved_vp = view(water_saved, 16, 16)
+    water_saved_ivp = view(water_saved, 32, 16)
   }
   # save the camera
   m4_copy(water_saved, cam_view)
-  m4_copy(mem_off(water_saved, 64), cam_vp)
-  m4_copy(mem_off(water_saved, 128), cam_inv_vp)
+  m4_copy(water_saved_vp, cam_vp)
+  m4_copy(water_saved_ivp, cam_inv_vp)
   let sx = cam_pos[0];  let sy = cam_pos[1];  let sz = cam_pos[2]
   # the mirrored camera: view' = view * R, R reflecting y about the surface (y' = 2L - y).
   # R has determinant -1, so the winding flips (front faces culled below) and the image
@@ -98,8 +102,8 @@ function water_reflection_pass() -> void {
   # restore
   r3d_clip_y = -2147483600.0
   m4_copy(cam_view, water_saved)
-  m4_copy(cam_vp, mem_off(water_saved, 64))
-  m4_copy(cam_inv_vp, mem_off(water_saved, 128))
+  m4_copy(cam_vp, water_saved_vp)
+  m4_copy(cam_inv_vp, water_saved_ivp)
   v3_set(cam_pos, sx, sy, sz)
   free(eye);  free(fwd);  free(up);  free(at)
   gpu_fb_bind(0)

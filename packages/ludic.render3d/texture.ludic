@@ -389,7 +389,7 @@ function tex_load_hdr(path: pointer) -> int {
   let id = gpu_tex_new()
   gpu_tex_bind(GPU_TEX2D, id)
   gpu_pixel_store(GL_UNPACK_ALIGNMENT, 4)
-  gpu_tex_image2d(GL_RGB16F, tex_w, tex_h, GL_RGB, GL_FLOAT, px)
+  gpu_tex_image2d(GL_RGB16F, tex_w, tex_h, GL_RGB, GL_FLOAT, data_of(px))
   gpu_tex_param(GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
   gpu_tex_param(GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
   gpu_tex_param(GPU_TEX2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
@@ -417,7 +417,7 @@ function tex_max(tex: int, w: int, h: int, tag: pointer) -> void {
   let buf = floats(w * h * 4)
   gpu_tex_bind(GPU_TEX2D, tex)
   gpu_pixel_store(GL_PACK_ALIGNMENT, 4)
-  gpu_tex_read(GPU_TEX2D, GL_RGBA, GL_FLOAT, buf)
+  gpu_tex_read(GPU_TEX2D, GL_RGBA, GL_FLOAT, data_of(buf))
   var best = 0.0;  var bx = 0;  var by = 0
   var i = 0
   while i < w * h {

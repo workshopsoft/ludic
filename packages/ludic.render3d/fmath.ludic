@@ -19,6 +19,17 @@ const F_HALF: int = 0x3F000000
 const PI: float = 3.1415927
 const F_PI:   int = 0x40490FDB
 
+# the n 4x4 matrices laid end to end in `m`, a view of each. Views are made once, where their
+# buffer is: a view is a small allocation, and one per matrix per frame is one nobody frees.
+function m4_views(m: floats, n: int) -> [][]float {
+  let out = new [][]float
+  var i = 0
+  while i < n {
+    push(out, view(m, i * 16, 16))
+    i += 1
+  }
+  return out
+}
 function fl(x: fixed) -> float { return float(x) }
 function fi(n: int) -> float { return float(n) }
 function fr(n: int, d: int) -> float { return float(n) / float(d) }

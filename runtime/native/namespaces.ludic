@@ -542,3 +542,11 @@ namespace Tiled {
   alias world_count(world) = tiled_world_count
   alias world_map(world, index) = tiled_world_map
 }
+namespace Time {
+  alias now_us() = time_now_us  # a microsecond clock, for measuring - not the game's time
+  alias sleep_us(us) = time_sleep_us
+}
+namespace Fs {
+  alias read_bytes(path) = fs_read_bytes  # the whole file as a []byte, or null
+  alias write_bytes(path, data, count) = fs_write_bytes
+}

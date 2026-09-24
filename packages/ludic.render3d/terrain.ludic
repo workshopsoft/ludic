@@ -270,7 +270,7 @@ function terrain_generate() -> void {
   ter_heights = floats(TERRAIN_RES * TERRAIN_RES)
   gpu_tex_bind(GPU_TEX2D, ter_height_tex)
   gpu_pixel_store(GL_PACK_ALIGNMENT, 4)
-  gpu_tex_read(GPU_TEX2D, GL_RED, GL_FLOAT, ter_heights)
+  gpu_tex_read(GPU_TEX2D, GL_RED, GL_FLOAT, data_of(ter_heights))
   gpu_fb_bind(0)
   gpu_fb_free(fbo)
   gpu_program_free(p)
@@ -663,7 +663,7 @@ function cdlod_init() -> void {
       k += 6
     }
   }
-  gpu_mesh_indices(m, idx, ni * 4, 4)
+  gpu_mesh_indices(m, data_of(idx), ni * 4, 4)
   free(idx)
   m.count = ni
   gpu_mesh_done(m)

@@ -48,9 +48,9 @@ function http_init() -> void {
   h_res    = words(HTTP_SLOTS)
   h_status = words(HTTP_SLOTS)
   h_blen   = words(HTTP_SLOTS)
-  h_req    = bytes(HTTP_SLOTS * 8)
-  h_body   = bytes(HTTP_SLOTS * 8)
-  h_hdr    = bytes(HTTP_SLOTS * 8)
+  h_req    = pointers(HTTP_SLOTS)
+  h_body   = pointers(HTTP_SLOTS)
+  h_hdr    = pointers(HTTP_SLOTS)
   h_save   = words(HTTP_SLOTS)
   var i = 0
   while i < HTTP_SLOTS {

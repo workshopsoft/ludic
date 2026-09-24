@@ -22,15 +22,15 @@ program VkCompute {
 
   var dev: pointer = null
 
-  function fail(what: string, r: int) -> void { print(`vulkan: {what} failed, VkResult {r}`);  quit() }
-  function handle(out: bytes) -> long { return vk_get_i64(out, 0) }
-  function has_ext(props: bytes, n: int, want: string) -> bool {
+  unsafe function fail(what: string, r: int) -> void { print(`vulkan: {what} failed, VkResult {r}`);  quit() }
+  unsafe function handle(out: bytes) -> long { return vk_get_i64(out, 0) }
+  unsafe function has_ext(props: bytes, n: int, want: string) -> bool {
     for i in 0 .. n {
       if string(vk_at(props, i * VkExtensionProperties_sizeof + VkExtensionProperties_extensionName)) == want { return true }
     }
     return false
   }
-  function read_all(path: string) -> bytes {
+  unsafe function read_all(path: string) -> bytes {
     let f = file_open(path, "rb")
     if f == null { return null }
     file_seek(f, 0, 2)

@@ -31,9 +31,9 @@ var snd_bank_n:    int      = 0
 
 function audio_init() -> void {
   if snd_ready { return }
-  snd_tab = bytes(AUDIO_CAP * 8)     # one 8-byte pointer slot per handle
+  snd_tab = pointers(AUDIO_CAP)     # one 8-byte pointer slot per handle
   fill(snd_tab, 0, AUDIO_CAP * 8)    # malloc does not zero; empty slots must read null
-  snd_bank_name = bytes(AUDIO_CAP * 8)
+  snd_bank_name = pointers(AUDIO_CAP)
   snd_bank_id = words(AUDIO_CAP)
   snd_ready = true
 }

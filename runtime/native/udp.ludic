@@ -55,13 +55,15 @@ function udp_open(port: int) -> int {
 # the port a socket is bound to (the one the system picked, for port 0)
 function udp_port(h: int) -> int { return lu_udp_port(h) }
 # one datagram of `n` bytes from `buf` to ip:port: the bytes sent, or -1
-function udp_send(h: int, ip: int, port: int, buf: pointer, n: int) -> int {
-  if (buf == null) or (n <= 0) { return -1 }
+function udp_send(h: int, ip: int, port: int, buf: []byte, n: int) -> int {
+  if (buf == null) or (n <= 0) or (n > len(buf)) { return -1 }
   return lu_udp_send(h, ip, port, buf, n)
 }
 # the next waiting datagram, up to `cap` bytes, into `buf`: its length, or 0 when none waits
-function udp_recv(h: int, buf: pointer, cap: int) -> int {
+function udp_recv(h: int, buf: []byte, cap0: int) -> int {
   udp_init()
+  var cap = cap0
+  if buf != null and cap > len(buf) { cap = len(buf) }
   if (buf == null) or (cap <= 0) { return 0 }
   let n = lu_udp_recv(h, buf, cap, u_ipport)
   if (n > 0) and (h >= 1) and (h <= UDP_HANDLES) {

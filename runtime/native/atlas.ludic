@@ -65,10 +65,10 @@ function atlas_init() -> void {
   at_spr_sy    = words(ATLAS_MAX_SPR)
   at_spr_w     = words(ATLAS_MAX_SPR)
   at_spr_h     = words(ATLAS_MAX_SPR)
-  at_name_str  = bytes(ATLAS_MAX_NAME * 8)         # a pointer (8 bytes) per name slot
+  at_name_str  = pointers(ATLAS_MAX_NAME)         # a pointer (8 bytes) per name slot
   at_name_id   = words(ATLAS_MAX_NAME)
-  at_q_name    = bytes(ATLAS_MAX_QUEUE * 8)
-  at_q_path    = bytes(ATLAS_MAX_QUEUE * 8)
+  at_q_name    = pointers(ATLAS_MAX_QUEUE)
+  at_q_path    = pointers(ATLAS_MAX_QUEUE)
 }
 
 # register (name -> atlas id) in the name table so Assets.get / Sprite.named find it.
@@ -376,7 +376,7 @@ function assets_load_one(name: pointer, path: pointer) -> void {
     return
   }
   if path_has_suffix(path, ".ttf") or path_has_suffix(path, ".ttc") {
-    if at_font_name == null { at_font_name = bytes(ATLAS_MAX_FONT * 8);  at_font_id = words(ATLAS_MAX_FONT) }
+    if at_font_name == null { at_font_name = pointers(ATLAS_MAX_FONT);  at_font_id = words(ATLAS_MAX_FONT) }
     if at_font_n < ATLAS_MAX_FONT {
       at_font_name[at_font_n] = name
       at_font_id[at_font_n] = rt_font_load(path)

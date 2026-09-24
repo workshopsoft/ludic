@@ -17,6 +17,21 @@ var g_float_files: []pointer = new []pointer
 # L3 modules: `module NAME` at the top of a file names the module it and everything it imports
 # belong to, until an import names its own; `friend module NAME` may see every module's private
 # names (a test harness). A file in no module - the runtime, a program's root - is public.
+# L7: the files that may write `unsafe` - the runtime, a package from the toolchain or
+# ludic_modules, and what those import from beside them. A project's own files may only
+# with --unsafe (g_unsafe_all).
+var g_uses_bytes: bool = false       # text_of / Fs.read_bytes / Fs.write_bytes: splice bytes.ludic
+var g_trusted_files: []pointer = new []pointer
+var g_unsafe_all: bool = false
+function unsafe_trusted(f: pointer) -> bool {
+  if g_unsafe_all { return true }
+  var i = 0
+  while i < len(g_trusted_files) {
+    if (g_trusted_files[i] == f) { return true }
+    i += 1
+  }
+  return false
+}
 var g_mod_file: []pointer = new []pointer
 var g_mod_name: []pointer = new []pointer
 var g_mod_friends: []pointer = new []pointer
@@ -92,6 +107,16 @@ function eat_id() -> pointer {
 function skipnl() -> void { while toks[pi].kind == TK_NL { pi += 1 } }
 
 # a type: `[]T` slice, `fn(T, U) -> R` function, or a plain name (int/ptr/str/bool/struct)
+# L7: the typed buffers are slices - a length, a bounds check on every index, and a place in the
+# checker - so `floats` is `[]float`, `words` is `[]int`, and so on. `bytes()` stays raw.
+function buffer_slice_ty(t: pointer) -> pointer {
+  if (t == "floats") { return "[]float" }
+  if (t == "words") { return "[]int" }
+  if (t == "fixeds") { return "[]fixed" }
+  if (t == "doubles") { return "[]double" }
+  if (t == "pointers") { return "[]pointer" }
+  return t
+}
 function ptype() -> pointer {
   if (toks[pi].text == "fn") and (toks[pi + 1].text == "(") {
     pi += 1
@@ -125,7 +150,7 @@ function ptype() -> pointer {
   }
   let tn = eat_id()
   if is_op("<") { return gen_type_args(tn) }
-  return tn
+  return buffer_slice_ty(tn)
 }
 
 # ---- expressions -----------------------------------------------------------
@@ -267,6 +292,7 @@ function p_primary() -> Node {
       n.b = block()
       return n
     }
+    if (t.text == "text_of") { g_uses_bytes = true }
     let n = node(E_ID); n.s = t.text; pi += 1; return n
   }
   if is_op("(") { pi += 1; skipnl(); let e = expr(); skipnl(); eat_op(")"); return e }
@@ -279,6 +305,7 @@ function p_postfix() -> Node {
   while true {
     if is_op(".") { pi += 1; let m = node(E_MEMBER); m.a = e; m.s = eat_id(); e = m
       if e.a.kind == E_ID and e.a.s == "Regex" { g_uses_regex = true }   # splice the regex runtime on demand
+      if e.a.kind == E_ID and e.a.s == "Fs" and (e.s == "read_bytes" or e.s == "write_bytes") { g_uses_bytes = true }
       if e.a.kind == E_ID and (e.a.s == "BigInt" or e.a.s == "Decimal") { g_uses_bignum = true }   # splice the bignum runtime on demand
       if e.a.kind == E_ID and (e.a.s == "Dict" or e.a.s == "Set") { g_uses_dict = true }   # splice the hash-table runtime on demand
       if e.a.kind == E_ID and (e.a.s == "Huge" or e.a.s == "Angle" or e.a.s == "Percent") { g_uses_numeric = true }   # splice the huge/angle/percent runtime on demand
@@ -487,6 +514,12 @@ function stmt_body() -> Node {
       if not is_id("on") { perr("detach needs 'on <entity>'") }
       pi += 1; n.a = expr()
       return n
+    }
+    if (t.text == "unsafe") and (toks[pi + 1].text == "{") {    # L7: raw memory allowed inside
+      let un = node(S_UNSAFE)
+      pi += 1
+      un.a = block()
+      return un
     }
     if (t.text == "break") { pi += 1; return node(S_BREAK) }
     if (t.text == "continue") { pi += 1; return node(S_CONTINUE) }
@@ -980,8 +1013,14 @@ function parse_one_decl() -> void {
   if is_id("namespace") { parse_namespace(); return }   # #76 namespace block
   if is_id("var")    { push(prog, parse_var()); return }
   if is_id("const")  { push(prog, parse_const()); return }
+  var is_unsafe = false
+  if is_id("unsafe") and (toks[pi + 1].text == "function") {    # L7: an unsafe function
+    pi += 1
+    is_unsafe = true
+  }
   if is_id("function") {
     let f = parse_fn()
+    if is_unsafe { f.uns = 1 }
     if is_det { push(g_det_names, f.s) }
     if is_export { f.ival = 1 }
     if (sys_phase != null) { push(g_mod_sys_fn, f.s);  push(g_mod_sys_phase, sys_phase) }   # #64: register at load
@@ -1111,6 +1150,7 @@ function do_import(rel: pointer) -> void {
   # a module reaches as far as its own files: a package found through $LUDIC_HOME or
   # ludic_modules is not beside its importer and keeps its own module (or none)
   let beside = full == join_path(cur_dir, rel)
+  if is_runtime_path(rel) or not beside or (beside and unsafe_trusted(g_parse_file)) { push(g_trusted_files, full) }
   if beside and not is_runtime_path(rel) and not (module_of(g_parse_file) == "") { module_set(full, module_of(g_parse_file)) }
   if (src == null) { perr(`cannot open import {full}`) }
   # the audio runtime can arrive through atlas.ludic's own import or the Assets
@@ -1138,6 +1178,9 @@ function maybe_splice_runtime() -> void {
   # L6: the engine's namespaces that are aliases of runtime functions, declared in Ludic
   cur_dir = ""
   do_import("runtime/native/namespaces.ludic")
+  # L7: the byte buffer's API, when a program reads or writes bytes (it opens files through
+  # the asset pack, and a program that does not should not carry the pack's machinery)
+  if g_uses_bytes { do_import("runtime/native/bytes.ludic") }
   cur_dir = saved
   # a game (has systems/components) links the Ludic runtime.
   if has_ecs() {

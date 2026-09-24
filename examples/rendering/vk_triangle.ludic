@@ -21,16 +21,16 @@ program VkTriangle {
   const H: int = 240
   const FMT: int = VK_FORMAT_R8G8B8A8_UNORM
 
-  function fail(what: string, r: int) -> void { print(`vulkan: {what} failed, VkResult {r}`);  quit() }
-  function handle(out: bytes) -> long { return vk_get_i64(out, 0) }
-  function has_ext(props: bytes, n: int, want: string) -> bool {
+  unsafe function fail(what: string, r: int) -> void { print(`vulkan: {what} failed, VkResult {r}`);  quit() }
+  unsafe function handle(out: bytes) -> long { return vk_get_i64(out, 0) }
+  unsafe function has_ext(props: bytes, n: int, want: string) -> bool {
     for i in 0 .. n {
       if string(vk_at(props, i * VkExtensionProperties_sizeof + VkExtensionProperties_extensionName)) == want { return true }
     }
     return false
   }
   var spv_len: int = 0
-  function read_all(path: string) -> bytes {
+  unsafe function read_all(path: string) -> bytes {
     let f = file_open(path, "rb")
     if f == null { return null }
     file_seek(f, 0, 2)
@@ -43,7 +43,7 @@ program VkTriangle {
     return b
   }
   # the first memory type the resource allows that has every property wanted
-  function mem_type(mp: bytes, allowed: int, want: int) -> int {
+  unsafe function mem_type(mp: bytes, allowed: int, want: int) -> int {
     for t in 0 .. vk_get_i32(mp, VkPhysicalDeviceMemoryProperties_memoryTypeCount) {
       let pf = vk_get_i32(mp, VkPhysicalDeviceMemoryProperties_memoryTypes + t * VkMemoryType_sizeof + VkMemoryType_propertyFlags)
       if ((allowed >> t) & 1) == 1 and (pf & want) == want { return t }
@@ -51,14 +51,14 @@ program VkTriangle {
     return -1
   }
   # one colour image, one mip, one layer
-  function color_range(at: bytes, off: int) -> void {
+  unsafe function color_range(at: bytes, off: int) -> void {
     vk_put_i32(at, off + VkImageSubresourceRange_aspectMask, VK_IMAGE_ASPECT_COLOR_BIT)
     vk_put_i32(at, off + VkImageSubresourceRange_baseMipLevel, 0)
     vk_put_i32(at, off + VkImageSubresourceRange_levelCount, 1)
     vk_put_i32(at, off + VkImageSubresourceRange_baseArrayLayer, 0)
     vk_put_i32(at, off + VkImageSubresourceRange_layerCount, 1)
   }
-  function barrier(cb: pointer, image: long, old_layout: int, new_layout: int, src_access: int, dst_access: int, src_stage: int, dst_stage: int) -> void {
+  unsafe function barrier(cb: pointer, image: long, old_layout: int, new_layout: int, src_access: int, dst_access: int, src_stage: int, dst_stage: int) -> void {
     let b = bytes(VkImageMemoryBarrier_sizeof)
     vk_zero(b, VkImageMemoryBarrier_sizeof)
     vk_put_i32(b, VkImageMemoryBarrier_sType, VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER)
@@ -72,7 +72,7 @@ program VkTriangle {
     color_range(b, VkImageMemoryBarrier_subresourceRange)
     vk_cmd_pipeline_barrier(cb, src_stage, dst_stage, 0, 0, null, 0, null, 1, b)
   }
-  function shader_module(dev: pointer, path: string) -> long {
+  unsafe function shader_module(dev: pointer, path: string) -> long {
     let spv = read_all(path)
     if spv == null { print(`vulkan: no SPIR-V at {path} (compile vk_triangle.slang with slangc)`);  quit() }
     let smci = bytes(VkShaderModuleCreateInfo_sizeof)

@@ -26,11 +26,14 @@ property Skin {
   names:    []string,
   pose_r:   floats,        # 4 per node: the pose rotation, model frame
   pose_t:   floats,        # 3 per node: the pose offset, model frame (metres)
-  gmat:     words,        # 16 per node: global matrix this pose
+  gmat:     floats,       # 16 per node: global matrix this pose
+  gmat_v:   [][]float,    # a view of each node's matrix in gmat
   n_joints: int = 0,
   joints:   words,        # node index per joint
-  inv_bind: words,        # 16 per joint
+  inv_bind: floats,       # 16 per joint
+  inv_v:    [][]float,    # a view of each joint's inverse bind matrix
   bones:    floats,        # 16 per joint: what the vertex shader skins with
+  bones_v:  [][]float,    # a view of each joint's matrix in bones
   tmp_l:    floats,
   tmp_q:    floats,
   tmp_a:    floats,
@@ -76,7 +79,8 @@ function skin_load(idx: int) -> Skin {
   sk.n_nodes = n
   sk.par = words(n);  sk.walk = words(n)
   sk.rest_t = floats(n * 3);  sk.rest_r = floats(n * 4);  sk.rest_s = floats(n * 3);  sk.rest_g = floats(n * 4)
-  sk.pose_r = floats(n * 4);  sk.pose_t = floats(n * 3);  sk.gmat = words(n * 16)
+  sk.pose_r = floats(n * 4);  sk.pose_t = floats(n * 3);  sk.gmat = floats(n * 16)
+  sk.gmat_v = m4_views(sk.gmat, n)
   sk.names = new []string
   sk.tmp_l = m4_new();  sk.tmp_q = q_new();  sk.tmp_a = q_new();  sk.tmp_b = q_new();  sk.tmp_c = q_new();  sk.tmp_v = floats(3)
   for i in 0 .. n { sk.par[i] = -1 }
@@ -123,15 +127,17 @@ function skin_load(idx: int) -> Skin {
   if nj > SKIN_MAX_JOINTS { print(`skin: {nj} joints, only the first {SKIN_MAX_JOINTS} are used`);  nj = SKIN_MAX_JOINTS }
   sk.n_joints = nj
   sk.joints = words(nj)
-  sk.inv_bind = words(nj * 16)
+  sk.inv_bind = floats(nj * 16)
+  sk.inv_v = m4_views(sk.inv_bind, nj)
   sk.bones = floats(nj * 16)
+  sk.bones_v = m4_views(sk.bones, nj)
   for j in 0 .. nj { sk.joints[j] = value_as_int(value_at(jl, j)) }
   if value_has(skv, "inverseBindMatrices") != 0 {
     let ib = gltf_accessor(value_as_int(value_get(skv, "inverseBindMatrices")))
-    for i in 0 .. nj * 16 { sk.inv_bind[i] = mem_get_f32_bits(ib, i) }
+    for i in 0 .. nj * 16 { sk.inv_bind[i] = float_from_bits(mem_get_f32_bits(ib, i)) }
     free(ib)
   } else {
-    for j in 0 .. nj { m4_identity(mem_off(sk.inv_bind, j * 64)) }
+    for j in 0 .. nj { m4_identity(sk.inv_v[j]) }
   }
   skin_reset(sk)
   skin_pose(sk)
@@ -144,7 +150,7 @@ function skin_find(sk: Skin, name: string) -> int {
   print(`skin: no node {name}`)
   return -1
 }
-function skin_mat(sk: Skin, node: int) -> floats { return mem_off(sk.gmat, node * 64) }
+function skin_mat(sk: Skin, node: int) -> floats { return sk.gmat_v[node] }
 
 # back to the rest pose
 function skin_reset(sk: Skin) -> void {
@@ -192,7 +198,7 @@ function skin_pose(sk: Skin) -> void {
     else { m4_copy(skin_mat(sk, i), sk.tmp_l) }
   }
   for j in 0 .. sk.n_joints {
-    m4_mul(mem_off(sk.bones, j * 64), skin_mat(sk, sk.joints[j]), mem_off(sk.inv_bind, j * 64))
+    m4_mul(sk.bones_v[j], skin_mat(sk, sk.joints[j]), sk.inv_v[j])
   }
 }
 
@@ -209,10 +215,12 @@ function skin_clone(src: Skin) -> Skin {
   sk.n_nodes = src.n_nodes;  sk.par = src.par;  sk.walk = src.walk
   sk.rest_t = src.rest_t;  sk.rest_r = src.rest_r;  sk.rest_s = src.rest_s;  sk.rest_g = src.rest_g
   sk.names = src.names
-  sk.n_joints = src.n_joints;  sk.joints = src.joints;  sk.inv_bind = src.inv_bind
+  sk.n_joints = src.n_joints;  sk.joints = src.joints;  sk.inv_bind = src.inv_bind;  sk.inv_v = src.inv_v
   let n = src.n_nodes
-  sk.pose_r = floats(n * 4);  sk.pose_t = floats(n * 3);  sk.gmat = words(n * 16)
+  sk.pose_r = floats(n * 4);  sk.pose_t = floats(n * 3);  sk.gmat = floats(n * 16)
+  sk.gmat_v = m4_views(sk.gmat, n)
   sk.bones = floats(src.n_joints * 16)
+  sk.bones_v = m4_views(sk.bones, src.n_joints)
   sk.tmp_l = m4_new();  sk.tmp_q = q_new();  sk.tmp_a = q_new();  sk.tmp_b = q_new();  sk.tmp_c = q_new();  sk.tmp_v = floats(3)
   skin_reset(sk)
   skin_pose(sk)

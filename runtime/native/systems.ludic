@@ -43,7 +43,7 @@ var anim_nclips:      int      = 0
 
 function anim_clip_init() -> void {
   if anim_clip_names == null {
-    anim_clip_names  = bytes(ANIM_MAX_CLIPS * 8)     # a pointer (8 bytes) per slot
+    anim_clip_names  = pointers(ANIM_MAX_CLIPS)     # a pointer (8 bytes) per slot
     anim_clip_fps    = words(ANIM_MAX_CLIPS)
     anim_clip_frames = words(ANIM_MAX_CLIPS)
     anim_clip_mode   = words(ANIM_MAX_CLIPS)

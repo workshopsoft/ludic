@@ -16,11 +16,11 @@ program VkProbe {
 
   const API_1_0: int = 4194304      # VK_MAKE_API_VERSION(0, 1, 0, 0)
 
-  function api_text(v: int) -> string { return `{(v >> 22) & 127}.{(v >> 12) & 1023}.{v & 4095}` }
-  function yes(b: bool) -> string { if b { return "yes" };  return "no " }
+  unsafe function api_text(v: int) -> string { return `{(v >> 22) & 127}.{(v >> 12) & 1023}.{v & 4095}` }
+  unsafe function yes(b: bool) -> string { if b { return "yes" };  return "no " }
 
   # a name in an array of VkExtensionProperties
-  function has_ext(props: bytes, n: int, want: string) -> bool {
+  unsafe function has_ext(props: bytes, n: int, want: string) -> bool {
     for i in 0 .. n {
       let at = vk_at(props, i * VkExtensionProperties_sizeof + VkExtensionProperties_extensionName)
       if string(at) == want { return true }

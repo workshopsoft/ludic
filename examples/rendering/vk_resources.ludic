@@ -14,7 +14,7 @@ program VkResources {
   model Anchor { Marker }
 
   var failures: int = 0
-  function check(what: string, ok: bool) -> void {
+  unsafe function check(what: string, ok: bool) -> void {
     if ok { print(`vulkan: {what} ok`) } else { print(`vulkan: {what} FAILED`);  failures += 1 }
   }
 

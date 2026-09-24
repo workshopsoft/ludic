@@ -415,14 +415,14 @@ var ch_lock:   pointers = null   # a mutex per channel
 function sy_init() -> void {
   if sy_ready { return }
   mx_used  = words(SYNC_MUTEX);   fill(mx_used,  0, SYNC_MUTEX * 4)
-  mx_obj   = bytes(SYNC_MUTEX * 8);  fill(mx_obj, 0, SYNC_MUTEX * 8)
+  mx_obj   = pointers(SYNC_MUTEX);  fill(mx_obj, 0, SYNC_MUTEX * 8)
   at_used  = words(SYNC_ATOMIC);  fill(at_used,  0, SYNC_ATOMIC * 4)
-  at_cell  = bytes(SYNC_ATOMIC * 8);  fill(at_cell, 0, SYNC_ATOMIC * 8)
+  at_cell  = pointers(SYNC_ATOMIC);  fill(at_cell, 0, SYNC_ATOMIC * 8)
   ch_used  = words(SYNC_CHAN);    fill(ch_used,  0, SYNC_CHAN * 4)
   ch_head  = words(SYNC_CHAN);    fill(ch_head,  0, SYNC_CHAN * 4)
   ch_count = words(SYNC_CHAN);    fill(ch_count, 0, SYNC_CHAN * 4)
   ch_buf   = words(SYNC_CHAN * CHAN_CAP);  fill(ch_buf, 0, SYNC_CHAN * CHAN_CAP * 4)
-  ch_lock  = bytes(SYNC_CHAN * 8);  fill(ch_lock, 0, SYNC_CHAN * 8)
+  ch_lock  = pointers(SYNC_CHAN);  fill(ch_lock, 0, SYNC_CHAN * 8)
   sy_ready = true
 }
 
@@ -467,7 +467,7 @@ function sync_atomic() -> int {
   while i < SYNC_ATOMIC {
     if at_used[i] == 0 {
       at_used[i] = 1
-      if at_cell[i] == null { at_cell[i] = words(1) }
+      if at_cell[i] == null { at_cell[i] = data_of(words(1)) }   # the atomics take the cell's address, not its slice
       thr_store(at_cell[i], 0)
       return i + 1
     }

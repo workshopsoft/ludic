@@ -107,6 +107,13 @@ function first_arg_is_text(e: Node) -> bool {
   return t == "string"
 }
 
+# a namespace that computes inline also takes the methods an `alias` gives it (L6): Time.now_us
+# is declared in runtime/native/namespaces.ludic beside Time.now, which the compiler computes
+function emit_alias_or_fail(ns: pointer, meth: pointer, e: Node) -> Val {
+  let al = ns_alias_find(ns, meth)
+  if al < 0 { perr(`unknown builtin {ns}.{meth}`) }
+  return emit_alias_call(al, e)
+}
 function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
   # `Prop.of(e)` / `Prop.has(e)` — typed access to one entity's component, the
   # same binding a query loop makes but for an entity handle held in a variable.
@@ -120,19 +127,19 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
   # bare rt_ name — so `floor`/`round`/`lerp` never leak into the bare namespace.
   if (ns == "Math") {
     if is_math_ns(meth) { return emit_math_ns(meth, e) }
-    perr(`unknown builtin Math.{meth}`)
+    return emit_alias_or_fail("Math", meth, e)
   }
   if (ns == "Text") {
     if is_text_ns(meth) { return emit_text_ns(meth, e) }
-    perr(`unknown builtin Text.{meth}`)
+    return emit_alias_or_fail("Text", meth, e)
   }
   if (ns == "List") {
     if is_list_ns(meth) { return emit_list_ns(meth, e) }
-    perr(`unknown builtin List.{meth}`)
+    return emit_alias_or_fail("List", meth, e)
   }
   if (ns == "Ease") {
     if is_ease_ns(meth) { return emit_ease_ns(meth, e) }
-    perr(`unknown builtin Ease.{meth}`)
+    return emit_alias_or_fail("Ease", meth, e)
   }
   if (ns == "Anim") {
     if is_anim_ns(meth) { return emit_anim_ns(meth, e) }
@@ -148,87 +155,87 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
   }
   if (ns == "Collision") {
     if is_collide_ns(meth) { return emit_collide_ns(meth, e) }
-    perr(`unknown builtin Collision.{meth}`)
+    return emit_alias_or_fail("Collision", meth, e)
   }
   if (ns == "Memory") {
     if is_mem_ns(meth) { return emit_mem_ns(meth, e) }
-    perr(`unknown builtin Memory.{meth}`)
+    return emit_alias_or_fail("Memory", meth, e)
   }
   if (ns == "Color") {
     if is_colorfn_ns(meth) { return emit_colorfn_ns(meth, e) }
-    perr(`unknown builtin Color.{meth}`)
+    return emit_alias_or_fail("Color", meth, e)
   }
   if (ns == "Time") {
     if is_time_ns(meth) { return emit_time_ns(meth, e) }
-    perr(`unknown builtin Time.{meth}`)
+    return emit_alias_or_fail("Time", meth, e)
   }
   if (ns == "Hash") {
     if is_hash_ns(meth) { return emit_hash_ns(meth, e) }
-    perr(`unknown builtin Hash.{meth}`)
+    return emit_alias_or_fail("Hash", meth, e)
   }
   if (ns == "Crypto") {
     if is_crypto_ns(meth) { return emit_crypto_ns(meth, e) }
-    perr(`unknown builtin Crypto.{meth}`)
+    return emit_alias_or_fail("Crypto", meth, e)
   }
   if (ns == "Uuid") {
     if is_uuid_ns(meth) { return emit_uuid_ns(meth, e) }
-    perr(`unknown builtin Uuid.{meth}`)
+    return emit_alias_or_fail("Uuid", meth, e)
   }
   if (ns == "Noise") {
     if is_noise_ns(meth) { return emit_noise_ns(meth, e) }
-    perr(`unknown builtin Noise.{meth}`)
+    return emit_alias_or_fail("Noise", meth, e)
   }
   if (ns == "Log") {
     if is_log_ns(meth) { return emit_log_ns(meth, e) }
-    perr(`unknown builtin Log.{meth}`)
+    return emit_alias_or_fail("Log", meth, e)
   }
   if (ns == "Os") {
     if is_os_ns(meth) { return emit_os_ns(meth, e) }
-    perr(`unknown builtin Os.{meth}`)
+    return emit_alias_or_fail("Os", meth, e)
   }
   if (ns == "Unicode") {
     if is_unicode_ns(meth) { return emit_unicode_ns(meth, e) }
-    perr(`unknown builtin Unicode.{meth}`)
+    return emit_alias_or_fail("Unicode", meth, e)
   }
   if (ns == "Fs") {
     if is_fs_ns(meth) { return emit_fs_ns(meth, e) }
-    perr(`unknown builtin Fs.{meth}`)
+    return emit_alias_or_fail("Fs", meth, e)
   }
   if (ns == "Path") {
     if is_path_ns(meth) { return emit_path_ns(meth, e) }
-    perr(`unknown builtin Path.{meth}`)
+    return emit_alias_or_fail("Path", meth, e)
   }
   if (ns == "Mime") {
     if is_mime_ns(meth) { return emit_mime_ns(meth, e) }
-    perr(`unknown builtin Mime.{meth}`)
+    return emit_alias_or_fail("Mime", meth, e)
   }
   if (ns == "Vector") {
     if is_vector_ns(meth) { return emit_vector_ns(meth, e) }
-    perr(`unknown builtin Vector.{meth}`)
+    return emit_alias_or_fail("Vector", meth, e)
   }
   if (ns == "IVec2") {
     if is_ivec_ns(meth) { return emit_ivec_ns(meth, e) }
-    perr(`unknown builtin IVec2.{meth}`)
+    return emit_alias_or_fail("IVec2", meth, e)
   }
   if (ns == "Rect") {
     if is_rect_ns(meth) { return emit_rect_ns(meth, e) }
-    perr(`unknown builtin Rect.{meth}`)
+    return emit_alias_or_fail("Rect", meth, e)
   }
   if (ns == "Duration") {
     if is_duration_ns(meth) { return emit_duration_ns(meth, e) }
-    perr(`unknown builtin Duration.{meth}`)
+    return emit_alias_or_fail("Duration", meth, e)
   }
   if (ns == "Date") {
     if is_date_ns(meth) { return emit_date_ns(meth, e) }
-    perr(`unknown builtin Date.{meth}`)
+    return emit_alias_or_fail("Date", meth, e)
   }
   if (ns == "DateTime") {
     if is_datetime_ns(meth) { return emit_datetime_ns(meth, e) }
-    perr(`unknown builtin DateTime.{meth}`)
+    return emit_alias_or_fail("DateTime", meth, e)
   }
   if (ns == "Clock") {
     if is_clock_ns(meth) { return emit_clock_ns(meth, e) }
-    perr(`unknown builtin Clock.{meth}`)
+    return emit_alias_or_fail("Clock", meth, e)
   }
   # #80 — entity pool stats. The ECS allocator already recycles freed entity slots
   # through a freelist (L_alloc pops @L_freen before growing @L_entc), and component
@@ -287,7 +294,7 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
       if g_windowed { emit(`  call void @app_{meth}()\n`) }
       return val("0", "void")
     }
-    perr(`unknown builtin App.{meth}`)
+    return emit_alias_or_fail("App", meth, e)
   }
   if (ns == "Pool") {
     if (meth == "capacity") { return val(itoa(MAX_ENT), "int") }                 # max entities
@@ -298,7 +305,7 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
       let fr = emit_bind("load i32, ptr @L_freen")
       return val(emit_bind(`sub i32 {ec}, {fr}`), "int")
     }
-    perr(`unknown builtin Pool.{meth}`)
+    return emit_alias_or_fail("Pool", meth, e)
   }
   # L6: a method declared by `alias` in a namespace block - the engine's own in
   # runtime/native/namespaces.ludic, a package's in its files - is a call to its target
@@ -341,7 +348,7 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
       let nm = emit_expr(e.kids[0])
       return val(emit_bind(`call i32 @L_spawn_prefab(ptr {nm.code})`), "entity")
     }
-    perr(`unknown builtin Prefab.{meth}`)
+    return emit_alias_or_fail("Prefab", meth, e)
   }
   # Camera.* — the world-space camera: a draw offset threaded through the render
   # path (runtime/native/core.ludic). set/follow move it; shake jitters it from
@@ -613,11 +620,17 @@ function emit_call(e: Node) -> Val {
     let w = emit_bind(`zext i32 {n.code} to i64`)
     return val(emit_bind(`call ptr @malloc(i64 {w})`), "pointer")
   }
-  if (name == "words") {                          # words(n): allocate n 32-bit words
-    let n = emit_expr(e.kids[0])
-    let by = emit_bind(`mul i32 {n.code}, 4`)
-    let w = emit_bind(`zext i32 {by} to i64`)
-    return val(emit_bind(`call ptr @malloc(i64 {w})`), "words")
+  if (name == "words") { return emit_sized_slice("int", emit_expr(e.kids[0])) }   # words(n): n zeroed ints
+  if (name == "buffer") and (find_fn(name) == null) { return emit_sized_slice("byte", emit_expr(e.kids[0])) }   # buffer(n): n zeroed bytes (L7)
+  if (name == "fixeds") and (find_fn(name) == null) { return emit_sized_slice("fixed", emit_expr(e.kids[0])) }
+  if (name == "pointers") and (find_fn(name) == null) { return emit_sized_slice("pointer", emit_expr(e.kids[0])) }
+  # view(xs, start, count): `count` elements of xs from `start`, sharing its storage - checked
+  # against xs's length once, when it is made, and bounds-checked like any slice after (L7)
+  if (name == "view") { return emit_view(e) }
+  # data_of(xs): the address of a slice's first element, for handing to C (unsafe, L7)
+  if (name == "data_of") {
+    let sv = emit_expr(e.kids[0])
+    return val(emit_bind(`load ptr, ptr {slice_field(sv.code, 0)}`), "pointer")
   }
   if (name == "fixed") {
     let a = emit_expr(e.kids[0])
@@ -648,7 +661,7 @@ function emit_call(e: Node) -> Val {
   if ((name == "floats") or (name == "doubles")) and (find_fn(name) == null) {
     var ft = "float"
     if (name == "doubles") { ft = "double" }
-    return emit_fp_buffer(ft, emit_expr(e.kids[0]))
+    return emit_sized_slice(ft, emit_expr(e.kids[0]))
   }
   if (name == "floor") { let a = emit_expr(e.kids[0]);  return val(emit_bind(`ashr i32 {a.code}, 16`), "int") }
   # --- the testing framework's assertions (see emit_test_runner) --------------
@@ -854,9 +867,12 @@ function emit_call(e: Node) -> Val {
     let eatys = new []pointer
     var ei = 0
     while ei < len(e.kids) {
-      let v = emit_expr(e.kids[ei])
+      var v = emit_expr(e.kids[ei])
+      # a C function wants a buffer's elements, never a Ludic slice's header
+      if is_slice_ty(v.ty) { v = val(emit_bind(`load ptr, ptr {slice_field(v.code, 0)}`), "pointer") }
       var pty = v.ty
       if ei < len(eptys) { pty = eptys[ei] }
+      if is_slice_ty(pty) { pty = "pointer" }
       push(eargs, coerce_code(v, pty))
       push(eatys, pty)
       ei += 1

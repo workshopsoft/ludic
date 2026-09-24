@@ -35,16 +35,23 @@ function is_intrinsic2(name: pointer) -> bool {
 
 function emit_intrinsic2(name: pointer, e: Node) -> Val {
   if (name == "free") {
-    let p = arg_code(e, 0);  emit("  call void @free(ptr ");  emit(p);  emit(")\n");  return val("0", "void")
+    let fv = emit_expr(e.kids[0])
+    # a slice is its elements and its header: both go (L7)
+    if is_slice_ty(fv.ty) {
+      let fd = emit_bind(`load ptr, ptr {slice_field(fv.code, 0)}`)
+      emit(`  call void @free(ptr {fd})\n`)
+    }
+    emit(`  call void @free(ptr {fv.code})\n`)
+    return val("0", "void")
   }
   if (name == "fill") {
-    let p = arg_code(e, 0);  let v = arg_code(e, 1);  let n = arg_code(e, 2)
+    let p = raw_expr(e.kids[0]).code;  let v = arg_code(e, 1);  let n = arg_code(e, 2)
     let w = emit_bind(`zext i32 {n} to i64`)
     emit("  call ptr @memset(ptr ");  emit(p);  emit(", i32 ");  emit(v);  emit(", i64 ");  emit(w);  emit(")\n")
     return val("0", "void")
   }
   if (name == "offset") {
-    let p = arg_code(e, 0);  let n = arg_code(e, 1)
+    let p = raw_expr(e.kids[0]).code;  let n = arg_code(e, 1)
     let g = nreg()
     emit("  ");  emit(g);  emit(" = getelementptr inbounds i8, ptr ");  emit(p);  emit(", i32 ");  emit(n);  emit("\n")
     return val(g, "pointer")

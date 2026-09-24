@@ -59,6 +59,54 @@ function emit_new_slice(ty: pointer) -> Val {
   return val(h, ty)
 }
 
+# words(n), floats(n), doubles(n): a slice of n zeroed elements, its length n (L7)
+function emit_sized_slice(el: pointer, n: Val) -> Val {
+  let h = emit_new_slice("[]" + el)
+  let esz = emit_sizeof(llty(el))
+  let nn = emit_bind(`zext i32 {n.code} to i64`)
+  let data = emit_bind(`call ptr @calloc(i64 {nn}, i64 {esz})`)
+  emit(`  store ptr {data}, ptr {slice_field(h.code, 0)}\n`)
+  emit(`  store i32 {n.code}, ptr {slice_field(h.code, 1)}\n`)
+  emit(`  store i32 {n.code}, ptr {slice_field(h.code, 2)}\n`)
+  return h
+}
+function emit_view(e: Node) -> Val {
+  let xs = emit_expr(e.kids[0])
+  if not is_slice_ty(xs.ty) { perr(`view takes a slice, and this is {xs.ty}`) }
+  let st = emit_expr(e.kids[1])
+  let ct = emit_expr(e.kids[2])
+  let el = slice_elem(xs.ty)
+  let ln = emit_bind(`load i32, ptr {slice_field(xs.code, 1)}`)
+  let endv = emit_bind(`add i32 {st.code}, {ct.code}`)
+  let ok1 = emit_bind(`icmp ule i32 {endv}, {ln}`)
+  let ok2 = emit_bind(`icmp sge i32 {st.code}, 0`)
+  let ok3 = emit_bind(`icmp sge i32 {ct.code}, 0`)
+  let ok12 = emit_bind(`and i1 {ok1}, {ok2}`)
+  let ok = emit_bind(`and i1 {ok12}, {ok3}`)
+  let lok = lbl("vwok")
+  let lbad = lbl("vwbad")
+  emit(`  br i1 {ok}, label %{lok}, label %{lbad}\n`)
+  emit(`{lbad}:\n`)
+  g_uses_bounds = true
+  let bmsg = emit_str_const(`{g_src_name}:{itoa(e.line)}: view past the end: from `)
+  let bse = emit_bind(stdstream_rhs(2))
+  emit(`  call i32 (ptr, ptr, ...) @fprintf(ptr {bse}, ptr @.fmt_bounds, ptr {bmsg}, i32 {endv}, i32 {ln})\n`)
+  emit("  call void @exit(i32 1)\n  unreachable\n")
+  emit(`{lok}:\n`)
+  let d0 = emit_bind(`load ptr, ptr {slice_field(xs.code, 0)}`)
+  let d1 = emit_bind(`getelementptr inbounds {llty(el)}, ptr {d0}, i32 {st.code}`)
+  let h = emit_new_slice(xs.ty)
+  emit(`  store ptr {d1}, ptr {slice_field(h.code, 0)}\n`)
+  emit(`  store i32 {ct.code}, ptr {slice_field(h.code, 1)}\n`)
+  emit(`  store i32 {ct.code}, ptr {slice_field(h.code, 2)}\n`)
+  return h
+}
+# an expression that a raw-memory intrinsic reads as an address: a slice gives its elements (L7)
+function raw_expr(n: Node) -> Val {
+  let v = emit_expr(n)
+  if is_slice_ty(v.ty) { return val(emit_bind(`load ptr, ptr {slice_field(v.code, 0)}`), "pointer") }
+  return v
+}
 function slice_field(h: pointer, i: int) -> pointer {
   let r = nreg()
   emit("  ");  emit(r);  emit(" = getelementptr inbounds %LSlice, ptr ");  emit(h)

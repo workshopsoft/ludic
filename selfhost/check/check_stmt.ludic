@@ -107,6 +107,13 @@ function ck_stmt(s: Node) -> void {
   if k == S_EXPR { ck_expr(s.a);  return }
   if k == S_MATCH { ck_match(s);  return }
   if k == S_EMIT { ck_emit(s);  return }
+  if k == S_UNSAFE {
+    ck_unsafe_here(s)
+    ck_unsafe += 1
+    ck_block(s.a)
+    ck_unsafe -= 1
+    return
+  }
 }
 function ck_fn_body(d: Node) -> void {
   let m = ck_mark()
@@ -117,7 +124,12 @@ function ck_fn_body(d: Node) -> void {
   }
   ck_ret = d.ty
   if ck_ret == null { ck_ret = "void" }
+  if d.uns == 1 {
+    ck_unsafe_here(d)
+    ck_unsafe += 1
+  }
   ck_block(d.a)
+  if d.uns == 1 { ck_unsafe -= 1 }
   ck_ret = "void"
   ck_pop(m)
 }
@@ -140,7 +152,7 @@ function check_program() -> void {
   gen_collect()
   ck_index()
   var i = 0
-  while i < g_prog_user_end {
+  while i < len(prog) {
     let d = prog[i]
     if d.kind == N_FN { ck_fn_body(d) }
     if d.kind == N_MAIN or d.kind == N_TEST { ck_block(d.a) }

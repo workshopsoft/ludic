@@ -124,7 +124,7 @@ function light_isqrt(n: int) -> int {
 # sqrt(v)*2^8. Used by the normal-map N·L (unit vectors), where inputs are <= 1.
 function light_fsqrt(v: fixed) -> fixed {
   if v <= 0 { return fixed(0) }
-  return light_isqrt(v) << 8
+  return light_isqrt(as_int(v)) << 8
 }
 
 # ---- tier controls (globals) ----------------------------------------------

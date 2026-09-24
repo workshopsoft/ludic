@@ -203,7 +203,7 @@ var gl_log_buf: string = null
 # Compile one shader stage from source; 0 (and the info log on stdout) on failure.
 function gl_shader(kind: int, src: pointer) -> int {
   let id = gl_create_shader(kind)
-  var srcs: pointers = bytes(8)
+  var srcs: pointers = pointers(1)
   srcs[0] = src
   gl_shader_source(id, 1, srcs, null)
   gl_compile_shader(id)
@@ -286,3 +286,8 @@ function gl_framebuffer() -> int {
   gl_gen_framebuffers(1, ids)
   return ids[0]
 }
+
+# Time.now_us / Time.sleep_us (runtime/native/namespaces.ludic): the platform's clock, as an API a
+# program reaches without calling C (L7)
+function time_now_us() -> long { return gl_now_us() }
+function time_sleep_us(us: long) -> void { gl_sleep_us(us) }

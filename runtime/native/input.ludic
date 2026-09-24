@@ -39,7 +39,7 @@ var input_pos:   int   = 0         # replay / record cursor
 
 function input_init() -> void {
   if input_names == null {
-    input_names = bytes(INPUT_MAX_ACT * 8)           # a pointer (8 bytes) per action slot
+    input_names = pointers(INPUT_MAX_ACT)           # a pointer (8 bytes) per action slot
     input_keys  = words(INPUT_MAX_ACT * INPUT_MAX_KEYS)
     input_pads  = words(INPUT_MAX_ACT * INPUT_MAX_KEYS)   # #83 pad buttons per action (+1 encoded)
   }
@@ -236,7 +236,7 @@ var in_wheel: int = 0     # wheel delta this frame
 var in_pad_conn: words = null      # IN_PADS
 var in_pad_btn:  words = null      # IN_PADS
 var in_pad_btn0: words = null      # IN_PADS — pad button mask last frame (edges) — #83
-var in_pad_axis: words = null      # IN_PADS * IN_AXES (fixed)
+var in_pad_axis: fixeds = null     # IN_PADS * IN_AXES
 # touch points: active flag, x, y each
 var in_touch_on: words = null      # IN_TOUCH
 var in_touch_x:  words = null      # IN_TOUCH
@@ -253,7 +253,7 @@ function in_init() -> void {
   in_pad_conn = words(IN_PADS)
   in_pad_btn  = words(IN_PADS)
   in_pad_btn0 = words(IN_PADS)
-  in_pad_axis = words(IN_PADS * IN_AXES)
+  in_pad_axis = fixeds(IN_PADS * IN_AXES)
   in_touch_on = words(IN_TOUCH)
   in_touch_x  = words(IN_TOUCH)
   in_touch_y  = words(IN_TOUCH)

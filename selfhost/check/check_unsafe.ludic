@@ -1,0 +1,29 @@
+# check_unsafe.ludic — L7: raw memory is `unsafe`. A bytes() buffer, indexing a bare pointer,
+# data_of(a slice), free, resize, the raw file calls, Memory.* and calling a C function (an
+# `extern`) are refused outside an `unsafe { }` block or an `unsafe function`. The typed buffers -
+# words(n), floats(n) - are slices, bounds-checked, and need none of it.
+# And `unsafe` itself is only for the files that are the platform: the runtime, a package the
+# toolchain or ludic_modules provides, and what they import beside them - a project's own files
+# may write it only when the build says --unsafe. A game is written against APIs, not memory.
+var ck_unsafe: int = 0                 # how many unsafe blocks and functions enclose this point
+
+# words(n), floats(n) and the rest are slices now - bounds-checked, safe - so what is raw is a
+# bare pointer indexed, and the builtins that hand out or take back addresses
+function ck_is_raw(t: pointer) -> bool { return (t == "pointer") or (t == "bytes") }
+function ck_raw_builtin(name: pointer) -> bool {
+  if (name == "bytes") or (name == "data_of") or (name == "free") or (name == "resize") { return true }
+  return (name == "file_read") or (name == "file_write")
+}
+# the platform - the runtime and the packages - is raw memory by trade: its files are unsafe
+# throughout, and the rule is for a project's own code
+function ck_raw(n: Node, what: pointer) -> void {
+  if ck_unsafe > 0 { return }
+  if n != null and n.file != null and unsafe_trusted(n.file) { return }
+  ck_err("unsafe", n, `{what} is raw memory: it belongs inside unsafe {{ }}, and a game reaches it through an API`)
+}
+# an unsafe block or function where the file may not have one
+function ck_unsafe_here(n: Node) -> void {
+  if n == null or n.file == null { return }
+  if unsafe_trusted(n.file) { return }
+  ck_err("unsafe-block", n, "unsafe is for the runtime and packages; this file may use it only when the build says --unsafe")
+}

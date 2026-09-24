@@ -522,7 +522,7 @@ function rt_running() -> bool {
   if is_windowed() {
     return win_running()
   }
-  return rt_alive
+  return rt_alive != 0
 }
 
 # ---- writing the frame out ------------------------------------------------
@@ -792,7 +792,7 @@ function rt_status_text() -> pointer {
 # only it knows their shape. Everything below belongs to the runtime, so the
 # runtime writes it — same order both ways.
 function rt_save_state(f: pointer) -> void {
-  let w: words = bytes(16)
+  let w: words = words(4)
   w[0] = rt_rng
   w[1] = rt_mapw
   w[2] = rt_maph
@@ -805,7 +805,7 @@ function rt_save_state(f: pointer) -> void {
 }
 
 function rt_load_state(f: pointer) -> void {
-  let w: words = bytes(16)
+  let w: words = words(4)
   file_read(f, w, 16)
   rt_rng = w[0]
   rt_mapw = w[1]

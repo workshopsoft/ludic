@@ -215,6 +215,36 @@ way in its own files. What is still built into the compiler is the namespaces th
 `Math`, `Text`, `List`, `Vector`, `Color`, `Time`, `Date` - and the few methods that choose their
 target by an argument's type (`Audio.play` of a handle or a name).
 
+### Memory is safe unless it says `unsafe`
+
+The typed buffers are slices: `words(n)`, `floats(n)`, `fixeds(n)`, `doubles(n)` and
+`pointers(n)` make `n` zeroed elements of a `[]int`, `[]float`, `[]fixed`, `[]double` or
+`[]pointer`, and the type names `words`, `floats` and the rest mean those slices. Every index is
+checked against the length, so running off the end stops the program at that line instead of
+writing into whatever lies next. `buffer(n)` is `n` zeroed bytes, a `[]byte`; `text_of(b, n)` makes
+text of the first `n`; `Fs.read_bytes(path)` and `Fs.write_bytes(path, b, n)` move them to and from
+a file; `view(xs, start, count)` is part of a slice sharing its storage, checked once when it is
+made (make one where the buffer is made - each is a small allocation).
+
+What is left is raw memory, and is refused outside `unsafe { }` or an `unsafe function`:
+`bytes(n)`, indexing a `pointer` or `bytes`, `free`, `resize`, `Memory.*`, `file_read` and
+`file_write`, `data_of(xs)` (a slice's first element, for C), and calling an `extern` C function.
+A slice passed to an extern goes as its elements' address, never its header.
+
+`unsafe` itself is for the platform: the runtime, a package from the toolchain or
+`ludic_modules`, and what those import from beside them, all of which are unsafe throughout. A
+project's own files may write it only when the build says `--unsafe` (`ludic build --unsafe`) -
+the compiler and its tools build that way; a game is written against APIs and does not.
+
+```ludic
+# doc-check: skip — a fragment
+let px = buffer(w * h * 3)          # a []byte: bounds-checked
+px[0] = 255
+Fs.write_bytes("shot.raw", px, len(px))
+let hp = floats(3)                  # a []float
+hp[2] = 1.5
+```
+
 ## Models (entity kinds)
 
 An `model` names a *kind* of entity and the fixed set of properties it

@@ -17,7 +17,7 @@ var prefs_n:     int      = 0
 namespace Prefs {
   internal function init() -> void {
     if prefs_names != null { return }
-    prefs_names = bytes(PREFS_MAX * 8)
+    prefs_names = pointers(PREFS_MAX)
     prefs_vals  = words(PREFS_MAX)
     prefs_n = 0
   }

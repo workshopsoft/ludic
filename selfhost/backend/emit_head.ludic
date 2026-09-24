@@ -86,6 +86,7 @@ function emit_header() -> void {
   emith("; Ludic (self-hosted) -> LLVM IR\n")
   emith("declare i32 @printf(ptr, ...)\n")
   emith("declare ptr @malloc(i64)\n")
+  emith("declare ptr @calloc(i64, i64)\n")
   emith("declare ptr @realloc(ptr, i64)\n")
   emith("declare void @free(ptr)\n")
   emith("declare i64 @fread(ptr, i64, i64, ptr)\n")

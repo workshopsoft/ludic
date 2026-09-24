@@ -84,6 +84,37 @@ function ck_builtin(e: Node, name: pointer) -> pointer {
     ck_walk_args(e)
     return "int"
   }
+  if (name == "view") and len(e.kids) == 3 {
+    let vt = ck_expr(e.kids[0])
+    ck_give("int", ck_expr(e.kids[1]), e.kids[1], "the start of a view")
+    ck_give("int", ck_expr(e.kids[2]), e.kids[2], "the length of a view")
+    if not ck_unknown(vt) and not is_slice_ty(vt) { ck_err("kind", e, `view takes a slice, and this is {ck_a(vt)}`) }
+    return vt
+  }
+  if (name == "bytes") or (name == "offset") {
+    ck_walk_args(e)
+    return "pointer"
+  }
+  if (name == "data_of") {
+    ck_walk_args(e)
+    return "pointer"
+  }
+  if (name == "words") {
+    ck_walk_args(e)
+    return "[]int"
+  }
+  if (name == "buffer") {
+    ck_walk_args(e)
+    return "[]byte"
+  }
+  if (name == "fixeds") or (name == "pointers") {
+    ck_walk_args(e)
+    return "[]" + name[0 .. len(name) - 1]
+  }
+  if (name == "floats") or (name == "doubles") {
+    ck_walk_args(e)
+    return "[]" + name[0 .. len(name) - 1]
+  }
   if (name == "float_from_bits") {
     ck_walk_args(e)
     return "float"
@@ -107,11 +138,20 @@ function ck_call(e: Node) -> pointer {
     let b = c.a
     if b.kind == E_ID and ck_local(b.s) < 0 and ck_global(b.s) == null {
       # an alias (L6) is its target, labels and all, so its arguments are checked in full
+      if (b.s == "Memory") { ck_raw(e, `Memory.{c.s}`) }
       let al = ns_alias_find(b.s, c.s)
       if al >= 0 {
         var tf = ck_fn(g_al_target[al])
-        if tf == null { tf = ck_extern(g_al_target[al]) }
-        if tf != null { return ck_call_alias(e, `{b.s}.{c.s}`, al, tf) }
+        if tf == null {
+          tf = ck_extern(g_al_target[al])
+          if tf != null { ck_raw(e, `{b.s}.{c.s}, a C function`) }
+        }
+        if tf != null {
+          ck_extern_arg = ck_extern(g_al_target[al]) != null
+          let at = ck_call_alias(e, `{b.s}.{c.s}`, al, tf)
+          ck_extern_arg = false
+          return at
+        }
         ck_walk_args(e)
         return "?"
       }
@@ -141,6 +181,7 @@ function ck_call_named(e: Node, name: pointer) -> pointer {
     ck_walk_args(e)
     return "?"
   }
+  if ck_raw_builtin(name) { ck_raw(e, `{name}()`) }
   let bt = ck_builtin(e, name)
   if bt != null { return bt }
   let f = ck_fn(name)
@@ -148,7 +189,13 @@ function ck_call_named(e: Node, name: pointer) -> pointer {
   let gt = gen_template(g_gen_fns, name)
   if gt != null { return gen_call(e, name, gt) }
   let x = ck_extern(name)
-  if x != null { return ck_call_fn(e, name, x) }
+  if x != null {
+    ck_raw(e, `the C function {name}`)
+    ck_extern_arg = true
+    let xt = ck_call_fn(e, name, x)
+    ck_extern_arg = false
+    return xt
+  }
   let g = ck_global(name)
   if g != null and is_fn_type(g.ty) { return ck_call_sig(e, name, g.ty) }
   ck_walk_args(e)

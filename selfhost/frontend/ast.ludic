@@ -37,6 +37,7 @@ const E_TRY:    int = 52         # try EXPR else { ... } — recover a fallible 
                                  #   a=the fallible (result-typed) expression  b=else block (its
                                  #   trailing expression is the fallback)  line=source line
 const E_LIST:   int = 54         # [a, b, c] — a slice literal; kids=the elements, all of one type
+const S_UNSAFE: int = 56         # unsafe { ... } — raw memory allowed inside (L7); a = the block
 const E_FNREF:  int = 55         # fn name — a top-level function as a value (s=the name); a worker entry point
 # statements
 const S_LET:      int = 10
@@ -87,6 +88,7 @@ property Node {
   file: pointer = null        # the source file the node was parsed from (for diagnostics)
   vis:  int = 0               # L3: 1 when the declaration is `export`ed from its module
   tps:  pointer = null        # L5: a generic declaration's type parameters, "T|U"; null when not generic
+  uns:  int = 0               # L7: 1 on an `unsafe function`
 }
 
 # every node remembers where it was parsed (file + the line of the token the

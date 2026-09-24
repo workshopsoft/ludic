@@ -116,7 +116,7 @@ function model_cross_card() -> Model {
   let idx = words(12)
   idx[0] = 0;  idx[1] = 1;  idx[2] = 2;  idx[3] = 0;  idx[4] = 2;  idx[5] = 3
   idx[6] = 4;  idx[7] = 5;  idx[8] = 6;  idx[9] = 4;  idx[10] = 6;  idx[11] = 7
-  gpu_mesh_indices(m, idx, 48, 4)
+  gpu_mesh_indices(m, data_of(idx), 48, 4)
   free(idx)
   m.count = 12
   gpu_mesh_done(m)
@@ -194,7 +194,7 @@ function model_lupine() -> Model {
   gpu_mesh_vertices(m, v, gl_bytes_of(nq * 4 * 8), GPU_STATIC)
   sc_model_layout(m)
   free(v)
-  gpu_mesh_indices(m, idx, nq * 6 * 4, 4)
+  gpu_mesh_indices(m, data_of(idx), nq * 6 * 4, 4)
   free(idx)
   m.count = nq * 6
   gpu_mesh_done(m)
@@ -267,7 +267,7 @@ function model_lupine_dense() -> Model {
   gpu_mesh_vertices(m, v, gl_bytes_of(nq * 4 * 8), GPU_STATIC)
   sc_model_layout(m)
   free(v)
-  gpu_mesh_indices(m, idx, nq * 6 * 4, 4)
+  gpu_mesh_indices(m, data_of(idx), nq * 6 * 4, 4)
   free(idx)
   m.count = nq * 6
   gpu_mesh_done(m)
@@ -315,7 +315,7 @@ function model_blade() -> Model {
     idx[k + 3] = a + 1;  idx[k + 4] = a + 3;  idx[k + 5] = a + 2
     k += 6
   }
-  gpu_mesh_indices(m, idx, ni * 4, 4)
+  gpu_mesh_indices(m, data_of(idx), ni * 4, 4)
   free(idx)
   m.count = ni
   gpu_mesh_done(m)
@@ -667,7 +667,7 @@ function layer_gpu_prepare(l: Layer) -> bool {
   }
   let n = l.n_lods
   let cap = l.count
-  gpu_buffer_upload(l.g_src, cap * INST_FLOATS * 4, l.inst, GPU_STATIC)
+  gpu_buffer_upload(l.g_src, cap * INST_FLOATS * 4, data_of(l.inst), GPU_STATIC)
   gpu_buffer_upload(l.g_dst, (n + 1) * cap * INST_FLOATS * 4, null, GPU_DYNAMIC)
   if l.g_arena == null { layer_arena_build(l) }
   let n_mat = len(l.g_arena)
@@ -690,14 +690,14 @@ function layer_gpu_prepare(l: Layer) -> bool {
       }
     }
   }
-  gpu_buffer_upload(l.g_cmds, SC_RECS * SC_REC_W, rec, GPU_DYNAMIC)
+  gpu_buffer_upload(l.g_cmds, SC_RECS * SC_REC_W, data_of(rec), GPU_DYNAMIC)
   let zeros = words(5)
   for i in 0 .. 5 { zeros[i] = 0 }
-  gpu_buffer_upload(l.g_counts, 20, zeros, GPU_DYNAMIC)
+  gpu_buffer_upload(l.g_counts, 20, data_of(zeros), GPU_DYNAMIC)
   free(rec);  free(zeros)
   # the card casts every instance, as on the CPU path (layer_grid_build uploads this there)
   l.n_sh = l.count
-  gpu_buffer_upload(l.sh_buf, l.count * INST_FLOATS * 4, l.inst, GPU_STATIC)
+  gpu_buffer_upload(l.sh_buf, l.count * INST_FLOATS * 4, data_of(l.inst), GPU_STATIC)
   l.g_n = l.count
   l.g_on = true
   return true
@@ -715,7 +715,7 @@ function layer_gpu_cull(l: Layer) -> void {
   pr[32] = float_bits(l.lods[0].height * 2.0);  pr[33] = float_bits(4.0)
   let bufs = words(4)
   bufs[0] = l.g_src;  bufs[1] = l.g_dst;  bufs[2] = l.g_cmds;  bufs[3] = l.g_counts
-  gpu_dispatch(sc_cull_prog, pr, 144, bufs, 1)
+  gpu_dispatch(sc_cull_prog, data_of(pr), 144, bufs, 1)
   free(pr);  free(bufs)
 }
 
@@ -762,7 +762,7 @@ function layer_grid_build(l: Layer, cell: float) -> void {
   free(cellof);  free(fill)
   if l.vis == null { l.vis = floats(l.cap * INST_FLOATS) }
   l.n_sh = l.count
-  gpu_buffer_upload(l.sh_buf, l.count * INST_FLOATS * 4, l.inst, GPU_STATIC)
+  gpu_buffer_upload(l.sh_buf, l.count * INST_FLOATS * 4, data_of(l.inst), GPU_STATIC)
 }
 
 # gather the instances of the cells the camera can see (and that are within cull)
@@ -848,7 +848,7 @@ function layer_partition_lods(l: Layer, src: floats, total: int) -> void {
   # casters: the whole (gathered) set from the shadow buffer, unless the impostor casts
   if l.gcell == 0.0 {
     l.n_sh = total
-    if total > 0 { gpu_buffer_upload(l.sh_buf, total * INST_FLOATS * 4, src, GPU_DYNAMIC) }
+    if total > 0 { gpu_buffer_upload(l.sh_buf, total * INST_FLOATS * 4, data_of(src), GPU_DYNAMIC) }
   }
   free(counts);  free(start);  free(fill)
 }
@@ -866,7 +866,7 @@ function layer_update(l: Layer) -> void {
   # per-instance loop — one upload, and the same buffer casts its shadows.
   if l.streamed and l.imp == null and l.near == 0.0 and l.n_lods <= 1 {
     l.n_near = l.count;  l.n_far = 0;  l.n_sh = l.count
-    gpu_buffer_upload(l.buf, l.count * INST_FLOATS * 4, l.inst, GPU_DYNAMIC)
+    gpu_buffer_upload(l.buf, l.count * INST_FLOATS * 4, data_of(l.inst), GPU_DYNAMIC)
     prof_layer_add(gl_now_us() - t_lu, l.count * INST_FLOATS * 4)
     return
   }
@@ -916,10 +916,10 @@ function layer_update(l: Layer) -> void {
   if l.gcell == 0.0 {
     l.n_sh = l.count
     if l.count > 0 {
-      gpu_buffer_upload(l.sh_buf, l.count * INST_FLOATS * 4, l.inst, GPU_DYNAMIC)
+      gpu_buffer_upload(l.sh_buf, l.count * INST_FLOATS * 4, data_of(l.inst), GPU_DYNAMIC)
     }
   }
-  gpu_buffer_upload(l.buf, nn * INST_FLOATS * 4, tmp, GPU_DYNAMIC)
+  gpu_buffer_upload(l.buf, nn * INST_FLOATS * 4, data_of(tmp), GPU_DYNAMIC)
   if nf > 0 {
     gpu_buffer_upload(l.imp_buf, nf * INST_FLOATS * 4, mem_off(tmp, (far_off - nf * INST_FLOATS) * 4), GPU_DYNAMIC)
   }

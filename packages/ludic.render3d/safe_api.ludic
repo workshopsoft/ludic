@@ -1,0 +1,41 @@
+# safe_api.ludic — the renderer's raw buffers, as a program may hold them (L7). The renderer reads
+# glTF accessors, the screen and PNG files into raw memory, which is its business; a game gets the
+# same data as slices, bounds-checked, and never frees anything. Each of these copies or hands over
+# at the boundary, so nothing raw crosses it.
+
+# an accessor's float components (gltf_count elements of gltf_comps floats), as floats
+function gltf_accessor_floats(idx: int) -> floats {
+  let p = gltf_accessor(idx)
+  let n = gltf_count * gltf_comps
+  let out = floats(n)
+  for i in 0 .. n { out[i] = float_from_bits(mem_get_f32_bits(p, i)) }
+  free(p)
+  return out
+}
+# how many elements an accessor holds, without reading them
+function gltf_accessor_count(idx: int) -> int {
+  let acc = value_at(value_get(gltf_doc, "accessors"), idx)
+  return jint(acc, "count", 0)
+}
+# the presented frame as RGB8, bottom row first, into `out` (at least w * h * 3 bytes)
+function gpu_read_screen_bytes(w: int, h: int, out: []byte) -> bool {
+  if out == null or len(out) < w * h * 3 { return false }
+  gpu_read_screen(w, h, data_of(out))
+  return true
+}
+# a PNG's samples (tex_w x tex_h x tex_channels, 8 or 16 bits): into `reuse` when it is large
+# enough - a map swap decodes the same size again - else into a new buffer. null if unreadable.
+function png_decode_bytes(path: string, reuse: []byte) -> []byte {
+  let p = png_decode(path)
+  if p == null { return null }
+  let n = tex_w * tex_h * tex_channels * (tex_depth / 8)
+  var out = reuse
+  if out == null or len(out) < n { out = buffer(n) }
+  for i in 0 .. n { out[i] = p[i] }
+  free(p)
+  return out
+}
+# upload samples laid out as the last decode left them (tex_w, tex_h, tex_channels, tex_depth)
+function tex_upload_bytes(px: []byte, srgb: bool, mips: bool) -> int {
+  return tex_upload(data_of(px), srgb, mips)
+}

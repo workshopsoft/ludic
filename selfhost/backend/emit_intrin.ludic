@@ -42,7 +42,7 @@ function emit_intrinsic(name: pointer, e: Node) -> Val {
     return val(emit_bind(`call ptr @lp_pak_open(ptr {p}, ptr {m})`), "pointer")
   }
   if (name == "file_read") or (name == "file_write") {
-    let f = arg_code(e, 0);  let b = arg_code(e, 1);  let n = arg_code(e, 2)
+    let f = arg_code(e, 0);  let b = raw_expr(e.kids[1]).code;  let n = arg_code(e, 2)
     let w = emit_bind(`zext i32 {n} to i64`)
     var fn2 = "@fread"
     if (name == "file_write") { fn2 = "@fwrite" }

@@ -15,15 +15,17 @@ program NetSnapshot {
   model Unit { Health }
 
   entry {
-    spawn Unit { Health { hp: 50, max: 100 } }
-    let buf = bytes(world_size())
-    for (Health) in query [Health, {Unit}] {
-      print(Health.hp)                    # 50
-      let n = world_save(buf)             # snapshot the whole world
-      Health.hp = 7
-      print(Health.hp)                    # 7
-      world_load(buf, n)                  # roll the world back
-      print(Health.hp)                    # 50 — restored from bytes
+    unsafe {                                 # raw buffers on purpose: built with --unsafe (L7)
+      spawn Unit { Health { hp: 50, max: 100 } }
+      let buf = bytes(world_size())
+      for (Health) in query [Health, {Unit}] {
+        print(Health.hp)                    # 50
+        let n = world_save(buf)             # snapshot the whole world
+        Health.hp = 7
+        print(Health.hp)                    # 7
+        world_load(buf, n)                  # roll the world back
+        print(Health.hp)                    # 50 — restored from bytes
+      }
     }
   }
 }

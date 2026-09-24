@@ -24,7 +24,7 @@ function ck_any(n: Node) -> void {
   if n == null { return }
   if n.kind == N_BLOCK { ck_block(n);  return }
   if n.kind == E_FINIT { ck_expr(n.a);  return }
-  if (n.kind >= S_LET and n.kind <= S_BECOME) or n.kind == S_EMIT { ck_stmt(n);  return }
+  if (n.kind >= S_LET and n.kind <= S_BECOME) or n.kind == S_EMIT or n.kind == S_UNSAFE { ck_stmt(n);  return }
   ck_expr(n)
 }
 function ck_expr(e: Node) -> pointer {
@@ -125,6 +125,7 @@ function ck_member(e: Node) -> pointer {
 function ck_index_of(e: Node) -> pointer {
   let bt = ck_expr(e.a)
   let it = ck_expr(e.b)
+  if ck_is_raw(bt) { ck_raw(e, `indexing {ck_a(bt)}`) }
   if not ck_unknown(it) and not ck_is_int(it) { ck_err("index", e.b, `an index wants an int and this is {ck_a(it)}`) }
   if ck_unknown(bt) { return "?" }
   if is_slice_ty(bt) { return slice_elem(bt) }
