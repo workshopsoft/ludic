@@ -1,0 +1,77 @@
+# elem.ludic - an element made from its template: what kind of node its tag is, its id, classes
+# and attributes (kept for selectors, applied after every rule), its text, and its children
+const EL_BOXES: string = " col div section header footer nav main article aside ul ol li form box "
+const EL_TEXTS: string = " text span p label h1 h2 h3 h4 h5 h6 strong em small b i a "
+function bd_elem(k: UiTpl, e: UiEnv, key: string) -> UiNode {
+  let n = new UiNode
+  n.key = key
+  n.tag = k.tag
+  n.env = e
+  n.sheet = k.sheet
+  n.style = k.style
+  n.children = new []UiNode
+  n.classes = new []string
+  n.akeys = new []string
+  n.avals = new []string
+  n.vals = new []Val
+  el_kind(n, k.tag)
+  for i in 0 .. len(k.keys) { el_keep(n, k.keys[i], ui_eval(k.vals[i], e)) }
+  n.hovered = fr_was_hovered(key)
+  for i in 0 .. len(k.on_keys) {
+    if k.on_keys[i] == "press" {
+      n.act = k.on_acts[i]
+      n.env = e
+    } else { ui_err(`on-{k.on_keys[i]}: an element answers on-press (or onclick); a component's other events are its user's`) }
+  }
+  bd_kids(k.kids, e, key, n.children)
+  if k.text != null { el_text(n, ui_eval_text(k.text, e)) }
+  return n
+}
+function el_kind(n: UiNode, tag: string) -> void {
+  if lk_in(EL_TEXTS, tag) { n.kind = UI_TEXT } else if tag == "row" { n.dir = UI_ROW } else if tag == "button" { n.kind = UI_BUTTON } else if tag == "spacer" { n.kind = UI_SPACER } else if tag == "scroll" { n.kind = UI_SCROLL } else if tag == "img" { n.kind = UI_IMAGE } else if tag == "hr" { n.kind = UI_RULE } else if not lk_in(EL_BOXES, tag) { ui_err(`<{tag}>: there is no such element`) }
+}
+# a box with words in it holds them as a text of its own, as <div>words</div> does
+function el_text(n: UiNode, s: string) -> void {
+  if n.kind != UI_BOX and n.kind != UI_SCROLL {
+    n.text = s
+    return
+  }
+  let t = new UiNode
+  t.kind = UI_TEXT
+  t.text = s
+  t.env = n.env
+  t.children = new []UiNode
+  push(n.children, t)
+}
+# id, class, hidden, disabled and src say what the element is; the rest are applied after the rules
+function el_keep(n: UiNode, key: string, v: Val) -> void {
+  let s = vl_text(v)
+  if key == "id" { n.id = s } else if key == "class" {
+    let parts = lss_split(s, 32)
+    for i in 0 .. len(parts) {
+      if len(parts[i]) > 0 { push(n.classes, parts[i]) }
+    }
+  } else if key == "hidden" { n.hidden = vl_truthy(v) and s != "false" } else if key == "disabled" { n.enabled = not (vl_truthy(v) and s != "false") } else if key == "src" { n.src = s } else {
+    if key == "enabled" { n.enabled = vl_truthy(v) and s != "false" }
+    push(n.akeys, key)
+    push(n.avals, s)
+    push(n.vals, v)
+  }
+}
+# a colour by the renderer's name for it, else #rrggbb (or #rgb)
+function ui_color(name: string) -> int {
+  if name == "none" or name == "" or name == "transparent" { return UI_NONE }
+  if name[0] != 35 {
+    if ui_be != null and ui_be.color != null { return ui_be.color(name) }
+    return 15658734
+  }
+  var c = 0
+  for i in 1 .. len(name) {
+    var d = name[i] - 48
+    if name[i] >= 97 { d = name[i] - 87 }
+    if name[i] >= 65 and name[i] < 97 { d = name[i] - 55 }
+    c = c * 16 + d
+    if len(name) == 4 { c = c * 16 + d }
+  }
+  return c
+}

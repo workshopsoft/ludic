@@ -1,0 +1,70 @@
+# values.ludic - arithmetic, comparison, truth and text over a template's values. A sum of two
+# whole numbers stays whole; anything with a fraction in it is a float; a string in a sum joins.
+function vl_bool(b: bool) -> Val {
+  if b { return Value.bool(1) }
+  return Value.bool(0)
+}
+function vl_num(v: Val) -> bool { return Value.kind(v) == 1 or Value.kind(v) == 2 or Value.kind(v) == 7 }
+function vl_truthy(v: Val) -> bool {
+  let k = Value.kind(v)
+  if k == 0 { return false }
+  if k == 1 or k == 3 { return Value.as_int(v) != 0 }
+  if k == 2 or k == 7 { return Value.as_float(v) != 0.0 }
+  if k == 4 { return len(Value.as_str(v)) > 0 }
+  return true
+}
+function vl_text(v: Val) -> string {
+  let k = Value.kind(v)
+  if k == 0 { return "" }
+  if k == 1 { return string(Value.as_int(v)) }
+  if k == 3 {
+    if Value.as_int(v) != 0 { return "true" }
+    return "false"
+  }
+  if k == 4 { return Value.as_str(v) }
+  if k == 2 or k == 7 {
+    let f = Value.as_float(v)
+    if f == float(int(f)) { return string(int(f)) }
+    return string(f)
+  }
+  return Json.encode(v)
+}
+function vl_arith(op: string, a: Val, b: Val) -> Val {
+  if Value.kind(a) == 1 and Value.kind(b) == 1 {
+    let x = Value.as_int(a)
+    let y = Value.as_int(b)
+    if op == "+" { return Value.int(x + y) }
+    if op == "-" { return Value.int(x - y) }
+    if op == "*" { return Value.int(x * y) }
+    if y == 0 { return Value.int(0) }
+    if op == "/" { return Value.int(x / y) }
+    return Value.int(x % y)
+  }
+  let x = Value.as_float(a)
+  let y = Value.as_float(b)
+  if op == "+" { return Value.float(x + y) }
+  if op == "-" { return Value.float(x - y) }
+  if op == "*" { return Value.float(x * y) }
+  if y == 0.0 { return Value.float(0.0) }
+  if op == "/" { return Value.float(x / y) }
+  return Value.float(x - y * float(int(x / y)))
+}
+function vl_equal(a: Val, b: Val) -> bool {
+  if vl_num(a) and vl_num(b) { return Value.as_float(a) == Value.as_float(b) }
+  if Value.kind(a) != Value.kind(b) { return false }
+  if Value.kind(a) == 4 { return Value.as_str(a) == Value.as_str(b) }
+  if Value.kind(a) == 3 { return Value.as_int(a) == Value.as_int(b) }
+  return Value.kind(a) == 0
+}
+function vl_binary(op: string, a: Val, b: Val) -> Val {
+  if op == "==" { return vl_bool(vl_equal(a, b)) }
+  if op == "!=" { return vl_bool(not vl_equal(a, b)) }
+  if op == "+" and (Value.kind(a) == 4 or Value.kind(b) == 4) { return Value.str(vl_text(a) + vl_text(b)) }
+  if op == "+" or op == "-" or op == "*" or op == "/" or op == "%" { return vl_arith(op, a, b) }
+  let x = Value.as_float(a)
+  let y = Value.as_float(b)
+  if op == "<" { return vl_bool(x < y) }
+  if op == "<=" { return vl_bool(x <= y) }
+  if op == ">" { return vl_bool(x > y) }
+  return vl_bool(x >= y)
+}

@@ -5,7 +5,7 @@
 # shape a JSON save round-trips through. A node is one of:
 #
 #   kind 0 null   kind 1 int   kind 2 fixed   kind 3 bool
-#   kind 4 str    kind 5 list  kind 6 object
+#   kind 4 str    kind 5 list  kind 6 object  kind 7 float
 #
 # ludicc splices this file when it sees Value.* / Json.* / Reflect.serialize /
 # Reflect.apply (parse.ludic). Everything is plain Ludic over heap records — no
@@ -39,6 +39,7 @@ function value_fixed(f: int) -> Val { let v = value_new(2); v.num = f; return v 
 function value_bool(b: int) -> Val { let v = value_new(3); if b != 0 { v.num = 1 }; return v }
 function value_str(s: pointer) -> Val { let v = value_new(4); v.txt = s; return v }
 function value_list() -> Val { return value_new(5) }
+function value_float(x: float) -> Val { let v = value_new(7); v.num = float_bits(x); return v }   # num = the IEEE bits
 function value_object() -> Val { return value_new(6) }
 
 # --- builders (return the container, so calls chain) ------------------------
@@ -53,7 +54,16 @@ function value_put(obj: Val, key: pointer, item: Val) -> Val {
 # --- accessors --------------------------------------------------------------
 function value_kind(v: Val) -> int { return v.tag }
 function value_count(v: Val) -> int { return len(v.kids) }
-function value_as_int(v: Val) -> int { return v.num }
+function value_as_int(v: Val) -> int {
+  if v.tag == 7 { return int(float_from_bits(v.num)) }
+  return v.num
+}
+# a number as a float, whichever kind it was written as
+function value_as_float(v: Val) -> float {
+  if v.tag == 7 { return float_from_bits(v.num) }
+  if v.tag == 2 { return float(v.num) / 65536.0 }
+  return float(v.num)
+}
 function value_as_str(v: Val) -> string { if v.txt == null { return "" };  return v.txt }
 function value_at(list: Val, i: int) -> Val {
   if i < 0 or i >= len(list.kids) { return value_null() }
@@ -118,6 +128,7 @@ function json_encode(v: Val) -> string {
   if v.tag == 2 { return json_fixed_str(v.num) }
   if v.tag == 3 { if v.num != 0 { return "true" };  return "false" }
   if v.tag == 4 { return json_quote(v.txt) }
+  if v.tag == 7 { return string(float_from_bits(v.num)) }
   if v.tag == 5 {
     var out = "["
     var i = 0

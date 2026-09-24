@@ -1,0 +1,26 @@
+# backend.ludic - the renderer seam
+# the renderer. Only rect, text and measure are needed; the rest improve on a default:
+# button draws, focuses and answers a press itself; color names a colour (else #rrggbb);
+# image draws an <img src>; px scales a template's lengths; scroll_begin answers how far a region is scrolled; read
+# reads a template file (else Fs.read_text)
+export property UiBackend {
+  rect: fn(float, float, float, float, int, float) -> void = null
+  text: fn(float, float, string, float, int) -> void = null
+  measure: fn(string, float) -> float = null
+  pointer_x: fn() -> float = null
+  pointer_y: fn() -> float = null
+  pointer_down: fn() -> bool = null
+  button: fn(float, float, float, float, string, bool) -> bool = null
+  image: fn(string, float, float, float, float, int, float) -> void = null   # src x y w h tint alpha
+  color: fn(string) -> int = null
+  px: fn(float) -> float = null
+  scroll_begin: fn(string, float, float, float, float, float) -> float = null
+  scroll_end: fn() -> void = null
+  read: fn(string) -> string = null
+}
+var ui_be: UiBackend = null
+export function ui_backend(b: UiBackend) -> void { ui_be = b }
+function ui_px(v: float) -> float {
+  if ui_be != null and ui_be.px != null { return ui_be.px(v) }
+  return v
+}

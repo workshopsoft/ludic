@@ -1,0 +1,5 @@
+# ludic.ui — components: a UI declared as a tree of function calls, rebuilt from the program's
+# state every frame, laid out, and drawn through whatever renderer the program registers.
+package "ludic.ui"
+version "0.1.0"
+kind source

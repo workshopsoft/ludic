@@ -1,0 +1,68 @@
+# view_conv.ludic — L11: a value of the program as a Value a template reads. A number, a bool
+# and a string are themselves; a list is a list of its items; a record is an object of every
+# field a template could read (a field it could not - a function, a buffer - is left out).
+# Anything else answers null, and the caller says so.
+function vw_conv(v: int, ty: pointer, x: pointer, head: Node) -> pointer {
+  if (ty == "int") { return `value_int({x})` }
+  if (ty == "float") { return `value_float({x})` }
+  if (ty == "string") { return `value_str({x})` }
+  if (ty == "bool") {
+    vw_helper(`function view_val_bool(b: bool) -> Val {{\n  if b {{ return value_bool(1) }}\n  return value_bool(0)\n}}\n`, "view_val_bool", head)
+    return `view_val_bool({x})`
+  }
+  if len(ty) > 2 and ty[0] == '[' and ty[1] == ']' {
+    let et: pointer = ty[2..len(ty)]
+    let name = `view_val_list_{vw_mangle(et)}`
+    if vw_have(name) { return `{name}({x})` }
+    let item = vw_conv(v, et, "xs[i]", head)
+    if item == null { return null }
+    push(g_vw_helpers, name)
+    vw_parse(`function {name}(xs: {ty}) -> Val {{\n  let out = value_list()\n  var i = 0\n  while i < len(xs) {{\n    value_add(out, {item})\n    i += 1\n  }}\n  return out\n}}\n`, head.file, head.line, 1)
+    return `{name}({x})`
+  }
+  let comp = find_comp(ty)
+  if comp == null { return null }
+  let name = `view_val_{vw_mangle(ty)}`
+  if vw_have(name) { return `{name}({x})` }
+  push(g_vw_helpers, name)
+  var src = `function {name}(r: {ty}) -> Val {{\n  if r == null {{ return value_null() }}\n  let o = value_object()\n`
+  var i = 0
+  while i < len(comp.kids) {
+    let f = comp.kids[i]
+    if f.ty != null {
+      let c = vw_conv(v, f.ty, `r.{f.s}`, head)
+      if c != null { src = src + `  value_put(o, "{f.s}", {c})\n` }
+    }
+    i += 1
+  }
+  vw_parse(src + "  return o\n}\n", head.file, head.line, 1)
+  return `{name}({x})`
+}
+function vw_have(name: pointer) -> bool {
+  var i = 0
+  while i < len(g_vw_helpers) {
+    if (g_vw_helpers[i] == name) { return true }
+    i += 1
+  }
+  return false
+}
+function vw_helper(src: pointer, name: pointer, head: Node) -> void {
+  if vw_have(name) { return }
+  push(g_vw_helpers, name)
+  vw_parse(src, head.file, head.line, 1)
+}
+# a type as part of a name: []int -> list_int, a.B -> a_B
+function vw_mangle(ty: pointer) -> pointer {
+  let n = len(ty)
+  let out = bytes(n + 1)
+  var i = 0
+  while i < n {
+    var c = ty[i]
+    let ok = (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or (c >= '0' and c <= '9')
+    if not ok { c = '_' }
+    out[i] = c
+    i += 1
+  }
+  out[n] = 0
+  return out
+}

@@ -1,0 +1,25 @@
+# ui_flex.ludic — ludic.ui's flex layout and stylesheets without a renderer: grow shares the spare
+# room, justify spreads it, a row wraps, align stretches; a stylesheet file (which @imports another)
+# styles whoever imports it, a more specific rule wins, a bound class switches one on, and an attribute beats all.
+import "ludic.ui"
+program UiFlex {
+  numbers float
+  var picked: int = 1
+  view Tags {
+    picked = picked
+  }
+  const BASE: string = "/* base.lss - every text small */\ntext { size: 10 }\n"
+  const THEME: string = "/* theme.lss - the base, and a colour for what is on */\n@import \"base.lss\";\n.on { color: #ff0000 }\n"
+  const PAGE: string = "<ui>\n<import src='theme.lss'/>\n<style>\nrow.bar { gap: 10; pad: 5 }\ntext.big { size: {picked * 20} }\n</style>\n<screen name='flex' gap='8'>\n  <row class='bar' w='fill'>\n    <text grow='1'>a</text><text grow='3'>b</text>\n  </row>\n  <row w='fill' justify='between'><text>l</text><text>m</text><text>r</text></row>\n  <row w='200' wrap='true' gap='4'>\n    <each in='{range(6)}' as='i'><text w='60' class='{i == picked ? \"on\" : \"\"}'>t{i}</text></each>\n  </row>\n  <row h='40' align='stretch' w='fill'><col w='30' bg='#00ff00'/><text self='end' class='big' size='12'>x</text></row>\n</screen>\n</ui>\n"
+  entry {
+    ui_load_text(BASE, "ui/base.lss")
+    ui_load_text(THEME, "ui/theme.lss")
+    ui_load_text(PAGE, "ui/flex.xml")
+    let root: UiNode = ui_nodes("flex", view_tags())
+    ui_place(root, 0.0, 0.0, 400.0, 300.0)
+    let bar = root.children[0]
+    let wrap = root.children[2]
+    let tall = root.children[3]
+    print(`grow {int(bar.children[0].cw)}:{int(bar.children[1].cw)}; between at {int(root.children[1].children[1].x)}; wrap lines at {int(wrap.children[0].y)}, {int(wrap.children[3].y)}; red {wrap.children[1].fg}; stretched {int(tall.children[0].ch)}; own size {int(tall.children[1].rsize)}`)
+  }
+}

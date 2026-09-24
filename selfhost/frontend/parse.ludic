@@ -577,7 +577,9 @@ function parse_fn() -> Node {
   eat_op("(")
   if is_reserved_word(n.s) { perr(`'{n.s}' is a reserved word and cannot name a function`) }
   while not is_op(")") {
-    let p = node(N_PARAM); p.s = eat_id(); eat_op(":"); p.ty = ptype(); push(n.kids, p)
+    let p = node(N_PARAM); p.s = eat_id(); eat_op(":"); p.ty = ptype()
+    if is_op("=") { pi += 1;  p.a = expr() }       # L11: a default, for a call that leaves it out
+    push(n.kids, p)
     if is_op(",") { pi += 1 }
   }
   eat_op(")")
@@ -1014,6 +1016,7 @@ function parse_one_decl() -> void {
   if is_id("namespace") { parse_namespace(); return }   # #76 namespace block
   if is_id("registry") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].text == "of") { parse_registry(); return }   # L8
   if is_id("def") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].kind == TK_ID) { parse_def(); return }            # L8
+  if is_id("view") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].text == "{") { parse_view(); return }            # L11
   if is_id("var")    { push(prog, parse_var()); return }
   if is_id("const")  { push(prog, parse_const()); return }
   var is_unsafe = false
@@ -1510,4 +1513,5 @@ function parse_program() -> void {
     parse_one_decl()
   }
   registries_finish()                              # L8: each registry gets its defs
+  views_finish()                                   # L11: each view gets its model and call
 }

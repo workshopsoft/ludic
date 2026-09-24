@@ -1,0 +1,48 @@
+# ui_templates.ludic — ludic.ui without a renderer: a shop written as a template, reading a view
+# of the program's state and answering with its events. A press is made as a pointer would make
+# it; it runs the view's event once the frame is built, and a component's own state keeps. The
+# row comes from a component library, whose unexported Price no other file can use.
+import "ludic.ui"
+program UiTemplates {
+  numbers float
+  property Item {
+    name: string = ""
+    cost: int = 0
+  }
+  var stock: []Item = new []Item
+  var purse: int = 100
+  var bought: []int = new []int
+  function add(name: string, cost: int) -> void {
+    let it = new Item
+    it.name = name
+    it.cost = cost
+    push(stock, it)
+  }
+  view Shop {
+    purse = purse
+    stock = stock
+    owned: int = len(bought)
+    function afford(i: int) -> bool { return purse >= stock[i].cost }
+    on buy(i: int) {
+      purse -= stock[i].cost
+      push(bought, i)
+    }
+  }
+  const KIT: string = "<ui>\n<component name='Price'><text>${cost}</text></component>\n<component name='Line' export='true'>\n  <state picks='{0}'/>\n  <row gap='8' w='fill' align='center'>\n    <text color='{picked ? \"#ffcc00\" : \"#eeeeee\"}'>{item.name} -</text>\n    <Price cost='{item.cost}'/>\n    <spacer w='fill'/>\n    <text>{picks}</text>\n    <button enabled='{afford(i)}' on-press='buy(i); set picks = picks + 1; emit chose'>Buy</button>\n  </row>\n</component>\n</ui>\n"
+  const PAGE: string = "<ui>\n<import src='kit.xml' as='kit'/>\n<screen name='shop' gap='4' pad='10'>\n  <state pick='{-1}'/>\n  <text size='24'>The purse: ${purse}</text>\n  <each in='{stock}' as='item' index='i'>\n    <kit:Line item='{item}' i='{i}' picked='{pick == i}' on-chose='set pick = i'/>\n  </each>\n  <if test='{owned == 0}'><text>Nothing bought yet</text></if>\n  <else><text>{owned} bought, the last {pick + 1}</text></else>\n</screen>\n</ui>\n"
+  const PRIVATE: string = "<ui><import src='kit.xml' as='kit'/><screen name='peek'><kit:Price cost='{1}'/></screen></ui>"
+  entry {
+    add("Rope", 30)
+    add("Lantern", 80)
+    ui_load_text(KIT, "ui/kit.xml")
+    ui_load_text(PAGE, "ui/shop.xml")
+    ui_load_text(PRIVATE, "ui/peek.xml")
+    var root: UiNode = ui_nodes("shop", view_shop())
+    ui_place(root, 0.0, 0.0, 600.0, 400.0)
+    let press = root.children[1].children[4]
+    ui_press(ui_hit(root, press.x + 1.0, press.y + 1.0))
+    root = ui_nodes("shop", view_shop())
+    ui_place(root, 0.0, 0.0, 600.0, 400.0)
+    print(`purse {purse}, bought {len(bought)}; the lantern is enabled: {root.children[2].children[4].enabled}`)
+  }
+}

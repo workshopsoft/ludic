@@ -1,0 +1,95 @@
+# frame.ludic - a screen shown: built from the view's model, laid out, drawn, and its presses
+# run once the frame is drawn, so nothing the view does can change a frame half way through it
+var fr_was_down: bool = false
+var fr_pressed: []UiNode = new []UiNode
+
+export function ui_show(screen: string, view: UiView, x: float, y: float, w: float, h: float) -> void {
+  let root = ui_nodes(screen, view)
+  if root == null { return }
+  ui_place(root, x, y, w, h)
+  fr_pressed = new []UiNode
+  fr_pointer(root)
+  if ui_be != null and ui_be.text != null { fr_draw(root) }
+  let pressed = fr_pressed
+  for i in 0 .. len(pressed) { ui_press(pressed[i]) }
+}
+# the screen's nodes for this frame, not yet laid out - for a test, or a host that places them
+export function ui_nodes(screen: string, view: UiView) -> UiNode {
+  let si = lib_find(lib_screen_names, screen)
+  if si < 0 {
+    ui_err(`there is no screen {screen} - ui_load the file that has it`)
+    return null
+  }
+  let t = lib_screens[si]
+  ui_view = view
+  let e = env_new(null)
+  if view != null and view.model != null { e.model = view.model() } else { e.model = Value.object() }
+  e.state = st_for(screen, t, e)
+  let root = new UiNode
+  root.key = screen
+  root.children = new []UiNode
+  root.env = e
+  root.sheet = t.sheet
+  root.classes = new []string
+  root.akeys = new []string
+  root.avals = new []string
+  root.vals = new []Val
+  for i in 0 .. len(t.keys) {
+    if t.keys[i] != "name" { el_keep(root, t.keys[i], ui_eval(t.vals[i], e)) }
+  }
+  for i in 0 .. len(root.akeys) { el_apply(root, root.akeys[i], root.vals[i]) }
+  bd_kids(t.kids, e, screen, root.children)
+  cs_tree(root)
+  return root
+}
+export function ui_place(root: UiNode, x: float, y: float, w: float, h: float) -> void {
+  root.w = UI_FILL
+  root.h = UI_FILL
+  var fg = 15658734
+  if ui_be != null and ui_be.color != null { fg = ui_be.color("text") }
+  ly_measure(root, w, ui_px(16.0), fg)
+  ly_place(root, x, y, w, h)
+}
+# a press, as if the pointer had made it
+export function ui_press(n: UiNode) -> void {
+  if n.act != null and n.enabled { act_run(n.act, n.env) }
+}
+# the pointer: what it is over is :hover next frame (the element and all around it, as in CSS),
+# and without a renderer's own button a press on the deepest pressable thing is a press
+var fr_hover: []string = new []string
+function fr_was_hovered(key: string) -> bool { return sel_has(fr_hover, key) }
+function fr_pointer(root: UiNode) -> void {
+  if ui_be == null or ui_be.pointer_x == null {
+    fr_hover = new []string
+    return
+  }
+  let px = ui_be.pointer_x()
+  let py = ui_be.pointer_y()
+  let keys = new []string
+  fr_under(root, px, py, keys)
+  fr_hover = keys
+  if ui_be.button != null or ui_be.pointer_down == null { return }
+  let hit = fr_hit(root, px, py)
+  let down = ui_be.pointer_down()
+  if hit != null and down and not fr_was_down { push(fr_pressed, hit) }
+  fr_was_down = down
+}
+function fr_under(n: UiNode, px: float, py: float, keys: []string) -> void {
+  if px < n.x or py < n.y or px >= n.x + n.cw or py >= n.y + n.ch { return }
+  if n.key != "" { push(keys, n.key) }
+  for i in 0 .. len(n.children) { fr_under(n.children[i], px, py, keys) }
+}
+function fr_hit(n: UiNode, px: float, py: float) -> UiNode {
+  if px < n.x or py < n.y or px >= n.x + n.cw or py >= n.y + n.ch { return null }
+  if n.children != null {
+    var i = len(n.children) - 1
+    while i >= 0 {
+      let h = fr_hit(n.children[i], px, py)
+      if h != null { return h }
+      i -= 1
+    }
+  }
+  if n.act != null { return n }
+  return null
+}
+export function ui_hit(root: UiNode, px: float, py: float) -> UiNode { return fr_hit(root, px, py) }

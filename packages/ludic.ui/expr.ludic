@@ -1,0 +1,82 @@
+# expr.ludic - a template's expressions: `{pick == i}`, `{f.cost}`, `{placed(i) > 0 ? 'out' : ''}`.
+# Read once when the template loads, evaluated against the view's model every frame.
+const X_LIT: int = 0
+const X_NAME: int = 1
+const X_MEMBER: int = 2
+const X_INDEX: int = 3
+const X_CALL: int = 4
+const X_NOT: int = 5
+const X_NEG: int = 6
+const X_BIN: int = 7
+const X_AND: int = 8
+const X_OR: int = 9
+const X_COND: int = 10
+const X_TEXT: int = 11
+
+export property UiExpr {
+  op: int = 0
+  s: string = ""
+  v: Val = null
+  a: UiExpr = null
+  b: UiExpr = null
+  c: UiExpr = null
+  args: []UiExpr = null
+}
+# the text being read, and where the reading is
+property UiRd {
+  s: string = ""
+  i: int = 0
+  err: string = ""
+}
+function ex_new(op: int) -> UiExpr {
+  let e = new UiExpr
+  e.op = op
+  e.args = new []UiExpr
+  return e
+}
+function ex_lit(v: Val) -> UiExpr {
+  let e = ex_new(X_LIT)
+  e.v = v
+  return e
+}
+function rd_ws(r: UiRd) -> void {
+  while r.i < len(r.s) and (r.s[r.i] == 32 or r.s[r.i] == 9 or r.s[r.i] == 10 or r.s[r.i] == 13) { r.i += 1 }
+}
+function rd_c(r: UiRd, k: int) -> int {
+  if r.i + k < len(r.s) { return r.s[r.i + k] }
+  return 0
+}
+# the operator `op` is next: take it
+function rd_op(r: UiRd, op: string) -> bool {
+  rd_ws(r)
+  let n = len(op)
+  if r.i + n > len(r.s) { return false }
+  if r.s[r.i..r.i + n] != op { return false }
+  r.i += n
+  return true
+}
+function rd_is_word(c: int) -> bool { return (c >= 97 and c <= 122) or (c >= 65 and c <= 90) or c == 95 or (c >= 48 and c <= 57) }
+# the word `w` is next, whole: take it
+function rd_word(r: UiRd, w: string) -> bool {
+  rd_ws(r)
+  let at = r.i
+  if not rd_op(r, w) { return false }
+  if rd_is_word(rd_c(r, 0)) {
+    r.i = at
+    return false
+  }
+  return true
+}
+function rd_name(r: UiRd) -> string {
+  rd_ws(r)
+  let at = r.i
+  while r.i < len(r.s) and rd_is_word(r.s[r.i]) { r.i += 1 }
+  if r.i == at {
+    rd_fail(r, "a name")
+    return ""
+  }
+  return r.s[at..r.i]
+}
+function rd_fail(r: UiRd, want: string) -> void {
+  if r.err == "" { r.err = `expected {want} at {r.i + 1} in "{r.s}"` }
+}

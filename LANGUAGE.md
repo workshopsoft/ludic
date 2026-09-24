@@ -275,6 +275,142 @@ The entries are compiled in: nothing is parsed at start-up, and a build that suc
 every resource it uses. The path is the project's (where the build runs), else beside the file that
 declares the registry.
 
+### Default parameters, and calls that name what they change
+
+A parameter can have a default, and a call leaves out what it does not change - the last ones when
+it passes arguments by position, or any it does not name. A call can pass its first arguments by
+position and the rest by name:
+
+```ludic
+program Boxes {
+  numbers float
+  function box(label: string, w: float = 300.0, pad: float = 8.0, bold: bool = false) -> string {
+    return `{label} {w} {pad} {bold}`
+  }
+  entry {
+    print(box("a"))                     # every default
+    print(box("b", 120.0))              # the first two by position
+    print(box("c", bold: true))         # the subject by position, a prop by name
+  }
+}
+```
+
+A default is an expression written with the function and evaluated for each call that leaves it
+out. A call that leaves out a parameter with no default, names one the function does not have, or
+puts a positional argument after a named one is refused with that said.
+
+### Views and templates (`ludic.ui`)
+
+A screen is not code. It is a template - markup in a file the program loads at run time - and it
+sees only what the program's `view` lets it: its fields to read, its functions to ask, and its
+`on` events to send. Nothing else crosses in either direction.
+
+```ludic
+# doc-check: skip — a fragment of a program that imports ludic.ui
+view Shop {
+  purse = purse                         # a global's own type
+  stock = stock                         # a list of records is a list of objects
+  owned: int = len(bought)              # any expression, with its type said
+  function afford(i: int) -> bool { return purse >= stock[i].cost }
+  on buy(i: int) { purse -= stock[i].cost }
+}
+```
+
+`view Shop` writes `view_shop() -> UiView`. Its model is a `Value` object of every field, with a
+record as an object of the fields a template can read and a list or registry as a list. Its `call`
+runs a function or an event by name with arguments from the template: an int, a float, a bool or a
+string.
+
+```xml
+<ui>
+  <import src="kit.xml" as="kit"/>
+  <screen name="shop" gap="4">
+    <state pick="{-1}"/>
+    <text size="24">The purse: ${purse}</text>
+    <each in="{stock}" as="item" index="i">
+      <kit:Line item="{item}" picked="{pick == i}" on-chose="set pick = i">
+        <button enabled="{afford(i)}" on-press="buy(i); emit chose">Buy</button>
+      </kit:Line>
+    </each>
+    <if test="{owned == 0}"><text>Nothing bought yet</text></if>
+    <else><text>{owned} bought</text></else>
+  </screen>
+</ui>
+```
+
+- **Elements.** A template is HTML-shaped:
+  - `div`, `section`, `header`, `footer`, `nav`, `main`, `article`, `aside`, `ul`, `ol`, `li` and
+    `form` are boxes laid out in a column; `row` is one laid out in a row.
+  - `p`, `span`, `label`, `h1`-`h6`, `strong`, `em`, `small`, `b`, `i` and `a` are text; words
+    inside a box become a text of their own.
+  - `button`, `img src`, `hr` and `spacer`; `scroll` is a column that scrolls.
+
+  A default stylesheet, like a browser's, sizes the headings and pads the buttons.
+- **Attributes.** `id`, `class` (which may be bound: `class="{picked ? 'on' : ''} row"`),
+  `style="padding: 4px; color: gold"`, `hidden`, `disabled`, `onclick` or `on-click` (also
+  `on-press`), and any attribute a property is named after (`width="300"`). Any other attribute is
+  kept for `[attr=value]` selectors, as HTML's are.
+- **The box model and flex.** Sizes are border boxes.
+  - `padding` and `margin` take one to four lengths, or one side by name (`padding-left`).
+  - `border` is `2px solid #ffcc00`, or `border-width` and `border-color`.
+  - A length is `12`, `12px`, `50%`, `fit`/`auto` or `fill`.
+  - `flex-grow` (or `flex`) shares out the spare room along `flex-direction`, and `fill` is a share
+    of 1. `justify-content` takes `flex-start`/`start`, `center`, `end`, `space-between`,
+    `space-around` or `space-evenly`.
+  - `align-items` and `align-self` take `start`, `center`, `end` or `stretch`. `flex-wrap: wrap`
+    breaks a row into lines, and `min-`/`max-width`/`-height` bound it.
+  - `gap`, `text-align`, `display: none`, `background(-color)`, `color`, `opacity` and `font-size`
+    are CSS's.
+
+  Every property also has a short name (`w`, `h`, `pad`, `bg`, `size`, `grow`, `align`,
+  `justify`, `self`, `dir`, `wrap`, `alpha`). Rounded corners, font weight and a few more are
+  things the renderer does not draw, and the runtime says so rather than ignoring them. A colour
+  is the renderer's name for one, `#rrggbb` or `#rgb`.
+- **Stylesheets.** Rules go in a `<style>` or in an `.lss` file (a Ludic StyleSheet: CSS-shaped,
+  but its own language, so no editor mistakes it for CSS):
+
+  ```
+  @import "base.lss";
+  button { height: 40px }
+  .card p, #title { color: accent }
+  ul > li:nth-child(even):not(.keep) { background: bg2 }
+  [kind=warn] { border: 1px solid bad }
+  ```
+
+  - Selectors: a tag, `*`, `#id`, `.class`, `[attr]` or `[attr=value]`, and the pseudo-classes
+    `:hover`, `:disabled`, `:enabled`, `:first-child`, `:last-child`, `:only-child`,
+    `:nth-child(odd|even|n)`, `:empty`, `:root` and `:not(...)`. They combine into compounds,
+    joined by a space (anywhere inside) or `>` (straight inside), and a list is `,`-separated.
+  - Specificity is CSS's: ids 100, classes, attributes and pseudo-classes 10, tags 1. The default
+    sheet comes first, then rules from least to most specific (the later rule on a tie), then
+    `style="..."`, then the element's own attributes.
+  - A value may hold `{holes}`, read where the element is.
+  - A file's cascade is its imports' rules, then its own. `<import src="look.lss"/>` brings a
+    stylesheet in, and one stylesheet can `@import` another, so a look is a file others can use.
+    A library's components keep the styles of the file they were written in.
+- **Bindings.** Any attribute and any text can hold `{expressions}`. An attribute that is one
+  `{expression}` and nothing else keeps its type. Expressions read loop names, props, state and the
+  model, and support `.field`, `[index]`, arithmetic, comparisons, `and` / `or` / `not`,
+  `c ? a : b`, `len()`, `range()`, and the view's functions.
+- **Structure.** `<if test>` with an `<else>` after it, and `<each in as index>`.
+- **Components.** `<component name="Line">` is used as `<Line ...>`. Its attributes become its
+  props, and its content goes where it says `<slot/>`. It has its own `<state>`, kept between
+  frames by where it sits in the tree. It sees its props, its state and the model, and never the
+  names of whoever used it.
+- **Events.** `on-press="buy(i); set pick = i"` sends the view an event and sets a state. `emit
+  chose` runs what the component's user gave as `on-chose`. The actions run once the frame is drawn,
+  so no event can change a frame part way through.
+- **Libraries.** A component is private to its file unless it says `export="true"`. `<import
+  src="kit.xml"/>` brings in a file's exported components under their own names; `as="kit"` brings
+  them in as `<kit:Name>`. So a component library is a file of components, and two libraries never
+  collide. Screens belong to the program and are found by name.
+- **The renderer is registered** (`ui_backend`). It must provide rectangles, text and a text's
+  width. It can also provide its own button (focus, keys, sound), colour names, a scale, scroll
+  regions and a file reader. `import "ludic.ui/screen.ludic"` gives the 2D screen's renderer
+  (`ui_screen_backend()`). `ui_load(path)` reads a file, and `ui_show(screen, view_shop(), x, y, w,
+  h)` shows a screen, answers the pointer and runs what was pressed. `ui_nodes`, `ui_place`,
+  `ui_hit`, `ui_press` and `ui_dump` do the same steps one at a time, for a test.
+
 ### Memory is safe unless it says `unsafe`
 
 The typed buffers are slices: `words(n)`, `floats(n)`, `fixeds(n)`, `doubles(n)` and

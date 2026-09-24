@@ -45,6 +45,7 @@ function gen_arg_nodes(e: Node, labels: []pointer) -> []Node {
 }
 function gen_call(e: Node, name: pointer, t: Node) -> pointer {
   let expect = ck_call_expect
+  call_fill_defaults(e, t)
   let tps = gen_split(t.tps)
   let labels = new []pointer
   let ptys = new []pointer

@@ -523,7 +523,7 @@ function emit_call(e: Node) -> Val {
   if (name == "self") { if nself == 0 { return val("0", "entity") };  return val(emit_bind(`load i32, ptr {self_stk[nself - 1]}`), "entity") }
   if (name == "key") { return val(emit_bind("load i32, ptr @L_key"), "int") }
   if (name == "save") { emit("  call void @L_save()\n");  return val("0", "void") }
-  if (name == "ui_build") { emit("  call void @ui_build()\n");  return val("0", "void") }
+  if (name == "ui_build") and (find_fn(name) == null) { emit("  call void @ui_build()\n");  return val("0", "void") }
   if (name == "load") { return val(emit_bind("call i32 @L_load()"), "bool") }
   if (name == "world_size") { return val(emit_bind("call i32 @L_world_size()"), "int") }
   if (name == "world_save") {                     # world_save(buf) -> bytes written
@@ -906,6 +906,7 @@ function emit_call(e: Node) -> Val {
     cname = rtname
   }
   vis_check(fn2, name)
+  call_fill_defaults(e, fn2)                       # L11 - for code the checker does not walk
   reorder_named(e, param_labels(fn2))
   # evaluate args first (their IR is emitted before the call instruction), coercing
   # each to the parameter's declared type so an int passed for a `long` widens.

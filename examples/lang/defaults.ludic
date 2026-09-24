@@ -1,0 +1,18 @@
+# defaults.ludic — L11: a parameter can have a default, and a call leaves out what it does not
+# change - from the end when positional, or by not naming it. The leading arguments can be
+# positional and the rest named, which is how a component is called: its subject, then its props.
+#
+# Running it prints:  a 300.0 8.0 / b 120.0 8.0 / c! 300.0 8.0 / d 300.0 2.0 / x / y
+program Defaults {
+  numbers float
+  const WIDE: float = 300.0
+  function box(label: string, w: float = WIDE, pad: float = 8.0, bold: bool = false) -> string {
+    var b = ""
+    if bold { b = "!" }
+    return `{label}{b} {w} {pad}`
+  }
+  function first<T>(xs: []T, at: int = 0) -> T { return xs[at] }
+  entry {
+    print(`{box("a")} / {box("b", 120.0)} / {box("c", bold: true)} / {box(pad: 2.0, label: "d")} / {first(["x", "y"])} / {first(["x", "y"], 1)}`)
+  }
+}

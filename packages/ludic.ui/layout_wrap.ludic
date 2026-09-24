@@ -1,0 +1,19 @@
+# layout_wrap.ludic - a wrapping row, line by line: each line is as tall as its tallest child
+function ly_place_wrap(n: UiNode, top0: float, inner_w: float) -> void {
+  var top = top0
+  var from = 0
+  while from < len(n.children) {
+    var to = from
+    var line_w = 0.0
+    var line_h = 0.0
+    while to < len(n.children) and (to == from or line_w + n.gap + ly_main(n.children[to], UI_ROW) <= inner_w) {
+      if to > from { line_w = line_w + n.gap }
+      line_w = line_w + ly_main(n.children[to], UI_ROW)
+      line_h = Math.max(line_h, ly_cross(n.children[to], UI_ROW))
+      to += 1
+    }
+    ly_place_line(n, from, to, top, inner_w, line_h)
+    top = top + line_h + n.gap
+    from = to
+  }
+}

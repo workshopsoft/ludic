@@ -1,0 +1,89 @@
+# node.ludic - what a template becomes each frame, the view it reads, and the renderer seam
+export const UI_BOX: int = 0
+export const UI_TEXT: int = 1
+export const UI_SPACER: int = 2
+export const UI_BUTTON: int = 3
+export const UI_SCROLL: int = 4
+export const UI_IMAGE: int = 5
+export const UI_RULE: int = 6         # <hr>: a line across
+export const UI_COL: int = 0
+export const UI_ROW: int = 1
+export const UI_FILL: float = -1.0
+export const UI_START: int = 0
+export const UI_CENTER: int = 1
+export const UI_END: int = 2
+export const UI_STRETCH: int = 3      # align: the whole cross axis
+export const UI_BETWEEN: int = 3      # justify: the spare room between, around or evenly
+export const UI_AROUND: int = 4
+export const UI_EVENLY: int = 5
+export const UI_INHERIT: int = -1
+export const UI_NONE: int = -2
+
+# what a program lets its templates see: `view Name { ... }` writes view_name() -> UiView
+export property UiView {
+  name: string = ""
+  model: fn() -> Val = null
+  call: fn(string, Val) -> Val = null
+}
+
+export property UiNode {
+  kind: int = 0
+  dir: int = 0
+  text: string = ""
+  key: string = ""
+  tag: string = ""              # what it is called in the template, and what a selector names
+  id: string = ""
+  classes: []string = null
+  akeys: []string = null        # its attributes, as text, for [attr=value] selectors
+  avals: []string = null
+  vals: []Val = null            # the same, as values, applied after every rule
+  style: UiRule = null          # its style="..." declarations
+  sheet: UiSheet = null         # the stylesheets of the file it was written in
+  parent: UiNode = null
+  index: int = 0                # its place among its parent's children, for :first-child and the rest
+  src: string = ""              # an <img>'s picture
+  size: float = 0.0
+  w: float = 0.0
+  h: float = 0.0
+  w_pct: float = 0.0            # a width or height as a percentage of the parent's room
+  h_pct: float = 0.0
+  pt: float = 0.0               # padding, top right bottom left
+  pr: float = 0.0
+  pb: float = 0.0
+  pl: float = 0.0
+  mt: float = 0.0               # margin
+  mr: float = 0.0
+  mb: float = 0.0
+  ml: float = 0.0
+  border: float = 0.0
+  border_c: int = -2
+  gap: float = 0.0
+  align: int = 0
+  justify: int = 0
+  talign: int = 0               # text-align
+  self: int = -1                # align-self; -1 takes the parent's align
+  grow: float = 0.0             # a share of the spare room along the parent's direction
+  wrap: bool = false            # a row breaks into lines where it runs out of room
+  min_w: float = 0.0
+  max_w: float = 0.0            # 0 is no limit
+  min_h: float = 0.0
+  max_h: float = 0.0
+  hidden: bool = false          # display: none, or hidden
+  fg: int = -1
+  bg: int = -2
+  alpha: float = 1.0
+  enabled: bool = true
+  act: UiAct = null
+  env: UiEnv = null
+  children: []UiNode = null
+  mw: float = 0.0
+  mh: float = 0.0
+  x: float = 0.0
+  y: float = 0.0
+  cw: float = 0.0
+  ch: float = 0.0
+  rsize: float = 0.0
+  rfg: int = 0
+  hovered: bool = false
+}
+

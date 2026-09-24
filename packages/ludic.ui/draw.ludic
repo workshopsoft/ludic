@@ -1,0 +1,66 @@
+# draw.ludic - the laid-out nodes through the renderer: background, border, then content
+function fr_draw(n: UiNode) -> void {
+  if n.kind == UI_BUTTON {
+    fr_button(n)
+    return
+  }
+  if n.bg >= 0 and ui_be.rect != null { ui_be.rect(n.x, n.y, n.cw, n.ch, n.bg, n.alpha) }
+  fr_border(n)
+  if n.kind == UI_TEXT { ui_be.text(fr_text_x(n), n.y + n.pt + n.border, n.text, n.rsize, n.rfg) }
+  if n.kind == UI_IMAGE and ui_be.image != null { ui_be.image(n.src, n.x + n.pl + n.border, n.y + n.pt + n.border, n.cw - ly_hin(n), n.ch - ly_vin(n), n.rfg, n.alpha) }
+  var off = 0.0
+  if n.kind == UI_SCROLL and ui_be.scroll_begin != null { off = ui_be.scroll_begin(n.key, n.x, n.y, n.cw, n.ch, n.mh) }
+  if off != 0.0 {
+    for i in 0 .. len(n.children) { fr_shift(n.children[i], off) }
+  }
+  if n.children != null {
+    for i in 0 .. len(n.children) { fr_draw(n.children[i]) }
+  }
+  if n.kind == UI_SCROLL and ui_be.scroll_end != null { ui_be.scroll_end() }
+}
+# where a text starts: text-align within the room the box gives it
+function fr_text_x(n: UiNode) -> float {
+  let x = n.x + n.pl + n.border
+  if n.talign == UI_START { return x }
+  let spare = n.cw - ly_hin(n) - ly_text_w(n.text, n.rsize)
+  if n.talign == UI_CENTER { return x + spare / 2.0 }
+  return x + spare
+}
+function fr_border(n: UiNode) -> void {
+  if n.border <= 0.0 or ui_be.rect == null { return }
+  var c = n.border_c
+  if c < 0 { c = n.rfg }
+  let b = n.border
+  ui_be.rect(n.x, n.y, n.cw, b, c, n.alpha)
+  ui_be.rect(n.x, n.y + n.ch - b, n.cw, b, c, n.alpha)
+  ui_be.rect(n.x, n.y, b, n.ch, c, n.alpha)
+  ui_be.rect(n.x + n.cw - b, n.y, b, n.ch, c, n.alpha)
+}
+# the renderer's own button when it has one: it draws, focuses and answers the press
+function fr_button(n: UiNode) -> void {
+  if ui_be.button != null {
+    if ui_be.button(n.x, n.y, n.cw, n.ch, n.text, n.enabled) and n.enabled { push(fr_pressed, n) }
+    return
+  }
+  var bg = n.bg
+  if bg < 0 { bg = 4210752 }
+  if ui_be.rect != null { ui_be.rect(n.x, n.y, n.cw, n.ch, bg, n.alpha) }
+  fr_border(n)
+  ui_be.text(fr_text_x(n), n.y + n.pt + n.border, n.text, n.rsize, n.rfg)
+}
+function fr_shift(n: UiNode, off: float) -> void {
+  n.y = n.y - off
+  if n.children != null {
+    for i in 0 .. len(n.children) { fr_shift(n.children[i], off) }
+  }
+}
+# every node and where it went, one line each - for a test, or a look at a layout
+export function ui_dump(n: UiNode, depth: int) -> string {
+  var pad = ""
+  for d in 0 .. depth { pad = pad + "  " }
+  var out = `{pad}{n.kind} {int(n.x)},{int(n.y)} {int(n.cw)}x{int(n.ch)} {n.text}\n`
+  if n.children != null {
+    for i in 0 .. len(n.children) { out = out + ui_dump(n.children[i], depth + 1) }
+  }
+  return out
+}

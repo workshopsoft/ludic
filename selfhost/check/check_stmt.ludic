@@ -147,10 +147,24 @@ function ck_listener(l: Node) -> void {
   ck_block(l.a)
   ck_pop(m)
 }
+# a program's function named like one of the runtime's takes every call the runtime makes to its
+# own - the runtime's ui_measure started answering to a package's - so the name is refused
+function ck_runtime_shadows() -> void {
+  var r = g_prog_user_end
+  while r < len(prog) {
+    let d = prog[r]
+    if d.kind == N_FN {
+      let u = ck_fn(d.s)
+      if u != null and u != d { ck_err("shadow", u, `{d.s} is also a function of the engine runtime ({d.file}); choose another name`) }
+    }
+    r += 1
+  }
+}
 # the pass also makes the generics real (check_gen.ludic), so it always runs
 function check_program() -> void {
   gen_collect()
   ck_index()
+  ck_runtime_shadows()
   var i = 0
   while i < len(prog) {
     let d = prog[i]

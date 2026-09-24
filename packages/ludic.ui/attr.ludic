@@ -1,0 +1,58 @@
+# attr.ludic - what a property sets, by its CSS name or the short one (width or w, background or
+# bg, font-size or size, ...). An attribute on an element is the same property, applied last.
+const AT_ALIAS: string = " width=w height=h min-width=min-w max-width=max-w min-height=min-h max-height=max-h padding=pad background=bg background-color=bg font-size=size opacity=alpha flex-grow=grow flex-direction=dir flex-wrap=wrap justify-content=justify align-items=align align-self=self row-gap=gap column-gap=gap text-align=talign "
+const AT_UNDRAWN: string = " border-radius font-weight font-family font-style box-shadow text-shadow cursor transition line-height letter-spacing text-decoration overflow z-index position "
+# a stylesheet's property: one that means nothing is said
+function el_attr(n: UiNode, key: string, v: Val) -> void {
+  if el_apply(n, key, v) { return }
+  if lk_in(AT_UNDRAWN, at_alias(key)) { ui_err(`{key}: this renderer does not draw it`) } else { ui_err(`{key}: there is no such property`) }
+}
+# an element's attribute: a property when it names one, otherwise only there for [selectors]
+function el_apply(n: UiNode, key: string, v: Val) -> bool {
+  let k = at_alias(key)
+  return el_size(n, k, v) or el_box(n, k, v) or el_flex(n, k, v) or el_look(n, k, v)
+}
+function at_alias(key: string) -> string {
+  let pat = ` {key}=`
+  let n = len(pat)
+  for i in 0 .. len(AT_ALIAS) - n + 1 {
+    if AT_ALIAS[i..i + n] == pat {
+      var j = i + n
+      while AT_ALIAS[j] != 32 { j += 1 }
+      return AT_ALIAS[i + n..j]
+    }
+  }
+  return key
+}
+function el_size(n: UiNode, key: string, v: Val) -> bool {
+  if key == "w" {
+    n.w_pct = el_pct(v)
+    n.w = el_len(v)
+  } else if key == "h" {
+    n.h_pct = el_pct(v)
+    n.h = el_len(v)
+  } else if key == "min-w" { n.min_w = el_len(v) } else if key == "max-w" { n.max_w = el_len(v) } else if key == "min-h" { n.min_h = el_len(v) } else if key == "max-h" { n.max_h = el_len(v) } else if key == "gap" { n.gap = el_len(v) } else { return false }
+  return true
+}
+function el_flex(n: UiNode, key: string, v: Val) -> bool {
+  let s = vl_text(v)
+  if key == "dir" {
+    n.dir = UI_COL
+    if s == "row" { n.dir = UI_ROW }
+  } else if key == "grow" or key == "flex" { n.grow = el_num(s) } else if key == "wrap" { n.wrap = s == "wrap" or (vl_truthy(v) and s != "false" and s != "nowrap") } else if key == "align" { n.align = el_place(v) } else if key == "self" { n.self = el_place(v) } else if key == "justify" { n.justify = el_place(v) } else if key == "talign" { n.talign = el_place(v) } else if key == "display" { n.hidden = s == "none" } else { return false }
+  return true
+}
+function el_look(n: UiNode, key: string, v: Val) -> bool {
+  let s = vl_text(v)
+  if key == "size" { n.size = el_len(v) } else if key == "color" { n.fg = ui_color(s) } else if key == "bg" { n.bg = ui_color(s) } else if key == "alpha" { n.alpha = el_num(s) } else if key == "enabled" { n.enabled = vl_truthy(v) and s != "false" } else if key == "border-color" { n.border_c = ui_color(s) } else if key == "border-width" { n.border = el_len(v) } else if key == "border" { el_border(n, s) } else { return false }
+  return true
+}
+# border: 1 #ffcc00, or 1px solid accent
+function el_border(n: UiNode, s: string) -> void {
+  let parts = lss_split(s, 32)
+  for i in 0 .. len(parts) {
+    let p = parts[i]
+    if len(p) > 0 and ((p[0] >= 48 and p[0] <= 57) or p[0] == 46) { n.border = ui_px(el_num(p)) } else if p == "none" { n.border = 0.0 } else if len(p) > 0 and p != "solid" { n.border_c = ui_color(p) }
+  }
+  if n.border_c == UI_NONE { n.border_c = n.rfg }
+}

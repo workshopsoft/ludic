@@ -1,0 +1,96 @@
+# expr_parse.ludic - a condition, or/and/not, a comparison, sums and products, then a name
+# with its members, indexes and calls
+function px_cond(r: UiRd) -> UiExpr {
+  let a = px_or(r)
+  if not rd_op(r, "?") { return a }
+  let e = ex_new(X_COND)
+  e.a = a
+  e.b = px_cond(r)
+  if not rd_op(r, ":") { rd_fail(r, "':'") }
+  e.c = px_cond(r)
+  return e
+}
+function px_or(r: UiRd) -> UiExpr {
+  var a = px_and(r)
+  while rd_word(r, "or") or rd_op(r, "||") {
+    let e = ex_new(X_OR)
+    e.a = a
+    e.b = px_and(r)
+    a = e
+  }
+  return a
+}
+function px_and(r: UiRd) -> UiExpr {
+  var a = px_not(r)
+  while rd_word(r, "and") or rd_op(r, "&&") {
+    let e = ex_new(X_AND)
+    e.a = a
+    e.b = px_not(r)
+    a = e
+  }
+  return a
+}
+function px_not(r: UiRd) -> UiExpr {
+  rd_ws(r)
+  if rd_word(r, "not") or (rd_c(r, 0) == 33 and rd_c(r, 1) != 61 and rd_op(r, "!")) {
+    let e = ex_new(X_NOT)
+    e.a = px_not(r)
+    return e
+  }
+  return px_cmp(r)
+}
+function px_bin(op: string, a: UiExpr, b: UiExpr) -> UiExpr {
+  let e = ex_new(X_BIN)
+  e.s = op
+  e.a = a
+  e.b = b
+  return e
+}
+function px_cmp(r: UiRd) -> UiExpr {
+  let a = px_sum(r)
+  let ops = ["==", "!=", "<=", ">=", "<", ">"]
+  for k in 0 .. len(ops) {
+    if rd_op(r, ops[k]) { return px_bin(ops[k], a, px_sum(r)) }
+  }
+  return a
+}
+function px_sum(r: UiRd) -> UiExpr {
+  var a = px_prod(r)
+  while true {
+    if rd_op(r, "+") { a = px_bin("+", a, px_prod(r)) } else if rd_op(r, "-") { a = px_bin("-", a, px_prod(r)) } else { return a }
+  }
+  return a
+}
+function px_prod(r: UiRd) -> UiExpr {
+  var a = px_unary(r)
+  while true {
+    if rd_op(r, "*") { a = px_bin("*", a, px_unary(r)) } else if rd_op(r, "/") { a = px_bin("/", a, px_unary(r)) } else if rd_op(r, "%") { a = px_bin("%", a, px_unary(r)) } else { return a }
+  }
+  return a
+}
+function px_unary(r: UiRd) -> UiExpr {
+  if rd_op(r, "-") {
+    let e = ex_new(X_NEG)
+    e.a = px_unary(r)
+    return e
+  }
+  return px_post(r)
+}
+function px_post(r: UiRd) -> UiExpr {
+  var a = px_primary(r)
+  while r.err == "" {
+    if rd_op(r, ".") {
+      let e = ex_new(X_MEMBER)
+      e.a = a
+      e.s = rd_name(r)
+      a = e
+    } else if rd_op(r, "[") {
+      let e = ex_new(X_INDEX)
+      e.a = a
+      e.b = px_cond(r)
+      if not rd_op(r, "]") { rd_fail(r, "']'") }
+      a = e
+    } else { return a }
+  }
+  return a
+}

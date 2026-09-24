@@ -1,0 +1,9 @@
+# a view field that is not a bare global has to say its type
+import "ludic.ui"
+program ViewUntyped {
+  var a: int = 1
+  view Sums {
+    total = a + 2
+  }
+  entry { print(view_sums().name) }
+}

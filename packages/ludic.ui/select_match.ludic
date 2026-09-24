@@ -1,0 +1,74 @@
+# select_match.ludic - whether a selector picks a node, and how specific it is (as CSS counts)
+function sel_spec(s: UiSel) -> int {
+  var n = 0
+  var at = s
+  while at != null {
+    if at.id != "" { n = n + 100 }
+    n = n + (len(at.classes) + len(at.akeys) + len(at.pseudos)) * 10
+    if at.tag != "" { n = n + 1 }
+    for i in 0 .. len(at.nots) { n = n + sel_spec(at.nots[i]) }
+    at = at.prev
+  }
+  return n
+}
+function sel_match(s: UiSel, n: UiNode) -> bool {
+  if not sel_one(s, n) { return false }
+  if s.prev == null { return true }
+  if s.comb == 1 { return n.parent != null and sel_match(s.prev, n.parent) }
+  var a = n.parent
+  while a != null {
+    if sel_match(s.prev, a) { return true }
+    a = a.parent
+  }
+  return false
+}
+function sel_one(s: UiSel, n: UiNode) -> bool {
+  if s.tag != "" and s.tag != n.tag { return false }
+  if s.id != "" and s.id != n.id { return false }
+  for i in 0 .. len(s.classes) {
+    if not sel_has(n.classes, s.classes[i]) { return false }
+  }
+  for i in 0 .. len(s.akeys) {
+    let v = sel_attr_of(n, s.akeys[i])
+    if v == null or (s.aops[i] == 1 and v != s.avals[i]) { return false }
+  }
+  for i in 0 .. len(s.pseudos) {
+    if not sel_pseudo_ok(s.pseudos[i], s.pargs[i], n) { return false }
+  }
+  for i in 0 .. len(s.nots) {
+    if sel_one(s.nots[i], n) { return false }
+  }
+  return true
+}
+function sel_has(xs: []string, x: string) -> bool {
+  if xs == null { return false }
+  for i in 0 .. len(xs) {
+    if xs[i] == x { return true }
+  }
+  return false
+}
+function sel_attr_of(n: UiNode, key: string) -> string {
+  if n.akeys == null { return null }
+  for i in 0 .. len(n.akeys) {
+    if n.akeys[i] == key { return n.avals[i] }
+  }
+  return null
+}
+function sel_pseudo_ok(p: string, arg: string, n: UiNode) -> bool {
+  if p == "hover" { return n.hovered }
+  if p == "disabled" { return not n.enabled }
+  if p == "enabled" { return n.enabled }
+  if p == "first-child" { return n.index == 0 }
+  if p == "last-child" { return n.parent != null and n.index == len(n.parent.children) - 1 }
+  if p == "only-child" { return n.parent != null and len(n.parent.children) == 1 }
+  if p == "empty" { return len(n.children) == 0 and n.text == "" }
+  if p == "root" { return n.parent == null or n.parent.tag == "" }
+  if p == "nth-child" {
+    let k = n.index + 1
+    if arg == "odd" { return k % 2 == 1 }
+    if arg == "even" { return k % 2 == 0 }
+    return string(k) == arg
+  }
+  ui_err(`:{p}: there is no such pseudo-class here`)
+  return false
+}

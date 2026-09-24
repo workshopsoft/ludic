@@ -462,6 +462,7 @@ namespace Value {
   alias null() = value_null
   alias int(n) = value_int
   alias fixed(f) = value_fixed
+  alias float(x) = value_float
   alias bool(b) = value_bool
   alias str(s) = value_str
   alias list() = value_list
@@ -475,6 +476,7 @@ namespace Value {
   alias count(value) = value_count
   alias kind(value) = value_kind
   alias as_int(value) = value_as_int
+  alias as_float(value) = value_as_float
   alias as_str(value) = value_as_str
 }
 namespace Json {

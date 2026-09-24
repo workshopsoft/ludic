@@ -1,0 +1,70 @@
+# select.ludic - CSS selectors: a compound (`button.primary#buy[type=big]:hover:not(.off)`) joined
+# to the one on its left by a space (anywhere inside it) or `>` (straight inside it)
+export property UiSel {
+  tag: string = ""
+  id: string = ""
+  classes: []string = null
+  akeys: []string = null
+  avals: []string = null        # "" with aops 0 is [attr]; aops 1 is [attr=value]
+  aops: []int = null
+  pseudos: []string = null
+  pargs: []string = null
+  nots: []UiSel = null
+  prev: UiSel = null
+  comb: int = 0                 # 0: prev is an ancestor, 1: prev is the parent
+}
+function sel_new() -> UiSel {
+  let s = new UiSel
+  s.classes = new []string
+  s.akeys = new []string
+  s.avals = new []string
+  s.aops = new []int
+  s.pseudos = new []string
+  s.pargs = new []string
+  s.nots = new []UiSel
+  return s
+}
+function sel_parse(src: string, err: []string) -> UiSel {
+  let r = new UiRd
+  r.s = src
+  var cur: UiSel = null
+  var comb = 0
+  while r.err == "" {
+    rd_ws(r)
+    if r.i >= len(r.s) { break }
+    if rd_op(r, ">") {
+      comb = 1
+      continue
+    }
+    let c = sel_compound(r)
+    c.prev = cur
+    c.comb = comb
+    cur = c
+    comb = 0
+  }
+  if r.err != "" { push(err, r.err) }
+  if cur == null { push(err, `"{src}" selects nothing`) }
+  return cur
+}
+function sel_is_name(c: int) -> bool { return rd_is_word(c) or c == 45 }
+function sel_name(r: UiRd) -> string {
+  let at = r.i
+  while r.i < len(r.s) and sel_is_name(r.s[r.i]) { r.i += 1 }
+  if r.i == at { rd_fail(r, "a name") }
+  return r.s[at..r.i]
+}
+function sel_compound(r: UiRd) -> UiSel {
+  let s = sel_new()
+  if rd_c(r, 0) == 42 { r.i += 1 } else if sel_is_name(rd_c(r, 0)) { s.tag = sel_name(r) }
+  while r.err == "" and r.i < len(r.s) {
+    let c = rd_c(r, 0)
+    if c == 35 {
+      r.i += 1
+      s.id = sel_name(r)
+    } else if c == 46 {
+      r.i += 1
+      push(s.classes, sel_name(r))
+    } else if c == 91 { sel_attr(r, s) } else if c == 58 { sel_pseudo(r, s) } else if c == 42 { r.i += 1 } else { return s }
+  }
+  return s
+}

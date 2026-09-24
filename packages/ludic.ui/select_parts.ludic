@@ -1,0 +1,35 @@
+# select_parts.ludic - a compound's [attribute] and :pseudo-class parts
+function sel_attr(r: UiRd, s: UiSel) -> void {
+  r.i += 1
+  push(s.akeys, sel_name(r))
+  if not rd_op(r, "=") {
+    push(s.aops, 0)
+    push(s.avals, "")
+  } else {
+    push(s.aops, 1)
+    rd_ws(r)
+    let q = rd_c(r, 0)
+    if q == 34 or q == 39 { push(s.avals, Value.as_str(px_string(r, q).v)) } else { push(s.avals, sel_name(r)) }
+  }
+  if not rd_op(r, "]") { rd_fail(r, "']'") }
+}
+function sel_pseudo(r: UiRd, s: UiSel) -> void {
+  r.i += 1
+  let name = sel_name(r)
+  var arg = ""
+  if rd_c(r, 0) == 40 {
+    r.i += 1
+    let at = r.i
+    while r.i < len(r.s) and r.s[r.i] != 41 { r.i += 1 }
+    arg = r.s[at..r.i]
+    r.i += 1
+  }
+  if name == "not" {
+    let inner = new UiRd
+    inner.s = tpl_words(arg)
+    push(s.nots, sel_compound(inner))
+    return
+  }
+  push(s.pseudos, name)
+  push(s.pargs, tpl_words(arg))
+}

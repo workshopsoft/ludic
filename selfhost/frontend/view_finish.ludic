@@ -1,0 +1,84 @@
+# view_finish.ludic — L11: when the program is read, each view gets its model and its call.
+# A field's type is the one it was given or its global's; converting it to a Value is a helper
+# written once for the whole program per type (view_val_<type>), so two views of one record
+# share it.
+function views_finish() -> void {
+  var v = 0
+  while v < len(g_vw_name) {
+    vw_finish(v)
+    v += 1
+  }
+}
+function vw_err(v: int, msg: pointer) -> void {
+  g_err_file = g_vw_node[v].file
+  g_err_line = g_vw_node[v].line
+  g_parsing = false
+  perr(`view {g_vw_name[v]}: {msg}`)
+}
+function vw_finish(v: int) -> void {
+  let head = g_vw_node[v]
+  if find_comp("UiView") == null { vw_err(v, `a view is shown by ludic.ui - import "ludic.ui"`) }
+  let px = vw_prefix(g_vw_name[v])
+  var model = `function {px}model() -> Val {{\n  let o = value_object()\n`
+  let fields = g_vw_fields[v]
+  var i = 0
+  while i < len(fields) {
+    let g = fields[i]
+    let fname = g_vw_fnames[v][i]
+    if g.ty == null { g.ty = vw_infer(v, g, fname) }
+    let conv = vw_conv(v, g.ty, `{g.s}()`, head)
+    if conv == null { vw_err(v, `{fname} is a {g.ty}, which a template cannot read`) }
+    model = model + `  value_put(o, "{fname}", {conv})\n`
+    i += 1
+  }
+  model = model + "  return o\n}\n"
+  vw_parse(model, head.file, head.line, head.vis)
+  vw_parse(vw_call_src(v, px, head), head.file, head.line, head.vis)
+}
+# a field written `name = some_global` has that global's declared type
+function vw_infer(v: int, g: Node, fname: pointer) -> pointer {
+  let e = g.a.kids[0].a
+  if e.kind == E_ID {
+    let d = find_global(e.s)
+    if d != null and d.ty != null { return d.ty }
+  }
+  g_vw_node[v].line = g.line
+  vw_err(v, `say what type {fname} is - {fname}: int = ...`)
+  return "int"
+}
+# call(name, args): each query and event by its name, its arguments out of the list
+function vw_call_src(v: int, px: pointer, head: Node) -> pointer {
+  var src = `function {px}call(name: string, args: Val) -> Val {{\n`
+  let calls = g_vw_calls[v]
+  var i = 0
+  while i < len(calls) {
+    let f = calls[i]
+    var args = ""
+    var p = 0
+    while p < len(f.kids) {
+      if p > 0 { args = args + ", " }
+      args = args + vw_arg(v, f.kids[p], p)
+      p += 1
+    }
+    let call = `{f.s}({args})`
+    src = src + `  if name == "{g_vw_cnames[v][i]}" {{\n`
+    if f.ty == "void" { src = src + `    {call}\n    return value_null()\n` } else {
+      let conv = vw_conv(v, f.ty, call, head)
+      if conv == null { vw_err(v, `{g_vw_cnames[v][i]} answers a {f.ty}, which a template cannot read`) }
+      src = src + `    return {conv}\n`
+    }
+    src = src + "  }\n"
+    i += 1
+  }
+  return src + "  return value_null()\n}\n"
+}
+# a parameter out of the template's argument list
+function vw_arg(v: int, p: Node, i: int) -> pointer {
+  let at = `value_at(args, {i})`
+  if (p.ty == "int") { return `value_as_int({at})` }
+  if (p.ty == "float") { return `value_as_float({at})` }
+  if (p.ty == "bool") { return `value_as_int({at}) != 0` }
+  if (p.ty == "string") { return `value_as_str({at})` }
+  vw_err(v, `{p.s} is a {p.ty}; a template can pass an int, a float, a bool or a string`)
+  return ""
+}

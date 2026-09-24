@@ -1,0 +1,71 @@
+# style_rule.ludic - a rule read, the cascade a file sees, and a node's rules applied to it
+function lss_rule(f: UiFile, sels: string, body: string, err: []string) -> void {
+  let decls = lss_decls(body, err)
+  let each = lss_split(sels, 44)
+  for i in 0 .. len(each) {
+    let sel = tpl_words(each[i])
+    if len(sel) == 0 { continue }
+    let r = new UiRule
+    r.keys = decls.keys
+    r.vals = decls.vals
+    r.sel = sel_parse(sel, err)
+    if r.sel != null {
+      r.spec = sel_spec(r.sel)
+      push(f.own, r)
+    }
+  }
+}
+# `key: value; key: value`, a rule's body or a style="..." attribute
+function lss_decls(body: string, err: []string) -> UiRule {
+  let r = new UiRule
+  r.keys = new []string
+  r.vals = new []UiExpr
+  let decls = lss_split(body, 59)
+  for i in 0 .. len(decls) {
+    let d = decls[i]
+    var colon = -1
+    for k in 0 .. len(d) {
+      if colon < 0 and d[k] == 58 { colon = k }
+    }
+    if colon < 0 {
+      if len(tpl_words(d)) > 0 { push(err, `"{tpl_words(d)}" is not a property: value`) }
+      continue
+    }
+    push(r.keys, tpl_words(d[0..colon]))
+    push(r.vals, tpl_value(tpl_words(d[colon + 1..len(d)]), err))
+  }
+  return r
+}
+function lss_split(s: string, c: int) -> []string {
+  let out = new []string
+  var at = 0
+  for i in 0 .. len(s) {
+    if s[i] == c {
+      push(out, s[at..i])
+      at = i + 1
+    }
+  }
+  push(out, s[at..len(s)])
+  return out
+}
+# the imports' rules, then the file's own, ordered by specificity and otherwise as written
+function sheet_of(f: UiFile) -> UiSheet {
+  let sh = new UiSheet
+  sh.rules = new []UiRule
+  for i in 0 .. len(f.imp) {
+    if f.imp[i].sheet != null {
+      for k in 0 .. len(f.imp[i].sheet.rules) { sheet_add(sh, f.imp[i].sheet.rules[k]) }
+    }
+  }
+  for k in 0 .. len(f.own) { sheet_add(sh, f.own[k]) }
+  return sh
+}
+function sheet_add(sh: UiSheet, r: UiRule) -> void {
+  push(sh.rules, r)
+  var i = len(sh.rules) - 1
+  while i > 0 and sh.rules[i - 1].spec > r.spec {
+    sh.rules[i] = sh.rules[i - 1]
+    i -= 1
+  }
+  sh.rules[i] = r
+}

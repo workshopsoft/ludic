@@ -1,0 +1,62 @@
+# act.ludic - what a press does: `buy(i)` asks the view, `set pick = i` changes a state, and
+# `emit picked` runs what the component's user said with on-picked. Several are `;` apart.
+const A_CALL: int = 0
+const A_SET: int = 1
+const A_EMIT: int = 2
+export property UiAct {
+  kinds: []int = null
+  names: []string = null
+  exprs: []UiExpr = null
+}
+function act_parse(src: string, err: []string) -> UiAct {
+  let a = new UiAct
+  a.kinds = new []int
+  a.names = new []string
+  a.exprs = new []UiExpr
+  let r = new UiRd
+  r.s = src
+  while r.err == "" {
+    rd_ws(r)
+    if r.i >= len(r.s) { break }
+    if rd_word(r, "set") {
+      push(a.kinds, A_SET)
+      push(a.names, rd_name(r))
+      if not rd_op(r, "=") { rd_fail(r, "'='") }
+      push(a.exprs, px_cond(r))
+    } else if rd_word(r, "emit") {
+      push(a.kinds, A_EMIT)
+      push(a.names, rd_name(r))
+      push(a.exprs, null)
+    } else {
+      push(a.kinds, A_CALL)
+      push(a.names, "")
+      push(a.exprs, px_cond(r))
+    }
+    if not rd_op(r, ";") { break }
+  }
+  rd_ws(r)
+  if r.err == "" and r.i < len(r.s) { rd_fail(r, "';' or the end") }
+  if r.err != "" { push(err, r.err) }
+  return a
+}
+function act_run(a: UiAct, e: UiEnv) -> void {
+  for i in 0 .. len(a.kinds) {
+    if a.kinds[i] == A_SET { env_set(e, a.names[i], ui_eval(a.exprs[i], e)) }
+    if a.kinds[i] == A_CALL { ui_eval(a.exprs[i], e) }
+    if a.kinds[i] == A_EMIT { act_emit(a.names[i], e) }
+  }
+}
+function act_emit(name: string, e: UiEnv) -> void {
+  var at = e
+  while at != null {
+    if at.on_names != null {
+      for i in 0 .. len(at.on_names) {
+        if at.on_names[i] == name {
+          act_run(at.on_acts[i], at.on_envs[i])
+          return
+        }
+      }
+    }
+    at = at.parent
+  }
+}

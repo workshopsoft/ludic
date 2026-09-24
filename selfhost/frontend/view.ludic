@@ -1,0 +1,113 @@
+# view.ludic — L11: a view is the one bridge between a program and its UI templates. The
+# program says what a template may read and what it may do, and nothing else crosses:
+#
+#   view Yard {
+#     purse = hm_purse                      # a field: the global's own type
+#     spots: int = yard_spots()             # any expression, with its type said
+#     function placed(hf: int) -> int { return yard_placed(hf) }   # a query a template may ask
+#     on buy(hf: int) { yard_buy(hf) }      # an event a template may send
+#   }
+#
+# gives view_yard() -> UiView, whose model() is a Value object of every field (a record is an
+# object of its fields, a list and a registry a list) and whose call(name, args) runs a query or
+# an event by name with its arguments out of a Value list. Everything generated belongs to the
+# view's own file, so it is in the view's module and exported only when the view is.
+var g_vw_name: []pointer = new []pointer
+var g_vw_node: []Node = new []Node          # view_<name>(), which carries the file, line and export
+var g_vw_fields: [][]Node = new [][]Node    # the getters, one per field
+var g_vw_fnames: [][]pointer = new [][]pointer
+var g_vw_calls: [][]Node = new [][]Node     # the queries and the events
+var g_vw_cnames: [][]pointer = new [][]pointer
+var g_vw_helpers: []pointer = new []pointer # conversion helpers already written, program-wide
+
+function vw_prefix(name: pointer) -> pointer { return `view_{reg_lower(name)}_` }
+
+# view NAME { members }
+function parse_view() -> void {
+  pi += 1
+  let name = eat_id()
+  let px = vw_prefix(name)
+  g_uses_value = true
+  let fields = new []Node
+  let fnames = new []pointer
+  let calls = new []Node
+  let cnames = new []pointer
+  skipnl()
+  eat_op("{")
+  while true {
+    skipnl()
+    if is_op("}") { break }
+    if is_id("function") or is_id("on") {
+      let ev = is_id("on")
+      if ev { toks[pi].text = "function" }
+      let f = parse_fn()
+      push(cnames, f.s)
+      if ev { f.s = px + "on_" + f.s } else { f.s = px + f.s }
+      push(calls, f)
+      push(prog, f)
+      continue
+    }
+    push(fnames, eat_id())
+    push(fields, vw_field(px, fnames[len(fnames) - 1]))
+  }
+  eat_op("}")
+  let head = vw_head(name, px)
+  push(g_vw_name, name)
+  push(g_vw_node, head)
+  push(g_vw_fields, fields)
+  push(g_vw_fnames, fnames)
+  push(g_vw_calls, calls)
+  push(g_vw_cnames, cnames)
+}
+# one field: NAME [: TYPE] = EXPR, as a getter function whose type the finish fills in if unsaid
+function vw_field(px: pointer, fname: pointer) -> Node {
+  let g = node(N_FN)
+  g.s = px + "get_" + fname
+  g.ty = null
+  if is_op(":") {
+    pi += 1
+    g.ty = ptype()
+  }
+  if not is_op("=") { perr(`view field {fname}: say what it is - {fname} = some_global`) }
+  pi += 1
+  let r = node(S_RETURN)
+  r.a = expr()
+  let body = node(N_BLOCK)
+  push(body.kids, r)
+  g.a = body
+  push(prog, g)
+  return g
+}
+# view_<name>() -> UiView, written now so it takes the export the declaration is under
+function vw_head(name: pointer, px: pointer) -> Node {
+  let src = `function view_{reg_lower(name)}() -> UiView {{\n  let v = new UiView\n  v.name = "{name}"\n  v.model = fn {px}model\n  v.call = fn {px}call\n  return v\n}}\n`
+  let at = len(prog)
+  vw_parse(src, g_parse_file, toks[pi].line, 0)
+  return prog[at]
+}
+# parse generated source into the program, as if it were written in `file` at `line`
+function vw_parse(src: pointer, file: pointer, line: int, vis: int) -> void {
+  let saved_toks = toks
+  let saved_pi = pi
+  let saved_file = g_parse_file
+  let saved_parsing = g_parsing
+  g_parse_file = file
+  g_parsing = true
+  lex_at(src, line)
+  pi = 0
+  let at = len(prog)
+  while true {
+    skipnl()
+    if toks[pi].kind == TK_EOF { break }
+    parse_one_decl()
+  }
+  var k = at
+  while k < len(prog) {
+    prog[k].vis = vis
+    k += 1
+  }
+  toks = saved_toks
+  pi = saved_pi
+  g_parse_file = saved_file
+  g_parsing = saved_parsing
+}

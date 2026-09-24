@@ -1,0 +1,81 @@
+# attr_box.ludic - padding and margin (one to four lengths, as CSS writes them, or one side by
+# name), lengths with px or %, and the words that place things
+function el_box(n: UiNode, key: string, v: Val) -> bool {
+  if key == "pad" {
+    el_sides(v)
+    n.pt = el_s0
+    n.pr = el_s1
+    n.pb = el_s2
+    n.pl = el_s3
+  } else if key == "margin" {
+    el_sides(v)
+    n.mt = el_s0
+    n.mr = el_s1
+    n.mb = el_s2
+    n.ml = el_s3
+  } else if key == "padding-top" { n.pt = el_len(v) } else if key == "padding-right" { n.pr = el_len(v) } else if key == "padding-bottom" { n.pb = el_len(v) } else if key == "padding-left" { n.pl = el_len(v) } else if key == "margin-top" { n.mt = el_len(v) } else if key == "margin-right" { n.mr = el_len(v) } else if key == "margin-bottom" { n.mb = el_len(v) } else if key == "margin-left" { n.ml = el_len(v) } else { return false }
+  return true
+}
+var el_s0: float = 0.0
+var el_s1: float = 0.0
+var el_s2: float = 0.0
+var el_s3: float = 0.0
+# top right bottom left out of 1 to 4 lengths
+function el_sides(v: Val) -> void {
+  let parts = new []float
+  if vl_num(v) { push(parts, ui_px(Value.as_float(v))) } else {
+    let words = lss_split(vl_text(v), 32)
+    for i in 0 .. len(words) {
+      if len(words[i]) > 0 { push(parts, ui_px(el_num(words[i]))) }
+    }
+  }
+  while len(parts) < 4 {
+    if len(parts) == 0 { push(parts, 0.0) } else if len(parts) == 1 { push(parts, parts[0]) } else if len(parts) == 2 { push(parts, parts[0]) } else { push(parts, parts[1]) }
+  }
+  el_s0 = parts[0]
+  el_s1 = parts[1]
+  el_s2 = parts[2]
+  el_s3 = parts[3]
+}
+# a length: a number, 10px, fill, fit or auto (a percentage is el_pct's)
+function el_len(v: Val) -> float {
+  if vl_num(v) { return ui_px(Value.as_float(v)) }
+  let s = vl_text(v)
+  if s == "fill" { return UI_FILL }
+  if s == "fit" or s == "auto" or (len(s) > 0 and s[len(s) - 1] == 37) { return 0.0 }
+  return ui_px(el_num(s))
+}
+function el_pct(v: Val) -> float {
+  let s = vl_text(v)
+  if len(s) > 1 and s[len(s) - 1] == 37 { return el_num(s) }
+  return 0.0
+}
+# the number at the front of `12.5px`
+function el_num(s: string) -> float {
+  var f = 0.0
+  var unit = 0.0
+  var neg = false
+  for i in 0 .. len(s) {
+    let c = s[i]
+    if c == 45 and i == 0 { neg = true } else if c == 46 { unit = 0.1 } else if c >= 48 and c <= 57 {
+      if unit > 0.0 {
+        f = f + float(c - 48) * unit
+        unit = unit * 0.1
+      } else { f = f * 10.0 + float(c - 48) }
+    } else { break }
+  }
+  if neg { return 0.0 - f }
+  return f
+}
+# start, center, end, stretch; for justify also between, around, evenly - with CSS's spellings
+function el_place(v: Val) -> int {
+  var s = vl_text(v)
+  if len(s) > 6 and s[0..6] == "space-" { s = s[6..len(s)] }
+  if len(s) > 5 and s[0..5] == "flex-" { s = s[5..len(s)] }
+  if s == "center" { return UI_CENTER }
+  if s == "end" or s == "right" { return UI_END }
+  if s == "stretch" or s == "between" { return 3 }
+  if s == "around" { return UI_AROUND }
+  if s == "evenly" { return UI_EVENLY }
+  return UI_START
+}

@@ -70,6 +70,11 @@ function emit_sized_slice(el: pointer, n: Val) -> Val {
   emit(`  store i32 {n.code}, ptr {slice_field(h.code, 2)}\n`)
   return h
 }
+# the file a runtime error names: the one the expression is written in, not the program's own
+function src_name_of(e: Node) -> pointer {
+  if e == null or e.file == null { return g_src_name }
+  return e.file
+}
 function emit_view(e: Node) -> Val {
   let xs = emit_expr(e.kids[0])
   if not is_slice_ty(xs.ty) { perr(`view takes a slice, and this is {xs.ty}`) }
@@ -88,7 +93,7 @@ function emit_view(e: Node) -> Val {
   emit(`  br i1 {ok}, label %{lok}, label %{lbad}\n`)
   emit(`{lbad}:\n`)
   g_uses_bounds = true
-  let bmsg = emit_str_const(`{g_src_name}:{itoa(e.line)}: view past the end: from `)
+  let bmsg = emit_str_const(`{src_name_of(e)}:{itoa(e.line)}: view past the end: from `)
   let bse = emit_bind(stdstream_rhs(2))
   emit(`  call i32 (ptr, ptr, ...) @fprintf(ptr {bse}, ptr @.fmt_bounds, ptr {bmsg}, i32 {endv}, i32 {ln})\n`)
   emit("  call void @exit(i32 1)\n  unreachable\n")

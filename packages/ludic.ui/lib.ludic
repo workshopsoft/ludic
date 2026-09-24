@@ -1,0 +1,78 @@
+# lib.ludic - template files. A file's <component>s are its own unless marked export="true";
+# <import src="kit.xml"/> brings a file's exported components in by their names, and
+# <import src="kit.xml" as="kit"/> as <kit:Name>, so a component library is a file of them and two
+# libraries never collide. A file's <style>s, and its imports' before them, style what it writes. A <screen> is the program's, by name, from whichever file has it.
+export property UiFile {
+  path: string = ""
+  names: []string = null
+  comps: []UiTpl = null
+  exported: []bool = null
+  imp_as: []string = null
+  imp: []UiFile = null
+  own: []UiRule = null
+  sheet: UiSheet = null
+}
+var lib_files: []UiFile = new []UiFile
+var lib_screen_names: []string = new []string
+var lib_screens: []UiTpl = new []UiTpl
+# the file a path names, read once
+export function ui_load(path: string) -> bool { return lib_file(path) != null }
+function lib_file(path: string) -> UiFile {
+  for i in 0 .. len(lib_files) {
+    if lib_files[i].path == path { return lib_files[i] }
+  }
+  let src = lib_text(path)
+  if len(src) == 0 {
+    ui_err(`{path}: cannot read it`)
+    return null
+  }
+  if lss_is(path) { return lss_file(src, path) }
+  return lib_read(src, path)
+}
+# a file's text, as if read from `path` (its imports are found beside it)
+export function ui_load_text(src: string, path: string) -> void {
+  if lss_is(path) { lss_file(src, path) } else { lib_read(src, path) }
+}
+function lib_read(src: string, path: string) -> UiFile {
+  let f = lib_new(path)
+  let root = tpl_read(Xml.parse(src), path)
+  var tops = root.kids
+  if root.tag != "ui" { tops = [root] }
+  for i in 0 .. len(tops) { lib_top(f, tops[i]) }
+  f.sheet = sheet_of(f)
+  for i in 0 .. len(f.comps) { lib_link(f, f.comps[i]) }
+  for i in 0 .. len(tops) {
+    if tops[i].tag == "screen" { lib_link(f, tops[i]) }
+  }
+  return f
+}
+function lib_top(f: UiFile, t: UiTpl) -> void {
+  if t.tag == "style" {
+    sheet_read(f, t)
+    return
+  }
+  if t.tag == "import" {
+    let other = lib_file(lib_beside(f.path, bd_name(t, "src", "")))
+    if other != null {
+      push(f.imp, other)
+      push(f.imp_as, bd_name(t, "as", ""))
+    }
+    return
+  }
+  let name = bd_name(t, "name", "")
+  if name == "" or (t.tag != "component" and t.tag != "screen") {
+    ui_err(`{f.path}: <{t.tag}> - a file holds <import>s, <style>s, <component name=...>s and <screen name=...>s`)
+    return
+  }
+  if t.tag == "screen" {
+    let at = lib_find(lib_screen_names, name)
+    if at >= 0 { lib_screens[at] = t } else {
+      push(lib_screen_names, name)
+      push(lib_screens, t)
+    }
+    return
+  }
+  push(f.names, name)
+  push(f.comps, t)
+  push(f.exported, bd_name(t, "export", "") == "true")
+}

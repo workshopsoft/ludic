@@ -13,6 +13,7 @@ function ck_params(f: Node, labels: []pointer, tys: []pointer) -> void {
   }
 }
 function ck_call_fn(e: Node, name: pointer, f: Node) -> pointer {
+  call_fill_defaults(e, f)
   let labels = new []pointer
   let tys = new []pointer
   ck_params(f, labels, tys)
@@ -21,6 +22,7 @@ function ck_call_fn(e: Node, name: pointer, f: Node) -> pointer {
   return f.ty
 }
 function ck_call_alias(e: Node, name: pointer, al: int, f: Node) -> pointer {
+  if g_al_labels[al] == null { call_fill_defaults(e, f) } else { call_mixed_to_named(e, ns_alias_labels(al)) }
   let labels = new []pointer
   let tys = new []pointer
   ck_params(f, labels, tys)
@@ -50,11 +52,18 @@ function ck_args(e: Node, name: pointer, labels: []pointer, tys: []pointer) -> v
       let vt = ck_expr(fi.a)
       let at = ck_label_at(labels, fi.s)
       if at >= 0 { ck_give(tys[at], vt, fi.a, `argument {fi.s} of {name}`) }
+      if at < 0 and len(labels) > 0 { ck_err("arity", fi.a, `{name} has no parameter {fi.s}`) }
       j += 1
+    }
+    var m = 0
+    while m < len(labels) {
+      if not ck_named_has(e, labels[m]) { ck_err("arity", e, `this call to {name} leaves out {labels[m]}, which has no default`) }
+      m += 1
     }
     return
   }
-  if n != len(tys) { ck_err("arity", e, `{name} takes {itoa(len(tys))} argument(s) and this call gives {itoa(n)}`) }
+  if n < len(tys) and len(labels) == len(tys) { ck_err("arity", e, `this call to {name} leaves out {labels[n]}, which has no default`) }
+  else { if n != len(tys) { ck_err("arity", e, `{name} takes {itoa(len(tys))} argument(s) and this call gives {itoa(n)}`) } }
   var i = 0
   while i < n {
     if i < len(tys) { ck_expect = tys[i] }
@@ -62,6 +71,14 @@ function ck_args(e: Node, name: pointer, labels: []pointer, tys: []pointer) -> v
     if i < len(tys) { ck_give(tys[i], at, e.kids[i], `argument {itoa(i + 1)} of {name}`) }
     i += 1
   }
+}
+function ck_named_has(e: Node, label: pointer) -> bool {
+  var i = 0
+  while i < len(e.kids) {
+    if (e.kids[i].s == label) { return true }
+    i += 1
+  }
+  return false
 }
 function ck_walk_args(e: Node) -> void {
   var i = 0

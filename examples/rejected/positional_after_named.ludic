@@ -1,0 +1,5 @@
+# L11: positional arguments come first, then named ones
+program PositionalAfterNamed {
+  function f(a: int, b: int = 2) -> int { return a + b }
+  entry { print(f(a: 1, 2)) }
+}

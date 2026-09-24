@@ -64,6 +64,7 @@ function ns_alias_labels(i: int) -> []pointer {
   return out
 }
 function emit_alias_call(i: int, e: Node) -> Val {
+  call_mixed_to_named(e, ns_alias_labels(i))
   reorder_named(e, ns_alias_labels(i))
   let id = node(E_ID)
   id.s = g_al_target[i]

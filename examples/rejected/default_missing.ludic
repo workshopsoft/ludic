@@ -1,0 +1,5 @@
+# L11: a call leaves out only what has a default
+program DefaultMissing {
+  function f(a: int, b: int = 2) -> int { return a + b }
+  entry { print(f(b: 3)) }
+}

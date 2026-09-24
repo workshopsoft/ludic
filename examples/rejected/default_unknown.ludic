@@ -1,0 +1,5 @@
+# L11: a named argument names a parameter the function has
+program DefaultUnknown {
+  function f(a: int, b: int = 2) -> int { return a + b }
+  entry { print(f(1, c: 3)) }
+}

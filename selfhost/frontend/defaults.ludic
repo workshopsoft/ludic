@@ -1,0 +1,96 @@
+# defaults.ludic — L11: a parameter may have a default, `pad: float = 8.0`, and a call may leave it
+# out - positionally from the end, or by not naming it. That is what makes a component's props
+# usable: `button(label: "Buy", on_press: fn buy)` rather than every prop of a button spelt out.
+# The default is an expression written where the function is and evaluated for each call.
+# `f(a, b, size: 2)`: the leading arguments are the first parameters, by position, and the rest
+# are named - the natural call of a component, whose first prop is the one it is about
+function call_mixed_to_named(e: Node, labels: []pointer) -> void {
+  var first_named = -1
+  var i = 0
+  while i < len(e.kids) {
+    if e.kids[i].kind == E_FINIT and first_named < 0 { first_named = i }
+    if e.kids[i].kind != E_FINIT and first_named >= 0 {
+      g_err_file = e.file
+      g_err_line = e.line
+      perr("a positional argument after a named one")
+    }
+    i += 1
+  }
+  if first_named <= 0 { return }
+  let out = new []Node
+  var k = 0
+  while k < len(e.kids) {
+    var a = e.kids[k]
+    if k < first_named and k < len(labels) {
+      let fi = node(E_FINIT)
+      fi.s = labels[k]
+      fi.a = a
+      fi.line = a.line
+      fi.file = a.file
+      a = fi
+    }
+    push(out, a)
+    k += 1
+  }
+  e.kids = out
+}
+function call_fill_defaults(e: Node, f: Node) -> void {
+  if f == null { return }
+  let labels = new []pointer
+  let defs = new []Node
+  var any = false
+  var i = 0
+  while i < len(f.kids) {
+    let p = f.kids[i]
+    if p.kind == N_PARAM {
+      push(labels, p.s)
+      push(defs, p.a)
+      if p.a != null { any = true }
+    }
+    i += 1
+  }
+  call_mixed_to_named(e, labels)
+  if not any { return }
+  if len(e.kids) > 0 and e.kids[0].kind == E_FINIT {
+    let out = new []Node
+    var li = 0
+    while li < len(labels) {
+      var found: Node = null
+      var k = 0
+      while k < len(e.kids) {
+        if (e.kids[k].s == labels[li]) { found = e.kids[k] }
+        k += 1
+      }
+      if found == null and defs[li] != null {
+        found = node(E_FINIT)
+        found.s = labels[li]
+        found.a = default_copy(defs[li], e)
+      }
+      if found != null { push(out, found) }
+      li += 1
+    }
+    # a label the function does not have stays, so the call is refused for it
+    var k2 = 0
+    while k2 < len(e.kids) {
+      if not default_label_in(labels, e.kids[k2].s) { push(out, e.kids[k2]) }
+      k2 += 1
+    }
+    e.kids = out
+    return
+  }
+  while len(e.kids) < len(labels) and defs[len(e.kids)] != null { push(e.kids, default_copy(defs[len(e.kids)], e)) }
+}
+function default_label_in(labels: []pointer, s: pointer) -> bool {
+  var i = 0
+  while i < len(labels) {
+    if (labels[i] == s) { return true }
+    i += 1
+  }
+  return false
+}
+# each call gets its own copy of the default, at the call's line for its errors
+function default_copy(d: Node, at: Node) -> Node {
+  let c = gen_clone(d, new []pointer, new []pointer)
+  c.line = at.line
+  return c
+}

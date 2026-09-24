@@ -1,0 +1,84 @@
+# tpl.ludic - a template file read into what the builder walks: every attribute and every
+# element's text an expression, every on-* attribute an action. A file holds <component>s and
+# <screen>s under one root; a component is used as a tag of its own name anywhere after.
+export property UiTpl {
+  tag: string = ""
+  keys: []string = null
+  vals: []UiExpr = null
+  on_keys: []string = null
+  on_acts: []UiAct = null
+  text: UiExpr = null
+  kids: []UiTpl = null
+  comp: UiTpl = null            # the component this tag names, found when its file loads
+  sheet: UiSheet = null         # the styles of the file it was written in
+  style: UiRule = null          # its style="..." attribute, read as declarations
+  raw: string = ""              # a <style>'s text, which is not a template's
+}
+
+function tpl_read(x: Xml, file: string) -> UiTpl {
+  let t = new UiTpl
+  t.tag = Xml.tag(x)
+  t.keys = new []string
+  t.vals = new []UiExpr
+  t.on_keys = new []string
+  t.on_acts = new []UiAct
+  t.kids = new []UiTpl
+  let err = new []string
+  for i in 0 .. len(x.akeys) {
+    let k: string = x.akeys[i]
+    let v: string = x.avals[i]
+    if len(k) > 3 and k[0..3] == "on-" {
+      push(t.on_keys, tpl_event(k[3..len(k)]))
+      push(t.on_acts, act_parse(v, err))
+    } else if k == "onclick" {
+      push(t.on_keys, "press")
+      push(t.on_acts, act_parse(v, err))
+    } else if k == "style" { t.style = lss_decls(v, err) } else {
+      push(t.keys, k)
+      push(t.vals, tpl_value(v, err))
+    }
+  }
+  for i in 0 .. Xml.child_count(x) { push(t.kids, tpl_read(Xml.child(x, i), file)) }
+  if t.tag == "style" {
+    t.raw = Xml.text(x)
+    return t
+  }
+  let words = tpl_words(Xml.text(x))
+  if len(words) > 0 and len(t.kids) == 0 { t.text = ex_text(words, err) }
+  for i in 0 .. len(err) { ui_err(`{file}: <{t.tag}> {err[i]}`) }
+  return t
+}
+# on-click is on-press, as a browser would have it
+function tpl_event(name: string) -> string {
+  if name == "click" { return "press" }
+  return name
+}
+# an attribute: a plain number is a number, anything else text with {holes}
+function tpl_value(v: string, err: []string) -> UiExpr {
+  var num = len(v) > 0
+  for i in 0 .. len(v) {
+    if not ((v[i] >= 48 and v[i] <= 57) or v[i] == 46 or (i == 0 and v[i] == 45)) { num = false }
+  }
+  if num { return ex_parse(v, err) }
+  return ex_text(v, err)
+}
+# text as a reader sees it: the ends trimmed and every run of white space one space
+function tpl_words(s: string) -> string {
+  var out = ""
+  var gap = false
+  for i in 0 .. len(s) {
+    let c = s[i]
+    if c == 32 or c == 9 or c == 10 or c == 13 { gap = len(out) > 0 } else {
+      if gap { out = out + " " }
+      gap = false
+      out = out + s[i..i + 1]
+    }
+  }
+  return out
+}
+function tpl_attr(t: UiTpl, key: string) -> UiExpr {
+  for i in 0 .. len(t.keys) {
+    if t.keys[i] == key { return t.vals[i] }
+  }
+  return null
+}

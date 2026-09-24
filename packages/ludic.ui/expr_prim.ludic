@@ -1,0 +1,88 @@
+# expr_prim.ludic - a number, a quoted string, true/false/null, a name or a call, a bracket
+function px_primary(r: UiRd) -> UiExpr {
+  rd_ws(r)
+  let c = rd_c(r, 0)
+  if c >= 48 and c <= 57 { return px_number(r) }
+  if c == 39 or c == 34 { return px_string(r, c) }
+  if rd_op(r, "(") {
+    let e = px_cond(r)
+    if not rd_op(r, ")") { rd_fail(r, "')'") }
+    return e
+  }
+  if rd_word(r, "true") { return ex_lit(Value.bool(1)) }
+  if rd_word(r, "false") { return ex_lit(Value.bool(0)) }
+  if rd_word(r, "null") { return ex_lit(Value.null()) }
+  let name = rd_name(r)
+  if not rd_op(r, "(") {
+    let e = ex_new(X_NAME)
+    e.s = name
+    return e
+  }
+  let e = ex_new(X_CALL)
+  e.s = name
+  if rd_op(r, ")") { return e }
+  while r.err == "" {
+    push(e.args, px_cond(r))
+    if rd_op(r, ")") { return e }
+    if not rd_op(r, ",") { rd_fail(r, "',' or ')'") }
+  }
+  return e
+}
+function px_number(r: UiRd) -> UiExpr {
+  let at = r.i
+  var whole = 0
+  while r.i < len(r.s) and r.s[r.i] >= 48 and r.s[r.i] <= 57 {
+    whole = whole * 10 + (r.s[r.i] - 48)
+    r.i += 1
+  }
+  if rd_c(r, 0) != 46 or rd_c(r, 1) < 48 or rd_c(r, 1) > 57 { return ex_lit(Value.int(whole)) }
+  r.i += 1
+  var f = float(whole)
+  var unit = 0.1
+  while r.i < len(r.s) and r.s[r.i] >= 48 and r.s[r.i] <= 57 {
+    f = f + float(r.s[r.i] - 48) * unit
+    unit = unit * 0.1
+    r.i += 1
+  }
+  return ex_lit(Value.float(f))
+}
+function px_string(r: UiRd, q: int) -> UiExpr {
+  r.i += 1
+  let at = r.i
+  while r.i < len(r.s) and r.s[r.i] != q { r.i += 1 }
+  let s: string = r.s[at..r.i]
+  if r.i >= len(r.s) { rd_fail(r, "the string's closing quote") } else { r.i += 1 }
+  return ex_lit(Value.str(s))
+}
+# one expression, the whole of `src`
+function ex_parse(src: string, err: []string) -> UiExpr {
+  let r = new UiRd
+  r.s = src
+  let e = px_cond(r)
+  rd_ws(r)
+  if r.err == "" and r.i < len(r.s) { rd_fail(r, "the end") }
+  if r.err != "" { push(err, r.err) }
+  return e
+}
+# text with {holes}: a literal when it has none, the expression itself when it is one hole and
+# nothing else (so it keeps its type), otherwise the pieces joined as text
+function ex_text(src: string, err: []string) -> UiExpr {
+  let e = ex_new(X_TEXT)
+  var at = 0
+  var i = 0
+  while i < len(src) {
+    if src[i] == 123 {
+      var j = i + 1
+      while j < len(src) and src[j] != 125 { j += 1 }
+      if i > at { push(e.args, ex_lit(Value.str(src[at..i]))) }
+      push(e.args, ex_parse(src[i + 1..j], err))
+      at = j + 1
+      i = j
+    }
+    i += 1
+  }
+  if at < len(src) { push(e.args, ex_lit(Value.str(src[at..len(src)]))) }
+  if len(e.args) == 0 { return ex_lit(Value.str("")) }
+  if len(e.args) == 1 { return e.args[0] }
+  return e
+}

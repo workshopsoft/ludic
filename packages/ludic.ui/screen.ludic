@@ -1,0 +1,17 @@
+# screen.ludic - the 2D screen as a renderer, for a program that draws with Screen.*
+function sc_rect(x: float, y: float, w: float, h: float, c: int, a: float) -> void { Screen.fill_rectangle(int(x), int(y), int(w), int(h), c) }
+function sc_text(x: float, y: float, s: string, size: float, c: int) -> void { Screen.draw_text(int(x), int(y), s, c, Math.max(1, int(size / 8.0))) }
+function sc_measure(s: string, size: float) -> float { return float(Screen.measure_text(s) * Math.max(1, int(size / 8.0))) }
+function sc_px() -> float { return float(Input.mouse_x()) }
+function sc_py() -> float { return float(Input.mouse_y()) }
+function sc_down() -> bool { return Input.mouse_down(0) }
+export function ui_screen_backend() -> UiBackend {
+  let b = new UiBackend
+  b.rect = fn sc_rect
+  b.text = fn sc_text
+  b.measure = fn sc_measure
+  b.pointer_x = fn sc_px
+  b.pointer_y = fn sc_py
+  b.pointer_down = fn sc_down
+  return b
+}

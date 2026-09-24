@@ -1,0 +1,84 @@
+# style.ludic - stylesheets: `.chip { bg: bg2; pad: 6 } button { h: 40 }` in a <style>, or an .lss
+# file brought in by <import src="look.lss"/> (which may `@import "base.lss";` in turn). A selector is
+# a tag, a .class, both, or *; a property is any attribute, {holes} and all. The more specific rule
+# wins, then the later; an attribute beats them all.
+export property UiRule {
+  sel: UiSel = null
+  spec: int = 0
+  keys: []string = null
+  vals: []UiExpr = null
+}
+export property UiSheet {
+  rules: []UiRule = null
+}
+function sheet_read(f: UiFile, t: UiTpl) -> void {
+  var src = t.raw
+  let from = bd_name(t, "src", "")
+  if from != "" { src = lib_text(lib_beside(f.path, from)) }
+  lss_text(f, src)
+}
+function lss_is(path: string) -> bool { return len(path) > 4 and path[len(path) - 4..len(path)] == ".lss" }
+# a stylesheet file: a file with rules and imports and nothing else
+function lss_file(src: string, path: string) -> UiFile {
+  let f = lib_new(path)
+  lss_text(f, src)
+  f.sheet = sheet_of(f)
+  return f
+}
+function lss_text(f: UiFile, src: string) -> void {
+  let err = new []string
+  let r = new UiRd
+  r.s = lss_strip(src)
+  while r.err == "" {
+    rd_ws(r)
+    if r.i >= len(r.s) { break }
+    if rd_op(r, "@import") {
+      lss_import(f, lss_upto(r, 59))
+      continue
+    }
+    let sels = lss_upto(r, 123)
+    let body = lss_upto(r, 125)
+    lss_rule(f, sels, body, err)
+  }
+  for i in 0 .. len(err) { ui_err(`{f.path}: <style> {err[i]}`) }
+}
+# @import "base.lss"; - its rules come before this file's own
+function lss_import(f: UiFile, what: string) -> void {
+  var p = tpl_words(what)
+  if len(p) > 5 and p[0..4] == "url(" { p = p[4..len(p) - 1] }
+  if len(p) >= 2 and (p[0] == 34 or p[0] == 39) { p = p[1..len(p) - 1] }
+  let other = lib_file(lib_beside(f.path, p))
+  if other != null {
+    push(f.imp, other)
+    push(f.imp_as, "")
+  }
+}
+# the text up to the character `c`, which is taken too; a {hole} inside a body is skipped whole
+function lss_upto(r: UiRd, c: int) -> string {
+  let at = r.i
+  var depth = 0
+  while r.i < len(r.s) and (r.s[r.i] != c or depth > 0) {
+    if c == 125 and r.s[r.i] == 123 { depth += 1 }
+    if c == 125 and r.s[r.i] == 125 { depth -= 1 }
+    r.i += 1
+  }
+  let out: string = r.s[at..r.i]
+  if r.i < len(r.s) { r.i += 1 } else { rd_fail(r, "a closing brace") }
+  return out
+}
+function lss_strip(src: string) -> string {
+  var out = ""
+  var at = 0
+  var i = 0
+  while i + 1 < len(src) {
+    if src[i] == 47 and src[i + 1] == 42 {
+      out = out + src[at..i]
+      var j = i + 2
+      while j + 1 < len(src) and not (src[j] == 42 and src[j + 1] == 47) { j += 1 }
+      i = j + 2
+      at = i
+    } else { i += 1 }
+  }
+  if at < len(src) { out = out + src[at..len(src)] }
+  return out
+}
