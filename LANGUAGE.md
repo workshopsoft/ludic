@@ -215,6 +215,37 @@ way in its own files. What is still built into the compiler is the namespaces th
 `Math`, `Text`, `List`, `Vector`, `Color`, `Time`, `Date` - and the few methods that choose their
 target by an argument's type (`Audio.play` of a handle or a name).
 
+### Registries (`registry`, `def`)
+
+A table of records that code used to fill with calls in an init function is declared instead:
+
+```ludic
+program Camp {
+  property Furnishing {
+    key: string = ""
+    name: string = ""
+    cost: int = 0
+  }
+  registry Furnishings of Furnishing as HF
+  def Furnishings chair { name: "Camp chair", cost: 60 }
+  def Furnishings crate { name: "Crate", cost: 30 }
+  entry { print(Furnishings[HF_CRATE].cost + HF_COUNT) }
+}
+```
+
+`registry NAME of RECORD [as PREFIX]` is a global `[]RECORD`, and every `def NAME key { ... }` is one
+entry of it - in any file, collected in source order, and in the table before any code runs. Each
+entry gets an index constant, `PREFIX_KEY` (the prefix defaults to the registry's name in capitals),
+in declaration order, and the registry a count, `PREFIX_COUNT`. When the record has a `key: string`
+field it is filled with the entry's key, and `name_find(key)` (the registry's name in lower case)
+returns its index or -1. A def's fields are checked against the record like any record literal, a
+key is declared once, and `export registry` exports the table, its constants and its lookup.
+
+Because the index is the order of the defs, a table stored by position - a save, a setting - keeps
+the rule it always had: add an entry at the end, never between two. The order is the order the
+compiler reads them in, and an `import` is read where it stands: a file's imported defs come before
+the defs written after the import line.
+
 ### Memory is safe unless it says `unsafe`
 
 The typed buffers are slices: `words(n)`, `floats(n)`, `fixeds(n)`, `doubles(n)` and

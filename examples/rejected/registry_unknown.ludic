@@ -1,0 +1,10 @@
+# L8: there is no registry Tables
+program R {
+  property Furnishing {
+    key: string = ""
+    cost: int = 0
+  }
+  registry Furnishings of Furnishing
+  def Tables x { cost: 1 }
+  entry { print(FURNISHINGS_COUNT) }
+}

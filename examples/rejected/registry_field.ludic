@@ -1,0 +1,10 @@
+# L8: Furnishing has no field colour
+program R {
+  property Furnishing {
+    key: string = ""
+    cost: int = 0
+  }
+  registry Furnishings of Furnishing
+  def Furnishings crate { colour: 3 }
+  entry { print(FURNISHINGS_COUNT) }
+}

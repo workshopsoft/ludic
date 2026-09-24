@@ -1,0 +1,11 @@
+# L8: def Furnishings crate is declared twice
+program R {
+  property Furnishing {
+    key: string = ""
+    cost: int = 0
+  }
+  registry Furnishings of Furnishing
+  def Furnishings crate { cost: 1 }
+  def Furnishings crate { cost: 2 }
+  entry { print(FURNISHINGS_COUNT) }
+}

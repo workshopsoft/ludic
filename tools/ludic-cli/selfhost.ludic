@@ -20,6 +20,8 @@ function selfhost_frags() -> []pointer {
   push(f, "selfhost/frontend/parse_game.ludic")
   push(f, "selfhost/frontend/generics.ludic")
   push(f, "selfhost/frontend/aliases.ludic")
+  push(f, "selfhost/frontend/registry.ludic")
+  push(f, "selfhost/frontend/registry_finish.ludic")
   push(f, "selfhost/backend/emit_core.ludic")
   push(f, "selfhost/backend/emit_head.ludic")
   push(f, "selfhost/backend/emit_addr.ludic")

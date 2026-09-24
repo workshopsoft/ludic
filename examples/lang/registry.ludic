@@ -1,0 +1,24 @@
+# registry.ludic — L8: registration by declaration. A registry is a table of records; each `def`
+# is one entry, written where it belongs - in any file, in source order - rather than as a call
+# in an init function. The compiler fills the table before any code runs, gives every entry an
+# index constant (the prefix and the key: HF_CRATE), a count (HF_COUNT), fills a `key` field
+# when the record has one, and adds a lookup by key (furnishings_find).
+#
+# Running it prints:  3 Crate true 2 fire_ring -1
+program Registry {
+  def Furnishings bench { name: "Bench", cost: 90, seat: true }
+  property Furnishing {
+    key: string = ""
+    name: string = ""
+    cost: int = 0
+    seat: bool = false
+  }
+  registry Furnishings of Furnishing as HF
+  def Furnishings crate { name: "Crate", cost: 30 }
+  def Furnishings fire_ring { name: "Fire ring", cost: 120 }
+  entry {
+    var seat = "false"
+    if Furnishings[HF_BENCH].seat { seat = "true" }
+    print(`{HF_COUNT} {Furnishings[HF_CRATE].name} {seat} {furnishings_find("fire_ring")} {Furnishings[2].key} {furnishings_find("nope")}`)
+  }
+}

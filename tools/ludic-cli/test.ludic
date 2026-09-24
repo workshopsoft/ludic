@@ -738,6 +738,10 @@ function cmd_dev_test() -> int {
   feat_case("lang/aliases", "", "10 5 3", "aliases.ludic (L6: a namespace method declared as an alias of a function, labelled or by its parameters)")
   reject_case("rejected/alias_arity", "Trail.length takes 2 argument(s) and this call gives 1", "an alias's arguments are checked against its target")
   reject_case("rejected/alias_twice", "Trail.length is declared twice", "a namespace method is declared once")
+  feat_case("lang/registry", "", "3 Crate true 2 fire_ring -1", "registry.ludic (L8: a registry filled by def declarations - index constants, a count, the key, a lookup)")
+  reject_case("rejected/registry_unknown", "there is no registry Tables", "a def names a registry that exists")
+  reject_case("rejected/registry_twice", "def Furnishings crate is declared twice", "a registry's key is declared once")
+  reject_case("rejected/registry_field", "Furnishing has no field colour", "a def's fields are the record's")
 
   # EV2 the world table: the mod reflection ABI, callable from Ludic by name.
   net_case("ecs/world_get", "50 1 7")

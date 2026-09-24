@@ -1,0 +1,112 @@
+# registry.ludic — L8: registration by declaration. A registry is a global table of records,
+# and each `def` is one entry, written where it belongs rather than as a call in an init
+# function somebody has to remember:
+#
+#   registry Furnishings of Furnishing as HF
+#   def Furnishings chair { name: "Camp chair", cost: 60, seat: true }
+#
+# The parser collects every def (in source order, across files) and, when the program is read,
+# gives the registry its entries as its initializer, a constant per entry holding its index
+# (HF_CHAIR - declaration order, so a table saved by position keeps its rule: append, never
+# insert), HF_COUNT, and, when the record has a `key: string` field, fills it in and adds
+# furnishings_find(key) -> int. Everything generated belongs to the registry's own file, so it
+# is in the registry's module and exported only when the registry is.
+var g_rg_name: []pointer = new []pointer
+var g_rg_type: []pointer = new []pointer
+var g_rg_prefix: []pointer = new []pointer
+var g_rg_var: []Node = new []Node
+var g_df_reg: []pointer = new []pointer
+var g_df_key: []pointer = new []pointer
+var g_df_rec: []Node = new []Node
+
+function reg_upper(s: pointer) -> pointer {
+  let n = len(s)
+  let out = bytes(n + 1)
+  var i = 0
+  while i < n {
+    var c = s[i]
+    if c >= 'a' and c <= 'z' { c = c - 32 }
+    out[i] = c
+    i += 1
+  }
+  out[n] = 0
+  return out
+}
+function reg_lower(s: pointer) -> pointer {
+  let n = len(s)
+  let out = bytes(n + 1)
+  var i = 0
+  while i < n {
+    var c = s[i]
+    if c >= 'A' and c <= 'Z' { c = c + 32 }
+    out[i] = c
+    i += 1
+  }
+  out[n] = 0
+  return out
+}
+# registry NAME of TYPE [as PREFIX]
+function parse_registry() -> void {
+  pi += 1
+  let v = node(N_VAR)
+  v.s = eat_id()
+  if not is_id("of") { perr(`registry {v.s}: say what it holds - registry {v.s} of SomeRecord`) }
+  pi += 1
+  let t = ptype()
+  var prefix = reg_upper(v.s)
+  if is_id("as") {
+    pi += 1
+    prefix = eat_id()
+  }
+  v.ty = "[]" + t
+  push(prog, v)
+  push(g_rg_name, v.s)
+  push(g_rg_type, t)
+  push(g_rg_prefix, prefix)
+  push(g_rg_var, v)
+}
+# def REGISTRY key { field: value, ... }
+function parse_def() -> void {
+  pi += 1
+  let reg = eat_id()
+  let key = eat_id()
+  skipnl()
+  let rec = record()
+  push(g_df_reg, reg)
+  push(g_df_key, key)
+  push(g_df_rec, rec)
+}
+function reg_find(name: pointer) -> int {
+  var i = 0
+  while i < len(g_rg_name) {
+    if (g_rg_name[i] == name) { return i }
+    i += 1
+  }
+  return -1
+}
+function reg_rec_has(rec: Node, field: pointer) -> bool {
+  var i = 0
+  while i < len(rec.kids) {
+    if (rec.kids[i].s == field) { return true }
+    i += 1
+  }
+  return false
+}
+# a generated declaration: the registry's file, line and export
+function reg_decl(kind: int, v: Node) -> Node {
+  let d = node(kind)
+  d.file = v.file
+  d.line = v.line
+  d.vis = v.vis
+  return d
+}
+function reg_const(v: Node, name: pointer, value: int) -> void {
+  let c = reg_decl(N_CONST, v)
+  c.s = name
+  c.ty = "int"
+  let e = node(E_INT)
+  e.ival = value
+  e.file = v.file
+  c.a = e
+  push(prog, c)
+}

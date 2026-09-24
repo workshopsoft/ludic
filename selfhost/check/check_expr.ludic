@@ -78,6 +78,7 @@ function ck_new(e: Node) -> pointer {
       if r != null and fi.kind == E_FINIT {
         let ft = ck_field(r, fi.s)
         if ft != null { ck_give(ft, vt, fi.a, `field {fi.s} of {e.s}`) }
+        if ft == null { ck_err("field", fi.a, `{gen_show(e.s)} has no field {fi.s}`) }
       }
       i += 1
     }

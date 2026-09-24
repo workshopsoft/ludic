@@ -1011,6 +1011,8 @@ function parse_one_decl() -> void {
   }
   if is_id("ui") { push(prog, parse_ui()); return }
   if is_id("namespace") { parse_namespace(); return }   # #76 namespace block
+  if is_id("registry") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].text == "of") { parse_registry(); return }   # L8
+  if is_id("def") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].kind == TK_ID) { parse_def(); return }            # L8
   if is_id("var")    { push(prog, parse_var()); return }
   if is_id("const")  { push(prog, parse_const()); return }
   var is_unsafe = false
@@ -1506,4 +1508,5 @@ function parse_program() -> void {
     if is_op("}") { break }
     parse_one_decl()
   }
+  registries_finish()                              # L8: each registry gets its defs
 }

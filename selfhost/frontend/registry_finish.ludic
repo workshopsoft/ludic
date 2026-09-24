@@ -1,0 +1,99 @@
+# registry_finish.ludic — L8: when the program is read, each registry gets its entries.
+function registries_finish() -> void {
+  var d = 0
+  while d < len(g_df_reg) {
+    if reg_find(g_df_reg[d]) < 0 {
+      g_err_file = g_df_rec[d].file
+      g_err_line = g_df_rec[d].line
+      g_parsing = false
+      perr(`def {g_df_reg[d]} {g_df_key[d]}: there is no registry {g_df_reg[d]}`)
+    }
+    d += 1
+  }
+  var r = 0
+  while r < len(g_rg_name) {
+    reg_fill(r)
+    r += 1
+  }
+}
+function reg_fill(r: int) -> void {
+  let v = g_rg_var[r]
+  let t = g_rg_type[r]
+  let comp = find_comp(t)
+  let keyed = comp != null and field_index(comp, "key") >= 0
+  let lst = node(E_LIST)
+  lst.file = v.file
+  lst.line = v.line
+  let seen = new []pointer
+  var n = 0
+  var d = 0
+  while d < len(g_df_reg) {
+    if (g_df_reg[d] == g_rg_name[r]) {
+      let key = g_df_key[d]
+      let rec = g_df_rec[d]
+      var j = 0
+      while j < len(seen) {
+        if (seen[j] == key) {
+          g_err_file = rec.file
+          g_err_line = rec.line
+          g_parsing = false
+          perr(`def {g_rg_name[r]} {key} is declared twice`)
+        }
+        j += 1
+      }
+      push(seen, key)
+      if keyed and not reg_rec_has(rec, "key") {
+        let fi = node(E_FINIT)
+        fi.s = "key"
+        let ks = node(E_STR)
+        ks.s = key
+        fi.a = ks
+        push(rec.kids, fi)
+      }
+      let nw = node(E_NEW)
+      nw.s = t
+      nw.a = rec
+      nw.file = rec.file
+      nw.line = rec.line
+      push(lst.kids, nw)
+      reg_const(v, `{g_rg_prefix[r]}_{reg_upper(key)}`, n)
+      n += 1
+    }
+    d += 1
+  }
+  reg_const(v, `{g_rg_prefix[r]}_COUNT`, n)
+  if n == 0 {
+    let empty = node(E_NEW)
+    empty.s = v.ty
+    empty.file = v.file
+    v.a = empty
+  } else {
+    v.a = lst
+  }
+  if keyed { reg_find_fn(v) }
+}
+# NAME_find(key) -> int: the entry's index, or -1 - written as Ludic and read like the rest
+function reg_find_fn(v: Node) -> void {
+  let fname = `{reg_lower(v.s)}_find`
+  let src = `function {fname}(key: string) -> int {{\n  var i = 0\n  while i < len({v.s}) {{\n    if {v.s}[i].key == key {{ return i }}\n    i += 1\n  }}\n  return -1\n}}\n`
+  let saved_toks = toks
+  let saved_pi = pi
+  let saved_file = g_parse_file
+  let saved_parsing = g_parsing
+  g_parse_file = v.file
+  g_parsing = true
+  lex_at(src, v.line)
+  pi = 0
+  let at = len(prog)
+  skipnl()
+  parse_one_decl()
+  var k = at
+  while k < len(prog) {
+    prog[k].vis = v.vis
+    k += 1
+  }
+  toks = saved_toks
+  pi = saved_pi
+  g_parse_file = saved_file
+  g_parsing = saved_parsing
+}

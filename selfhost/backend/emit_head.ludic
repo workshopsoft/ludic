@@ -68,6 +68,10 @@ function emit_global_init_fn() -> void {
   while i < len(prog) {
     let d = prog[i]
     if d.kind == N_VAR and global_needs_init_code(d) {
+      # an initializer is the global's own file's code: its errors, and what its module
+      # may see (L3), are that file's - not whichever statement was lowered last
+      g_err_file = d.file
+      g_err_line = d.line
       let v = emit_expr(d.a)
       let cv = coerce_code(v, d.ty)                 # any conversion is its own line, before the store
       emit("  store ");  emit(llty(d.ty));  emit(" ");  emit(cv);  emit(", ptr @g_");  emit(d.s);  emit("\n")
