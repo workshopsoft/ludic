@@ -1,7 +1,7 @@
 # attr.ludic - what a property sets, by its CSS name or the short one (width or w, background or
 # bg, font-size or size, ...). An attribute on an element is the same property, applied last.
 const AT_ALIAS: string = " width=w height=h min-width=min-w max-width=max-w min-height=min-h max-height=max-h padding=pad background=bg background-color=bg font-size=size opacity=alpha flex-grow=grow flex-shrink=shrink flex-direction=dir flex-wrap=wrap justify-content=justify align-items=align align-self=self row-gap=gap column-gap=gap text-align=talign "
-const AT_UNDRAWN: string = " font-weight font-family font-style box-shadow cursor transition animation line-height letter-spacing text-decoration "
+const AT_UNDRAWN: string = " font-weight font-family font-style box-shadow cursor transition animation letter-spacing text-decoration "
 # a stylesheet's property: one that means nothing is said
 function el_attr(n: UiNode, key: string, v: Val) -> void {
   if el_apply(n, key, v) { return }

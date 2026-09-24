@@ -1,0 +1,10 @@
+@import "base.lss";
+.page { width: 400px }
+.chip { width: 100px; font-size: 16px; text-fit: shrink 10px }
+.mid { width: 80px }
+.lines { width: 60px; font-size: 16px; line-height: 2 }
+.tall { line-height: 30px }
+.em { padding: 1em; font-size: 20px }
+.em2 { padding: 1em }
+.page .em2 { font-size: 24px }
+.tie { color: #00ff00 }

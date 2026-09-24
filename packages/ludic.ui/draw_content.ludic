@@ -2,21 +2,22 @@
 # text-shadow, and a picture
 # a text's lines (one, or the wrapped ones), each placed by text-align, the last cut by an ellipsis
 function fr_text(n: UiNode) -> void {
-  let y = n.y + n.pt + n.bt
+  let lh = ly_line_h(n)
+  let y = n.y + n.pt + n.bt + (lh - n.rsize * 1.25) / 2.0
   let a = n.rfg_a * fr_ga
   let sh = fr_text_shadow(n)
   if n.lines == null {
-    var s = n.text
-    if n.ellipsis { s = ly_ellipsis(s, n.rsize, n.cw - ly_hin(n)) }
-    fr_line(n, sh, fr_line_x(n, s), y, s, a)
+    var s = tf_fit(n, n.text)
+    if n.ellipsis { s = ly_ellipsis(s, tf_size, n.cw - ly_hin(n)) }
+    fr_line(n, sh, fr_line_x(n, s, tf_size), y, s, a, tf_size)
     return
   }
-  for i in 0 .. len(n.lines) { fr_line(n, sh, fr_line_x(n, n.lines[i]), y + float(i) * n.rsize * 1.25, n.lines[i], a) }
+  for i in 0 .. len(n.lines) { fr_line(n, sh, fr_line_x(n, n.lines[i], n.rsize), y + float(i) * lh, n.lines[i], a, n.rsize) }
 }
 # one line, over its shadow when it has one
-function fr_line(n: UiNode, sh: UiNodeX, x: float, y: float, s: string, a: float) -> void {
-  if sh != null { ui_be.text(x + sh.tsh_x, y + sh.tsh_y, s, n.rsize, sh.tsh_c, sh.tsh_a * fr_ga) }
-  ui_be.text(x, y, s, n.rsize, n.rfg, a)
+function fr_line(n: UiNode, sh: UiNodeX, x: float, y: float, s: string, a: float, size: float) -> void {
+  if sh != null { ui_be.text(x + sh.tsh_x, y + sh.tsh_y, s, size, sh.tsh_c, sh.tsh_a * fr_ga) }
+  ui_be.text(x, y, s, size, n.rfg, a)
 }
 # text-shadow is inherited: the nearest element that says it, or null (none)
 function fr_text_shadow(n: UiNode) -> UiNodeX {
@@ -33,10 +34,10 @@ function fr_text_shadow(n: UiNode) -> UiNodeX {
 # the opacity a native's draw is at: every group opacity around it, its own included
 export function ui_opacity() -> float { return fr_ga }
 # where a line starts: text-align within the room the box gives it
-function fr_line_x(n: UiNode, s: string) -> float {
+function fr_line_x(n: UiNode, s: string, size: float) -> float {
   let x = n.x + n.pl + n.bl
   if n.talign == UI_START { return x }
-  let spare = n.cw - ly_hin(n) - ly_text_w(s, n.rsize)
+  let spare = n.cw - ly_hin(n) - ly_text_w(s, size)
   if n.talign == UI_CENTER { return x + spare / 2.0 }
   return x + spare
 }

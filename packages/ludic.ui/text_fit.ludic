@@ -1,0 +1,52 @@
+# text_fit.ludic - text-fit: shrink 12px draws a line that does not fit its box smaller, down to that
+# size, and cuts what still does not fit with an ellipsis; line-height (a multiple of the font size,
+# px or em) spaces a text's lines. Both are inherited, as font properties are.
+var tf_size: float = 0.0        # the size tf_fit drew at
+function el_text_fit(n: UiNode, s: string) -> void {
+  let parts = lss_split(tpl_words(s), 32)
+  nx(n).fit_min = 0.0
+  if len(parts) >= 2 and parts[0] == "shrink" { nx(n).fit_min = Math.max(el_unit(parts[1]), 1.0) }
+}
+function el_line_h(n: UiNode, s0: string) -> void {
+  let s = tpl_words(s0)
+  let x = nx(n)
+  x.lh_kind = 0
+  if s == "normal" or s == "" { return }
+  let c = s[len(s) - 1]
+  if c >= 48 and c <= 57 or c == 46 {
+    x.lh_kind = 1
+    x.lh_v = el_num(s)
+    return
+  }
+  x.lh_kind = 2
+  x.lh_v = el_unit(s)
+}
+# the nearest element, out from this one, that says `what` (0 text-fit, 1 line-height), or null
+function tf_up(n: UiNode, what: int) -> UiNodeX {
+  var at = n
+  while at != null {
+    if at.ex != null and what == 0 and at.ex.fit_min > 0.0 { return at.ex }
+    if at.ex != null and what == 1 and at.ex.lh_kind > 0 { return at.ex }
+    at = at.parent
+  }
+  return null
+}
+function ly_line_h(n: UiNode) -> float {
+  let x = tf_up(n, 1)
+  if x == null { return n.rsize * 1.25 }
+  if x.lh_kind == 1 { return n.rsize * x.lh_v }
+  return x.lh_v
+}
+# one line to fit its box: at its own size if it does, else smaller down to text-fit's least, then
+# cut; tf_size says the size it is drawn at
+function tf_fit(n: UiNode, s: string) -> string {
+  tf_size = n.rsize
+  let x = tf_up(n, 0)
+  let room = n.cw - ly_hin(n)
+  if x == null or room <= 0.0 { return s }
+  let w = ly_text_w(s, tf_size)
+  if w <= room { return s }
+  tf_size = Math.max(x.fit_min, n.rsize * room / w)
+  while tf_size > x.fit_min and ly_text_w(s, tf_size) > room { tf_size = Math.max(x.fit_min, tf_size - 0.5) }
+  return ly_ellipsis(s, tf_size, room)
+}

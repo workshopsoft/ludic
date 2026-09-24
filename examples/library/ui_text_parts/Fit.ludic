@@ -1,0 +1,4 @@
+# Fit.ludic - chips too narrow for their words, lines spaced by line-height, ems read against the
+# font size an element ends with, and a sheet's own rule over an imported one of the same weight
+component Fit {
+}

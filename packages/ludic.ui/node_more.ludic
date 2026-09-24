@@ -19,6 +19,9 @@ export property UiNodeX {
   tsh_c: int = -2
   tsh_a: float = 1.0
   no_pointer: bool = false      # pointer-events: none - the pointer goes through it
+  fit_min: float = 0.0          # text-fit: shrink MIN - the smallest a line is shrunk to fit its box
+  lh_kind: int = 0              # line-height: 0 normal, 1 a multiple of the font size, 2 px
+  lh_v: float = 0.0
 }
 function nx(n: UiNode) -> UiNodeX {
   if n.ex == null { n.ex = new UiNodeX }

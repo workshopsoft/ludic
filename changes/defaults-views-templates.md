@@ -89,6 +89,9 @@ What a game's screens found missing, now in `ludic.ui`:
   there rather than whenever the pointer is down over it;
 - an anchored popover's `align="start|center|end"`, and `within="id"` (by default the nearest
   scroll box around it) for the bounds it is flipped against and kept inside;
+- `text-fit: shrink MIN` shrinks a line to its box, then cuts it with an ellipsis; `line-height`;
+  an `em` reads the font size the element ends with (a `font-size` later in the rule, or in a later
+  rule), not the one it had so far;
 - a transition lands exactly on its end value (it had stopped a rounding error short of it, at every
   frame rate).
 

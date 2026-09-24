@@ -16,7 +16,16 @@ function cs_tree(n: UiNode) -> void {
   n.children = shown
   cs_order(n)
 }
+# twice: the font size first, from every rule, so an em anywhere reads the size the element ends with
 function cs_node(n: UiNode) -> void {
+  cs_pass = 1
+  cs_styles(n)
+  cs_pass = 0
+  cs_styles(n)
+  an_apply(n)
+  tr_apply(n)
+}
+function cs_styles(n: UiNode) -> void {
   cs_sheet(n, ua_sheet())
   if n.ups != null { cs_merged(n) } else if n.sheet != null { cs_sheet(n, n.sheet) }
   if n.style != null { cs_rule(n, n.style) }
@@ -25,10 +34,12 @@ function cs_node(n: UiNode) -> void {
       if n.ups[i].style != null { cs_rule_in(n, n.ups[i].style, n.ups[i].env) }
     }
   }
-  for i in 0 .. len(n.akeys) { el_apply(n, n.akeys[i], n.vals[i]) }
-  an_apply(n)
-  tr_apply(n)
+  for i in 0 .. len(n.akeys) {
+    if cs_pass_ok(n.akeys[i]) { el_apply(n, n.akeys[i], n.vals[i]) }
+  }
 }
+var cs_pass: int = 0
+function cs_pass_ok(key: string) -> bool { return cs_pass == 0 or at_alias(key) == "size" }
 function cs_sheet(n: UiNode, sh: UiSheet) -> void {
   for i in 0 .. len(sh.rules) {
     let r = sh.rules[i]
@@ -42,7 +53,7 @@ function cs_rule_in(n: UiNode, r: UiRule, e: UiEnv) -> void {
     if len(r.keys[j]) > 2 and r.keys[j][0..2] == "--" { el_attr(n, r.keys[j], ui_eval(r.vals[j], e)) }
   }
   for j in 0 .. len(r.keys) {
-    if not (len(r.keys[j]) > 2 and r.keys[j][0..2] == "--") { el_attr(n, r.keys[j], ui_eval(r.vals[j], e)) }
+    if not (len(r.keys[j]) > 2 and r.keys[j][0..2] == "--") and cs_pass_ok(r.keys[j]) { el_attr(n, r.keys[j], ui_eval(r.vals[j], e)) }
   }
 }
 var ua_sh: UiSheet = null

@@ -530,7 +530,13 @@ applies to both:
     is drawn as painted, as CSS draws one; with one it is tinted by it, so one rounded texture serves
     every colour, and `transparent` (or any colour with no alpha) leaves nothing to see.
   - Text: `text-shadow: x y blur colour` draws the text again under itself, offset (the blur is
-    drawn sharp), and is inherited.
+    drawn sharp), and is inherited. `text-fit: shrink 12px` draws a line too long for its box
+    smaller, down to that size, then cuts what still does not fit with an ellipsis (for a chip
+    whose words may be long in another language). `line-height` is a multiple of the font size
+    (`1.5`), px or em. Both are inherited.
+  - `em` is the font size the element ends with, wherever its `font-size` is set among the rules
+    that style it; in `font-size` itself it is the parent's. A sheet's own rule wins a tie with a
+    rule it `@import`s.
   - Pictures: an `<img>` of a file is drawn as it is; a cell of an atlas is a glyph and takes the
     `color` around it, as text does. An `<img>` with a `color` of its own is tinted by it.
   - Motion: `opacity` fades the element and everything inside it. `@keyframes` with `animation:
