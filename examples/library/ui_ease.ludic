@@ -1,0 +1,55 @@
+# ui_ease.ludic — easing never depends on the frame rate: a transition and an animation stepped at
+# 60, 120, 180 and 240 Hz on the program's clock are at the same value half way (kept in float, never
+# cut to whole pixels) and land exactly on their targets when their time is up.
+import "ludic.ui"
+program UiEase {
+  numbers float
+  var dim: bool = false
+  var now: float = 0.0
+  view Ease {
+    dim = dim
+  }
+  const STYLE: string = "<style>@keyframes slide { from { left: 0 } to { left: 37 } }\n.go { animation: slide 0.25s }\n.soft { transition: opacity 0.25s }\n.dim { opacity: 0.2 }</style>"
+  const BODY: string = "<p class='go'>a</p><p class=\"soft {dim ? 'dim' : ''}\">b</p><p class='dim'>c</p></screen>"
+  function clock() -> float { return now }
+  function nodes(name: string) -> UiNode {
+    ui_show(name, view_ease(), 0.0, 0.0, 200.0, 200.0)
+    return ui_nodes(name, view_ease())
+  }
+  # one rate, on its own screen: the slide from its first frame, the fade from half a second in
+  function at_rate(hz: int) -> string {
+    let name = `r{hz}`
+    dim = false
+    var mid = ""
+    var slid = false
+    var landed = false
+    var over = false
+    for k in 0 .. hz + 1 {
+      now = float(k) / float(hz)
+      if k == hz / 2 { dim = true }
+      let r = nodes(name)
+      let go = r.children[0]
+      let soft = r.children[1]
+      let want = r.children[2].alpha
+      if k == hz / 10 { mid = `{int(Math.round(go.left * 100.0))} ` }
+      if k == hz / 2 + hz / 10 { mid = mid + `{int(Math.round(soft.alpha * 1000.0))}` }
+      if k == hz / 4 { slid = go.left == 37.0 }
+      if k == hz / 2 + hz / 4 { landed = soft.alpha == want }
+      if k > hz / 2 + hz / 4 and soft.alpha != want { over = true }
+    }
+    return `{hz}: {mid} slid {slid} landed {landed} left {over}`
+  }
+  entry {
+    ui_backend(new UiBackend)
+    ui_clock(fn clock)
+    var page = "<ui>" + STYLE
+    for i in 0 .. 4 {
+      let hz = 60 * (i + 1)
+      page = page + `<screen name='r{hz}'>` + BODY
+    }
+    ui_load_text(page + "</ui>", "e.xml")
+    var out = ""
+    for i in 0 .. 4 { out = out + at_rate(60 * (i + 1)) + "; " }
+    print(out)
+  }
+}

@@ -444,6 +444,9 @@ applies to both:
     it is let go.
   - A scroll box (`overflow: auto` or `<scroll>`) takes the wheel, has a scrollbar that can be
     dragged (`scrollbar-color`), clips what it holds and pulls the focused control into view.
+  - The scrollbar is `.ui-scrollbar` with a `.ui-thumb`, styled like a control's parts. A press on
+    the thumb holds it where it was taken and the pointer moves it in proportion; a press on the
+    track jumps the thumb's middle there and holds it. A press on the bar presses nothing under it.
   - `:focus`, `:focus-visible` and `:focus-within` style the focus, and `outline` (which follows
     `border-radius`) draws the ring.
   - A test drives all of it with `ui_input(i)`.
@@ -474,6 +477,8 @@ applies to both:
 - **Popovers, tooltips and bars.**
   - `<div popover on-close="...">` sits absolutely in its parent and draws on the top layer. While
     it is up, the pointer and Tab stay inside it, and a press outside it or Esc closes it.
+    A press on it goes to its own controls, never to what lies under it at the same pixels, and a
+    press outside it only closes it.
   - `anchor="cell"` puts a popover beside the element with that id (the nearest, looking out from
     the popover), and a bare `anchor` beside the element before it. `placement` is `right` (the
     default), `left`, `bottom` or `top`, its margin on that side is the gap, and where it would
@@ -511,7 +516,8 @@ applies to both:
     `color` around it, as text does. An `<img>` with a `color` of its own is tinted by it.
   - Motion: `opacity` fades the element and everything inside it. `@keyframes` with `animation:
     name 0.25s [infinite] [alternate]` animate numeric properties from when the element first
-    appeared, and `transition: opacity 0.2s` eases a changed opacity.
+    appeared, and `transition: opacity 0.2s` eases a changed opacity. Both run on the clock, in
+    float, and land exactly on their end values whatever the frame rate.
 - **Mixed content.** Text beside elements keeps its place: `<button><img src="icon:arrow"/>Resume
   </button>`, `<p>Hi <b>there</b></p>`. A boolean attribute present with no value is true, as in
   HTML (`<button autofocus>`).

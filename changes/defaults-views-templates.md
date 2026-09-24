@@ -73,7 +73,13 @@ What a game's screens found missing, now in `ludic.ui`:
 - a component root that is itself a component takes every user's class, style and id, and the
   sheets that style it are weighed together by specificity;
 - a component's event may be called `set`; a `string` prop given a number reads it as text; two
-  components of one name are an error naming both files.
+  components of one name are an error naming both files;
+- the scrollbar is `.ui-scrollbar` and `.ui-thumb`: a press on the thumb holds it where it was taken,
+  a press on the track jumps the thumb's middle there, and neither presses what is under the bar;
+- a popover's own controls take its presses whatever lies under it, a press outside only closes it,
+  and while one is up the scroll boxes outside it do not take the pointer;
+- a transition lands exactly on its end value (it had stopped a rounding error short of it, at every
+  frame rate).
 
 render3d gains `tex_width` / `tex_height`, and the XML reader keeps text runs among elements in
 order (`mixed`).

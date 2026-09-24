@@ -1,0 +1,5 @@
+# Long.ludic - a box of ten rows, four times taller than it shows; each row is a button as wide as
+# the box, so the scrollbar sits over them
+component Long {
+  state pressed: int = 0
+}

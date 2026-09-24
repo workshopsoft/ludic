@@ -1,6 +1,6 @@
-# pointer.ludic - the pointer: what it is over is :hover (the element and all around it, as in CSS),
-# a press on a control focuses it and makes it :active, and letting go over it is a click. The
-# control being dragged (a range's thumb, a scrollbar) keeps the pointer until it is let go.
+# pointer.ludic - the pointer: what it is over is :hover (and all around it, as in CSS), a press on a
+# control focuses it and makes it :active, letting go over it is a click. A dragged thumb or scrollbar
+# keeps the pointer until let go; a press that takes a scrollbar or closes a popover presses nothing else.
 var fr_hover: []string = new []string
 var fr_press_key: string = ""
 var fr_down_now: bool = false
@@ -16,6 +16,7 @@ function fr_pointer(root: UiNode) -> void {
   fr_hover = keys
   tt_track(scope, i.x, i.y)
   if top != null and pp_pointer(top) { return }
+  if sc_drag != "" { return }
   let hit = fr_hit(scope, i.x, i.y)
   if i.down and not in_was_down {
     ct_key_pressed_away(hit)

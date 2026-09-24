@@ -1,0 +1,8 @@
+# Grid.ludic - a grid cell with a popover of verbs laid over it, written BEFORE the cell, so the cell
+# comes later in the tree and would win any hit test that went by the order things are drawn in
+component Grid {
+  state open: bool = false
+  state opened: int = 0
+  state dropped: int = 0
+  state closed: int = 0
+}

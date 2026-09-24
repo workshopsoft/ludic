@@ -1,0 +1,4 @@
+<div class="page">
+  <div class="list"><each in="{range(10)}" as="r"><button class="row" on-click="set pressed = pressed + 1">{r}</button></each></div>
+  <p>pressed {pressed}</p>
+</div>

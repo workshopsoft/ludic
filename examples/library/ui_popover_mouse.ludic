@@ -1,0 +1,52 @@
+# ui_popover_mouse.ludic — a popover takes the mouse: its own button, at the same pixels as the grid
+# cell under it, is the one a click presses; a click outside it (on that cell, or on nothing) closes
+# it and presses nothing else.
+import "ludic.ui"
+import "ui_popover_mouse_parts/Grid.ludic"
+program UiPopoverMouse {
+  numbers float
+  function frame(i: UiInput) -> UiNode {
+    ui_input(i)
+    ui_show("Grid", null, 0.0, 0.0, 400.0, 400.0)
+    let root: UiNode = ui_nodes("Grid", null)
+    ui_place(root, 0.0, 0.0, 400.0, 400.0)
+    return root
+  }
+  function click(x: float, y: float) -> string {
+    let d = new UiInput
+    d.x = x
+    d.y = y
+    d.down = true
+    frame(d)
+    let u = new UiInput
+    u.x = x
+    u.y = y
+    frame(u)
+    let root = frame(new UiInput)
+    let page = root.children[0]
+    return page.children[len(page.children) - 1].text
+  }
+  function find(n: UiNode, id: string) -> UiNode {
+    if n.id == id { return n }
+    for i in 0 .. len(n.children) {
+      let f = find(n.children[i], id)
+      if f != null { return f }
+    }
+    return null
+  }
+  entry {
+    ui_backend(new UiBackend)
+    frame(new UiInput)
+    let opened = click(20.0, 20.0)
+    let root = frame(new UiInput)
+    let drop = find(root, "drop")
+    let cell = find(root, "cell")
+    let over = drop.x >= cell.x and drop.y >= cell.y and drop.x + drop.cw <= cell.x + cell.cw
+    let dropped = click(drop.x + drop.cw / 2.0, drop.y + drop.ch / 2.0)
+    click(20.0, 20.0)
+    let on_cell = click(180.0, 90.0)
+    click(20.0, 20.0)
+    let on_nothing = click(390.0, 390.0)
+    print(`over the cell {over} | {opened} | {dropped} | {on_cell} | {on_nothing}`)
+  }
+}

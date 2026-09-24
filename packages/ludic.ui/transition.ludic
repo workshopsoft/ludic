@@ -27,5 +27,6 @@ function tr_apply(n: UiNode) -> void {
 }
 function tr_value(i: int, now: float, dur: float) -> float {
   let t = Math.clamp((now - tr_at[i]) / dur, 0.0, 1.0)
+  if t >= 1.0 { return tr_to[i] }
   return tr_from[i] + (tr_to[i] - tr_from[i]) * t
 }

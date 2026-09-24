@@ -22,6 +22,7 @@ function pp_pointer(top: UiNode) -> bool {
   let i = in_now
   if not (i.down and not in_was_down) { return false }
   if i.x >= top.x and i.y >= top.y and i.x < top.x + top.cw and i.y < top.y + top.ch { return false }
+  fr_press_key = ""
   ui_fire(top, "close", Value.null())
   return true
 }

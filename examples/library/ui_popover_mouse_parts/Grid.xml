@@ -1,0 +1,9 @@
+<div class="page">
+  <if test="{open}">
+    <div popover class="verbs" on-close="set open = false; set closed = closed + 1">
+      <button id="drop" on-click="set dropped = dropped + 1; set open = false">Drop</button>
+    </div>
+  </if>
+  <button id="cell" class="cell" on-click="set opened = opened + 1; set open = true">Axe</button>
+  <p>opened {opened} dropped {dropped} closed {closed} {open}</p>
+</div>
