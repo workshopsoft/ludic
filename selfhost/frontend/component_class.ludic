@@ -76,3 +76,14 @@ function cm_import_of(line: pointer) -> pointer {
   while b < len(line) and line[b] != q { b += 1 }
   return line[a + 1..b]
 }
+# a component is used by its name as a tag, so two of one name (or of names that differ only in case,
+# which would share their functions' names) are an error naming both files
+function cm_unique(name: pointer) -> void {
+  var i = 0
+  while i < len(g_cm_name) {
+    if (cm_prefix(g_cm_name[i]) == cm_prefix(name)) {
+      perr(`component {name} is declared twice: here and in {g_cm_file[i]}:{g_cm_line[i]} - a component is used by its name as a tag, so each needs a name of its own`)
+    }
+    i += 1
+  }
+}

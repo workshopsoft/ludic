@@ -68,3 +68,6 @@ function vl_binary(op: string, a: Val, b: Val) -> Val {
   if op == ">" { return vl_bool(x > y) }
   return vl_bool(x >= y)
 }
+# a value as text, whatever kind it is: a component's string prop given a number (label="{3}") reads
+# "3", not nothing
+export function ui_val_text(v: Val) -> string { return vl_text(v) }

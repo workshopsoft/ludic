@@ -19,7 +19,7 @@ function cm_from(c: int, ty: pointer, x: pointer) -> pointer {
   if (ty == "int") { return `value_as_int({x})` }
   if (ty == "float") { return `value_as_float({x})` }
   if (ty == "bool") { return `value_as_int({x}) != 0` }
-  if (ty == "string") { return `value_as_str({x})` }
+  if (ty == "string") { return `ui_val_text({x})` }
   cm_err(c, `a prop or state is an int, a float, a bool, a string or a Val, not a {ty}`)
   return x
 }

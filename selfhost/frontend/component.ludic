@@ -34,6 +34,7 @@ function cm_prefix(name: pointer) -> pointer { return `cmp_{reg_lower(name)}_` }
 function parse_ui_component() -> void {
   pi += 1
   let name = eat_id()
+  cm_unique(name)
   let px = cm_prefix(name)
   g_uses_value = true
   let c = len(g_cm_name)
