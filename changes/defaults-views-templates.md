@@ -100,6 +100,8 @@ What a game's screens found missing, now in `ludic.ui`:
   `ui_scroll_set(id, px)` moves one once;
 - `linear-gradient(...)` backgrounds; `aspect-ratio`; `object-fit` for pictures (the renderer's
   `image_w` / `image_h`) and `ui_object_fit` for natives;
+- `translate="no"` keeps an element's text as written; a title of several lines is translated whole,
+  else line by line;
 - a transition lands exactly on its end value (it had stopped a rounding error short of it, at every
   frame rate).
 

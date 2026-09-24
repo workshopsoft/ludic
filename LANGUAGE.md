@@ -529,6 +529,9 @@ applies to both:
 
   `ui_translator(fn)`, `ui_sounds(fn)` and `ui_clock(fn)` hand the runtime the program's
   language, sounds and time. `import "ludic.ui/screen.ludic"` is the 2D screen's renderer.
+  Every text a template shows is translated, except inside `translate="no"` (and `translate="yes"`
+  inside that translates again). A `title` of several lines is translated whole when the translator
+  knows it whole, else line by line.
 - **The look is CSS.**
   - Colours: `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`, `rgb()`, `rgba()` and the basic names,
     usually through `var(--...)` from a theme.

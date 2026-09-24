@@ -16,7 +16,7 @@ function tt_track(scope: UiNode, x: float, y: float) -> void {
     tt_key = n.key
     tt_since = an_now()
   }
-  tt_text = ui_tr(ui_attr_text(n, "title"))
+  tt_text = tt_translate(n, ui_attr_text(n, "title"))
   tt_x = x
   tt_y = y
 }

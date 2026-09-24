@@ -1,0 +1,18 @@
+# tooltip_text.ludic - a title in the program's language: the whole of it when the translator knows
+# it, else line by line; and not at all inside translate="no" (the nearest translate= out from it)
+function tt_translate(n: UiNode, s: string) -> string {
+  var at = n
+  while at != null {
+    let say = ui_attr_text(at, "translate")
+    if say == "no" { return s }
+    if say == "yes" { break }
+    at = at.parent
+  }
+  let whole = ui_tr(s)
+  if whole != s { return whole }
+  let lines = tt_lines(s)
+  if len(lines) < 2 { return whole }
+  var out = ui_tr(lines[0])
+  for i in 1 .. len(lines) { out = out + "\n" + ui_tr(lines[i]) }
+  return out
+}

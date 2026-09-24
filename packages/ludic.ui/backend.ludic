@@ -26,7 +26,9 @@ function ui_px(v: float) -> float {
   if ui_be != null and ui_be.scale != null { return v * ui_be.scale() }
   return v
 }
+var tr_no: bool = false        # inside translate="no" while a frame is built
 function ui_tr(s: string) -> string {
+  if tr_no { return s }
   if ui_be != null and ui_be.translate != null { return ui_be.translate(s) }
   return s
 }
