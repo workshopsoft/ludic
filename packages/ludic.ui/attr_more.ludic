@@ -1,0 +1,94 @@
+# attr_more.ludic - width and height (where 0 is 0 and calc() may hold a percentage), the flex
+# shorthand, flex-shrink, order and text-shadow
+function el_more(n: UiNode, key: string, v: Val) -> bool {
+  let s = vl_text(v)
+  if key == "shrink" { nx(n).shrink = Math.max(el_num(s), 0.0) } else if key == "order" { nx(n).order = int(el_num(s)) } else if key == "text-shadow" { el_text_shadow(n, s) } else { return false }
+  return true
+}
+# width or height: a length (0 included), fill, a percentage, calc(), or auto/fit (none)
+function el_dim(n: UiNode, wide: bool, v: Val) -> void {
+  let s = vl_text(v)
+  var fixed = UI_AUTO
+  var pct = 0.0
+  var off = 0.0
+  if ca_is(s) {
+    if ca_eval(s) {
+      pct = ca_pct
+      off = ca_px
+      if pct <= 0.0 { fixed = Math.max(ca_px, 0.0) }
+    }
+  } else if s == "fill" { fixed = UI_FILL } else if len(s) > 1 and s[len(s) - 1] == 37 {
+    pct = el_num(s)
+    if pct <= 0.0 { fixed = 0.0 }
+  } else if s != "auto" and s != "fit" and s != "" { fixed = el_len(v) }
+  if pct <= 0.0 { off = 0.0 }
+  if n.ex != null or off != 0.0 {
+    if wide { nx(n).w_off = off } else { nx(n).h_off = off }
+  }
+  if wide {
+    n.w = fixed
+    n.w_pct = Math.max(pct, 0.0)
+  } else {
+    n.h = fixed
+    n.h_pct = Math.max(pct, 0.0)
+  }
+}
+# a length out of calc(); a percentage has nothing to be a share of here
+function el_calc_len(s: string) -> float {
+  if not ca_eval(s) { return 0.0 }
+  if ca_pct != 0.0 { ui_err(`{el_key}: {s} - a percentage in calc() is for a width or a height`) }
+  return ca_px
+}
+# flex: 1  |  flex: 1 0  |  flex: 2 1 auto  |  flex: none  - the grow, then the shrink
+function el_flex_short(n: UiNode, s: string) -> void {
+  let parts = el_words(s)
+  if s == "none" {
+    n.grow = 0.0
+    nx(n).shrink = 0.0
+    return
+  }
+  if len(parts) > 0 { n.grow = el_num(parts[0]) }
+  if len(parts) > 1 and len(parts[1]) > 0 and parts[1][0] >= 48 and parts[1][0] <= 57 { nx(n).shrink = el_num(parts[1]) }
+}
+# words apart by spaces, a bracket's own spaces kept: "calc(1em + 2px) 4px" is two
+function el_words(s: string) -> []string {
+  let out = new []string
+  var at = 0
+  var depth = 0
+  for i in 0 .. len(s) {
+    if s[i] == 40 { depth += 1 }
+    if s[i] == 41 { depth -= 1 }
+    if s[i] == 32 and depth == 0 {
+      if i > at { push(out, s[at..i]) }
+      at = i + 1
+    }
+  }
+  if len(s) > at { push(out, s[at..len(s)]) }
+  return out
+}
+# text-shadow: 1px 2px 3px rgba(0, 0, 0, 0.6) - x, y, a blur drawn sharp, the colour; or none
+function el_text_shadow(n: UiNode, s: string) -> void {
+  let x = nx(n)
+  x.tsh_set = true
+  x.tsh_c = -2
+  if tpl_words(s) == "none" { return }
+  let parts = el_words(s)
+  var nums = 0
+  var col = ""
+  for i in 0 .. len(parts) {
+    let p = parts[i]
+    if col == "" and ((p[0] >= 48 and p[0] <= 57) or p[0] == 45 or p[0] == 46) {
+      if nums == 0 { x.tsh_x = el_unit(p) }
+      if nums == 1 { x.tsh_y = el_unit(p) }
+      nums += 1
+    } else if col == "" { col = p } else { col = col + " " + p }
+  }
+  if col == "" { col = "rgba(0,0,0,0.6)" }
+  x.tsh_c = ui_color(col)
+  x.tsh_a = cl_alpha
+}
+# one word of a list of lengths (padding: calc(1em / 4) 2px)
+function el_word_len(w: string) -> float {
+  if ca_is(w) { return el_calc_len(w) }
+  return el_unit(w)
+}

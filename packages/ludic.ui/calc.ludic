@@ -1,0 +1,69 @@
+# calc.ludic - CSS's calc(): + - * / and brackets over lengths (px, em, rem, vw, vh, or a bare
+# number, which is px as everywhere here), percentages and plain numbers; var() is already read by
+# then. A width or height keeps its percentage apart (w_pct plus an offset) to be taken of the room
+# the element is given; anywhere else a percentage in calc() has nothing to be a share of.
+var ca_s: string = ""
+var ca_i: int = 0
+var ca_bad: string = ""
+var ca_px: float = 0.0            # the result: its lengths, its percentage, and whether it had units
+var ca_pct: float = 0.0
+function ca_is(s: string) -> bool { return len(s) > 5 and s[0..5] == "calc(" }
+# calc(...) worked out into ca_px and ca_pct; false (with the reason said) when it cannot be
+function ca_eval(s: string) -> bool {
+  ca_s = s[5..len(s)]
+  ca_i = 0
+  ca_bad = ""
+  let v = ca_sum()
+  ca_ws()
+  if ca_bad == "" and (ca_i >= len(ca_s) or ca_s[ca_i] != 41) { ca_bad = "a closing )" }
+  if ca_bad != "" {
+    ui_err(`{s}: calc() expected {ca_bad}`)
+    return false
+  }
+  ca_px = v.px
+  ca_pct = v.pct
+  if v.bare { ca_px = ui_px(v.n) }
+  return true
+}
+property CaVal {
+  px: float = 0.0
+  pct: float = 0.0
+  n: float = 0.0
+  bare: bool = true             # a plain number, which may scale a length
+}
+function ca_ws() -> void {
+  while ca_i < len(ca_s) and (ca_s[ca_i] == 32 or ca_s[ca_i] == 9 or ca_s[ca_i] == 10) { ca_i += 1 }
+}
+function ca_sum() -> CaVal {
+  var a = ca_product()
+  while ca_bad == "" {
+    ca_ws()
+    if ca_i >= len(ca_s) or (ca_s[ca_i] != 43 and ca_s[ca_i] != 45) { return a }
+    let minus = ca_s[ca_i] == 45
+    ca_i += 1
+    let b = ca_product()
+    a = ca_add(a, b, minus)
+  }
+  return a
+}
+function ca_add(a: CaVal, b: CaVal, minus: bool) -> CaVal {
+  var sign = 1.0
+  if minus { sign = -1.0 }
+  let r = new CaVal
+  if a.bare and b.bare {
+    r.n = a.n + sign * b.n
+    return r
+  }
+  r.bare = false
+  r.px = ca_len(a).px + sign * ca_len(b).px
+  r.pct = a.pct + sign * b.pct
+  return r
+}
+# a bare number beside a length is a length in px
+function ca_len(a: CaVal) -> CaVal {
+  if not a.bare { return a }
+  let r = new CaVal
+  r.bare = false
+  r.px = ui_px(a.n)
+  return r
+}

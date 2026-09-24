@@ -36,10 +36,10 @@ function ly_place_abs(n: UiNode, c: UiNode) -> void {
   }
   var w = c.mw
   var h = c.mh
-  if c.w_pct > 0.0 { w = bw * c.w_pct / 100.0 }
-  if c.h_pct > 0.0 { h = bh * c.h_pct / 100.0 }
-  if c.w == UI_FILL or (c.left != UI_AUTO and c.right != UI_AUTO and c.w <= 0.0) { w = bw - ly_or0(c.left) - ly_or0(c.right) - c.ml - c.mr }
-  if c.h == UI_FILL or (c.top != UI_AUTO and c.bottom != UI_AUTO and c.h <= 0.0) { h = bh - ly_or0(c.top) - ly_or0(c.bottom) - c.mt - c.mb }
+  if c.w_pct > 0.0 { w = ly_pw(c, bw) }
+  if c.h_pct > 0.0 { h = ly_ph(c, bh) }
+  if c.w == UI_FILL or (c.left != UI_AUTO and c.right != UI_AUTO and c.w == UI_AUTO) { w = bw - ly_or0(c.left) - ly_or0(c.right) - c.ml - c.mr }
+  if c.h == UI_FILL or (c.top != UI_AUTO and c.bottom != UI_AUTO and c.h == UI_AUTO) { h = bh - ly_or0(c.top) - ly_or0(c.bottom) - c.mt - c.mb }
   var x = bx + n.pl + c.ml
   if c.left != UI_AUTO { x = bx + c.left + c.ml } else if c.right != UI_AUTO { x = bx + bw - c.right - c.mr - w }
   var y = by + n.pt + c.mt

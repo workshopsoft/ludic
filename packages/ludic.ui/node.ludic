@@ -12,15 +12,13 @@ export property UiNode {
   vals: []Val = null            # the same, as values, applied after every rule
   style: UiRule = null          # its style="..." declarations
   sheet: UiSheet = null         # the stylesheets of the file it was written in
-  sheet2: UiSheet = null        # a component's root: its user's sheet too, and their style="..."
-  style2: UiRule = null
-  env2: UiEnv = null
+  ups: []UiPass = null          # a component's root: each user's sheet and style="...", inner first
   parent: UiNode = null
   index: int = 0                # its place among its parent's children, for :first-child and the rest
   src: string = ""              # an <img>'s picture
   size: float = 0.0
-  w: float = 0.0
-  h: float = 0.0
+  w: float = -1000000.0         # a fixed width or height (0 is 0); UI_AUTO: none, UI_FILL: fill
+  h: float = -1000000.0
   w_pct: float = 0.0            # a width or height as a percentage of the parent's room
   h_pct: float = 0.0
   pt: float = 0.0               # padding, top right bottom left
@@ -108,5 +106,6 @@ export property UiNode {
   anim_alt: bool = false
   tr_dur: float = 0.0           # transition: how long a change of opacity takes
   popover: bool = false         # drawn on the top layer; a press outside it or Esc closes it
+  ex: UiNodeX = null            # what fewer elements say (node_more.ludic), made when one does
 }
 

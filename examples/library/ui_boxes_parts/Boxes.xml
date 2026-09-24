@@ -1,0 +1,12 @@
+<div class="page">
+  <div class="panel">
+    <p class="bar">Head</p>
+    <div class="list"><each in="{range(rows)}" as="r"><p class="item">{r}</p></each></div>
+    <p class="bar">Foot</p>
+  </div>
+  <row class="line"><img src="icon:tent"/><p>A line long enough that it has to wrap beside the icon</p></row>
+  <div class="zero"><p>hidden</p></div>
+  <div class="half"></div>
+  <row class="ordered"><span class="c">c</span><span class="a">a</span><span class="b">b</span></row>
+  <input type="range" min="{0}" max="{10}" value="{5}"/>
+</div>

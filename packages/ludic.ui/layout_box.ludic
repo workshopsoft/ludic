@@ -1,0 +1,86 @@
+# layout_box.ludic - a box's content measured: its children in a line along its direction (a
+# row's text wrapped into the room its siblings leave), or a wrapping row's lines
+function ly_measure_box(n: UiNode, inner: float) -> void {
+  for i in 0 .. len(n.children) {
+    ly_fg_a = n.rfg_a
+    ly_measure(n.children[i], inner, n.rsize, n.rfg)
+  }
+  if n.dir == UI_ROW and inner > 0.0 { ly_row_fit(n, inner) }
+  var main = 0.0
+  var cross = 0.0
+  var count = 0
+  for i in 0 .. len(n.children) {
+    let c = n.children[i]
+    if c.pos < 2 {
+      main = main + ly_main(c, n.dir)
+      if count > 0 { main = main + n.gap }
+      cross = Math.max(cross, ly_cross(c, n.dir))
+      count += 1
+    }
+  }
+  if n.dir == UI_ROW {
+    n.mw = n.mw + main
+    n.mh = n.mh + cross
+  } else {
+    n.mw = n.mw + cross
+    n.mh = n.mh + main
+  }
+}
+# a row wider than its room: its texts (and boxes of their own width) measured again in the room the
+# rest leave them, each giving up a share of the excess as wide as it is, so a line wraps beside an icon
+function ly_row_fit(n: UiNode, inner: float) -> void {
+  var used = 0.0
+  var flex = 0.0
+  var count = 0
+  for i in 0 .. len(n.children) {
+    let c = n.children[i]
+    if c.pos >= 2 { continue }
+    if count > 0 { used = used + n.gap }
+    used = used + ly_main(c, UI_ROW)
+    if ly_flexes(c) { flex = flex + ly_main(c, UI_ROW) }
+    count += 1
+  }
+  let over = used - inner
+  if over <= 0.0 or flex <= 0.0 { return }
+  for i in 0 .. len(n.children) {
+    let c = n.children[i]
+    let share = ly_main(c, UI_ROW) - over * ly_main(c, UI_ROW) / flex
+    if ly_flexes(c) and share > 0.0 {
+      ly_fg_a = n.rfg_a
+      ly_measure(c, share, n.rsize, n.rfg)
+    }
+  }
+}
+function ly_flexes(c: UiNode) -> bool {
+  if c.pos >= 2 or c.w >= 0.0 or c.w_pct > 0.0 { return false }
+  if c.kind == UI_TEXT { return not c.nowrap }
+  return c.kind == UI_BOX and c.children != null and len(c.children) > 0
+}
+# a wrapping row: children in lines no wider than `inner`, the lines stacked `gap` apart
+function ly_measure_wrap(n: UiNode, inner: float) -> void {
+  var line_w = 0.0
+  var line_h = 0.0
+  var widest = 0.0
+  var total = 0.0
+  var count = 0
+  for i in 0 .. len(n.children) {
+    let c = n.children[i]
+    ly_fg_a = n.rfg_a
+    ly_measure(c, inner, n.rsize, n.rfg)
+    if c.pos >= 2 { continue }
+    let cw = ly_main(c, UI_ROW)
+    if count > 0 and line_w + n.gap + cw > inner {
+      widest = Math.max(widest, line_w)
+      total = total + line_h + n.gap
+      line_w = 0.0
+      line_h = 0.0
+      count = 0
+    }
+    if count > 0 { line_w = line_w + n.gap }
+    line_w = line_w + cw
+    line_h = Math.max(line_h, ly_cross(c, UI_ROW))
+    count += 1
+  }
+  n.mw = n.mw + Math.max(widest, line_w)
+  n.mh = n.mh + total + line_h
+}

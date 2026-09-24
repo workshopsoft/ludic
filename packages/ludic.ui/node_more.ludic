@@ -1,0 +1,40 @@
+# node_more.ludic - what only some elements say, kept apart from UiNode so the common node stays
+# small: made the first time a property needs it (nx), and null everywhere else
+# a component user's styles for the root it passed class, style and id down to
+export property UiPass {
+  sheet: UiSheet = null         # the sheet of the file the component's tag was written in
+  style: UiRule = null          # the tag's style="..."
+  env: UiEnv = null             # where the tag's values are read
+}
+export property UiNodeX {
+  shrink: float = -1.0          # flex-shrink; -1: a scroll box's 1, anything else's 0 (or 1 in a column)
+  order: int = 0                # flex's order
+  w_off: float = 0.0            # calc(): the lengths added to a percentage width or height
+  h_off: float = 0.0
+  mh_min: float = 0.0           # how short a column can be pressed: its scroll boxes give way
+  has_min: bool = false
+  tsh_set: bool = false         # text-shadow, inherited as CSS's is; tsh_c -2 is none
+  tsh_x: float = 0.0
+  tsh_y: float = 0.0
+  tsh_c: int = -2
+  tsh_a: float = 1.0
+}
+function nx(n: UiNode) -> UiNodeX {
+  if n.ex == null { n.ex = new UiNodeX }
+  return n.ex
+}
+function ly_woff(n: UiNode) -> float {
+  if n.ex == null { return 0.0 }
+  return n.ex.w_off
+}
+function ly_hoff(n: UiNode) -> float {
+  if n.ex == null { return 0.0 }
+  return n.ex.h_off
+}
+# a percentage width or height in `room`, with what calc() added to it
+function ly_pw(n: UiNode, room: float) -> float { return room * n.w_pct / 100.0 + ly_woff(n) }
+function ly_ph(n: UiNode, room: float) -> float { return room * n.h_pct / 100.0 + ly_hoff(n) }
+function ly_order(n: UiNode) -> int {
+  if n.ex == null { return 0 }
+  return n.ex.order
+}

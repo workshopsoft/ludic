@@ -1,0 +1,76 @@
+# calc_terms.ludic - calc()'s products and its terms: a number with its unit, a bracket, a nested
+# calc(), a minus in front; a product or a quotient needs a plain number on one side (on the right
+# of a /), as CSS's does
+function ca_product() -> CaVal {
+  var a = ca_factor()
+  while ca_bad == "" {
+    ca_ws()
+    if ca_i >= len(ca_s) or (ca_s[ca_i] != 42 and ca_s[ca_i] != 47) { return a }
+    let div = ca_s[ca_i] == 47
+    ca_i += 1
+    let b = ca_factor()
+    if div and not b.bare {
+      ca_bad = "a plain number after /"
+      return a
+    }
+    if div and b.n == 0.0 {
+      ca_bad = "a number that is not 0 after /"
+      return a
+    }
+    if div { a = ca_scale(a, 1.0 / b.n) } else if a.bare { a = ca_scale(b, a.n) } else if b.bare { a = ca_scale(a, b.n) } else {
+      ca_bad = "a plain number on one side of *"
+      return a
+    }
+  }
+  return a
+}
+function ca_scale(a: CaVal, k: float) -> CaVal {
+  let r = new CaVal
+  r.bare = a.bare
+  r.n = a.n * k
+  r.px = a.px * k
+  r.pct = a.pct * k
+  return r
+}
+function ca_factor() -> CaVal {
+  ca_ws()
+  if ca_i >= len(ca_s) {
+    ca_bad = "a value"
+    return new CaVal
+  }
+  let c = ca_s[ca_i]
+  if c == 45 {
+    ca_i += 1
+    return ca_scale(ca_factor(), -1.0)
+  }
+  if c == 40 or (ca_i + 5 <= len(ca_s) and ca_s[ca_i..ca_i + 5] == "calc(") {
+    while ca_s[ca_i] != 40 { ca_i += 1 }
+    ca_i += 1
+    let v = ca_sum()
+    ca_ws()
+    if ca_i < len(ca_s) and ca_s[ca_i] == 41 { ca_i += 1 } else if ca_bad == "" { ca_bad = "a closing )" }
+    return v
+  }
+  return ca_number()
+}
+# 12, 1.5em, 50%, 20vw
+function ca_number() -> CaVal {
+  let at = ca_i
+  while ca_i < len(ca_s) and ((ca_s[ca_i] >= 48 and ca_s[ca_i] <= 57) or ca_s[ca_i] == 46) { ca_i += 1 }
+  let num_end = ca_i
+  while ca_i < len(ca_s) and ((ca_s[ca_i] >= 97 and ca_s[ca_i] <= 122) or ca_s[ca_i] == 37) { ca_i += 1 }
+  let r = new CaVal
+  if num_end == at {
+    ca_bad = "a number"
+    return r
+  }
+  let word: string = ca_s[at..ca_i]
+  let unit: string = ca_s[num_end..ca_i]
+  if unit == "" {
+    r.n = el_num(word)
+    return r
+  }
+  r.bare = false
+  if unit == "%" { r.pct = el_num(word) } else if unit == "px" or unit == "em" or unit == "rem" or unit == "vw" or unit == "vh" { r.px = el_unit(word) } else { ca_bad = `a unit calc() knows, not {unit}` }
+  return r
+}

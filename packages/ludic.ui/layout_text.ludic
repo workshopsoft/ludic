@@ -5,7 +5,7 @@ function ly_measure_text(n: UiNode, avail: float) -> void {
   let lh = n.rsize * 1.25
   let one = ly_text_w(n.text, n.rsize)
   var room = avail - n.ml - n.mr - ly_hin(n)
-  if n.w > 0.0 { room = n.w - ly_hin(n) }
+  if n.w >= 0.0 { room = n.w - ly_hin(n) }
   if n.nowrap or room <= 0.0 or one <= room {
     n.mw = n.mw + one
     n.mh = n.mh + lh

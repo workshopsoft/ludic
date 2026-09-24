@@ -760,6 +760,7 @@ function cmd_dev_test() -> int {
   controller_case("library/ui_controls", "", "1 false 7 2 Adalove 70 1 false 8 2 Adalove 70; scrolled 40", "ui_controls.ludic (L11: focus and keys, the built-in controls, a range dragged, a box scrolled)")
   controller_case("library/ui_anim", "", "0 100 100 | 49 50 100 | 100 100 61", "ui_anim.ludic (L11: @keyframes and animation, looping and alternating, and a transition)")
   controller_case("library/ui_popover", "", "drop false | drop true | drop false | drop false | fill 60 of 200", "ui_popover.ludic (L11: a popover keeps the keys and closes on a press outside or Esc; progress fills)")
+  controller_case("library/ui_boxes", "", "list 120 of 200 | text at 32 152 wide, 3 lines, row 60 | zero 0x0 | half 140x36 pad 4 2 | order abc at 16 | fill 98x8 of 200x12", "ui_boxes.ludic (L11: flex-shrink to the leftover room, text wrapping beside its siblings, zero sizes, calc(), order, the range track as a row)")
   reject_case("rejected/view_untyped", "view Sums: say what type total is", "a view field that is not a bare global says its type")
   reject_case("rejected/view_without_ui", "a view is shown by ludic.ui", "a view needs ludic.ui to show it")
 

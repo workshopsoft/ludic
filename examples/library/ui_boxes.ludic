@@ -1,0 +1,25 @@
+# ui_boxes.ludic — ludic.ui's flex and sizes: a scroll box in a column shrinks to the room its
+# siblings leave (flex-shrink) and scrolls what it cannot show; text in a row wraps in the room left
+# after the icon beside it; width and height 0 are 0; calc() mixes a percentage with lengths; order
+# rearranges a row; and a range's track is a row, its fill as tall as the track.
+import "ludic.ui"
+import "ui_boxes_parts/Boxes.ludic"
+program UiBoxes {
+  numbers float
+  entry {
+    ui_backend(new UiBackend)
+    ui_show("Boxes", null, 0.0, 0.0, 400.0, 600.0)
+    let root: UiNode = ui_nodes("Boxes", null)
+    ui_place(root, 0.0, 0.0, 400.0, 600.0)
+    let page = root.children[0]
+    let list = page.children[0].children[1]
+    let line = page.children[1]
+    let text = line.children[1]
+    let zero = page.children[2]
+    let half = page.children[3]
+    let ord = page.children[4]
+    let track = page.children[5].children[0]
+    let fill = track.children[0]
+    print(`list {int(list.ch)} of {int(list.content_h)} | text at {int(text.x)} {int(text.cw)} wide, {len(text.lines)} lines, row {int(line.ch)} | zero {int(zero.cw)}x{int(zero.ch)} | half {int(half.cw)}x{int(half.ch)} pad {int(half.pt)} {int(half.pr)} | order {ord.children[0].text}{ord.children[1].text}{ord.children[2].text} at {int(ord.children[2].x)} | fill {int(fill.cw)}x{int(fill.ch)} of {int(track.cw)}x{int(track.ch)}`)
+  }
+}

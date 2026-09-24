@@ -28,8 +28,8 @@ function ly_grow(c: UiNode, dir: int) -> float {
 # where a child starts along the run: `fill` from nothing, a percentage from the room it is in
 function ly_basis(c: UiNode, dir: int, room: float) -> float {
   if ly_fills(c, dir) { return 0.0 }
-  if dir == UI_ROW and c.w_pct > 0.0 { return room * c.w_pct / 100.0 + c.ml + c.mr }
-  if dir == UI_COL and c.h_pct > 0.0 { return room * c.h_pct / 100.0 + c.mt + c.mb }
+  if dir == UI_ROW and c.w_pct > 0.0 { return ly_pw(c, room) + c.ml + c.mr }
+  if dir == UI_COL and c.h_pct > 0.0 { return ly_ph(c, room) + c.mt + c.mb }
   return ly_main(c, dir)
 }
 function ly_stretches(n: UiNode, c: UiNode) -> bool {
@@ -43,22 +43,25 @@ function ly_place_line(n: UiNode, from: int, to: int, top: float, main_room: flo
   var used = 0.0
   var grows = 0.0
   var count = 0
+  let sizes = new []float
   for i in from .. to {
+    push(sizes, ly_basis(n.children[i], n.dir, main_room))
     if n.children[i].pos < 2 {
-      used = used + ly_basis(n.children[i], n.dir, main_room)
+      used = used + sizes[i - from]
       grows = grows + ly_grow(n.children[i], n.dir)
       count += 1
     }
   }
   used = used + n.gap * float(Math.max(count - 1, 0))
   let free = main_room - used
+  if free < 0.0 { ly_shrink_line(n, from, sizes, 0.0 - free) }
   ly_justify(n, free, count, grows)
   let extra = ly_extra
   var at = ly_lead
   for i in from .. to {
     let c = n.children[i]
     if c.pos >= 2 { continue }
-    var m = ly_basis(c, n.dir, main_room)
+    var m = sizes[i - from]
     if grows > 0.0 and free > 0.0 { m = m + free * ly_grow(c, n.dir) / grows }
     ly_place_child(n, c, at, top, m, cross_room)
     if c.pos == 1 { ly_offset(c, ly_or0(c.left) - ly_or0(c.right), ly_or0(c.top) - ly_or0(c.bottom)) }
@@ -68,8 +71,8 @@ function ly_place_line(n: UiNode, from: int, to: int, top: float, main_room: flo
 # one child: `m` along the run and its own size (or the whole room, stretched) across, less margins
 function ly_place_child(n: UiNode, c: UiNode, at: float, top: float, m: float, cross_room: float) -> void {
   var cr = ly_cross(c, n.dir)
-  if n.dir == UI_ROW and c.h_pct > 0.0 { cr = cross_room * c.h_pct / 100.0 + c.mt + c.mb }
-  if n.dir == UI_COL and c.w_pct > 0.0 { cr = cross_room * c.w_pct / 100.0 + c.ml + c.mr }
+  if n.dir == UI_ROW and c.h_pct > 0.0 { cr = ly_ph(c, cross_room) + c.mt + c.mb }
+  if n.dir == UI_COL and c.w_pct > 0.0 { cr = ly_pw(c, cross_room) + c.ml + c.mr }
   if ly_stretches(n, c) { cr = cross_room }
   var a = n.align
   if c.self >= 0 { a = c.self }

@@ -1,0 +1,53 @@
+# cascade_merge.ludic - a component's root is styled by its own sheet and by the sheet of every user
+# that passed a class down to it, all at once: the rules that match, from all of them, ordered by
+# specificity as one sheet's are. On a tie the user's rule wins (the outermost user's last), as a
+# later rule does. Then `order`, which rearranges a flex box's children without touching the tree.
+function cs_merged(n: UiNode) -> void {
+  let rules = new []UiRule
+  let envs = new []UiEnv
+  let seen = new []UiSheet
+  if n.sheet != null { cs_gather(n, n.sheet, n.env, rules, envs, seen) }
+  for i in 0 .. len(n.ups) {
+    if n.ups[i].sheet != null { cs_gather(n, n.ups[i].sheet, n.ups[i].env, rules, envs, seen) }
+  }
+  for i in 0 .. len(rules) { cs_rule_in(n, rules[i], envs[i]) }
+}
+# a sheet's matching rules into the list, each after every rule at most as specific (stable)
+function cs_gather(n: UiNode, sh: UiSheet, e: UiEnv, rules: []UiRule, envs: []UiEnv, seen: []UiSheet) -> void {
+  for i in 0 .. len(seen) {
+    if seen[i] == sh { return }
+  }
+  push(seen, sh)
+  for i in 0 .. len(sh.rules) {
+    let r = sh.rules[i]
+    if md_ok(r) and sel_match(r.sel, n) {
+      push(rules, r)
+      push(envs, e)
+      var j = len(rules) - 1
+      while j > 0 and rules[j - 1].spec > r.spec {
+        rules[j] = rules[j - 1]
+        envs[j] = envs[j - 1]
+        j -= 1
+      }
+      rules[j] = r
+      envs[j] = e
+    }
+  }
+}
+# CSS's order: the children placed by it, lowest first, the tree's order kept between equals
+function cs_order(n: UiNode) -> void {
+  var any = false
+  for i in 0 .. len(n.children) {
+    if ly_order(n.children[i]) != 0 { any = true }
+  }
+  if not any { return }
+  for i in 1 .. len(n.children) {
+    let c = n.children[i]
+    var j = i
+    while j > 0 and ly_order(n.children[j - 1]) > ly_order(c) {
+      n.children[j] = n.children[j - 1]
+      j -= 1
+    }
+    n.children[j] = c
+  }
+}

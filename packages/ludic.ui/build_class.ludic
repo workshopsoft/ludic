@@ -28,7 +28,8 @@ function bd_class(k: UiTpl, e: UiEnv, key: string, out: []UiNode) -> void {
   bd_kids(root, ce, key, out)
   if len(out) > at { bd_pass_down(out[at], k, e) }
 }
-# <Card class="wide" style="margin: 4px" id="c"> puts those on the card's own root element
+# <Card class="wide" style="margin: 4px" id="c"> puts those on the card's own root element; when that
+# root is itself a component, each user in turn adds theirs (the outermost's id wins)
 function bd_pass_down(n: UiNode, k: UiTpl, e: UiEnv) -> void {
   let c = tpl_attr(k, "class")
   if c != null {
@@ -39,7 +40,10 @@ function bd_pass_down(n: UiNode, k: UiTpl, e: UiEnv) -> void {
   }
   let id = tpl_attr(k, "id")
   if id != null { n.id = ui_eval_text(id, e) }
-  if k.style != null { n.style2 = k.style }
-  n.sheet2 = k.sheet
-  n.env2 = e
+  let up = new UiPass
+  up.sheet = k.sheet
+  up.style = k.style
+  up.env = e
+  if n.ups == null { n.ups = new []UiPass }
+  push(n.ups, up)
 }

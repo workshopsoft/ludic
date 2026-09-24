@@ -1,0 +1,5 @@
+# Boxes.ludic - a panel with a list that takes the room its header and footer leave, a line of text
+# beside an icon, zero sizes, calc(), order, and a range's track
+component Boxes {
+  state rows: int = 10
+}

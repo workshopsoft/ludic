@@ -1,0 +1,75 @@
+# layout_shrink.ludic - flex-shrink: when a line's children want more room than it has, those that
+# shrink give it up, each in proportion to its shrink times its size, and none below what it must
+# keep (its min size, a fixed size, its content's). A scroll box keeps nothing - it scrolls - so a
+# list in a column takes the room its siblings leave; a box in a column shrinks as far as the scroll
+# boxes inside it let it, and anything else shrinks only when flex-shrink says so.
+function ly_shrink(dir: int, c: UiNode) -> float {
+  if c.ex != null and c.ex.shrink >= 0.0 { return c.ex.shrink }
+  if c.kind == UI_SCROLL { return 1.0 }
+  if dir == UI_COL and c.kind == UI_BOX { return 1.0 }
+  return 0.0
+}
+# how small a child may be pressed along the run, margins included
+function ly_floor(dir: int, c: UiNode) -> float {
+  if dir == UI_ROW {
+    var w = c.min_w
+    if c.w >= 0.0 { w = Math.max(w, c.w) }
+    return w + c.ml + c.mr
+  }
+  return Math.max(ly_min_h(c), c.min_h) + c.mt + c.mb
+}
+function ly_min_h(c: UiNode) -> float {
+  if c.ex != null and c.ex.has_min { return c.ex.mh_min }
+  return c.mh
+}
+# `sizes` (the children from..to) shrunk by `over` in all
+function ly_shrink_line(n: UiNode, from: int, sizes: []float, over0: float) -> void {
+  var over = over0
+  let frozen = new []bool
+  for k in 0 .. len(sizes) { push(frozen, n.children[from + k].pos >= 2) }
+  for pass in 0 .. 8 {
+    var wsum = 0.0
+    for k in 0 .. len(sizes) {
+      if not frozen[k] { wsum = wsum + ly_shrink(n.dir, n.children[from + k]) * sizes[k] }
+    }
+    if wsum <= 0.0 or over <= 0.01 { return }
+    var taken = 0.0
+    for k in 0 .. len(sizes) {
+      let c = n.children[from + k]
+      let wk = ly_shrink(n.dir, c) * sizes[k]
+      if frozen[k] or wk <= 0.0 { continue }
+      let floor = Math.min(ly_floor(n.dir, c), sizes[k])
+      var want = sizes[k] - over * wk / wsum
+      if want <= floor {
+        want = floor
+        frozen[k] = true
+      }
+      taken = taken + sizes[k] - want
+      sizes[k] = want
+    }
+    over = over - taken
+  }
+}
+# how short the box can be pressed: a scroll box to its padding, a column to what its children can
+# be, a row to its tallest child's least; kept only when it is less than the box's own height
+function ly_min_note(n: UiNode) -> void {
+  var m = n.mh
+  if n.h < 0.0 and n.kind == UI_SCROLL { m = ly_vin(n) } else if n.h < 0.0 and n.kind == UI_BOX and n.children != null and not n.wrap {
+    var sum = 0.0
+    var count = 0
+    for i in 0 .. len(n.children) {
+      let c = n.children[i]
+      if c.pos >= 2 { continue }
+      let cm = ly_min_h(c) + c.mt + c.mb
+      if n.dir == UI_ROW { sum = Math.max(sum, cm) } else { sum = sum + cm }
+      if n.dir == UI_COL and count > 0 { sum = sum + n.gap }
+      count += 1
+    }
+    m = ly_vin(n) + sum
+  }
+  m = ly_clamp(m, n.min_h, n.max_h)
+  if m < n.mh - 0.01 {
+    nx(n).mh_min = m
+    n.ex.has_min = true
+  } else if n.ex != null { n.ex.has_min = false }
+}

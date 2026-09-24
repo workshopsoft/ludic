@@ -1,0 +1,14 @@
+.page { width: 300px; gap: 4px }
+.panel { height: 200px; gap: 10px }
+.bar { height: 30px }
+.list { overflow: auto }
+.item { height: 20px }
+.line { width: 200px; gap: 8px }
+.line img { width: 24px; height: 24px }
+.zero { width: 0; height: 0 }
+.half { --gap: 10px; width: calc(50% - var(--gap)); height: calc(2 * var(--gap) + 1em); padding: calc(1em / 4) 2px }
+.ordered { gap: 0 }
+.a { order: 1 }
+.b { order: 2 }
+.c { order: 3 }
+.ui-track { height: 12px; padding: 2px }

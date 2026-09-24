@@ -28,18 +28,19 @@ function ly_measure(n: UiNode, avail: float, size: float, fg: int) -> void {
     n.mh = n.mh + n.rsize
   }
   var fixed_w = n.w
-  if n.w_pct > 0.0 { fixed_w = avail * n.w_pct / 100.0 }
+  if n.w_pct > 0.0 { fixed_w = ly_pw(n, avail) }
   if (n.kind == UI_BOX or n.kind == UI_SCROLL) and n.children != null {
     var inner = avail - n.ml - n.mr
-    if fixed_w > 0.0 { inner = fixed_w }
+    if fixed_w >= 0.0 { inner = fixed_w }
     inner = ly_clamp(inner, n.min_w, n.max_w) - ly_hin(n)
     if n.dir == UI_ROW and n.wrap { ly_measure_wrap(n, inner) } else { ly_measure_box(n, inner) }
   }
   n.content_h = n.mh
-  if fixed_w > 0.0 { n.mw = fixed_w }
-  if n.h > 0.0 { n.mh = n.h }
+  if fixed_w >= 0.0 { n.mw = fixed_w }
+  if n.h >= 0.0 { n.mh = n.h }
   n.mw = ly_clamp(n.mw, n.min_w, n.max_w)
   n.mh = ly_clamp(n.mh, n.min_h, n.max_h)
+  ly_min_note(n)
 }
 var ly_fg_a: float = 1.0
 function ly_hin(n: UiNode) -> float { return n.pl + n.pr + n.bl + n.br }
@@ -49,55 +50,4 @@ function ly_clamp(v: float, lo: float, hi: float) -> float {
   if hi > 0.0 and out > hi { out = hi }
   if out < lo { out = lo }
   return out
-}
-function ly_measure_box(n: UiNode, inner: float) -> void {
-  var main = 0.0
-  var cross = 0.0
-  var count = 0
-  for i in 0 .. len(n.children) {
-    let c = n.children[i]
-    ly_fg_a = n.rfg_a
-    ly_measure(c, inner, n.rsize, n.rfg)
-    if c.pos < 2 {
-      main = main + ly_main(c, n.dir)
-      if count > 0 { main = main + n.gap }
-      cross = Math.max(cross, ly_cross(c, n.dir))
-      count += 1
-    }
-  }
-  if n.dir == UI_ROW {
-    n.mw = n.mw + main
-    n.mh = n.mh + cross
-  } else {
-    n.mw = n.mw + cross
-    n.mh = n.mh + main
-  }
-}
-# a wrapping row: children in lines no wider than `inner`, the lines stacked `gap` apart
-function ly_measure_wrap(n: UiNode, inner: float) -> void {
-  var line_w = 0.0
-  var line_h = 0.0
-  var widest = 0.0
-  var total = 0.0
-  var count = 0
-  for i in 0 .. len(n.children) {
-    let c = n.children[i]
-    ly_fg_a = n.rfg_a
-    ly_measure(c, inner, n.rsize, n.rfg)
-    if c.pos >= 2 { continue }
-    let cw = ly_main(c, UI_ROW)
-    if count > 0 and line_w + n.gap + cw > inner {
-      widest = Math.max(widest, line_w)
-      total = total + line_h + n.gap
-      line_w = 0.0
-      line_h = 0.0
-      count = 0
-    }
-    if count > 0 { line_w = line_w + n.gap }
-    line_w = line_w + cw
-    line_h = Math.max(line_h, ly_cross(c, UI_ROW))
-    count += 1
-  }
-  n.mw = n.mw + Math.max(widest, line_w)
-  n.mh = n.mh + total + line_h
 }

@@ -1,7 +1,7 @@
 # attr.ludic - what a property sets, by its CSS name or the short one (width or w, background or
 # bg, font-size or size, ...). An attribute on an element is the same property, applied last.
-const AT_ALIAS: string = " width=w height=h min-width=min-w max-width=max-w min-height=min-h max-height=max-h padding=pad background=bg background-color=bg font-size=size opacity=alpha flex-grow=grow flex-direction=dir flex-wrap=wrap justify-content=justify align-items=align align-self=self row-gap=gap column-gap=gap text-align=talign "
-const AT_UNDRAWN: string = " font-weight font-family font-style box-shadow text-shadow cursor transition animation line-height letter-spacing text-decoration "
+const AT_ALIAS: string = " width=w height=h min-width=min-w max-width=max-w min-height=min-h max-height=max-h padding=pad background=bg background-color=bg font-size=size opacity=alpha flex-grow=grow flex-shrink=shrink flex-direction=dir flex-wrap=wrap justify-content=justify align-items=align align-self=self row-gap=gap column-gap=gap text-align=talign "
+const AT_UNDRAWN: string = " font-weight font-family font-style box-shadow cursor transition animation line-height letter-spacing text-decoration "
 # a stylesheet's property: one that means nothing is said
 function el_attr(n: UiNode, key: string, v: Val) -> void {
   if el_apply(n, key, v) { return }
@@ -17,7 +17,7 @@ function el_apply(n: UiNode, key: string, v0: Val) -> bool {
     return true
   }
   let v = cs_vars_in(n, v0)
-  return el_size(n, k, v) or el_box(n, k, v) or el_flex(n, k, v) or el_look(n, k, v) or el_place_prop(n, k, v) or el_edge(n, k, v)
+  return el_size(n, k, v) or el_box(n, k, v) or el_flex(n, k, v) or el_look(n, k, v) or el_place_prop(n, k, v) or el_edge(n, k, v) or el_more(n, k, v)
 }
 function at_alias(key: string) -> string {
   let pat = ` {key}=`
@@ -32,13 +32,7 @@ function at_alias(key: string) -> string {
   return key
 }
 function el_size(n: UiNode, key: string, v: Val) -> bool {
-  if key == "w" {
-    n.w_pct = el_pct(v)
-    n.w = el_len(v)
-  } else if key == "h" {
-    n.h_pct = el_pct(v)
-    n.h = el_len(v)
-  } else if key == "min-w" { n.min_w = el_len(v) } else if key == "max-w" { n.max_w = el_len(v) } else if key == "min-h" { n.min_h = el_len(v) } else if key == "max-h" { n.max_h = el_len(v) } else if key == "gap" { n.gap = el_len(v) } else { return false }
+  if key == "w" or key == "h" { el_dim(n, key == "w", v) } else if key == "min-w" { n.min_w = el_len(v) } else if key == "max-w" { n.max_w = el_len(v) } else if key == "min-h" { n.min_h = el_len(v) } else if key == "max-h" { n.max_h = el_len(v) } else if key == "gap" { n.gap = el_len(v) } else { return false }
   return true
 }
 function el_flex(n: UiNode, key: string, v: Val) -> bool {
@@ -46,7 +40,7 @@ function el_flex(n: UiNode, key: string, v: Val) -> bool {
   if key == "dir" {
     n.dir = UI_COL
     if s == "row" { n.dir = UI_ROW }
-  } else if key == "grow" or key == "flex" { n.grow = el_num(s) } else if key == "wrap" { n.wrap = s == "wrap" or (vl_truthy(v) and s != "false" and s != "nowrap") } else if key == "align" { n.align = el_place(v) } else if key == "self" { n.self = el_place(v) } else if key == "justify" { n.justify = el_place(v) } else if key == "talign" { n.talign = el_place(v) } else if key == "display" { n.hidden = s == "none" } else { return false }
+  } else if key == "grow" { n.grow = el_num(s) } else if key == "flex" { el_flex_short(n, s) } else if key == "wrap" { n.wrap = s == "wrap" or (vl_truthy(v) and s != "false" and s != "nowrap") } else if key == "align" { n.align = el_place(v) } else if key == "self" { n.self = el_place(v) } else if key == "justify" { n.justify = el_place(v) } else if key == "talign" { n.talign = el_place(v) } else if key == "display" { n.hidden = s == "none" } else { return false }
   return true
 }
 function el_look(n: UiNode, key: string, v: Val) -> bool {
@@ -55,7 +49,10 @@ function el_look(n: UiNode, key: string, v: Val) -> bool {
     n.fg = ui_color(s)
     n.fg_a = cl_alpha
   } else if key == "bg" {
-    if len(s) > 4 and s[0..4] == "url(" { n.bg_img = el_url(s) } else {
+    if len(s) > 4 and s[0..4] == "url(" { n.bg_img = el_url(s) } else if tpl_words(s) == "transparent" {
+      n.bg = 0
+      n.bg_a = 0.0
+    } else {
       n.bg = ui_color(s)
       n.bg_a = cl_alpha
     }
