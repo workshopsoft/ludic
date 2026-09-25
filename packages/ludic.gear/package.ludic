@@ -1,0 +1,6 @@
+# ludic.gear - tiers of kit bought one at a time with money and standing, what each tier is worth,
+# what is in the hand, and the charges that burn down while in use (a torch, a battery). Uses
+# ludic.base and nothing else. See README.md.
+package "ludic.gear"
+version "0.1.0"
+kind source

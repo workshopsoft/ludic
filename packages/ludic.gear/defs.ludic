@@ -1,0 +1,55 @@
+# defs.ludic - a kind of gear, a value its tiers give, a charge that burns down, and the facts
+# `names`, `cost` and `rep` are per tier to buy (index 0 is the first); `item` is the pack item
+# that is the kind (-1 none): bought, it is put in the pack; carried, it counts as the first tier.
+# `mult` is per level from 0 (unowned), for the one number a kind scales.
+export property GearKind {
+  key: string = ""
+  vendor: int = 0
+  icon: string = ""
+  tiers: int = 0
+  blurb: string = ""
+  howto: string = ""
+  names: []string = null
+  cost: []int = null
+  rep: []int = null
+  item: int = -1
+  start: int = 0           # the level a new trip begins at
+  mult: []float = null
+}
+
+# saved by key, so order is free
+export open registry GearKinds of GearKind as GEAR
+
+# a number a kind's tier decides: `at` per level from 0, the last one holding past its end
+export property GearValue {
+  key: string = ""
+  gear: int = 0
+  at: []float = null
+}
+
+export open registry GearValues of GearValue as GV
+
+# something that burns down while it runs: `full` units, `per_hour` of them an hour, or the value
+# `rate` (-1: per_hour) - a flashlight's drain is its tier's. `hand` runs only while held.
+export property GearCharge {
+  key: string = ""
+  item: int = -1
+  full: float = 100.0
+  per_hour: float = 0.0
+  rate: int = -1
+  hand: bool = true
+}
+
+export open registry GearCharges of GearCharge as CHARGE
+
+export const GEAR_BOUGHT: int = 0       # a tier was bought
+export const GEAR_RAN_OUT: int = 1      # a charge ran out while running
+
+export property GearFact {
+  what: int = 0
+  kind: int = -1
+  level: int = 0
+  cost: int = 0
+  charge: int = -1
+  item: int = -1
+}

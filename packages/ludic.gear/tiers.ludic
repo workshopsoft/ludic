@@ -1,0 +1,72 @@
+# tiers.ludic - what is owned and what a tier is worth
+export function gear_ok(k: int) -> bool { return k >= 0 and k < GEAR_COUNT }
+
+export function gear_level(k: int) -> int {
+  gear__ensure()
+  return gear__lv[k]
+}
+
+# outright: staging, a test, a camera handed over with the trip
+export function gear_set_level(k: int, lv: int) -> void {
+  gear__ensure()
+  gear__lv[k] = lv
+}
+
+export function gear_owned(k: int) -> bool { return gear_level(k) > 0 }
+
+export function gear_best(k: int) -> bool { return gear_level(k) >= GearKinds[k].tiers }
+
+# a tier's name, "" for none
+export function gear_level_name(k: int, lv: int) -> string {
+  if lv <= 0 or lv > GearKinds[k].tiers { return "" }
+  return GearKinds[k].names[lv - 1]
+}
+
+# the tier on offer next: its name, cost and the standing it wants
+export function gear_next_name(k: int) -> string { return gear_level_name(k, gear_level(k) + 1) }
+
+export function gear_next_cost(k: int) -> int {
+  if gear_best(k) { return 0 }
+  return GearKinds[k].cost[gear_level(k)]
+}
+
+export function gear_next_rep(k: int) -> int {
+  if gear_best(k) { return 0 }
+  return GearKinds[k].rep[gear_level(k)]
+}
+
+function gear__pick(xs: []float, lv: int, fallback: float) -> float {
+  if xs == null or len(xs) == 0 { return fallback }
+  if lv >= len(xs) { return xs[len(xs) - 1] }
+  if lv < 0 { return xs[0] }
+  return xs[lv]
+}
+
+# the kind's own number at its level (1.0 when it has none)
+export function gear_mult(k: int) -> float { return gear__pick(GearKinds[k].mult, gear_level(k), 1.0) }
+
+# a value its kind's tier decides
+export function gear_value(v: int) -> float {
+  let d = GearValues[v]
+  return gear__pick(d.at, gear_level(d.gear), 0.0)
+}
+
+# the room for a thing whose base stack is `base`, scaled: a single thing stays single, and a
+# stack never falls below one
+export function gear_stack_limit(base: int, mult: float) -> int {
+  if base <= 1 { return base }
+  let s = int(float(base) * mult)
+  if s < 1 { return 1 }
+  return s
+}
+
+# the kinds a vendor sells (-1 every vendor), leaving out what the game hides
+export function gear_kinds_at(vendor: int) -> []int {
+  let out = new []int
+  for k in 0 .. GEAR_COUNT {
+    if vendor >= 0 and GearKinds[k].vendor != vendor { continue }
+    if GearWorld.hidden(k) { continue }
+    push(out, k)
+  }
+  return out
+}

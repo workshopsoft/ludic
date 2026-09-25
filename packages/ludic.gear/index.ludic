@@ -1,0 +1,12 @@
+# ludic.gear - kinds with tiers, costs and per-tier values; buying through a purse; the hand and
+# its charges. The kinds, their words and their items are the game's.
+module ludic_gear uses ludic_base
+numbers float
+import "ludic.base"
+import "defs.ludic"
+import "ports.ludic"
+import "state.ludic"
+import "tiers.ludic"
+import "buy.ludic"
+import "hand.ludic"
+import "system.ludic"

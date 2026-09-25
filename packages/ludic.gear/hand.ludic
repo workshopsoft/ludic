@@ -1,0 +1,72 @@
+# hand.ludic - what is held, and the charges: a held one runs only while it is in the hand, and
+# each burns down by the game hours while it runs
+export function gear_hand() -> int { return gear__hand }
+
+# a new thing in the hand (-1 empty): whatever the old one was running goes out
+export function gear_set_hand(it: int) -> void {
+  gear__ensure()
+  gear__hand = it
+  for c in 0 .. CHARGE_COUNT { if GearCharges[c].hand { gear__on[c] = false } }
+}
+
+# the charge an item carries, -1 none
+export function gear_charge_of(it: int) -> int {
+  for c in 0 .. CHARGE_COUNT { if GearCharges[c].item == it { return c } }
+  return -1
+}
+
+export function gear_charge(c: int) -> float {
+  gear__ensure()
+  return gear__left[c]
+}
+
+export function gear_charge_set(c: int, v: float) -> void {
+  gear__ensure()
+  gear__left[c] = Math.clamp(v, 0.0, GearCharges[c].full)
+}
+
+export function gear_charge_fill(c: int) -> void { gear_charge_set(c, GearCharges[c].full) }
+
+export function gear_running(c: int) -> bool {
+  gear__ensure()
+  return gear__on[c]
+}
+
+# on or off; false when it has nothing left, or is held and not in the hand
+export function gear_run(c: int, on: bool) -> bool {
+  gear__ensure()
+  if not on {
+    gear__on[c] = false
+    return true
+  }
+  if gear__left[c] < 1.0 { return false }
+  if GearCharges[c].hand and GearCharges[c].item != gear__hand { return false }
+  gear__on[c] = true
+  return true
+}
+
+# the hand's own charge is running (a torch lit, a flashlight on)
+export function gear_lit() -> bool {
+  if gear__hand < 0 { return false }
+  let c = gear_charge_of(gear__hand)
+  return c >= 0 and GearCharges[c].hand and gear_running(c)
+}
+
+function gear__rate(c: int) -> float {
+  let d = GearCharges[c]
+  if d.rate >= 0 { return gear_value(d.rate) }
+  return d.per_hour
+}
+
+# the game hours of a tick burn every running charge; one that runs out stops and says so
+function gear__burn(hours: float) -> void {
+  gear__ensure()
+  for c in 0 .. CHARGE_COUNT {
+    if not gear__on[c] { continue }
+    gear__left[c] = gear__left[c] - hours * gear__rate(c)
+    if gear__left[c] > 0.0 { continue }
+    gear__left[c] = 0.0
+    gear__on[c] = false
+    gear__fact(GEAR_RAN_OUT, -1, c, 0)
+  }
+}

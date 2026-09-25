@@ -1,0 +1,20 @@
+# ports.ludic - what gear asks the game: money and standing to buy with, the pack, and whether a
+# kind is on sale at all. Unbound, the pack is empty and takes nothing, and every kind is on sale.
+export port GearPurse {
+  money: fn() -> int
+  spend: fn(int) -> bool
+  rep: fn() -> int
+}
+
+export port GearPack {
+  count: fn(int) -> int = fn gear__none
+  add: fn(int, int) -> int = fn gear__took_none
+}
+
+export port GearWorld {
+  hidden: fn(int) -> bool = fn gear__never
+}
+
+function gear__none(it: int) -> int { return 0 }
+function gear__took_none(it: int, n: int) -> int { return 0 }
+function gear__never(k: int) -> bool { return false }
