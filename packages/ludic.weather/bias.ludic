@@ -1,0 +1,43 @@
+# bias.ludic - the story leaning on the sky. Weather is a chain of chances, and a goal that needs
+# rain could wait a week for it; so while the world says it wants a front, one is forecast and
+# arrives within the hour and a half, and while it wants clear sky, the sky clears and holds.
+function wx_front_kind() -> int {
+  if wx_world != null and wx_world.front != null { return wx_world.front() }
+  return wx_first_wet()
+}
+
+function wx_want_wet() -> void {
+  if wx_kinds[wx_state].wet or wx_forced { return }
+  let front = wx_front_kind()
+  wx_next = front
+  wx_forecast = front
+  wx_forced = true
+  if wx_left > 1.5 { wx_left = 1.5 }
+  wx_fact(WEATHER_FRONT, front, wx_state)
+}
+
+function wx_hold() -> void {
+  if wx_left < 1.2 {
+    wx_left = 1.2
+    wx_next = wx_state
+  }
+}
+
+function wx_want_clear() -> void {
+  let clear = wx_clear_kind()
+  if wx_state != clear and not wx_forced {
+    if wx_left > 0.5 { wx_left = 0.5 }
+    wx_next = clear
+  }
+  if wx_state == clear and wx_left < 1.0 {
+    wx_left = 1.0
+    wx_next = clear
+  }
+}
+
+function wx_apply_bias() -> void {
+  let b = wx_bias()
+  if b == WEATHER_WANT_WET { wx_want_wet() }
+  if b == WEATHER_HOLD { wx_hold() }
+  if b == WEATHER_WANT_CLEAR { wx_want_clear() }
+}

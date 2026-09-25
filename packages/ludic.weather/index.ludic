@@ -1,0 +1,13 @@
+# ludic.weather - the sky as a chain of spells: each kind is data the game hands in, the next is
+# drawn from odds the game may lean on, and what changed is a fact on a queue
+module ludic_weather
+numbers float
+import "ludic.base"
+import "state.ludic"
+import "config.ludic"
+import "pick.ludic"
+import "run.ludic"
+import "bias.ludic"
+import "queries.ludic"
+import "verbs.ludic"
+import "system.ludic"

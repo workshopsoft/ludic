@@ -1,0 +1,76 @@
+# run.ludic - the sky moving on. Only the machine that owns the world runs the spells; every
+# machine eases the ground's wetness and makes its own lightning out of a storm it is told of.
+function wx_turn() -> void {
+  let was = wx_state
+  wx_state = wx_next
+  wx_next = wx_pick_next(wx_state)
+  wx_left = wx_spell_hours(wx_state)
+  if wx_forced {
+    wx_forced = false
+    var least = 5.0
+    if wx_world != null and wx_world.front_hours != null { least = Math.max(least, wx_world.front_hours()) }
+    if wx_left < least { wx_left = least }
+  }
+  if wx_state == was { return }
+  # a front going through and leaving clear sky behind it: the light people get up for
+  if wx_kinds[wx_state].clear and wx_kinds[was].wet and not wx_night() {
+    wx_clear_t = 0.6
+    wx_fact(WEATHER_CLEARED, wx_state, was)
+  }
+  wx_fact(WEATHER_BEGAN, wx_state, was)
+}
+
+function wx_wind_tick(dt: float) -> void {
+  let kd = wx_kinds[wx_state]
+  wx_wind = wx_wind + (kd.wind - wx_wind) * Math.min(1.0, dt * 0.3)
+  var want = kd.wind_dir
+  if want < 0.0 {
+    let h = wx_hours()
+    want = wx_down_dir
+    if h > wx_up_from and h < wx_up_to { want = wx_up_dir }
+  }
+  let r = dt * 0.12
+  wx_dir = wx_wrap(wx_dir + Math.clamp(wx_wrap(want - wx_dir), -r, r))
+}
+
+# the spells: the story's lean, the clock running down, the edges eased, the wind
+function wx_spells(dt: float, gh: float) -> void {
+  wx_apply_bias()
+  wx_left = wx_left - gh
+  if wx_left < 0.0 { wx_turn() }
+  var want = 1.0
+  if wx_kinds[wx_state].clear { want = 0.0 }
+  if wx_left < 0.5 and wx_kinds[wx_next].clear { want = 0.0 }
+  wx_amount = wx_amount + (want - wx_amount) * Math.min(1.0, dt * 0.5)
+  wx_wind_tick(dt)
+  if wx_clear_t > 0.0 { wx_clear_t = wx_clear_t - gh }
+}
+
+# soaking is faster than drying: a downpour wets the ground in under a minute, and it takes
+# several to give it back
+function wx_ground_tick(dt: float) -> void {
+  let want = wx_kinds[wx_state].soak * wx_amount
+  var k = dt * 0.10
+  if want < wx_ground { k = dt * 0.020 }
+  wx_ground = wx_ground + (want - wx_ground) * Math.clamp(k, 0.0, 1.0)
+}
+
+function wx_storm_tick(dt: float) -> void {
+  wx_flash = wx_flash * Math.max(0.0, 1.0 - dt * 9.0)
+  if not wx_kinds[wx_state].thunder or wx_amount < 0.5 { return }
+  wx_thunder_t = wx_thunder_t - dt
+  if wx_thunder_t < 0.0 {
+    wx_thunder_t = rng_span(wx_dice, 9.0, 34.0)
+    wx_flash = 1.0
+    wx_fact(WEATHER_THUNDER, wx_state, wx_state)
+  }
+}
+
+# one step: `dt` real seconds and `gh` game hours
+export function weather_run(dt: float, gh: float) -> void {
+  if weather_kind_count() == 0 { return }
+  if wx_owns() { wx_spells(dt, gh) }
+  wx_ground_tick(dt)
+  wx_storm_tick(dt)
+  if weather_wet() { wx_wet_today = true }
+}

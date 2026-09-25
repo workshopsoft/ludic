@@ -1,0 +1,31 @@
+# pick.ludic - the next spell, drawn from weights, and how long one lasts. The weights are the
+# kind's own unless the world leans on them (a season, a wet week); every draw is this package's
+function wx_odds(from: int) -> []float {
+  if wx_world != null and wx_world.odds != null { return wx_world.odds(from) }
+  return wx_kinds[from].odds
+}
+
+# the kind a set of weights lands on; no weights (or all zero) keeps the kind it came from
+export function weather_draw_from(w: []float, from: int, roll: float) -> int {
+  if w == null { return from }
+  var total = 0.0
+  for k in 0 .. len(w) { if w[k] > 0.0 { total = total + w[k] } }
+  if not (total > 0.0) { return from }
+  var at = roll * total
+  for k in 0 .. len(w) {
+    if w[k] > 0.0 {
+      if at < w[k] { return k }
+      at = at - w[k]
+    }
+  }
+  return len(w) - 1
+}
+
+function wx_pick_next(from: int) -> int {
+  return weather_draw_from(wx_odds(from), from, rng_float(wx_dice))
+}
+
+function wx_spell_hours(k: int) -> float {
+  let kd = wx_kinds[k]
+  return rng_span(wx_dice, kd.spell_lo, kd.spell_hi)
+}

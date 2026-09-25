@@ -1,0 +1,5 @@
+# ludic.weather - spells of weather the game describes as data: odds, wetness, wind, storms and a
+# forecast, leaning on the story when asked. Uses ludic.base and nothing else. See README.md.
+package "ludic.weather"
+version "0.1.0"
+kind source

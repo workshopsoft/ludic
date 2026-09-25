@@ -1,0 +1,38 @@
+# queries.ludic - what the world asks the sky
+export function weather_state() -> int { return wx_state }
+export function weather_next() -> int { return wx_next }
+export function weather_left() -> float { return wx_left }
+export function weather_amount() -> float { return wx_amount }
+export function weather_forecast() -> int { return wx_forecast }
+export function weather_forced() -> bool { return wx_forced }
+export function weather_wind() -> float { return wx_wind }
+export function weather_dir() -> float { return wx_dir }
+export function weather_ground_wet() -> float { return wx_ground }
+export function weather_flash() -> float { return wx_flash }
+
+# rain or snow is falling, and more than a spit of it
+export function weather_wet() -> bool {
+  if weather_kind_count() == 0 { return false }
+  return wx_kinds[wx_state].wet and wx_amount > 0.3
+}
+
+export function weather_overcast() -> float {
+  if weather_kind_count() == 0 { return 0.0 }
+  return wx_kinds[wx_state].overcast * wx_amount
+}
+
+export function weather_cold() -> float {
+  if weather_kind_count() == 0 { return 0.0 }
+  return wx_kinds[wx_state].cold * wx_amount
+}
+
+export function weather_name(k: int) -> string {
+  if k < 0 or k >= weather_kind_count() { return "" }
+  return wx_kinds[k].name
+}
+
+# the half hour after a front goes through, when the air is glass-clear
+export function weather_after_front() -> bool { return wx_clear_t > 0.0 }
+
+# yesterday had rain or snow in it (the valley's fog pools after a wet day)
+export function weather_wet_yesterday() -> bool { return wx_wet_yesterday }

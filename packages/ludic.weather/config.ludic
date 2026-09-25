@@ -1,0 +1,60 @@
+# config.ludic - the kinds the game hands in, the wind's daily turn, and the port's defaults
+var wx_down_dir: float = 0.0     # the wind overnight and into the morning
+var wx_up_dir: float = 3.1415927 # the wind while the slopes are warm
+var wx_up_from: float = 10.0
+var wx_up_to: float = 19.0
+
+# the kinds, in the game's order; the first `clear` one is where a new trip starts
+export function weather_kinds(kinds: []WeatherKind) -> void { wx_kinds = kinds }
+
+export function weather_kind_count() -> int {
+  if wx_kinds == null { return 0 }
+  return len(wx_kinds)
+}
+
+export function weather_kind(k: int) -> WeatherKind { return wx_kinds[k] }
+
+# a valley's wind: down it by night, up it from `up_from` to `up_to` while the slopes are warm
+export function weather_config_wind(down_dir: float, up_dir: float, up_from: float, up_to: float) -> void {
+  wx_down_dir = down_dir
+  wx_up_dir = up_dir
+  wx_up_from = up_from
+  wx_up_to = up_to
+}
+
+function wx_clear_kind() -> int {
+  for k in 0 .. weather_kind_count() { if wx_kinds[k].clear { return k } }
+  return 0
+}
+
+function wx_first_wet() -> int {
+  for k in 0 .. weather_kind_count() { if wx_kinds[k].wet { return k } }
+  return 0
+}
+
+function wx_owns() -> bool {
+  if wx_world == null or wx_world.owns_world == null { return true }
+  return wx_world.owns_world()
+}
+
+function wx_hours() -> float {
+  if wx_world == null or wx_world.hours == null { return 12.0 }
+  return wx_world.hours()
+}
+
+function wx_night() -> bool {
+  if wx_world == null or wx_world.is_night == null { return false }
+  return wx_world.is_night()
+}
+
+function wx_bias() -> int {
+  if wx_world == null or wx_world.bias == null { return WEATHER_NO_BIAS }
+  return wx_world.bias()
+}
+
+function wx_wrap(a: float) -> float {
+  var d = a
+  while d > 3.1415927 { d = d - 6.2831853 }
+  while d < -3.1415927 { d = d + 6.2831853 }
+  return d
+}

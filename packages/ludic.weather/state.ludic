@@ -1,0 +1,81 @@
+# state.ludic - the port, the kinds, the facts, and what the sky holds
+# what the weather asks the world. Any field may be left null: the answer is then "yes, it is
+# mine", noon and daylight, the kind's own odds, no bias, the first wet kind, and a seed of 1.
+export property WeatherWorld {
+  owns_world: fn() -> bool = null
+  hours: fn() -> float = null
+  is_night: fn() -> bool = null
+  odds: fn(int) -> []float = null      # weights for the next spell, per kind, from this kind
+  bias: fn() -> int = null             # what the story wants now: WEATHER_* below
+  front: fn() -> int = null            # the kind a wanted front comes as
+  front_hours: fn() -> float = null    # the least a wanted front lasts once it arrives
+  seed: fn() -> int = null
+}
+
+# what the story may ask of the sky
+export const WEATHER_NO_BIAS: int = 0
+export const WEATHER_WANT_WET: int = 1     # send a front, soon
+export const WEATHER_HOLD: int = 2         # keep this spell going a while yet
+export const WEATHER_WANT_CLEAR: int = 3   # clear the sky and keep it clear
+
+# one kind of weather; its place in the list the game hands in is its number
+export property WeatherKind {
+  name: string = ""
+  clear: bool = false        # the kind a sky eases out to: nothing falls, amount goes to 0
+  wet: bool = false          # rain or snow is falling (weather_wet)
+  soak: float = 0.0          # how wet the ground gets under it, 0..1
+  overcast: float = 0.0
+  cold: float = 0.0          # extra cold per game hour, in the game's units
+  wind: float = 0.2          # the strength the wind builds toward, 0..1
+  wind_dir: float = -1.0     # radians the wind blows toward; below 0, the valley's daily turn
+  thunder: bool = false
+  spell_lo: float = 2.0      # game hours a spell lasts, drawn in [lo, hi)
+  spell_hi: float = 8.0
+  odds: []float = null       # weights for the next spell, per kind
+}
+
+export const WEATHER_BEGAN: int = 0     # a spell began (kind, from)
+export const WEATHER_CLEARED: int = 1   # a wet spell gave way to clear sky in daylight
+export const WEATHER_THUNDER: int = 2   # a lightning strike, and its thunder
+export const WEATHER_FRONT: int = 3     # a front the story asked for is forecast (kind)
+
+export property WeatherFact {
+  what: int = 0
+  kind: int = 0
+  from: int = 0
+}
+
+var wx_world: WeatherWorld = null
+var wx_kinds: []WeatherKind = null
+var wx_state: int = 0
+var wx_next: int = 0
+var wx_left: float = 0.0             # game hours left in this spell
+var wx_amount: float = 0.0           # 0..1, how far in (eases at the edges)
+var wx_forecast: int = 0
+var wx_forced: bool = false          # the next spell is a front the story asked for
+var wx_wind: float = 0.2
+var wx_dir: float = 0.0              # radians the wind blows toward
+var wx_ground: float = 0.0           # 0 dry .. 1 soaked
+var wx_flash: float = 0.0
+var wx_thunder_t: float = 0.0        # real seconds to the next strike
+var wx_clear_t: float = 0.0          # game hours of after-the-front light left
+var wx_wet_today: bool = false
+var wx_wet_yesterday: bool = false
+var wx_dice: Rng = null
+var wx_facts: Queue<WeatherFact> = null
+
+export function weather_bind(w: WeatherWorld) -> void { wx_world = w }
+
+# the facts, oldest first; the game drains them into its notices and sounds
+export function weather_facts() -> Queue<WeatherFact> {
+  if wx_facts == null { wx_facts = queue_new("weather.facts") }
+  return wx_facts
+}
+
+function wx_fact(what: int, kind: int, from: int) -> void {
+  let f = new WeatherFact
+  f.what = what
+  f.kind = kind
+  f.from = from
+  q_push(weather_facts(), f)
+}
