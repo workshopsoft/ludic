@@ -435,6 +435,28 @@ function scaffold_names_case() -> void {
   ok(lbl)
 }
 
+# `ludic test <dir>`: the test programs under a package, each test block in a process of its own
+# (a global one test changes is fresh in the next), and a failed expect named by file:line
+function test_dir_case() -> void {
+  let lbl = "ludic test <dir>: *_test.ludic and tests/*.ludic, a process per test, expect at file:line"
+  let work = `{tmp_dir()}/testdir`
+  let root = capture_line("pwd")
+  shell(`rm -rf {work} && mkdir -p {work}/pk/tests {work}/pk/src/deep`)
+  var a = "program State {\n  var counter: int = 0\n  var seen: []int = new []int\n"
+  a = a + "  test \"first\" {\n    counter += 1\n    push(seen, 1)\n    expect_eq(counter, 1)\n    expect_eq(len(seen), 1)\n  }\n"
+  a = a + "  test \"second\" {\n    counter += 1\n    push(seen, 2)\n    expect_eq(counter, 1)\n    expect_eq(len(seen), 1)\n  }\n}\n"
+  write_file(`{work}/pk/tests/state.ludic`, a)
+  write_file(`{work}/pk/src/deep/sums_test.ludic`, "program Sums {\n  test \"adds\" {\n    expect_eq(2 + 2, 4)\n  }\n  test \"wrong\" {\n    expect_eq(2 + 2, 5)\n  }\n}\n")
+  write_file(`{work}/pk/src/helper.ludic`, "program NotATest {\n  entry { exit(3) }\n}\n")
+  if shq(`cd {work} && {root}/bin/ludic test pk > out.txt 2>&1`) { bad2(lbl, "a failing test passed");  return }
+  let got = capture(`cat {work}/out.txt`)
+  if not s_contains(got, "pk/src/deep/sums_test.ludic:6: expect_eq failed (got 4, want 5)") { bad2(lbl, `no file:line for the failure in [{s_trim(got)}]`);  return }
+  if not s_contains(got, "pk/tests/state.ludic  (2 tests)") { bad2(lbl, `the two tests shared a global: [{s_trim(got)}]`);  return }
+  if s_contains(got, "helper.ludic") { bad2(lbl, "a file that is not a test was run");  return }
+  if not shq(`cd {work} && {root}/bin/ludic test pk/tests > out2.txt 2>&1`) { bad2(lbl, capture_line(`tail -1 {work}/out2.txt`));  return }
+  ok(lbl)
+}
+
 # package.ludic drives the CLI: `entry` (or the one program under src/) is what
 # build compiles, scripts run by name, and hooks wrap commands — a failing
 # `before` stops the command, `after` runs only on success.
@@ -957,6 +979,7 @@ function cmd_dev_test() -> int {
   install_layout_case()
   scaffold_names_case()
   package_scripts_case()
+  test_dir_case()
   pack_roundtrip_case()
   packignore_case()
   os_dirs_case()

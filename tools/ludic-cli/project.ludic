@@ -350,10 +350,17 @@ function test_files() -> []pointer {
   return files
 }
 
-# ludic test [file...] [--verbose] [--test NAME] — compile each test program
-# headlessly and run it. A test program's own runner prints ok/FAIL per test
-# block and exits non-zero if any failed, so this reports one line per file and
-# forwards the failure.
+# the test programs under a directory - a package's: every *_test.ludic, and every file straight
+# inside a tests/ directory, anywhere under it
+function test_files_in(dir: pointer) -> []pointer {
+  let q = sh_single(dir)
+  return split_lines(capture(`{{ find {q} -name '*_test.ludic' -type f; find {q} -path '*/tests/*.ludic' -type f | grep -v '/tests/.*/'; }} 2>/dev/null | sort -u`))
+}
+
+# ludic test [file|dir...] [--verbose] [--test NAME] — compile each test program
+# headlessly and run every test block in a process of its own, so no test sees
+# what another left in a global. A directory stands for the test programs under
+# it. One line per file; a failure prints what its tests printed.
 #
 # --verbose streams every runner line, framed by `RUN <file>` ... `PASS|FAIL
 # <file>`: the shape an IDE test view parses. --test NAME runs only the test
@@ -373,8 +380,14 @@ function cmd_test() -> int {
     }
     else if a[0] == '-' {
       err(`ludic test: unknown option {a}\n`)
-      err("  usage: ludic test [file...] [--verbose] [--test NAME]\n")
+      err("  usage: ludic test [file|dir...] [--verbose] [--test NAME]\n")
       return 1
+    }
+    else if shq(`test -d {sh_single(a)}`) {
+      let found = test_files_in(a)
+      if len(found) == 0 { err(`ludic test: no tests under {a} (expected *_test.ludic or tests/*.ludic)\n`);  return 1 }
+      var k = 0
+      while k < len(found) { push(files, found[k]);  k += 1 }
     }
     else { push(files, a) }
     ai += 1
@@ -390,9 +403,8 @@ function cmd_test() -> int {
     mi += 1
   }
   shell("mkdir -p build")
-  var filter = ""
-  if only != "" { filter = ` {sh_single(only)}` }
   var failed = 0
+  var ntests = 0
   var i = 0
   while i < len(files) {
     let f = files[i]
@@ -402,20 +414,21 @@ function cmd_test() -> int {
       let line = `  {c_red()}FAIL{c_reset()} {f}  (did not compile)`
       if verbose { say(line) } else { print(line) }
       failed += 1
-    } else if verbose {
-      let rc = sh(`{bin}{filter} < /dev/null 2>&1`)
-      if rc == 0 { say(`  {c_green()}PASS{c_reset()} {f}`) }
-      else { say(`  {c_red()}FAIL{c_reset()} {f}  (exit {string(rc)})`);  failed += 1 }
     } else {
-      # a test program prints one line per test block; that belongs on screen
-      # when something failed and nowhere when everything passed.
-      let log = `{bin}.out`
-      let rc = sh(`{bin}{filter} < /dev/null > {log} 2>&1`)
-      if rc == 0 { print(`  {c_green()}PASS{c_reset()} {f}`) }
-      else {
-        print(`  {c_red()}FAIL{c_reset()} {f}  (exit {string(rc)})`)
-        let txt = read_file(log)
-        if txt != null { out(txt) }
+      let r = test_run_file(bin, only, verbose)
+      ntests += g_tr_ran
+      var what = `({string(g_tr_ran)} tests)`
+      if g_tr_ran == 1 { what = "(1 test)" }
+      if r == 0 {
+        let line = `  {c_green()}PASS{c_reset()} {f}  {what}`
+        if verbose { say(line) } else { print(line) }
+      } else {
+        var line = `  {c_red()}FAIL{c_reset()} {f}  ({string(g_tr_bad)} of {string(g_tr_ran)} tests failed)`
+        if g_tr_ran == 0 { line = `  {c_red()}FAIL{c_reset()} {f}  (no test named "{only}")` }
+        if verbose { say(line) } else {
+          print(line)
+          out(g_tr_log)
+        }
         failed += 1
       }
     }
@@ -423,11 +436,54 @@ function cmd_test() -> int {
   }
   print("")
   if failed == 0 {
-    print(`== {string(len(files))} test files passed ==`)
+    print(`== {string(len(files))} test files passed ({string(ntests)} tests) ==`)
     return 0
   }
   print(`== {string(failed)} of {string(len(files))} test files failed ==`)
   return 1
+}
+
+var g_tr_ran: int = 0
+var g_tr_bad: int = 0
+var g_tr_log: pointer = ""
+# every test block of one compiled test program, each in a child process of its own: the runner
+# names them with --list and runs just one when given its name. Non-zero when any failed (or
+# none matched --test).
+function test_run_file(bin: pointer, only: pointer, verbose: bool) -> int {
+  g_tr_ran = 0
+  g_tr_bad = 0
+  g_tr_log = ""
+  let names = split_lines(capture(`{bin} --list < /dev/null`))
+  var n = 0
+  while n < len(names) {
+    let nm = names[n]
+    n += 1
+    if nm == "" { continue }
+    if only != "" and not (nm == only) { continue }
+    g_tr_ran += 1
+    let log = `{bin}.out`
+    let rc = sh(`{bin} {sh_single(nm)} < /dev/null > {log} 2>&1`)
+    # the child's own summary line counts one test; the file's line says it better
+    let txt = capture(`grep -v '^== ' {log}`)
+    if verbose { shell(`grep -v '^== ' {log}`) }
+    if rc != 0 {
+      g_tr_bad += 1
+      g_tr_log = g_tr_log + txt
+      var ends = false
+      if len(txt) > 0 { ends = txt[len(txt) - 1] == 10 }
+      if not ends { g_tr_log = g_tr_log + "\n" }
+      if not s_contains(txt, "FAIL - ") {
+        g_tr_log = g_tr_log + `FAIL - {nm}  (exit {string(rc)})\n`
+      }
+    }
+  }
+  if only != "" and g_tr_ran == 0 {
+    g_tr_log = `no test named "{only}"\n`
+    if verbose { say(`no test named "{only}"`) }
+    return 1
+  }
+  if g_tr_bad > 0 { return 1 }
+  return 0
 }
 
 # print a line through the shell. The runner's own stdout is buffered, so a

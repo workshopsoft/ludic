@@ -125,6 +125,26 @@ function emit_test_runner() -> void {
   emit(`  store ptr {fval}, ptr %filter\n`)
   emit(`  br label %{lstart}\n`)
   emit(`{lstart}:\n`)
+  # `--list` names every test, one a line: `ludic test` runs each in a process of its own
+  let llist = lbl("tlist");  let lrun0 = lbl("trun0")
+  let fl0 = emit_bind("load ptr, ptr %filter")
+  let hasf0 = emit_bind(`icmp ne ptr {fl0}, null`)
+  let lcmp0 = lbl("tlcmp")
+  emit(`  br i1 {hasf0}, label %{lcmp0}, label %{lrun0}\n`)
+  emit(`{lcmp0}:\n`)
+  let listflag = emit_str_const("--list")
+  let lc = emit_bind(`call i32 @strcmp(ptr {fl0}, ptr {listflag})`)
+  let islist = emit_bind(`icmp eq i32 {lc}, 0`)
+  emit(`  br i1 {islist}, label %{llist}, label %{lrun0}\n`)
+  emit(`{llist}:\n`)
+  var li = 0
+  while li < len(g_tests) {
+    let nm = emit_str_const(g_tests[li].s)
+    emit(`  call i32 (ptr, ...) @printf(ptr @.fmt_line, ptr {nm})\n`)
+    li += 1
+  }
+  emit("  ret i32 0\n")
+  emit(`{lrun0}:\n`)
   if has_ecs() { emit("  call void @rt_init()\n") }
   emit("  call void @L_init_globals()\n")
   i = 0

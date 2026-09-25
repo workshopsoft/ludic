@@ -23,6 +23,12 @@ function emit_expect_fail(cond1: pointer, msgsym: pointer, got: pointer, want: p
   emit(`{lok}:\n`)
 }
 
+# an assertion names the file it is written in, as the compiler was given it, and its line
+function expect_where(e: Node) -> pointer {
+  if e.file != null { return `{e.file}:{itoa(e.line)}` }
+  return `{g_src_name}:{itoa(e.line)}`
+}
+
 # lowercase an ASCII identifier (for #62 package-namespace aliasing: Foo -> foo)
 function ns_lower(s: pointer) -> pointer {
   let n = cstr_len(s)
@@ -673,7 +679,7 @@ function emit_call(e: Node) -> Val {
     g_uses_expect = true
     let a = emit_expr(e.kids[0])
     let c = emit_bind(`icmp ne i32 {a.code}, 0`)
-    let msg = emit_str_const(`{g_src_name}:{itoa(e.line)}: expect failed`)
+    let msg = emit_str_const(`{expect_where(e)}: expect failed`)
     emit_expect_fail(c, msg, "", "")
     return val("0", "void")
   }
@@ -681,7 +687,7 @@ function emit_call(e: Node) -> Val {
     g_uses_expect = true
     let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1])
     let c = emit_bind(`icmp eq i32 {a.code}, {b.code}`)
-    let msg = emit_str_const(`{g_src_name}:{itoa(e.line)}: expect_eq failed`)
+    let msg = emit_str_const(`{expect_where(e)}: expect_eq failed`)
     emit_expect_fail(c, msg, a.code, b.code)
     return val("0", "void")
   }
@@ -693,7 +699,7 @@ function emit_call(e: Node) -> Val {
     let isneg = emit_bind(`icmp slt i32 {d}, 0`)
     let ad = emit_bind(`select i1 {isneg}, i32 {neg}, i32 {d}`)
     let c = emit_bind(`icmp sle i32 {ad}, {tol.code}`)
-    let msg = emit_str_const(`{g_src_name}:{itoa(e.line)}: expect_near failed`)
+    let msg = emit_str_const(`{expect_where(e)}: expect_near failed`)
     emit_expect_fail(c, msg, a.code, b.code)
     return val("0", "void")
   }
