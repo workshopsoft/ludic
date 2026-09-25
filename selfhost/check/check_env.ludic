@@ -18,6 +18,7 @@ function ck_bind(name: pointer, ty: pointer) -> void {
     push(ck_tys, t)
   }
   ck_top += 1
+  ck_set_ro(false)
 }
 function ck_mark() -> int { return ck_top }
 function ck_pop(m: int) -> void { ck_top = m }

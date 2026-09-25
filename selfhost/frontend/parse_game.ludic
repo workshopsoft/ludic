@@ -38,6 +38,8 @@ function parse_event() -> Node {
 
 function parse_system() -> Node {
   pi += 1; let n = node(N_SYS); n.s = eat_id(); n.ty = "Update"
+  n.pos2 = toks[pi - 1].end                    # 0.S: where state parameters would go
+  let ps = parse_entry_params()                # 0.S: handler Draw(h: Hiker) phase Render
   # postfix clauses on `handler Name …`: @anno(...) (parsed and reserved, e.g.
   # @deterministic / @Reads(...) / @Writes(...)) and `phase X`. The handler's
   # query lives in a prefix `@Queries(...)` annotation (see parse_one_decl), not
@@ -56,6 +58,8 @@ function parse_system() -> Node {
   }
   skipnl()
   n.a = block()
+  n.a.pos2 = n.pos2                            # 0.S2: a listener is known by its body
+  entry_bind(n.a, ps)
   return n
 }
 

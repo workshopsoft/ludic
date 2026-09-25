@@ -13,7 +13,9 @@ function ck_params(f: Node, labels: []pointer, tys: []pointer) -> void {
   }
 }
 function ck_call_fn(e: Node, name: pointer, f: Node) -> pointer {
+  mg_call(e, f)
   call_fill_defaults(e, f)
+  ck_state_args(e, f)
   let labels = new []pointer
   let tys = new []pointer
   ck_params(f, labels, tys)
@@ -22,6 +24,7 @@ function ck_call_fn(e: Node, name: pointer, f: Node) -> pointer {
   return f.ty
 }
 function ck_call_alias(e: Node, name: pointer, al: int, f: Node) -> pointer {
+  state_inject(e, f)
   if g_al_labels[al] == null { call_fill_defaults(e, f) } else { call_mixed_to_named(e, ns_alias_labels(al)) }
   let labels = new []pointer
   let tys = new []pointer
@@ -141,6 +144,7 @@ function ck_builtin(e: Node, name: pointer) -> pointer {
     return "void"
   }
   if (name == "push") and len(e.kids) == 2 {
+    ck_write_check(e.kids[0], "push")
     let st = ck_expr(e.kids[0])
     let vt = ck_expr(e.kids[1])
     if not ck_unknown(st) and is_slice_ty(st) { ck_give(slice_elem(st), vt, e.kids[1], `push onto {ck_a(st)}`) }

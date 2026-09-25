@@ -88,6 +88,9 @@ function gen_clone(n: Node, tps: []pointer, args: []pointer) -> Node {
   c.line = n.line
   c.file = n.file
   c.vis = n.vis
+  c.uns = n.uns
+  c.pos = n.pos
+  c.pos2 = n.pos2
   c.a = gen_clone(n.a, tps, args)
   c.b = gen_clone(n.b, tps, args)
   c.c = gen_clone(n.c, tps, args)

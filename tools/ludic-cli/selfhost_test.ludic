@@ -7,7 +7,7 @@ function sh_case(name: pointer, exp: pointer) -> void {
   let ll = `{tmp_dir()}/sh_{name}.ll`
   let er = `{tmp_dir()}/sh_{name}.err`
   let bn = `{tmp_dir()}/sh_{name}`
-  if not shq(`bin/ludicc --unsafe selfhost/tests/{name}.ludic > {ll} 2>{er}`) {
+  if not shq(`bin/ludicc --unsafe --globals selfhost/tests/{name}.ludic > {ll} 2>{er}`) {
     bad2(`{name}: self-host errored`, capture_line(`head -1 {er}`)); return
   }
   if not shq(`{cc()} {ll} -o {bn} 2>/dev/null`) { bad(`{name}: IR did not assemble`); return }

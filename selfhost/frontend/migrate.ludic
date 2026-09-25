@@ -1,0 +1,406 @@
+# migrate.ludic — 0.S2: `ludicc --migrate-state <plan>` works out how a program's module-level
+# vars become states and writes the edits as a plan (`ludic migrate state` applies it):
+#   1. each module's vars are one state, `state <Module>State { ... }`, where the first of them was;
+#   2. every reference to one - read or written - is `<module>_st.<var>`;
+#   3. each function's states - those it touches and those of everything it calls, to a fixed
+#      point - become its leading parameters (`mut` where it or a callee writes);
+#   4. each call passes them on, and each entry point (entry, a handler, a listener, a test)
+#      declares them for the runtime to supply.
+# It runs inside the checker (check_*.ludic call the mg_* hooks), which already knows which name is a
+# local and which a global, and which function a call reaches. Plan lines, one edit each:
+#   VAR <file> <pos> <pos2> <state>            a declaration to move into <state>
+#   STATE <state> <file> <pos> <export 0|1> <param>   where <state> is declared (the first var)
+#   REF <file> <pos> <len> <text>              a reference's name replaced
+#   INS <file> <pos> <text>                    text inserted (a parameter, an argument)
+#   ? <file>:<line> <what>                     what the tool cannot decide, for a person
+var g_migrate: bool = false
+var g_mg_runtime: bool = false         # --migrate-runtime: the runtime's own vars too
+var g_mg_plan: pointer = null
+var g_mg_vars: []Node = new []Node     # the vars that move
+var g_mg_vstate: []int = new []int     # the state each moves into
+var g_ms_name: []pointer = new []pointer
+var g_ms_mod: []pointer = new []pointer
+var g_ms_param: []pointer = new []pointer
+var g_ms_export: []int = new []int
+# units: the functions and entry points whose states are worked out
+var g_mu_node: []Node = new []Node
+var g_mu_kind: []int = new []int      # 0 function, 1 entry block, 2 handler, 3 test, 4 listener
+var g_mu_need: []pointer = new []pointer   # ",0,3," state indices it needs
+var g_mu_mut: []pointer = new []pointer    # the ones it changes
+var g_mg_cur: int = -1
+var g_mc_call: []Node = new []Node    # every call to a function, and where it is
+var g_mc_unit: []int = new []int
+var g_mc_callee: []int = new []int
+var g_mr_node: []Node = new []Node    # every reference to a moving var
+var g_mr_var: []int = new []int
+var g_mg_report: []pointer = new []pointer
+
+function mg_camel(s: pointer) -> pointer {
+  var out = ""
+  var up = true
+  var i = 0
+  while i < len(s) {
+    let c = s[i]
+    if c == '_' or c == '.' or c == '-' { up = true } else {
+      var ch = s[i .. i + 1]
+      if up and c >= 'a' and c <= 'z' { ch = reg_upper(ch) }
+      out = out + ch
+      up = false
+    }
+    i += 1
+  }
+  return out
+}
+function mg_short(m: pointer) -> pointer {
+  if len(m) > 6 and (m[0 .. 6] == "ludic_") { return m[6 .. len(m)] }
+  return m
+}
+function mg_state_of_mod(m: pointer) -> int {
+  var i = 0
+  while i < len(g_ms_mod) {
+    if (g_ms_mod[i] == m) { return i }
+    i += 1
+  }
+  var base = mg_short(m)
+  if (m == "") { base = reg_lower(g_game_name) }
+  push(g_ms_mod, m)
+  push(g_ms_name, `{mg_camel(base)}State`)
+  push(g_ms_param, `{base}_st`)
+  push(g_ms_export, 0)
+  return len(g_ms_mod) - 1
+}
+function mg_is_target(v: Node) -> bool {
+  if v.kind != N_VAR or v.uns != 0 or v.file == null or v.pos < 0 { return false }
+  if reg_find(v.s) >= 0 or is_port_var(v) { return false }
+  if not g_mg_runtime and has_sub(v.file, "runtime/") { return false }
+  return true
+}
+# which vars move, and the state each moves into
+function mg_collect() -> void {
+  var i = 0
+  while i < g_prog_user_end and i < len(prog) {
+    let d = prog[i]
+    if d.kind == N_VAR and mg_is_target(d) {
+      let k = mg_state_of_mod(module_for_uses(d.file))
+      push(g_mg_vars, d)
+      push(g_mg_vstate, k)
+      d.mg = len(g_mg_vars) - 1
+      if d.vis == 1 { g_ms_export[k] = 1 }
+    }
+    i += 1
+  }
+}
+function mg_unit(n: Node, kind: int) -> int {
+  if n.mg >= 0 and n.kind != N_VAR { return n.mg }
+  push(g_mu_node, n)
+  push(g_mu_kind, kind)
+  push(g_mu_need, ",")
+  push(g_mu_mut, ",")
+  n.mg = len(g_mu_node) - 1
+  # an already-migrated function: its declared states are needs
+  if kind == 0 {
+    var i = 0
+    while i < len(n.kids) and n.kids[i].kind == N_PARAM and is_state_ty(n.kids[i].ty) {
+      let s = mg_state_named(n.kids[i].ty)
+      if s >= 0 {
+        mg_need(n.mg, s, n.kids[i].uns == 1)
+      }
+      i += 1
+    }
+  }
+  return n.mg
+}
+function mg_state_named(name: pointer) -> int {
+  var i = 0
+  while i < len(g_ms_name) {
+    if (g_ms_name[i] == name) { return i }
+    i += 1
+  }
+  # a state declared by hand: known by its name, its param the name in snake case
+  push(g_ms_mod, `={name}`)
+  push(g_ms_name, name)
+  push(g_ms_param, `{reg_lower(name)}`)
+  push(g_ms_export, 0)
+  return len(g_ms_mod) - 1
+}
+function mg_need(u: int, s: int, m: bool) -> bool {
+  var changed = false
+  let key = `,{itoa(s)},`
+  if not has_sub(g_mu_need[u], key) {
+    g_mu_need[u] = g_mu_need[u] + itoa(s) + ","
+    changed = true
+  }
+  if m and not has_sub(g_mu_mut[u], key) {
+    g_mu_mut[u] = g_mu_mut[u] + itoa(s) + ","
+    changed = true
+  }
+  return changed
+}
+# ---- the checker's hooks --------------------------------------------------------
+function mg_enter(n: Node, kind: int) -> void {
+  if not g_migrate { return }
+  g_mg_cur = mg_unit(n, kind)
+}
+function mg_leave() -> void { g_mg_cur = -1 }
+function mg_ref(e: Node, g: Node) -> void {
+  if not g_migrate or g == null or g.kind != N_VAR or g.mg < 0 { return }
+  push(g_mr_node, e)
+  push(g_mr_var, g.mg)
+  if g_mg_cur >= 0 { mg_need(g_mg_cur, g_mg_vstate[g.mg], false) }
+  else { mg_say(e, `{g.s} is read where no function is (a global's initializer); move it by hand`) }
+  if e.pos < 0 { mg_say(e, `a reference to {g.s} in generated code (a component, a view, a registry's lookup)`) }
+}
+function mg_write(t: Node, g: Node) -> void {
+  if not g_migrate or g == null or g.kind != N_VAR or g.mg < 0 { return }
+  if g_mg_cur >= 0 { mg_need(g_mg_cur, g_mg_vstate[g.mg], true) }
+}
+function mg_call(e: Node, f: Node) -> void {
+  if not g_migrate or f == null or g_mg_cur < 0 { return }
+  push(g_mc_call, e)
+  push(g_mc_unit, g_mg_cur)
+  push(g_mc_callee, mg_unit(f, 0))
+}
+function mg_say(n: Node, what: pointer) -> void {
+  var at = "?"
+  if n != null and n.file != null { at = `{n.file}:{itoa(n.line)}` }
+  push(g_mg_report, `? {at} {what}`)
+}
+# ---- the fixed point, and the plan ---------------------------------------------------
+function mg_fixpoint() -> void {
+  var changed = true
+  while changed {
+    changed = false
+    var c = 0
+    while c < len(g_mc_call) {
+      let from = g_mc_unit[c]
+      let to = g_mc_callee[c]
+      let need = mg_list(g_mu_need[to])
+      var k = 0
+      while k < len(need) {
+        let s = need[k]
+        if mg_need(from, s, has_sub(g_mu_mut[to], `,{itoa(s)},`)) { changed = true }
+        k += 1
+      }
+      c += 1
+    }
+  }
+}
+function mg_list(set: pointer) -> []int {
+  let out = new []int
+  var v = 0
+  var any = false
+  var i = 1
+  while i < len(set) {
+    let ch = set[i]
+    if ch == ',' {
+      if any { push(out, v) }
+      v = 0
+      any = false
+    } else {
+      v = v * 10 + (ch - 48)
+      any = true
+    }
+    i += 1
+  }
+  # in the order of the states' names, so every signature and every call agree
+  var a = 1
+  while a < len(out) {
+    let x = out[a]
+    var b = a - 1
+    while b >= 0 and reg_str_less(g_ms_name[x], g_ms_name[out[b]]) {
+      out[b + 1] = out[b]
+      b -= 1
+    }
+    out[b + 1] = x
+    a += 1
+  }
+  return out
+}
+# a function's states that it declares already (a migration run before this one)
+function mg_declared(n: Node, s: int) -> bool {
+  if n.kind != N_FN { return false }
+  var i = 0
+  while i < len(n.kids) and n.kids[i].kind == N_PARAM and is_state_ty(n.kids[i].ty) {
+    if (n.kids[i].ty == g_ms_name[s]) { return true }
+    i += 1
+  }
+  return false
+}
+function mg_param_text(u: int, s: int) -> pointer {
+  if has_sub(g_mu_mut[u], `,{itoa(s)},`) { return `{g_ms_param[s]}: mut {g_ms_name[s]}` }
+  return `{g_ms_param[s]}: {g_ms_name[s]}`
+}
+var g_mg_lines: []pointer = new []pointer
+var g_mg_keys: pointer = ","
+function mg_emit(line: pointer, key: pointer) -> void {
+  if not (key == "") {
+    if has_sub(g_mg_keys, `,{key},`) { return }
+    g_mg_keys = g_mg_keys + key + ","
+  }
+  push(g_mg_lines, line)
+}
+# text for a plan line: spaces and newlines escaped
+function mg_esc(s: pointer) -> pointer {
+  var out = ""
+  var i = 0
+  while i < len(s) {
+    let c = s[i]
+    if c == ' ' { out = out + "\\s" } else if c == '\n' { out = out + "\\n" } else if c == '\\' { out = out + "\\\\" } else { out = out + s[i .. i + 1] }
+    i += 1
+  }
+  return out
+}
+function mg_first_positional_is_state(e: Node) -> bool {
+  if len(e.kids) == 0 or e.kids[0].kind != E_ID { return false }
+  var i = 0
+  while i < len(g_ms_param) {
+    if (g_ms_param[i] == e.kids[0].s) { return true }
+    i += 1
+  }
+  return false
+}
+function mg_nparams(n: Node) -> int {
+  var k = 0
+  var i = 0
+  while i < len(n.kids) {
+    if n.kids[i].kind == N_PARAM { k += 1 }
+    i += 1
+  }
+  return k
+}
+function mg_units() -> void {
+  var u = 0
+  while u < len(g_mu_node) {
+    let n = g_mu_node[u]
+    let need = mg_list(g_mu_need[u])
+    if len(need) > 0 {
+      var text = ""
+      var k = 0
+      while k < len(need) {
+        if not mg_declared(n, need[k]) {
+          if len(text) > 0 { text = text + ", " }
+          text = text + mg_param_text(u, need[k])
+        }
+        k += 1
+      }
+      if len(text) > 0 { mg_unit_edit(u, n, text) }
+    }
+    u += 1
+  }
+}
+function mg_unit_edit(u: int, n: Node, text: pointer) -> void {
+  let kind = g_mu_kind[u]
+  if kind == 0 {
+    if n.pos2 < 0 or n.file == null {
+      mg_say(n, `{n.s} needs {text} and is generated code: its caller cannot be rewritten`)
+      return
+    }
+    var t = text
+    if mg_nparams(n) > 0 { t = t + ", " }
+    mg_emit(`INS {n.file} {itoa(n.pos2 + 1)} {mg_esc(t)}`, `{n.file}@{itoa(n.pos2)}`)
+    return
+  }
+  # an entry point: a list of the states the runtime supplies
+  var body = n.a
+  if kind == 4 { body = n.a }
+  if body != null and len(body.kids) > 0 and body.kids[0].tps != null and (body.kids[0].tps == "state") {
+    mg_say(n, `this entry point declares states already; add ({text}) to them by hand`)
+    return
+  }
+  if kind == 1 { mg_emit(`INS {n.file} {itoa(n.pos)} {mg_esc(`({text}) `)}`, `{n.file}@{itoa(n.pos)}`) }
+  if kind == 2 { mg_emit(`INS {n.file} {itoa(n.pos2)} {mg_esc(`({text})`)}`, `{n.file}@{itoa(n.pos2)}`) }
+  if kind == 3 { mg_emit(`INS {n.file} {itoa(n.pos2)} {mg_esc(` ({text})`)}`, `{n.file}@{itoa(n.pos2)}`) }
+  if kind == 4 {
+    let b = n.a
+    if b == null or b.pos2 < 0 {
+      mg_say(n, `a listener that needs ({text}) whose place is not known`)
+      return
+    }
+    mg_emit(`INS {b.file} {itoa(b.pos2)} {mg_esc(`({text})`)}`, `{b.file}@{itoa(b.pos2)}`)
+  }
+}
+function mg_calls() -> void {
+  var c = 0
+  while c < len(g_mc_call) {
+    let e = g_mc_call[c]
+    let to = g_mc_callee[c]
+    let callee = g_mu_node[to]
+    let need = mg_list(g_mu_need[to])
+    if len(need) > 0 {
+      var text = ""
+      let passed = mg_first_positional_is_state(e)
+      var k = 0
+      while k < len(need) {
+        if not (mg_declared(callee, need[k]) and passed) {
+          if len(text) > 0 { text = text + ", " }
+          text = text + g_ms_param[need[k]]
+        }
+        k += 1
+      }
+      if len(text) > 0 {
+        if e.pos < 0 or e.file == null { mg_say(e, `a call to {callee.s} in generated code needs ({text})`) } else {
+          var t = text
+          if len(e.kids) > 0 { t = t + ", " }
+          mg_emit(`INS {e.file} {itoa(e.pos + 1)} {mg_esc(t)}`, `{e.file}@{itoa(e.pos)}`)
+        }
+      }
+    }
+    c += 1
+  }
+}
+function mg_refs() -> void {
+  var r = 0
+  while r < len(g_mr_node) {
+    let e = g_mr_node[r]
+    let v = g_mg_vars[g_mr_var[r]]
+    if e.pos >= 0 and e.file != null {
+      let s = g_mg_vstate[g_mr_var[r]]
+      mg_emit(`REF {e.file} {itoa(e.pos)} {itoa(len(v.s))} {mg_esc(`{g_ms_param[s]}.{v.s}`)}`, `{e.file}@{itoa(e.pos)}`)
+    }
+    r += 1
+  }
+}
+function mg_finish() -> void {
+  mg_fixpoint()
+  var i = 0
+  while i < len(g_mg_vars) {
+    let v = g_mg_vars[i]
+    let s = g_mg_vstate[i]
+    mg_emit(`VAR {v.file} {itoa(v.pos)} {itoa(v.pos2)} {g_ms_name[s]}`, "")
+    i += 1
+  }
+  var s = 0
+  while s < len(g_ms_name) {
+    # the first var of each new state is where the state is declared
+    var first = -1
+    var j = 0
+    while j < len(g_mg_vars) and first < 0 {
+      if g_mg_vstate[j] == s { first = j }
+      j += 1
+    }
+    if first >= 0 {
+      let v = g_mg_vars[first]
+      mg_emit(`STATE {g_ms_name[s]} {v.file} {itoa(v.pos)} {itoa(g_ms_export[s])} {g_ms_param[s]}`, "")
+    }
+    s += 1
+  }
+  mg_refs()
+  mg_units()
+  mg_calls()
+  let f = file_open(g_mg_plan, "wb")
+  if f == null { die("ludicc: cannot write the migration plan\n") }
+  i = 0
+  while i < len(g_mg_lines) {
+    file_write(f, g_mg_lines[i], len(g_mg_lines[i]))
+    file_write(f, "\n", 1)
+    i += 1
+  }
+  i = 0
+  while i < len(g_mg_report) {
+    file_write(f, g_mg_report[i], len(g_mg_report[i]))
+    file_write(f, "\n", 1)
+    i += 1
+  }
+  file_close(f)
+  exit(0)
+}

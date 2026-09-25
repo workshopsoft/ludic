@@ -951,6 +951,7 @@ function emit_call(e: Node) -> Val {
     let rtname = `rt_{name}`
     fn2 = find_fn(rtname)
     if (fn2 == null) { perr(`unknown function {name}`) }
+    state_inject(e, fn2)                          # 0.S: a runtime built-in's states, supplied
     cname = rtname
   }
   vis_check(fn2, name)

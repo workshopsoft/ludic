@@ -1,0 +1,9 @@
+# 0.S: a read-only state is not handed on where a mut one is wanted
+program StateMutArg {
+  state Tally { n: int = 0 }
+  function bump(c: mut Tally) -> void { c.n += 1 }
+  function look(c: Tally) -> void { bump(c) }
+  entry (c: Tally) {
+    look(c)
+  }
+}

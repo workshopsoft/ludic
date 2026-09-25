@@ -213,6 +213,74 @@ fn()->int and this is a fn(int)->float`). A port nobody uses may stay unbound, a
 whose every member has a default: unbound, it answers with its defaults - which is how a
 package's fallbacks ("unbound: this machine runs the world") are written.
 
+### State: no function writes a global (`state`, `mut`)
+
+A function that changes a module variable it was not given is a hidden coupling: nothing in its
+signature says what it touches, and it cannot run without the whole program around it. So a
+module-level `var` is refused, and a module's changing data is a **state** record instead:
+
+```ludic
+# doc-check: skip — a fragment
+state Hiker {
+  hips: int = -1
+  spine: int = -1
+}
+
+function hiker_bind(h: mut Hiker, sk: Skin) -> void {
+  h.hips = skin_joint(sk, "hips")
+  h.spine = skin_joint(sk, "spine")
+}
+function hips_of(h: Hiker) -> int { return h.hips }
+```
+
+- **One instance, which no code names.** The program holds exactly one of each `state`, made
+  before any code runs. It reaches code only as a parameter: `h: mut Hiker` may change it, `h: Hiker`
+  may only read it. So a function's signature is everything it reads and writes, and a test hands
+  it a plain value.
+- **Read-only is checked where it is written.** Through a read-only state the compiler refuses an
+  assignment whose target starts at it (`h.hips = 1`, `h.list[i] = x`), a `push` onto something in
+  it, and passing it where a `mut` one is wanted (`bump changes Tally (c: mut Tally), and c is
+  read-only here`). It does not follow a reference read out of it into a local and changed there.
+  `mut` is for a state parameter only.
+- **The runtime supplies it at the entry points** - the only code nothing in the program calls:
+  - a body that declares it: `entry (h: mut Hiker) { ... }`, `handler Draw(h: Hiker) phase Render
+    { ... }`, `@On(Ping) handler Heard(h: mut Hiker) { ... }`, `test "name" (h: mut Hiker) { ... }`;
+  - a function value: `fn tick` of `function tick(h: mut Hiker, t: Tick)` is `tick` with its
+    leading states supplied, a `fn(Tick) -> void` - so a system's functions, a port's bind and any
+    callback a package calls are entry points without saying so;
+  - a port member bound to a state's field, `bind Purse { money: Wallet.cash }`;
+  - a call the compiler writes: a namespace method's target, a runtime built-in.
+  Every other call passes its states explicitly.
+- **Everything else module-level is immutable all the way down.** `let LIMITS: []int = [1, 2]`,
+  a `const`, a registry: an assignment or a `push` that starts at one is refused.
+- **Tests get fresh states.** Each test block starts from states made new, in its own process under
+  `ludic test` and in the runner run directly.
+- The toolchain's own programs (the compiler, the CLI) are not part of this yet: they build with
+  `ludicc --globals`, which lets a module-level `var` through.
+
+The errors:
+
+```
+counter.ludic:5: error: this assignment: c is read-only here (c: Tally); take it as c: mut Tally to change it
+counter.ludic:3: error: a module-level var is refused: a module's changing data is its state (state Name { ... }), passed to the functions that use it - or, if it never changes, a let
+counter.ludic:5: error: this assignment: LIMITS is module-level and immutable all the way down; changing data belongs in a state, passed as a mut parameter
+counter.ludic:3: error: x: mut int - mut is for a state parameter, and int is not a state
+```
+
+**`ludic migrate state [file]` moves a program there.** It compiles the program and, from the
+compiler's own view of every name:
+
+1. each module's vars become one state, `state <Module>State { ... }`, where the first of them was;
+2. every reference to one is rewritten to `<module>_st.<name>`;
+3. each function's states - those it touches, and those of everything it calls, to a fixed point -
+   become its leading parameters, `mut` where it or something it calls writes;
+4. each call passes them on, and each entry point declares them.
+
+It prints what it cannot decide (a var read in another global's initializer, a reference in
+generated code), for a person to finish. Run it once per program that uses what changes - each of a
+package's test programs, a game's entry and its lab: a later run finds the states an earlier one
+made and passes them on. `--runtime` moves the runtime's own vars too.
+
 ### Types are checked before anything is emitted
 
 Between the parse and the emitter a checker walks every function, the entry, the tests, the

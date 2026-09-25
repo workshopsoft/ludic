@@ -166,6 +166,8 @@ function emit_test_runner() -> void {
     let rn1 = emit_bind(`add i32 {rn}, 1`)
     emit(`  store i32 {rn1}, ptr %ran\n`)
     emit("  store i32 0, ptr @L_test_fail\n")
+    # 0.S: every state fresh for each test - the states are what changes, and they are made here
+    if i > 0 { emit("  call void @L_init_globals()\n") }
     emit(`  call void @fn__test_{itoa(i)}()\n`)
     let f = emit_bind("load i32, ptr @L_test_fail")
     let isbad = emit_bind(`icmp ne i32 {f}, 0`)

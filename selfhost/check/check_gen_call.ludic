@@ -17,6 +17,7 @@ function gen_fn_instance(t: Node, iname: pointer, binds: []pointer) -> Node {
   if have != null { return have }
   let f = gen_clone(t, gen_split(t.tps), binds)
   f.s = iname
+  if g_migrate { f.mg = mg_unit(t, 0) }        # an instance's needs are its generic's
   push(g_gen_out, f)
   push(g_gen_work, f)
   ck_tab_put(ck_fn_k, ck_fn_v, iname, f)
@@ -44,6 +45,7 @@ function gen_arg_nodes(e: Node, labels: []pointer) -> []Node {
   return out
 }
 function gen_call(e: Node, name: pointer, t: Node) -> pointer {
+  mg_call(e, t)
   let expect = ck_call_expect
   call_fill_defaults(e, t)
   let tps = gen_split(t.tps)

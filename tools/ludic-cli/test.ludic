@@ -508,6 +508,29 @@ function check_build_case() -> void {
   ok(lbl)
 }
 
+# ludic migrate state: a program with module-level vars comes out with a state, threaded, and runs
+# the same
+function migrate_case() -> void {
+  let lbl = "ludic migrate state: vars into a state, parameters threaded, the same output"
+  let work = `{tmp_dir()}/migrate`
+  shell(`rm -rf {work} && mkdir -p {work}`)
+  var src = "program Demo {\n  var count: int = 0\n  var names: []string = new []string   # the names\n"
+  src = src + "  function add(n: string) -> void {\n    push(names, n)\n    count += 1\n  }\n"
+  src = src + "  function total() -> int {\n    return count\n  }\n"
+  src = src + "  function report() -> string {\n    return `{{total()}} names, first {{names[0]}}`\n  }\n"
+  src = src + "  entry {\n    add(\"a\")\n    add(\"b\")\n    print(report())\n  }\n}\n"
+  write_file(`{work}/demo.ludic`, src)
+  if not shq(`bin/ludic migrate state {work}/demo.ludic > {work}/out.txt 2>&1`) { bad2(lbl, capture_line(`tail -1 {work}/out.txt`));  return }
+  let got = read_file(`{work}/demo.ludic`)
+  if not s_contains(got, "state DemoState {") or not s_contains(got, "function add(demo_st: mut DemoState, n: string)") or not s_contains(got, "function total(demo_st: DemoState)") or not s_contains(got, "entry (demo_st: mut DemoState)") {
+    bad2(lbl, `rewrote it as [{got}]`)
+    return
+  }
+  if not shq(`bin/ludicc {work}/demo.ludic -o {work}/demo > {work}/cc.txt 2>&1`) { bad2(lbl, capture_line(`grep -i error {work}/cc.txt | head -1`));  return }
+  let ran = capture_line(`{work}/demo`)
+  if ran == "2 names, first a" { ok(lbl) } else { bad2(lbl, `ran [{ran}]`) }
+}
+
 # every package's own tests, the way a package author runs them: `ludic test packages`
 function packages_test_case() -> void {
   let lbl = "ludic test packages: every package's tests pass"
@@ -877,6 +900,15 @@ function cmd_dev_test() -> int {
   feat_case("modules/layers", "", "5", "layers.ludic (L3: `module menu in layer app uses items` - one layer's modules use each other and may go round)")
   reject_case("rejected/layer_reach", "hud uses items.item_count", "a layered module is still held to its uses outside the layer")
   reject_case("rejected/layer_cycle", "go round in a circle: items -> layer app -> items", "a cycle through a layer and out of it is refused")
+  feat_case("state/counter", "", "11 3 heard 5", "counter.ludic (0.S: a state, mut and read-only parameters, entry, listener and fn-value injection)")
+  feat_case("state/port_field", "", "40", "port_field.ludic (0.S: a port member bound to a state's field)")
+  spec_case("state/tested", "== 2 passed, 0 failed ==")
+  reject_case("rejected/state_readonly", "c is read-only here (c: Tally)", "a read-only state cannot be assigned through")
+  reject_case("rejected/state_mut_arg", "bump changes Tally (c: mut Tally), and c is read-only here", "a read-only state is not passed as mut")
+  reject_case("rejected/module_var", "a module-level var is refused", "a module-level var is refused")
+  reject_case("rejected/module_let_write", "LIMITS is module-level and immutable all the way down", "a module-level let is immutable all the way down")
+  reject_case("rejected/mut_not_state", "mut is for a state parameter", "mut is for a state parameter")
+  migrate_case()
   vis_report_case("rejected/uses_missing", "uses: examples/rejected/uses_valley/items/index.ludic:3: items.inv_add used from", "LUDIC_VIS_REPORT=1 lists a uses violation and builds")
   feat_case("lang/checked", "", "7.5 3 12 hi 2 ok", "checked.ludic (L4: literals take their slot's kind, string(p), []string as []pointer, null, named args)")
   reject_case("rejected/wrong_arity", "this call to area leaves out h, which has no default", "a call with the wrong number of arguments is refused")

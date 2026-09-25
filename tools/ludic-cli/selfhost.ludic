@@ -24,6 +24,8 @@ function selfhost_frags() -> []pointer {
   push(f, "selfhost/frontend/ports.ludic")
   push(f, "selfhost/frontend/privates.ludic")
   push(f, "selfhost/frontend/privates_types.ludic")
+  push(f, "selfhost/frontend/state.ludic")
+  push(f, "selfhost/frontend/migrate.ludic")
   push(f, "selfhost/frontend/registry.ludic")
   push(f, "selfhost/frontend/registry_finish.ludic")
   push(f, "selfhost/frontend/registry_open.ludic")
@@ -75,6 +77,7 @@ function selfhost_frags() -> []pointer {
   push(f, "selfhost/backend/emit_call.ludic")
   push(f, "selfhost/backend/emit_fnval.ludic")
   push(f, "selfhost/backend/emit_vis.ludic")
+  push(f, "selfhost/check/check_state.ludic")
   push(f, "selfhost/check/check_index.ludic")
   push(f, "selfhost/check/check_types.ludic")
   push(f, "selfhost/check/check_env.ludic")
@@ -135,7 +138,7 @@ function cmd_selfhost_build(lc: pointer, outbin: pointer) -> int {
   if not write_selfhost_src(src) { err("ludic-dev: cannot write build/selfhost.ludic\n"); return 1 }
   let ll = `{outbin}.ll`
   # say why when it fails: it used to exit 1 with nothing on the screen
-  if not shq(`{lc} --unsafe {src} > {ll} 2>{tmp_dir()}/shb.err`) {
+  if not shq(`{lc} --unsafe --globals {src} > {ll} 2>{tmp_dir()}/shb.err`) {
     shell(`rm -f {ll}`)
     err(capture(`grep -i error {tmp_dir()}/shb.err | head -5`))
     return 1
@@ -162,7 +165,7 @@ function cmd_sh_compile(shbin: pointer, in: pointer, outbin: pointer) -> int {
 # the quiet core, reused by the test suites; returns true on success. On failure
 # the self-host/link diagnostics are left in tmp_path("gb.err").
 # an example that is a raw-memory program on purpose (a decoder's ABI, a Vulkan demo) is built
-# with --unsafe (L7); the suite sets this around those cases only
+# with --unsafe --globals (L7); the suite sets this around those cases only
 var g_case_unsafe: bool = false
 function case_unsafe_flag() -> pointer {
   if g_case_unsafe { return " --unsafe" }
@@ -194,11 +197,11 @@ function cmd_bootstrap() -> int {
   if cmd_selfhost_build("bin/ludicc", "build/boot/gen1") != 0 { print("FAIL: stage0 build"); return 1 }
   print("  stage0: bin/ludicc -> gen1 (self-host compiler)")
 
-  if not shq("build/boot/gen1 --unsafe build/selfhost.ludic > build/boot/gen2.ll 2>/dev/null") { print("FAIL: gen1 self-compile"); return 1 }
+  if not shq("build/boot/gen1 --unsafe --globals build/selfhost.ludic > build/boot/gen2.ll 2>/dev/null") { print("FAIL: gen1 self-compile"); return 1 }
   if not shq(`{cc()} build/boot/gen2.ll -o build/boot/gen2 2>/dev/null`) { print("FAIL: gen2 assemble"); return 1 }
   print(`  stage1: gen1 -> gen2.ll ({line_count("build/boot/gen2.ll")} lines) -> gen2`)
 
-  if not shq("build/boot/gen2 --unsafe build/selfhost.ludic > build/boot/gen3.ll 2>/dev/null") { print("FAIL: gen2 self-compile"); return 1 }
+  if not shq("build/boot/gen2 --unsafe --globals build/selfhost.ludic > build/boot/gen3.ll 2>/dev/null") { print("FAIL: gen2 self-compile"); return 1 }
   print(`  stage2: gen2 -> gen3.ll ({line_count("build/boot/gen3.ll")} lines)`)
 
   if shq("cmp -s build/boot/gen2.ll build/boot/gen3.ll") {
@@ -220,7 +223,7 @@ function cmd_bootstrap_cfree() -> int {
   if not shq(`{cc()} selfhost/ludicc.seed.ll -o build/cfree/sh_seed 2>/dev/null`) { print("FAIL: assemble seed"); return 1 }
   print("  seed.ll --clang--> sh_seed   (no C compiler used)")
   if not write_selfhost_src("build/cfree/selfhost.ludic") { print("FAIL: write source"); return 1 }
-  if not shq("build/cfree/sh_seed --unsafe build/cfree/selfhost.ludic > build/cfree/out.ll 2>/dev/null") { print("FAIL: seed compiler self-compile"); return 1 }
+  if not shq("build/cfree/sh_seed --unsafe --globals build/cfree/selfhost.ludic > build/cfree/out.ll 2>/dev/null") { print("FAIL: seed compiler self-compile"); return 1 }
   print(`  sh_seed compiles selfhost.ludic -> out.ll ({line_count("build/cfree/out.ll")} lines)`)
   if shq("cmp -s build/cfree/out.ll selfhost/ludicc.seed.ll") {
     print("  out.ll == seed.ll — the compiler rebuilds itself with no C compiler")
@@ -240,17 +243,17 @@ function cmd_reseed() -> int {
   shell("mkdir -p build/cfree")
   if not write_selfhost_src("build/cfree/selfhost.ludic") { print("FAIL: write source"); return 1 }
   if shq(`{cc()} selfhost/ludicc.seed.ll -o build/cfree/sh_old 2>/dev/null`) {
-    if not shq("build/cfree/sh_old --unsafe build/cfree/selfhost.ludic > build/cfree/step1.ll") { print("FAIL: step1"); return 1 }
+    if not shq("build/cfree/sh_old --unsafe --globals build/cfree/selfhost.ludic > build/cfree/step1.ll") { print("FAIL: step1"); return 1 }
     if not shq(`{cc()} build/cfree/step1.ll -o build/cfree/sh_new`) { print("FAIL: assemble sh_new"); return 1 }
-    if not shq("build/cfree/sh_new --unsafe build/cfree/selfhost.ludic > selfhost/ludicc.seed.ll") { print("FAIL: reseed"); return 1 }
+    if not shq("build/cfree/sh_new --unsafe --globals build/cfree/selfhost.ludic > selfhost/ludicc.seed.ll") { print("FAIL: reseed"); return 1 }
     # and the Windows seed, from the same compiler: a Windows checkout bootstraps from it
-    if not shq("build/cfree/sh_new --unsafe --target x86_64-pc-windows-msvc build/cfree/selfhost.ludic > selfhost/ludicc.win.seed.ll") { print("FAIL: reseed (windows)"); return 1 }
+    if not shq("build/cfree/sh_new --unsafe --globals --target x86_64-pc-windows-msvc build/cfree/selfhost.ludic > selfhost/ludicc.win.seed.ll") { print("FAIL: reseed (windows)"); return 1 }
   } else {
     print("seed does not build; reseeding from bin/ludicc")
     ensure_ludicc()
     if cmd_selfhost_build("bin/ludicc", "build/cfree/sh_c") != 0 { print("FAIL: build from bin/ludicc"); return 1 }
-    if not shq("build/cfree/sh_c --unsafe build/cfree/selfhost.ludic > selfhost/ludicc.seed.ll") { print("FAIL: reseed"); return 1 }
-    if not shq("build/cfree/sh_c --unsafe --target x86_64-pc-windows-msvc build/cfree/selfhost.ludic > selfhost/ludicc.win.seed.ll") { print("FAIL: reseed (windows)"); return 1 }
+    if not shq("build/cfree/sh_c --unsafe --globals build/cfree/selfhost.ludic > selfhost/ludicc.seed.ll") { print("FAIL: reseed"); return 1 }
+    if not shq("build/cfree/sh_c --unsafe --globals --target x86_64-pc-windows-msvc build/cfree/selfhost.ludic > selfhost/ludicc.win.seed.ll") { print("FAIL: reseed (windows)"); return 1 }
   }
   print(`reseeded: {line_count("selfhost/ludicc.seed.ll")} lines`)
   return 0

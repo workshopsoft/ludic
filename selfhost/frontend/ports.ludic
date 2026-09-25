@@ -93,6 +93,7 @@ function port_bind_one(b: Node) -> void {
   while i < len(rec.kids) {
     let e = rec.kids[i].a
     if e != null and e.kind == E_ID { port_bind_var(b, c, rec.kids[i]) }
+    if e != null and e.kind == E_MEMBER and e.a != null and e.a.kind == E_ID and is_state_ty(e.a.s) { port_bind_var(b, c, rec.kids[i]) }
     i += 1
   }
   # what the bind names is seen from the bind's file: the port itself, and every `fn name`
@@ -135,9 +136,17 @@ function port_defaults_only(k: int) -> void {
 # `money: gm_money` for a `money: fn() -> int` member: the function `bind_<Port>_<member>` that
 # returns the variable, written in the bind's own file (so it sees what the bind sees)
 function port_bind_var(b: Node, c: Node, fi: Node) -> void {
-  let name = fi.a.s
-  let g = find_global(name)
-  if g == null { port_err(b, `bind {b.s}: {fi.s}: {name} is not a variable (a function is bound as fn {name})`) }
+  # 0.S: `money: Wallet.cash` - a field of a state, read through the state the runtime supplies
+  var sty: pointer = null
+  var name: pointer = null
+  if fi.a.kind == E_MEMBER {
+    sty = fi.a.a.s
+    name = fi.a.s
+  } else {
+    name = fi.a.s
+    let g = find_global(name)
+    if g == null { port_err(b, `bind {b.s}: {fi.s}: {name} is not a variable (a function is bound as fn {name})`) }
+  }
   let fty = field_type(c, fi.s)
   let n = len(fty)
   if n < 7 or not (fty[0 .. 6] == "fn()->") {
@@ -145,7 +154,8 @@ function port_bind_var(b: Node, c: Node, fi: Node) -> void {
   }
   let ret = fty[6 .. n]
   let gen = `bind_{b.s}_{fi.s}`
-  let src = `function {gen}() -> {ret} {{\n  return {name}\n}}\n`
+  var src = `function {gen}() -> {ret} {{\n  return {name}\n}}\n`
+  if sty != null { src = `function {gen}(st: {sty}) -> {ret} {{\n  return st.{name}\n}}\n` }
   let saved_toks = toks
   let saved_pi = pi
   let saved_file = g_parse_file

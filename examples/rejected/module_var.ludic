@@ -1,0 +1,7 @@
+# 0.S: a module-level var is refused - a module's changing data is its state
+program ModuleVar {
+  var count: int = 0
+  entry {
+    print(count)
+  }
+}

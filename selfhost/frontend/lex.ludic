@@ -11,13 +11,19 @@ const TK_EOF: int = 5
 const TK_FLOAT: int = 6
 const TK_INTERP: int = 7      # `text {expr} text` — raw content, split by the parser
 
-property Tok { kind: int = 0, text: pointer = null, ival: int = 0, line: int = 0 }
+property Tok { kind: int = 0, text: pointer = null, ival: int = 0, line: int = 0, pos: int = -1, end: int = -1 }
+
+# where the tokens are in their file (0.S's migration rewrites source by position): a file's own
+# text starts at 0, an interpolation hole at its place in the file, and generated code has none (-1)
+var g_lex_base: int = -1
+var lx_start: int = 0
 
 var toks: []Tok
 
 function tok_push(kind: int, text: pointer, ival: int, line: int) -> void {
   let t = new Tok
   t.kind = kind;  t.text = text;  t.ival = ival;  t.line = line
+  if g_lex_base >= 0 { t.pos = g_lex_base + lx_start }
   push(toks, t)
 }
 
@@ -102,7 +108,12 @@ function lex_fail(line: int, msg: pointer) -> void {
   exit(1)
 }
 
-function lex(src: pointer) -> void { lex_at(src, 1) }
+function lex(src: pointer) -> void {
+  let saved = g_lex_base
+  g_lex_base = 0
+  lex_at(src, 1)
+  g_lex_base = saved
+}
 
 # lex `src` with its first line numbered `first_line` (an interpolation hole is
 # re-lexed on its own, and keeps the line of the string it sits in)
@@ -111,7 +122,14 @@ function lex_at(src: pointer, first_line: int) -> void {
   var i = 0
   var line = first_line
   let n = len(src)
+  var lx_n = 0
   while i < n {
+    # the token the last turn pushed ends where this one starts looking
+    if len(toks) > lx_n {
+      if g_lex_base >= 0 { toks[len(toks) - 1].end = g_lex_base + i }
+      lx_n = len(toks)
+    }
+    lx_start = i
     let c = src[i]
     if c == '\n' { tok_push(TK_NL, null, 0, line); line += 1; i += 1; continue }
     if c == ' ' or c == '\t' or c == '\r' { i += 1; continue }
@@ -236,5 +254,7 @@ function lex_at(src: pointer, first_line: int) -> void {
     if is_op1(c) { tok_push(TK_OP, src[i..i + 1], 0, line); i += 1; continue }
     lex_error(line, c)
   }
+  if len(toks) > lx_n and g_lex_base >= 0 { toks[len(toks) - 1].end = g_lex_base + i }
+  lx_start = i
   tok_push(TK_EOF, null, 0, line)
 }

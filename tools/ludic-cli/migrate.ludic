@@ -1,0 +1,202 @@
+# ---- ludic migrate state -------------------------------------------------------
+# 0.S2: module-level vars become states. The compiler works out the edits (selfhost/frontend/
+# migrate.ludic, `ludicc --migrate-state <plan>`); this applies them to the source, file by file,
+# and prints what it could not decide.
+#
+#   ludic migrate state [file] [--runtime] [--unsafe] [--dry-run]
+#
+# Run it once per program that uses what changes (a package's test programs, the game's entry,
+# its lab): a later run finds the states an earlier one made and passes them on.
+var mgx_file: []pointer = null        # an edit: its file, where, how much it replaces, with what
+var mgx_pos: []int = null
+var mgx_len: []int = null
+var mgx_text: []pointer = null
+var mgx_texts: []pointer = null       # the files' texts, read once
+var mgx_names: []pointer = null
+
+function mgx_unesc(s: pointer) -> pointer {
+  var out = ""
+  var i = 0
+  let n = slen(s)
+  while i < n {
+    if s[i] == 92 and i + 1 < n {
+      let c = s[i + 1]
+      if c == 's' { out = out + " " } else if c == 'n' { out = out + "\n" } else { out = out + sslice(s, i + 1, i + 2) }
+      i += 2
+    } else {
+      out = out + sslice(s, i, i + 1)
+      i += 1
+    }
+  }
+  return out
+}
+function mgx_text_of(path: pointer) -> pointer {
+  for i in 0 .. len(mgx_names) { if mgx_names[i] == path { return mgx_texts[i] } }
+  let t = read_file(path)
+  push(mgx_names, path)
+  push(mgx_texts, t)
+  return t
+}
+function mgx_edit(file: pointer, pos: int, n: int, text: pointer) -> void {
+  push(mgx_file, file)
+  push(mgx_pos, pos)
+  push(mgx_len, n)
+  push(mgx_text, text)
+}
+function mgx_line_start(t: pointer, pos: int) -> int {
+  var i = pos
+  while i > 0 and t[i - 1] != 10 { i -= 1 }
+  return i
+}
+function mgx_line_end(t: pointer, pos: int) -> int {
+  var i = pos
+  while t[i] != 0 and t[i] != 10 { i += 1 }
+  if t[i] == 10 { i += 1 }
+  return i
+}
+function mgx_indent(t: pointer, start: int) -> pointer {
+  var i = start
+  while t[i] == 32 or t[i] == 9 { i += 1 }
+  return sslice(t, start, i)
+}
+function mgx_rtrim(s: pointer) -> pointer {
+  var n = slen(s)
+  while n > 0 and (s[n - 1] == 10 or s[n - 1] == 13 or s[n - 1] == 32) { n -= 1 }
+  return sslice(s, 0, n)
+}
+function cmd_migrate() -> int {
+  if arg_count() < 3 or not (arg(2) == "state") {
+    err("usage: ludic migrate state [file] [--runtime] [--unsafe] [--dry-run]\n")
+    return 2
+  }
+  var src = ""
+  var runtime = ""
+  var dry = false
+  var ai = 3
+  while ai < arg_count() {
+    let a = arg(ai)
+    if a == "--runtime" { runtime = " --migrate-runtime" }
+    else if a == "--unsafe" { g_unsafe_build = true }
+    else if a == "--dry-run" { dry = true }
+    else if a[0] == '-' { err(`ludic migrate: unknown option {a}\n`);  return 2 }
+    else { src = a }
+    ai += 1
+  }
+  let entry = find_entry(src)
+  if entry == "" { return no_entry() }
+  ensure_ludicc()
+  let plan = tmp_path("migrate.plan")
+  shell(`rm -f {plan}`)
+  shq(`{ludicc()} --headless{unsafe_flag()}{runtime} --migrate-state {plan} {entry} > {tmp_path("migrate.err")} 2>&1`)
+  let text = read_file(plan)
+  if text == null {
+    err(`ludic migrate: the compiler wrote no plan for {entry}:\n`)
+    err(capture(`grep -i error {tmp_path("migrate.err")} | head -5`))
+    return 1
+  }
+  return mgx_apply(split_lines(text), dry)
+}
+function mgx_apply(lines: []pointer, dry: bool) -> int {
+  mgx_file = new []pointer;  mgx_pos = new []int;  mgx_len = new []int;  mgx_text = new []pointer
+  mgx_texts = new []pointer;  mgx_names = new []pointer
+  let vfile = new []pointer
+  let vpos = new []int
+  let vpos2 = new []int
+  let vstate = new []pointer
+  let sname = new []pointer
+  let sfile = new []pointer
+  let spos = new []int
+  let sexp = new []int
+  let reports = new []pointer
+  for i in 0 .. len(lines) {
+    let w = dp_words(lines[i])
+    if len(w) == 0 { continue }
+    if w[0] == "VAR" and len(w) == 5 {
+      push(vfile, w[1])
+      push(vpos, s_to_int(w[2]))
+      push(vpos2, s_to_int(w[3]))
+      push(vstate, w[4])
+    } else if w[0] == "STATE" and len(w) >= 6 {
+      push(sname, w[1])
+      push(sfile, w[2])
+      push(spos, s_to_int(w[3]))
+      push(sexp, s_to_int(w[4]))
+    } else if (w[0] == "REF") and len(w) == 5 {
+      mgx_edit(w[1], s_to_int(w[2]), s_to_int(w[3]), mgx_unesc(w[4]))
+    } else if (w[0] == "INS") and len(w) == 4 {
+      mgx_edit(w[1], s_to_int(w[2]), 0, mgx_unesc(w[3]))
+    } else if w[0] == "?" { push(reports, lines[i]) }
+  }
+  # the vars: each line goes, and the first of each state's becomes the state
+  let del_file = new []pointer
+  let del_a = new []int
+  let del_b = new []int
+  for v in 0 .. len(vfile) {
+    let t = mgx_text_of(vfile[v])
+    let a = mgx_line_start(t, vpos[v])
+    let b = mgx_line_end(t, vpos2[v])
+    push(del_file, vfile[v])
+    push(del_a, a)
+    push(del_b, b)
+  }
+  for s in 0 .. len(sname) {
+    var block = ""
+    var at = -1
+    var indent = ""
+    for v in 0 .. len(vfile) {
+      if vstate[v] == sname[s] {
+        let t = mgx_text_of(vfile[v])
+        if vfile[v] == sfile[s] and vpos[v] == spos[s] {
+          at = v
+          indent = mgx_indent(t, del_a[v])
+        }
+        block = block + `{indent}  {mgx_rtrim(sslice(t, vpos[v], del_b[v]))}\n`
+      }
+    }
+    var head = ""
+    if sexp[s] == 1 { head = "export " }
+    if at >= 0 { mgx_edit(vfile[at], del_a[at], 0, `{indent}{head}state {sname[s]} {{\n{block}{indent}}}\n`) }
+  }
+  for d in 0 .. len(del_file) { mgx_edit(del_file[d], del_a[d], del_b[d] - del_a[d], "") }
+  # an edit inside a line that goes is dropped with it
+  var files = 0
+  var edits = 0
+  for f in 0 .. len(mgx_names) {
+    let path = mgx_names[f]
+    var t = mgx_texts[f]
+    let idx = new []int
+    for e in 0 .. len(mgx_file) {
+      if mgx_file[e] == path {
+        var inside = false
+        for d in 0 .. len(del_file) {
+          if del_file[d] == path and mgx_len[e] < del_b[d] - del_a[d] and mgx_pos[e] > del_a[d] and mgx_pos[e] < del_b[d] { inside = true }
+        }
+        if not inside { push(idx, e) }
+      }
+    }
+    # last first, so every earlier place stays where it was; at one place, the deletion last
+    var a = 1
+    while a < len(idx) {
+      let x = idx[a]
+      var b = a - 1
+      while b >= 0 and (mgx_pos[idx[b]] < mgx_pos[x] or (mgx_pos[idx[b]] == mgx_pos[x] and mgx_len[idx[b]] < mgx_len[x])) {
+        idx[b + 1] = idx[b]
+        b -= 1
+      }
+      idx[b + 1] = x
+      a += 1
+    }
+    for k in 0 .. len(idx) {
+      let e = idx[k]
+      t = sslice(t, 0, mgx_pos[e]) + mgx_text[e] + sslice(t, mgx_pos[e] + mgx_len[e], slen(t))
+      edits += 1
+    }
+    if len(idx) > 0 {
+      files += 1
+      if not dry { write_file(path, t) }
+    }
+  }
+  print(`migrate: {string(len(vfile))} vars into {string(len(sname))} states; {string(edits)} edits in {string(files)} files`)
+  for r in 0 .. len(reports) { print(`  by hand: {sslice(reports[r], 2, slen(reports[r]))}`) }
+  return 0
+}

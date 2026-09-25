@@ -70,6 +70,7 @@ function ck_id(e: Node) -> pointer {
   if li >= 0 { return ck_tys[li] }
   let g = ck_global(e.s)
   if g != null {
+    mg_ref(e, g)
     ck_vis(g, e.s, e)
     return g.ty
   }

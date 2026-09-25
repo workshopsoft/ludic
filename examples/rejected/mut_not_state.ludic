@@ -1,0 +1,7 @@
+# 0.S: `mut` is for a state parameter
+program MutNotState {
+  function f(x: mut int) -> int { return x }
+  entry {
+    print(f(1))
+  }
+}

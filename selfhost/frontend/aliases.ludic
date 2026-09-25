@@ -66,6 +66,7 @@ function ns_alias_labels(i: int) -> []pointer {
   return out
 }
 function emit_alias_call(i: int, e: Node) -> Val {
+  state_inject(e, find_fn(g_al_target[i]))      # 0.S: the target's states, supplied
   call_mixed_to_named(e, ns_alias_labels(i))
   reorder_named(e, ns_alias_labels(i))
   let id = node(E_ID)

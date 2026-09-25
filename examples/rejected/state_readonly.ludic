@@ -1,0 +1,11 @@
+# 0.S: a state taken without `mut` is read-only - assigning through it is refused
+program StateReadonly {
+  state Tally { n: int = 0 }
+  function peek(c: Tally) -> int {
+    c.n = 1
+    return c.n
+  }
+  entry (c: Tally) {
+    print(peek(c))
+  }
+}

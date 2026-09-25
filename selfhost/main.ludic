@@ -152,7 +152,15 @@ entry {
     else if a == "--fmt" { fmt = true }
     else if a == "--save-temps" { save = true }
     else if a == "--run" { run = true }
-    else if a == "--check" { g_check_only = true }       # parse, type, module and port checks; nothing emitted
+    else if a == "--check" { g_check_only = true }
+    else if a == "--globals" { g_allow_globals = true }
+    else if a == "--migrate-state" {                     # 0.S2: write the plan ludic migrate state applies
+      ai += 1
+      if ai < arg_count() { g_mg_plan = arg(ai) }
+      g_migrate = true
+      g_allow_globals = true
+    }
+    else if a == "--migrate-runtime" { g_mg_runtime = true }   # 0.S: the toolchain's own programs keep module-level vars       # parse, type, module and port checks; nothing emitted
     else if a == "--coverage" { g_coverage = true }
     else if a == "--target" { ai += 1;  if ai < arg_count() { target = arg(ai) } }
     else if a == "--gui" { gui = true }
@@ -207,7 +215,9 @@ entry {
   privates_rename()                               # L3: a module's private names are its own (privates.ludic)
   check_duplicate_fns()                           # two declarations of one name: the cause, before its symptoms
   check_duplicate_decls()
+  if g_migrate { mg_collect() }                   # 0.S2: the vars that move (migrate.ludic)
   check_program()                                 # L4: the types agree before anything is emitted
+  if g_migrate { mg_finish() }
   if g_check_only { exit(0) }                     # --check: the checks are all there is
   emit_program()
   deps_flush()                                    # LUDIC_DEPS=<file>: the module graph (ludic deps)

@@ -1,0 +1,29 @@
+# counter.ludic — 0.S: no function writes a global. The changing data is a `state`; it reaches a
+# function only as a parameter - `c: mut Tally` to change it, `c: Tally` to read it - and the
+# runtime supplies it where the program is entered: `entry (c: mut Tally)`, an `@On` listener's
+# `(c: mut Tally)`, and any function value (`fn tick` is tick with its Tally supplied).
+#
+# Running it prints:  11 3 heard 5
+program Counter {
+  state Tally {
+    n: int = 0
+    heard: int = 0
+    runs: []int = null
+  }
+  event Ping { amount: int }
+  @On(Ping) handler Heard(c: mut Tally) { c.heard += amount }
+  function bump(c: mut Tally, by: int) -> void {
+    c.n = c.n + by
+    if c.runs == null { c.runs = new []int }
+    push(c.runs, by)
+  }
+  function total(c: Tally) -> int { return c.n }
+  function tick(c: mut Tally, by: int) -> void { bump(c, by) }
+  function run_later(f: fn(int) -> void, by: int) -> void { f(by) }
+  entry (c: mut Tally) {
+    bump(c, 3)
+    run_later(fn tick, 8)
+    emit Ping(amount: 5)
+    print(`{total(c)} {len(c.runs) + 1} heard {c.heard}`)
+  }
+}

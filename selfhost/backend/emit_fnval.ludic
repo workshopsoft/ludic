@@ -7,11 +7,14 @@ function is_fn_type(t: pointer) -> bool {
   return len(t) > 3 and t[0] == 'f' and t[1] == 'n' and t[2] == '('
 }
 # the function type of a declared function, in ptype's own spelling
+# 0.S: a function value is the function with its leading states supplied (state.ludic), so its
+# type leaves them out
 function fn_sig_of(d: Node) -> pointer {
   var out = "fn("
-  var i = 0
+  var i = state_lead(d)
+  let first = i
   while i < len(d.kids) {
-    if i > 0 { out = out + "," }
+    if i > first { out = out + "," }
     out = out + d.kids[i].ty
     i += 1
   }
@@ -63,7 +66,52 @@ function emit_fnref(e: Node) -> Val {
   let d = find_fn(e.s)
   if d == null { perr(`fn {e.s}: no function called {e.s}`) }
   vis_check(d, e.s)
+  if state_lead(d) > 0 { return val(emit_inj_thunk(d), fn_sig_of(d)) }
   return val(`@fn_{e.s}`, fn_sig_of(d))
+}
+# how many of a function's parameters, from the first, are states
+function state_lead(d: Node) -> int {
+  var n = 0
+  while n < len(d.kids) and d.kids[n].kind == N_PARAM and is_state_ty(d.kids[n].ty) { n += 1 }
+  return n
+}
+# @fn_<name>$inj: the function with its leading states loaded from their instances - what a
+# function value of it calls, so whoever calls the value (a system runner, a port, a package)
+# supplies none of them. Written once per function, beside the rest.
+var g_inj_done: []pointer = new []pointer
+function emit_inj_thunk(d: Node) -> pointer {
+  let name = `@fn_{d.s}$inj`
+  var i = 0
+  while i < len(g_inj_done) {
+    if (g_inj_done[i] == d.s) { return name }
+    i += 1
+  }
+  push(g_inj_done, d.s)
+  let k = state_lead(d)
+  var rt = "void"
+  if d.ty != null { rt = llty(d.ty) }
+  var params = ""
+  var args = ""
+  var body = ""
+  i = 0
+  while i < len(d.kids) {
+    let p = d.kids[i]
+    if i < k {
+      body = body + `  %s{itoa(i)} = load ptr, ptr @g_state${p.ty}\n`
+      if len(args) > 0 { args = args + ", " }
+      args = args + `ptr %s{itoa(i)}`
+    } else {
+      if len(params) > 0 { params = params + ", " }
+      params = params + `{llty(p.ty)} %p{itoa(i)}`
+      if len(args) > 0 { args = args + ", " }
+      args = args + `{llty(p.ty)} %p{itoa(i)}`
+    }
+    i += 1
+  }
+  var call = `  call {rt} @fn_{d.s}({args})\n  ret void\n`
+  if not (rt == "void") { call = `  %r = call {rt} @fn_{d.s}({args})\n  ret {rt} %r\n` }
+  emith(`define {rt} {name}({params}) {{\nentry:\n{body}{call}}}\n\n`)
+  return name
 }
 # a call through a value of a function type
 function emit_indirect_call(fv: Val, e: Node) -> Val {

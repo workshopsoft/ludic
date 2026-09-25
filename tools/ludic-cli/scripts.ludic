@@ -12,7 +12,7 @@
 
 # the built-in commands a hook can wrap (every user command that does work)
 function is_hookable(cmd: pointer) -> bool {
-  return (cmd == "build") or (cmd == "run") or (cmd == "test") or (cmd == "deps") or (cmd == "bundle") or (cmd == "pack") or (cmd == "clean") or (cmd == "fmt") or (cmd == "get") or (cmd == "add") or (cmd == "update") or (cmd == "verify") or (cmd == "vendor") or (cmd == "assets") or (cmd == "build-lib")
+  return (cmd == "build") or (cmd == "run") or (cmd == "test") or (cmd == "deps") or (cmd == "migrate") or (cmd == "bundle") or (cmd == "pack") or (cmd == "clean") or (cmd == "fmt") or (cmd == "get") or (cmd == "add") or (cmd == "update") or (cmd == "verify") or (cmd == "vendor") or (cmd == "assets") or (cmd == "build-lib")
 }
 
 # the directory this `ludic` binary lives in, with no trailing slash

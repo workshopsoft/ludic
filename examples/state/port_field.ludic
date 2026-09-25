@@ -1,0 +1,12 @@
+# port_field.ludic — 0.S: a port member bound to a state's field, `money: Wallet.cash` - read
+# through the Wallet the runtime supplies, so a port needs no wrapper and no global.
+#
+# Running it prints:  40
+program PortField {
+  state Wallet { cash: int = 40 }
+  port Purse { money: fn() -> int }
+  bind Purse { money: Wallet.cash }
+  entry {
+    print(Purse.money())
+  }
+}

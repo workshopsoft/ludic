@@ -1,0 +1,8 @@
+# 0.S: a module-level let is immutable all the way down - a write through it is refused
+program ModuleLetWrite {
+  let LIMITS: []int = [1, 2]
+  entry {
+    LIMITS[0] = 3
+    print(LIMITS[0])
+  }
+}

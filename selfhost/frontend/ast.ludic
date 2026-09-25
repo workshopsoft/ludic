@@ -89,6 +89,9 @@ property Node {
   vis:  int = 0               # L3: 1 when the declaration is `export`ed from its module
   tps:  pointer = null        # L5: a generic declaration's type parameters, "T|U"; null when not generic
   uns:  int = 0               # L7: 1 on an `unsafe function`
+  pos:  int = -1              # 0.S: byte offset of its first token in its file (-1: generated)
+  pos2: int = -1              # 0.S: a second place a rewrite needs (a declaration's end, a '(')
+  mg:   int = -1              # 0.S2: its index in the migration's tables (migrate.ludic)
 }
 
 # every node remembers where it was parsed (file + the line of the token the
@@ -98,6 +101,9 @@ function node(kind: int) -> Node {
   n.kind = kind
   n.kids = new []Node
   n.file = g_parse_file
-  if g_parsing and pi < len(toks) { n.line = toks[pi].line }
+  if g_parsing and pi < len(toks) {
+    n.line = toks[pi].line
+    n.pos = toks[pi].pos
+  }
   return n
 }

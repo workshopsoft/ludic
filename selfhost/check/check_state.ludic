@@ -1,0 +1,79 @@
+# check_state.ludic — 0.S: what a state parameter allows. `h: mut Hiker` may change the state;
+# `h: Hiker` may only read it - an assignment whose target starts at it (`h.hips = 1`,
+# `h.list[i] = x`), a push onto something in it, or passing it where a `mut Hiker` is wanted is
+# refused. A module-level `let` (and a const, a registry, a state's own instance) is immutable all
+# the way down: the same writes starting at one are refused. What this does not follow: a reference
+# read out of a read-only state into a local (`let l = h.list`) and changed there.
+var ck_ro: []int = new []int            # parallel to ck_names: 1 for a read-only state
+
+function ck_set_ro(ro: bool) -> void {
+  let k = ck_top - 1
+  while len(ck_ro) < len(ck_names) { push(ck_ro, 0) }
+  if ro { ck_ro[k] = 1 } else { ck_ro[k] = 0 }
+}
+function ck_is_ro(li: int) -> bool {
+  if li < 0 or li >= len(ck_ro) { return false }
+  return ck_ro[li] == 1
+}
+# the name an assignment's target starts at: `a` in `a.b[c].d`
+function ck_chain_root(t: Node) -> Node {
+  var n = t
+  while n != null and (n.kind == E_INDEX or n.kind == E_MEMBER) { n = n.a }
+  if n == null or n.kind != E_ID { return null }
+  return n
+}
+function ck_module_let(g: Node) -> bool {
+  if g == null { return false }
+  if g.kind == N_CONST { return true }
+  if g.kind != N_VAR { return false }
+  if g.uns == 1 { return true }
+  return reg_find(g.s) >= 0
+}
+# a write into `t`: refused when it starts at a read-only state or at a module-level binding
+function ck_write_check(t: Node, what: pointer) -> void {
+  let r = ck_chain_root(t)
+  if r == null { return }
+  let li = ck_local(r.s)
+  if li >= 0 {
+    if ck_is_ro(li) {
+      ck_err("state", t, `{what}: {r.s} is read-only here ({r.s}: {ck_tys[li]}); take it as {r.s}: mut {ck_tys[li]} to change it`)
+    }
+    return
+  }
+  let g = ck_global(r.s)
+  mg_write(t, g)
+  if ck_module_let(g) {
+    var name = r.s
+    if is_state_ty(g.ty) and g.uns == 1 { name = `the state {g.ty}` }
+    ck_err("state", t, `{what}: {name} is module-level and immutable all the way down; changing data belongs in a state, passed as a mut parameter`)
+  }
+}
+# a function's parameters: `mut` is for a state, and a state without it is read-only
+function ck_bind_param(p: Node) -> void {
+  ck_bind(p.s, p.ty)
+  if p.uns == 1 and not is_state_ty(p.ty) {
+    ck_err("state", p, `{p.s}: mut {p.ty} - mut is for a state parameter, and {p.ty} is not a state`)
+  }
+  ck_set_ro(is_state_ty(p.ty) and p.uns == 0)
+}
+# a call's arguments against the function's state parameters: a read-only state is not a mut one
+function ck_state_args(e: Node, f: Node) -> void {
+  var k = 0
+  var i = 0
+  while i < len(f.kids) {
+    let p = f.kids[i]
+    if p.kind == N_PARAM {
+      if p.uns == 1 and is_state_ty(p.ty) and k < len(e.kids) {
+        let a = e.kids[k]
+        if a.kind == E_ID {
+          let li = ck_local(a.s)
+          if li >= 0 and ck_is_ro(li) {
+            ck_err("state", a, `{f.s} changes {p.ty} ({p.s}: mut {p.ty}), and {a.s} is read-only here`)
+          }
+        }
+      }
+      k += 1
+    }
+    i += 1
+  }
+}

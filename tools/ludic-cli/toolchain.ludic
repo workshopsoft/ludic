@@ -6,7 +6,7 @@
 function build_tool(name: pointer, src: pointer) -> bool {
   let ll = `build/{name}.ll`
   let out = `bin/{exe_name(name)}`
-  if not shq(`bin/{exe_name("ludicc")} --unsafe {src} --emit-llvm -o {ll} 2>/dev/null`) { print(`build failed: {name} (compile)`); return false }
+  if not shq(`bin/{exe_name("ludicc")} --unsafe --globals {src} --emit-llvm -o {ll} 2>/dev/null`) { print(`build failed: {name} (compile)`); return false }
   # write to a temp then move, so a running bin/ludic can rebuild itself in place
   # (Windows lets a running executable be renamed, never replaced, so the old one
   # steps aside first)

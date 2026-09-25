@@ -1,0 +1,135 @@
+# state.ludic — 0.S: no function writes a global. A module's changing data is a `state` record:
+#
+#   state Hiker { hips: int = -1, spine: int = -1 }
+#
+# The program holds exactly one instance of each, which no code can name - it is the hidden global
+# `state$Hiker` (a name the lexer cannot produce). It reaches code only as a parameter, `h: mut
+# Hiker` to change it or `h: Hiker` to read it, and the runtime supplies it at the entry points:
+#   - a body that declares it: `entry (h: mut Hiker)`, `handler Draw(h: Hiker) phase Render`,
+#     `@On(E) handler Heard(h: mut Hiker)`, `test "name" (h: mut Hiker)` - each is a `let` at the
+#     body's top bound to the instance;
+#   - a function value: `fn f` of a function whose leading parameters are states is that function
+#     with them supplied (emit_fnval.ludic writes the thunk), so a system, a port's bind and any
+#     callback a package calls are entry points without saying so;
+#   - a call the compiler writes: a namespace method's target, a runtime built-in.
+# A module-level `var` is refused (a `state` holds it), unless the build says --globals (the
+# toolchain's own programs, which are not part of this); a module-level `let` is deeply immutable.
+var g_state_names: []pointer = new []pointer
+var g_allow_globals: bool = false
+
+function state_global(name: pointer) -> pointer { return `state${name}` }
+function is_state_ty(t: pointer) -> bool {
+  if t == null { return false }
+  var i = 0
+  while i < len(g_state_names) {
+    if (g_state_names[i] == t) { return true }
+    i += 1
+  }
+  return false
+}
+# state NAME { fields } - a record, and its one instance
+function parse_state() -> void {
+  let c = parse_component()
+  c.uns = 2
+  push(prog, c)
+  push(g_state_names, c.s)
+  let v = node(N_VAR)
+  v.s = state_global(c.s)
+  v.ty = c.s
+  v.line = c.line
+  v.uns = 1
+  let nw = node(E_NEW)
+  nw.s = c.s
+  nw.file = c.file
+  nw.line = c.line
+  v.a = nw
+  push(prog, v)
+}
+# `name: mut T` in a parameter list: the `mut`, when it is there
+function parse_param_mut(p: Node) -> void {
+  if is_id("mut") and toks[pi + 1].kind == TK_ID {
+    pi += 1
+    p.uns = 1
+  }
+}
+# `(h: mut Hiker, ...)` before an entry point's body: the states the runtime supplies, as the
+# `let`s that open the body
+function parse_entry_params() -> []Node {
+  let out = new []Node
+  if not is_op("(") { return out }
+  pi += 1
+  while not is_op(")") {
+    skipnl()
+    let p = node(N_PARAM)
+    p.s = eat_id()
+    eat_op(":")
+    parse_param_mut(p)
+    p.ty = ptype()
+    push(out, p)
+    skipnl()
+    if is_op(",") { pi += 1 }
+  }
+  eat_op(")")
+  return out
+}
+# a call the compiler writes (a namespace method's target, a runtime built-in) to a function whose
+# leading parameters are states: the instances, unless the call already gives every parameter
+function state_inject(e: Node, f: Node) -> void {
+  if f == null or e == null { return }
+  var k = 0
+  var total = 0
+  var i = 0
+  while i < len(f.kids) {
+    if f.kids[i].kind == N_PARAM {
+      if total == k and is_state_ty(f.kids[i].ty) { k += 1 }
+      total += 1
+    }
+    i += 1
+  }
+  if k == 0 or len(e.kids) + k > total { return }
+  let args = new []Node
+  i = 0
+  while i < k {
+    let id = node(E_ID)
+    id.s = state_global(f.kids[i].ty)
+    id.file = e.file
+    id.line = e.line
+    push(args, id)
+    i += 1
+  }
+  i = 0
+  while i < len(e.kids) {
+    push(args, e.kids[i])
+    i += 1
+  }
+  e.kids = args
+}
+function entry_bind(body: Node, ps: []Node) -> void {
+  if len(ps) == 0 or body == null { return }
+  let lets = new []Node
+  var i = 0
+  while i < len(ps) {
+    let p = ps[i]
+    let l = node(S_LET)
+    l.s = p.s
+    l.ty = p.ty
+    l.file = p.file
+    l.line = p.line
+    l.ival = 0
+    l.uns = p.uns                                # 1: a `mut` state; 0: read-only
+    l.tps = "state"                              # an entry point's state: checked to be one
+    let id = node(E_ID)
+    id.s = state_global(p.ty)
+    id.file = p.file
+    id.line = p.line
+    l.a = id
+    push(lets, l)
+    i += 1
+  }
+  var k = 0
+  while k < len(body.kids) {
+    push(lets, body.kids[k])
+    k += 1
+  }
+  body.kids = lets
+}

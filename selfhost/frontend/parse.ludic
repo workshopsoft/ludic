@@ -179,14 +179,20 @@ function interp_str(e: Node) -> Node {                  # wrap a hole in string(
   let c = node(E_CALL); let id = node(E_ID); id.s = "string"; c.a = id; push(c.kids, e); return c
 }
 var g_interp_line: int = 1                                  # the line the interpolated string sits on
+var g_interp_pos: int = -1                                  # the backtick's place in its file
+var g_hole_base: int = -1
 function parse_hole(inner: pointer) -> Node {               # re-lex+parse an embedded expression
   let saved_toks = toks;  let saved_pi = pi
+  let saved_base = g_lex_base
+  g_lex_base = g_hole_base                     # the hole's place in its file, or -1
   lex_at(inner, g_interp_line);  pi = 0;  skipnl()
+  g_lex_base = saved_base
   let e = expr()
   toks = saved_toks;  pi = saved_pi
   return e
 }
 function parse_interp(raw: pointer) -> Node {
+  let my_pos = g_interp_pos                    # a hole's own templates move g_interp_pos
   let n = len(raw)
   var acc: Node = null
   let lit = bytes(n + 1)
@@ -202,6 +208,8 @@ function parse_interp(raw: pointer) -> Node {
       # find the hole's closing brace: braces nest, and a brace inside a "string", a 'char' or a
       # `template` in the hole is text, not structure (lex.ludic, hole_end)
       i = hole_end(raw, i, n)
+      g_hole_base = -1
+      if my_pos >= 0 { g_hole_base = my_pos + 1 + hs }
       acc = interp_add(acc, interp_str(parse_hole(raw[hs..i])))
       i += 1                                   # skip the closing '}'
     } else {
@@ -246,7 +254,7 @@ function parse_list() -> Node {
 
 function p_primary() -> Node {
   let t = toks[pi]
-  if t.kind == TK_INTERP { pi += 1; g_interp_line = t.line; return parse_interp(t.text) }
+  if t.kind == TK_INTERP { pi += 1; g_interp_line = t.line; g_interp_pos = t.pos; return parse_interp(t.text) }
   if is_op("[") { return parse_list() }
   if t.kind == TK_ID and (t.text == "emit") and (toks[pi + 1].kind == TK_ID) { return parse_emit() }
   if t.kind == TK_INT { let n = node(E_INT); n.ival = t.ival; n.s = t.text; pi += 1; return n }   # s: a long literal's digits
@@ -533,6 +541,7 @@ function stmt_body() -> Node {
 function parse_var() -> Node {
   pi += 1; let n = node(N_VAR); n.s = eat_id(); eat_op(":"); n.ty = ptype()
   if is_op("=") { pi += 1; n.a = expr() }
+  n.pos2 = toks[pi - 1].end                    # 0.S: where the declaration ends
   return n
 }
 function parse_const() -> Node {
@@ -558,10 +567,11 @@ function parse_fn() -> Node {
   pi += 1; let n = node(N_FN); n.s = eat_id()
   if is_op("<") { n.tps = gen_params() }            # L5: function first<T>(xs: []T) -> T
   gen_enter(n.tps)
+  n.pos2 = toks[pi].pos                        # 0.S: the parameter list's '('
   eat_op("(")
   if is_reserved_word(n.s) { perr(`'{n.s}' is a reserved word and cannot name a function`) }
   while not is_op(")") {
-    let p = node(N_PARAM); p.s = eat_id(); eat_op(":"); p.ty = ptype()
+    let p = node(N_PARAM); p.s = eat_id(); eat_op(":"); parse_param_mut(p); p.ty = ptype()
     if is_op("=") { pi += 1;  p.a = expr() }       # L11: a default, for a call that leaves it out
     push(n.kids, p)
     if is_op(",") { pi += 1 }
@@ -573,7 +583,14 @@ function parse_fn() -> Node {
   gen_enter(null)
   return n
 }
-function parse_main() -> Node { pi += 1; let n = node(N_MAIN); n.a = block(); return n }
+function parse_main() -> Node {
+  pi += 1
+  let n = node(N_MAIN)
+  let ps = parse_entry_params()                  # 0.S: entry (h: mut Hiker) - state.ludic
+  n.a = block()
+  entry_bind(n.a, ps)
+  return n
+}
 
 # issue #76 — rewrite calls to a namespace-block sibling (a bare short-name call)
 # to the prefixed function name, so a body can call `pending()` where the function
@@ -1008,7 +1025,21 @@ function parse_one_decl() -> void {
   if is_id("def") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].kind == TK_ID) { parse_def(); return }            # L8
   if is_id("view") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].text == "{") { parse_view(); return }            # L11
   if is_id("component") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].text == "{") { parse_ui_component(); return }  # L11
-  if is_id("var")    { push(prog, parse_var()); return }
+  if is_id("state") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].text == "{") { parse_state(); return }   # 0.S
+  if is_id("var") {
+    if not g_allow_globals {
+      perr(`a module-level var is refused: a module's changing data is its state (state Name {{ ... }}), passed to the functions that use it - or, if it never changes, a let`)
+    }
+    push(prog, parse_var())
+    return
+  }
+  if is_id("let") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].text == ":") {   # 0.S: a module-level let - immutable all the way down
+    let v = parse_var()
+    v.uns = 1
+    if v.a == null { perr(`a module-level let {v.s} needs its value`) }
+    push(prog, v)
+    return
+  }
   if is_id("const")  { push(prog, parse_const()); return }
   var is_unsafe = false
   if is_id("unsafe") and (toks[pi + 1].text == "function") {    # L7: an unsafe function
@@ -1041,8 +1072,11 @@ function parse_test() -> Node {
   let n = node(N_TEST)
   n.s = toks[pi].text
   n.line = ln
+  n.pos2 = toks[pi].end                      # 0.S: where state parameters would go
   pi += 1                                    # past the name
+  let ps = parse_entry_params()              # 0.S: test "name" (h: mut Hiker)
   n.a = block()
+  entry_bind(n.a, ps)
   return n
 }
 

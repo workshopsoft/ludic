@@ -1,0 +1,14 @@
+# tested.ludic — 0.S: a test declares the states it uses, `test "name" (c: mut Tally)`, and gets a
+# fresh one (each test is a process of its own). Its runner prints:
+#   == 2 passed, 0 failed ==
+program Tested {
+  state Tally { n: int = 0 }
+  function bump(c: mut Tally) -> void { c.n += 1 }
+  test "a bump counts one" (c: mut Tally) {
+    bump(c)
+    expect_eq(c.n, 1)
+  }
+  test "reading needs no mut" (c: Tally) {
+    expect_eq(c.n, 0)
+  }
+}

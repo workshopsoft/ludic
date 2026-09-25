@@ -28,11 +28,21 @@ function ck_let(s: Node) -> void {
   if s.ty != null {
     if s.a != null { ck_give(s.ty, t, s.a, s.s) }
     ck_bind(s.s, s.ty)
+    if s.tps != null and (s.tps == "state") {                        # an entry point's state (state.ludic)
+      if not is_state_ty(s.ty) { ck_err("state", s, `an entry point takes states, and {s.s}: {s.ty} is not one`) }
+      ck_set_ro(s.uns == 0)
+    }
     return
   }
   ck_bind(s.s, t)
+  # a local bound to a read-only state is read-only too
+  if s.a != null and s.a.kind == E_ID {
+    let li = ck_local(s.a.s)
+    if li >= 0 and li < ck_top - 1 and ck_is_ro(li) { ck_set_ro(true) }
+  }
 }
 function ck_assign(s: Node) -> void {
+  ck_write_check(s.a, "this assignment")
   let lt = ck_target(s.a)
   if (s.s == "=") { ck_expect = lt }
   let rt = ck_expr(s.b)
@@ -116,10 +126,11 @@ function ck_stmt(s: Node) -> void {
   }
 }
 function ck_fn_body(d: Node) -> void {
+  mg_enter(d, 0)
   let m = ck_mark()
   var i = 0
   while i < len(d.kids) {
-    if d.kids[i].kind == N_PARAM { ck_bind(d.kids[i].s, d.kids[i].ty) }
+    if d.kids[i].kind == N_PARAM { ck_bind_param(d.kids[i]) }
     i += 1
   }
   ck_ret = d.ty
@@ -132,8 +143,10 @@ function ck_fn_body(d: Node) -> void {
   if d.uns == 1 { ck_unsafe -= 1 }
   ck_ret = "void"
   ck_pop(m)
+  mg_leave()
 }
 function ck_listener(l: Node) -> void {
+  mg_enter(l, 4)
   let ev = find_event(l.s)
   ck_vis(ev, l.s, l)
   let m = ck_mark()
@@ -147,6 +160,7 @@ function ck_listener(l: Node) -> void {
   ck_ret = "void"
   ck_block(l.a)
   ck_pop(m)
+  mg_leave()
 }
 # a program's function named like one of the runtime's takes every call the runtime makes to its
 # own - the runtime's ui_measure started answering to a package's - so the name is refused; one
@@ -177,7 +191,16 @@ function check_program() -> void {
   while i < len(prog) {
     let d = prog[i]
     if d.kind == N_FN { ck_fn_body(d) }
-    if d.kind == N_MAIN or d.kind == N_TEST { ck_block(d.a) }
+    if d.kind == N_MAIN or d.kind == N_TEST {
+      mg_enter(d, 1)
+      ck_block(d.a)
+      mg_leave()
+    }
+    if d.kind == N_SYS and g_migrate {          # a handler's body: only the migration reads it here
+      mg_enter(d, 2)
+      ck_block(d.a)
+      mg_leave()
+    }
     if (d.kind == N_VAR or d.kind == N_CONST) and d.a != null {
       ck_vis_file = d.file
       ck_vis_skip = d.kind == N_VAR and is_port_var(d)
@@ -195,11 +218,13 @@ function check_program() -> void {
   # a test block is checked like `entry`: that is also what makes its generic calls real
   j = 0
   while j < len(g_tests) {
+    mg_enter(g_tests[j], 3)
     ck_block(g_tests[j].a)
+    mg_leave()
     j += 1
   }
   gen_finish()
-  if ck_errors > 0 and not ck_reporting() {
+  if ck_errors > 0 and not ck_reporting() and not g_migrate {
     let m = `{itoa(ck_errors)} type error(s)\n`
     file_write(file_stderr(), m, len(m))
     exit(1)
