@@ -1,0 +1,21 @@
+# ui_zoom.ludic — zoom scales an element and everything inside it: its lengths, its text and its
+# layout, and zooms multiply; zoom takes calc() and min(), with a length over a length a plain number,
+# so a HUD can shrink to a narrow window (zoom: min(1, calc(100vw / 800px))).
+import "ludic.ui"
+program UiZoom {
+  numbers float
+  const STYLE: string = "<style>.box { width: 100px; padding: 10px }\n.half { zoom: 0.5 }\n.twice { zoom: 200% }\n.fit { zoom: min(1, calc(100vw / 800px)) }\np { height: 20px }\n.em { width: 2em }</style>"
+  const BODY: string = "<screen name='z'><div class='box'><p>a</p></div><div class='box half'><p>b</p><div class='twice'><div class='box'/></div></div><div class='fit'><div class='box'/><div class='em'/></div></screen>"
+  entry {
+    ui_backend(new UiBackend)
+    ui_load_text("<ui>" + STYLE + BODY + "</ui>", "z.xml")
+    ui_show("z", null, 0.0, 0.0, 400.0, 600.0)
+    let r: UiNode = ui_nodes("z", null)
+    ui_place(r, 0.0, 0.0, 400.0, 600.0)
+    let plain = r.children[0]
+    let half = r.children[1]
+    let inner = half.children[1].children[0]
+    let fit = r.children[2]
+    print(`plain {int(plain.cw)} pad {int(plain.pt)} text {int(plain.children[0].rsize)} h {int(plain.children[0].ch)} | half {int(half.cw)} pad {int(half.pt)} text {int(half.children[0].rsize)} h {int(half.children[0].ch)} | half of twice {int(inner.cw)} | fit {int(fit.children[0].cw)} em {int(fit.children[1].cw)}`)
+  }
+}

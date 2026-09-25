@@ -23,7 +23,7 @@ function ct_sound(n: UiNode) -> string {
 function ct_activate(n: UiNode) -> void {
   if not n.enabled { return }
   let t = ct_type(n)
-  if t == "checkbox" { ct_change(n, vl_bool(not ui_attr_on(n, "checked"))) } else if t == "radio" { ct_change(n, ui_attr(n, "value")) } else if t == "select" { ct_step(n, 1) } else if t == "key" { ct_key_start(n) } else if t == "number" { ct_num_commit(n) } else if t == "" {
+  if t == "checkbox" { ct_change(n, vl_bool(not ui_attr_on(n, "checked"))) } else if t == "radio" { ct_change(n, ui_attr(n, "value")) } else if t == "select" { ct_step(n, 1) } else if t == "key" { ct_key_start(n) } else if t == "number" { ct_num_commit(n) } else if t == "text" { ct_submit(n) } else if t == "" {
     ui_sound(ct_sound(n))
     ui_fire(n, "press", Value.null())
   }

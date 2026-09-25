@@ -65,7 +65,7 @@ function nt_run(n: UiNode, name: string, value: Val) -> void {
   for i in 0 .. len(n.on_names) {
     if n.on_names[i] == name {
       var ev = Value.object()
-      if lk_in(PE_NAMES, name) and Value.kind(value) == 6 { ev = value }
+      if (lk_in(PE_NAMES, name) or name == "hold") and Value.kind(value) == 6 { ev = value }
       Value.put(ev, "name", Value.str(name))
       Value.put(ev, "value", value)
       let e = env_new(n.env)

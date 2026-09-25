@@ -26,7 +26,7 @@ function el_border_image(n: UiNode, s: string) -> void {
   n.bi_src = el_url(s[0..Math.min(close + 1, len(s))])
   let rest = lss_split(s[Math.min(close + 1, len(s))..len(s)], 47)
   n.bi_slice = el_num(tpl_words(rest[0]))
-  n.bi_width = ui_px(n.bi_slice)
+  n.bi_width = el_px(n.bi_slice)
   if len(rest) > 1 { n.bi_width = el_unit(tpl_words(rest[1])) }
 }
 # box-shadow: 6px 10px 0 rgba(0, 0, 0, 0.45)  - x, y, a blur this renderer draws sharp, the colour

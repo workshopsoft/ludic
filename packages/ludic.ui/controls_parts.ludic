@@ -44,3 +44,9 @@ function ct_fixed(f: float, places: int) -> string {
   if neg and whole != 0 { s = "-" + s }
   return s
 }
+# Enter (or A) on a text field: on-submit with what it holds; the focus stays, and the text too
+# unless it says clear-on-submit
+function ct_submit(n: UiNode) -> void {
+  ui_fire(n, "submit", ui_attr(n, "value"))
+  if ui_attr_on(n, "clear-on-submit") { ui_fire(n, "change", Value.str("")) }
+}

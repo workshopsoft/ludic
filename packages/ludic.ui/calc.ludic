@@ -6,6 +6,8 @@ var ca_i: int = 0
 var ca_bad: string = ""
 var ca_px: float = 0.0            # the result: its lengths, its percentage, and whether it had units
 var ca_pct: float = 0.0
+var ca_num: float = 0.0           # a plain number's own value, and whether it was one
+var ca_bare: bool = false
 function ca_is(s: string) -> bool { return ca_fn_at(s, 0) != "" }
 # calc(...) worked out into ca_px and ca_pct; false (with the reason said) when it cannot be
 function ca_eval(s: string) -> bool {
@@ -21,7 +23,9 @@ function ca_eval(s: string) -> bool {
   }
   ca_px = v.px
   ca_pct = v.pct
-  if v.bare { ca_px = ui_px(v.n) }
+  ca_num = v.n
+  ca_bare = v.bare
+  if v.bare { ca_px = el_px(v.n) }
   return true
 }
 property CaVal {
@@ -63,6 +67,6 @@ function ca_len(a: CaVal) -> CaVal {
   if not a.bare { return a }
   let r = new CaVal
   r.bare = false
-  r.px = ui_px(a.n)
+  r.px = el_px(a.n)
   return r
 }

@@ -1,0 +1,59 @@
+# ui_hold.ludic — on-hold fires every frame a button is held, by the pointer (still when it is dragged
+# off, until let go) or by Enter or the pad's A on the focus, with event.dt and event.t on the ui clock,
+# the same at 60 and 240 Hz; on-down and on-up still mark the ends.
+import "ludic.ui"
+program UiHold {
+  numbers float
+  var now: float = 0.0
+  var held: float = 0.0
+  var frames: int = 0
+  var last_t: float = 0.0
+  var ends: string = ""
+  view Craft {
+    on tick(dt: float, t: float) {
+      held = held + dt
+      frames = frames + 1
+      last_t = t
+    }
+    on down() { ends = ends + "d" }
+    on up() { ends = ends + "u" }
+  }
+  const PAGE: string = "<ui><screen name='h'><button on-hold='tick(event.dt, event.t)' on-down='down()' on-up='up()'>Make</button></screen></ui>"
+  function clock() -> float { return now }
+  function frame(i: UiInput) -> UiNode {
+    ui_input(i)
+    ui_show("h", view_craft(), 0.0, 0.0, 400.0, 400.0)
+    let r: UiNode = ui_nodes("h", view_craft())
+    ui_place(r, 0.0, 0.0, 400.0, 400.0)
+    return r.children[0]
+  }
+  # held for `secs` at `hz`, by the pointer (off the button after the first frame) or by A
+  function hold(b: UiNode, secs: float, hz: int, pad: bool) -> string {
+    held = 0.0
+    frames = 0
+    let n = int(secs * float(hz) + 0.5)
+    for k in 0 .. n + 1 {
+      let i = new UiInput
+      i.pad_a = pad
+      i.down = not pad
+      i.x = b.x + 5.0
+      i.y = b.y + 5.0
+      if k > 0 and not pad { i.x = 390.0 }
+      frame(i)
+      now = now + 1.0 / float(hz)
+    }
+    frame(new UiInput)
+    now = now + 1.0 / float(hz)
+    return `{frames} frames {int(Math.round(held * 1000.0))} ms t {int(Math.round(last_t * 1000.0))}`
+  }
+  entry {
+    ui_backend(new UiBackend)
+    ui_clock(fn clock)
+    ui_load_text(PAGE, "h.xml")
+    let b = frame(new UiInput)
+    let slow = hold(b, 0.5, 60, false)
+    let fast = hold(b, 0.5, 240, false)
+    let pad = hold(b, 0.25, 60, true)
+    print(`{slow} | {fast} | pad {pad} | {ends}`)
+  }
+}

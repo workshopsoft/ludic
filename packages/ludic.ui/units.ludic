@@ -10,21 +10,21 @@ var ly_vp_h: float = 0.0
 function el_unit(s: string) -> float {
   let f = el_num(s)
   let n = len(s)
-  if n > 3 and s[n - 3..n] == "rem" { return f * ui_px(16.0) }
+  if n > 3 and s[n - 3..n] == "rem" { return f * el_px(16.0) }
   if n > 2 and s[n - 2..n] == "em" {
-    if el_cur == null { return f * ui_px(16.0) }
+    if el_cur == null { return f * el_px(16.0) }
     if el_key == "size" and el_cur.parent != null { return f * cs_fs(el_cur.parent) }
     return f * cs_fs(el_cur)
   }
   if n > 2 and s[n - 2..n] == "vw" { return f * ly_vp_w / 100.0 }
   if n > 2 and s[n - 2..n] == "vh" { return f * ly_vp_h / 100.0 }
-  return ui_px(f)
+  return el_px(f)
 }
 # the font size an element has so far in its cascade (its own, else its parent's)
 function cs_fs(n: UiNode) -> float {
   if n.size > 0.0 { return n.size }
-  if n.parent != null { return cs_fs(n.parent) }
-  return ui_px(16.0)
+  if n.parent != null { return cs_fs(n.parent) * zm_own(n) }
+  return ui_px(16.0) * zm_own(n)
 }
 function cs_var_set(n: UiNode, name: string, value: string) -> void {
   if n.var_names == null {

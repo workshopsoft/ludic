@@ -16,10 +16,12 @@ function cs_tree(n: UiNode) -> void {
   n.children = shown
   cs_order(n)
 }
-# twice: the font size first, from every rule, so an em anywhere reads the size the element ends with
+# twice: the font size (and zoom) first, from every rule, so an em anywhere reads the size the
+# element ends with (again when it zooms, so its own lengths are zoomed)
 function cs_node(n: UiNode) -> void {
   cs_pass = 1
   cs_styles(n)
+  if zm_own(n) != 1.0 { cs_styles(n) }
   cs_pass = 0
   cs_styles(n)
   an_apply(n)
@@ -39,7 +41,7 @@ function cs_styles(n: UiNode) -> void {
   }
 }
 var cs_pass: int = 0
-function cs_pass_ok(key: string) -> bool { return cs_pass == 0 or at_alias(key) == "size" }
+function cs_pass_ok(key: string) -> bool { return cs_pass == 0 or at_alias(key) == "size" or key == "zoom" }
 function cs_sheet(n: UiNode, sh: UiSheet) -> void {
   for i in 0 .. len(sh.rules) {
     let r = sh.rules[i]

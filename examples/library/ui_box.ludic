@@ -1,0 +1,19 @@
+# ui_box.ludic — what a host reads from outside the interface: ui_scale(), the scale it is drawn at
+# (the renderer's), and ui_box("id"), where an element was laid out when its screen was last shown,
+# in screen pixels (null for one that is not there) - to frame a 3D view beside a panel.
+import "ludic.ui"
+program UiBox {
+  numbers float
+  const PAGE: string = "<ui><style>.side { width: 100px; height: 60px; margin: 10px }</style><screen name='b'><p>title</p><div id='panel' class='side'/></screen></ui>"
+  function scale() -> float { return 1.5 }
+  entry {
+    let b = new UiBackend
+    b.scale = fn scale
+    ui_backend(b)
+    ui_load_text(PAGE, "b.xml")
+    ui_show("b", null, 20.0, 30.0, 800.0, 600.0)
+    let p = ui_box("panel")
+    let none = ui_box("nothing")
+    print(`scale {ui_scale()} | panel {int(p.x)},{int(p.y)} {int(p.w)}x{int(p.h)} | missing {none == null}`)
+  }
+}

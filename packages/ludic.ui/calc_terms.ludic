@@ -1,6 +1,6 @@
 # calc_terms.ludic - calc()'s products and its terms: a number with its unit, a bracket, a nested
-# calc(), a minus in front; a product or a quotient needs a plain number on one side (on the right
-# of a /), as CSS's does
+# calc(), a minus in front; a product needs a plain number on one side, and a quotient a plain number
+# or a length on its right (a length over a length is a plain number, as CSS's typed division makes)
 function ca_product() -> CaVal {
   var a = ca_factor()
   while ca_bad == "" {
@@ -9,8 +9,12 @@ function ca_product() -> CaVal {
     let div = ca_s[ca_i] == 47
     ca_i += 1
     let b = ca_factor()
+    if div and not b.bare and not a.bare and a.pct == 0.0 and b.pct == 0.0 and b.px != 0.0 {
+      a = ca_ratio(a.px / b.px)
+      continue
+    }
     if div and not b.bare {
-      ca_bad = "a plain number after /"
+      ca_bad = "a plain number, or a length under a length, after /"
       return a
     }
     if div and b.n == 0.0 {
@@ -23,6 +27,12 @@ function ca_product() -> CaVal {
     }
   }
   return a
+}
+# a length over a length is a plain number (100vw / 1800px)
+function ca_ratio(k: float) -> CaVal {
+  let r = new CaVal
+  r.n = k
+  return r
 }
 function ca_scale(a: CaVal, k: float) -> CaVal {
   let r = new CaVal

@@ -2,7 +2,7 @@
 # measures its content at that width (so a wrapping row knows how tall it is), then places each
 # child. A size is the border box: padding and border inside it, margin outside it.
 function ly_measure(n: UiNode, avail: float, size: float, fg: int) -> void {
-  n.rsize = size
+  n.rsize = size * zm_own(n)
   if n.size > 0.0 { n.rsize = n.size }
   n.rfg = fg
   n.rfg_a = ly_fg_a

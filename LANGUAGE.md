@@ -455,7 +455,9 @@ applies to both:
     go to that element until it is let go, wherever the pointer is. A scroll box leaves the wheel to
     an element inside it that takes `on-wheel`.
   - `on-down` and `on-up` say when a button goes down and comes up again, by the pointer (released
-    anywhere) or by Enter or the pad's A held on it; it is `:active` in between.
+    anywhere) or by Enter or the pad's A held on it; it is `:active` in between. `on-hold` runs
+    every frame it is held, with `event.dt` (seconds since the last frame) and `event.t` (how long
+    it has been held), on the ui clock.
   - A scroll box (`overflow: auto` or `<scroll>`) takes the wheel, has a scrollbar that can be
     dragged (`scrollbar-color`), clips what it holds and pulls the focused control into view.
   - `scroll-top="{px}"` holds a scroll box at that offset every frame; the wheel, the bar and the
@@ -482,7 +484,8 @@ applies to both:
     `unit=" s"` after it;
   - `<select label value>` with `<option value>`s;
   - `<input type="text" label value maxlength>`, which takes typing, and Backspace takes a letter
-    back;
+    back. Enter (or the pad's A) on it runs `on-submit` with `event.value`; the focus stays, and so
+    does the text unless it says `clear-on-submit`;
   - `<input type="number" label min max step value>`: typed digits (a minus when min allows one, a
     point when step has a fraction) replace the value, Enter or leaving the field commits them held
     between min and max, and the left and right arrows step it (`decimals`, `unit` as a range's);
@@ -533,6 +536,10 @@ applies to both:
   - nine-slices for `border-image`, sliced by the texture's own width and height;
   - a scale from the screen's height (`ui_render3d_scale` for the player's interface size).
 
+  `ui_scale()` is the scale the interface is drawn at (screen pixels per design pixel), and
+  `ui_box("id")` where an element (by id or key) was laid out when its screen was last shown, as a
+  `UiBox` of `x`, `y`, `w` and `h` in screen pixels, or null when there is none.
+
   `ui_translator(fn)`, `ui_sounds(fn)` and `ui_clock(fn)` hand the runtime the program's
   language, sounds and time. `import "ludic.ui/screen.ludic"` is the 2D screen's renderer.
   Every text a template shows is translated, except inside `translate="no"` (and `translate="yes"`
@@ -568,6 +575,10 @@ applies to both:
     name 0.25s [infinite] [alternate]` animate numeric properties from when the element first
     appeared, and `transition: opacity 0.2s` eases a changed opacity. Both run on the clock, in
     float, and land exactly on their end values whatever the frame rate.
+  - `zoom: 0.8` (or `80%`, or `calc()` / `min()`) draws an element and everything inside it that
+    much larger or smaller - its lengths, its text and its layout; zooms multiply. In `calc()` a
+    length over a length is a plain number, so `zoom: min(1, calc(100vw / 1800px))` shrinks a HUD
+    for a narrow window.
 - **Mixed content.** Text beside elements keeps its place: `<button><img src="icon:arrow"/>Resume
   </button>`, `<p>Hi <b>there</b></p>`. A boolean attribute present with no value is true, as in
   HTML (`<button autofocus>`).

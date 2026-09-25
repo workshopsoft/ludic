@@ -108,6 +108,10 @@ What a game's screens found missing, now in `ludic.ui`:
   through a renderer with no `rect` no longer crashes;
 - a component with no stylesheet of its own reads a theme's `:root` variables from around it (it
   did; now a test says so);
+- `ui_scale()` and `ui_box("id")`, the scale and an element's laid-out box, for a host;
+- `on-submit` on a text field (Enter or A; the focus and text stay unless `clear-on-submit`);
+- `zoom` on any element, and a length over a length in `calc()` is a plain number;
+- `on-hold` every frame a button is held, with `event.dt` and `event.t`;
 - a transition lands exactly on its end value (it had stopped a rounding error short of it, at every
   frame rate).
 

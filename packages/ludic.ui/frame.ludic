@@ -14,7 +14,9 @@ export function ui_show(screen: string, view: UiView, x: float, y: float, w: flo
   sc_update(root)
   fr_pointer(root)
   fc_keys(root)
+  hd_tick(root)
   tt_track(root, in_now.x, in_now.y)
+  fb_keep(screen, root)
   if ui_be != null and ui_be.text != null {
     fr_draw(root)
     pp_draw_top()

@@ -1,0 +1,44 @@
+# frame_box.ludic - what a host asks of the interface from outside it: the scale it is drawn at, and
+# where an element was laid out the last time its screen was shown (a 3D view framed beside a panel)
+export property UiBox {
+  x: float = 0.0
+  y: float = 0.0
+  w: float = 0.0
+  h: float = 0.0
+}
+var fb_roots: []UiNode = new []UiNode
+# the screen pixels per design pixel: the renderer's scale (render3d's includes ui_render3d_scale)
+export function ui_scale() -> float { return ui_px(1.0) }
+function fb_keep(screen: string, root: UiNode) -> void {
+  for i in 0 .. len(fb_roots) {
+    if fb_roots[i].key == screen {
+      fb_roots[i] = root
+      return
+    }
+  }
+  push(fb_roots, root)
+}
+# the box of the element with that id (or key) on any screen shown, in screen pixels; null if none
+export function ui_box(id: string) -> UiBox {
+  for i in 0 .. len(fb_roots) {
+    let n = fb_find(fb_roots[i], id)
+    if n != null {
+      let b = new UiBox
+      b.x = n.x
+      b.y = n.y
+      b.w = n.cw
+      b.h = n.ch
+      return b
+    }
+  }
+  return null
+}
+function fb_find(n: UiNode, id: string) -> UiNode {
+  if n.id == id or n.key == id { return n }
+  if n.children == null { return null }
+  for i in 0 .. len(n.children) {
+    let f = fb_find(n.children[i], id)
+    if f != null { return f }
+  }
+  return null
+}
