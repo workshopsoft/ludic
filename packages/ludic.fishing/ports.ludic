@@ -1,0 +1,24 @@
+# ports.ludic - what a line asks the game: the water, the tackle, the angler
+# the ladder of difficulty, by the numbers a game is likely to keep them in
+export const FISHING_RELAXED: int = 0      # the window dead centre
+export const FISHING_STANDARD: int = 1     # it moves each crossing
+export const FISHING_HARD: int = 2         # it moves and closes
+export const FISHING_GENTLE: int = 3       # no bar: a ring and one press (a legend still fights)
+
+# Unbound, the angler is on the bank, has no bait or lure and no skill, waits the plain wait,
+# holds a 0.12 window and plays Relaxed.
+export port FishingWorld {
+  depth: fn(float, float) -> float                    # metres of water at a point (0: dry)
+  afloat: fn() -> bool = fn fishing_no                # in a boat: every cast lands in deep water
+  has_bait: fn() -> bool = fn fishing_no
+  has_lure: fn() -> bool = fn fishing_no
+  skill: fn() -> float = fn fishing_zero              # bigger fish, and a legend more often
+  bite_mult: fn() -> float = fn fishing_one           # the wait, x
+  window: fn(int) -> float = fn fishing_plain_window  # the green's half width for a species
+  level: fn() -> int = fn fishing_relaxed
+}
+function fishing_no() -> bool { return false }
+function fishing_zero() -> float { return 0.0 }
+function fishing_one() -> float { return 1.0 }
+function fishing_plain_window(s: int) -> float { return 0.12 }
+function fishing_relaxed() -> int { return FISHING_RELAXED }

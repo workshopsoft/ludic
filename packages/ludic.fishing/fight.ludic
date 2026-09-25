@@ -1,0 +1,57 @@
+# fight.ludic - what takes, how big it is, and the green band the marker has to cross in
+# a legend on a lure, likelier in deep water and with skill; else an everyday one by weight
+function fishing_pick() -> int {
+  let leg = fishing_legend()
+  if leg >= 0 and fishing_lure_on {
+    let k = FishSpecies[leg]
+    var p = k.chance
+    if FishingWorld.afloat() or FishingWorld.depth(fishing_bx, fishing_bz) >= fishing_deep { p = k.chance_deep }
+    if fishing_rand() < p + FishingWorld.skill() { return leg }
+  }
+  var total = 0.0
+  for s in 0 .. FISH_COUNT { if not FishSpecies[s].legend { total = total + FishSpecies[s].weight } }
+  var r = fishing_rand() * total
+  var last = -1
+  for s in 0 .. FISH_COUNT {
+    if FishSpecies[s].legend { continue }
+    last = s
+    r = r - FishSpecies[s].weight
+    if r < 0.0 { return s }
+  }
+  return last
+}
+
+function fishing_size(s: int) -> int {
+  let k = FishSpecies[s]
+  let spread = int(fishing_rand() * float(k.cm_spread + 1))
+  return k.cm_min + spread + int(FishingWorld.skill() * k.skill_cm)
+}
+
+# the green's half width this crossing: a fish that closes it does so at every rung, and Hard
+# closes it for everything else
+export function fishing_window() -> float {
+  if not fishing_kind_ok(fishing_sp) { return 0.12 }
+  let k = FishSpecies[fishing_sp]
+  let hw = FishingWorld.window(fishing_sp)
+  if k.closes > 0.0 { return Math.max(hw * (1.0 - k.closes * float(fishing_won)), hw * k.floor) }
+  if FishingWorld.level() == FISHING_HARD { return Math.max(hw * (1.0 - 0.10 * float(fishing_won)), hw * 0.55) }
+  return hw
+}
+
+export function fishing_window_lo() -> float { return Math.clamp(fishing_win_c - fishing_window(), 0.0, 1.0) }
+export function fishing_window_hi() -> float { return Math.clamp(fishing_win_c + fishing_window(), 0.0, 1.0) }
+
+# where it sits: the middle on Relaxed, somewhere new each crossing above it
+function fishing_new_window() -> void {
+  let lv = FishingWorld.level()
+  if lv == FISHING_RELAXED or fishing_gentle_on {
+    fishing_win_c = 0.5
+    return
+  }
+  let hw = fishing_window() + 0.05
+  fishing_win_c = hw + fishing_rand() * (1.0 - hw - hw)
+}
+
+function fishing_in_window() -> bool {
+  return fishing_mark > fishing_win_c - fishing_window() and fishing_mark < fishing_win_c + fishing_window()
+}

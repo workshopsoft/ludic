@@ -1,0 +1,105 @@
+# verbs.ludic - casting, the one button (reel in, strike, reel), landing and putting the rod away
+export const FISHING_CAST_OK: int = 0
+export const FISHING_NOT_WATER: int = 1
+export const FISHING_BUSY: int = 2
+
+# a line into (x, z): bait halves the wait (and is a fact, for the game to take from the pack)
+export function fishing_cast(x: float, z: float) -> int {
+  if fishing_st != FISHING_OFF { return FISHING_BUSY }
+  fishing_bx = x
+  fishing_bz = z
+  if not fishing_water_at(x, z) { return FISHING_NOT_WATER }
+  fishing_st = FISHING_WAIT
+  fishing_sp = -1
+  fishing_len = 0
+  fishing_lure_on = FishingWorld.has_lure()
+  fishing_bait_on = FishingWorld.has_bait()
+  var wait = 6.0 + fishing_rand() * 14.0
+  if fishing_bait_on { wait = wait * 0.5 }
+  fishing_t = wait * FishingWorld.bite_mult()
+  if fishing_bait_on { fishing_say(FISHING_BAIT_USED) }
+  fishing_say(FISHING_CAST)
+  return FISHING_CAST_OK
+}
+
+# the bite comes exactly `secs` after now (staging, footage)
+export function fishing_set_wait(secs: float) -> void {
+  if fishing_st == FISHING_WAIT { fishing_t = secs }
+}
+
+export function fishing_stop() -> void {
+  fishing_st = FISHING_OFF
+  fishing_run_t = 0.0
+}
+
+function fishing_strike() -> void {
+  let k = FishSpecies[fishing_sp]
+  fishing_st = FISHING_REEL
+  fishing_won = 0
+  fishing_mark = 0.0
+  fishing_dir = 1.0
+  fishing_t = k.fight
+  fishing_need_n = k.need
+  fishing_run_t = 0.0
+  fishing_run_left = k.runs
+  fishing_run_next = 3.0 + fishing_rand() * 3.0
+  fishing_len = fishing_size(fishing_sp)
+  fishing_gentle_on = FishingWorld.level() == FISHING_GENTLE and not k.legend
+  fishing_ring_t = 0.0
+  if fishing_gentle_on {
+    fishing_need_n = 1
+    fishing_ring_t = 2.0
+  }
+  fishing_new_window()
+  fishing_say(FISHING_HOOKED)
+}
+
+function fishing_land() -> void {
+  fishing_n += 1
+  if fishing_len > fishing_big { fishing_big = fishing_len }
+  if FishSpecies[fishing_sp].legend { fishing_leg = true }
+  fishing_say(FISHING_CAUGHT)
+  fishing_stop()
+}
+
+function fishing_lost(what: int) -> void {
+  fishing_say(what)
+  fishing_stop()
+}
+
+function fishing_reel_press() -> void {
+  if fishing_gentle_on {
+    if fishing_ring_t > 0.0 { fishing_land() } else { fishing_lost(FISHING_LINE_SNAPPED) }
+    return
+  }
+  if fishing_run_t > 0.0 {
+    fishing_won = Math.max(fishing_won - 1, 0)
+    fishing_say(FISHING_CHECKED)
+    return
+  }
+  if fishing_in_window() {
+    fishing_won += 1
+    fishing_new_window()
+    if fishing_won >= fishing_need_n { fishing_land() } else { fishing_say(FISHING_GOOD) }
+    return
+  }
+  if FishSpecies[fishing_sp].legend and fishing_won > 0 {
+    fishing_won -= 1
+    fishing_say(FISHING_TURNED)
+    return
+  }
+  fishing_lost(FISHING_LINE_SNAPPED)
+}
+
+# the button: waiting it reels in, on a bite it strikes, on a fish it reels
+export function fishing_press() -> void {
+  if fishing_st == FISHING_WAIT {
+    fishing_lost(FISHING_REELED_IN)
+    return
+  }
+  if fishing_st == FISHING_BITE_ON {
+    fishing_strike()
+    return
+  }
+  if fishing_st == FISHING_REEL { fishing_reel_press() }
+}

@@ -1,0 +1,12 @@
+# ludic.fishing - one angler's line: the game says where the water is and how deep, what tackle
+# is in the pack and how good the rod is; the package runs the fight and reports what happened
+module ludic_fishing uses ludic_base
+numbers float
+import "ludic.base"
+import "kinds.ludic"
+import "ports.ludic"
+import "state.ludic"
+import "fight.ludic"
+import "verbs.ludic"
+import "run.ludic"
+import "system.ludic"

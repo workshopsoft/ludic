@@ -1,0 +1,5 @@
+# ludic.fishing - a rod at the water: cast, the wait for a bite, the strike, the reel's fight and
+# the landing, species from an open registry. Uses ludic.base and nothing else.
+package "ludic.fishing"
+version "0.1.0"
+kind source

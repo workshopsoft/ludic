@@ -1,0 +1,66 @@
+# kinds.ludic - what swims: a species' size, weight and fight as data, and the facts a line reports
+export property FishKind {
+  key: string = ""
+  weight: float = 1.0          # how often it takes, among the everyday ones
+  cm_min: int = 28             # its length: cm_min plus up to cm_spread
+  cm_spread: int = 20
+  skill_cm: float = 60.0       # centimetres a skill of 1 adds
+  kg_k: float = 0.0000110      # its weight is kg_k x cm cubed
+  legend: bool = false         # takes only a lure, and only at `chance`
+  chance: float = 0.2          # a legend's chance of taking the lure, in the shallows
+  chance_deep: float = 0.35    # ... and in deep water
+  need: int = 3                # crossings to land it
+  runs: int = 0                # runs it makes, when the only right answer is to leave the line
+  fight: float = 12.0          # seconds before the line goes slack
+  speed: float = 0.9           # the marker's sweep, and how much faster each crossing won
+  speed_per_hit: float = 0.0
+  closes: float = 0.0          # the window narrows this much a crossing, down to `floor` of it
+  floor: float = 0.45
+}
+
+# the game fills it: `def FishSpecies brook { weight: 0.25 }`, and one legend
+export open registry FishSpecies of FishKind as FISH
+
+# what happened on the line
+export const FISHING_CAST: int = 0
+export const FISHING_BAIT_USED: int = 1
+export const FISHING_BITE: int = 2
+export const FISHING_MISSED: int = 3          # too slow on the bite
+export const FISHING_HOOKED: int = 4
+export const FISHING_GOOD: int = 5            # a crossing won
+export const FISHING_CHECKED: int = 6         # the reel touched mid-run: a crossing lost
+export const FISHING_TURNED: int = 7          # a legend took line back
+export const FISHING_RUNS: int = 8
+export const FISHING_TIRED: int = 9           # a run is over
+export const FISHING_REELED_IN: int = 10      # put away before a bite
+export const FISHING_CAUGHT: int = 11
+export const FISHING_LINE_SNAPPED: int = 12   # it threw the hook
+export const FISHING_SLACK: int = 13          # the fight ran out of time
+
+export property FishingFact {
+  what: int = 0
+  species: int = -1
+  cm: int = 0
+  kg: float = 0.0
+  hits: int = 0
+  need: int = 0
+  bait: bool = false
+  lure: bool = false
+  x: float = 0.0
+  z: float = 0.0
+}
+
+export function fishing_kind_ok(s: int) -> bool { return s >= 0 and s < FISH_COUNT }
+
+# how heavy a fish of this species and length is
+export function fishing_weight_of(s: int, cm: int) -> float {
+  if not fishing_kind_ok(s) { return 0.0 }
+  let c = float(cm)
+  return FishSpecies[s].kg_k * c * c * c
+}
+
+# the first legend, or -1
+export function fishing_legend() -> int {
+  for s in 0 .. FISH_COUNT { if FishSpecies[s].legend { return s } }
+  return -1
+}
