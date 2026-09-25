@@ -47,51 +47,82 @@ export property NetMessage {
   data: []byte
 }
 
-var net__state: int = 0
-var net__sock: int = 0
-var net__time: float = 0.0
-var net__token: int = 0
-var net__my_pid: int = 0
-var net__next_pid: int = 2
-var net__peers: []NetPeer = null
-var net__in: []byte = null
-var net__out: []byte = null
-var net__wb: []byte = null          # the message being written
-var net__wl: int = 0
-var net__rb: []byte = null          # the message being read
-var net__rl: int = 0
-var net__rp: int = 0
-var net__rbad: bool = false
-var net__tb: []byte = null          # text read out of a message, through one scratch buffer
-var net__hello_b: []byte = null     # the game's hello, sent again on every dial
-var net__hello_l: int = 0
-var net__hello_t: float = 0.0       # seconds since it went; -1 not yet
-var net__wait_more: int = 0         # extra seconds a slow host is given (a map switch, a matchmaker)
-var net__beat_t: float = 0.0
-var net__join_ip: int = 0
-var net__join_port: int = 0
-var net__code_ip: int = 0
-var net__code_port: int = 0
-var net__bytes_out: int = 0
-var net__kind_out: words = null
-var net__inbox: Queue<NetMessage> = null
-
-export function net_inbox() -> Queue<NetMessage> {
-  if net__inbox == null { net__inbox = queue_new("net.inbox") }
-  return net__inbox
+export state NetState {
+  net__cfg: NetConfig = null
+  net__facts: Queue<NetFact> = null
+  net__seen: []string = null     # guests already punched for
+  net__punch_ip: words = null
+  net__punch_port: words = null
+  net__punch_left: words = null
+  net__punch_t: float = 0.0
+  net__punch_b: []byte = null    # the punch itself, "MP" and two zeros, made once
+  net__relay_ip: int = 0
+  net__relay_port: int = 0
+  net__via_relay: bool = false  # a guest talking to its host through the relay
+  net__from_ip: int = 0
+  net__from_port: int = 0
+  net__r_state: int = 0
+  net__r_role: int = 0          # 1 host, 2 guest
+  net__r_t: float = 0.0
+  net__r_tries: int = 0
+  net__pub_ip: int = 0
+  net__pub_port: int = 0
+  net__room: string = ""        # the host's room code, or the one a guest asked for
+  net__http: int = 0
+  net__poll_t: float = 0.0
+  net__relay_t: float = 0.0
+  net__dial_heard: float = 0.0
+  net__why: int = 0
+  net__state: int = 0
+  net__sock: int = 0
+  net__time: float = 0.0
+  net__token: int = 0
+  net__my_pid: int = 0
+  net__next_pid: int = 2
+  net__peers: []NetPeer = null
+  net__in: []byte = null
+  net__out: []byte = null
+  net__wb: []byte = null          # the message being written
+  net__wl: int = 0
+  net__rb: []byte = null          # the message being read
+  net__rl: int = 0
+  net__rp: int = 0
+  net__rbad: bool = false
+  net__tb: []byte = null          # text read out of a message, through one scratch buffer
+  net__hello_b: []byte = null     # the game's hello, sent again on every dial
+  net__hello_l: int = 0
+  net__hello_t: float = 0.0       # seconds since it went; -1 not yet
+  net__wait_more: int = 0         # extra seconds a slow host is given (a map switch, a matchmaker)
+  net__beat_t: float = 0.0
+  net__join_ip: int = 0
+  net__join_port: int = 0
+  net__code_ip: int = 0
+  net__code_port: int = 0
+  net__bytes_out: int = 0
+  net__kind_out: words = null
+  net__inbox: Queue<NetMessage> = null
+  net__stun_ip: int = 0
+  net__stun_port: int = 0
+  net__txn: words = null
+  net__dice: Rng = null
 }
 
-function net__init() -> void {
-  if net__peers != null { return }
-  net__peers = new []NetPeer
+export function net_inbox(base_st: mut BaseState, net_st: mut NetState) -> Queue<NetMessage> {
+  if net_st.net__inbox == null { net_st.net__inbox = queue_new(base_st, "net.inbox") }
+  return net_st.net__inbox
+}
+
+function net__init(net_st: mut NetState) -> void {
+  if net_st.net__peers != null { return }
+  net_st.net__peers = new []NetPeer
   for i in 0 .. NET_PEERS {
     let p = new NetPeer
     p.queue = new []NetMsg
-    push(net__peers, p)
+    push(net_st.net__peers, p)
   }
-  net__in = buffer(NET_MTU + 64)
-  net__out = buffer(NET_MTU + 64)
-  net__wb = buffer(NET_MTU)
-  net__rb = buffer(NET_MTU)
-  net__hello_b = buffer(NET_MTU)
+  net_st.net__in = buffer(NET_MTU + 64)
+  net_st.net__out = buffer(NET_MTU + 64)
+  net_st.net__wb = buffer(NET_MTU)
+  net_st.net__rb = buffer(NET_MTU)
+  net_st.net__hello_b = buffer(NET_MTU)
 }

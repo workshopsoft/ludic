@@ -20,23 +20,28 @@ export property DayTurned {
   how: int = 0
 }
 
-var ck_day: int = 1
-var ck_hours: float = 0.0
-var ck_moon: float = 0.0
-var ck_scale: float = 60.0          # game seconds per real second
-var ck_start_hours: float = 8.0
-var ck_night_from: float = 20.0
-var ck_night_to: float = 6.0
-var ck_moon_days: float = 29.5
-var ck_moon_lo: float = 0.0
-var ck_moon_hi: float = 1.0
-var ck_dice: Rng = null
-var ck_days: Queue<DayTurned> = null
+export state ClockState {
+  cal_month_days: int = 30
+  cal_year_months: int = 12
+  cal_season: []int = null
+  ck_day: int = 1
+  ck_hours: float = 0.0
+  ck_moon: float = 0.0
+  ck_scale: float = 60.0          # game seconds per real second
+  ck_start_hours: float = 8.0
+  ck_night_from: float = 20.0
+  ck_night_to: float = 6.0
+  ck_moon_days: float = 29.5
+  ck_moon_lo: float = 0.0
+  ck_moon_hi: float = 1.0
+  ck_dice: Rng = null
+  ck_days: Queue<DayTurned> = null
+}
 
 # the facts: each day that turned, in order; the game drains it and runs its morning
-export function clock_days() -> Queue<DayTurned> {
-  if ck_days == null { ck_days = queue_new("clock.days") }
-  return ck_days
+export function clock_days(base_st: mut BaseState, clock_st: mut ClockState) -> Queue<DayTurned> {
+  if clock_st.ck_days == null { clock_st.ck_days = queue_new(base_st, "clock.days") }
+  return clock_st.ck_days
 }
 
 function ck_owns() -> bool { return ClockWorld.owns_world() }
@@ -44,15 +49,15 @@ function ck_owns() -> bool { return ClockWorld.owns_world() }
 function ck_rest() -> float { return ClockWorld.rest_scale() }
 
 # when a trip starts, when the night is, and how long the moon's month is
-export function clock_config(start_hours: float, night_from: float, night_to: float) -> void {
-  ck_start_hours = start_hours
-  ck_night_from = night_from
-  ck_night_to = night_to
+export function clock_config(clock_st: mut ClockState, start_hours: float, night_from: float, night_to: float) -> void {
+  clock_st.ck_start_hours = start_hours
+  clock_st.ck_night_from = night_from
+  clock_st.ck_night_to = night_to
 }
 
 # a new trip's moon falls in [lo, hi) of its month; the month is `days` long
-export function clock_config_moon(days: float, lo: float, hi: float) -> void {
-  ck_moon_days = days
-  ck_moon_lo = lo
-  ck_moon_hi = hi
+export function clock_config_moon(clock_st: mut ClockState, days: float, lo: float, hi: float) -> void {
+  clock_st.ck_moon_days = days
+  clock_st.ck_moon_lo = lo
+  clock_st.ck_moon_hi = hi
 }

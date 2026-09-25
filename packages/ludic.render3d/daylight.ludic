@@ -9,65 +9,35 @@
 # angle they were baked at; the height-field shadow rebakes as the sun moves.
 # ============================================================================
 
-var day_on: bool = false
-var day_hours: float = 0.0            # float bits, 0 .. 24
-var day_light: float = 0.0            # 0 night .. 1 full day (float bits)
-var day_ibl: floats = null         # rgb scale on the sky's light
-var day_sun_base: floats = null    # the HDRI's sun radiance, kept
-var day_az0: float = 0.0              # the sun's azimuth at the reference hour (radians, yaw convention)
-var day_yaw0: float = 0.0             # the sky yaw the scene was tuned at
-var day_hour0: float = 0.0            # the hour the photograph was taken (10.5)
-var day_dir: float = 0.0              # +1 / -1: which way the sun travels in yaw
-var day_az: float = 0.0
-var day_el: float = 0.0
-var day_gen: int = 0              # bumps when the light moved enough to rebake the terrain shadow
-var day_baked_az: float = 0.0
-var day_baked_el: float = 0.0
-var day_sky_baked: float = 0.0        # the sky yaw the convolutions were baked at
-var fire_pos: floats = null
-var fire_color: floats = null
-var day_moon: bool = false
 # The moon's place in its month, 0 new .. 0.5 full .. 1 new again. It decides the disc's
 # terminator, how much light reaches the ground, and where in the sky it rides: a full
 # moon is opposite the sun and rises at sunset, a new one travels with it.
-var day_moon_phase: float = 0.5       # 0.5: full, which is where the game used to be
-var day_moon_illum: float = 1.0       # the lit fraction, derived from the phase
-var day_moon_dir: floats = null             # toward the moon, whether or not it is up
-var hand_pos: floats = null
-var hand_color: floats = null
-var hand_dir: floats = null
-var hand_cone: float = 0.0
-var hand_reach: float = 0.0          # metres the hand light reaches (float bits)
-var day_overcast: float = 0.0          # 0 clear .. 1 a low grey sky (float bits): dims the sun and the sky's light
-var day_flash: float = 0.0             # a lightning flash this frame (0..1): the sun brightens for it
-var day_fog_mul: float = 1.0  # multiplies the base fog density (rain and snow thicken the air)
-var day_fog_base: float = 0.0
 
-function daylight_init() -> void {
-  day_ibl = v3_new(1.0, 1.0, 1.0)
-  day_sun_base = v3_new(sun_color[0], sun_color[1], sun_color[2])
-  fire_pos = v3_new(0.0, -1000.0, 0.0)
-  fire_color = v3_new(0.0, 0.0, 0.0)
-  day_moon_dir = v3_new(0.0, 1.0, 0.0)
-  hand_pos = v3_new(0.0, -1000.0, 0.0);  hand_color = v3_new(0.0, 0.0, 0.0);  hand_dir = v3_new(0.0, 0.0, -1.0);  hand_cone = -2.0;  hand_reach = 12.0
-  day_light = 1.0
+function daylight_init(render3d_st: mut Render3dState) -> void {
+  render3d_st.day_ibl = v3_new(1.0, 1.0, 1.0)
+  render3d_st.day_sun_base = v3_new(render3d_st.sun_color[0], render3d_st.sun_color[1], render3d_st.sun_color[2])
+  render3d_st.fire_pos = v3_new(0.0, -1000.0, 0.0)
+  render3d_st.fire_color = v3_new(0.0, 0.0, 0.0)
+  render3d_st.day_moon_dir = v3_new(0.0, 1.0, 0.0)
+  render3d_st.hand_pos = v3_new(0.0, -1000.0, 0.0);  render3d_st.hand_color = v3_new(0.0, 0.0, 0.0);  render3d_st.hand_dir = v3_new(0.0, 0.0, -1.0);  render3d_st.hand_cone = -2.0;  render3d_st.hand_reach = 12.0
+  render3d_st.day_light = 1.0
 }
 
 # Start the clock: the scene as tuned (sky yaw `yaw0`) is the photograph's hour `hour0`;
 # the sun rises and sets toward `set_yaw` (the direction it should be in at 19:00).
-function daylight_start(yaw0: float, hour0: float, set_yaw: float) -> void {
-  day_yaw0 = yaw0;  day_hour0 = hour0
-  day_az0 = Math.atan2(-sun_dir[0], -sun_dir[2])
-  day_sky_baked = yaw0
+function daylight_start(render3d_st: mut Render3dState, yaw0: float, hour0: float, set_yaw: float) -> void {
+  render3d_st.day_yaw0 = yaw0;  render3d_st.day_hour0 = hour0
+  render3d_st.day_az0 = Math.atan2(-render3d_st.sun_dir[0], -render3d_st.sun_dir[2])
+  render3d_st.day_sky_baked = yaw0
   # which way does the sun travel? the way that puts it nearest `set_yaw` at 19:00
   let step = (19.0 - hour0) * Math.deg_to_rad(15.0)
-  let da = Math.abs(day_wrap(day_az0 + step - set_yaw))
-  let db = Math.abs(day_wrap(day_az0 - step - set_yaw))
-  day_dir = 1.0
-  if db < da { day_dir = -1.0 }
-  day_on = true
-  day_baked_az = 1000.0
-  daylight_set(hour0)
+  let da = Math.abs(day_wrap(render3d_st.day_az0 + step - set_yaw))
+  let db = Math.abs(day_wrap(render3d_st.day_az0 - step - set_yaw))
+  render3d_st.day_dir = 1.0
+  if db < da { render3d_st.day_dir = -1.0 }
+  render3d_st.day_on = true
+  render3d_st.day_baked_az = 1000.0
+  daylight_set(render3d_st, hour0)
 }
 function day_wrap(a: float) -> float {
   let two_pi = 2.0 * PI
@@ -81,68 +51,68 @@ function smoothf(a: float, b: float, x: float) -> float {
   return t * t * (3.0 - 2.0 * t)
 }
 
-function daylight_set(hours: float) -> void {
+function daylight_set(render3d_st: mut Render3dState, hours: float) -> void {
   var h = hours % 24.0
   if h < 0.0 { h = h + 24.0 }
-  day_hours = h
+  render3d_st.day_hours = h
   # the arc: up at 5:30, highest (about 57 degrees) at 12:45, down at 20:00
   let t = (h - 5.5) / 14.5 * PI
   let el = Math.deg_to_rad(-6.0 + 63.0 * Math.sin(t))
-  let az = day_az0 + (h - day_hour0) * Math.deg_to_rad(15.0) * day_dir
-  day_az = az;  day_el = el
+  let az = render3d_st.day_az0 + (h - render3d_st.day_hour0) * Math.deg_to_rad(15.0) * render3d_st.day_dir
+  render3d_st.day_az = az;  render3d_st.day_el = el
   let d = smoothf(Math.deg_to_rad(-8.0), Math.deg_to_rad(12.0), el)
-  day_light = d
+  render3d_st.day_light = d
   # the sun, warm and dim near the horizon; past dusk, the moon from across the sky
   var laz = az;  var lel = Math.max(el, Math.deg_to_rad(3.0))
   var warm_r = 1.0;  var warm_g = 1.0;  var warm_b = 1.0
   let low = smoothf(0.0, Math.deg_to_rad(24.0), el)
   warm_g = Math.lerp(0.55, 1.0, low);  warm_b = Math.lerp(0.28, 1.0, low)
   # an overcast sky: the sun goes diffuse and grey, a lightning flash brings it back white
-  let oc = Math.clamp(day_overcast, 0.0, 1.0)
-  let sunk = 1.0 - 0.92 * oc + 2.5 * day_flash
-  var sr = day_sun_base[0] * (d * warm_r * sunk)
-  var sg = day_sun_base[1] * (d * warm_g * sunk)
-  var sb = day_sun_base[2] * (d * warm_b * sunk)
+  let oc = Math.clamp(render3d_st.day_overcast, 0.0, 1.0)
+  let sunk = 1.0 - 0.92 * oc + 2.5 * render3d_st.day_flash
+  var sr = render3d_st.day_sun_base[0] * (d * warm_r * sunk)
+  var sg = render3d_st.day_sun_base[1] * (d * warm_g * sunk)
+  var sb = render3d_st.day_sun_base[2] * (d * warm_b * sunk)
   # The moon rides a lag behind the sun that is its phase: full is opposite (half a turn),
   # new is alongside. Its elevation follows the same arc, offset by the same amount, so a
   # full moon rises as the sun sets and a new moon is up all day and invisible.
   # The moon is where the sun was `lag` of a day ago: at full that is half a day, so it
   # rises as the sun sets; at new it is alongside the sun and up all day, invisible. The
   # sign matters — a waxing crescent has to set AFTER the sun, not before it.
-  let moon_lag = 2.0 * PI * day_moon_phase
-  let maz = az - moon_lag * day_dir
+  let moon_lag = 2.0 * PI * render3d_st.day_moon_phase
+  let maz = az - moon_lag * render3d_st.day_dir
   let mel = Math.deg_to_rad(-6.0 + 63.0 * Math.sin(t - moon_lag))
   let mce = Math.cos(mel)
-  v3_set(day_moon_dir, -(Math.sin(maz) * mce), Math.sin(mel), -(Math.cos(maz) * mce))
-  day_moon = false
+  v3_set(render3d_st.day_moon_dir, -(Math.sin(maz) * mce), Math.sin(mel), -(Math.cos(maz) * mce))
+  render3d_st.day_moon = false
   if el < Math.deg_to_rad(-7.0) {
-    day_moon = true
+    render3d_st.day_moon = true
     laz = maz
     lel = Math.clamp(mel, Math.deg_to_rad(6.0), Math.deg_to_rad(70.0))
     let m = smoothf(Math.deg_to_rad(-7.0), Math.deg_to_rad(-16.0), el)
     # what the moon is worth on the ground, by how much of it is lit. A new moon is a
     # properly dark night, which is what makes a torch and a lantern matter.
     let up = smoothf(Math.deg_to_rad(-4.0), Math.deg_to_rad(8.0), mel)
-    let lit = m * up * (0.06 + 0.94 * day_moon_illum)
-    sr = day_sun_base[0] * (0.0130 * lit)
-    sg = day_sun_base[1] * (0.0165 * lit)
-    sb = day_sun_base[2] * (0.0250 * lit)
+    let lit = m * up * (0.06 + 0.94 * render3d_st.day_moon_illum)
+    sr = render3d_st.day_sun_base[0] * (0.0130 * lit)
+    sg = render3d_st.day_sun_base[1] * (0.0165 * lit)
+    sb = render3d_st.day_sun_base[2] * (0.0250 * lit)
   }
   let ce = Math.cos(lel)
-  v3_set(sun_dir, -(Math.sin(laz) * ce), Math.sin(lel), -(Math.cos(laz) * ce))
-  v3_set(sun_color, sr, sg, sb)
+  v3_set(render3d_st.sun_dir, -(Math.sin(laz) * ce), Math.sin(lel), -(Math.cos(laz) * ce))
+  v3_set(render3d_st.sun_color, sr, sg, sb)
   # the sky's light: full by day, a deep blue by night, amber through the dusk
   let dusk = smoothf(Math.deg_to_rad(-10.0), Math.deg_to_rad(2.0), el) * (1.0 - smoothf(Math.deg_to_rad(2.0), Math.deg_to_rad(18.0), el))
   # a full moon lifts the night's own ambient nearly threefold; a new moon leaves it alone
   var moonlit = 1.0
-  if day_moon { moonlit = 1.0 + 1.8 * day_moon_illum }
-  v3_set(day_ibl, Math.lerp(0.020 * moonlit, 1.0, d), Math.lerp(0.026 * moonlit, 1.0, d), Math.lerp(0.045 * moonlit, 1.0, d))
-  day_ibl[0] = day_ibl[0] * (1.0 + 0.35 * dusk)
-  day_ibl[2] = day_ibl[2] * (1.0 - 0.25 * dusk)
+  if render3d_st.day_moon { moonlit = 1.0 + 1.8 * render3d_st.day_moon_illum }
+  v3_set(render3d_st.day_ibl, Math.lerp(0.020 * moonlit, 1.0, d), Math.lerp(0.026 * moonlit, 1.0, d), Math.lerp(0.045 * moonlit, 1.0, d))
+  render3d_st.day_ibl[0] = render3d_st.day_ibl[0] * (1.0 + 0.35 * dusk)
+  render3d_st.day_ibl[2] = render3d_st.day_ibl[2] * (1.0 - 0.25 * dusk)
   # clouds: less light, and greyer (the blue and the warmth both fade)
-  let grey = (day_ibl[0] + (day_ibl[1] + day_ibl[2])) * 0.3333 + 0.6 * day_flash
+  let grey = (render3d_st.day_ibl[0] + (render3d_st.day_ibl[1] + render3d_st.day_ibl[2])) * 0.3333 + 0.6 * render3d_st.day_flash
   let dim = 1.0 - 0.55 * oc
-  for i in 0 .. 3 { day_ibl[i] = Math.lerp(day_ibl[i], grey, 0.7 * oc) * dim }
+  for i in 0 .. 3 { render3d_st.day_ibl[i] = Math.lerp(render3d_st.day_ibl[i], grey, 0.7 * oc) * dim }
   # ---- the air ---------------------------------------------------------------------------
   # Aerial perspective is a CURVE, not the one constant it was. A low sun is shining through
   # far more air than a high one, and it is shining ALONG the ground rather than down onto it,
@@ -152,25 +122,25 @@ function daylight_set(hours: float) -> void {
   # gets a dawn's haze with no dawn to justify it. Overcast thickens the air and flattens the
   # scatter, because a grey sky has no disc to scatter from. The player's slider still
   # multiplies the result, so nobody loses the setting they chose.
-  if day_fog_base == 0.0 { day_fog_base = r3d_fog_density }
+  if render3d_st.day_fog_base == 0.0 { render3d_st.day_fog_base = render3d_st.r3d_fog_density }
   let fog_rise = smoothf(Math.deg_to_rad(-12.0), Math.deg_to_rad(1.0), el)
   let fog_high = smoothf(Math.deg_to_rad(2.0), Math.deg_to_rad(26.0), el)
   let lowsun = fog_rise * (1.0 - fog_high)
-  var dens = day_fog_base * (1.0 + 1.5 * lowsun)
+  var dens = render3d_st.day_fog_base * (1.0 + 1.5 * lowsun)
   dens = dens * (1.0 + 1.2 * oc)
-  r3d_fog_density = dens * day_fog_mul * r3d_fog_scale
+  render3d_st.r3d_fog_density = dens * render3d_st.day_fog_mul * render3d_st.r3d_fog_scale
   # how fast the haze thins with height: a settled morning's lies IN the valley, a noon sky is
   # thin all the way up, so the falloff rises as the sun drops
-  r3d_fog_falloff = 0.002 * (1.0 + 1.6 * lowsun)
+  render3d_st.r3d_fog_falloff = 0.002 * (1.0 + 1.6 * lowsun)
   # the glow a ridge is silhouetted against when you look into a low sun
-  r3d_fog_inscatter = (0.012 + 0.16 * lowsun) * (1.0 - 0.7 * oc)
+  render3d_st.r3d_fog_inscatter = (0.012 + 0.16 * lowsun) * (1.0 - 0.7 * oc)
   # and distance takes colour away at every hour, harder under cloud
   # 1.9 was tuned on a valley whose rock was grey anyway. Maroon's air is thin, dry and at
   # 2900 m, and the Bells are only a couple of kilometres from the lake - in the photograph
   # everybody knows, they are still plainly RED at that distance. Desaturating them to a pale
   # grey-pink is physically defensible and loses the one thing the range is named for, so the
   # basin's own air gets a gentler figure and overcast still takes colour away faster.
-  r3d_fog_desat = 1.15 + 0.7 * oc
+  render3d_st.r3d_fog_desat = 1.15 + 0.7 * oc
   # ---- the grade -------------------------------------------------------------------------
   # The look of an hour is not only how much air is in front of the mountain; it is what colour
   # the light is and what the shadows are filled with. Noon is the case worth naming: direct
@@ -183,29 +153,29 @@ function daylight_set(hours: float) -> void {
   # half-cooled. It only begins under the horizon.
   let night = 1.0 - smoothf(Math.deg_to_rad(-14.0), Math.deg_to_rad(-4.0), el)
   let hi = fog_high
-  post_wb_r = 1.02 + (0.10 * lowsun - (0.03 * hi + 0.06 * night))
-  post_wb_g = 1.0 + 0.012 * lowsun
-  post_wb_b = 0.97 + (0.055 * hi + 0.13 * night - 0.09 * lowsun)
+  render3d_st.post_wb_r = 1.02 + (0.10 * lowsun - (0.03 * hi + 0.06 * night))
+  render3d_st.post_wb_g = 1.0 + 0.012 * lowsun
+  render3d_st.post_wb_b = 0.97 + (0.055 * hi + 0.13 * night - 0.09 * lowsun)
   # the shadows' floor: warm and open into a low sun, blue at noon, cold and crushed at night
-  post_lift_r = 0.004 + 0.013 * lowsun - 0.002 * (hi + night)
-  post_lift_g = 0.004 + 0.008 * lowsun - 0.001 * night
-  post_lift_b = 0.012 + (0.004 * lowsun + 0.013 * hi)
+  render3d_st.post_lift_r = 0.004 + 0.013 * lowsun - 0.002 * (hi + night)
+  render3d_st.post_lift_g = 0.004 + 0.008 * lowsun - 0.001 * night
+  render3d_st.post_lift_b = 0.012 + (0.004 * lowsun + 0.013 * hi)
   # Gain is left alone on purpose. It looks like a highlight control and is not: the grade is
   # `c * gain + lift * (1 - c)`, so warming the gain warms the WHOLE frame, and warming it at
   # noon undid the cool white balance above and turned one o'clock yellower than seven in the
   # morning - the opposite of the thing this grade exists to do. Midday's punch comes from
   # contrast, and midday's colour from a cool balance over a blue shadow.
-  post_gain_r = 0.99
-  post_gain_g = 0.995
-  post_gain_b = 1.0
-  post_contrast = 1.12 + 0.11 * hi - (0.17 * oc + 0.06 * night)
-  post_saturation = 1.04 + 0.12 * lowsun - (0.20 * oc + 0.12 * night)
+  render3d_st.post_gain_r = 0.99
+  render3d_st.post_gain_g = 0.995
+  render3d_st.post_gain_b = 1.0
+  render3d_st.post_contrast = 1.12 + 0.11 * hi - (0.17 * oc + 0.06 * night)
+  render3d_st.post_saturation = 1.04 + 0.12 * lowsun - (0.20 * oc + 0.12 * night)
 
   # The visible sky is relit by the hour (sky.frag). It fades out under the horizon, where the
   # night's own tint, stars and moon take over, and it eases off under heavy cloud - a relit
   # overcast is still overcast, and driving a clear-sky model hard through one paints a blue
   # zenith onto a grey day.
-  r3d_sky_relight = smoothf(Math.deg_to_rad(-10.0), Math.deg_to_rad(1.0), el) * (1.0 - 0.75 * oc)
+  render3d_st.r3d_sky_relight = smoothf(Math.deg_to_rad(-10.0), Math.deg_to_rad(1.0), el) * (1.0 - 0.75 * oc)
 
   # ---- what is IN the air -------------------------------------------------------------
   # The volumetric march (post.ludic) needs the same story the analytic fog tells, or the
@@ -214,64 +184,64 @@ function daylight_set(hours: float) -> void {
   # the cold at either end of the day, lies ON the ground rather than filling the basin, and
   # burns off by mid-morning. Cloud thickens the air and kills the shafts, because a shaft
   # needs a disc to come from.
-  post_vol_density = (0.00030 + 0.00070 * lowsun) * (1.0 - 0.55 * oc)
-  post_vol_mist = 0.40 * lowsun * (1.0 - 0.4 * oc)
-  post_vol_falloff = 0.006 + 0.004 * lowsun
+  render3d_st.post_vol_density = (0.00030 + 0.00070 * lowsun) * (1.0 - 0.55 * oc)
+  render3d_st.post_vol_mist = 0.40 * lowsun * (1.0 - 0.4 * oc)
+  render3d_st.post_vol_falloff = 0.006 + 0.004 * lowsun
 
   # R3D_NOAIR=1: the air as it was before any of the above - one density, one falloff, the
   # inscatter the shader used to hard-code, and no distance desaturation at all. It is here
   # so a before-and-after can be shot from ONE binary at one hour, which is the only kind of
   # comparison worth looking at, and it joins R3D_NOCLOUD / R3D_NOSHADOW / R3D_NOGI.
-  if r3d_env_has("R3D_NOAIR") {
-    r3d_fog_density = day_fog_base * day_fog_mul * r3d_fog_scale
-    r3d_fog_falloff = 0.002
-    r3d_fog_inscatter = 0.02
-    r3d_fog_desat = 0.0
-    post_wb_r = 1.02;      post_wb_g = 1.0;        post_wb_b = 0.97
-    post_lift_r = 0.004;   post_lift_g = 0.004;  post_lift_b = 0.012
-    post_gain_r = 0.99;    post_gain_g = 0.995;  post_gain_b = 1.0
-    post_contrast = 1.12;  post_saturation = 1.04
-    r3d_sky_relight = 0.0
-    post_vol_density = 0.0;  post_vol_mist = 0.0
+  if r3d_env_has(render3d_st, "R3D_NOAIR") {
+    render3d_st.r3d_fog_density = render3d_st.day_fog_base * render3d_st.day_fog_mul * render3d_st.r3d_fog_scale
+    render3d_st.r3d_fog_falloff = 0.002
+    render3d_st.r3d_fog_inscatter = 0.02
+    render3d_st.r3d_fog_desat = 0.0
+    render3d_st.post_wb_r = 1.02;      render3d_st.post_wb_g = 1.0;        render3d_st.post_wb_b = 0.97
+    render3d_st.post_lift_r = 0.004;   render3d_st.post_lift_g = 0.004;  render3d_st.post_lift_b = 0.012
+    render3d_st.post_gain_r = 0.99;    render3d_st.post_gain_g = 0.995;  render3d_st.post_gain_b = 1.0
+    render3d_st.post_contrast = 1.12;  render3d_st.post_saturation = 1.04
+    render3d_st.r3d_sky_relight = 0.0
+    render3d_st.post_vol_density = 0.0;  render3d_st.post_vol_mist = 0.0
   }
   # exposure: auto-exposure must not turn the night into day
   # the ceiling has to move with the moon or auto-exposure eats the difference between a
   # full-moon night and a new-moon one
   var night_max = 4.5
-  if day_moon { night_max = 4.5 + 3.5 * day_moon_illum }
-  post_exposure_max = Math.lerp(night_max, 20.0, d)
+  if render3d_st.day_moon { night_max = 4.5 + 3.5 * render3d_st.day_moon_illum }
+  render3d_st.post_exposure_max = Math.lerp(night_max, 20.0, d)
   # the visible sky turns with the sun (cheap); its convolutions rebake when far off
-  let sky_yaw_now = day_yaw0 + (h - day_hour0) * Math.deg_to_rad(15.0) * day_dir
-  sky_set_rot(sky_yaw_now)
-  if Math.abs(day_wrap(sky_yaw_now - day_sky_baked)) > Math.deg_to_rad(35.0) and d > 0.05 {
-    day_sky_baked = sky_yaw_now
-    sky_precompute()
+  let sky_yaw_now = render3d_st.day_yaw0 + (h - render3d_st.day_hour0) * Math.deg_to_rad(15.0) * render3d_st.day_dir
+  sky_set_rot(render3d_st, sky_yaw_now)
+  if Math.abs(day_wrap(sky_yaw_now - render3d_st.day_sky_baked)) > Math.deg_to_rad(35.0) and d > 0.05 {
+    render3d_st.day_sky_baked = sky_yaw_now
+    sky_precompute(render3d_st)
   }
   # the terrain's baked shadow follows the light in steps
-  if Math.abs(day_wrap(laz - day_baked_az)) > Math.deg_to_rad(4.0) or Math.abs(lel - day_baked_el) > Math.deg_to_rad(3.0) {
-    day_baked_az = laz;  day_baked_el = lel
-    day_gen += 1
+  if Math.abs(day_wrap(laz - render3d_st.day_baked_az)) > Math.deg_to_rad(4.0) or Math.abs(lel - render3d_st.day_baked_el) > Math.deg_to_rad(3.0) {
+    render3d_st.day_baked_az = laz;  render3d_st.day_baked_el = lel
+    render3d_st.day_gen += 1
   }
 }
 
 # where the moon is in its month; the game advances this each morning
-function daylight_moon(phase: float) -> void {
+function daylight_moon(render3d_st: mut Render3dState, phase: float) -> void {
   var p = phase % 1.0
   if p < 0.0 { p = p + 1.0 }
-  day_moon_phase = p
+  render3d_st.day_moon_phase = p
   # illuminated fraction: (1 - cos(2 pi p)) / 2, which is 0 at new and 1 at full
-  day_moon_illum = (1.0 - Math.cos(2.0 * PI * p)) * 0.5
-  daylight_set(day_hours)
+  render3d_st.day_moon_illum = (1.0 - Math.cos(2.0 * PI * p)) * 0.5
+  daylight_set(render3d_st, render3d_st.day_hours)
 }
 
 # the weather over the valley: overcast 0..1, a fog multiplier, a lightning flash 0..1
-function daylight_weather(overcast: float, fog_mul: float, flash: float) -> void {
-  day_overcast = overcast;  day_fog_mul = fog_mul;  day_flash = flash
+function daylight_weather(render3d_st: mut Render3dState, overcast: float, fog_mul: float, flash: float) -> void {
+  render3d_st.day_overcast = overcast;  render3d_st.day_fog_mul = fog_mul;  render3d_st.day_flash = flash
 }
 # the campfire: a point light at (x, y, z) of `strength` (0 = out)
-function daylight_fire(x: float, y: float, z: float, strength: float) -> void {
-  v3_set(fire_pos, x, y, z)
-  v3_set(fire_color, 9.0 * strength, 4.6 * strength, 1.4 * strength)
+function daylight_fire(render3d_st: Render3dState, x: float, y: float, z: float, strength: float) -> void {
+  v3_set(render3d_st.fire_pos, x, y, z)
+  v3_set(render3d_st.fire_color, 9.0 * strength, 4.6 * strength, 1.4 * strength)
 }
 
 # the light in the hand: a point light (cone < -1) or a cone along dir (cone = cos half-angle)
@@ -280,23 +250,23 @@ function daylight_fire(x: float, y: float, z: float, strength: float) -> void {
 # is what a pool of firelight looks like. It used to be a windowed inverse square with the
 # window and the scale both hard-coded, so every hand light in every game had the reach of
 # a candle whatever it was meant to be.
-function daylight_hand(x: float, y: float, z: float, dx: float, dy: float, dz: float, cone: float, reach: float, r: float, g: float, b: float) -> void {
-  v3_set(hand_pos, x, y, z);  v3_set(hand_dir, dx, dy, dz);  hand_cone = cone
-  v3_set(hand_color, r, g, b)
-  hand_reach = reach
+function daylight_hand(render3d_st: mut Render3dState, x: float, y: float, z: float, dx: float, dy: float, dz: float, cone: float, reach: float, r: float, g: float, b: float) -> void {
+  v3_set(render3d_st.hand_pos, x, y, z);  v3_set(render3d_st.hand_dir, dx, dy, dz);  render3d_st.hand_cone = cone
+  v3_set(render3d_st.hand_color, r, g, b)
+  render3d_st.hand_reach = reach
 }
-function daylight_bind(prog: int) -> void {
-  u_v3(gpu_uniform(prog, "u_hand_pos"), hand_pos)
-  u_v3(gpu_uniform(prog, "u_hand_color"), hand_color)
-  u_v3(gpu_uniform(prog, "u_hand_dir"), hand_dir)
-  u_f(gpu_uniform(prog, "u_hand_cone"), hand_cone)
-  u_f(gpu_uniform(prog, "u_hand_reach"), hand_reach)
-  u_v3(gpu_uniform(prog, "u_ibl_scale"), day_ibl)
-  u_v3(gpu_uniform(prog, "u_moon_dir"), day_moon_dir)
-  u_f(gpu_uniform(prog, "u_moon_phase"), day_moon_phase)
-  u_f(gpu_uniform(prog, "u_moon_illum"), day_moon_illum)
-  u_f(gpu_uniform(prog, "u_moon_haze"), day_overcast)
-  u_f(gpu_uniform(prog, "u_daylight"), day_light)
-  u_v3(gpu_uniform(prog, "u_fire_pos"), fire_pos)
-  u_v3(gpu_uniform(prog, "u_fire_color"), fire_color)
+function daylight_bind(render3d_st: mut Render3dState, prog: int) -> void {
+  u_v3(render3d_st, gpu_uniform(render3d_st, prog, "u_hand_pos"), render3d_st.hand_pos)
+  u_v3(render3d_st, gpu_uniform(render3d_st, prog, "u_hand_color"), render3d_st.hand_color)
+  u_v3(render3d_st, gpu_uniform(render3d_st, prog, "u_hand_dir"), render3d_st.hand_dir)
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_hand_cone"), render3d_st.hand_cone)
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_hand_reach"), render3d_st.hand_reach)
+  u_v3(render3d_st, gpu_uniform(render3d_st, prog, "u_ibl_scale"), render3d_st.day_ibl)
+  u_v3(render3d_st, gpu_uniform(render3d_st, prog, "u_moon_dir"), render3d_st.day_moon_dir)
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_moon_phase"), render3d_st.day_moon_phase)
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_moon_illum"), render3d_st.day_moon_illum)
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_moon_haze"), render3d_st.day_overcast)
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_daylight"), render3d_st.day_light)
+  u_v3(render3d_st, gpu_uniform(render3d_st, prog, "u_fire_pos"), render3d_st.fire_pos)
+  u_v3(render3d_st, gpu_uniform(render3d_st, prog, "u_fire_color"), render3d_st.fire_color)
 }

@@ -10,57 +10,57 @@ program RouteTest {
   bind FishingWorld { is_water: fn water_everywhere_but_land }
 
   # the route: a landed fish goes into the pack
-  function route_fishing_pack(t: Tick) -> void {
-    let fish = q_drain(caught)
-    for i in 0 .. len(fish) { pack_add(fish[i].species, 1) }
+  function route_fishing_pack(base_st: mut BaseState, toy_fishing_st: ToyFishingState, toy_pack_st: mut ToyPackState, t: Tick) -> void {
+    let fish = q_drain(base_st, toy_fishing_st.caught)
+    for i in 0 .. len(fish) { pack_add(toy_pack_st, fish[i].species, 1) }
   }
 
-  function game_start() -> void {
-    core_clear()
-    core_add(fishing_system())
+  function game_start(base_st: mut BaseState) -> void {
+    core_clear(base_st)
+    core_add(base_st, fishing_system())
     let r = system_new("route.fishing_pack", PH_RESOLVE)
     r.tick = fn route_fishing_pack
-    core_add(r)
-    core_add(pack_system())
-    core_reset_all()
+    core_add(base_st, r)
+    core_add(base_st, pack_system())
+    core_reset_all(base_st)
   }
 
-  function pack_total() -> int { return pack_count(0) + pack_count(1) + pack_count(2) }
+  function pack_total(toy_pack_st: ToyPackState) -> int { return pack_count(toy_pack_st, 0) + pack_count(toy_pack_st, 1) + pack_count(toy_pack_st, 2) }
 
-  test "three casts on water land three fish in the pack, one on land lands nothing" {
-    game_start()
-    expect(fishing_cast(1.0, 2.0))
-    expect(fishing_cast(3.0, 2.0))
-    expect(fishing_cast(5.0, 2.0))
-    expect(not fishing_cast(500.0, 2.0))
-    core_tick_all(tick_new(1.0 / 60.0, 0, 0.0))
-    expect_eq(pack_total(), 3)
-    expect_eq(len(core_undrained()), 0)
+  test "three casts on water land three fish in the pack, one on land lands nothing" (base_st: mut BaseState, toy_fishing_st: mut ToyFishingState, toy_pack_st: ToyPackState) {
+    game_start(base_st)
+    expect(fishing_cast(toy_fishing_st, 1.0, 2.0))
+    expect(fishing_cast(toy_fishing_st, 3.0, 2.0))
+    expect(fishing_cast(toy_fishing_st, 5.0, 2.0))
+    expect(not fishing_cast(toy_fishing_st, 500.0, 2.0))
+    core_tick_all(base_st, tick_new(1.0 / 60.0, 0, 0.0))
+    expect_eq(pack_total(toy_pack_st), 3)
+    expect_eq(len(core_undrained(base_st)), 0)
   }
 
-  test "the pack saves its own section and the fishing, which saves nothing, is reset" {
-    game_start()
-    fishing_cast(1.0, 1.0)
-    core_tick_all(tick_new(1.0 / 60.0, 0, 0.0))
-    let text = save_encode(core_save_all())
+  test "the pack saves its own section and the fishing, which saves nothing, is reset" (base_st: mut BaseState, toy_fishing_st: mut ToyFishingState, toy_pack_st: ToyPackState) {
+    game_start(base_st)
+    fishing_cast(toy_fishing_st, 1.0, 1.0)
+    core_tick_all(base_st, tick_new(1.0 / 60.0, 0, 0.0))
+    let text = save_encode(core_save_all(base_st))
     let tree = save_decode(text)
     expect_eq(Value.count(tree), 1)
     expect_eq(load_section(tree, "pack").version, 1)
     expect(not load_section(tree, "fishing").found)
-    core_reset_all()
-    expect_eq(pack_total(), 0)
-    core_load_all(save_decode(text))
-    expect_eq(pack_total(), 1)
+    core_reset_all(base_st)
+    expect_eq(pack_total(toy_pack_st), 0)
+    core_load_all(base_st, save_decode(text))
+    expect_eq(pack_total(toy_pack_st), 1)
   }
 
-  test "the same seed lands the same fish" {
-    game_start()
-    fishing_cast(1.0, 1.0)
-    core_tick_all(tick_new(1.0 / 60.0, 0, 0.0))
-    let first = save_encode(core_save_all())
-    game_start()
-    fishing_cast(1.0, 1.0)
-    core_tick_all(tick_new(1.0 / 60.0, 0, 0.0))
-    expect(save_encode(core_save_all()) == first)
+  test "the same seed lands the same fish" (base_st: mut BaseState, toy_fishing_st: mut ToyFishingState) {
+    game_start(base_st)
+    fishing_cast(toy_fishing_st, 1.0, 1.0)
+    core_tick_all(base_st, tick_new(1.0 / 60.0, 0, 0.0))
+    let first = save_encode(core_save_all(base_st))
+    game_start(base_st)
+    fishing_cast(toy_fishing_st, 1.0, 1.0)
+    core_tick_all(base_st, tick_new(1.0 / 60.0, 0, 0.0))
+    expect(save_encode(core_save_all(base_st)) == first)
   }
 }

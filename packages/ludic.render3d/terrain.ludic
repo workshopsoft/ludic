@@ -4,88 +4,33 @@
 # PBR materials blended by slope, altitude and the track mask.
 # ============================================================================
 
-var TERRAIN_HALF: int = 4096          # world half-size in metres (8 km square)
 const TERRAIN_RES:  int = 4096        # height-map texels per side (2 m over 8 km)
 const TERRAIN_SHADOW_RES: int = 2048  # the baked height-field shadow / cloud mask
 # CDLOD: the map is a quadtree of 32x32-cell patches; the leaf patch is 32 m (1 m cells)
 const CD_G: int = 32                  # cells per patch side
 const CD_LEVELS: int = 9              # 32 m leaves .. 8192 m root
 const CD_LEAVES: int = 256            # leaf patches per side (8192 / 32)
-var cd_mesh: Mesh = null
-var cd_range: floats = null            # float bits: how far each level is drawn
-var cd_min: []floats = null            # per level: min height of each patch (float bits)
-var cd_max: []floats = null
-var cd_draws: int = 0
-var cd_far_draws: int = 0
-var cd_near_draws: int = 0
-var ter_force_far: bool = false
-var ter_no_split: bool = false
-var ter_force_near: bool = false
-var ter_skip: bool = false
 
-var ter_height_tex: int = 0
-var ter_heights: floats = null         # CPU copy, float bits, TERRAIN_RES^2
-var ter_reflect: bool = false          # drawing the reflection: the mid mesh is plenty
-var ter_prog: int = 0
 # The far tier compiled on its own (FAR_ONLY). A patch that lies entirely beyond the
 # near/far split is drawn with it: same pixels, a shader small enough to run wide.
-var ter_prog_far: int = 0
-var ter_prog_near: int = 0           # the detailed tier alone (NEAR_ONLY)
-var ter_sun_prog: int = 0            # tersun.frag: sun visibility into a screen buffer
-var ter_sun_inline: bool = false     # the ground's shader reads the cascades itself (Vulkan); no sun pass
-var ter_sun_tgt: Target = null       # that buffer, at the frame's size
-var ter_sun_refl: Target = null      # and at the reflection's, which is smaller
-var ter_sun_dumped: bool = false
-var ter_sun_checked: bool = false
-var ter_sun_done: bool = false      # the caller already ran the pass (so it can time it)
-var ter_sun_pass: bool = false       # selection is drawing the visibility pass
-var ter_sun_tex: int = 0
-var ter_prog_cur: int = 0            # the program currently bound during selection
-var ter_smooth: bool = false   # generate the analytic test ground instead of a survey
-var ter_far_split: float = 0.0             # metres: beyond this the terrain takes its cheap far path (R3D_TFAR)
-var ter_far_band: float = 0.0              # half-width of the near/far blend (R3D_TBAND)
-var ter_snow_line: float = 0.0
 # 0 dry .. 1 soaked. The game sets it from the weather and lets it dry out.
-var ter_wet: float = 0.0
-var ter_tex: words = null             # 11 material textures (see terrain_bind)
-var ter_ox: float = 0.0                   # world x/z of the terrain centre (float bits)
-var ter_oz: float = 0.0
-var ter_dem_tex: int = 0              # a real height map (16-bit), or 0 for the procedural valley
-var ter_dem_blur: float = 0.0             # gaussian texels applied to the survey (0 for lidar; ~3 for 30 m data)
-var ter_dem_min: float = 0.0
-var ter_dem_max: float = 0.0
-var ter_dem_base: float = 0.0
-var ter_ortho_tex: int = 0            # a photograph of the same window, draped with distance
-var ter_carpet: int = 0               # the distant-grass carpet (carpet_bake), 0 = none
-var ter_shadow_tex: int = 0           # height-field sun shadow: RG32F (lowest lit height, occluder distance)
-var ter_shadow_yaw: float = 1000000000.0  # the sky yaw it was baked for
-var ter_shadow_gen: int = -1          # the daylight generation it was baked for
-var ter_shadow_prog: int = 0
-function terrain_set_carpet(tex: int) -> void { ter_carpet = tex }
-var ter_lake_level: float = 0.0           # a lake carved into the height map (float bits; ex = 0 → none)
-var ter_lake_cx: float = 0.0
-var ter_lake_cz: float = 0.0
-var ter_lake_ex: float = 0.0
-var ter_lake_ez: float = 0.0
+function terrain_set_carpet(render3d_st: mut Render3dState, tex: int) -> void { render3d_st.ter_carpet = tex }
 # Carve a lake bed below `level` inside the ellipse (cx, cz) ± (ex, ez); call before r3d_init.
-function terrain_lake(level: float, cx: float, cz: float, ex: float, ez: float) -> void {
-  ter_lake_level = level;  ter_lake_cx = cx;  ter_lake_cz = cz;  ter_lake_ex = ex;  ter_lake_ez = ez
+function terrain_lake(render3d_st: mut Render3dState, level: float, cx: float, cz: float, ex: float, ez: float) -> void {
+  render3d_st.ter_lake_level = level;  render3d_st.ter_lake_cx = cx;  render3d_st.ter_lake_cz = cz;  render3d_st.ter_lake_ex = ex;  render3d_st.ter_lake_ez = ez
 }
 # Whether the generator carves that bed. A height map that already carries a shaped bed
 # turns it off and keeps the lake for everything else (its line, its outline, its shore):
 # the carve drops the bed metres within the survey's last 0.9 m of shore, which reads as a
 # cut edge on a lake whose own bank was shaped to come down gently.
-var ter_lake_carve: bool = true
-function terrain_lake_carve(on: bool) -> void { ter_lake_carve = on }
+function terrain_lake_carve(render3d_st: mut Render3dState, on: bool) -> void { render3d_st.ter_lake_carve = on }
 # The SEA's level, for the coast, the strand and the shoreline shading, when it is not the
 # carved lake's. They were one number, which holds only while the lake is at sea level: a
 # lake eighty metres up the valley drowned the whole coast toward its own surface. Unset,
 # the sea is the lake exactly as before, so a map with one water line needs no call.
-var ter_sea_level: float = 0.0
-var ter_sea_set: bool = false
-function terrain_sea(level: float) -> void { ter_sea_level = level;  ter_sea_set = true }
+function terrain_sea(render3d_st: mut Render3dState, level: float) -> void { render3d_st.ter_sea_level = level;  render3d_st.ter_sea_set = true }
 # the level the generator scales the coast toward (it always read the lake's, set or not)
-function ter_sea_gen() -> float { if ter_sea_set { return ter_sea_level };  return ter_lake_level }
+function ter_sea_gen(render3d_st: Render3dState) -> float { if render3d_st.ter_sea_set { return render3d_st.ter_sea_level };  return render3d_st.ter_lake_level }
 # An island: land out to `r` from (cx, cz), then the terrain scaled down into the water
 # over `fall` metres and on down to a shelf. Scaling rather than blending to a fixed bed is
 # what makes the coastline come out of the terrain that is already there — low ground turns
@@ -93,15 +38,10 @@ function ter_sea_gen() -> float { if ter_sea_set { return ter_sea_level };  retu
 const TER_ISLE_NONE: int = 0
 const TER_ISLE_RADIAL: int = 1
 const TER_ISLE_COAST: int = 2
-var ter_isle_cx: float = 0.0
-var ter_isle_cz: float = 0.0
-var ter_isle_r: float = 0.0
-var ter_isle_fall: float = 0.0
-var ter_isle_mode: int = 0
-function terrain_island(cx: float, cz: float, r: float, fall: float) -> void {
-  ter_isle_cx = cx;  ter_isle_cz = cz;  ter_isle_r = r;  ter_isle_fall = fall
-  ter_isle_mode = TER_ISLE_RADIAL
-  if r == 0.0 { ter_isle_mode = TER_ISLE_NONE }
+function terrain_island(render3d_st: mut Render3dState, cx: float, cz: float, r: float, fall: float) -> void {
+  render3d_st.ter_isle_cx = cx;  render3d_st.ter_isle_cz = cz;  render3d_st.ter_isle_r = r;  render3d_st.ter_isle_fall = fall
+  render3d_st.ter_isle_mode = TER_ISLE_RADIAL
+  if r == 0.0 { render3d_st.ter_isle_mode = TER_ISLE_NONE }
 }
 # The other way to make an island, and the one a real survey usually wants: put the sea
 # around the survey's OWN EDGE rather than cutting a circle out of the middle of it.
@@ -116,29 +56,26 @@ function terrain_island(cx: float, cz: float, r: float, fall: float) -> void {
 #
 # The band is wobbled by low-frequency noise so the coastline is headlands and bays rather
 # than the square the data arrived in. `margin = 0` leaves the survey alone.
-function terrain_coast(cx: float, cz: float, margin: float, fall: float) -> void {
-  ter_isle_cx = cx;  ter_isle_cz = cz;  ter_isle_r = margin;  ter_isle_fall = fall
-  ter_isle_mode = TER_ISLE_COAST
-  if margin == 0.0 { ter_isle_mode = TER_ISLE_NONE }
+function terrain_coast(render3d_st: mut Render3dState, cx: float, cz: float, margin: float, fall: float) -> void {
+  render3d_st.ter_isle_cx = cx;  render3d_st.ter_isle_cz = cz;  render3d_st.ter_isle_r = margin;  render3d_st.ter_isle_fall = fall
+  render3d_st.ter_isle_mode = TER_ISLE_COAST
+  if margin == 0.0 { render3d_st.ter_isle_mode = TER_ISLE_NONE }
 }
 
 # Use a real place: a 16-bit PNG height map plus its elevation range (metres). The
 # elevation `base` becomes y = 0; `ox`/`oz` put the map's centre in the world.
-var ter_ortho_px: pointer = null      # the photograph on the CPU (RGB8, TERRAIN_RES^2) for placement rules
-var ter_ortho_w: int = 0
-var ter_ortho_c: int = 3
 
 # the photograph's colour at world (x, z): packed 0xRRGGBB (0 outside the map)
-function terrain_ortho(x: float, z: float) -> int {
-  if ter_ortho_px == null { return 0 }
-  if ter_o_scale == 0.0 { ter_o_scale = float(ter_ortho_w) / float(TERRAIN_HALF * 2) }
-  let scale = ter_o_scale
-  var ix = int(Math.floor((x - ter_ox + float(TERRAIN_HALF)) * scale))
-  var iz = int(Math.floor((z - ter_oz + float(TERRAIN_HALF)) * scale))
+function terrain_ortho(render3d_st: mut Render3dState, x: float, z: float) -> int {
+  if render3d_st.ter_ortho_px == null { return 0 }
+  if render3d_st.ter_o_scale == 0.0 { render3d_st.ter_o_scale = float(render3d_st.ter_ortho_w) / float(render3d_st.TERRAIN_HALF * 2) }
+  let scale = render3d_st.ter_o_scale
+  var ix = int(Math.floor((x - render3d_st.ter_ox + float(render3d_st.TERRAIN_HALF)) * scale))
+  var iz = int(Math.floor((z - render3d_st.ter_oz + float(render3d_st.TERRAIN_HALF)) * scale))
   if ix < 0 { ix = 0 };  if iz < 0 { iz = 0 }
-  if ix > ter_ortho_w - 1 { ix = ter_ortho_w - 1 };  if iz > ter_ortho_w - 1 { iz = ter_ortho_w - 1 }
-  let o = (iz * ter_ortho_w + ix) * ter_ortho_c
-  return (ter_ortho_px[o] << 16) | (ter_ortho_px[o + 1] << 8) | ter_ortho_px[o + 2]
+  if ix > render3d_st.ter_ortho_w - 1 { ix = render3d_st.ter_ortho_w - 1 };  if iz > render3d_st.ter_ortho_w - 1 { iz = render3d_st.ter_ortho_w - 1 }
+  let o = (iz * render3d_st.ter_ortho_w + ix) * render3d_st.ter_ortho_c
+  return (render3d_st.ter_ortho_px[o] << 16) | (render3d_st.ter_ortho_px[o + 1] << 8) | render3d_st.ter_ortho_px[o + 2]
 }
 # The three classifiers below all read the same pixel. A caller that wants more than
 # one should fetch the colour once with terrain_ortho() and use the *_of forms — the
@@ -168,8 +105,8 @@ function ortho_forest_of(c: int) -> float {
 }
 
 # how green the ground is in the photograph (0..1 float bits): meadow / forest vs rock, scree, water
-function terrain_ortho_green(x: float, z: float) -> float {
-  let c = terrain_ortho(x, z)
+function terrain_ortho_green(render3d_st: mut Render3dState, x: float, z: float) -> float {
+  let c = terrain_ortho(render3d_st, x, z)
   let r = (c >> 16) & 255;  let g = (c >> 8) & 255;  let b = c & 255
   var v = g - max(r, b)                 # green excess
   if v < 0 { v = 0 }
@@ -178,14 +115,14 @@ function terrain_ortho_green(x: float, z: float) -> float {
 # how grey and mid-bright (scree / pebbles / bare rock) the photograph is there (0..1)
 # Bare ground only where most of a 50 m neighbourhood is bare: a single 10 m trail pixel
 # must not place a boulder or bar a tree.
-function terrain_ortho_scree(x: float, z: float) -> float {
+function terrain_ortho_scree(render3d_st: mut Render3dState, x: float, z: float) -> float {
   var votes = 0
-  for j in 0 .. 5 { for i in 0 .. 5 { if ortho_scree_of(terrain_ortho(x + float((i - 2) * 10), z + float((j - 2) * 10))) != 0.0 { votes += 1 } } }
+  for j in 0 .. 5 { for i in 0 .. 5 { if ortho_scree_of(terrain_ortho(render3d_st, x + float((i - 2) * 10), z + float((j - 2) * 10))) != 0.0 { votes += 1 } } }
   if votes >= 15 { return 1.0 }
   return 0.0
 }
-function terrain_ortho_scree_pixel(x: float, z: float) -> float {
-  let c = terrain_ortho(x, z)
+function terrain_ortho_scree_pixel(render3d_st: mut Render3dState, x: float, z: float) -> float {
+  let c = terrain_ortho(render3d_st, x, z)
   if c == 0 { return 0.0 }
   let r = (c >> 16) & 255;  let g = (c >> 8) & 255;  let b = c & 255
   let mx = max(r, max(g, b))
@@ -194,8 +131,8 @@ function terrain_ortho_scree_pixel(x: float, z: float) -> float {
   return 1.0
 }
 # dense conifer forest in the photograph: green-dominant and dark (the meadows are brighter)
-function terrain_ortho_forest(x: float, z: float) -> float {
-  let c = terrain_ortho(x, z)
+function terrain_ortho_forest(render3d_st: mut Render3dState, x: float, z: float) -> float {
+  let c = terrain_ortho(render3d_st, x, z)
   if c == 0 { return 0.0 }
   let r = (c >> 16) & 255;  let g = (c >> 8) & 255;  let b = c & 255
   let mx = max(r, max(g, b))
@@ -205,107 +142,107 @@ function terrain_ortho_forest(x: float, z: float) -> float {
   return 0.0
 }
 
-function terrain_use_ortho(path: string) -> void {
-  let px = png_decode(path)
+function terrain_use_ortho(render3d_st: mut Render3dState, path: string) -> void {
+  let px = png_decode(render3d_st, path)
   if px == null { return }
-  ter_ortho_px = px
-  ter_ortho_w = tex_w
-  ter_ortho_c = tex_channels
-  ter_ortho_tex = tex_upload(px, true, true)
-  gpu_tex_bind(GPU_TEX2D, ter_ortho_tex)
-  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
-  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+  render3d_st.ter_ortho_px = px
+  render3d_st.ter_ortho_w = render3d_st.tex_w
+  render3d_st.ter_ortho_c = render3d_st.tex_channels
+  render3d_st.ter_ortho_tex = tex_upload(render3d_st, px, true, true)
+  gpu_tex_bind(render3d_st, GPU_TEX2D, render3d_st.ter_ortho_tex)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
 }
-function terrain_use_dem(path: string, emin: float, emax: float, base: float, ox: float, oz: float) -> void {
-  ter_dem_tex = tex_load(path, false)
-  ter_dem_min = emin;  ter_dem_max = emax;  ter_dem_base = base
-  ter_ox = ox;  ter_oz = oz
-  gpu_tex_bind(GPU_TEX2D, ter_dem_tex)
-  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
-  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+function terrain_use_dem(render3d_st: mut Render3dState, path: string, emin: float, emax: float, base: float, ox: float, oz: float) -> void {
+  render3d_st.ter_dem_tex = tex_load(render3d_st, path, false)
+  render3d_st.ter_dem_min = emin;  render3d_st.ter_dem_max = emax;  render3d_st.ter_dem_base = base
+  render3d_st.ter_ox = ox;  render3d_st.ter_oz = oz
+  gpu_tex_bind(render3d_st, GPU_TEX2D, render3d_st.ter_dem_tex)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
 }
 
-function terrain_generate() -> void {
+function terrain_generate(render3d_st: mut Render3dState) -> void {
   var defs = ""
-  if ter_dem_tex != 0 { defs = "#define DEM\n" }
-  if ter_smooth { defs = "#define SMOOTH\n" }
-  let p = r3d_program("fullscreen.vert", "heightgen.frag", defs)
-  ter_height_tex = tex_target(TERRAIN_RES, TERRAIN_RES, GL_R32F, GL_RED, GL_FLOAT, GL_LINEAR)
-  let fbo = gpu_fb_new()
-  gpu_fb_bind(fbo)
-  gpu_fb_color(0, ter_height_tex)
-  gpu_viewport(0, 0, TERRAIN_RES, TERRAIN_RES)
-  gpu_depth_test(false)
-  gpu_use_program(p)
-  u_f(gpu_uniform(p, "u_half"), float(TERRAIN_HALF))
-  if ter_dem_tex != 0 {
-    r3d_bind_2d(p, "u_dem", 0, ter_dem_tex)
-    u_f(gpu_uniform(p, "u_dem_min"), ter_dem_min)
-    u_f(gpu_uniform(p, "u_dem_max"), ter_dem_max)
-    u_f(gpu_uniform(p, "u_dem_base"), ter_dem_base)
-    u_f2(gpu_uniform(p, "u_origin"), ter_ox, ter_oz)
-    u_f4(gpu_uniform(p, "u_lake"), ter_lake_cx, ter_lake_cz, ter_lake_ex, ter_lake_ez)
-    u_f(gpu_uniform(p, "u_lake_level"), ter_lake_level)
+  if render3d_st.ter_dem_tex != 0 { defs = "#define DEM\n" }
+  if render3d_st.ter_smooth { defs = "#define SMOOTH\n" }
+  let p = r3d_program(render3d_st, "fullscreen.vert", "heightgen.frag", defs)
+  render3d_st.ter_height_tex = tex_target(render3d_st, TERRAIN_RES, TERRAIN_RES, GL_R32F, GL_RED, GL_FLOAT, GL_LINEAR)
+  let fbo = gpu_fb_new(render3d_st)
+  gpu_fb_bind(render3d_st, fbo)
+  gpu_fb_color(render3d_st, 0, render3d_st.ter_height_tex)
+  gpu_viewport(render3d_st, 0, 0, TERRAIN_RES, TERRAIN_RES)
+  gpu_depth_test(render3d_st, false)
+  gpu_use_program(render3d_st, p)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_half"), float(render3d_st.TERRAIN_HALF))
+  if render3d_st.ter_dem_tex != 0 {
+    r3d_bind_2d(render3d_st, p, "u_dem", 0, render3d_st.ter_dem_tex)
+    u_f(render3d_st, gpu_uniform(render3d_st, p, "u_dem_min"), render3d_st.ter_dem_min)
+    u_f(render3d_st, gpu_uniform(render3d_st, p, "u_dem_max"), render3d_st.ter_dem_max)
+    u_f(render3d_st, gpu_uniform(render3d_st, p, "u_dem_base"), render3d_st.ter_dem_base)
+    u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_origin"), render3d_st.ter_ox, render3d_st.ter_oz)
+    u_f4(render3d_st, gpu_uniform(render3d_st, p, "u_lake"), render3d_st.ter_lake_cx, render3d_st.ter_lake_cz, render3d_st.ter_lake_ex, render3d_st.ter_lake_ez)
+    u_f(render3d_st, gpu_uniform(render3d_st, p, "u_lake_level"), render3d_st.ter_lake_level)
     var carve = 1.0
-    if not ter_lake_carve { carve = 0.0 }
-    u_f(gpu_uniform(p, "u_lake_carve"), carve)
-    u_f(gpu_uniform(p, "u_sea_level"), ter_sea_gen())
-    u_f4(gpu_uniform(p, "u_isle"), ter_isle_cx, ter_isle_cz, ter_isle_r, ter_isle_fall)
-    u_f(gpu_uniform(p, "u_isle_mode"), float(ter_isle_mode))
-    u_f(gpu_uniform(p, "u_dem_blur"), float(ter_dem_blur))
+    if not render3d_st.ter_lake_carve { carve = 0.0 }
+    u_f(render3d_st, gpu_uniform(render3d_st, p, "u_lake_carve"), carve)
+    u_f(render3d_st, gpu_uniform(render3d_st, p, "u_sea_level"), ter_sea_gen(render3d_st))
+    u_f4(render3d_st, gpu_uniform(render3d_st, p, "u_isle"), render3d_st.ter_isle_cx, render3d_st.ter_isle_cz, render3d_st.ter_isle_r, render3d_st.ter_isle_fall)
+    u_f(render3d_st, gpu_uniform(render3d_st, p, "u_isle_mode"), float(render3d_st.ter_isle_mode))
+    u_f(render3d_st, gpu_uniform(render3d_st, p, "u_dem_blur"), float(render3d_st.ter_dem_blur))
   }
-  mesh_draw(sky_fullscreen)
+  mesh_draw(render3d_st, render3d_st.sky_fullscreen)
   # second pass: R = height, GBA = the smooth surface normal, baked once (ternormal.frag)
-  let raw = ter_height_tex
-  ter_height_tex = tex_target(TERRAIN_RES, TERRAIN_RES, GL_RGBA32F, GL_RGBA, GL_FLOAT, GL_LINEAR)
-  gpu_fb_color(0, ter_height_tex)
-  let pn = r3d_program("fullscreen.vert", "ternormal.frag", "")
-  gpu_use_program(pn)
-  r3d_bind_2d(pn, "u_src", 0, raw)
-  u_f(gpu_uniform(pn, "u_half"), float(TERRAIN_HALF))
-  mesh_draw(sky_fullscreen)
-  gpu_program_free(pn)
-  gpu_tex_free(raw)
+  let raw = render3d_st.ter_height_tex
+  render3d_st.ter_height_tex = tex_target(render3d_st, TERRAIN_RES, TERRAIN_RES, GL_RGBA32F, GL_RGBA, GL_FLOAT, GL_LINEAR)
+  gpu_fb_color(render3d_st, 0, render3d_st.ter_height_tex)
+  let pn = r3d_program(render3d_st, "fullscreen.vert", "ternormal.frag", "")
+  gpu_use_program(render3d_st, pn)
+  r3d_bind_2d(render3d_st, pn, "u_src", 0, raw)
+  u_f(render3d_st, gpu_uniform(render3d_st, pn, "u_half"), float(render3d_st.TERRAIN_HALF))
+  mesh_draw(render3d_st, render3d_st.sky_fullscreen)
+  gpu_program_free(render3d_st, pn)
+  gpu_tex_free(render3d_st, raw)
   # read the heights back for placement
-  ter_heights = floats(TERRAIN_RES * TERRAIN_RES)
-  gpu_tex_bind(GPU_TEX2D, ter_height_tex)
-  gpu_pixel_store(GL_PACK_ALIGNMENT, 4)
-  gpu_tex_read(GPU_TEX2D, GL_RED, GL_FLOAT, data_of(ter_heights))
-  gpu_fb_bind(0)
-  gpu_fb_free(fbo)
-  gpu_program_free(p)
-  gpu_check("terrain generate")
+  render3d_st.ter_heights = floats(TERRAIN_RES * TERRAIN_RES)
+  gpu_tex_bind(render3d_st, GPU_TEX2D, render3d_st.ter_height_tex)
+  gpu_pixel_store(render3d_st, GL_PACK_ALIGNMENT, 4)
+  gpu_tex_read(render3d_st, GPU_TEX2D, GL_RED, GL_FLOAT, data_of(render3d_st.ter_heights))
+  gpu_fb_bind(render3d_st, 0)
+  gpu_fb_free(render3d_st, fbo)
+  gpu_program_free(render3d_st, p)
+  gpu_check(render3d_st, "terrain generate")
 }
 
 # The height field for shaders that place things on the ground (model.vert's u_ground)
-function terrain_bind_height(p: int) -> void {
-  r3d_bind_2d(p, "u_ts_height", 5, ter_height_tex)
-  u_f(gpu_uniform(p, "u_ts_half"), float(TERRAIN_HALF))
-  u_f2(gpu_uniform(p, "u_ts_origin"), ter_ox, ter_oz)
+function terrain_bind_height(render3d_st: mut Render3dState, p: int) -> void {
+  r3d_bind_2d(render3d_st, p, "u_ts_height", 5, render3d_st.ter_height_tex)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_ts_half"), float(render3d_st.TERRAIN_HALF))
+  u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_ts_origin"), render3d_st.ter_ox, render3d_st.ter_oz)
 }
 
 # Bake the height-field sun shadow (see tershadow.frag). Cheap enough to redo whenever
 # the sun moves; r3d_frame calls it again when sky_set_yaw has changed the yaw.
-function terrain_bake_shadow() -> void {
-  if sun_dir == null { return }
-  if ter_shadow_tex == 0 { ter_shadow_tex = tex_target(TERRAIN_SHADOW_RES, TERRAIN_SHADOW_RES, GL_RGBA32F, GL_RGBA, GL_FLOAT, GL_LINEAR) }
-  if ter_shadow_prog == 0 { ter_shadow_prog = r3d_program("fullscreen.vert", "tershadow.frag", "#define NOISE_ONLY\n") }
-  let p = ter_shadow_prog
-  let fbo = gpu_fb_new()
-  gpu_fb_bind(fbo)
-  gpu_fb_color(0, ter_shadow_tex)
-  gpu_viewport(0, 0, TERRAIN_SHADOW_RES, TERRAIN_SHADOW_RES)
-  gpu_depth_test(false)
-  gpu_blend(false)
-  gpu_use_program(p)
-  r3d_bind_2d(p, "u_height", 0, ter_height_tex)
-  u_f(gpu_uniform(p, "u_half"), float(TERRAIN_HALF))
-  u_v3(gpu_uniform(p, "u_sun"), sun_dir)
-  mesh_draw(sky_fullscreen)
-  gpu_fb_bind(0)
-  gpu_fb_free(fbo)
-  ter_shadow_yaw = sky_yaw
-  gpu_check("terrain shadow bake")
+function terrain_bake_shadow(render3d_st: mut Render3dState) -> void {
+  if render3d_st.sun_dir == null { return }
+  if render3d_st.ter_shadow_tex == 0 { render3d_st.ter_shadow_tex = tex_target(render3d_st, TERRAIN_SHADOW_RES, TERRAIN_SHADOW_RES, GL_RGBA32F, GL_RGBA, GL_FLOAT, GL_LINEAR) }
+  if render3d_st.ter_shadow_prog == 0 { render3d_st.ter_shadow_prog = r3d_program(render3d_st, "fullscreen.vert", "tershadow.frag", "#define NOISE_ONLY\n") }
+  let p = render3d_st.ter_shadow_prog
+  let fbo = gpu_fb_new(render3d_st)
+  gpu_fb_bind(render3d_st, fbo)
+  gpu_fb_color(render3d_st, 0, render3d_st.ter_shadow_tex)
+  gpu_viewport(render3d_st, 0, 0, TERRAIN_SHADOW_RES, TERRAIN_SHADOW_RES)
+  gpu_depth_test(render3d_st, false)
+  gpu_blend(render3d_st, false)
+  gpu_use_program(render3d_st, p)
+  r3d_bind_2d(render3d_st, p, "u_height", 0, render3d_st.ter_height_tex)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_half"), float(render3d_st.TERRAIN_HALF))
+  u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_sun"), render3d_st.sun_dir)
+  mesh_draw(render3d_st, render3d_st.sky_fullscreen)
+  gpu_fb_bind(render3d_st, 0)
+  gpu_fb_free(render3d_st, fbo)
+  render3d_st.ter_shadow_yaw = render3d_st.sky_yaw
+  gpu_check(render3d_st, "terrain shadow bake")
 }
 
 # height at world (x, z) — float bits, bilinear over the CPU copy
@@ -313,42 +250,39 @@ function terrain_bake_shadow() -> void {
 # a fixed-point divide — on every call, and the cover generator calls terrain_height
 # five times per candidate (once directly, four more inside slope_at) across hundreds
 # of thousands of candidates per chunk. Hoisted, they cost nothing.
-var ter_h_scale: float = 0.0
-var ter_o_scale: float = 0.0
 
-function terrain_height(x: float, z: float) -> float {
-  if ter_heights == null { return 0.0 }          # a plate (r3d_plate_mode): flat at y = 0
-  if ter_h_scale == 0.0 { ter_h_scale = float(TERRAIN_RES) / float(TERRAIN_HALF * 2) }
-  let scale = ter_h_scale
-  let fx = (x - ter_ox + float(TERRAIN_HALF)) * scale
-  let fz = (z - ter_oz + float(TERRAIN_HALF)) * scale
+function terrain_height(render3d_st: mut Render3dState, x: float, z: float) -> float {
+  if render3d_st.ter_heights == null { return 0.0 }          # a plate (r3d_plate_mode): flat at y = 0
+  if render3d_st.ter_h_scale == 0.0 { render3d_st.ter_h_scale = float(TERRAIN_RES) / float(render3d_st.TERRAIN_HALF * 2) }
+  let scale = render3d_st.ter_h_scale
+  let fx = (x - render3d_st.ter_ox + float(render3d_st.TERRAIN_HALF)) * scale
+  let fz = (z - render3d_st.ter_oz + float(render3d_st.TERRAIN_HALF)) * scale
   var ix = int(Math.floor(fx));  var iz = int(Math.floor(fz))
   if ix < 0 { ix = 0 };  if iz < 0 { iz = 0 }
   if ix > TERRAIN_RES - 2 { ix = TERRAIN_RES - 2 };  if iz > TERRAIN_RES - 2 { iz = TERRAIN_RES - 2 }
   let tx = Math.clamp(fx - float(ix), 0.0, 1.0)
   let tz = Math.clamp(fz - float(iz), 0.0, 1.0)
-  let h00 = ter_heights[iz * TERRAIN_RES + ix]
-  let h10 = ter_heights[iz * TERRAIN_RES + ix + 1]
-  let h01 = ter_heights[(iz + 1) * TERRAIN_RES + ix]
-  let h11 = ter_heights[(iz + 1) * TERRAIN_RES + ix + 1]
+  let h00 = render3d_st.ter_heights[iz * TERRAIN_RES + ix]
+  let h10 = render3d_st.ter_heights[iz * TERRAIN_RES + ix + 1]
+  let h01 = render3d_st.ter_heights[(iz + 1) * TERRAIN_RES + ix]
+  let h11 = render3d_st.ter_heights[(iz + 1) * TERRAIN_RES + ix + 1]
   return Math.lerp(Math.lerp(h00, h10, tx), Math.lerp(h01, h11, tx), tz)
 }
 # the same for Q16.16 callers
-function terrain_height_fx(x: fixed, z: fixed) -> fixed { return fixed(terrain_height(float(x), float(z))) }
+function terrain_height_fx(render3d_st: mut Render3dState, x: fixed, z: fixed) -> fixed { return fixed(terrain_height(render3d_st, float(x), float(z))) }
 
 # The height the terrain is DRAWN at: the cubic B-spline of the texels (heightSmooth in
 # terrain.vert), not the bilinear read above. The two differ by up to half a metre on
 # rough ground, which is the difference between a character standing on the meadow
 # and one buried to the knee in it. Sixteen taps; for things that move, not for the
 # thousands of placement queries a chunk makes.
-var ter_bw: floats = null
-function terrain_height_smooth(x: float, z: float) -> float {
-  if ter_heights == null { return 0.0 }
-  if ter_h_scale == 0.0 { ter_h_scale = float(TERRAIN_RES) / float(TERRAIN_HALF * 2) }
-  if ter_bw == null { ter_bw = floats(8) }
-  let scale = ter_h_scale
-  let fx = (x - ter_ox + float(TERRAIN_HALF)) * scale - 0.5
-  let fz = (z - ter_oz + float(TERRAIN_HALF)) * scale - 0.5
+function terrain_height_smooth(render3d_st: mut Render3dState, x: float, z: float) -> float {
+  if render3d_st.ter_heights == null { return 0.0 }
+  if render3d_st.ter_h_scale == 0.0 { render3d_st.ter_h_scale = float(TERRAIN_RES) / float(render3d_st.TERRAIN_HALF * 2) }
+  if render3d_st.ter_bw == null { render3d_st.ter_bw = floats(8) }
+  let scale = render3d_st.ter_h_scale
+  let fx = (x - render3d_st.ter_ox + float(render3d_st.TERRAIN_HALF)) * scale - 0.5
+  let fz = (z - render3d_st.ter_oz + float(render3d_st.TERRAIN_HALF)) * scale - 0.5
   let ix = int(Math.floor(fx));  let iz = int(Math.floor(fz))
   let tx = Math.clamp(fx - float(ix), 0.0, 1.0)
   let tz = Math.clamp(fz - float(iz), 0.0, 1.0)
@@ -362,7 +296,7 @@ function terrain_height_smooth(x: float, z: float) -> float {
     let w1 = (4.0 - 6.0 * t2 + 3.0 * t3) / 6.0
     let w3 = t3 / 6.0
     let w2 = 1.0 - w0 - w1 - w3
-    ter_bw[a * 4] = w0;  ter_bw[a * 4 + 1] = w1;  ter_bw[a * 4 + 2] = w2;  ter_bw[a * 4 + 3] = w3
+    render3d_st.ter_bw[a * 4] = w0;  render3d_st.ter_bw[a * 4 + 1] = w1;  render3d_st.ter_bw[a * 4 + 2] = w2;  render3d_st.ter_bw[a * 4 + 3] = w3
   }
   var h = 0.0
   for j in 0 .. 4 {
@@ -372,62 +306,62 @@ function terrain_height_smooth(x: float, z: float) -> float {
     for i in 0 .. 4 {
       var rx = ix - 1 + i
       if rx < 0 { rx = 0 };  if rx > TERRAIN_RES - 1 { rx = TERRAIN_RES - 1 }
-      row = row + ter_bw[i] * ter_heights[rz * TERRAIN_RES + rx]
+      row = row + render3d_st.ter_bw[i] * render3d_st.ter_heights[rz * TERRAIN_RES + rx]
     }
-    h = h + ter_bw[4 + j] * row
+    h = h + render3d_st.ter_bw[4 + j] * row
   }
   return h
 }
 
-function terrain_load_textures() -> void {
-  ter_tex = words(15)
-  let a = r3d_assets + "/textures/"
-  ter_tex[0] = tex_load(a + "aerial_grass_rock_diff_2k.png", true)
-  ter_tex[1] = tex_load(a + "aerial_grass_rock_nor_gl_2k.png", false)
-  ter_tex[2] = tex_load(a + "aerial_grass_rock_arm_2k.png", false)
-  ter_tex[3] = tex_load(a + "grass_path_2_diff_2k.png", true)
-  ter_tex[4] = tex_load(a + "grass_path_2_nor_gl_2k.png", false)
-  ter_tex[5] = tex_load(a + "grass_path_2_arm_2k.png", false)
-  ter_tex[6] = tex_load(a + "gray_rocks_diff_2k.png", true)
-  ter_tex[7] = tex_load(a + "gray_rocks_nor_gl_2k.png", false)
-  ter_tex[8] = tex_load(a + "gray_rocks_arm_2k.png", false)
-  ter_tex[9] = tex_load(a + "snow_02_diff_2k.png", true)
-  ter_tex[10] = tex_load(a + "snow_02_nor_gl_2k.png", false)
-  ter_tex[11] = tex_load(a + "snow_02_arm_2k.png", false)
-  ter_tex[12] = tex_load(a + "aerial_grass_rock_disp_2k.png", false)
-  ter_tex[13] = tex_load(a + "cliff_side_diff_2k.png", true)
-  ter_tex[14] = tex_load(a + "cliff_side_nor_gl_2k.png", false)
-  if r3d_env_has("R3D_TEXDBG") { for i in 0 .. 15 { print(`ter_tex[{string(i)}] = {string(ter_tex[i])}`) } }
+function terrain_load_textures(render3d_st: mut Render3dState) -> void {
+  render3d_st.ter_tex = words(15)
+  let a = render3d_st.r3d_assets + "/textures/"
+  render3d_st.ter_tex[0] = tex_load(render3d_st, a + "aerial_grass_rock_diff_2k.png", true)
+  render3d_st.ter_tex[1] = tex_load(render3d_st, a + "aerial_grass_rock_nor_gl_2k.png", false)
+  render3d_st.ter_tex[2] = tex_load(render3d_st, a + "aerial_grass_rock_arm_2k.png", false)
+  render3d_st.ter_tex[3] = tex_load(render3d_st, a + "grass_path_2_diff_2k.png", true)
+  render3d_st.ter_tex[4] = tex_load(render3d_st, a + "grass_path_2_nor_gl_2k.png", false)
+  render3d_st.ter_tex[5] = tex_load(render3d_st, a + "grass_path_2_arm_2k.png", false)
+  render3d_st.ter_tex[6] = tex_load(render3d_st, a + "gray_rocks_diff_2k.png", true)
+  render3d_st.ter_tex[7] = tex_load(render3d_st, a + "gray_rocks_nor_gl_2k.png", false)
+  render3d_st.ter_tex[8] = tex_load(render3d_st, a + "gray_rocks_arm_2k.png", false)
+  render3d_st.ter_tex[9] = tex_load(render3d_st, a + "snow_02_diff_2k.png", true)
+  render3d_st.ter_tex[10] = tex_load(render3d_st, a + "snow_02_nor_gl_2k.png", false)
+  render3d_st.ter_tex[11] = tex_load(render3d_st, a + "snow_02_arm_2k.png", false)
+  render3d_st.ter_tex[12] = tex_load(render3d_st, a + "aerial_grass_rock_disp_2k.png", false)
+  render3d_st.ter_tex[13] = tex_load(render3d_st, a + "cliff_side_diff_2k.png", true)
+  render3d_st.ter_tex[14] = tex_load(render3d_st, a + "cliff_side_nor_gl_2k.png", false)
+  if r3d_env_has(render3d_st, "R3D_TEXDBG") { for i in 0 .. 15 { print(`ter_tex[{string(i)}] = {string(render3d_st.ter_tex[i])}`) } }
 }
 
-function terrain_init() -> void {
-  for i in 0 .. TERRAIN_INIT_STEPS { terrain_init_step(i) }
+function terrain_init(render3d_st: mut Render3dState) -> void {
+  for i in 0 .. TERRAIN_INIT_STEPS { terrain_init_step(render3d_st, i) }
 }
 
 # The terrain's start-up as steps a loading screen can show between, in terrain_init's order:
 # 0 the height field and its normals (and the read-back for placement), 1 the sun's height-field
 # shadow, 2 the ground's materials, 3 the patch tree and the terrain programs.
 const TERRAIN_INIT_STEPS: int = 4
-function terrain_init_step(i: int) -> void {
-  if i == 0 { terrain_generate();  return }
-  if i == 1 { terrain_bake_shadow();  return }
-  if i == 2 { terrain_load_textures();  return }
-  terrain_init_finish()
+function terrain_init_step(render3d_st: mut Render3dState, i: int) -> void {
+  if i == 0 { terrain_generate(render3d_st);  return }
+  if i == 1 { terrain_bake_shadow(render3d_st);  return }
+  if i == 2 { terrain_load_textures(render3d_st);  return }
+  terrain_init_finish(render3d_st)
 }
 
-function terrain_init_finish() -> void {
-  cdlod_init()
-  ter_wire = r3d_env_has("R3D_WIRE")
-  ter_force_far = r3d_env_has("R3D_TFARONLY")
-  ter_no_split = r3d_env_has("R3D_NOSPLIT")
-  ter_force_near = r3d_env_has("R3D_TNEARONLY")
-  ter_skip = r3d_env_has("R3D_NOTERRAIN")
+function terrain_init_finish(render3d_st: mut Render3dState) -> void {
+  cdlod_init(render3d_st)
+  render3d_st.ter_wire = r3d_env_has(render3d_st, "R3D_WIRE")
+  render3d_st.ter_force_far = r3d_env_has(render3d_st, "R3D_TFARONLY")
+  render3d_st.ter_no_split = r3d_env_has(render3d_st, "R3D_NOSPLIT")
+  render3d_st.ter_force_near = r3d_env_has(render3d_st, "R3D_TNEARONLY")
+  render3d_st.ter_skip = r3d_env_has(render3d_st, "R3D_NOTERRAIN")
   var defs = ""
-  if r3d_debug_shadow { defs = "#define DEBUG_SHADOW\n" }
-  if r3d_env_has("R3D_DEBUG_MAT") { defs = "#define DEBUG_MAT\n" }
-  if r3d_env_has("R3D_DEBUG_WIND") { defs = "#define DEBUG_WIND\n" }
-  if r3d_env_has("R3D_DEBUG_NRM") { defs = "#define DEBUG_NRM\n" }
-  if r3d_env_has("R3D_DEBUG_ALB") { defs = "#define DEBUG_ALB\n" }
+  if render3d_st.r3d_debug_shadow { defs = "#define DEBUG_SHADOW\n" }
+  if r3d_env_has(render3d_st, "R3D_DEBUG_MAT") { defs = "#define DEBUG_MAT\n" }
+  if r3d_env_has(render3d_st, "R3D_DEBUG_WIND") { defs = "#define DEBUG_WIND\n" }
+  if r3d_env_has(render3d_st, "R3D_DEBUG_NRM") { defs = "#define DEBUG_NRM\n" }
+  if r3d_env_has(render3d_st, "R3D_DEBUG_ALB") { defs = "#define DEBUG_ALB\n" }
   # Elimination profiling. Measure these by FRAME TIME (prof_ft_report), not by the
   # per-pass GPU timers: this driver's timer queries attribute a pass's fragment work
   # almost arbitrarily, and will happily report a pass at a tenth of its cost.
@@ -437,22 +371,22 @@ function terrain_init_finish() -> void {
   # R3D_NOTERRAIN skips the ground entirely (what it costs); R3D_TNEARONLY / R3D_TFARONLY
   # draw every patch with one tier's program (what each tier costs over a whole frame);
   # R3D_NOSPLIT goes back to the single program that holds both tiers.
-  if r3d_env_has("R3D_TFAST") { defs = defs + "#define TFAST_" + r3d_env("R3D_TFAST") + "\n" }
+  if r3d_env_has(render3d_st, "R3D_TFAST") { defs = defs + "#define TFAST_" + r3d_env(render3d_st, "R3D_TFAST") + "\n" }
   # Vulkan reads the cascades inside the ground's own shader and draws no separate sun pass
   # (terrain.frag, SUN_INLINE): one rasterisation of the patches instead of two, in the frame and in
   # the reflection. R3D_SUN_PASS=1 keeps the pass there too, for comparing.
-  ter_sun_inline = gpu_kind == GPU_VK and not r3d_env_has("R3D_SUN_PASS")
-  if ter_sun_inline { defs = defs + "#define SUN_INLINE\n" }
-  ter_prog = r3d_program("terrain.vert", "terrain.frag", defs)
-  ter_prog_far = r3d_program("terrain.vert", "terrain.frag", defs + "#define FAR_ONLY\n")
-  ter_prog_near = r3d_program("terrain.vert", "terrain.frag", defs + "#define NEAR_ONLY\n")
-  ter_sun_prog = r3d_program("terrain.vert", "tersun.frag", "")
-  ter_far_split = 200.0
-  if r3d_env_has("R3D_TFAR") { ter_far_split = float(Text.to_int(r3d_env("R3D_TFAR"))) }
-  ter_far_band = 60.0
-  if r3d_env_has("R3D_TBAND") { ter_far_band = float(Text.to_int(r3d_env("R3D_TBAND"))) }
-  ter_snow_line = 880.0
-  gpu_check("terrain init")
+  render3d_st.ter_sun_inline = render3d_st.gpu_kind == GPU_VK and not r3d_env_has(render3d_st, "R3D_SUN_PASS")
+  if render3d_st.ter_sun_inline { defs = defs + "#define SUN_INLINE\n" }
+  render3d_st.ter_prog = r3d_program(render3d_st, "terrain.vert", "terrain.frag", defs)
+  render3d_st.ter_prog_far = r3d_program(render3d_st, "terrain.vert", "terrain.frag", defs + "#define FAR_ONLY\n")
+  render3d_st.ter_prog_near = r3d_program(render3d_st, "terrain.vert", "terrain.frag", defs + "#define NEAR_ONLY\n")
+  render3d_st.ter_sun_prog = r3d_program(render3d_st, "terrain.vert", "tersun.frag", "")
+  render3d_st.ter_far_split = 200.0
+  if r3d_env_has(render3d_st, "R3D_TFAR") { render3d_st.ter_far_split = float(Text.to_int(r3d_env(render3d_st, "R3D_TFAR"))) }
+  render3d_st.ter_far_band = 60.0
+  if r3d_env_has(render3d_st, "R3D_TBAND") { render3d_st.ter_far_band = float(Text.to_int(r3d_env(render3d_st, "R3D_TBAND"))) }
+  render3d_st.ter_snow_line = 880.0
+  gpu_check(render3d_st, "terrain init")
 }
 
 # draw into the current cascade with the given light view-projection
@@ -464,46 +398,46 @@ function terrain_draw_shadow(light_vp: floats) -> void {
 
 # Every per-frame uniform of one terrain program. Both tiers are bound up front so
 # selection can switch between them per patch without re-binding anything but the node.
-function terrain_bind_prog(p: int) -> void {
-  gpu_use_program(p)
-  r3d_bind_2d(p, "u_height", 0, ter_height_tex)
-  r3d_bind_2d(p, "u_grass_d", 1, ter_tex[0]);  r3d_bind_2d(p, "u_grass_n", 2, ter_tex[1]);  r3d_bind_2d(p, "u_grass_a", 3, ter_tex[2])
+function terrain_bind_prog(render3d_st: mut Render3dState, p: int) -> void {
+  gpu_use_program(render3d_st, p)
+  r3d_bind_2d(render3d_st, p, "u_height", 0, render3d_st.ter_height_tex)
+  r3d_bind_2d(render3d_st, p, "u_grass_d", 1, render3d_st.ter_tex[0]);  r3d_bind_2d(render3d_st, p, "u_grass_n", 2, render3d_st.ter_tex[1]);  r3d_bind_2d(render3d_st, p, "u_grass_a", 3, render3d_st.ter_tex[2])
   # The cliff maps went with the dead cliff sample. Binding textures for uniforms the
   # shader no longer declares leaves those units pointing at nothing, which the driver
   # reports as an unloadable sampler and resolves as a zero texture.
   # A scene with no photograph still has to bind something valid here: sampler unit
   # pointed at texture 0 is an incomplete texture, which the driver reports as
   # unloadable and which poisons sampling for the rest of the unit's stage.
-  var orthotex = ter_ortho_tex
-  if orthotex == 0 { orthotex = ter_tex[0] }
-  r3d_bind_2d(p, "u_ortho", 4, orthotex)
+  var orthotex = render3d_st.ter_ortho_tex
+  if orthotex == 0 { orthotex = render3d_st.ter_tex[0] }
+  r3d_bind_2d(render3d_st, p, "u_ortho", 4, orthotex)
   var oon = 0.0
-  if ter_ortho_tex != 0 { oon = 1.0 }
-  u_f(gpu_uniform(p, "u_ortho_on"), oon)
-  r3d_bind_2d(p, "u_rock_d", 7, ter_tex[6]);   r3d_bind_2d(p, "u_rock_n", 8, ter_tex[7]);   r3d_bind_2d(p, "u_rock_a", 9, ter_tex[8])
-  r3d_bind_2d(p, "u_snow_d", 10, ter_tex[9])
-  if ter_carpet != 0 { r3d_bind_2d(p, "u_carpet", 11, ter_carpet);  u_f(gpu_uniform(p, "u_carpet_on"), 1.0) }
-  else { r3d_bind_2d(p, "u_carpet", 11, ter_tex[0]);  u_f(gpu_uniform(p, "u_carpet_on"), 0.0) }
-  u_f(gpu_uniform(p, "u_half"), float(TERRAIN_HALF))
-  u_f(gpu_uniform(p, "u_texel"), 1.0 / float(TERRAIN_RES))
-  u_f(gpu_uniform(p, "u_snow_line"), ter_snow_line)
-  u_f(gpu_uniform(p, "u_wet"), ter_wet)
+  if render3d_st.ter_ortho_tex != 0 { oon = 1.0 }
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_ortho_on"), oon)
+  r3d_bind_2d(render3d_st, p, "u_rock_d", 7, render3d_st.ter_tex[6]);   r3d_bind_2d(render3d_st, p, "u_rock_n", 8, render3d_st.ter_tex[7]);   r3d_bind_2d(render3d_st, p, "u_rock_a", 9, render3d_st.ter_tex[8])
+  r3d_bind_2d(render3d_st, p, "u_snow_d", 10, render3d_st.ter_tex[9])
+  if render3d_st.ter_carpet != 0 { r3d_bind_2d(render3d_st, p, "u_carpet", 11, render3d_st.ter_carpet);  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_carpet_on"), 1.0) }
+  else { r3d_bind_2d(render3d_st, p, "u_carpet", 11, render3d_st.ter_tex[0]);  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_carpet_on"), 0.0) }
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_half"), float(render3d_st.TERRAIN_HALF))
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_texel"), 1.0 / float(TERRAIN_RES))
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_snow_line"), render3d_st.ter_snow_line)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_wet"), render3d_st.ter_wet)
   var lake = -100000.0
-  if ter_lake_ex != 0.0 { lake = ter_lake_level }
-  u_f(gpu_uniform(p, "u_lake_level"), lake)
+  if render3d_st.ter_lake_ex != 0.0 { lake = render3d_st.ter_lake_level }
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_lake_level"), lake)
   # the shoreline, forest and scree gates read the sea; unset it is what they always read
   var sea = lake
-  if ter_sea_set { sea = ter_sea_level }
-  u_f(gpu_uniform(p, "u_sea_level"), sea)
-  u_f4(gpu_uniform(p, "u_lake"), ter_lake_cx, ter_lake_cz, ter_lake_ex, ter_lake_ez)
-  u_mat4(gpu_uniform(p, "u_view"), cam_view)
-  u_mat4(gpu_uniform(p, "u_proj"), cam_proj)
-  u_f2(gpu_uniform(p, "u_origin"), ter_ox, ter_oz)
-  u_f(gpu_uniform(p, "u_far_split"), ter_far_split)
-  u_f(gpu_uniform(p, "u_far_band"), ter_far_band)
-  sky_bind_lighting(p)
-  shadow_bind(p)
-  fog_bind(p)
+  if render3d_st.ter_sea_set { sea = render3d_st.ter_sea_level }
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_sea_level"), sea)
+  u_f4(render3d_st, gpu_uniform(render3d_st, p, "u_lake"), render3d_st.ter_lake_cx, render3d_st.ter_lake_cz, render3d_st.ter_lake_ex, render3d_st.ter_lake_ez)
+  u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_view"), render3d_st.cam_view)
+  u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_proj"), render3d_st.cam_proj)
+  u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_origin"), render3d_st.ter_ox, render3d_st.ter_oz)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_far_split"), render3d_st.ter_far_split)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_far_band"), render3d_st.ter_far_band)
+  sky_bind_lighting(render3d_st, p)
+  shadow_bind(render3d_st, p)
+  fog_bind(render3d_st, p)
   # GROUND IS NOT A MIRROR, and this has to come AFTER fog_bind, which hands every
   # program u_spec_scale = 1. That is right for water and for a varnished prop and wrong
   # for a hillside: the image-based specular lays a broad reflection of a bright sky over
@@ -514,17 +448,17 @@ function terrain_bind_prog(p: int) -> void {
   # Set before fog_bind it measured as EXACTLY zero pixels changed, which is the same
   # shape of mistake as setting r3d_fog_scale before gfx_apply: the value was right and
   # something downstream put it back.
-  u_f(gpu_uniform(p, "u_spec_scale"), 0.22)
-  u_v3(gpu_uniform(p, "u_cam_pos"), cam_pos)
-  u_f(gpu_uniform(p, "u_grid"), float(CD_G))
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_spec_scale"), 0.22)
+  u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_cam_pos"), render3d_st.cam_pos)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_grid"), float(CD_G))
   # The ground reads its sun visibility out of the buffer tersun.frag filled, and has no
   # use for the cascade array shadow_bind just put on this unit; leaving both bound under
   # one unit is undefined ground, so the array comes off first.
   # (With the read inline, the array shadow_bind put there is exactly what the ground wants.)
-  if not ter_sun_inline {
-    gpu_tex_unit(15)
-    gpu_tex_bind(GPU_TEX2D_ARRAY, 0)
-    r3d_bind_2d(p, "u_sunshadow", 15, ter_sun_tex)
+  if not render3d_st.ter_sun_inline {
+    gpu_tex_unit(render3d_st, 15)
+    gpu_tex_bind(render3d_st, GPU_TEX2D_ARRAY, 0)
+    r3d_bind_2d(render3d_st, p, "u_sunshadow", 15, render3d_st.ter_sun_tex)
   }
 }
 
@@ -540,119 +474,117 @@ function terrain_bind_prog(p: int) -> void {
 # depth attachment, the sky's fullscreen quad had nothing left to fail against, and it
 # painted over the whole valley — with "gl error 1286" every frame from the passes whose
 # attachment now named a deleted texture.
-function terrain_sun_target(w: int, h: int) -> Target {
-  var t = ter_sun_tgt
-  if ter_reflect { t = ter_sun_refl }
+function terrain_sun_target(render3d_st: mut Render3dState, w: int, h: int) -> Target {
+  var t = render3d_st.ter_sun_tgt
+  if render3d_st.ter_reflect { t = render3d_st.ter_sun_refl }
   if t == null or t.w != w or t.h != h {
-    target_free(t)                          # owns its colour, and nothing else
-    t = target_new(w, h, GL_R8, GL_RED, GL_UNSIGNED_BYTE, false, GL_NEAREST)
-    if ter_reflect { ter_sun_refl = t } else { ter_sun_tgt = t }
+    target_free(render3d_st, t)                          # owns its colour, and nothing else
+    t = target_new(render3d_st, w, h, GL_R8, GL_RED, GL_UNSIGNED_BYTE, false, GL_NEAREST)
+    if render3d_st.ter_reflect { render3d_st.ter_sun_refl = t } else { render3d_st.ter_sun_tgt = t }
   }
   return t
 }
 
 # Rasterise the patches once with the small shader that reads the cascades (tersun.frag).
-function terrain_sun_pass(w: int, h: int, depth: int) -> Target {
-  let t = terrain_sun_target(w, h)
+function terrain_sun_pass(render3d_st: mut Render3dState, w: int, h: int, depth: int) -> Target {
+  let t = terrain_sun_target(render3d_st, w, h)
   # Attach the frame's depth afresh every pass. It is a different texture every time the
   # screen-sized buffers are rebuilt — a resize, a fullscreen change — and an attachment
   # naming a texture that has been deleted leaves this framebuffer incomplete, which is
   # an error per draw and a pass that silently does nothing. One call a pass is cheaper
   # than any scheme for noticing.
-  target_bind(t)
-  gpu_fb_depth(depth)
-  if not ter_sun_checked {
-    ter_sun_checked = true
-    let st = gpu_fb_status()
+  target_bind(render3d_st, t)
+  gpu_fb_depth(render3d_st, depth)
+  if not render3d_st.ter_sun_checked {
+    render3d_st.ter_sun_checked = true
+    let st = gpu_fb_status(render3d_st)
     if st != GL_FRAMEBUFFER_COMPLETE { print(`r3d: sun-visibility framebuffer incomplete {st}`) }
   }
-  gpu_depth_test(true)
-  gpu_depth_func(GL_LESS)
-  gpu_depth_write(true)
+  gpu_depth_test(render3d_st, true)
+  gpu_depth_func(render3d_st, GL_LESS)
+  gpu_depth_write(render3d_st, true)
   # the depth is the frame's own and was cleared with it; only the visibility is cleared
-  gpu_clear_color(1.0, 1.0, 1.0, 1.0)      # unshadowed where nothing is drawn
-  gpu_clear(GL_COLOR_BUFFER_BIT)
-  let p = ter_sun_prog
-  gpu_use_program(p)
-  r3d_bind_2d(p, "u_height", 0, ter_height_tex)
-  u_f(gpu_uniform(p, "u_half"), float(TERRAIN_HALF))
-  u_mat4(gpu_uniform(p, "u_view"), cam_view)
-  u_mat4(gpu_uniform(p, "u_proj"), cam_proj)
-  u_f2(gpu_uniform(p, "u_origin"), ter_ox, ter_oz)
-  u_v3(gpu_uniform(p, "u_cam_pos"), cam_pos)
-  u_f(gpu_uniform(p, "u_grid"), float(CD_G))
-  u_f(gpu_uniform(p, "u_far_split"), ter_far_split)
-  u_f(gpu_uniform(p, "u_far_band"), ter_far_band)
-  u_f(gpu_uniform(p, "u_clip_y"), r3d_clip_y)
-  shadow_bind(p)
-  sky_bind_lighting(p)
-  ter_sun_pass = true
-  gpu_mesh_bind(cd_mesh)
-  cdlod_select(CD_LEVELS - 1, 0, 0)
-  ter_sun_pass = false
-  if r3d_env_has("R3D_DUMP_SUN") and not ter_sun_dumped and not ter_reflect { ter_sun_dumped = true;  tex_dump(t.color, w, h, "build/dbg_sun.ppm") }
+  gpu_clear_color(render3d_st, 1.0, 1.0, 1.0, 1.0)      # unshadowed where nothing is drawn
+  gpu_clear(render3d_st, GL_COLOR_BUFFER_BIT)
+  let p = render3d_st.ter_sun_prog
+  gpu_use_program(render3d_st, p)
+  r3d_bind_2d(render3d_st, p, "u_height", 0, render3d_st.ter_height_tex)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_half"), float(render3d_st.TERRAIN_HALF))
+  u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_view"), render3d_st.cam_view)
+  u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_proj"), render3d_st.cam_proj)
+  u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_origin"), render3d_st.ter_ox, render3d_st.ter_oz)
+  u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_cam_pos"), render3d_st.cam_pos)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_grid"), float(CD_G))
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_far_split"), render3d_st.ter_far_split)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_far_band"), render3d_st.ter_far_band)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_clip_y"), render3d_st.r3d_clip_y)
+  shadow_bind(render3d_st, p)
+  sky_bind_lighting(render3d_st, p)
+  render3d_st.ter_sun_pass = true
+  gpu_mesh_bind(render3d_st, render3d_st.cd_mesh)
+  cdlod_select(render3d_st, CD_LEVELS - 1, 0, 0)
+  render3d_st.ter_sun_pass = false
+  if r3d_env_has(render3d_st, "R3D_DUMP_SUN") and not render3d_st.ter_sun_dumped and not render3d_st.ter_reflect { render3d_st.ter_sun_dumped = true;  tex_dump(render3d_st, t.color, w, h, "build/dbg_sun.ppm") }
   return t
 }
 
-function terrain_sun_prepare() -> void {
-  if ter_sun_inline { return }
-  ter_sun_tex = terrain_sun_pass(post_w, post_h, post_hdr.depth).color
-  ter_sun_done = true
+function terrain_sun_prepare(render3d_st: mut Render3dState) -> void {
+  if render3d_st.ter_sun_inline { return }
+  render3d_st.ter_sun_tex = terrain_sun_pass(render3d_st, render3d_st.post_w, render3d_st.post_h, render3d_st.post_hdr.depth).color
+  render3d_st.ter_sun_done = true
 }
 
-function terrain_draw() -> void {
-  if ter_skip { return }
+function terrain_draw(render3d_st: mut Render3dState) -> void {
+  if render3d_st.ter_skip { return }
   # The sun visibility first, into its own buffer; the shading pass looks it up per pixel.
   # The pass binds its own framebuffer, so the caller's target is restored afterwards —
   # the reflection's, or the scene's, without disturbing what is already drawn in it.
-  var vw = post_w
-  var vh = post_h
-  if ter_reflect { vw = water_refl.w;  vh = water_refl.h }
-  if not ter_sun_done and not ter_sun_inline {
-    var dep = post_hdr.depth
-    if ter_reflect { dep = water_refl.depth }
-    ter_sun_tex = terrain_sun_pass(vw, vh, dep).color
+  var vw = render3d_st.post_w
+  var vh = render3d_st.post_h
+  if render3d_st.ter_reflect { vw = render3d_st.water_refl.w;  vh = render3d_st.water_refl.h }
+  if not render3d_st.ter_sun_done and not render3d_st.ter_sun_inline {
+    var dep = render3d_st.post_hdr.depth
+    if render3d_st.ter_reflect { dep = render3d_st.water_refl.depth }
+    render3d_st.ter_sun_tex = terrain_sun_pass(render3d_st, vw, vh, dep).color
   }
-  ter_sun_done = false
-  if ter_reflect { target_bind(water_refl) }
+  render3d_st.ter_sun_done = false
+  if render3d_st.ter_reflect { target_bind(render3d_st, render3d_st.water_refl) }
   else {
-    target_bind(post_hdr)
-    if post_ms_fbo != 0 { gpu_fb_bind(post_ms_fbo) }
+    target_bind(render3d_st, render3d_st.post_hdr)
+    if render3d_st.post_ms_fbo != 0 { gpu_fb_bind(render3d_st, render3d_st.post_ms_fbo) }
   }
-  gpu_depth_test(true)
+  gpu_depth_test(render3d_st, true)
   # the prepass already laid this geometry's depth down: only the frontmost fragment of
   # each pixel has anything to shade, and it meets that depth exactly
-  gpu_depth_func(GL_LEQUAL)
-  gpu_depth_write(true)
-  terrain_bind_prog(ter_prog)
-  terrain_bind_prog(ter_prog_far)
-  terrain_bind_prog(ter_prog_near)
-  ter_prog_cur = 0
-  cd_draws = 0
-  cd_far_draws = 0
-  cd_near_draws = 0
-  gpu_mesh_bind(cd_mesh)
-  if ter_wire { gpu_wireframe(true) }
-  cdlod_select(CD_LEVELS - 1, 0, 0)
-  if ter_wire { gpu_wireframe(false) }
-  gpu_depth_func(GL_LESS)
-  if r3d_debug and not ter_printed { ter_printed = true;  print(`cdlod patches drawn: {cd_draws} (far {cd_far_draws}, near {cd_near_draws}, band {cd_draws - cd_far_draws - cd_near_draws})`) }
+  gpu_depth_func(render3d_st, GL_LEQUAL)
+  gpu_depth_write(render3d_st, true)
+  terrain_bind_prog(render3d_st, render3d_st.ter_prog)
+  terrain_bind_prog(render3d_st, render3d_st.ter_prog_far)
+  terrain_bind_prog(render3d_st, render3d_st.ter_prog_near)
+  render3d_st.ter_prog_cur = 0
+  render3d_st.cd_draws = 0
+  render3d_st.cd_far_draws = 0
+  render3d_st.cd_near_draws = 0
+  gpu_mesh_bind(render3d_st, render3d_st.cd_mesh)
+  if render3d_st.ter_wire { gpu_wireframe(render3d_st, true) }
+  cdlod_select(render3d_st, CD_LEVELS - 1, 0, 0)
+  if render3d_st.ter_wire { gpu_wireframe(render3d_st, false) }
+  gpu_depth_func(render3d_st, GL_LESS)
+  if render3d_st.r3d_debug and not render3d_st.ter_printed { render3d_st.ter_printed = true;  print(`cdlod patches drawn: {render3d_st.cd_draws} (far {render3d_st.cd_far_draws}, near {render3d_st.cd_near_draws}, band {render3d_st.cd_draws - render3d_st.cd_far_draws - render3d_st.cd_near_draws})`) }
 }
-var ter_wire: bool = false
-var ter_printed: bool = false
 
 # ---- CDLOD --------------------------------------------------------------------------
 # One 32x32 patch mesh (a_xz in 0..1) drawn once per selected quadtree node; the vertex
 # shader places, scales and morphs it. Levels are drawn out to cd_range[k] = 48 * 2^k m,
 # so cells are 1 m within 48 m, 2 m to 96 m, 4 m to 192 m ... 256 m at the root.
-function cdlod_init() -> void {
-  let m = gpu_mesh_new()
+function cdlod_init(render3d_st: mut Render3dState) -> void {
+  let m = gpu_mesh_new(render3d_st)
   let n = CD_G + 1
   let v = gl_floats(n * n * 2)
   var k = 0
   for j in 0 .. n { for i in 0 .. n { gl_put_bits(v, k, float_bits(float(i) / float(CD_G)));  gl_put_bits(v, k + 1, float_bits(float(j) / float(CD_G)));  k += 2 } }
-  gpu_mesh_vertices(m, v, gl_bytes_of(n * n * 2), GPU_STATIC)
-  gpu_mesh_attr(m, 0, 2, GPU_F32, 8, 0, false)
+  gpu_mesh_vertices(render3d_st, m, v, gl_bytes_of(n * n * 2), GPU_STATIC)
+  gpu_mesh_attr(render3d_st, m, 0, 2, GPU_F32, 8, 0, false)
   free(v)
   let ni = CD_G * CD_G * 6
   let idx = words(ni)
@@ -665,21 +597,21 @@ function cdlod_init() -> void {
       k += 6
     }
   }
-  gpu_mesh_indices(m, data_of(idx), ni * 4, 4)
+  gpu_mesh_indices(render3d_st, m, data_of(idx), ni * 4, 4)
   free(idx)
   m.count = ni
-  gpu_mesh_done(m)
-  cd_mesh = m
-  cd_range = floats(CD_LEVELS)
+  gpu_mesh_done(render3d_st, m)
+  render3d_st.cd_mesh = m
+  render3d_st.cd_range = floats(CD_LEVELS)
   var r = 48.0
-  if r3d_env_has("R3D_CD_R0") { r = float(Text.to_int(r3d_env("R3D_CD_R0"))) }
-  for l in 0 .. CD_LEVELS { cd_range[l] = r;  r = r * 2.0 }
-  cdlod_bounds()
+  if r3d_env_has(render3d_st, "R3D_CD_R0") { r = float(Text.to_int(r3d_env(render3d_st, "R3D_CD_R0"))) }
+  for l in 0 .. CD_LEVELS { render3d_st.cd_range[l] = r;  r = r * 2.0 }
+  cdlod_bounds(render3d_st)
 }
 
 # min/max height per patch at every level, from the CPU copy of the height field
-function cdlod_bounds() -> void {
-  cd_min = new []floats;  cd_max = new []floats
+function cdlod_bounds(render3d_st: mut Render3dState) -> void {
+  render3d_st.cd_min = new []floats;  render3d_st.cd_max = new []floats
   let t = TERRAIN_RES / CD_LEAVES              # texels per leaf patch side
   var n = CD_LEAVES
   var lo = floats(n * n);  var hi = floats(n * n)
@@ -690,14 +622,14 @@ function cdlod_bounds() -> void {
         let ty = min(j * t + y, TERRAIN_RES - 1)
         for x in 0 .. t + 1 {
           let tx = min(i * t + x, TERRAIN_RES - 1)
-          let h = ter_heights[ty * TERRAIN_RES + tx]
+          let h = render3d_st.ter_heights[ty * TERRAIN_RES + tx]
           mn = Math.min(mn, h);  mx = Math.max(mx, h)
         }
       }
       lo[j * n + i] = mn;  hi[j * n + i] = mx
     }
   }
-  push(cd_min, lo);  push(cd_max, hi)
+  push(render3d_st.cd_min, lo);  push(render3d_st.cd_max, hi)
   while n > 1 {
     let m = n / 2
     let plo = floats(m * m);  let phi = floats(m * m)
@@ -708,7 +640,7 @@ function cdlod_bounds() -> void {
         phi[j * m + i] = Math.max(Math.max(hi[a], hi[a + 1]), Math.max(hi[a + n], hi[a + n + 1]))
       }
     }
-    push(cd_min, plo);  push(cd_max, phi)
+    push(render3d_st.cd_min, plo);  push(render3d_st.cd_max, phi)
     lo = plo;  hi = phi;  n = m
   }
 }
@@ -717,86 +649,86 @@ function cdlod_bounds() -> void {
 # map, so a leaf is (2 * TERRAIN_HALF) / CD_LEAVES - 32 m only on the 8192 m map the numbers
 # were chosen for. Placing patches at a fixed 32 m put every bound in the wrong place on any
 # other TERRAIN_HALF.
-function cd_size(level: int) -> float { return float(32 << level) * (float(TERRAIN_HALF * 2) / 8192.0) }
+function cd_size(render3d_st: Render3dState, level: int) -> float { return float(32 << level) * (float(render3d_st.TERRAIN_HALF * 2) / 8192.0) }
 
 # does the patch's box come within r of the camera?
-function cd_within(x0: float, z0: float, size: float, ymin: float, ymax: float, r: float) -> bool {
-  let dx = Math.max(Math.max(x0 - cam_pos[0], cam_pos[0] - (x0 + size)), 0.0)
-  let dz = Math.max(Math.max(z0 - cam_pos[2], cam_pos[2] - (z0 + size)), 0.0)
-  let dy = Math.max(Math.max(ymin - cam_pos[1], cam_pos[1] - ymax), 0.0)
+function cd_within(render3d_st: Render3dState, x0: float, z0: float, size: float, ymin: float, ymax: float, r: float) -> bool {
+  let dx = Math.max(Math.max(x0 - render3d_st.cam_pos[0], render3d_st.cam_pos[0] - (x0 + size)), 0.0)
+  let dz = Math.max(Math.max(z0 - render3d_st.cam_pos[2], render3d_st.cam_pos[2] - (z0 + size)), 0.0)
+  let dy = Math.max(Math.max(ymin - render3d_st.cam_pos[1], render3d_st.cam_pos[1] - ymax), 0.0)
   return dx * dx + dz * dz + dy * dy < r * r
 }
 
 # is the patch's box entirely inside r of the camera? (its farthest corner is within r)
-function cd_inside(x0: float, z0: float, size: float, ymin: float, ymax: float, r: float) -> bool {
+function cd_inside(render3d_st: Render3dState, x0: float, z0: float, size: float, ymin: float, ymax: float, r: float) -> bool {
   let x1 = x0 + size
   let z1 = z0 + size
-  let dx = Math.max(Math.abs(cam_pos[0] - x0), Math.abs(cam_pos[0] - x1))
-  let dz = Math.max(Math.abs(cam_pos[2] - z0), Math.abs(cam_pos[2] - z1))
-  let dy = Math.max(Math.abs(cam_pos[1] - ymin), Math.abs(cam_pos[1] - ymax))
+  let dx = Math.max(Math.abs(render3d_st.cam_pos[0] - x0), Math.abs(render3d_st.cam_pos[0] - x1))
+  let dz = Math.max(Math.abs(render3d_st.cam_pos[2] - z0), Math.abs(render3d_st.cam_pos[2] - z1))
+  let dy = Math.max(Math.abs(render3d_st.cam_pos[1] - ymin), Math.abs(render3d_st.cam_pos[1] - ymax))
   return dx * dx + dz * dz + dy * dy < r * r
 }
 
-function cdlod_draw(level: int, ix: int, iz: int) -> void {
-  let size = cd_size(level)
-  let x0 = ter_ox - float(TERRAIN_HALF) + float(ix) * size
-  let z0 = ter_oz - float(TERRAIN_HALF) + float(iz) * size
+function cdlod_draw(render3d_st: mut Render3dState, level: int, ix: int, iz: int) -> void {
+  let size = cd_size(render3d_st, level)
+  let x0 = render3d_st.ter_ox - float(render3d_st.TERRAIN_HALF) + float(ix) * size
+  let z0 = render3d_st.ter_oz - float(render3d_st.TERRAIN_HALF) + float(iz) * size
   # Which tier can run inside this patch. A patch that never comes within the split takes
   # the cheap tier at every pixel; one that lies wholly inside it takes the detailed tier
   # at every pixel. Only a patch that straddles the band needs the program that holds both
   # and cross-fades between them — and there are few of those, one ring of them.
-  if ter_sun_pass {
-    let t = ter_scratch()
+  if render3d_st.ter_sun_pass {
+    let t = ter_scratch(render3d_st)
     t[0] = x0;  t[1] = z0;  t[2] = size
-    u_v3(gpu_uniform(ter_sun_prog, "u_node"), t)
+    u_v3(render3d_st, gpu_uniform(render3d_st, render3d_st.ter_sun_prog, "u_node"), t)
     var st0 = 0.0
-    if level > 0 { st0 = cd_range[level - 1] }
-    u_f2(gpu_uniform(ter_sun_prog, "u_morph"), Math.lerp(st0, cd_range[level], 0.7), cd_range[level])
-    gpu_draw_bound_elements(cd_mesh)
+    if level > 0 { st0 = render3d_st.cd_range[level - 1] }
+    u_f2(render3d_st, gpu_uniform(render3d_st, render3d_st.ter_sun_prog, "u_morph"), Math.lerp(st0, render3d_st.cd_range[level], 0.7), render3d_st.cd_range[level])
+    gpu_draw_bound_elements(render3d_st, render3d_st.cd_mesh)
     return
   }
   let n = CD_LEAVES >> level
-  let ymin = cd_min[level][iz * n + ix]
-  let ymax = cd_max[level][iz * n + ix]
-  var p = ter_prog
-  if not cd_within(x0, z0, size, ymin, ymax, ter_far_split + ter_far_band) { p = ter_prog_far }
-  else if cd_inside(x0, z0, size, ymin, ymax, ter_far_split - ter_far_band) { p = ter_prog_near }
-  if ter_force_far { p = ter_prog_far }
-  if ter_no_split { p = ter_prog }
-  if ter_force_near { p = ter_prog_near }
-  if p == ter_prog_far { cd_far_draws += 1 }
-  if p == ter_prog_near { cd_near_draws += 1 }
-  if p != ter_prog_cur { gpu_use_program(p);  ter_prog_cur = p }
-  let t = ter_scratch()
+  let ymin = render3d_st.cd_min[level][iz * n + ix]
+  let ymax = render3d_st.cd_max[level][iz * n + ix]
+  var p = render3d_st.ter_prog
+  if not cd_within(render3d_st, x0, z0, size, ymin, ymax, render3d_st.ter_far_split + render3d_st.ter_far_band) { p = render3d_st.ter_prog_far }
+  else if cd_inside(render3d_st, x0, z0, size, ymin, ymax, render3d_st.ter_far_split - render3d_st.ter_far_band) { p = render3d_st.ter_prog_near }
+  if render3d_st.ter_force_far { p = render3d_st.ter_prog_far }
+  if render3d_st.ter_no_split { p = render3d_st.ter_prog }
+  if render3d_st.ter_force_near { p = render3d_st.ter_prog_near }
+  if p == render3d_st.ter_prog_far { render3d_st.cd_far_draws += 1 }
+  if p == render3d_st.ter_prog_near { render3d_st.cd_near_draws += 1 }
+  if p != render3d_st.ter_prog_cur { gpu_use_program(render3d_st, p);  render3d_st.ter_prog_cur = p }
+  let t = ter_scratch(render3d_st)
   t[0] = x0;  t[1] = z0;  t[2] = size
-  u_v3(gpu_uniform(p, "u_node"), t)
+  u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_node"), t)
   var start = 0.0
-  if level > 0 { start = cd_range[level - 1] }
-  start = Math.lerp(start, cd_range[level], 0.7)
-  u_f2(gpu_uniform(p, "u_morph"), start, cd_range[level])
-  gpu_draw_bound_elements(cd_mesh)
-  cd_draws += 1
+  if level > 0 { start = render3d_st.cd_range[level - 1] }
+  start = Math.lerp(start, render3d_st.cd_range[level], 0.7)
+  u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_morph"), start, render3d_st.cd_range[level])
+  gpu_draw_bound_elements(render3d_st, render3d_st.cd_mesh)
+  render3d_st.cd_draws += 1
 }
 
 # Strugar's selection: a node is drawn at its own level unless it is close enough to need
 # its children, in which case each child either selects itself or is drawn at this level.
-function cdlod_select(level: int, ix: int, iz: int) -> bool {
+function cdlod_select(render3d_st: mut Render3dState, level: int, ix: int, iz: int) -> bool {
   let n = CD_LEAVES >> level
-  let size = cd_size(level)
-  let x0 = ter_ox - float(TERRAIN_HALF) + float(ix) * size
-  let z0 = ter_oz - float(TERRAIN_HALF) + float(iz) * size
-  let ymin = cd_min[level][iz * n + ix]
-  let ymax = cd_max[level][iz * n + ix]
-  if not cd_within(x0, z0, size, ymin, ymax, cd_range[level]) { return false }
+  let size = cd_size(render3d_st, level)
+  let x0 = render3d_st.ter_ox - float(render3d_st.TERRAIN_HALF) + float(ix) * size
+  let z0 = render3d_st.ter_oz - float(render3d_st.TERRAIN_HALF) + float(iz) * size
+  let ymin = render3d_st.cd_min[level][iz * n + ix]
+  let ymax = render3d_st.cd_max[level][iz * n + ix]
+  if not cd_within(render3d_st, x0, z0, size, ymin, ymax, render3d_st.cd_range[level]) { return false }
   let half = size * 0.5
   let cy = (ymin + ymax) * 0.5
   let rad = Math.sqrt(half * half * 2.0 + (ymax - cy) * (ymax - cy) * 1.0)
-  if not cam_sphere_visible(x0 + half, cy, z0 + half, rad + 2.0) { return true }
-  if level == 0 { cdlod_draw(0, ix, iz);  return true }
-  if not cd_within(x0, z0, size, ymin, ymax, cd_range[level - 1]) { cdlod_draw(level, ix, iz);  return true }
+  if not cam_sphere_visible(render3d_st, x0 + half, cy, z0 + half, rad + 2.0) { return true }
+  if level == 0 { cdlod_draw(render3d_st, 0, ix, iz);  return true }
+  if not cd_within(render3d_st, x0, z0, size, ymin, ymax, render3d_st.cd_range[level - 1]) { cdlod_draw(render3d_st, level, ix, iz);  return true }
   for c in 0 .. 4 {
     let cx = ix * 2 + (c & 1);  let cz = iz * 2 + (c >> 1)
-    if not cdlod_select(level - 1, cx, cz) { cdlod_draw(level - 1, cx, cz) }
+    if not cdlod_select(render3d_st, level - 1, cx, cz) { cdlod_draw(render3d_st, level - 1, cx, cz) }
   }
   return true
 }
@@ -807,40 +739,39 @@ function cdlod_select(level: int, ix: int, iz: int) -> bool {
 # so a different survey can be generated in its place without restarting the process. What
 # belongs to the process stays: the patch mesh, the material textures, the programs, the
 # frame-sized targets and the shadow texture, whose size does not depend on the map.
-function terrain_unload() -> void {
-  if ter_height_tex != 0 { gpu_tex_free(ter_height_tex);  ter_height_tex = 0 }
-  if ter_dem_tex != 0 { gpu_tex_free(ter_dem_tex);  ter_dem_tex = 0 }
-  if ter_ortho_tex != 0 { gpu_tex_free(ter_ortho_tex);  ter_ortho_tex = 0 }
-  if ter_heights != null { free(ter_heights);  ter_heights = null }
-  if ter_ortho_px != null { free(ter_ortho_px);  ter_ortho_px = null }
-  ter_ortho_w = 0
-  if cd_min != null {
-    for i in 0 .. len(cd_min) { free(cd_min[i]);  free(cd_max[i]) }
-    cd_min = null;  cd_max = null
+function terrain_unload(render3d_st: mut Render3dState) -> void {
+  if render3d_st.ter_height_tex != 0 { gpu_tex_free(render3d_st, render3d_st.ter_height_tex);  render3d_st.ter_height_tex = 0 }
+  if render3d_st.ter_dem_tex != 0 { gpu_tex_free(render3d_st, render3d_st.ter_dem_tex);  render3d_st.ter_dem_tex = 0 }
+  if render3d_st.ter_ortho_tex != 0 { gpu_tex_free(render3d_st, render3d_st.ter_ortho_tex);  render3d_st.ter_ortho_tex = 0 }
+  if render3d_st.ter_heights != null { free(render3d_st.ter_heights);  render3d_st.ter_heights = null }
+  if render3d_st.ter_ortho_px != null { free(render3d_st.ter_ortho_px);  render3d_st.ter_ortho_px = null }
+  render3d_st.ter_ortho_w = 0
+  if render3d_st.cd_min != null {
+    for i in 0 .. len(render3d_st.cd_min) { free(render3d_st.cd_min[i]);  free(render3d_st.cd_max[i]) }
+    render3d_st.cd_min = null;  render3d_st.cd_max = null
   }
   # derived from TERRAIN_HALF and cached on first use: stale ones would keep the old size
-  ter_h_scale = 0.0;  ter_o_scale = 0.0
-  ter_carpet = 0
-  ter_shadow_gen = -1;  ter_shadow_yaw = 1000000000.0
+  render3d_st.ter_h_scale = 0.0;  render3d_st.ter_o_scale = 0.0
+  render3d_st.ter_carpet = 0
+  render3d_st.ter_shadow_gen = -1;  render3d_st.ter_shadow_yaw = 1000000000.0
 }
 # Generate another map in place. Call terrain_lake / terrain_coast / terrain_island for it
 # first - the generator reads them - then this. `half` is the new TERRAIN_HALF in metres.
 # An empty `dem` generates the analytic ground (with ter_smooth) and an empty `ortho` drapes
 # no photograph. The shadow is rebaked and the patch bounds rebuilt before it returns.
-function terrain_reload(dem: string, emin: float, emax: float, base: float, ox: float, oz: float, ortho: string, half: int) -> void {
-  terrain_unload()
-  TERRAIN_HALF = half
-  ter_ox = ox;  ter_oz = oz
-  if len(dem) > 0 { terrain_use_dem(dem, emin, emax, base, ox, oz) }
-  if len(ortho) > 0 { terrain_use_ortho(ortho) }
-  terrain_generate()
-  terrain_bake_shadow()
-  cdlod_bounds()
-  gpu_check("terrain reload")
+function terrain_reload(render3d_st: mut Render3dState, dem: string, emin: float, emax: float, base: float, ox: float, oz: float, ortho: string, half: int) -> void {
+  terrain_unload(render3d_st)
+  render3d_st.TERRAIN_HALF = half
+  render3d_st.ter_ox = ox;  render3d_st.ter_oz = oz
+  if len(dem) > 0 { terrain_use_dem(render3d_st, dem, emin, emax, base, ox, oz) }
+  if len(ortho) > 0 { terrain_use_ortho(render3d_st, ortho) }
+  terrain_generate(render3d_st)
+  terrain_bake_shadow(render3d_st)
+  cdlod_bounds(render3d_st)
+  gpu_check(render3d_st, "terrain reload")
 }
 
-var ter_scr: floats = null
-function ter_scratch() -> floats {
-  if ter_scr == null { ter_scr = floats(16) }
-  return ter_scr
+function ter_scratch(render3d_st: mut Render3dState) -> floats {
+  if render3d_st.ter_scr == null { render3d_st.ter_scr = floats(16) }
+  return render3d_st.ter_scr
 }

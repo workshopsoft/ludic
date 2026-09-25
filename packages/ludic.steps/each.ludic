@@ -1,27 +1,27 @@
 # each.ludic - a step every player must meet in their own pack: how many seats are taken, how
 # many of them carry it, and which do not
-export function steps_players() -> int {
+export function steps_players(steps_st: StepsState) -> int {
   var n = 0
-  for p in 0 .. steps__players { if StepsWorld.present(p) { n += 1 } }
+  for p in 0 .. steps_st.steps__players { if StepsWorld.present(p) { n += 1 } }
   return n
 }
 
 # how many seats taken have step i's thing (seat 0 counted live)
-export function steps_each(i: int) -> int {
-  steps__cols()
+export function steps_each(steps_st: mut StepsState, i: int) -> int {
+  steps__cols(steps_st)
   var n = 0
-  for p in 0 .. steps__players {
-    if StepsWorld.present(p) and steps__col[p * STEPS_PER_CHAPTER + i] != 0 { n += 1 }
+  for p in 0 .. steps_st.steps__players {
+    if StepsWorld.present(p) and steps_st.steps__col[p * STEPS_PER_CHAPTER + i] != 0 { n += 1 }
   }
   return n
 }
 
 # the seats that do not have it yet
-export function steps_lacking(i: int) -> []int {
-  steps__cols()
+export function steps_lacking(steps_st: mut StepsState, i: int) -> []int {
+  steps__cols(steps_st)
   let out = new []int
-  for p in 0 .. steps__players {
-    if StepsWorld.present(p) and steps__col[p * STEPS_PER_CHAPTER + i] == 0 { push(out, p) }
+  for p in 0 .. steps_st.steps__players {
+    if StepsWorld.present(p) and steps_st.steps__col[p * STEPS_PER_CHAPTER + i] == 0 { push(out, p) }
   }
   return out
 }

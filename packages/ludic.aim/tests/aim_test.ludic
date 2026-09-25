@@ -6,34 +6,36 @@ import "ludic.base"
 program AimTest {
   numbers float
 
-  var cx: float = 0.0
-  var cy: float = 1.5
-  var cz: float = 0.0
-  var fy: float = 0.0
-  function fk_x() -> float { return cx }
-  function fk_y() -> float { return cy }
-  function fk_z() -> float { return cz }
-  function fk_fy() -> float { return fy }
-  function fk_fz() -> float { return -Math.sqrt(1.0 - fy * fy) }
+  state AimtestState {
+    cx: float = 0.0
+    cy: float = 1.5
+    cz: float = 0.0
+    fy: float = 0.0
+  }
+  function fk_x(aimtest_st: AimtestState) -> float { return aimtest_st.cx }
+  function fk_y(aimtest_st: AimtestState) -> float { return aimtest_st.cy }
+  function fk_z(aimtest_st: AimtestState) -> float { return aimtest_st.cz }
+  function fk_fy(aimtest_st: AimtestState) -> float { return aimtest_st.fy }
+  function fk_fz(aimtest_st: AimtestState) -> float { return -Math.sqrt(1.0 - aimtest_st.fy * aimtest_st.fy) }
   # a 6 m ridge along z = -42, thirty metres across, the whole width of the view
   function fk_ground(x: float, z: float) -> float { return 6.0 * Math.max(0.0, 1.0 - Math.abs(z + 42.0) / 15.0) }
-  function fk_look(x: float, y: float, z: float) -> void {
-    cx = x
-    cy = y
-    cz = z
+  function fk_look(aimtest_st: mut AimtestState, x: float, y: float, z: float) -> void {
+    aimtest_st.cx = x
+    aimtest_st.cy = y
+    aimtest_st.cz = z
   }
   bind AimView { x: fn fk_x, y: fn fk_y, z: fn fk_z, fy: fn fk_fy, fz: fn fk_fz, ground: fn fk_ground }
 
-  function fresh() -> void {
-    cx = 0.0
-    cy = 1.5
-    cz = 0.0
-    fy = 0.0
-    aim_begin()
+  function fresh(aim_st: mut AimState, aimtest_st: mut AimtestState) -> void {
+    aimtest_st.cx = 0.0
+    aimtest_st.cy = 1.5
+    aimtest_st.cz = 0.0
+    aimtest_st.fy = 0.0
+    aim_begin(aim_st)
   }
 
-  test "the ray enters a cylinder in front and misses one to the side or behind" {
-    fresh()
+  test "the ray enters a cylinder in front and misses one to the side or behind" (aim_st: mut AimState, aimtest_st: mut AimtestState) {
+    fresh(aim_st, aimtest_st)
     expect_near(aim_ray_cyl(0.0, 0.0, 2.0, -10.0, 0.5), 9.5, 0.01)
     expect(aim_ray_cyl(3.0, 0.0, 2.0, -10.0, 0.5) < 0.0)
     expect(aim_ray_cyl(0.0, 0.0, 2.0, 10.0, 0.5) < 0.0)
@@ -41,61 +43,61 @@ program AimTest {
     expect_near(aim_ray_cyl(0.0, 0.0, 2.0, 0.0, 0.5), 0.0, 0.001)
   }
 
-  test "a thin thing far off is still aimable, by an angle and not a metre" {
-    fresh()
+  test "a thin thing far off is still aimable, by an angle and not a metre" (aim_st: mut AimState, aimtest_st: mut AimtestState) {
+    fresh(aim_st, aimtest_st)
     expect(aim_slack_m(20.0) > aim_slack_m(5.0) * 3.9)
-    expect(aim_offer(1, 7, 0.25, 0.0, 2.0, -20.0, 0.05, 1.5, 30.0))
-    expect(aim_off_centre() > 0.5)
-    fresh()
-    expect(not aim_offer(1, 7, 3.0, 0.0, 2.0, -20.0, 0.05, 1.5, 30.0))
+    expect(aim_offer(aim_st, 1, 7, 0.25, 0.0, 2.0, -20.0, 0.05, 1.5, 30.0))
+    expect(aim_off_centre(aim_st) > 0.5)
+    fresh(aim_st, aimtest_st)
+    expect(not aim_offer(aim_st, 1, 7, 3.0, 0.0, 2.0, -20.0, 0.05, 1.5, 30.0))
   }
 
-  test "the nearest thing the ray enters is the pick, whatever order they are offered in" {
-    fresh()
-    expect(aim_offer(1, 1, 0.0, 0.0, 2.0, -20.0, 0.5, 1.5, 30.0))
-    expect(aim_offer(1, 2, 0.0, 0.0, 2.0, -8.0, 0.5, 1.5, 30.0))
-    expect(not aim_offer(1, 3, 0.0, 0.0, 2.0, -15.0, 0.5, 1.5, 30.0))
-    expect_eq(aim_id(), 2)
-    expect_near(aim_dist(), 8.0, 0.01)
-    expect(not aim_offer(2, 4, 0.0, 0.0, 2.0, -25.0, 0.5, 1.5, 30.0))
-    expect(not aim_offer(2, 5, 0.0, 0.0, 2.0, -3.0, 0.5, 1.5, 2.0))
+  test "the nearest thing the ray enters is the pick, whatever order they are offered in" (aim_st: mut AimState, aimtest_st: mut AimtestState) {
+    fresh(aim_st, aimtest_st)
+    expect(aim_offer(aim_st, 1, 1, 0.0, 0.0, 2.0, -20.0, 0.5, 1.5, 30.0))
+    expect(aim_offer(aim_st, 1, 2, 0.0, 0.0, 2.0, -8.0, 0.5, 1.5, 30.0))
+    expect(not aim_offer(aim_st, 1, 3, 0.0, 0.0, 2.0, -15.0, 0.5, 1.5, 30.0))
+    expect_eq(aim_id(aim_st), 2)
+    expect_near(aim_dist(aim_st), 8.0, 0.01)
+    expect(not aim_offer(aim_st, 2, 4, 0.0, 0.0, 2.0, -25.0, 0.5, 1.5, 30.0))
+    expect(not aim_offer(aim_st, 2, 5, 0.0, 0.0, 2.0, -3.0, 0.5, 1.5, 2.0))
   }
 
-  test "the ground in front hides a thing, and nothing within arm's length is hidden" {
-    fresh()
+  test "the ground in front hides a thing, and nothing within arm's length is hidden" (aim_st: mut AimState, aimtest_st: mut AimtestState) {
+    fresh(aim_st, aimtest_st)
     expect(not aim_clear_to(0.0, 1.0, -60.0))
     expect(aim_clear_to(0.0, 1.0, -30.0))
-    expect(not aim_offer(1, 1, 0.0, 0.0, 2.0, -60.0, 2.0, 1.5, 80.0))
-    cy = -5.0
+    expect(not aim_offer(aim_st, 1, 1, 0.0, 0.0, 2.0, -60.0, 2.0, 1.5, 80.0))
+    aimtest_st.cy = -5.0
     expect(aim_clear_to(0.0, -5.0, -2.0))
   }
 
-  test "the crosshair decides which, the distance whether: every reach is floored at three metres" {
-    fresh()
+  test "the crosshair decides which, the distance whether: every reach is floored at three metres" (aim_st: mut AimState, aimtest_st: mut AimtestState) {
+    fresh(aim_st, aimtest_st)
     expect_near(aim_reach_of(1.5), AIM_REACH_MIN, 0.001)
     expect_near(aim_reach_of(3.4), 3.4, 0.001)
-    aim_offer(1, 1, 0.0, 0.0, 2.0, -2.6, 0.3, 1.5, 30.0)
-    expect(aim_in_reach())
-    expect_eq(aim_use(1), AIM_USE_THIS)
-    fresh()
-    aim_offer(1, 1, 0.0, 0.0, 2.0, -6.0, 0.3, 1.5, 30.0)
-    expect(not aim_in_reach())
-    expect_eq(aim_use(1), AIM_USE_NOTHING)
-    expect_eq(aim_use(3), AIM_USE_NEAREST)
-    fresh()
-    aim_offer(1, 1, 0.0, 0.0, 3.0, -20.0, 0.3, 1.5, 30.0)
-    expect_eq(aim_use(1), AIM_USE_NEAREST)
-    fresh()
-    aim_offer(2, 9, 0.0, 0.0, 2.0, -2.0, 0.3, AIM_NEVER, 30.0)
-    expect(not aim_in_reach())
-    expect_eq(aim_kind(), 2)
+    aim_offer(aim_st, 1, 1, 0.0, 0.0, 2.0, -2.6, 0.3, 1.5, 30.0)
+    expect(aim_in_reach(aim_st))
+    expect_eq(aim_use(aim_st, 1), AIM_USE_THIS)
+    fresh(aim_st, aimtest_st)
+    aim_offer(aim_st, 1, 1, 0.0, 0.0, 2.0, -6.0, 0.3, 1.5, 30.0)
+    expect(not aim_in_reach(aim_st))
+    expect_eq(aim_use(aim_st, 1), AIM_USE_NOTHING)
+    expect_eq(aim_use(aim_st, 3), AIM_USE_NEAREST)
+    fresh(aim_st, aimtest_st)
+    aim_offer(aim_st, 1, 1, 0.0, 0.0, 3.0, -20.0, 0.3, 1.5, 30.0)
+    expect_eq(aim_use(aim_st, 1), AIM_USE_NEAREST)
+    fresh(aim_st, aimtest_st)
+    aim_offer(aim_st, 2, 9, 0.0, 0.0, 2.0, -2.0, 0.3, AIM_NEVER, 30.0)
+    expect(not aim_in_reach(aim_st))
+    expect_eq(aim_kind(aim_st), 2)
   }
 
-  test "the probe finds the bank and agrees with the ground about every line it hides" {
-    fresh()
-    expect(aim_probe_ground(0.0, 0.0, fn fk_look))
-    expect(aim_probe_seen() > 100)
-    expect(aim_probe_blocked() > 0)
-    expect(not (aim_probe_disagree() > aim_probe_seen() / 50))
+  test "the probe finds the bank and agrees with the ground about every line it hides" (aim_st: mut AimState, aimtest_st: mut AimtestState) {
+    fresh(aim_st, aimtest_st)
+    expect(aim_probe_ground(aim_st, 0.0, 0.0, fn fk_look))
+    expect(aim_probe_seen(aim_st) > 100)
+    expect(aim_probe_blocked(aim_st) > 0)
+    expect(not (aim_probe_disagree(aim_st) > aim_probe_seen(aim_st) / 50))
   }
 }

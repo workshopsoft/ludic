@@ -1,69 +1,69 @@
 # receive.ludic - what arrived, unwrapped from the relay, checked, acknowledged and put in order
 # on the inbox. A reliable message is taken strictly in order; one that arrives early is dropped
 # and comes again.
-function net__pump() -> void {
-  if net__sock <= 0 { return }
+function net__pump(base_st: mut BaseState, net_st: mut NetState) -> void {
+  if net_st.net__sock <= 0 { return }
   for guard in 0 .. 200 {
-    let n = NetSocket.recv(net__sock, net__in, NET_MTU + 64)
+    let n = NetSocket.recv(net_st.net__sock, net_st.net__in, NET_MTU + 64)
     if n <= 0 { return }
-    let n2 = net__unwrap(n, NetSocket.from_ip(net__sock), NetSocket.from_port(net__sock))
-    if n2 > 0 { net__packet(n2, net__from_ip, net__from_port) }
+    let n2 = net__unwrap(net_st, n, NetSocket.from_ip(net_st.net__sock), NetSocket.from_port(net_st.net__sock))
+    if n2 > 0 { net__packet(base_st, net_st, n2, net_st.net__from_ip, net_st.net__from_port) }
   }
 }
 
-function net__packet(n: int, ip: int, port: int) -> void {
+function net__packet(base_st: mut BaseState, net_st: mut NetState, n: int, ip: int, port: int) -> void {
   if NetWorld.trace() { net__log(`in {n} bytes from {Udp.ip_text(ip)}:{port}`) }
   if n < 20 { return }
-  if net__stun_packet(n) { return }                # what the router looks like from outside
-  if nb_get8(net__in, 0) != 'M' or nb_get8(net__in, 1) != 'L' { return }   # a punch ("MP") or noise
-  if nb_get8(net__in, 2) != net__conf().proto { return }
-  let slot = net__slot_for(n, ip, port)
+  if net__stun_packet(net_st, n) { return }                # what the router looks like from outside
+  if nb_get8(net_st.net__in, 0) != 'M' or nb_get8(net_st.net__in, 1) != 'L' { return }   # a punch ("MP") or noise
+  if nb_get8(net_st.net__in, 2) != net__conf(net_st).proto { return }
+  let slot = net__slot_for(net_st, n, ip, port)
   if slot < 0 { return }
-  let p = net__peers[slot]
-  p.heard = net__time
+  let p = net_st.net__peers[slot]
+  p.heard = net_st.net__time
   # only what this connection has sent can be acknowledged: a packet from the one before it
   # (a re-join) carries the old numbers and would drop the new hello as already taken
-  let ack = nb_get32(net__in, 12)
+  let ack = nb_get32(net_st.net__in, 12)
   if ack > p.acked and ack < p.next_id { p.acked = ack }
-  net__messages(slot, n)
+  net__messages(base_st, net_st, slot, n)
 }
 
 # the known peer at that address, a stranger's new slot (a host, and only with a hello), or -1
-function net__slot_for(n: int, ip: int, port: int) -> int {
-  let token = nb_get32(net__in, 4)
-  var slot = net__find(ip, port)
+function net__slot_for(net_st: NetState, n: int, ip: int, port: int) -> int {
+  let token = nb_get32(net_st.net__in, 4)
+  var slot = net__find(net_st, ip, port)
   if slot >= 0 {
-    if token != net__token and net__state != NET_JOINING and net__peers[slot].pid != 0 { return -1 }
+    if token != net_st.net__token and net_st.net__state != NET_JOINING and net_st.net__peers[slot].pid != 0 { return -1 }
     return slot
   }
-  if net__state != NET_HOSTING { return -1 }
-  if n < 28 or nb_get8(net__in, 20) != NET_HELLO { return -1 }
+  if net_st.net__state != NET_HOSTING { return -1 }
+  if n < 28 or nb_get8(net_st.net__in, 20) != NET_HELLO { return -1 }
   for i in 1 .. NET_PEERS {
-    if not net__peers[i].on {
-      net__open(i, ip, port, 0)
+    if not net_st.net__peers[i].on {
+      net__open(net_st, i, ip, port, 0)
       return i
     }
   }
   return -1
 }
 
-function net__messages(slot: int, n: int) -> void {
-  let p = net__peers[slot]
-  let from = nb_get32(net__in, 8)
-  let count = nb_get32(net__in, 16)
+function net__messages(base_st: mut BaseState, net_st: mut NetState, slot: int, n: int) -> void {
+  let p = net_st.net__peers[slot]
+  let from = nb_get32(net_st.net__in, 8)
+  let count = nb_get32(net_st.net__in, 16)
   var o = 20
   for c in 0 .. count {
     if o + 4 > n { return }
-    let kind = nb_get8(net__in, o)
-    let rel = nb_get8(net__in, o + 1) == 1
+    let kind = nb_get8(net_st.net__in, o)
+    let rel = nb_get8(net_st.net__in, o + 1) == 1
     o += 2
     var id = 0
     if rel {
       if o + 4 > n { return }
-      id = nb_get32(net__in, o)
+      id = nb_get32(net_st.net__in, o)
       o += 4
     }
-    let ml = nb_get8(net__in, o) | (nb_get8(net__in, o + 1) << 8)
+    let ml = nb_get8(net_st.net__in, o) | (nb_get8(net_st.net__in, o + 1) << 8)
     o += 2
     if ml < 0 or o + ml > n { return }
     var take = true
@@ -71,21 +71,21 @@ function net__messages(slot: int, n: int) -> void {
       p.ack_due = true
       if id != p.recv_id + 1 { take = false } else { p.recv_id = id }
     }
-    if take { net__deliver(slot, from, kind, o, ml) }
+    if take { net__deliver(base_st, net_st, slot, from, kind, o, ml) }
     o += ml
   }
 }
 
 # onto the inbox - except a heartbeat, and on a host anything but a hello before its welcome
-function net__deliver(slot: int, from: int, kind: int, o: int, ml: int) -> void {
+function net__deliver(base_st: mut BaseState, net_st: mut NetState, slot: int, from: int, kind: int, o: int, ml: int) -> void {
   if kind == NET_BEAT { return }
-  if net__state == NET_HOSTING and net__peers[slot].pid < 2 and kind != NET_HELLO { return }
+  if net_st.net__state == NET_HOSTING and net_st.net__peers[slot].pid < 2 and kind != NET_HELLO { return }
   let m = new NetMessage
   m.slot = slot
   m.from = from
   m.kind = kind
   m.len = ml
   m.data = buffer(ml)
-  nb_copy(m.data, 0, net__in, o, ml)
-  q_push(net_inbox(), m)
+  nb_copy(m.data, 0, net_st.net__in, o, ml)
+  q_push(base_st, net_inbox(base_st, net_st), m)
 }

@@ -1,73 +1,69 @@
 # latest.ludic - "a new version is out": latest.json asked once, polled a frame at a time, so a
 # slow or absent network costs the frame nothing - it simply never says there is one.
 # latest.json is {"version": "0.5.1", "notes": {"en": ["...", ...], "tr": [...]}}
-var update__ask: int = 0
-var update__ask_h: int = -1
-var update__latest: string = ""
-var update__notes: Val = null
 
 # once a frame on the screen that shows it; with show_current, the notes of the version being
 # played are kept too (a launcher shows them)
-export function update_check_tick(show_current: bool) -> void {
-  if update__ask == UPDATE_ASK_IDLE {
-    update__ask_h = UpdateNet.get(update__conf().feed + "/" + update__conf().latest)
-    update__ask = UPDATE_ASKING
-    if update__ask_h < 0 { update__ask = UPDATE_NONE }
+export function update_check_tick(update_st: mut UpdateState, show_current: bool) -> void {
+  if update_st.update__ask == UPDATE_ASK_IDLE {
+    update_st.update__ask_h = UpdateNet.get(update__conf(update_st).feed + "/" + update__conf(update_st).latest)
+    update_st.update__ask = UPDATE_ASKING
+    if update_st.update__ask_h < 0 { update_st.update__ask = UPDATE_NONE }
     return
   }
-  if update__ask != UPDATE_ASKING { return }
-  let st = UpdateNet.poll(update__ask_h)
+  if update_st.update__ask != UPDATE_ASKING { return }
+  let st = UpdateNet.poll(update_st.update__ask_h)
   if st < 0 { return }
-  update__ask = UPDATE_NONE
-  if st > 0 { update__latest_read(Json.parse(UpdateNet.text(update__ask_h)), show_current) }
-  UpdateNet.free(update__ask_h)
-  update__ask_h = -1
+  update_st.update__ask = UPDATE_NONE
+  if st > 0 { update__latest_read(update_st, Json.parse(UpdateNet.text(update_st.update__ask_h)), show_current) }
+  UpdateNet.free(update_st.update__ask_h)
+  update_st.update__ask_h = -1
 }
 
-function update__latest_read(v: Val, show_current: bool) -> void {
+function update__latest_read(update_st: mut UpdateState, v: Val, show_current: bool) -> void {
   if v == null or Value.kind(v) != 6 or Value.has(v, "version") == 0 { return }
   let ver = Value.as_str(Value.get(v, "version"))
-  let mine = update__conf().version
-  if update_newer(ver, mine) { update__ask = UPDATE_NEWER }
-  else if ver == mine and show_current { update__ask = UPDATE_CURRENT }
+  let mine = update__conf(update_st).version
+  if update_newer(ver, mine) { update_st.update__ask = UPDATE_NEWER }
+  else if ver == mine and show_current { update_st.update__ask = UPDATE_CURRENT }
   else { return }
-  update__latest = ver
-  if Value.has(v, "notes") != 0 { update__notes = Value.get(v, "notes") }
+  update_st.update__latest = ver
+  if Value.has(v, "notes") != 0 { update_st.update__notes = Value.get(v, "notes") }
 }
 
-export function update_ask_state() -> int { return update__ask }
-export function update_latest() -> string { return update__latest }
-export function update_shown() -> bool { return update__ask == UPDATE_NEWER or update__ask == UPDATE_CURRENT }
-export function update_fresh() -> bool { return update__ask == UPDATE_NEWER }
+export function update_ask_state(update_st: UpdateState) -> int { return update_st.update__ask }
+export function update_latest(update_st: UpdateState) -> string { return update_st.update__latest }
+export function update_shown(update_st: UpdateState) -> bool { return update_st.update__ask == UPDATE_NEWER or update_st.update__ask == UPDATE_CURRENT }
+export function update_fresh(update_st: UpdateState) -> bool { return update_st.update__ask == UPDATE_NEWER }
 
 # the notes in this language, else English, else none
-export function update_notes(lang: string) -> []string {
+export function update_notes(update_st: UpdateState, lang: string) -> []string {
   let out = new []string
-  if update__notes == null or Value.kind(update__notes) != 6 { return out }
+  if update_st.update__notes == null or Value.kind(update_st.update__notes) != 6 { return out }
   var key = lang
-  if Value.has(update__notes, key) == 0 { key = "en" }
-  if Value.has(update__notes, key) == 0 { return out }
-  let l = Value.get(update__notes, key)
+  if Value.has(update_st.update__notes, key) == 0 { key = "en" }
+  if Value.has(update_st.update__notes, key) == 0 { return out }
+  let l = Value.get(update_st.update__notes, key)
   for i in 0 .. Value.count(l) { push(out, Value.as_str(Value.at(l, i))) }
   return out
 }
 
 # back to before anything was asked or installed (tests)
-export function update_reset() -> void {
-  if update__ask_h >= 0 { UpdateNet.free(update__ask_h) }
-  update__ask_h = -1
-  update__ask = UPDATE_ASK_IDLE
-  update__latest = ""
-  update__notes = null
-  update__release()
-  update__state = UPDATE_IDLE
-  update__err = UPDATE_ERR_NONE
-  update__target = ""
-  update__files = null
-  update__total_bytes = 0
-  update__done_bytes = 0
-  update__i = 0
-  update__rate = 0
-  update__rate_t = -1
-  q_clear(update_facts())
+export function update_reset(base_st: mut BaseState, update_st: mut UpdateState) -> void {
+  if update_st.update__ask_h >= 0 { UpdateNet.free(update_st.update__ask_h) }
+  update_st.update__ask_h = -1
+  update_st.update__ask = UPDATE_ASK_IDLE
+  update_st.update__latest = ""
+  update_st.update__notes = null
+  update__release(update_st)
+  update_st.update__state = UPDATE_IDLE
+  update_st.update__err = UPDATE_ERR_NONE
+  update_st.update__target = ""
+  update_st.update__files = null
+  update_st.update__total_bytes = 0
+  update_st.update__done_bytes = 0
+  update_st.update__i = 0
+  update_st.update__rate = 0
+  update_st.update__rate_t = -1
+  q_clear(base_st, update_facts(base_st, update_st))
 }

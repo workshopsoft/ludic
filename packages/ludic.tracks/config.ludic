@@ -1,32 +1,32 @@
 # config.ludic - how many kinds of print, how many of each the ground remembers, how the reader
 # reads, and the port's defaults
-export function tracks_config(kinds: int, cap: int) -> void {
-  tk_kinds = kinds
-  tk_cap = cap
-  tk_ring = new []Track
-  tk_count = new []int
-  tk_next = new []int
-  for i in 0 .. kinds * cap { push(tk_ring, new Track) }
+export function tracks_config(tracks_st: mut TracksState, kinds: int, cap: int) -> void {
+  tracks_st.tk_kinds = kinds
+  tracks_st.tk_cap = cap
+  tracks_st.tk_ring = new []Track
+  tracks_st.tk_count = new []int
+  tracks_st.tk_next = new []int
+  for i in 0 .. kinds * cap { push(tracks_st.tk_ring, new Track) }
   for k in 0 .. kinds {
-    push(tk_count, 0)
-    push(tk_next, 0)
+    push(tracks_st.tk_count, 0)
+    push(tracks_st.tk_next, 0)
   }
 }
 
 # a reader at `name_at` or above can tell the animal; a print is fresh under `fresh` hours old,
 # recent under `recent`, and old after
-export function tracks_config_reading(name_at: int, fresh: float, recent: float) -> void {
-  tk_name_at = name_at
-  tk_fresh_h = fresh
-  tk_recent_h = recent
+export function tracks_config_reading(tracks_st: mut TracksState, name_at: int, fresh: float, recent: float) -> void {
+  tracks_st.tk_name_at = name_at
+  tracks_st.tk_fresh_h = fresh
+  tracks_st.tk_recent_h = recent
 }
 
 function tk_now() -> float {
   return TracksWorld.now()
 }
 
-function tk_named() -> bool {
-  return TracksWorld.skill() >= tk_name_at
+function tk_named(tracks_st: TracksState) -> bool {
+  return TracksWorld.skill() >= tracks_st.tk_name_at
 }
 
 function tk_bearing(yaw: float) -> string {

@@ -1,47 +1,47 @@
 # room_connect.ludic - the matchmaker's answer: a guest dials the host it named (or is out),
 # and leaving lets the room go
 # the matchmaker let this machine down: a guest is out, a host keeps its code-less party
-function net__room_fail(why: int) -> void {
+function net__room_fail(base_st: mut BaseState, net_st: mut NetState, why: int) -> void {
   net__log(`matchmaker: {why}`)
-  let was_guest = net__r_role == 2
-  let room = net__room
-  net__r_state = NET_R_IDLE
-  net__r_role = 0
-  if was_guest { net__lose_with(why, room) } else { net__fact(NET_ROOM_FAILED, -1, 0, why, room) }
+  let was_guest = net_st.net__r_role == 2
+  let room = net_st.net__room
+  net_st.net__r_state = NET_R_IDLE
+  net_st.net__r_role = 0
+  if was_guest { net__lose_with(base_st, net_st, why, room) } else { net__fact(base_st, net_st, NET_ROOM_FAILED, -1, 0, why, room) }
 }
 
 # the guest: to the host's outside address, or its inside one behind the same router
-function net__room_connect(host_pub: string, host_local: string) -> void {
+function net__room_connect(base_st: mut BaseState, net_st: mut NetState, host_pub: string, host_local: string) -> void {
   var target = host_pub
   var same_router = false
-  if len(host_pub) > 0 and net__pub_ip != 0 and net_parse_code(host_pub) and net__code_ip == net__pub_ip { same_router = true }
+  if len(host_pub) > 0 and net_st.net__pub_ip != 0 and net_parse_code(net_st, host_pub) and net_st.net__code_ip == net_st.net__pub_ip { same_router = true }
   if len(host_pub) == 0 or same_router { target = host_local }
-  if not net_parse_code(target) {
-    net__room_fail(NET_WHY_BAD_ADDRESS)
+  if not net_parse_code(net_st, target) {
+    net__room_fail(base_st, net_st, NET_WHY_BAD_ADDRESS)
     return
   }
-  net__r_state = NET_R_DONE
-  net__r_t = 0.0
-  net__state = NET_IDLE                          # net_join wants a fresh start
-  net_join(net__code_ip, net__code_port)
-  net__dial_heard = net__peers[0].heard
-  if net__conf().force_relay and net__relay_ip != 0 {  # a test of the relay alone
-    net__use_relay()
+  net_st.net__r_state = NET_R_DONE
+  net_st.net__r_t = 0.0
+  net_st.net__state = NET_IDLE                          # net_join wants a fresh start
+  net_join(net_st, net_st.net__code_ip, net_st.net__code_port)
+  net_st.net__dial_heard = net_st.net__peers[0].heard
+  if net__conf(net_st).force_relay and net_st.net__relay_ip != 0 {  # a test of the relay alone
+    net__use_relay(net_st)
     return
   }
-  net__log(`room {net__room}: dialling {target}`)
+  net__log(`room {net_st.net__room}: dialling {target}`)
 }
 
-function net__room_reset() -> void {
-  if net__http != 0 {
-    Http.free(net__http)
-    net__http = 0
+function net__room_reset(net_st: mut NetState) -> void {
+  if net_st.net__http != 0 {
+    Http.free(net_st.net__http)
+    net_st.net__http = 0
   }
-  net__r_state = NET_R_IDLE
-  net__r_role = 0
-  net__room = ""
-  net__via_relay = false
-  net__relay_ip = 0
-  net__relay_port = 0
-  net__punch_clear()
+  net_st.net__r_state = NET_R_IDLE
+  net_st.net__r_role = 0
+  net_st.net__room = ""
+  net_st.net__via_relay = false
+  net_st.net__relay_ip = 0
+  net_st.net__relay_port = 0
+  net__punch_clear(net_st)
 }

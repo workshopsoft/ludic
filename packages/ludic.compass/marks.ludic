@@ -22,15 +22,19 @@ export property CompassProvider {
 
 export open registry CompassProviders of CompassProvider as COMPASS_FROM
 
-var cmp_cap: int = 64
-var cmp_list: []CompassMark = null       # this frame's, sorted and culled
-var cmp_capturing: bool = false
-var cmp_caught: []CompassMark = null     # what providers said while someone was listening
+export state CompassState {
+  cmp_cap: int = 64
+  cmp_list: []CompassMark = null       # this frame's, sorted and culled
+  cmp_capturing: bool = false
+  cmp_caught: []CompassMark = null     # what providers said while someone was listening
+  cmp_ranges: []float = null
+  cmp_radar_from: int = 2     # marks of at least this tier are blips; the tracked one always is
+}
 
 # how many marks a frame keeps (the lowest priorities go first past it)
-export function compass_config(cap: int) -> void {
-  cmp_cap = Math.max(cap, 1)
-  compass_begin()
+export function compass_config(compass_st: mut CompassState, cap: int) -> void {
+  compass_st.cmp_cap = Math.max(cap, 1)
+  compass_begin(compass_st)
 }
 
 function cmp_new(x: float, z: float, icon: int, colour: int, tier: int, prio: int, label: string) -> CompassMark {

@@ -15,7 +15,7 @@ function plural_rule_of(h: string) -> int {
   return PL_NOT_ONE
 }
 
-export function i18n_plural_rule() -> int { return plural_rule }
+export function i18n_plural_rule(i18n_st: I18nState) -> int { return i18n_st.plural_rule }
 
 # which msgstr[k] a count takes under a rule
 export function i18n_plural_form(rule: int, n: int) -> int {
@@ -33,23 +33,23 @@ export function i18n_plural_form(rule: int, n: int) -> int {
   return 0
 }
 
-function plural_add(e: PoEntry) -> void {
+function plural_add(i18n_st: mut I18nState, e: PoEntry) -> void {
   if len(e.forms) == 0 or blank(e.forms[0]) { return }
-  Dict.set(plural, e.id, len(forms) / 3)
+  Dict.set(i18n_st.plural, e.id, len(i18n_st.forms) / 3)
   for k in 0 .. 3 {
-    if k < len(e.forms) { push(forms, e.forms[k]) } else { push(forms, e.forms[len(e.forms) - 1]) }
+    if k < len(e.forms) { push(i18n_st.forms, e.forms[k]) } else { push(i18n_st.forms, e.forms[len(e.forms) - 1]) }
   }
 }
 
 # `one` or `many` by the count, in the language in use, with every {1} the count: Ln("{1} trout",
 # "{1} trout", 3). English (or a line the file lacks) is one for 1 and many otherwise
-export function Ln(one: string, many: string, n: int) -> string {
+export function Ln(i18n_st: I18nState, one: string, many: string, n: int) -> string {
   var t = many
   if n == 1 { t = one }
-  if on {
-    let k = Dict.get_or(plural, one, -1)
+  if i18n_st.on {
+    let k = Dict.get_or(i18n_st.plural, one, -1)
     if k >= 0 {
-      let f = forms[k * 3 + i18n_plural_form(plural_rule, n)]
+      let f = i18n_st.forms[k * 3 + i18n_plural_form(i18n_st.plural_rule, n)]
       if not blank(f) { t = f }
     }
   }

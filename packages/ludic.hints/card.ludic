@@ -1,45 +1,45 @@
 # card.ludic - a card read off the rail: the key opens the picked chip and puts it down, the arrows
 # walk the rail with the card up, and "I know this" mutes the card being read
-export function hints_card() -> int { return hn_card }
+export function hints_card(hints_st: HintsState) -> int { return hints_st.hn_card }
 
 # the key: the picked card opened, or the open one put down
-export function hints_key() -> void {
-  if hn_card >= 0 {
-    hints_close()
+export function hints_key(base_st: mut BaseState, hints_st: mut HintsState) -> void {
+  if hints_st.hn_card >= 0 {
+    hints_close(base_st, hints_st)
     return
   }
-  hints_open(hn_pick)
+  hints_open(base_st, hints_st, hints_st.hn_pick)
 }
 
 # the k-th chip on the rail opened as a card
-export function hints_open(k: int) -> void {
-  if k < 0 or k >= hn_n { return }
-  hn_pick = k
-  hn_card = hn_top[k]
-  hn_fact(HINTS_F_OPENED, hn_card)
+export function hints_open(base_st: mut BaseState, hints_st: mut HintsState, k: int) -> void {
+  if k < 0 or k >= hints_st.hn_n { return }
+  hints_st.hn_pick = k
+  hints_st.hn_card = hints_st.hn_top[k]
+  hn_fact(base_st, hints_st, HINTS_F_OPENED, hints_st.hn_card)
 }
 
-export function hints_close() -> void {
-  if hn_card < 0 { return }
-  let c = hn_card
-  hn_card = -1
-  hn_fact(HINTS_F_CLOSED, c)
+export function hints_close(base_st: mut BaseState, hints_st: mut HintsState) -> void {
+  if hints_st.hn_card < 0 { return }
+  let c = hints_st.hn_card
+  hints_st.hn_card = -1
+  hn_fact(base_st, hints_st, HINTS_F_CLOSED, c)
 }
 
 # the arrows, with a card up: the next chip along (d = 1) or the one before, round the ends
-export function hints_move(d: int) -> void {
-  if hn_card < 0 or hn_n <= 1 { return }
-  hints_open((hn_pick + hn_n + d) % hn_n)
+export function hints_move(base_st: mut BaseState, hints_st: mut HintsState, d: int) -> void {
+  if hints_st.hn_card < 0 or hints_st.hn_n <= 1 { return }
+  hints_open(base_st, hints_st, (hints_st.hn_pick + hints_st.hn_n + d) % hints_st.hn_n)
 }
 
 # "I know this - do not show it again": the card off the rail until the mutes are given back
-export function hints_mute_card() -> void {
-  if hn_card < 0 { return }
-  let c = hn_card
-  hints_mute(c, true)
-  hn_card = -1
-  hn_t = 0.0
-  hn_fact(HINTS_F_MUTED, c)
+export function hints_mute_card(base_st: mut BaseState, hints_st: mut HintsState) -> void {
+  if hints_st.hn_card < 0 { return }
+  let c = hints_st.hn_card
+  hints_mute(hints_st, c, true)
+  hints_st.hn_card = -1
+  hints_st.hn_t = 0.0
+  hn_fact(base_st, hints_st, HINTS_F_MUTED, c)
 }
 
 # a step's words and its picture (n 1..3): the glyph's name, or the item (-1 when it is a glyph)

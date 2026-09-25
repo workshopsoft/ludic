@@ -1,50 +1,50 @@
 # loop.ludic - each frame: the scene's tick by a fixed step, the shot's camera, its caption, and -
 # headless - the picture once the shot has settled, then the next shot, then quit. In a window
 # N and P step through the shots.
-export function lab_input() -> void {
-  if not lb_windowed { return }
+export function lab_input(lab_st: mut LabState, render3d_st: mut Render3dState) -> void {
+  if not lab_st.lb_windowed { return }
   Input.poll()
-  let n = lab_shot_count()
+  let n = lab_shot_count(lab_st)
   if n > 0 and Input.key_pressed(key: 'n') {
-    lb_shot = (lb_shot + 1) % n
-    lab_shot_apply(lb_shot)
+    lab_st.lb_shot = (lab_st.lb_shot + 1) % n
+    lab_shot_apply(lab_st, render3d_st, lab_st.lb_shot)
   }
   if n > 0 and Input.key_pressed(key: 'p') {
-    lb_shot = (lb_shot + n - 1) % n
-    lab_shot_apply(lb_shot)
+    lab_st.lb_shot = (lab_st.lb_shot + n - 1) % n
+    lab_shot_apply(lab_st, render3d_st, lab_st.lb_shot)
   }
 }
-export function lab_render() -> void {
-  lb_frame += 1
-  let k = labscenes_find(lb_scene)
+export function lab_render(lab_st: mut LabState, render3d_st: mut Render3dState) -> void {
+  lab_st.lb_frame += 1
+  let k = labscenes_find(lab_st.lb_scene)
   if k >= 0 and LabScenes[k].tick != null { LabScenes[k].tick(1.0 / 60.0) }
-  r3d_frame(lab_time())
-  lab_caption()
-  if not lb_windowed { lab_take() }
-  r3d_present()
+  r3d_frame(render3d_st, lab_time(lab_st))
+  lab_caption(lab_st, render3d_st)
+  if not lab_st.lb_windowed { lab_take(lab_st, render3d_st) }
+  r3d_present(render3d_st)
 }
-function lab_caption() -> void {
-  if lb_font == "" { return }
-  ov_begin()
+function lab_caption(lab_st: LabState, render3d_st: mut Render3dState) -> void {
+  if lab_st.lb_font == "" { return }
+  ov_begin(render3d_st)
   var name = ""
-  if lb_shot < lab_shot_count() { name = lb_shot_names[lb_shot] }
-  ov_rect(0, 0, 900, 64, 0.0, 0.0, 0.0, 0.55)
-  ov_text(20, 10, 30, `{lb_scene} / {name}   ({lb_shot + 1} of {lab_shot_count()})`, 1.0, 1.0, 1.0, 1.0)
-  if len(lb_note) > 0 { ov_text(20, 42, 18, lb_note, 0.8, 0.8, 0.8, 1.0) }
-  ov_end()
+  if lab_st.lb_shot < lab_shot_count(lab_st) { name = lab_st.lb_shot_names[lab_st.lb_shot] }
+  ov_rect(render3d_st, 0, 0, 900, 64, 0.0, 0.0, 0.0, 0.55)
+  ov_text(render3d_st, 20, 10, 30, `{lab_st.lb_scene} / {name}   ({lab_st.lb_shot + 1} of {lab_shot_count(lab_st)})`, 1.0, 1.0, 1.0, 1.0)
+  if len(lab_st.lb_note) > 0 { ov_text(render3d_st, 20, 42, 18, lab_st.lb_note, 0.8, 0.8, 0.8, 1.0) }
+  ov_end(render3d_st)
 }
-function lab_take() -> void {
-  lb_wait += 1
-  if lb_wait < lb_settle { return }
-  let base = `{lb_out}/{lb_shot_names[lb_shot]}`
-  r3d_screenshot(`{base}.ppm`)
-  if lab_ppm_to_png(`{base}.ppm`, `{base}.png`) { print(`lab: shot {base}.png`) } else { print(`lab: shot {base}.ppm`) }
-  lb_shots_taken += 1
-  lb_wait = 0
-  lb_shot += 1
-  if lb_shot >= lab_shot_count() {
+function lab_take(lab_st: mut LabState, render3d_st: mut Render3dState) -> void {
+  lab_st.lb_wait += 1
+  if lab_st.lb_wait < lab_st.lb_settle { return }
+  let base = `{lab_st.lb_out}/{lab_st.lb_shot_names[lab_st.lb_shot]}`
+  r3d_screenshot(render3d_st, `{base}.ppm`)
+  if lab_ppm_to_png(lab_st, `{base}.ppm`, `{base}.png`) { print(`lab: shot {base}.png`) } else { print(`lab: shot {base}.ppm`) }
+  lab_st.lb_shots_taken += 1
+  lab_st.lb_wait = 0
+  lab_st.lb_shot += 1
+  if lab_st.lb_shot >= lab_shot_count(lab_st) {
     quit()
     return
   }
-  lab_shot_apply(lb_shot)
+  lab_shot_apply(lab_st, render3d_st, lab_st.lb_shot)
 }

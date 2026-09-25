@@ -4,40 +4,42 @@ import "ludic.update"
 import "ludic.base"
 program UpdateTest {
   numbers float
-  var net_answer: int = -1
-  var net_text: string = ""
-  var net_urls: []string = null
-  var net_paths: []string = null
-  var net_got: int = 0
-  var proc_code: int = -1
-  var proc_paths: []string = null
-  var proc_args: []string = null
-  var exe: string = ""
+  state UpdatetestState {
+    net_answer: int = -1
+    net_text: string = ""
+    net_urls: []string = null
+    net_paths: []string = null
+    net_got: int = 0
+    proc_code: int = -1
+    proc_paths: []string = null
+    proc_args: []string = null
+    exe: string = ""
+  }
 
   function fake_platform() -> string { return "macos" }
-  function fake_exe() -> string { return exe }
+  function fake_exe(updatetest_st: UpdatetestState) -> string { return updatetest_st.exe }
   function fake_pid() -> int { return 4242 }
   function fake_ms() -> int { return 0 }
-  function fake_get(url: string) -> int {
-    push(net_urls, url)
-    push(net_paths, "")
-    return len(net_urls) - 1
+  function fake_get(updatetest_st: mut UpdatetestState, url: string) -> int {
+    push(updatetest_st.net_urls, url)
+    push(updatetest_st.net_paths, "")
+    return len(updatetest_st.net_urls) - 1
   }
-  function fake_download(url: string, path: string) -> int {
-    push(net_urls, url)
-    push(net_paths, path)
-    return len(net_urls) - 1
+  function fake_download(updatetest_st: mut UpdatetestState, url: string, path: string) -> int {
+    push(updatetest_st.net_urls, url)
+    push(updatetest_st.net_paths, path)
+    return len(updatetest_st.net_urls) - 1
   }
-  function fake_poll(h: int) -> int { return net_answer }
-  function fake_text(h: int) -> string { return net_text }
-  function fake_received(h: int) -> int { return net_got }
+  function fake_poll(updatetest_st: UpdatetestState, h: int) -> int { return updatetest_st.net_answer }
+  function fake_text(updatetest_st: UpdatetestState, h: int) -> string { return updatetest_st.net_text }
+  function fake_received(updatetest_st: UpdatetestState, h: int) -> int { return updatetest_st.net_got }
   function fake_free(h: int) -> void { }
-  function fake_spawn(path: string, args: []string) -> int {
-    push(proc_paths, path)
-    push(proc_args, Text.join(args, " "))
-    return len(proc_paths) - 1
+  function fake_spawn(updatetest_st: mut UpdatetestState, path: string, args: []string) -> int {
+    push(updatetest_st.proc_paths, path)
+    push(updatetest_st.proc_args, Text.join(args, " "))
+    return len(updatetest_st.proc_paths) - 1
   }
-  function fake_proc_poll(h: int) -> int { return proc_code }
+  function fake_proc_poll(updatetest_st: UpdatetestState, h: int) -> int { return updatetest_st.proc_code }
   function fake_proc_free(h: int) -> void { }
 
   bind UpdateWorld { platform: fn fake_platform, exe: fn fake_exe, pid: fn fake_pid, now_ms: fn fake_ms }
@@ -48,16 +50,16 @@ program UpdateTest {
   function pkgs() -> string { return dir() + "/packages" }
   function hashf() -> string { return dir() + "/hash.txt" }
 
-  function fresh(root: bool) -> void {
-    net_answer = -1
-    net_text = ""
-    net_urls = new []string
-    net_paths = new []string
-    net_got = 0
-    proc_code = -1
-    proc_paths = new []string
-    proc_args = new []string
-    exe = dir() + "/Game.app/Contents/MacOS/Game"
+  function fresh(base_st: mut BaseState, update_st: mut UpdateState, updatetest_st: mut UpdatetestState, root: bool) -> void {
+    updatetest_st.net_answer = -1
+    updatetest_st.net_text = ""
+    updatetest_st.net_urls = new []string
+    updatetest_st.net_paths = new []string
+    updatetest_st.net_got = 0
+    updatetest_st.proc_code = -1
+    updatetest_st.proc_paths = new []string
+    updatetest_st.proc_args = new []string
+    updatetest_st.exe = dir() + "/Game.app/Contents/MacOS/Game"
     System.run("rm -rf '" + dir() + "'")
     Fs.mkdir(dir())
     Fs.mkdir(pkgs())
@@ -68,8 +70,8 @@ program UpdateTest {
     if root { c.root = dir() + "/Game.app" }
     c.packages = pkgs()
     c.scratch = hashf()
-    update_config(c)
-    update_reset()
+    update_config(update_st, c)
+    update_reset(base_st, update_st)
   }
 
   function asset(ty: string, ver: string, size: int) -> string {
@@ -85,18 +87,18 @@ program UpdateTest {
   }
 
   function seed_base() -> void { Fs.write_text(pkgs() + "/Game-1.0.0-osx-full.nupkg", "base") }
-  function plan_of(text: string) -> bool { return update_plan(Json.parse(text)) }
+  function plan_of(update_st: mut UpdateState, text: string) -> bool { return update_plan(update_st, Json.parse(text)) }
 
-  function facts_of(what: int) -> int {
-    let fs = q_drain(update_facts())
+  function facts_of(base_st: mut BaseState, update_st: mut UpdateState, what: int) -> int {
+    let fs = q_drain(base_st, update_facts(base_st, update_st))
     var n = 0
     for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
     return n
   }
 
   function hash_is(h: string) -> void { Fs.write_text(hashf(), h + "\n") }
-  function last_args() -> string { return proc_args[len(proc_args) - 1] }
-  function last_url() -> string { return net_urls[len(net_urls) - 1] }
+  function last_args(updatetest_st: UpdatetestState) -> string { return updatetest_st.proc_args[len(updatetest_st.proc_args) - 1] }
+  function last_url(updatetest_st: UpdatetestState) -> string { return updatetest_st.net_urls[len(updatetest_st.net_urls) - 1] }
 
   test "versions compare a number at a time" {
     expect(update_newer("0.10.2", "0.9.9"))
@@ -105,166 +107,166 @@ program UpdateTest {
     expect(not update_newer("0.4.9", "0.5.0"))
   }
 
-  test "a newer version is shown with its notes, in the language asked for or English" {
-    fresh(true)
-    update_check_tick(false)
-    expect(last_url() == "http://feed/latest.json")
-    net_text = "{\"version\":\"1.2.0\",\"notes\":{\"en\":[\"Fish.\",\"Boats.\"],\"tr\":[\"Balik.\"]}}"
-    net_answer = 1
-    update_check_tick(false)
-    expect(update_fresh())
-    expect(update_latest() == "1.2.0")
-    expect_eq(len(update_notes("tr")), 1)
-    expect_eq(len(update_notes("de")), 2)
+  test "a newer version is shown with its notes, in the language asked for or English" (base_st: mut BaseState, update_st: mut UpdateState, updatetest_st: mut UpdatetestState) {
+    fresh(base_st, update_st, updatetest_st, true)
+    update_check_tick(update_st, false)
+    expect(last_url(updatetest_st) == "http://feed/latest.json")
+    updatetest_st.net_text = "{\"version\":\"1.2.0\",\"notes\":{\"en\":[\"Fish.\",\"Boats.\"],\"tr\":[\"Balik.\"]}}"
+    updatetest_st.net_answer = 1
+    update_check_tick(update_st, false)
+    expect(update_fresh(update_st))
+    expect(update_latest(update_st) == "1.2.0")
+    expect_eq(len(update_notes(update_st, "tr")), 1)
+    expect_eq(len(update_notes(update_st, "de")), 2)
   }
 
-  test "the version being played is shown only when asked" {
-    fresh(true)
-    net_text = "{\"version\":\"1.0.0\",\"notes\":{\"en\":[\"x\"]}}"
-    net_answer = 1
-    update_check_tick(false)
-    update_check_tick(false)
-    expect(not update_shown())
-    update_reset()
-    update_check_tick(true)
-    update_check_tick(true)
-    expect_eq(update_ask_state(), UPDATE_CURRENT)
-    update_reset()
-    net_answer = 0
-    update_check_tick(true)
-    update_check_tick(true)
-    expect_eq(update_ask_state(), UPDATE_NONE)
+  test "the version being played is shown only when asked" (base_st: mut BaseState, update_st: mut UpdateState, updatetest_st: mut UpdatetestState) {
+    fresh(base_st, update_st, updatetest_st, true)
+    updatetest_st.net_text = "{\"version\":\"1.0.0\",\"notes\":{\"en\":[\"x\"]}}"
+    updatetest_st.net_answer = 1
+    update_check_tick(update_st, false)
+    update_check_tick(update_st, false)
+    expect(not update_shown(update_st))
+    update_reset(base_st, update_st)
+    update_check_tick(update_st, true)
+    update_check_tick(update_st, true)
+    expect_eq(update_ask_state(update_st), UPDATE_CURRENT)
+    update_reset(base_st, update_st)
+    updatetest_st.net_answer = 0
+    update_check_tick(update_st, true)
+    update_check_tick(update_st, true)
+    expect_eq(update_ask_state(update_st), UPDATE_NONE)
   }
 
-  test "with the base on disk and every delta there, the plan is the chain, oldest first" {
-    fresh(true)
+  test "with the base on disk and every delta there, the plan is the chain, oldest first" (base_st: mut BaseState, update_st: mut UpdateState, updatetest_st: mut UpdatetestState) {
+    fresh(base_st, update_st, updatetest_st, true)
     seed_base()
-    expect(plan_of(feed(true)))
-    expect_eq(update_package_count(), 2)
-    expect(update_plan_is_delta(0))
-    expect(update_plan_version(0) == "1.1.0")
-    expect(update_plan_version(1) == "1.2.0")
-    expect(update_target() == "1.2.0")
+    expect(plan_of(update_st, feed(true)))
+    expect_eq(update_package_count(update_st), 2)
+    expect(update_plan_is_delta(update_st, 0))
+    expect(update_plan_version(update_st, 0) == "1.1.0")
+    expect(update_plan_version(update_st, 1) == "1.2.0")
+    expect(update_target(update_st) == "1.2.0")
   }
 
-  test "no base, or a missing delta, is the whole newest package" {
-    fresh(true)
-    expect(plan_of(feed(true)))
-    expect_eq(update_package_count(), 1)
-    expect(not update_plan_is_delta(0))
-    expect(update_plan_file(0) == "Game-1.2.0-osx-full.nupkg")
+  test "no base, or a missing delta, is the whole newest package" (base_st: mut BaseState, update_st: mut UpdateState, updatetest_st: mut UpdatetestState) {
+    fresh(base_st, update_st, updatetest_st, true)
+    expect(plan_of(update_st, feed(true)))
+    expect_eq(update_package_count(update_st), 1)
+    expect(not update_plan_is_delta(update_st, 0))
+    expect(update_plan_file(update_st, 0) == "Game-1.2.0-osx-full.nupkg")
     seed_base()
-    expect(plan_of(feed(false)))
-    expect_eq(update_package_count(), 1)
+    expect(plan_of(update_st, feed(false)))
+    expect_eq(update_package_count(update_st), 1)
   }
 
-  test "nothing newer is no plan" {
-    fresh(true)
-    expect(not plan_of("{\"Assets\":[" + asset("Full", "1.0.0", 900) + "]}"))
-    expect(not plan_of("{}"))
+  test "nothing newer is no plan" (base_st: mut BaseState, update_st: mut UpdateState, updatetest_st: mut UpdatetestState) {
+    fresh(base_st, update_st, updatetest_st, true)
+    expect(not plan_of(update_st, "{\"Assets\":[" + asset("Full", "1.0.0", 900) + "]}"))
+    expect(not plan_of(update_st, "{}"))
   }
 
-  test "a copy Velopack did not install does not start" {
-    fresh(false)
-    expect(not update_installed())
-    expect(not update_start())
-    expect_eq(update_error(), UPDATE_ERR_NOT_INSTALLED)
+  test "a copy Velopack did not install does not start" (base_st: mut BaseState, update_st: mut UpdateState, updatetest_st: mut UpdatetestState) {
+    fresh(base_st, update_st, updatetest_st, false)
+    expect(not update_installed(update_st))
+    expect(not update_start(base_st, update_st))
+    expect_eq(update_error(update_st), UPDATE_ERR_NOT_INSTALLED)
     Fs.mkdir(dir() + "/Game.app")
     Fs.mkdir(dir() + "/Game.app/Contents")
     Fs.mkdir(dir() + "/Game.app/Contents/MacOS")
     Fs.write_text(dir() + "/Game.app/Contents/MacOS/UpdateMac", "x")
-    expect(update_installed())
-    exe = "/private/var/folders/x/AppTranslocation/y/Game.app/Contents/MacOS/Game"
-    expect(not update_installed())
+    expect(update_installed(update_st))
+    updatetest_st.exe = "/private/var/folders/x/AppTranslocation/y/Game.app/Contents/MacOS/Game"
+    expect(not update_installed(update_st))
   }
 
-  test "the whole package: fetched, checked, applied, and the game told to go" {
-    fresh(true)
-    expect(update_start())
-    expect(last_url() == "http://feed/releases.osx.json")
-    net_text = feed(true)
-    net_answer = 1
-    update_tick()
-    expect_eq(update_state(), UPDATE_FETCH)
-    expect_eq(facts_of(UPDATE_STARTED), 1)
-    expect(last_url() == "http://feed/Game-1.2.0-osx-full.nupkg")
-    net_got = 500
-    expect(update_progress() >= 490 and update_progress() <= 510)
-    update_tick()
-    expect_eq(update_state(), UPDATE_CHECK)
-    expect(Text.contains(last_args(), "shasum -a 256"))
+  test "the whole package: fetched, checked, applied, and the game told to go" (base_st: mut BaseState, update_st: mut UpdateState, updatetest_st: mut UpdatetestState) {
+    fresh(base_st, update_st, updatetest_st, true)
+    expect(update_start(base_st, update_st))
+    expect(last_url(updatetest_st) == "http://feed/releases.osx.json")
+    updatetest_st.net_text = feed(true)
+    updatetest_st.net_answer = 1
+    update_tick(base_st, update_st)
+    expect_eq(update_state(update_st), UPDATE_FETCH)
+    expect_eq(facts_of(base_st, update_st, UPDATE_STARTED), 1)
+    expect(last_url(updatetest_st) == "http://feed/Game-1.2.0-osx-full.nupkg")
+    updatetest_st.net_got = 500
+    expect(update_progress(update_st) >= 490 and update_progress(update_st) <= 510)
+    update_tick(base_st, update_st)
+    expect_eq(update_state(update_st), UPDATE_CHECK)
+    expect(Text.contains(last_args(updatetest_st), "shasum -a 256"))
     hash_is("AB1.2.0")
-    proc_code = 0
-    update_tick()
-    expect_eq(update_state(), UPDATE_APPLY)
-    expect(Text.contains(last_args(), "apply --silent --waitPid 4242 --package"))
-    expect(Text.contains(last_args(), "--rootDir"))
-    expect(Text.ends_with(proc_paths[len(proc_paths) - 1], "Game.app/Contents/MacOS/UpdateMac"))
-    expect_eq(facts_of(UPDATE_APPLYING), 1)
+    updatetest_st.proc_code = 0
+    update_tick(base_st, update_st)
+    expect_eq(update_state(update_st), UPDATE_APPLY)
+    expect(Text.contains(last_args(updatetest_st), "apply --silent --waitPid 4242 --package"))
+    expect(Text.contains(last_args(updatetest_st), "--rootDir"))
+    expect(Text.ends_with(updatetest_st.proc_paths[len(updatetest_st.proc_paths) - 1], "Game.app/Contents/MacOS/UpdateMac"))
+    expect_eq(facts_of(base_st, update_st, UPDATE_APPLYING), 1)
   }
 
-  test "a wrong hash stops it and deletes the file" {
-    fresh(true)
-    update_start()
-    net_text = feed(true)
-    net_answer = 1
-    update_tick()
+  test "a wrong hash stops it and deletes the file" (base_st: mut BaseState, update_st: mut UpdateState, updatetest_st: mut UpdatetestState) {
+    fresh(base_st, update_st, updatetest_st, true)
+    update_start(base_st, update_st)
+    updatetest_st.net_text = feed(true)
+    updatetest_st.net_answer = 1
+    update_tick(base_st, update_st)
     Fs.write_text(pkgs() + "/Game-1.2.0-osx-full.nupkg", "junk")
-    update_tick()
+    update_tick(base_st, update_st)
     hash_is("FFFF")
-    proc_code = 0
-    update_tick()
-    expect(update_failed())
-    expect_eq(update_error(), UPDATE_ERR_CORRUPT)
+    updatetest_st.proc_code = 0
+    update_tick(base_st, update_st)
+    expect(update_failed(update_st))
+    expect_eq(update_error(update_st), UPDATE_ERR_CORRUPT)
     expect(not Fs.exists(pkgs() + "/Game-1.2.0-osx-full.nupkg"))
-    expect_eq(facts_of(UPDATE_STOPPED), 1)
+    expect_eq(facts_of(base_st, update_st, UPDATE_STOPPED), 1)
   }
 
-  test "a failed download stops it" {
-    fresh(true)
-    update_start()
-    net_text = feed(true)
-    net_answer = 1
-    update_tick()
-    net_answer = 0
-    update_tick()
-    expect_eq(update_error(), UPDATE_ERR_DOWNLOAD)
+  test "a failed download stops it" (base_st: mut BaseState, update_st: mut UpdateState, updatetest_st: mut UpdatetestState) {
+    fresh(base_st, update_st, updatetest_st, true)
+    update_start(base_st, update_st)
+    updatetest_st.net_text = feed(true)
+    updatetest_st.net_answer = 1
+    update_tick(base_st, update_st)
+    updatetest_st.net_answer = 0
+    update_tick(base_st, update_st)
+    expect_eq(update_error(update_st), UPDATE_ERR_DOWNLOAD)
   }
 
-  test "the delta chain: each fetched, checked and patched onto the last, then applied" {
-    fresh(true)
+  test "the delta chain: each fetched, checked and patched onto the last, then applied" (base_st: mut BaseState, update_st: mut UpdateState, updatetest_st: mut UpdatetestState) {
+    fresh(base_st, update_st, updatetest_st, true)
     seed_base()
-    update_start()
-    net_text = feed(true)
-    net_answer = 1
-    update_tick()
-    update_tick()
+    update_start(base_st, update_st)
+    updatetest_st.net_text = feed(true)
+    updatetest_st.net_answer = 1
+    update_tick(base_st, update_st)
+    update_tick(base_st, update_st)
     hash_is("AB1.1.0")
-    proc_code = 0
-    update_tick()
-    expect_eq(update_state(), UPDATE_PATCH)
-    expect(Text.contains(last_args(), "--old " + pkgs() + "/Game-1.0.0-osx-full.nupkg"))
-    expect(Text.contains(last_args(), "--output " + pkgs() + "/Game-1.1.0-osx-full.nupkg"))
+    updatetest_st.proc_code = 0
+    update_tick(base_st, update_st)
+    expect_eq(update_state(update_st), UPDATE_PATCH)
+    expect(Text.contains(last_args(updatetest_st), "--old " + pkgs() + "/Game-1.0.0-osx-full.nupkg"))
+    expect(Text.contains(last_args(updatetest_st), "--output " + pkgs() + "/Game-1.1.0-osx-full.nupkg"))
     Fs.write_text(pkgs() + "/Game-1.1.0-osx-full.nupkg", "patched")
-    update_tick()
-    expect_eq(update_state(), UPDATE_FETCH)
-    expect_eq(update_index(), 1)
-    update_tick()
+    update_tick(base_st, update_st)
+    expect_eq(update_state(update_st), UPDATE_FETCH)
+    expect_eq(update_index(update_st), 1)
+    update_tick(base_st, update_st)
     hash_is("AB1.2.0")
-    update_tick()
+    update_tick(base_st, update_st)
     Fs.write_text(pkgs() + "/Game-1.2.0-osx-full.nupkg", "patched")
-    update_tick()
-    expect_eq(update_state(), UPDATE_APPLY)
-    expect(Text.contains(last_args(), "--package " + pkgs() + "/Game-1.2.0-osx-full.nupkg"))
+    update_tick(base_st, update_st)
+    expect_eq(update_state(update_st), UPDATE_APPLY)
+    expect(Text.contains(last_args(updatetest_st), "--package " + pkgs() + "/Game-1.2.0-osx-full.nupkg"))
   }
 
-  test "a package already on disk at its size is checked, not fetched again" {
-    fresh(true)
-    update_start()
-    net_text = feed(true)
-    net_answer = 1
+  test "a package already on disk at its size is checked, not fetched again" (base_st: mut BaseState, update_st: mut UpdateState, updatetest_st: mut UpdatetestState) {
+    fresh(base_st, update_st, updatetest_st, true)
+    update_start(base_st, update_st)
+    updatetest_st.net_text = feed(true)
+    updatetest_st.net_answer = 1
     Fs.write_text(pkgs() + "/Game-1.2.0-osx-full.nupkg", Text.repeat("x", 1000))
-    update_tick()
-    expect_eq(update_state(), UPDATE_CHECK)
+    update_tick(base_st, update_st)
+    expect_eq(update_state(update_st), UPDATE_CHECK)
   }
 }

@@ -1,37 +1,37 @@
 # frame.ludic - what the camera sees right now: the game offers each subject and tag, and the frame
 # takes the best subject's grade - which is what a photographer would say about it
-export function photo_frame_begin() -> void {
-  pht_pending_tags = ""
-  pht_pending_mask = 0
-  pht_pending_legend = 0
-  pht_pending_grade = 0
-  pht_pending_why = PHOTO_WHY_NONE
-  pht_pending_sign = -1
-  pht_pending_stars = false
+export function photo_frame_begin(photo_st: mut PhotoState) -> void {
+  photo_st.pht_pending_tags = ""
+  photo_st.pht_pending_mask = 0
+  photo_st.pht_pending_legend = 0
+  photo_st.pht_pending_grade = 0
+  photo_st.pht_pending_why = PHOTO_WHY_NONE
+  photo_st.pht_pending_sign = -1
+  photo_st.pht_pending_stars = false
 }
 
 # A subject `sp` (0..31) named `name`, h metres tall, standing at (x, y, z) and doing something worth
 # `moment`. True when the lens sees it within its range: it is tagged (once a kind, every legend) and
 # scored, and the best score is the frame's.
-export function photo_frame_subject(sp: int, name: string, x: float, y: float, z: float, h: float, legend: bool, moment: int) -> bool {
+export function photo_frame_subject(photo_st: mut PhotoState, sp: int, name: string, x: float, y: float, z: float, h: float, legend: bool, moment: int) -> bool {
   if not photo_in_view(x, y + 0.8, z, PhotoLens.range()) { return false }
-  if (pht_pending_mask & (1 << sp)) == 0 or legend { photo_frame_tag(name) }
-  pht_pending_mask = pht_pending_mask | (1 << sp)
-  if legend { pht_pending_legend = pht_pending_legend | (1 << sp) }
-  let g = photo_score(x, y, z, h, moment)
-  if g > pht_pending_grade {
-    pht_pending_grade = g
-    pht_pending_why = photo_why_of_comp()
+  if (photo_st.pht_pending_mask & (1 << sp)) == 0 or legend { photo_frame_tag(photo_st, name) }
+  photo_st.pht_pending_mask = photo_st.pht_pending_mask | (1 << sp)
+  if legend { photo_st.pht_pending_legend = photo_st.pht_pending_legend | (1 << sp) }
+  let g = photo_score(photo_st, x, y, z, h, moment)
+  if g > photo_st.pht_pending_grade {
+    photo_st.pht_pending_grade = g
+    photo_st.pht_pending_why = photo_why_of_comp(photo_st)
   }
   return true
 }
 
 # anything else in the picture worth naming: a landmark, the water, a sign
-export function photo_frame_tag(text: string) -> void {
+export function photo_frame_tag(photo_st: mut PhotoState, text: string) -> void {
   if len(text) == 0 { return }
-  if len(pht_pending_tags) > 0 { pht_pending_tags = pht_pending_tags + ", " }
-  pht_pending_tags = pht_pending_tags + text
+  if len(photo_st.pht_pending_tags) > 0 { photo_st.pht_pending_tags = photo_st.pht_pending_tags + ", " }
+  photo_st.pht_pending_tags = photo_st.pht_pending_tags + text
 }
 
-export function photo_frame_sign(sign: int) -> void { pht_pending_sign = sign }
-export function photo_frame_stars() -> void { pht_pending_stars = true }
+export function photo_frame_sign(photo_st: mut PhotoState, sign: int) -> void { photo_st.pht_pending_sign = sign }
+export function photo_frame_stars(photo_st: mut PhotoState) -> void { photo_st.pht_pending_stars = true }

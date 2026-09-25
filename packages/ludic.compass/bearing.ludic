@@ -1,15 +1,15 @@
 # bearing.ludic - the frame's marks as the strip reads them: how many, each one, where it bears
 # from the viewer's facing and how far it is. A heading is the world's (0 toward -z, a quarter
 # turn toward -x), a bearing is the heading less the viewer's yaw, in -pi .. pi.
-export function compass_count() -> int {
-  if cmp_list == null { return 0 }
-  return len(cmp_list)
+export function compass_count(compass_st: CompassState) -> int {
+  if compass_st.cmp_list == null { return 0 }
+  return len(compass_st.cmp_list)
 }
 
 # the i-th mark, or an empty one past the end
-export function compass_at(i: int) -> CompassMark {
-  if i < 0 or i >= compass_count() { return new CompassMark }
-  return cmp_list[i]
+export function compass_at(compass_st: CompassState, i: int) -> CompassMark {
+  if i < 0 or i >= compass_count(compass_st) { return new CompassMark }
+  return compass_st.cmp_list[i]
 }
 
 export function compass_wrap(a: float) -> float {
@@ -33,13 +33,13 @@ export function compass_dist_to(x: float, z: float) -> float {
   return Math.sqrt(dx * dx + dz * dz)
 }
 
-export function compass_bearing(i: int) -> float {
-  let m = compass_at(i)
+export function compass_bearing(compass_st: CompassState, i: int) -> float {
+  let m = compass_at(compass_st, i)
   return compass_bearing_to(m.x, m.z)
 }
 
-export function compass_dist(i: int) -> float {
-  let m = compass_at(i)
+export function compass_dist(compass_st: CompassState, i: int) -> float {
+  let m = compass_at(compass_st, i)
   return compass_dist_to(m.x, m.z)
 }
 
@@ -47,8 +47,8 @@ export function compass_dist(i: int) -> float {
 export function compass_strip_t(bearing: float, half: float) -> float { return bearing / Math.max(half, 0.001) }
 
 # the objective: the first tracked mark of the frame, or -1
-export function compass_tracked() -> int {
-  for i in 0 .. compass_count() { if cmp_list[i].prio >= COMPASS_TRACKED { return i } }
+export function compass_tracked(compass_st: CompassState) -> int {
+  for i in 0 .. compass_count(compass_st) { if compass_st.cmp_list[i].prio >= COMPASS_TRACKED { return i } }
   return -1
 }
 

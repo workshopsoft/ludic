@@ -20,13 +20,13 @@ property Mesh {
   vk_layout: int = 0         # the Vulkan backend's interned id for the recorded layout (0: not yet)
 }
 
-function mesh_draw(m: Mesh) -> void { gpu_draw_mesh(m) }
-function mesh_draw_instanced(m: Mesh, n: int) -> void { gpu_draw_mesh_instanced(m, n) }
+function mesh_draw(render3d_st: mut Render3dState, m: Mesh) -> void { gpu_draw_mesh(render3d_st, m) }
+function mesh_draw_instanced(render3d_st: mut Render3dState, m: Mesh, n: int) -> void { gpu_draw_mesh_instanced(render3d_st, m, n) }
 
 # A flat n x n vertex grid over [-half, half]^2 in x/z, y = 0. Attribute 0 = (x, z).
 # The terrain vertex shader lifts it with the height map.
-function mesh_grid(n: int, half: float) -> Mesh {
-  let m = gpu_mesh_new()
+function mesh_grid(render3d_st: mut Render3dState, n: int, half: float) -> Mesh {
+  let m = gpu_mesh_new(render3d_st)
   let nv = n * n
   let v = gl_floats(nv * 2)
   var k = 0
@@ -38,8 +38,8 @@ function mesh_grid(n: int, half: float) -> Mesh {
       k += 2
     }
   }
-  gpu_mesh_vertices(m, v, gl_bytes_of(nv * 2), GPU_STATIC)
-  gpu_mesh_attr(m, 0, 2, GPU_F32, 8, 0, false)
+  gpu_mesh_vertices(render3d_st, m, v, gl_bytes_of(nv * 2), GPU_STATIC)
+  gpu_mesh_attr(render3d_st, m, 0, 2, GPU_F32, 8, 0, false)
   free(v)
   let ni = (n - 1) * (n - 1) * 6
   let idx = words(ni)
@@ -52,41 +52,41 @@ function mesh_grid(n: int, half: float) -> Mesh {
       k += 6
     }
   }
-  gpu_mesh_indices(m, data_of(idx), ni * 4, 4)
+  gpu_mesh_indices(render3d_st, m, data_of(idx), ni * 4, 4)
   free(idx)
   m.count = ni
-  gpu_mesh_done(m)
+  gpu_mesh_done(render3d_st, m)
   return m
 }
 
 # A full-screen triangle with no attributes (the vertex shader uses gl_VertexID).
-function mesh_fullscreen() -> Mesh {
-  let m = gpu_mesh_new()
-  gpu_mesh_done(m)
+function mesh_fullscreen(render3d_st: Render3dState) -> Mesh {
+  let m = gpu_mesh_new(render3d_st)
+  gpu_mesh_done(render3d_st, m)
   m.count = 3
   return m
 }
 
 # A unit quad in x/y ([-0.5, 0.5] x [0, 1]) with uv, attribute 0 = xy, 1 = uv.
-function mesh_card() -> Mesh {
-  let m = gpu_mesh_new()
+function mesh_card(render3d_st: mut Render3dState) -> Mesh {
+  let m = gpu_mesh_new(render3d_st)
   let v = gl_floats(16)
   gl_put(v, 0, -0.5);  gl_put(v, 1, 0.0);  gl_put(v, 2, 0.0);  gl_put(v, 3, 0.0)
   gl_put(v, 4, 0.5);   gl_put(v, 5, 0.0);  gl_put(v, 6, 1.0);  gl_put(v, 7, 0.0)
   gl_put(v, 8, 0.5);   gl_put(v, 9, 1.0);  gl_put(v, 10, 1.0); gl_put(v, 11, 1.0)
   gl_put(v, 12, -0.5); gl_put(v, 13, 1.0); gl_put(v, 14, 0.0); gl_put(v, 15, 1.0)
-  gpu_mesh_vertices(m, v, 64, GPU_STATIC)
-  gpu_mesh_attr(m, 0, 2, GPU_F32, 16, 0, false)
-  gpu_mesh_attr(m, 1, 2, GPU_F32, 16, 8, false)
+  gpu_mesh_vertices(render3d_st, m, v, 64, GPU_STATIC)
+  gpu_mesh_attr(render3d_st, m, 0, 2, GPU_F32, 16, 0, false)
+  gpu_mesh_attr(render3d_st, m, 1, 2, GPU_F32, 16, 8, false)
   free(v)
   let idx = words(6)
   idx[0] = 0;  idx[1] = 1;  idx[2] = 2;  idx[3] = 0;  idx[4] = 2;  idx[5] = 3
-  gpu_mesh_indices(m, data_of(idx), 24, 4)
+  gpu_mesh_indices(render3d_st, m, data_of(idx), 24, 4)
   free(idx)
   m.count = 6
-  gpu_mesh_done(m)
+  gpu_mesh_done(render3d_st, m)
   return m
 }
 
 # release a mesh's GPU objects (a mesh this package built for something being thrown away)
-function mesh_free(m: Mesh) -> void { gpu_mesh_free(m) }
+function mesh_free(render3d_st: mut Render3dState, m: Mesh) -> void { gpu_mesh_free(render3d_st, m) }

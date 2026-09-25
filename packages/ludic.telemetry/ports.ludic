@@ -1,17 +1,17 @@
 # ports.ludic - the config, and what the ports answer when the game leaves them unbound
-export function telemetry_config(c: TelemetryConfig) -> void { telemetry__cfg = c }
+export function telemetry_config(telemetry_st: mut TelemetryState, c: TelemetryConfig) -> void { telemetry_st.telemetry__cfg = c }
 
-function telemetry__conf() -> TelemetryConfig {
-  if telemetry__cfg == null { telemetry__cfg = new TelemetryConfig }
-  return telemetry__cfg
+function telemetry__conf(telemetry_st: mut TelemetryState) -> TelemetryConfig {
+  if telemetry_st.telemetry__cfg == null { telemetry_st.telemetry__cfg = new TelemetryConfig }
+  return telemetry_st.telemetry__cfg
 }
 
 function telemetry__yes() -> bool { return true }
-function telemetry__wall_ms() -> int { return (Time.now() - telemetry__t0) * 1000 }
+function telemetry__wall_ms(telemetry_st: TelemetryState) -> int { return (Time.now() - telemetry_st.telemetry__t0) * 1000 }
 function telemetry__wall_stamp() -> string { return DateTime.format(Time.now(), "YYYY-MM-DDTHH:mm:ssZ") }
 
-function telemetry__can_send() -> bool {
-  let c = telemetry__conf()
+function telemetry__can_send(telemetry_st: mut TelemetryState) -> bool {
+  let c = telemetry__conf(telemetry_st)
   if len(c.host) == 0 or len(c.key) == 0 { return false }
   return TelemetryWorld.can_send()
 }
@@ -40,12 +40,12 @@ function telemetry__http_poll(h: int) -> int {
 
 function telemetry__http_drop(h: int) -> void { Http.free(h) }
 
-function telemetry__send(body: string) -> int { return TelemetryTransport.send(telemetry__conf().host + telemetry__conf().path, body) }
+function telemetry__send(telemetry_st: mut TelemetryState, body: string) -> int { return TelemetryTransport.send(telemetry__conf(telemetry_st).host + telemetry__conf(telemetry_st).path, body) }
 function telemetry__poll(h: int) -> int { return TelemetryTransport.poll(h) }
 
 # a request abandoned (the player said no)
-function telemetry__drop_request() -> void {
-  if telemetry__h < 0 { return }
-  TelemetryTransport.drop(telemetry__h)
-  telemetry__h = -1
+function telemetry__drop_request(telemetry_st: mut TelemetryState) -> void {
+  if telemetry_st.telemetry__h < 0 { return }
+  TelemetryTransport.drop(telemetry_st.telemetry__h)
+  telemetry_st.telemetry__h = -1
 }

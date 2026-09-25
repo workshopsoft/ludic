@@ -2,22 +2,24 @@
 module toy_pack uses ludic_base
 numbers float
 import "ludic.base"
-var counts: []int = null
-export function pack_add(kind: int, n: int) -> void { counts[kind] = counts[kind] + n }
-export function pack_count(kind: int) -> int { return counts[kind] }
-function pack_reset() -> void {
-  counts = new []int
-  for i in 0 .. 3 { push(counts, 0) }
+export state ToyPackState {
+  counts: []int = null
 }
-function pack_save() -> Val {
+export function pack_add(toy_pack_st: mut ToyPackState, kind: int, n: int) -> void { toy_pack_st.counts[kind] = toy_pack_st.counts[kind] + n }
+export function pack_count(toy_pack_st: ToyPackState, kind: int) -> int { return toy_pack_st.counts[kind] }
+function pack_reset(toy_pack_st: mut ToyPackState) -> void {
+  toy_pack_st.counts = new []int
+  for i in 0 .. 3 { push(toy_pack_st.counts, 0) }
+}
+function pack_save(toy_pack_st: ToyPackState) -> Val {
   let v = Value.object()
-  sv_put_ints(v, "counts", counts)
+  sv_put_ints(v, "counts", toy_pack_st.counts)
   return v
 }
-function pack_load(v: Val, version: int) -> void {
-  pack_reset()
+function pack_load(toy_pack_st: mut ToyPackState, v: Val, version: int) -> void {
+  pack_reset(toy_pack_st)
   let xs = sv_ints(v, "counts")
-  for i in 0 .. len(xs) { if i < len(counts) { counts[i] = xs[i] } }
+  for i in 0 .. len(xs) { if i < len(toy_pack_st.counts) { toy_pack_st.counts[i] = xs[i] } }
 }
 export function pack_system() -> System {
   let s = system_new("pack", PH_COMMIT)

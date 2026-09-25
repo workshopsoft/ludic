@@ -2,22 +2,17 @@
 # the host does not answer goes through the party server: "MLRG" + room + packet out, "MLRS" +
 # session + packet back. The host keeps its address there fresh ("MLRH" + room) and sees each
 # relayed guest as the relay's address with a port of relay_port0 + its session.
-var net__relay_ip: int = 0
-var net__relay_port: int = 0
-var net__via_relay: bool = false  # a guest talking to its host through the relay
-var net__from_ip: int = 0
-var net__from_port: int = 0
 
-function net__take_relay(v: Val) -> void {
+function net__take_relay(net_st: mut NetState, v: Val) -> void {
   let r = net__json_str(v, "relay")
-  if len(r) > 0 and net_parse_code(r) {
-    net__relay_ip = net__code_ip
-    net__relay_port = net__code_port
+  if len(r) > 0 and net_parse_code(net_st, r) {
+    net_st.net__relay_ip = net_st.net__code_ip
+    net_st.net__relay_port = net_st.net__code_port
   }
 }
 
-function net__code_bytes(b: []byte, o: int) -> void {
-  let cp = net__room
+function net__code_bytes(net_st: NetState, b: []byte, o: int) -> void {
+  let cp = net_st.net__room
   for k in 0 .. 6 {
     var c = 0
     if k < len(cp) { c = cp[k] }
@@ -25,65 +20,65 @@ function net__code_bytes(b: []byte, o: int) -> void {
   }
 }
 
-function net__relay_hello() -> void {
+function net__relay_hello(net_st: NetState) -> void {
   let b = buffer(10)
   nb_put8(b, 0, 'M')
   nb_put8(b, 1, 'L')
   nb_put8(b, 2, 'R')
   nb_put8(b, 3, 'H')
-  net__code_bytes(b, 4)
-  NetSocket.send(net__sock, net__relay_ip, net__relay_port, b, 10)
+  net__code_bytes(net_st, b, 4)
+  NetSocket.send(net_st.net__sock, net_st.net__relay_ip, net_st.net__relay_port, b, 10)
 }
 
-function net__use_relay() -> void {
-  net__via_relay = true
-  net__log(`room {net__room}: no answer directly, through the relay`)
-  net_dial(net__relay_ip, net__relay_port)
+function net__use_relay(net_st: mut NetState) -> void {
+  net_st.net__via_relay = true
+  net__log(`room {net_st.net__room}: no answer directly, through the relay`)
+  net_dial(net_st, net_st.net__relay_ip, net_st.net__relay_port)
 }
 
-export function net_via_relay() -> bool { return net__via_relay }
+export function net_via_relay(net_st: NetState) -> bool { return net_st.net__via_relay }
 
-function net__relayed(p: NetPeer) -> bool {
-  return net__relay_ip != 0 and p.ip == net__relay_ip and (p.port >= net__conf().relay_port0 or net__via_relay)
+function net__relayed(net_st: mut NetState, p: NetPeer) -> bool {
+  return net_st.net__relay_ip != 0 and p.ip == net_st.net__relay_ip and (p.port >= net__conf(net_st).relay_port0 or net_st.net__via_relay)
 }
 
 # a packet of `o` bytes in net__out, to peer p: straight, or wrapped for the relay
-function net__relay_send(p: NetPeer, o: int) -> int {
-  if not net__relayed(p) { return NetSocket.send(net__sock, p.ip, p.port, net__out, o) }
+function net__relay_send(net_st: mut NetState, p: NetPeer, o: int) -> int {
+  if not net__relayed(net_st, p) { return NetSocket.send(net_st.net__sock, p.ip, p.port, net_st.net__out, o) }
   var hdr = 10
-  if not net__via_relay { hdr = 6 }
+  if not net_st.net__via_relay { hdr = 6 }
   var k = o - 1
   while k >= 0 {
-    net__out[k + hdr] = net__out[k]
+    net_st.net__out[k + hdr] = net_st.net__out[k]
     k -= 1
   }
-  nb_put8(net__out, 0, 'M')
-  nb_put8(net__out, 1, 'L')
-  nb_put8(net__out, 2, 'R')
-  if net__via_relay {
-    nb_put8(net__out, 3, 'G')
-    net__code_bytes(net__out, 4)
+  nb_put8(net_st.net__out, 0, 'M')
+  nb_put8(net_st.net__out, 1, 'L')
+  nb_put8(net_st.net__out, 2, 'R')
+  if net_st.net__via_relay {
+    nb_put8(net_st.net__out, 3, 'G')
+    net__code_bytes(net_st, net_st.net__out, 4)
   } else {
-    let sid = p.port - net__conf().relay_port0
-    nb_put8(net__out, 3, 'S')
-    nb_put8(net__out, 4, (sid >> 8) & 255)
-    nb_put8(net__out, 5, sid & 255)
+    let sid = p.port - net__conf(net_st).relay_port0
+    nb_put8(net_st.net__out, 3, 'S')
+    nb_put8(net_st.net__out, 4, (sid >> 8) & 255)
+    nb_put8(net_st.net__out, 5, sid & 255)
   }
-  let sent = NetSocket.send(net__sock, net__relay_ip, net__relay_port, net__out, o + hdr)
-  nb_copy(net__out, 0, net__out, hdr, o)       # the packet back where it was
+  let sent = NetSocket.send(net_st.net__sock, net_st.net__relay_ip, net_st.net__relay_port, net_st.net__out, o + hdr)
+  nb_copy(net_st.net__out, 0, net_st.net__out, hdr, o)       # the packet back where it was
   return sent
 }
 
 # a relayed packet is unwrapped in place and given the sender it stands for; the game packet's
 # length comes back, 0 when there is nothing for the game
-function net__unwrap(n: int, ip: int, port: int) -> int {
-  net__from_ip = ip
-  net__from_port = port
-  if n < 6 or net__relay_ip == 0 or ip != net__relay_ip or port != net__relay_port { return n }
-  if nb_get8(net__in, 0) != 'M' or nb_get8(net__in, 1) != 'L' or nb_get8(net__in, 2) != 'R' or nb_get8(net__in, 3) != 'S' { return n }
-  let sid = (nb_get8(net__in, 4) << 8) | nb_get8(net__in, 5)
-  nb_copy(net__in, 0, net__in, 6, n - 6)
+function net__unwrap(net_st: mut NetState, n: int, ip: int, port: int) -> int {
+  net_st.net__from_ip = ip
+  net_st.net__from_port = port
+  if n < 6 or net_st.net__relay_ip == 0 or ip != net_st.net__relay_ip or port != net_st.net__relay_port { return n }
+  if nb_get8(net_st.net__in, 0) != 'M' or nb_get8(net_st.net__in, 1) != 'L' or nb_get8(net_st.net__in, 2) != 'R' or nb_get8(net_st.net__in, 3) != 'S' { return n }
+  let sid = (nb_get8(net_st.net__in, 4) << 8) | nb_get8(net_st.net__in, 5)
+  nb_copy(net_st.net__in, 0, net_st.net__in, 6, n - 6)
   # the host: this guest's session; a guest: the relay itself is its host
-  if sid > 0 { net__from_port = net__conf().relay_port0 + sid }
+  if sid > 0 { net_st.net__from_port = net__conf(net_st).relay_port0 + sid }
   return n - 6
 }

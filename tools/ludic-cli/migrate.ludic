@@ -59,6 +59,21 @@ function mgx_indent(t: pointer, start: int) -> pointer {
   while t[i] == 32 or t[i] == 9 { i += 1 }
   return sslice(t, start, i)
 }
+# the text from byte `at` on, without copying it
+function data_at(t: pointer, at: int) -> pointer { return offset(t, at) }
+# a var's declaration from its name to its end (`count: int = 0`), and the comment after it on its
+# line when nothing else is there (two vars on one line keep their own text each)
+function mgx_field(t: pointer, a: int, b: int) -> pointer {
+  var out = sslice(t, a, b)
+  var i = b
+  while t[i] == 32 or t[i] == 9 { i += 1 }
+  if t[i] == 35 {
+    var e = i
+    while t[e] != 0 and t[e] != 10 { e += 1 }
+    out = out + sslice(t, b, e)
+  }
+  return mgx_rtrim(out)
+}
 function mgx_rtrim(s: pointer) -> pointer {
   var n = slen(s)
   while n > 0 and (s[n - 1] == 10 or s[n - 1] == 13 or s[n - 1] == 32) { n -= 1 }
@@ -66,10 +81,10 @@ function mgx_rtrim(s: pointer) -> pointer {
 }
 function cmd_migrate() -> int {
   if arg_count() < 3 or not (arg(2) == "state") {
-    err("usage: ludic migrate state [file] [--runtime] [--unsafe] [--dry-run]\n")
+    err("usage: ludic migrate state [file|dir...] [--runtime] [--unsafe] [--dry-run]\n")
     return 2
   }
-  var src = ""
+  let srcs = new []pointer
   var runtime = ""
   var dry = false
   var ai = 3
@@ -79,22 +94,67 @@ function cmd_migrate() -> int {
     else if a == "--unsafe" { g_unsafe_build = true }
     else if a == "--dry-run" { dry = true }
     else if a[0] == '-' { err(`ludic migrate: unknown option {a}\n`);  return 2 }
-    else { src = a }
+    else if shq(`test -d {sh_single(a)}`) {
+      let found = test_files_in(a)
+      for k in 0 .. len(found) { push(srcs, found[k]) }
+    }
+    else { push(srcs, a) }
     ai += 1
   }
-  let entry = find_entry(src)
-  if entry == "" { return no_entry() }
-  ensure_ludicc()
-  let plan = tmp_path("migrate.plan")
-  shell(`rm -f {plan}`)
-  shq(`{ludicc()} --headless{unsafe_flag()}{runtime} --migrate-state {plan} {entry} > {tmp_path("migrate.err")} 2>&1`)
-  let text = read_file(plan)
-  if text == null {
-    err(`ludic migrate: the compiler wrote no plan for {entry}:\n`)
-    err(capture(`grep -i error {tmp_path("migrate.err")} | head -5`))
-    return 1
+  if len(srcs) == 0 {
+    let entry = find_entry("")
+    if entry == "" { return no_entry() }
+    push(srcs, entry)
   }
-  return mgx_apply(split_lines(text), dry)
+  ensure_ludicc()
+  # every program's plan from the source as it is, then one pass over the files: programs that
+  # share a file (a package, a test's fakes) agree about it, and none sees another's half-done work
+  let all = new []pointer
+  for i in 0 .. len(srcs) {
+    let plan = tmp_path(`migrate{string(i)}.plan`)
+    shell(`rm -f {plan}`)
+    shq(`{ludicc()} --headless{unsafe_flag()}{runtime} --migrate-state {plan} {sh_single(srcs[i])} > {tmp_path("migrate.err")} 2>&1`)
+    let text = read_file(plan)
+    if text == null {
+      err(`ludic migrate: the compiler wrote no plan for {srcs[i]}:\n`)
+      err(capture(`grep -i error {tmp_path("migrate.err")} | head -5`))
+      return 1
+    }
+    let ls = split_lines(text)
+    for k in 0 .. len(ls) { push(all, ls[k]) }
+  }
+  return mgx_apply(mgx_unique(all), dry)
+}
+# the lines once each, in order of text (a merge sort: a render3d plan is thousands of lines)
+function mgx_unique(xs: []pointer) -> []pointer {
+  let tmp = new []pointer
+  for i in 0 .. len(xs) { push(tmp, "") }
+  mgx_sort(xs, 0, len(xs), tmp)
+  let out = new []pointer
+  for i in 0 .. len(xs) {
+    if i == 0 or not (xs[i] == xs[i - 1]) { push(out, xs[i]) }
+  }
+  return out
+}
+function mgx_sort(xs: []pointer, lo: int, hi: int, tmp: []pointer) -> void {
+  if hi - lo < 2 { return }
+  let mid = (lo + hi) / 2
+  mgx_sort(xs, lo, mid, tmp)
+  mgx_sort(xs, mid, hi, tmp)
+  var i = lo
+  var j = mid
+  var k = lo
+  while k < hi {
+    if j >= hi or (i < mid and not s_less(xs[j], xs[i])) {
+      tmp[k] = xs[i]
+      i += 1
+    } else {
+      tmp[k] = xs[j]
+      j += 1
+    }
+    k += 1
+  }
+  for m in lo .. hi { xs[m] = tmp[m] }
 }
 function mgx_apply(lines: []pointer, dry: bool) -> int {
   mgx_file = new []pointer;  mgx_pos = new []int;  mgx_len = new []int;  mgx_text = new []pointer
@@ -117,6 +177,13 @@ function mgx_apply(lines: []pointer, dry: bool) -> int {
       push(vpos2, s_to_int(w[3]))
       push(vstate, w[4])
     } else if w[0] == "STATE" and len(w) >= 6 {
+      # one state from several programs' plans: exported if any of them needs it outside
+      var known = -1
+      for k in 0 .. len(sname) { if sname[k] == w[1] { known = k } }
+      if known >= 0 {
+        if s_to_int(w[4]) == 1 { sexp[known] = 1 }
+        continue
+      }
       push(sname, w[1])
       push(sfile, w[2])
       push(spos, s_to_int(w[3]))
@@ -139,18 +206,33 @@ function mgx_apply(lines: []pointer, dry: bool) -> int {
     push(del_a, a)
     push(del_b, b)
   }
+  # the fields in the order they were declared: by file, then by place
+  let order = new []int
+  for v in 0 .. len(vfile) { push(order, v) }
+  var oa = 1
+  while oa < len(order) {
+    let x = order[oa]
+    var ob = oa - 1
+    while ob >= 0 and (s_less(vfile[x], vfile[order[ob]]) or (vfile[x] == vfile[order[ob]] and vpos[x] < vpos[order[ob]])) {
+      order[ob + 1] = order[ob]
+      ob -= 1
+    }
+    order[ob + 1] = x
+    oa += 1
+  }
   for s in 0 .. len(sname) {
     var block = ""
     var at = -1
     var indent = ""
-    for v in 0 .. len(vfile) {
+    for ov in 0 .. len(order) {
+      let v = order[ov]
       if vstate[v] == sname[s] {
         let t = mgx_text_of(vfile[v])
         if vfile[v] == sfile[s] and vpos[v] == spos[s] {
           at = v
           indent = mgx_indent(t, del_a[v])
         }
-        block = block + `{indent}  {mgx_rtrim(sslice(t, vpos[v], del_b[v]))}\n`
+        block = block + `{indent}  {mgx_field(t, vpos[v], vpos2[v])}\n`
       }
     }
     var head = ""
@@ -158,6 +240,7 @@ function mgx_apply(lines: []pointer, dry: bool) -> int {
     if at >= 0 { mgx_edit(vfile[at], del_a[at], 0, `{indent}{head}state {sname[s]} {{\n{block}{indent}}}\n`) }
   }
   for d in 0 .. len(del_file) { mgx_edit(del_file[d], del_a[d], del_b[d] - del_a[d], "") }
+  for e in 0 .. len(mgx_file) { mgx_text_of(mgx_file[e]) }    # every file with an edit, read
   # an edit inside a line that goes is dropped with it
   var files = 0
   var edits = 0
@@ -174,27 +257,46 @@ function mgx_apply(lines: []pointer, dry: bool) -> int {
         if not inside { push(idx, e) }
       }
     }
-    # last first, so every earlier place stays where it was; at one place, the deletion last
+    # in the order of their places; at one place, what is put there before what is taken out
     var a = 1
     while a < len(idx) {
       let x = idx[a]
       var b = a - 1
-      while b >= 0 and (mgx_pos[idx[b]] < mgx_pos[x] or (mgx_pos[idx[b]] == mgx_pos[x] and mgx_len[idx[b]] < mgx_len[x])) {
+      while b >= 0 and (mgx_pos[idx[b]] > mgx_pos[x] or (mgx_pos[idx[b]] == mgx_pos[x] and mgx_len[idx[b]] > mgx_len[x])) {
         idx[b + 1] = idx[b]
         b -= 1
       }
       idx[b + 1] = x
       a += 1
     }
+    if len(idx) == 0 { continue }
+    files += 1
+    if dry { continue }
+    let out = file_open(path, "wb")
+    if out == null {
+      err(`ludic migrate: cannot write {path}\n`)
+      continue
+    }
+    var cur = 0
     for k in 0 .. len(idx) {
       let e = idx[k]
-      t = sslice(t, 0, mgx_pos[e]) + mgx_text[e] + sslice(t, mgx_pos[e] + mgx_len[e], slen(t))
-      edits += 1
+      # an edit made twice (a generic's instances share its source) is made once
+      var dup = false
+      if k > 0 {
+        let p = idx[k - 1]
+        dup = mgx_pos[p] == mgx_pos[e] and mgx_len[p] == mgx_len[e] and mgx_text[p] == mgx_text[e]
+      }
+      if not dup and mgx_pos[e] >= cur {
+        if mgx_pos[e] > cur { file_write(out, data_at(t, cur), mgx_pos[e] - cur) }
+        let txt = mgx_text[e]
+        if slen(txt) > 0 { file_write(out, txt, slen(txt)) }
+        cur = mgx_pos[e] + mgx_len[e]
+        edits += 1
+      }
     }
-    if len(idx) > 0 {
-      files += 1
-      if not dry { write_file(path, t) }
-    }
+    let n = slen(t)
+    if n > cur { file_write(out, data_at(t, cur), n - cur) }
+    file_close(out)
   }
   print(`migrate: {string(len(vfile))} vars into {string(len(sname))} states; {string(edits)} edits in {string(files)} files`)
   for r in 0 .. len(reports) { print(`  by hand: {sslice(reports[r], 2, slen(reports[r]))}`) }

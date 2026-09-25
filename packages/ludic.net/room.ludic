@@ -8,65 +8,54 @@ const NET_R_ROOM: int = 3        # the host: registered, watching for guests
 const NET_R_ASK: int = 4         # a guest: asking the room for the host
 const NET_R_DONE: int = 5        # a guest: the hello is on its way
 
-var net__r_state: int = 0
-var net__r_role: int = 0          # 1 host, 2 guest
-var net__r_t: float = 0.0
-var net__r_tries: int = 0
-var net__pub_ip: int = 0
-var net__pub_port: int = 0
-var net__room: string = ""        # the host's room code, or the one a guest asked for
-var net__http: int = 0
-var net__poll_t: float = 0.0
-var net__relay_t: float = 0.0
-var net__dial_heard: float = 0.0
 
 # room codes are on when the game named a matchmaker
-export function net_room_on() -> bool { return len(net__conf().signal_url) > 0 }
-export function net_room() -> string { return net__room }
-export function net_room_asking() -> bool { return net__r_state == NET_R_STUN or net__r_state == NET_R_ASK }
+export function net_room_on(net_st: mut NetState) -> bool { return len(net__conf(net_st).signal_url) > 0 }
+export function net_room(net_st: NetState) -> string { return net_st.net__room }
+export function net_room_asking(net_st: NetState) -> bool { return net_st.net__r_state == NET_R_STUN or net_st.net__r_state == NET_R_ASK }
 
 # the host (after net_host or net_become_host): a room at the matchmaker, if there is one
-export function net_room_host() -> void {
-  if not net_room_on() { return }
-  net__r_role = 1
-  net__room = ""
-  net__seen = new []string
-  net__stun_begin()
+export function net_room_host(net_st: mut NetState) -> void {
+  if not net_room_on(net_st) { return }
+  net_st.net__r_role = 1
+  net_st.net__room = ""
+  net_st.net__seen = new []string
+  net__stun_begin(net_st)
 }
 
 # a guest by room code: the matchmaker's answer brings the host's address (the hello is set first)
-export function net_room_join(code: string) -> bool {
-  if not net_room_on() {
-    net__why = NET_WHY_NO_MATCHMAKER
+export function net_room_join(net_st: mut NetState, code: string) -> bool {
+  if not net_room_on(net_st) {
+    net_st.net__why = NET_WHY_NO_MATCHMAKER
     return false
   }
-  net__init()
-  if not net__socket() { return false }
-  net__r_role = 2
-  net__room = Text.upper(code)
-  net__wait_more = 20                           # the matchmaker answers before the host does
-  net__wait_for_host()
-  net__stun_begin()
+  net__init(net_st)
+  if not net__socket(net_st) { return false }
+  net_st.net__r_role = 2
+  net_st.net__room = Text.upper(code)
+  net_st.net__wait_more = 20                           # the matchmaker answers before the host does
+  net__wait_for_host(net_st)
+  net__stun_begin(net_st)
   return true
 }
 
-function net__stun_begin() -> void {
-  net__r_state = NET_R_STUN
-  net__r_t = 0.0
-  net__r_tries = 0
-  net__pub_ip = 0
-  net__pub_port = 0
-  if net__conf().no_stun {
-    net__r_tries = 3
+function net__stun_begin(net_st: mut NetState) -> void {
+  net_st.net__r_state = NET_R_STUN
+  net_st.net__r_t = 0.0
+  net_st.net__r_tries = 0
+  net_st.net__pub_ip = 0
+  net_st.net__pub_port = 0
+  if net__conf(net_st).no_stun {
+    net_st.net__r_tries = 3
     return
   }
-  net__stun_send()
+  net__stun_send(net_st)
 }
 
-function net__room_body(role_key: string) -> string {
+function net__room_body(net_st: NetState, role_key: string) -> string {
   var pub = ""
-  if net__pub_ip != 0 { pub = net__addr_text(net__pub_ip, net__pub_port) }
-  return "{\"" + role_key + "\": \"" + pub + "\", \"local\": \"" + net__local_text() + "\"}"
+  if net_st.net__pub_ip != 0 { pub = net__addr_text(net_st.net__pub_ip, net_st.net__pub_port) }
+  return "{\"" + role_key + "\": \"" + pub + "\", \"local\": \"" + net__local_text(net_st) + "\"}"
 }
 
 function net__json_str(v: Val, key: string) -> string {
@@ -76,8 +65,8 @@ function net__json_str(v: Val, key: string) -> string {
 
 function net__addr_text(ip: int, port: int) -> string { return `{Udp.ip_text(ip)}:{port}` }
 
-function net__local_text() -> string {
+function net__local_text(net_st: NetState) -> string {
   var ip = NetSocket.local_ip()
   if ip == 0 { ip = Udp.ip("127.0.0.1") }
-  return net__addr_text(ip, net_port())
+  return net__addr_text(ip, net_port(net_st))
 }

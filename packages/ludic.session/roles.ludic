@@ -1,46 +1,46 @@
 # roles.ludic - who owns the world. Alone, this machine does; a host does and has company; a
 # guest owns only its own player. The transport says what this machine became.
-export function ses_role() -> int { return session__role }
+export function ses_role(session_st: SessionState) -> int { return session_st.session__role }
 
-export function ses_set_role(r: int) -> void {
-  if r == session__role { return }
-  session__role = r
-  session__fact(SES_ROLE, -1, 0)
+export function ses_set_role(base_st: mut BaseState, session_st: mut SessionState, r: int) -> void {
+  if r == session_st.session__role { return }
+  session_st.session__role = r
+  session__fact(base_st, session_st, SES_ROLE, -1, 0)
 }
 
 # this machine runs the world: the clock, the weather, the animals, the people
-export function ses_owns_world() -> bool { return session__role != SES_GUEST }
+export function ses_owns_world(session_st: SessionState) -> bool { return session_st.session__role != SES_GUEST }
 
 # somebody else is in this world, so nothing this player opens may stop it
-export function ses_live() -> bool { return session__role != SES_SOLO }
+export function ses_live(session_st: SessionState) -> bool { return session_st.session__role != SES_SOLO }
 
-export function ses_hosting() -> bool { return session__role == SES_HOST }
+export function ses_hosting(session_st: SessionState) -> bool { return session_st.session__role == SES_HOST }
 
-export function ses_guest() -> bool { return session__role == SES_GUEST }
+export function ses_guest(session_st: SessionState) -> bool { return session_st.session__role == SES_GUEST }
 
 # whether this player lying down ends the night; alone, it always does
-export function ses_night_passes() -> bool { return ses_owns_world() and not ses_live() }
+export function ses_night_passes(session_st: SessionState) -> bool { return ses_owns_world(session_st) and not ses_live(session_st) }
 
 # the party a host allows (2..PLY_MAX) and whether it takes new players
-export function ses_set_party(max: int, open: bool) -> void {
-  session__max = max
-  if session__max < 2 { session__max = 2 }
-  if session__max > PLY_MAX { session__max = PLY_MAX }
-  session__open = open
+export function ses_set_party(session_st: mut SessionState, max: int, open: bool) -> void {
+  session_st.session__max = max
+  if session_st.session__max < 2 { session_st.session__max = 2 }
+  if session_st.session__max > PLY_MAX { session_st.session__max = PLY_MAX }
+  session_st.session__open = open
 }
 
-export function ses_set_open(open: bool) -> void { session__open = open }
-export function ses_max() -> int { return session__max }
-export function ses_open() -> bool { return session__open }
+export function ses_set_open(session_st: mut SessionState, open: bool) -> void { session_st.session__open = open }
+export function ses_max(session_st: SessionState) -> int { return session_st.session__max }
+export function ses_open(session_st: SessionState) -> bool { return session_st.session__open }
 
 # may one more join: open, and not full
-export function ses_room_for_one() -> bool { return session__open and ply_count() < session__max }
+export function ses_room_for_one(session_st: SessionState) -> bool { return session_st.session__open and ply_count(session_st) < session_st.session__max }
 
 # the session is over: everyone else gone, alone again, nothing asked and nobody asleep
-export function ses_reset() -> void {
-  ply_leave_all()
-  ses_set_role(SES_SOLO)
-  session__me_sleeping = false
-  session__vote_t = 0.0
-  session__vote_mine = -1
+export function ses_reset(base_st: mut BaseState, session_st: mut SessionState) -> void {
+  ply_leave_all(base_st, session_st)
+  ses_set_role(base_st, session_st, SES_SOLO)
+  session_st.session__me_sleeping = false
+  session_st.session__vote_t = 0.0
+  session_st.session__vote_mine = -1
 }

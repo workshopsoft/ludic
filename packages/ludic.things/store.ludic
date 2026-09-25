@@ -1,15 +1,18 @@
 # store.ludic - the Things, and the only verbs that make, remove, move, show and hide one; each
 # placing and removing is a fact, and the port is told at once so the game can draw it
-var th_list: []Thing = null
-var th_uid: int = 0
-var th_facts: Queue<ThingFact> = null
-
-export function things_facts() -> Queue<ThingFact> {
-  if th_facts == null { th_facts = queue_new("things.facts") }
-  return th_facts
+export state ThingsState {
+  th_list: []Thing = null
+  th_uid: int = 0
+  th_facts: Queue<ThingFact> = null
+  th_marked: int = -1
 }
 
-function th_fact(what: int, t: Thing) -> void {
+export function things_facts(base_st: mut BaseState, things_st: mut ThingsState) -> Queue<ThingFact> {
+  if things_st.th_facts == null { things_st.th_facts = queue_new(base_st, "things.facts") }
+  return things_st.th_facts
+}
+
+function th_fact(base_st: mut BaseState, things_st: mut ThingsState, what: int, t: Thing) -> void {
   let f = new ThingFact
   f.what = what
   f.uid = t.uid
@@ -18,28 +21,28 @@ function th_fact(what: int, t: Thing) -> void {
   f.owner = t.owner
   f.x = t.x
   f.z = t.z
-  q_push(things_facts(), f)
+  q_push(base_st, things_facts(base_st, things_st), f)
 }
 
 # whether a world has been set out (things_clear) since the program began
-export function things_ready() -> bool { return th_list != null }
+export function things_ready(things_st: ThingsState) -> bool { return things_st.th_list != null }
 
 # every Thing, in the order placed; the list is the package's, never to be pushed to
-export function things_all() -> []Thing {
-  if th_list == null { th_list = new []Thing }
-  return th_list
+export function things_all(things_st: mut ThingsState) -> []Thing {
+  if things_st.th_list == null { things_st.th_list = new []Thing }
+  return things_st.th_list
 }
 
-export function things_count() -> int { return len(things_all()) }
+export function things_count(things_st: mut ThingsState) -> int { return len(things_all(things_st)) }
 
 # a new world: every Thing forgotten, quietly (the game has already dropped its drawings)
-export function things_clear() -> void { th_list = new []Thing }
+export function things_clear(things_st: mut ThingsState) -> void { things_st.th_list = new []Thing }
 
-export function thing_spawn(kind: int, look: string, x: float, y: float, z: float, yaw: float, id: int) -> Thing {
-  return th_place(new Thing, kind, look, x, y, z, yaw, id)
+export function thing_spawn(base_st: mut BaseState, things_st: mut ThingsState, kind: int, look: string, x: float, y: float, z: float, yaw: float, id: int) -> Thing {
+  return th_place(base_st, things_st, new Thing, kind, look, x, y, z, yaw, id)
 }
 
-function th_place(t: Thing, kind: int, look: string, x: float, y: float, z: float, yaw: float, id: int) -> Thing {
+function th_place(base_st: mut BaseState, things_st: mut ThingsState, t: Thing, kind: int, look: string, x: float, y: float, z: float, yaw: float, id: int) -> Thing {
   t.kind = kind
   t.look = look
   t.x = x
@@ -47,46 +50,45 @@ function th_place(t: Thing, kind: int, look: string, x: float, y: float, z: floa
   t.z = z
   t.yaw = yaw
   t.id = id
-  th_uid += 1
-  t.uid = th_uid
-  push(things_all(), t)
+  things_st.th_uid += 1
+  t.uid = things_st.th_uid
+  push(things_all(things_st), t)
   ThingsWorld.placed(t)
-  th_fact(THING_PLACED, t)
+  th_fact(base_st, things_st, THING_PLACED, t)
   return t
 }
 
 # a Thing on the ground (the port's), set into it by `sink`, used from `reach`
-export function thing_put(kind: int, look: string, x: float, z: float, yaw: float, sink: float, reach: float, id: int) -> Thing {
+export function thing_put(base_st: mut BaseState, things_st: mut ThingsState, kind: int, look: string, x: float, z: float, yaw: float, sink: float, reach: float, id: int) -> Thing {
   let t = new Thing
   t.reach = reach
-  return th_place(t, kind, look, x, ThingsWorld.ground(x, z) - sink, z, yaw, id)
+  return th_place(base_st, things_st, t, kind, look, x, ThingsWorld.ground(x, z) - sink, z, yaw, id)
 }
 
 # gone for good
-export function thing_remove(t: Thing) -> void {
+export function thing_remove(base_st: mut BaseState, things_st: mut ThingsState, t: Thing) -> void {
   if t == null { return }
-  th_marked = t.uid
-  things_drop(fn th_is_marked)
-  th_marked = -1
+  things_st.th_marked = t.uid
+  things_drop(base_st, things_st, fn th_is_marked)
+  things_st.th_marked = -1
 }
 
-var th_marked: int = -1
-function th_is_marked(t: Thing) -> bool { return t.uid == th_marked }
+function th_is_marked(things_st: ThingsState, t: Thing) -> bool { return t.uid == things_st.th_marked }
 
 # every Thing `gone` says so is removed for good
-export function things_drop(gone: fn(Thing) -> bool) -> void {
+export function things_drop(base_st: mut BaseState, things_st: mut ThingsState, gone: fn(Thing) -> bool) -> void {
   let keep = new []Thing
-  let all = things_all()
+  let all = things_all(things_st)
   for i in 0 .. len(all) {
     let t = all[i]
     if gone(t) {
       ThingsWorld.removed(t)
-      th_fact(THING_REMOVED, t)
+      th_fact(base_st, things_st, THING_REMOVED, t)
     } else {
       push(keep, t)
     }
   }
-  th_list = keep
+  things_st.th_list = keep
 }
 
 export function thing_move(t: Thing, x: float, z: float, yaw: float) -> void {

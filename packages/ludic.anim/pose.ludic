@@ -1,28 +1,23 @@
 # pose.ludic - the sampled LOCAL transforms turned into the model-frame deltas `skin_pose` wants.
 # skin_pose folds a delta D in as local = (G_p^-1 . D . G_p) . R_rest, and a channel gives the
 # absolute local L, so D = G_p . (L . R_rest^-1) . G_p^-1 (a root: D = L . R_rest^-1)
-var parts: []floats = null
-var rot_s: floats = null
-var pos_s: floats = null
-var hit_s: words = null
-var cap: int = 0
 
-function part(i: int) -> floats {
-  if parts == null {
-    parts = new []floats
-    for k in 0 .. 8 { push(parts, floats(4)) }
+function part(anim_st: mut AnimState, i: int) -> floats {
+  if anim_st.parts == null {
+    anim_st.parts = new []floats
+    for k in 0 .. 8 { push(anim_st.parts, floats(4)) }
   }
-  return parts[i]
+  return anim_st.parts[i]
 }
 
-export function anim_to_pose(sk: Skin, rot: floats, pos: floats, hit: words) -> void {
-  let l = part(0)
-  let rinv = part(1)
-  let gp = part(2)
-  let gpi = part(3)
-  let tmp = part(4)
-  let d = part(5)
-  let v = part(6)
+export function anim_to_pose(anim_st: mut AnimState, sk: Skin, rot: floats, pos: floats, hit: words) -> void {
+  let l = part(anim_st, 0)
+  let rinv = part(anim_st, 1)
+  let gp = part(anim_st, 2)
+  let gpi = part(anim_st, 3)
+  let tmp = part(anim_st, 4)
+  let d = part(anim_st, 5)
+  let v = part(anim_st, 6)
   for i in 0 .. sk.n_nodes {
     let p = sk.par[i]
     if (hit[i] & 1) != 0 {
@@ -39,7 +34,7 @@ export function anim_to_pose(sk: Skin, rot: floats, pos: floats, hit: words) -> 
       q_normalize(d)
       skin_set_quat(sk, i, d)
     }
-    if (hit[i] & 2) != 0 and positions {
+    if (hit[i] & 2) != 0 and anim_st.positions {
       let dx = pos[i * 3] - sk.rest_t[i * 3]
       let dy = pos[i * 3 + 1] - sk.rest_t[i * 3 + 1]
       let dz = pos[i * 3 + 2] - sk.rest_t[i * 3 + 2]
@@ -54,25 +49,25 @@ export function anim_to_pose(sk: Skin, rot: floats, pos: floats, hit: words) -> 
 }
 
 # The scratch is made ONCE and grown, never allocated per call: a call is per actor per frame.
-function scratch(n: int) -> void {
-  if cap >= n { return }
-  rot_s = floats(n * 4)
-  pos_s = floats(n * 3)
-  hit_s = words(n)
-  cap = n
+function scratch(anim_st: mut AnimState, n: int) -> void {
+  if anim_st.cap >= n { return }
+  anim_st.rot_s = floats(n * 4)
+  anim_st.pos_s = floats(n * 3)
+  anim_st.hit_s = words(n)
+  anim_st.cap = n
 }
 
 # Play `a` at time `ta`, cross-faded toward `b` at `tb` by `blend` (0 is all a, 1 is all b), and
 # fold it into the joint matrices. `b` may be null. False when there is no skin or no clip.
-export function anim_play(sk: Skin, a: Clip, ta: float, b: Clip, tb: float, blend: float) -> bool {
+export function anim_play(anim_st: mut AnimState, sk: Skin, a: Clip, ta: float, b: Clip, tb: float, blend: float) -> bool {
   if sk == null or a == null { return false }
   let n = sk.n_nodes
-  scratch(n)
-  for i in 0 .. n { hit_s[i] = 0 }
+  scratch(anim_st, n)
+  for i in 0 .. n { anim_st.hit_s[i] = 0 }
   skin_reset(sk)
-  anim_mix(a, sk, ta, 1.0, rot_s, pos_s, hit_s)
-  if b != null and blend > 0.001 { anim_mix(b, sk, tb, blend, rot_s, pos_s, hit_s) }
-  anim_to_pose(sk, rot_s, pos_s, hit_s)
+  anim_mix(anim_st, a, sk, ta, 1.0, anim_st.rot_s, anim_st.pos_s, anim_st.hit_s)
+  if b != null and blend > 0.001 { anim_mix(anim_st, b, sk, tb, blend, anim_st.rot_s, anim_st.pos_s, anim_st.hit_s) }
+  anim_to_pose(anim_st, sk, anim_st.rot_s, anim_st.pos_s, anim_st.hit_s)
   skin_pose(sk)
   return true
 }

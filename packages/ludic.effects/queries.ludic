@@ -2,32 +2,32 @@
 function ef_live(e: Effect) -> bool { return e.delay < 0.01 }
 
 # what the rules should add for a kind right now (a delayed one counts only once it begins)
-export function effects_sum(kind: int) -> float {
-  let all = ef_all()
+export function effects_sum(effects_st: mut EffectsState, kind: int) -> float {
+  let all = ef_all(effects_st)
   var t = 0.0
   for i in 0 .. len(all) { if all[i].kind == kind and ef_live(all[i]) { t = t + all[i].mag } }
   return t
 }
 
-export function effects_has(kind: int) -> bool {
-  let all = ef_all()
+export function effects_has(effects_st: mut EffectsState, kind: int) -> bool {
+  let all = ef_all(effects_st)
   for i in 0 .. len(all) { if all[i].kind == kind and ef_live(all[i]) { return true } }
   return false
 }
 
-export function effects_bonus_count() -> int {
-  let all = ef_all()
+export function effects_bonus_count(effects_st: mut EffectsState) -> int {
+  let all = ef_all(effects_st)
   var n = 0
   for i in 0 .. len(all) { if all[i].bonus { n += 1 } }
   return n
 }
 
 # everything held, delayed or not, in the order added
-export function effects_count() -> int { return len(ef_all()) }
+export function effects_count(effects_st: mut EffectsState) -> int { return len(ef_all(effects_st)) }
 
 # a copy, so a reader cannot change the ring
-export function effects_at(i: int) -> Effect {
-  let src = ef_all()[i]
+export function effects_at(effects_st: mut EffectsState, i: int) -> Effect {
+  let src = ef_all(effects_st)[i]
   let e = new Effect
   e.kind = src.kind
   e.mag = src.mag
@@ -39,9 +39,9 @@ export function effects_at(i: int) -> Effect {
 }
 
 # the indices of the ones that have begun, for a read-out
-export function effects_live() -> []int {
+export function effects_live(effects_st: mut EffectsState) -> []int {
   let out = new []int
-  let all = ef_all()
+  let all = ef_all(effects_st)
   for i in 0 .. len(all) { if ef_live(all[i]) { push(out, i) } }
   return out
 }

@@ -21,10 +21,10 @@ export function thing_prompt(t: Thing) -> string {
 }
 
 # the kind does what using it does; the use is a fact whatever the kind made of it
-export function thing_use(t: Thing) -> void {
+export function thing_use(base_st: mut BaseState, things_st: mut ThingsState, t: Thing) -> void {
   if t == null or not thing_kind_ok(t.kind) { return }
   let k = ThingKinds[t.kind]
-  th_fact(THING_USED, t)
+  th_fact(base_st, things_st, THING_USED, t)
   if k.use != null { k.use(t) }
 }
 
@@ -46,8 +46,8 @@ export function thing_is_personal(t: Thing) -> bool { return thing_kind_ok(t.kin
 export function thing_is_put_down(t: Thing) -> bool { return ThingsWorld.put_down(t) }
 
 # every active Thing whose kind ticks, `hours` of the world's clock on
-export function things_tick(hours: float) -> void {
-  let all = things_all()
+export function things_tick(things_st: mut ThingsState, hours: float) -> void {
+  let all = things_all(things_st)
   for i in 0 .. len(all) {
     let t = all[i]
     if not t.active or not thing_kind_ok(t.kind) { continue }
@@ -58,8 +58,8 @@ export function things_tick(hours: float) -> void {
 
 # a restock: every Thing the world grew is back, and loses its `used` unless its kind keeps it;
 # what was put down is left as it is
-export function things_restock() -> void {
-  let all = things_all()
+export function things_restock(things_st: mut ThingsState) -> void {
+  let all = things_all(things_st)
   for i in 0 .. len(all) {
     let t = all[i]
     if thing_is_put_down(t) { continue }

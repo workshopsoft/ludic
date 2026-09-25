@@ -10,16 +10,9 @@
 # copy them in. The scanned CC0 materials are the other half: too large to ship with a
 # toolchain and redistributable from their origin, so they are fetched into the project
 # (`ludic assets`) and read from there.
-var r3d_root:   string = "packages/ludic.render3d"   # where shaders/ lives
-var r3d_assets: string = "assets/polyhaven"          # where the CC0 assets live
-var r3d_root_found: bool = false
 # defines prepended to EVERY program (set before any is built): renderer-wide switches
-var r3d_global_defs: string = ""
-var r3d_noise_src:    string = null
-var r3d_lighting_src: string = null
-var r3d_wind_src: string = null
 
-function r3d_set_paths(root: string, assets: string) -> void { r3d_root = root;  r3d_assets = assets }
+function r3d_set_paths(render3d_st: mut Render3dState, root: string, assets: string) -> void { render3d_st.r3d_root = root;  render3d_st.r3d_assets = assets }
 
 # The install root, as the compiler computes it: $LUDIC_HOME, else the directory of the
 # `ludic` on PATH. A game running from its own tree finds this package there.
@@ -31,61 +24,60 @@ function r3d_home() -> string {
 
 # Settle r3d_root on first use: the package as checked out beside the project, else the
 # copy that ships with the toolchain.
-function r3d_find_root() -> void {
-  if r3d_root_found { return }
-  r3d_root_found = true
-  if Fs.exists(`{r3d_root}/shaders/lighting.glsl`) { return }
+function r3d_find_root(render3d_st: mut Render3dState) -> void {
+  if render3d_st.r3d_root_found { return }
+  render3d_st.r3d_root_found = true
+  if Fs.exists(`{render3d_st.r3d_root}/shaders/lighting.glsl`) { return }
   let home = r3d_home()
   let alt = `{home}/packages/ludic.render3d`
-  if Fs.exists(`{alt}/shaders/lighting.glsl`) { r3d_root = alt;  return }
-  print(`r3d: cannot find the renderer's shaders (looked in {r3d_root}/shaders and {alt}/shaders)`)
+  if Fs.exists(`{alt}/shaders/lighting.glsl`) { render3d_st.r3d_root = alt;  return }
+  print(`r3d: cannot find the renderer's shaders (looked in {render3d_st.r3d_root}/shaders and {alt}/shaders)`)
 }
 
-function r3d_shader_file(name: string) -> string {
-  r3d_find_root()
-  let path = `{r3d_root}/shaders/{name}`
+function r3d_shader_file(render3d_st: mut Render3dState, name: string) -> string {
+  r3d_find_root(render3d_st)
+  let path = `{render3d_st.r3d_root}/shaders/{name}`
   let s = Fs.read_text(path)
   if s == null { print(`r3d: missing shader {path}`);  return "" }
   return s
 }
 
-function r3d_shader_src(name: string, defines: string, is_frag: bool) -> string {
-  if r3d_noise_src == null { r3d_noise_src = r3d_shader_file("noise.glsl") }
-  if r3d_lighting_src == null { r3d_lighting_src = r3d_shader_file("lighting.glsl") }
+function r3d_shader_src(render3d_st: mut Render3dState, name: string, defines: string, is_frag: bool) -> string {
+  if render3d_st.r3d_noise_src == null { render3d_st.r3d_noise_src = r3d_shader_file(render3d_st, "noise.glsl") }
+  if render3d_st.r3d_lighting_src == null { render3d_st.r3d_lighting_src = r3d_shader_file(render3d_st, "lighting.glsl") }
   # the wind goes to BOTH stages: the grass and the crowns move in the vertex shader, the water
   # ripples in the fragment one, and they have to be reading the same field or the meadow and
   # the lake disagree about the weather
-  if r3d_wind_src == null { r3d_wind_src = r3d_shader_file("wind.glsl") }
-  var s = "#version 410 core\n" + r3d_global_defs + defines + r3d_wind_src
-  if is_frag { s = s + r3d_noise_src + r3d_lighting_src }
-  return s + r3d_shader_file(name)
+  if render3d_st.r3d_wind_src == null { render3d_st.r3d_wind_src = r3d_shader_file(render3d_st, "wind.glsl") }
+  var s = "#version 410 core\n" + render3d_st.r3d_global_defs + defines + render3d_st.r3d_wind_src
+  if is_frag { s = s + render3d_st.r3d_noise_src + render3d_st.r3d_lighting_src }
+  return s + r3d_shader_file(render3d_st, name)
 }
 
 # Build a program from a vertex + fragment file pair (defines apply to both).
 # R3D_PROGRAMS_LOG=<file>: append every program built (vertex, fragment, defines) - the list a
 # backend that cannot compile shaders at run time (Vulkan: SPIR-V is built ahead) must cover
-var r3d_prog_log: int = -1
-function r3d_program_log(vs: string, fs: string, defines: string) -> void {
-  if r3d_prog_log < 0 { r3d_prog_log = 0;  if r3d_env_has("R3D_PROGRAMS_LOG") { r3d_prog_log = 1 } }
-  if r3d_prog_log == 0 { return }
-  let f = file_open(r3d_env("R3D_PROGRAMS_LOG"), "ab")
+function r3d_program_log(render3d_st: mut Render3dState, vs: string, fs: string, defines: string) -> void {
+  if render3d_st.r3d_prog_log < 0 { render3d_st.r3d_prog_log = 0;  if r3d_env_has(render3d_st, "R3D_PROGRAMS_LOG") { render3d_st.r3d_prog_log = 1 } }
+  if render3d_st.r3d_prog_log == 0 { return }
+  let f = file_open(r3d_env(render3d_st, "R3D_PROGRAMS_LOG"), "ab")
   if f == null { return }
   # one line per program: the defines' newlines become ';' so a variant is one line
-  let defs = Text.replace(`{r3d_global_defs}{defines}`, "\n", ";")
+  let defs = Text.replace(`{render3d_st.r3d_global_defs}{defines}`, "\n", ";")
   let line = `{vs}|{fs}|{defs}\n`
   file_write(f, line, len(line))
   file_close(f)
 }
-function r3d_program(vs: string, fs: string, defines: string) -> int {
-  r3d_program_log(vs, fs, defines)
-  let p = gpu_program(r3d_shader_src(vs, defines, false), r3d_shader_src(fs, defines, true), vs, fs, `{r3d_global_defs}{defines}`)
+function r3d_program(render3d_st: mut Render3dState, vs: string, fs: string, defines: string) -> int {
+  r3d_program_log(render3d_st, vs, fs, defines)
+  let p = gpu_program(render3d_st, r3d_shader_src(render3d_st, vs, defines, false), r3d_shader_src(render3d_st, fs, defines, true), vs, fs, `{render3d_st.r3d_global_defs}{defines}`)
   if p == 0 { print(`r3d: program failed: {vs} + {fs}`) }
   return p
 }
 
 # Bind a texture to a unit and point a sampler uniform at it.
-function r3d_bind_tex(prog: int, name: string, unit: int, kind: int, tex: int) -> void { gpu_bind_sampler(prog, name, unit, kind, tex) }
-function r3d_bind_2d(prog: int, name: string, unit: int, tex: int) -> void { gpu_bind_sampler(prog, name, unit, GPU_TEX2D, tex) }
+function r3d_bind_tex(render3d_st: mut Render3dState, prog: int, name: string, unit: int, kind: int, tex: int) -> void { gpu_bind_sampler(render3d_st, prog, name, unit, kind, tex) }
+function r3d_bind_2d(render3d_st: mut Render3dState, prog: int, name: string, unit: int, tex: int) -> void { gpu_bind_sampler(render3d_st, prog, name, unit, GPU_TEX2D, tex) }
 
 # A framebuffer with one colour texture (and optionally a depth texture).
 property Target {
@@ -95,29 +87,29 @@ property Target {
   w:     int = 0,
   h:     int = 0
 }
-function target_new(w: int, h: int, ifmt: int, fmt: int, ty: int, with_depth: bool, filter: int) -> Target {
+function target_new(render3d_st: mut Render3dState, w: int, h: int, ifmt: int, fmt: int, ty: int, with_depth: bool, filter: int) -> Target {
   let t = new Target
   t.w = w;  t.h = h
-  t.fbo = gpu_fb_new()
-  gpu_fb_bind(t.fbo)
-  t.color = tex_target(w, h, ifmt, fmt, ty, filter)
-  gpu_fb_color(0, t.color)
+  t.fbo = gpu_fb_new(render3d_st)
+  gpu_fb_bind(render3d_st, t.fbo)
+  t.color = tex_target(render3d_st, w, h, ifmt, fmt, ty, filter)
+  gpu_fb_color(render3d_st, 0, t.color)
   if with_depth {
-    t.depth = tex_target(w, h, GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT, GL_NEAREST)
-    gpu_fb_depth(t.depth)
+    t.depth = tex_target(render3d_st, w, h, GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT, GL_NEAREST)
+    gpu_fb_depth(render3d_st, t.depth)
   }
-  let st = gpu_fb_status()
+  let st = gpu_fb_status(render3d_st)
   if st != GL_FRAMEBUFFER_COMPLETE { print(`r3d: framebuffer incomplete {st} ({w}x{h})`) }
-  gpu_fb_bind(0)
+  gpu_fb_bind(render3d_st, 0)
   return t
 }
-function target_free(t: Target) -> void {
+function target_free(render3d_st: mut Render3dState, t: Target) -> void {
   if t == null { return }
-  gpu_fb_free(t.fbo)
-  gpu_tex_free(t.color)
-  if t.depth != 0 { gpu_tex_free(t.depth) }
+  gpu_fb_free(render3d_st, t.fbo)
+  gpu_tex_free(render3d_st, t.color)
+  if t.depth != 0 { gpu_tex_free(render3d_st, t.depth) }
 }
-function target_bind(t: Target) -> void {
-  gpu_fb_bind(t.fbo)
-  gpu_viewport(0, 0, t.w, t.h)
+function target_bind(render3d_st: mut Render3dState, t: Target) -> void {
+  gpu_fb_bind(render3d_st, t.fbo)
+  gpu_viewport(render3d_st, 0, 0, t.w, t.h)
 }

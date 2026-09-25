@@ -1,49 +1,49 @@
 # chain.ludic - the plan made: the files to fetch, in order, and the base the first delta patches
-function update__plan_clear() -> void {
-  update__files = new []string
-  update__sha = new []string
-  update__size = new []int
-  update__delta = new []bool
-  update__ver = new []string
-  update__full = new []string
-  update__total_bytes = 0
-  update__done_bytes = 0
-  update__i = 0
+function update__plan_clear(update_st: mut UpdateState) -> void {
+  update_st.update__files = new []string
+  update_st.update__sha = new []string
+  update_st.update__size = new []int
+  update_st.update__delta = new []bool
+  update_st.update__ver = new []string
+  update_st.update__full = new []string
+  update_st.update__total_bytes = 0
+  update_st.update__done_bytes = 0
+  update_st.update__i = 0
 }
 
 # the plan from a parsed feed; false when there is nothing newer than this version
-export function update_plan(feed: Val) -> bool {
-  update__plan_clear()
-  let as = update__assets(feed)
+export function update_plan(update_st: mut UpdateState, feed: Val) -> bool {
+  update__plan_clear(update_st)
+  let as = update__assets(update_st, feed)
   let n = update__newest_full(as)
-  if n < 0 or not update_newer(as[n].ver, update__conf().version) { return false }
+  if n < 0 or not update_newer(as[n].ver, update__conf(update_st).version) { return false }
   let newest = as[n]
-  update__target = newest.ver
-  let base = update_packages() + update__sep() + update__full_name(as, update__conf().version)
-  let chain = update__chain(as, newest.ver)
+  update_st.update__target = newest.ver
+  let base = update_packages(update_st) + update__sep() + update__full_name(update_st, as, update__conf(update_st).version)
+  let chain = update__chain(update_st, as, newest.ver)
   var chain_bytes = 0
   for i in 0 .. len(chain) { chain_bytes += chain[i].size }
-  let whole = len(chain) > 0 and len(chain) == update__fulls_after(as)
+  let whole = len(chain) > 0 and len(chain) == update__fulls_after(update_st, as)
   if Fs.exists(base) and whole and chain_bytes < newest.size {
-    for i in 0 .. len(chain) { update__plan_add(chain[i], update__full_name(as, chain[i].ver)) }
-    update__old = base
+    for i in 0 .. len(chain) { update__plan_add(update_st, chain[i], update__full_name(update_st, as, chain[i].ver)) }
+    update_st.update__old = base
   } else {
-    update__plan_add(newest, newest.file)
-    update__old = ""
+    update__plan_add(update_st, newest, newest.file)
+    update_st.update__old = ""
   }
   return true
 }
 
 # the plan, for a panel or a test
-export function update_package_count() -> int {
-  if update__files == null { return 0 }
-  return len(update__files)
+export function update_package_count(update_st: UpdateState) -> int {
+  if update_st.update__files == null { return 0 }
+  return len(update_st.update__files)
 }
 
-export function update_plan_file(i: int) -> string { return update__files[i] }
-export function update_plan_is_delta(i: int) -> bool { return update__delta[i] }
-export function update_plan_version(i: int) -> string { return update__ver[i] }
-export function update_target() -> string { return update__target }
-export function update_total_bytes() -> int { return update__total_bytes }
+export function update_plan_file(update_st: UpdateState, i: int) -> string { return update_st.update__files[i] }
+export function update_plan_is_delta(update_st: UpdateState, i: int) -> bool { return update_st.update__delta[i] }
+export function update_plan_version(update_st: UpdateState, i: int) -> string { return update_st.update__ver[i] }
+export function update_target(update_st: UpdateState) -> string { return update_st.update__target }
+export function update_total_bytes(update_st: UpdateState) -> int { return update_st.update__total_bytes }
 
-function update__path(i: int) -> string { return update_packages() + update__sep() + update__files[i] }
+function update__path(update_st: mut UpdateState, i: int) -> string { return update_packages(update_st) + update__sep() + update_st.update__files[i] }

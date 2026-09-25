@@ -3,51 +3,51 @@
 const LAST_LEGS: float = 10.0
 const GENTLE_FLOOR: float = 22.0
 
-function nd_empty() -> int {
-  let lv = nd_lv()
+function nd_empty(needs_st: mut NeedsState) -> int {
+  let lv = nd_lv(needs_st)
   if lv[NEED_WARMTH] == 0.0 { return NEED_WARMTH }
   if lv[NEED_FOOD] == 0.0 { return NEED_FOOD }
   if lv[NEED_WATER] == 0.0 { return NEED_WATER }
   return -1
 }
 
-function nd_clear() -> bool {
-  let lv = nd_lv()
+function nd_clear(needs_st: mut NeedsState) -> bool {
+  let lv = nd_lv(needs_st)
   return lv[NEED_WARMTH] > 5.0 and lv[NEED_FOOD] > 5.0 and lv[NEED_WATER] > 5.0
 }
 
 # Gentle: a need that runs down stops just above where the legs start to go
-function nd_gentle() -> void {
-  let lv = nd_lv()
+function nd_gentle(needs_st: mut NeedsState) -> void {
+  let lv = nd_lv(needs_st)
   lv[NEED_WARMTH] = Math.max(lv[NEED_WARMTH], GENTLE_FLOOR)
   lv[NEED_FOOD] = Math.max(lv[NEED_FOOD], GENTLE_FLOOR)
   lv[NEED_WATER] = Math.max(lv[NEED_WATER], GENTLE_FLOOR)
-  nd_legs = 0.0
+  needs_st.nd_legs = 0.0
 }
 
 # `dt` real seconds; run it after everything this frame that could fill a need
-export function needs_watch(dt: float) -> void {
+export function needs_watch(base_st: mut BaseState, needs_st: mut NeedsState, dt: float) -> void {
   if NeedsWorld.held() { return }
   if NeedsWorld.gentle() {
-    nd_gentle()
+    nd_gentle(needs_st)
     return
   }
-  let need = nd_empty()
+  let need = nd_empty(needs_st)
   if need < 0 {
-    if nd_legs > 0.0 and nd_clear() {
-      nd_legs = 0.0
-      nd_fact(NEEDS_RESTORED, nd_last)
+    if needs_st.nd_legs > 0.0 and nd_clear(needs_st) {
+      needs_st.nd_legs = 0.0
+      nd_fact(base_st, needs_st, NEEDS_RESTORED, needs_st.nd_last)
     }
     return
   }
-  if nd_legs == 0.0 {
-    nd_legs = LAST_LEGS
-    nd_last = need
-    nd_fact(NEEDS_CRITICAL, need)
+  if needs_st.nd_legs == 0.0 {
+    needs_st.nd_legs = LAST_LEGS
+    needs_st.nd_last = need
+    nd_fact(base_st, needs_st, NEEDS_CRITICAL, need)
     return
   }
-  nd_legs = nd_legs - dt
-  if nd_legs > 0.0 { return }
-  nd_legs = 0.0
-  nd_fact(NEEDS_COLLAPSED, nd_last)
+  needs_st.nd_legs = needs_st.nd_legs - dt
+  if needs_st.nd_legs > 0.0 { return }
+  needs_st.nd_legs = 0.0
+  nd_fact(base_st, needs_st, NEEDS_COLLAPSED, needs_st.nd_last)
 }

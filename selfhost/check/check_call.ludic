@@ -242,7 +242,10 @@ function ck_call_named(e: Node, name: pointer) -> pointer {
     return xt
   }
   let g = ck_global(name)
-  if g != null and is_fn_type(g.ty) { return ck_call_sig(e, name, g.ty) }
+  if g != null and is_fn_type(g.ty) {
+    mg_ref(e.a, g)                               # 0.S2: a call through a var of a function type reads it
+    return ck_call_sig(e, name, g.ty)
+  }
   ck_walk_args(e)
   return "?"
 }

@@ -3,40 +3,40 @@
 function shop_rep01() -> float { return Math.clamp(float(ShopWorld.rep()), 0.0, 100.0) / 100.0 }
 
 # the fraction of base a buyer pays, and a seller is paid before the item's own fraction
-export function shop_buy_factor() -> float { return shop_buy_new + (shop_buy_best - shop_buy_new) * shop_rep01() }
-export function shop_sell_factor() -> float { return shop_sell_new + (shop_sell_best - shop_sell_new) * shop_rep01() }
+export function shop_buy_factor(shop_st: ShopState) -> float { return shop_st.shop_buy_new + (shop_st.shop_buy_best - shop_st.shop_buy_new) * shop_rep01() }
+export function shop_sell_factor(shop_st: ShopState) -> float { return shop_st.shop_sell_new + (shop_st.shop_sell_best - shop_st.shop_sell_new) * shop_rep01() }
 
-export function shop_price_buy(it: int) -> int {
-  if not shop_item_ok(it) { return 0 }
-  let p = int(float(shop_base[it]) * shop_buy_factor() * ShopWorld.buy_mult() + 0.5)
+export function shop_price_buy(shop_st: ShopState, it: int) -> int {
+  if not shop_item_ok(shop_st, it) { return 0 }
+  let p = int(float(shop_st.shop_base[it]) * shop_buy_factor(shop_st) * ShopWorld.buy_mult() + 0.5)
   return Math.max(p, 1)
 }
 
 # what vendor `v` pays (-1: no vendor, no demand). ROUNDED, so cheap raw material keeps its
 # order; and a vendor that stocks the thing never pays what it charges, not even a floor of $1
-export function shop_price_sell_at(v: int, it: int) -> int {
-  if not shop_item_ok(it) { return 0 }
-  let f = shop_sell_factor() * shop_sell_frac[it] * shop_demand_mult(v, it)
-  var p = Math.max(int(float(shop_base[it]) * f + 0.5), 1)
-  if shop_stocks(v, it) { p = Math.max(Math.min(p, shop_price_buy(it) - 1), 0) }
+export function shop_price_sell_at(shop_st: mut ShopState, v: int, it: int) -> int {
+  if not shop_item_ok(shop_st, it) { return 0 }
+  let f = shop_sell_factor(shop_st) * shop_st.shop_sell_frac[it] * shop_demand_mult(shop_st, v, it)
+  var p = Math.max(int(float(shop_st.shop_base[it]) * f + 0.5), 1)
+  if shop_stocks(shop_st, v, it) { p = Math.max(Math.min(p, shop_price_buy(shop_st, it) - 1), 0) }
   return p
 }
 
 # what the vendor at the counter pays
-export function shop_price_sell(it: int) -> int { return shop_price_sell_at(shop_at, it) }
+export function shop_price_sell(shop_st: mut ShopState, it: int) -> int { return shop_price_sell_at(shop_st, shop_st.shop_at, it) }
 
-export function shop_stocks(v: int, it: int) -> bool {
-  if not shop_vendor_ok(v) or shop_vendor_list[v].stock == null { return false }
-  let st = shop_vendor_list[v].stock
+export function shop_stocks(shop_st: ShopState, v: int, it: int) -> bool {
+  if not shop_vendor_ok(shop_st, v) or shop_st.shop_vendor_list[v].stock == null { return false }
+  let st = shop_st.shop_vendor_list[v].stock
   for k in 0 .. len(st) { if st[k] == it { return true } }
   return false
 }
 
 # what `v` takes: its list and whatever the world says, and never the one thing it refuses
-export function shop_buys(v: int, it: int) -> bool {
-  if not shop_vendor_ok(v) or it == shop_vendor_list[v].refuses { return false }
+export function shop_buys(shop_st: ShopState, v: int, it: int) -> bool {
+  if not shop_vendor_ok(shop_st, v) or it == shop_st.shop_vendor_list[v].refuses { return false }
   if ShopWorld.also_buys(v, it) { return true }
-  let b = shop_vendor_list[v].buys
+  let b = shop_st.shop_vendor_list[v].buys
   if b == null { return false }
   for k in 0 .. len(b) { if b[k] == it { return true } }
   return false

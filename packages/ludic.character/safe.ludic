@@ -2,11 +2,11 @@
 # every landing asks. The wanted spot if it will do, else the nearest ring out that is clear of every
 # collider, no deeper than max_depth, within CHAR_DROP of the height being left, and on ground
 # gentle enough to walk off - a spot you can stand on but cannot leave is not a safe spot.
-function chr_safe_ok(x: float, z: float, from_y: float, max_depth: float) -> bool {
+function chr_safe_ok(character_st: mut CharacterState, x: float, z: float, from_y: float, max_depth: float) -> bool {
   let g = CharacterGround.height(x, z)
   if Math.abs(g - from_y) > CHAR_DROP { return false }
   if CharacterGround.water(x, z) - g > max_depth { return false }
-  if chr_push(x, z, 0.4, g, g + CHAR_BODY) { return false }
+  if chr_push(character_st, x, z, 0.4, g, g + CHAR_BODY) { return false }
   var lo = g
   var hi = g
   for k in 0 .. 4 {
@@ -18,19 +18,19 @@ function chr_safe_ok(x: float, z: float, from_y: float, max_depth: float) -> boo
   return not (hi - lo > CHAR_SLOPE_PROBE * 2.0)
 }
 
-export function char_safe_spot(x: float, z: float, from_y: float, max_depth: float) -> bool {
-  chr_safe_x = x
-  chr_safe_z = z
-  if chr_safe_ok(x, z, from_y, max_depth) { return true }
+export function char_safe_spot(character_st: mut CharacterState, x: float, z: float, from_y: float, max_depth: float) -> bool {
+  character_st.chr_safe_x = x
+  character_st.chr_safe_z = z
+  if chr_safe_ok(character_st, x, z, from_y, max_depth) { return true }
   for r in 0 .. 9 {
     let rad = 0.8 + float(r) * 1.1
     for k in 0 .. 16 {
       let a = float(k) * (chr_pi / 8.0)
       let px = x + Math.sin(a) * rad
       let pz = z + Math.cos(a) * rad
-      if chr_safe_ok(px, pz, from_y, max_depth) {
-        chr_safe_x = px
-        chr_safe_z = pz
+      if chr_safe_ok(character_st, px, pz, from_y, max_depth) {
+        character_st.chr_safe_x = px
+        character_st.chr_safe_z = pz
         return true
       }
     }

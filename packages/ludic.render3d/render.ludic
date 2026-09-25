@@ -5,120 +5,86 @@
 # scene_draw_casters, which the demo defines.
 # ============================================================================
 
-var r3d_sky_prog: int = 0
-var r3d_fog_density: float = 0.0
-var r3d_fog_scale: float = 1.0   # float bits: a setting's multiplier over the density the day sets
-var r3d_fog_falloff: float = 0.0
-var r3d_fog_base: float = 0.0            # the height fog is measured from (float bits); 0 = y = 0
 # Both of these are the DAY's, set by daylight_set from the sun's own elevation. The inscatter
 # is how hard the air scatters the sun forward - nearly nothing at noon, and the glow a ridge
 # is silhouetted against at dusk. The desaturation is how fast distance takes a surface's own
 # colour away, which is the term that was missing entirely and is most of why a midday frame
 # had no depth in it at all.
-var r3d_fog_inscatter: float = 0.02   # 0.02, what the shader used to hard-code
-var r3d_fog_desat: float = 1.35       # 1.35
 # How much of the visible sky's colour comes from the analytic model rather than from the
 # photograph (sky.frag). The day fades it in: at night the sky has its own tint, a star field
 # and a moon, and relighting on top of those would only wash them out.
-var r3d_sky_relight: float = 0.0
 # What the ground reflects back up, low and high, and the height they cross at. The defaults
 # are Maroon Lake's - a green basin under a grey-rock treeline at about 480 m over the datum.
-var r3d_ground_alb_r: float = 0.3;  var r3d_ground_alb_g: float = 0.34;  var r3d_ground_alb_b: float = 0.14
-var r3d_ground_hi_r: float = 0.289;  var r3d_ground_hi_g: float = 0.28;  var r3d_ground_hi_b: float = 0.26
-var r3d_ground_hi_y: float = 480.0    # 480
-var r3d_ground_hi_w: float = 150.0    # 150
-var r3d_time: float = 0.0
-var r3d_ready: bool = false
 # set before r3d_init to build the landscape from a real height map
-var r3d_dem_path: string = null
-var r3d_dem_min: float = 0.0
-var r3d_dem_max: float = 0.0
-var r3d_dem_base: float = 0.0
-var r3d_dem_ox: float = 0.0
-var r3d_dem_oz: float = 0.0
-var r3d_ortho_path: string = null
 # A plate: no terrain, no grass, no water - the sky, the sun, the shadows and whatever the scene
 # draws (a lab's stage, ludic.lab). Set before the load; nothing of the landscape is made, so
 # its hundreds of megabytes of height field, materials and grass never exist.
-var r3d_plate: bool = false
-function r3d_plate_mode(on: bool) -> void { r3d_plate = on }
+function r3d_plate_mode(render3d_st: mut Render3dState, on: bool) -> void { render3d_st.r3d_plate = on }
 # the sky's HDR image, when it is not the default photograph under r3d_assets
-var r3d_sky_path: string = null
-var r3d_debug: bool = false
-var r3d_debug_shadow: bool = false
-var r3d_debug_max: bool = false
 
-var r3d_cloud_shadow: float = 0.5     # 0.5
 
-var r3d_clip_y: float = -2147483600.0            # -2^31: no clipping
 # R3D_NOPREPASS=1: light the foliage the old way, every card behind the front one included
-var r3d_prepass_env: int = -1
-function r3d_prepass_off() -> bool {
-  if r3d_prepass_env < 0 { r3d_prepass_env = 0;  if r3d_env_has("R3D_NOPREPASS") { r3d_prepass_env = 1 } }
-  return r3d_prepass_env == 1
+function r3d_prepass_off(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.r3d_prepass_env < 0 { render3d_st.r3d_prepass_env = 0;  if r3d_env_has(render3d_st, "R3D_NOPREPASS") { render3d_st.r3d_prepass_env = 1 } }
+  return render3d_st.r3d_prepass_env == 1
 }
-function fog_bind(prog: int) -> void {
-  u_f(gpu_uniform(prog, "u_clip_y"), r3d_clip_y)
-  u_f(gpu_uniform(prog, "u_spec_scale"), 1.0)
-  u_f(gpu_uniform(prog, "u_fog_density"), r3d_fog_density)
-  u_f(gpu_uniform(prog, "u_fog_height_falloff"), r3d_fog_falloff)
-  u_f(gpu_uniform(prog, "u_fog_base"), r3d_fog_base)
-  u_f(gpu_uniform(prog, "u_fog_inscatter"), r3d_fog_inscatter)
-  u_f(gpu_uniform(prog, "u_fog_desat"), r3d_fog_desat)
-  u_f3(gpu_uniform(prog, "u_ground_alb"), r3d_ground_alb_r, r3d_ground_alb_g, r3d_ground_alb_b)
-  u_f3(gpu_uniform(prog, "u_ground_alb_hi"), r3d_ground_hi_r, r3d_ground_hi_g, r3d_ground_hi_b)
-  u_f(gpu_uniform(prog, "u_ground_hi_y"), r3d_ground_hi_y)
-  u_f(gpu_uniform(prog, "u_ground_hi_w"), r3d_ground_hi_w)
-  var cs = r3d_cloud_shadow
-  if r3d_env_has("R3D_NOCLOUD") { cs = 0.0 }
-  u_f(gpu_uniform(prog, "u_cloud_shadow"), cs)
-  u_f(gpu_uniform(prog, "u_time"), r3d_time)
+function fog_bind(render3d_st: mut Render3dState, prog: int) -> void {
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_clip_y"), render3d_st.r3d_clip_y)
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_spec_scale"), 1.0)
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_fog_density"), render3d_st.r3d_fog_density)
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_fog_height_falloff"), render3d_st.r3d_fog_falloff)
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_fog_base"), render3d_st.r3d_fog_base)
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_fog_inscatter"), render3d_st.r3d_fog_inscatter)
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_fog_desat"), render3d_st.r3d_fog_desat)
+  u_f3(render3d_st, gpu_uniform(render3d_st, prog, "u_ground_alb"), render3d_st.r3d_ground_alb_r, render3d_st.r3d_ground_alb_g, render3d_st.r3d_ground_alb_b)
+  u_f3(render3d_st, gpu_uniform(render3d_st, prog, "u_ground_alb_hi"), render3d_st.r3d_ground_hi_r, render3d_st.r3d_ground_hi_g, render3d_st.r3d_ground_hi_b)
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_ground_hi_y"), render3d_st.r3d_ground_hi_y)
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_ground_hi_w"), render3d_st.r3d_ground_hi_w)
+  var cs = render3d_st.r3d_cloud_shadow
+  if r3d_env_has(render3d_st, "R3D_NOCLOUD") { cs = 0.0 }
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_cloud_shadow"), cs)
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_time"), render3d_st.r3d_time)
 }
 
 # profiling switches (environment): R3D_NOSHADOW R3D_NOGI R3D_MSAA=n R3D_NOBLADES R3D_NOCARDS R3D_NOTREES R3D_NEAR=m
-var r3d_test_frame: int = 0
-var r3d_test_resize: int = 0
-var r3d_no_shadow: bool = false
-var r3d_no_trees: bool = false
-var r3d_no_refl: bool = false
-function r3d_env_flags() -> void {
-  r3d_no_shadow = r3d_env_has("R3D_NOSHADOW")
-  r3d_no_trees = r3d_env_has("R3D_NOTREES")
-  r3d_no_refl = r3d_env_has("R3D_NOREFL")
-  if r3d_env_has("R3D_DEBUG") { r3d_debug = true }
-  if r3d_env_has("R3D_DBGSHADOW") { r3d_debug_shadow = true }
-  if r3d_env_has("R3D_NOGI") { post_gi_strength = 0.0;  post_ao_strength = 0.0;  post_no_gi = true }
-  if r3d_env_has("R3D_MSAA") { post_ms_samples = Text.to_int(r3d_env("R3D_MSAA")) }
-  sc_skip_blade = r3d_env_has("R3D_NOBLADES")
-  sc_skip_card = r3d_env_has("R3D_NOCARDS")
-  sc_dbg_lod = r3d_env_has("R3D_LODDBG")
-  if r3d_env_has("R3D_ANISO") {
-    let a = Text.to_int(r3d_env("R3D_ANISO"))
-    tex_anisotropy = 1.0
-    if a >= 2 { tex_anisotropy = 2.0 }
-    if a >= 4 { tex_anisotropy = 4.0 }
-    if a >= 8 { tex_anisotropy = 8.0 }
-    if a >= 16 { tex_anisotropy = 16.0 }
+function r3d_env_flags(render3d_st: mut Render3dState) -> void {
+  render3d_st.r3d_no_shadow = r3d_env_has(render3d_st, "R3D_NOSHADOW")
+  render3d_st.r3d_no_trees = r3d_env_has(render3d_st, "R3D_NOTREES")
+  render3d_st.r3d_no_refl = r3d_env_has(render3d_st, "R3D_NOREFL")
+  if r3d_env_has(render3d_st, "R3D_DEBUG") { render3d_st.r3d_debug = true }
+  if r3d_env_has(render3d_st, "R3D_DBGSHADOW") { render3d_st.r3d_debug_shadow = true }
+  if r3d_env_has(render3d_st, "R3D_NOGI") { render3d_st.post_gi_strength = 0.0;  render3d_st.post_ao_strength = 0.0;  render3d_st.post_no_gi = true }
+  if r3d_env_has(render3d_st, "R3D_MSAA") { render3d_st.post_ms_samples = Text.to_int(r3d_env(render3d_st, "R3D_MSAA")) }
+  render3d_st.sc_skip_blade = r3d_env_has(render3d_st, "R3D_NOBLADES")
+  render3d_st.sc_skip_card = r3d_env_has(render3d_st, "R3D_NOCARDS")
+  render3d_st.sc_dbg_lod = r3d_env_has(render3d_st, "R3D_LODDBG")
+  if r3d_env_has(render3d_st, "R3D_ANISO") {
+    let a = Text.to_int(r3d_env(render3d_st, "R3D_ANISO"))
+    render3d_st.tex_anisotropy = 1.0
+    if a >= 2 { render3d_st.tex_anisotropy = 2.0 }
+    if a >= 4 { render3d_st.tex_anisotropy = 4.0 }
+    if a >= 8 { render3d_st.tex_anisotropy = 8.0 }
+    if a >= 16 { render3d_st.tex_anisotropy = 16.0 }
   }
 }
 # Start the renderer in one call: the window, then every load step in order. A game that shows
 # a loading screen calls r3d_open, draws its screen, and runs r3d_load_step itself between frames.
-function r3d_init(w: int, h: int, title: string) -> bool {
-  if not r3d_open(w, h, title) { return false }
-  for i in 0 .. r3d_load_count() { if not r3d_load_step(i) { return false } }
+function r3d_init(render3d_st: mut Render3dState, w: int, h: int, title: string) -> bool {
+  if not r3d_open(render3d_st, w, h, title) { return false }
+  for i in 0 .. r3d_load_count() { if not r3d_load_step(render3d_st, i) { return false } }
   return true
 }
 
 # the window and the graphics backend; nothing is baked yet, but a frame can be presented
-function r3d_open(w: int, h: int, title: string) -> bool {
-  r3d_env_flags()
-  gpu_select()
-  if not gpu_open(w, h, title) { print("r3d: no OpenGL context");  return false }
-  if r3d_env_has("R3D_NOVSYNC") { gpu_vsync(0) }
-  var renderer: string = gpu_renderer_name()
+function r3d_open(render3d_st: mut Render3dState, w: int, h: int, title: string) -> bool {
+  r3d_env_flags(render3d_st)
+  gpu_select(render3d_st)
+  if not gpu_open(render3d_st, w, h, title) { print("r3d: no OpenGL context");  return false }
+  if r3d_env_has(render3d_st, "R3D_NOVSYNC") { gpu_vsync(render3d_st, 0) }
+  var renderer: string = gpu_renderer_name(render3d_st)
   print(`r3d: {gl_w}x{gl_h} on {renderer}`)
-  prof_init()
-  cam_init(float(gl_w) / float(gl_h))
+  prof_init(render3d_st)
+  cam_init(render3d_st, float(gl_w) / float(gl_h))
   return true
 }
 
@@ -127,192 +93,191 @@ function r3d_open(w: int, h: int, title: string) -> bool {
 # programs), 5 the shadow maps and the screen targets, 6 the scattered cover and the actors, 7 the
 # grass and the sky pass. The order is r3d_init's.
 function r3d_load_count() -> int { return 4 + TERRAIN_INIT_STEPS }
-function r3d_load_step(i: int) -> bool {
+function r3d_load_step(render3d_st: mut Render3dState, i: int) -> bool {
   let t = i - 1
   if i == 0 {
-    var sky = r3d_assets + "/hdri/kloofendal_48d_partly_cloudy_puresky_4k.hdr"
-    if r3d_sky_path != null { sky = r3d_sky_path }
-    if not sky_load(sky) { return false }
-    daylight_init()
+    var sky = render3d_st.r3d_assets + "/hdri/kloofendal_48d_partly_cloudy_puresky_4k.hdr"
+    if render3d_st.r3d_sky_path != null { sky = render3d_st.r3d_sky_path }
+    if not sky_load(render3d_st, sky) { return false }
+    daylight_init(render3d_st)
   } else if t >= 0 and t < TERRAIN_INIT_STEPS {
-    if r3d_plate { return true }
+    if render3d_st.r3d_plate { return true }
     if t == 0 {
-      if r3d_dem_path != null { terrain_use_dem(r3d_dem_path, r3d_dem_min, r3d_dem_max, r3d_dem_base, r3d_dem_ox, r3d_dem_oz) }
-      if r3d_ortho_path != null { terrain_use_ortho(r3d_ortho_path) }
+      if render3d_st.r3d_dem_path != null { terrain_use_dem(render3d_st, render3d_st.r3d_dem_path, render3d_st.r3d_dem_min, render3d_st.r3d_dem_max, render3d_st.r3d_dem_base, render3d_st.r3d_dem_ox, render3d_st.r3d_dem_oz) }
+      if render3d_st.r3d_ortho_path != null { terrain_use_ortho(render3d_st, render3d_st.r3d_ortho_path) }
     }
-    terrain_init_step(t)
+    terrain_init_step(render3d_st, t)
   } else if i == 1 + TERRAIN_INIT_STEPS {
-    shadow_init()
-    post_init(gl_w, gl_h)
+    shadow_init(render3d_st)
+    post_init(render3d_st, gl_w, gl_h)
   } else if i == 2 + TERRAIN_INIT_STEPS {
-    scatter_init()
-    actor_init()
+    scatter_init(render3d_st)
+    actor_init(render3d_st)
   } else if i == 3 + TERRAIN_INIT_STEPS {
-    if not r3d_plate { grass_init() }
-    r3d_sky_prog = r3d_program("fullscreen.vert", "sky.frag", "")
+    if not render3d_st.r3d_plate { grass_init(render3d_st) }
+    render3d_st.r3d_sky_prog = r3d_program(render3d_st, "fullscreen.vert", "sky.frag", "")
     # The base is NOON's air, and it was tuned when nothing desaturated with distance - so it
     # was doing its whole job through colour and could not be raised without the valley going
     # blue. With the desaturation term carrying the depth, the air can be as thick as real air
     # at 2900 m and the far ridge recedes instead of tinting.
-    r3d_fog_density = 0.00024
-    r3d_fog_falloff = 0.002
-    r3d_ready = true
-    gpu_check("r3d init")
+    render3d_st.r3d_fog_density = 0.00024
+    render3d_st.r3d_fog_falloff = 0.002
+    render3d_st.r3d_ready = true
+    gpu_check(render3d_st, "r3d init")
   }
   return true
 }
 
-function r3d_draw_sky() -> void {
-  gpu_depth_func(GL_LEQUAL)
-  gpu_depth_write(false)
-  gpu_cull(false)
-  let p = r3d_sky_prog
-  gpu_use_program(p)
-  r3d_bind_2d(p, "u_sky", 0, sky_tex)
-  sky_bind_rot(p)
-  sky_bind_lighting(p)
-  u_mat4(gpu_uniform(p, "u_inv_vp"), cam_inv_vp)
-  u_f(gpu_uniform(p, "u_sky_gain"), 0.95)
-  u_f(gpu_uniform(p, "u_sky_relight"), r3d_sky_relight)
-  u_f(gpu_uniform(p, "u_sky_sat"), 1.35)
-  u_f(gpu_uniform(p, "u_time"), r3d_time)
-  mesh_draw(sky_fullscreen)
-  gpu_depth_write(true)
-  gpu_depth_func(GL_LESS)
+function r3d_draw_sky(render3d_st: mut Render3dState) -> void {
+  gpu_depth_func(render3d_st, GL_LEQUAL)
+  gpu_depth_write(render3d_st, false)
+  gpu_cull(render3d_st, false)
+  let p = render3d_st.r3d_sky_prog
+  gpu_use_program(render3d_st, p)
+  r3d_bind_2d(render3d_st, p, "u_sky", 0, render3d_st.sky_tex)
+  sky_bind_rot(render3d_st, p)
+  sky_bind_lighting(render3d_st, p)
+  u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_inv_vp"), render3d_st.cam_inv_vp)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_sky_gain"), 0.95)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_sky_relight"), render3d_st.r3d_sky_relight)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_sky_sat"), 1.35)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_time"), render3d_st.r3d_time)
+  mesh_draw(render3d_st, render3d_st.sky_fullscreen)
+  gpu_depth_write(render3d_st, true)
+  gpu_depth_func(render3d_st, GL_LESS)
 }
 
 # The end of the game's frame, whichever backend draws it: a screenshot first if one is wanted,
 # then the present. A game calls these rather than Gl.swap / Gl.screenshot.
-function r3d_screenshot(path: string) -> bool { return gpu_screenshot(path) }
-function r3d_present() -> void { gpu_present() }
+function r3d_screenshot(render3d_st: mut Render3dState, path: string) -> bool { return gpu_screenshot(render3d_st, path) }
+function r3d_present(render3d_st: mut Render3dState) -> void { gpu_present(render3d_st) }
 
 # the drawable changed size: the camera's aspect and every screen-sized target follow
-function r3d_resize() -> void {
-  cam_aspect = float(gl_w) / float(gl_h)
-  cam_update()
-  post_free()
-  post_init(gl_w, gl_h)
-  if water_refl != null { target_free(water_refl);  water_refl = null }
+function r3d_resize(render3d_st: mut Render3dState) -> void {
+  render3d_st.cam_aspect = float(gl_w) / float(gl_h)
+  cam_update(render3d_st)
+  post_free(render3d_st)
+  post_init(render3d_st, gl_w, gl_h)
+  if render3d_st.water_refl != null { target_free(render3d_st, render3d_st.water_refl);  render3d_st.water_refl = null }
   print(`r3d: resized to {gl_w}x{gl_h}`)
 }
-var r3d_cam_log: int = -1
-function r3d_frame(time: float) -> void {
-  gpu_glcheck_after("the time between frames")
-  outline_frame()
-  if not r3d_ready { return }
-  if gpu_resize_check() { r3d_resize() }
+function r3d_frame(render3d_st: mut Render3dState, time: float) -> void {
+  gpu_glcheck_after(render3d_st, "the time between frames")
+  outline_frame(render3d_st)
+  if not render3d_st.r3d_ready { return }
+  if gpu_resize_check(render3d_st) { r3d_resize(render3d_st) }
   # R3D_RESIZE_AT=<frame>: rebuild every screen-sized buffer mid-run, as a window resize
   # or a fullscreen change does. Headless has no window to resize, and this path is where
   # a stale attachment or a texture freed twice shows up.
-  r3d_test_frame += 1
-  if r3d_test_resize == 0 and r3d_env_has("R3D_RESIZE_AT") { r3d_test_resize = Text.to_int(r3d_env("R3D_RESIZE_AT")) }
+  render3d_st.r3d_test_frame += 1
+  if render3d_st.r3d_test_resize == 0 and r3d_env_has(render3d_st, "R3D_RESIZE_AT") { render3d_st.r3d_test_resize = Text.to_int(r3d_env(render3d_st, "R3D_RESIZE_AT")) }
   # R3D_RESIZE_AT=<n>: from frame n on, rebuild every screen-sized buffer every few
   # frames at a different size, as dragging a window edge or entering fullscreen does.
-  if r3d_test_resize > 0 and r3d_test_frame >= r3d_test_resize and r3d_test_frame % 4 == 0 {
-    let step = (r3d_test_frame / 4) % 4
+  if render3d_st.r3d_test_resize > 0 and render3d_st.r3d_test_frame >= render3d_st.r3d_test_resize and render3d_st.r3d_test_frame % 4 == 0 {
+    let step = (render3d_st.r3d_test_frame / 4) % 4
     var w = 1920;  var h = 1080
     if step == 1 { w = 1440;  h = 810 }
     if step == 2 { w = 2560;  h = 1440 }
     if step == 3 { w = 1281;  h = 721 }
     gl_w = w;  gl_h = h
-    r3d_resize()
+    r3d_resize(render3d_st)
   }
-  r3d_time = time
-  gsl_frame_start()
+  render3d_st.r3d_time = time
+  gsl_frame_start(render3d_st)
   # the frame's counters close here, before any of its own work: the window each of them
   # covers is exactly one frame, from this point to the same point next time
-  prof_gen_frame()
-  prof_mark_start()
-  cam_begin_frame(post_frame, gl_w, gl_h)
+  prof_gen_frame(render3d_st)
+  prof_mark_start(render3d_st)
+  cam_begin_frame(render3d_st, render3d_st.post_frame, gl_w, gl_h)
   # R3D_CAM_LOG=1: the camera each frame, in millimetres and thousandths of a radian - to tell a
   # camera that moves while the hiker stands still from a picture that shakes on its own
-  if r3d_cam_log < 0 { r3d_cam_log = 0;  if r3d_env_has("R3D_CAM_LOG") { r3d_cam_log = 1 } }
-  if r3d_cam_log == 1 {
-    print(`cam {r3d_test_frame} pos {int(cam_pos[0] * 1000.0)} {int(cam_pos[1] * 1000.0)} {int(cam_pos[2] * 1000.0)} yaw {int(cam_yaw * 1000.0)} pitch {int(cam_pitch * 1000.0)} jitter {int(gsl_jitter_x * 1000000.0)} {int(gsl_jitter_y * 1000000.0)} render {post_w}x{post_h} reset {gsl_reset} evalok {gsl_eval_ok} fresh {gsl_fresh}`)
+  if render3d_st.r3d_cam_log < 0 { render3d_st.r3d_cam_log = 0;  if r3d_env_has(render3d_st, "R3D_CAM_LOG") { render3d_st.r3d_cam_log = 1 } }
+  if render3d_st.r3d_cam_log == 1 {
+    print(`cam {render3d_st.r3d_test_frame} pos {int(render3d_st.cam_pos[0] * 1000.0)} {int(render3d_st.cam_pos[1] * 1000.0)} {int(render3d_st.cam_pos[2] * 1000.0)} yaw {int(render3d_st.cam_yaw * 1000.0)} pitch {int(render3d_st.cam_pitch * 1000.0)} jitter {int(render3d_st.gsl_jitter_x * 1000000.0)} {int(render3d_st.gsl_jitter_y * 1000000.0)} render {render3d_st.post_w}x{render3d_st.post_h} reset {render3d_st.gsl_reset} evalok {render3d_st.gsl_eval_ok} fresh {render3d_st.gsl_fresh}`)
   }
   # the height-field shadow rebakes as the light moves in steps (daylight), or with the sky yaw when there is no clock
-  if not r3d_plate and ((not day_on and ter_shadow_yaw != sky_yaw) or ter_shadow_gen != day_gen) {
-    ter_shadow_gen = day_gen
+  if not render3d_st.r3d_plate and ((not render3d_st.day_on and render3d_st.ter_shadow_yaw != render3d_st.sky_yaw) or render3d_st.ter_shadow_gen != render3d_st.day_gen) {
+    render3d_st.ter_shadow_gen = render3d_st.day_gen
     let t_bk = gl_now_us()
-    terrain_bake_shadow()
-    prof_bake_add(gl_now_us() - t_bk)
+    terrain_bake_shadow(render3d_st)
+    prof_bake_add(render3d_st, gl_now_us() - t_bk)
   }
-  scatter_begin_frame()
-  prof_cpu_mark("shadow rebake")
-  stream_update_all()
-  prof_cpu_mark("streaming")
-  if not r3d_no_shadow { prof_begin("shadow");  shadow_pass();  prof_end() }
-  prof_cpu_mark("shadow pass")
-  if water_on and not r3d_no_refl and water_reflect_visible() { prof_begin("water reflection");  water_reflection_pass();  prof_end() }
-  prof_cpu_mark("reflection")
-  post_begin_scene()
+  scatter_begin_frame(render3d_st)
+  prof_cpu_mark(render3d_st, "shadow rebake")
+  stream_update_all(render3d_st)
+  prof_cpu_mark(render3d_st, "streaming")
+  if not render3d_st.r3d_no_shadow { prof_begin(render3d_st, "shadow");  shadow_pass(render3d_st);  prof_end(render3d_st) }
+  prof_cpu_mark(render3d_st, "shadow pass")
+  if render3d_st.water_on and not render3d_st.r3d_no_refl and water_reflect_visible(render3d_st) { prof_begin(render3d_st, "water reflection");  water_reflection_pass(render3d_st);  prof_end(render3d_st) }
+  prof_cpu_mark(render3d_st, "reflection")
+  post_begin_scene(render3d_st)
   # the near tree foliage lays its depth down before anything is shaded, so the terrain
   # under the stands and the cards behind the front ones are rejected before lighting.
   # It has to come straight after post_begin_scene: terrain_sun_prepare binds its own
   # target, and depth drawn after it lands in the sun buffer, not the scene's.
-  if not r3d_prepass_off() {
-    prof_begin("foliage prepass")
-    gpu_color_write(false)
-    scatter_draw_depth()
-    gpu_color_write(true)
-    prof_end()
-    sc_prepass = true
+  if not r3d_prepass_off(render3d_st) {
+    prof_begin(render3d_st, "foliage prepass")
+    gpu_color_write(render3d_st, false)
+    scatter_draw_depth(render3d_st)
+    gpu_color_write(render3d_st, true)
+    prof_end(render3d_st)
+    render3d_st.sc_prepass = true
   }
-  prof_cpu_mark("foliage prepass")
-  if not r3d_plate {
-    prof_begin("terrain sun")
-    terrain_sun_prepare()
-    prof_end()
-    prof_begin("terrain")
-    terrain_draw()
-    prof_end()
+  prof_cpu_mark(render3d_st, "foliage prepass")
+  if not render3d_st.r3d_plate {
+    prof_begin(render3d_st, "terrain sun")
+    terrain_sun_prepare(render3d_st)
+    prof_end(render3d_st)
+    prof_begin(render3d_st, "terrain")
+    terrain_draw(render3d_st)
+    prof_end(render3d_st)
   }
-  prof_cpu_mark("terrain")
-  prof_begin("scene (vegetation)")
-  r3d_scene_draw()
-  prof_end()
-  sc_prepass = false
-  prof_cpu_mark("vegetation")
-  prof_begin("grass")
-  grass_draw()
-  prof_end()
-  prof_cpu_mark("grass")
-  prof_begin("sky")
-  r3d_draw_sky()
-  prof_end()
-  prof_begin("resolve MSAA")
-  post_resolve()
-  prof_end()
+  prof_cpu_mark(render3d_st, "terrain")
+  prof_begin(render3d_st, "scene (vegetation)")
+  r3d_scene_draw(render3d_st)
+  prof_end(render3d_st)
+  render3d_st.sc_prepass = false
+  prof_cpu_mark(render3d_st, "vegetation")
+  prof_begin(render3d_st, "grass")
+  grass_draw(render3d_st)
+  prof_end(render3d_st)
+  prof_cpu_mark(render3d_st, "grass")
+  prof_begin(render3d_st, "sky")
+  r3d_draw_sky(render3d_st)
+  prof_end(render3d_st)
+  prof_begin(render3d_st, "resolve MSAA")
+  post_resolve(render3d_st)
+  prof_end(render3d_st)
   # transparent water over the resolved frame: it tests against the frame's own
   # depth and reads a copy of it for the depth tint and soft shores
-  if water_on {
-    prof_begin("water surface")
-    post_capture_scene()
-    target_bind(post_hdr)
-    gpu_depth_test(true)
-    gpu_depth_func(GL_LESS)
-    water_draw(post_depth_copy.depth)
-    prof_end()
+  if render3d_st.water_on {
+    prof_begin(render3d_st, "water surface")
+    post_capture_scene(render3d_st)
+    target_bind(render3d_st, render3d_st.post_hdr)
+    gpu_depth_test(render3d_st, true)
+    gpu_depth_func(render3d_st, GL_LESS)
+    water_draw(render3d_st, render3d_st.post_depth_copy.depth)
+    prof_end(render3d_st)
   }
-  post_color = post_hdr.color;  post_color_w = post_w;  post_color_h = post_h
+  render3d_st.post_color = render3d_st.post_hdr.color;  render3d_st.post_color_w = render3d_st.post_w;  render3d_st.post_color_h = render3d_st.post_h
   # DLSS super resolution: the lit frame up to the display's size, before anything reads it
-  if gsl_dlss_live() { prof_begin("DLSS");  post_color = gsl_dlss_eval();  prof_end() }
+  if gsl_dlss_live(render3d_st) { prof_begin(render3d_st, "DLSS");  render3d_st.post_color = gsl_dlss_eval(render3d_st);  prof_end(render3d_st) }
   # Before bloom and before the tonemap: a shaft of light is a bright thing in the air and
   # should bloom like one.
-  prof_begin("volumetric");  post_volumetric_pass();  prof_end()
-  prof_begin("dof");  post_dof_pass();  prof_end()
-  if not post_no_gi { prof_begin("SSAO/GI");  post_ssao_pass();  prof_end() }
-  if r3d_debug_max { tex_max(post_hdr.color, post_hdr.w, post_hdr.h, "hdr") }
-  prof_begin("bloom")
-  post_bloom_pass()
-  prof_end()
-  prof_begin("tonemap+exposure")
-  post_tonemap(post_color)
-  prof_end()
-  prof_cpu_mark("post")
-  prof_begin("prev-colour copy")
-  post_capture_prev()
-  prof_end()
-  prof_collect()
-  gpu_check("frame")
+  prof_begin(render3d_st, "volumetric");  post_volumetric_pass(render3d_st);  prof_end(render3d_st)
+  prof_begin(render3d_st, "dof");  post_dof_pass(render3d_st);  prof_end(render3d_st)
+  if not render3d_st.post_no_gi { prof_begin(render3d_st, "SSAO/GI");  post_ssao_pass(render3d_st);  prof_end(render3d_st) }
+  if render3d_st.r3d_debug_max { tex_max(render3d_st, render3d_st.post_hdr.color, render3d_st.post_hdr.w, render3d_st.post_hdr.h, "hdr") }
+  prof_begin(render3d_st, "bloom")
+  post_bloom_pass(render3d_st)
+  prof_end(render3d_st)
+  prof_begin(render3d_st, "tonemap+exposure")
+  post_tonemap(render3d_st, render3d_st.post_color)
+  prof_end(render3d_st)
+  prof_cpu_mark(render3d_st, "post")
+  prof_begin(render3d_st, "prev-colour copy")
+  post_capture_prev(render3d_st)
+  prof_end(render3d_st)
+  prof_collect(render3d_st)
+  gpu_check(render3d_st, "frame")
 }

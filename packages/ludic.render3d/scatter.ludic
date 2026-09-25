@@ -84,19 +84,19 @@ property Layer {
 }
 
 # the procedural models' one layout: position, normal, uv, interleaved at 32 bytes
-function sc_model_layout(m: Mesh) -> void {
-  gpu_mesh_attr(m, 0, 3, GPU_F32, 32, 0, false)
-  gpu_mesh_attr(m, 1, 3, GPU_F32, 32, 12, false)
-  gpu_mesh_attr(m, 2, 2, GPU_F32, 32, 24, false)
+function sc_model_layout(render3d_st: Render3dState, m: Mesh) -> void {
+  gpu_mesh_attr(render3d_st, m, 0, 3, GPU_F32, 32, 0, false)
+  gpu_mesh_attr(render3d_st, m, 1, 3, GPU_F32, 32, 12, false)
+  gpu_mesh_attr(render3d_st, m, 2, 2, GPU_F32, 32, 24, false)
 }
 
 # Two crossed unit quads (x in [-0.5, 0.5], y in [0, 1]), attribute 0 = pos,
 # 1 = the quad's facing normal, 2 = uv. Scaled per layer to the atlas card size.
-function model_cross_card() -> Model {
+function model_cross_card(render3d_st: mut Render3dState) -> Model {
   let model = new Model
   model.prims = new []Prim
   let pr = new Prim
-  let m = gpu_mesh_new()
+  let m = gpu_mesh_new(render3d_st)
   let v = gl_floats(8 * 8)
   var k = 0
   for q in 0 .. 2 {
@@ -110,19 +110,19 @@ function model_cross_card() -> Model {
       k += 8
     }
   }
-  gpu_mesh_vertices(m, v, gl_bytes_of(64), GPU_STATIC)
-  sc_model_layout(m)
+  gpu_mesh_vertices(render3d_st, m, v, gl_bytes_of(64), GPU_STATIC)
+  sc_model_layout(render3d_st, m)
   free(v)
   let idx = words(12)
   idx[0] = 0;  idx[1] = 1;  idx[2] = 2;  idx[3] = 0;  idx[4] = 2;  idx[5] = 3
   idx[6] = 4;  idx[7] = 5;  idx[8] = 6;  idx[9] = 4;  idx[10] = 6;  idx[11] = 7
-  gpu_mesh_indices(m, data_of(idx), 48, 4)
+  gpu_mesh_indices(render3d_st, m, data_of(idx), 48, 4)
   free(idx)
   m.count = 12
-  gpu_mesh_done(m)
+  gpu_mesh_done(render3d_st, m)
   pr.mesh = m
-  if gltf_white == 0 { gltf_white = tex_solid(200, 200, 200, 255);  gltf_flat = tex_solid(128, 128, 255, 255) }
-  pr.diff = gltf_white;  pr.nrm = gltf_flat;  pr.arm = gltf_white
+  if render3d_st.gltf_white == 0 { render3d_st.gltf_white = tex_solid(render3d_st, 200, 200, 200, 255);  render3d_st.gltf_flat = tex_solid(render3d_st, 128, 128, 255, 255) }
+  pr.diff = render3d_st.gltf_white;  pr.nrm = render3d_st.gltf_flat;  pr.arm = render3d_st.gltf_white
   push(model.prims, pr)
   model.radius = 0.5;  model.height = 1.0;  model.tris = 4
   return model
@@ -134,20 +134,20 @@ function model_cross_card() -> Model {
 # leaves it at zero. It is per layer rather than per instance because a species quakes or
 # it does not.
 function layer_flutter(l: Layer, v: float) -> void { l.flutter = v }
-function layer_cards(scan: Model, cap: int, wind: float, cull: float) -> Layer {
-  let l = layer_new(model_cross_card(), cap, true, wind, 0.0, cull)
+function layer_cards(render3d_st: mut Render3dState, scan: Model, cap: int, wind: float, cull: float) -> Layer {
+  let l = layer_new(render3d_st, model_cross_card(render3d_st), cap, true, wind, 0.0, cull)
   l.card = true
-  l.atlas = impostor_bake(scan, 1, 512, 512)
+  l.atlas = impostor_bake(render3d_st, scan, 1, 512, 512)
   return l
 }
 
 # A lupine spike (1 m tall): a stem of two crossed quads (uv.x in [0,1]) and
 # seven tiers of crossed floret quads (uv.x in [1,2]), coloured in the shader.
-function model_lupine() -> Model {
+function model_lupine(render3d_st: mut Render3dState) -> Model {
   let model = new Model
   model.prims = new []Prim
   let pr = new Prim
-  let m = gpu_mesh_new()
+  let m = gpu_mesh_new(render3d_st)
   # quads: stem x2 + tiers 12 x 2 + 3 leaves = 29 quads
   let nq = 29
   let v = gl_floats(nq * 4 * 8)
@@ -191,16 +191,16 @@ function model_lupine() -> Model {
     idx[qi] = b;  idx[qi + 1] = b + 1;  idx[qi + 2] = b + 2;  idx[qi + 3] = b;  idx[qi + 4] = b + 2;  idx[qi + 5] = b + 3
     qi += 6
   }
-  gpu_mesh_vertices(m, v, gl_bytes_of(nq * 4 * 8), GPU_STATIC)
-  sc_model_layout(m)
+  gpu_mesh_vertices(render3d_st, m, v, gl_bytes_of(nq * 4 * 8), GPU_STATIC)
+  sc_model_layout(render3d_st, m)
   free(v)
-  gpu_mesh_indices(m, data_of(idx), nq * 6 * 4, 4)
+  gpu_mesh_indices(render3d_st, m, data_of(idx), nq * 6 * 4, 4)
   free(idx)
   m.count = nq * 6
-  gpu_mesh_done(m)
+  gpu_mesh_done(render3d_st, m)
   pr.mesh = m
-  if gltf_white == 0 { gltf_white = tex_solid(200, 200, 200, 255);  gltf_flat = tex_solid(128, 128, 255, 255) }
-  pr.diff = gltf_white;  pr.nrm = gltf_flat;  pr.arm = gltf_white
+  if render3d_st.gltf_white == 0 { render3d_st.gltf_white = tex_solid(render3d_st, 200, 200, 200, 255);  render3d_st.gltf_flat = tex_solid(render3d_st, 128, 128, 255, 255) }
+  pr.diff = render3d_st.gltf_white;  pr.nrm = render3d_st.gltf_flat;  pr.arm = render3d_st.gltf_white
   push(model.prims, pr)
   model.radius = 0.08;  model.height = 0.65;  model.tris = nq * 2
   return model
@@ -208,11 +208,11 @@ function model_lupine() -> Model {
 
 # A dense lupine for baking into a card: a stem, ~220 small floret quads in a
 # tapering spiral (uv.x in [1,2]) and five leaves (uv.x in [2,3]).
-function model_lupine_dense() -> Model {
+function model_lupine_dense(render3d_st: mut Render3dState) -> Model {
   let model = new Model
   model.prims = new []Prim
   let pr = new Prim
-  let m = gpu_mesh_new()
+  let m = gpu_mesh_new(render3d_st)
   let nfl = 220
   let nq = 2 + nfl + 5
   let v = gl_floats(nq * 4 * 8)
@@ -264,27 +264,27 @@ function model_lupine_dense() -> Model {
     idx[qi] = b;  idx[qi + 1] = b + 1;  idx[qi + 2] = b + 2;  idx[qi + 3] = b;  idx[qi + 4] = b + 2;  idx[qi + 5] = b + 3
     qi += 6
   }
-  gpu_mesh_vertices(m, v, gl_bytes_of(nq * 4 * 8), GPU_STATIC)
-  sc_model_layout(m)
+  gpu_mesh_vertices(render3d_st, m, v, gl_bytes_of(nq * 4 * 8), GPU_STATIC)
+  sc_model_layout(render3d_st, m)
   free(v)
-  gpu_mesh_indices(m, data_of(idx), nq * 6 * 4, 4)
+  gpu_mesh_indices(render3d_st, m, data_of(idx), nq * 6 * 4, 4)
   free(idx)
   m.count = nq * 6
-  gpu_mesh_done(m)
+  gpu_mesh_done(render3d_st, m)
   pr.mesh = m
-  if gltf_white == 0 { gltf_white = tex_solid(200, 200, 200, 255);  gltf_flat = tex_solid(128, 128, 255, 255) }
-  pr.diff = gltf_white;  pr.nrm = gltf_flat;  pr.arm = gltf_white
+  if render3d_st.gltf_white == 0 { render3d_st.gltf_white = tex_solid(render3d_st, 200, 200, 200, 255);  render3d_st.gltf_flat = tex_solid(render3d_st, 128, 128, 255, 255) }
+  pr.diff = render3d_st.gltf_white;  pr.nrm = render3d_st.gltf_flat;  pr.arm = render3d_st.gltf_white
   push(model.prims, pr)
   model.radius = 0.11;  model.height = 0.68;  model.tris = nq * 2
   return model
 }
 
 # A procedural grass blade (1 m tall, 5 cm wide, curved): 5 rows of 2 vertices.
-function model_blade() -> Model {
+function model_blade(render3d_st: mut Render3dState) -> Model {
   let model = new Model
   model.prims = new []Prim
   let pr = new Prim
-  let m = gpu_mesh_new()
+  let m = gpu_mesh_new(render3d_st)
   let rows = 5
   let v = gl_floats(rows * 2 * 8)
   var k = 0
@@ -303,8 +303,8 @@ function model_blade() -> Model {
       k += 8
     }
   }
-  gpu_mesh_vertices(m, v, gl_bytes_of(rows * 2 * 8), GPU_STATIC)
-  sc_model_layout(m)
+  gpu_mesh_vertices(render3d_st, m, v, gl_bytes_of(rows * 2 * 8), GPU_STATIC)
+  sc_model_layout(render3d_st, m)
   free(v)
   let ni = (rows - 1) * 6
   let idx = words(ni)
@@ -315,96 +315,68 @@ function model_blade() -> Model {
     idx[k + 3] = a + 1;  idx[k + 4] = a + 3;  idx[k + 5] = a + 2
     k += 6
   }
-  gpu_mesh_indices(m, data_of(idx), ni * 4, 4)
+  gpu_mesh_indices(render3d_st, m, data_of(idx), ni * 4, 4)
   free(idx)
   m.count = ni
-  gpu_mesh_done(m)
+  gpu_mesh_done(render3d_st, m)
   pr.mesh = m
-  if gltf_white == 0 { gltf_white = tex_solid(200, 200, 200, 255);  gltf_flat = tex_solid(128, 128, 255, 255) }
-  pr.diff = gltf_white;  pr.nrm = gltf_flat;  pr.arm = gltf_white
+  if render3d_st.gltf_white == 0 { render3d_st.gltf_white = tex_solid(render3d_st, 200, 200, 200, 255);  render3d_st.gltf_flat = tex_solid(render3d_st, 128, 128, 255, 255) }
+  pr.diff = render3d_st.gltf_white;  pr.nrm = render3d_st.gltf_flat;  pr.arm = render3d_st.gltf_white
   push(model.prims, pr)
   model.radius = 0.05;  model.height = 1.0;  model.tris = ni / 3
   return model
 }
 
-var sc_prog: int = 0
-var sc_prog_fol: int = 0
-var sc_prog_wind: int = 0
-var sc_prog_blade: int = 0
-var sc_prog_flower: int = 0
-var sc_prog_card: int = 0
-var sc_prog_card_shadow: int = 0
-var sc_prog_card_cheap: int = 0
-var sc_blade_base: floats = null
-var sc_blade_tip: floats = null
-var sc_blade_tint: floats = null
-var sc_prog_shadow: int = 0
-var sc_prog_shadow_wind: int = 0
-var sc_prog_shadow_fol: int = 0     # foliage meshes: alpha-tested casters
 # The foliage depth prepass (render.ludic): the near tree LODs write depth first with a
 # shader that only runs the alpha test, then the lit pass shades them with no discard and
 # an equal depth test, so a pixel of needles is lit once rather than once for every card
 # stacked behind it. In a dense stand at 4K that overdraw was the largest pass in the frame.
-var sc_prog_fol_depth: int = 0
-var sc_prog_fol_eq: int = 0
-var sc_prepass: bool = false        # the main pass is drawing over what the prepass laid down
-var sc_imp_prog: int = 0
-var sc_imp_prog_shadow: int = 0
-var sc_bake_prog: int = 0
-var sc_bake_card_prog: int = 0
-var sc_bake_flower_prog: int = 0
-var sc_card: Mesh = null
-var sc_ident_buf: int = 0
-var sc_layers: []Layer = null
-var sc_debug_dump: bool = false
-var sc_printed: bool = false
-var sc_a2c: bool = true
 
-function scatter_init() -> void {
+function scatter_init(render3d_st: mut Render3dState) -> void {
   # R3D_DUMP_ATLAS: every impostor and card atlas the run bakes, to build/atlas_<n>_{color,alpha}.ppm
-  sc_debug_dump = r3d_env_has("R3D_DUMP_ATLAS")
-  sc_prog = r3d_program("model.vert", "model.frag", "")
-  sc_prog_fol = r3d_program("model.vert", "model.frag", "#define FOLIAGE\n#define WIND\n#define ALPHA_TEST\n#define NEAR_FADE\n")
-  sc_prog_fol_depth = r3d_program("model.vert", "depth.frag", "#define FOLIAGE\n#define WIND\n#define ALPHA_TEST\n#define NEAR_FADE\n")
-  sc_prog_fol_eq = r3d_program("model.vert", "model.frag", "#define FOLIAGE\n#define WIND\n#define EQ_PASS\n#define NEAR_FADE\n")
-  sc_prog_wind = r3d_program("model.vert", "model.frag", "#define WIND\n")
-  sc_prog_blade = r3d_program("model.vert", "model.frag", "#define FOLIAGE\n#define WIND\n#define BLADE\n")
-  sc_prog_flower = r3d_program("model.vert", "model.frag", "#define FOLIAGE\n#define WIND\n#define FLOWER\n")
-  sc_prog_card = r3d_program("model.vert", "model.frag", "#define FOLIAGE\n#define WIND\n#define CARD\n")
-  sc_prog_card_shadow = r3d_program("model.vert", "model.frag", "#define SHADOW_PASS\n#define WIND\n#define CARD\n")
-  sc_prog_card_cheap = r3d_program("model.vert", "model.frag", "#define CARD\n#define CHEAP\n")
+  render3d_st.sc_debug_dump = r3d_env_has(render3d_st, "R3D_DUMP_ATLAS")
+  render3d_st.sc_prog = r3d_program(render3d_st, "model.vert", "model.frag", "")
+  render3d_st.sc_prog_fol = r3d_program(render3d_st, "model.vert", "model.frag", "#define FOLIAGE\n#define WIND\n#define ALPHA_TEST\n#define NEAR_FADE\n")
+  render3d_st.sc_prog_fol_depth = r3d_program(render3d_st, "model.vert", "depth.frag", "#define FOLIAGE\n#define WIND\n#define ALPHA_TEST\n#define NEAR_FADE\n")
+  render3d_st.sc_prog_fol_eq = r3d_program(render3d_st, "model.vert", "model.frag", "#define FOLIAGE\n#define WIND\n#define EQ_PASS\n#define NEAR_FADE\n")
+  render3d_st.sc_prog_wind = r3d_program(render3d_st, "model.vert", "model.frag", "#define WIND\n")
+  render3d_st.sc_prog_blade = r3d_program(render3d_st, "model.vert", "model.frag", "#define FOLIAGE\n#define WIND\n#define BLADE\n")
+  render3d_st.sc_prog_flower = r3d_program(render3d_st, "model.vert", "model.frag", "#define FOLIAGE\n#define WIND\n#define FLOWER\n")
+  render3d_st.sc_prog_card = r3d_program(render3d_st, "model.vert", "model.frag", "#define FOLIAGE\n#define WIND\n#define CARD\n")
+  render3d_st.sc_prog_card_shadow = r3d_program(render3d_st, "model.vert", "model.frag", "#define SHADOW_PASS\n#define WIND\n#define CARD\n")
+  render3d_st.sc_prog_card_cheap = r3d_program(render3d_st, "model.vert", "model.frag", "#define CARD\n#define CHEAP\n")
   # a dry alpine meadow: brown-olive roots, straw with a little green at the tips
-  sc_blade_base = v3_new(0.045, 0.06, 0.025)
-  sc_blade_tip = v3_new(0.22, 0.27, 0.13)
-  sc_blade_tint = v3_new(1.0, 1.0, 1.0)
-  sc_prog_shadow = r3d_program("model.vert", "shadow.frag", "#define SHADOW_PASS\n")
-  sc_prog_shadow_wind = r3d_program("model.vert", "shadow.frag", "#define SHADOW_PASS\n#define WIND\n")
-  sc_prog_shadow_fol = r3d_program("model.vert", "shadow.frag", "#define SHADOW_PASS\n#define WIND\n#define ALPHA_TEST\n")
-  sc_imp_prog = r3d_program("impostor.vert", "impostor.frag", "")
-  sc_imp_prog_shadow = r3d_program("impostor.vert", "impostor.frag", "#define SHADOW_PASS\n")
-  sc_bake_prog = r3d_program("model.vert", "bake.frag", "")
-  sc_bake_flower_prog = r3d_program("model.vert", "bake.frag", "#define FLOWER\n")
-  sc_bake_card_prog = r3d_program("model.vert", "bake.frag", "#define CARD\n")
-  sc_card = mesh_card()
+  render3d_st.sc_blade_base = v3_new(0.045, 0.06, 0.025)
+  render3d_st.sc_blade_tip = v3_new(0.22, 0.27, 0.13)
+  render3d_st.sc_blade_tint = v3_new(1.0, 1.0, 1.0)
+  render3d_st.sc_prog_shadow = r3d_program(render3d_st, "model.vert", "shadow.frag", "#define SHADOW_PASS\n")
+  render3d_st.sc_prog_shadow_wind = r3d_program(render3d_st, "model.vert", "shadow.frag", "#define SHADOW_PASS\n#define WIND\n")
+  render3d_st.sc_prog_shadow_fol = r3d_program(render3d_st, "model.vert", "shadow.frag", "#define SHADOW_PASS\n#define WIND\n#define ALPHA_TEST\n")
+  render3d_st.sc_imp_prog = r3d_program(render3d_st, "impostor.vert", "impostor.frag", "")
+  render3d_st.sc_imp_prog_shadow = r3d_program(render3d_st, "impostor.vert", "impostor.frag", "#define SHADOW_PASS\n")
+  render3d_st.sc_bake_prog = r3d_program(render3d_st, "model.vert", "bake.frag", "")
+  render3d_st.sc_bake_flower_prog = r3d_program(render3d_st, "model.vert", "bake.frag", "#define FLOWER\n")
+  render3d_st.sc_bake_card_prog = r3d_program(render3d_st, "model.vert", "bake.frag", "#define CARD\n")
+  render3d_st.sc_card = mesh_card(render3d_st)
   # a single identity instance, for baking
   let one = gl_floats(INST_FLOATS)
   for i in 0 .. INST_FLOATS { gl_put_bits(one, i, float_bits(0.0)) }
   gl_put_bits(one, 3, float_bits(1.0));  gl_put_bits(one, 5, float_bits(1.0))
-  sc_ident_buf = gpu_buffer_new()
-  gpu_buffer_upload(sc_ident_buf, INST_FLOATS * 4, one, GPU_STATIC)
+  render3d_st.sc_ident_buf = gpu_buffer_new(render3d_st)
+  gpu_buffer_upload(render3d_st, render3d_st.sc_ident_buf, INST_FLOATS * 4, one, GPU_STATIC)
   free(one)
-  sc_layers = new []Layer
+  render3d_st.sc_layers = new []Layer
 }
 
 # feed a mesh its instances from `buf`: attribute 3 = position + scale, 4 = sin, cos, seed, wind
-function scatter_attach(m: Mesh, buf: int) -> void {
-  gpu_mesh_bind_instances(m, buf)
-  gpu_mesh_attr_inst(m, 3, 4, GPU_F32, INST_FLOATS * 4, 0)
-  gpu_mesh_attr_inst(m, 4, 4, GPU_F32, INST_FLOATS * 4, 16)
-  gpu_mesh_done(m)
+function scatter_attach(render3d_st: Render3dState, m: Mesh, buf: int) -> void {
+  gpu_mesh_bind_instances(render3d_st, m, buf)
+  gpu_mesh_attr_inst(render3d_st, m, 3, 4, GPU_F32, INST_FLOATS * 4, 0)
+  gpu_mesh_attr_inst(render3d_st, m, 4, 4, GPU_F32, INST_FLOATS * 4, 16)
+  gpu_mesh_done(render3d_st, m)
 }
 
-function layer_new(model: Model, cap: int, foliage: bool, wind: float, near: float, cull: float) -> Layer {
+function layer_new(render3d_st: mut Render3dState, model: Model, cap: int, foliage: bool, wind: float, near: float, cull: float) -> Layer {
   let l = new Layer
   l.model = model
   l.cap = cap
@@ -416,12 +388,12 @@ function layer_new(model: Model, cap: int, foliage: bool, wind: float, near: flo
   l.inst = floats(cap * INST_FLOATS)
   l.scratch = floats(cap * INST_FLOATS)
   l.last_cam = v3_new(100000.0, 0.0, 0.0)
-  l.buf = gpu_buffer_new()
-  l.imp_buf = gpu_buffer_new()
-  l.sh_buf = gpu_buffer_new()
+  l.buf = gpu_buffer_new(render3d_st)
+  l.imp_buf = gpu_buffer_new(render3d_st)
+  l.sh_buf = gpu_buffer_new(render3d_st)
   l.rough = 1.0
-  for i in 0 .. len(model.prims) { scatter_attach(model.prims[i].mesh, l.buf) }
-  push(sc_layers, l)
+  for i in 0 .. len(model.prims) { scatter_attach(render3d_st, model.prims[i].mesh, l.buf) }
+  push(render3d_st.sc_layers, l)
   return l
 }
 
@@ -434,41 +406,39 @@ function layer_add(l: Layer, x: float, y: float, z: float, scale: float, yaw: fl
 }
 
 # ---- impostors ---------------------------------------------------------------------
-var sc_bake_flower: bool = false
-var sc_dump_n: int = 0
-function impostor_bake(model: Model, tiles: int, tw: int, th: int) -> Impostor {
+function impostor_bake(render3d_st: mut Render3dState, model: Model, tiles: int, tw: int, th: int) -> Impostor {
   let im = new Impostor
   im.tiles = tiles
   im.radius = model.radius * 1.02
   im.height = model.height
   let aw = tiles * tw
-  im.albedo = tex_target(aw, th, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR)
-  im.normal = tex_target(aw, th, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR)
-  let fbo = gpu_fb_new()
-  gpu_fb_bind(fbo)
-  gpu_fb_color(0, im.albedo)
-  gpu_fb_color(1, im.normal)
-  let rb = gpu_rb_new()
-  gpu_rb_storage(rb, GL_DEPTH_COMPONENT24, aw, th, 0)
-  gpu_fb_depth_rb(rb)
-  gpu_fb_draw_buffers(2)
-  gpu_viewport(0, 0, aw, th)
-  gpu_clear_color(0.0, 0.0, 0.0, 0.0)
-  gpu_clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-  gpu_depth_test(true)
-  gpu_depth_func(GL_LESS)
-  gpu_cull(false)
-  gpu_blend(false)
+  im.albedo = tex_target(render3d_st, aw, th, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR)
+  im.normal = tex_target(render3d_st, aw, th, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR)
+  let fbo = gpu_fb_new(render3d_st)
+  gpu_fb_bind(render3d_st, fbo)
+  gpu_fb_color(render3d_st, 0, im.albedo)
+  gpu_fb_color(render3d_st, 1, im.normal)
+  let rb = gpu_rb_new(render3d_st)
+  gpu_rb_storage(render3d_st, rb, GL_DEPTH_COMPONENT24, aw, th, 0)
+  gpu_fb_depth_rb(render3d_st, rb)
+  gpu_fb_draw_buffers(render3d_st, 2)
+  gpu_viewport(render3d_st, 0, 0, aw, th)
+  gpu_clear_color(render3d_st, 0.0, 0.0, 0.0, 0.0)
+  gpu_clear(render3d_st, GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+  gpu_depth_test(render3d_st, true)
+  gpu_depth_func(render3d_st, GL_LESS)
+  gpu_cull(render3d_st, false)
+  gpu_blend(render3d_st, false)
   # the model's prims temporarily take the identity instance
-  for i in 0 .. len(model.prims) { scatter_attach(model.prims[i].mesh, sc_ident_buf) }
+  for i in 0 .. len(model.prims) { scatter_attach(render3d_st, model.prims[i].mesh, render3d_st.sc_ident_buf) }
   let view = m4_new();  let proj = m4_new()
   let eye = floats(3);  let at = floats(3);  let up = v3_new(0.0, 1.0, 0.0)
   let cy = model.ymin + model.height * 0.5
   let r = im.radius
   let hh = model.height * 0.5
-  var bake = sc_bake_prog
-  if sc_bake_flower { bake = sc_bake_flower_prog }
-  gpu_use_program(bake)
+  var bake = render3d_st.sc_bake_prog
+  if render3d_st.sc_bake_flower { bake = render3d_st.sc_bake_flower_prog }
+  gpu_use_program(render3d_st, bake)
   for t in 0 .. tiles {
     let a = 2.0 * PI * (float(t) / float(tiles))
     v3_set(at, 0.0, cy, 0.0)
@@ -476,49 +446,49 @@ function impostor_bake(model: Model, tiles: int, tw: int, th: int) -> Impostor {
     v3_set(eye, Math.sin(a) * (r * 4.0), cy + r * 0.5, -(Math.cos(a) * (r * 4.0)))
     m4_look_at(view, eye, at, up)
     m4_ortho(proj, -r, r, -hh, hh, 0.1, r * 9.0)
-    u_mat4(gpu_uniform(bake, "u_view"), view)
-    u_mat4(gpu_uniform(bake, "u_proj"), proj)
-    u_f(gpu_uniform(bake, "u_wind"), 0.0)
-    u_f(gpu_uniform(bake, "u_flutter"), 0.0)
-    gpu_viewport(t * tw, 0, tw, th)
+    u_mat4(render3d_st, gpu_uniform(render3d_st, bake, "u_view"), view)
+    u_mat4(render3d_st, gpu_uniform(render3d_st, bake, "u_proj"), proj)
+    u_f(render3d_st, gpu_uniform(render3d_st, bake, "u_wind"), 0.0)
+    u_f(render3d_st, gpu_uniform(render3d_st, bake, "u_flutter"), 0.0)
+    gpu_viewport(render3d_st, t * tw, 0, tw, th)
     for i in 0 .. len(model.prims) {
       let pr = model.prims[i]
-      r3d_bind_2d(bake, "u_diff", 0, pr.diff)
-      r3d_bind_2d(bake, "u_arm", 2, pr.arm)
-      mesh_draw_instanced(pr.mesh, 1)
+      r3d_bind_2d(render3d_st, bake, "u_diff", 0, pr.diff)
+      r3d_bind_2d(render3d_st, bake, "u_arm", 2, pr.arm)
+      mesh_draw_instanced(render3d_st, pr.mesh, 1)
     }
   }
   free(view);  free(proj);  free(eye);  free(at);  free(up)
-  gpu_fb_bind(0)
-  gpu_fb_free(fbo)
-  gpu_rb_free(rb)
-  gpu_tex_bind(GPU_TEX2D, im.albedo)
-  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
-  gpu_tex_mips(GPU_TEX2D)
-  gpu_tex_bind(GPU_TEX2D, im.normal)
-  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
-  gpu_tex_mips(GPU_TEX2D)
-  gpu_check("impostor bake")
+  gpu_fb_bind(render3d_st, 0)
+  gpu_fb_free(render3d_st, fbo)
+  gpu_rb_free(render3d_st, rb)
+  gpu_tex_bind(render3d_st, GPU_TEX2D, im.albedo)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+  gpu_tex_mips(render3d_st, GPU_TEX2D)
+  gpu_tex_bind(render3d_st, GPU_TEX2D, im.normal)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+  gpu_tex_mips(render3d_st, GPU_TEX2D)
+  gpu_check(render3d_st, "impostor bake")
   # numbered, so every bake of a run survives to be compared (a card layer per species bakes one)
-  if sc_debug_dump {
-    sc_dump_n += 1
-    tex_dump_alpha = true;  tex_dump(im.albedo, aw, th, `build/atlas_{sc_dump_n}_alpha.ppm`);  tex_dump_alpha = false
-    tex_dump(im.albedo, aw, th, `build/atlas_{sc_dump_n}_color.ppm`)
+  if render3d_st.sc_debug_dump {
+    render3d_st.sc_dump_n += 1
+    render3d_st.tex_dump_alpha = true;  tex_dump(render3d_st, im.albedo, aw, th, `build/atlas_{render3d_st.sc_dump_n}_alpha.ppm`);  render3d_st.tex_dump_alpha = false
+    tex_dump(render3d_st, im.albedo, aw, th, `build/atlas_{render3d_st.sc_dump_n}_color.ppm`)
   }
   return im
 }
 
 # Give a layer a LOD chain. `dists` (float bits) are the outer distances of each level;
 # the last one becomes the layer's `near` so the impostor (if any) starts there.
-function layer_set_lods(l: Layer, models: []Model, dists: floats) -> void {
+function layer_set_lods(render3d_st: mut Render3dState, l: Layer, models: []Model, dists: floats) -> void {
   l.lods = models
   l.n_lods = len(models)
   l.lod_dist = floats(l.n_lods);  l.lod_card = words(l.n_lods);  l.lod_buf = words(l.n_lods);  l.n_lod = words(l.n_lods)
   for k in 0 .. l.n_lods {
     l.lod_dist[k] = dists[k];  l.lod_card[k] = 0;  l.n_lod[k] = 0
-    l.lod_buf[k] = gpu_buffer_new()
+    l.lod_buf[k] = gpu_buffer_new(render3d_st)
     let m = models[k]
-    for i in 0 .. len(m.prims) { scatter_attach(m.prims[i].mesh, l.lod_buf[k]) }
+    for i in 0 .. len(m.prims) { scatter_attach(render3d_st, m.prims[i].mesh, l.lod_buf[k]) }
   }
   l.model = models[0]
   l.near = dists[l.n_lods - 1]
@@ -527,28 +497,25 @@ function layer_set_lods(l: Layer, models: []Model, dists: floats) -> void {
 # mark level k as the layer's crossed card (drawn with the card program and its atlas)
 function layer_lod_card(l: Layer, k: int) -> void { l.lod_card[k] = 1 }
 
-function layer_set_impostor(l: Layer, im: Impostor) -> void {
+function layer_set_impostor(render3d_st: Render3dState, l: Layer, im: Impostor) -> void {
   l.imp = im
-  scatter_attach(sc_card, l.imp_buf)
+  scatter_attach(render3d_st, render3d_st.sc_card, l.imp_buf)
 }
 
 # ---- per frame -----------------------------------------------------------------------
 # Partitions and gathers are redone only when the view changed enough to matter: the
 # camera moved 1.5 m or turned about 2.5 degrees. Everything culled by the frustum keys
 # off this one counter, so a turn re-gathers the streams and the grids together.
-var sc_view_gen: int = 1
-var sc_view_pos: floats = null
-var sc_view_fwd: floats = null
-function scatter_begin_frame() -> void {
-  if sc_view_pos == null { sc_view_pos = v3_new(100000.0, 0.0, 0.0);  sc_view_fwd = v3_new(0.0, 0.0, -1.0) }
-  if v3_dist(sc_view_pos, cam_pos) > 1.5 or v3_dot(sc_view_fwd, cam_fwd) < 0.999 {
-    sc_view_gen += 1
-    v3_copy(sc_view_pos, cam_pos)
-    v3_copy(sc_view_fwd, cam_fwd)
+function scatter_begin_frame(render3d_st: mut Render3dState) -> void {
+  if render3d_st.sc_view_pos == null { render3d_st.sc_view_pos = v3_new(100000.0, 0.0, 0.0);  render3d_st.sc_view_fwd = v3_new(0.0, 0.0, -1.0) }
+  if v3_dist(render3d_st.sc_view_pos, render3d_st.cam_pos) > 1.5 or v3_dot(render3d_st.sc_view_fwd, render3d_st.cam_fwd) < 0.999 {
+    render3d_st.sc_view_gen += 1
+    v3_copy(render3d_st.sc_view_pos, render3d_st.cam_pos)
+    v3_copy(render3d_st.sc_view_fwd, render3d_st.cam_fwd)
   }
   # GPU-culled layers dispatch before the first pass of the frame, so no pass is split for it
-  if sc_layers != null {
-    for i in 0 .. len(sc_layers) { if sc_layers[i].n_lods > 1 and sc_layers[i].imp != null { layer_update(sc_layers[i]) } }
+  if render3d_st.sc_layers != null {
+    for i in 0 .. len(render3d_st.sc_layers) { if render3d_st.sc_layers[i].n_lods > 1 and render3d_st.sc_layers[i].imp != null { layer_update(render3d_st, render3d_st.sc_layers[i]) } }
   }
 }
 
@@ -560,15 +527,10 @@ function scatter_begin_frame() -> void {
 # when the view moves. PC camp benchmark: 2791 -> 2657 draws, 4.3 -> 4.1 s for 400 frames.
 const SC_REC_W: int = 20              # a VkDrawIndexedIndirectCommand
 const SC_RECS: int = 29               # 16 level x prim, 1 impostor, 12 shadow LOD (scatter_cull.comp)
-var sc_cull_prog: int = 0
-var sc_cull_tried: bool = false
-var sc_ind_base: int = -1             # >= 0: layer_draw_model / layer_draw_depth draw records from here
-var sc_ind_n: int = 1                 # records each of those draws covers: one per level of a material
-var sc_ind_stride: int = 4            # records between one material's first and the next's (3 for the shadow LOD)
 
-function layer_gpu_eligible(l: Layer) -> bool {
+function layer_gpu_eligible(render3d_st: Render3dState, l: Layer) -> bool {
   if l.n_lods < 2 or l.n_lods > 4 or l.imp == null or l.streamed or l.flower or l.blade or l.count == 0 { return false }
-  return layer_arena_ok(l)
+  return layer_arena_ok(render3d_st, l)
 }
 
 # The merged meshes. Every level of a kit tree or rock carries the same materials in the same order
@@ -577,7 +539,7 @@ function layer_gpu_eligible(l: Layer) -> bool {
 # level's index and vertex range and its bucket's instances. A conifer's lit pass goes from eight
 # draws to two. Anything that does not fit - a card level, a level with other materials, other
 # attributes or 32-bit indices - keeps the CPU path.
-function layer_arena_ok(l: Layer) -> bool {
+function layer_arena_ok(render3d_st: Render3dState, l: Layer) -> bool {
   let n_mat = len(l.lods[0].prims)
   if n_mat == 0 or n_mat > 4 { return false }
   for k in 0 .. l.n_lods {
@@ -588,18 +550,18 @@ function layer_arena_ok(l: Layer) -> bool {
       let pm = m.prims[j].mesh
       let p0 = l.lods[0].prims[j]
       if m.prims[j].diff != p0.diff or m.prims[j].verts == 0 or pm.ebo == 0 or pm.itype != GL_UNSIGNED_SHORT { return false }
-      if gpu_buffer_map(pm.ebo) == null { return false }
+      if gpu_buffer_map(render3d_st, pm.ebo) == null { return false }
       for a in 0 .. 3 {
         let o = a * GPU_ATTR_W
         if p0.mesh.attrs[o + 1] == 0 or pm.attrs[o + 1] != p0.mesh.attrs[o + 1] or pm.attrs[o + 3] != pm.attrs[o + 1] * 4 { return false }
-        if gpu_buffer_map(pm.attrs[o]) == null { return false }
+        if gpu_buffer_map(render3d_st, pm.attrs[o]) == null { return false }
       }
     }
   }
   return true
 }
 
-function layer_arena_build(l: Layer) -> void {
+function layer_arena_build(render3d_st: mut Render3dState, l: Layer) -> void {
   let n_mat = len(l.lods[0].prims)
   l.g_arena = new []Prim
   l.g_first = words(16);  l.g_base = words(16)
@@ -613,28 +575,28 @@ function layer_arena_build(l: Layer) -> void {
       nv += pr.verts;  ni += pr.mesh.count
     }
     let p0 = l.lods[0].prims[j]
-    let m = gpu_mesh_new()
+    let m = gpu_mesh_new(render3d_st)
     for a in 0 .. 3 {
       let comps = p0.mesh.attrs[a * GPU_ATTR_W + 1]
       let vb = bytes(nv * comps * 4 + 8)
       for k in 0 .. l.n_lods {
         let pr = l.lods[k].prims[j]
-        mem_copy(mem_off(vb, l.g_base[j * 4 + k] * comps * 4), gpu_buffer_map(pr.mesh.attrs[a * GPU_ATTR_W]), pr.verts * comps * 4)
+        mem_copy(mem_off(vb, l.g_base[j * 4 + k] * comps * 4), gpu_buffer_map(render3d_st, pr.mesh.attrs[a * GPU_ATTR_W]), pr.verts * comps * 4)
       }
-      gpu_mesh_vertices(m, vb, nv * comps * 4, GPU_STATIC)
-      gpu_mesh_attr(m, a, comps, GPU_F32, 0, 0, false)
+      gpu_mesh_vertices(render3d_st, m, vb, nv * comps * 4, GPU_STATIC)
+      gpu_mesh_attr(render3d_st, m, a, comps, GPU_F32, 0, 0, false)
       free(vb)
     }
     let ib = bytes(ni * 2 + 8)
     for k in 0 .. l.n_lods {
       let pm = l.lods[k].prims[j].mesh
-      mem_copy(mem_off(ib, l.g_first[j * 4 + k] * 2), gpu_buffer_map(pm.ebo), pm.count * 2)
+      mem_copy(mem_off(ib, l.g_first[j * 4 + k] * 2), gpu_buffer_map(render3d_st, pm.ebo), pm.count * 2)
     }
-    gpu_mesh_indices(m, ib, ni * 2, 2)
+    gpu_mesh_indices(render3d_st, m, ib, ni * 2, 2)
     free(ib)
     m.count = ni
-    gpu_mesh_done(m)
-    scatter_attach(m, l.g_dst)
+    gpu_mesh_done(render3d_st, m)
+    scatter_attach(render3d_st, m, l.g_dst)
     let ap = new Prim
     ap.mesh = m;  ap.diff = p0.diff;  ap.nrm = p0.nrm;  ap.arm = p0.arm;  ap.verts = nv;  ap.name = p0.name
     push(l.g_arena, ap)
@@ -647,29 +609,29 @@ function layer_arena_build(l: Layer) -> void {
   l.g_model_sh.prims = l.g_arena;  l.g_model_sh.height = l.lods[sh].height;  l.g_model_sh.radius = l.lods[sh].radius;  l.g_model_sh.ymin = l.lods[sh].ymin
 }
 
-function layer_gpu_prepare(l: Layer) -> bool {
-  if not sc_cull_tried {
-    sc_cull_tried = true
+function layer_gpu_prepare(render3d_st: mut Render3dState, l: Layer) -> bool {
+  if not render3d_st.sc_cull_tried {
+    render3d_st.sc_cull_tried = true
     # Os.env is null when the variable is unset, and a compare reads through it: ask first
     # on by default wherever there is compute; R3D_GPU_CULL=0 keeps the CPU partition (for comparing)
     var off = false
-    if r3d_env_has("R3D_GPU_CULL") { off = r3d_env("R3D_GPU_CULL") == "0" }
-    if gpu_has_compute() and gpu_has_mdi() and not off {
-      sc_cull_prog = gpu_compute("scatter_cull", 4)
-      if sc_cull_prog > 0 { print("r3d: scatter: tree layers are culled on the GPU") }
+    if r3d_env_has(render3d_st, "R3D_GPU_CULL") { off = r3d_env(render3d_st, "R3D_GPU_CULL") == "0" }
+    if gpu_has_compute(render3d_st) and gpu_has_mdi(render3d_st) and not off {
+      render3d_st.sc_cull_prog = gpu_compute(render3d_st, "scatter_cull", 4)
+      if render3d_st.sc_cull_prog > 0 { print("r3d: scatter: tree layers are culled on the GPU") }
     }
   }
-  if sc_cull_prog == 0 or not layer_gpu_eligible(l) { return false }
+  if render3d_st.sc_cull_prog == 0 or not layer_gpu_eligible(render3d_st, l) { return false }
   if l.g_on and l.g_n == l.count { return true }
   if l.g_src == 0 {
-    l.g_src = gpu_buffer_new();  l.g_dst = gpu_buffer_new();  l.g_cmds = gpu_buffer_new();  l.g_counts = gpu_buffer_new()
-    gpu_buffer_gpu_owned(l.g_dst);  gpu_buffer_gpu_owned(l.g_cmds);  gpu_buffer_gpu_owned(l.g_counts)
+    l.g_src = gpu_buffer_new(render3d_st);  l.g_dst = gpu_buffer_new(render3d_st);  l.g_cmds = gpu_buffer_new(render3d_st);  l.g_counts = gpu_buffer_new(render3d_st)
+    gpu_buffer_gpu_owned(render3d_st, l.g_dst);  gpu_buffer_gpu_owned(render3d_st, l.g_cmds);  gpu_buffer_gpu_owned(render3d_st, l.g_counts)
   }
   let n = l.n_lods
   let cap = l.count
-  gpu_buffer_upload(l.g_src, cap * INST_FLOATS * 4, data_of(l.inst), GPU_STATIC)
-  gpu_buffer_upload(l.g_dst, (n + 1) * cap * INST_FLOATS * 4, null, GPU_DYNAMIC)
-  if l.g_arena == null { layer_arena_build(l) }
+  gpu_buffer_upload(render3d_st, l.g_src, cap * INST_FLOATS * 4, data_of(l.inst), GPU_STATIC)
+  gpu_buffer_upload(render3d_st, l.g_dst, (n + 1) * cap * INST_FLOATS * 4, null, GPU_DYNAMIC)
+  if l.g_arena == null { layer_arena_build(render3d_st, l) }
   let n_mat = len(l.g_arena)
   let rec = words(SC_RECS * 5)
   for i in 0 .. SC_RECS * 5 { rec[i] = 0 }
@@ -680,7 +642,7 @@ function layer_gpu_prepare(l: Layer) -> bool {
       rec[r] = l.lods[k].prims[j].mesh.count;  rec[r + 2] = l.g_first[j * 4 + k];  rec[r + 3] = l.g_base[j * 4 + k];  rec[r + 4] = k * cap
     }
   }
-  rec[16 * 5] = sc_card.count;  rec[16 * 5 + 4] = n * cap
+  rec[16 * 5] = render3d_st.sc_card.count;  rec[16 * 5 + 4] = n * cap
   # the shadow LOD: level 2's range, from buckets 0 .. 2
   if n > 2 {
     for j in 0 .. n_mat {
@@ -690,39 +652,39 @@ function layer_gpu_prepare(l: Layer) -> bool {
       }
     }
   }
-  gpu_buffer_upload(l.g_cmds, SC_RECS * SC_REC_W, data_of(rec), GPU_DYNAMIC)
+  gpu_buffer_upload(render3d_st, l.g_cmds, SC_RECS * SC_REC_W, data_of(rec), GPU_DYNAMIC)
   let zeros = words(5)
   for i in 0 .. 5 { zeros[i] = 0 }
-  gpu_buffer_upload(l.g_counts, 20, data_of(zeros), GPU_DYNAMIC)
+  gpu_buffer_upload(render3d_st, l.g_counts, 20, data_of(zeros), GPU_DYNAMIC)
   free(rec);  free(zeros)
   # the card casts every instance, as on the CPU path (layer_grid_build uploads this there)
   l.n_sh = l.count
-  gpu_buffer_upload(l.sh_buf, l.count * INST_FLOATS * 4, data_of(l.inst), GPU_STATIC)
+  gpu_buffer_upload(render3d_st, l.sh_buf, l.count * INST_FLOATS * 4, data_of(l.inst), GPU_STATIC)
   l.g_n = l.count
   l.g_on = true
   return true
 }
 
 # the dispatch for the view as it stands: frustum, camera, distances, the layer's shape
-function layer_gpu_cull(l: Layer) -> void {
+function layer_gpu_cull(render3d_st: mut Render3dState, l: Layer) -> void {
   let pr = words(36)
   for i in 0 .. 36 { pr[i] = 0 }
-  if cam_planes != null { for i in 0 .. 16 { pr[i] = float_bits(cam_planes[i]) } }
-  pr[16] = float_bits(cam_pos[0]);  pr[17] = float_bits(cam_pos[1]);  pr[18] = float_bits(cam_pos[2]);  pr[19] = float_bits(l.cull)
+  if render3d_st.cam_planes != null { for i in 0 .. 16 { pr[i] = float_bits(render3d_st.cam_planes[i]) } }
+  pr[16] = float_bits(render3d_st.cam_pos[0]);  pr[17] = float_bits(render3d_st.cam_pos[1]);  pr[18] = float_bits(render3d_st.cam_pos[2]);  pr[19] = float_bits(l.cull)
   for k in 0 .. l.n_lods { pr[20 + k] = float_bits(l.lod_dist[k]);  pr[24 + k] = len(l.lods[k].prims) }
   pr[28] = l.count;  pr[29] = l.count;  pr[30] = l.n_lods;  pr[31] = 1
   # as layer_grid_gather pads a cell: the tallest instance, plus a margin
   pr[32] = float_bits(l.lods[0].height * 2.0);  pr[33] = float_bits(4.0)
   let bufs = words(4)
   bufs[0] = l.g_src;  bufs[1] = l.g_dst;  bufs[2] = l.g_cmds;  bufs[3] = l.g_counts
-  gpu_dispatch(sc_cull_prog, data_of(pr), 144, bufs, 1)
+  gpu_dispatch(render3d_st, render3d_st.sc_cull_prog, data_of(pr), 144, bufs, 1)
   free(pr);  free(bufs)
 }
 
 # Sort a static layer's instances into square cells (call once, after placement; a
 # large layer that was never gridded gets a 96 m grid on its first update). The
 # shadow buffer is uploaded here once — casters are never culled by the view.
-function layer_grid_build(l: Layer, cell: float) -> void {
+function layer_grid_build(render3d_st: mut Render3dState, l: Layer, cell: float) -> void {
   if l.count == 0 { return }
   var minx = l.inst[0];  var maxx = minx;  var minz = l.inst[2];  var maxz = minz
   for i in 0 .. l.count {
@@ -762,11 +724,11 @@ function layer_grid_build(l: Layer, cell: float) -> void {
   free(cellof);  free(fill)
   if l.vis == null { l.vis = floats(l.cap * INST_FLOATS) }
   l.n_sh = l.count
-  gpu_buffer_upload(l.sh_buf, l.count * INST_FLOATS * 4, data_of(l.inst), GPU_STATIC)
+  gpu_buffer_upload(render3d_st, l.sh_buf, l.count * INST_FLOATS * 4, data_of(l.inst), GPU_STATIC)
 }
 
 # gather the instances of the cells the camera can see (and that are within cull)
-function layer_grid_gather(l: Layer) -> void {
+function layer_grid_gather(render3d_st: Render3dState, l: Layer) -> void {
   let cell = l.gcell
   let half = cell * 0.5
   let reach = l.cull + cell * 0.71
@@ -779,14 +741,14 @@ function layer_grid_gather(l: Layer) -> void {
       if cnt == 0 { continue }
       let wx = l.gx0 + float(ix) * cell + half
       if l.cull != 0.0 {
-        let dx = wx - cam_pos[0];  let dz = wz - cam_pos[2]
+        let dx = wx - render3d_st.cam_pos[0];  let dz = wz - render3d_st.cam_pos[2]
         if Math.sqrt(dx * dx + dz * dz) > reach { continue }
       }
       let hy = (l.gymax[c] - l.gymin[c]) * 0.5
       let cy = l.gymin[c] + hy
       # pad by the tallest instance (scale 2 of the model's height) so crowns at the frame's edge stay
       let r = Math.sqrt(half * half * 2.0 + hy * hy) + (l.model.height * 2.0 + 4.0)
-      if not cam_sphere_visible(wx, cy, wz, r) { continue }
+      if not cam_sphere_visible(render3d_st, wx, cy, wz, r) { continue }
       mem_copy(mem_off(l.vis, n * INST_FLOATS * 4), mem_off(l.gsorted, l.gstart[c] * INST_FLOATS * 4), cnt * INST_FLOATS * 4)
       n += cnt
     }
@@ -796,7 +758,7 @@ function layer_grid_gather(l: Layer) -> void {
 
 # Sort the gathered instances into their LOD levels (counting sort into the scratch),
 # the impostor bucket last, and upload one buffer per level.
-function layer_partition_lods(l: Layer, src: floats, total: int) -> void {
+function layer_partition_lods(render3d_st: mut Render3dState, l: Layer, src: floats, total: int) -> void {
   let n = l.n_lods
   let counts = words(n + 2)
   for k in 0 .. n + 2 { counts[k] = 0 }
@@ -804,7 +766,7 @@ function layer_partition_lods(l: Layer, src: floats, total: int) -> void {
   let open = l.lod_dist[n - 1] == 0.0      # the last level runs out to the cull distance
   for i in 0 .. total {
     let o = i * INST_FLOATS
-    let dx = src[o] - cam_pos[0];  let dz = src[o + 2] - cam_pos[2]
+    let dx = src[o] - render3d_st.cam_pos[0];  let dz = src[o + 2] - render3d_st.cam_pos[2]
     let d2 = dx * dx + dz * dz
     var lv = n + 1                           # n + 1 = dropped
     if l.cull == 0.0 or not (d2 > cull2) {
@@ -836,44 +798,43 @@ function layer_partition_lods(l: Layer, src: floats, total: int) -> void {
   for k in 0 .. n {
     l.n_lod[k] = counts[k]
     if counts[k] > 0 {
-      gpu_buffer_upload(l.lod_buf[k], counts[k] * INST_FLOATS * 4, mem_off(tmp, start[k] * INST_FLOATS * 4), GPU_DYNAMIC)
+      gpu_buffer_upload(render3d_st, l.lod_buf[k], counts[k] * INST_FLOATS * 4, mem_off(tmp, start[k] * INST_FLOATS * 4), GPU_DYNAMIC)
     }
   }
   l.n_near = counts[0]
   l.n_far = counts[n]
-  if sc_dbg_lod and total > 1000 { print(`lod partition: total {total} dropped {counts[n + 1]} far {counts[n]} l0 {counts[0]} l1 {counts[1]} l2 {counts[2]} l3 {counts[3]} dist0 {fixed(l.lod_dist[0])} dist3 {fixed(l.lod_dist[n - 1])} cull {fixed(l.cull)} cam {fixed(cam_pos[0])} {fixed(cam_pos[2])} first {fixed(src[0])} {fixed(src[2])}`) }
+  if render3d_st.sc_dbg_lod and total > 1000 { print(`lod partition: total {total} dropped {counts[n + 1]} far {counts[n]} l0 {counts[0]} l1 {counts[1]} l2 {counts[2]} l3 {counts[3]} dist0 {fixed(l.lod_dist[0])} dist3 {fixed(l.lod_dist[n - 1])} cull {fixed(l.cull)} cam {fixed(render3d_st.cam_pos[0])} {fixed(render3d_st.cam_pos[2])} first {fixed(src[0])} {fixed(src[2])}`) }
   if l.n_far > 0 {
-    gpu_buffer_upload(l.imp_buf, l.n_far * INST_FLOATS * 4, mem_off(tmp, start[n] * INST_FLOATS * 4), GPU_DYNAMIC)
+    gpu_buffer_upload(render3d_st, l.imp_buf, l.n_far * INST_FLOATS * 4, mem_off(tmp, start[n] * INST_FLOATS * 4), GPU_DYNAMIC)
   }
   # casters: the whole (gathered) set from the shadow buffer, unless the impostor casts
   if l.gcell == 0.0 {
     l.n_sh = total
-    if total > 0 { gpu_buffer_upload(l.sh_buf, total * INST_FLOATS * 4, data_of(src), GPU_DYNAMIC) }
+    if total > 0 { gpu_buffer_upload(render3d_st, l.sh_buf, total * INST_FLOATS * 4, data_of(src), GPU_DYNAMIC) }
   }
   free(counts);  free(start);  free(fill)
 }
 
 # split the instances by distance to the camera (only when the view changed)
-var sc_freeze: bool = false           # a secondary pass (reflection) reuses the partition
-function layer_update(l: Layer) -> void {
-  if sc_freeze { return }
-  if l.view_gen == sc_view_gen { return }
-  l.view_gen = sc_view_gen
-  if layer_gpu_prepare(l) { layer_gpu_cull(l);  return }
+function layer_update(render3d_st: mut Render3dState, l: Layer) -> void {
+  if render3d_st.sc_freeze { return }
+  if l.view_gen == render3d_st.sc_view_gen { return }
+  l.view_gen = render3d_st.sc_view_gen
+  if layer_gpu_prepare(render3d_st, l) { layer_gpu_cull(render3d_st, l);  return }
   let t_lu = gl_now_us()
   let n_lu = l.count
   # A streamed layer's instances were already gathered per visible chunk: no split, no
   # per-instance loop — one upload, and the same buffer casts its shadows.
   if l.streamed and l.imp == null and l.near == 0.0 and l.n_lods <= 1 {
     l.n_near = l.count;  l.n_far = 0;  l.n_sh = l.count
-    gpu_buffer_upload(l.buf, l.count * INST_FLOATS * 4, data_of(l.inst), GPU_DYNAMIC)
-    prof_layer_add(gl_now_us() - t_lu, l.count * INST_FLOATS * 4)
+    gpu_buffer_upload(render3d_st, l.buf, l.count * INST_FLOATS * 4, data_of(l.inst), GPU_DYNAMIC)
+    prof_layer_add(render3d_st, gl_now_us() - t_lu, l.count * INST_FLOATS * 4)
     return
   }
-  if l.gcell == 0.0 and not l.streamed and l.count > 2000 { layer_grid_build(l, 96.0) }
+  if l.gcell == 0.0 and not l.streamed and l.count > 2000 { layer_grid_build(render3d_st, l, 96.0) }
   var src = l.inst
   var total = l.count
-  if l.gcell != 0.0 { layer_grid_gather(l);  src = l.vis;  total = l.n_vis }
+  if l.gcell != 0.0 { layer_grid_gather(render3d_st, l);  src = l.vis;  total = l.n_vis }
   let near2 = l.near * l.near
   let cull2 = l.cull * l.cull
   var nn = 0
@@ -881,15 +842,15 @@ function layer_update(l: Layer) -> void {
   let far_off = l.cap * INST_FLOATS    # far instances fill the scratch from its end backwards
   let tmp = l.scratch
   if l.n_lods > 1 {
-    layer_partition_lods(l, src, total)
-    prof_layer_add(gl_now_us() - t_lu, total * INST_FLOATS * 4)
+    layer_partition_lods(render3d_st, l, src, total)
+    prof_layer_add(render3d_st, gl_now_us() - t_lu, total * INST_FLOATS * 4)
     return
   }
   var i = 0
   while i < total {
     let o = i * INST_FLOATS
-    let dx = src[o] - cam_pos[0]
-    let dz = src[o + 2] - cam_pos[2]
+    let dx = src[o] - render3d_st.cam_pos[0]
+    let dz = src[o + 2] - render3d_st.cam_pos[2]
     let d2 = dx * dx + dz * dz
     if l.cull != 0.0 and d2 > cull2 { i += 1;  continue }
     if l.near == 0.0 or d2 < near2 {
@@ -905,8 +866,8 @@ function layer_update(l: Layer) -> void {
   }
   l.n_near = nn
   l.n_far = nf
-  if l.imp != null and nn > 0 and sc_debug_dump { print(`near full-mesh instances: {nn} (first at {fixed(tmp[0])} {fixed(tmp[1])} {fixed(tmp[2])})`) }
-  if sc_debug_dump and l.imp != null {
+  if l.imp != null and nn > 0 and render3d_st.sc_debug_dump { print(`near full-mesh instances: {nn} (first at {fixed(tmp[0])} {fixed(tmp[1])} {fixed(tmp[2])})`) }
+  if render3d_st.sc_debug_dump and l.imp != null {
     print(`layer: near {nn} far {nf}`)
     for k in 0 .. nn { let q = k * INST_FLOATS;  print(`  near {fixed(tmp[q])} {fixed(tmp[q + 1])} {fixed(tmp[q + 2])} s {fixed(tmp[q + 3])}`) }
   }
@@ -916,42 +877,38 @@ function layer_update(l: Layer) -> void {
   if l.gcell == 0.0 {
     l.n_sh = l.count
     if l.count > 0 {
-      gpu_buffer_upload(l.sh_buf, l.count * INST_FLOATS * 4, data_of(l.inst), GPU_DYNAMIC)
+      gpu_buffer_upload(render3d_st, l.sh_buf, l.count * INST_FLOATS * 4, data_of(l.inst), GPU_DYNAMIC)
     }
   }
-  gpu_buffer_upload(l.buf, nn * INST_FLOATS * 4, data_of(tmp), GPU_DYNAMIC)
+  gpu_buffer_upload(render3d_st, l.buf, nn * INST_FLOATS * 4, data_of(tmp), GPU_DYNAMIC)
   if nf > 0 {
-    gpu_buffer_upload(l.imp_buf, nf * INST_FLOATS * 4, mem_off(tmp, (far_off - nf * INST_FLOATS) * 4), GPU_DYNAMIC)
+    gpu_buffer_upload(render3d_st, l.imp_buf, nf * INST_FLOATS * 4, mem_off(tmp, (far_off - nf * INST_FLOATS) * 4), GPU_DYNAMIC)
   }
-  prof_layer_add(gl_now_us() - t_lu, (nn + nf + l.n_sh) * INST_FLOATS * 4)
+  prof_layer_add(render3d_st, gl_now_us() - t_lu, (nn + nf + l.n_sh) * INST_FLOATS * 4)
 }
 
-function layer_program(l: Layer, shadow: bool, card: bool) -> int {
+function layer_program(render3d_st: Render3dState, l: Layer, shadow: bool, card: bool) -> int {
   if card {
-    if shadow { return sc_prog_card_shadow }
-    if l.cheap { return sc_prog_card_cheap }
-    return sc_prog_card
+    if shadow { return render3d_st.sc_prog_card_shadow }
+    if l.cheap { return render3d_st.sc_prog_card_cheap }
+    return render3d_st.sc_prog_card
   }
   if shadow {
-    if l.foliage and not l.blade and not l.flower { return sc_prog_shadow_fol }
-    if l.wind != 0.0 { return sc_prog_shadow_wind }
-    return sc_prog_shadow
+    if l.foliage and not l.blade and not l.flower { return render3d_st.sc_prog_shadow_fol }
+    if l.wind != 0.0 { return render3d_st.sc_prog_shadow_wind }
+    return render3d_st.sc_prog_shadow
   }
-  if l.blade { return sc_prog_blade }
-  if l.flower { return sc_prog_flower }
+  if l.blade { return render3d_st.sc_prog_blade }
+  if l.flower { return render3d_st.sc_prog_flower }
   if l.foliage {
-    if sc_prepass and sc_prog_fol_eq != 0 { return sc_prog_fol_eq }
-    return sc_prog_fol
+    if render3d_st.sc_prepass and render3d_st.sc_prog_fol_eq != 0 { return render3d_st.sc_prog_fol_eq }
+    return render3d_st.sc_prog_fol
   }
-  if l.wind != 0.0 { return sc_prog_wind }
-  return sc_prog
+  if l.wind != 0.0 { return render3d_st.sc_prog_wind }
+  return render3d_st.sc_prog
 }
 
-var sc_dbg_blade: int = 0
 # R3D_LODDBG=1 tints each LOD level (red, green, blue, yellow) and impostors magenta
-var sc_dbg_level: int = -1
-var sc_dbg_lod: bool = false
-var sc_dbg_tint: floats = null
 # Can level k's casters (its instances lie between the previous level's distance and its own) put a
 # shadow on anything the cascade being rendered covers? A receiver in that slice of view depth
 # [near, far] stands between near - dy and far * K metres away on the ground: dy is the camera's height
@@ -961,39 +918,35 @@ var sc_dbg_tint: floats = null
 # at fixed distances, which dropped casters that did cast (see scatter_draw_casters). The flowers'
 # mesh levels (6 - 30 m) stop being drawn into the three outer cascades. R3D_CAST_ALL=1 draws every
 # level into every cascade, for comparing.
-var sc_cast_all: int = -1
-var sc_cast_gen: int = -1
-var sc_cast_dy: float = 0.0
-var sc_cast_k: float = 0.0
-function layer_level_casts_here(l: Layer, k: int) -> bool {
+function layer_level_casts_here(render3d_st: mut Render3dState, l: Layer, k: int) -> bool {
   if l.lod_dist == null { return true }
   var dmin = 0.0
   if k > 0 { dmin = l.lod_dist[k - 1] }
-  return cast_band_reaches(dmin, l.lod_dist[k], l.lods[k].height)
+  return cast_band_reaches(render3d_st, dmin, l.lod_dist[k], l.lods[k].height)
 }
 # Can something standing between dmin and dmax metres from the camera (dmax 0: no outer limit), this
 # tall, put a shadow on anything the cascade being rendered covers? The flowers' levels ask it
 # (layer_level_casts_here), and so does every actor (actor_draw_casters).
-function cast_band_reaches(dmin: float, dmax: float, height: float) -> bool {
-  if sc_cast_all < 0 { sc_cast_all = 0;  if r3d_env_has("R3D_CAST_ALL") { sc_cast_all = 1 } }
-  if sc_cast_all == 1 or sh_split == null { return true }
-  if sc_cast_gen != sc_view_gen {
-    sc_cast_gen = sc_view_gen
-    sc_cast_dy = Math.abs(cam_pos[1] - terrain_height(cam_pos[0], cam_pos[2])) + 5.0
-    let half = cam_fov * 0.5
+function cast_band_reaches(render3d_st: mut Render3dState, dmin: float, dmax: float, height: float) -> bool {
+  if render3d_st.sc_cast_all < 0 { render3d_st.sc_cast_all = 0;  if r3d_env_has(render3d_st, "R3D_CAST_ALL") { render3d_st.sc_cast_all = 1 } }
+  if render3d_st.sc_cast_all == 1 or render3d_st.sh_split == null { return true }
+  if render3d_st.sc_cast_gen != render3d_st.sc_view_gen {
+    render3d_st.sc_cast_gen = render3d_st.sc_view_gen
+    render3d_st.sc_cast_dy = Math.abs(render3d_st.cam_pos[1] - terrain_height(render3d_st, render3d_st.cam_pos[0], render3d_st.cam_pos[2])) + 5.0
+    let half = render3d_st.cam_fov * 0.5
     let t = Math.sin(half) / Math.cos(half)
-    let ta = t * cam_aspect
-    sc_cast_k = Math.sqrt(1.0 + (t * t + ta * ta)) * 1.1
+    let ta = t * render3d_st.cam_aspect
+    render3d_st.sc_cast_k = Math.sqrt(1.0 + (t * t + ta * ta)) * 1.1
   }
-  let c = sh_cascade
-  var near = cam_near
+  let c = render3d_st.sh_cascade
+  var near = render3d_st.cam_near
   # sunShadow cross-fades into this cascade from 0.85 of the previous one's split (lighting.glsl), so
   # its receivers start there, not at the split: starting at the split changed 19 pixels in town
-  if c > 0 { near = sh_split[c - 1] * 0.85 }
-  let far = sh_split[c]
+  if c > 0 { near = render3d_st.sh_split[c - 1] * 0.85 }
+  let far = render3d_st.sh_split[c]
   let reach = Math.max(Math.min(height * 6.0, 40.0), 8.0)
-  if dmax != 0.0 and dmax + reach + sc_cast_dy < near { return false }
-  if dmin - reach > far * sc_cast_k { return false }
+  if dmax != 0.0 and dmax + reach + render3d_st.sc_cast_dy < near { return false }
+  if dmin - reach > far * render3d_st.sc_cast_k { return false }
   return true
 }
 
@@ -1001,247 +954,244 @@ function cast_band_reaches(dmin: float, dmax: float, height: float) -> bool {
 # partition out of l.buf. A layer with no impostor (the tree crowns' branch cards) has
 # no cheap stand-in to cast from, so without this its shadow simply began at the near
 # distance — which is the crown shadow that appeared as you walked up to a tree.
-function layer_draw_near(l: Layer, shadow: bool, light_vp: floats, full: bool) -> void {
+function layer_draw_near(render3d_st: mut Render3dState, l: Layer, shadow: bool, light_vp: floats, full: bool) -> void {
   if l.n_lods > 1 and l.g_on and not shadow {
     # one draw per material covering all of its levels (the merged meshes)
-    sc_ind_base = 0;  sc_ind_n = l.n_lods
-    layer_draw_model(l, l.g_model, l.g_dst, 1, false, shadow, light_vp)
-    sc_ind_base = -1;  sc_ind_n = 1
+    render3d_st.sc_ind_base = 0;  render3d_st.sc_ind_n = l.n_lods
+    layer_draw_model(render3d_st, l, l.g_model, l.g_dst, 1, false, shadow, light_vp)
+    render3d_st.sc_ind_base = -1;  render3d_st.sc_ind_n = 1
     return
   }
   if l.n_lods > 1 {
     # a LOD chain: every level from its own bucket (casters are what is drawn), and a caster level
     # only into the cascades it can put a shadow in
     for k in 0 .. l.n_lods {
-      if shadow and not layer_level_casts_here(l, k) { continue }
-      sc_dbg_level = k;  layer_draw_model(l, l.lods[k], l.lod_buf[k], l.n_lod[k], l.lod_card[k] == 1, shadow, light_vp)
+      if shadow and not layer_level_casts_here(render3d_st, l, k) { continue }
+      render3d_st.sc_dbg_level = k;  layer_draw_model(render3d_st, l, l.lods[k], l.lod_buf[k], l.n_lod[k], l.lod_card[k] == 1, shadow, light_vp)
     }
-    sc_dbg_level = -1
+    render3d_st.sc_dbg_level = -1
     return
   }
   var vb = l.buf
   var cnt = l.n_near
   if full and not l.streamed { vb = l.sh_buf;  cnt = l.n_sh }
-  layer_draw_model(l, l.model, vb, cnt, l.card, shadow, light_vp)
+  layer_draw_model(render3d_st, l, l.model, vb, cnt, l.card, shadow, light_vp)
 }
 
 # draw `cnt` instances of `model` out of instance buffer `vb`, as a mesh or as the layer's card
-function layer_draw_model(l: Layer, model: Model, vb: int, cnt: int, card: bool, shadow: bool, light_vp: floats) -> void {
+function layer_draw_model(render3d_st: mut Render3dState, l: Layer, model: Model, vb: int, cnt: int, card: bool, shadow: bool, light_vp: floats) -> void {
   if cnt == 0 { return }
-  let p = layer_program(l, shadow, card)
-  gpu_use_program(p)
+  let p = layer_program(render3d_st, l, shadow, card)
+  gpu_use_program(render3d_st, p)
   # over the prepass: only the fragment the prepass kept, at exactly its depth (a texel
   # it cut would otherwise pass LEQUAL over the terrain behind and draw the quad solid)
-  if p == sc_prog_fol_eq { gpu_depth_func(GL_EQUAL) }
+  if p == render3d_st.sc_prog_fol_eq { gpu_depth_func(render3d_st, GL_EQUAL) }
   var ground = 0.0
   if l.grounded { ground = 1.0 }
-  u_f(gpu_uniform(p, "u_ground"), ground)
-  if l.grounded { terrain_bind_height(p) }
-  u_f(gpu_uniform(p, "u_time"), r3d_time)
-  u_f(gpu_uniform(p, "u_wind"), l.wind)
-  u_f(gpu_uniform(p, "u_flutter"), l.flutter)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_ground"), ground)
+  if l.grounded { terrain_bind_height(render3d_st, p) }
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_time"), render3d_st.r3d_time)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_wind"), l.wind)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_flutter"), l.flutter)
   var mh = 0.0
   if not card and l.foliage { mh = model.height }
-  u_f(gpu_uniform(p, "u_model_h"), mh)
-  if not card and l.foliage and not shadow and sc_a2c { gpu_alpha_to_coverage(true) }
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_model_h"), mh)
+  if not card and l.foliage and not shadow and render3d_st.sc_a2c { gpu_alpha_to_coverage(render3d_st, true) }
   if card {
-    u_f(gpu_uniform(p, "u_card_w"), l.atlas.radius * 2.0);  u_f(gpu_uniform(p, "u_card_h"), l.atlas.height)
-    r3d_bind_2d(p, "u_diff", 0, l.atlas.albedo)
-    r3d_bind_2d(p, "u_nrm", 1, l.atlas.normal)
-    gpu_alpha_to_coverage(true)
+    u_f(render3d_st, gpu_uniform(render3d_st, p, "u_card_w"), l.atlas.radius * 2.0);  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_card_h"), l.atlas.height)
+    r3d_bind_2d(render3d_st, p, "u_diff", 0, l.atlas.albedo)
+    r3d_bind_2d(render3d_st, p, "u_nrm", 1, l.atlas.normal)
+    gpu_alpha_to_coverage(render3d_st, true)
   }
-  if shadow { u_mat4(gpu_uniform(p, "u_light_vp"), light_vp) }
+  if shadow { u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_light_vp"), light_vp) }
   else {
-    u_mat4(gpu_uniform(p, "u_view"), cam_view)
-    u_mat4(gpu_uniform(p, "u_proj"), cam_proj)
-    u_v3(gpu_uniform(p, "u_tint"), l.tint)
-    if sc_dbg_lod and sc_dbg_level >= 0 {
-      if sc_dbg_tint == null { sc_dbg_tint = v3_new(1.0, 1.0, 1.0) }
-      let k = sc_dbg_level
+    u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_view"), render3d_st.cam_view)
+    u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_proj"), render3d_st.cam_proj)
+    u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_tint"), l.tint)
+    if render3d_st.sc_dbg_lod and render3d_st.sc_dbg_level >= 0 {
+      if render3d_st.sc_dbg_tint == null { render3d_st.sc_dbg_tint = v3_new(1.0, 1.0, 1.0) }
+      let k = render3d_st.sc_dbg_level
       var r = 0.0;  var g = 0.0;  var b = 0.0
       if k == 0 { r = 3.0 } else if k == 1 { g = 3.0 } else if k == 2 { b = 3.0 } else { r = 3.0;  g = 3.0 }
-      v3_set(sc_dbg_tint, r, g, b)
-      u_v3(gpu_uniform(p, "u_tint"), sc_dbg_tint)
+      v3_set(render3d_st.sc_dbg_tint, r, g, b)
+      u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_tint"), render3d_st.sc_dbg_tint)
     }
-    u_f(gpu_uniform(p, "u_rough_scale"), l.rough)
-    if l.blade { u_v3(gpu_uniform(p, "u_blade_base"), sc_blade_base);  u_v3(gpu_uniform(p, "u_blade_tip"), sc_blade_tip) }
-    u_f(gpu_uniform(p, "u_cull"), l.cull)
-    sky_bind_lighting(p)
-    shadow_bind(p)
-    fog_bind(p)
-    if l.foliage { u_f(gpu_uniform(p, "u_spec_scale"), 0.05) }
+    u_f(render3d_st, gpu_uniform(render3d_st, p, "u_rough_scale"), l.rough)
+    if l.blade { u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_blade_base"), render3d_st.sc_blade_base);  u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_blade_tip"), render3d_st.sc_blade_tip) }
+    u_f(render3d_st, gpu_uniform(render3d_st, p, "u_cull"), l.cull)
+    sky_bind_lighting(render3d_st, p)
+    shadow_bind(render3d_st, p)
+    fog_bind(render3d_st, p)
+    if l.foliage { u_f(render3d_st, gpu_uniform(render3d_st, p, "u_spec_scale"), 0.05) }
   }
-  gpu_cull(false)
+  gpu_cull(render3d_st, false)
   for i in 0 .. len(model.prims) {
     let pr = model.prims[i]
-    scatter_attach(pr.mesh, vb)
+    scatter_attach(render3d_st, pr.mesh, vb)
     if not card {
-      r3d_bind_2d(p, "u_diff", 0, pr.diff)
-      if not shadow { r3d_bind_2d(p, "u_nrm", 1, pr.nrm);  r3d_bind_2d(p, "u_arm", 2, pr.arm) }
+      r3d_bind_2d(render3d_st, p, "u_diff", 0, pr.diff)
+      if not shadow { r3d_bind_2d(render3d_st, p, "u_nrm", 1, pr.nrm);  r3d_bind_2d(render3d_st, p, "u_arm", 2, pr.arm) }
     }
-    if sc_ind_base >= 0 { gpu_draw_mesh_indirect(pr.mesh, l.g_cmds, (sc_ind_base + i * sc_ind_stride) * SC_REC_W, sc_ind_n, 0, 0) }
-    else { mesh_draw_instanced(pr.mesh, cnt) }
+    if render3d_st.sc_ind_base >= 0 { gpu_draw_mesh_indirect(render3d_st, pr.mesh, l.g_cmds, (render3d_st.sc_ind_base + i * render3d_st.sc_ind_stride) * SC_REC_W, render3d_st.sc_ind_n, 0, 0) }
+    else { mesh_draw_instanced(render3d_st, pr.mesh, cnt) }
   }
-  gpu_alpha_to_coverage(false)
-  if p == sc_prog_fol_eq { gpu_depth_func(GL_LESS) }
+  gpu_alpha_to_coverage(render3d_st, false)
+  if p == render3d_st.sc_prog_fol_eq { gpu_depth_func(render3d_st, GL_LESS) }
 }
 
-function layer_draw_far(l: Layer, shadow: bool, light_vp: floats) -> void {
+function layer_draw_far(render3d_st: mut Render3dState, l: Layer, shadow: bool, light_vp: floats) -> void {
   if l.imp == null or (l.n_far == 0 and not l.g_on) { return }
-  var p = sc_imp_prog
-  if shadow { p = sc_imp_prog_shadow }
-  gpu_use_program(p)
+  var p = render3d_st.sc_imp_prog
+  if shadow { p = render3d_st.sc_imp_prog_shadow }
+  gpu_use_program(render3d_st, p)
   let im = l.imp
-  u_f(gpu_uniform(p, "u_radius"), im.radius)
-  u_f(gpu_uniform(p, "u_height"), im.height)
-  u_f(gpu_uniform(p, "u_tiles"), float(im.tiles))
-  r3d_bind_2d(p, "u_atlas_albedo", 0, im.albedo)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_radius"), im.radius)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_height"), im.height)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_tiles"), float(im.tiles))
+  r3d_bind_2d(render3d_st, p, "u_atlas_albedo", 0, im.albedo)
   if shadow {
-    u_mat4(gpu_uniform(p, "u_light_vp"), light_vp)
-    u_v3(gpu_uniform(p, "u_face_dir"), sun_dir)
-    if r3d_debug_shadow and not sc_printed { sc_printed = true;  print(`imp shadow prog {p} face_dir loc {gpu_uniform(p, "u_face_dir")} sun {fixed(sun_dir[0])} {fixed(sun_dir[1])} {fixed(sun_dir[2])} cam {fixed(cam_pos[0])} {fixed(cam_pos[1])} {fixed(cam_pos[2])} n_far {l.n_far}`) }
-    u_v3(gpu_uniform(p, "u_cam_pos"), cam_pos)
+    u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_light_vp"), light_vp)
+    u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_face_dir"), render3d_st.sun_dir)
+    if render3d_st.r3d_debug_shadow and not render3d_st.sc_printed { render3d_st.sc_printed = true;  print(`imp shadow prog {p} face_dir loc {gpu_uniform(render3d_st, p, "u_face_dir")} sun {fixed(render3d_st.sun_dir[0])} {fixed(render3d_st.sun_dir[1])} {fixed(render3d_st.sun_dir[2])} cam {fixed(render3d_st.cam_pos[0])} {fixed(render3d_st.cam_pos[1])} {fixed(render3d_st.cam_pos[2])} n_far {l.n_far}`) }
+    u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_cam_pos"), render3d_st.cam_pos)
   } else {
-    u_mat4(gpu_uniform(p, "u_view"), cam_view)
-    u_mat4(gpu_uniform(p, "u_proj"), cam_proj)
-    u_v3(gpu_uniform(p, "u_tint"), l.tint)
-    if sc_dbg_lod { if sc_dbg_tint == null { sc_dbg_tint = v3_new(1.0, 1.0, 1.0) };  v3_set(sc_dbg_tint, 3.0, 0.0, 3.0);  u_v3(gpu_uniform(p, "u_tint"), sc_dbg_tint) }
-    r3d_bind_2d(p, "u_atlas_normal", 1, im.normal)
-    sky_bind_lighting(p)
-    shadow_bind(p)
-    fog_bind(p)
-    if l.foliage { u_f(gpu_uniform(p, "u_spec_scale"), 0.05) }
+    u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_view"), render3d_st.cam_view)
+    u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_proj"), render3d_st.cam_proj)
+    u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_tint"), l.tint)
+    if render3d_st.sc_dbg_lod { if render3d_st.sc_dbg_tint == null { render3d_st.sc_dbg_tint = v3_new(1.0, 1.0, 1.0) };  v3_set(render3d_st.sc_dbg_tint, 3.0, 0.0, 3.0);  u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_tint"), render3d_st.sc_dbg_tint) }
+    r3d_bind_2d(render3d_st, p, "u_atlas_normal", 1, im.normal)
+    sky_bind_lighting(render3d_st, p)
+    shadow_bind(render3d_st, p)
+    fog_bind(render3d_st, p)
+    if l.foliage { u_f(render3d_st, gpu_uniform(render3d_st, p, "u_spec_scale"), 0.05) }
   }
-  gpu_cull(false)
-  if not shadow and sc_a2c { gpu_alpha_to_coverage(true) }
+  gpu_cull(render3d_st, false)
+  if not shadow and render3d_st.sc_a2c { gpu_alpha_to_coverage(render3d_st, true) }
   if l.g_on {
-    scatter_attach(sc_card, l.g_dst)
-    gpu_draw_mesh_indirect(sc_card, l.g_cmds, 16 * SC_REC_W, 1, 0, 0)
+    scatter_attach(render3d_st, render3d_st.sc_card, l.g_dst)
+    gpu_draw_mesh_indirect(render3d_st, render3d_st.sc_card, l.g_cmds, 16 * SC_REC_W, 1, 0, 0)
   } else {
-    scatter_attach(sc_card, l.imp_buf)
-    mesh_draw_instanced(sc_card, l.n_far)
+    scatter_attach(render3d_st, render3d_st.sc_card, l.imp_buf)
+    mesh_draw_instanced(render3d_st, render3d_st.sc_card, l.n_far)
   }
-  gpu_alpha_to_coverage(false)
+  gpu_alpha_to_coverage(render3d_st, false)
 }
 
 # Cast from the impostor card, always, for every instance in the layer. The lit pass may
 # swap a scanned mesh in up close; the shadow must not, or a tree's shadow changes shape
 # as you approach it. The card is also far the cheaper of the two, which is what pays for
 # casting the whole set into all five cascades.
-function layer_draw_shadow(l: Layer, light_vp: floats) -> void {
+function layer_draw_shadow(render3d_st: mut Render3dState, l: Layer, light_vp: floats) -> void {
   if l.n_sh == 0 or l.imp == null { return }
-  let p = sc_imp_prog_shadow
-  gpu_use_program(p)
+  let p = render3d_st.sc_imp_prog_shadow
+  gpu_use_program(render3d_st, p)
   let im = l.imp
-  u_f(gpu_uniform(p, "u_radius"), im.radius)
-  u_f(gpu_uniform(p, "u_height"), im.height)
-  u_f(gpu_uniform(p, "u_tiles"), float(im.tiles))
-  r3d_bind_2d(p, "u_atlas_albedo", 0, im.albedo)
-  u_mat4(gpu_uniform(p, "u_light_vp"), light_vp)
-  u_v3(gpu_uniform(p, "u_face_dir"), sun_dir)
-  u_v3(gpu_uniform(p, "u_cam_pos"), cam_pos)
-  gpu_cull(false)
-  scatter_attach(sc_card, l.sh_buf)
-  mesh_draw_instanced(sc_card, l.n_sh)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_radius"), im.radius)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_height"), im.height)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_tiles"), float(im.tiles))
+  r3d_bind_2d(render3d_st, p, "u_atlas_albedo", 0, im.albedo)
+  u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_light_vp"), light_vp)
+  u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_face_dir"), render3d_st.sun_dir)
+  u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_cam_pos"), render3d_st.cam_pos)
+  gpu_cull(render3d_st, false)
+  scatter_attach(render3d_st, render3d_st.sc_card, l.sh_buf)
+  mesh_draw_instanced(render3d_st, render3d_st.sc_card, l.n_sh)
 }
 
-var sc_skip_blade: bool = false
-var sc_skip_flower: bool = false
-var sc_skip_card: bool = false
 
 # ---- the foliage depth prepass -----------------------------------------------------------
 # Exactly the instances and positions layer_draw_model will light (the same LOD buckets,
 # the same vertex shader, the same ground and wind), into depth only.
-function layer_draw_depth(l: Layer, model: Model, vb: int, cnt: int) -> void {
+function layer_draw_depth(render3d_st: mut Render3dState, l: Layer, model: Model, vb: int, cnt: int) -> void {
   if cnt == 0 or model == null or vb == 0 { return }
-  let p = sc_prog_fol_depth
-  gpu_use_program(p)
+  let p = render3d_st.sc_prog_fol_depth
+  gpu_use_program(render3d_st, p)
   var ground = 0.0
   if l.grounded { ground = 1.0 }
-  u_f(gpu_uniform(p, "u_ground"), ground)
-  if l.grounded { terrain_bind_height(p) }
-  u_f(gpu_uniform(p, "u_time"), r3d_time)
-  u_f(gpu_uniform(p, "u_wind"), l.wind)
-  u_f(gpu_uniform(p, "u_flutter"), l.flutter)
-  u_f(gpu_uniform(p, "u_model_h"), model.height)
-  u_mat4(gpu_uniform(p, "u_view"), cam_view)
-  u_mat4(gpu_uniform(p, "u_proj"), cam_proj)
-  u_f(gpu_uniform(p, "u_clip_y"), r3d_clip_y)
-  gpu_cull(false)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_ground"), ground)
+  if l.grounded { terrain_bind_height(render3d_st, p) }
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_time"), render3d_st.r3d_time)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_wind"), l.wind)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_flutter"), l.flutter)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_model_h"), model.height)
+  u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_view"), render3d_st.cam_view)
+  u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_proj"), render3d_st.cam_proj)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_clip_y"), render3d_st.r3d_clip_y)
+  gpu_cull(render3d_st, false)
   for i in 0 .. len(model.prims) {
     let pr = model.prims[i]
-    scatter_attach(pr.mesh, vb)
-    r3d_bind_2d(p, "u_diff", 0, pr.diff)
-    if sc_ind_base >= 0 { gpu_draw_mesh_indirect(pr.mesh, l.g_cmds, (sc_ind_base + i * sc_ind_stride) * SC_REC_W, sc_ind_n, 0, 0) }
-    else { mesh_draw_instanced(pr.mesh, cnt) }
+    scatter_attach(render3d_st, pr.mesh, vb)
+    r3d_bind_2d(render3d_st, p, "u_diff", 0, pr.diff)
+    if render3d_st.sc_ind_base >= 0 { gpu_draw_mesh_indirect(render3d_st, pr.mesh, l.g_cmds, (render3d_st.sc_ind_base + i * render3d_st.sc_ind_stride) * SC_REC_W, render3d_st.sc_ind_n, 0, 0) }
+    else { mesh_draw_instanced(render3d_st, pr.mesh, cnt) }
   }
 }
 
 # every foliage mesh draw the lit pass will make with sc_prog_fol_eq: not blades, not
 # flowers, not card levels (those keep their own alpha and draw as before)
-function scatter_draw_depth() -> void {
-  if sc_prog_fol_depth == 0 { return }
-  for i in 0 .. len(sc_layers) {
-    let l = sc_layers[i]
+function scatter_draw_depth(render3d_st: mut Render3dState) -> void {
+  if render3d_st.sc_prog_fol_depth == 0 { return }
+  for i in 0 .. len(render3d_st.sc_layers) {
+    let l = render3d_st.sc_layers[i]
     if not l.foliage or l.blade or l.flower { continue }
-    if r3d_no_trees and l.imp != null { continue }
-    layer_update(l)
+    if render3d_st.r3d_no_trees and l.imp != null { continue }
+    layer_update(render3d_st, l)
     if l.n_lods > 1 and l.g_on {
-      sc_ind_base = 0;  sc_ind_n = l.n_lods
-      layer_draw_depth(l, l.g_model, l.g_dst, 1)
-      sc_ind_base = -1;  sc_ind_n = 1
+      render3d_st.sc_ind_base = 0;  render3d_st.sc_ind_n = l.n_lods
+      layer_draw_depth(render3d_st, l, l.g_model, l.g_dst, 1)
+      render3d_st.sc_ind_base = -1;  render3d_st.sc_ind_n = 1
     } else if l.n_lods > 1 {
       # (a tree layer is flagged `card` for its distant level; its mesh levels still count)
-      for k in 0 .. l.n_lods { if l.lod_card[k] != 1 { layer_draw_depth(l, l.lods[k], l.lod_buf[k], l.n_lod[k]) } }
+      for k in 0 .. l.n_lods { if l.lod_card[k] != 1 { layer_draw_depth(render3d_st, l, l.lods[k], l.lod_buf[k], l.n_lod[k]) } }
     } else if not l.card {
-      layer_draw_depth(l, l.model, l.buf, l.n_near)
+      layer_draw_depth(render3d_st, l, l.model, l.buf, l.n_near)
     }
   }
-  gpu_cull(true)
+  gpu_cull(render3d_st, true)
 }
-function scatter_draw() -> void {
-  for i in 0 .. len(sc_layers) {
-    let l = sc_layers[i]
-    if sc_skip_blade and l.blade { continue }
-    if sc_skip_flower and l.flower { continue }
-    if sc_skip_card and l.card { continue }
-    if r3d_no_trees and l.imp != null and not l.card { continue }
-    layer_update(l)
-    layer_draw_near(l, false, null, false)
-    layer_draw_far(l, false, null)
+function scatter_draw(render3d_st: mut Render3dState) -> void {
+  for i in 0 .. len(render3d_st.sc_layers) {
+    let l = render3d_st.sc_layers[i]
+    if render3d_st.sc_skip_blade and l.blade { continue }
+    if render3d_st.sc_skip_flower and l.flower { continue }
+    if render3d_st.sc_skip_card and l.card { continue }
+    if render3d_st.r3d_no_trees and l.imp != null and not l.card { continue }
+    layer_update(render3d_st, l)
+    layer_draw_near(render3d_st, l, false, null, false)
+    layer_draw_far(render3d_st, l, false, null)
   }
-  gpu_cull(true)
+  gpu_cull(render3d_st, true)
 }
 # Nothing here is keyed off the cascade. Every skip that used to be — ground cover past
 # the 250 m cascade, blades past the nearest, the scanned mesh past the second — made a
 # whole class of caster vanish at a fixed distance, which is exactly the popping. A layer
 # with an impostor now casts its entire instance list from the card in every cascade;
 # only layers that have no impostor at all fall back to the mesh.
-function scatter_draw_casters(light_vp: floats) -> void {
-  for i in 0 .. len(sc_layers) {
-    let l = sc_layers[i]
-    if sc_skip_blade and l.blade { continue }
-    if sc_skip_card and l.card { continue }
-    if r3d_no_trees and l.imp != null and not l.card { continue }
-    layer_update(l)
+function scatter_draw_casters(render3d_st: mut Render3dState, light_vp: floats) -> void {
+  for i in 0 .. len(render3d_st.sc_layers) {
+    let l = render3d_st.sc_layers[i]
+    if render3d_st.sc_skip_blade and l.blade { continue }
+    if render3d_st.sc_skip_card and l.card { continue }
+    if render3d_st.r3d_no_trees and l.imp != null and not l.card { continue }
+    layer_update(render3d_st, l)
     if l.imp != null {
-      layer_draw_shadow(l, light_vp)
+      layer_draw_shadow(render3d_st, l, light_vp)
       # Shadow LOD (the practice in every production engine: a caster uses a low mesh LOD,
       # the billboard only far away). The card alone is a side-view silhouette and a
       # crown of drooping needle cards is mostly slivers from the side, so the sun, which
       # sees the crown from above, cast a trunk line with a few blobs. The near levels
       # now also cast their LOD2 mesh, alpha-tested, on top of the card.
       if l.n_lods > 2 and l.g_on {
-        sc_ind_base = 17;  sc_ind_n = 3;  sc_ind_stride = 3
-        layer_draw_model(l, l.g_model_sh, l.g_dst, 1, false, true, light_vp)
-        sc_ind_base = -1;  sc_ind_n = 1;  sc_ind_stride = 4
+        render3d_st.sc_ind_base = 17;  render3d_st.sc_ind_n = 3;  render3d_st.sc_ind_stride = 3
+        layer_draw_model(render3d_st, l, l.g_model_sh, l.g_dst, 1, false, true, light_vp)
+        render3d_st.sc_ind_base = -1;  render3d_st.sc_ind_n = 1;  render3d_st.sc_ind_stride = 4
       } else if l.n_lods > 2 {
-        for k in 0 .. 3 { layer_draw_model(l, l.lods[2], l.lod_buf[k], l.n_lod[k], false, true, light_vp) }
+        for k in 0 .. 3 { layer_draw_model(render3d_st, l, l.lods[2], l.lod_buf[k], l.n_lod[k], false, true, light_vp) }
       }
     }
-    else { layer_draw_near(l, true, light_vp, true) }
+    else { layer_draw_near(render3d_st, l, true, light_vp, true) }
   }
-  prof_cpu_mark("shadow scatter")
+  prof_cpu_mark(render3d_st, "shadow scatter")
 }
 
 
@@ -1251,39 +1201,38 @@ function scatter_draw_casters(light_vp: floats) -> void {
 # gaps as the near cover instead of a lawn scan (the far-field trick the big open
 # worlds use: geometry up close, an authored ground texture that matches it beyond).
 # Returns an RGBA8 texture (alpha = coverage), repeat-wrapped and mipmapped.
-var cb_state: int = 12345
-function cb_rnd() -> float {
-  cb_state = (cb_state * 1103515245 + 12345) & 0x7FFFFFFF
-  return float((cb_state >> 8) & 0xFFFF) / 65536.0
+function cb_rnd(render3d_st: mut Render3dState) -> float {
+  render3d_st.cb_state = (render3d_st.cb_state * 1103515245 + 12345) & 0x7FFFFFFF
+  return float((render3d_st.cb_state >> 8) & 0xFFFF) / 65536.0
 }
-function carpet_bake(layers: []Layer, count: int, tile: float, res: int) -> int {
-  let tex = tex_target(res, res, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR)
-  let fbo = gpu_fb_new()
-  gpu_fb_bind(fbo)
-  gpu_fb_color(0, tex)
-  let rb = gpu_rb_new()
-  gpu_rb_storage(rb, GL_DEPTH_COMPONENT24, res, res, 0)
-  gpu_fb_depth_rb(rb)
-  gpu_fb_draw_buffers(1)
-  gpu_viewport(0, 0, res, res)
-  gpu_clear_color(0.0, 0.0, 0.0, 0.0)
-  gpu_clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-  gpu_depth_test(true)
-  gpu_depth_func(GL_LESS)
-  gpu_cull(false)
-  gpu_blend(false)
+function carpet_bake(render3d_st: mut Render3dState, layers: []Layer, count: int, tile: float, res: int) -> int {
+  let tex = tex_target(render3d_st, res, res, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR)
+  let fbo = gpu_fb_new(render3d_st)
+  gpu_fb_bind(render3d_st, fbo)
+  gpu_fb_color(render3d_st, 0, tex)
+  let rb = gpu_rb_new(render3d_st)
+  gpu_rb_storage(render3d_st, rb, GL_DEPTH_COMPONENT24, res, res, 0)
+  gpu_fb_depth_rb(render3d_st, rb)
+  gpu_fb_draw_buffers(render3d_st, 1)
+  gpu_viewport(render3d_st, 0, 0, res, res)
+  gpu_clear_color(render3d_st, 0.0, 0.0, 0.0, 0.0)
+  gpu_clear(render3d_st, GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+  gpu_depth_test(render3d_st, true)
+  gpu_depth_func(render3d_st, GL_LESS)
+  gpu_cull(render3d_st, false)
+  gpu_blend(render3d_st, false)
   # the clumps, and eight wrapped copies so the tile's edges continue
   let half = tile * 0.5
   let n9 = count * 9
   let inst = gl_floats(n9 * INST_FLOATS)
-  cb_state = 977
+  render3d_st.cb_state = 977
   var k = 0
   for i in 0 .. count {
-    let x = cb_rnd() * tile - half
-    let z = cb_rnd() * tile - half
-    let sc = 1.5 + cb_rnd()
-    let yaw = cb_rnd() * (2.0 * PI)
-    let sd = cb_rnd()
+    let x = cb_rnd(render3d_st) * tile - half
+    let z = cb_rnd(render3d_st) * tile - half
+    let sc = 1.5 + cb_rnd(render3d_st)
+    let yaw = cb_rnd(render3d_st) * (2.0 * PI)
+    let sd = cb_rnd(render3d_st)
     for oz in 0 .. 3 {
       for ox in 0 .. 3 {
         let px = x + float(ox - 1) * tile
@@ -1294,45 +1243,45 @@ function carpet_bake(layers: []Layer, count: int, tile: float, res: int) -> int 
       }
     }
   }
-  let buf = gpu_buffer_new()
-  gpu_buffer_upload(buf, gl_bytes_of(n9 * INST_FLOATS), inst, GPU_STATIC)
+  let buf = gpu_buffer_new(render3d_st)
+  gpu_buffer_upload(render3d_st, buf, gl_bytes_of(n9 * INST_FLOATS), inst, GPU_STATIC)
   free(inst)
   # straight down: the window is exactly one tile
   let view = m4_new();  let proj = m4_new()
   let eye = v3_new(0.0, 6.0, 0.0);  let at = v3_new(0.0, 0.0, 0.0);  let up = v3_new(0.0, 0.0, -1.0)
   m4_look_at(view, eye, at, up)
   m4_ortho(proj, -half, half, -half, half, 0.1, 12.0)
-  let bake = sc_bake_card_prog
-  gpu_use_program(bake)
-  u_mat4(gpu_uniform(bake, "u_view"), view)
-  u_mat4(gpu_uniform(bake, "u_proj"), proj)
-  u_f(gpu_uniform(bake, "u_wind"), 0.0)
-  u_f(gpu_uniform(bake, "u_flutter"), 0.0)
-  u_f(gpu_uniform(bake, "u_time"), 0.0)
+  let bake = render3d_st.sc_bake_card_prog
+  gpu_use_program(render3d_st, bake)
+  u_mat4(render3d_st, gpu_uniform(render3d_st, bake, "u_view"), view)
+  u_mat4(render3d_st, gpu_uniform(render3d_st, bake, "u_proj"), proj)
+  u_f(render3d_st, gpu_uniform(render3d_st, bake, "u_wind"), 0.0)
+  u_f(render3d_st, gpu_uniform(render3d_st, bake, "u_flutter"), 0.0)
+  u_f(render3d_st, gpu_uniform(render3d_st, bake, "u_time"), 0.0)
   for li in 0 .. len(layers) {
     let l = layers[li]
     if l.atlas == null { continue }
-    u_f(gpu_uniform(bake, "u_card_w"), l.atlas.radius * 2.0);  u_f(gpu_uniform(bake, "u_card_h"), l.atlas.height)
-    r3d_bind_2d(bake, "u_diff", 0, l.atlas.albedo)
-    r3d_bind_2d(bake, "u_arm", 2, l.atlas.normal)
+    u_f(render3d_st, gpu_uniform(render3d_st, bake, "u_card_w"), l.atlas.radius * 2.0);  u_f(render3d_st, gpu_uniform(render3d_st, bake, "u_card_h"), l.atlas.height)
+    r3d_bind_2d(render3d_st, bake, "u_diff", 0, l.atlas.albedo)
+    r3d_bind_2d(render3d_st, bake, "u_arm", 2, l.atlas.normal)
     for i in 0 .. len(l.model.prims) {
       let pr = l.model.prims[i]
-      scatter_attach(pr.mesh, buf)
-      mesh_draw_instanced(pr.mesh, n9)
+      scatter_attach(render3d_st, pr.mesh, buf)
+      mesh_draw_instanced(render3d_st, pr.mesh, n9)
     }
   }
   free(view);  free(proj);  free(eye);  free(at);  free(up)
-  gpu_fb_bind(0)
-  gpu_fb_free(fbo)
-  gpu_rb_free(rb)
-  gpu_buffer_free(buf)
-  gpu_tex_bind(GPU_TEX2D, tex)
-  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
-  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
-  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
-  gpu_tex_paramf(GPU_TEX2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, tex_anisotropy)
-  gpu_tex_mips(GPU_TEX2D)
-  gpu_check("carpet bake")
+  gpu_fb_bind(render3d_st, 0)
+  gpu_fb_free(render3d_st, fbo)
+  gpu_rb_free(render3d_st, rb)
+  gpu_buffer_free(render3d_st, buf)
+  gpu_tex_bind(render3d_st, GPU_TEX2D, tex)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+  gpu_tex_paramf(render3d_st, GPU_TEX2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, render3d_st.tex_anisotropy)
+  gpu_tex_mips(render3d_st, GPU_TEX2D)
+  gpu_check(render3d_st, "carpet bake")
   return tex
 }
 
@@ -1341,15 +1290,15 @@ function carpet_bake(layers: []Layer, count: int, tile: float, res: int) -> int 
 # crossed-card mesh and baked atlas - and every stream feeding them. The models a layer drew
 # belong to whoever loaded them and are kept, and so are the programs. A game rebuilding its
 # world calls this, then places the new map's layers exactly as it did at boot.
-function scatter_clear_all() -> void {
-  stream_clear_all()
-  if sc_layers == null { return }
-  for i in 0 .. len(sc_layers) {
-    let l = sc_layers[i]
-    if l.buf != 0 { gpu_buffer_free(l.buf) }
-    if l.imp_buf != 0 { gpu_buffer_free(l.imp_buf) }
-    if l.sh_buf != 0 { gpu_buffer_free(l.sh_buf) }
-    if l.lod_buf != null { for k in 0 .. l.n_lods { gpu_buffer_free(l.lod_buf[k]) } }
+function scatter_clear_all(render3d_st: mut Render3dState) -> void {
+  stream_clear_all(render3d_st)
+  if render3d_st.sc_layers == null { return }
+  for i in 0 .. len(render3d_st.sc_layers) {
+    let l = render3d_st.sc_layers[i]
+    if l.buf != 0 { gpu_buffer_free(render3d_st, l.buf) }
+    if l.imp_buf != 0 { gpu_buffer_free(render3d_st, l.imp_buf) }
+    if l.sh_buf != 0 { gpu_buffer_free(render3d_st, l.sh_buf) }
+    if l.lod_buf != null { for k in 0 .. l.n_lods { gpu_buffer_free(render3d_st, l.lod_buf[k]) } }
     if l.inst != null { free(l.inst) }
     if l.scratch != null { free(l.scratch) }
     if l.tint != null { free(l.tint) }
@@ -1361,14 +1310,14 @@ function scatter_clear_all() -> void {
     if l.vis != null { free(l.vis) }
     if l.lod_dist != null { free(l.lod_dist);  free(l.lod_card);  free(l.lod_buf);  free(l.n_lod) }
     if l.lvl != null { free(l.lvl) }
-    if l.g_arena != null { for k in 0 .. len(l.g_arena) { mesh_free(l.g_arena[k].mesh) } }
+    if l.g_arena != null { for k in 0 .. len(l.g_arena) { mesh_free(render3d_st, l.g_arena[k].mesh) } }
     # layer_cards built this layer's crossed card and its atlas itself
-    if l.card and l.n_lods == 0 and l.model != null { for k in 0 .. len(l.model.prims) { mesh_free(l.model.prims[k].mesh) } }
+    if l.card and l.n_lods == 0 and l.model != null { for k in 0 .. len(l.model.prims) { mesh_free(render3d_st, l.model.prims[k].mesh) } }
     if l.card and l.atlas != null {
-      gpu_tex_free(l.atlas.albedo)
-      gpu_tex_free(l.atlas.normal)
+      gpu_tex_free(render3d_st, l.atlas.albedo)
+      gpu_tex_free(render3d_st, l.atlas.normal)
     }
   }
-  sc_layers = new []Layer
-  sc_view_gen += 1
+  render3d_st.sc_layers = new []Layer
+  render3d_st.sc_view_gen += 1
 }

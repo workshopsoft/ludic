@@ -11,360 +11,322 @@
 const OV_MAX_QUADS: int = 6000
 const OV_FLOATS: int = 8              # x, y, u, v, r, g, b, a
 
-var ov_prog: int = 0
-var ov_mesh: Mesh = null
-var ov_vbo: int = 0
-var ov_buf: pointer = null
-var ov_n: int = 0
-var ov_tex: int = 0
-var ov_mode: int = 2                  # what the next quads read: 0 the image texture, 1 the font, 2 a flat colour
-var ov_voff: float = 0.0                  # float bits: 4 x ov_mode, added to v (overlay.frag)
-var ov_white: int = 0
-var ov_font: int = 0
-var ov_font_adv: floats = null         # float bits, em units, one per glyph in the atlas
-var ov_font_n: int = 0                # glyphs in the atlas
 # Text is UTF-8, and the atlas says which code points it holds. font.json's "codes" lists
 # them in atlas order; an older atlas without it is ASCII from "first" (32) on, which is
 # what every font built before this was. ov_font_map[cp] is glyph + 1 for a code point
 # under OV_MAP_N (0: not in the atlas); anything above is looked up in the sorted tail.
 const OV_MAP_N: int = 8192
-var ov_font_map: words = null
-var ov_font_hi_cp: words = null       # code points >= OV_MAP_N, ascending
-var ov_font_hi_g: words = null
-var ov_font_hi_n: int = 0
-var ov_font_space: int = 0            # the glyph for ' ', and for what has none: '?'
-var ov_font_qmark: int = 0
-var ov_font_cols: int = 16
-var ov_font_rows: int = 6
-var ov_font_cell: int = 128           # px per cell in the atlas
-var ov_font_em: int = 100             # px per em in the atlas
-var ov_pad_x: float = 0.0                 # float bits, em
-var ov_base_y: float = 0.0
-var ov_ready: bool = false
-var ov_open: bool = false
-var ov_dbg: bool = false
 const OV_MAX_RANGES: int = 512
 const OV_RANGE_W: int = 7             # texture, first quad, quad count, clip x, y, w, h (w = 0: none)
-var ov_ranges: words = null
-var ov_nr: int = 0
-var ov_range_start: int = 0
-var ov_clip_x: int = 0                # the current clip rectangle in screen pixels (top-left origin)
-var ov_clip_y: int = 0
-var ov_clip_w: int = 0
-var ov_clip_h: int = 0
 
 # The interface is sRGB. While the output is HDR10 the overlay draws with its HDR10 variant, which puts
 # the interface at the picture's paper white; the SDR program there sent sRGB values as PQ, and the
 # menu's yellow read as red on an HDR display.
-var ov_prog_sdr: int = 0
-var ov_prog_hdr: int = 0
 # How bright the interface's white is while HDR10 is on, as a multiple of paper white. It is 1 for the
 # interface; a calibration screen draws its test patches at a number of nits with ov_hdr_nits, which
 # closes the batch so far - the multiple is one uniform per flush. On an SDR frame it does nothing.
-var ov_hdr_scale: float = 0.0             # float bits; 0 until ov_begin sets 1
-function ov_hdr_nits(nits: float) -> void {
+function ov_hdr_nits(render3d_st: mut Render3dState, nits: float) -> void {
   var s = 1.0
-  if nits != 0.0 { s = nits / r3d_hdr_paper_nits() }
-  if s == ov_hdr_scale { return }
-  if ov_open { ov_flush() }
-  ov_hdr_scale = s
+  if nits != 0.0 { s = nits / r3d_hdr_paper_nits(render3d_st) }
+  if s == render3d_st.ov_hdr_scale { return }
+  if render3d_st.ov_open { ov_flush(render3d_st) }
+  render3d_st.ov_hdr_scale = s
 }
 # back to the interface's own white
-function ov_hdr_paper() -> void { ov_hdr_nits(0.0) }
-function ov_pick_prog() -> void {
-  if gpu_hdr_active() {
-    if ov_prog_hdr == 0 {
-      r3d_program_log("overlay.vert", "overlay.frag", "#define HDR10\n")
-      ov_prog_hdr = gpu_program("#version 410 core\n#define HDR10\n" + r3d_shader_file("overlay.vert"), "#version 410 core\n#define HDR10\n" + r3d_shader_file("overlay.frag"), "overlay.vert", "overlay.frag", "#define HDR10\n")
+function ov_hdr_paper(render3d_st: mut Render3dState) -> void { ov_hdr_nits(render3d_st, 0.0) }
+function ov_pick_prog(render3d_st: mut Render3dState) -> void {
+  if gpu_hdr_active(render3d_st) {
+    if render3d_st.ov_prog_hdr == 0 {
+      r3d_program_log(render3d_st, "overlay.vert", "overlay.frag", "#define HDR10\n")
+      render3d_st.ov_prog_hdr = gpu_program(render3d_st, "#version 410 core\n#define HDR10\n" + r3d_shader_file(render3d_st, "overlay.vert"), "#version 410 core\n#define HDR10\n" + r3d_shader_file(render3d_st, "overlay.frag"), "overlay.vert", "overlay.frag", "#define HDR10\n")
     }
-    if ov_prog_hdr != 0 { ov_prog = ov_prog_hdr;  return }
+    if render3d_st.ov_prog_hdr != 0 { render3d_st.ov_prog = render3d_st.ov_prog_hdr;  return }
   }
-  ov_prog = ov_prog_sdr
+  render3d_st.ov_prog = render3d_st.ov_prog_sdr
 }
 
-function overlay_init(font_dir: string) -> bool {
-  r3d_program_log("overlay.vert", "overlay.frag", "")
-  ov_prog = gpu_program("#version 410 core\n" + r3d_shader_file("overlay.vert"), "#version 410 core\n" + r3d_shader_file("overlay.frag"), "overlay.vert", "overlay.frag", "")
-  if ov_prog == 0 { print("overlay: program failed");  return false }
-  ov_prog_sdr = ov_prog
-  ov_mesh = gpu_mesh_new()
-  ov_vbo = gpu_mesh_vertices(ov_mesh, null, gl_bytes_of(OV_MAX_QUADS * 6 * OV_FLOATS), GPU_DYNAMIC)
-  gpu_mesh_attr(ov_mesh, 0, 2, GPU_F32, OV_FLOATS * 4, 0, false)
-  gpu_mesh_attr(ov_mesh, 1, 2, GPU_F32, OV_FLOATS * 4, 8, false)
-  gpu_mesh_attr(ov_mesh, 2, 4, GPU_F32, OV_FLOATS * 4, 16, false)
-  gpu_mesh_done(ov_mesh)
-  ov_buf = gl_floats(OV_MAX_QUADS * 6 * OV_FLOATS)
-  ov_ranges = words(OV_MAX_RANGES * OV_RANGE_W)
-  ov_white = tex_solid(255, 255, 255, 255)
-  overlay_font(font_dir)
-  if ov_font == 0 { print("overlay: no font atlas, text disabled") }
-  ov_dbg = r3d_env_has("R3D_FONTDBG")
-  ov_ready = true
+function overlay_init(render3d_st: mut Render3dState, font_dir: string) -> bool {
+  r3d_program_log(render3d_st, "overlay.vert", "overlay.frag", "")
+  render3d_st.ov_prog = gpu_program(render3d_st, "#version 410 core\n" + r3d_shader_file(render3d_st, "overlay.vert"), "#version 410 core\n" + r3d_shader_file(render3d_st, "overlay.frag"), "overlay.vert", "overlay.frag", "")
+  if render3d_st.ov_prog == 0 { print("overlay: program failed");  return false }
+  render3d_st.ov_prog_sdr = render3d_st.ov_prog
+  render3d_st.ov_mesh = gpu_mesh_new(render3d_st)
+  render3d_st.ov_vbo = gpu_mesh_vertices(render3d_st, render3d_st.ov_mesh, null, gl_bytes_of(OV_MAX_QUADS * 6 * OV_FLOATS), GPU_DYNAMIC)
+  gpu_mesh_attr(render3d_st, render3d_st.ov_mesh, 0, 2, GPU_F32, OV_FLOATS * 4, 0, false)
+  gpu_mesh_attr(render3d_st, render3d_st.ov_mesh, 1, 2, GPU_F32, OV_FLOATS * 4, 8, false)
+  gpu_mesh_attr(render3d_st, render3d_st.ov_mesh, 2, 4, GPU_F32, OV_FLOATS * 4, 16, false)
+  gpu_mesh_done(render3d_st, render3d_st.ov_mesh)
+  render3d_st.ov_buf = gl_floats(OV_MAX_QUADS * 6 * OV_FLOATS)
+  render3d_st.ov_ranges = words(OV_MAX_RANGES * OV_RANGE_W)
+  render3d_st.ov_white = tex_solid(render3d_st, 255, 255, 255, 255)
+  overlay_font(render3d_st, font_dir)
+  if render3d_st.ov_font == 0 { print("overlay: no font atlas, text disabled") }
+  render3d_st.ov_dbg = r3d_env_has(render3d_st, "R3D_FONTDBG")
+  render3d_st.ov_ready = true
   return true
 }
 
 # Load (or swap to) the font atlas in `font_dir`: font.png and font.json. A game calls it
 # again to change fonts at run time - a language whose script the default atlas does not
 # carry brings its own. Returns false, and keeps the font it had, if there is none there.
-function overlay_font(font_dir: string) -> bool {
+function overlay_font(render3d_st: mut Render3dState, font_dir: string) -> bool {
   let meta = Fs.read_text(font_dir + "/font.json")
   if meta == null { return false }
-  let tex = tex_load_ex(font_dir + "/font.png", false, 0)
+  let tex = tex_load_ex(render3d_st, font_dir + "/font.png", false, 0)
   if tex == 0 { return false }
   let j = Json.parse(meta)
-  ov_font_cols = jint(j, "cols", 16);  ov_font_rows = jint(j, "rows", 6)
-  ov_font_cell = int(jnum(value_get(j, "cell")));  ov_font_em = int(jnum(value_get(j, "em")))
-  ov_pad_x = 0.14;  ov_base_y = 0.30
-  if value_has(j, "pad_x") != 0 { ov_pad_x = jnum(value_get(j, "pad_x")) }
-  if value_has(j, "base_y") != 0 { ov_base_y = jnum(value_get(j, "base_y")) }
+  render3d_st.ov_font_cols = jint(j, "cols", 16);  render3d_st.ov_font_rows = jint(j, "rows", 6)
+  render3d_st.ov_font_cell = int(jnum(value_get(j, "cell")));  render3d_st.ov_font_em = int(jnum(value_get(j, "em")))
+  render3d_st.ov_pad_x = 0.14;  render3d_st.ov_base_y = 0.30
+  if value_has(j, "pad_x") != 0 { render3d_st.ov_pad_x = jnum(value_get(j, "pad_x")) }
+  if value_has(j, "base_y") != 0 { render3d_st.ov_base_y = jnum(value_get(j, "base_y")) }
   let adv = value_get(j, "adv")
   let n = value_count(adv)
   let first = jint(j, "first", 32)
   var codes: Val = null
   if value_has(j, "codes") != 0 { codes = value_get(j, "codes") }
-  ov_font_n = n
-  ov_font_adv = floats(n + 1)
-  for i in 0 .. n { ov_font_adv[i] = jnum(value_at(adv, i)) }
-  ov_font_map = words(OV_MAP_N)
-  for c in 0 .. OV_MAP_N { ov_font_map[c] = 0 }
-  ov_font_hi_cp = words(n + 1);  ov_font_hi_g = words(n + 1);  ov_font_hi_n = 0
+  render3d_st.ov_font_n = n
+  render3d_st.ov_font_adv = floats(n + 1)
+  for i in 0 .. n { render3d_st.ov_font_adv[i] = jnum(value_at(adv, i)) }
+  render3d_st.ov_font_map = words(OV_MAP_N)
+  for c in 0 .. OV_MAP_N { render3d_st.ov_font_map[c] = 0 }
+  render3d_st.ov_font_hi_cp = words(n + 1);  render3d_st.ov_font_hi_g = words(n + 1);  render3d_st.ov_font_hi_n = 0
   for i in 0 .. n {
     var cp = first + i
     if codes != null and i < value_count(codes) { cp = int(jnum(value_at(codes, i))) }
-    if cp >= 0 and cp < OV_MAP_N { ov_font_map[cp] = i + 1 }
+    if cp >= 0 and cp < OV_MAP_N { render3d_st.ov_font_map[cp] = i + 1 }
     else if cp >= OV_MAP_N {
       # kept ascending: the builder writes code points in order, so this is an append
-      ov_font_hi_cp[ov_font_hi_n] = cp;  ov_font_hi_g[ov_font_hi_n] = i;  ov_font_hi_n += 1
+      render3d_st.ov_font_hi_cp[render3d_st.ov_font_hi_n] = cp;  render3d_st.ov_font_hi_g[render3d_st.ov_font_hi_n] = i;  render3d_st.ov_font_hi_n += 1
     }
   }
-  ov_font_space = 0
-  if ov_font_map[32] > 0 { ov_font_space = ov_font_map[32] - 1 }
-  ov_font_qmark = ov_font_space
-  if ov_font_map[63] > 0 { ov_font_qmark = ov_font_map[63] - 1 }
-  ov_font = tex
+  render3d_st.ov_font_space = 0
+  if render3d_st.ov_font_map[32] > 0 { render3d_st.ov_font_space = render3d_st.ov_font_map[32] - 1 }
+  render3d_st.ov_font_qmark = render3d_st.ov_font_space
+  if render3d_st.ov_font_map[63] > 0 { render3d_st.ov_font_qmark = render3d_st.ov_font_map[63] - 1 }
+  render3d_st.ov_font = tex
   return true
 }
 
 # The code point starting at sp[i], with the bytes it took in ov_u8_len. A malformed or
 # cut-off sequence is one byte of '?', so a string sliced mid-character still draws.
-var ov_u8_len: int = 1
-function ov_u8(sp: pointer, i: int, n: int) -> int {
+function ov_u8(render3d_st: mut Render3dState, sp: pointer, i: int, n: int) -> int {
   let b0 = sp[i] & 255
-  ov_u8_len = 1
+  render3d_st.ov_u8_len = 1
   if b0 < 128 { return b0 }
   if b0 >= 240 and b0 < 248 and i + 3 < n {
-    ov_u8_len = 4
+    render3d_st.ov_u8_len = 4
     return ((b0 & 7) << 18) | ((sp[i + 1] & 63) << 12) | ((sp[i + 2] & 63) << 6) | (sp[i + 3] & 63)
   }
   if b0 >= 224 and b0 < 240 and i + 2 < n {
-    ov_u8_len = 3
+    render3d_st.ov_u8_len = 3
     return ((b0 & 15) << 12) | ((sp[i + 1] & 63) << 6) | (sp[i + 2] & 63)
   }
   if b0 >= 192 and b0 < 224 and i + 1 < n {
-    ov_u8_len = 2
+    render3d_st.ov_u8_len = 2
     return ((b0 & 31) << 6) | (sp[i + 1] & 63)
   }
   return 63
 }
 # the atlas glyph for a code point: a control character is a space, a missing one is '?'
-function ov_glyph(cp: int) -> int {
-  if cp < 32 { return ov_font_space }
+function ov_glyph(render3d_st: Render3dState, cp: int) -> int {
+  if cp < 32 { return render3d_st.ov_font_space }
   if cp < OV_MAP_N {
-    let g = ov_font_map[cp]
+    let g = render3d_st.ov_font_map[cp]
     if g > 0 { return g - 1 }
-    return ov_font_qmark
+    return render3d_st.ov_font_qmark
   }
   var lo = 0
-  var hi = ov_font_hi_n - 1
+  var hi = render3d_st.ov_font_hi_n - 1
   while lo <= hi {
     let mid = (lo + hi) / 2
-    if ov_font_hi_cp[mid] == cp { return ov_font_hi_g[mid] }
-    if ov_font_hi_cp[mid] < cp { lo = mid + 1 } else { hi = mid - 1 }
+    if render3d_st.ov_font_hi_cp[mid] == cp { return render3d_st.ov_font_hi_g[mid] }
+    if render3d_st.ov_font_hi_cp[mid] < cp { lo = mid + 1 } else { hi = mid - 1 }
   }
-  return ov_font_qmark
+  return render3d_st.ov_font_qmark
 }
 
 # start drawing onto the screen: blending on, depth off
-function ov_begin() -> void {
-  if not ov_ready { return }
-  gpu_fb_bind(gpu_screen_fb())
-  gpu_viewport(0, 0, gl_w, gl_h)
-  gpu_depth_test(false)
-  gpu_cull(false)
-  gpu_blend(true)
-  gpu_blend_func(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-  ov_pick_prog()
-  gpu_use_program(ov_prog)
-  u_f2(gpu_uniform(ov_prog, "u_screen"), float(gl_w), float(gl_h))
-  ov_n = 0;  ov_nr = 0;  ov_range_start = 0
-  ov_tex = ov_white
-  ov_mode = 2;  ov_voff = 8.0
-  ov_clip_w = 0
-  ov_hdr_scale = 1.0
-  ov_open = true
+function ov_begin(render3d_st: mut Render3dState) -> void {
+  if not render3d_st.ov_ready { return }
+  gpu_fb_bind(render3d_st, gpu_screen_fb(render3d_st))
+  gpu_viewport(render3d_st, 0, 0, gl_w, gl_h)
+  gpu_depth_test(render3d_st, false)
+  gpu_cull(render3d_st, false)
+  gpu_blend(render3d_st, true)
+  gpu_blend_func(render3d_st, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+  ov_pick_prog(render3d_st)
+  gpu_use_program(render3d_st, render3d_st.ov_prog)
+  u_f2(render3d_st, gpu_uniform(render3d_st, render3d_st.ov_prog, "u_screen"), float(gl_w), float(gl_h))
+  render3d_st.ov_n = 0;  render3d_st.ov_nr = 0;  render3d_st.ov_range_start = 0
+  render3d_st.ov_tex = render3d_st.ov_white
+  render3d_st.ov_mode = 2;  render3d_st.ov_voff = 8.0
+  render3d_st.ov_clip_w = 0
+  render3d_st.ov_hdr_scale = 1.0
+  render3d_st.ov_open = true
 }
 # everything drawn until ov_unclip stays inside this rectangle (a scrolling list)
-function ov_clip(x: int, y: int, w: int, h: int) -> void {
-  ov_close_range()
-  ov_clip_x = x;  ov_clip_y = y;  ov_clip_w = w;  ov_clip_h = h
+function ov_clip(render3d_st: mut Render3dState, x: int, y: int, w: int, h: int) -> void {
+  ov_close_range(render3d_st)
+  render3d_st.ov_clip_x = x;  render3d_st.ov_clip_y = y;  render3d_st.ov_clip_w = w;  render3d_st.ov_clip_h = h
 }
-function ov_unclip() -> void { ov_close_range();  ov_clip_w = 0 }
+function ov_unclip(render3d_st: mut Render3dState) -> void { ov_close_range(render3d_st);  render3d_st.ov_clip_w = 0 }
 # close the current draw range (quads since its start, with the current texture)
-function ov_close_range() -> void {
-  let n = ov_n - ov_range_start
+function ov_close_range(render3d_st: mut Render3dState) -> void {
+  let n = render3d_st.ov_n - render3d_st.ov_range_start
   if n <= 0 { return }
-  if ov_nr >= OV_MAX_RANGES { ov_flush();  return }
-  let o = ov_nr * OV_RANGE_W
-  ov_ranges[o] = ov_tex;  ov_ranges[o + 1] = ov_range_start;  ov_ranges[o + 2] = n
-  ov_ranges[o + 3] = ov_clip_x;  ov_ranges[o + 4] = ov_clip_y;  ov_ranges[o + 5] = ov_clip_w;  ov_ranges[o + 6] = ov_clip_h
-  ov_nr += 1
-  ov_range_start = ov_n
+  if render3d_st.ov_nr >= OV_MAX_RANGES { ov_flush(render3d_st);  return }
+  let o = render3d_st.ov_nr * OV_RANGE_W
+  render3d_st.ov_ranges[o] = render3d_st.ov_tex;  render3d_st.ov_ranges[o + 1] = render3d_st.ov_range_start;  render3d_st.ov_ranges[o + 2] = n
+  render3d_st.ov_ranges[o + 3] = render3d_st.ov_clip_x;  render3d_st.ov_ranges[o + 4] = render3d_st.ov_clip_y;  render3d_st.ov_ranges[o + 5] = render3d_st.ov_clip_w;  render3d_st.ov_ranges[o + 6] = render3d_st.ov_clip_h
+  render3d_st.ov_nr += 1
+  render3d_st.ov_range_start = render3d_st.ov_n
 }
 # one upload of everything batched so far, then a draw per range
-function ov_flush() -> void {
-  ov_close_range()
-  if ov_n == 0 { ov_nr = 0;  ov_range_start = 0;  return }
+function ov_flush(render3d_st: mut Render3dState) -> void {
+  ov_close_range(render3d_st)
+  if render3d_st.ov_n == 0 { render3d_st.ov_nr = 0;  render3d_st.ov_range_start = 0;  return }
   # The overlay draws onto the screen, whatever was bound since ov_begin: a render-scale change
   # rebuilds the scene targets mid-frame and leaves framebuffer 0 bound, and on a headless run
   # (where the screen is an offscreen framebuffer) every overlay draw after it was an invalid
   # framebuffer operation. Saying the target at each flush is what a render pass says anyway.
-  gpu_fb_bind(gpu_screen_fb())
-  gpu_viewport(0, 0, gl_w, gl_h)
-  ov_pick_prog()
-  gpu_use_program(ov_prog)
-  gpu_mesh_bind(ov_mesh)
-  gpu_buffer_upload(ov_vbo, gl_bytes_of(ov_n * 6 * OV_FLOATS), ov_buf, GPU_STREAM)
-  var font = ov_font
-  if font == 0 { font = ov_white }
-  r3d_bind_2d(ov_prog, "u_font", 1, font)
-  var hs = ov_hdr_scale
+  gpu_fb_bind(render3d_st, gpu_screen_fb(render3d_st))
+  gpu_viewport(render3d_st, 0, 0, gl_w, gl_h)
+  ov_pick_prog(render3d_st)
+  gpu_use_program(render3d_st, render3d_st.ov_prog)
+  gpu_mesh_bind(render3d_st, render3d_st.ov_mesh)
+  gpu_buffer_upload(render3d_st, render3d_st.ov_vbo, gl_bytes_of(render3d_st.ov_n * 6 * OV_FLOATS), render3d_st.ov_buf, GPU_STREAM)
+  var font = render3d_st.ov_font
+  if font == 0 { font = render3d_st.ov_white }
+  r3d_bind_2d(render3d_st, render3d_st.ov_prog, "u_font", 1, font)
+  var hs = render3d_st.ov_hdr_scale
   if hs == 0.0 { hs = 1.0 }
-  u_f(gpu_uniform(ov_prog, "u_hdr_paper"), r3d_hdr_paper_nits())
-  u_f(gpu_uniform(ov_prog, "u_hdr_scale"), hs)
+  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.ov_prog, "u_hdr_paper"), r3d_hdr_paper_nits(render3d_st))
+  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.ov_prog, "u_hdr_scale"), hs)
   var last = -1
   var clipped = false
-  for i in 0 .. ov_nr {
+  for i in 0 .. render3d_st.ov_nr {
     let o = i * OV_RANGE_W
-    let t = ov_ranges[o]
-    if t != last { r3d_bind_2d(ov_prog, "u_tex", 0, t);  last = t }
-    if ov_ranges[o + 5] > 0 {
+    let t = render3d_st.ov_ranges[o]
+    if t != last { r3d_bind_2d(render3d_st, render3d_st.ov_prog, "u_tex", 0, t);  last = t }
+    if render3d_st.ov_ranges[o + 5] > 0 {
       clipped = true
-      gpu_scissor(ov_ranges[o + 3], ov_ranges[o + 4], ov_ranges[o + 5], ov_ranges[o + 6])
-    } else if clipped { gpu_scissor_off();  clipped = false }
-    gpu_draw_range(ov_mesh, ov_ranges[o + 1] * 6, ov_ranges[o + 2] * 6)
+      gpu_scissor(render3d_st, render3d_st.ov_ranges[o + 3], render3d_st.ov_ranges[o + 4], render3d_st.ov_ranges[o + 5], render3d_st.ov_ranges[o + 6])
+    } else if clipped { gpu_scissor_off(render3d_st);  clipped = false }
+    gpu_draw_range(render3d_st, render3d_st.ov_mesh, render3d_st.ov_ranges[o + 1] * 6, render3d_st.ov_ranges[o + 2] * 6)
   }
-  if clipped { gpu_scissor_off() }
-  gpu_mesh_unbind()
-  ov_n = 0;  ov_nr = 0;  ov_range_start = 0
+  if clipped { gpu_scissor_off(render3d_st) }
+  gpu_mesh_unbind(render3d_st)
+  render3d_st.ov_n = 0;  render3d_st.ov_nr = 0;  render3d_st.ov_range_start = 0
 }
-function ov_end() -> void {
-  if not ov_open { return }
-  ov_flush()
-  gpu_blend(false)
-  gpu_depth_test(true)
-  ov_open = false
+function ov_end(render3d_st: mut Render3dState) -> void {
+  if not render3d_st.ov_open { return }
+  ov_flush(render3d_st)
+  gpu_blend(render3d_st, false)
+  gpu_depth_test(render3d_st, true)
+  render3d_st.ov_open = false
 }
 # Text and flat panels never end a draw: the font atlas stays bound beside the image texture and each
 # vertex says which it reads (ov_voff). Only a different image texture closes the range. A panel and
 # its label used to alternate the white and font textures, and the HUD was 77-91 draws a frame.
-function ov_use_tex(t: int) -> void {
-  if t != 0 and t == ov_font { ov_mode = 1;  ov_voff = 4.0;  return }
-  if t == ov_white { ov_mode = 2;  ov_voff = 8.0;  return }
-  ov_mode = 0;  ov_voff = 0.0
-  if t != ov_tex { ov_close_range();  ov_tex = t }
+function ov_use_tex(render3d_st: mut Render3dState, t: int) -> void {
+  if t != 0 and t == render3d_st.ov_font { render3d_st.ov_mode = 1;  render3d_st.ov_voff = 4.0;  return }
+  if t == render3d_st.ov_white { render3d_st.ov_mode = 2;  render3d_st.ov_voff = 8.0;  return }
+  render3d_st.ov_mode = 0;  render3d_st.ov_voff = 0.0
+  if t != render3d_st.ov_tex { ov_close_range(render3d_st);  render3d_st.ov_tex = t }
 }
 
 # one vertex into the batch
-function ov_vert(k: int, x: float, y: float, u: float, v: float, r: float, g: float, b: float, a: float) -> void {
+function ov_vert(render3d_st: Render3dState, k: int, x: float, y: float, u: float, v: float, r: float, g: float, b: float, a: float) -> void {
   let o = k * OV_FLOATS
-  gl_put_bits(ov_buf, o, float_bits(x));  gl_put_bits(ov_buf, o + 1, float_bits(y))
-  gl_put_bits(ov_buf, o + 2, float_bits(u));  gl_put_bits(ov_buf, o + 3, float_bits(v + ov_voff))
-  gl_put_bits(ov_buf, o + 4, float_bits(r));  gl_put_bits(ov_buf, o + 5, float_bits(g));  gl_put_bits(ov_buf, o + 6, float_bits(b));  gl_put_bits(ov_buf, o + 7, float_bits(a))
+  gl_put_bits(render3d_st.ov_buf, o, float_bits(x));  gl_put_bits(render3d_st.ov_buf, o + 1, float_bits(y))
+  gl_put_bits(render3d_st.ov_buf, o + 2, float_bits(u));  gl_put_bits(render3d_st.ov_buf, o + 3, float_bits(v + render3d_st.ov_voff))
+  gl_put_bits(render3d_st.ov_buf, o + 4, float_bits(r));  gl_put_bits(render3d_st.ov_buf, o + 5, float_bits(g));  gl_put_bits(render3d_st.ov_buf, o + 6, float_bits(b));  gl_put_bits(render3d_st.ov_buf, o + 7, float_bits(a))
 }
 # a textured quad, float-bit pixel corners and uvs
-function ov_quad(x0: float, y0: float, x1: float, y1: float, u0: float, v0: float, u1: float, v1: float, r: float, g: float, b: float, a: float) -> void {
-  if ov_n >= OV_MAX_QUADS { ov_flush() }
-  let k = ov_n * 6
-  ov_vert(k, x0, y0, u0, v0, r, g, b, a)
-  ov_vert(k + 1, x1, y0, u1, v0, r, g, b, a)
-  ov_vert(k + 2, x1, y1, u1, v1, r, g, b, a)
-  ov_vert(k + 3, x0, y0, u0, v0, r, g, b, a)
-  ov_vert(k + 4, x1, y1, u1, v1, r, g, b, a)
-  ov_vert(k + 5, x0, y1, u0, v1, r, g, b, a)
-  ov_n += 1
+function ov_quad(render3d_st: mut Render3dState, x0: float, y0: float, x1: float, y1: float, u0: float, v0: float, u1: float, v1: float, r: float, g: float, b: float, a: float) -> void {
+  if render3d_st.ov_n >= OV_MAX_QUADS { ov_flush(render3d_st) }
+  let k = render3d_st.ov_n * 6
+  ov_vert(render3d_st, k, x0, y0, u0, v0, r, g, b, a)
+  ov_vert(render3d_st, k + 1, x1, y0, u1, v0, r, g, b, a)
+  ov_vert(render3d_st, k + 2, x1, y1, u1, v1, r, g, b, a)
+  ov_vert(render3d_st, k + 3, x0, y0, u0, v0, r, g, b, a)
+  ov_vert(render3d_st, k + 4, x1, y1, u1, v1, r, g, b, a)
+  ov_vert(render3d_st, k + 5, x0, y1, u0, v1, r, g, b, a)
+  render3d_st.ov_n += 1
 }
 
 # a filled rectangle at integer pixels; colour as float bits 0..1
-function ov_rect(x: int, y: int, w: int, h: int, r: float, g: float, b: float, a: float) -> void {
-  ov_use_tex(ov_white)
-  ov_quad(float(x), float(y), float(x + w), float(y + h), 0.0, 0.0, 1.0, 1.0, r, g, b, a)
+function ov_rect(render3d_st: mut Render3dState, x: int, y: int, w: int, h: int, r: float, g: float, b: float, a: float) -> void {
+  ov_use_tex(render3d_st, render3d_st.ov_white)
+  ov_quad(render3d_st, float(x), float(y), float(x + w), float(y + h), 0.0, 0.0, 1.0, 1.0, r, g, b, a)
 }
-function ov_frame(x: int, y: int, w: int, h: int, t: int, r: float, g: float, b: float, a: float) -> void {
-  ov_rect(x, y, w, t, r, g, b, a)
-  ov_rect(x, y + h - t, w, t, r, g, b, a)
-  ov_rect(x, y, t, h, r, g, b, a)
-  ov_rect(x + w - t, y, t, h, r, g, b, a)
+function ov_frame(render3d_st: mut Render3dState, x: int, y: int, w: int, h: int, t: int, r: float, g: float, b: float, a: float) -> void {
+  ov_rect(render3d_st, x, y, w, t, r, g, b, a)
+  ov_rect(render3d_st, x, y + h - t, w, t, r, g, b, a)
+  ov_rect(render3d_st, x, y, t, h, r, g, b, a)
+  ov_rect(render3d_st, x + w - t, y, t, h, r, g, b, a)
 }
 # a whole texture at integer pixels
-function ov_image(tex: int, x: int, y: int, w: int, h: int, a: float) -> void {
-  ov_use_tex(tex)
-  ov_quad(float(x), float(y), float(x + w), float(y + h), 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, a)
+function ov_image(render3d_st: mut Render3dState, tex: int, x: int, y: int, w: int, h: int, a: float) -> void {
+  ov_use_tex(render3d_st, tex)
+  ov_quad(render3d_st, float(x), float(y), float(x + w), float(y + h), 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, a)
 }
 
 # the width in pixels of `s` at `size` pixels per em
-function ov_text_w(size: int, s: string) -> int {
-  if ov_font_adv == null { return 0 }
+function ov_text_w(render3d_st: mut Render3dState, size: int, s: string) -> int {
+  if render3d_st.ov_font_adv == null { return 0 }
   var w = 0.0
   let sp: pointer = s                      # UTF-8 bytes, not one-character strings
   let n = len(sp)
   var i = 0
   while i < n {
-    let g = ov_glyph(ov_u8(sp, i, n))
-    i += ov_u8_len
-    w = w + ov_font_adv[g] * float(size)
+    let g = ov_glyph(render3d_st, ov_u8(render3d_st, sp, i, n))
+    i += render3d_st.ov_u8_len
+    w = w + render3d_st.ov_font_adv[g] * float(size)
   }
   return int(w)
 }
 # text with its top-left at (x, y); returns the pen x after it
-function ov_text(x: int, y: int, size: int, s: string, r: float, g: float, b: float, a: float) -> int {
-  if ov_font == 0 { return x }
-  ov_use_tex(ov_font)
-  let k = float(size) / float(ov_font_em)                 # atlas px -> screen px
-  let cell = float(ov_font_cell) * k
+function ov_text(render3d_st: mut Render3dState, x: int, y: int, size: int, s: string, r: float, g: float, b: float, a: float) -> int {
+  if render3d_st.ov_font == 0 { return x }
+  ov_use_tex(render3d_st, render3d_st.ov_font)
+  let k = float(size) / float(render3d_st.ov_font_em)                 # atlas px -> screen px
+  let cell = float(render3d_st.ov_font_cell) * k
   var pen = float(x)
   let base = float(y) + float(size) * 0.80
-  let px = ov_pad_x * float(ov_font_em) * k
-  let py = ov_base_y * float(ov_font_em) * k
+  let px = render3d_st.ov_pad_x * float(render3d_st.ov_font_em) * k
+  let py = render3d_st.ov_base_y * float(render3d_st.ov_font_em) * k
   let sp: pointer = s
   let n = len(sp)
   var i = 0
   while i < n {
-    let c = ov_glyph(ov_u8(sp, i, n))
-    i += ov_u8_len
-    if c != ov_font_space {
-      let cx = c - (c / ov_font_cols) * ov_font_cols
-      let cy = c / ov_font_cols
-      let u0 = float(cx) / float(ov_font_cols);  let u1 = float(cx + 1) / float(ov_font_cols)
-      let v0 = float(cy) / float(ov_font_rows);  let v1 = float(cy + 1) / float(ov_font_rows)
+    let c = ov_glyph(render3d_st, ov_u8(render3d_st, sp, i, n))
+    i += render3d_st.ov_u8_len
+    if c != render3d_st.ov_font_space {
+      let cx = c - (c / render3d_st.ov_font_cols) * render3d_st.ov_font_cols
+      let cy = c / render3d_st.ov_font_cols
+      let u0 = float(cx) / float(render3d_st.ov_font_cols);  let u1 = float(cx + 1) / float(render3d_st.ov_font_cols)
+      let v0 = float(cy) / float(render3d_st.ov_font_rows);  let v1 = float(cy + 1) / float(render3d_st.ov_font_rows)
       let x0 = pen - px;  let y1 = base + py
-      ov_quad(x0, y1 - cell, x0 + cell, y1, u0, v0, u1, v1, r, g, b, a)
+      ov_quad(render3d_st, x0, y1 - cell, x0 + cell, y1, u0, v0, u1, v1, r, g, b, a)
     }
-    pen = pen + ov_font_adv[c] * float(size)
+    pen = pen + render3d_st.ov_font_adv[c] * float(size)
   }
   return int(pen)
 }
 # text with a soft dark shadow under it (HUD over a bright meadow)
-function ov_text_sh(x: int, y: int, size: int, s: string, r: float, g: float, b: float, a: float) -> int {
+function ov_text_sh(render3d_st: mut Render3dState, x: int, y: int, size: int, s: string, r: float, g: float, b: float, a: float) -> int {
   let d = size / 18 + 1
-  ov_text(x + d, y + d, size, s, 0.0, 0.0, 0.0, a * 0.7)
-  return ov_text(x, y, size, s, r, g, b, a)
+  ov_text(render3d_st, x + d, y + d, size, s, 0.0, 0.0, 0.0, a * 0.7)
+  return ov_text(render3d_st, x, y, size, s, r, g, b, a)
 }
-function ov_text_center(cx: int, y: int, size: int, s: string, r: float, g: float, b: float, a: float) -> void {
-  ov_text(cx - ov_text_w(size, s) / 2, y, size, s, r, g, b, a)
+function ov_text_center(render3d_st: mut Render3dState, cx: int, y: int, size: int, s: string, r: float, g: float, b: float, a: float) -> void {
+  ov_text(render3d_st, cx - ov_text_w(render3d_st, size, s) / 2, y, size, s, r, g, b, a)
 }
 
 # text wrapped at `maxw` pixels on spaces; returns the y after the last line
-function ov_text_wrap(x: int, y: int, size: int, maxw: int, s: string, r: float, g: float, b: float, a: float) -> int {
+function ov_text_wrap(render3d_st: mut Render3dState, x: int, y: int, size: int, maxw: int, s: string, r: float, g: float, b: float, a: float) -> int {
   let sp: pointer = s
   let n = len(sp)
   var first = 0
@@ -377,11 +339,11 @@ function ov_text_wrap(x: int, y: int, size: int, maxw: int, s: string, r: float,
       if sp[i] == 10 { stop = i;  break }
       if sp[i] == 32 { last_space = i }
       let piece: string = s[first .. i + 1]
-      if ov_text_w(size, piece) > maxw and last_space > first { stop = last_space;  break }
+      if ov_text_w(render3d_st, size, piece) > maxw and last_space > first { stop = last_space;  break }
       i += 1
     }
     let line: string = s[first .. stop]
-    ov_text(x, ly, size, line, r, g, b, a)
+    ov_text(render3d_st, x, ly, size, line, r, g, b, a)
     ly += size * 13 / 10
     first = stop
     while first < n and (sp[first] == 32 or sp[first] == 10) { first += 1 }
@@ -391,14 +353,14 @@ function ov_text_wrap(x: int, y: int, size: int, maxw: int, s: string, r: float,
 
 # ---- more shapes for a game's interface -------------------------------------------------
 # a sub-rectangle of a texture (uv corners as float bits) tinted, at integer pixels
-function ov_sub(tex: int, x: int, y: int, w: int, h: int, u0: float, v0: float, u1: float, v1: float, r: float, g: float, b: float, a: float) -> void {
-  ov_use_tex(tex)
-  ov_quad(float(x), float(y), float(x + w), float(y + h), u0, v0, u1, v1, r, g, b, a)
+function ov_sub(render3d_st: mut Render3dState, tex: int, x: int, y: int, w: int, h: int, u0: float, v0: float, u1: float, v1: float, r: float, g: float, b: float, a: float) -> void {
+  ov_use_tex(render3d_st, tex)
+  ov_quad(render3d_st, float(x), float(y), float(x + w), float(y + h), u0, v0, u1, v1, r, g, b, a)
 }
 # a whole texture stretched by nine slices: corners `src` texels wide in a `tw` px square
 # texture, drawn `dst` pixels wide, so rounded corners keep their shape at any size
-function ov_nine(tex: int, tw: int, src: int, x: int, y: int, w: int, h: int, dst: int, r: float, g: float, b: float, a: float) -> void {
-  ov_use_tex(tex)
+function ov_nine(render3d_st: mut Render3dState, tex: int, tw: int, src: int, x: int, y: int, w: int, h: int, dst: int, r: float, g: float, b: float, a: float) -> void {
+  ov_use_tex(render3d_st, tex)
   let s = float(src) / float(tw)
   let xs = floats(4);  let ys = floats(4);  let us = floats(4);  let vs = floats(4)
   xs[0] = float(x);  xs[1] = float(x + dst);  xs[2] = float(x + w - dst);  xs[3] = float(x + w)
@@ -406,33 +368,33 @@ function ov_nine(tex: int, tw: int, src: int, x: int, y: int, w: int, h: int, ds
   us[0] = 0.0;  us[1] = s;  us[2] = 1.0 - s;  us[3] = 1.0
   vs[0] = 0.0;  vs[1] = s;  vs[2] = 1.0 - s;  vs[3] = 1.0
   for j in 0 .. 3 {
-    for i in 0 .. 3 { ov_quad(xs[i], ys[j], xs[i + 1], ys[j + 1], us[i], vs[j], us[i + 1], vs[j + 1], r, g, b, a) }
+    for i in 0 .. 3 { ov_quad(render3d_st, xs[i], ys[j], xs[i + 1], ys[j + 1], us[i], vs[j], us[i + 1], vs[j + 1], r, g, b, a) }
   }
   free(xs);  free(ys);  free(us);  free(vs)
 }
 # an arbitrary quad (float-bit pixel corners, clockwise from top-left) of a texture
-function ov_quad4(x0: float, y0: float, x1: float, y1: float, x2: float, y2: float, x3: float, y3: float, u0: float, v0: float, u1: float, v1: float, r: float, g: float, b: float, a: float) -> void {
-  if ov_n >= OV_MAX_QUADS { ov_flush() }
-  let k = ov_n * 6
-  ov_vert(k, x0, y0, u0, v0, r, g, b, a)
-  ov_vert(k + 1, x1, y1, u1, v0, r, g, b, a)
-  ov_vert(k + 2, x2, y2, u1, v1, r, g, b, a)
-  ov_vert(k + 3, x0, y0, u0, v0, r, g, b, a)
-  ov_vert(k + 4, x2, y2, u1, v1, r, g, b, a)
-  ov_vert(k + 5, x3, y3, u0, v1, r, g, b, a)
-  ov_n += 1
+function ov_quad4(render3d_st: mut Render3dState, x0: float, y0: float, x1: float, y1: float, x2: float, y2: float, x3: float, y3: float, u0: float, v0: float, u1: float, v1: float, r: float, g: float, b: float, a: float) -> void {
+  if render3d_st.ov_n >= OV_MAX_QUADS { ov_flush(render3d_st) }
+  let k = render3d_st.ov_n * 6
+  ov_vert(render3d_st, k, x0, y0, u0, v0, r, g, b, a)
+  ov_vert(render3d_st, k + 1, x1, y1, u1, v0, r, g, b, a)
+  ov_vert(render3d_st, k + 2, x2, y2, u1, v1, r, g, b, a)
+  ov_vert(render3d_st, k + 3, x0, y0, u0, v0, r, g, b, a)
+  ov_vert(render3d_st, k + 4, x2, y2, u1, v1, r, g, b, a)
+  ov_vert(render3d_st, k + 5, x3, y3, u0, v1, r, g, b, a)
+  render3d_st.ov_n += 1
 }
 # a line of thickness `t` pixels between two points (float-bit pixels)
-function ov_line(x0: float, y0: float, x1: float, y1: float, t: float, r: float, g: float, b: float, a: float) -> void {
-  ov_use_tex(ov_white)
+function ov_line(render3d_st: mut Render3dState, x0: float, y0: float, x1: float, y1: float, t: float, r: float, g: float, b: float, a: float) -> void {
+  ov_use_tex(render3d_st, render3d_st.ov_white)
   let dx = x1 - x0;  let dy = y1 - y0
   let l = Math.max(Math.sqrt(dx * dx + dy * dy), 0.001)
   let nx = -dy / l * (t * 0.5);  let ny = dx / l * (t * 0.5)
-  ov_quad4(x0 + nx, y0 + ny, x1 + nx, y1 + ny, x1 - nx, y1 - ny, x0 - nx, y0 - ny, 0.0, 0.0, 1.0, 1.0, r, g, b, a)
+  ov_quad4(render3d_st, x0 + nx, y0 + ny, x1 + nx, y1 + ny, x1 - nx, y1 - ny, x0 - nx, y0 - ny, 0.0, 0.0, 1.0, 1.0, r, g, b, a)
 }
 # a sub-rectangle of a texture rotated by `ang` radians about its centre (cx, cy), `w` x `h` pixels
-function ov_sub_rot(tex: int, cx: int, cy: int, w: int, h: int, ang: float, u0: float, v0: float, u1: float, v1: float, r: float, g: float, b: float, a: float) -> void {
-  ov_use_tex(tex)
+function ov_sub_rot(render3d_st: mut Render3dState, tex: int, cx: int, cy: int, w: int, h: int, ang: float, u0: float, v0: float, u1: float, v1: float, r: float, g: float, b: float, a: float) -> void {
+  ov_use_tex(render3d_st, tex)
   let c = Math.cos(ang);  let s = Math.sin(ang)
   let hw = float(w) * 0.5;  let hh = float(h) * 0.5
   let fx = float(cx);  let fy = float(cy)
@@ -441,24 +403,24 @@ function ov_sub_rot(tex: int, cx: int, cy: int, w: int, h: int, ang: float, u0: 
   let x1 = fx + (hw * c - -hh * s);  let y1 = fy + (hw * s + -hh * c)
   let x2 = fx + (hw * c - hh * s);  let y2 = fy + (hw * s + hh * c)
   let x3 = fx + (-hw * c - hh * s);  let y3 = fy + (-hw * s + hh * c)
-  ov_quad4(x0, y0, x1, y1, x2, y2, x3, y3, u0, v0, u1, v1, r, g, b, a)
+  ov_quad4(render3d_st, x0, y0, x1, y1, x2, y2, x3, y3, u0, v0, u1, v1, r, g, b, a)
 }
 # a filled circle approximated by `n` wedges (float-bit centre and radius)
-function ov_disc(cx: float, cy: float, rad: float, n: int, r: float, g: float, b: float, a: float) -> void {
-  ov_use_tex(ov_white)
+function ov_disc(render3d_st: mut Render3dState, cx: float, cy: float, rad: float, n: int, r: float, g: float, b: float, a: float) -> void {
+  ov_use_tex(render3d_st, render3d_st.ov_white)
   let step = 2.0 * PI / float(n)
   for i in 0 .. n {
     let a0 = float(i) * step;  let a1 = a0 + step
     let ax = cx + Math.cos(a0) * rad;  let ay = cy + Math.sin(a0) * rad
     let bx = cx + Math.cos(a1) * rad;  let by = cy + Math.sin(a1) * rad
-    ov_quad4(cx, cy, ax, ay, bx, by, cx, cy, 0.0, 0.0, 1.0, 1.0, r, g, b, a)
+    ov_quad4(render3d_st, cx, cy, ax, ay, bx, by, cx, cy, 0.0, 0.0, 1.0, 1.0, r, g, b, a)
   }
 }
 # a ring: `n` segments of thickness `t`, from angle a0 for `span` radians (float bits)
-function ov_arc(cx: float, cy: float, rad: float, t: float, a0: float, span: float, n: int, r: float, g: float, b: float, a: float) -> void {
+function ov_arc(render3d_st: mut Render3dState, cx: float, cy: float, rad: float, t: float, a0: float, span: float, n: int, r: float, g: float, b: float, a: float) -> void {
   let step = span / float(n)
   for i in 0 .. n {
     let b0 = a0 + float(i) * step;  let b1 = b0 + step
-    ov_line(cx + Math.cos(b0) * rad, cy + Math.sin(b0) * rad, cx + Math.cos(b1) * rad, cy + Math.sin(b1) * rad, t, r, g, b, a)
+    ov_line(render3d_st, cx + Math.cos(b0) * rad, cy + Math.sin(b0) * rad, cx + Math.cos(b1) * rad, cy + Math.sin(b1) * rad, t, r, g, b, a)
   }
 }

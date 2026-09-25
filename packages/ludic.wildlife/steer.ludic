@@ -14,7 +14,7 @@ function wl_face(a: WildAnimal, tx: float, tz: float, rate: float, dt: float) ->
 }
 
 # true when it moved
-function wl_step(a: WildAnimal, dt: float) -> bool {
+function wl_step(base_st: mut BaseState, wildlife_st: mut WildlifeState, a: WildAnimal, dt: float) -> bool {
   let d = a.speed * dt
   if d < 0.0001 { return false }
   let nx = a.x - Math.sin(a.yaw) * d
@@ -29,16 +29,16 @@ function wl_step(a: WildAnimal, dt: float) -> bool {
   a.z = nz
   a.y = nh
   a.track_d = a.track_d + d
-  if wl_sp(a.sp).tracks and a.track_d > 2.8 {
+  if wl_sp(wildlife_st, a.sp).tracks and a.track_d > 2.8 {
     a.track_d = 0.0
-    wl_fact(WILD_PRINT, a)
+    wl_fact(base_st, wildlife_st, WILD_PRINT, a)
   }
   return true
 }
 
-function wl_pick_target(a: WildAnimal, radius: float) -> void {
-  let ang = wl_rnd() * WL_TAU
-  let d = wl_rnd() * radius
+function wl_pick_target(wildlife_st: mut WildlifeState, a: WildAnimal, radius: float) -> void {
+  let ang = wl_rnd(wildlife_st) * WL_TAU
+  let d = wl_rnd(wildlife_st) * radius
   a.tx = a.home_x + Math.cos(ang) * d
   a.tz = a.home_z + Math.sin(ang) * d
 }
@@ -50,15 +50,15 @@ function wl_at_target(a: WildAnimal, r: float) -> bool {
 }
 
 # back to wandering about home after `t` seconds of whatever it was doing
-function wl_wander(a: WildAnimal, t: float) -> void {
+function wl_wander(wildlife_st: mut WildlifeState, a: WildAnimal, t: float) -> void {
   a.state = WILD_WANDER
   a.timer = t
-  wl_pick_target(a, wl_sp(a.sp).home)
+  wl_pick_target(wildlife_st, a, wl_sp(wildlife_st, a.sp).home)
 }
 
 # home where it stands now, kept inside its range
-function wl_rehome(a: WildAnimal) -> void {
+function wl_rehome(wildlife_st: mut WildlifeState, a: WildAnimal) -> void {
   a.home_x = a.x
   a.home_z = a.z
-  wl_clamp(a)
+  wl_clamp(wildlife_st, a)
 }

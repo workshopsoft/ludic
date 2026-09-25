@@ -1,47 +1,47 @@
 # where.ludic - who and where each player is; slot 0 answers through SessionLocal, live
-export function ply_pid(p: int) -> int {
-  if p <= 0 or not ply_on(p) { return 0 }
-  return session__slot[p].pid
+export function ply_pid(session_st: SessionState, p: int) -> int {
+  if p <= 0 or not ply_on(session_st, p) { return 0 }
+  return session_st.session__slot[p].pid
 }
 
-export function ply_name(p: int) -> string {
+export function ply_name(session_st: SessionState, p: int) -> string {
   if p == 0 { return SessionLocal.name() }
-  if not ply_on(p) { return "" }
-  return session__slot[p].name
+  if not ply_on(session_st, p) { return "" }
+  return session_st.session__slot[p].name
 }
 
-export function ply_x(p: int) -> float {
+export function ply_x(session_st: SessionState, p: int) -> float {
   if p == 0 { return SessionLocal.x() }
-  return session__slot[p].x
+  return session_st.session__slot[p].x
 }
 
-export function ply_y(p: int) -> float {
+export function ply_y(session_st: SessionState, p: int) -> float {
   if p == 0 { return SessionLocal.y() }
-  return session__slot[p].y
+  return session_st.session__slot[p].y
 }
 
-export function ply_z(p: int) -> float {
+export function ply_z(session_st: SessionState, p: int) -> float {
   if p == 0 { return SessionLocal.z() }
-  return session__slot[p].z
+  return session_st.session__slot[p].z
 }
 
-export function ply_yaw(p: int) -> float {
+export function ply_yaw(session_st: SessionState, p: int) -> float {
   if p == 0 { return SessionLocal.yaw() }
-  return session__slot[p].yaw
+  return session_st.session__slot[p].yaw
 }
 
-export function ply_speed(p: int) -> float {
+export function ply_speed(session_st: SessionState, p: int) -> float {
   if p == 0 { return SessionLocal.speed() }
-  return session__slot[p].speed
+  return session_st.session__slot[p].speed
 }
 
 # how much a player's rest speeds the clock: their seat's or the ground's, 1 on their feet
-export function ply_rest(p: int) -> float {
+export function ply_rest(session_st: SessionState, p: int) -> float {
   if p == 0 { return SessionLocal.rest() }
-  return session__slot[p].rest
+  return session_st.session__slot[p].rest
 }
 
-export function ply_sleeping(p: int) -> bool {
-  if p == 0 { return session__me_sleeping }
-  return ply_on(p) and session__slot[p].sleeping
+export function ply_sleeping(session_st: SessionState, p: int) -> bool {
+  if p == 0 { return session_st.session__me_sleeping }
+  return ply_on(session_st, p) and session_st.session__slot[p].sleeping
 }

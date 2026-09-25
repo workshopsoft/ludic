@@ -15,7 +15,7 @@ export port WeatherWorld {
 function wx_owns_alone() -> bool { return true }
 function wx_noon() -> float { return 12.0 }
 function wx_daylight() -> bool { return false }
-function wx_own_odds(from: int) -> []float { return wx_kinds[from].odds }
+function wx_own_odds(weather_st: WeatherState, from: int) -> []float { return weather_st.wx_kinds[from].odds }
 function wx_no_bias() -> int { return WEATHER_NO_BIAS }
 function wx_no_hours() -> float { return 0.0 }
 function wx_seed_one() -> int { return 1 }
@@ -53,34 +53,40 @@ export property WeatherFact {
   from: int = 0
 }
 
-var wx_kinds: []WeatherKind = null
-var wx_state: int = 0
-var wx_next: int = 0
-var wx_left: float = 0.0             # game hours left in this spell
-var wx_amount: float = 0.0           # 0..1, how far in (eases at the edges)
-var wx_forecast: int = 0
-var wx_forced: bool = false          # the next spell is a front the story asked for
-var wx_wind: float = 0.2
-var wx_dir: float = 0.0              # radians the wind blows toward
-var wx_ground: float = 0.0           # 0 dry .. 1 soaked
-var wx_flash: float = 0.0
-var wx_thunder_t: float = 0.0        # real seconds to the next strike
-var wx_clear_t: float = 0.0          # game hours of after-the-front light left
-var wx_wet_today: bool = false
-var wx_wet_yesterday: bool = false
-var wx_dice: Rng = null
-var wx_facts: Queue<WeatherFact> = null
-
-# the facts, oldest first; the game drains them into its notices and sounds
-export function weather_facts() -> Queue<WeatherFact> {
-  if wx_facts == null { wx_facts = queue_new("weather.facts") }
-  return wx_facts
+export state WeatherState {
+  wx_down_dir: float = 0.0     # the wind overnight and into the morning
+  wx_up_dir: float = 3.1415927 # the wind while the slopes are warm
+  wx_up_from: float = 10.0
+  wx_up_to: float = 19.0
+  wx_kinds: []WeatherKind = null
+  wx_state: int = 0
+  wx_next: int = 0
+  wx_left: float = 0.0             # game hours left in this spell
+  wx_amount: float = 0.0           # 0..1, how far in (eases at the edges)
+  wx_forecast: int = 0
+  wx_forced: bool = false          # the next spell is a front the story asked for
+  wx_wind: float = 0.2
+  wx_dir: float = 0.0              # radians the wind blows toward
+  wx_ground: float = 0.0           # 0 dry .. 1 soaked
+  wx_flash: float = 0.0
+  wx_thunder_t: float = 0.0        # real seconds to the next strike
+  wx_clear_t: float = 0.0          # game hours of after-the-front light left
+  wx_wet_today: bool = false
+  wx_wet_yesterday: bool = false
+  wx_dice: Rng = null
+  wx_facts: Queue<WeatherFact> = null
 }
 
-function wx_fact(what: int, kind: int, from: int) -> void {
+# the facts, oldest first; the game drains them into its notices and sounds
+export function weather_facts(base_st: mut BaseState, weather_st: mut WeatherState) -> Queue<WeatherFact> {
+  if weather_st.wx_facts == null { weather_st.wx_facts = queue_new(base_st, "weather.facts") }
+  return weather_st.wx_facts
+}
+
+function wx_fact(base_st: mut BaseState, weather_st: mut WeatherState, what: int, kind: int, from: int) -> void {
   let f = new WeatherFact
   f.what = what
   f.kind = kind
   f.from = from
-  q_push(weather_facts(), f)
+  q_push(base_st, weather_facts(base_st, weather_st), f)
 }

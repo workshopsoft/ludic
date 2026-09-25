@@ -3,75 +3,58 @@
 # projection matrices. Float bits throughout; see fmath.ludic.
 # ============================================================================
 
-var cam_pos:   floats = null      # x, y, z
-var cam_yaw:   float = 0.0           # radians, 0 = looking down -z
-var cam_pitch: float = 0.0
-var cam_fov:   float = 0.0           # vertical, radians
-var cam_near:  float = 0.0
-var cam_far:   float = 0.0
-var cam_aspect: float = 0.0
-var cam_view:  floats = null
-var cam_proj:  floats = null
-var cam_vp:    floats = null
-var cam_inv_vp: floats = null
-var cam_inv_proj: floats = null
-var cam_vp_clean: floats = null       # view-projection, kept for depth reconstruction
-var cam_inv_vp_clean: floats = null
-var cam_fwd:   floats = null
-var cam_right: floats = null
 # the view frustum's four side planes (a, b, c, d), float bits: left, right, bottom, top;
 # from the clean (unjittered) view-projection, column-major m[col * 4 + row]
-var cam_planes: floats = null
 
-function cam_init(aspect: float) -> void {
-  cam_pos = v3_new(0.0, 2.0, 0.0)
-  cam_view = m4_new();  cam_proj = m4_new();  cam_vp = m4_new();  cam_inv_vp = m4_new();  cam_inv_proj = m4_new()
-  cam_vp_clean = m4_new();  cam_inv_vp_clean = m4_new()
-  cam_fwd = v3_new(0.0, 0.0, -1.0)
-  cam_right = v3_new(1.0, 0.0, 0.0)
-  cam_fov = Math.deg_to_rad(42.0)
-  cam_near = 0.3
-  cam_far = 14000.0
-  cam_aspect = aspect
-  cam_update()
+function cam_init(render3d_st: mut Render3dState, aspect: float) -> void {
+  render3d_st.cam_pos = v3_new(0.0, 2.0, 0.0)
+  render3d_st.cam_view = m4_new();  render3d_st.cam_proj = m4_new();  render3d_st.cam_vp = m4_new();  render3d_st.cam_inv_vp = m4_new();  render3d_st.cam_inv_proj = m4_new()
+  render3d_st.cam_vp_clean = m4_new();  render3d_st.cam_inv_vp_clean = m4_new()
+  render3d_st.cam_fwd = v3_new(0.0, 0.0, -1.0)
+  render3d_st.cam_right = v3_new(1.0, 0.0, 0.0)
+  render3d_st.cam_fov = Math.deg_to_rad(42.0)
+  render3d_st.cam_near = 0.3
+  render3d_st.cam_far = 14000.0
+  render3d_st.cam_aspect = aspect
+  cam_update(render3d_st)
 }
-function cam_begin_frame(n: int, w: int, h: int) -> void {
-  gsl_jitter_frame()
-  cam_update()
+function cam_begin_frame(render3d_st: mut Render3dState, n: int, w: int, h: int) -> void {
+  gsl_jitter_frame(render3d_st)
+  cam_update(render3d_st)
 }
-function cam_set(x: float, y: float, z: float, yaw_deg: float, pitch_deg: float) -> void {
-  v3_set(cam_pos, x, y, z)
-  cam_yaw = Math.deg_to_rad(yaw_deg)
-  cam_pitch = Math.deg_to_rad(pitch_deg)
-  cam_update()
+function cam_set(render3d_st: mut Render3dState, x: float, y: float, z: float, yaw_deg: float, pitch_deg: float) -> void {
+  v3_set(render3d_st.cam_pos, x, y, z)
+  render3d_st.cam_yaw = Math.deg_to_rad(yaw_deg)
+  render3d_st.cam_pitch = Math.deg_to_rad(pitch_deg)
+  cam_update(render3d_st)
 }
-function cam_update() -> void {
-  let cy = Math.cos(cam_yaw);  let sy = Math.sin(cam_yaw)
-  let cp = Math.cos(cam_pitch);  let sp = Math.sin(cam_pitch)
-  v3_set(cam_fwd, -(sy * cp), sp, -(cy * cp))
-  v3_set(cam_right, cy, 0.0, -sy)
+function cam_update(render3d_st: mut Render3dState) -> void {
+  let cy = Math.cos(render3d_st.cam_yaw);  let sy = Math.sin(render3d_st.cam_yaw)
+  let cp = Math.cos(render3d_st.cam_pitch);  let sp = Math.sin(render3d_st.cam_pitch)
+  v3_set(render3d_st.cam_fwd, -(sy * cp), sp, -(cy * cp))
+  v3_set(render3d_st.cam_right, cy, 0.0, -sy)
   let at = floats(3)
-  v3_add(at, cam_pos, cam_fwd)
+  v3_add(at, render3d_st.cam_pos, render3d_st.cam_fwd)
   let up = v3_new(0.0, 1.0, 0.0)
-  m4_look_at(cam_view, cam_pos, at, up)
-  m4_perspective(cam_proj, cam_fov, cam_aspect, cam_near, cam_far)
-  m4_mul(cam_vp_clean, cam_proj, cam_view)
-  m4_inverse(cam_inv_vp_clean, cam_vp_clean)
+  m4_look_at(render3d_st.cam_view, render3d_st.cam_pos, at, up)
+  m4_perspective(render3d_st.cam_proj, render3d_st.cam_fov, render3d_st.cam_aspect, render3d_st.cam_near, render3d_st.cam_far)
+  m4_mul(render3d_st.cam_vp_clean, render3d_st.cam_proj, render3d_st.cam_view)
+  m4_inverse(render3d_st.cam_inv_vp_clean, render3d_st.cam_vp_clean)
   # DLSS's sub-pixel jitter (streamline.ludic), in the projection the scene draws with only:
   # culling, depth reconstruction and last frame's matrix keep the clean one
-  if gsl_jitter_x != 0.0 or gsl_jitter_y != 0.0 {
-    cam_proj[8] = cam_proj[8] - gsl_jitter_x
-    cam_proj[9] = cam_proj[9] - gsl_jitter_y
+  if render3d_st.gsl_jitter_x != 0.0 or render3d_st.gsl_jitter_y != 0.0 {
+    render3d_st.cam_proj[8] = render3d_st.cam_proj[8] - render3d_st.gsl_jitter_x
+    render3d_st.cam_proj[9] = render3d_st.cam_proj[9] - render3d_st.gsl_jitter_y
   }
-  m4_mul(cam_vp, cam_proj, cam_view)
-  m4_inverse(cam_inv_vp, cam_vp)
-  m4_inverse(cam_inv_proj, cam_proj)
+  m4_mul(render3d_st.cam_vp, render3d_st.cam_proj, render3d_st.cam_view)
+  m4_inverse(render3d_st.cam_inv_vp, render3d_st.cam_vp)
+  m4_inverse(render3d_st.cam_inv_proj, render3d_st.cam_proj)
   free(at);  free(up)
-  cam_planes_update()
+  cam_planes_update(render3d_st)
 }
-function cam_planes_update() -> void {
-  if cam_planes == null { cam_planes = floats(16) }
-  let m = cam_vp_clean
+function cam_planes_update(render3d_st: mut Render3dState) -> void {
+  if render3d_st.cam_planes == null { render3d_st.cam_planes = floats(16) }
+  let m = render3d_st.cam_vp_clean
   for p in 0 .. 4 {
     var r = 0
     if p >= 2 { r = 1 }
@@ -82,27 +65,27 @@ function cam_planes_update() -> void {
     var c = m[11] + sg * m[8 + r]
     var d = m[15] + sg * m[12 + r]
     let inv = 1.0 / Math.sqrt(a * a + b * b + c * c)
-    cam_planes[p * 4] = a * inv;  cam_planes[p * 4 + 1] = b * inv
-    cam_planes[p * 4 + 2] = c * inv;  cam_planes[p * 4 + 3] = d * inv
+    render3d_st.cam_planes[p * 4] = a * inv;  render3d_st.cam_planes[p * 4 + 1] = b * inv
+    render3d_st.cam_planes[p * 4 + 2] = c * inv;  render3d_st.cam_planes[p * 4 + 3] = d * inv
   }
 }
 # is a sphere (float bits) at least partly inside the side planes of the view?
-function cam_sphere_visible(x: float, y: float, z: float, r: float) -> bool {
-  if cam_planes == null { return true }
+function cam_sphere_visible(render3d_st: Render3dState, x: float, y: float, z: float, r: float) -> bool {
+  if render3d_st.cam_planes == null { return true }
   let nr = -r
   for p in 0 .. 4 {
     let o = p * 4
-    let dist = cam_planes[o] * x + cam_planes[o + 1] * y + cam_planes[o + 2] * z + cam_planes[o + 3]
+    let dist = render3d_st.cam_planes[o] * x + render3d_st.cam_planes[o + 1] * y + render3d_st.cam_planes[o + 2] * z + render3d_st.cam_planes[o + 3]
     if dist < nr { return false }
   }
   return true
 }
 # fly: forward/strafe in metres, turn in radians
-function cam_move(fwd: float, strafe: float, up: float, dyaw: float, dpitch: float) -> void {
-  cam_yaw = cam_yaw + dyaw
-  cam_pitch = Math.clamp(cam_pitch + dpitch, -1.5, 1.5)
-  v3_madd(cam_pos, cam_pos, cam_fwd, fwd)
-  v3_madd(cam_pos, cam_pos, cam_right, strafe)
-  cam_pos[1] = cam_pos[1] + up
-  cam_update()
+function cam_move(render3d_st: mut Render3dState, fwd: float, strafe: float, up: float, dyaw: float, dpitch: float) -> void {
+  render3d_st.cam_yaw = render3d_st.cam_yaw + dyaw
+  render3d_st.cam_pitch = Math.clamp(render3d_st.cam_pitch + dpitch, -1.5, 1.5)
+  v3_madd(render3d_st.cam_pos, render3d_st.cam_pos, render3d_st.cam_fwd, fwd)
+  v3_madd(render3d_st.cam_pos, render3d_st.cam_pos, render3d_st.cam_right, strafe)
+  render3d_st.cam_pos[1] = render3d_st.cam_pos[1] + up
+  cam_update(render3d_st)
 }

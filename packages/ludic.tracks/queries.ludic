@@ -1,38 +1,38 @@
 # queries.ludic - what the world asks the ground. A slot is kind * cap + ring index.
-export function tracks_kinds() -> int { return tk_kinds }
-export function tracks_cap() -> int { return tk_cap }
+export function tracks_kinds(tracks_st: TracksState) -> int { return tracks_st.tk_kinds }
+export function tracks_cap(tracks_st: TracksState) -> int { return tracks_st.tk_cap }
 
-export function tracks_count(kind: int) -> int {
-  if not tk_ok(kind) { return 0 }
-  return tk_count[kind]
+export function tracks_count(tracks_st: TracksState, kind: int) -> int {
+  if not tk_ok(tracks_st, kind) { return 0 }
+  return tracks_st.tk_count[kind]
 }
 
-export function tracks_slot(kind: int, i: int) -> int { return kind * tk_cap + i }
+export function tracks_slot(tracks_st: TracksState, kind: int, i: int) -> int { return kind * tracks_st.tk_cap + i }
 
-export function tracks_x(slot: int) -> float { return tk_ring[slot].x }
-export function tracks_z(slot: int) -> float { return tk_ring[slot].z }
-export function tracks_yaw(slot: int) -> float { return tk_ring[slot].yaw }
-export function tracks_sp(slot: int) -> int { return tk_ring[slot].sp }
-export function tracks_legend(slot: int) -> bool { return tk_ring[slot].legend }
-export function tracks_made(slot: int) -> float { return tk_ring[slot].made }
-export function tracks_was_read(slot: int) -> bool { return tk_ring[slot].read }
+export function tracks_x(tracks_st: TracksState, slot: int) -> float { return tracks_st.tk_ring[slot].x }
+export function tracks_z(tracks_st: TracksState, slot: int) -> float { return tracks_st.tk_ring[slot].z }
+export function tracks_yaw(tracks_st: TracksState, slot: int) -> float { return tracks_st.tk_ring[slot].yaw }
+export function tracks_sp(tracks_st: TracksState, slot: int) -> int { return tracks_st.tk_ring[slot].sp }
+export function tracks_legend(tracks_st: TracksState, slot: int) -> bool { return tracks_st.tk_ring[slot].legend }
+export function tracks_made(tracks_st: TracksState, slot: int) -> float { return tracks_st.tk_ring[slot].made }
+export function tracks_was_read(tracks_st: TracksState, slot: int) -> bool { return tracks_st.tk_ring[slot].read }
 
 # game hours since it was made; never below 0
-export function tracks_age(slot: int) -> float { return Math.max(0.0, tk_now() - tk_ring[slot].made) }
+export function tracks_age(tracks_st: TracksState, slot: int) -> float { return Math.max(0.0, tk_now() - tracks_st.tk_ring[slot].made) }
 
 # the nearest print within `r` of (x, z), as a slot; -1 when there is none
-export function tracks_nearest(x: float, z: float, r: float) -> int {
+export function tracks_nearest(tracks_st: TracksState, x: float, z: float, r: float) -> int {
   var best = r * r
   var at = -1
-  for k in 0 .. tk_kinds {
-    for i in 0 .. tk_count[k] {
-      let t = tk_ring[k * tk_cap + i]
+  for k in 0 .. tracks_st.tk_kinds {
+    for i in 0 .. tracks_st.tk_count[k] {
+      let t = tracks_st.tk_ring[k * tracks_st.tk_cap + i]
       let dx = t.x - x
       let dz = t.z - z
       let d2 = dx * dx + dz * dz
       if d2 < best {
         best = d2
-        at = k * tk_cap + i
+        at = k * tracks_st.tk_cap + i
       }
     }
   }
@@ -40,8 +40,8 @@ export function tracks_nearest(x: float, z: float, r: float) -> int {
 }
 
 # signs read for the first time, of every source
-export function tracks_read_count() -> int { return tk_read_n }
+export function tracks_read_count(tracks_st: TracksState) -> int { return tracks_st.tk_read_n }
 
 # the heading of the last sign read, and whether there has been one
-export function tracks_last_yaw() -> float { return tk_yaw }
-export function tracks_has_bearing() -> bool { return tk_has_yaw }
+export function tracks_last_yaw(tracks_st: TracksState) -> float { return tracks_st.tk_yaw }
+export function tracks_has_bearing(tracks_st: TracksState) -> bool { return tracks_st.tk_has_yaw }

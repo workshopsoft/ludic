@@ -1,63 +1,59 @@
 # ident.ludic - one player id per machine: the operating system's own id (Windows MachineGuid,
 # macOS IOPlatformUUID, Linux /etc/machine-id) hashed with the game's salt, else random
-var telemetry__proc: int = -1
-var telemetry__proc_out: string = ""
-var telemetry__proc_t0: int = 0
-var telemetry__rand_n: int = 0
 
 # n random bytes as hex. Crypto.random_hex reads /dev/urandom, which Windows lacks (zeros there),
 # so it is mixed with the clock and the process and hashed: distinct per start everywhere
-export function telemetry_random_hex(n: int) -> string {
-  telemetry__rand_n += 1
-  let seed = Crypto.random_hex(n) + "|" + `{Time.now()}|{Crypto.random_u32()}|{Os.pid()}|{telemetry__rand_n}`
+export function telemetry_random_hex(telemetry_st: mut TelemetryState, n: int) -> string {
+  telemetry_st.telemetry__rand_n += 1
+  let seed = Crypto.random_hex(n) + "|" + `{Time.now()}|{Crypto.random_u32()}|{Os.pid()}|{telemetry_st.telemetry__rand_n}`
   return Crypto.sha256(seed)[0..n * 2]
 }
 
 # the id outright (a game with accounts of its own, a test); written to the id file
-export function telemetry_set_id(id: string) -> void {
-  telemetry__id = id
-  let path = telemetry__conf().id_file
+export function telemetry_set_id(base_st: mut BaseState, telemetry_st: mut TelemetryState, id: string) -> void {
+  telemetry_st.telemetry__id = id
+  let path = telemetry__conf(telemetry_st).id_file
   if len(path) > 0 {
     var v = telemetry__read_obj(path)
     if v == null { v = Value.object() }
     Value.put(v, "id", Value.str(id))
     Fs.write_text(path, Json.encode(v))
   }
-  telemetry__fact(TELEMETRY_ID, 0, 0, 0)
+  telemetry__fact(base_st, telemetry_st, TELEMETRY_ID, 0, 0, 0)
 }
 
-function telemetry__random_id() -> void { telemetry_set_id("r-" + telemetry_random_hex(16)) }
+function telemetry__random_id(base_st: mut BaseState, telemetry_st: mut TelemetryState) -> void { telemetry_set_id(base_st, telemetry_st, "r-" + telemetry_random_hex(telemetry_st, 16)) }
 
-function telemetry__from_machine(raw: string) -> void {
-  let salt = telemetry__conf().id_salt
-  telemetry_set_id("m-" + Crypto.sha256(salt + ":" + Text.lower(raw))[0..32])
+function telemetry__from_machine(base_st: mut BaseState, telemetry_st: mut TelemetryState, raw: string) -> void {
+  let salt = telemetry__conf(telemetry_st).id_salt
+  telemetry_set_id(base_st, telemetry_st, "m-" + Crypto.sha256(salt + ":" + Text.lower(raw))[0..32])
 }
 
-function telemetry__id_begin() -> void {
-  if len(telemetry__conf().id_salt) == 0 {
-    telemetry__random_id()
+function telemetry__id_begin(base_st: mut BaseState, telemetry_st: mut TelemetryState) -> void {
+  if len(telemetry__conf(telemetry_st).id_salt) == 0 {
+    telemetry__random_id(base_st, telemetry_st)
     return
   }
   let plat = Os.platform()
   if plat == "linux" {
     let m = Fs.read_text("/etc/machine-id")
-    if m != null and len(Text.trim(m)) > 0 { telemetry__from_machine(Text.trim(m)) } else { telemetry__random_id() }
+    if m != null and len(Text.trim(m)) > 0 { telemetry__from_machine(base_st, telemetry_st, Text.trim(m)) } else { telemetry__random_id(base_st, telemetry_st) }
     return
   }
-  telemetry__proc_out = telemetry__conf().id_scratch
-  if len(telemetry__proc_out) == 0 { telemetry__proc_out = Os.temp_dir() + "/ludic-telemetry-machine.txt" }
-  if Fs.exists(telemetry__proc_out) { Fs.remove(telemetry__proc_out) }
-  telemetry__proc = telemetry__spawn_machine(plat)
-  telemetry__proc_t0 = Time.now()
-  if telemetry__proc < 0 { telemetry__random_id() }
+  telemetry_st.telemetry__proc_out = telemetry__conf(telemetry_st).id_scratch
+  if len(telemetry_st.telemetry__proc_out) == 0 { telemetry_st.telemetry__proc_out = Os.temp_dir() + "/ludic-telemetry-machine.txt" }
+  if Fs.exists(telemetry_st.telemetry__proc_out) { Fs.remove(telemetry_st.telemetry__proc_out) }
+  telemetry_st.telemetry__proc = telemetry__spawn_machine(telemetry_st, plat)
+  telemetry_st.telemetry__proc_t0 = Time.now()
+  if telemetry_st.telemetry__proc < 0 { telemetry__random_id(base_st, telemetry_st) }
 }
 
-function telemetry__spawn_machine(plat: string) -> int {
+function telemetry__spawn_machine(telemetry_st: TelemetryState, plat: string) -> int {
   let args = new []string
   if plat == "windows" {
     var root = "C:\\Windows"
     if Os.has_env("SystemRoot") and len(Os.env("SystemRoot")) > 0 { root = Os.env("SystemRoot") }
-    let out = "'" + Text.replace(telemetry__proc_out, "'", "''") + "'"
+    let out = "'" + Text.replace(telemetry_st.telemetry__proc_out, "'", "''") + "'"
     push(args, "-NoProfile")
     push(args, "-NonInteractive")
     push(args, "-Command")
@@ -65,28 +61,28 @@ function telemetry__spawn_machine(plat: string) -> int {
     return Process.spawn(root + "\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", args)
   }
   push(args, "-c")
-  push(args, "ioreg -rd1 -c IOPlatformExpertDevice | awk -F'\"' '/IOPlatformUUID/{print $4}' > '" + telemetry__proc_out + "'")
+  push(args, "ioreg -rd1 -c IOPlatformExpertDevice | awk -F'\"' '/IOPlatformUUID/{print $4}' > '" + telemetry_st.telemetry__proc_out + "'")
   return Process.spawn("/bin/sh", args)
 }
 
 # the machine id, once the child has written it (ten seconds at most)
-function telemetry__id_tick() -> void {
-  if telemetry__proc < 0 { return }
-  let code = Process.poll(telemetry__proc)
+function telemetry__id_tick(base_st: mut BaseState, telemetry_st: mut TelemetryState) -> void {
+  if telemetry_st.telemetry__proc < 0 { return }
+  let code = Process.poll(telemetry_st.telemetry__proc)
   if code < 0 {
-    if Time.now() - telemetry__proc_t0 > 10 {
-      Process.kill(telemetry__proc)
-      Process.free(telemetry__proc)
-      telemetry__proc = -1
-      telemetry__random_id()
+    if Time.now() - telemetry_st.telemetry__proc_t0 > 10 {
+      Process.kill(telemetry_st.telemetry__proc)
+      Process.free(telemetry_st.telemetry__proc)
+      telemetry_st.telemetry__proc = -1
+      telemetry__random_id(base_st, telemetry_st)
     }
     return
   }
-  Process.free(telemetry__proc)
-  telemetry__proc = -1
+  Process.free(telemetry_st.telemetry__proc)
+  telemetry_st.telemetry__proc = -1
   var raw = ""
-  let s = Fs.read_text(telemetry__proc_out)
+  let s = Fs.read_text(telemetry_st.telemetry__proc_out)
   if s != null { raw = Text.trim(s) }
-  if Fs.exists(telemetry__proc_out) { Fs.remove(telemetry__proc_out) }
-  if code == 0 and len(raw) >= 8 { telemetry__from_machine(raw) } else { telemetry__random_id() }
+  if Fs.exists(telemetry_st.telemetry__proc_out) { Fs.remove(telemetry_st.telemetry__proc_out) }
+  if code == 0 and len(raw) >= 8 { telemetry__from_machine(base_st, telemetry_st, raw) } else { telemetry__random_id(base_st, telemetry_st) }
 }

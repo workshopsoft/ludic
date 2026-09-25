@@ -47,22 +47,24 @@ export property TrackRead {
   first: bool = false
 }
 
-var tk_kinds: int = 0
-var tk_cap: int = 0
-var tk_ring: []Track = null        # kinds x cap, kind-major
-var tk_count: []int = null         # per kind: how many of the ring are in use
-var tk_next: []int = null          # per kind: where the next print goes
-var tk_name_at: int = 0            # the skill that tells the animal from its print
-var tk_fresh_h: float = 0.5
-var tk_recent_h: float = 2.5
-var tk_read_n: int = 0             # signs read for the first time, of every source
-var tk_yaw: float = 0.0            # the heading of the last sign read
-var tk_has_yaw: bool = false
-var tk_reads: Queue<TrackRead> = null
+export state TracksState {
+  tk_kinds: int = 0
+  tk_cap: int = 0
+  tk_ring: []Track = null        # kinds x cap, kind-major
+  tk_count: []int = null         # per kind: how many of the ring are in use
+  tk_next: []int = null          # per kind: where the next print goes
+  tk_name_at: int = 0            # the skill that tells the animal from its print
+  tk_fresh_h: float = 0.5
+  tk_recent_h: float = 2.5
+  tk_read_n: int = 0             # signs read for the first time, of every source
+  tk_yaw: float = 0.0            # the heading of the last sign read
+  tk_has_yaw: bool = false
+  tk_reads: Queue<TrackRead> = null
+}
 
 
 # the facts: every sign read, oldest first
-export function tracks_reads() -> Queue<TrackRead> {
-  if tk_reads == null { tk_reads = queue_new("tracks.reads") }
-  return tk_reads
+export function tracks_reads(base_st: mut BaseState, tracks_st: mut TracksState) -> Queue<TrackRead> {
+  if tracks_st.tk_reads == null { tracks_st.tk_reads = queue_new(base_st, "tracks.reads") }
+  return tracks_st.tk_reads
 }

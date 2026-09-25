@@ -4,123 +4,125 @@ import "ludic.clock"
 import "ludic.base"
 program ClockTest {
   numbers float
-  var owns: bool = true
-  var rest: float = 1.0
+  state ClocktestState {
+    owns: bool = true
+    rest: float = 1.0
+  }
 
-  function fake_owns() -> bool { return owns }
-  function fake_rest() -> float { return rest }
+  function fake_owns(clocktest_st: ClocktestState) -> bool { return clocktest_st.owns }
+  function fake_rest(clocktest_st: ClocktestState) -> float { return clocktest_st.rest }
   function fake_seed() -> int { return 42 }
 
   bind ClockWorld { owns_world: fn fake_owns, rest_scale: fn fake_rest, seed: fn fake_seed }
 
-  function fresh() -> void {
-    owns = true
-    rest = 1.0
-    clock_config(8.0, 20.0, 6.0)
-    clock_config_moon(29.5, 0.2, 0.8)
-    clock_set_scale(60.0)
+  function fresh(base_st: mut BaseState, clock_st: mut ClockState, clocktest_st: mut ClocktestState) -> void {
+    clocktest_st.owns = true
+    clocktest_st.rest = 1.0
+    clock_config(clock_st, 8.0, 20.0, 6.0)
+    clock_config_moon(clock_st, 29.5, 0.2, 0.8)
+    clock_set_scale(clock_st, 60.0)
     let seasons = new []int
     for m in 0 .. 12 { push(seasons, m / 3) }
-    clock_calendar(10, seasons)
-    clock_reset()
+    clock_calendar(clock_st, 10, seasons)
+    clock_reset(base_st, clock_st)
   }
 
-  function turned() -> []DayTurned { return q_drain(clock_days()) }
-  function waiting() -> int { return q_len(clock_days()) }
+  function turned(base_st: mut BaseState, clock_st: mut ClockState) -> []DayTurned { return q_drain(base_st, clock_days(base_st, clock_st)) }
+  function waiting(base_st: mut BaseState, clock_st: mut ClockState) -> int { return q_len(clock_days(base_st, clock_st)) }
   function run_hours(h: float) -> void {
     let s = clock_system()
     s.tick(tick_new(0.016, 0, h))
   }
 
-  test "a trip starts on day one at the start hour, the moon inside its range" {
-    fresh()
-    expect_eq(clock_day(), 1)
-    expect(clock_hours() == 8.0)
-    expect(clock_moon() >= 0.2 and clock_moon() < 0.8)
-    expect(clock_hhmm() == "08:00")
+  test "a trip starts on day one at the start hour, the moon inside its range" (base_st: mut BaseState, clock_st: mut ClockState, clocktest_st: mut ClocktestState) {
+    fresh(base_st, clock_st, clocktest_st)
+    expect_eq(clock_day(clock_st), 1)
+    expect(clock_hours(clock_st) == 8.0)
+    expect(clock_moon(clock_st) >= 0.2 and clock_moon(clock_st) < 0.8)
+    expect(clock_hhmm(clock_st) == "08:00")
   }
 
-  test "the same seed gives the same moon" {
-    fresh()
-    let a = clock_moon()
-    clock_reset()
-    expect(clock_moon() == a)
+  test "the same seed gives the same moon" (base_st: mut BaseState, clock_st: mut ClockState, clocktest_st: mut ClocktestState) {
+    fresh(base_st, clock_st, clocktest_st)
+    let a = clock_moon(clock_st)
+    clock_reset(base_st, clock_st)
+    expect(clock_moon(clock_st) == a)
   }
 
-  test "a real minute is a game hour at scale 60, and resting speeds it" {
-    fresh()
-    expect(clock_hours_in(60.0) == 1.0)
-    rest = 4.0
-    expect(clock_rate() == 240.0)
+  test "a real minute is a game hour at scale 60, and resting speeds it" (base_st: mut BaseState, clock_st: mut ClockState, clocktest_st: mut ClocktestState) {
+    fresh(base_st, clock_st, clocktest_st)
+    expect(clock_hours_in(clock_st, 60.0) == 1.0)
+    clocktest_st.rest = 4.0
+    expect(clock_rate(clock_st) == 240.0)
   }
 
-  test "past midnight the day turns, once, as a fact" {
-    fresh()
+  test "past midnight the day turns, once, as a fact" (base_st: mut BaseState, clock_st: mut ClockState, clocktest_st: mut ClocktestState) {
+    fresh(base_st, clock_st, clocktest_st)
     run_hours(15.0)
-    expect_eq(waiting(), 0)
+    expect_eq(waiting(base_st, clock_st), 0)
     run_hours(2.5)
-    expect_eq(clock_day(), 2)
-    expect(clock_hours() == 1.5)
-    let t = turned()
+    expect_eq(clock_day(clock_st), 2)
+    expect(clock_hours(clock_st) == 1.5)
+    let t = turned(base_st, clock_st)
     expect_eq(len(t), 1)
     expect_eq(t[0].day, 2)
     expect_eq(t[0].how, DAY_STAYED_UP)
   }
 
-  test "a machine that does not own the world does not move it" {
-    fresh()
-    owns = false
+  test "a machine that does not own the world does not move it" (base_st: mut BaseState, clock_st: mut ClockState, clocktest_st: mut ClocktestState) {
+    fresh(base_st, clock_st, clocktest_st)
+    clocktest_st.owns = false
     run_hours(20.0)
-    expect(clock_hours() == 8.0)
-    expect_eq(clock_day(), 1)
+    expect(clock_hours(clock_st) == 8.0)
+    expect_eq(clock_day(clock_st), 1)
   }
 
-  test "a night slept turns the day and moves the moon a month's share" {
-    fresh()
-    let m0 = clock_moon()
-    clock_set_hours(6.5)
-    clock_new_day()
-    expect_eq(clock_day(), 2)
-    expect(clock_moon() > m0)
-    expect_eq(turned()[0].how, DAY_SLEPT)
+  test "a night slept turns the day and moves the moon a month's share" (base_st: mut BaseState, clock_st: mut ClockState, clocktest_st: mut ClocktestState) {
+    fresh(base_st, clock_st, clocktest_st)
+    let m0 = clock_moon(clock_st)
+    clock_set_hours(clock_st, 6.5)
+    clock_new_day(base_st, clock_st)
+    expect_eq(clock_day(clock_st), 2)
+    expect(clock_moon(clock_st) > m0)
+    expect_eq(turned(base_st, clock_st)[0].how, DAY_SLEPT)
   }
 
-  test "night is outside the day's hours, and the hour wraps" {
-    fresh()
-    clock_set_hours(21.0)
-    expect(clock_is_night())
-    clock_set_hours(12.0)
-    expect(not clock_is_night())
-    clock_set_hours(25.0)
-    expect(clock_hours() == 1.0)
+  test "night is outside the day's hours, and the hour wraps" (base_st: mut BaseState, clock_st: mut ClockState, clocktest_st: mut ClocktestState) {
+    fresh(base_st, clock_st, clocktest_st)
+    clock_set_hours(clock_st, 21.0)
+    expect(clock_is_night(clock_st))
+    clock_set_hours(clock_st, 12.0)
+    expect(not clock_is_night(clock_st))
+    clock_set_hours(clock_st, 25.0)
+    expect(clock_hours(clock_st) == 1.0)
   }
 
-  test "the calendar is a function of the day" {
-    fresh()
-    expect_eq(clock_season_of(1), 0)
-    expect_eq(clock_month_of(31), 3)
-    expect_eq(clock_season_of(31), 1)
-    expect_eq(clock_day_of_month_of(35), 5)
-    expect_eq(clock_year_of(121), 2)
-    expect_eq(clock_first_day_of(2), 61)
-    clock_set_day(28)
-    expect_eq(clock_days_to_change(), 3)
-    expect_eq(clock_season(), 0)
+  test "the calendar is a function of the day" (base_st: mut BaseState, clock_st: mut ClockState, clocktest_st: mut ClocktestState) {
+    fresh(base_st, clock_st, clocktest_st)
+    expect_eq(clock_season_of(clock_st, 1), 0)
+    expect_eq(clock_month_of(clock_st, 31), 3)
+    expect_eq(clock_season_of(clock_st, 31), 1)
+    expect_eq(clock_day_of_month_of(clock_st, 35), 5)
+    expect_eq(clock_year_of(clock_st, 121), 2)
+    expect_eq(clock_first_day_of(clock_st, 2), 61)
+    clock_set_day(clock_st, 28)
+    expect_eq(clock_days_to_change(clock_st), 3)
+    expect_eq(clock_season(clock_st), 0)
   }
 
-  test "a save section reads back the same clock" {
-    fresh()
-    clock_set_day(17)
-    clock_set_hours(13.25)
-    clock_set_moon(0.375)
+  test "a save section reads back the same clock" (base_st: mut BaseState, clock_st: mut ClockState, clocktest_st: mut ClocktestState) {
+    fresh(base_st, clock_st, clocktest_st)
+    clock_set_day(clock_st, 17)
+    clock_set_hours(clock_st, 13.25)
+    clock_set_moon(clock_st, 0.375)
     let root = save_tree()
-    save_section(root, "clock", 1, clock_save())
+    save_section(root, "clock", 1, clock_save(clock_st))
     let text = save_encode(root)
-    clock_reset()
+    clock_reset(base_st, clock_st)
     let n = load_section(save_decode(text), "clock")
-    clock_load(n.data, n.version)
-    expect_eq(clock_day(), 17)
-    expect(clock_hours() == 13.25)
-    expect(clock_moon() == 0.375)
+    clock_load(base_st, clock_st, n.data, n.version)
+    expect_eq(clock_day(clock_st), 17)
+    expect(clock_hours(clock_st) == 13.25)
+    expect(clock_moon(clock_st) == 0.375)
   }
 }

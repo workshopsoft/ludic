@@ -1,42 +1,40 @@
 # hold.ludic - a recipe made by holding a button for its `hold` seconds: letting go wastes
 # nothing, and it stops by itself the moment it can no longer be made
-var craft_hold_i: int = -1
-var craft_hold_t: float = 0.0
 
 export function craft_holds(i: int) -> bool { return craft_ok(i) and CraftRecipes[i].hold > 0.0 }
 
 # the recipe being held, or -1
-export function craft_holding() -> int { return craft_hold_i }
+export function craft_holding(crafting_st: CraftingState) -> int { return crafting_st.craft_hold_i }
 
 # starts holding one that is made by holding and can be made now
-export function craft_hold_start(i: int) -> bool {
+export function craft_hold_start(crafting_st: mut CraftingState, i: int) -> bool {
   if not craft_holds(i) or not craft_can(i) { return false }
-  craft_hold_i = i
-  craft_hold_t = 0.0
+  crafting_st.craft_hold_i = i
+  crafting_st.craft_hold_t = 0.0
   return true
 }
 
-export function craft_hold_stop() -> void {
-  craft_hold_i = -1
-  craft_hold_t = 0.0
+export function craft_hold_stop(crafting_st: mut CraftingState) -> void {
+  crafting_st.craft_hold_i = -1
+  crafting_st.craft_hold_t = 0.0
 }
 
 # how far through the hold on `i` is, 0 to 1
-export function craft_hold_frac(i: int) -> float {
-  if craft_hold_i != i or not craft_holds(i) { return 0.0 }
-  return Math.clamp(craft_hold_t / CraftRecipes[i].hold, 0.0, 1.0)
+export function craft_hold_frac(crafting_st: CraftingState, i: int) -> float {
+  if crafting_st.craft_hold_i != i or not craft_holds(i) { return 0.0 }
+  return Math.clamp(crafting_st.craft_hold_t / CraftRecipes[i].hold, 0.0, 1.0)
 }
 
 # `dt` real seconds of holding; true on the frame it is made
-export function craft_hold_run(dt: float) -> bool {
-  if craft_hold_i < 0 { return false }
-  if not craft_can(craft_hold_i) {
-    craft_hold_stop()
+export function craft_hold_run(base_st: mut BaseState, crafting_st: mut CraftingState, dt: float) -> bool {
+  if crafting_st.craft_hold_i < 0 { return false }
+  if not craft_can(crafting_st.craft_hold_i) {
+    craft_hold_stop(crafting_st)
     return false
   }
-  craft_hold_t = craft_hold_t + dt
-  if craft_hold_t <= CraftRecipes[craft_hold_i].hold { return false }
-  let i = craft_hold_i
-  craft_hold_stop()
-  return craft_make(i)
+  crafting_st.craft_hold_t = crafting_st.craft_hold_t + dt
+  if crafting_st.craft_hold_t <= CraftRecipes[crafting_st.craft_hold_i].hold { return false }
+  let i = crafting_st.craft_hold_i
+  craft_hold_stop(crafting_st)
+  return craft_make(base_st, crafting_st, i)
 }

@@ -1,20 +1,20 @@
 # system.ludic - the clock as a system: it runs first (PH_INPUT) so every later system reads this
 # frame's hour, and it saves its own section
-function clock_tick(t: Tick) -> void { clock_advance(t.hours) }
+function clock_tick(base_st: mut BaseState, clock_st: mut ClockState, t: Tick) -> void { clock_advance(base_st, clock_st, t.hours) }
 
-export function clock_save() -> Val {
+export function clock_save(clock_st: ClockState) -> Val {
   let v = Value.object()
-  sv_put_int(v, "day", ck_day)
-  sv_put_float(v, "hours", ck_hours)
-  sv_put_float(v, "moon", ck_moon)
+  sv_put_int(v, "day", clock_st.ck_day)
+  sv_put_float(v, "hours", clock_st.ck_hours)
+  sv_put_float(v, "moon", clock_st.ck_moon)
   return v
 }
 
-export function clock_load(v: Val, version: int) -> void {
-  ck_day = sv_int(v, "day", 1)
-  clock_set_hours(sv_float(v, "hours", ck_start_hours))
-  ck_moon = sv_float(v, "moon", 0.5)
-  q_clear(clock_days())
+export function clock_load(base_st: mut BaseState, clock_st: mut ClockState, v: Val, version: int) -> void {
+  clock_st.ck_day = sv_int(v, "day", 1)
+  clock_set_hours(clock_st, sv_float(v, "hours", clock_st.ck_start_hours))
+  clock_st.ck_moon = sv_float(v, "moon", 0.5)
+  q_clear(base_st, clock_days(base_st, clock_st))
 }
 
 export function clock_system() -> System {

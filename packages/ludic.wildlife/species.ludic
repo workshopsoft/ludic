@@ -32,26 +32,48 @@ export property WildSpecies {
   scale: float = 1.0         # its size, times
 }
 
-var wl_species: []WildSpecies = null
-
-function wl_sp_all() -> []WildSpecies {
-  if wl_species == null { wl_species = new []WildSpecies }
-  return wl_species
+export state WildlifeState {
+  wl_facts: Queue<WildFact> = null
+  wl_own: []WildAnimal = null
+  wl_px: float = 0.0
+  wl_pz: float = 0.0
+  wl_ask: WildLure = null
+  wl_best: WildLure = null
+  wl_seed_any: bool = false
+  wl_seed_t: float = 0.0
+  wl_ids: int = 0
+  wl_ranges: []WildRange = null
+  wl_found: []int = null      # found flags a load brought before the ranges were set out
+  wl_seen: int = 0
+  wl_fed: int = 0
+  wl_fed_any: bool = false
+  wl_near_i: int = 0
+  wl_species: []WildSpecies = null
+  wl_list: []WildAnimal = null
+  wl_keys: int = 0
+  wl_dice: Rng = null
+  wl_hold: bool = false      # staged: nobody thinks, everybody keeps their speed
+  wl_spot_ask: WildSpot = null
 }
 
-export function wildlife_species_clear() -> void { wl_species = new []WildSpecies }
+function wl_sp_all(wildlife_st: mut WildlifeState) -> []WildSpecies {
+  if wildlife_st.wl_species == null { wildlife_st.wl_species = new []WildSpecies }
+  return wildlife_st.wl_species
+}
+
+export function wildlife_species_clear(wildlife_st: mut WildlifeState) -> void { wildlife_st.wl_species = new []WildSpecies }
 
 # the next species; returns its number
-export function wildlife_species_add(s: WildSpecies) -> int {
-  push(wl_sp_all(), s)
-  return len(wl_sp_all()) - 1
+export function wildlife_species_add(wildlife_st: mut WildlifeState, s: WildSpecies) -> int {
+  push(wl_sp_all(wildlife_st), s)
+  return len(wl_sp_all(wildlife_st)) - 1
 }
 
-export function wildlife_species_count() -> int { return len(wl_sp_all()) }
+export function wildlife_species_count(wildlife_st: mut WildlifeState) -> int { return len(wl_sp_all(wildlife_st)) }
 
-export function wildlife_species(sp: int) -> WildSpecies {
-  if sp < 0 or sp >= len(wl_sp_all()) { return null }
-  return wl_sp_all()[sp]
+export function wildlife_species(wildlife_st: mut WildlifeState, sp: int) -> WildSpecies {
+  if sp < 0 or sp >= len(wl_sp_all(wildlife_st)) { return null }
+  return wl_sp_all(wildlife_st)[sp]
 }
 
-function wl_sp(sp: int) -> WildSpecies { return wl_sp_all()[sp] }
+function wl_sp(wildlife_st: mut WildlifeState, sp: int) -> WildSpecies { return wl_sp_all(wildlife_st)[sp] }

@@ -21,89 +21,89 @@ export function nb_copy(dst: []byte, d: int, src: []byte, s: int, n: int) -> voi
 }
 
 # the writer: past the MTU it counts on and keeps nothing, and np_queue cuts the message there
-export function nw_begin() -> void {
-  net__init()
-  net__wl = 0
+export function nw_begin(net_st: mut NetState) -> void {
+  net__init(net_st)
+  net_st.net__wl = 0
 }
 
-export function nw_i(v: int) -> void {
-  if net__wl + 4 <= NET_MTU { nb_put32(net__wb, net__wl, v) }
-  net__wl += 4
+export function nw_i(net_st: mut NetState, v: int) -> void {
+  if net_st.net__wl + 4 <= NET_MTU { nb_put32(net_st.net__wb, net_st.net__wl, v) }
+  net_st.net__wl += 4
 }
 
-export function nw_b(v: bool) -> void { if v { nw_i(1) } else { nw_i(0) } }
+export function nw_b(net_st: mut NetState, v: bool) -> void { if v { nw_i(net_st, 1) } else { nw_i(net_st, 0) } }
 
-export function nw_f(v: float) -> void { nw_i(float_bits(v)) }
+export function nw_f(net_st: mut NetState, v: float) -> void { nw_i(net_st, float_bits(v)) }
 
 # a string of at most 200 bytes; nw_text takes a longer one up to its own cap
-export function nw_s(s: string) -> void { nw_text(s, 200) }
+export function nw_s(net_st: mut NetState, s: string) -> void { nw_text(net_st, s, 200) }
 
-export function nw_text(s: string, cap: int) -> void {
+export function nw_text(net_st: mut NetState, s: string, cap: int) -> void {
   var n = len(s)
   if n > cap { n = cap }
-  nw_i(n)
+  nw_i(net_st, n)
   for i in 0 .. n {
-    if net__wl < NET_MTU { net__wb[net__wl] = s[i] }
-    net__wl += 1
+    if net_st.net__wl < NET_MTU { net_st.net__wb[net_st.net__wl] = s[i] }
+    net_st.net__wl += 1
   }
 }
 
-export function nw_len() -> int { return net__wl }
+export function nw_len(net_st: NetState) -> int { return net_st.net__wl }
 
 # the reader: a short or bad message reads as zeros and sets nr_bad()
-export function nr_i() -> int {
-  if net__rp + 4 > net__rl {
-    net__rbad = true
+export function nr_i(net_st: mut NetState) -> int {
+  if net_st.net__rp + 4 > net_st.net__rl {
+    net_st.net__rbad = true
     return 0
   }
-  let v = nb_get32(net__rb, net__rp)
-  net__rp += 4
+  let v = nb_get32(net_st.net__rb, net_st.net__rp)
+  net_st.net__rp += 4
   return v
 }
 
-export function nr_b() -> bool { return nr_i() != 0 }
+export function nr_b(net_st: mut NetState) -> bool { return nr_i(net_st) != 0 }
 
-export function nr_f() -> float { return float_from_bits(nr_i()) }
+export function nr_f(net_st: mut NetState) -> float { return float_from_bits(nr_i(net_st)) }
 
-export function nr_s() -> string { return nr_text(200) }
+export function nr_s(net_st: mut NetState) -> string { return nr_text(net_st, 200) }
 
-export function nr_text(cap: int) -> string {
-  let n = nr_i()
-  if n < 0 or n > cap or net__rp + n > net__rl {
-    net__rbad = true
+export function nr_text(net_st: mut NetState, cap: int) -> string {
+  let n = nr_i(net_st)
+  if n < 0 or n > cap or net_st.net__rp + n > net_st.net__rl {
+    net_st.net__rbad = true
     return ""
   }
-  if net__tb == null { net__tb = buffer(NET_MTU) }
-  nb_copy(net__tb, 0, net__rb, net__rp, n)
-  net__rp += n
-  return text_of(net__tb, n)
+  if net_st.net__tb == null { net_st.net__tb = buffer(NET_MTU) }
+  nb_copy(net_st.net__tb, 0, net_st.net__rb, net_st.net__rp, n)
+  net_st.net__rp += n
+  return text_of(net_st.net__tb, n)
 }
 
-export function nr_bad() -> bool { return net__rbad }
+export function nr_bad(net_st: NetState) -> bool { return net_st.net__rbad }
 
 # a message that came in, made the one nr_* reads
-export function net_read(m: NetMessage) -> void {
-  net__init()
-  nb_copy(net__rb, 0, m.data, 0, m.len)
-  net__rl = m.len
-  net__rp = 0
-  net__rbad = false
+export function net_read(net_st: mut NetState, m: NetMessage) -> void {
+  net__init(net_st)
+  nb_copy(net_st.net__rb, 0, m.data, 0, m.len)
+  net_st.net__rl = m.len
+  net_st.net__rp = 0
+  net_st.net__rbad = false
 }
 
 # the message just written, as if it had come in (a loopback: a test, a host telling itself)
-export function net_written() -> NetMessage {
-  net__init()
+export function net_written(net_st: mut NetState) -> NetMessage {
+  net__init(net_st)
   let m = new NetMessage
-  m.from = net__my_pid
-  m.len = min(net__wl, NET_MTU)
+  m.from = net_st.net__my_pid
+  m.len = min(net_st.net__wl, NET_MTU)
   m.data = buffer(m.len)
-  nb_copy(m.data, 0, net__wb, 0, m.len)
+  nb_copy(m.data, 0, net_st.net__wb, 0, m.len)
   return m
 }
 
 # the message being read, copied out as the next one to write (a host passing it on)
-export function net_copy_read() -> void {
-  nw_begin()
-  nb_copy(net__wb, 0, net__rb, 0, net__rl)
-  net__wl = net__rl
+export function net_copy_read(net_st: mut NetState) -> void {
+  nw_begin(net_st)
+  nb_copy(net_st.net__wb, 0, net_st.net__rb, 0, net_st.net__rl)
+  net_st.net__wl = net_st.net__rl
 }

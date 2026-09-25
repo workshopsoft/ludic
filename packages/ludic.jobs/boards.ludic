@@ -2,88 +2,88 @@
 # the jobs' own dice seeded by the day, so a board never moves anyone else's rolls
 export function jobs_board_ok(b: int) -> bool { return b >= 0 and b < BOARD_COUNT }
 
-function jobs__at(b: int, s: int) -> int {
-  jobs__ensure()
-  return jobs__off[b] + s
+function jobs__at(jobs_st: mut JobsState, b: int, s: int) -> int {
+  jobs__ensure(jobs_st)
+  return jobs_st.jobs__off[b] + s
 }
 
 # a whole number in [lo, hi] from the jobs' dice: what JobsWorld.roll draws with
-export function jobs_roll(lo: int, hi: int) -> int {
-  jobs__ensure()
-  return rng_between(jobs__dice, lo, hi)
+export function jobs_roll(jobs_st: mut JobsState, lo: int, hi: int) -> int {
+  jobs__ensure(jobs_st)
+  return rng_between(jobs_st.jobs__dice, lo, hi)
 }
 
 # inside JobsWorld.roll: what goes up in the slot being filled
-export function jobs_post(b: int, s: int, kind: int, param: int, need: int, money: int, rep: int) -> void {
-  let k = jobs__at(b, s)
-  jobs__pk[k] = kind
-  jobs__pp[k] = param
-  jobs__pn[k] = need
-  jobs__pm[k] = money
-  jobs__pr[k] = rep
-  jobs__ph[k] = 0
-  jobs__ps[k] = JOBS_ACTIVE
-  jobs__pd[k] = JobsWorld.day()
+export function jobs_post(jobs_st: mut JobsState, b: int, s: int, kind: int, param: int, need: int, money: int, rep: int) -> void {
+  let k = jobs__at(jobs_st, b, s)
+  jobs_st.jobs__pk[k] = kind
+  jobs_st.jobs__pp[k] = param
+  jobs_st.jobs__pn[k] = need
+  jobs_st.jobs__pm[k] = money
+  jobs_st.jobs__pr[k] = rep
+  jobs_st.jobs__ph[k] = 0
+  jobs_st.jobs__ps[k] = JOBS_ACTIVE
+  jobs_st.jobs__pd[k] = JobsWorld.day()
   let e = JobsWorld.evidence(kind, param)
-  jobs__pb[k] = 0
-  if e > 0 { jobs__pb[k] = e }
+  jobs_st.jobs__pb[k] = 0
+  if e > 0 { jobs_st.jobs__pb[k] = e }
 }
 
-function jobs__clear(k: int) -> void {
-  jobs__pk[k] = -1
-  jobs__pp[k] = -1
-  jobs__pn[k] = 0
-  jobs__ph[k] = 0
-  jobs__ps[k] = JOBS_OFFERED
+function jobs__clear(jobs_st: mut JobsState, k: int) -> void {
+  jobs_st.jobs__pk[k] = -1
+  jobs_st.jobs__pp[k] = -1
+  jobs_st.jobs__pn[k] = 0
+  jobs_st.jobs__ph[k] = 0
+  jobs_st.jobs__ps[k] = JOBS_OFFERED
 }
 
 # take a slot down and ask the game for what replaces it
-function jobs__repost(b: int, s: int) -> void {
-  let k = jobs__at(b, s)
+function jobs__repost(base_st: mut BaseState, jobs_st: mut JobsState, b: int, s: int) -> void {
+  let k = jobs__at(jobs_st, b, s)
   let day = JobsWorld.day()
-  rng_seed(jobs__dice, jobs__seed + day * 7 + b * 7919 + s * 104729 + jobs__serial[b] * 31)
-  jobs__serial[b] += 1
-  jobs__clear(k)
+  rng_seed(jobs_st.jobs__dice, jobs_st.jobs__seed + day * 7 + b * 7919 + s * 104729 + jobs_st.jobs__serial[b] * 31)
+  jobs_st.jobs__serial[b] += 1
+  jobs__clear(jobs_st, k)
   JobsWorld.roll(b, s)
-  if jobs__pk[k] >= 0 { jobs__fact(JOBS_F_OFFERED, -1, b, s, 0, jobs__pn[k]) }
+  if jobs_st.jobs__pk[k] >= 0 { jobs__fact(base_st, jobs_st, JOBS_F_OFFERED, -1, b, s, 0, jobs_st.jobs__pn[k]) }
 }
 
 # a new day, on the boards this machine keeps: an empty or stale post is replaced, and one
 # finished on an earlier day
-export function jobs_morning() -> void {
-  jobs__ensure()
+export function jobs_morning(base_st: mut BaseState, jobs_st: mut JobsState) -> void {
+  jobs__ensure(jobs_st)
   let day = JobsWorld.day()
   for b in 0 .. BOARD_COUNT {
     let bd = JobBoards[b]
     if not JobsWorld.owns(bd.scope) { continue }
     for s in 0 .. bd.slots {
-      let k = jobs__off[b] + s
-      let finished = jobs__ps[k] == JOBS_DONE and day > jobs__pd[k]
-      if jobs__pk[k] < 0 or finished or day - jobs__pd[k] >= bd.keep { jobs__repost(b, s) }
+      let k = jobs_st.jobs__off[b] + s
+      let finished = jobs_st.jobs__ps[k] == JOBS_DONE and day > jobs_st.jobs__pd[k]
+      if jobs_st.jobs__pk[k] < 0 or finished or day - jobs_st.jobs__pd[k] >= bd.keep { jobs__repost(base_st, jobs_st, b, s) }
     }
   }
 }
 
-function jobs__post_moved(b: int, s: int, have: int) -> void {
-  let k = jobs__off[b] + s
-  let was = jobs__ph[k]
-  jobs__ph[k] = have
-  if jobs__ph[k] > jobs__pn[k] { jobs__ph[k] = jobs__pn[k] }
-  if jobs__ph[k] > was { jobs__fact(JOBS_F_PROGRESSED, -1, b, s, jobs__ph[k], jobs__pn[k]) }
-  if jobs__ps[k] != JOBS_ACTIVE or jobs__ph[k] < jobs__pn[k] { return }
-  jobs__ps[k] = JOBS_READY
-  jobs__fact(JOBS_F_COMPLETED, -1, b, s, jobs__ph[k], jobs__pn[k])
-  if JobBoards[b].auto { jobs_post_hand_in(b, s) }
+function jobs__post_moved(base_st: mut BaseState, jobs_st: mut JobsState, b: int, s: int, have: int) -> void {
+  let k = jobs_st.jobs__off[b] + s
+  let was = jobs_st.jobs__ph[k]
+  jobs_st.jobs__ph[k] = have
+  if jobs_st.jobs__ph[k] > jobs_st.jobs__pn[k] { jobs_st.jobs__ph[k] = jobs_st.jobs__pn[k] }
+  if jobs_st.jobs__ph[k] > was { jobs__fact(base_st, jobs_st, JOBS_F_PROGRESSED, -1, b, s, jobs_st.jobs__ph[k], jobs_st.jobs__pn[k]) }
+  if jobs_st.jobs__ps[k] != JOBS_ACTIVE or jobs_st.jobs__ph[k] < jobs_st.jobs__pn[k] { return }
+  jobs_st.jobs__ps[k] = JOBS_READY
+  jobs__fact(base_st, jobs_st, JOBS_F_COMPLETED, -1, b, s, jobs_st.jobs__ph[k], jobs_st.jobs__pn[k])
+  if JobBoards[b].auto { jobs_post_hand_in(base_st, jobs_st, b, s) }
 }
 
-export function jobs_post_hand_in(b: int, s: int) -> bool {
+export function jobs_post_hand_in(base_st: mut BaseState, jobs_st: mut JobsState, b: int, s: int) -> bool {
   if not jobs_board_ok(b) or s < 0 or s >= JobBoards[b].slots { return false }
-  let k = jobs__at(b, s)
-  if jobs__ps[k] != JOBS_READY { return false }
-  jobs__ps[k] = JOBS_DONE
-  jobs__total[b] += 1
-  JobsPay.reward(JobBoards[b].scope, jobs__pm[k], jobs__pr[k])
-  jobs__fact(JOBS_F_HANDED_IN, -1, b, s, jobs__ph[k], jobs__pn[k])
-  if JobBoards[b].refill { jobs__repost(b, s) }
+  let k = jobs__at(jobs_st, b, s)
+  if jobs_st.jobs__ps[k] != JOBS_READY { return false }
+  jobs_st.jobs__ps[k] = JOBS_DONE
+  jobs_st.jobs__total[b] += 1
+  JobsPay.reward(JobBoards[b].scope, jobs_st.jobs__pm[k], jobs_st.jobs__pr[k])
+  jobs__fact(base_st, jobs_st, JOBS_F_HANDED_IN, -1, b, s, jobs_st.jobs__ph[k], jobs_st.jobs__pn[k])
+  if JobBoards[b].refill { jobs__repost(base_st, jobs_st, b, s) }
   return true
 }

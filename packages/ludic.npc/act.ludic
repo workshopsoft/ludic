@@ -1,6 +1,6 @@
 # act.ludic - doing the act: turned toward what it is about - or toward whoever came over to talk,
 # within the kind's notice - the game's own tick for the act, and a new plan when its time is up
-export function npc_act(p: NpcPerson, dt: float) -> void {
+export function npc_act(npc_st: mut NpcState, p: NpcPerson, dt: float) -> void {
   p.act_t = p.act_t - dt
   var wx = p.fx
   var wz = p.fz
@@ -8,8 +8,8 @@ export function npc_act(p: NpcPerson, dt: float) -> void {
     wx = p.x - Math.sin(p.stance) * 10.0
     wz = p.z - Math.cos(p.stance) * 10.0
   }
-  if not p.stalk and np_turns(p.act) and npc_near(p.x, p.z) < NpcKinds[p.kind].notice {
-    let i = npc_near_i()
+  if not p.stalk and np_turns(p.act) and npc_near(npc_st, p.x, p.z) < NpcKinds[p.kind].notice {
+    let i = npc_near_i(npc_st)
     wx = NpcWorld.player_x(i)
     wz = NpcWorld.player_z(i)
   }
@@ -21,7 +21,7 @@ export function npc_act(p: NpcPerson, dt: float) -> void {
     let tick = NpcActs[p.act].tick
     if tick(p, dt) { return }
   }
-  if p.act_t < 0.0 { npc_plan(p) }
+  if p.act_t < 0.0 { npc_plan(npc_st, p) }
 }
 
 function np_turns(act: int) -> bool {
@@ -30,7 +30,7 @@ function np_turns(act: int) -> bool {
 }
 
 # a player who came within notice since the last look is greeted - once, until they walk off
-export function npc_notice(p: NpcPerson) -> void {
+export function npc_notice(base_st: mut BaseState, npc_st: mut NpcState, p: NpcPerson) -> void {
   let reach = NpcKinds[p.kind].notice
   for i in 0 .. NpcWorld.players() {
     if i >= 30 { break }
@@ -39,7 +39,7 @@ export function npc_notice(p: NpcPerson) -> void {
     if NpcWorld.player_on(i) { d = npc_d(p.x, p.z, NpcWorld.player_x(i), NpcWorld.player_z(i)) }
     if d < reach and (p.near & bit) == 0 {
       p.near = p.near | bit
-      np_fact(NPC_F_GREETED, p, i)
+      np_fact(base_st, npc_st, NPC_F_GREETED, p, i)
     }
     if d > reach * 1.5 and (p.near & bit) != 0 { p.near = p.near - bit }
   }

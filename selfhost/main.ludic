@@ -215,6 +215,7 @@ entry {
   privates_rename()                               # L3: a module's private names are its own (privates.ludic)
   check_duplicate_fns()                           # two declarations of one name: the cause, before its symptoms
   check_duplicate_decls()
+  g_mg_entry = path
   if g_migrate { mg_collect() }                   # 0.S2: the vars that move (migrate.ludic)
   check_program()                                 # L4: the types agree before anything is emitted
   if g_migrate { mg_finish() }

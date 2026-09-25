@@ -5,56 +5,56 @@ import "ludic.base"
 program WalletTest {
   numbers float
 
-  function changes() -> []MoneyChanged { return q_drain(wallet_changes()) }
-  function waiting() -> int { return q_len(wallet_changes()) }
+  function changes(base_st: mut BaseState, wallet_st: mut WalletState) -> []MoneyChanged { return q_drain(base_st, wallet_changes(base_st, wallet_st)) }
+  function waiting(base_st: mut BaseState, wallet_st: mut WalletState) -> int { return q_len(wallet_changes(base_st, wallet_st)) }
 
-  test "earning and spending move the purse, and each says so" {
-    wallet_reset()
-    wallet_earn(40)
-    expect(wallet_spend(15))
-    expect_eq(wallet_money(), 25)
-    let cs = changes()
+  test "earning and spending move the purse, and each says so" (base_st: mut BaseState, wallet_st: mut WalletState) {
+    wallet_reset(base_st, wallet_st)
+    wallet_earn(base_st, wallet_st, 40)
+    expect(wallet_spend(base_st, wallet_st, 15))
+    expect_eq(wallet_money(wallet_st), 25)
+    let cs = changes(base_st, wallet_st)
     expect_eq(len(cs), 2)
     expect_eq(cs[0].after, 40)
     expect_eq(cs[1].before, 40)
     expect_eq(cs[1].after, 25)
   }
 
-  test "a spend past what is there is refused and changes nothing" {
-    wallet_reset()
-    wallet_set(10)
-    changes()
-    expect(not wallet_spend(11))
-    expect_eq(wallet_money(), 10)
-    expect_eq(waiting(), 0)
-    expect(wallet_can(10))
-    expect(not wallet_can(11))
+  test "a spend past what is there is refused and changes nothing" (base_st: mut BaseState, wallet_st: mut WalletState) {
+    wallet_reset(base_st, wallet_st)
+    wallet_set(base_st, wallet_st, 10)
+    changes(base_st, wallet_st)
+    expect(not wallet_spend(base_st, wallet_st, 11))
+    expect_eq(wallet_money(wallet_st), 10)
+    expect_eq(waiting(base_st, wallet_st), 0)
+    expect(wallet_can(wallet_st, 10))
+    expect(not wallet_can(wallet_st, 11))
   }
 
-  test "a loss happens anyway, but never below zero" {
-    wallet_reset()
-    wallet_set(7)
-    wallet_lose(20)
-    expect_eq(wallet_money(), 0)
+  test "a loss happens anyway, but never below zero" (base_st: mut BaseState, wallet_st: mut WalletState) {
+    wallet_reset(base_st, wallet_st)
+    wallet_set(base_st, wallet_st, 7)
+    wallet_lose(base_st, wallet_st, 20)
+    expect_eq(wallet_money(wallet_st), 0)
   }
 
-  test "setting what is already there is no change" {
-    wallet_reset()
-    wallet_set(5)
-    changes()
-    wallet_set(5)
-    expect_eq(waiting(), 0)
+  test "setting what is already there is no change" (base_st: mut BaseState, wallet_st: mut WalletState) {
+    wallet_reset(base_st, wallet_st)
+    wallet_set(base_st, wallet_st, 5)
+    changes(base_st, wallet_st)
+    wallet_set(base_st, wallet_st, 5)
+    expect_eq(waiting(base_st, wallet_st), 0)
   }
 
-  test "a save section reads back the same purse" {
-    wallet_reset()
-    wallet_set(123)
+  test "a save section reads back the same purse" (base_st: mut BaseState, wallet_st: mut WalletState) {
+    wallet_reset(base_st, wallet_st)
+    wallet_set(base_st, wallet_st, 123)
     let root = save_tree()
-    save_section(root, "wallet", 1, wallet_save())
+    save_section(root, "wallet", 1, wallet_save(wallet_st))
     let text = save_encode(root)
-    wallet_reset()
+    wallet_reset(base_st, wallet_st)
     let n = load_section(save_decode(text), "wallet")
-    wallet_load(n.data, n.version)
-    expect_eq(wallet_money(), 123)
+    wallet_load(base_st, wallet_st, n.data, n.version)
+    expect_eq(wallet_money(wallet_st), 123)
   }
 }

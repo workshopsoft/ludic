@@ -51,18 +51,73 @@ function mg_camel(s: pointer) -> pointer {
   }
   return out
 }
+function mg_param_for(name: pointer) -> pointer {
+  var base = name
+  let n = len(name)
+  if n > 5 and (name[n - 5 .. n] == "State") { base = name[0 .. n - 5] }
+  var out = ""
+  var i = 0
+  while i < len(base) {
+    let c = base[i]
+    if c >= 'A' and c <= 'Z' {
+      if i > 0 { out = out + "_" }
+      out = out + reg_lower(base[i .. i + 1])
+    } else { out = out + base[i .. i + 1] }
+    i += 1
+  }
+  return out + "_st"
+}
 function mg_short(m: pointer) -> pointer {
   if len(m) > 6 and (m[0 .. 6] == "ludic_") { return m[6 .. len(m)] }
   return m
 }
-function mg_state_of_mod(m: pointer) -> int {
+var g_mg_entry: pointer = ""            # the program's own file: its vars are the program's state
+# the state a var's file moves into: its module's, or - a file in no module - the program's for the
+# program's own file, else one named for the file's directory (a test's shared fakes)
+function mg_state_of_file(f: pointer) -> int {
+  let m = module_for_uses(f)
+  if not (m == "") { return mg_state_of_mod(m, mg_short(m)) }
+  if (f == g_mg_entry) { return mg_state_of_mod("", reg_lower(g_game_name)) }
+  var d = dir_of(f)
+  while len(d) > 1 and d[len(d) - 1] == '/' { d = d[0 .. len(d) - 1] }
+  return mg_state_of_mod(`@{d}`, mg_dir_name(d))
+}
+# a name for a directory's state that two directories called `fake` do not share: the path under
+# packages/ (ludic.wildlife/tests/fake: wildlife_tests_fake), else its last two parts
+function mg_dir_name(d: pointer) -> pointer {
+  var at = -1
+  var i = 0
+  while i + 9 <= len(d) {
+    if (d[i .. i + 9] == "packages/") { at = i + 9 }
+    i += 1
+  }
+  var rest: pointer = ""
+  if at >= 0 { rest = d[at .. len(d)] } else {
+    var k = len(d)
+    var slashes = 0
+    while k > 0 and slashes < 2 {
+      k -= 1
+      if d[k] == '/' { slashes += 1 }
+    }
+    if d[k] == '/' { k += 1 }
+    rest = d[k .. len(d)]
+  }
+  if len(rest) > 6 and (rest[0 .. 6] == "ludic.") { rest = rest[6 .. len(rest)] }
+  var out = ""
+  i = 0
+  while i < len(rest) {
+    let c = rest[i]
+    if c == '/' or c == '.' or c == '-' { out = out + "_" } else { out = out + rest[i .. i + 1] }
+    i += 1
+  }
+  return out
+}
+function mg_state_of_mod(m: pointer, base: pointer) -> int {
   var i = 0
   while i < len(g_ms_mod) {
     if (g_ms_mod[i] == m) { return i }
     i += 1
   }
-  var base = mg_short(m)
-  if (m == "") { base = reg_lower(g_game_name) }
   push(g_ms_mod, m)
   push(g_ms_name, `{mg_camel(base)}State`)
   push(g_ms_param, `{base}_st`)
@@ -81,7 +136,7 @@ function mg_collect() -> void {
   while i < g_prog_user_end and i < len(prog) {
     let d = prog[i]
     if d.kind == N_VAR and mg_is_target(d) {
-      let k = mg_state_of_mod(module_for_uses(d.file))
+      let k = mg_state_of_file(d.file)
       push(g_mg_vars, d)
       push(g_mg_vstate, k)
       d.mg = len(g_mg_vars) - 1
@@ -116,10 +171,11 @@ function mg_state_named(name: pointer) -> int {
     if (g_ms_name[i] == name) { return i }
     i += 1
   }
-  # a state declared by hand: known by its name, its param the name in snake case
+  # a state from a run before (or by hand): known by its name, its param `<snake>_st` as the tool
+  # names them (BaseState: base_st)
   push(g_ms_mod, `={name}`)
   push(g_ms_name, name)
-  push(g_ms_param, `{reg_lower(name)}`)
+  push(g_ms_param, mg_param_for(name))
   push(g_ms_export, 0)
   return len(g_ms_mod) - 1
 }
@@ -154,11 +210,18 @@ function mg_write(t: Node, g: Node) -> void {
   if not g_migrate or g == null or g.kind != N_VAR or g.mg < 0 { return }
   if g_mg_cur >= 0 { mg_need(g_mg_cur, g_mg_vstate[g.mg], true) }
 }
+var g_mc_passed: []int = new []int  # 1: the call already hands the callee a state (a run before)
 function mg_call(e: Node, f: Node) -> void {
   if not g_migrate or f == null or g_mg_cur < 0 { return }
   push(g_mc_call, e)
   push(g_mc_unit, g_mg_cur)
   push(g_mc_callee, mg_unit(f, 0))
+  var passed = 0
+  if len(e.kids) > 0 and e.kids[0].kind == E_ID {
+    let li = ck_local(e.kids[0].s)
+    if li >= 0 and is_state_ty(ck_tys[li]) { passed = 1 }
+  }
+  push(g_mc_passed, passed)
 }
 function mg_say(n: Node, what: pointer) -> void {
   var at = "?"
@@ -232,13 +295,8 @@ function mg_param_text(u: int, s: int) -> pointer {
 }
 var g_mg_lines: []pointer = new []pointer
 var g_mg_keys: pointer = ","
-function mg_emit(line: pointer, key: pointer) -> void {
-  if not (key == "") {
-    if has_sub(g_mg_keys, `,{key},`) { return }
-    g_mg_keys = g_mg_keys + key + ","
-  }
-  push(g_mg_lines, line)
-}
+# the same edit twice (a generic's instances share its source) is dropped by ludic migrate
+function mg_emit(line: pointer, key: pointer) -> void { push(g_mg_lines, line) }
 # text for a plan line: spaces and newlines escaped
 function mg_esc(s: pointer) -> pointer {
   var out = ""
@@ -328,7 +386,7 @@ function mg_calls() -> void {
     let need = mg_list(g_mu_need[to])
     if len(need) > 0 {
       var text = ""
-      let passed = mg_first_positional_is_state(e)
+      let passed = g_mc_passed[c] == 1
       var k = 0
       while k < len(need) {
         if not (mg_declared(callee, need[k]) and passed) {
@@ -360,8 +418,27 @@ function mg_refs() -> void {
     r += 1
   }
 }
+# a state needed outside its module is exported: whoever needs it declares it
+function mg_exports() -> void {
+  var u = 0
+  while u < len(g_mu_node) {
+    let n = g_mu_node[u]
+    if n.file != null {
+      var here = module_for_uses(n.file)
+      if (here == "") and not (n.file == g_mg_entry) { here = `@{dir_of(n.file)}` }
+      let need = mg_list(g_mu_need[u])
+      var k = 0
+      while k < len(need) {
+        if not (g_ms_mod[need[k]] == here) { g_ms_export[need[k]] = 1 }
+        k += 1
+      }
+    }
+    u += 1
+  }
+}
 function mg_finish() -> void {
   mg_fixpoint()
+  mg_exports()
   var i = 0
   while i < len(g_mg_vars) {
     let v = g_mg_vars[i]

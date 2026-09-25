@@ -1,25 +1,25 @@
 # buy.ludic - a tier bought with money once the standing is there; the kind's item follows
-export function gear_can_buy(k: int) -> bool {
-  if not gear_ok(k) or gear_best(k) or GearWorld.hidden(k) { return false }
-  return GearPurse.rep() >= gear_next_rep(k) and GearPurse.money() >= gear_next_cost(k)
+export function gear_can_buy(gear_st: mut GearState, k: int) -> bool {
+  if not gear_ok(k) or gear_best(gear_st, k) or GearWorld.hidden(k) { return false }
+  return GearPurse.rep() >= gear_next_rep(gear_st, k) and GearPurse.money() >= gear_next_cost(gear_st, k)
 }
 
-export function gear_buy(k: int) -> bool {
-  if not gear_can_buy(k) { return false }
-  let cost = gear_next_cost(k)
+export function gear_buy(base_st: mut BaseState, gear_st: mut GearState, k: int) -> bool {
+  if not gear_can_buy(gear_st, k) { return false }
+  let cost = gear_next_cost(gear_st, k)
   if not GearPurse.spend(cost) { return false }
-  gear__lv[k] += 1
+  gear_st.gear__lv[k] += 1
   let it = GearKinds[k].item
   if it >= 0 and GearPack.count(it) == 0 { GearPack.add(it, 1) }
-  gear__fact(GEAR_BOUGHT, k, -1, cost)
+  gear__fact(base_st, gear_st, GEAR_BOUGHT, k, -1, cost)
   return true
 }
 
 # a kind whose item is already carried counts as its first tier
-export function gear_sync() -> void {
-  gear__ensure()
+export function gear_sync(gear_st: mut GearState) -> void {
+  gear__ensure(gear_st)
   for k in 0 .. GEAR_COUNT {
     let it = GearKinds[k].item
-    if it >= 0 and gear__lv[k] == 0 and GearPack.count(it) > 0 { gear__lv[k] = 1 }
+    if it >= 0 and gear_st.gear__lv[k] == 0 and GearPack.count(it) > 0 { gear_st.gear__lv[k] = 1 }
   }
 }

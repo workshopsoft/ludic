@@ -3,31 +3,31 @@
 
 # Call it straight after a load and before the next one: `gltf_doc` and `gltf_bin` point at
 # whichever file was read last, so a clip that is not taken now cannot be taken later.
-export function anim_read_doc(dir: string) -> int {
-  clips_init()
-  if gltf_doc == null { return 0 }
-  if value_has(gltf_doc, "animations") == 0 { return 0 }
+export function anim_read_doc(anim_st: mut AnimState, render3d_st: mut Render3dState, dir: string) -> int {
+  clips_init(anim_st)
+  if render3d_st.gltf_doc == null { return 0 }
+  if value_has(render3d_st.gltf_doc, "animations") == 0 { return 0 }
   # REOPEN THE .bin. `gltf_load` closes it before it returns, and an accessor read through a closed
   # handle returns a buffer of the right size full of zeros: right names, right counts, no motion.
-  let buffers = value_get(gltf_doc, "buffers")
+  let buffers = value_get(render3d_st.gltf_doc, "buffers")
   if value_count(buffers) == 0 { return 0 }
   let bin_uri = value_as_str(value_get(value_at(buffers, 0), "uri"))
-  gltf_bin = file_open(dir + "/" + bin_uri, "rb")
-  if gltf_bin == null {
+  render3d_st.gltf_bin = file_open(dir + "/" + bin_uri, "rb")
+  if render3d_st.gltf_bin == null {
     print(`anim: cannot reopen {dir}/{bin_uri}`)
     return 0
   }
-  let arr = value_get(gltf_doc, "animations")
+  let arr = value_get(render3d_st.gltf_doc, "animations")
   var got = 0
   for ai in 0 .. value_count(arr) {
-    let c = read_one(value_at(arr, ai))
+    let c = read_one(anim_st, render3d_st, value_at(arr, ai))
     if c != null {
-      push(clips, c)
+      push(anim_st.clips, c)
       got += 1
     }
   }
-  file_close(gltf_bin)
-  gltf_bin = null
+  file_close(render3d_st.gltf_bin)
+  render3d_st.gltf_bin = null
   return got
 }
 
@@ -39,10 +39,10 @@ function kept_path(ch: Val) -> string {
   return path
 }
 
-function read_one(a: Val) -> Clip {
+function read_one(anim_st: mut AnimState, render3d_st: mut Render3dState, a: Val) -> Clip {
   var nm = ""
   if value_has(a, "name") != 0 { nm = value_as_str(value_get(a, "name")) }
-  if anim_find(nm) != null { return null }                 # a second rig's file, same clip
+  if anim_find(anim_st, nm) != null { return null }                 # a second rig's file, same clip
   let chans = value_get(a, "channels")
   let samps = value_get(a, "samplers")
   let nc = value_count(chans)
@@ -55,7 +55,7 @@ function read_one(a: Val) -> Clip {
     let path = kept_path(ch)
     if path == "" { continue }
     let sp = value_at(samps, value_as_int(value_get(ch, "sampler")))
-    let cnt = gltf_accessor_count(value_as_int(value_get(sp, "input")))
+    let cnt = gltf_accessor_count(render3d_st, value_as_int(value_get(sp, "input")))
     n_keep += 1
     n_t += cnt
     if path == "rotation" { n_v += cnt * 4 } else { n_v += cnt * 3 }
@@ -81,14 +81,14 @@ function read_one(a: Val) -> Clip {
     let sp = value_at(samps, value_as_int(value_get(ch, "sampler")))
     c.cnode[k] = value_as_int(value_get(value_get(ch, "target"), "node"))
     if path == "rotation" { c.cpath[k] = AC_ROT } else { c.cpath[k] = AC_POS }
-    let tb = gltf_accessor_floats(value_as_int(value_get(sp, "input")))
-    let nk = gltf_count
+    let tb = gltf_accessor_floats(render3d_st, value_as_int(value_get(sp, "input")))
+    let nk = render3d_st.gltf_count
     c.ckeys[k] = nk
     c.coff[k] = at
     for i in 0 .. nk { c.times[at + i] = tb[i] }
     if nk > 0 and c.times[at + nk - 1] > c.dur { c.dur = c.times[at + nk - 1] }
     at += nk
-    let vb = gltf_accessor_floats(value_as_int(value_get(sp, "output")))
+    let vb = gltf_accessor_floats(render3d_st, value_as_int(value_get(sp, "output")))
     var comps = 3
     if c.cpath[k] == AC_ROT { comps = 4 }
     c.cvoff[k] = av

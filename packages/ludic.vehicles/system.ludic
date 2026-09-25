@@ -1,21 +1,21 @@
 # system.ludic - vehicles as a system: a reset, and this player's own saved by kind (hired or not,
 # and the horse's hay); where they lie is not saved - they are called again. The idle boats' bob is
 # vehicles_tick, which the game calls where the world is run
-export function vehicles_reset() -> void {
-  ve_list = new []Vehicle
-  ve_cur = null
-  ve_have_dock = false
-  ve_swell_said = 0.0
-  ve_kept_horse = false
-  ve_kept_boat = false
-  ve_kept_food = 40.0
-  q_clear(vehicle_facts())
+export function vehicles_reset(base_st: mut BaseState, vehicles_st: mut VehiclesState) -> void {
+  vehicles_st.ve_list = new []Vehicle
+  vehicles_st.ve_cur = null
+  vehicles_st.ve_have_dock = false
+  vehicles_st.ve_swell_said = 0.0
+  vehicles_st.ve_kept_horse = false
+  vehicles_st.ve_kept_boat = false
+  vehicles_st.ve_kept_food = 40.0
+  q_clear(base_st, vehicle_facts(base_st, vehicles_st))
 }
 
-export function vehicles_save() -> Val {
+export function vehicles_save(vehicles_st: mut VehiclesState) -> Val {
   let v = Value.object()
-  let h = vehicle_find(VEHICLE_HORSE)
-  let b = vehicle_find(VEHICLE_BOAT)
+  let h = vehicle_find(vehicles_st, VEHICLE_HORSE)
+  let b = vehicle_find(vehicles_st, VEHICLE_BOAT)
   if h != null {
     sv_put_bool(v, "horse_own", h.owned)
     sv_put_float(v, "horse_food", h.food)
@@ -24,10 +24,10 @@ export function vehicles_save() -> Val {
   return v
 }
 
-export function vehicles_load(v: Val, version: int) -> void {
-  vehicle_drop()
-  vehicle_restore(VEHICLE_HORSE, sv_bool(v, "horse_own", false), sv_float(v, "horse_food", 40.0))
-  vehicle_restore(VEHICLE_BOAT, sv_bool(v, "boat_own", false), 0.0)
+export function vehicles_load(vehicles_st: mut VehiclesState, v: Val, version: int) -> void {
+  vehicle_drop(vehicles_st)
+  vehicle_restore(vehicles_st, VEHICLE_HORSE, sv_bool(v, "horse_own", false), sv_float(v, "horse_food", 40.0))
+  vehicle_restore(vehicles_st, VEHICLE_BOAT, sv_bool(v, "boat_own", false), 0.0)
 }
 
 export function vehicles_system() -> System {

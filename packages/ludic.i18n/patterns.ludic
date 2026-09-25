@@ -15,10 +15,10 @@ function holes(s: string) -> int {
   return h
 }
 
-function add_pattern(id: string, tr: string) -> void {
-  let p = pat_n
-  pat_n += 1
-  let l0 = len(lits)
+function add_pattern(i18n_st: mut I18nState, id: string, tr: string) -> void {
+  let p = i18n_st.pat_n
+  i18n_st.pat_n += 1
+  let l0 = len(i18n_st.lits)
   let n = len(id)
   var seg = 0
   var i = 0
@@ -27,9 +27,9 @@ function add_pattern(id: string, tr: string) -> void {
   while i < n {
     let num = hole_at(id, i)
     if num >= 0 {
-      push(lits, id[seg..i])
+      push(i18n_st.lits, id[seg..i])
       score += i - seg
-      pat_ph[l0 + nl] = num
+      i18n_st.pat_ph[l0 + nl] = num
       nl += 1
       i = hole_end(id, i)
       seg = i
@@ -37,33 +37,33 @@ function add_pattern(id: string, tr: string) -> void {
     }
     i += 1
   }
-  push(lits, id[seg..n])
+  push(i18n_st.lits, id[seg..n])
   score += n - seg
   nl += 1
-  pat_l0[p] = l0
-  pat_nl[p] = nl
-  pat_sc[p] = score
-  push(pat_out, tr)
-  chain(p, lits[l0], lits[l0 + nl - 1])
+  i18n_st.pat_l0[p] = l0
+  i18n_st.pat_nl[p] = nl
+  i18n_st.pat_sc[p] = score
+  push(i18n_st.pat_out, tr)
+  chain(i18n_st, p, i18n_st.lits[l0], i18n_st.lits[l0 + nl - 1])
 }
 
-function chain(p: int, first: string, last: string) -> void {
+function chain(i18n_st: mut I18nState, p: int, first: string, last: string) -> void {
   if len(first) >= 4 {
     let key: string = first[0..4]
-    nx_p[p] = Dict.get_or(pfx, key, 0)
-    Dict.set(pfx, key, p + 1)
+    i18n_st.nx_p[p] = Dict.get_or(i18n_st.pfx, key, 0)
+    Dict.set(i18n_st.pfx, key, p + 1)
   } else if len(last) >= 4 {
     let key: string = last[len(last) - 4..len(last)]
-    nx_s[p] = Dict.get_or(sfx, key, 0)
-    Dict.set(sfx, key, p + 1)
+    i18n_st.nx_s[p] = Dict.get_or(i18n_st.sfx, key, 0)
+    Dict.set(i18n_st.sfx, key, p + 1)
   } else {
-    nx_g[p] = gen_head
-    gen_head = p + 1
+    i18n_st.nx_g[p] = i18n_st.gen_head
+    i18n_st.gen_head = p + 1
   }
 }
 
 # a translation with its holes filled from caps, by number: a translation may reorder or drop them
-function fill_holes(t: string, l0: int, nl: int, cs: []string) -> string {
+function fill_holes(i18n_st: I18nState, t: string, l0: int, nl: int, cs: []string) -> string {
   let n = len(t)
   var r = ""
   var seg = 0
@@ -72,7 +72,7 @@ function fill_holes(t: string, l0: int, nl: int, cs: []string) -> string {
     let num = hole_at(t, i)
     if num >= 0 {
       r = r + t[seg..i]
-      for g in 0 .. nl - 1 { if pat_ph[l0 + g] == num { r = r + cs[g] } }
+      for g in 0 .. nl - 1 { if i18n_st.pat_ph[l0 + g] == num { r = r + cs[g] } }
       i = hole_end(t, i)
       seg = i
       continue

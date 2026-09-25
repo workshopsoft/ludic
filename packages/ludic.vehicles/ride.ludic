@@ -8,8 +8,8 @@ const VE_BOAT_TOP: float = 3.2
 const VE_BOAT_ACC: float = 1.2
 const VE_BOAT_TURN: float = 1.1
 
-export function vehicle_update(ix: float, iz: float, run: bool, dt: float) -> void {
-  let v = ve_cur
+export function vehicle_update(base_st: mut BaseState, vehicles_st: mut VehiclesState, ix: float, iz: float, run: bool, dt: float) -> void {
+  let v = vehicles_st.ve_cur
   if v == null { return }
   var top = VE_BOAT_TOP
   var acc = VE_BOAT_ACC
@@ -21,7 +21,7 @@ export function vehicle_update(ix: float, iz: float, run: bool, dt: float) -> vo
     if run and v.fuel > 5.0 { top = VE_HORSE_GALLOP }
   }
   v.speed = v.speed + Math.clamp(iz * top - v.speed, -acc * dt, acc * dt)
-  if v.kind == VEHICLE_BOAT { ve_swell(v, dt) }
+  if v.kind == VEHICLE_BOAT { ve_swell(base_st, vehicles_st, v, dt) }
   # Steering follows SIGNED speed: backing up with the stick left swings the nose right
   if Math.abs(v.speed) > 0.3 {
     var rate = Math.clamp(Math.abs(v.speed) / 3.0, 0.4, 1.0)
@@ -29,14 +29,14 @@ export function vehicle_update(ix: float, iz: float, run: bool, dt: float) -> vo
     v.yaw = v.yaw - ix * turn * (dt * rate)
   }
   let d = v.speed * dt
-  ve_travel(v, v.x - Math.sin(v.yaw) * d, v.z - Math.cos(v.yaw) * d, d)
+  ve_travel(base_st, vehicles_st, v, v.x - Math.sin(v.yaw) * d, v.z - Math.cos(v.yaw) * d, d)
   if v.kind == VEHICLE_HORSE { ve_stamina(v, d, dt) } else { ve_float(v, d, dt) }
   VehicleWorld.placed(v)
   VehicleRider.ride_at(v.x, v.y + v.seat_h, v.z, v.yaw, Math.abs(v.speed))
 }
 
 # a boat only where there is water under it; a horse only on dry ground, up a walkable rise, clear
-function ve_travel(v: Vehicle, nx: float, nz: float, d: float) -> void {
+function ve_travel(base_st: mut BaseState, vehicles_st: mut VehiclesState, v: Vehicle, nx: float, nz: float, d: float) -> void {
   let nh = VehicleWorld.ground(nx, nz)
   var ok = true
   if v.kind == VEHICLE_BOAT { ok = nh < VehicleWorld.water(nx, nz) - 0.35 } else {
@@ -51,12 +51,12 @@ function ve_travel(v: Vehicle, nx: float, nz: float, d: float) -> void {
   v.x = nx
   v.z = nz
   if v.kind != VEHICLE_BOAT { v.y = nh }
-  if Math.abs(d) > 0.0 { ve_say(VEHICLE_MOVED, v, Math.abs(d)) }
+  if Math.abs(d) > 0.0 { ve_say(base_st, vehicles_st, VEHICLE_MOVED, v, Math.abs(d)) }
 }
 
 # a boat gets a longer leash than a swimmer and the same current at the end of it: the outward
 # part of the stroke only, so a boat at the limit can always be put about
-function ve_swell(v: Vehicle, dt: float) -> void {
+function ve_swell(base_st: mut BaseState, vehicles_st: mut VehiclesState, v: Vehicle, dt: float) -> void {
   var fx = -Math.sin(v.yaw)
   var fz = -Math.cos(v.yaw)
   if v.speed < 0.0 {
@@ -65,11 +65,11 @@ function ve_swell(v: Vehicle, dt: float) -> void {
   }
   let take = Math.clamp(VehicleWorld.swell(v.x, v.z, fx, fz), 0.0, 1.0)
   v.speed = v.speed * (1.0 - take)
-  if take > 0.55 and ve_swell_said < 0.0 {
-    ve_swell_said = 14.0
-    ve_say(VEHICLE_SWELL, v, take)
+  if take > 0.55 and vehicles_st.ve_swell_said < 0.0 {
+    vehicles_st.ve_swell_said = 14.0
+    ve_say(base_st, vehicles_st, VEHICLE_SWELL, v, take)
   }
-  ve_swell_said = ve_swell_said - dt
+  vehicles_st.ve_swell_said = vehicles_st.ve_swell_said - dt
 }
 
 # a gallop spends stamina and a walk gives it back; every metre costs hay
@@ -93,8 +93,8 @@ function ve_float(v: Vehicle, d: float, dt: float) -> void {
 }
 
 # the boats nobody is in ride the swell where they lie
-export function vehicles_tick(dt: float) -> void {
-  let l = ve_all()
+export function vehicles_tick(vehicles_st: mut VehiclesState, dt: float) -> void {
+  let l = ve_all(vehicles_st)
   for i in 0 .. len(l) {
     let v = l[i]
     if v.kind == VEHICLE_BOAT and v.rider < 0 {

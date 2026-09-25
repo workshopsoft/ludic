@@ -1,66 +1,66 @@
 # verbs.ludic - the only way the sky changes from outside: a morning, a reset, the host's word
 # a new trip: clear sky, a still-ish wind, nothing forecast; the dice from the world's seed
-export function weather_reset() -> void {
-  wx_dice = rng_new(WeatherWorld.seed())
-  let clear = wx_clear_kind()
-  wx_state = clear
-  wx_next = clear
-  wx_forecast = clear
-  wx_left = 30.0
-  wx_amount = 0.0
-  wx_forced = false
-  wx_wind = 0.2
-  wx_dir = 0.0
-  wx_ground = 0.0
-  wx_flash = 0.0
-  wx_thunder_t = 0.0
-  wx_clear_t = 0.0
-  wx_wet_today = false
-  wx_wet_yesterday = false
-  q_clear(weather_facts())
+export function weather_reset(base_st: mut BaseState, weather_st: mut WeatherState) -> void {
+  weather_st.wx_dice = rng_new(WeatherWorld.seed())
+  let clear = wx_clear_kind(weather_st)
+  weather_st.wx_state = clear
+  weather_st.wx_next = clear
+  weather_st.wx_forecast = clear
+  weather_st.wx_left = 30.0
+  weather_st.wx_amount = 0.0
+  weather_st.wx_forced = false
+  weather_st.wx_wind = 0.2
+  weather_st.wx_dir = 0.0
+  weather_st.wx_ground = 0.0
+  weather_st.wx_flash = 0.0
+  weather_st.wx_thunder_t = 0.0
+  weather_st.wx_clear_t = 0.0
+  weather_st.wx_wet_today = false
+  weather_st.wx_wet_yesterday = false
+  q_clear(base_st, weather_facts(base_st, weather_st))
 }
 
 # a new day's forecast: seven times in ten it is the next spell. A front already on its way
 # stays on its way.
-export function weather_morning() -> void {
-  if weather_kind_count() == 0 { return }
-  wx_wet_yesterday = wx_wet_today or wx_kinds[wx_state].wet
-  wx_wet_today = false
-  if wx_forced {
-    wx_forecast = wx_next
+export function weather_morning(weather_st: mut WeatherState) -> void {
+  if weather_kind_count(weather_st) == 0 { return }
+  weather_st.wx_wet_yesterday = weather_st.wx_wet_today or weather_st.wx_kinds[weather_st.wx_state].wet
+  weather_st.wx_wet_today = false
+  if weather_st.wx_forced {
+    weather_st.wx_forecast = weather_st.wx_next
     return
   }
-  wx_forecast = wx_pick_next(wx_state)
-  if rng_float(wx_dice) < 0.7 { wx_next = wx_forecast }
+  weather_st.wx_forecast = wx_pick_next(weather_st, weather_st.wx_state)
+  if rng_float(weather_st.wx_dice) < 0.7 { weather_st.wx_next = weather_st.wx_forecast }
 }
 
 # the sky outright: a spell of `kind` now, `left` hours of it, at full strength when not clear
 # (staging, a test, a story beat)
-export function weather_set(kind: int, next: int, left: float) -> void {
-  wx_state = kind
-  wx_next = next
-  wx_left = left
-  wx_amount = 1.0
-  if wx_kinds[kind].clear { wx_amount = 0.0 }
+export function weather_set(weather_st: mut WeatherState, kind: int, next: int, left: float) -> void {
+  weather_st.wx_state = kind
+  weather_st.wx_next = next
+  weather_st.wx_left = left
+  weather_st.wx_amount = 1.0
+  if weather_st.wx_kinds[kind].clear { weather_st.wx_amount = 0.0 }
 }
 
 # what the machine that owns the world says the sky is; a new spell is a fact here too
-export function weather_told(kind: int, next: int, left: float, amount: float, wind: float, dir: float, forecast: int) -> void {
-  let was = wx_state
-  wx_state = kind
-  wx_next = next
-  wx_left = left
-  wx_amount = amount
-  wx_wind = wind
-  wx_dir = dir
-  wx_forecast = forecast
-  if kind != was { wx_fact(WEATHER_BEGAN, kind, was) }
+export function weather_told(base_st: mut BaseState, weather_st: mut WeatherState, kind: int, next: int, left: float, amount: float, wind: float, dir: float, forecast: int) -> void {
+  let was = weather_st.wx_state
+  weather_st.wx_state = kind
+  weather_st.wx_next = next
+  weather_st.wx_left = left
+  weather_st.wx_amount = amount
+  weather_st.wx_wind = wind
+  weather_st.wx_dir = dir
+  weather_st.wx_forecast = forecast
+  if kind != was { wx_fact(base_st, weather_st, WEATHER_BEGAN, kind, was) }
 }
 
-export function weather_set_wind(strength: float, dir: float) -> void {
-  wx_wind = strength
-  wx_dir = dir
+export function weather_set_wind(weather_st: mut WeatherState, strength: float, dir: float) -> void {
+  weather_st.wx_wind = strength
+  weather_st.wx_dir = dir
 }
 
-export function weather_set_ground(wet: float) -> void { wx_ground = wet }
-export function weather_set_flash(f: float) -> void { wx_flash = f }
+export function weather_set_ground(weather_st: mut WeatherState, wet: float) -> void { weather_st.wx_ground = wet }
+export function weather_set_flash(weather_st: mut WeatherState, f: float) -> void { weather_st.wx_flash = f }

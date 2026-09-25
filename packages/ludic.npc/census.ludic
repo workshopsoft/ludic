@@ -1,36 +1,36 @@
 # census.ludic - making one (a slot reused before a new one, a look, a name, a start on its own
 # ground out of the players' sight where that can be had), a post's fixed person, and leaving
-export function npc_spawn(kind: int) -> NpcPerson {
-  np_ensure()
-  if np_n >= np_max or kind < 0 or kind >= NPCK_COUNT { return null }
+export function npc_spawn(npc_st: mut NpcState, kind: int) -> NpcPerson {
+  np_ensure(npc_st)
+  if npc_st.np_n >= npc_st.np_max or kind < 0 or kind >= NPCK_COUNT { return null }
   var p: NpcPerson = null
-  for i in 0 .. len(np_walkers) {
-    if not np_walkers[i].active {
-      p = np_walkers[i]
+  for i in 0 .. len(npc_st.np_walkers) {
+    if not npc_st.np_walkers[i].active {
+      p = npc_st.np_walkers[i]
       break
     }
   }
   if p == null {
-    if len(np_walkers) >= np_max { return null }
+    if len(npc_st.np_walkers) >= npc_st.np_max { return null }
     p = new NpcPerson
-    p.slot = len(np_walkers)
-    push(np_walkers, p)
+    p.slot = len(npc_st.np_walkers)
+    push(npc_st.np_walkers, p)
   }
-  np_fresh(p, kind, npc_between(1, 99999))
-  p.name = npc_pick_name(p.body)
+  np_fresh(p, kind, npc_between(npc_st, 1, 99999))
+  p.name = npc_pick_name(npc_st, p.body)
   let k = NpcKinds[kind]
-  p.leg = npc_between(0, 3)
-  p.seed = npc_rnd() * 40.0
-  p.out_h = k.leave_lo + npc_rnd() * (k.leave_hi - k.leave_lo)
-  p.yaw = npc_rnd() * NP_TAU
+  p.leg = npc_between(npc_st, 0, 3)
+  p.seed = npc_rnd(npc_st) * 40.0
+  p.out_h = k.leave_lo + npc_rnd(npc_st) * (k.leave_hi - k.leave_lo)
+  p.yaw = npc_rnd(npc_st) * NP_TAU
   if k.start != null {
     let start = k.start
     start(p)
-  } else { npc_start_near(p, NpcWorld.origin_x(), NpcWorld.origin_z(), 6.0, 30.0) }
+  } else { npc_start_near(npc_st, p, NpcWorld.origin_x(), NpcWorld.origin_z(), 6.0, 30.0) }
   p.active = true
-  np_n += 1
+  npc_st.np_n += 1
   NpcWorld.born(p)
-  npc_plan(p)
+  npc_plan(npc_st, p)
   return p
 }
 
@@ -62,20 +62,20 @@ function np_fresh(p: NpcPerson, kind: int, look: int) -> void {
 
 # its own ground: a spot r0 .. r1 from (cx, cz), tried a few times for one no player is within 60 m
 # of, else near the place's origin; that is home, where it stands and faces
-export function npc_start_near(p: NpcPerson, cx: float, cz: float, r0: float, r1: float) -> void {
+export function npc_start_near(npc_st: mut NpcState, p: NpcPerson, cx: float, cz: float, r0: float, r1: float) -> void {
   var x = NpcWorld.origin_x()
   var z = NpcWorld.origin_z()
   var ok = false
   for t in 0 .. 8 {
-    if not npc_spot_near(cx, cz, r0, r1) { continue }
-    x = np_px
-    z = np_pz
+    if not npc_spot_near(npc_st, cx, cz, r0, r1) { continue }
+    x = npc_st.np_px
+    z = npc_st.np_pz
     ok = true
-    if npc_near(x, z) > 60.0 { break }
+    if npc_near(npc_st, x, z) > 60.0 { break }
   }
-  if not ok and npc_spot_near(x, z, 10.0, 45.0) {
-    x = np_px
-    z = np_pz
+  if not ok and npc_spot_near(npc_st, x, z, 10.0, 45.0) {
+    x = npc_st.np_px
+    z = npc_st.np_pz
   }
   npc_set_at(p, x, z)
 }
@@ -93,10 +93,10 @@ export function npc_set_at(p: NpcPerson, x: float, z: float) -> void {
 
 # somebody fixed at a post (a vendor behind the counter): never walks, never counted, never leaves,
 # turns to a player within its kind's notice and back to `yaw` when they go
-export function npc_place(kind: int, x: float, z: float, yaw: float, name: string, look: int) -> NpcPerson {
-  np_ensure()
+export function npc_place(npc_st: mut NpcState, kind: int, x: float, z: float, yaw: float, name: string, look: int) -> NpcPerson {
+  np_ensure(npc_st)
   let p = new NpcPerson
-  p.slot = len(np_posts)
+  p.slot = len(npc_st.np_posts)
   np_fresh(p, kind, look)
   p.fixed = true
   p.name = name
@@ -105,16 +105,16 @@ export function npc_place(kind: int, x: float, z: float, yaw: float, name: strin
   p.yaw = yaw
   npc_set_at(p, x, z)
   p.active = true
-  push(np_posts, p)
+  push(npc_st.np_posts, p)
   NpcWorld.born(p)
-  npc_do(p, NPCA_IDLE, 3600.0)
+  npc_do(npc_st, p, NPCA_IDLE, 3600.0)
   return p
 }
 
-export function npc_retire(p: NpcPerson) -> void {
+export function npc_retire(npc_st: mut NpcState, p: NpcPerson) -> void {
   if not p.active { return }
   p.active = false
-  if not p.fixed and np_n > 0 { np_n -= 1 }
-  np_left(p.name)
+  if not p.fixed and npc_st.np_n > 0 { npc_st.np_n -= 1 }
+  np_left(npc_st, p.name)
   NpcWorld.gone(p)
 }
