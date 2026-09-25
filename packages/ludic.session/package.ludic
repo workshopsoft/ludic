@@ -1,0 +1,5 @@
+# ludic.session - who is in a party and who runs the world: the roster, the roles, the shared
+# night, votes and "a world-changing act asks the party". Transport-free. See README.md.
+package "ludic.session"
+version "0.1.0"
+kind source

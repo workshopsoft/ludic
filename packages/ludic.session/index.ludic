@@ -1,0 +1,13 @@
+# ludic.session - a party's roster and rules, whatever carries its messages: slot 0 is this
+# machine's player (a port), the others are what their own machines reported
+module ludic_session uses ludic_base
+numbers float
+import "ludic.base"
+import "state.ludic"
+import "roster.ludic"
+import "where.ludic"
+import "near.ludic"
+import "roles.ludic"
+import "night.ludic"
+import "votes.ludic"
+import "vote_state.ludic"

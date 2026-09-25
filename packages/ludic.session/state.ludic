@@ -1,0 +1,89 @@
+# state.ludic - a roster slot, the local player's port, the roles, and the facts the game drains
+export const PLY_MAX: int = 12          # a party: this player and eleven more
+
+export const SES_SOLO: int = 0
+export const SES_HOST: int = 1
+export const SES_GUEST: int = 2
+
+# what happened: a player in or out (slot, pid), the role changed (role), a vote opened, this
+# guest's own vote to send, a vote decided (id, kind, param, passed, text), everyone in for the
+# night (the host), this player turned in or got up (yes)
+export const SES_JOINED: int = 0
+export const SES_LEFT: int = 1
+export const SES_ROLE: int = 2
+export const SES_VOTE_OPENED: int = 3
+export const SES_VOTE_CAST: int = 4
+export const SES_VOTE_RESOLVED: int = 5
+export const SES_NIGHT: int = 6
+export const SES_SLEEP: int = 7
+
+export property SessionFact {
+  what: int = 0,
+  slot: int = -1,
+  pid: int = 0,
+  role: int = 0,
+  id: int = 0,
+  kind: int = 0,
+  param: int = 0,
+  yes: bool = false,
+  text: string = ""
+}
+
+# a remote player, as its own machine reported it
+property PartyMember {
+  on: bool = false,
+  pid: int = 0,                # the session's id for them (0 is never a remote player)
+  name: string = "",
+  x: float = 0.0,
+  y: float = 0.0,
+  z: float = 0.0,
+  yaw: float = 0.0,
+  speed: float = 0.0,
+  rest: float = 1.0,           # how much faster their rest runs the clock (1 on their feet)
+  sleeping: bool = false,      # turned in, as their body says
+  ready: bool = false          # turned in, as they told the host (the host's count for the night)
+}
+
+# this machine's player, read live
+export port SessionLocal {
+  x: fn() -> float
+  y: fn() -> float
+  z: fn() -> float
+  yaw: fn() -> float = fn session__zero
+  speed: fn() -> float = fn session__zero
+  rest: fn() -> float = fn session__one
+  name: fn() -> string = fn session__nameless
+}
+
+function session__zero() -> float { return 0.0 }
+function session__one() -> float { return 1.0 }
+function session__nameless() -> string { return "" }
+
+var session__slot: []PartyMember = null
+var session__role: int = 0
+var session__max: int = 4
+var session__open: bool = true
+var session__near_i: int = 0
+var session__facts: Queue<SessionFact> = null
+
+export function ses_facts() -> Queue<SessionFact> {
+  if session__facts == null { session__facts = queue_new("session.facts") }
+  return session__facts
+}
+
+function session__fact(what: int, slot: int, pid: int) -> SessionFact {
+  let f = new SessionFact
+  f.what = what
+  f.slot = slot
+  f.pid = pid
+  f.role = session__role
+  q_push(ses_facts(), f)
+  return f
+}
+
+function session__init() -> void {
+  if session__slot != null { return }
+  session__slot = new []PartyMember
+  for i in 0 .. PLY_MAX { push(session__slot, new PartyMember) }
+  session__slot[0].on = true
+}
