@@ -1,0 +1,6 @@
+# ludic.aim - what the crosshair is on: a ray through the middle of the screen against upright
+# cylinders with an angular forgiveness, the ground in front of them, reach floors, and which thing
+# the use key means. Uses ludic.base and nothing else. See README.md.
+package "ludic.aim"
+version "0.1.0"
+kind source

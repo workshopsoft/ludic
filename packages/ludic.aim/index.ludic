@@ -1,0 +1,11 @@
+# ludic.aim - the crosshair is the exact middle of the screen, so the ray through it is the camera's
+# position along its forward. Each candidate is an upright cylinder widened by a fixed angular
+# forgiveness; the pick is the nearest one the ray enters that the ground does not hide.
+module ludic_aim uses ludic_base
+numbers float
+import "ludic.base"
+import "ports.ludic"
+import "ray.ludic"
+import "pick.ludic"
+import "use.ludic"
+import "probe.ludic"

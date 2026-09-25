@@ -1,0 +1,67 @@
+# ray.ludic - the ray through the crosshair against an upright cylinder, the forgiveness around a
+# body, and the ground in front of a point
+# t along the ray where it enters the cylinder at (cx, cz), radius r, from y0 up to y1; or -1
+export function aim_ray_cyl(cx: float, y0: float, y1: float, cz: float, r: float) -> float {
+  let ox = AimView.x() - cx
+  let oz = AimView.z() - cz
+  let dx = AimView.fx()
+  let dy = AimView.fy()
+  let dz = AimView.fz()
+  let a = dx * dx + dz * dz
+  var t0 = -10000.0
+  var t1 = 10000.0
+  if a < 0.000001 {
+    if ox * ox + oz * oz > r * r { return -1.0 }       # straight up or down: inside or nothing
+  } else {
+    let b = 2.0 * (ox * dx + oz * dz)
+    let disc = b * b - 4.0 * (a * (ox * ox + oz * oz - r * r))
+    if disc < 0.0 { return -1.0 }
+    t0 = (-b - Math.sqrt(disc)) / (2.0 * a)
+    t1 = (-b + Math.sqrt(disc)) / (2.0 * a)
+  }
+  let cy = AimView.y()
+  if Math.abs(dy) > 0.000001 {
+    let ta = (y0 - cy) / dy
+    let tb = (y1 - cy) / dy
+    t0 = Math.max(t0, Math.min(ta, tb))
+    t1 = Math.min(t1, Math.max(ta, tb))
+  } else if cy < y0 or cy > y1 { return -1.0 }
+  if t0 > t1 or t1 < 0.0 { return -1.0 }
+  return Math.max(t0, 0.0)
+}
+
+# How much wider than itself a thing is treated as at `dist` metres: a fixed angle (twelve pixels of
+# a 1080-tall screen), so a branch twenty metres off can be aimed at and the near ones are not easy
+# to hit by accident
+export function aim_slack_m(dist: float) -> float { return dist * (12.0 / 540.0) * Math.tan(AimView.fov() * 0.5) }
+
+# metres from the body to (x, z)
+export function aim_range(x: float, z: float) -> float {
+  let dx = x - AimView.body_x()
+  let dz = z - AimView.body_z()
+  return Math.sqrt(dx * dx + dz * dz)
+}
+
+# Is the line from the camera to a point clear of the ground? Without it the crosshair reads through a
+# rise; within arm's length nothing is hidden, or a prop on a slope hides behind its own slope.
+export function aim_clear_to(x: float, y: float, z: float) -> bool {
+  let cx = AimView.x()
+  let cy = AimView.y()
+  let cz = AimView.z()
+  if (x - cx) * (x - cx) + (z - cz) * (z - cz) < 9.0 { return true }
+  for s in 1 .. 10 {
+    let f = float(s) / 10.0
+    if AimView.ground(Math.lerp(cx, x, f), Math.lerp(cz, z, f)) - 0.35 > Math.lerp(cy, y, f) { return false }
+  }
+  return true
+}
+
+# how far the ray passes from a body's axis as a share of its width: 0 dead centre, 1 at the edge
+export function aim_miss(cx: float, cz: float, r: float) -> float {
+  let ox = AimView.x() - cx
+  let oz = AimView.z() - cz
+  let a = Math.sqrt(AimView.fx() * AimView.fx() + AimView.fz() * AimView.fz())
+  if a < 0.0001 { return 0.0 }
+  let proj = (ox * AimView.fx() + oz * AimView.fz()) / a
+  return Math.sqrt(Math.max(ox * ox + oz * oz - proj * proj, 0.0)) / Math.max(r, 0.01)
+}

@@ -1,0 +1,22 @@
+# ports.ludic - what the aim asks the game: the camera, the ground, and where the body stands.
+# Unbound, a camera 1.5 m up at the origin looks down -z over flat ground, with the body under it.
+export port AimView {
+  x: fn() -> float = fn aim__zero
+  y: fn() -> float = fn aim__eye
+  z: fn() -> float = fn aim__zero
+  fx: fn() -> float = fn aim__zero
+  fy: fn() -> float = fn aim__zero
+  fz: fn() -> float = fn aim__ahead
+  fov: fn() -> float = fn aim__fov              # vertical, radians
+  ground: fn(float, float) -> float = fn aim__flat
+  dry: fn(float, float) -> bool = fn aim__dry   # land, for the probe's viewpoints
+  body_x: fn() -> float = fn aim__zero          # distances and reach are the body's, not the camera's
+  body_z: fn() -> float = fn aim__zero
+}
+
+function aim__zero() -> float { return 0.0 }
+function aim__eye() -> float { return 1.5 }
+function aim__ahead() -> float { return -1.0 }
+function aim__fov() -> float { return 1.0 }
+function aim__flat(x: float, z: float) -> float { return 0.0 }
+function aim__dry(x: float, z: float) -> bool { return true }

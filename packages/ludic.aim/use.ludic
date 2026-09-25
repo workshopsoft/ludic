@@ -1,0 +1,15 @@
+# use.ludic - the thing the use key should act on. The ray comes first and proximity is its fallback,
+# never its override:
+#   under the crosshair and in reach  -> that, whatever else is nearer
+#   under the crosshair and too far   -> NOTHING (the prompt says why), within AIM_USE_MAX
+#   nothing of that kind aimed at     -> the nearest thing in reach
+# A player looking at something who presses the key has said which thing they mean.
+export const AIM_USE_THIS: int = 0
+export const AIM_USE_NOTHING: int = 1
+export const AIM_USE_NEAREST: int = 2
+
+export function aim_use(kind: int) -> int {
+  if am_kind == kind and am_reach { return AIM_USE_THIS }
+  if am_kind == kind and am_dist < AIM_USE_MAX { return AIM_USE_NOTHING }
+  return AIM_USE_NEAREST
+}
