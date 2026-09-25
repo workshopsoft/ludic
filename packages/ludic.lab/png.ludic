@@ -3,11 +3,10 @@
 # on every row, in deflate's stored blocks, with its CRCs and its Adler-32.
 var lp_table: []long = null
 
-function lp_u32(hi: int, lo: int) -> long { return long(hi) * long(65536) + long(lo) }
 function lp_table_init() -> void {
   if lp_table != null { return }
   lp_table = new []long
-  let poly = lp_u32(60856, 33568)          # 0xEDB88320
+  let poly: long = 3988292384            # 0xEDB88320: eight hex digits would be a 32-bit pattern
   for n in 0 .. 256 {
     var c = long(n)
     for k in 0 .. 8 {
@@ -19,7 +18,7 @@ function lp_table_init() -> void {
 # CRC-32 of out[from .. from + n)
 function lp_crc(out: []byte, from: int, n: int) -> long {
   lp_table_init()
-  let mask = lp_u32(65535, 65535)
+  let mask: long = 4294967295
   var c = mask
   for i in from .. from + n {
     let k = int((c ^ long(out[i])) & long(255))
