@@ -103,7 +103,8 @@ visible.ludic:5: error: add is private to module bank; mark it 'export' where it
 A file in no module - the program's own file, the runtime - is public, and a package found
 through `ludic_modules` or the toolchain keeps its own module rather than its importer's. A
 program that says `friend module lab` sees every module's private names: that is for a test
-harness, which has to reach inside what it tests. `export` is a keyword before a declaration
+harness, which has to reach inside what it tests. `friend module lab of fishing, data` narrows
+that to the modules named: `lab` sees their private names, and every other module's exports only. `export` is a keyword before a declaration
 and is not the `@export` annotation, which names a C symbol.
 
 To move an existing codebase onto modules, build it once with `LUDIC_VIS_REPORT=1`: every
@@ -132,7 +133,8 @@ fishing/land.ludic:4: error: fishing uses items.inv_add (items/index.ludic:3): a
   switched on one module at a time. Two module lines for one module add their lists together.
 - A file in no module (the program's root, the runtime) is unaffected either way, and a package's
   module (found through `ludic_modules` or the toolchain, such as `ludic_ui`) is always usable.
-- A friend of a module (below) is not held to its `uses` for that module.
+- A friend of a module (`friend module lab`, or `friend module lab of fishing`) is not held to its
+  `uses` for that module.
 - The declared graph may not go round: `module a uses b` beside `module b uses a` is refused
   (`the modules' uses go round in a circle: a -> b -> a`) - one of them takes the other through a
   port instead.

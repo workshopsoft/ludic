@@ -61,7 +61,11 @@ function mod_parse_friend() -> void {
   pi += 2
   let fm = eat_id()
   module_set(g_parse_file, fm)
-  let scope = ""
+  var scope = ""
+  if is_id("of") {
+    pi += 1
+    scope = mod_parse_names()
+  }
   push(g_mod_friends, fm)
   push(g_fr_scope, scope)
 }

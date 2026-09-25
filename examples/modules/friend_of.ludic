@@ -1,0 +1,12 @@
+# friend_of.ludic — L3: `friend module lab of bank` sees bank's private names and no other module's;
+# a test harness reaches inside exactly what it tests. `friend module lab` alone still sees all.
+#
+# Running it prints:  7 7
+import "bank"
+program FriendOf {
+  friend module lab of bank
+  entry {
+    add(7)
+    print(`{balance} {total()}`)
+  }
+}

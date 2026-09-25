@@ -1,0 +1,10 @@
+# L3: a friend of kit is not a friend of bank - bank's private `add` stays out of reach
+import "private_bank"
+import "private_kit"
+program FriendScope {
+  friend module lab of kit
+  entry {
+    add(5)
+    print(total())
+  }
+}
