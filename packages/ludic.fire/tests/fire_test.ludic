@@ -1,0 +1,145 @@
+# fire_test.ludic - lighting and feeding decided, paid for and applied; burning down in game time,
+# faster in the rain; low fuel and going out as facts; warmth and cooking by distance; the save
+import "ludic.fire"
+import "ludic.base"
+program FireTest {
+  numbers float
+  var owns: bool = true
+  var wet: bool = false
+  var tarp: bool = false
+  var ban: bool = false
+
+  function fake_owns() -> bool { return owns }
+  function fake_wet() -> bool { return wet }
+  function fake_tarp() -> bool { return tarp }
+  function fake_allowed() -> bool { return not ban }
+
+  bind FireWorld {
+    owns_world: fn fake_owns
+    is_wet: fn fake_wet
+    sheltered: fn fake_tarp
+    allowed: fn fake_allowed
+  }
+
+  function fresh() -> void {
+    fire_config(3, 120.0, 60.0, 15.0)
+    fire_config_reach(3.6, 3.5)
+    fire_reset()
+  }
+
+  function facts() -> []FireFact { return q_drain(fire_facts()) }
+  function count(fs: []FireFact, what: int) -> int {
+    var n = 0
+    for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
+    return n
+  }
+
+  function light() -> void { fire_apply(fire_decide(3)) }
+
+  test "three logs light it, and that is a fact" {
+    fresh()
+    expect_eq(fire_decide(2), FIRE_NO_WOOD)
+    expect_eq(fire_decide(3), FIRE_LIGHT)
+    expect_eq(fire_cost(FIRE_LIGHT), 3)
+    light()
+    expect(fire_lit())
+    expect(fire_fuel() == 120.0)
+    expect_eq(count(facts(), FIRE_LIT), 1)
+  }
+
+  test "a lit fire takes a log for an hour" {
+    fresh()
+    light()
+    expect_eq(fire_decide(0), FIRE_NO_LOG)
+    expect_eq(fire_decide(1), FIRE_FEED)
+    expect_eq(fire_cost(FIRE_FEED), 1)
+    fire_apply(FIRE_FEED)
+    expect(fire_fuel() == 180.0)
+  }
+
+  test "a ban and a soaked ring refuse, a tarp keeps it dry" {
+    fresh()
+    ban = true
+    expect_eq(fire_decide(5), FIRE_BANNED)
+    ban = false
+    wet = true
+    expect_eq(fire_decide(5), FIRE_SOAKED)
+    expect_eq(fire_cost(FIRE_SOAKED), 0)
+    tarp = true
+    expect_eq(fire_decide(5), FIRE_LIGHT)
+  }
+
+  test "it burns a minute a minute, runs low, and goes out as facts" {
+    fresh()
+    light()
+    facts()
+    fire_run(1.5)
+    expect(fire_fuel() == 30.0)
+    expect(not fire_low())
+    fire_run(0.3)
+    expect(fire_low())
+    expect_eq(count(facts(), FIRE_LOW_FUEL), 1)
+    fire_run(0.5)
+    expect(not fire_lit())
+    expect(fire_fuel() == 0.0)
+    expect_eq(count(facts(), FIRE_WENT_OUT), 1)
+  }
+
+  test "the rain burns it twice as fast, and under a tarp it counts the hours" {
+    fresh()
+    light()
+    wet = true
+    fire_run(0.5)
+    expect(fire_fuel() == 60.0)
+    tarp = true
+    fire_run(0.5)
+    expect(fire_fuel() == 30.0)
+    expect(fire_rain_hours() == 0.5)
+    fire_morning()
+    expect(fire_rain_hours() == 0.0)
+  }
+
+  test "a machine that does not own the world burns nothing, but is told" {
+    fresh()
+    light()
+    owns = false
+    fire_run(5.0)
+    expect(fire_fuel() == 120.0)
+    facts()
+    fire_told(false, 0.0, true)
+    expect(not fire_lit())
+    expect_eq(count(facts(), FIRE_WENT_OUT), 1)
+    fire_told(true, 50.0, true)
+    fire_told(false, 0.0, false)
+    expect_eq(q_len(fire_facts()), 0)
+  }
+
+  test "it warms and cooks close, and only while lit" {
+    fresh()
+    expect(not fire_warms(1.0))
+    light()
+    expect(fire_warms(3.5))
+    expect(not fire_warms(3.7))
+    expect(fire_cooks(3.4))
+    expect(not fire_cooks(3.55))
+    fire_out()
+    expect(not fire_cooks(0.0))
+  }
+
+  test "a save section reads back the same fire" {
+    fresh()
+    light()
+    wet = true
+    tarp = true
+    fire_run(0.25)
+    let root = save_tree()
+    save_section(root, "fire", 1, fire_save())
+    let text = save_encode(root)
+    fire_reset()
+    let n = load_section(save_decode(text), "fire")
+    fire_load(n.data, n.version)
+    expect(fire_lit())
+    expect(fire_fuel() == 105.0)
+    expect(fire_rain_hours() == 0.25)
+  }
+}

@@ -1,0 +1,55 @@
+# verbs.ludic - the fire burning down, and the only other ways it changes
+function fr_out() -> void {
+  fr_lit = false
+  fr_fuel = 0.0
+  fr_fact(FIRE_WENT_OUT)
+}
+
+# `gh` game hours of burning; in the rain it burns twice as fast with nothing over the ring,
+# and under cover it counts the hours it held. Only the machine that owns the world burns it.
+export function fire_run(gh: float) -> void {
+  if not fr_lit or not FireWorld.owns_world() { return }
+  let was = fr_fuel
+  fr_fuel = fr_fuel - gh * 60.0
+  if FireWorld.is_wet() {
+    if FireWorld.sheltered() { fr_rain_h = fr_rain_h + gh } else { fr_fuel = fr_fuel - gh * 60.0 }
+  }
+  if fr_fuel < 0.0 {
+    fr_out()
+    return
+  }
+  if was >= fr_low_minutes and fr_fuel < fr_low_minutes { fr_fact(FIRE_LOW_FUEL) }
+}
+
+# put out, and nothing said (the night burns it down)
+export function fire_out() -> void {
+  fr_lit = false
+  fr_fuel = 0.0
+}
+
+# burning with `fuel` minutes, and nothing said (staging, a test)
+export function fire_set_burning(fuel: float) -> void {
+  fr_lit = true
+  fr_fuel = fuel
+}
+
+# what the machine that owns the world says the fire is; going out is a fact when `say`
+export function fire_told(lit: bool, fuel: float, say: bool) -> void {
+  let was = fr_lit
+  fr_lit = lit
+  fr_fuel = fuel
+  if was and not lit and say { fr_fact(FIRE_WENT_OUT) }
+}
+
+# the rain hours outright (staging, a test)
+export function fire_set_rain_hours(h: float) -> void { fr_rain_h = h }
+
+# a new day: the rain hours start again
+export function fire_morning() -> void { fr_rain_h = 0.0 }
+
+export function fire_reset() -> void {
+  fr_lit = false
+  fr_fuel = 0.0
+  fr_rain_h = 0.0
+  q_clear(fire_facts())
+}

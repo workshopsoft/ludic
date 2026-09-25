@@ -1,0 +1,10 @@
+# ludic.fire - one fire: minutes of fuel that burn down in game time, faster in the rain with
+# nothing over it; lighting and feeding are decided, applied and paid for as three steps
+module ludic_fire uses ludic_base
+numbers float
+import "ludic.base"
+import "state.ludic"
+import "decide.ludic"
+import "queries.ludic"
+import "verbs.ludic"
+import "system.ludic"

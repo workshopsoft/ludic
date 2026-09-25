@@ -1,0 +1,31 @@
+# decide.ludic - lighting and feeding in three steps, so a machine that does not own the fire can
+# ask the one that does: what it would come to (fire_decide), what it costs in wood
+# (fire_cost), and doing it (fire_apply - only ever on the machine that owns the world)
+export function fire_decide(wood: int) -> int {
+  if fr_lit {
+    if wood < 1 { return FIRE_NO_LOG }
+    return FIRE_FEED
+  }
+  if not FireWorld.allowed() { return FIRE_BANNED }
+  if wood < fr_light_wood { return FIRE_NO_WOOD }
+  if FireWorld.is_wet() and not FireWorld.sheltered() { return FIRE_SOAKED }
+  return FIRE_LIGHT
+}
+
+export function fire_cost(how: int) -> int {
+  if how == FIRE_LIGHT { return fr_light_wood }
+  if how == FIRE_FEED { return 1 }
+  return 0
+}
+
+export function fire_apply(how: int) -> void {
+  if how == FIRE_FEED { fr_fuel = fr_fuel + fr_log_minutes }
+  if how == FIRE_LIGHT {
+    fr_lit = true
+    fr_fuel = fr_light_minutes
+    fr_fact(FIRE_LIT)
+  }
+}
+
+# the logs it takes to light one
+export function fire_light_wood() -> int { return fr_light_wood }

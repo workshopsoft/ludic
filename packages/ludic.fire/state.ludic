@@ -1,0 +1,68 @@
+# state.ludic - the port, the numbers a game may change, the facts, and what the fire holds
+# what the fire asks the world. Unbound: this machine runs it, it is dry, there is nothing over
+# it, and there is no ban.
+export port FireWorld {
+  owns_world: fn() -> bool = fn fr_yes
+  is_wet: fn() -> bool = fn fr_no           # rain or snow is falling on the ring
+  sheltered: fn() -> bool = fn fr_no        # something is over the ring (a tarp)
+  allowed: fn() -> bool = fn fr_yes         # no fire ban
+}
+function fr_yes() -> bool { return true }
+function fr_no() -> bool { return false }
+
+var fr_light_wood: int = 3          # logs to light one
+var fr_light_minutes: float = 120.0 # game minutes of fuel a new fire has
+var fr_log_minutes: float = 60.0    # game minutes a log adds
+var fr_low_minutes: float = 15.0    # under this, the fire is burning low
+var fr_warm_radius: float = 3.6     # metres it warms a body
+var fr_cook_radius: float = 3.5     # metres it cooks from
+
+# what lighting or feeding would come to, as the world stands
+export const FIRE_NO_WOOD: int = 0      # not enough to light one
+export const FIRE_NO_LOG: int = 1       # nothing to put on one already lit
+export const FIRE_BANNED: int = 2
+export const FIRE_SOAKED: int = 3       # wet and nothing over the ring
+export const FIRE_LIGHT: int = 4
+export const FIRE_FEED: int = 5
+
+# what happened
+export const FIRE_LIT: int = 0
+export const FIRE_WENT_OUT: int = 1
+export const FIRE_LOW_FUEL: int = 2
+
+export property FireFact {
+  what: int = 0
+  fuel: float = 0.0
+}
+
+var fr_lit: bool = false
+var fr_fuel: float = 0.0            # game minutes left
+var fr_rain_h: float = 0.0          # game hours today it burned in the rain under cover
+var fr_facts: Queue<FireFact> = null
+
+# the facts, oldest first; the game drains them into its notices
+export function fire_facts() -> Queue<FireFact> {
+  if fr_facts == null { fr_facts = queue_new("fire.facts") }
+  return fr_facts
+}
+
+function fr_fact(what: int) -> void {
+  let f = new FireFact
+  f.what = what
+  f.fuel = fr_fuel
+  q_push(fire_facts(), f)
+}
+
+# a game's numbers: logs to light, minutes a new fire and a log are worth, when it is low
+export function fire_config(light_wood: int, light_minutes: float, log_minutes: float, low_minutes: float) -> void {
+  fr_light_wood = light_wood
+  fr_light_minutes = light_minutes
+  fr_log_minutes = log_minutes
+  fr_low_minutes = low_minutes
+}
+
+# how far it warms a body and how far it cooks from, in metres
+export function fire_config_reach(warm: float, cook: float) -> void {
+  fr_warm_radius = warm
+  fr_cook_radius = cook
+}

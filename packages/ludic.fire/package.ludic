@@ -1,0 +1,5 @@
+# ludic.fire - a camp fire: its fuel, lit and out, how fast it burns, the rain on it, the warmth
+# it gives at a distance and whether it will cook. Uses ludic.base and nothing else.
+package "ludic.fire"
+version "0.1.0"
+kind source

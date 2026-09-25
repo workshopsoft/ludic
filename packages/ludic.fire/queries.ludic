@@ -1,0 +1,16 @@
+# queries.ludic - what the world asks the fire
+export function fire_lit() -> bool { return fr_lit }
+
+# game minutes of fuel left
+export function fire_fuel() -> float { return fr_fuel }
+
+export function fire_low() -> bool { return fr_lit and fr_fuel < fr_low_minutes }
+
+# game hours today it has burned in the rain with something over it
+export function fire_rain_hours() -> float { return fr_rain_h }
+
+# does it warm a body `dist` metres from it?
+export function fire_warms(dist: float) -> bool { return fr_lit and dist < fr_warm_radius }
+
+# will it cook for someone `dist` metres from it? (a station that stands on it asks only fire_lit)
+export function fire_cooks(dist: float) -> bool { return fr_lit and dist < fr_cook_radius }
