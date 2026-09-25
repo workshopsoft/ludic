@@ -1,0 +1,21 @@
+# testing_floats.ludic — expect_eq and expect_near compare floats as floats (and doubles as
+# doubles), and a failure prints the numbers. Its runner prints:
+#   == 3 passed, 0 failed ==
+program TestingFloats {
+  numbers float
+  function half(x: float) -> float {
+    return x / 2.0
+  }
+  test "near on floats" {
+    expect_near(half(3.0), 1.52, 0.05)
+    expect_near(0.1 + 0.2, 0.3, 0.0001)
+  }
+  test "eq on floats" {
+    expect_eq(half(3.0), 1.5)
+    expect_eq(half(4.0), 2)
+  }
+  test "doubles" {
+    let d: double = 2.5
+    expect_near(d, 2.0, 1.0)
+  }
+}

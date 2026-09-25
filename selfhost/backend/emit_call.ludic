@@ -23,6 +23,46 @@ function emit_expect_fail(cond1: pointer, msgsym: pointer, got: pointer, want: p
   emit(`{lok}:\n`)
 }
 
+# expect_eq / expect_near on floats: compared as floats (the wider of the two kinds), and the
+# values printed as numbers - an i32 compare of a float was an IR type error
+var g_uses_expect_fp: bool = false
+function emit_expect_fp(e: Node, a: Val, b: Val, tol: Val) -> Val {
+  g_uses_expect_fp = true
+  var t = "float"
+  if (a.ty == "double") or (b.ty == "double") { t = "double" }
+  if tol != null and (tol.ty == "double") { t = "double" }
+  let ac = to_fp(a, t, "expect")
+  let bc = to_fp(b, t, "expect")
+  var c = ""
+  var what = "expect_eq"
+  if tol == null { c = emit_bind(`fcmp oeq {t} {ac}, {bc}`) }
+  else {
+    what = "expect_near"
+    let tc = to_fp(tol, t, "expect_near")
+    let d = emit_bind(`fsub {t} {ac}, {bc}`)
+    let nd = emit_bind(`fneg {t} {d}`)
+    let isneg = emit_bind(`fcmp olt {t} {d}, 0.0`)
+    let ad = emit_bind(`select i1 {isneg}, {t} {nd}, {t} {d}`)
+    c = emit_bind(`fcmp ole {t} {ad}, {tc}`)
+  }
+  let msg = emit_str_const(`{expect_where(e)}: {what} failed`)
+  var ag = ac
+  var bg = bc
+  if (t == "float") {
+    ag = emit_bind(`fpext float {ac} to double`)
+    bg = emit_bind(`fpext float {bc} to double`)
+  }
+  let lok = lbl("exok")
+  let lbad = lbl("exbad")
+  emit(`  br i1 {c}, label %{lok}, label %{lbad}\n`)
+  emit(`{lbad}:\n`)
+  emit("  store i32 1, ptr @L_test_fail\n")
+  emit(`  call i32 (ptr, ...) @printf(ptr @.fmt_expect_fp, ptr {msg}, double {ag}, double {bg})\n`)
+  emit(`  br label %{lok}\n`)
+  emit(`{lok}:\n`)
+  return val("0", "void")
+}
+
 # an assertion names the file it is written in, as the compiler was given it, and its line
 function expect_where(e: Node) -> pointer {
   if e.file != null { return `{e.file}:{itoa(e.line)}` }
@@ -686,6 +726,7 @@ function emit_call(e: Node) -> Val {
   if (name == "expect_eq") {
     g_uses_expect = true
     let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1])
+    if is_fp(a.ty) or is_fp(b.ty) { return emit_expect_fp(e, a, b, null) }
     let c = emit_bind(`icmp eq i32 {a.code}, {b.code}`)
     let msg = emit_str_const(`{expect_where(e)}: expect_eq failed`)
     emit_expect_fail(c, msg, a.code, b.code)
@@ -694,6 +735,7 @@ function emit_call(e: Node) -> Val {
   if (name == "expect_near") {
     g_uses_expect = true
     let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1]);  let tol = emit_expr(e.kids[2])
+    if is_fp(a.ty) or is_fp(b.ty) or is_fp(tol.ty) { return emit_expect_fp(e, a, b, tol) }
     let d = emit_bind(`sub i32 {a.code}, {b.code}`)
     let neg = emit_bind(`sub i32 0, {d}`)
     let isneg = emit_bind(`icmp slt i32 {d}, 0`)

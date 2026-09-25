@@ -107,6 +107,7 @@ function emit_test_runner() -> void {
   var i = 0
   while i < len(g_tests) { emit_test_fn(g_tests[i], i);  i += 1 }
   if g_uses_expect { emith("@.fmt_expect = private unnamed_addr constant [22 x i8] c\"%s (got %d, want %d)\\0A\\00\"\n") }
+  if g_uses_expect_fp { emith("@.fmt_expect_fp = private unnamed_addr constant [22 x i8] c\"%s (got %g, want %g)\\0A\\00\"\n") }
 
   ll_t = 0;  ll_lbl = 0
   emit("define i32 @main(i32 %argc, ptr %argv) {\nentry:\n")

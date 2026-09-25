@@ -435,6 +435,17 @@ function scaffold_names_case() -> void {
   ok(lbl)
 }
 
+# a failed expect_near on floats says the numbers, as floats, at its file:line
+function expect_fp_fail_case() -> void {
+  let lbl = "expect_near on floats fails with the numbers at file:line"
+  let src = `{tmp_dir()}/expfp.ludic`
+  write_file(src, "program F {\n  numbers float\n  test \"off\" {\n    expect_near(1.5, 2.0, 0.1)\n  }\n}\n")
+  if not shq(`bin/ludicc {src} -o {tmp_dir()}/expfp > {tmp_dir()}/expfp.err 2>&1`) { bad2(lbl, capture_line(`grep -i error {tmp_dir()}/expfp.err | head -1`));  return }
+  if shq(`{tmp_dir()}/expfp > {tmp_dir()}/expfp.out 2>&1`) { bad2(lbl, "a failing test passed");  return }
+  let got = capture_line(`head -1 {tmp_dir()}/expfp.out`)
+  if got == `{src}:4: expect_near failed (got 1.5, want 2)` { ok(lbl) } else { bad2(lbl, `said [{got}]`) }
+}
+
 # `ludic test <dir>`: the test programs under a package, each test block in a process of its own
 # (a global one test changes is fresh in the next), and a failed expect named by file:line
 function test_dir_case() -> void {
@@ -715,6 +726,8 @@ function cmd_dev_test() -> int {
   spec_case("library/testing", "== 6 passed, 0 failed ==")
   spec_case("library/testing_generic", "== 2 passed, 0 failed ==")
   spec_case("library/testing_random", "== 1 passed, 0 failed ==")
+  spec_case("library/testing_floats", "== 3 passed, 0 failed ==")
+  expect_fp_fail_case()
   feat_case("library/random_plain", "", "1 1 1", "random_plain.ludic (Random.* and a bare rng_range in a program with no ECS)")
   feat_case("library/value_direct", "", "{\"fish\":3} 3", "value_direct.ludic (value_* / json_* called directly splice the value tree)")
   spec_case("library/coverage", "== 3 passed, 0 failed ==")
