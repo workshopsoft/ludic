@@ -1,0 +1,10 @@
+# a program's type named like one the runtime declares is refused (it compiled, and the two layouts
+# met in the IR): the runtime's input has `enum PadButton`
+program RuntimeTypeClash {
+  property PadButton { code: int = 0 }
+  entry {
+    let b = new PadButton
+    print(b.code)
+    print(Input.pad_button(0, 1))
+  }
+}

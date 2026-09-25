@@ -208,8 +208,28 @@ function ck_runtime_shadows() -> void {
       let u = ck_fn(d.s)
       if u != null and u != d { ck_err("shadow", u, `{d.s} is also a function of the engine runtime ({d.file}); choose another name`) }
     }
+    # a type the runtime declares - `property PadButton` beside its `enum PadButton` compiled,
+    # and the two layouts met in the IR
+    if ck_type_kind(d) != "" {
+      var k = 0
+      while k < g_prog_user_end and k < len(prog) {
+        let o = prog[k]
+        if ck_type_kind(o) != "" and (o.s == d.s) {
+          ck_err("shadow", o, `{d.s} is the runtime's {ck_type_kind(d)} ({d.file}); choose another name for this {ck_type_kind(o)}`)
+        }
+        k += 1
+      }
+    }
     r += 1
   }
+}
+function ck_type_kind(d: Node) -> pointer {
+  if d.kind == N_ENUM { return "enum" }
+  if d.kind == N_COMP and d.uns == 2 { return "state" }
+  if d.kind == N_COMP { return "property" }
+  if d.kind == N_STRUCT { return "record" }
+  if d.kind == N_EVENT { return "event" }
+  return ""
 }
 function ck_hooks(hs: []Node) -> void {
   var i = 0

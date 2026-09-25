@@ -81,6 +81,10 @@ function ck_write_check(t: Node, what: pointer) -> void {
       mg_need(g_mg_cur, mg_state_named(ck_ro_st[li]), true)   # 0.S2: it becomes `mut`
       return
     }
+    if ck_is_ro(li) and li < len(ck_ro_st) and ck_ro_st[li] != null and not (ck_ro_st[li] == ck_tys[li]) {
+      ck_err("state", t, `{what}: {r.s} holds part of a read-only {ck_ro_st[li]}; take the state as mut {ck_ro_st[li]} to change it`)
+      return
+    }
     if ck_is_ro(li) {
       ck_err("state", t, `{what}: {r.s} is read-only here ({r.s}: {ck_tys[li]}); take it as {r.s}: mut {ck_tys[li]} to change it`)
     }

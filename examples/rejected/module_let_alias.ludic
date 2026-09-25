@@ -1,0 +1,9 @@
+# 0.S: a module-level let is immutable all the way down, through a local that holds it too
+program ModuleLetAlias {
+  let LIMITS: []int = [1, 2]
+  entry {
+    let l = LIMITS
+    push(l, 3)
+    print(len(LIMITS))
+  }
+}

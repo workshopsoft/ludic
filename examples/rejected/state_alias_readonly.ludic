@@ -1,0 +1,13 @@
+# 0.S: a reference read out of a read-only state is read-only too
+program StateAliasReadonly {
+  property Row { n: int = 0 }
+  state Table { rows: []Row = new []Row }
+  function bump(t: Table) -> void {
+    let r = t.rows[0]
+    r.n = 1
+  }
+  entry (t: mut Table) {
+    push(t.rows, new Row)
+    bump(t)
+  }
+}

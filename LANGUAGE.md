@@ -412,7 +412,11 @@ methods would take that method's calls - `Random.range` is `rng_range`, so a pac
 `rng_range(a, b, c)` would receive every `Random.range(1, 6)`. Where the program calls that method,
 the function is refused (`rng_range is the engine's Random.range, which this program calls (...),
 and every such call would reach this function instead; choose another name`), as a function named
-like a compiler built-in (`run`, `exit`) or like one of the engine runtime's own functions is.
+like a compiler built-in (`run`, `exit`) or like one of the engine runtime's own functions is. So
+is a type - a property, record, enum, event or state - named like one the runtime declares in a file
+the program uses: `property PadButton` beside the runtime's `enum PadButton` used to compile and
+then fail in clang, where the two layouts met (`PadButton is the runtime's enum
+(runtime/native/input.ludic); choose another name for this property`).
 
 ### Registries (`registry`, `def`)
 

@@ -514,15 +514,15 @@ function migrate_case() -> void {
   let lbl = "ludic migrate state: vars into a state, parameters threaded, the same output"
   let work = `{tmp_dir()}/migrate`
   shell(`rm -rf {work} && mkdir -p {work}`)
-  var src = "program Demo {\n  var count: int = 0\n  var names: []string = new []string   # the names\n"
+  var src = "program Demo {\n  var count: int = 0\n  var names: []string = new []string   # the names\n  var title: string = \"names\"\n"
   src = src + "  function add(n: string) -> void {\n    push(names, n)\n    count += 1\n  }\n"
   src = src + "  function total() -> int {\n    return count\n  }\n"
-  src = src + "  function report() -> string {\n    return `{total()} names, first {names[0]}`\n  }\n"
+  src = src + "  function report() -> string {\n    return `{total()} {title}, first {names[0]}`\n  }\n"
   src = src + "  entry {\n    add(\"a\")\n    add(\"b\")\n    print(report())\n  }\n}\n"
   write_file(`{work}/demo.ludic`, src)
   if not shq(`bin/ludic migrate state {work}/demo.ludic > {work}/out.txt 2>&1`) { bad2(lbl, capture_line(`tail -1 {work}/out.txt`));  return }
   let got = read_file(`{work}/demo.ludic`)
-  if not s_contains(got, "state DemoState {") or not s_contains(got, "function add(demo_st: mut DemoState, n: string)") or not s_contains(got, "function total(demo_st: DemoState)") or not s_contains(got, "entry (demo_st: mut DemoState)") {
+  if not s_contains(got, "state DemoState {") or not s_contains(got, "function add(demo_st: mut DemoState, n: string)") or not s_contains(got, "function total(demo_st: DemoState)") or not s_contains(got, "entry (demo_st: mut DemoState)") or not s_contains(got, "let title: string") {
     bad2(lbl, `rewrote it as [{got}]`)
     return
   }
@@ -908,6 +908,9 @@ function cmd_dev_test() -> int {
   reject_case("rejected/module_var", "a module-level var is refused", "a module-level var is refused")
   reject_case("rejected/module_let_write", "LIMITS is module-level and immutable all the way down", "a module-level let is immutable all the way down")
   reject_case("rejected/mut_not_state", "mut is for a state parameter", "mut is for a state parameter")
+  reject_case("rejected/state_alias_readonly", "r holds part of a read-only Table; take the state as mut Table", "a reference out of a read-only state is read-only too")
+  reject_case("rejected/module_let_alias", "l holds part of LIMITS, which is module-level and immutable all the way down", "a module-level let is immutable through a local that holds it")
+  reject_case("rejected/runtime_type_clash", "PadButton is the runtime's enum", "a program's type named like one of the runtime's is refused")
   migrate_case()
   vis_report_case("rejected/uses_missing", "uses: examples/rejected/uses_valley/items/index.ludic:3: items.inv_add used from", "LUDIC_VIS_REPORT=1 lists a uses violation and builds")
   feat_case("lang/checked", "", "7.5 3 12 hi 2 ok", "checked.ludic (L4: literals take their slot's kind, string(p), []string as []pointer, null, named args)")
