@@ -1,63 +1,65 @@
 # rng.ludic — the engine's seeded random numbers (Random.*, seed, rng_*): xorshift32, the same
 # stream on every machine. Its own file so a program with no ECS - a tool, a test program - gets
 # Random.* too: the compiler splices it on demand, and core.ludic imports it for a game.
-var rt_rng: int = 305419896      # xorshift32 state
+export state RtRngState {
+  rt_rng: int = 305419896      # xorshift32 state
+}
 
 # ---- rng (xorshift32) -----------------------------------------------------
-function rt_seed(s: int) -> void {
+function rt_seed(rt_rng_st: mut RtRngState, s: int) -> void {
   if s == 0 {
-    rt_rng = 305419896
+    rt_rng_st.rt_rng = 305419896
     return
   }
-  rt_rng = s
+  rt_rng_st.rt_rng = s
 }
 
 # xorshift32 (Marsaglia). Runs on the raw 32-bit pattern, so the sign bit is
 # masked off only when a caller asks for a number.
-function rt_next_rand() -> int {
-  var x = rt_rng
+function rt_next_rand(rt_rng_st: mut RtRngState) -> int {
+  var x = rt_rng_st.rt_rng
   x = (x ^ (x << 13))
   x = (x ^ (x >> 17))
   x = (x ^ (x << 5))
-  rt_rng = x
+  rt_rng_st.rt_rng = x
   return (x & 2147483647)
 }
 
-function rt_rng_range(lo: int, hi: int) -> int {
+function rt_rng_range(rt_rng_st: mut RtRngState, lo: int, hi: int) -> int {
   if hi <= lo { return lo }
-  return lo + rt_next_rand() % (hi - lo + 1)
+  return lo + rt_next_rand(rt_rng_st) % (hi - lo + 1)
 }
 
-function rt_rng_chance(pct: int) -> bool {
-  return rt_next_rand() % 100 < pct
+function rt_rng_chance(rt_rng_st: mut RtRngState, pct: int) -> bool {
+  return rt_next_rand(rt_rng_st) % 100 < pct
 }
 
 # a deterministic fixed-point value in [0, 1) — the raw 0..65535 is exactly the
 # Q16.16 fraction (fixed and int share the i32 representation).
-function rt_rng_value() -> fixed {
-  return rt_rng_range(0, 65535)
+function rt_rng_value(rt_rng_st: mut RtRngState) -> fixed {
+  return rt_rng_range(rt_rng_st, 0, 65535)
 }
 
 # a deterministic integer in [0, max) — 0 when max <= 0
-function rt_rng_int(max: int) -> int {
+function rt_rng_int(rt_rng_st: mut RtRngState, max: int) -> int {
   if max <= 0 { return 0 }
-  return rt_rng_range(0, max - 1)
+  return rt_rng_range(rt_rng_st, 0, max - 1)
 }
 
 # a deterministic +1 or -1
-function rt_rng_sign() -> int {
-  if rt_rng_chance(50) { return 1 }
+function rt_rng_sign(rt_rng_st: mut RtRngState) -> int {
+  if rt_rng_chance(rt_rng_st, 50) { return 1 }
   return -1
 }
 
 # Random.weighted(weights): an index drawn in proportion to its weight (0 = never);
 # -1 when every weight is 0. Deterministic, from the seeded RNG.
-function rt_rng_weighted(weights: []int) -> int {
+function rt_rng_weighted(rt_rng_st: mut RtRngState, weights: []int) -> int {
   var total = 0
   var i = 0
   while i < len(weights) { if weights[i] > 0 { total += weights[i] };  i += 1 }
   if total <= 0 { return -1 }
-  var roll = rt_rng_range(0, total - 1)
+  var roll = rt_rng_range(rt_rng_st, 0, total - 1)
   i = 0
   while i < len(weights) {
     if weights[i] > 0 {

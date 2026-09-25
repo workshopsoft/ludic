@@ -24,127 +24,129 @@ const TW_MAX:  int = 64            # concurrent handles
 const TW_SEGS: int = 8             # segments per handle (chain depth)
 
 # per-handle state
-var tw_used:  words = null         # slot in use (1) or free (0)
-var tw_seg:   words = null         # index of the segment currently playing
-var tw_nseg:  words = null         # number of segments queued
-var tw_tick:  words = null         # ticks elapsed inside the current segment
-var tw_value: words = null         # OUTPUT: the value this frame
-var tw_done:  words = null         # OUTPUT: 1 once every segment has finished
+export state RtTweenState {
+  tw_used:  words = null         # slot in use (1) or free (0)
+  tw_seg:   words = null         # index of the segment currently playing
+  tw_nseg:  words = null         # number of segments queued
+  tw_tick:  words = null         # ticks elapsed inside the current segment
+  tw_value: words = null         # OUTPUT: the value this frame
+  tw_done:  words = null         # OUTPUT: 1 once every segment has finished
+  tw_kind:  words = null         # 0 = tween (from->to), 1 = delay (hold)
+  tw_from:  words = null
+  tw_to:    words = null
+  tw_dur:   words = null         # segment length in ticks
+  tw_ease:  words = null         # 0 linear, 1 in, 2 out, 3 in-out (Motion's curves)
+}
 
 # per-segment state (flat: handle * TW_SEGS + seg)
-var tw_kind:  words = null         # 0 = tween (from->to), 1 = delay (hold)
-var tw_from:  words = null
-var tw_to:    words = null
-var tw_dur:   words = null         # segment length in ticks
-var tw_ease:  words = null         # 0 linear, 1 in, 2 out, 3 in-out (Motion's curves)
 
-function tw_init() -> void {
-  if tw_used == null {
-    tw_used  = words(TW_MAX)
-    tw_seg   = words(TW_MAX)
-    tw_nseg  = words(TW_MAX)
-    tw_tick  = words(TW_MAX)
-    tw_value = words(TW_MAX)
-    tw_done  = words(TW_MAX)
-    tw_kind  = words(TW_MAX * TW_SEGS)
-    tw_from  = words(TW_MAX * TW_SEGS)
-    tw_to    = words(TW_MAX * TW_SEGS)
-    tw_dur   = words(TW_MAX * TW_SEGS)
-    tw_ease  = words(TW_MAX * TW_SEGS)
+function tw_init(rt_tween_st: mut RtTweenState) -> void {
+  if rt_tween_st.tw_used == null {
+    rt_tween_st.tw_used  = words(TW_MAX)
+    rt_tween_st.tw_seg   = words(TW_MAX)
+    rt_tween_st.tw_nseg  = words(TW_MAX)
+    rt_tween_st.tw_tick  = words(TW_MAX)
+    rt_tween_st.tw_value = words(TW_MAX)
+    rt_tween_st.tw_done  = words(TW_MAX)
+    rt_tween_st.tw_kind  = words(TW_MAX * TW_SEGS)
+    rt_tween_st.tw_from  = words(TW_MAX * TW_SEGS)
+    rt_tween_st.tw_to    = words(TW_MAX * TW_SEGS)
+    rt_tween_st.tw_dur   = words(TW_MAX * TW_SEGS)
+    rt_tween_st.tw_ease  = words(TW_MAX * TW_SEGS)
   }
 }
 
 # claim a free handle (a finished or never-used slot). -1 if the pool is full.
-function tw_alloc() -> int {
-  tw_init()
+function tw_alloc(rt_tween_st: mut RtTweenState) -> int {
+  tw_init(rt_tween_st)
   var i = 0
   while i < TW_MAX {
-    if tw_used[i] == 0 { return i }
+    if rt_tween_st.tw_used[i] == 0 { return i }
     i += 1
   }
   # none free: reuse the first finished handle so long-lived games don't leak.
   i = 0
   while i < TW_MAX {
-    if tw_done[i] != 0 { return i }
+    if rt_tween_st.tw_done[i] != 0 { return i }
     i += 1
   }
   return -1
 }
 
 # append one segment to a handle (internal). Silently ignored past TW_SEGS.
-function tw_push(h: int, kind: int, from: int, to: int, dur: int, ease: int) -> void {
+function tw_push(rt_tween_st: mut RtTweenState, h: int, kind: int, from: int, to: int, dur: int, ease: int) -> void {
   if (h < 0) or (h >= TW_MAX) { return }
-  let n = tw_nseg[h]
+  let n = rt_tween_st.tw_nseg[h]
   if n >= TW_SEGS { return }
   let s = h * TW_SEGS + n
-  tw_kind[s] = kind
-  tw_from[s] = from
-  tw_to[s]   = to
-  tw_dur[s]  = dur
-  tw_ease[s] = ease
-  tw_nseg[h] = n + 1
+  rt_tween_st.tw_kind[s] = kind
+  rt_tween_st.tw_from[s] = from
+  rt_tween_st.tw_to[s]   = to
+  rt_tween_st.tw_dur[s]  = dur
+  rt_tween_st.tw_ease[s] = ease
+  rt_tween_st.tw_nseg[h] = n + 1
 }
 
 # start a new tween handle: from -> to over `dur` ticks with easing `ease`.
-function tween_to(from: int, to: int, dur: int, ease: int) -> int {
-  let h = tw_alloc()
+function tween_to(rt_tween_st: mut RtTweenState, from: int, to: int, dur: int, ease: int) -> int {
+  let h = tw_alloc(rt_tween_st)
   if h < 0 { return -1 }
-  tw_used[h]  = 1
-  tw_seg[h]   = 0
-  tw_nseg[h]  = 0
-  tw_tick[h]  = 0
-  tw_value[h] = from
-  tw_done[h]  = 0
-  tw_push(h, 0, from, to, dur, ease)
+  rt_tween_st.tw_used[h]  = 1
+  rt_tween_st.tw_seg[h]   = 0
+  rt_tween_st.tw_nseg[h]  = 0
+  rt_tween_st.tw_tick[h]  = 0
+  rt_tween_st.tw_value[h] = from
+  rt_tween_st.tw_done[h]  = 0
+  tw_push(rt_tween_st, h, 0, from, to, dur, ease)
   return h
 }
 
 # chain a tween segment after the handle's current queue: continues from where the
 # previous segment ends, so the game only names the new target. Returns the handle
 # for fluent chaining.
-function tween_chain(h: int, to: int, dur: int, ease: int) -> int {
+function tween_chain(rt_tween_st: mut RtTweenState, h: int, to: int, dur: int, ease: int) -> int {
   if (h < 0) or (h >= TW_MAX) { return h }
-  var from = tw_value[h]
-  let n = tw_nseg[h]
+  var from = rt_tween_st.tw_value[h]
+  let n = rt_tween_st.tw_nseg[h]
   if n > 0 {
     let last = h * TW_SEGS + (n - 1)
-    if tw_kind[last] == 0 { from = tw_to[last] }     # continue from the previous tween's end
+    if rt_tween_st.tw_kind[last] == 0 { from = rt_tween_st.tw_to[last] }     # continue from the previous tween's end
   }
-  tw_push(h, 0, from, from + (to - from), dur, ease)  # `to` is the absolute target
+  tw_push(rt_tween_st, h, 0, from, from + (to - from), dur, ease)  # `to` is the absolute target
   return h
 }
 
 # chain a pause of `ticks` ticks (the value holds). Returns the handle.
-function tween_delay(h: int, ticks: int) -> int {
+function tween_delay(rt_tween_st: mut RtTweenState, h: int, ticks: int) -> int {
   if (h < 0) or (h >= TW_MAX) { return h }
-  tw_push(h, 1, 0, 0, ticks, 0)
+  tw_push(rt_tween_st, h, 1, 0, 0, ticks, 0)
   return h
 }
 
 # the value of a handle this frame.
-function tween_value(h: int) -> int {
+function tween_value(rt_tween_st: RtTweenState, h: int) -> int {
   if (h < 0) or (h >= TW_MAX) { return 0 }
-  return tw_value[h]
+  return rt_tween_st.tw_value[h]
 }
 
 # has every segment of the handle finished?
-function tween_done(h: int) -> bool {
+function tween_done(rt_tween_st: RtTweenState, h: int) -> bool {
   if (h < 0) or (h >= TW_MAX) { return true }
-  return tw_done[h] != 0
+  return rt_tween_st.tw_done[h] != 0
 }
 
 # are two handles both finished? — the completion of a parallel pair. Independent
 # handles advance together each frame, so running several at once *is* parallel;
 # this is the "all done" query over a pair.
-function tween_parallel(a: int, b: int) -> bool {
-  return tween_done(a) and tween_done(b)
+function tween_parallel(rt_tween_st: RtTweenState, a: int, b: int) -> bool {
+  return tween_done(rt_tween_st, a) and tween_done(rt_tween_st, b)
 }
 
 # free a handle immediately (stop and dispose). Its value is frozen where it was.
-function tween_stop(h: int) -> void {
+function tween_stop(rt_tween_st: mut RtTweenState, h: int) -> void {
   if (h < 0) or (h >= TW_MAX) { return }
-  tw_used[h] = 0
-  tw_done[h] = 1
+  rt_tween_st.tw_used[h] = 0
+  rt_tween_st.tw_done[h] = 1
 }
 
 # floor of a/b for non-negative a (the tick counter only ever rises).
@@ -167,42 +169,42 @@ function tween_ease(t: int, ease: int) -> int {
 
 # advance one active handle by a tick: interpolate within the current segment,
 # roll over to the next when it ends, latch done past the last.
-function tw_advance_one(h: int) -> void {
-  if tw_done[h] != 0 { return }
-  let n = tw_nseg[h]
-  if n == 0 { tw_done[h] = 1;  return }
-  var seg = tw_seg[h]
-  if seg >= n { tw_done[h] = 1;  return }
-  var tick = tw_tick[h] + 1
+function tw_advance_one(rt_tween_st: mut RtTweenState, h: int) -> void {
+  if rt_tween_st.tw_done[h] != 0 { return }
+  let n = rt_tween_st.tw_nseg[h]
+  if n == 0 { rt_tween_st.tw_done[h] = 1;  return }
+  var seg = rt_tween_st.tw_seg[h]
+  if seg >= n { rt_tween_st.tw_done[h] = 1;  return }
+  var tick = rt_tween_st.tw_tick[h] + 1
   let s   = h * TW_SEGS + seg
-  let dur = tw_dur[s]
-  let kind = tw_kind[s]
+  let dur = rt_tween_st.tw_dur[s]
+  let kind = rt_tween_st.tw_kind[s]
   if kind == 0 {                                     # a tween segment
     var t = 1024
     if dur > 0 { t = tw_div(tick * 1024, dur) }
     if t > 1024 { t = 1024 }
-    let te = tween_ease(t, tw_ease[s])
-    tw_value[h] = tw_from[s] + (tw_to[s] - tw_from[s]) * te / 1024
+    let te = tween_ease(t, rt_tween_st.tw_ease[s])
+    rt_tween_st.tw_value[h] = rt_tween_st.tw_from[s] + (rt_tween_st.tw_to[s] - rt_tween_st.tw_from[s]) * te / 1024
   }
   # (a delay segment holds tw_value unchanged.)
   if tick >= dur {                                   # this segment finished: advance
-    if kind == 0 { tw_value[h] = tw_to[s] }          # rest exactly on the target
+    if kind == 0 { rt_tween_st.tw_value[h] = rt_tween_st.tw_to[s] }          # rest exactly on the target
     seg += 1
-    tw_seg[h]  = seg
-    tw_tick[h] = 0
-    if seg >= n { tw_done[h] = 1 }
+    rt_tween_st.tw_seg[h]  = seg
+    rt_tween_st.tw_tick[h] = 0
+    if seg >= n { rt_tween_st.tw_done[h] = 1 }
   } else {
-    tw_tick[h] = tick
+    rt_tween_st.tw_tick[h] = tick
   }
 }
 
 # the engine-owned system: advance every active tween handle one tick. Inserted
 # into the Update phase when a game uses Tween.to (emit_game.ludic).
-function esys_tween() -> void {
-  if tw_used == null { return }
+function esys_tween(rt_tween_st: mut RtTweenState) -> void {
+  if rt_tween_st.tw_used == null { return }
   var i = 0
   while i < TW_MAX {
-    if (tw_used[i] != 0) and (tw_done[i] == 0) { tw_advance_one(i) }
+    if (rt_tween_st.tw_used[i] != 0) and (rt_tween_st.tw_done[i] == 0) { tw_advance_one(rt_tween_st, i) }
     i += 1
   }
 }

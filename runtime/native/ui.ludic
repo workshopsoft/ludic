@@ -45,165 +45,167 @@ const K_VISIBLE: int = 18
 const K_IMG: int = 19
 const K_SKIN: int = 20
 
-var ui_type: words = null
-var ui_parent: words = null
-var ui_w: words = null
-var ui_h: words = null
-var ui_x: words = null
-var ui_y: words = null
-var ui_haspos: words = null
-var ui_pad: words = null
-var ui_gap: words = null
-var ui_bg: words = null
-var ui_fg: words = null
-var ui_border: words = null
-var ui_align: words = null
-var ui_grow: words = null
-var ui_font: words = null
-var ui_size: words = null
-var ui_skin: words = null
-var ui_inset: words = null
-var ui_img: words = null
-var ui_focusable: words = null
-var ui_rx: words = null
-var ui_ry: words = null
-var ui_rw: words = null
-var ui_rh: words = null
-var ui_visible: words = null
-var ui_fired: words = null
-var ui_hasdyn: words = null
-var ui_dyn: pointer = null        # UI_MAX * 96 bytes
-var ui_text: pointers = null       # UI_MAX static string pointers
+export state RtUiState {
+  ui_type: words = null
+  ui_parent: words = null
+  ui_w: words = null
+  ui_h: words = null
+  ui_x: words = null
+  ui_y: words = null
+  ui_haspos: words = null
+  ui_pad: words = null
+  ui_gap: words = null
+  ui_bg: words = null
+  ui_fg: words = null
+  ui_border: words = null
+  ui_align: words = null
+  ui_grow: words = null
+  ui_font: words = null
+  ui_size: words = null
+  ui_skin: words = null
+  ui_inset: words = null
+  ui_img: words = null
+  ui_focusable: words = null
+  ui_rx: words = null
+  ui_ry: words = null
+  ui_rw: words = null
+  ui_rh: words = null
+  ui_visible: words = null
+  ui_fired: words = null
+  ui_hasdyn: words = null
+  ui_dyn: pointer = null        # UI_MAX * 96 bytes
+  ui_text: pointers = null       # UI_MAX static string pointers
+  ui_n: int = 0
+  ui_active: int = -1
+  ui_focus: int = -1
+}
 
-var ui_n: int = 0
-var ui_active: int = -1
-var ui_focus: int = -1
 
-function rt_ui_init() -> void {
-  ui_type = words(UI_MAX)
-  ui_parent = words(UI_MAX)
-  ui_w = words(UI_MAX)
-  ui_h = words(UI_MAX)
-  ui_x = words(UI_MAX)
-  ui_y = words(UI_MAX)
-  ui_haspos = words(UI_MAX)
-  ui_pad = words(UI_MAX)
-  ui_gap = words(UI_MAX)
-  ui_bg = words(UI_MAX)
-  ui_fg = words(UI_MAX)
-  ui_border = words(UI_MAX)
-  ui_align = words(UI_MAX)
-  ui_grow = words(UI_MAX)
-  ui_font = words(UI_MAX)
-  ui_size = words(UI_MAX)
-  ui_skin = words(UI_MAX)
-  ui_inset = words(UI_MAX)
-  ui_img = words(UI_MAX)
-  ui_focusable = words(UI_MAX)
-  ui_rx = words(UI_MAX)
-  ui_ry = words(UI_MAX)
-  ui_rw = words(UI_MAX)
-  ui_rh = words(UI_MAX)
-  ui_visible = words(UI_MAX)
-  ui_fired = words(UI_MAX)
-  ui_hasdyn = words(UI_MAX)
-  ui_dyn = bytes(UI_MAX * 96)
-  ui_text = pointers(UI_MAX)
+function rt_ui_init(rt_ui_st: mut RtUiState) -> void {
+  rt_ui_st.ui_type = words(UI_MAX)
+  rt_ui_st.ui_parent = words(UI_MAX)
+  rt_ui_st.ui_w = words(UI_MAX)
+  rt_ui_st.ui_h = words(UI_MAX)
+  rt_ui_st.ui_x = words(UI_MAX)
+  rt_ui_st.ui_y = words(UI_MAX)
+  rt_ui_st.ui_haspos = words(UI_MAX)
+  rt_ui_st.ui_pad = words(UI_MAX)
+  rt_ui_st.ui_gap = words(UI_MAX)
+  rt_ui_st.ui_bg = words(UI_MAX)
+  rt_ui_st.ui_fg = words(UI_MAX)
+  rt_ui_st.ui_border = words(UI_MAX)
+  rt_ui_st.ui_align = words(UI_MAX)
+  rt_ui_st.ui_grow = words(UI_MAX)
+  rt_ui_st.ui_font = words(UI_MAX)
+  rt_ui_st.ui_size = words(UI_MAX)
+  rt_ui_st.ui_skin = words(UI_MAX)
+  rt_ui_st.ui_inset = words(UI_MAX)
+  rt_ui_st.ui_img = words(UI_MAX)
+  rt_ui_st.ui_focusable = words(UI_MAX)
+  rt_ui_st.ui_rx = words(UI_MAX)
+  rt_ui_st.ui_ry = words(UI_MAX)
+  rt_ui_st.ui_rw = words(UI_MAX)
+  rt_ui_st.ui_rh = words(UI_MAX)
+  rt_ui_st.ui_visible = words(UI_MAX)
+  rt_ui_st.ui_fired = words(UI_MAX)
+  rt_ui_st.ui_hasdyn = words(UI_MAX)
+  rt_ui_st.ui_dyn = bytes(UI_MAX * 96)
+  rt_ui_st.ui_text = pointers(UI_MAX)
 }
 
 # ---- build-time interface (called by compiler-emitted code) ---------------
-function rt_ui_reset(n: int) -> void {
-  ui_n = n
+function rt_ui_reset(rt_ui_st: mut RtUiState, n: int) -> void {
+  rt_ui_st.ui_n = n
   for i in 0 .. n {
-    ui_type[i] = 0
-    ui_parent[i] = -1
-    ui_w[i] = 0
-    ui_h[i] = 0
-    ui_x[i] = 0
-    ui_y[i] = 0
-    ui_haspos[i] = 0
-    ui_pad[i] = 0
-    ui_gap[i] = 0
-    ui_bg[i] = -1
-    ui_fg[i] = -1
-    ui_border[i] = -1
-    ui_align[i] = -1
-    ui_grow[i] = 0
-    ui_font[i] = -1
-    ui_size[i] = 8
-    ui_skin[i] = -1
-    ui_inset[i] = 6
-    ui_img[i] = -1
-    ui_focusable[i] = 0
-    ui_visible[i] = 1
-    ui_fired[i] = 0
-    ui_hasdyn[i] = 0
-    ui_text[i] = null
+    rt_ui_st.ui_type[i] = 0
+    rt_ui_st.ui_parent[i] = -1
+    rt_ui_st.ui_w[i] = 0
+    rt_ui_st.ui_h[i] = 0
+    rt_ui_st.ui_x[i] = 0
+    rt_ui_st.ui_y[i] = 0
+    rt_ui_st.ui_haspos[i] = 0
+    rt_ui_st.ui_pad[i] = 0
+    rt_ui_st.ui_gap[i] = 0
+    rt_ui_st.ui_bg[i] = -1
+    rt_ui_st.ui_fg[i] = -1
+    rt_ui_st.ui_border[i] = -1
+    rt_ui_st.ui_align[i] = -1
+    rt_ui_st.ui_grow[i] = 0
+    rt_ui_st.ui_font[i] = -1
+    rt_ui_st.ui_size[i] = 8
+    rt_ui_st.ui_skin[i] = -1
+    rt_ui_st.ui_inset[i] = 6
+    rt_ui_st.ui_img[i] = -1
+    rt_ui_st.ui_focusable[i] = 0
+    rt_ui_st.ui_visible[i] = 1
+    rt_ui_st.ui_fired[i] = 0
+    rt_ui_st.ui_hasdyn[i] = 0
+    rt_ui_st.ui_text[i] = null
   }
 }
 
-function rt_ui_set(i: int, k: int, v: int) -> void {
+function rt_ui_set(rt_ui_st: mut RtUiState, i: int, k: int, v: int) -> void {
   if i < 0 { return }
   if i >= UI_MAX { return }
-  if k == K_TYPE { ui_type[i] = v }
-  if k == K_PARENT { ui_parent[i] = v }
-  if k == K_W { ui_w[i] = v }
-  if k == K_H { ui_h[i] = v }
-  if k == K_X { ui_x[i] = v }
-  if k == K_Y { ui_y[i] = v }
-  if k == K_HASPOS { ui_haspos[i] = v }
-  if k == K_PAD { ui_pad[i] = v }
-  if k == K_GAP { ui_gap[i] = v }
-  if k == K_BG { ui_bg[i] = v }
-  if k == K_FG { ui_fg[i] = v }
-  if k == K_BORDER { ui_border[i] = v }
-  if k == K_ALIGN { ui_align[i] = v }
-  if k == K_GROW { ui_grow[i] = v }
-  if k == K_FONT { ui_font[i] = v }
-  if k == K_SIZE { ui_size[i] = v }
-  if k == K_SKININSET { ui_inset[i] = v }
-  if k == K_FOCUSABLE { ui_focusable[i] = v }
-  if k == K_VISIBLE { ui_visible[i] = v }
-  if k == K_IMG { ui_img[i] = v }
-  if k == K_SKIN { ui_skin[i] = v }
+  if k == K_TYPE { rt_ui_st.ui_type[i] = v }
+  if k == K_PARENT { rt_ui_st.ui_parent[i] = v }
+  if k == K_W { rt_ui_st.ui_w[i] = v }
+  if k == K_H { rt_ui_st.ui_h[i] = v }
+  if k == K_X { rt_ui_st.ui_x[i] = v }
+  if k == K_Y { rt_ui_st.ui_y[i] = v }
+  if k == K_HASPOS { rt_ui_st.ui_haspos[i] = v }
+  if k == K_PAD { rt_ui_st.ui_pad[i] = v }
+  if k == K_GAP { rt_ui_st.ui_gap[i] = v }
+  if k == K_BG { rt_ui_st.ui_bg[i] = v }
+  if k == K_FG { rt_ui_st.ui_fg[i] = v }
+  if k == K_BORDER { rt_ui_st.ui_border[i] = v }
+  if k == K_ALIGN { rt_ui_st.ui_align[i] = v }
+  if k == K_GROW { rt_ui_st.ui_grow[i] = v }
+  if k == K_FONT { rt_ui_st.ui_font[i] = v }
+  if k == K_SIZE { rt_ui_st.ui_size[i] = v }
+  if k == K_SKININSET { rt_ui_st.ui_inset[i] = v }
+  if k == K_FOCUSABLE { rt_ui_st.ui_focusable[i] = v }
+  if k == K_VISIBLE { rt_ui_st.ui_visible[i] = v }
+  if k == K_IMG { rt_ui_st.ui_img[i] = v }
+  if k == K_SKIN { rt_ui_st.ui_skin[i] = v }
 }
 
-function rt_ui_static_text(i: int, s: string) -> void {
+function rt_ui_static_text(rt_ui_st: mut RtUiState, i: int, s: string) -> void {
   if i < 0 { return }
   if i >= UI_MAX { return }
-  ui_text[i] = s
+  rt_ui_st.ui_text[i] = s
 }
 
 # ---- text helpers: TrueType when a font is loaded, bitmap otherwise -------
-function ui_str(i: int) -> pointer {
-  if ui_hasdyn[i] == 1 { return offset(ui_dyn, i * 96) }
-  let t = ui_text[i]
-  if (t == null) { return offset(ui_dyn, i * 96) }
+function ui_str(rt_ui_st: RtUiState, i: int) -> pointer {
+  if rt_ui_st.ui_hasdyn[i] == 1 { return offset(rt_ui_st.ui_dyn, i * 96) }
+  let t = rt_ui_st.ui_text[i]
+  if (t == null) { return offset(rt_ui_st.ui_dyn, i * 96) }
   return t
 }
 
-function ui_draw_text(font: int, x: int, y: int, s: pointer, colour: int, size: int) -> void {
+function ui_draw_text(rt_core_st: mut RtCoreState, rt_truetype_raster_st: mut RtTruetypeRasterState, rt_truetype_st: mut RtTruetypeState, font: int, x: int, y: int, s: pointer, colour: int, size: int) -> void {
   if font >= 0 {
-    if font < tt_n {
-      rt_text_ttf(font, x, y, s, colour, size)
+    if font < rt_truetype_st.tt_n {
+      rt_text_ttf(rt_core_st, rt_truetype_raster_st, rt_truetype_st, font, x, y, s, colour, size)
       return
     }
   }
-  rt_text(x, y, s, colour, max(size / 8, 1))
+  rt_text(rt_core_st, x, y, s, colour, max(size / 8, 1))
 }
 
-function ui_tw(font: int, s: pointer, size: int) -> int {
+function ui_tw(rt_truetype_raster_st: mut RtTruetypeRasterState, rt_truetype_st: mut RtTruetypeState, font: int, s: pointer, size: int) -> int {
   if font >= 0 {
-    if font < tt_n { return rt_text_w(font, s, size) }
+    if font < rt_truetype_st.tt_n { return rt_text_w(rt_truetype_raster_st, rt_truetype_st, font, s, size) }
   }
   var n = 0
   while s[n] != 0 { n += 1 }
   return n * 6 * max(size / 8, 1)
 }
 
-function ui_th(font: int, size: int) -> int {
+function ui_th(rt_truetype_st: RtTruetypeState, font: int, size: int) -> int {
   if font >= 0 {
-    if font < tt_n { return rt_text_h(font, size) }
+    if font < rt_truetype_st.tt_n { return rt_text_h(rt_truetype_st, font, size) }
   }
   return 7 * max(size / 8, 1)
 }
@@ -218,68 +220,68 @@ function ui_dir(t: int) -> int {
   if t == WT_ROW { return 0 }
   return 1
 }
-function ui_under(i: int, root: int) -> bool {
+function ui_under(rt_ui_st: RtUiState, i: int, root: int) -> bool {
   var k = i
   while k >= 0 {
     if k == root { return true }
-    k = ui_parent[k]
+    k = rt_ui_st.ui_parent[k]
   }
   return false
 }
 
 # ---- measure: content sizes, children before parents ----------------------
-function ui_measure() -> void {
-  var i = ui_n - 1
+function ui_measure(rt_image_st: RtImageState, rt_truetype_raster_st: mut RtTruetypeRasterState, rt_truetype_st: mut RtTruetypeState, rt_ui_st: mut RtUiState) -> void {
+  var i = rt_ui_st.ui_n - 1
   while i >= 0 {
-    if ui_visible[i] == 0 {
-      ui_rw[i] = 0
-      ui_rh[i] = 0
+    if rt_ui_st.ui_visible[i] == 0 {
+      rt_ui_st.ui_rw[i] = 0
+      rt_ui_st.ui_rh[i] = 0
     } else {
-      let t = ui_type[i]
-      let pad = ui_pad[i]
+      let t = rt_ui_st.ui_type[i]
+      let pad = rt_ui_st.ui_pad[i]
       var cw = 0
       var ch = 0
       if t == WT_LABEL { cw = -1 }
       if t == WT_BUTTON { cw = -1 }
       if cw == -1 {
-        let s = ui_str(i)
-        cw = ui_tw(ui_font[i], s, ui_size[i]) + 2 * pad
-        ch = ui_th(ui_font[i], ui_size[i]) + 2 * pad
+        let s = ui_str(rt_ui_st, i)
+        cw = ui_tw(rt_truetype_raster_st, rt_truetype_st, rt_ui_st.ui_font[i], s, rt_ui_st.ui_size[i]) + 2 * pad
+        ch = ui_th(rt_truetype_st, rt_ui_st.ui_font[i], rt_ui_st.ui_size[i]) + 2 * pad
         if t == WT_BUTTON {
           cw += 10
           ch += 6
         }
       } else {
         if t == WT_IMAGE {
-          let im = ui_img[i]
+          let im = rt_ui_st.ui_img[i]
           if im >= 0 {
-            cw = img_w[im]
-            ch = img_h[im]
+            cw = rt_image_st.img_w[im]
+            ch = rt_image_st.img_h[im]
           }
         } else {
           if t == WT_SPACER {
-            cw = ui_w[i]
-            ch = ui_h[i]
+            cw = rt_ui_st.ui_w[i]
+            ch = rt_ui_st.ui_h[i]
           } else {
             let dir = ui_dir(t)
             var mainsz = 0
             var cross = 0
             var nc = 0
-            for c in 0 .. ui_n {
-              if ui_parent[c] == i {
-                if ui_visible[c] == 1 {
+            for c in 0 .. rt_ui_st.ui_n {
+              if rt_ui_st.ui_parent[c] == i {
+                if rt_ui_st.ui_visible[c] == 1 {
                   if dir == 1 {
-                    mainsz += ui_rh[c]
-                    cross = max(cross, ui_rw[c])
+                    mainsz += rt_ui_st.ui_rh[c]
+                    cross = max(cross, rt_ui_st.ui_rw[c])
                   } else {
-                    mainsz += ui_rw[c]
-                    cross = max(cross, ui_rh[c])
+                    mainsz += rt_ui_st.ui_rw[c]
+                    cross = max(cross, rt_ui_st.ui_rh[c])
                   }
                   nc += 1
                 }
               }
             }
-            if nc > 1 { mainsz = mainsz + ui_gap[i] * (nc - 1) }
+            if nc > 1 { mainsz = mainsz + rt_ui_st.ui_gap[i] * (nc - 1) }
             mainsz = mainsz + 2 * pad
             cross = cross + 2 * pad
             if dir == 1 {
@@ -292,20 +294,20 @@ function ui_measure() -> void {
           }
         }
       }
-      var rw = ui_w[i]
-      var rh = ui_h[i]
+      var rw = rt_ui_st.ui_w[i]
+      var rh = rt_ui_st.ui_h[i]
       if rw == 0 { rw = cw }
       if rh == 0 { rh = ch }
-      ui_rw[i] = rw
-      ui_rh[i] = rh
+      rt_ui_st.ui_rw[i] = rw
+      rt_ui_st.ui_rh[i] = rh
     }
     i -= 1
   }
 }
 
-function ui_eff_align(child: int, parent: int) -> int {
-  if ui_align[child] >= 0 { return ui_align[child] }
-  if ui_align[parent] >= 0 { return ui_align[parent] }
+function ui_eff_align(rt_ui_st: RtUiState, child: int, parent: int) -> int {
+  if rt_ui_st.ui_align[child] >= 0 { return rt_ui_st.ui_align[child] }
+  if rt_ui_st.ui_align[parent] >= 0 { return rt_ui_st.ui_align[parent] }
   return 0
 }
 

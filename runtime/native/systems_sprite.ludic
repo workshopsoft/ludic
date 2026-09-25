@@ -43,7 +43,7 @@ function spr_pos(e: int, axis: int) -> int {
   return World.get(e, pp, f)
 }
 
-function esys_sprite() -> void {
+function esys_sprite(rt_atlas_st: mut RtAtlasState, rt_core_st: mut RtCoreState, rt_image_st: RtImageState) -> void {
   let P = World.prop_id("Sprite")
   if P < 0 { return }
   let f_id = World.field_id(P, "id")
@@ -109,8 +109,8 @@ function esys_sprite() -> void {
       if (f_flash >= 0) and (World.get(e, P, f_flash) > 0) { tint = 0xffffff }
       var is_atlas = 0
       if f_atlas >= 0 { is_atlas = World.get(e, P, f_atlas) }
-      if is_atlas != 0 { atlas_draw_ex(id, x, y, sc, flip, tint) }       # #90 atlas cells / spans
-      else { rt_draw_sprite_ex(id, x, y, sc, flip, tint) }
+      if is_atlas != 0 { atlas_draw_ex(rt_atlas_st, rt_core_st, rt_image_st, id, x, y, sc, flip, tint) }       # #90 atlas cells / spans
+      else { rt_draw_sprite_ex(rt_core_st, rt_image_st, id, x, y, sc, flip, tint) }
     }
     e = World.query_next(P, e + 1)
   }

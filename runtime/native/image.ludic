@@ -13,25 +13,31 @@ const IMG_MAX: int = 32
 const SPR_MAX: int = 160
 const SPR_SZ:  int = 16
 
-var img_px:   [][]int = null      # IMG_MAX RGBA buffers
-var img_w:    words = null
-var img_h:    words = null
-var img_n:    int = 0
+export state RtImageState {
+  img_px:   [][]int = null      # IMG_MAX RGBA buffers
+  img_w:    words = null
+  img_h:    words = null
+  img_n:    int = 0
+  spr_px:   words = null     # SPR_MAX * 16 * 16 RGBA pixels, one block
+  spr_n:    int = 0
+  rt_file_len: int = 0
+  png_w:  int = 0
+  png_h:  int = 0
+  png_px: words = null
+}
 
-var spr_px:   words = null     # SPR_MAX * 16 * 16 RGBA pixels, one block
-var spr_n:    int = 0
 
-function rt_image_init() -> void {
-  img_px = new [][]int
+function rt_image_init(rt_image_st: mut RtImageState) -> void {
+  rt_image_st.img_px = new [][]int
   var pi0 = 0
   while pi0 < IMG_MAX {
-    push(img_px, null)
+    push(rt_image_st.img_px, null)
     pi0 += 1
   }
-  img_w = words(IMG_MAX)
-  img_h = words(IMG_MAX)
-  spr_px = words(SPR_MAX * SPR_SZ * SPR_SZ)
-  fill(spr_px, 0, SPR_MAX * SPR_SZ * SPR_SZ * 4)
+  rt_image_st.img_w = words(IMG_MAX)
+  rt_image_st.img_h = words(IMG_MAX)
+  rt_image_st.spr_px = words(SPR_MAX * SPR_SZ * SPR_SZ)
+  fill(rt_image_st.spr_px, 0, SPR_MAX * SPR_SZ * SPR_SZ * 4)
 }
 
 # ---- decoding -------------------------------------------------------------
@@ -47,7 +53,7 @@ function png_tag(b: pointer, at: int, a: int, c: int, d: int, e: int) -> bool {
   return true
 }
 
-function rt_read_file(path: string) -> pointer {
+function rt_read_file(rt_image_st: mut RtImageState, path: string) -> pointer {
   let f = file_open(path, "rb")
   if (f == null) { return null }
   file_seek(f, 0, 2)
@@ -57,23 +63,19 @@ function rt_read_file(path: string) -> pointer {
   let buf = bytes(n + 8)
   file_read(f, buf, n)
   file_close(f)
-  rt_file_len = n
+  rt_image_st.rt_file_len = n
   return buf
 }
-var rt_file_len: int = 0
 
 # decoded image is left in these; -1 width means failure
-var png_w:  int = 0
-var png_h:  int = 0
-var png_px: words = null
 
-function rt_decode_png(path: string) -> bool {
-  png_w = 0
-  png_h = 0
-  png_px = null
-  let d = rt_read_file(path)
+function rt_decode_png(rt_image_st: mut RtImageState, rt_inflate_st: mut RtInflateState, path: string) -> bool {
+  rt_image_st.png_w = 0
+  rt_image_st.png_h = 0
+  rt_image_st.png_px = null
+  let d = rt_read_file(rt_image_st, path)
   if (d == null) { return false }
-  let size = rt_file_len
+  let size = rt_image_st.rt_file_len
   if size < 8 { free(d); return false }
   if d[0] != 137 { free(d); return false }
   if d[1] != 'P' { free(d); return false }
@@ -136,7 +138,7 @@ function rt_decode_png(path: string) -> bool {
   let stride = (w * bppbits + 7) / 8
   let rawlen = h * (stride + 1)
   let raw = bytes(rawlen + 8)
-  if z_uncompress(idat, idlen, raw, rawlen) < 0 {
+  if z_uncompress(rt_inflate_st, idat, idlen, raw, rawlen) < 0 {
     free(d); free(raw); free(idat)
     return false
   }
@@ -225,25 +227,25 @@ function rt_decode_png(path: string) -> bool {
   free(raw)
   free(plte)
   free(trns)
-  png_w = w
-  png_h = h
-  png_px = out
+  rt_image_st.png_w = w
+  rt_image_st.png_h = h
+  rt_image_st.png_px = out
   return true
 }
 
 # ---- images ---------------------------------------------------------------
-function rt_image_load(path: string) -> int {
-  if img_n >= IMG_MAX { return -1 }
-  if rt_decode_png(path) == false { return -1 }
-  let id = img_n
-  img_n += 1
-  img_px[id] = png_px
-  img_w[id] = png_w
-  img_h[id] = png_h
+function rt_image_load(rt_image_st: mut RtImageState, rt_inflate_st: mut RtInflateState, path: string) -> int {
+  if rt_image_st.img_n >= IMG_MAX { return -1 }
+  if rt_decode_png(rt_image_st, rt_inflate_st, path) == false { return -1 }
+  let id = rt_image_st.img_n
+  rt_image_st.img_n += 1
+  rt_image_st.img_px[id] = rt_image_st.png_px
+  rt_image_st.img_w[id] = rt_image_st.png_w
+  rt_image_st.img_h[id] = rt_image_st.png_h
   return id
 }
 
-function rt_blend_px(x: int, y: int, argb: int) -> void {
+function rt_blend_px(rt_core_st: mut RtCoreState, x: int, y: int, argb: int) -> void {
   let a = ((argb >> 24) & 255)
   if a == 0 { return }
   if x < 0 { return }
@@ -254,7 +256,7 @@ function rt_blend_px(x: int, y: int, argb: int) -> void {
   var g = ((argb >> 8) & 255)
   var b = (argb & 255)
   if a != 255 {
-    let dst = rt_fb[y * rt_fbw + x]
+    let dst = rt_core_st.rt_fb[y * rt_fbw + x]
     let dr = ((dst >> 16) & 255)
     let dg = ((dst >> 8) & 255)
     let db = (dst & 255)
@@ -262,33 +264,33 @@ function rt_blend_px(x: int, y: int, argb: int) -> void {
     g = (g * a + dg * (255 - a)) / 255
     b = (b * a + db * (255 - a)) / 255
   }
-  rt_fb[y * rt_fbw + x] = (((r << 16) | (g << 8)) | b)
+  rt_core_st.rt_fb[y * rt_fbw + x] = (((r << 16) | (g << 8)) | b)
 }
 
-function rt_draw_image(id: int, dx: int, dy: int) -> void {
+function rt_draw_image(rt_core_st: mut RtCoreState, rt_image_st: RtImageState, id: int, dx: int, dy: int) -> void {
   if id < 0 { return }
-  if id >= img_n { return }
-  let w = img_w[id]
-  let h = img_h[id]
-  let s: words = img_px[id]
+  if id >= rt_image_st.img_n { return }
+  let w = rt_image_st.img_w[id]
+  let h = rt_image_st.img_h[id]
+  let s: words = rt_image_st.img_px[id]
   for y in 0 .. h {
     for x in 0 .. w {
-      rt_blend_px(dx + x, dy + y, s[y * w + x])
+      rt_blend_px(rt_core_st, dx + x, dy + y, s[y * w + x])
     }
   }
 }
 
-function rt_draw_image_scaled(id: int, dx: int, dy: int, dw: int, dh: int) -> void {
+function rt_draw_image_scaled(rt_core_st: mut RtCoreState, rt_image_st: RtImageState, id: int, dx: int, dy: int, dw: int, dh: int) -> void {
   if id < 0 { return }
-  if id >= img_n { return }
+  if id >= rt_image_st.img_n { return }
   if dw <= 0 { return }
   if dh <= 0 { return }
-  let w = img_w[id]
-  let h = img_h[id]
-  let s: words = img_px[id]
+  let w = rt_image_st.img_w[id]
+  let h = rt_image_st.img_h[id]
+  let s: words = rt_image_st.img_px[id]
   for y in 0 .. dh {
     for x in 0 .. dw {
-      rt_blend_px(dx + x, dy + y, s[(y * h / dh) * w + x * w / dw])
+      rt_blend_px(rt_core_st, dx + x, dy + y, s[(y * h / dh) * w + x * w / dw])
     }
   }
 }
@@ -303,70 +305,70 @@ function rt_9map(d: int, dsz: int, ssz: int, inset: int) -> int {
   return inset + (d - inset) * (ssz - 2 * inset) / (dsz - 2 * inset)
 }
 
-function rt_draw_9slice(id: int, dx: int, dy: int, dw: int, dh: int, inset: int) -> void {
+function rt_draw_9slice(rt_core_st: mut RtCoreState, rt_image_st: RtImageState, id: int, dx: int, dy: int, dw: int, dh: int, inset: int) -> void {
   if id < 0 { return }
-  if id >= img_n { return }
+  if id >= rt_image_st.img_n { return }
   if dw <= 0 { return }
   if dh <= 0 { return }
-  let w = img_w[id]
-  let h = img_h[id]
-  let s: words = img_px[id]
+  let w = rt_image_st.img_w[id]
+  let h = rt_image_st.img_h[id]
+  let s: words = rt_image_st.img_px[id]
   for y in 0 .. dh {
     let sy = rt_9map(y, dh, h, inset)
     for x in 0 .. dw {
-      rt_blend_px(dx + x, dy + y, s[sy * w + rt_9map(x, dw, w, inset)])
+      rt_blend_px(rt_core_st, dx + x, dy + y, s[sy * w + rt_9map(x, dw, w, inset)])
     }
   }
 }
 
 # ---- sprites (16x16 art) --------------------------------------------------
-function rt_png_load(path: string) -> int {
-  if spr_n >= SPR_MAX { return -1 }
-  if rt_decode_png(path) == false { return -1 }
-  let id = spr_n
-  spr_n += 1
+function rt_png_load(rt_image_st: mut RtImageState, rt_inflate_st: mut RtInflateState, path: string) -> int {
+  if rt_image_st.spr_n >= SPR_MAX { return -1 }
+  if rt_decode_png(rt_image_st, rt_inflate_st, path) == false { return -1 }
+  let id = rt_image_st.spr_n
+  rt_image_st.spr_n += 1
   let base = id * SPR_SZ * SPR_SZ
   for y in 0 .. SPR_SZ {
     for x in 0 .. SPR_SZ {
       var px = 0
-      if x < png_w {
-        if y < png_h {
-          let c = png_px[y * png_w + x]
+      if x < rt_image_st.png_w {
+        if y < rt_image_st.png_h {
+          let c = rt_image_st.png_px[y * rt_image_st.png_w + x]
           if ((c >> 24) & 255) >= 128 { px = ((255 << 24) | (c & 16777215)) }
         }
       }
-      spr_px[base + y * SPR_SZ + x] = px
+      rt_image_st.spr_px[base + y * SPR_SZ + x] = px
     }
   }
-  free(png_px)
-  png_px = null
+  free(rt_image_st.png_px)
+  rt_image_st.png_px = null
   return id
 }
 
-function rt_draw_sprite(id: int, px: int, py: int) -> void {
+function rt_draw_sprite(rt_core_st: mut RtCoreState, rt_image_st: RtImageState, id: int, px: int, py: int) -> void {
   if id < 0 { return }
-  if id >= spr_n { return }
+  if id >= rt_image_st.spr_n { return }
   let base = id * SPR_SZ * SPR_SZ
   for y in 0 .. SPR_SZ {
     for x in 0 .. SPR_SZ {
-      let p = spr_px[base + y * SPR_SZ + x]
+      let p = rt_image_st.spr_px[base + y * SPR_SZ + x]
       if ((p >> 24) & 255) != 0 {
-        rt_put_px(px + x, py + y, (p & 16777215))
+        rt_put_px(rt_core_st, px + x, py + y, (p & 16777215))
       }
     }
   }
 }
 
-function rt_draw_sprite_scaled(id: int, px: int, py: int, sc: int) -> void {
+function rt_draw_sprite_scaled(rt_core_st: mut RtCoreState, rt_image_st: RtImageState, id: int, px: int, py: int, sc: int) -> void {
   if id < 0 { return }
-  if id >= spr_n { return }
+  if id >= rt_image_st.spr_n { return }
   if sc < 1 { return }
   let base = id * SPR_SZ * SPR_SZ
   for y in 0 .. SPR_SZ {
     for x in 0 .. SPR_SZ {
-      let p = spr_px[base + y * SPR_SZ + x]
+      let p = rt_image_st.spr_px[base + y * SPR_SZ + x]
       if ((p >> 24) & 255) != 0 {
-        rt_fill_rect(px + x * sc, py + y * sc, sc, sc, (p & 16777215))
+        rt_fill_rect(rt_core_st, px + x * sc, py + y * sc, sc, sc, (p & 16777215))
       }
     }
   }
@@ -377,9 +379,9 @@ function rt_draw_sprite_scaled(id: int, px: int, py: int, sc: int) -> void {
 # sprite's own colours; non-zero = draw every opaque pixel in the tint colour, for
 # a hit-flash / team-colour silhouette). It funnels through the same put_px /
 # fill_rect chokepoints, so camera / zoom / clip / blend all apply.
-function rt_draw_sprite_ex(id: int, px: int, py: int, sc: int, flip: int, tint: int) -> void {
+function rt_draw_sprite_ex(rt_core_st: mut RtCoreState, rt_image_st: RtImageState, id: int, px: int, py: int, sc: int, flip: int, tint: int) -> void {
   if id < 0 { return }
-  if id >= spr_n { return }
+  if id >= rt_image_st.spr_n { return }
   var s = sc
   if s < 1 { s = 1 }
   let base = id * SPR_SZ * SPR_SZ
@@ -387,12 +389,12 @@ function rt_draw_sprite_ex(id: int, px: int, py: int, sc: int, flip: int, tint: 
     for x in 0 .. SPR_SZ {
       var rx = x
       if flip != 0 { rx = SPR_SZ - 1 - x }              # sample mirrored, draw upright
-      let p = spr_px[base + y * SPR_SZ + rx]
+      let p = rt_image_st.spr_px[base + y * SPR_SZ + rx]
       if ((p >> 24) & 255) != 0 {
         var col = (p & 16777215)
         if tint != 0 { col = (tint & 16777215) }
-        if s == 1 { rt_put_px(px + x, py + y, col) }
-        else { rt_fill_rect(px + x * s, py + y * s, s, s, col) }
+        if s == 1 { rt_put_px(rt_core_st, px + x, py + y, col) }
+        else { rt_fill_rect(rt_core_st, px + x * s, py + y * s, s, s, col) }
       }
     }
   }
@@ -406,10 +408,10 @@ function rt_hexval(c: int) -> int {
   return -1
 }
 
-function rt_sprites_load(path: string) -> void {
-  let d = rt_read_file(path)
-  if (d == null) { spr_n = 0; return }
-  let size = rt_file_len
+function rt_sprites_load(rt_image_st: mut RtImageState, path: string) -> void {
+  let d = rt_read_file(rt_image_st, path)
+  if (d == null) { rt_image_st.spr_n = 0; return }
+  let size = rt_image_st.rt_file_len
   let pal: words = words(128)
   fill(pal, 0, 128 * 4)
   var cur = -1
@@ -435,10 +437,10 @@ function rt_sprites_load(path: string) -> void {
     }
     if c0 == 's' {                       # 's' — "spr" starts a new sprite
       cur = -1
-      if spr_n < SPR_MAX {
-        cur = spr_n
-        spr_n += 1
-        fill(offset(spr_px, cur * SPR_SZ * SPR_SZ * 4), 0, SPR_SZ * SPR_SZ * 4)
+      if rt_image_st.spr_n < SPR_MAX {
+        cur = rt_image_st.spr_n
+        rt_image_st.spr_n += 1
+        fill(offset(rt_image_st.spr_px, cur * SPR_SZ * SPR_SZ * 4), 0, SPR_SZ * SPR_SZ * 4)
       }
       row = 0
     }
@@ -449,7 +451,7 @@ function rt_sprites_load(path: string) -> void {
             if row < SPR_SZ {
               for x in 0 .. SPR_SZ {
                 if x < len {
-                  spr_px[cur * SPR_SZ * SPR_SZ + row * SPR_SZ + x] = pal[(d[start + x] & 127)]
+                  rt_image_st.spr_px[cur * SPR_SZ * SPR_SZ + row * SPR_SZ + x] = pal[(d[start + x] & 127)]
                 }
               }
               row += 1

@@ -53,6 +53,15 @@ function ns_alias_labels(i: int) -> []pointer {
     if d != null { return param_labels(d) }
     return out
   }
+  # 0.S: a target's leading states come first, by their own names (they are supplied, not written)
+  let t = find_fn(g_al_target[i])
+  if t != null {
+    var k = 0
+    while k < len(t.kids) and t.kids[k].kind == N_PARAM and is_state_ty(t.kids[k].ty) {
+      push(out, t.kids[k].s)
+      k += 1
+    }
+  }
   var a = 0
   var j = 0
   let n = len(ls)

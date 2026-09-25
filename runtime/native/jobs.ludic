@@ -49,45 +49,57 @@ const JK_PRIMES: int = 3       # compute: how many primes are <= arg
 const JK_ALL:    int = 4       # Promise group: succeeds when every member does
 const JK_RACE:   int = 5       # Promise group: succeeds when the first member does
 
-var jb_ready:  bool     = false
-var jb_state:  words    = null   # J_*
-var jb_kind:   words    = null   # JK_*
-var jb_result: words    = null   # the success value
-var jb_error:  words    = null   # the failure code
-var jb_arg:    words    = null   # compute input n
-var jb_i:      words    = null   # compute progress counter
-var jb_acc:    words    = null   # compute accumulator
-var jb_acc2:   words    = null   # compute second accumulator (Fibonacci)
-var jb_nmem:   words    = null   # group member count
-var jb_mem:    words    = null   # flat [JOB_SLOTS * JOB_MAXMEM] of member handles
+export state RtJobsState {
+  jb_ready:  bool     = false
+  jb_state:  words    = null   # J_*
+  jb_kind:   words    = null   # JK_*
+  jb_result: words    = null   # the success value
+  jb_error:  words    = null   # the failure code
+  jb_arg:    words    = null   # compute input n
+  jb_i:      words    = null   # compute progress counter
+  jb_acc:    words    = null   # compute accumulator
+  jb_acc2:   words    = null   # compute second accumulator (Fibonacci)
+  jb_nmem:   words    = null   # group member count
+  jb_mem:    words    = null   # flat [JOB_SLOTS * JOB_MAXMEM] of member handles
+  sy_ready:  bool     = false
+  mx_used:   words    = null
+  mx_obj:    pointers = null   # the native mutex behind each handle
+  at_used:   words    = null
+  at_cell:   pointers = null   # the int each atomic handle names (a words(1) of its own)
+  ch_used:   words    = null
+  ch_head:   words    = null
+  ch_count:  words    = null
+  ch_buf:    words    = null   # flat [SYNC_CHAN * CHAN_CAP]
+  ch_lock:   pointers = null   # a mutex per channel
+}
 
-function jb_init() -> void {
-  if jb_ready { return }
-  jb_state  = words(JOB_SLOTS);  fill(jb_state,  0, JOB_SLOTS * 4)
-  jb_kind   = words(JOB_SLOTS);  fill(jb_kind,   0, JOB_SLOTS * 4)
-  jb_result = words(JOB_SLOTS);  fill(jb_result, 0, JOB_SLOTS * 4)
-  jb_error  = words(JOB_SLOTS);  fill(jb_error,  0, JOB_SLOTS * 4)
-  jb_arg    = words(JOB_SLOTS);  fill(jb_arg,    0, JOB_SLOTS * 4)
-  jb_i      = words(JOB_SLOTS);  fill(jb_i,      0, JOB_SLOTS * 4)
-  jb_acc    = words(JOB_SLOTS);  fill(jb_acc,    0, JOB_SLOTS * 4)
-  jb_acc2   = words(JOB_SLOTS);  fill(jb_acc2,   0, JOB_SLOTS * 4)
-  jb_nmem   = words(JOB_SLOTS);  fill(jb_nmem,   0, JOB_SLOTS * 4)
-  jb_mem    = words(JOB_SLOTS * JOB_MAXMEM);  fill(jb_mem, 0, JOB_SLOTS * JOB_MAXMEM * 4)
-  jb_ready  = true
+function jb_init(rt_jobs_st: mut RtJobsState) -> void {
+  if rt_jobs_st.jb_ready { return }
+  rt_jobs_st.jb_state  = words(JOB_SLOTS);  fill(rt_jobs_st.jb_state,  0, JOB_SLOTS * 4)
+  rt_jobs_st.jb_kind   = words(JOB_SLOTS);  fill(rt_jobs_st.jb_kind,   0, JOB_SLOTS * 4)
+  rt_jobs_st.jb_result = words(JOB_SLOTS);  fill(rt_jobs_st.jb_result, 0, JOB_SLOTS * 4)
+  rt_jobs_st.jb_error  = words(JOB_SLOTS);  fill(rt_jobs_st.jb_error,  0, JOB_SLOTS * 4)
+  rt_jobs_st.jb_arg    = words(JOB_SLOTS);  fill(rt_jobs_st.jb_arg,    0, JOB_SLOTS * 4)
+  rt_jobs_st.jb_i      = words(JOB_SLOTS);  fill(rt_jobs_st.jb_i,      0, JOB_SLOTS * 4)
+  rt_jobs_st.jb_acc    = words(JOB_SLOTS);  fill(rt_jobs_st.jb_acc,    0, JOB_SLOTS * 4)
+  rt_jobs_st.jb_acc2   = words(JOB_SLOTS);  fill(rt_jobs_st.jb_acc2,   0, JOB_SLOTS * 4)
+  rt_jobs_st.jb_nmem   = words(JOB_SLOTS);  fill(rt_jobs_st.jb_nmem,   0, JOB_SLOTS * 4)
+  rt_jobs_st.jb_mem    = words(JOB_SLOTS * JOB_MAXMEM);  fill(rt_jobs_st.jb_mem, 0, JOB_SLOTS * JOB_MAXMEM * 4)
+  rt_jobs_st.jb_ready  = true
 }
 
 # claim a free slot as PENDING with the given kind; returns a 1-based handle, or
 # 0 if the table is full.
-function jb_alloc(kind: int) -> int {
-  jb_init()
+function jb_alloc(rt_jobs_st: mut RtJobsState, kind: int) -> int {
+  jb_init(rt_jobs_st)
   var i = 0
   while i < JOB_SLOTS {
-    if jb_state[i] == J_FREE {
-      jb_state[i]  = J_PENDING
-      jb_kind[i]   = kind
-      jb_result[i] = 0;  jb_error[i] = 0
-      jb_arg[i]    = 0;  jb_i[i] = 0;  jb_acc[i] = 0;  jb_acc2[i] = 0
-      jb_nmem[i]   = 0
+    if rt_jobs_st.jb_state[i] == J_FREE {
+      rt_jobs_st.jb_state[i]  = J_PENDING
+      rt_jobs_st.jb_kind[i]   = kind
+      rt_jobs_st.jb_result[i] = 0;  rt_jobs_st.jb_error[i] = 0
+      rt_jobs_st.jb_arg[i]    = 0;  rt_jobs_st.jb_i[i] = 0;  rt_jobs_st.jb_acc[i] = 0;  rt_jobs_st.jb_acc2[i] = 0
+      rt_jobs_st.jb_nmem[i]   = 0
       return i + 1
     }
     i += 1
@@ -95,71 +107,71 @@ function jb_alloc(kind: int) -> int {
   return 0
 }
 
-function jb_valid(h: int) -> bool {
-  jb_init()
+function jb_valid(rt_jobs_st: mut RtJobsState, h: int) -> bool {
+  jb_init(rt_jobs_st)
   if (h < 1) or (h > JOB_SLOTS) { return false }
-  return jb_state[h - 1] != J_FREE
+  return rt_jobs_st.jb_state[h - 1] != J_FREE
 }
 
 # ---- the safe tier: futures ------------------------------------------------
 
 # A hand-driven future: PENDING until you call Job.fulfill / Job.fail on it.
-function job_defer() -> int { return jb_alloc(JK_DEFER) }
+function job_defer(rt_jobs_st: mut RtJobsState) -> int { return jb_alloc(rt_jobs_st, JK_DEFER) }
 
 # Kick off a background compute job (kind = JK_SUM / JK_FIB / JK_PRIMES). It runs
 # a little each Job.pump and resolves when it finishes. `arg` is its input.
-function job_run(kind: int, arg: int) -> int {
-  let h = jb_alloc(kind)
+function job_run(rt_jobs_st: mut RtJobsState, kind: int, arg: int) -> int {
+  let h = jb_alloc(rt_jobs_st, kind)
   if h == 0 { return 0 }
   let s = h - 1
-  jb_arg[s] = arg
-  if kind == JK_FIB { jb_acc[s] = 0;  jb_acc2[s] = 1 }   # fib(0)=0, fib(1)=1
+  rt_jobs_st.jb_arg[s] = arg
+  if kind == JK_FIB { rt_jobs_st.jb_acc[s] = 0;  rt_jobs_st.jb_acc2[s] = 1 }   # fib(0)=0, fib(1)=1
   return h
 }
 
 # Resolve a pending job successfully with `value` (no-op once resolved).
-function job_fulfill(h: int, value: int) -> void {
-  if not jb_valid(h) { return }
+function job_fulfill(rt_jobs_st: mut RtJobsState, h: int, value: int) -> void {
+  if not jb_valid(rt_jobs_st, h) { return }
   let s = h - 1
-  if jb_state[s] != J_PENDING { return }
-  jb_state[s]  = J_DONE
-  jb_result[s] = value
+  if rt_jobs_st.jb_state[s] != J_PENDING { return }
+  rt_jobs_st.jb_state[s]  = J_DONE
+  rt_jobs_st.jb_result[s] = value
 }
 
 # Resolve a pending job as failed with error code `err` (no-op once resolved).
-function job_fail(h: int, err: int) -> void {
-  if not jb_valid(h) { return }
+function job_fail(rt_jobs_st: mut RtJobsState, h: int, err: int) -> void {
+  if not jb_valid(rt_jobs_st, h) { return }
   let s = h - 1
-  if jb_state[s] != J_PENDING { return }
-  jb_state[s] = J_FAILED
-  jb_error[s] = err
+  if rt_jobs_st.jb_state[s] != J_PENDING { return }
+  rt_jobs_st.jb_state[s] = J_FAILED
+  rt_jobs_st.jb_error[s] = err
 }
 
 # Cancel a pending job (no-op if it already resolved).
-function job_cancel(h: int) -> void {
-  if not jb_valid(h) { return }
+function job_cancel(rt_jobs_st: mut RtJobsState, h: int) -> void {
+  if not jb_valid(rt_jobs_st, h) { return }
   let s = h - 1
-  if jb_state[s] == J_PENDING { jb_state[s] = J_CANCELLED }
+  if rt_jobs_st.jb_state[s] == J_PENDING { rt_jobs_st.jb_state[s] = J_CANCELLED }
 }
 
 # Recompute a group job (JK_ALL / JK_RACE) from its members. A no-op unless the
 # slot is a still-PENDING group. This is what "resolve on the main thread" means:
 # a Promise settles only when you look at it (done/ok/...) or pump.
-function jb_refresh_group(s: int) -> void {
-  if jb_state[s] != J_PENDING { return }
-  let k = jb_kind[s]
+function jb_refresh_group(rt_jobs_st: mut RtJobsState, s: int) -> void {
+  if rt_jobs_st.jb_state[s] != J_PENDING { return }
+  let k = rt_jobs_st.jb_kind[s]
   if (k != JK_ALL) and (k != JK_RACE) { return }
-  let n = jb_nmem[s]
+  let n = rt_jobs_st.jb_nmem[s]
   let base = s * JOB_MAXMEM
   var i = 0
   var settled = 0        # members in a terminal state
   var ok = 0             # members that succeeded
   var first_ok = 0       # winning handle for RACE
   while i < n {
-    let mh = jb_mem[base + i]
-    if jb_valid(mh) {
+    let mh = rt_jobs_st.jb_mem[base + i]
+    if jb_valid(rt_jobs_st, mh) {
       let ms = mh - 1
-      let mst = jb_state[ms]
+      let mst = rt_jobs_st.jb_state[ms]
       if mst != J_PENDING {
         settled += 1
         if mst == J_DONE {
@@ -173,99 +185,99 @@ function jb_refresh_group(s: int) -> void {
     i += 1
   }
   if k == JK_ALL {
-    if ok == n { jb_state[s] = J_DONE;  jb_result[s] = n }
-    else { if settled == n { jb_state[s] = J_FAILED;  jb_error[s] = n - ok } }
+    if ok == n { rt_jobs_st.jb_state[s] = J_DONE;  rt_jobs_st.jb_result[s] = n }
+    else { if settled == n { rt_jobs_st.jb_state[s] = J_FAILED;  rt_jobs_st.jb_error[s] = n - ok } }
   } else {
-    if first_ok != 0 { jb_state[s] = J_DONE;  jb_result[s] = first_ok }
-    else { if settled == n { jb_state[s] = J_FAILED;  jb_error[s] = n } }
+    if first_ok != 0 { rt_jobs_st.jb_state[s] = J_DONE;  rt_jobs_st.jb_result[s] = first_ok }
+    else { if settled == n { rt_jobs_st.jb_state[s] = J_FAILED;  rt_jobs_st.jb_error[s] = n } }
   }
 }
 
 # resolved in any terminal state?
-function job_done(h: int) -> bool {
-  if not jb_valid(h) { return false }
-  jb_refresh_group(h - 1)
-  return jb_state[h - 1] != J_PENDING
+function job_done(rt_jobs_st: mut RtJobsState, h: int) -> bool {
+  if not jb_valid(rt_jobs_st, h) { return false }
+  jb_refresh_group(rt_jobs_st, h - 1)
+  return rt_jobs_st.jb_state[h - 1] != J_PENDING
 }
 
-function job_ok(h: int) -> bool {
-  if not jb_valid(h) { return false }
-  jb_refresh_group(h - 1)
-  return jb_state[h - 1] == J_DONE
+function job_ok(rt_jobs_st: mut RtJobsState, h: int) -> bool {
+  if not jb_valid(rt_jobs_st, h) { return false }
+  jb_refresh_group(rt_jobs_st, h - 1)
+  return rt_jobs_st.jb_state[h - 1] == J_DONE
 }
 
-function job_failed(h: int) -> bool {
-  if not jb_valid(h) { return false }
-  jb_refresh_group(h - 1)
-  return jb_state[h - 1] == J_FAILED
+function job_failed(rt_jobs_st: mut RtJobsState, h: int) -> bool {
+  if not jb_valid(rt_jobs_st, h) { return false }
+  jb_refresh_group(rt_jobs_st, h - 1)
+  return rt_jobs_st.jb_state[h - 1] == J_FAILED
 }
 
-function job_cancelled(h: int) -> bool {
-  if not jb_valid(h) { return false }
-  return jb_state[h - 1] == J_CANCELLED
+function job_cancelled(rt_jobs_st: mut RtJobsState, h: int) -> bool {
+  if not jb_valid(rt_jobs_st, h) { return false }
+  return rt_jobs_st.jb_state[h - 1] == J_CANCELLED
 }
 
 # the success value (0 unless the job is done-ok)
-function job_result(h: int) -> int {
-  if not jb_valid(h) { return 0 }
-  jb_refresh_group(h - 1)
-  if jb_state[h - 1] != J_DONE { return 0 }
-  return jb_result[h - 1]
+function job_result(rt_jobs_st: mut RtJobsState, h: int) -> int {
+  if not jb_valid(rt_jobs_st, h) { return 0 }
+  jb_refresh_group(rt_jobs_st, h - 1)
+  if rt_jobs_st.jb_state[h - 1] != J_DONE { return 0 }
+  return rt_jobs_st.jb_result[h - 1]
 }
 
 # the failure code (0 unless the job failed)
-function job_error(h: int) -> int {
-  if not jb_valid(h) { return 0 }
-  jb_refresh_group(h - 1)
-  if jb_state[h - 1] != J_FAILED { return 0 }
-  return jb_error[h - 1]
+function job_error(rt_jobs_st: mut RtJobsState, h: int) -> int {
+  if not jb_valid(rt_jobs_st, h) { return 0 }
+  jb_refresh_group(rt_jobs_st, h - 1)
+  if rt_jobs_st.jb_state[h - 1] != J_FAILED { return 0 }
+  return rt_jobs_st.jb_error[h - 1]
 }
 
 # how many jobs are still pending (a ready-made loading-screen denominator).
-function job_pending() -> int {
-  jb_init()
+function job_pending(rt_jobs_st: mut RtJobsState) -> int {
+  jb_init(rt_jobs_st)
   var n = 0
   var i = 0
   while i < JOB_SLOTS {
-    if jb_state[i] == J_PENDING { n += 1 }
+    if rt_jobs_st.jb_state[i] == J_PENDING { n += 1 }
     i += 1
   }
   return n
 }
 
 # release a slot back to the pool.
-function job_free(h: int) -> void {
-  if not jb_valid(h) { return }
-  jb_state[h - 1] = J_FREE
+function job_free(rt_jobs_st: mut RtJobsState, h: int) -> void {
+  if not jb_valid(rt_jobs_st, h) { return }
+  rt_jobs_st.jb_state[h - 1] = J_FREE
 }
 
 # advance one compute job by a single step; returns 1 if it just finished.
-function jb_step(s: int) -> int {
-  let k = jb_kind[s]
-  let n = jb_arg[s]
-  var i = jb_i[s]
+function jb_step(rt_jobs_st: mut RtJobsState, s: int) -> int {
+  let k = rt_jobs_st.jb_kind[s]
+  let n = rt_jobs_st.jb_arg[s]
+  var i = rt_jobs_st.jb_i[s]
   if k == JK_SUM {
-    jb_acc[s] = jb_acc[s] + (i + 1)
+    rt_jobs_st.jb_acc[s] = rt_jobs_st.jb_acc[s] + (i + 1)
     i += 1
-    jb_i[s] = i
-    if i >= n { jb_state[s] = J_DONE;  jb_result[s] = jb_acc[s];  return 1 }
+    rt_jobs_st.jb_i[s] = i
+    if i >= n { rt_jobs_st.jb_state[s] = J_DONE;  rt_jobs_st.jb_result[s] = rt_jobs_st.jb_acc[s];  return 1 }
     return 0
   }
   if k == JK_FIB {
-    if i >= n { jb_state[s] = J_DONE;  jb_result[s] = jb_acc[s];  return 1 }
-    let t = jb_acc[s] + jb_acc2[s]
-    jb_acc[s] = jb_acc2[s]
-    jb_acc2[s] = t
+    if i >= n { rt_jobs_st.jb_state[s] = J_DONE;  rt_jobs_st.jb_result[s] = rt_jobs_st.jb_acc[s];  return 1 }
+    let t = rt_jobs_st.jb_acc[s] + rt_jobs_st.jb_acc2[s]
+    rt_jobs_st.jb_acc[s] = rt_jobs_st.jb_acc2[s]
+    rt_jobs_st.jb_acc2[s] = t
     i += 1
-    jb_i[s] = i
-    if i >= n { jb_state[s] = J_DONE;  jb_result[s] = jb_acc[s];  return 1 }
+    rt_jobs_st.jb_i[s] = i
+    if i >= n { rt_jobs_st.jb_state[s] = J_DONE;  rt_jobs_st.jb_result[s] = rt_jobs_st.jb_acc[s];  return 1 }
     return 0
   }
   if k == JK_PRIMES {
-    if jb_is_prime(i) { jb_acc[s] += 1 }
+    if jb_is_prime(i) { rt_jobs_st.jb_acc[s] += 1 }
     i += 1
-    jb_i[s] = i
-    if i > n { jb_state[s] = J_DONE;  jb_result[s] = jb_acc[s];  return 1 }
+    rt_jobs_st.jb_i[s] = i
+    if i > n { rt_jobs_st.jb_state[s] = J_DONE;  rt_jobs_st.jb_result[s] = rt_jobs_st.jb_acc[s];  return 1 }
     return 0
   }
   return 0
@@ -285,17 +297,17 @@ function jb_is_prime(v: int) -> bool {
 # resolve any Promise groups. Call it once per frame (or wherever you want the
 # results to land). Returns how many jobs finished during this call. `budget` <=
 # 0 means "run every compute job to completion right now".
-function job_pump(budget: int) -> int {
-  jb_init()
+function job_pump(rt_jobs_st: mut RtJobsState, budget: int) -> int {
+  jb_init(rt_jobs_st)
   var completed = 0
   var spent = 0
   var s = 0
   while s < JOB_SLOTS {
-    let k = jb_kind[s]
+    let k = rt_jobs_st.jb_kind[s]
     let compute = (k == JK_SUM) or (k == JK_FIB) or (k == JK_PRIMES)
-    while (jb_state[s] == J_PENDING) and compute {
+    while (rt_jobs_st.jb_state[s] == J_PENDING) and compute {
       if (budget > 0) and (spent >= budget) { s = JOB_SLOTS + 1;  break }
-      let fin = jb_step(s)
+      let fin = jb_step(rt_jobs_st, s)
       spent += 1
       if fin == 1 { completed += 1 }
     }
@@ -304,11 +316,11 @@ function job_pump(budget: int) -> int {
   # settle groups after the compute jobs advanced this frame.
   s = 0
   while s < JOB_SLOTS {
-    if jb_state[s] == J_PENDING {
-      let k = jb_kind[s]
+    if rt_jobs_st.jb_state[s] == J_PENDING {
+      let k = rt_jobs_st.jb_kind[s]
       if (k == JK_ALL) or (k == JK_RACE) {
-        jb_refresh_group(s)
-        if jb_state[s] != J_PENDING { completed += 1 }
+        jb_refresh_group(rt_jobs_st, s)
+        if rt_jobs_st.jb_state[s] != J_PENDING { completed += 1 }
       }
     }
     s += 1
@@ -319,51 +331,51 @@ function job_pump(budget: int) -> int {
 # ---- Promise combinators (over a []int of job handles) ---------------------
 
 # store up to JOB_MAXMEM handles as the members of group slot `s`.
-function jb_set_members(s: int, handles: []int) -> void {
+function jb_set_members(rt_jobs_st: mut RtJobsState, s: int, handles: []int) -> void {
   var n = len(handles)
   if n > JOB_MAXMEM { n = JOB_MAXMEM }
   let base = s * JOB_MAXMEM
   var i = 0
-  while i < n { jb_mem[base + i] = handles[i];  i += 1 }
-  jb_nmem[s] = n
+  while i < n { rt_jobs_st.jb_mem[base + i] = handles[i];  i += 1 }
+  rt_jobs_st.jb_nmem[s] = n
 }
 
 # A promise that succeeds once every member has succeeded, and fails as soon as
 # the whole set has settled with at least one non-success. Returns a job handle.
-function prom_all(handles: []int) -> int {
-  let h = jb_alloc(JK_ALL)
+function prom_all(rt_jobs_st: mut RtJobsState, handles: []int) -> int {
+  let h = jb_alloc(rt_jobs_st, JK_ALL)
   if h == 0 { return 0 }
-  jb_set_members(h - 1, handles)
-  jb_refresh_group(h - 1)
+  jb_set_members(rt_jobs_st, h - 1, handles)
+  jb_refresh_group(rt_jobs_st, h - 1)
   return h
 }
 
 # A promise that succeeds as soon as the first member succeeds (its handle is the
 # result), and fails only if every member settles without success.
-function prom_race(handles: []int) -> int {
-  let h = jb_alloc(JK_RACE)
+function prom_race(rt_jobs_st: mut RtJobsState, handles: []int) -> int {
+  let h = jb_alloc(rt_jobs_st, JK_RACE)
   if h == 0 { return 0 }
-  jb_set_members(h - 1, handles)
-  jb_refresh_group(h - 1)
+  jb_set_members(rt_jobs_st, h - 1, handles)
+  jb_refresh_group(rt_jobs_st, h - 1)
   return h
 }
 
 # how many of `handles` have resolved (any terminal state) — a loading bar's
 # numerator; pair with len(handles) for the denominator.
-function prom_count_done(handles: []int) -> int {
+function prom_count_done(rt_jobs_st: mut RtJobsState, handles: []int) -> int {
   var n = 0
   var i = 0
   while i < len(handles) {
-    if job_done(handles[i]) { n += 1 }
+    if job_done(rt_jobs_st, handles[i]) { n += 1 }
     i += 1
   }
   return n
 }
 
-function prom_all_done(handles: []int) -> bool {
+function prom_all_done(rt_jobs_st: mut RtJobsState, handles: []int) -> bool {
   var i = 0
   while i < len(handles) {
-    if not job_done(handles[i]) { return false }
+    if not job_done(rt_jobs_st, handles[i]) { return false }
     i += 1
   }
   return true
@@ -401,39 +413,29 @@ extern function thr_cas(p: pointer, expect: int, next: int) -> int = "thr_cas"
 extern function thr_load(p: pointer) -> int = "thr_load"
 extern function thr_store(p: pointer, v: int) = "thr_store"
 
-var sy_ready:  bool     = false
-var mx_used:   words    = null
-var mx_obj:    pointers = null   # the native mutex behind each handle
-var at_used:   words    = null
-var at_cell:   pointers = null   # the int each atomic handle names (a words(1) of its own)
-var ch_used:   words    = null
-var ch_head:   words    = null
-var ch_count:  words    = null
-var ch_buf:    words    = null   # flat [SYNC_CHAN * CHAN_CAP]
-var ch_lock:   pointers = null   # a mutex per channel
 
-function sy_init() -> void {
-  if sy_ready { return }
-  mx_used  = words(SYNC_MUTEX);   fill(mx_used,  0, SYNC_MUTEX * 4)
-  mx_obj   = pointers(SYNC_MUTEX);  fill(mx_obj, 0, SYNC_MUTEX * 8)
-  at_used  = words(SYNC_ATOMIC);  fill(at_used,  0, SYNC_ATOMIC * 4)
-  at_cell  = pointers(SYNC_ATOMIC);  fill(at_cell, 0, SYNC_ATOMIC * 8)
-  ch_used  = words(SYNC_CHAN);    fill(ch_used,  0, SYNC_CHAN * 4)
-  ch_head  = words(SYNC_CHAN);    fill(ch_head,  0, SYNC_CHAN * 4)
-  ch_count = words(SYNC_CHAN);    fill(ch_count, 0, SYNC_CHAN * 4)
-  ch_buf   = words(SYNC_CHAN * CHAN_CAP);  fill(ch_buf, 0, SYNC_CHAN * CHAN_CAP * 4)
-  ch_lock  = pointers(SYNC_CHAN);  fill(ch_lock, 0, SYNC_CHAN * 8)
-  sy_ready = true
+function sy_init(rt_jobs_st: mut RtJobsState) -> void {
+  if rt_jobs_st.sy_ready { return }
+  rt_jobs_st.mx_used  = words(SYNC_MUTEX);   fill(rt_jobs_st.mx_used,  0, SYNC_MUTEX * 4)
+  rt_jobs_st.mx_obj   = pointers(SYNC_MUTEX);  fill(rt_jobs_st.mx_obj, 0, SYNC_MUTEX * 8)
+  rt_jobs_st.at_used  = words(SYNC_ATOMIC);  fill(rt_jobs_st.at_used,  0, SYNC_ATOMIC * 4)
+  rt_jobs_st.at_cell  = pointers(SYNC_ATOMIC);  fill(rt_jobs_st.at_cell, 0, SYNC_ATOMIC * 8)
+  rt_jobs_st.ch_used  = words(SYNC_CHAN);    fill(rt_jobs_st.ch_used,  0, SYNC_CHAN * 4)
+  rt_jobs_st.ch_head  = words(SYNC_CHAN);    fill(rt_jobs_st.ch_head,  0, SYNC_CHAN * 4)
+  rt_jobs_st.ch_count = words(SYNC_CHAN);    fill(rt_jobs_st.ch_count, 0, SYNC_CHAN * 4)
+  rt_jobs_st.ch_buf   = words(SYNC_CHAN * CHAN_CAP);  fill(rt_jobs_st.ch_buf, 0, SYNC_CHAN * CHAN_CAP * 4)
+  rt_jobs_st.ch_lock  = pointers(SYNC_CHAN);  fill(rt_jobs_st.ch_lock, 0, SYNC_CHAN * 8)
+  rt_jobs_st.sy_ready = true
 }
 
 # ---- mutex -----------------------------------------------------------------
-function sync_mutex() -> int {
-  sy_init()
+function sync_mutex(rt_jobs_st: mut RtJobsState) -> int {
+  sy_init(rt_jobs_st)
   var i = 0
   while i < SYNC_MUTEX {
-    if mx_used[i] == 0 {
-      mx_used[i] = 1
-      if mx_obj[i] == null { mx_obj[i] = thr_mutex_new() }
+    if rt_jobs_st.mx_used[i] == 0 {
+      rt_jobs_st.mx_used[i] = 1
+      if rt_jobs_st.mx_obj[i] == null { rt_jobs_st.mx_obj[i] = thr_mutex_new() }
       return i + 1
     }
     i += 1
@@ -441,34 +443,34 @@ function sync_mutex() -> int {
   return 0
 }
 
-function sync_lock(m: int) -> void {
-  sy_init()
+function sync_lock(rt_jobs_st: mut RtJobsState, m: int) -> void {
+  sy_init(rt_jobs_st)
   if (m < 1) or (m > SYNC_MUTEX) { return }
-  thr_lock(mx_obj[m - 1])
+  thr_lock(rt_jobs_st.mx_obj[m - 1])
 }
 
-function sync_unlock(m: int) -> void {
-  sy_init()
+function sync_unlock(rt_jobs_st: mut RtJobsState, m: int) -> void {
+  sy_init(rt_jobs_st)
   if (m < 1) or (m > SYNC_MUTEX) { return }
-  thr_unlock(mx_obj[m - 1])
+  thr_unlock(rt_jobs_st.mx_obj[m - 1])
 }
 
 # take the lock only if it is free; returns whether it was taken.
-function sync_try_lock(m: int) -> bool {
-  sy_init()
+function sync_try_lock(rt_jobs_st: mut RtJobsState, m: int) -> bool {
+  sy_init(rt_jobs_st)
   if (m < 1) or (m > SYNC_MUTEX) { return false }
-  return thr_trylock(mx_obj[m - 1]) == 1
+  return thr_trylock(rt_jobs_st.mx_obj[m - 1]) == 1
 }
 
 # ---- atomic counter --------------------------------------------------------
-function sync_atomic() -> int {
-  sy_init()
+function sync_atomic(rt_jobs_st: mut RtJobsState) -> int {
+  sy_init(rt_jobs_st)
   var i = 0
   while i < SYNC_ATOMIC {
-    if at_used[i] == 0 {
-      at_used[i] = 1
-      if at_cell[i] == null { at_cell[i] = data_of(words(1)) }   # the atomics take the cell's address, not its slice
-      thr_store(at_cell[i], 0)
+    if rt_jobs_st.at_used[i] == 0 {
+      rt_jobs_st.at_used[i] = 1
+      if rt_jobs_st.at_cell[i] == null { rt_jobs_st.at_cell[i] = data_of(words(1)) }   # the atomics take the cell's address, not its slice
+      thr_store(rt_jobs_st.at_cell[i], 0)
       return i + 1
     }
     i += 1
@@ -476,40 +478,40 @@ function sync_atomic() -> int {
   return 0
 }
 
-function sync_get(a: int) -> int {
-  sy_init()
+function sync_get(rt_jobs_st: mut RtJobsState, a: int) -> int {
+  sy_init(rt_jobs_st)
   if (a < 1) or (a > SYNC_ATOMIC) { return 0 }
-  return thr_load(at_cell[a - 1])
+  return thr_load(rt_jobs_st.at_cell[a - 1])
 }
 
-function sync_set(a: int, v: int) -> void {
-  sy_init()
+function sync_set(rt_jobs_st: mut RtJobsState, a: int, v: int) -> void {
+  sy_init(rt_jobs_st)
   if (a < 1) or (a > SYNC_ATOMIC) { return }
-  thr_store(at_cell[a - 1], v)
+  thr_store(rt_jobs_st.at_cell[a - 1], v)
 }
 
 # add `delta` and return the new value.
-function sync_add(a: int, delta: int) -> int {
-  sy_init()
+function sync_add(rt_jobs_st: mut RtJobsState, a: int, delta: int) -> int {
+  sy_init(rt_jobs_st)
   if (a < 1) or (a > SYNC_ATOMIC) { return 0 }
-  return thr_atomic_add(at_cell[a - 1], delta)
+  return thr_atomic_add(rt_jobs_st.at_cell[a - 1], delta)
 }
 
 # compare-and-set: if the value equals `expect`, store `next` and return true.
-function sync_cas(a: int, expect: int, next: int) -> bool {
-  sy_init()
+function sync_cas(rt_jobs_st: mut RtJobsState, a: int, expect: int, next: int) -> bool {
+  sy_init(rt_jobs_st)
   if (a < 1) or (a > SYNC_ATOMIC) { return false }
-  return thr_cas(at_cell[a - 1], expect, next) == 1
+  return thr_cas(rt_jobs_st.at_cell[a - 1], expect, next) == 1
 }
 
 # ---- channel (a bounded int FIFO, behind its own mutex) ---------------------
-function sync_channel() -> int {
-  sy_init()
+function sync_channel(rt_jobs_st: mut RtJobsState) -> int {
+  sy_init(rt_jobs_st)
   var i = 0
   while i < SYNC_CHAN {
-    if ch_used[i] == 0 {
-      ch_used[i] = 1;  ch_head[i] = 0;  ch_count[i] = 0
-      if ch_lock[i] == null { ch_lock[i] = thr_mutex_new() }
+    if rt_jobs_st.ch_used[i] == 0 {
+      rt_jobs_st.ch_used[i] = 1;  rt_jobs_st.ch_head[i] = 0;  rt_jobs_st.ch_count[i] = 0
+      if rt_jobs_st.ch_lock[i] == null { rt_jobs_st.ch_lock[i] = thr_mutex_new() }
       return i + 1
     }
     i += 1
@@ -518,52 +520,52 @@ function sync_channel() -> int {
 }
 
 # enqueue `v`; returns false if the channel is full.
-function sync_send(c: int, v: int) -> bool {
-  sy_init()
+function sync_send(rt_jobs_st: mut RtJobsState, c: int, v: int) -> bool {
+  sy_init(rt_jobs_st)
   if (c < 1) or (c > SYNC_CHAN) { return false }
   let s = c - 1
-  thr_lock(ch_lock[s])
-  if ch_count[s] >= CHAN_CAP { thr_unlock(ch_lock[s]);  return false }
-  let pos = ch_head[s] + ch_count[s]
+  thr_lock(rt_jobs_st.ch_lock[s])
+  if rt_jobs_st.ch_count[s] >= CHAN_CAP { thr_unlock(rt_jobs_st.ch_lock[s]);  return false }
+  let pos = rt_jobs_st.ch_head[s] + rt_jobs_st.ch_count[s]
   var idx = pos
   if idx >= CHAN_CAP { idx -= CHAN_CAP }
-  ch_buf[s * CHAN_CAP + idx] = v
-  ch_count[s] += 1
-  thr_unlock(ch_lock[s])
+  rt_jobs_st.ch_buf[s * CHAN_CAP + idx] = v
+  rt_jobs_st.ch_count[s] += 1
+  thr_unlock(rt_jobs_st.ch_lock[s])
   return true
 }
 
 # dequeue the oldest value; returns 0 on an empty channel (guard with can_recv).
-function sync_recv(c: int) -> int {
-  sy_init()
+function sync_recv(rt_jobs_st: mut RtJobsState, c: int) -> int {
+  sy_init(rt_jobs_st)
   if (c < 1) or (c > SYNC_CHAN) { return 0 }
   let s = c - 1
-  thr_lock(ch_lock[s])
-  if ch_count[s] == 0 { thr_unlock(ch_lock[s]);  return 0 }
-  let v = ch_buf[s * CHAN_CAP + ch_head[s]]
-  var nh = ch_head[s] + 1
+  thr_lock(rt_jobs_st.ch_lock[s])
+  if rt_jobs_st.ch_count[s] == 0 { thr_unlock(rt_jobs_st.ch_lock[s]);  return 0 }
+  let v = rt_jobs_st.ch_buf[s * CHAN_CAP + rt_jobs_st.ch_head[s]]
+  var nh = rt_jobs_st.ch_head[s] + 1
   if nh >= CHAN_CAP { nh = 0 }
-  ch_head[s] = nh
-  ch_count[s] -= 1
-  thr_unlock(ch_lock[s])
+  rt_jobs_st.ch_head[s] = nh
+  rt_jobs_st.ch_count[s] -= 1
+  thr_unlock(rt_jobs_st.ch_lock[s])
   return v
 }
 
-function sync_can_recv(c: int) -> bool {
-  sy_init()
+function sync_can_recv(rt_jobs_st: mut RtJobsState, c: int) -> bool {
+  sy_init(rt_jobs_st)
   if (c < 1) or (c > SYNC_CHAN) { return false }
-  thr_lock(ch_lock[c - 1])
-  let has = ch_count[c - 1] > 0
-  thr_unlock(ch_lock[c - 1])
+  thr_lock(rt_jobs_st.ch_lock[c - 1])
+  let has = rt_jobs_st.ch_count[c - 1] > 0
+  thr_unlock(rt_jobs_st.ch_lock[c - 1])
   return has
 }
 
-function sync_len(c: int) -> int {
-  sy_init()
+function sync_len(rt_jobs_st: mut RtJobsState, c: int) -> int {
+  sy_init(rt_jobs_st)
   if (c < 1) or (c > SYNC_CHAN) { return 0 }
-  thr_lock(ch_lock[c - 1])
-  let n = ch_count[c - 1]
-  thr_unlock(ch_lock[c - 1])
+  thr_lock(rt_jobs_st.ch_lock[c - 1])
+  let n = rt_jobs_st.ch_count[c - 1]
+  thr_unlock(rt_jobs_st.ch_lock[c - 1])
   return n
 }
 

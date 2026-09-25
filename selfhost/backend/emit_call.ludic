@@ -500,6 +500,10 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (vdecl != null) {
       let vnames = param_labels(vdecl)
       var vi = 0
+      if vdecl.kind == N_FN {
+        nsfn = vdecl                                 # 0.S: its states are the runtime's to give
+        vi = state_lead(vdecl)
+      }
       while vi < len(vnames) { push(labels, vnames[vi]);  vi += 1 }
     }
   }
@@ -510,6 +514,10 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if (gdecl != null) {
       let gnames = param_labels(gdecl)
       var gi = 0
+      if gdecl.kind == N_FN {
+        nsfn = gdecl                                 # 0.S: its states are the runtime's to give
+        gi = state_lead(gdecl)
+      }
       while gi < len(gnames) { push(labels, gnames[gi]);  gi += 1 }
     }
   }

@@ -18,90 +18,92 @@ const TT_EDGES:  int = 16384    # line segments in one glyph
 const TT_GC:     int = 512      # glyph cache entries
 
 # ---- per-font tables (parallel arrays; index = font id) -------------------
-var tt_data:  pointers = null
-var tt_size:  words = null
-var tt_upem:  words = null
-var tt_nglyf: words = null
-var tt_locfm: words = null
-var tt_nhm:   words = null
-var tt_asc:   words = null
-var tt_desc:  words = null
-var tt_gap:   words = null
-var tt_glyf:  words = null
-var tt_loca:  words = null
-var tt_hmtx:  words = null
-var tt_cmap:  words = null
-var tt_cfmt:  words = null
-var tt_n:     int = 0
+export state RtTruetypeState {
+  tt_data:  pointers = null
+  tt_size:  words = null
+  tt_upem:  words = null
+  tt_nglyf: words = null
+  tt_locfm: words = null
+  tt_nhm:   words = null
+  tt_asc:   words = null
+  tt_desc:  words = null
+  tt_gap:   words = null
+  tt_glyf:  words = null
+  tt_loca:  words = null
+  tt_hmtx:  words = null
+  tt_cmap:  words = null
+  tt_cfmt:  words = null
+  tt_n:     int = 0
+  ol_x:    fixeds = null
+  ol_y:    fixeds = null
+  ol_on:   words = null
+  ol_ends: words = null
+  ol_n:    int = 0
+  ol_ne:   int = 0
+  ed_x0: fixeds = null
+  ed_y0: fixeds = null
+  ed_x1: fixeds = null
+  ed_y1: fixeds = null
+  ed_n:  int = 0
+  sc_x:  fixeds = null     # scanline crossings
+  sc_d:  words = null
+  gc_used: words = null
+  gc_font: words = null
+  gc_cp:   words = null
+  gc_px:   words = null
+  gc_w:    words = null
+  gc_h:    words = null
+  gc_ox:   words = null
+  gc_oy:   words = null
+  gc_adv:  words = null
+  gc_bmp:  pointers = null
+}
 
 # ---- outline + edge scratch (reused for every glyph) ----------------------
-var ol_x:    fixeds = null
-var ol_y:    fixeds = null
-var ol_on:   words = null
-var ol_ends: words = null
-var ol_n:    int = 0
-var ol_ne:   int = 0
 
-var ed_x0: fixeds = null
-var ed_y0: fixeds = null
-var ed_x1: fixeds = null
-var ed_y1: fixeds = null
-var ed_n:  int = 0
 
-var sc_x:  fixeds = null     # scanline crossings
-var sc_d:  words = null
 
 # ---- glyph cache ----------------------------------------------------------
-var gc_used: words = null
-var gc_font: words = null
-var gc_cp:   words = null
-var gc_px:   words = null
-var gc_w:    words = null
-var gc_h:    words = null
-var gc_ox:   words = null
-var gc_oy:   words = null
-var gc_adv:  words = null
-var gc_bmp:  pointers = null
 
-function rt_tt_init() -> void {
-  tt_data = pointers(TT_MAX)
-  tt_size = words(TT_MAX)
-  tt_upem = words(TT_MAX)
-  tt_nglyf = words(TT_MAX)
-  tt_locfm = words(TT_MAX)
-  tt_nhm = words(TT_MAX)
-  tt_asc = words(TT_MAX)
-  tt_desc = words(TT_MAX)
-  tt_gap = words(TT_MAX)
-  tt_glyf = words(TT_MAX)
-  tt_loca = words(TT_MAX)
-  tt_hmtx = words(TT_MAX)
-  tt_cmap = words(TT_MAX)
-  tt_cfmt = words(TT_MAX)
+function rt_tt_init(rt_truetype_st: mut RtTruetypeState) -> void {
+  rt_truetype_st.tt_data = pointers(TT_MAX)
+  rt_truetype_st.tt_size = words(TT_MAX)
+  rt_truetype_st.tt_upem = words(TT_MAX)
+  rt_truetype_st.tt_nglyf = words(TT_MAX)
+  rt_truetype_st.tt_locfm = words(TT_MAX)
+  rt_truetype_st.tt_nhm = words(TT_MAX)
+  rt_truetype_st.tt_asc = words(TT_MAX)
+  rt_truetype_st.tt_desc = words(TT_MAX)
+  rt_truetype_st.tt_gap = words(TT_MAX)
+  rt_truetype_st.tt_glyf = words(TT_MAX)
+  rt_truetype_st.tt_loca = words(TT_MAX)
+  rt_truetype_st.tt_hmtx = words(TT_MAX)
+  rt_truetype_st.tt_cmap = words(TT_MAX)
+  rt_truetype_st.tt_cfmt = words(TT_MAX)
 
-  ol_x = fixeds(TT_PTS)
-  ol_y = fixeds(TT_PTS)
-  ol_on = words(TT_PTS)
-  ol_ends = words(256)
+  rt_truetype_st.ol_x = fixeds(TT_PTS)
+  rt_truetype_st.ol_y = fixeds(TT_PTS)
+  rt_truetype_st.ol_on = words(TT_PTS)
+  rt_truetype_st.ol_ends = words(256)
 
-  ed_x0 = fixeds(TT_EDGES)
-  ed_y0 = fixeds(TT_EDGES)
-  ed_x1 = fixeds(TT_EDGES)
-  ed_y1 = fixeds(TT_EDGES)
-  sc_x = fixeds(TT_EDGES)
-  sc_d = words(TT_EDGES)
+  rt_truetype_st.ed_x0 = fixeds(TT_EDGES)
+  rt_truetype_st.ed_y0 = fixeds(TT_EDGES)
+  rt_truetype_st.ed_x1 = fixeds(TT_EDGES)
+  rt_truetype_st.ed_y1 = fixeds(TT_EDGES)
+  rt_truetype_st.sc_x = fixeds(TT_EDGES)
+  rt_truetype_st.sc_d = words(TT_EDGES)
 
-  gc_used = words(TT_GC)
-  gc_font = words(TT_GC)
-  gc_cp = words(TT_GC)
-  gc_px = words(TT_GC)
-  gc_w = words(TT_GC)
-  gc_h = words(TT_GC)
-  gc_ox = words(TT_GC)
-  gc_oy = words(TT_GC)
-  gc_adv = words(TT_GC)
-  gc_bmp = pointers(TT_GC)
-  fill(gc_used, 0, TT_GC * 4)
+  rt_truetype_st.gc_used = words(TT_GC)
+  rt_truetype_st.gc_font = words(TT_GC)
+  rt_truetype_st.gc_cp = words(TT_GC)
+  rt_truetype_st.gc_px = words(TT_GC)
+  rt_truetype_st.gc_w = words(TT_GC)
+  rt_truetype_st.gc_h = words(TT_GC)
+  rt_truetype_st.gc_ox = words(TT_GC)
+  rt_truetype_st.gc_oy = words(TT_GC)
+  rt_truetype_st.gc_adv = words(TT_GC)
+  rt_truetype_st.gc_bmp = pointers(TT_GC)
+  fill(rt_truetype_st.gc_used, 0, TT_GC * 4)
 }
 
 # ---- big-endian readers ---------------------------------------------------
@@ -138,9 +140,9 @@ function tt_find_table(d: pointer, base: int, a: int, b: int, c: int, e: int) ->
 }
 
 # pick the most capable Unicode subtable, as the C loader did
-function tt_pick_cmap(id: int, d: pointer, co: int) -> void {
-  tt_cmap[id] = -1
-  tt_cfmt[id] = 0
+function tt_pick_cmap(rt_truetype_st: mut RtTruetypeState, id: int, d: pointer, co: int) -> void {
+  rt_truetype_st.tt_cmap[id] = -1
+  rt_truetype_st.tt_cfmt[id] = 0
   if co < 0 { return }
   let n = tt_u16(d, co + 2)
   var best = -1
@@ -162,15 +164,15 @@ function tt_pick_cmap(id: int, d: pointer, co: int) -> void {
     }
   }
   if best < 0 { return }
-  tt_cmap[id] = best
-  tt_cfmt[id] = tt_u16(d, best)
+  rt_truetype_st.tt_cmap[id] = best
+  rt_truetype_st.tt_cfmt[id] = tt_u16(d, best)
 }
 
-function rt_font_load(path: string) -> int {
-  if tt_n >= TT_MAX { return -1 }
-  let d = rt_read_file(path)
+function rt_font_load(rt_image_st: mut RtImageState, rt_truetype_st: mut RtTruetypeState, path: string) -> int {
+  if rt_truetype_st.tt_n >= TT_MAX { return -1 }
+  let d = rt_read_file(rt_image_st, path)
   if (d == null) { return -1 }
-  let size = rt_file_len
+  let size = rt_image_st.rt_file_len
   var base = 0
   # a .ttc collection points at its first font
   if size >= 16 {
@@ -191,32 +193,32 @@ function rt_font_load(path: string) -> int {
   if glyf < 0 { return -1 }
   if hmtx < 0 { return -1 }
 
-  let id = tt_n
-  tt_n += 1
-  tt_data[id] = d
-  tt_size[id] = size
+  let id = rt_truetype_st.tt_n
+  rt_truetype_st.tt_n += 1
+  rt_truetype_st.tt_data[id] = d
+  rt_truetype_st.tt_size[id] = size
   var upem = tt_u16(d, head + 18)
   if upem <= 0 { upem = 1000 }
-  tt_upem[id] = upem
-  tt_locfm[id] = tt_i16(d, head + 50)
-  tt_nglyf[id] = tt_u16(d, maxp + 4)
-  tt_asc[id] = tt_i16(d, hhea + 4)
-  tt_desc[id] = tt_i16(d, hhea + 6)
-  tt_gap[id] = tt_i16(d, hhea + 8)
-  tt_nhm[id] = tt_u16(d, hhea + 34)
-  tt_glyf[id] = glyf
-  tt_loca[id] = loca
-  tt_hmtx[id] = hmtx
-  tt_pick_cmap(id, d, tt_find_table(d, base, 99, 109, 97, 112))
+  rt_truetype_st.tt_upem[id] = upem
+  rt_truetype_st.tt_locfm[id] = tt_i16(d, head + 50)
+  rt_truetype_st.tt_nglyf[id] = tt_u16(d, maxp + 4)
+  rt_truetype_st.tt_asc[id] = tt_i16(d, hhea + 4)
+  rt_truetype_st.tt_desc[id] = tt_i16(d, hhea + 6)
+  rt_truetype_st.tt_gap[id] = tt_i16(d, hhea + 8)
+  rt_truetype_st.tt_nhm[id] = tt_u16(d, hhea + 34)
+  rt_truetype_st.tt_glyf[id] = glyf
+  rt_truetype_st.tt_loca[id] = loca
+  rt_truetype_st.tt_hmtx[id] = hmtx
+  tt_pick_cmap(rt_truetype_st, id, d, tt_find_table(d, base, 99, 109, 97, 112))
   return id
 }
 
 # ---- codepoint -> glyph id ------------------------------------------------
-function tt_glyph_index(id: int, cp: int) -> int {
-  let d = tt_data[id]
-  let s = tt_cmap[id]
+function tt_glyph_index(rt_truetype_st: RtTruetypeState, id: int, cp: int) -> int {
+  let d = rt_truetype_st.tt_data[id]
+  let s = rt_truetype_st.tt_cmap[id]
   if s < 0 { return 0 }
-  let fmt = tt_cfmt[id]
+  let fmt = rt_truetype_st.tt_cfmt[id]
 
   if fmt == 4 {
     if cp > 65535 { return 0 }
@@ -261,46 +263,46 @@ function tt_glyph_index(id: int, cp: int) -> int {
   return 0
 }
 
-function tt_advance(id: int, gid: int) -> int {
-  let d = tt_data[id]
-  let hmtx = tt_hmtx[id]
-  let n = tt_nhm[id]
+function tt_advance(rt_truetype_st: RtTruetypeState, id: int, gid: int) -> int {
+  let d = rt_truetype_st.tt_data[id]
+  let hmtx = rt_truetype_st.tt_hmtx[id]
+  let n = rt_truetype_st.tt_nhm[id]
   if gid < n { return tt_u16(d, hmtx + gid * 4) }
   return tt_u16(d, hmtx + (n - 1) * 4)
 }
 
 # ---- outline extraction ---------------------------------------------------
-function ol_pt(x: fixed, y: fixed, on: int) -> void {
-  if ol_n >= TT_PTS { return }
-  ol_x[ol_n] = x
-  ol_y[ol_n] = y
-  ol_on[ol_n] = on
-  ol_n += 1
+function ol_pt(rt_truetype_st: mut RtTruetypeState, x: fixed, y: fixed, on: int) -> void {
+  if rt_truetype_st.ol_n >= TT_PTS { return }
+  rt_truetype_st.ol_x[rt_truetype_st.ol_n] = x
+  rt_truetype_st.ol_y[rt_truetype_st.ol_n] = y
+  rt_truetype_st.ol_on[rt_truetype_st.ol_n] = on
+  rt_truetype_st.ol_n += 1
 }
 
-function tt_glyph_start(id: int, gid: int) -> int {
-  let d = tt_data[id]
-  let loca = tt_loca[id]
-  if tt_locfm[id] == 0 { return tt_u16(d, loca + gid * 2) * 2 }
+function tt_glyph_start(rt_truetype_st: RtTruetypeState, id: int, gid: int) -> int {
+  let d = rt_truetype_st.tt_data[id]
+  let loca = rt_truetype_st.tt_loca[id]
+  if rt_truetype_st.tt_locfm[id] == 0 { return tt_u16(d, loca + gid * 2) * 2 }
   return tt_u32(d, loca + gid * 4)
 }
-function tt_glyph_end(id: int, gid: int) -> int {
-  let d = tt_data[id]
-  let loca = tt_loca[id]
-  if tt_locfm[id] == 0 { return tt_u16(d, loca + (gid + 1) * 2) * 2 }
+function tt_glyph_end(rt_truetype_st: RtTruetypeState, id: int, gid: int) -> int {
+  let d = rt_truetype_st.tt_data[id]
+  let loca = rt_truetype_st.tt_loca[id]
+  if rt_truetype_st.tt_locfm[id] == 0 { return tt_u16(d, loca + (gid + 1) * 2) * 2 }
   return tt_u32(d, loca + (gid + 1) * 4)
 }
 
 # Append glyph `gid`, transformed by [a b c e] + (dx,dy), to the outline.
-function tt_load_outline(id: int, gid: int, a: fixed, b: fixed, c: fixed, e: fixed, dx: fixed, dy: fixed, depth: int) -> void {
+function tt_load_outline(rt_truetype_st: mut RtTruetypeState, id: int, gid: int, a: fixed, b: fixed, c: fixed, e: fixed, dx: fixed, dy: fixed, depth: int) -> void {
   if gid < 0 { return }
-  if gid >= tt_nglyf[id] { return }
+  if gid >= rt_truetype_st.tt_nglyf[id] { return }
   if depth > 5 { return }
-  let goff = tt_glyph_start(id, gid)
-  let gend = tt_glyph_end(id, gid)
+  let goff = tt_glyph_start(rt_truetype_st, id, gid)
+  let gend = tt_glyph_end(rt_truetype_st, id, gid)
   if goff >= gend { return }
-  let d = tt_data[id]
-  let g = tt_glyf[id] + goff
+  let d = rt_truetype_st.tt_data[id]
+  let g = rt_truetype_st.tt_glyf[id] + goff
   let nc = tt_i16(d, g)
 
   if nc >= 0 {
@@ -360,11 +362,11 @@ function tt_load_outline(id: int, gid: int, a: fixed, b: fixed, c: fixed, e: fix
       for k in start .. last + 1 {
         let X = fixed(xs[k])
         let Y = fixed(ys[k])
-        ol_pt(a * X + c * Y + dx, b * X + e * Y + dy, (flags[k] & 1))
+        ol_pt(rt_truetype_st, a * X + c * Y + dx, b * X + e * Y + dy, (flags[k] & 1))
       }
-      if ol_ne < 256 {
-        ol_ends[ol_ne] = ol_n
-        ol_ne += 1
+      if rt_truetype_st.ol_ne < 256 {
+        rt_truetype_st.ol_ends[rt_truetype_st.ol_ne] = rt_truetype_st.ol_n
+        rt_truetype_st.ol_ne += 1
       }
       start = last + 1
     }
@@ -417,7 +419,7 @@ function tt_load_outline(id: int, gid: int, a: fixed, b: fixed, c: fixed, e: fix
         odx = a * fixed(arg1) + c * fixed(arg2) + dx
         ody = b * fixed(arg1) + e * fixed(arg2) + dy
       }
-      tt_load_outline(id, cgid, a * ca + c * cb, b * ca + e * cb, a * cc + c * ce, b * cc + e * ce, odx, ody, depth + 1)
+      tt_load_outline(rt_truetype_st, id, cgid, a * ca + c * cb, b * ca + e * cb, a * cc + c * ce, b * cc + e * ce, odx, ody, depth + 1)
       more = 0
       if (flags & 32) != 0 { more = 1 }
     }

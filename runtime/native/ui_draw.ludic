@@ -2,25 +2,25 @@
 # accessors. Split out of ui.ludic (the storage/build/measure half).
 
 # ---- arrange: rects, parents before children ------------------------------
-function ui_arrange(i: int, x: int, y: int) -> void {
-  ui_rx[i] = x
-  ui_ry[i] = y
-  let t = ui_type[i]
+function ui_arrange(rt_ui_st: mut RtUiState, i: int, x: int, y: int) -> void {
+  rt_ui_st.ui_rx[i] = x
+  rt_ui_st.ui_ry[i] = y
+  let t = rt_ui_st.ui_type[i]
   if ui_is_container(t) == false { return }
   let dir = ui_dir(t)
-  let pad = ui_pad[i]
-  let gap = ui_gap[i]
-  let innerw = ui_rw[i] - 2 * pad
-  let innerh = ui_rh[i] - 2 * pad
+  let pad = rt_ui_st.ui_pad[i]
+  let gap = rt_ui_st.ui_gap[i]
+  let innerw = rt_ui_st.ui_rw[i] - 2 * pad
+  let innerh = rt_ui_st.ui_rh[i] - 2 * pad
   var total = 0
   var ng = 0
   var grows = 0
-  for c in 0 .. ui_n {
-    if ui_parent[c] == i {
-      if ui_visible[c] == 1 {
-        if dir == 1 { total += ui_rh[c] } else { total += ui_rw[c] }
+  for c in 0 .. rt_ui_st.ui_n {
+    if rt_ui_st.ui_parent[c] == i {
+      if rt_ui_st.ui_visible[c] == 1 {
+        if dir == 1 { total += rt_ui_st.ui_rh[c] } else { total += rt_ui_st.ui_rw[c] }
         ng += 1
-        grows += ui_grow[c]
+        grows += rt_ui_st.ui_grow[c]
       }
     }
   }
@@ -30,30 +30,30 @@ function ui_arrange(i: int, x: int, y: int) -> void {
   let extra = max(avail - total, 0)
   var cx = x + pad
   var cy = y + pad
-  for c in 0 .. ui_n {
-    if ui_parent[c] == i {
-      if ui_visible[c] == 1 {
-        var kw = ui_rw[c]
-        var kh = ui_rh[c]
-        if ui_grow[c] != 0 {
+  for c in 0 .. rt_ui_st.ui_n {
+    if rt_ui_st.ui_parent[c] == i {
+      if rt_ui_st.ui_visible[c] == 1 {
+        var kw = rt_ui_st.ui_rw[c]
+        var kh = rt_ui_st.ui_rh[c]
+        if rt_ui_st.ui_grow[c] != 0 {
           if grows > 0 {
             if dir == 1 { kh = kh + extra / grows } else { kw = kw + extra / grows }
           }
         }
-        let al = ui_eff_align(c, i)
-        ui_rw[c] = kw
-        ui_rh[c] = kh
+        let al = ui_eff_align(rt_ui_st, c, i)
+        rt_ui_st.ui_rw[c] = kw
+        rt_ui_st.ui_rh[c] = kh
         if dir == 1 {
           var ax = x + pad
           if al == 1 { ax = x + pad + (innerw - kw) / 2 }
           if al == 2 { ax = x + pad + (innerw - kw) }
-          ui_arrange(c, ax, cy)
+          ui_arrange(rt_ui_st, c, ax, cy)
           cy = cy + kh + gap
         } else {
           var ay = y + pad
           if al == 1 { ay = y + pad + (innerh - kh) / 2 }
           if al == 2 { ay = y + pad + (innerh - kh) }
-          ui_arrange(c, cx, ay)
+          ui_arrange(rt_ui_st, c, cx, ay)
           cx = cx + kw + gap
         }
       }
@@ -61,16 +61,16 @@ function ui_arrange(i: int, x: int, y: int) -> void {
   }
 }
 
-function ui_layout() -> void {
-  if ui_active < 0 { return }
-  ui_measure()
-  var px = (rt_fbw - ui_rw[ui_active]) / 2
-  var py = (rt_fbh - ui_rh[ui_active]) / 2
-  if ui_haspos[ui_active] == 1 {
-    px = ui_x[ui_active]
-    py = ui_y[ui_active]
+function ui_layout(rt_image_st: RtImageState, rt_truetype_raster_st: mut RtTruetypeRasterState, rt_truetype_st: mut RtTruetypeState, rt_ui_st: mut RtUiState) -> void {
+  if rt_ui_st.ui_active < 0 { return }
+  ui_measure(rt_image_st, rt_truetype_raster_st, rt_truetype_st, rt_ui_st)
+  var px = (rt_fbw - rt_ui_st.ui_rw[rt_ui_st.ui_active]) / 2
+  var py = (rt_fbh - rt_ui_st.ui_rh[rt_ui_st.ui_active]) / 2
+  if rt_ui_st.ui_haspos[rt_ui_st.ui_active] == 1 {
+    px = rt_ui_st.ui_x[rt_ui_st.ui_active]
+    py = rt_ui_st.ui_y[rt_ui_st.ui_active]
   }
-  ui_arrange(ui_active, px, py)
+  ui_arrange(rt_ui_st, rt_ui_st.ui_active, px, py)
 }
 
 # ---- drawing --------------------------------------------------------------
@@ -84,78 +84,80 @@ function ui_lighten(c: int) -> int {
   return (((r << 16) | (g << 8)) | b)
 }
 
-function ui_draw_node(i: int) -> void {
-  if ui_visible[i] == 0 { return }
-  let t = ui_type[i]
-  let rx = ui_rx[i]
-  let ry = ui_ry[i]
-  let rw = ui_rw[i]
-  let rh = ui_rh[i]
-  let skin = ui_skin[i]
+function ui_draw_node(rt_core_st: mut RtCoreState, rt_image_st: RtImageState, rt_truetype_raster_st: mut RtTruetypeRasterState, rt_truetype_st: mut RtTruetypeState, rt_ui_st: RtUiState, i: int) -> void {
+  if rt_ui_st.ui_visible[i] == 0 { return }
+  let t = rt_ui_st.ui_type[i]
+  let rx = rt_ui_st.ui_rx[i]
+  let ry = rt_ui_st.ui_ry[i]
+  let rw = rt_ui_st.ui_rw[i]
+  let rh = rt_ui_st.ui_rh[i]
+  let skin = rt_ui_st.ui_skin[i]
   var focused = 0
-  if i == ui_focus { focused = 1 }
+  if i == rt_ui_st.ui_focus { focused = 1 }
 
   if t == WT_PANEL {
     if skin >= 0 {
-      rt_draw_9slice(skin, rx, ry, rw, rh, ui_inset[i])
+      rt_draw_9slice(rt_core_st, rt_image_st, skin, rx, ry, rw, rh, rt_ui_st.ui_inset[i])
     } else {
-      if ui_bg[i] >= 0 { rt_fill_rect(rx, ry, rw, rh, ui_bg[i]) }
-      if ui_border[i] >= 0 { rt_frame_rect(rx, ry, rw, rh, ui_border[i]) }
+      if rt_ui_st.ui_bg[i] >= 0 { rt_fill_rect(rt_core_st, rx, ry, rw, rh, rt_ui_st.ui_bg[i]) }
+      if rt_ui_st.ui_border[i] >= 0 { rt_frame_rect(rt_core_st, rx, ry, rw, rh, rt_ui_st.ui_border[i]) }
     }
   }
   if t == WT_BUTTON {
-    var bg = ui_bg[i]
+    var bg = rt_ui_st.ui_bg[i]
     if bg < 0 { bg = 0x2a2a3a }
     if focused == 1 { bg = ui_lighten(bg) }
     if skin >= 0 {
-      rt_draw_9slice(skin, rx, ry, rw, rh, ui_inset[i])
+      rt_draw_9slice(rt_core_st, rt_image_st, skin, rx, ry, rw, rh, rt_ui_st.ui_inset[i])
     } else {
-      rt_fill_rect(rx, ry, rw, rh, bg)
+      rt_fill_rect(rt_core_st, rx, ry, rw, rh, bg)
     }
-    var bc = ui_border[i]
+    var bc = rt_ui_st.ui_border[i]
     if bc < 0 { bc = 0x555577 }
     if focused == 1 { bc = 0xffff00 }
-    rt_frame_rect(rx, ry, rw, rh, bc)
-    let s = ui_str(i)
-    var fg = ui_fg[i]
+    rt_frame_rect(rt_core_st, rx, ry, rw, rh, bc)
+    let s = ui_str(rt_ui_st, i)
+    var fg = rt_ui_st.ui_fg[i]
     if fg < 0 { fg = 0xffffff }
-    let font = ui_font[i]
-    let size = ui_size[i]
-    ui_draw_text(font, rx + (rw - ui_tw(font, s, size)) / 2, ry + (rh - ui_th(font, size)) / 2, s, fg, size)
+    let font = rt_ui_st.ui_font[i]
+    let size = rt_ui_st.ui_size[i]
+    ui_draw_text(rt_core_st, rt_truetype_raster_st, rt_truetype_st, font, rx + (rw - ui_tw(rt_truetype_raster_st, rt_truetype_st, font, s, size)) / 2, ry + (rh - ui_th(rt_truetype_st, font, size)) / 2, s, fg, size)
   }
   if t == WT_LABEL {
-    let s = ui_str(i)
-    var fg = ui_fg[i]
+    let s = ui_str(rt_ui_st, i)
+    var fg = rt_ui_st.ui_fg[i]
     if fg < 0 { fg = 0xffffff }
-    let font = ui_font[i]
-    let size = ui_size[i]
-    let pad = ui_pad[i]
-    let tw = ui_tw(font, s, size)
+    let font = rt_ui_st.ui_font[i]
+    let size = rt_ui_st.ui_size[i]
+    let pad = rt_ui_st.ui_pad[i]
+    let tw = ui_tw(rt_truetype_raster_st, rt_truetype_st, font, s, size)
     var tx = rx + pad
-    let al = ui_align[i]
+    let al = rt_ui_st.ui_align[i]
     if al == 1 { tx = rx + (rw - tw) / 2 }
     if al == 2 { tx = rx + rw - pad - tw }
-    ui_draw_text(font, tx, ry + pad, s, fg, size)
+    ui_draw_text(rt_core_st, rt_truetype_raster_st, rt_truetype_st, font, tx, ry + pad, s, fg, size)
   }
   if t == WT_IMAGE {
-    if ui_img[i] >= 0 { rt_draw_image_scaled(ui_img[i], rx, ry, rw, rh) }
+    if rt_ui_st.ui_img[i] >= 0 { rt_draw_image_scaled(rt_core_st, rt_image_st, rt_ui_st.ui_img[i], rx, ry, rw, rh) }
   }
-  for c in 0 .. ui_n {
-    if ui_parent[c] == i { ui_draw_node(c) }
+  for c in 0 .. rt_ui_st.ui_n {
+    if rt_ui_st.ui_parent[c] == i { ui_draw_node(rt_core_st, rt_image_st, rt_truetype_raster_st, rt_truetype_st, rt_ui_st, c) }
   }
 }
 
 # ---- focus and activation -------------------------------------------------
-var ui_fl: words = null
+export state RtUiDrawState {
+  ui_fl: words = null
+}
 
-function ui_focusables() -> int {
-  if (ui_fl == null) { ui_fl = words(UI_MAX) }
+function ui_focusables(rt_ui_draw_st: mut RtUiDrawState, rt_ui_st: RtUiState) -> int {
+  if (rt_ui_draw_st.ui_fl == null) { rt_ui_draw_st.ui_fl = words(UI_MAX) }
   var n = 0
-  for i in 0 .. ui_n {
-    if ui_focusable[i] == 1 {
-      if ui_visible[i] == 1 {
-        if ui_under(i, ui_active) {
-          ui_fl[n] = i
+  for i in 0 .. rt_ui_st.ui_n {
+    if rt_ui_st.ui_focusable[i] == 1 {
+      if rt_ui_st.ui_visible[i] == 1 {
+        if ui_under(rt_ui_st, i, rt_ui_st.ui_active) {
+          rt_ui_draw_st.ui_fl[n] = i
           n += 1
         }
       }
@@ -169,91 +171,91 @@ function ui_focusables() -> int {
 event UiClicked { id: int = 0 }
 
 # Ui.close(): no menu is active (the same as opening root -1)
-function rt_ui_close() -> void { rt_ui_open(-1) }
+function rt_ui_close(rt_ui_draw_st: mut RtUiDrawState, rt_ui_st: mut RtUiState) -> void { rt_ui_open(rt_ui_draw_st, rt_ui_st, -1) }
 
-function rt_ui_open(root: int) -> void {
-  ui_active = root
-  let n = ui_focusables()
-  ui_focus = -1
-  if n > 0 { ui_focus = ui_fl[0] }
+function rt_ui_open(rt_ui_draw_st: mut RtUiDrawState, rt_ui_st: mut RtUiState, root: int) -> void {
+  rt_ui_st.ui_active = root
+  let n = ui_focusables(rt_ui_draw_st, rt_ui_st)
+  rt_ui_st.ui_focus = -1
+  if n > 0 { rt_ui_st.ui_focus = rt_ui_draw_st.ui_fl[0] }
 }
 
-function rt_ui_tick(k: int) -> void {
-  for i in 0 .. ui_n { ui_fired[i] = 0 }    # a closed UI clears clicks too, so a stale
-  if ui_active < 0 { return }               # activation never leaks to the next frame/scene
-  ui_layout()
-  let n = ui_focusables()
+function rt_ui_tick(rt_image_st: RtImageState, rt_truetype_raster_st: mut RtTruetypeRasterState, rt_truetype_st: mut RtTruetypeState, rt_ui_draw_st: mut RtUiDrawState, rt_ui_st: mut RtUiState, k: int) -> void {
+  for i in 0 .. rt_ui_st.ui_n { rt_ui_st.ui_fired[i] = 0 }    # a closed UI clears clicks too, so a stale
+  if rt_ui_st.ui_active < 0 { return }               # activation never leaks to the next frame/scene
+  ui_layout(rt_image_st, rt_truetype_raster_st, rt_truetype_st, rt_ui_st)
+  let n = ui_focusables(rt_ui_draw_st, rt_ui_st)
   if n == 0 {
-    ui_focus = -1
+    rt_ui_st.ui_focus = -1
     return
   }
   var cur = -1
   for i in 0 .. n {
-    if ui_fl[i] == ui_focus { cur = i }
+    if rt_ui_draw_st.ui_fl[i] == rt_ui_st.ui_focus { cur = i }
   }
   if cur < 0 {
     cur = 0
-    ui_focus = ui_fl[0]
+    rt_ui_st.ui_focus = rt_ui_draw_st.ui_fl[0]
   }
   if k == 'w' {                     # 'w'
     cur = (cur - 1 + n) % n
-    ui_focus = ui_fl[cur]
+    rt_ui_st.ui_focus = rt_ui_draw_st.ui_fl[cur]
   }
   if k == 's' {                     # 's'
     cur = (cur + 1) % n
-    ui_focus = ui_fl[cur]
+    rt_ui_st.ui_focus = rt_ui_draw_st.ui_fl[cur]
   }
   var fire = 0
   if k == ' ' { fire = 1 }
   if k == '\n' { fire = 1 }
   if k == '\r' { fire = 1 }
-  if fire == 1 { ui_fired[ui_focus] = 1;  emit UiClicked(id: ui_focus) }
+  if fire == 1 { rt_ui_st.ui_fired[rt_ui_st.ui_focus] = 1;  emit UiClicked(id: rt_ui_st.ui_focus) }
 }
 
-function rt_ui_render() -> void {
-  if ui_active < 0 { return }
-  ui_layout()
-  ui_draw_node(ui_active)
+function rt_ui_render(rt_core_st: mut RtCoreState, rt_image_st: RtImageState, rt_truetype_raster_st: mut RtTruetypeRasterState, rt_truetype_st: mut RtTruetypeState, rt_ui_st: mut RtUiState) -> void {
+  if rt_ui_st.ui_active < 0 { return }
+  ui_layout(rt_image_st, rt_truetype_raster_st, rt_truetype_st, rt_ui_st)
+  ui_draw_node(rt_core_st, rt_image_st, rt_truetype_raster_st, rt_truetype_st, rt_ui_st, rt_ui_st.ui_active)
 }
 
 # ---- game-facing accessors ------------------------------------------------
-function rt_ui_clicked(id: int) -> bool {
+function rt_ui_clicked(rt_ui_st: RtUiState, id: int) -> bool {
   if id < 0 { return false }
-  if id >= ui_n { return false }
-  return ui_fired[id] == 1
+  if id >= rt_ui_st.ui_n { return false }
+  return rt_ui_st.ui_fired[id] == 1
 }
 
-function rt_ui_set_text(id: int, s: string) -> void {
+function rt_ui_set_text(rt_ui_st: mut RtUiState, id: int, s: string) -> void {
   if id < 0 { return }
-  if id >= ui_n { return }
+  if id >= rt_ui_st.ui_n { return }
   let base = id * 96
   var i = 0
   var ch = s[0]
   while ch != 0 {
     if i >= 95 { ch = 0 }
     if ch != 0 {
-      ui_dyn[base + i] = ch
+      rt_ui_st.ui_dyn[base + i] = ch
       i += 1
       ch = s[i]
     }
   }
-  ui_dyn[base + i] = 0
-  ui_hasdyn[id] = 1
+  rt_ui_st.ui_dyn[base + i] = 0
+  rt_ui_st.ui_hasdyn[id] = 1
 }
 
-function rt_ui_set_int(id: int, n: int) -> void {
+function rt_ui_set_int(rt_ui_st: mut RtUiState, id: int, n: int) -> void {
   if id < 0 { return }
-  if id >= ui_n { return }
+  if id >= rt_ui_st.ui_n { return }
   let base = id * 96
   var at = 0
   var v = n
   if v < 0 {
-    ui_dyn[base] = '-'
+    rt_ui_st.ui_dyn[base] = '-'
     at = 1
     v = -v
   }
   if v == 0 {
-    ui_dyn[base + at] = '0'
+    rt_ui_st.ui_dyn[base + at] = '0'
     at += 1
   } else {
     var digits = 0
@@ -266,27 +268,27 @@ function rt_ui_set_int(id: int, n: int) -> void {
     while p > 0 {
       var div = 1
       for k in 1 .. p { div *= 10 }
-      ui_dyn[base + at] = 48 + (v / div) % 10
+      rt_ui_st.ui_dyn[base + at] = 48 + (v / div) % 10
       at += 1
       p -= 1
     }
   }
-  ui_dyn[base + at] = 0
-  ui_hasdyn[id] = 1
+  rt_ui_st.ui_dyn[base + at] = 0
+  rt_ui_st.ui_hasdyn[id] = 1
 }
 
-function rt_ui_focus(id: int) -> void {
+function rt_ui_focus(rt_ui_st: mut RtUiState, id: int) -> void {
   if id < 0 { return }
-  if id >= ui_n { return }
-  ui_focus = id
+  if id >= rt_ui_st.ui_n { return }
+  rt_ui_st.ui_focus = id
 }
 
-function rt_ui_focused() -> int {
-  return ui_focus
+function rt_ui_focused(rt_ui_st: RtUiState) -> int {
+  return rt_ui_st.ui_focus
 }
 
-function rt_ui_visible(id: int, v: int) -> void {
+function rt_ui_visible(rt_ui_st: mut RtUiState, id: int, v: int) -> void {
   if id < 0 { return }
-  if id >= ui_n { return }
-  ui_visible[id] = v
+  if id >= rt_ui_st.ui_n { return }
+  rt_ui_st.ui_visible[id] = v
 }

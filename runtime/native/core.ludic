@@ -23,11 +23,33 @@
 # where a headless build leaves its last frame (relative to the working directory)
 const HEADLESS_FRAME_PATH: string = "build/out.ppm"
 
-var rt_fb:    words = null     # framebuffer, one i32 (0x00RRGGBB) per pixel
-var rt_fbw:   int = 320
-var rt_fbh:   int = 240
-var rt_regs:  words = null     # the 64 general-purpose game registers
-var rt_alive: int = 1              # platform still running?
+export state RtCoreState {
+  rt_fb:    words = null     # framebuffer, one i32 (0x00RRGGBB) per pixel
+  rt_regs:  words = null     # the 64 general-purpose game registers
+  rt_alive: int = 1              # platform still running?
+  rt_cam_x:   int = 0        # camera base offset (world -> screen: subtracted)
+  rt_cam_y:   int = 0
+  rt_shake_x: int = 0        # transient screen-shake offset, added to the base
+  rt_shake_y: int = 0
+  rt_clip_x0: int = 0        # clip rectangle in screen space (half-open)
+  rt_clip_y0: int = 0
+  rt_clip_x1: int = 320
+  rt_clip_y1: int = 240
+  rt_blend:   int = 0        # 0 = replace, 1 = additive
+  rt_cam_zoom:   fixed = 1.0     # 1.0 = no zoom; >1 zooms in, <1 zooms out
+  rt_cam_zoomed: bool  = false   # true once a non-1.0 zoom is set
+  rt_shake_amount: int = 0
+  rt_shake_left:   int = 0
+  rt_map:  pointer = null
+  rt_mapw: int = 0
+  rt_maph: int = 0
+  rt_map_solid1: int = 0
+  rt_map_solid2: int = 0
+  rt_map_tile_px: int = 16
+  rt_statusbuf: pointer = null
+}
+let rt_fbw:   int = 320
+let rt_fbh:   int = 240
 
 # ---- renderer state (camera / clip / blend) -------------------------------
 # A world-space camera offset, a clip rectangle, and a blend mode threaded
@@ -36,23 +58,12 @@ var rt_alive: int = 1              # platform still running?
 # The defaults are neutral — camera (0,0), clip = full screen, blend = replace —
 # so a game that never touches them renders exactly as before. The camera moves
 # everything drawn; reset it to (0,0) to draw a fixed HUD over the world.
-var rt_cam_x:   int = 0        # camera base offset (world -> screen: subtracted)
-var rt_cam_y:   int = 0
-var rt_shake_x: int = 0        # transient screen-shake offset, added to the base
-var rt_shake_y: int = 0
-var rt_clip_x0: int = 0        # clip rectangle in screen space (half-open)
-var rt_clip_y0: int = 0
-var rt_clip_x1: int = 320
-var rt_clip_y1: int = 240
-var rt_blend:   int = 0        # 0 = replace, 1 = additive
 # #78 — deterministic camera zoom. A Q16.16 scale applied about the screen centre
 # in the same two chokepoints as the camera offset. Rejected floats for the
 # coordinate types (they would desync lockstep/replay/save); zoom is a *render-time*
 # transform, so it rides on fixed-point exactly like sprite-scale and the light math.
 # rt_cam_zoomed gates the fixed multiply out of the hot path so a game that never
 # zooms renders byte-for-byte identically (the else-branch is the original code).
-var rt_cam_zoom:   fixed = 1.0     # 1.0 = no zoom; >1 zooms in, <1 zooms out
-var rt_cam_zoomed: bool  = false   # true once a non-1.0 zoom is set
 
 # 5x7 glyphs for ASCII 32..90, 7 rows per glyph, each row a 5-bit mask stored
 # biased by '0' so the whole font is one printable string literal.
@@ -60,42 +71,42 @@ function rt_font() -> string {
   return "00000004444404000000000000000000000IJ4:FC000000000000000000000000000000E>O>E0044O4400000448000O000000004012448@@>ACEIA>4<4444>>A168@ON11>11N26:BO22O@N11A>>@@NAA>O124888>AA>AA>>AA?11>04004000000000024842000O0O000842480>A164040000000>AAOAAANAANAAN>A@@@A>LBAAABLO@@L@@OO@@L@@@>A@GAA>AAAOAAA>44444>7222BB<ABDHDBA@@@@@@OAKEEAAAAIEECAA>AAAAA>NAAN@@@>AAAEB=NAANDBA>A@>1A>O444444AAAAAA>AAAAA:4AAAEEKAAA:4:AAAA:4444O1248@O"
 }
 
-function rt_init() -> void {
-  rt_fb = words(320 * 240)
-  rt_regs = words(64)
-  fill(rt_regs, 0, 64 * 4)
-  rt_map = bytes(96 * 64)
-  fill(rt_map, ' ', 96 * 64)
-  rt_clip_x1 = rt_fbw
-  rt_clip_y1 = rt_fbh
-  rt_statusbuf = bytes(96)
-  rt_statusbuf[0] = 0
-  rt_image_init()
-  rt_tt_init()
-  rt_ui_init()
-  rt_clear(0)
+function rt_init(rt_core_st: mut RtCoreState, rt_image_st: mut RtImageState, rt_rng_st: mut RtRngState, rt_truetype_st: mut RtTruetypeState, rt_ui_st: mut RtUiState) -> void {
+  rt_core_st.rt_fb = words(320 * 240)
+  rt_core_st.rt_regs = words(64)
+  fill(rt_core_st.rt_regs, 0, 64 * 4)
+  rt_core_st.rt_map = bytes(96 * 64)
+  fill(rt_core_st.rt_map, ' ', 96 * 64)
+  rt_core_st.rt_clip_x1 = rt_fbw
+  rt_core_st.rt_clip_y1 = rt_fbh
+  rt_core_st.rt_statusbuf = bytes(96)
+  rt_core_st.rt_statusbuf[0] = 0
+  rt_image_init(rt_image_st)
+  rt_tt_init(rt_truetype_st)
+  rt_ui_init(rt_ui_st)
+  rt_clear(rt_core_st, rt_rng_st, 0)
   if is_windowed() {
     win_open(rt_fbw, rt_fbh, 3, game_title())
   }
 }
 
-function rt_shutdown() -> void {
+function rt_shutdown(rt_core_st: RtCoreState) -> void {
   if is_windowed() {
     win_close()
     return
   }
-  rt_dump_ppm(HEADLESS_FRAME_PATH)
+  rt_dump_ppm(rt_core_st, HEADLESS_FRAME_PATH)
 }
 
 # ---- framebuffer ----------------------------------------------------------
 function rt_screen_w() -> int { return rt_fbw }
 function rt_screen_h() -> int { return rt_fbh }
 
-function rt_clear(c: int) -> void {
-  rt_camera_tick()                              # a timed Camera.shake_for advances once per frame
+function rt_clear(rt_core_st: mut RtCoreState, rt_rng_st: mut RtRngState, c: int) -> void {
+  rt_camera_tick(rt_core_st, rt_rng_st)                              # a timed Camera.shake_for advances once per frame
   let n = rt_fbw * rt_fbh
   for i in 0 .. n {
-    rt_fb[i] = c
+    rt_core_st.rt_fb[i] = c
   }
 }
 
@@ -109,74 +120,74 @@ function rt_blend_add(dst: int, src: int) -> int {
 
 # the low-level plot: apply the camera (+ shake) offset, reject anything outside
 # the clip rectangle or the framebuffer, then write or additively blend.
-function rt_put_px(x: int, y: int, c: int) -> void {
-  var sx = x - rt_cam_x - rt_shake_x
-  var sy = y - rt_cam_y - rt_shake_y
-  if rt_cam_zoomed {                                # #78: scale about the screen centre
+function rt_put_px(rt_core_st: mut RtCoreState, x: int, y: int, c: int) -> void {
+  var sx = x - rt_core_st.rt_cam_x - rt_core_st.rt_shake_x
+  var sy = y - rt_core_st.rt_cam_y - rt_core_st.rt_shake_y
+  if rt_core_st.rt_cam_zoomed {                                # #78: scale about the screen centre
     let hw = rt_fbw / 2
     let hh = rt_fbh / 2
-    sx = floor(fixed(sx - hw) * rt_cam_zoom) + hw
-    sy = floor(fixed(sy - hh) * rt_cam_zoom) + hh
+    sx = floor(fixed(sx - hw) * rt_core_st.rt_cam_zoom) + hw
+    sy = floor(fixed(sy - hh) * rt_core_st.rt_cam_zoom) + hh
   }
-  if sx < rt_clip_x0 { return }
-  if sy < rt_clip_y0 { return }
-  if sx >= rt_clip_x1 { return }
-  if sy >= rt_clip_y1 { return }
+  if sx < rt_core_st.rt_clip_x0 { return }
+  if sy < rt_core_st.rt_clip_y0 { return }
+  if sx >= rt_core_st.rt_clip_x1 { return }
+  if sy >= rt_core_st.rt_clip_y1 { return }
   if sx < 0 { return }
   if sy < 0 { return }
   if sx >= rt_fbw { return }
   if sy >= rt_fbh { return }
   let idx = sy * rt_fbw + sx
-  if rt_blend == 1 { rt_fb[idx] = rt_blend_add(rt_fb[idx], c) }
-  else { rt_fb[idx] = c }
+  if rt_core_st.rt_blend == 1 { rt_core_st.rt_fb[idx] = rt_blend_add(rt_core_st.rt_fb[idx], c) }
+  else { rt_core_st.rt_fb[idx] = c }
 }
 
-function rt_fill_rect(x: int, y: int, w: int, h: int, c: int) -> void {
-  var ox = x - rt_cam_x - rt_shake_x
-  var oy = y - rt_cam_y - rt_shake_y
+function rt_fill_rect(rt_core_st: mut RtCoreState, x: int, y: int, w: int, h: int, c: int) -> void {
+  var ox = x - rt_core_st.rt_cam_x - rt_core_st.rt_shake_x
+  var oy = y - rt_core_st.rt_cam_y - rt_core_st.rt_shake_y
   var ow = w
   var oh = h
-  if rt_cam_zoomed {                                # #78: scale position + size about the centre
+  if rt_core_st.rt_cam_zoomed {                                # #78: scale position + size about the centre
     let hw = rt_fbw / 2
     let hh = rt_fbh / 2
-    ox = floor(fixed(ox - hw) * rt_cam_zoom) + hw
-    oy = floor(fixed(oy - hh) * rt_cam_zoom) + hh
-    ow = floor(fixed(w) * rt_cam_zoom);  if ow < 1 { ow = 1 }
-    oh = floor(fixed(h) * rt_cam_zoom);  if oh < 1 { oh = 1 }
+    ox = floor(fixed(ox - hw) * rt_core_st.rt_cam_zoom) + hw
+    oy = floor(fixed(oy - hh) * rt_core_st.rt_cam_zoom) + hh
+    ow = floor(fixed(w) * rt_core_st.rt_cam_zoom);  if ow < 1 { ow = 1 }
+    oh = floor(fixed(h) * rt_core_st.rt_cam_zoom);  if oh < 1 { oh = 1 }
   }
-  let x0 = max(max(0, rt_clip_x0), ox)
-  let y0 = max(max(0, rt_clip_y0), oy)
-  let x1 = min(min(rt_fbw, rt_clip_x1), ox + ow)
-  let y1 = min(min(rt_fbh, rt_clip_y1), oy + oh)
+  let x0 = max(max(0, rt_core_st.rt_clip_x0), ox)
+  let y0 = max(max(0, rt_core_st.rt_clip_y0), oy)
+  let x1 = min(min(rt_fbw, rt_core_st.rt_clip_x1), ox + ow)
+  let y1 = min(min(rt_fbh, rt_core_st.rt_clip_y1), oy + oh)
   var j = y0
   while j < y1 {
     let row = j * rt_fbw
     var i = x0
     while i < x1 {
-      if rt_blend == 1 { rt_fb[row + i] = rt_blend_add(rt_fb[row + i], c) }
-      else { rt_fb[row + i] = c }
+      if rt_core_st.rt_blend == 1 { rt_core_st.rt_fb[row + i] = rt_blend_add(rt_core_st.rt_fb[row + i], c) }
+      else { rt_core_st.rt_fb[row + i] = c }
       i += 1
     }
     j += 1
   }
 }
 
-function rt_frame_rect(x: int, y: int, w: int, h: int, c: int) -> void {
-  rt_fill_rect(x, y, w, 1, c)
-  rt_fill_rect(x, y + h - 1, w, 1, c)
-  rt_fill_rect(x, y, 1, h, c)
-  rt_fill_rect(x + w - 1, y, 1, h, c)
+function rt_frame_rect(rt_core_st: mut RtCoreState, x: int, y: int, w: int, h: int, c: int) -> void {
+  rt_fill_rect(rt_core_st, x, y, w, 1, c)
+  rt_fill_rect(rt_core_st, x, y + h - 1, w, 1, c)
+  rt_fill_rect(rt_core_st, x, y, 1, h, c)
+  rt_fill_rect(rt_core_st, x + w - 1, y, 1, h, c)
 }
 
 # A straight line by Bresenham's algorithm — integer only, any direction.
-function rt_line(x0: int, y0: int, x1: int, y1: int, c: int) -> void {
+function rt_line(rt_core_st: mut RtCoreState, x0: int, y0: int, x1: int, y1: int, c: int) -> void {
   var x = x0;  var y = y0
   let dx = abs(x1 - x0);  let dy = -abs(y1 - y0)
   var sx = -1;  if x0 < x1 { sx = 1 }
   var sy = -1;  if y0 < y1 { sy = 1 }
   var err = dx + dy
   while true {
-    rt_put_px(x, y, c)
+    rt_put_px(rt_core_st, x, y, c)
     if (x == x1) and (y == y1) { return }
     let e2 = 2 * err
     if e2 >= dy { err += dy;  x += sx }
@@ -185,14 +196,14 @@ function rt_line(x0: int, y0: int, x1: int, y1: int, c: int) -> void {
 }
 
 # A circle outline by the midpoint algorithm (eight-way symmetry).
-function rt_circle(cx: int, cy: int, r: int, c: int) -> void {
+function rt_circle(rt_core_st: mut RtCoreState, cx: int, cy: int, r: int, c: int) -> void {
   if r < 0 { return }
   var x = r;  var y = 0;  var err = 1 - r
   while x >= y {
-    rt_put_px(cx + x, cy + y, c);  rt_put_px(cx + y, cy + x, c)
-    rt_put_px(cx - y, cy + x, c);  rt_put_px(cx - x, cy + y, c)
-    rt_put_px(cx - x, cy - y, c);  rt_put_px(cx - y, cy - x, c)
-    rt_put_px(cx + y, cy - x, c);  rt_put_px(cx + x, cy - y, c)
+    rt_put_px(rt_core_st, cx + x, cy + y, c);  rt_put_px(rt_core_st, cx + y, cy + x, c)
+    rt_put_px(rt_core_st, cx - y, cy + x, c);  rt_put_px(rt_core_st, cx - x, cy + y, c)
+    rt_put_px(rt_core_st, cx - x, cy - y, c);  rt_put_px(rt_core_st, cx - y, cy - x, c)
+    rt_put_px(rt_core_st, cx + y, cy - x, c);  rt_put_px(rt_core_st, cx + x, cy - y, c)
     y += 1
     if err < 0 { err = err + 2 * y + 1 }
     else { x -= 1;  err = err + 2 * (y - x) + 1 }
@@ -200,27 +211,27 @@ function rt_circle(cx: int, cy: int, r: int, c: int) -> void {
 }
 
 # A filled disc — one horizontal span per row, width from the circle equation.
-function rt_fill_circle(cx: int, cy: int, r: int, c: int) -> void {
+function rt_fill_circle(rt_core_st: mut RtCoreState, cx: int, cy: int, r: int, c: int) -> void {
   if r < 0 { return }
   let r2 = r * r
   var dy = -r
   while dy <= r {
     var dx = 0
     while (dx + 1) * (dx + 1) + dy * dy <= r2 { dx += 1 }
-    rt_fill_rect(cx - dx, cy + dy, 2 * dx + 1, 1, c)
+    rt_fill_rect(rt_core_st, cx - dx, cy + dy, 2 * dx + 1, 1, c)
     dy += 1
   }
 }
 
 # A triangle outline — three lines.
-function rt_triangle(x0: int, y0: int, x1: int, y1: int, x2: int, y2: int, c: int) -> void {
-  rt_line(x0, y0, x1, y1, c)
-  rt_line(x1, y1, x2, y2, c)
-  rt_line(x2, y2, x0, y0, c)
+function rt_triangle(rt_core_st: mut RtCoreState, x0: int, y0: int, x1: int, y1: int, x2: int, y2: int, c: int) -> void {
+  rt_line(rt_core_st, x0, y0, x1, y1, c)
+  rt_line(rt_core_st, x1, y1, x2, y2, c)
+  rt_line(rt_core_st, x2, y2, x0, y0, c)
 }
 
 # A filled triangle — bounding-box scan with an edge-sign inside test.
-function rt_fill_triangle(x0: int, y0: int, x1: int, y1: int, x2: int, y2: int, c: int) -> void {
+function rt_fill_triangle(rt_core_st: mut RtCoreState, x0: int, y0: int, x1: int, y1: int, x2: int, y2: int, c: int) -> void {
   let minx = min(x0, min(x1, x2));  let maxx = max(x0, max(x1, x2))
   let miny = min(y0, min(y1, y2));  let maxy = max(y0, max(y1, y2))
   var py = miny
@@ -232,7 +243,7 @@ function rt_fill_triangle(x0: int, y0: int, x1: int, y1: int, x2: int, y2: int, 
       let d2 = (x0 - x2) * (py - y2) - (y0 - y2) * (px - x2)
       let neg = (d0 < 0) or (d1 < 0) or (d2 < 0)
       let pos = (d0 > 0) or (d1 > 0) or (d2 > 0)
-      if not (neg and pos) { rt_put_px(px, py, c) }
+      if not (neg and pos) { rt_put_px(rt_core_st, px, py, c) }
       px += 1
     }
     py += 1
@@ -240,16 +251,16 @@ function rt_fill_triangle(x0: int, y0: int, x1: int, y1: int, x2: int, y2: int, 
 }
 
 # the four-way symmetric points of an ellipse centred at (cx, cy).
-function rt_oval_pts(cx: int, cy: int, x: int, y: int, c: int) -> void {
-  rt_put_px(cx + x, cy + y, c)
-  rt_put_px(cx - x, cy + y, c)
-  rt_put_px(cx + x, cy - y, c)
-  rt_put_px(cx - x, cy - y, c)
+function rt_oval_pts(rt_core_st: mut RtCoreState, cx: int, cy: int, x: int, y: int, c: int) -> void {
+  rt_put_px(rt_core_st, cx + x, cy + y, c)
+  rt_put_px(rt_core_st, cx - x, cy + y, c)
+  rt_put_px(rt_core_st, cx + x, cy - y, c)
+  rt_put_px(rt_core_st, cx - x, cy - y, c)
 }
 
 # An axis-aligned ellipse outline by the midpoint algorithm — integer only,
 # radii rx (horizontal) and ry (vertical). rx == ry draws a circle.
-function rt_oval(x: int, y: int, rx: int, ry: int, c: int) -> void {
+function rt_oval(rt_core_st: mut RtCoreState, x: int, y: int, rx: int, ry: int, c: int) -> void {
   if rx <= 0 { return }
   if ry <= 0 { return }
   let rx2 = rx * rx
@@ -260,14 +271,14 @@ function rt_oval(x: int, y: int, rx: int, ry: int, c: int) -> void {
   var ey = ry
   var px = 0
   var py = two_rx2 * ey
-  rt_oval_pts(x, y, ex, ey, c)
+  rt_oval_pts(rt_core_st, x, y, ex, ey, c)
   var p = ry2 - rx2 * ry + rx2 / 4                  # region 1
   while px < py {
     ex += 1
     px += two_ry2
     if p < 0 { p = p + ry2 + px }
     else { ey -= 1;  py -= two_rx2;  p = p + ry2 + px - py }
-    rt_oval_pts(x, y, ex, ey, c)
+    rt_oval_pts(rt_core_st, x, y, ex, ey, c)
   }
   p = ry2 * (ex * 2 + 1) * (ex * 2 + 1) / 4 + rx2 * (ey - 1) * (ey - 1) - rx2 * ry2   # region 2
   while ey > 0 {
@@ -275,18 +286,18 @@ function rt_oval(x: int, y: int, rx: int, ry: int, c: int) -> void {
     py -= two_rx2
     if p > 0 { p = p + rx2 - py }
     else { ex += 1;  px += two_ry2;  p = p + rx2 - py + px }
-    rt_oval_pts(x, y, ex, ey, c)
+    rt_oval_pts(rt_core_st, x, y, ex, ey, c)
   }
 }
 
 # Read a framebuffer pixel in screen space (0x00RRGGBB), or 0 if out of bounds.
 # Unlike the plot path this ignores the camera — it reads the actual screen.
-function rt_get_px(x: int, y: int) -> int {
+function rt_get_px(rt_core_st: RtCoreState, x: int, y: int) -> int {
   if x < 0 { return 0 }
   if y < 0 { return 0 }
   if x >= rt_fbw { return 0 }
   if y >= rt_fbh { return 0 }
-  return rt_fb[y * rt_fbw + x]
+  return rt_core_st.rt_fb[y * rt_fbw + x]
 }
 
 # Advance width (pixels) of `text` in the built-in 5x7 font at scale 1: 6 per
@@ -300,84 +311,82 @@ function rt_measure_text(text: string) -> int {
 # ---- camera / clip / blend controls ---------------------------------------
 # Set the world-space camera offset (a world point (wx,wy) draws at
 # (wx-x, wy-y)). Reset to (0,0) to draw a fixed HUD.
-function rt_camera(x: int, y: int) -> void { rt_cam_x = x;  rt_cam_y = y }
+function rt_camera(rt_core_st: mut RtCoreState, x: int, y: int) -> void { rt_core_st.rt_cam_x = x;  rt_core_st.rt_cam_y = y }
 
 # #78 — set the render-time zoom (a Q16.16 scale applied about the screen centre):
 # 1.0 = no zoom, 2.0 = 2x in, 0.5 = out. Deterministic (fixed-point), so it
 # preserves lockstep / replay / world_save. Setting exactly 1.0 turns the zoom
 # path back off, restoring the byte-identical no-zoom blit.
-function rt_camera_zoom(scale: fixed) -> void {
-  rt_cam_zoom = scale
-  rt_cam_zoomed = scale != 1.0
+function rt_camera_zoom(rt_core_st: mut RtCoreState, scale: fixed) -> void {
+  rt_core_st.rt_cam_zoom = scale
+  rt_core_st.rt_cam_zoomed = scale != 1.0
 }
 
 # Ease the camera so (x,y) drifts toward the screen centre by `lerp` (a fixed in
 # 0..1): 0 keeps it still, 65536 (1.0) snaps it centred. Deterministic.
-function rt_camera_follow(x: int, y: int, lerp: fixed) -> void {
+function rt_camera_follow(rt_core_st: mut RtCoreState, x: int, y: int, lerp: fixed) -> void {
   let tx = x - rt_fbw / 2
   let ty = y - rt_fbh / 2
-  let sx = fixed(tx - rt_cam_x) * lerp        # fixed * fixed, then floor to whole pixels
-  let sy = fixed(ty - rt_cam_y) * lerp
-  rt_cam_x += floor(sx)
-  rt_cam_y += floor(sy)
+  let sx = fixed(tx - rt_core_st.rt_cam_x) * lerp        # fixed * fixed, then floor to whole pixels
+  let sy = fixed(ty - rt_core_st.rt_cam_y) * lerp
+  rt_core_st.rt_cam_x += floor(sx)
+  rt_core_st.rt_cam_y += floor(sy)
 }
 
 # Add a random screen shake of up to +/- amount pixels, drawn from the seeded
 # RNG (so a replay shakes identically). Call each frame with a decaying amount;
 # amount <= 0 clears it.
-function rt_camera_shake(amount: int) -> void {
-  if amount <= 0 { rt_shake_x = 0;  rt_shake_y = 0;  return }
-  rt_shake_x = rt_rng_range(-amount, amount)
-  rt_shake_y = rt_rng_range(-amount, amount)
+function rt_camera_shake(rt_core_st: mut RtCoreState, rt_rng_st: mut RtRngState, amount: int) -> void {
+  if amount <= 0 { rt_core_st.rt_shake_x = 0;  rt_core_st.rt_shake_y = 0;  return }
+  rt_core_st.rt_shake_x = rt_rng_range(rt_rng_st, -amount, amount)
+  rt_core_st.rt_shake_y = rt_rng_range(rt_rng_st, -amount, amount)
 }
 
 # Camera.shake_for(amount, frames): shake by up to +/- amount pixels for `frames`
 # frames, then stop — the engine re-rolls the offset at the start of every frame
 # (rt_camera_tick, from the frame clear) so no handler has to count it down. A
 # later call restarts the shake; a bigger amount wins over a smaller one in flight.
-var rt_shake_amount: int = 0
-var rt_shake_left:   int = 0
-function rt_camera_shake_for(amount: int, frames: int) -> void {
-  if amount >= rt_shake_amount { rt_shake_amount = amount;  rt_shake_left = frames }
+function rt_camera_shake_for(rt_core_st: mut RtCoreState, amount: int, frames: int) -> void {
+  if amount >= rt_core_st.rt_shake_amount { rt_core_st.rt_shake_amount = amount;  rt_core_st.rt_shake_left = frames }
 }
-function rt_camera_tick() -> void {
-  if rt_shake_left > 0 {
-    rt_shake_left -= 1
-    rt_camera_shake(rt_shake_amount)
+function rt_camera_tick(rt_core_st: mut RtCoreState, rt_rng_st: mut RtRngState) -> void {
+  if rt_core_st.rt_shake_left > 0 {
+    rt_core_st.rt_shake_left -= 1
+    rt_camera_shake(rt_core_st, rt_rng_st, rt_core_st.rt_shake_amount)
     return
   }
-  if rt_shake_amount > 0 { rt_shake_amount = 0;  rt_camera_shake(0) }
+  if rt_core_st.rt_shake_amount > 0 { rt_core_st.rt_shake_amount = 0;  rt_camera_shake(rt_core_st, rt_rng_st, 0) }
 }
 
 # Restrict drawing to a screen-space rectangle (x, y, width, height).
-function rt_clip(x: int, y: int, width: int, height: int) -> void {
-  rt_clip_x0 = x
-  rt_clip_y0 = y
-  rt_clip_x1 = x + width
-  rt_clip_y1 = y + height
+function rt_clip(rt_core_st: mut RtCoreState, x: int, y: int, width: int, height: int) -> void {
+  rt_core_st.rt_clip_x0 = x
+  rt_core_st.rt_clip_y0 = y
+  rt_core_st.rt_clip_x1 = x + width
+  rt_core_st.rt_clip_y1 = y + height
 }
 
 # Reset the clip rectangle to the whole framebuffer.
-function rt_clip_reset() -> void {
-  rt_clip_x0 = 0
-  rt_clip_y0 = 0
-  rt_clip_x1 = rt_fbw
-  rt_clip_y1 = rt_fbh
+function rt_clip_reset(rt_core_st: mut RtCoreState) -> void {
+  rt_core_st.rt_clip_x0 = 0
+  rt_core_st.rt_clip_y0 = 0
+  rt_core_st.rt_clip_x1 = rt_fbw
+  rt_core_st.rt_clip_y1 = rt_fbh
 }
 
 # Select the pixel blend mode: 0 = replace (default), 1 = additive.
-function rt_blend_mode(mode: int) -> void { rt_blend = mode }
+function rt_blend_mode(rt_core_st: mut RtCoreState, mode: int) -> void { rt_core_st.rt_blend = mode }
 
 # Windowed: hand the framebuffer to the platform layer, which blits it into
 # the view. Headless: nothing to do until shutdown writes the last frame out.
-function rt_present() -> void {
+function rt_present(rt_core_st: RtCoreState) -> void {
   if is_windowed() {
-    win_present(rt_fb, rt_fbw, rt_fbh)
+    win_present(rt_core_st.rt_fb, rt_fbw, rt_fbh)
   }
 }
 
 # ---- text -----------------------------------------------------------------
-function rt_glyph(x: int, y: int, ch: int, colour: int, sc: int) -> void {
+function rt_glyph(rt_core_st: mut RtCoreState, x: int, y: int, ch: int, colour: int, sc: int) -> void {
   var c = ch
   if c >= 'a' {
     if c <= 'z' { c -= 32 }
@@ -392,34 +401,34 @@ function rt_glyph(x: int, y: int, ch: int, colour: int, sc: int) -> void {
     for cc in 0 .. 5 {
       let on = b / 16
       if on == 1 {
-        rt_fill_rect(x + cc * sc, y + row * sc, sc, sc, colour)
+        rt_fill_rect(rt_core_st, x + cc * sc, y + row * sc, sc, sc, colour)
       }
       b = (b - on * 16) * 2
     }
   }
 }
 
-function rt_text(x: int, y: int, s: string, colour: int, sc: int) -> void {
+function rt_text(rt_core_st: mut RtCoreState, x: int, y: int, s: string, colour: int, sc: int) -> void {
   var i = 0
   var cx = x
   var ch = s[0]
   while ch != 0 {
-    rt_glyph(cx, y, ch, colour, sc)
+    rt_glyph(rt_core_st, cx, y, ch, colour, sc)
     cx = cx + 6 * sc
     i += 1
     ch = s[i]
   }
 }
 
-function rt_text_int(x: int, y: int, n: int, colour: int, sc: int) -> void {
+function rt_text_int(rt_core_st: mut RtCoreState, x: int, y: int, n: int, colour: int, sc: int) -> void {
   if n == 0 {
-    rt_glyph(x, y, '0', colour, sc)
+    rt_glyph(rt_core_st, x, y, '0', colour, sc)
     return
   }
   var v = n
   var cx = x
   if v < 0 {
-    rt_glyph(cx, y, '-', colour, sc)
+    rt_glyph(rt_core_st, cx, y, '-', colour, sc)
     cx = cx + 6 * sc
     v = -v
   }
@@ -435,46 +444,46 @@ function rt_text_int(x: int, y: int, n: int, colour: int, sc: int) -> void {
     for k in 1 .. p {
       div *= 10
     }
-    rt_glyph(cx, y, 48 + (v / div) % 10, colour, sc)
+    rt_glyph(rt_core_st, cx, y, 48 + (v / div) % 10, colour, sc)
     cx = cx + 6 * sc
     p -= 1
   }
 }
 
 # ---- registers ------------------------------------------------------------
-function rt_reg(i: int) -> int {
+function rt_reg(rt_core_st: RtCoreState, i: int) -> int {
   if i < 0 { return 0 }
   if i >= 64 { return 0 }
-  return rt_regs[i]
+  return rt_core_st.rt_regs[i]
 }
 
-function rt_set_reg(i: int, v: int) -> void {
+function rt_set_reg(rt_core_st: mut RtCoreState, i: int, v: int) -> void {
   if i < 0 { return }
   if i >= 64 { return }
-  rt_regs[i] = v
+  rt_core_st.rt_regs[i] = v
 }
 
 # ---- platform: input ------------------------------------------------------
-function rt_poll() -> int {
+function rt_poll(rt_core_st: mut RtCoreState) -> int {
   if is_windowed() {
     return win_poll()
   }
   let c = read_char()
   if c < 0 {
-    rt_alive = 0
+    rt_core_st.rt_alive = 0
     return 0
   }
   if c == 'q' {          # 'q' quits, as in the headless C platform
-    rt_alive = 0
+    rt_core_st.rt_alive = 0
   }
   return c
 }
 
-function rt_running() -> bool {
+function rt_running(rt_core_st: RtCoreState) -> bool {
   if is_windowed() {
     return win_running()
   }
-  return rt_alive != 0
+  return rt_core_st.rt_alive != 0
 }
 
 # ---- writing the frame out ------------------------------------------------
@@ -516,7 +525,7 @@ function rt_put_int(buf: pointer, at: int, v: int) -> int {
   return n
 }
 
-function rt_dump_ppm(path: string) -> void {
+function rt_dump_ppm(rt_core_st: RtCoreState, path: string) -> void {
   let f = file_open(path, "wb")
   if (f == null) { return }
 
@@ -531,7 +540,7 @@ function rt_dump_ppm(path: string) -> void {
   let px = rt_fbw * rt_fbh
   let buf = bytes(px * 3)
   for i in 0 .. px {
-    let c = rt_fb[i]
+    let c = rt_core_st.rt_fb[i]
     buf[i * 3] = (c / 65536) % 256
     buf[i * 3 + 1] = (c / 256) % 256
     buf[i * 3 + 2] = c % 256
@@ -553,91 +562,85 @@ import "grid.ludic"
 # A character grid the game paints with map_row() and reads with tile(). Stored
 # as one byte per cell in a flat buffer; out-of-bounds reads answer '#' so a
 # caller can treat the edge of the world as wall without special-casing it.
-var rt_map:  pointer = null
-var rt_mapw: int = 0
-var rt_maph: int = 0
 
-function rt_map_size(w: int, h: int) -> void {
-  rt_mapw = clamp(w, 0, 96)
-  rt_maph = clamp(h, 0, 64)
-  fill(rt_map, ' ', 96 * 64)
+function rt_map_size(rt_core_st: mut RtCoreState, w: int, h: int) -> void {
+  rt_core_st.rt_mapw = clamp(w, 0, 96)
+  rt_core_st.rt_maph = clamp(h, 0, 64)
+  fill(rt_core_st.rt_map, ' ', 96 * 64)
 }
 
-function rt_map_row(y: int, s: string) -> void {
+function rt_map_row(rt_core_st: mut RtCoreState, y: int, s: string) -> void {
   if y < 0 { return }
   if y >= 64 { return }
   var x = 0
   var ch = s[0]
   while ch != 0 {
     if x >= 96 { return }
-    rt_map[y * 96 + x] = ch
+    rt_core_st.rt_map[y * 96 + x] = ch
     x += 1
     ch = s[x]
   }
 }
 
 # ---- the cell API: a game edits the grid in place instead of keeping its own copy
-function rt_map_set(x: int, y: int, glyph: int) -> void {
-  if (x < 0) or (y < 0) or (x >= rt_mapw) or (y >= rt_maph) { return }
-  rt_map[y * 96 + x] = glyph
+function rt_map_set(rt_core_st: mut RtCoreState, x: int, y: int, glyph: int) -> void {
+  if (x < 0) or (y < 0) or (x >= rt_core_st.rt_mapw) or (y >= rt_core_st.rt_maph) { return }
+  rt_core_st.rt_map[y * 96 + x] = glyph
 }
-function rt_map_fill(glyph: int) -> void {
+function rt_map_fill(rt_core_st: mut RtCoreState, glyph: int) -> void {
   var y = 0
-  while y < rt_maph { var x = 0;  while x < rt_mapw { rt_map[y * 96 + x] = glyph;  x += 1 };  y += 1 }
+  while y < rt_core_st.rt_maph { var x = 0;  while x < rt_core_st.rt_mapw { rt_core_st.rt_map[y * 96 + x] = glyph;  x += 1 };  y += 1 }
 }
 # every cell of the rectangle (x, y, w, h)
-function rt_map_rect(x: int, y: int, w: int, h: int, glyph: int) -> void {
+function rt_map_rect(rt_core_st: mut RtCoreState, x: int, y: int, w: int, h: int, glyph: int) -> void {
   var yy = y
-  while yy < y + h { var xx = x;  while xx < x + w { rt_map_set(xx, yy, glyph);  xx += 1 };  yy += 1 }
+  while yy < y + h { var xx = x;  while xx < x + w { rt_map_set(rt_core_st, xx, yy, glyph);  xx += 1 };  yy += 1 }
 }
 # the outermost ring of cells
-function rt_map_border(glyph: int) -> void {
-  rt_map_rect(0, 0, rt_mapw, 1, glyph)
-  rt_map_rect(0, rt_maph - 1, rt_mapw, 1, glyph)
-  rt_map_rect(0, 0, 1, rt_maph, glyph)
-  rt_map_rect(rt_mapw - 1, 0, 1, rt_maph, glyph)
+function rt_map_border(rt_core_st: mut RtCoreState, glyph: int) -> void {
+  rt_map_rect(rt_core_st, 0, 0, rt_core_st.rt_mapw, 1, glyph)
+  rt_map_rect(rt_core_st, 0, rt_core_st.rt_maph - 1, rt_core_st.rt_mapw, 1, glyph)
+  rt_map_rect(rt_core_st, 0, 0, 1, rt_core_st.rt_maph, glyph)
+  rt_map_rect(rt_core_st, rt_core_st.rt_mapw - 1, 0, 1, rt_core_st.rt_maph, glyph)
 }
 # a random cell holding `glyph` (seeded RNG): random tries, then a sweep; (-1, -1) if none
-function rt_map_random_cell(glyph: int) -> IVec2 {
+function rt_map_random_cell(rt_core_st: RtCoreState, rt_rng_st: mut RtRngState, glyph: int) -> IVec2 {
   var tries = 0
   while tries < 64 {
-    let x = rt_rng_range(0, rt_mapw - 1)
-    let y = rt_rng_range(0, rt_maph - 1)
-    if rt_tile(x, y) == glyph { return IVec2.make(x, y) }
+    let x = rt_rng_range(rt_rng_st, 0, rt_core_st.rt_mapw - 1)
+    let y = rt_rng_range(rt_rng_st, 0, rt_core_st.rt_maph - 1)
+    if rt_tile(rt_core_st, x, y) == glyph { return IVec2.make(x, y) }
     tries += 1
   }
   var y2 = 0
-  while y2 < rt_maph { var x2 = 0;  while x2 < rt_mapw { if rt_tile(x2, y2) == glyph { return IVec2.make(x2, y2) };  x2 += 1 };  y2 += 1 }
+  while y2 < rt_core_st.rt_maph { var x2 = 0;  while x2 < rt_core_st.rt_mapw { if rt_tile(rt_core_st, x2, y2) == glyph { return IVec2.make(x2, y2) };  x2 += 1 };  y2 += 1 }
   return IVec2.make(-1, -1)
 }
 # a random cell holding `glyph` at least `min_tiles` from `from` (tiles); falls back to any such cell
-function rt_map_random_cell_far(glyph: int, from: IVec2, min_tiles: int) -> IVec2 {
-  var tile = rt_map_random_cell(glyph)
+function rt_map_random_cell_far(rt_core_st: RtCoreState, rt_rng_st: mut RtRngState, glyph: int, from: IVec2, min_tiles: int) -> IVec2 {
+  var tile = rt_map_random_cell(rt_core_st, rt_rng_st, glyph)
   var tries = 0
   while tries < 40 {
     if not IVec2.within(tile, from, min_tiles - 1) { return tile }
-    tile = rt_map_random_cell(glyph)
+    tile = rt_map_random_cell(rt_core_st, rt_rng_st, glyph)
     tries += 1
   }
   return tile
 }
 # the solid glyphs, as the move system read them from the Solids config (0 = none)
-var rt_map_solid1: int = 0
-var rt_map_solid2: int = 0
-var rt_map_tile_px: int = 16
-function rt_map_tile_size() -> int { return rt_map_tile_px }
-function rt_map_is_solid(x: int, y: int) -> bool {
-  if rt_map_solid1 == 0 { return false }        # no Solids config: nothing is solid
-  let g = rt_tile(x, y)
-  if (x < 0) or (y < 0) or (x >= rt_mapw) or (y >= rt_maph) { return true }
-  if (rt_map_solid1 != 0) and (g == rt_map_solid1) { return true }
-  if (rt_map_solid2 != 0) and (g == rt_map_solid2) { return true }
+function rt_map_tile_size(rt_core_st: RtCoreState) -> int { return rt_core_st.rt_map_tile_px }
+function rt_map_is_solid(rt_core_st: RtCoreState, x: int, y: int) -> bool {
+  if rt_core_st.rt_map_solid1 == 0 { return false }        # no Solids config: nothing is solid
+  let g = rt_tile(rt_core_st, x, y)
+  if (x < 0) or (y < 0) or (x >= rt_core_st.rt_mapw) or (y >= rt_core_st.rt_maph) { return true }
+  if (rt_core_st.rt_map_solid1 != 0) and (g == rt_core_st.rt_map_solid1) { return true }
+  if (rt_core_st.rt_map_solid2 != 0) and (g == rt_core_st.rt_map_solid2) { return true }
   return false
 }
-function rt_map_is_solid_at(px: int, py: int) -> bool { return rt_map_is_solid(px / rt_map_tile_px, py / rt_map_tile_px) }
-function rt_map_to_tile(pixel: IVec2) -> IVec2 { return IVec2.make(pixel.x / rt_map_tile_px, pixel.y / rt_map_tile_px) }
-function rt_map_width() -> int { return rt_mapw }
-function rt_map_height() -> int { return rt_maph }
+function rt_map_is_solid_at(rt_core_st: RtCoreState, px: int, py: int) -> bool { return rt_map_is_solid(rt_core_st, px / rt_core_st.rt_map_tile_px, py / rt_core_st.rt_map_tile_px) }
+function rt_map_to_tile(rt_core_st: RtCoreState, pixel: IVec2) -> IVec2 { return IVec2.make(pixel.x / rt_core_st.rt_map_tile_px, pixel.y / rt_core_st.rt_map_tile_px) }
+function rt_map_width(rt_core_st: RtCoreState) -> int { return rt_core_st.rt_mapw }
+function rt_map_height(rt_core_st: RtCoreState) -> int { return rt_core_st.rt_maph }
 
 # IVec2.heading / along / step and Angle.diff_degrees — integer-degree geometry
 function rt_ivec_heading(a: IVec2, b: IVec2) -> int {
@@ -659,22 +662,22 @@ function rt_angle_diff_degrees(a: int, b: int) -> int {
 }
 
 # Screen.bar: a filled meter — `value` of `max` in `color` over a `back` track
-function rt_bar(x: int, y: int, w: int, h: int, value: int, max: int, color: int, back: int) -> void {
-  rt_fill_rect(x, y, w, h, back)
+function rt_bar(rt_core_st: mut RtCoreState, x: int, y: int, w: int, h: int, value: int, max: int, color: int, back: int) -> void {
+  rt_fill_rect(rt_core_st, x, y, w, h, back)
   var filled = 0
   if max > 0 { filled = clamp(value, 0, max) * w / max }
-  if filled > 0 { rt_fill_rect(x, y, filled, h, color) }
+  if filled > 0 { rt_fill_rect(rt_core_st, x, y, filled, h, color) }
 }
 
 # List.sample(pool, count): `count` picks from an int slice, distinct while the
 # pool has enough, repeating a valid pick when it does not; empty in -> zeros
-function rt_list_sample(pool: []int, count: int) -> []int {
+function rt_list_sample(rt_rng_st: mut RtRngState, pool: []int, count: int) -> []int {
   let out = new []int
   let n = len(pool)
   var i = 0
   while i < count {
     if n == 0 { push(out, 0);  i += 1;  continue }
-    var pick = rt_rng_range(0, n - 1)
+    var pick = rt_rng_range(rt_rng_st, 0, n - 1)
     var distinct = n > i
     var tries = 0
     while distinct and (tries < 64) {
@@ -682,7 +685,7 @@ function rt_list_sample(pool: []int, count: int) -> []int {
       var j = 0
       while j < len(out) { if out[j] == pool[pick] { seen = true };  j += 1 }
       if not seen { break }
-      pick = rt_rng_range(0, n - 1)
+      pick = rt_rng_range(rt_rng_st, 0, n - 1)
       tries += 1
     }
     push(out, pool[pick])
@@ -691,62 +694,61 @@ function rt_list_sample(pool: []int, count: int) -> []int {
   return out
 }
 
-function rt_tile(x: int, y: int) -> int {
+function rt_tile(rt_core_st: RtCoreState, x: int, y: int) -> int {
   if x < 0 { return 35 }
   if y < 0 { return 35 }
-  if x >= rt_mapw { return 35 }
-  if y >= rt_maph { return 35 }
-  return rt_map[y * 96 + x]
+  if x >= rt_core_st.rt_mapw { return 35 }
+  if y >= rt_core_st.rt_maph { return 35 }
+  return rt_core_st.rt_map[y * 96 + x]
 }
 
 # ---- status line ----------------------------------------------------------
 # One persistent string of feedback/dialogue, copied into runtime-owned memory
 # so it survives whatever the caller does with the original.
-var rt_statusbuf: pointer = null
 
-function rt_status(s: string) -> void {
+function rt_status(rt_core_st: mut RtCoreState, s: string) -> void {
   var i = 0
   var ch = s[0]
   while ch != 0 {
     if i >= 95 { ch = 0 }
     if ch != 0 {
-      rt_statusbuf[i] = ch
+      rt_core_st.rt_statusbuf[i] = ch
       i += 1
       ch = s[i]
     }
   }
-  rt_statusbuf[i] = 0
+  rt_core_st.rt_statusbuf[i] = 0
 }
 
-function rt_status_text() -> pointer {
-  return rt_statusbuf
+function rt_status_text(rt_core_st: RtCoreState) -> pointer {
+  return rt_core_st.rt_statusbuf
 }
 
 # ---- snapshot: the runtime serialises its own half ------------------------
 # The compiler writes the ECS (entities, components, archetype kinds) because
 # only it knows their shape. Everything below belongs to the runtime, so the
 # runtime writes it — same order both ways.
-function rt_save_state(f: pointer) -> void {
+function rt_save_state(rt_core_st: RtCoreState, rt_rng_st: RtRngState, f: pointer) -> void {
   let w: words = words(4)
-  w[0] = rt_rng
-  w[1] = rt_mapw
-  w[2] = rt_maph
-  w[3] = rt_alive
+  w[0] = rt_rng_st.rt_rng
+  w[1] = rt_core_st.rt_mapw
+  w[2] = rt_core_st.rt_maph
+  w[3] = rt_core_st.rt_alive
   file_write(f, w, 16)
-  file_write(f, rt_regs, 64 * 4)
-  file_write(f, rt_map, 96 * 64)
-  file_write(f, rt_statusbuf, 96)
+  file_write(f, rt_core_st.rt_regs, 64 * 4)
+  file_write(f, rt_core_st.rt_map, 96 * 64)
+  file_write(f, rt_core_st.rt_statusbuf, 96)
   free(w)
 }
 
-function rt_load_state(f: pointer) -> void {
+function rt_load_state(rt_core_st: mut RtCoreState, rt_rng_st: mut RtRngState, f: pointer) -> void {
   let w: words = words(4)
   file_read(f, w, 16)
-  rt_rng = w[0]
-  rt_mapw = w[1]
-  rt_maph = w[2]
-  file_read(f, rt_regs, 64 * 4)
-  file_read(f, rt_map, 96 * 64)
-  file_read(f, rt_statusbuf, 96)
+  rt_rng_st.rt_rng = w[0]
+  rt_core_st.rt_mapw = w[1]
+  rt_core_st.rt_maph = w[2]
+  file_read(f, rt_core_st.rt_regs, 64 * 4)
+  file_read(f, rt_core_st.rt_map, 96 * 64)
+  file_read(f, rt_core_st.rt_statusbuf, 96)
   free(w)
 }

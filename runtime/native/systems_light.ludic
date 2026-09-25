@@ -51,7 +51,7 @@ function esys_pos_y(e: int, p: int, fy: int) -> int {
   return 0
 }
 
-function esys_light2d() -> void {
+function esys_light2d(rt_core_st: mut RtCoreState, rt_light_st: mut RtLightState) -> void {
   let pl = World.prop_id("Light2D")
   if pl < 0 { return }
 
@@ -62,12 +62,12 @@ function esys_light2d() -> void {
     let af = World.field_id(pa, "color")
     let ae = World.query_next(pa, 0)
     if ae >= 0 {
-      if af >= 0 { light_ambient(World.get(ae, pa, af)) }
+      if af >= 0 { light_ambient(rt_core_st, World.get(ae, pa, af)) }
     }
   }
 
   # 2. occluders — re-register every `Occluder` as a shadow caster this frame.
-  light_clear_occluders()
+  light_clear_occluders(rt_light_st)
   let po = World.prop_id("Occluder")
   if po >= 0 {
     let oxf = World.field_id(po, "x")
@@ -82,7 +82,7 @@ function esys_light2d() -> void {
       var oh = 0
       if owf >= 0 { ow = World.get(oe, po, owf) }
       if ohf >= 0 { oh = World.get(oe, po, ohf) }
-      light_occlude(ox, oy, ow, oh)
+      light_occlude(rt_light_st, ox, oy, ow, oh)
       oe = World.query_next(po, oe + 1)
     }
   }
@@ -120,18 +120,18 @@ function esys_light2d() -> void {
     # cone/soft light does not bleed its settings onto the next.
     var falloff = 1
     if lff >= 0 { falloff = World.get(e, pl, lff) }
-    light_set_falloff(falloff)
+    light_set_falloff(rt_light_st, falloff)
     var soft = 0
     if lkf >= 0 { soft = World.get(e, pl, lkf) }
-    light_set_soft(soft)
-    if lgf >= 0 { light_set_gel(World.get(e, pl, lgf)) } else { light_clear_gel() }
+    light_set_soft(rt_light_st, soft)
+    if lgf >= 0 { light_set_gel(rt_light_st, World.get(e, pl, lgf)) } else { light_clear_gel(rt_light_st) }
 
     var spread = -1
     if lsf >= 0 { spread = World.get(e, pl, lsf) }
     var direction = 0
     if ldf >= 0 { direction = World.get(e, pl, ldf) }
-    if spread >= 0 { light_spot(x, y, radius, color, energy, direction, spread) }
-    else { light_point(x, y, radius, color, energy) }
+    if spread >= 0 { light_spot(rt_core_st, rt_light_st, x, y, radius, color, energy, direction, spread) }
+    else { light_point(rt_core_st, rt_light_st, x, y, radius, color, energy) }
     e = World.query_next(pl, e + 1)
   }
 

@@ -31,24 +31,26 @@ extern function lu_udp_local_ip() -> int = "lu_udp_local_ip"
 
 const UDP_HANDLES: int = 16
 
-var u_ready: bool = false
-var u_ipport: pointer = null     # the native side writes the sender here (two i32s)
-var u_from_ip: words = null      # per handle: the sender of the last datagram read
-var u_from_port: words = null
+export state RtUdpState {
+  u_ready: bool = false
+  u_ipport: pointer = null     # the native side writes the sender here (two i32s)
+  u_from_ip: words = null      # per handle: the sender of the last datagram read
+  u_from_port: words = null
+}
 
-function udp_init() -> void {
-  if u_ready { return }
-  u_ipport = bytes(8)
-  u_from_ip = words(UDP_HANDLES + 1)
-  u_from_port = words(UDP_HANDLES + 1)
+function udp_init(rt_udp_st: mut RtUdpState) -> void {
+  if rt_udp_st.u_ready { return }
+  rt_udp_st.u_ipport = bytes(8)
+  rt_udp_st.u_from_ip = words(UDP_HANDLES + 1)
+  rt_udp_st.u_from_port = words(UDP_HANDLES + 1)
   var i = 0
-  while i <= UDP_HANDLES { u_from_ip[i] = 0;  u_from_port[i] = 0;  i += 1 }
-  u_ready = true
+  while i <= UDP_HANDLES { rt_udp_st.u_from_ip[i] = 0;  rt_udp_st.u_from_port[i] = 0;  i += 1 }
+  rt_udp_st.u_ready = true
 }
 
 # a socket bound to `port` on every interface (0 = any free port): a handle, or 0
-function udp_open(port: int) -> int {
-  udp_init()
+function udp_open(rt_udp_st: mut RtUdpState, port: int) -> int {
+  udp_init(rt_udp_st)
   if (port < 0) or (port > 65535) { return 0 }
   return lu_udp_open(port)
 }
@@ -60,27 +62,27 @@ function udp_send(h: int, ip: int, port: int, buf: []byte, n: int) -> int {
   return lu_udp_send(h, ip, port, buf, n)
 }
 # the next waiting datagram, up to `cap` bytes, into `buf`: its length, or 0 when none waits
-function udp_recv(h: int, buf: []byte, cap0: int) -> int {
-  udp_init()
+function udp_recv(rt_udp_st: mut RtUdpState, h: int, buf: []byte, cap0: int) -> int {
+  udp_init(rt_udp_st)
   var cap = cap0
   if buf != null and cap > len(buf) { cap = len(buf) }
   if (buf == null) or (cap <= 0) { return 0 }
-  let n = lu_udp_recv(h, buf, cap, u_ipport)
+  let n = lu_udp_recv(h, buf, cap, rt_udp_st.u_ipport)
   if (n > 0) and (h >= 1) and (h <= UDP_HANDLES) {
-    u_from_ip[h] = udp_le32(u_ipport, 0)
-    u_from_port[h] = udp_le32(u_ipport, 4)
+    rt_udp_st.u_from_ip[h] = udp_le32(rt_udp_st.u_ipport, 0)
+    rt_udp_st.u_from_port[h] = udp_le32(rt_udp_st.u_ipport, 4)
   }
   return n
 }
-function udp_from_ip(h: int) -> int {
-  udp_init()
+function udp_from_ip(rt_udp_st: mut RtUdpState, h: int) -> int {
+  udp_init(rt_udp_st)
   if (h < 1) or (h > UDP_HANDLES) { return 0 }
-  return u_from_ip[h]
+  return rt_udp_st.u_from_ip[h]
 }
-function udp_from_port(h: int) -> int {
-  udp_init()
+function udp_from_port(rt_udp_st: mut RtUdpState, h: int) -> int {
+  udp_init(rt_udp_st)
   if (h < 1) or (h > UDP_HANDLES) { return 0 }
-  return u_from_port[h]
+  return rt_udp_st.u_from_port[h]
 }
 function udp_close(h: int) -> void { lu_udp_close(h) }
 function udp_resolve(name: pointer) -> int {

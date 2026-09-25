@@ -1027,7 +1027,7 @@ function parse_one_decl() -> void {
   if is_id("component") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].text == "{") { parse_ui_component(); return }  # L11
   if is_id("state") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].text == "{") { parse_state(); return }   # 0.S
   if is_id("var") {
-    if not g_allow_globals and not has_sub(g_parse_file, "runtime/native/") {   # the runtime: until it is migrated (0.S3)
+    if not g_allow_globals {
       perr(`a module-level var is refused: a module's changing data is its state (state Name {{ ... }}), passed to the functions that use it - or, if it never changes, a let`)
     }
     push(prog, parse_var())

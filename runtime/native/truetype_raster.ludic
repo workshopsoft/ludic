@@ -2,13 +2,13 @@
 # and text drawing. Split out of truetype.ludic (the sfnt/cmap/outline half).
 
 # ---- rasterization --------------------------------------------------------
-function ed_add(x0: fixed, y0: fixed, x1: fixed, y1: fixed) -> void {
-  if ed_n >= TT_EDGES { return }
-  ed_x0[ed_n] = x0
-  ed_y0[ed_n] = y0
-  ed_x1[ed_n] = x1
-  ed_y1[ed_n] = y1
-  ed_n += 1
+function ed_add(rt_truetype_st: mut RtTruetypeState, x0: fixed, y0: fixed, x1: fixed, y1: fixed) -> void {
+  if rt_truetype_st.ed_n >= TT_EDGES { return }
+  rt_truetype_st.ed_x0[rt_truetype_st.ed_n] = x0
+  rt_truetype_st.ed_y0[rt_truetype_st.ed_n] = y0
+  rt_truetype_st.ed_x1[rt_truetype_st.ed_n] = x1
+  rt_truetype_st.ed_y1[rt_truetype_st.ed_n] = y1
+  rt_truetype_st.ed_n += 1
 }
 
 function tt_isqrt(v: int) -> int {
@@ -24,7 +24,7 @@ function tt_isqrt(v: int) -> int {
 }
 
 # flatten one quadratic Bézier into line segments, subdivided by chord length
-function ed_quad(x0: fixed, y0: fixed, cx: fixed, cy: fixed, x1: fixed, y1: fixed) -> void {
+function ed_quad(rt_truetype_st: mut RtTruetypeState, x0: fixed, y0: fixed, cx: fixed, cy: fixed, x1: fixed, y1: fixed) -> void {
   let dx = floor(x1) - floor(x0)
   let dy = floor(y1) - floor(y0)
   var n = tt_isqrt(dx * dx + dy * dy) / 3
@@ -37,7 +37,7 @@ function ed_quad(x0: fixed, y0: fixed, cx: fixed, cy: fixed, x1: fixed, y1: fixe
     let u = 1.0 - t
     let qx = u * u * x0 + 2.0 * u * t * cx + t * t * x1
     let qy = u * u * y0 + 2.0 * u * t * cy + t * t * y1
-    ed_add(px, py, qx, qy)
+    ed_add(rt_truetype_st, px, py, qx, qy)
     px = qx
     py = qy
   }
@@ -45,31 +45,34 @@ function ed_quad(x0: fixed, y0: fixed, cx: fixed, cy: fixed, x1: fixed, y1: fixe
 
 # Rasterize a glyph at `px` pixels. Coverage lands in a fresh buffer; the
 # geometry is left in gr_* for the caller.
-var gr_w:   int = 0
-var gr_h:   int = 0
-var gr_ox:  int = 0
-var gr_oy:  int = 0
-var gr_adv: int = 0
+export state RtTruetypeRasterState {
+  gr_w:   int = 0
+  gr_h:   int = 0
+  gr_ox:  int = 0
+  gr_oy:  int = 0
+  gr_adv: int = 0
+  u8_next: int = 0        # byte index just past the codepoint last decoded
+}
 
-function tt_raster(id: int, gid: int, px: int) -> pointer {
-  let upem = tt_upem[id]
+function tt_raster(rt_truetype_raster_st: mut RtTruetypeRasterState, rt_truetype_st: mut RtTruetypeState, id: int, gid: int, px: int) -> pointer {
+  let upem = rt_truetype_st.tt_upem[id]
   let scale = fixed(px) / upem
-  gr_adv = floor(fixed(tt_advance(id, gid)) * scale + 0.5)
-  gr_w = 0
-  gr_h = 0
-  ol_n = 0
-  ol_ne = 0
-  ed_n = 0
-  tt_load_outline(id, gid, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0)
-  if ol_n == 0 { return null }
+  rt_truetype_raster_st.gr_adv = floor(fixed(tt_advance(rt_truetype_st, id, gid)) * scale + 0.5)
+  rt_truetype_raster_st.gr_w = 0
+  rt_truetype_raster_st.gr_h = 0
+  rt_truetype_st.ol_n = 0
+  rt_truetype_st.ol_ne = 0
+  rt_truetype_st.ed_n = 0
+  tt_load_outline(rt_truetype_st, id, gid, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0)
+  if rt_truetype_st.ol_n == 0 { return null }
 
   var minx = 999999.0
   var miny = 999999.0
   var maxx = 0.0 - 999999.0
   var maxy = 0.0 - 999999.0
-  for i in 0 .. ol_n {
-    let X = ol_x[i] * scale
-    let Y = ol_y[i] * scale
+  for i in 0 .. rt_truetype_st.ol_n {
+    let X = rt_truetype_st.ol_x[i] * scale
+    let Y = rt_truetype_st.ol_y[i] * scale
     if X < minx { minx = X }
     if X > maxx { maxx = X }
     if Y < miny { miny = Y }
@@ -87,64 +90,64 @@ function tt_raster(id: int, gid: int, px: int) -> pointer {
   if H <= 0 { return null }
   if W > 1024 { return null }
   if H > 1024 { return null }
-  gr_w = W
-  gr_h = H
-  gr_ox = x0
-  gr_oy = y1
+  rt_truetype_raster_st.gr_w = W
+  rt_truetype_raster_st.gr_h = H
+  rt_truetype_raster_st.gr_ox = x0
+  rt_truetype_raster_st.gr_oy = y1
 
   # build edges in supersample space (y grows downward)
   var start = 0
-  for ci in 0 .. ol_ne {
-    let end = ol_ends[ci]
+  for ci in 0 .. rt_truetype_st.ol_ne {
+    let end = rt_truetype_st.ol_ends[ci]
     let cnt = end - start
     if cnt >= 2 {
       var first_on = -1
       for i in 0 .. cnt {
-        if first_on < 0 { if ol_on[start + i] == 1 { first_on = i } }
+        if first_on < 0 { if rt_truetype_st.ol_on[start + i] == 1 { first_on = i } }
       }
       var sx = 0.0
       var sy = 0.0
       if first_on < 0 {
         # all off-curve: start at the midpoint of the first and last point
-        let mx = (ol_x[start] + ol_x[start + cnt - 1]) / 2
-        let my = (ol_y[start] + ol_y[start + cnt - 1]) / 2
+        let mx = (rt_truetype_st.ol_x[start] + rt_truetype_st.ol_x[start + cnt - 1]) / 2
+        let my = (rt_truetype_st.ol_y[start] + rt_truetype_st.ol_y[start + cnt - 1]) / 2
         sx = (mx * scale - fixed(x0)) * TT_SS
         sy = (fixed(y1) - my * scale) * TT_SS
         first_on = 0
       } else {
-        sx = (ol_x[start + first_on] * scale - fixed(x0)) * TT_SS
-        sy = (fixed(y1) - ol_y[start + first_on] * scale) * TT_SS
+        sx = (rt_truetype_st.ol_x[start + first_on] * scale - fixed(x0)) * TT_SS
+        sy = (fixed(y1) - rt_truetype_st.ol_y[start + first_on] * scale) * TT_SS
       }
       var curx = sx
       var cury = sy
       var step = 0
       while step < cnt {
         let i = (first_on + 1 + step) % cnt
-        let ix = (ol_x[start + i] * scale - fixed(x0)) * TT_SS
-        let iy = (fixed(y1) - ol_y[start + i] * scale) * TT_SS
-        if ol_on[start + i] == 1 {
-          ed_add(curx, cury, ix, iy)
+        let ix = (rt_truetype_st.ol_x[start + i] * scale - fixed(x0)) * TT_SS
+        let iy = (fixed(y1) - rt_truetype_st.ol_y[start + i] * scale) * TT_SS
+        if rt_truetype_st.ol_on[start + i] == 1 {
+          ed_add(rt_truetype_st, curx, cury, ix, iy)
           curx = ix
           cury = iy
         } else {
           var j = (i + 1) % cnt
-          let jx = (ol_x[start + j] * scale - fixed(x0)) * TT_SS
-          let jy = (fixed(y1) - ol_y[start + j] * scale) * TT_SS
+          let jx = (rt_truetype_st.ol_x[start + j] * scale - fixed(x0)) * TT_SS
+          let jy = (fixed(y1) - rt_truetype_st.ol_y[start + j] * scale) * TT_SS
           var ex = jx
           var ey = jy
-          if ol_on[start + j] == 1 {
+          if rt_truetype_st.ol_on[start + j] == 1 {
             step += 1
           } else {
             ex = (ix + jx) / 2                       # implied on-curve midpoint
             ey = (iy + jy) / 2
           }
-          ed_quad(curx, cury, ix, iy, ex, ey)
+          ed_quad(rt_truetype_st, curx, cury, ix, iy, ex, ey)
           curx = ex
           cury = ey
         }
         step += 1
       }
-      ed_add(curx, cury, sx, sy)
+      ed_add(rt_truetype_st, curx, cury, sx, sy)
     }
     start = end
   }
@@ -158,49 +161,49 @@ function tt_raster(id: int, gid: int, px: int) -> pointer {
   for sy in 0 .. SH {
     let yc = fixed(sy) + 0.5
     var m = 0
-    for i in 0 .. ed_n {
-      let ya = ed_y0[i]
-      let yb = ed_y1[i]
+    for i in 0 .. rt_truetype_st.ed_n {
+      let ya = rt_truetype_st.ed_y0[i]
+      let yb = rt_truetype_st.ed_y1[i]
       var hit = 0
       if ya <= yc { if yb > yc { hit = 1 } }
       if yb <= yc { if ya > yc { hit = 1 } }
       if hit == 1 {
         let t = (yc - ya) / (yb - ya)
-        sc_x[m] = ed_x0[i] + t * (ed_x1[i] - ed_x0[i])
-        if yb > ya { sc_d[m] = 1 } else { sc_d[m] = -1 }
+        rt_truetype_st.sc_x[m] = rt_truetype_st.ed_x0[i] + t * (rt_truetype_st.ed_x1[i] - rt_truetype_st.ed_x0[i])
+        if yb > ya { rt_truetype_st.sc_d[m] = 1 } else { rt_truetype_st.sc_d[m] = -1 }
         m += 1
       }
     }
     # insertion sort the crossings by x
     for i in 1 .. m {
-      let kx = sc_x[i]
-      let kd = sc_d[i]
+      let kx = rt_truetype_st.sc_x[i]
+      let kd = rt_truetype_st.sc_d[i]
       var j = i - 1
       var placed = 0
       while j >= 0 {
-        if sc_x[j] > kx {
-          sc_x[j + 1] = sc_x[j]
-          sc_d[j + 1] = sc_d[j]
+        if rt_truetype_st.sc_x[j] > kx {
+          rt_truetype_st.sc_x[j + 1] = rt_truetype_st.sc_x[j]
+          rt_truetype_st.sc_d[j + 1] = rt_truetype_st.sc_d[j]
           j -= 1
         } else {
-          sc_x[j + 1] = kx
-          sc_d[j + 1] = kd
+          rt_truetype_st.sc_x[j + 1] = kx
+          rt_truetype_st.sc_d[j + 1] = kd
           placed = 1
           j = -1
         }
       }
       if placed == 0 {
-        sc_x[0] = kx
-        sc_d[0] = kd
+        rt_truetype_st.sc_x[0] = kx
+        rt_truetype_st.sc_d[0] = kd
       }
     }
     var wind = 0
     let oy = sy / TT_SS
     for i in 0 .. m - 1 {
-      wind += sc_d[i]
+      wind += rt_truetype_st.sc_d[i]
       if wind != 0 {
-        var xa = sc_x[i]
-        var xb = sc_x[i + 1]
+        var xa = rt_truetype_st.sc_x[i]
+        var xb = rt_truetype_st.sc_x[i + 1]
         if xa < 0.0 { xa = 0.0 }
         if xb > fixed(SW) { xb = fixed(SW) }
         if xb > xa {
@@ -235,41 +238,40 @@ function gc_hash(font: int, cp: int, px: int) -> int {
   return ((((cp * 2654435761) ^ (font << 20)) ^ (px << 8)) & (TT_GC - 1))
 }
 
-function tt_glyph_get(font: int, cp: int, px: int) -> int {
+function tt_glyph_get(rt_truetype_raster_st: mut RtTruetypeRasterState, rt_truetype_st: mut RtTruetypeState, font: int, cp: int, px: int) -> int {
   let h = gc_hash(font, cp, px)
   for k in 0 .. 8 {
     let s = ((h + k) & (TT_GC - 1))
-    if gc_used[s] == 1 {
-      if gc_font[s] == font {
-        if gc_cp[s] == cp {
-          if gc_px[s] == px { return s }
+    if rt_truetype_st.gc_used[s] == 1 {
+      if rt_truetype_st.gc_font[s] == font {
+        if rt_truetype_st.gc_cp[s] == cp {
+          if rt_truetype_st.gc_px[s] == px { return s }
         }
       }
     }
   }
   let s = h
-  if gc_used[s] == 1 {
-    let old = gc_bmp[s]
+  if rt_truetype_st.gc_used[s] == 1 {
+    let old = rt_truetype_st.gc_bmp[s]
     if (old == null) == false { free(old) }
   }
-  let bmp = tt_raster(font, tt_glyph_index(font, cp), px)
-  gc_bmp[s] = bmp
-  gc_used[s] = 1
-  gc_font[s] = font
-  gc_cp[s] = cp
-  gc_px[s] = px
-  gc_w[s] = gr_w
-  gc_h[s] = gr_h
-  gc_ox[s] = gr_ox
-  gc_oy[s] = gr_oy
-  gc_adv[s] = gr_adv
+  let bmp = tt_raster(rt_truetype_raster_st, rt_truetype_st, font, tt_glyph_index(rt_truetype_st, font, cp), px)
+  rt_truetype_st.gc_bmp[s] = bmp
+  rt_truetype_st.gc_used[s] = 1
+  rt_truetype_st.gc_font[s] = font
+  rt_truetype_st.gc_cp[s] = cp
+  rt_truetype_st.gc_px[s] = px
+  rt_truetype_st.gc_w[s] = rt_truetype_raster_st.gr_w
+  rt_truetype_st.gc_h[s] = rt_truetype_raster_st.gr_h
+  rt_truetype_st.gc_ox[s] = rt_truetype_raster_st.gr_ox
+  rt_truetype_st.gc_oy[s] = rt_truetype_raster_st.gr_oy
+  rt_truetype_st.gc_adv[s] = rt_truetype_raster_st.gr_adv
   return s
 }
 
 # ---- UTF-8 ----------------------------------------------------------------
-var u8_next: int = 0        # byte index just past the codepoint last decoded
 
-function tt_utf8(s: string, at: int) -> int {
+function tt_utf8(rt_truetype_raster_st: mut RtTruetypeRasterState, s: string, at: int) -> int {
   let c = s[at]
   var extra = -1
   if c < 128 { extra = 0 }
@@ -277,28 +279,28 @@ function tt_utf8(s: string, at: int) -> int {
   if (c >> 4) == 14 { extra = 2 }
   if (c >> 3) == 30 { extra = 3 }
   if extra < 0 {
-    u8_next = at + 1
+    rt_truetype_raster_st.u8_next = at + 1
     return 65533
   }
   if extra == 0 {
-    u8_next = at + 1
+    rt_truetype_raster_st.u8_next = at + 1
     return c
   }
   var cp = (c & (63 >> extra))
   for i in 0 .. extra {
     let b = s[at + 1 + i]
     if (b & 192) != 128 {
-      u8_next = at + 1 + i
+      rt_truetype_raster_st.u8_next = at + 1 + i
       return 65533
     }
     cp = ((cp << 6) | (b & 63))
   }
-  u8_next = at + 1 + extra
+  rt_truetype_raster_st.u8_next = at + 1 + extra
   return cp
 }
 
 # ---- drawing --------------------------------------------------------------
-function tt_blit(bmp: pointer, w: int, h: int, dx: int, dy: int, colour: int) -> void {
+function tt_blit(rt_core_st: mut RtCoreState, bmp: pointer, w: int, h: int, dx: int, dy: int, colour: int) -> void {
   if (bmp == null) { return }
   let cr = ((colour >> 16) & 255)
   let cg = ((colour >> 8) & 255)
@@ -313,11 +315,11 @@ function tt_blit(bmp: pointer, w: int, h: int, dx: int, dy: int, colour: int) ->
             let pxx = dx + x
             if pxx >= 0 {
               if pxx < rt_fbw {
-                let d = rt_fb[py * rt_fbw + pxx]
+                let d = rt_core_st.rt_fb[py * rt_fbw + pxx]
                 let rr = (cr * a + ((d >> 16) & 255) * (255 - a)) / 255
                 let rg = (cg * a + ((d >> 8) & 255) * (255 - a)) / 255
                 let rb = (cb * a + (d & 255) * (255 - a)) / 255
-                rt_fb[py * rt_fbw + pxx] = (((rr << 16) | (rg << 8)) | rb)
+                rt_core_st.rt_fb[py * rt_fbw + pxx] = (((rr << 16) | (rg << 8)) | rb)
               }
             }
           }
@@ -327,54 +329,54 @@ function tt_blit(bmp: pointer, w: int, h: int, dx: int, dy: int, colour: int) ->
   }
 }
 
-function rt_text_ttf(font: int, x: int, y: int, s: string, colour: int, px: int) -> void {
+function rt_text_ttf(rt_core_st: mut RtCoreState, rt_truetype_raster_st: mut RtTruetypeRasterState, rt_truetype_st: mut RtTruetypeState, font: int, x: int, y: int, s: string, colour: int, px: int) -> void {
   if font < 0 { return }
-  if font >= tt_n { return }
+  if font >= rt_truetype_st.tt_n { return }
   if px <= 0 { return }
-  let upem = tt_upem[font]
+  let upem = rt_truetype_st.tt_upem[font]
   let scale = fixed(px) / upem
-  var baseline = y + floor(fixed(tt_asc[font]) * scale + 0.5)
-  let lineh = floor(fixed(tt_asc[font] - tt_desc[font] + tt_gap[font]) * scale + 0.5)
+  var baseline = y + floor(fixed(rt_truetype_st.tt_asc[font]) * scale + 0.5)
+  let lineh = floor(fixed(rt_truetype_st.tt_asc[font] - rt_truetype_st.tt_desc[font] + rt_truetype_st.tt_gap[font]) * scale + 0.5)
   var penx = x
   var i = 0
   while s[i] != 0 {
-    let cp = tt_utf8(s, i)
-    i = u8_next
+    let cp = tt_utf8(rt_truetype_raster_st, s, i)
+    i = rt_truetype_raster_st.u8_next
     if cp == 10 {
       penx = x
       baseline += lineh
     } else {
-      let g = tt_glyph_get(font, cp, px)
-      tt_blit(gc_bmp[g], gc_w[g], gc_h[g], penx + gc_ox[g], baseline - gc_oy[g], colour)
-      penx += gc_adv[g]
+      let g = tt_glyph_get(rt_truetype_raster_st, rt_truetype_st, font, cp, px)
+      tt_blit(rt_core_st, rt_truetype_st.gc_bmp[g], rt_truetype_st.gc_w[g], rt_truetype_st.gc_h[g], penx + rt_truetype_st.gc_ox[g], baseline - rt_truetype_st.gc_oy[g], colour)
+      penx += rt_truetype_st.gc_adv[g]
     }
   }
 }
 
-function rt_text_w(font: int, s: string, px: int) -> int {
+function rt_text_w(rt_truetype_raster_st: mut RtTruetypeRasterState, rt_truetype_st: mut RtTruetypeState, font: int, s: string, px: int) -> int {
   if font < 0 { return 0 }
-  if font >= tt_n { return 0 }
+  if font >= rt_truetype_st.tt_n { return 0 }
   if px <= 0 { return 0 }
   var w = 0
   var best = 0
   var i = 0
   while s[i] != 0 {
-    let cp = tt_utf8(s, i)
-    i = u8_next
+    let cp = tt_utf8(rt_truetype_raster_st, s, i)
+    i = rt_truetype_raster_st.u8_next
     if cp == 10 {
       if w > best { best = w }
       w = 0
     } else {
-      w += gc_adv[tt_glyph_get(font, cp, px)]
+      w += rt_truetype_st.gc_adv[tt_glyph_get(rt_truetype_raster_st, rt_truetype_st, font, cp, px)]
     }
   }
   if w > best { best = w }
   return best
 }
 
-function rt_text_h(font: int, px: int) -> int {
+function rt_text_h(rt_truetype_st: RtTruetypeState, font: int, px: int) -> int {
   if font < 0 { return 0 }
-  if font >= tt_n { return 0 }
-  let scale = fixed(px) / tt_upem[font]
-  return floor(fixed(tt_asc[font] - tt_desc[font] + tt_gap[font]) * scale + 0.5)
+  if font >= rt_truetype_st.tt_n { return 0 }
+  let scale = fixed(px) / rt_truetype_st.tt_upem[font]
+  return floor(fixed(rt_truetype_st.tt_asc[font] - rt_truetype_st.tt_desc[font] + rt_truetype_st.tt_gap[font]) * scale + 0.5)
 }

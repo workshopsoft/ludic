@@ -64,6 +64,12 @@ function global_needs_init_code(d: Node) -> bool {
 # (`var run: Progress = new Progress`, `var speed: int = BASE * 2`, a call), in
 # declaration order, once at startup — after the runtime boots, before Start.
 function emit_global_init_fn() -> void {
+  emit_init_fn("L_init_runtime", true)
+  emit_init_fn("L_init_globals", false)
+}
+# 0.S: the runtime's states are made first, before it boots (rt_init reads them); the rest after
+function is_runtime_state_var(d: Node) -> bool { return d.uns == 1 and is_state_ty(d.ty) and is_runtime_file(d.file) }
+function emit_init_fn(name: pointer, runtime: bool) -> void {
   ll_t = 0;  ll_lbl = 0;  g_term = false;  loc_reset();  nloop = 0;  nself = 0
   ret_ty = "void"
   let fbody = buf_new()
@@ -73,7 +79,7 @@ function emit_global_init_fn() -> void {
   var i = 0
   while i < len(prog) {
     let d = prog[i]
-    if d.kind == N_VAR and global_needs_init_code(d) {
+    if d.kind == N_VAR and global_needs_init_code(d) and is_runtime_state_var(d) == runtime {
       # an initializer is the global's own file's code: its errors, and what its module
       # may see (L3), are that file's - not whichever statement was lowered last
       g_err_file = d.file
@@ -93,7 +99,7 @@ function emit_global_init_fn() -> void {
   }
   emit("  ret void\n")
   code = saved
-  emit("define void @L_init_globals() {\nentry:\n")
+  emit(`define void @{name}() {{\nentry:\n`)
   emit(buf_str(falloc))
   emit(buf_str(fbody))
   emit("}\n\n")

@@ -35,47 +35,49 @@ function esys_div(a: int, b: int) -> int {
 # same shape the input action map uses; string names compare by byte-pointer
 # identity (a string literal interns to one pointer per program).
 const ANIM_MAX_CLIPS: int = 32
-var anim_clip_names:  pointers = null    # clip name per slot
-var anim_clip_fps:    words    = null
-var anim_clip_frames: words    = null
-var anim_clip_mode:   words    = null
-var anim_nclips:      int      = 0
+export state RtSystemsState {
+  anim_clip_names:  pointers = null    # clip name per slot
+  anim_clip_fps:    words    = null
+  anim_clip_frames: words    = null
+  anim_clip_mode:   words    = null
+  anim_nclips:      int      = 0
+}
 
-function anim_clip_init() -> void {
-  if anim_clip_names == null {
-    anim_clip_names  = pointers(ANIM_MAX_CLIPS)     # a pointer (8 bytes) per slot
-    anim_clip_fps    = words(ANIM_MAX_CLIPS)
-    anim_clip_frames = words(ANIM_MAX_CLIPS)
-    anim_clip_mode   = words(ANIM_MAX_CLIPS)
+function anim_clip_init(rt_systems_st: mut RtSystemsState) -> void {
+  if rt_systems_st.anim_clip_names == null {
+    rt_systems_st.anim_clip_names  = pointers(ANIM_MAX_CLIPS)     # a pointer (8 bytes) per slot
+    rt_systems_st.anim_clip_fps    = words(ANIM_MAX_CLIPS)
+    rt_systems_st.anim_clip_frames = words(ANIM_MAX_CLIPS)
+    rt_systems_st.anim_clip_mode   = words(ANIM_MAX_CLIPS)
   }
 }
 
 # register (or update) a named clip. mode is the SpriteAnim mode: 0 loop, 1 once,
 # 2 ping-pong.
-function anim_clip(name: pointer, frames: int, fps: int, mode: int) -> void {
-  anim_clip_init()
+function anim_clip(rt_systems_st: mut RtSystemsState, name: pointer, frames: int, fps: int, mode: int) -> void {
+  anim_clip_init(rt_systems_st)
   var i = 0
-  while i < anim_nclips {
-    if anim_clip_names[i] == name {
-      anim_clip_frames[i] = frames;  anim_clip_fps[i] = fps;  anim_clip_mode[i] = mode
+  while i < rt_systems_st.anim_nclips {
+    if rt_systems_st.anim_clip_names[i] == name {
+      rt_systems_st.anim_clip_frames[i] = frames;  rt_systems_st.anim_clip_fps[i] = fps;  rt_systems_st.anim_clip_mode[i] = mode
       return
     }
     i += 1
   }
-  if anim_nclips >= ANIM_MAX_CLIPS { return }        # silently ignore past capacity
-  let s = anim_nclips
-  anim_clip_names[s]  = name
-  anim_clip_frames[s] = frames
-  anim_clip_fps[s]    = fps
-  anim_clip_mode[s]   = mode
-  anim_nclips += 1
+  if rt_systems_st.anim_nclips >= ANIM_MAX_CLIPS { return }        # silently ignore past capacity
+  let s = rt_systems_st.anim_nclips
+  rt_systems_st.anim_clip_names[s]  = name
+  rt_systems_st.anim_clip_frames[s] = frames
+  rt_systems_st.anim_clip_fps[s]    = fps
+  rt_systems_st.anim_clip_mode[s]   = mode
+  rt_systems_st.anim_nclips += 1
 }
 
-function anim_clip_find(name: pointer) -> int {
-  anim_clip_init()
+function anim_clip_find(rt_systems_st: mut RtSystemsState, name: pointer) -> int {
+  anim_clip_init(rt_systems_st)
   var i = 0
-  while i < anim_nclips {
-    if anim_clip_names[i] == name { return i }
+  while i < rt_systems_st.anim_nclips {
+    if rt_systems_st.anim_clip_names[i] == name { return i }
     i += 1
   }
   return -1
@@ -105,10 +107,10 @@ function anim_play(e: int, fps: int, frames: int, mode: int) -> void {
 }
 
 # start a registered clip by name (a no-op if the name is unknown).
-function anim_play_named(e: int, name: pointer) -> void {
-  let c = anim_clip_find(name)
+function anim_play_named(rt_systems_st: mut RtSystemsState, e: int, name: pointer) -> void {
+  let c = anim_clip_find(rt_systems_st, name)
   if c < 0 { return }
-  anim_play(e, anim_clip_fps[c], anim_clip_frames[c], anim_clip_mode[c])
+  anim_play(e, rt_systems_st.anim_clip_fps[c], rt_systems_st.anim_clip_frames[c], rt_systems_st.anim_clip_mode[c])
 }
 
 # arm a frame event: the engine flags SpriteAnim.event_fired = 1 on the tick the

@@ -24,62 +24,91 @@ const INPUT_MAX_ACT:  int = 32     # named actions
 const INPUT_MAX_KEYS: int = 4      # physical keys bound per action
 const INPUT_REC_CAP:  int = 8192   # recordable frames
 
-var input_names: pointers = null   # action name per slot (0..input_nact)
-var input_keys:  words = null      # INPUT_MAX_ACT * INPUT_MAX_KEYS key codes (0 = empty)
-var input_pads:  words = null      # INPUT_MAX_ACT * INPUT_MAX_KEYS pad buttons, stored +1 (0 = empty) — #83
-var input_nact:  int   = 0
+export state RtInputState {
+  input_names: pointers = null   # action name per slot (0..input_nact)
+  input_keys:  words = null      # INPUT_MAX_ACT * INPUT_MAX_KEYS key codes (0 = empty)
+  input_pads:  words = null      # INPUT_MAX_ACT * INPUT_MAX_KEYS pad buttons, stored +1 (0 = empty) — #83
+  input_nact:  int   = 0
+  input_frame: int = 0           # the key polled this frame
+  input_last:  int = 0           # the key polled last frame (for edges)
+  input_mode:  int   = 0         # 0 = live, 1 = record, 2 = replay
+  input_rec:   words = null      # recorded key per frame
+  input_recn:  int   = 0         # frames recorded
+  input_pos:   int   = 0         # replay / record cursor
+  in_have_frame_driver: bool = false
+  in_ready: bool  = false
+  in_sim:   words = null         # simulated held set (Input.press / release) — persists
+  in_dev:   words = null         # platform / polled held set — refreshed each poll
+  in_held:  words = null         # committed effective set this frame (what reads see)
+  in_prev:  words = null         # committed set last frame (for edges)
+  in_mx: int = 0        # current x/y
+  in_my: int = 0
+  in_mx0: int = 0       # x/y at the previous frame (for the delta)
+  in_my0: int = 0
+  in_mdx: int = 0       # delta this frame
+  in_mdy: int = 0
+  in_rdx: int = 0       # the raw motion the platform reports while captured
+  in_rdy: int = 0
+  in_cursor_mode: int = 0
+  in_mouse_rebase: bool = true
+  in_mbtn: int = 0      # button bitmask (bit 0 left, 1 right, 2 middle)
+  in_wheel: int = 0     # wheel delta this frame
+  in_pad_conn: words = null      # IN_PADS
+  in_pad_btn:  words = null      # IN_PADS
+  in_pad_btn0: words = null      # IN_PADS — pad button mask last frame (edges) — #83
+  in_pad_axis: fixeds = null     # IN_PADS * IN_AXES
+  in_touch_on: words = null      # IN_TOUCH
+  in_touch_x:  words = null      # IN_TOUCH
+  in_touch_y:  words = null      # IN_TOUCH
+  in_tape: words = null          # INPUT_REC_CAP * IN_STRIDE
+  in_text_buf: words = null
+}
 
-var input_frame: int = 0           # the key polled this frame
-var input_last:  int = 0           # the key polled last frame (for edges)
 
-var input_mode:  int   = 0         # 0 = live, 1 = record, 2 = replay
-var input_rec:   words = null      # recorded key per frame
-var input_recn:  int   = 0         # frames recorded
-var input_pos:   int   = 0         # replay / record cursor
 
-function input_init() -> void {
-  if input_names == null {
-    input_names = pointers(INPUT_MAX_ACT)           # a pointer (8 bytes) per action slot
-    input_keys  = words(INPUT_MAX_ACT * INPUT_MAX_KEYS)
-    input_pads  = words(INPUT_MAX_ACT * INPUT_MAX_KEYS)   # #83 pad buttons per action (+1 encoded)
+function input_init(rt_input_st: mut RtInputState) -> void {
+  if rt_input_st.input_names == null {
+    rt_input_st.input_names = pointers(INPUT_MAX_ACT)           # a pointer (8 bytes) per action slot
+    rt_input_st.input_keys  = words(INPUT_MAX_ACT * INPUT_MAX_KEYS)
+    rt_input_st.input_pads  = words(INPUT_MAX_ACT * INPUT_MAX_KEYS)   # #83 pad buttons per action (+1 encoded)
   }
 }
 
 # slot of the action `name`, or -1. Names compare by byte-string equality.
-function input_find(name: pointer) -> int {
-  input_init()
+function input_find(rt_input_st: mut RtInputState, name: pointer) -> int {
+  input_init(rt_input_st)
   var i = 0
-  while i < input_nact {
-    if input_names[i] == name { return i }
+  while i < rt_input_st.input_nact {
+    if rt_input_st.input_names[i] == name { return i }
     i += 1
   }
   return -1
 }
 
 # get-or-create the slot for `name`.
-function input_slot(name: pointer) -> int {
-  let f = input_find(name)
+function input_slot(rt_input_st: mut RtInputState, name: pointer) -> int {
+  let f = input_find(rt_input_st, name)
   if f >= 0 { return f }
-  if input_nact >= INPUT_MAX_ACT { return INPUT_MAX_ACT - 1 }   # silently reuse the last slot when full
-  let s = input_nact
-  input_names[s] = name
-  input_nact += 1
+  if rt_input_st.input_nact >= INPUT_MAX_ACT { return INPUT_MAX_ACT - 1 }   # silently reuse the last slot when full
+  let s = rt_input_st.input_nact
+  rt_input_st.input_names[s] = name
+  rt_input_st.input_nact += 1
   return s
 }
 
 # bind physical `key` to the named action, creating the action if new. A key
 # already bound to the action is left as-is (idempotent).
-function input_bind(name: pointer, key: int) -> void {
-  let s = input_slot(name)
+function input_bind(rt_input_st: mut RtInputState, name: pointer, key: int) -> void {
+  let s = input_slot(rt_input_st, name)
   let base = s * INPUT_MAX_KEYS
   var i = 0
   while i < INPUT_MAX_KEYS {
-    if input_keys[base + i] == key { return }        # already bound
+    if rt_input_st.input_keys[base + i] == key { return }        # already bound
     i += 1
   }
   i = 0
   while i < INPUT_MAX_KEYS {
-    if input_keys[base + i] == 0 { input_keys[base + i] = key;  return }
+    if rt_input_st.input_keys[base + i] == 0 { rt_input_st.input_keys[base + i] = key;  return }
     i += 1
   }
 }
@@ -87,56 +116,56 @@ function input_bind(name: pointer, key: int) -> void {
 # #83 — a *default* binding: bind `key` only if the action has no key bound yet.
 # A game ships its defaults with Input.action in Boot; a player's later Input.rebind
 # (or a loaded key-map) is not clobbered, and re-running the defaults is idempotent.
-function input_default(name: pointer, key: int) -> void {
-  let s = input_slot(name)
+function input_default(rt_input_st: mut RtInputState, name: pointer, key: int) -> void {
+  let s = input_slot(rt_input_st, name)
   let base = s * INPUT_MAX_KEYS
   var i = 0
   while i < INPUT_MAX_KEYS {
-    if input_keys[base + i] != 0 { return }          # already has a binding — keep it
+    if rt_input_st.input_keys[base + i] != 0 { return }          # already has a binding — keep it
     i += 1
   }
-  input_keys[base] = key
+  rt_input_st.input_keys[base] = key
 }
 
 # #83 — device-agnostic actions: also fire the named action from a gamepad button.
 # Buttons are stored +1 so 0 stays the empty marker. The same action can carry both
 # keyboard keys (input_bind / input_default) and pad buttons; a read fires on either.
-function input_bind_pad(name: pointer, button: int) -> void {
-  let s = input_slot(name)
+function input_bind_pad(rt_input_st: mut RtInputState, name: pointer, button: int) -> void {
+  let s = input_slot(rt_input_st, name)
   let base = s * INPUT_MAX_KEYS
   var i = 0
   while i < INPUT_MAX_KEYS {
-    if input_pads[base + i] == (button + 1) { return }   # already bound
+    if rt_input_st.input_pads[base + i] == (button + 1) { return }   # already bound
     i += 1
   }
   i = 0
   while i < INPUT_MAX_KEYS {
-    if input_pads[base + i] == 0 { input_pads[base + i] = button + 1;  return }
+    if rt_input_st.input_pads[base + i] == 0 { rt_input_st.input_pads[base + i] = button + 1;  return }
     i += 1
   }
 }
 
 # runtime rebinding: replace `oldkey` with `newkey` on the named action. A no-op
 # if the action or the old key is not found.
-function input_rebind(name: pointer, oldkey: int, newkey: int) -> void {
-  let s = input_find(name)
+function input_rebind(rt_input_st: mut RtInputState, name: pointer, oldkey: int, newkey: int) -> void {
+  let s = input_find(rt_input_st, name)
   if s < 0 { return }
   let base = s * INPUT_MAX_KEYS
   var i = 0
   while i < INPUT_MAX_KEYS {
-    if input_keys[base + i] == oldkey { input_keys[base + i] = newkey;  return }
+    if rt_input_st.input_keys[base + i] == oldkey { rt_input_st.input_keys[base + i] = newkey;  return }
     i += 1
   }
 }
 
 # does key `k` (0 = none) fire the action in slot `s`?
-function input_slot_has(s: int, k: int) -> bool {
+function input_slot_has(rt_input_st: RtInputState, s: int, k: int) -> bool {
   if s < 0 { return false }
   if k == 0 { return false }
   let base = s * INPUT_MAX_KEYS
   var i = 0
   while i < INPUT_MAX_KEYS {
-    if input_keys[base + i] == k { return true }
+    if rt_input_st.input_keys[base + i] == k { return true }
     i += 1
   }
   return false
@@ -149,44 +178,43 @@ function input_slot_has(s: int, k: int) -> bool {
 # commit copied in_held into in_prev twice, which destroyed the key_pressed /
 # key_released edges (in_prev ended up equal to in_held). An entry-driven harness
 # has no loop, so the flag stays false and each Input.poll commits a frame as before.
-var in_have_frame_driver: bool = false
 
 # The actual per-frame input read: read the live key (or a recorded one), advance
 # the record/replay tape, and rebuild the multi-key device layer (held keys, mouse,
 # gamepad — #50). Returns the frame's key.
-function input_commit() -> int {
-  input_last = input_frame
-  if input_mode == 2 {                               # replay
+function input_commit(rt_core_st: mut RtCoreState, rt_input_st: mut RtInputState) -> int {
+  rt_input_st.input_last = rt_input_st.input_frame
+  if rt_input_st.input_mode == 2 {                               # replay
     var k = 0
-    if input_pos < input_recn { k = input_rec[input_pos];  input_pos += 1 }
-    input_frame = k
-    input_device_commit(k, 1)                         # rebuild the device state from the tape
+    if rt_input_st.input_pos < rt_input_st.input_recn { k = rt_input_st.input_rec[rt_input_st.input_pos];  rt_input_st.input_pos += 1 }
+    rt_input_st.input_frame = k
+    input_device_commit(rt_input_st, k, 1)                         # rebuild the device state from the tape
     return k
   }
-  let k = rt_poll()
-  if input_mode == 1 {                               # record
-    if input_rec == null { input_rec = words(INPUT_REC_CAP) }
-    if input_recn < INPUT_REC_CAP { input_rec[input_recn] = k;  input_recn += 1 }
+  let k = rt_poll(rt_core_st)
+  if rt_input_st.input_mode == 1 {                               # record
+    if rt_input_st.input_rec == null { rt_input_st.input_rec = words(INPUT_REC_CAP) }
+    if rt_input_st.input_recn < INPUT_REC_CAP { rt_input_st.input_rec[rt_input_st.input_recn] = k;  rt_input_st.input_recn += 1 }
   }
-  input_frame = k
-  input_device_commit(k, 0)
+  rt_input_st.input_frame = k
+  input_device_commit(rt_input_st, k, 0)
   return k
 }
 
 # Called by the generated frame loop once per frame (#83). Marks that a loop is
 # driving input so a later manual Input.poll this frame does not double-commit.
-function input_drive() -> int {
-  in_have_frame_driver = true
-  return input_commit()
+function input_drive(rt_core_st: mut RtCoreState, rt_input_st: mut RtInputState) -> int {
+  rt_input_st.in_have_frame_driver = true
+  return input_commit(rt_core_st, rt_input_st)
 }
 
 # Input.poll — the single per-frame input read a game can call by hand. In a
 # frame-loop game the loop already drove input this frame (input_drive), so this is
 # a no-op that returns the frame's key; in an entry-driven harness (no loop) it
 # commits a frame of input each call, exactly as before.
-function input_poll() -> int {
-  if in_have_frame_driver { return input_frame }
-  return input_commit()
+function input_poll(rt_core_st: mut RtCoreState, rt_input_st: mut RtInputState) -> int {
+  if rt_input_st.in_have_frame_driver { return rt_input_st.input_frame }
+  return input_commit(rt_core_st, rt_input_st)
 }
 
 # ============================================================================
@@ -211,53 +239,28 @@ const IN_AXES:  int = 4            # axes per pad (2 sticks: lx, ly, rx, ry)
 const IN_TOUCH: int = 8            # simultaneous touch points
 const IN_STRIDE: int = 12          # tape words / frame: 8 held + mx, my, buttons, wheel
 
-var in_ready: bool  = false
-var in_sim:   words = null         # simulated held set (Input.press / release) — persists
-var in_dev:   words = null         # platform / polled held set — refreshed each poll
-var in_held:  words = null         # committed effective set this frame (what reads see)
-var in_prev:  words = null         # committed set last frame (for edges)
 # mouse
-var in_mx: int = 0        # current x/y
-var in_my: int = 0
-var in_mx0: int = 0       # x/y at the previous frame (for the delta)
-var in_my0: int = 0
-var in_mdx: int = 0       # delta this frame
-var in_mdy: int = 0
-var in_rdx: int = 0       # the raw motion the platform reports while captured
-var in_rdy: int = 0
-var in_cursor_mode: int = 0
 # the next commit reports no mouse delta: true before the first position is read (the previous one
 # is not a position, it is 0,0) and after a cursor-mode change (the position source switches between
 # the virtual reticle and the real cursor, which are unrelated points)
-var in_mouse_rebase: bool = true
-var in_mbtn: int = 0      # button bitmask (bit 0 left, 1 right, 2 middle)
-var in_wheel: int = 0     # wheel delta this frame
 # gamepads: connected flag, button bitmask, and IN_AXES fixed axes each
-var in_pad_conn: words = null      # IN_PADS
-var in_pad_btn:  words = null      # IN_PADS
-var in_pad_btn0: words = null      # IN_PADS — pad button mask last frame (edges) — #83
-var in_pad_axis: fixeds = null     # IN_PADS * IN_AXES
 # touch points: active flag, x, y each
-var in_touch_on: words = null      # IN_TOUCH
-var in_touch_x:  words = null      # IN_TOUCH
-var in_touch_y:  words = null      # IN_TOUCH
 # full-state tape (held + mouse), recorded / replayed alongside the key tape
-var in_tape: words = null          # INPUT_REC_CAP * IN_STRIDE
 
-function in_init() -> void {
-  if in_ready { return }
-  in_sim   = words(IN_WORDS)
-  in_dev   = words(IN_WORDS)
-  in_held  = words(IN_WORDS)
-  in_prev  = words(IN_WORDS)
-  in_pad_conn = words(IN_PADS)
-  in_pad_btn  = words(IN_PADS)
-  in_pad_btn0 = words(IN_PADS)
-  in_pad_axis = fixeds(IN_PADS * IN_AXES)
-  in_touch_on = words(IN_TOUCH)
-  in_touch_x  = words(IN_TOUCH)
-  in_touch_y  = words(IN_TOUCH)
-  in_ready = true
+function in_init(rt_input_st: mut RtInputState) -> void {
+  if rt_input_st.in_ready { return }
+  rt_input_st.in_sim   = words(IN_WORDS)
+  rt_input_st.in_dev   = words(IN_WORDS)
+  rt_input_st.in_held  = words(IN_WORDS)
+  rt_input_st.in_prev  = words(IN_WORDS)
+  rt_input_st.in_pad_conn = words(IN_PADS)
+  rt_input_st.in_pad_btn  = words(IN_PADS)
+  rt_input_st.in_pad_btn0 = words(IN_PADS)
+  rt_input_st.in_pad_axis = fixeds(IN_PADS * IN_AXES)
+  rt_input_st.in_touch_on = words(IN_TOUCH)
+  rt_input_st.in_touch_x  = words(IN_TOUCH)
+  rt_input_st.in_touch_y  = words(IN_TOUCH)
+  rt_input_st.in_ready = true
 }
 
 # ---- key-set bit helpers ---------------------------------------------------
@@ -278,38 +281,38 @@ function in_set_or(dst: words, a: words, b: words) -> void { var i = 0;  while i
 # ---- the per-frame device commit (called by input_poll) --------------------
 # Snapshot the committed set into prev (for edges), refresh the platform set (or
 # rebuild it from the tape on replay), then recombine into the committed set.
-function input_device_commit(k: int, replaying: int) -> void {
-  in_init()
-  in_set_copy(in_prev, in_held)                      # last frame's committed set
+function input_device_commit(rt_input_st: mut RtInputState, k: int, replaying: int) -> void {
+  in_init(rt_input_st)
+  in_set_copy(rt_input_st.in_prev, rt_input_st.in_held)                      # last frame's committed set
   # #83: snapshot last frame's pad-button masks for the just_pressed/released edges.
   # Taken before the platform refresh (win_pad, below, runs after this), so it holds
   # the previous frame's committed value against which this frame's edge is measured.
   var pj = 0
-  while pj < IN_PADS { in_pad_btn0[pj] = in_pad_btn[pj];  pj += 1 }
+  while pj < IN_PADS { rt_input_st.in_pad_btn0[pj] = rt_input_st.in_pad_btn[pj];  pj += 1 }
 
   if replaying == 1 {
     # rebuild the platform set + mouse from the tape; sim/injection is ignored so
     # a replay is authoritative (as #7's key replay ignores the live device).
-    let base = (input_pos - 1) * IN_STRIDE
-    if (in_tape != null) and (base >= 0) {
+    let base = (rt_input_st.input_pos - 1) * IN_STRIDE
+    if (rt_input_st.in_tape != null) and (base >= 0) {
       var i = 0
-      while i < IN_WORDS { in_dev[i] = in_tape[base + i];  i += 1 }
-      in_mx    = in_tape[base + 8]
-      in_my    = in_tape[base + 9]
-      in_mbtn  = in_tape[base + 10]
-      in_wheel = in_tape[base + 11]
+      while i < IN_WORDS { rt_input_st.in_dev[i] = rt_input_st.in_tape[base + i];  i += 1 }
+      rt_input_st.in_mx    = rt_input_st.in_tape[base + 8]
+      rt_input_st.in_my    = rt_input_st.in_tape[base + 9]
+      rt_input_st.in_mbtn  = rt_input_st.in_tape[base + 10]
+      rt_input_st.in_wheel = rt_input_st.in_tape[base + 11]
     }
-    in_set_copy(in_held, in_dev)
+    in_set_copy(rt_input_st.in_held, rt_input_st.in_dev)
   } else {
     # live: fill the platform set from the window (real simultaneous keys) or,
     # headless, from the single polled key. Injection (in_sim) is OR-ed on top.
     if is_windowed() {
-      win_held(in_dev)
+      win_held(rt_input_st.in_dev)
       let mbuf = words(6)                              # [x, y, button-mask, wheel, raw dx, raw dy]
       mbuf[4] = 0;  mbuf[5] = 0
       win_mouse(mbuf)
-      in_mx = mbuf[0];  in_my = mbuf[1];  in_mbtn = mbuf[2];  in_wheel = mbuf[3]
-      in_rdx = mbuf[4];  in_rdy = mbuf[5]
+      rt_input_st.in_mx = mbuf[0];  rt_input_st.in_my = mbuf[1];  rt_input_st.in_mbtn = mbuf[2];  rt_input_st.in_wheel = mbuf[3]
+      rt_input_st.in_rdx = mbuf[4];  rt_input_st.in_rdy = mbuf[5]
       # #51 — feed the platform gamepad + touch state into the same buffers the
       # read APIs use. Each is windowed-only glue (win_pad / win_touch are DCE'd
       # in a headless build); on hardware they overwrite the injected state.
@@ -318,7 +321,7 @@ function input_device_commit(k: int, replaying: int) -> void {
       var pi = 0
       while pi < IN_PADS {
         let pb = pi * 6
-        input_set_pad(pi, pbuf[pb] != 0, pbuf[pb + 1],
+        input_set_pad(rt_input_st, pi, pbuf[pb] != 0, pbuf[pb + 1],
                       as_fixed(pbuf[pb + 2]), as_fixed(pbuf[pb + 3]),
                       as_fixed(pbuf[pb + 4]), as_fixed(pbuf[pb + 5]))
         pi += 1
@@ -328,49 +331,49 @@ function input_device_commit(k: int, replaying: int) -> void {
       var ti = 0
       while ti < IN_TOUCH {
         let tb = ti * 3
-        input_set_touch(ti, tbuf[tb + 1], tbuf[tb + 2], tbuf[tb] != 0)
+        input_set_touch(rt_input_st, ti, tbuf[tb + 1], tbuf[tb + 2], tbuf[tb] != 0)
         ti += 1
       }
     } else {
-      in_set_clear(in_dev)
-      if k > 0 { in_bit_set(in_dev, k, true) }
+      in_set_clear(rt_input_st.in_dev)
+      if k > 0 { in_bit_set(rt_input_st.in_dev, k, true) }
     }
-    in_set_or(in_held, in_dev, in_sim)
-    if input_mode == 1 { input_device_record() }      # snapshot the frame into the tape
+    in_set_or(rt_input_st.in_held, rt_input_st.in_dev, rt_input_st.in_sim)
+    if rt_input_st.input_mode == 1 { input_device_record(rt_input_st) }      # snapshot the frame into the tape
   }
 
   # mouse delta vs the previous frame's committed position (in_mx set by the
   # platform above when windowed, by Input.set_mouse before this poll otherwise).
-  in_mdx = in_mx - in_mx0
-  in_mdy = in_my - in_my0
+  rt_input_st.in_mdx = rt_input_st.in_mx - rt_input_st.in_mx0
+  rt_input_st.in_mdy = rt_input_st.in_my - rt_input_st.in_my0
   # captured (mode 2): the cursor is a clamped reticle, the motion is the raw delta
-  if is_windowed() and in_cursor_mode == 2 { in_mdx = in_rdx;  in_mdy = in_rdy }
+  if is_windowed() and rt_input_st.in_cursor_mode == 2 { rt_input_st.in_mdx = rt_input_st.in_rdx;  rt_input_st.in_mdy = rt_input_st.in_rdy }
   # No motion on the first frame or across a cursor-mode change. The previous position there is
   # 0,0 or a point in another coordinate source, so the difference is the cursor's whole distance
   # from it: a camera that adds mouse_dy to its pitch came up pointing at the ground.
-  if in_mouse_rebase { in_mdx = 0;  in_mdy = 0;  in_mouse_rebase = false }
-  in_mx0 = in_mx
-  in_my0 = in_my
+  if rt_input_st.in_mouse_rebase { rt_input_st.in_mdx = 0;  rt_input_st.in_mdy = 0;  rt_input_st.in_mouse_rebase = false }
+  rt_input_st.in_mx0 = rt_input_st.in_mx
+  rt_input_st.in_my0 = rt_input_st.in_my
 }
 
 # write this frame's committed set + mouse into the tape at the record cursor.
-function input_device_record() -> void {
-  if in_tape == null { in_tape = words(INPUT_REC_CAP * IN_STRIDE) }
-  let f = input_recn - 1
+function input_device_record(rt_input_st: mut RtInputState) -> void {
+  if rt_input_st.in_tape == null { rt_input_st.in_tape = words(INPUT_REC_CAP * IN_STRIDE) }
+  let f = rt_input_st.input_recn - 1
   if (f < 0) or (f >= INPUT_REC_CAP) { return }
   let base = f * IN_STRIDE
   var i = 0
-  while i < IN_WORDS { in_tape[base + i] = in_held[i];  i += 1 }
-  in_tape[base + 8]  = in_mx
-  in_tape[base + 9]  = in_my
-  in_tape[base + 10] = in_mbtn
-  in_tape[base + 11] = in_wheel
+  while i < IN_WORDS { rt_input_st.in_tape[base + i] = rt_input_st.in_held[i];  i += 1 }
+  rt_input_st.in_tape[base + 8]  = rt_input_st.in_mx
+  rt_input_st.in_tape[base + 9]  = rt_input_st.in_my
+  rt_input_st.in_tape[base + 10] = rt_input_st.in_mbtn
+  rt_input_st.in_tape[base + 11] = rt_input_st.in_wheel
 }
 
 # ---- held keys -------------------------------------------------------------
-function input_key_down(k: int) -> bool     { in_init();  return in_bit_get(in_held, k) }
-function input_key_pressed(k: int) -> bool  { in_init();  return in_bit_get(in_held, k) and (not in_bit_get(in_prev, k)) }
-function input_key_released(k: int) -> bool { in_init();  return (not in_bit_get(in_held, k)) and in_bit_get(in_prev, k) }
+function input_key_down(rt_input_st: mut RtInputState, k: int) -> bool     { in_init(rt_input_st);  return in_bit_get(rt_input_st.in_held, k) }
+function input_key_pressed(rt_input_st: mut RtInputState, k: int) -> bool  { in_init(rt_input_st);  return in_bit_get(rt_input_st.in_held, k) and (not in_bit_get(rt_input_st.in_prev, k)) }
+function input_key_released(rt_input_st: mut RtInputState, k: int) -> bool { in_init(rt_input_st);  return (not in_bit_get(rt_input_st.in_held, k)) and in_bit_get(rt_input_st.in_prev, k) }
 
 # The name to show a player for key code `k`. A letter, digit or punctuation code is a
 # PHYSICAL key - the one that types it on a US layout - so the name is what the player's
@@ -421,19 +424,18 @@ function input_key_label(k: int) -> string {
 # actually produce. Building text out of key codes instead meant a Turkish player could not type
 # c-cedilla, g-breve, dotless i, o-umlaut, s-cedilla or u-umlaut anywhere - their own name included.
 # Empty headless, and where the platform has no text channel.
-var in_text_buf: words = null
-function input_text() -> string {
+function input_text(rt_input_st: mut RtInputState) -> string {
   if not is_windowed() { return "" }
-  if in_text_buf == null { in_text_buf = words(64) }
-  let n = win_text(in_text_buf, 64)
+  if rt_input_st.in_text_buf == null { rt_input_st.in_text_buf = words(64) }
+  let n = win_text(rt_input_st.in_text_buf, 64)
   if n <= 0 { return "" }
   var out = ""
   var i = 0
   while i < n {
-    var c = in_text_buf[i]
+    var c = rt_input_st.in_text_buf[i]
     # a code point outside the BMP arrives as a surrogate PAIR - two units, one character
     if c >= 55296 and c < 56320 and i + 1 < n {
-      let lo = in_text_buf[i + 1]
+      let lo = rt_input_st.in_text_buf[i + 1]
       if lo >= 56320 and lo < 57344 { c = 65536 + ((c - 55296) * 1024) + (lo - 56320);  i = i + 1 }
     }
     out = out + in_utf8(c)
@@ -455,27 +457,27 @@ function in_utf8(c: int) -> string {
 }
 
 # inject a held key (AI, tutorial, testing, network) — persists until released.
-function input_press(k: int) -> void   { in_init();  in_bit_set(in_sim, k, true) }
-function input_release(k: int) -> void { in_init();  in_bit_set(in_sim, k, false) }
+function input_press(rt_input_st: mut RtInputState, k: int) -> void   { in_init(rt_input_st);  in_bit_set(rt_input_st.in_sim, k, true) }
+function input_release(rt_input_st: mut RtInputState, k: int) -> void { in_init(rt_input_st);  in_bit_set(rt_input_st.in_sim, k, false) }
 
 # ---- analog from keys ------------------------------------------------------
 # A digital axis: +1.0 if the positive key is held, -1.0 if the negative, else 0.
-function input_axis(neg: int, pos: int) -> fixed {
-  in_init()
+function input_axis(rt_input_st: mut RtInputState, neg: int, pos: int) -> fixed {
+  in_init(rt_input_st)
   var v = fixed(0)
-  if in_bit_get(in_held, pos) { v += fixed(1) }
-  if in_bit_get(in_held, neg) { v -= fixed(1) }
+  if in_bit_get(rt_input_st.in_held, pos) { v += fixed(1) }
+  if in_bit_get(rt_input_st.in_held, neg) { v -= fixed(1) }
   return v
 }
 # #79 — a directional intent as a plain int: +1 if the positive key is held, -1 if
 # the negative, 0 if neither or both. Reads the multi-key device set, so it needs
 # no bool->int glue (the `dx = ki(key_down('d')) - ki(key_down('a'))` boilerplate)
 # and feeds an int mover (TopDown.move) straight: dx = Input.axis_i('a','d').
-function input_axis_i(neg: int, pos: int) -> int {
-  in_init()
+function input_axis_i(rt_input_st: mut RtInputState, neg: int, pos: int) -> int {
+  in_init(rt_input_st)
   var v = 0
-  if in_bit_get(in_held, pos) { v += 1 }
-  if in_bit_get(in_held, neg) { v -= 1 }
+  if in_bit_get(rt_input_st.in_held, pos) { v += 1 }
+  if in_bit_get(rt_input_st.in_held, neg) { v -= 1 }
   return v
 }
 # a stick has to leave its centre by this much before it counts as a direction
@@ -486,13 +488,13 @@ const STICK_LEFT_Y: int = 1
 
 # The standard top-down movement intent as -1/0/1 per axis: WASD or the arrow
 # keys, and the left stick of pad 0 (past the deadzone) when one is connected.
-function input_move_i() -> IVec2 {
-  in_init()
-  var x = input_axis_i(Key.A, Key.D) + input_axis_i(Key.Left, Key.Right)
-  var y = input_axis_i(Key.W, Key.S) + input_axis_i(Key.Up, Key.Down)
-  if input_pad_connected(0) {
-    let sx = input_pad_axis(0, STICK_LEFT_X)
-    let sy = input_pad_axis(0, STICK_LEFT_Y)
+function input_move_i(rt_input_st: mut RtInputState) -> IVec2 {
+  in_init(rt_input_st)
+  var x = input_axis_i(rt_input_st, Key.A, Key.D) + input_axis_i(rt_input_st, Key.Left, Key.Right)
+  var y = input_axis_i(rt_input_st, Key.W, Key.S) + input_axis_i(rt_input_st, Key.Up, Key.Down)
+  if input_pad_connected(rt_input_st, 0) {
+    let sx = input_pad_axis(rt_input_st, 0, STICK_LEFT_X)
+    let sy = input_pad_axis(rt_input_st, 0, STICK_LEFT_Y)
     if sx > STICK_DEADZONE { x = 1 }
     if sx < -STICK_DEADZONE { x = -1 }
     if sy > STICK_DEADZONE { y = 1 }
@@ -501,14 +503,14 @@ function input_move_i() -> IVec2 {
   return IVec2.make(clamp(x, -1, 1), clamp(y, -1, 1))
 }
 # A 2D vector from four direction keys, normalized so a diagonal is not faster.
-function input_vector(left: int, right: int, up: int, down: int) -> Vector {
-  in_init()
+function input_vector(rt_input_st: mut RtInputState, left: int, right: int, up: int, down: int) -> Vector {
+  in_init(rt_input_st)
   var x = fixed(0)
   var y = fixed(0)
-  if in_bit_get(in_held, right) { x += fixed(1) }
-  if in_bit_get(in_held, left)  { x -= fixed(1) }
-  if in_bit_get(in_held, down)  { y += fixed(1) }
-  if in_bit_get(in_held, up)    { y -= fixed(1) }
+  if in_bit_get(rt_input_st.in_held, right) { x += fixed(1) }
+  if in_bit_get(rt_input_st.in_held, left)  { x -= fixed(1) }
+  if in_bit_get(rt_input_st.in_held, down)  { y += fixed(1) }
+  if in_bit_get(rt_input_st.in_held, up)    { y -= fixed(1) }
   if (x != 0) and (y != 0) {                          # diagonal: scale by 1/sqrt(2)
     x *= 0.7071                                     # fixed multiply (64-bit intermediate)
     y *= 0.7071
@@ -516,8 +518,8 @@ function input_vector(left: int, right: int, up: int, down: int) -> Vector {
   return Vector.make(x, y)
 }
 # 0.0..1.0 strength of a named action (digital for keys: 1 if any bound key held).
-function input_strength(name: pointer) -> fixed {
-  if input_down(name) { return fixed(1) }
+function input_strength(rt_input_st: mut RtInputState, name: pointer) -> fixed {
+  if input_down(rt_input_st, name) { return fixed(1) }
   return fixed(0)
 }
 
@@ -534,82 +536,82 @@ function input_strength(name: pointer) -> fixed {
 enum CursorMode { Normal, Hidden, Locked, Confined }   # Input.cursor_mode(mode:)
 enum PadButton { A, B, X, Y, LeftShoulder, RightShoulder, Back, Start }   # Input.bind_pad(button:) / pad_button
 enum MouseButton { Left, Right, Middle }                                  # Input.mouse_down(button:)
-function input_cursor_mode(mode: int) -> void {
-  if mode != in_cursor_mode { in_mouse_rebase = true }
-  in_cursor_mode = mode
+function input_cursor_mode(rt_input_st: mut RtInputState, mode: int) -> void {
+  if mode != rt_input_st.in_cursor_mode { rt_input_st.in_mouse_rebase = true }
+  rt_input_st.in_cursor_mode = mode
   if is_windowed() { win_cursor_mode(mode) }
 }
 
 # ---- mouse -----------------------------------------------------------------
-function input_mouse_x()  -> int { in_init();  return in_mx }
-function input_mouse_y()  -> int { in_init();  return in_my }
-function input_mouse_dx() -> int { in_init();  return in_mdx }
-function input_mouse_dy() -> int { in_init();  return in_mdy }
-function input_mouse_down(btn: int) -> bool { in_init();  return (in_mbtn & (1 << btn)) != 0 }
-function input_wheel() -> int { in_init();  return in_wheel }
+function input_mouse_x(rt_input_st: mut RtInputState)  -> int { in_init(rt_input_st);  return rt_input_st.in_mx }
+function input_mouse_y(rt_input_st: mut RtInputState)  -> int { in_init(rt_input_st);  return rt_input_st.in_my }
+function input_mouse_dx(rt_input_st: mut RtInputState) -> int { in_init(rt_input_st);  return rt_input_st.in_mdx }
+function input_mouse_dy(rt_input_st: mut RtInputState) -> int { in_init(rt_input_st);  return rt_input_st.in_mdy }
+function input_mouse_down(rt_input_st: mut RtInputState, btn: int) -> bool { in_init(rt_input_st);  return (rt_input_st.in_mbtn & (1 << btn)) != 0 }
+function input_wheel(rt_input_st: mut RtInputState) -> int { in_init(rt_input_st);  return rt_input_st.in_wheel }
 # inject the mouse (headless / AI / testing). buttons is a bitmask; wheel is this
 # frame's delta.
-function input_set_mouse(x: int, y: int, buttons: int, wheel: int) -> void {
-  in_init()
-  in_mx = x;  in_my = y;  in_mbtn = buttons;  in_wheel = wheel
+function input_set_mouse(rt_input_st: mut RtInputState, x: int, y: int, buttons: int, wheel: int) -> void {
+  in_init(rt_input_st)
+  rt_input_st.in_mx = x;  rt_input_st.in_my = y;  rt_input_st.in_mbtn = buttons;  rt_input_st.in_wheel = wheel
 }
 
 # ---- gamepads --------------------------------------------------------------
-function input_pad_connected(pad: int) -> bool {
-  in_init()
+function input_pad_connected(rt_input_st: mut RtInputState, pad: int) -> bool {
+  in_init(rt_input_st)
   if (pad < 0) or (pad >= IN_PADS) { return false }
-  return in_pad_conn[pad] != 0
+  return rt_input_st.in_pad_conn[pad] != 0
 }
-function input_pad_button(pad: int, btn: int) -> bool {
-  in_init()
+function input_pad_button(rt_input_st: mut RtInputState, pad: int, btn: int) -> bool {
+  in_init(rt_input_st)
   if (pad < 0) or (pad >= IN_PADS) { return false }
-  return (in_pad_btn[pad] & (1 << btn)) != 0
+  return (rt_input_st.in_pad_btn[pad] & (1 << btn)) != 0
 }
-function input_pad_axis(pad: int, axis: int) -> fixed {
-  in_init()
+function input_pad_axis(rt_input_st: mut RtInputState, pad: int, axis: int) -> fixed {
+  in_init(rt_input_st)
   if (pad < 0) or (pad >= IN_PADS) { return fixed(0) }
   if (axis < 0) or (axis >= IN_AXES) { return fixed(0) }
-  return in_pad_axis[pad * IN_AXES + axis]
+  return rt_input_st.in_pad_axis[pad * IN_AXES + axis]
 }
 # inject a gamepad's whole state: connected, button bitmask, and four fixed axes.
-function input_set_pad(pad: int, connected: bool, buttons: int, lx: fixed, ly: fixed, rx: fixed, ry: fixed) -> void {
-  in_init()
+function input_set_pad(rt_input_st: mut RtInputState, pad: int, connected: bool, buttons: int, lx: fixed, ly: fixed, rx: fixed, ry: fixed) -> void {
+  in_init(rt_input_st)
   if (pad < 0) or (pad >= IN_PADS) { return }
   var c = 0
   if connected { c = 1 }
-  in_pad_conn[pad] = c
-  in_pad_btn[pad]  = buttons
+  rt_input_st.in_pad_conn[pad] = c
+  rt_input_st.in_pad_btn[pad]  = buttons
   let b = pad * IN_AXES
-  in_pad_axis[b]     = lx
-  in_pad_axis[b + 1] = ly
-  in_pad_axis[b + 2] = rx
-  in_pad_axis[b + 3] = ry
+  rt_input_st.in_pad_axis[b]     = lx
+  rt_input_st.in_pad_axis[b + 1] = ly
+  rt_input_st.in_pad_axis[b + 2] = rx
+  rt_input_st.in_pad_axis[b + 3] = ry
 }
 
 # ---- touch -----------------------------------------------------------------
-function input_touch_count() -> int {
-  in_init()
+function input_touch_count(rt_input_st: mut RtInputState) -> int {
+  in_init(rt_input_st)
   var n = 0
   var i = 0
-  while i < IN_TOUCH { if in_touch_on[i] != 0 { n += 1 };  i += 1 }
+  while i < IN_TOUCH { if rt_input_st.in_touch_on[i] != 0 { n += 1 };  i += 1 }
   return n
 }
-function input_touch_x(i: int) -> int { in_init();  if (i < 0) or (i >= IN_TOUCH) { return 0 };  return in_touch_x[i] }
-function input_touch_y(i: int) -> int { in_init();  if (i < 0) or (i >= IN_TOUCH) { return 0 };  return in_touch_y[i] }
+function input_touch_x(rt_input_st: mut RtInputState, i: int) -> int { in_init(rt_input_st);  if (i < 0) or (i >= IN_TOUCH) { return 0 };  return rt_input_st.in_touch_x[i] }
+function input_touch_y(rt_input_st: mut RtInputState, i: int) -> int { in_init(rt_input_st);  if (i < 0) or (i >= IN_TOUCH) { return 0 };  return rt_input_st.in_touch_y[i] }
 # inject a touch point i: active with a position, or inactive.
-function input_set_touch(i: int, x: int, y: int, active: bool) -> void {
-  in_init()
+function input_set_touch(rt_input_st: mut RtInputState, i: int, x: int, y: int, active: bool) -> void {
+  in_init(rt_input_st)
   if (i < 0) or (i >= IN_TOUCH) { return }
   var a = 0
   if active { a = 1 }
-  in_touch_on[i] = a
-  in_touch_x[i]  = x
-  in_touch_y[i]  = y
+  rt_input_st.in_touch_on[i] = a
+  rt_input_st.in_touch_x[i]  = x
+  rt_input_st.in_touch_y[i]  = y
 }
 
 # is the named action held on the frame last polled?
-function input_down(name: pointer) -> bool {
-  return input_slot_has(input_find(name), input_frame)
+function input_down(rt_input_st: mut RtInputState, name: pointer) -> bool {
+  return input_slot_has(rt_input_st, input_find(rt_input_st, name), rt_input_st.input_frame)
 }
 
 # #83 — the Input-Manager reads: an action is *active* when any of its bound
@@ -618,55 +620,55 @@ function input_down(name: pointer) -> bool {
 # see the whole device layer (hold left AND jump), and are device-agnostic. The
 # frame loop now commits the device layer automatically (input_poll), so these read
 # live without the game calling Input.poll by hand.
-function input_active_in(name: pointer, held: words, padmask: int) -> bool {
-  let s = input_find(name)
+function input_active_in(rt_input_st: mut RtInputState, name: pointer, held: words, padmask: int) -> bool {
+  let s = input_find(rt_input_st, name)
   if s < 0 { return false }
   let base = s * INPUT_MAX_KEYS
   var i = 0
   while i < INPUT_MAX_KEYS {
-    let k = input_keys[base + i]
+    let k = rt_input_st.input_keys[base + i]
     if (k != 0) and in_bit_get(held, k) { return true }
-    let pb = input_pads[base + i]
+    let pb = rt_input_st.input_pads[base + i]
     if (pb != 0) and ((padmask & (1 << (pb - 1))) != 0) { return true }
     i += 1
   }
   return false
 }
-function input_active(name: pointer) -> bool {
-  in_init()
-  return input_active_in(name, in_held, in_pad_btn[0])
+function input_active(rt_input_st: mut RtInputState, name: pointer) -> bool {
+  in_init(rt_input_st)
+  return input_active_in(rt_input_st, name, rt_input_st.in_held, rt_input_st.in_pad_btn[0])
 }
 # went active this frame (active now, not last frame) — the deterministic on-press.
-function input_just_pressed(name: pointer) -> bool {
-  in_init()
-  let now  = input_active_in(name, in_held, in_pad_btn[0])
-  let was  = input_active_in(name, in_prev, in_pad_btn0[0])
+function input_just_pressed(rt_input_st: mut RtInputState, name: pointer) -> bool {
+  in_init(rt_input_st)
+  let now  = input_active_in(rt_input_st, name, rt_input_st.in_held, rt_input_st.in_pad_btn[0])
+  let was  = input_active_in(rt_input_st, name, rt_input_st.in_prev, rt_input_st.in_pad_btn0[0])
   return now and (not was)
 }
 # went inactive this frame (not active now, was last frame) — the on-release.
-function input_just_released(name: pointer) -> bool {
-  in_init()
-  let now  = input_active_in(name, in_held, in_pad_btn[0])
-  let was  = input_active_in(name, in_prev, in_pad_btn0[0])
+function input_just_released(rt_input_st: mut RtInputState, name: pointer) -> bool {
+  in_init(rt_input_st)
+  let now  = input_active_in(rt_input_st, name, rt_input_st.in_held, rt_input_st.in_pad_btn[0])
+  let was  = input_active_in(rt_input_st, name, rt_input_st.in_prev, rt_input_st.in_pad_btn0[0])
   return (not now) and was
 }
 
 # did the named action go down this frame (down now, not down last frame)?
-function input_pressed(name: pointer) -> bool {
-  let s = input_find(name)
-  return input_slot_has(s, input_frame) and (not input_slot_has(s, input_last))
+function input_pressed(rt_input_st: mut RtInputState, name: pointer) -> bool {
+  let s = input_find(rt_input_st, name)
+  return input_slot_has(rt_input_st, s, rt_input_st.input_frame) and (not input_slot_has(rt_input_st, s, rt_input_st.input_last))
 }
 
 # begin recording polled input from the next frame (resets the tape).
-function input_record() -> void {
-  if input_rec == null { input_rec = words(INPUT_REC_CAP) }
-  input_recn = 0
-  input_pos = 0
-  input_mode = 1
+function input_record(rt_input_st: mut RtInputState) -> void {
+  if rt_input_st.input_rec == null { rt_input_st.input_rec = words(INPUT_REC_CAP) }
+  rt_input_st.input_recn = 0
+  rt_input_st.input_pos = 0
+  rt_input_st.input_mode = 1
 }
 
 # replay the recording from its start; subsequent Input.poll calls read the tape.
-function input_replay() -> void {
-  input_pos = 0
-  input_mode = 2
+function input_replay(rt_input_st: mut RtInputState) -> void {
+  rt_input_st.input_pos = 0
+  rt_input_st.input_mode = 2
 }

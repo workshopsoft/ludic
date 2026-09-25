@@ -16,7 +16,7 @@
 # ============================================================================
 import "atlas.ludic"
 
-function esys_tileskin() -> void {
+function esys_tileskin(rt_atlas_st: mut RtAtlasState, rt_core_st: mut RtCoreState, rt_image_st: RtImageState) -> void {
   let P = World.prop_id("TileSkin")
   if P < 0 { return }
   let f_glyph  = World.field_id(P, "glyph")
@@ -36,12 +36,12 @@ function esys_tileskin() -> void {
     var sc = 1
     if f_scale >= 0 { let cv = World.get(e, P, f_scale);  if cv > 1 { sc = cv } }
     var ty = 0
-    while ty < rt_maph {
+    while ty < rt_core_st.rt_maph {
       var tx = 0
-      while tx < rt_mapw {
-        if rt_tile(tx, ty) == glyph {
-          if is_atlas != 0 { atlas_draw_ex(sprite, tx * size, ty * size, sc, 0, 0) }
-          else { rt_draw_sprite_ex(sprite, tx * size, ty * size, sc, 0, 0) }
+      while tx < rt_core_st.rt_mapw {
+        if rt_tile(rt_core_st, tx, ty) == glyph {
+          if is_atlas != 0 { atlas_draw_ex(rt_atlas_st, rt_core_st, rt_image_st, sprite, tx * size, ty * size, sc, 0, 0) }
+          else { rt_draw_sprite_ex(rt_core_st, rt_image_st, sprite, tx * size, ty * size, sc, 0, 0) }
         }
         tx += 1
       }

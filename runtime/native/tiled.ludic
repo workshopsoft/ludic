@@ -41,18 +41,18 @@ function tiled_csv_list(text: pointer) -> Val {
 
 # a base64 (optionally zlib/gzip-compressed) blob of `count` little-endian u32
 # GIDs -> a Value list of int nodes.
-function tiled_b64_list(text: pointer, compression: pointer, count: int) -> Val {
+function tiled_b64_list(rt_inflate_st: mut RtInflateState, rt_zstd_st: mut RtZstdState, text: pointer, compression: pointer, count: int) -> Val {
   let comp = bytes(len(text) + 4)
   let clen = b64_decode(text, comp)
   let outcap = count * 4 + 16
   var raw = comp
   var rawlen = clen
   if compression == "zlib" {
-    let d = bytes(outcap);  let dn = z_uncompress(comp, clen, d, outcap);  raw = d;  rawlen = dn
+    let d = bytes(outcap);  let dn = z_uncompress(rt_inflate_st, comp, clen, d, outcap);  raw = d;  rawlen = dn
   } else { if compression == "gzip" {
-    let d = bytes(outcap);  let dn = z_gunzip(comp, clen, d, outcap);  raw = d;  rawlen = dn
+    let d = bytes(outcap);  let dn = z_gunzip(rt_inflate_st, comp, clen, d, outcap);  raw = d;  rawlen = dn
   } else { if compression == "zstd" {
-    let d = bytes(outcap);  let dn = z_zstd(comp, clen, d, outcap);  raw = d;  rawlen = dn
+    let d = bytes(outcap);  let dn = z_zstd(rt_zstd_st, comp, clen, d, outcap);  raw = d;  rawlen = dn
   } } }
   let out = value_list()
   var i = 0
@@ -65,19 +65,19 @@ function tiled_b64_list(text: pointer, compression: pointer, count: int) -> Val 
 }
 
 # decode the text of `node` under encoding `enc` / compression `comp` -> GID list.
-function tiled_decode_enc(node: Xml, enc: pointer, comp: pointer, count: int) -> Val {
-  if enc == "base64" { return tiled_b64_list(xml_text(node), comp, count) }
+function tiled_decode_enc(rt_inflate_st: mut RtInflateState, rt_zstd_st: mut RtZstdState, node: Xml, enc: pointer, comp: pointer, count: int) -> Val {
+  if enc == "base64" { return tiled_b64_list(rt_inflate_st, rt_zstd_st, xml_text(node), comp, count) }
   return tiled_csv_list(xml_text(node))          # csv (or the tag-per-tile form)
 }
 
 # decode a `<data>` element (child of a `<layer>`) into a Value list of GIDs.
-function tiled_data_list(data: Xml, count: int) -> Val {
-  return tiled_decode_enc(data, xml_attr(data, "encoding"), xml_attr(data, "compression"), count)
+function tiled_data_list(rt_inflate_st: mut RtInflateState, rt_zstd_st: mut RtZstdState, data: Xml, count: int) -> Val {
+  return tiled_decode_enc(rt_inflate_st, rt_zstd_st, data, xml_attr(data, "encoding"), xml_attr(data, "compression"), count)
 }
 
 # flatten a chunked (infinite-map) `<data>` — its `<chunk x y width height>`
 # children — into a dense GID list; sets `o`'s width/height/data (#74).
-function tiled_chunked_layer(data: Xml, o: Val) -> void {
+function tiled_chunked_layer(rt_inflate_st: mut RtInflateState, rt_zstd_st: mut RtZstdState, data: Xml, o: Val) -> void {
   let enc = xml_attr(data, "encoding")
   let comp = xml_attr(data, "compression")
   # pass 1: bounds over every chunk (tile coordinates)
@@ -112,7 +112,7 @@ function tiled_chunked_layer(data: Xml, o: Val) -> void {
       let cy = xml_attr_int(ch, "y", 0) - miny
       let cw = xml_attr_int(ch, "width", 0)
       let cht = xml_attr_int(ch, "height", 0)
-      let cdata = tiled_decode_enc(ch, enc, comp, cw * cht)
+      let cdata = tiled_decode_enc(rt_inflate_st, rt_zstd_st, ch, enc, comp, cw * cht)
       var yy = 0
       while yy < cht {
         var xx = 0
@@ -340,7 +340,7 @@ function tmx_layer_common(o: Val, el: Xml) -> void {
   if len(props.kids) > 0 { value_put(o, "properties", props) }
 }
 
-function tmx_tilelayer_to_value(el: Xml, mapw: int, maph: int) -> Val {
+function tmx_tilelayer_to_value(rt_inflate_st: mut RtInflateState, rt_zstd_st: mut RtZstdState, el: Xml, mapw: int, maph: int) -> Val {
   let o = value_object()
   value_put(o, "type", value_str("tilelayer"))
   tmx_layer_common(o, el)
@@ -348,11 +348,11 @@ function tmx_tilelayer_to_value(el: Xml, mapw: int, maph: int) -> Val {
   let h = xml_attr_int(el, "height", maph)
   let data = xml_find(el, "data")
   if xml_count(data, "chunk") > 0 {                # infinite map: flatten the chunks
-    tiled_chunked_layer(data, o)
+    tiled_chunked_layer(rt_inflate_st, rt_zstd_st, data, o)
   } else {
     value_put(o, "width", value_int(w))
     value_put(o, "height", value_int(h))
-    value_put(o, "data", tiled_data_list(data, w * h))
+    value_put(o, "data", tiled_data_list(rt_inflate_st, rt_zstd_st, data, w * h))
   }
   return o
 }
@@ -374,7 +374,7 @@ function tmx_objectlayer_to_value(el: Xml) -> Val {
 
 # ---- map -------------------------------------------------------------------
 # a `<map>` root -> the intermediate map Value tree (Tiled JSON schema).
-function tmx_to_value(root: Xml) -> Val {
+function tmx_to_value(rt_inflate_st: mut RtInflateState, rt_zstd_st: mut RtZstdState, root: Xml) -> Val {
   let m = value_object()
   value_put(m, "type", value_str("map"))
   value_put(m, "version", value_str(xml_attr(root, "version")))
@@ -398,10 +398,10 @@ function tmx_to_value(root: Xml) -> Val {
     let ch = xml_child(root, i)
     let tag = xml_tag(ch)
     if tag == "tileset" { push(tilesets.kids, tmx_tileset_to_value(ch)) }
-    else { if tag == "layer" { push(layers.kids, tmx_tilelayer_to_value(ch, mapw, maph)) }
+    else { if tag == "layer" { push(layers.kids, tmx_tilelayer_to_value(rt_inflate_st, rt_zstd_st, ch, mapw, maph)) }
     else { if tag == "objectgroup" { push(layers.kids, tmx_objectlayer_to_value(ch)) }
     else { if tag == "imagelayer" { push(layers.kids, tmx_imagelayer_to_value(ch)) }
-    else { if tag == "group" { push(layers.kids, tmx_group_to_value(ch, mapw, maph)) } } } } }
+    else { if tag == "group" { push(layers.kids, tmx_group_to_value(rt_inflate_st, rt_zstd_st, ch, mapw, maph)) } } } } }
     i += 1
   }
   let props = tmx_props_list(root)
@@ -424,7 +424,7 @@ function tmx_imagelayer_to_value(el: Xml) -> Val {
 }
 
 # `<group>` -> a Value object carrying its nested layers (P5 renders recursively).
-function tmx_group_to_value(el: Xml, mapw: int, maph: int) -> Val {
+function tmx_group_to_value(rt_inflate_st: mut RtInflateState, rt_zstd_st: mut RtZstdState, el: Xml, mapw: int, maph: int) -> Val {
   let o = value_object()
   value_put(o, "type", value_str("group"))
   tmx_layer_common(o, el)
@@ -433,10 +433,10 @@ function tmx_group_to_value(el: Xml, mapw: int, maph: int) -> Val {
   while i < xml_child_count(el) {
     let ch = xml_child(el, i)
     let tag = xml_tag(ch)
-    if tag == "layer" { push(layers.kids, tmx_tilelayer_to_value(ch, mapw, maph)) }
+    if tag == "layer" { push(layers.kids, tmx_tilelayer_to_value(rt_inflate_st, rt_zstd_st, ch, mapw, maph)) }
     else { if tag == "objectgroup" { push(layers.kids, tmx_objectlayer_to_value(ch)) }
     else { if tag == "imagelayer" { push(layers.kids, tmx_imagelayer_to_value(ch)) }
-    else { if tag == "group" { push(layers.kids, tmx_group_to_value(ch, mapw, maph)) } } } }
+    else { if tag == "group" { push(layers.kids, tmx_group_to_value(rt_inflate_st, rt_zstd_st, ch, mapw, maph)) } } } }
     i += 1
   }
   value_put(o, "layers", layers)
@@ -447,13 +447,13 @@ function tmx_group_to_value(el: Xml, mapw: int, maph: int) -> Val {
 # The JSON reader already yields a Value tree; normalise it so it matches the XML
 # path: decode any base64 `data` string into a dense GID int list, in place, for
 # every tile layer (recursing into groups).
-function tmj_normalize_layer(layer: Val) -> void {
+function tmj_normalize_layer(rt_inflate_st: mut RtInflateState, rt_zstd_st: mut RtZstdState, layer: Val) -> void {
   if value_kind(layer) != 6 { return }
   let ty = value_as_str(value_get(layer, "type"))
   if ty == "group" {
     let ls = value_get(layer, "layers")
     var i = 0
-    while i < value_count(ls) { tmj_normalize_layer(value_at(ls, i));  i += 1 }
+    while i < value_count(ls) { tmj_normalize_layer(rt_inflate_st, rt_zstd_st, value_at(ls, i));  i += 1 }
     return
   }
   if ty != "tilelayer" { return }
@@ -462,26 +462,26 @@ function tmj_normalize_layer(layer: Val) -> void {
   # infinite map: flatten the JSON `chunks` array into a dense data list (#74)
   let chunks = value_get(layer, "chunks")
   if value_kind(chunks) == 5 and value_count(chunks) > 0 {
-    tmj_flatten_chunks(layer, chunks, enc, comp)
+    tmj_flatten_chunks(rt_inflate_st, rt_zstd_st, layer, chunks, enc, comp)
     return
   }
   let data = value_get(layer, "data")
   if value_kind(data) == 4 {                                # a base64 string
     let w = value_as_int(value_get(layer, "width"))
     let h = value_as_int(value_get(layer, "height"))
-    if enc == "base64" { value_put(layer, "data", tiled_b64_list(value_as_str(data), comp, w * h)) }
+    if enc == "base64" { value_put(layer, "data", tiled_b64_list(rt_inflate_st, rt_zstd_st, value_as_str(data), comp, w * h)) }
   }
 }
 
 # a JSON chunk's `data` (int array, or a base64 string) -> a GID Value list.
-function tmj_chunk_gids(chunk: Val, enc: pointer, comp: pointer, count: int) -> Val {
+function tmj_chunk_gids(rt_inflate_st: mut RtInflateState, rt_zstd_st: mut RtZstdState, chunk: Val, enc: pointer, comp: pointer, count: int) -> Val {
   let d = value_get(chunk, "data")
-  if value_kind(d) == 4 { return tiled_b64_list(value_as_str(d), comp, count) }   # base64 string
+  if value_kind(d) == 4 { return tiled_b64_list(rt_inflate_st, rt_zstd_st, value_as_str(d), comp, count) }   # base64 string
   return d                                                  # already an int array
 }
 
 # flatten JSON `chunks[]` into a dense data list on `layer`, sizing to the union.
-function tmj_flatten_chunks(layer: Val, chunks: Val, enc: pointer, comp: pointer) -> void {
+function tmj_flatten_chunks(rt_inflate_st: mut RtInflateState, rt_zstd_st: mut RtZstdState, layer: Val, chunks: Val, enc: pointer, comp: pointer) -> void {
   var minx = 1000000000
   var miny = 1000000000
   var maxx = -1000000000
@@ -509,7 +509,7 @@ function tmj_flatten_chunks(layer: Val, chunks: Val, enc: pointer, comp: pointer
     let cy = value_as_int(value_get(c, "y")) - miny
     let cw = value_as_int(value_get(c, "width"))
     let cht = value_as_int(value_get(c, "height"))
-    let cdata = tmj_chunk_gids(c, enc, comp, cw * cht)
+    let cdata = tmj_chunk_gids(rt_inflate_st, rt_zstd_st, c, enc, comp, cw * cht)
     var yy = 0
     while yy < cht {
       var xx = 0
@@ -526,10 +526,10 @@ function tmj_flatten_chunks(layer: Val, chunks: Val, enc: pointer, comp: pointer
   value_put(layer, "data", gids)
 }
 
-function tmj_normalize(m: Val) -> Val {
+function tmj_normalize(rt_inflate_st: mut RtInflateState, rt_zstd_st: mut RtZstdState, m: Val) -> Val {
   let ls = value_get(m, "layers")
   var i = 0
-  while i < value_count(ls) { tmj_normalize_layer(value_at(ls, i));  i += 1 }
+  while i < value_count(ls) { tmj_normalize_layer(rt_inflate_st, rt_zstd_st, value_at(ls, i));  i += 1 }
   return m
 }
 
@@ -547,22 +547,22 @@ function tiled_first_byte(s: pointer) -> int {
 
 # read a map file (TMX or TMJ, auto-detected by first byte) -> the normalised
 # intermediate map Value tree.
-function tiled_read(path: pointer) -> Val {
+function tiled_read(rt_inflate_st: mut RtInflateState, rt_xml_st: mut RtXmlState, rt_zstd_st: mut RtZstdState, path: pointer) -> Val {
   let text = Fs.read_text(path)
   if text == null { return value_null() }
   if text == "" { return value_null() }
   if tiled_first_byte(text) == 60 {                          # '<' -> XML
-    return tmx_to_value(xml_parse(text))
+    return tmx_to_value(rt_inflate_st, rt_zstd_st, xml_parse(rt_xml_st, text))
   }
-  return tmj_normalize(json_parse(text))                     # '{' -> JSON
+  return tmj_normalize(rt_inflate_st, rt_zstd_st, json_parse(text))                     # '{' -> JSON
 }
 
 # read a tileset file (TSX or TSJ) -> a tileset Value object.
-function tiled_read_tsx(path: pointer) -> Val {
+function tiled_read_tsx(rt_xml_st: mut RtXmlState, path: pointer) -> Val {
   let text = Fs.read_text(path)
   if text == null { return value_null() }
   if text == "" { return value_null() }
-  if tiled_first_byte(text) == 60 { return tsx_to_value(xml_parse(text)) }
+  if tiled_first_byte(text) == 60 { return tsx_to_value(xml_parse(rt_xml_st, text)) }
   return json_parse(text)
 }
 
@@ -734,9 +734,9 @@ function tmap_collision_kind(m: Tmap, gid: int) -> int {
 # as solid — the fallback source); false to drive collision from per-tile
 # metadata alone (objectgroup shapes / property convention on a visual layer).
 # solid -> '#' (35), one-way -> '=' (61), trigger/empty -> ' ' (32, passable).
-function tmap_project_layer(m: Tmap, layer: int, whole_layer_solid: int) -> void {
+function tmap_project_layer(rt_core_st: mut RtCoreState, m: Tmap, layer: int, whole_layer_solid: int) -> void {
   m.coll = layer
-  rt_map_size(m.w, m.h)                     # clamps to 96x64, clears to ' '
+  rt_map_size(rt_core_st, m.w, m.h)                     # clamps to 96x64, clears to ' '
   if layer < 0 or layer >= len(m.layers) { return }
   let l = m.layers[layer]
   if l.kind != 0 { return }
@@ -750,8 +750,8 @@ function tmap_project_layer(m: Tmap, layer: int, whole_layer_solid: int) -> void
           if gid != 0 {
             var k = tmap_collision_kind(m, gid)
             if k == 0 and whole_layer_solid != 0 { k = 1 }     # collision-layer fallback
-            if k == 1 { rt_map[y * 96 + x] = '#' }              # '#'
-            if k == 2 { rt_map[y * 96 + x] = '=' }              # '='
+            if k == 1 { rt_core_st.rt_map[y * 96 + x] = '#' }              # '#'
+            if k == 2 { rt_core_st.rt_map[y * 96 + x] = '=' }              # '='
           }
         }
         x += 1
@@ -763,11 +763,11 @@ function tmap_project_layer(m: Tmap, layer: int, whole_layer_solid: int) -> void
 
 # project a designated collision layer (non-zero GID is solid unless its tile
 # metadata says otherwise) — the P1 default, called automatically on load.
-function tmap_project(m: Tmap, layer: int) -> void { tmap_project_layer(m, layer, 1) }
+function tmap_project(rt_core_st: mut RtCoreState, m: Tmap, layer: int) -> void { tmap_project_layer(rt_core_st, m, layer, 1) }
 
 # drive collision from per-tile metadata alone (objectgroup hitboxes / property
 # convention) over any layer — a tile with no collision metadata stays passable.
-function tmap_collide(m: Tmap, layer: int) -> void { tmap_project_layer(m, layer, 0) }
+function tmap_collide(rt_core_st: mut RtCoreState, m: Tmap, layer: int) -> void { tmap_project_layer(rt_core_st, m, layer, 0) }
 
 # find a tile layer named collision/solids/walls (case-sensitive), or -1.
 function tmap_find_collision(m: Tmap) -> int {
@@ -784,10 +784,10 @@ function tmap_find_collision(m: Tmap) -> int {
 # blit one tilew x tileh tile from a tileset image (source origin sx,sy) to the
 # framebuffer at (dx,dy), applying the three flip flags. Square tiles assumed
 # for the diagonal flip (Kenney art is 16x16), which is the orthogonal case.
-function tmap_blit_tile(imgid: int, sx: int, sy: int, tw: int, th: int, dx: int, dy: int, fh: int, fv: int, fd: int) -> void {
+function tmap_blit_tile(rt_core_st: mut RtCoreState, rt_image_st: RtImageState, imgid: int, sx: int, sy: int, tw: int, th: int, dx: int, dy: int, fh: int, fv: int, fd: int) -> void {
   if imgid < 0 { return }
-  let s: words = img_px[imgid]
-  let iw = img_w[imgid]
+  let s: words = rt_image_st.img_px[imgid]
+  let iw = rt_image_st.img_w[imgid]
   var j = 0
   while j < th {
     var i = 0
@@ -798,7 +798,7 @@ function tmap_blit_tile(imgid: int, sx: int, sy: int, tw: int, th: int, dx: int,
       if fh == 1 { u = tw - 1 - u }
       if fv == 1 { v = th - 1 - v }
       let argb = s[(sy + v) * iw + (sx + u)]
-      rt_blend_px(dx + i, dy + j, argb)
+      rt_blend_px(rt_core_st, dx + i, dy + j, argb)
       i += 1
     }
     j += 1
@@ -806,7 +806,7 @@ function tmap_blit_tile(imgid: int, sx: int, sy: int, tw: int, th: int, dx: int,
 }
 
 # draw one tile GID at map cell (x,y) with the camera offset already applied.
-function tmap_draw_gid(m: Tmap, gid: int, dx: int, dy: int) -> void {
+function tmap_draw_gid(rt_core_st: mut RtCoreState, rt_image_st: RtImageState, m: Tmap, gid: int, dx: int, dy: int) -> void {
   if gid == 0 { return }
   let r = tmap_resolve(m, gid)
   if r.tileset < 0 { return }
@@ -821,7 +821,7 @@ function tmap_draw_gid(m: Tmap, gid: int, dx: int, dy: int) -> void {
   # Tiled anchors a tile by its bottom-left, so a tile taller than the map cell
   # rises above the cell.
   let ddy = dy - (ts.tileh - m.tileh)
-  tmap_blit_tile(ts.imgid, sx, sy, ts.tilew, ts.tileh, dx, ddy, r.fh, r.fv, r.fd)
+  tmap_blit_tile(rt_core_st, rt_image_st, ts.imgid, sx, sy, ts.tilew, ts.tileh, dx, ddy, r.fh, r.fv, r.fd)
 }
 
 # (tmap_draw / tmap_draw_anim are defined in the P3 section below, over the shared
@@ -859,7 +859,7 @@ function tiled_join(a: pointer, b: pointer) -> string { return Path.normalize(Pa
 
 # build the runtime map from an intermediate tree, resolving external tilesets
 # and loading tileset images relative to `basedir`.
-function tmap_build(tree: Val, basedir: pointer) -> Tmap {
+function tmap_build(rt_image_st: mut RtImageState, rt_inflate_st: mut RtInflateState, rt_xml_st: mut RtXmlState, tree: Val, basedir: pointer) -> Tmap {
   let m = new Tmap
   m.tree = tree
   m.layers = new []TmLayer
@@ -878,14 +878,14 @@ function tmap_build(tree: Val, basedir: pointer) -> Tmap {
     let src = value_as_str(value_get(tv, "source"))
     if src != "" {                                        # external .tsx/.tsj
       let tsxpath = tiled_join(basedir, src)
-      let ext = tiled_read_tsx(tsxpath)
+      let ext = tiled_read_tsx(rt_xml_st, tsxpath)
       value_put(ext, "firstgid", value_get(tv, "firstgid"))
       tv = ext
       imgdir = Path.dir(tsxpath)
     }
     let ts = tmap_tileset_from_value(tv)
     let img = value_as_str(value_get(tv, "image"))
-    if img != "" { ts.imgid = rt_image_load(tiled_join(imgdir, img)) }
+    if img != "" { ts.imgid = rt_image_load(rt_image_st, rt_inflate_st, tiled_join(imgdir, img)) }
     push(m.tilesets, ts)
     i += 1
   }
@@ -898,7 +898,7 @@ function tmap_build(tree: Val, basedir: pointer) -> Tmap {
   while i < len(m.layers) {
     if m.layers[i].kind == 2 {
       let img = value_as_str(value_get(m.layers[i].data, "image"))
-      if img != "" { m.layers[i].imgid = rt_image_load(tiled_join(basedir, img)) }
+      if img != "" { m.layers[i].imgid = rt_image_load(rt_image_st, rt_inflate_st, tiled_join(basedir, img)) }
     }
     i += 1
   }
@@ -964,12 +964,12 @@ function tmap_add_layer(m: Tmap, lv: Val) -> void {
 # load a Tiled map file into the runtime model: read + parse (TMX or TMJ), build
 # the model (resolving external tilesets + images), and project the collision
 # layer (a tile layer named collision/solids/walls) down to the legacy tilemap.
-function tiled_load(path: pointer) -> Tmap {
-  let tree = tiled_read(path)
-  let m = tmap_build(tree, Path.dir(path))
-  tmap_resolve_templates(m, Path.dir(path))      # #72: fill template-instance objects
+function tiled_load(rt_core_st: mut RtCoreState, rt_image_st: mut RtImageState, rt_inflate_st: mut RtInflateState, rt_xml_st: mut RtXmlState, rt_zstd_st: mut RtZstdState, path: pointer) -> Tmap {
+  let tree = tiled_read(rt_inflate_st, rt_xml_st, rt_zstd_st, path)
+  let m = tmap_build(rt_image_st, rt_inflate_st, rt_xml_st, tree, Path.dir(path))
+  tmap_resolve_templates(rt_xml_st, m, Path.dir(path))      # #72: fill template-instance objects
   let c = tmap_find_collision(m)
-  if c >= 0 { tmap_project(m, c) }
+  if c >= 0 { tmap_project(rt_core_st, m, c) }
   return m
 }
 
@@ -1032,7 +1032,7 @@ function tmap_is_animated(m: Tmap, gid: int) -> int {
 
 # draw every visible tile layer (animated tiles resolved for `frame`) plus every
 # tile object on the object layers, in file order, offset by the camera.
-function tmap_draw_full(m: Tmap, camx: int, camy: int, frame: int, animate: int) -> void {
+function tmap_draw_full(rt_core_st: mut RtCoreState, rt_image_st: RtImageState, m: Tmap, camx: int, camy: int, frame: int, animate: int) -> void {
   var li = 0
   while li < len(m.layers) {
     let l = m.layers[li]
@@ -1047,7 +1047,7 @@ function tmap_draw_full(m: Tmap, camx: int, camy: int, frame: int, animate: int)
           if gid != 0 {
             if animate != 0 { gid = tmap_frame_gid(m, gid, frame) }
             # orientation transform places the cell (orthogonal / iso / hex / staggered)
-            tmap_draw_gid(m, gid, tmap_cell_sx(m, x, y) + lox - camx, tmap_cell_sy(m, x, y) + loy - camy)
+            tmap_draw_gid(rt_core_st, rt_image_st, m, gid, tmap_cell_sx(m, x, y) + lox - camx, tmap_cell_sy(m, x, y) + loy - camy)
           }
           x += 1
         }
@@ -1055,7 +1055,7 @@ function tmap_draw_full(m: Tmap, camx: int, camy: int, frame: int, animate: int)
       }
     }
     if l.kind == 2 and l.visible != 0 {              # image layer (parallax / repeat)
-      tmap_draw_imagelayer(m, l, camx, camy)
+      tmap_draw_imagelayer(rt_core_st, rt_image_st, m, l, camx, camy)
     }
     if l.kind == 1 and l.visible != 0 {              # object layer: draw tile objects
       let objs = value_get(l.data, "objects")
@@ -1068,7 +1068,7 @@ function tmap_draw_full(m: Tmap, camx: int, camy: int, frame: int, animate: int)
           let ox = value_as_int(value_get(ob, "x"))
           let oy = value_as_int(value_get(ob, "y"))
           # Tiled anchors a tile object by its bottom-left corner
-          tmap_draw_gid(m, g, ox - camx, oy - m.tileh - camy)
+          tmap_draw_gid(rt_core_st, rt_image_st, m, g, ox - camx, oy - m.tileh - camy)
         }
         oi += 1
       }
@@ -1078,11 +1078,11 @@ function tmap_draw_full(m: Tmap, camx: int, camy: int, frame: int, animate: int)
 }
 
 # static draw (no animation) — the P1 entry point.
-function tmap_draw(m: Tmap, camx: int, camy: int) -> void { tmap_draw_full(m, camx, camy, 0, 0) }
+function tmap_draw(rt_core_st: mut RtCoreState, rt_image_st: RtImageState, m: Tmap, camx: int, camy: int) -> void { tmap_draw_full(rt_core_st, rt_image_st, m, camx, camy, 0, 0) }
 
 # animated draw at engine `frame` (pass Time.frame): animated tiles advance,
 # deterministically and frame-identically across runs.
-function tmap_draw_anim(m: Tmap, camx: int, camy: int, frame: int) -> void { tmap_draw_full(m, camx, camy, frame, 1) }
+function tmap_draw_anim(rt_core_st: mut RtCoreState, rt_image_st: RtImageState, m: Tmap, camx: int, camy: int, frame: int) -> void { tmap_draw_full(rt_core_st, rt_image_st, m, camx, camy, frame, 1) }
 
 # ============================================================================
 # P4 (#72) — object layers (shapes + text), custom properties/types, templates,
@@ -1132,13 +1132,13 @@ function tiled_prop_node(container: Val, name: pointer) -> Val {
 
 # a property's raw string value, with a fallback to the object's custom-type
 # default (objecttypes.xml, via the type table). "" when absent everywhere.
-function tiled_prop_str(container: Val, name: pointer) -> string {
+function tiled_prop_str(rt_tiled_st: mut RtTiledState, container: Val, name: pointer) -> string {
   let p = tiled_prop_node(container, name)
   if value_kind(p) == 6 { return value_as_str(value_get(p, "value")) }
   # fall back to the container's class default
   let cls = value_as_str(value_get(container, "type"))
   if cls != "" {
-    let d = tiled_type_default(cls, name)
+    let d = tiled_type_default(rt_tiled_st, cls, name)
     if value_kind(d) == 6 { return value_as_str(value_get(d, "value")) }
   }
   return ""
@@ -1146,19 +1146,19 @@ function tiled_prop_str(container: Val, name: pointer) -> string {
 
 # a property parsed as an integer ("true"/"false" -> 1/0), with the same default
 # fallback.
-function tiled_prop_int(container: Val, name: pointer) -> int {
-  let s = tiled_prop_str(container, name)
+function tiled_prop_int(rt_tiled_st: mut RtTiledState, container: Val, name: pointer) -> int {
+  let s = tiled_prop_str(rt_tiled_st, container, name)
   if s == "true" { return 1 }
   if s == "false" { return 0 }
   return xml_atoi(s)
 }
 
-function tiled_prop_type(container: Val, name: pointer) -> string {
+function tiled_prop_type(rt_tiled_st: mut RtTiledState, container: Val, name: pointer) -> string {
   let p = tiled_prop_node(container, name)
   if value_kind(p) == 6 { return value_as_str(value_get(p, "type")) }
   let cls = value_as_str(value_get(container, "type"))
   if cls != "" {
-    let d = tiled_type_default(cls, name)
+    let d = tiled_type_default(rt_tiled_st, cls, name)
     if value_kind(d) == 6 { return value_as_str(value_get(d, "type")) }
   }
   return ""
@@ -1168,21 +1168,23 @@ function tiled_prop_type(container: Val, name: pointer) -> string {
 # The project custom-type table: an object mapping a type/class name to its list
 # of {name,type,value(default)} property definitions. class/enum properties then
 # resolve their defaults against it.
-var tiled_type_table: Val = null
+export state RtTiledState {
+  tiled_type_table: Val = null
+}
 
-function tiled_types() -> Val {
-  if tiled_type_table == null { tiled_type_table = value_object() }
-  return tiled_type_table
+function tiled_types(rt_tiled_st: mut RtTiledState) -> Val {
+  if rt_tiled_st.tiled_type_table == null { rt_tiled_st.tiled_type_table = value_object() }
+  return rt_tiled_st.tiled_type_table
 }
 
 # load an objecttypes.xml file into the type table. Each <objecttype name=..> maps
 # to its <property name= type= default=> list.
-function tiled_load_types(path: pointer) -> int {
+function tiled_load_types(rt_tiled_st: mut RtTiledState, rt_xml_st: mut RtXmlState, path: pointer) -> int {
   let text = Fs.read_text(path)
   if text == null { return 0 }
   if text == "" { return 0 }
-  let root = xml_parse(text)
-  let tbl = tiled_types()
+  let root = xml_parse(rt_xml_st, text)
+  let tbl = tiled_types(rt_tiled_st)
   var n = 0
   var i = 0
   while i < xml_child_count(root) {
@@ -1212,8 +1214,8 @@ function tiled_load_types(path: pointer) -> int {
 }
 
 # the default {name,type,value} property node for a custom type, or a null node.
-function tiled_type_default(typename: pointer, propname: pointer) -> Val {
-  let tbl = tiled_types()
+function tiled_type_default(rt_tiled_st: mut RtTiledState, typename: pointer, propname: pointer) -> Val {
+  let tbl = tiled_types(rt_tiled_st)
   let props = value_get(tbl, typename)
   if value_kind(props) != 5 { return value_null() }
   var i = 0
@@ -1228,12 +1230,12 @@ function tiled_type_default(typename: pointer, propname: pointer) -> Val {
 # ---- templates (.tx / .tj) -------------------------------------------------
 # read a template file -> its object Value (the <object> a .tx wraps, or the
 # "object" of a .tj). External reusable object definitions.
-function tiled_read_template(path: pointer) -> Val {
+function tiled_read_template(rt_xml_st: mut RtXmlState, path: pointer) -> Val {
   let text = Fs.read_text(path)
   if text == null { return value_null() }
   if text == "" { return value_null() }
   if tiled_first_byte(text) == 60 {                         # XML .tx
-    let root = xml_parse(text)                              # <template>
+    let root = xml_parse(rt_xml_st, text)                              # <template>
     let ob = xml_find(root, "object")
     if xml_tag(ob) == "object" { return tmx_object_to_value(ob) }
     return value_null()
@@ -1257,7 +1259,7 @@ function tiled_merge_template(inst: Val, tmpl: Val) -> void {
 
 # resolve every object that references a `template`, loading + merging it. Paths
 # are relative to the map file (`basedir`).
-function tmap_resolve_templates(m: Tmap, basedir: pointer) -> void {
+function tmap_resolve_templates(rt_xml_st: mut RtXmlState, m: Tmap, basedir: pointer) -> void {
   var li = 0
   while li < len(m.layers) {
     let l = m.layers[li]
@@ -1267,7 +1269,7 @@ function tmap_resolve_templates(m: Tmap, basedir: pointer) -> void {
       while oi < value_count(objs) {
         let ob = value_at(objs, oi)
         let tp = value_as_str(value_get(ob, "template"))
-        if tp != "" { tiled_merge_template(ob, tiled_read_template(tiled_join(basedir, tp))) }
+        if tp != "" { tiled_merge_template(ob, tiled_read_template(rt_xml_st, tiled_join(basedir, tp))) }
         oi += 1
       }
     }
@@ -1317,15 +1319,15 @@ function tmap_cell_sy(m: Tmap, x: int, y: int) -> int {
 # ---- image-layer render ----------------------------------------------------
 # draw an <imagelayer> with parallax + optional repeat. `parallax` is 1.0 by
 # default (moves with the camera); repeatx/repeaty tile the image across the view.
-function tmap_draw_imagelayer(m: Tmap, l: TmLayer, camx: int, camy: int) -> void {
+function tmap_draw_imagelayer(rt_core_st: mut RtCoreState, rt_image_st: RtImageState, m: Tmap, l: TmLayer, camx: int, camy: int) -> void {
   if l.imgid < 0 { return }
   let ox = value_as_int(value_get(l.data, "offsetx"))
   let oy = value_as_int(value_get(l.data, "offsety"))
   # parallax factor (fixed, default 1.0); px/py = the drawn origin
   var px = ox - camx
   var py = oy - camy
-  let iw = img_w[l.imgid]
-  let ih = img_h[l.imgid]
+  let iw = rt_image_st.img_w[l.imgid]
+  let ih = rt_image_st.img_h[l.imgid]
   let repx = value_as_int(value_get(l.data, "repeatx"))
   let repy = value_as_int(value_get(l.data, "repeaty"))
   # starting origin: for a repeating axis, back up to before the screen
@@ -1339,7 +1341,7 @@ function tmap_draw_imagelayer(m: Tmap, l: TmLayer, camx: int, camy: int) -> void
     var xx = sx0
     var first_x = 1
     while (xx < rt_screen_w()) and (first_x == 1 or repx != 0) {
-      rt_draw_image(l.imgid, xx, yy)
+      rt_draw_image(rt_core_st, rt_image_st, l.imgid, xx, yy)
       first_x = 0
       if repx == 0 { xx = rt_screen_w() } else { xx += iw }
     }

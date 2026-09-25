@@ -7,66 +7,68 @@
 
 # ---- Pike VM ----------------------------------------------------------------
 property TList { pc: words, caps: words, n: int }
-var rx_seen: words = null
-var rx_gen:  int = 0
-var rx_nc:   int = 0
-var rx_code: words = null
+export state RtRegexVmState {
+  rx_seen: words = null
+  rx_gen:  int = 0
+  rx_nc:   int = 0
+  rx_code: words = null
+}
 
-function rx_add(list: TList, pc: int, caps: words, sp: int, s: pointer, slen: int) -> void {
-  if rx_seen[pc] == rx_gen { return }
-  rx_seen[pc] = rx_gen
-  let op = rx_code[3 * pc]
-  if op == OP_JMP { rx_add(list, rx_code[3 * pc + 1], caps, sp, s, slen);  return }
+function rx_add(rt_regex_vm_st: mut RtRegexVmState, list: TList, pc: int, caps: words, sp: int, s: pointer, slen: int) -> void {
+  if rt_regex_vm_st.rx_seen[pc] == rt_regex_vm_st.rx_gen { return }
+  rt_regex_vm_st.rx_seen[pc] = rt_regex_vm_st.rx_gen
+  let op = rt_regex_vm_st.rx_code[3 * pc]
+  if op == OP_JMP { rx_add(rt_regex_vm_st, list, rt_regex_vm_st.rx_code[3 * pc + 1], caps, sp, s, slen);  return }
   if op == OP_SPLIT {
-    rx_add(list, rx_code[3 * pc + 1], caps, sp, s, slen)
-    rx_add(list, rx_code[3 * pc + 2], caps, sp, s, slen)
+    rx_add(rt_regex_vm_st, list, rt_regex_vm_st.rx_code[3 * pc + 1], caps, sp, s, slen)
+    rx_add(rt_regex_vm_st, list, rt_regex_vm_st.rx_code[3 * pc + 2], caps, sp, s, slen)
     return
   }
   if op == OP_SAVE {
-    let slot = rx_code[3 * pc + 1]
+    let slot = rt_regex_vm_st.rx_code[3 * pc + 1]
     let old = caps[slot]
     caps[slot] = sp
-    rx_add(list, pc + 1, caps, sp, s, slen)
+    rx_add(rt_regex_vm_st, list, pc + 1, caps, sp, s, slen)
     caps[slot] = old
     return
   }
   if op == OP_BOL {
-    if sp == 0 { rx_add(list, pc + 1, caps, sp, s, slen) }
+    if sp == 0 { rx_add(rt_regex_vm_st, list, pc + 1, caps, sp, s, slen) }
     return
   }
   if op == OP_EOL {
-    if sp == slen { rx_add(list, pc + 1, caps, sp, s, slen) }
-    else if sp == slen - 1 and (s[sp] & 255) == 10 { rx_add(list, pc + 1, caps, sp, s, slen) }
+    if sp == slen { rx_add(rt_regex_vm_st, list, pc + 1, caps, sp, s, slen) }
+    else if sp == slen - 1 and (s[sp] & 255) == 10 { rx_add(rt_regex_vm_st, list, pc + 1, caps, sp, s, slen) }
     return
   }
   # a leaf that consumes (CHAR/ANY/ANYNL/CLASS) or MATCH: record it
   let t = list.n
   list.pc[t] = pc
   var i = 0
-  while i < rx_nc { list.caps[t * rx_nc + i] = caps[i];  i += 1 }
+  while i < rt_regex_vm_st.rx_nc { list.caps[t * rt_regex_vm_st.rx_nc + i] = caps[i];  i += 1 }
   list.n += 1
 }
 
 # run prog over s (length slen) from startpos; returns caps words or null
-function rx_run(prog: Prog, s: pointer, slen: int, startpos: int) -> words {
-  rx_code = prog.code.d
-  rx_nc = 2 * (prog.ngroups + 1)
+function rx_run(rt_regex_vm_st: mut RtRegexVmState, prog: Prog, s: pointer, slen: int, startpos: int) -> words {
+  rt_regex_vm_st.rx_code = prog.code.d
+  rt_regex_vm_st.rx_nc = 2 * (prog.ngroups + 1)
   let ncode = prog.code.n / 3
-  rx_seen = words(ncode)
+  rt_regex_vm_st.rx_seen = words(ncode)
   var i = 0
-  while i < ncode { rx_seen[i] = 0;  i += 1 }
-  rx_gen = 0
+  while i < ncode { rt_regex_vm_st.rx_seen[i] = 0;  i += 1 }
+  rt_regex_vm_st.rx_gen = 0
   var clist = new TList
-  clist.pc = words(ncode);  clist.caps = words(ncode * rx_nc);  clist.n = 0
+  clist.pc = words(ncode);  clist.caps = words(ncode * rt_regex_vm_st.rx_nc);  clist.n = 0
   var nlist = new TList
-  nlist.pc = words(ncode);  nlist.caps = words(ncode * rx_nc);  nlist.n = 0
-  let wcaps = words(rx_nc)
+  nlist.pc = words(ncode);  nlist.caps = words(ncode * rt_regex_vm_st.rx_nc);  nlist.n = 0
+  let wcaps = words(rt_regex_vm_st.rx_nc)
   var matched: words = null
 
-  rx_gen += 1
+  rt_regex_vm_st.rx_gen += 1
   i = 0
-  while i < rx_nc { wcaps[i] = -1;  i += 1 }
-  rx_add(clist, 0, wcaps, startpos, s, slen)
+  while i < rt_regex_vm_st.rx_nc { wcaps[i] = -1;  i += 1 }
+  rx_add(rt_regex_vm_st, clist, 0, wcaps, startpos, s, slen)
 
   var sp = startpos
   while true {
@@ -74,26 +76,26 @@ function rx_run(prog: Prog, s: pointer, slen: int, startpos: int) -> words {
     var c = -1
     if sp < slen { c = s[sp] & 255 }
     nlist.n = 0
-    rx_gen += 1
+    rt_regex_vm_st.rx_gen += 1
     var ti = 0
     var stop = false
     while ti < clist.n and not stop {
       let pc = clist.pc[ti]
       var k = 0
-      while k < rx_nc { wcaps[k] = clist.caps[ti * rx_nc + k];  k += 1 }
-      let op = rx_code[3 * pc]
+      while k < rt_regex_vm_st.rx_nc { wcaps[k] = clist.caps[ti * rt_regex_vm_st.rx_nc + k];  k += 1 }
+      let op = rt_regex_vm_st.rx_code[3 * pc]
       if op == OP_CHAR {
-        if c >= 0 and c == rx_code[3 * pc + 1] { rx_add(nlist, pc + 1, wcaps, sp + 1, s, slen) }
+        if c >= 0 and c == rt_regex_vm_st.rx_code[3 * pc + 1] { rx_add(rt_regex_vm_st, nlist, pc + 1, wcaps, sp + 1, s, slen) }
       } else if op == OP_ANY {
-        if c >= 0 and c != '\n' { rx_add(nlist, pc + 1, wcaps, sp + 1, s, slen) }
+        if c >= 0 and c != '\n' { rx_add(rt_regex_vm_st, nlist, pc + 1, wcaps, sp + 1, s, slen) }
       } else if op == OP_ANYNL {
-        if c >= 0 { rx_add(nlist, pc + 1, wcaps, sp + 1, s, slen) }
+        if c >= 0 { rx_add(rt_regex_vm_st, nlist, pc + 1, wcaps, sp + 1, s, slen) }
       } else if op == OP_CLASS {
-        if c >= 0 and rx_class_has(prog, rx_code[3 * pc + 1], c) { rx_add(nlist, pc + 1, wcaps, sp + 1, s, slen) }
+        if c >= 0 and rx_class_has(prog, rt_regex_vm_st.rx_code[3 * pc + 1], c) { rx_add(rt_regex_vm_st, nlist, pc + 1, wcaps, sp + 1, s, slen) }
       } else if op == OP_MATCH {
-        if matched == null { matched = words(rx_nc) }
+        if matched == null { matched = words(rt_regex_vm_st.rx_nc) }
         k = 0
-        while k < rx_nc { matched[k] = wcaps[k];  k += 1 }
+        while k < rt_regex_vm_st.rx_nc { matched[k] = wcaps[k];  k += 1 }
         stop = true
       }
       ti += 1
@@ -108,33 +110,33 @@ function rx_run(prog: Prog, s: pointer, slen: int, startpos: int) -> words {
 # ---- public API -------------------------------------------------------------
 property Match { str: pointer = null, ng: int = 0, caps: words = null }
 
-function regex_matches(str: pointer, pattern: pointer) -> bool {
-  let p = regex_compile(pattern)
+function regex_matches(rt_regex_st: mut RtRegexState, rt_regex_vm_st: mut RtRegexVmState, str: pointer, pattern: pointer) -> bool {
+  let p = regex_compile(rt_regex_st, pattern)
   if p == null { return false }
-  return rx_run(p, str, rx_slen(str), 0) != null
+  return rx_run(rt_regex_vm_st, p, str, rx_slen(str), 0) != null
 }
-function regex_test(str: pointer, re: Prog) -> bool {
+function regex_test(rt_regex_vm_st: mut RtRegexVmState, str: pointer, re: Prog) -> bool {
   if re == null { return false }
-  return rx_run(re, str, rx_slen(str), 0) != null
+  return rx_run(rt_regex_vm_st, re, str, rx_slen(str), 0) != null
 }
-function regex_exec(str: pointer, re: Prog) -> Match {
+function regex_exec(rt_regex_vm_st: mut RtRegexVmState, str: pointer, re: Prog) -> Match {
   if re == null { return null }
-  let caps = rx_run(re, str, rx_slen(str), 0)
+  let caps = rx_run(rt_regex_vm_st, re, str, rx_slen(str), 0)
   if caps == null { return null }
   let m = new Match
   m.str = str;  m.ng = re.ngroups;  m.caps = caps
   return m
 }
-function regex_find(str: pointer, pattern: pointer) -> Match {
-  let p = regex_compile(pattern)
+function regex_find(rt_regex_st: mut RtRegexState, rt_regex_vm_st: mut RtRegexVmState, str: pointer, pattern: pointer) -> Match {
+  let p = regex_compile(rt_regex_st, pattern)
   if p == null { return null }
-  return regex_exec(str, p)
+  return regex_exec(rt_regex_vm_st, str, p)
 }
-function regex_next(str: pointer, re: Prog, from: int) -> Match {
+function regex_next(rt_regex_vm_st: mut RtRegexVmState, str: pointer, re: Prog, from: int) -> Match {
   if re == null { return null }
   let n = rx_slen(str)
   if from > n { return null }
-  let caps = rx_run(re, str, n, from)
+  let caps = rx_run(rt_regex_vm_st, re, str, n, from)
   if caps == null { return null }
   let m = new Match
   m.str = str;  m.ng = re.ngroups;  m.caps = caps
@@ -161,7 +163,7 @@ function regex_group(m: Match, n: int) -> string {
   out[b - a] = 0
   return out
 }
-function regex_valid(pattern: pointer) -> bool { return regex_compile(pattern) != null }
+function regex_valid(rt_regex_st: mut RtRegexState, pattern: pointer) -> bool { return regex_compile(rt_regex_st, pattern) != null }
 
 # regex_replace(str, pattern, repl): replace all non-overlapping matches.
 # repl expands \0..\9 (groups; \0 = whole match) and \\ (a literal backslash).
@@ -169,8 +171,8 @@ function rx_append(out: IVec, s: pointer, a: int, b: int) -> void {
   var i = a
   while i < b { iv_push(out, s[i] & 255);  i += 1 }
 }
-function regex_replace(str: pointer, pattern: pointer, repl: pointer) -> string {
-  let p = regex_compile(pattern)
+function regex_replace(rt_regex_st: mut RtRegexState, rt_regex_vm_st: mut RtRegexVmState, str: pointer, pattern: pointer, repl: pointer) -> string {
+  let p = regex_compile(rt_regex_st, pattern)
   if p == null { return str }
   let n = rx_slen(str)
   let rn = rx_slen(repl)
@@ -178,7 +180,7 @@ function regex_replace(str: pointer, pattern: pointer, repl: pointer) -> string 
   var pos = 0
   var prev = 0
   while pos <= n {
-    let caps = rx_run(p, str, n, pos)
+    let caps = rx_run(rt_regex_vm_st, p, str, n, pos)
     if caps == null { break }
     let ms = caps[0]
     let me = caps[1]

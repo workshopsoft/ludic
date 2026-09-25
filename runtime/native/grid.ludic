@@ -16,11 +16,11 @@
 property Cell { x: int = 0, y: int = 0 }
 
 function grid_abs(v: int) -> int { if v < 0 { return -v };  return v }
-function grid_in_bounds(x: int, y: int) -> bool { return x >= 0 and y >= 0 and x < rt_mapw and y < rt_maph }
+function grid_in_bounds(rt_core_st: RtCoreState, x: int, y: int) -> bool { return x >= 0 and y >= 0 and x < rt_core_st.rt_mapw and y < rt_core_st.rt_maph }
 # a cell blocks movement if it is out of bounds or holds the `wall` tile.
-function grid_blocked(x: int, y: int, wall: int) -> bool {
-  if not grid_in_bounds(x, y) { return true }
-  return rt_tile(x, y) == wall
+function grid_blocked(rt_core_st: RtCoreState, x: int, y: int, wall: int) -> bool {
+  if not grid_in_bounds(rt_core_st, x, y) { return true }
+  return rt_tile(rt_core_st, x, y) == wall
 }
 
 # Bresenham line from (x0,y0) to (x1,y1), inclusive — every cell it crosses.
@@ -48,22 +48,22 @@ function grid_line(x0: int, y0: int, x1: int, y1: int) -> []Cell {
 }
 
 # line of sight: true if the straight line hits no `wall` cell (endpoints incl).
-function grid_line_of_sight(x0: int, y0: int, x1: int, y1: int, wall: int) -> bool {
+function grid_line_of_sight(rt_core_st: RtCoreState, x0: int, y0: int, x1: int, y1: int, wall: int) -> bool {
   let cells = grid_line(x0, y0, x1, y1)
   var i = 0
   while i < len(cells) {
-    if grid_blocked(cells[i].x, cells[i].y, wall) { return false }
+    if grid_blocked(rt_core_st, cells[i].x, cells[i].y, wall) { return false }
     i += 1
   }
   return true
 }
 
 # 4-connected flood fill: every passable cell reachable from (sx,sy), BFS order.
-function grid_flood(sx: int, sy: int, wall: int) -> []Cell {
+function grid_flood(rt_core_st: RtCoreState, sx: int, sy: int, wall: int) -> []Cell {
   let out = new []Cell
-  if grid_blocked(sx, sy, wall) { return out }
-  let w = rt_mapw
-  let n = w * rt_maph
+  if grid_blocked(rt_core_st, sx, sy, wall) { return out }
+  let w = rt_core_st.rt_mapw
+  let n = w * rt_core_st.rt_maph
   let seen = bytes(n)
   var i = 0
   while i < n { seen[i] = 0;  i += 1 }
@@ -88,7 +88,7 @@ function grid_flood(sx: int, sy: int, wall: int) -> []Cell {
       if dir == 1 { nx = cx - 1 }
       if dir == 2 { ny = cy + 1 }
       if dir == 3 { ny = cy - 1 }
-      if grid_in_bounds(nx, ny) and seen[ny * w + nx] == 0 and not grid_blocked(nx, ny, wall) {
+      if grid_in_bounds(rt_core_st, nx, ny) and seen[ny * w + nx] == 0 and not grid_blocked(rt_core_st, nx, ny, wall) {
         seen[ny * w + nx] = 1
         qx[tail] = nx;  qy[tail] = ny;  tail += 1
       }
@@ -102,11 +102,11 @@ function grid_flood(sx: int, sy: int, wall: int) -> []Cell {
 # heuristic. Returns the path start..goal inclusive, or an empty list if the
 # goal is unreachable (or start/goal is a wall). The open set is a linear scan —
 # ample for a tilemap (<= 96x64), and the heuristic keeps it near-optimal work.
-function path_a_star(x0: int, y0: int, x1: int, y1: int, wall: int) -> []Cell {
+function path_a_star(rt_core_st: RtCoreState, x0: int, y0: int, x1: int, y1: int, wall: int) -> []Cell {
   let out = new []Cell
-  if grid_blocked(x0, y0, wall) or grid_blocked(x1, y1, wall) { return out }
-  let w = rt_mapw
-  let n = w * rt_maph
+  if grid_blocked(rt_core_st, x0, y0, wall) or grid_blocked(rt_core_st, x1, y1, wall) { return out }
+  let w = rt_core_st.rt_mapw
+  let n = w * rt_core_st.rt_maph
   let INF = 1000000000
   let g = words(n)             # cost from start (INF = unvisited)
   let came = words(n)          # parent cell index (-1 = none)
@@ -146,7 +146,7 @@ function path_a_star(x0: int, y0: int, x1: int, y1: int, wall: int) -> []Cell {
       if dir == 1 { nx = cx - 1 }
       if dir == 2 { ny = cy + 1 }
       if dir == 3 { ny = cy - 1 }
-      if grid_in_bounds(nx, ny) and not grid_blocked(nx, ny, wall) {
+      if grid_in_bounds(rt_core_st, nx, ny) and not grid_blocked(rt_core_st, nx, ny, wall) {
         let ni = ny * w + nx
         if closed[ni] == 0 {
           let ng = g[best] + 1

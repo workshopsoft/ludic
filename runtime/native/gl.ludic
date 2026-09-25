@@ -73,22 +73,26 @@ extern function f_from_int(a: int) -> int = "f_from_int"
 extern function f_to_int(a: int) -> int = "f_to_int"
 
 # ---- state --------------------------------------------------------------------
-var gl_is_open: bool = false
-var gl_w:       int  = 0          # drawable width, in pixels
-var gl_h:       int  = 0
-var gl_scale:   int  = 1          # backing pixels per window point
-var gl_screen:  int  = 0          # the framebuffer that is "the screen" (an FBO headless)
-var gl_ids:     words = null      # one-word scratch for glGen*/glGet*
+export state RtGlState {
+  gl_is_open: bool = false
+  gl_w:       int  = 0          # drawable width, in pixels
+  gl_h:       int  = 0
+  gl_scale:   int  = 1          # backing pixels per window point
+  gl_screen:  int  = 0          # the framebuffer that is "the screen" (an FBO headless)
+  gl_ids:     words = null      # one-word scratch for glGen*/glGet*
+  gl_size_buf: words = null
+  gl_log_buf: string = null
+}
 
-function gl_scratch() -> words {
-  if gl_ids == null { gl_ids = words(4) }
-  return gl_ids
+function gl_scratch(rt_gl_st: mut RtGlState) -> words {
+  if rt_gl_st.gl_ids == null { rt_gl_st.gl_ids = words(4) }
+  return rt_gl_st.gl_ids
 }
 
 # Open a GL 4.1 core context on a w x h (points) window titled `title`; headless,
 # an offscreen context with a w x h framebuffer standing in for the screen.
-function gl_open(width: int, height: int, title: pointer) -> bool {
-  if gl_is_open { return true }
+function gl_open(rt_gl_st: mut RtGlState, width: int, height: int, title: pointer) -> bool {
+  if rt_gl_st.gl_is_open { return true }
   if is_windowed() {
     if win_gl_attach() == 0 {
       win_open(width, height, 1, title)               # a plain program: no window yet
@@ -99,25 +103,25 @@ function gl_open(width: int, height: int, title: pointer) -> bool {
       win_set_title(title)
     }
     win_gl_resize(width, height)
-    gl_scale = win_gl_scale()
-    gl_w = width * gl_scale
-    gl_h = height * gl_scale
-    gl_screen = 0
+    rt_gl_st.gl_scale = win_gl_scale()
+    rt_gl_st.gl_w = width * rt_gl_st.gl_scale
+    rt_gl_st.gl_h = height * rt_gl_st.gl_scale
+    rt_gl_st.gl_screen = 0
   } else {
     if cgl_offscreen() == 0 { return false }
-    gl_scale = 1
-    gl_w = width
-    gl_h = height
-    gl_screen = gl_make_screen_fbo(width, height)
+    rt_gl_st.gl_scale = 1
+    rt_gl_st.gl_w = width
+    rt_gl_st.gl_h = height
+    rt_gl_st.gl_screen = gl_make_screen_fbo(rt_gl_st, width, height)
   }
-  gl_bind_framebuffer(GL_FRAMEBUFFER, gl_screen)
-  gl_viewport(0, 0, gl_w, gl_h)
-  gl_is_open = true
+  gl_bind_framebuffer(GL_FRAMEBUFFER, rt_gl_st.gl_screen)
+  gl_viewport(0, 0, rt_gl_st.gl_w, rt_gl_st.gl_h)
+  rt_gl_st.gl_is_open = true
   return true
 }
 
-function gl_make_screen_fbo(w: int, h: int) -> int {
-  let ids = gl_scratch()
+function gl_make_screen_fbo(rt_gl_st: mut RtGlState, w: int, h: int) -> int {
+  let ids = gl_scratch(rt_gl_st)
   gl_gen_framebuffers(1, ids)
   let fbo = ids[0]
   gl_bind_framebuffer(GL_FRAMEBUFFER, fbo)
@@ -138,18 +142,17 @@ function gl_make_screen_fbo(w: int, h: int) -> int {
 
 # Did the drawable change size (a window drag, full screen, a Retina switch)? Then
 # gl_w / gl_h follow it and the caller rebuilds its screen-sized targets.
-var gl_size_buf: words = null
-function gl_resize_check() -> bool {
-  if not is_windowed() or not gl_is_open { return false }
-  if gl_size_buf == null { gl_size_buf = words(4) }
-  win_gl_drawable(gl_size_buf)
-  let w = gl_size_buf[0];  let h = gl_size_buf[1]
+function gl_resize_check(rt_gl_st: mut RtGlState) -> bool {
+  if not is_windowed() or not rt_gl_st.gl_is_open { return false }
+  if rt_gl_st.gl_size_buf == null { rt_gl_st.gl_size_buf = words(4) }
+  win_gl_drawable(rt_gl_st.gl_size_buf)
+  let w = rt_gl_st.gl_size_buf[0];  let h = rt_gl_st.gl_size_buf[1]
   if w <= 0 or h <= 0 { return false }
-  if w == gl_w and h == gl_h { return false }
+  if w == rt_gl_st.gl_w and h == rt_gl_st.gl_h { return false }
   win_gl_update()
-  gl_w = w;  gl_h = h
-  gl_scale = win_gl_scale()
-  gl_viewport(0, 0, gl_w, gl_h)
+  rt_gl_st.gl_w = w;  rt_gl_st.gl_h = h
+  rt_gl_st.gl_scale = win_gl_scale()
+  gl_viewport(0, 0, rt_gl_st.gl_w, rt_gl_st.gl_h)
   return true
 }
 function gl_set_window(w: int, h: int) -> void { if is_windowed() { win_gl_resize(w, h) } }
@@ -157,16 +160,16 @@ function gl_toggle_fullscreen() -> void { if is_windowed() { win_toggle_fullscre
 function gl_set_retina(on: bool) -> void { if is_windowed() { var v = 0;  if on { v = 1 };  win_gl_retina(v) } }
 # vsync on (1, the default) or off (0); headless has nothing to sync to
 function gl_vsync(n: int) -> void { if is_windowed() { win_gl_swap_interval(n) } }
-function gl_width() -> int { return gl_w }
-function gl_height() -> int { return gl_h }
-function gl_screen_fbo() -> int { return gl_screen }
-function gl_pixel_scale() -> int { return gl_scale }
+function gl_width(rt_gl_st: RtGlState) -> int { return rt_gl_st.gl_w }
+function gl_height(rt_gl_st: RtGlState) -> int { return rt_gl_st.gl_h }
+function gl_screen_fbo(rt_gl_st: RtGlState) -> int { return rt_gl_st.gl_screen }
+function gl_pixel_scale(rt_gl_st: RtGlState) -> int { return rt_gl_st.gl_scale }
 # a renderer that owns its swapchain (render3d's Vulkan path) says what the drawable is
-function gl_set_drawable(w: int, h: int) -> void {
-  gl_w = w
-  gl_h = h
+function gl_set_drawable(rt_gl_st: mut RtGlState, w: int, h: int) -> void {
+  rt_gl_st.gl_w = w
+  rt_gl_st.gl_h = h
 }
-function gl_set_pixel_scale(s: int) -> void { gl_scale = s }
+function gl_set_pixel_scale(rt_gl_st: mut RtGlState, s: int) -> void { rt_gl_st.gl_scale = s }
 
 # Present the frame (vsync'd flushBuffer); headless, just finish the GPU work.
 function gl_swap() -> void {
@@ -175,13 +178,13 @@ function gl_swap() -> void {
 }
 
 # Write what is on the screen framebuffer to a binary PPM (call before Gl.swap).
-function gl_screenshot(path: pointer) -> bool {
-  let w = gl_w
-  let h = gl_h
+function gl_screenshot(rt_gl_st: RtGlState, path: pointer) -> bool {
+  let w = rt_gl_st.gl_w
+  let h = rt_gl_st.gl_h
   let f = file_open(path, "wb")
   if f == null { return false }
   let buf = bytes(w * h * 3)
-  gl_bind_framebuffer(GL_READ_FRAMEBUFFER, gl_screen)
+  gl_bind_framebuffer(GL_READ_FRAMEBUFFER, rt_gl_st.gl_screen)
   gl_pixel_storei(GL_PACK_ALIGNMENT, 1)
   gl_read_pixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, buf)
   let hdr = `P6\n{w} {h}\n255\n`
@@ -204,22 +207,21 @@ function gl_check(tag: pointer) -> int {
 }
 
 # ---- shaders --------------------------------------------------------------------
-var gl_log_buf: string = null
 
 # Compile one shader stage from source; 0 (and the info log on stdout) on failure.
-function gl_shader(kind: int, src: pointer) -> int {
+function gl_shader(rt_gl_st: mut RtGlState, kind: int, src: pointer) -> int {
   let id = gl_create_shader(kind)
   var srcs: pointers = pointers(1)
   srcs[0] = src
   gl_shader_source(id, 1, srcs, null)
   gl_compile_shader(id)
-  let ids = gl_scratch()
+  let ids = gl_scratch(rt_gl_st)
   gl_get_shaderiv(id, GL_COMPILE_STATUS, ids)
   if ids[0] == 0 {
-    if gl_log_buf == null { gl_log_buf = bytes(8192) }
-    gl_get_shader_info_log(id, 8191, null, gl_log_buf)
+    if rt_gl_st.gl_log_buf == null { rt_gl_st.gl_log_buf = bytes(8192) }
+    gl_get_shader_info_log(id, 8191, null, rt_gl_st.gl_log_buf)
     print("shader compile failed:")
-    print(gl_log_buf)
+    print(rt_gl_st.gl_log_buf)
     gl_delete_shader(id)
     return 0
   }
@@ -227,28 +229,28 @@ function gl_shader(kind: int, src: pointer) -> int {
 }
 
 # Link a program from a vertex + fragment source pair; 0 on failure.
-function gl_program(vs: pointer, fs: pointer) -> int {
-  return gl_program5(vs, null, null, null, fs)
+function gl_program(rt_gl_st: mut RtGlState, vs: pointer, fs: pointer) -> int {
+  return gl_program5(rt_gl_st, vs, null, null, null, fs)
 }
 
 # Link a program from up to five stages (null = stage absent).
-function gl_program5(vs: pointer, tcs: pointer, tes: pointer, gs: pointer, fs: pointer) -> int {
+function gl_program5(rt_gl_st: mut RtGlState, vs: pointer, tcs: pointer, tes: pointer, gs: pointer, fs: pointer) -> int {
   let prog = gl_create_program()
   var ok = true
-  if vs != null  { let s = gl_shader(GL_VERTEX_SHADER, vs);           if s == 0 { ok = false } else { gl_attach_shader(prog, s) } }
-  if tcs != null { let s = gl_shader(GL_TESS_CONTROL_SHADER, tcs);    if s == 0 { ok = false } else { gl_attach_shader(prog, s) } }
-  if tes != null { let s = gl_shader(GL_TESS_EVALUATION_SHADER, tes); if s == 0 { ok = false } else { gl_attach_shader(prog, s) } }
-  if gs != null  { let s = gl_shader(GL_GEOMETRY_SHADER, gs);         if s == 0 { ok = false } else { gl_attach_shader(prog, s) } }
-  if fs != null  { let s = gl_shader(GL_FRAGMENT_SHADER, fs);         if s == 0 { ok = false } else { gl_attach_shader(prog, s) } }
+  if vs != null  { let s = gl_shader(rt_gl_st, GL_VERTEX_SHADER, vs);           if s == 0 { ok = false } else { gl_attach_shader(prog, s) } }
+  if tcs != null { let s = gl_shader(rt_gl_st, GL_TESS_CONTROL_SHADER, tcs);    if s == 0 { ok = false } else { gl_attach_shader(prog, s) } }
+  if tes != null { let s = gl_shader(rt_gl_st, GL_TESS_EVALUATION_SHADER, tes); if s == 0 { ok = false } else { gl_attach_shader(prog, s) } }
+  if gs != null  { let s = gl_shader(rt_gl_st, GL_GEOMETRY_SHADER, gs);         if s == 0 { ok = false } else { gl_attach_shader(prog, s) } }
+  if fs != null  { let s = gl_shader(rt_gl_st, GL_FRAGMENT_SHADER, fs);         if s == 0 { ok = false } else { gl_attach_shader(prog, s) } }
   if not ok { gl_delete_program(prog); return 0 }
   gl_link_program(prog)
-  let ids = gl_scratch()
+  let ids = gl_scratch(rt_gl_st)
   gl_get_programiv(prog, GL_LINK_STATUS, ids)
   if ids[0] == 0 {
-    if gl_log_buf == null { gl_log_buf = bytes(8192) }
-    gl_get_program_info_log(prog, 8191, null, gl_log_buf)
+    if rt_gl_st.gl_log_buf == null { rt_gl_st.gl_log_buf = bytes(8192) }
+    gl_get_program_info_log(prog, 8191, null, rt_gl_st.gl_log_buf)
     print("program link failed:")
-    print(gl_log_buf)
+    print(rt_gl_st.gl_log_buf)
     gl_delete_program(prog)
     return 0
   }
@@ -271,24 +273,24 @@ function gl_f32(v: fixed) -> int { return fx_to_f32(v) }
 function gl_fixed(bits: int) -> fixed { return f32_to_fx(bits) }
 
 # One VAO, one VBO helper: create a vertex array object and return it, bound.
-function gl_vao() -> int {
-  let ids = gl_scratch()
+function gl_vao(rt_gl_st: mut RtGlState) -> int {
+  let ids = gl_scratch(rt_gl_st)
   gl_gen_vertex_arrays(1, ids)
   gl_bind_vertex_array(ids[0])
   return ids[0]
 }
-function gl_buffer() -> int {
-  let ids = gl_scratch()
+function gl_buffer(rt_gl_st: mut RtGlState) -> int {
+  let ids = gl_scratch(rt_gl_st)
   gl_gen_buffers(1, ids)
   return ids[0]
 }
-function gl_texture() -> int {
-  let ids = gl_scratch()
+function gl_texture(rt_gl_st: mut RtGlState) -> int {
+  let ids = gl_scratch(rt_gl_st)
   gl_gen_textures(1, ids)
   return ids[0]
 }
-function gl_framebuffer() -> int {
-  let ids = gl_scratch()
+function gl_framebuffer(rt_gl_st: mut RtGlState) -> int {
+  let ids = gl_scratch(rt_gl_st)
   gl_gen_framebuffers(1, ids)
   return ids[0]
 }

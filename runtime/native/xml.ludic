@@ -95,7 +95,7 @@ function xml_atoi(s: pointer) -> int {
 # raw run. Only bytes 0..255 of a character reference are emitted (Ludic strings
 # are byte strings); a code point above that is written as its low byte, which is
 # ample for the ASCII/Latin-1 text Tiled attributes carry.
-function xml_unescape(s: pointer) -> string {
+function xml_unescape(rt_xml_st: mut RtXmlState, s: pointer) -> string {
   # fast path: no '&' means nothing to expand
   var k = 0
   let m = len(s)
@@ -134,7 +134,7 @@ function xml_unescape(s: pointer) -> string {
               var d = 1
               while d < len(ent) { code = code * 10 + (ent[d] - 48);  d += 1 }
             }
-            out += xml_byte(code & 255)
+            out += xml_byte(rt_xml_st, code & 255)
           } else {
             out = out + "&" + ent + ";"                # unknown entity, keep literal
           }
@@ -155,17 +155,19 @@ function xml_hexval(c: int) -> int {
 
 # a one-byte string holding byte value `b` (1..255); "" for 0 (a NUL can't sit in
 # a Ludic string). Built by slicing a 256-byte table of every byte value.
-var xml_bytetab: pointer = null
-function xml_byte(b: int) -> string {
+export state RtXmlState {
+  xml_bytetab: pointer = null
+}
+function xml_byte(rt_xml_st: mut RtXmlState, b: int) -> string {
   if b <= 0 { return "" }
-  if xml_bytetab == null {
+  if rt_xml_st.xml_bytetab == null {
     let t = bytes(257)
     var i = 0
     while i < 256 { t[i] = i + 1;  i += 1 }         # table[i] = byte (i+1), so 0 never appears
     t[256] = 0
-    xml_bytetab = t
+    rt_xml_st.xml_bytetab = t
   }
-  return xml_bytetab[b - 1..b]
+  return rt_xml_st.xml_bytetab[b - 1..b]
 }
 
 # --- parser -----------------------------------------------------------------
@@ -217,7 +219,7 @@ function xp_name(p: XP) -> string {
 }
 
 # parse `key="value"` / `key='value'` attributes into the element node.
-function xp_attrs(p: XP, node: Xml) -> void {
+function xp_attrs(rt_xml_st: mut RtXmlState, p: XP, node: Xml) -> void {
   while true {
     xp_skip_ws(p)
     if p.i >= p.n { return }
@@ -235,7 +237,7 @@ function xp_attrs(p: XP, node: Xml) -> void {
         p.i += 1
         let start = p.i
         while p.i < p.n and p.s[p.i] != q { p.i += 1 }
-        val = xml_unescape(p.s[start..p.i])
+        val = xml_unescape(rt_xml_st, p.s[start..p.i])
         p.i += 1                                     # skip closing quote
       }
     }
@@ -245,13 +247,13 @@ function xp_attrs(p: XP, node: Xml) -> void {
 }
 
 # parse one element (cursor on its opening '<'). Recurses for children.
-function xp_element(p: XP) -> Xml {
+function xp_element(rt_xml_st: mut RtXmlState, p: XP) -> Xml {
   let at = p.i
   p.i += 1                                           # skip '<'
   let name = xp_name(p)
   let node = xml_new(name)
   node.at = at
-  xp_attrs(p, node)
+  xp_attrs(rt_xml_st, p, node)
   # self-closing '/>'
   if p.i < p.n and p.s[p.i] == '/' {                       # '/'
     p.i += 1
@@ -279,7 +281,7 @@ function xp_element(p: XP) -> Xml {
       } else {
         if xp_skip_misc(p) { }                            # comment / PI inside content
         else {
-          let kid = xp_element(p)
+          let kid = xp_element(rt_xml_st, p)
           push(node.kids, kid)
           push(node.mixed, kid)
         }
@@ -288,7 +290,7 @@ function xp_element(p: XP) -> Xml {
       # character data run up to the next '<'
       let start = p.i
       while p.i < p.n and p.s[p.i] != '<' { p.i += 1 }
-      let run = xml_unescape(p.s[start..p.i])
+      let run = xml_unescape(rt_xml_st, p.s[start..p.i])
       node.text += run
       xp_text_run(node, run)
     }
@@ -312,7 +314,7 @@ function xp_text_run(node: Xml, run: string) -> void {
 }
 
 # parse a whole document -> its root element (or the synthetic empty node).
-function xml_parse(s: pointer) -> Xml {
+function xml_parse(rt_xml_st: mut RtXmlState, s: pointer) -> Xml {
   let p = new XP
   p.s = s;  p.i = 0;  p.n = len(s)
   while p.i < p.n {
@@ -320,7 +322,7 @@ function xml_parse(s: pointer) -> Xml {
     if p.i >= p.n { break }
     if p.s[p.i] == '<' {                                   # '<'
       if xp_skip_misc(p) { }                              # prolog / comment / doctype
-      else { return xp_element(p) }
+      else { return xp_element(rt_xml_st, p) }
     } else { p.i += 1 }
   }
   return xml_new("")

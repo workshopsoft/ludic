@@ -19,67 +19,69 @@
 
 const AUDIO_CAP: int = 64          # max simultaneously-loaded sounds
 
-var snd_ready:   bool  = false
-var snd_tab:     pointers = null    # handle (1-based) -> AVAudioPlayer pointer
-var snd_master:  fixed = 1.0        # master volume, applied to every play (and to audio_play_at's gain)
-var snd_rate:    fixed = 1.0        # playback rate / pitch (1.0 = normal)
-var snd_music:   int   = 0          # the handle currently playing as music (0 = none)
+export state RtAudioState {
+  snd_ready:   bool  = false
+  snd_tab:     pointers = null    # handle (1-based) -> AVAudioPlayer pointer
+  snd_master:  fixed = 1.0        # master volume, applied to every play (and to audio_play_at's gain)
+  snd_rate:    fixed = 1.0        # playback rate / pitch (1.0 = normal)
+  snd_music:   int   = 0          # the handle currently playing as music (0 = none)
+  snd_bank_name: pointers = null
+  snd_bank_id:   words    = null
+  snd_bank_n:    int      = 0
+}
 # the sound bank: sounds registered by name (Audio.define), played by name (Audio.play(name:))
-var snd_bank_name: pointers = null
-var snd_bank_id:   words    = null
-var snd_bank_n:    int      = 0
 
-function audio_init() -> void {
-  if snd_ready { return }
-  snd_tab = pointers(AUDIO_CAP)     # one 8-byte pointer slot per handle
-  fill(snd_tab, 0, AUDIO_CAP * 8)    # malloc does not zero; empty slots must read null
-  snd_bank_name = pointers(AUDIO_CAP)
-  snd_bank_id = words(AUDIO_CAP)
-  snd_ready = true
+function audio_init(rt_audio_st: mut RtAudioState) -> void {
+  if rt_audio_st.snd_ready { return }
+  rt_audio_st.snd_tab = pointers(AUDIO_CAP)     # one 8-byte pointer slot per handle
+  fill(rt_audio_st.snd_tab, 0, AUDIO_CAP * 8)    # malloc does not zero; empty slots must read null
+  rt_audio_st.snd_bank_name = pointers(AUDIO_CAP)
+  rt_audio_st.snd_bank_id = words(AUDIO_CAP)
+  rt_audio_st.snd_ready = true
 }
 
 # ---- the sound bank: Audio.define(name, path) then Audio.play(name: "…") ------
 # Load a sound and remember it under a name; returns the handle (0 headless).
-function audio_define(name: pointer, path: pointer) -> int {
-  audio_init()
-  let id = audio_load(path)
-  if snd_bank_n < AUDIO_CAP {
-    snd_bank_name[snd_bank_n] = name
-    snd_bank_id[snd_bank_n] = id
-    snd_bank_n += 1
+function audio_define(rt_audio_st: mut RtAudioState, name: pointer, path: pointer) -> int {
+  audio_init(rt_audio_st)
+  let id = audio_load(rt_audio_st, path)
+  if rt_audio_st.snd_bank_n < AUDIO_CAP {
+    rt_audio_st.snd_bank_name[rt_audio_st.snd_bank_n] = name
+    rt_audio_st.snd_bank_id[rt_audio_st.snd_bank_n] = id
+    rt_audio_st.snd_bank_n += 1
   }
   return id
 }
 # the handle registered under `name`, or 0
-function audio_named(name: pointer) -> int {
-  audio_init()
+function audio_named(rt_audio_st: mut RtAudioState, name: pointer) -> int {
+  audio_init(rt_audio_st)
   var i = 0
-  while i < snd_bank_n {
-    if snd_bank_name[i] == name { return snd_bank_id[i] }
+  while i < rt_audio_st.snd_bank_n {
+    if rt_audio_st.snd_bank_name[i] == name { return rt_audio_st.snd_bank_id[i] }
     i += 1
   }
   return 0
 }
-function audio_play_named(name: pointer) -> void { audio_play(audio_named(name)) }
-function audio_play_music_named(name: pointer) -> void { audio_play_music(audio_named(name)) }
+function audio_play_named(rt_audio_st: mut RtAudioState, name: pointer) -> void { audio_play(rt_audio_st, audio_named(rt_audio_st, name)) }
+function audio_play_music_named(rt_audio_st: mut RtAudioState, name: pointer) -> void { audio_play_music(rt_audio_st, audio_named(rt_audio_st, name)) }
 
 # Resolve a 1-based handle to its player pointer (null if out of range / empty).
-function audio_get(id: int) -> pointer {
-  audio_init()
+function audio_get(rt_audio_st: mut RtAudioState, id: int) -> pointer {
+  audio_init(rt_audio_st)
   if (id < 1) or (id > AUDIO_CAP) { return null }
-  return snd_tab[id - 1]
+  return rt_audio_st.snd_tab[id - 1]
 }
 
 # Load a sound file and return its handle (>= 1), or 0 on failure / headless.
-function audio_load(path: pointer) -> int {
-  audio_init()
+function audio_load(rt_audio_st: mut RtAudioState, path: pointer) -> int {
+  audio_init(rt_audio_st)
   if not is_windowed() { return 0 }
   var i = 0
   while i < AUDIO_CAP {
-    if snd_tab[i] == null {
+    if rt_audio_st.snd_tab[i] == null {
       let p = snd_load(path)
       if p == null { return 0 }
-      snd_tab[i] = p
+      rt_audio_st.snd_tab[i] = p
       return i + 1
     }
     i += 1
@@ -88,12 +90,12 @@ function audio_load(path: pointer) -> int {
 }
 
 # Fire a one-shot sound from the start.
-function audio_play(id: int) -> void {
+function audio_play(rt_audio_st: mut RtAudioState, id: int) -> void {
   if not is_windowed() { return }
-  let p = audio_get(id)
+  let p = audio_get(rt_audio_st, id)
   if p == null { return }
   snd_set_pan(p, 0.0)
-  snd_play(p, 0, snd_rate, snd_master)
+  snd_play(p, 0, rt_audio_st.snd_rate, rt_audio_st.snd_master)
 }
 
 # Fire a one-shot with its OWN gain, pitch and stereo position, leaving the master
@@ -111,9 +113,9 @@ function audio_play(id: int) -> void {
 # The one honest limitation: a sound is one player, so firing the same handle again
 # restarts it rather than layering a second copy. Load a handle per variant when several
 # need to overlap - which is what a game does anyway to stop a repeated sound machine-gunning.
-function audio_play_at(id: int, gain: fixed, pitch: fixed, pan: fixed) -> void {
+function audio_play_at(rt_audio_st: mut RtAudioState, id: int, gain: fixed, pitch: fixed, pan: fixed) -> void {
   if not is_windowed() { return }
-  let p = audio_get(id)
+  let p = audio_get(rt_audio_st, id)
   if p == null { return }
   var g = gain
   if g < 0.0 { g = 0.0 }
@@ -125,80 +127,80 @@ function audio_play_at(id: int, gain: fixed, pitch: fixed, pan: fixed) -> void {
   if pt < 0.25 { pt = 0.25 }         # AVAudioPlayer's own rate range
   if pt > 4.0 { pt = 4.0 }
   snd_set_pan(p, pn)
-  snd_play(p, 0, pt, g * snd_master)
+  snd_play(p, 0, pt, g * rt_audio_st.snd_master)
 }
 
 # Play a sound as looping background music on the single music channel; any
 # previous music is stopped first.
-function audio_play_music(id: int) -> void {
+function audio_play_music(rt_audio_st: mut RtAudioState, id: int) -> void {
   if not is_windowed() { return }
-  let p = audio_get(id)
+  let p = audio_get(rt_audio_st, id)
   if p == null { return }
-  audio_stop_music()
-  snd_music = id
-  snd_play(p, -1, snd_rate, snd_master)
+  audio_stop_music(rt_audio_st)
+  rt_audio_st.snd_music = id
+  snd_play(p, -1, rt_audio_st.snd_rate, rt_audio_st.snd_master)
 }
 
 # Stop one sound.
-function audio_stop(id: int) -> void {
+function audio_stop(rt_audio_st: mut RtAudioState, id: int) -> void {
   if not is_windowed() { return }
-  let p = audio_get(id)
+  let p = audio_get(rt_audio_st, id)
   if p == null { return }
   snd_stop(p)
-  if id == snd_music { snd_music = 0 }
+  if id == rt_audio_st.snd_music { rt_audio_st.snd_music = 0 }
 }
 
 # Stop the current music channel.
-function audio_stop_music() -> void {
+function audio_stop_music(rt_audio_st: mut RtAudioState) -> void {
   if not is_windowed() { return }
-  if snd_music != 0 {
-    let p = audio_get(snd_music)
+  if rt_audio_st.snd_music != 0 {
+    let p = audio_get(rt_audio_st, rt_audio_st.snd_music)
     if p != null { snd_stop(p) }
-    snd_music = 0
+    rt_audio_st.snd_music = 0
   }
 }
 
 # Stop every loaded sound.
-function audio_stop_all() -> void {
+function audio_stop_all(rt_audio_st: mut RtAudioState) -> void {
   if not is_windowed() { return }
-  audio_init()
+  audio_init(rt_audio_st)
   var i = 0
   while i < AUDIO_CAP {
-    if snd_tab[i] != null { snd_stop(snd_tab[i]) }
+    if rt_audio_st.snd_tab[i] != null { snd_stop(rt_audio_st.snd_tab[i]) }
     i += 1
   }
-  snd_music = 0
+  rt_audio_st.snd_music = 0
 }
 
 # Master volume (0.0 .. 1.0) — applied to every currently-loaded sound now and
 # to every future play.
-function audio_volume(v: fixed) -> void {
-  snd_master = v
+function audio_volume(rt_audio_st: mut RtAudioState, v: fixed) -> void {
+  rt_audio_st.snd_master = v
   if not is_windowed() { return }
-  audio_init()
+  audio_init(rt_audio_st)
   var i = 0
   while i < AUDIO_CAP {
-    if snd_tab[i] != null { snd_set_volume(snd_tab[i], v) }
+    if rt_audio_st.snd_tab[i] != null { snd_set_volume(rt_audio_st.snd_tab[i], v) }
     i += 1
   }
 }
 
 # Playback rate / pitch (1.0 = normal, 0.5 = an octave down, 2.0 = up).
-function audio_pitch(v: fixed) -> void {
-  snd_rate = v
+function audio_pitch(rt_audio_st: mut RtAudioState, v: fixed) -> void {
+  rt_audio_st.snd_rate = v
   if not is_windowed() { return }
-  audio_init()
+  audio_init(rt_audio_st)
   var i = 0
   while i < AUDIO_CAP {
-    if snd_tab[i] != null { snd_set_rate(snd_tab[i], v) }
+    if rt_audio_st.snd_tab[i] != null { snd_set_rate(rt_audio_st.snd_tab[i], v) }
     i += 1
   }
 }
 
 # Is this sound currently playing?
-function audio_is_playing(id: int) -> bool {
+function audio_is_playing(rt_audio_st: mut RtAudioState, id: int) -> bool {
   if not is_windowed() { return false }
-  let p = audio_get(id)
+  let p = audio_get(rt_audio_st, id)
   if p == null { return false }
   return snd_playing(p) != 0
 }

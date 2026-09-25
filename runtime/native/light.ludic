@@ -34,26 +34,34 @@
 # Up to 64 rectangular occluders, stored flat as (x, y, w, h) i32 quads. A game
 # clears them each frame (Light.clear_occluders) and re-registers the geometry
 # that should cast shadows this frame.
-var rt_light_occ:   words = null   # occluder rects: 4 i32 each — x, y, w, h
-var rt_light_occ_n: int   = 0      # number of occluders currently stored
+export state RtLightState {
+  rt_light_occ:   words = null   # occluder rects: 4 i32 each — x, y, w, h
+  rt_light_occ_n: int   = 0      # number of occluders currently stored
+  rt_light_falloff: int  = 1     # brightness ramp exponent: 1 linear, 2 quadratic, 3 cubic…
+  rt_light_soft:    int  = 0     # penumbra radius in px (0 = hard single-sample shadow)
+  rt_light_gel:     int  = 0     # outer gel colour 0x00RRGGBB (used only when rt_light_gel_on)
+  rt_light_gel_on:  bool = false  # gel active? off = a flat single-colour light
+  rt_light_h:       int  = 64    # virtual light height above the surface, for normal-map N·L
+  rt_light_nrm: words = null
+}
 
-function light_occ_init() -> void {
-  if rt_light_occ == null { rt_light_occ = words(64 * 4) }
+function light_occ_init(rt_light_st: mut RtLightState) -> void {
+  if rt_light_st.rt_light_occ == null { rt_light_st.rt_light_occ = words(64 * 4) }
 }
 
 # forget every occluder — call once per frame before re-registering geometry.
-function light_clear_occluders() -> void { rt_light_occ_n = 0 }
+function light_clear_occluders(rt_light_st: mut RtLightState) -> void { rt_light_st.rt_light_occ_n = 0 }
 
 # register a rectangular shadow caster (screen space). Silently ignored past 64.
-function light_occlude(x: int, y: int, w: int, h: int) -> void {
-  light_occ_init()
-  if rt_light_occ_n >= 64 { return }
-  let i = rt_light_occ_n * 4
-  rt_light_occ[i]     = x
-  rt_light_occ[i + 1] = y
-  rt_light_occ[i + 2] = w
-  rt_light_occ[i + 3] = h
-  rt_light_occ_n += 1
+function light_occlude(rt_light_st: mut RtLightState, x: int, y: int, w: int, h: int) -> void {
+  light_occ_init(rt_light_st)
+  if rt_light_st.rt_light_occ_n >= 64 { return }
+  let i = rt_light_st.rt_light_occ_n * 4
+  rt_light_st.rt_light_occ[i]     = x
+  rt_light_st.rt_light_occ[i + 1] = y
+  rt_light_st.rt_light_occ[i + 2] = w
+  rt_light_st.rt_light_occ[i + 3] = h
+  rt_light_st.rt_light_occ_n += 1
 }
 
 # ---- shadow geometry ------------------------------------------------------
@@ -85,14 +93,14 @@ function light_pt_in_rect(px: int, py: int, rx: int, ry: int, rw: int, rh: int) 
 # is the segment from light (lx,ly) to pixel (px,py) blocked by any occluder?
 # A pixel inside an occluder is in shadow; otherwise the ray is blocked if it
 # crosses any of the rectangle's four edges.
-function light_blocked(lx: int, ly: int, px: int, py: int) -> bool {
+function light_blocked(rt_light_st: RtLightState, lx: int, ly: int, px: int, py: int) -> bool {
   var k = 0
-  while k < rt_light_occ_n {
+  while k < rt_light_st.rt_light_occ_n {
     let i  = k * 4
-    let rx = rt_light_occ[i]
-    let ry = rt_light_occ[i + 1]
-    let rw = rt_light_occ[i + 2]
-    let rh = rt_light_occ[i + 3]
+    let rx = rt_light_st.rt_light_occ[i]
+    let ry = rt_light_st.rt_light_occ[i + 1]
+    let rw = rt_light_st.rt_light_occ[i + 2]
+    let rh = rt_light_st.rt_light_occ[i + 3]
     if light_pt_in_rect(px, py, rx, ry, rw, rh) { return true }
     let x0 = rx
     let y0 = ry
@@ -132,19 +140,14 @@ function light_fsqrt(v: fixed) -> fixed {
 # occluder store — a game (or the engine ECS system) sets them before emitting a
 # light and they stay until changed, so the simple Light.point call keeps its
 # short signature while spot/soft/falloff/gel ride on this side-band state.
-var rt_light_falloff: int  = 1     # brightness ramp exponent: 1 linear, 2 quadratic, 3 cubic…
-var rt_light_soft:    int  = 0     # penumbra radius in px (0 = hard single-sample shadow)
-var rt_light_gel:     int  = 0     # outer gel colour 0x00RRGGBB (used only when rt_light_gel_on)
-var rt_light_gel_on:  bool = false  # gel active? off = a flat single-colour light
-var rt_light_h:       int  = 64    # virtual light height above the surface, for normal-map N·L
 
-function light_set_falloff(exp: int) -> void {
-  if exp < 1 { rt_light_falloff = 1 } else { rt_light_falloff = exp }
+function light_set_falloff(rt_light_st: mut RtLightState, exp: int) -> void {
+  if exp < 1 { rt_light_st.rt_light_falloff = 1 } else { rt_light_st.rt_light_falloff = exp }
 }
-function light_set_soft(radius: int)  -> void { rt_light_soft = radius }
-function light_set_gel(outer: int)    -> void { rt_light_gel = outer;  rt_light_gel_on = true }
-function light_clear_gel()            -> void { rt_light_gel_on = false }
-function light_set_height(h: int)     -> void { if h > 0 { rt_light_h = h } }
+function light_set_soft(rt_light_st: mut RtLightState, radius: int)  -> void { rt_light_st.rt_light_soft = radius }
+function light_set_gel(rt_light_st: mut RtLightState, outer: int)    -> void { rt_light_st.rt_light_gel = outer;  rt_light_st.rt_light_gel_on = true }
+function light_clear_gel(rt_light_st: mut RtLightState)            -> void { rt_light_st.rt_light_gel_on = false }
+function light_set_height(rt_light_st: mut RtLightState, h: int)     -> void { if h > 0 { rt_light_st.rt_light_h = h } }
 
 # ---- normal buffer --------------------------------------------------------
 # An optional per-pixel surface-normal G-buffer, parallel to the framebuffer.
@@ -152,25 +155,24 @@ function light_set_height(h: int)     -> void { if h > 0 { rt_light_h = h } }
 # here" so an unstamped scene lights exactly as before (factor 1). nz is recovered
 # from the unit constraint, so a Light2D shades a surface by the angle it faces,
 # not distance alone (tier 3). Allocated only when a game stamps a normal.
-var rt_light_nrm: words = null
 
-function light_nrm_init() -> void {
-  if rt_light_nrm == null { rt_light_nrm = words(rt_fbw * rt_fbh) }
+function light_nrm_init(rt_light_st: mut RtLightState) -> void {
+  if rt_light_st.rt_light_nrm == null { rt_light_st.rt_light_nrm = words(rt_fbw * rt_fbh) }
 }
 
 # forget every stamped normal — call once per frame before re-stamping surfaces.
-function light_clear_normals() -> void {
-  if rt_light_nrm == null { return }
+function light_clear_normals(rt_light_st: mut RtLightState) -> void {
+  if rt_light_st.rt_light_nrm == null { return }
   let n = rt_fbw * rt_fbh
   var i = 0
-  while i < n { rt_light_nrm[i] = 0;  i += 1 }
+  while i < n { rt_light_st.rt_light_nrm[i] = 0;  i += 1 }
 }
 
 # stamp a rectangular region's surface normal. nx, ny are the normal's x/y as a
 # Q16.16 fixed in [-1, 1] (a flat surface facing the camera is nx = ny = 0); nz is
 # derived. Screen space, clipped to the framebuffer.
-function light_normal_rect(x: int, y: int, w: int, h: int, nx: fixed, ny: fixed) -> void {
-  light_nrm_init()
+function light_normal_rect(rt_light_st: mut RtLightState, x: int, y: int, w: int, h: int, nx: fixed, ny: fixed) -> void {
+  light_nrm_init(rt_light_st)
   var nxq = floor(nx * fixed(127)) + 128
   var nyq = floor(ny * fixed(127)) + 128
   if nxq < 0 { nxq = 0 };  if nxq > 255 { nxq = 255 }
@@ -181,7 +183,7 @@ function light_normal_rect(x: int, y: int, w: int, h: int, nx: fixed, ny: fixed)
     if (py >= 0) and (py < rt_fbh) {
       var px = x
       while px < x + w {
-        if (px >= 0) and (px < rt_fbw) { rt_light_nrm[py * rt_fbw + px] = packed }
+        if (px >= 0) and (px < rt_fbw) { rt_light_st.rt_light_nrm[py * rt_fbw + px] = packed }
         px += 1
       }
     }
@@ -239,33 +241,33 @@ function light_pow_t(t: fixed, exp: int) -> fixed {
 # only its centre (0 or 1); a soft light (rt_light_soft > 0) samples a small cross
 # on the light disk and averages, so an occluder edge fades through a penumbra
 # instead of cutting sharply (tier 4).
-function light_vis(cx: int, cy: int, px: int, py: int) -> fixed {
-  if rt_light_soft <= 0 {
-    if light_blocked(cx, cy, px, py) { return fixed(0) }
+function light_vis(rt_light_st: RtLightState, cx: int, cy: int, px: int, py: int) -> fixed {
+  if rt_light_st.rt_light_soft <= 0 {
+    if light_blocked(rt_light_st, cx, cy, px, py) { return fixed(0) }
     return fixed(1)
   }
-  let s = rt_light_soft
+  let s = rt_light_st.rt_light_soft
   var hit = 0
-  if not light_blocked(cx,     cy,     px, py) { hit += 1 }
-  if not light_blocked(cx + s, cy,     px, py) { hit += 1 }
-  if not light_blocked(cx - s, cy,     px, py) { hit += 1 }
-  if not light_blocked(cx,     cy + s, px, py) { hit += 1 }
-  if not light_blocked(cx,     cy - s, px, py) { hit += 1 }
+  if not light_blocked(rt_light_st, cx,     cy,     px, py) { hit += 1 }
+  if not light_blocked(rt_light_st, cx + s, cy,     px, py) { hit += 1 }
+  if not light_blocked(rt_light_st, cx - s, cy,     px, py) { hit += 1 }
+  if not light_blocked(rt_light_st, cx,     cy + s, px, py) { hit += 1 }
+  if not light_blocked(rt_light_st, cx,     cy - s, px, py) { hit += 1 }
   return fixed(hit) / fixed(5)
 }
 
 # Lambert factor at a pixel from the normal G-buffer, 0..1 (Q16.16). Flat / no
 # normal -> 1 (unchanged). Otherwise N·L with L the (normalized) direction from
 # the surface to the light in 3D, the light lifted rt_light_h above the plane.
-function light_normal_factor(cx: int, cy: int, px: int, py: int) -> fixed {
-  if rt_light_nrm == null { return fixed(1) }
-  let packed = rt_light_nrm[py * rt_fbw + px]
+function light_normal_factor(rt_light_st: RtLightState, cx: int, cy: int, px: int, py: int) -> fixed {
+  if rt_light_st.rt_light_nrm == null { return fixed(1) }
+  let packed = rt_light_st.rt_light_nrm[py * rt_fbw + px]
   if packed == 0 { return fixed(1) }
   let nxq = (packed & 255) - 128
   let nyq = ((packed >> 8) & 255) - 128
   let lx = cx - px
   let ly = cy - py
-  let lz = rt_light_h
+  let lz = rt_light_st.rt_light_h
   let lm = light_isqrt(lx * lx + ly * ly + lz * lz)
   if lm <= 0 { return fixed(1) }
   let lxf = fixed(lx) / fixed(lm)
@@ -285,18 +287,18 @@ function light_normal_factor(cx: int, cy: int, px: int, py: int) -> fixed {
 # Multiply the whole scene by an ambient tint (0x00RRGGBB): the CanvasModulate
 # that gives a night/cave mood before any light adds brightness back. Ambient
 # 0xFFFFFF is a no-op; darker/colored tints dim and gel the scene.
-function light_ambient(color: int) -> void {
+function light_ambient(rt_core_st: mut RtCoreState, color: int) -> void {
   let ar = (color >> 16) & 255
   let ag = (color >> 8) & 255
   let ab = color & 255
   let n = rt_fbw * rt_fbh
   var i = 0
   while i < n {
-    let cur = rt_fb[i]
+    let cur = rt_core_st.rt_fb[i]
     let nr = (((cur >> 16) & 255) * ar) / 255
     let ng = (((cur >> 8) & 255) * ag) / 255
     let nb = ((cur & 255) * ab) / 255
-    rt_fb[i] = (nr << 16) | (ng << 8) | nb
+    rt_core_st.rt_fb[i] = (nr << 16) | (ng << 8) | nb
     i += 1
   }
 }
@@ -315,14 +317,14 @@ function light_ambient(color: int) -> void {
 # Brightness is clamped per channel at 255; only the bounding box is touched.
 const LIGHT_FEATHER: int = 6      # cone-edge softening, in degrees
 
-function light_emit(cx: int, cy: int, radius: int, color: int, energy: fixed, dir_deg: int, spread_deg: int) -> void {
+function light_emit(rt_core_st: mut RtCoreState, rt_light_st: RtLightState, cx: int, cy: int, radius: int, color: int, energy: fixed, dir_deg: int, spread_deg: int) -> void {
   if radius <= 0 { return }
   let lr = (color >> 16) & 255
   let lg = (color >> 8) & 255
   let lb = color & 255
-  let gr = (rt_light_gel >> 16) & 255
-  let gg = (rt_light_gel >> 8) & 255
-  let gb = rt_light_gel & 255
+  let gr = (rt_light_st.rt_light_gel >> 16) & 255
+  let gg = (rt_light_st.rt_light_gel >> 8) & 255
+  let gb = rt_light_st.rt_light_gel & 255
   var py = cy - radius
   while py <= cy + radius {
     if (py >= 0) and (py < rt_fbh) {
@@ -344,26 +346,26 @@ function light_emit(cx: int, cy: int, radius: int, color: int, energy: fixed, di
               }
             }
             if cone > 0 {
-              let vis = light_vis(cx, cy, px, py)
+              let vis = light_vis(rt_light_st, cx, cy, px, py)
               if vis > 0 {
                 let t_lin = fixed(radius - d) / fixed(radius)       # 1 at centre, 0 at rim
-                let atten = light_pow_t(t_lin, rt_light_falloff)
-                let nf = light_normal_factor(cx, cy, px, py)
+                let atten = light_pow_t(t_lin, rt_light_st.rt_light_falloff)
+                let nf = light_normal_factor(rt_light_st, cx, cy, px, py)
                 let k = atten * energy * vis * cone * nf
                 # gel: mix the light colour toward the rim colour by (1 - t_lin).
                 var cr = lr;  var cg = lg;  var cb = lb
-                if rt_light_gel_on {
+                if rt_light_st.rt_light_gel_on {
                   let mix = fixed(1) - t_lin
                   cr = lr + floor(fixed(gr - lr) * mix)
                   cg = lg + floor(fixed(gg - lg) * mix)
                   cb = lb + floor(fixed(gb - lb) * mix)
                 }
                 let idx = py * rt_fbw + px
-                let cur = rt_fb[idx]
+                let cur = rt_core_st.rt_fb[idx]
                 let nr = min(255, ((cur >> 16) & 255) + floor(fixed(cr) * k))
                 let ng = min(255, ((cur >> 8) & 255) + floor(fixed(cg) * k))
                 let nb = min(255, (cur & 255) + floor(fixed(cb) * k))
-                rt_fb[idx] = (nr << 16) | (ng << 8) | nb
+                rt_core_st.rt_fb[idx] = (nr << 16) | (ng << 8) | nb
               }
             }
           }
@@ -377,15 +379,15 @@ function light_emit(cx: int, cy: int, radius: int, color: int, energy: fixed, di
 
 # a radial (omnidirectional) point light — the original short-signature call,
 # now a thin wrapper over light_emit with the cone disabled.
-function light_point(cx: int, cy: int, radius: int, color: int, energy: fixed) -> void {
-  light_emit(cx, cy, radius, color, energy, 0, -1)
+function light_point(rt_core_st: mut RtCoreState, rt_light_st: RtLightState, cx: int, cy: int, radius: int, color: int, energy: fixed) -> void {
+  light_emit(rt_core_st, rt_light_st, cx, cy, radius, color, energy, 0, -1)
 }
 
 # a cone / spot light aimed at `direction` degrees (0 = +x, CCW) with a half-angle
 # `spread` in degrees — a flashlight, a lamp cone. Shares every tier control (soft
 # shadows, falloff, gel, normals) with the radial form.
-function light_spot(cx: int, cy: int, radius: int, color: int, energy: fixed, direction: int, spread: int) -> void {
-  light_emit(cx, cy, radius, color, energy, direction, spread)
+function light_spot(rt_core_st: mut RtCoreState, rt_light_st: RtLightState, cx: int, cy: int, radius: int, color: int, energy: fixed, direction: int, spread: int) -> void {
+  light_emit(rt_core_st, rt_light_st, cx, cy, radius, color, energy, direction, spread)
 }
 
 # ---- day / night ----------------------------------------------------------
@@ -393,7 +395,7 @@ function light_spot(cx: int, cy: int, radius: int, color: int, energy: fixed, di
 # 0.25 dawn, 0.5 noon, 0.75 dusk). A cosine-free triangle ramps a deep-blue night
 # up to full daylight and back, so a game animates one value and the world's mood
 # follows. Deterministic; drives the same light_ambient modulate.
-function light_time_of_day(t: fixed) -> void {
+function light_time_of_day(rt_core_st: mut RtCoreState, t: fixed) -> void {
   # day factor 0..1: 0 at midnight, 1 at noon (triangle over the day).
   var day = t * fixed(2)                    # 0..2 across the day
   if day > fixed(1) { day = fixed(2) - day }  # fold 0.5..1 back down: peak at noon
@@ -404,5 +406,5 @@ function light_time_of_day(t: fixed) -> void {
   let r = nr + floor(fixed(dr - nr) * day)
   let g = ng + floor(fixed(dg - ng) * day)
   let b = nb + floor(fixed(db - nb) * day)
-  light_ambient((r << 16) | (g << 8) | b)
+  light_ambient(rt_core_st, (r << 16) | (g << 8) | b)
 }

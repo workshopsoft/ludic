@@ -19,106 +19,108 @@ const FX_SPARK_LIFE_JITTER: int = 8
 const FX_SPARK_SPEED: int = 3      # px per frame, each axis, either way
 const FX_NUMBER_LIFE: int = 30     # frames; a number rises one pixel every other frame
 
-var fx_ready: bool = false
-var fx_sx: words = null
-var fx_sy: words = null
-var fx_svx: words = null
-var fx_svy: words = null
-var fx_slife: words = null
-var fx_scolor: words = null
-var fx_ssize: words = null
-var fx_sn: int = 0
-var fx_nx: words = null
-var fx_ny: words = null
-var fx_nvalue: words = null
-var fx_nlife: words = null
-var fx_ncolor: words = null
-var fx_nn: int = 0
-
-function fx_init() -> void {
-  if fx_ready { return }
-  fx_sx = words(FX_MAX_SPARKS);  fx_sy = words(FX_MAX_SPARKS)
-  fx_svx = words(FX_MAX_SPARKS);  fx_svy = words(FX_MAX_SPARKS)
-  fx_slife = words(FX_MAX_SPARKS);  fx_scolor = words(FX_MAX_SPARKS);  fx_ssize = words(FX_MAX_SPARKS)
-  fx_nx = words(FX_MAX_NUMBERS);  fx_ny = words(FX_MAX_NUMBERS)
-  fx_nvalue = words(FX_MAX_NUMBERS);  fx_nlife = words(FX_MAX_NUMBERS);  fx_ncolor = words(FX_MAX_NUMBERS)
-  fx_ready = true
+export state RtFxState {
+  fx_ready: bool = false
+  fx_sx: words = null
+  fx_sy: words = null
+  fx_svx: words = null
+  fx_svy: words = null
+  fx_slife: words = null
+  fx_scolor: words = null
+  fx_ssize: words = null
+  fx_sn: int = 0
+  fx_nx: words = null
+  fx_ny: words = null
+  fx_nvalue: words = null
+  fx_nlife: words = null
+  fx_ncolor: words = null
+  fx_nn: int = 0
 }
 
-function fx_sparks(x: int, y: int, color: int, count: int) -> void {
-  fx_init()
+function fx_init(rt_fx_st: mut RtFxState) -> void {
+  if rt_fx_st.fx_ready { return }
+  rt_fx_st.fx_sx = words(FX_MAX_SPARKS);  rt_fx_st.fx_sy = words(FX_MAX_SPARKS)
+  rt_fx_st.fx_svx = words(FX_MAX_SPARKS);  rt_fx_st.fx_svy = words(FX_MAX_SPARKS)
+  rt_fx_st.fx_slife = words(FX_MAX_SPARKS);  rt_fx_st.fx_scolor = words(FX_MAX_SPARKS);  rt_fx_st.fx_ssize = words(FX_MAX_SPARKS)
+  rt_fx_st.fx_nx = words(FX_MAX_NUMBERS);  rt_fx_st.fx_ny = words(FX_MAX_NUMBERS)
+  rt_fx_st.fx_nvalue = words(FX_MAX_NUMBERS);  rt_fx_st.fx_nlife = words(FX_MAX_NUMBERS);  rt_fx_st.fx_ncolor = words(FX_MAX_NUMBERS)
+  rt_fx_st.fx_ready = true
+}
+
+function fx_sparks(rt_fx_st: mut RtFxState, rt_rng_st: mut RtRngState, x: int, y: int, color: int, count: int) -> void {
+  fx_init(rt_fx_st)
   var i = 0
   while i < count {
-    if fx_sn >= FX_MAX_SPARKS { return }
-    fx_sx[fx_sn] = x
-    fx_sy[fx_sn] = y
-    fx_svx[fx_sn] = rt_rng_range(-FX_SPARK_SPEED, FX_SPARK_SPEED)
-    fx_svy[fx_sn] = rt_rng_range(-FX_SPARK_SPEED, FX_SPARK_SPEED)
-    fx_slife[fx_sn] = FX_SPARK_LIFE + rt_rng_range(0, FX_SPARK_LIFE_JITTER)
-    fx_scolor[fx_sn] = color
-    fx_ssize[fx_sn] = 1 + rt_rng_range(0, 2)
-    fx_sn += 1
+    if rt_fx_st.fx_sn >= FX_MAX_SPARKS { return }
+    rt_fx_st.fx_sx[rt_fx_st.fx_sn] = x
+    rt_fx_st.fx_sy[rt_fx_st.fx_sn] = y
+    rt_fx_st.fx_svx[rt_fx_st.fx_sn] = rt_rng_range(rt_rng_st, -FX_SPARK_SPEED, FX_SPARK_SPEED)
+    rt_fx_st.fx_svy[rt_fx_st.fx_sn] = rt_rng_range(rt_rng_st, -FX_SPARK_SPEED, FX_SPARK_SPEED)
+    rt_fx_st.fx_slife[rt_fx_st.fx_sn] = FX_SPARK_LIFE + rt_rng_range(rt_rng_st, 0, FX_SPARK_LIFE_JITTER)
+    rt_fx_st.fx_scolor[rt_fx_st.fx_sn] = color
+    rt_fx_st.fx_ssize[rt_fx_st.fx_sn] = 1 + rt_rng_range(rt_rng_st, 0, 2)
+    rt_fx_st.fx_sn += 1
     i += 1
   }
 }
 
-function fx_number(x: int, y: int, value: int, color: int) -> void {
-  fx_init()
-  if fx_nn >= FX_MAX_NUMBERS { return }
-  fx_nx[fx_nn] = x
-  fx_ny[fx_nn] = y
-  fx_nvalue[fx_nn] = value
-  fx_nlife[fx_nn] = FX_NUMBER_LIFE
-  fx_ncolor[fx_nn] = color
-  fx_nn += 1
+function fx_number(rt_fx_st: mut RtFxState, x: int, y: int, value: int, color: int) -> void {
+  fx_init(rt_fx_st)
+  if rt_fx_st.fx_nn >= FX_MAX_NUMBERS { return }
+  rt_fx_st.fx_nx[rt_fx_st.fx_nn] = x
+  rt_fx_st.fx_ny[rt_fx_st.fx_nn] = y
+  rt_fx_st.fx_nvalue[rt_fx_st.fx_nn] = value
+  rt_fx_st.fx_nlife[rt_fx_st.fx_nn] = FX_NUMBER_LIFE
+  rt_fx_st.fx_ncolor[rt_fx_st.fx_nn] = color
+  rt_fx_st.fx_nn += 1
 }
 
-function fx_clear() -> void { fx_sn = 0;  fx_nn = 0 }
+function fx_clear(rt_fx_st: mut RtFxState) -> void { rt_fx_st.fx_sn = 0;  rt_fx_st.fx_nn = 0 }
 
 # drop spark i by moving the last one into its slot
-function fx_drop_spark(i: int) -> void {
-  let last = fx_sn - 1
-  fx_sx[i] = fx_sx[last];  fx_sy[i] = fx_sy[last]
-  fx_svx[i] = fx_svx[last];  fx_svy[i] = fx_svy[last]
-  fx_slife[i] = fx_slife[last];  fx_scolor[i] = fx_scolor[last];  fx_ssize[i] = fx_ssize[last]
-  fx_sn = last
+function fx_drop_spark(rt_fx_st: mut RtFxState, i: int) -> void {
+  let last = rt_fx_st.fx_sn - 1
+  rt_fx_st.fx_sx[i] = rt_fx_st.fx_sx[last];  rt_fx_st.fx_sy[i] = rt_fx_st.fx_sy[last]
+  rt_fx_st.fx_svx[i] = rt_fx_st.fx_svx[last];  rt_fx_st.fx_svy[i] = rt_fx_st.fx_svy[last]
+  rt_fx_st.fx_slife[i] = rt_fx_st.fx_slife[last];  rt_fx_st.fx_scolor[i] = rt_fx_st.fx_scolor[last];  rt_fx_st.fx_ssize[i] = rt_fx_st.fx_ssize[last]
+  rt_fx_st.fx_sn = last
 }
-function fx_drop_number(i: int) -> void {
-  let last = fx_nn - 1
-  fx_nx[i] = fx_nx[last];  fx_ny[i] = fx_ny[last]
-  fx_nvalue[i] = fx_nvalue[last];  fx_nlife[i] = fx_nlife[last];  fx_ncolor[i] = fx_ncolor[last]
-  fx_nn = last
+function fx_drop_number(rt_fx_st: mut RtFxState, i: int) -> void {
+  let last = rt_fx_st.fx_nn - 1
+  rt_fx_st.fx_nx[i] = rt_fx_st.fx_nx[last];  rt_fx_st.fx_ny[i] = rt_fx_st.fx_ny[last]
+  rt_fx_st.fx_nvalue[i] = rt_fx_st.fx_nvalue[last];  rt_fx_st.fx_nlife[i] = rt_fx_st.fx_nlife[last];  rt_fx_st.fx_ncolor[i] = rt_fx_st.fx_ncolor[last]
+  rt_fx_st.fx_nn = last
 }
 
 # once per Update: move and age everything, dropping what expired
-function fx_tick() -> void {
-  if not fx_ready { return }
+function fx_tick(rt_fx_st: mut RtFxState) -> void {
+  if not rt_fx_st.fx_ready { return }
   var i = 0
-  while i < fx_sn {
-    fx_sx[i] += fx_svx[i]
-    fx_sy[i] += fx_svy[i]
-    fx_slife[i] -= 1
-    if fx_slife[i] <= 0 { fx_drop_spark(i) } else { i += 1 }
+  while i < rt_fx_st.fx_sn {
+    rt_fx_st.fx_sx[i] += rt_fx_st.fx_svx[i]
+    rt_fx_st.fx_sy[i] += rt_fx_st.fx_svy[i]
+    rt_fx_st.fx_slife[i] -= 1
+    if rt_fx_st.fx_slife[i] <= 0 { fx_drop_spark(rt_fx_st, i) } else { i += 1 }
   }
   i = 0
-  while i < fx_nn {
-    fx_nlife[i] -= 1
-    if fx_nlife[i] % 2 == 0 { fx_ny[i] -= 1 }
-    if fx_nlife[i] <= 0 { fx_drop_number(i) } else { i += 1 }
+  while i < rt_fx_st.fx_nn {
+    rt_fx_st.fx_nlife[i] -= 1
+    if rt_fx_st.fx_nlife[i] % 2 == 0 { rt_fx_st.fx_ny[i] -= 1 }
+    if rt_fx_st.fx_nlife[i] <= 0 { fx_drop_number(rt_fx_st, i) } else { i += 1 }
   }
 }
 
 # once per Render, after the sprites: everything goes through the camera chokepoints
-function fx_draw() -> void {
-  if not fx_ready { return }
+function fx_draw(rt_core_st: mut RtCoreState, rt_fx_st: RtFxState) -> void {
+  if not rt_fx_st.fx_ready { return }
   var i = 0
-  while i < fx_sn {
-    rt_fill_rect(fx_sx[i], fx_sy[i], fx_ssize[i], fx_ssize[i], fx_scolor[i])
+  while i < rt_fx_st.fx_sn {
+    rt_fill_rect(rt_core_st, rt_fx_st.fx_sx[i], rt_fx_st.fx_sy[i], rt_fx_st.fx_ssize[i], rt_fx_st.fx_ssize[i], rt_fx_st.fx_scolor[i])
     i += 1
   }
   i = 0
-  while i < fx_nn {
-    rt_text_int(fx_nx[i] - 4, fx_ny[i] - 10, fx_nvalue[i], fx_ncolor[i], 1)
+  while i < rt_fx_st.fx_nn {
+    rt_text_int(rt_core_st, rt_fx_st.fx_nx[i] - 4, rt_fx_st.fx_ny[i] - 10, rt_fx_st.fx_nvalue[i], rt_fx_st.fx_ncolor[i], 1)
     i += 1
   }
 }

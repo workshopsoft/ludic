@@ -445,6 +445,7 @@ function emit_game_main() -> void {
   emit("define i32 @main(i32 %argc, ptr %argv) {\nentry:\n")
   emit("  store i32 %argc, ptr @L_argc\n")
   emit("  store ptr %argv, ptr @L_argv\n")
+  emit("  call void @L_init_runtime()\n")
   if (find_fn("rt_init") != null) { emit("  call void " + fn_sym("rt_init") + "()\n") }
   emit("  call void @L_init_globals()\n")
   emit_calls_for_phase("Start")

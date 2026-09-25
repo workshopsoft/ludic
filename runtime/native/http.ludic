@@ -28,50 +28,52 @@ extern function hs_cancel(slot: int) -> void = "hs_cancel"
 
 const HTTP_SLOTS: int = 8
 
-var h_ready:  bool     = false
-var h_used:   words    = null      # slot in use
-var h_native: words    = null      # 1 = backed by the platform fetch, 0 = parsed offline
-var h_sent:   words    = null      # 1 = dispatched (native)
-var h_res:    words    = null      # 1 = a native fetch has been resolved into the fields below
-var h_status: words    = null      # cached HTTP status (0 = network error / unset)
-var h_blen:   words    = null      # body length
-var h_req:    pointers = null      # the pending NSURLRequest (native, before send)
-var h_body:   pointers = null      # body bytes (NUL-terminated); owned by the slot
-var h_hdr:    pointers = null      # raw header block (parsed handles only); owned by the slot
-var h_save:   words    = null      # 1 = the body streams to a file (Http.save_to)
-
-function http_init() -> void {
-  if h_ready { return }
-  h_used   = words(HTTP_SLOTS)
-  h_native = words(HTTP_SLOTS)
-  h_sent   = words(HTTP_SLOTS)
-  h_res    = words(HTTP_SLOTS)
-  h_status = words(HTTP_SLOTS)
-  h_blen   = words(HTTP_SLOTS)
-  h_req    = pointers(HTTP_SLOTS)
-  h_body   = pointers(HTTP_SLOTS)
-  h_hdr    = pointers(HTTP_SLOTS)
-  h_save   = words(HTTP_SLOTS)
-  var i = 0
-  while i < HTTP_SLOTS {
-    h_used[i] = 0;  h_native[i] = 0;  h_sent[i] = 0;  h_res[i] = 0
-    h_status[i] = 0;  h_blen[i] = 0
-    h_req[i] = null;  h_body[i] = null;  h_hdr[i] = null
-    h_save[i] = 0
-    i += 1
-  }
-  h_ready = true
+export state RtHttpState {
+  h_ready:  bool     = false
+  h_used:   words    = null      # slot in use
+  h_native: words    = null      # 1 = backed by the platform fetch, 0 = parsed offline
+  h_sent:   words    = null      # 1 = dispatched (native)
+  h_res:    words    = null      # 1 = a native fetch has been resolved into the fields below
+  h_status: words    = null      # cached HTTP status (0 = network error / unset)
+  h_blen:   words    = null      # body length
+  h_req:    pointers = null      # the pending NSURLRequest (native, before send)
+  h_body:   pointers = null      # body bytes (NUL-terminated); owned by the slot
+  h_hdr:    pointers = null      # raw header block (parsed handles only); owned by the slot
+  h_save:   words    = null      # 1 = the body streams to a file (Http.save_to)
 }
 
-function http_slot_alloc() -> int {
-  http_init()
+function http_init(rt_http_st: mut RtHttpState) -> void {
+  if rt_http_st.h_ready { return }
+  rt_http_st.h_used   = words(HTTP_SLOTS)
+  rt_http_st.h_native = words(HTTP_SLOTS)
+  rt_http_st.h_sent   = words(HTTP_SLOTS)
+  rt_http_st.h_res    = words(HTTP_SLOTS)
+  rt_http_st.h_status = words(HTTP_SLOTS)
+  rt_http_st.h_blen   = words(HTTP_SLOTS)
+  rt_http_st.h_req    = pointers(HTTP_SLOTS)
+  rt_http_st.h_body   = pointers(HTTP_SLOTS)
+  rt_http_st.h_hdr    = pointers(HTTP_SLOTS)
+  rt_http_st.h_save   = words(HTTP_SLOTS)
   var i = 0
   while i < HTTP_SLOTS {
-    if h_used[i] == 0 {
-      h_used[i] = 1;  h_native[i] = 0;  h_sent[i] = 0;  h_res[i] = 0
-      h_status[i] = 0;  h_blen[i] = 0
-      h_req[i] = null;  h_body[i] = null;  h_hdr[i] = null
-      h_save[i] = 0
+    rt_http_st.h_used[i] = 0;  rt_http_st.h_native[i] = 0;  rt_http_st.h_sent[i] = 0;  rt_http_st.h_res[i] = 0
+    rt_http_st.h_status[i] = 0;  rt_http_st.h_blen[i] = 0
+    rt_http_st.h_req[i] = null;  rt_http_st.h_body[i] = null;  rt_http_st.h_hdr[i] = null
+    rt_http_st.h_save[i] = 0
+    i += 1
+  }
+  rt_http_st.h_ready = true
+}
+
+function http_slot_alloc(rt_http_st: mut RtHttpState) -> int {
+  http_init(rt_http_st)
+  var i = 0
+  while i < HTTP_SLOTS {
+    if rt_http_st.h_used[i] == 0 {
+      rt_http_st.h_used[i] = 1;  rt_http_st.h_native[i] = 0;  rt_http_st.h_sent[i] = 0;  rt_http_st.h_res[i] = 0
+      rt_http_st.h_status[i] = 0;  rt_http_st.h_blen[i] = 0
+      rt_http_st.h_req[i] = null;  rt_http_st.h_body[i] = null;  rt_http_st.h_hdr[i] = null
+      rt_http_st.h_save[i] = 0
       return i
     }
     i += 1
@@ -79,22 +81,22 @@ function http_slot_alloc() -> int {
   return -1
 }
 
-function http_valid(h: int) -> bool {
-  http_init()
+function http_valid(rt_http_st: mut RtHttpState, h: int) -> bool {
+  http_init(rt_http_st)
   if (h < 1) or (h > HTTP_SLOTS) { return false }
-  return h_used[h - 1] == 1
+  return rt_http_st.h_used[h - 1] == 1
 }
 
 # A native request freed while its worker was still running is parked (h_used 2) rather
 # than released, so the worker never writes into a slot a new request has taken. Once the
 # worker has finished, the slot's native resources are freed and it is free again.
-function http_reap() -> void {
-  http_init()
+function http_reap(rt_http_st: mut RtHttpState) -> void {
+  http_init(rt_http_st)
   var i = 0
   while i < HTTP_SLOTS {
-    if (h_used[i] == 2) and (hs_done(i) != 0) {
+    if (rt_http_st.h_used[i] == 2) and (hs_done(i) != 0) {
       hs_free(i)
-      h_used[i] = 0
+      rt_http_st.h_used[i] = 0
     }
     i += 1
   }
@@ -110,32 +112,32 @@ function http_cstr_len(p: pointer) -> int {
 
 # ---- request construction (native) -----------------------------------------
 # Open a request without sending it, so headers / a body can be added first.
-function http_open(method: pointer, url: pointer) -> int {
-  http_reap()
+function http_open(rt_http_st: mut RtHttpState, method: pointer, url: pointer) -> int {
+  http_reap(rt_http_st)
   let req = hs_req_new(method, url)
   if req == null { return 0 }
-  let s = http_slot_alloc()
+  let s = http_slot_alloc(rt_http_st)
   if s < 0 { return 0 }
-  h_req[s] = req
-  h_native[s] = 1
+  rt_http_st.h_req[s] = req
+  rt_http_st.h_native[s] = 1
   return s + 1
 }
 
-function http_set_header(h: int, name: pointer, value: pointer) -> void {
-  if not http_valid(h) { return }
+function http_set_header(rt_http_st: mut RtHttpState, h: int, name: pointer, value: pointer) -> void {
+  if not http_valid(rt_http_st, h) { return }
   let s = h - 1
-  if (h_sent[s] == 0) and (h_req[s] != null) { hs_req_header(h_req[s], name, value) }
+  if (rt_http_st.h_sent[s] == 0) and (rt_http_st.h_req[s] != null) { hs_req_header(rt_http_st.h_req[s], name, value) }
 }
 
 # Attach a body of `len` bytes (use http_body for a NUL-terminated string body).
-function http_body_n(h: int, bytes_ptr: pointer, len: int) -> void {
-  if not http_valid(h) { return }
+function http_body_n(rt_http_st: mut RtHttpState, h: int, bytes_ptr: pointer, len: int) -> void {
+  if not http_valid(rt_http_st, h) { return }
   let s = h - 1
-  if (h_sent[s] == 0) and (h_req[s] != null) { hs_req_body(h_req[s], bytes_ptr, len) }
+  if (rt_http_st.h_sent[s] == 0) and (rt_http_st.h_req[s] != null) { hs_req_body(rt_http_st.h_req[s], bytes_ptr, len) }
 }
 
-function http_body(h: int, body: pointer) -> void {
-  http_body_n(h, body, http_cstr_len(body))
+function http_body(rt_http_st: mut RtHttpState, h: int, body: pointer) -> void {
+  http_body_n(rt_http_st, h, body, http_cstr_len(body))
 }
 
 # Stream the response body to the file at `path` instead of keeping it in memory. Must be
@@ -143,134 +145,134 @@ function http_body(h: int, body: pointer) -> void {
 # and written directly - no temporary name - so a failed or cancelled download leaves
 # whatever arrived there; the caller picks the name and renames it once the status is
 # good. Http.text of such a request is empty (null) and Http.body_len is the bytes written.
-function http_save_to(h: int, path: pointer) -> void {
-  if not http_valid(h) { return }
+function http_save_to(rt_http_st: mut RtHttpState, h: int, path: pointer) -> void {
+  if not http_valid(rt_http_st, h) { return }
   let s = h - 1
-  if (h_native[s] == 1) and (h_sent[s] == 0) and (path != null) {
+  if (rt_http_st.h_native[s] == 1) and (rt_http_st.h_sent[s] == 0) and (path != null) {
     hs_save_to(s, path)
-    h_save[s] = 1
+    rt_http_st.h_save[s] = 1
   }
 }
 
 # Body bytes received so far. Live while a Http.save_to request is pending; for an
 # in-memory request it is 0 until the reply lands, then the body length.
-function http_received(h: int) -> int {
-  if not http_valid(h) { return 0 }
+function http_received(rt_http_st: mut RtHttpState, h: int) -> int {
+  if not http_valid(rt_http_st, h) { return 0 }
   let s = h - 1
-  if h_native[s] == 0 { return h_blen[s] }
-  if h_sent[s] == 0 { return 0 }
-  if h_save[s] == 1 { return hs_received(s) }
-  if h_res[s] == 1 { return h_blen[s] }
+  if rt_http_st.h_native[s] == 0 { return rt_http_st.h_blen[s] }
+  if rt_http_st.h_sent[s] == 0 { return 0 }
+  if rt_http_st.h_save[s] == 1 { return hs_received(s) }
+  if rt_http_st.h_res[s] == 1 { return rt_http_st.h_blen[s] }
   return 0
 }
 
 # The body's announced length (Content-Length), or -1 while it is not known. For a
 # Http.save_to request it is known as soon as the headers arrive; for an in-memory request
 # it is -1 until the reply lands, then the body length.
-function http_expected(h: int) -> int {
-  if not http_valid(h) { return -1 }
+function http_expected(rt_http_st: mut RtHttpState, h: int) -> int {
+  if not http_valid(rt_http_st, h) { return -1 }
   let s = h - 1
-  if h_native[s] == 0 { return h_blen[s] }
-  if h_sent[s] == 0 { return -1 }
-  if h_save[s] == 1 { return hs_expected(s) }
-  if h_res[s] == 1 { return h_blen[s] }
+  if rt_http_st.h_native[s] == 0 { return rt_http_st.h_blen[s] }
+  if rt_http_st.h_sent[s] == 0 { return -1 }
+  if rt_http_st.h_save[s] == 1 { return hs_expected(s) }
+  if rt_http_st.h_res[s] == 1 { return rt_http_st.h_blen[s] }
   return -1
 }
 
 # Dispatch the request onto the background worker.
-function http_send_req(h: int) -> void {
-  if not http_valid(h) { return }
+function http_send_req(rt_http_st: mut RtHttpState, h: int) -> void {
+  if not http_valid(rt_http_st, h) { return }
   let s = h - 1
-  if (h_sent[s] == 0) and (h_req[s] != null) {
-    hs_send(s, h_req[s])
-    h_sent[s] = 1
+  if (rt_http_st.h_sent[s] == 0) and (rt_http_st.h_req[s] != null) {
+    hs_send(s, rt_http_st.h_req[s])
+    rt_http_st.h_sent[s] = 1
   }
 }
 
 # ---- convenience one-shots -------------------------------------------------
-function http_get(url: pointer) -> int {
-  let h = http_open("GET", url)
-  if h != 0 { http_send_req(h) }
+function http_get(rt_http_st: mut RtHttpState, url: pointer) -> int {
+  let h = http_open(rt_http_st, "GET", url)
+  if h != 0 { http_send_req(rt_http_st, h) }
   return h
 }
 
-function http_post(url: pointer, body: pointer) -> int {
-  let h = http_open("POST", url)
-  if h != 0 { http_body(h, body);  http_send_req(h) }
+function http_post(rt_http_st: mut RtHttpState, url: pointer, body: pointer) -> int {
+  let h = http_open(rt_http_st, "POST", url)
+  if h != 0 { http_body(rt_http_st, h, body);  http_send_req(rt_http_st, h) }
   return h
 }
 
-function http_request(method: pointer, url: pointer, body: pointer) -> int {
-  let h = http_open(method, url)
+function http_request(rt_http_st: mut RtHttpState, method: pointer, url: pointer, body: pointer) -> int {
+  let h = http_open(rt_http_st, method, url)
   if h == 0 { return 0 }
-  if http_cstr_len(body) > 0 { http_body(h, body) }
-  http_send_req(h)
+  if http_cstr_len(body) > 0 { http_body(rt_http_st, h, body) }
+  http_send_req(rt_http_st, h)
   return h
 }
 
 # ---- polling + response ----------------------------------------------------
 # -1 while pending, 0 on a transport error, else the HTTP status code.
-function http_poll(h: int) -> int {
-  if not http_valid(h) { return 0 }
+function http_poll(rt_http_st: mut RtHttpState, h: int) -> int {
+  if not http_valid(rt_http_st, h) { return 0 }
   let s = h - 1
-  if h_native[s] == 0 { return h_status[s] }        # a parsed handle is ready immediately
-  if h_sent[s] == 0 { return -1 }
-  if h_res[s] == 1 { return h_status[s] }
+  if rt_http_st.h_native[s] == 0 { return rt_http_st.h_status[s] }        # a parsed handle is ready immediately
+  if rt_http_st.h_sent[s] == 0 { return -1 }
+  if rt_http_st.h_res[s] == 1 { return rt_http_st.h_status[s] }
   if hs_done(s) == 0 { return -1 }
   # first time we see it finished: cache the fields off the worker.
-  h_status[s] = hs_status(s)
-  h_body[s]   = hs_body(s)
-  h_blen[s]   = hs_blen(s)
-  h_res[s]    = 1
-  return h_status[s]
+  rt_http_st.h_status[s] = hs_status(s)
+  rt_http_st.h_body[s]   = hs_body(s)
+  rt_http_st.h_blen[s]   = hs_blen(s)
+  rt_http_st.h_res[s]    = 1
+  return rt_http_st.h_status[s]
 }
 
-function http_status_of(h: int) -> int {
-  if not http_valid(h) { return 0 }
-  return h_status[h - 1]
+function http_status_of(rt_http_st: mut RtHttpState, h: int) -> int {
+  if not http_valid(rt_http_st, h) { return 0 }
+  return rt_http_st.h_status[h - 1]
 }
 
-function http_ok(h: int) -> bool {
-  let st = http_status_of(h)
+function http_ok(rt_http_st: mut RtHttpState, h: int) -> bool {
+  let st = http_status_of(rt_http_st, h)
   return (st >= 200) and (st < 300)
 }
 
-function http_text(h: int) -> string {
-  if not http_valid(h) { return null }
-  return h_body[h - 1]
+function http_text(rt_http_st: mut RtHttpState, h: int) -> string {
+  if not http_valid(rt_http_st, h) { return null }
+  return rt_http_st.h_body[h - 1]
 }
 
-function http_body_len(h: int) -> int {
-  if not http_valid(h) { return 0 }
-  return h_blen[h - 1]
+function http_body_len(rt_http_st: mut RtHttpState, h: int) -> int {
+  if not http_valid(rt_http_st, h) { return 0 }
+  return rt_http_st.h_blen[h - 1]
 }
 
-function http_header_of(h: int, name: pointer) -> string {
-  if not http_valid(h) { return null }
+function http_header_of(rt_http_st: mut RtHttpState, h: int, name: pointer) -> string {
+  if not http_valid(rt_http_st, h) { return null }
   let s = h - 1
-  if h_native[s] == 1 { return hs_header(s, name) }
-  return http_find_header(h_hdr[s], name)
+  if rt_http_st.h_native[s] == 1 { return hs_header(s, name) }
+  return http_find_header(rt_http_st.h_hdr[s], name)
 }
 
-function http_close(h: int) -> void {
-  if not http_valid(h) { return }
+function http_close(rt_http_st: mut RtHttpState, h: int) -> void {
+  if not http_valid(rt_http_st, h) { return }
   let s = h - 1
-  if h_native[s] == 1 {
-    if (h_sent[s] == 1) and (h_res[s] == 0) and (hs_done(s) == 0) {
+  if rt_http_st.h_native[s] == 1 {
+    if (rt_http_st.h_sent[s] == 1) and (rt_http_st.h_res[s] == 0) and (hs_done(s) == 0) {
       # still running: stop it, and park the slot until the worker has let go
       hs_cancel(s)
-      h_used[s] = 2
-      h_req[s] = null;  h_body[s] = null;  h_hdr[s] = null
+      rt_http_st.h_used[s] = 2
+      rt_http_st.h_req[s] = null;  rt_http_st.h_body[s] = null;  rt_http_st.h_hdr[s] = null
       return
     }
     hs_free(s)
   }
   else {
-    if h_body[s] != null { free(h_body[s]) }
-    if h_hdr[s] != null { free(h_hdr[s]) }
+    if rt_http_st.h_body[s] != null { free(rt_http_st.h_body[s]) }
+    if rt_http_st.h_hdr[s] != null { free(rt_http_st.h_hdr[s]) }
   }
-  h_used[s] = 0
-  h_req[s] = null;  h_body[s] = null;  h_hdr[s] = null
+  rt_http_st.h_used[s] = 0
+  rt_http_st.h_req[s] = null;  rt_http_st.h_body[s] = null;  rt_http_st.h_hdr[s] = null
 }
 
 # ---- the pure-Ludic response parser (transport-independent) -----------------
@@ -290,10 +292,10 @@ function http_lower(c: int) -> int { if (c >= 'A') and (c <= 'Z') { return c + 3
 
 # Parse a raw HTTP/1.1 response (status line + headers + blank line + body) into
 # a ready handle. Useful for cached/custom transports and offline tests.
-function http_parse(resp: pointer, len: int) -> int {
-  let s = http_slot_alloc()
+function http_parse(rt_http_st: mut RtHttpState, resp: pointer, len: int) -> int {
+  let s = http_slot_alloc(rt_http_st)
   if s < 0 { return 0 }
-  h_native[s] = 0
+  rt_http_st.h_native[s] = 0
 
   # status: the token after the first space on the status line.
   var i = 0
@@ -301,7 +303,7 @@ function http_parse(resp: pointer, len: int) -> int {
   while (i < len) and (resp[i] == ' ') { i += 1 }   # skip the space(s)
   var st = 0
   while (i < len) and http_is_digit(resp[i]) { st = (st * 10) + (resp[i] - 48);  i += 1 }
-  h_status[s] = st
+  rt_http_st.h_status[s] = st
 
   # header/body split at the first CRLFCRLF.
   var split = -1
@@ -323,10 +325,10 @@ function http_parse(resp: pointer, len: int) -> int {
     hs += 1
   }
   if hs > hdr_end { hs = hdr_end }
-  h_hdr[s] = http_slice_dup(resp, hs, hdr_end)
-  h_body[s] = http_slice_dup(resp, body_start, len)
-  h_blen[s] = len - body_start
-  if h_blen[s] < 0 { h_blen[s] = 0 }
+  rt_http_st.h_hdr[s] = http_slice_dup(resp, hs, hdr_end)
+  rt_http_st.h_body[s] = http_slice_dup(resp, body_start, len)
+  rt_http_st.h_blen[s] = len - body_start
+  if rt_http_st.h_blen[s] < 0 { rt_http_st.h_blen[s] = 0 }
   return s + 1
 }
 
