@@ -1,0 +1,5 @@
+# ludic.hints - a rail of things that are true now and can be acted on now, sorted by how much they
+# matter, each one a card that teaches it and can be muted for good. Uses ludic.base and nothing else.
+package "ludic.hints"
+version "0.1.0"
+kind source

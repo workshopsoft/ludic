@@ -1,0 +1,8 @@
+# port.ludic - what the rail asks the game. Unbound: nothing is ever true, and the rail may show.
+export port HintsWorld {
+  true_now: fn(int) -> bool = fn hn_never     # is card i true right now? Pure and cheap: asked once a pass
+  showing: fn() -> bool = fn hn_yes           # the rail is wanted (in play, the player's switch on)
+}
+
+function hn_never(i: int) -> bool { return false }
+function hn_yes() -> bool { return true }

@@ -1,0 +1,11 @@
+# ludic.hints - cards as an open registry, a port that says which are true, the rail of the most
+# urgent few, a card walked along it, and "I know this" kept by the card's key
+module ludic_hints uses ludic_base
+numbers float
+import "ludic.base"
+import "defs.ludic"
+import "port.ludic"
+import "rail.ludic"
+import "card.ludic"
+import "mute.ludic"
+import "system.ludic"

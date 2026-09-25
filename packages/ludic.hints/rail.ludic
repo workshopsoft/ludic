@@ -1,0 +1,102 @@
+# rail.ludic - the rail: once a pass (a second by default) the most urgent true cards, up to a few,
+# muted ones left out; in a tie the registry's order decides
+var hn_shown: int = 3            # how many the rail holds
+var hn_every: float = 1.0        # seconds between passes
+var hn_top: []int = null         # the cards on the rail this pass
+var hn_n: int = 0
+var hn_t: float = 0.0            # seconds to the next pass
+var hn_pick: int = 0             # which chip the key would open
+var hn_card: int = -1            # the card being read, or -1
+var hn_facts: Queue<HintsFact> = null
+
+export function hints_facts() -> Queue<HintsFact> {
+  if hn_facts == null { hn_facts = queue_new("hints.facts") }
+  return hn_facts
+}
+
+function hn_fact(what: int, card: int) -> void {
+  let f = new HintsFact
+  f.what = what
+  f.card = card
+  q_push(hints_facts(), f)
+}
+
+# how many the rail holds and how often it is sorted
+export function hints_config(shown: int, every: float) -> void {
+  hn_shown = shown
+  hn_every = every
+  hn_top = null
+}
+
+function hn_ensure() -> void {
+  if hn_top == null or len(hn_top) != hn_shown {
+    hn_top = new []int
+    for i in 0 .. hn_shown { push(hn_top, -1) }
+  }
+  hn_mute_ensure()
+}
+
+# the next pass comes on the next tick rather than in a second
+export function hints_refresh() -> void { hn_t = 0.0 }
+
+export function hints_tick(dt: float) -> void {
+  hn_ensure()
+  hn_t = hn_t - dt
+  if hn_t > 0.0 { return }
+  hn_t = hn_every
+  hints_sort()
+}
+
+# one pass now: the rail re-sorted, the pick kept in range, and the card following its subject
+# along the rail - or put down when what it was about stopped being true
+export function hints_sort() -> void {
+  hn_ensure()
+  hn_n = 0
+  let on = HintsWorld.showing()
+  for u in 0 .. 4 {
+    let want = HINTS_URGENT - u
+    for id in 0 .. HINT_COUNT {
+      if not on or hn_n >= hn_shown { break }
+      if Hints[id].urgency != want or hints_muted(id) { continue }
+      if not HintsWorld.true_now(id) { continue }
+      hn_top[hn_n] = id
+      hn_n += 1
+    }
+  }
+  if hn_pick >= hn_n { hn_pick = 0 }
+  if hn_card < 0 { return }
+  if not on or hints_muted(hn_card) or not HintsWorld.true_now(hn_card) {
+    hn_card = -1
+    return
+  }
+  for k in 0 .. hn_n { if hn_top[k] == hn_card { hn_pick = k } }
+}
+
+# the cards on the rail, most urgent first (empty while the rail is not showing)
+export function hints_rail() -> []int {
+  hn_ensure()
+  let out = new []int
+  if not HintsWorld.showing() { return out }
+  for k in 0 .. hn_n { push(out, hn_top[k]) }
+  return out
+}
+
+export function hints_count() -> int { return hn_n }
+
+export function hints_at(k: int) -> int {
+  if k < 0 or k >= hn_n { return -1 }
+  return hn_top[k]
+}
+
+export function hints_pick() -> int { return hn_pick }
+
+export function hints_hot(k: int) -> bool { return k == hn_pick }
+
+export function hints_reset() -> void {
+  hn_top = null
+  hn_n = 0
+  hn_t = 0.0
+  hn_pick = 0
+  hn_card = -1
+  q_clear(hints_facts())
+}

@@ -1,0 +1,39 @@
+# defs.ludic - a card as the game writes it, how much it matters, and the facts
+export const HINTS_TIP: int = 0        # worth knowing
+export const HINTS_NOTE: int = 1       # worth doing soon
+export const HINTS_WARN: int = 2       # worth doing now
+export const HINTS_URGENT: int = 3     # do it or lose the day
+
+# The words are the lesson's text keys (the game translates them where it draws). Pictures are
+# the game's: `icon` / `picN` name a glyph, `item` / `itemN` a thing's picture instead (-1: none).
+export property HintCard {
+  key: string = ""
+  urgency: int = HINTS_TIP
+  icon: string = ""
+  item: int = -1
+  line: string = ""          # the chip on the rail: five or six words
+  title: string = ""         # the card's heading
+  s1: string = ""            # three steps, each with a picture
+  s2: string = ""
+  s3: string = ""
+  pic1: string = ""
+  pic2: string = ""
+  pic3: string = ""
+  item1: int = -1
+  item2: int = -1
+  item3: int = -1
+  later: string = ""         # how not to be here next time
+}
+
+# the game's cards; a card's mute is kept by its key, so their order is free
+export open registry Hints of HintCard as HINT
+
+export const HINTS_F_OPENED: int = 0    # a card was opened, or the arrows moved to another
+export const HINTS_F_CLOSED: int = 1    # put down by the player (not when it stopped being true)
+export const HINTS_F_MUTED: int = 2     # "I know this": off the rail for good
+export const HINTS_F_UNMUTED: int = 3   # every muted card given back (card -1)
+
+export property HintsFact {
+  what: int = 0
+  card: int = -1
+}
