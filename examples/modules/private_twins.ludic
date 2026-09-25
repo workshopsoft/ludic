@@ -1,0 +1,15 @@
+# private_twins.ludic — L3: a module's private names are its own. shop and weather each have a
+# private `seed`, `dice` and `LIMIT`, and the program has a `seed` of its own; none of them collide,
+# and each module's code reaches its own.
+#
+# Running it prints:  105 41 7
+import "twins/shop"
+import "twins/weather"
+program PrivateTwins {
+  function seed() -> int {
+    return 7
+  }
+  entry {
+    print(`{shop_seed()} {weather_seed()} {seed()}`)
+  }
+}

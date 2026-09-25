@@ -1,0 +1,5 @@
+# b/index.ludic - exports seed too: exported names are one namespace
+module b
+export function seed() -> int {
+  return 2
+}

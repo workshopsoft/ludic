@@ -795,6 +795,8 @@ function cmd_dev_test() -> int {
   reject_case("rejected/port_private", "Clock is private to module clock", "whoever binds a port has to see it")
   reject_case("rejected/uses_package", "mech uses ludic_inventory.inv_count", "a package's module counts under `uses` like any other")
   reject_case("rejected/uses_render3d", "mech uses ludic_render3d.PI", "a package with no module line is still named under `uses`")
+  feat_case("modules/private_twins", "", "105 41 7", "private_twins.ludic (L3: two modules' private seed, dice and LIMIT, and the program's seed, do not collide)")
+  reject_case("rejected/exported_twins", "function 'seed' is defined twice", "two modules that export one name still clash")
   vis_report_case("rejected/uses_missing", "uses: examples/rejected/uses_valley/items/index.ludic:3: items.inv_add used from", "LUDIC_VIS_REPORT=1 lists a uses violation and builds")
   feat_case("lang/checked", "", "7.5 3 12 hi 2 ok", "checked.ludic (L4: literals take their slot's kind, string(p), []string as []pointer, null, named args)")
   reject_case("rejected/wrong_arity", "this call to area leaves out h, which has no default", "a call with the wrong number of arguments is refused")

@@ -1,0 +1,5 @@
+# a/index.ludic - exports seed
+module a
+export function seed() -> int {
+  return 1
+}

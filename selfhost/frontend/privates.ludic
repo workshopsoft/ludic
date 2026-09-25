@@ -1,0 +1,243 @@
+# privates.ludic — L3: a module's private names are its own. A function, var or const that a module
+# does not export may share its spelling with a name in another module (or in no module, or the
+# engine's runtime): when two such declarations meet, each private one is renamed for its module
+# (`sp_seed` in module shop becomes `sp_seed$shop`), and so is every reference to it written in that
+# module that no local shadows. Exported and public names stay one namespace, so a clash between two
+# of those is still the error it was. Nothing is renamed when nothing clashes, so a program with no
+# clash compiles exactly as before. Records and events still share one namespace.
+var g_rn_mod: []pointer = new []pointer
+var g_rn_old: []pointer = new []pointer
+var g_rn_new: []pointer = new []pointer
+var g_rn_fn: []int = new []int           # 1: a function; 0: a var or const
+
+# which names a declaration's spelling competes with: functions with functions, values with values
+function priv_group(k: int) -> int {
+  if k == N_FN { return 2 }
+  if k == N_VAR or k == N_CONST { return 1 }
+  return 0
+}
+function priv_less(a: Node, b: Node) -> bool { return reg_str_less(a.s, b.s) }
+# the declarations that have a name, sorted by it (a merge sort: a program has thousands)
+function priv_sort(xs: []int, lo: int, hi: int, tmp: []int) -> void {
+  if hi - lo < 2 { return }
+  let mid = (lo + hi) / 2
+  priv_sort(xs, lo, mid, tmp)
+  priv_sort(xs, mid, hi, tmp)
+  var i = lo
+  var j = mid
+  var k = lo
+  while k < hi {
+    if j >= hi or (i < mid and not priv_less(prog[xs[j]], prog[xs[i]])) {
+      tmp[k] = xs[i]
+      i += 1
+    } else {
+      tmp[k] = xs[j]
+      j += 1
+    }
+    k += 1
+  }
+  k = lo
+  while k < hi {
+    xs[k] = tmp[k]
+    k += 1
+  }
+}
+# the module a declaration is in; the engine's runtime (spliced after the program) is in none
+function priv_mod(i: int) -> pointer {
+  if i >= g_prog_user_end { return "" }
+  return module_of(prog[i].file)
+}
+# one run of declarations of one name and group, [a, b): rename every private one whose module
+# is not the only one the name is declared in
+function priv_run(xs: []int, a: int, b: int) -> void {
+  var k = a
+  while k < b {
+    let i = xs[k]
+    let d = prog[i]
+    let m = priv_mod(i)
+    if i < g_prog_user_end and d.vis != 1 and not (m == "") {
+      var other = false
+      var j = a
+      while j < b {
+        if j != k and not (priv_mod(xs[j]) == m) { other = true }
+        j += 1
+      }
+      if other {
+        push(g_rn_mod, m)
+        push(g_rn_old, d.s)
+        push(g_rn_new, `{d.s}${m}`)
+        var f = 0
+        if d.kind == N_FN { f = 1 }
+        push(g_rn_fn, f)
+      }
+    }
+    k += 1
+  }
+}
+function privates_rename() -> void {
+  let xs = new []int
+  let tmp = new []int
+  var i = 0
+  while i < len(prog) {
+    if priv_group(prog[i].kind) > 0 and prog[i].s != null {
+      push(xs, i)
+      push(tmp, 0)
+    }
+    i += 1
+  }
+  priv_sort(xs, 0, len(xs), tmp)
+  var a = 0
+  while a < len(xs) {
+    var b = a + 1
+    let da = prog[xs[a]]
+    while b < len(xs) and (prog[xs[b]].s == da.s) { b += 1 }
+    if b - a > 1 {
+      # within the run, each group on its own
+      var g = 1
+      while g <= 2 {
+        let sub = new []int
+        var k = a
+        while k < b {
+          if priv_group(prog[xs[k]].kind) == g { push(sub, xs[k]) }
+          k += 1
+        }
+        if len(sub) > 1 { priv_run(sub, 0, len(sub)) }
+        g += 1
+      }
+    }
+    a = b
+  }
+  if len(g_rn_old) == 0 { return }
+  priv_apply()
+}
+# the rename for a reference to `s` written in file `f`, or null
+function priv_find(s: pointer, f: pointer, want_fn: int) -> pointer {
+  var k = 0
+  while k < len(g_rn_old) {
+    if (g_rn_old[k] == s) and g_rn_fn[k] == want_fn {
+      if f != null and (module_of(f) == g_rn_mod[k]) { return g_rn_new[k] }
+    }
+    k += 1
+  }
+  return null
+}
+function priv_known(s: pointer) -> bool {
+  var k = 0
+  while k < len(g_rn_old) {
+    if (g_rn_old[k] == s) { return true }
+    k += 1
+  }
+  return false
+}
+# a name in a scope string ",a,b,": a local that shadows a module's global
+function priv_shadowed(sc: pointer, s: pointer) -> bool { return has_sub(sc, `,{s},`) }
+function priv_ref(n: Node, sc: pointer, want_fn: int) -> void {
+  if n.s == null or not priv_known(n.s) { return }
+  if want_fn == 0 and priv_shadowed(sc, n.s) { return }
+  let r = priv_find(n.s, n.file, want_fn)
+  if r != null { n.s = r }
+}
+# every reference below `n`; `sc` is the locals in scope
+function priv_walk(n: Node, sc: pointer) -> void {
+  if n == null { return }
+  if n.kind == E_FNREF {
+    priv_ref(n, sc, 1)
+    return
+  }
+  if n.kind == E_ID {
+    priv_ref(n, sc, 0)
+    return
+  }
+  if n.kind == E_CALL {
+    if n.a != null and n.a.kind == E_ID { priv_ref(n.a, sc, 1) } else { priv_walk(n.a, sc) }
+    priv_kids(n, sc)
+    return
+  }
+  if n.kind == N_BLOCK {
+    var s = sc
+    var i = 0
+    while i < len(n.kids) {
+      priv_walk(n.kids[i], s)
+      if n.kids[i].kind == S_LET { s = s + n.kids[i].s + "," }
+      i += 1
+    }
+    priv_walk(n.a, s)
+    return
+  }
+  if n.kind == S_FOR {
+    priv_walk(n.a, sc)
+    priv_walk(n.b, sc)
+    priv_walk(n.c, sc + n.s + ",")
+    return
+  }
+  if n.kind == N_FN {
+    var s = sc
+    var i = 0
+    while i < len(n.kids) {
+      priv_walk(n.kids[i].a, sc)
+      if n.kids[i].kind == N_PARAM { s = s + n.kids[i].s + "," }
+      i += 1
+    }
+    priv_walk(n.a, s)
+    return
+  }
+  priv_walk(n.a, sc)
+  priv_walk(n.b, sc)
+  priv_walk(n.c, sc)
+  priv_kids(n, sc)
+}
+function priv_kids(n: Node, sc: pointer) -> void {
+  if n.kids == null { return }
+  var i = 0
+  while i < len(n.kids) {
+    priv_walk(n.kids[i], sc)
+    i += 1
+  }
+}
+function priv_walk_all(xs: []Node) -> void {
+  if xs == null { return }
+  var i = 0
+  while i < len(xs) {
+    priv_walk(xs[i], ",")
+    i += 1
+  }
+}
+function priv_apply() -> void {
+  # the declarations themselves
+  var i = 0
+  while i < g_prog_user_end and i < len(prog) {
+    let d = prog[i]
+    let g = priv_group(d.kind)
+    if g > 0 and d.vis != 1 and d.s != null and priv_known(d.s) {
+      var f = 0
+      if g == 2 { f = 1 }
+      let r = priv_find(d.s, d.file, f)
+      if r != null { d.s = r }
+    }
+    i += 1
+  }
+  # every reference: the program's declarations, and the bodies kept beside them
+  i = 0
+  while i < g_prog_user_end and i < len(prog) {
+    priv_walk(prog[i], ",")
+    i += 1
+  }
+  priv_walk_all(g_tests)
+  priv_walk_all(g_onlisten)
+  priv_walk_all(g_onspawn)
+  priv_walk_all(g_ondespawn)
+  priv_walk_all(g_onattach)
+  priv_walk_all(g_ondetach)
+  priv_walk_all(g_onenable)
+  priv_walk_all(g_ondisable)
+  priv_walk_all(g_computed)
+  priv_walk_all(g_scenes)
+  priv_walk_all(g_events)
+  # a namespace method declared in a module names its target by spelling
+  i = 0
+  while i < len(g_al_target) {
+    let r = priv_find(g_al_target[i], g_al_file[i], 1)
+    if r != null { g_al_target[i] = r }
+    i += 1
+  }
+}

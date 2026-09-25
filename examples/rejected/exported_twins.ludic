@@ -1,0 +1,8 @@
+# L3: two modules that both EXPORT a name clash - only private names are a module's own
+import "exported_twins/a"
+import "exported_twins/b"
+program ExportedTwins {
+  entry {
+    print(seed())
+  }
+}

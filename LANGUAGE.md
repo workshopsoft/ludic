@@ -107,6 +107,15 @@ harness, which has to reach inside what it tests. `friend module lab of fishing,
 that to the modules named: `lab` sees their private names, and every other module's exports only. `export` is a keyword before a declaration
 and is not the `@export` annotation, which names a C symbol.
 
+**A module's private names are its own.** A function, `var` or `const` a module does not export
+may share its spelling with a name in another module, in a file in no module, or in the engine's
+runtime: `shop` and `weather` may each have a private `seed`, and each module's code reaches its
+own (a local of the same name still shadows it). There is no need to prefix a package's privates.
+Exported names are one namespace across the program, so two modules that both `export function
+seed` are still refused (`function 'seed' is defined twice`); and records and events - private or
+not - still share one namespace. Where two names meet, the private one is compiled under its
+module's name (`seed$shop`), which is the spelling a message about it may show.
+
 To move an existing codebase onto modules, build it once with `LUDIC_VIS_REPORT=1`: every
 reference that would be refused is printed as `vis: <file>:<line>: <module>.<name> used from
 <file>` and the build goes on, so a script can add the `export`s the program already relies on.
