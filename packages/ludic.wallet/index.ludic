@@ -1,6 +1,6 @@
 # ludic.wallet - one purse of whole money: verbs to earn, spend (only what is there) and lose (a
 # cost that happens anyway), a MoneyChanged fact per change, and its own save section
-module ludic_wallet
+module ludic_wallet uses ludic_base
 numbers float
 import "ludic.base"
 import "wallet.ludic"

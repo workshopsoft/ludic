@@ -32,25 +32,13 @@ function wx_first_wet() -> int {
   return 0
 }
 
-function wx_owns() -> bool {
-  if wx_world == null or wx_world.owns_world == null { return true }
-  return wx_world.owns_world()
-}
+function wx_owns() -> bool { return WeatherWorld.owns_world() }
 
-function wx_hours() -> float {
-  if wx_world == null or wx_world.hours == null { return 12.0 }
-  return wx_world.hours()
-}
+function wx_hours() -> float { return WeatherWorld.hours() }
 
-function wx_night() -> bool {
-  if wx_world == null or wx_world.is_night == null { return false }
-  return wx_world.is_night()
-}
+function wx_night() -> bool { return WeatherWorld.is_night() }
 
-function wx_bias() -> int {
-  if wx_world == null or wx_world.bias == null { return WEATHER_NO_BIAS }
-  return wx_world.bias()
-}
+function wx_bias() -> int { return WeatherWorld.bias() }
 
 function wx_wrap(a: float) -> float {
   var d = a

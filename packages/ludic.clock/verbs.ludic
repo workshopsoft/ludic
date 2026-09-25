@@ -35,9 +35,7 @@ export function clock_advance(gh: float) -> void {
 
 # a new trip: day one at the start hour, the moon somewhere in its month
 export function clock_reset() -> void {
-  var seed = 1
-  if ck_world != null and ck_world.seed != null { seed = ck_world.seed() }
-  ck_dice = rng_new(seed)
+  ck_dice = rng_new(ClockWorld.seed())
   ck_day = 1
   ck_hours = ck_start_hours
   ck_moon = rng_span(ck_dice, ck_moon_lo, ck_moon_hi) % 1.0

@@ -1,5 +1,5 @@
 # a toy mechanic: a pack of counts by kind, saved in its own section
-module toy_pack
+module toy_pack uses ludic_base
 numbers float
 import "ludic.base"
 var counts: []int = null

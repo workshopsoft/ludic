@@ -1,9 +1,7 @@
 # verbs.ludic - the only way the sky changes from outside: a morning, a reset, the host's word
 # a new trip: clear sky, a still-ish wind, nothing forecast; the dice from the world's seed
 export function weather_reset() -> void {
-  var seed = 1
-  if wx_world != null and wx_world.seed != null { seed = wx_world.seed() }
-  wx_dice = rng_new(seed)
+  wx_dice = rng_new(WeatherWorld.seed())
   let clear = wx_clear_kind()
   wx_state = clear
   wx_next = clear

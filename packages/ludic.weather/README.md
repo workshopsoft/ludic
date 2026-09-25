@@ -39,7 +39,7 @@ property WeatherKind {
 ## The port
 
 ```ludic
-property WeatherWorld {
+export port WeatherWorld {         # every member has a default, so any may be left out
   owns_world: fn() -> bool        # does this machine run the world? (unbound: yes)
   hours: fn() -> float            # the hour, for the wind's daily turn (unbound: noon)
   is_night: fn() -> bool          # a front clearing at night is no WEATHER_CLEARED
@@ -47,8 +47,14 @@ property WeatherWorld {
   bias: fn() -> int               # what the story wants now: WEATHER_NO_BIAS, _WANT_WET, _HOLD, _WANT_CLEAR
   front: fn() -> int              # the kind a wanted front comes as (unbound: the first wet kind)
   front_hours: fn() -> float      # the least a wanted front lasts (never under 5)
-  seed: fn() -> int               # a new trip's dice
+  seed: fn() -> int               # a new trip's dice (unbound: 1)
 }
+```
+
+The game fills it once, where it is put together - a declaration, not a call:
+
+```ludic
+bind WeatherWorld { owns_world: fn ses_owns_world, hours: fn clock_hours, odds: fn sky_odds }
 ```
 
 The bias is asked every tick on the owner. `WANT_WET` on a dry sky forecasts a front
@@ -60,7 +66,7 @@ it wants them (daylight, a tarp up, a stars job open).
 
 | | |
 | --- | --- |
-| `weather_bind(w)`, `weather_kinds(ks)`, `weather_config_wind(down, up, from, to)` | the port, the kinds, and the valley's wind: toward `down` by night, toward `up` from `from` to `to` |
+| `bind WeatherWorld { ... }`, `weather_kinds(ks)`, `weather_config_wind(down, up, from, to)` | the port, the kinds, and the valley's wind: toward `down` by night, toward `up` from `from` to `to` |
 | `weather_run(dt, gh)` | one step (the system's tick does this from `Tick.dt` and `Tick.hours`) |
 | `weather_morning()` | a new day's forecast: seven times in ten it becomes the next spell |
 | `weather_reset()` | a new trip: the first clear kind, nothing forecast, dice from the seed |

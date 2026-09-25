@@ -7,8 +7,7 @@ function wx_turn() -> void {
   wx_left = wx_spell_hours(wx_state)
   if wx_forced {
     wx_forced = false
-    var least = 5.0
-    if wx_world != null and wx_world.front_hours != null { least = Math.max(least, wx_world.front_hours()) }
+    let least = Math.max(5.0, WeatherWorld.front_hours())
     if wx_left < least { wx_left = least }
   }
   if wx_state == was { return }

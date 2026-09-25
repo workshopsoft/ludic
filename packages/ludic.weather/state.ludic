@@ -1,16 +1,24 @@
 # state.ludic - the port, the kinds, the facts, and what the sky holds
-# what the weather asks the world. Any field may be left null: the answer is then "yes, it is
-# mine", noon and daylight, the kind's own odds, no bias, the first wet kind, and a seed of 1.
-export property WeatherWorld {
-  owns_world: fn() -> bool = null
-  hours: fn() -> float = null
-  is_night: fn() -> bool = null
-  odds: fn(int) -> []float = null      # weights for the next spell, per kind, from this kind
-  bias: fn() -> int = null             # what the story wants now: WEATHER_* below
-  front: fn() -> int = null            # the kind a wanted front comes as
-  front_hours: fn() -> float = null    # the least a wanted front lasts once it arrives
-  seed: fn() -> int = null
+# what the weather asks the world. Any member may be left out of the bind: the answer is then
+# "yes, it is mine", noon and daylight, the kind's own odds, no bias, the first wet kind, and a
+# seed of 1.
+export port WeatherWorld {
+  owns_world: fn() -> bool = fn wx_owns_alone
+  hours: fn() -> float = fn wx_noon
+  is_night: fn() -> bool = fn wx_daylight
+  odds: fn(int) -> []float = fn wx_own_odds      # weights for the next spell, per kind, from this kind
+  bias: fn() -> int = fn wx_no_bias              # what the story wants now: WEATHER_* below
+  front: fn() -> int = fn wx_first_wet           # the kind a wanted front comes as
+  front_hours: fn() -> float = fn wx_no_hours    # the least a wanted front lasts once it arrives
+  seed: fn() -> int = fn wx_seed_one
 }
+function wx_owns_alone() -> bool { return true }
+function wx_noon() -> float { return 12.0 }
+function wx_daylight() -> bool { return false }
+function wx_own_odds(from: int) -> []float { return wx_kinds[from].odds }
+function wx_no_bias() -> int { return WEATHER_NO_BIAS }
+function wx_no_hours() -> float { return 0.0 }
+function wx_seed_one() -> int { return 1 }
 
 # what the story may ask of the sky
 export const WEATHER_NO_BIAS: int = 0
@@ -45,7 +53,6 @@ export property WeatherFact {
   from: int = 0
 }
 
-var wx_world: WeatherWorld = null
 var wx_kinds: []WeatherKind = null
 var wx_state: int = 0
 var wx_next: int = 0
@@ -63,8 +70,6 @@ var wx_wet_today: bool = false
 var wx_wet_yesterday: bool = false
 var wx_dice: Rng = null
 var wx_facts: Queue<WeatherFact> = null
-
-export function weather_bind(w: WeatherWorld) -> void { wx_world = w }
 
 # the facts, oldest first; the game drains them into its notices and sounds
 export function weather_facts() -> Queue<WeatherFact> {

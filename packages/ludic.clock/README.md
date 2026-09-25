@@ -16,18 +16,24 @@ the hour; another machine is told it (`clock_set_hours`, `clock_set_day`, `clock
 ## The port
 
 ```ludic
-property ClockWorld {
-  owns_world: fn() -> bool     # does this machine run the world? (unbound: yes)
-  rest_scale: fn() -> float    # how much everyone's rest speeds the clock; 1 when nobody rests
-  seed: fn() -> int            # a seed for a new trip's moon
+export port ClockWorld {
+  owns_world: fn() -> bool = ...    # does this machine run the world? (unbound: yes)
+  rest_scale: fn() -> float = ...   # how much everyone's rest speeds the clock (unbound: 1)
+  seed: fn() -> int = ...           # a seed for a new trip's moon (unbound: 1)
 }
+```
+
+The game fills it once, where it is put together, and may leave any member out:
+
+```ludic
+bind ClockWorld { owns_world: fn ses_owns_world, rest_scale: fn rt_rest_scale, seed: fn rt_clock_seed }
 ```
 
 ## API
 
 | | |
 | --- | --- |
-| `clock_bind(w)` | the port |
+| `bind ClockWorld { ... }` | the port (a declaration, not a call) |
 | `clock_config(start_hours, night_from, night_to)` | when a trip starts, and which hours are night |
 | `clock_config_moon(days, lo, hi)` | the moon's month in days, and the part of it a new trip starts in |
 | `clock_calendar(month_days, season_of_month)` | a month's length, and each month's season (the list's length is the year) |

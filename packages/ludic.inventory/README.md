@@ -16,16 +16,18 @@ longer knows is dropped on load.
 ## The port
 
 ```ludic
-property PackRules {
-  stack_limit: fn(int) -> int   # how many of a kind fit (unbound: no limit)
+export port PackRules {
+  stack_limit: fn(int) -> int = ...   # how many of a kind fit (unbound: no limit)
 }
 ```
+
+The game fills it once, where it is put together: `bind PackRules { stack_limit: fn gear_stack }`.
 
 ## API
 
 | | |
 | --- | --- |
-| `inv_bind(r)`, `inv_config(keys)` | the port, and the kinds by name (the pack starts empty) |
+| `bind PackRules { ... }`, `inv_config(keys)` | the port (a declaration), and the kinds by name (the pack starts empty) |
 | `inv_add(it, n) -> int` | as many of `n` as there is room for; returns how many went in |
 | `inv_take(it, n) -> bool` | all `n` or none |
 | `inv_set(it, n)` | a count outright, room or not (a starting kit, a correction, the network's word); never below 0 |

@@ -7,6 +7,7 @@ program RouteTest {
   numbers float
 
   function water_everywhere_but_land(x: float, z: float) -> bool { return x < 100.0 }
+  bind FishingWorld { is_water: fn water_everywhere_but_land }
 
   # the route: a landed fish goes into the pack
   function route_fishing_pack(t: Tick) -> void {
@@ -16,9 +17,6 @@ program RouteTest {
 
   function game_start() -> void {
     core_clear()
-    let w = new FishingWorld
-    w.is_water = fn water_everywhere_but_land
-    fishing_bind(w)
     core_add(fishing_system())
     let r = system_new("route.fishing_pack", PH_RESOLVE)
     r.tick = fn route_fishing_pack

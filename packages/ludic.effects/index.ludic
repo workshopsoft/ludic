@@ -1,6 +1,6 @@
 # ludic.effects - a small ring of timed modifiers, each a kind (the game's number), a magnitude
 # in that kind's units, a time left and a label; the game asks the sum for a kind
-module ludic_effects
+module ludic_effects uses ludic_base
 numbers float
 import "ludic.base"
 import "state.ludic"

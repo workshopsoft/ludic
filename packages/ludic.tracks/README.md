@@ -20,7 +20,7 @@ good as walking a trail.
 ## The port
 
 ```ludic
-property TracksWorld {
+export port TracksWorld {        # every member has a default, so any may be left out
   now: fn() -> float              # game hours counted from the start of the trip (unbound: 0)
   skill: fn() -> int              # the reader's tier; at tracks_config_reading's name_at it names the animal
   bearing: fn(float) -> string    # a yaw in words, "" for none (a reader with no compass)
@@ -28,11 +28,17 @@ property TracksWorld {
 }
 ```
 
+The game fills it once, where it is put together - a declaration, not a call:
+
+```ludic
+bind TracksWorld { now: fn rt_trip_hours, skill: fn track_skill, bearing: fn track_bearing, placed: fn track_mark_placed }
+```
+
 ## API
 
 | | |
 | --- | --- |
-| `tracks_bind(w)`, `tracks_config(kinds, cap)`, `tracks_config_reading(name_at, fresh, recent)` | the port; how many kinds and how many prints of each; the skill that names the animal and the ages (hours) under which a print is fresh or recent |
+| `bind TracksWorld { ... }`, `tracks_config(kinds, cap)`, `tracks_config_reading(name_at, fresh, recent)` | the port; how many kinds and how many prints of each; the skill that names the animal and the ages (hours) under which a print is fresh or recent |
 | `tracks_leave(kind, x, z, yaw, sp, legend) -> int`, `tracks_leave_at(..., made)` | a print, now or at another machine's time; returns its ring index |
 | `tracks_clear()` | the ground forgets every print (a new world); the reader keeps what it learned |
 | `tracks_nearest(x, z, r) -> int` | the nearest print within `r`, as a slot (`kind * cap + index`), or -1 |

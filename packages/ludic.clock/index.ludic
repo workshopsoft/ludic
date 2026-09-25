@@ -1,6 +1,6 @@
 # ludic.clock - one clock for a whole world: the hour, the day, the moon's place in its month and
 # where the day falls in a calendar the game describes; a day turning is a fact on a queue
-module ludic_clock
+module ludic_clock uses ludic_base
 numbers float
 import "ludic.base"
 import "state.ludic"

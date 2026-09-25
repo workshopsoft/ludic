@@ -1,16 +1,14 @@
 # a toy mechanic: casting a line. It uses ludic.base and nothing else.
-module toy_fishing
+module toy_fishing uses ludic_base
 numbers float
 import "ludic.base"
 export property Caught { species: int = 0, weight: float = 0.0 }
-export property FishingWorld { is_water: fn(float, float) -> bool = null }  # its port
-var world: FishingWorld = null
+export port FishingWorld { is_water: fn(float, float) -> bool }           # its port
 var dice: Rng = null
 var casts: int = 0
 export var caught: Queue<Caught> = null                                   # its facts
-export function fishing_bind(w: FishingWorld) -> void { world = w }
 export function fishing_cast(x: float, z: float) -> bool {                 # its verb
-  if not world.is_water(x, z) { return false }
+  if not FishingWorld.is_water(x, z) { return false }
   casts += 1
   return true
 }

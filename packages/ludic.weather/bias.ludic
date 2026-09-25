@@ -2,8 +2,7 @@
 # rain could wait a week for it; so while the world says it wants a front, one is forecast and
 # arrives within the hour and a half, and while it wants clear sky, the sky clears and holds.
 function wx_front_kind() -> int {
-  if wx_world != null and wx_world.front != null { return wx_world.front() }
-  return wx_first_wet()
+  return WeatherWorld.front()
 }
 
 function wx_want_wet() -> void {

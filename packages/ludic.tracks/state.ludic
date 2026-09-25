@@ -1,12 +1,16 @@
 # state.ludic - the port, the prints, the facts, and what the reader has learned
-# what the tracks ask the world. Any field may be left null: the time is then 0, the reader
-# can name every animal, no bearing is given, and nothing is drawn.
-export property TracksWorld {
-  now: fn() -> float = null              # game hours, counted from the start of the trip
-  skill: fn() -> int = null              # how well the reader reads (the game's tiers)
-  bearing: fn(float) -> string = null    # a yaw in words ("north-west"), "" for none
-  placed: fn(int, int) -> void = null    # a print was put down at (kind, ring index): draw it
+# what the tracks ask the world. Any member may be left out of the bind: the time is then 0,
+# the reader can name every animal, no bearing is given, and nothing is drawn.
+export port TracksWorld {
+  now: fn() -> float = fn tk_time_zero             # game hours, counted from the start of the trip
+  skill: fn() -> int = fn tk_every_skill           # how well the reader reads (the game's tiers)
+  bearing: fn(float) -> string = fn tk_no_bearing  # a yaw in words ("north-west"), "" for none
+  placed: fn(int, int) -> void = fn tk_not_drawn   # a print was put down at (kind, ring index): draw it
 }
+function tk_time_zero() -> float { return 0.0 }
+function tk_every_skill() -> int { return 2147483647 }
+function tk_no_bearing(yaw: float) -> string { return "" }
+function tk_not_drawn(kind: int, i: int) -> void { }
 
 # where a sign came from
 export const TRACK_PRINT: int = 0     # a print in a ring, read with tracks_read
@@ -43,7 +47,6 @@ export property TrackRead {
   first: bool = false
 }
 
-var tk_world: TracksWorld = null
 var tk_kinds: int = 0
 var tk_cap: int = 0
 var tk_ring: []Track = null        # kinds x cap, kind-major
@@ -57,7 +60,6 @@ var tk_yaw: float = 0.0            # the heading of the last sign read
 var tk_has_yaw: bool = false
 var tk_reads: Queue<TrackRead> = null
 
-export function tracks_bind(w: TracksWorld) -> void { tk_world = w }
 
 # the facts: every sign read, oldest first
 export function tracks_reads() -> Queue<TrackRead> {

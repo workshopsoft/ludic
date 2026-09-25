@@ -13,11 +13,13 @@ import "ludic.base"
 
 ## The rules
 
-1. **A mechanic uses only this.** If a mechanic needs a second mechanic to compile, that is the
-   bug. Its tests are one program: `ludic.base`, the mechanic, and a fake for each port.
-2. **Ports for questions.** What a mechanic needs to ASK the world is a record of function
-   values it owns (`FishingWorld { is_water: fn(float, float) -> bool }`), in primitive and
-   `ludic.base` types only. The game binds it once.
+1. **A mechanic uses only this.** Its module line says so - `module ludic_clock uses ludic_base`
+   - and the compiler refuses a reference into any other module, a package's included. Its tests are one program: `ludic.base`, the mechanic, and a fake for each port.
+2. **Ports for questions.** What a mechanic needs to ASK the world is a `port` it owns
+   (`export port FishingWorld { is_water: fn(float, float) -> bool }`), in primitive and
+   `ludic.base` types only. The game binds it once, as a declaration (`bind FishingWorld {
+   is_water: fn lake }`), and the compiler refuses a program that uses a port with a required
+   member and never binds it. A member with a default may be left out.
 3. **Queues for facts.** What HAPPENED is pushed onto a `Queue<T>` the mechanic owns (`caught`)
    and drained by the game in a later phase. A mechanic never acts on another's behalf.
 4. **Verbs for changes.** A mechanic's state changes only through its exported functions
@@ -49,18 +51,16 @@ import "ludic.base"
 ## A toy mechanic
 
 ```ludic
-module toy_fishing
+module toy_fishing uses ludic_base
 numbers float
 import "ludic.base"
 export property Caught { species: int = 0, weight: float = 0.0 }
-export property FishingWorld { is_water: fn(float, float) -> bool = null }  # its port
-var world: FishingWorld = null
+export port FishingWorld { is_water: fn(float, float) -> bool }           # its port
 var dice: Rng = null
 var casts: int = 0
 export var caught: Queue<Caught> = null                                   # its facts
-export function fishing_bind(w: FishingWorld) -> void { world = w }
 export function fishing_cast(x: float, z: float) -> bool {                 # its verb
-  if not world.is_water(x, z) { return false }
+  if not FishingWorld.is_water(x, z) { return false }
   casts += 1
   return true
 }
@@ -99,6 +99,7 @@ import "ludic.base"
 program Game {
   numbers float
   function lake(x: float, z: float) -> bool { return x < 100.0 }
+  bind FishingWorld { is_water: fn lake }
 
   # the route: a landed fish goes into the pack
   function route_fishing_pack(t: Tick) -> void {
@@ -107,9 +108,6 @@ program Game {
   }
 
   function game_start() -> void {
-    let w = new FishingWorld
-    w.is_water = fn lake
-    fishing_bind(w)
     core_add(fishing_system())
     let r = system_new("route.fishing_pack", PH_RESOLVE)
     r.tick = fn route_fishing_pack
@@ -136,14 +134,11 @@ written before a generic call inside a `test` body resolved and before each test
 state, so the queue cases are functions a test calls and the runner's cases start with
 `core_clear()`; neither is needed any more.
 
-## Later
+## Declared systems
 
-- `port FishingWorld { ... }` / `bind` will replace the record of function values, checked at
-  compile time instead of a null at run time.
 - `Systems` is an `open registry`, so a system can be declared instead of added: `def Systems
   fishing { phase: PH_SIMULATE, tick: fn fishing_tick }` from any module. The runner starts from
   the declared systems - the order the compiler gives an open registry: ludic.base's own (none),
   then each other module's by module name, each module's in the order it is read - and `core_add`
   appends after them. A game that wants to decide the order itself writes the `def`s in its own
   files, or keeps calling `core_add` in one place.
-- `module toy_fishing uses ludic_base` will make rule 1 a compile error rather than a review.

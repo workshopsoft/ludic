@@ -21,17 +21,13 @@ program TracksTest {
     placed_last = i
   }
 
+  bind TracksWorld { now: fn fake_now, skill: fn fake_skill, bearing: fn fake_bearing, placed: fn fake_placed }
+
   function fresh() -> void {
     now = 10.0
     skill = 1
     placed_n = 0
     placed_last = -1
-    let w = new TracksWorld
-    w.now = fn fake_now
-    w.skill = fn fake_skill
-    w.bearing = fn fake_bearing
-    w.placed = fn fake_placed
-    tracks_bind(w)
     tracks_config(3, 4)
     tracks_config_reading(1, 0.5, 2.5)
     tracks_reset()

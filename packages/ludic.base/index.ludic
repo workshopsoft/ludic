@@ -1,6 +1,6 @@
 # ludic.base - what a mechanic may use and nothing else: the frame it is handed, the phases
 # that order it, queues for the facts it reports, its own dice, its save section, its system
-module ludic_base
+module ludic_base uses
 numbers float
 import "tick.ludic"
 import "queue.ludic"

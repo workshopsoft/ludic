@@ -1,11 +1,15 @@
 # state.ludic - the clock's port, its facts, and what it holds
 # what the clock asks the world: whether this machine runs it, how much the rest speeds it (1 when
 # nobody rests), and a seed for a new trip's moon
-export property ClockWorld {
-  owns_world: fn() -> bool = null
-  rest_scale: fn() -> float = null
-  seed: fn() -> int = null
+# (unbound: this machine runs it, nobody rests, and a seed of 1)
+export port ClockWorld {
+  owns_world: fn() -> bool = fn ck_owns_alone
+  rest_scale: fn() -> float = fn ck_no_rest
+  seed: fn() -> int = fn ck_seed_one
 }
+function ck_owns_alone() -> bool { return true }
+function ck_no_rest() -> float { return 1.0 }
+function ck_seed_one() -> int { return 1 }
 
 # how a day turned: the hour ran past midnight, or a verb turned it (a night slept, a collapse)
 export const DAY_STAYED_UP: int = 0
@@ -16,7 +20,6 @@ export property DayTurned {
   how: int = 0
 }
 
-var ck_world: ClockWorld = null
 var ck_day: int = 1
 var ck_hours: float = 0.0
 var ck_moon: float = 0.0
@@ -30,23 +33,15 @@ var ck_moon_hi: float = 1.0
 var ck_dice: Rng = null
 var ck_days: Queue<DayTurned> = null
 
-export function clock_bind(w: ClockWorld) -> void { ck_world = w }
-
 # the facts: each day that turned, in order; the game drains it and runs its morning
 export function clock_days() -> Queue<DayTurned> {
   if ck_days == null { ck_days = queue_new("clock.days") }
   return ck_days
 }
 
-function ck_owns() -> bool {
-  if ck_world == null or ck_world.owns_world == null { return true }
-  return ck_world.owns_world()
-}
+function ck_owns() -> bool { return ClockWorld.owns_world() }
 
-function ck_rest() -> float {
-  if ck_world == null or ck_world.rest_scale == null { return 1.0 }
-  return ck_world.rest_scale()
-}
+function ck_rest() -> float { return ClockWorld.rest_scale() }
 
 # when a trip starts, when the night is, and how long the moon's month is
 export function clock_config(start_hours: float, night_from: float, night_to: float) -> void {

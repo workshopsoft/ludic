@@ -11,14 +11,11 @@ program ClockTest {
   function fake_rest() -> float { return rest }
   function fake_seed() -> int { return 42 }
 
+  bind ClockWorld { owns_world: fn fake_owns, rest_scale: fn fake_rest, seed: fn fake_seed }
+
   function fresh() -> void {
     owns = true
     rest = 1.0
-    let w = new ClockWorld
-    w.owns_world = fn fake_owns
-    w.rest_scale = fn fake_rest
-    w.seed = fn fake_seed
-    clock_bind(w)
     clock_config(8.0, 20.0, 6.0)
     clock_config_moon(29.5, 0.2, 0.8)
     clock_set_scale(60.0)

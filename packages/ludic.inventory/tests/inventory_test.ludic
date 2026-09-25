@@ -21,10 +21,9 @@ program InventoryTest {
     return k
   }
 
+  bind PackRules { stack_limit: fn limit }
+
   function fresh() -> void {
-    let r = new PackRules
-    r.stack_limit = fn limit
-    inv_bind(r)
     inv_config(names("wood", "rod", "fish"))
     inv_reset()
   }

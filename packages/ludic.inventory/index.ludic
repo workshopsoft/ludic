@@ -1,6 +1,6 @@
 # ludic.inventory - one pack of counts by item kind: the game names the kinds (so the save is by
 # name, never by position) and answers how many of one fit; every change is a fact on a queue
-module ludic_inventory
+module ludic_inventory uses ludic_base
 numbers float
 import "ludic.base"
 import "state.ludic"

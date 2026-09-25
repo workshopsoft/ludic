@@ -22,16 +22,13 @@ export function tracks_config_reading(name_at: int, fresh: float, recent: float)
 }
 
 function tk_now() -> float {
-  if tk_world == null or tk_world.now == null { return 0.0 }
-  return tk_world.now()
+  return TracksWorld.now()
 }
 
 function tk_named() -> bool {
-  if tk_world == null or tk_world.skill == null { return true }
-  return tk_world.skill() >= tk_name_at
+  return TracksWorld.skill() >= tk_name_at
 }
 
 function tk_bearing(yaw: float) -> string {
-  if tk_world == null or tk_world.bearing == null { return "" }
-  return tk_world.bearing(yaw)
+  return TracksWorld.bearing(yaw)
 }

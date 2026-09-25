@@ -1,8 +1,9 @@
 # state.ludic - the pack's port, its facts, and its counts
 # what the pack asks the game: how many of a kind fit (unbound: no limit)
-export property PackRules {
-  stack_limit: fn(int) -> int = null
+export port PackRules {
+  stack_limit: fn(int) -> int = fn iv_no_limit
 }
+function iv_no_limit(it: int) -> int { return 2147483647 }
 
 # a count changed, however: added, taken, or set outright
 export property ItemChanged {
@@ -11,12 +12,9 @@ export property ItemChanged {
   after: int = 0
 }
 
-var iv_rules: PackRules = null
 var iv_keys: []string = null
 var iv_counts: []int = null
 var iv_changes: Queue<ItemChanged> = null
-
-export function inv_bind(r: PackRules) -> void { iv_rules = r }
 
 # the kinds, by the name each is saved under; the pack starts empty
 export function inv_config(keys: []string) -> void {
@@ -42,8 +40,7 @@ export function inv_count(it: int) -> int {
 }
 
 export function inv_limit(it: int) -> int {
-  if iv_rules == null or iv_rules.stack_limit == null { return 2147483647 }
-  return iv_rules.stack_limit(it)
+  return PackRules.stack_limit(it)
 }
 
 # how many more fit

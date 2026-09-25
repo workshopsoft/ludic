@@ -1,8 +1,7 @@
 # pick.ludic - the next spell, drawn from weights, and how long one lasts. The weights are the
 # kind's own unless the world leans on them (a season, a wet week); every draw is this package's
 function wx_odds(from: int) -> []float {
-  if wx_world != null and wx_world.odds != null { return wx_world.odds(from) }
-  return wx_kinds[from].odds
+  return WeatherWorld.odds(from)
 }
 
 # the kind a set of weights lands on; no weights (or all zero) keeps the kind it came from
