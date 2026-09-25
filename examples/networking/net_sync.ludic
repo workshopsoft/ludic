@@ -21,20 +21,22 @@ program NetSync {
 
   entry {
     spawn Player { Position { x: 3, y: 4 }, Health { hp: 50, max: 100 } }
-    for (Position, Health) in query [Position, Health, {Player}] {
-      let e = self()
-      let buf = bytes(64)
-      print(sync_size(e))                 # 12 = Position(x,y)=8 + Health.hp=4
-      let n = serialize(e, buf)           # snapshot the synced fields
-      Position.x = 99                     # mutate everything
-      Position.y = 88
-      Health.hp = 7
-      Health.max = 999                    # max is NOT synced
-      apply(e, buf, n)                    # restore from the snapshot
-      print(Position.x)                   # 3   — restored
-      print(Position.y)                   # 4   — restored
-      print(Health.hp)                    # 50  — restored
-      print(Health.max)                   # 999 — kept (unsynced)
+    unsafe {                                 # a raw snapshot buffer on purpose: built with --unsafe (L7)
+      for (Position, Health) in query [Position, Health, {Player}] {
+        let e = self()
+        let buf = bytes(64)
+        print(sync_size(e))                 # 12 = Position(x,y)=8 + Health.hp=4
+        let n = serialize(e, buf)           # snapshot the synced fields
+        Position.x = 99                     # mutate everything
+        Position.y = 88
+        Health.hp = 7
+        Health.max = 999                    # max is NOT synced
+        apply(e, buf, n)                    # restore from the snapshot
+        print(Position.x)                   # 3   — restored
+        print(Position.y)                   # 4   — restored
+        print(Health.hp)                    # 50  — restored
+        print(Health.max)                   # 999 — kept (unsynced)
+      }
     }
   }
 }
