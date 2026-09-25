@@ -4,30 +4,32 @@
 import "ludic.ui"
 program UiEase {
   numbers float
-  var dim: bool = false
-  var now: float = 0.0
-  view Ease {
-    dim = dim
+  state UiEaseState {
+    dim: bool = false
+    now: float = 0.0
+  }
+  view Ease (ui_ease_st: UiEaseState) {
+    dim = ui_ease_st.dim
   }
   const STYLE: string = "<style>@keyframes slide { from { left: 0 } to { left: 37 } }\n.go { animation: slide 0.25s }\n.soft { transition: opacity 0.25s }\n.dim { opacity: 0.2 }</style>"
   const BODY: string = "<p class='go'>a</p><p class=\"soft {dim ? 'dim' : ''}\">b</p><p class='dim'>c</p></screen>"
-  function clock() -> float { return now }
-  function nodes(name: string) -> UiNode {
-    ui_show(name, view_ease(), 0.0, 0.0, 200.0, 200.0)
-    return ui_nodes(name, view_ease())
+  function clock(ui_ease_st: UiEaseState) -> float { return ui_ease_st.now }
+  function nodes(ui_st: mut UiState, name: string) -> UiNode {
+    ui_show(ui_st, name, view_ease(), 0.0, 0.0, 200.0, 200.0)
+    return ui_nodes(ui_st, name, view_ease())
   }
   # one rate, on its own screen: the slide from its first frame, the fade from half a second in
-  function at_rate(hz: int) -> string {
+  function at_rate(ui_ease_st: mut UiEaseState, ui_st: mut UiState, hz: int) -> string {
     let name = `r{hz}`
-    dim = false
+    ui_ease_st.dim = false
     var mid = ""
     var slid = false
     var landed = false
     var over = false
     for k in 0 .. hz + 1 {
-      now = float(k) / float(hz)
-      if k == hz / 2 { dim = true }
-      let r = nodes(name)
+      ui_ease_st.now = float(k) / float(hz)
+      if k == hz / 2 { ui_ease_st.dim = true }
+      let r = nodes(ui_st, name)
       let go = r.children[0]
       let soft = r.children[1]
       let want = r.children[2].alpha
@@ -39,17 +41,17 @@ program UiEase {
     }
     return `{hz}: {mid} slid {slid} landed {landed} left {over}`
   }
-  entry {
-    ui_backend(new UiBackend)
-    ui_clock(fn clock)
+  entry (ui_ease_st: mut UiEaseState, ui_st: mut UiState) {
+    ui_backend(ui_st, new UiBackend)
+    ui_clock(ui_st, fn clock)
     var page = "<ui>" + STYLE
     for i in 0 .. 4 {
       let hz = 60 * (i + 1)
       page = page + `<screen name='r{hz}'>` + BODY
     }
-    ui_load_text(page + "</ui>", "e.xml")
+    ui_load_text(ui_st, page + "</ui>", "e.xml")
     var out = ""
-    for i in 0 .. 4 { out = out + at_rate(60 * (i + 1)) + "; " }
+    for i in 0 .. 4 { out = out + at_rate(ui_ease_st, ui_st, 60 * (i + 1)) + "; " }
     print(out)
   }
 }

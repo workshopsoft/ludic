@@ -1,54 +1,54 @@
 # sit.ludic - sitting: on a seat's point, or on the ground where the body stands. The pose either
 # side is a still one, so the sit's own weight (body_sit_t) eases 0 -> 1 over a quarter second and
 # the body walks the last step to the seat over the same time rather than jumping there.
-export function char_sit(x: float, z: float, yaw: float, mode: int) -> void {
-  chr_sit = true
-  chr_sit_mode = mode
-  chr_speed = 0.0
-  chr_move = 0.0
-  chr_run = 0.0
-  chr_sit_x = x
-  chr_sit_z = z
-  chr_sit_yaw = yaw
-  chr_water = CharacterGround.water(chr_x, chr_z)
+export function char_sit(character_st: mut CharacterState, x: float, z: float, yaw: float, mode: int) -> void {
+  character_st.chr_sit = true
+  character_st.chr_sit_mode = mode
+  character_st.chr_speed = 0.0
+  character_st.chr_move = 0.0
+  character_st.chr_run = 0.0
+  character_st.chr_sit_x = x
+  character_st.chr_sit_z = z
+  character_st.chr_sit_yaw = yaw
+  character_st.chr_water = CharacterGround.water(character_st.chr_x, character_st.chr_z)
 }
 
-function chr_sit_tick(dt: float) -> void {
+function chr_sit_tick(character_st: mut CharacterState, dt: float) -> void {
   var want = 0.0
-  if chr_sit { want = 1.0 }
-  chr_sit_t = char_toward(chr_sit_t, want, 4.0 * dt)
-  if not chr_sit { return }
+  if character_st.chr_sit { want = 1.0 }
+  character_st.chr_sit_t = char_toward(character_st.chr_sit_t, want, 4.0 * dt)
+  if not character_st.chr_sit { return }
   let k = Math.min(1.0, 8.0 * dt)
-  chr_x = Math.lerp(chr_x, chr_sit_x, k)
-  chr_z = Math.lerp(chr_z, chr_sit_z, k)
-  chr_yaw = chr_yaw + char_wrap(chr_sit_yaw - chr_yaw) * k
-  chr_y = CharacterGround.height(chr_x, chr_z)
-  chr_water = CharacterGround.water(chr_x, chr_z)
+  character_st.chr_x = Math.lerp(character_st.chr_x, character_st.chr_sit_x, k)
+  character_st.chr_z = Math.lerp(character_st.chr_z, character_st.chr_sit_z, k)
+  character_st.chr_yaw = character_st.chr_yaw + char_wrap(character_st.chr_sit_yaw - character_st.chr_yaw) * k
+  character_st.chr_y = CharacterGround.height(character_st.chr_x, character_st.chr_z)
+  character_st.chr_water = CharacterGround.water(character_st.chr_x, character_st.chr_z)
 }
 
 # Sitting down where the body stands: not astride something, not in the air, not on a slope,
 # not in the water. Asked again while sitting, it stands up. The answer is a CHAR_* for the game
 # to word.
-export function char_sit_here() -> int {
-  if chr_sit {
-    char_stand()
+export function char_sit_here(character_st: mut CharacterState) -> int {
+  if character_st.chr_sit {
+    char_stand(character_st)
     return CHAR_STOOD
   }
   if CharacterBody.riding() { return CHAR_NOT_RIDING }
-  if chr_air { return CHAR_NOT_AIRBORNE }
-  if CharacterGround.slope(chr_x, chr_z) > 0.35 { return CHAR_NOT_STEEP }
-  if chr_y < chr_water + 0.9 { return CHAR_NOT_WET }
-  char_sit(chr_x, chr_z, chr_yaw, CHAR_SIT_GROUND)
+  if character_st.chr_air { return CHAR_NOT_AIRBORNE }
+  if CharacterGround.slope(character_st.chr_x, character_st.chr_z) > 0.35 { return CHAR_NOT_STEEP }
+  if character_st.chr_y < character_st.chr_water + 0.9 { return CHAR_NOT_WET }
+  char_sit(character_st, character_st.chr_x, character_st.chr_z, character_st.chr_yaw, CHAR_SIT_GROUND)
   return CHAR_SAT
 }
 
 # standing up out of a seat put down against a boulder or a bank must not leave the body inside it
-export function char_stand() -> void {
-  chr_sit = false
-  if char_safe_spot(chr_x, chr_z, chr_y, 0.0) {
-    chr_x = chr_safe_x
-    chr_z = chr_safe_z
-    chr_y = CharacterGround.height(chr_x, chr_z)
+export function char_stand(character_st: mut CharacterState) -> void {
+  character_st.chr_sit = false
+  if char_safe_spot(character_st, character_st.chr_x, character_st.chr_z, character_st.chr_y, 0.0) {
+    character_st.chr_x = character_st.chr_safe_x
+    character_st.chr_z = character_st.chr_safe_z
+    character_st.chr_y = CharacterGround.height(character_st.chr_x, character_st.chr_z)
   }
 }
 

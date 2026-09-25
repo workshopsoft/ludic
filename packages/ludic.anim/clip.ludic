@@ -16,37 +16,47 @@ export property Clip {
   vals:  floats
 }
 
-var clips: []Clip = null
+export state AnimState {
+  clips: []Clip = null
+  positions: bool = false
+  q_a: floats = null
+  q_b: floats = null
+  q_cur: floats = null
+  parts: []floats = null
+  rot_s: floats = null
+  pos_s: floats = null
+  hit_s: words = null
+  cap: int = 0
+}
 # Keyed translations are off unless asked for: baking keys location on every bone, and a skeleton
 # does not translate its joints, so applying them turns rounding into a pose.
-var positions: bool = false
 
-function clips_init() -> void {
-  if clips == null { clips = new []Clip }
+function clips_init(anim_st: mut AnimState) -> void {
+  if anim_st.clips == null { anim_st.clips = new []Clip }
 }
 
 # the clip of that name, or null; names are per file (per body, per species), never shared
-export function anim_find(name: string) -> Clip {
-  clips_init()
-  for i in 0 .. len(clips) { if clips[i].name == name { return clips[i] } }
+export function anim_find(anim_st: mut AnimState, name: string) -> Clip {
+  clips_init(anim_st)
+  for i in 0 .. len(anim_st.clips) { if anim_st.clips[i].name == name { return anim_st.clips[i] } }
   return null
 }
 
-export function anim_count() -> int {
-  clips_init()
-  return len(clips)
+export function anim_count(anim_st: mut AnimState) -> int {
+  clips_init(anim_st)
+  return len(anim_st.clips)
 }
 
 # a clip made outside a glTF (a test, a generated clip); a name already held is refused
-export function anim_add(c: Clip) -> bool {
-  if c == null or anim_find(c.name) != null { return false }
-  push(clips, c)
+export function anim_add(anim_st: mut AnimState, c: Clip) -> bool {
+  if c == null or anim_find(anim_st, c.name) != null { return false }
+  push(anim_st.clips, c)
   return true
 }
 
-export function anim_clear() -> void { clips = new []Clip }
-export function anim_set_positions(on: bool) -> void { positions = on }
-export function anim_positions() -> bool { return positions }
+export function anim_clear(anim_st: mut AnimState) -> void { anim_st.clips = new []Clip }
+export function anim_set_positions(anim_st: mut AnimState, on: bool) -> void { anim_st.positions = on }
+export function anim_positions(anim_st: AnimState) -> bool { return anim_st.positions }
 
 # Which key pair straddles time t, by halving rather than walking: a grazing clip is three
 # hundred keys long and a valley can have dozens of animals posed in a frame.

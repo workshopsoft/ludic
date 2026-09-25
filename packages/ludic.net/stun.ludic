@@ -1,24 +1,20 @@
 # stun.ludic - from the party's own socket, ask a public STUN server what this machine looks like
 # from outside: the router's address and the port it mapped
-var net__stun_ip: int = 0
-var net__stun_port: int = 0
-var net__txn: words = null
-var net__dice: Rng = null
 
-function net__stun_send() -> void {
-  if net__txn == null { net__txn = words(3) }
-  if net__dice == null { net__dice = rng_new(net__conf().seed) }
-  if net__stun_ip == 0 {
-    let c = net__conf()
-    if len(c.stun_at) > 0 and net_parse_code(c.stun_at) {
-      net__stun_ip = net__code_ip
-      net__stun_port = net__code_port
+function net__stun_send(net_st: mut NetState) -> void {
+  if net_st.net__txn == null { net_st.net__txn = words(3) }
+  if net_st.net__dice == null { net_st.net__dice = rng_new(net__conf(net_st).seed) }
+  if net_st.net__stun_ip == 0 {
+    let c = net__conf(net_st)
+    if len(c.stun_at) > 0 and net_parse_code(net_st, c.stun_at) {
+      net_st.net__stun_ip = net_st.net__code_ip
+      net_st.net__stun_port = net_st.net__code_port
     } else if len(c.stun_host) > 0 {
       let host: pointer = c.stun_host
-      net__stun_ip = Udp.resolve(host)
-      net__stun_port = c.stun_port
+      net_st.net__stun_ip = Udp.resolve(host)
+      net_st.net__stun_port = c.stun_port
     }
-    if net__stun_ip == 0 { return }
+    if net_st.net__stun_ip == 0 { return }
   }
   let b = buffer(20)
   nb_put8(b, 0, 0)          # a binding request, no attributes
@@ -29,9 +25,9 @@ function net__stun_send() -> void {
   nb_put8(b, 5, 0x12)
   nb_put8(b, 6, 0xA4)
   nb_put8(b, 7, 0x42)
-  for k in 0 .. 3 { net__txn[k] = rng_between(net__dice, 0, 2000000000) }
-  for k in 0 .. 12 { nb_put8(b, 8 + k, (net__txn[k / 4] >> ((k % 4) * 8)) & 255) }
-  NetSocket.send(net__sock, net__stun_ip, net__stun_port, b, 20)
+  for k in 0 .. 3 { net_st.net__txn[k] = rng_between(net_st.net__dice, 0, 2000000000) }
+  for k in 0 .. 12 { nb_put8(b, 8 + k, (net_st.net__txn[k / 4] >> ((k % 4) * 8)) & 255) }
+  NetSocket.send(net_st.net__sock, net_st.net__stun_ip, net_st.net__stun_port, b, 20)
 }
 
 function net__be16(p: []byte, o: int) -> int { return (nb_get8(p, o) << 8) | nb_get8(p, o + 1) }
@@ -39,23 +35,23 @@ function net__be16(p: []byte, o: int) -> int { return (nb_get8(p, o) << 8) | nb_
 function net__be32(p: []byte, o: int) -> int { return (net__be16(p, o) << 16) | net__be16(p, o + 2) }
 
 # a STUN reply: true when it was one (whatever it said)
-function net__stun_packet(n: int) -> bool {
-  if n < 20 or nb_get8(net__in, 0) != 1 or nb_get8(net__in, 1) != 1 { return false }
-  if net__be32(net__in, 4) != 0x2112A442 { return false }
-  let len = net__be16(net__in, 2)
+function net__stun_packet(net_st: mut NetState, n: int) -> bool {
+  if n < 20 or nb_get8(net_st.net__in, 0) != 1 or nb_get8(net_st.net__in, 1) != 1 { return false }
+  if net__be32(net_st.net__in, 4) != 0x2112A442 { return false }
+  let len = net__be16(net_st.net__in, 2)
   var o = 20
   while o + 4 <= 20 + len and o + 4 <= n {
-    let t = net__be16(net__in, o)
-    let l = net__be16(net__in, o + 2)
-    if (t == 0x0020 or t == 0x0001) and l >= 8 and o + 12 <= n and nb_get8(net__in, o + 5) == 1 {
-      var port = net__be16(net__in, o + 6)
-      var ip = net__be32(net__in, o + 8)
+    let t = net__be16(net_st.net__in, o)
+    let l = net__be16(net_st.net__in, o + 2)
+    if (t == 0x0020 or t == 0x0001) and l >= 8 and o + 12 <= n and nb_get8(net_st.net__in, o + 5) == 1 {
+      var port = net__be16(net_st.net__in, o + 6)
+      var ip = net__be32(net_st.net__in, o + 8)
       if t == 0x0020 {
         port = port ^ 0x2112
         ip = ip ^ 0x2112A442
       }
-      net__pub_ip = ip
-      net__pub_port = port
+      net_st.net__pub_ip = ip
+      net_st.net__pub_port = port
       net__log(`outside we are {net__addr_text(ip, port)}`)
     }
     o += 4 + ((l + 3) / 4) * 4
@@ -64,5 +60,5 @@ function net__stun_packet(n: int) -> bool {
 }
 
 # what this machine looks like from outside, once STUN has said (0 until then)
-export function net_outside_ip() -> int { return net__pub_ip }
-export function net_outside_port() -> int { return net__pub_port }
+export function net_outside_ip(net_st: NetState) -> int { return net_st.net__pub_ip }
+export function net_outside_port(net_st: NetState) -> int { return net_st.net__pub_port }

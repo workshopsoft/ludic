@@ -8,15 +8,17 @@ program PortVars {
     money: fn() -> int
     price: fn(int) -> int
   }
-  var g_money: int = 40
-  var g_rate: int = 3
+  state PortVarsState {
+    g_money: int = 40
+  }
+  let g_rate: int = 3
   function priced(n: int) -> int {
     return n * g_rate
   }
-  bind Purse { money: g_money, price: fn priced }
-  entry {
+  bind Purse { money: PortVarsState.g_money, price: fn priced }
+  entry (port_vars_st: mut PortVarsState) {
     let a = Purse.money()
-    g_money += 5
+    port_vars_st.g_money += 5
     print(`{a} {Purse.money()} {Purse.price(4)}`)
   }
 }

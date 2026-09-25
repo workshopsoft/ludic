@@ -6,7 +6,7 @@
 import "kinds/fishing"
 import "kinds/hunting"
 program PrivateKinds {
-  entry {
-    print(`{fishing_day()} {hunting_day()}`)
+  entry (fishing_st: mut FishingState, hunting_st: HuntingState) {
+    print(`{fishing_day(fishing_st)} {hunting_day(hunting_st)}`)
   }
 }

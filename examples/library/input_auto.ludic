@@ -12,9 +12,11 @@ program InputAuto {
   property Tag { n: int = 0 }
   model Player { Tag }
 
-  var hits: int = 0
+  state InputAutoState {
+    hits: int = 0
+  }
 
   @OnStart handler Boot { Input.action("go", 'l') }        # 'l' == 108
-  handler Sense phase Update { if Input.active("go") { hits += 1 } }
-  @OnQuit handler Report { print(hits) }
+  handler Sense(input_auto_st: mut InputAutoState) phase Update { if Input.active("go") { input_auto_st.hits += 1 } }
+  @OnQuit handler Report(input_auto_st: InputAutoState) { print(input_auto_st.hits) }
 }

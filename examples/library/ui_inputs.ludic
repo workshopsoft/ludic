@@ -8,11 +8,11 @@ import "ui_inputs_parts/Form.ludic"
 import "ui_inputs_parts/Tag.ludic"
 program UiInputs {
   numbers float
-  function frame(i: UiInput) -> UiNode {
-    ui_input(i)
-    ui_show("Form", null, 0.0, 0.0, 400.0, 400.0)
-    let root: UiNode = ui_nodes("Form", null)
-    ui_place(root, 0.0, 0.0, 400.0, 400.0)
+  function frame(ui_st: mut UiState, i: UiInput) -> UiNode {
+    ui_input(ui_st, i)
+    ui_show(ui_st, "Form", null, 0.0, 0.0, 400.0, 400.0)
+    let root: UiNode = ui_nodes(ui_st, "Form", null)
+    ui_place(ui_st, root, 0.0, 0.0, 400.0, 400.0)
     return root.children[0]
   }
   function keys(tab: bool, shift: bool, enter: bool, left: bool) -> UiInput {
@@ -32,52 +32,52 @@ program UiInputs {
   }
   function shown_state(page: UiNode) -> string { return page.children[len(page.children) - 1].text }
   function last(n: UiNode) -> string { return n.children[len(n.children) - 1].text }
-  entry {
-    ui_backend(new UiBackend)
-    var page = frame(new UiInput)
-    frame(keys(true, false, false, false))
-    frame(typed("12"))
-    page = frame(keys(false, false, true, false))
+  entry (ui_st: mut UiState) {
+    ui_backend(ui_st, new UiBackend)
+    var page = frame(ui_st, new UiInput)
+    frame(ui_st, keys(true, false, false, false))
+    frame(ui_st, typed("12"))
+    page = frame(ui_st, keys(false, false, true, false))
     let shown = page.children[0].children[1].children[0].text
     let a = shown_state(page)
-    frame(typed("99"))
-    page = frame(keys(true, false, false, false))
+    frame(ui_st, typed("99"))
+    page = frame(ui_st, keys(true, false, false, false))
     let b = shown_state(page)
-    frame(keys(true, true, false, false))
-    page = frame(keys(false, false, false, true))
+    frame(ui_st, keys(true, true, false, false))
+    page = frame(ui_st, keys(false, false, false, true))
     let c = shown_state(page)
     let note = page.children[0].children[0].children[1].text
-    frame(keys(true, false, false, false))
+    frame(ui_st, keys(true, false, false, false))
     let space = page.children[1].children[1].children[0].text
-    frame(keys(false, false, true, false))
-    let cap = ui_capturing()
-    page = frame(keys(true, false, false, false))
+    frame(ui_st, keys(false, false, true, false))
+    let cap = ui_capturing(ui_st)
+    page = frame(ui_st, keys(true, false, false, false))
     let d = shown_state(page)
-    frame(keys(false, false, true, false))
+    frame(ui_st, keys(false, false, true, false))
     let esc = new UiInput
     esc.escape = true
     esc.key = Key.Escape
-    page = frame(esc)
+    page = frame(ui_st, esc)
     let e = shown_state(page)
     let back = new UiInput
     back.backspace = true
-    page = frame(back)
+    page = frame(ui_st, back)
     let f = shown_state(page)
-    frame(keys(true, false, false, false))
+    frame(ui_st, keys(true, false, false, false))
     let right = new UiInput
     right.right = true
-    page = frame(right)
-    page = frame(new UiInput)
+    page = frame(ui_st, right)
+    page = frame(ui_st, new UiInput)
     let button = page.children[4]
     let click = new UiInput
     click.x = button.x + 2.0
     click.y = button.y + 2.0
     click.down = true
-    frame(click)
+    frame(ui_st, click)
     let up = new UiInput
     up.x = click.x
     up.y = click.y
-    page = frame(up)
+    page = frame(ui_st, up)
     print(`count {shown} {a} | {b} | {c} | {note} | {space} listening {cap} {d} | {e} | {f} | {last(page.children[2])} {last(page.children[3])} | {shown_state(page)} | {page.children[5].text}`)
   }
 }

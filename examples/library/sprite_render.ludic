@@ -9,12 +9,14 @@
 program SpriteRender {
   import "ludic.core/components.ludic"
 
-  var HERO: int = 0
+  state SpriteRenderState {
+    HERO: int = 0
+  }
 
-  @OnStart handler Boot {
-    HERO = png_load("assets/kenney/tiny-dungeon/Tiles/tile_0096.png")
-    spawn Shown  { Position { x: 40, y: 40 },  Sprite { id: HERO } }
-    spawn Hidden { Position { x: 100, y: 40 }, Sprite { id: HERO, hidden: 1 } }
+  @OnStart handler Boot(sprite_render_st: mut SpriteRenderState) {
+    sprite_render_st.HERO = png_load("assets/kenney/tiny-dungeon/Tiles/tile_0096.png")
+    spawn Shown  { Position { x: 40, y: 40 },  Sprite { id: sprite_render_st.HERO } }
+    spawn Hidden { Position { x: 100, y: 40 }, Sprite { id: sprite_render_st.HERO, hidden: 1 } }
   }
 
   # An empty Render handler: the engine sprite system draws the Sprite entities.

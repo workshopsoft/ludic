@@ -1,9 +1,8 @@
 # want.ludic - thirst and hunger over sixty send it to the water or the forage the game offers for
 # it (a hungry one on its way turns to food put down nearer); it drinks or grazes there
-var wl_spot_ask: WildSpot = null
 
-function wl_seek(a: WildAnimal, dt: float) -> bool {
-  if a.state == WILD_GO_FEED and wl_attraction(a) and wl_best.kind == WILD_FEED { wl_take_lure(a) }
+function wl_seek(base_st: mut BaseState, wildlife_st: mut WildlifeState, a: WildAnimal, dt: float) -> bool {
+  if a.state == WILD_GO_FEED and wl_attraction(wildlife_st, a) and wildlife_st.wl_best.kind == WILD_FEED { wl_take_lure(wildlife_st, a) }
   if a.state != WILD_GO_DRINK and a.state != WILD_GO_FEED { return false }
   if a.spot == 0 or not WildlifeWorld.present(a.spot) {
     a.spot = 0
@@ -12,13 +11,13 @@ function wl_seek(a: WildAnimal, dt: float) -> bool {
     return true
   }
   wl_face(a, a.spot_x, a.spot_z, 2.0, dt)
-  a.speed = wl_sp(a.sp).walk
+  a.speed = wl_sp(wildlife_st, a.sp).walk
   a.tx = a.spot_x
   a.tz = a.spot_z
-  wl_step(a, dt)
+  wl_step(base_st, wildlife_st, a, dt)
   if wl_at_target(a, 2.0) {
     a.state = WILD_DRINK
-    a.timer = 6.0 + wl_rnd() * 10.0
+    a.timer = 6.0 + wl_rnd(wildlife_st) * 10.0
   }
   a.timer = a.timer - dt
   if a.timer < -600.0 {
@@ -29,26 +28,26 @@ function wl_seek(a: WildAnimal, dt: float) -> bool {
 }
 
 # true while it drinks or grazes, or when it has just set off
-function wl_drink(a: WildAnimal, dt: float, gh: float) -> bool {
+function wl_drink(wildlife_st: mut WildlifeState, a: WildAnimal, dt: float, gh: float) -> bool {
   if a.state == WILD_DRINK {
     a.speed = 0.0
     a.timer = a.timer - dt
     if a.spot != 0 and a.spot_water { a.thirst = Math.max(a.thirst - 600.0 * gh, 0.0) } else { a.hunger = Math.max(a.hunger - 600.0 * gh, 0.0) }
     if a.timer < 0.0 or Math.min(a.thirst, a.hunger) < 1.0 {
-      wl_rehome(a)
-      wl_wander(a, 6.0)
+      wl_rehome(wildlife_st, a)
+      wl_wander(wildlife_st, a, 6.0)
     }
     return true
   }
   if a.state != WILD_IDLE and a.state != WILD_WANDER { return false }
   if not (a.thirst > 60.0 or a.hunger > 60.0) { return false }
-  if wl_spot_ask == null { wl_spot_ask = new WildSpot }
+  if wildlife_st.wl_spot_ask == null { wildlife_st.wl_spot_ask = new WildSpot }
   let water = a.thirst > a.hunger
-  if not WildlifeWorld.spot(a, water, wl_spot_ask) { return false }
-  a.spot = wl_spot_ask.uid
-  a.spot_x = wl_spot_ask.x
-  a.spot_z = wl_spot_ask.z
-  a.spot_water = wl_spot_ask.water
+  if not WildlifeWorld.spot(a, water, wildlife_st.wl_spot_ask) { return false }
+  a.spot = wildlife_st.wl_spot_ask.uid
+  a.spot_x = wildlife_st.wl_spot_ask.x
+  a.spot_z = wildlife_st.wl_spot_ask.z
+  a.spot_water = wildlife_st.wl_spot_ask.water
   a.state = WILD_GO_DRINK
   if not water { a.state = WILD_GO_FEED }
   a.timer = 120.0

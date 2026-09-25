@@ -1,18 +1,18 @@
 # langs.ludic - where languages come from, later ones replacing earlier ones with the same code:
 # <lang_dir>/languages.txt (one code per line, # a comment) and every .po in the mod folder
-export function i18n_init() -> void {
-  codes = new []string
-  names = new []string
-  paths = new []string
-  fonts = new []string
-  lang_add("en", "English", "", "")
-  let idx = Fs.read_text(lang_dir + "/languages.txt")
+export function i18n_init(i18n_st: mut I18nState) -> void {
+  i18n_st.codes = new []string
+  i18n_st.names = new []string
+  i18n_st.paths = new []string
+  i18n_st.fonts = new []string
+  lang_add(i18n_st, "en", "English", "", "")
+  let idx = Fs.read_text(i18n_st.lang_dir + "/languages.txt")
   if idx != null {
     let ls = lines_of(idx)
     for i in 0 .. len(ls) {
       let ln = trim(ls[i])
       if len(ln) == 0 or ln[0] == 35 { continue }
-      probe(ln, `{lang_dir}/{ln}.po`, lang_dir)
+      probe(i18n_st, ln, `{i18n_st.lang_dir}/{ln}.po`, i18n_st.lang_dir)
     }
   }
   let md = i18n_mod_dir()
@@ -23,60 +23,60 @@ export function i18n_init() -> void {
   for i in 0 .. len(files) {
     let nm = files[i]
     let n = len(nm)
-    if n > 3 and i18n_ends(nm, ".po") { probe(nm[0..n - 3], md + "/" + nm, md) }
+    if n > 3 and i18n_ends(nm, ".po") { probe(i18n_st, nm[0..n - 3], md + "/" + nm, md) }
   }
 }
 
 # where a player's own .po files go; "" when the game has none
 export function i18n_mod_dir() -> string { return I18nWorld.mod_dir() }
 
-function lang_add(code: string, name: string, path: string, font: string) -> void {
-  for i in 0 .. len(codes) {
-    if codes[i] == code {
-      names[i] = name
-      paths[i] = path
-      fonts[i] = font
+function lang_add(i18n_st: mut I18nState, code: string, name: string, path: string, font: string) -> void {
+  for i in 0 .. len(i18n_st.codes) {
+    if i18n_st.codes[i] == code {
+      i18n_st.names[i] = name
+      i18n_st.paths[i] = path
+      i18n_st.fonts[i] = font
       return
     }
   }
-  push(codes, code)
-  push(names, name)
-  push(paths, path)
-  push(fonts, font)
+  push(i18n_st.codes, code)
+  push(i18n_st.names, name)
+  push(i18n_st.paths, path)
+  push(i18n_st.fonts, font)
 }
 
-function probe(code: string, path: string, dir: string) -> void {
+function probe(i18n_st: mut I18nState, code: string, path: string, dir: string) -> void {
   let text = Fs.read_text(path)
   if text == null { return }
   var name = i18n_header(text, "X-Language-Name")
   if len(name) == 0 { name = code }
   var font = i18n_header(text, "X-Font")
   if len(font) > 0 { font = dir + "/" + font }
-  lang_add(code, name, path, font)
+  lang_add(i18n_st, code, name, path, font)
 }
 
-export function i18n_count() -> int {
-  if codes == null { return 1 }
-  return len(codes)
+export function i18n_count(i18n_st: I18nState) -> int {
+  if i18n_st.codes == null { return 1 }
+  return len(i18n_st.codes)
 }
 
-export function i18n_index(code: string) -> int {
-  if codes != null { for i in 0 .. len(codes) { if codes[i] == code { return i } } }
+export function i18n_index(i18n_st: I18nState, code: string) -> int {
+  if i18n_st.codes != null { for i in 0 .. len(i18n_st.codes) { if i18n_st.codes[i] == code { return i } } }
   return 0
 }
 
-export function i18n_code_at(i: int) -> string {
-  if codes == null or i < 0 or i >= len(codes) { return "en" }
-  return codes[i]
+export function i18n_code_at(i18n_st: I18nState, i: int) -> string {
+  if i18n_st.codes == null or i < 0 or i >= len(i18n_st.codes) { return "en" }
+  return i18n_st.codes[i]
 }
 
-export function i18n_name_at(i: int) -> string {
-  if names == null or i < 0 or i >= len(names) { return "English" }
-  return names[i]
+export function i18n_name_at(i18n_st: I18nState, i: int) -> string {
+  if i18n_st.names == null or i < 0 or i >= len(i18n_st.names) { return "English" }
+  return i18n_st.names[i]
 }
 
 # the font atlas a language names with X-Font, beside its .po; "" is the default
-export function i18n_font_at(i: int) -> string {
-  if fonts == null or i < 0 or i >= len(fonts) { return "" }
-  return fonts[i]
+export function i18n_font_at(i18n_st: I18nState, i: int) -> string {
+  if i18n_st.fonts == null or i < 0 or i >= len(i18n_st.fonts) { return "" }
+  return i18n_st.fonts[i]
 }

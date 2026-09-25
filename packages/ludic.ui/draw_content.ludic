@@ -1,23 +1,23 @@
 # draw_content.ludic - what is inside a box drawn: a text's lines, placed by text-align, each over its
 # text-shadow, and a picture
 # a text's lines (one, or the wrapped ones), each placed by text-align, the last cut by an ellipsis
-function fr_text(n: UiNode) -> void {
+function fr_text(ui_st: mut UiState, n: UiNode) -> void {
   let lh = ly_line_h(n)
   let y = n.y + n.pt + n.bt + (lh - n.rsize * 1.25) / 2.0
-  let a = n.rfg_a * fr_ga
+  let a = n.rfg_a * ui_st.fr_ga
   let sh = fr_text_shadow(n)
   if n.lines == null {
-    var s = tf_fit(n, n.text)
-    if n.ellipsis { s = ly_ellipsis(s, tf_size, n.cw - ly_hin(n)) }
-    fr_line(n, sh, fr_line_x(n, s, tf_size), y, s, a, tf_size)
+    var s = tf_fit(ui_st, n, n.text)
+    if n.ellipsis { s = ly_ellipsis(ui_st, s, ui_st.tf_size, n.cw - ly_hin(n)) }
+    fr_line(ui_st, n, sh, fr_line_x(ui_st, n, s, ui_st.tf_size), y, s, a, ui_st.tf_size)
     return
   }
-  for i in 0 .. len(n.lines) { fr_line(n, sh, fr_line_x(n, n.lines[i], n.rsize), y + float(i) * lh, n.lines[i], a, n.rsize) }
+  for i in 0 .. len(n.lines) { fr_line(ui_st, n, sh, fr_line_x(ui_st, n, n.lines[i], n.rsize), y + float(i) * lh, n.lines[i], a, n.rsize) }
 }
 # one line, over its shadow when it has one
-function fr_line(n: UiNode, sh: UiNodeX, x: float, y: float, s: string, a: float, size: float) -> void {
-  if sh != null { ui_be.text(x + sh.tsh_x, y + sh.tsh_y, s, size, sh.tsh_c, sh.tsh_a * fr_ga) }
-  ui_be.text(x, y, s, size, n.rfg, a)
+function fr_line(ui_st: UiState, n: UiNode, sh: UiNodeX, x: float, y: float, s: string, a: float, size: float) -> void {
+  if sh != null { ui_st.ui_be.text(x + sh.tsh_x, y + sh.tsh_y, s, size, sh.tsh_c, sh.tsh_a * ui_st.fr_ga) }
+  ui_st.ui_be.text(x, y, s, size, n.rfg, a)
 }
 # text-shadow is inherited: the nearest element that says it, or null (none)
 function fr_text_shadow(n: UiNode) -> UiNodeX {
@@ -32,35 +32,35 @@ function fr_text_shadow(n: UiNode) -> UiNodeX {
   return null
 }
 # the opacity a native's draw is at: every group opacity around it, its own included
-export function ui_opacity() -> float { return fr_ga }
+export function ui_opacity(ui_st: UiState) -> float { return ui_st.fr_ga }
 # where a line starts: text-align within the room the box gives it
-function fr_line_x(n: UiNode, s: string, size: float) -> float {
+function fr_line_x(ui_st: UiState, n: UiNode, s: string, size: float) -> float {
   let x = n.x + n.pl + n.bl
   if n.talign == UI_START { return x }
-  let spare = n.cw - ly_hin(n) - ly_text_w(s, size)
+  let spare = n.cw - ly_hin(n) - ly_text_w(ui_st, s, size)
   if n.talign == UI_CENTER { return x + spare / 2.0 }
   return x + spare
 }
 # an <img>: a picture file drawn as it is, as a browser draws one (unless the img sets its own
 # color); a cell of an atlas ("icon:tent") is a glyph, and takes the color around it as text does
-function fr_image(n: UiNode) -> void {
+function fr_image(ui_st: mut UiState, n: UiNode) -> void {
   var c = 16777215
-  var a = fr_ga
+  var a = ui_st.fr_ga
   if n.fg != UI_INHERIT or fr_is_cell(n.src) {
     c = n.rfg
-    a = fr_ga * n.rfg_a
+    a = ui_st.fr_ga * n.rfg_a
   }
   var nat_w = 0.0
   var nat_h = 0.0
-  if ui_be.image_w != null and ui_be.image_h != null {
-    nat_w = ui_be.image_w(n.src)
-    nat_h = ui_be.image_h(n.src)
+  if ui_st.ui_be.image_w != null and ui_st.ui_be.image_h != null {
+    nat_w = ui_st.ui_be.image_w(n.src)
+    nat_h = ui_st.ui_be.image_h(n.src)
   }
   let r = ui_object_fit(n, nat_w, nat_h)
-  let clipped = ui_be.clip != null and (r[2] > n.cw - ly_hin(n) or r[3] > n.ch - ly_vin(n))
-  if clipped { fr_clip_push(n.x + n.pl + n.bl, n.y + n.pt + n.bt, n.cw - ly_hin(n), n.ch - ly_vin(n)) }
-  ui_be.image(n.src, r[0], r[1], r[2], r[3], c, a)
-  if clipped { fr_clip_pop() }
+  let clipped = ui_st.ui_be.clip != null and (r[2] > n.cw - ly_hin(n) or r[3] > n.ch - ly_vin(n))
+  if clipped { fr_clip_push(ui_st, n.x + n.pl + n.bl, n.y + n.pt + n.bt, n.cw - ly_hin(n), n.ch - ly_vin(n)) }
+  ui_st.ui_be.image(n.src, r[0], r[1], r[2], r[3], c, a)
+  if clipped { fr_clip_pop(ui_st) }
 }
 # prefix:name, and not a path (C:/... is a drive, not an atlas)
 function fr_is_cell(src: string) -> bool {

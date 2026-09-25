@@ -1,34 +1,31 @@
 # record.ludic - what this player has met: the species seen up close and the species fed, as masks
 # by species number, and whether anything has been fed at all
-var wl_seen: int = 0
-var wl_fed: int = 0
-var wl_fed_any: bool = false
 
-export function wildlife_seen(sp: int) -> bool { return (wl_seen & (1 << sp)) != 0 }
-export function wildlife_seen_mask() -> int { return wl_seen }
-export function wildlife_fed_mask() -> int { return wl_fed }
-export function wildlife_fed_any() -> bool { return wl_fed_any }
+export function wildlife_seen(wildlife_st: WildlifeState, sp: int) -> bool { return (wildlife_st.wl_seen & (1 << sp)) != 0 }
+export function wildlife_seen_mask(wildlife_st: WildlifeState) -> int { return wildlife_st.wl_seen }
+export function wildlife_fed_mask(wildlife_st: WildlifeState) -> int { return wildlife_st.wl_fed }
+export function wildlife_fed_any(wildlife_st: WildlifeState) -> bool { return wildlife_st.wl_fed_any }
 
 # seen up close (a guest's own pass, droppings read, a sighting here); true the first time
-export function wildlife_saw(sp: int) -> bool {
-  if wildlife_seen(sp) { return false }
-  wl_seen = wl_seen | (1 << sp)
+export function wildlife_saw(wildlife_st: mut WildlifeState, sp: int) -> bool {
+  if wildlife_seen(wildlife_st, sp) { return false }
+  wildlife_st.wl_seen = wildlife_st.wl_seen | (1 << sp)
   return true
 }
 
-export function wildlife_set_seen(mask: int) -> void { wl_seen = mask }
+export function wildlife_set_seen(wildlife_st: mut WildlifeState, mask: int) -> void { wildlife_st.wl_seen = mask }
 
 # a species fed, credited to this player
-export function wildlife_mark_fed(sp: int) -> void {
-  wl_fed = wl_fed | (1 << sp)
-  wl_fed_any = true
+export function wildlife_mark_fed(wildlife_st: mut WildlifeState, sp: int) -> void {
+  wildlife_st.wl_fed = wildlife_st.wl_fed | (1 << sp)
+  wildlife_st.wl_fed_any = true
 }
 
 # nothing fed yet (a test that feeds again), or the flag as given
-export function wildlife_set_fed_any(on: bool) -> void { wl_fed_any = on }
+export function wildlife_set_fed_any(wildlife_st: mut WildlifeState, on: bool) -> void { wildlife_st.wl_fed_any = on }
 
-function wl_record_reset() -> void {
-  wl_seen = 0
-  wl_fed = 0
-  wl_fed_any = false
+function wl_record_reset(wildlife_st: mut WildlifeState) -> void {
+  wildlife_st.wl_seen = 0
+  wildlife_st.wl_fed = 0
+  wildlife_st.wl_fed_any = false
 }

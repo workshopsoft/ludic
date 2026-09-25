@@ -1,75 +1,72 @@
 # focus.ludic - the keyboard's place: focus moves through the controls in document order (Tab and
 # Shift+Tab, or the arrows), Enter and Space activate what has it, and a pointer press focuses what
 # it presses; a key field that is listening has every key to itself. A key that is gone from the screen leaves nothing focused.
-var fc_key: string = ""
-var fc_visible: bool = false    # focus came from the keyboard: :focus-visible, and the ring
-var fc_list: []UiNode = new []UiNode
-function fc_collect(n: UiNode) -> void {
-  if n.focusable and n.enabled { push(fc_list, n) }
-  for i in 0 .. len(n.children) { fc_collect(n.children[i]) }
+function fc_collect(ui_st: mut UiState, n: UiNode) -> void {
+  if n.focusable and n.enabled { push(ui_st.fc_list, n) }
+  for i in 0 .. len(n.children) { fc_collect(ui_st, n.children[i]) }
 }
-function fc_find() -> int {
-  for i in 0 .. len(fc_list) {
-    if fc_list[i].key == fc_key { return i }
+function fc_find(ui_st: UiState) -> int {
+  for i in 0 .. len(ui_st.fc_list) {
+    if ui_st.fc_list[i].key == ui_st.fc_key { return i }
   }
   return -1
 }
-function fc_move(step: int) -> void {
-  if len(fc_list) == 0 { return }
-  var at = fc_find()
+function fc_move(ui_st: mut UiState, step: int) -> void {
+  if len(ui_st.fc_list) == 0 { return }
+  var at = fc_find(ui_st)
   if at < 0 {
     at = 0
-    if step < 0 { at = len(fc_list) - 1 }
-  } else { at = (at + step + len(fc_list)) % len(fc_list) }
-  fc_key = fc_list[at].key
-  fc_visible = true
+    if step < 0 { at = len(ui_st.fc_list) - 1 }
+  } else { at = (at + step + len(ui_st.fc_list)) % len(ui_st.fc_list) }
+  ui_st.fc_key = ui_st.fc_list[at].key
+  ui_st.fc_visible = true
 }
 # the keys, after the tree is laid out: moving, then acting on what has the focus
-function fc_keys(root: UiNode) -> void {
-  fc_list = new []UiNode
+function fc_keys(ui_st: mut UiState, root: UiNode) -> void {
+  ui_st.fc_list = new []UiNode
   let top = pp_top(root)
-  if top != null { fc_collect(top) } else { fc_collect(root) }
-  if ct_key_capture(fc_list) { return }
-  if top != null and in_now.escape { ui_fire(top, "close", Value.null()) }
-  let i = in_now
-  if fc_find() < 0 { fc_autofocus() }
-  let at = fc_find()
+  if top != null { fc_collect(ui_st, top) } else { fc_collect(ui_st, root) }
+  if ct_key_capture(ui_st, ui_st.fc_list) { return }
+  if top != null and ui_st.in_now.escape { ui_fire(ui_st, top, "close", Value.null()) }
+  let i = ui_st.in_now
+  if fc_find(ui_st) < 0 { fc_autofocus(ui_st) }
+  let at = fc_find(ui_st)
   var n: UiNode = null
-  if at >= 0 { n = fc_list[at] }
-  if i.tab and i.shift { fc_move(-1) } else if i.tab { fc_move(1) }
+  if at >= 0 { n = ui_st.fc_list[at] }
+  if i.tab and i.shift { fc_move(ui_st, -1) } else if i.tab { fc_move(ui_st, 1) }
   let horizontal = n != null and ct_takes_arrows(n)
-  if i.up or (i.left and not horizontal) { fc_move(-1) }
-  if i.down_key or (i.right and not horizontal) { fc_move(1) }
-  ct_num_blur(root)
+  if i.up or (i.left and not horizontal) { fc_move(ui_st, -1) }
+  if i.down_key or (i.right and not horizontal) { fc_move(ui_st, 1) }
+  ct_num_blur(ui_st, root)
   if n == null { return }
-  fc_hold(root, n)
-  if i.enter or (i.space and not ct_takes_space(n)) { ct_activate(n) }
-  if horizontal and i.left { ct_step(n, -1) }
-  if horizontal and i.right { ct_step(n, 1) }
-  ct_typed(n)
+  fc_hold(ui_st, root, n)
+  if i.enter or (i.space and not ct_takes_space(n)) { ct_activate(ui_st, n) }
+  if horizontal and i.left { ct_step(ui_st, n, -1) }
+  if horizontal and i.right { ct_step(ui_st, n, 1) }
+  ct_typed(ui_st, n)
 }
 # Enter or A held on a control: its on-down, and on-up when let go (or the focus moves away)
-function fc_hold(root: UiNode, n: UiNode) -> void {
-  if fr_key_press != "" and (in_act_up or n.key != fr_key_press) {
-    let was = fr_node(root, fr_key_press)
-    if was != null { ui_fire(was, "up", Value.null()) }
-    fr_key_press = ""
+function fc_hold(ui_st: mut UiState, root: UiNode, n: UiNode) -> void {
+  if ui_st.fr_key_press != "" and (ui_st.in_act_up or n.key != ui_st.fr_key_press) {
+    let was = fr_node(root, ui_st.fr_key_press)
+    if was != null { ui_fire(ui_st, was, "up", Value.null()) }
+    ui_st.fr_key_press = ""
   }
-  if in_act_down and n.enabled {
-    fr_key_press = n.key
-    ui_fire(n, "down", Value.null())
+  if ui_st.in_act_down and n.enabled {
+    ui_st.fr_key_press = n.key
+    ui_fire(ui_st, n, "down", Value.null())
   }
 }
-export function ui_focus(key: string) -> void {
-  fc_key = key
-  fc_visible = false
+export function ui_focus(ui_st: mut UiState, key: string) -> void {
+  ui_st.fc_key = key
+  ui_st.fc_visible = false
 }
 # nothing focused (a screen just opened): the control that says autofocus, as HTML's does
-function fc_autofocus() -> void {
-  for i in 0 .. len(fc_list) {
-    if ui_attr_on(fc_list[i], "autofocus") {
-      fc_key = fc_list[i].key
-      fc_visible = false
+function fc_autofocus(ui_st: mut UiState) -> void {
+  for i in 0 .. len(ui_st.fc_list) {
+    if ui_attr_on(ui_st.fc_list[i], "autofocus") {
+      ui_st.fc_key = ui_st.fc_list[i].key
+      ui_st.fc_visible = false
       return
     }
   }

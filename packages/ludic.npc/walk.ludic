@@ -1,6 +1,6 @@
 # walk.ludic - walking to the target: turn toward it, step, never into the water and never up a
 # scramble - step round it instead - and give up on a target that gets no closer for twenty seconds
-export function npc_walk(p: NpcPerson, dt: float) -> void {
+export function npc_walk(base_st: mut BaseState, npc_st: mut NpcState, p: NpcPerson, dt: float) -> void {
   var gx = p.tx
   var gz = p.tz
   if p.via_on {
@@ -10,7 +10,7 @@ export function npc_walk(p: NpcPerson, dt: float) -> void {
   let dx = gx - p.x
   let dz = gz - p.z
   if Math.sqrt(dx * dx + dz * dz) < 1.2 {
-    np_arrive(p)
+    np_arrive(base_st, npc_st, p)
     return
   }
   let dg = npc_d(p.x, p.z, p.tx, p.tz)
@@ -19,7 +19,7 @@ export function npc_walk(p: NpcPerson, dt: float) -> void {
     p.prog_t = 0.0
   } else { p.prog_t = p.prog_t + dt }
   if p.prog_t > 20.0 {
-    np_stuck(p)
+    np_stuck(npc_st, p)
     return
   }
   var sp = p.speed
@@ -39,7 +39,7 @@ export function npc_walk(p: NpcPerson, dt: float) -> void {
       p.detours += 1
       return
     }
-    np_stuck(p)
+    np_stuck(npc_st, p)
     return
   }
   p.x = nx
@@ -50,18 +50,18 @@ export function npc_walk(p: NpcPerson, dt: float) -> void {
 }
 
 # there: a step round something ends, or the errand begins, facing what it came for
-function np_arrive(p: NpcPerson) -> void {
+function np_arrive(base_st: mut BaseState, npc_st: mut NpcState, p: NpcPerson) -> void {
   if p.via_on {
     p.via_on = false
     return
   }
   let fx = p.fx
   let fz = p.fz
-  npc_do(p, p.next_act, p.next_t)
+  npc_do(npc_st, p, p.next_act, p.next_t)
   p.fx = fx
   p.fz = fz
   p.stall = 0.0
-  if p.act != NPCA_WALK { np_fact(NPC_F_ARRIVED, p, -1) }
+  if p.act != NPCA_WALK { np_fact(base_st, npc_st, NPC_F_ARRIVED, p, -1) }
 }
 
 function np_detour(p: NpcPerson, want: float) -> bool {
@@ -80,11 +80,11 @@ function np_detour(p: NpcPerson, want: float) -> bool {
   return false
 }
 
-function np_stuck(p: NpcPerson) -> void {
+function np_stuck(npc_st: mut NpcState, p: NpcPerson) -> void {
   p.fails += 1
   p.via_on = false
   if p.fails >= 3 {
     p.fails = 0
-    npc_wander(p)
-  } else { npc_plan(p) }
+    npc_wander(npc_st, p)
+  } else { npc_plan(npc_st, p) }
 }

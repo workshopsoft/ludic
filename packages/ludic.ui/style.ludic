@@ -12,45 +12,45 @@ export property UiRule {
 export property UiSheet {
   rules: []UiRule = null
 }
-function sheet_read(f: UiFile, t: UiTpl) -> void {
+function sheet_read(ui_st: mut UiState, f: UiFile, t: UiTpl) -> void {
   var src = t.raw
   let from = bd_name(t, "src", "")
-  if from != "" { src = lib_text(lib_beside(f.path, from)) }
-  lss_text(f, src)
+  if from != "" { src = lib_text(ui_st, lib_beside(f.path, from)) }
+  lss_text(ui_st, f, src)
 }
 function lss_is(path: string) -> bool { return len(path) > 4 and path[len(path) - 4..len(path)] == ".lss" }
 # a stylesheet file: a file with rules and imports and nothing else
-function lss_file(src: string, path: string) -> UiFile {
-  let f = lib_new(path)
+function lss_file(ui_st: mut UiState, src: string, path: string) -> UiFile {
+  let f = lib_new(ui_st, path)
   f.src = src
-  lss_text(f, src)
+  lss_text(ui_st, f, src)
   f.sheet = sheet_of(f)
   return f
 }
-function lss_text(f: UiFile, src: string) -> void {
+function lss_text(ui_st: mut UiState, f: UiFile, src: string) -> void {
   let err = new []string
-  lss_block(f, lss_strip(src), null, err)
-  for i in 0 .. len(err) { ui_err(`{f.path}: <style> {err[i]}`) }
+  lss_block(ui_st, f, lss_strip(src), null, err)
+  for i in 0 .. len(err) { ui_err(ui_st, `{f.path}: <style> {err[i]}`) }
 }
 # rules, @imports and @media blocks; the rules in a @media block carry its condition
-function lss_block(f: UiFile, src: string, md: UiMedia, err: []string) -> void {
+function lss_block(ui_st: mut UiState, f: UiFile, src: string, md: UiMedia, err: []string) -> void {
   let r = new UiRd
   r.s = src
   while r.err == "" {
     rd_ws(r)
     if r.i >= len(r.s) { break }
     if rd_op(r, "@import") {
-      lss_import(f, lss_upto(r, 59))
+      lss_import(ui_st, f, lss_upto(r, 59))
       continue
     }
     if rd_op(r, "@keyframes") {
       let name = lss_upto(r, 123)
-      an_read(name, lss_upto(r, 125), err)
+      an_read(ui_st, name, lss_upto(r, 125), err)
       continue
     }
     if rd_op(r, "@media") {
       let cond = md_parse(lss_upto(r, 123))
-      lss_block(f, lss_upto(r, 125), cond, err)
+      lss_block(ui_st, f, lss_upto(r, 125), cond, err)
       continue
     }
     let sels = lss_upto(r, 123)
@@ -62,11 +62,11 @@ function lss_block(f: UiFile, src: string, md: UiMedia, err: []string) -> void {
   if r.err != "" { push(err, r.err) }
 }
 # @import "base.lss"; - its rules come before this file's own
-function lss_import(f: UiFile, what: string) -> void {
+function lss_import(ui_st: mut UiState, f: UiFile, what: string) -> void {
   var p = tpl_words(what)
   if len(p) > 5 and p[0..4] == "url(" { p = p[4..len(p) - 1] }
   if len(p) >= 2 and (p[0] == 34 or p[0] == 39) { p = p[1..len(p) - 1] }
-  let other = lib_file(lib_beside(f.path, p))
+  let other = lib_file(ui_st, lib_beside(f.path, p))
   if other != null {
     push(f.imp, other)
     push(f.imp_as, "")

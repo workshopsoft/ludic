@@ -10,13 +10,13 @@ property UpdateAsset {
 }
 
 # this app's packages in the feed ({"Assets": [{PackageId, Version, Type, FileName, SHA256, Size}]})
-function update__assets(feed: Val) -> []UpdateAsset {
+function update__assets(update_st: mut UpdateState, feed: Val) -> []UpdateAsset {
   let out = new []UpdateAsset
   if feed == null or Value.kind(feed) != 6 or Value.has(feed, "Assets") == 0 { return out }
   let all = Value.get(feed, "Assets")
   for i in 0 .. Value.count(all) {
     let a = Value.at(all, i)
-    if sv_str(a, "PackageId", "") != update__conf().app_id { continue }
+    if sv_str(a, "PackageId", "") != update__conf(update_st).app_id { continue }
     let x = new UpdateAsset
     x.ver = sv_str(a, "Version", "")
     x.file = sv_str(a, "FileName", "")
@@ -31,9 +31,9 @@ function update__assets(feed: Val) -> []UpdateAsset {
 # What the feed calls the FULL package of version v. Never built here: Velopack puts the channel in
 # a macOS name (App-0.3.4-osx-full.nupkg) and not a Windows one, and it is both the name a patch
 # writes and the name the next update looks for as its base.
-function update__full_name(as: []UpdateAsset, v: string) -> string {
+function update__full_name(update_st: mut UpdateState, as: []UpdateAsset, v: string) -> string {
   for i in 0 .. len(as) { if not as[i].delta and as[i].ver == v { return as[i].file } }
-  return update__conf().app_id + "-" + v + "-full.nupkg"
+  return update__conf(update_st).app_id + "-" + v + "-full.nupkg"
 }
 
 function update__newest_full(as: []UpdateAsset) -> int {
@@ -46,9 +46,9 @@ function update__newest_full(as: []UpdateAsset) -> int {
 }
 
 # the deltas above this version up to the newest, oldest first
-function update__chain(as: []UpdateAsset, newest: string) -> []UpdateAsset {
+function update__chain(update_st: mut UpdateState, as: []UpdateAsset, newest: string) -> []UpdateAsset {
   let out = new []UpdateAsset
-  let mine = update__conf().version
+  let mine = update__conf(update_st).version
   for i in 0 .. len(as) {
     let a = as[i]
     if not a.delta or not update_newer(a.ver, mine) or update_newer(a.ver, newest) { continue }
@@ -65,18 +65,18 @@ function update__chain(as: []UpdateAsset, newest: string) -> []UpdateAsset {
   return out
 }
 
-function update__fulls_after(as: []UpdateAsset) -> int {
+function update__fulls_after(update_st: mut UpdateState, as: []UpdateAsset) -> int {
   var n = 0
-  for i in 0 .. len(as) { if not as[i].delta and update_newer(as[i].ver, update__conf().version) { n += 1 } }
+  for i in 0 .. len(as) { if not as[i].delta and update_newer(as[i].ver, update__conf(update_st).version) { n += 1 } }
   return n
 }
 
-function update__plan_add(a: UpdateAsset, full: string) -> void {
-  push(update__files, a.file)
-  push(update__sha, a.sha)
-  push(update__size, a.size)
-  push(update__delta, a.delta)
-  push(update__ver, a.ver)
-  push(update__full, full)
-  update__total_bytes += a.size
+function update__plan_add(update_st: mut UpdateState, a: UpdateAsset, full: string) -> void {
+  push(update_st.update__files, a.file)
+  push(update_st.update__sha, a.sha)
+  push(update_st.update__size, a.size)
+  push(update_st.update__delta, a.delta)
+  push(update_st.update__ver, a.ver)
+  push(update_st.update__full, full)
+  update_st.update__total_bytes += a.size
 }

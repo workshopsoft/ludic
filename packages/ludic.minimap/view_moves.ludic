@@ -1,61 +1,56 @@
 # view_moves.ludic - moving the view: zoom in steps or about a point (so what is under the pointer
 # stays under it), a drag that pans, and a press that picks the mark under it
-var mm_panning: bool = false
-var mm_drag_rx: float = 0.0
-var mm_drag_ry: float = 0.0
-var mm_drag_vx: float = 0.0
-var mm_drag_vz: float = 0.0
 
-export function minimap_zoom_set(z: float) -> void {
-  mm_zoom = Math.clamp(z, mm_zoom_min, mm_zoom_max)
-  minimap_clamp()
+export function minimap_zoom_set(minimap_st: mut MinimapState, z: float) -> void {
+  minimap_st.mm_zoom = Math.clamp(z, minimap_st.mm_zoom_min, minimap_st.mm_zoom_max)
+  minimap_clamp(minimap_st)
 }
 
 # a step in (dir > 0) or out, a third at a time
-export function minimap_zoom_step(dir: int) -> void {
-  if dir > 0 { minimap_zoom_set(mm_zoom * 1.3) } else { minimap_zoom_set(mm_zoom / 1.3) }
+export function minimap_zoom_step(minimap_st: mut MinimapState, dir: int) -> void {
+  if dir > 0 { minimap_zoom_set(minimap_st, minimap_st.mm_zoom * 1.3) } else { minimap_zoom_set(minimap_st, minimap_st.mm_zoom / 1.3) }
 }
 
 # zoom by `factor` about a point of the window
-export function minimap_zoom_about(rx: float, ry: float, factor: float) -> void {
-  let wx = minimap_wx(rx)
-  let wz = minimap_wz(ry)
-  mm_zoom = Math.clamp(mm_zoom * factor, mm_zoom_min, mm_zoom_max)
-  mm_vx = mm_vx + wx - minimap_wx(rx)
-  mm_vz = mm_vz + wz - minimap_wz(ry)
-  minimap_clamp()
+export function minimap_zoom_about(minimap_st: mut MinimapState, rx: float, ry: float, factor: float) -> void {
+  let wx = minimap_wx(minimap_st, rx)
+  let wz = minimap_wz(minimap_st, ry)
+  minimap_st.mm_zoom = Math.clamp(minimap_st.mm_zoom * factor, minimap_st.mm_zoom_min, minimap_st.mm_zoom_max)
+  minimap_st.mm_vx = minimap_st.mm_vx + wx - minimap_wx(minimap_st, rx)
+  minimap_st.mm_vz = minimap_st.mm_vz + wz - minimap_wz(minimap_st, ry)
+  minimap_clamp(minimap_st)
 }
 
-export function minimap_pan_begin(rx: float, ry: float) -> void {
-  mm_panning = true
-  mm_drag_rx = rx
-  mm_drag_ry = ry
-  mm_drag_vx = mm_vx
-  mm_drag_vz = mm_vz
+export function minimap_pan_begin(minimap_st: mut MinimapState, rx: float, ry: float) -> void {
+  minimap_st.mm_panning = true
+  minimap_st.mm_drag_rx = rx
+  minimap_st.mm_drag_ry = ry
+  minimap_st.mm_drag_vx = minimap_st.mm_vx
+  minimap_st.mm_drag_vz = minimap_st.mm_vz
 }
 
 # the point pressed follows the pointer
-export function minimap_pan_to(rx: float, ry: float) -> void {
-  if not mm_panning { return }
-  mm_vx = mm_drag_vx - (rx - mm_drag_rx) / minimap_scale()
-  mm_vz = mm_drag_vz - (ry - mm_drag_ry) / minimap_scale()
-  minimap_clamp()
+export function minimap_pan_to(minimap_st: mut MinimapState, rx: float, ry: float) -> void {
+  if not minimap_st.mm_panning { return }
+  minimap_st.mm_vx = minimap_st.mm_drag_vx - (rx - minimap_st.mm_drag_rx) / minimap_scale(minimap_st)
+  minimap_st.mm_vz = minimap_st.mm_drag_vz - (ry - minimap_st.mm_drag_ry) / minimap_scale(minimap_st)
+  minimap_clamp(minimap_st)
 }
 
-export function minimap_pan_end() -> void { mm_panning = false }
-export function minimap_panning() -> bool { return mm_panning }
+export function minimap_pan_end(minimap_st: mut MinimapState) -> void { minimap_st.mm_panning = false }
+export function minimap_panning(minimap_st: MinimapState) -> bool { return minimap_st.mm_panning }
 
 # the mark within r pixels of a point of the window is opened (the last drawn, so the top one);
 # -1 and nothing changes when there is none
-export function minimap_pick(rx: float, ry: float, r: float) -> int {
-  let sx = mm_x0 + rx
-  let sy = mm_y0 + ry
+export function minimap_pick(minimap_st: mut MinimapState, rx: float, ry: float, r: float) -> int {
+  let sx = minimap_st.mm_x0 + rx
+  let sy = minimap_st.mm_y0 + ry
   var hit = -1
-  for i in 0 .. minimap_pin_count() {
-    let px = minimap_px(mm_pins[i].x)
-    let py = minimap_py(mm_pins[i].z)
+  for i in 0 .. minimap_pin_count(minimap_st) {
+    let px = minimap_px(minimap_st, minimap_st.mm_pins[i].x)
+    let py = minimap_py(minimap_st, minimap_st.mm_pins[i].z)
     if sx >= px - r and sx < px + r and sy >= py - r and sy < py + r { hit = i }
   }
-  if hit >= 0 { mm_open = hit }
+  if hit >= 0 { minimap_st.mm_open = hit }
   return hit
 }

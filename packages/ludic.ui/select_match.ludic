@@ -11,26 +11,26 @@ function sel_spec(s: UiSel) -> int {
   }
   return n
 }
-function sel_match(s: UiSel, n: UiNode) -> bool {
-  if not sel_one(s, n) { return false }
+function sel_match(ui_st: mut UiState, s: UiSel, n: UiNode) -> bool {
+  if not sel_one(ui_st, s, n) { return false }
   if s.prev == null { return true }
-  if s.comb == 1 { return n.parent != null and sel_match(s.prev, n.parent) }
-  if s.comb == 2 { return n.parent != null and n.index > 0 and sel_match(s.prev, n.parent.children[n.index - 1]) }
+  if s.comb == 1 { return n.parent != null and sel_match(ui_st, s.prev, n.parent) }
+  if s.comb == 2 { return n.parent != null and n.index > 0 and sel_match(ui_st, s.prev, n.parent.children[n.index - 1]) }
   if s.comb == 3 {
     if n.parent == null { return false }
     for i in 0 .. n.index {
-      if sel_match(s.prev, n.parent.children[i]) { return true }
+      if sel_match(ui_st, s.prev, n.parent.children[i]) { return true }
     }
     return false
   }
   var a = n.parent
   while a != null {
-    if sel_match(s.prev, a) { return true }
+    if sel_match(ui_st, s.prev, a) { return true }
     a = a.parent
   }
   return false
 }
-function sel_one(s: UiSel, n: UiNode) -> bool {
+function sel_one(ui_st: mut UiState, s: UiSel, n: UiNode) -> bool {
   if s.tag != "" and s.tag != n.tag { return false }
   if s.id != "" and s.id != n.id { return false }
   for i in 0 .. len(s.classes) {
@@ -41,10 +41,10 @@ function sel_one(s: UiSel, n: UiNode) -> bool {
     if v == null or (s.aops[i] == 1 and v != s.avals[i]) { return false }
   }
   for i in 0 .. len(s.pseudos) {
-    if not sel_pseudo_ok(s.pseudos[i], s.pargs[i], n) { return false }
+    if not sel_pseudo_ok(ui_st, s.pseudos[i], s.pargs[i], n) { return false }
   }
   for i in 0 .. len(s.nots) {
-    if sel_one(s.nots[i], n) { return false }
+    if sel_one(ui_st, s.nots[i], n) { return false }
   }
   return true
 }
@@ -62,11 +62,11 @@ function sel_attr_of(n: UiNode, key: string) -> string {
   }
   return null
 }
-function sel_pseudo_ok(p: string, arg: string, n: UiNode) -> bool {
+function sel_pseudo_ok(ui_st: mut UiState, p: string, arg: string, n: UiNode) -> bool {
   if p == "hover" { return n.hovered }
-  if p == "focus" { return fc_key != "" and n.key == fc_key }
-  if p == "focus-visible" { return fc_visible and fc_key != "" and n.key == fc_key }
-  if p == "focus-within" { return fc_key != "" and lc_mine(fc_key, n.key) }
+  if p == "focus" { return ui_st.fc_key != "" and n.key == ui_st.fc_key }
+  if p == "focus-visible" { return ui_st.fc_visible and ui_st.fc_key != "" and n.key == ui_st.fc_key }
+  if p == "focus-within" { return ui_st.fc_key != "" and lc_mine(ui_st.fc_key, n.key) }
   if p == "disabled" { return not n.enabled }
   if p == "enabled" { return n.enabled }
   if p == "first-child" { return n.index == 0 }
@@ -75,9 +75,9 @@ function sel_pseudo_ok(p: string, arg: string, n: UiNode) -> bool {
   if p == "empty" { return len(n.children) == 0 and n.text == "" }
   if p == "root" { return n.parent == null }
   if p == "checked" { return ui_attr_on(n, "checked") }
-  if p == "active" { return fr_active(n) }
-  if p == "capturing" { return ct_capture != "" and n.key == ct_capture }
+  if p == "active" { return fr_active(ui_st, n) }
+  if p == "capturing" { return ui_st.ct_capture != "" and n.key == ui_st.ct_capture }
   if p == "nth-child" { return sel_nth(arg, n.index + 1) }
-  ui_err(`:{p}: there is no such pseudo-class here`)
+  ui_err(ui_st, `:{p}: there is no such pseudo-class here`)
   return false
 }

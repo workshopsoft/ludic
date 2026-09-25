@@ -2,25 +2,23 @@
 # bottoms out in AVAudioPlayer), not the pack-aware file_open every other asset arrives through: in a
 # bundle every clip loads as 0 while Fs.exists, which IS pack-aware, says it is there. So try the
 # runtime's path, and on 0 lift the bytes out of the pack into the cache directory and load that.
-var tried: int = 0
-var live: int = 0
 
-export function aud_load(path: string) -> int {
-  tried += 1
+export function aud_load(audio_st: mut AudioState, path: string) -> int {
+  audio_st.tried += 1
   if not is_windowed() { return 0 }
   var h = Audio.load(path)
   if h == 0 {
     let out = aud_unpack(path, base_name(path))
     if out != null { h = Audio.load(out) }
   }
-  if h != 0 { live += 1 }
+  if h != 0 { audio_st.live += 1 }
   return h
 }
 
 # how many clips were asked for and how many loaded: a silent game looks exactly like a working one
 # unless something says so
-export function aud_tried() -> int { return tried }
-export function aud_live() -> int { return live }
+export function aud_tried(audio_st: AudioState) -> int { return audio_st.tried }
+export function aud_live(audio_st: AudioState) -> int { return audio_st.live }
 
 # One packed file out to the cache, or null. A cached copy is trusted only if it is as long as the
 # packed one: a write interrupted halfway would otherwise play truncated for ever.

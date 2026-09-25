@@ -39,14 +39,70 @@ export port CharacterInput {
   look_always: fn() -> bool = fn chr__no                   # the look is held: never settle behind
 }
 
-var chr_ask_x: float = 0.0
-var chr_ask_z: float = 0.0
+export state CharacterState {
+  chr_out_x: float = 0.0
+  chr_out_z: float = 0.0
+  chr_ask_x: float = 0.0
+  chr_ask_z: float = 0.0
+  chr_x: float = 0.0
+  chr_y: float = 0.0
+  chr_z: float = 0.0
+  chr_yaw: float = 0.0              # facing, radians; 0 faces -z
+  chr_speed: float = 0.0            # m/s along the facing
+  chr_phase: float = 0.0            # the gait: one cycle is two steps, advanced by ground covered
+  chr_move: float = 0.0             # 0 standing .. 1 moving
+  chr_run: float = 0.0              # 0 walking .. 1 running
+  chr_time: float = 0.0
+  chr_water: float = -10000.0       # the water line under the body, every update
+  chr_walk_speed: float = 3.2
+  chr_run_speed: float = 6.8
+  chr_vy: float = 0.0
+  chr_air: bool = false
+  chr_air_vx: float = 0.0
+  chr_air_vz: float = 0.0
+  chr_land: float = 0.0             # seconds of the landing's crouch left
+  chr_steep: float = 0.0            # seconds of "that was too steep" left to say
+  chr_can_run: bool = true
+  chr_step: float = 0.0             # metres covered this frame
+  chr_sit: bool = false
+  chr_sit_mode: int = 0
+  chr_sit_t: float = 0.0            # 0 standing .. 1 sat, eased over a quarter second
+  chr_sit_x: float = 0.0            # the seat's point, walked to over the blend
+  chr_sit_z: float = 0.0
+  chr_sit_yaw: float = 0.0
+  chr_swim: bool = false
+  chr_dive: bool = false
+  chr_depth: float = 0.0            # metres below the surface
+  chr_breath: float = 0.0
+  chr_float: float = 0.0            # 0 swimming .. 1 floating
+  chr_swim_phase: float = 0.0
+  chr_edge_said: float = 0.0
+  chr_holds: int = CHAR_HOLD_SCREEN
+  chr_cam_yaw: float = 0.0
+  chr_cam_pitch: float = -0.157
+  chr_cam_dist: float = 4.2
+  chr_lock: bool = false            # the orbit never settles behind on its own
+  chr_fps: bool = false
+  chr_fps_bob: float = 0.0
+  chr_piv_x: float = 0.0
+  chr_piv_y: float = 0.0
+  chr_piv_z: float = 0.0
+  chr_eye_x: float = 0.0            # where the camera is and where it looks, once computed
+  chr_eye_y: float = 0.0
+  chr_eye_z: float = 0.0
+  chr_eye_yaw: float = 0.0
+  chr_eye_pitch: float = 0.0
+  chr_eyes_now: bool = false        # the last camera was the eyes: the figure is hidden
+  chr_safe_x: float = 0.0
+  chr_safe_z: float = 0.0
+  chr_fact_q: Queue<CharacterFact> = null
+}
 function chr__top_plain(x: float, z: float, r: float, from_y: float, step: float, base: float) -> float { return base }
 function chr__bed_plain(x: float, z: float) -> float { return CharacterGround.height(x, z) }
 function chr__dry(x: float, z: float) -> float { return -10000.0 }
 function chr__no_push(x: float, z: float, r: float, y0: float, y1: float) -> bool { return false }
-function chr__asked_x() -> float { return chr_ask_x }
-function chr__asked_z() -> float { return chr_ask_z }
+function chr__asked_x(character_st: CharacterState) -> float { return character_st.chr_ask_x }
+function chr__asked_z(character_st: CharacterState) -> float { return character_st.chr_ask_z }
 function chr__slope_plain(x: float, z: float) -> float {
   let e = 2.0
   let dx = CharacterGround.height(x + e, z) - CharacterGround.height(x - e, z)

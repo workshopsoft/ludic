@@ -1,16 +1,16 @@
 # popover_anchor.ludic - `<div popover anchor="cell">` sits beside the element with that id (the
 # nearest), a bare `anchor` beside the one before it: `placement` right, left, bottom or top (its margin
 # is the gap), `align` start, center or end along that side, flipped and kept within its bounds.
-function pp_anchor_all(n: UiNode) -> void {
+function pp_anchor_all(ui_st: mut UiState, n: UiNode) -> void {
   if n.children == null { return }
   for i in 0 .. len(n.children) {
     let c = n.children[i]
-    if c.popover and Value.kind(ui_attr(c, "anchor")) != 0 { pp_anchor(c, pp_anchor_of(n, i)) }
-    pp_anchor_all(c)
+    if c.popover and Value.kind(ui_attr(c, "anchor")) != 0 { pp_anchor(ui_st, c, pp_anchor_of(ui_st, n, i)) }
+    pp_anchor_all(ui_st, c)
   }
 }
 # the element a popover (the i-th child of `parent`) is anchored to, or null
-function pp_anchor_of(parent: UiNode, i: int) -> UiNode {
+function pp_anchor_of(ui_st: mut UiState, parent: UiNode, i: int) -> UiNode {
   let pop = parent.children[i]
   let id = ui_attr_text(pop, "anchor")
   if id == "" or id == "true" {
@@ -25,7 +25,7 @@ function pp_anchor_of(parent: UiNode, i: int) -> UiNode {
     if f != null { return f }
     at = at.parent
   }
-  ui_err(`anchor="{id}": no element has that id`)
+  ui_err(ui_st, `anchor="{id}": no element has that id`)
   return null
 }
 function pp_by_id(n: UiNode, id: string, skip: UiNode) -> UiNode {
@@ -38,11 +38,11 @@ function pp_by_id(n: UiNode, id: string, skip: UiNode) -> UiNode {
   }
   return null
 }
-function pp_anchor(p: UiNode, a: UiNode) -> void {
+function pp_anchor(ui_st: mut UiState, p: UiNode, a: UiNode) -> void {
   if a == null { return }
   let side = ui_attr_text(p, "placement")
   let align = ui_attr_text(p, "align")
-  pp_bounds(p)
+  pp_bounds(ui_st, p)
   let w = p.cw
   let h = p.ch
   var x = a.x
@@ -50,18 +50,18 @@ function pp_anchor(p: UiNode, a: UiNode) -> void {
   if side == "top" or side == "bottom" {
     let below = a.y + a.ch + p.mt
     let above = a.y - h - p.mb
-    y = pp_side(side == "top", above, below, h, pp_by, pp_bh)
+    y = pp_side(side == "top", above, below, h, ui_st.pp_by, ui_st.pp_bh)
     x = pp_along(align, a.x, a.cw, w) + p.ml
   } else {
     let right = a.x + a.cw + p.ml
     let left = a.x - w - p.mr
-    x = pp_side(side == "left", left, right, w, pp_bx, pp_bw)
+    x = pp_side(side == "left", left, right, w, ui_st.pp_bx, ui_st.pp_bw)
     y = pp_along(align, a.y, a.ch, h) + p.mt
   }
-  x = Math.max(pp_bx, Math.min(x, pp_bx + pp_bw - w))
-  y = Math.max(pp_by, Math.min(y, pp_by + pp_bh - h))
-  ly_place(p, x, y, w, h)
-  sc_apply(p)
+  x = Math.max(ui_st.pp_bx, Math.min(x, ui_st.pp_bx + ui_st.pp_bw - w))
+  y = Math.max(ui_st.pp_by, Math.min(y, ui_st.pp_by + ui_st.pp_bh - h))
+  ly_place(ui_st, p, x, y, w, h)
+  sc_apply(ui_st, p)
 }
 # where along one axis: the side asked for (`low` first when `first_low`), else the other when the
 # first leaves the screen and the other does not

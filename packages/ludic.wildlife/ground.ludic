@@ -1,87 +1,87 @@
 # ground.ludic - a walker's tick: its needs, the alert, then the first of charging, reacting, going
 # to its spot, walking to something set out, eating, idling and wandering that has it this tick
-export function wildlife_tick_ground(a: WildAnimal, dt: float, gh: float) -> void {
-  wl_needs(a, gh)
-  let dh = wl_near(a.x, a.z)
-  let np = wl_near_i
+export function wildlife_tick_ground(base_st: mut BaseState, wildlife_st: mut WildlifeState, a: WildAnimal, dt: float, gh: float) -> void {
+  wl_needs(base_st, wildlife_st, a, gh)
+  let dh = wl_near(wildlife_st, a.x, a.z)
+  let np = wildlife_st.wl_near_i
   a.timer = a.timer - dt
   if a.calm > 0.0 { a.calm = a.calm - gh * 60.0 }
   if a.spook > 0.0 { a.spook = a.spook - gh * 60.0 }
-  wl_alert(a, np, dh, dt)
+  wl_alert(wildlife_st, a, np, dh, dt)
   if a.state == WILD_TRAPPED {
     a.speed = 0.0
     return
   }
-  if wl_charge(a, np, dh, dt) { return }
-  wl_posture(a, np, dt)
-  if wl_react(a, np, dt) { return }
-  if wl_seek(a, dt) { return }
-  if wl_drink(a, dt, gh) { return }
-  if wl_approach(a, dt) { return }
-  if wl_eat(a) { return }
-  let s = wl_sp(a.sp)
+  if wl_charge(base_st, wildlife_st, a, np, dh, dt) { return }
+  wl_posture(base_st, wildlife_st, a, np, dt)
+  if wl_react(base_st, wildlife_st, a, np, dt) { return }
+  if wl_seek(base_st, wildlife_st, a, dt) { return }
+  if wl_drink(wildlife_st, a, dt, gh) { return }
+  if wl_approach(base_st, wildlife_st, a, dt) { return }
+  if wl_eat(base_st, wildlife_st, a) { return }
+  let s = wl_sp(wildlife_st, a.sp)
   if a.state == WILD_IDLE {
     a.speed = 0.0
     if a.timer < 0.0 {
-      if a.timer > -6.0 and s.tracks and wl_rnd() < 0.06 { wl_fact(WILD_BED, a) }   # a long sit leaves crushed grass
+      if a.timer > -6.0 and s.tracks and wl_rnd(wildlife_st) < 0.06 { wl_fact(base_st, wildlife_st, WILD_BED, a) }   # a long sit leaves crushed grass
       a.state = WILD_WANDER
-      a.timer = 6.0 + wl_rnd() * 10.0
-      wl_clamp(a)
-      wl_pick_target(a, s.home)
+      a.timer = 6.0 + wl_rnd(wildlife_st) * 10.0
+      wl_clamp(wildlife_st, a)
+      wl_pick_target(wildlife_st, a, s.home)
     }
     return
   }
   wl_face(a, a.tx, a.tz, 2.0, dt)
   a.speed = s.walk
-  wl_step(a, dt)
+  wl_step(base_st, wildlife_st, a, dt)
   if wl_at_target(a, 1.5) or a.timer < 0.0 {
     a.state = WILD_IDLE
-    a.timer = 3.0 + wl_rnd() * 8.0
+    a.timer = 3.0 + wl_rnd(wildlife_st) * 8.0
   }
 }
 
 # a charger close enough comes at the nearest player; true while it is charging
-function wl_charge(a: WildAnimal, np: int, dh: float, dt: float) -> bool {
-  let s = wl_sp(a.sp)
+function wl_charge(base_st: mut BaseState, wildlife_st: mut WildlifeState, a: WildAnimal, np: int, dh: float, dt: float) -> bool {
+  let s = wl_sp(wildlife_st, a.sp)
   if s.charges and a.state != WILD_CHARGE and dh < WildlifeWorld.charge_reach() and not (a.calm > 0.0) {
     a.state = WILD_CHARGE
     a.timer = 2.5
-    wl_fact(WILD_CHARGED, a).player = np
+    wl_fact(base_st, wildlife_st, WILD_CHARGED, a).player = np
   }
   if a.state != WILD_CHARGE { return false }
   wl_face(a, WildlifeWorld.player_x(np), WildlifeWorld.player_z(np), 4.0, dt)
   a.speed = s.run
-  wl_step(a, dt)
+  wl_step(base_st, wildlife_st, a, dt)
   if dh < 2.6 {
-    wl_fact(WILD_SHOVED, a).player = np
-    wl_wander(a, 8.0)
+    wl_fact(base_st, wildlife_st, WILD_SHOVED, a).player = np
+    wl_wander(wildlife_st, a, 8.0)
     a.calm = 30.0
   }
-  if a.timer < 0.0 { wl_wander(a, 6.0) }
+  if a.timer < 0.0 { wl_wander(wildlife_st, a, 6.0) }
   return true
 }
 
 # Four postures read off the alert. Staring is a REACTION, not a condition: each times out and
 # hands the animal back to its business, and only a fresh rise above `seen` looks up again.
-function wl_posture(a: WildAnimal, np: int, dt: float) -> void {
-  if wl_sp(a.sp).tame or a.state == WILD_EAT { return }
+function wl_posture(base_st: mut BaseState, wildlife_st: mut WildlifeState, a: WildAnimal, np: int, dt: float) -> void {
+  if wl_sp(wildlife_st, a.sp).tame or a.state == WILD_EAT { return }
   if a.alert > 95.0 {
     if a.state != WILD_FLEE {
       a.state = WILD_FLEE
-      a.timer = 3.0 + wl_rnd() * 3.0
-      a.spook = 120.0 + wl_rnd() * 180.0
+      a.timer = 3.0 + wl_rnd(wildlife_st) * 3.0
+      a.spook = 120.0 + wl_rnd(wildlife_st) * 180.0
       a.alert = 70.0
-      wl_fact(WILD_FLED, a).player = np
+      wl_fact(base_st, wildlife_st, WILD_FLED, a).player = np
     }
   } else if a.alert > 60.0 {
     if a.state != WILD_WARY and a.state != WILD_FLEE and a.alert > a.seen {
       a.state = WILD_WARY
-      a.timer = 2.0 + wl_rnd() * 2.0
+      a.timer = 2.0 + wl_rnd(wildlife_st) * 2.0
     }
   } else if a.alert > 25.0 {
     if a.state != WILD_ALERT and a.state != WILD_WARY and a.alert > a.seen {
       a.state = WILD_ALERT
-      a.timer = 1.5 + wl_rnd() * 2.5
+      a.timer = 1.5 + wl_rnd(wildlife_st) * 2.5
     }
   }
   if a.alert > a.seen { a.seen = a.alert }

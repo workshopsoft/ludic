@@ -1,39 +1,39 @@
 # save.ludic - a scope's jobs and boards in a section of their own, by key: a job the game has since
 # removed is dropped, a new one starts offered
-function jobs__reset_scope(sc: int) -> void {
-  jobs__ensure()
+function jobs__reset_scope(jobs_st: mut JobsState, sc: int) -> void {
+  jobs__ensure(jobs_st)
   for i in 0 .. JOB_COUNT {
     if Jobs[i].scope != sc { continue }
-    jobs__st[i] = JOBS_OFFERED
-    jobs__hv[i] = 0
+    jobs_st.jobs__st[i] = JOBS_OFFERED
+    jobs_st.jobs__hv[i] = 0
   }
   for b in 0 .. BOARD_COUNT {
     if JobBoards[b].scope != sc { continue }
-    for s in 0 .. JobBoards[b].slots { jobs__clear(jobs__off[b] + s) }
-    jobs__total[b] = 0
-    jobs__serial[b] = 0
+    for s in 0 .. JobBoards[b].slots { jobs__clear(jobs_st, jobs_st.jobs__off[b] + s) }
+    jobs_st.jobs__total[b] = 0
+    jobs_st.jobs__serial[b] = 0
   }
-  jobs__primed = false
+  jobs_st.jobs__primed = false
 }
 
-function jobs__save_scope(sc: int) -> Val {
+function jobs__save_scope(jobs_st: JobsState, sc: int) -> Val {
   let v = Value.object()
   let js = Value.object()
   for i in 0 .. JOB_COUNT {
-    if Jobs[i].scope != sc or jobs__st[i] == JOBS_OFFERED { continue }
-    sv_put_ints(js, Jobs[i].key, [jobs__st[i], jobs__hv[i]])
+    if Jobs[i].scope != sc or jobs_st.jobs__st[i] == JOBS_OFFERED { continue }
+    sv_put_ints(js, Jobs[i].key, [jobs_st.jobs__st[i], jobs_st.jobs__hv[i]])
   }
   Value.put(v, "jobs", js)
   let bs = Value.object()
   for b in 0 .. BOARD_COUNT {
     if JobBoards[b].scope != sc { continue }
     let o = Value.object()
-    sv_put_int(o, "total", jobs__total[b])
-    sv_put_int(o, "serial", jobs__serial[b])
+    sv_put_int(o, "total", jobs_st.jobs__total[b])
+    sv_put_int(o, "serial", jobs_st.jobs__serial[b])
     let slots = new []int
     for s in 0 .. JobBoards[b].slots {
-      let k = jobs__off[b] + s
-      let row = [jobs__pk[k], jobs__pp[k], jobs__pn[k], jobs__ph[k], jobs__pb[k], jobs__pm[k], jobs__pr[k], jobs__ps[k], jobs__pd[k]]
+      let k = jobs_st.jobs__off[b] + s
+      let row = [jobs_st.jobs__pk[k], jobs_st.jobs__pp[k], jobs_st.jobs__pn[k], jobs_st.jobs__ph[k], jobs_st.jobs__pb[k], jobs_st.jobs__pm[k], jobs_st.jobs__pr[k], jobs_st.jobs__ps[k], jobs_st.jobs__pd[k]]
       for f in 0 .. len(row) { push(slots, row[f]) }
     }
     sv_put_ints(o, "slots", slots)
@@ -43,13 +43,13 @@ function jobs__save_scope(sc: int) -> Val {
   return v
 }
 
-function jobs__load_scope(sc: int, v: Val) -> void {
-  jobs__reset_scope(sc)
+function jobs__load_scope(jobs_st: mut JobsState, sc: int, v: Val) -> void {
+  jobs__reset_scope(jobs_st, sc)
   if Value.has(v, "jobs") != 0 {
     let js = Value.get(v, "jobs")
     for i in 0 .. JOB_COUNT {
       let p = sv_ints(js, Jobs[i].key)
-      if Jobs[i].scope == sc and len(p) == 2 { jobs_set(i, p[0], p[1]) }
+      if Jobs[i].scope == sc and len(p) == 2 { jobs_set(jobs_st, i, p[0], p[1]) }
     }
   }
   if Value.has(v, "boards") == 0 { return }
@@ -57,15 +57,15 @@ function jobs__load_scope(sc: int, v: Val) -> void {
   for b in 0 .. BOARD_COUNT {
     if JobBoards[b].scope != sc or Value.has(bs, JobBoards[b].key) == 0 { continue }
     let o = Value.get(bs, JobBoards[b].key)
-    jobs__total[b] = sv_int(o, "total", 0)
-    jobs__serial[b] = sv_int(o, "serial", 0)
+    jobs_st.jobs__total[b] = sv_int(o, "total", 0)
+    jobs_st.jobs__serial[b] = sv_int(o, "serial", 0)
     let r = sv_ints(o, "slots")
     for s in 0 .. JobBoards[b].slots {
       if s * 9 + 8 >= len(r) { break }
-      let k = jobs__off[b] + s
+      let k = jobs_st.jobs__off[b] + s
       let q = s * 9
-      jobs_post_set(b, s, r[q], r[q + 1], r[q + 2], r[q + 3], r[q + 5], r[q + 6], r[q + 7], r[q + 8])
-      jobs__pb[k] = r[q + 4]
+      jobs_post_set(jobs_st, b, s, r[q], r[q + 1], r[q + 2], r[q + 3], r[q + 5], r[q + 6], r[q + 7], r[q + 8])
+      jobs_st.jobs__pb[k] = r[q + 4]
     }
   }
 }

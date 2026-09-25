@@ -1,18 +1,17 @@
 # senses.ludic - what an animal makes of one player: sight (a clear line, closer is worse, the dark
 # helps), scent (downwind, further than sight), noise; the rise is NET of how fast it forgets, so
 # an alert settles where the distance puts it instead of climbing to the top and sticking
-var wl_near_i: int = 0
 
 # the nearest player's distance; `wl_near_i` says who
-function wl_near(x: float, z: float) -> float {
+function wl_near(wildlife_st: mut WildlifeState, x: float, z: float) -> float {
   var best = 999999999999.0
-  wl_near_i = 0
+  wildlife_st.wl_near_i = 0
   for p in 0 .. WildlifeWorld.players() {
     if not WildlifeWorld.player_on(p) { continue }
     let d = wl_pdist2(p, x, z)
     if d < best {
       best = d
-      wl_near_i = p
+      wildlife_st.wl_near_i = p
     }
   }
   return Math.sqrt(best)
@@ -47,8 +46,8 @@ function wl_near_sq(d: float, reach: float) -> float {
 }
 
 # alert points a second from player p at `dh` metres; 0 when nothing of them reaches it
-export function wildlife_alert_rate(a: WildAnimal, p: int, dh: float) -> float {
-  let s = wl_sp(a.sp)
+export function wildlife_alert_rate(wildlife_st: mut WildlifeState, a: WildAnimal, p: int, dh: float) -> float {
+  let s = wl_sp(wildlife_st, a.sp)
   if s.tame or a.calm > 0.0 { return 0.0 }
   if (a.state == WILD_APPROACH or a.state == WILD_EAT) and a.lure != 0 and a.lure_kind == WILD_FEED and dh > 5.0 and WildlifeWorld.taught() { return 0.0 }
   var reach = s.flee * WildlifeWorld.wariness()
@@ -66,8 +65,8 @@ export function wildlife_alert_rate(a: WildAnimal, p: int, dh: float) -> float {
 }
 
 # how fast it forgets player p: standing still buys it, sitting down buys more
-export function wildlife_alert_decay(a: WildAnimal, p: int) -> float {
-  var d = wl_sp(a.sp).forget
+export function wildlife_alert_decay(wildlife_st: mut WildlifeState, a: WildAnimal, p: int) -> float {
+  var d = wl_sp(wildlife_st, a.sp).forget
   let still = WildlifeWorld.stillness(p)
   if still == WILD_SITTING { d = d * 2.5 } else if still == WILD_STILL { d = d * 1.6 }
   if a.spook > 0.0 { d = d * 0.7 }
@@ -75,14 +74,14 @@ export function wildlife_alert_decay(a: WildAnimal, p: int) -> float {
 }
 
 # the alert rises and falls with the player who nets it the most, and it watches them
-function wl_alert(a: WildAnimal, np: int, dh: float, dt: float) -> void {
-  var rise = wildlife_alert_rate(a, np, dh)
-  var fall = wildlife_alert_decay(a, np)
+function wl_alert(wildlife_st: mut WildlifeState, a: WildAnimal, np: int, dh: float, dt: float) -> void {
+  var rise = wildlife_alert_rate(wildlife_st, a, np, dh)
+  var fall = wildlife_alert_decay(wildlife_st, a, np)
   var who = np
   for p in 0 .. WildlifeWorld.players() {
     if p == np or not WildlifeWorld.player_on(p) { continue }
-    let r2 = wildlife_alert_rate(a, p, wl_pdist(p, a))
-    let f2 = wildlife_alert_decay(a, p)
+    let r2 = wildlife_alert_rate(wildlife_st, a, p, wl_pdist(p, a))
+    let f2 = wildlife_alert_decay(wildlife_st, a, p)
     if r2 - f2 > rise - fall {
       rise = r2
       fall = f2

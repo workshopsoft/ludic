@@ -4,16 +4,18 @@ import "ludic.steps"
 import "ludic.base"
 program StepsTest {
   numbers float
-  var vals: []int = null     # value of kind k for this machine
-  var party: bool = false
-  var seats: int = 1         # seats 0 .. seats-1 are taken
-
-  function fake_value(kind: int, param: int, player: int) -> int {
-    if player != 0 or kind < 0 or kind >= len(vals) { return 0 }
-    return vals[kind]
+  state StepsTestState {
+    vals: []int = null     # value of kind k for this machine
+    party: bool = false
+    seats: int = 1         # seats 0 .. seats-1 are taken
   }
-  function fake_party() -> bool { return party }
-  function fake_present(p: int) -> bool { return p < seats }
+
+  function fake_value(steps_test_st: StepsTestState, kind: int, param: int, player: int) -> int {
+    if player != 0 or kind < 0 or kind >= len(steps_test_st.vals) { return 0 }
+    return steps_test_st.vals[kind]
+  }
+  function fake_party(steps_test_st: StepsTestState) -> bool { return steps_test_st.party }
+  function fake_present(steps_test_st: StepsTestState, p: int) -> bool { return p < steps_test_st.seats }
 
   bind StepsWorld { value: fn fake_value, party: fn fake_party, present: fn fake_present }
 
@@ -33,13 +35,13 @@ program StepsTest {
     return k
   }
 
-  function fresh() -> void {
-    steps_reset()
-    steps_config(4)
-    party = false
-    seats = 1
-    vals = new []int
-    for i in 0 .. 7 { push(vals, 0) }
+  function fresh(base_st: mut BaseState, steps_st: mut StepsState, steps_test_st: mut StepsTestState) -> void {
+    steps_reset(base_st, steps_st)
+    steps_config(steps_st, 4)
+    steps_test_st.party = false
+    steps_test_st.seats = 1
+    steps_test_st.vals = new []int
+    for i in 0 .. 7 { push(steps_test_st.vals, 0) }
     let ks = new []StepsKind
     push(ks, kind(STEPS_SHAPE_COUNT, STEPS_POOL_SUM, true))
     push(ks, kind(STEPS_SHAPE_MASK, STEPS_POOL_OR, true))
@@ -48,21 +50,21 @@ program StepsTest {
     push(ks, kind(STEPS_SHAPE_COUNT, STEPS_POOL_MAX, true))
     push(ks, kind(STEPS_SHAPE_YES, STEPS_POOL_EACH, false))
     push(ks, kind(STEPS_SHAPE_YES, STEPS_POOL_WORLD, false))
-    steps_kinds(ks)
+    steps_kinds(steps_st, ks)
   }
 
   # chapter 0: 5 wood, a fire; chapter 1: two signs, the compass
-  function two_chapters() -> void {
-    steps_chapter_add()
-    steps_add(K_WOOD, 0, 5)
-    steps_add(K_FIRE, 0, 1)
-    steps_chapter_add()
-    steps_add(K_SIGNS, 0, 2)
-    steps_add(K_COMPASS, 0, 1)
+  function two_chapters(steps_st: mut StepsState) -> void {
+    steps_chapter_add(steps_st)
+    steps_add(steps_st, K_WOOD, 0, 5)
+    steps_add(steps_st, K_FIRE, 0, 1)
+    steps_chapter_add(steps_st)
+    steps_add(steps_st, K_SIGNS, 0, 2)
+    steps_add(steps_st, K_COMPASS, 0, 1)
   }
 
-  function facts_of(what: int) -> int {
-    let fs = q_drain(steps_facts())
+  function facts_of(base_st: mut BaseState, steps_st: mut StepsState, what: int) -> int {
+    let fs = q_drain(base_st, steps_facts(base_st, steps_st))
     var n = 0
     for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
     return n
@@ -75,150 +77,150 @@ program StepsTest {
     return s
   }
 
-  test "a step is answered by its kind's shape" {
-    fresh()
-    vals[K_WOOD] = 4
-    expect(not steps_eval(K_WOOD, 0, 5))
-    vals[K_WOOD] = 5
-    expect(steps_eval(K_WOOD, 0, 5))
-    vals[K_SIGNS] = 5
-    expect(steps_eval(K_SIGNS, 0, 2))
-    expect_eq(steps_got(K_SIGNS, 0), 2)
-    vals[K_ALL] = 3
-    expect(not steps_eval(K_ALL, 7, 0))
-    expect_eq(steps_got(K_ALL, 7), 2)
-    expect_eq(steps_want(K_ALL, 7, 0), 3)
-    expect_eq(steps_got(K_FIRE, 0), -1)
+  test "a step is answered by its kind's shape" (base_st: mut BaseState, steps_st: mut StepsState, steps_test_st: mut StepsTestState) {
+    fresh(base_st, steps_st, steps_test_st)
+    steps_test_st.vals[K_WOOD] = 4
+    expect(not steps_eval(steps_st, K_WOOD, 0, 5))
+    steps_test_st.vals[K_WOOD] = 5
+    expect(steps_eval(steps_st, K_WOOD, 0, 5))
+    steps_test_st.vals[K_SIGNS] = 5
+    expect(steps_eval(steps_st, K_SIGNS, 0, 2))
+    expect_eq(steps_got(steps_st, K_SIGNS, 0), 2)
+    steps_test_st.vals[K_ALL] = 3
+    expect(not steps_eval(steps_st, K_ALL, 7, 0))
+    expect_eq(steps_got(steps_st, K_ALL, 7), 2)
+    expect_eq(steps_want(steps_st, K_ALL, 7, 0), 3)
+    expect_eq(steps_got(steps_st, K_FIRE, 0), -1)
   }
 
-  test "an arc's steps stick as they are met, and a full chapter opens the next" {
-    fresh()
-    two_chapters()
-    expect_eq(steps_count(), 2)
-    expect_eq(steps_in(1), 2)
-    vals[K_FIRE] = 1
-    steps_check()
-    expect(steps_done(1))
-    expect(not steps_done(0))
-    expect_eq(facts_of(STEPS_MET), 1)
-    vals[K_FIRE] = 0
-    steps_check()
-    expect(steps_done(1))
-    vals[K_WOOD] = 9
-    steps_check()
-    expect_eq(steps_current(), 1)
-    expect_eq(steps_done_mask(), 0)
-    let fs = q_drain(steps_facts())
+  test "an arc's steps stick as they are met, and a full chapter opens the next" (base_st: mut BaseState, steps_st: mut StepsState, steps_test_st: mut StepsTestState) {
+    fresh(base_st, steps_st, steps_test_st)
+    two_chapters(steps_st)
+    expect_eq(steps_count(steps_st), 2)
+    expect_eq(steps_in(steps_st, 1), 2)
+    steps_test_st.vals[K_FIRE] = 1
+    steps_check(base_st, steps_st)
+    expect(steps_done(steps_st, 1))
+    expect(not steps_done(steps_st, 0))
+    expect_eq(facts_of(base_st, steps_st, STEPS_MET), 1)
+    steps_test_st.vals[K_FIRE] = 0
+    steps_check(base_st, steps_st)
+    expect(steps_done(steps_st, 1))
+    steps_test_st.vals[K_WOOD] = 9
+    steps_check(base_st, steps_st)
+    expect_eq(steps_current(steps_st), 1)
+    expect_eq(steps_done_mask(steps_st), 0)
+    let fs = q_drain(base_st, steps_facts(base_st, steps_st))
     expect_eq(len(fs), 2)
     expect_eq(fs[1].what, STEPS_CHAPTER)
     expect_eq(fs[1].chapter, 0)
   }
 
-  test "a step met before its chapter opens ticks the moment it is looked at" {
-    fresh()
-    two_chapters()
-    vals[K_SIGNS] = 3
-    vals[K_COMPASS] = 1
-    vals[K_WOOD] = 5
-    vals[K_FIRE] = 1
-    steps_check()
-    expect_eq(steps_current(), 1)
-    steps_check()
-    expect(steps_finished())
+  test "a step met before its chapter opens ticks the moment it is looked at" (base_st: mut BaseState, steps_st: mut StepsState, steps_test_st: mut StepsTestState) {
+    fresh(base_st, steps_st, steps_test_st)
+    two_chapters(steps_st)
+    steps_test_st.vals[K_SIGNS] = 3
+    steps_test_st.vals[K_COMPASS] = 1
+    steps_test_st.vals[K_WOOD] = 5
+    steps_test_st.vals[K_FIRE] = 1
+    steps_check(base_st, steps_st)
+    expect_eq(steps_current(steps_st), 1)
+    steps_check(base_st, steps_st)
+    expect(steps_finished(steps_st))
   }
 
-  test "a chapter holds at most six steps" {
-    fresh()
-    expect(not steps_add(K_WOOD, 0, 1))
-    steps_chapter_add()
-    for i in 0 .. STEPS_PER_CHAPTER { expect(steps_add(K_WOOD, 0, i)) }
-    expect(not steps_add(K_WOOD, 0, 9))
+  test "a chapter holds at most six steps" (base_st: mut BaseState, steps_st: mut StepsState, steps_test_st: mut StepsTestState) {
+    fresh(base_st, steps_st, steps_test_st)
+    expect(not steps_add(steps_st, K_WOOD, 0, 1))
+    steps_chapter_add(steps_st)
+    for i in 0 .. STEPS_PER_CHAPTER { expect(steps_add(steps_st, K_WOOD, 0, i)) }
+    expect(not steps_add(steps_st, K_WOOD, 0, 9))
   }
 
-  test "the steps asked for right now" {
-    fresh()
-    two_chapters()
-    expect(steps_wants(K_FIRE, -1))
-    expect(not steps_wants(K_SIGNS, -1))
+  test "the steps asked for right now" (base_st: mut BaseState, steps_st: mut StepsState, steps_test_st: mut StepsTestState) {
+    fresh(base_st, steps_st, steps_test_st)
+    two_chapters(steps_st)
+    expect(steps_wants(steps_st, K_FIRE, -1))
+    expect(not steps_wants(steps_st, K_SIGNS, -1))
   }
 
-  test "a tally adds up across the party, and a mask unions" {
-    fresh()
-    two_chapters()
-    party = true
-    seats = 2
-    vals[K_WOOD] = 3
-    expect(not steps_met(0))
-    steps_share(1, 0, shares(2, 0))
-    expect(steps_met(0))
-    expect_eq(steps_party_got(0), 5)
-    steps_set_current(1)
-    vals[K_SIGNS] = 1
-    steps_share(1, 1, shares(2, 0))
-    expect(steps_met(0))
+  test "a tally adds up across the party, and a mask unions" (base_st: mut BaseState, steps_st: mut StepsState, steps_test_st: mut StepsTestState) {
+    fresh(base_st, steps_st, steps_test_st)
+    two_chapters(steps_st)
+    steps_test_st.party = true
+    steps_test_st.seats = 2
+    steps_test_st.vals[K_WOOD] = 3
+    expect(not steps_met(steps_st, 0))
+    steps_share(steps_st, 1, 0, shares(2, 0))
+    expect(steps_met(steps_st, 0))
+    expect_eq(steps_party_got(steps_st, 0), 5)
+    steps_set_current(steps_st, 1)
+    steps_test_st.vals[K_SIGNS] = 1
+    steps_share(steps_st, 1, 1, shares(2, 0))
+    expect(steps_met(steps_st, 0))
   }
 
-  test "anyone having done it is the party having done it" {
-    fresh()
-    two_chapters()
-    party = true
-    seats = 3
-    steps_share(2, 0, shares(0, 1))
-    expect(steps_met(1))
+  test "anyone having done it is the party having done it" (base_st: mut BaseState, steps_st: mut StepsState, steps_test_st: mut StepsTestState) {
+    fresh(base_st, steps_st, steps_test_st)
+    two_chapters(steps_st)
+    steps_test_st.party = true
+    steps_test_st.seats = 3
+    steps_share(steps_st, 2, 0, shares(0, 1))
+    expect(steps_met(steps_st, 1))
   }
 
-  test "a thing in the pack is met when every player has one, and says who has not" {
-    fresh()
-    two_chapters()
-    steps_set_current(1)
-    party = true
-    seats = 3
-    vals[K_COMPASS] = 1
-    steps_share(1, 1, shares(0, 1))
-    expect(not steps_met(1))
-    expect_eq(steps_each(1), 2)
-    let lack = steps_lacking(1)
+  test "a thing in the pack is met when every player has one, and says who has not" (base_st: mut BaseState, steps_st: mut StepsState, steps_test_st: mut StepsTestState) {
+    fresh(base_st, steps_st, steps_test_st)
+    two_chapters(steps_st)
+    steps_set_current(steps_st, 1)
+    steps_test_st.party = true
+    steps_test_st.seats = 3
+    steps_test_st.vals[K_COMPASS] = 1
+    steps_share(steps_st, 1, 1, shares(0, 1))
+    expect(not steps_met(steps_st, 1))
+    expect_eq(steps_each(steps_st, 1), 2)
+    let lack = steps_lacking(steps_st, 1)
     expect_eq(len(lack), 1)
     expect_eq(lack[0], 2)
-    steps_share(2, 1, shares(0, 1))
-    expect(steps_met(1))
+    steps_share(steps_st, 2, 1, shares(0, 1))
+    expect(steps_met(steps_st, 1))
   }
 
-  test "a player who leaves takes their share with them" {
-    fresh()
-    two_chapters()
-    party = true
-    seats = 2
-    steps_share(1, 0, shares(5, 0))
-    expect(steps_met(0))
-    steps_leave(1)
-    expect(not steps_met(0))
+  test "a player who leaves takes their share with them" (base_st: mut BaseState, steps_st: mut StepsState, steps_test_st: mut StepsTestState) {
+    fresh(base_st, steps_st, steps_test_st)
+    two_chapters(steps_st)
+    steps_test_st.party = true
+    steps_test_st.seats = 2
+    steps_share(steps_st, 1, 0, shares(5, 0))
+    expect(steps_met(steps_st, 0))
+    steps_leave(steps_st, 1)
+    expect(not steps_met(steps_st, 0))
   }
 
-  test "a share about another chapter is ignored, and the best of a tally is the best" {
-    fresh()
-    steps_chapter_add()
-    steps_add(K_REP, 0, 25)
-    party = true
-    seats = 2
-    steps_share(1, 3, shares(99, 0))
-    expect(not steps_met(0))
-    vals[K_REP] = 10
-    steps_share(1, 0, shares(30, 0))
-    expect(steps_met(0))
-    expect_eq(steps_party_got(0), 30)
+  test "a share about another chapter is ignored, and the best of a tally is the best" (base_st: mut BaseState, steps_st: mut StepsState, steps_test_st: mut StepsTestState) {
+    fresh(base_st, steps_st, steps_test_st)
+    steps_chapter_add(steps_st)
+    steps_add(steps_st, K_REP, 0, 25)
+    steps_test_st.party = true
+    steps_test_st.seats = 2
+    steps_share(steps_st, 1, 3, shares(99, 0))
+    expect(not steps_met(steps_st, 0))
+    steps_test_st.vals[K_REP] = 10
+    steps_share(steps_st, 1, 0, shares(30, 0))
+    expect(steps_met(steps_st, 0))
+    expect_eq(steps_party_got(steps_st, 0), 30)
   }
 
-  test "the world's steps are asked of this machine alone" {
-    fresh()
-    steps_chapter_add()
-    steps_add(K_HOUR, 0, 1)
-    party = true
-    seats = 2
-    steps_share(1, 0, shares(1, 0))
-    expect(not steps_met(0))
-    vals[K_HOUR] = 1
-    expect(steps_met(0))
-    expect_eq(steps_mine(K_HOUR, 0, 1), 0)
+  test "the world's steps are asked of this machine alone" (base_st: mut BaseState, steps_st: mut StepsState, steps_test_st: mut StepsTestState) {
+    fresh(base_st, steps_st, steps_test_st)
+    steps_chapter_add(steps_st)
+    steps_add(steps_st, K_HOUR, 0, 1)
+    steps_test_st.party = true
+    steps_test_st.seats = 2
+    steps_share(steps_st, 1, 0, shares(1, 0))
+    expect(not steps_met(steps_st, 0))
+    steps_test_st.vals[K_HOUR] = 1
+    expect(steps_met(steps_st, 0))
+    expect_eq(steps_mine(steps_st, K_HOUR, 0, 1), 0)
   }
 }

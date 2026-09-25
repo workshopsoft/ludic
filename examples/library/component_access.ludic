@@ -10,30 +10,32 @@ program ComponentAccess {
   model Player { Position, Hero }
   model Thing { Position, Tag }
   enum HeroState { Idle, Rolling, Swinging }
-  var hero_state: HeroState = HeroState.Rolling
-  var player: int = -1
-  var frames: int = 0
-  function step() -> void {
-    machine hero_state {
+  state ComponentAccessState {
+    hero_state: HeroState = HeroState.Rolling
+    player: int = -1
+    frames: int = 0
+  }
+  function step(component_access_st: mut ComponentAccessState) -> void {
+    machine component_access_st.hero_state {
       state Idle { print(100);  become Swinging }
       state Rolling { print(101);  become Idle }
       state Swinging { print(102);  become Rolling }
     }
   }
-  handler Tick phase Update {
-    frames += 1
-    if frames == 1 {
-      player = spawn Player { Position { x: 3, y: 4 }, Hero { roll_frames: 9, flash: 3 } }
+  handler Tick(component_access_st: mut ComponentAccessState) phase Update {
+    component_access_st.frames += 1
+    if component_access_st.frames == 1 {
+      component_access_st.player = spawn Player { Position { x: 3, y: 4 }, Hero { roll_frames: 9, flash: 3 } }
       spawn Thing { Position { x: 30, y: 40 }, Tag { n: 7 } }
-      print(Hero.of(player).roll_frames)                # 9
-      Hero.of(player).iframes = 20
-      Hero.of(player).iframes -= 5
-      print(Hero.of(player).iframes)                    # 15
-      let hero = Hero.of(player)
+      print(Hero.of(component_access_st.player).roll_frames)                # 9
+      Hero.of(component_access_st.player).iframes = 20
+      Hero.of(component_access_st.player).iframes -= 5
+      print(Hero.of(component_access_st.player).iframes)                    # 15
+      let hero = Hero.of(component_access_st.player)
       hero.roll_frames += 1
-      print(Hero.of(player).roll_frames)                # 10
-      print(Position.of(player).x + Position.of(1).x)   # 33
-      print(Hero.has(player))                           # 1
+      print(Hero.of(component_access_st.player).roll_frames)                # 10
+      print(Position.of(component_access_st.player).x + Position.of(1).x)   # 33
+      print(Hero.has(component_access_st.player))                           # 1
       print(Hero.has(1))                                # 0
       print(Hero.has(-1))                               # 0
       print(Tag.has(1))                                 # 1
@@ -42,13 +44,13 @@ program ComponentAccess {
       print(Position.count())                           # 1: the player
       spawn Thing { Position { x: 1 } }
     }
-    if frames == 2 {
-      step();  step();  step()                          # 101 100 102
-      print(hero_state)                                 # 1
+    if component_access_st.frames == 2 {
+      step(component_access_st);  step(component_access_st);  step(component_access_st)                          # 101 100 102
+      print(component_access_st.hero_state)                                 # 1
       print(Position.count())                           # 2: the player and the thing spawned after
     }
-    if frames == 3 {
-      print(Hero.of(player).flash)                      # ticked twice: 1
+    if component_access_st.frames == 3 {
+      print(Hero.of(component_access_st.player).flash)                      # ticked twice: 1
       Position.despawn_all()
       print(Position.count())                           # 0
       quit()

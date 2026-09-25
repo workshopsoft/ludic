@@ -1,6 +1,6 @@
 # shop/index.ludic - private names a neighbour also uses: seed, dice, LIMIT
 module shop
-var dice: int = 100
+let dice: int = 100
 const LIMIT: int = 5
 function seed() -> int {
   return dice + LIMIT

@@ -5,7 +5,7 @@
 # Running it prints:  4294967295 3988292384 -4294967296 1099511627776 -3750763034362895579 -1 1
 program LongLiterals {
   const MASK: long = 4294967295
-  var poly: long = 3988292384
+  let poly: long = 3988292384
   function neg() -> long { return -4294967296 }
   entry {
     let big = 0x10000000000

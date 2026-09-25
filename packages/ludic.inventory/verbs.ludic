@@ -1,38 +1,38 @@
 # verbs.ludic - the only way a count changes, and each change is said once
-function iv_change(it: int, after: int) -> void {
-  let before = iv_counts[it]
+function iv_change(base_st: mut BaseState, inventory_st: mut InventoryState, it: int, after: int) -> void {
+  let before = inventory_st.iv_counts[it]
   if before == after { return }
-  iv_counts[it] = after
+  inventory_st.iv_counts[it] = after
   let c = new ItemChanged
   c.item = it
   c.before = before
   c.after = after
-  q_push(inv_changes(), c)
+  q_push(base_st, inv_changes(base_st, inventory_st), c)
 }
 
 # as many of n as there is room for; returns how many went in
-export function inv_add(it: int, n: int) -> int {
-  if not iv_valid(it) or n <= 0 { return 0 }
-  let k = Math.min(n, inv_room(it))
-  if k > 0 { iv_change(it, iv_counts[it] + k) }
+export function inv_add(base_st: mut BaseState, inventory_st: mut InventoryState, it: int, n: int) -> int {
+  if not iv_valid(inventory_st, it) or n <= 0 { return 0 }
+  let k = Math.min(n, inv_room(inventory_st, it))
+  if k > 0 { iv_change(base_st, inventory_st, it, inventory_st.iv_counts[it] + k) }
   return k
 }
 
 # all n or none
-export function inv_take(it: int, n: int) -> bool {
-  if not iv_valid(it) or iv_counts[it] < n { return false }
-  if n > 0 { iv_change(it, iv_counts[it] - n) }
+export function inv_take(base_st: mut BaseState, inventory_st: mut InventoryState, it: int, n: int) -> bool {
+  if not iv_valid(inventory_st, it) or inventory_st.iv_counts[it] < n { return false }
+  if n > 0 { iv_change(base_st, inventory_st, it, inventory_st.iv_counts[it] - n) }
   return true
 }
 
 # a count outright, room or not (a starting kit, a correction, the network's word); never below 0
-export function inv_set(it: int, n: int) -> void {
-  if not iv_valid(it) { return }
-  iv_change(it, Math.max(n, 0))
+export function inv_set(base_st: mut BaseState, inventory_st: mut InventoryState, it: int, n: int) -> void {
+  if not iv_valid(inventory_st, it) { return }
+  iv_change(base_st, inventory_st, it, Math.max(n, 0))
 }
 
 # everything gone, silently: a new trip, or before a load
-export function inv_clear() -> void {
-  iv_counts = new []int
-  for i in 0 .. inv_kinds() { push(iv_counts, 0) }
+export function inv_clear(inventory_st: mut InventoryState) -> void {
+  inventory_st.iv_counts = new []int
+  for i in 0 .. inv_kinds(inventory_st) { push(inventory_st.iv_counts, 0) }
 }

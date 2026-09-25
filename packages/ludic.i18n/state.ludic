@@ -1,47 +1,18 @@
 # state.ludic - the languages found, the one in use, and the loaded file's lookups
-var on: bool = false                    # a language other than English is drawing
-var cur: string = "en"
-var codes: []string = null              # every language found, "en" first
-var names: []string = null
-var paths: []string = null
-var fonts: []string = null              # a font atlas directory, "" for the game's own
-var font_now: string = ""
 
-var exact: Dict = null                  # msgid -> index into out
-var out: []string = null
-var lits: []string = null               # every pattern's literal pieces, one run per pattern
-var pat_out: []string = null
-var pat_l0: words = null                # where a pattern's pieces start in lits
-var pat_nl: words = null                # how many pieces (holes + 1)
-var pat_sc: words = null                # bytes of English it pins down: more is a better match
-var pat_ph: words = null                # by piece: the hole number that follows it
-var pat_n: int = 0
-var pfx: Dict = null                    # a pattern's first four bytes -> its chain head + 1
-var sfx: Dict = null                    # else its last four
-var gen_head: int = 0                   # else the short list, tried on short strings only
-var nx_p: words = null
-var nx_s: words = null
-var nx_g: words = null
-var cache: Dict = null                  # English as drawn -> index into cache_out
-var cache_out: []string = null
-var caps: []string = null
-var hit: bool = false
 
-var plural: Dict = null                 # a plural msgid (the singular) -> index into forms / 3
-var forms: []string = null              # three forms per entry, "" where the file has fewer
-var plural_rule: int = 0                # PL_*
 
 const CACHE_MAX: int = 4000
 const CAPS: int = 16
 
-export function i18n_on() -> bool { return on }
-export function i18n_current() -> string { return cur }
-export function i18n_font_now() -> string { return font_now }
-export function i18n_exact_count() -> int {
-  if out == null { return 0 }
-  return len(out)
+export function i18n_on(i18n_st: I18nState) -> bool { return i18n_st.on }
+export function i18n_current(i18n_st: I18nState) -> string { return i18n_st.cur }
+export function i18n_font_now(i18n_st: I18nState) -> string { return i18n_st.font_now }
+export function i18n_exact_count(i18n_st: I18nState) -> int {
+  if i18n_st.out == null { return 0 }
+  return len(i18n_st.out)
 }
-export function i18n_pattern_count() -> int { return pat_n }
+export function i18n_pattern_count(i18n_st: I18nState) -> int { return i18n_st.pat_n }
 
 # the overlay's own font, as the overlay was opened with it
-export function i18n_font_base(path: string) -> void { font_now = path }
+export function i18n_font_base(i18n_st: mut I18nState, path: string) -> void { i18n_st.font_now = path }

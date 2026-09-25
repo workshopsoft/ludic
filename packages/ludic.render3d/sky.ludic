@@ -7,47 +7,29 @@
 
 const SKY_PREFILTER_LEVELS: int = 6
 
-var sky_tex: int = 0
-var sky_w: int = 0
-var sky_h: int = 0
-var sky_irradiance: int = 0
-var sky_prefilter: int = 0        # GL_TEXTURE_2D_ARRAY
-var sky_brdf: int = 0
-var sun_dir: floats = null         # toward the sun (float bits)
-var sun_color: floats = null       # radiance (float bits)
-var sky_fullscreen: Mesh = null
-var sky_yaw: float = 0.0              # radians: the HDRI is turned by this about y
-var sky_sun_boost: float = 2.3   # 2.3: the photograph's thin cloud dims its sun; a crisper day wants more
-var sky_rot_s: float = 0.0
-var sky_rot_c: float = 0.0
-var sun_hdri: floats = null        # the sun direction as found in the file
+let sky_sun_boost: float = 2.3   # 2.3: the photograph's thin cloud dims its sun; a crisper day wants more
 # The yaw to bake the light at the first time (radians, float bits). A game that turns the sky at
 # start sets it before r3d_init, so the image-based light is baked once at that yaw rather than at
 # 0 and then again - which is what sky_set_yaw at boot used to cost.
-var sky_start_yaw: float = 0.0
-var sky_baked: bool = false      # the IBL set exists, baked at sky_baked_yaw
-var sky_baked_yaw: float = 0.0
-var sky_p_irr: int = 0
-var sky_p_pre: int = 0
-var sky_p_brdf: int = 0
+let sky_start_yaw: float = 0.0
 
 # turn the HDRI so its sun sits at world azimuth `yaw` (radians, 0 = toward -z)
-function sky_set_yaw(yaw: float) -> void {
-  sky_set_rot(yaw)
+function sky_set_yaw(render3d_st: mut Render3dState, yaw: float) -> void {
+  sky_set_rot(render3d_st, yaw)
   # world sun = rotY(sun_hdri, -yaw): the lookup rotates a world direction by +yaw
-  let s = sun_hdri
-  v3_set(sun_dir, sky_rot_c * s[0] - sky_rot_s * s[2], s[1], sky_rot_s * s[0] + sky_rot_c * s[2])
+  let s = render3d_st.sun_hdri
+  v3_set(render3d_st.sun_dir, render3d_st.sky_rot_c * s[0] - render3d_st.sky_rot_s * s[2], s[1], render3d_st.sky_rot_s * s[0] + render3d_st.sky_rot_c * s[2])
   # the light is already baked at this yaw: turning to it again bakes nothing
-  if sky_baked and yaw == sky_baked_yaw { return }
-  sky_precompute()
+  if render3d_st.sky_baked and yaw == render3d_st.sky_baked_yaw { return }
+  sky_precompute(render3d_st)
 }
 # turn only the visible sky image (cheap, per frame): the light and the convolved
 # maps stay where they are — daylight.ludic moves those on its own terms
-function sky_set_rot(yaw: float) -> void {
-  sky_yaw = yaw
-  sky_rot_s = Math.sin(yaw);  sky_rot_c = Math.cos(yaw)
+function sky_set_rot(render3d_st: mut Render3dState, yaw: float) -> void {
+  render3d_st.sky_yaw = yaw
+  render3d_st.sky_rot_s = Math.sin(yaw);  render3d_st.sky_rot_c = Math.cos(yaw)
 }
-function sky_bind_rot(prog: int) -> void { u_f2(gpu_uniform(prog, "u_sky_rot"), sky_rot_s, sky_rot_c) }
+function sky_bind_rot(render3d_st: mut Render3dState, prog: int) -> void { u_f2(render3d_st, gpu_uniform(render3d_st, prog, "u_sky_rot"), render3d_st.sky_rot_s, render3d_st.sky_rot_c) }
 
 # direction for an equirect uv (matches equirectUV in lighting.glsl)
 function sky_dir_from_uv(o: floats, u: float, v: float) -> void {
@@ -57,94 +39,93 @@ function sky_dir_from_uv(o: floats, u: float, v: float) -> void {
   v3_set(o, st * Math.sin(phi), Math.cos(theta), -(st * Math.cos(phi)))
 }
 
-function sky_load(path: string) -> bool {
-  sky_tex = tex_load_hdr(path)
-  if sky_tex == 0 { return false }
-  sky_w = tex_w;  sky_h = tex_h
-  sun_dir = floats(3)
-  sun_hdri = floats(3)
-  sky_dir_from_uv(sun_hdri, float(hdr_max_x * 2 + 1) / float(sky_w * 2), float(hdr_max_y * 2 + 1) / float(sky_h * 2))
-  v3_copy(sun_dir, sun_hdri)
-  sky_rot_c = 1.0
+function sky_load(render3d_st: mut Render3dState, path: string) -> bool {
+  render3d_st.sky_tex = tex_load_hdr(render3d_st, path)
+  if render3d_st.sky_tex == 0 { return false }
+  render3d_st.sky_w = render3d_st.tex_w;  render3d_st.sky_h = render3d_st.tex_h
+  render3d_st.sun_dir = floats(3)
+  render3d_st.sun_hdri = floats(3)
+  sky_dir_from_uv(render3d_st.sun_hdri, float(render3d_st.hdr_max_x * 2 + 1) / float(render3d_st.sky_w * 2), float(render3d_st.hdr_max_y * 2 + 1) / float(render3d_st.sky_h * 2))
+  v3_copy(render3d_st.sun_dir, render3d_st.sun_hdri)
+  render3d_st.sky_rot_c = 1.0
   # the sun's irradiance is what the IBL clip leaves out of the map; lighting it
   # directly with that keeps sun and sky in the photograph's own proportion
-  sun_color = v3_new(hdr_sun_r * sky_sun_boost, hdr_sun_g * sky_sun_boost, hdr_sun_b * sky_sun_boost)
-  print(`sun irradiance: {fixed(hdr_sun_r)} {fixed(hdr_sun_g)} {fixed(hdr_sun_b)} (Q16.16), clip {fixed(hdr_clip)}`)
-  print(`sky: {sky_w}x{sky_h}, sun at texel {hdr_max_x},{hdr_max_y}`)
-  sky_fullscreen = mesh_fullscreen()
-  if sky_start_yaw != 0.0 { sky_set_yaw(sky_start_yaw) } else { sky_precompute() }
+  render3d_st.sun_color = v3_new(render3d_st.hdr_sun_r * sky_sun_boost, render3d_st.hdr_sun_g * sky_sun_boost, render3d_st.hdr_sun_b * sky_sun_boost)
+  print(`sun irradiance: {fixed(render3d_st.hdr_sun_r)} {fixed(render3d_st.hdr_sun_g)} {fixed(render3d_st.hdr_sun_b)} (Q16.16), clip {fixed(render3d_st.hdr_clip)}`)
+  print(`sky: {render3d_st.sky_w}x{render3d_st.sky_h}, sun at texel {render3d_st.hdr_max_x},{render3d_st.hdr_max_y}`)
+  render3d_st.sky_fullscreen = mesh_fullscreen(render3d_st)
+  if sky_start_yaw != 0.0 { sky_set_yaw(render3d_st, sky_start_yaw) } else { sky_precompute(render3d_st) }
   return true
 }
 
-function sky_convolve(prog: int, target_tex: int, layer: int, w: int, h: int, rough: float) -> void {
-  let fbo = gpu_fb_new()
-  gpu_fb_bind(fbo)
-  if layer < 0 { gpu_fb_color(0, target_tex) }
-  else { gpu_fb_color_layer(0, target_tex, layer) }
-  gpu_viewport(0, 0, w, h)
-  gpu_use_program(prog)
-  r3d_bind_2d(prog, "u_sky", 0, sky_tex)
-  sky_bind_rot(prog)
-  u_f(gpu_uniform(prog, "u_sun_clip"), hdr_clip)
-  u_f(gpu_uniform(prog, "u_rough"), rough)
-  u_f(gpu_uniform(prog, "u_sky_w"), float(sky_w))
-  mesh_draw(sky_fullscreen)
-  gpu_fb_bind(0)
-  gpu_fb_free(fbo)
+function sky_convolve(render3d_st: mut Render3dState, prog: int, target_tex: int, layer: int, w: int, h: int, rough: float) -> void {
+  let fbo = gpu_fb_new(render3d_st)
+  gpu_fb_bind(render3d_st, fbo)
+  if layer < 0 { gpu_fb_color(render3d_st, 0, target_tex) }
+  else { gpu_fb_color_layer(render3d_st, 0, target_tex, layer) }
+  gpu_viewport(render3d_st, 0, 0, w, h)
+  gpu_use_program(render3d_st, prog)
+  r3d_bind_2d(render3d_st, prog, "u_sky", 0, render3d_st.sky_tex)
+  sky_bind_rot(render3d_st, prog)
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_sun_clip"), render3d_st.hdr_clip)
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_rough"), rough)
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_sky_w"), float(render3d_st.sky_w))
+  mesh_draw(render3d_st, render3d_st.sky_fullscreen)
+  gpu_fb_bind(render3d_st, 0)
+  gpu_fb_free(render3d_st, fbo)
 }
 
 # the prefiltered specular's width per level (its height is half): 256, 512 or 1024. The image
 # the reflections and the rough sheen are lit from; sky_set_quality bakes it again at a new size.
-var sky_prefilter_w: int = 512
-function sky_set_quality(w: int) -> void {
-  if w < 64 or w == sky_prefilter_w { return }
-  sky_prefilter_w = w
-  if sky_irradiance != 0 { sky_precompute() }
+function sky_set_quality(render3d_st: mut Render3dState, w: int) -> void {
+  if w < 64 or w == render3d_st.sky_prefilter_w { return }
+  render3d_st.sky_prefilter_w = w
+  if render3d_st.sky_irradiance != 0 { sky_precompute(render3d_st) }
 }
 
-function sky_precompute() -> void {
-  gpu_depth_test(false)
-  if sky_irradiance != 0 {
-    gpu_tex_free(sky_irradiance)
-    gpu_tex_free(sky_prefilter)
-    gpu_tex_free(sky_brdf)
+function sky_precompute(render3d_st: mut Render3dState) -> void {
+  gpu_depth_test(render3d_st, false)
+  if render3d_st.sky_irradiance != 0 {
+    gpu_tex_free(render3d_st, render3d_st.sky_irradiance)
+    gpu_tex_free(render3d_st, render3d_st.sky_prefilter)
+    gpu_tex_free(render3d_st, render3d_st.sky_brdf)
   }
   # irradiance: 128 x 64 equirect
-  if sky_p_irr == 0 { sky_p_irr = r3d_program("fullscreen.vert", "ibl_irradiance.frag", "");  sky_p_pre = r3d_program("fullscreen.vert", "ibl_prefilter.frag", "");  sky_p_brdf = r3d_program("fullscreen.vert", "ibl_brdf.frag", "") }
-  let p_irr = sky_p_irr
-  sky_irradiance = tex_target(128, 64, GL_RGB16F, GL_RGB, GL_FLOAT, GL_LINEAR)
-  gpu_tex_bind(GPU_TEX2D, sky_irradiance)
-  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
-  sky_convolve(p_irr, sky_irradiance, -1, 128, 64, 0.0)
+  if render3d_st.sky_p_irr == 0 { render3d_st.sky_p_irr = r3d_program(render3d_st, "fullscreen.vert", "ibl_irradiance.frag", "");  render3d_st.sky_p_pre = r3d_program(render3d_st, "fullscreen.vert", "ibl_prefilter.frag", "");  render3d_st.sky_p_brdf = r3d_program(render3d_st, "fullscreen.vert", "ibl_brdf.frag", "") }
+  let p_irr = render3d_st.sky_p_irr
+  render3d_st.sky_irradiance = tex_target(render3d_st, 128, 64, GL_RGB16F, GL_RGB, GL_FLOAT, GL_LINEAR)
+  gpu_tex_bind(render3d_st, GPU_TEX2D, render3d_st.sky_irradiance)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
+  sky_convolve(render3d_st, p_irr, render3d_st.sky_irradiance, -1, 128, 64, 0.0)
   # prefiltered specular: 6 roughness levels, sky_prefilter_w x half each, as a 2D array
-  let p_pre = sky_p_pre
-  sky_prefilter = gpu_tex_new()
-  gpu_tex_bind(GPU_TEX2D_ARRAY, sky_prefilter)
-  gpu_tex_image3d(GL_RGB16F, sky_prefilter_w, sky_prefilter_w / 2, SKY_PREFILTER_LEVELS, GL_RGB, GL_FLOAT, null)
-  gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_WRAP_S, GL_REPEAT)
-  gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-  gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-  gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+  let p_pre = render3d_st.sky_p_pre
+  render3d_st.sky_prefilter = gpu_tex_new(render3d_st)
+  gpu_tex_bind(render3d_st, GPU_TEX2D_ARRAY, render3d_st.sky_prefilter)
+  gpu_tex_image3d(render3d_st, GL_RGB16F, render3d_st.sky_prefilter_w, render3d_st.sky_prefilter_w / 2, SKY_PREFILTER_LEVELS, GL_RGB, GL_FLOAT, null)
+  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GL_TEXTURE_WRAP_S, GL_REPEAT)
+  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
   for l in 0 .. SKY_PREFILTER_LEVELS {
-    sky_convolve(p_pre, sky_prefilter, l, sky_prefilter_w, sky_prefilter_w / 2, float(l) / float(SKY_PREFILTER_LEVELS - 1))
+    sky_convolve(render3d_st, p_pre, render3d_st.sky_prefilter, l, render3d_st.sky_prefilter_w, render3d_st.sky_prefilter_w / 2, float(l) / float(SKY_PREFILTER_LEVELS - 1))
   }
   # BRDF LUT
-  let p_brdf = sky_p_brdf
-  sky_brdf = tex_target(256, 256, GL_RG16F, GL_RG, GL_FLOAT, GL_LINEAR)
-  sky_convolve(p_brdf, sky_brdf, -1, 256, 256, 0.0)
-  sky_baked = true
-  sky_baked_yaw = sky_yaw
-  gpu_check("sky precompute")
+  let p_brdf = render3d_st.sky_p_brdf
+  render3d_st.sky_brdf = tex_target(render3d_st, 256, 256, GL_RG16F, GL_RG, GL_FLOAT, GL_LINEAR)
+  sky_convolve(render3d_st, p_brdf, render3d_st.sky_brdf, -1, 256, 256, 0.0)
+  render3d_st.sky_baked = true
+  render3d_st.sky_baked_yaw = render3d_st.sky_yaw
+  gpu_check(render3d_st, "sky precompute")
 }
 
 # bind the IBL set + sun for a lit program (units 12..14)
-function sky_bind_lighting(prog: int) -> void {
-  r3d_bind_2d(prog, "u_irradiance", 12, sky_irradiance)
-  r3d_bind_tex(prog, "u_prefilter", 13, GPU_TEX2D_ARRAY, sky_prefilter)
-  r3d_bind_2d(prog, "u_brdf", 14, sky_brdf)
-  u_v3(gpu_uniform(prog, "u_sun_dir"), sun_dir)
-  u_v3(gpu_uniform(prog, "u_sun_color"), sun_color)
-  u_v3(gpu_uniform(prog, "u_cam_pos"), cam_pos)
-  u_f(gpu_uniform(prog, "u_prefilter_levels"), float(SKY_PREFILTER_LEVELS))
-  daylight_bind(prog)
+function sky_bind_lighting(render3d_st: mut Render3dState, prog: int) -> void {
+  r3d_bind_2d(render3d_st, prog, "u_irradiance", 12, render3d_st.sky_irradiance)
+  r3d_bind_tex(render3d_st, prog, "u_prefilter", 13, GPU_TEX2D_ARRAY, render3d_st.sky_prefilter)
+  r3d_bind_2d(render3d_st, prog, "u_brdf", 14, render3d_st.sky_brdf)
+  u_v3(render3d_st, gpu_uniform(render3d_st, prog, "u_sun_dir"), render3d_st.sun_dir)
+  u_v3(render3d_st, gpu_uniform(render3d_st, prog, "u_sun_color"), render3d_st.sun_color)
+  u_v3(render3d_st, gpu_uniform(render3d_st, prog, "u_cam_pos"), render3d_st.cam_pos)
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_prefilter_levels"), float(SKY_PREFILTER_LEVELS))
+  daylight_bind(render3d_st, prog)
 }

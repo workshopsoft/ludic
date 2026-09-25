@@ -1,29 +1,29 @@
 # peers.ludic - who this machine talks to, and the written message queued for them
-function net__find(ip: int, port: int) -> int {
+function net__find(net_st: NetState, ip: int, port: int) -> int {
   for i in 0 .. NET_PEERS {
-    let p = net__peers[i]
+    let p = net_st.net__peers[i]
     if p.on and p.ip == ip and p.port == port { return i }
   }
   return -1
 }
 
 # the slot talking to network player `pid`, or -1
-export function np_of_pid(pid: int) -> int {
-  if net__peers == null { return -1 }
+export function np_of_pid(net_st: NetState, pid: int) -> int {
+  if net_st.net__peers == null { return -1 }
   for i in 0 .. NET_PEERS {
-    let p = net__peers[i]
+    let p = net_st.net__peers[i]
     if p.on and p.pid == pid { return i }
   }
   return -1
 }
 
-function net__open(slot: int, ip: int, port: int, pid: int) -> void {
-  let p = net__peers[slot]
+function net__open(net_st: mut NetState, slot: int, ip: int, port: int, pid: int) -> void {
+  let p = net_st.net__peers[slot]
   p.on = true
   p.ip = ip
   p.port = port
   p.pid = pid
-  p.heard = net__time
+  p.heard = net_st.net__time
   p.next_id = 1
   p.recv_id = 0
   p.acked = 0
@@ -32,29 +32,29 @@ function net__open(slot: int, ip: int, port: int, pid: int) -> void {
   p.closing = false
 }
 
-export function np_close(slot: int) -> void {
-  if net__peers == null or slot < 0 or slot >= NET_PEERS { return }
-  let p = net__peers[slot]
+export function np_close(net_st: mut NetState, slot: int) -> void {
+  if net_st.net__peers == null or slot < 0 or slot >= NET_PEERS { return }
+  let p = net_st.net__peers[slot]
   p.on = false
   p.closing = false
   p.queue = new []NetMsg
 }
 
 # the written message, for one peer (a reliable one is kept until it is taken)
-export function np_queue(slot: int, kind: int, rel: bool) -> void {
-  if net__peers == null or slot < 0 or slot >= NET_PEERS { return }
-  let p = net__peers[slot]
+export function np_queue(net_st: mut NetState, slot: int, kind: int, rel: bool) -> void {
+  if net_st.net__peers == null or slot < 0 or slot >= NET_PEERS { return }
+  let p = net_st.net__peers[slot]
   if not p.on { return }
   let m = new NetMsg
   m.kind = kind
   m.rel = rel
   m.sent = -1.0
-  m.made = net__time
-  var n = net__wl
+  m.made = net_st.net__time
+  var n = net_st.net__wl
   if n > NET_MTU - 40 { n = NET_MTU - 40 }
   m.len = n
   m.data = buffer(n)
-  nb_copy(m.data, 0, net__wb, 0, n)
+  nb_copy(m.data, 0, net_st.net__wb, 0, n)
   if rel {
     m.id = p.next_id
     p.next_id += 1
@@ -63,48 +63,48 @@ export function np_queue(slot: int, kind: int, rel: bool) -> void {
 }
 
 # to everyone this machine talks to (a host: every guest but `except`; a guest: the host)
-export function np_queue_all(kind: int, rel: bool, except: int) -> void {
-  if net__peers == null { return }
-  for i in 0 .. NET_PEERS { if net__peers[i].on and i != except { np_queue(i, kind, rel) } }
+export function np_queue_all(net_st: mut NetState, kind: int, rel: bool, except: int) -> void {
+  if net_st.net__peers == null { return }
+  for i in 0 .. NET_PEERS { if net_st.net__peers[i].on and i != except { np_queue(net_st, i, kind, rel) } }
 }
 
-export function net_peer_on(slot: int) -> bool {
-  if net__peers == null or slot < 0 or slot >= NET_PEERS { return false }
-  return net__peers[slot].on
+export function net_peer_on(net_st: NetState, slot: int) -> bool {
+  if net_st.net__peers == null or slot < 0 or slot >= NET_PEERS { return false }
+  return net_st.net__peers[slot].on
 }
 
-export function net_peer_pid(slot: int) -> int {
-  if not net_peer_on(slot) { return 0 }
-  return net__peers[slot].pid
+export function net_peer_pid(net_st: NetState, slot: int) -> int {
+  if not net_peer_on(net_st, slot) { return 0 }
+  return net_st.net__peers[slot].pid
 }
 
-export function net_peer_ip(slot: int) -> int {
-  if not net_peer_on(slot) { return 0 }
-  return net__peers[slot].ip
+export function net_peer_ip(net_st: NetState, slot: int) -> int {
+  if not net_peer_on(net_st, slot) { return 0 }
+  return net_st.net__peers[slot].ip
 }
 
-export function net_peer_port(slot: int) -> int {
-  if not net_peer_on(slot) { return 0 }
-  return net__peers[slot].port
+export function net_peer_port(net_st: NetState, slot: int) -> int {
+  if not net_peer_on(net_st, slot) { return 0 }
+  return net_st.net__peers[slot].port
 }
 
-export function net_peer_heard(slot: int) -> float {
-  if not net_peer_on(slot) { return 0.0 }
-  return net__peers[slot].heard
+export function net_peer_heard(net_st: NetState, slot: int) -> float {
+  if not net_peer_on(net_st, slot) { return 0.0 }
+  return net_st.net__peers[slot].heard
 }
 
 # let the slot go once it has taken everything queued for it so far, or after `secs`
-export function net_close_when_sent(slot: int, secs: float) -> void {
-  if not net_peer_on(slot) { return }
-  let p = net__peers[slot]
+export function net_close_when_sent(net_st: mut NetState, slot: int, secs: float) -> void {
+  if not net_peer_on(net_st, slot) { return }
+  let p = net_st.net__peers[slot]
   p.closing = true
   p.close_id = p.next_id - 1
-  p.close_t = net__time + secs
+  p.close_t = net_st.net__time + secs
 }
 
 # the slots in use (a host's count of guests, a welcome not yet sent included)
-export function net_peer_count() -> int {
+export function net_peer_count(net_st: NetState) -> int {
   var n = 0
-  for i in 0 .. NET_PEERS { if net_peer_on(i) { n += 1 } }
+  for i in 0 .. NET_PEERS { if net_peer_on(net_st, i) { n += 1 } }
   return n
 }

@@ -6,187 +6,189 @@ import "ludic.base"
 program MinimapTest {
   numbers float
 
-  var you_x: float = 100.0
-  var you_z: float = 100.0
-  var day: int = 3
+  state MinimapTestState {
+    you_x: float = 100.0
+    you_z: float = 100.0
+  }
+  let day: int = 3
 
   function fk_ox() -> float { return 100.0 }
   function fk_land(x: float, z: float) -> bool { return x >= 50.0 }
-  function fk_you_x() -> float { return you_x }
-  function fk_you_z() -> float { return you_z }
+  function fk_you_x(minimap_test_st: MinimapTestState) -> float { return minimap_test_st.you_x }
+  function fk_you_z(minimap_test_st: MinimapTestState) -> float { return minimap_test_st.you_z }
   function fk_camp() -> float { return 120.0 }
   function fk_day() -> int { return day }
   function fk_lo() -> float { return 0.0 }
   function fk_hi() -> float { return 200.0 }
   bind MinimapWorld { origin_x: fn fk_ox, origin_z: fn fk_ox, land: fn fk_land, you_x: fn fk_you_x, you_z: fn fk_you_z, camp_x: fn fk_camp, camp_z: fn fk_camp, day: fn fk_day, lo_x: fn fk_lo, lo_z: fn fk_lo, hi_x: fn fk_hi, hi_z: fn fk_hi }
 
-  function fresh() -> void {
-    minimap_config(20, 10.0)
-    minimap_config_pins(3, 8, 5)
-    minimap_config_view(200.0, 0.5, 8.0, 4.0)
-    minimap_window(0.0, 0.0, 400.0)
-    minimap_reset()
-    you_x = 100.0
-    you_z = 100.0
+  function fresh(minimap_st: mut MinimapState, minimap_test_st: mut MinimapTestState) -> void {
+    minimap_config(minimap_st, 20, 10.0)
+    minimap_config_pins(minimap_st, 3, 8, 5)
+    minimap_config_view(minimap_st, 200.0, 0.5, 8.0, 4.0)
+    minimap_window(minimap_st, 0.0, 0.0, 400.0)
+    minimap_reset(minimap_st)
+    minimap_test_st.you_x = 100.0
+    minimap_test_st.you_z = 100.0
   }
 
-  test "the grid sits round its origin, and a point has its cell" {
-    fresh()
-    expect_near(minimap_grid_x0(), 0.0, 0.001)
-    expect_eq(minimap_cell(5.0, 5.0), 0)
-    expect_eq(minimap_cell(15.0, 25.0), 41)
-    expect_eq(minimap_cell(-1.0, 5.0), -1)
-    expect_eq(minimap_cell(200.0, 5.0), -1)
+  test "the grid sits round its origin, and a point has its cell" (minimap_st: mut MinimapState, minimap_test_st: mut MinimapTestState) {
+    fresh(minimap_st, minimap_test_st)
+    expect_near(minimap_grid_x0(minimap_st), 0.0, 0.001)
+    expect_eq(minimap_cell(minimap_st, 5.0, 5.0), 0)
+    expect_eq(minimap_cell(minimap_st, 15.0, 25.0), 41)
+    expect_eq(minimap_cell(minimap_st, -1.0, 5.0), -1)
+    expect_eq(minimap_cell(minimap_st, 200.0, 5.0), -1)
   }
 
-  test "walking reveals the cells within reach, and explored counts the land only" {
-    fresh()
-    let v0 = minimap_version()
-    minimap_reveal(105.0, 105.0, 10.0)
-    expect(minimap_seen_at(105.0, 105.0))
-    expect(minimap_seen_at(95.0, 105.0))
-    expect(not minimap_seen_at(125.0, 105.0))
-    expect_eq(minimap_seen_count(), 9)
-    expect(minimap_version() > v0)
-    let v1 = minimap_version()
-    minimap_reveal(105.0, 105.0, 10.0)
-    expect_eq(minimap_version(), v1)
-    expect_eq(minimap_explored_pct(), 3)
-    minimap_reveal(5.0, 5.0, 0.0)
-    expect_eq(minimap_explored_pct(), 3)
-    minimap_config_core(5, 10)
-    minimap_land_changed()
-    expect_eq(minimap_explored_pct(), 9)
+  test "walking reveals the cells within reach, and explored counts the land only" (minimap_st: mut MinimapState, minimap_test_st: mut MinimapTestState) {
+    fresh(minimap_st, minimap_test_st)
+    let v0 = minimap_version(minimap_st)
+    minimap_reveal(minimap_st, 105.0, 105.0, 10.0)
+    expect(minimap_seen_at(minimap_st, 105.0, 105.0))
+    expect(minimap_seen_at(minimap_st, 95.0, 105.0))
+    expect(not minimap_seen_at(minimap_st, 125.0, 105.0))
+    expect_eq(minimap_seen_count(minimap_st), 9)
+    expect(minimap_version(minimap_st) > v0)
+    let v1 = minimap_version(minimap_st)
+    minimap_reveal(minimap_st, 105.0, 105.0, 10.0)
+    expect_eq(minimap_version(minimap_st), v1)
+    expect_eq(minimap_explored_pct(minimap_st), 3)
+    minimap_reveal(minimap_st, 5.0, 5.0, 0.0)
+    expect_eq(minimap_explored_pct(minimap_st), 3)
+    minimap_config_core(minimap_st, 5, 10)
+    minimap_land_changed(minimap_st)
+    expect_eq(minimap_explored_pct(minimap_st), 9)
   }
 
-  test "a mark is made today with the last symbol, and the map holds only so many" {
-    fresh()
-    expect_eq(minimap_pin_add(10.0, 20.0, 2, "pool"), 0)
-    expect_eq(minimap_pin(0).day, 3)
-    expect_eq(minimap_pin_last_icon(), 2)
-    expect_eq(minimap_pin_add(30.0, 20.0, 99, "rock"), 1)
-    expect_eq(minimap_pin(1).icon, 7)
-    expect_eq(minimap_pin_add(50.0, 20.0, 0, "bend"), 2)
-    expect(minimap_pin_full())
-    expect_eq(minimap_pin_add(60.0, 20.0, 0, "one more"), -1)
-    expect_eq(minimap_pin_count(), 3)
+  test "a mark is made today with the last symbol, and the map holds only so many" (minimap_st: mut MinimapState, minimap_test_st: mut MinimapTestState) {
+    fresh(minimap_st, minimap_test_st)
+    expect_eq(minimap_pin_add(minimap_st, 10.0, 20.0, 2, "pool"), 0)
+    expect_eq(minimap_pin(minimap_st, 0).day, 3)
+    expect_eq(minimap_pin_last_icon(minimap_st), 2)
+    expect_eq(minimap_pin_add(minimap_st, 30.0, 20.0, 99, "rock"), 1)
+    expect_eq(minimap_pin(minimap_st, 1).icon, 7)
+    expect_eq(minimap_pin_add(minimap_st, 50.0, 20.0, 0, "bend"), 2)
+    expect(minimap_pin_full(minimap_st))
+    expect_eq(minimap_pin_add(minimap_st, 60.0, 20.0, 0, "one more"), -1)
+    expect_eq(minimap_pin_count(minimap_st), 3)
   }
 
-  test "the open mark is named, coloured and followed, and rubbing one out moves the others up" {
-    fresh()
-    minimap_pin_add(10.0, 20.0, 0, "a")
-    minimap_pin_add(30.0, 20.0, 0, "b")
-    minimap_pin_add(50.0, 20.0, 0, "c")
-    minimap_pin_select(2)
-    minimap_pin_follow_toggle()
-    expect_eq(minimap_pin_followed(), 2)
-    minimap_pin_set_label(2, "deer pool")
-    minimap_pin_set_colour(2, 9)
-    minimap_pin_set_icon(2, 3)
-    expect(minimap_pin(2).label == "deer pool")
-    expect_eq(minimap_pin(2).colour, 4)
-    expect_eq(minimap_pin_last_icon(), 3)
-    minimap_pin_remove(0)
-    expect_eq(minimap_pin_count(), 2)
-    expect_eq(minimap_pin_open(), 1)
-    expect_eq(minimap_pin_followed(), 1)
-    minimap_pin_remove(1)
-    expect_eq(minimap_pin_open(), -1)
-    expect_eq(minimap_pin_followed(), -1)
+  test "the open mark is named, coloured and followed, and rubbing one out moves the others up" (minimap_st: mut MinimapState, minimap_test_st: mut MinimapTestState) {
+    fresh(minimap_st, minimap_test_st)
+    minimap_pin_add(minimap_st, 10.0, 20.0, 0, "a")
+    minimap_pin_add(minimap_st, 30.0, 20.0, 0, "b")
+    minimap_pin_add(minimap_st, 50.0, 20.0, 0, "c")
+    minimap_pin_select(minimap_st, 2)
+    minimap_pin_follow_toggle(minimap_st)
+    expect_eq(minimap_pin_followed(minimap_st), 2)
+    minimap_pin_set_label(minimap_st, 2, "deer pool")
+    minimap_pin_set_colour(minimap_st, 2, 9)
+    minimap_pin_set_icon(minimap_st, 2, 3)
+    expect(minimap_pin(minimap_st, 2).label == "deer pool")
+    expect_eq(minimap_pin(minimap_st, 2).colour, 4)
+    expect_eq(minimap_pin_last_icon(minimap_st), 3)
+    minimap_pin_remove(minimap_st, 0)
+    expect_eq(minimap_pin_count(minimap_st), 2)
+    expect_eq(minimap_pin_open(minimap_st), 1)
+    expect_eq(minimap_pin_followed(minimap_st), 1)
+    minimap_pin_remove(minimap_st, 1)
+    expect_eq(minimap_pin_open(minimap_st), -1)
+    expect_eq(minimap_pin_followed(minimap_st), -1)
   }
 
-  test "the nearest marks for a compass leave out the followed one and anything too far" {
-    fresh()
-    minimap_config_pins(8, 8, 5)
-    minimap_pin_add(110.0, 100.0, 0, "near")
-    minimap_pin_add(130.0, 100.0, 0, "next")
-    minimap_pin_add(105.0, 100.0, 0, "followed")
-    minimap_pin_add(900.0, 100.0, 0, "far")
-    minimap_pin_follow(2)
-    let near = minimap_pins_near(100.0, 100.0, 3, 400.0)
+  test "the nearest marks for a compass leave out the followed one and anything too far" (minimap_st: mut MinimapState, minimap_test_st: mut MinimapTestState) {
+    fresh(minimap_st, minimap_test_st)
+    minimap_config_pins(minimap_st, 8, 8, 5)
+    minimap_pin_add(minimap_st, 110.0, 100.0, 0, "near")
+    minimap_pin_add(minimap_st, 130.0, 100.0, 0, "next")
+    minimap_pin_add(minimap_st, 105.0, 100.0, 0, "followed")
+    minimap_pin_add(minimap_st, 900.0, 100.0, 0, "far")
+    minimap_pin_follow(minimap_st, 2)
+    let near = minimap_pins_near(minimap_st, 100.0, 100.0, 3, 400.0)
     expect_eq(len(near), 2)
     expect_eq(near[0], 0)
     expect_eq(near[1], 1)
   }
 
-  test "the view: the world on the window and back, zoom about a point, a pan, focus and the clamp" {
-    fresh()
-    minimap_centre(100.0, 100.0)
-    expect_near(minimap_px(100.0), 200.0, 0.01)
-    expect_near(minimap_px(150.0), 300.0, 0.01)
-    expect_near(minimap_wx(300.0), 150.0, 0.01)
-    minimap_zoom_about(300.0, 200.0, 2.0)
-    expect_near(minimap_zoom(), 2.0, 0.001)
-    expect_near(minimap_wx(300.0), 150.0, 0.01)
-    expect_near(minimap_span(), 100.0, 0.01)
-    minimap_pan_begin(200.0, 200.0)
-    minimap_pan_to(160.0, 200.0)
-    expect_near(minimap_view_x(), 135.0, 0.01)
-    minimap_pan_end()
-    minimap_pan_to(0.0, 0.0)
-    expect_near(minimap_view_x(), 135.0, 0.01)
-    minimap_centre(900.0, -5.0)
-    expect_near(minimap_view_x(), 200.0, 0.01)
-    expect_near(minimap_view_z(), 0.0, 0.01)
-    minimap_focus(false)
-    expect_near(minimap_view_x(), 120.0, 0.01)
-    expect_near(minimap_zoom(), 4.0, 0.001)
-    minimap_zoom_set(6.0)
-    you_x = 80.0
-    minimap_focus(true)
-    expect_near(minimap_view_x(), 80.0, 0.01)
-    expect_near(minimap_zoom(), 6.0, 0.001)
-    minimap_zoom_step(1)
-    expect_near(minimap_zoom(), 7.8, 0.001)
-    minimap_zoom_step(1)
-    expect_near(minimap_zoom(), 8.0, 0.001)
+  test "the view: the world on the window and back, zoom about a point, a pan, focus and the clamp" (minimap_st: mut MinimapState, minimap_test_st: mut MinimapTestState) {
+    fresh(minimap_st, minimap_test_st)
+    minimap_centre(minimap_st, 100.0, 100.0)
+    expect_near(minimap_px(minimap_st, 100.0), 200.0, 0.01)
+    expect_near(minimap_px(minimap_st, 150.0), 300.0, 0.01)
+    expect_near(minimap_wx(minimap_st, 300.0), 150.0, 0.01)
+    minimap_zoom_about(minimap_st, 300.0, 200.0, 2.0)
+    expect_near(minimap_zoom(minimap_st), 2.0, 0.001)
+    expect_near(minimap_wx(minimap_st, 300.0), 150.0, 0.01)
+    expect_near(minimap_span(minimap_st), 100.0, 0.01)
+    minimap_pan_begin(minimap_st, 200.0, 200.0)
+    minimap_pan_to(minimap_st, 160.0, 200.0)
+    expect_near(minimap_view_x(minimap_st), 135.0, 0.01)
+    minimap_pan_end(minimap_st)
+    minimap_pan_to(minimap_st, 0.0, 0.0)
+    expect_near(minimap_view_x(minimap_st), 135.0, 0.01)
+    minimap_centre(minimap_st, 900.0, -5.0)
+    expect_near(minimap_view_x(minimap_st), 200.0, 0.01)
+    expect_near(minimap_view_z(minimap_st), 0.0, 0.01)
+    minimap_focus(minimap_st, false)
+    expect_near(minimap_view_x(minimap_st), 120.0, 0.01)
+    expect_near(minimap_zoom(minimap_st), 4.0, 0.001)
+    minimap_zoom_set(minimap_st, 6.0)
+    minimap_test_st.you_x = 80.0
+    minimap_focus(minimap_st, true)
+    expect_near(minimap_view_x(minimap_st), 80.0, 0.01)
+    expect_near(minimap_zoom(minimap_st), 6.0, 0.001)
+    minimap_zoom_step(minimap_st, 1)
+    expect_near(minimap_zoom(minimap_st), 7.8, 0.001)
+    minimap_zoom_step(minimap_st, 1)
+    expect_near(minimap_zoom(minimap_st), 8.0, 0.001)
   }
 
-  test "a press picks the mark under it, and placing drops one where the press lands" {
-    fresh()
-    minimap_centre(100.0, 100.0)
-    minimap_pin_add(150.0, 100.0, 4, "here")
-    expect_eq(minimap_pick(301.0, 199.0, 18.0), 0)
-    expect_eq(minimap_pin_open(), 0)
-    expect_eq(minimap_pick(10.0, 10.0, 18.0), -1)
-    minimap_place_toggle()
-    expect(minimap_placing())
-    let i = minimap_place(100.0, 200.0, "Day 3")
+  test "a press picks the mark under it, and placing drops one where the press lands" (minimap_st: mut MinimapState, minimap_test_st: mut MinimapTestState) {
+    fresh(minimap_st, minimap_test_st)
+    minimap_centre(minimap_st, 100.0, 100.0)
+    minimap_pin_add(minimap_st, 150.0, 100.0, 4, "here")
+    expect_eq(minimap_pick(minimap_st, 301.0, 199.0, 18.0), 0)
+    expect_eq(minimap_pin_open(minimap_st), 0)
+    expect_eq(minimap_pick(minimap_st, 10.0, 10.0, 18.0), -1)
+    minimap_place_toggle(minimap_st)
+    expect(minimap_placing(minimap_st))
+    let i = minimap_place(minimap_st, 100.0, 200.0, "Day 3")
     expect_eq(i, 1)
-    expect(not minimap_placing())
-    expect_near(minimap_pin(1).x, 50.0, 0.01)
-    expect_eq(minimap_pin(1).icon, 4)
-    expect_eq(minimap_pin_open(), 1)
+    expect(not minimap_placing(minimap_st))
+    expect_near(minimap_pin(minimap_st, 1).x, 50.0, 0.01)
+    expect_eq(minimap_pin(minimap_st, 1).icon, 4)
+    expect_eq(minimap_pin_open(minimap_st), 1)
   }
 
-  test "a scale bar is a round distance no wider than a quarter of the window" {
-    fresh()
-    expect_eq(minimap_scale_metres(), 50)
-    minimap_zoom_set(8.0)
-    expect_eq(minimap_scale_metres(), 25)
+  test "a scale bar is a round distance no wider than a quarter of the window" (minimap_st: mut MinimapState, minimap_test_st: mut MinimapTestState) {
+    fresh(minimap_st, minimap_test_st)
+    expect_eq(minimap_scale_metres(minimap_st), 50)
+    minimap_zoom_set(minimap_st, 8.0)
+    expect_eq(minimap_scale_metres(minimap_st), 25)
   }
 
-  test "what was seen and the marks come back from the save, and a missing section is a reset" {
-    fresh()
-    minimap_reveal(105.0, 105.0, 10.0)
-    minimap_pin_add(10.0, 20.0, 2, "pool")
-    minimap_pin_add(30.5, 20.25, 5, "rock")
-    minimap_pin_set_colour(1, 3)
-    minimap_pin_follow(1)
-    let v = minimap_save()
-    minimap_reset()
-    expect_eq(minimap_seen_count(), 0)
-    minimap_load(v, 1)
-    expect_eq(minimap_seen_count(), 9)
-    expect_eq(minimap_pin_count(), 2)
-    expect(minimap_pin(1).label == "rock")
-    expect_near(minimap_pin(1).x, 30.5, 0.001)
-    expect_eq(minimap_pin(1).colour, 3)
-    expect_eq(minimap_pin_followed(), 1)
-    expect_eq(minimap_pin_last_icon(), 5)
-    minimap_seen_from_text("0011")
-    expect_eq(minimap_seen_count(), 2)
-    let t = minimap_seen_text()
+  test "what was seen and the marks come back from the save, and a missing section is a reset" (minimap_st: mut MinimapState, minimap_test_st: mut MinimapTestState) {
+    fresh(minimap_st, minimap_test_st)
+    minimap_reveal(minimap_st, 105.0, 105.0, 10.0)
+    minimap_pin_add(minimap_st, 10.0, 20.0, 2, "pool")
+    minimap_pin_add(minimap_st, 30.5, 20.25, 5, "rock")
+    minimap_pin_set_colour(minimap_st, 1, 3)
+    minimap_pin_follow(minimap_st, 1)
+    let v = minimap_save(minimap_st)
+    minimap_reset(minimap_st)
+    expect_eq(minimap_seen_count(minimap_st), 0)
+    minimap_load(minimap_st, v, 1)
+    expect_eq(minimap_seen_count(minimap_st), 9)
+    expect_eq(minimap_pin_count(minimap_st), 2)
+    expect(minimap_pin(minimap_st, 1).label == "rock")
+    expect_near(minimap_pin(minimap_st, 1).x, 30.5, 0.001)
+    expect_eq(minimap_pin(minimap_st, 1).colour, 3)
+    expect_eq(minimap_pin_followed(minimap_st), 1)
+    expect_eq(minimap_pin_last_icon(minimap_st), 5)
+    minimap_seen_from_text(minimap_st, "0011")
+    expect_eq(minimap_seen_count(minimap_st), 2)
+    let t = minimap_seen_text(minimap_st)
     expect_eq(len(t), 400)
     expect(t[0..4] == "0011")
   }

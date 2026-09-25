@@ -5,20 +5,22 @@
 # Running it prints:  10 20 0
 program Answer {
   event cancellable Ask { kind: int }
-  var answer: int = 0
+  state AnswerState {
+    answer: int = 0
+  }
 
-  @On(Ask) handler One { if kind != 1 { return };  answer = 10;  cancel }
-  @On(Ask) handler Two { if kind != 2 { return };  answer = 20;  cancel }
+  @On(Ask) handler One(answer_st: mut AnswerState) { if kind != 1 { return };  answer_st.answer = 10;  cancel }
+  @On(Ask) handler Two(answer_st: mut AnswerState) { if kind != 2 { return };  answer_st.answer = 20;  cancel }
 
-  function ask(k: int) -> int {
-    answer = 0
-    if emit Ask(kind: k) != 0 { return answer }
+  function ask(answer_st: mut AnswerState, k: int) -> int {
+    answer_st.answer = 0
+    if emit Ask(kind: k) != 0 { return answer_st.answer }
     return 0
   }
 
-  entry {
-    print(ask(1))
-    print(ask(2))
-    print(ask(3))
+  entry (answer_st: mut AnswerState) {
+    print(ask(answer_st, 1))
+    print(ask(answer_st, 2))
+    print(ask(answer_st, 3))
   }
 }

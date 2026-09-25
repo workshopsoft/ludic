@@ -1,47 +1,43 @@
 # pointer.ludic - the pointer: what it is over is :hover (and all around it, as in CSS), a press on a
 # control focuses it and makes it :active, letting go over it is a click. A dragged thumb or scrollbar
 # keeps the pointer until let go; a press that takes a scrollbar or closes a popover presses nothing else.
-var fr_hover: []string = new []string
-var fr_press_key: string = ""
-var fr_down_now: bool = false
-var fr_key_press: string = ""   # the control Enter or the pad's A is holding down
-function fr_was_hovered(key: string) -> bool { return sel_has(fr_hover, key) }
-function fr_pointer(root: UiNode) -> void {
-  let i = in_now
-  fr_down_now = i.down
+function fr_was_hovered(ui_st: UiState, key: string) -> bool { return sel_has(ui_st.fr_hover, key) }
+function fr_pointer(ui_st: mut UiState, root: UiNode) -> void {
+  let i = ui_st.in_now
+  ui_st.fr_down_now = i.down
   let keys = new []string
   let top = pp_top(root)
   var scope = root
   if top != null { scope = top }
   fr_under(scope, i.x, i.y, keys)
-  fr_hover = keys
-  if top != null and pp_pointer(top) { return }
-  if sc_drag != "" or ct_key_mouse(root) { return }
+  ui_st.fr_hover = keys
+  if top != null and pp_pointer(ui_st, top) { return }
+  if ui_st.sc_drag != "" or ct_key_mouse(ui_st, root) { return }
   let hit = fr_hit(scope, i.x, i.y)
-  pe_frame(root, scope)
-  if i.down and not in_was_down { fr_press(hit, i.x, i.y) }
-  if i.down and fr_press_key != "" { ct_drag(root, fr_press_key, i.x, i.y) }
-  if not i.down and in_was_down {
-    let was = fr_node(root, fr_press_key)
-    if was != null { ui_fire(was, "up", Value.null()) }
-    if hit != null and hit.key == fr_press_key and hit.enabled { ct_activate(hit) }
-    fr_press_key = ""
+  pe_frame(ui_st, root, scope)
+  if i.down and not ui_st.in_was_down { fr_press(ui_st, hit, i.x, i.y) }
+  if i.down and ui_st.fr_press_key != "" { ct_drag(ui_st, root, ui_st.fr_press_key, i.x, i.y) }
+  if not i.down and ui_st.in_was_down {
+    let was = fr_node(root, ui_st.fr_press_key)
+    if was != null { ui_fire(ui_st, was, "up", Value.null()) }
+    if hit != null and hit.key == ui_st.fr_press_key and hit.enabled { ct_activate(ui_st, hit) }
+    ui_st.fr_press_key = ""
   }
 }
-function fr_press(hit: UiNode, x: float, y: float) -> void {
-  ct_key_pressed_away(hit)
-  fr_press_key = ""
+function fr_press(ui_st: mut UiState, hit: UiNode, x: float, y: float) -> void {
+  ct_key_pressed_away(ui_st, hit)
+  ui_st.fr_press_key = ""
   if hit == null { return }
-  fr_press_key = hit.key
-  if hit.focusable { ui_focus(hit.key) }
-  if hit.enabled { ui_fire(hit, "down", Value.null()) }
-  ct_press(hit, x, y)
+  ui_st.fr_press_key = hit.key
+  if hit.focusable { ui_focus(ui_st, hit.key) }
+  if hit.enabled { ui_fire(ui_st, hit, "down", Value.null()) }
+  ct_press(ui_st, hit, x, y)
 }
 # :active - the press began on it, or inside it, and is still held (by the pointer, Enter or A)
-function fr_active(n: UiNode) -> bool {
-  if fr_down_now and fr_press_key != "" and lc_mine(fr_press_key, n.key) { return true }
-  if pe_key != "" and lc_mine(pe_key, n.key) { return true }
-  return fr_key_press != "" and lc_mine(fr_key_press, n.key)
+function fr_active(ui_st: UiState, n: UiNode) -> bool {
+  if ui_st.fr_down_now and ui_st.fr_press_key != "" and lc_mine(ui_st.fr_press_key, n.key) { return true }
+  if ui_st.pe_key != "" and lc_mine(ui_st.pe_key, n.key) { return true }
+  return ui_st.fr_key_press != "" and lc_mine(ui_st.fr_key_press, n.key)
 }
 function fr_under(n: UiNode, px: float, py: float, keys: []string) -> void {
   if px < n.x or py < n.y or px >= n.x + n.cw or py >= n.y + n.ch { return }

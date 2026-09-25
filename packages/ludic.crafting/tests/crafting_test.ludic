@@ -21,49 +21,51 @@ program CraftingTest {
   def CraftRecipes chair { out: TORCH, ins: [WOOD], ns: [3], station: BENCH }
   def CraftRecipes secret { out: TORCH, ins: [WOOD], ns: [1], learned: false }
 
-  var pack: []int = null
-  var bench_near: bool = true
-  var pot_takes: bool = true
-  var pot_got: int = -1
+  state CraftingTestState {
+    pack: []int = null
+    bench_near: bool = true
+    pot_takes: bool = true
+    pot_got: int = -1
+  }
 
-  function count(it: int) -> int { return pack[it] }
-  function take(it: int, n: int) -> bool {
-    if pack[it] < n { return false }
-    pack[it] = pack[it] - n
+  function count(crafting_test_st: CraftingTestState, it: int) -> int { return crafting_test_st.pack[it] }
+  function take(crafting_test_st: mut CraftingTestState, it: int, n: int) -> bool {
+    if crafting_test_st.pack[it] < n { return false }
+    crafting_test_st.pack[it] = crafting_test_st.pack[it] - n
     return true
   }
-  function add(it: int, n: int) -> int {
-    pack[it] = pack[it] + n
+  function add(crafting_test_st: mut CraftingTestState, it: int, n: int) -> int {
+    crafting_test_st.pack[it] = crafting_test_st.pack[it] + n
     return n
   }
-  function room(it: int) -> int {
-    if it == TORCH { return 3 - pack[it] }
+  function room(crafting_test_st: CraftingTestState, it: int) -> int {
+    if it == TORCH { return 3 - crafting_test_st.pack[it] }
     return 99
   }
   function leaves(it: int) -> int {
     if it == WATER { return BOTTLE }
     return -1
   }
-  function ready(st: int) -> bool {
-    if st == BENCH { return bench_near }
+  function ready(crafting_test_st: CraftingTestState, st: int) -> bool {
+    if st == BENCH { return crafting_test_st.bench_near }
     return true
   }
-  function start(st: int, recipe: int) -> bool {
-    if not pot_takes { return false }
-    pot_got = recipe
+  function start(crafting_test_st: mut CraftingTestState, st: int, recipe: int) -> bool {
+    if not crafting_test_st.pot_takes { return false }
+    crafting_test_st.pot_got = recipe
     return true
   }
 
   bind CraftPack { count: fn count, take: fn take, add: fn add, room: fn room, leaves: fn leaves }
   bind CraftStations { ready: fn ready, start: fn start }
 
-  function fresh() -> void {
-    pack = new []int
-    for i in 0 .. 8 { push(pack, 0) }
-    craft_reset()
+  function fresh(base_st: mut BaseState, crafting_st: mut CraftingState, crafting_test_st: mut CraftingTestState) -> void {
+    crafting_test_st.pack = new []int
+    for i in 0 .. 8 { push(crafting_test_st.pack, 0) }
+    craft_reset(base_st, crafting_st)
   }
 
-  function facts() -> []Crafted { return q_drain(craft_facts()) }
+  function facts(base_st: mut BaseState, crafting_st: mut CraftingState) -> []Crafted { return q_drain(base_st, craft_facts(base_st, crafting_st)) }
 
   test "the registry is the game's, in the order written" {
     expect_eq(CRAFT_COUNT, 5)
@@ -74,105 +76,105 @@ program CraftingTest {
     expect_eq(craft_find(99), -1)
   }
 
-  test "made at once from the makings, and said" {
-    fresh()
+  test "made at once from the makings, and said" (base_st: mut BaseState, crafting_st: mut CraftingState, crafting_test_st: mut CraftingTestState) {
+    fresh(base_st, crafting_st, crafting_test_st)
     expect(not craft_can(CRAFT_TORCH))
-    pack[WOOD] = 2
-    pack[CLOTH] = 1
-    expect(craft_make(CRAFT_TORCH))
-    expect_eq(pack[WOOD], 1)
-    expect_eq(pack[CLOTH], 0)
-    expect_eq(pack[TORCH], 1)
-    let fs = facts()
+    crafting_test_st.pack[WOOD] = 2
+    crafting_test_st.pack[CLOTH] = 1
+    expect(craft_make(base_st, crafting_st, CRAFT_TORCH))
+    expect_eq(crafting_test_st.pack[WOOD], 1)
+    expect_eq(crafting_test_st.pack[CLOTH], 0)
+    expect_eq(crafting_test_st.pack[TORCH], 1)
+    let fs = facts(base_st, crafting_st)
     expect_eq(len(fs), 1)
     expect_eq(fs[0].item, TORCH)
     expect(not fs[0].queued)
   }
 
-  test "nothing is taken when it cannot be made" {
-    fresh()
-    pack[WOOD] = 1
-    expect(not craft_make(CRAFT_TORCH))
-    expect_eq(pack[WOOD], 1)
-    expect_eq(len(facts()), 0)
+  test "nothing is taken when it cannot be made" (base_st: mut BaseState, crafting_st: mut CraftingState, crafting_test_st: mut CraftingTestState) {
+    fresh(base_st, crafting_st, crafting_test_st)
+    crafting_test_st.pack[WOOD] = 1
+    expect(not craft_make(base_st, crafting_st, CRAFT_TORCH))
+    expect_eq(crafting_test_st.pack[WOOD], 1)
+    expect_eq(len(facts(base_st, crafting_st)), 0)
   }
 
-  test "the station decides, and so does the room for what it makes" {
-    fresh()
-    pack[WOOD] = 9
-    bench_near = false
+  test "the station decides, and so does the room for what it makes" (base_st: mut BaseState, crafting_st: mut CraftingState, crafting_test_st: mut CraftingTestState) {
+    fresh(base_st, crafting_st, crafting_test_st)
+    crafting_test_st.pack[WOOD] = 9
+    crafting_test_st.bench_near = false
     expect(craft_has(CRAFT_CHAIR))
     expect(not craft_can(CRAFT_CHAIR))
-    bench_near = true
+    crafting_test_st.bench_near = true
     expect(craft_can(CRAFT_CHAIR))
-    pack[TORCH] = 3
+    crafting_test_st.pack[TORCH] = 3
     expect(not craft_can(CRAFT_CHAIR))
   }
 
-  test "an unlearned recipe is never made" {
-    fresh()
-    pack[WOOD] = 5
+  test "an unlearned recipe is never made" (base_st: mut BaseState, crafting_st: mut CraftingState, crafting_test_st: mut CraftingTestState) {
+    fresh(base_st, crafting_st, crafting_test_st)
+    crafting_test_st.pack[WOOD] = 5
     expect(not craft_can(CRAFT_SECRET))
   }
 
-  test "a timed recipe goes into its station, and water leaves its bottle" {
-    fresh()
-    pack[HERB] = 2
-    pack[WATER] = 1
-    expect(craft_make(CRAFT_TEA))
-    expect_eq(pot_got, CRAFT_TEA)
-    expect_eq(pack[TEA], 0)
-    expect_eq(pack[WATER], 0)
-    expect_eq(pack[BOTTLE], 1)
-    let fs = facts()
+  test "a timed recipe goes into its station, and water leaves its bottle" (base_st: mut BaseState, crafting_st: mut CraftingState, crafting_test_st: mut CraftingTestState) {
+    fresh(base_st, crafting_st, crafting_test_st)
+    crafting_test_st.pack[HERB] = 2
+    crafting_test_st.pack[WATER] = 1
+    expect(craft_make(base_st, crafting_st, CRAFT_TEA))
+    expect_eq(crafting_test_st.pot_got, CRAFT_TEA)
+    expect_eq(crafting_test_st.pack[TEA], 0)
+    expect_eq(crafting_test_st.pack[WATER], 0)
+    expect_eq(crafting_test_st.pack[BOTTLE], 1)
+    let fs = facts(base_st, crafting_st)
     expect(fs[0].queued)
     expect_eq(fs[0].station, POT)
   }
 
-  test "a station that says no gives everything back" {
-    fresh()
-    pot_takes = false
-    pack[HERB] = 2
-    pack[WATER] = 1
-    expect(not craft_make(CRAFT_TEA))
-    expect_eq(pack[HERB], 2)
-    expect_eq(pack[WATER], 1)
-    expect_eq(pack[BOTTLE], 0)
-    expect_eq(len(facts()), 0)
+  test "a station that says no gives everything back" (base_st: mut BaseState, crafting_st: mut CraftingState, crafting_test_st: mut CraftingTestState) {
+    fresh(base_st, crafting_st, crafting_test_st)
+    crafting_test_st.pot_takes = false
+    crafting_test_st.pack[HERB] = 2
+    crafting_test_st.pack[WATER] = 1
+    expect(not craft_make(base_st, crafting_st, CRAFT_TEA))
+    expect_eq(crafting_test_st.pack[HERB], 2)
+    expect_eq(crafting_test_st.pack[WATER], 1)
+    expect_eq(crafting_test_st.pack[BOTTLE], 0)
+    expect_eq(len(facts(base_st, crafting_st)), 0)
   }
 
-  test "a hold makes it after its seconds, and not before" {
-    fresh()
-    pack[HERB] = 4
+  test "a hold makes it after its seconds, and not before" (base_st: mut BaseState, crafting_st: mut CraftingState, crafting_test_st: mut CraftingTestState) {
+    fresh(base_st, crafting_st, crafting_test_st)
+    crafting_test_st.pack[HERB] = 4
     expect(craft_holds(CRAFT_ROPE))
     expect(not craft_holds(CRAFT_TORCH))
-    expect(craft_hold_start(CRAFT_ROPE))
-    expect(not craft_hold_run(1.0))
-    expect(craft_hold_frac(CRAFT_ROPE) == 0.5)
-    expect(not craft_hold_run(0.9))
-    expect(craft_hold_run(0.2))
-    expect_eq(pack[ROPE], 2)
-    expect_eq(craft_holding(), -1)
+    expect(craft_hold_start(crafting_st, CRAFT_ROPE))
+    expect(not craft_hold_run(base_st, crafting_st, 1.0))
+    expect(craft_hold_frac(crafting_st, CRAFT_ROPE) == 0.5)
+    expect(not craft_hold_run(base_st, crafting_st, 0.9))
+    expect(craft_hold_run(base_st, crafting_st, 0.2))
+    expect_eq(crafting_test_st.pack[ROPE], 2)
+    expect_eq(craft_holding(crafting_st), -1)
   }
 
-  test "letting go wastes nothing, and losing the makings stops the hold" {
-    fresh()
-    pack[HERB] = 4
-    craft_hold_start(CRAFT_ROPE)
-    craft_hold_run(1.5)
-    craft_hold_stop()
-    expect_eq(pack[HERB], 4)
-    craft_hold_start(CRAFT_ROPE)
-    pack[HERB] = 3
-    expect(not craft_hold_run(5.0))
-    expect_eq(craft_holding(), -1)
-    expect_eq(pack[ROPE], 0)
+  test "letting go wastes nothing, and losing the makings stops the hold" (base_st: mut BaseState, crafting_st: mut CraftingState, crafting_test_st: mut CraftingTestState) {
+    fresh(base_st, crafting_st, crafting_test_st)
+    crafting_test_st.pack[HERB] = 4
+    craft_hold_start(crafting_st, CRAFT_ROPE)
+    craft_hold_run(base_st, crafting_st, 1.5)
+    craft_hold_stop(crafting_st)
+    expect_eq(crafting_test_st.pack[HERB], 4)
+    craft_hold_start(crafting_st, CRAFT_ROPE)
+    crafting_test_st.pack[HERB] = 3
+    expect(not craft_hold_run(base_st, crafting_st, 5.0))
+    expect_eq(craft_holding(crafting_st), -1)
+    expect_eq(crafting_test_st.pack[ROPE], 0)
   }
 
-  test "a click recipe cannot be held" {
-    fresh()
-    pack[WOOD] = 1
-    pack[CLOTH] = 1
-    expect(not craft_hold_start(CRAFT_TORCH))
+  test "a click recipe cannot be held" (base_st: mut BaseState, crafting_st: mut CraftingState, crafting_test_st: mut CraftingTestState) {
+    fresh(base_st, crafting_st, crafting_test_st)
+    crafting_test_st.pack[WOOD] = 1
+    crafting_test_st.pack[CLOTH] = 1
+    expect(not craft_hold_start(crafting_st, CRAFT_TORCH))
   }
 }

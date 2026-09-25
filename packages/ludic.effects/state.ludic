@@ -20,27 +20,29 @@ export property EffectEnded {
   bonus: bool = false
 }
 
-var ef_list: []Effect = null
-var ef_max: int = 8
-var ef_bonus_max: int = 3
-var ef_ended: Queue<EffectEnded> = null
+export state EffectsState {
+  ef_list: []Effect = null
+  ef_max: int = 8
+  ef_bonus_max: int = 3
+  ef_ended: Queue<EffectEnded> = null
+}
 
-function ef_all() -> []Effect {
-  if ef_list == null { ef_list = new []Effect }
-  return ef_list
+function ef_all(effects_st: mut EffectsState) -> []Effect {
+  if effects_st.ef_list == null { effects_st.ef_list = new []Effect }
+  return effects_st.ef_list
 }
 
 # the facts: what ended and why, oldest first; the game drains it
-export function effects_ended() -> Queue<EffectEnded> {
-  if ef_ended == null { ef_ended = queue_new("effects.ended") }
-  return ef_ended
+export function effects_ended(base_st: mut BaseState, effects_st: mut EffectsState) -> Queue<EffectEnded> {
+  if effects_st.ef_ended == null { effects_st.ef_ended = queue_new(base_st, "effects.ended") }
+  return effects_st.ef_ended
 }
 
 # how many may run at once, and how many of those may be bonuses
-export function effects_config(max: int, bonus_max: int) -> void {
-  ef_max = max
-  ef_bonus_max = bonus_max
+export function effects_config(effects_st: mut EffectsState, max: int, bonus_max: int) -> void {
+  effects_st.ef_max = max
+  effects_st.ef_bonus_max = bonus_max
 }
 
-export function effects_capacity() -> int { return ef_max }
-export function effects_bonus_capacity() -> int { return ef_bonus_max }
+export function effects_capacity(effects_st: EffectsState) -> int { return effects_st.ef_max }
+export function effects_bonus_capacity(effects_st: EffectsState) -> int { return effects_st.ef_bonus_max }

@@ -9,13 +9,13 @@ program VkDevice {
   property Marker { on: int = 1 }
   model Anchor { Marker }
 
-  handler Boot phase Start {
+  handler Boot(render3d_st: mut Render3dState) phase Start {
     spawn Anchor {}
-    if not gvk_init() { print(`VKDEVICE NONE: {gvk_why}`);  quit() }
-    let cb = gvk_once_begin()
-    let ok = cb != null and gvk_once_end(cb)
-    print(`vulkan: family {gvk_family}, {Vk.get_i32(gvk_mp, VkPhysicalDeviceMemoryProperties_memoryTypeCount)} memory types, one-shot submit {ok}`)
-    gvk_shutdown()
+    if not gvk_init(render3d_st) { print(`VKDEVICE NONE: {render3d_st.gvk_why}`);  quit() }
+    let cb = gvk_once_begin(render3d_st)
+    let ok = cb != null and gvk_once_end(render3d_st, cb)
+    print(`vulkan: family {render3d_st.gvk_family}, {Vk.get_i32(render3d_st.gvk_mp, VkPhysicalDeviceMemoryProperties_memoryTypeCount)} memory types, one-shot submit {ok}`)
+    gvk_shutdown(render3d_st)
     if ok { print("VKDEVICE OK") } else { print("VKDEVICE SUBMIT FAILED") }
     quit()
   }

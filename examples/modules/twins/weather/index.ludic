@@ -1,6 +1,6 @@
 # weather/index.ludic - the same private spellings, its own; a local named dice is its own too
 module weather
-var dice: int = 20
+let dice: int = 20
 const LIMIT: int = 2
 function seed() -> int {
   return dice * LIMIT

@@ -4,11 +4,13 @@ import "ludic.things"
 import "ludic.base"
 program ThingsTest {
   numbers float
-  var drawn: int = 0
-  var gone: int = 0
-  var shows: int = 0
-  var back: int = 0
-  var wood: int = 0
+  state ThingsTestState {
+    drawn: int = 0
+    gone: int = 0
+    shows: int = 0
+    back: int = 0
+    wood: int = 0
+  }
 
   function lit_prompt(t: Thing) -> string {
     if t.used != 0 { return "Add wood" }
@@ -19,8 +21,8 @@ program ThingsTest {
     if t.owner == 0 { return "Your tent" }
     return ""
   }
-  function branch_use(t: Thing) -> void {
-    wood += 1
+  function branch_use(things_test_st: mut ThingsTestState, t: Thing) -> void {
+    things_test_st.wood += 1
     thing_hide(t)
   }
   function lure_tick(t: Thing, hours: float) -> void {
@@ -36,121 +38,121 @@ program ThingsTest {
   def ThingKinds sign { name: "A sign", reach_of: fn far_reach }
 
   function hill(x: float, z: float) -> float { return x * 0.5 }
-  function on_placed(t: Thing) -> void { drawn += 1 }
-  function on_removed(t: Thing) -> void { gone += 1 }
-  function on_shown(t: Thing) -> void { shows += 1 }
-  function on_restored(t: Thing) -> void { back += 1 }
+  function on_placed(things_test_st: mut ThingsTestState, t: Thing) -> void { things_test_st.drawn += 1 }
+  function on_removed(things_test_st: mut ThingsTestState, t: Thing) -> void { things_test_st.gone += 1 }
+  function on_shown(things_test_st: mut ThingsTestState, t: Thing) -> void { things_test_st.shows += 1 }
+  function on_restored(things_test_st: mut ThingsTestState, t: Thing) -> void { things_test_st.back += 1 }
   bind ThingsWorld { ground: fn hill, placed: fn on_placed, removed: fn on_removed, shown: fn on_shown, restored: fn on_restored }
 
-  function put(kind: int, x: float, z: float) -> Thing { return thing_spawn(kind, "m", x, 0.0, z, 0.0, 0) }
-  function facts() -> []ThingFact { return q_drain(things_facts()) }
+  function put(base_st: mut BaseState, things_st: mut ThingsState, kind: int, x: float, z: float) -> Thing { return thing_spawn(base_st, things_st, kind, "m", x, 0.0, z, 0.0, 0) }
+  function facts(base_st: mut BaseState, things_st: mut ThingsState) -> []ThingFact { return q_drain(base_st, things_facts(base_st, things_st)) }
 
-  test "a spawn is drawn, numbered and said" {
-    things_clear()
-    let a = put(TH_TENT, 1.0, 1.0)
-    let b = put(TH_FIRE, 2.0, 2.0)
-    expect_eq(drawn, 2)
+  test "a spawn is drawn, numbered and said" (base_st: mut BaseState, things_st: mut ThingsState, things_test_st: ThingsTestState) {
+    things_clear(things_st)
+    let a = put(base_st, things_st, TH_TENT, 1.0, 1.0)
+    let b = put(base_st, things_st, TH_FIRE, 2.0, 2.0)
+    expect_eq(things_test_st.drawn, 2)
     expect(a.uid != b.uid)
-    expect_eq(things_count(), 2)
-    let fs = facts()
+    expect_eq(things_count(things_st), 2)
+    let fs = facts(base_st, things_st)
     expect_eq(len(fs), 2)
     expect_eq(fs[1].what, THING_PLACED)
     expect_eq(fs[1].kind, TH_FIRE)
-    expect(thing_by_uid(b.uid) == b)
+    expect(thing_by_uid(things_st, b.uid) == b)
   }
 
-  test "the spatial questions see only what is active" {
-    things_clear()
-    let near = put(TH_BRANCH, 1.0, 0.0)
-    let far = put(TH_BRANCH, 5.0, 0.0)
-    put(TH_FIRE, 3.0, 0.0)
-    expect(thing_nearest(TH_BRANCH, 0.0, 0.0) == near)
-    expect(thing_nearest(-1, 3.2, 0.0).kind == TH_FIRE)
-    expect_eq(len(things_within(0.0, 0.0, 3.5)), 2)
-    expect(things_within(6.0, 0.0, 10.0)[0] == far)
+  test "the spatial questions see only what is active" (base_st: mut BaseState, things_st: mut ThingsState, things_test_st: ThingsTestState) {
+    things_clear(things_st)
+    let near = put(base_st, things_st, TH_BRANCH, 1.0, 0.0)
+    let far = put(base_st, things_st, TH_BRANCH, 5.0, 0.0)
+    put(base_st, things_st, TH_FIRE, 3.0, 0.0)
+    expect(thing_nearest(things_st, TH_BRANCH, 0.0, 0.0) == near)
+    expect(thing_nearest(things_st, -1, 3.2, 0.0).kind == TH_FIRE)
+    expect_eq(len(things_within(things_st, 0.0, 0.0, 3.5)), 2)
+    expect(things_within(things_st, 6.0, 0.0, 10.0)[0] == far)
     thing_hide(near)
-    expect(thing_nearest(TH_BRANCH, 0.0, 0.0) == far)
-    expect_eq(len(things_each(TH_BRANCH)), 1)
-    expect_eq(len(things_each_all(TH_BRANCH)), 2)
-    expect(thing_find(TH_BRANCH, -1) == far)
-    expect(thing_find(TH_TENT, -1) == null)
-    expect_eq(shows, 1)
+    expect(thing_nearest(things_st, TH_BRANCH, 0.0, 0.0) == far)
+    expect_eq(len(things_each(things_st, TH_BRANCH)), 1)
+    expect_eq(len(things_each_all(things_st, TH_BRANCH)), 2)
+    expect(thing_find(things_st, TH_BRANCH, -1) == far)
+    expect(thing_find(things_st, TH_TENT, -1) == null)
+    expect_eq(things_test_st.shows, 1)
   }
 
-  test "remove and move tell the port" {
-    things_clear()
-    let a = put(TH_TENT, 1.0, 1.0)
-    put(TH_TENT, 2.0, 2.0)
-    facts()
-    thing_remove(a)
-    expect_eq(gone, 1)
-    expect_eq(things_count(), 1)
-    expect_eq(facts()[0].what, THING_REMOVED)
-    let b = thing_find(TH_TENT, -1)
+  test "remove and move tell the port" (base_st: mut BaseState, things_st: mut ThingsState, things_test_st: ThingsTestState) {
+    things_clear(things_st)
+    let a = put(base_st, things_st, TH_TENT, 1.0, 1.0)
+    put(base_st, things_st, TH_TENT, 2.0, 2.0)
+    facts(base_st, things_st)
+    thing_remove(base_st, things_st, a)
+    expect_eq(things_test_st.gone, 1)
+    expect_eq(things_count(things_st), 1)
+    expect_eq(facts(base_st, things_st)[0].what, THING_REMOVED)
+    let b = thing_find(things_st, TH_TENT, -1)
     thing_move(b, 4.0, 0.0, 1.0)
     expect_near(b.y, 2.0, 0.001)
-    let c = thing_put(TH_BRANCH, "stick", 2.0, 0.0, 0.0, 0.25, 1.9, 7)
+    let c = thing_put(base_st, things_st, TH_BRANCH, "stick", 2.0, 0.0, 0.0, 0.25, 1.9, 7)
     expect_near(c.y, 0.75, 0.001)
     expect_near(thing_reach(c), 1.9, 0.001)
     expect_eq(c.id, 7)
   }
 
-  test "the kind answers: name, prompt, use, reach" {
-    things_clear()
-    let t = put(TH_TENT, 0.0, 0.0)
+  test "the kind answers: name, prompt, use, reach" (base_st: mut BaseState, things_st: mut ThingsState) {
+    things_clear(things_st)
+    let t = put(base_st, things_st, TH_TENT, 0.0, 0.0)
     expect(thing_name(t) == "A tent")
     t.owner = 0
     expect(thing_name(t) == "Your tent")
-    let f = put(TH_FIRE, 0.0, 0.0)
+    let f = put(base_st, things_st, TH_FIRE, 0.0, 0.0)
     expect(thing_prompt(f) == "Light it")
-    thing_use(f)
+    thing_use(base_st, things_st, f)
     expect(thing_prompt(f) == "Add wood")
     expect(thing_prompt(t) == "")
     expect(not thing_can_use(t))
     expect_near(thing_reach(f), 2.2, 0.001)
-    expect_near(thing_reach(put(TH_BRANCH, 0.0, 0.0)), 1.5, 0.001)
-    expect_near(thing_reach(put(TH_SIGN, 0.0, 0.0)), 9.0, 0.001)
-    let fs = facts()
+    expect_near(thing_reach(put(base_st, things_st, TH_BRANCH, 0.0, 0.0)), 1.5, 0.001)
+    expect_near(thing_reach(put(base_st, things_st, TH_SIGN, 0.0, 0.0)), 9.0, 0.001)
+    let fs = facts(base_st, things_st)
     expect_eq(fs[len(fs) - 3].what, THING_USED)
   }
 
-  test "ticks and a restock" {
-    things_clear()
-    let l = put(TH_LURE, 0.0, 0.0)
+  test "ticks and a restock" (base_st: mut BaseState, things_st: mut ThingsState, things_test_st: ThingsTestState) {
+    things_clear(things_st)
+    let l = put(base_st, things_st, TH_LURE, 0.0, 0.0)
     l.timer = 1.0
-    let b = put(TH_BRANCH, 0.0, 0.0)
-    let f = put(TH_FIRE, 0.0, 0.0)
-    thing_use(b)
-    thing_use(f)
-    expect_eq(wood, 1)
-    things_tick(0.6)
+    let b = put(base_st, things_st, TH_BRANCH, 0.0, 0.0)
+    let f = put(base_st, things_st, TH_FIRE, 0.0, 0.0)
+    thing_use(base_st, things_st, b)
+    thing_use(base_st, things_st, f)
+    expect_eq(things_test_st.wood, 1)
+    things_tick(things_st, 0.6)
     expect(l.active)
-    things_tick(0.6)
+    things_tick(things_st, 0.6)
     expect(not l.active)
-    things_restock()
+    things_restock(things_st)
     expect(b.active)
     expect(not l.active)
     expect_eq(f.used, 1)
   }
 
-  test "the save keeps what the port keeps, by the kind's key" {
-    things_clear()
-    let l = put(TH_LURE, 3.0, 4.0)
+  test "the save keeps what the port keeps, by the kind's key" (base_st: mut BaseState, things_st: mut ThingsState, things_test_st: ThingsTestState) {
+    things_clear(things_st)
+    let l = put(base_st, things_st, TH_LURE, 3.0, 4.0)
     l.owner = 0
     l.timer = 2.5
-    put(TH_TENT, 0.0, 0.0)
+    put(base_st, things_st, TH_TENT, 0.0, 0.0)
     let root = save_tree()
-    save_section(root, "things", 1, things_save())
+    save_section(root, "things", 1, things_save(things_st))
     let text = save_encode(root)
-    things_clear()
-    put(TH_LURE, 9.0, 9.0)
+    things_clear(things_st)
+    put(base_st, things_st, TH_LURE, 9.0, 9.0)
     let n = load_section(save_decode(text), "things")
-    things_load(n.data, n.version)
-    expect_eq(things_count(), 1)
-    let t = thing_find(TH_LURE, -1)
+    things_load(base_st, things_st, n.data, n.version)
+    expect_eq(things_count(things_st), 1)
+    let t = thing_find(things_st, TH_LURE, -1)
     expect_near(t.x, 3.0, 0.001)
     expect_near(t.timer, 2.5, 0.001)
     expect_eq(t.owner, 0)
-    expect_eq(back, 1)
+    expect_eq(things_test_st.back, 1)
   }
 }

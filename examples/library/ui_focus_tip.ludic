@@ -4,36 +4,38 @@
 import "ludic.ui"
 program UiFocusTip {
   numbers float
-  var said: []string = new []string
-  var now: float = 0.0
-  const PAGE: string = "<ui><screen name='f'><button title='Drop it'>a</button><button title='Give it away'>b</button></screen></ui>"
-  function rec_text(x: float, y: float, s: string, size: float, c: int, a: float) -> void { push(said, `{s} {int(x)},{int(y)}`) }
-  function clock() -> float { return now }
-  function frame(i: UiInput, secs: float) -> string {
-    now = now + secs
-    said = new []string
-    ui_input(i)
-    ui_show("f", null, 0.0, 0.0, 400.0, 400.0)
-    return said[len(said) - 1]
+  state UiFocusTipState {
+    said: []string = new []string
+    now: float = 0.0
   }
-  entry {
+  const PAGE: string = "<ui><screen name='f'><button title='Drop it'>a</button><button title='Give it away'>b</button></screen></ui>"
+  function rec_text(ui_focus_tip_st: mut UiFocusTipState, x: float, y: float, s: string, size: float, c: int, a: float) -> void { push(ui_focus_tip_st.said, `{s} {int(x)},{int(y)}`) }
+  function clock(ui_focus_tip_st: UiFocusTipState) -> float { return ui_focus_tip_st.now }
+  function frame(ui_focus_tip_st: mut UiFocusTipState, ui_st: mut UiState, i: UiInput, secs: float) -> string {
+    ui_focus_tip_st.now = ui_focus_tip_st.now + secs
+    ui_focus_tip_st.said = new []string
+    ui_input(ui_st, i)
+    ui_show(ui_st, "f", null, 0.0, 0.0, 400.0, 400.0)
+    return ui_focus_tip_st.said[len(ui_focus_tip_st.said) - 1]
+  }
+  entry (ui_focus_tip_st: mut UiFocusTipState, ui_st: mut UiState) {
     let b = new UiBackend
     b.text = fn rec_text
-    ui_backend(b)
-    ui_clock(fn clock)
-    ui_load_text(PAGE, "f.xml")
-    frame(new UiInput, 0.0)
+    ui_backend(ui_st, b)
+    ui_clock(ui_st, fn clock)
+    ui_load_text(ui_st, PAGE, "f.xml")
+    frame(ui_focus_tip_st, ui_st, new UiInput, 0.0)
     let tab = new UiInput
     tab.tab = true
-    frame(tab, 0.0)
-    let early = frame(new UiInput, 0.2)
-    let shown = frame(new UiInput, 0.4)
-    frame(tab, 0.0)
-    let next = frame(new UiInput, 0.6)
+    frame(ui_focus_tip_st, ui_st, tab, 0.0)
+    let early = frame(ui_focus_tip_st, ui_st, new UiInput, 0.2)
+    let shown = frame(ui_focus_tip_st, ui_st, new UiInput, 0.4)
+    frame(ui_focus_tip_st, ui_st, tab, 0.0)
+    let next = frame(ui_focus_tip_st, ui_st, new UiInput, 0.6)
     let moved = new UiInput
     moved.x = 390.0
     moved.y = 390.0
-    let gone = frame(moved, 0.6)
+    let gone = frame(ui_focus_tip_st, ui_st, moved, 0.6)
     print(`{early} | {shown} | {next} | {gone}`)
   }
 }

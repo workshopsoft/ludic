@@ -1,6 +1,6 @@
 # system.ludic - the rail as a system in PH_PRESENT: it only reads the world, and a trip saves
 # nothing of it (the mutes are the player's, kept wherever the game keeps its settings)
-function hn_tick(t: Tick) -> void { hints_tick(t.dt) }
+function hn_tick(hints_st: mut HintsState, t: Tick) -> void { hints_tick(hints_st, t.dt) }
 
 export function hints_system() -> System {
   let s = system_new("hints", PH_PRESENT)

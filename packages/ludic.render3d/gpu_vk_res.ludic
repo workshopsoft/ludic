@@ -45,46 +45,30 @@ function gvk_channel_bytes(ifmt: int) -> int {
 # objects. Pixels uploaded with the image get a full mip chain, allocated up front, because the
 # renderer asks for mipmaps after the upload; an image made without pixels is a target and gets
 # one level. Every level sits in SHADER_READ_ONLY_OPTIMAL between uses.
-var gvk_tex_image: []long = null
-var gvk_tex_view: []long = null
-var gvk_tex_mem: []long = null
-var gvk_tex_levels: []int = null
-var gvk_tex_layers: []int = null
-var gvk_tex_vkfmt: []int = null
-var gvk_tex_dims_w: []int = null
-var gvk_tex_dims_h: []int = null
-var gvk_tex_glfmt: []int = null        # the format the renderer asked for (gpu.ludic's vocabulary)
-var gvk_tex_array: []int = null        # 1 for an array image
-var gvk_tex_gen: []int = null          # bumped whenever the image behind a handle is replaced
-var gvk_tex_smp_sig: []int = null      # the sampling parameters the cached sampler was made for
-var gvk_tex_smp: []long = null
-var gvk_tex_samples: []int = null      # 1, or the sample count of a multisampled renderbuffer
-var gvk_storage_samples: int = 1      # what the next gvk_tex_storage makes: gpu_rb_storage sets it around its call
-var gvk_unpack_swap: bool = false     # GL_UNPACK_SWAP_BYTES: 16-bit PNG samples arrive big-endian
 
-function gvk_tex_new() -> int {
+function gvk_tex_new(render3d_st: mut Render3dState) -> int {
   let zero: long = 0
-  if gvk_tex_image == null {
-    gvk_tex_image = new []long;  gvk_tex_view = new []long;  gvk_tex_mem = new []long
-    gvk_tex_levels = new []int;  gvk_tex_layers = new []int;  gvk_tex_vkfmt = new []int
-    gvk_tex_dims_w = new []int;  gvk_tex_dims_h = new []int
-    gvk_tex_glfmt = new []int;  gvk_tex_array = new []int;  gvk_tex_gen = new []int
-    gvk_tex_smp_sig = new []int;  gvk_tex_smp = new []long
-    gvk_tex_samples = new []int;  push(gvk_tex_samples, 0)
-    push(gvk_tex_dims_w, 0);  push(gvk_tex_dims_h, 0)
-    push(gvk_tex_glfmt, 0);  push(gvk_tex_array, 0);  push(gvk_tex_gen, 0)
-    push(gvk_tex_smp_sig, 0);  push(gvk_tex_smp, zero)
+  if render3d_st.gvk_tex_image == null {
+    render3d_st.gvk_tex_image = new []long;  render3d_st.gvk_tex_view = new []long;  render3d_st.gvk_tex_mem = new []long
+    render3d_st.gvk_tex_levels = new []int;  render3d_st.gvk_tex_layers = new []int;  render3d_st.gvk_tex_vkfmt = new []int
+    render3d_st.gvk_tex_dims_w = new []int;  render3d_st.gvk_tex_dims_h = new []int
+    render3d_st.gvk_tex_glfmt = new []int;  render3d_st.gvk_tex_array = new []int;  render3d_st.gvk_tex_gen = new []int
+    render3d_st.gvk_tex_smp_sig = new []int;  render3d_st.gvk_tex_smp = new []long
+    render3d_st.gvk_tex_samples = new []int;  push(render3d_st.gvk_tex_samples, 0)
+    push(render3d_st.gvk_tex_dims_w, 0);  push(render3d_st.gvk_tex_dims_h, 0)
+    push(render3d_st.gvk_tex_glfmt, 0);  push(render3d_st.gvk_tex_array, 0);  push(render3d_st.gvk_tex_gen, 0)
+    push(render3d_st.gvk_tex_smp_sig, 0);  push(render3d_st.gvk_tex_smp, zero)
     # handle 0 is "no texture", as it is on OpenGL
-    push(gvk_tex_image, zero);  push(gvk_tex_view, zero);  push(gvk_tex_mem, zero)
-    push(gvk_tex_levels, 0);  push(gvk_tex_layers, 0);  push(gvk_tex_vkfmt, 0)
+    push(render3d_st.gvk_tex_image, zero);  push(render3d_st.gvk_tex_view, zero);  push(render3d_st.gvk_tex_mem, zero)
+    push(render3d_st.gvk_tex_levels, 0);  push(render3d_st.gvk_tex_layers, 0);  push(render3d_st.gvk_tex_vkfmt, 0)
   }
-  push(gvk_tex_image, zero);  push(gvk_tex_view, zero);  push(gvk_tex_mem, zero)
-  push(gvk_tex_levels, 0);  push(gvk_tex_layers, 0);  push(gvk_tex_vkfmt, 0)
-  push(gvk_tex_dims_w, 0);  push(gvk_tex_dims_h, 0)
-  push(gvk_tex_glfmt, 0);  push(gvk_tex_array, 0);  push(gvk_tex_gen, 0)
-  push(gvk_tex_smp_sig, 0);  push(gvk_tex_smp, zero)
-  push(gvk_tex_samples, 0)
-  return len(gvk_tex_image) - 1
+  push(render3d_st.gvk_tex_image, zero);  push(render3d_st.gvk_tex_view, zero);  push(render3d_st.gvk_tex_mem, zero)
+  push(render3d_st.gvk_tex_levels, 0);  push(render3d_st.gvk_tex_layers, 0);  push(render3d_st.gvk_tex_vkfmt, 0)
+  push(render3d_st.gvk_tex_dims_w, 0);  push(render3d_st.gvk_tex_dims_h, 0)
+  push(render3d_st.gvk_tex_glfmt, 0);  push(render3d_st.gvk_tex_array, 0);  push(render3d_st.gvk_tex_gen, 0)
+  push(render3d_st.gvk_tex_smp_sig, 0);  push(render3d_st.gvk_tex_smp, zero)
+  push(render3d_st.gvk_tex_samples, 0)
+  return len(render3d_st.gvk_tex_image) - 1
 }
 
 function gvk_mip_levels(w: int, h: int) -> int {
@@ -129,9 +113,7 @@ function gvk_barrier(cb: pointer, image: long, depth: bool, base: int, n: int, l
 }
 
 # a host-visible buffer of n bytes, mapped; gvk_staging_free unmaps and frees it
-var gvk_st_buf: long = 0
-var gvk_st_mem: long = 0
-function gvk_staging(n: int, usage: int) -> pointer {
+function gvk_staging(render3d_st: mut Render3dState, n: int, usage: int) -> pointer {
   let size: long = n
   let bci = bytes(VkBufferCreateInfo_sizeof)
   Vk.zero(bci, VkBufferCreateInfo_sizeof)
@@ -140,41 +122,41 @@ function gvk_staging(n: int, usage: int) -> pointer {
   Vk.put_i32(bci, VkBufferCreateInfo_usage, usage)
   Vk.put_i32(bci, VkBufferCreateInfo_sharingMode, VK_SHARING_MODE_EXCLUSIVE)
   let out = bytes(8)
-  if Vk.create_buffer(gvk_dev, bci, null, out) != VK_SUCCESS { return null }
-  gvk_st_buf = gvk_handle(out)
+  if Vk.create_buffer(render3d_st.gvk_dev, bci, null, out) != VK_SUCCESS { return null }
+  render3d_st.gvk_st_buf = gvk_handle(out)
   let req = bytes(VkMemoryRequirements_sizeof)
-  Vk.get_buffer_memory_requirements(gvk_dev, gvk_st_buf, req)
-  gvk_st_mem = gvk_alloc(req, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
+  Vk.get_buffer_memory_requirements(render3d_st.gvk_dev, render3d_st.gvk_st_buf, req)
+  render3d_st.gvk_st_mem = gvk_alloc(render3d_st, req, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
   let zero: long = 0
-  Vk.bind_buffer_memory(gvk_dev, gvk_st_buf, gvk_st_mem, zero)
+  Vk.bind_buffer_memory(render3d_st.gvk_dev, render3d_st.gvk_st_buf, render3d_st.gvk_st_mem, zero)
   let pp = bytes(8)
-  if Vk.map_memory(gvk_dev, gvk_st_mem, zero, size, 0, pp) != VK_SUCCESS { return null }
+  if Vk.map_memory(render3d_st.gvk_dev, render3d_st.gvk_st_mem, zero, size, 0, pp) != VK_SUCCESS { return null }
   return Vk.get_ptr(pp, 0)
 }
-function gvk_staging_free() -> void {
-  Vk.unmap_memory(gvk_dev, gvk_st_mem)
-  Vk.destroy_buffer(gvk_dev, gvk_st_buf, null)
-  Vk.free_memory(gvk_dev, gvk_st_mem, null)
-  gvk_n_allocs -= 1
+function gvk_staging_free(render3d_st: mut Render3dState) -> void {
+  Vk.unmap_memory(render3d_st.gvk_dev, render3d_st.gvk_st_mem)
+  Vk.destroy_buffer(render3d_st.gvk_dev, render3d_st.gvk_st_buf, null)
+  Vk.free_memory(render3d_st.gvk_dev, render3d_st.gvk_st_mem, null)
+  render3d_st.gvk_n_allocs -= 1
 }
 
 # (Re)make the image behind a handle: glTexImage2D on a texture that already has one replaces it.
-function gvk_tex_storage(tex: int, array: bool, ifmt: int, w: int, h: int, layers: int, with_mips: bool) -> bool {
-  if tex <= 0 or tex >= len(gvk_tex_image) { return false }
+function gvk_tex_storage(render3d_st: mut Render3dState, tex: int, array: bool, ifmt: int, w: int, h: int, layers: int, with_mips: bool) -> bool {
+  if tex <= 0 or tex >= len(render3d_st.gvk_tex_image) { return false }
   let vkfmt = gvk_format(ifmt)
   if vkfmt == VK_FORMAT_UNDEFINED { print(`r3d: vulkan: no image format for GL format {ifmt}`);  return false }
-  gvk_tex_release(tex)
+  gvk_tex_release(render3d_st, tex)
   let depth = gvk_is_depth(ifmt)
   var levels = 1
   if with_mips and not depth { levels = gvk_mip_levels(w, h) }
-  var samples = gvk_storage_samples
+  var samples = render3d_st.gvk_storage_samples
   if samples < 1 { samples = 1 }
   if samples > 1 { levels = 1 }
   var usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
   if depth { usage = usage | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT } else { usage = usage | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT }
   # DLSS reads and writes the frame from compute: a float colour target is storage too while
   # Streamline is running (8-bit sRGB formats cannot be, so only the float ones)
-  if gsl_on and samples == 1 and (vkfmt == VK_FORMAT_R16G16B16A16_SFLOAT or vkfmt == VK_FORMAT_R32_SFLOAT) { usage = usage | VK_IMAGE_USAGE_STORAGE_BIT }
+  if render3d_st.gsl_on and samples == 1 and (vkfmt == VK_FORMAT_R16G16B16A16_SFLOAT or vkfmt == VK_FORMAT_R32_SFLOAT) { usage = usage | VK_IMAGE_USAGE_STORAGE_BIT }
   let ici = bytes(VkImageCreateInfo_sizeof)
   Vk.zero(ici, VkImageCreateInfo_sizeof)
   Vk.put_i32(ici, VkImageCreateInfo_sType, VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO)
@@ -191,22 +173,22 @@ function gvk_tex_storage(tex: int, array: bool, ifmt: int, w: int, h: int, layer
   Vk.put_i32(ici, VkImageCreateInfo_sharingMode, VK_SHARING_MODE_EXCLUSIVE)
   Vk.put_i32(ici, VkImageCreateInfo_initialLayout, VK_IMAGE_LAYOUT_UNDEFINED)
   let out = bytes(8)
-  var r = Vk.create_image(gvk_dev, ici, null, out)
-  if r != VK_SUCCESS { return gvk_fail(`vkCreateImage {w}x{h}x{layers} format {vkfmt}`, r) }
+  var r = Vk.create_image(render3d_st.gvk_dev, ici, null, out)
+  if r != VK_SUCCESS { return gvk_fail(render3d_st, `vkCreateImage {w}x{h}x{layers} format {vkfmt}`, r) }
   let image = gvk_handle(out)
   let req = bytes(VkMemoryRequirements_sizeof)
-  Vk.get_image_memory_requirements(gvk_dev, image, req)
-  let ma = gvk_mem_new(req, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, true)
+  Vk.get_image_memory_requirements(render3d_st.gvk_dev, image, req)
+  let ma = gvk_mem_new(render3d_st, req, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, true)
   let mem: long = ma                    # the allocation id (gvk_mem_new), kept where the memory was
   let zero: long = 0
   # no memory for it (one allocation per resource meets the driver's allocation limit long before
   # the card is full): say so instead of binding a null allocation, which the driver may accept
   if mem == 0 {
-    Vk.destroy_image(gvk_dev, image, null)
-    return gvk_fail(`no device memory for a {w}x{h}x{layers} image ({gvk_n_allocs} allocations live)`, VK_ERROR_OUT_OF_DEVICE_MEMORY)
+    Vk.destroy_image(render3d_st.gvk_dev, image, null)
+    return gvk_fail(render3d_st, `no device memory for a {w}x{h}x{layers} image ({render3d_st.gvk_n_allocs} allocations live)`, VK_ERROR_OUT_OF_DEVICE_MEMORY)
   }
-  r = Vk.bind_image_memory(gvk_dev, image, gvk_mem_handle(ma), gvk_mem_offset(ma))
-  if r != VK_SUCCESS { return gvk_fail("vkBindImageMemory", r) }
+  r = Vk.bind_image_memory(render3d_st.gvk_dev, image, gvk_mem_handle(render3d_st, ma), gvk_mem_offset(render3d_st, ma))
+  if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkBindImageMemory", r) }
   let vci = bytes(VkImageViewCreateInfo_sizeof)
   Vk.zero(vci, VkImageViewCreateInfo_sizeof)
   Vk.put_i32(vci, VkImageViewCreateInfo_sType, VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO)
@@ -217,18 +199,18 @@ function gvk_tex_storage(tex: int, array: bool, ifmt: int, w: int, h: int, layer
   if depth { Vk.put_i32(vci, sr + VkImageSubresourceRange_aspectMask, VK_IMAGE_ASPECT_DEPTH_BIT) } else { Vk.put_i32(vci, sr + VkImageSubresourceRange_aspectMask, VK_IMAGE_ASPECT_COLOR_BIT) }
   Vk.put_i32(vci, sr + VkImageSubresourceRange_levelCount, levels)
   Vk.put_i32(vci, sr + VkImageSubresourceRange_layerCount, layers)
-  r = Vk.create_image_view(gvk_dev, vci, null, out)
-  if r != VK_SUCCESS { return gvk_fail("vkCreateImageView", r) }
-  gvk_tex_image[tex] = image;  gvk_tex_view[tex] = gvk_handle(out);  gvk_tex_mem[tex] = mem
-  gvk_tex_levels[tex] = levels;  gvk_tex_layers[tex] = layers;  gvk_tex_vkfmt[tex] = vkfmt
-  gvk_tex_dims_w[tex] = w;  gvk_tex_dims_h[tex] = h
-  gvk_tex_glfmt[tex] = ifmt;  gvk_tex_gen[tex] = gvk_tex_gen[tex] + 1
-  gvk_tex_samples[tex] = samples
-  if array { gvk_tex_array[tex] = 1 } else { gvk_tex_array[tex] = 0 }
+  r = Vk.create_image_view(render3d_st.gvk_dev, vci, null, out)
+  if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkCreateImageView", r) }
+  render3d_st.gvk_tex_image[tex] = image;  render3d_st.gvk_tex_view[tex] = gvk_handle(out);  render3d_st.gvk_tex_mem[tex] = mem
+  render3d_st.gvk_tex_levels[tex] = levels;  render3d_st.gvk_tex_layers[tex] = layers;  render3d_st.gvk_tex_vkfmt[tex] = vkfmt
+  render3d_st.gvk_tex_dims_w[tex] = w;  render3d_st.gvk_tex_dims_h[tex] = h
+  render3d_st.gvk_tex_glfmt[tex] = ifmt;  render3d_st.gvk_tex_gen[tex] = render3d_st.gvk_tex_gen[tex] + 1
+  render3d_st.gvk_tex_samples[tex] = samples
+  if array { render3d_st.gvk_tex_array[tex] = 1 } else { render3d_st.gvk_tex_array[tex] = 0 }
   # a target starts cleared-to-nothing but readable: every level in the layout samplers expect
-  let cb = gvk_once_begin()
+  let cb = gvk_once_begin(render3d_st)
   gvk_barrier(cb, image, depth, 0, levels, layers, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
-  return gvk_once_end(cb)
+  return gvk_once_end(render3d_st, cb)
 }
 
 # IEEE single (as its bits) to IEEE half: out-of-range values saturate to infinity, tiny ones to zero
@@ -255,17 +237,17 @@ function gvk_gl_type_bytes(ty: int) -> int {
 # Level 0 of every layer from pixels laid out the OpenGL way (fmt channels of type ty), converted
 # to what the image stores: a missing alpha filled opaque, 16-bit samples byte-swapped when the
 # unpack state says so, 32-bit floats into a half-float image halved.
-function gvk_tex_upload(tex: int, ifmt: int, w: int, h: int, layers: int, fmt: int, ty: int, data: pointer) -> bool {
+function gvk_tex_upload(render3d_st: mut Render3dState, tex: int, ifmt: int, w: int, h: int, layers: int, fmt: int, ty: int, data: pointer) -> bool {
   let cin = gvk_gl_channels(fmt)
   let bin = gvk_gl_type_bytes(ty)
   let cout = gvk_channels(ifmt)
   let bout = gvk_channel_bytes(ifmt)
   let texels = w * h * layers
   let n = texels * cout * bout
-  let dst = gvk_staging(n, VK_BUFFER_USAGE_TRANSFER_SRC_BIT)
+  let dst = gvk_staging(render3d_st, n, VK_BUFFER_USAGE_TRANSFER_SRC_BIT)
   if dst == null { print("r3d: vulkan: no staging buffer for an upload");  return false }
   let buf = bytes(n)
-  if cin == cout and bin == bout and not (bin == 2 and gvk_unpack_swap) {
+  if cin == cout and bin == bout and not (bin == 2 and render3d_st.gvk_unpack_swap) {
     mem_copy(buf, data, n)
   } else {
     let src: pointer = data
@@ -282,7 +264,7 @@ function gvk_tex_upload(tex: int, ifmt: int, w: int, h: int, layers: int, fmt: i
           if bin == bout {
             if bin == 1 { buf[o] = src[i] }
             if bin == 2 {
-              if gvk_unpack_swap { buf[o] = src[i + 1];  buf[o + 1] = src[i] } else { buf[o] = src[i];  buf[o + 1] = src[i + 1] }
+              if render3d_st.gvk_unpack_swap { buf[o] = src[i + 1];  buf[o + 1] = src[i] } else { buf[o] = src[i];  buf[o + 1] = src[i + 1] }
             }
             if bin == 4 { Vk.put_i32(buf, o, Vk.get_i32(src, i)) }
           } else if bin == 4 and bout == 2 {
@@ -290,7 +272,7 @@ function gvk_tex_upload(tex: int, ifmt: int, w: int, h: int, layers: int, fmt: i
             buf[o] = hv & 255;  buf[o + 1] = (hv >> 8) & 255
           } else {
             print(`r3d: vulkan: no conversion from {bin}-byte to {bout}-byte samples`)
-            gvk_staging_free()
+            gvk_staging_free(render3d_st)
             return false
           }
         }
@@ -298,10 +280,10 @@ function gvk_tex_upload(tex: int, ifmt: int, w: int, h: int, layers: int, fmt: i
     }
   }
   mem_copy(dst, buf, n)
-  let image = gvk_tex_image[tex]
+  let image = render3d_st.gvk_tex_image[tex]
   let depth = gvk_is_depth(ifmt)
-  let levels = gvk_tex_levels[tex]
-  let cb = gvk_once_begin()
+  let levels = render3d_st.gvk_tex_levels[tex]
+  let cb = gvk_once_begin(render3d_st)
   gvk_barrier(cb, image, depth, 0, levels, layers, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
   let bic = bytes(VkBufferImageCopy_sizeof)
   Vk.zero(bic, VkBufferImageCopy_sizeof)
@@ -311,27 +293,27 @@ function gvk_tex_upload(tex: int, ifmt: int, w: int, h: int, layers: int, fmt: i
   Vk.put_i32(bic, VkBufferImageCopy_imageExtent + VkExtent3D_width, w)
   Vk.put_i32(bic, VkBufferImageCopy_imageExtent + VkExtent3D_height, h)
   Vk.put_i32(bic, VkBufferImageCopy_imageExtent + VkExtent3D_depth, 1)
-  Vk.cmd_copy_buffer_to_image(cb, gvk_st_buf, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, bic)
+  Vk.cmd_copy_buffer_to_image(cb, render3d_st.gvk_st_buf, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, bic)
   gvk_barrier(cb, image, depth, 0, levels, layers, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
-  let ok = gvk_once_end(cb)
-  gvk_staging_free()
+  let ok = gvk_once_end(render3d_st, cb)
+  gvk_staging_free(render3d_st)
   return ok
 }
 
 # The mip chain from level 0, each level blitted down from the one above it
 # A target made without pixels has one level; the renderer asking it for mipmaps (the exposure
 # measure reads the HDR scene's smallest level every frame) grows it a full chain, level 0 kept.
-function gvk_tex_grow_mips(tex: int, w: int, h: int) -> bool {
-  let old_image = gvk_tex_image[tex]
-  let old_view = gvk_tex_view[tex]
-  let old_mem = gvk_tex_mem[tex]
-  let layers = gvk_tex_layers[tex]
+function gvk_tex_grow_mips(render3d_st: mut Render3dState, tex: int, w: int, h: int) -> bool {
+  let old_image = render3d_st.gvk_tex_image[tex]
+  let old_view = render3d_st.gvk_tex_view[tex]
+  let old_mem = render3d_st.gvk_tex_mem[tex]
+  let layers = render3d_st.gvk_tex_layers[tex]
   let zero: long = 0
-  gvk_tex_image[tex] = zero
-  if not gvk_tex_storage(tex, gvk_tex_array[tex] == 1, gvk_tex_glfmt[tex], w, h, layers, true) { return false }
-  let cb = gvk_once_begin()
+  render3d_st.gvk_tex_image[tex] = zero
+  if not gvk_tex_storage(render3d_st, tex, render3d_st.gvk_tex_array[tex] == 1, render3d_st.gvk_tex_glfmt[tex], w, h, layers, true) { return false }
+  let cb = gvk_once_begin(render3d_st)
   gvk_barrier(cb, old_image, false, 0, 1, layers, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
-  gvk_barrier(cb, gvk_tex_image[tex], false, 0, 1, layers, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+  gvk_barrier(cb, render3d_st.gvk_tex_image[tex], false, 0, 1, layers, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
   let ic = bytes(VkImageCopy_sizeof)
   Vk.zero(ic, VkImageCopy_sizeof)
   Vk.put_i32(ic, VkImageCopy_srcSubresource + VkImageSubresourceLayers_aspectMask, VK_IMAGE_ASPECT_COLOR_BIT)
@@ -341,31 +323,31 @@ function gvk_tex_grow_mips(tex: int, w: int, h: int) -> bool {
   Vk.put_i32(ic, VkImageCopy_extent + VkExtent3D_width, w)
   Vk.put_i32(ic, VkImageCopy_extent + VkExtent3D_height, h)
   Vk.put_i32(ic, VkImageCopy_extent + VkExtent3D_depth, 1)
-  Vk.cmd_copy_image(cb, old_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, gvk_tex_image[tex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, ic)
-  gvk_barrier(cb, gvk_tex_image[tex], false, 0, 1, layers, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
-  let ok = gvk_once_end(cb)
-  Vk.destroy_image_view(gvk_dev, old_view, null)
-  Vk.destroy_image(gvk_dev, old_image, null)
-  gvk_mem_free(gvk_mem_id(old_mem))
+  Vk.cmd_copy_image(cb, old_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, render3d_st.gvk_tex_image[tex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, ic)
+  gvk_barrier(cb, render3d_st.gvk_tex_image[tex], false, 0, 1, layers, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+  let ok = gvk_once_end(render3d_st, cb)
+  Vk.destroy_image_view(render3d_st.gvk_dev, old_view, null)
+  Vk.destroy_image(render3d_st.gvk_dev, old_image, null)
+  gvk_mem_free(render3d_st, gvk_mem_id(old_mem))
   return ok
 }
 
-function gvk_tex_mips(tex: int, w: int, h: int) -> bool {
-  if gvk_tex_levels[tex] <= 1 and (w > 1 or h > 1) and not gvk_is_depth(gvk_tex_glfmt[tex]) {
-    if not gvk_tex_grow_mips(tex, w, h) { return false }
+function gvk_tex_mips(render3d_st: mut Render3dState, tex: int, w: int, h: int) -> bool {
+  if render3d_st.gvk_tex_levels[tex] <= 1 and (w > 1 or h > 1) and not gvk_is_depth(render3d_st.gvk_tex_glfmt[tex]) {
+    if not gvk_tex_grow_mips(render3d_st, tex, w, h) { return false }
   }
-  let levels = gvk_tex_levels[tex]
+  let levels = render3d_st.gvk_tex_levels[tex]
   if levels <= 1 { return true }
-  let cb = gvk_once_begin()
-  gvk_tex_mips_into(cb, tex, w, h)
-  return gvk_once_end(cb)
+  let cb = gvk_once_begin(render3d_st)
+  gvk_tex_mips_into(render3d_st, cb, tex, w, h)
+  return gvk_once_end(render3d_st, cb)
 }
 # the chain's blits and barriers recorded into cb (the frame's own, when one is open)
-function gvk_tex_mips_into(cb: pointer, tex: int, w: int, h: int) -> void {
-  let levels = gvk_tex_levels[tex]
+function gvk_tex_mips_into(render3d_st: Render3dState, cb: pointer, tex: int, w: int, h: int) -> void {
+  let levels = render3d_st.gvk_tex_levels[tex]
   if levels <= 1 { return }
-  let image = gvk_tex_image[tex]
-  let layers = gvk_tex_layers[tex]
+  let image = render3d_st.gvk_tex_image[tex]
+  let layers = render3d_st.gvk_tex_layers[tex]
   var sw = w
   var sh = h
   for lv in 1 .. levels {
@@ -399,7 +381,7 @@ function gvk_tex_mips_into(cb: pointer, tex: int, w: int, h: int) -> void {
 
 # Level 0 of layer 0 back to the CPU, laid out the OpenGL way when the layouts agree (the terrain
 # reads its height field back as R32F into GL_RED / GL_FLOAT)
-function gvk_tex_read(tex: int, ifmt: int, w: int, h: int, fmt: int, ty: int, out: pointer) -> bool {
+function gvk_tex_read(render3d_st: mut Render3dState, tex: int, ifmt: int, w: int, h: int, fmt: int, ty: int, out: pointer) -> bool {
   let cout = gvk_channels(ifmt)
   let bout = gvk_channel_bytes(ifmt)
   let cwant = gvk_gl_channels(fmt)
@@ -410,11 +392,11 @@ function gvk_tex_read(tex: int, ifmt: int, w: int, h: int, fmt: int, ty: int, ou
     return false
   }
   let n = w * h * cout * bout
-  let src = gvk_staging(n, VK_BUFFER_USAGE_TRANSFER_DST_BIT)
+  let src = gvk_staging(render3d_st, n, VK_BUFFER_USAGE_TRANSFER_DST_BIT)
   if src == null { return false }
-  let image = gvk_tex_image[tex]
+  let image = render3d_st.gvk_tex_image[tex]
   let depth = gvk_is_depth(ifmt)
-  let cb = gvk_once_begin()
+  let cb = gvk_once_begin(render3d_st)
   gvk_barrier(cb, image, depth, 0, 1, 1, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
   let bic = bytes(VkBufferImageCopy_sizeof)
   Vk.zero(bic, VkBufferImageCopy_sizeof)
@@ -424,36 +406,34 @@ function gvk_tex_read(tex: int, ifmt: int, w: int, h: int, fmt: int, ty: int, ou
   Vk.put_i32(bic, VkBufferImageCopy_imageExtent + VkExtent3D_width, w)
   Vk.put_i32(bic, VkBufferImageCopy_imageExtent + VkExtent3D_height, h)
   Vk.put_i32(bic, VkBufferImageCopy_imageExtent + VkExtent3D_depth, 1)
-  Vk.cmd_copy_image_to_buffer(cb, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, gvk_st_buf, 1, bic)
+  Vk.cmd_copy_image_to_buffer(cb, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, render3d_st.gvk_st_buf, 1, bic)
   gvk_barrier(cb, image, depth, 0, 1, 1, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
-  let ok = gvk_once_end(cb)
+  let ok = gvk_once_end(render3d_st, cb)
   if ok and cwant == cout { mem_copy(out, src, n) }
   if ok and cwant < cout {
     let texel = cout * bout
     let keep = cwant * bout
     for t in 0 .. w * h { mem_copy(mem_off(out, t * keep), mem_off(src, t * texel), keep) }
   }
-  gvk_staging_free()
+  gvk_staging_free(render3d_st)
   return ok
 }
 
-function gvk_tex_release(tex: int) -> void {
-  if gvk_tex_image[tex] == 0 { return }
+function gvk_tex_release(render3d_st: mut Render3dState, tex: int) -> void {
+  if render3d_st.gvk_tex_image[tex] == 0 { return }
   let zero: long = 0
-  Vk.destroy_image_view(gvk_dev, gvk_tex_view[tex], null)
-  Vk.destroy_image(gvk_dev, gvk_tex_image[tex], null)
-  gvk_mem_free(gvk_mem_id(gvk_tex_mem[tex]))
-  gvk_tex_image[tex] = zero;  gvk_tex_view[tex] = zero;  gvk_tex_mem[tex] = zero
-  gvk_tex_levels[tex] = 0;  gvk_tex_layers[tex] = 0;  gvk_tex_vkfmt[tex] = 0
-  gvk_tex_gen[tex] = gvk_tex_gen[tex] + 1
+  Vk.destroy_image_view(render3d_st.gvk_dev, render3d_st.gvk_tex_view[tex], null)
+  Vk.destroy_image(render3d_st.gvk_dev, render3d_st.gvk_tex_image[tex], null)
+  gvk_mem_free(render3d_st, gvk_mem_id(render3d_st.gvk_tex_mem[tex]))
+  render3d_st.gvk_tex_image[tex] = zero;  render3d_st.gvk_tex_view[tex] = zero;  render3d_st.gvk_tex_mem[tex] = zero
+  render3d_st.gvk_tex_levels[tex] = 0;  render3d_st.gvk_tex_layers[tex] = 0;  render3d_st.gvk_tex_vkfmt[tex] = 0
+  render3d_st.gvk_tex_gen[tex] = render3d_st.gvk_tex_gen[tex] + 1
 }
 
 # ---- samplers -----------------------------------------------------------------------------
 # One VkSampler per distinct way of reading a texture, made the first time it is asked for.
 # The arguments are what the renderer set through gpu_tex_param (0 where it set nothing, which
 # means GL's own default).
-var gvk_smp_keys: []string = null
-var gvk_smp: []long = null
 
 function gvk_filter(f: int) -> int {
   if f == GL_NEAREST or f == GL_NEAREST_MIPMAP_NEAREST or f == GL_NEAREST_MIPMAP_LINEAR { return VK_FILTER_NEAREST }
@@ -480,19 +460,19 @@ function gvk_compare_op(f: int) -> int {
 # which is -2.0 at Performance and about -1.6 at Quality. It is applied ONLY while DLSS is live: a
 # plain spatial upscale has no temporal accumulation to hide the aliasing a negative bias brings,
 # so biasing there would trade blur for shimmer.
-function gvk_mip_bias() -> float {
+function gvk_mip_bias(render3d_st: mut Render3dState) -> float {
   # R3D_NO_MIPBIAS=1 puts it back the way it was, so one build can be compared against itself
-  if r3d_env_has("R3D_NO_MIPBIAS") { return 0.0 }
-  if not r3d_dlss_live() { return 0.0 }
-  let rw = r3d_dlss_render_w()
+  if r3d_env_has(render3d_st, "R3D_NO_MIPBIAS") { return 0.0 }
+  if not r3d_dlss_live(render3d_st) { return 0.0 }
+  let rw = r3d_dlss_render_w(render3d_st)
   if rw <= 0 or gl_w <= 0 or rw >= gl_w { return 0.0 }
   # log2 from the natural log the runtime has: log2(x) = ln(x) * 1/ln(2)
   return Math.log(float(rw) / float(gl_w)) * 1.4426950408889634 - 1.0
 }
 # the sampler for texture tex's parameters, from the texture's own one-entry cache when they have
 # not changed since it last asked - a draw asks for every texture it binds
-function gvk_tex_sampler(tex: int, min_f: int, mag_f: int, wrap_s: int, wrap_t: int, compare: int, aniso: int) -> long {
-  let bias = float_bits(gvk_mip_bias())
+function gvk_tex_sampler(render3d_st: mut Render3dState, tex: int, min_f: int, mag_f: int, wrap_s: int, wrap_t: int, compare: int, aniso: int) -> long {
+  let bias = float_bits(gvk_mip_bias(render3d_st))
   var sig = min_f * 31 + mag_f
   sig = sig * 31 + wrap_s
   sig = sig * 31 + wrap_t
@@ -501,16 +481,16 @@ function gvk_tex_sampler(tex: int, min_f: int, mag_f: int, wrap_s: int, wrap_t: 
   # the bias is part of what the sampler IS, so it has to invalidate this cache too - otherwise
   # turning DLSS on mid-session keeps every sampler already made at the old bias
   sig = (sig * 31 + bias) | 1
-  if tex > 0 and tex < len(gvk_tex_smp_sig) and gvk_tex_smp_sig[tex] == sig { return gvk_tex_smp[tex] }
-  let s = gvk_sampler(min_f, mag_f, wrap_s, wrap_t, compare, aniso)
-  if tex > 0 and tex < len(gvk_tex_smp_sig) { gvk_tex_smp_sig[tex] = sig;  gvk_tex_smp[tex] = s }
+  if tex > 0 and tex < len(render3d_st.gvk_tex_smp_sig) and render3d_st.gvk_tex_smp_sig[tex] == sig { return render3d_st.gvk_tex_smp[tex] }
+  let s = gvk_sampler(render3d_st, min_f, mag_f, wrap_s, wrap_t, compare, aniso)
+  if tex > 0 and tex < len(render3d_st.gvk_tex_smp_sig) { render3d_st.gvk_tex_smp_sig[tex] = sig;  render3d_st.gvk_tex_smp[tex] = s }
   return s
 }
-function gvk_sampler(min_f: int, mag_f: int, wrap_s: int, wrap_t: int, compare: int, aniso: int) -> long {
-  let bias = float_bits(gvk_mip_bias())
+function gvk_sampler(render3d_st: mut Render3dState, min_f: int, mag_f: int, wrap_s: int, wrap_t: int, compare: int, aniso: int) -> long {
+  let bias = float_bits(gvk_mip_bias(render3d_st))
   let key = `{min_f}/{mag_f}/{wrap_s}/{wrap_t}/{compare}/{aniso}/{bias}`
-  if gvk_smp_keys == null { gvk_smp_keys = new []string;  gvk_smp = new []long }
-  for i in 0 .. len(gvk_smp_keys) { if gvk_smp_keys[i] == key { return gvk_smp[i] } }
+  if render3d_st.gvk_smp_keys == null { render3d_st.gvk_smp_keys = new []string;  render3d_st.gvk_smp = new []long }
+  for i in 0 .. len(render3d_st.gvk_smp_keys) { if render3d_st.gvk_smp_keys[i] == key { return render3d_st.gvk_smp[i] } }
   var mn = min_f
   if mn == 0 { mn = GL_NEAREST_MIPMAP_LINEAR }
   var mg = mag_f
@@ -531,7 +511,7 @@ function gvk_sampler(min_f: int, mag_f: int, wrap_s: int, wrap_t: int, compare: 
   if mipmapped { Vk.put_i32(sci, VkSamplerCreateInfo_mipLodBias, bias) }
   if aniso > 0x3F800000 and mipmapped {
     var a = aniso
-    if a > gvk_max_aniso { a = gvk_max_aniso }
+    if a > render3d_st.gvk_max_aniso { a = render3d_st.gvk_max_aniso }
     Vk.put_i32(sci, VkSamplerCreateInfo_anisotropyEnable, 1)
     Vk.put_i32(sci, VkSamplerCreateInfo_maxAnisotropy, a)
   }
@@ -542,11 +522,11 @@ function gvk_sampler(min_f: int, mag_f: int, wrap_s: int, wrap_t: int, compare: 
   Vk.put_i32(sci, VkSamplerCreateInfo_borderColor, VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE)
   let out = bytes(8)
   let zero: long = 0
-  let r = Vk.create_sampler(gvk_dev, sci, null, out)
-  if r != VK_SUCCESS { gvk_fail("vkCreateSampler", r);  return zero }
+  let r = Vk.create_sampler(render3d_st.gvk_dev, sci, null, out)
+  if r != VK_SUCCESS { gvk_fail(render3d_st, "vkCreateSampler", r);  return zero }
   let s = gvk_handle(out)
-  push(gvk_smp_keys, key)
-  push(gvk_smp, s)
+  push(render3d_st.gvk_smp_keys, key)
+  push(render3d_st.gvk_smp, s)
   return s
 }
 
@@ -555,69 +535,60 @@ function gvk_sampler(min_f: int, mag_f: int, wrap_s: int, wrap_t: int, compare: 
 # indexes these lists. Every buffer can be read as vertices or as indices, so one handle serves
 # whichever the renderer binds it as. While the backend comes up every buffer is host-visible and
 # an upload maps and copies; staged device-local buffers arrive with the block allocator.
-var gvk_buf: []long = null
-var gvk_buf_mem: []long = null
-var gvk_buf_size: []int = null
-var gvk_buf_map: []pointer = null      # host-visible buffers stay mapped for their whole life
-var gvk_buf_used: []int = null         # the frame (gvk_frame_no) a draw last bound the buffer in
-var gvk_frame_no: int = 1
 # Storage a buffer was moved off, or freed, while the frame that used it has not been submitted:
 # destroyed at gvk_retire_flush, after the frame's work is done.
-var gvk_retired_buf: []long = null
-var gvk_retired_mem: []long = null
 
-function gvk_buf_new() -> int {
+function gvk_buf_new(render3d_st: mut Render3dState) -> int {
   let zero: long = 0
-  if gvk_buf == null {
-    gvk_buf = new []long;  gvk_buf_mem = new []long;  gvk_buf_size = new []int;  gvk_buf_map = new []pointer
-    gvk_buf_used = new []int;  gvk_retired_buf = new []long;  gvk_retired_mem = new []long
+  if render3d_st.gvk_buf == null {
+    render3d_st.gvk_buf = new []long;  render3d_st.gvk_buf_mem = new []long;  render3d_st.gvk_buf_size = new []int;  render3d_st.gvk_buf_map = new []pointer
+    render3d_st.gvk_buf_used = new []int;  render3d_st.gvk_retired_buf = new []long;  render3d_st.gvk_retired_mem = new []long
     # handle 0 is "no buffer", as it is on OpenGL
-    push(gvk_buf, zero);  push(gvk_buf_mem, zero);  push(gvk_buf_size, 0);  push(gvk_buf_map, null);  push(gvk_buf_used, 0)
+    push(render3d_st.gvk_buf, zero);  push(render3d_st.gvk_buf_mem, zero);  push(render3d_st.gvk_buf_size, 0);  push(render3d_st.gvk_buf_map, null);  push(render3d_st.gvk_buf_used, 0)
   }
-  push(gvk_buf, zero);  push(gvk_buf_mem, zero);  push(gvk_buf_size, 0);  push(gvk_buf_map, null);  push(gvk_buf_used, 0)
-  return len(gvk_buf) - 1
+  push(render3d_st.gvk_buf, zero);  push(render3d_st.gvk_buf_mem, zero);  push(render3d_st.gvk_buf_size, 0);  push(render3d_st.gvk_buf_map, null);  push(render3d_st.gvk_buf_used, 0)
+  return len(render3d_st.gvk_buf) - 1
 }
 
-function gvk_buf_release(b: int) -> void {
-  if gvk_buf[b] == 0 { return }
+function gvk_buf_release(render3d_st: mut Render3dState, b: int) -> void {
+  if render3d_st.gvk_buf[b] == 0 { return }
   let zero: long = 0
-  if gvk_buf_used[b] == gvk_frame_no {
+  if render3d_st.gvk_buf_used[b] == render3d_st.gvk_frame_no {
     # a draw recorded this frame still reads it: destroy it once the frame has been submitted
-    push(gvk_retired_buf, gvk_buf[b]);  push(gvk_retired_mem, gvk_buf_mem[b])
+    push(render3d_st.gvk_retired_buf, render3d_st.gvk_buf[b]);  push(render3d_st.gvk_retired_mem, render3d_st.gvk_buf_mem[b])
   } else {
-    Vk.destroy_buffer(gvk_dev, gvk_buf[b], null)
-    gvk_mem_free(gvk_mem_id(gvk_buf_mem[b]))
+    Vk.destroy_buffer(render3d_st.gvk_dev, render3d_st.gvk_buf[b], null)
+    gvk_mem_free(render3d_st, gvk_mem_id(render3d_st.gvk_buf_mem[b]))
   }
-  gvk_buf[b] = zero;  gvk_buf_mem[b] = zero;  gvk_buf_size[b] = 0;  gvk_buf_map[b] = null;  gvk_buf_used[b] = 0
+  render3d_st.gvk_buf[b] = zero;  render3d_st.gvk_buf_mem[b] = zero;  render3d_st.gvk_buf_size[b] = 0;  render3d_st.gvk_buf_map[b] = null;  render3d_st.gvk_buf_used[b] = 0
 }
 # the frame's submitted work is done: storage retired during it can go
-function gvk_retire_flush() -> void {
-  if gvk_retired_buf == null { return }
-  for i in 0 .. len(gvk_retired_buf) {
-    Vk.destroy_buffer(gvk_dev, gvk_retired_buf[i], null)
-    gvk_mem_free(gvk_mem_id(gvk_retired_mem[i]))
+function gvk_retire_flush(render3d_st: mut Render3dState) -> void {
+  if render3d_st.gvk_retired_buf == null { return }
+  for i in 0 .. len(render3d_st.gvk_retired_buf) {
+    Vk.destroy_buffer(render3d_st.gvk_dev, render3d_st.gvk_retired_buf[i], null)
+    gvk_mem_free(render3d_st, gvk_mem_id(render3d_st.gvk_retired_mem[i]))
   }
-  gvk_retired_buf = new []long
-  gvk_retired_mem = new []long
+  render3d_st.gvk_retired_buf = new []long
+  render3d_st.gvk_retired_mem = new []long
 }
 
 # A buffer a compute pass writes: a draw later in the same frame reads what the GPU put there,
 # so it is never swapped for fresh storage because it was used this frame (gvk_buf_reserve).
-var gvk_buf_gpu: []int = null
-function gvk_buf_gpu_owned(b: int) -> void {
-  if gvk_buf_gpu == null { gvk_buf_gpu = new []int }
-  while len(gvk_buf_gpu) <= b { push(gvk_buf_gpu, 0) }
-  gvk_buf_gpu[b] = 1
+function gvk_buf_gpu_owned(render3d_st: mut Render3dState, b: int) -> void {
+  if render3d_st.gvk_buf_gpu == null { render3d_st.gvk_buf_gpu = new []int }
+  while len(render3d_st.gvk_buf_gpu) <= b { push(render3d_st.gvk_buf_gpu, 0) }
+  render3d_st.gvk_buf_gpu[b] = 1
 }
-function gvk_buf_is_gpu(b: int) -> bool { return gvk_buf_gpu != null and b < len(gvk_buf_gpu) and gvk_buf_gpu[b] == 1 }
+function gvk_buf_is_gpu(render3d_st: Render3dState, b: int) -> bool { return render3d_st.gvk_buf_gpu != null and b < len(render3d_st.gvk_buf_gpu) and render3d_st.gvk_buf_gpu[b] == 1 }
 
 # Room for at least n bytes behind handle b; a buffer that is already big enough is kept, so a
 # stream re-filled every frame allocates once.
-function gvk_buf_reserve(b: int, n: int) -> bool {
-  if b <= 0 or b >= len(gvk_buf) { return false }
+function gvk_buf_reserve(render3d_st: mut Render3dState, b: int, n: int) -> bool {
+  if b <= 0 or b >= len(render3d_st.gvk_buf) { return false }
   # already big enough, and no draw this frame reads what is there: fill it in place
-  if gvk_buf[b] != 0 and gvk_buf_size[b] >= n and (gvk_buf_used[b] != gvk_frame_no or gvk_buf_is_gpu(b)) { return true }
-  gvk_buf_release(b)
+  if render3d_st.gvk_buf[b] != 0 and render3d_st.gvk_buf_size[b] >= n and (render3d_st.gvk_buf_used[b] != render3d_st.gvk_frame_no or gvk_buf_is_gpu(render3d_st, b)) { return true }
+  gvk_buf_release(render3d_st, b)
   var size = n
   if size < 64 { size = 64 }
   let size_l: long = size
@@ -628,24 +599,24 @@ function gvk_buf_reserve(b: int, n: int) -> bool {
   Vk.put_i32(bci, VkBufferCreateInfo_usage, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT)
   Vk.put_i32(bci, VkBufferCreateInfo_sharingMode, VK_SHARING_MODE_EXCLUSIVE)
   let out = bytes(8)
-  var r = Vk.create_buffer(gvk_dev, bci, null, out)
-  if r != VK_SUCCESS { return gvk_fail(`vkCreateBuffer ({size} bytes)`, r) }
+  var r = Vk.create_buffer(render3d_st.gvk_dev, bci, null, out)
+  if r != VK_SUCCESS { return gvk_fail(render3d_st, `vkCreateBuffer ({size} bytes)`, r) }
   let buf = gvk_handle(out)
   let req = bytes(VkMemoryRequirements_sizeof)
-  Vk.get_buffer_memory_requirements(gvk_dev, buf, req)
-  let ma = gvk_mem_new(req, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, false)
+  Vk.get_buffer_memory_requirements(render3d_st.gvk_dev, buf, req)
+  let ma = gvk_mem_new(render3d_st, req, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, false)
   let zero: long = 0
-  if ma == 0 { Vk.destroy_buffer(gvk_dev, buf, null);  return false }
+  if ma == 0 { Vk.destroy_buffer(render3d_st.gvk_dev, buf, null);  return false }
   let mem: long = ma
-  r = Vk.bind_buffer_memory(gvk_dev, buf, gvk_mem_handle(ma), gvk_mem_offset(ma))
-  if r != VK_SUCCESS { return gvk_fail("vkBindBufferMemory", r) }
-  gvk_buf[b] = buf;  gvk_buf_mem[b] = mem;  gvk_buf_size[b] = size;  gvk_buf_map[b] = gvk_mem_ptr(ma)
+  r = Vk.bind_buffer_memory(render3d_st.gvk_dev, buf, gvk_mem_handle(render3d_st, ma), gvk_mem_offset(render3d_st, ma))
+  if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkBindBufferMemory", r) }
+  render3d_st.gvk_buf[b] = buf;  render3d_st.gvk_buf_mem[b] = mem;  render3d_st.gvk_buf_size[b] = size;  render3d_st.gvk_buf_map[b] = gvk_mem_ptr(render3d_st, ma)
   return true
 }
 
 # glBufferData: the whole buffer, from data (or storage only when data is null)
-function gvk_buf_upload(b: int, n: int, data: pointer) -> bool {
-  if not gvk_buf_reserve(b, n) { return false }
-  if data != null and n > 0 { mem_copy(gvk_buf_map[b], data, n) }
+function gvk_buf_upload(render3d_st: mut Render3dState, b: int, n: int, data: pointer) -> bool {
+  if not gvk_buf_reserve(render3d_st, b, n) { return false }
+  if data != null and n > 0 { mem_copy(render3d_st.gvk_buf_map[b], data, n) }
   return true
 }

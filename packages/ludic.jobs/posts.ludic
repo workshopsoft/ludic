@@ -1,12 +1,12 @@
 # posts.ludic - what is on a board, slot by slot, and a board as the host says it
-export function jobs_post_kind(b: int, s: int) -> int { return jobs__pk[jobs__at(b, s)] }
-export function jobs_post_param(b: int, s: int) -> int { return jobs__pp[jobs__at(b, s)] }
-export function jobs_post_need(b: int, s: int) -> int { return jobs__pn[jobs__at(b, s)] }
-export function jobs_post_have(b: int, s: int) -> int { return jobs__ph[jobs__at(b, s)] }
-export function jobs_post_money(b: int, s: int) -> int { return jobs__pm[jobs__at(b, s)] }
-export function jobs_post_rep(b: int, s: int) -> int { return jobs__pr[jobs__at(b, s)] }
-export function jobs_post_state(b: int, s: int) -> int { return jobs__ps[jobs__at(b, s)] }
-export function jobs_post_day(b: int, s: int) -> int { return jobs__pd[jobs__at(b, s)] }
+export function jobs_post_kind(jobs_st: mut JobsState, b: int, s: int) -> int { return jobs_st.jobs__pk[jobs__at(jobs_st, b, s)] }
+export function jobs_post_param(jobs_st: mut JobsState, b: int, s: int) -> int { return jobs_st.jobs__pp[jobs__at(jobs_st, b, s)] }
+export function jobs_post_need(jobs_st: mut JobsState, b: int, s: int) -> int { return jobs_st.jobs__pn[jobs__at(jobs_st, b, s)] }
+export function jobs_post_have(jobs_st: mut JobsState, b: int, s: int) -> int { return jobs_st.jobs__ph[jobs__at(jobs_st, b, s)] }
+export function jobs_post_money(jobs_st: mut JobsState, b: int, s: int) -> int { return jobs_st.jobs__pm[jobs__at(jobs_st, b, s)] }
+export function jobs_post_rep(jobs_st: mut JobsState, b: int, s: int) -> int { return jobs_st.jobs__pr[jobs__at(jobs_st, b, s)] }
+export function jobs_post_state(jobs_st: mut JobsState, b: int, s: int) -> int { return jobs_st.jobs__ps[jobs__at(jobs_st, b, s)] }
+export function jobs_post_day(jobs_st: mut JobsState, b: int, s: int) -> int { return jobs_st.jobs__pd[jobs__at(jobs_st, b, s)] }
 
 export function jobs_slots(b: int) -> int {
   if not jobs_board_ok(b) { return 0 }
@@ -14,38 +14,38 @@ export function jobs_slots(b: int) -> int {
 }
 
 # the slots with something posted, in order
-export function jobs_posted(b: int) -> []int {
+export function jobs_posted(jobs_st: mut JobsState, b: int) -> []int {
   let out = new []int
-  for s in 0 .. jobs_slots(b) { if jobs_post_kind(b, s) >= 0 { push(out, s) } }
+  for s in 0 .. jobs_slots(b) { if jobs_post_kind(jobs_st, b, s) >= 0 { push(out, s) } }
   return out
 }
 
 # how many of a board's posts are paid
-export function jobs_posts_done(b: int) -> int {
+export function jobs_posts_done(jobs_st: mut JobsState, b: int) -> int {
   var n = 0
-  for s in 0 .. jobs_slots(b) { if jobs_post_kind(b, s) >= 0 and jobs_post_state(b, s) == JOBS_DONE { n += 1 } }
+  for s in 0 .. jobs_slots(b) { if jobs_post_kind(jobs_st, b, s) >= 0 and jobs_post_state(jobs_st, b, s) == JOBS_DONE { n += 1 } }
   return n
 }
 
-export function jobs_total(b: int) -> int {
-  jobs__ensure()
-  return jobs__total[b]
+export function jobs_total(jobs_st: mut JobsState, b: int) -> int {
+  jobs__ensure(jobs_st)
+  return jobs_st.jobs__total[b]
 }
 
 # a slot outright: the host's board on a guest, a test
-export function jobs_post_set(b: int, s: int, kind: int, param: int, need: int, have: int, money: int, rep: int, state: int, day: int) -> void {
-  let k = jobs__at(b, s)
-  jobs__pk[k] = kind
-  jobs__pp[k] = param
-  jobs__pn[k] = need
-  jobs__ph[k] = have
-  jobs__pm[k] = money
-  jobs__pr[k] = rep
-  jobs__ps[k] = state
-  jobs__pd[k] = day
+export function jobs_post_set(jobs_st: mut JobsState, b: int, s: int, kind: int, param: int, need: int, have: int, money: int, rep: int, state: int, day: int) -> void {
+  let k = jobs__at(jobs_st, b, s)
+  jobs_st.jobs__pk[k] = kind
+  jobs_st.jobs__pp[k] = param
+  jobs_st.jobs__pn[k] = need
+  jobs_st.jobs__ph[k] = have
+  jobs_st.jobs__pm[k] = money
+  jobs_st.jobs__pr[k] = rep
+  jobs_st.jobs__ps[k] = state
+  jobs_st.jobs__pd[k] = day
 }
 
-export function jobs_set_total(b: int, n: int) -> void {
-  jobs__ensure()
-  jobs__total[b] = n
+export function jobs_set_total(jobs_st: mut JobsState, b: int, n: int) -> void {
+  jobs__ensure(jobs_st)
+  jobs_st.jobs__total[b] = n
 }

@@ -11,38 +11,32 @@
 
 const GL_TEXTURE_MAX_ANISOTROPY_EXT: int = 0x84FE
 
-var tex_w: int = 0            # the last decoded image
-var tex_h: int = 0
-var tex_channels: int = 0
-var tex_depth: int = 0        # bits per sample (8 or 16)
-var tex_file_len: int = 0
-var tex_anisotropy: fixed = 16.0
 
 # The anisotropic filtering level for every mipmapped texture, loaded or not: 1 (off), 2, 4, 8
 # or 16. Textures uploaded before a change are updated in place - on OpenGL by setting the
 # parameter again, on Vulkan by rewriting the record the sampler cache reads - so a settings
 # screen can offer it live instead of on the next start.
-function r3d_set_anisotropy(level: int) -> void {
+function r3d_set_anisotropy(render3d_st: mut Render3dState, level: int) -> void {
   var a: fixed = 1.0
   if level >= 2 { a = 2.0 }
   if level >= 4 { a = 4.0 }
   if level >= 8 { a = 8.0 }
   if level >= 16 { a = 16.0 }
-  if a == tex_anisotropy { return }
-  tex_anisotropy = a
-  if gpu_tx == null { return }
-  let keep = gpu_bound_2d
-  for t in 1 .. gpu_tx_cap {
+  if a == render3d_st.tex_anisotropy { return }
+  render3d_st.tex_anisotropy = a
+  if render3d_st.gpu_tx == null { return }
+  let keep = render3d_st.gpu_bound_2d
+  for t in 1 .. render3d_st.gpu_tx_cap {
     let o = t * GPU_TX_W
     # a 2D texture with mipmaps that was given a level when it was uploaded
-    if gpu_tx[o] != GPU_TEX2D or gpu_tx[o + 10] != 1 or gpu_tx[o + 11] == 0 { continue }
-    gpu_tex_bind(GPU_TEX2D, t)
-    gpu_tex_paramf(GPU_TEX2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, a)
+    if render3d_st.gpu_tx[o] != GPU_TEX2D or render3d_st.gpu_tx[o + 10] != 1 or render3d_st.gpu_tx[o + 11] == 0 { continue }
+    gpu_tex_bind(render3d_st, GPU_TEX2D, t)
+    gpu_tex_paramf(render3d_st, GPU_TEX2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, a)
   }
-  if keep > 0 { gpu_tex_bind(GPU_TEX2D, keep) }
+  if keep > 0 { gpu_tex_bind(render3d_st, GPU_TEX2D, keep) }
 }
 
-function r3d_read_file(path: pointer) -> pointer {
+function r3d_read_file(render3d_st: mut Render3dState, path: pointer) -> pointer {
   let f = file_open(path, "rb")
   if f == null { return null }
   file_seek(f, 0, 2)
@@ -52,7 +46,7 @@ function r3d_read_file(path: pointer) -> pointer {
   let buf = bytes(n + 8)
   file_read(f, buf, n)
   file_close(f)
-  tex_file_len = n
+  render3d_st.tex_file_len = n
   return buf
 }
 
@@ -118,10 +112,10 @@ function png_unfilter(raw: pointer, cur: int, prev: int, stride: int, fbpp: int,
   }
 }
 
-function png_decode(path: pointer) -> pointer {
-  let d = r3d_read_file(path)
+function png_decode(render3d_st: mut Render3dState, path: pointer) -> pointer {
+  let d = r3d_read_file(render3d_st, path)
   if d == null { print(`png: cannot read {path}`);  return null }
-  let size = tex_file_len
+  let size = render3d_st.tex_file_len
   if size < 8 or d[0] != 137 or d[1] != 80 { free(d);  print(`png: not a png: {path}`);  return null }
   var w = 0;  var h = 0;  var bd = 0;  var ct = 0
   let plte = bytes(768)
@@ -188,16 +182,16 @@ function png_decode(path: pointer) -> pointer {
     free(raw)
   }
   free(plte)
-  tex_w = w;  tex_h = h;  tex_channels = channels;  tex_depth = bd
+  render3d_st.tex_w = w;  render3d_st.tex_h = h;  render3d_st.tex_channels = channels;  render3d_st.tex_depth = bd
   return out
 }
 
 # Edge padding for cut-out atlases: pixels darker than `thresh` (the unused
 # background) take the mean of their lit neighbours, repeated `passes` times, so
 # mipmaps and bilinear taps never pull black into the blades. 8-bit RGB/RGBA only.
-function tex_dilate(px: pointer, thresh: int, passes: int) -> void {
-  if tex_depth != 8 or tex_channels < 3 { return }
-  let w = tex_w;  let h = tex_h;  let c = tex_channels
+function tex_dilate(render3d_st: Render3dState, px: pointer, thresh: int, passes: int) -> void {
+  if render3d_st.tex_depth != 8 or render3d_st.tex_channels < 3 { return }
+  let w = render3d_st.tex_w;  let h = render3d_st.tex_h;  let c = render3d_st.tex_channels
   let mask = bytes(w * h)
   var i = 0
   while i < w * h { let o = i * c;  if px[o] + px[o + 1] + px[o + 2] < thresh { mask[i] = 1 } else { mask[i] = 0 };  i += 1 }
@@ -227,101 +221,91 @@ function tex_dilate(px: pointer, thresh: int, passes: int) -> void {
 }
 
 # Upload the last-decoded samples as a 2D texture. srgb: colour data (8-bit only).
-function tex_upload(px: pointer, srgb: bool, mips: bool) -> int {
-  let id = gpu_tex_new()
-  gpu_tex_bind(GPU_TEX2D, id)
+function tex_upload(render3d_st: mut Render3dState, px: pointer, srgb: bool, mips: bool) -> int {
+  let id = gpu_tex_new(render3d_st)
+  gpu_tex_bind(render3d_st, GPU_TEX2D, id)
   var fmt = GL_RED
-  if tex_channels == 2 { fmt = GL_RG }
-  if tex_channels == 3 { fmt = GL_RGB }
-  if tex_channels == 4 { fmt = GL_RGBA }
+  if render3d_st.tex_channels == 2 { fmt = GL_RG }
+  if render3d_st.tex_channels == 3 { fmt = GL_RGB }
+  if render3d_st.tex_channels == 4 { fmt = GL_RGBA }
   var ifmt = GL_R8
   var ty = GL_UNSIGNED_BYTE
-  if tex_depth == 16 {
+  if render3d_st.tex_depth == 16 {
     ty = GL_UNSIGNED_SHORT
     ifmt = GL_R16
-    if tex_channels == 2 { ifmt = GL_RG16 }
-    if tex_channels == 3 { ifmt = GL_RGB16 }
-    if tex_channels == 4 { ifmt = GL_RGBA16 }
-    gpu_pixel_store(GL_UNPACK_SWAP_BYTES, 1)
+    if render3d_st.tex_channels == 2 { ifmt = GL_RG16 }
+    if render3d_st.tex_channels == 3 { ifmt = GL_RGB16 }
+    if render3d_st.tex_channels == 4 { ifmt = GL_RGBA16 }
+    gpu_pixel_store(render3d_st, GL_UNPACK_SWAP_BYTES, 1)
   } else {
-    if tex_channels == 2 { ifmt = GL_RG8 }
-    if tex_channels == 3 { ifmt = GL_RGB8;  if srgb { ifmt = GL_SRGB8 } }
-    if tex_channels == 4 { ifmt = GL_RGBA8;  if srgb { ifmt = GL_SRGB8_ALPHA8 } }
-    gpu_pixel_store(GL_UNPACK_SWAP_BYTES, 0)
+    if render3d_st.tex_channels == 2 { ifmt = GL_RG8 }
+    if render3d_st.tex_channels == 3 { ifmt = GL_RGB8;  if srgb { ifmt = GL_SRGB8 } }
+    if render3d_st.tex_channels == 4 { ifmt = GL_RGBA8;  if srgb { ifmt = GL_SRGB8_ALPHA8 } }
+    gpu_pixel_store(render3d_st, GL_UNPACK_SWAP_BYTES, 0)
   }
-  gpu_pixel_store(GL_UNPACK_ALIGNMENT, 1)
-  gpu_tex_image2d(ifmt, tex_w, tex_h, fmt, ty, px)
-  gpu_pixel_store(GL_UNPACK_SWAP_BYTES, 0)
-  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
-  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
-  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+  gpu_pixel_store(render3d_st, GL_UNPACK_ALIGNMENT, 1)
+  gpu_tex_image2d(render3d_st, ifmt, render3d_st.tex_w, render3d_st.tex_h, fmt, ty, px)
+  gpu_pixel_store(render3d_st, GL_UNPACK_SWAP_BYTES, 0)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
   if mips {
-    gpu_tex_param(GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
-    gpu_tex_mips(GPU_TEX2D)
-    gpu_tex_paramf(GPU_TEX2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, tex_anisotropy)
+    gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+    gpu_tex_mips(render3d_st, GPU_TEX2D)
+    gpu_tex_paramf(render3d_st, GPU_TEX2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, render3d_st.tex_anisotropy)
   } else {
-    gpu_tex_param(GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+    gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
   }
   return id
 }
 
 # Load a PNG as a mipmapped, anisotropic texture (0 on failure). srgb for albedo.
-function tex_load(path: pointer, srgb: bool) -> int { return tex_load_ex(path, srgb, 0) }
+function tex_load(render3d_st: mut Render3dState, path: pointer, srgb: bool) -> int { return tex_load_ex(render3d_st, path, srgb, 0) }
 # ... with `dilate` passes of edge padding for a cut-out atlas (0 = none)
-function tex_load_ex(path: pointer, srgb: bool, dilate: int) -> int {
-  let px = png_decode(path)
+function tex_load_ex(render3d_st: mut Render3dState, path: pointer, srgb: bool, dilate: int) -> int {
+  let px = png_decode(render3d_st, path)
   if px == null { return 0 }
-  if dilate > 0 { tex_dilate(px, 60, dilate) }
-  let id = tex_upload(px, srgb, true)
+  if dilate > 0 { tex_dilate(render3d_st, px, 60, dilate) }
+  let id = tex_upload(render3d_st, px, srgb, true)
   free(px)
-  tex_note_size(id)
+  tex_note_size(render3d_st, id)
   return id
 }
 # the size each loaded texture was, by id: a nine-slice or a UI image asks
-var tex_size_ids: []int = new []int
-var tex_size_ws: []int = new []int
-var tex_size_hs: []int = new []int
-function tex_note_size(id: int) -> void {
-  push(tex_size_ids, id)
-  push(tex_size_ws, tex_w)
-  push(tex_size_hs, tex_h)
+function tex_note_size(render3d_st: mut Render3dState, id: int) -> void {
+  push(render3d_st.tex_size_ids, id)
+  push(render3d_st.tex_size_ws, render3d_st.tex_w)
+  push(render3d_st.tex_size_hs, render3d_st.tex_h)
 }
-function tex_width(id: int) -> int {
-  for i in 0 .. len(tex_size_ids) {
-    if tex_size_ids[i] == id { return tex_size_ws[i] }
+function tex_width(render3d_st: Render3dState, id: int) -> int {
+  for i in 0 .. len(render3d_st.tex_size_ids) {
+    if render3d_st.tex_size_ids[i] == id { return render3d_st.tex_size_ws[i] }
   }
   return 0
 }
-function tex_height(id: int) -> int {
-  for i in 0 .. len(tex_size_ids) {
-    if tex_size_ids[i] == id { return tex_size_hs[i] }
+function tex_height(render3d_st: Render3dState, id: int) -> int {
+  for i in 0 .. len(render3d_st.tex_size_ids) {
+    if render3d_st.tex_size_ids[i] == id { return render3d_st.tex_size_hs[i] }
   }
   return 0
 }
 
 # A small solid-colour fallback texture (linear rgb 0..255), for missing maps.
-function tex_solid(r: int, g: int, b: int, a: int) -> int {
+function tex_solid(render3d_st: mut Render3dState, r: int, g: int, b: int, a: int) -> int {
   let px = bytes(16)
   for i in 0 .. 4 { px[i * 4] = r;  px[i * 4 + 1] = g;  px[i * 4 + 2] = b;  px[i * 4 + 3] = a }
-  tex_w = 2;  tex_h = 2;  tex_channels = 4;  tex_depth = 8
-  let id = tex_upload(px, false, false)
+  render3d_st.tex_w = 2;  render3d_st.tex_h = 2;  render3d_st.tex_channels = 4;  render3d_st.tex_depth = 8
+  let id = tex_upload(render3d_st, px, false, false)
   free(px)
   return id
 }
 
 # ---- Radiance .hdr (RGBE, new-style RLE) -> RGB float bits -------------------------
-var hdr_max_lum: float = 0.0      # float bits of the brightest texel (sun finding)
-var hdr_max_x: int = 0
-var hdr_max_y: int = 0
-var hdr_sun_r: float = 0.0        # irradiance (float bits) of everything above the IBL clip: the sun
-var hdr_sun_g: float = 0.0
-var hdr_sun_b: float = 0.0
-var hdr_clip: float = 0.0         # float bits; texels above this (per channel) feed the sun, not the IBL
 
-function hdr_decode(path: pointer) -> floats {
-  let d = r3d_read_file(path)
+function hdr_decode(render3d_st: mut Render3dState, path: pointer) -> floats {
+  let d = r3d_read_file(render3d_st, path)
   if d == null { print(`hdr: cannot read {path}`);  return null }
-  let size = tex_file_len
+  let size = render3d_st.tex_file_len
   # header: lines until an empty line, then "-Y h +X w"
   var i = 0
   var blank = false
@@ -340,7 +324,7 @@ function hdr_decode(path: pointer) -> floats {
   let out = floats(w * h * 3)
   let line = bytes(w * 4)
   var maxl = 0.0
-  if hdr_clip == 0.0 { hdr_clip = 20.0 }
+  if render3d_st.hdr_clip == 0.0 { render3d_st.hdr_clip = 20.0 }
   var sr = 0.0;  var sg = 0.0;  var sb = 0.0
   var skye = 0.0      # sky irradiance on an upward face (clipped part only)
   let dphi = 2.0 * PI / float(w)
@@ -385,61 +369,60 @@ function hdr_decode(path: pointer) -> floats {
         out[o + 1] = Math.min(vg, 60000.0)
         out[o + 2] = Math.min(vb, 60000.0)
         let lum = vr + vg + vb
-        if maxl < lum { maxl = lum;  hdr_max_x = x;  hdr_max_y = y }
-        if y < h / 2 { skye = skye + Math.min(vg, hdr_clip) * Math.cos((float(y) + 0.5) * dth) * domega }
-        if hdr_clip < vg or hdr_clip < vr {
-          sr = sr + Math.max(vr - hdr_clip, 0.0) * domega
-          sg = sg + Math.max(vg - hdr_clip, 0.0) * domega
-          sb = sb + Math.max(vb - hdr_clip, 0.0) * domega
+        if maxl < lum { maxl = lum;  render3d_st.hdr_max_x = x;  render3d_st.hdr_max_y = y }
+        if y < h / 2 { skye = skye + Math.min(vg, render3d_st.hdr_clip) * Math.cos((float(y) + 0.5) * dth) * domega }
+        if render3d_st.hdr_clip < vg or render3d_st.hdr_clip < vr {
+          sr = sr + Math.max(vr - render3d_st.hdr_clip, 0.0) * domega
+          sg = sg + Math.max(vg - render3d_st.hdr_clip, 0.0) * domega
+          sb = sb + Math.max(vb - render3d_st.hdr_clip, 0.0) * domega
         }
       }
     }
     y += 1
   }
   free(line);  free(d)
-  tex_w = w;  tex_h = h;  tex_channels = 3;  tex_depth = 32
-  hdr_max_lum = maxl
-  hdr_sun_r = sr;  hdr_sun_g = sg;  hdr_sun_b = sb
+  render3d_st.tex_w = w;  render3d_st.tex_h = h;  render3d_st.tex_channels = 3;  render3d_st.tex_depth = 32
+  render3d_st.hdr_max_lum = maxl
+  render3d_st.hdr_sun_r = sr;  render3d_st.hdr_sun_g = sg;  render3d_st.hdr_sun_b = sb
   print(`hdr: peak/1000 {fixed(maxl / 1000.0)} sky irradiance(up) {fixed(skye)} sun irradiance {fixed(sg)} (Q16.16 = /65536)`)
   return out
 }
 
 # Load an equirectangular .hdr as an RGB16F texture with mips (clamped in v).
-function tex_load_hdr(path: pointer) -> int {
-  let px = hdr_decode(path)
+function tex_load_hdr(render3d_st: mut Render3dState, path: pointer) -> int {
+  let px = hdr_decode(render3d_st, path)
   if px == null { return 0 }
-  let id = gpu_tex_new()
-  gpu_tex_bind(GPU_TEX2D, id)
-  gpu_pixel_store(GL_UNPACK_ALIGNMENT, 4)
-  gpu_tex_image2d(GL_RGB16F, tex_w, tex_h, GL_RGB, GL_FLOAT, data_of(px))
-  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
-  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
-  gpu_tex_mips(GPU_TEX2D)
+  let id = gpu_tex_new(render3d_st)
+  gpu_tex_bind(render3d_st, GPU_TEX2D, id)
+  gpu_pixel_store(render3d_st, GL_UNPACK_ALIGNMENT, 4)
+  gpu_tex_image2d(render3d_st, GL_RGB16F, render3d_st.tex_w, render3d_st.tex_h, GL_RGB, GL_FLOAT, data_of(px))
+  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+  gpu_tex_mips(render3d_st, GPU_TEX2D)
   free(px)
   return id
 }
 
 # An empty render-target texture of the given internal format (no mips, clamped).
-function tex_target(w: int, h: int, ifmt: int, fmt: int, ty: int, filter: int) -> int {
-  let id = gpu_tex_new()
-  gpu_tex_bind(GPU_TEX2D, id)
-  gpu_tex_image2d(ifmt, w, h, fmt, ty, null)
-  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
-  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_MAG_FILTER, filter)
-  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_MIN_FILTER, filter)
+function tex_target(render3d_st: mut Render3dState, w: int, h: int, ifmt: int, fmt: int, ty: int, filter: int) -> int {
+  let id = gpu_tex_new(render3d_st)
+  gpu_tex_bind(render3d_st, GPU_TEX2D, id)
+  gpu_tex_image2d(render3d_st, ifmt, w, h, fmt, ty, null)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_MAG_FILTER, filter)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_MIN_FILTER, filter)
   return id
 }
 
-var tex_dump_alpha: bool = false
 # Debug: the brightest texel of an RGBA float texture and where it is.
-function tex_max(tex: int, w: int, h: int, tag: pointer) -> void {
+function tex_max(render3d_st: mut Render3dState, tex: int, w: int, h: int, tag: pointer) -> void {
   let buf = floats(w * h * 4)
-  gpu_tex_bind(GPU_TEX2D, tex)
-  gpu_pixel_store(GL_PACK_ALIGNMENT, 4)
-  gpu_tex_read(GPU_TEX2D, GL_RGBA, GL_FLOAT, data_of(buf))
+  gpu_tex_bind(render3d_st, GPU_TEX2D, tex)
+  gpu_pixel_store(render3d_st, GL_PACK_ALIGNMENT, 4)
+  gpu_tex_read(render3d_st, GPU_TEX2D, GL_RGBA, GL_FLOAT, data_of(buf))
   var best = 0.0;  var bx = 0;  var by = 0
   var i = 0
   while i < w * h {
@@ -455,20 +438,20 @@ function tex_max(tex: int, w: int, h: int, tag: pointer) -> void {
   free(buf)
 }
 # Debug: write a 2D texture's level 0 (RGBA8, alpha dropped) as a binary PPM.
-function tex_dump(tex: int, w: int, h: int, path: pointer) -> void {
+function tex_dump(render3d_st: mut Render3dState, tex: int, w: int, h: int, path: pointer) -> void {
   let f = file_open(path, "wb")
   if f == null { return }
   let buf = bytes(w * h * 4)
-  gpu_tex_bind(GPU_TEX2D, tex)
-  gpu_pixel_store(GL_PACK_ALIGNMENT, 1)
-  gpu_tex_read(GPU_TEX2D, GL_RGBA, GL_UNSIGNED_BYTE, buf)
+  gpu_tex_bind(render3d_st, GPU_TEX2D, tex)
+  gpu_pixel_store(render3d_st, GL_PACK_ALIGNMENT, 1)
+  gpu_tex_read(render3d_st, GPU_TEX2D, GL_RGBA, GL_UNSIGNED_BYTE, buf)
   let hdr = `P6\n{w} {h}\n255\n`
   file_write(f, hdr, len(hdr))
   let row = bytes(w * 3)
   for y in 0 .. h {
     for x in 0 .. w {
       row[x * 3] = buf[(y * w + x) * 4];  row[x * 3 + 1] = buf[(y * w + x) * 4 + 1];  row[x * 3 + 2] = buf[(y * w + x) * 4 + 2]
-      if tex_dump_alpha { let a = buf[(y * w + x) * 4 + 3];  row[x * 3] = a;  row[x * 3 + 1] = a;  row[x * 3 + 2] = a }
+      if render3d_st.tex_dump_alpha { let a = buf[(y * w + x) * 4 + 3];  row[x * 3] = a;  row[x * 3 + 1] = a;  row[x * 3 + 2] = a }
     }
     file_write(f, row, w * 3)
   }
@@ -478,10 +461,10 @@ function tex_dump(tex: int, w: int, h: int, path: pointer) -> void {
 
 # A binary PPM (P6, what Gl.screenshot writes) as an RGB8 texture, box-filtered down by
 # `shrink` (a photo thumbnail); 0 when the file is missing.
-function tex_load_ppm(path: pointer, shrink: int) -> int {
-  let d = r3d_read_file(path)
+function tex_load_ppm(render3d_st: mut Render3dState, path: pointer, shrink: int) -> int {
+  let d = r3d_read_file(render3d_st, path)
   if d == null { return 0 }
-  let size = tex_file_len
+  let size = render3d_st.tex_file_len
   var i = 2
   var w = 0;  var h = 0;  var mx = 0
   var field = 0
@@ -511,8 +494,8 @@ function tex_load_ppm(path: pointer, shrink: int) -> int {
     }
   }
   free(d)
-  tex_w = ow;  tex_h = oh;  tex_channels = 3;  tex_depth = 8
-  let id = tex_upload(px, true, false)
+  render3d_st.tex_w = ow;  render3d_st.tex_h = oh;  render3d_st.tex_channels = 3;  render3d_st.tex_depth = 8
+  let id = tex_upload(render3d_st, px, true, false)
   free(px)
   return id
 }

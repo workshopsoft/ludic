@@ -7,9 +7,9 @@ program VkManifest {
   property Marker { on: int = 1 }
   model Anchor { Marker }
 
-  handler Boot phase Start {
+  handler Boot(render3d_st: mut Render3dState) phase Start {
     spawn Anchor {}
-    let n = gpu_manifest_load("packages/ludic.render3d/shaders/spv/manifest.txt")
+    let n = gpu_manifest_load(render3d_st, "packages/ludic.render3d/shaders/spv/manifest.txt")
     print(`manifest: {n} programs`)
     var ok = n > 0
     let list = Fs.read_text("packages/ludic.render3d/shaders/variants.list")
@@ -24,13 +24,13 @@ program VkManifest {
       var defs = ""
       if len(parts) > 2 { defs = parts[2] }
       listed += 1
-      let v = gpu_variant_find_key(parts[0], parts[1], defs)
+      let v = gpu_variant_find_key(render3d_st, parts[0], parts[1], defs)
       if v == null { print(`  NOT FOUND: {ln}`);  ok = false } else { found += 1 }
     }
     print(`variants.list: {listed} listed, {found} resolved`)
     if found != listed { ok = false }
     # spot checks against what the tool wrote: the lit foliage program as scatter builds it
-    let fol = gpu_variant_find("model.vert", "model.frag", "#define FOLIAGE\n#define WIND\n#define ALPHA_TEST\n")
+    let fol = gpu_variant_find(render3d_st, "model.vert", "model.frag", "#define FOLIAGE\n#define WIND\n#define ALPHA_TEST\n")
     if fol == null { print("  the foliage program did not resolve");  ok = false }
     else {
       let uv = gpu_variant_uniform(fol, 0, "u_view")

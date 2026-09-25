@@ -20,7 +20,10 @@ program VkCompute {
   const W: int = 640
   const H: int = 360
 
-  var dev: pointer = null
+  state VkComputeState {
+    dev: pointer = null
+    spv_len: int = 0
+  }
 
   unsafe function fail(what: string, r: int) -> void { print(`vulkan: {what} failed, VkResult {r}`);  quit() }
   unsafe function handle(out: bytes) -> long { return vk_get_i64(out, 0) }
@@ -30,7 +33,7 @@ program VkCompute {
     }
     return false
   }
-  unsafe function read_all(path: string) -> bytes {
+  unsafe function read_all(vk_compute_st: mut VkComputeState, path: string) -> bytes {
     let f = file_open(path, "rb")
     if f == null { return null }
     file_seek(f, 0, 2)
@@ -39,16 +42,15 @@ program VkCompute {
     let b = bytes(n + 4)
     file_read(f, b, n)
     file_close(f)
-    spv_len = n
+    vk_compute_st.spv_len = n
     return b
   }
-  var spv_len: int = 0
 
-  handler Boot phase Start {
+  handler Boot(vk_compute_st: mut VkComputeState) phase Start {
     spawn Anchor {}
     var spv_path = "build/vk_compute.spv"
     if Os.has_env("VKC_SPV") { spv_path = Os.env("VKC_SPV") }
-    let spv = read_all(spv_path)
+    let spv = read_all(vk_compute_st, spv_path)
     if spv == null { print(`vulkan: no SPIR-V at {spv_path} (compile vk_compute.slang with slangc)`);  quit() }
     if Vk.open() == 0 { print("vulkan: no loader");  quit() }
 
@@ -126,8 +128,8 @@ program VkCompute {
     }
     r = vk_create_device(pd, dci, null, out)
     if r != VK_SUCCESS { fail("vkCreateDevice", r) }
-    dev = vk_get_ptr(out, 0)
-    vk_get_device_queue(dev, family, 0, out)
+    vk_compute_st.dev = vk_get_ptr(out, 0)
+    vk_get_device_queue(vk_compute_st.dev, family, 0, out)
     let queue = vk_get_ptr(out, 0)
 
     # ---- a host-visible storage buffer for the picture
@@ -138,11 +140,11 @@ program VkCompute {
     vk_put_i64(bci, VkBufferCreateInfo_size, nbytes)
     vk_put_i32(bci, VkBufferCreateInfo_usage, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)
     vk_put_i32(bci, VkBufferCreateInfo_sharingMode, VK_SHARING_MODE_EXCLUSIVE)
-    r = vk_create_buffer(dev, bci, null, out)
+    r = vk_create_buffer(vk_compute_st.dev, bci, null, out)
     if r != VK_SUCCESS { fail("vkCreateBuffer", r) }
     let buf = handle(out)
     let req = bytes(VkMemoryRequirements_sizeof)
-    vk_get_buffer_memory_requirements(dev, buf, req)
+    vk_get_buffer_memory_requirements(vk_compute_st.dev, buf, req)
     let mp = bytes(VkPhysicalDeviceMemoryProperties_sizeof)
     vk_get_physical_device_memory_properties(pd, mp)
     let want = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
@@ -158,21 +160,21 @@ program VkCompute {
     vk_put_i32(mai, VkMemoryAllocateInfo_sType, VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO)
     vk_put_i64(mai, VkMemoryAllocateInfo_allocationSize, vk_get_i64(req, VkMemoryRequirements_size))
     vk_put_i32(mai, VkMemoryAllocateInfo_memoryTypeIndex, mtype)
-    r = vk_allocate_memory(dev, mai, null, out)
+    r = vk_allocate_memory(vk_compute_st.dev, mai, null, out)
     if r != VK_SUCCESS { fail("vkAllocateMemory", r) }
     let mem = handle(out)
     let zero: long = 0
-    r = vk_bind_buffer_memory(dev, buf, mem, zero)
+    r = vk_bind_buffer_memory(vk_compute_st.dev, buf, mem, zero)
     if r != VK_SUCCESS { fail("vkBindBufferMemory", r) }
 
     # ---- the shader, its layout, the pipeline
     let smci = bytes(VkShaderModuleCreateInfo_sizeof)
     vk_zero(smci, VkShaderModuleCreateInfo_sizeof)
     vk_put_i32(smci, VkShaderModuleCreateInfo_sType, VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO)
-    let code_size: long = spv_len
+    let code_size: long = vk_compute_st.spv_len
     vk_put_i64(smci, VkShaderModuleCreateInfo_codeSize, code_size)
     vk_put_ptr(smci, VkShaderModuleCreateInfo_pCode, spv)
-    r = vk_create_shader_module(dev, smci, null, out)
+    r = vk_create_shader_module(vk_compute_st.dev, smci, null, out)
     if r != VK_SUCCESS { fail("vkCreateShaderModule", r) }
     let module = handle(out)
 
@@ -188,7 +190,7 @@ program VkCompute {
     vk_put_i32(dslci, VkDescriptorSetLayoutCreateInfo_bindingCount, 1)
     vk_put_ptr(dslci, VkDescriptorSetLayoutCreateInfo_pBindings, binding)
     let set_layouts = bytes(8)
-    r = vk_create_descriptor_set_layout(dev, dslci, null, set_layouts)
+    r = vk_create_descriptor_set_layout(vk_compute_st.dev, dslci, null, set_layouts)
     if r != VK_SUCCESS { fail("vkCreateDescriptorSetLayout", r) }
 
     let pcr = bytes(VkPushConstantRange_sizeof)
@@ -202,7 +204,7 @@ program VkCompute {
     vk_put_ptr(plci, VkPipelineLayoutCreateInfo_pSetLayouts, set_layouts)
     vk_put_i32(plci, VkPipelineLayoutCreateInfo_pushConstantRangeCount, 1)
     vk_put_ptr(plci, VkPipelineLayoutCreateInfo_pPushConstantRanges, pcr)
-    r = vk_create_pipeline_layout(dev, plci, null, out)
+    r = vk_create_pipeline_layout(vk_compute_st.dev, plci, null, out)
     if r != VK_SUCCESS { fail("vkCreatePipelineLayout", r) }
     let layout = handle(out)
 
@@ -215,7 +217,7 @@ program VkCompute {
     vk_put_i64(cpci, st + VkPipelineShaderStageCreateInfo_module, module)
     vk_put_ptr(cpci, st + VkPipelineShaderStageCreateInfo_pName, "main")
     vk_put_i64(cpci, VkComputePipelineCreateInfo_layout, layout)
-    r = vk_create_compute_pipelines(dev, zero, 1, cpci, null, out)
+    r = vk_create_compute_pipelines(vk_compute_st.dev, zero, 1, cpci, null, out)
     if r != VK_SUCCESS { fail("vkCreateComputePipelines", r) }
     let pipeline = handle(out)
 
@@ -229,7 +231,7 @@ program VkCompute {
     vk_put_i32(dpci, VkDescriptorPoolCreateInfo_maxSets, 1)
     vk_put_i32(dpci, VkDescriptorPoolCreateInfo_poolSizeCount, 1)
     vk_put_ptr(dpci, VkDescriptorPoolCreateInfo_pPoolSizes, psz)
-    r = vk_create_descriptor_pool(dev, dpci, null, out)
+    r = vk_create_descriptor_pool(vk_compute_st.dev, dpci, null, out)
     if r != VK_SUCCESS { fail("vkCreateDescriptorPool", r) }
     let pool = handle(out)
     let dsai = bytes(VkDescriptorSetAllocateInfo_sizeof)
@@ -239,7 +241,7 @@ program VkCompute {
     vk_put_i32(dsai, VkDescriptorSetAllocateInfo_descriptorSetCount, 1)
     vk_put_ptr(dsai, VkDescriptorSetAllocateInfo_pSetLayouts, set_layouts)
     let sets = bytes(8)
-    r = vk_allocate_descriptor_sets(dev, dsai, sets)
+    r = vk_allocate_descriptor_sets(vk_compute_st.dev, dsai, sets)
     if r != VK_SUCCESS { fail("vkAllocateDescriptorSets", r) }
     let dbi = bytes(VkDescriptorBufferInfo_sizeof)
     vk_put_i64(dbi, VkDescriptorBufferInfo_buffer, buf)
@@ -253,14 +255,14 @@ program VkCompute {
     vk_put_i32(wds, VkWriteDescriptorSet_descriptorCount, 1)
     vk_put_i32(wds, VkWriteDescriptorSet_descriptorType, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)
     vk_put_ptr(wds, VkWriteDescriptorSet_pBufferInfo, dbi)
-    vk_update_descriptor_sets(dev, 1, wds, 0, null)
+    vk_update_descriptor_sets(vk_compute_st.dev, 1, wds, 0, null)
 
     # ---- record, submit, wait
     let cpi = bytes(VkCommandPoolCreateInfo_sizeof)
     vk_zero(cpi, VkCommandPoolCreateInfo_sizeof)
     vk_put_i32(cpi, VkCommandPoolCreateInfo_sType, VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO)
     vk_put_i32(cpi, VkCommandPoolCreateInfo_queueFamilyIndex, family)
-    r = vk_create_command_pool(dev, cpi, null, out)
+    r = vk_create_command_pool(vk_compute_st.dev, cpi, null, out)
     if r != VK_SUCCESS { fail("vkCreateCommandPool", r) }
     let cmd_pool = handle(out)
     let cbai = bytes(VkCommandBufferAllocateInfo_sizeof)
@@ -270,7 +272,7 @@ program VkCompute {
     vk_put_i32(cbai, VkCommandBufferAllocateInfo_level, VK_COMMAND_BUFFER_LEVEL_PRIMARY)
     vk_put_i32(cbai, VkCommandBufferAllocateInfo_commandBufferCount, 1)
     let cbs = bytes(8)
-    r = vk_allocate_command_buffers(dev, cbai, cbs)
+    r = vk_allocate_command_buffers(vk_compute_st.dev, cbai, cbs)
     if r != VK_SUCCESS { fail("vkAllocateCommandBuffers", r) }
     let cb = vk_get_ptr(cbs, 0)
     let cbbi = bytes(VkCommandBufferBeginInfo_sizeof)
@@ -294,7 +296,7 @@ program VkCompute {
     vk_zero(fci, VkFenceCreateInfo_sizeof)
     vk_put_i32(fci, VkFenceCreateInfo_sType, VK_STRUCTURE_TYPE_FENCE_CREATE_INFO)
     let fences = bytes(8)
-    r = vk_create_fence(dev, fci, null, fences)
+    r = vk_create_fence(vk_compute_st.dev, fci, null, fences)
     if r != VK_SUCCESS { fail("vkCreateFence", r) }
     let si = bytes(VkSubmitInfo_sizeof)
     vk_zero(si, VkSubmitInfo_sizeof)
@@ -304,13 +306,13 @@ program VkCompute {
     r = vk_queue_submit(queue, 1, si, vk_get_i64(fences, 0))
     if r != VK_SUCCESS { fail("vkQueueSubmit", r) }
     let forever: long = -1
-    r = vk_wait_for_fences(dev, 1, fences, 1, forever)
+    r = vk_wait_for_fences(vk_compute_st.dev, 1, fences, 1, forever)
     if r != VK_SUCCESS { fail("vkWaitForFences", r) }
     print(`vulkan: dispatched {(W + 15) / 16}x{(H + 15) / 16} groups and waited for the fence`)
 
     # ---- read the picture back
     let pp = bytes(8)
-    r = vk_map_memory(dev, mem, zero, nbytes, 0, pp)
+    r = vk_map_memory(vk_compute_st.dev, mem, zero, nbytes, 0, pp)
     if r != VK_SUCCESS { fail("vkMapMemory", r) }
     let px = vk_get_ptr(pp, 0)
     var out_path = "build/vk_compute.ppm"
@@ -329,19 +331,19 @@ program VkCompute {
       file_write(f, row, W * 3)
     }
     file_close(f)
-    vk_unmap_memory(dev, mem)
+    vk_unmap_memory(vk_compute_st.dev, mem)
     print(`vulkan: {lit} of {W * H} pixels written by the shader -> {out_path}`)
 
-    vk_destroy_fence(dev, vk_get_i64(fences, 0), null)
-    vk_destroy_command_pool(dev, cmd_pool, null)
-    vk_destroy_descriptor_pool(dev, pool, null)
-    vk_destroy_pipeline(dev, pipeline, null)
-    vk_destroy_pipeline_layout(dev, layout, null)
-    vk_destroy_descriptor_set_layout(dev, vk_get_i64(set_layouts, 0), null)
-    vk_destroy_shader_module(dev, module, null)
-    vk_destroy_buffer(dev, buf, null)
-    vk_free_memory(dev, mem, null)
-    vk_destroy_device(dev, null)
+    vk_destroy_fence(vk_compute_st.dev, vk_get_i64(fences, 0), null)
+    vk_destroy_command_pool(vk_compute_st.dev, cmd_pool, null)
+    vk_destroy_descriptor_pool(vk_compute_st.dev, pool, null)
+    vk_destroy_pipeline(vk_compute_st.dev, pipeline, null)
+    vk_destroy_pipeline_layout(vk_compute_st.dev, layout, null)
+    vk_destroy_descriptor_set_layout(vk_compute_st.dev, vk_get_i64(set_layouts, 0), null)
+    vk_destroy_shader_module(vk_compute_st.dev, module, null)
+    vk_destroy_buffer(vk_compute_st.dev, buf, null)
+    vk_free_memory(vk_compute_st.dev, mem, null)
+    vk_destroy_device(vk_compute_st.dev, null)
     vk_destroy_instance(inst, null)
     if lit == W * H { print("VKCOMPUTE OK") } else { print("VKCOMPUTE INCOMPLETE") }
     quit()

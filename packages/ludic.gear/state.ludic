@@ -1,37 +1,39 @@
 # state.ludic - the level of each kind, the hand, each charge's units and whether it runs, the facts
-var gear__lv: []int = null
-var gear__hand: int = -1
-var gear__left: []float = null
-var gear__on: []bool = null
-var gear__q: Queue<GearFact> = null
+export state GearState {
+  gear__lv: []int = null
+  gear__hand: int = -1
+  gear__left: []float = null
+  gear__on: []bool = null
+  gear__q: Queue<GearFact> = null
+}
 
-function gear__ensure() -> void {
-  if gear__lv != null { return }
-  gear__lv = new []int
-  for k in 0 .. GEAR_COUNT { push(gear__lv, GearKinds[k].start) }
-  gear__left = new []float
-  gear__on = new []bool
+function gear__ensure(gear_st: mut GearState) -> void {
+  if gear_st.gear__lv != null { return }
+  gear_st.gear__lv = new []int
+  for k in 0 .. GEAR_COUNT { push(gear_st.gear__lv, GearKinds[k].start) }
+  gear_st.gear__left = new []float
+  gear_st.gear__on = new []bool
   for c in 0 .. CHARGE_COUNT {
-    push(gear__left, GearCharges[c].full)
-    push(gear__on, false)
+    push(gear_st.gear__left, GearCharges[c].full)
+    push(gear_st.gear__on, false)
   }
 }
 
-export function gear_facts() -> Queue<GearFact> {
-  if gear__q == null { gear__q = queue_new("gear.facts") }
-  return gear__q
+export function gear_facts(base_st: mut BaseState, gear_st: mut GearState) -> Queue<GearFact> {
+  if gear_st.gear__q == null { gear_st.gear__q = queue_new(base_st, "gear.facts") }
+  return gear_st.gear__q
 }
 
-function gear__fact(what: int, k: int, c: int, cost: int) -> void {
+function gear__fact(base_st: mut BaseState, gear_st: mut GearState, what: int, k: int, c: int, cost: int) -> void {
   let f = new GearFact
   f.what = what
   f.cost = cost
   f.kind = k
   f.charge = c
   if k >= 0 {
-    f.level = gear__lv[k]
+    f.level = gear_st.gear__lv[k]
     f.item = GearKinds[k].item
   }
   if c >= 0 { f.item = GearCharges[c].item }
-  q_push(gear_facts(), f)
+  q_push(base_st, gear_facts(base_st, gear_st), f)
 }

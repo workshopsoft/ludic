@@ -16,10 +16,10 @@ program LabTest {
     Fs.write_bytes(path, b, len(hdr) + 12)
   }
 
-  test "a PPM becomes a PNG with its signature, its size and a valid IEND" {
+  test "a PPM becomes a PNG with its signature, its size and a valid IEND" (lab_st: mut LabState) {
     let dir = Os.temp_dir()
     ppm(`{dir}/lab_test.ppm`)
-    expect(lab_ppm_to_png(`{dir}/lab_test.ppm`, `{dir}/lab_test.png`))
+    expect(lab_ppm_to_png(lab_st, `{dir}/lab_test.ppm`, `{dir}/lab_test.png`))
     let p = Fs.read_bytes(`{dir}/lab_test.png`)
     expect(p != null)
     expect_eq(p[0], 137)
@@ -35,15 +35,15 @@ program LabTest {
     expect(not Fs.exists(`{dir}/lab_test.ppm`))
   }
 
-  test "a camera at a point looks back at it" {
-    lab_shots_reset()
-    lab_shot_at("front", 0.0, 1.0, 0.0, 10.0, 0.0, 0.0)
-    lab_shot_at("side", 0.0, 1.0, 0.0, 10.0, 90.0, 30.0)
-    expect_eq(lab_shot_count(), 2)
-    expect_near(lb_shot_pose[2], 10.0, 0.001)           # front: 10 m out along +z
-    expect_near(lb_shot_pose[5 + 0], 8.660, 0.01)       # side: along +x, 30 degrees up
-    expect_near(lb_shot_pose[5 + 1], 6.0, 0.01)
-    expect_near(lb_shot_pose[5 + 4], -30.0, 0.001)
+  test "a camera at a point looks back at it" (lab_st: mut LabState) {
+    lab_shots_reset(lab_st)
+    lab_shot_at(lab_st, "front", 0.0, 1.0, 0.0, 10.0, 0.0, 0.0)
+    lab_shot_at(lab_st, "side", 0.0, 1.0, 0.0, 10.0, 90.0, 30.0)
+    expect_eq(lab_shot_count(lab_st), 2)
+    expect_near(lab_st.lb_shot_pose[2], 10.0, 0.001)           # front: 10 m out along +z
+    expect_near(lab_st.lb_shot_pose[5 + 0], 8.660, 0.01)       # side: along +x, 30 degrees up
+    expect_near(lab_st.lb_shot_pose[5 + 1], 6.0, 0.01)
+    expect_near(lab_st.lb_shot_pose[5 + 4], -30.0, 0.001)
   }
 
   test "scenes are what the program added, in its order" {

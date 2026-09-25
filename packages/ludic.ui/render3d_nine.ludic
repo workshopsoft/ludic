@@ -3,8 +3,8 @@ module ludic_ui
 # border-image: the texture's `slice`-pixel corners kept, the rest stretched, drawn `dst` wide (at
 # most half the box each way, ui_nine_cuts); the slice is a share of the texture's own width across
 # and its own height down, so it need not be square
-function r3u_nine(src: string, slice: float, x: float, y: float, w: float, h: float, dst: float, c: int, a: float) -> void {
-  let t = r3u_tex(src)
+function r3u_nine(ui_st: mut UiState, src: string, slice: float, x: float, y: float, w: float, h: float, dst: float, c: int, a: float) -> void {
+  let t = r3u_tex(ui_st, src)
   if t == 0 { return }
   let su = slice / float(Math.max(tex_width(t), 1))
   let sv = slice / float(Math.max(tex_height(t), 1))

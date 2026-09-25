@@ -1,17 +1,14 @@
 # hooks.ludic - the scene a frame draws, as callbacks the program registers. They used to be
 # functions every program had to define by name (scene_draw, scene_draw_casters, stream_fill),
 # a contract only the linker enforced and that allowed one scene per program.
-var r3d_draw_cb: fn() = null
-var r3d_casters_cb: fn(floats) = null
-var r3d_fill_cb: fn(Stream, int, int, int) = null
 
 # what a frame draws, for every pass that draws the scene (the view, the reflection)
-function r3d_on_draw(f: fn()) -> void { r3d_draw_cb = f }
+function r3d_on_draw(render3d_st: mut Render3dState, f: fn()) -> void { render3d_st.r3d_draw_cb = f }
 # what casts a shadow, drawn into the light's view `light_vp`
-function r3d_on_casters(f: fn(floats)) -> void { r3d_casters_cb = f }
+function r3d_on_casters(render3d_st: mut Render3dState, f: fn(floats)) -> void { render3d_st.r3d_casters_cb = f }
 # a streamed layer's chunk (cx, cz) at detail `band`, filled with its instances
-function r3d_on_stream_fill(f: fn(Stream, int, int, int)) -> void { r3d_fill_cb = f }
+function r3d_on_stream_fill(render3d_st: mut Render3dState, f: fn(Stream, int, int, int)) -> void { render3d_st.r3d_fill_cb = f }
 
-function r3d_scene_draw() -> void { if r3d_draw_cb != null { r3d_draw_cb() } }
-function r3d_scene_casters(light_vp: floats) -> void { if r3d_casters_cb != null { r3d_casters_cb(light_vp) } }
-function r3d_stream_fill(s: Stream, cx: int, cz: int, band: int) -> void { if r3d_fill_cb != null { r3d_fill_cb(s, cx, cz, band) } }
+function r3d_scene_draw(render3d_st: Render3dState) -> void { if render3d_st.r3d_draw_cb != null { render3d_st.r3d_draw_cb() } }
+function r3d_scene_casters(render3d_st: Render3dState, light_vp: floats) -> void { if render3d_st.r3d_casters_cb != null { render3d_st.r3d_casters_cb(light_vp) } }
+function r3d_stream_fill(render3d_st: Render3dState, s: Stream, cx: int, cz: int, band: int) -> void { if render3d_st.r3d_fill_cb != null { render3d_st.r3d_fill_cb(s, cx, cz, band) } }

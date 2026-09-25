@@ -58,29 +58,27 @@ export port NetSocket {
   local_ip: fn() -> int = fn net__udp_local_ip
 }
 
-var net__cfg: NetConfig = null
-var net__facts: Queue<NetFact> = null
 
-export function net_config(c: NetConfig) -> void { net__cfg = c }
+export function net_config(net_st: mut NetState, c: NetConfig) -> void { net_st.net__cfg = c }
 
-function net__conf() -> NetConfig {
-  if net__cfg == null { net__cfg = new NetConfig }
-  return net__cfg
+function net__conf(net_st: mut NetState) -> NetConfig {
+  if net_st.net__cfg == null { net_st.net__cfg = new NetConfig }
+  return net_st.net__cfg
 }
 
-export function net_facts() -> Queue<NetFact> {
-  if net__facts == null { net__facts = queue_new("net.facts") }
-  return net__facts
+export function net_facts(base_st: mut BaseState, net_st: mut NetState) -> Queue<NetFact> {
+  if net_st.net__facts == null { net_st.net__facts = queue_new(base_st, "net.facts") }
+  return net_st.net__facts
 }
 
-function net__fact(what: int, slot: int, pid: int, why: int, text: string) -> void {
+function net__fact(base_st: mut BaseState, net_st: mut NetState, what: int, slot: int, pid: int, why: int, text: string) -> void {
   let f = new NetFact
   f.what = what
   f.slot = slot
   f.pid = pid
   f.why = why
   f.text = text
-  q_push(net_facts(), f)
+  q_push(base_st, net_facts(base_st, net_st), f)
 }
 
 function net__no_log(s: string) -> void { }

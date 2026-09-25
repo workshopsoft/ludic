@@ -12,7 +12,6 @@
 # stream_emit(...) per instance. One Stream drives one Layer.
 # ============================================================================
 
-var STREAM_MAX_CHUNKS: int = 4096
 
 property Chunk {
   key:   int = 0,          # packed (cx, cz, band)
@@ -40,22 +39,13 @@ property Stream {
   htab:    words           # open-addressed key -> chunk index + 1 (0 = empty)
 }
 
-var stream_all: []Stream = null
-var stream_cap_read: bool = false
-var stream_no_evict: bool = false   # R3D_NOEVICT: the old behaviour, for comparison
-var stream_walk_no: int = 0        # counts ring walks; a chunk's age is measured in these
-var stream_evictions: int = 0
 # microseconds spent per frame, split so the hitch can be attributed (R3D_PROF=1)
-var stream_us_gen: long = 0        # generating new chunks (stream_fill)
-var stream_us_gather: long = 0     # copying cached chunks into the layer buffer
-var stream_us_walk: long = 0       # the ring walk itself
-var stream_walks: int = 0          # streams that walked their whole ring this frame
 
-function stream_new(layer: Layer, size: float, reach: float, b0: float, b1: float, b2: float, b3: float) -> Stream {
-  if not stream_cap_read {
-    stream_cap_read = true
-    if r3d_env_has("R3D_STREAM_CAP") { STREAM_MAX_CHUNKS = Text.to_int(r3d_env("R3D_STREAM_CAP")) }
-    stream_no_evict = r3d_env_has("R3D_NOEVICT")
+function stream_new(render3d_st: mut Render3dState, layer: Layer, size: float, reach: float, b0: float, b1: float, b2: float, b3: float) -> Stream {
+  if not render3d_st.stream_cap_read {
+    render3d_st.stream_cap_read = true
+    if r3d_env_has(render3d_st, "R3D_STREAM_CAP") { render3d_st.STREAM_MAX_CHUNKS = Text.to_int(r3d_env(render3d_st, "R3D_STREAM_CAP")) }
+    render3d_st.stream_no_evict = r3d_env_has(render3d_st, "R3D_NOEVICT")
   }
   let s = new Stream
   s.layer = layer;  s.size = size;  s.reach = reach
@@ -64,11 +54,11 @@ function stream_new(layer: Layer, size: float, reach: float, b0: float, b1: floa
   s.bands = floats(4)
   s.bands[0] = b0;  s.bands[1] = b1;  s.bands[2] = b2;  s.bands[3] = b3
   s.chunks = new []Chunk
-  s.keys = words(STREAM_MAX_CHUNKS)
+  s.keys = words(render3d_st.STREAM_MAX_CHUNKS)
   s.htab = words(STREAM_HASH)
   for i in 0 .. STREAM_HASH { s.htab[i] = 0 }
-  if stream_all == null { stream_all = new []Stream }
-  push(stream_all, s)
+  if render3d_st.stream_all == null { render3d_st.stream_all = new []Stream }
+  push(render3d_st.stream_all, s)
   return s
 }
 
@@ -107,16 +97,14 @@ function stream_remember(s: Stream, key: int, idx: int) -> void {
 # the generator adds instances to the chunk being filled (into a shared scratch; the
 # chunk gets an exactly-sized copy when the fill ends)
 const STREAM_CHUNK_MAX: int = 262144
-var stream_debug_n: int = 0
-var stream_scratch: floats = null
-function stream_emit(s: Stream, x: float, y: float, z: float, scale: float, yaw: float, seed: float, wind: float) -> void {
+function stream_emit(render3d_st: mut Render3dState, s: Stream, x: float, y: float, z: float, scale: float, yaw: float, seed: float, wind: float) -> void {
   let c = s.cur
   if c.count >= STREAM_CHUNK_MAX { return }
-  if stream_scratch == null { stream_scratch = floats(STREAM_CHUNK_MAX * INST_FLOATS) }
+  if render3d_st.stream_scratch == null { render3d_st.stream_scratch = floats(STREAM_CHUNK_MAX * INST_FLOATS) }
   if c.count == 0 { c.ymin = y;  c.ymax = y } else { c.ymin = Math.min(c.ymin, y);  c.ymax = Math.max(c.ymax, y) }
   let o = c.count * INST_FLOATS
-  stream_scratch[o] = x;  stream_scratch[o + 1] = y;  stream_scratch[o + 2] = z;  stream_scratch[o + 3] = scale
-  stream_scratch[o + 4] = Math.sin(yaw);  stream_scratch[o + 5] = Math.cos(yaw);  stream_scratch[o + 6] = seed;  stream_scratch[o + 7] = wind
+  render3d_st.stream_scratch[o] = x;  render3d_st.stream_scratch[o + 1] = y;  render3d_st.stream_scratch[o + 2] = z;  render3d_st.stream_scratch[o + 3] = scale
+  render3d_st.stream_scratch[o + 4] = Math.sin(yaw);  render3d_st.stream_scratch[o + 5] = Math.cos(yaw);  render3d_st.stream_scratch[o + 6] = seed;  render3d_st.stream_scratch[o + 7] = wind
   c.count += 1
 }
 
@@ -143,14 +131,13 @@ function stream_band(s: Stream, d: float) -> int {
 # by band and kind. With a real microsecond clock the budget can just be the thing we
 # actually care about — how long this frame is allowed to spend growing ground cover.
 # Overshoot is bounded by one chunk, so keep chunks small on the dense near streams.
-var STREAM_BUDGET_US: int = 2500      # microseconds of generation per frame; a setting may move it
-var stream_deadline: long = 0
+let STREAM_BUDGET_US: int = 2500      # microseconds of generation per frame; a setting may move it
 const STREAM_BUDGET: int = 8000       # kept for the work counter only
 # The worst frame is now bounded by one chunk, not by the budget: stream_fill emits a
 # whole chunk in one call, and the densest band-0 chunk is ~114k instances. Splitting a
 # chunk's generation across frames would need a resumable generator contract; that is
 # the next step if the residual hitch ever matters.
-var stream_budget_left: int = 0
+let stream_budget_left: int = 0
 
 # Drop the half of the cache nobody has asked for in the longest time, and rebuild the
 # index over what is left.
@@ -160,10 +147,10 @@ var stream_budget_left: int = 0
 # — it is a cliff. Past it every frame pays the whole generation budget and the ground
 # visibly re-grows as you turn, and it arrives after enough of the map has been walked,
 # which is exactly when a player is least likely to connect it to anything.
-function stream_evict(s: Stream) -> void {
+function stream_evict(render3d_st: mut Render3dState, s: Stream) -> void {
   # the age threshold that keeps about half, found by bisection on the count (no sort)
   var lo = 0
-  var hi = stream_walk_no
+  var hi = render3d_st.stream_walk_no
   var keep = s.n / 2
   var t = 0
   var it = 0
@@ -181,7 +168,7 @@ function stream_evict(s: Stream) -> void {
   var i = 0
   while i < s.n {
     let c = s.chunks[i]
-    if c.used >= t or c.used == stream_walk_no { push(kept, c) }
+    if c.used >= t or c.used == render3d_st.stream_walk_no { push(kept, c) }
     else { if c.data != null { free(c.data) } }
     i += 1
   }
@@ -190,21 +177,21 @@ function stream_evict(s: Stream) -> void {
   for h in 0 .. STREAM_HASH { s.htab[h] = 0 }
   i = 0
   while i < s.n { s.keys[i] = s.chunks[i].key;  stream_remember(s, s.chunks[i].key, i);  i += 1 }
-  stream_evictions += 1
+  render3d_st.stream_evictions += 1
 }
 
-function stream_update(s: Stream, cam_x: float, cam_z: float) -> void {
+function stream_update(render3d_st: mut Render3dState, s: Stream, cam_x: float, cam_z: float) -> void {
   let ccx = int(Math.floor(cam_x / s.size))
   let ccz = int(Math.floor(cam_z / s.size))
-  if ccx == s.last_cx and ccz == s.last_cz and not s.pending and s.view_gen == sc_view_gen { return }
+  if ccx == s.last_cx and ccz == s.last_cz and not s.pending and s.view_gen == render3d_st.sc_view_gen { return }
   let first = s.last_cx == 999999
-  s.view_gen = sc_view_gen
+  s.view_gen = render3d_st.sc_view_gen
   s.last_cx = ccx;  s.last_cz = ccz
   let l = s.layer
   l.count = 0
   var missing = false
-  stream_walks += 1
-  stream_walk_no += 1
+  render3d_st.stream_walks += 1
+  render3d_st.stream_walk_no += 1
   let tw = gl_now_us()
   let r = int(s.reach / s.size) + 1
   # rings outward from the camera's cell: the nearest chunks are generated first
@@ -224,31 +211,31 @@ function stream_update(s: Stream, cam_x: float, cam_z: float) -> void {
           if band < 4 and band >= s.min_band and d < s.reach + s.size {
             let key = stream_key(cx, cz, band)
             var c = stream_find(s, key)
-            if c != null { c.used = stream_walk_no }
+            if c != null { c.used = render3d_st.stream_walk_no }
             # The cell underfoot and its neighbours are never deferred: they are what you
             # are looking at, and a hole there is the grass vanishing as you walk into it.
             let urgent = band == 0 and ring <= 1
-            if c == null and (first or urgent or gl_now_us() < stream_deadline) {
+            if c == null and (first or urgent or gl_now_us() < render3d_st.stream_deadline) {
               c = new Chunk
               c.key = key
               s.cur = c
               let t0 = gl_now_us()
-              r3d_stream_fill(s, cx, cz, band)
+              r3d_stream_fill(render3d_st, s, cx, cz, band)
               let dt = gl_now_us() - t0
-              stream_us_gen = stream_us_gen + dt
-              prof_chunk(s.kind, band, c.count, dt)
-              if r3d_debug and band == 0 and stream_debug_n < 40 { stream_debug_n += 1;  print(`stream kind {s.kind} band {band} chunk {cx},{cz}: {c.count} instances`) }
-              if c.count > 0 { c.data = words(c.count * INST_FLOATS);  mem_copy(c.data, stream_scratch, c.count * INST_FLOATS * 4) }
-              if s.n >= STREAM_MAX_CHUNKS and not stream_no_evict { stream_evict(s) }
+              render3d_st.stream_us_gen = render3d_st.stream_us_gen + dt
+              prof_chunk(render3d_st, s.kind, band, c.count, dt)
+              if render3d_st.r3d_debug and band == 0 and render3d_st.stream_debug_n < 40 { render3d_st.stream_debug_n += 1;  print(`stream kind {s.kind} band {band} chunk {cx},{cz}: {c.count} instances`) }
+              if c.count > 0 { c.data = words(c.count * INST_FLOATS);  mem_copy(c.data, render3d_st.stream_scratch, c.count * INST_FLOATS * 4) }
+              if s.n >= render3d_st.STREAM_MAX_CHUNKS and not render3d_st.stream_no_evict { stream_evict(render3d_st, s) }
               # If the walk in progress wants more chunks than the cache can hold, there
               # is nothing to evict and this one is used and dropped, as every chunk used
               # to be. The cap has to exceed one walk's ring for the cache to work at all.
-              if s.n < STREAM_MAX_CHUNKS {
+              if s.n < render3d_st.STREAM_MAX_CHUNKS {
                 push(s.chunks, c);  s.keys[s.n] = key;  stream_remember(s, key, s.n);  s.n += 1
-                c.used = stream_walk_no
+                c.used = render3d_st.stream_walk_no
               }
 
-              prof_gen_add(c.count + 512)
+              prof_gen_add(render3d_st, c.count + 512)
             }
             if c == null {
               missing = true
@@ -257,13 +244,13 @@ function stream_update(s: Stream, cam_x: float, cam_z: float) -> void {
               # few frames instead of disappearing.
               var b2 = band + 1
               while c == null and b2 < 4 { c = stream_find(s, stream_key(cx, cz, b2));  b2 += 1 }
-              if c != null { c.used = stream_walk_no }
+              if c != null { c.used = render3d_st.stream_walk_no }
             }
-            if c != null and c.count > 0 and l.count + c.count <= l.cap and stream_chunk_visible(s, cx, cz, c) {
+            if c != null and c.count > 0 and l.count + c.count <= l.cap and stream_chunk_visible(render3d_st, s, cx, cz, c) {
               let tg = gl_now_us()
               mem_copy(mem_off(l.inst, l.count * INST_FLOATS * 4), data_of(c.data), c.count * INST_FLOATS * 4)
               l.count += c.count
-              stream_us_gather = stream_us_gather + (gl_now_us() - tg)
+              render3d_st.stream_us_gather = render3d_st.stream_us_gather + (gl_now_us() - tg)
             }
           }
         }
@@ -274,7 +261,7 @@ function stream_update(s: Stream, cam_x: float, cam_z: float) -> void {
     ring += 1
   }
   s.pending = missing
-  stream_us_walk = stream_us_walk + (gl_now_us() - tw)
+  render3d_st.stream_us_walk = render3d_st.stream_us_walk + (gl_now_us() - tw)
   # force the layer to re-partition its (new) instances
   l.view_gen = -1
 }
@@ -282,24 +269,24 @@ function stream_update(s: Stream, cam_x: float, cam_z: float) -> void {
 # Only chunks that can be seen are gathered: a sphere around the chunk's footprint and
 # height range, padded for the tallest cover and for casters just outside the frame
 # whose short shadows still fall inside it.
-function stream_chunk_visible(s: Stream, cx: int, cz: int, c: Chunk) -> bool {
+function stream_chunk_visible(render3d_st: Render3dState, s: Stream, cx: int, cz: int, c: Chunk) -> bool {
   let half = s.size * 0.5
   let wx = float(cx) * s.size + half
   let wz = float(cz) * s.size + half
   let hy = (c.ymax - c.ymin) * 0.5
   let cy = c.ymin + hy
   let r = Math.sqrt(half * half * 2.0 + hy * hy) + 8.0
-  return cam_sphere_visible(wx, cy, wz, r)
+  return cam_sphere_visible(render3d_st, wx, cy, wz, r)
 }
 
 # what the caches hold, and whether they are being churned (R3D_PROF)
-function stream_census() -> void {
-  if stream_all == null { return }
+function stream_census(render3d_st: Render3dState) -> void {
+  if render3d_st.stream_all == null { return }
   print("")
-  print(`ground-cover chunk caches (cap {string(STREAM_MAX_CHUNKS)} each, {string(stream_evictions)} evictions over the run):`)
+  print(`ground-cover chunk caches (cap {string(render3d_st.STREAM_MAX_CHUNKS)} each, {string(render3d_st.stream_evictions)} evictions over the run):`)
   var inst = 0
-  for i in 0 .. len(stream_all) {
-    let s = stream_all[i]
+  for i in 0 .. len(render3d_st.stream_all) {
+    let s = render3d_st.stream_all[i]
     var n = 0
     for k in 0 .. s.n { n += s.chunks[k].count }
     inst += n
@@ -308,21 +295,21 @@ function stream_census() -> void {
   print(`  {string(inst)} instances held, {string(inst * INST_FLOATS * 4 / 1024)} KB`)
 }
 
-function stream_update_all() -> void {
-  if stream_all == null { return }
-  stream_deadline = gl_now_us() + STREAM_BUDGET_US
-  for i in 0 .. len(stream_all) { stream_update(stream_all[i], cam_pos[0], cam_pos[2]) }
+function stream_update_all(render3d_st: mut Render3dState) -> void {
+  if render3d_st.stream_all == null { return }
+  render3d_st.stream_deadline = gl_now_us() + STREAM_BUDGET_US
+  for i in 0 .. len(render3d_st.stream_all) { stream_update(render3d_st, render3d_st.stream_all[i], render3d_st.cam_pos[0], render3d_st.cam_pos[2]) }
 }
 
 # every stream and its cached chunks, for a world being replaced (scatter_clear_all)
-function stream_clear_all() -> void {
-  if stream_all == null { return }
-  for i in 0 .. len(stream_all) {
-    let s = stream_all[i]
+function stream_clear_all(render3d_st: mut Render3dState) -> void {
+  if render3d_st.stream_all == null { return }
+  for i in 0 .. len(render3d_st.stream_all) {
+    let s = render3d_st.stream_all[i]
     if s.chunks != null { for c in 0 .. len(s.chunks) { if s.chunks[c].data != null { free(s.chunks[c].data) } } }
     if s.keys != null { free(s.keys) }
     if s.htab != null { free(s.htab) }
     if s.bands != null { free(s.bands) }
   }
-  stream_all = null
+  render3d_st.stream_all = null
 }

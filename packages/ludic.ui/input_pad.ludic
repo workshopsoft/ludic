@@ -4,12 +4,6 @@
 const RP_FIRST: float = 0.42
 const RP_EVERY: float = 0.11
 const PAD_STICK: float = 0.5
-var rp_next: []float = [-1.0, -1.0, -1.0, -1.0]
-var rp_a: bool = false
-var rp_b: bool = false
-var rp_act: bool = false
-var in_act_down: bool = false   # A or Enter went down this frame, or came up
-var in_act_up: bool = false
 # what is held this frame: the arrow keys, the d-pad (SDL's order: 11 up, 12 down, 13 left, 14
 # right) and the stick past half way along its larger axis
 function in_held(i: UiInput) -> void {
@@ -30,32 +24,32 @@ function in_held(i: UiInput) -> void {
   i.pad_b = Input.pad_button(0, 1)
 }
 # the held directions and buttons as this frame's presses
-function in_repeat(i: UiInput) -> void {
-  let now = an_now()
-  if rp_fire(0, i.held_up, now) { i.up = true }
-  if rp_fire(1, i.held_down, now) { i.down_key = true }
-  if rp_fire(2, i.held_left, now) { i.left = true }
-  if rp_fire(3, i.held_right, now) { i.right = true }
-  if i.pad_a and not rp_a { i.enter = true }
-  if i.pad_b and not rp_b { i.escape = true }
-  rp_a = i.pad_a
-  rp_b = i.pad_b
+function in_repeat(ui_st: mut UiState, i: UiInput) -> void {
+  let now = an_now(ui_st)
+  if rp_fire(ui_st, 0, i.held_up, now) { i.up = true }
+  if rp_fire(ui_st, 1, i.held_down, now) { i.down_key = true }
+  if rp_fire(ui_st, 2, i.held_left, now) { i.left = true }
+  if rp_fire(ui_st, 3, i.held_right, now) { i.right = true }
+  if i.pad_a and not ui_st.rp_a { i.enter = true }
+  if i.pad_b and not ui_st.rp_b { i.escape = true }
+  ui_st.rp_a = i.pad_a
+  ui_st.rp_b = i.pad_b
   let act = i.pad_a or i.held_enter
-  in_act_down = act and not rp_act
-  in_act_up = rp_act and not act
-  rp_act = act
+  ui_st.in_act_down = act and not ui_st.rp_act
+  ui_st.in_act_up = ui_st.rp_act and not act
+  ui_st.rp_act = act
 }
-function rp_fire(k: int, held: bool, now: float) -> bool {
+function rp_fire(ui_st: mut UiState, k: int, held: bool, now: float) -> bool {
   if not held {
-    rp_next[k] = -1.0
+    ui_st.rp_next[k] = -1.0
     return false
   }
-  if rp_next[k] < 0.0 {
-    rp_next[k] = now + RP_FIRST
+  if ui_st.rp_next[k] < 0.0 {
+    ui_st.rp_next[k] = now + RP_FIRST
     return true
   }
-  if now + 0.000001 < rp_next[k] { return false }
-  rp_next[k] = rp_next[k] + RP_EVERY
-  if rp_next[k] <= now { rp_next[k] = now + RP_EVERY }
+  if now + 0.000001 < ui_st.rp_next[k] { return false }
+  ui_st.rp_next[k] = ui_st.rp_next[k] + RP_EVERY
+  if ui_st.rp_next[k] <= now { ui_st.rp_next[k] = now + RP_EVERY }
   return true
 }

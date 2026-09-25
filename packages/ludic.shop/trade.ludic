@@ -1,63 +1,63 @@
 # trade.ludic - standing at a counter, and the only ways anything changes hands
-export function shop_visit(v: int) -> void {
-  if shop_vendor_ok(v) { shop_at = v } else { shop_at = -1 }
+export function shop_visit(shop_st: mut ShopState, v: int) -> void {
+  if shop_vendor_ok(shop_st, v) { shop_st.shop_at = v } else { shop_st.shop_at = -1 }
 }
 
-export function shop_away() -> void { shop_at = -1 }
+export function shop_away(shop_st: mut ShopState) -> void { shop_st.shop_at = -1 }
 
 # the vendor at the counter, -1 none
-export function shop_vendor() -> int { return shop_at }
+export function shop_vendor(shop_st: ShopState) -> int { return shop_st.shop_at }
 
-export function shop_at_counter() -> bool { return shop_at >= 0 }
+export function shop_at_counter(shop_st: ShopState) -> bool { return shop_st.shop_at >= 0 }
 
 # what `v` has on its shelves, in shelf order
-export function shop_stock(v: int) -> []int {
+export function shop_stock(shop_st: ShopState, v: int) -> []int {
   let out = new []int
-  if not shop_vendor_ok(v) or shop_vendor_list[v].stock == null { return out }
-  let st = shop_vendor_list[v].stock
+  if not shop_vendor_ok(shop_st, v) or shop_st.shop_vendor_list[v].stock == null { return out }
+  let st = shop_st.shop_vendor_list[v].stock
   for k in 0 .. len(st) { push(out, st[k]) }
   return out
 }
 
 # what in the pack `v` would buy
-export function shop_sellable(v: int) -> []int {
+export function shop_sellable(shop_st: ShopState, v: int) -> []int {
   let out = new []int
-  for it in 0 .. shop_items() { if ShopPack.count(it) > 0 and shop_buys(v, it) { push(out, it) } }
+  for it in 0 .. shop_items(shop_st) { if ShopPack.count(it) > 0 and shop_buys(shop_st, v, it) { push(out, it) } }
   return out
 }
 
-function shop_trade_fact(what: int, it: int, n: int, price: int) -> void {
+function shop_trade_fact(base_st: mut BaseState, shop_st: mut ShopState, what: int, it: int, n: int, price: int) -> void {
   let t = new ShopTrade
   t.what = what
-  t.vendor = shop_at
+  t.vendor = shop_st.shop_at
   t.item = it
   t.n = n
   t.price = price
-  q_push(shop_trades(), t)
+  q_push(base_st, shop_trades(base_st, shop_st), t)
 }
 
-export function shop_can_buy(it: int) -> bool {
-  return shop_item_ok(it) and ShopPurse.money() >= shop_price_buy(it) and ShopPack.room(it) > 0
+export function shop_can_buy(shop_st: ShopState, it: int) -> bool {
+  return shop_item_ok(shop_st, it) and ShopPurse.money() >= shop_price_buy(shop_st, it) and ShopPack.room(it) > 0
 }
 
 # one, paid for and in the pack; false and nothing spent when it cannot be
-export function shop_buy(it: int) -> bool {
-  if not shop_can_buy(it) { return false }
-  let pr = shop_price_buy(it)
+export function shop_buy(base_st: mut BaseState, shop_st: mut ShopState, it: int) -> bool {
+  if not shop_can_buy(shop_st, it) { return false }
+  let pr = shop_price_buy(shop_st, it)
   if not ShopPurse.spend(pr) { return false }
   ShopPack.add(it, 1)
-  shop_trade_fact(SHOP_BOUGHT, it, 1, pr)
+  shop_trade_fact(base_st, shop_st, SHOP_BOUGHT, it, 1, pr)
   return true
 }
 
 # `n` to the vendor at the counter (as many as the pack has); how many went
-export function shop_sell(it: int, n: int) -> int {
-  if not shop_buys(shop_at, it) { return 0 }
+export function shop_sell(base_st: mut BaseState, shop_st: mut ShopState, it: int, n: int) -> int {
+  if not shop_buys(shop_st, shop_st.shop_at, it) { return 0 }
   let k = Math.min(n, ShopPack.count(it))
   if k <= 0 { return 0 }
-  let pr = shop_price_sell(it)
+  let pr = shop_price_sell(shop_st, it)
   if not ShopPack.take(it, k) { return 0 }
   ShopPurse.earn(pr * k)
-  shop_trade_fact(SHOP_SOLD, it, k, pr)
+  shop_trade_fact(base_st, shop_st, SHOP_SOLD, it, k, pr)
   return k
 }

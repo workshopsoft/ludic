@@ -4,17 +4,19 @@ property Catch {
   fish: int = 0
 }
 event Landed { fish: int }
-var landed: int = 0
-var last: Catch = null
-@On(Landed) handler Count { landed += fish }
+export state FishingState {
+  landed: int = 0
+  last: Catch = null
+}
+@On(Landed) handler Count(fishing_st: mut FishingState) { fishing_st.landed += fish }
 function catch_new(n: int) -> Catch {
   let c = new Catch
   c.fish = n
   return c
 }
-export function fishing_day() -> int {
-  last = catch_new(3)
-  emit Landed(fish: last.fish)
+export function fishing_day(fishing_st: mut FishingState) -> int {
+  fishing_st.last = catch_new(3)
+  emit Landed(fish: fishing_st.last.fish)
   emit Landed(fish: 4)
-  return landed
+  return fishing_st.landed
 }

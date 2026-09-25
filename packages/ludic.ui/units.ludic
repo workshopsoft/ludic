@@ -1,30 +1,24 @@
 # units.ludic - lengths in px (the renderer's scale), em (the font size here), rem (the root's),
 # vw and vh (the screen's), and custom properties: --name set on an element, read by var(--name)
 # in it and everything inside it
-var el_cur: UiNode = null
-var el_key: string = ""
-var ly_vp_x: float = 0.0
-var ly_vp_y: float = 0.0
-var ly_vp_w: float = 0.0
-var ly_vp_h: float = 0.0
-function el_unit(s: string) -> float {
+function el_unit(ui_st: UiState, s: string) -> float {
   let f = el_num(s)
   let n = len(s)
-  if n > 3 and s[n - 3..n] == "rem" { return f * el_px(16.0) }
+  if n > 3 and s[n - 3..n] == "rem" { return f * el_px(ui_st, 16.0) }
   if n > 2 and s[n - 2..n] == "em" {
-    if el_cur == null { return f * el_px(16.0) }
-    if el_key == "size" and el_cur.parent != null { return f * cs_fs(el_cur.parent) }
-    return f * cs_fs(el_cur)
+    if ui_st.el_cur == null { return f * el_px(ui_st, 16.0) }
+    if ui_st.el_key == "size" and ui_st.el_cur.parent != null { return f * cs_fs(ui_st, ui_st.el_cur.parent) }
+    return f * cs_fs(ui_st, ui_st.el_cur)
   }
-  if n > 2 and s[n - 2..n] == "vw" { return f * ly_vp_w / 100.0 }
-  if n > 2 and s[n - 2..n] == "vh" { return f * ly_vp_h / 100.0 }
-  return el_px(f)
+  if n > 2 and s[n - 2..n] == "vw" { return f * ui_st.ly_vp_w / 100.0 }
+  if n > 2 and s[n - 2..n] == "vh" { return f * ui_st.ly_vp_h / 100.0 }
+  return el_px(ui_st, f)
 }
 # the font size an element has so far in its cascade (its own, else its parent's)
-function cs_fs(n: UiNode) -> float {
+function cs_fs(ui_st: UiState, n: UiNode) -> float {
   if n.size > 0.0 { return n.size }
-  if n.parent != null { return cs_fs(n.parent) * zm_own(n) }
-  return ui_px(16.0) * zm_own(n)
+  if n.parent != null { return cs_fs(ui_st, n.parent) * zm_own(n) }
+  return ui_px(ui_st, 16.0) * zm_own(n)
 }
 function cs_var_set(n: UiNode, name: string, value: string) -> void {
   if n.var_names == null {
@@ -53,7 +47,7 @@ function cs_var(n: UiNode, name: string) -> string {
   return null
 }
 # a value with var(--name) or var(--name, fallback) in it, with each replaced by what it names
-function cs_vars_in(n: UiNode, v: Val) -> Val {
+function cs_vars_in(ui_st: mut UiState, n: UiNode, v: Val) -> Val {
   if Value.kind(v) != 4 { return v }
   let s = Value.as_str(v)
   var at = 0
@@ -70,7 +64,7 @@ function cs_vars_in(n: UiNode, v: Val) -> Val {
         if s[j] == 41 { depth -= 1 }
         j += 1
       }
-      out = out + s[at..i] + cs_var_ref(n, s[i + 4..j - 1])
+      out = out + s[at..i] + cs_var_ref(ui_st, n, s[i + 4..j - 1])
       at = j
       i = j
     } else { i += 1 }
@@ -78,11 +72,11 @@ function cs_vars_in(n: UiNode, v: Val) -> Val {
   if not found { return v }
   return Value.str(tpl_words(out + s[at..len(s)]))
 }
-function cs_var_ref(n: UiNode, inner: string) -> string {
+function cs_var_ref(ui_st: mut UiState, n: UiNode, inner: string) -> string {
   let parts = lss_split(inner, 44)
   let v = cs_var(n, tpl_words(parts[0]))
   if v != null { return v }
   if len(parts) > 1 { return tpl_words(inner[len(parts[0]) + 1..len(inner)]) }
-  ui_err(`var({tpl_words(parts[0])}): no element here or above sets it`)
+  ui_err(ui_st, `var({tpl_words(parts[0])}): no element here or above sets it`)
   return ""
 }

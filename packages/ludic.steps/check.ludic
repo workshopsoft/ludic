@@ -1,43 +1,43 @@
 # check.ludic - once a frame on the machine that owns the story: every open step of the current
 # chapter that is met now sticks (STEPS_MET), and a chapter with all of them done moves the arc on
 # (STEPS_CHAPTER). A step asks about STATE, so one met before its chapter opened ticks at once.
-export function steps_check() -> void {
-  if steps_finished() { return }
-  let ch = steps__cur
-  let n = steps_in(ch)
+export function steps_check(base_st: mut BaseState, steps_st: mut StepsState) -> void {
+  if steps_finished(steps_st) { return }
+  let ch = steps_st.steps__cur
+  let n = steps_in(steps_st, ch)
   var all = true
   for i in 0 .. n {
-    if not steps_done(i) and steps_met(i) {
-      steps__done = steps__done | (1 << i)
-      steps__fact(STEPS_MET, ch, i)
+    if not steps_done(steps_st, i) and steps_met(steps_st, i) {
+      steps_st.steps__done = steps_st.steps__done | (1 << i)
+      steps__fact(base_st, steps_st, STEPS_MET, ch, i)
     }
-    if not steps_done(i) { all = false }
+    if not steps_done(steps_st, i) { all = false }
   }
   if not all { return }
-  steps__cur = ch + 1
-  steps__done = 0
-  steps__fact(STEPS_CHAPTER, ch, n)
+  steps_st.steps__cur = ch + 1
+  steps_st.steps__done = 0
+  steps__fact(base_st, steps_st, STEPS_CHAPTER, ch, n)
 }
 
 # is step i of chapter ch met by this machine's own state? (a chapter not being played, a panel)
-export function steps_check_at(ch: int, i: int) -> bool {
-  if ch < 0 or ch >= steps_count() or i < 0 or i >= steps_in(ch) { return false }
-  return steps_eval(steps_kind(ch, i), steps_param(ch, i), steps_need(ch, i))
+export function steps_check_at(steps_st: StepsState, ch: int, i: int) -> bool {
+  if ch < 0 or ch >= steps_count(steps_st) or i < 0 or i >= steps_in(steps_st, ch) { return false }
+  return steps_eval(steps_st, steps_kind(steps_st, ch, i), steps_param(steps_st, ch, i), steps_need(steps_st, ch, i))
 }
 
 # is an open step of the current chapter asking for this kind (and this param, unless < 0)?
-export function steps_wants(kind: int, param: int) -> bool {
-  if steps_finished() { return false }
-  for i in 0 .. steps_in(steps__cur) {
-    if steps_done(i) or steps_kind(steps__cur, i) != kind { continue }
-    if param < 0 or steps_param(steps__cur, i) == param { return true }
+export function steps_wants(steps_st: StepsState, kind: int, param: int) -> bool {
+  if steps_finished(steps_st) { return false }
+  for i in 0 .. steps_in(steps_st, steps_st.steps__cur) {
+    if steps_done(steps_st, i) or steps_kind(steps_st, steps_st.steps__cur, i) != kind { continue }
+    if param < 0 or steps_param(steps_st, steps_st.steps__cur, i) == param { return true }
   }
   return false
 }
 
 # back to no arc and no party (tests)
-export function steps_reset() -> void {
-  steps_arc_clear()
-  steps__party_clear()
-  q_clear(steps_facts())
+export function steps_reset(base_st: mut BaseState, steps_st: mut StepsState) -> void {
+  steps_arc_clear(steps_st)
+  steps__party_clear(steps_st)
+  q_clear(base_st, steps_facts(base_st, steps_st))
 }

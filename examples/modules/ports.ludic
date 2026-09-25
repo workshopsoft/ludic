@@ -7,9 +7,9 @@ import "station/units"
 import "station/clock"
 import "station/app"
 program Ports {
-  entry {
+  entry (app_st: mut AppState) {
     let a = Clock.now()
-    advance(-25)
+    advance(app_st, -25)
     print(`{a} {hour_of_day()}`)
   }
 }

@@ -1,38 +1,38 @@
 # queries.ludic - what a game may ask of the roll and of the frame being composed
-export function photo_count() -> int { return pht_n }
-export function photo_max() -> int { return pht_max }
-export function photo_full() -> bool { return pht_n >= pht_max }
-export function photo_day(i: int) -> int { return pht_day[i] }
-export function photo_hour(i: int) -> float { return pht_hour[i] }
-export function photo_mask(i: int) -> int { return pht_mask[i] }
-export function photo_legend_mask(i: int) -> int { return pht_legend[i] }
-export function photo_sold(i: int) -> bool { return pht_sold[i] != 0 }
-export function photo_grade(i: int) -> int { return pht_grade[i] }
-export function photo_why(i: int) -> int { return pht_why[i] }
-export function photo_tags(i: int) -> string { return pht_tags[i] }
-export function photo_file(i: int) -> string { return pht_file[i] }
+export function photo_count(photo_st: PhotoState) -> int { return photo_st.pht_n }
+export function photo_max(photo_st: PhotoState) -> int { return photo_st.pht_max }
+export function photo_full(photo_st: PhotoState) -> bool { return photo_st.pht_n >= photo_st.pht_max }
+export function photo_day(photo_st: PhotoState, i: int) -> int { return photo_st.pht_day[i] }
+export function photo_hour(photo_st: PhotoState, i: int) -> float { return photo_st.pht_hour[i] }
+export function photo_mask(photo_st: PhotoState, i: int) -> int { return photo_st.pht_mask[i] }
+export function photo_legend_mask(photo_st: PhotoState, i: int) -> int { return photo_st.pht_legend[i] }
+export function photo_sold(photo_st: PhotoState, i: int) -> bool { return photo_st.pht_sold[i] != 0 }
+export function photo_grade(photo_st: PhotoState, i: int) -> int { return photo_st.pht_grade[i] }
+export function photo_why(photo_st: PhotoState, i: int) -> int { return photo_st.pht_why[i] }
+export function photo_tags(photo_st: PhotoState, i: int) -> string { return photo_st.pht_tags[i] }
+export function photo_file(photo_st: PhotoState, i: int) -> string { return photo_st.pht_file[i] }
 # a frame with a subject in it was graded; a view is not
-export function photo_graded(i: int) -> bool { return pht_mask[i] != 0 }
-export function photo_cover() -> int { return pht_cover }
+export function photo_graded(photo_st: PhotoState, i: int) -> bool { return photo_st.pht_mask[i] != 0 }
+export function photo_cover(photo_st: PhotoState) -> int { return photo_st.pht_cover }
 
-export function photo_species_shot() -> int { return pht_species_shot }
-export function photo_legend_shot() -> int { return pht_legend_shot }
-export function photo_best(sp: int) -> int {
-  if sp < 0 or sp >= len(pht_best) { return 0 }
-  return pht_best[sp]
+export function photo_species_shot(photo_st: PhotoState) -> int { return photo_st.pht_species_shot }
+export function photo_legend_shot(photo_st: PhotoState) -> int { return photo_st.pht_legend_shot }
+export function photo_best(photo_st: PhotoState, sp: int) -> int {
+  if sp < 0 or sp >= len(photo_st.pht_best) { return 0 }
+  return photo_st.pht_best[sp]
 }
 
-export function photo_pending_tags() -> string { return pht_pending_tags }
-export function photo_pending_mask() -> int { return pht_pending_mask }
-export function photo_pending_legend() -> int { return pht_pending_legend }
-export function photo_pending_grade() -> int { return pht_pending_grade }
-export function photo_pending_why() -> int { return pht_pending_why }
-export function photo_pending_sign() -> int { return pht_pending_sign }
-export function photo_pending_stars() -> bool { return pht_pending_stars }
+export function photo_pending_tags(photo_st: PhotoState) -> string { return photo_st.pht_pending_tags }
+export function photo_pending_mask(photo_st: PhotoState) -> int { return photo_st.pht_pending_mask }
+export function photo_pending_legend(photo_st: PhotoState) -> int { return photo_st.pht_pending_legend }
+export function photo_pending_grade(photo_st: PhotoState) -> int { return photo_st.pht_pending_grade }
+export function photo_pending_why(photo_st: PhotoState) -> int { return photo_st.pht_pending_why }
+export function photo_pending_sign(photo_st: PhotoState) -> int { return photo_st.pht_pending_sign }
+export function photo_pending_stars(photo_st: PhotoState) -> bool { return photo_st.pht_pending_stars }
 
 # the last subject's four components (size of 40, framing, light and the moment of 20 each), for a meter
-export function photo_comp(k: int) -> float { return pht_comp[k] }
-export function photo_comp_have() -> bool { return pht_comp_have }
+export function photo_comp(photo_st: PhotoState, k: int) -> float { return photo_st.pht_comp[k] }
+export function photo_comp_have(photo_st: PhotoState) -> bool { return photo_st.pht_comp_have }
 
 # the band a grade falls in: 0 a record shot, 1 fair, 2 good, 3 fine, 4 one for the wall
 export function photo_band(g: int) -> int {

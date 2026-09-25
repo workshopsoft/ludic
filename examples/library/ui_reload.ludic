@@ -9,21 +9,21 @@ program UiReload {
   const PATH: string = "build/ui_reload_example.xml"
   const V1: string = "<ui><screen name='note'><state n='{0}'/><button on-click='set n = n + 1'>{title} {n}</button></screen></ui>"
   const V2: string = "<ui><screen name='note'><state n='{0}'/><h1>{title} again {n}</h1></screen></ui>"
-  function shown() -> string {
-    let root: UiNode = ui_nodes("note", view_note())
+  function shown(ui_st: mut UiState) -> string {
+    let root: UiNode = ui_nodes(ui_st, "note", view_note())
     let first = root.children[0]
     if len(first.children) > 0 { return first.children[0].text }
     return first.text
   }
-  entry {
+  entry (ui_st: mut UiState) {
     Fs.write_text(PATH, V1)
-    ui_load(PATH)
-    let root: UiNode = ui_nodes("note", view_note())
-    ui_press(root.children[0])
-    let before = shown()
-    let same = ui_reload()
+    ui_load(ui_st, PATH)
+    let root: UiNode = ui_nodes(ui_st, "note", view_note())
+    ui_press(ui_st, root.children[0])
+    let before = shown(ui_st)
+    let same = ui_reload(ui_st)
     Fs.write_text(PATH, V2)
-    let changed = ui_reload()
-    print(`{before} | reloaded {same} then {changed} | {shown()}`)
+    let changed = ui_reload(ui_st)
+    print(`{before} | reloaded {same} then {changed} | {shown(ui_st)}`)
   }
 }

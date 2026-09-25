@@ -3,7 +3,7 @@
 # Running it prints: 1 2 3 4 5 6 7 8 9 10 11 12
 program Floats {
   const HALF: float = 0.5
-  var g_gravity: float = -9.81
+  let g_gravity: float = -9.81
 
   property Body { x: float = 1.25, vy: float, mass: double = 70.5 }
 

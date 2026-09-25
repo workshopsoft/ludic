@@ -6,14 +6,14 @@ program UiBox {
   numbers float
   const PAGE: string = "<ui><style>.side { width: 100px; height: 60px; margin: 10px }</style><screen name='b'><p>title</p><div id='panel' class='side'/></screen></ui>"
   function scale() -> float { return 1.5 }
-  entry {
+  entry (ui_st: mut UiState) {
     let b = new UiBackend
     b.scale = fn scale
-    ui_backend(b)
-    ui_load_text(PAGE, "b.xml")
-    ui_show("b", null, 20.0, 30.0, 800.0, 600.0)
-    let p = ui_box("panel")
-    let none = ui_box("nothing")
-    print(`scale {ui_scale()} | panel {int(p.x)},{int(p.y)} {int(p.w)}x{int(p.h)} | missing {none == null}`)
+    ui_backend(ui_st, b)
+    ui_load_text(ui_st, PAGE, "b.xml")
+    ui_show(ui_st, "b", null, 20.0, 30.0, 800.0, 600.0)
+    let p = ui_box(ui_st, "panel")
+    let none = ui_box(ui_st, "nothing")
+    print(`scale {ui_scale(ui_st)} | panel {int(p.x)},{int(p.y)} {int(p.w)}x{int(p.h)} | missing {none == null}`)
   }
 }

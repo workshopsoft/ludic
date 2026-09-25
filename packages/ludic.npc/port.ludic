@@ -45,27 +45,25 @@ function nw_free(n: string) -> bool { return false }
 function nw_nothing(p: NpcPerson) -> void { }
 function nw_silent(p: NpcPerson, line: int) -> string { return "" }
 function nw_hello(p: NpcPerson) -> string { return "" }
-var nw_ids: int = 0
-function nw_next_id() -> int {
-  nw_ids += 1
-  return nw_ids
+function nw_next_id(npc_st: mut NpcState) -> int {
+  npc_st.nw_ids += 1
+  return npc_st.nw_ids
 }
 
 # the nearest player on and their distance (npc_near_i: -1 when nobody is on)
-var np_near_i: int = -1
 
-export function npc_near(x: float, z: float) -> float {
+export function npc_near(npc_st: mut NpcState, x: float, z: float) -> float {
   var bd = 1000000.0
-  np_near_i = -1
+  npc_st.np_near_i = -1
   for i in 0 .. NpcWorld.players() {
     if not NpcWorld.player_on(i) { continue }
     let d = npc_d(x, z, NpcWorld.player_x(i), NpcWorld.player_z(i))
     if d < bd {
       bd = d
-      np_near_i = i
+      npc_st.np_near_i = i
     }
   }
   return bd
 }
 
-export function npc_near_i() -> int { return np_near_i }
+export function npc_near_i(npc_st: NpcState) -> int { return npc_st.np_near_i }

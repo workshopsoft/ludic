@@ -6,120 +6,122 @@ import "ludic.base"
 program CompassTest {
   numbers float
 
-  var vx: float = 0.0
-  var vz: float = 0.0
-  var yaw: float = 0.0
-  var tier: int = 4
-  var objective: bool = true
+  state CompassTestState {
+    vx: float = 0.0
+    vz: float = 0.0
+    yaw: float = 0.0
+    tier: int = 4
+    objective: bool = true
+  }
 
-  function fk_x() -> float { return vx }
-  function fk_z() -> float { return vz }
-  function fk_yaw() -> float { return yaw }
-  function fk_tier() -> int { return tier }
+  function fk_x(compass_test_st: CompassTestState) -> float { return compass_test_st.vx }
+  function fk_z(compass_test_st: CompassTestState) -> float { return compass_test_st.vz }
+  function fk_yaw(compass_test_st: CompassTestState) -> float { return compass_test_st.yaw }
+  function fk_tier(compass_test_st: CompassTestState) -> int { return compass_test_st.tier }
   bind CompassWorld { x: fn fk_x, z: fn fk_z, yaw: fn fk_yaw, tier: fn fk_tier }
 
-  function places() -> void {
-    compass_mark(0.0, -100.0, 1, 10, 1, COMPASS_PLAIN, "camp")
-    compass_mark(-50.0, 0.0, 2, 11, 2, COMPASS_PLAIN, "sign")
-    compass_mark(0.0, 300.0, 3, 12, 4, COMPASS_PLAIN, "legend")
-    compass_mark(10.0, 10.0, 4, 13, 1, COMPASS_NOTE, "my mark")
+  function places(compass_st: mut CompassState) -> void {
+    compass_mark(compass_st, 0.0, -100.0, 1, 10, 1, COMPASS_PLAIN, "camp")
+    compass_mark(compass_st, -50.0, 0.0, 2, 11, 2, COMPASS_PLAIN, "sign")
+    compass_mark(compass_st, 0.0, 300.0, 3, 12, 4, COMPASS_PLAIN, "legend")
+    compass_mark(compass_st, 10.0, 10.0, 4, 13, 1, COMPASS_NOTE, "my mark")
   }
-  function goal() -> void { if objective { compass_mark(80.0, 0.0, 5, 14, 2, COMPASS_TRACKED, "the dock") } }
+  function goal(compass_st: mut CompassState, compass_test_st: CompassTestState) -> void { if compass_test_st.objective { compass_mark(compass_st, 80.0, 0.0, 5, 14, 2, COMPASS_TRACKED, "the dock") } }
   def CompassProviders places { gather: fn places }
   def CompassProviders goal { gather: fn goal }
 
-  function fresh() -> void {
-    compass_config(64)
-    compass_config_radar([0.0, 0.0, 0.0, 120.0, 260.0], 2)
-    vx = 0.0
-    vz = 0.0
-    yaw = 0.0
-    tier = 4
-    objective = true
+  function fresh(compass_st: mut CompassState, compass_test_st: mut CompassTestState) -> void {
+    compass_config(compass_st, 64)
+    compass_config_radar(compass_st, [0.0, 0.0, 0.0, 120.0, 260.0], 2)
+    compass_test_st.vx = 0.0
+    compass_test_st.vz = 0.0
+    compass_test_st.yaw = 0.0
+    compass_test_st.tier = 4
+    compass_test_st.objective = true
   }
-  function labels() -> string {
+  function labels(compass_st: CompassState) -> string {
     var s = ""
-    for i in 0 .. compass_count() { s = s + compass_at(i).label + ";" }
+    for i in 0 .. compass_count(compass_st) { s = s + compass_at(compass_st, i).label + ";" }
     return s
   }
 
-  test "every provider is asked, the tracked mark first, then the player's, then the rest in order" {
-    fresh()
-    compass_gather()
-    expect_eq(compass_count(), 5)
-    expect(labels() == "the dock;my mark;camp;sign;legend;")
-    expect_eq(compass_tracked(), 0)
+  test "every provider is asked, the tracked mark first, then the player's, then the rest in order" (compass_st: mut CompassState, compass_test_st: mut CompassTestState) {
+    fresh(compass_st, compass_test_st)
+    compass_gather(compass_st)
+    expect_eq(compass_count(compass_st), 5)
+    expect(labels(compass_st) == "the dock;my mark;camp;sign;legend;")
+    expect_eq(compass_tracked(compass_st), 0)
   }
 
-  test "a mark shows from its tier up, and without a compass nothing is gathered" {
-    fresh()
-    tier = 1
-    compass_gather()
-    expect(labels() == "my mark;camp;")
-    expect_eq(compass_tracked(), -1)
-    tier = 0
-    compass_gather()
-    expect_eq(compass_count(), 0)
+  test "a mark shows from its tier up, and without a compass nothing is gathered" (compass_st: mut CompassState, compass_test_st: mut CompassTestState) {
+    fresh(compass_st, compass_test_st)
+    compass_test_st.tier = 1
+    compass_gather(compass_st)
+    expect(labels(compass_st) == "my mark;camp;")
+    expect_eq(compass_tracked(compass_st), -1)
+    compass_test_st.tier = 0
+    compass_gather(compass_st)
+    expect_eq(compass_count(compass_st), 0)
   }
 
-  test "past the cap the lowest priorities go" {
-    fresh()
-    compass_config(2)
-    compass_gather()
-    expect(labels() == "the dock;my mark;")
+  test "past the cap the lowest priorities go" (compass_st: mut CompassState, compass_test_st: mut CompassTestState) {
+    fresh(compass_st, compass_test_st)
+    compass_config(compass_st, 2)
+    compass_gather(compass_st)
+    expect(labels(compass_st) == "the dock;my mark;")
   }
 
-  test "a bearing is from the viewer's facing, a distance from where it stands" {
-    fresh()
-    compass_gather()
-    expect_near(compass_bearing(2), 0.0, 0.001)
-    expect_near(compass_dist(2), 100.0, 0.01)
-    expect_near(compass_bearing(3), 1.5708, 0.001)
-    expect_near(compass_bearing(0), -1.5708, 0.001)
-    yaw = 1.5708
-    expect_near(compass_bearing(3), 0.0, 0.001)
-    expect_near(compass_bearing(2), -1.5708, 0.001)
-    vx = -50.0
-    vz = 100.0
-    expect_near(compass_dist(3), 100.0, 0.01)
+  test "a bearing is from the viewer's facing, a distance from where it stands" (compass_st: mut CompassState, compass_test_st: mut CompassTestState) {
+    fresh(compass_st, compass_test_st)
+    compass_gather(compass_st)
+    expect_near(compass_bearing(compass_st, 2), 0.0, 0.001)
+    expect_near(compass_dist(compass_st, 2), 100.0, 0.01)
+    expect_near(compass_bearing(compass_st, 3), 1.5708, 0.001)
+    expect_near(compass_bearing(compass_st, 0), -1.5708, 0.001)
+    compass_test_st.yaw = 1.5708
+    expect_near(compass_bearing(compass_st, 3), 0.0, 0.001)
+    expect_near(compass_bearing(compass_st, 2), -1.5708, 0.001)
+    compass_test_st.vx = -50.0
+    compass_test_st.vz = 100.0
+    expect_near(compass_dist(compass_st, 3), 100.0, 0.01)
     expect_near(compass_wrap(7.0), 7.0 - 6.2832, 0.001)
     expect_near(compass_strip_t(0.5, 1.0), 0.5, 0.001)
   }
 
-  test "a capture hears every mark whatever the tier and leaves the frame's list alone" {
-    fresh()
-    compass_gather()
-    tier = 1
-    compass_capture_begin()
-    expect(compass_capturing())
-    goal()
-    places()
-    let got = compass_capture_end()
-    expect(not compass_capturing())
+  test "a capture hears every mark whatever the tier and leaves the frame's list alone" (compass_st: mut CompassState, compass_test_st: mut CompassTestState) {
+    fresh(compass_st, compass_test_st)
+    compass_gather(compass_st)
+    compass_test_st.tier = 1
+    compass_capture_begin(compass_st)
+    expect(compass_capturing(compass_st))
+    goal(compass_st, compass_test_st)
+    places(compass_st)
+    let got = compass_capture_end(compass_st)
+    expect(not compass_capturing(compass_st))
     expect_eq(len(got), 5)
     expect(got[0].label == "the dock")
-    expect_eq(compass_count(), 5)
+    expect_eq(compass_count(compass_st), 5)
   }
 
-  test "the radar: its range by tier, the blips in it, and where each falls on the disc" {
-    fresh()
-    tier = 2
-    compass_gather()
-    expect(not compass_radar_on())
-    expect(not compass_radar_has(0))
-    tier = 3
-    compass_gather()
-    expect(compass_radar_on())
-    expect_near(compass_radar_range(), 120.0, 0.01)
-    expect(compass_radar_has(0))
-    expect(not compass_radar_has(1))
-    expect(not compass_radar_has(2))
-    expect(compass_radar_has(3))
-    expect_near(compass_radar_x(3), -50.0 / 120.0, 0.001)
-    expect_near(compass_radar_y(3), 0.0, 0.001)
-    expect_near(compass_radar_x(0), 80.0 / 120.0, 0.001)
-    tier = 9
-    expect_near(compass_radar_range(), 260.0, 0.01)
+  test "the radar: its range by tier, the blips in it, and where each falls on the disc" (compass_st: mut CompassState, compass_test_st: mut CompassTestState) {
+    fresh(compass_st, compass_test_st)
+    compass_test_st.tier = 2
+    compass_gather(compass_st)
+    expect(not compass_radar_on(compass_st))
+    expect(not compass_radar_has(compass_st, 0))
+    compass_test_st.tier = 3
+    compass_gather(compass_st)
+    expect(compass_radar_on(compass_st))
+    expect_near(compass_radar_range(compass_st), 120.0, 0.01)
+    expect(compass_radar_has(compass_st, 0))
+    expect(not compass_radar_has(compass_st, 1))
+    expect(not compass_radar_has(compass_st, 2))
+    expect(compass_radar_has(compass_st, 3))
+    expect_near(compass_radar_x(compass_st, 3), -50.0 / 120.0, 0.001)
+    expect_near(compass_radar_y(compass_st, 3), 0.0, 0.001)
+    expect_near(compass_radar_x(compass_st, 0), 80.0 / 120.0, 0.001)
+    compass_test_st.tier = 9
+    expect_near(compass_radar_range(compass_st), 260.0, 0.01)
   }
 
   test "the eight points go round from the heading 0 toward -x" {

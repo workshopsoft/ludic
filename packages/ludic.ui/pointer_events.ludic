@@ -11,8 +11,6 @@ export property UiPointer {
   wheel: float = 0.0
 }
 const PE_NAMES: string = " pointerdown pointermove pointerup wheel drag "
-var pe_key: string = ""         # the element the pointer is captured by
-var pe_btn: int = 0
 function pe_wants(n: UiNode, wheel: bool) -> bool {
   if n.kind == UI_NATIVE and n.native != null and n.native.input != null { return true }
   if n.on_names == null { return false }
@@ -23,25 +21,25 @@ function pe_wants(n: UiNode, wheel: bool) -> bool {
   return false
 }
 # the pointer's events this frame: to what captured it, else to what it is over
-function pe_frame(root: UiNode, scope: UiNode) -> void {
-  let i = in_now
-  let p = in_last
+function pe_frame(ui_st: mut UiState, root: UiNode, scope: UiNode) -> void {
+  let i = ui_st.in_now
+  let p = ui_st.in_last
   let moved = p.x >= 0.0 and (i.x != p.x or i.y != p.y)
   var over: UiNode = null
   if fr_in(scope, i.x, i.y) { over = fr_pick(scope, i.x, i.y, PK_POINTER) }
-  if pe_key != "" {
-    let c = fr_node(root, pe_key)
-    if c != null and moved { pe_send(c, "pointermove", pe_btn) }
-    if c != null and moved { pe_send(c, "drag", pe_btn) }
+  if ui_st.pe_key != "" {
+    let c = fr_node(root, ui_st.pe_key)
+    if c != null and moved { pe_send(ui_st, c, "pointermove", ui_st.pe_btn) }
+    if c != null and moved { pe_send(ui_st, c, "drag", ui_st.pe_btn) }
     if not (i.down or i.down_right or i.down_middle) {
-      if c != null { pe_send(c, "pointerup", pe_btn) }
-      pe_key = ""
+      if c != null { pe_send(ui_st, c, "pointerup", ui_st.pe_btn) }
+      ui_st.pe_key = ""
     }
   } else if over != null {
     let b = pe_pressed(i, p)
-    if b >= 0 { pe_down(over, b) } else if moved { pe_send(over, "pointermove", 0) }
+    if b >= 0 { pe_down(ui_st, over, b) } else if moved { pe_send(ui_st, over, "pointermove", 0) }
   }
-  if i.wheel != 0.0 and over != null { pe_send(over, "wheel", 0) }
+  if i.wheel != 0.0 and over != null { pe_send(ui_st, over, "wheel", 0) }
 }
 function pe_pressed(i: UiInput, p: UiInput) -> int {
   if i.down and not p.down { return 0 }
@@ -49,24 +47,24 @@ function pe_pressed(i: UiInput, p: UiInput) -> int {
   if i.down_middle and not p.down_middle { return 2 }
   return -1
 }
-function pe_down(n: UiNode, b: int) -> void {
-  pe_key = n.key
-  pe_btn = b
-  if not pe_send(n, "pointerdown", b) { pe_key = "" }
+function pe_down(ui_st: mut UiState, n: UiNode, b: int) -> void {
+  ui_st.pe_key = n.key
+  ui_st.pe_btn = b
+  if not pe_send(ui_st, n, "pointerdown", b) { ui_st.pe_key = "" }
 }
 # one event: a native's input answers at once (false: not its to take); an element's on-<kind> runs
 # once the frame is drawn, with the pointer's fields on `event`
-function pe_send(n: UiNode, kind: string, b: int) -> bool {
+function pe_send(ui_st: mut UiState, n: UiNode, kind: string, b: int) -> bool {
   let e = new UiPointer
   e.kind = kind
-  e.x = in_now.x - n.x
-  e.y = in_now.y - n.y
-  if in_last.x >= 0.0 {
-    e.dx = in_now.x - in_last.x
-    e.dy = in_now.y - in_last.y
+  e.x = ui_st.in_now.x - n.x
+  e.y = ui_st.in_now.y - n.y
+  if ui_st.in_last.x >= 0.0 {
+    e.dx = ui_st.in_now.x - ui_st.in_last.x
+    e.dy = ui_st.in_now.y - ui_st.in_last.y
   }
   e.button = b
-  e.wheel = in_now.wheel
+  e.wheel = ui_st.in_now.wheel
   if n.kind == UI_NATIVE and n.native != null and n.native.input != null { return n.native.input(n, e) }
   let v = Value.object()
   Value.put(v, "x", Value.float(e.x))
@@ -75,7 +73,7 @@ function pe_send(n: UiNode, kind: string, b: int) -> bool {
   Value.put(v, "dy", Value.float(e.dy))
   Value.put(v, "button", Value.int(b))
   Value.put(v, "wheel", Value.float(e.wheel))
-  ui_fire(n, kind, v)
+  ui_fire(ui_st, n, kind, v)
   return true
 }
 # a scroll box leaves the wheel to what is under the pointer inside it and takes it itself

@@ -1,56 +1,56 @@
 # gather.ludic - a frame's marks: begin, every provider marks, end sorts and culls. While a
 # capture is open the marks go to whoever is listening instead, whatever the tier.
-export function compass_begin() -> void { cmp_list = new []CompassMark }
+export function compass_begin(compass_st: mut CompassState) -> void { compass_st.cmp_list = new []CompassMark }
 
 # a provider's verb: a thing at (x, z), shown from compass `tier` up
-export function compass_mark(x: float, z: float, icon: int, colour: int, tier: int, prio: int, label: string) -> void {
-  if cmp_list == null { compass_begin() }
+export function compass_mark(compass_st: mut CompassState, x: float, z: float, icon: int, colour: int, tier: int, prio: int, label: string) -> void {
+  if compass_st.cmp_list == null { compass_begin(compass_st) }
   let m = cmp_new(x, z, icon, colour, tier, prio, label)
-  if cmp_capturing {
-    push(cmp_caught, m)
+  if compass_st.cmp_capturing {
+    push(compass_st.cmp_caught, m)
     return
   }
   if CompassWorld.tier() < tier { return }
-  push(cmp_list, m)
+  push(compass_st.cmp_list, m)
 }
 
 # highest priority first, the providers' order kept within one; then the cap
-export function compass_end() -> void {
-  if cmp_list == null { compass_begin() }
+export function compass_end(compass_st: mut CompassState) -> void {
+  if compass_st.cmp_list == null { compass_begin(compass_st) }
   let out = new []CompassMark
   for p in 0 .. 3 {
     let want = COMPASS_TRACKED - p
-    for i in 0 .. len(cmp_list) { if cmp_band(cmp_list[i].prio) == want and len(out) < cmp_cap { push(out, cmp_list[i]) } }
+    for i in 0 .. len(compass_st.cmp_list) { if cmp_band(compass_st.cmp_list[i].prio) == want and len(out) < compass_st.cmp_cap { push(out, compass_st.cmp_list[i]) } }
   }
-  cmp_list = out
+  compass_st.cmp_list = out
 }
 
 function cmp_band(p: int) -> int { return Math.clamp(p, COMPASS_PLAIN, COMPASS_TRACKED) }
 
 # once a frame: ask every registered provider, in the registry's order
-export function compass_gather() -> void {
-  compass_begin()
+export function compass_gather(compass_st: mut CompassState) -> void {
+  compass_begin(compass_st)
   if CompassWorld.tier() <= 0 { return }
   for i in 0 .. COMPASS_FROM_COUNT {
     let f = CompassProviders[i].gather
     if f != null { f() }
   }
-  compass_end()
+  compass_end(compass_st)
 }
 
 # someone else wants to know where the providers point (a guide's arrow): until the end every
 # mark is theirs, whatever the tier, and the frame's list is left alone
-export function compass_capture_begin() -> void {
-  cmp_capturing = true
-  cmp_caught = new []CompassMark
+export function compass_capture_begin(compass_st: mut CompassState) -> void {
+  compass_st.cmp_capturing = true
+  compass_st.cmp_caught = new []CompassMark
 }
 
-export function compass_capture_end() -> []CompassMark {
-  cmp_capturing = false
-  var got = cmp_caught
-  cmp_caught = new []CompassMark
+export function compass_capture_end(compass_st: mut CompassState) -> []CompassMark {
+  compass_st.cmp_capturing = false
+  var got = compass_st.cmp_caught
+  compass_st.cmp_caught = new []CompassMark
   if got == null { got = new []CompassMark }
   return got
 }
 
-export function compass_capturing() -> bool { return cmp_capturing }
+export function compass_capturing(compass_st: CompassState) -> bool { return compass_st.cmp_capturing }

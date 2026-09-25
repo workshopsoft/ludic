@@ -23,74 +23,74 @@ program InventoryTest {
 
   bind PackRules { stack_limit: fn limit }
 
-  function fresh() -> void {
-    inv_config(names("wood", "rod", "fish"))
-    inv_reset()
+  function fresh(base_st: mut BaseState, inventory_st: mut InventoryState) -> void {
+    inv_config(inventory_st, names("wood", "rod", "fish"))
+    inv_reset(base_st, inventory_st)
   }
 
-  function changes() -> []ItemChanged { return q_drain(inv_changes()) }
-  function waiting() -> int { return q_len(inv_changes()) }
+  function changes(base_st: mut BaseState, inventory_st: mut InventoryState) -> []ItemChanged { return q_drain(base_st, inv_changes(base_st, inventory_st)) }
+  function waiting(base_st: mut BaseState, inventory_st: mut InventoryState) -> int { return q_len(inv_changes(base_st, inventory_st)) }
 
-  test "add puts in what fits and says how many" {
-    fresh()
-    expect_eq(inv_add(WOOD, 7), 7)
-    expect_eq(inv_add(WOOD, 7), 3)
-    expect_eq(inv_count(WOOD), 10)
-    expect_eq(inv_room(WOOD), 0)
-    expect_eq(inv_add(ROD, 2), 1)
-    expect_eq(inv_total(), 11)
+  test "add puts in what fits and says how many" (base_st: mut BaseState, inventory_st: mut InventoryState) {
+    fresh(base_st, inventory_st)
+    expect_eq(inv_add(base_st, inventory_st, WOOD, 7), 7)
+    expect_eq(inv_add(base_st, inventory_st, WOOD, 7), 3)
+    expect_eq(inv_count(inventory_st, WOOD), 10)
+    expect_eq(inv_room(inventory_st, WOOD), 0)
+    expect_eq(inv_add(base_st, inventory_st, ROD, 2), 1)
+    expect_eq(inv_total(inventory_st), 11)
   }
 
-  test "take is all or none" {
-    fresh()
-    inv_add(FISH, 3)
-    expect(not inv_take(FISH, 4))
-    expect_eq(inv_count(FISH), 3)
-    expect(inv_take(FISH, 3))
-    expect(not inv_has(FISH, 1))
+  test "take is all or none" (base_st: mut BaseState, inventory_st: mut InventoryState) {
+    fresh(base_st, inventory_st)
+    inv_add(base_st, inventory_st, FISH, 3)
+    expect(not inv_take(base_st, inventory_st, FISH, 4))
+    expect_eq(inv_count(inventory_st, FISH), 3)
+    expect(inv_take(base_st, inventory_st, FISH, 3))
+    expect(not inv_has(inventory_st, FISH, 1))
   }
 
-  test "set goes past the room, never below zero" {
-    fresh()
-    inv_set(ROD, 3)
-    expect_eq(inv_count(ROD), 3)
-    expect_eq(inv_room(ROD), 0)
-    inv_set(ROD, -2)
-    expect_eq(inv_count(ROD), 0)
+  test "set goes past the room, never below zero" (base_st: mut BaseState, inventory_st: mut InventoryState) {
+    fresh(base_st, inventory_st)
+    inv_set(base_st, inventory_st, ROD, 3)
+    expect_eq(inv_count(inventory_st, ROD), 3)
+    expect_eq(inv_room(inventory_st, ROD), 0)
+    inv_set(base_st, inventory_st, ROD, -2)
+    expect_eq(inv_count(inventory_st, ROD), 0)
   }
 
-  test "every change is a fact, and no change is not" {
-    fresh()
-    inv_add(WOOD, 2)
-    inv_take(WOOD, 1)
-    inv_set(WOOD, 1)
-    let cs = changes()
+  test "every change is a fact, and no change is not" (base_st: mut BaseState, inventory_st: mut InventoryState) {
+    fresh(base_st, inventory_st)
+    inv_add(base_st, inventory_st, WOOD, 2)
+    inv_take(base_st, inventory_st, WOOD, 1)
+    inv_set(base_st, inventory_st, WOOD, 1)
+    let cs = changes(base_st, inventory_st)
     expect_eq(len(cs), 2)
     expect_eq(cs[0].after, 2)
     expect_eq(cs[1].before, 2)
     expect_eq(cs[1].after, 1)
-    expect_eq(waiting(), 0)
+    expect_eq(waiting(base_st, inventory_st), 0)
   }
 
-  test "an item out of range is nothing" {
-    fresh()
-    expect_eq(inv_add(9, 1), 0)
-    expect_eq(inv_count(-1), 0)
-    expect(not inv_take(9, 0))
+  test "an item out of range is nothing" (base_st: mut BaseState, inventory_st: mut InventoryState) {
+    fresh(base_st, inventory_st)
+    expect_eq(inv_add(base_st, inventory_st, 9, 1), 0)
+    expect_eq(inv_count(inventory_st, -1), 0)
+    expect(not inv_take(base_st, inventory_st, 9, 0))
   }
 
-  test "the save is by name, so a reordered table still reads it" {
-    fresh()
-    inv_add(WOOD, 4)
-    inv_add(FISH, 2)
+  test "the save is by name, so a reordered table still reads it" (base_st: mut BaseState, inventory_st: mut InventoryState) {
+    fresh(base_st, inventory_st)
+    inv_add(base_st, inventory_st, WOOD, 4)
+    inv_add(base_st, inventory_st, FISH, 2)
     let root = save_tree()
-    save_section(root, "inventory", 1, inv_save())
+    save_section(root, "inventory", 1, inv_save(inventory_st))
     let text = save_encode(root)
-    inv_config(names("fish", "bait", "wood"))
+    inv_config(inventory_st, names("fish", "bait", "wood"))
     let n = load_section(save_decode(text), "inventory")
-    inv_load(n.data, n.version)
-    expect_eq(inv_count(0), 2)
-    expect_eq(inv_count(1), 0)
-    expect_eq(inv_count(2), 4)
+    inv_load(inventory_st, n.data, n.version)
+    expect_eq(inv_count(inventory_st, 0), 2)
+    expect_eq(inv_count(inventory_st, 1), 0)
+    expect_eq(inv_count(inventory_st, 2), 4)
   }
 }

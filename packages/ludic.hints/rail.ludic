@@ -1,102 +1,106 @@
 # rail.ludic - the rail: once a pass (a second by default) the most urgent true cards, up to a few,
 # muted ones left out; in a tie the registry's order decides
-var hn_shown: int = 3            # how many the rail holds
-var hn_every: float = 1.0        # seconds between passes
-var hn_top: []int = null         # the cards on the rail this pass
-var hn_n: int = 0
-var hn_t: float = 0.0            # seconds to the next pass
-var hn_pick: int = 0             # which chip the key would open
-var hn_card: int = -1            # the card being read, or -1
-var hn_facts: Queue<HintsFact> = null
-
-export function hints_facts() -> Queue<HintsFact> {
-  if hn_facts == null { hn_facts = queue_new("hints.facts") }
-  return hn_facts
+export state HintsState {
+  hn_mute: []bool = null
+  hn_foreign: []string = null      # muted keys with no card in this build, written back as read
+  hn_shown: int = 3            # how many the rail holds
+  hn_every: float = 1.0        # seconds between passes
+  hn_top: []int = null         # the cards on the rail this pass
+  hn_n: int = 0
+  hn_t: float = 0.0            # seconds to the next pass
+  hn_pick: int = 0             # which chip the key would open
+  hn_card: int = -1            # the card being read, or -1
+  hn_facts: Queue<HintsFact> = null
 }
 
-function hn_fact(what: int, card: int) -> void {
+export function hints_facts(base_st: mut BaseState, hints_st: mut HintsState) -> Queue<HintsFact> {
+  if hints_st.hn_facts == null { hints_st.hn_facts = queue_new(base_st, "hints.facts") }
+  return hints_st.hn_facts
+}
+
+function hn_fact(base_st: mut BaseState, hints_st: mut HintsState, what: int, card: int) -> void {
   let f = new HintsFact
   f.what = what
   f.card = card
-  q_push(hints_facts(), f)
+  q_push(base_st, hints_facts(base_st, hints_st), f)
 }
 
 # how many the rail holds and how often it is sorted
-export function hints_config(shown: int, every: float) -> void {
-  hn_shown = shown
-  hn_every = every
-  hn_top = null
+export function hints_config(hints_st: mut HintsState, shown: int, every: float) -> void {
+  hints_st.hn_shown = shown
+  hints_st.hn_every = every
+  hints_st.hn_top = null
 }
 
-function hn_ensure() -> void {
-  if hn_top == null or len(hn_top) != hn_shown {
-    hn_top = new []int
-    for i in 0 .. hn_shown { push(hn_top, -1) }
+function hn_ensure(hints_st: mut HintsState) -> void {
+  if hints_st.hn_top == null or len(hints_st.hn_top) != hints_st.hn_shown {
+    hints_st.hn_top = new []int
+    for i in 0 .. hints_st.hn_shown { push(hints_st.hn_top, -1) }
   }
-  hn_mute_ensure()
+  hn_mute_ensure(hints_st)
 }
 
 # the next pass comes on the next tick rather than in a second
-export function hints_refresh() -> void { hn_t = 0.0 }
+export function hints_refresh(hints_st: mut HintsState) -> void { hints_st.hn_t = 0.0 }
 
-export function hints_tick(dt: float) -> void {
-  hn_ensure()
-  hn_t = hn_t - dt
-  if hn_t > 0.0 { return }
-  hn_t = hn_every
-  hints_sort()
+export function hints_tick(hints_st: mut HintsState, dt: float) -> void {
+  hn_ensure(hints_st)
+  hints_st.hn_t = hints_st.hn_t - dt
+  if hints_st.hn_t > 0.0 { return }
+  hints_st.hn_t = hints_st.hn_every
+  hints_sort(hints_st)
 }
 
 # one pass now: the rail re-sorted, the pick kept in range, and the card following its subject
 # along the rail - or put down when what it was about stopped being true
-export function hints_sort() -> void {
-  hn_ensure()
-  hn_n = 0
+export function hints_sort(hints_st: mut HintsState) -> void {
+  hn_ensure(hints_st)
+  hints_st.hn_n = 0
   let on = HintsWorld.showing()
   for u in 0 .. 4 {
     let want = HINTS_URGENT - u
     for id in 0 .. HINT_COUNT {
-      if not on or hn_n >= hn_shown { break }
-      if Hints[id].urgency != want or hints_muted(id) { continue }
+      if not on or hints_st.hn_n >= hints_st.hn_shown { break }
+      if Hints[id].urgency != want or hints_muted(hints_st, id) { continue }
       if not HintsWorld.true_now(id) { continue }
-      hn_top[hn_n] = id
-      hn_n += 1
+      hints_st.hn_top[hints_st.hn_n] = id
+      hints_st.hn_n += 1
     }
   }
-  if hn_pick >= hn_n { hn_pick = 0 }
-  if hn_card < 0 { return }
-  if not on or hints_muted(hn_card) or not HintsWorld.true_now(hn_card) {
-    hn_card = -1
+  if hints_st.hn_pick >= hints_st.hn_n { hints_st.hn_pick = 0 }
+  if hints_st.hn_card < 0 { return }
+  if not on or hints_muted(hints_st, hints_st.hn_card) or not HintsWorld.true_now(hints_st.hn_card) {
+    hints_st.hn_card = -1
     return
   }
-  for k in 0 .. hn_n { if hn_top[k] == hn_card { hn_pick = k } }
+  for k in 0 .. hints_st.hn_n { if hints_st.hn_top[k] == hints_st.hn_card { hints_st.hn_pick = k } }
 }
 
 # the cards on the rail, most urgent first (empty while the rail is not showing)
-export function hints_rail() -> []int {
-  hn_ensure()
+export function hints_rail(hints_st: mut HintsState) -> []int {
+  hn_ensure(hints_st)
   let out = new []int
   if not HintsWorld.showing() { return out }
-  for k in 0 .. hn_n { push(out, hn_top[k]) }
+  for k in 0 .. hints_st.hn_n { push(out, hints_st.hn_top[k]) }
   return out
 }
 
-export function hints_count() -> int { return hn_n }
+export function hints_count(hints_st: HintsState) -> int { return hints_st.hn_n }
 
-export function hints_at(k: int) -> int {
-  if k < 0 or k >= hn_n { return -1 }
-  return hn_top[k]
+export function hints_at(hints_st: HintsState, k: int) -> int {
+  if k < 0 or k >= hints_st.hn_n { return -1 }
+  return hints_st.hn_top[k]
 }
 
-export function hints_pick() -> int { return hn_pick }
+export function hints_pick(hints_st: HintsState) -> int { return hints_st.hn_pick }
 
-export function hints_hot(k: int) -> bool { return k == hn_pick }
+export function hints_hot(hints_st: HintsState, k: int) -> bool { return k == hints_st.hn_pick }
 
-export function hints_reset() -> void {
-  hn_top = null
-  hn_n = 0
-  hn_t = 0.0
-  hn_pick = 0
-  hn_card = -1
-  q_clear(hints_facts())
+export function hints_reset(base_st: mut BaseState, hints_st: mut HintsState) -> void {
+  hints_st.hn_top = null
+  hints_st.hn_n = 0
+  hints_st.hn_t = 0.0
+  hints_st.hn_pick = 0
+  hints_st.hn_card = -1
+  q_clear(base_st, hints_facts(base_st, hints_st))
 }

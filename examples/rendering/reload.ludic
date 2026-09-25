@@ -14,8 +14,8 @@ program Reload {
   # A program only links the GL runtime render3d stands on when it names Gl.* itself
   # (the parser's g_uses_gl), so even a check that draws nothing presents its frame.
   # render3d calls back into the program for what stands on the terrain
-  function scene_draw() -> void { scatter_draw() }
-  function scene_draw_casters(light_vp: floats) -> void { scatter_draw_casters(light_vp) }
+  function scene_draw(render3d_st: mut Render3dState) -> void { scatter_draw(render3d_st) }
+  function scene_draw_casters(render3d_st: mut Render3dState, light_vp: floats) -> void { scatter_draw_casters(render3d_st, light_vp) }
   # no streamed cover here, but stream.ludic names the generator, so every program supplies one
   function stream_fill(s: Stream, cx: int, cz: int, band: int) -> void { }
 
@@ -27,61 +27,61 @@ program Reload {
     if not cond { print(`reload: FAILED - {what}`) }
     return cond
   }
-  function populate() -> void {
-    let l = layer_cards(model_cross_card(), 1000, F_ZERO, fi(400))
+  function populate(render3d_st: mut Render3dState) -> void {
+    let l = layer_cards(render3d_st, model_cross_card(render3d_st), 1000, F_ZERO, fi(400))
     for i in 0 .. 400 {
       let x = fi(i * 2 - 400)
-      layer_add(l, x, terrain_height(x, fi(30)), fi(30), F_ONE, F_ZERO, F_ZERO, F_ZERO)
-      col_add(x, fi(30), F_ONE)
+      layer_add(l, x, terrain_height(render3d_st, x, fi(30)), fi(30), F_ONE, F_ZERO, F_ZERO, F_ZERO)
+      col_add(render3d_st, x, fi(30), F_ONE)
     }
-    col_build()
+    col_build(render3d_st)
   }
 
-  handler Boot phase Start {
+  handler Boot(render3d_st: mut Render3dState) phase Start {
     spawn Anchor {}
-    r3d_on_draw(fn scene_draw)
-    r3d_on_casters(fn scene_draw_casters)
-    r3d_on_stream_fill(fn stream_fill)
-    TERRAIN_HALF = 1000
-    ter_smooth = true
-    if not r3d_init(640, 360, "Reload") {
+    r3d_on_draw(render3d_st, fn scene_draw)
+    r3d_on_casters(render3d_st, fn scene_draw_casters)
+    r3d_on_stream_fill(render3d_st, fn stream_fill)
+    render3d_st.TERRAIN_HALF = 1000
+    render3d_st.ter_smooth = true
+    if not r3d_init(render3d_st, 640, 360, "Reload") {
       quit()
       return
     }
-    cam_set(F_ZERO, fi(80), fi(300), fi(180), f_neg(fi(10)))
-    water_init(fl(4.0), F_ZERO, F_ZERO, fi(200), fi(200))
-    populate()
+    cam_set(render3d_st, F_ZERO, fi(80), fi(300), fi(180), f_neg(fi(10)))
+    water_init(render3d_st, fl(4.0), F_ZERO, F_ZERO, fi(200), fi(200))
+    populate(render3d_st)
     var ok = true
-    ok = check("the first map has layers and colliders", len(sc_layers) == 1 and col_n == 400) and ok
+    ok = check("the first map has layers and colliders", len(render3d_st.sc_layers) == 1 and render3d_st.col_n == 400) and ok
     # --- swap to a 3 km map with a sea and a lake above it
-    scatter_clear_all()
-    actor_clear_all()
-    col_reset()
-    water_bodies_clear()
-    terrain_lake(F_ZERO, F_ZERO, F_ZERO, F_ZERO, F_ZERO)
-    terrain_reload("", F_ZERO, F_ZERO, F_ZERO, F_ZERO, F_ZERO, "", 1500)
-    ok = check("everything of the first map released", len(sc_layers) == 0 and col_n == 0 and wb_n == 0 and not water_on) and ok
-    ok = check("the new half", TERRAIN_HALF == 1500 and ter_heights != null and ter_height_tex != 0) and ok
-    ok = check("patch bounds rebuilt", cd_min != null and len(cd_min) == CD_LEVELS) and ok
-    ok = check("patches scale with the map", cd_size(0) == f_mul(fi(32), fr(3000, 8192))) and ok
-    terrain_height(F_ZERO, F_ZERO)
-    ok = check("the cached height scale is the new map's", ter_h_scale == fr(TERRAIN_RES, 3000)) and ok
-    let sea = water_body_add(F_ZERO, F_ZERO, F_ZERO, fi(20000), fi(20000), true)
-    let lake = water_body_add(fl(12.0), fi(600), fi(-400), fi(150), fi(100), false)
-    ok = check("two water bodies, the sea mirrored", sea == 0 and lake == 1 and wb_n == 2 and wb_primary == 0 and water_level == F_ZERO and water_on) and ok
-    populate()
-    ok = check("the new map takes layers and colliders", len(sc_layers) == 1 and col_n == 400 and col_side == 3000 / COL_CELL) and ok
+    scatter_clear_all(render3d_st)
+    actor_clear_all(render3d_st)
+    col_reset(render3d_st)
+    water_bodies_clear(render3d_st)
+    terrain_lake(render3d_st, F_ZERO, F_ZERO, F_ZERO, F_ZERO, F_ZERO)
+    terrain_reload(render3d_st, "", F_ZERO, F_ZERO, F_ZERO, F_ZERO, F_ZERO, "", 1500)
+    ok = check("everything of the first map released", len(render3d_st.sc_layers) == 0 and render3d_st.col_n == 0 and render3d_st.wb_n == 0 and not render3d_st.water_on) and ok
+    ok = check("the new half", render3d_st.TERRAIN_HALF == 1500 and render3d_st.ter_heights != null and render3d_st.ter_height_tex != 0) and ok
+    ok = check("patch bounds rebuilt", render3d_st.cd_min != null and len(render3d_st.cd_min) == CD_LEVELS) and ok
+    ok = check("patches scale with the map", cd_size(render3d_st, 0) == f_mul(fi(32), fr(3000, 8192))) and ok
+    terrain_height(render3d_st, F_ZERO, F_ZERO)
+    ok = check("the cached height scale is the new map's", render3d_st.ter_h_scale == fr(TERRAIN_RES, 3000)) and ok
+    let sea = water_body_add(render3d_st, F_ZERO, F_ZERO, F_ZERO, fi(20000), fi(20000), true)
+    let lake = water_body_add(render3d_st, fl(12.0), fi(600), fi(-400), fi(150), fi(100), false)
+    ok = check("two water bodies, the sea mirrored", sea == 0 and lake == 1 and render3d_st.wb_n == 2 and render3d_st.wb_primary == 0 and render3d_st.water_level == F_ZERO and render3d_st.water_on) and ok
+    populate(render3d_st)
+    ok = check("the new map takes layers and colliders", len(render3d_st.sc_layers) == 1 and render3d_st.col_n == 400 and render3d_st.col_side == 3000 / COL_CELL) and ok
     # a sea below the carved lake: set once, and not undone by a reload
-    terrain_sea(fl(-2.0))
-    terrain_lake(fl(12.0), fi(600), fi(-400), fi(150), fi(100))
-    ok = check("the sea is its own level", ter_sea_set and ter_sea_gen() == fl(-2.0) and ter_lake_level == fl(12.0)) and ok
+    terrain_sea(render3d_st, fl(-2.0))
+    terrain_lake(render3d_st, fl(12.0), fi(600), fi(-400), fi(150), fi(100))
+    ok = check("the sea is its own level", render3d_st.ter_sea_set and ter_sea_gen(render3d_st) == fl(-2.0) and render3d_st.ter_lake_level == fl(12.0)) and ok
     # --- and back: the swap is repeatable
-    scatter_clear_all()
-    col_reset()
-    water_init(fl(4.0), F_ZERO, F_ZERO, fi(200), fi(200))
-    terrain_reload("", F_ZERO, F_ZERO, F_ZERO, F_ZERO, F_ZERO, "", 1000)
-    populate()
-    ok = check("back to 2 km", TERRAIN_HALF == 1000 and len(cd_min) == CD_LEVELS and wb_n == 1 and col_side == 2000 / COL_CELL) and ok
+    scatter_clear_all(render3d_st)
+    col_reset(render3d_st)
+    water_init(render3d_st, fl(4.0), F_ZERO, F_ZERO, fi(200), fi(200))
+    terrain_reload(render3d_st, "", F_ZERO, F_ZERO, F_ZERO, F_ZERO, F_ZERO, "", 1000)
+    populate(render3d_st)
+    ok = check("back to 2 km", render3d_st.TERRAIN_HALF == 1000 and len(render3d_st.cd_min) == CD_LEVELS and render3d_st.wb_n == 1 and render3d_st.col_side == 2000 / COL_CELL) and ok
     if ok { print("RELOAD OK") } else { print("RELOAD FAILED") }
     quit()
   }

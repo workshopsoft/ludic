@@ -1,81 +1,70 @@
 # view.ludic - the window onto the map: a square of `size` pixels at (x0, y0) showing `span` metres
 # across at zoom 1, centred on a world point. World to window and back, and a scale bar's length.
-var mm_x0: float = 0.0
-var mm_y0: float = 0.0
-var mm_size: float = 512.0
-var mm_span: float = 6400.0
-var mm_zoom_min: float = 0.5
-var mm_zoom_max: float = 8.0
-var mm_zoom_focus: float = 4.0
-var mm_zoom: float = 1.0
-var mm_vx: float = 0.0
-var mm_vz: float = 0.0
-var mm_have_view: bool = false
 
 # metres across the window at zoom 1, the zoom's range, and how close a focus goes at least
-export function minimap_config_view(span: float, zoom_min: float, zoom_max: float, focus: float) -> void {
-  mm_span = Math.max(span, 1.0)
-  mm_zoom_min = zoom_min
-  mm_zoom_max = Math.max(zoom_max, zoom_min)
-  mm_zoom_focus = focus
-  mm_zoom = Math.clamp(1.0, mm_zoom_min, mm_zoom_max)
-  mm_have_view = false
+export function minimap_config_view(minimap_st: mut MinimapState, span: float, zoom_min: float, zoom_max: float, focus: float) -> void {
+  minimap_st.mm_span = Math.max(span, 1.0)
+  minimap_st.mm_zoom_min = zoom_min
+  minimap_st.mm_zoom_max = Math.max(zoom_max, zoom_min)
+  minimap_st.mm_zoom_focus = focus
+  minimap_st.mm_zoom = Math.clamp(1.0, minimap_st.mm_zoom_min, minimap_st.mm_zoom_max)
+  minimap_st.mm_have_view = false
 }
 
 # where the window is on the screen this frame
-export function minimap_window(x0: float, y0: float, size: float) -> void {
-  mm_x0 = x0
-  mm_y0 = y0
-  mm_size = Math.max(size, 1.0)
+export function minimap_window(minimap_st: mut MinimapState, x0: float, y0: float, size: float) -> void {
+  minimap_st.mm_x0 = x0
+  minimap_st.mm_y0 = y0
+  minimap_st.mm_size = Math.max(size, 1.0)
 }
 
-export function minimap_size() -> float { return mm_size }
-export function minimap_zoom() -> float { return mm_zoom }
-export function minimap_view_x() -> float { return mm_vx }
-export function minimap_view_z() -> float { return mm_vz }
-export function minimap_have_view() -> bool { return mm_have_view }
+export function minimap_size(minimap_st: MinimapState) -> float { return minimap_st.mm_size }
+export function minimap_zoom(minimap_st: MinimapState) -> float { return minimap_st.mm_zoom }
+export function minimap_view_x(minimap_st: MinimapState) -> float { return minimap_st.mm_vx }
+export function minimap_view_z(minimap_st: MinimapState) -> float { return minimap_st.mm_vz }
+export function minimap_have_view(minimap_st: MinimapState) -> bool { return minimap_st.mm_have_view }
 
 # the metres the window shows across at the zoom
-export function minimap_span() -> float { return mm_span / mm_zoom }
+export function minimap_span(minimap_st: MinimapState) -> float { return minimap_st.mm_span / minimap_st.mm_zoom }
 
 # pixels per metre
-export function minimap_scale() -> float { return mm_size / minimap_span() }
+export function minimap_scale(minimap_st: MinimapState) -> float { return minimap_st.mm_size / minimap_span(minimap_st) }
 
 # a world point on the screen
-export function minimap_px(x: float) -> float { return mm_x0 + mm_size * 0.5 + (x - mm_vx) * minimap_scale() }
-export function minimap_py(z: float) -> float { return mm_y0 + mm_size * 0.5 + (z - mm_vz) * minimap_scale() }
+export function minimap_px(minimap_st: MinimapState, x: float) -> float { return minimap_st.mm_x0 + minimap_st.mm_size * 0.5 + (x - minimap_st.mm_vx) * minimap_scale(minimap_st) }
+export function minimap_py(minimap_st: MinimapState, z: float) -> float { return minimap_st.mm_y0 + minimap_st.mm_size * 0.5 + (z - minimap_st.mm_vz) * minimap_scale(minimap_st) }
 
 # the world under a point of the window (pixels from its corner)
-export function minimap_wx(rx: float) -> float { return mm_vx + (rx - mm_size * 0.5) / minimap_scale() }
-export function minimap_wz(ry: float) -> float { return mm_vz + (ry - mm_size * 0.5) / minimap_scale() }
+export function minimap_wx(minimap_st: MinimapState, rx: float) -> float { return minimap_st.mm_vx + (rx - minimap_st.mm_size * 0.5) / minimap_scale(minimap_st) }
+export function minimap_wz(minimap_st: MinimapState, ry: float) -> float { return minimap_st.mm_vz + (ry - minimap_st.mm_size * 0.5) / minimap_scale(minimap_st) }
 
 # a round distance whose bar is no wider than a quarter of the window
-export function minimap_scale_metres() -> int {
+export function minimap_scale_metres(minimap_st: MinimapState) -> int {
   let steps = [2000, 1000, 500, 250, 100, 50, 25]
-  for k in 0 .. len(steps) { if float(steps[k]) * minimap_scale() <= mm_size / 4.0 { return steps[k] } }
+  for k in 0 .. len(steps) { if float(steps[k]) * minimap_scale(minimap_st) <= minimap_st.mm_size / 4.0 { return steps[k] } }
   return 25
 }
 
 # the view's centre is kept where MinimapWorld allows, so the land can reach the edge but not leave
-export function minimap_clamp() -> void {
-  mm_vx = Math.clamp(mm_vx, MinimapWorld.lo_x(), MinimapWorld.hi_x())
-  mm_vz = Math.clamp(mm_vz, MinimapWorld.lo_z(), MinimapWorld.hi_z())
+export function minimap_clamp(minimap_st: mut MinimapState) -> void {
+  minimap_st.mm_vx = Math.clamp(minimap_st.mm_vx, MinimapWorld.lo_x(), MinimapWorld.hi_x())
+  minimap_st.mm_vz = Math.clamp(minimap_st.mm_vz, MinimapWorld.lo_z(), MinimapWorld.hi_z())
 }
 
-export function minimap_centre(x: float, z: float) -> void {
-  mm_vx = x
-  mm_vz = z
-  mm_have_view = true
-  minimap_clamp()
+export function minimap_centre(minimap_st: mut MinimapState, x: float, z: float) -> void {
+  minimap_st.mm_vx = x
+  minimap_st.mm_vz = z
+  minimap_st.mm_have_view = true
+  minimap_clamp(minimap_st)
 }
 
 # the view on the camp, or on you
-export function minimap_recentre(on_you: bool) -> void {
-  if on_you { minimap_centre(MinimapWorld.you_x(), MinimapWorld.you_z()) } else { minimap_centre(MinimapWorld.camp_x(), MinimapWorld.camp_z()) }
+export function minimap_recentre(minimap_st: mut MinimapState, on_you: bool) -> void {
+  if on_you { minimap_centre(minimap_st, MinimapWorld.you_x(), MinimapWorld.you_z()) } else { minimap_centre(minimap_st, MinimapWorld.camp_x(), MinimapWorld.camp_z()) }
 }
 
 # go there AND close in; never out, since a player already closer asked for that
-export function minimap_focus(on_you: bool) -> void {
-  minimap_recentre(on_you)
-  if mm_zoom < mm_zoom_focus { mm_zoom = Math.clamp(mm_zoom_focus, mm_zoom_min, mm_zoom_max) }
+export function minimap_focus(minimap_st: mut MinimapState, on_you: bool) -> void {
+  minimap_recentre(minimap_st, on_you)
+  if minimap_st.mm_zoom < minimap_st.mm_zoom_focus { minimap_st.mm_zoom = Math.clamp(minimap_st.mm_zoom_focus, minimap_st.mm_zoom_min, minimap_st.mm_zoom_max) }
 }

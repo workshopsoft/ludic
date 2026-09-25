@@ -4,25 +4,27 @@
 import "ludic.ui"
 program UiHtml {
   numbers float
-  var clicks: int = 0
-  view Page {
-    clicks = clicks
-    on clicked() { clicks += 1 }
+  state UiHtmlState {
+    clicks: int = 0
+  }
+  view Page (ui_html_st: mut UiHtmlState) {
+    clicks = ui_html_st.clicks
+    on clicked() { ui_html_st.clicks += 1 }
   }
   const LOOK: string = "/* look.lss */\n.card { padding: 4 8 12 16; margin: 3; border: 2px solid #0000ff; width: 50% }\n#title { font-size: 40 }\nh1.big { font-size: 20 }\n.card p { color: #00ff00 }\nul > li { height: 30 }\nli:first-child { color: #ff0000 }\nli:nth-child(even) { color: #0000ff }\nli:last-child:not(.keep) { display: none }\n[kind=warn] { background-color: #ffff00 }\nbutton:disabled { opacity: 0.5 }\n"
   const PAGE: string = "<ui>\n<import src='look.lss'/>\n<screen name='page'>\n  <h1 id='title' class='big'>Title</h1>\n  <div class='card'><p>inside</p><span kind='warn'>careful</span></div>\n  <p>outside</p>\n  <ul><li>one</li><li>two</li><li>three</li><li>gone</li></ul>\n  <hr/>\n  <p style='text-align: center; width: 200px'>mid</p>\n  <button disabled='{clicks > 0}' onclick='clicked()'>Go</button>\n  <p hidden='true'>never</p>\n</screen>\n</ui>\n"
-  entry {
-    ui_load_text(LOOK, "ui/look.lss")
-    ui_load_text(PAGE, "ui/page.ludic.xml")
-    var root: UiNode = ui_nodes("page", view_page())
-    ui_place(root, 0.0, 0.0, 400.0, 600.0)
+  entry (ui_html_st: UiHtmlState, ui_st: mut UiState) {
+    ui_load_text(ui_st, LOOK, "ui/look.lss")
+    ui_load_text(ui_st, PAGE, "ui/page.ludic.xml")
+    var root: UiNode = ui_nodes(ui_st, "page", view_page())
+    ui_place(ui_st, root, 0.0, 0.0, 400.0, 600.0)
     let card = root.children[1]
     let items = root.children[3].children
     print(`id beats class: {int(root.children[0].rsize)}; card {int(card.cw)} wide at {int(card.x)},{int(card.y)} pad {int(card.pt)} {int(card.pr)} {int(card.pb)} {int(card.pl)} border {int(card.border)}`)
     print(`inside {card.children[0].fg}, outside {root.children[2].fg}; warn bg {card.children[1].bg}; items {len(items)} of 30: {int(items[0].ch)}; colours {items[0].fg} {items[1].fg} {items[2].fg}; hr {int(root.children[4].ch)}; children {len(root.children)}`)
-    ui_press(root.children[6])
-    root = ui_nodes("page", view_page())
-    ui_place(root, 0.0, 0.0, 400.0, 600.0)
-    print(`clicks {clicks}; the button now disabled {not root.children[6].enabled} at opacity {root.children[6].alpha}; text-align {root.children[5].talign}`)
+    ui_press(ui_st, root.children[6])
+    root = ui_nodes(ui_st, "page", view_page())
+    ui_place(ui_st, root, 0.0, 0.0, 400.0, 600.0)
+    print(`clicks {ui_html_st.clicks}; the button now disabled {not root.children[6].enabled} at opacity {root.children[6].alpha}; text-align {root.children[5].talign}`)
   }
 }

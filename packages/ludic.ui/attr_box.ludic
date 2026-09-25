@@ -1,50 +1,46 @@
 # attr_box.ludic - padding and margin (one to four lengths, as CSS writes them, or one side by
 # name), lengths with px or %, and the words that place things
-function el_box(n: UiNode, key: string, v: Val) -> bool {
+function el_box(ui_st: mut UiState, n: UiNode, key: string, v: Val) -> bool {
   if key == "pad" {
-    el_sides(v)
-    n.pt = el_s0
-    n.pr = el_s1
-    n.pb = el_s2
-    n.pl = el_s3
+    el_sides(ui_st, v)
+    n.pt = ui_st.el_s0
+    n.pr = ui_st.el_s1
+    n.pb = ui_st.el_s2
+    n.pl = ui_st.el_s3
   } else if key == "margin" {
-    el_sides(v)
-    n.mt = el_s0
-    n.mr = el_s1
-    n.mb = el_s2
-    n.ml = el_s3
-  } else if key == "padding-top" { n.pt = el_len(v) } else if key == "padding-right" { n.pr = el_len(v) } else if key == "padding-bottom" { n.pb = el_len(v) } else if key == "padding-left" { n.pl = el_len(v) } else if key == "margin-top" { n.mt = el_len(v) } else if key == "margin-right" { n.mr = el_len(v) } else if key == "margin-bottom" { n.mb = el_len(v) } else if key == "margin-left" { n.ml = el_len(v) } else { return false }
+    el_sides(ui_st, v)
+    n.mt = ui_st.el_s0
+    n.mr = ui_st.el_s1
+    n.mb = ui_st.el_s2
+    n.ml = ui_st.el_s3
+  } else if key == "padding-top" { n.pt = el_len(ui_st, v) } else if key == "padding-right" { n.pr = el_len(ui_st, v) } else if key == "padding-bottom" { n.pb = el_len(ui_st, v) } else if key == "padding-left" { n.pl = el_len(ui_st, v) } else if key == "margin-top" { n.mt = el_len(ui_st, v) } else if key == "margin-right" { n.mr = el_len(ui_st, v) } else if key == "margin-bottom" { n.mb = el_len(ui_st, v) } else if key == "margin-left" { n.ml = el_len(ui_st, v) } else { return false }
   return true
 }
-var el_s0: float = 0.0
-var el_s1: float = 0.0
-var el_s2: float = 0.0
-var el_s3: float = 0.0
 # top right bottom left out of 1 to 4 lengths
-function el_sides(v: Val) -> void {
+function el_sides(ui_st: mut UiState, v: Val) -> void {
   let parts = new []float
-  if vl_num(v) { push(parts, el_px(Value.as_float(v))) } else {
+  if vl_num(v) { push(parts, el_px(ui_st, Value.as_float(v))) } else {
     let words = el_words(vl_text(v))
     for i in 0 .. len(words) {
-      if len(words[i]) > 0 { push(parts, el_word_len(words[i])) }
+      if len(words[i]) > 0 { push(parts, el_word_len(ui_st, words[i])) }
     }
   }
   while len(parts) < 4 {
     if len(parts) == 0 { push(parts, 0.0) } else if len(parts) == 1 { push(parts, parts[0]) } else if len(parts) == 2 { push(parts, parts[0]) } else { push(parts, parts[1]) }
   }
-  el_s0 = parts[0]
-  el_s1 = parts[1]
-  el_s2 = parts[2]
-  el_s3 = parts[3]
+  ui_st.el_s0 = parts[0]
+  ui_st.el_s1 = parts[1]
+  ui_st.el_s2 = parts[2]
+  ui_st.el_s3 = parts[3]
 }
 # a length: a number, 10px, 1.5em, 2rem, 50vw, calc(...), fill, fit or auto (a percentage is el_pct's)
-function el_len(v: Val) -> float {
-  if vl_num(v) { return el_px(Value.as_float(v)) }
+function el_len(ui_st: mut UiState, v: Val) -> float {
+  if vl_num(v) { return el_px(ui_st, Value.as_float(v)) }
   let s = vl_text(v)
   if s == "fill" { return UI_FILL }
-  if ca_is(s) { return el_calc_len(s) }
+  if ca_is(s) { return el_calc_len(ui_st, s) }
   if s == "fit" or s == "auto" or (len(s) > 0 and s[len(s) - 1] == 37) { return 0.0 }
-  return el_unit(s)
+  return el_unit(ui_st, s)
 }
 function el_pct(v: Val) -> float {
   let s = vl_text(v)

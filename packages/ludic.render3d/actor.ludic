@@ -58,44 +58,35 @@ property AcProg {
   scene_frame: int = -1    # the frame its scene uniforms were bound
 }
 
-var ac_lit: AcProg = null
-var ac_lit_cut: AcProg = null
-var ac_sh: AcProg = null
-var ac_sh_cut: AcProg = null
-var ac_out: AcProg = null
-var ac_out_cut: AcProg = null
-var ac_actors: []Actor = null
-var ac_next_id: int = 0
-var ac_frame: int = 0
 
-function ac_prog_new(vs: string, fs: string, defs: string) -> AcProg {
+function ac_prog_new(render3d_st: mut Render3dState, vs: string, fs: string, defs: string) -> AcProg {
   let a = new AcProg
-  a.prog = r3d_program(vs, fs, defs)
+  a.prog = r3d_program(render3d_st, vs, fs, defs)
   let p = a.prog
-  a.l_model = gpu_uniform(p, "u_model");  a.l_skin = gpu_uniform(p, "u_skinned");  a.l_lvp = gpu_uniform(p, "u_light_vp")
-  a.l_bones = gpu_uniform(p, "u_bones[0]");  if a.l_bones < 0 { a.l_bones = gpu_uniform(p, "u_bones") }
-  a.l_tint = gpu_uniform(p, "u_tint");  a.l_rough = gpu_uniform(p, "u_rough_scale");  a.l_emis = gpu_uniform(p, "u_emissive")
-  a.l_view = gpu_uniform(p, "u_view");  a.l_proj = gpu_uniform(p, "u_proj");  a.l_mh = gpu_uniform(p, "u_model_h")
-  a.l_out = gpu_uniform(p, "u_outline");  a.l_ocol = gpu_uniform(p, "u_outline_col")
+  a.l_model = gpu_uniform(render3d_st, p, "u_model");  a.l_skin = gpu_uniform(render3d_st, p, "u_skinned");  a.l_lvp = gpu_uniform(render3d_st, p, "u_light_vp")
+  a.l_bones = gpu_uniform(render3d_st, p, "u_bones[0]");  if a.l_bones < 0 { a.l_bones = gpu_uniform(render3d_st, p, "u_bones") }
+  a.l_tint = gpu_uniform(render3d_st, p, "u_tint");  a.l_rough = gpu_uniform(render3d_st, p, "u_rough_scale");  a.l_emis = gpu_uniform(render3d_st, p, "u_emissive")
+  a.l_view = gpu_uniform(render3d_st, p, "u_view");  a.l_proj = gpu_uniform(render3d_st, p, "u_proj");  a.l_mh = gpu_uniform(render3d_st, p, "u_model_h")
+  a.l_out = gpu_uniform(render3d_st, p, "u_outline");  a.l_ocol = gpu_uniform(render3d_st, p, "u_outline_col")
   # the samplers never move: units 0, 1, 2
-  gpu_use_program(p)
-  u_i(gpu_uniform(p, "u_diff"), 0);  u_i(gpu_uniform(p, "u_nrm"), 1);  u_i(gpu_uniform(p, "u_arm"), 2)
+  gpu_use_program(render3d_st, p)
+  u_i(render3d_st, gpu_uniform(render3d_st, p, "u_diff"), 0);  u_i(render3d_st, gpu_uniform(render3d_st, p, "u_nrm"), 1);  u_i(render3d_st, gpu_uniform(render3d_st, p, "u_arm"), 2)
   return a
 }
-function actor_init() -> void {
-  ac_lit = ac_prog_new("skin.vert", "model.frag", "")
-  ac_lit_cut = ac_prog_new("skin.vert", "model.frag", "#define ALPHA_TEST\n")
-  ac_sh = ac_prog_new("skin.vert", "shadow.frag", "#define SHADOW_PASS\n")
-  ac_sh_cut = ac_prog_new("skin.vert", "shadow.frag", "#define SHADOW_PASS\n#define ALPHA_TEST\n")
-  ac_out = ac_prog_new("skin.vert", "outline.frag", "#define OUTLINE\n")
-  ac_out_cut = ac_prog_new("skin.vert", "outline.frag", "#define OUTLINE\n#define ALPHA_TEST\n")
-  ac_actors = new []Actor
+function actor_init(render3d_st: mut Render3dState) -> void {
+  render3d_st.ac_lit = ac_prog_new(render3d_st, "skin.vert", "model.frag", "")
+  render3d_st.ac_lit_cut = ac_prog_new(render3d_st, "skin.vert", "model.frag", "#define ALPHA_TEST\n")
+  render3d_st.ac_sh = ac_prog_new(render3d_st, "skin.vert", "shadow.frag", "#define SHADOW_PASS\n")
+  render3d_st.ac_sh_cut = ac_prog_new(render3d_st, "skin.vert", "shadow.frag", "#define SHADOW_PASS\n#define ALPHA_TEST\n")
+  render3d_st.ac_out = ac_prog_new(render3d_st, "skin.vert", "outline.frag", "#define OUTLINE\n")
+  render3d_st.ac_out_cut = ac_prog_new(render3d_st, "skin.vert", "outline.frag", "#define OUTLINE\n#define ALPHA_TEST\n")
+  render3d_st.ac_actors = new []Actor
 }
-function actor_remove(a: Actor) -> void {
-  if ac_actors == null { return }
+function actor_remove(render3d_st: mut Render3dState, a: Actor) -> void {
+  if render3d_st.ac_actors == null { return }
   let keep = new []Actor
-  for i in 0 .. len(ac_actors) { if ac_actors[i].id != a.id { push(keep, ac_actors[i]) } }
-  ac_actors = keep
+  for i in 0 .. len(render3d_st.ac_actors) { if render3d_st.ac_actors[i].id != a.id { push(keep, render3d_st.ac_actors[i]) } }
+  render3d_st.ac_actors = keep
 }
 # colour one named part of the model (a material name from the file)
 function actor_tint_part(a: Actor, name: string, r: float, g: float, b: float) -> void {
@@ -113,18 +104,18 @@ function actor_hide_part(a: Actor, name: string, hidden: bool) -> void {
   for i in 0 .. n { if a.model.prims[i].name == name { a.hide[i] = v } }
 }
 
-function actor_new(model: Model) -> Actor {
+function actor_new(render3d_st: mut Render3dState, model: Model) -> Actor {
   let a = new Actor
   a.model = model
   a.scale = 1.0
   a.tint = v3_new(1.0, 1.0, 1.0)
   a.rough = 1.0
   a.mat = m4_new()
-  ac_next_id += 1;  a.id = ac_next_id
+  render3d_st.ac_next_id += 1;  a.id = render3d_st.ac_next_id
   if model != null { a.radius = Math.max(model.radius, model.height) + 1.0 }
   a.cull = 450.0
-  if ac_actors == null { ac_actors = new []Actor }
-  push(ac_actors, a)
+  if render3d_st.ac_actors == null { render3d_st.ac_actors = new []Actor }
+  push(render3d_st.ac_actors, a)
   return a
 }
 
@@ -134,24 +125,24 @@ function actor_place(a: Actor, x: float, y: float, z: float, yaw: float) -> void
 }
 
 # the scene's lighting for a lit program, once per frame
-function ac_bind_scene(ap: AcProg) -> void {
-  if ap.scene_frame == ac_frame { return }
-  ap.scene_frame = ac_frame
+function ac_bind_scene(render3d_st: mut Render3dState, ap: AcProg) -> void {
+  if ap.scene_frame == render3d_st.ac_frame { return }
+  ap.scene_frame = render3d_st.ac_frame
   let p = ap.prog
-  gpu_use_program(p)
-  u_mat4(ap.l_view, cam_view)
-  u_mat4(ap.l_proj, cam_proj)
-  u_f(ap.l_mh, 0.0)
-  sky_bind_lighting(p)
-  shadow_bind(p)
-  fog_bind(p)
+  gpu_use_program(render3d_st, p)
+  u_mat4(render3d_st, ap.l_view, render3d_st.cam_view)
+  u_mat4(render3d_st, ap.l_proj, render3d_st.cam_proj)
+  u_f(render3d_st, ap.l_mh, 0.0)
+  sky_bind_lighting(render3d_st, p)
+  shadow_bind(render3d_st, p)
+  fog_bind(render3d_st, p)
 }
-function ac_visible(a: Actor, shadow: bool) -> bool {
+function ac_visible(render3d_st: Render3dState, a: Actor, shadow: bool) -> bool {
   if a.model == null { return false }
   if not a.visible and not (shadow and a.cast_hidden) { return false }
   if shadow and not a.casts { return false }
   if a.cull != 0.0 {
-    let dx = a.x - cam_pos[0];  let dz = a.z - cam_pos[2]
+    let dx = a.x - render3d_st.cam_pos[0];  let dz = a.z - render3d_st.cam_pos[2]
     let d2 = dx * dx + dz * dz
     var c = a.cull
     if shadow { c = Math.min(c, 300.0) }
@@ -164,38 +155,38 @@ function ac_visible(a: Actor, shadow: bool) -> bool {
     # keeps the main camera's frustum planes, so the image is what has to be tested against them: the
     # actor itself was, and the town's people - far above the lake, their images far below the frame -
     # all drew again into the reflection.
-    if ter_reflect { cy = 2.0 * water_level - cy }
-    if not cam_sphere_visible(a.x, cy, a.z, r * 1.5) { return false }
+    if render3d_st.ter_reflect { cy = 2.0 * render3d_st.water_level - cy }
+    if not cam_sphere_visible(render3d_st, a.x, cy, a.z, r * 1.5) { return false }
   }
   return true
 }
-function actor_draw_one(a: Actor, ap: AcProg, shadow: bool) -> void {
+function actor_draw_one(render3d_st: mut Render3dState, a: Actor, ap: AcProg, shadow: bool) -> void {
   let p = ap.prog
-  gpu_use_program(p)
-  u_mat4(ap.l_model, a.mat)
+  gpu_use_program(render3d_st, p)
+  u_mat4(render3d_st, ap.l_model, a.mat)
   var skinned = 0.0
-  if a.skin != null { skinned = 1.0;  u_mat4n(ap.l_bones, a.skin.n_joints, a.skin.bones) }
-  else if a.model.skin != null { skinned = 1.0;  u_mat4n(ap.l_bones, a.model.skin.n_joints, a.model.skin.bones) }
-  u_f(ap.l_skin, skinned)
+  if a.skin != null { skinned = 1.0;  u_mat4n(render3d_st, ap.l_bones, a.skin.n_joints, a.skin.bones) }
+  else if a.model.skin != null { skinned = 1.0;  u_mat4n(render3d_st, ap.l_bones, a.model.skin.n_joints, a.model.skin.bones) }
+  u_f(render3d_st, ap.l_skin, skinned)
   if not shadow {
-    u_f(ap.l_emis, a.emissive)
-    u_f(ap.l_rough, a.rough)
+    u_f(render3d_st, ap.l_emis, a.emissive)
+    u_f(render3d_st, ap.l_rough, a.rough)
   }
-  gpu_cull(false)
+  gpu_cull(render3d_st, false)
   let model = a.model
   for i in 0 .. len(model.prims) {
     let pr = model.prims[i]
     if a.hide != null and a.hide[i] != 0 { continue }
     if not shadow {
-      if a.ptint != null and a.ptint[i * 4] != 0 { u_f3(ap.l_tint, float_from_bits(a.ptint[i * 4 + 1]), float_from_bits(a.ptint[i * 4 + 2]), float_from_bits(a.ptint[i * 4 + 3])) }
-      else { u_v3(ap.l_tint, a.tint) }
+      if a.ptint != null and a.ptint[i * 4] != 0 { u_f3(render3d_st, ap.l_tint, float_from_bits(a.ptint[i * 4 + 1]), float_from_bits(a.ptint[i * 4 + 2]), float_from_bits(a.ptint[i * 4 + 3])) }
+      else { u_v3(render3d_st, ap.l_tint, a.tint) }
     }
-    gpu_tex_unit(0);  gpu_tex_bind(GPU_TEX2D, pr.diff)
+    gpu_tex_unit(render3d_st, 0);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.diff)
     if not shadow {
-      gpu_tex_unit(1);  gpu_tex_bind(GPU_TEX2D, pr.nrm)
-      gpu_tex_unit(2);  gpu_tex_bind(GPU_TEX2D, pr.arm)
+      gpu_tex_unit(render3d_st, 1);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.nrm)
+      gpu_tex_unit(render3d_st, 2);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.arm)
     }
-    mesh_draw(pr.mesh)
+    mesh_draw(render3d_st, pr.mesh)
   }
 }
 
@@ -224,41 +215,38 @@ property OutlineReq {
   g:     float = 0.0,
   b:     float = 0.0
 }
-var ac_oq: []OutlineReq = null
-var ac_oq_n: int = 0                 # live entries; the array is kept and reused
 # A frame is drawn by more than one pass - a shadow map, a water reflection, the scene -
 # and actor_draw runs in each of them. An Actor survives that because its rim is a field
 # on the actor; a queue does not, if the first pass empties it. So a flush CLOSES the
 # batch rather than clearing it, and the next add opens a new one: every pass in a frame
 # sees the same requests, and the caller needs no frame hook.
-var ac_oq_closed: bool = true
-function outline_model(m: Model, mat: floats, width: float, r: float, g: float, b: float) -> void {
+function outline_model(render3d_st: mut Render3dState, m: Model, mat: floats, width: float, r: float, g: float, b: float) -> void {
   if m == null or mat == null or width == 0.0 { return }
-  if ac_oq_closed { ac_oq_n = 0;  ac_oq_closed = false }
-  if ac_oq == null { ac_oq = new []OutlineReq }
+  if render3d_st.ac_oq_closed { render3d_st.ac_oq_n = 0;  render3d_st.ac_oq_closed = false }
+  if render3d_st.ac_oq == null { render3d_st.ac_oq = new []OutlineReq }
   var q: OutlineReq = null
-  if ac_oq_n < len(ac_oq) { q = ac_oq[ac_oq_n] } else { q = new OutlineReq;  q.mat = m4_new();  push(ac_oq, q) }
+  if render3d_st.ac_oq_n < len(render3d_st.ac_oq) { q = render3d_st.ac_oq[render3d_st.ac_oq_n] } else { q = new OutlineReq;  q.mat = m4_new();  push(render3d_st.ac_oq, q) }
   q.model = m;  q.width = width;  q.r = r;  q.g = g;  q.b = b
   m4_copy(q.mat, mat)
-  ac_oq_n += 1
+  render3d_st.ac_oq_n += 1
 }
-function outline_clear() -> void { ac_oq_n = 0;  ac_oq_closed = true }
+function outline_clear(render3d_st: mut Render3dState) -> void { render3d_st.ac_oq_n = 0;  render3d_st.ac_oq_closed = true }
 # Called at the top of every frame. A batch the last frame closed and nobody has reopened
 # since is stale: the caller stopped asking. Without this it was drawn for ever - flush
 # closes a batch but only the NEXT outline_model call empties it, so looking away from a
 # highlighted tree left its rim on until something else was highlighted.
-function outline_frame() -> void { if ac_oq_closed { ac_oq_n = 0 } }
+function outline_frame(render3d_st: mut Render3dState) -> void { if render3d_st.ac_oq_closed { render3d_st.ac_oq_n = 0 } }
 
 # R3D_ACTOR_CENSUS=<frame>: at that frame, the lit pass's actors grouped by model - skinned or rigid,
 # how many share it, the primitives each draws - so instancing is aimed at what repeats
-function actor_census() -> void {
+function actor_census(render3d_st: Render3dState) -> void {
   let keys = new []Model
   let cnt = new []int
   let prims = new []int
   let rigid = new []int
-  for i in 0 .. len(ac_actors) {
-    let a = ac_actors[i]
-    if not ac_visible(a, false) { continue }
+  for i in 0 .. len(render3d_st.ac_actors) {
+    let a = render3d_st.ac_actors[i]
+    if not ac_visible(render3d_st, a, false) { continue }
     var k = -1
     for j in 0 .. len(keys) { if keys[j] == a.model { k = j } }
     if k < 0 { push(keys, a.model);  push(cnt, 0);  push(prims, 0);  var r = 1;  if a.model.skin != null { r = 0 };  push(rigid, r);  k = len(keys) - 1 }
@@ -277,71 +265,70 @@ function actor_census() -> void {
   }
   print(`actor census: {len(keys)} models, {total} lit draws`)
 }
-var ac_census_at: int = -2
-function actor_draw() -> void {
-  if ac_actors == null { return }
-  ac_frame += 1
-  if ac_census_at == -2 { ac_census_at = -1;  if r3d_env_has("R3D_ACTOR_CENSUS") { ac_census_at = Text.to_int(r3d_env("R3D_ACTOR_CENSUS")) } }
-  if ac_census_at > 0 and ac_frame == ac_census_at { actor_census() }
-  for i in 0 .. len(ac_actors) {
-    let a = ac_actors[i]
-    if not ac_visible(a, false) { continue }
-    var ap = ac_lit
-    if a.cutout { ap = ac_lit_cut }
-    ac_bind_scene(ap)
-    actor_draw_one(a, ap, false)
+function actor_draw(render3d_st: mut Render3dState) -> void {
+  if render3d_st.ac_actors == null { return }
+  render3d_st.ac_frame += 1
+  if render3d_st.ac_census_at == -2 { render3d_st.ac_census_at = -1;  if r3d_env_has(render3d_st, "R3D_ACTOR_CENSUS") { render3d_st.ac_census_at = Text.to_int(r3d_env(render3d_st, "R3D_ACTOR_CENSUS")) } }
+  if render3d_st.ac_census_at > 0 and render3d_st.ac_frame == render3d_st.ac_census_at { actor_census(render3d_st) }
+  for i in 0 .. len(render3d_st.ac_actors) {
+    let a = render3d_st.ac_actors[i]
+    if not ac_visible(render3d_st, a, false) { continue }
+    var ap = render3d_st.ac_lit
+    if a.cutout { ap = render3d_st.ac_lit_cut }
+    ac_bind_scene(render3d_st, ap)
+    actor_draw_one(render3d_st, a, ap, false)
   }
-  actor_draw_outlines()
-  gpu_cull(true)
+  actor_draw_outlines(render3d_st)
+  gpu_cull(render3d_st, true)
 }
 # The rim around a highlighted actor: the model again, its vertices pushed out along their
 # normals (skin.vert, OUTLINE) and its front faces culled, so only the far side of the
 # swollen shell survives — a silhouette exactly `outline` metres wide. Depth-tested
 # against the scene, so anything in front of the actor hides its rim too.
-function actor_draw_outlines() -> void {
-  var any = ac_oq_n > 0
-  for i in 0 .. len(ac_actors) { if ac_actors[i].outline != 0.0 and ac_visible(ac_actors[i], false) { any = true;  break } }
+function actor_draw_outlines(render3d_st: mut Render3dState) -> void {
+  var any = render3d_st.ac_oq_n > 0
+  for i in 0 .. len(render3d_st.ac_actors) { if render3d_st.ac_actors[i].outline != 0.0 and ac_visible(render3d_st, render3d_st.ac_actors[i], false) { any = true;  break } }
   if not any { return }
-  gpu_cull(true)
-  gpu_cull_face(GL_FRONT)
-  for i in 0 .. len(ac_actors) {
-    let a = ac_actors[i]
-    if a.outline == 0.0 or not ac_visible(a, false) { continue }
-    var ap = ac_out
-    if a.cutout { ap = ac_out_cut }
-    gpu_use_program(ap.prog)
-    u_mat4(ap.l_view, cam_view);  u_mat4(ap.l_proj, cam_proj)
-    u_f(ap.l_out, a.outline * a.scale)
-    if a.ocol != null { u_v3(ap.l_ocol, a.ocol) } else { u_f3(ap.l_ocol, 1.0, 1.0, 1.0) }
-    actor_draw_outline_one(a, ap)
+  gpu_cull(render3d_st, true)
+  gpu_cull_face(render3d_st, GL_FRONT)
+  for i in 0 .. len(render3d_st.ac_actors) {
+    let a = render3d_st.ac_actors[i]
+    if a.outline == 0.0 or not ac_visible(render3d_st, a, false) { continue }
+    var ap = render3d_st.ac_out
+    if a.cutout { ap = render3d_st.ac_out_cut }
+    gpu_use_program(render3d_st, ap.prog)
+    u_mat4(render3d_st, ap.l_view, render3d_st.cam_view);  u_mat4(render3d_st, ap.l_proj, render3d_st.cam_proj)
+    u_f(render3d_st, ap.l_out, a.outline * a.scale)
+    if a.ocol != null { u_v3(render3d_st, ap.l_ocol, a.ocol) } else { u_f3(render3d_st, ap.l_ocol, 1.0, 1.0, 1.0) }
+    actor_draw_outline_one(render3d_st, a, ap)
   }
   # and whatever asked for a rim without being an actor
-  for i in 0 .. ac_oq_n {
-    let q = ac_oq[i]
-    let ap = ac_out
-    gpu_use_program(ap.prog)
-    u_mat4(ap.l_view, cam_view);  u_mat4(ap.l_proj, cam_proj)
-    u_f(ap.l_out, q.width)
-    u_f3(ap.l_ocol, q.r, q.g, q.b)
-    u_mat4(ap.l_model, q.mat)
-    u_f(ap.l_skin, 0.0)
-    for k in 0 .. len(q.model.prims) { mesh_draw(q.model.prims[k].mesh) }
+  for i in 0 .. render3d_st.ac_oq_n {
+    let q = render3d_st.ac_oq[i]
+    let ap = render3d_st.ac_out
+    gpu_use_program(render3d_st, ap.prog)
+    u_mat4(render3d_st, ap.l_view, render3d_st.cam_view);  u_mat4(render3d_st, ap.l_proj, render3d_st.cam_proj)
+    u_f(render3d_st, ap.l_out, q.width)
+    u_f3(render3d_st, ap.l_ocol, q.r, q.g, q.b)
+    u_mat4(render3d_st, ap.l_model, q.mat)
+    u_f(render3d_st, ap.l_skin, 0.0)
+    for k in 0 .. len(q.model.prims) { mesh_draw(render3d_st, q.model.prims[k].mesh) }
   }
-  ac_oq_closed = true
-  gpu_cull_face(GL_BACK)
+  render3d_st.ac_oq_closed = true
+  gpu_cull_face(render3d_st, GL_BACK)
 }
-function actor_draw_outline_one(a: Actor, ap: AcProg) -> void {
-  u_mat4(ap.l_model, a.mat)
+function actor_draw_outline_one(render3d_st: mut Render3dState, a: Actor, ap: AcProg) -> void {
+  u_mat4(render3d_st, ap.l_model, a.mat)
   var skinned = 0.0
-  if a.skin != null { skinned = 1.0;  u_mat4n(ap.l_bones, a.skin.n_joints, a.skin.bones) }
-  else if a.model.skin != null { skinned = 1.0;  u_mat4n(ap.l_bones, a.model.skin.n_joints, a.model.skin.bones) }
-  u_f(ap.l_skin, skinned)
+  if a.skin != null { skinned = 1.0;  u_mat4n(render3d_st, ap.l_bones, a.skin.n_joints, a.skin.bones) }
+  else if a.model.skin != null { skinned = 1.0;  u_mat4n(render3d_st, ap.l_bones, a.model.skin.n_joints, a.model.skin.bones) }
+  u_f(render3d_st, ap.l_skin, skinned)
   let model = a.model
   for i in 0 .. len(model.prims) {
     let pr = model.prims[i]
     if a.hide != null and a.hide[i] != 0 { continue }
-    if a.cutout { gpu_tex_unit(0);  gpu_tex_bind(GPU_TEX2D, pr.diff) }
-    mesh_draw(pr.mesh)
+    if a.cutout { gpu_tex_unit(render3d_st, 0);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.diff) }
+    mesh_draw(render3d_st, pr.mesh)
   }
 }
 # Is a sphere inside this cascade's light box? The projection is orthographic, so a point's
@@ -349,74 +336,66 @@ function actor_draw_outline_one(a: Actor, ap: AcProg) -> void {
 # three axis offsets. An actor outside the box casts nothing into that layer: skipping it changes no
 # depth, only the draw. (Each actor used to draw into every cascade out to 300 m - in town that was
 # about 1500 skinned shadow draws a frame against 69 in the lit pass.)
-var ac_lp0: floats = null
-var ac_lpx: floats = null
-var ac_lpy: floats = null
-var ac_lpz: floats = null
-function ac_in_light(vp: floats, x: float, y: float, z: float, r: float) -> bool {
-  if ac_lp0 == null { ac_lp0 = floats(3);  ac_lpx = floats(3);  ac_lpy = floats(3);  ac_lpz = floats(3) }
-  m4_xform_point(ac_lp0, vp, x, y, z)
-  m4_xform_point(ac_lpx, vp, x + r, y, z)
-  m4_xform_point(ac_lpy, vp, x, y + r, z)
-  m4_xform_point(ac_lpz, vp, x, y, z + r)
+function ac_in_light(render3d_st: mut Render3dState, vp: floats, x: float, y: float, z: float, r: float) -> bool {
+  if render3d_st.ac_lp0 == null { render3d_st.ac_lp0 = floats(3);  render3d_st.ac_lpx = floats(3);  render3d_st.ac_lpy = floats(3);  render3d_st.ac_lpz = floats(3) }
+  m4_xform_point(render3d_st.ac_lp0, vp, x, y, z)
+  m4_xform_point(render3d_st.ac_lpx, vp, x + r, y, z)
+  m4_xform_point(render3d_st.ac_lpy, vp, x, y + r, z)
+  m4_xform_point(render3d_st.ac_lpz, vp, x, y, z + r)
   for k in 0 .. 2 {
-    let c = ac_lp0[k]
-    let e = ac_abs(ac_lpx[k] - c) + ac_abs(ac_lpy[k] - c) + ac_abs(ac_lpz[k] - c)
+    let c = render3d_st.ac_lp0[k]
+    let e = ac_abs(render3d_st.ac_lpx[k] - c) + ac_abs(render3d_st.ac_lpy[k] - c) + ac_abs(render3d_st.ac_lpz[k] - c)
     if ac_abs(c) - e > 1.0 { return false }
   }
   return true
 }
 function ac_abs(v: float) -> float { return Math.max(v, -v) }
 
-function actor_draw_casters(light_vp: floats) -> void {
-  if ac_actors == null { return }
-  gpu_use_program(ac_sh.prog);  u_mat4(ac_sh.l_lvp, light_vp)
-  gpu_use_program(ac_sh_cut.prog);  u_mat4(ac_sh_cut.l_lvp, light_vp)
-  for i in 0 .. len(ac_actors) {
-    let a = ac_actors[i]
-    if not ac_visible(a, true) { continue }
+function actor_draw_casters(render3d_st: mut Render3dState, light_vp: floats) -> void {
+  if render3d_st.ac_actors == null { return }
+  gpu_use_program(render3d_st, render3d_st.ac_sh.prog);  u_mat4(render3d_st, render3d_st.ac_sh.l_lvp, light_vp)
+  gpu_use_program(render3d_st, render3d_st.ac_sh_cut.prog);  u_mat4(render3d_st, render3d_st.ac_sh_cut.l_lvp, light_vp)
+  for i in 0 .. len(render3d_st.ac_actors) {
+    let a = render3d_st.ac_actors[i]
+    if not ac_visible(render3d_st, a, true) { continue }
     if a.radius != 0.0 {
       # the radius is the horizontal extent: a person is far taller than wide, so the sphere is
       # centred at half the model's height and reaches the larger of the two, with a margin for
       # the pose (a first version centred it at the radius and dropped a head at a cascade's edge)
       let hh = a.model.height * 0.5 * a.scale
       let r = Math.max(a.radius * a.scale, hh)
-      if not ac_in_light(light_vp, a.x, a.y + hh, a.z, r * 1.5) { continue }
+      if not ac_in_light(render3d_st, light_vp, a.x, a.y + hh, a.z, r * 1.5) { continue }
     }
     # Inside the light box is not the same as able to shade anything this cascade covers: every actor
     # within 300 m sits inside the far cascades' boxes, whose receivers start 250 and 1100 m out - at
     # the camp 160 actors cast 300 draws into each of those, against 41 into the nearest.
-    let dxa = a.x - cam_pos[0];  let dza = a.z - cam_pos[2]
+    let dxa = a.x - render3d_st.cam_pos[0];  let dza = a.z - render3d_st.cam_pos[2]
     let da = Math.sqrt(dxa * dxa + dza * dza)
     let ra = a.radius * a.scale
-    if not cast_band_reaches(Math.max(da - ra, 0.0), da + ra, a.model.height * a.scale) { continue }
-    var ap = ac_sh
-    if a.cutout { ap = ac_sh_cut }
-    if ac_census_at > 0 and ac_frame == ac_census_at { ac_caster_count(a) }
-    actor_draw_one(a, ap, true)
+    if not cast_band_reaches(render3d_st, Math.max(da - ra, 0.0), da + ra, a.model.height * a.scale) { continue }
+    var ap = render3d_st.ac_sh
+    if a.cutout { ap = render3d_st.ac_sh_cut }
+    if render3d_st.ac_census_at > 0 and render3d_st.ac_frame == render3d_st.ac_census_at { ac_caster_count(render3d_st, a) }
+    actor_draw_one(render3d_st, a, ap, true)
   }
-  if ac_census_at > 0 and ac_frame == ac_census_at {
-    print(`actor census, cascade {sh_cascade}: {ac_cc_actors} actors cast {ac_cc_draws} draws ({ac_cc_skinned} of them skinned, {ac_cc_cut} cutout)`)
-    ac_cc_actors = 0;  ac_cc_draws = 0;  ac_cc_skinned = 0;  ac_cc_cut = 0
+  if render3d_st.ac_census_at > 0 and render3d_st.ac_frame == render3d_st.ac_census_at {
+    print(`actor census, cascade {render3d_st.sh_cascade}: {render3d_st.ac_cc_actors} actors cast {render3d_st.ac_cc_draws} draws ({render3d_st.ac_cc_skinned} of them skinned, {render3d_st.ac_cc_cut} cutout)`)
+    render3d_st.ac_cc_actors = 0;  render3d_st.ac_cc_draws = 0;  render3d_st.ac_cc_skinned = 0;  render3d_st.ac_cc_cut = 0
   }
-  prof_cpu_mark("shadow actors")
+  prof_cpu_mark(render3d_st, "shadow actors")
 }
-var ac_cc_actors: int = 0
-var ac_cc_draws: int = 0
-var ac_cc_skinned: int = 0
-var ac_cc_cut: int = 0
-function ac_caster_count(a: Actor) -> void {
+function ac_caster_count(render3d_st: mut Render3dState, a: Actor) -> void {
   var shown = 0
   for p in 0 .. len(a.model.prims) { if a.hide == null or a.hide[p] == 0 { shown += 1 } }
-  ac_cc_actors += 1
-  ac_cc_draws += shown
-  if a.skin != null or a.model.skin != null { ac_cc_skinned += shown }
-  if a.cutout { ac_cc_cut += shown }
+  render3d_st.ac_cc_actors += 1
+  render3d_st.ac_cc_draws += shown
+  if a.skin != null or a.model.skin != null { render3d_st.ac_cc_skinned += shown }
+  if a.cutout { render3d_st.ac_cc_cut += shown }
 }
 
 # every actor off the stage at once, for a world being replaced. Actors own no GL objects;
 # their models belong to whoever loaded them.
-function actor_clear_all() -> void {
-  ac_actors = new []Actor
-  outline_clear()
+function actor_clear_all(render3d_st: mut Render3dState) -> void {
+  render3d_st.ac_actors = new []Actor
+  outline_clear(render3d_st)
 }

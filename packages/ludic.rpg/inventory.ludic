@@ -10,40 +10,70 @@ import "ludic.gameplay/stats.ludic"
 const INV_MAX: int = 256
 
 # ---- item registry --------------------------------------------------------
-var item_reg: Dict = null
-var item_n: int = 0
-var item_stackmax: words = null
-var item_weight:   words = null
-var item_value:    words = null
+state RpgState {
+  recipe_reg: Dict = null           # recipe name -> id
+  recipe_n: int = 0
+  recipe_out: pointers = null       # output item name
+  recipe_outqty: words = null
+  ing_n: int = 0
+  ing_rid:  words = null            # owning recipe id
+  ing_name: pointers = null         # ingredient item name
+  ing_qty:  words = null
+  dlg_reg: Dict = null              # tree name -> tree id
+  dlg_tree_n: int = 0
+  dlg_tree_start: words = null      # first node id per tree
+  dlg_node_n: int = 0
+  dlg_node_tree: words = null
+  dlg_node_text: pointers = null
+  dlg_choice_n: int = 0
+  dlg_choice_node: words = null     # owning node
+  dlg_choice_label: pointers = null
+  dlg_choice_next: words = null     # next node id, or -1 to end
+  item_reg: Dict = null
+  item_n: int = 0
+  item_stackmax: words = null
+  item_weight:   words = null
+  item_value:    words = null
+  inv_counts: Dict = null
+  quest_reg: Dict = null            # quest name -> id
+  quest_n: int = 0
+  quest_state: words = null
+  obj_n: int = 0
+  obj_qid:    words = null          # owning quest id
+  obj_kind:   words = null
+  obj_target: words = null          # a target id/tag (kind-specific; 0 = any)
+  obj_need:   words = null
+  obj_have:   words = null
+  quest_flags: Dict = null          # global flag store
+}
 
-function item_ensure() -> void {
-  if item_reg == null {
-    item_reg = Dict.new()
-    item_stackmax = words(INV_MAX);  item_weight = words(INV_MAX);  item_value = words(INV_MAX)
+function item_ensure(rpg_st: mut RpgState) -> void {
+  if rpg_st.item_reg == null {
+    rpg_st.item_reg = Dict.new()
+    rpg_st.item_stackmax = words(INV_MAX);  rpg_st.item_weight = words(INV_MAX);  rpg_st.item_value = words(INV_MAX)
   }
 }
 
 # Item.def(name, stack_max, weight, value) — register an item template. Returns id.
-@Namespace(Item) function item_def(name: pointer, stack_max: int, weight: int, value: int) -> int {
-  item_ensure()
-  if item_n >= INV_MAX { return -1 }
-  let id = item_n
-  item_stackmax[id] = stack_max;  item_weight[id] = weight;  item_value[id] = value
-  item_n += 1
-  Dict.set(item_reg, name, id)
+@Namespace(Item) function item_def(rpg_st: mut RpgState, name: pointer, stack_max: int, weight: int, value: int) -> int {
+  item_ensure(rpg_st)
+  if rpg_st.item_n >= INV_MAX { return -1 }
+  let id = rpg_st.item_n
+  rpg_st.item_stackmax[id] = stack_max;  rpg_st.item_weight[id] = weight;  rpg_st.item_value[id] = value
+  rpg_st.item_n += 1
+  Dict.set(rpg_st.item_reg, name, id)
   return id
 }
-@Namespace(Item) function item_id(name: pointer) -> int { item_ensure();  return Dict.get_or(item_reg, name, -1) }
-@Namespace(Item) function item_value_of(name: pointer) -> int {
-  let id = item_id(name);  if id < 0 { return 0 }
-  return item_value[id]
+@Namespace(Item) function item_id(rpg_st: mut RpgState, name: pointer) -> int { item_ensure(rpg_st);  return Dict.get_or(rpg_st.item_reg, name, -1) }
+@Namespace(Item) function item_value_of(rpg_st: mut RpgState, name: pointer) -> int {
+  let id = item_id(rpg_st, name);  if id < 0 { return 0 }
+  return rpg_st.item_value[id]
 }
 
 # ---- per-owner counts -----------------------------------------------------
 property Inventory { gold: int = 0, weight_max: int = 0, slots: int = 0 }
 
-var inv_counts: Dict = null
-function inv_ensure() -> void { if inv_counts == null { inv_counts = Dict.new() } }
+function inv_ensure(rpg_st: mut RpgState) -> void { if rpg_st.inv_counts == null { rpg_st.inv_counts = Dict.new() } }
 function inv_key(e: int, name: pointer) -> pointer { return `{e}/{name}` }
 
 event ItemAdded { e: int = 0, item: int = 0, qty: int = 0 }        # item = registry id
@@ -51,36 +81,36 @@ event ItemRemoved { e: int = 0, item: int = 0, qty: int = 0 }
 event cancellable ItemUse { e: int = 0, item: int = 0 }           # veto a use (e.g. cursed / requirement)
 
 # Inventory.add(e, name, n) — add n of an item; emits ItemAdded.
-@Namespace(Inventory) function inventory_add(e: int, name: pointer, n: int) -> void {
-  inv_ensure()
+@Namespace(Inventory) function inventory_add(rpg_st: mut RpgState, e: int, name: pointer, n: int) -> void {
+  inv_ensure(rpg_st)
   let k = inv_key(e, name)
-  Dict.set(inv_counts, k, Dict.get_or(inv_counts, k, 0) + n)
-  emit ItemAdded(e: e, item: item_id(name), qty: n)
+  Dict.set(rpg_st.inv_counts, k, Dict.get_or(rpg_st.inv_counts, k, 0) + n)
+  emit ItemAdded(e: e, item: item_id(rpg_st, name), qty: n)
 }
 # Inventory.count(e, name) — how many the owner holds.
-@Namespace(Inventory) function inventory_count(e: int, name: pointer) -> int {
-  inv_ensure()
-  return Dict.get_or(inv_counts, inv_key(e, name), 0)
+@Namespace(Inventory) function inventory_count(rpg_st: mut RpgState, e: int, name: pointer) -> int {
+  inv_ensure(rpg_st)
+  return Dict.get_or(rpg_st.inv_counts, inv_key(e, name), 0)
 }
-@Namespace(Inventory) function inventory_has(e: int, name: pointer) -> int {
-  if inventory_count(e, name) > 0 { return 1 }
+@Namespace(Inventory) function inventory_has(rpg_st: mut RpgState, e: int, name: pointer) -> int {
+  if inventory_count(rpg_st, e, name) > 0 { return 1 }
   return 0
 }
 # Inventory.remove(e, name, n) — remove up to n; returns 1 if it had enough.
-@Namespace(Inventory) function inventory_remove(e: int, name: pointer, n: int) -> int {
-  inv_ensure()
+@Namespace(Inventory) function inventory_remove(rpg_st: mut RpgState, e: int, name: pointer, n: int) -> int {
+  inv_ensure(rpg_st)
   let k = inv_key(e, name)
-  let have = Dict.get_or(inv_counts, k, 0)
+  let have = Dict.get_or(rpg_st.inv_counts, k, 0)
   if have < n { return 0 }
-  Dict.set(inv_counts, k, have - n)
-  emit ItemRemoved(e: e, item: item_id(name), qty: n)
+  Dict.set(rpg_st.inv_counts, k, have - n)
+  emit ItemRemoved(e: e, item: item_id(rpg_st, name), qty: n)
   return 1
 }
 # Inventory.use(e, name) — consume one item unless a listener vetoes ItemUse.
-@Namespace(Inventory) function inventory_use(e: int, name: pointer) -> int {
-  if inventory_count(e, name) <= 0 { return 0 }
-  if emit ItemUse(e: e, item: item_id(name)) != 0 { return 0 }
-  return inventory_remove(e, name, 1)
+@Namespace(Inventory) function inventory_use(rpg_st: mut RpgState, e: int, name: pointer) -> int {
+  if inventory_count(rpg_st, e, name) <= 0 { return 0 }
+  if emit ItemUse(e: e, item: item_id(rpg_st, name)) != 0 { return 0 }
+  return inventory_remove(rpg_st, e, name, 1)
 }
 # Inventory.gold / add_gold / spend_gold
 @Namespace(Inventory) function inventory_gold(e: int) -> int {

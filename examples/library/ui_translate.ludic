@@ -4,8 +4,10 @@
 import "ludic.ui"
 program UiTranslate {
   numbers float
-  var said: []string = new []string
-  var now: float = 0.0
+  state UiTranslateState {
+    said: []string = new []string
+    now: float = 0.0
+  }
   const PAGE: string = "<ui><screen name='t'><p>Hello</p><p translate='no'>Hello</p><div translate='no'><p>Hello</p><p translate='yes'>Hello</p></div><p class='a' title='Save\\nQuit'>a</p><p class='b' title='Line one\\nLine two'>b</p><div translate='no'><p class='c' title='Line one\\nLine two'>c</p></div></screen></ui>"
   function tr(s: string) -> string {
     if s == "Hello" { return "Merhaba" }
@@ -14,31 +16,31 @@ program UiTranslate {
     if s == "Line two" { return "Satir iki" }
     return s
   }
-  function rec_text(x: float, y: float, s: string, size: float, c: int, a: float) -> void { push(said, s) }
-  function clock() -> float { return now }
-  function tip(root: UiNode, k: int) -> string {
+  function rec_text(ui_translate_st: mut UiTranslateState, x: float, y: float, s: string, size: float, c: int, a: float) -> void { push(ui_translate_st.said, s) }
+  function clock(ui_translate_st: UiTranslateState) -> float { return ui_translate_st.now }
+  function tip(ui_st: mut UiState, ui_translate_st: mut UiTranslateState, root: UiNode, k: int) -> string {
     let n = root.children[k]
     let i = new UiInput
     i.x = n.x + 1.0
     i.y = n.y + 1.0
-    ui_input(i)
-    ui_show("t", null, 0.0, 0.0, 400.0, 400.0)
-    now = now + 1.0
-    said = new []string
-    ui_input(i)
-    ui_show("t", null, 0.0, 0.0, 400.0, 400.0)
-    return `{said[len(said) - 2]}/{said[len(said) - 1]}`
+    ui_input(ui_st, i)
+    ui_show(ui_st, "t", null, 0.0, 0.0, 400.0, 400.0)
+    ui_translate_st.now = ui_translate_st.now + 1.0
+    ui_translate_st.said = new []string
+    ui_input(ui_st, i)
+    ui_show(ui_st, "t", null, 0.0, 0.0, 400.0, 400.0)
+    return `{ui_translate_st.said[len(ui_translate_st.said) - 2]}/{ui_translate_st.said[len(ui_translate_st.said) - 1]}`
   }
-  entry {
+  entry (ui_st: mut UiState, ui_translate_st: mut UiTranslateState) {
     let b = new UiBackend
     b.text = fn rec_text
-    ui_backend(b)
-    ui_translator(fn tr)
-    ui_clock(fn clock)
-    ui_load_text(PAGE, "t.xml")
-    let root: UiNode = ui_nodes("t", null)
-    ui_place(root, 0.0, 0.0, 400.0, 400.0)
+    ui_backend(ui_st, b)
+    ui_translator(ui_st, fn tr)
+    ui_clock(ui_st, fn clock)
+    ui_load_text(ui_st, PAGE, "t.xml")
+    let root: UiNode = ui_nodes(ui_st, "t", null)
+    ui_place(ui_st, root, 0.0, 0.0, 400.0, 400.0)
     let texts = `{root.children[0].text} {root.children[1].text} {root.children[2].children[0].text} {root.children[2].children[1].text}`
-    print(`{texts} | {tip(root, 3)} | {tip(root, 4)} | {tip(root, 5)}`)
+    print(`{texts} | {tip(ui_st, ui_translate_st, root, 3)} | {tip(ui_st, ui_translate_st, root, 4)} | {tip(ui_st, ui_translate_st, root, 5)}`)
   }
 }

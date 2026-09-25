@@ -51,20 +51,20 @@ function act_keyword(r: UiRd, word: string) -> bool {
   }
   return true
 }
-function act_run(a: UiAct, e: UiEnv) -> void {
+function act_run(ui_st: mut UiState, a: UiAct, e: UiEnv) -> void {
   for i in 0 .. len(a.kinds) {
-    if a.kinds[i] == A_SET { env_set(e, a.names[i], ui_eval(a.exprs[i], e)) }
-    if a.kinds[i] == A_CALL { ui_eval(a.exprs[i], e) }
-    if a.kinds[i] == A_EMIT { act_emit(a.names[i], e) }
+    if a.kinds[i] == A_SET { env_set(ui_st, e, a.names[i], ui_eval(ui_st, a.exprs[i], e)) }
+    if a.kinds[i] == A_CALL { ui_eval(ui_st, a.exprs[i], e) }
+    if a.kinds[i] == A_EMIT { act_emit(ui_st, a.names[i], e) }
   }
 }
-function act_emit(name: string, e: UiEnv) -> void {
+function act_emit(ui_st: mut UiState, name: string, e: UiEnv) -> void {
   var at = e
   while at != null {
     if at.on_names != null {
       for i in 0 .. len(at.on_names) {
         if at.on_names[i] == name {
-          act_run(at.on_acts[i], at.on_envs[i])
+          act_run(ui_st, at.on_acts[i], at.on_envs[i])
           return
         }
       }

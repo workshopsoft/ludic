@@ -4,86 +4,88 @@ export const FISHING_WAIT: int = 1
 export const FISHING_BITE_ON: int = 2
 export const FISHING_REEL: int = 3
 
-var fishing_st: int = 0
-var fishing_t: float = 0.0          # seconds: to the bite, of the bite, of the fight
-var fishing_bx: float = 0.0         # where the line is in the water
-var fishing_bz: float = 0.0
-var fishing_sp: int = -1            # what is on it
-var fishing_len: int = 0            # cm
-var fishing_bait_on: bool = false
-var fishing_lure_on: bool = false
-var fishing_mark: float = 0.0       # 0..1 across the bar
-var fishing_dir: float = 1.0
-var fishing_win_c: float = 0.5      # where the green sits this crossing
-var fishing_ring_t: float = 0.0     # Gentle: seconds left to press
-var fishing_gentle_on: bool = false
-var fishing_won: int = 0            # crossings won
-var fishing_need_n: int = 3
-var fishing_run_t: float = 0.0      # seconds left of a run
-var fishing_run_left: int = 0
-var fishing_run_next: float = 0.0
-var fishing_dice: Rng = null
-var fishing_fact_q: Queue<FishingFact> = null
-var fishing_n: int = 0              # the record: caught, the biggest (cm), a legend landed
-var fishing_big: int = 0
-var fishing_leg: bool = false
+export state FishingState {
+  fishing_st: int = 0
+  fishing_t: float = 0.0          # seconds: to the bite, of the bite, of the fight
+  fishing_bx: float = 0.0         # where the line is in the water
+  fishing_bz: float = 0.0
+  fishing_sp: int = -1            # what is on it
+  fishing_len: int = 0            # cm
+  fishing_bait_on: bool = false
+  fishing_lure_on: bool = false
+  fishing_mark: float = 0.0       # 0..1 across the bar
+  fishing_dir: float = 1.0
+  fishing_win_c: float = 0.5      # where the green sits this crossing
+  fishing_ring_t: float = 0.0     # Gentle: seconds left to press
+  fishing_gentle_on: bool = false
+  fishing_won: int = 0            # crossings won
+  fishing_need_n: int = 3
+  fishing_run_t: float = 0.0      # seconds left of a run
+  fishing_run_left: int = 0
+  fishing_run_next: float = 0.0
+  fishing_dice: Rng = null
+  fishing_fact_q: Queue<FishingFact> = null
+  fishing_n: int = 0              # the record: caught, the biggest (cm), a legend landed
+  fishing_big: int = 0
+  fishing_leg: bool = false
+  fishing_min_depth: float = 0.15   # a cast needs this much water
+  fishing_deep: float = 2.5         # a legend's deep-water chance from here down
+  fishing_seed_n: int = 4242
+}
 
-var fishing_min_depth: float = 0.15   # a cast needs this much water
-var fishing_deep: float = 2.5         # a legend's deep-water chance from here down
-var fishing_seed_n: int = 4242
 
 # a cast needs `min_depth` metres; `deep` is where a legend is likelier; the line's own dice
-export function fishing_config(min_depth: float, deep: float, seed: int) -> void {
-  fishing_min_depth = min_depth
-  fishing_deep = deep
-  fishing_seed_n = seed
-  fishing_dice = rng_new(seed)
+export function fishing_config(fishing_st: mut FishingState, min_depth: float, deep: float, seed: int) -> void {
+  fishing_st.fishing_min_depth = min_depth
+  fishing_st.fishing_deep = deep
+  fishing_st.fishing_seed_n = seed
+  fishing_st.fishing_dice = rng_new(seed)
 }
 
-export function fishing_facts() -> Queue<FishingFact> {
-  if fishing_fact_q == null { fishing_fact_q = queue_new("fishing.facts") }
-  return fishing_fact_q
+export function fishing_facts(base_st: mut BaseState, fishing_st: mut FishingState) -> Queue<FishingFact> {
+  if fishing_st.fishing_fact_q == null { fishing_st.fishing_fact_q = queue_new(base_st, "fishing.facts") }
+  return fishing_st.fishing_fact_q
 }
 
-function fishing_rand() -> float {
-  if fishing_dice == null { fishing_dice = rng_new(fishing_seed_n) }
-  return rng_float(fishing_dice)
+function fishing_rand(fishing_st: mut FishingState) -> float {
+  if fishing_st.fishing_dice == null { fishing_st.fishing_dice = rng_new(fishing_st.fishing_seed_n) }
+  return rng_float(fishing_st.fishing_dice)
 }
 
-function fishing_say(what: int) -> void {
+function fishing_say(base_st: mut BaseState, fishing_st: mut FishingState, what: int) -> void {
   let f = new FishingFact
   f.what = what
-  f.species = fishing_sp
-  f.cm = fishing_len
-  f.kg = fishing_weight_of(fishing_sp, fishing_len)
-  f.hits = fishing_won
-  f.need = fishing_need_n
-  f.bait = fishing_bait_on
-  f.lure = fishing_lure_on
-  f.x = fishing_bx
-  f.z = fishing_bz
-  q_push(fishing_facts(), f)
+  f.species = fishing_st.fishing_sp
+  f.cm = fishing_st.fishing_len
+  f.kg = fishing_weight_of(fishing_st.fishing_sp, fishing_st.fishing_len)
+  f.hits = fishing_st.fishing_won
+  f.need = fishing_st.fishing_need_n
+  f.bait = fishing_st.fishing_bait_on
+  f.lure = fishing_st.fishing_lure_on
+  f.x = fishing_st.fishing_bx
+  f.z = fishing_st.fishing_bz
+  q_push(base_st, fishing_facts(base_st, fishing_st), f)
 }
 
-export function fishing_state() -> int { return fishing_st }
-export function fishing_active() -> bool { return fishing_st != FISHING_OFF }
-export function fishing_species() -> int { return fishing_sp }
-export function fishing_cm() -> int { return fishing_len }
-export function fishing_line_x() -> float { return fishing_bx }
-export function fishing_line_z() -> float { return fishing_bz }
-export function fishing_marker() -> float { return fishing_mark }
-export function fishing_hits() -> int { return fishing_won }
-export function fishing_need() -> int { return fishing_need_n }
-export function fishing_running() -> bool { return fishing_run_t > 0.0 }
-export function fishing_gentle() -> bool { return fishing_gentle_on }
-export function fishing_ring() -> float { return fishing_ring_t }
-export function fishing_baited() -> bool { return fishing_bait_on }
-export function fishing_lured() -> bool { return fishing_lure_on }
-export function fishing_caught() -> int { return fishing_n }
-export function fishing_biggest() -> int { return fishing_big }
-export function fishing_legend_caught() -> bool { return fishing_leg }
+export function fishing_state(fishing_st: FishingState) -> int { return fishing_st.fishing_st }
+export function fishing_active(fishing_st: FishingState) -> bool { return fishing_st.fishing_st != FISHING_OFF }
+export function fishing_species(fishing_st: FishingState) -> int { return fishing_st.fishing_sp }
+export function fishing_cm(fishing_st: FishingState) -> int { return fishing_st.fishing_len }
+export function fishing_line_x(fishing_st: FishingState) -> float { return fishing_st.fishing_bx }
+export function fishing_line_z(fishing_st: FishingState) -> float { return fishing_st.fishing_bz }
+export function fishing_marker(fishing_st: FishingState) -> float { return fishing_st.fishing_mark }
+export function fishing_hits(fishing_st: FishingState) -> int { return fishing_st.fishing_won }
+export function fishing_need(fishing_st: FishingState) -> int { return fishing_st.fishing_need_n }
+export function fishing_running(fishing_st: FishingState) -> bool { return fishing_st.fishing_run_t > 0.0 }
+export function fishing_gentle(fishing_st: FishingState) -> bool { return fishing_st.fishing_gentle_on }
+export function fishing_ring(fishing_st: FishingState) -> float { return fishing_st.fishing_ring_t }
+export function fishing_baited(fishing_st: FishingState) -> bool { return fishing_st.fishing_bait_on }
+export function fishing_lured(fishing_st: FishingState) -> bool { return fishing_st.fishing_lure_on }
+export function fishing_caught(fishing_st: FishingState) -> int { return fishing_st.fishing_n }
+export function fishing_biggest(fishing_st: FishingState) -> int { return fishing_st.fishing_big }
+export function fishing_legend_caught(fishing_st: FishingState) -> bool { return fishing_st.fishing_leg }
 
 # can a line land at (x, z)?
-export function fishing_water_at(x: float, z: float) -> bool {
-  return FishingWorld.afloat() or FishingWorld.depth(x, z) >= fishing_min_depth
+export function fishing_water_at(fishing_st: FishingState, x: float, z: float) -> bool {
+  return FishingWorld.afloat() or FishingWorld.depth(x, z) >= fishing_st.fishing_min_depth
 }

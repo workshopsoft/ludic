@@ -29,8 +29,10 @@ program VkTriangle {
     }
     return false
   }
-  var spv_len: int = 0
-  unsafe function read_all(path: string) -> bytes {
+  state VkTriangleState {
+    spv_len: int = 0
+  }
+  unsafe function read_all(vk_triangle_st: mut VkTriangleState, path: string) -> bytes {
     let f = file_open(path, "rb")
     if f == null { return null }
     file_seek(f, 0, 2)
@@ -39,7 +41,7 @@ program VkTriangle {
     let b = bytes(n + 4)
     file_read(f, b, n)
     file_close(f)
-    spv_len = n
+    vk_triangle_st.spv_len = n
     return b
   }
   # the first memory type the resource allows that has every property wanted
@@ -72,13 +74,13 @@ program VkTriangle {
     color_range(b, VkImageMemoryBarrier_subresourceRange)
     vk_cmd_pipeline_barrier(cb, src_stage, dst_stage, 0, 0, null, 0, null, 1, b)
   }
-  unsafe function shader_module(dev: pointer, path: string) -> long {
-    let spv = read_all(path)
+  unsafe function shader_module(vk_triangle_st: mut VkTriangleState, dev: pointer, path: string) -> long {
+    let spv = read_all(vk_triangle_st, path)
     if spv == null { print(`vulkan: no SPIR-V at {path} (compile vk_triangle.slang with slangc)`);  quit() }
     let smci = bytes(VkShaderModuleCreateInfo_sizeof)
     vk_zero(smci, VkShaderModuleCreateInfo_sizeof)
     vk_put_i32(smci, VkShaderModuleCreateInfo_sType, VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO)
-    let code_size: long = spv_len
+    let code_size: long = vk_triangle_st.spv_len
     vk_put_i64(smci, VkShaderModuleCreateInfo_codeSize, code_size)
     vk_put_ptr(smci, VkShaderModuleCreateInfo_pCode, spv)
     let out = bytes(8)
@@ -87,7 +89,7 @@ program VkTriangle {
     return handle(out)
   }
 
-  handler Boot phase Start {
+  handler Boot(vk_triangle_st: mut VkTriangleState) phase Start {
     spawn Anchor {}
     var vs_path = "build/vk_triangle_vs.spv"
     var fs_path = "build/vk_triangle_fs.spv"
@@ -253,8 +255,8 @@ program VkTriangle {
     if r != VK_SUCCESS { fail("vkBindBufferMemory", r) }
 
     # ---- the pipeline: two stages, no vertex input, dynamic viewport and scissor, one colour format
-    let vs = shader_module(dev, vs_path)
-    let fs = shader_module(dev, fs_path)
+    let vs = shader_module(vk_triangle_st, dev, vs_path)
+    let fs = shader_module(vk_triangle_st, dev, fs_path)
     let plci = bytes(VkPipelineLayoutCreateInfo_sizeof)
     vk_zero(plci, VkPipelineLayoutCreateInfo_sizeof)
     vk_put_i32(plci, VkPipelineLayoutCreateInfo_sType, VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO)
