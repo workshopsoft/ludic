@@ -1,0 +1,97 @@
+# inventory_test.ludic - the pack: room from the port, add what fits, take all or none, set
+# outright, a fact per change, and a save by name that survives the kinds being reordered
+import "ludic.inventory"
+import "ludic.base"
+program InventoryTest {
+  numbers float
+  const WOOD: int = 0
+  const ROD: int = 1
+  const FISH: int = 2
+
+  function limit(it: int) -> int {
+    if it == ROD { return 1 }
+    return 10
+  }
+
+  function names(a: string, b: string, c: string) -> []string {
+    let k = new []string
+    push(k, a)
+    push(k, b)
+    push(k, c)
+    return k
+  }
+
+  function fresh() -> void {
+    let r = new PackRules
+    r.stack_limit = fn limit
+    inv_bind(r)
+    inv_config(names("wood", "rod", "fish"))
+    inv_reset()
+  }
+
+  function changes() -> []ItemChanged { return q_drain(inv_changes()) }
+  function waiting() -> int { return q_len(inv_changes()) }
+
+  test "add puts in what fits and says how many" {
+    fresh()
+    expect_eq(inv_add(WOOD, 7), 7)
+    expect_eq(inv_add(WOOD, 7), 3)
+    expect_eq(inv_count(WOOD), 10)
+    expect_eq(inv_room(WOOD), 0)
+    expect_eq(inv_add(ROD, 2), 1)
+    expect_eq(inv_total(), 11)
+  }
+
+  test "take is all or none" {
+    fresh()
+    inv_add(FISH, 3)
+    expect(not inv_take(FISH, 4))
+    expect_eq(inv_count(FISH), 3)
+    expect(inv_take(FISH, 3))
+    expect(not inv_has(FISH, 1))
+  }
+
+  test "set goes past the room, never below zero" {
+    fresh()
+    inv_set(ROD, 3)
+    expect_eq(inv_count(ROD), 3)
+    expect_eq(inv_room(ROD), 0)
+    inv_set(ROD, -2)
+    expect_eq(inv_count(ROD), 0)
+  }
+
+  test "every change is a fact, and no change is not" {
+    fresh()
+    inv_add(WOOD, 2)
+    inv_take(WOOD, 1)
+    inv_set(WOOD, 1)
+    let cs = changes()
+    expect_eq(len(cs), 2)
+    expect_eq(cs[0].after, 2)
+    expect_eq(cs[1].before, 2)
+    expect_eq(cs[1].after, 1)
+    expect_eq(waiting(), 0)
+  }
+
+  test "an item out of range is nothing" {
+    fresh()
+    expect_eq(inv_add(9, 1), 0)
+    expect_eq(inv_count(-1), 0)
+    expect(not inv_take(9, 0))
+  }
+
+  test "the save is by name, so a reordered table still reads it" {
+    fresh()
+    inv_add(WOOD, 4)
+    inv_add(FISH, 2)
+    let root = save_tree()
+    save_section(root, "inventory", 1, inv_save())
+    let text = save_encode(root)
+    inv_config(names("fish", "bait", "wood"))
+    let n = load_section(save_decode(text), "inventory")
+    inv_load(n.data, n.version)
+    expect_eq(inv_count(0), 2)
+    expect_eq(inv_count(1), 0)
+    expect_eq(inv_count(2), 4)
+  }
+}

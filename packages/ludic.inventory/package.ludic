@@ -1,0 +1,5 @@
+# ludic.inventory - a pack: a count per kind of item, with room that the game decides. Uses
+# ludic.base and nothing else. See README.md.
+package "ludic.inventory"
+version "0.1.0"
+kind source

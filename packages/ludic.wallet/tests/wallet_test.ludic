@@ -1,0 +1,60 @@
+# wallet_test.ludic - earn, spend only what is there, lose down to zero, a fact per change, and
+# its own save section
+import "ludic.wallet"
+import "ludic.base"
+program WalletTest {
+  numbers float
+
+  function changes() -> []MoneyChanged { return q_drain(wallet_changes()) }
+  function waiting() -> int { return q_len(wallet_changes()) }
+
+  test "earning and spending move the purse, and each says so" {
+    wallet_reset()
+    wallet_earn(40)
+    expect(wallet_spend(15))
+    expect_eq(wallet_money(), 25)
+    let cs = changes()
+    expect_eq(len(cs), 2)
+    expect_eq(cs[0].after, 40)
+    expect_eq(cs[1].before, 40)
+    expect_eq(cs[1].after, 25)
+  }
+
+  test "a spend past what is there is refused and changes nothing" {
+    wallet_reset()
+    wallet_set(10)
+    changes()
+    expect(not wallet_spend(11))
+    expect_eq(wallet_money(), 10)
+    expect_eq(waiting(), 0)
+    expect(wallet_can(10))
+    expect(not wallet_can(11))
+  }
+
+  test "a loss happens anyway, but never below zero" {
+    wallet_reset()
+    wallet_set(7)
+    wallet_lose(20)
+    expect_eq(wallet_money(), 0)
+  }
+
+  test "setting what is already there is no change" {
+    wallet_reset()
+    wallet_set(5)
+    changes()
+    wallet_set(5)
+    expect_eq(waiting(), 0)
+  }
+
+  test "a save section reads back the same purse" {
+    wallet_reset()
+    wallet_set(123)
+    let root = save_tree()
+    save_section(root, "wallet", 1, wallet_save())
+    let text = save_encode(root)
+    wallet_reset()
+    let n = load_section(save_decode(text), "wallet")
+    wallet_load(n.data, n.version)
+    expect_eq(wallet_money(), 123)
+  }
+}

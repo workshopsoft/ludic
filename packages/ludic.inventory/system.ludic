@@ -1,0 +1,32 @@
+# system.ludic - the pack as a system: reset and its own save section, each count under its
+# kind's name, so kinds can be added or reordered without a migration
+export function inv_reset() -> void {
+  inv_clear()
+  q_clear(inv_changes())
+}
+
+export function inv_save() -> Val {
+  let counts = Value.object()
+  for i in 0 .. inv_kinds() {
+    if iv_counts[i] != 0 { sv_put_int(counts, iv_keys[i], iv_counts[i]) }
+  }
+  let v = Value.object()
+  Value.put(v, "counts", counts)
+  return v
+}
+
+# a name this build does not know is dropped
+export function inv_load(v: Val, version: int) -> void {
+  inv_clear()
+  if Value.has(v, "counts") == 0 { return }
+  let counts = Value.get(v, "counts")
+  for i in 0 .. inv_kinds() { iv_counts[i] = Math.max(sv_int(counts, iv_keys[i], 0), 0) }
+}
+
+export function inv_system() -> System {
+  let s = system_new("inventory", PH_COMMIT)
+  s.reset = fn inv_reset
+  s.save = fn inv_save
+  s.load = fn inv_load
+  return s
+}

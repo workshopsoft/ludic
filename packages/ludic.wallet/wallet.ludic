@@ -1,0 +1,62 @@
+# wallet.ludic - the purse, its verbs, its facts and its save section
+export property MoneyChanged {
+  before: int = 0
+  after: int = 0
+}
+
+var wl_money: int = 0
+var wl_changes: Queue<MoneyChanged> = null
+
+export function wallet_changes() -> Queue<MoneyChanged> {
+  if wl_changes == null { wl_changes = queue_new("wallet.changes") }
+  return wl_changes
+}
+
+export function wallet_money() -> int { return wl_money }
+export function wallet_can(n: int) -> bool { return wl_money >= n }
+
+# the purse holds exactly n (a starting purse, a correction, the network's word)
+export function wallet_set(n: int) -> void {
+  if n == wl_money { return }
+  let c = new MoneyChanged
+  c.before = wl_money
+  c.after = n
+  wl_money = n
+  q_push(wallet_changes(), c)
+}
+
+export function wallet_earn(n: int) -> void { wallet_set(wl_money + n) }
+
+# only what is there: false, and nothing spent, when it is not
+export function wallet_spend(n: int) -> bool {
+  if n > wl_money { return false }
+  wallet_set(wl_money - n)
+  return true
+}
+
+# a cost that happens whether or not it can be paid (a rescue, a fine); never below zero
+export function wallet_lose(n: int) -> void { wallet_set(Math.max(wl_money - n, 0)) }
+
+export function wallet_reset() -> void {
+  wl_money = 0
+  q_clear(wallet_changes())
+}
+
+export function wallet_save() -> Val {
+  let v = Value.object()
+  sv_put_int(v, "money", wl_money)
+  return v
+}
+
+export function wallet_load(v: Val, version: int) -> void {
+  wl_money = sv_int(v, "money", 0)
+  q_clear(wallet_changes())
+}
+
+export function wallet_system() -> System {
+  let s = system_new("wallet", PH_COMMIT)
+  s.reset = fn wallet_reset
+  s.save = fn wallet_save
+  s.load = fn wallet_load
+  return s
+}
