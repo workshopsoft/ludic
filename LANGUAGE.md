@@ -283,6 +283,13 @@ way in its own files. What is still built into the compiler is the namespaces th
 `Math`, `Text`, `List`, `Vector`, `Color`, `Time`, `Date` - and the few methods that choose their
 target by an argument's type (`Audio.play` of a handle or a name).
 
+A function of the program's own that is named like the target of one of the engine's namespace
+methods would take that method's calls - `Random.range` is `rng_range`, so a package's
+`rng_range(a, b, c)` would receive every `Random.range(1, 6)`. Where the program calls that method,
+the function is refused (`rng_range is the engine's Random.range, which this program calls (...),
+and every such call would reach this function instead; choose another name`), as a function named
+like a compiler built-in (`run`, `exit`) or like one of the engine runtime's own functions is.
+
 ### Registries (`registry`, `def`)
 
 A table of records that code used to fill with calls in an init function is declared instead:

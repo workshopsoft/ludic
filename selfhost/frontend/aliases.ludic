@@ -9,6 +9,7 @@ var g_al_ns: []pointer = new []pointer
 var g_al_meth: []pointer = new []pointer
 var g_al_target: []pointer = new []pointer
 var g_al_labels: []pointer = new []pointer    # "a|b|c"; "" for none; null for the target's own
+var g_al_file: []pointer = new []pointer      # where the alias is declared (the engine's: runtime/native)
 
 function ns_parse_alias(nsname: pointer, is_exp: int) -> void {
   pi += 1
@@ -33,6 +34,7 @@ function ns_parse_alias(nsname: pointer, is_exp: int) -> void {
   push(g_al_meth, meth)
   push(g_al_target, target)
   push(g_al_labels, labels)
+  push(g_al_file, g_parse_file)
 }
 function ns_alias_find(ns: pointer, meth: pointer) -> int {
   var i = 0

@@ -148,6 +148,21 @@ function ck_builtin(e: Node, name: pointer) -> pointer {
   }
   return null
 }
+# a program's function named like the target of one of the engine's own namespace methods takes
+# that method's calls - a package's rng_range(a, b, c) made every Random.range a call to it, and
+# the checker then asked for its third argument. Refused where the method is called.
+var ck_shadow_seen: []pointer = new []pointer
+function ck_alias_shadow(e: Node, al: int, tf: Node) -> void {
+  if not has_sub(g_al_file[al], "runtime/native/") { return }
+  if tf.file == null or has_sub(tf.file, "runtime/native/") { return }
+  var i = 0
+  while i < len(ck_shadow_seen) {
+    if (ck_shadow_seen[i] == tf.s) { return }
+    i += 1
+  }
+  push(ck_shadow_seen, tf.s)
+  ck_err("shadow", tf, `{tf.s} is the engine's {g_al_ns[al]}.{g_al_meth[al]}, which this program calls ({e.file}:{itoa(e.line)}), and every such call would reach this function instead; choose another name`)
+}
 function ck_call(e: Node) -> pointer {
   let c = e.a
   if c.kind == E_ID { return ck_call_named(e, c.s) }
@@ -159,6 +174,7 @@ function ck_call(e: Node) -> pointer {
       let al = ns_alias_find(b.s, c.s)
       if al >= 0 {
         var tf = ck_fn(g_al_target[al])
+        if tf != null { ck_alias_shadow(e, al, tf) }
         if tf == null {
           tf = ck_extern(g_al_target[al])
           if tf != null { ck_raw(e, `{b.s}.{c.s}, a C function`) }

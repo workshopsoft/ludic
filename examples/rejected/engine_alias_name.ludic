@@ -1,0 +1,10 @@
+# a function named like the target of one of the engine's namespace methods would take that
+# method's calls: Random.range is rng_range, so this rng_range is refused where Random.range is used
+program EngineAliasName {
+  function rng_range(a: int, b: int, c: int) -> int {
+    return a + b + c
+  }
+  entry {
+    print(Random.range(1, 6))
+  }
+}
