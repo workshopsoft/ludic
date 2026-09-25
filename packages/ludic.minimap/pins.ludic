@@ -10,75 +10,83 @@ export property MinimapPin {
   label: string = ""
 }
 
+var mm_pins: []MinimapPin = null
+var mm_pin_max: int = 32
+var mm_symbols: int = 8
+var mm_colours: int = 5
+var mm_open: int = -1
+var mm_followed: int = -1
+var mm_last: int = 0
+var mm_placing: bool = false
 
-export function minimap_config_pins(minimap_st: mut MinimapState, max: int, symbols: int, colours: int) -> void {
-  minimap_st.mm_pin_max = Math.max(max, 1)
-  minimap_st.mm_symbols = Math.max(symbols, 1)
-  minimap_st.mm_colours = Math.max(colours, 1)
-  minimap_pins_clear(minimap_st)
+export function minimap_config_pins(max: int, symbols: int, colours: int) -> void {
+  mm_pin_max = Math.max(max, 1)
+  mm_symbols = Math.max(symbols, 1)
+  mm_colours = Math.max(colours, 1)
+  minimap_pins_clear()
 }
 
-export function minimap_pins_clear(minimap_st: mut MinimapState) -> void {
-  minimap_st.mm_pins = new []MinimapPin
-  minimap_st.mm_open = -1
-  minimap_st.mm_followed = -1
-  minimap_st.mm_last = 0
-  minimap_st.mm_placing = false
+export function minimap_pins_clear() -> void {
+  mm_pins = new []MinimapPin
+  mm_open = -1
+  mm_followed = -1
+  mm_last = 0
+  mm_placing = false
 }
 
-export function minimap_pin_count(minimap_st: MinimapState) -> int {
-  if minimap_st.mm_pins == null { return 0 }
-  return len(minimap_st.mm_pins)
+export function minimap_pin_count() -> int {
+  if mm_pins == null { return 0 }
+  return len(mm_pins)
 }
 
-export function minimap_pin_max(minimap_st: MinimapState) -> int { return minimap_st.mm_pin_max }
-export function minimap_pin_full(minimap_st: MinimapState) -> bool { return minimap_pin_count(minimap_st) >= minimap_st.mm_pin_max }
+export function minimap_pin_max() -> int { return mm_pin_max }
+export function minimap_pin_full() -> bool { return minimap_pin_count() >= mm_pin_max }
 
 # a mark at (x, z) made today, with the colour 0; -1 when the map holds all it will
-export function minimap_pin_add(minimap_st: mut MinimapState, x: float, z: float, icon: int, label: string) -> int {
-  if minimap_st.mm_pins == null { minimap_pins_clear(minimap_st) }
-  if minimap_pin_full(minimap_st) { return -1 }
+export function minimap_pin_add(x: float, z: float, icon: int, label: string) -> int {
+  if mm_pins == null { minimap_pins_clear() }
+  if minimap_pin_full() { return -1 }
   let p = new MinimapPin
   p.x = x
   p.z = z
-  p.icon = Math.clamp(icon, 0, minimap_st.mm_symbols - 1)
+  p.icon = Math.clamp(icon, 0, mm_symbols - 1)
   p.day = MinimapWorld.day()
   p.label = label
-  push(minimap_st.mm_pins, p)
-  minimap_st.mm_last = p.icon
-  return len(minimap_st.mm_pins) - 1
+  push(mm_pins, p)
+  mm_last = p.icon
+  return len(mm_pins) - 1
 }
 
 # as saved: everything given, the symbol last chosen left alone
-export function minimap_pin_put(minimap_st: mut MinimapState, x: float, z: float, icon: int, colour: int, day: int, label: string) -> int {
-  if minimap_st.mm_pins == null { minimap_pins_clear(minimap_st) }
-  if minimap_pin_full(minimap_st) { return -1 }
+export function minimap_pin_put(x: float, z: float, icon: int, colour: int, day: int, label: string) -> int {
+  if mm_pins == null { minimap_pins_clear() }
+  if minimap_pin_full() { return -1 }
   let p = new MinimapPin
   p.x = x
   p.z = z
-  p.icon = Math.clamp(icon, 0, minimap_st.mm_symbols - 1)
-  p.colour = Math.clamp(colour, 0, minimap_st.mm_colours - 1)
+  p.icon = Math.clamp(icon, 0, mm_symbols - 1)
+  p.colour = Math.clamp(colour, 0, mm_colours - 1)
   p.day = day
   p.label = label
-  push(minimap_st.mm_pins, p)
-  return len(minimap_st.mm_pins) - 1
+  push(mm_pins, p)
+  return len(mm_pins) - 1
 }
 
 # the i-th mark, or an empty one past the end
-export function minimap_pin(minimap_st: MinimapState, i: int) -> MinimapPin {
-  if i < 0 or i >= minimap_pin_count(minimap_st) { return new MinimapPin }
-  return minimap_st.mm_pins[i]
+export function minimap_pin(i: int) -> MinimapPin {
+  if i < 0 or i >= minimap_pin_count() { return new MinimapPin }
+  return mm_pins[i]
 }
 
 # the nearest n marks within `within` of (x, z), nearest first, leaving out the followed one
-export function minimap_pins_near(minimap_st: MinimapState, x: float, z: float, n: int, within: float) -> []int {
+export function minimap_pins_near(x: float, z: float, n: int, within: float) -> []int {
   let out = new []int
   for k in 0 .. n {
     var best = -1
     var bd = within * within
-    for i in 0 .. minimap_pin_count(minimap_st) {
-      if i == minimap_st.mm_followed or mm_has(out, i) { continue }
-      let d = (minimap_st.mm_pins[i].x - x) * (minimap_st.mm_pins[i].x - x) + (minimap_st.mm_pins[i].z - z) * (minimap_st.mm_pins[i].z - z)
+    for i in 0 .. minimap_pin_count() {
+      if i == mm_followed or mm_has(out, i) { continue }
+      let d = (mm_pins[i].x - x) * (mm_pins[i].x - x) + (mm_pins[i].z - z) * (mm_pins[i].z - z)
       if d < bd {
         bd = d
         best = i

@@ -6,9 +6,7 @@
 #
 # Running it prints:  50 2 1 50
 program LayerEvents {
-  state LayereventsState {
-    step: int = 0
-  }
+  var step: int = 0
 
   @On(layer_Hud_show) handler Shown  { print(1) }   # a mod reacts when the HUD returns
   @On(layer_Hud_hide) handler Hidden { print(2) }   # ...and when it's hidden
@@ -18,11 +16,11 @@ program LayerEvents {
       handler Draw phase Update { print(50) }        # only runs while Hud is enabled
     }
     layer Ctrl {
-      handler Drive(layerevents_st: mut LayereventsState) phase LateUpdate {
-        layerevents_st.step += 1
-        if layerevents_st.step == 1 { disable layer Hud }           # frame 1: hide -> Hidden 2, Draw stops
-        if layerevents_st.step == 2 { enable layer Hud }            # frame 2: show -> Shown 1, Draw resumes
-        if layerevents_st.step == 3 { quit() }                      # frame 3: after Draw ran again
+      handler Drive phase LateUpdate {
+        step += 1
+        if step == 1 { disable layer Hud }           # frame 1: hide -> Hidden 2, Draw stops
+        if step == 2 { enable layer Hud }            # frame 2: show -> Shown 1, Draw resumes
+        if step == 3 { quit() }                      # frame 3: after Draw ran again
       }
     }
   }

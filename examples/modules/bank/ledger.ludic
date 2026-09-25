@@ -1,15 +1,13 @@
 # bank/ledger.ludic - inherits `module bank` from the barrel that imports it
-export state BankState {
-  balance: int = 0
-}
+var balance: int = 0
 export event Deposited { amount: int }
-function add(bank_st: mut BankState, n: int) -> void {
-  bank_st.balance += n
+function add(n: int) -> void {
+  balance += n
 }
-export function deposit(bank_st: mut BankState, n: int) -> void {
-  add(bank_st, n)
+export function deposit(n: int) -> void {
+  add(n)
   emit Deposited(amount: n)
 }
-export function total(bank_st: BankState) -> int {
-  return bank_st.balance
+export function total() -> int {
+  return balance
 }

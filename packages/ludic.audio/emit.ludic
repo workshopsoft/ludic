@@ -1,37 +1,33 @@
 # emit.ludic - the only calls into the runtime's playback. aud_emit is the ONE place a float
 # crosses into Audio.play_at's Q16.16: handed over unconverted, 0.94 as a pitch clamped to 4x and
 # -0.85 as a pan to hard left, and every sound in a valley played fast out of one speaker
-export state AudioState {
-  last_gain: float = 0.0
-  last_pitch: float = 0.0
-  last_pan: float = 0.0
-  emitted: int = 0
-  tried: int = 0
-  live: int = 0
-}
+var last_gain: float = 0.0
+var last_pitch: float = 0.0
+var last_pan: float = 0.0
+var emitted: int = 0
 
-export function aud_emit(audio_st: mut AudioState, h: int, gain: float, pitch: float, pan: float) -> void {
+export function aud_emit(h: int, gain: float, pitch: float, pan: float) -> void {
   if h == 0 { return }
-  audio_st.last_gain = gain
-  audio_st.last_pitch = pitch
-  audio_st.last_pan = pan
-  audio_st.emitted += 1
+  last_gain = gain
+  last_pitch = pitch
+  last_pan = pan
+  emitted += 1
   Audio.play_at(h, fixed(gain), fixed(pitch), fixed(pan))
 }
 
 # a sound at a place in the world, heard within `range` metres: false (and nothing played) when the
 # listener is out of earshot
-export function aud_emit_at(audio_st: mut AudioState, h: int, x: float, z: float, range: float) -> bool {
+export function aud_emit_at(h: int, x: float, z: float, range: float) -> bool {
   let g = aud_gain_at(x, z, range)
   if g == 0.0 { return false }
-  aud_emit(audio_st, h, g, aud_pitch_at(g), aud_pan_at(x, z))
+  aud_emit(h, g, aud_pitch_at(g), aud_pan_at(x, z))
   return true
 }
 
 # a click, a chime, a shutter, a warning: in the player's head, flat
-export function aud_ui(audio_st: mut AudioState, h: int) -> void {
+export function aud_ui(h: int) -> void {
   if h == 0 { return }
-  audio_st.emitted += 1
+  emitted += 1
   Audio.play(h)
 }
 
@@ -41,7 +37,7 @@ export function aud_master(v: float) -> void { Audio.volume(fixed(Math.clamp(v, 
 
 # what the last emit handed the runtime, and how many shots so far: Audio.* is a no-op headless, so
 # the numbers are the only thing a test can hear
-export function aud_last_gain(audio_st: AudioState) -> float { return audio_st.last_gain }
-export function aud_last_pitch(audio_st: AudioState) -> float { return audio_st.last_pitch }
-export function aud_last_pan(audio_st: AudioState) -> float { return audio_st.last_pan }
-export function aud_emitted(audio_st: AudioState) -> int { return audio_st.emitted }
+export function aud_last_gain() -> float { return last_gain }
+export function aud_last_pitch() -> float { return last_pitch }
+export function aud_last_pan() -> float { return last_pan }
+export function aud_emitted() -> int { return emitted }

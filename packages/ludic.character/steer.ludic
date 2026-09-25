@@ -1,61 +1,61 @@
 # steer.ludic - turning to the stick and easing to the speed it asks; then the gait and the orbit
-function chr_turn_to(character_st: mut CharacterState, dx: float, dz: float, rate: float) -> float {
-  let diff = char_wrap(Math.atan2(-dx, -dz) - character_st.chr_yaw)
-  character_st.chr_yaw = character_st.chr_yaw + Math.clamp(diff, -rate, rate)
+function chr_turn_to(dx: float, dz: float, rate: float) -> float {
+  let diff = char_wrap(Math.atan2(-dx, -dz) - chr_yaw)
+  chr_yaw = chr_yaw + Math.clamp(diff, -rate, rate)
   return diff
 }
 
-function chr_steer(character_st: mut CharacterState, dx: float, dz: float, mag: float, run: bool, dt: float) -> void {
+function chr_steer(dx: float, dz: float, mag: float, run: bool, dt: float) -> void {
   var target = 0.0
-  if mag > 0.05 and not character_st.chr_air {
-    let diff = chr_turn_to(character_st, dx, dz, Math.lerp(10.0, 5.0, character_st.chr_run) * dt)
+  if mag > 0.05 and not chr_air {
+    let diff = chr_turn_to(dx, dz, Math.lerp(10.0, 5.0, chr_run) * dt)
     let lined = Math.clamp((Math.cos(diff) + 0.3) / 1.3, 0.0, 1.0)
-    var top = character_st.chr_walk_speed * CharacterBody.pace()
-    if run { top = character_st.chr_run_speed * CharacterBody.pace() }
+    var top = chr_walk_speed * CharacterBody.pace()
+    if run { top = chr_run_speed * CharacterBody.pace() }
     if CharacterBody.sneaking() { top = 1.3 }
     target = mag * top * lined
-  } else if CharacterBody.holding() and not character_st.chr_air {
+  } else if CharacterBody.holding() and not chr_air {
     # a hold turns the body to the thing being worked, so the work is seen being done
-    chr_turn_to(character_st, CharacterBody.hold_x() - character_st.chr_x, CharacterBody.hold_z() - character_st.chr_z, 6.0 * dt)
+    chr_turn_to(CharacterBody.hold_x() - chr_x, CharacterBody.hold_z() - chr_z, 6.0 * dt)
   }
   # in the water the top speed and the inertia are the water's: a swim is half a walk
-  if character_st.chr_swim {
+  if chr_swim {
     target = mag * 1.5
     if run { target = mag * 2.4 }
-    if mag > 0.05 { chr_turn_to(character_st, dx, dz, 4.0 * dt) }
+    if mag > 0.05 { chr_turn_to(dx, dz, 4.0 * dt) }
   }
-  if not character_st.chr_air {
+  if not chr_air {
     var acc = 12.0
-    if target > character_st.chr_speed { acc = 9.0 }
-    if character_st.chr_swim { acc = 4.5 }
-    character_st.chr_speed = char_toward(character_st.chr_speed, target, acc * dt)
+    if target > chr_speed { acc = 9.0 }
+    if chr_swim { acc = 4.5 }
+    chr_speed = char_toward(chr_speed, target, acc * dt)
   }
 }
 
 # The gait's phase is distance over the stride, so the feet never slide; a boot comes down as the
 # phase crosses 0 and again as it crosses pi, and that is when a footfall is said.
-function chr_gait(base_st: mut BaseState, character_st: mut CharacterState, dist: float, dyaw: float, dpitch: float, dt: float) -> void {
-  if character_st.chr_land > 0.0 { character_st.chr_land = character_st.chr_land - dt }
-  if character_st.chr_steep > 0.0 { character_st.chr_steep = character_st.chr_steep - dt }
-  if character_st.chr_swim { character_st.chr_swim_phase = (character_st.chr_swim_phase + dt * (1.6 + character_st.chr_speed * 0.9)) % (2.0 * chr_pi) }
-  let stride = Math.lerp(1.5, 2.7, character_st.chr_run)
-  let phase0 = character_st.chr_phase
-  character_st.chr_phase = (character_st.chr_phase + dist / stride * (2.0 * chr_pi)) % (2.0 * chr_pi)
-  if not character_st.chr_air and not character_st.chr_swim and not character_st.chr_sit and character_st.chr_speed > 0.4 {
-    if chr_cross(phase0, character_st.chr_phase, 0.0) or chr_cross(phase0, character_st.chr_phase, chr_pi) { chr_say(base_st, character_st, CHAR_FOOTFALL, character_st.chr_speed) }
+function chr_gait(dist: float, dyaw: float, dpitch: float, dt: float) -> void {
+  if chr_land > 0.0 { chr_land = chr_land - dt }
+  if chr_steep > 0.0 { chr_steep = chr_steep - dt }
+  if chr_swim { chr_swim_phase = (chr_swim_phase + dt * (1.6 + chr_speed * 0.9)) % (2.0 * chr_pi) }
+  let stride = Math.lerp(1.5, 2.7, chr_run)
+  let phase0 = chr_phase
+  chr_phase = (chr_phase + dist / stride * (2.0 * chr_pi)) % (2.0 * chr_pi)
+  if not chr_air and not chr_swim and not chr_sit and chr_speed > 0.4 {
+    if chr_cross(phase0, chr_phase, 0.0) or chr_cross(phase0, chr_phase, chr_pi) { chr_say(CHAR_FOOTFALL, chr_speed) }
   }
   var mv = 0.0
-  if character_st.chr_speed > 0.12 { mv = 1.0 }
-  character_st.chr_move = char_toward(character_st.chr_move, mv, 5.0 * dt)
-  character_st.chr_run = char_toward(character_st.chr_run, Math.clamp((character_st.chr_speed - 3.6) / 2.8, 0.0, 1.0), 3.0 * dt)
-  chr_look(character_st, dyaw, dpitch)
+  if chr_speed > 0.12 { mv = 1.0 }
+  chr_move = char_toward(chr_move, mv, 5.0 * dt)
+  chr_run = char_toward(chr_run, Math.clamp((chr_speed - 3.6) / 2.8, 0.0, 1.0), 3.0 * dt)
+  chr_look(dyaw, dpitch)
   # the orbit settles slowly behind a walking body unless the player is holding the look
-  if dyaw == 0.0 and character_st.chr_speed > 0.4 and not character_st.chr_lock and not CharacterInput.look_always() {
-    character_st.chr_cam_yaw = character_st.chr_cam_yaw + char_wrap(character_st.chr_yaw - character_st.chr_cam_yaw) * Math.min(1.0, 1.1 * dt)
+  if dyaw == 0.0 and chr_speed > 0.4 and not chr_lock and not CharacterInput.look_always() {
+    chr_cam_yaw = chr_cam_yaw + char_wrap(chr_yaw - chr_cam_yaw) * Math.min(1.0, 1.1 * dt)
   }
 }
 
-function chr_look(character_st: mut CharacterState, dyaw: float, dpitch: float) -> void {
-  character_st.chr_cam_yaw = character_st.chr_cam_yaw + dyaw
-  character_st.chr_cam_pitch = Math.clamp(character_st.chr_cam_pitch + dpitch, -0.96, 0.61)
+function chr_look(dyaw: float, dpitch: float) -> void {
+  chr_cam_yaw = chr_cam_yaw + dyaw
+  chr_cam_pitch = Math.clamp(chr_cam_pitch + dpitch, -0.96, 0.61)
 }

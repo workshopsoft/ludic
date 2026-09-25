@@ -1,15 +1,15 @@
 # run.ludic - `gh` game hours of whatever the body is doing, taken out of the four bars
-function nd_add(needs_st: mut NeedsState, k: int, d: float) -> void {
-  let lv = nd_lv(needs_st)
+function nd_add(k: int, d: float) -> void {
+  let lv = nd_lv()
   lv[k] = Math.clamp(lv[k] + d, 0.0, 100.0)
 }
 
-export function needs_run(needs_st: mut NeedsState, gh: float) -> void {
+export function needs_run(gh: float) -> void {
   let a = NeedsWorld.activity()
-  nd_add(needs_st, NEED_FOOD, (NeedsWorld.bonus(NEED_FOOD) - nd_food_rate(a) * NeedsWorld.drain(NEED_FOOD)) * gh)
+  nd_add(NEED_FOOD, (NeedsWorld.bonus(NEED_FOOD) - nd_food_rate(a) * NeedsWorld.drain(NEED_FOOD)) * gh)
   if NeedsWorld.thirst() {
-    nd_add(needs_st, NEED_WATER, (NeedsWorld.bonus(NEED_WATER) - nd_water_rate(a) * NeedsWorld.drain(NEED_WATER)) * gh)
-  } else { nd_lv(needs_st)[NEED_WATER] = 100.0 }
-  nd_add(needs_st, NEED_ENERGY, (nd_energy_rate(a) + NeedsWorld.bonus(NEED_ENERGY)) * gh)
-  nd_add(needs_st, NEED_WARMTH, nd_warmth_rate(a, nd_lv(needs_st)[NEED_WATER]) * gh)
+    nd_add(NEED_WATER, (NeedsWorld.bonus(NEED_WATER) - nd_water_rate(a) * NeedsWorld.drain(NEED_WATER)) * gh)
+  } else { nd_lv()[NEED_WATER] = 100.0 }
+  nd_add(NEED_ENERGY, (nd_energy_rate(a) + NeedsWorld.bonus(NEED_ENERGY)) * gh)
+  nd_add(NEED_WARMTH, nd_warmth_rate(a, nd_lv()[NEED_WATER]) * gh)
 }

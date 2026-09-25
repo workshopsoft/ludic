@@ -4,13 +4,11 @@
 # Running it prints:  42 42
 import "bank"
 program Visible {
-  state VisibleState {
-    heard: int = 0
-  }
-  @On(Deposited) handler Heard(visible_st: mut VisibleState) { visible_st.heard += amount }
-  entry (bank_st: mut BankState, visible_st: VisibleState) {
-    deposit(bank_st, 30)
-    deposit(bank_st, 12)
-    print(`{total(bank_st)} {visible_st.heard}`)
+  var heard: int = 0
+  @On(Deposited) handler Heard { heard += amount }
+  entry {
+    deposit(30)
+    deposit(12)
+    print(`{total()} {heard}`)
   }
 }

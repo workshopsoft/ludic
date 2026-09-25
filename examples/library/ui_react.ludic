@@ -4,20 +4,18 @@
 import "ludic.ui"
 program UiReact {
   numbers float
-  state UireactState {
-    names: []string = new []string
-    volume: int = 3
-    mounted: int = 0
-    unmounted: int = 0
-    show_extra: bool = true
-  }
-  view Mixer (uireact_st: mut UireactState) {
-    names = uireact_st.names
-    volume = uireact_st.volume
-    extra = uireact_st.show_extra
-    on set_volume(v: int) { uireact_st.volume = v }
-    on mount() { uireact_st.mounted += 1 }
-    on unmount() { uireact_st.unmounted += 1 }
+  var names: []string = new []string
+  var volume: int = 3
+  var mounted: int = 0
+  var unmounted: int = 0
+  var show_extra: bool = true
+  view Mixer {
+    names = names
+    volume = volume
+    extra = show_extra
+    on set_volume(v: int) { volume = v }
+    on mount() { mounted += 1 }
+    on unmount() { unmounted += 1 }
   }
   # a dial the program draws itself: it measures 40 square and, pressed, turns up by one
   function dial_measure(n: UiNode, avail: float) -> void {
@@ -30,32 +28,32 @@ program UiReact {
     if n.text != "" { push(out, n.text) }
     for i in 0 .. len(n.children) { texts(n.children[i], out) }
   }
-  function frame(ui_st: mut UiState) -> UiNode {
-    ui_show(ui_st, "mix", view_mixer(), 0.0, 0.0, 400.0, 400.0)
-    let root: UiNode = ui_nodes(ui_st, "mix", view_mixer())
-    ui_place(ui_st, root, 0.0, 0.0, 400.0, 400.0)
+  function frame() -> UiNode {
+    ui_show("mix", view_mixer(), 0.0, 0.0, 400.0, 400.0)
+    let root: UiNode = ui_nodes("mix", view_mixer())
+    ui_place(root, 0.0, 0.0, 400.0, 400.0)
     return root
   }
-  entry (ui_st: mut UiState, uireact_st: mut UireactState) {
-    ui_native(ui_st, "dial", fn dial_measure, fn dial_draw)
-    push(uireact_st.names, "bass")
-    push(uireact_st.names, "drums")
-    ui_load_text(ui_st, PAGE, "ui/mix.xml")
-    var root = frame(ui_st)
-    ui_press(ui_st, root.children[2])
-    uireact_st.names[0] = "drums"
-    uireact_st.names[1] = "bass"
-    root = frame(ui_st)
+  entry {
+    ui_native("dial", fn dial_measure, fn dial_draw)
+    push(names, "bass")
+    push(names, "drums")
+    ui_load_text(PAGE, "ui/mix.xml")
+    var root = frame()
+    ui_press(root.children[2])
+    names[0] = "drums"
+    names[1] = "bass"
+    root = frame()
     let dial = root.children[3]
-    ui_event(ui_st, dial, "change", Value.int(uireact_st.volume + 4))
-    ui_event(ui_st, root.children[4], "change", Value.bool(1))
-    uireact_st.show_extra = false
-    root = frame(ui_st)
+    ui_event(dial, "change", Value.int(volume + 4))
+    ui_event(root.children[4], "change", Value.bool(1))
+    show_extra = false
+    root = frame()
     let out = new []string
     texts(root, out)
     var joined = ""
     for i in 0 .. len(out) { joined = joined + out[i] + "|" }
     print(joined)
-    print(`volume {uireact_st.volume}; dial {int(dial.cw)}x{int(dial.ch)}; mounted {uireact_st.mounted}, unmounted {uireact_st.unmounted}`)
+    print(`volume {volume}; dial {int(dial.cw)}x{int(dial.ch)}; mounted {mounted}, unmounted {unmounted}`)
   }
 }

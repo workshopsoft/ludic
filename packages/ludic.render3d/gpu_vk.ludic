@@ -7,24 +7,38 @@
 # here. Nothing in this file runs unless the Vulkan backend was chosen and came up.
 
 # ---- the device ---------------------------------------------------------------------------
+var gvk_ready: bool = false
+var gvk_inst: pointer = null
+var gvk_pd: pointer = null
+var gvk_dev: pointer = null
+var gvk_queue: pointer = null
+var gvk_family: int = -1
+var gvk_mp: bytes = null             # VkPhysicalDeviceMemoryProperties
+var gvk_device_name: string = ""
+var gvk_why: string = ""             # why the device did not come up, for the fallback notice
+var gvk_max_aniso: int = 0x3F800000  # the device's anisotropy limit as float bits; 1.0 when it has none
+var gvk_want_surface: bool = false   # set before gvk_init when the renderer will present to a window
+var gvk_has_surface: bool = false    # the instance and device can make a surface and a swapchain
 
-function gvk_fail(render3d_st: mut Render3dState, what: string, r: int) -> bool {
-  render3d_st.gvk_why = `{what} failed (VkResult {r})`
-  gvk_note(render3d_st, `r3d: vulkan: {render3d_st.gvk_why}`)
+function gvk_fail(what: string, r: int) -> bool {
+  gvk_why = `{what} failed (VkResult {r})`
+  gvk_note(`r3d: vulkan: {gvk_why}`)
   return false
 }
 
 # A Vulkan failure is printed, and with R3D_VK_ERRLOG=<file> also appended to that file, opened and
 # closed for each line: stdout is buffered, and a crash straight after a failure (an image that was
 # never made, then used) used to take the one line that explained it with it.
-function gvk_note(render3d_st: mut Render3dState, msg: string) -> void {
+var gvk_errlog: string = null
+var gvk_errlog_read: bool = false
+function gvk_note(msg: string) -> void {
   print(msg)
-  if not render3d_st.gvk_errlog_read {
-    render3d_st.gvk_errlog_read = true
-    if r3d_env_has(render3d_st, "R3D_VK_ERRLOG") { render3d_st.gvk_errlog = r3d_env(render3d_st, "R3D_VK_ERRLOG") }
+  if not gvk_errlog_read {
+    gvk_errlog_read = true
+    if r3d_env_has("R3D_VK_ERRLOG") { gvk_errlog = r3d_env("R3D_VK_ERRLOG") }
   }
-  if render3d_st.gvk_errlog == null { return }
-  let f = file_open(render3d_st.gvk_errlog, "ab")
+  if gvk_errlog == null { return }
+  let f = file_open(gvk_errlog, "ab")
   if f == null { return }
   let line = msg + "\n"
   file_write(f, line, len(line))
@@ -42,12 +56,16 @@ function gvk_ext_in(props: bytes, n: int, want: string) -> bool {
 # Instance, the first discrete GPU (else the first listed), its first graphics queue, and a
 # device with the Tier 1 floor switched on. False, with gvk_why set, if any of it is missing:
 # the caller stays on OpenGL.
+var gvk_has_mdi: bool = false         # multiDrawIndirect + drawIndirectFirstInstance
+var gvk_has_dic: bool = false         # drawIndirectCount
+var gvk_has_mesh: bool = false       # VK_EXT_mesh_shader with its meshShader feature on
+var gvk_mesh_fn: pointer = null      # vkCmdDrawMeshTasksEXT: the device's own, the interposer exports none
 
-function gvk_init(render3d_st: mut Render3dState) -> bool {
-  if render3d_st.gvk_ready { return true }
-  gsl_boot(render3d_st)
-  if Vk.open() == 0 { render3d_st.gvk_why = "no Vulkan loader";  return false }
-  gsl_init(render3d_st)
+function gvk_init() -> bool {
+  if gvk_ready { return true }
+  gsl_boot()
+  if Vk.open() == 0 { gvk_why = "no Vulkan loader";  return false }
+  gsl_init()
 
   let cnt = bytes(4)
   Vk.put_i32(cnt, 0, 0)
@@ -73,50 +91,50 @@ function gvk_init(render3d_st: mut Render3dState) -> bool {
     Vk.put_i32(ici, VkInstanceCreateInfo_flags, VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR)
   }
   # a window's surface: only the Win32 one is built, so a window elsewhere stays on OpenGL
-  render3d_st.gvk_has_surface = render3d_st.gvk_want_surface and gvk_ext_in(iexts, nie, VK_KHR_SURFACE_EXTENSION_NAME) and gvk_ext_in(iexts, nie, VK_KHR_WIN32_SURFACE_EXTENSION_NAME)
-  if render3d_st.gvk_want_surface and not render3d_st.gvk_has_surface { render3d_st.gvk_why = "no Win32 surface in this Vulkan instance";  return false }
-  if render3d_st.gvk_has_surface {
+  gvk_has_surface = gvk_want_surface and gvk_ext_in(iexts, nie, VK_KHR_SURFACE_EXTENSION_NAME) and gvk_ext_in(iexts, nie, VK_KHR_WIN32_SURFACE_EXTENSION_NAME)
+  if gvk_want_surface and not gvk_has_surface { gvk_why = "no Win32 surface in this Vulkan instance";  return false }
+  if gvk_has_surface {
     Vk.put_ptr(iext_names, n_iext * 8, VK_KHR_SURFACE_EXTENSION_NAME);  n_iext += 1
     Vk.put_ptr(iext_names, n_iext * 8, VK_KHR_WIN32_SURFACE_EXTENSION_NAME);  n_iext += 1
   }
   # HDR output: an instance only lists the HDR colour spaces when it asks for them
-  render3d_st.gvk_has_colorspace = render3d_st.gvk_has_surface and gvk_ext_in(iexts, nie, VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME)
-  if render3d_st.gvk_has_colorspace { Vk.put_ptr(iext_names, n_iext * 8, VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME);  n_iext += 1 }
+  gvk_has_colorspace = gvk_has_surface and gvk_ext_in(iexts, nie, VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME)
+  if gvk_has_colorspace { Vk.put_ptr(iext_names, n_iext * 8, VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME);  n_iext += 1 }
   if n_iext > 0 {
     Vk.put_i32(ici, VkInstanceCreateInfo_enabledExtensionCount, n_iext)
     Vk.put_ptr(ici, VkInstanceCreateInfo_ppEnabledExtensionNames, iext_names)
   }
   let out = bytes(8)
   var r = Vk.create_instance(ici, null, out)
-  if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkCreateInstance", r) }
-  render3d_st.gvk_inst = Vk.get_ptr(out, 0)
+  if r != VK_SUCCESS { return gvk_fail("vkCreateInstance", r) }
+  gvk_inst = Vk.get_ptr(out, 0)
 
   Vk.put_i32(cnt, 0, 0)
-  Vk.enumerate_physical_devices(render3d_st.gvk_inst, cnt, null)
+  Vk.enumerate_physical_devices(gvk_inst, cnt, null)
   let nd = Vk.get_i32(cnt, 0)
-  if nd == 0 { render3d_st.gvk_why = "no Vulkan device";  return false }
+  if nd == 0 { gvk_why = "no Vulkan device";  return false }
   let devs = bytes(nd * 8 + 8)
-  Vk.enumerate_physical_devices(render3d_st.gvk_inst, cnt, devs)
+  Vk.enumerate_physical_devices(gvk_inst, cnt, devs)
   let props = bytes(VkPhysicalDeviceProperties_sizeof)
   var pick = 0
   for d in 0 .. nd {
     Vk.get_physical_device_properties(Vk.get_ptr(devs, d * 8), props)
     if Vk.get_i32(props, VkPhysicalDeviceProperties_deviceType) == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU { pick = d;  break }
   }
-  render3d_st.gvk_pd = Vk.get_ptr(devs, pick * 8)
-  Vk.get_physical_device_properties(render3d_st.gvk_pd, props)
-  render3d_st.gvk_device_name = string(Vk.at(props, VkPhysicalDeviceProperties_deviceName))
+  gvk_pd = Vk.get_ptr(devs, pick * 8)
+  Vk.get_physical_device_properties(gvk_pd, props)
+  gvk_device_name = string(Vk.at(props, VkPhysicalDeviceProperties_deviceName))
 
   Vk.put_i32(cnt, 0, 0)
-  Vk.get_physical_device_queue_family_properties(render3d_st.gvk_pd, cnt, null)
+  Vk.get_physical_device_queue_family_properties(gvk_pd, cnt, null)
   let nq = Vk.get_i32(cnt, 0)
   let qprops = bytes(nq * VkQueueFamilyProperties_sizeof + 8)
-  Vk.get_physical_device_queue_family_properties(render3d_st.gvk_pd, cnt, qprops)
+  Vk.get_physical_device_queue_family_properties(gvk_pd, cnt, qprops)
   for q in 0 .. nq {
     let flags = Vk.get_i32(qprops, q * VkQueueFamilyProperties_sizeof + VkQueueFamilyProperties_queueFlags)
-    if render3d_st.gvk_family < 0 and (flags & VK_QUEUE_GRAPHICS_BIT) != 0 { render3d_st.gvk_family = q }
+    if gvk_family < 0 and (flags & VK_QUEUE_GRAPHICS_BIT) != 0 { gvk_family = q }
   }
-  if render3d_st.gvk_family < 0 { render3d_st.gvk_why = `{render3d_st.gvk_device_name} has no graphics queue`;  return false }
+  if gvk_family < 0 { gvk_why = `{gvk_device_name} has no graphics queue`;  return false }
 
   # what the device offers, then the same structs handed back asking for the floor
   let f13 = bytes(VkPhysicalDeviceVulkan13Features_sizeof)
@@ -130,16 +148,16 @@ function gvk_init(render3d_st: mut Render3dState) -> bool {
   Vk.zero(f2, VkPhysicalDeviceFeatures2_sizeof)
   Vk.put_i32(f2, VkPhysicalDeviceFeatures2_sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2)
   Vk.put_ptr(f2, VkPhysicalDeviceFeatures2_pNext, f12)
-  Vk.get_physical_device_features2(render3d_st.gvk_pd, f2)
+  Vk.get_physical_device_features2(gvk_pd, f2)
   var missing = ""
   if Vk.get_i32(f13, VkPhysicalDeviceVulkan13Features_dynamicRendering) != 1 { missing = missing + " dynamicRendering" }
   if Vk.get_i32(f13, VkPhysicalDeviceVulkan13Features_synchronization2) != 1 { missing = missing + " synchronization2" }
   if Vk.get_i32(f12, VkPhysicalDeviceVulkan12Features_descriptorIndexing) != 1 { missing = missing + " descriptorIndexing" }
   if Vk.get_i32(f12, VkPhysicalDeviceVulkan12Features_timelineSemaphore) != 1 { missing = missing + " timelineSemaphore" }
-  if len(missing) > 0 { render3d_st.gvk_why = `{render3d_st.gvk_device_name} lacks{missing}`;  return false }
+  if len(missing) > 0 { gvk_why = `{gvk_device_name} lacks{missing}`;  return false }
   # anisotropic filtering is a 1.0 feature every desktop GPU has; ask for it when it is there
   let aniso = Vk.get_i32(f2, VkPhysicalDeviceFeatures2_features + VkPhysicalDeviceFeatures_samplerAnisotropy) == 1
-  if aniso { render3d_st.gvk_max_aniso = Vk.get_i32(props, VkPhysicalDeviceProperties_limits + VkPhysicalDeviceLimits_maxSamplerAnisotropy) }
+  if aniso { gvk_max_aniso = Vk.get_i32(props, VkPhysicalDeviceProperties_limits + VkPhysicalDeviceLimits_maxSamplerAnisotropy) }
   let want13 = bytes(VkPhysicalDeviceVulkan13Features_sizeof)
   Vk.zero(want13, VkPhysicalDeviceVulkan13Features_sizeof)
   Vk.put_i32(want13, VkPhysicalDeviceVulkan13Features_sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES)
@@ -149,7 +167,7 @@ function gvk_init(render3d_st: mut Render3dState) -> bool {
   if Vk.get_i32(f13, VkPhysicalDeviceVulkan13Features_maintenance4) == 1 { Vk.put_i32(want13, VkPhysicalDeviceVulkan13Features_maintenance4, 1) }
   # Streamline's hooks keep their own data on our objects (private data slots), and ask the device
   # to have the feature rather than turning it on themselves
-  if render3d_st.gsl_on and Vk.get_i32(f13, VkPhysicalDeviceVulkan13Features_privateData) == 1 { Vk.put_i32(want13, VkPhysicalDeviceVulkan13Features_privateData, 1) }
+  if gsl_on and Vk.get_i32(f13, VkPhysicalDeviceVulkan13Features_privateData) == 1 { Vk.put_i32(want13, VkPhysicalDeviceVulkan13Features_privateData, 1) }
   let want12 = bytes(VkPhysicalDeviceVulkan12Features_sizeof)
   Vk.zero(want12, VkPhysicalDeviceVulkan12Features_sizeof)
   Vk.put_i32(want12, VkPhysicalDeviceVulkan12Features_sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES)
@@ -164,30 +182,30 @@ function gvk_init(render3d_st: mut Render3dState) -> bool {
   # GPU-driven drawing: one indirect buffer holds a layer's draws, and a compute pass may write
   # how many of them there are. Asked for where the device has them; the renderer checks
   # gvk_has_mdi / gvk_has_dic before it takes that path.
-  render3d_st.gvk_has_mdi = Vk.get_i32(f2, VkPhysicalDeviceFeatures2_features + VkPhysicalDeviceFeatures_multiDrawIndirect) == 1 and Vk.get_i32(f2, VkPhysicalDeviceFeatures2_features + VkPhysicalDeviceFeatures_drawIndirectFirstInstance) == 1
-  if render3d_st.gvk_has_mdi {
+  gvk_has_mdi = Vk.get_i32(f2, VkPhysicalDeviceFeatures2_features + VkPhysicalDeviceFeatures_multiDrawIndirect) == 1 and Vk.get_i32(f2, VkPhysicalDeviceFeatures2_features + VkPhysicalDeviceFeatures_drawIndirectFirstInstance) == 1
+  if gvk_has_mdi {
     Vk.put_i32(want2, VkPhysicalDeviceFeatures2_features + VkPhysicalDeviceFeatures_multiDrawIndirect, 1)
     Vk.put_i32(want2, VkPhysicalDeviceFeatures2_features + VkPhysicalDeviceFeatures_drawIndirectFirstInstance, 1)
   }
-  render3d_st.gvk_has_dic = Vk.get_i32(f12, VkPhysicalDeviceVulkan12Features_drawIndirectCount) == 1
-  if render3d_st.gvk_has_dic { Vk.put_i32(want12, VkPhysicalDeviceVulkan12Features_drawIndirectCount, 1) }
+  gvk_has_dic = Vk.get_i32(f12, VkPhysicalDeviceVulkan12Features_drawIndirectCount) == 1
+  if gvk_has_dic { Vk.put_i32(want12, VkPhysicalDeviceVulkan12Features_drawIndirectCount, 1) }
   # R3D_PROF: per-pass GPU time from timestamp queries (gvk_query_*). The slots are reused every few
   # frames, so they are reset from the host - which is a feature to ask for.
-  render3d_st.gvk_has_hqr = Vk.get_i32(f12, VkPhysicalDeviceVulkan12Features_hostQueryReset) == 1 and Vk.get_i32(props, VkPhysicalDeviceProperties_limits + VkPhysicalDeviceLimits_timestampComputeAndGraphics) == 1
-  if render3d_st.gvk_has_hqr {
+  gvk_has_hqr = Vk.get_i32(f12, VkPhysicalDeviceVulkan12Features_hostQueryReset) == 1 and Vk.get_i32(props, VkPhysicalDeviceProperties_limits + VkPhysicalDeviceLimits_timestampComputeAndGraphics) == 1
+  if gvk_has_hqr {
     Vk.put_i32(want12, VkPhysicalDeviceVulkan12Features_hostQueryReset, 1)
-    render3d_st.gvk_ts_period = float_from_bits(Vk.get_i32(props, VkPhysicalDeviceProperties_limits + VkPhysicalDeviceLimits_timestampPeriod))
+    gvk_ts_period = float_from_bits(Vk.get_i32(props, VkPhysicalDeviceProperties_limits + VkPhysicalDeviceLimits_timestampPeriod))
   }
 
   Vk.put_i32(cnt, 0, 0)
-  Vk.enumerate_device_extension_properties(render3d_st.gvk_pd, null, cnt, null)
+  Vk.enumerate_device_extension_properties(gvk_pd, null, cnt, null)
   let nde = Vk.get_i32(cnt, 0)
   let dexts = bytes(nde * VkExtensionProperties_sizeof + 8)
-  Vk.enumerate_device_extension_properties(render3d_st.gvk_pd, null, cnt, dexts)
+  Vk.enumerate_device_extension_properties(gvk_pd, null, cnt, dexts)
   # mesh-shader grass: the extension, and its meshShader feature asked for where the device has it.
   # R3D_NO_MESH=1 leaves it off.
-  render3d_st.gvk_has_mesh = false
-  if gvk_ext_in(dexts, nde, VK_EXT_MESH_SHADER_EXTENSION_NAME) and not r3d_env_has(render3d_st, "R3D_NO_MESH") {
+  gvk_has_mesh = false
+  if gvk_ext_in(dexts, nde, VK_EXT_MESH_SHADER_EXTENSION_NAME) and not r3d_env_has("R3D_NO_MESH") {
     let fm = bytes(VkPhysicalDeviceMeshShaderFeaturesEXT_sizeof)
     Vk.zero(fm, VkPhysicalDeviceMeshShaderFeaturesEXT_sizeof)
     Vk.put_i32(fm, VkPhysicalDeviceMeshShaderFeaturesEXT_sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT)
@@ -195,14 +213,14 @@ function gvk_init(render3d_st: mut Render3dState) -> bool {
     Vk.zero(qm, VkPhysicalDeviceFeatures2_sizeof)
     Vk.put_i32(qm, VkPhysicalDeviceFeatures2_sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2)
     Vk.put_ptr(qm, VkPhysicalDeviceFeatures2_pNext, fm)
-    Vk.get_physical_device_features2(render3d_st.gvk_pd, qm)
+    Vk.get_physical_device_features2(gvk_pd, qm)
     if Vk.get_i32(fm, VkPhysicalDeviceMeshShaderFeaturesEXT_meshShader) == 1 {
       let wm = bytes(VkPhysicalDeviceMeshShaderFeaturesEXT_sizeof)
       Vk.zero(wm, VkPhysicalDeviceMeshShaderFeaturesEXT_sizeof)
       Vk.put_i32(wm, VkPhysicalDeviceMeshShaderFeaturesEXT_sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT)
       Vk.put_i32(wm, VkPhysicalDeviceMeshShaderFeaturesEXT_meshShader, 1)
       Vk.put_ptr(want13, VkPhysicalDeviceVulkan13Features_pNext, wm)
-      render3d_st.gvk_has_mesh = true
+      gvk_has_mesh = true
     }
   }
   let prio = bytes(4)
@@ -210,7 +228,7 @@ function gvk_init(render3d_st: mut Render3dState) -> bool {
   let qci = bytes(VkDeviceQueueCreateInfo_sizeof)
   Vk.zero(qci, VkDeviceQueueCreateInfo_sizeof)
   Vk.put_i32(qci, VkDeviceQueueCreateInfo_sType, VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO)
-  Vk.put_i32(qci, VkDeviceQueueCreateInfo_queueFamilyIndex, render3d_st.gvk_family)
+  Vk.put_i32(qci, VkDeviceQueueCreateInfo_queueFamilyIndex, gvk_family)
   Vk.put_i32(qci, VkDeviceQueueCreateInfo_queueCount, 1)
   Vk.put_ptr(qci, VkDeviceQueueCreateInfo_pQueuePriorities, prio)
   let dext_names = bytes(48)
@@ -222,38 +240,38 @@ function gvk_init(render3d_st: mut Render3dState) -> bool {
   Vk.put_i32(dci, VkDeviceCreateInfo_queueCreateInfoCount, 1)
   Vk.put_ptr(dci, VkDeviceCreateInfo_pQueueCreateInfos, qci)
   if gvk_ext_in(dexts, nde, "VK_KHR_portability_subset") { Vk.put_ptr(dext_names, n_dext * 8, "VK_KHR_portability_subset");  n_dext += 1 }
-  if render3d_st.gvk_has_surface {
-    if not gvk_ext_in(dexts, nde, VK_KHR_SWAPCHAIN_EXTENSION_NAME) { render3d_st.gvk_why = `{render3d_st.gvk_device_name} has no swapchain`;  return false }
+  if gvk_has_surface {
+    if not gvk_ext_in(dexts, nde, VK_KHR_SWAPCHAIN_EXTENSION_NAME) { gvk_why = `{gvk_device_name} has no swapchain`;  return false }
     Vk.put_ptr(dext_names, n_dext * 8, VK_KHR_SWAPCHAIN_EXTENSION_NAME);  n_dext += 1
     # Reflex: Streamline adds VK_NV_low_latency2 to this device, which needs present ids it does not add
-    if render3d_st.gsl_on and gvk_ext_in(dexts, nde, "VK_KHR_present_id") { Vk.put_ptr(dext_names, n_dext * 8, "VK_KHR_present_id");  n_dext += 1 }
+    if gsl_on and gvk_ext_in(dexts, nde, "VK_KHR_present_id") { Vk.put_ptr(dext_names, n_dext * 8, "VK_KHR_present_id");  n_dext += 1 }
     # HDR output tells the display what the picture holds
     # and only where the loader has the command: Streamline's interposer exports no vkSetHdrMetadataEXT,
     # and calling its thunk there crashed the game the moment the swapchain came up HDR10
-    render3d_st.gvk_has_hdr_meta = gvk_ext_in(dexts, nde, VK_EXT_HDR_METADATA_EXTENSION_NAME) and Vk.has("vkSetHdrMetadataEXT") == 1
-    if render3d_st.gvk_has_hdr_meta { Vk.put_ptr(dext_names, n_dext * 8, VK_EXT_HDR_METADATA_EXTENSION_NAME);  n_dext += 1 }
+    gvk_has_hdr_meta = gvk_ext_in(dexts, nde, VK_EXT_HDR_METADATA_EXTENSION_NAME) and Vk.has("vkSetHdrMetadataEXT") == 1
+    if gvk_has_hdr_meta { Vk.put_ptr(dext_names, n_dext * 8, VK_EXT_HDR_METADATA_EXTENSION_NAME);  n_dext += 1 }
   }
-  if render3d_st.gvk_has_mesh { Vk.put_ptr(dext_names, n_dext * 8, VK_EXT_MESH_SHADER_EXTENSION_NAME);  n_dext += 1 }
+  if gvk_has_mesh { Vk.put_ptr(dext_names, n_dext * 8, VK_EXT_MESH_SHADER_EXTENSION_NAME);  n_dext += 1 }
   if n_dext > 0 {
     Vk.put_i32(dci, VkDeviceCreateInfo_enabledExtensionCount, n_dext)
     Vk.put_ptr(dci, VkDeviceCreateInfo_ppEnabledExtensionNames, dext_names)
   }
-  r = Vk.create_device(render3d_st.gvk_pd, dci, null, out)
-  if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkCreateDevice", r) }
-  render3d_st.gvk_dev = Vk.get_ptr(out, 0)
-  Vk.get_device_queue(render3d_st.gvk_dev, render3d_st.gvk_family, 0, out)
-  render3d_st.gvk_queue = Vk.get_ptr(out, 0)
-  gsl_probe_device(render3d_st, render3d_st.gvk_pd)
-  if render3d_st.gvk_has_mesh {
-    render3d_st.gvk_mesh_fn = Vk.get_device_proc_addr(render3d_st.gvk_dev, "vkCmdDrawMeshTasksEXT")
-    if render3d_st.gvk_mesh_fn == null { render3d_st.gvk_has_mesh = false }
+  r = Vk.create_device(gvk_pd, dci, null, out)
+  if r != VK_SUCCESS { return gvk_fail("vkCreateDevice", r) }
+  gvk_dev = Vk.get_ptr(out, 0)
+  Vk.get_device_queue(gvk_dev, gvk_family, 0, out)
+  gvk_queue = Vk.get_ptr(out, 0)
+  gsl_probe_device(gvk_pd)
+  if gvk_has_mesh {
+    gvk_mesh_fn = Vk.get_device_proc_addr(gvk_dev, "vkCmdDrawMeshTasksEXT")
+    if gvk_mesh_fn == null { gvk_has_mesh = false }
   }
-  render3d_st.gvk_mp = bytes(VkPhysicalDeviceMemoryProperties_sizeof)
-  Vk.get_physical_device_memory_properties(render3d_st.gvk_pd, render3d_st.gvk_mp)
+  gvk_mp = bytes(VkPhysicalDeviceMemoryProperties_sizeof)
+  Vk.get_physical_device_memory_properties(gvk_pd, gvk_mp)
 
-  if not gvk_cmd_init(render3d_st) { return false }
-  render3d_st.gvk_ready = true
-  print(`r3d: vulkan on {render3d_st.gvk_device_name}, anisotropy up to {gvk_aniso_x(render3d_st.gvk_max_aniso)}x, multi-draw indirect {render3d_st.gvk_has_mdi}, indirect count {render3d_st.gvk_has_dic}, mesh shaders {render3d_st.gvk_has_mesh}`)
+  if not gvk_cmd_init() { return false }
+  gvk_ready = true
+  print(`r3d: vulkan on {gvk_device_name}, anisotropy up to {gvk_aniso_x(gvk_max_aniso)}x, multi-draw indirect {gvk_has_mdi}, indirect count {gvk_has_dic}, mesh shaders {gvk_has_mesh}`)
   return true
 }
 
@@ -266,9 +284,9 @@ function gvk_aniso_x(bits: int) -> int {
 
 # ---- memory -------------------------------------------------------------------------------
 # The first memory type a resource allows with every property wanted; -1 if there is none.
-function gvk_mem_type(render3d_st: Render3dState, allowed: int, want: int) -> int {
-  for t in 0 .. Vk.get_i32(render3d_st.gvk_mp, VkPhysicalDeviceMemoryProperties_memoryTypeCount) {
-    let pf = Vk.get_i32(render3d_st.gvk_mp, VkPhysicalDeviceMemoryProperties_memoryTypes + t * VkMemoryType_sizeof + VkMemoryType_propertyFlags)
+function gvk_mem_type(allowed: int, want: int) -> int {
+  for t in 0 .. Vk.get_i32(gvk_mp, VkPhysicalDeviceMemoryProperties_memoryTypeCount) {
+    let pf = Vk.get_i32(gvk_mp, VkPhysicalDeviceMemoryProperties_memoryTypes + t * VkMemoryType_sizeof + VkMemoryType_propertyFlags)
     if ((allowed >> t) & 1) == 1 and (pf & want) == want { return t }
   }
   return -1
@@ -276,11 +294,12 @@ function gvk_mem_type(render3d_st: Render3dState, allowed: int, want: int) -> in
 # Memory for one resource, from its requirements (a VkMemoryRequirements). One allocation per
 # resource while the backend comes up; the block allocator with sub-allocation replaces it
 # before the forest and the streams are on this backend, which allocate thousands.
-function gvk_alloc(render3d_st: mut Render3dState, req: bytes, want: int) -> long {
+var gvk_n_allocs: int = 0
+function gvk_alloc(req: bytes, want: int) -> long {
   let allowed = Vk.get_i32(req, VkMemoryRequirements_memoryTypeBits)
-  var t = gvk_mem_type(render3d_st, allowed, want)
+  var t = gvk_mem_type(allowed, want)
   # device-local is a preference; host-visible is a need
-  if t < 0 and want == VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT { t = gvk_mem_type(render3d_st, allowed, 0) }
+  if t < 0 and want == VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT { t = gvk_mem_type(allowed, 0) }
   let zero: long = 0
   if t < 0 { print(`r3d: vulkan: no memory type for properties {want}`);  return zero }
   let mai = bytes(VkMemoryAllocateInfo_sizeof)
@@ -289,9 +308,9 @@ function gvk_alloc(render3d_st: mut Render3dState, req: bytes, want: int) -> lon
   Vk.put_i64(mai, VkMemoryAllocateInfo_allocationSize, Vk.get_i64(req, VkMemoryRequirements_size))
   Vk.put_i32(mai, VkMemoryAllocateInfo_memoryTypeIndex, t)
   let out = bytes(8)
-  let r = Vk.allocate_memory(render3d_st.gvk_dev, mai, null, out)
+  let r = Vk.allocate_memory(gvk_dev, mai, null, out)
   if r != VK_SUCCESS { print(`r3d: vulkan: vkAllocateMemory failed (VkResult {r})`);  return zero }
-  render3d_st.gvk_n_allocs += 1
+  gvk_n_allocs += 1
   return gvk_handle(out)
 }
 
@@ -308,19 +327,32 @@ function gvk_alloc(render3d_st: mut Render3dState, req: bytes, want: int) -> lon
 const GVK_BLOCK_DEVICE: int = 67108864
 const GVK_BLOCK_HOST: int = 67108864
 const GVK_OWN_OVER: int = 16777216
+var gvk_blk_mem: []long = null
+var gvk_blk_kind: []int = null        # memory type * 2, + 1 for images
+var gvk_blk_size: []int = null
+var gvk_blk_map: []pointer = null
+var gvk_fr_blk: []int = null          # free ranges: block, offset, length (0 = an unused slot)
+var gvk_fr_off: []int = null
+var gvk_fr_len: []int = null
+var gvk_al_blk: []int = null          # per allocation id: its block, or -1 for its own memory
+var gvk_al_mem: []long = null         # its own memory when it has one
+var gvk_al_off: []int = null
+var gvk_al_len: []int = null
+var gvk_al_map: []pointer = null
+var gvk_al_spare: []int = null        # ids to reuse
 
-function gvk_mem_init(render3d_st: mut Render3dState) -> void {
-  if render3d_st.gvk_al_blk != null { return }
+function gvk_mem_init() -> void {
+  if gvk_al_blk != null { return }
   let zero: long = 0
-  render3d_st.gvk_blk_mem = new []long;  render3d_st.gvk_blk_kind = new []int;  render3d_st.gvk_blk_size = new []int;  render3d_st.gvk_blk_map = new []pointer
-  render3d_st.gvk_fr_blk = new []int;  render3d_st.gvk_fr_off = new []int;  render3d_st.gvk_fr_len = new []int
-  render3d_st.gvk_al_blk = new []int;  render3d_st.gvk_al_mem = new []long;  render3d_st.gvk_al_off = new []int;  render3d_st.gvk_al_len = new []int
-  render3d_st.gvk_al_map = new []pointer;  render3d_st.gvk_al_spare = new []int
-  push(render3d_st.gvk_al_blk, -1);  push(render3d_st.gvk_al_mem, zero);  push(render3d_st.gvk_al_off, 0);  push(render3d_st.gvk_al_len, 0);  push(render3d_st.gvk_al_map, null)
+  gvk_blk_mem = new []long;  gvk_blk_kind = new []int;  gvk_blk_size = new []int;  gvk_blk_map = new []pointer
+  gvk_fr_blk = new []int;  gvk_fr_off = new []int;  gvk_fr_len = new []int
+  gvk_al_blk = new []int;  gvk_al_mem = new []long;  gvk_al_off = new []int;  gvk_al_len = new []int
+  gvk_al_map = new []pointer;  gvk_al_spare = new []int
+  push(gvk_al_blk, -1);  push(gvk_al_mem, zero);  push(gvk_al_off, 0);  push(gvk_al_len, 0);  push(gvk_al_map, null)
 }
 
 # one vkAllocateMemory of `size` bytes of memory type t, mapped when host-visible; 0 on failure
-function gvk_mem_raw(render3d_st: mut Render3dState, t: int, size: int, host: bool, out_map: []pointer) -> long {
+function gvk_mem_raw(t: int, size: int, host: bool, out_map: []pointer) -> long {
   let zero: long = 0
   let mai = bytes(VkMemoryAllocateInfo_sizeof)
   Vk.zero(mai, VkMemoryAllocateInfo_sizeof)
@@ -329,32 +361,32 @@ function gvk_mem_raw(render3d_st: mut Render3dState, t: int, size: int, host: bo
   Vk.put_i64(mai, VkMemoryAllocateInfo_allocationSize, size_l)
   Vk.put_i32(mai, VkMemoryAllocateInfo_memoryTypeIndex, t)
   let out = bytes(8)
-  let r = Vk.allocate_memory(render3d_st.gvk_dev, mai, null, out)
-  if r != VK_SUCCESS { gvk_note(render3d_st, `r3d: vulkan: vkAllocateMemory of {size} bytes failed (VkResult {r}, {render3d_st.gvk_n_allocs} allocations live)`);  return zero }
-  render3d_st.gvk_n_allocs += 1
+  let r = Vk.allocate_memory(gvk_dev, mai, null, out)
+  if r != VK_SUCCESS { gvk_note(`r3d: vulkan: vkAllocateMemory of {size} bytes failed (VkResult {r}, {gvk_n_allocs} allocations live)`);  return zero }
+  gvk_n_allocs += 1
   let mem = gvk_handle(out)
   out_map[0] = null
   if host {
     let pp = bytes(8)
-    if Vk.map_memory(render3d_st.gvk_dev, mem, zero, size_l, 0, pp) != VK_SUCCESS { gvk_note(render3d_st, "r3d: vulkan: vkMapMemory failed");  return zero }
+    if Vk.map_memory(gvk_dev, mem, zero, size_l, 0, pp) != VK_SUCCESS { gvk_note("r3d: vulkan: vkMapMemory failed");  return zero }
     out_map[0] = Vk.get_ptr(pp, 0)
   }
   return mem
 }
 
-function gvk_fr_put(render3d_st: mut Render3dState, b: int, off: int, len_: int) -> void {
+function gvk_fr_put(b: int, off: int, len_: int) -> void {
   if len_ <= 0 { return }
-  for i in 0 .. len(render3d_st.gvk_fr_blk) { if render3d_st.gvk_fr_len[i] == 0 { render3d_st.gvk_fr_blk[i] = b;  render3d_st.gvk_fr_off[i] = off;  render3d_st.gvk_fr_len[i] = len_;  return } }
-  push(render3d_st.gvk_fr_blk, b);  push(render3d_st.gvk_fr_off, off);  push(render3d_st.gvk_fr_len, len_)
+  for i in 0 .. len(gvk_fr_blk) { if gvk_fr_len[i] == 0 { gvk_fr_blk[i] = b;  gvk_fr_off[i] = off;  gvk_fr_len[i] = len_;  return } }
+  push(gvk_fr_blk, b);  push(gvk_fr_off, off);  push(gvk_fr_len, len_)
 }
 
 # Memory for a resource from its requirements (a VkMemoryRequirements): an allocation id, 0 if none.
-function gvk_mem_new(render3d_st: mut Render3dState, req: bytes, want: int, image: bool) -> int {
-  gvk_mem_init(render3d_st)
+function gvk_mem_new(req: bytes, want: int, image: bool) -> int {
+  gvk_mem_init()
   let allowed = Vk.get_i32(req, VkMemoryRequirements_memoryTypeBits)
-  var t = gvk_mem_type(render3d_st, allowed, want)
-  if t < 0 and want == VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT { t = gvk_mem_type(render3d_st, allowed, 0) }
-  if t < 0 { gvk_note(render3d_st, `r3d: vulkan: no memory type for properties {want}`);  return 0 }
+  var t = gvk_mem_type(allowed, want)
+  if t < 0 and want == VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT { t = gvk_mem_type(allowed, 0) }
+  if t < 0 { gvk_note(`r3d: vulkan: no memory type for properties {want}`);  return 0 }
   let host = (want & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0
   let size = Text.to_int(string(Vk.get_i64(req, VkMemoryRequirements_size)))
   var align = Text.to_int(string(Vk.get_i64(req, VkMemoryRequirements_alignment)))
@@ -368,17 +400,17 @@ function gvk_mem_new(render3d_st: mut Render3dState, req: bytes, want: int, imag
     var kind = t * 2
     if image { kind += 1 }
     var i = 0
-    while i < len(render3d_st.gvk_fr_blk) and blk < 0 {
-      let n = render3d_st.gvk_fr_len[i]
-      if n > 0 and render3d_st.gvk_blk_kind[render3d_st.gvk_fr_blk[i]] == kind {
-        let start = (render3d_st.gvk_fr_off[i] + align - 1) / align * align
-        let end = render3d_st.gvk_fr_off[i] + n
+    while i < len(gvk_fr_blk) and blk < 0 {
+      let n = gvk_fr_len[i]
+      if n > 0 and gvk_blk_kind[gvk_fr_blk[i]] == kind {
+        let start = (gvk_fr_off[i] + align - 1) / align * align
+        let end = gvk_fr_off[i] + n
         if start + size <= end {
-          blk = render3d_st.gvk_fr_blk[i];  off = start
-          let front = start - render3d_st.gvk_fr_off[i]
+          blk = gvk_fr_blk[i];  off = start
+          let front = start - gvk_fr_off[i]
           let back = end - (start + size)
-          if front > 0 { render3d_st.gvk_fr_len[i] = front } else { render3d_st.gvk_fr_len[i] = 0 }
-          gvk_fr_put(render3d_st, blk, start + size, back)
+          if front > 0 { gvk_fr_len[i] = front } else { gvk_fr_len[i] = 0 }
+          gvk_fr_put(blk, start + size, back)
         }
       }
       i += 1
@@ -386,32 +418,32 @@ function gvk_mem_new(render3d_st: mut Render3dState, req: bytes, want: int, imag
     if blk < 0 {
       var bsize = GVK_BLOCK_DEVICE
       if host { bsize = GVK_BLOCK_HOST }
-      let mem = gvk_mem_raw(render3d_st, t, bsize, host, mp)
+      let mem = gvk_mem_raw(t, bsize, host, mp)
       if mem != 0 {
-        push(render3d_st.gvk_blk_mem, mem);  push(render3d_st.gvk_blk_kind, kind);  push(render3d_st.gvk_blk_size, bsize);  push(render3d_st.gvk_blk_map, mp[0])
-        blk = len(render3d_st.gvk_blk_mem) - 1;  off = 0
-        gvk_fr_put(render3d_st, blk, size, bsize - size)
+        push(gvk_blk_mem, mem);  push(gvk_blk_kind, kind);  push(gvk_blk_size, bsize);  push(gvk_blk_map, mp[0])
+        blk = len(gvk_blk_mem) - 1;  off = 0
+        gvk_fr_put(blk, size, bsize - size)
       }
     }
   }
   var own: long = 0
   var map: pointer = null
   if blk < 0 {
-    own = gvk_mem_raw(render3d_st, t, size, host, mp)
+    own = gvk_mem_raw(t, size, host, mp)
     if own == 0 { return 0 }
     map = mp[0]
-  } else if render3d_st.gvk_blk_map[blk] != null {
-    map = mem_off(render3d_st.gvk_blk_map[blk], off)
+  } else if gvk_blk_map[blk] != null {
+    map = mem_off(gvk_blk_map[blk], off)
   }
   var a = 0
-  if len(render3d_st.gvk_al_spare) > 0 {
-    a = render3d_st.gvk_al_spare[len(render3d_st.gvk_al_spare) - 1]
-    render3d_st.gvk_al_spare = gvk_list_drop_last(render3d_st.gvk_al_spare)
+  if len(gvk_al_spare) > 0 {
+    a = gvk_al_spare[len(gvk_al_spare) - 1]
+    gvk_al_spare = gvk_list_drop_last(gvk_al_spare)
   } else {
-    push(render3d_st.gvk_al_blk, -1);  push(render3d_st.gvk_al_mem, zero);  push(render3d_st.gvk_al_off, 0);  push(render3d_st.gvk_al_len, 0);  push(render3d_st.gvk_al_map, null)
-    a = len(render3d_st.gvk_al_blk) - 1
+    push(gvk_al_blk, -1);  push(gvk_al_mem, zero);  push(gvk_al_off, 0);  push(gvk_al_len, 0);  push(gvk_al_map, null)
+    a = len(gvk_al_blk) - 1
   }
-  render3d_st.gvk_al_blk[a] = blk;  render3d_st.gvk_al_mem[a] = own;  render3d_st.gvk_al_off[a] = off;  render3d_st.gvk_al_len[a] = size;  render3d_st.gvk_al_map[a] = map
+  gvk_al_blk[a] = blk;  gvk_al_mem[a] = own;  gvk_al_off[a] = off;  gvk_al_len[a] = size;  gvk_al_map[a] = map
   return a
 }
 
@@ -421,85 +453,87 @@ function gvk_list_drop_last(l: []int) -> []int {
   return out
 }
 
-function gvk_mem_handle(render3d_st: Render3dState, a: int) -> long {
-  if render3d_st.gvk_al_blk[a] < 0 { return render3d_st.gvk_al_mem[a] }
-  return render3d_st.gvk_blk_mem[render3d_st.gvk_al_blk[a]]
+function gvk_mem_handle(a: int) -> long {
+  if gvk_al_blk[a] < 0 { return gvk_al_mem[a] }
+  return gvk_blk_mem[gvk_al_blk[a]]
 }
-function gvk_mem_offset(render3d_st: Render3dState, a: int) -> long {
-  let o: long = render3d_st.gvk_al_off[a]
+function gvk_mem_offset(a: int) -> long {
+  let o: long = gvk_al_off[a]
   return o
 }
-function gvk_mem_ptr(render3d_st: Render3dState, a: int) -> pointer { return render3d_st.gvk_al_map[a] }
+function gvk_mem_ptr(a: int) -> pointer { return gvk_al_map[a] }
 
 # give an allocation back: its own memory is freed, a range returns to its block and merges
-function gvk_mem_free(render3d_st: mut Render3dState, a: int) -> void {
-  if render3d_st.gvk_al_blk == null or a <= 0 or a >= len(render3d_st.gvk_al_blk) or render3d_st.gvk_al_len[a] == 0 { return }
-  let b = render3d_st.gvk_al_blk[a]
+function gvk_mem_free(a: int) -> void {
+  if gvk_al_blk == null or a <= 0 or a >= len(gvk_al_blk) or gvk_al_len[a] == 0 { return }
+  let b = gvk_al_blk[a]
   let zero: long = 0
   if b < 0 {
-    if render3d_st.gvk_al_map[a] != null { Vk.unmap_memory(render3d_st.gvk_dev, render3d_st.gvk_al_mem[a]) }
-    Vk.free_memory(render3d_st.gvk_dev, render3d_st.gvk_al_mem[a], null)
-    render3d_st.gvk_n_allocs -= 1
+    if gvk_al_map[a] != null { Vk.unmap_memory(gvk_dev, gvk_al_mem[a]) }
+    Vk.free_memory(gvk_dev, gvk_al_mem[a], null)
+    gvk_n_allocs -= 1
   } else {
-    var off = render3d_st.gvk_al_off[a]
-    var n = render3d_st.gvk_al_len[a]
+    var off = gvk_al_off[a]
+    var n = gvk_al_len[a]
     # merge with a free range that ends where this starts, and one that starts where this ends
-    for i in 0 .. len(render3d_st.gvk_fr_blk) {
-      if render3d_st.gvk_fr_len[i] > 0 and render3d_st.gvk_fr_blk[i] == b and render3d_st.gvk_fr_off[i] + render3d_st.gvk_fr_len[i] == off {
-        off = render3d_st.gvk_fr_off[i];  n += render3d_st.gvk_fr_len[i];  render3d_st.gvk_fr_len[i] = 0
+    for i in 0 .. len(gvk_fr_blk) {
+      if gvk_fr_len[i] > 0 and gvk_fr_blk[i] == b and gvk_fr_off[i] + gvk_fr_len[i] == off {
+        off = gvk_fr_off[i];  n += gvk_fr_len[i];  gvk_fr_len[i] = 0
       }
     }
-    for i in 0 .. len(render3d_st.gvk_fr_blk) {
-      if render3d_st.gvk_fr_len[i] > 0 and render3d_st.gvk_fr_blk[i] == b and render3d_st.gvk_fr_off[i] == off + n {
-        n += render3d_st.gvk_fr_len[i];  render3d_st.gvk_fr_len[i] = 0
+    for i in 0 .. len(gvk_fr_blk) {
+      if gvk_fr_len[i] > 0 and gvk_fr_blk[i] == b and gvk_fr_off[i] == off + n {
+        n += gvk_fr_len[i];  gvk_fr_len[i] = 0
       }
     }
-    if off == 0 and n == render3d_st.gvk_blk_size[b] {
+    if off == 0 and n == gvk_blk_size[b] {
       # the block is empty again: give it back, or a world swapped out keeps its memory for good
-      if render3d_st.gvk_blk_map[b] != null { Vk.unmap_memory(render3d_st.gvk_dev, render3d_st.gvk_blk_mem[b]) }
-      Vk.free_memory(render3d_st.gvk_dev, render3d_st.gvk_blk_mem[b], null)
-      render3d_st.gvk_n_allocs -= 1
-      render3d_st.gvk_blk_mem[b] = zero;  render3d_st.gvk_blk_map[b] = null;  render3d_st.gvk_blk_kind[b] = -1;  render3d_st.gvk_blk_size[b] = 0
+      if gvk_blk_map[b] != null { Vk.unmap_memory(gvk_dev, gvk_blk_mem[b]) }
+      Vk.free_memory(gvk_dev, gvk_blk_mem[b], null)
+      gvk_n_allocs -= 1
+      gvk_blk_mem[b] = zero;  gvk_blk_map[b] = null;  gvk_blk_kind[b] = -1;  gvk_blk_size[b] = 0
     } else {
-      gvk_fr_put(render3d_st, b, off, n)
+      gvk_fr_put(b, off, n)
     }
   }
-  render3d_st.gvk_al_len[a] = 0;  render3d_st.gvk_al_mem[a] = zero;  render3d_st.gvk_al_map[a] = null;  render3d_st.gvk_al_blk[a] = -1
-  push(render3d_st.gvk_al_spare, a)
+  gvk_al_len[a] = 0;  gvk_al_mem[a] = zero;  gvk_al_map[a] = null;  gvk_al_blk[a] = -1
+  push(gvk_al_spare, a)
 }
 function gvk_mem_id(x: long) -> int { return Text.to_int(string(x)) }
 
 # ---- one-shot commands --------------------------------------------------------------------
 # Uploads, bakes and read-backs record into a command buffer, submit it and wait. The frame
 # itself does not go through here.
-function gvk_cmd_init(render3d_st: mut Render3dState) -> bool {
+var gvk_pool: long = 0
+var gvk_fence: bytes = null
+function gvk_cmd_init() -> bool {
   let cpi = bytes(VkCommandPoolCreateInfo_sizeof)
   Vk.zero(cpi, VkCommandPoolCreateInfo_sizeof)
   Vk.put_i32(cpi, VkCommandPoolCreateInfo_sType, VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO)
   Vk.put_i32(cpi, VkCommandPoolCreateInfo_flags, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT)
-  Vk.put_i32(cpi, VkCommandPoolCreateInfo_queueFamilyIndex, render3d_st.gvk_family)
+  Vk.put_i32(cpi, VkCommandPoolCreateInfo_queueFamilyIndex, gvk_family)
   let out = bytes(8)
-  var r = Vk.create_command_pool(render3d_st.gvk_dev, cpi, null, out)
-  if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkCreateCommandPool", r) }
-  render3d_st.gvk_pool = gvk_handle(out)
+  var r = Vk.create_command_pool(gvk_dev, cpi, null, out)
+  if r != VK_SUCCESS { return gvk_fail("vkCreateCommandPool", r) }
+  gvk_pool = gvk_handle(out)
   let fci = bytes(VkFenceCreateInfo_sizeof)
   Vk.zero(fci, VkFenceCreateInfo_sizeof)
   Vk.put_i32(fci, VkFenceCreateInfo_sType, VK_STRUCTURE_TYPE_FENCE_CREATE_INFO)
-  render3d_st.gvk_fence = bytes(8)
-  r = Vk.create_fence(render3d_st.gvk_dev, fci, null, render3d_st.gvk_fence)
-  if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkCreateFence", r) }
+  gvk_fence = bytes(8)
+  r = Vk.create_fence(gvk_dev, fci, null, gvk_fence)
+  if r != VK_SUCCESS { return gvk_fail("vkCreateFence", r) }
   return true
 }
 # a command buffer, begun
-function gvk_once_begin(render3d_st: Render3dState) -> pointer {
+function gvk_once_begin() -> pointer {
   let cbai = bytes(VkCommandBufferAllocateInfo_sizeof)
   Vk.zero(cbai, VkCommandBufferAllocateInfo_sizeof)
   Vk.put_i32(cbai, VkCommandBufferAllocateInfo_sType, VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO)
-  Vk.put_i64(cbai, VkCommandBufferAllocateInfo_commandPool, render3d_st.gvk_pool)
+  Vk.put_i64(cbai, VkCommandBufferAllocateInfo_commandPool, gvk_pool)
   Vk.put_i32(cbai, VkCommandBufferAllocateInfo_level, VK_COMMAND_BUFFER_LEVEL_PRIMARY)
   Vk.put_i32(cbai, VkCommandBufferAllocateInfo_commandBufferCount, 1)
   let cbs = bytes(8)
-  if Vk.allocate_command_buffers(render3d_st.gvk_dev, cbai, cbs) != VK_SUCCESS { return null }
+  if Vk.allocate_command_buffers(gvk_dev, cbai, cbs) != VK_SUCCESS { return null }
   let cb = Vk.get_ptr(cbs, 0)
   let cbbi = bytes(VkCommandBufferBeginInfo_sizeof)
   Vk.zero(cbbi, VkCommandBufferBeginInfo_sizeof)
@@ -509,36 +543,36 @@ function gvk_once_begin(render3d_st: Render3dState) -> pointer {
   return cb
 }
 # end it, submit it, wait for it, free it
-function gvk_once_end(render3d_st: mut Render3dState, cb: pointer) -> bool {
+function gvk_once_end(cb: pointer) -> bool {
   var r = Vk.end_command_buffer(cb)
-  if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkEndCommandBuffer", r) }
+  if r != VK_SUCCESS { return gvk_fail("vkEndCommandBuffer", r) }
   let cbs = bytes(8)
   Vk.put_ptr(cbs, 0, cb)
-  Vk.reset_fences(render3d_st.gvk_dev, 1, render3d_st.gvk_fence)
+  Vk.reset_fences(gvk_dev, 1, gvk_fence)
   let si = bytes(VkSubmitInfo_sizeof)
   Vk.zero(si, VkSubmitInfo_sizeof)
   Vk.put_i32(si, VkSubmitInfo_sType, VK_STRUCTURE_TYPE_SUBMIT_INFO)
   Vk.put_i32(si, VkSubmitInfo_commandBufferCount, 1)
   Vk.put_ptr(si, VkSubmitInfo_pCommandBuffers, cbs)
-  r = Vk.queue_submit(render3d_st.gvk_queue, 1, si, Vk.get_i64(render3d_st.gvk_fence, 0))
-  if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkQueueSubmit", r) }
+  r = Vk.queue_submit(gvk_queue, 1, si, Vk.get_i64(gvk_fence, 0))
+  if r != VK_SUCCESS { return gvk_fail("vkQueueSubmit", r) }
   let forever: long = -1
-  r = Vk.wait_for_fences(render3d_st.gvk_dev, 1, render3d_st.gvk_fence, 1, forever)
-  Vk.free_command_buffers(render3d_st.gvk_dev, render3d_st.gvk_pool, 1, cbs)
-  if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkWaitForFences", r) }
+  r = Vk.wait_for_fences(gvk_dev, 1, gvk_fence, 1, forever)
+  Vk.free_command_buffers(gvk_dev, gvk_pool, 1, cbs)
+  if r != VK_SUCCESS { return gvk_fail("vkWaitForFences", r) }
   return true
 }
 
 # ---- teardown -----------------------------------------------------------------------------
-function gvk_shutdown(render3d_st: mut Render3dState) -> void {
-  if not render3d_st.gvk_ready { return }
-  Vk.device_wait_idle(render3d_st.gvk_dev)
-  gsl_shutdown(render3d_st)
-  Vk.destroy_fence(render3d_st.gvk_dev, Vk.get_i64(render3d_st.gvk_fence, 0), null)
-  Vk.destroy_command_pool(render3d_st.gvk_dev, render3d_st.gvk_pool, null)
-  Vk.destroy_device(render3d_st.gvk_dev, null)
-  Vk.destroy_instance(render3d_st.gvk_inst, null)
-  render3d_st.gvk_ready = false
+function gvk_shutdown() -> void {
+  if not gvk_ready { return }
+  Vk.device_wait_idle(gvk_dev)
+  gsl_shutdown()
+  Vk.destroy_fence(gvk_dev, Vk.get_i64(gvk_fence, 0), null)
+  Vk.destroy_command_pool(gvk_dev, gvk_pool, null)
+  Vk.destroy_device(gvk_dev, null)
+  Vk.destroy_instance(gvk_inst, null)
+  gvk_ready = false
 }
 
 # ---- GPU timestamps (R3D_PROF) ------------------------------------------------------------
@@ -546,38 +580,42 @@ function gvk_shutdown(render3d_st: mut Render3dState) -> void {
 # ends. A slot is read back PROF_RING frames after it was written and reset just before it is written
 # again. On a device without host query reset or timestamps, every read says "not yet" and the report
 # stays empty.
-function gvk_query_new(render3d_st: mut Render3dState, n: int, ids: words) -> void {
+var gvk_has_hqr: bool = false
+var gvk_ts_period: float = 0.0             # float bits: nanoseconds per timestamp tick
+var gvk_qpool: long = 0
+var gvk_q_active: int = -1
+function gvk_query_new(n: int, ids: words) -> void {
   for i in 0 .. n { ids[i] = i }
-  if not render3d_st.gvk_has_hqr or render3d_st.gvk_dev == null { return }
+  if not gvk_has_hqr or gvk_dev == null { return }
   let qci = bytes(VkQueryPoolCreateInfo_sizeof)
   Vk.zero(qci, VkQueryPoolCreateInfo_sizeof)
   Vk.put_i32(qci, VkQueryPoolCreateInfo_sType, VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO)
   Vk.put_i32(qci, VkQueryPoolCreateInfo_queryType, VK_QUERY_TYPE_TIMESTAMP)
   Vk.put_i32(qci, VkQueryPoolCreateInfo_queryCount, n * 2)
   let out = bytes(8)
-  if Vk.create_query_pool(render3d_st.gvk_dev, qci, null, out) != VK_SUCCESS { return }
-  render3d_st.gvk_qpool = gvk_handle(out)
-  Vk.reset_query_pool(render3d_st.gvk_dev, render3d_st.gvk_qpool, 0, n * 2)
+  if Vk.create_query_pool(gvk_dev, qci, null, out) != VK_SUCCESS { return }
+  gvk_qpool = gvk_handle(out)
+  Vk.reset_query_pool(gvk_dev, gvk_qpool, 0, n * 2)
 }
-function gvk_query_begin(render3d_st: mut Render3dState, id: int) -> void {
-  if render3d_st.gvk_qpool == 0 { return }
-  Vk.reset_query_pool(render3d_st.gvk_dev, render3d_st.gvk_qpool, id * 2, 2)
-  Vk.cmd_write_timestamp(gvk_frame_cb(render3d_st), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, render3d_st.gvk_qpool, id * 2)
-  render3d_st.gvk_q_active = id
+function gvk_query_begin(id: int) -> void {
+  if gvk_qpool == 0 { return }
+  Vk.reset_query_pool(gvk_dev, gvk_qpool, id * 2, 2)
+  Vk.cmd_write_timestamp(gvk_frame_cb(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, gvk_qpool, id * 2)
+  gvk_q_active = id
 }
-function gvk_query_end(render3d_st: mut Render3dState) -> void {
-  if render3d_st.gvk_qpool == 0 or render3d_st.gvk_q_active < 0 { return }
-  Vk.cmd_write_timestamp(gvk_frame_cb(render3d_st), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, render3d_st.gvk_qpool, render3d_st.gvk_q_active * 2 + 1)
-  render3d_st.gvk_q_active = -1
+function gvk_query_end() -> void {
+  if gvk_qpool == 0 or gvk_q_active < 0 { return }
+  Vk.cmd_write_timestamp(gvk_frame_cb(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, gvk_qpool, gvk_q_active * 2 + 1)
+  gvk_q_active = -1
 }
-function gvk_query_result(render3d_st: Render3dState, id: int, out: words) -> bool {
-  if render3d_st.gvk_qpool == 0 { return false }
+function gvk_query_result(id: int, out: words) -> bool {
+  if gvk_qpool == 0 { return false }
   let data = bytes(16)
   let size: long = 16
   let stride: long = 8
-  if Vk.get_query_pool_results(render3d_st.gvk_dev, render3d_st.gvk_qpool, id * 2, 2, size, data, stride, VK_QUERY_RESULT_64_BIT) != VK_SUCCESS { return false }
+  if Vk.get_query_pool_results(gvk_dev, gvk_qpool, id * 2, 2, size, data, stride, VK_QUERY_RESULT_64_BIT) != VK_SUCCESS { return false }
   let ticks = Text.to_int(string(Vk.get_i64(data, 8) - Vk.get_i64(data, 0)))
   if ticks < 0 { return false }
-  out[0] = int(float(ticks) * render3d_st.gvk_ts_period)
+  out[0] = int(float(ticks) * gvk_ts_period)
   return true
 }

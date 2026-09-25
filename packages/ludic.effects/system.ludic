@@ -1,14 +1,14 @@
 # system.ludic - the effects as a system: reset, a tick in game hours, and its own save section
-export function effects_reset(base_st: mut BaseState, effects_st: mut EffectsState) -> void {
-  effects_clear(effects_st)
-  q_clear(base_st, effects_ended(base_st, effects_st))
+export function effects_reset() -> void {
+  effects_clear()
+  q_clear(effects_ended())
 }
 
-function effects_tick(base_st: mut BaseState, effects_st: mut EffectsState, t: Tick) -> void { effects_run(base_st, effects_st, t.hours * 60.0) }
+function effects_tick(t: Tick) -> void { effects_run(t.hours * 60.0) }
 
-export function effects_save(effects_st: mut EffectsState) -> Val {
+export function effects_save() -> Val {
   let l = Value.list()
-  let all = ef_all(effects_st)
+  let all = ef_all()
   for i in 0 .. len(all) {
     let o = Value.object()
     sv_put_int(o, "k", all[i].kind)
@@ -24,12 +24,12 @@ export function effects_save(effects_st: mut EffectsState) -> Val {
   return v
 }
 
-export function effects_load(effects_st: mut EffectsState, v: Val, version: int) -> void {
-  effects_clear(effects_st)
+export function effects_load(v: Val, version: int) -> void {
+  effects_clear()
   if Value.has(v, "list") == 0 { return }
   let l = Value.get(v, "list")
   for i in 0 .. Value.count(l) {
-    if len(ef_all(effects_st)) >= effects_st.ef_max { break }
+    if len(ef_all()) >= ef_max { break }
     let o = Value.at(l, i)
     let e = new Effect
     e.kind = sv_int(o, "k", 0)
@@ -38,7 +38,7 @@ export function effects_load(effects_st: mut EffectsState, v: Val, version: int)
     e.delay = sv_float(o, "d", 0.0)
     e.bonus = sv_bool(o, "b", false)
     e.label = sv_str(o, "l", "")
-    push(ef_all(effects_st), e)
+    push(ef_all(), e)
   }
 }
 

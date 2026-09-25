@@ -1,34 +1,23 @@
 # person.ludic - the people: walkers in slots the census fills and empties, and the fixed ones at
 # their posts; the package's own dice and its facts
-export state NpcState {
-  np_px: float = 0.0
-  np_pz: float = 0.0
-  np_wx: float = 0.0
-  np_wz: float = 0.0
-  np_clock: float = 0.0
-  np_recent: []string = null     # the last few names that left
-  np_walkers: []NpcPerson = null
-  np_posts: []NpcPerson = null
-  np_max: int = 10              # walkers at most
-  np_n: int = 0                 # walkers about
-  np_dice: Rng = null
-  np_facts: Queue<NpcFact> = null
-  np_next_h: float = 0.0        # the hour the census is next looked at
-  np_hold: bool = false         # held where they stand (a shot of their poses)
-  np_mirror: bool = false       # a guest drawing a host's: no routine runs here
-  nw_ids: int = 0
-  np_near_i: int = -1
-  np_said: string = ""
-}
+var np_walkers: []NpcPerson = null
+var np_posts: []NpcPerson = null
+var np_max: int = 10              # walkers at most
+var np_n: int = 0                 # walkers about
+var np_dice: Rng = null
+var np_facts: Queue<NpcFact> = null
+var np_next_h: float = 0.0        # the hour the census is next looked at
+var np_hold: bool = false         # held where they stand (a shot of their poses)
+var np_mirror: bool = false       # a guest drawing a host's: no routine runs here
 const NP_PI: float = 3.1415927
 const NP_TAU: float = 6.2831853
 
-export function npc_facts(base_st: mut BaseState, npc_st: mut NpcState) -> Queue<NpcFact> {
-  if npc_st.np_facts == null { npc_st.np_facts = queue_new(base_st, "npc.facts") }
-  return npc_st.np_facts
+export function npc_facts() -> Queue<NpcFact> {
+  if np_facts == null { np_facts = queue_new("npc.facts") }
+  return np_facts
 }
 
-function np_fact(base_st: mut BaseState, npc_st: mut NpcState, what: int, p: NpcPerson, player: int) -> NpcFact {
+function np_fact(what: int, p: NpcPerson, player: int) -> NpcFact {
   let f = new NpcFact
   f.what = what
   f.person = p.id
@@ -36,68 +25,68 @@ function np_fact(base_st: mut BaseState, npc_st: mut NpcState, what: int, p: Npc
   f.fixed = p.fixed
   f.player = player
   f.act = p.act
-  q_push(base_st, npc_facts(base_st, npc_st), f)
+  q_push(npc_facts(), f)
   return f
 }
 
-function np_ensure(npc_st: mut NpcState) -> void {
-  if npc_st.np_walkers == null { npc_st.np_walkers = new []NpcPerson }
-  if npc_st.np_posts == null { npc_st.np_posts = new []NpcPerson }
-  if npc_st.np_dice == null { npc_st.np_dice = rng_new(20260925) }
+function np_ensure() -> void {
+  if np_walkers == null { np_walkers = new []NpcPerson }
+  if np_posts == null { np_posts = new []NpcPerson }
+  if np_dice == null { np_dice = rng_new(20260925) }
 }
 
 # how many walkers the place can hold at once
-export function npc_config(npc_st: mut NpcState, max: int) -> void { npc_st.np_max = max }
+export function npc_config(max: int) -> void { np_max = max }
 
-export function npc_seed(npc_st: mut NpcState, n: int) -> void {
-  np_ensure(npc_st)
-  rng_seed(npc_st.np_dice, n)
+export function npc_seed(n: int) -> void {
+  np_ensure()
+  rng_seed(np_dice, n)
 }
 
 # 0 .. 1, and whole seconds lo .. hi, off the package's dice
-export function npc_rnd(npc_st: mut NpcState) -> float {
-  np_ensure(npc_st)
-  return rng_float(npc_st.np_dice)
+export function npc_rnd() -> float {
+  np_ensure()
+  return rng_float(np_dice)
 }
 
-export function npc_between(npc_st: mut NpcState, lo: int, hi: int) -> int {
-  np_ensure(npc_st)
-  return rng_between(npc_st.np_dice, lo, hi)
+export function npc_between(lo: int, hi: int) -> int {
+  np_ensure()
+  return rng_between(np_dice, lo, hi)
 }
 
-export function npc_secs(npc_st: mut NpcState, lo: int, hi: int) -> float { return float(npc_between(npc_st, lo, np_hi(lo, hi))) }
+export function npc_secs(lo: int, hi: int) -> float { return float(npc_between(lo, np_hi(lo, hi))) }
 
-export function npc_walkers(npc_st: mut NpcState) -> []NpcPerson {
-  np_ensure(npc_st)
-  return npc_st.np_walkers
+export function npc_walkers() -> []NpcPerson {
+  np_ensure()
+  return np_walkers
 }
 
-export function npc_posts(npc_st: mut NpcState) -> []NpcPerson {
-  np_ensure(npc_st)
-  return npc_st.np_posts
+export function npc_posts() -> []NpcPerson {
+  np_ensure()
+  return np_posts
 }
 
-export function npc_count(npc_st: NpcState) -> int { return npc_st.np_n }
+export function npc_count() -> int { return np_n }
 
-export function npc_max(npc_st: NpcState) -> int { return npc_st.np_max }
+export function npc_max() -> int { return np_max }
 
 # a walker's slot or a post, and anyone by id
-export function npc_at(npc_st: mut NpcState, slot: int) -> NpcPerson {
-  np_ensure(npc_st)
-  if slot < 0 or slot >= len(npc_st.np_walkers) { return null }
-  return npc_st.np_walkers[slot]
+export function npc_at(slot: int) -> NpcPerson {
+  np_ensure()
+  if slot < 0 or slot >= len(np_walkers) { return null }
+  return np_walkers[slot]
 }
 
-export function npc_post(npc_st: mut NpcState, i: int) -> NpcPerson {
-  np_ensure(npc_st)
-  if i < 0 or i >= len(npc_st.np_posts) { return null }
-  return npc_st.np_posts[i]
+export function npc_post(i: int) -> NpcPerson {
+  np_ensure()
+  if i < 0 or i >= len(np_posts) { return null }
+  return np_posts[i]
 }
 
-export function npc_by_id(npc_st: mut NpcState, id: int) -> NpcPerson {
-  np_ensure(npc_st)
-  for i in 0 .. len(npc_st.np_walkers) { if npc_st.np_walkers[i].active and npc_st.np_walkers[i].id == id { return npc_st.np_walkers[i] } }
-  for i in 0 .. len(npc_st.np_posts) { if npc_st.np_posts[i].active and npc_st.np_posts[i].id == id { return npc_st.np_posts[i] } }
+export function npc_by_id(id: int) -> NpcPerson {
+  np_ensure()
+  for i in 0 .. len(np_walkers) { if np_walkers[i].active and np_walkers[i].id == id { return np_walkers[i] } }
+  for i in 0 .. len(np_posts) { if np_posts[i].active and np_posts[i].id == id { return np_posts[i] } }
   return null
 }
 

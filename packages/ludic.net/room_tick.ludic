@@ -1,82 +1,82 @@
 # room_tick.ludic - the matchmaker's side of a frame: STUN asked three times, the room registered
 # or asked for, the host's look at who has asked, and a guest's switch to the relay
-function net__room_tick(base_st: mut BaseState, net_st: mut NetState, dt: float) -> void {
-  if net_st.net__r_state == NET_R_IDLE or net_st.net__r_role == 0 { return }
-  net_st.net__r_t = net_st.net__r_t + dt
-  if net_st.net__r_state == NET_R_STUN {
-    net__room_stun_tick(net_st)
+function net__room_tick(dt: float) -> void {
+  if net__r_state == NET_R_IDLE or net__r_role == 0 { return }
+  net__r_t = net__r_t + dt
+  if net__r_state == NET_R_STUN {
+    net__room_stun_tick()
     return
   }
-  if net_st.net__r_state == NET_R_REGISTER or net_st.net__r_state == NET_R_ASK or (net_st.net__r_state == NET_R_ROOM and net_st.net__http != 0) {
-    net__room_answer(base_st, net_st)
+  if net__r_state == NET_R_REGISTER or net__r_state == NET_R_ASK or (net__r_state == NET_R_ROOM and net__http != 0) {
+    net__room_answer()
     return
   }
-  if net_st.net__r_state == NET_R_DONE {
+  if net__r_state == NET_R_DONE {
     # four seconds and not one packet back from the host: through the relay instead (a slow
     # welcome is not a closed router - anything heard means the direct path works)
-    let silent = net_st.net__peers[0].heard == net_st.net__dial_heard
-    let wait = net__conf(net_st).force_relay or (silent and net_st.net__r_t > 4.0)
-    if not net_st.net__via_relay and net_st.net__state == NET_JOINING and net_st.net__relay_ip != 0 and wait { net__use_relay(net_st) }
+    let silent = net__peers[0].heard == net__dial_heard
+    let wait = net__conf().force_relay or (silent and net__r_t > 4.0)
+    if not net__via_relay and net__state == NET_JOINING and net__relay_ip != 0 and wait { net__use_relay() }
     return
   }
-  if net_st.net__r_state == NET_R_ROOM { net__room_watch(net_st, dt) }
+  if net__r_state == NET_R_ROOM { net__room_watch(dt) }
 }
 
 # a second and a half for an answer, asked three times; without one, inside addresses only
-function net__room_stun_tick(net_st: mut NetState) -> void {
-  if net_st.net__pub_ip == 0 and net_st.net__r_t > 0.5 and net_st.net__r_tries < 3 {
-    net_st.net__r_tries += 1
-    net_st.net__r_t = 0.0
-    net__stun_send(net_st)
+function net__room_stun_tick() -> void {
+  if net__pub_ip == 0 and net__r_t > 0.5 and net__r_tries < 3 {
+    net__r_tries += 1
+    net__r_t = 0.0
+    net__stun_send()
     return
   }
-  if net_st.net__pub_ip == 0 and net_st.net__r_tries < 3 { return }
-  let base = net__conf(net_st).signal_url
-  if net_st.net__r_role == 1 {
-    net_st.net__http = Http.post(`{base}/rooms`, net__room_body(net_st, "host"))
-    net_st.net__r_state = NET_R_REGISTER
+  if net__pub_ip == 0 and net__r_tries < 3 { return }
+  let base = net__conf().signal_url
+  if net__r_role == 1 {
+    net__http = Http.post(`{base}/rooms`, net__room_body("host"))
+    net__r_state = NET_R_REGISTER
   } else {
-    net_st.net__http = Http.post(`{base}/rooms/{net_st.net__room}/join`, net__room_body(net_st, "pub"))
-    net_st.net__r_state = NET_R_ASK
+    net__http = Http.post(`{base}/rooms/{net__room}/join`, net__room_body("pub"))
+    net__r_state = NET_R_ASK
   }
-  net_st.net__r_t = 0.0
+  net__r_t = 0.0
 }
 
-function net__room_answer(base_st: mut BaseState, net_st: mut NetState) -> void {
-  let st = Http.poll(net_st.net__http)
+function net__room_answer() -> void {
+  let st = Http.poll(net__http)
   if st < 0 {
-    if net_st.net__r_t > 12.0 {
-      Http.free(net_st.net__http)
-      net_st.net__http = 0
-      net__room_fail(base_st, net_st, NET_WHY_MATCHMAKER_SILENT)
+    if net__r_t > 12.0 {
+      Http.free(net__http)
+      net__http = 0
+      net__room_fail(NET_WHY_MATCHMAKER_SILENT)
     }
     return
   }
   var v: Val = null
-  if st > 0 and Http.ok(net_st.net__http) { v = Json.parse(Http.text(net_st.net__http)) }
-  Http.free(net_st.net__http)
-  net_st.net__http = 0
-  if net_st.net__r_state == NET_R_REGISTER {
+  if st > 0 and Http.ok(net__http) { v = Json.parse(Http.text(net__http)) }
+  Http.free(net__http)
+  net__http = 0
+  if net__r_state == NET_R_REGISTER {
     let code = net__json_str(v, "code")
     if len(code) == 0 {
-      net__room_fail(base_st, net_st, NET_WHY_NO_ROOM_GIVEN)
+      net__room_fail(NET_WHY_NO_ROOM_GIVEN)
       return
     }
-    net_st.net__room = code
-    net__take_relay(net_st, v)
-    net_st.net__r_state = NET_R_ROOM
-    net_st.net__poll_t = 0.0
+    net__room = code
+    net__take_relay(v)
+    net__r_state = NET_R_ROOM
+    net__poll_t = 0.0
     net__log(`room {code}`)
-    net__fact(base_st, net_st, NET_ROOM, -1, 0, 0, code)
+    net__fact(NET_ROOM, -1, 0, 0, code)
     return
   }
-  if net_st.net__r_state == NET_R_ASK {
+  if net__r_state == NET_R_ASK {
     if v == null {
-      net__room_fail(base_st, net_st, NET_WHY_NO_ROOM)
+      net__room_fail(NET_WHY_NO_ROOM)
       return
     }
-    net__take_relay(net_st, v)
-    net__room_connect(base_st, net_st, net__json_str(v, "host"), net__json_str(v, "local"))
+    net__take_relay(v)
+    net__room_connect(net__json_str(v, "host"), net__json_str(v, "local"))
     return
   }
   # the host's look at the room
@@ -84,23 +84,23 @@ function net__room_answer(base_st: mut BaseState, net_st: mut NetState) -> void 
     let l = value_get(v, "guests")
     for i in 0 .. value_count(l) {
       let g = value_at(l, i)
-      net__new_guest(net_st, net__json_str(g, "pub"), net__json_str(g, "local"))
+      net__new_guest(net__json_str(g, "pub"), net__json_str(g, "local"))
     }
   }
 }
 
 # the host, registered: its relay address kept fresh, new guests punched for, the room looked at
-function net__room_watch(net_st: mut NetState, dt: float) -> void {
-  net_st.net__relay_t = net_st.net__relay_t - dt
-  if net_st.net__relay_t < 0.0 and net_st.net__relay_ip != 0 {
-    net_st.net__relay_t = 3.0
-    net__relay_hello(net_st)
+function net__room_watch(dt: float) -> void {
+  net__relay_t = net__relay_t - dt
+  if net__relay_t < 0.0 and net__relay_ip != 0 {
+    net__relay_t = 3.0
+    net__relay_hello()
   }
-  net__punch_tick(net_st, dt)
-  net_st.net__poll_t = net_st.net__poll_t - dt
-  if net_st.net__poll_t < 0.0 {
-    net_st.net__poll_t = 1.0
-    net_st.net__http = Http.get(`{net__conf(net_st).signal_url}/rooms/{net_st.net__room}`)
-    net_st.net__r_t = 0.0
+  net__punch_tick(dt)
+  net__poll_t = net__poll_t - dt
+  if net__poll_t < 0.0 {
+    net__poll_t = 1.0
+    net__http = Http.get(`{net__conf().signal_url}/rooms/{net__room}`)
+    net__r_t = 0.0
   }
 }

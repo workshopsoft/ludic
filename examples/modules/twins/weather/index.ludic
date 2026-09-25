@@ -1,15 +1,13 @@
 # weather/index.ludic - the same private spellings, its own; a local named dice is its own too
 module weather
-export state WeatherState {
-  dice: int = 20
-}
+var dice: int = 20
 const LIMIT: int = 2
-function seed(weather_st: WeatherState) -> int {
-  return weather_st.dice * LIMIT
+function seed() -> int {
+  return dice * LIMIT
 }
 function roll(dice: int) -> int {
   return dice + 1
 }
-export function weather_seed(weather_st: WeatherState) -> int {
-  return seed(weather_st) + roll(0)
+export function weather_seed() -> int {
+  return seed() + roll(0)
 }

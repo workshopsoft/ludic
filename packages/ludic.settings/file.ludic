@@ -1,54 +1,54 @@
 # ludic.settings/file.ludic - the store as a JSON object, by key: a switch is 0 or 1, a whole number
 # is itself, a float is thousandths (sv_put_float), text is a string. A key the file lacks keeps
 # what the store holds, and a key the store does not know is ignored.
-export function settings_to_json(settings_st: mut SettingsState) -> Val {
-  sg_init(settings_st)
+export function settings_to_json() -> Val {
+  sg_init()
   let v = Value.object()
-  for i in 0 .. len(settings_st.sg_defs) { settings_put(settings_st, v, i) }
+  for i in 0 .. len(sg_defs) { settings_put(v, i) }
   return v
 }
 
 # one setting into `v` under its key (a game building its own file adds its extras beside them)
-export function settings_put(settings_st: SettingsState, v: Val, id: int) -> void {
-  let d = settings_st.sg_defs[id]
+export function settings_put(v: Val, id: int) -> void {
+  let d = sg_defs[id]
   if not d.saved { return }
   if d.kind == SETTING_TEXT {
-    sv_put_str(v, d.key, settings_st.sg_text[id])
+    sv_put_str(v, d.key, sg_text[id])
   } else if d.kind == SETTING_FLOAT {
-    sv_put_float(v, d.key, settings_st.sg_num[id])
+    sv_put_float(v, d.key, sg_num[id])
   } else {
-    sv_put_int(v, d.key, int(settings_st.sg_num[id]))
+    sv_put_int(v, d.key, int(sg_num[id]))
   }
 }
 
 # every key `v` names, held to its range; quiet, since a load is applied whole by its caller
-export function settings_from_json(settings_st: mut SettingsState, v: Val) -> void {
-  sg_init(settings_st)
+export function settings_from_json(v: Val) -> void {
+  sg_init()
   if v == null { return }
-  for i in 0 .. len(settings_st.sg_defs) { sg_read(settings_st, v, i) }
+  for i in 0 .. len(sg_defs) { sg_read(v, i) }
 }
 
-function sg_read(settings_st: mut SettingsState, v: Val, id: int) -> void {
-  let d = settings_st.sg_defs[id]
+function sg_read(v: Val, id: int) -> void {
+  let d = sg_defs[id]
   if not d.saved or Value.kind(v) != 6 or Value.has(v, d.key) == 0 { return }
   if d.kind == SETTING_TEXT {
-    settings_st.sg_text[id] = sv_str(v, d.key, settings_st.sg_text[id])
+    sg_text[id] = sv_str(v, d.key, sg_text[id])
   } else if d.kind == SETTING_FLOAT {
-    settings_st.sg_num[id] = settings_held(settings_st, id, sv_float(v, d.key, settings_st.sg_num[id]))
+    sg_num[id] = settings_held(id, sv_float(v, d.key, sg_num[id]))
   } else {
-    settings_st.sg_num[id] = settings_held(settings_st, id, float(sv_int(v, d.key, int(settings_st.sg_num[id]))))
+    sg_num[id] = settings_held(id, float(sv_int(v, d.key, int(sg_num[id]))))
   }
 }
 
 # one setting from a JSON value in the file's own form (a row in a settings screen hands these):
 # a change is a fact
-export function settings_set_value(base_st: mut BaseState, settings_st: mut SettingsState, id: int, x: Val) -> void {
-  let d = settings_st.sg_defs[id]
+export function settings_set_value(id: int, x: Val) -> void {
+  let d = sg_defs[id]
   if d.kind == SETTING_TEXT {
-    if Value.kind(x) == 4 { settings_set_text(base_st, settings_st, id, Value.as_str(x)) }
+    if Value.kind(x) == 4 { settings_set_text(id, Value.as_str(x)) }
   } else if d.kind == SETTING_FLOAT {
-    settings_set_float(base_st, settings_st, id, float(Value.as_int(x)) / 1000.0)
+    settings_set_float(id, float(Value.as_int(x)) / 1000.0)
   } else {
-    settings_set_int(base_st, settings_st, id, Value.as_int(x))
+    settings_set_int(id, Value.as_int(x))
   }
 }

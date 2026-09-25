@@ -1,13 +1,13 @@
 # zoom.ludic - zoom: 0.8 (or 80%, or calc(), min() and the rest: min(1, calc(100vw / 1800px))) makes
 # an element and everything inside it that much larger or smaller, its lengths, its text and its
 # layout; zooms multiply down the tree. A length in px is zoomed as it is read (el_px).
-function el_zoom(ui_st: mut UiState, n: UiNode, s0: string) -> void {
+function el_zoom(n: UiNode, s0: string) -> void {
   let s = tpl_words(s0)
   var z = 1.0
   if ca_is(s) {
-    if ca_eval(ui_st, s) {
-      z = ui_st.ca_num
-      if not ui_st.ca_bare { ui_err(ui_st, `zoom: {s} - a zoom is a plain number (divide a length by a length)`) }
+    if ca_eval(s) {
+      z = ca_num
+      if not ca_bare { ui_err(`zoom: {s} - a zoom is a plain number (divide a length by a length)`) }
     }
   } else if len(s) > 1 and s[len(s) - 1] == 37 { z = el_num(s) / 100.0 } else if s != "normal" { z = el_num(s) }
   if z <= 0.0 { z = 1.0 }
@@ -29,9 +29,9 @@ function zm_all(n: UiNode) -> float {
 }
 # a length of `v` design pixels on the element being styled: the renderer's scale and every zoom
 # around it (its own too, except while its zoom itself is read)
-function el_px(ui_st: UiState, v: float) -> float {
-  if ui_st.el_cur == null { return ui_px(ui_st, v) }
-  if ui_st.el_key == "zoom" and ui_st.el_cur.parent != null { return ui_px(ui_st, v) * zm_all(ui_st.el_cur.parent) }
-  if ui_st.el_key == "zoom" { return ui_px(ui_st, v) }
-  return ui_px(ui_st, v) * zm_all(ui_st.el_cur)
+function el_px(v: float) -> float {
+  if el_cur == null { return ui_px(v) }
+  if el_key == "zoom" and el_cur.parent != null { return ui_px(v) * zm_all(el_cur.parent) }
+  if el_key == "zoom" { return ui_px(v) }
+  return ui_px(v) * zm_all(el_cur)
 }

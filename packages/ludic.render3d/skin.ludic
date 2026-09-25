@@ -50,31 +50,31 @@ function skin_jv3(o: floats, at: int, nd: Val, key: pointer, dx: float, dy: floa
 }
 
 # JOINTS_0 / WEIGHTS_0 onto attributes 5 and 6 of the VAO being built (gltf_prim)
-function skin_attribs(render3d_st: mut Render3dState, m: Mesh, attrs: Val) -> bool {
+function skin_attribs(m: Mesh, attrs: Val) -> bool {
   if value_has(attrs, "JOINTS_0") == 0 or value_has(attrs, "WEIGHTS_0") == 0 { return false }
-  let jd = gltf_accessor(render3d_st, value_as_int(value_get(attrs, "JOINTS_0")))
+  let jd = gltf_accessor(value_as_int(value_get(attrs, "JOINTS_0")))
   var jsz = 1
   var jtype = GPU_U8
-  if render3d_st.gltf_ctype == 5123 { jsz = 2;  jtype = GPU_U16 }
-  gpu_mesh_vertices(render3d_st, m, jd, render3d_st.gltf_count * render3d_st.gltf_comps * jsz, GPU_STATIC)
-  gpu_mesh_attr(render3d_st, m, 5, render3d_st.gltf_comps, jtype, 0, 0, false)             # integers, read as floats
+  if gltf_ctype == 5123 { jsz = 2;  jtype = GPU_U16 }
+  gpu_mesh_vertices(m, jd, gltf_count * gltf_comps * jsz, GPU_STATIC)
+  gpu_mesh_attr(m, 5, gltf_comps, jtype, 0, 0, false)             # integers, read as floats
   free(jd)
-  let wd = gltf_accessor(render3d_st, value_as_int(value_get(attrs, "WEIGHTS_0")))
+  let wd = gltf_accessor(value_as_int(value_get(attrs, "WEIGHTS_0")))
   var wsz = 4
   var wtype = GPU_F32
   var norm = false
-  if render3d_st.gltf_ctype == 5123 { wsz = 2;  wtype = GPU_U16;  norm = true }
-  if render3d_st.gltf_ctype == 5121 { wsz = 1;  wtype = GPU_U8;  norm = true }
-  gpu_mesh_vertices(render3d_st, m, wd, render3d_st.gltf_count * render3d_st.gltf_comps * wsz, GPU_STATIC)
-  gpu_mesh_attr(render3d_st, m, 6, render3d_st.gltf_comps, wtype, 0, 0, norm)
+  if gltf_ctype == 5123 { wsz = 2;  wtype = GPU_U16;  norm = true }
+  if gltf_ctype == 5121 { wsz = 1;  wtype = GPU_U8;  norm = true }
+  gpu_mesh_vertices(m, wd, gltf_count * gltf_comps * wsz, GPU_STATIC)
+  gpu_mesh_attr(m, 6, gltf_comps, wtype, 0, 0, norm)
   free(wd)
   return true
 }
 
 # the skin `idx` of the document being loaded (gltf_load holds gltf_doc / gltf_bin open)
-function skin_load(render3d_st: mut Render3dState, idx: int) -> Skin {
+function skin_load(idx: int) -> Skin {
   let sk = new Skin
-  let nodes = value_get(render3d_st.gltf_doc, "nodes")
+  let nodes = value_get(gltf_doc, "nodes")
   let n = value_count(nodes)
   sk.n_nodes = n
   sk.par = words(n);  sk.walk = words(n)
@@ -121,7 +121,7 @@ function skin_load(render3d_st: mut Render3dState, idx: int) -> Skin {
     else { q_store(sk.rest_g, i, sk.tmp_a) }
   }
   # the skin: joints and inverse bind matrices
-  let skv = value_at(value_get(render3d_st.gltf_doc, "skins"), idx)
+  let skv = value_at(value_get(gltf_doc, "skins"), idx)
   let jl = value_get(skv, "joints")
   var nj = value_count(jl)
   if nj > SKIN_MAX_JOINTS { print(`skin: {nj} joints, only the first {SKIN_MAX_JOINTS} are used`);  nj = SKIN_MAX_JOINTS }
@@ -133,7 +133,7 @@ function skin_load(render3d_st: mut Render3dState, idx: int) -> Skin {
   sk.bones_v = m4_views(sk.bones, nj)
   for j in 0 .. nj { sk.joints[j] = value_as_int(value_at(jl, j)) }
   if value_has(skv, "inverseBindMatrices") != 0 {
-    let ib = gltf_accessor(render3d_st, value_as_int(value_get(skv, "inverseBindMatrices")))
+    let ib = gltf_accessor(value_as_int(value_get(skv, "inverseBindMatrices")))
     for i in 0 .. nj * 16 { sk.inv_bind[i] = float_from_bits(mem_get_f32_bits(ib, i)) }
     free(ib)
   } else {
@@ -160,9 +160,9 @@ function skin_reset(sk: Skin) -> void {
   }
 }
 # a node's pose rotation in the model frame: pitch about X, yaw about Y, roll about Z (radians)
-function skin_set_rot(render3d_st: mut Render3dState, sk: Skin, node: int, pitch: float, yaw: float, roll: float) -> void {
+function skin_set_rot(sk: Skin, node: int, pitch: float, yaw: float, roll: float) -> void {
   if node < 0 { return }
-  q_euler(render3d_st, sk.tmp_q, pitch, yaw, roll)
+  q_euler(sk.tmp_q, pitch, yaw, roll)
   q_store(sk.pose_r, node, sk.tmp_q)
 }
 function skin_set_quat(sk: Skin, node: int, q: floats) -> void { if node >= 0 { q_store(sk.pose_r, node, q) } }
@@ -203,10 +203,10 @@ function skin_pose(sk: Skin) -> void {
 }
 
 # the joint matrices onto a program's u_bones[]
-function skin_bind(render3d_st: mut Render3dState, sk: Skin, prog: int) -> void {
-  var loc = gpu_uniform(render3d_st, prog, "u_bones[0]")
-  if loc < 0 { loc = gpu_uniform(render3d_st, prog, "u_bones") }
-  u_mat4n(render3d_st, loc, sk.n_joints, sk.bones)
+function skin_bind(sk: Skin, prog: int) -> void {
+  var loc = gpu_uniform(prog, "u_bones[0]")
+  if loc < 0 { loc = gpu_uniform(prog, "u_bones") }
+  u_mat4n(loc, sk.n_joints, sk.bones)
 }
 
 # the same skeleton posed on its own: shares the rest data, owns the pose and the matrices

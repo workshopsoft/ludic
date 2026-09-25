@@ -1,9 +1,9 @@
 # system.ludic - the shop as a system: a reset and nothing saved (the week's demand follows from
 # the day, and nobody is at a counter across a save)
-export function shop_reset(base_st: mut BaseState, shop_st: mut ShopState) -> void {
-  shop_st.shop_at = -1
-  shop_demand_reset(shop_st)
-  q_clear(base_st, shop_trades(base_st, shop_st))
+export function shop_reset() -> void {
+  shop_at = -1
+  shop_demand_reset()
+  q_clear(shop_trades())
 }
 
 export function shop_system() -> System {

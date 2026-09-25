@@ -5,13 +5,11 @@ property Catch {
   weight: float = 0.0
 }
 event Landed { name: string }
-export state HuntingState {
-  heard: string = ""
-}
-@On(Landed) handler Hear(hunting_st: mut HuntingState) { hunting_st.heard = hunting_st.heard + name }
-export function hunting_day(hunting_st: HuntingState) -> string {
+var heard: string = ""
+@On(Landed) handler Hear { heard = heard + name }
+export function hunting_day() -> string {
   let c = new Catch
   c.name = "hare"
   emit Landed(name: c.name)
-  return hunting_st.heard
+  return heard
 }

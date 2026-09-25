@@ -1,43 +1,44 @@
 # names.ludic - a name nobody else in the place is using: not another person, not one the place
 # keeps for itself (NpcWorld.taken: a vendor), and not somebody who left a little while ago
+var np_recent: []string = null     # the last few names that left
 
-export function npc_name_used(npc_st: mut NpcState, n: string) -> bool {
+export function npc_name_used(n: string) -> bool {
   if NpcWorld.taken(n) { return true }
-  let all = npc_walkers(npc_st)
+  let all = npc_walkers()
   for i in 0 .. len(all) { if all[i].active and all[i].name == n { return true } }
-  let posts = npc_posts(npc_st)
+  let posts = npc_posts()
   for i in 0 .. len(posts) { if posts[i].active and posts[i].name == n { return true } }
-  if npc_st.np_recent != null { for i in 0 .. len(npc_st.np_recent) { if npc_st.np_recent[i] == n { return true } } }
+  if np_recent != null { for i in 0 .. len(np_recent) { if np_recent[i] == n { return true } } }
   return false
 }
 
 # a free name from the body's pool, from a place in it the dice choose ("" when the pool is empty)
-export function npc_pick_name(npc_st: mut NpcState, body: int) -> string {
+export function npc_pick_name(body: int) -> string {
   let pool = new []string
   for i in 0 .. NPCN_COUNT { if NpcNames[i].body == body { push(pool, NpcNames[i].name) } }
   let n = len(pool)
   if n == 0 { return "" }
-  let start = npc_between(npc_st, 0, n - 1)
+  let start = npc_between(0, n - 1)
   for k in 0 .. n {
     let name = pool[(start + k) % n]
-    if not npc_name_used(npc_st, name) { return name }
+    if not npc_name_used(name) { return name }
   }
   return pool[start]
 }
 
-function np_left(npc_st: mut NpcState, name: string) -> void {
-  if npc_st.np_recent == null { npc_st.np_recent = new []string }
-  push(npc_st.np_recent, name)
-  if len(npc_st.np_recent) <= 8 { return }
+function np_left(name: string) -> void {
+  if np_recent == null { np_recent = new []string }
+  push(np_recent, name)
+  if len(np_recent) <= 8 { return }
   let keep = new []string
-  for i in len(npc_st.np_recent) - 8 .. len(npc_st.np_recent) { push(keep, npc_st.np_recent[i]) }
-  npc_st.np_recent = keep
+  for i in len(np_recent) - 8 .. len(np_recent) { push(keep, np_recent[i]) }
+  np_recent = keep
 }
 
 # how many pairs share a name, the place's own names included
-export function npc_name_clashes(npc_st: mut NpcState) -> int {
+export function npc_name_clashes() -> int {
   var dup = 0
-  let all = npc_walkers(npc_st)
+  let all = npc_walkers()
   for i in 0 .. len(all) {
     let p = all[i]
     if not p.active { continue }

@@ -45,31 +45,26 @@ export property StepsFact {
   step: int = 0
 }
 
-export state StepsState {
-  steps__players: int = 12
-  steps__col: []int = null         # players * STEPS_PER_CHAPTER shares
-  steps__col_ch: int = -1          # the chapter they are about
-  steps__kinds: []StepsKind = null
-  steps__n: []int = null          # steps per chapter
-  steps__kind: []int = null       # STEPS_PER_CHAPTER per chapter
-  steps__param: []int = null
-  steps__need: []int = null
-  steps__cur: int = 0
-  steps__done: int = 0
-  steps__facts: Queue<StepsFact> = null
+var steps__kinds: []StepsKind = null
+var steps__n: []int = null          # steps per chapter
+var steps__kind: []int = null       # STEPS_PER_CHAPTER per chapter
+var steps__param: []int = null
+var steps__need: []int = null
+var steps__cur: int = 0
+var steps__done: int = 0
+var steps__facts: Queue<StepsFact> = null
+
+export function steps_facts() -> Queue<StepsFact> {
+  if steps__facts == null { steps__facts = queue_new("steps.facts") }
+  return steps__facts
 }
 
-export function steps_facts(base_st: mut BaseState, steps_st: mut StepsState) -> Queue<StepsFact> {
-  if steps_st.steps__facts == null { steps_st.steps__facts = queue_new(base_st, "steps.facts") }
-  return steps_st.steps__facts
-}
-
-function steps__fact(base_st: mut BaseState, steps_st: mut StepsState, what: int, ch: int, i: int) -> void {
+function steps__fact(what: int, ch: int, i: int) -> void {
   let f = new StepsFact
   f.what = what
   f.chapter = ch
   f.step = i
-  q_push(base_st, steps_facts(base_st, steps_st), f)
+  q_push(steps_facts(), f)
 }
 
 export function steps_popcount(m: int) -> int {

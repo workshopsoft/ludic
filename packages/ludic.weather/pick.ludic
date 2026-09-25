@@ -20,11 +20,11 @@ export function weather_draw_from(w: []float, from: int, roll: float) -> int {
   return len(w) - 1
 }
 
-function wx_pick_next(weather_st: WeatherState, from: int) -> int {
-  return weather_draw_from(wx_odds(from), from, rng_float(weather_st.wx_dice))
+function wx_pick_next(from: int) -> int {
+  return weather_draw_from(wx_odds(from), from, rng_float(wx_dice))
 }
 
-function wx_spell_hours(weather_st: WeatherState, k: int) -> float {
-  let kd = weather_st.wx_kinds[k]
-  return rng_span(weather_st.wx_dice, kd.spell_lo, kd.spell_hi)
+function wx_spell_hours(k: int) -> float {
+  let kd = wx_kinds[k]
+  return rng_span(wx_dice, kd.spell_lo, kd.spell_hi)
 }

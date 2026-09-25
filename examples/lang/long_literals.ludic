@@ -5,14 +5,12 @@
 # Running it prints:  4294967295 3988292384 -4294967296 1099511627776 -3750763034362895579 -1 1
 program LongLiterals {
   const MASK: long = 4294967295
-  state LongliteralsState {
-    poly: long = 3988292384
-  }
+  var poly: long = 3988292384
   function neg() -> long { return -4294967296 }
-  entry (longliterals_st: LongliteralsState) {
+  entry {
     let big = 0x10000000000
     let fnv = 0xcbf29ce484222325
     let small = 0xFFFFFFFF
-    print(`{MASK} {longliterals_st.poly} {neg()} {big} {fnv} {small} {MASK > long(2147483647)}`)
+    print(`{MASK} {poly} {neg()} {big} {fnv} {small} {MASK > long(2147483647)}`)
   }
 }

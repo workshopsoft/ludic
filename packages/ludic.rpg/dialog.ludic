@@ -8,13 +8,23 @@ const DLG_TREE_MAX: int = 64
 const DLG_NODE_MAX: int = 512
 const DLG_CHOICE_MAX: int = 1024
 
+var dlg_reg: Dict = null              # tree name -> tree id
+var dlg_tree_n: int = 0
+var dlg_tree_start: words = null      # first node id per tree
+var dlg_node_n: int = 0
+var dlg_node_tree: words = null
+var dlg_node_text: pointers = null
+var dlg_choice_n: int = 0
+var dlg_choice_node: words = null     # owning node
+var dlg_choice_label: pointers = null
+var dlg_choice_next: words = null     # next node id, or -1 to end
 
-function dlg_ensure(rpg_st: mut RpgState) -> void {
-  if rpg_st.dlg_reg == null {
-    rpg_st.dlg_reg = Dict.new()
-    rpg_st.dlg_tree_start = words(DLG_TREE_MAX)
-    rpg_st.dlg_node_tree = words(DLG_NODE_MAX);  rpg_st.dlg_node_text = pointers(DLG_NODE_MAX)
-    rpg_st.dlg_choice_node = words(DLG_CHOICE_MAX);  rpg_st.dlg_choice_label = pointers(DLG_CHOICE_MAX);  rpg_st.dlg_choice_next = words(DLG_CHOICE_MAX)
+function dlg_ensure() -> void {
+  if dlg_reg == null {
+    dlg_reg = Dict.new()
+    dlg_tree_start = words(DLG_TREE_MAX)
+    dlg_node_tree = words(DLG_NODE_MAX);  dlg_node_text = pointers(DLG_NODE_MAX)
+    dlg_choice_node = words(DLG_CHOICE_MAX);  dlg_choice_label = pointers(DLG_CHOICE_MAX);  dlg_choice_next = words(DLG_CHOICE_MAX)
   }
 }
 
@@ -26,37 +36,37 @@ event cancellable DialogChoice { e: int = 0, node: int = 0, choice: int = 0 }
 event DialogEnded { e: int = 0 }
 
 # Dialog.tree(name) — register (or fetch) a tree id.
-@Namespace(Dialog) function dialog_tree(rpg_st: mut RpgState, name: pointer) -> int {
-  dlg_ensure(rpg_st)
-  let ex = Dict.get_or(rpg_st.dlg_reg, name, -1)
+@Namespace(Dialog) function dialog_tree(name: pointer) -> int {
+  dlg_ensure()
+  let ex = Dict.get_or(dlg_reg, name, -1)
   if ex >= 0 { return ex }
-  if rpg_st.dlg_tree_n >= DLG_TREE_MAX { return -1 }
-  let id = rpg_st.dlg_tree_n
-  rpg_st.dlg_tree_start[id] = -1
-  rpg_st.dlg_tree_n += 1
-  Dict.set(rpg_st.dlg_reg, name, id)
+  if dlg_tree_n >= DLG_TREE_MAX { return -1 }
+  let id = dlg_tree_n
+  dlg_tree_start[id] = -1
+  dlg_tree_n += 1
+  Dict.set(dlg_reg, name, id)
   return id
 }
 # Dialog.node(tree_name, text) — add a line node; the first node added to a tree is
 # its entry point. Returns the node id.
-@Namespace(Dialog) function dialog_node(rpg_st: mut RpgState, tree_name: pointer, text: pointer) -> int {
-  dlg_ensure(rpg_st)
-  let tid = dialog_tree(rpg_st, tree_name)
+@Namespace(Dialog) function dialog_node(tree_name: pointer, text: pointer) -> int {
+  dlg_ensure()
+  let tid = dialog_tree(tree_name)
   if tid < 0 { return -1 }
-  if rpg_st.dlg_node_n >= DLG_NODE_MAX { return -1 }
-  let id = rpg_st.dlg_node_n
-  rpg_st.dlg_node_tree[id] = tid;  rpg_st.dlg_node_text[id] = text
-  rpg_st.dlg_node_n += 1
-  if rpg_st.dlg_tree_start[tid] < 0 { rpg_st.dlg_tree_start[tid] = id }
+  if dlg_node_n >= DLG_NODE_MAX { return -1 }
+  let id = dlg_node_n
+  dlg_node_tree[id] = tid;  dlg_node_text[id] = text
+  dlg_node_n += 1
+  if dlg_tree_start[tid] < 0 { dlg_tree_start[tid] = id }
   return id
 }
 # Dialog.choice(node, label, next_node) — add a branch (next_node -1 ends).
-@Namespace(Dialog) function dialog_choice(rpg_st: mut RpgState, node: int, label: pointer, next_node: int) -> int {
-  dlg_ensure(rpg_st)
-  if rpg_st.dlg_choice_n >= DLG_CHOICE_MAX { return -1 }
-  let id = rpg_st.dlg_choice_n
-  rpg_st.dlg_choice_node[id] = node;  rpg_st.dlg_choice_label[id] = label;  rpg_st.dlg_choice_next[id] = next_node
-  rpg_st.dlg_choice_n += 1
+@Namespace(Dialog) function dialog_choice(node: int, label: pointer, next_node: int) -> int {
+  dlg_ensure()
+  if dlg_choice_n >= DLG_CHOICE_MAX { return -1 }
+  let id = dlg_choice_n
+  dlg_choice_node[id] = node;  dlg_choice_label[id] = label;  dlg_choice_next[id] = next_node
+  dlg_choice_n += 1
   return id
 }
 
@@ -70,45 +80,45 @@ function dlg_set(e: int, name: pointer, v: int) -> void {
 }
 
 # Dialog.start(e, tree_name) — open the tree on a speaker (DialogStarted + Line).
-@Namespace(Dialog) function dialog_start(rpg_st: mut RpgState, e: int, tree_name: pointer) -> void {
-  dlg_ensure(rpg_st)
-  let tid = dialog_tree(rpg_st, tree_name)
+@Namespace(Dialog) function dialog_start(e: int, tree_name: pointer) -> void {
+  dlg_ensure()
+  let tid = dialog_tree(tree_name)
   if tid < 0 { return }
   dlg_set(e, "tree", tid)
-  dlg_set(e, "node", rpg_st.dlg_tree_start[tid])
+  dlg_set(e, "node", dlg_tree_start[tid])
   dlg_set(e, "active", 1)
   emit DialogStarted(e: e, tree: tid)
-  emit DialogLine(e: e, node: rpg_st.dlg_tree_start[tid])
+  emit DialogLine(e: e, node: dlg_tree_start[tid])
 }
 # Dialog.line(e) — text of the current node (empty when inactive).
-@Namespace(Dialog) function dialog_line(rpg_st: RpgState, e: int) -> pointer {
+@Namespace(Dialog) function dialog_line(e: int) -> pointer {
   if dlg_get(e, "active") == 0 { return "" }
-  return rpg_st.dlg_node_text[dlg_get(e, "node")]
+  return dlg_node_text[dlg_get(e, "node")]
 }
 # Dialog.count(e) — number of choices at the current node.
-@Namespace(Dialog) function dialog_count(rpg_st: mut RpgState, e: int) -> int {
-  dlg_ensure(rpg_st)
+@Namespace(Dialog) function dialog_count(e: int) -> int {
+  dlg_ensure()
   if dlg_get(e, "active") == 0 { return 0 }
   let node = dlg_get(e, "node")
   var n = 0;  var i = 0
-  while i < rpg_st.dlg_choice_n { if rpg_st.dlg_choice_node[i] == node { n += 1 };  i += 1 }
+  while i < dlg_choice_n { if dlg_choice_node[i] == node { n += 1 };  i += 1 }
   return n
 }
 # Dialog.choose(e, i) — take the i-th choice (veto-able); advance or end.
-@Namespace(Dialog) function dialog_choose(rpg_st: mut RpgState, e: int, idx: int) -> int {
-  dlg_ensure(rpg_st)
+@Namespace(Dialog) function dialog_choose(e: int, idx: int) -> int {
+  dlg_ensure()
   if dlg_get(e, "active") == 0 { return 0 }
   let node = dlg_get(e, "node")
   var seen = 0;  var i = 0;  var pick = -1
-  while i < rpg_st.dlg_choice_n {
-    if rpg_st.dlg_choice_node[i] == node {
-      if seen == idx { pick = i;  i = rpg_st.dlg_choice_n } else { seen += 1 }
+  while i < dlg_choice_n {
+    if dlg_choice_node[i] == node {
+      if seen == idx { pick = i;  i = dlg_choice_n } else { seen += 1 }
     }
     i += 1
   }
   if pick < 0 { return 0 }
   if emit DialogChoice(e: e, node: node, choice: idx) != 0 { return 0 }
-  let nxt = rpg_st.dlg_choice_next[pick]
+  let nxt = dlg_choice_next[pick]
   if nxt < 0 {
     dlg_set(e, "active", 0)
     emit DialogEnded(e: e)

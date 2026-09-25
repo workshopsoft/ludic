@@ -9,42 +9,40 @@ program UiTemplates {
     name: string = ""
     cost: int = 0
   }
-  state UitemplatesState {
-    stock: []Item = new []Item
-    purse: int = 100
-    bought: []int = new []int
-  }
-  function add(uitemplates_st: mut UitemplatesState, name: string, cost: int) -> void {
+  var stock: []Item = new []Item
+  var purse: int = 100
+  var bought: []int = new []int
+  function add(name: string, cost: int) -> void {
     let it = new Item
     it.name = name
     it.cost = cost
-    push(uitemplates_st.stock, it)
+    push(stock, it)
   }
-  view Shop (uitemplates_st: mut UitemplatesState) {
-    purse = uitemplates_st.purse
-    stock = uitemplates_st.stock
-    owned: int = len(uitemplates_st.bought)
-    function afford(i: int) -> bool { return uitemplates_st.purse >= uitemplates_st.stock[i].cost }
+  view Shop {
+    purse = purse
+    stock = stock
+    owned: int = len(bought)
+    function afford(i: int) -> bool { return purse >= stock[i].cost }
     on buy(i: int) {
-      uitemplates_st.purse -= uitemplates_st.stock[i].cost
-      push(uitemplates_st.bought, i)
+      purse -= stock[i].cost
+      push(bought, i)
     }
   }
   const KIT: string = "<ui>\n<component name='Price'><text>${cost}</text></component>\n<component name='Line' export='true'>\n  <state picks='{0}'/>\n  <row gap='8' w='fill' align='center'>\n    <text color='{picked ? \"#ffcc00\" : \"#eeeeee\"}'>{item.name} -</text>\n    <Price cost='{item.cost}'/>\n    <spacer w='fill'/>\n    <text>{picks}</text>\n    <button enabled='{afford(i)}' on-press='buy(i); set picks = picks + 1; emit chose'>Buy</button>\n  </row>\n</component>\n</ui>\n"
   const PAGE: string = "<ui>\n<import src='kit.xml' as='kit'/>\n<screen name='shop' gap='4' pad='10'>\n  <state pick='{-1}'/>\n  <text size='24'>The purse: ${purse}</text>\n  <each in='{stock}' as='item' index='i'>\n    <kit:Line item='{item}' i='{i}' picked='{pick == i}' on-chose='set pick = i'/>\n  </each>\n  <if test='{owned == 0}'><text>Nothing bought yet</text></if>\n  <else><text>{owned} bought, the last {pick + 1}</text></else>\n</screen>\n</ui>\n"
   const PRIVATE: string = "<ui><import src='kit.xml' as='kit'/><screen name='peek'><kit:Price cost='{1}'/></screen></ui>"
-  entry (ui_st: mut UiState, uitemplates_st: mut UitemplatesState) {
-    add(uitemplates_st, "Rope", 30)
-    add(uitemplates_st, "Lantern", 80)
-    ui_load_text(ui_st, KIT, "ui/kit.xml")
-    ui_load_text(ui_st, PAGE, "ui/shop.xml")
-    ui_load_text(ui_st, PRIVATE, "ui/peek.xml")
-    var root: UiNode = ui_nodes(ui_st, "shop", view_shop())
-    ui_place(ui_st, root, 0.0, 0.0, 600.0, 400.0)
+  entry {
+    add("Rope", 30)
+    add("Lantern", 80)
+    ui_load_text(KIT, "ui/kit.xml")
+    ui_load_text(PAGE, "ui/shop.xml")
+    ui_load_text(PRIVATE, "ui/peek.xml")
+    var root: UiNode = ui_nodes("shop", view_shop())
+    ui_place(root, 0.0, 0.0, 600.0, 400.0)
     let press = root.children[1].children[4]
-    ui_press(ui_st, ui_hit(root, press.x + 1.0, press.y + 1.0))
-    root = ui_nodes(ui_st, "shop", view_shop())
-    ui_place(ui_st, root, 0.0, 0.0, 600.0, 400.0)
-    print(`purse {uitemplates_st.purse}, bought {len(uitemplates_st.bought)}; the lantern is enabled: {root.children[2].children[4].enabled}`)
+    ui_press(ui_hit(root, press.x + 1.0, press.y + 1.0))
+    root = ui_nodes("shop", view_shop())
+    ui_place(root, 0.0, 0.0, 600.0, 400.0)
+    print(`purse {purse}, bought {len(bought)}; the lantern is enabled: {root.children[2].children[4].enabled}`)
   }
 }

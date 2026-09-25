@@ -11,26 +11,24 @@ program HintsTest {
   def Hints night { urgency: HINTS_TIP, line: "Night soon" }
   def Hints from "cards.lres"
 
-  state HintstestState {
-    on: []bool = null
-    showing: bool = true
-  }
+  var on: []bool = null
+  var showing: bool = true
 
-  function fake_true(hintstest_st: HintstestState, i: int) -> bool { return hintstest_st.on[i] }
-  function fake_showing(hintstest_st: HintstestState) -> bool { return hintstest_st.showing }
+  function fake_true(i: int) -> bool { return on[i] }
+  function fake_showing() -> bool { return showing }
   bind HintsWorld { true_now: fn fake_true, showing: fn fake_showing }
 
-  function fresh(base_st: mut BaseState, hints_st: mut HintsState, hintstest_st: mut HintstestState) -> void {
-    hintstest_st.on = new []bool
-    for i in 0 .. HINT_COUNT { push(hintstest_st.on, false) }
-    hintstest_st.showing = true
-    hints_config(hints_st, 3, 1.0)
-    hints_reset(base_st, hints_st)
-    hints_mutes_load(hints_st, Value.list())
+  function fresh() -> void {
+    on = new []bool
+    for i in 0 .. HINT_COUNT { push(on, false) }
+    showing = true
+    hints_config(3, 1.0)
+    hints_reset()
+    hints_mutes_load(Value.list())
   }
 
-  function count(base_st: mut BaseState, hints_st: mut HintsState, what: int) -> int {
-    let fs = q_drain(base_st, hints_facts(base_st, hints_st))
+  function count(what: int) -> int {
+    let fs = q_drain(hints_facts())
     var n = 0
     for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
     return n
@@ -46,119 +44,119 @@ program HintsTest {
     expect(hints_step_text(HINT_THIRSTY, 1) == "Drink at a shore")
   }
 
-  test "the most urgent true cards, capped, ties in registry order" (base_st: mut BaseState, hints_st: mut HintsState, hintstest_st: mut HintstestState) {
-    fresh(base_st, hints_st, hintstest_st)
-    for i in 0 .. HINT_COUNT { hintstest_st.on[i] = true }
-    hints_tick(hints_st, 1.0)
-    expect_eq(hints_count(hints_st), 3)
-    expect_eq(hints_at(hints_st, 0), HINT_PARCHED)
-    expect_eq(hints_at(hints_st, 1), HINT_BEAR)
-    expect_eq(hints_at(hints_st, 2), HINT_COLD)
-    hintstest_st.on[HINT_PARCHED] = false
-    hintstest_st.on[HINT_BEAR] = false
-    hints_tick(hints_st, 0.5)
-    expect_eq(hints_at(hints_st, 0), HINT_PARCHED)          # not a second yet: the rail holds
-    hints_tick(hints_st, 0.6)
-    expect_eq(hints_at(hints_st, 0), HINT_COLD)
-    expect_eq(hints_at(hints_st, 1), HINT_THIRSTY)
-    expect_eq(hints_at(hints_st, 2), HINT_FIRE)
+  test "the most urgent true cards, capped, ties in registry order" {
+    fresh()
+    for i in 0 .. HINT_COUNT { on[i] = true }
+    hints_tick(1.0)
+    expect_eq(hints_count(), 3)
+    expect_eq(hints_at(0), HINT_PARCHED)
+    expect_eq(hints_at(1), HINT_BEAR)
+    expect_eq(hints_at(2), HINT_COLD)
+    on[HINT_PARCHED] = false
+    on[HINT_BEAR] = false
+    hints_tick(0.5)
+    expect_eq(hints_at(0), HINT_PARCHED)          # not a second yet: the rail holds
+    hints_tick(0.6)
+    expect_eq(hints_at(0), HINT_COLD)
+    expect_eq(hints_at(1), HINT_THIRSTY)
+    expect_eq(hints_at(2), HINT_FIRE)
   }
 
-  test "nothing on the rail while it is not showing" (base_st: mut BaseState, hints_st: mut HintsState, hintstest_st: mut HintstestState) {
-    fresh(base_st, hints_st, hintstest_st)
-    hintstest_st.on[HINT_COLD] = true
-    hintstest_st.showing = false
-    hints_sort(hints_st)
-    expect_eq(len(hints_rail(hints_st)), 0)
-    expect_eq(hints_count(hints_st), 0)
-    hintstest_st.showing = true
-    hints_sort(hints_st)
-    expect_eq(len(hints_rail(hints_st)), 1)
+  test "nothing on the rail while it is not showing" {
+    fresh()
+    on[HINT_COLD] = true
+    showing = false
+    hints_sort()
+    expect_eq(len(hints_rail()), 0)
+    expect_eq(hints_count(), 0)
+    showing = true
+    hints_sort()
+    expect_eq(len(hints_rail()), 1)
   }
 
-  test "the key opens the picked chip, the arrows walk round, the key puts it down" (base_st: mut BaseState, hints_st: mut HintsState, hintstest_st: mut HintstestState) {
-    fresh(base_st, hints_st, hintstest_st)
-    hintstest_st.on[HINT_COLD] = true
-    hintstest_st.on[HINT_THIRSTY] = true
-    hintstest_st.on[HINT_RAIN] = true
-    hints_sort(hints_st)
-    hints_key(base_st, hints_st)
-    expect_eq(hints_card(hints_st), HINT_COLD)
-    hints_move(base_st, hints_st, 1)
-    expect_eq(hints_card(hints_st), HINT_THIRSTY)
-    expect(hints_hot(hints_st, 1))
-    hints_move(base_st, hints_st, -1)
-    hints_move(base_st, hints_st, -1)
-    expect_eq(hints_card(hints_st), HINT_RAIN)
-    hints_key(base_st, hints_st)
-    expect_eq(hints_card(hints_st), -1)
-    expect_eq(count(base_st, hints_st, HINTS_F_OPENED), 4)
+  test "the key opens the picked chip, the arrows walk round, the key puts it down" {
+    fresh()
+    on[HINT_COLD] = true
+    on[HINT_THIRSTY] = true
+    on[HINT_RAIN] = true
+    hints_sort()
+    hints_key()
+    expect_eq(hints_card(), HINT_COLD)
+    hints_move(1)
+    expect_eq(hints_card(), HINT_THIRSTY)
+    expect(hints_hot(1))
+    hints_move(-1)
+    hints_move(-1)
+    expect_eq(hints_card(), HINT_RAIN)
+    hints_key()
+    expect_eq(hints_card(), -1)
+    expect_eq(count(HINTS_F_OPENED), 4)
   }
 
-  test "the card follows its subject as the rail re-sorts, and goes when it is no longer true" (base_st: mut BaseState, hints_st: mut HintsState, hintstest_st: mut HintstestState) {
-    fresh(base_st, hints_st, hintstest_st)
-    hintstest_st.on[HINT_THIRSTY] = true
-    hintstest_st.on[HINT_RAIN] = true
-    hints_sort(hints_st)
-    hints_open(base_st, hints_st, 1)
-    expect_eq(hints_card(hints_st), HINT_RAIN)
-    hintstest_st.on[HINT_COLD] = true
-    hints_sort(hints_st)
-    expect_eq(hints_card(hints_st), HINT_RAIN)
-    expect_eq(hints_pick(hints_st), 2)
-    hintstest_st.on[HINT_RAIN] = false
-    hints_sort(hints_st)
-    expect_eq(hints_card(hints_st), -1)
-    expect_eq(count(base_st, hints_st, HINTS_F_CLOSED), 0)            # it went; nobody put it down
+  test "the card follows its subject as the rail re-sorts, and goes when it is no longer true" {
+    fresh()
+    on[HINT_THIRSTY] = true
+    on[HINT_RAIN] = true
+    hints_sort()
+    hints_open(1)
+    expect_eq(hints_card(), HINT_RAIN)
+    on[HINT_COLD] = true
+    hints_sort()
+    expect_eq(hints_card(), HINT_RAIN)
+    expect_eq(hints_pick(), 2)
+    on[HINT_RAIN] = false
+    hints_sort()
+    expect_eq(hints_card(), -1)
+    expect_eq(count(HINTS_F_CLOSED), 0)            # it went; nobody put it down
   }
 
-  test "I know this: muted off the rail, counted, given back" (base_st: mut BaseState, hints_st: mut HintsState, hintstest_st: mut HintstestState) {
-    fresh(base_st, hints_st, hintstest_st)
-    hintstest_st.on[HINT_COLD] = true
-    hintstest_st.on[HINT_THIRSTY] = true
-    hints_sort(hints_st)
-    hints_key(base_st, hints_st)
-    hints_mute_card(base_st, hints_st)
-    expect_eq(hints_card(hints_st), -1)
-    expect(hints_muted(hints_st, HINT_COLD))
-    expect_eq(hints_mute_count(hints_st), 1)
-    expect_eq(count(base_st, hints_st, HINTS_F_MUTED), 1)
-    hints_tick(hints_st, 0.0)                                # the next pass comes at once
-    expect_eq(hints_at(hints_st, 0), HINT_THIRSTY)
-    expect_eq(hints_count(hints_st), 1)
-    hints_unmute_all(base_st, hints_st)
-    hints_tick(hints_st, 0.0)
-    expect_eq(hints_at(hints_st, 0), HINT_COLD)
-    expect_eq(count(base_st, hints_st, HINTS_F_UNMUTED), 1)
+  test "I know this: muted off the rail, counted, given back" {
+    fresh()
+    on[HINT_COLD] = true
+    on[HINT_THIRSTY] = true
+    hints_sort()
+    hints_key()
+    hints_mute_card()
+    expect_eq(hints_card(), -1)
+    expect(hints_muted(HINT_COLD))
+    expect_eq(hints_mute_count(), 1)
+    expect_eq(count(HINTS_F_MUTED), 1)
+    hints_tick(0.0)                                # the next pass comes at once
+    expect_eq(hints_at(0), HINT_THIRSTY)
+    expect_eq(hints_count(), 1)
+    hints_unmute_all()
+    hints_tick(0.0)
+    expect_eq(hints_at(0), HINT_COLD)
+    expect_eq(count(HINTS_F_UNMUTED), 1)
   }
 
-  test "mutes are kept by key, and a key this build lacks is carried through" (base_st: mut BaseState, hints_st: mut HintsState, hintstest_st: mut HintstestState) {
-    fresh(base_st, hints_st, hintstest_st)
-    hints_mute(hints_st, HINT_NIGHT, true)
-    hints_mute(hints_st, HINT_BEAR, true)
-    let l = hints_mutes_save(hints_st)
+  test "mutes are kept by key, and a key this build lacks is carried through" {
+    fresh()
+    hints_mute(HINT_NIGHT, true)
+    hints_mute(HINT_BEAR, true)
+    let l = hints_mutes_save()
     expect_eq(Value.count(l), 2)
     Value.add(l, Value.str("gone_card"))
     Value.add(l, Value.int(3))                     # not a key: ignored
-    hints_mutes_load(hints_st, l)
-    expect(hints_muted(hints_st, HINT_NIGHT))
-    expect(hints_muted(hints_st, HINT_BEAR))
-    expect(not hints_muted(hints_st, HINT_RAIN))
-    expect_eq(hints_mute_count(hints_st), 2)
-    let back = hints_mutes_save(hints_st)
+    hints_mutes_load(l)
+    expect(hints_muted(HINT_NIGHT))
+    expect(hints_muted(HINT_BEAR))
+    expect(not hints_muted(HINT_RAIN))
+    expect_eq(hints_mute_count(), 2)
+    let back = hints_mutes_save()
     expect_eq(Value.count(back), 3)
     expect(Value.as_str(Value.at(back, 2)) == "gone_card")
-    hints_mutes_load(hints_st, null)
-    expect_eq(hints_mute_count(hints_st), 0)
+    hints_mutes_load(null)
+    expect_eq(hints_mute_count(), 0)
   }
 
-  test "as a system it ticks the rail" (base_st: mut BaseState, hints_st: mut HintsState, hintstest_st: mut HintstestState) {
-    fresh(base_st, hints_st, hintstest_st)
-    core_clear(base_st)
-    core_add(base_st, hints_system())
-    core_reset_all(base_st)
-    hintstest_st.on[HINT_FIRE] = true
-    core_tick_all(base_st, tick_new(1.0, 1, 0.0))
-    expect_eq(hints_at(hints_st, 0), HINT_FIRE)
+  test "as a system it ticks the rail" {
+    fresh()
+    core_clear()
+    core_add(hints_system())
+    core_reset_all()
+    on[HINT_FIRE] = true
+    core_tick_all(tick_new(1.0, 1, 0.0))
+    expect_eq(hints_at(0), HINT_FIRE)
   }
 }

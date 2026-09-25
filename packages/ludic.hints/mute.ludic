@@ -1,60 +1,62 @@
 # mute.ludic - the cards a player has said they know, kept BY KEY: a card added, removed or moved in
 # the registry leaves every other mute where it was, and a key this build does not know is carried
+var hn_mute: []bool = null
+var hn_foreign: []string = null      # muted keys with no card in this build, written back as read
 
-function hn_mute_ensure(hints_st: mut HintsState) -> void {
-  if hints_st.hn_mute != null { return }
-  hints_st.hn_mute = new []bool
-  for i in 0 .. HINT_COUNT { push(hints_st.hn_mute, false) }
-  hints_st.hn_foreign = new []string
+function hn_mute_ensure() -> void {
+  if hn_mute != null { return }
+  hn_mute = new []bool
+  for i in 0 .. HINT_COUNT { push(hn_mute, false) }
+  hn_foreign = new []string
 }
 
-export function hints_muted(hints_st: mut HintsState, id: int) -> bool {
-  hn_mute_ensure(hints_st)
+export function hints_muted(id: int) -> bool {
+  hn_mute_ensure()
   if id < 0 or id >= HINT_COUNT { return false }
-  return hints_st.hn_mute[id]
+  return hn_mute[id]
 }
 
-export function hints_mute(hints_st: mut HintsState, id: int, on: bool) -> void {
-  hn_mute_ensure(hints_st)
+export function hints_mute(id: int, on: bool) -> void {
+  hn_mute_ensure()
   if id < 0 or id >= HINT_COUNT { return }
-  hints_st.hn_mute[id] = on
+  hn_mute[id] = on
 }
 
-export function hints_mute_count(hints_st: mut HintsState) -> int {
-  hn_mute_ensure(hints_st)
+export function hints_mute_count() -> int {
+  hn_mute_ensure()
   var n = 0
-  for i in 0 .. HINT_COUNT { if hints_st.hn_mute[i] { n += 1 } }
+  for i in 0 .. HINT_COUNT { if hn_mute[i] { n += 1 } }
   return n
 }
 
 # every muted card given back, from the next pass
-export function hints_unmute_all(base_st: mut BaseState, hints_st: mut HintsState) -> void {
-  hn_mute_ensure(hints_st)
-  for i in 0 .. HINT_COUNT { hints_st.hn_mute[i] = false }
-  hints_st.hn_foreign = new []string
-  hints_st.hn_t = 0.0
-  hn_fact(base_st, hints_st, HINTS_F_UNMUTED, -1)
+export function hints_unmute_all() -> void {
+  hn_mute_ensure()
+  for i in 0 .. HINT_COUNT { hn_mute[i] = false }
+  hn_foreign = new []string
+  hn_t = 0.0
+  hn_fact(HINTS_F_UNMUTED, -1)
 }
 
 # the mutes as a list of keys, for wherever the game keeps the player's own choices
-export function hints_mutes_save(hints_st: mut HintsState) -> Val {
-  hn_mute_ensure(hints_st)
+export function hints_mutes_save() -> Val {
+  hn_mute_ensure()
   let l = Value.list()
-  for i in 0 .. HINT_COUNT { if hints_st.hn_mute[i] { Value.add(l, Value.str(Hints[i].key)) } }
-  for i in 0 .. len(hints_st.hn_foreign) { Value.add(l, Value.str(hints_st.hn_foreign[i])) }
+  for i in 0 .. HINT_COUNT { if hn_mute[i] { Value.add(l, Value.str(Hints[i].key)) } }
+  for i in 0 .. len(hn_foreign) { Value.add(l, Value.str(hn_foreign[i])) }
   return l
 }
 
 # a list of keys read back; anything that is not a list is no mutes
-export function hints_mutes_load(hints_st: mut HintsState, l: Val) -> void {
-  hints_st.hn_mute = null
-  hn_mute_ensure(hints_st)
+export function hints_mutes_load(l: Val) -> void {
+  hn_mute = null
+  hn_mute_ensure()
   if l == null or Value.kind(l) != 5 { return }
   for i in 0 .. Value.count(l) {
     let e = Value.at(l, i)
     if Value.kind(e) != 4 { continue }
     let k = Value.as_str(e)
     let id = hints_find(k)
-    if id >= 0 { hints_st.hn_mute[id] = true } else { push(hints_st.hn_foreign, k) }
+    if id >= 0 { hn_mute[id] = true } else { push(hn_foreign, k) }
   }
 }

@@ -4,22 +4,20 @@ import "ludic.weather"
 import "ludic.base"
 program WeatherTest {
   numbers float
-  state WeathertestState {
-    owns: bool = true
-    hours: float = 12.0
-    bias: int = 0
-    lean: []float = null
-  }
+  var owns: bool = true
+  var hours: float = 12.0
+  var bias: int = 0
+  var lean: []float = null
 
-  function fake_owns(weathertest_st: WeathertestState) -> bool { return weathertest_st.owns }
-  function fake_hours(weathertest_st: WeathertestState) -> float { return weathertest_st.hours }
-  function fake_night(weathertest_st: WeathertestState) -> bool { return weathertest_st.hours < 6.0 or weathertest_st.hours > 20.0 }
-  function fake_bias(weathertest_st: WeathertestState) -> int { return weathertest_st.bias }
+  function fake_owns() -> bool { return owns }
+  function fake_hours() -> float { return hours }
+  function fake_night() -> bool { return hours < 6.0 or hours > 20.0 }
+  function fake_bias() -> int { return bias }
   function fake_seed() -> int { return 7 }
   function fake_front_hours() -> float { return 6.0 }
-  function fake_odds(weather_st: WeatherState, weathertest_st: WeathertestState, from: int) -> []float {
-    if weathertest_st.lean != null { return weathertest_st.lean }
-    return weather_kind(weather_st, from).odds
+  function fake_odds(from: int) -> []float {
+    if lean != null { return lean }
+    return weather_kind(from).odds
   }
 
   function odds3(a: float, b: float, c: float) -> []float {
@@ -59,146 +57,146 @@ program WeatherTest {
   }
 
   # clear, rain and storm: clear always goes to rain, rain to storm, storm to clear
-  function fresh(base_st: mut BaseState, weather_st: mut WeatherState, weathertest_st: mut WeathertestState) -> void {
-    weathertest_st.owns = true
-    weathertest_st.hours = 12.0
-    weathertest_st.bias = WEATHER_NO_BIAS
-    weathertest_st.lean = null
+  function fresh() -> void {
+    owns = true
+    hours = 12.0
+    bias = WEATHER_NO_BIAS
+    lean = null
     let ks = new []WeatherKind
     push(ks, kind("clear", false, false, odds3(0.0, 1.0, 0.0)))
     push(ks, kind("rain", true, false, odds3(0.0, 0.0, 1.0)))
     push(ks, kind("storm", true, true, odds3(1.0, 0.0, 0.0)))
-    weather_kinds(weather_st, ks)
-    weather_config_wind(weather_st, 0.5, 2.5, 10.0, 19.0)
-    weather_reset(base_st, weather_st)
+    weather_kinds(ks)
+    weather_config_wind(0.5, 2.5, 10.0, 19.0)
+    weather_reset()
   }
 
-  function facts(base_st: mut BaseState, weather_st: mut WeatherState) -> []WeatherFact { return q_drain(base_st, weather_facts(base_st, weather_st)) }
-  function step(base_st: mut BaseState, weather_st: mut WeatherState, dt: float, gh: float, n: int) -> void { for i in 0 .. n { weather_run(base_st, weather_st, dt, gh) } }
+  function facts() -> []WeatherFact { return q_drain(weather_facts()) }
+  function step(dt: float, gh: float, n: int) -> void { for i in 0 .. n { weather_run(dt, gh) } }
   function count(fs: []WeatherFact, what: int) -> int {
     var n = 0
     for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
     return n
   }
 
-  test "a new trip is clear, dry and forecast clear" (base_st: mut BaseState, weather_st: mut WeatherState, weathertest_st: mut WeathertestState) {
-    fresh(base_st, weather_st, weathertest_st)
-    expect_eq(weather_state(weather_st), 0)
-    expect_eq(weather_forecast(weather_st), 0)
-    expect(not weather_wet(weather_st))
-    expect(weather_cold(weather_st) == 0.0)
+  test "a new trip is clear, dry and forecast clear" {
+    fresh()
+    expect_eq(weather_state(), 0)
+    expect_eq(weather_forecast(), 0)
+    expect(not weather_wet())
+    expect(weather_cold() == 0.0)
   }
 
-  test "a spell that runs out gives way to the next, as a fact" (base_st: mut BaseState, weather_st: mut WeatherState, weathertest_st: mut WeathertestState) {
-    fresh(base_st, weather_st, weathertest_st)
-    weather_set(weather_st, 0, 1, 0.1)
-    step(base_st, weather_st, 0.1, 0.2, 1)
-    expect_eq(weather_state(weather_st), 1)
-    expect_eq(weather_next(weather_st), 2)
-    let fs = facts(base_st, weather_st)
+  test "a spell that runs out gives way to the next, as a fact" {
+    fresh()
+    weather_set(0, 1, 0.1)
+    step(0.1, 0.2, 1)
+    expect_eq(weather_state(), 1)
+    expect_eq(weather_next(), 2)
+    let fs = facts()
     expect_eq(count(fs, WEATHER_BEGAN), 1)
-    expect(weather_left(weather_st) >= 1.0 and weather_left(weather_st) < 3.0)
+    expect(weather_left() >= 1.0 and weather_left() < 3.0)
   }
 
-  test "the amount eases in, and wet follows it" (base_st: mut BaseState, weather_st: mut WeatherState, weathertest_st: mut WeathertestState) {
-    fresh(base_st, weather_st, weathertest_st)
-    weather_set(weather_st, 0, 1, 0.01)
-    step(base_st, weather_st, 0.1, 0.02, 1)
-    expect(not weather_wet(weather_st))
-    step(base_st, weather_st, 0.1, 0.0, 200)
-    expect(weather_wet(weather_st))
-    expect(weather_cold(weather_st) > 4.0)
-    expect(weather_ground_wet(weather_st) > 0.5)
+  test "the amount eases in, and wet follows it" {
+    fresh()
+    weather_set(0, 1, 0.01)
+    step(0.1, 0.02, 1)
+    expect(not weather_wet())
+    step(0.1, 0.0, 200)
+    expect(weather_wet())
+    expect(weather_cold() > 4.0)
+    expect(weather_ground_wet() > 0.5)
   }
 
-  test "a storm throws lightning, and a clearing in daylight is a fact" (base_st: mut BaseState, weather_st: mut WeatherState, weathertest_st: mut WeathertestState) {
-    fresh(base_st, weather_st, weathertest_st)
-    weather_set(weather_st, 2, 0, 2.0)
-    step(base_st, weather_st, 1.0, 0.0, 60)
-    expect(count(facts(base_st, weather_st), WEATHER_THUNDER) > 0)
-    weather_set(weather_st, 2, 0, 0.05)
-    step(base_st, weather_st, 0.1, 0.1, 1)
-    expect_eq(weather_state(weather_st), 0)
-    expect(weather_after_front(weather_st))
-    expect_eq(count(facts(base_st, weather_st), WEATHER_CLEARED), 1)
+  test "a storm throws lightning, and a clearing in daylight is a fact" {
+    fresh()
+    weather_set(2, 0, 2.0)
+    step(1.0, 0.0, 60)
+    expect(count(facts(), WEATHER_THUNDER) > 0)
+    weather_set(2, 0, 0.05)
+    step(0.1, 0.1, 1)
+    expect_eq(weather_state(), 0)
+    expect(weather_after_front())
+    expect_eq(count(facts(), WEATHER_CLEARED), 1)
   }
 
-  test "the world's odds overrule the kind's" (base_st: mut BaseState, weather_st: mut WeatherState, weathertest_st: mut WeathertestState) {
-    fresh(base_st, weather_st, weathertest_st)
-    weathertest_st.lean = odds3(0.0, 0.0, 1.0)
-    weather_set(weather_st, 0, 0, 0.01)
-    step(base_st, weather_st, 0.1, 0.1, 1)
-    expect_eq(weather_next(weather_st), 2)
+  test "the world's odds overrule the kind's" {
+    fresh()
+    lean = odds3(0.0, 0.0, 1.0)
+    weather_set(0, 0, 0.01)
+    step(0.1, 0.1, 1)
+    expect_eq(weather_next(), 2)
   }
 
-  test "wanting rain forecasts a front and holds it long enough" (base_st: mut BaseState, weather_st: mut WeatherState, weathertest_st: mut WeathertestState) {
-    fresh(base_st, weather_st, weathertest_st)
-    weathertest_st.bias = WEATHER_WANT_WET
-    step(base_st, weather_st, 0.1, 0.01, 1)
-    expect(weather_forced(weather_st))
-    expect_eq(weather_forecast(weather_st), 1)
-    expect_eq(count(facts(base_st, weather_st), WEATHER_FRONT), 1)
-    step(base_st, weather_st, 0.1, 2.0, 1)
-    expect_eq(weather_state(weather_st), 1)
-    expect(not weather_forced(weather_st))
-    expect(weather_left(weather_st) >= 6.0)
+  test "wanting rain forecasts a front and holds it long enough" {
+    fresh()
+    bias = WEATHER_WANT_WET
+    step(0.1, 0.01, 1)
+    expect(weather_forced())
+    expect_eq(weather_forecast(), 1)
+    expect_eq(count(facts(), WEATHER_FRONT), 1)
+    step(0.1, 2.0, 1)
+    expect_eq(weather_state(), 1)
+    expect(not weather_forced())
+    expect(weather_left() >= 6.0)
   }
 
-  test "wanting clear sky clears it and keeps it" (base_st: mut BaseState, weather_st: mut WeatherState, weathertest_st: mut WeathertestState) {
-    fresh(base_st, weather_st, weathertest_st)
-    weather_set(weather_st, 1, 1, 5.0)
-    weathertest_st.bias = WEATHER_WANT_CLEAR
-    step(base_st, weather_st, 0.1, 0.6, 1)
-    expect_eq(weather_state(weather_st), 0)
-    step(base_st, weather_st, 0.1, 0.9, 5)
-    expect_eq(weather_state(weather_st), 0)
+  test "wanting clear sky clears it and keeps it" {
+    fresh()
+    weather_set(1, 1, 5.0)
+    bias = WEATHER_WANT_CLEAR
+    step(0.1, 0.6, 1)
+    expect_eq(weather_state(), 0)
+    step(0.1, 0.9, 5)
+    expect_eq(weather_state(), 0)
   }
 
-  test "a machine that does not own the world runs no spells, but is told them" (base_st: mut BaseState, weather_st: mut WeatherState, weathertest_st: mut WeathertestState) {
-    fresh(base_st, weather_st, weathertest_st)
-    weathertest_st.owns = false
-    weather_set(weather_st, 0, 1, 0.1)
-    step(base_st, weather_st, 0.1, 5.0, 3)
-    expect_eq(weather_state(weather_st), 0)
-    weather_told(base_st, weather_st, 2, 0, 3.0, 1.0, 0.9, 1.0, 2)
-    expect_eq(weather_state(weather_st), 2)
-    expect_eq(count(facts(base_st, weather_st), WEATHER_BEGAN), 1)
-    step(base_st, weather_st, 1.0, 0.0, 60)
-    expect(count(facts(base_st, weather_st), WEATHER_THUNDER) > 0)
+  test "a machine that does not own the world runs no spells, but is told them" {
+    fresh()
+    owns = false
+    weather_set(0, 1, 0.1)
+    step(0.1, 5.0, 3)
+    expect_eq(weather_state(), 0)
+    weather_told(2, 0, 3.0, 1.0, 0.9, 1.0, 2)
+    expect_eq(weather_state(), 2)
+    expect_eq(count(facts(), WEATHER_BEGAN), 1)
+    step(1.0, 0.0, 60)
+    expect(count(facts(), WEATHER_THUNDER) > 0)
   }
 
-  test "the wind turns with the hours" (base_st: mut BaseState, weather_st: mut WeatherState, weathertest_st: mut WeathertestState) {
-    fresh(base_st, weather_st, weathertest_st)
-    weathertest_st.hours = 3.0
-    step(base_st, weather_st, 1.0, 0.0, 100)
-    expect(Math.abs(weather_dir(weather_st) - 0.5) < 0.01)
-    weathertest_st.hours = 12.0
-    step(base_st, weather_st, 1.0, 0.0, 100)
-    expect(Math.abs(weather_dir(weather_st) - 2.5) < 0.01)
+  test "the wind turns with the hours" {
+    fresh()
+    hours = 3.0
+    step(1.0, 0.0, 100)
+    expect(Math.abs(weather_dir() - 0.5) < 0.01)
+    hours = 12.0
+    step(1.0, 0.0, 100)
+    expect(Math.abs(weather_dir() - 2.5) < 0.01)
   }
 
-  test "a morning after rain remembers it was wet" (base_st: mut BaseState, weather_st: mut WeatherState, weathertest_st: mut WeathertestState) {
-    fresh(base_st, weather_st, weathertest_st)
-    weather_set(weather_st, 1, 1, 5.0)
-    step(base_st, weather_st, 0.1, 0.0, 1)
-    weather_morning(weather_st)
-    expect(weather_wet_yesterday(weather_st))
+  test "a morning after rain remembers it was wet" {
+    fresh()
+    weather_set(1, 1, 5.0)
+    step(0.1, 0.0, 1)
+    weather_morning()
+    expect(weather_wet_yesterday())
   }
 
-  test "a save section reads back the same sky" (base_st: mut BaseState, weather_st: mut WeatherState, weathertest_st: mut WeathertestState) {
-    fresh(base_st, weather_st, weathertest_st)
-    weather_set(weather_st, 1, 2, 4.25)
-    weather_morning(weather_st)
-    let fc = weather_forecast(weather_st)
+  test "a save section reads back the same sky" {
+    fresh()
+    weather_set(1, 2, 4.25)
+    weather_morning()
+    let fc = weather_forecast()
     let root = save_tree()
-    save_section(root, "weather", 1, weather_save(weather_st))
+    save_section(root, "weather", 1, weather_save())
     let text = save_encode(root)
-    weather_reset(base_st, weather_st)
+    weather_reset()
     let n = load_section(save_decode(text), "weather")
-    weather_load(base_st, weather_st, n.data, n.version)
-    expect_eq(weather_state(weather_st), 1)
-    expect(weather_left(weather_st) == 4.25)
-    expect_eq(weather_forecast(weather_st), fc)
-    expect(weather_wet_yesterday(weather_st))
+    weather_load(n.data, n.version)
+    expect_eq(weather_state(), 1)
+    expect(weather_left() == 4.25)
+    expect_eq(weather_forecast(), fc)
+    expect(weather_wet_yesterday())
   }
 }

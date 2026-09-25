@@ -30,21 +30,19 @@ program ShooterDemo {
   @OnSpawn(Mob) handler MInit { }
   @OnSpawn(Nest) handler NInit { }
 
-  state ShooterdemoState {
-    spawn_reqs: int = 0
-    waves_cleared: int = 0
-    spawned: int = 0
-    hits: int = 0
-    deaths: int = 0
-  }
-  @On(SpawnRequested) handler OnSpawnReq(shooterdemo_st: mut ShooterdemoState) { shooterdemo_st.spawn_reqs += 1 }
-  @On(WaveCleared) handler OnWaveClear(shooterdemo_st: mut ShooterdemoState) { shooterdemo_st.waves_cleared += 1 }
+  var spawn_reqs: int = 0
+  @On(SpawnRequested) handler OnSpawnReq { spawn_reqs += 1 }
+  var waves_cleared: int = 0
+  @On(WaveCleared) handler OnWaveClear { waves_cleared += 1 }
 
-  @On(ProjectileSpawned) handler CountSpawn(shooterdemo_st: mut ShooterdemoState) { shooterdemo_st.spawned += 1 }
-  @On(ProjectileHit) handler CountHit(shooterdemo_st: mut ShooterdemoState) { shooterdemo_st.hits += 1 }
+  var spawned: int = 0
+  @On(ProjectileSpawned) handler CountSpawn { spawned += 1 }
+  var hits: int = 0
+  @On(ProjectileHit) handler CountHit { hits += 1 }
   # reap the dead (the realistic policy: a Died body leaves the world) so stale
   # corpses do not sit in the faction/targeting scans.
-  @On(Died) handler Reap(shooterdemo_st: mut ShooterdemoState) { shooterdemo_st.deaths += 1;  despawn e }
+  var deaths: int = 0
+  @On(Died) handler Reap { deaths += 1;  despawn e }
 
   function tick_n(n: int) -> void { var i = 0;  while i < n { tick_fixed();  i += 1 } }
   function bi(b: bool) -> int { if b { return 1 };  return 0 }
@@ -74,7 +72,7 @@ program ShooterDemo {
     return -1
   }
 
-  entry (shooterdemo_st: ShooterdemoState) {
+  entry {
     let PT = World.prop_id("TopDown")
     let PB = World.prop_id("Body")
     let PP = World.prop_id("Position")
@@ -112,7 +110,7 @@ program ShooterDemo {
     TopDown.fire(g, 0)
     let hp_before = hp_of(mob)
     tick_n(40)                                          # bullet flies ~120px and hits
-    print(bi(shooterdemo_st.spawned >= 1))                            # 1 — a projectile spawned
+    print(bi(spawned >= 1))                            # 1 — a projectile spawned
     print(bi(hp_of(mob) < hp_before))                  # 1 — enemy took damage
 
     # ---- C. friendly fire is ignored (same faction) ------------------------
@@ -127,29 +125,29 @@ program ShooterDemo {
     print(bi(hp_of(ally) == ally_hp))                  # 1 — ally unharmed (faction)
 
     # ---- D. shotgun spread emits multiple pellets in one shot ---------------
-    let s0 = shooterdemo_st.spawned
+    let s0 = spawned
     Weapon.equip(g, "shotgun")
     TopDown.aim(g, 0)
     TopDown.fire(g, 1);  tick_n(1);  TopDown.fire(g, 0)
-    print(bi(shooterdemo_st.spawned - s0 == 5))                        # 1 — 5 pellets
+    print(bi(spawned - s0 == 5))                        # 1 — 5 pellets
 
     # ---- E. a fresh enemy is eventually killed (Combat -> Died -> reaped) --
-    let d0 = shooterdemo_st.deaths
+    let d0 = deaths
     Weapon.equip(g, "rifle")
     TopDown.aim(g, 0)
     var f = 0
-    while (shooterdemo_st.deaths == d0) and (f < 400) {
+    while (deaths == d0) and (f < 400) {
       TopDown.fire(g, 1);  tick_fixed();  TopDown.fire(g, 0);  tick_fixed()
       f += 1
     }
-    print(bi(shooterdemo_st.deaths == d0 + 1))                         # 1 — enemy destroyed (Died fired)
+    print(bi(deaths == d0 + 1))                         # 1 — enemy destroyed (Died fired)
 
     # ---- F. ring pattern (bullet-hell) emits N bullets around 360 ----------
-    let r0 = shooterdemo_st.spawned
+    let r0 = spawned
     let ring = Weapon.def("nova", 30, 3, 6, 0, 8, 2)   # pattern 2 = ring, 8 pellets
     Weapon.equip(g, "nova")
     TopDown.fire(g, 1);  tick_n(1);  TopDown.fire(g, 0)
-    print(bi(shooterdemo_st.spawned - r0 == 8))                        # 1 — 8-way ring
+    print(bi(spawned - r0 == 8))                        # 1 — 8-way ring
 
     # ---- G. homing shot curves onto an off-axis enemy ----------------------
     let seek = Weapon.def("seeker", 30, 40, 6, 0, 1, 0)
@@ -168,8 +166,8 @@ program ShooterDemo {
     # ---- H. wave spawner: budgeted, throttled SpawnRequested + WaveCleared --
     spawn Nest { Position { x: 300, y: 300 }, Spawner { rate: 3, budget: 4 } }
     tick_n(20)                                            # 4 spawns at 3-frame spacing, then cleared
-    print(bi(shooterdemo_st.spawn_reqs == 4))                            # 1 — exactly budget requests
-    print(bi(shooterdemo_st.waves_cleared == 1))                         # 1 — wave cleared once
+    print(bi(spawn_reqs == 4))                            # 1 — exactly budget requests
+    print(bi(waves_cleared == 1))                         # 1 — wave cleared once
 
     quit()
   }

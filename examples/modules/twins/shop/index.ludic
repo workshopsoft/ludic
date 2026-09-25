@@ -1,12 +1,10 @@
 # shop/index.ludic - private names a neighbour also uses: seed, dice, LIMIT
 module shop
-export state ShopState {
-  dice: int = 100
-}
+var dice: int = 100
 const LIMIT: int = 5
-function seed(shop_st: ShopState) -> int {
-  return shop_st.dice + LIMIT
+function seed() -> int {
+  return dice + LIMIT
 }
-export function shop_seed(shop_st: ShopState) -> int {
-  return seed(shop_st)
+export function shop_seed() -> int {
+  return seed()
 }

@@ -34,6 +34,7 @@ property GpuVariant {
   i_type: []string
 }
 
+var gpu_variants: []GpuVariant = null
 
 function gpu_variant_new(id: string, vs: string, fs: string, defs: string) -> GpuVariant {
   let v = new GpuVariant
@@ -46,8 +47,8 @@ function gpu_variant_new(id: string, vs: string, fs: string, defs: string) -> Gp
 }
 
 # Read a manifest; returns how many programs it holds (0: none, or no file).
-function gpu_manifest_load(render3d_st: mut Render3dState, path: string) -> int {
-  render3d_st.gpu_variants = new []GpuVariant
+function gpu_manifest_load(path: string) -> int {
+  gpu_variants = new []GpuVariant
   let text = Fs.read_text(path)
   if text == null { return 0 }
   let lines = Text.split(text, "\n")
@@ -67,7 +68,7 @@ function gpu_manifest_load(render3d_st: mut Render3dState, path: string) -> int 
         k += 1
       }
       cur = gpu_variant_new(f[1], f[2], f[3], defs)
-      push(render3d_st.gpu_variants, cur)
+      push(gpu_variants, cur)
       continue
     }
     if cur == null { continue }
@@ -84,18 +85,18 @@ function gpu_manifest_load(render3d_st: mut Render3dState, path: string) -> int 
       push(cur.i_name, f[2]);  push(cur.i_loc, Text.to_int(f[3]));  push(cur.i_type, f[4])
     }
   }
-  return len(render3d_st.gpu_variants)
+  return len(gpu_variants)
 }
 
 # the variant for a program as r3d_program names it (defines with real newlines)
-function gpu_variant_find(render3d_st: Render3dState, vs: string, fs: string, defines: string) -> GpuVariant {
-  return gpu_variant_find_key(render3d_st, vs, fs, Text.replace(defines, "\n", ";"))
+function gpu_variant_find(vs: string, fs: string, defines: string) -> GpuVariant {
+  return gpu_variant_find_key(vs, fs, Text.replace(defines, "\n", ";"))
 }
 # ... or as variants.list writes it (';' for newlines)
-function gpu_variant_find_key(render3d_st: Render3dState, vs: string, fs: string, defs: string) -> GpuVariant {
-  if render3d_st.gpu_variants == null { return null }
-  for i in 0 .. len(render3d_st.gpu_variants) {
-    let v = render3d_st.gpu_variants[i]
+function gpu_variant_find_key(vs: string, fs: string, defs: string) -> GpuVariant {
+  if gpu_variants == null { return null }
+  for i in 0 .. len(gpu_variants) {
+    let v = gpu_variants[i]
     if v.vs == vs and v.fs == fs and v.defs == defs { return v }
   }
   return null

@@ -20,10 +20,8 @@ enum RoomStyle { Pillars, Columns, CenterSlab, Bars, Scatter }
 
 const DUNGEON_MARGIN: int = 2
 
-state DungeonState {
-  dungeon_wall:  int = '#'
-  dungeon_floor: int = '.'
-}
+var dungeon_wall:  int = '#'
+var dungeon_floor: int = '.'
 
 function dungeon_columns() -> int { return Map.width() }
 function dungeon_rows() -> int { return Map.height() }
@@ -31,62 +29,62 @@ function dungeon_door_column() -> int { return Map.width() / 2 - 1 }     # the l
 function dungeon_door_row() -> int { return Map.height() / 2 }           # the top of the two door cells
 
 # a wall, but never in the margin so rooms stay traversable
-function dungeon_place(dungeon_st: DungeonState, x: int, y: int) -> void {
+function dungeon_place(x: int, y: int) -> void {
   if (x < DUNGEON_MARGIN) or (x > dungeon_columns() - 1 - DUNGEON_MARGIN) { return }
   if (y < DUNGEON_MARGIN) or (y > dungeon_rows() - 1 - DUNGEON_MARGIN) { return }
-  Map.set(x: x, y: y, glyph: dungeon_st.dungeon_wall)
+  Map.set(x: x, y: y, glyph: dungeon_wall)
 }
-function dungeon_mirrored(dungeon_st: DungeonState, x: int, y: int) -> void {
-  dungeon_place(dungeon_st, x, y)
-  dungeon_place(dungeon_st, dungeon_columns() - 1 - x, y)
-  dungeon_place(dungeon_st, x, dungeon_rows() - 1 - y)
-  dungeon_place(dungeon_st, dungeon_columns() - 1 - x, dungeon_rows() - 1 - y)
+function dungeon_mirrored(x: int, y: int) -> void {
+  dungeon_place(x, y)
+  dungeon_place(dungeon_columns() - 1 - x, y)
+  dungeon_place(x, dungeon_rows() - 1 - y)
+  dungeon_place(dungeon_columns() - 1 - x, dungeon_rows() - 1 - y)
 }
-function dungeon_pillar(dungeon_st: DungeonState, x: int, y: int) -> void {   # 2x2, mirrored four ways
-  dungeon_mirrored(dungeon_st, x, y)
-  dungeon_mirrored(dungeon_st, x + 1, y)
-  dungeon_mirrored(dungeon_st, x, y + 1)
-  dungeon_mirrored(dungeon_st, x + 1, y + 1)
+function dungeon_pillar(x: int, y: int) -> void {   # 2x2, mirrored four ways
+  dungeon_mirrored(x, y)
+  dungeon_mirrored(x + 1, y)
+  dungeon_mirrored(x, y + 1)
+  dungeon_mirrored(x + 1, y + 1)
 }
 
-function dungeon_style(dungeon_st: DungeonState, style: int) -> void {
+function dungeon_style(style: int) -> void {
   let cols = dungeon_columns()
   let rows = dungeon_rows()
   match style {
     RoomStyle.Pillars => {
       let x = Random.range(low: 3, high: 5)
       let y = Random.range(low: 3, high: 4)
-      dungeon_pillar(dungeon_st, x, y)
-      if Random.chance(percent: 60) { dungeon_pillar(dungeon_st, x + 3, y + 2) }
+      dungeon_pillar(x, y)
+      if Random.chance(percent: 60) { dungeon_pillar(x + 3, y + 2) }
     }
     RoomStyle.Columns => {
       let x = Random.range(low: 4, high: 6)
-      for y in 3 .. rows - 3 { dungeon_mirrored(dungeon_st, x, y) }
+      for y in 3 .. rows - 3 { dungeon_mirrored(x, y) }
     }
-    RoomStyle.CenterSlab => { Map.rect(x: 6, y: 5, width: cols - 12, height: rows - 10, glyph: dungeon_st.dungeon_wall) }
+    RoomStyle.CenterSlab => { Map.rect(x: 6, y: 5, width: cols - 12, height: rows - 10, glyph: dungeon_wall) }
     RoomStyle.Bars => {
       let y = Random.range(low: 3, high: 4)
-      for x in 4 .. cols - 4 { dungeon_mirrored(dungeon_st, x, y) }
+      for x in 4 .. cols - 4 { dungeon_mirrored(x, y) }
     }
     _ => {
       for i in 0 .. Random.range(low: 3, high: 5) {
         let x = Random.range(low: 3, high: cols / 2 - 1)
-        dungeon_place(dungeon_st, x, Random.range(low: 3, high: rows - 4))
-        dungeon_place(dungeon_st, cols - 1 - x, Random.range(low: 3, high: rows - 4))
+        dungeon_place(x, Random.range(low: 3, high: rows - 4))
+        dungeon_place(cols - 1 - x, Random.range(low: 3, high: rows - 4))
       }
     }
   }
 }
 
-@Namespace(Dungeon) function dungeon_open_arena(dungeon_st: mut DungeonState, wall: int, floor: int) -> void {
-  dungeon_st.dungeon_wall = wall
-  dungeon_st.dungeon_floor = floor
+@Namespace(Dungeon) function dungeon_open_arena(wall: int, floor: int) -> void {
+  dungeon_wall = wall
+  dungeon_floor = floor
   Map.fill(glyph: floor)
   Map.border(glyph: wall)
 }
-@Namespace(Dungeon) function dungeon_arena(dungeon_st: mut DungeonState, style: int, wall: int, floor: int) -> void {
-  dungeon_open_arena(dungeon_st, wall, floor)
-  dungeon_style(dungeon_st, style)
+@Namespace(Dungeon) function dungeon_arena(style: int, wall: int, floor: int) -> void {
+  dungeon_open_arena(wall, floor)
+  dungeon_style(style)
   Map.rect(x: dungeon_door_column(), y: 1, width: 2, height: dungeon_rows() - 2, glyph: floor)   # the door lanes
   Map.rect(x: 1, y: dungeon_door_row(), width: dungeon_columns() - 2, height: 2, glyph: floor)
 }

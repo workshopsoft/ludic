@@ -32,7 +32,7 @@ function ct_build_bar(n: UiNode) -> void {
   fill.w_pct = Math.clamp((Value.as_float(ui_attr(n, "value")) - lo) / (hi - lo), 0.0, 1.0) * 100.0
   push(n.children, fill)
 }
-function ct_build(ui_st: UiState, n: UiNode) -> void {
+function ct_build(n: UiNode) -> void {
   if n.tag == "progress" or n.tag == "meter" {
     ct_build_bar(n)
     return
@@ -41,10 +41,10 @@ function ct_build(ui_st: UiState, n: UiNode) -> void {
   n.focusable = true
   let t = ui_attr_text(n, "type")
   if n.tag == "select" {
-    ct_build_select(ui_st, n)
+    ct_build_select(n)
     return
   }
-  ct_label(ui_st, n)
+  ct_label(n)
   if t == "checkbox" or t == "radio" {
     let track = ct_part(n, "ui-track", "")
     push(track.children, ct_part(n, "ui-knob", ""))
@@ -53,8 +53,8 @@ function ct_build(ui_st: UiState, n: UiNode) -> void {
     ct_build_range(n)
   } else {
     let field = ct_part(n, "ui-field", "")
-    push(field.children, ct_part(n, "ui-value", ct_field_text(ui_st, n)))
-    if ui_st.fc_key == n.key and t != "key" { push(field.children, ct_part(n, "ui-caret", "")) }
+    push(field.children, ct_part(n, "ui-value", ct_field_text(n)))
+    if fc_key == n.key and t != "key" { push(field.children, ct_part(n, "ui-caret", "")) }
     push(n.children, field)
   }
 }
@@ -71,10 +71,10 @@ function ct_build_range(n: UiNode) -> void {
   push(n.children, track)
   push(n.children, ct_part(n, "ui-value", ct_value_text(n)))
 }
-function ct_build_select(ui_st: UiState, n: UiNode) -> void {
+function ct_build_select(n: UiNode) -> void {
   let opts = n.children
   n.children = new []UiNode
-  ct_label(ui_st, n)
+  ct_label(n)
   var shown = ""
   let at = ct_option_at(n, opts)
   if at >= 0 { shown = opts[at].text }
@@ -92,9 +92,9 @@ function ct_option_at(n: UiNode, opts: []UiNode) -> int {
   }
   return -1
 }
-function ct_field_text(ui_st: UiState, n: UiNode) -> string {
+function ct_field_text(n: UiNode) -> string {
   let t = ui_attr_text(n, "type")
-  if t == "key" { return ct_key_text(ui_st, n) }
-  if t == "number" { return ct_num_shown(ui_st, n) }
+  if t == "key" { return ct_key_text(n) }
+  if t == "number" { return ct_num_shown(n) }
   return ui_attr_text(n, "value")
 }

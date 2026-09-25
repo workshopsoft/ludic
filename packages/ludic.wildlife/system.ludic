@@ -1,21 +1,21 @@
 # system.ludic - the wildlife as a system: its save section is this player's record (the species
 # seen and fed) and which ranges they have found; the animals themselves are respawned with the
 # valley, so a reset forgets the record and nothing else
-export function wildlife_reset(base_st: mut BaseState, wildlife_st: mut WildlifeState) -> void {
-  wl_record_reset(wildlife_st)
-  wildlife_st.wl_found = null
-  let rs = wildlife_ranges(wildlife_st)
+export function wildlife_reset() -> void {
+  wl_record_reset()
+  wl_found = null
+  let rs = wildlife_ranges()
   for i in 0 .. len(rs) { rs[i].found = false }
-  q_clear(base_st, wildlife_facts(base_st, wildlife_st))
+  q_clear(wildlife_facts())
 }
 
-export function wildlife_save(wildlife_st: mut WildlifeState) -> Val {
+export function wildlife_save() -> Val {
   let v = Value.object()
-  sv_put_int(v, "seen", wildlife_st.wl_seen)
-  sv_put_int(v, "fed", wildlife_st.wl_fed)
-  sv_put_bool(v, "fed_any", wildlife_st.wl_fed_any)
+  sv_put_int(v, "seen", wl_seen)
+  sv_put_int(v, "fed", wl_fed)
+  sv_put_bool(v, "fed_any", wl_fed_any)
   let found = new []int
-  let rs = wildlife_ranges(wildlife_st)
+  let rs = wildlife_ranges()
   for i in 0 .. len(rs) {
     var f = 0
     if rs[i].found { f = 1 }
@@ -25,13 +25,13 @@ export function wildlife_save(wildlife_st: mut WildlifeState) -> Val {
   return v
 }
 
-export function wildlife_load(base_st: mut BaseState, wildlife_st: mut WildlifeState, v: Val, version: int) -> void {
-  wildlife_reset(base_st, wildlife_st)
-  wildlife_st.wl_seen = sv_int(v, "seen", 0)
-  wildlife_st.wl_fed = sv_int(v, "fed", 0)
-  wildlife_st.wl_fed_any = sv_bool(v, "fed_any", false)
-  wildlife_st.wl_found = sv_ints(v, "found")
-  wl_found_apply(wildlife_st)
+export function wildlife_load(v: Val, version: int) -> void {
+  wildlife_reset()
+  wl_seen = sv_int(v, "seen", 0)
+  wl_fed = sv_int(v, "fed", 0)
+  wl_fed_any = sv_bool(v, "fed_any", false)
+  wl_found = sv_ints(v, "found")
+  wl_found_apply()
 }
 
 # PH_SIMULATE with no tick of its own: the game steps it (wildlife_tick) where the world is owned

@@ -1,83 +1,84 @@
 # draw.ludic - the laid-out nodes through the renderer: the background (rounded by border-radius),
 # the border, the content, the children in painting order (a scroll box's clipped to it, with its
 # bar), then the outline, which is where a focus ring is drawn
-function fr_draw(ui_st: mut UiState, n: UiNode) -> void {
-  let outer = ui_st.fr_ga
-  ui_st.fr_ga = outer * n.alpha
-  fr_draw_in(ui_st, n)
-  ui_st.fr_ga = outer
+var fr_ga: float = 1.0           # the opacity of everything around this element, which it multiplies
+function fr_draw(n: UiNode) -> void {
+  let outer = fr_ga
+  fr_ga = outer * n.alpha
+  fr_draw_in(n)
+  fr_ga = outer
 }
-function fr_draw_in(ui_st: mut UiState, n: UiNode) -> void {
+function fr_draw_in(n: UiNode) -> void {
   if n.kind == UI_NATIVE {
     n.native.draw(n)
     return
   }
-  fr_background(ui_st, n)
-  fr_border(ui_st, n)
-  if n.kind == UI_TEXT { fr_text(ui_st, n) }
-  if n.kind == UI_IMAGE and ui_st.ui_be.image != null { fr_image(ui_st, n) }
-  let clipped = n.kind == UI_SCROLL and ui_st.ui_be.clip != null
-  if clipped { fr_clip_push(ui_st, n.x, n.y, n.cw, n.ch) }
-  if n.children != null { fr_children(ui_st, n) }
-  if clipped { fr_clip_pop(ui_st) }
-  if n.kind == UI_SCROLL { sc_bar(ui_st, n) }
-  if n.outline_w > 0.0 { fr_outline(ui_st, n) }
+  fr_background(n)
+  fr_border(n)
+  if n.kind == UI_TEXT { fr_text(n) }
+  if n.kind == UI_IMAGE and ui_be.image != null { fr_image(n) }
+  let clipped = n.kind == UI_SCROLL and ui_be.clip != null
+  if clipped { fr_clip_push(n.x, n.y, n.cw, n.ch) }
+  if n.children != null { fr_children(n) }
+  if clipped { fr_clip_pop() }
+  if n.kind == UI_SCROLL { sc_bar(n) }
+  if n.outline_w > 0.0 { fr_outline(n) }
 }
 # the shadow, then the background: the colour (rounded), or a border-image's nine-slice - drawn as
 # painted, as CSS draws one, or tinted by a background colour when there is one (so `transparent`,
 # or any colour with no alpha, leaves nothing to see) - then a picture over it
-function fr_background(ui_st: mut UiState, n: UiNode) -> void {
-  if n.sh_c >= 0 { fr_fill(ui_st, n, n.x + n.sh_x, n.y + n.sh_y, n.sh_c, ui_st.fr_ga * n.sh_a) }
+function fr_background(n: UiNode) -> void {
+  if n.sh_c >= 0 { fr_fill(n, n.x + n.sh_x, n.y + n.sh_y, n.sh_c, fr_ga * n.sh_a) }
   if n.bg >= 0 or n.bi_src != "" {
     var c = n.bg
-    var a = ui_st.fr_ga * n.bg_a
+    var a = fr_ga * n.bg_a
     if c < 0 {
       c = 16777215
-      a = ui_st.fr_ga
+      a = fr_ga
     }
-    if a > 0.0 { fr_fill(ui_st, n, n.x, n.y, c, a) }
+    if a > 0.0 { fr_fill(n, n.x, n.y, c, a) }
   }
-  if n.ex != null and n.ex.grad != null { gr_draw(ui_st, n.ex.grad, n.x, n.y, n.cw, n.ch, ui_st.fr_ga) }
-  if n.bg_img != "" and ui_st.ui_be.image != null { ui_st.ui_be.image(n.bg_img, n.x, n.y, n.cw, n.ch, 16777215, ui_st.fr_ga) }
+  if n.ex != null and n.ex.grad != null { gr_draw(n.ex.grad, n.x, n.y, n.cw, n.ch, fr_ga) }
+  if n.bg_img != "" and ui_be.image != null { ui_be.image(n.bg_img, n.x, n.y, n.cw, n.ch, 16777215, fr_ga) }
 }
-function fr_fill(ui_st: UiState, n: UiNode, x: float, y: float, c: int, a: float) -> void {
-  if n.bi_src != "" and ui_st.ui_be.nine != null {
-    ui_st.ui_be.nine(n.bi_src, n.bi_slice, x, y, n.cw, n.ch, n.bi_width, c, a)
+function fr_fill(n: UiNode, x: float, y: float, c: int, a: float) -> void {
+  if n.bi_src != "" and ui_be.nine != null {
+    ui_be.nine(n.bi_src, n.bi_slice, x, y, n.cw, n.ch, n.bi_width, c, a)
     return
   }
-  fr_box(ui_st, x, y, n.cw, n.ch, n.radius, c, a)
+  fr_box(x, y, n.cw, n.ch, n.radius, c, a)
 }
-function fr_box(ui_st: UiState, x: float, y: float, w: float, h: float, r: float, c: int, a: float) -> void {
-  if r > 0.0 and ui_st.ui_be.round != null { ui_st.ui_be.round(x, y, w, h, r, c, a) } else if ui_st.ui_be.rect != null { ui_st.ui_be.rect(x, y, w, h, c, a) }
+function fr_box(x: float, y: float, w: float, h: float, r: float, c: int, a: float) -> void {
+  if r > 0.0 and ui_be.round != null { ui_be.round(x, y, w, h, r, c, a) } else if ui_be.rect != null { ui_be.rect(x, y, w, h, c, a) }
 }
-function fr_border(ui_st: UiState, n: UiNode) -> void {
-  if n.bt + n.br + n.bb + n.bl <= 0.0 or ui_st.ui_be.rect == null { return }
+function fr_border(n: UiNode) -> void {
+  if n.bt + n.br + n.bb + n.bl <= 0.0 or ui_be.rect == null { return }
   var c = n.border_c
-  var ca = ui_st.fr_ga * n.border_a
+  var ca = fr_ga * n.border_a
   if c < 0 {
     c = n.rfg
-    ca = ui_st.fr_ga * n.rfg_a
+    ca = fr_ga * n.rfg_a
   }
-  if n.bt > 0.0 { ui_st.ui_be.rect(n.x, n.y, n.cw, n.bt, c, ca) }
-  if n.bb > 0.0 { ui_st.ui_be.rect(n.x, n.y + n.ch - n.bb, n.cw, n.bb, c, ca) }
-  if n.bl > 0.0 { ui_st.ui_be.rect(n.x, n.y + n.bt, n.bl, n.ch - n.bt - n.bb, c, ca) }
-  if n.br > 0.0 { ui_st.ui_be.rect(n.x + n.cw - n.br, n.y + n.bt, n.br, n.ch - n.bt - n.bb, c, ca) }
+  if n.bt > 0.0 { ui_be.rect(n.x, n.y, n.cw, n.bt, c, ca) }
+  if n.bb > 0.0 { ui_be.rect(n.x, n.y + n.ch - n.bb, n.cw, n.bb, c, ca) }
+  if n.bl > 0.0 { ui_be.rect(n.x, n.y + n.bt, n.bl, n.ch - n.bt - n.bb, c, ca) }
+  if n.br > 0.0 { ui_be.rect(n.x + n.cw - n.br, n.y + n.bt, n.br, n.ch - n.bt - n.bb, c, ca) }
 }
-function fr_frame(ui_st: UiState, x: float, y: float, w: float, h: float, b: float, c: int, a: float) -> void {
-  ui_st.ui_be.rect(x, y, w, b, c, a)
-  ui_st.ui_be.rect(x, y + h - b, w, b, c, a)
-  ui_st.ui_be.rect(x, y + b, b, h - b * 2.0, c, a)
-  ui_st.ui_be.rect(x + w - b, y + b, b, h - b * 2.0, c, a)
+function fr_frame(x: float, y: float, w: float, h: float, b: float, c: int, a: float) -> void {
+  ui_be.rect(x, y, w, b, c, a)
+  ui_be.rect(x, y + h - b, w, b, c, a)
+  ui_be.rect(x, y + b, b, h - b * 2.0, c, a)
+  ui_be.rect(x + w - b, y + b, b, h - b * 2.0, c, a)
 }
 # an outline follows the box's corners, as CSS's does: rounded by border-radius, grown by its offset
-function fr_outline(ui_st: UiState, n: UiNode) -> void {
+function fr_outline(n: UiNode) -> void {
   var c = n.outline_c
   if c < 0 { c = n.rfg }
   let o = n.outline_off + n.outline_w
-  let a = ui_st.fr_ga * n.outline_a
-  if n.radius > 0.0 and ui_st.ui_be.ring != null {
-    ui_st.ui_be.ring(n.x - o, n.y - o, n.cw + o * 2.0, n.ch + o * 2.0, n.radius + o, n.outline_w, c, a)
+  let a = fr_ga * n.outline_a
+  if n.radius > 0.0 and ui_be.ring != null {
+    ui_be.ring(n.x - o, n.y - o, n.cw + o * 2.0, n.ch + o * 2.0, n.radius + o, n.outline_w, c, a)
     return
   }
-  if ui_st.ui_be.rect != null { fr_frame(ui_st, n.x - o, n.y - o, n.cw + o * 2.0, n.ch + o * 2.0, n.outline_w, c, a) }
+  if ui_be.rect != null { fr_frame(n.x - o, n.y - o, n.cw + o * 2.0, n.ch + o * 2.0, n.outline_w, c, a) }
 }

@@ -6,18 +6,16 @@
 program Scoped {
   property Health { hp: int = 0 }
   model Unit { Health }
-  state ScopedState {
-    fires: int = 0
-  }
+  var fires: int = 0
   event Tick { }
-  @On(Tick) handler OnTick(scoped_st: mut ScopedState) { for (Health) in query [Health, {Unit}] { scoped_st.fires += 1 } }
+  @On(Tick) handler OnTick { for (Health) in query [Health, {Unit}] { fires += 1 } }
 
-  entry (scoped_st: ScopedState) {
+  entry {
     spawn Unit { Health { hp: 1 } }
     emit Tick()     # 1 live Unit -> fires = 1
     emit Tick()     # fires = 2
     for (Health) in query [Health, {Unit}] { despawn self() }   # kill the Unit
     emit Tick()     # no live Units -> fires stays 2
-    print(scoped_st.fires)    # 2
+    print(fires)    # 2
   }
 }

@@ -1,28 +1,28 @@
 # update.ludic - a frame of the body: the stick in the camera's frame, the step, the gait, the camera
-export function char_update(base_st: mut BaseState, character_st: mut CharacterState, ix0: float, iz0: float, run0: bool, jump0: bool, dyaw: float, dpitch: float, dt: float) -> void {
-  var run = run0 and character_st.chr_can_run
+export function char_update(ix0: float, iz0: float, run0: bool, jump0: bool, dyaw: float, dpitch: float, dt: float) -> void {
+  var run = run0 and chr_can_run
   var ix = ix0
   var iz = iz0
   var jump = jump0
-  character_st.chr_step = 0.0
-  character_st.chr_time = character_st.chr_time + dt
-  character_st.chr_water = CharacterGround.water(character_st.chr_x, character_st.chr_z)
-  chr_sit_tick(character_st, dt)
+  chr_step = 0.0
+  chr_time = chr_time + dt
+  chr_water = CharacterGround.water(chr_x, chr_z)
+  chr_sit_tick(dt)
   if CharacterBody.riding() {
-    chr_ride_update(character_st, ix, iz, run, dyaw, dpitch, dt)
+    chr_ride_update(ix, iz, run, dyaw, dpitch, dt)
     return
   }
   if CharacterBody.sneaking() { run = false }
   # sitting: any step stands up, and nothing else moves
-  if character_st.chr_sit and (Math.abs(ix) > 0.3 or Math.abs(iz) > 0.3 or jump) { character_st.chr_sit = false }
-  if character_st.chr_sit {
+  if chr_sit and (Math.abs(ix) > 0.3 or Math.abs(iz) > 0.3 or jump) { chr_sit = false }
+  if chr_sit {
     ix = 0.0
     iz = 0.0
     jump = false
   }
   # the stick in the camera's frame: forward on the ground is (-sin yaw, -cos yaw)
-  let cy = Math.cos(character_st.chr_cam_yaw)
-  let sy = Math.sin(character_st.chr_cam_yaw)
+  let cy = Math.cos(chr_cam_yaw)
+  let sy = Math.sin(chr_cam_yaw)
   var dx = -sy * iz + cy * ix
   var dz = -cy * iz - sy * ix
   var mag = Math.sqrt(dx * dx + dz * dz)
@@ -31,30 +31,30 @@ export function char_update(base_st: mut BaseState, character_st: mut CharacterS
     dz = dz / mag
     mag = 1.0
   }
-  chr_steer(character_st, dx, dz, mag, run, dt)
-  let dist = chr_travel(base_st, character_st, dx, dz, -Math.sin(character_st.chr_yaw), -Math.cos(character_st.chr_yaw), jump, dt)
-  chr_gait(base_st, character_st, dist, dyaw, dpitch, dt)
-  char_camera(character_st, dt)
+  chr_steer(dx, dz, mag, run, dt)
+  let dist = chr_travel(dx, dz, -Math.sin(chr_yaw), -Math.cos(chr_yaw), jump, dt)
+  chr_gait(dist, dyaw, dpitch, dt)
+  char_camera(dt)
 }
 
 # something else carries the body (CharacterBody.ride moves it with char_ride_at); the orbit
 # drifts behind whatever it is on
-function chr_ride_update(character_st: mut CharacterState, ix: float, iz: float, run: bool, dyaw: float, dpitch: float, dt: float) -> void {
+function chr_ride_update(ix: float, iz: float, run: bool, dyaw: float, dpitch: float, dt: float) -> void {
   CharacterBody.ride(ix, iz, run, dt)
-  chr_look(character_st, dyaw, dpitch)
-  if dyaw == 0.0 and not CharacterInput.look_always() { character_st.chr_cam_yaw = character_st.chr_cam_yaw + char_wrap(character_st.chr_yaw - character_st.chr_cam_yaw) * Math.min(1.0, 1.5 * dt) }
-  char_camera(character_st, dt)
+  chr_look(dyaw, dpitch)
+  if dyaw == 0.0 and not CharacterInput.look_always() { chr_cam_yaw = chr_cam_yaw + char_wrap(chr_yaw - chr_cam_yaw) * Math.min(1.0, 1.5 * dt) }
+  char_camera(dt)
 }
 
 # a frame from the input port: the game's devices, read once, stepping the body
-export function char_tick(base_st: mut BaseState, character_st: mut CharacterState, dt: float) -> void {
+export function char_tick(dt: float) -> void {
   var ix = 0.0
   var iz = 0.0
   var run = false
   var jump = false
   var dyaw = 0.0
   var dpitch = 0.0
-  if character_st.chr_holds == 0 {
+  if chr_holds == 0 {
     ix = CharacterInput.move_x()
     iz = CharacterInput.move_z()
     run = CharacterInput.run()
@@ -62,7 +62,7 @@ export function char_tick(base_st: mut BaseState, character_st: mut CharacterSta
     dyaw = CharacterInput.look_yaw()
     dpitch = CharacterInput.look_pitch()
     let wheel = CharacterInput.zoom()
-    if wheel != 0.0 { character_st.chr_cam_dist = Math.clamp(character_st.chr_cam_dist - wheel * 0.35, 1.8, 9.0) }
+    if wheel != 0.0 { chr_cam_dist = Math.clamp(chr_cam_dist - wheel * 0.35, 1.8, 9.0) }
   }
-  char_update(base_st, character_st, ix, iz, run, jump, dyaw, dpitch, dt)
+  char_update(ix, iz, run, jump, dyaw, dpitch, dt)
 }

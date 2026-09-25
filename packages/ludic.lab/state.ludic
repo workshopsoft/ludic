@@ -1,34 +1,27 @@
 # state.ludic - which scene, its shots, and where the loop is in them
-export state LabState {
-  lb_plate: Actor = null
-  lb_plate_dir: string = ""
-  lp_table: []long = null
-  lp_w: int = 0
-  lp_h: int = 0
-  lb_scene: string = ""
-  lb_frame: int = 0
-  lb_shot_names: []string = null
-  lb_shot_pose: []float = null    # 5 per shot: x, y, z, yaw and pitch in degrees
-  lb_shot: int = 0                # the shot being taken or looked at
-  lb_wait: int = 0                # frames held on it so far
-  lb_settle: int = 45             # frames a shot is held before it is taken
-  lb_out: string = ""             # build/lab/<scene>
-  lb_windowed: bool = false
-  lb_note: string = ""            # one line a scene may show under its title
-  lb_font: string = ""            # an overlay font atlas directory; "" draws no captions
-  lb_title: string = "Ludic Lab"
-  lb_draw: fn() = null            # the scene's own drawing, beside the actors
-  lb_shots_taken: int = 0
-}
+var lb_scene: string = ""
+var lb_frame: int = 0
+var lb_shot_names: []string = null
+var lb_shot_pose: []float = null    # 5 per shot: x, y, z, yaw and pitch in degrees
+var lb_shot: int = 0                # the shot being taken or looked at
+var lb_wait: int = 0                # frames held on it so far
+var lb_settle: int = 45             # frames a shot is held before it is taken
+var lb_out: string = ""             # build/lab/<scene>
+var lb_windowed: bool = false
+var lb_note: string = ""            # one line a scene may show under its title
+var lb_font: string = ""            # an overlay font atlas directory; "" draws no captions
+var lb_title: string = "Ludic Lab"
+var lb_draw: fn() = null            # the scene's own drawing, beside the actors
+var lb_shots_taken: int = 0
 
 # frames a shot settles before it is taken (streaming, auto-exposure); 45 by default
-export function lab_settle(lab_st: mut LabState, frames: int) -> void { lab_st.lb_settle = Math.max(1, frames) }
+export function lab_settle(frames: int) -> void { lb_settle = Math.max(1, frames) }
 # the overlay's font atlas (a directory with font.json and font.png) for the captions
-export function lab_font(lab_st: mut LabState, dir: string) -> void { lab_st.lb_font = dir }
-export function lab_title(lab_st: mut LabState, title: string) -> void { lab_st.lb_title = title }
+export function lab_font(dir: string) -> void { lb_font = dir }
+export function lab_title(title: string) -> void { lb_title = title }
 # one line under the scene's title in a window
-export function lab_note(lab_st: mut LabState, s: string) -> void { lab_st.lb_note = s }
+export function lab_note(s: string) -> void { lb_note = s }
 # the scene being shown, and the frame the clock is on (60 a second, whatever the machine)
-export function lab_scene(lab_st: LabState) -> string { return lab_st.lb_scene }
-export function lab_frame(lab_st: LabState) -> int { return lab_st.lb_frame }
-export function lab_time(lab_st: LabState) -> float { return float(lab_st.lb_frame) / 60.0 }
+export function lab_scene() -> string { return lb_scene }
+export function lab_frame() -> int { return lb_frame }
+export function lab_time() -> float { return float(lb_frame) / 60.0 }

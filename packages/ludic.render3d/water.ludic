@@ -5,83 +5,108 @@
 # tinted body read from the scene depth, and soft shores.
 # ============================================================================
 
+var water_mesh: Mesh = null
+var water_prog: int = 0
+var water_level: float = 0.0
+var water_cx: float = 0.0
+var water_cz: float = 0.0
+var water_ex: float = 0.0
+var water_ez: float = 0.0
+var water_on: bool = false
 # Where a body is standing in the water and how hard it is disturbing it. The game sets it;
 # strength 0 means nobody is in the water and the whole term is skipped.
+var wt_wade_x: float = 0.0
+var wt_wade_z: float = 0.0
+var wt_wade_s: float = 0.0
+var water_refl: Target = null            # the world mirrored in the surface, half resolution
+var water_refl_div: int = 2              # R3D_REFLDIV overrides: 2 = half res, 4 = quarter
+var water_saved: floats = null            # the real camera's matrices, restored after the pass
+var water_saved_vp: floats = null         # views of its second and third matrices
+var water_saved_ivp: floats = null
+var water_dumped: bool = false
 # Several still-water planes, each at its own level over its own bounds: the sea round an
 # island and a lake a hundred metres above it cannot be one surface. Each draws the same way;
 # only one - the first added with `reflect` - gets the planar reflection pass, because every
 # mirrored plane is another full scene pass. water_level / water_cx ... mirror that one, so
 # code written against a single plane still reads the surface that reflects.
 const WATER_MAX: int = 8
+var wb_n: int = 0
+var wb_level: floats = null
+var wb_cx: floats = null
+var wb_cz: floats = null
+var wb_ex: floats = null
+var wb_ez: floats = null
+var wb_reflect: words = null
+var wb_primary: int = -1               # the body the reflection pass mirrors, or -1
 
 # Render the scene through a camera mirrored in the water plane into water_refl,
 # clipping everything below the surface; terrain, scattered layers and sky.
-function water_reflection_pass(render3d_st: mut Render3dState) -> void {
-  if render3d_st.wb_primary < 0 { return }            # no body reflects: nothing to mirror
-  if render3d_st.water_refl == null {
-    if r3d_env_has(render3d_st, "R3D_REFLDIV") { render3d_st.water_refl_div = Text.to_int(r3d_env(render3d_st, "R3D_REFLDIV")) }
-    if render3d_st.water_refl != null { target_free(render3d_st, render3d_st.water_refl) }
+function water_reflection_pass() -> void {
+  if wb_primary < 0 { return }            # no body reflects: nothing to mirror
+  if water_refl == null {
+    if r3d_env_has("R3D_REFLDIV") { water_refl_div = Text.to_int(r3d_env("R3D_REFLDIV")) }
+    if water_refl != null { target_free(water_refl) }
     # sized from the scene target, not the window: with a render scale below 1 the frame
     # this reflection is composited into is smaller than the drawable, and a reflection
     # rendered at the window's size would be paying for pixels the water never samples
-    render3d_st.water_refl = target_new(render3d_st, render3d_st.post_w / render3d_st.water_refl_div, render3d_st.post_h / render3d_st.water_refl_div, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, true, GL_LINEAR)
-    render3d_st.water_saved = floats(16 * 4 + 3)
-    render3d_st.water_saved_vp = view(render3d_st.water_saved, 16, 16)
-    render3d_st.water_saved_ivp = view(render3d_st.water_saved, 32, 16)
+    water_refl = target_new(post_w / water_refl_div, post_h / water_refl_div, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, true, GL_LINEAR)
+    water_saved = floats(16 * 4 + 3)
+    water_saved_vp = view(water_saved, 16, 16)
+    water_saved_ivp = view(water_saved, 32, 16)
   }
   # save the camera
-  m4_copy(render3d_st.water_saved, render3d_st.cam_view)
-  m4_copy(render3d_st.water_saved_vp, render3d_st.cam_vp)
-  m4_copy(render3d_st.water_saved_ivp, render3d_st.cam_inv_vp)
-  let sx = render3d_st.cam_pos[0];  let sy = render3d_st.cam_pos[1];  let sz = render3d_st.cam_pos[2]
+  m4_copy(water_saved, cam_view)
+  m4_copy(water_saved_vp, cam_vp)
+  m4_copy(water_saved_ivp, cam_inv_vp)
+  let sx = cam_pos[0];  let sy = cam_pos[1];  let sz = cam_pos[2]
   # the mirrored camera: view' = view * R, R reflecting y about the surface (y' = 2L - y).
   # R has determinant -1, so the winding flips (front faces culled below) and the image
   # lands exactly where the main camera's pixels expect the reflection.
-  let eye = v3_new(sx, 2.0 * render3d_st.water_level - sy, sz)
+  let eye = v3_new(sx, 2.0 * water_level - sy, sz)
   let refl = m4_new()
   refl[5] = -1.0
-  refl[13] = 2.0 * render3d_st.water_level
+  refl[13] = 2.0 * water_level
   let mv = floats(16)
-  m4_mul(mv, render3d_st.water_saved, refl)
-  m4_copy(render3d_st.cam_view, mv)
+  m4_mul(mv, water_saved, refl)
+  m4_copy(cam_view, mv)
   free(mv);  free(refl)
   let fwd = words(3);  let up = words(3);  let at = words(3)
-  m4_mul(render3d_st.cam_vp, render3d_st.cam_proj, render3d_st.cam_view)
-  m4_inverse(render3d_st.cam_inv_vp, render3d_st.cam_vp)
-  v3_copy(render3d_st.cam_pos, eye)
-  render3d_st.r3d_clip_y = render3d_st.water_level - 0.05
-  target_bind(render3d_st, render3d_st.water_refl)
-  gpu_depth_test(render3d_st, true)
-  gpu_depth_func(render3d_st, GL_LESS)
-  gpu_depth_write(render3d_st, true)
-  gpu_cull(render3d_st, true)
-  gpu_cull_face(render3d_st, GL_FRONT)                  # the mirror flips the winding
-  gpu_clear_color(render3d_st, 0.0, 0.0, 0.0, 1.0)
-  gpu_clear(render3d_st, GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-  render3d_st.sc_freeze = true
-  let sb = render3d_st.sc_skip_blade
-  render3d_st.sc_skip_blade = true                    # blades are invisible at this scale in a reflection
-  render3d_st.ter_reflect = true
-  prof_cpu_mark(render3d_st, "reflection setup")
-  terrain_draw(render3d_st)
-  prof_cpu_mark(render3d_st, "reflection terrain")
-  r3d_scene_draw(render3d_st)
-  prof_cpu_mark(render3d_st, "reflection scene")
-  r3d_draw_sky(render3d_st)
-  prof_cpu_mark(render3d_st, "reflection sky")
-  render3d_st.ter_reflect = false
-  render3d_st.sc_skip_blade = sb
-  render3d_st.sc_freeze = false
-  gpu_cull_face(render3d_st, GL_BACK)
-  if r3d_env_has(render3d_st, "R3D_DUMP_REFL") and not render3d_st.water_dumped { render3d_st.water_dumped = true;  tex_dump(render3d_st, render3d_st.water_refl.color, render3d_st.water_refl.w, render3d_st.water_refl.h, "build/dbg_refl.ppm") }
+  m4_mul(cam_vp, cam_proj, cam_view)
+  m4_inverse(cam_inv_vp, cam_vp)
+  v3_copy(cam_pos, eye)
+  r3d_clip_y = water_level - 0.05
+  target_bind(water_refl)
+  gpu_depth_test(true)
+  gpu_depth_func(GL_LESS)
+  gpu_depth_write(true)
+  gpu_cull(true)
+  gpu_cull_face(GL_FRONT)                  # the mirror flips the winding
+  gpu_clear_color(0.0, 0.0, 0.0, 1.0)
+  gpu_clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+  sc_freeze = true
+  let sb = sc_skip_blade
+  sc_skip_blade = true                    # blades are invisible at this scale in a reflection
+  ter_reflect = true
+  prof_cpu_mark("reflection setup")
+  terrain_draw()
+  prof_cpu_mark("reflection terrain")
+  r3d_scene_draw()
+  prof_cpu_mark("reflection scene")
+  r3d_draw_sky()
+  prof_cpu_mark("reflection sky")
+  ter_reflect = false
+  sc_skip_blade = sb
+  sc_freeze = false
+  gpu_cull_face(GL_BACK)
+  if r3d_env_has("R3D_DUMP_REFL") and not water_dumped { water_dumped = true;  tex_dump(water_refl.color, water_refl.w, water_refl.h, "build/dbg_refl.ppm") }
   # restore
-  render3d_st.r3d_clip_y = -2147483600.0
-  m4_copy(render3d_st.cam_view, render3d_st.water_saved)
-  m4_copy(render3d_st.cam_vp, render3d_st.water_saved_vp)
-  m4_copy(render3d_st.cam_inv_vp, render3d_st.water_saved_ivp)
-  v3_set(render3d_st.cam_pos, sx, sy, sz)
+  r3d_clip_y = -2147483600.0
+  m4_copy(cam_view, water_saved)
+  m4_copy(cam_vp, water_saved_vp)
+  m4_copy(cam_inv_vp, water_saved_ivp)
+  v3_set(cam_pos, sx, sy, sz)
   free(eye);  free(fwd);  free(up);  free(at)
-  gpu_fb_bind(render3d_st, 0)
+  gpu_fb_bind(0)
 }
 
 # Is any of the mirrored water in view? The reflection pass is a second copy of the terrain, the
@@ -93,32 +118,39 @@ function water_reflection_pass(render3d_st: mut Render3dState) -> void {
 # asking, so it errs on the side of running. R3D_REFL_ALWAYS=1 runs it on every frame, for comparing.
 # Mac, the five shot viewpoints: looking down at the meadow (c) 225 reflection draws -> none; every view
 # with the lake in it unchanged, byte-identical frames.
-function water_reflect_visible(render3d_st: mut Render3dState) -> bool {
-  if render3d_st.wb_primary < 0 { return false }
-  if render3d_st.wb_refl_always < 0 { render3d_st.wb_refl_always = 0;  if r3d_env_has(render3d_st, "R3D_REFL_ALWAYS") { render3d_st.wb_refl_always = 1 } }
-  if render3d_st.wb_refl_always == 1 or render3d_st.ter_heights == null { return true }
-  if render3d_st.wb_ncells < 0 { let t0 = gl_now_us();  water_cells_build(render3d_st);  render3d_st.wb_build_us = gl_now_us() - t0 }
-  if render3d_st.wb_dbg < 0 { render3d_st.wb_dbg = 0;  if r3d_env_has(render3d_st, "R3D_REFL_DBG") { render3d_st.wb_dbg = 1 } }
-  if render3d_st.wb_dbg == 1 {
+var wb_cells: floats = null             # x0, z0, x1, z1 of each rectangle with water showing
+var wb_ncells: int = -1                # -1: not built for the current mirrored body
+var wb_blocks: words = null            # x0, z0, x1, z1, first cell, cells past the last - of each block
+var wb_nblocks: int = 0
+var wb_refl_always: int = -1
+var wb_dbg: int = -1
+var wb_build_us: long = 0              # how long the last water_cells_build took (R3D_REFL_DBG prints it)
+function water_reflect_visible() -> bool {
+  if wb_primary < 0 { return false }
+  if wb_refl_always < 0 { wb_refl_always = 0;  if r3d_env_has("R3D_REFL_ALWAYS") { wb_refl_always = 1 } }
+  if wb_refl_always == 1 or ter_heights == null { return true }
+  if wb_ncells < 0 { let t0 = gl_now_us();  water_cells_build();  wb_build_us = gl_now_us() - t0 }
+  if wb_dbg < 0 { wb_dbg = 0;  if r3d_env_has("R3D_REFL_DBG") { wb_dbg = 1 } }
+  if wb_dbg == 1 {
     # R3D_REFL_DBG: once, what the test is made of and how much of it is in view
-    render3d_st.wb_dbg = 2
+    wb_dbg = 2
     var seen = 0
     var hidden = 0
-    for i in 0 .. render3d_st.wb_ncells { if wb_cell_visible(render3d_st, i) { seen += 1;  if wb_cell_occluded(render3d_st, i) { hidden += 1 } } }
-    print(`water reflection test: {render3d_st.wb_ncells} wet rectangles in {render3d_st.wb_nblocks} blocks (built in {render3d_st.wb_build_us} us), {seen} in view, {hidden} of them behind the ground`)
+    for i in 0 .. wb_ncells { if wb_cell_visible(i) { seen += 1;  if wb_cell_occluded(i) { hidden += 1 } } }
+    print(`water reflection test: {wb_ncells} wet rectangles in {wb_nblocks} blocks (built in {wb_build_us} us), {seen} in view, {hidden} of them behind the ground`)
   }
   # A rectangle in the frustum can still be behind the ground or dry where it shows: standing on a shore
   # above the lake and looking down at your feet puts water inside the view and none of it on screen.
   # The first 16 in view are checked against the height field; past that the pass simply runs.
   var checked = 0
-  for b in 0 .. render3d_st.wb_nblocks {
+  for b in 0 .. wb_nblocks {
     let o = b * 6
-    if not wb_rect_visible(render3d_st, float_from_bits(render3d_st.wb_blocks[o]), float_from_bits(render3d_st.wb_blocks[o + 1]), float_from_bits(render3d_st.wb_blocks[o + 2]), float_from_bits(render3d_st.wb_blocks[o + 3])) { continue }
-    for i in render3d_st.wb_blocks[o + 4] .. render3d_st.wb_blocks[o + 5] {
-      if not wb_cell_visible(render3d_st, i) { continue }
+    if not wb_rect_visible(float_from_bits(wb_blocks[o]), float_from_bits(wb_blocks[o + 1]), float_from_bits(wb_blocks[o + 2]), float_from_bits(wb_blocks[o + 3])) { continue }
+    for i in wb_blocks[o + 4] .. wb_blocks[o + 5] {
+      if not wb_cell_visible(i) { continue }
       if checked >= 16 { return true }
       checked += 1
-      if not wb_cell_occluded(render3d_st, i) { return true }
+      if not wb_cell_occluded(i) { return true }
     }
   }
   return false
@@ -126,82 +158,82 @@ function water_reflect_visible(render3d_st: mut Render3dState) -> bool {
 # A flat rectangle at the water's level against the view's side planes: hidden when all four corners
 # lie outside one plane. (A bounding sphere was the first version: a 156 m cell's sphere reached into
 # the view from a lake the camera had its back to, and the pass never skipped.)
-function wb_rect_visible(render3d_st: Render3dState, x0: float, z0: float, x1: float, z1: float) -> bool {
-  if render3d_st.cam_planes == null { return true }
+function wb_rect_visible(x0: float, z0: float, x1: float, z1: float) -> bool {
+  if cam_planes == null { return true }
   for p in 0 .. 4 {
     let q = p * 4
-    let a = render3d_st.cam_planes[q];  let c = render3d_st.cam_planes[q + 2]
-    let by = render3d_st.cam_planes[q + 1] * render3d_st.water_level + render3d_st.cam_planes[q + 3]
+    let a = cam_planes[q];  let c = cam_planes[q + 2]
+    let by = cam_planes[q + 1] * water_level + cam_planes[q + 3]
     let ax0 = a * x0;  let ax1 = a * x1;  let cz0 = c * z0;  let cz1 = c * z1
     if ax0 + cz0 + by < 0.0 and ax1 + cz0 + by < 0.0 and ax0 + cz1 + by < 0.0 and ax1 + cz1 + by < 0.0 { return false }
   }
   return true
 }
-function wb_cell_visible(render3d_st: Render3dState, i: int) -> bool {
+function wb_cell_visible(i: int) -> bool {
   let o = i * 4
-  return wb_rect_visible(render3d_st, render3d_st.wb_cells[o], render3d_st.wb_cells[o + 1], render3d_st.wb_cells[o + 2], render3d_st.wb_cells[o + 3])
+  return wb_rect_visible(wb_cells[o], wb_cells[o + 1], wb_cells[o + 2], wb_cells[o + 3])
 }
 # Is the water at (x, z) out of sight - dry ground there, outside the frame, or behind the ground? The
 # sight line is sampled at seven points short of both ends, with half a metre (and a little more with
 # distance) of margin, so a far ridge the drawn terrain rounds off never hides real water. A camera at
 # or under the surface hides nothing behind the ground.
-function wb_point_hidden(render3d_st: mut Render3dState, x: float, z: float) -> bool {
-  if terrain_height(render3d_st, x, z) > render3d_st.water_level + 0.05 { return true }
-  if not cam_sphere_visible(render3d_st, x, render3d_st.water_level, z, 0.5) { return true }
-  let ey = render3d_st.cam_pos[1]
-  if not (ey > render3d_st.water_level) { return false }
-  let dx = x - render3d_st.cam_pos[0];  let dz = z - render3d_st.cam_pos[2]
+function wb_point_hidden(x: float, z: float) -> bool {
+  if terrain_height(x, z) > water_level + 0.05 { return true }
+  if not cam_sphere_visible(x, water_level, z, 0.5) { return true }
+  let ey = cam_pos[1]
+  if not (ey > water_level) { return false }
+  let dx = x - cam_pos[0];  let dz = z - cam_pos[2]
   let margin = 0.5 + Math.sqrt(dx * dx + dz * dz) * 0.004
   for k in 1 .. 8 {
     let t = float(k) / 8.0
-    let sy = ey + (render3d_st.water_level - ey) * t
-    if terrain_height(render3d_st, render3d_st.cam_pos[0] + dx * t, render3d_st.cam_pos[2] + dz * t) > sy + margin { return true }
+    let sy = ey + (water_level - ey) * t
+    if terrain_height(cam_pos[0] + dx * t, cam_pos[2] + dz * t) > sy + margin { return true }
   }
   return false
 }
 # every point the wet test sampled (the centre and four near the corners) is out of sight
-function wb_cell_occluded(render3d_st: mut Render3dState, i: int) -> bool {
+function wb_cell_occluded(i: int) -> bool {
   let o = i * 4
-  let x0 = render3d_st.wb_cells[o];  let z0 = render3d_st.wb_cells[o + 1];  let x1 = render3d_st.wb_cells[o + 2];  let z1 = render3d_st.wb_cells[o + 3]
+  let x0 = wb_cells[o];  let z0 = wb_cells[o + 1];  let x1 = wb_cells[o + 2];  let z1 = wb_cells[o + 3]
   let cx = (x0 + x1) * 0.5;  let cz = (z0 + z1) * 0.5
   let ox = (x1 - x0) * 0.45;  let oz = (z1 - z0) * 0.45
-  if not wb_point_hidden(render3d_st, cx, cz) { return false }
-  if not wb_point_hidden(render3d_st, cx - ox, cz - oz) { return false }
-  if not wb_point_hidden(render3d_st, cx + ox, cz - oz) { return false }
-  if not wb_point_hidden(render3d_st, cx - ox, cz + oz) { return false }
-  return wb_point_hidden(render3d_st, cx + ox, cz + oz)
+  if not wb_point_hidden(cx, cz) { return false }
+  if not wb_point_hidden(cx - ox, cz - oz) { return false }
+  if not wb_point_hidden(cx + ox, cz - oz) { return false }
+  if not wb_point_hidden(cx - ox, cz + oz) { return false }
+  return wb_point_hidden(cx + ox, cz + oz)
 }
-function wb_cell_add(render3d_st: mut Render3dState, x0: float, z0: float, x1: float, z1: float) -> void {
-  let o = render3d_st.wb_ncells * 4
-  render3d_st.wb_cells[o] = x0;  render3d_st.wb_cells[o + 1] = z0;  render3d_st.wb_cells[o + 2] = x1;  render3d_st.wb_cells[o + 3] = z1
-  render3d_st.wb_ncells += 1
+function wb_cell_add(x0: float, z0: float, x1: float, z1: float) -> void {
+  let o = wb_ncells * 4
+  wb_cells[o] = x0;  wb_cells[o + 1] = z0;  wb_cells[o + 2] = x1;  wb_cells[o + 3] = z1
+  wb_ncells += 1
 }
-function wb_block_add(render3d_st: mut Render3dState, x0: float, z0: float, x1: float, z1: float, first: int) -> void {
-  if render3d_st.wb_ncells <= first { return }
-  let o = render3d_st.wb_nblocks * 6
-  render3d_st.wb_blocks[o] = float_bits(x0);  render3d_st.wb_blocks[o + 1] = float_bits(z0);  render3d_st.wb_blocks[o + 2] = float_bits(x1);  render3d_st.wb_blocks[o + 3] = float_bits(z1)
-  render3d_st.wb_blocks[o + 4] = first;  render3d_st.wb_blocks[o + 5] = render3d_st.wb_ncells
-  render3d_st.wb_nblocks += 1
+function wb_block_add(x0: float, z0: float, x1: float, z1: float, first: int) -> void {
+  if wb_ncells <= first { return }
+  let o = wb_nblocks * 6
+  wb_blocks[o] = float_bits(x0);  wb_blocks[o + 1] = float_bits(z0);  wb_blocks[o + 2] = float_bits(x1);  wb_blocks[o + 3] = float_bits(z1)
+  wb_blocks[o + 4] = first;  wb_blocks[o + 5] = wb_ncells
+  wb_nblocks += 1
 }
-function wb_wet(render3d_st: mut Render3dState, x: float, z: float, off: float) -> bool {
-  if terrain_height(render3d_st, x, z) < render3d_st.water_level { return true }
+function wb_wet(x: float, z: float, off: float) -> bool {
+  if terrain_height(x, z) < water_level { return true }
   if off == 0.0 { return false }
-  if terrain_height(render3d_st, x - off, z - off) < render3d_st.water_level { return true }
-  if terrain_height(render3d_st, x + off, z - off) < render3d_st.water_level { return true }
-  if terrain_height(render3d_st, x - off, z + off) < render3d_st.water_level { return true }
-  return terrain_height(render3d_st, x + off, z + off) < render3d_st.water_level
+  if terrain_height(x - off, z - off) < water_level { return true }
+  if terrain_height(x + off, z - off) < water_level { return true }
+  if terrain_height(x - off, z + off) < water_level { return true }
+  return terrain_height(x + off, z + off) < water_level
 }
 # Over the height map, 32 m rectangles (at most 512 a side) tested at five points and kept in blocks of
 # 8 x 8, so a block out of view skips its rectangles in one test - looking away from the water was a
 # walk of every rectangle, every frame. The body beyond the map (a sea runs far past it) is 64 x 64
 # coarse rectangles tested at their centre, in one last block, which only ever matter kilometres away.
 const WB_BLOCK: int = 8
-function water_cells_build(render3d_st: mut Render3dState) -> void {
-  let bx0 = render3d_st.water_cx - render3d_st.water_ex;  let bx1 = render3d_st.water_cx + render3d_st.water_ex
-  let bz0 = render3d_st.water_cz - render3d_st.water_ez;  let bz1 = render3d_st.water_cz + render3d_st.water_ez
-  let th = float(render3d_st.TERRAIN_HALF)
-  let tx0 = Math.max(bx0, render3d_st.ter_ox - th);  let tx1 = Math.min(bx1, render3d_st.ter_ox + th)
-  let tz0 = Math.max(bz0, render3d_st.ter_oz - th);  let tz1 = Math.min(bz1, render3d_st.ter_oz + th)
+function water_cells_build() -> void {
+  let bx0 = water_cx - water_ex;  let bx1 = water_cx + water_ex
+  let bz0 = water_cz - water_ez;  let bz1 = water_cz + water_ez
+  let th = float(TERRAIN_HALF)
+  let tx0 = Math.max(bx0, ter_ox - th);  let tx1 = Math.min(bx1, ter_ox + th)
+  let tz0 = Math.max(bz0, ter_oz - th);  let tz1 = Math.min(bz1, ter_oz + th)
   let inside = tx1 > tx0 and tz1 > tz0
   var cell = 32.0
   var nx = 0
@@ -212,35 +244,35 @@ function water_cells_build(render3d_st: mut Render3dState) -> void {
     nx = int((tx1 - tx0) / cell) + 1
     nz = int((tz1 - tz0) / cell) + 1
   }
-  if render3d_st.wb_cells != null { free(render3d_st.wb_cells) }
-  if render3d_st.wb_blocks != null { free(render3d_st.wb_blocks) }
-  render3d_st.wb_cells = floats((nx * nz + 64 * 64) * 4)
+  if wb_cells != null { free(wb_cells) }
+  if wb_blocks != null { free(wb_blocks) }
+  wb_cells = floats((nx * nz + 64 * 64) * 4)
   let nbx = (nx + WB_BLOCK - 1) / WB_BLOCK
   let nbz = (nz + WB_BLOCK - 1) / WB_BLOCK
-  render3d_st.wb_blocks = words((nbx * nbz + 1) * 6)
-  render3d_st.wb_ncells = 0
-  render3d_st.wb_nblocks = 0
+  wb_blocks = words((nbx * nbz + 1) * 6)
+  wb_ncells = 0
+  wb_nblocks = 0
   let off = cell * 0.45
   let half = cell * 0.5
   for bz in 0 .. nbz {
     for bx in 0 .. nbx {
-      let first = render3d_st.wb_ncells
+      let first = wb_ncells
       var iz = bz * WB_BLOCK
       while iz < (bz + 1) * WB_BLOCK and iz < nz {
         let z0 = tz0 + float(iz) * cell
         var ix = bx * WB_BLOCK
         while ix < (bx + 1) * WB_BLOCK and ix < nx {
           let x0 = tx0 + float(ix) * cell
-          if wb_wet(render3d_st, x0 + half, z0 + half, off) { wb_cell_add(render3d_st, x0, z0, x0 + cell, z0 + cell) }
+          if wb_wet(x0 + half, z0 + half, off) { wb_cell_add(x0, z0, x0 + cell, z0 + cell) }
           ix += 1
         }
         iz += 1
       }
       let x0 = tx0 + float(bx * WB_BLOCK) * cell;  let z0 = tz0 + float(bz * WB_BLOCK) * cell
-      wb_block_add(render3d_st, x0, z0, x0 + float(WB_BLOCK) * cell, z0 + float(WB_BLOCK) * cell, first)
+      wb_block_add(x0, z0, x0 + float(WB_BLOCK) * cell, z0 + float(WB_BLOCK) * cell, first)
     }
   }
-  let first = render3d_st.wb_ncells
+  let first = wb_ncells
   let cw = (bx1 - bx0) / 64.0
   let ch = (bz1 - bz0) / 64.0
   for iz in 0 .. 64 {
@@ -249,64 +281,64 @@ function water_cells_build(render3d_st: mut Render3dState) -> void {
       let x0 = bx0 + float(ix) * cw;  let x1 = x0 + cw
       # inside the height map's rectangle: the fine cells above cover it
       if inside and not (x0 < tx0) and not (x1 > tx1) and not (z0 < tz0) and not (z1 > tz1) { continue }
-      if wb_wet(render3d_st, x0 + cw * 0.5, z0 + ch * 0.5, 0.0) { wb_cell_add(render3d_st, x0, z0, x1, z1) }
+      if wb_wet(x0 + cw * 0.5, z0 + ch * 0.5, 0.0) { wb_cell_add(x0, z0, x1, z1) }
     }
   }
-  wb_block_add(render3d_st, bx0, bz0, bx1, bz1, first)
+  wb_block_add(bx0, bz0, bx1, bz1, first)
 }
 
 # the program and the plane are the process's, built once; the bodies are the map's
-function water_setup(render3d_st: mut Render3dState) -> void {
-  if render3d_st.water_prog != 0 { return }
-  render3d_st.water_mesh = mesh_grid(render3d_st, 2, 0.5)
-  render3d_st.water_prog = r3d_program(render3d_st, "water.vert", "water.frag", "")
-  render3d_st.wb_level = floats(WATER_MAX);  render3d_st.wb_cx = floats(WATER_MAX);  render3d_st.wb_cz = floats(WATER_MAX)
-  render3d_st.wb_ex = floats(WATER_MAX);  render3d_st.wb_ez = floats(WATER_MAX);  render3d_st.wb_reflect = words(WATER_MAX)
+function water_setup() -> void {
+  if water_prog != 0 { return }
+  water_mesh = mesh_grid(2, 0.5)
+  water_prog = r3d_program("water.vert", "water.frag", "")
+  wb_level = floats(WATER_MAX);  wb_cx = floats(WATER_MAX);  wb_cz = floats(WATER_MAX)
+  wb_ex = floats(WATER_MAX);  wb_ez = floats(WATER_MAX);  wb_reflect = words(WATER_MAX)
 }
-function water_bodies_clear(render3d_st: mut Render3dState) -> void {
-  render3d_st.wb_n = 0
-  render3d_st.wb_primary = -1
-  render3d_st.wb_ncells = -1
-  render3d_st.water_on = false
+function water_bodies_clear() -> void {
+  wb_n = 0
+  wb_primary = -1
+  wb_ncells = -1
+  water_on = false
 }
 # Add a plane at `level` over (cx, cz) +- (ex, ez); true `reflect` makes it the mirrored one
 # if none is yet. Returns its index, or -1 once WATER_MAX are in use.
-function water_body_add(render3d_st: mut Render3dState, level: float, cx: float, cz: float, ex: float, ez: float, reflect: bool) -> int {
-  water_setup(render3d_st)
-  if render3d_st.wb_n >= WATER_MAX { return -1 }
-  let i = render3d_st.wb_n
-  render3d_st.wb_level[i] = level;  render3d_st.wb_cx[i] = cx;  render3d_st.wb_cz[i] = cz;  render3d_st.wb_ex[i] = ex;  render3d_st.wb_ez[i] = ez
-  render3d_st.wb_reflect[i] = 0
-  if reflect { render3d_st.wb_reflect[i] = 1 }
-  render3d_st.wb_n += 1
-  render3d_st.water_on = true
-  if reflect and render3d_st.wb_primary < 0 {
-    render3d_st.wb_primary = i
-    render3d_st.wb_ncells = -1
-    render3d_st.water_level = level;  render3d_st.water_cx = cx;  render3d_st.water_cz = cz;  render3d_st.water_ex = ex;  render3d_st.water_ez = ez
+function water_body_add(level: float, cx: float, cz: float, ex: float, ez: float, reflect: bool) -> int {
+  water_setup()
+  if wb_n >= WATER_MAX { return -1 }
+  let i = wb_n
+  wb_level[i] = level;  wb_cx[i] = cx;  wb_cz[i] = cz;  wb_ex[i] = ex;  wb_ez[i] = ez
+  wb_reflect[i] = 0
+  if reflect { wb_reflect[i] = 1 }
+  wb_n += 1
+  water_on = true
+  if reflect and wb_primary < 0 {
+    wb_primary = i
+    wb_ncells = -1
+    water_level = level;  water_cx = cx;  water_cz = cz;  water_ex = ex;  water_ez = ez
   }
   return i
 }
 # one reflecting plane: what this function always meant, without a new mesh and program
 # every time it is called
-function water_init(render3d_st: mut Render3dState, level: float, cx: float, cz: float, ex: float, ez: float) -> void {
-  water_bodies_clear(render3d_st)
-  water_body_add(render3d_st, level, cx, cz, ex, ez, true)
+function water_init(level: float, cx: float, cz: float, ex: float, ez: float) -> void {
+  water_bodies_clear()
+  water_body_add(level, cx, cz, ex, ez, true)
 }
 
 # call after the opaque pass, before the sky: blends over the resolved depth
-function water_draw(render3d_st: mut Render3dState, depth_tex: int) -> void {
-  if not render3d_st.water_on or render3d_st.wb_n == 0 { return }
-  let p = render3d_st.water_prog
-  gpu_use_program(render3d_st, p)
-  u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_view"), render3d_st.cam_view)
-  u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_proj"), render3d_st.cam_proj)
-  u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_inv_vp"), render3d_st.cam_inv_vp)
+function water_draw(depth_tex: int) -> void {
+  if not water_on or wb_n == 0 { return }
+  let p = water_prog
+  gpu_use_program(p)
+  u_mat4(gpu_uniform(p, "u_view"), cam_view)
+  u_mat4(gpu_uniform(p, "u_proj"), cam_proj)
+  u_mat4(gpu_uniform(p, "u_inv_vp"), cam_inv_vp)
   # gl_FragCoord here runs over the scene target, which is post_w x post_h — not the
   # window. They are the same size only at a render scale of 1; at anything less, taking
   # the window's size sent the refraction and depth reads into the wrong corner of the
   # frame, and the lake showed a squashed copy of it instead of its own bed.
-  u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_screen"), float(render3d_st.post_w), float(render3d_st.post_h))
+  u_f2(gpu_uniform(p, "u_screen"), float(post_w), float(post_h))
   # Read into locals first. Passing these three globals straight into the call gives the
   # shader wrong values - the whole lake churns instead of a patch of it - and a single dead
   # `let junk = wt_wade_x` above the same unchanged call is enough to make it correct again.
@@ -315,49 +347,49 @@ function water_draw(render3d_st: mut Render3dState, depth_tex: int) -> void {
   # right after gpu_use_program) nor the nested gpu_uniform call (hoisting that changes
   # nothing). Verified by picture, both backends. Read a global into a local before handing it
   # to a uniform call.
-  let wx = render3d_st.wt_wade_x
-  let wz = render3d_st.wt_wade_z
-  let ws = render3d_st.wt_wade_s
-  u_f3(render3d_st, gpu_uniform(render3d_st, p, "u_wade"), wx, wz, ws)
+  let wx = wt_wade_x
+  let wz = wt_wade_z
+  let ws = wt_wade_s
+  u_f3(gpu_uniform(p, "u_wade"), wx, wz, ws)
   var ron = 0.0
-  if render3d_st.water_refl != null and render3d_st.wb_primary >= 0 {
+  if water_refl != null and wb_primary >= 0 {
     # bind on its own unit first: generating the mip chain re-binds the texture on the active unit,
     # and it must not displace the depth texture the shader reads for the shore
-    r3d_bind_2d(render3d_st, p, "u_refl", 1, render3d_st.water_refl.color);  ron = 1.0
-    gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
-    gpu_tex_mips(render3d_st, GPU_TEX2D)
+    r3d_bind_2d(p, "u_refl", 1, water_refl.color);  ron = 1.0
+    gpu_tex_param(GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+    gpu_tex_mips(GPU_TEX2D)
   }
-  r3d_bind_2d(render3d_st, p, "u_depth", 0, depth_tex)
-  r3d_bind_2d(render3d_st, p, "u_scene", 2, render3d_st.post_scene.color)
-  sky_bind_lighting(render3d_st, p)
-  shadow_bind(render3d_st, p)
-  fog_bind(render3d_st, p)
+  r3d_bind_2d(p, "u_depth", 0, depth_tex)
+  r3d_bind_2d(p, "u_scene", 2, post_scene.color)
+  sky_bind_lighting(p)
+  shadow_bind(p)
+  fog_bind(p)
   # Opaque. The surface composites the refracted bed itself, so there is nothing for
   # hardware blending to do — and an alpha was what left see-through gaps in the foam
   # and a clear band at the shore wide enough to give the plane away.
-  gpu_blend(render3d_st, false)
-  gpu_blend_func(render3d_st, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+  gpu_blend(false)
+  gpu_blend_func(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
   # the surface writes depth: the ambient-occlusion and temporal passes read the frame's depth,
   # and the bed 9 m below the shore would otherwise darken a band along the water line
-  gpu_depth_write(render3d_st, true)
-  gpu_cull(render3d_st, false)
+  gpu_depth_write(true)
+  gpu_cull(false)
   # every body is the same plane at its own level and bounds; only the mirrored one samples
   # the reflection - another body reading it would show the wrong world upside down
-  for i in 0 .. render3d_st.wb_n {
-    u_f(render3d_st, gpu_uniform(render3d_st, p, "u_level"), render3d_st.wb_level[i])
-    u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_center"), render3d_st.wb_cx[i], render3d_st.wb_cz[i])
-    u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_extent"), render3d_st.wb_ex[i], render3d_st.wb_ez[i])
+  for i in 0 .. wb_n {
+    u_f(gpu_uniform(p, "u_level"), wb_level[i])
+    u_f2(gpu_uniform(p, "u_center"), wb_cx[i], wb_cz[i])
+    u_f2(gpu_uniform(p, "u_extent"), wb_ex[i], wb_ez[i])
     var r = 0.0
-    if i == render3d_st.wb_primary { r = ron }
-    u_f(render3d_st, gpu_uniform(render3d_st, p, "u_refl_on"), r)
+    if i == wb_primary { r = ron }
+    u_f(gpu_uniform(p, "u_refl_on"), r)
     # Every body is clipped to the ellipse inside its bounds but an unbounded mirrored sea,
     # whose rectangle is the point. A mirrored LAKE is clipped like any other: a map whose
     # reflection belongs to its lake (the Bells in Maroon Lake) would otherwise draw that
     # lake's level over every hollow in the survey.
     var clip = 1.0
-    if i == render3d_st.wb_primary and Math.max(render3d_st.wb_ex[i], render3d_st.wb_ez[i]) > 10000.0 { clip = 0.0 }
-    u_f(render3d_st, gpu_uniform(render3d_st, p, "u_clip_ellipse"), clip)
-    mesh_draw(render3d_st, render3d_st.water_mesh)
+    if i == wb_primary and Math.max(wb_ex[i], wb_ez[i]) > 10000.0 { clip = 0.0 }
+    u_f(gpu_uniform(p, "u_clip_ellipse"), clip)
+    mesh_draw(water_mesh)
   }
-  gpu_blend(render3d_st, false)
+  gpu_blend(false)
 }

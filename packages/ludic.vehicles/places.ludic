@@ -1,51 +1,51 @@
 # places.ludic - four berths off the pier head and four bays at the trough. Nobody's boat waits in
 # one: a player calls theirs into a place that is empty. A place is taken while a boat lies in it or
 # a horse is tied at it, and frees itself the moment it is rowed or ridden away.
-export function vehicles_dock_at(vehicles_st: mut VehiclesState, x: float, z: float, yaw: float) -> void {
-  vehicles_st.ve_dock_x = x
-  vehicles_st.ve_dock_z = z
-  vehicles_st.ve_dock_yaw = yaw
-  vehicles_st.ve_have_dock = true
+export function vehicles_dock_at(x: float, z: float, yaw: float) -> void {
+  ve_dock_x = x
+  ve_dock_z = z
+  ve_dock_yaw = yaw
+  ve_have_dock = true
 }
 
-export function vehicles_rail_at(vehicles_st: mut VehiclesState, x: float, z: float, yaw: float) -> void {
-  vehicles_st.ve_rail_x = x
-  vehicles_st.ve_rail_z = z
-  vehicles_st.ve_rail_yaw = yaw
+export function vehicles_rail_at(x: float, z: float, yaw: float) -> void {
+  ve_rail_x = x
+  ve_rail_z = z
+  ve_rail_yaw = yaw
 }
 
 # which way the pier head faces, for the posts a game stands on it
-export function vehicles_dock_yaw(vehicles_st: VehiclesState) -> float { return vehicles_st.ve_dock_yaw }
+export function vehicles_dock_yaw() -> float { return ve_dock_yaw }
 
 function ve_across(k: int) -> float { return -3.3 + float(k) * 2.2 }
 
 # a berth: 90 cm off the pier head's outer edge, bow out; its post on the deck above it
-export function vehicle_berth_x(vehicles_st: VehiclesState, k: int) -> float { return vehicles_st.ve_dock_x - Math.sin(vehicles_st.ve_dock_yaw) * 7.25 + Math.cos(vehicles_st.ve_dock_yaw) * ve_across(k) }
-export function vehicle_berth_z(vehicles_st: VehiclesState, k: int) -> float { return vehicles_st.ve_dock_z - Math.cos(vehicles_st.ve_dock_yaw) * 7.25 - Math.sin(vehicles_st.ve_dock_yaw) * ve_across(k) }
-export function vehicle_post_x(vehicles_st: VehiclesState, k: int) -> float { return vehicles_st.ve_dock_x - Math.sin(vehicles_st.ve_dock_yaw) * 6.15 + Math.cos(vehicles_st.ve_dock_yaw) * ve_across(k) }
-export function vehicle_post_z(vehicles_st: VehiclesState, k: int) -> float { return vehicles_st.ve_dock_z - Math.cos(vehicles_st.ve_dock_yaw) * 6.15 - Math.sin(vehicles_st.ve_dock_yaw) * ve_across(k) }
+export function vehicle_berth_x(k: int) -> float { return ve_dock_x - Math.sin(ve_dock_yaw) * 7.25 + Math.cos(ve_dock_yaw) * ve_across(k) }
+export function vehicle_berth_z(k: int) -> float { return ve_dock_z - Math.cos(ve_dock_yaw) * 7.25 - Math.sin(ve_dock_yaw) * ve_across(k) }
+export function vehicle_post_x(k: int) -> float { return ve_dock_x - Math.sin(ve_dock_yaw) * 6.15 + Math.cos(ve_dock_yaw) * ve_across(k) }
+export function vehicle_post_z(k: int) -> float { return ve_dock_z - Math.cos(ve_dock_yaw) * 6.15 - Math.sin(ve_dock_yaw) * ve_across(k) }
 
 # a bay: off the trough's long side, a trough's length apart - four horses at a feeding trough
 # stand shoulder to shoulder along it
 function ve_bay_across(k: int) -> float { return -1.44 + float(k) * 0.96 }
-export function vehicle_bay_x(vehicles_st: VehiclesState, k: int) -> float { return vehicles_st.ve_rail_x - Math.sin(vehicles_st.ve_rail_yaw) * 1.4 + Math.cos(vehicles_st.ve_rail_yaw) * ve_bay_across(k) }
-export function vehicle_bay_z(vehicles_st: VehiclesState, k: int) -> float { return vehicles_st.ve_rail_z - Math.cos(vehicles_st.ve_rail_yaw) * 1.4 - Math.sin(vehicles_st.ve_rail_yaw) * ve_bay_across(k) }
+export function vehicle_bay_x(k: int) -> float { return ve_rail_x - Math.sin(ve_rail_yaw) * 1.4 + Math.cos(ve_rail_yaw) * ve_bay_across(k) }
+export function vehicle_bay_z(k: int) -> float { return ve_rail_z - Math.cos(ve_rail_yaw) * 1.4 - Math.sin(ve_rail_yaw) * ve_bay_across(k) }
 
-export function vehicle_place_x(vehicles_st: VehiclesState, kind: int, k: int) -> float {
-  if kind == VEHICLE_HORSE { return vehicle_bay_x(vehicles_st, k) }
-  return vehicle_berth_x(vehicles_st, k)
+export function vehicle_place_x(kind: int, k: int) -> float {
+  if kind == VEHICLE_HORSE { return vehicle_bay_x(k) }
+  return vehicle_berth_x(k)
 }
 
-export function vehicle_place_z(vehicles_st: VehiclesState, kind: int, k: int) -> float {
-  if kind == VEHICLE_HORSE { return vehicle_bay_z(vehicles_st, k) }
-  return vehicle_berth_z(vehicles_st, k)
+export function vehicle_place_z(kind: int, k: int) -> float {
+  if kind == VEHICLE_HORSE { return vehicle_bay_z(k) }
+  return vehicle_berth_z(k)
 }
 
 # who is in place k: the boat lying in the berth or the horse tied in the bay, or null
-export function vehicle_in_place(vehicles_st: mut VehiclesState, kind: int, k: int) -> Vehicle {
-  let px = vehicle_place_x(vehicles_st, kind, k)
-  let pz = vehicle_place_z(vehicles_st, kind, k)
-  let l = ve_all(vehicles_st)
+export function vehicle_in_place(kind: int, k: int) -> Vehicle {
+  let px = vehicle_place_x(kind, k)
+  let pz = vehicle_place_z(kind, k)
+  let l = ve_all()
   for i in 0 .. len(l) {
     let v = l[i]
     if v.kind != kind or v.rider >= 0 { continue }
@@ -64,17 +64,17 @@ export function vehicle_in_place(vehicles_st: mut VehiclesState, kind: int, k: i
 }
 
 # the first free place, or -1
-export function vehicle_free_place(vehicles_st: mut VehiclesState, kind: int) -> int {
-  for k in 0 .. VEHICLE_PLACES { if vehicle_in_place(vehicles_st, kind, k) == null { return k } }
+export function vehicle_free_place(kind: int) -> int {
+  for k in 0 .. VEHICLE_PLACES { if vehicle_in_place(kind, k) == null { return k } }
   return -1
 }
 
 # this player's own is lying in one of the places
-export function vehicle_mine_in_place(vehicles_st: mut VehiclesState, kind: int) -> bool {
-  let mine = vehicle_find(vehicles_st, kind)
+export function vehicle_mine_in_place(kind: int) -> bool {
+  let mine = vehicle_find(kind)
   if mine == null { return false }
   for k in 0 .. VEHICLE_PLACES {
-    let h = vehicle_in_place(vehicles_st, kind, k)
+    let h = vehicle_in_place(kind, k)
     if h != null and h.nid == mine.nid { return true }
   }
   return false

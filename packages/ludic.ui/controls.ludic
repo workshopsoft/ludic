@@ -11,45 +11,45 @@ function ct_type(n: UiNode) -> string {
 }
 function ct_takes_arrows(n: UiNode) -> bool { return ct_type(n) == "range" or ct_type(n) == "select" or ct_type(n) == "number" }
 function ct_takes_space(n: UiNode) -> bool { return ct_type(n) == "text" }
-function ct_change(ui_st: mut UiState, n: UiNode, v: Val) -> void {
-  ui_sound(ui_st, ct_sound(n))
-  ui_fire(ui_st, n, "change", v)
+function ct_change(n: UiNode, v: Val) -> void {
+  ui_sound(ct_sound(n))
+  ui_fire(n, "change", v)
 }
 function ct_sound(n: UiNode) -> string {
   let s = ui_attr_text(n, "sound")
   if s == "" { return "click" }
   return s
 }
-function ct_activate(ui_st: mut UiState, n: UiNode) -> void {
+function ct_activate(n: UiNode) -> void {
   if not n.enabled { return }
   let t = ct_type(n)
-  if t == "checkbox" { ct_change(ui_st, n, vl_bool(not ui_attr_on(n, "checked"))) } else if t == "radio" { ct_change(ui_st, n, ui_attr(n, "value")) } else if t == "select" { ct_step(ui_st, n, 1) } else if t == "key" { ct_key_start(ui_st, n) } else if t == "number" { ct_num_commit(ui_st, n) } else if t == "text" { ct_submit(ui_st, n) } else if t == "" {
-    ui_sound(ui_st, ct_sound(n))
-    ui_fire(ui_st, n, "press", Value.null())
+  if t == "checkbox" { ct_change(n, vl_bool(not ui_attr_on(n, "checked"))) } else if t == "radio" { ct_change(n, ui_attr(n, "value")) } else if t == "select" { ct_step(n, 1) } else if t == "key" { ct_key_start(n) } else if t == "number" { ct_num_commit(n) } else if t == "text" { ct_submit(n) } else if t == "" {
+    ui_sound(ct_sound(n))
+    ui_fire(n, "press", Value.null())
   }
 }
-function ct_step(ui_st: mut UiState, n: UiNode, d: int) -> void {
+function ct_step(n: UiNode, d: int) -> void {
   let t = ct_type(n)
   if t == "select" and n.opts != null and len(n.opts) > 0 {
     let at = (ct_option_at(n, n.opts) + d + len(n.opts)) % len(n.opts)
     let ov = ui_attr(n.opts[at], "value")
-    if Value.kind(ov) == 0 { ct_change(ui_st, n, Value.int(at)) } else { ct_change(ui_st, n, ov) }
+    if Value.kind(ov) == 0 { ct_change(n, Value.int(at)) } else { ct_change(n, ov) }
   }
-  if t == "number" { ct_num_step(ui_st, n, d) }
+  if t == "number" { ct_num_step(n, d) }
   if t == "range" {
     var step = Value.as_float(ui_attr(n, "step"))
     if step <= 0.0 { step = 1.0 }
-    ct_range_set(ui_st, n, Value.as_float(ui_attr(n, "value")) + step * float(d))
+    ct_range_set(n, Value.as_float(ui_attr(n, "value")) + step * float(d))
   }
 }
-function ct_range_set(ui_st: mut UiState, n: UiNode, v0: float) -> void {
+function ct_range_set(n: UiNode, v0: float) -> void {
   let lo = Value.as_float(ui_attr(n, "min"))
   let hi = Value.as_float(ui_attr(n, "max"))
   let v = Math.clamp(v0, lo, Math.max(hi, lo))
-  if v != Value.as_float(ui_attr(n, "value")) { ui_fire(ui_st, n, "change", Value.float(v)) }
+  if v != Value.as_float(ui_attr(n, "value")) { ui_fire(n, "change", Value.float(v)) }
 }
 # a range's track pressed or dragged: the value where the pointer is
-function ct_press(ui_st: mut UiState, n: UiNode, x: float, y: float) -> void {
+function ct_press(n: UiNode, x: float, y: float) -> void {
   if ct_type(n) != "range" { return }
   for i in 0 .. len(n.children) {
     let t = n.children[i]
@@ -59,26 +59,26 @@ function ct_press(ui_st: mut UiState, n: UiNode, x: float, y: float) -> void {
       var step = Value.as_float(ui_attr(n, "step"))
       if step <= 0.0 { step = 1.0 }
       let raw = lo + Math.clamp((x - t.x) / t.cw, 0.0, 1.0) * (hi - lo)
-      ct_range_set(ui_st, n, lo + float(int((raw - lo) / step + 0.5)) * step)
+      ct_range_set(n, lo + float(int((raw - lo) / step + 0.5)) * step)
     }
   }
 }
-function ct_drag(ui_st: mut UiState, root: UiNode, key: string, x: float, y: float) -> void {
+function ct_drag(root: UiNode, key: string, x: float, y: float) -> void {
   let n = fr_node(root, key)
-  if n != null { ct_press(ui_st, n, x, y) }
+  if n != null { ct_press(n, x, y) }
 }
 # typing into a focused text field, or the key a key field is waiting for
-function ct_typed(ui_st: mut UiState, n: UiNode) -> void {
+function ct_typed(n: UiNode) -> void {
   let t = ct_type(n)
-  if t == "key" { ct_key_typed(ui_st, n) }
-  if t == "number" { ct_num_typed(ui_st, n) }
-  if t != "text" or (ui_st.in_now.typed == "" and not ui_st.in_now.backspace) { return }
+  if t == "key" { ct_key_typed(n) }
+  if t == "number" { ct_num_typed(n) }
+  if t != "text" or (in_now.typed == "" and not in_now.backspace) { return }
   var s = ui_attr_text(n, "value")
-  if ui_st.in_now.backspace and len(s) > 0 { s = s[0..ct_char_start(s)] }
+  if in_now.backspace and len(s) > 0 { s = s[0..ct_char_start(s)] }
   var max = Value.as_int(ui_attr(n, "maxlength"))
   if max <= 0 { max = 1000 }
-  if len(ui_st.in_now.typed) > 0 and len(s) < max { s = s + ui_st.in_now.typed[0..Math.min(len(ui_st.in_now.typed), max - len(s))] }
-  ui_fire(ui_st, n, "change", Value.str(s))
+  if len(in_now.typed) > 0 and len(s) < max { s = s + in_now.typed[0..Math.min(len(in_now.typed), max - len(s))] }
+  ui_fire(n, "change", Value.str(s))
 }
 # where the last UTF-8 character starts, so Backspace takes a whole letter
 function ct_char_start(s: string) -> int {

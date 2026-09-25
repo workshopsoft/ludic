@@ -5,47 +5,50 @@ export const PHOTO_BEST: int = 1
 export const PHOTO_BY_SUBJECT: int = 2
 export const PHOTO_PAGE: int = 8
 
+var pht_sort: int = 0
+var pht_page: int = 0
+var pht_order: []int = null
 
-export function photo_sort(photo_st: PhotoState) -> int { return photo_st.pht_sort }
-export function photo_sort_next(photo_st: mut PhotoState) -> void { photo_st.pht_sort = (photo_st.pht_sort + 1) % 3 }
-export function photo_sort_set(photo_st: mut PhotoState, s: int) -> void { photo_st.pht_sort = Math.clamp(s, 0, 2) }
+export function photo_sort() -> int { return pht_sort }
+export function photo_sort_next() -> void { pht_sort = (pht_sort + 1) % 3 }
+export function photo_sort_set(s: int) -> void { pht_sort = Math.clamp(s, 0, 2) }
 
 # the roll in the chosen order: newest first, best first, or by subject
-export function photo_order(photo_st: mut PhotoState) -> []int {
-  photo_st.pht_order = new []int
-  for i in 0 .. photo_st.pht_n { push(photo_st.pht_order, i) }
-  if photo_st.pht_sort == PHOTO_NEWEST {
-    for i in 0 .. photo_st.pht_n { photo_st.pht_order[i] = photo_st.pht_n - 1 - i }
-    return photo_st.pht_order
+export function photo_order() -> []int {
+  pht_order = new []int
+  for i in 0 .. pht_n { push(pht_order, i) }
+  if pht_sort == PHOTO_NEWEST {
+    for i in 0 .. pht_n { pht_order[i] = pht_n - 1 - i }
+    return pht_order
   }
-  for i in 0 .. photo_st.pht_n {
+  for i in 0 .. pht_n {
     var best = i
-    for k in i + 1 .. photo_st.pht_n { if pht_before(photo_st, photo_st.pht_order[k], photo_st.pht_order[best]) { best = k } }
-    let t = photo_st.pht_order[i]
-    photo_st.pht_order[i] = photo_st.pht_order[best]
-    photo_st.pht_order[best] = t
+    for k in i + 1 .. pht_n { if pht_before(pht_order[k], pht_order[best]) { best = k } }
+    let t = pht_order[i]
+    pht_order[i] = pht_order[best]
+    pht_order[best] = t
   }
-  return photo_st.pht_order
+  return pht_order
 }
 
-function pht_before(photo_st: PhotoState, a: int, b: int) -> bool {
-  if photo_st.pht_sort == PHOTO_BEST { return photo_st.pht_grade[a] > photo_st.pht_grade[b] }
-  return photo_st.pht_mask[a] < photo_st.pht_mask[b]
+function pht_before(a: int, b: int) -> bool {
+  if pht_sort == PHOTO_BEST { return pht_grade[a] > pht_grade[b] }
+  return pht_mask[a] < pht_mask[b]
 }
 
-export function photo_pages(photo_st: PhotoState) -> int { return (photo_st.pht_n + PHOTO_PAGE - 1) / PHOTO_PAGE }
-export function photo_page_now(photo_st: PhotoState) -> int { return photo_st.pht_page }
-export function photo_page_step(photo_st: mut PhotoState, d: int) -> void { photo_st.pht_page = Math.clamp(photo_st.pht_page + d, 0, Math.max(photo_pages(photo_st) - 1, 0)) }
+export function photo_pages() -> int { return (pht_n + PHOTO_PAGE - 1) / PHOTO_PAGE }
+export function photo_page_now() -> int { return pht_page }
+export function photo_page_step(d: int) -> void { pht_page = Math.clamp(pht_page + d, 0, Math.max(photo_pages() - 1, 0)) }
 
 # a page of the roll, in its order; the page is held inside the roll
-export function photo_page_list(photo_st: mut PhotoState) -> []int {
+export function photo_page_list() -> []int {
   let out = new []int
-  if photo_st.pht_n == 0 { return out }
-  let order = photo_order(photo_st)
-  if photo_st.pht_page >= photo_pages(photo_st) { photo_st.pht_page = photo_pages(photo_st) - 1 }
+  if pht_n == 0 { return out }
+  let order = photo_order()
+  if pht_page >= photo_pages() { pht_page = photo_pages() - 1 }
   for k in 0 .. PHOTO_PAGE {
-    let oi = photo_st.pht_page * PHOTO_PAGE + k
-    if oi < photo_st.pht_n { push(out, order[oi]) }
+    let oi = pht_page * PHOTO_PAGE + k
+    if oi < pht_n { push(out, order[oi]) }
   }
   return out
 }

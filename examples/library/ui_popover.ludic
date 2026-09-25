@@ -4,55 +4,55 @@ import "ludic.ui"
 import "ui_popover_parts/Verbs.ludic"
 program UiPopover {
   numbers float
-  function frame(ui_st: mut UiState, i: UiInput) -> UiNode {
-    ui_input(ui_st, i)
-    ui_show(ui_st, "Verbs", null, 0.0, 0.0, 400.0, 400.0)
-    let root: UiNode = ui_nodes(ui_st, "Verbs", null)
-    ui_place(ui_st, root, 0.0, 0.0, 400.0, 400.0)
+  function frame(i: UiInput) -> UiNode {
+    ui_input(i)
+    ui_show("Verbs", null, 0.0, 0.0, 400.0, 400.0)
+    let root: UiNode = ui_nodes("Verbs", null)
+    ui_place(root, 0.0, 0.0, 400.0, 400.0)
     return root
   }
-  function click(ui_st: mut UiState, x: float, y: float) -> void {
+  function click(x: float, y: float) -> void {
     let d = new UiInput
     d.x = x
     d.y = y
     d.down = true
-    frame(ui_st, d)
+    frame(d)
     let u = new UiInput
     u.x = x
     u.y = y
-    frame(ui_st, u)
+    frame(u)
   }
   function said(root: UiNode) -> string {
     let page = root.children[0]
     return page.children[len(page.children) - 1].text
   }
-  entry (ui_st: mut UiState) {
-    ui_backend(ui_st, new UiBackend)
-    var root = frame(ui_st, new UiInput)
+  entry {
+    ui_backend(new UiBackend)
+    var root = frame(new UiInput)
     let cell = root.children[0].children[0]
-    click(ui_st, cell.x + 2.0, cell.y + 2.0)
-    root = frame(ui_st, new UiInput)
+    click(cell.x + 2.0, cell.y + 2.0)
+    root = frame(new UiInput)
     let tab = new UiInput
     tab.tab = true
-    frame(ui_st, tab)
-    frame(ui_st, tab)
-    root = frame(ui_st, tab)
+    frame(tab)
+    frame(tab)
+    root = frame(tab)
     let enter = new UiInput
     enter.enter = true
-    root = frame(ui_st, enter)
-    root = frame(ui_st, new UiInput)
+    root = frame(enter)
+    root = frame(new UiInput)
     let first = said(root)
-    click(ui_st, cell.x + 2.0, cell.y + 2.0)
-    root = frame(ui_st, new UiInput)
+    click(cell.x + 2.0, cell.y + 2.0)
+    root = frame(new UiInput)
     let opened = said(root)
-    click(ui_st, 390.0, 390.0)
-    root = frame(ui_st, new UiInput)
+    click(390.0, 390.0)
+    root = frame(new UiInput)
     let outside = said(root)
-    click(ui_st, cell.x + 2.0, cell.y + 2.0)
+    click(cell.x + 2.0, cell.y + 2.0)
     let esc = new UiInput
     esc.escape = true
-    frame(ui_st, esc)
-    root = frame(ui_st, new UiInput)
+    frame(esc)
+    root = frame(new UiInput)
     let bar = root.children[0].children[1]
     print(`{first} | {opened} | {outside} | {said(root)} | fill {int(bar.children[0].cw)} of {int(bar.cw)}`)
   }

@@ -1,38 +1,40 @@
 # radar.ludic - the radar's tiers: a range for each compass tier (0 is no radar), which marks it
 # shows, and where each falls on a unit disc with ahead at the top
+var cmp_ranges: []float = null
+var cmp_radar_from: int = 2     # marks of at least this tier are blips; the tracked one always is
 
-export function compass_config_radar(compass_st: mut CompassState, ranges: []float, from_tier: int) -> void {
-  compass_st.cmp_ranges = new []float
-  for i in 0 .. len(ranges) { push(compass_st.cmp_ranges, ranges[i]) }
-  compass_st.cmp_radar_from = from_tier
+export function compass_config_radar(ranges: []float, from_tier: int) -> void {
+  cmp_ranges = new []float
+  for i in 0 .. len(ranges) { push(cmp_ranges, ranges[i]) }
+  cmp_radar_from = from_tier
 }
 
 # how far the radar reaches with the viewer's compass, 0 without one; a tier past the table has
 # the last range
-export function compass_radar_range(compass_st: CompassState) -> float {
-  if compass_st.cmp_ranges == null or len(compass_st.cmp_ranges) == 0 { return 0.0 }
+export function compass_radar_range() -> float {
+  if cmp_ranges == null or len(cmp_ranges) == 0 { return 0.0 }
   let t = CompassWorld.tier()
   if t < 0 { return 0.0 }
-  if t >= len(compass_st.cmp_ranges) { return compass_st.cmp_ranges[len(compass_st.cmp_ranges) - 1] }
-  return compass_st.cmp_ranges[t]
+  if t >= len(cmp_ranges) { return cmp_ranges[len(cmp_ranges) - 1] }
+  return cmp_ranges[t]
 }
 
-export function compass_radar_on(compass_st: CompassState) -> bool { return compass_radar_range(compass_st) > 0.0 }
+export function compass_radar_on() -> bool { return compass_radar_range() > 0.0 }
 
 # the i-th mark is a blip: a radar is carried, it is shown there and it is in range
-export function compass_radar_has(compass_st: CompassState, i: int) -> bool {
-  if i < 0 or i >= compass_count(compass_st) or not compass_radar_on(compass_st) { return false }
-  let m = compass_st.cmp_list[i]
-  if m.tier < compass_st.cmp_radar_from and m.prio < COMPASS_TRACKED { return false }
-  return compass_dist(compass_st, i) <= compass_radar_range(compass_st)
+export function compass_radar_has(i: int) -> bool {
+  if i < 0 or i >= compass_count() or not compass_radar_on() { return false }
+  let m = cmp_list[i]
+  if m.tier < cmp_radar_from and m.prio < COMPASS_TRACKED { return false }
+  return compass_dist(i) <= compass_radar_range()
 }
 
 # where on a unit disc: x right, y down, so ahead is (0, -1) and the edge is the range
-export function compass_radar_x(compass_st: CompassState, i: int) -> float { return -Math.sin(compass_bearing(compass_st, i)) * cmp_radar_frac(compass_st, i) }
-export function compass_radar_y(compass_st: CompassState, i: int) -> float { return -Math.cos(compass_bearing(compass_st, i)) * cmp_radar_frac(compass_st, i) }
+export function compass_radar_x(i: int) -> float { return -Math.sin(compass_bearing(i)) * cmp_radar_frac(i) }
+export function compass_radar_y(i: int) -> float { return -Math.cos(compass_bearing(i)) * cmp_radar_frac(i) }
 
-function cmp_radar_frac(compass_st: CompassState, i: int) -> float {
-  let r = compass_radar_range(compass_st)
+function cmp_radar_frac(i: int) -> float {
+  let r = compass_radar_range()
   if r <= 0.0 { return 0.0 }
-  return Math.min(compass_dist(compass_st, i) / r, 1.0)
+  return Math.min(compass_dist(i) / r, 1.0)
 }

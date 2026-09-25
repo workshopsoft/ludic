@@ -22,6 +22,17 @@ property Model {
   skin:   Skin           # the skeleton, for a skinned node (skin.ludic); null for a rigid model
 }
 
+var gltf_dir:  string = null
+var gltf_bin:  pointer = null
+var gltf_doc:  Val = null
+var gltf_count: int = 0
+var gltf_ctype: int = 0
+var gltf_comps: int = 0
+var gltf_tex_paths: []pointer = null
+var gltf_tex_ids: words = null
+var gltf_tex_n: int = 0
+var gltf_white: int = 0
+var gltf_flat: int = 0
 
 # a JSON number as float bits (ints and fixed-point decimals both)
 function jnum(v: Val) -> float {
@@ -37,35 +48,41 @@ function jint(v: Val, key: pointer, fallback: int) -> int {
 # lod_export.py) carries the material names but no images — the blend links textures
 # that are not downloaded with it — so its primitives take the textures the LOD0
 # download's material of the same name loaded.
-function gltf_mat_find(render3d_st: Render3dState, name: string) -> int {
-  if render3d_st.gltf_mat_names == null { return -1 }
-  for i in 0 .. render3d_st.gltf_mat_n { if render3d_st.gltf_mat_names[i] == name { return i } }
+var gltf_mat_names: []string = null
+var gltf_mat_diff: words = null
+var gltf_mat_nrm: words = null
+var gltf_mat_arm: words = null
+var gltf_mat_n: int = 0
+function gltf_mat_find(name: string) -> int {
+  if gltf_mat_names == null { return -1 }
+  for i in 0 .. gltf_mat_n { if gltf_mat_names[i] == name { return i } }
   return -1
 }
-function gltf_mat_remember(render3d_st: mut Render3dState, name: string, diff: int, nrm: int, arm: int) -> void {
-  if render3d_st.gltf_mat_names == null { render3d_st.gltf_mat_names = new []string;  render3d_st.gltf_mat_diff = words(256);  render3d_st.gltf_mat_nrm = words(256);  render3d_st.gltf_mat_arm = words(256) }
-  if gltf_mat_find(render3d_st, name) >= 0 or render3d_st.gltf_mat_n >= 256 { return }
-  push(render3d_st.gltf_mat_names, name);  render3d_st.gltf_mat_diff[render3d_st.gltf_mat_n] = diff;  render3d_st.gltf_mat_nrm[render3d_st.gltf_mat_n] = nrm;  render3d_st.gltf_mat_arm[render3d_st.gltf_mat_n] = arm
-  render3d_st.gltf_mat_n += 1
+function gltf_mat_remember(name: string, diff: int, nrm: int, arm: int) -> void {
+  if gltf_mat_names == null { gltf_mat_names = new []string;  gltf_mat_diff = words(256);  gltf_mat_nrm = words(256);  gltf_mat_arm = words(256) }
+  if gltf_mat_find(name) >= 0 or gltf_mat_n >= 256 { return }
+  push(gltf_mat_names, name);  gltf_mat_diff[gltf_mat_n] = diff;  gltf_mat_nrm[gltf_mat_n] = nrm;  gltf_mat_arm[gltf_mat_n] = arm
+  gltf_mat_n += 1
 }
 
-function gltf_texture(render3d_st: mut Render3dState, uri: string, srgb: bool) -> int {
-  if render3d_st.gltf_tex_paths == null { render3d_st.gltf_tex_paths = new []pointer;  render3d_st.gltf_tex_ids = words(256) }
+var gltf_cutout: bool = false     # the material being loaded is alpha-blended (a cut-out atlas)
+function gltf_texture(uri: string, srgb: bool) -> int {
+  if gltf_tex_paths == null { gltf_tex_paths = new []pointer;  gltf_tex_ids = words(256) }
   var png: string = uri
   let n = len(uri)
   if n > 4 and uri[n - 4] == '.' and uri[n - 3] == 'j' { png = uri[0 .. n - 4] + ".png" }
-  let path = render3d_st.gltf_dir + "/" + png
+  let path = gltf_dir + "/" + png
   var i = 0
-  while i < render3d_st.gltf_tex_n { if render3d_st.gltf_tex_paths[i] == path { return render3d_st.gltf_tex_ids[i] };  i += 1 }
+  while i < gltf_tex_n { if gltf_tex_paths[i] == path { return gltf_tex_ids[i] };  i += 1 }
   var dil = 0
-  if render3d_st.gltf_cutout { dil = 24 }
-  let id = tex_load_ex(render3d_st, path, srgb, dil)
-  if render3d_st.gltf_tex_n < 256 { push(render3d_st.gltf_tex_paths, path);  render3d_st.gltf_tex_ids[render3d_st.gltf_tex_n] = id;  render3d_st.gltf_tex_n += 1 }
+  if gltf_cutout { dil = 24 }
+  let id = tex_load_ex(path, srgb, dil)
+  if gltf_tex_n < 256 { push(gltf_tex_paths, path);  gltf_tex_ids[gltf_tex_n] = id;  gltf_tex_n += 1 }
   return id
 }
 
 # the image uri behind materials[m].<slot>.index, or null
-function gltf_mat_uri(render3d_st: Render3dState, mat: Val, slot: pointer) -> string {
+function gltf_mat_uri(mat: Val, slot: pointer) -> string {
   var holder = mat
   if slot == "baseColorTexture" or slot == "metallicRoughnessTexture" {
     if value_has(mat, "pbrMetallicRoughness") == 0 { return null }
@@ -73,84 +90,84 @@ function gltf_mat_uri(render3d_st: Render3dState, mat: Val, slot: pointer) -> st
   }
   if value_has(holder, slot) == 0 { return null }
   let ti = value_as_int(value_get(value_get(holder, slot), "index"))
-  let tex = value_at(value_get(render3d_st.gltf_doc, "textures"), ti)
+  let tex = value_at(value_get(gltf_doc, "textures"), ti)
   let src = value_as_int(value_get(tex, "source"))
-  let img = value_at(value_get(render3d_st.gltf_doc, "images"), src)
+  let img = value_at(value_get(gltf_doc, "images"), src)
   return value_as_str(value_get(img, "uri"))
 }
 
 # read one accessor's bytes from the .bin; sets gltf_count / gltf_ctype / gltf_comps
-function gltf_accessor(render3d_st: mut Render3dState, idx: int) -> pointer {
-  let acc = value_at(value_get(render3d_st.gltf_doc, "accessors"), idx)
-  let bv = value_at(value_get(render3d_st.gltf_doc, "bufferViews"), jint(acc, "bufferView", 0))
+function gltf_accessor(idx: int) -> pointer {
+  let acc = value_at(value_get(gltf_doc, "accessors"), idx)
+  let bv = value_at(value_get(gltf_doc, "bufferViews"), jint(acc, "bufferView", 0))
   let off = jint(bv, "byteOffset", 0) + jint(acc, "byteOffset", 0)
-  render3d_st.gltf_count = jint(acc, "count", 0)
-  render3d_st.gltf_ctype = jint(acc, "componentType", 5126)
+  gltf_count = jint(acc, "count", 0)
+  gltf_ctype = jint(acc, "componentType", 5126)
   let ty = value_as_str(value_get(acc, "type"))
-  render3d_st.gltf_comps = 1
-  if ty == "VEC2" { render3d_st.gltf_comps = 2 }
-  if ty == "VEC3" { render3d_st.gltf_comps = 3 }
-  if ty == "VEC4" { render3d_st.gltf_comps = 4 }
-  if ty == "MAT2" { render3d_st.gltf_comps = 4 }
-  if ty == "MAT3" { render3d_st.gltf_comps = 9 }
-  if ty == "MAT4" { render3d_st.gltf_comps = 16 }       # a skin's inverse bind matrices
+  gltf_comps = 1
+  if ty == "VEC2" { gltf_comps = 2 }
+  if ty == "VEC3" { gltf_comps = 3 }
+  if ty == "VEC4" { gltf_comps = 4 }
+  if ty == "MAT2" { gltf_comps = 4 }
+  if ty == "MAT3" { gltf_comps = 9 }
+  if ty == "MAT4" { gltf_comps = 16 }       # a skin's inverse bind matrices
   var csz = 4
-  if render3d_st.gltf_ctype == 5123 or render3d_st.gltf_ctype == 5122 { csz = 2 }
-  if render3d_st.gltf_ctype == 5121 or render3d_st.gltf_ctype == 5120 { csz = 1 }
-  let n = render3d_st.gltf_count * render3d_st.gltf_comps * csz
+  if gltf_ctype == 5123 or gltf_ctype == 5122 { csz = 2 }
+  if gltf_ctype == 5121 or gltf_ctype == 5120 { csz = 1 }
+  let n = gltf_count * gltf_comps * csz
   let buf = bytes(n + 8)
-  file_seek(render3d_st.gltf_bin, off, 0)
-  file_read(render3d_st.gltf_bin, buf, n)
+  file_seek(gltf_bin, off, 0)
+  file_read(gltf_bin, buf, n)
   return buf
 }
 
-function gltf_attrib(render3d_st: mut Render3dState, m: Mesh, attrs: Val, name: pointer, loc: int) -> bool {
+function gltf_attrib(m: Mesh, attrs: Val, name: pointer, loc: int) -> bool {
   if value_has(attrs, name) == 0 { return false }
-  let data = gltf_accessor(render3d_st, value_as_int(value_get(attrs, name)))
-  gpu_mesh_vertices(render3d_st, m, data, render3d_st.gltf_count * render3d_st.gltf_comps * 4, GPU_STATIC)
-  gpu_mesh_attr(render3d_st, m, loc, render3d_st.gltf_comps, GPU_F32, 0, 0, false)
+  let data = gltf_accessor(value_as_int(value_get(attrs, name)))
+  gpu_mesh_vertices(m, data, gltf_count * gltf_comps * 4, GPU_STATIC)
+  gpu_mesh_attr(m, loc, gltf_comps, GPU_F32, 0, 0, false)
   free(data)
   return true
 }
 
-function gltf_prim(render3d_st: mut Render3dState, p: Val) -> Prim {
+function gltf_prim(p: Val) -> Prim {
   let pr = new Prim
-  let m = gpu_mesh_new(render3d_st)
+  let m = gpu_mesh_new()
   let attrs = value_get(p, "attributes")
-  gltf_attrib(render3d_st, m, attrs, "POSITION", 0)
-  let nverts = render3d_st.gltf_count
-  gltf_attrib(render3d_st, m, attrs, "NORMAL", 1)
-  gltf_attrib(render3d_st, m, attrs, "TEXCOORD_0", 2)
-  skin_attribs(render3d_st, m, attrs)                    # JOINTS_0 / WEIGHTS_0 onto 5 / 6, when the mesh has them
-  let idx = gltf_accessor(render3d_st, value_as_int(value_get(p, "indices")))
+  gltf_attrib(m, attrs, "POSITION", 0)
+  let nverts = gltf_count
+  gltf_attrib(m, attrs, "NORMAL", 1)
+  gltf_attrib(m, attrs, "TEXCOORD_0", 2)
+  skin_attribs(m, attrs)                    # JOINTS_0 / WEIGHTS_0 onto 5 / 6, when the mesh has them
+  let idx = gltf_accessor(value_as_int(value_get(p, "indices")))
   var isz = 4
-  if render3d_st.gltf_ctype == 5123 { isz = 2 }
-  gpu_mesh_indices(render3d_st, m, idx, render3d_st.gltf_count * isz, isz)
+  if gltf_ctype == 5123 { isz = 2 }
+  gpu_mesh_indices(m, idx, gltf_count * isz, isz)
   free(idx)
-  m.count = render3d_st.gltf_count
-  gpu_mesh_done(render3d_st, m)
+  m.count = gltf_count
+  gpu_mesh_done(m)
   pr.mesh = m
   pr.verts = nverts
   # material textures
-  if render3d_st.gltf_white == 0 { render3d_st.gltf_white = tex_solid(render3d_st, 200, 200, 200, 255);  render3d_st.gltf_flat = tex_solid(render3d_st, 128, 128, 255, 255) }
-  pr.diff = render3d_st.gltf_white;  pr.nrm = render3d_st.gltf_flat;  pr.arm = render3d_st.gltf_white
+  if gltf_white == 0 { gltf_white = tex_solid(200, 200, 200, 255);  gltf_flat = tex_solid(128, 128, 255, 255) }
+  pr.diff = gltf_white;  pr.nrm = gltf_flat;  pr.arm = gltf_white
   if value_has(p, "material") != 0 {
-    let mat = value_at(value_get(render3d_st.gltf_doc, "materials"), value_as_int(value_get(p, "material")))
-    render3d_st.gltf_cutout = value_has(mat, "alphaMode") != 0
-    let ud = gltf_mat_uri(render3d_st, mat, "baseColorTexture")
-    let un = gltf_mat_uri(render3d_st, mat, "normalTexture")
-    let ua = gltf_mat_uri(render3d_st, mat, "metallicRoughnessTexture")
-    if ud != null { pr.diff = gltf_texture(render3d_st, ud, true) }
-    if un != null { pr.nrm = gltf_texture(render3d_st, un, false) }
-    if ua != null { pr.arm = gltf_texture(render3d_st, ua, false) }
+    let mat = value_at(value_get(gltf_doc, "materials"), value_as_int(value_get(p, "material")))
+    gltf_cutout = value_has(mat, "alphaMode") != 0
+    let ud = gltf_mat_uri(mat, "baseColorTexture")
+    let un = gltf_mat_uri(mat, "normalTexture")
+    let ua = gltf_mat_uri(mat, "metallicRoughnessTexture")
+    if ud != null { pr.diff = gltf_texture(ud, true) }
+    if un != null { pr.nrm = gltf_texture(un, false) }
+    if ua != null { pr.arm = gltf_texture(ua, false) }
     var mname: string = null
     if value_has(mat, "name") != 0 { mname = value_as_str(value_get(mat, "name")) }
     pr.name = mname
     if mname != null {
-      if ud != null { gltf_mat_remember(render3d_st, mname, pr.diff, pr.nrm, pr.arm) }
+      if ud != null { gltf_mat_remember(mname, pr.diff, pr.nrm, pr.arm) }
       else {
-        let k = gltf_mat_find(render3d_st, mname)
-        if k >= 0 { pr.diff = render3d_st.gltf_mat_diff[k];  pr.nrm = render3d_st.gltf_mat_nrm[k];  pr.arm = render3d_st.gltf_mat_arm[k] }
+        let k = gltf_mat_find(mname)
+        if k >= 0 { pr.diff = gltf_mat_diff[k];  pr.nrm = gltf_mat_nrm[k];  pr.arm = gltf_mat_arm[k] }
         else { print(`gltf: material {mname} has no textures and none were loaded before it`) }
       }
     }
@@ -159,34 +176,34 @@ function gltf_prim(render3d_st: mut Render3dState, p: Val) -> Prim {
 }
 
 # Load the mesh of the node called `node_name` from dir/file.
-function gltf_load(render3d_st: mut Render3dState, dir: string, file: string, node_name: string) -> Model {
-  render3d_st.gltf_dir = dir
+function gltf_load(dir: string, file: string, node_name: string) -> Model {
+  gltf_dir = dir
   let text = Fs.read_text(dir + "/" + file)
   if text == null { print(`gltf: cannot read {dir}/{file}`);  return null }
-  render3d_st.gltf_doc = Json.parse(text)
-  let buffers = value_get(render3d_st.gltf_doc, "buffers")
+  gltf_doc = Json.parse(text)
+  let buffers = value_get(gltf_doc, "buffers")
   let bin_uri = value_as_str(value_get(value_at(buffers, 0), "uri"))
-  render3d_st.gltf_bin = file_open(dir + "/" + bin_uri, "rb")
-  if render3d_st.gltf_bin == null { print(`gltf: cannot open {bin_uri}`);  return null }
-  let nodes = value_get(render3d_st.gltf_doc, "nodes")
+  gltf_bin = file_open(dir + "/" + bin_uri, "rb")
+  if gltf_bin == null { print(`gltf: cannot open {bin_uri}`);  return null }
+  let nodes = value_get(gltf_doc, "nodes")
   var mesh_idx = -1
   var skin_idx = -1
   for i in 0 .. value_count(nodes) {
     let nd = value_at(nodes, i)
     if value_as_str(value_get(nd, "name")) == node_name { mesh_idx = jint(nd, "mesh", -1);  skin_idx = jint(nd, "skin", -1) }
   }
-  if mesh_idx < 0 { print(`gltf: no node {node_name} in {file}`);  file_close(render3d_st.gltf_bin);  return null }
+  if mesh_idx < 0 { print(`gltf: no node {node_name} in {file}`);  file_close(gltf_bin);  return null }
   let model = new Model
   model.prims = new []Prim
-  let mesh = value_at(value_get(render3d_st.gltf_doc, "meshes"), mesh_idx)
+  let mesh = value_at(value_get(gltf_doc, "meshes"), mesh_idx)
   let prims = value_get(mesh, "primitives")
   var r2 = 0.0;  var ymin = 1000.0;  var ymax = -1000.0
   for i in 0 .. value_count(prims) {
     let p = value_at(prims, i)
-    push(model.prims, gltf_prim(render3d_st, p))
-    model.tris += render3d_st.gltf_count / 3
+    push(model.prims, gltf_prim(p))
+    model.tris += gltf_count / 3
     # bounds from the accessor min/max
-    let acc = value_at(value_get(render3d_st.gltf_doc, "accessors"), value_as_int(value_get(value_get(p, "attributes"), "POSITION")))
+    let acc = value_at(value_get(gltf_doc, "accessors"), value_as_int(value_get(value_get(p, "attributes"), "POSITION")))
     let mn = value_get(acc, "min");  let mx = value_get(acc, "max")
     let x0 = Math.abs(jnum(value_at(mn, 0)));  let x1 = Math.abs(jnum(value_at(mx, 0)))
     let z0 = Math.abs(jnum(value_at(mn, 2)));  let z1 = Math.abs(jnum(value_at(mx, 2)))
@@ -197,8 +214,8 @@ function gltf_load(render3d_st: mut Render3dState, dir: string, file: string, no
     if y0 < ymin { ymin = y0 }
     if y1 > ymax { ymax = y1 }
   }
-  if skin_idx >= 0 { model.skin = skin_load(render3d_st, skin_idx) }
-  file_close(render3d_st.gltf_bin)
+  if skin_idx >= 0 { model.skin = skin_load(skin_idx) }
+  file_close(gltf_bin)
   model.radius = Math.sqrt(r2)
   model.ymin = ymin
   model.height = ymax - ymin

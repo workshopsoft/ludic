@@ -1,25 +1,77 @@
 # state.ludic - the body, its camera, and the queue of what happened to it
 const chr_pi: float = 3.14159265
 
+var chr_x: float = 0.0
+var chr_y: float = 0.0
+var chr_z: float = 0.0
+var chr_yaw: float = 0.0              # facing, radians; 0 faces -z
+var chr_speed: float = 0.0            # m/s along the facing
+var chr_phase: float = 0.0            # the gait: one cycle is two steps, advanced by ground covered
+var chr_move: float = 0.0             # 0 standing .. 1 moving
+var chr_run: float = 0.0              # 0 walking .. 1 running
+var chr_time: float = 0.0
+var chr_water: float = -10000.0       # the water line under the body, every update
+var chr_walk_speed: float = 3.2
+var chr_run_speed: float = 6.8
+var chr_vy: float = 0.0
+var chr_air: bool = false
+var chr_air_vx: float = 0.0
+var chr_air_vz: float = 0.0
+var chr_land: float = 0.0             # seconds of the landing's crouch left
+var chr_steep: float = 0.0            # seconds of "that was too steep" left to say
+var chr_can_run: bool = true
+var chr_step: float = 0.0             # metres covered this frame
 
+var chr_sit: bool = false
+var chr_sit_mode: int = 0
+var chr_sit_t: float = 0.0            # 0 standing .. 1 sat, eased over a quarter second
+var chr_sit_x: float = 0.0            # the seat's point, walked to over the blend
+var chr_sit_z: float = 0.0
+var chr_sit_yaw: float = 0.0
 
+var chr_swim: bool = false
+var chr_dive: bool = false
+var chr_depth: float = 0.0            # metres below the surface
+var chr_breath: float = 0.0
+var chr_float: float = 0.0            # 0 swimming .. 1 floating
+var chr_swim_phase: float = 0.0
+var chr_edge_said: float = 0.0
 
+var chr_holds: int = CHAR_HOLD_SCREEN
 
 # the camera: an orbit round a pivot at the chest, or the eyes
+var chr_cam_yaw: float = 0.0
+var chr_cam_pitch: float = -0.157
+var chr_cam_dist: float = 4.2
+var chr_lock: bool = false            # the orbit never settles behind on its own
+var chr_fps: bool = false
+var chr_fps_bob: float = 0.0
+var chr_piv_x: float = 0.0
+var chr_piv_y: float = 0.0
+var chr_piv_z: float = 0.0
+var chr_eye_x: float = 0.0            # where the camera is and where it looks, once computed
+var chr_eye_y: float = 0.0
+var chr_eye_z: float = 0.0
+var chr_eye_yaw: float = 0.0
+var chr_eye_pitch: float = 0.0
+var chr_eyes_now: bool = false        # the last camera was the eyes: the figure is hidden
 
+var chr_safe_x: float = 0.0
+var chr_safe_z: float = 0.0
 
+var chr_fact_q: Queue<CharacterFact> = null
 
-export function char_facts(base_st: mut BaseState, character_st: mut CharacterState) -> Queue<CharacterFact> {
-  if character_st.chr_fact_q == null { character_st.chr_fact_q = queue_new(base_st, "character.facts") }
-  return character_st.chr_fact_q
+export function char_facts() -> Queue<CharacterFact> {
+  if chr_fact_q == null { chr_fact_q = queue_new("character.facts") }
+  return chr_fact_q
 }
 
-function chr_say(base_st: mut BaseState, character_st: mut CharacterState, what: int, v: float) -> void {
+function chr_say(what: int, v: float) -> void {
   let f = new CharacterFact
   f.what = what
-  f.x = character_st.chr_x
-  f.y = character_st.chr_y
-  f.z = character_st.chr_z
+  f.x = chr_x
+  f.y = chr_y
+  f.z = chr_z
   f.v = v
-  q_push(base_st, char_facts(base_st, character_st), f)
+  q_push(char_facts(), f)
 }

@@ -16,7 +16,7 @@ export property UiTpl {
   raw: string = ""              # a <style>'s text, which is not a template's
   where: string = ""            # file:line, for an error
 }
-function tpl_read(ui_st: mut UiState, x: Xml, file: string) -> UiTpl {
+function tpl_read(x: Xml, file: string) -> UiTpl {
   let t = new UiTpl
   t.tag = Xml.tag(x)
   t.keys = new []string
@@ -24,7 +24,7 @@ function tpl_read(ui_st: mut UiState, x: Xml, file: string) -> UiTpl {
   t.on_keys = new []string
   t.on_acts = new []UiAct
   t.kids = new []UiTpl
-  t.where = `{file}:{tp_line(ui_st, x.at)}`
+  t.where = `{file}:{tp_line(x.at)}`
   let err = new []string
   for i in 0 .. len(x.akeys) {
     let k: string = x.akeys[i]
@@ -40,8 +40,8 @@ function tpl_read(ui_st: mut UiState, x: Xml, file: string) -> UiTpl {
       push(t.vals, tpl_value(v, err))
     }
   }
-  if tp_mixed(x) { tp_read_mixed(ui_st, t, x, file, err) } else {
-    for i in 0 .. Xml.child_count(x) { push(t.kids, tpl_read(ui_st, Xml.child(x, i), file)) }
+  if tp_mixed(x) { tp_read_mixed(t, x, file, err) } else {
+    for i in 0 .. Xml.child_count(x) { push(t.kids, tpl_read(Xml.child(x, i), file)) }
   }
   if t.tag == "style" {
     t.raw = Xml.text(x)
@@ -49,7 +49,7 @@ function tpl_read(ui_st: mut UiState, x: Xml, file: string) -> UiTpl {
   }
   let words = tpl_words(Xml.text(x))
   if len(words) > 0 and Xml.child_count(x) == 0 { t.text = ex_text(words, err) }
-  for i in 0 .. len(err) { ui_err(ui_st, `{t.where}: <{t.tag}> {err[i]}`) }
+  for i in 0 .. len(err) { ui_err(`{t.where}: <{t.tag}> {err[i]}`) }
   return t
 }
 # on-click is on-press, as a browser would have it

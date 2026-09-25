@@ -1,28 +1,32 @@
 # transition.ludic - `transition: opacity 0.2s`: when an element's opacity changes from one frame to
 # the next it eases to the new value over that time instead of jumping (opacity is the property a
 # game fades most; the others arrive as they are)
-function tr_apply(ui_st: mut UiState, n: UiNode) -> void {
+var tr_keys: []string = new []string
+var tr_from: []float = new []float
+var tr_to: []float = new []float
+var tr_at: []float = new []float
+function tr_apply(n: UiNode) -> void {
   if n.tr_dur <= 0.0 { return }
-  let now = an_now(ui_st)
+  let now = an_now()
   let want = n.alpha
-  for i in 0 .. len(ui_st.tr_keys) {
-    if ui_st.tr_keys[i] == n.key {
-      if ui_st.tr_to[i] != want {
-        ui_st.tr_from[i] = tr_value(ui_st, i, now, n.tr_dur)
-        ui_st.tr_to[i] = want
-        ui_st.tr_at[i] = now
+  for i in 0 .. len(tr_keys) {
+    if tr_keys[i] == n.key {
+      if tr_to[i] != want {
+        tr_from[i] = tr_value(i, now, n.tr_dur)
+        tr_to[i] = want
+        tr_at[i] = now
       }
-      n.alpha = tr_value(ui_st, i, now, n.tr_dur)
+      n.alpha = tr_value(i, now, n.tr_dur)
       return
     }
   }
-  push(ui_st.tr_keys, n.key)
-  push(ui_st.tr_from, want)
-  push(ui_st.tr_to, want)
-  push(ui_st.tr_at, now)
+  push(tr_keys, n.key)
+  push(tr_from, want)
+  push(tr_to, want)
+  push(tr_at, now)
 }
-function tr_value(ui_st: UiState, i: int, now: float, dur: float) -> float {
-  let t = Math.clamp((now - ui_st.tr_at[i]) / dur, 0.0, 1.0)
-  if t >= 1.0 { return ui_st.tr_to[i] }
-  return ui_st.tr_from[i] + (ui_st.tr_to[i] - ui_st.tr_from[i]) * t
+function tr_value(i: int, now: float, dur: float) -> float {
+  let t = Math.clamp((now - tr_at[i]) / dur, 0.0, 1.0)
+  if t >= 1.0 { return tr_to[i] }
+  return tr_from[i] + (tr_to[i] - tr_from[i]) * t
 }

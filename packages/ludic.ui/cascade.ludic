@@ -1,14 +1,14 @@
 # cascade.ludic - once the frame's tree is built, every element is styled as a browser would:
 # the default sheet, then the file's rules from least to most specific, then its style="...", then
 # its own attributes. Then what is display: none leaves the tree.
-function cs_tree(ui_st: mut UiState, n: UiNode) -> void {
+function cs_tree(n: UiNode) -> void {
   for i in 0 .. len(n.children) {
     let c = n.children[i]
     c.parent = n
     c.index = i
   }
-  if n.tag != "" { cs_node(ui_st, n) }
-  for i in 0 .. len(n.children) { cs_tree(ui_st, n.children[i]) }
+  if n.tag != "" { cs_node(n) }
+  for i in 0 .. len(n.children) { cs_tree(n.children[i]) }
   var shown = new []UiNode
   for i in 0 .. len(n.children) {
     if not n.children[i].hidden { push(shown, n.children[i]) }
@@ -18,52 +18,54 @@ function cs_tree(ui_st: mut UiState, n: UiNode) -> void {
 }
 # twice: the font size (and zoom) first, from every rule, so an em anywhere reads the size the
 # element ends with (again when it zooms, so its own lengths are zoomed)
-function cs_node(ui_st: mut UiState, n: UiNode) -> void {
-  ui_st.cs_pass = 1
-  cs_styles(ui_st, n)
-  if zm_own(n) != 1.0 { cs_styles(ui_st, n) }
-  ui_st.cs_pass = 0
-  cs_styles(ui_st, n)
-  an_apply(ui_st, n)
-  tr_apply(ui_st, n)
+function cs_node(n: UiNode) -> void {
+  cs_pass = 1
+  cs_styles(n)
+  if zm_own(n) != 1.0 { cs_styles(n) }
+  cs_pass = 0
+  cs_styles(n)
+  an_apply(n)
+  tr_apply(n)
 }
-function cs_styles(ui_st: mut UiState, n: UiNode) -> void {
-  cs_sheet(ui_st, n, ua_sheet(ui_st))
-  if n.ups != null { cs_merged(ui_st, n) } else if n.sheet != null { cs_sheet(ui_st, n, n.sheet) }
-  if n.style != null { cs_rule(ui_st, n, n.style) }
+function cs_styles(n: UiNode) -> void {
+  cs_sheet(n, ua_sheet())
+  if n.ups != null { cs_merged(n) } else if n.sheet != null { cs_sheet(n, n.sheet) }
+  if n.style != null { cs_rule(n, n.style) }
   if n.ups != null {
     for i in 0 .. len(n.ups) {
-      if n.ups[i].style != null { cs_rule_in(ui_st, n, n.ups[i].style, n.ups[i].env) }
+      if n.ups[i].style != null { cs_rule_in(n, n.ups[i].style, n.ups[i].env) }
     }
   }
   for i in 0 .. len(n.akeys) {
-    if cs_pass_ok(ui_st, n.akeys[i]) { el_apply(ui_st, n, n.akeys[i], n.vals[i]) }
+    if cs_pass_ok(n.akeys[i]) { el_apply(n, n.akeys[i], n.vals[i]) }
   }
 }
-function cs_pass_ok(ui_st: UiState, key: string) -> bool { return ui_st.cs_pass == 0 or at_alias(key) == "size" or key == "zoom" }
-function cs_sheet(ui_st: mut UiState, n: UiNode, sh: UiSheet) -> void {
+var cs_pass: int = 0
+function cs_pass_ok(key: string) -> bool { return cs_pass == 0 or at_alias(key) == "size" or key == "zoom" }
+function cs_sheet(n: UiNode, sh: UiSheet) -> void {
   for i in 0 .. len(sh.rules) {
     let r = sh.rules[i]
-    if md_ok(ui_st, r) and sel_match(ui_st, r.sel, n) { cs_rule(ui_st, n, r) }
+    if md_ok(r) and sel_match(r.sel, n) { cs_rule(n, r) }
   }
 }
-function cs_rule(ui_st: mut UiState, n: UiNode, r: UiRule) -> void { cs_rule_in(ui_st, n, r, n.env) }
+function cs_rule(n: UiNode, r: UiRule) -> void { cs_rule_in(n, r, n.env) }
 # a rule's custom properties first, so its other declarations can read them; values read in `e`
-function cs_rule_in(ui_st: mut UiState, n: UiNode, r: UiRule, e: UiEnv) -> void {
+function cs_rule_in(n: UiNode, r: UiRule, e: UiEnv) -> void {
   for j in 0 .. len(r.keys) {
-    if len(r.keys[j]) > 2 and r.keys[j][0..2] == "--" { el_attr(ui_st, n, r.keys[j], ui_eval(ui_st, r.vals[j], e)) }
+    if len(r.keys[j]) > 2 and r.keys[j][0..2] == "--" { el_attr(n, r.keys[j], ui_eval(r.vals[j], e)) }
   }
   for j in 0 .. len(r.keys) {
-    if not (len(r.keys[j]) > 2 and r.keys[j][0..2] == "--") and cs_pass_ok(ui_st, r.keys[j]) { el_attr(ui_st, n, r.keys[j], ui_eval(ui_st, r.vals[j], e)) }
+    if not (len(r.keys[j]) > 2 and r.keys[j][0..2] == "--") and cs_pass_ok(r.keys[j]) { el_attr(n, r.keys[j], ui_eval(r.vals[j], e)) }
   }
 }
-function ua_sheet(ui_st: mut UiState) -> UiSheet {
-  if ui_st.ua_sh != null { return ui_st.ua_sh }
+var ua_sh: UiSheet = null
+function ua_sheet() -> UiSheet {
+  if ua_sh != null { return ua_sh }
   let f = new UiFile
   f.path = "the default sheet"
   f.imp = new []UiFile
   f.own = new []UiRule
-  lss_text(ui_st, f, UA_LSS)
-  ui_st.ua_sh = sheet_of(f)
-  return ui_st.ua_sh
+  lss_text(f, UA_LSS)
+  ua_sh = sheet_of(f)
+  return ua_sh
 }

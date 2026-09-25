@@ -9,24 +9,22 @@ program Menu {
   const FONT_PATH: string = "/System/Library/Fonts/Supplemental/Arial.ttf"
   const BACKDROP: int = 0x0e0e16
 
-  state MenuState {
-    title_font: int = 0
-  }
+  var title_font: int = 0
 
   ui MainMenu {
     panel id: Root w: 288 pad: 16 gap: 6 bg: 0x1a1a2c border: 0x4a4a72 skin: "assets/ui/panel.png" inset: 10 align: center {
-      label text: "CHRONO RIFT" font: MenuState.title_font size: 26 fg: 0xffe060 align: center
-      label text: "a Ludic retained-UI demo" font: MenuState.title_font size: 14 fg: 0x9aa0c8 align: center
+      label text: "CHRONO RIFT" font: title_font size: 26 fg: 0xffe060 align: center
+      label text: "a Ludic retained-UI demo" font: title_font size: 14 fg: 0x9aa0c8 align: center
       spacer h: 4
-      button id: NewGame  text: "New Game" font: MenuState.title_font size: 16 w: 236
-      button id: Continue text: "Continue" font: MenuState.title_font size: 16 w: 236
-      button id: Options  text: "Options"  font: MenuState.title_font size: 16 w: 236
-      button id: Quit     text: "Quit"     font: MenuState.title_font size: 16 w: 236
+      button id: NewGame  text: "New Game" font: title_font size: 16 w: 236
+      button id: Continue text: "Continue" font: title_font size: 16 w: 236
+      button id: Options  text: "Options"  font: title_font size: 16 w: 236
+      button id: Quit     text: "Quit"     font: title_font size: 16 w: 236
     }
   }
 
-  handler Boot(menu_st: mut MenuState) phase Start {
-    menu_st.title_font = Font.load(FONT_PATH)
+  handler Boot phase Start {
+    title_font = Font.load(FONT_PATH)
     Ui.build()
     Ui.open(UI_MainMenu)
   }

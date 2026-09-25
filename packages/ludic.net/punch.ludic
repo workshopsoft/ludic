@@ -1,51 +1,57 @@
 # punch.ludic - the host sends a few packets to each new guest's outside address, so its router
 # expects the guest, while the guest's hello goes the other way: both routers have seen traffic
 # go out, so the replies come in
+var net__seen: []string = null     # guests already punched for
+var net__punch_ip: words = null
+var net__punch_port: words = null
+var net__punch_left: words = null
+var net__punch_t: float = 0.0
+var net__punch_b: []byte = null    # the punch itself, "MP" and two zeros, made once
 
-function net__new_guest(net_st: mut NetState, pub: string, local: string) -> void {
+function net__new_guest(pub: string, local: string) -> void {
   let key = `{pub}|{local}`
-  if net_st.net__seen == null { net_st.net__seen = new []string }
-  for i in 0 .. len(net_st.net__seen) { if net_st.net__seen[i] == key { return } }
-  push(net_st.net__seen, key)
-  net__log(`room {net_st.net__room}: a guest at {pub} / {local}`)
-  if len(pub) > 0 and net_parse_code(net_st, pub) { net__punch_add(net_st, net_st.net__code_ip, net_st.net__code_port) }
-  if net_parse_code(net_st, local) { net__punch_add(net_st, net_st.net__code_ip, net_st.net__code_port) }
+  if net__seen == null { net__seen = new []string }
+  for i in 0 .. len(net__seen) { if net__seen[i] == key { return } }
+  push(net__seen, key)
+  net__log(`room {net__room}: a guest at {pub} / {local}`)
+  if len(pub) > 0 and net_parse_code(pub) { net__punch_add(net__code_ip, net__code_port) }
+  if net_parse_code(local) { net__punch_add(net__code_ip, net__code_port) }
 }
 
-function net__punch_add(net_st: mut NetState, ip: int, port: int) -> void {
-  if net_st.net__punch_ip == null {
-    net_st.net__punch_ip = words(16)
-    net_st.net__punch_port = words(16)
-    net_st.net__punch_left = words(16)
-    for k in 0 .. 16 { net_st.net__punch_left[k] = 0 }
+function net__punch_add(ip: int, port: int) -> void {
+  if net__punch_ip == null {
+    net__punch_ip = words(16)
+    net__punch_port = words(16)
+    net__punch_left = words(16)
+    for k in 0 .. 16 { net__punch_left[k] = 0 }
   }
   for k in 0 .. 16 {
-    if net_st.net__punch_left[k] > 0 { continue }
-    net_st.net__punch_ip[k] = ip
-    net_st.net__punch_port[k] = port
-    net_st.net__punch_left[k] = 10
+    if net__punch_left[k] > 0 { continue }
+    net__punch_ip[k] = ip
+    net__punch_port[k] = port
+    net__punch_left[k] = 10
     return
   }
 }
 
 # twice a second while a guest is new: a packet the guest's side ignores, which is the point
-function net__punch_tick(net_st: mut NetState, dt: float) -> void {
-  if net_st.net__punch_ip == null { return }
-  net_st.net__punch_t = net_st.net__punch_t - dt
-  if net_st.net__punch_t > 0.0 { return }
-  net_st.net__punch_t = 0.5
-  if net_st.net__punch_b == null {
-    net_st.net__punch_b = buffer(4)
-    nb_put8(net_st.net__punch_b, 0, 'M')
-    nb_put8(net_st.net__punch_b, 1, 'P')
+function net__punch_tick(dt: float) -> void {
+  if net__punch_ip == null { return }
+  net__punch_t = net__punch_t - dt
+  if net__punch_t > 0.0 { return }
+  net__punch_t = 0.5
+  if net__punch_b == null {
+    net__punch_b = buffer(4)
+    nb_put8(net__punch_b, 0, 'M')
+    nb_put8(net__punch_b, 1, 'P')
   }
   for k in 0 .. 16 {
-    if net_st.net__punch_left[k] <= 0 { continue }
-    NetSocket.send(net_st.net__sock, net_st.net__punch_ip[k], net_st.net__punch_port[k], net_st.net__punch_b, 4)
-    net_st.net__punch_left[k] -= 1
+    if net__punch_left[k] <= 0 { continue }
+    NetSocket.send(net__sock, net__punch_ip[k], net__punch_port[k], net__punch_b, 4)
+    net__punch_left[k] -= 1
   }
 }
 
-function net__punch_clear(net_st: mut NetState) -> void {
-  if net_st.net__punch_left != null { for k in 0 .. 16 { net_st.net__punch_left[k] = 0 } }
+function net__punch_clear() -> void {
+  if net__punch_left != null { for k in 0 .. 16 { net__punch_left[k] = 0 } }
 }

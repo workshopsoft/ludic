@@ -3,33 +3,31 @@
 import "ludic.base"
 program SystemTest {
   numbers float
-  state SystemtestState {
-    trail: string = ""
-    apples: int = 0
-    hours: float = 0.0
-  }
+  var trail: string = ""
+  var apples: int = 0
+  var hours: float = 0.0
 
-  function draw_tick(systemtest_st: mut SystemtestState, t: Tick) -> void { systemtest_st.trail = systemtest_st.trail + "d" }
-  function think_tick(systemtest_st: mut SystemtestState, t: Tick) -> void { systemtest_st.trail = systemtest_st.trail + "t" }
-  function input_tick(systemtest_st: mut SystemtestState, t: Tick) -> void { systemtest_st.trail = systemtest_st.trail + "i" }
-  function commit_tick(systemtest_st: mut SystemtestState, t: Tick) -> void { systemtest_st.trail = systemtest_st.trail + "c" }
-  function apples_init(systemtest_st: mut SystemtestState) -> void { systemtest_st.trail = systemtest_st.trail + "A" }
-  function apples_reset(systemtest_st: mut SystemtestState) -> void { systemtest_st.apples = 0 }
-  function apples_tick(systemtest_st: mut SystemtestState, t: Tick) -> void { systemtest_st.apples += 1 }
-  function apples_save(systemtest_st: SystemtestState) -> Val {
+  function draw_tick(t: Tick) -> void { trail = trail + "d" }
+  function think_tick(t: Tick) -> void { trail = trail + "t" }
+  function input_tick(t: Tick) -> void { trail = trail + "i" }
+  function commit_tick(t: Tick) -> void { trail = trail + "c" }
+  function apples_init() -> void { trail = trail + "A" }
+  function apples_reset() -> void { apples = 0 }
+  function apples_tick(t: Tick) -> void { apples += 1 }
+  function apples_save() -> Val {
     let v = Value.object()
-    sv_put_int(v, "n", systemtest_st.apples)
+    sv_put_int(v, "n", apples)
     return v
   }
-  function apples_load(systemtest_st: mut SystemtestState, v: Val, version: int) -> void { systemtest_st.apples = sv_int(v, "n", 0) * version }
-  function clock_reset(systemtest_st: mut SystemtestState) -> void { systemtest_st.hours = 6.0 }
-  function clock_tick(systemtest_st: mut SystemtestState, t: Tick) -> void { systemtest_st.hours = systemtest_st.hours + t.hours }
-  function clock_save(systemtest_st: SystemtestState) -> Val {
+  function apples_load(v: Val, version: int) -> void { apples = sv_int(v, "n", 0) * version }
+  function clock_reset() -> void { hours = 6.0 }
+  function clock_tick(t: Tick) -> void { hours = hours + t.hours }
+  function clock_save() -> Val {
     let v = Value.object()
-    sv_put_float(v, "h", systemtest_st.hours)
+    sv_put_float(v, "h", hours)
     return v
   }
-  function clock_load(systemtest_st: mut SystemtestState, v: Val, version: int) -> void { systemtest_st.hours = sv_float(v, "h", 6.0) }
+  function clock_load(v: Val, version: int) -> void { hours = sv_float(v, "h", 6.0) }
 
   function sys(key: string, phase: int, tick: fn(Tick) -> void) -> System {
     let s = system_new(key, phase)
@@ -37,71 +35,71 @@ program SystemTest {
     return s
   }
 
-  function setup(base_st: mut BaseState, systemtest_st: mut SystemtestState) -> void {
-    core_clear(base_st)
-    systemtest_st.trail = ""
-    core_add(base_st, sys("draw", PH_PRESENT, fn draw_tick))
-    core_add(base_st, sys("think", PH_SIMULATE, fn think_tick))
+  function setup() -> void {
+    core_clear()
+    trail = ""
+    core_add(sys("draw", PH_PRESENT, fn draw_tick))
+    core_add(sys("think", PH_SIMULATE, fn think_tick))
     let a = sys("apples", PH_SIMULATE, fn apples_tick)
     a.init = fn apples_init
     a.reset = fn apples_reset
     a.save = fn apples_save
     a.load = fn apples_load
     a.version = 2
-    core_add(base_st, a)
-    core_add(base_st, sys("input", PH_INPUT, fn input_tick))
-    core_add(base_st, sys("commit", PH_COMMIT, fn commit_tick))
+    core_add(a)
+    core_add(sys("input", PH_INPUT, fn input_tick))
+    core_add(sys("commit", PH_COMMIT, fn commit_tick))
     let c = sys("clock", PH_SIMULATE, fn clock_tick)
     c.reset = fn clock_reset
     c.save = fn clock_save
     c.load = fn clock_load
-    core_add(base_st, c)
+    core_add(c)
   }
 
-  test "tick runs phase by phase, in the order added within a phase" (base_st: mut BaseState, systemtest_st: mut SystemtestState) {
-    setup(base_st, systemtest_st)
-    core_tick_all(base_st, tick_new(1.0 / 60.0, 0, 0.0))
-    expect(systemtest_st.trail == "itcd")
-    expect_eq(systemtest_st.apples, 1)
+  test "tick runs phase by phase, in the order added within a phase" {
+    setup()
+    core_tick_all(tick_new(1.0 / 60.0, 0, 0.0))
+    expect(trail == "itcd")
+    expect_eq(apples, 1)
   }
 
-  test "init and reset run in the order added and skip a null verb" (base_st: mut BaseState, systemtest_st: mut SystemtestState) {
-    setup(base_st, systemtest_st)
-    core_init_all(base_st)
-    expect(systemtest_st.trail == "A")
-    systemtest_st.apples = 9
-    core_reset_all(base_st)
-    expect_eq(systemtest_st.apples, 0)
-    expect(systemtest_st.hours == 6.0)
-    expect_eq(core_count(base_st), 6)
+  test "init and reset run in the order added and skip a null verb" {
+    setup()
+    core_init_all()
+    expect(trail == "A")
+    apples = 9
+    core_reset_all()
+    expect_eq(apples, 0)
+    expect(hours == 6.0)
+    expect_eq(core_count(), 6)
   }
 
-  test "save writes each system under its key with its version, and load reads it back" (base_st: mut BaseState, systemtest_st: mut SystemtestState) {
-    setup(base_st, systemtest_st)
-    core_reset_all(base_st)
-    systemtest_st.apples = 4
-    core_tick_all(base_st, tick_new(0.016, 1, 0.5))
-    let root = core_save_all(base_st)
+  test "save writes each system under its key with its version, and load reads it back" {
+    setup()
+    core_reset_all()
+    apples = 4
+    core_tick_all(tick_new(0.016, 1, 0.5))
+    let root = core_save_all()
     expect_eq(Value.count(root), 2)
     expect_eq(load_section(root, "apples").version, 2)
     expect_eq(load_section(root, "clock").version, 1)
     let text = save_encode(root)
-    core_reset_all(base_st)
-    core_load_all(base_st, save_decode(text))
-    expect_eq(systemtest_st.apples, 10)
-    expect(systemtest_st.hours == 6.5)
+    core_reset_all()
+    core_load_all(save_decode(text))
+    expect_eq(apples, 10)
+    expect(hours == 6.5)
   }
 
-  test "a system with no section in the save is reset" (base_st: mut BaseState, systemtest_st: mut SystemtestState) {
-    setup(base_st, systemtest_st)
-    systemtest_st.apples = 3
-    systemtest_st.hours = 11.0
+  test "a system with no section in the save is reset" {
+    setup()
+    apples = 3
+    hours = 11.0
     let root = save_tree()
     let v = Value.object()
     sv_put_float(v, "h", 20.25)
     save_section(root, "clock", 1, v)
-    core_load_all(base_st, root)
-    expect_eq(systemtest_st.apples, 0)
-    expect(systemtest_st.hours == 20.25)
+    core_load_all(root)
+    expect_eq(apples, 0)
+    expect(hours == 20.25)
   }
 }

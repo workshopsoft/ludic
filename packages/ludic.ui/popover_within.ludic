@@ -1,10 +1,14 @@
 # popover_within.ludic - what an anchored popover is kept inside: the element named by within="id",
 # else the nearest scroll box (or overflow box) around it, else the screen; it flips against the same
-function pp_bounds(ui_st: mut UiState, p: UiNode) -> void {
-  ui_st.pp_bx = ui_st.ly_vp_x
-  ui_st.pp_by = ui_st.ly_vp_y
-  ui_st.pp_bw = ui_st.ly_vp_w
-  ui_st.pp_bh = ui_st.ly_vp_h
+var pp_bx: float = 0.0
+var pp_by: float = 0.0
+var pp_bw: float = 0.0
+var pp_bh: float = 0.0
+function pp_bounds(p: UiNode) -> void {
+  pp_bx = ly_vp_x
+  pp_by = ly_vp_y
+  pp_bw = ly_vp_w
+  pp_bh = ly_vp_h
   var box: UiNode = null
   let id = ui_attr_text(p, "within")
   if id != "" {
@@ -13,7 +17,7 @@ function pp_bounds(ui_st: mut UiState, p: UiNode) -> void {
       box = pp_by_id(at, id, p)
       at = at.parent
     }
-    if box == null { ui_err(ui_st, `within="{id}": no element has that id`) }
+    if box == null { ui_err(`within="{id}": no element has that id`) }
   } else {
     var at = p.parent
     while at != null and box == null {
@@ -22,10 +26,10 @@ function pp_bounds(ui_st: mut UiState, p: UiNode) -> void {
     }
   }
   if box == null { return }
-  ui_st.pp_bx = box.x
-  ui_st.pp_by = box.y
-  ui_st.pp_bw = box.cw
-  ui_st.pp_bh = box.ch
+  pp_bx = box.x
+  pp_by = box.y
+  pp_bw = box.cw
+  pp_bh = box.ch
 }
 # where a popover of `size` starts along its anchor's side: level with its start, centred, or its end
 function pp_along(align: string, at: float, span: float, size: float) -> float {

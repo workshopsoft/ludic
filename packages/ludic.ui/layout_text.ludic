@@ -1,9 +1,9 @@
 # layout_text.ludic - a text's size: one line, or as many as it takes to fit its room (white-space
 # normal), breaking between words; nowrap keeps one line, and text-overflow: ellipsis cuts it
-function ly_measure_text(ui_st: UiState, n: UiNode, avail: float) -> void {
+function ly_measure_text(n: UiNode, avail: float) -> void {
   n.lines = null
   let lh = ly_line_h(n)
-  var one = ly_text_w(ui_st, n.text, n.rsize)
+  var one = ly_text_w(n.text, n.rsize)
   var room = avail - n.ml - n.mr - ly_hin(n)
   if n.w >= 0.0 { room = n.w - ly_hin(n) }
   let fits = n.ex != null and n.ex.fit_min > 0.0
@@ -13,13 +13,13 @@ function ly_measure_text(ui_st: UiState, n: UiNode, avail: float) -> void {
     n.mh = n.mh + lh
     return
   }
-  n.lines = ly_wrap(ui_st, n.text, n.rsize, room)
+  n.lines = ly_wrap(n.text, n.rsize, room)
   var widest = 0.0
-  for i in 0 .. len(n.lines) { widest = Math.max(widest, ly_text_w(ui_st, n.lines[i], n.rsize)) }
+  for i in 0 .. len(n.lines) { widest = Math.max(widest, ly_text_w(n.lines[i], n.rsize)) }
   n.mw = n.mw + widest
   n.mh = n.mh + lh * float(len(n.lines))
 }
-function ly_wrap(ui_st: UiState, s: string, size: float, room: float) -> []string {
+function ly_wrap(s: string, size: float, room: float) -> []string {
   let words = lss_split(s, 32)
   let out = new []string
   var line = ""
@@ -27,7 +27,7 @@ function ly_wrap(ui_st: UiState, s: string, size: float, room: float) -> []strin
     if len(words[i]) == 0 { continue }
     var next = words[i]
     if len(line) > 0 { next = line + " " + words[i] }
-    if len(line) > 0 and ly_text_w(ui_st, next, size) > room {
+    if len(line) > 0 and ly_text_w(next, size) > room {
       push(out, line)
       line = words[i]
     } else { line = next }
@@ -36,14 +36,14 @@ function ly_wrap(ui_st: UiState, s: string, size: float, room: float) -> []strin
   return out
 }
 # a line cut to `room` with an ellipsis, when it does not fit
-function ly_ellipsis(ui_st: UiState, s: string, size: float, room: float) -> string {
-  if ly_text_w(ui_st, s, size) <= room { return s }
+function ly_ellipsis(s: string, size: float, room: float) -> string {
+  if ly_text_w(s, size) <= room { return s }
   var n = len(s)
-  while n > 0 and ly_text_w(ui_st, s[0..n] + "...", size) > room { n -= 1 }
+  while n > 0 and ly_text_w(s[0..n] + "...", size) > room { n -= 1 }
   return s[0..n] + "..."
 }
-function ly_text_w(ui_st: UiState, s: string, size: float) -> float {
-  if ui_st.ui_be != null and ui_st.ui_be.measure != null { return ui_st.ui_be.measure(s, size) }
+function ly_text_w(s: string, size: float) -> float {
+  if ui_be != null and ui_be.measure != null { return ui_be.measure(s, size) }
   return float(len(s)) * size * 0.5
 }
 # a child's size along and across a direction, margins included

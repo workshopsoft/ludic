@@ -37,39 +37,39 @@ export function photo_score_frame(sx: float, sy: float, frac: float) -> int {
 # The whole score for a subject `h` metres tall standing at (x, y, z), doing something worth
 # `moment` (0..20). Composition, light and behaviour are qualities OF a subject, so they are
 # weighted by how much of one there is: a deer three pixels wide in perfect light is not a photograph.
-export function photo_score(photo_st: mut PhotoState, x: float, y: float, z: float, h: float, moment: int) -> int {
+export function photo_score(x: float, y: float, z: float, h: float, moment: int) -> int {
   let dx = x - PhotoLens.x()
   let dy = y + 0.6 - PhotoLens.y()
   let dz = z - PhotoLens.z()
   let d = Math.max(Math.sqrt(dx * dx + dy * dy + dz * dz), 0.01)
   let frac = pht_size_frac(h, d)
-  if photo_st.pht_comp == null { pht_blank(photo_st) }
+  if pht_comp == null { pht_blank() }
   var sx = 0.5
   var sy = 0.5
   if PhotoLens.project(x, y + h * 0.5, z) {
     sx = PhotoLens.sx()
     sy = PhotoLens.sy()
   }
-  photo_st.pht_comp[0] = float(photo_score_size(frac))
-  photo_st.pht_comp[1] = float(photo_score_frame(sx, sy, frac))
-  if PhotoLens.steady() { photo_st.pht_comp[1] = Math.min(photo_st.pht_comp[1] + 5.0, 20.0) }
-  photo_st.pht_comp[2] = float(photo_score_light(x, z))
-  photo_st.pht_comp[3] = float(Math.clamp(moment, 0, 20))
-  photo_st.pht_comp_have = true
-  let presence = Math.clamp(photo_st.pht_comp[0] / 40.0 * 1.4, 0.0, 1.0)
+  pht_comp[0] = float(photo_score_size(frac))
+  pht_comp[1] = float(photo_score_frame(sx, sy, frac))
+  if PhotoLens.steady() { pht_comp[1] = Math.min(pht_comp[1] + 5.0, 20.0) }
+  pht_comp[2] = float(photo_score_light(x, z))
+  pht_comp[3] = float(Math.clamp(moment, 0, 20))
+  pht_comp_have = true
+  let presence = Math.clamp(pht_comp[0] / 40.0 * 1.4, 0.0, 1.0)
   if PhotoRules.behaviour() {
-    photo_st.pht_comp[0] = photo_st.pht_comp[0] * 0.5
-    photo_st.pht_comp[3] = photo_st.pht_comp[3] * 2.0
+    pht_comp[0] = pht_comp[0] * 0.5
+    pht_comp[3] = pht_comp[3] * 2.0
   }
-  return int(photo_st.pht_comp[0] + (photo_st.pht_comp[1] + photo_st.pht_comp[2] + photo_st.pht_comp[3]) * presence)
+  return int(pht_comp[0] + (pht_comp[1] + pht_comp[2] + pht_comp[3]) * presence)
 }
 
 # the one thing to do differently next time: the worst component, or nothing to fault
-export function photo_why_of_comp(photo_st: PhotoState) -> int {
+export function photo_why_of_comp() -> int {
   var worst = PHOTO_WHY_SIZE
-  var least = photo_st.pht_comp[0] / 40.0
+  var least = pht_comp[0] / 40.0
   for k in 1 .. 4 {
-    let f = photo_st.pht_comp[k] / 20.0
+    let f = pht_comp[k] / 20.0
     if f < least {
       least = f
       worst = k

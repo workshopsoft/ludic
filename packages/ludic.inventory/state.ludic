@@ -12,33 +12,31 @@ export property ItemChanged {
   after: int = 0
 }
 
-export state InventoryState {
-  iv_keys: []string = null
-  iv_counts: []int = null
-  iv_changes: Queue<ItemChanged> = null
-}
+var iv_keys: []string = null
+var iv_counts: []int = null
+var iv_changes: Queue<ItemChanged> = null
 
 # the kinds, by the name each is saved under; the pack starts empty
-export function inv_config(inventory_st: mut InventoryState, keys: []string) -> void {
-  inventory_st.iv_keys = keys
-  inv_clear(inventory_st)
+export function inv_config(keys: []string) -> void {
+  iv_keys = keys
+  inv_clear()
 }
 
-export function inv_changes(base_st: mut BaseState, inventory_st: mut InventoryState) -> Queue<ItemChanged> {
-  if inventory_st.iv_changes == null { inventory_st.iv_changes = queue_new(base_st, "inventory.changes") }
-  return inventory_st.iv_changes
+export function inv_changes() -> Queue<ItemChanged> {
+  if iv_changes == null { iv_changes = queue_new("inventory.changes") }
+  return iv_changes
 }
 
-function iv_valid(inventory_st: InventoryState, it: int) -> bool { return inventory_st.iv_counts != null and it >= 0 and it < len(inventory_st.iv_counts) }
+function iv_valid(it: int) -> bool { return iv_counts != null and it >= 0 and it < len(iv_counts) }
 
-export function inv_kinds(inventory_st: InventoryState) -> int {
-  if inventory_st.iv_keys == null { return 0 }
-  return len(inventory_st.iv_keys)
+export function inv_kinds() -> int {
+  if iv_keys == null { return 0 }
+  return len(iv_keys)
 }
 
-export function inv_count(inventory_st: InventoryState, it: int) -> int {
-  if not iv_valid(inventory_st, it) { return 0 }
-  return inventory_st.iv_counts[it]
+export function inv_count(it: int) -> int {
+  if not iv_valid(it) { return 0 }
+  return iv_counts[it]
 }
 
 export function inv_limit(it: int) -> int {
@@ -46,16 +44,16 @@ export function inv_limit(it: int) -> int {
 }
 
 # how many more fit
-export function inv_room(inventory_st: InventoryState, it: int) -> int {
-  if not iv_valid(inventory_st, it) { return 0 }
-  return Math.max(inv_limit(it) - inventory_st.iv_counts[it], 0)
+export function inv_room(it: int) -> int {
+  if not iv_valid(it) { return 0 }
+  return Math.max(inv_limit(it) - iv_counts[it], 0)
 }
 
-export function inv_has(inventory_st: InventoryState, it: int, n: int) -> bool { return inv_count(inventory_st, it) >= n }
+export function inv_has(it: int, n: int) -> bool { return inv_count(it) >= n }
 
-export function inv_total(inventory_st: InventoryState) -> int {
+export function inv_total() -> int {
   var t = 0
-  if inventory_st.iv_counts == null { return 0 }
-  for i in 0 .. len(inventory_st.iv_counts) { t += inventory_st.iv_counts[i] }
+  if iv_counts == null { return 0 }
+  for i in 0 .. len(iv_counts) { t += iv_counts[i] }
   return t
 }

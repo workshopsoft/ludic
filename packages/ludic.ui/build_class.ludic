@@ -1,14 +1,14 @@
 # build_class.ludic - a Ludic component's instance built: the parent's attributes are its props (id,
 # class and style go on its root element instead, styled by the parent's sheet as well as its own),
 # its model is its props, state and fields, and its template reads nothing else
-function bd_class(ui_st: mut UiState, k: UiTpl, e: UiEnv, key: string, out: []UiNode) -> void {
+function bd_class(k: UiTpl, e: UiEnv, key: string, out: []UiNode) -> void {
   let cls = k.cls
-  uc_load(ui_st, cls)
-  let it = in_get(ui_st, key, cls)
+  uc_load(cls)
+  let it = in_get(key, cls)
   let props = Value.object()
   for i in 0 .. len(k.keys) {
     let a = k.keys[i]
-    if a != "class" and a != "style" and a != "id" { Value.put(props, a, ui_eval(ui_st, k.vals[i], e)) }
+    if a != "class" and a != "style" and a != "id" { Value.put(props, a, ui_eval(k.vals[i], e)) }
   }
   cls.props(it.ptr, props)
   let ce = env_new(null)
@@ -21,25 +21,25 @@ function bd_class(ui_st: mut UiState, k: UiTpl, e: UiEnv, key: string, out: []Ui
   ce.on_acts = k.on_acts
   ce.on_envs = new []UiEnv
   for i in 0 .. len(k.on_keys) { push(ce.on_envs, e) }
-  lc_note(ui_st, key, k.on_keys, k.on_acts, e)
+  lc_note(key, k.on_keys, k.on_acts, e)
   let at = len(out)
   let root = new []UiTpl
   push(root, cls.root)
-  bd_kids(ui_st, root, ce, key, out)
-  if len(out) > at { bd_pass_down(ui_st, out[at], k, e) }
+  bd_kids(root, ce, key, out)
+  if len(out) > at { bd_pass_down(out[at], k, e) }
 }
 # <Card class="wide" style="margin: 4px" id="c"> puts those on the card's own root element; when that
 # root is itself a component, each user in turn adds theirs (the outermost's id wins)
-function bd_pass_down(ui_st: mut UiState, n: UiNode, k: UiTpl, e: UiEnv) -> void {
+function bd_pass_down(n: UiNode, k: UiTpl, e: UiEnv) -> void {
   let c = tpl_attr(k, "class")
   if c != null {
-    let parts = lss_split(ui_eval_text(ui_st, c, e), 32)
+    let parts = lss_split(ui_eval_text(c, e), 32)
     for i in 0 .. len(parts) {
       if len(parts[i]) > 0 { push(n.classes, parts[i]) }
     }
   }
   let id = tpl_attr(k, "id")
-  if id != null { n.id = ui_eval_text(ui_st, id, e) }
+  if id != null { n.id = ui_eval_text(id, e) }
   let up = new UiPass
   up.sheet = k.sheet
   up.style = k.style

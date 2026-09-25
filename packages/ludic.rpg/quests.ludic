@@ -14,13 +14,23 @@
 const QUEST_MAX: int = 128
 const OBJ_MAX: int = 512
 
+var quest_reg: Dict = null            # quest name -> id
+var quest_n: int = 0
+var quest_state: words = null
+var obj_n: int = 0
+var obj_qid:    words = null          # owning quest id
+var obj_kind:   words = null
+var obj_target: words = null          # a target id/tag (kind-specific; 0 = any)
+var obj_need:   words = null
+var obj_have:   words = null
+var quest_flags: Dict = null          # global flag store
 
-function quest_ensure(rpg_st: mut RpgState) -> void {
-  if rpg_st.quest_reg == null {
-    rpg_st.quest_reg = Dict.new();  rpg_st.quest_flags = Dict.new()
-    rpg_st.quest_state = words(QUEST_MAX)
-    rpg_st.obj_qid = words(OBJ_MAX);  rpg_st.obj_kind = words(OBJ_MAX);  rpg_st.obj_target = words(OBJ_MAX)
-    rpg_st.obj_need = words(OBJ_MAX);  rpg_st.obj_have = words(OBJ_MAX)
+function quest_ensure() -> void {
+  if quest_reg == null {
+    quest_reg = Dict.new();  quest_flags = Dict.new()
+    quest_state = words(QUEST_MAX)
+    obj_qid = words(OBJ_MAX);  obj_kind = words(OBJ_MAX);  obj_target = words(OBJ_MAX)
+    obj_need = words(OBJ_MAX);  obj_have = words(OBJ_MAX)
   }
 }
 
@@ -29,48 +39,48 @@ event QuestCompleted { quest: int = 0 }
 event ObjectiveProgressed { quest: int = 0, objective: int = 0, have: int = 0, need: int = 0 }
 
 # Quest.define(name) — register a quest (state hidden). Returns id.
-@Namespace(Quest) function quest_define(rpg_st: mut RpgState, name: pointer) -> int {
-  quest_ensure(rpg_st)
-  if rpg_st.quest_n >= QUEST_MAX { return -1 }
-  let id = rpg_st.quest_n
-  rpg_st.quest_state[id] = 0
-  rpg_st.quest_n += 1
-  Dict.set(rpg_st.quest_reg, name, id)
+@Namespace(Quest) function quest_define(name: pointer) -> int {
+  quest_ensure()
+  if quest_n >= QUEST_MAX { return -1 }
+  let id = quest_n
+  quest_state[id] = 0
+  quest_n += 1
+  Dict.set(quest_reg, name, id)
   return id
 }
-@Namespace(Quest) function quest_id(rpg_st: mut RpgState, name: pointer) -> int { quest_ensure(rpg_st);  return Dict.get_or(rpg_st.quest_reg, name, -1) }
+@Namespace(Quest) function quest_id(name: pointer) -> int { quest_ensure();  return Dict.get_or(quest_reg, name, -1) }
 # Quest.objective(quest_name, kind, target, need) — add an objective.
-@Namespace(Quest) function quest_objective(rpg_st: mut RpgState, quest_name: pointer, kind: int, target: int, need: int) -> int {
-  quest_ensure(rpg_st)
-  let qid = quest_id(rpg_st, quest_name)
+@Namespace(Quest) function quest_objective(quest_name: pointer, kind: int, target: int, need: int) -> int {
+  quest_ensure()
+  let qid = quest_id(quest_name)
   if qid < 0 { return -1 }
-  if rpg_st.obj_n >= OBJ_MAX { return -1 }
-  let id = rpg_st.obj_n
-  rpg_st.obj_qid[id] = qid;  rpg_st.obj_kind[id] = kind;  rpg_st.obj_target[id] = target
-  rpg_st.obj_need[id] = need;  rpg_st.obj_have[id] = 0
-  rpg_st.obj_n += 1
+  if obj_n >= OBJ_MAX { return -1 }
+  let id = obj_n
+  obj_qid[id] = qid;  obj_kind[id] = kind;  obj_target[id] = target
+  obj_need[id] = need;  obj_have[id] = 0
+  obj_n += 1
   return id
 }
 # Quest.start(name) — activate a quest (emits QuestStarted).
-@Namespace(Quest) function quest_start(rpg_st: mut RpgState, name: pointer) -> void {
-  quest_ensure(rpg_st)
-  let qid = quest_id(rpg_st, name)
+@Namespace(Quest) function quest_start(name: pointer) -> void {
+  quest_ensure()
+  let qid = quest_id(name)
   if qid < 0 { return }
-  rpg_st.quest_state[qid] = 2
+  quest_state[qid] = 2
   emit QuestStarted(quest: qid)
 }
-@Namespace(Quest) function quest_state_of(rpg_st: mut RpgState, name: pointer) -> int {
-  quest_ensure(rpg_st)
-  let qid = quest_id(rpg_st, name)
+@Namespace(Quest) function quest_state_of(name: pointer) -> int {
+  quest_ensure()
+  let qid = quest_id(name)
   if qid < 0 { return -1 }
-  return rpg_st.quest_state[qid]
+  return quest_state[qid]
 }
 
 # is every objective of a quest satisfied?
-function quest_all_done(rpg_st: RpgState, qid: int) -> int {
+function quest_all_done(qid: int) -> int {
   var i = 0
-  while i < rpg_st.obj_n {
-    if rpg_st.obj_qid[i] == qid { if rpg_st.obj_have[i] < rpg_st.obj_need[i] { return 0 } }
+  while i < obj_n {
+    if obj_qid[i] == qid { if obj_have[i] < obj_need[i] { return 0 } }
     i += 1
   }
   return 1
@@ -79,20 +89,20 @@ function quest_all_done(rpg_st: RpgState, qid: int) -> int {
 # Quest.notify(kind, target, amount) — report a gameplay signal. Every ACTIVE
 # quest's matching objectives tick up (target 0 on the objective = "any"); a quest
 # whose objectives are all met auto-completes.
-@Namespace(Quest) function quest_notify(rpg_st: mut RpgState, kind: int, target: int, amount: int) -> void {
-  quest_ensure(rpg_st)
+@Namespace(Quest) function quest_notify(kind: int, target: int, amount: int) -> void {
+  quest_ensure()
   var i = 0
-  while i < rpg_st.obj_n {
-    let qid = rpg_st.obj_qid[i]
-    if rpg_st.quest_state[qid] == 2 {
-      if rpg_st.obj_kind[i] == kind {
-        if (rpg_st.obj_target[i] == 0) or (rpg_st.obj_target[i] == target) {
-          if rpg_st.obj_have[i] < rpg_st.obj_need[i] {
-            rpg_st.obj_have[i] += amount
-            if rpg_st.obj_have[i] > rpg_st.obj_need[i] { rpg_st.obj_have[i] = rpg_st.obj_need[i] }
-            emit ObjectiveProgressed(quest: qid, objective: i, have: rpg_st.obj_have[i], need: rpg_st.obj_need[i])
-            if quest_all_done(rpg_st, qid) == 1 {
-              rpg_st.quest_state[qid] = 3
+  while i < obj_n {
+    let qid = obj_qid[i]
+    if quest_state[qid] == 2 {
+      if obj_kind[i] == kind {
+        if (obj_target[i] == 0) or (obj_target[i] == target) {
+          if obj_have[i] < obj_need[i] {
+            obj_have[i] += amount
+            if obj_have[i] > obj_need[i] { obj_have[i] = obj_need[i] }
+            emit ObjectiveProgressed(quest: qid, objective: i, have: obj_have[i], need: obj_need[i])
+            if quest_all_done(qid) == 1 {
+              quest_state[qid] = 3
               emit QuestCompleted(quest: qid)
             }
           }
@@ -104,5 +114,5 @@ function quest_all_done(rpg_st: RpgState, qid: int) -> int {
 }
 
 # ---- global flag store (branching / world state) --------------------------
-@Namespace(Quest) function quest_flag(rpg_st: mut RpgState, name: pointer, value: int) -> void { quest_ensure(rpg_st);  Dict.set(rpg_st.quest_flags, name, value) }
-@Namespace(Quest) function quest_flag_get(rpg_st: mut RpgState, name: pointer) -> int { quest_ensure(rpg_st);  return Dict.get_or(rpg_st.quest_flags, name, 0) }
+@Namespace(Quest) function quest_flag(name: pointer, value: int) -> void { quest_ensure();  Dict.set(quest_flags, name, value) }
+@Namespace(Quest) function quest_flag_get(name: pointer) -> int { quest_ensure();  return Dict.get_or(quest_flags, name, 0) }

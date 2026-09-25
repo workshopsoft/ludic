@@ -1,17 +1,18 @@
 # tpl_lines.ludic - which line of its file an element is on
 # the text being read, and where its lines start, so an element can say which line it is on
-function tp_lines(ui_st: mut UiState, src: string) -> void {
-  ui_st.tp_nl = new []int
+var tp_nl: []int = new []int
+function tp_lines(src: string) -> void {
+  tp_nl = new []int
   for i in 0 .. len(src) {
-    if src[i] == 10 { push(ui_st.tp_nl, i) }
+    if src[i] == 10 { push(tp_nl, i) }
   }
 }
-function tp_line(ui_st: UiState, at: int) -> int {
+function tp_line(at: int) -> int {
   var lo = 0
-  var hi = len(ui_st.tp_nl)
+  var hi = len(tp_nl)
   while lo < hi {
     let mid = (lo + hi) / 2
-    if ui_st.tp_nl[mid] < at { lo = mid + 1 } else { hi = mid }
+    if tp_nl[mid] < at { lo = mid + 1 } else { hi = mid }
   }
   return lo + 1
 }
@@ -24,7 +25,7 @@ function tp_mixed(x: Xml) -> bool {
   }
   return false
 }
-function tp_read_mixed(ui_st: mut UiState, t: UiTpl, x: Xml, file: string, err: []string) -> void {
+function tp_read_mixed(t: UiTpl, x: Xml, file: string, err: []string) -> void {
   for i in 0 .. len(x.mixed) {
     let m = x.mixed[i]
     if m.tag == "#text" {
@@ -38,6 +39,6 @@ function tp_read_mixed(ui_st: mut UiState, t: UiTpl, x: Xml, file: string, err: 
       r.kids = new []UiTpl
       r.text = ex_text(tpl_words(m.text), err)
       push(t.kids, r)
-    } else { push(t.kids, tpl_read(ui_st, m, file)) }
+    } else { push(t.kids, tpl_read(m, file)) }
   }
 }

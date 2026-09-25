@@ -1,24 +1,31 @@
 # calc.ludic - CSS's calc(), min(), max() and clamp(): + - * / and brackets over lengths (px, em, rem,
 # vw, vh, a bare number is px), percentages and plain numbers. A width, height or inset keeps its
 # percentage apart, to be taken of the room it is given; elsewhere a percentage has nothing to share.
+var ca_s: string = ""
+var ca_i: int = 0
+var ca_bad: string = ""
+var ca_px: float = 0.0            # the result: its lengths, its percentage, and whether it had units
+var ca_pct: float = 0.0
+var ca_num: float = 0.0           # a plain number's own value, and whether it was one
+var ca_bare: bool = false
 function ca_is(s: string) -> bool { return ca_fn_at(s, 0) != "" }
 # calc(...) worked out into ca_px and ca_pct; false (with the reason said) when it cannot be
-function ca_eval(ui_st: mut UiState, s: string) -> bool {
-  ui_st.ca_s = s
-  ui_st.ca_i = 0
-  ui_st.ca_bad = ""
-  let v = ca_factor(ui_st)
-  ca_ws(ui_st)
-  if ui_st.ca_bad == "" and ui_st.ca_i < len(ui_st.ca_s) { ui_st.ca_bad = "nothing after its closing )" }
-  if ui_st.ca_bad != "" {
-    ui_err(ui_st, `{s}: calc() expected {ui_st.ca_bad}`)
+function ca_eval(s: string) -> bool {
+  ca_s = s
+  ca_i = 0
+  ca_bad = ""
+  let v = ca_factor()
+  ca_ws()
+  if ca_bad == "" and ca_i < len(ca_s) { ca_bad = "nothing after its closing )" }
+  if ca_bad != "" {
+    ui_err(`{s}: calc() expected {ca_bad}`)
     return false
   }
-  ui_st.ca_px = v.px
-  ui_st.ca_pct = v.pct
-  ui_st.ca_num = v.n
-  ui_st.ca_bare = v.bare
-  if v.bare { ui_st.ca_px = el_px(ui_st, v.n) }
+  ca_px = v.px
+  ca_pct = v.pct
+  ca_num = v.n
+  ca_bare = v.bare
+  if v.bare { ca_px = el_px(v.n) }
   return true
 }
 property CaVal {
@@ -27,22 +34,22 @@ property CaVal {
   n: float = 0.0
   bare: bool = true             # a plain number, which may scale a length
 }
-function ca_ws(ui_st: mut UiState) -> void {
-  while ui_st.ca_i < len(ui_st.ca_s) and (ui_st.ca_s[ui_st.ca_i] == 32 or ui_st.ca_s[ui_st.ca_i] == 9 or ui_st.ca_s[ui_st.ca_i] == 10) { ui_st.ca_i += 1 }
+function ca_ws() -> void {
+  while ca_i < len(ca_s) and (ca_s[ca_i] == 32 or ca_s[ca_i] == 9 or ca_s[ca_i] == 10) { ca_i += 1 }
 }
-function ca_sum(ui_st: mut UiState) -> CaVal {
-  var a = ca_product(ui_st)
-  while ui_st.ca_bad == "" {
-    ca_ws(ui_st)
-    if ui_st.ca_i >= len(ui_st.ca_s) or (ui_st.ca_s[ui_st.ca_i] != 43 and ui_st.ca_s[ui_st.ca_i] != 45) { return a }
-    let minus = ui_st.ca_s[ui_st.ca_i] == 45
-    ui_st.ca_i += 1
-    let b = ca_product(ui_st)
-    a = ca_add(ui_st, a, b, minus)
+function ca_sum() -> CaVal {
+  var a = ca_product()
+  while ca_bad == "" {
+    ca_ws()
+    if ca_i >= len(ca_s) or (ca_s[ca_i] != 43 and ca_s[ca_i] != 45) { return a }
+    let minus = ca_s[ca_i] == 45
+    ca_i += 1
+    let b = ca_product()
+    a = ca_add(a, b, minus)
   }
   return a
 }
-function ca_add(ui_st: UiState, a: CaVal, b: CaVal, minus: bool) -> CaVal {
+function ca_add(a: CaVal, b: CaVal, minus: bool) -> CaVal {
   var sign = 1.0
   if minus { sign = -1.0 }
   let r = new CaVal
@@ -51,15 +58,15 @@ function ca_add(ui_st: UiState, a: CaVal, b: CaVal, minus: bool) -> CaVal {
     return r
   }
   r.bare = false
-  r.px = ca_len(ui_st, a).px + sign * ca_len(ui_st, b).px
+  r.px = ca_len(a).px + sign * ca_len(b).px
   r.pct = a.pct + sign * b.pct
   return r
 }
 # a bare number beside a length is a length in px
-function ca_len(ui_st: UiState, a: CaVal) -> CaVal {
+function ca_len(a: CaVal) -> CaVal {
   if not a.bare { return a }
   let r = new CaVal
   r.bare = false
-  r.px = el_px(ui_st, a.n)
+  r.px = el_px(a.n)
   return r
 }

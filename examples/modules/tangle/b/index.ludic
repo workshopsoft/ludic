@@ -1,12 +1,10 @@
 # b/index.ludic - uses a back: a and b are a cycle
 module b
-export state BState {
-  b_count: int = 0
-  b_rec: Tally = new Tally
-}
+export var b_count: int = 0
 export property Tally {
   n: int = 0
 }
+export var b_rec: Tally = new Tally
 export function b_run() -> int {
   return a_two() + c_one()
 }

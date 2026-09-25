@@ -1,68 +1,68 @@
 # pin_edit.ludic - changing a mark: its name, symbol and colour, rubbing it out, which one is open
 # and which followed, and whether the map is waiting for a place to drop the next
-export function minimap_pin_remove(minimap_st: mut MinimapState, i: int) -> void {
-  if i < 0 or i >= minimap_pin_count(minimap_st) { return }
+export function minimap_pin_remove(i: int) -> void {
+  if i < 0 or i >= minimap_pin_count() { return }
   let rest = new []MinimapPin
-  for k in 0 .. len(minimap_st.mm_pins) { if k != i { push(rest, minimap_st.mm_pins[k]) } }
-  minimap_st.mm_pins = rest
-  if minimap_st.mm_open == i { minimap_st.mm_open = -1 } else if minimap_st.mm_open > i { minimap_st.mm_open -= 1 }
-  if minimap_st.mm_followed == i { minimap_st.mm_followed = -1 } else if minimap_st.mm_followed > i { minimap_st.mm_followed -= 1 }
+  for k in 0 .. len(mm_pins) { if k != i { push(rest, mm_pins[k]) } }
+  mm_pins = rest
+  if mm_open == i { mm_open = -1 } else if mm_open > i { mm_open -= 1 }
+  if mm_followed == i { mm_followed = -1 } else if mm_followed > i { mm_followed -= 1 }
 }
 
-export function minimap_pin_set_label(minimap_st: mut MinimapState, i: int, s: string) -> void { if i >= 0 and i < minimap_pin_count(minimap_st) { minimap_st.mm_pins[i].label = s } }
+export function minimap_pin_set_label(i: int, s: string) -> void { if i >= 0 and i < minimap_pin_count() { mm_pins[i].label = s } }
 
 # the symbol chosen is the one the next mark takes
-export function minimap_pin_set_icon(minimap_st: mut MinimapState, i: int, k: int) -> void {
-  if i < 0 or i >= minimap_pin_count(minimap_st) { return }
-  minimap_st.mm_pins[i].icon = Math.clamp(k, 0, minimap_st.mm_symbols - 1)
-  minimap_st.mm_last = minimap_st.mm_pins[i].icon
+export function minimap_pin_set_icon(i: int, k: int) -> void {
+  if i < 0 or i >= minimap_pin_count() { return }
+  mm_pins[i].icon = Math.clamp(k, 0, mm_symbols - 1)
+  mm_last = mm_pins[i].icon
 }
 
-export function minimap_pin_set_colour(minimap_st: mut MinimapState, i: int, k: int) -> void { if i >= 0 and i < minimap_pin_count(minimap_st) { minimap_st.mm_pins[i].colour = Math.clamp(k, 0, minimap_st.mm_colours - 1) } }
+export function minimap_pin_set_colour(i: int, k: int) -> void { if i >= 0 and i < minimap_pin_count() { mm_pins[i].colour = Math.clamp(k, 0, mm_colours - 1) } }
 
-export function minimap_pin_last_icon(minimap_st: MinimapState) -> int { return minimap_st.mm_last }
+export function minimap_pin_last_icon() -> int { return mm_last }
 
 # the mark the map's legend has open, -1 none
-export function minimap_pin_open(minimap_st: mut MinimapState) -> int {
-  if minimap_st.mm_open >= minimap_pin_count(minimap_st) { minimap_st.mm_open = -1 }
-  return minimap_st.mm_open
+export function minimap_pin_open() -> int {
+  if mm_open >= minimap_pin_count() { mm_open = -1 }
+  return mm_open
 }
 
-export function minimap_pin_select(minimap_st: mut MinimapState, i: int) -> void {
-  minimap_st.mm_open = -1
-  if i >= 0 and i < minimap_pin_count(minimap_st) { minimap_st.mm_open = i }
+export function minimap_pin_select(i: int) -> void {
+  mm_open = -1
+  if i >= 0 and i < minimap_pin_count() { mm_open = i }
 }
 
 # the mark the compass carries, -1 none
-export function minimap_pin_followed(minimap_st: mut MinimapState) -> int {
-  if minimap_st.mm_followed >= minimap_pin_count(minimap_st) { minimap_st.mm_followed = -1 }
-  return minimap_st.mm_followed
+export function minimap_pin_followed() -> int {
+  if mm_followed >= minimap_pin_count() { mm_followed = -1 }
+  return mm_followed
 }
 
-export function minimap_pin_follow(minimap_st: mut MinimapState, i: int) -> void {
-  minimap_st.mm_followed = -1
-  if i >= 0 and i < minimap_pin_count(minimap_st) { minimap_st.mm_followed = i }
+export function minimap_pin_follow(i: int) -> void {
+  mm_followed = -1
+  if i >= 0 and i < minimap_pin_count() { mm_followed = i }
 }
 
 # follow the open mark, or stop following it
-export function minimap_pin_follow_toggle(minimap_st: mut MinimapState) -> void {
-  let i = minimap_pin_open(minimap_st)
+export function minimap_pin_follow_toggle() -> void {
+  let i = minimap_pin_open()
   if i < 0 { return }
-  if minimap_st.mm_followed == i { minimap_st.mm_followed = -1 } else { minimap_st.mm_followed = i }
+  if mm_followed == i { mm_followed = -1 } else { mm_followed = i }
 }
 
-export function minimap_placing(minimap_st: MinimapState) -> bool { return minimap_st.mm_placing }
+export function minimap_placing() -> bool { return mm_placing }
 
 # the next press on the map drops a mark; asked again, it does not
-export function minimap_place_toggle(minimap_st: mut MinimapState) -> void {
-  minimap_st.mm_placing = not minimap_st.mm_placing
-  minimap_st.mm_open = -1
+export function minimap_place_toggle() -> void {
+  mm_placing = not mm_placing
+  mm_open = -1
 }
 
 # the press that drops it, at a point on the window: the new mark is open, -1 if there was no room
-export function minimap_place(minimap_st: mut MinimapState, rx: float, ry: float, label: string) -> int {
-  minimap_st.mm_placing = false
-  let i = minimap_pin_add(minimap_st, minimap_wx(minimap_st, rx), minimap_wz(minimap_st, ry), minimap_st.mm_last, label)
-  if i >= 0 { minimap_st.mm_open = i }
+export function minimap_place(rx: float, ry: float, label: string) -> int {
+  mm_placing = false
+  let i = minimap_pin_add(minimap_wx(rx), minimap_wz(ry), mm_last, label)
+  if i >= 0 { mm_open = i }
   return i
 }

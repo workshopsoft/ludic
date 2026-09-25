@@ -5,58 +5,56 @@ import "ludic.ui"
 import "ui_pointer_parts/Chart.ludic"
 program UiPointer {
   numbers float
-  state UipointerState {
-    log: string = ""
-    dragged: float = 0.0
-  }
+  var log: string = ""
+  var dragged: float = 0.0
   function map_measure(n: UiNode, avail: float) -> void { }
   function map_draw(n: UiNode) -> void { }
-  function map_input(uipointer_st: mut UipointerState, n: UiNode, e: UiPointer) -> bool {
-    if e.kind == "drag" { uipointer_st.dragged = uipointer_st.dragged + e.dx } else if e.kind != "pointermove" { uipointer_st.log = uipointer_st.log + `{e.kind} {int(e.x)},{int(e.y)} {e.button} {int(e.wheel)}; ` }
+  function map_input(n: UiNode, e: UiPointer) -> bool {
+    if e.kind == "drag" { dragged = dragged + e.dx } else if e.kind != "pointermove" { log = log + `{e.kind} {int(e.x)},{int(e.y)} {e.button} {int(e.wheel)}; ` }
     return true
   }
-  function frame(ui_st: mut UiState, x: float, y: float, down: bool, wheel: float, enter: bool) -> UiNode {
+  function frame(x: float, y: float, down: bool, wheel: float, enter: bool) -> UiNode {
     let i = new UiInput
     i.x = x
     i.y = y
     i.down = down
     i.wheel = wheel
     i.held_enter = enter
-    ui_input(ui_st, i)
-    ui_show(ui_st, "Chart", null, 0.0, 0.0, 400.0, 400.0)
-    let root: UiNode = ui_nodes(ui_st, "Chart", null)
-    ui_place(ui_st, root, 0.0, 0.0, 400.0, 400.0)
+    ui_input(i)
+    ui_show("Chart", null, 0.0, 0.0, 400.0, 400.0)
+    let root: UiNode = ui_nodes("Chart", null)
+    ui_place(root, 0.0, 0.0, 400.0, 400.0)
     return root.children[0]
   }
   function said(page: UiNode) -> string { return page.children[len(page.children) - 1].text }
-  entry (ui_st: mut UiState, uipointer_st: UipointerState) {
-    ui_backend(ui_st, new UiBackend)
-    ui_native(ui_st, "chartmap", fn map_measure, fn map_draw)
-    ui_native_input(ui_st, "chartmap", fn map_input)
-    let page = frame(ui_st, -1.0, -1.0, false, 0.0, false)
+  entry {
+    ui_backend(new UiBackend)
+    ui_native("chartmap", fn map_measure, fn map_draw)
+    ui_native_input("chartmap", fn map_input)
+    let page = frame(-1.0, -1.0, false, 0.0, false)
     let box = page.children[0]
     let pad = page.children[1]
     let hold = page.children[2]
-    frame(ui_st, box.x + 20.0, box.y + 20.0, true, 0.0, false)
-    frame(ui_st, box.x + 20.0, box.y + 20.0, false, 0.0, false)
-    frame(ui_st, box.x + 100.0, box.y + 80.0, true, 0.0, false)
-    frame(ui_st, box.x + 130.0, box.y + 60.0, true, 0.0, false)
-    frame(ui_st, box.x + 300.0, box.y + 300.0, true, 0.0, false)
-    frame(ui_st, box.x + 300.0, box.y + 300.0, false, 0.0, false)
-    frame(ui_st, box.x + 50.0, box.y + 50.0, false, 1.0, false)
-    frame(ui_st, pad.x + 7.0, pad.y + 9.0, true, 0.0, false)
-    frame(ui_st, pad.x + 17.0, pad.y + 9.0, true, 0.0, false)
-    frame(ui_st, pad.x + 17.0, pad.y + 9.0, false, 0.0, false)
-    frame(ui_st, pad.x + 17.0, pad.y + 9.0, false, 2.0, false)
-    frame(ui_st, hold.x + 5.0, hold.y + 5.0, true, 0.0, false)
-    let down = frame(ui_st, hold.x + 5.0, hold.y + 5.0, true, 0.0, false)
+    frame(box.x + 20.0, box.y + 20.0, true, 0.0, false)
+    frame(box.x + 20.0, box.y + 20.0, false, 0.0, false)
+    frame(box.x + 100.0, box.y + 80.0, true, 0.0, false)
+    frame(box.x + 130.0, box.y + 60.0, true, 0.0, false)
+    frame(box.x + 300.0, box.y + 300.0, true, 0.0, false)
+    frame(box.x + 300.0, box.y + 300.0, false, 0.0, false)
+    frame(box.x + 50.0, box.y + 50.0, false, 1.0, false)
+    frame(pad.x + 7.0, pad.y + 9.0, true, 0.0, false)
+    frame(pad.x + 17.0, pad.y + 9.0, true, 0.0, false)
+    frame(pad.x + 17.0, pad.y + 9.0, false, 0.0, false)
+    frame(pad.x + 17.0, pad.y + 9.0, false, 2.0, false)
+    frame(hold.x + 5.0, hold.y + 5.0, true, 0.0, false)
+    let down = frame(hold.x + 5.0, hold.y + 5.0, true, 0.0, false)
     let active = down.children[2].bg
     let mid = said(down)
-    frame(ui_st, hold.x + 5.0, hold.y + 90.0, false, 0.0, false)
-    let off = frame(ui_st, -1.0, -1.0, false, 0.0, false)
-    frame(ui_st, -1.0, -1.0, false, 0.0, true)
-    let keyed = said(frame(ui_st, -1.0, -1.0, false, 0.0, true))
-    let up = frame(ui_st, -1.0, -1.0, false, 0.0, false)
-    print(`{uipointer_st.log}dragged {int(uipointer_st.dragged)} | {mid} active {active} | {said(off)} | {keyed} | {said(up)} {up.children[2].bg}`)
+    frame(hold.x + 5.0, hold.y + 90.0, false, 0.0, false)
+    let off = frame(-1.0, -1.0, false, 0.0, false)
+    frame(-1.0, -1.0, false, 0.0, true)
+    let keyed = said(frame(-1.0, -1.0, false, 0.0, true))
+    let up = frame(-1.0, -1.0, false, 0.0, false)
+    print(`{log}dragged {int(dragged)} | {mid} active {active} | {said(off)} | {keyed} | {said(up)} {up.children[2].bg}`)
   }
 }

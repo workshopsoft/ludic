@@ -1,13 +1,13 @@
 # a/index.ludic - uses b, and writes b's global from outside it
 module a
-export function a_run(b_st: mut BState) -> int {
-  b_st.b_count = b_st.b_count + 1
+export function a_run() -> int {
+  b_count = b_count + 1
   return b_run() + c_one()
 }
 export function a_two() -> int {
   return 2
 }
-export function a_bump(b_st: mut BState) -> void {
-  let r = b_st.b_rec
+export function a_bump() -> void {
+  let r = b_rec
   r.n = r.n + 1
 }

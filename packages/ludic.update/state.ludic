@@ -51,53 +51,47 @@ export property UpdateFact {
   bytes: int = 0
 }
 
-export state UpdateState {
-  update__ask: int = 0
-  update__ask_h: int = -1
-  update__latest: string = ""
-  update__notes: Val = null
-  update__cfg: UpdateConfig = null
-  update__state: int = 0
-  update__err: int = 0
-  update__h: int = -1               # the request
-  update__proc: int = -1            # the child process
-  update__target: string = ""
-  update__files: []string = null    # the plan: file names, hashes, sizes, delta or not, versions
-  update__sha: []string = null
-  update__size: []int = null
-  update__delta: []bool = null
-  update__ver: []string = null
-  update__full: []string = null     # what the feed calls the FULL package of that version
-  update__i: int = 0
-  update__done_bytes: int = 0
-  update__total_bytes: int = 0
-  update__old: string = ""          # the full package the next delta patches
-  update__package: string = ""      # what apply installs
-  update__step_t0: int = 0          # when a check or a patch began, ms
-  update__rate: int = 0             # bytes a second, eased
-  update__rate_t: int = -1
-  update__rate_bytes: int = 0
-  update__facts: Queue<UpdateFact> = null
+var update__cfg: UpdateConfig = null
+var update__state: int = 0
+var update__err: int = 0
+var update__h: int = -1               # the request
+var update__proc: int = -1            # the child process
+var update__target: string = ""
+var update__files: []string = null    # the plan: file names, hashes, sizes, delta or not, versions
+var update__sha: []string = null
+var update__size: []int = null
+var update__delta: []bool = null
+var update__ver: []string = null
+var update__full: []string = null     # what the feed calls the FULL package of that version
+var update__i: int = 0
+var update__done_bytes: int = 0
+var update__total_bytes: int = 0
+var update__old: string = ""          # the full package the next delta patches
+var update__package: string = ""      # what apply installs
+var update__step_t0: int = 0          # when a check or a patch began, ms
+var update__rate: int = 0             # bytes a second, eased
+var update__rate_t: int = -1
+var update__rate_bytes: int = 0
+var update__facts: Queue<UpdateFact> = null
+
+export function update_config(c: UpdateConfig) -> void { update__cfg = c }
+
+function update__conf() -> UpdateConfig {
+  if update__cfg == null { update__cfg = new UpdateConfig }
+  return update__cfg
 }
 
-export function update_config(update_st: mut UpdateState, c: UpdateConfig) -> void { update_st.update__cfg = c }
-
-function update__conf(update_st: mut UpdateState) -> UpdateConfig {
-  if update_st.update__cfg == null { update_st.update__cfg = new UpdateConfig }
-  return update_st.update__cfg
+export function update_facts() -> Queue<UpdateFact> {
+  if update__facts == null { update__facts = queue_new("update.facts") }
+  return update__facts
 }
 
-export function update_facts(base_st: mut BaseState, update_st: mut UpdateState) -> Queue<UpdateFact> {
-  if update_st.update__facts == null { update_st.update__facts = queue_new(base_st, "update.facts") }
-  return update_st.update__facts
-}
-
-function update__fact(base_st: mut BaseState, update_st: mut UpdateState, what: int) -> void {
+function update__fact(what: int) -> void {
   let f = new UpdateFact
   f.what = what
-  f.error = update_st.update__err
-  f.target = update_st.update__target
-  f.packages = update_package_count(update_st)
-  f.bytes = update_st.update__total_bytes
-  q_push(base_st, update_facts(base_st, update_st), f)
+  f.error = update__err
+  f.target = update__target
+  f.packages = update_package_count()
+  f.bytes = update__total_bytes
+  q_push(update_facts(), f)
 }

@@ -1,33 +1,33 @@
 # reload.ludic - a developer's templates and stylesheets read again when they change on disk: every
 # file is re-read in the order it was first loaded (so an import is there before its importer), and
 # the screens' state is kept, as React's fast refresh keeps it. True when anything changed.
-export function ui_reload(ui_st: mut UiState) -> bool {
-  var changed = uc_reload(ui_st)
-  for i in 0 .. len(ui_st.lib_files) {
-    let f = ui_st.lib_files[i]
-    if f.disk and lib_text(ui_st, f.path) != f.src { changed = true }
+export function ui_reload() -> bool {
+  var changed = uc_reload()
+  for i in 0 .. len(lib_files) {
+    let f = lib_files[i]
+    if f.disk and lib_text(f.path) != f.src { changed = true }
   }
   if not changed { return false }
-  ui_st.ui_errs = new []string
-  if len(ui_st.lib_files) == 0 {
+  ui_errs = new []string
+  if len(lib_files) == 0 {
     print(`ui: templates reloaded`)
     return true
   }
-  let old = ui_st.lib_files
-  ui_st.lib_files = new []UiFile
-  ui_st.lib_screen_names = new []string
-  ui_st.lib_screens = new []UiTpl
-  ui_st.ui_errs = new []string
+  let old = lib_files
+  lib_files = new []UiFile
+  lib_screen_names = new []string
+  lib_screens = new []UiTpl
+  ui_errs = new []string
   for i in 0 .. len(old) {
     let f = old[i]
     var have = false
-    for k in 0 .. len(ui_st.lib_files) {
-      if ui_st.lib_files[k].path == f.path { have = true }
+    for k in 0 .. len(lib_files) {
+      if lib_files[k].path == f.path { have = true }
     }
     if have { continue }
-    if f.disk { lib_file(ui_st, f.path) } else { ui_load_text(ui_st, f.src, f.path) }
+    if f.disk { lib_file(f.path) } else { ui_load_text(f.src, f.path) }
   }
-  uc_invalidate(ui_st)
+  uc_invalidate()
   print(`ui: templates reloaded`)
   return true
 }

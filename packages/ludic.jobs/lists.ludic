@@ -1,36 +1,36 @@
 # lists.ludic - the written jobs as a screen lists them: a vendor's, the taken, the ones to show
 # a vendor's offers and the ones it can take back, in a group (-1 every vendor)
-export function jobs_at(jobs_st: mut JobsState, group: int, vendor: int) -> []int {
+export function jobs_at(group: int, vendor: int) -> []int {
   let out = new []int
   for i in 0 .. JOB_COUNT {
     let d = Jobs[i]
     if d.group != group or (vendor >= 0 and d.vendor != vendor) { continue }
-    let s = jobs_state(jobs_st, i)
-    if s == JOBS_DONE or (s == JOBS_OFFERED and not jobs_offered(jobs_st, i)) { continue }
+    let s = jobs_state(i)
+    if s == JOBS_DONE or (s == JOBS_OFFERED and not jobs_offered(i)) { continue }
     push(out, i)
   }
   return out
 }
 
 # every job of a group taken at some point, done ones too
-export function jobs_taken(jobs_st: mut JobsState, group: int) -> []int {
+export function jobs_taken(group: int) -> []int {
   let out = new []int
-  for i in 0 .. JOB_COUNT { if Jobs[i].group == group and jobs_state(jobs_st, i) != JOBS_OFFERED { push(out, i) } }
+  for i in 0 .. JOB_COUNT { if Jobs[i].group == group and jobs_state(i) != JOBS_OFFERED { push(out, i) } }
   return out
 }
 
 # the first `most` of a group under way
-export function jobs_shown(jobs_st: mut JobsState, group: int, most: int) -> []int {
+export function jobs_shown(group: int, most: int) -> []int {
   let out = new []int
   for i in 0 .. JOB_COUNT {
     if len(out) >= most { break }
-    if Jobs[i].group == group and jobs_under_way(jobs_st, i) { push(out, i) }
+    if Jobs[i].group == group and jobs_under_way(i) { push(out, i) }
   }
   return out
 }
 
 # the first under way and not yet met, or -1
-export function jobs_first_open(jobs_st: mut JobsState, group: int) -> int {
-  for i in 0 .. JOB_COUNT { if Jobs[i].group == group and jobs_state(jobs_st, i) == JOBS_ACTIVE { return i } }
+export function jobs_first_open(group: int) -> int {
+  for i in 0 .. JOB_COUNT { if Jobs[i].group == group and jobs_state(i) == JOBS_ACTIVE { return i } }
   return -1
 }

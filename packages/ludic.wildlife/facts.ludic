@@ -27,13 +27,14 @@ export property WildFact {
   diet: int = 0
 }
 
+var wl_facts: Queue<WildFact> = null
 
-export function wildlife_facts(base_st: mut BaseState, wildlife_st: mut WildlifeState) -> Queue<WildFact> {
-  if wildlife_st.wl_facts == null { wildlife_st.wl_facts = queue_new(base_st, "wildlife.facts") }
-  return wildlife_st.wl_facts
+export function wildlife_facts() -> Queue<WildFact> {
+  if wl_facts == null { wl_facts = queue_new("wildlife.facts") }
+  return wl_facts
 }
 
-function wl_fact(base_st: mut BaseState, wildlife_st: mut WildlifeState, what: int, a: WildAnimal) -> WildFact {
+function wl_fact(what: int, a: WildAnimal) -> WildFact {
   let f = new WildFact
   f.what = what
   f.key = a.key
@@ -44,6 +45,6 @@ function wl_fact(base_st: mut BaseState, wildlife_st: mut WildlifeState, what: i
   f.z = a.z
   f.yaw = a.yaw
   f.scale = a.scale
-  q_push(base_st, wildlife_facts(base_st, wildlife_st), f)
+  q_push(wildlife_facts(), f)
   return f
 }

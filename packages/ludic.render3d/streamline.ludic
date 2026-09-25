@@ -30,7 +30,22 @@ const GSL_PRESENT_END: int = 5
 
 const GSL_LAYOUT_READ: int = 5        # VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
 
+var gsl_on: bool = false              # slInit succeeded: the interposer is the loader, the plugins are in
+var gsl_dlss_ok: bool = false         # what this adapter can run, from slIsFeatureSupported
+var gsl_rr_ok: bool = false
+var gsl_fg_ok: bool = false
+var gsl_reflex_ok: bool = false
+var gsl_pcl_ok: bool = false
 
+var gsl_feats: bytes = null           # kept alive: Preferences points at it
+var gsl_logdir: bytes = null          # and at this
+var gsl_vp: bytes = null              # sl::ViewportHandle 0, the one view
+var gsl_tok_buf: bytes = null
+var gsl_idx_buf: bytes = null
+var gsl_token: pointer = null         # this frame's sl::FrameToken, owned by Streamline
+var gsl_frame_n: int = 0
+var gsl_said: bool = false            # one failure message, not one a frame
+var gsl_fresh: bool = false           # a token was taken since the last frame started (a present took it)
 
 # ---- structure headers ------------------------------------------------------------------
 function gsl_le16(v: int) -> int { return ((v >> 8) & 255) | ((v & 255) << 8) }
@@ -59,36 +74,36 @@ function gsl_fn(feature: int, name: string) -> pointer {
 
 # ---- start and stop ---------------------------------------------------------------------
 # Before Vk.open(): ask the loader for the interposer. R3D_NO_STREAMLINE=1 keeps plain Vulkan.
-function gsl_boot(render3d_st: mut Render3dState) -> void {
+function gsl_boot() -> void {
   if Os.platform() != "windows" { return }
-  if r3d_env_has(render3d_st, "R3D_NO_STREAMLINE") { return }
+  if r3d_env_has("R3D_NO_STREAMLINE") { return }
   Vk.sl_prefer(1)
 }
 
 # After Vk.open(), before vkCreateInstance.
-function gsl_init(render3d_st: mut Render3dState) -> void {
-  if render3d_st.gsl_on or Vk.sl_active() == 0 { return }
-  render3d_st.gsl_feats = gsl_struct(20)
-  Vk.put_i32(render3d_st.gsl_feats, 0, GSL_DLSS);  Vk.put_i32(render3d_st.gsl_feats, 4, GSL_REFLEX);  Vk.put_i32(render3d_st.gsl_feats, 8, GSL_PCL)
-  Vk.put_i32(render3d_st.gsl_feats, 12, GSL_DLSS_RR);  Vk.put_i32(render3d_st.gsl_feats, 16, GSL_DLSS_G)
+function gsl_init() -> void {
+  if gsl_on or Vk.sl_active() == 0 { return }
+  gsl_feats = gsl_struct(20)
+  Vk.put_i32(gsl_feats, 0, GSL_DLSS);  Vk.put_i32(gsl_feats, 4, GSL_REFLEX);  Vk.put_i32(gsl_feats, 8, GSL_PCL)
+  Vk.put_i32(gsl_feats, 12, GSL_DLSS_RR);  Vk.put_i32(gsl_feats, 16, GSL_DLSS_G)
   # sl::Preferences
   let pref = gsl_struct(144)
   gsl_header(pref, 0x1ca1, 0x0965, 0xbf8e, 0x432b, 0x8da1, 0x6716, 0xd879, 0xfb14, 1)
   # logLevel eOff; R3D_SL_LOG=<directory> writes Streamline's own verbose log (sl.log) there
   var level = 0
-  if r3d_env_has(render3d_st, "R3D_SL_LOG") {
+  if r3d_env_has("R3D_SL_LOG") {
     level = 2
-    let dir: pointer = r3d_env(render3d_st, "R3D_SL_LOG")
-    let n = Text.length(r3d_env(render3d_st, "R3D_SL_LOG"))
-    render3d_st.gsl_logdir = gsl_struct(n * 2 + 8)             # pathToLogsAndData is a wide string
-    for i in 0 .. n { Vk.put_i32(render3d_st.gsl_logdir, i * 2, dir[i] & 255) }
-    Vk.put_ptr(pref, 56, render3d_st.gsl_logdir)
+    let dir: pointer = r3d_env("R3D_SL_LOG")
+    let n = Text.length(r3d_env("R3D_SL_LOG"))
+    gsl_logdir = gsl_struct(n * 2 + 8)             # pathToLogsAndData is a wide string
+    for i in 0 .. n { Vk.put_i32(gsl_logdir, i * 2, dir[i] & 255) }
+    Vk.put_ptr(pref, 56, gsl_logdir)
   }
   Vk.put_i32(pref, 36, level)
   # eDisableCLStateTracking | eAllowOTA | eLoadDownloadedPlugins | eUseFrameBasedResourceTagging
   let flags: long = 1 | 8 | 64 | 128
   Vk.put_i64(pref, 88, flags)
-  Vk.put_ptr(pref, 96, render3d_st.gsl_feats)
+  Vk.put_ptr(pref, 96, gsl_feats)
   Vk.put_i32(pref, 104, 5)
   Vk.put_i32(pref, 112, 0)                         # engine eCustom
   Vk.put_ptr(pref, 120, "ludic render3d")
@@ -96,11 +111,11 @@ function gsl_init(render3d_st: mut Render3dState) -> void {
   Vk.put_i32(pref, 136, 2)                         # renderAPI eVulkan
   let r = Vk.sl_init(pref, gsl_sdk_version())
   if r != 0 { print(`r3d: streamline: slInit failed ({r}); DLSS and Reflex are off`);  return }
-  render3d_st.gsl_on = true
-  render3d_st.gsl_vp = gsl_struct(40)
-  gsl_header(render3d_st.gsl_vp, 0x171b, 0x6435, 0x9b3c, 0x4fc8, 0x9994, 0xfbe5, 0x2569, 0xaaa4, 1)
-  render3d_st.gsl_tok_buf = bytes(8)
-  render3d_st.gsl_idx_buf = bytes(4)
+  gsl_on = true
+  gsl_vp = gsl_struct(40)
+  gsl_header(gsl_vp, 0x171b, 0x6435, 0x9b3c, 0x4fc8, 0x9994, 0xfbe5, 0x2569, 0xaaa4, 1)
+  gsl_tok_buf = bytes(8)
+  gsl_idx_buf = bytes(4)
 }
 
 # kSDKVersion, built from longs: (2 << 48) on ints is computed in 32 bits and arrives as garbage,
@@ -114,86 +129,90 @@ function gsl_sdk_version() -> long {
 }
 
 # After vkCreateDevice: what this adapter supports.
-function gsl_probe_device(render3d_st: mut Render3dState, pd: pointer) -> void {
-  if not render3d_st.gsl_on { return }
+function gsl_probe_device(pd: pointer) -> void {
+  if not gsl_on { return }
   let ai = gsl_struct(56)                          # sl::AdapterInfo
   gsl_header(ai, 0x0677, 0x315f, 0xa746, 0x4492, 0x9f42, 0xcb61, 0x42c9, 0xc3d4, 1)
   Vk.put_ptr(ai, 48, pd)
-  render3d_st.gsl_dlss_ok = Vk.sl_is_feature_supported(GSL_DLSS, ai) == 0
-  render3d_st.gsl_rr_ok = Vk.sl_is_feature_supported(GSL_DLSS_RR, ai) == 0
-  render3d_st.gsl_fg_ok = Vk.sl_is_feature_supported(GSL_DLSS_G, ai) == 0
-  render3d_st.gsl_reflex_ok = Vk.sl_is_feature_supported(GSL_REFLEX, ai) == 0
-  render3d_st.gsl_pcl_ok = Vk.sl_is_feature_supported(GSL_PCL, ai) == 0
-  print(`r3d: streamline: DLSS {render3d_st.gsl_dlss_ok}, ray reconstruction {render3d_st.gsl_rr_ok}, frame generation {render3d_st.gsl_fg_ok}, Reflex {render3d_st.gsl_reflex_ok}`)
+  gsl_dlss_ok = Vk.sl_is_feature_supported(GSL_DLSS, ai) == 0
+  gsl_rr_ok = Vk.sl_is_feature_supported(GSL_DLSS_RR, ai) == 0
+  gsl_fg_ok = Vk.sl_is_feature_supported(GSL_DLSS_G, ai) == 0
+  gsl_reflex_ok = Vk.sl_is_feature_supported(GSL_REFLEX, ai) == 0
+  gsl_pcl_ok = Vk.sl_is_feature_supported(GSL_PCL, ai) == 0
+  print(`r3d: streamline: DLSS {gsl_dlss_ok}, ray reconstruction {gsl_rr_ok}, frame generation {gsl_fg_ok}, Reflex {gsl_reflex_ok}`)
 }
 
 # Before the device goes.
-function gsl_shutdown(render3d_st: mut Render3dState) -> void {
-  if not render3d_st.gsl_on { return }
+function gsl_shutdown() -> void {
+  if not gsl_on { return }
   Vk.sl_shutdown()
-  render3d_st.gsl_on = false
+  gsl_on = false
 }
 
 # ---- frames, Reflex and the latency markers ---------------------------------------------
 # A frame's token is taken straight after the previous present, where Reflex sleeps: the
 # wait lands before the game reads input and simulates, which is the latency it removes.
+var gsl_reflex_mode: int = 0          # 0 off, 1 low latency, 2 low latency + boost
+var gsl_reflex_applied: int = -1
+var gsl_f_sleep: pointer = null
+var gsl_f_marker: pointer = null
 
-function r3d_reflex(render3d_st: mut Render3dState, mode: int) -> void {
-  render3d_st.gsl_reflex_mode = mode
-  if r3d_env_has(render3d_st, "R3D_REFLEX") { render3d_st.gsl_reflex_mode = Text.to_int(r3d_env(render3d_st, "R3D_REFLEX")) }
+function r3d_reflex(mode: int) -> void {
+  gsl_reflex_mode = mode
+  if r3d_env_has("R3D_REFLEX") { gsl_reflex_mode = Text.to_int(r3d_env("R3D_REFLEX")) }
 }
-function r3d_reflex_live(render3d_st: Render3dState) -> bool { return render3d_st.gsl_on and render3d_st.gsl_reflex_ok and render3d_st.gsl_reflex_mode > 0 }
+function r3d_reflex_live() -> bool { return gsl_on and gsl_reflex_ok and gsl_reflex_mode > 0 }
 
-function gsl_marker(render3d_st: mut Render3dState, m: int) -> void {
-  if not render3d_st.gsl_pcl_ok or render3d_st.gsl_token == null { return }
-  if render3d_st.gsl_f_marker == null { render3d_st.gsl_f_marker = gsl_fn(GSL_PCL, "slPCLSetMarker") }
-  if render3d_st.gsl_f_marker != null { Vk.sl_call_ip(render3d_st.gsl_f_marker, m, render3d_st.gsl_token) }
+function gsl_marker(m: int) -> void {
+  if not gsl_pcl_ok or gsl_token == null { return }
+  if gsl_f_marker == null { gsl_f_marker = gsl_fn(GSL_PCL, "slPCLSetMarker") }
+  if gsl_f_marker != null { Vk.sl_call_ip(gsl_f_marker, m, gsl_token) }
 }
 
-function gsl_reflex_apply(render3d_st: mut Render3dState) -> void {
-  if not render3d_st.gsl_reflex_ok or render3d_st.gsl_reflex_applied == render3d_st.gsl_reflex_mode { return }
+function gsl_reflex_apply() -> void {
+  if not gsl_reflex_ok or gsl_reflex_applied == gsl_reflex_mode { return }
   let f = gsl_fn(GSL_REFLEX, "slReflexSetOptions")
   if f == null { return }
   let o = gsl_struct(48)                           # sl::ReflexOptions
   gsl_header(o, 0xf03a, 0xf81a, 0x6d0b, 0x4902, 0xa651, 0xc496, 0x5e21, 0x5434, 1)
-  Vk.put_i32(o, 32, render3d_st.gsl_reflex_mode)
-  if render3d_st.gsl_pcl_ok { Vk.put_i32(o, 40, 1) }           # useMarkersToOptimize
-  if Vk.sl_call_p(f, o) == 0 { render3d_st.gsl_reflex_applied = render3d_st.gsl_reflex_mode }
+  Vk.put_i32(o, 32, gsl_reflex_mode)
+  if gsl_pcl_ok { Vk.put_i32(o, 40, 1) }           # useMarkersToOptimize
+  if Vk.sl_call_p(f, o) == 0 { gsl_reflex_applied = gsl_reflex_mode }
 }
 
-function gsl_new_frame(render3d_st: mut Render3dState) -> void {
-  Vk.put_i32(render3d_st.gsl_idx_buf, 0, render3d_st.gsl_frame_n)
-  render3d_st.gsl_frame_n += 1
-  render3d_st.gsl_token = null
-  render3d_st.gsl_fresh = true
-  if Vk.sl_get_new_frame_token(render3d_st.gsl_tok_buf, render3d_st.gsl_idx_buf) == 0 { render3d_st.gsl_token = Vk.get_ptr(render3d_st.gsl_tok_buf, 0) }
-  if render3d_st.gsl_token == null { return }
-  gsl_reflex_apply(render3d_st)
-  if r3d_reflex_live(render3d_st) {
-    if render3d_st.gsl_f_sleep == null { render3d_st.gsl_f_sleep = gsl_fn(GSL_REFLEX, "slReflexSleep") }
-    if render3d_st.gsl_f_sleep != null { Vk.sl_call_p(render3d_st.gsl_f_sleep, render3d_st.gsl_token) }
+function gsl_new_frame() -> void {
+  Vk.put_i32(gsl_idx_buf, 0, gsl_frame_n)
+  gsl_frame_n += 1
+  gsl_token = null
+  gsl_fresh = true
+  if Vk.sl_get_new_frame_token(gsl_tok_buf, gsl_idx_buf) == 0 { gsl_token = Vk.get_ptr(gsl_tok_buf, 0) }
+  if gsl_token == null { return }
+  gsl_reflex_apply()
+  if r3d_reflex_live() {
+    if gsl_f_sleep == null { gsl_f_sleep = gsl_fn(GSL_REFLEX, "slReflexSleep") }
+    if gsl_f_sleep != null { Vk.sl_call_p(gsl_f_sleep, gsl_token) }
   }
-  gsl_marker(render3d_st, GSL_SIM_START)
+  gsl_marker(GSL_SIM_START)
 }
 
 # r3d_frame's first line: the game has simulated, the renderer starts recording
-function gsl_frame_start(render3d_st: mut Render3dState) -> void {
-  if not render3d_st.gsl_on or render3d_st.gpu_kind != GPU_VK { return }
+function gsl_frame_start() -> void {
+  if not gsl_on or gpu_kind != GPU_VK { return }
   # a headless run never presents: each frame takes its own token here
-  if not render3d_st.gsl_fresh { gsl_new_frame(render3d_st) }
-  render3d_st.gsl_fresh = false
-  gsl_marker(render3d_st, GSL_SIM_END)
-  gsl_marker(render3d_st, GSL_SUBMIT_START)
+  if not gsl_fresh { gsl_new_frame() }
+  gsl_fresh = false
+  gsl_marker(GSL_SIM_END)
+  gsl_marker(GSL_SUBMIT_START)
 }
-function gsl_before_present(render3d_st: mut Render3dState) -> void {
-  if not render3d_st.gsl_on { return }
-  gsl_marker(render3d_st, GSL_SUBMIT_END)
-  gsl_marker(render3d_st, GSL_PRESENT_START)
+function gsl_before_present() -> void {
+  if not gsl_on { return }
+  gsl_marker(GSL_SUBMIT_END)
+  gsl_marker(GSL_PRESENT_START)
 }
-function gsl_after_present(render3d_st: mut Render3dState) -> void {
-  if not render3d_st.gsl_on { return }
-  gsl_marker(render3d_st, GSL_PRESENT_END)
-  gsl_new_frame(render3d_st)
+function gsl_after_present() -> void {
+  if not gsl_on { return }
+  gsl_marker(GSL_PRESENT_END)
+  gsl_new_frame()
 }
 
 # ---- DLSS super resolution ----------------------------------------------------------------
@@ -202,16 +221,39 @@ function gsl_after_present(render3d_st: mut Render3dState) -> void {
 # sharpen pass change size. The projection is jittered on a Halton (2, 3) cycle while DLSS is on.
 # There are no per-object motion vectors yet: a zero target is tagged and Streamline adds the
 # camera's own motion from depth and clipToPrevClip.
+var gsl_dlss_mode: int = 0            # 0 off, 1 DLAA, 2 quality, 3 balanced, 4 performance
+var gsl_opts: bytes = null
+var gsl_opt_mode: int = -1
+var gsl_opt_w: int = 0
+var gsl_opt_h: int = 0
+var gsl_rw: int = 0                   # the render size DLSS asked for
+var gsl_rh: int = 0
+var gsl_set_mode: int = -1
+var gsl_set_w: int = 0
+var gsl_set_h: int = 0
+var gsl_mv: Target = null
+var gsl_out: Target = null
+var gsl_consts: bytes = null
+var gsl_tags: bytes = null
+var gsl_res: bytes = null
+var gsl_inputs: bytes = null
+var gsl_prev_vp: floats = null
+var gsl_reset: bool = true
+var gsl_jitter_x: float = 0.0             # float bits, NDC offsets the projection carries this frame
+var gsl_jitter_y: float = 0.0
+var gsl_jpx: float = 0.0                  # float bits, the same in pixels
+var gsl_jpy: float = 0.0
+var gsl_eval_ok: bool = true         # the last evaluate worked: only then is the next frame jittered
 
 # R3D_DLSS=0..4 overrides the setting, for a headless take
-function r3d_dlss(render3d_st: mut Render3dState, mode: int) -> void {
+function r3d_dlss(mode: int) -> void {
   var m = mode
-  if r3d_env_has(render3d_st, "R3D_DLSS") { m = Text.to_int(r3d_env(render3d_st, "R3D_DLSS")) }
-  if m != render3d_st.gsl_dlss_mode { render3d_st.gsl_reset = true }
-  render3d_st.gsl_dlss_mode = m
+  if r3d_env_has("R3D_DLSS") { m = Text.to_int(r3d_env("R3D_DLSS")) }
+  if m != gsl_dlss_mode { gsl_reset = true }
+  gsl_dlss_mode = m
 }
-function gsl_dlss_live(render3d_st: Render3dState) -> bool { return render3d_st.gsl_on and render3d_st.gsl_dlss_ok and render3d_st.gsl_dlss_mode > 0 and render3d_st.gpu_kind == GPU_VK and render3d_st.gsl_token != null }
-function r3d_dlss_live(render3d_st: Render3dState) -> bool { return render3d_st.gsl_on and render3d_st.gsl_dlss_ok and render3d_st.gsl_dlss_mode > 0 and render3d_st.gpu_kind == GPU_VK }
+function gsl_dlss_live() -> bool { return gsl_on and gsl_dlss_ok and gsl_dlss_mode > 0 and gpu_kind == GPU_VK and gsl_token != null }
+function r3d_dlss_live() -> bool { return gsl_on and gsl_dlss_ok and gsl_dlss_mode > 0 and gpu_kind == GPU_VK }
 
 # sl::DLSSMode from the setting
 function gsl_sl_mode(m: int) -> int {
@@ -222,43 +264,43 @@ function gsl_sl_mode(m: int) -> int {
   return 0
 }
 
-function gsl_fill_options(render3d_st: mut Render3dState, w: int, h: int) -> void {
-  if render3d_st.gsl_opts == null { render3d_st.gsl_opts = gsl_struct(88) }
-  Vk.zero(render3d_st.gsl_opts, 88)
-  gsl_header(render3d_st.gsl_opts, 0x6ac8, 0x26e4, 0x4c61, 0x4101, 0xa92d, 0x638d, 0x4210, 0x57b8, 3)
-  Vk.put_i32(render3d_st.gsl_opts, 32, gsl_sl_mode(render3d_st.gsl_dlss_mode))
-  Vk.put_i32(render3d_st.gsl_opts, 36, w)
-  Vk.put_i32(render3d_st.gsl_opts, 40, h)
-  Vk.put_i32(render3d_st.gsl_opts, 48, float_bits(1.0))                   # preExposure
-  Vk.put_i32(render3d_st.gsl_opts, 52, float_bits(1.0))                   # exposureScale
-  Vk.put_i32(render3d_st.gsl_opts, 56, 1)                       # colorBuffersHDR eTrue
+function gsl_fill_options(w: int, h: int) -> void {
+  if gsl_opts == null { gsl_opts = gsl_struct(88) }
+  Vk.zero(gsl_opts, 88)
+  gsl_header(gsl_opts, 0x6ac8, 0x26e4, 0x4c61, 0x4101, 0xa92d, 0x638d, 0x4210, 0x57b8, 3)
+  Vk.put_i32(gsl_opts, 32, gsl_sl_mode(gsl_dlss_mode))
+  Vk.put_i32(gsl_opts, 36, w)
+  Vk.put_i32(gsl_opts, 40, h)
+  Vk.put_i32(gsl_opts, 48, float_bits(1.0))                   # preExposure
+  Vk.put_i32(gsl_opts, 52, float_bits(1.0))                   # exposureScale
+  Vk.put_i32(gsl_opts, 56, 1)                       # colorBuffersHDR eTrue
   # The model: preset K (the transformer NVIDIA calls its best image quality) in every mode. The
   # defaults put Performance on preset M, which on an RTX 3070 Ti at 4K evaluated in 18 ms against
   # K's 2.8 - slower than no DLSS at all (33 fps against 41; with K, 60). R3D_DLSS_PRESET=<n>
   # (sl::DLSSPreset: 11 K, 12 L, 13 M) sets every mode's, to measure them against each other.
   var preset = 11
-  if r3d_env_has(render3d_st, "R3D_DLSS_PRESET") { preset = Text.to_int(r3d_env(render3d_st, "R3D_DLSS_PRESET")) }
-  if preset > 0 { for f in 0 .. 6 { Vk.put_i32(render3d_st.gsl_opts, 60 + f * 4, preset) } }   # dlaa, quality, balanced, performance, ultra performance, ultra quality
+  if r3d_env_has("R3D_DLSS_PRESET") { preset = Text.to_int(r3d_env("R3D_DLSS_PRESET")) }
+  if preset > 0 { for f in 0 .. 6 { Vk.put_i32(gsl_opts, 60 + f * 4, preset) } }   # dlaa, quality, balanced, performance, ultra performance, ultra quality
 }
 
 # the render size for the display's size and the mode, asked once per change
-function gsl_optimal(render3d_st: mut Render3dState) -> void {
-  if render3d_st.gsl_opt_mode == render3d_st.gsl_dlss_mode and render3d_st.gsl_opt_w == gl_w and render3d_st.gsl_opt_h == gl_h { return }
-  render3d_st.gsl_opt_mode = render3d_st.gsl_dlss_mode;  render3d_st.gsl_opt_w = gl_w;  render3d_st.gsl_opt_h = gl_h
-  render3d_st.gsl_rw = gl_w;  render3d_st.gsl_rh = gl_h
+function gsl_optimal() -> void {
+  if gsl_opt_mode == gsl_dlss_mode and gsl_opt_w == gl_w and gsl_opt_h == gl_h { return }
+  gsl_opt_mode = gsl_dlss_mode;  gsl_opt_w = gl_w;  gsl_opt_h = gl_h
+  gsl_rw = gl_w;  gsl_rh = gl_h
   let f = gsl_fn(GSL_DLSS, "slDLSSGetOptimalSettings")
   if f == null { return }
-  gsl_fill_options(render3d_st, gl_w, gl_h)
+  gsl_fill_options(gl_w, gl_h)
   let os = gsl_struct(64)                           # sl::DLSSOptimalSettings
   gsl_header(os, 0xef1d, 0x0957, 0xfd58, 0x4df7, 0xb504, 0x8b69, 0xd8aa, 0x6b76, 1)
-  if Vk.sl_call_pp(f, render3d_st.gsl_opts, os) == 0 {
+  if Vk.sl_call_pp(f, gsl_opts, os) == 0 {
     let w = Vk.get_i32(os, 32)
     let h = Vk.get_i32(os, 36)
-    if w > 0 and h > 0 { render3d_st.gsl_rw = w;  render3d_st.gsl_rh = h }
+    if w > 0 and h > 0 { gsl_rw = w;  gsl_rh = h }
   }
 }
-function r3d_dlss_render_w(render3d_st: mut Render3dState) -> int { if not r3d_dlss_live(render3d_st) { return gl_w };  gsl_optimal(render3d_st);  return render3d_st.gsl_rw }
-function r3d_dlss_render_h(render3d_st: mut Render3dState) -> int { if not r3d_dlss_live(render3d_st) { return gl_h };  gsl_optimal(render3d_st);  return render3d_st.gsl_rh }
+function r3d_dlss_render_w() -> int { if not r3d_dlss_live() { return gl_w };  gsl_optimal();  return gsl_rw }
+function r3d_dlss_render_h() -> int { if not r3d_dlss_live() { return gl_h };  gsl_optimal();  return gsl_rh }
 
 # a radical-inverse sample in [0, 1), float bits
 function gsl_halton(i: int, b: int) -> float {
@@ -275,52 +317,52 @@ function gsl_halton(i: int, b: int) -> float {
 }
 
 # cam_begin_frame: this frame's sub-pixel offset, before the camera builds its matrices
-function gsl_jitter_frame(render3d_st: mut Render3dState) -> void {
-  render3d_st.gsl_jitter_x = 0.0;  render3d_st.gsl_jitter_y = 0.0;  render3d_st.gsl_jpx = 0.0;  render3d_st.gsl_jpy = 0.0
+function gsl_jitter_frame() -> void {
+  gsl_jitter_x = 0.0;  gsl_jitter_y = 0.0;  gsl_jpx = 0.0;  gsl_jpy = 0.0
   # a jittered frame nobody resolves shakes on screen however still the camera is: jitter only while
   # this frame holds a DLSS token and the last evaluate worked. (Not gsl_fresh: gsl_frame_start has
   # already taken the token and cleared it by the time the camera asks, which turned jitter off.)
-  if not r3d_dlss_live(render3d_st) or not render3d_st.gsl_eval_ok or render3d_st.gsl_token == null or render3d_st.post_w <= 0 or render3d_st.post_h <= 0 { return }
+  if not r3d_dlss_live() or not gsl_eval_ok or gsl_token == null or post_w <= 0 or post_h <= 0 { return }
   # DLSS wants at least 8 x (display / render)^2 phases; 32 covers performance mode
-  let i = (render3d_st.gsl_frame_n % 32) + 1
-  render3d_st.gsl_jpx = gsl_halton(i, 2) - 0.5
-  render3d_st.gsl_jpy = gsl_halton(i, 3) - 0.5
-  render3d_st.gsl_jitter_x = 2.0 * render3d_st.gsl_jpx / float(render3d_st.post_w)
-  render3d_st.gsl_jitter_y = 2.0 * render3d_st.gsl_jpy / float(render3d_st.post_h)
+  let i = (gsl_frame_n % 32) + 1
+  gsl_jpx = gsl_halton(i, 2) - 0.5
+  gsl_jpy = gsl_halton(i, 3) - 0.5
+  gsl_jitter_x = 2.0 * gsl_jpx / float(post_w)
+  gsl_jitter_y = 2.0 * gsl_jpy / float(post_h)
 }
 
 # sl::Resource for one of the renderer's textures, in the layout every pass leaves them in
-function gsl_resource(render3d_st: Render3dState, at: int, tex: int) -> void {
-  let p = Vk.at(render3d_st.gsl_res, at)
+function gsl_resource(at: int, tex: int) -> void {
+  let p = Vk.at(gsl_res, at)
   Vk.zero(p, 112)
   gsl_header(p, 0x3a9d, 0x70cf, 0x2418, 0x4b72, 0x8391, 0x13f8, 0x721c, 0x7261, 1)
-  Vk.put_i64(p, 40, render3d_st.gvk_tex_image[tex])
-  Vk.put_i64(p, 48, gvk_mem_handle(render3d_st, gvk_mem_id(render3d_st.gvk_tex_mem[tex])))
-  Vk.put_i64(p, 56, render3d_st.gvk_tex_view[tex])
+  Vk.put_i64(p, 40, gvk_tex_image[tex])
+  Vk.put_i64(p, 48, gvk_mem_handle(gvk_mem_id(gvk_tex_mem[tex])))
+  Vk.put_i64(p, 56, gvk_tex_view[tex])
   Vk.put_i32(p, 64, GSL_LAYOUT_READ)
-  Vk.put_i32(p, 68, render3d_st.gvk_tex_dims_w[tex])
-  Vk.put_i32(p, 72, render3d_st.gvk_tex_dims_h[tex])
-  Vk.put_i32(p, 76, render3d_st.gvk_tex_vkfmt[tex])
-  Vk.put_i32(p, 80, render3d_st.gvk_tex_levels[tex])
-  Vk.put_i32(p, 84, render3d_st.gvk_tex_layers[tex])
-  Vk.put_i32(p, 100, gvk_tex_usage(render3d_st, tex))
+  Vk.put_i32(p, 68, gvk_tex_dims_w[tex])
+  Vk.put_i32(p, 72, gvk_tex_dims_h[tex])
+  Vk.put_i32(p, 76, gvk_tex_vkfmt[tex])
+  Vk.put_i32(p, 80, gvk_tex_levels[tex])
+  Vk.put_i32(p, 84, gvk_tex_layers[tex])
+  Vk.put_i32(p, 100, gvk_tex_usage(tex))
 }
 # the usage gvk_tex_storage gave the image
-function gvk_tex_usage(render3d_st: Render3dState, tex: int) -> int {
-  let fmt = render3d_st.gvk_tex_vkfmt[tex]
+function gvk_tex_usage(tex: int) -> int {
+  let fmt = gvk_tex_vkfmt[tex]
   var usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
   if fmt == VK_FORMAT_D32_SFLOAT { return usage | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT }
   usage = usage | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
-  if render3d_st.gvk_tex_samples[tex] <= 1 and (fmt == VK_FORMAT_R16G16B16A16_SFLOAT or fmt == VK_FORMAT_R32_SFLOAT) { usage = usage | VK_IMAGE_USAGE_STORAGE_BIT }
+  if gvk_tex_samples[tex] <= 1 and (fmt == VK_FORMAT_R16G16B16A16_SFLOAT or fmt == VK_FORMAT_R32_SFLOAT) { usage = usage | VK_IMAGE_USAGE_STORAGE_BIT }
   return usage
 }
 
 # sl::ResourceTag i, pointing at resource i
-function gsl_tag(render3d_st: Render3dState, i: int, buffer: int, w: int, h: int) -> void {
-  let p = Vk.at(render3d_st.gsl_tags, i * 64)
+function gsl_tag(i: int, buffer: int, w: int, h: int) -> void {
+  let p = Vk.at(gsl_tags, i * 64)
   Vk.zero(p, 64)
   gsl_header(p, 0x4c6a, 0x5aad, 0xb445, 0x496c, 0x87ff, 0x1af3, 0x845b, 0xe653, 1)
-  Vk.put_ptr(p, 32, Vk.at(render3d_st.gsl_res, i * 112))
+  Vk.put_ptr(p, 32, Vk.at(gsl_res, i * 112))
   Vk.put_i32(p, 40, buffer)
   Vk.put_i32(p, 44, 2)                              # eValidUntilEvaluate
   Vk.put_i32(p, 56, w)
@@ -345,15 +387,15 @@ function gsl_clip_fix(m: floats) -> void {
   m[14] = 0.5
 }
 
-function gsl_constants(render3d_st: mut Render3dState) -> void {
-  if render3d_st.gsl_consts == null { render3d_st.gsl_consts = gsl_struct(456) }
-  let k = render3d_st.gsl_consts
+function gsl_constants() -> void {
+  if gsl_consts == null { gsl_consts = gsl_struct(456) }
+  let k = gsl_consts
   Vk.zero(k, 456)
   gsl_header(k, 0xdcd3, 0x5ad7, 0x4e4a, 0x4bad, 0xa90c, 0xe0c4, 0x9eb2, 0x3afe, 2)
   let fix = m4_new();  let proj = m4_new();  let v2c = m4_new();  let c2v = m4_new()
   let cur = m4_new();  let prev = m4_new();  let inv_cur = m4_new();  let c2p = m4_new();  let p2c = m4_new()
   gsl_clip_fix(fix)
-  m4_perspective(proj, render3d_st.cam_fov, render3d_st.cam_aspect, render3d_st.cam_near, render3d_st.cam_far)
+  m4_perspective(proj, cam_fov, cam_aspect, cam_near, cam_far)
   m4_mul(v2c, fix, proj)
   m4_inverse(c2v, v2c)
   gsl_put_m4(k, 32, v2c)                            # cameraViewToClip (no jitter)
@@ -361,9 +403,9 @@ function gsl_constants(render3d_st: mut Render3dState) -> void {
   let ident = m4_new()
   m4_identity(ident)
   gsl_put_m4(k, 160, ident)                         # clipToLensClip
-  if render3d_st.gsl_prev_vp == null { render3d_st.gsl_prev_vp = m4_new();  for i in 0 .. 16 { render3d_st.gsl_prev_vp[i] = render3d_st.cam_vp_clean[i] } }
-  m4_mul(cur, fix, render3d_st.cam_vp_clean)
-  m4_mul(prev, fix, render3d_st.gsl_prev_vp)
+  if gsl_prev_vp == null { gsl_prev_vp = m4_new();  for i in 0 .. 16 { gsl_prev_vp[i] = cam_vp_clean[i] } }
+  m4_mul(cur, fix, cam_vp_clean)
+  m4_mul(prev, fix, gsl_prev_vp)
   m4_inverse(inv_cur, cur)
   m4_mul(c2p, prev, inv_cur)
   m4_inverse(p2c, c2p)
@@ -372,87 +414,87 @@ function gsl_constants(render3d_st: mut Render3dState) -> void {
   # the sample's offset from the pixel centre, in the image Streamline sees: row 0 at the top, so the
   # vertical offset flips with it. With jy unflipped DLSS resolved the ground into concentric
   # rings; with jx flipped too, thin stems doubled sideways (PC shots, 2026-09-15).
-  var jx = -render3d_st.gsl_jpx
-  var jy = -render3d_st.gsl_jpy
+  var jx = -gsl_jpx
+  var jy = -gsl_jpy
   # R3D_DLSS_JX / R3D_DLSS_JY = -1 flip a sign, to check the convention against the picture
-  if r3d_env_has(render3d_st, "R3D_DLSS_JX") and Text.to_int(r3d_env(render3d_st, "R3D_DLSS_JX")) < 0 { jx = -jx }
-  if r3d_env_has(render3d_st, "R3D_DLSS_JY") and Text.to_int(r3d_env(render3d_st, "R3D_DLSS_JY")) < 0 { jy = -jy }
+  if r3d_env_has("R3D_DLSS_JX") and Text.to_int(r3d_env("R3D_DLSS_JX")) < 0 { jx = -jx }
+  if r3d_env_has("R3D_DLSS_JY") and Text.to_int(r3d_env("R3D_DLSS_JY")) < 0 { jy = -jy }
   Vk.put_i32(k, 352, float_bits(jx))
   Vk.put_i32(k, 356, float_bits(jy))
   Vk.put_i32(k, 360, float_bits(1.0))                         # mvecScale
   Vk.put_i32(k, 364, float_bits(1.0))
-  gsl_put_v3(k, 376, render3d_st.cam_pos)
+  gsl_put_v3(k, 376, cam_pos)
   let up = floats(3)
-  v3_cross(up, render3d_st.cam_right, render3d_st.cam_fwd)
+  v3_cross(up, cam_right, cam_fwd)
   gsl_put_v3(k, 388, up)
-  gsl_put_v3(k, 400, render3d_st.cam_right)
-  gsl_put_v3(k, 412, render3d_st.cam_fwd)
-  Vk.put_i32(k, 424, float_bits(render3d_st.cam_near))
-  Vk.put_i32(k, 428, float_bits(render3d_st.cam_far))
-  Vk.put_i32(k, 432, float_bits(render3d_st.cam_fov))
-  Vk.put_i32(k, 436, float_bits(render3d_st.cam_aspect))
+  gsl_put_v3(k, 400, cam_right)
+  gsl_put_v3(k, 412, cam_fwd)
+  Vk.put_i32(k, 424, float_bits(cam_near))
+  Vk.put_i32(k, 428, float_bits(cam_far))
+  Vk.put_i32(k, 432, float_bits(cam_fov))
+  Vk.put_i32(k, 436, float_bits(cam_aspect))
   Vk.put_i32(k, 440, float_bits(0.0))                        # motionVectorsInvalidValue
   # depthInverted, cameraMotionIncluded, motionVectors3D false; reset on a cut; not orthographic,
   # not dilated, not jittered
-  if render3d_st.gsl_reset { Vk.put_i32(k, 444, 256 * 256 * 256) }
+  if gsl_reset { Vk.put_i32(k, 444, 256 * 256 * 256) }
   Vk.put_i32(k, 452, float_bits(40.0))                        # minRelativeLinearDepthObjectSeparation
   free(fix);  free(proj);  free(v2c);  free(c2v);  free(cur);  free(prev);  free(inv_cur);  free(c2p);  free(p2c);  free(ident);  free(up)
 }
 
 # make the DLSS targets at this frame's sizes
-function gsl_targets(render3d_st: mut Render3dState) -> void {
-  if render3d_st.gsl_mv == null or render3d_st.gsl_mv.w != render3d_st.post_w or render3d_st.gsl_mv.h != render3d_st.post_h {
-    if render3d_st.gsl_mv != null { target_free(render3d_st, render3d_st.gsl_mv) }
-    render3d_st.gsl_mv = target_new(render3d_st, render3d_st.post_w, render3d_st.post_h, GL_RG16F, GL_RG, GL_HALF_FLOAT, false, GL_NEAREST)
-    render3d_st.gsl_reset = true
+function gsl_targets() -> void {
+  if gsl_mv == null or gsl_mv.w != post_w or gsl_mv.h != post_h {
+    if gsl_mv != null { target_free(gsl_mv) }
+    gsl_mv = target_new(post_w, post_h, GL_RG16F, GL_RG, GL_HALF_FLOAT, false, GL_NEAREST)
+    gsl_reset = true
   }
-  if render3d_st.gsl_out == null or render3d_st.gsl_out.w != gl_w or render3d_st.gsl_out.h != gl_h {
-    if render3d_st.gsl_out != null { target_free(render3d_st, render3d_st.gsl_out) }
-    render3d_st.gsl_out = target_new(render3d_st, gl_w, gl_h, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, false, GL_LINEAR)
-    render3d_st.gsl_reset = true
+  if gsl_out == null or gsl_out.w != gl_w or gsl_out.h != gl_h {
+    if gsl_out != null { target_free(gsl_out) }
+    gsl_out = target_new(gl_w, gl_h, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, false, GL_LINEAR)
+    gsl_reset = true
   }
   # the LDR image the tonemap writes follows the upscaled size
-  if render3d_st.post_ldr.w != gl_w or render3d_st.post_ldr.h != gl_h {
-    target_free(render3d_st, render3d_st.post_ldr)
-    render3d_st.post_ldr = target_new(render3d_st, gl_w, gl_h, post_ldr_fmt(render3d_st), GL_RGBA, GL_UNSIGNED_BYTE, false, GL_LINEAR)
-    render3d_st.post_ldr_hdr = gpu_hdr_active(render3d_st)
+  if post_ldr.w != gl_w or post_ldr.h != gl_h {
+    target_free(post_ldr)
+    post_ldr = target_new(gl_w, gl_h, post_ldr_fmt(), GL_RGBA, GL_UNSIGNED_BYTE, false, GL_LINEAR)
+    post_ldr_hdr = gpu_hdr_active()
   }
-  if render3d_st.gsl_res == null { render3d_st.gsl_res = gsl_struct(4 * 112);  render3d_st.gsl_tags = gsl_struct(4 * 64);  render3d_st.gsl_inputs = bytes(8) }
+  if gsl_res == null { gsl_res = gsl_struct(4 * 112);  gsl_tags = gsl_struct(4 * 64);  gsl_inputs = bytes(8) }
 }
 
 # Upscale post_hdr into gsl_out; the colour the rest of post reads (post_hdr's own if it failed).
-function gsl_dlss_eval(render3d_st: mut Render3dState) -> int {
-  gsl_targets(render3d_st)
+function gsl_dlss_eval() -> int {
+  gsl_targets()
   # no motion of its own: the camera's comes from depth
-  target_bind(render3d_st, render3d_st.gsl_mv)
-  gpu_clear_color(render3d_st, 0.0, 0.0, 0.0, 0.0)
-  gpu_clear(render3d_st, GL_COLOR_BUFFER_BIT)
-  gvk_pass_end(render3d_st)
-  let cb = gvk_frame_cb(render3d_st)
-  if render3d_st.gsl_set_mode != render3d_st.gsl_dlss_mode or render3d_st.gsl_set_w != gl_w or render3d_st.gsl_set_h != gl_h {
+  target_bind(gsl_mv)
+  gpu_clear_color(0.0, 0.0, 0.0, 0.0)
+  gpu_clear(GL_COLOR_BUFFER_BIT)
+  gvk_pass_end()
+  let cb = gvk_frame_cb()
+  if gsl_set_mode != gsl_dlss_mode or gsl_set_w != gl_w or gsl_set_h != gl_h {
     let f = gsl_fn(GSL_DLSS, "slDLSSSetOptions")
-    gsl_fill_options(render3d_st, gl_w, gl_h)
-    if f != null and Vk.sl_call_pp(f, render3d_st.gsl_vp, render3d_st.gsl_opts) == 0 { render3d_st.gsl_set_mode = render3d_st.gsl_dlss_mode;  render3d_st.gsl_set_w = gl_w;  render3d_st.gsl_set_h = gl_h }
+    gsl_fill_options(gl_w, gl_h)
+    if f != null and Vk.sl_call_pp(f, gsl_vp, gsl_opts) == 0 { gsl_set_mode = gsl_dlss_mode;  gsl_set_w = gl_w;  gsl_set_h = gl_h }
   }
-  gsl_constants(render3d_st)
-  Vk.sl_set_constants(render3d_st.gsl_consts, render3d_st.gsl_token, render3d_st.gsl_vp)
-  gsl_resource(render3d_st, 0, render3d_st.post_hdr.depth);  gsl_tag(render3d_st, 0, 0, render3d_st.post_w, render3d_st.post_h)        # kBufferTypeDepth
-  gsl_resource(render3d_st, 112, render3d_st.gsl_mv.color);  gsl_tag(render3d_st, 1, 1, render3d_st.post_w, render3d_st.post_h)       # kBufferTypeMotionVectors
-  gsl_resource(render3d_st, 224, render3d_st.post_hdr.color);  gsl_tag(render3d_st, 2, 3, render3d_st.post_w, render3d_st.post_h)     # kBufferTypeScalingInputColor
-  gsl_resource(render3d_st, 336, render3d_st.gsl_out.color);  gsl_tag(render3d_st, 3, 4, gl_w, gl_h)          # kBufferTypeScalingOutputColor
-  Vk.sl_set_tag_for_frame(render3d_st.gsl_token, render3d_st.gsl_vp, render3d_st.gsl_tags, 4, cb)
-  Vk.put_ptr(render3d_st.gsl_inputs, 0, render3d_st.gsl_vp)
-  let r = Vk.sl_evaluate_feature(GSL_DLSS, render3d_st.gsl_token, render3d_st.gsl_inputs, 1, cb)
-  for i in 0 .. 16 { render3d_st.gsl_prev_vp[i] = render3d_st.cam_vp_clean[i] }
-  render3d_st.gsl_reset = false
+  gsl_constants()
+  Vk.sl_set_constants(gsl_consts, gsl_token, gsl_vp)
+  gsl_resource(0, post_hdr.depth);  gsl_tag(0, 0, post_w, post_h)        # kBufferTypeDepth
+  gsl_resource(112, gsl_mv.color);  gsl_tag(1, 1, post_w, post_h)       # kBufferTypeMotionVectors
+  gsl_resource(224, post_hdr.color);  gsl_tag(2, 3, post_w, post_h)     # kBufferTypeScalingInputColor
+  gsl_resource(336, gsl_out.color);  gsl_tag(3, 4, gl_w, gl_h)          # kBufferTypeScalingOutputColor
+  Vk.sl_set_tag_for_frame(gsl_token, gsl_vp, gsl_tags, 4, cb)
+  Vk.put_ptr(gsl_inputs, 0, gsl_vp)
+  let r = Vk.sl_evaluate_feature(GSL_DLSS, gsl_token, gsl_inputs, 1, cb)
+  for i in 0 .. 16 { gsl_prev_vp[i] = cam_vp_clean[i] }
+  gsl_reset = false
   # Streamline records its own pipeline and descriptors into the command buffer; nothing needs
   # forgetting, because every gvk_draw binds its pipeline, view and set afresh
-  render3d_st.gsl_eval_ok = r == 0
+  gsl_eval_ok = r == 0
   if r != 0 {
-    if not render3d_st.gsl_said { print(`r3d: streamline: DLSS evaluate failed ({r}); drawing without it`);  render3d_st.gsl_said = true }
-    render3d_st.post_color_w = render3d_st.post_w;  render3d_st.post_color_h = render3d_st.post_h
-    return render3d_st.post_hdr.color
+    if not gsl_said { print(`r3d: streamline: DLSS evaluate failed ({r}); drawing without it`);  gsl_said = true }
+    post_color_w = post_w;  post_color_h = post_h
+    return post_hdr.color
   }
-  render3d_st.post_color_w = gl_w;  render3d_st.post_color_h = gl_h
-  return render3d_st.gsl_out.color
+  post_color_w = gl_w;  post_color_h = gl_h
+  return gsl_out.color
 }

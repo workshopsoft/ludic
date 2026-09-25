@@ -14,48 +14,51 @@ export property UiFile {
   src: string = ""              # the text it was read from
   disk: bool = false            # read from a file (ui_reload looks again), or handed over as text
 }
+var lib_files: []UiFile = new []UiFile
+var lib_screen_names: []string = new []string
+var lib_screens: []UiTpl = new []UiTpl
 # the file a path names, read once
-export function ui_load(ui_st: mut UiState, path: string) -> bool { return lib_file(ui_st, path) != null }
-function lib_file(ui_st: mut UiState, path: string) -> UiFile {
-  for i in 0 .. len(ui_st.lib_files) {
-    if ui_st.lib_files[i].path == path { return ui_st.lib_files[i] }
+export function ui_load(path: string) -> bool { return lib_file(path) != null }
+function lib_file(path: string) -> UiFile {
+  for i in 0 .. len(lib_files) {
+    if lib_files[i].path == path { return lib_files[i] }
   }
-  let src = lib_text(ui_st, path)
+  let src = lib_text(path)
   if len(src) == 0 {
-    ui_err(ui_st, `{path}: cannot read it`)
+    ui_err(`{path}: cannot read it`)
     return null
   }
   var f: UiFile = null
-  if lss_is(path) { f = lss_file(ui_st, src, path) } else { f = lib_read(ui_st, src, path) }
+  if lss_is(path) { f = lss_file(src, path) } else { f = lib_read(src, path) }
   f.disk = true
   return f
 }
 # a file's text, as if read from `path` (its imports are found beside it)
-export function ui_load_text(ui_st: mut UiState, src: string, path: string) -> void {
-  if lss_is(path) { lss_file(ui_st, src, path) } else { lib_read(ui_st, src, path) }
+export function ui_load_text(src: string, path: string) -> void {
+  if lss_is(path) { lss_file(src, path) } else { lib_read(src, path) }
 }
-function lib_read(ui_st: mut UiState, src: string, path: string) -> UiFile {
-  let f = lib_new(ui_st, path)
+function lib_read(src: string, path: string) -> UiFile {
+  let f = lib_new(path)
   f.src = src
-  tp_lines(ui_st, src)
-  let root = tpl_read(ui_st, Xml.parse(src), path)
+  tp_lines(src)
+  let root = tpl_read(Xml.parse(src), path)
   var tops = root.kids
   if root.tag != "ui" { tops = [root] }
-  for i in 0 .. len(tops) { lib_top(ui_st, f, tops[i]) }
+  for i in 0 .. len(tops) { lib_top(f, tops[i]) }
   f.sheet = sheet_of(f)
-  for i in 0 .. len(f.comps) { lib_link(ui_st, f, f.comps[i]) }
+  for i in 0 .. len(f.comps) { lib_link(f, f.comps[i]) }
   for i in 0 .. len(tops) {
-    if tops[i].tag == "screen" { lib_link(ui_st, f, tops[i]) }
+    if tops[i].tag == "screen" { lib_link(f, tops[i]) }
   }
   return f
 }
-function lib_top(ui_st: mut UiState, f: UiFile, t: UiTpl) -> void {
+function lib_top(f: UiFile, t: UiTpl) -> void {
   if t.tag == "style" {
-    sheet_read(ui_st, f, t)
+    sheet_read(f, t)
     return
   }
   if t.tag == "import" {
-    let other = lib_file(ui_st, lib_beside(f.path, bd_name(t, "src", "")))
+    let other = lib_file(lib_beside(f.path, bd_name(t, "src", "")))
     if other != null {
       push(f.imp, other)
       push(f.imp_as, bd_name(t, "as", ""))
@@ -64,14 +67,14 @@ function lib_top(ui_st: mut UiState, f: UiFile, t: UiTpl) -> void {
   }
   let name = bd_name(t, "name", "")
   if name == "" or (t.tag != "component" and t.tag != "screen") {
-    ui_err(ui_st, `{f.path}: <{t.tag}> - a file holds <import>s, <style>s, <component name=...>s and <screen name=...>s`)
+    ui_err(`{f.path}: <{t.tag}> - a file holds <import>s, <style>s, <component name=...>s and <screen name=...>s`)
     return
   }
   if t.tag == "screen" {
-    let at = lib_find(ui_st.lib_screen_names, name)
-    if at >= 0 { ui_st.lib_screens[at] = t } else {
-      push(ui_st.lib_screen_names, name)
-      push(ui_st.lib_screens, t)
+    let at = lib_find(lib_screen_names, name)
+    if at >= 0 { lib_screens[at] = t } else {
+      push(lib_screen_names, name)
+      push(lib_screens, t)
     }
     return
   }

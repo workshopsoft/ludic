@@ -10,71 +10,71 @@ def NpcSpots shore_here { find: fn np_spot_shore_here }
 def NpcSpots wander { find: fn np_spot_wander }
 
 # the step's act for the step's time, at (x, z)
-export function npc_step_go(npc_st: mut NpcState, p: NpcPerson, s: NpcStep, x: float, z: float) -> void {
-  npc_go(npc_st, p, x, z, s.act, npc_secs(npc_st, s.lo, s.hi))
+export function npc_step_go(p: NpcPerson, s: NpcStep, x: float, z: float) -> void {
+  npc_go(p, x, z, s.act, npc_secs(s.lo, s.hi))
 }
 
-function np_spot_here(npc_st: mut NpcState, p: NpcPerson, s: NpcStep) -> bool {
+function np_spot_here(p: NpcPerson, s: NpcStep) -> bool {
   npc_face_ahead(p)
-  npc_do(npc_st, p, s.act, npc_secs(npc_st, s.lo, s.hi))
+  npc_do(p, s.act, npc_secs(s.lo, s.hi))
   return true
 }
 
-function np_spot_home(npc_st: mut NpcState, p: NpcPerson, s: NpcStep) -> bool {
+function np_spot_home(p: NpcPerson, s: NpcStep) -> bool {
   var fx = p.hx - Math.sin(p.yaw) * 5.0
   var fz = p.hz - Math.cos(p.yaw) * 5.0
   if p.home_face {
     fx = p.hfx
     fz = p.hfz
   }
-  if npc_d(p.x, p.z, p.hx, p.hz) < 2.0 { npc_do(npc_st, p, s.act, npc_secs(npc_st, s.lo, s.hi)) } else { npc_step_go(npc_st, p, s, p.hx, p.hz) }
+  if npc_d(p.x, p.z, p.hx, p.hz) < 2.0 { npc_do(p, s.act, npc_secs(s.lo, s.hi)) } else { npc_step_go(p, s, p.hx, p.hz) }
   npc_face(p, fx, fz)
   return true
 }
 
-function np_spot_near_home(npc_st: mut NpcState, p: NpcPerson, s: NpcStep) -> bool {
-  if not npc_spot_near(npc_st, p.hx, p.hz, s.near, s.far) { return false }
-  npc_step_go(npc_st, p, s, npc_st.np_px, npc_st.np_pz)
+function np_spot_near_home(p: NpcPerson, s: NpcStep) -> bool {
+  if not npc_spot_near(p.hx, p.hz, s.near, s.far) { return false }
+  npc_step_go(p, s, np_px, np_pz)
   return true
 }
 
-function np_spot_near_here(npc_st: mut NpcState, p: NpcPerson, s: NpcStep) -> bool {
-  if not npc_spot_near(npc_st, p.x, p.z, s.near, s.far) { return false }
-  npc_step_go(npc_st, p, s, npc_st.np_px, npc_st.np_pz)
+function np_spot_near_here(p: NpcPerson, s: NpcStep) -> bool {
+  if not npc_spot_near(p.x, p.z, s.near, s.far) { return false }
+  npc_step_go(p, s, np_px, np_pz)
   return true
 }
 
 # at the water's edge, facing out over it
-function np_spot_shore(npc_st: mut NpcState, p: NpcPerson, s: NpcStep, x: float, z: float) -> bool {
-  if not npc_shore(npc_st, x, z, s.far) { return false }
-  let wx = npc_st.np_wx
-  let wz = npc_st.np_wz
-  npc_step_go(npc_st, p, s, npc_st.np_px, npc_st.np_pz)
+function np_spot_shore(p: NpcPerson, s: NpcStep, x: float, z: float) -> bool {
+  if not npc_shore(x, z, s.far) { return false }
+  let wx = np_wx
+  let wz = np_wz
+  npc_step_go(p, s, np_px, np_pz)
   npc_face(p, wx, wz)
   return true
 }
 
-function np_spot_shore_home(npc_st: mut NpcState, p: NpcPerson, s: NpcStep) -> bool { return np_spot_shore(npc_st, p, s, p.hx, p.hz) }
+function np_spot_shore_home(p: NpcPerson, s: NpcStep) -> bool { return np_spot_shore(p, s, p.hx, p.hz) }
 
-function np_spot_shore_here(npc_st: mut NpcState, p: NpcPerson, s: NpcStep) -> bool { return np_spot_shore(npc_st, p, s, p.x, p.z) }
+function np_spot_shore_here(p: NpcPerson, s: NpcStep) -> bool { return np_spot_shore(p, s, p.x, p.z) }
 
-function np_spot_wander(npc_st: mut NpcState, p: NpcPerson, s: NpcStep) -> bool {
-  npc_wander(npc_st, p)
+function np_spot_wander(p: NpcPerson, s: NpcStep) -> bool {
+  npc_wander(p)
   return true
 }
 
 # a few steps somewhere that can actually be walked to, after being stuck
-export function npc_wander(npc_st: mut NpcState, p: NpcPerson) -> void {
+export function npc_wander(p: NpcPerson) -> void {
   for t in 0 .. 16 {
-    let ang = npc_rnd(npc_st) * NP_TAU
-    let d = 8.0 + npc_rnd(npc_st) * 18.0
+    let ang = npc_rnd() * NP_TAU
+    let d = 8.0 + npc_rnd() * 18.0
     let x = p.x + Math.cos(ang) * d
     let z = p.z + Math.sin(ang) * d
     if npc_walkable(x, z) and npc_line_ok(p.x, p.z, x, z) {
-      npc_go(npc_st, p, x, z, NPCA_IDLE, npc_secs(npc_st, 5, 12))
+      npc_go(p, x, z, NPCA_IDLE, npc_secs(5, 12))
       return
     }
   }
   npc_face_ahead(p)
-  npc_do(npc_st, p, NPCA_IDLE, 8.0)
+  npc_do(p, NPCA_IDLE, 8.0)
 }

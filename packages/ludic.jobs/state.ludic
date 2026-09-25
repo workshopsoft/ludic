@@ -1,30 +1,28 @@
 # state.ludic - each job's state and count, the posts on the boards, the done counts, the dice and
 # the facts. Made on first use, so the registries are complete by then.
-export state JobsState {
-  jobs__st: []int = null
-  jobs__hv: []int = null
-  jobs__seen: []bool = null      # an offer already said
-  jobs__primed: bool = false     # the first tick after a reset learns the offers quietly
-  jobs__done_n: []int = null     # handed in, per group
-  jobs__off: []int = null
-  jobs__pk: []int = null         # kind, -1 empty
-  jobs__pp: []int = null
-  jobs__pn: []int = null
-  jobs__ph: []int = null
-  jobs__pb: []int = null         # the evidence when it went up
-  jobs__pm: []int = null
-  jobs__pr: []int = null
-  jobs__ps: []int = null
-  jobs__pd: []int = null         # the day it went up
-  jobs__total: []int = null      # handed in, per board
-  jobs__serial: []int = null     # posts made, per board: each roll its own seed
-  jobs__seed: int = 1000
-  jobs__dice: Rng = null
-  jobs__q: Queue<JobsFact> = null
-}
+var jobs__st: []int = null
+var jobs__hv: []int = null
+var jobs__seen: []bool = null      # an offer already said
+var jobs__primed: bool = false     # the first tick after a reset learns the offers quietly
+var jobs__done_n: []int = null     # handed in, per group
 
 # the posts, every board's slots end to end from jobs__off[b]
+var jobs__off: []int = null
+var jobs__pk: []int = null         # kind, -1 empty
+var jobs__pp: []int = null
+var jobs__pn: []int = null
+var jobs__ph: []int = null
+var jobs__pb: []int = null         # the evidence when it went up
+var jobs__pm: []int = null
+var jobs__pr: []int = null
+var jobs__ps: []int = null
+var jobs__pd: []int = null         # the day it went up
+var jobs__total: []int = null      # handed in, per board
+var jobs__serial: []int = null     # posts made, per board: each roll its own seed
 
+var jobs__seed: int = 1000
+var jobs__dice: Rng = null
+var jobs__q: Queue<JobsFact> = null
 
 function jobs__ints(n: int, v: int) -> []int {
   let out = new []int
@@ -32,39 +30,39 @@ function jobs__ints(n: int, v: int) -> []int {
   return out
 }
 
-function jobs__ensure(jobs_st: mut JobsState) -> void {
-  if jobs_st.jobs__st != null { return }
-  jobs_st.jobs__st = jobs__ints(JOB_COUNT, JOBS_OFFERED)
-  jobs_st.jobs__hv = jobs__ints(JOB_COUNT, 0)
-  jobs_st.jobs__seen = new []bool
-  for i in 0 .. JOB_COUNT { push(jobs_st.jobs__seen, false) }
-  jobs_st.jobs__done_n = jobs__ints(JOBS_GROUPS, 0)
-  jobs_st.jobs__off = new []int
+function jobs__ensure() -> void {
+  if jobs__st != null { return }
+  jobs__st = jobs__ints(JOB_COUNT, JOBS_OFFERED)
+  jobs__hv = jobs__ints(JOB_COUNT, 0)
+  jobs__seen = new []bool
+  for i in 0 .. JOB_COUNT { push(jobs__seen, false) }
+  jobs__done_n = jobs__ints(JOBS_GROUPS, 0)
+  jobs__off = new []int
   var n = 0
   for b in 0 .. BOARD_COUNT {
-    push(jobs_st.jobs__off, n)
+    push(jobs__off, n)
     n += JobBoards[b].slots
   }
-  jobs_st.jobs__pk = jobs__ints(n, -1)
-  jobs_st.jobs__pp = jobs__ints(n, -1)
-  jobs_st.jobs__pn = jobs__ints(n, 0)
-  jobs_st.jobs__ph = jobs__ints(n, 0)
-  jobs_st.jobs__pb = jobs__ints(n, 0)
-  jobs_st.jobs__pm = jobs__ints(n, 0)
-  jobs_st.jobs__pr = jobs__ints(n, 0)
-  jobs_st.jobs__ps = jobs__ints(n, JOBS_OFFERED)
-  jobs_st.jobs__pd = jobs__ints(n, 0)
-  jobs_st.jobs__total = jobs__ints(BOARD_COUNT, 0)
-  jobs_st.jobs__serial = jobs__ints(BOARD_COUNT, 0)
-  jobs_st.jobs__dice = rng_new(jobs_st.jobs__seed)
+  jobs__pk = jobs__ints(n, -1)
+  jobs__pp = jobs__ints(n, -1)
+  jobs__pn = jobs__ints(n, 0)
+  jobs__ph = jobs__ints(n, 0)
+  jobs__pb = jobs__ints(n, 0)
+  jobs__pm = jobs__ints(n, 0)
+  jobs__pr = jobs__ints(n, 0)
+  jobs__ps = jobs__ints(n, JOBS_OFFERED)
+  jobs__pd = jobs__ints(n, 0)
+  jobs__total = jobs__ints(BOARD_COUNT, 0)
+  jobs__serial = jobs__ints(BOARD_COUNT, 0)
+  jobs__dice = rng_new(jobs__seed)
 }
 
-export function jobs_facts(base_st: mut BaseState, jobs_st: mut JobsState) -> Queue<JobsFact> {
-  if jobs_st.jobs__q == null { jobs_st.jobs__q = queue_new(base_st, "jobs.facts") }
-  return jobs_st.jobs__q
+export function jobs_facts() -> Queue<JobsFact> {
+  if jobs__q == null { jobs__q = queue_new("jobs.facts") }
+  return jobs__q
 }
 
-function jobs__fact(base_st: mut BaseState, jobs_st: mut JobsState, what: int, job: int, b: int, s: int, have: int, need: int) -> void {
+function jobs__fact(what: int, job: int, b: int, s: int, have: int, need: int) -> void {
   let f = new JobsFact
   f.what = what
   f.job = job
@@ -79,17 +77,17 @@ function jobs__fact(base_st: mut BaseState, jobs_st: mut JobsState, what: int, j
     f.rep = Jobs[job].rep
     f.scope = Jobs[job].scope
   } else {
-    f.kind = jobs_st.jobs__pk[jobs_st.jobs__off[b] + s]
-    f.param = jobs_st.jobs__pp[jobs_st.jobs__off[b] + s]
-    f.money = jobs_st.jobs__pm[jobs_st.jobs__off[b] + s]
-    f.rep = jobs_st.jobs__pr[jobs_st.jobs__off[b] + s]
+    f.kind = jobs__pk[jobs__off[b] + s]
+    f.param = jobs__pp[jobs__off[b] + s]
+    f.money = jobs__pm[jobs__off[b] + s]
+    f.rep = jobs__pr[jobs__off[b] + s]
     f.scope = JobBoards[b].scope
   }
-  q_push(base_st, jobs_facts(base_st, jobs_st), f)
+  q_push(jobs_facts(), f)
 }
 
 # the base of every roll: a post's seed is this, the day, the board, the slot and how many before
-export function jobs_config_seed(jobs_st: mut JobsState, seed: int) -> void {
-  jobs_st.jobs__seed = seed
-  jobs_st.jobs__dice = rng_new(seed)
+export function jobs_config_seed(seed: int) -> void {
+  jobs__seed = seed
+  jobs__dice = rng_new(seed)
 }

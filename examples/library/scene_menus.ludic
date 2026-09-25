@@ -6,20 +6,18 @@ program SceneMenus {
   import "ludic.core/components.ludic"
   property Pos { x: int = 0 }
   model Thing { Pos }
-  state ScenemenusState {
-    menu_font: int = 0
-    frames: int = 0
-  }
+  var menu_font: int = 0
+  var frames: int = 0
   ui Menu {
     panel id: Root w: 100 pad: 4 bg: Color.Gunmetal border: Color.SlateGray align: center {
-      button id: Go text: "Go" font: ScenemenusState.menu_font size: 16 w: 80 goto: Play
+      button id: Go text: "Go" font: menu_font size: 16 w: 80 goto: Play
     }
   }
   scene Splash start lasts 1 then Title { on enter { print(100) } }
   scene Title shows Menu {
     on enter { print(200) }
     on exit { print(202) }
-    layer L { handler Tick(scenemenus_st: mut ScenemenusState) phase Update { scenemenus_st.frames += 1;  if scenemenus_st.frames == 1 { print(201);  emit UiClicked(id: UI_Go) } } }
+    layer L { handler Tick phase Update { frames += 1;  if frames == 1 { print(201);  emit UiClicked(id: UI_Go) } } }
   }
   @On(UiClicked) handler Report { print(id) }         # UI_Go is widget 1 (the root panel is 0)
   scene Play {

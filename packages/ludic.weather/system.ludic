@@ -1,43 +1,43 @@
 # system.ludic - the weather as a system: PH_SIMULATE, and its own save section
-function weather_tick(base_st: mut BaseState, weather_st: mut WeatherState, t: Tick) -> void { weather_run(base_st, weather_st, t.dt, t.hours) }
+function weather_tick(t: Tick) -> void { weather_run(t.dt, t.hours) }
 
-export function weather_save(weather_st: WeatherState) -> Val {
+export function weather_save() -> Val {
   let v = Value.object()
-  sv_put_int(v, "state", weather_st.wx_state)
-  sv_put_int(v, "next", weather_st.wx_next)
-  sv_put_float(v, "left", weather_st.wx_left)
-  sv_put_int(v, "forecast", weather_st.wx_forecast)
-  sv_put_bool(v, "forced", weather_st.wx_forced)
-  sv_put_float(v, "dir", weather_st.wx_dir)
-  sv_put_float(v, "ground", weather_st.wx_ground)
-  sv_put_float(v, "clear_t", weather_st.wx_clear_t)
-  sv_put_bool(v, "wet_today", weather_st.wx_wet_today)
-  sv_put_bool(v, "wet_yesterday", weather_st.wx_wet_yesterday)
-  sv_put_int(v, "dice", weather_st.wx_dice.s)
+  sv_put_int(v, "state", wx_state)
+  sv_put_int(v, "next", wx_next)
+  sv_put_float(v, "left", wx_left)
+  sv_put_int(v, "forecast", wx_forecast)
+  sv_put_bool(v, "forced", wx_forced)
+  sv_put_float(v, "dir", wx_dir)
+  sv_put_float(v, "ground", wx_ground)
+  sv_put_float(v, "clear_t", wx_clear_t)
+  sv_put_bool(v, "wet_today", wx_wet_today)
+  sv_put_bool(v, "wet_yesterday", wx_wet_yesterday)
+  sv_put_int(v, "dice", wx_dice.s)
   return v
 }
 
-function wx_kind_ok(weather_st: WeatherState, k: int) -> int {
-  if k < 0 or k >= weather_kind_count(weather_st) { return wx_clear_kind(weather_st) }
+function wx_kind_ok(k: int) -> int {
+  if k < 0 or k >= weather_kind_count() { return wx_clear_kind() }
   return k
 }
 
-export function weather_load(base_st: mut BaseState, weather_st: mut WeatherState, v: Val, version: int) -> void {
-  weather_reset(base_st, weather_st)
-  weather_st.wx_state = wx_kind_ok(weather_st, sv_int(v, "state", 0))
-  weather_st.wx_next = wx_kind_ok(weather_st, sv_int(v, "next", 0))
-  weather_st.wx_left = sv_float(v, "left", 10.0)
-  weather_st.wx_forecast = wx_kind_ok(weather_st, sv_int(v, "forecast", 0))
-  weather_st.wx_forced = sv_bool(v, "forced", false)
-  weather_st.wx_dir = sv_float(v, "dir", 0.0)
-  weather_st.wx_ground = sv_float(v, "ground", 0.0)
-  weather_st.wx_clear_t = sv_float(v, "clear_t", 0.0)
-  weather_st.wx_wet_today = sv_bool(v, "wet_today", false)
-  weather_st.wx_wet_yesterday = sv_bool(v, "wet_yesterday", false)
-  weather_st.wx_dice.s = sv_int(v, "dice", weather_st.wx_dice.s)
-  if weather_kind_count(weather_st) == 0 { return }
-  if not weather_st.wx_kinds[weather_st.wx_state].clear { weather_st.wx_amount = 1.0 }
-  weather_st.wx_wind = weather_st.wx_kinds[weather_st.wx_state].wind
+export function weather_load(v: Val, version: int) -> void {
+  weather_reset()
+  wx_state = wx_kind_ok(sv_int(v, "state", 0))
+  wx_next = wx_kind_ok(sv_int(v, "next", 0))
+  wx_left = sv_float(v, "left", 10.0)
+  wx_forecast = wx_kind_ok(sv_int(v, "forecast", 0))
+  wx_forced = sv_bool(v, "forced", false)
+  wx_dir = sv_float(v, "dir", 0.0)
+  wx_ground = sv_float(v, "ground", 0.0)
+  wx_clear_t = sv_float(v, "clear_t", 0.0)
+  wx_wet_today = sv_bool(v, "wet_today", false)
+  wx_wet_yesterday = sv_bool(v, "wet_yesterday", false)
+  wx_dice.s = sv_int(v, "dice", wx_dice.s)
+  if weather_kind_count() == 0 { return }
+  if not wx_kinds[wx_state].clear { wx_amount = 1.0 }
+  wx_wind = wx_kinds[wx_state].wind
 }
 
 export function weather_system() -> System {

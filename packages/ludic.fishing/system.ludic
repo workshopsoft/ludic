@@ -1,35 +1,35 @@
 # system.ludic - fishing as a system: its tick, and the record in its own save section (a line in
 # the water is never saved)
-export function fishing_reset(base_st: mut BaseState, fishing_st: mut FishingState) -> void {
-  fishing_stop(fishing_st)
-  fishing_st.fishing_n = 0
-  fishing_st.fishing_big = 0
-  fishing_st.fishing_leg = false
-  fishing_st.fishing_dice = rng_new(fishing_st.fishing_seed_n)
-  q_clear(base_st, fishing_facts(base_st, fishing_st))
+export function fishing_reset() -> void {
+  fishing_stop()
+  fishing_n = 0
+  fishing_big = 0
+  fishing_leg = false
+  fishing_dice = rng_new(fishing_seed_n)
+  q_clear(fishing_facts())
 }
 
 # the record outright (staging, a test, the network's word)
-export function fishing_record_set(fishing_st: mut FishingState, caught: int, biggest: int, legend: bool) -> void {
-  fishing_st.fishing_n = caught
-  fishing_st.fishing_big = biggest
-  fishing_st.fishing_leg = legend
+export function fishing_record_set(caught: int, biggest: int, legend: bool) -> void {
+  fishing_n = caught
+  fishing_big = biggest
+  fishing_leg = legend
 }
 
-export function fishing_save(fishing_st: FishingState) -> Val {
+export function fishing_save() -> Val {
   let v = Value.object()
-  sv_put_int(v, "caught", fishing_st.fishing_n)
-  sv_put_int(v, "biggest", fishing_st.fishing_big)
-  sv_put_bool(v, "legend", fishing_st.fishing_leg)
+  sv_put_int(v, "caught", fishing_n)
+  sv_put_int(v, "biggest", fishing_big)
+  sv_put_bool(v, "legend", fishing_leg)
   return v
 }
 
-export function fishing_load(base_st: mut BaseState, fishing_st: mut FishingState, v: Val, version: int) -> void {
-  fishing_reset(base_st, fishing_st)
-  fishing_record_set(fishing_st, sv_int(v, "caught", 0), sv_int(v, "biggest", 0), sv_bool(v, "legend", false))
+export function fishing_load(v: Val, version: int) -> void {
+  fishing_reset()
+  fishing_record_set(sv_int(v, "caught", 0), sv_int(v, "biggest", 0), sv_bool(v, "legend", false))
 }
 
-function fishing_sys_tick(base_st: mut BaseState, fishing_st: mut FishingState, t: Tick) -> void { fishing_run(base_st, fishing_st, t.dt) }
+function fishing_sys_tick(t: Tick) -> void { fishing_run(t.dt) }
 
 export function fishing_system() -> System {
   let s = system_new("fishing", PH_SIMULATE)

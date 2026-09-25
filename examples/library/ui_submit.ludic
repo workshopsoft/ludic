@@ -3,45 +3,43 @@
 import "ludic.ui"
 program UiSubmit {
   numbers float
-  state UisubmitState {
-    said: string = ""
-    chat: string = ""
-    name: string = ""
-  }
-  view Chat (uisubmit_st: mut UisubmitState) {
-    chat = uisubmit_st.chat
-    name = uisubmit_st.name
-    on set_chat(v: string) { uisubmit_st.chat = v }
-    on set_name(v: string) { uisubmit_st.name = v }
-    on send(v: string) { uisubmit_st.said = uisubmit_st.said + "[" + v + "]" }
+  var said: string = ""
+  var chat: string = ""
+  var name: string = ""
+  view Chat {
+    chat = chat
+    name = name
+    on set_chat(v: string) { chat = v }
+    on set_name(v: string) { name = v }
+    on send(v: string) { said = said + "[" + v + "]" }
   }
   const PAGE: string = "<ui><screen name='c'><input type='text' label='Say' value='{chat}' clear-on-submit on-change='set_chat(event.value)' on-submit='send(event.value)'/><input type='text' label='Name' value='{name}' on-change='set_name(event.value)' on-submit='send(event.value)'/></screen></ui>"
-  function frame(ui_st: mut UiState, i: UiInput) -> void {
-    ui_input(ui_st, i)
-    ui_show(ui_st, "c", view_chat(), 0.0, 0.0, 400.0, 400.0)
+  function frame(i: UiInput) -> void {
+    ui_input(i)
+    ui_show("c", view_chat(), 0.0, 0.0, 400.0, 400.0)
   }
-  function press(ui_st: mut UiState, tab: bool, enter: bool, pad: bool, typed: string) -> void {
+  function press(tab: bool, enter: bool, pad: bool, typed: string) -> void {
     let i = new UiInput
     i.tab = tab
     i.enter = enter
     i.pad_a = pad
     i.typed = typed
-    frame(ui_st, i)
-    frame(ui_st, new UiInput)
+    frame(i)
+    frame(new UiInput)
   }
-  entry (ui_st: mut UiState, uisubmit_st: UisubmitState) {
-    ui_backend(ui_st, new UiBackend)
-    ui_load_text(ui_st, PAGE, "c.xml")
-    frame(ui_st, new UiInput)
-    press(ui_st, true, false, false, "")
-    press(ui_st, false, false, false, "hi")
-    press(ui_st, false, true, false, "")
-    let after = `{uisubmit_st.said} chat '{uisubmit_st.chat}'`
-    press(ui_st, false, false, false, "yo")
-    press(ui_st, false, false, true, "")
-    press(ui_st, true, false, false, "")
-    press(ui_st, false, false, false, "Ada")
-    press(ui_st, false, true, false, "")
-    print(`{after} | {uisubmit_st.said} chat '{uisubmit_st.chat}' name '{uisubmit_st.name}'`)
+  entry {
+    ui_backend(new UiBackend)
+    ui_load_text(PAGE, "c.xml")
+    frame(new UiInput)
+    press(true, false, false, "")
+    press(false, false, false, "hi")
+    press(false, true, false, "")
+    let after = `{said} chat '{chat}'`
+    press(false, false, false, "yo")
+    press(false, false, true, "")
+    press(true, false, false, "")
+    press(false, false, false, "Ada")
+    press(false, true, false, "")
+    print(`{after} | {said} chat '{chat}' name '{name}'`)
   }
 }

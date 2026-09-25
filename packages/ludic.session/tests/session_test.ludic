@@ -4,176 +4,174 @@ import "ludic.session"
 import "ludic.base"
 program SessionTest {
   numbers float
-  state SessiontestState {
-    me_x: float = 0.0
-    me_z: float = 0.0
-  }
-  function fx(sessiontest_st: SessiontestState) -> float { return sessiontest_st.me_x }
+  var me_x: float = 0.0
+  var me_z: float = 0.0
+  function fx() -> float { return me_x }
   function fy() -> float { return 0.0 }
-  function fz(sessiontest_st: SessiontestState) -> float { return sessiontest_st.me_z }
+  function fz() -> float { return me_z }
   function fname() -> string { return "me" }
   bind SessionLocal { x: fn fx, y: fn fy, z: fn fz, name: fn fname }
 
-  function whats(base_st: mut BaseState, session_st: mut SessionState) -> []int {
-    let fs = q_drain(base_st, ses_facts(base_st, session_st))
+  function whats() -> []int {
+    let fs = q_drain(ses_facts())
     let out = new []int
     for i in 0 .. len(fs) { push(out, fs[i].what) }
     return out
   }
 
-  function last_of(base_st: mut BaseState, session_st: mut SessionState, what: int) -> SessionFact {
-    let fs = q_drain(base_st, ses_facts(base_st, session_st))
+  function last_of(what: int) -> SessionFact {
+    let fs = q_drain(ses_facts())
     var f: SessionFact = null
     for i in 0 .. len(fs) { if fs[i].what == what { f = fs[i] } }
     return f
   }
 
   # a host with n guests, pids 2.., facts drained
-  function party(base_st: mut BaseState, session_st: mut SessionState, n: int) -> void {
-    ply_init(session_st)
-    ses_set_role(base_st, session_st, SES_HOST)
-    for i in 0 .. n { ply_join(base_st, session_st, 2 + i) }
-    q_clear(base_st, ses_facts(base_st, session_st))
+  function party(n: int) -> void {
+    ply_init()
+    ses_set_role(SES_HOST)
+    for i in 0 .. n { ply_join(2 + i) }
+    q_clear(ses_facts())
   }
 
-  test "slot 0 is the local player, read live; others join at its feet and leave" (base_st: mut BaseState, session_st: mut SessionState, sessiontest_st: mut SessiontestState) {
-    ply_init(session_st)
-    sessiontest_st.me_x = 5.0
-    expect(ply_on(session_st, 0))
-    expect_near(ply_x(session_st, 0), 5.0, 0.001)
-    expect(ply_name(session_st, 0) == "me")
-    let p = ply_join(base_st, session_st, 7)
+  test "slot 0 is the local player, read live; others join at its feet and leave" {
+    ply_init()
+    me_x = 5.0
+    expect(ply_on(0))
+    expect_near(ply_x(0), 5.0, 0.001)
+    expect(ply_name(0) == "me")
+    let p = ply_join(7)
     expect_eq(p, 1)
-    expect_near(ply_x(session_st, p), 5.0, 0.001)
-    expect_eq(ply_slot_of(session_st, 7), 1)
-    expect_eq(ply_count(session_st), 2)
-    expect_eq(ply_join(base_st, session_st, 0), -1)
-    ply_leave(base_st, session_st, p)
-    expect_eq(ply_slot_of(session_st, 7), -1)
-    expect_eq(ply_count(session_st), 1)
-    let w = whats(base_st, session_st)
+    expect_near(ply_x(p), 5.0, 0.001)
+    expect_eq(ply_slot_of(7), 1)
+    expect_eq(ply_count(), 2)
+    expect_eq(ply_join(0), -1)
+    ply_leave(p)
+    expect_eq(ply_slot_of(7), -1)
+    expect_eq(ply_count(), 1)
+    let w = whats()
     expect_eq(len(w), 2)
     expect_eq(w[0], SES_JOINED)
     expect_eq(w[1], SES_LEFT)
   }
 
-  test "the roster fills at twelve" (base_st: mut BaseState, session_st: mut SessionState) {
-    ply_init(session_st)
-    for i in 0 .. PLY_MAX - 1 { expect(ply_join(base_st, session_st, 10 + i) > 0) }
-    expect_eq(ply_join(base_st, session_st, 99), -1)
-    expect_eq(ply_count(session_st), PLY_MAX)
+  test "the roster fills at twelve" {
+    ply_init()
+    for i in 0 .. PLY_MAX - 1 { expect(ply_join(10 + i) > 0) }
+    expect_eq(ply_join(99), -1)
+    expect_eq(ply_count(), PLY_MAX)
   }
 
-  test "the nearest player, whoever it is" (base_st: mut BaseState, session_st: mut SessionState, sessiontest_st: mut SessiontestState) {
-    ply_init(session_st)
-    sessiontest_st.me_x = 100.0
-    let p = ply_join(base_st, session_st, 2)
-    ply_report(session_st, p, 3.0, 0.0, 4.0, 0.0, 1.0)
-    expect_near(ply_near(session_st, 0.0, 0.0), 5.0, 0.001)
-    expect_eq(ply_near_i(session_st), p)
-    expect_near(ply_dist(session_st, 0, 100.0, 0.0), 0.0, 0.001)
+  test "the nearest player, whoever it is" {
+    ply_init()
+    me_x = 100.0
+    let p = ply_join(2)
+    ply_report(p, 3.0, 0.0, 4.0, 0.0, 1.0)
+    expect_near(ply_near(0.0, 0.0), 5.0, 0.001)
+    expect_eq(ply_near_i(), p)
+    expect_near(ply_dist(0, 100.0, 0.0), 0.0, 0.001)
   }
 
-  test "roles: alone owns the world, a guest does not, and a change is a fact" (base_st: mut BaseState, session_st: mut SessionState) {
-    ply_init(session_st)
-    expect(ses_owns_world(session_st))
-    expect(not ses_live(session_st))
-    expect(ses_night_passes(session_st))
-    ses_set_role(base_st, session_st, SES_GUEST)
-    expect(not ses_owns_world(session_st))
-    expect(ses_live(session_st))
-    expect(not ses_night_passes(session_st))
-    let f = last_of(base_st, session_st, SES_ROLE)
+  test "roles: alone owns the world, a guest does not, and a change is a fact" {
+    ply_init()
+    expect(ses_owns_world())
+    expect(not ses_live())
+    expect(ses_night_passes())
+    ses_set_role(SES_GUEST)
+    expect(not ses_owns_world())
+    expect(ses_live())
+    expect(not ses_night_passes())
+    let f = last_of(SES_ROLE)
     expect_eq(f.role, SES_GUEST)
-    ses_set_role(base_st, session_st, SES_HOST)
-    expect(ses_owns_world(session_st))
-    expect(not ses_night_passes(session_st))
+    ses_set_role(SES_HOST)
+    expect(ses_owns_world())
+    expect(not ses_night_passes())
   }
 
-  test "the party's size and door" (base_st: mut BaseState, session_st: mut SessionState) {
-    ses_set_party(session_st, 20, true)
-    expect_eq(ses_max(session_st), PLY_MAX)
-    ses_set_party(session_st, 3, true)
-    party(base_st, session_st, 1)
-    expect(ses_room_for_one(session_st))
-    ply_join(base_st, session_st, 9)
-    expect(not ses_room_for_one(session_st))
-    ses_set_party(session_st, 12, false)
-    expect(not ses_room_for_one(session_st))
+  test "the party's size and door" {
+    ses_set_party(20, true)
+    expect_eq(ses_max(), PLY_MAX)
+    ses_set_party(3, true)
+    party(1)
+    expect(ses_room_for_one())
+    ply_join(9)
+    expect(not ses_room_for_one())
+    ses_set_party(12, false)
+    expect(not ses_room_for_one())
   }
 
-  test "the night passes when the host and every guest have turned in" (base_st: mut BaseState, session_st: mut SessionState) {
-    party(base_st, session_st, 2)
-    expect(ses_sleep(base_st, session_st, true))
-    expect_eq(ses_sleep_waiting(session_st), 2)
-    ses_sleep_ready(base_st, session_st, 1, true)
-    expect(last_of(base_st, session_st, SES_NIGHT) == null)
-    ses_sleep_ready(base_st, session_st, 2, true)
-    expect(last_of(base_st, session_st, SES_NIGHT) != null)
-    ses_night_passed(session_st)
-    expect(not ses_sleeping(session_st))
+  test "the night passes when the host and every guest have turned in" {
+    party(2)
+    expect(ses_sleep(true))
+    expect_eq(ses_sleep_waiting(), 2)
+    ses_sleep_ready(1, true)
+    expect(last_of(SES_NIGHT) == null)
+    ses_sleep_ready(2, true)
+    expect(last_of(SES_NIGHT) != null)
+    ses_night_passed()
+    expect(not ses_sleeping())
   }
 
-  test "a guest's turning in is a fact for the host to hear; alone a bed just sleeps" (base_st: mut BaseState, session_st: mut SessionState) {
-    ply_init(session_st)
-    expect(not ses_sleep(base_st, session_st, true))
-    ses_set_role(base_st, session_st, SES_GUEST)
-    q_clear(base_st, ses_facts(base_st, session_st))
-    expect(ses_sleep(base_st, session_st, true))
-    let f = last_of(base_st, session_st, SES_SLEEP)
+  test "a guest's turning in is a fact for the host to hear; alone a bed just sleeps" {
+    ply_init()
+    expect(not ses_sleep(true))
+    ses_set_role(SES_GUEST)
+    q_clear(ses_facts())
+    expect(ses_sleep(true))
+    let f = last_of(SES_SLEEP)
     expect(f.yes)
-    ses_sleep(base_st, session_st, false)
-    expect(not ses_sleeping(session_st))
+    ses_sleep(false)
+    expect(not ses_sleeping())
   }
 
-  test "a vote passes on a majority, the host's yes counted" (base_st: mut BaseState, session_st: mut SessionState) {
-    party(base_st, session_st, 2)
-    expect_eq(ses_may(base_st, session_st, 4, 9, "set out"), SES_MAY_ASKED)
-    expect(ses_vote_live(session_st))
-    expect_eq(ses_may(base_st, session_st, 4, 9, "set out"), SES_MAY_BUSY)
-    ses_vote_heard(base_st, session_st, ses_vote_id(session_st), true)
-    let f = last_of(base_st, session_st, SES_VOTE_RESOLVED)
+  test "a vote passes on a majority, the host's yes counted" {
+    party(2)
+    expect_eq(ses_may(4, 9, "set out"), SES_MAY_ASKED)
+    expect(ses_vote_live())
+    expect_eq(ses_may(4, 9, "set out"), SES_MAY_BUSY)
+    ses_vote_heard(ses_vote_id(), true)
+    let f = last_of(SES_VOTE_RESOLVED)
     expect(f.yes)
     expect_eq(f.param, 9)
     expect(f.text == "set out")
-    expect(not ses_vote_live(session_st))
+    expect(not ses_vote_live())
   }
 
-  test "a vote fails on half saying no, or when the time runs out" (base_st: mut BaseState, session_st: mut SessionState) {
-    party(base_st, session_st, 1)
-    ses_vote_open(base_st, session_st, 1, 0, "a")
-    ses_vote_heard(base_st, session_st, ses_vote_id(session_st), false)
-    expect(not last_of(base_st, session_st, SES_VOTE_RESOLVED).yes)
-    party(base_st, session_st, 3)
-    ses_vote_open(base_st, session_st, 1, 0, "b")
-    ses_vote_tick(base_st, session_st, 31.0)
-    let f = last_of(base_st, session_st, SES_VOTE_RESOLVED)
+  test "a vote fails on half saying no, or when the time runs out" {
+    party(1)
+    ses_vote_open(1, 0, "a")
+    ses_vote_heard(ses_vote_id(), false)
+    expect(not last_of(SES_VOTE_RESOLVED).yes)
+    party(3)
+    ses_vote_open(1, 0, "b")
+    ses_vote_tick(31.0)
+    let f = last_of(SES_VOTE_RESOLVED)
     expect(f != null)
     expect(not f.yes)
   }
 
-  test "alone it may go; a guest may not, and its vote goes to the host" (base_st: mut BaseState, session_st: mut SessionState) {
-    ply_init(session_st)
-    expect_eq(ses_may(base_st, session_st, 1, 0, "x"), SES_MAY_GO)
-    ses_set_role(base_st, session_st, SES_GUEST)
-    expect_eq(ses_may(base_st, session_st, 1, 0, "x"), SES_MAY_HOSTS)
-    ses_vote_told(session_st, 5, 1, "x")
-    expect(ses_vote_live(session_st))
-    q_clear(base_st, ses_facts(base_st, session_st))
-    ses_vote_cast(base_st, session_st, true)
-    let f = last_of(base_st, session_st, SES_VOTE_CAST)
+  test "alone it may go; a guest may not, and its vote goes to the host" {
+    ply_init()
+    expect_eq(ses_may(1, 0, "x"), SES_MAY_GO)
+    ses_set_role(SES_GUEST)
+    expect_eq(ses_may(1, 0, "x"), SES_MAY_HOSTS)
+    ses_vote_told(5, 1, "x")
+    expect(ses_vote_live())
+    q_clear(ses_facts())
+    ses_vote_cast(true)
+    let f = last_of(SES_VOTE_CAST)
     expect_eq(f.id, 5)
     expect(f.yes)
-    ses_vote_ended(session_st, 5, true)
-    expect_eq(ses_vote_passed(session_st), 1)
+    ses_vote_ended(5, true)
+    expect_eq(ses_vote_passed(), 1)
   }
 
-  test "a reset leaves everyone and stands alone" (base_st: mut BaseState, session_st: mut SessionState) {
-    party(base_st, session_st, 2)
-    ses_sleep(base_st, session_st, true)
-    ses_reset(base_st, session_st)
-    expect_eq(ply_count(session_st), 1)
-    expect_eq(ses_role(session_st), SES_SOLO)
-    expect(not ses_sleeping(session_st))
+  test "a reset leaves everyone and stands alone" {
+    party(2)
+    ses_sleep(true)
+    ses_reset()
+    expect_eq(ply_count(), 1)
+    expect_eq(ses_role(), SES_SOLO)
+    expect(not ses_sleeping())
   }
 }

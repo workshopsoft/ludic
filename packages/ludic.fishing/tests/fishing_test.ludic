@@ -10,248 +10,246 @@ program FishingTest {
   def FishSpecies brook { weight: 0.25, cm_min: 20, cm_spread: 10 }
   def FishSpecies old_maroon { legend: true, cm_min: 70, cm_spread: 25, skill_cm: 0.0, chance: 1.0, chance_deep: 1.0, need: 5, runs: 2, fight: 30.0, speed: 1.3, speed_per_hit: 0.22, closes: 0.12 }
 
-  state FishingtestState {
-    bait: bool = false
-    lure: bool = false
-    boat: bool = false
-    level: int = 0
-    skill: float = 0.0
-  }
+  var bait: bool = false
+  var lure: bool = false
+  var boat: bool = false
+  var level: int = 0
+  var skill: float = 0.0
 
   # water past x = 10, deepening a metre every ten
   function depth(x: float, z: float) -> float { return Math.max((x - 10.0) / 10.0, 0.0) }
-  function afloat(fishingtest_st: FishingtestState) -> bool { return fishingtest_st.boat }
-  function has_bait(fishingtest_st: FishingtestState) -> bool { return fishingtest_st.bait }
-  function has_lure(fishingtest_st: FishingtestState) -> bool { return fishingtest_st.lure }
-  function fake_skill(fishingtest_st: FishingtestState) -> float { return fishingtest_st.skill }
-  function fake_level(fishingtest_st: FishingtestState) -> int { return fishingtest_st.level }
+  function afloat() -> bool { return boat }
+  function has_bait() -> bool { return bait }
+  function has_lure() -> bool { return lure }
+  function fake_skill() -> float { return skill }
+  function fake_level() -> int { return level }
 
   bind FishingWorld { depth: fn depth, afloat: fn afloat, has_bait: fn has_bait, has_lure: fn has_lure, skill: fn fake_skill, level: fn fake_level }
 
-  function fresh(base_st: mut BaseState, fishing_st: mut FishingState, fishingtest_st: mut FishingtestState) -> void {
-    fishing_config(fishing_st, 0.15, 2.5, 99)
-    fishing_reset(base_st, fishing_st)
-    fishingtest_st.bait = false
-    fishingtest_st.lure = false
-    fishingtest_st.boat = false
-    fishingtest_st.level = FISHING_RELAXED
-    fishingtest_st.skill = 0.0
+  function fresh() -> void {
+    fishing_config(0.15, 2.5, 99)
+    fishing_reset()
+    bait = false
+    lure = false
+    boat = false
+    level = FISHING_RELAXED
+    skill = 0.0
   }
 
-  function facts(base_st: mut BaseState, fishing_st: mut FishingState) -> []FishingFact { return q_drain(base_st, fishing_facts(base_st, fishing_st)) }
+  function facts() -> []FishingFact { return q_drain(fishing_facts()) }
   function saw(fs: []FishingFact, what: int) -> bool {
     for i in 0 .. len(fs) { if fs[i].what == what { return true } }
     return false
   }
 
   # run until it bites, then strike
-  function hook(base_st: mut BaseState, fishing_st: mut FishingState) -> void {
-    fishing_set_wait(fishing_st, 0.0)
-    fishing_run(base_st, fishing_st, 0.02)
-    fishing_press(base_st, fishing_st)
+  function hook() -> void {
+    fishing_set_wait(0.0)
+    fishing_run(0.02)
+    fishing_press()
   }
 
   # hold the marker in the green and press, until it is landed or `n` presses are spent
-  function play(base_st: mut BaseState, fishing_st: mut FishingState, n: int) -> void {
+  function play(n: int) -> void {
     for i in 0 .. n {
-      if fishing_state(fishing_st) != FISHING_REEL { return }
+      if fishing_state() != FISHING_REEL { return }
       var guard = 0
-      while (fishing_running(fishing_st) or fishing_marker(fishing_st) <= fishing_window_lo(fishing_st) or fishing_marker(fishing_st) >= fishing_window_hi(fishing_st)) and guard < 4000 {
-        fishing_run(base_st, fishing_st, 0.005)
+      while (fishing_running() or fishing_marker() <= fishing_window_lo() or fishing_marker() >= fishing_window_hi()) and guard < 4000 {
+        fishing_run(0.005)
         guard += 1
       }
-      if fishing_state(fishing_st) == FISHING_REEL { fishing_press(base_st, fishing_st) }
+      if fishing_state() == FISHING_REEL { fishing_press() }
     }
   }
 
-  test "a cast lands only in water, and never twice" (base_st: mut BaseState, fishing_st: mut FishingState, fishingtest_st: mut FishingtestState) {
-    fresh(base_st, fishing_st, fishingtest_st)
-    expect_eq(fishing_cast(base_st, fishing_st, 5.0, 0.0), FISHING_NOT_WATER)
-    expect(not fishing_active(fishing_st))
-    expect_eq(fishing_cast(base_st, fishing_st, 20.0, 0.0), FISHING_CAST_OK)
-    expect_eq(fishing_state(fishing_st), FISHING_WAIT)
-    expect_eq(fishing_cast(base_st, fishing_st, 20.0, 0.0), FISHING_BUSY)
-    fishingtest_st.boat = true
-    fishing_stop(fishing_st)
-    expect_eq(fishing_cast(base_st, fishing_st, 0.0, 0.0), FISHING_CAST_OK)
+  test "a cast lands only in water, and never twice" {
+    fresh()
+    expect_eq(fishing_cast(5.0, 0.0), FISHING_NOT_WATER)
+    expect(not fishing_active())
+    expect_eq(fishing_cast(20.0, 0.0), FISHING_CAST_OK)
+    expect_eq(fishing_state(), FISHING_WAIT)
+    expect_eq(fishing_cast(20.0, 0.0), FISHING_BUSY)
+    boat = true
+    fishing_stop()
+    expect_eq(fishing_cast(0.0, 0.0), FISHING_CAST_OK)
   }
 
-  test "bait is used and said, and halves the wait" (base_st: mut BaseState, fishing_st: mut FishingState, fishingtest_st: mut FishingtestState) {
-    fresh(base_st, fishing_st, fishingtest_st)
-    fishing_cast(base_st, fishing_st, 20.0, 0.0)
-    expect(not saw(facts(base_st, fishing_st), FISHING_BAIT_USED))
+  test "bait is used and said, and halves the wait" {
+    fresh()
+    fishing_cast(20.0, 0.0)
+    expect(not saw(facts(), FISHING_BAIT_USED))
     var plain = 0
-    while fishing_state(fishing_st) == FISHING_WAIT {
-      fishing_run(base_st, fishing_st, 0.1)
+    while fishing_state() == FISHING_WAIT {
+      fishing_run(0.1)
       plain += 1
     }
     expect(plain <= 201)
-    fresh(base_st, fishing_st, fishingtest_st)
-    fishingtest_st.bait = true
-    fishing_cast(base_st, fishing_st, 20.0, 0.0)
-    let fs = facts(base_st, fishing_st)
+    fresh()
+    bait = true
+    fishing_cast(20.0, 0.0)
+    let fs = facts()
     expect(saw(fs, FISHING_BAIT_USED))
     expect(fs[0].bait)
     var baited = 0
-    while fishing_state(fishing_st) == FISHING_WAIT {
-      fishing_run(base_st, fishing_st, 0.1)
+    while fishing_state() == FISHING_WAIT {
+      fishing_run(0.1)
       baited += 1
     }
     expect(baited <= 101)
   }
 
-  test "a bite missed is gone, a bite struck is hooked" (base_st: mut BaseState, fishing_st: mut FishingState, fishingtest_st: mut FishingtestState) {
-    fresh(base_st, fishing_st, fishingtest_st)
-    fishing_cast(base_st, fishing_st, 20.0, 0.0)
-    fishing_set_wait(fishing_st, 0.0)
-    fishing_run(base_st, fishing_st, 0.02)
-    expect_eq(fishing_state(fishing_st), FISHING_BITE_ON)
-    expect(fishing_species(fishing_st) >= 0)
-    fishing_run(base_st, fishing_st, 2.0)
-    expect(not fishing_active(fishing_st))
-    expect(saw(facts(base_st, fishing_st), FISHING_MISSED))
-    fishing_cast(base_st, fishing_st, 20.0, 0.0)
-    hook(base_st, fishing_st)
-    expect_eq(fishing_state(fishing_st), FISHING_REEL)
-    expect(saw(facts(base_st, fishing_st), FISHING_HOOKED))
+  test "a bite missed is gone, a bite struck is hooked" {
+    fresh()
+    fishing_cast(20.0, 0.0)
+    fishing_set_wait(0.0)
+    fishing_run(0.02)
+    expect_eq(fishing_state(), FISHING_BITE_ON)
+    expect(fishing_species() >= 0)
+    fishing_run(2.0)
+    expect(not fishing_active())
+    expect(saw(facts(), FISHING_MISSED))
+    fishing_cast(20.0, 0.0)
+    hook()
+    expect_eq(fishing_state(), FISHING_REEL)
+    expect(saw(facts(), FISHING_HOOKED))
   }
 
-  test "everyday fish only without a lure, sized and weighed from the data" (base_st: mut BaseState, fishing_st: mut FishingState, fishingtest_st: mut FishingtestState) {
-    fresh(base_st, fishing_st, fishingtest_st)
+  test "everyday fish only without a lure, sized and weighed from the data" {
+    fresh()
     for i in 0 .. 40 {
-      fishing_cast(base_st, fishing_st, 20.0, 0.0)
-      hook(base_st, fishing_st)
-      let s = fishing_species(fishing_st)
+      fishing_cast(20.0, 0.0)
+      hook()
+      let s = fishing_species()
       expect(s != FISH_OLD_MAROON)
       let k = FishSpecies[s]
-      expect(fishing_cm(fishing_st) >= k.cm_min and fishing_cm(fishing_st) <= k.cm_min + k.cm_spread)
-      fishing_stop(fishing_st)
+      expect(fishing_cm() >= k.cm_min and fishing_cm() <= k.cm_min + k.cm_spread)
+      fishing_stop()
     }
     expect(fishing_weight_of(FISH_CUTTHROAT, 50) > fishing_weight_of(FISH_CUTTHROAT, 30))
   }
 
-  test "reeled in the green three times, it is landed and counted" (base_st: mut BaseState, fishing_st: mut FishingState, fishingtest_st: mut FishingtestState) {
-    fresh(base_st, fishing_st, fishingtest_st)
-    fishing_cast(base_st, fishing_st, 20.0, 0.0)
-    hook(base_st, fishing_st)
-    facts(base_st, fishing_st)
-    play(base_st, fishing_st, 3)
-    let fs = facts(base_st, fishing_st)
+  test "reeled in the green three times, it is landed and counted" {
+    fresh()
+    fishing_cast(20.0, 0.0)
+    hook()
+    facts()
+    play(3)
+    let fs = facts()
     expect(saw(fs, FISHING_CAUGHT))
-    expect_eq(fishing_caught(fishing_st), 1)
-    expect(fishing_biggest(fishing_st) > 0)
-    expect(not fishing_active(fishing_st))
+    expect_eq(fishing_caught(), 1)
+    expect(fishing_biggest() > 0)
+    expect(not fishing_active())
     let last = fs[len(fs) - 1]
     expect(last.kg > 0.0)
     expect(last.x == 20.0)
   }
 
-  test "a press outside the green throws the hook" (base_st: mut BaseState, fishing_st: mut FishingState, fishingtest_st: mut FishingtestState) {
-    fresh(base_st, fishing_st, fishingtest_st)
-    fishing_cast(base_st, fishing_st, 20.0, 0.0)
-    hook(base_st, fishing_st)
-    while fishing_marker(fishing_st) < fishing_window_hi(fishing_st) + 0.01 { fishing_run(base_st, fishing_st, 0.005) }
-    fishing_press(base_st, fishing_st)
-    expect(saw(facts(base_st, fishing_st), FISHING_LINE_SNAPPED))
-    expect(not fishing_active(fishing_st))
+  test "a press outside the green throws the hook" {
+    fresh()
+    fishing_cast(20.0, 0.0)
+    hook()
+    while fishing_marker() < fishing_window_hi() + 0.01 { fishing_run(0.005) }
+    fishing_press()
+    expect(saw(facts(), FISHING_LINE_SNAPPED))
+    expect(not fishing_active())
   }
 
-  test "a fight left alone goes slack" (base_st: mut BaseState, fishing_st: mut FishingState, fishingtest_st: mut FishingtestState) {
-    fresh(base_st, fishing_st, fishingtest_st)
-    fishing_cast(base_st, fishing_st, 20.0, 0.0)
-    hook(base_st, fishing_st)
-    for i in 0 .. 700 { fishing_run(base_st, fishing_st, 0.02) }
-    expect(saw(facts(base_st, fishing_st), FISHING_SLACK))
-    expect_eq(fishing_caught(fishing_st), 0)
+  test "a fight left alone goes slack" {
+    fresh()
+    fishing_cast(20.0, 0.0)
+    hook()
+    for i in 0 .. 700 { fishing_run(0.02) }
+    expect(saw(facts(), FISHING_SLACK))
+    expect_eq(fishing_caught(), 0)
   }
 
-  test "a legend takes the lure, runs, turns, and is landed at five" (base_st: mut BaseState, fishing_st: mut FishingState, fishingtest_st: mut FishingtestState) {
-    fresh(base_st, fishing_st, fishingtest_st)
-    fishingtest_st.lure = true
-    fishing_cast(base_st, fishing_st, 20.0, 0.0)
-    hook(base_st, fishing_st)
-    expect_eq(fishing_species(fishing_st), FISH_OLD_MAROON)
-    expect_eq(fishing_need(fishing_st), 5)
-    let w0 = fishing_window(fishing_st)
-    play(base_st, fishing_st, 2)
-    expect(fishing_window(fishing_st) < w0)
+  test "a legend takes the lure, runs, turns, and is landed at five" {
+    fresh()
+    lure = true
+    fishing_cast(20.0, 0.0)
+    hook()
+    expect_eq(fishing_species(), FISH_OLD_MAROON)
+    expect_eq(fishing_need(), 5)
+    let w0 = fishing_window()
+    play(2)
+    expect(fishing_window() < w0)
     for i in 0 .. 400 {
-      if not fishing_running(fishing_st) { fishing_run(base_st, fishing_st, 0.02) }
+      if not fishing_running() { fishing_run(0.02) }
     }
-    let fs = facts(base_st, fishing_st)
+    let fs = facts()
     expect(saw(fs, FISHING_RUNS))
-    if fishing_running(fishing_st) {
-      let before = fishing_hits(fishing_st)
-      fishing_press(base_st, fishing_st)
-      expect_eq(fishing_hits(fishing_st), before - 1)
+    if fishing_running() {
+      let before = fishing_hits()
+      fishing_press()
+      expect_eq(fishing_hits(), before - 1)
     }
-    play(base_st, fishing_st, 40)
-    expect(fishing_legend_caught(fishing_st))
-    let last = facts(base_st, fishing_st)
+    play(40)
+    expect(fishing_legend_caught())
+    let last = facts()
     expect(last[len(last) - 1].lure)
   }
 
-  test "gentle: one press inside the ring, and the ring closes" (base_st: mut BaseState, fishing_st: mut FishingState, fishingtest_st: mut FishingtestState) {
-    fresh(base_st, fishing_st, fishingtest_st)
-    fishingtest_st.level = FISHING_GENTLE
-    fishing_cast(base_st, fishing_st, 20.0, 0.0)
-    hook(base_st, fishing_st)
-    expect(fishing_gentle(fishing_st))
-    expect_eq(fishing_need(fishing_st), 1)
-    fishing_press(base_st, fishing_st)
-    expect_eq(fishing_caught(fishing_st), 1)
-    fishing_cast(base_st, fishing_st, 20.0, 0.0)
-    hook(base_st, fishing_st)
-    fishing_run(base_st, fishing_st, 2.1)
-    expect(saw(facts(base_st, fishing_st), FISHING_LINE_SNAPPED))
+  test "gentle: one press inside the ring, and the ring closes" {
+    fresh()
+    level = FISHING_GENTLE
+    fishing_cast(20.0, 0.0)
+    hook()
+    expect(fishing_gentle())
+    expect_eq(fishing_need(), 1)
+    fishing_press()
+    expect_eq(fishing_caught(), 1)
+    fishing_cast(20.0, 0.0)
+    hook()
+    fishing_run(2.1)
+    expect(saw(facts(), FISHING_LINE_SNAPPED))
   }
 
-  test "a legend fights on gentle too" (base_st: mut BaseState, fishing_st: mut FishingState, fishingtest_st: mut FishingtestState) {
-    fresh(base_st, fishing_st, fishingtest_st)
-    fishingtest_st.level = FISHING_GENTLE
-    fishingtest_st.lure = true
-    fishing_cast(base_st, fishing_st, 20.0, 0.0)
-    hook(base_st, fishing_st)
-    expect(not fishing_gentle(fishing_st))
-    expect_eq(fishing_need(fishing_st), 5)
+  test "a legend fights on gentle too" {
+    fresh()
+    level = FISHING_GENTLE
+    lure = true
+    fishing_cast(20.0, 0.0)
+    hook()
+    expect(not fishing_gentle())
+    expect_eq(fishing_need(), 5)
   }
 
-  test "hard closes the window for everyday fish, relaxed keeps it centred" (base_st: mut BaseState, fishing_st: mut FishingState, fishingtest_st: mut FishingtestState) {
-    fresh(base_st, fishing_st, fishingtest_st)
-    fishing_cast(base_st, fishing_st, 20.0, 0.0)
-    hook(base_st, fishing_st)
-    expect(fishing_window_lo(fishing_st) + fishing_window_hi(fishing_st) > 0.999 and fishing_window_lo(fishing_st) + fishing_window_hi(fishing_st) < 1.001)
-    fishing_stop(fishing_st)
-    fishingtest_st.level = FISHING_HARD
-    fishing_cast(base_st, fishing_st, 20.0, 0.0)
-    hook(base_st, fishing_st)
-    let w0 = fishing_window(fishing_st)
-    play(base_st, fishing_st, 1)
-    expect(fishing_window(fishing_st) < w0)
+  test "hard closes the window for everyday fish, relaxed keeps it centred" {
+    fresh()
+    fishing_cast(20.0, 0.0)
+    hook()
+    expect(fishing_window_lo() + fishing_window_hi() > 0.999 and fishing_window_lo() + fishing_window_hi() < 1.001)
+    fishing_stop()
+    level = FISHING_HARD
+    fishing_cast(20.0, 0.0)
+    hook()
+    let w0 = fishing_window()
+    play(1)
+    expect(fishing_window() < w0)
   }
 
-  test "skill makes a fish bigger" (base_st: mut BaseState, fishing_st: mut FishingState, fishingtest_st: mut FishingtestState) {
-    fresh(base_st, fishing_st, fishingtest_st)
-    fishingtest_st.skill = 1.0
-    fishing_cast(base_st, fishing_st, 20.0, 0.0)
-    hook(base_st, fishing_st)
-    let k = FishSpecies[fishing_species(fishing_st)]
-    expect(fishing_cm(fishing_st) >= k.cm_min + 60)
+  test "skill makes a fish bigger" {
+    fresh()
+    skill = 1.0
+    fishing_cast(20.0, 0.0)
+    hook()
+    let k = FishSpecies[fishing_species()]
+    expect(fishing_cm() >= k.cm_min + 60)
   }
 
-  test "the record is saved, and a line in the water is not" (base_st: mut BaseState, fishing_st: mut FishingState, fishingtest_st: mut FishingtestState) {
-    fresh(base_st, fishing_st, fishingtest_st)
-    fishing_record_set(fishing_st, 7, 52, true)
-    fishing_cast(base_st, fishing_st, 20.0, 0.0)
+  test "the record is saved, and a line in the water is not" {
+    fresh()
+    fishing_record_set(7, 52, true)
+    fishing_cast(20.0, 0.0)
     let root = save_tree()
-    save_section(root, "fishing", 1, fishing_save(fishing_st))
+    save_section(root, "fishing", 1, fishing_save())
     let text = save_encode(root)
-    fishing_reset(base_st, fishing_st)
+    fishing_reset()
     let n = load_section(save_decode(text), "fishing")
-    fishing_load(base_st, fishing_st, n.data, n.version)
-    expect_eq(fishing_caught(fishing_st), 7)
-    expect_eq(fishing_biggest(fishing_st), 52)
-    expect(fishing_legend_caught(fishing_st))
-    expect(not fishing_active(fishing_st))
+    fishing_load(n.data, n.version)
+    expect_eq(fishing_caught(), 7)
+    expect_eq(fishing_biggest(), 52)
+    expect(fishing_legend_caught())
+    expect(not fishing_active())
   }
 }

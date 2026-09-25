@@ -1,78 +1,78 @@
 # arc.ludic - an arc is a table of chapters, each a table of up to STEPS_PER_CHAPTER steps. The
 # game builds one with steps_chapter_add / steps_add; what a chapter is called is the game's.
 # empty the tables for another arc (the progress goes back to the first chapter)
-export function steps_arc_clear(steps_st: mut StepsState) -> void {
-  steps_st.steps__n = new []int
-  steps_st.steps__kind = new []int
-  steps_st.steps__param = new []int
-  steps_st.steps__need = new []int
-  steps_st.steps__cur = 0
-  steps_st.steps__done = 0
+export function steps_arc_clear() -> void {
+  steps__n = new []int
+  steps__kind = new []int
+  steps__param = new []int
+  steps__need = new []int
+  steps__cur = 0
+  steps__done = 0
 }
 
-function steps__ready(steps_st: mut StepsState) -> void { if steps_st.steps__n == null { steps_arc_clear(steps_st) } }
+function steps__ready() -> void { if steps__n == null { steps_arc_clear() } }
 
 # open the next chapter; its number
-export function steps_chapter_add(steps_st: mut StepsState) -> int {
-  steps__ready(steps_st)
-  push(steps_st.steps__n, 0)
+export function steps_chapter_add() -> int {
+  steps__ready()
+  push(steps__n, 0)
   for i in 0 .. STEPS_PER_CHAPTER {
-    push(steps_st.steps__kind, -1)
-    push(steps_st.steps__param, 0)
-    push(steps_st.steps__need, 0)
+    push(steps__kind, -1)
+    push(steps__param, 0)
+    push(steps__need, 0)
   }
-  return len(steps_st.steps__n) - 1
+  return len(steps__n) - 1
 }
 
 # a step in the chapter just opened; false when there is no chapter or it is full
-export function steps_add(steps_st: mut StepsState, kind: int, param: int, need: int) -> bool {
-  steps__ready(steps_st)
-  let c = len(steps_st.steps__n) - 1
-  if c < 0 or steps_st.steps__n[c] >= STEPS_PER_CHAPTER { return false }
-  let k = c * STEPS_PER_CHAPTER + steps_st.steps__n[c]
-  steps_st.steps__kind[k] = kind
-  steps_st.steps__param[k] = param
-  steps_st.steps__need[k] = need
-  steps_st.steps__n[c] += 1
+export function steps_add(kind: int, param: int, need: int) -> bool {
+  steps__ready()
+  let c = len(steps__n) - 1
+  if c < 0 or steps__n[c] >= STEPS_PER_CHAPTER { return false }
+  let k = c * STEPS_PER_CHAPTER + steps__n[c]
+  steps__kind[k] = kind
+  steps__param[k] = param
+  steps__need[k] = need
+  steps__n[c] += 1
   return true
 }
 
-export function steps_count(steps_st: StepsState) -> int {
-  if steps_st.steps__n == null { return 0 }
-  return len(steps_st.steps__n)
+export function steps_count() -> int {
+  if steps__n == null { return 0 }
+  return len(steps__n)
 }
 
-export function steps_in(steps_st: StepsState, ch: int) -> int {
-  if ch < 0 or ch >= steps_count(steps_st) { return 0 }
-  return steps_st.steps__n[ch]
+export function steps_in(ch: int) -> int {
+  if ch < 0 or ch >= steps_count() { return 0 }
+  return steps__n[ch]
 }
 
 # a step by its flat index, ch * STEPS_PER_CHAPTER + i (-1, 0, 0 past the table)
-export function steps_kind_at(steps_st: StepsState, k: int) -> int {
-  if steps_st.steps__kind == null or k < 0 or k >= len(steps_st.steps__kind) { return -1 }
-  return steps_st.steps__kind[k]
+export function steps_kind_at(k: int) -> int {
+  if steps__kind == null or k < 0 or k >= len(steps__kind) { return -1 }
+  return steps__kind[k]
 }
 
-export function steps_param_at(steps_st: StepsState, k: int) -> int {
-  if steps_st.steps__param == null or k < 0 or k >= len(steps_st.steps__param) { return 0 }
-  return steps_st.steps__param[k]
+export function steps_param_at(k: int) -> int {
+  if steps__param == null or k < 0 or k >= len(steps__param) { return 0 }
+  return steps__param[k]
 }
 
-export function steps_need_at(steps_st: StepsState, k: int) -> int {
-  if steps_st.steps__need == null or k < 0 or k >= len(steps_st.steps__need) { return 0 }
-  return steps_st.steps__need[k]
+export function steps_need_at(k: int) -> int {
+  if steps__need == null or k < 0 or k >= len(steps__need) { return 0 }
+  return steps__need[k]
 }
 
-export function steps_kind(steps_st: StepsState, ch: int, i: int) -> int { return steps_kind_at(steps_st, ch * STEPS_PER_CHAPTER + i) }
-export function steps_param(steps_st: StepsState, ch: int, i: int) -> int { return steps_param_at(steps_st, ch * STEPS_PER_CHAPTER + i) }
-export function steps_need(steps_st: StepsState, ch: int, i: int) -> int { return steps_need_at(steps_st, ch * STEPS_PER_CHAPTER + i) }
+export function steps_kind(ch: int, i: int) -> int { return steps_kind_at(ch * STEPS_PER_CHAPTER + i) }
+export function steps_param(ch: int, i: int) -> int { return steps_param_at(ch * STEPS_PER_CHAPTER + i) }
+export function steps_need(ch: int, i: int) -> int { return steps_need_at(ch * STEPS_PER_CHAPTER + i) }
 
 # the chapter being played, and which of its steps are done (sticky)
-export function steps_current(steps_st: StepsState) -> int { return steps_st.steps__cur }
-export function steps_done_mask(steps_st: StepsState) -> int { return steps_st.steps__done }
-export function steps_done(steps_st: StepsState, i: int) -> bool { return (steps_st.steps__done & (1 << i)) != 0 }
-export function steps_finished(steps_st: StepsState) -> bool { return steps_st.steps__cur >= steps_count(steps_st) }
+export function steps_current() -> int { return steps__cur }
+export function steps_done_mask() -> int { return steps__done }
+export function steps_done(i: int) -> bool { return (steps__done & (1 << i)) != 0 }
+export function steps_finished() -> bool { return steps__cur >= steps_count() }
 
 # the progress outright: a load, the host's word, a test
-export function steps_set_current(steps_st: mut StepsState, ch: int) -> void { steps_st.steps__cur = ch }
-export function steps_set_done(steps_st: mut StepsState, mask: int) -> void { steps_st.steps__done = mask }
+export function steps_set_current(ch: int) -> void { steps__cur = ch }
+export function steps_set_done(mask: int) -> void { steps__done = mask }

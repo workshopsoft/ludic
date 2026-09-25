@@ -4,35 +4,33 @@
 import "ludic.ui"
 program UiHold {
   numbers float
-  state UiholdState {
-    now: float = 0.0
-    held: float = 0.0
-    frames: int = 0
-    last_t: float = 0.0
-    ends: string = ""
-  }
-  view Craft (uihold_st: mut UiholdState) {
+  var now: float = 0.0
+  var held: float = 0.0
+  var frames: int = 0
+  var last_t: float = 0.0
+  var ends: string = ""
+  view Craft {
     on tick(dt: float, t: float) {
-      uihold_st.held = uihold_st.held + dt
-      uihold_st.frames = uihold_st.frames + 1
-      uihold_st.last_t = t
+      held = held + dt
+      frames = frames + 1
+      last_t = t
     }
-    on down() { uihold_st.ends = uihold_st.ends + "d" }
-    on up() { uihold_st.ends = uihold_st.ends + "u" }
+    on down() { ends = ends + "d" }
+    on up() { ends = ends + "u" }
   }
   const PAGE: string = "<ui><screen name='h'><button on-hold='tick(event.dt, event.t)' on-down='down()' on-up='up()'>Make</button></screen></ui>"
-  function clock(uihold_st: UiholdState) -> float { return uihold_st.now }
-  function frame(ui_st: mut UiState, i: UiInput) -> UiNode {
-    ui_input(ui_st, i)
-    ui_show(ui_st, "h", view_craft(), 0.0, 0.0, 400.0, 400.0)
-    let r: UiNode = ui_nodes(ui_st, "h", view_craft())
-    ui_place(ui_st, r, 0.0, 0.0, 400.0, 400.0)
+  function clock() -> float { return now }
+  function frame(i: UiInput) -> UiNode {
+    ui_input(i)
+    ui_show("h", view_craft(), 0.0, 0.0, 400.0, 400.0)
+    let r: UiNode = ui_nodes("h", view_craft())
+    ui_place(r, 0.0, 0.0, 400.0, 400.0)
     return r.children[0]
   }
   # held for `secs` at `hz`, by the pointer (off the button after the first frame) or by A
-  function hold(ui_st: mut UiState, uihold_st: mut UiholdState, b: UiNode, secs: float, hz: int, pad: bool) -> string {
-    uihold_st.held = 0.0
-    uihold_st.frames = 0
+  function hold(b: UiNode, secs: float, hz: int, pad: bool) -> string {
+    held = 0.0
+    frames = 0
     let n = int(secs * float(hz) + 0.5)
     for k in 0 .. n + 1 {
       let i = new UiInput
@@ -41,21 +39,21 @@ program UiHold {
       i.x = b.x + 5.0
       i.y = b.y + 5.0
       if k > 0 and not pad { i.x = 390.0 }
-      frame(ui_st, i)
-      uihold_st.now = uihold_st.now + 1.0 / float(hz)
+      frame(i)
+      now = now + 1.0 / float(hz)
     }
-    frame(ui_st, new UiInput)
-    uihold_st.now = uihold_st.now + 1.0 / float(hz)
-    return `{uihold_st.frames} frames {int(Math.round(uihold_st.held * 1000.0))} ms t {int(Math.round(uihold_st.last_t * 1000.0))}`
+    frame(new UiInput)
+    now = now + 1.0 / float(hz)
+    return `{frames} frames {int(Math.round(held * 1000.0))} ms t {int(Math.round(last_t * 1000.0))}`
   }
-  entry (ui_st: mut UiState, uihold_st: mut UiholdState) {
-    ui_backend(ui_st, new UiBackend)
-    ui_clock(ui_st, fn clock)
-    ui_load_text(ui_st, PAGE, "h.xml")
-    let b = frame(ui_st, new UiInput)
-    let slow = hold(ui_st, uihold_st, b, 0.5, 60, false)
-    let fast = hold(ui_st, uihold_st, b, 0.5, 240, false)
-    let pad = hold(ui_st, uihold_st, b, 0.25, 60, true)
-    print(`{slow} | {fast} | pad {pad} | {uihold_st.ends}`)
+  entry {
+    ui_backend(new UiBackend)
+    ui_clock(fn clock)
+    ui_load_text(PAGE, "h.xml")
+    let b = frame(new UiInput)
+    let slow = hold(b, 0.5, 60, false)
+    let fast = hold(b, 0.5, 240, false)
+    let pad = hold(b, 0.25, 60, true)
+    print(`{slow} | {fast} | pad {pad} | {ends}`)
   }
 }

@@ -8,8 +8,8 @@ export const AIM_USE_THIS: int = 0
 export const AIM_USE_NOTHING: int = 1
 export const AIM_USE_NEAREST: int = 2
 
-export function aim_use(aim_st: AimState, kind: int) -> int {
-  if aim_st.am_kind == kind and aim_st.am_reach { return AIM_USE_THIS }
-  if aim_st.am_kind == kind and aim_st.am_dist < AIM_USE_MAX { return AIM_USE_NOTHING }
+export function aim_use(kind: int) -> int {
+  if am_kind == kind and am_reach { return AIM_USE_THIS }
+  if am_kind == kind and am_dist < AIM_USE_MAX { return AIM_USE_NOTHING }
   return AIM_USE_NEAREST
 }

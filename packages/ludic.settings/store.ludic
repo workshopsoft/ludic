@@ -1,90 +1,88 @@
 # ludic.settings/store.ludic - the values, by id (a setting's place in the order it was added),
 # and the verbs: nothing else holds a setting, and every set that changes one is a fact
-export state SettingsState {
-  sg_defs: []SettingDef = null
-  sg_num: []float = null
-  sg_text: []string = null
-  sg_changes: Queue<SettingChanged> = null
+var sg_defs: []SettingDef = null
+var sg_num: []float = null
+var sg_text: []string = null
+var sg_changes: Queue<SettingChanged> = null
+
+function sg_init() -> void {
+  if sg_defs != null { return }
+  sg_defs = new []SettingDef
+  sg_num = new []float
+  sg_text = new []string
 }
 
-function sg_init(settings_st: mut SettingsState) -> void {
-  if settings_st.sg_defs != null { return }
-  settings_st.sg_defs = new []SettingDef
-  settings_st.sg_num = new []float
-  settings_st.sg_text = new []string
-}
-
-export function settings_changes(base_st: mut BaseState, settings_st: mut SettingsState) -> Queue<SettingChanged> {
-  if settings_st.sg_changes == null { settings_st.sg_changes = queue_new(base_st, "settings.changes") }
-  return settings_st.sg_changes
+export function settings_changes() -> Queue<SettingChanged> {
+  if sg_changes == null { sg_changes = queue_new("settings.changes") }
+  return sg_changes
 }
 
 # forget every setting (a test, or a game that declares its table again)
-export function settings_clear(base_st: mut BaseState, settings_st: mut SettingsState) -> void {
-  settings_st.sg_defs = new []SettingDef
-  settings_st.sg_num = new []float
-  settings_st.sg_text = new []string
-  q_clear(base_st, settings_changes(base_st, settings_st))
+export function settings_clear() -> void {
+  sg_defs = new []SettingDef
+  sg_num = new []float
+  sg_text = new []string
+  q_clear(settings_changes())
 }
 
 # a setting, at its default; its id is its place in the order added
-export function settings_add(settings_st: mut SettingsState, d: SettingDef) -> int {
-  sg_init(settings_st)
-  push(settings_st.sg_defs, d)
-  push(settings_st.sg_num, d.num)
-  push(settings_st.sg_text, d.text)
-  return len(settings_st.sg_defs) - 1
+export function settings_add(d: SettingDef) -> int {
+  sg_init()
+  push(sg_defs, d)
+  push(sg_num, d.num)
+  push(sg_text, d.text)
+  return len(sg_defs) - 1
 }
 
-export function settings_count(settings_st: mut SettingsState) -> int {
-  sg_init(settings_st)
-  return len(settings_st.sg_defs)
+export function settings_count() -> int {
+  sg_init()
+  return len(sg_defs)
 }
 
-export function settings_def(settings_st: SettingsState, id: int) -> SettingDef { return settings_st.sg_defs[id] }
+export function settings_def(id: int) -> SettingDef { return sg_defs[id] }
 
 # the id of `key`, or -1
-export function settings_id_of(settings_st: mut SettingsState, key: string) -> int {
-  sg_init(settings_st)
-  for i in 0 .. len(settings_st.sg_defs) { if settings_st.sg_defs[i].key == key { return i } }
+export function settings_id_of(key: string) -> int {
+  sg_init()
+  for i in 0 .. len(sg_defs) { if sg_defs[i].key == key { return i } }
   return -1
 }
 
-export function settings_get_float(settings_st: SettingsState, id: int) -> float { return settings_st.sg_num[id] }
-export function settings_get_int(settings_st: SettingsState, id: int) -> int { return int(settings_st.sg_num[id]) }
-export function settings_get_bool(settings_st: SettingsState, id: int) -> bool { return settings_st.sg_num[id] != 0.0 }
-export function settings_get_text(settings_st: SettingsState, id: int) -> string { return settings_st.sg_text[id] }
+export function settings_get_float(id: int) -> float { return sg_num[id] }
+export function settings_get_int(id: int) -> int { return int(sg_num[id]) }
+export function settings_get_bool(id: int) -> bool { return sg_num[id] != 0.0 }
+export function settings_get_text(id: int) -> string { return sg_text[id] }
 
-function sg_changed(base_st: mut BaseState, settings_st: mut SettingsState, id: int) -> void {
+function sg_changed(id: int) -> void {
   let c = new SettingChanged
   c.id = id
-  c.key = settings_st.sg_defs[id].key
-  q_push(base_st, settings_changes(base_st, settings_st), c)
+  c.key = sg_defs[id].key
+  q_push(settings_changes(), c)
 }
 
 # a value outside the setting's range is its default: a damaged file never reaches the game
-export function settings_set_float(base_st: mut BaseState, settings_st: mut SettingsState, id: int, v: float) -> void {
-  let h = settings_held(settings_st, id, v)
-  if h == settings_st.sg_num[id] { return }
-  settings_st.sg_num[id] = h
-  sg_changed(base_st, settings_st, id)
+export function settings_set_float(id: int, v: float) -> void {
+  let h = settings_held(id, v)
+  if h == sg_num[id] { return }
+  sg_num[id] = h
+  sg_changed(id)
 }
 
-export function settings_set_int(base_st: mut BaseState, settings_st: mut SettingsState, id: int, v: int) -> void { settings_set_float(base_st, settings_st, id, float(v)) }
+export function settings_set_int(id: int, v: int) -> void { settings_set_float(id, float(v)) }
 
-export function settings_set_bool(base_st: mut BaseState, settings_st: mut SettingsState, id: int, v: bool) -> void {
-  if v { settings_set_float(base_st, settings_st, id, 1.0) } else { settings_set_float(base_st, settings_st, id, 0.0) }
+export function settings_set_bool(id: int, v: bool) -> void {
+  if v { settings_set_float(id, 1.0) } else { settings_set_float(id, 0.0) }
 }
 
-export function settings_set_text(base_st: mut BaseState, settings_st: mut SettingsState, id: int, v: string) -> void {
-  if v == settings_st.sg_text[id] { return }
-  settings_st.sg_text[id] = v
-  sg_changed(base_st, settings_st, id)
+export function settings_set_text(id: int, v: string) -> void {
+  if v == sg_text[id] { return }
+  sg_text[id] = v
+  sg_changed(id)
 }
 
 # `v` held to the setting's range: outside it, the default
-export function settings_held(settings_st: SettingsState, id: int, v: float) -> float {
-  let d = settings_st.sg_defs[id]
+export function settings_held(id: int, v: float) -> float {
+  let d = sg_defs[id]
   var x = v
   if d.kind == SETTING_BOOL {
     if x != 0.0 { x = 1.0 }

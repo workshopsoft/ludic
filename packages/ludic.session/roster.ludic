@@ -1,62 +1,62 @@
 # roster.ludic - who is here. Slot 0 is this machine's player and reads the SessionLocal port
 # live; slots 1.. are remote players, filled by what their machines report.
-export function ply_init(session_st: mut SessionState) -> void { session__init(session_st) }
+export function ply_init() -> void { session__init() }
 
-export function ply_on(session_st: SessionState, p: int) -> bool {
+export function ply_on(p: int) -> bool {
   if p == 0 { return true }
-  if session_st.session__slot == null or p < 0 or p >= PLY_MAX { return false }
-  return session_st.session__slot[p].on
+  if session__slot == null or p < 0 or p >= PLY_MAX { return false }
+  return session__slot[p].on
 }
 
 export function ply_is_local(p: int) -> bool { return p == 0 }
 
 # the roster slot holding network player `pid`, or -1
-export function ply_slot_of(session_st: SessionState, pid: int) -> int {
-  if session_st.session__slot == null or pid <= 0 { return -1 }
-  for p in 1 .. PLY_MAX { if session_st.session__slot[p].on and session_st.session__slot[p].pid == pid { return p } }
+export function ply_slot_of(pid: int) -> int {
+  if session__slot == null or pid <= 0 { return -1 }
+  for p in 1 .. PLY_MAX { if session__slot[p].on and session__slot[p].pid == pid { return p } }
   return -1
 }
 
-export function ply_count(session_st: SessionState) -> int {
+export function ply_count() -> int {
   var n = 1
-  for p in 1 .. PLY_MAX { if ply_on(session_st, p) { n += 1 } }
+  for p in 1 .. PLY_MAX { if ply_on(p) { n += 1 } }
   return n
 }
 
 # a remote player comes in, standing where this one stands until they say: the first free
 # slot, or -1 when the party is full
-export function ply_join(base_st: mut BaseState, session_st: mut SessionState, pid: int) -> int {
-  session__init(session_st)
+export function ply_join(pid: int) -> int {
+  session__init()
   if pid <= 0 { return -1 }                  # 0 is this machine's player
   for p in 1 .. PLY_MAX {
-    if session_st.session__slot[p].on { continue }
+    if session__slot[p].on { continue }
     let r = new PartyMember
     r.on = true
     r.pid = pid
     r.x = SessionLocal.x()
     r.y = SessionLocal.y()
     r.z = SessionLocal.z()
-    session_st.session__slot[p] = r
-    session__fact(base_st, session_st, SES_JOINED, p, pid)
+    session__slot[p] = r
+    session__fact(SES_JOINED, p, pid)
     return p
   }
   return -1
 }
 
-export function ply_leave(base_st: mut BaseState, session_st: mut SessionState, p: int) -> void {
-  if p <= 0 or not ply_on(session_st, p) { return }
-  let r = session_st.session__slot[p]
+export function ply_leave(p: int) -> void {
+  if p <= 0 or not ply_on(p) { return }
+  let r = session__slot[p]
   r.on = false
   r.ready = false
-  session__fact(base_st, session_st, SES_LEFT, p, r.pid)
+  session__fact(SES_LEFT, p, r.pid)
 }
 
-export function ply_leave_all(base_st: mut BaseState, session_st: mut SessionState) -> void { for p in 1 .. PLY_MAX { ply_leave(base_st, session_st, p) } }
+export function ply_leave_all() -> void { for p in 1 .. PLY_MAX { ply_leave(p) } }
 
 # what a remote player's machine reported this tick
-export function ply_report(session_st: mut SessionState, p: int, x: float, y: float, z: float, yaw: float, speed: float) -> void {
-  if p <= 0 or not ply_on(session_st, p) { return }
-  let r = session_st.session__slot[p]
+export function ply_report(p: int, x: float, y: float, z: float, yaw: float, speed: float) -> void {
+  if p <= 0 or not ply_on(p) { return }
+  let r = session__slot[p]
   r.x = x
   r.y = y
   r.z = z
@@ -64,13 +64,13 @@ export function ply_report(session_st: mut SessionState, p: int, x: float, y: fl
   r.speed = speed
 }
 
-export function ply_report_rest(session_st: mut SessionState, p: int, rest: float, sleeping: bool) -> void {
-  if p <= 0 or not ply_on(session_st, p) { return }
-  session_st.session__slot[p].rest = rest
-  session_st.session__slot[p].sleeping = sleeping
+export function ply_report_rest(p: int, rest: float, sleeping: bool) -> void {
+  if p <= 0 or not ply_on(p) { return }
+  session__slot[p].rest = rest
+  session__slot[p].sleeping = sleeping
 }
 
-export function ply_report_name(session_st: mut SessionState, p: int, name: string) -> void {
-  if p <= 0 or not ply_on(session_st, p) { return }
-  session_st.session__slot[p].name = name
+export function ply_report_name(p: int, name: string) -> void {
+  if p <= 0 or not ply_on(p) { return }
+  session__slot[p].name = name
 }

@@ -9,12 +9,20 @@ import "ludic.rpg/inventory.ludic"
 const CRAFT_MAX: int = 128
 const CRAFT_ING_MAX: int = 512
 
+var recipe_reg: Dict = null           # recipe name -> id
+var recipe_n: int = 0
+var recipe_out: pointers = null       # output item name
+var recipe_outqty: words = null
+var ing_n: int = 0
+var ing_rid:  words = null            # owning recipe id
+var ing_name: pointers = null         # ingredient item name
+var ing_qty:  words = null
 
-function craft_ensure(rpg_st: mut RpgState) -> void {
-  if rpg_st.recipe_reg == null {
-    rpg_st.recipe_reg = Dict.new()
-    rpg_st.recipe_out = pointers(CRAFT_MAX);  rpg_st.recipe_outqty = words(CRAFT_MAX)
-    rpg_st.ing_rid = words(CRAFT_ING_MAX);  rpg_st.ing_name = pointers(CRAFT_ING_MAX);  rpg_st.ing_qty = words(CRAFT_ING_MAX)
+function craft_ensure() -> void {
+  if recipe_reg == null {
+    recipe_reg = Dict.new()
+    recipe_out = pointers(CRAFT_MAX);  recipe_outqty = words(CRAFT_MAX)
+    ing_rid = words(CRAFT_ING_MAX);  ing_name = pointers(CRAFT_ING_MAX);  ing_qty = words(CRAFT_ING_MAX)
   }
 }
 
@@ -22,35 +30,35 @@ event cancellable CraftRequested { e: int = 0, recipe: int = 0 }
 event CraftCompleted { e: int = 0, recipe: int = 0 }
 
 # Craft.recipe(name, out_item, out_qty) — declare a recipe; returns its id.
-@Namespace(Craft) function craft_recipe(rpg_st: mut RpgState, name: pointer, out_item: pointer, out_qty: int) -> int {
-  craft_ensure(rpg_st)
-  if rpg_st.recipe_n >= CRAFT_MAX { return -1 }
-  let id = rpg_st.recipe_n
-  rpg_st.recipe_out[id] = out_item;  rpg_st.recipe_outqty[id] = out_qty
-  rpg_st.recipe_n += 1
-  Dict.set(rpg_st.recipe_reg, name, id)
+@Namespace(Craft) function craft_recipe(name: pointer, out_item: pointer, out_qty: int) -> int {
+  craft_ensure()
+  if recipe_n >= CRAFT_MAX { return -1 }
+  let id = recipe_n
+  recipe_out[id] = out_item;  recipe_outqty[id] = out_qty
+  recipe_n += 1
+  Dict.set(recipe_reg, name, id)
   return id
 }
-@Namespace(Craft) function craft_id(rpg_st: mut RpgState, name: pointer) -> int { craft_ensure(rpg_st);  return Dict.get_or(rpg_st.recipe_reg, name, -1) }
+@Namespace(Craft) function craft_id(name: pointer) -> int { craft_ensure();  return Dict.get_or(recipe_reg, name, -1) }
 # Craft.ingredient(recipe_name, item, qty) — add an ingredient requirement.
-@Namespace(Craft) function craft_ingredient(rpg_st: mut RpgState, recipe_name: pointer, item: pointer, qty: int) -> void {
-  craft_ensure(rpg_st)
-  let rid = craft_id(rpg_st, recipe_name)
+@Namespace(Craft) function craft_ingredient(recipe_name: pointer, item: pointer, qty: int) -> void {
+  craft_ensure()
+  let rid = craft_id(recipe_name)
   if rid < 0 { return }
-  if rpg_st.ing_n >= CRAFT_ING_MAX { return }
-  rpg_st.ing_rid[rpg_st.ing_n] = rid;  rpg_st.ing_name[rpg_st.ing_n] = item;  rpg_st.ing_qty[rpg_st.ing_n] = qty
-  rpg_st.ing_n += 1
+  if ing_n >= CRAFT_ING_MAX { return }
+  ing_rid[ing_n] = rid;  ing_name[ing_n] = item;  ing_qty[ing_n] = qty
+  ing_n += 1
 }
 
 # Craft.can(e, recipe_name) — does the owner hold every ingredient?
-@Namespace(Craft) function craft_can(rpg_st: mut RpgState, e: int, recipe_name: pointer) -> int {
-  craft_ensure(rpg_st)
-  let rid = craft_id(rpg_st, recipe_name)
+@Namespace(Craft) function craft_can(e: int, recipe_name: pointer) -> int {
+  craft_ensure()
+  let rid = craft_id(recipe_name)
   if rid < 0 { return 0 }
   var i = 0
-  while i < rpg_st.ing_n {
-    if rpg_st.ing_rid[i] == rid {
-      if Inventory.count(e, rpg_st.ing_name[i]) < rpg_st.ing_qty[i] { return 0 }
+  while i < ing_n {
+    if ing_rid[i] == rid {
+      if Inventory.count(e, ing_name[i]) < ing_qty[i] { return 0 }
     }
     i += 1
   }
@@ -58,18 +66,18 @@ event CraftCompleted { e: int = 0, recipe: int = 0 }
 }
 
 # Craft.make(e, recipe_name) — consume ingredients + produce output; 1 on success.
-@Namespace(Craft) function craft_make(rpg_st: mut RpgState, e: int, recipe_name: pointer) -> int {
-  craft_ensure(rpg_st)
-  let rid = craft_id(rpg_st, recipe_name)
+@Namespace(Craft) function craft_make(e: int, recipe_name: pointer) -> int {
+  craft_ensure()
+  let rid = craft_id(recipe_name)
   if rid < 0 { return 0 }
-  if craft_can(rpg_st, e, recipe_name) == 0 { return 0 }
+  if craft_can(e, recipe_name) == 0 { return 0 }
   if emit CraftRequested(e: e, recipe: rid) != 0 { return 0 }
   var i = 0
-  while i < rpg_st.ing_n {
-    if rpg_st.ing_rid[i] == rid { Inventory.remove(e, rpg_st.ing_name[i], rpg_st.ing_qty[i]) }
+  while i < ing_n {
+    if ing_rid[i] == rid { Inventory.remove(e, ing_name[i], ing_qty[i]) }
     i += 1
   }
-  Inventory.add(e, rpg_st.recipe_out[rid], rpg_st.recipe_outqty[rid])
+  Inventory.add(e, recipe_out[rid], recipe_outqty[rid])
   emit CraftCompleted(e: e, recipe: rid)
   return 1
 }

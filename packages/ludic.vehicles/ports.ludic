@@ -23,41 +23,25 @@ export port VehicleRider {
   safe_z: fn() -> float = fn ve__safe_z
 }
 
-export state VehiclesState {
-  ve_kept_horse: bool = false
-  ve_kept_boat: bool = false
-  ve_kept_food: float = 40.0
-  ve_ids: int = 0
-  ve_sx: float = 0.0
-  ve_sz: float = 0.0
-  ve_list: []Vehicle = null
-  ve_cur: Vehicle = null
-  ve_dock_x: float = 0.0
-  ve_dock_z: float = 0.0
-  ve_dock_yaw: float = 0.0
-  ve_rail_x: float = 0.0
-  ve_rail_z: float = 0.0
-  ve_rail_yaw: float = 0.0
-  ve_have_dock: bool = false
-  ve_swell_said: float = 0.0
-  ve_fact_q: Queue<VehicleFact> = null
-}
+var ve_ids: int = 0
+var ve_sx: float = 0.0
+var ve_sz: float = 0.0
 function ve__dry(x: float, z: float) -> float { return -10000.0 }
 function ve__open(x: float, z: float, r: float) -> bool { return false }
 function ve__calm(x: float, z: float, fx: float, fz: float) -> float { return 0.0 }
 function ve__zero() -> float { return 0.0 }
-function ve__next(vehicles_st: mut VehiclesState) -> int {
-  vehicles_st.ve_ids += 1
-  return vehicles_st.ve_ids
+function ve__next() -> int {
+  ve_ids += 1
+  return ve_ids
 }
 function ve__nothing(v: Vehicle) -> void { }
 function ve__board(x: float, z: float, yaw: float) -> void { }
 function ve__ride(x: float, y: float, z: float, yaw: float, speed: float) -> void { }
 function ve__off(x: float, z: float) -> void { }
-function ve__safe(vehicles_st: mut VehiclesState, x: float, z: float, from_y: float, max_depth: float) -> bool {
-  vehicles_st.ve_sx = x
-  vehicles_st.ve_sz = z
+function ve__safe(x: float, z: float, from_y: float, max_depth: float) -> bool {
+  ve_sx = x
+  ve_sz = z
   return true
 }
-function ve__safe_x(vehicles_st: VehiclesState) -> float { return vehicles_st.ve_sx }
-function ve__safe_z(vehicles_st: VehiclesState) -> float { return vehicles_st.ve_sz }
+function ve__safe_x() -> float { return ve_sx }
+function ve__safe_z() -> float { return ve_sz }

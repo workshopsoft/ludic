@@ -4,20 +4,18 @@
 import "ludic.i18n"
 program I18nTest {
   numbers float
-  state I18ntestState {
-    forced_code: string = ""
-    fonts_set: []string = null
-    font_ok: bool = true
-  }
+  var forced_code: string = ""
+  var fonts_set: []string = null
+  var font_ok: bool = true
 
   function dir() -> string { return Os.temp_dir() + "/ludic-i18n-test" }
   function mods() -> string { return dir() + "/mods" }
   function t_mods() -> string { return mods() }
-  function t_forced(i18ntest_st: I18ntestState) -> string { return i18ntest_st.forced_code }
+  function t_forced() -> string { return forced_code }
   function t_ready() -> bool { return true }
-  function t_font(i18ntest_st: mut I18ntestState, d: string) -> bool {
-    push(i18ntest_st.fonts_set, d)
-    return i18ntest_st.font_ok
+  function t_font(d: string) -> bool {
+    push(fonts_set, d)
+    return font_ok
   }
   bind I18nWorld { mod_dir: fn t_mods, forced: fn t_forced, font_ready: fn t_ready, set_font: fn t_font }
 
@@ -38,116 +36,116 @@ program I18nTest {
     return s
   }
 
-  function fresh(i18n_st: mut I18nState, i18ntest_st: mut I18ntestState) -> void {
-    i18ntest_st.forced_code = ""
-    i18ntest_st.fonts_set = new []string
-    i18ntest_st.font_ok = true
+  function fresh() -> void {
+    forced_code = ""
+    fonts_set = new []string
+    font_ok = true
     Fs.mkdir(dir())
     Fs.mkdir(mods())
     Fs.write_text(dir() + "/languages.txt", "# shipped\ntt\nnope\n")
     Fs.write_text(dir() + "/tt.po", tt())
     Fs.remove(mods() + "/zz.po")
-    i18n_config(i18n_st, dir(), "font_default")
-    i18n_init(i18n_st)
+    i18n_config(dir(), "font_default")
+    i18n_init()
   }
 
-  test "the shipped list and English are found, a missing file is not" (i18n_st: mut I18nState, i18ntest_st: mut I18ntestState) {
-    fresh(i18n_st, i18ntest_st)
-    expect_eq(i18n_count(i18n_st), 2)
-    expect(i18n_code_at(i18n_st, 0) == "en")
-    expect_eq(i18n_index(i18n_st, "tt"), 1)
-    expect_eq(i18n_index(i18n_st, "nope"), 0)
-    expect(i18n_name_at(i18n_st, 1) == "Test Tongue")
-    expect(i18n_font_at(i18n_st, 1) == dir() + "/font_tt")
-    expect(L(i18n_st, "Settings") == "Settings")
+  test "the shipped list and English are found, a missing file is not" {
+    fresh()
+    expect_eq(i18n_count(), 2)
+    expect(i18n_code_at(0) == "en")
+    expect_eq(i18n_index("tt"), 1)
+    expect_eq(i18n_index("nope"), 0)
+    expect(i18n_name_at(1) == "Test Tongue")
+    expect(i18n_font_at(1) == dir() + "/font_tt")
+    expect(L("Settings") == "Settings")
   }
 
-  test "exact lines, patterns with translated holes, and English where unknown" (i18n_st: mut I18nState, i18ntest_st: mut I18ntestState) {
-    fresh(i18n_st, i18ntest_st)
-    i18n_use(i18n_st, "tt")
-    expect(i18n_on(i18n_st))
-    expect(i18n_current(i18n_st) == "tt")
-    expect(L(i18n_st, "Settings") == "Zettings")
-    expect(L(i18n_st, "Day 12") == "12. Gun")
-    expect(L(i18n_st, "+2 Plant fiber") == "Lif +2")
-    expect(L(i18n_st, "You saw a deer.") == "geyik gordun.")
-    expect(L(i18n_st, "zzqx words nobody wrote") == "zzqx words nobody wrote")
-    expect(L(i18n_st, "Multiline") == "Coksatir\n")
-    expect_eq(i18n_exact_count(i18n_st), 6)
-    expect_eq(i18n_pattern_count(i18n_st), 3)
+  test "exact lines, patterns with translated holes, and English where unknown" {
+    fresh()
+    i18n_use("tt")
+    expect(i18n_on())
+    expect(i18n_current() == "tt")
+    expect(L("Settings") == "Zettings")
+    expect(L("Day 12") == "12. Gun")
+    expect(L("+2 Plant fiber") == "Lif +2")
+    expect(L("You saw a deer.") == "geyik gordun.")
+    expect(L("zzqx words nobody wrote") == "zzqx words nobody wrote")
+    expect(L("Multiline") == "Coksatir\n")
+    expect_eq(i18n_exact_count(), 6)
+    expect_eq(i18n_pattern_count(), 3)
   }
 
-  test "a paragraph a sentence at a time, and a layout's padding kept" (i18n_st: mut I18nState, i18ntest_st: mut I18ntestState) {
-    fresh(i18n_st, i18ntest_st)
-    i18n_use(i18n_st, "tt")
-    expect(L(i18n_st, "You need to eat. zzqx words nobody wrote.") == "Yemek lazim. zzqx words nobody wrote.")
-    expect(L(i18n_st, "zzqx. zzqy.") == "zzqx. zzqy.")
-    expect(L(i18n_st, "   owned") == "   senin")
-    expect(L(i18n_st, "   zzqx") == "   zzqx")
+  test "a paragraph a sentence at a time, and a layout's padding kept" {
+    fresh()
+    i18n_use("tt")
+    expect(L("You need to eat. zzqx words nobody wrote.") == "Yemek lazim. zzqx words nobody wrote.")
+    expect(L("zzqx. zzqy.") == "zzqx. zzqy.")
+    expect(L("   owned") == "   senin")
+    expect(L("   zzqx") == "   zzqx")
   }
 
-  test "plurals by the file's rule, and English by one and many" (i18n_st: mut I18nState, i18ntest_st: mut I18ntestState) {
-    fresh(i18n_st, i18ntest_st)
-    expect(Ln(i18n_st, "{1} trout", "{1} trouts", 1) == "1 trout")
-    expect(Ln(i18n_st, "{1} trout", "{1} trouts", 3) == "3 trouts")
-    i18n_use(i18n_st, "tt")
-    expect_eq(i18n_plural_rule(i18n_st), PL_SLAVIC)
-    expect(Ln(i18n_st, "{1} trout", "{1} trouts", 21) == "21 alabalik")
-    expect(Ln(i18n_st, "{1} trout", "{1} trouts", 5) == "5 alabaliklar")
-    expect(Ln(i18n_st, "{1} fish", "{1} fishes", 2) == "2 fishes")
+  test "plurals by the file's rule, and English by one and many" {
+    fresh()
+    expect(Ln("{1} trout", "{1} trouts", 1) == "1 trout")
+    expect(Ln("{1} trout", "{1} trouts", 3) == "3 trouts")
+    i18n_use("tt")
+    expect_eq(i18n_plural_rule(), PL_SLAVIC)
+    expect(Ln("{1} trout", "{1} trouts", 21) == "21 alabalik")
+    expect(Ln("{1} trout", "{1} trouts", 5) == "5 alabaliklar")
+    expect(Ln("{1} fish", "{1} fishes", 2) == "2 fishes")
     expect_eq(i18n_plural_form(PL_NOT_ONE, 0), 1)
     expect_eq(i18n_plural_form(PL_ABOVE_ONE, 0), 0)
     expect_eq(i18n_plural_form(PL_SLAVIC, 3), 1)
     expect_eq(i18n_plural_form(PL_ONE_FORM, 7), 0)
   }
 
-  test "the font follows the language, and falls back when it will not load" (i18n_st: mut I18nState, i18ntest_st: mut I18ntestState) {
-    fresh(i18n_st, i18ntest_st)
-    i18n_font_base(i18n_st, "font_default")
-    i18n_use(i18n_st, "tt")
-    expect_eq(len(i18ntest_st.fonts_set), 1)
-    expect(i18n_font_now(i18n_st) == dir() + "/font_tt")
-    i18n_use(i18n_st, "en")
-    expect(i18n_font_now(i18n_st) == "font_default")
-    i18ntest_st.font_ok = false
-    i18n_use(i18n_st, "tt")
-    expect(i18n_font_now(i18n_st) == "font_default")
+  test "the font follows the language, and falls back when it will not load" {
+    fresh()
+    i18n_font_base("font_default")
+    i18n_use("tt")
+    expect_eq(len(fonts_set), 1)
+    expect(i18n_font_now() == dir() + "/font_tt")
+    i18n_use("en")
+    expect(i18n_font_now() == "font_default")
+    font_ok = false
+    i18n_use("tt")
+    expect(i18n_font_now() == "font_default")
   }
 
-  test "a mod in the player's folder is found, replaces a shipped code, and goes when removed" (i18n_st: mut I18nState, i18ntest_st: mut I18ntestState) {
-    fresh(i18n_st, i18ntest_st)
+  test "a mod in the player's folder is found, replaces a shipped code, and goes when removed" {
+    fresh()
     Fs.write_text(mods() + "/zz.po", header("Mod Tongue", "") + po_line("Settings", "Mettings"))
     Fs.write_text(mods() + "/tt.po", header("Tongue Two", "") + po_line("Settings", "Z2"))
-    i18n_init(i18n_st)
-    expect_eq(i18n_count(i18n_st), 3)
-    expect(i18n_name_at(i18n_st, i18n_index(i18n_st, "zz")) == "Mod Tongue")
-    i18n_use(i18n_st, "zz")
-    expect(L(i18n_st, "Settings") == "Mettings")
-    expect(L(i18n_st, "Day 3") == "Day 3")
-    i18n_use(i18n_st, "tt")
-    expect(L(i18n_st, "Settings") == "Z2")
+    i18n_init()
+    expect_eq(i18n_count(), 3)
+    expect(i18n_name_at(i18n_index("zz")) == "Mod Tongue")
+    i18n_use("zz")
+    expect(L("Settings") == "Mettings")
+    expect(L("Day 3") == "Day 3")
+    i18n_use("tt")
+    expect(L("Settings") == "Z2")
     Fs.remove(mods() + "/zz.po")
     Fs.remove(mods() + "/tt.po")
-    i18n_init(i18n_st)
-    expect_eq(i18n_index(i18n_st, "zz"), 0)
-    i18n_use(i18n_st, "en")
-    expect(not i18n_on(i18n_st))
-    expect(L(i18n_st, "Settings") == "Settings")
+    i18n_init()
+    expect_eq(i18n_index("zz"), 0)
+    i18n_use("en")
+    expect(not i18n_on())
+    expect(L("Settings") == "Settings")
   }
 
-  test "a forced code wins over the one asked for" (i18n_st: mut I18nState, i18ntest_st: mut I18ntestState) {
-    fresh(i18n_st, i18ntest_st)
-    i18ntest_st.forced_code = "tt"
-    i18n_use(i18n_st, "en")
-    expect(i18n_current(i18n_st) == "tt")
+  test "a forced code wins over the one asked for" {
+    fresh()
+    forced_code = "tt"
+    i18n_use("en")
+    expect(i18n_current() == "tt")
   }
 
-  test "a header field, and a .po loaded from text" (i18n_st: mut I18nState) {
+  test "a header field, and a .po loaded from text" {
     expect(i18n_header(tt(), "X-Language-Name") == "Test Tongue")
     expect(i18n_header(tt(), "X-Nothing") == "")
-    i18n_load_text(i18n_st, po_line("Quit", "Cik"))
-    expect(L(i18n_st, "Quit") == "Cik")
-    i18n_off(i18n_st)
-    expect(L(i18n_st, "Quit") == "Quit")
+    i18n_load_text(po_line("Quit", "Cik"))
+    expect(L("Quit") == "Cik")
+    i18n_off()
+    expect(L("Quit") == "Quit")
   }
 }

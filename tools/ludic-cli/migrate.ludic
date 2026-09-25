@@ -184,37 +184,70 @@ function mgx_apply(lines: []pointer, dry: bool) -> int {
   let vpos2 = new []int
   let vstate = new []pointer
   let sname = new []pointer
+  let sat = new []pointer             # where each is declared: file:pos
   let sfile = new []pointer
   let spos = new []int
   let sexp = new []int
   let smore = new []int                # 1: the state is already declared, and gains fields
   let reports = new []pointer
+  let lfile = new []pointer
+  let lpos = new []int
   for i in 0 .. len(lines) {
     let w = dp_words(lines[i])
     if len(w) == 0 { continue }
-    if w[0] == "VAR" and len(w) == 5 {
+    if w[0] == "VAR" and len(w) == 6 {
       push(vfile, w[1])
       push(vpos, s_to_int(w[2]))
       push(vpos2, s_to_int(w[3]))
-      push(vstate, w[4])
-    } else if w[0] == "STATE" and len(w) >= 6 {
+      push(vstate, w[5])                 # the state by where it is declared, not by its name
+    } else if w[0] == "STATE" and len(w) >= 7 {
       # one state from several programs' plans: exported if any of them needs it outside
+      # one state from several programs' plans, which saw different files of it: declared where one
+      # is declared already, else at the first of its vars any of them saw; exported if any needs it
+      let at = w[6]
+      let more = len(w) >= 8
       var known = -1
-      for k in 0 .. len(sname) { if sname[k] == w[1] { known = k } }
+      for k in 0 .. len(sat) { if sat[k] == at { known = k } }
       if known >= 0 {
         if s_to_int(w[4]) == 1 { sexp[known] = 1 }
+        let earlier = s_less(w[2], sfile[known]) or (w[2] == sfile[known] and s_to_int(w[3]) < spos[known])
+        if smore[known] == 0 and (more or earlier) {
+          sfile[known] = w[2]
+          spos[known] = s_to_int(w[3])
+          if more { smore[known] = 1 }
+        }
         continue
       }
       push(sname, w[1])
+      push(sat, at)
       push(sfile, w[2])
       push(spos, s_to_int(w[3]))
       push(sexp, s_to_int(w[4]))
-      if len(w) >= 7 { push(smore, 1) } else { push(smore, 0) }
+      if more { push(smore, 1) } else { push(smore, 0) }
     } else if (w[0] == "REF") and len(w) == 5 {
       mgx_edit(w[1], s_to_int(w[2]), s_to_int(w[3]), mgx_unesc(w[4]))
     } else if (w[0] == "INS") and len(w) == 4 {
       mgx_edit(w[1], s_to_int(w[2]), 0, mgx_unesc(w[3]))
+    } else if w[0] == "LET" and len(w) == 3 {
+      push(lfile, w[1])
+      push(lpos, s_to_int(w[2]))
     } else if w[0] == "?" { push(reports, lines[i]) }
+  }
+  # a var nothing writes is a let - unless another program's plan saw it written
+  var lets = 0
+  for l in 0 .. len(lfile) {
+    var moved = false
+    for v in 0 .. len(vfile) { if vfile[v] == lfile[l] and vpos[v] == lpos[l] { moved = true } }
+    if not moved {
+      let t = mgx_text_of(lfile[l])
+      var k = lpos[l] - 3
+      let ls = mgx_line_start(t, lpos[l])
+      while k >= ls and not (t[k] == 'v' and t[k + 1] == 'a' and t[k + 2] == 'r') { k -= 1 }
+      if k >= ls {
+        mgx_edit(lfile[l], k, 3, "let")
+        lets += 1
+      }
+    }
   }
   # the vars: each line goes, and the first of each state's becomes the state
   let del_file = new []pointer
@@ -253,7 +286,7 @@ function mgx_apply(lines: []pointer, dry: bool) -> int {
       var ff = ""
       for ov in 0 .. len(order) {
         let v = order[ov]
-        if vstate[v] == sname[s] { ff = ff + `{indent}  {mgx_field(mgx_text_of(vfile[v]), vpos[v], vpos2[v])}\n` }
+        if vstate[v] == sat[s] { ff = ff + `{indent}  {mgx_field(mgx_text_of(vfile[v]), vpos[v], vpos2[v])}\n` }
       }
       let close = mgx_close(t, spos[s])
       if close >= 0 { mgx_edit(sfile[s], mgx_line_start(t, close), 0, ff) }
@@ -261,7 +294,7 @@ function mgx_apply(lines: []pointer, dry: bool) -> int {
     }
     for ov in 0 .. len(order) {
       let v = order[ov]
-      if vstate[v] == sname[s] {
+      if vstate[v] == sat[s] {
         let t = mgx_text_of(vfile[v])
         if vfile[v] == sfile[s] and vpos[v] == spos[s] {
           at = v
@@ -333,7 +366,7 @@ function mgx_apply(lines: []pointer, dry: bool) -> int {
     if n > cur { file_write(out, data_at(t, cur), n - cur) }
     file_close(out)
   }
-  print(`migrate: {string(len(vfile))} vars into {string(len(sname))} states; {string(edits)} edits in {string(files)} files`)
+  print(`migrate: {string(len(vfile))} vars into {string(len(sname))} states, {string(lets)} into lets; {string(edits)} edits in {string(files)} files`)
   for r in 0 .. len(reports) { print(`  by hand: {sslice(reports[r], 2, slen(reports[r]))}`) }
   return 0
 }

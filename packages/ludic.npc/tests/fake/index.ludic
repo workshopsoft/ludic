@@ -1,32 +1,30 @@
 # fake - a place for the people: dry flat ground east of x = -50 and a lake west of it, a camp at
 # (40, 0) nobody may stop in, two players, and what the port was asked to draw
 numbers float
-export state NpcTestsFakeState {
-  fk_hour: float = 12.0
-  fk_day: int = 1
-  fk_want: int = 0
-  fk_extra: int = -1
-  fk_px: []float = null
-  fk_pz: []float = null
-  fk_on: []bool = null
-  fk_born: int = 0
-  fk_gone: int = 0
-}
+var fk_hour: float = 12.0
+var fk_day: int = 1
+var fk_want: int = 0
+var fk_extra: int = -1
+var fk_px: []float = null
+var fk_pz: []float = null
+var fk_on: []bool = null
+var fk_born: int = 0
+var fk_gone: int = 0
 
-function fk_setup(base_st: mut BaseState, npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState) -> void {
-  npc_tests_fake_st.fk_hour = 12.0
-  npc_tests_fake_st.fk_day = 1
-  npc_tests_fake_st.fk_want = 0
-  npc_tests_fake_st.fk_extra = -1
-  npc_tests_fake_st.fk_px = [500.0, 900.0]
-  npc_tests_fake_st.fk_pz = [500.0, 900.0]
-  npc_tests_fake_st.fk_on = [true, false]
-  npc_tests_fake_st.fk_born = 0
-  npc_tests_fake_st.fk_gone = 0
-  npc_clear(npc_st)
-  npc_reset(base_st, npc_st)
-  npc_seed(npc_st, 7)
-  npc_config(npc_st, 10)
+function fk_setup() -> void {
+  fk_hour = 12.0
+  fk_day = 1
+  fk_want = 0
+  fk_extra = -1
+  fk_px = [500.0, 900.0]
+  fk_pz = [500.0, 900.0]
+  fk_on = [true, false]
+  fk_born = 0
+  fk_gone = 0
+  npc_clear()
+  npc_reset()
+  npc_seed(7)
+  npc_config(10)
 }
 
 function fk_ground(x: float, z: float) -> float { return 0.0 }
@@ -35,28 +33,28 @@ function fk_water(x: float, z: float) -> float {
   return -100.0
 }
 function fk_allowed(x: float, z: float) -> bool { return npc_d(x, z, 40.0, 0.0) > 15.0 }
-function fk_hour_now(npc_tests_fake_st: NpcTestsFakeState) -> float { return npc_tests_fake_st.fk_hour }
-function fk_day_now(npc_tests_fake_st: NpcTestsFakeState) -> int { return npc_tests_fake_st.fk_day }
+function fk_hour_now() -> float { return fk_hour }
+function fk_day_now() -> int { return fk_day }
 function fk_players() -> int { return 2 }
-function fk_player_on(npc_tests_fake_st: NpcTestsFakeState, i: int) -> bool { return npc_tests_fake_st.fk_on[i] }
-function fk_x(npc_tests_fake_st: NpcTestsFakeState, i: int) -> float { return npc_tests_fake_st.fk_px[i] }
-function fk_z(npc_tests_fake_st: NpcTestsFakeState, i: int) -> float { return npc_tests_fake_st.fk_pz[i] }
-function fk_wanted(npc_tests_fake_st: NpcTestsFakeState) -> int { return npc_tests_fake_st.fk_want }
-function fk_extra_kind(npc_tests_fake_st: NpcTestsFakeState) -> int { return npc_tests_fake_st.fk_extra }
+function fk_player_on(i: int) -> bool { return fk_on[i] }
+function fk_x(i: int) -> float { return fk_px[i] }
+function fk_z(i: int) -> float { return fk_pz[i] }
+function fk_wanted() -> int { return fk_want }
+function fk_extra_kind() -> int { return fk_extra }
 function fk_taken(n: string) -> bool { return n == "Ada" }
-function fk_on_born(npc_tests_fake_st: mut NpcTestsFakeState, p: NpcPerson) -> void { npc_tests_fake_st.fk_born += 1 }
-function fk_on_gone(npc_tests_fake_st: mut NpcTestsFakeState, p: NpcPerson) -> void { npc_tests_fake_st.fk_gone += 1 }
+function fk_on_born(p: NpcPerson) -> void { fk_born += 1 }
+function fk_on_gone(p: NpcPerson) -> void { fk_gone += 1 }
 
-function fk_player_at(npc_tests_fake_st: mut NpcTestsFakeState, x: float, z: float) -> void {
-  npc_tests_fake_st.fk_px[0] = x
-  npc_tests_fake_st.fk_pz[0] = z
+function fk_player_at(x: float, z: float) -> void {
+  fk_px[0] = x
+  fk_pz[0] = z
 }
 
 # seconds of the place, in twentieths
-function fk_run(base_st: mut BaseState, npc_st: mut NpcState, secs: float) -> void { for k in 0 .. int(secs * 20.0) { npc_tick(base_st, npc_st, 0.05) } }
+function fk_run(secs: float) -> void { for k in 0 .. int(secs * 20.0) { npc_tick(0.05) } }
 
-function fk_count(base_st: mut BaseState, npc_st: mut NpcState, what: int) -> int {
-  let fs = q_drain(base_st, npc_facts(base_st, npc_st))
+function fk_count(what: int) -> int {
+  let fs = q_drain(npc_facts())
   var n = 0
   for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
   return n

@@ -24,19 +24,17 @@ program Snake {
   const MODE_OVER: int = 1
 
   # ---- the game's whole state, named ----------------------------------------
-  state SnakeState {
-    direction: int = DIR_RIGHT
-    length:    int = 3
-    tick:      int = 0
-    food_x:    int = 14
-    food_y:    int = 7
-    mode:      int = MODE_PLAY
-    score:     int = 0
-    ate:       int = 0                        # did the head reach the food this step?
-    tail_x:    int = 0                        # where the tail sat before it moved (grow here)
-    tail_y:    int = 0
-    acked:     int = 0                        # game-over key must be released before restart
-  }
+  var direction: int = DIR_RIGHT
+  var length:    int = 3
+  var tick:      int = 0
+  var food_x:    int = 14
+  var food_y:    int = 7
+  var mode:      int = MODE_PLAY
+  var score:     int = 0
+  var ate:       int = 0                        # did the head reach the food this step?
+  var tail_x:    int = 0                        # where the tail sat before it moved (grow here)
+  var tail_y:    int = 0
+  var acked:     int = 0                        # game-over key must be released before restart
 
   # ---- custom shades this game uses (values the named palette doesn't carry) -
   const SHADE_BG:      int = 0x0d1020           # backdrop behind the board
@@ -48,48 +46,48 @@ program Snake {
   const SHADE_SCORE:   int = 0xffe060
   const SHADE_OVER:    int = 0xff5555
 
-  function reset(snake_st: mut SnakeState, unused: int) -> int {
+  function reset(unused: int) -> int {
     for (p, s) in query [Pos, Seg] { despawn self() }
     spawn S0 { Seg { order: 0 };  Pos { x: 10, y: 7 } }
     spawn S1 { Seg { order: 1 };  Pos { x: 9,  y: 7 } }
     spawn S2 { Seg { order: 2 };  Pos { x: 8,  y: 7 } }
-    snake_st.direction = DIR_RIGHT
-    snake_st.length = 3
-    snake_st.tick = 0
-    snake_st.mode = MODE_PLAY
-    snake_st.score = 0
-    snake_st.food_x = 14
-    snake_st.food_y = 7
+    direction = DIR_RIGHT
+    length = 3
+    tick = 0
+    mode = MODE_PLAY
+    score = 0
+    food_x = 14
+    food_y = 7
     return 0
   }
 
-  handler Boot(snake_st: mut SnakeState) phase Start { reset(snake_st, 0) }
+  handler Boot phase Start { reset(0) }
 
-  handler Input(snake_st: mut SnakeState) phase Input {
+  handler Input phase Input {
     let k = Input.key()
-    if snake_st.mode == MODE_PLAY {
-      if k == 'w' { if snake_st.direction != DIR_DOWN  { snake_st.direction = DIR_UP } }
-      if k == 's' { if snake_st.direction != DIR_UP    { snake_st.direction = DIR_DOWN } }
-      if k == 'a' { if snake_st.direction != DIR_RIGHT { snake_st.direction = DIR_LEFT } }
-      if k == 'd' { if snake_st.direction != DIR_LEFT  { snake_st.direction = DIR_RIGHT } }
+    if mode == MODE_PLAY {
+      if k == 'w' { if direction != DIR_DOWN  { direction = DIR_UP } }
+      if k == 's' { if direction != DIR_UP    { direction = DIR_DOWN } }
+      if k == 'a' { if direction != DIR_RIGHT { direction = DIR_LEFT } }
+      if k == 'd' { if direction != DIR_LEFT  { direction = DIR_RIGHT } }
     }
-    if snake_st.mode == MODE_OVER {
-      if k == 0 { snake_st.acked = 1 }
-      if k != 0 { if snake_st.acked == 1 { reset(snake_st, 0) } }
+    if mode == MODE_OVER {
+      if k == 0 { acked = 1 }
+      if k != 0 { if acked == 1 { reset(0) } }
     }
   }
 
-  handler Move(snake_st: mut SnakeState) phase Update {
-    if snake_st.mode == MODE_PLAY {
-      snake_st.tick += 1
-      if snake_st.tick >= 6 {
-        snake_st.tick = 0
+  handler Move phase Update {
+    if mode == MODE_PLAY {
+      tick += 1
+      if tick >= 6 {
+        tick = 0
         # remember the tail cell, then drag every segment onto the one ahead of it
         for (pt, stg) in query [Pos, Seg] {
-          if stg.order == snake_st.length - 1 { snake_st.tail_x = pt.x;  snake_st.tail_y = pt.y }
+          if stg.order == length - 1 { tail_x = pt.x;  tail_y = pt.y }
         }
-        for step in 0 .. snake_st.length {
-          let i = snake_st.length - 1 - step
+        for step in 0 .. length {
+          let i = length - 1 - step
           if i >= 1 {
             for (pa, sa) in query [Pos, Seg] {
               if sa.order == i {
@@ -101,18 +99,18 @@ program Snake {
           }
         }
         # move the head, check the walls, check the food
-        snake_st.ate = 0
+        ate = 0
         for (ph, sh) in query [Pos, Seg] {
           if sh.order == 0 {
-            if snake_st.direction == DIR_UP    { ph.y -= 1 }
-            if snake_st.direction == DIR_DOWN  { ph.y += 1 }
-            if snake_st.direction == DIR_LEFT  { ph.x -= 1 }
-            if snake_st.direction == DIR_RIGHT { ph.x += 1 }
-            if ph.x < 0       { snake_st.mode = MODE_OVER }
-            if ph.x >= GRID_W { snake_st.mode = MODE_OVER }
-            if ph.y < 0       { snake_st.mode = MODE_OVER }
-            if ph.y >= GRID_H { snake_st.mode = MODE_OVER }
-            if ph.x == snake_st.food_x { if ph.y == snake_st.food_y { snake_st.ate = 1 } }
+            if direction == DIR_UP    { ph.y -= 1 }
+            if direction == DIR_DOWN  { ph.y += 1 }
+            if direction == DIR_LEFT  { ph.x -= 1 }
+            if direction == DIR_RIGHT { ph.x += 1 }
+            if ph.x < 0       { mode = MODE_OVER }
+            if ph.x >= GRID_W { mode = MODE_OVER }
+            if ph.y < 0       { mode = MODE_OVER }
+            if ph.y >= GRID_H { mode = MODE_OVER }
+            if ph.x == food_x { if ph.y == food_y { ate = 1 } }
           }
         }
         # self-collision: head onto any body segment
@@ -120,23 +118,23 @@ program Snake {
           if sh.order == 0 {
             for (pb, sb) in query [Pos, Seg] {
               if sb.order > 0 {
-                if pb.x == ph.x { if pb.y == ph.y { snake_st.mode = MODE_OVER } }
+                if pb.x == ph.x { if pb.y == ph.y { mode = MODE_OVER } }
               }
             }
           }
         }
-        if snake_st.ate == 1 {
-          snake_st.score += 1
-          spawn Body { Seg { order: snake_st.length };  Pos { x: snake_st.tail_x, y: snake_st.tail_y } }
-          snake_st.length += 1
-          snake_st.food_x = Random.range(low: 0, high: GRID_W - 1)
-          snake_st.food_y = Random.range(low: 0, high: GRID_H - 1)
+        if ate == 1 {
+          score += 1
+          spawn Body { Seg { order: length };  Pos { x: tail_x, y: tail_y } }
+          length += 1
+          food_x = Random.range(low: 0, high: GRID_W - 1)
+          food_y = Random.range(low: 0, high: GRID_H - 1)
         }
       }
     }
   }
 
-  handler Draw(snake_st: SnakeState) phase Render {
+  handler Draw phase Render {
     Screen.clear(SHADE_BG)
     # checkerboard field
     for gy in 0 .. GRID_H {
@@ -147,7 +145,7 @@ program Snake {
       }
     }
     # food, inset a few pixels inside its tile
-    Screen.fill_rectangle(x: snake_st.food_x * TILE + 3, y: snake_st.food_y * TILE + 3, width: TILE - 6, height: TILE - 6, color: SHADE_FOOD)
+    Screen.fill_rectangle(x: food_x * TILE + 3, y: food_y * TILE + 3, width: TILE - 6, height: TILE - 6, color: SHADE_FOOD)
     # every snake segment, straight from the ECS
     for (p, s) in query [Pos, Seg] {
       var seg_color = SHADE_BODY
@@ -155,8 +153,8 @@ program Snake {
       Screen.fill_rectangle(x: p.x * TILE + 1, y: p.y * TILE + 1, width: TILE - 2, height: TILE - 2, color: seg_color)
     }
     Screen.draw_text(x: 6, y: 4, text: "SCORE", color: Color.White, scale: 1)
-    Screen.draw_number(x: 52, y: 4, value: snake_st.score, color: SHADE_SCORE, scale: 1)
-    if snake_st.mode == MODE_OVER {
+    Screen.draw_number(x: 52, y: 4, value: score, color: SHADE_SCORE, scale: 1)
+    if mode == MODE_OVER {
       Screen.draw_text(x: 112, y: 104, text: "GAME OVER", color: SHADE_OVER, scale: 2)
       Screen.draw_text(x: 84, y: 140, text: "PRESS ANY KEY", color: Color.White, scale: 1)
     }

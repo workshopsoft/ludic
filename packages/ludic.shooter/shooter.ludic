@@ -69,79 +69,76 @@ event WeaponFired { owner: int = 0, def_id: int = 0 }
 # ---------------------------------------------------------------------------
 # Weapon registry (name-keyed, mod-friendly — add a gun with no code)
 # ---------------------------------------------------------------------------
-state ShooterState {
-  wpn_reg: Dict = null
-  wpn_n:   int = 0
-  wpn_rate:    words = null
-  wpn_dmg:     words = null
-  wpn_speed:   words = null
-  wpn_spread:  words = null
-  wpn_pellets: words = null
-  wpn_pattern: words = null
-  wpn_ttl:     words = null
-  wpn_pierce:  words = null
-  wpn_homing:  words = null
-  wpn_color:   words = null
-  wpn_rate_base: words = null
-  wpn_fire_color: int = 0xffffff              # the colour of the weapon being fired (sh_fire)
-}
+var wpn_reg: Dict = null
+var wpn_n:   int = 0
+var wpn_rate:    words = null
+var wpn_dmg:     words = null
+var wpn_speed:   words = null
+var wpn_spread:  words = null
+var wpn_pellets: words = null
+var wpn_pattern: words = null
+var wpn_ttl:     words = null
+var wpn_pierce:  words = null
+var wpn_homing:  words = null
+var wpn_color:   words = null
 
-function wpn_ensure(shooter_st: mut ShooterState) -> void {
-  if shooter_st.wpn_reg == null {
-    shooter_st.wpn_reg = Dict.new()
-    shooter_st.wpn_rate = words(WPN_MAX);  shooter_st.wpn_dmg = words(WPN_MAX);  shooter_st.wpn_speed = words(WPN_MAX)
-    shooter_st.wpn_spread = words(WPN_MAX);  shooter_st.wpn_pellets = words(WPN_MAX);  shooter_st.wpn_pattern = words(WPN_MAX)
-    shooter_st.wpn_ttl = words(WPN_MAX);  shooter_st.wpn_pierce = words(WPN_MAX);  shooter_st.wpn_homing = words(WPN_MAX)
-    shooter_st.wpn_color = words(WPN_MAX);  shooter_st.wpn_rate_base = words(WPN_MAX)
+function wpn_ensure() -> void {
+  if wpn_reg == null {
+    wpn_reg = Dict.new()
+    wpn_rate = words(WPN_MAX);  wpn_dmg = words(WPN_MAX);  wpn_speed = words(WPN_MAX)
+    wpn_spread = words(WPN_MAX);  wpn_pellets = words(WPN_MAX);  wpn_pattern = words(WPN_MAX)
+    wpn_ttl = words(WPN_MAX);  wpn_pierce = words(WPN_MAX);  wpn_homing = words(WPN_MAX)
+    wpn_color = words(WPN_MAX);  wpn_rate_base = words(WPN_MAX)
   }
 }
 
 # Weapon.def(name, fire_rate, damage, speed, spread, pellets, pattern) — register a
 # gun. pattern: 0 single/aimed, 1 spread cone, 2 ring, 3 spiral. Returns the def id.
-@Namespace(Weapon) function weapon_def(shooter_st: mut ShooterState, name: pointer, fire_rate: int, damage: int, speed: int, spread: int, pellets: int, pattern: int) -> int {
-  wpn_ensure(shooter_st)
-  if shooter_st.wpn_n >= WPN_MAX { return -1 }
-  let id = shooter_st.wpn_n
-  shooter_st.wpn_rate[id] = fire_rate;  shooter_st.wpn_dmg[id] = damage;  shooter_st.wpn_speed[id] = speed
-  shooter_st.wpn_spread[id] = spread;  shooter_st.wpn_pellets[id] = pellets;  shooter_st.wpn_pattern[id] = pattern
-  shooter_st.wpn_ttl[id] = 120
-  shooter_st.wpn_color[id] = 0xffffff
-  shooter_st.wpn_rate_base[id] = fire_rate
-  shooter_st.wpn_n += 1
-  Dict.set(shooter_st.wpn_reg, name, id)
+@Namespace(Weapon) function weapon_def(name: pointer, fire_rate: int, damage: int, speed: int, spread: int, pellets: int, pattern: int) -> int {
+  wpn_ensure()
+  if wpn_n >= WPN_MAX { return -1 }
+  let id = wpn_n
+  wpn_rate[id] = fire_rate;  wpn_dmg[id] = damage;  wpn_speed[id] = speed
+  wpn_spread[id] = spread;  wpn_pellets[id] = pellets;  wpn_pattern[id] = pattern
+  wpn_ttl[id] = 120
+  wpn_color[id] = 0xffffff
+  wpn_rate_base[id] = fire_rate
+  wpn_n += 1
+  Dict.set(wpn_reg, name, id)
   return id
 }
-@Namespace(Weapon) function weapon_id(shooter_st: mut ShooterState, name: pointer) -> int {
-  wpn_ensure(shooter_st)
-  return Dict.get_or(shooter_st.wpn_reg, name, -1)
+@Namespace(Weapon) function weapon_id(name: pointer) -> int {
+  wpn_ensure()
+  return Dict.get_or(wpn_reg, name, -1)
 }
 # Weapon.set_rate(id, frames) — frames between shots (a fire-rate upgrade changes it in place).
-@Namespace(Weapon) function weapon_set_rate(shooter_st: mut ShooterState, id: int, frames: int) -> void {
-  wpn_ensure(shooter_st);  if (id >= 0) and (id < WPN_MAX) { shooter_st.wpn_rate[id] = frames }
+@Namespace(Weapon) function weapon_set_rate(id: int, frames: int) -> void {
+  wpn_ensure();  if (id >= 0) and (id < WPN_MAX) { wpn_rate[id] = frames }
 }
-@Namespace(Weapon) function weapon_rate(shooter_st: mut ShooterState, id: int) -> int {
-  wpn_ensure(shooter_st);  if (id >= 0) and (id < WPN_MAX) { return shooter_st.wpn_rate[id] };  return 0
+@Namespace(Weapon) function weapon_rate(id: int) -> int {
+  wpn_ensure();  if (id >= 0) and (id < WPN_MAX) { return wpn_rate[id] };  return 0
 }
 # Weapon.reset(id) — back to the definition: no pierce, no homing, the defined fire rate.
-@Namespace(Weapon) function weapon_reset(shooter_st: mut ShooterState, id: int) -> void {
-  wpn_ensure(shooter_st);  if (id < 0) or (id >= WPN_MAX) { return }
-  shooter_st.wpn_pierce[id] = 0;  shooter_st.wpn_homing[id] = 0;  shooter_st.wpn_rate[id] = shooter_st.wpn_rate_base[id]
+var wpn_rate_base: words = null
+@Namespace(Weapon) function weapon_reset(id: int) -> void {
+  wpn_ensure();  if (id < 0) or (id >= WPN_MAX) { return }
+  wpn_pierce[id] = 0;  wpn_homing[id] = 0;  wpn_rate[id] = wpn_rate_base[id]
 }
 # Weapon.set_color(id, color) — the colour the engine draws this weapon's shots in.
-@Namespace(Weapon) function weapon_set_color(shooter_st: mut ShooterState, id: int, color: int) -> void {
-  wpn_ensure(shooter_st);  if (id >= 0) and (id < WPN_MAX) { shooter_st.wpn_color[id] = color }
+@Namespace(Weapon) function weapon_set_color(id: int, color: int) -> void {
+  wpn_ensure();  if (id >= 0) and (id < WPN_MAX) { wpn_color[id] = color }
 }
 # Weapon.set_ttl(id, frames) — projectile lifetime for a weapon (range control).
-@Namespace(Weapon) function weapon_set_ttl(shooter_st: mut ShooterState, id: int, frames: int) -> void {
-  wpn_ensure(shooter_st);  if (id >= 0) and (id < WPN_MAX) { shooter_st.wpn_ttl[id] = frames }
+@Namespace(Weapon) function weapon_set_ttl(id: int, frames: int) -> void {
+  wpn_ensure();  if (id >= 0) and (id < WPN_MAX) { wpn_ttl[id] = frames }
 }
 # Weapon.set_pierce(id, n) — a shot passes through n targets before it dies.
-@Namespace(Weapon) function weapon_set_pierce(shooter_st: mut ShooterState, id: int, n: int) -> void {
-  wpn_ensure(shooter_st);  if (id >= 0) and (id < WPN_MAX) { shooter_st.wpn_pierce[id] = n }
+@Namespace(Weapon) function weapon_set_pierce(id: int, n: int) -> void {
+  wpn_ensure();  if (id >= 0) and (id < WPN_MAX) { wpn_pierce[id] = n }
 }
 # Weapon.set_homing(id, deg) — max degrees/frame a shot turns toward an enemy.
-@Namespace(Weapon) function weapon_set_homing(shooter_st: mut ShooterState, id: int, deg: int) -> void {
-  wpn_ensure(shooter_st);  if (id >= 0) and (id < WPN_MAX) { shooter_st.wpn_homing[id] = deg }
+@Namespace(Weapon) function weapon_set_homing(id: int, deg: int) -> void {
+  wpn_ensure();  if (id >= 0) and (id < WPN_MAX) { wpn_homing[id] = deg }
 }
 
 # ---------------------------------------------------------------------------
@@ -496,7 +493,7 @@ function sh_angle_diff(from: int, to: int) -> int {
 }
 
 # spawn one projectile travelling at `deg` degrees from (px,py).
-function sh_spawn_bullet(shooter_st: ShooterState, owner: int, fac: int, px: int, py: int, deg: int, speed: int, dmg: int, ttl: int, pierce: int, homing: int) -> int {
+function sh_spawn_bullet(owner: int, fac: int, px: int, py: int, deg: int, speed: int, dmg: int, ttl: int, pierce: int, homing: int) -> int {
   let m = World.model_id("Bullet")
   if m < 0 { return -1 }
   let b = World.spawn(m)
@@ -521,20 +518,21 @@ function sh_spawn_bullet(shooter_st: ShooterState, owner: int, fac: int, px: int
     World.set(b, PC, World.field_id(PC, "h"), 4)
   }
   # announce it: a listener may veto (cancel -> despawn) or tweak the Projectile.
-  pr_set(b, "color", shooter_st.wpn_fire_color)
+  pr_set(b, "color", wpn_fire_color)
   if emit ProjectileSpawned(proj: b, owner: owner, damage: dmg) != 0 { despawn b;  return -1 }
   return b
 }
+var wpn_fire_color: int = 0xffffff              # the colour of the weapon being fired (sh_fire)
 
 # ===========================================================================
 # esys_weapon (Update) — fire-rate gating + pattern emission. Reads the owner's
 # TopDown.aim_angle + Weapon.want-fire-equivalent (TopDown.want_fire); one impl
 # serves player and NPC.
 # ===========================================================================
-@EngineSystem(Weapon, Update) function esys_weapon(shooter_st: mut ShooterState) -> void {
+@EngineSystem(Weapon, Update) function esys_weapon() -> void {
   let P = World.prop_id("Weapon")
   if P < 0 { return }
-  wpn_ensure(shooter_st)
+  wpn_ensure()
   var e = World.query_next(P, 0)
   while e >= 0 {
     let cd = World.get(e, P, World.field_id(P, "cooldown"))
@@ -542,34 +540,34 @@ function sh_spawn_bullet(shooter_st: ShooterState, owner: int, fac: int, px: int
     let fire = td_get(e, "want_fire")
     if (fire == 1) and (cd <= 0) {
       let id = World.get(e, P, World.field_id(P, "def_id"))
-      if (id >= 0) and (id < shooter_st.wpn_n) {
-        sh_fire(shooter_st, e, id)
-        World.set(e, P, World.field_id(P, "cooldown"), shooter_st.wpn_rate[id] * stats_field(e, "fire_rate_pct", 100) / 100)
+      if (id >= 0) and (id < wpn_n) {
+        sh_fire(e, id)
+        World.set(e, P, World.field_id(P, "cooldown"), wpn_rate[id] * stats_field(e, "fire_rate_pct", 100) / 100)
       }
     }
     e = World.query_next(P, e + 1)
   }
 }
 
-function sh_fire(shooter_st: mut ShooterState, owner: int, id: int) -> void {
+function sh_fire(owner: int, id: int) -> void {
   let px = sh_cx(owner)
   let py = sh_cy(owner)
   let base = td_get(owner, "aim_angle")
   let fac = Faction.id_of(owner)
-  let speed = shooter_st.wpn_speed[id]
-  let dmg = shooter_st.wpn_dmg[id]
-  let spread = shooter_st.wpn_spread[id]
-  let pellets0 = shooter_st.wpn_pellets[id]
-  let pattern = shooter_st.wpn_pattern[id]
-  let ttl = shooter_st.wpn_ttl[id]
-  let pierce = shooter_st.wpn_pierce[id]
-  let homing = shooter_st.wpn_homing[id]
-  shooter_st.wpn_fire_color = shooter_st.wpn_color[id]
+  let speed = wpn_speed[id]
+  let dmg = wpn_dmg[id]
+  let spread = wpn_spread[id]
+  let pellets0 = wpn_pellets[id]
+  let pattern = wpn_pattern[id]
+  let ttl = wpn_ttl[id]
+  let pierce = wpn_pierce[id]
+  let homing = wpn_homing[id]
+  wpn_fire_color = wpn_color[id]
   var pellets = pellets0;  if pellets < 1 { pellets = 1 }
   emit WeaponFired(owner: owner, def_id: id)
   if pattern == WeaponPattern.Ring {                # pellets around 360
     var i = 0
-    while i < pellets { sh_spawn_bullet(shooter_st, owner, fac, px, py, sh_wrap_deg(base + i * 360 / pellets), speed, dmg, ttl, pierce, homing);  i += 1 }
+    while i < pellets { sh_spawn_bullet(owner, fac, px, py, sh_wrap_deg(base + i * 360 / pellets), speed, dmg, ttl, pierce, homing);  i += 1 }
     return
   }
   if pattern == WeaponPattern.Spiral {              # ring + a rotating phase
@@ -577,18 +575,18 @@ function sh_fire(shooter_st: mut ShooterState, owner: int, id: int) -> void {
     let fph = World.field_id(PW, "phase")
     var ph = 0;  if fph >= 0 { ph = World.get(owner, PW, fph) }
     var i = 0
-    while i < pellets { sh_spawn_bullet(shooter_st, owner, fac, px, py, sh_wrap_deg(base + ph + i * 360 / pellets), speed, dmg, ttl, pierce, homing);  i += 1 }
+    while i < pellets { sh_spawn_bullet(owner, fac, px, py, sh_wrap_deg(base + ph + i * 360 / pellets), speed, dmg, ttl, pierce, homing);  i += 1 }
     if fph >= 0 { World.set(owner, PW, fph, sh_wrap_deg(ph + 15)) }
     return
   }
   # single / spread cone centred on the aim
   if pellets == 1 {
-    sh_spawn_bullet(shooter_st, owner, fac, px, py, base, speed, dmg, ttl, pierce, homing)
+    sh_spawn_bullet(owner, fac, px, py, base, speed, dmg, ttl, pierce, homing)
   } else {
     var i = 0
     while i < pellets {
       let off = -(spread / 2) + i * spread / (pellets - 1)
-      sh_spawn_bullet(shooter_st, owner, fac, px, py, sh_wrap_deg(base + off), speed, dmg, ttl, pierce, homing)
+      sh_spawn_bullet(owner, fac, px, py, sh_wrap_deg(base + off), speed, dmg, ttl, pierce, homing)
       i += 1
     }
   }
@@ -729,8 +727,8 @@ event WaveCleared { spawner: int = 0, wave: int = 0 }
 @Namespace(TopDown) function topdown_aim(e: int, deg: int) -> void { td_set(e, "aim_angle", deg) }
 @Namespace(TopDown) function topdown_fire(e: int, on: int) -> void { td_set(e, "want_fire", on) }
 # equip a weapon by registry name.
-@Namespace(Weapon) function weapon_equip(shooter_st: mut ShooterState, e: int, name: pointer) -> void {
+@Namespace(Weapon) function weapon_equip(e: int, name: pointer) -> void {
   let P = World.prop_id("Weapon")
   if P < 0 { return }
-  World.set(e, P, World.field_id(P, "def_id"), weapon_id(shooter_st, name))
+  World.set(e, P, World.field_id(P, "def_id"), weapon_id(name))
 }

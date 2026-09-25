@@ -1,56 +1,56 @@
 # system.ludic - the camera as a system: the roll and what has been photographed in its own save
 # section, by key. The best per subject follows from the frames, as a buyer would judge them.
-export function photo_config(base_st: mut BaseState, photo_st: mut PhotoState, max: int) -> void {
-  photo_st.pht_max = Math.max(max, 1)
-  photo_reset(base_st, photo_st)
+export function photo_config(max: int) -> void {
+  pht_max = Math.max(max, 1)
+  photo_reset()
 }
 
-export function photo_reset(base_st: mut BaseState, photo_st: mut PhotoState) -> void {
-  pht_blank(photo_st)
-  photo_st.pht_species_shot = 0
-  photo_st.pht_legend_shot = 0
-  photo_st.pht_cover = -1
-  photo_st.pht_page = 0
-  photo_frame_begin(photo_st)
-  q_clear(base_st, photo_facts(base_st, photo_st))
+export function photo_reset() -> void {
+  pht_blank()
+  pht_species_shot = 0
+  pht_legend_shot = 0
+  pht_cover = -1
+  pht_page = 0
+  photo_frame_begin()
+  q_clear(photo_facts())
 }
 
-export function photo_save(photo_st: PhotoState) -> Val {
+export function photo_save() -> Val {
   let v = Value.object()
   let l = Value.list()
-  for i in 0 .. photo_st.pht_n {
+  for i in 0 .. pht_n {
     let o = Value.object()
-    sv_put_int(o, "day", photo_st.pht_day[i])
-    sv_put_float(o, "hour", photo_st.pht_hour[i])
-    sv_put_int(o, "mask", photo_st.pht_mask[i])
-    sv_put_int(o, "legend", photo_st.pht_legend[i])
-    sv_put_bool(o, "sold", photo_st.pht_sold[i] != 0)
-    sv_put_str(o, "tags", photo_st.pht_tags[i])
-    sv_put_str(o, "file", photo_st.pht_file[i])
-    sv_put_int(o, "grade", photo_st.pht_grade[i])
-    sv_put_int(o, "why", photo_st.pht_why[i])
+    sv_put_int(o, "day", pht_day[i])
+    sv_put_float(o, "hour", pht_hour[i])
+    sv_put_int(o, "mask", pht_mask[i])
+    sv_put_int(o, "legend", pht_legend[i])
+    sv_put_bool(o, "sold", pht_sold[i] != 0)
+    sv_put_str(o, "tags", pht_tags[i])
+    sv_put_str(o, "file", pht_file[i])
+    sv_put_int(o, "grade", pht_grade[i])
+    sv_put_int(o, "why", pht_why[i])
     Value.add(l, o)
   }
   Value.put(v, "frames", l)
-  sv_put_int(v, "shot", photo_st.pht_species_shot)
-  sv_put_int(v, "legend_shot", photo_st.pht_legend_shot)
-  sv_put_int(v, "cover", photo_st.pht_cover)
-  sv_put_int(v, "sort", photo_st.pht_sort)
+  sv_put_int(v, "shot", pht_species_shot)
+  sv_put_int(v, "legend_shot", pht_legend_shot)
+  sv_put_int(v, "cover", pht_cover)
+  sv_put_int(v, "sort", pht_sort)
   return v
 }
 
-export function photo_load(base_st: mut BaseState, photo_st: mut PhotoState, v: Val, version: int) -> void {
-  photo_reset(base_st, photo_st)
+export function photo_load(v: Val, version: int) -> void {
+  photo_reset()
   if Value.has(v, "frames") != 0 {
     let l = Value.get(v, "frames")
     for i in 0 .. Value.count(l) {
       let o = Value.at(l, i)
-      photo_add(photo_st, sv_int(o, "day", 1), sv_float(o, "hour", 0.0), sv_int(o, "mask", 0), sv_int(o, "legend", 0), sv_bool(o, "sold", false), sv_str(o, "tags", ""), sv_str(o, "file", ""), sv_int(o, "grade", 40), sv_int(o, "why", PHOTO_WHY_NONE))
+      photo_add(sv_int(o, "day", 1), sv_float(o, "hour", 0.0), sv_int(o, "mask", 0), sv_int(o, "legend", 0), sv_bool(o, "sold", false), sv_str(o, "tags", ""), sv_str(o, "file", ""), sv_int(o, "grade", 40), sv_int(o, "why", PHOTO_WHY_NONE))
     }
   }
-  photo_record_set(photo_st, photo_st.pht_species_shot | sv_int(v, "shot", 0), sv_int(v, "legend_shot", 0))
-  photo_st.pht_cover = sv_int(v, "cover", -1)
-  photo_sort_set(photo_st, sv_int(v, "sort", PHOTO_NEWEST))
+  photo_record_set(pht_species_shot | sv_int(v, "shot", 0), sv_int(v, "legend_shot", 0))
+  pht_cover = sv_int(v, "cover", -1)
+  photo_sort_set(sv_int(v, "sort", PHOTO_NEWEST))
 }
 
 export function photo_system() -> System {

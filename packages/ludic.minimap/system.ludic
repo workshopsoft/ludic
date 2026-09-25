@@ -1,20 +1,20 @@
 # system.ludic - the map as a system: what has been seen and the marks, in its own save section by
 # key. The view is where the player left it this session and is not saved.
-export function minimap_reset(minimap_st: mut MinimapState) -> void {
-  mm_grid(minimap_st)
-  for c in 0 .. len(minimap_st.mm_seen) { minimap_st.mm_seen[c] = 0 }
-  minimap_st.mm_version += 1
-  minimap_pins_clear(minimap_st)
-  minimap_st.mm_have_view = false
-  minimap_st.mm_panning = false
+export function minimap_reset() -> void {
+  mm_grid()
+  for c in 0 .. len(mm_seen) { mm_seen[c] = 0 }
+  mm_version += 1
+  minimap_pins_clear()
+  mm_have_view = false
+  mm_panning = false
 }
 
-export function minimap_save(minimap_st: mut MinimapState) -> Val {
+export function minimap_save() -> Val {
   let v = Value.object()
-  sv_put_str(v, "seen", minimap_seen_text(minimap_st))
+  sv_put_str(v, "seen", minimap_seen_text())
   let l = Value.list()
-  for i in 0 .. minimap_pin_count(minimap_st) {
-    let p = minimap_st.mm_pins[i]
+  for i in 0 .. minimap_pin_count() {
+    let p = mm_pins[i]
     let o = Value.object()
     sv_put_float(o, "x", p.x)
     sv_put_float(o, "z", p.z)
@@ -25,23 +25,23 @@ export function minimap_save(minimap_st: mut MinimapState) -> Val {
     Value.add(l, o)
   }
   Value.put(v, "pins", l)
-  sv_put_int(v, "followed", minimap_pin_followed(minimap_st))
-  sv_put_int(v, "last", minimap_st.mm_last)
+  sv_put_int(v, "followed", minimap_pin_followed())
+  sv_put_int(v, "last", mm_last)
   return v
 }
 
-export function minimap_load(minimap_st: mut MinimapState, v: Val, version: int) -> void {
-  minimap_reset(minimap_st)
-  minimap_seen_from_text(minimap_st, sv_str(v, "seen", ""))
+export function minimap_load(v: Val, version: int) -> void {
+  minimap_reset()
+  minimap_seen_from_text(sv_str(v, "seen", ""))
   if Value.has(v, "pins") != 0 {
     let l = Value.get(v, "pins")
     for i in 0 .. Value.count(l) {
       let o = Value.at(l, i)
-      minimap_pin_put(minimap_st, sv_float(o, "x", 0.0), sv_float(o, "z", 0.0), sv_int(o, "icon", 0), sv_int(o, "colour", 0), sv_int(o, "day", 1), sv_str(o, "label", ""))
+      minimap_pin_put(sv_float(o, "x", 0.0), sv_float(o, "z", 0.0), sv_int(o, "icon", 0), sv_int(o, "colour", 0), sv_int(o, "day", 1), sv_str(o, "label", ""))
     }
   }
-  minimap_pin_follow(minimap_st, sv_int(v, "followed", -1))
-  minimap_st.mm_last = Math.clamp(sv_int(v, "last", 0), 0, minimap_st.mm_symbols - 1)
+  minimap_pin_follow(sv_int(v, "followed", -1))
+  mm_last = Math.clamp(sv_int(v, "last", 0), 0, mm_symbols - 1)
 }
 
 export function minimap_system() -> System {

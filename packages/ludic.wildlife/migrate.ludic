@@ -1,18 +1,18 @@
 # migrate.ludic - each morning the ranges slide toward where the season wants them, and the animals
 # that live in them are dragged along rather than teleported; an animal keeps inside its own
-export function wildlife_ranges_migrate(wildlife_st: mut WildlifeState) -> void {
-  let rs = wildlife_ranges(wildlife_st)
+export function wildlife_ranges_migrate() -> void {
+  let rs = wildlife_ranges()
   let w = WildlifeWorld.winterness()
   for i in 0 .. len(rs) {
     rs[i].x = Math.lerp(rs[i].sx, rs[i].wx, w)
     rs[i].z = Math.lerp(rs[i].sz, rs[i].wz, w)
   }
-  let all = wildlife_all(wildlife_st)
+  let all = wildlife_all()
   for i in 0 .. len(all) {
     let a = all[i]
-    let r = wildlife_range(wildlife_st, a.rg)
+    let r = wildlife_range(a.rg)
     if r == null { continue }
-    wl_clamp(wildlife_st, a)
+    wl_clamp(a)
     if wildlife_range_dist(r, a.home_x, a.home_z) > r.r * 1.2 {
       a.home_x = r.x
       a.home_z = r.z
@@ -24,8 +24,8 @@ export function wildlife_ranges_migrate(wildlife_st: mut WildlifeState) -> void 
 }
 
 # its home kept inside its range
-function wl_clamp(wildlife_st: mut WildlifeState, a: WildAnimal) -> void {
-  let r = wildlife_range(wildlife_st, a.rg)
+function wl_clamp(a: WildAnimal) -> void {
+  let r = wildlife_range(a.rg)
   if r == null { return }
   let d = wildlife_range_dist(r, a.home_x, a.home_z)
   if d < r.r { return }
@@ -34,26 +34,26 @@ function wl_clamp(wildlife_st: mut WildlifeState, a: WildAnimal) -> void {
 }
 
 # how many live in range `i`, legends apart
-export function wildlife_range_alive(wildlife_st: mut WildlifeState, i: int) -> int {
+export function wildlife_range_alive(i: int) -> int {
   var n = 0
-  let all = wildlife_all(wildlife_st)
+  let all = wildlife_all()
   for k in 0 .. len(all) { if all[k].alive and not all[k].legend and all[k].rg == i { n += 1 } }
   return n
 }
 
 # how many are alive in the whole valley, legends apart
-export function wildlife_total(wildlife_st: mut WildlifeState) -> int {
+export function wildlife_total() -> int {
   var n = 0
-  let all = wildlife_all(wildlife_st)
+  let all = wildlife_all()
   for k in 0 .. len(all) { if all[k].alive and not all[k].legend { n += 1 } }
   return n
 }
 
 # the nearest range of `sp` a player has found, to (x, z), or -1
-export function wildlife_range_found_near(wildlife_st: mut WildlifeState, sp: int, x: float, z: float) -> int {
+export function wildlife_range_found_near(sp: int, x: float, z: float) -> int {
   var best = -1
   var bd = 99999.0
-  let rs = wildlife_ranges(wildlife_st)
+  let rs = wildlife_ranges()
   for i in 0 .. len(rs) {
     if rs[i].sp != sp or not rs[i].found { continue }
     let d = wildlife_range_dist(rs[i], x, z)

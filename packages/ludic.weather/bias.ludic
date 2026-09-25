@@ -5,38 +5,38 @@ function wx_front_kind() -> int {
   return WeatherWorld.front()
 }
 
-function wx_want_wet(base_st: mut BaseState, weather_st: mut WeatherState) -> void {
-  if weather_st.wx_kinds[weather_st.wx_state].wet or weather_st.wx_forced { return }
+function wx_want_wet() -> void {
+  if wx_kinds[wx_state].wet or wx_forced { return }
   let front = wx_front_kind()
-  weather_st.wx_next = front
-  weather_st.wx_forecast = front
-  weather_st.wx_forced = true
-  if weather_st.wx_left > 1.5 { weather_st.wx_left = 1.5 }
-  wx_fact(base_st, weather_st, WEATHER_FRONT, front, weather_st.wx_state)
+  wx_next = front
+  wx_forecast = front
+  wx_forced = true
+  if wx_left > 1.5 { wx_left = 1.5 }
+  wx_fact(WEATHER_FRONT, front, wx_state)
 }
 
-function wx_hold(weather_st: mut WeatherState) -> void {
-  if weather_st.wx_left < 1.2 {
-    weather_st.wx_left = 1.2
-    weather_st.wx_next = weather_st.wx_state
+function wx_hold() -> void {
+  if wx_left < 1.2 {
+    wx_left = 1.2
+    wx_next = wx_state
   }
 }
 
-function wx_want_clear(weather_st: mut WeatherState) -> void {
-  let clear = wx_clear_kind(weather_st)
-  if weather_st.wx_state != clear and not weather_st.wx_forced {
-    if weather_st.wx_left > 0.5 { weather_st.wx_left = 0.5 }
-    weather_st.wx_next = clear
+function wx_want_clear() -> void {
+  let clear = wx_clear_kind()
+  if wx_state != clear and not wx_forced {
+    if wx_left > 0.5 { wx_left = 0.5 }
+    wx_next = clear
   }
-  if weather_st.wx_state == clear and weather_st.wx_left < 1.0 {
-    weather_st.wx_left = 1.0
-    weather_st.wx_next = clear
+  if wx_state == clear and wx_left < 1.0 {
+    wx_left = 1.0
+    wx_next = clear
   }
 }
 
-function wx_apply_bias(base_st: mut BaseState, weather_st: mut WeatherState) -> void {
+function wx_apply_bias() -> void {
   let b = wx_bias()
-  if b == WEATHER_WANT_WET { wx_want_wet(base_st, weather_st) }
-  if b == WEATHER_HOLD { wx_hold(weather_st) }
-  if b == WEATHER_WANT_CLEAR { wx_want_clear(weather_st) }
+  if b == WEATHER_WANT_WET { wx_want_wet() }
+  if b == WEATHER_HOLD { wx_hold() }
+  if b == WEATHER_WANT_CLEAR { wx_want_clear() }
 }

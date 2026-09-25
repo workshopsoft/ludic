@@ -3,15 +3,13 @@
 # Running it prints: 1 2 3 4 5 6 7 8 9 10 11 12
 program Floats {
   const HALF: float = 0.5
-  state FloatsState {
-    g_gravity: float = -9.81
-  }
+  var g_gravity: float = -9.81
 
   property Body { x: float = 1.25, vy: float, mass: double = 70.5 }
 
   function lerp(a: float, b: float, t: float) -> float { return a + (b - a) * t }
 
-  entry (floats_st: FloatsState) {
+  entry {
     let a: float = 0.1
     if a * 3 > 0.29 and a * 3 < 0.31 { print(1) }            # the int 3 promotes
     if lerp(0, 10, 0.25) == 2.5 { print(2) }                  # ints and literals as floats
@@ -20,7 +18,7 @@ program Floats {
     if string(a + 0.2) == "0.3" { print(4) }                  # shortest text that reads back
 
     let b = new Body
-    b.vy = b.vy + floats_st.g_gravity * HALF
+    b.vy = b.vy + g_gravity * HALF
     if b.vy < -4.9 and b.vy > -4.91 and b.mass == 70.5 { print(5) }
 
     let v = floats(3)

@@ -6,11 +6,11 @@ import "ludic.ui"
 import "ui_controls_parts/Settings.ludic"
 program UiControls {
   numbers float
-  function frame(ui_st: mut UiState, i: UiInput) -> UiNode {
-    ui_input(ui_st, i)
-    ui_show(ui_st, "Settings", null, 0.0, 0.0, 400.0, 400.0)
-    let root: UiNode = ui_nodes(ui_st, "Settings", null)
-    ui_place(ui_st, root, 0.0, 0.0, 400.0, 400.0)
+  function frame(i: UiInput) -> UiNode {
+    ui_input(i)
+    ui_show("Settings", null, 0.0, 0.0, 400.0, 400.0)
+    let root: UiNode = ui_nodes("Settings", null)
+    ui_place(root, 0.0, 0.0, 400.0, 400.0)
     return root
   }
   function press(tab: bool, down: bool, right: bool, enter: bool) -> UiInput {
@@ -26,30 +26,30 @@ program UiControls {
     let last = page.children[len(page.children) - 1]
     return last.text
   }
-  entry (ui_st: mut UiState) {
-    ui_backend(ui_st, new UiBackend)
-    var root = frame(ui_st, new UiInput)
-    root = frame(ui_st, press(true, false, false, false))
-    root = frame(ui_st, press(false, false, false, true))
-    root = frame(ui_st, press(false, true, false, false))
-    root = frame(ui_st, press(false, false, false, true))
-    root = frame(ui_st, press(false, true, false, false))
-    root = frame(ui_st, press(false, false, true, false))
-    root = frame(ui_st, press(false, false, true, false))
-    root = frame(ui_st, press(false, true, false, false))
-    root = frame(ui_st, press(false, false, true, false))
-    root = frame(ui_st, press(false, true, false, false))
+  entry {
+    ui_backend(new UiBackend)
+    var root = frame(new UiInput)
+    root = frame(press(true, false, false, false))
+    root = frame(press(false, false, false, true))
+    root = frame(press(false, true, false, false))
+    root = frame(press(false, false, false, true))
+    root = frame(press(false, true, false, false))
+    root = frame(press(false, false, true, false))
+    root = frame(press(false, false, true, false))
+    root = frame(press(false, true, false, false))
+    root = frame(press(false, false, true, false))
+    root = frame(press(false, true, false, false))
     let typed = new UiInput
     typed.typed = "lovelace"
-    root = frame(ui_st, typed)
+    root = frame(typed)
     let back = new UiInput
     back.backspace = true
-    root = frame(ui_st, back)
-    root = frame(ui_st, press(false, true, false, false))
-    root = frame(ui_st, press(false, false, false, true))
+    root = frame(back)
+    root = frame(press(false, true, false, false))
+    root = frame(press(false, false, false, true))
     let k = new UiInput
     k.key = 70
-    root = frame(ui_st, k)
+    root = frame(k)
     print(state(root))
     let range = root.children[0].children[2]
     let track = range.children[1]
@@ -57,15 +57,15 @@ program UiControls {
     at.x = track.x + track.cw * 0.8
     at.y = track.y + 2.0
     at.down = true
-    root = frame(ui_st, at)
-    root = frame(ui_st, new UiInput)
+    root = frame(at)
+    root = frame(new UiInput)
     let list = root.children[0].children[6]
     let w = new UiInput
     w.x = list.x + 5.0
     w.y = list.y + 5.0
     w.wheel = -1.0
-    root = frame(ui_st, w)
-    root = frame(ui_st, new UiInput)
+    root = frame(w)
+    root = frame(new UiInput)
     print(`{state(root)}; scrolled {int(root.children[0].children[6].scroll_y)}`)
   }
 }

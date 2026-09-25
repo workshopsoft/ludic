@@ -8,12 +8,12 @@ function el_sides_border(n: UiNode, w: float) -> void {
   n.bl = w
 }
 # border-bottom: 3px solid var(--accent) - one side's width, and the colour for the border
-function el_border_side(ui_st: mut UiState, n: UiNode, key: string, s: string) -> void {
+function el_border_side(n: UiNode, key: string, s: string) -> void {
   let keep_t = n.bt
   let keep_r = n.br
   let keep_b = n.bb
   let keep_l = n.bl
-  el_border(ui_st, n, s)
+  el_border(n, s)
   let w = n.bt
   n.bt = keep_t
   n.br = keep_r

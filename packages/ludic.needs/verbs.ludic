@@ -1,58 +1,58 @@
 # verbs.ludic - the only way the needs change from outside; each is held to 0..100
 # `n` more of a need (less, when negative): a meal, a drink, a shove from a bear
-export function needs_feed(needs_st: mut NeedsState, k: int, n: float) -> void {
-  if nd_ok(k) { nd_add(needs_st, k, n) }
+export function needs_feed(k: int, n: float) -> void {
+  if nd_ok(k) { nd_add(k, n) }
 }
 
 # a meal: food, water and energy at once
-export function needs_meal(needs_st: mut NeedsState, food: float, water: float, energy: float) -> void {
-  nd_add(needs_st, NEED_FOOD, food)
-  nd_add(needs_st, NEED_WATER, water)
-  nd_add(needs_st, NEED_ENERGY, energy)
+export function needs_meal(food: float, water: float, energy: float) -> void {
+  nd_add(NEED_FOOD, food)
+  nd_add(NEED_WATER, water)
+  nd_add(NEED_ENERGY, energy)
 }
 
-export function needs_set(needs_st: mut NeedsState, k: int, v: float) -> void {
-  if nd_ok(k) { nd_lv(needs_st)[k] = Math.clamp(v, 0.0, 100.0) }
+export function needs_set(k: int, v: float) -> void {
+  if nd_ok(k) { nd_lv()[k] = Math.clamp(v, 0.0, 100.0) }
 }
 
 # at least `v`
-export function needs_floor(needs_st: mut NeedsState, k: int, v: float) -> void {
-  if nd_ok(k) and nd_lv(needs_st)[k] < v { needs_set(needs_st, k, v) }
+export function needs_floor(k: int, v: float) -> void {
+  if nd_ok(k) and nd_lv()[k] < v { needs_set(k, v) }
 }
 
 # a night: rested to what it was worth, hungrier and thirstier for it, but never empty
-export function needs_after_night(needs_st: mut NeedsState, rested: float, food_lost: float, water_lost: float) -> void {
-  let lv = nd_lv(needs_st)
+export function needs_after_night(rested: float, food_lost: float, water_lost: float) -> void {
+  let lv = nd_lv()
   lv[NEED_ENERGY] = Math.clamp(rested, 0.0, 100.0)
   lv[NEED_FOOD] = Math.max(lv[NEED_FOOD] - food_lost, 6.0)
   if water_lost > 0.0 { lv[NEED_WATER] = Math.max(lv[NEED_WATER] - water_lost, 5.0) }
 }
 
 # the countdown called off, and nothing said (a wake, a load, a test)
-export function needs_calm(needs_st: mut NeedsState) -> void { needs_st.nd_legs = 0.0 }
+export function needs_calm() -> void { nd_legs = 0.0 }
 
 # the body went down, however: one more collapse, and no countdown running
-export function needs_went_down(needs_st: mut NeedsState) -> void {
-  needs_st.nd_collapses += 1
-  needs_st.nd_legs = 0.0
+export function needs_went_down() -> void {
+  nd_collapses += 1
+  nd_legs = 0.0
 }
 
 # a hand up: the cost is in the body, and nothing goes below twenty
-export function needs_helped_up(needs_st: mut NeedsState) -> void {
-  let lv = nd_lv(needs_st)
+export function needs_helped_up() -> void {
+  let lv = nd_lv()
   lv[NEED_WARMTH] = Math.max(20.0, lv[NEED_WARMTH] - 15.0)
   lv[NEED_FOOD] = Math.max(20.0, lv[NEED_FOOD] - 15.0)
   lv[NEED_WATER] = Math.max(20.0, lv[NEED_WATER] - 15.0)
   lv[NEED_ENERGY] = Math.max(20.0, lv[NEED_ENERGY] - 25.0)
-  needs_st.nd_legs = 0.0
+  nd_legs = 0.0
 }
 
 # a new trip: fed, watered, rested and warm, and never walked out
-export function needs_reset(base_st: mut BaseState, needs_st: mut NeedsState) -> void {
-  nd_lv(needs_st)
-  nd_fill(needs_st)
-  needs_st.nd_legs = 0.0
-  needs_st.nd_last = 0
-  needs_st.nd_collapses = 0
-  q_clear(base_st, needs_facts(base_st, needs_st))
+export function needs_reset() -> void {
+  nd_lv()
+  nd_fill()
+  nd_legs = 0.0
+  nd_last = 0
+  nd_collapses = 0
+  q_clear(needs_facts())
 }

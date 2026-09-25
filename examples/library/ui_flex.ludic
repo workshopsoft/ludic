@@ -4,21 +4,19 @@
 import "ludic.ui"
 program UiFlex {
   numbers float
-  state UiflexState {
-    picked: int = 1
-  }
-  view Tags (uiflex_st: UiflexState) {
-    picked = uiflex_st.picked
+  var picked: int = 1
+  view Tags {
+    picked = picked
   }
   const BASE: string = "/* base.lss - every text small */\ntext { size: 10 }\n"
   const THEME: string = "/* theme.lss - the base, and a colour for what is on */\n@import \"base.lss\";\n.on { color: #ff0000 }\n"
   const PAGE: string = "<ui>\n<import src='theme.lss'/>\n<style>\nrow.bar { gap: 10; pad: 5 }\ntext.big { size: {picked * 20} }\n</style>\n<screen name='flex' gap='8'>\n  <row class='bar' w='fill'>\n    <text grow='1'>a</text><text grow='3'>b</text>\n  </row>\n  <row w='fill' justify='between'><text>l</text><text>m</text><text>r</text></row>\n  <row w='200' wrap='true' gap='4'>\n    <each in='{range(6)}' as='i'><text w='60' class='{i == picked ? \"on\" : \"\"}'>t{i}</text></each>\n  </row>\n  <row h='40' align='stretch' w='fill'><col w='30' bg='#00ff00'/><text self='end' class='big' size='12'>x</text></row>\n</screen>\n</ui>\n"
-  entry (ui_st: mut UiState) {
-    ui_load_text(ui_st, BASE, "ui/base.lss")
-    ui_load_text(ui_st, THEME, "ui/theme.lss")
-    ui_load_text(ui_st, PAGE, "ui/flex.xml")
-    let root: UiNode = ui_nodes(ui_st, "flex", view_tags())
-    ui_place(ui_st, root, 0.0, 0.0, 400.0, 300.0)
+  entry {
+    ui_load_text(BASE, "ui/base.lss")
+    ui_load_text(THEME, "ui/theme.lss")
+    ui_load_text(PAGE, "ui/flex.xml")
+    let root: UiNode = ui_nodes("flex", view_tags())
+    ui_place(root, 0.0, 0.0, 400.0, 300.0)
     let bar = root.children[0]
     let wrap = root.children[2]
     let tall = root.children[3]

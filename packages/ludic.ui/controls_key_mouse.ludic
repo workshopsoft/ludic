@@ -4,19 +4,19 @@
 export const UI_MOUSE_LEFT: int = 256
 export const UI_MOUSE_RIGHT: int = 257
 export const UI_MOUSE_MIDDLE: int = 258
-function ct_key_mouse(ui_st: mut UiState, root: UiNode) -> bool {
-  if ui_st.ct_capture == "" or ui_st.ct_capture_at == ui_st.an_frame { return false }
-  let b = pe_pressed(ui_st.in_now, ui_st.in_last)
+function ct_key_mouse(root: UiNode) -> bool {
+  if ct_capture == "" or ct_capture_at == an_frame { return false }
+  let b = pe_pressed(in_now, in_last)
   if b < 0 { return false }
-  let n = fr_node(root, ui_st.ct_capture)
-  ui_st.ct_capture = ""
-  ui_st.ct_capture_seen = ui_st.an_frame
-  ui_st.fr_press_key = ""
-  if n != null { ct_change(ui_st, n, Value.int(UI_MOUSE_LEFT + b)) }
+  let n = fr_node(root, ct_capture)
+  ct_capture = ""
+  ct_capture_seen = an_frame
+  fr_press_key = ""
+  if n != null { ct_change(n, Value.int(UI_MOUSE_LEFT + b)) }
   return true
 }
-function ct_mouse_name(ui_st: UiState, v: int) -> string {
-  if v == UI_MOUSE_RIGHT { return ui_tr(ui_st, "Right click") }
-  if v == UI_MOUSE_MIDDLE { return ui_tr(ui_st, "Middle click") }
-  return ui_tr(ui_st, "Left click")
+function ct_mouse_name(v: int) -> string {
+  if v == UI_MOUSE_RIGHT { return ui_tr("Right click") }
+  if v == UI_MOUSE_MIDDLE { return ui_tr("Middle click") }
+  return ui_tr("Left click")
 }

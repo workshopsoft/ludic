@@ -11,18 +11,18 @@ program UiComponent {
     if n.text != "" { push(out, n.text) }
     for i in 0 .. len(n.children) { texts(n.children[i], out) }
   }
-  function frame(ui_st: mut UiState) -> UiNode {
-    let root: UiNode = ui_nodes(ui_st, "App", null)
-    ui_place(ui_st, root, 0.0, 0.0, 400.0, 400.0)
+  function frame() -> UiNode {
+    let root: UiNode = ui_nodes("App", null)
+    ui_place(root, 0.0, 0.0, 400.0, 400.0)
     return root
   }
-  entry (ui_st: mut UiState) {
-    var root = frame(ui_st)
+  entry {
+    var root = frame()
     let b = root.children[0].children[2]
-    ui_press(ui_st, b.children[1])
-    ui_press(ui_st, b.children[1])
-    ui_press(ui_st, root.children[0].children[1].children[1])
-    root = frame(ui_st)
+    ui_press(b.children[1])
+    ui_press(b.children[1])
+    ui_press(root.children[0].children[1].children[1])
+    root = frame()
     let out = new []string
     texts(root, out)
     var joined = ""
@@ -30,8 +30,8 @@ program UiComponent {
     print(joined)
     let b2 = root.children[0].children[2]
     print(`b margin {int(b2.mt)}; b text {b2.children[0].fg}; outside {root.children[0].children[3].fg}; button {int(b2.children[1].ch)}`)
-    ui_press(ui_st, b2.children[2])
-    root = frame(ui_st)
+    ui_press(b2.children[2])
+    root = frame()
     print(root.children[0].children[2].children[0].text)
   }
 }

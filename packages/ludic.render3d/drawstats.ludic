@@ -26,86 +26,103 @@ const DS_RANGE: int = 3
 const DS_INDIRECT: int = 4
 const DS_KINDS: int = 5
 
+var ds_on: int = -1                  # -1: not read yet
+var ds_counting: bool = false
+var ds_from: int = 90
+var ds_frames: int = 60
+var ds_frame_no: int = 0
+var ds_outside: pointer = "(outside passes)"
 
 # passes, in the order the frame first opens them
+var ds_pass_names: []pointer = null
+var ds_pass_prog: []long = null      # program changes inside the pass
+var ds_pass_tex: []long = null       # texture binds inside the pass
+var ds_pass_i: int = 0
 
 # rows: (pass, program, kind)
+var ds_row_pass: []int = null
+var ds_row_prog: []int = null
+var ds_row_kind: []int = null
+var ds_row_draws: []long = null
+var ds_row_inst: []long = null
+var ds_row_idx: []long = null
+var ds_last: int = -1
 
-function ds_enabled(render3d_st: mut Render3dState) -> bool {
-  if render3d_st.ds_on < 0 {
-    render3d_st.ds_on = 0
-    if r3d_env_has(render3d_st, "R3D_DRAWSTATS") {
-      render3d_st.ds_on = 1
-      render3d_st.ds_frames = Text.to_int(r3d_env(render3d_st, "R3D_DRAWSTATS"))
-      if render3d_st.ds_frames < 2 { render3d_st.ds_frames = 60 }
-      if r3d_env_has(render3d_st, "R3D_DRAWSTATS_FROM") { render3d_st.ds_from = Text.to_int(r3d_env(render3d_st, "R3D_DRAWSTATS_FROM")) }
-      render3d_st.ds_pass_names = new []pointer;  render3d_st.ds_pass_prog = new []long;  render3d_st.ds_pass_tex = new []long
-      render3d_st.ds_row_pass = new []int;  render3d_st.ds_row_prog = new []int;  render3d_st.ds_row_kind = new []int
-      render3d_st.ds_row_draws = new []long;  render3d_st.ds_row_inst = new []long;  render3d_st.ds_row_idx = new []long
-      ds_set_pass(render3d_st, render3d_st.ds_outside)
+function ds_enabled() -> bool {
+  if ds_on < 0 {
+    ds_on = 0
+    if r3d_env_has("R3D_DRAWSTATS") {
+      ds_on = 1
+      ds_frames = Text.to_int(r3d_env("R3D_DRAWSTATS"))
+      if ds_frames < 2 { ds_frames = 60 }
+      if r3d_env_has("R3D_DRAWSTATS_FROM") { ds_from = Text.to_int(r3d_env("R3D_DRAWSTATS_FROM")) }
+      ds_pass_names = new []pointer;  ds_pass_prog = new []long;  ds_pass_tex = new []long
+      ds_row_pass = new []int;  ds_row_prog = new []int;  ds_row_kind = new []int
+      ds_row_draws = new []long;  ds_row_inst = new []long;  ds_row_idx = new []long
+      ds_set_pass(ds_outside)
     }
   }
-  return render3d_st.ds_on == 1
+  return ds_on == 1
 }
 
 # the profiler's pass boundaries (prof_begin / prof_end), whether or not R3D_PROF is on
-function ds_set_pass(render3d_st: mut Render3dState, name: pointer) -> void {
-  if render3d_st.ds_on != 1 { return }
-  render3d_st.ds_last = -1
+function ds_set_pass(name: pointer) -> void {
+  if ds_on != 1 { return }
+  ds_last = -1
   var i = 0
-  while i < len(render3d_st.ds_pass_names) {
-    if render3d_st.ds_pass_names[i] == name { render3d_st.ds_pass_i = i;  return }
+  while i < len(ds_pass_names) {
+    if ds_pass_names[i] == name { ds_pass_i = i;  return }
     i += 1
   }
-  push(render3d_st.ds_pass_names, name);  push(render3d_st.ds_pass_prog, 0);  push(render3d_st.ds_pass_tex, 0)
-  render3d_st.ds_pass_i = len(render3d_st.ds_pass_names) - 1
+  push(ds_pass_names, name);  push(ds_pass_prog, 0);  push(ds_pass_tex, 0)
+  ds_pass_i = len(ds_pass_names) - 1
 }
 
 # once per render frame, before any of its work (prof_gen_frame)
-function ds_frame(render3d_st: mut Render3dState) -> void {
-  if not ds_enabled(render3d_st) { return }
-  render3d_st.ds_frame_no += 1
-  ds_set_pass(render3d_st, render3d_st.ds_outside)
-  if render3d_st.ds_frame_no == render3d_st.ds_from {
-    render3d_st.ds_counting = true
-    print(`r3d: drawstats counting frames {render3d_st.ds_from}..{render3d_st.ds_from + render3d_st.ds_frames - 1}`)
+function ds_frame() -> void {
+  if not ds_enabled() { return }
+  ds_frame_no += 1
+  ds_set_pass(ds_outside)
+  if ds_frame_no == ds_from {
+    ds_counting = true
+    print(`r3d: drawstats counting frames {ds_from}..{ds_from + ds_frames - 1}`)
   }
-  if render3d_st.ds_frame_no == render3d_st.ds_from + render3d_st.ds_frames {
-    render3d_st.ds_counting = false
-    ds_report(render3d_st)
+  if ds_frame_no == ds_from + ds_frames {
+    ds_counting = false
+    ds_report()
   }
 }
 
-function ds_draw(render3d_st: mut Render3dState, kind: int, instances: int, indices: int) -> void {
-  if render3d_st.ds_on != 1 or not render3d_st.ds_counting { return }
-  let p = render3d_st.gpu_prog_cur
-  var r = render3d_st.ds_last
-  if r < 0 or render3d_st.ds_row_prog[r] != p or render3d_st.ds_row_kind[r] != kind or render3d_st.ds_row_pass[r] != render3d_st.ds_pass_i {
+function ds_draw(kind: int, instances: int, indices: int) -> void {
+  if ds_on != 1 or not ds_counting { return }
+  let p = gpu_prog_cur
+  var r = ds_last
+  if r < 0 or ds_row_prog[r] != p or ds_row_kind[r] != kind or ds_row_pass[r] != ds_pass_i {
     r = -1
     var i = 0
-    while r < 0 and i < len(render3d_st.ds_row_pass) {
-      if render3d_st.ds_row_pass[i] == render3d_st.ds_pass_i and render3d_st.ds_row_prog[i] == p and render3d_st.ds_row_kind[i] == kind { r = i }
+    while r < 0 and i < len(ds_row_pass) {
+      if ds_row_pass[i] == ds_pass_i and ds_row_prog[i] == p and ds_row_kind[i] == kind { r = i }
       i += 1
     }
     if r < 0 {
-      push(render3d_st.ds_row_pass, render3d_st.ds_pass_i);  push(render3d_st.ds_row_prog, p);  push(render3d_st.ds_row_kind, kind)
-      push(render3d_st.ds_row_draws, 0);  push(render3d_st.ds_row_inst, 0);  push(render3d_st.ds_row_idx, 0)
-      r = len(render3d_st.ds_row_pass) - 1
+      push(ds_row_pass, ds_pass_i);  push(ds_row_prog, p);  push(ds_row_kind, kind)
+      push(ds_row_draws, 0);  push(ds_row_inst, 0);  push(ds_row_idx, 0)
+      r = len(ds_row_pass) - 1
     }
-    render3d_st.ds_last = r
+    ds_last = r
   }
-  render3d_st.ds_row_draws[r] = render3d_st.ds_row_draws[r] + 1
-  render3d_st.ds_row_inst[r] = render3d_st.ds_row_inst[r] + instances
-  render3d_st.ds_row_idx[r] = render3d_st.ds_row_idx[r] + indices
+  ds_row_draws[r] = ds_row_draws[r] + 1
+  ds_row_inst[r] = ds_row_inst[r] + instances
+  ds_row_idx[r] = ds_row_idx[r] + indices
 }
 
-function ds_program_change(render3d_st: mut Render3dState, from: int, to: int) -> void {
-  if render3d_st.ds_on != 1 or not render3d_st.ds_counting or from == to { return }
-  render3d_st.ds_pass_prog[render3d_st.ds_pass_i] = render3d_st.ds_pass_prog[render3d_st.ds_pass_i] + 1
+function ds_program_change(from: int, to: int) -> void {
+  if ds_on != 1 or not ds_counting or from == to { return }
+  ds_pass_prog[ds_pass_i] = ds_pass_prog[ds_pass_i] + 1
 }
-function ds_tex_bind(render3d_st: mut Render3dState) -> void {
-  if render3d_st.ds_on != 1 or not render3d_st.ds_counting { return }
-  render3d_st.ds_pass_tex[render3d_st.ds_pass_i] = render3d_st.ds_pass_tex[render3d_st.ds_pass_i] + 1
+function ds_tex_bind() -> void {
+  if ds_on != 1 or not ds_counting { return }
+  ds_pass_tex[ds_pass_i] = ds_pass_tex[ds_pass_i] + 1
 }
 
 function ds_kind_name(k: int) -> pointer {
@@ -116,18 +133,18 @@ function ds_kind_name(k: int) -> pointer {
   return "indirect"
 }
 # a per-frame mean with one decimal
-function ds_per(render3d_st: Render3dState, v: long) -> string {
-  let x = (v * 10) / render3d_st.ds_frames
+function ds_per(v: long) -> string {
+  let x = (v * 10) / ds_frames
   return `{string(x / 10)}.{string(x % 10)}`
 }
-function ds_backend(render3d_st: Render3dState) -> pointer {
-  if render3d_st.gpu_kind == GPU_VK { return "vulkan" }
+function ds_backend() -> pointer {
+  if gpu_kind == GPU_VK { return "vulkan" }
   return "opengl"
 }
 
-function ds_report(render3d_st: mut Render3dState) -> void {
-  let n_rows = len(render3d_st.ds_row_pass)
-  let n_pass = len(render3d_st.ds_pass_names)
+function ds_report() -> void {
+  let n_rows = len(ds_row_pass)
+  let n_pass = len(ds_pass_names)
   var total: long = 0
   let by_kind = new []long
   for k in 0 .. DS_KINDS { push(by_kind, 0) }
@@ -135,20 +152,20 @@ function ds_report(render3d_st: mut Render3dState) -> void {
   let pass_inst = new []long
   for s in 0 .. n_pass { push(pass_draws, 0);  push(pass_inst, 0) }
   for r in 0 .. n_rows {
-    total = total + render3d_st.ds_row_draws[r]
-    by_kind[render3d_st.ds_row_kind[r]] = by_kind[render3d_st.ds_row_kind[r]] + render3d_st.ds_row_draws[r]
-    pass_draws[render3d_st.ds_row_pass[r]] = pass_draws[render3d_st.ds_row_pass[r]] + render3d_st.ds_row_draws[r]
-    pass_inst[render3d_st.ds_row_pass[r]] = pass_inst[render3d_st.ds_row_pass[r]] + render3d_st.ds_row_inst[r]
+    total = total + ds_row_draws[r]
+    by_kind[ds_row_kind[r]] = by_kind[ds_row_kind[r]] + ds_row_draws[r]
+    pass_draws[ds_row_pass[r]] = pass_draws[ds_row_pass[r]] + ds_row_draws[r]
+    pass_inst[ds_row_pass[r]] = pass_inst[ds_row_pass[r]] + ds_row_inst[r]
   }
   print("")
-  print(`draw calls per frame ({ds_backend(render3d_st)}, {gl_w}x{gl_h}, mean of {render3d_st.ds_frames} frames from {render3d_st.ds_from}): {ds_per(render3d_st, total)}`)
+  print(`draw calls per frame ({ds_backend()}, {gl_w}x{gl_h}, mean of {ds_frames} frames from {ds_from}): {ds_per(total)}`)
   var kinds = ""
-  for k in 0 .. DS_KINDS { kinds = kinds + `  {ds_kind_name(k)} {ds_per(render3d_st, by_kind[k])}` }
+  for k in 0 .. DS_KINDS { kinds = kinds + `  {ds_kind_name(k)} {ds_per(by_kind[k])}` }
   print(`  by kind:{kinds}`)
   print("")
   print("  pass                        draws   instances   program changes   texture binds")
   for s in 0 .. n_pass {
-    print(`  {Text.pad_right(render3d_st.ds_pass_names[s], 24)} {Text.pad_left(ds_per(render3d_st, pass_draws[s]), 9)} {Text.pad_left(ds_per(render3d_st, pass_inst[s]), 11)} {Text.pad_left(ds_per(render3d_st, render3d_st.ds_pass_prog[s]), 17)} {Text.pad_left(ds_per(render3d_st, render3d_st.ds_pass_tex[s]), 15)}`)
+    print(`  {Text.pad_right(ds_pass_names[s], 24)} {Text.pad_left(ds_per(pass_draws[s]), 9)} {Text.pad_left(ds_per(pass_inst[s]), 11)} {Text.pad_left(ds_per(ds_pass_prog[s]), 17)} {Text.pad_left(ds_per(ds_pass_tex[s]), 15)}`)
   }
   # rows by draws, most first
   let order = new []int
@@ -157,7 +174,7 @@ function ds_report(render3d_st: mut Render3dState) -> void {
   while a < n_rows {
     let v = order[a]
     var b = a - 1
-    while b >= 0 and render3d_st.ds_row_draws[order[b]] < render3d_st.ds_row_draws[v] { order[b + 1] = order[b];  b -= 1 }
+    while b >= 0 and ds_row_draws[order[b]] < ds_row_draws[v] { order[b + 1] = order[b];  b -= 1 }
     order[b + 1] = v
     a += 1
   }
@@ -167,19 +184,19 @@ function ds_report(render3d_st: mut Render3dState) -> void {
   var shown = 0
   while shown < 40 and shown < n_rows {
     let r = order[shown]
-    print(`  {Text.pad_left(ds_per(render3d_st, render3d_st.ds_row_draws[r]), 9)} {Text.pad_left(ds_per(render3d_st, render3d_st.ds_row_inst[r]), 11)} {Text.pad_left(ds_per(render3d_st, render3d_st.ds_row_idx[r]), 12)}  {Text.pad_right(render3d_st.ds_pass_names[render3d_st.ds_row_pass[r]], 24)}  {Text.pad_right(ds_kind_name(render3d_st.ds_row_kind[r]), 14)}  {gpu_program_key(render3d_st, render3d_st.ds_row_prog[r])}`)
+    print(`  {Text.pad_left(ds_per(ds_row_draws[r]), 9)} {Text.pad_left(ds_per(ds_row_inst[r]), 11)} {Text.pad_left(ds_per(ds_row_idx[r]), 12)}  {Text.pad_right(ds_pass_names[ds_row_pass[r]], 24)}  {Text.pad_right(ds_kind_name(ds_row_kind[r]), 14)}  {gpu_program_key(ds_row_prog[r])}`)
     shown += 1
   }
   var path = "build/drawstats.csv"
-  if r3d_env_has(render3d_st, "R3D_DRAWSTATS_CSV") { path = r3d_env(render3d_st, "R3D_DRAWSTATS_CSV") }
+  if r3d_env_has("R3D_DRAWSTATS_CSV") { path = r3d_env("R3D_DRAWSTATS_CSV") }
   let f = file_open(path, "wb")
   if f == null { print(`r3d: drawstats could not write {path}`);  return }
   let head = "backend,width,height,frames,pass,kind,program,draws_per_frame,instances_per_frame,indices_per_frame,pass_program_changes_per_frame,pass_texture_binds_per_frame\n"
   file_write(f, head, len(head))
   for i in 0 .. n_rows {
     let r = order[i]
-    let s = render3d_st.ds_row_pass[r]
-    let line = `{ds_backend(render3d_st)},{gl_w},{gl_h},{render3d_st.ds_frames},"{render3d_st.ds_pass_names[s]}",{ds_kind_name(render3d_st.ds_row_kind[r])},"{gpu_program_key(render3d_st, render3d_st.ds_row_prog[r])}",{ds_per(render3d_st, render3d_st.ds_row_draws[r])},{ds_per(render3d_st, render3d_st.ds_row_inst[r])},{ds_per(render3d_st, render3d_st.ds_row_idx[r])},{ds_per(render3d_st, render3d_st.ds_pass_prog[s])},{ds_per(render3d_st, render3d_st.ds_pass_tex[s])}\n`
+    let s = ds_row_pass[r]
+    let line = `{ds_backend()},{gl_w},{gl_h},{ds_frames},"{ds_pass_names[s]}",{ds_kind_name(ds_row_kind[r])},"{gpu_program_key(ds_row_prog[r])}",{ds_per(ds_row_draws[r])},{ds_per(ds_row_inst[r])},{ds_per(ds_row_idx[r])},{ds_per(ds_pass_prog[s])},{ds_per(ds_pass_tex[s])}\n`
     file_write(f, line, len(line))
   }
   file_close(f)

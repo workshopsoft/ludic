@@ -4,27 +4,27 @@
 export const VEHICLE_HAY_MIN: float = 10.0     # a horse with less hay than this will not go
 
 # this machine's player onto v; false when it is somebody else's, taken, or a hungry horse
-export function vehicle_mount(base_st: mut BaseState, vehicles_st: mut VehiclesState, v: Vehicle) -> bool {
-  if v == null or v.owner != 0 or v.rider >= 0 or vehicles_st.ve_cur != null { return false }
+export function vehicle_mount(v: Vehicle) -> bool {
+  if v == null or v.owner != 0 or v.rider >= 0 or ve_cur != null { return false }
   if v.kind == VEHICLE_HORSE and v.food < VEHICLE_HAY_MIN {
-    ve_say(base_st, vehicles_st, VEHICLE_HUNGRY, v, v.food)
+    ve_say(VEHICLE_HUNGRY, v, v.food)
     return false
   }
-  vehicles_st.ve_cur = v
+  ve_cur = v
   v.rider = 0
   VehicleRider.board(v.x, v.z, v.yaw)
-  ve_say(base_st, vehicles_st, VEHICLE_MOUNTED, v, 0.0)
+  ve_say(VEHICLE_MOUNTED, v, 0.0)
   return true
 }
 
 # Off, onto the nearest spot a body could stand and walk off: from a boat a wade of up to 1.25 m
 # within ten metres, from a horse beside its right flank. False (and said) when a boat is too far out.
-export function vehicle_dismount(base_st: mut BaseState, vehicles_st: mut VehiclesState) -> bool {
-  let v = vehicles_st.ve_cur
+export function vehicle_dismount() -> bool {
+  let v = ve_cur
   if v == null { return false }
   if v.kind == VEHICLE_BOAT {
     if not VehicleRider.safe_spot(v.x, v.z, VehicleWorld.water(v.x, v.z), 1.25) {
-      ve_say(base_st, vehicles_st, VEHICLE_NO_LANDING, v, 0.0)
+      ve_say(VEHICLE_NO_LANDING, v, 0.0)
       return false
     }
     VehicleRider.step_off(VehicleRider.safe_x(), VehicleRider.safe_z())
@@ -37,18 +37,18 @@ export function vehicle_dismount(base_st: mut BaseState, vehicles_st: mut Vehicl
     v.home_x = v.x
     v.home_z = v.z
   }
-  vehicles_st.ve_cur = null
+  ve_cur = null
   v.rider = -1
   v.speed = 0.0
-  ve_say(base_st, vehicles_st, VEHICLE_DISMOUNTED, v, 0.0)
+  ve_say(VEHICLE_DISMOUNTED, v, 0.0)
   return true
 }
 
 # off whatever this player is on, wherever it is (a load, a collapse, a map change)
-export function vehicle_drop(vehicles_st: mut VehiclesState) -> void {
-  if vehicles_st.ve_cur != null {
-    vehicles_st.ve_cur.rider = -1
-    vehicles_st.ve_cur.speed = 0.0
+export function vehicle_drop() -> void {
+  if ve_cur != null {
+    ve_cur.rider = -1
+    ve_cur.speed = 0.0
   }
-  vehicles_st.ve_cur = null
+  ve_cur = null
 }

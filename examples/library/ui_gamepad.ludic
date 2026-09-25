@@ -5,21 +5,19 @@ import "ludic.ui"
 import "ui_gamepad_parts/Pad.ludic"
 program UiGamepad {
   numbers float
-  state UigamepadState {
-    now: float = 0.0
-  }
-  function clock(uigamepad_st: UigamepadState) -> float { return uigamepad_st.now }
-  function frame(ui_st: mut UiState, i: UiInput) -> string {
-    ui_input(ui_st, i)
-    ui_show(ui_st, "Pad", null, 0.0, 0.0, 400.0, 600.0)
-    let page = ui_nodes(ui_st, "Pad", null).children[0]
+  var now: float = 0.0
+  function clock() -> float { return now }
+  function frame(i: UiInput) -> string {
+    ui_input(i)
+    ui_show("Pad", null, 0.0, 0.0, 400.0, 600.0)
+    let page = ui_nodes("Pad", null).children[0]
     return page.children[len(page.children) - 1].text
   }
   # `what` held for `secs` at `hz`, then let go
-  function hold(ui_st: mut UiState, uigamepad_st: mut UigamepadState, what: string, secs: float, hz: int) -> string {
+  function hold(what: string, secs: float, hz: int) -> string {
     let frames = int(secs * float(hz) + 0.5)
     for k in 0 .. frames + 1 {
-      uigamepad_st.now = uigamepad_st.now + 1.0 / float(hz)
+      now = now + 1.0 / float(hz)
       let i = new UiInput
       i.held_up = what == "up"
       i.held_down = what == "down"
@@ -27,28 +25,28 @@ program UiGamepad {
       i.held_right = what == "right"
       i.pad_a = what == "a"
       i.pad_b = what == "b"
-      frame(ui_st, i)
+      frame(i)
     }
-    uigamepad_st.now = uigamepad_st.now + 1.0 / float(hz)
-    return frame(ui_st, new UiInput)
+    now = now + 1.0 / float(hz)
+    return frame(new UiInput)
   }
-  function tap(ui_st: mut UiState, uigamepad_st: mut UigamepadState, what: string) -> string { return hold(ui_st, uigamepad_st, what, 0.0, 60) }
-  entry (ui_st: mut UiState, uigamepad_st: mut UigamepadState) {
-    ui_backend(ui_st, new UiBackend)
-    ui_clock(ui_st, fn clock)
-    frame(ui_st, new UiInput)
-    hold(ui_st, uigamepad_st, "down", 1.0, 240)
-    let fast = tap(ui_st, uigamepad_st, "a")
-    hold(ui_st, uigamepad_st, "down", 1.0, 60)
-    hold(ui_st, uigamepad_st, "up", 0.5, 60)
-    let slow = tap(ui_st, uigamepad_st, "a")
-    for k in 0 .. 8 { tap(ui_st, uigamepad_st, "down") }
-    let vol = hold(ui_st, uigamepad_st, "right", 0.5, 60)
-    tap(ui_st, uigamepad_st, "down")
-    let q = tap(ui_st, uigamepad_st, "left")
-    tap(ui_st, uigamepad_st, "down")
-    let open = tap(ui_st, uigamepad_st, "a")
-    let shut = tap(ui_st, uigamepad_st, "b")
+  function tap(what: string) -> string { return hold(what, 0.0, 60) }
+  entry {
+    ui_backend(new UiBackend)
+    ui_clock(fn clock)
+    frame(new UiInput)
+    hold("down", 1.0, 240)
+    let fast = tap("a")
+    hold("down", 1.0, 60)
+    hold("up", 0.5, 60)
+    let slow = tap("a")
+    for k in 0 .. 8 { tap("down") }
+    let vol = hold("right", 0.5, 60)
+    tap("down")
+    let q = tap("left")
+    tap("down")
+    let open = tap("a")
+    let shut = tap("b")
     print(`{fast} | {slow} | {vol} | {q} | {open} | {shut}`)
   }
 }

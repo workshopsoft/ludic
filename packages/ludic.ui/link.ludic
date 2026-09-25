@@ -1,23 +1,23 @@
 # link.ludic - each tag in a file that is not an element names a component: the file's own, an
 # unnamed import's exported one, or `as:Name` from the import called `as`
 const LK_OWN: string = " row button input select textarea progress meter spacer scroll img hr if else each slot state style component screen import let fragment template provide #text "
-function lib_link(ui_st: mut UiState, f: UiFile, t: UiTpl) -> void {
+function lib_link(f: UiFile, t: UiTpl) -> void {
   t.sheet = f.sheet
-  if not lk_element(ui_st, t.tag) {
+  if not lk_element(t.tag) {
     t.comp = lk_find(f, t.tag, false)
-    if t.comp == null { t.cls = uc_find(ui_st, t.tag) }
+    if t.comp == null { t.cls = uc_find(t.tag) }
     if t.cls != null {
-      lk_kids(ui_st, f, t)
+      lk_kids(f, t)
       return
     }
-    if t.comp == null and lk_find(f, t.tag, true) != null { ui_err(ui_st, `{t.where}: <{t.tag}>: that component is not exported - export="true" on it lets other files use it`) } else if t.comp == null { ui_err(ui_st, `{t.where}: <{t.tag}>: there is no such element, and no component of that name here or exported by an import`) }
+    if t.comp == null and lk_find(f, t.tag, true) != null { ui_err(`{t.where}: <{t.tag}>: that component is not exported - export="true" on it lets other files use it`) } else if t.comp == null { ui_err(`{t.where}: <{t.tag}>: there is no such element, and no component of that name here or exported by an import`) }
   }
-  lk_kids(ui_st, f, t)
+  lk_kids(f, t)
 }
-function lk_kids(ui_st: mut UiState, f: UiFile, t: UiTpl) -> void {
-  for i in 0 .. len(t.kids) { lib_link(ui_st, f, t.kids[i]) }
+function lk_kids(f: UiFile, t: UiTpl) -> void {
+  for i in 0 .. len(t.kids) { lib_link(f, t.kids[i]) }
 }
-function lk_element(ui_st: UiState, tag: string) -> bool { return lk_in(LK_OWN, tag) or lk_in(EL_BOXES, tag) or lk_in(EL_TEXTS, tag) or nt_find(ui_st, tag) != null }
+function lk_element(tag: string) -> bool { return lk_in(LK_OWN, tag) or lk_in(EL_BOXES, tag) or lk_in(EL_TEXTS, tag) or nt_find(tag) != null }
 # a word in a list of words written " a b c "
 function lk_in(words: string, w: string) -> bool {
   let pat = ` {w} `

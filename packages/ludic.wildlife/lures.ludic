@@ -1,9 +1,13 @@
 # lures.ludic - what an animal would walk to: food of its diet, a lure of its diet, a snare it is
 # small enough for (half the time: a curiosity), within 70 m - 175 m for food while feeding is taught
+var wl_ask: WildLure = null
+var wl_best: WildLure = null
+var wl_seed_any: bool = false
+var wl_seed_t: float = 0.0
 
-function wl_lure_scratch(wildlife_st: mut WildlifeState) -> void {
-  if wildlife_st.wl_ask == null { wildlife_st.wl_ask = new WildLure }
-  if wildlife_st.wl_best == null { wildlife_st.wl_best = new WildLure }
+function wl_lure_scratch() -> void {
+  if wl_ask == null { wl_ask = new WildLure }
+  if wl_best == null { wl_best = new WildLure }
 }
 
 function wl_copy_lure(from: WildLure, to: WildLure) -> void {
@@ -16,82 +20,82 @@ function wl_copy_lure(from: WildLure, to: WildLure) -> void {
   to.owner = from.owner
 }
 
-function wl_draws(wildlife_st: mut WildlifeState, a: WildAnimal, l: WildLure) -> bool {
-  let s = wl_sp(wildlife_st, a.sp)
-  if l.kind == WILD_SNARE { return s.size <= l.size and wl_rnd(wildlife_st) > 0.5 }
+function wl_draws(a: WildAnimal, l: WildLure) -> bool {
+  let s = wl_sp(a.sp)
+  if l.kind == WILD_SNARE { return s.size <= l.size and wl_rnd() > 0.5 }
   return l.diet == s.diet and l.diet != WILD_SEED
 }
 
 # the nearest thing set out that draws it, into `wl_best`; false when none does
-function wl_attraction(wildlife_st: mut WildlifeState, a: WildAnimal) -> bool {
-  wl_lure_scratch(wildlife_st)
+function wl_attraction(a: WildAnimal) -> bool {
+  wl_lure_scratch()
   var bd = 70.0
   var got = false
   let taught = WildlifeWorld.taught()
   for i in 0 .. WildlifeWorld.lures() {
-    if not WildlifeWorld.lure(i, wildlife_st.wl_ask) or not wl_draws(wildlife_st, a, wildlife_st.wl_ask) { continue }
-    let dx = wildlife_st.wl_ask.x - a.x
-    let dz = wildlife_st.wl_ask.z - a.z
+    if not WildlifeWorld.lure(i, wl_ask) or not wl_draws(a, wl_ask) { continue }
+    let dx = wl_ask.x - a.x
+    let dz = wl_ask.z - a.z
     var d = Math.sqrt(dx * dx + dz * dz)
-    if taught and wildlife_st.wl_ask.kind == WILD_FEED { d = d * 0.4 }
+    if taught and wl_ask.kind == WILD_FEED { d = d * 0.4 }
     if d < bd {
       bd = d
       got = true
-      wl_copy_lure(wildlife_st.wl_ask, wildlife_st.wl_best)
+      wl_copy_lure(wl_ask, wl_best)
     }
   }
   return got
 }
 
-function wl_take_lure(wildlife_st: WildlifeState, a: WildAnimal) -> void {
-  a.lure = wildlife_st.wl_best.uid
-  a.lure_kind = wildlife_st.wl_best.kind
-  a.lure_x = wildlife_st.wl_best.x
-  a.lure_z = wildlife_st.wl_best.z
-  a.lure_owner = wildlife_st.wl_best.owner
+function wl_take_lure(a: WildAnimal) -> void {
+  a.lure = wl_best.uid
+  a.lure_kind = wl_best.kind
+  a.lure_x = wl_best.x
+  a.lure_z = wl_best.z
+  a.lure_owner = wl_best.owner
   a.state = WILD_APPROACH
 }
 
 # Is there ANY seed down? Asked once a second for the whole flock rather than per bird per tick.
-function wl_seed_scan(wildlife_st: mut WildlifeState, dt: float) -> void {
-  wildlife_st.wl_seed_t = wildlife_st.wl_seed_t - dt
-  if wildlife_st.wl_seed_t > 0.0 { return }
-  wildlife_st.wl_seed_t = 1.0
-  wildlife_st.wl_seed_any = false
-  wl_lure_scratch(wildlife_st)
+function wl_seed_scan(dt: float) -> void {
+  wl_seed_t = wl_seed_t - dt
+  if wl_seed_t > 0.0 { return }
+  wl_seed_t = 1.0
+  wl_seed_any = false
+  wl_lure_scratch()
   for i in 0 .. WildlifeWorld.lures() {
-    if WildlifeWorld.lure(i, wildlife_st.wl_ask) and wildlife_st.wl_ask.kind == WILD_FEED and wildlife_st.wl_ask.diet == WILD_SEED {
-      wildlife_st.wl_seed_any = true
+    if WildlifeWorld.lure(i, wl_ask) and wl_ask.kind == WILD_FEED and wl_ask.diet == WILD_SEED {
+      wl_seed_any = true
       return
     }
   }
 }
 
 # the nearest seed within 120 m, into `wl_best`: the one thing that brings an animal TO you
-function wl_bird_seed(wildlife_st: mut WildlifeState, a: WildAnimal) -> bool {
-  if not wildlife_st.wl_seed_any { return false }
-  wl_lure_scratch(wildlife_st)
+function wl_bird_seed(a: WildAnimal) -> bool {
+  if not wl_seed_any { return false }
+  wl_lure_scratch()
   var bd = 120.0
   var got = false
   for i in 0 .. WildlifeWorld.lures() {
-    if not WildlifeWorld.lure(i, wildlife_st.wl_ask) or wildlife_st.wl_ask.kind != WILD_FEED or wildlife_st.wl_ask.diet != WILD_SEED { continue }
-    let dx = wildlife_st.wl_ask.x - a.x
-    let dz = wildlife_st.wl_ask.z - a.z
+    if not WildlifeWorld.lure(i, wl_ask) or wl_ask.kind != WILD_FEED or wl_ask.diet != WILD_SEED { continue }
+    let dx = wl_ask.x - a.x
+    let dz = wl_ask.z - a.z
     let d = Math.sqrt(dx * dx + dz * dz)
     if d < bd {
       bd = d
       got = true
-      wl_copy_lure(wildlife_st.wl_ask, wildlife_st.wl_best)
+      wl_copy_lure(wl_ask, wl_best)
     }
   }
   return got
 }
 
 # it ate what was set out: calm for three game hours, and the game credits whoever left it
-function wl_ate(base_st: mut BaseState, wildlife_st: mut WildlifeState, a: WildAnimal, uid: int, owner: int, diet: int) -> void {
+function wl_ate(a: WildAnimal, uid: int, owner: int, diet: int) -> void {
   a.calm = 180.0
   a.fed += 1
-  let f = wl_fact(base_st, wildlife_st, WILD_FED, a)
+  let f = wl_fact(WILD_FED, a)
   f.lure = uid
   f.owner = owner
   f.diet = diet

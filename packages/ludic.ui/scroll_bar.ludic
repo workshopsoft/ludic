@@ -1,57 +1,63 @@
 # scroll_bar.ludic - a scroll box's bar: .ui-scrollbar, the track down its right edge, and its
 # .ui-thumb, styled by the default sheet or a theme as the box's own parts. A press on the thumb holds
 # it where it was taken; a press on the track jumps the thumb's middle to the pointer and holds it there.
+var sb_x: float = 0.0
+var sb_w: float = 0.0
+var sb_ty: float = 0.0
+var sb_th: float = 0.0
+var sb_bar: UiNode = null
+var sc_grab: float = 0.0        # how far below the thumb's top the pointer holds it
 # the bar's parts, styled as descendants of the box, and where they are at this offset
-function sb_geo(ui_st: mut UiState, n: UiNode, off: float, room: float, most: float) -> void {
+function sb_geo(n: UiNode, off: float, room: float, most: float) -> void {
   let bar = ct_part(n, "ui-scrollbar", "")
   bar.tag = "div"
   bar.parent = n
   push(bar.children, ct_part(n, "ui-thumb", ""))
-  cs_tree(ui_st, bar)
-  ui_st.sb_bar = bar
-  ui_st.sb_w = ui_px(ui_st, 6.0)
-  if bar.w >= 0.0 { ui_st.sb_w = bar.w }
-  ui_st.sb_x = n.x + n.cw - ui_st.sb_w - bar.mr
-  var least = ui_px(ui_st, 24.0)
+  cs_tree(bar)
+  sb_bar = bar
+  sb_w = ui_px(6.0)
+  if bar.w >= 0.0 { sb_w = bar.w }
+  sb_x = n.x + n.cw - sb_w - bar.mr
+  var least = ui_px(24.0)
   if len(bar.children) > 0 and bar.children[0].min_h > 0.0 { least = bar.children[0].min_h }
-  ui_st.sb_th = Math.min(Math.max(n.ch * room / (room + most), least), n.ch)
-  ui_st.sb_ty = n.y
-  if most > 0.0 { ui_st.sb_ty = n.y + (n.ch - ui_st.sb_th) * Math.clamp(off, 0.0, most) / most }
+  sb_th = Math.min(Math.max(n.ch * room / (room + most), least), n.ch)
+  sb_ty = n.y
+  if most > 0.0 { sb_ty = n.y + (n.ch - sb_th) * Math.clamp(off, 0.0, most) / most }
 }
 # the pointer on the bar: taken on a press over it, moved while held, let go on release
-function sb_input(ui_st: mut UiState, n: UiNode, off: float, room: float, most: float) -> float {
-  let i = ui_st.in_now
+function sb_input(n: UiNode, off: float, room: float, most: float) -> float {
+  let i = in_now
   if most <= 0.0 or room <= 0.0 { return off }
-  if i.down and not ui_st.in_was_down and ui_st.sc_drag == "" {
-    sb_geo(ui_st, n, off, room, most)
-    let reach = Math.min(ui_st.sb_x, n.x + n.cw - ui_px(ui_st, 14.0))
+  if i.down and not in_was_down and sc_drag == "" {
+    sb_geo(n, off, room, most)
+    let reach = Math.min(sb_x, n.x + n.cw - ui_px(14.0))
     let over = i.x >= reach and i.y >= n.y and i.x < n.x + n.cw and i.y < n.y + n.ch
-    if over and not ui_st.sb_bar.hidden {
-      ui_st.sc_drag = n.key
-      ui_st.sc_grab = ui_st.sb_th / 2.0
-      if i.y >= ui_st.sb_ty and i.y < ui_st.sb_ty + ui_st.sb_th { ui_st.sc_grab = i.y - ui_st.sb_ty }
+    if over and not sb_bar.hidden {
+      sc_drag = n.key
+      sc_grab = sb_th / 2.0
+      if i.y >= sb_ty and i.y < sb_ty + sb_th { sc_grab = i.y - sb_ty }
     }
   }
-  if ui_st.sc_drag != n.key { return off }
-  sb_geo(ui_st, n, off, room, most)
-  let span = n.ch - ui_st.sb_th
+  if sc_drag != n.key { return off }
+  sb_geo(n, off, room, most)
+  let span = n.ch - sb_th
   if span <= 0.0 { return off }
-  return (i.y - ui_st.sc_grab - n.y) / span * most
+  return (i.y - sc_grab - n.y) / span * most
 }
 # the track, then the thumb over it; scrollbar-color on the box wins over the parts' backgrounds
-function sc_bar(ui_st: mut UiState, n: UiNode) -> void {
+function sc_bar(n: UiNode) -> void {
   let room = n.ch - ly_vin(n)
   let most = n.content_h - ly_vin(n) - room
-  if most <= 0.0 or ui_st.ui_be.rect == null { return }
-  sb_geo(ui_st, n, n.scroll_y, room, most)
-  let bar = ui_st.sb_bar
+  if most <= 0.0 or ui_be.rect == null { return }
+  sb_geo(n, n.scroll_y, room, most)
+  let bar = sb_bar
   if bar.hidden { return }
   var track = bar.bg
   if n.bar_track != -2 { track = n.bar_track }
-  if track >= 0 { fr_box(ui_st, ui_st.sb_x, n.y, ui_st.sb_w, n.ch, bar.radius, track, bar.bg_a * ui_st.fr_ga) }
+  if track >= 0 { fr_box(sb_x, n.y, sb_w, n.ch, bar.radius, track, bar.bg_a * fr_ga) }
   if len(bar.children) == 0 { return }
   let t = bar.children[0]
   var thumb = t.bg
   if n.bar_c >= 0 { thumb = n.bar_c }
-  if thumb >= 0 { fr_box(ui_st, ui_st.sb_x, ui_st.sb_ty, ui_st.sb_w, ui_st.sb_th, t.radius, thumb, t.bg_a * ui_st.fr_ga) }
+  if thumb >= 0 { fr_box(sb_x, sb_ty, sb_w, sb_th, t.radius, thumb, t.bg_a * fr_ga) }
 }

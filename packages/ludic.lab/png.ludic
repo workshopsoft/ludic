@@ -1,27 +1,28 @@
 # png.ludic - the renderer writes a frame as a PPM; the lab keeps it as a PNG, stored rather than
 # compressed (a PNG anything opens, with no zlib here): the shot is the PPM's pixels, filter 0
 # on every row, in deflate's stored blocks, with its CRCs and its Adler-32.
+var lp_table: []long = null
 
-function lp_table_init(lab_st: mut LabState) -> void {
-  if lab_st.lp_table != null { return }
-  lab_st.lp_table = new []long
+function lp_table_init() -> void {
+  if lp_table != null { return }
+  lp_table = new []long
   let poly: long = 3988292384            # 0xEDB88320: eight hex digits would be a 32-bit pattern
   for n in 0 .. 256 {
     var c = long(n)
     for k in 0 .. 8 {
       if (c & long(1)) != long(0) { c = (c >> long(1)) ^ poly } else { c = c >> long(1) }
     }
-    push(lab_st.lp_table, c)
+    push(lp_table, c)
   }
 }
 # CRC-32 of out[from .. from + n)
-function lp_crc(lab_st: mut LabState, out: []byte, from: int, n: int) -> long {
-  lp_table_init(lab_st)
+function lp_crc(out: []byte, from: int, n: int) -> long {
+  lp_table_init()
   let mask: long = 4294967295
   var c = mask
   for i in from .. from + n {
     let k = int((c ^ long(out[i])) & long(255))
-    c = lab_st.lp_table[k] ^ (c >> long(8))
+    c = lp_table[k] ^ (c >> long(8))
   }
   return c ^ mask
 }
@@ -35,7 +36,9 @@ function lp_tag(out: []byte, at: int, tag: string) -> void {
   for i in 0 .. 4 { out[at + i] = tag[i] }
 }
 # a PPM's header: "P6", width, height, maxval, each after white space; returns the pixel offset
-function lp_ppm_header(lab_st: mut LabState, d: []byte) -> int {
+var lp_w: int = 0
+var lp_h: int = 0
+function lp_ppm_header(d: []byte) -> int {
   var i = 2
   var got = 0
   var vals = new []int
@@ -49,17 +52,17 @@ function lp_ppm_header(lab_st: mut LabState, d: []byte) -> int {
     push(vals, v)
     got += 1
   }
-  lab_st.lp_w = vals[0]
-  lab_st.lp_h = vals[1]
+  lp_w = vals[0]
+  lp_h = vals[1]
   return i + 1
 }
 # the PPM at `ppm` as a PNG at `png`; the PPM is removed
-export function lab_ppm_to_png(lab_st: mut LabState, ppm: string, png: string) -> bool {
+export function lab_ppm_to_png(ppm: string, png: string) -> bool {
   let d = Fs.read_bytes(ppm)
   if d == null or len(d) < 8 { return false }
-  let px = lp_ppm_header(lab_st, d)
-  let w = lab_st.lp_w
-  let h = lab_st.lp_h
+  let px = lp_ppm_header(d)
+  let w = lp_w
+  let h = lp_h
   let row = w * 3 + 1
   let raw = row * h
   let blocks = (raw + 65534) / 65535
@@ -78,7 +81,7 @@ export function lab_ppm_to_png(lab_st: mut LabState, ppm: string, png: string) -
   out[at + 18] = 0
   out[at + 19] = 0
   out[at + 20] = 0
-  lp_put32(out, at + 21, lp_crc(lab_st, out, at + 4, 17))
+  lp_put32(out, at + 21, lp_crc(out, at + 4, 17))
   at += 25
   lp_put32(out, at, long(idat))
   lp_tag(out, at + 4, "IDAT")
@@ -115,11 +118,11 @@ export function lab_ppm_to_png(lab_st: mut LabState, ppm: string, png: string) -
   }
   lp_put32(out, o, long(b) * long(65536) + long(a))
   o += 4
-  lp_put32(out, o, lp_crc(lab_st, out, at + 4, o - at - 4))
+  lp_put32(out, o, lp_crc(out, at + 4, o - at - 4))
   o += 4
   lp_put32(out, o, long(0))
   lp_tag(out, o + 4, "IEND")
-  lp_put32(out, o + 8, lp_crc(lab_st, out, o + 4, 4))
+  lp_put32(out, o + 8, lp_crc(out, o + 4, 4))
   o += 12
   if not Fs.write_bytes(png, out, o) { return false }
   Fs.remove(ppm)

@@ -1,12 +1,10 @@
 # app/index.ludic - the app puts the program together: it sees the port and fills it
 module app uses clock
 bind Clock { now: fn game_hours }
-export state AppState {
-  g_hours: int = 30
+var g_hours: int = 30
+function game_hours() -> int {
+  return g_hours
 }
-function game_hours(app_st: AppState) -> int {
-  return app_st.g_hours
-}
-export function advance(app_st: mut AppState, h: int) -> void {
-  app_st.g_hours += h
+export function advance(h: int) -> void {
+  g_hours += h
 }

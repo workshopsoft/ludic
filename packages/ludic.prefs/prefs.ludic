@@ -9,51 +9,49 @@
 
 const PREFS_MAX: int = 64
 
-state PrefsState {
-  prefs_path:  pointer  = null
-  prefs_names: pointers = null
-  prefs_vals:  words    = null
-  prefs_n:     int      = 0
-}
+var prefs_path:  pointer  = null
+var prefs_names: pointers = null
+var prefs_vals:  words    = null
+var prefs_n:     int      = 0
 
 namespace Prefs {
-  internal function init(prefs_st: mut PrefsState) -> void {
-    if prefs_st.prefs_names != null { return }
-    prefs_st.prefs_names = pointers(PREFS_MAX)
-    prefs_st.prefs_vals  = words(PREFS_MAX)
-    prefs_st.prefs_n = 0
+  internal function init() -> void {
+    if prefs_names != null { return }
+    prefs_names = pointers(PREFS_MAX)
+    prefs_vals  = words(PREFS_MAX)
+    prefs_n = 0
   }
 
-  internal function find(prefs_st: PrefsState, key: pointer) -> int {
+  internal function find(key: pointer) -> int {
     var i = 0
-    while i < prefs_st.prefs_n { if prefs_st.prefs_names[i] == key { return i };  i += 1 }
+    while i < prefs_n { if prefs_names[i] == key { return i };  i += 1 }
     return -1
   }
 
-  export function get(prefs_st: mut PrefsState, key: pointer, fallback: int) -> int {
-    init(prefs_st)
-    let i = find(prefs_st, key)
+  export function get(key: pointer, fallback: int) -> int {
+    init()
+    let i = find(key)
     if i < 0 { return fallback }
-    return prefs_st.prefs_vals[i]
+    return prefs_vals[i]
   }
 
   # keep the larger of the stored value and `value`; true when `value` is a new record
-  export function max(prefs_st: mut PrefsState, key: pointer, value: int) -> bool {
-    if value <= get(prefs_st, key, 0) { return false }
-    set(prefs_st, key, value)
+  export function max(key: pointer, value: int) -> bool {
+    if value <= get(key, 0) { return false }
+    set(key, value)
     return true
   }
 
-  export function set(prefs_st: mut PrefsState, key: pointer, value: int) -> void {
-    init(prefs_st)
-    var i = find(prefs_st, key)
+  export function set(key: pointer, value: int) -> void {
+    init()
+    var i = find(key)
     if i < 0 {
-      if prefs_st.prefs_n >= PREFS_MAX { return }
-      i = prefs_st.prefs_n
-      prefs_st.prefs_names[i] = key
-      prefs_st.prefs_n += 1
+      if prefs_n >= PREFS_MAX { return }
+      i = prefs_n
+      prefs_names[i] = key
+      prefs_n += 1
     }
-    prefs_st.prefs_vals[i] = value
+    prefs_vals[i] = value
   }
 
   # the text of a whole file, or null when it does not exist
@@ -71,7 +69,7 @@ namespace Prefs {
   }
 
   # digits after `=` on one line -> an int (a leading '-' negates)
-  internal function parse_line(prefs_st: mut PrefsState, buf: pointer, from: int, to: int) -> void {
+  internal function parse_line(buf: pointer, from: int, to: int) -> void {
     var eq = from
     while (eq < to) and (buf[eq] != '=') { eq += 1 }          # '='
     if eq >= to { return }
@@ -85,21 +83,21 @@ namespace Prefs {
     if (p < to) and (buf[p] == '-') { neg = true;  p += 1 }   # '-'
     while (p < to) and (buf[p] >= '0') and (buf[p] <= '9') { v = v * 10 + (buf[p] - 48);  p += 1 }
     if neg { v = -v }
-    set(prefs_st, key, v)
+    set(key, v)
   }
 
-  export function load(prefs_st: mut PrefsState, path: pointer) -> void {
-    init(prefs_st)
-    prefs_st.prefs_path = path
+  export function load(path: pointer) -> void {
+    init()
+    prefs_path = path
     let buf = read_all(path)
     if buf == null { return }
     var start = 0
     var i = 0
     while buf[i] != 0 {
-      if buf[i] == '\n' { parse_line(prefs_st, buf, start, i);  start = i + 1 }   # newline
+      if buf[i] == '\n' { parse_line(buf, start, i);  start = i + 1 }   # newline
       i += 1
     }
-    if i > start { parse_line(prefs_st, buf, start, i) }
+    if i > start { parse_line(buf, start, i) }
   }
 
   internal function write_text(f: pointer, s: pointer) -> void {
@@ -108,14 +106,14 @@ namespace Prefs {
     file_write(f, s, n)
   }
 
-  export function save(prefs_st: mut PrefsState) -> void {
-    init(prefs_st)
-    if prefs_st.prefs_path == null { return }
-    let f = file_open(prefs_st.prefs_path, "wb")
+  export function save() -> void {
+    init()
+    if prefs_path == null { return }
+    let f = file_open(prefs_path, "wb")
     if f == null { return }
     var i = 0
-    while i < prefs_st.prefs_n {
-      write_text(f, `{prefs_st.prefs_names[i]}={string(prefs_st.prefs_vals[i])}\n`)
+    while i < prefs_n {
+      write_text(f, `{prefs_names[i]}={string(prefs_vals[i])}\n`)
       i += 1
     }
     file_close(f)

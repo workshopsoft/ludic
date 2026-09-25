@@ -4,37 +4,35 @@
 import "ludic.audio"
 program AudioTest {
   numbers float
-  state AudiotestState {
-    lx: float = 0.0
-    lz: float = 0.0
-    lyaw: float = 0.0
-  }
-  function t_x(audiotest_st: AudiotestState) -> float { return audiotest_st.lx }
-  function t_z(audiotest_st: AudiotestState) -> float { return audiotest_st.lz }
-  function t_yaw(audiotest_st: AudiotestState) -> float { return audiotest_st.lyaw }
+  var lx: float = 0.0
+  var lz: float = 0.0
+  var lyaw: float = 0.0
+  function t_x() -> float { return lx }
+  function t_z() -> float { return lz }
+  function t_yaw() -> float { return lyaw }
   function dir() -> string { return Os.temp_dir() + "/ludic-audio-test" }
   function cache() -> string { return dir() + "/cache" }
   bind AudioListener { x: fn t_x, z: fn t_z, yaw: fn t_yaw }
   bind AudioFiles { cache_dir: fn cache }
 
-  test "the gain falls off with distance and is gone past the range" (audiotest_st: mut AudiotestState) {
+  test "the gain falls off with distance and is gone past the range" {
     let near = aud_gain_at(0.0, -10.0, 200.0)
     let mid = aud_gain_at(0.0, -100.0, 200.0)
     let far = aud_gain_at(0.0, -150.0, 200.0)
     expect(near > mid and mid > far and far > 0.0)
     expect_eq(aud_gain_at(0.0, -400.0, 200.0), 0.0)
     expect_near(aud_gain_at(0.0, 0.0, 50.0), 1.0, 0.0001)
-    audiotest_st.lx = 1000.0
+    lx = 1000.0
     expect_near(aud_gain_at(1000.0, 0.0, 50.0), 1.0, 0.0001)
   }
 
-  test "the pan says which side, ahead and behind are centred, and it turns with the listener" (audiotest_st: mut AudiotestState) {
+  test "the pan says which side, ahead and behind are centred, and it turns with the listener" {
     expect(aud_pan_at(-60.0, 0.0) < -0.5)
     expect(aud_pan_at(60.0, 0.0) > 0.5)
     expect_near(aud_pan_at(0.0, -60.0), 0.0, 0.01)
     expect_near(aud_pan_at(0.0, 60.0), 0.0, 0.01)
     expect_near(aud_pan_at(0.5, 0.0), 0.0, 0.0001)
-    audiotest_st.lyaw = 3.14159265
+    lyaw = 3.14159265
     expect(aud_pan_at(-60.0, 0.0) > 0.5)
   }
 
@@ -43,18 +41,18 @@ program AudioTest {
     expect(aud_pitch_at(0.0) > 0.9 and aud_pitch_at(1.0) < 1.1)
   }
 
-  test "emit hands the runtime what it was told, and a sound out of earshot is not played" (audio_st: mut AudioState) {
-    aud_emit(audio_st, 7, 0.5, 0.97, -0.25)
-    expect_near(aud_last_gain(audio_st), 0.5, 0.0001)
-    expect_near(aud_last_pan(audio_st), -0.25, 0.0001)
-    expect_eq(aud_emitted(audio_st), 1)
-    aud_emit(audio_st, 0, 1.0, 1.0, 0.0)
-    expect_eq(aud_emitted(audio_st), 1)
-    expect(not aud_emit_at(audio_st, 7, 0.0, -500.0, 100.0))
-    expect(aud_emit_at(audio_st, 7, 30.0, 0.0, 100.0))
-    expect(aud_last_pan(audio_st) > 0.5)
-    expect(aud_last_gain(audio_st) > 0.4 and aud_last_gain(audio_st) < 0.5)
-    expect(aud_last_pitch(audio_st) < 1.0)
+  test "emit hands the runtime what it was told, and a sound out of earshot is not played" {
+    aud_emit(7, 0.5, 0.97, -0.25)
+    expect_near(aud_last_gain(), 0.5, 0.0001)
+    expect_near(aud_last_pan(), -0.25, 0.0001)
+    expect_eq(aud_emitted(), 1)
+    aud_emit(0, 1.0, 1.0, 0.0)
+    expect_eq(aud_emitted(), 1)
+    expect(not aud_emit_at(7, 0.0, -500.0, 100.0))
+    expect(aud_emit_at(7, 30.0, 0.0, 100.0))
+    expect(aud_last_pan() > 0.5)
+    expect(aud_last_gain() > 0.4 and aud_last_gain() < 0.5)
+    expect(aud_last_pitch() < 1.0)
   }
 
   function wav(path: string, rate: int, frames: int) -> void {
@@ -94,9 +92,9 @@ program AudioTest {
     expect(aud_unpack(dir() + "/nothing.wav", "nothing.wav") == null)
   }
 
-  test "nothing loads headless, and the count says so" (audio_st: mut AudioState) {
-    expect_eq(aud_load(audio_st, dir() + "/click.wav"), 0)
-    expect_eq(aud_tried(audio_st), 1)
-    expect_eq(aud_live(audio_st), 0)
+  test "nothing loads headless, and the count says so" {
+    expect_eq(aud_load(dir() + "/click.wav"), 0)
+    expect_eq(aud_tried(), 1)
+    expect_eq(aud_live(), 0)
   }
 }

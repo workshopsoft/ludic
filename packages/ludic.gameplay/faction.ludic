@@ -16,25 +16,26 @@ const REL_HOSTILE: int = 2
 
 # relationships stored as (rel + 1); a zero slot means "unset -> use the default".
 # A global var initialiser must be a literal, so it is allocated lazily.
+var fac_tbl: words = null
 
-function fac_ensure(gameplay_st: mut GameplayState) -> void {
-  if gameplay_st.fac_tbl == null { gameplay_st.fac_tbl = words(FAC_MAX * FAC_MAX) }
+function fac_ensure() -> void {
+  if fac_tbl == null { fac_tbl = words(FAC_MAX * FAC_MAX) }
 }
 
 # Faction.set(a, b, rel) — record a symmetric relationship between two factions.
-@Namespace(Faction) function faction_set(gameplay_st: mut GameplayState, a: int, b: int, rel: int) -> void {
-  fac_ensure(gameplay_st)
+@Namespace(Faction) function faction_set(a: int, b: int, rel: int) -> void {
+  fac_ensure()
   if (a < 0) or (a >= FAC_MAX) { return }
   if (b < 0) or (b >= FAC_MAX) { return }
-  gameplay_st.fac_tbl[a * FAC_MAX + b] = rel + 1
-  gameplay_st.fac_tbl[b * FAC_MAX + a] = rel + 1
+  fac_tbl[a * FAC_MAX + b] = rel + 1
+  fac_tbl[b * FAC_MAX + a] = rel + 1
 }
 
 # Faction.rel(a, b) — the relationship code (0 friend, 1 neutral, 2 hostile).
-@Namespace(Faction) function faction_rel(gameplay_st: mut GameplayState, a: int, b: int) -> int {
-  fac_ensure(gameplay_st)
+@Namespace(Faction) function faction_rel(a: int, b: int) -> int {
+  fac_ensure()
   if (a >= 0) and (a < FAC_MAX) and (b >= 0) and (b < FAC_MAX) {
-    let v = gameplay_st.fac_tbl[a * FAC_MAX + b]
+    let v = fac_tbl[a * FAC_MAX + b]
     if v != 0 { return v - 1 }
   }
   if a == b { return REL_FRIEND }
@@ -42,12 +43,12 @@ function fac_ensure(gameplay_st: mut GameplayState) -> void {
 }
 
 # Faction.hostile(a, b) / Faction.friendly(a, b) — the common yes/no queries.
-@Namespace(Faction) function faction_hostile(gameplay_st: mut GameplayState, a: int, b: int) -> int {
-  if faction_rel(gameplay_st, a, b) == REL_HOSTILE { return 1 }
+@Namespace(Faction) function faction_hostile(a: int, b: int) -> int {
+  if faction_rel(a, b) == REL_HOSTILE { return 1 }
   return 0
 }
-@Namespace(Faction) function faction_friendly(gameplay_st: mut GameplayState, a: int, b: int) -> int {
-  if faction_rel(gameplay_st, a, b) == REL_FRIEND { return 1 }
+@Namespace(Faction) function faction_friendly(a: int, b: int) -> int {
+  if faction_rel(a, b) == REL_FRIEND { return 1 }
   return 0
 }
 
@@ -64,6 +65,6 @@ function fac_ensure(gameplay_st: mut GameplayState) -> void {
 # Faction.enemies(a, b) — true when the two entities' factions are hostile; the
 # one-call test the shooter and AI reach for. Missing factions read as hostile
 # (an unaligned hazard hits anyone) unless the ids happen to match.
-@Namespace(Faction) function faction_enemies(gameplay_st: mut GameplayState, ea: int, eb: int) -> int {
-  return faction_hostile(gameplay_st, faction_id_of(ea), faction_id_of(eb))
+@Namespace(Faction) function faction_enemies(ea: int, eb: int) -> int {
+  return faction_hostile(faction_id_of(ea), faction_id_of(eb))
 }

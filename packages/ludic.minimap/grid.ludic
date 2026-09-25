@@ -1,76 +1,47 @@
 # grid.ludic - the explored grid: square cells round the origin, and the part of it "explored" is
 # measured over (a core, so a bigger grid does not change what a share of it means)
-export state MinimapState {
-  mm_land_n: int = 0            # land cells in the core, counted once per origin
-  mm_land_ox: float = 0.0
-  mm_land_oz: float = 0.0
-  mm_cells: int = 128           # per side
-  mm_cell_m: float = 100.0      # metres per cell
-  mm_core0: int = 0             # the measured square: from this cell, this many per side
-  mm_core_n: int = 128
-  mm_seen: []int = null         # 0 / 1 per cell, row by row
-  mm_version: int = 0           # goes up whenever a cell is revealed or the grid is replaced
-  mm_pins: []MinimapPin = null
-  mm_pin_max: int = 32
-  mm_symbols: int = 8
-  mm_colours: int = 5
-  mm_open: int = -1
-  mm_followed: int = -1
-  mm_last: int = 0
-  mm_placing: bool = false
-  mm_x0: float = 0.0
-  mm_y0: float = 0.0
-  mm_size: float = 512.0
-  mm_span: float = 6400.0
-  mm_zoom_min: float = 0.5
-  mm_zoom_max: float = 8.0
-  mm_zoom_focus: float = 4.0
-  mm_zoom: float = 1.0
-  mm_vx: float = 0.0
-  mm_vz: float = 0.0
-  mm_have_view: bool = false
-  mm_panning: bool = false
-  mm_drag_rx: float = 0.0
-  mm_drag_ry: float = 0.0
-  mm_drag_vx: float = 0.0
-  mm_drag_vz: float = 0.0
-}
+var mm_cells: int = 128           # per side
+var mm_cell_m: float = 100.0      # metres per cell
+var mm_core0: int = 0             # the measured square: from this cell, this many per side
+var mm_core_n: int = 128
+var mm_seen: []int = null         # 0 / 1 per cell, row by row
+var mm_version: int = 0           # goes up whenever a cell is revealed or the grid is replaced
 
 # the grid: `cells` per side of `cell_m` metres, centred on MinimapWorld's origin; the whole of it
 # is measured until minimap_config_core says otherwise
-export function minimap_config(minimap_st: mut MinimapState, cells: int, cell_m: float) -> void {
-  minimap_st.mm_cells = Math.max(cells, 1)
-  minimap_st.mm_cell_m = Math.max(cell_m, 0.001)
-  minimap_st.mm_core0 = 0
-  minimap_st.mm_core_n = minimap_st.mm_cells
-  minimap_st.mm_seen = new []int
-  for i in 0 .. minimap_st.mm_cells * minimap_st.mm_cells { push(minimap_st.mm_seen, 0) }
-  minimap_st.mm_land_n = 0
-  minimap_st.mm_version += 1
+export function minimap_config(cells: int, cell_m: float) -> void {
+  mm_cells = Math.max(cells, 1)
+  mm_cell_m = Math.max(cell_m, 0.001)
+  mm_core0 = 0
+  mm_core_n = mm_cells
+  mm_seen = new []int
+  for i in 0 .. mm_cells * mm_cells { push(mm_seen, 0) }
+  mm_land_n = 0
+  mm_version += 1
 }
 
-export function minimap_config_core(minimap_st: mut MinimapState, from: int, n: int) -> void {
-  minimap_st.mm_core0 = Math.clamp(from, 0, minimap_st.mm_cells - 1)
-  minimap_st.mm_core_n = Math.clamp(n, 1, minimap_st.mm_cells - minimap_st.mm_core0)
-  minimap_st.mm_land_n = 0
+export function minimap_config_core(from: int, n: int) -> void {
+  mm_core0 = Math.clamp(from, 0, mm_cells - 1)
+  mm_core_n = Math.clamp(n, 1, mm_cells - mm_core0)
+  mm_land_n = 0
 }
 
-export function minimap_cells(minimap_st: MinimapState) -> int { return minimap_st.mm_cells }
-export function minimap_cell_m(minimap_st: MinimapState) -> float { return minimap_st.mm_cell_m }
-export function minimap_grid_half(minimap_st: MinimapState) -> float { return float(minimap_st.mm_cells) * minimap_st.mm_cell_m * 0.5 }
+export function minimap_cells() -> int { return mm_cells }
+export function minimap_cell_m() -> float { return mm_cell_m }
+export function minimap_grid_half() -> float { return float(mm_cells) * mm_cell_m * 0.5 }
 
 # the grid's west and north edges, and a column's or a row's
-export function minimap_grid_x0(minimap_st: MinimapState) -> float { return MinimapWorld.origin_x() - minimap_grid_half(minimap_st) }
-export function minimap_grid_z0(minimap_st: MinimapState) -> float { return MinimapWorld.origin_z() - minimap_grid_half(minimap_st) }
-export function minimap_cell_x(minimap_st: MinimapState, i: int) -> float { return minimap_grid_x0(minimap_st) + float(i) * minimap_st.mm_cell_m }
-export function minimap_cell_z(minimap_st: MinimapState, j: int) -> float { return minimap_grid_z0(minimap_st) + float(j) * minimap_st.mm_cell_m }
+export function minimap_grid_x0() -> float { return MinimapWorld.origin_x() - minimap_grid_half() }
+export function minimap_grid_z0() -> float { return MinimapWorld.origin_z() - minimap_grid_half() }
+export function minimap_cell_x(i: int) -> float { return minimap_grid_x0() + float(i) * mm_cell_m }
+export function minimap_cell_z(j: int) -> float { return minimap_grid_z0() + float(j) * mm_cell_m }
 
 # the cell a point is in, -1 off the grid
-export function minimap_cell(minimap_st: MinimapState, x: float, z: float) -> int {
-  let i = int(Math.floor((x - minimap_grid_x0(minimap_st)) / minimap_st.mm_cell_m))
-  let j = int(Math.floor((z - minimap_grid_z0(minimap_st)) / minimap_st.mm_cell_m))
-  if i < 0 or j < 0 or i >= minimap_st.mm_cells or j >= minimap_st.mm_cells { return -1 }
-  return j * minimap_st.mm_cells + i
+export function minimap_cell(x: float, z: float) -> int {
+  let i = int(Math.floor((x - minimap_grid_x0()) / mm_cell_m))
+  let j = int(Math.floor((z - minimap_grid_z0()) / mm_cell_m))
+  if i < 0 or j < 0 or i >= mm_cells or j >= mm_cells { return -1 }
+  return j * mm_cells + i
 }
 
-function mm_grid(minimap_st: mut MinimapState) -> void { if minimap_st.mm_seen == null { minimap_config(minimap_st, minimap_st.mm_cells, minimap_st.mm_cell_m) } }
+function mm_grid() -> void { if mm_seen == null { minimap_config(mm_cells, mm_cell_m) } }

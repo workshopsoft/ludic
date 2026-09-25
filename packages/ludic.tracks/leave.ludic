@@ -1,17 +1,17 @@
 # leave.ludic - a print put down. Each kind is a ring: past its cap the oldest is written over, and
 # a slot written over is a new print, unread
-function tk_ok(tracks_st: TracksState, kind: int) -> bool { return tracks_st.tk_ring != null and kind >= 0 and kind < tracks_st.tk_kinds }
+function tk_ok(kind: int) -> bool { return tk_ring != null and kind >= 0 and kind < tk_kinds }
 
 # a print made at `made` game hours (another machine's, arriving here); the ring index, or -1
-export function tracks_leave_at(tracks_st: mut TracksState, kind: int, x: float, z: float, yaw: float, sp: int, legend: bool, made: float) -> int {
-  if not tk_ok(tracks_st, kind) { return -1 }
-  var i = tracks_st.tk_next[kind]
-  if tracks_st.tk_count[kind] < tracks_st.tk_cap {
-    i = tracks_st.tk_count[kind]
-    tracks_st.tk_count[kind] = tracks_st.tk_count[kind] + 1
+export function tracks_leave_at(kind: int, x: float, z: float, yaw: float, sp: int, legend: bool, made: float) -> int {
+  if not tk_ok(kind) { return -1 }
+  var i = tk_next[kind]
+  if tk_count[kind] < tk_cap {
+    i = tk_count[kind]
+    tk_count[kind] = tk_count[kind] + 1
   }
-  tracks_st.tk_next[kind] = (i + 1) % tracks_st.tk_cap
-  let t = tracks_st.tk_ring[kind * tracks_st.tk_cap + i]
+  tk_next[kind] = (i + 1) % tk_cap
+  let t = tk_ring[kind * tk_cap + i]
   t.x = x
   t.z = z
   t.yaw = yaw
@@ -23,15 +23,15 @@ export function tracks_leave_at(tracks_st: mut TracksState, kind: int, x: float,
   return i
 }
 
-export function tracks_leave(tracks_st: mut TracksState, kind: int, x: float, z: float, yaw: float, sp: int, legend: bool) -> int {
-  return tracks_leave_at(tracks_st, kind, x, z, yaw, sp, legend, tk_now())
+export function tracks_leave(kind: int, x: float, z: float, yaw: float, sp: int, legend: bool) -> int {
+  return tracks_leave_at(kind, x, z, yaw, sp, legend, tk_now())
 }
 
 # the ground forgets every print (a new world)
-export function tracks_clear(tracks_st: mut TracksState) -> void {
-  if tracks_st.tk_ring == null { return }
-  for k in 0 .. tracks_st.tk_kinds {
-    tracks_st.tk_count[k] = 0
-    tracks_st.tk_next[k] = 0
+export function tracks_clear() -> void {
+  if tk_ring == null { return }
+  for k in 0 .. tk_kinds {
+    tk_count[k] = 0
+    tk_next[k] = 0
   }
 }

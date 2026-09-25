@@ -6,21 +6,22 @@ export property UiBox {
   w: float = 0.0
   h: float = 0.0
 }
+var fb_roots: []UiNode = new []UiNode
 # the screen pixels per design pixel: the renderer's scale (render3d's includes ui_render3d_scale)
-export function ui_scale(ui_st: UiState) -> float { return ui_px(ui_st, 1.0) }
-function fb_keep(ui_st: mut UiState, screen: string, root: UiNode) -> void {
-  for i in 0 .. len(ui_st.fb_roots) {
-    if ui_st.fb_roots[i].key == screen {
-      ui_st.fb_roots[i] = root
+export function ui_scale() -> float { return ui_px(1.0) }
+function fb_keep(screen: string, root: UiNode) -> void {
+  for i in 0 .. len(fb_roots) {
+    if fb_roots[i].key == screen {
+      fb_roots[i] = root
       return
     }
   }
-  push(ui_st.fb_roots, root)
+  push(fb_roots, root)
 }
 # the box of the element with that id (or key) on any screen shown, in screen pixels; null if none
-export function ui_box(ui_st: UiState, id: string) -> UiBox {
-  for i in 0 .. len(ui_st.fb_roots) {
-    let n = fb_find(ui_st.fb_roots[i], id)
+export function ui_box(id: string) -> UiBox {
+  for i in 0 .. len(fb_roots) {
+    let n = fb_find(fb_roots[i], id)
     if n != null {
       let b = new UiBox
       b.x = n.x

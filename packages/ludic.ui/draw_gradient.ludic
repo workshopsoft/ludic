@@ -8,7 +8,7 @@ export property UiGradient {
   at: []float = null            # each stop's place, 0 to 1
 }
 function gr_is(s: string) -> bool { return len(s) > 16 and s[0..16] == "linear-gradient(" }
-function gr_parse(ui_st: mut UiState, s0: string) -> UiGradient {
+function gr_parse(s0: string) -> UiGradient {
   let s = tpl_words(s0)
   let parts = el_commas(s[16..len(s) - 1])
   let g = new UiGradient
@@ -26,8 +26,8 @@ function gr_parse(ui_st: mut UiState, s0: string) -> UiGradient {
       at = el_num(last) / 100.0
       col = tpl_words(col[0..len(col) - len(last)])
     }
-    push(g.cols, ui_color(ui_st, col))
-    push(g.alphas, ui_st.cl_alpha)
+    push(g.cols, ui_color(col))
+    push(g.alphas, cl_alpha)
     push(g.at, at)
   }
   for i in 0 .. len(g.at) {
@@ -46,8 +46,8 @@ function gr_dir(g: UiGradient, w: string) -> bool {
   return true
 }
 # the gradient over the box, a band every two pixels at most
-function gr_draw(ui_st: mut UiState, g: UiGradient, x: float, y: float, w: float, h: float, a: float) -> void {
-  if ui_st.ui_be.rect == null or len(g.cols) == 0 { return }
+function gr_draw(g: UiGradient, x: float, y: float, w: float, h: float, a: float) -> void {
+  if ui_be.rect == null or len(g.cols) == 0 { return }
   let across = g.dir >= 2
   var span = h
   if across { span = w }
@@ -57,19 +57,20 @@ function gr_draw(ui_st: mut UiState, g: UiGradient, x: float, y: float, w: float
     let e1 = Math.floor(span * float(i + 1) / float(bands) + 0.5)
     var t = (e0 + e1) / 2.0 / span
     if g.dir == 1 or g.dir == 3 { t = 1.0 - t }
-    let c = gr_at(ui_st, g, t)
-    if across { ui_st.ui_be.rect(x + e0, y, e1 - e0, h, c, ui_st.gr_a * a) } else { ui_st.ui_be.rect(x, y + e0, w, e1 - e0, c, ui_st.gr_a * a) }
+    let c = gr_at(g, t)
+    if across { ui_be.rect(x + e0, y, e1 - e0, h, c, gr_a * a) } else { ui_be.rect(x, y + e0, w, e1 - e0, c, gr_a * a) }
   }
 }
+var gr_a: float = 1.0
 # the colour at `t` between the stops around it, its alpha in gr_a
-function gr_at(ui_st: mut UiState, g: UiGradient, t: float) -> int {
+function gr_at(g: UiGradient, t: float) -> int {
   var k = 0
   while k + 1 < len(g.at) and g.at[k + 1] < t { k += 1 }
   let j = Math.min(k + 1, len(g.at) - 1)
   var f = 0.0
   if g.at[j] > g.at[k] { f = Math.clamp((t - g.at[k]) / (g.at[j] - g.at[k]), 0.0, 1.0) }
   if t <= g.at[0] { f = 0.0 }
-  ui_st.gr_a = g.alphas[k] + (g.alphas[j] - g.alphas[k]) * f
+  gr_a = g.alphas[k] + (g.alphas[j] - g.alphas[k]) * f
   return cl_mix(g.cols[k], g.cols[j], f)
 }
 function cl_mix(a: int, b: int, f: float) -> int {

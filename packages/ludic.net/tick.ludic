@@ -1,111 +1,111 @@
 # tick.ludic - a frame of the session, in three calls with the game's between them: net_begin
 # (time, and what came in onto the inbox), net_update (the matchmaker, the hello, silence) and,
 # once the game has queued its own, net_end (heartbeats, sending, letting slots go)
-export function net_begin(base_st: mut BaseState, net_st: mut NetState, dt: float) -> void {
-  if not net_active(net_st) { return }
-  net_st.net__time = net_st.net__time + dt
-  net__pump(base_st, net_st)
+export function net_begin(dt: float) -> void {
+  if not net_active() { return }
+  net__time = net__time + dt
+  net__pump()
 }
 
-export function net_update(base_st: mut BaseState, net_st: mut NetState, dt: float) -> void {
-  if not net_active(net_st) { return }
-  net__room_tick(base_st, net_st, dt)
-  if net_st.net__state == NET_JOINING {
-    net__hello_tick(base_st, net_st, dt)
+export function net_update(dt: float) -> void {
+  if not net_active() { return }
+  net__room_tick(dt)
+  if net__state == NET_JOINING {
+    net__hello_tick(dt)
     return
   }
   for i in 0 .. NET_PEERS {
-    let p = net_st.net__peers[i]
-    if not p.on or net_st.net__time - p.heard <= float(NET_TIMEOUT) { continue }
-    if net_st.net__state == NET_JOINED {
-      net_lose(base_st, net_st, NET_WHY_HOST_SILENT)
+    let p = net__peers[i]
+    if not p.on or net__time - p.heard <= float(NET_TIMEOUT) { continue }
+    if net__state == NET_JOINED {
+      net_lose(NET_WHY_HOST_SILENT)
       return
     }
     let gone = p.pid
-    np_close(net_st, i)
-    net__fact(base_st, net_st, NET_GONE, i, gone, 0, "")
+    np_close(i)
+    net__fact(NET_GONE, i, gone, 0, "")
   }
 }
 
-function net__hello_tick(base_st: mut BaseState, net_st: mut NetState, dt: float) -> void {
-  if net_st.net__hello_t < 0.0 {
-    nb_copy(net_st.net__wb, 0, net_st.net__hello_b, 0, net_st.net__hello_l)
-    net_st.net__wl = net_st.net__hello_l
-    np_queue(net_st, 0, NET_HELLO, true)
-    net_st.net__hello_t = 0.0
+function net__hello_tick(dt: float) -> void {
+  if net__hello_t < 0.0 {
+    nb_copy(net__wb, 0, net__hello_b, 0, net__hello_l)
+    net__wl = net__hello_l
+    np_queue(0, NET_HELLO, true)
+    net__hello_t = 0.0
   }
-  net_st.net__hello_t = net_st.net__hello_t + dt
-  if net_st.net__hello_t > float(NET_TIMEOUT + net_st.net__wait_more) {
-    net_lose(base_st, net_st, NET_WHY_NO_ANSWER)
+  net__hello_t = net__hello_t + dt
+  if net__hello_t > float(NET_TIMEOUT + net__wait_more) {
+    net_lose(NET_WHY_NO_ANSWER)
     return
   }
-  np_flush(net_st, 0)
+  np_flush(0)
 }
 
-export function net_end(base_st: mut BaseState, net_st: mut NetState) -> void {
-  if not net_live(net_st) { return }
-  let beat = net_st.net__time - net_st.net__beat_t >= 1.0
-  if beat { net_st.net__beat_t = net_st.net__time }
+export function net_end() -> void {
+  if not net_live() { return }
+  let beat = net__time - net__beat_t >= 1.0
+  if beat { net__beat_t = net__time }
   for i in 0 .. NET_PEERS {
-    let p = net_st.net__peers[i]
+    let p = net__peers[i]
     if not p.on { continue }
     if beat {
-      nw_begin(net_st)
-      np_queue(net_st, i, NET_BEAT, false)
+      nw_begin()
+      np_queue(i, NET_BEAT, false)
     }
-    np_flush(net_st, i)
-    if p.closing and (p.acked >= p.close_id or net_st.net__time > p.close_t) {
+    np_flush(i)
+    if p.closing and (p.acked >= p.close_id or net__time > p.close_t) {
       let pid = p.pid
-      np_close(net_st, i)
-      net__fact(base_st, net_st, NET_CLOSED, i, pid, 0, "")
+      np_close(i)
+      net__fact(NET_CLOSED, i, pid, 0, "")
     }
   }
 }
 
 # while a load holds the frame: keep answering, so nobody times out on this machine
-export function net_keepalive(base_st: mut BaseState, net_st: mut NetState) -> void {
-  if not net_live(net_st) { return }
-  net__pump(base_st, net_st)
+export function net_keepalive() -> void {
+  if not net_live() { return }
+  net__pump()
   for i in 0 .. NET_PEERS {
-    let p = net_st.net__peers[i]
+    let p = net__peers[i]
     if p.on {
-      p.heard = net_st.net__time
-      nw_begin(net_st)
-      np_queue(net_st, i, NET_BEAT, false)
-      np_flush(net_st, i)
+      p.heard = net__time
+      nw_begin()
+      np_queue(i, NET_BEAT, false)
+      np_flush(i)
     }
   }
 }
 
 # every queue to its peer now, three times over (a machine about to let go)
-export function net_flush_all(net_st: mut NetState) -> void {
-  for t in 0 .. 3 { for i in 0 .. NET_PEERS { np_flush(net_st, i) } }
+export function net_flush_all() -> void {
+  for t in 0 .. 3 { for i in 0 .. NET_PEERS { np_flush(i) } }
 }
 
 # the session is over for this machine: every slot, the socket and the matchmaker let go
-export function net_reset(net_st: mut NetState) -> void {
-  if net_st.net__peers != null { for i in 0 .. NET_PEERS { np_close(net_st, i) } }
-  if net_st.net__sock > 0 {
-    NetSocket.close(net_st.net__sock)
-    net_st.net__sock = 0
+export function net_reset() -> void {
+  if net__peers != null { for i in 0 .. NET_PEERS { np_close(i) } }
+  if net__sock > 0 {
+    NetSocket.close(net__sock)
+    net__sock = 0
   }
-  net_st.net__state = NET_IDLE
-  net_st.net__my_pid = 0
-  net_st.net__wait_more = 0
-  net__room_reset(net_st)
+  net__state = NET_IDLE
+  net__my_pid = 0
+  net__wait_more = 0
+  net__room_reset()
 }
 
 # out of the session, and why: the game hears NET_DOWN and says so in its own words
-export function net_lose(base_st: mut BaseState, net_st: mut NetState, why: int) -> void { net__lose_with(base_st, net_st, why, "") }
+export function net_lose(why: int) -> void { net__lose_with(why, "") }
 
 # ... with what the reason is about (the room code nobody had)
-function net__lose_with(base_st: mut BaseState, net_st: mut NetState, why: int, text: string) -> void {
-  net_reset(net_st)
-  net_st.net__state = NET_LOST
-  net_st.net__why = why
+function net__lose_with(why: int, text: string) -> void {
+  net_reset()
+  net__state = NET_LOST
+  net__why = why
   net__log(`lost ({why})`)
-  net__fact(base_st, net_st, NET_DOWN, -1, 0, why, text)
+  net__fact(NET_DOWN, -1, 0, why, text)
 }
 
 # a lost session read and done with: idle again
-export function net_fresh(net_st: mut NetState) -> void { if net_st.net__state == NET_LOST { net_st.net__state = NET_IDLE } }
+export function net_fresh() -> void { if net__state == NET_LOST { net__state = NET_IDLE } }

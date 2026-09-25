@@ -59,43 +59,31 @@ function session__zero() -> float { return 0.0 }
 function session__one() -> float { return 1.0 }
 function session__nameless() -> string { return "" }
 
-export state SessionState {
-  session__me_sleeping: bool = false
-  session__slot: []PartyMember = null
-  session__role: int = 0
-  session__max: int = 4
-  session__open: bool = true
-  session__near_i: int = 0
-  session__facts: Queue<SessionFact> = null
-  session__vote_id: int = 0
-  session__vote_kind: int = 0
-  session__vote_param: int = 0
-  session__vote_text: string = ""
-  session__vote_t: float = 0.0
-  session__vote_yes: int = 0
-  session__vote_no: int = 0
-  session__vote_mine: int = -1       # -1 not voted, 0 no, 1 yes
-  session__vote_passed: int = -1     # the last vote: -1 none, 0 failed, 1 passed
+var session__slot: []PartyMember = null
+var session__role: int = 0
+var session__max: int = 4
+var session__open: bool = true
+var session__near_i: int = 0
+var session__facts: Queue<SessionFact> = null
+
+export function ses_facts() -> Queue<SessionFact> {
+  if session__facts == null { session__facts = queue_new("session.facts") }
+  return session__facts
 }
 
-export function ses_facts(base_st: mut BaseState, session_st: mut SessionState) -> Queue<SessionFact> {
-  if session_st.session__facts == null { session_st.session__facts = queue_new(base_st, "session.facts") }
-  return session_st.session__facts
-}
-
-function session__fact(base_st: mut BaseState, session_st: mut SessionState, what: int, slot: int, pid: int) -> SessionFact {
+function session__fact(what: int, slot: int, pid: int) -> SessionFact {
   let f = new SessionFact
   f.what = what
   f.slot = slot
   f.pid = pid
-  f.role = session_st.session__role
-  q_push(base_st, ses_facts(base_st, session_st), f)
+  f.role = session__role
+  q_push(ses_facts(), f)
   return f
 }
 
-function session__init(session_st: mut SessionState) -> void {
-  if session_st.session__slot != null { return }
-  session_st.session__slot = new []PartyMember
-  for i in 0 .. PLY_MAX { push(session_st.session__slot, new PartyMember) }
-  session_st.session__slot[0].on = true
+function session__init() -> void {
+  if session__slot != null { return }
+  session__slot = new []PartyMember
+  for i in 0 .. PLY_MAX { push(session__slot, new PartyMember) }
+  session__slot[0].on = true
 }

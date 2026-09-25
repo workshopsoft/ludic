@@ -1,16 +1,18 @@
 # tooltip_text.ludic - a title in the program's language (whole when the translator knows it whole,
 # else line by line, and not inside translate="no"), and a title for the keyboard's focus
+var tt_by_keys: bool = false    # the focus moved by the keyboard since the pointer last moved
+var tt_focus_seen: string = ""
 # the focused element, when the keyboard put the focus there and it has a title; else null
-function tt_focused(ui_st: mut UiState, scope: UiNode, x: float, y: float) -> UiNode {
-  if ui_st.in_last.x != x or ui_st.in_last.y != y { ui_st.tt_by_keys = false }
-  if ui_st.fc_visible and ui_st.fc_key != "" and ui_st.fc_key != ui_st.tt_focus_seen { ui_st.tt_by_keys = true }
-  ui_st.tt_focus_seen = ui_st.fc_key
-  if not ui_st.tt_by_keys or not ui_st.fc_visible { return null }
-  let n = fr_node(scope, ui_st.fc_key)
+function tt_focused(scope: UiNode, x: float, y: float) -> UiNode {
+  if in_last.x != x or in_last.y != y { tt_by_keys = false }
+  if fc_visible and fc_key != "" and fc_key != tt_focus_seen { tt_by_keys = true }
+  tt_focus_seen = fc_key
+  if not tt_by_keys or not fc_visible { return null }
+  let n = fr_node(scope, fc_key)
   if n == null or n.akeys == null or ui_attr_text(n, "title") == "" { return null }
   return n
 }
-function tt_translate(ui_st: UiState, n: UiNode, s: string) -> string {
+function tt_translate(n: UiNode, s: string) -> string {
   var at = n
   while at != null {
     let say = ui_attr_text(at, "translate")
@@ -18,11 +20,11 @@ function tt_translate(ui_st: UiState, n: UiNode, s: string) -> string {
     if say == "yes" { break }
     at = at.parent
   }
-  let whole = ui_tr(ui_st, s)
+  let whole = ui_tr(s)
   if whole != s { return whole }
   let lines = tt_lines(s)
   if len(lines) < 2 { return whole }
-  var out = ui_tr(ui_st, lines[0])
-  for i in 1 .. len(lines) { out = out + "\n" + ui_tr(ui_st, lines[i]) }
+  var out = ui_tr(lines[0])
+  for i in 1 .. len(lines) { out = out + "\n" + ui_tr(lines[i]) }
   return out
 }

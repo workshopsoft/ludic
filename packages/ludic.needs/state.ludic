@@ -51,40 +51,38 @@ export property NeedFact {
   need: int = 0
 }
 
-export state NeedsState {
-  nd_level: []float = null
-  nd_legs: float = 0.0          # seconds left before a collapse, 0 = none
-  nd_last: int = 0              # the need the countdown is for
-  nd_collapses: int = 0
-  nd_facts: Queue<NeedFact> = null
-}
+var nd_level: []float = null
+var nd_legs: float = 0.0          # seconds left before a collapse, 0 = none
+var nd_last: int = 0              # the need the countdown is for
+var nd_collapses: int = 0
+var nd_facts: Queue<NeedFact> = null
 
-function nd_lv(needs_st: mut NeedsState) -> []float {
-  if needs_st.nd_level == null {
-    needs_st.nd_level = floats(NEED_COUNT)
-    nd_fill(needs_st)
+function nd_lv() -> []float {
+  if nd_level == null {
+    nd_level = floats(NEED_COUNT)
+    nd_fill()
   }
-  return needs_st.nd_level
+  return nd_level
 }
 
-function nd_fill(needs_st: mut NeedsState) -> void {
-  needs_st.nd_level[NEED_WARMTH] = 100.0
-  needs_st.nd_level[NEED_FOOD] = 70.0
-  needs_st.nd_level[NEED_WATER] = 85.0
-  needs_st.nd_level[NEED_ENERGY] = 100.0
+function nd_fill() -> void {
+  nd_level[NEED_WARMTH] = 100.0
+  nd_level[NEED_FOOD] = 70.0
+  nd_level[NEED_WATER] = 85.0
+  nd_level[NEED_ENERGY] = 100.0
 }
 
 # the facts, oldest first; the game drains them into its notices and its collapse
-export function needs_facts(base_st: mut BaseState, needs_st: mut NeedsState) -> Queue<NeedFact> {
-  if needs_st.nd_facts == null { needs_st.nd_facts = queue_new(base_st, "needs.facts") }
-  return needs_st.nd_facts
+export function needs_facts() -> Queue<NeedFact> {
+  if nd_facts == null { nd_facts = queue_new("needs.facts") }
+  return nd_facts
 }
 
-function nd_fact(base_st: mut BaseState, needs_st: mut NeedsState, what: int, need: int) -> void {
+function nd_fact(what: int, need: int) -> void {
   let f = new NeedFact
   f.what = what
   f.need = need
-  q_push(base_st, needs_facts(base_st, needs_st), f)
+  q_push(needs_facts(), f)
 }
 
 function nd_ok(k: int) -> bool { return k >= 0 and k < NEED_COUNT }

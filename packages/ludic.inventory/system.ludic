@@ -1,14 +1,14 @@
 # system.ludic - the pack as a system: reset and its own save section, each count under its
 # kind's name, so kinds can be added or reordered without a migration
-export function inv_reset(base_st: mut BaseState, inventory_st: mut InventoryState) -> void {
-  inv_clear(inventory_st)
-  q_clear(base_st, inv_changes(base_st, inventory_st))
+export function inv_reset() -> void {
+  inv_clear()
+  q_clear(inv_changes())
 }
 
-export function inv_save(inventory_st: InventoryState) -> Val {
+export function inv_save() -> Val {
   let counts = Value.object()
-  for i in 0 .. inv_kinds(inventory_st) {
-    if inventory_st.iv_counts[i] != 0 { sv_put_int(counts, inventory_st.iv_keys[i], inventory_st.iv_counts[i]) }
+  for i in 0 .. inv_kinds() {
+    if iv_counts[i] != 0 { sv_put_int(counts, iv_keys[i], iv_counts[i]) }
   }
   let v = Value.object()
   Value.put(v, "counts", counts)
@@ -16,11 +16,11 @@ export function inv_save(inventory_st: InventoryState) -> Val {
 }
 
 # a name this build does not know is dropped
-export function inv_load(inventory_st: mut InventoryState, v: Val, version: int) -> void {
-  inv_clear(inventory_st)
+export function inv_load(v: Val, version: int) -> void {
+  inv_clear()
   if Value.has(v, "counts") == 0 { return }
   let counts = Value.get(v, "counts")
-  for i in 0 .. inv_kinds(inventory_st) { inventory_st.iv_counts[i] = Math.max(sv_int(counts, inventory_st.iv_keys[i], 0), 0) }
+  for i in 0 .. inv_kinds() { iv_counts[i] = Math.max(sv_int(counts, iv_keys[i], 0), 0) }
 }
 
 export function inv_system() -> System {

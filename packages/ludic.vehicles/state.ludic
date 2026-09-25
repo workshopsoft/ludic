@@ -1,13 +1,24 @@
 # state.ludic - every vehicle, the one this machine's player is on, where the places are measured
 # from, and the facts
+var ve_list: []Vehicle = null
+var ve_cur: Vehicle = null
+var ve_dock_x: float = 0.0
+var ve_dock_z: float = 0.0
+var ve_dock_yaw: float = 0.0
+var ve_rail_x: float = 0.0
+var ve_rail_z: float = 0.0
+var ve_rail_yaw: float = 0.0
+var ve_have_dock: bool = false
+var ve_swell_said: float = 0.0
+var ve_fact_q: Queue<VehicleFact> = null
 const ve_pi: float = 3.14159265
 
-export function vehicle_facts(base_st: mut BaseState, vehicles_st: mut VehiclesState) -> Queue<VehicleFact> {
-  if vehicles_st.ve_fact_q == null { vehicles_st.ve_fact_q = queue_new(base_st, "vehicles.facts") }
-  return vehicles_st.ve_fact_q
+export function vehicle_facts() -> Queue<VehicleFact> {
+  if ve_fact_q == null { ve_fact_q = queue_new("vehicles.facts") }
+  return ve_fact_q
 }
 
-function ve_say(base_st: mut BaseState, vehicles_st: mut VehiclesState, what: int, v: Vehicle, n: float) -> void {
+function ve_say(what: int, v: Vehicle, n: float) -> void {
   let f = new VehicleFact
   f.what = what
   f.nid = v.nid
@@ -16,40 +27,40 @@ function ve_say(base_st: mut BaseState, vehicles_st: mut VehiclesState, what: in
   f.x = v.x
   f.z = v.z
   f.v = n
-  q_push(base_st, vehicle_facts(base_st, vehicles_st), f)
+  q_push(vehicle_facts(), f)
 }
 
-function ve_all(vehicles_st: mut VehiclesState) -> []Vehicle {
-  if vehicles_st.ve_list == null { vehicles_st.ve_list = new []Vehicle }
-  return vehicles_st.ve_list
+function ve_all() -> []Vehicle {
+  if ve_list == null { ve_list = new []Vehicle }
+  return ve_list
 }
 
 # every vehicle in the valley, to draw and to aim at (change one only through the verbs)
-export function vehicles_all(vehicles_st: mut VehiclesState) -> []Vehicle { return ve_all(vehicles_st) }
+export function vehicles_all() -> []Vehicle { return ve_all() }
 
 # the kind this machine's player is riding, 0 none
-export function vehicle_ride_kind(vehicles_st: VehiclesState) -> int {
-  if vehicles_st.ve_cur == null { return 0 }
-  return vehicles_st.ve_cur.kind
+export function vehicle_ride_kind() -> int {
+  if ve_cur == null { return 0 }
+  return ve_cur.kind
 }
 
-export function vehicle_current(vehicles_st: VehiclesState) -> Vehicle { return vehicles_st.ve_cur }
+export function vehicle_current() -> Vehicle { return ve_cur }
 
-export function vehicle_of(vehicles_st: mut VehiclesState, pid: int, kind: int) -> Vehicle {
-  let l = ve_all(vehicles_st)
+export function vehicle_of(pid: int, kind: int) -> Vehicle {
+  let l = ve_all()
   for i in 0 .. len(l) { if l[i].kind == kind and l[i].owner == pid { return l[i] } }
   return null
 }
 
 # this player's own boat or horse
-export function vehicle_find(vehicles_st: mut VehiclesState, kind: int) -> Vehicle { return vehicle_of(vehicles_st, 0, kind) }
+export function vehicle_find(kind: int) -> Vehicle { return vehicle_of(0, kind) }
 
 # the nearest vehicle nobody is on within `reach` of (x, z); nothing while riding
-export function vehicle_nearest(vehicles_st: mut VehiclesState, x: float, z: float, reach: float) -> Vehicle {
-  if vehicles_st.ve_cur != null { return null }
+export function vehicle_nearest(x: float, z: float, reach: float) -> Vehicle {
+  if ve_cur != null { return null }
   var best: Vehicle = null
   var bd = reach
-  let l = ve_all(vehicles_st)
+  let l = ve_all()
   for i in 0 .. len(l) {
     let v = l[i]
     if v.rider >= 0 { continue }

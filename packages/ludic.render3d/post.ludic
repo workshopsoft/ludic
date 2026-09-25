@@ -6,6 +6,27 @@
 
 const BLOOM_LEVELS: int = 6
 
+var post_hdr: Target = null
+var post_ms_fbo: int = 0          # 4x multisampled scene target, resolved into post_hdr
+var post_ms_samples: int = 1      # temporal AA carries the edges; R3D_MSAA=n to compare
+var post_bloom: []Target = null
+var post_p_down: int = 0
+var post_p_up: int = 0
+var post_p_tone: int = 0
+var post_fs: Mesh = null
+var post_exposure: float = 0.0
+var post_bloom_strength: int = 0
+var post_vignette: float = 0.0
+var post_saturation: float = 0.0
+var post_contrast: float = 0.0
+var post_w: int = 0
+var post_h: int = 0
+var post_auto: bool = true
+var post_key: float = 0.0             # target mean luminance after exposure (float bits)
+var post_lum: words = null
+var post_mips: int = 0
+var post_adapt: float = 0.0           # smoothed exposure (float bits)
+var post_exposure_max: float = 20.0   # 20: the ceiling auto-exposure may reach (night lowers it)
 # ---- the grade ------------------------------------------------------------------------------
 # White balance, the shadows' floor and the highlights' gain. These were nine literals bound at
 # the draw, so the game had the same colour at seven in the morning as at one in the afternoon -
@@ -14,72 +35,119 @@ const BLOOM_LEVELS: int = 6
 # program that never starts a day looks exactly as it did.
 # They are plain ints rather than a v3 on purpose: a grade is written by daylight_set, which can
 # run before post_init has allocated anything, and nine ints cannot be null.
+var post_wb_r: float = 1.02      # 1.02
+var post_wb_g: float = 1.0      # 1.0
+var post_wb_b: float = 0.97      # 0.97
+var post_lift_r: float = 0.004    # 0.004
+var post_lift_g: float = 0.004    # 0.004
+var post_lift_b: float = 0.012    # 0.012
+var post_gain_r: float = 0.99    # 0.99
+var post_gain_g: float = 0.995    # 0.995
+var post_gain_b: float = 1.0    # 1.0
 
+var post_ao: Target = null
+var post_ao_blur: Target = null
+var post_p_ao: int = 0
+var post_p_ao_blur: int = 0
+var post_ao_radius: float = 0.0
+var post_contact: float = 1.25   # 1.25: how hard a thing is darkened where it meets the ground
+var post_ao_intensity: float = 0.0
+var post_ao_strength: float = 0.0
+var post_gi_strength: float = 0.4     # 0.4
+var post_no_gi: bool = false
+var post_ldr: Target = null
+var post_depth_copy: Target = null
 # ---- volumetric light ----------------------------------------------------------------------
 # Half resolution on purpose: in-scattered light is smooth, a shaft has no sharp edge, and the
 # march is the whole cost of the pass. post_vol_steps is the quality dial; 0 switches it off
 # and the pass is skipped entirely rather than run at one step.
+var post_vol: Target = null
+var post_p_vol: int = 0
+var post_vol_steps: float = 24.0        # 24
+var post_vol_density: float = 0.002      # 0.002
+var post_vol_falloff: float = 0.005      # 0.005
+var post_vol_far: float = 800.0          # 800 m
+var post_vol_g: float = 0.6            # 0.6: air throws light forward
+var post_vol_mist: float = 0.0                  # the day sets these two
+var post_vol_mist_h: float = 40.0       # 40 m
+var post_prev: Target = null       # last frame's scene colour, for the SSGI bounce only
+var post_scene: Target = null      # this frame's scene colour before the water, for refraction
+var post_frame: int = 0
+var post_color_w: int = 0          # its size: the display's when DLSS upscaled it
+var post_color_h: int = 0
+var post_color: int = 0            # the HDR colour the rest of post reads      # the resolved depth, copied so passes can read it while drawing into the frame
+var post_p_sharp: int = 0
 # Spatial anti-aliasing, in the sharpen pass because that pass already reads this pixel's
 # neighbourhood and runs last on the LDR image. 1 on, 0 off; the game's setting drives it.
+var post_fxaa: float = 1.0
 # ---- depth of field ------------------------------------------------------------------------
 # Off in ordinary play - the pass is skipped whole, not run at zero radius. The game turns it on
 # behind the viewfinder and says what to focus on.
+var post_p_dof: int = 0
+var post_dof: Target = null
+var post_dof_focus: float = 10.0      # 10 m
+var post_dof_aperture: float = 0.0            # 0 = no lens, and no pass
+var post_dof_max: float = 12.0        # 12 px
+var post_p_tone_hdr: int = 0        # the tonemap's HDR10 variant, made the first time HDR is on
+var post_ldr_hdr: bool = false       # post_ldr was made for HDR10 output (10-bit)
 # the LDR image is 10-bit while the output is HDR10: PQ in 8 bits bands
-function post_ldr_fmt(render3d_st: Render3dState) -> int { if gpu_hdr_active(render3d_st) { return GL_RGB10_A2 };  return GL_RGBA8 }
+function post_ldr_fmt() -> int { if gpu_hdr_active() { return GL_RGB10_A2 };  return GL_RGBA8 }
+var post_sharpen: float = 0.0
+var post_grain: int = 0
 
 # the screen-sized targets go away before post_init makes them at a new size
-function post_free(render3d_st: mut Render3dState) -> void {
-  if render3d_st.post_hdr == null { return }
-  if render3d_st.post_ms_fbo != 0 { gpu_fb_free(render3d_st, render3d_st.post_ms_fbo);  render3d_st.post_ms_fbo = 0 }
-  target_free(render3d_st, render3d_st.post_hdr);  target_free(render3d_st, render3d_st.post_ao);  target_free(render3d_st, render3d_st.post_ao_blur);  target_free(render3d_st, render3d_st.post_ldr)
-  target_free(render3d_st, render3d_st.post_depth_copy);  target_free(render3d_st, render3d_st.post_prev);  target_free(render3d_st, render3d_st.post_scene);  target_free(render3d_st, render3d_st.post_vol);  target_free(render3d_st, render3d_st.post_dof)
-  for i in 0 .. len(render3d_st.post_bloom) { target_free(render3d_st, render3d_st.post_bloom[i]) }
-  render3d_st.post_hdr = null
+function post_free() -> void {
+  if post_hdr == null { return }
+  if post_ms_fbo != 0 { gpu_fb_free(post_ms_fbo);  post_ms_fbo = 0 }
+  target_free(post_hdr);  target_free(post_ao);  target_free(post_ao_blur);  target_free(post_ldr)
+  target_free(post_depth_copy);  target_free(post_prev);  target_free(post_scene);  target_free(post_vol);  target_free(post_dof)
+  for i in 0 .. len(post_bloom) { target_free(post_bloom[i]) }
+  post_hdr = null
 }
 # Multisampled scene: 1 (temporal AA alone), 2 or 4, remade at once. Vulkan draws it into
 # multisampled renderbuffers and resolves them in a pass; a device that cannot take the count asked
 # for gets the most it can (gpu_msaa_max).
-function post_msaa_live(render3d_st: Render3dState) -> bool { return gpu_is_gl(render3d_st) or gpu_msaa_max(render3d_st) > 1 }
-function post_set_msaa(render3d_st: mut Render3dState, n: int) -> void {
+function post_msaa_live() -> bool { return gpu_is_gl() or gpu_msaa_max() > 1 }
+function post_set_msaa(n: int) -> void {
   var want = n
   if want < 1 { want = 1 }
-  if not post_msaa_live(render3d_st) { want = 1 }
-  if want > gpu_msaa_max(render3d_st) and gpu_msaa_max(render3d_st) >= 1 { want = gpu_msaa_max(render3d_st) }
-  if want == render3d_st.post_ms_samples { return }
-  render3d_st.post_ms_samples = want
-  if render3d_st.post_hdr != null {
-    let w = render3d_st.post_w;  let h = render3d_st.post_h
-    post_free(render3d_st)
-    post_init(render3d_st, w, h)
+  if not post_msaa_live() { want = 1 }
+  if want > gpu_msaa_max() and gpu_msaa_max() >= 1 { want = gpu_msaa_max() }
+  if want == post_ms_samples { return }
+  post_ms_samples = want
+  if post_hdr != null {
+    let w = post_w;  let h = post_h
+    post_free()
+    post_init(w, h)
   }
 }
 
-function post_init(render3d_st: mut Render3dState, w: int, h: int) -> void {
-  render3d_st.post_w = w;  render3d_st.post_h = h
-  render3d_st.post_hdr = target_new(render3d_st, w, h, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, true, GL_LINEAR)
-  if render3d_st.post_ms_samples > 1 {
-    render3d_st.post_ms_fbo = gpu_fb_new(render3d_st)
-    gpu_fb_bind(render3d_st, render3d_st.post_ms_fbo)
-    let rbc = gpu_rb_new(render3d_st)
-    gpu_rb_storage(render3d_st, rbc, GL_RGBA16F, w, h, render3d_st.post_ms_samples)
-    gpu_fb_color_rb(render3d_st, 0, rbc)
-    let rbd = gpu_rb_new(render3d_st)
-    gpu_rb_storage(render3d_st, rbd, GL_DEPTH_COMPONENT32F, w, h, render3d_st.post_ms_samples)
-    gpu_fb_depth_rb(render3d_st, rbd)
-    let st = gpu_fb_status(render3d_st)
-    if st != GL_FRAMEBUFFER_COMPLETE { print(`r3d: msaa framebuffer incomplete {st}`);  render3d_st.post_ms_fbo = 0 }
-    gpu_fb_bind(render3d_st, 0)
+function post_init(w: int, h: int) -> void {
+  post_w = w;  post_h = h
+  post_hdr = target_new(w, h, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, true, GL_LINEAR)
+  if post_ms_samples > 1 {
+    post_ms_fbo = gpu_fb_new()
+    gpu_fb_bind(post_ms_fbo)
+    let rbc = gpu_rb_new()
+    gpu_rb_storage(rbc, GL_RGBA16F, w, h, post_ms_samples)
+    gpu_fb_color_rb(0, rbc)
+    let rbd = gpu_rb_new()
+    gpu_rb_storage(rbd, GL_DEPTH_COMPONENT32F, w, h, post_ms_samples)
+    gpu_fb_depth_rb(rbd)
+    let st = gpu_fb_status()
+    if st != GL_FRAMEBUFFER_COMPLETE { print(`r3d: msaa framebuffer incomplete {st}`);  post_ms_fbo = 0 }
+    gpu_fb_bind(0)
   }
-  render3d_st.post_bloom = new []Target
+  post_bloom = new []Target
   var bw = w / 2;  var bh = h / 2
   for i in 0 .. BLOOM_LEVELS {
-    push(render3d_st.post_bloom, target_new(render3d_st, max(bw, 1), max(bh, 1), GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, false, GL_LINEAR))
+    push(post_bloom, target_new(max(bw, 1), max(bh, 1), GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, false, GL_LINEAR))
     bw = bw / 2;  bh = bh / 2
   }
-  if render3d_st.post_p_down == 0 {
-    render3d_st.post_p_down = r3d_program(render3d_st, "fullscreen.vert", "bloom_down.frag", "")
-    render3d_st.post_p_up = r3d_program(render3d_st, "fullscreen.vert", "bloom_up.frag", "")
-    render3d_st.post_p_tone = r3d_program(render3d_st, "fullscreen.vert", "tonemap.frag", "")
+  if post_p_down == 0 {
+    post_p_down = r3d_program("fullscreen.vert", "bloom_down.frag", "")
+    post_p_up = r3d_program("fullscreen.vert", "bloom_up.frag", "")
+    post_p_tone = r3d_program("fullscreen.vert", "tonemap.frag", "")
   }
   # Full resolution, not half. The occlusion is reconstructed from depth differences,
   # so on a surface seen at a grazing angle its gradient is steep in screen space; at
@@ -87,36 +155,36 @@ function post_init(render3d_st: mut Render3dState, w: int, h: int) -> void {
   # upsample in the tonemapper then stretched over the whole ground. They read as thin
   # transparent black bars, appear only where there is depth (never on the sky), and
   # are nothing to do with the shadow map or the reflection.
-  render3d_st.post_ao = target_new(render3d_st, w, h, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, false, GL_LINEAR)
-  render3d_st.post_ao_blur = target_new(render3d_st, w, h, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, false, GL_LINEAR)
-  if render3d_st.post_p_ao == 0 { render3d_st.post_p_ao = r3d_program(render3d_st, "fullscreen.vert", "ssgi.frag", "");  render3d_st.post_p_ao_blur = r3d_program(render3d_st, "fullscreen.vert", "ssao_blur.frag", "") }
-  render3d_st.post_ldr = target_new(render3d_st, w, h, post_ldr_fmt(render3d_st), GL_RGBA, GL_UNSIGNED_BYTE, false, GL_LINEAR)
-  render3d_st.post_ldr_hdr = gpu_hdr_active(render3d_st)
-  render3d_st.post_depth_copy = target_new(render3d_st, w, h, GL_R8, GL_RED, GL_UNSIGNED_BYTE, true, GL_NEAREST)
-  render3d_st.post_dof = target_new(render3d_st, w, h, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, false, GL_LINEAR)
-  if render3d_st.post_p_dof == 0 { render3d_st.post_p_dof = r3d_program(render3d_st, "fullscreen.vert", "dof.frag", "") }
-  render3d_st.post_vol = target_new(render3d_st, max(w / 2, 1), max(h / 2, 1), GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, false, GL_LINEAR)
-  if render3d_st.post_p_vol == 0 { render3d_st.post_p_vol = r3d_program(render3d_st, "fullscreen.vert", "volumetric.frag", "") }
-  render3d_st.post_prev = target_new(render3d_st, w, h, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, false, GL_LINEAR)
-  render3d_st.post_scene = target_new(render3d_st, w, h, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, false, GL_LINEAR)
-  if render3d_st.post_p_sharp == 0 { render3d_st.post_p_sharp = r3d_program(render3d_st, "fullscreen.vert", "sharpen.frag", "") }
-  render3d_st.post_sharpen = 1.2
-  render3d_st.post_grain = float_bits(0.025)
-  render3d_st.post_ao_radius = 0.7
-  render3d_st.post_ao_intensity = 1.4
-  render3d_st.post_ao_strength = 0.8
-  render3d_st.post_fs = mesh_fullscreen(render3d_st)
-  render3d_st.post_exposure = 0.36
-  render3d_st.post_bloom_strength = float_bits(0.06)
-  render3d_st.post_vignette = 0.35
-  render3d_st.post_saturation = 1.04
-  render3d_st.post_contrast = 1.12
-  render3d_st.post_key = 0.19
-  render3d_st.post_lum = words(4)
+  post_ao = target_new(w, h, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, false, GL_LINEAR)
+  post_ao_blur = target_new(w, h, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, false, GL_LINEAR)
+  if post_p_ao == 0 { post_p_ao = r3d_program("fullscreen.vert", "ssgi.frag", "");  post_p_ao_blur = r3d_program("fullscreen.vert", "ssao_blur.frag", "") }
+  post_ldr = target_new(w, h, post_ldr_fmt(), GL_RGBA, GL_UNSIGNED_BYTE, false, GL_LINEAR)
+  post_ldr_hdr = gpu_hdr_active()
+  post_depth_copy = target_new(w, h, GL_R8, GL_RED, GL_UNSIGNED_BYTE, true, GL_NEAREST)
+  post_dof = target_new(w, h, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, false, GL_LINEAR)
+  if post_p_dof == 0 { post_p_dof = r3d_program("fullscreen.vert", "dof.frag", "") }
+  post_vol = target_new(max(w / 2, 1), max(h / 2, 1), GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, false, GL_LINEAR)
+  if post_p_vol == 0 { post_p_vol = r3d_program("fullscreen.vert", "volumetric.frag", "") }
+  post_prev = target_new(w, h, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, false, GL_LINEAR)
+  post_scene = target_new(w, h, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, false, GL_LINEAR)
+  if post_p_sharp == 0 { post_p_sharp = r3d_program("fullscreen.vert", "sharpen.frag", "") }
+  post_sharpen = 1.2
+  post_grain = float_bits(0.025)
+  post_ao_radius = 0.7
+  post_ao_intensity = 1.4
+  post_ao_strength = 0.8
+  post_fs = mesh_fullscreen()
+  post_exposure = 0.36
+  post_bloom_strength = float_bits(0.06)
+  post_vignette = 0.35
+  post_saturation = 1.04
+  post_contrast = 1.12
+  post_key = 0.19
+  post_lum = words(4)
   var m = 1;  var sz = max(w, h)
   while sz > 1 { sz = sz / 2;  m += 1 }
-  render3d_st.post_mips = m
-  render3d_st.post_adapt = 0.0
+  post_mips = m
+  post_adapt = 0.0
 }
 
 # Mean scene luminance from the HDR mip chain -> exposure = key / mean, eased over
@@ -129,59 +197,63 @@ function post_init(render3d_st: mut Render3dState, w: int, h: int) -> void {
 # buffer still synchronised the texture: 50% of the CPU's frame waiting, sampled), so
 # the adaptation now stays on the GPU: a 1x1 pass (adapt.frag) eases last frame's value
 # toward key / mean and the tonemapper samples it. The CPU never waits for the picture.
-function post_measure(render3d_st: mut Render3dState) -> void {
-  gpu_tex_bind(render3d_st, GPU_TEX2D, render3d_st.post_hdr.color)
-  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
-  gpu_tex_mips(render3d_st, GPU_TEX2D)
-  if render3d_st.post_adapt_t == null {
-    render3d_st.post_adapt_t = new []Target
-    for k in 0 .. 2 { push(render3d_st.post_adapt_t, target_new(render3d_st, 1, 1, GL_R32F, GL_RED, GL_FLOAT, false, GL_NEAREST)) }
-    render3d_st.post_adapt_reset = true
+var post_adapt_t: []Target = null
+var post_adapt_i: int = 0
+var post_p_adapt: int = 0
+var post_adapt_reset: bool = true
+function post_measure() -> void {
+  gpu_tex_bind(GPU_TEX2D, post_hdr.color)
+  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+  gpu_tex_mips(GPU_TEX2D)
+  if post_adapt_t == null {
+    post_adapt_t = new []Target
+    for k in 0 .. 2 { push(post_adapt_t, target_new(1, 1, GL_R32F, GL_RED, GL_FLOAT, false, GL_NEAREST)) }
+    post_adapt_reset = true
   }
-  if render3d_st.post_p_adapt == 0 { render3d_st.post_p_adapt = r3d_program(render3d_st, "fullscreen.vert", "adapt.frag", "") }
-  let next = 1 - render3d_st.post_adapt_i
-  target_bind(render3d_st, render3d_st.post_adapt_t[next])
-  gpu_depth_test(render3d_st, false)
-  gpu_use_program(render3d_st, render3d_st.post_p_adapt)
-  r3d_bind_2d(render3d_st, render3d_st.post_p_adapt, "u_scene", 0, render3d_st.post_hdr.color)
-  r3d_bind_2d(render3d_st, render3d_st.post_p_adapt, "u_prev", 1, render3d_st.post_adapt_t[render3d_st.post_adapt_i].color)
-  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_adapt, "u_lod"), float(render3d_st.post_mips - 1))
-  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_adapt, "u_key"), render3d_st.post_key)
-  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_adapt, "u_max"), render3d_st.post_exposure_max)
-  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_adapt, "u_rate"), 0.08)
+  if post_p_adapt == 0 { post_p_adapt = r3d_program("fullscreen.vert", "adapt.frag", "") }
+  let next = 1 - post_adapt_i
+  target_bind(post_adapt_t[next])
+  gpu_depth_test(false)
+  gpu_use_program(post_p_adapt)
+  r3d_bind_2d(post_p_adapt, "u_scene", 0, post_hdr.color)
+  r3d_bind_2d(post_p_adapt, "u_prev", 1, post_adapt_t[post_adapt_i].color)
+  u_f(gpu_uniform(post_p_adapt, "u_lod"), float(post_mips - 1))
+  u_f(gpu_uniform(post_p_adapt, "u_key"), post_key)
+  u_f(gpu_uniform(post_p_adapt, "u_max"), post_exposure_max)
+  u_f(gpu_uniform(post_p_adapt, "u_rate"), 0.08)
   var reset = 0.0
-  if render3d_st.post_adapt_reset { reset = 1.0;  render3d_st.post_adapt_reset = false }
-  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_adapt, "u_reset"), reset)
-  mesh_draw(render3d_st, render3d_st.post_fs)
-  render3d_st.post_adapt_i = next
-  gpu_tex_bind(render3d_st, GPU_TEX2D, render3d_st.post_hdr.color)
-  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+  if post_adapt_reset { reset = 1.0;  post_adapt_reset = false }
+  u_f(gpu_uniform(post_p_adapt, "u_reset"), reset)
+  mesh_draw(post_fs)
+  post_adapt_i = next
+  gpu_tex_bind(GPU_TEX2D, post_hdr.color)
+  gpu_tex_param(GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
 }
 
-function post_begin_scene(render3d_st: mut Render3dState) -> void {
-  target_bind(render3d_st, render3d_st.post_hdr)
-  if render3d_st.post_ms_fbo != 0 { gpu_fb_bind(render3d_st, render3d_st.post_ms_fbo);  gpu_multisample(render3d_st, true) }
-  gpu_depth_test(render3d_st, true)
-  gpu_depth_func(render3d_st, GL_LESS)
-  gpu_depth_write(render3d_st, true)
-  gpu_cull(render3d_st, true)
-  gpu_cull_face(render3d_st, GL_BACK)
-  gpu_clear_color(render3d_st, 0.0, 0.0, 0.0, 1.0)
-  gpu_clear(render3d_st, GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+function post_begin_scene() -> void {
+  target_bind(post_hdr)
+  if post_ms_fbo != 0 { gpu_fb_bind(post_ms_fbo);  gpu_multisample(true) }
+  gpu_depth_test(true)
+  gpu_depth_func(GL_LESS)
+  gpu_depth_write(true)
+  gpu_cull(true)
+  gpu_cull_face(GL_BACK)
+  gpu_clear_color(0.0, 0.0, 0.0, 1.0)
+  gpu_clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 }
 
 # resolve the multisampled scene into the plain HDR target (colour + depth)
-function post_resolve(render3d_st: mut Render3dState) -> void {
-  if render3d_st.post_ms_fbo != 0 {
-    gpu_fb_bind_read(render3d_st, render3d_st.post_ms_fbo)
-    gpu_fb_bind_draw(render3d_st, render3d_st.post_hdr.fbo)
-    gpu_blit(render3d_st, render3d_st.post_w, render3d_st.post_h, GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+function post_resolve() -> void {
+  if post_ms_fbo != 0 {
+    gpu_fb_bind_read(post_ms_fbo)
+    gpu_fb_bind_draw(post_hdr.fbo)
+    gpu_blit(post_w, post_h, GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
   }
   # the depth copy every pass after this may read while the frame is still being drawn into
-  gpu_fb_bind_read(render3d_st, render3d_st.post_hdr.fbo)
-  gpu_fb_bind_draw(render3d_st, render3d_st.post_depth_copy.fbo)
-  gpu_blit(render3d_st, render3d_st.post_w, render3d_st.post_h, GL_DEPTH_BUFFER_BIT)
-  gpu_fb_bind(render3d_st, 0)
+  gpu_fb_bind_read(post_hdr.fbo)
+  gpu_fb_bind_draw(post_depth_copy.fbo)
+  gpu_blit(post_w, post_h, GL_DEPTH_BUFFER_BIT)
+  gpu_fb_bind(0)
 }
 
 # There is no temporal anti-aliasing. It was reprojecting every pixel through the
@@ -196,194 +268,194 @@ function post_resolve(render3d_st: mut Render3dState) -> void {
 # then absorb it, which is what makes the surface read as a body of water rather than a
 # sheet laid over the ground: the bottom is seen THROUGH the water, tinted and dimmed by
 # how far the light travelled, instead of being the dry terrain showing through an alpha.
-function post_capture_scene(render3d_st: mut Render3dState) -> void {
-  gpu_fb_bind_read(render3d_st, render3d_st.post_hdr.fbo)
-  gpu_fb_bind_draw(render3d_st, render3d_st.post_scene.fbo)
-  gpu_blit(render3d_st, render3d_st.post_w, render3d_st.post_h, GL_COLOR_BUFFER_BIT)
-  gpu_fb_bind(render3d_st, render3d_st.post_hdr.fbo)
-  gpu_viewport(render3d_st, 0, 0, render3d_st.post_w, render3d_st.post_h)
+function post_capture_scene() -> void {
+  gpu_fb_bind_read(post_hdr.fbo)
+  gpu_fb_bind_draw(post_scene.fbo)
+  gpu_blit(post_w, post_h, GL_COLOR_BUFFER_BIT)
+  gpu_fb_bind(post_hdr.fbo)
+  gpu_viewport(0, 0, post_w, post_h)
 }
 
 # Keep a copy of the finished scene colour: the SSGI bounce reads last frame's colour.
-function post_capture_prev(render3d_st: mut Render3dState) -> void {
-  gpu_fb_bind_read(render3d_st, render3d_st.post_hdr.fbo)
-  gpu_fb_bind_draw(render3d_st, render3d_st.post_prev.fbo)
-  gpu_blit(render3d_st, render3d_st.post_w, render3d_st.post_h, GL_COLOR_BUFFER_BIT)
-  gpu_fb_bind(render3d_st, 0)
-  render3d_st.post_frame += 1
+function post_capture_prev() -> void {
+  gpu_fb_bind_read(post_hdr.fbo)
+  gpu_fb_bind_draw(post_prev.fbo)
+  gpu_blit(post_w, post_h, GL_COLOR_BUFFER_BIT)
+  gpu_fb_bind(0)
+  post_frame += 1
 }
 
-function post_ssao_pass(render3d_st: mut Render3dState) -> void {
-  gpu_depth_test(render3d_st, false)
-  gpu_blend(render3d_st, false)
-  target_bind(render3d_st, render3d_st.post_ao)
-  gpu_use_program(render3d_st, render3d_st.post_p_ao)
-  r3d_bind_2d(render3d_st, render3d_st.post_p_ao, "u_depth", 0, render3d_st.post_hdr.depth)
-  r3d_bind_2d(render3d_st, render3d_st.post_p_ao, "u_prev_color", 1, render3d_st.post_prev.color)
-  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_frame"), float(render3d_st.post_frame % 64))
-  u_mat4(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_inv_proj"), render3d_st.cam_inv_proj)
-  u_mat4(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_proj"), render3d_st.cam_proj)
-  u_f2(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_texel"), 1.0 / float(render3d_st.post_w), 1.0 / float(render3d_st.post_h))
-  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_radius"), render3d_st.post_ao_radius)
-  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_intensity"), render3d_st.post_ao_intensity)
-  var contact = render3d_st.post_contact
-  if r3d_env_has(render3d_st, "R3D_NOCONTACT") { contact = 0.0 }
-  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_contact"), contact)
-  mesh_draw(render3d_st, render3d_st.post_fs)
-  target_bind(render3d_st, render3d_st.post_ao_blur)
-  gpu_use_program(render3d_st, render3d_st.post_p_ao_blur)
-  r3d_bind_2d(render3d_st, render3d_st.post_p_ao_blur, "u_ao", 0, render3d_st.post_ao.color)
-  r3d_bind_2d(render3d_st, render3d_st.post_p_ao_blur, "u_depth", 1, render3d_st.post_hdr.depth)
-  u_f2(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao_blur, "u_texel"), 1.0 / float(render3d_st.post_ao.w), 1.0 / float(render3d_st.post_ao.h))
-  mesh_draw(render3d_st, render3d_st.post_fs)
+function post_ssao_pass() -> void {
+  gpu_depth_test(false)
+  gpu_blend(false)
+  target_bind(post_ao)
+  gpu_use_program(post_p_ao)
+  r3d_bind_2d(post_p_ao, "u_depth", 0, post_hdr.depth)
+  r3d_bind_2d(post_p_ao, "u_prev_color", 1, post_prev.color)
+  u_f(gpu_uniform(post_p_ao, "u_frame"), float(post_frame % 64))
+  u_mat4(gpu_uniform(post_p_ao, "u_inv_proj"), cam_inv_proj)
+  u_mat4(gpu_uniform(post_p_ao, "u_proj"), cam_proj)
+  u_f2(gpu_uniform(post_p_ao, "u_texel"), 1.0 / float(post_w), 1.0 / float(post_h))
+  u_f(gpu_uniform(post_p_ao, "u_radius"), post_ao_radius)
+  u_f(gpu_uniform(post_p_ao, "u_intensity"), post_ao_intensity)
+  var contact = post_contact
+  if r3d_env_has("R3D_NOCONTACT") { contact = 0.0 }
+  u_f(gpu_uniform(post_p_ao, "u_contact"), contact)
+  mesh_draw(post_fs)
+  target_bind(post_ao_blur)
+  gpu_use_program(post_p_ao_blur)
+  r3d_bind_2d(post_p_ao_blur, "u_ao", 0, post_ao.color)
+  r3d_bind_2d(post_p_ao_blur, "u_depth", 1, post_hdr.depth)
+  u_f2(gpu_uniform(post_p_ao_blur, "u_texel"), 1.0 / float(post_ao.w), 1.0 / float(post_ao.h))
+  mesh_draw(post_fs)
 }
 
 # The march, then the composite. It is added to the scene BEFORE bloom on purpose: a shaft of
 # light is a bright thing in the air and should bloom like one, and compositing it after the
 # bloom pyramid would give hard-edged rays with no glow at all.
-function post_volumetric_pass(render3d_st: mut Render3dState) -> void {
-  if render3d_st.post_vol_steps <= 0.0 { return }
-  if r3d_env_has(render3d_st, "R3D_NOVOL") { return }
-  gpu_depth_test(render3d_st, false)
-  gpu_blend(render3d_st, false)
-  target_bind(render3d_st, render3d_st.post_vol)
-  gpu_use_program(render3d_st, render3d_st.post_p_vol)
-  r3d_bind_2d(render3d_st, render3d_st.post_p_vol, "u_depth", 0, render3d_st.post_hdr.depth)
-  shadow_bind(render3d_st, render3d_st.post_p_vol)
-  sky_bind_lighting(render3d_st, render3d_st.post_p_vol)
-  sky_bind_rot(render3d_st, render3d_st.post_p_vol)
-  fog_bind(render3d_st, render3d_st.post_p_vol)
-  u_mat4(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_vol, "u_inv_vp"), render3d_st.cam_inv_vp)
-  u_v3(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_vol, "u_cam_pos"), render3d_st.cam_pos)
-  u_v3(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_vol, "u_sun_dir"), render3d_st.sun_dir)
-  u_v3(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_vol, "u_sun_color"), render3d_st.sun_color)
-  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_vol, "u_vol_steps"), render3d_st.post_vol_steps)
-  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_vol, "u_vol_density"), render3d_st.post_vol_density)
-  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_vol, "u_vol_falloff"), render3d_st.post_vol_falloff)
-  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_vol, "u_vol_far"), render3d_st.post_vol_far)
-  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_vol, "u_vol_g"), render3d_st.post_vol_g)
-  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_vol, "u_vol_mist"), render3d_st.post_vol_mist)
-  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_vol, "u_vol_mist_h"), render3d_st.post_vol_mist_h)
-  mesh_draw(render3d_st, render3d_st.post_fs)
+function post_volumetric_pass() -> void {
+  if post_vol_steps <= 0.0 { return }
+  if r3d_env_has("R3D_NOVOL") { return }
+  gpu_depth_test(false)
+  gpu_blend(false)
+  target_bind(post_vol)
+  gpu_use_program(post_p_vol)
+  r3d_bind_2d(post_p_vol, "u_depth", 0, post_hdr.depth)
+  shadow_bind(post_p_vol)
+  sky_bind_lighting(post_p_vol)
+  sky_bind_rot(post_p_vol)
+  fog_bind(post_p_vol)
+  u_mat4(gpu_uniform(post_p_vol, "u_inv_vp"), cam_inv_vp)
+  u_v3(gpu_uniform(post_p_vol, "u_cam_pos"), cam_pos)
+  u_v3(gpu_uniform(post_p_vol, "u_sun_dir"), sun_dir)
+  u_v3(gpu_uniform(post_p_vol, "u_sun_color"), sun_color)
+  u_f(gpu_uniform(post_p_vol, "u_vol_steps"), post_vol_steps)
+  u_f(gpu_uniform(post_p_vol, "u_vol_density"), post_vol_density)
+  u_f(gpu_uniform(post_p_vol, "u_vol_falloff"), post_vol_falloff)
+  u_f(gpu_uniform(post_p_vol, "u_vol_far"), post_vol_far)
+  u_f(gpu_uniform(post_p_vol, "u_vol_g"), post_vol_g)
+  u_f(gpu_uniform(post_p_vol, "u_vol_mist"), post_vol_mist)
+  u_f(gpu_uniform(post_p_vol, "u_vol_mist_h"), post_vol_mist_h)
+  mesh_draw(post_fs)
   # Composite into the HDR scene with the bloom pyramid's own upsample - a 3x3 tent under
   # ONE/ONE blending, which is exactly what is wanted here and already exists, rather than a
   # blit shader written for one caller. Into post_hdr, not post_scene: post_scene is the copy
   # the water refracts, so adding shafts there would put them UNDER the lake.
-  target_bind(render3d_st, render3d_st.post_hdr)
-  gpu_blend(render3d_st, true)
-  gpu_blend_func(render3d_st, GL_ONE, GL_ONE)
-  gpu_use_program(render3d_st, render3d_st.post_p_up)
-  r3d_bind_2d(render3d_st, render3d_st.post_p_up, "u_src", 0, render3d_st.post_vol.color)
-  u_f2(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_up, "u_texel"), 1.0 / float(render3d_st.post_vol.w), 1.0 / float(render3d_st.post_vol.h))
-  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_up, "u_radius"), 1.0)
-  mesh_draw(render3d_st, render3d_st.post_fs)
-  gpu_blend(render3d_st, false)
+  target_bind(post_hdr)
+  gpu_blend(true)
+  gpu_blend_func(GL_ONE, GL_ONE)
+  gpu_use_program(post_p_up)
+  r3d_bind_2d(post_p_up, "u_src", 0, post_vol.color)
+  u_f2(gpu_uniform(post_p_up, "u_texel"), 1.0 / float(post_vol.w), 1.0 / float(post_vol.h))
+  u_f(gpu_uniform(post_p_up, "u_radius"), 1.0)
+  mesh_draw(post_fs)
+  gpu_blend(false)
 }
 
 # The lens, between the scene and the bloom: a blurred highlight should still bloom, and a
 # bloom smeared by the lens afterwards would be a halo round nothing.
-function post_dof_pass(render3d_st: mut Render3dState) -> void {
-  if render3d_st.post_dof_aperture == 0.0 { return }
-  gpu_depth_test(render3d_st, false)
-  gpu_blend(render3d_st, false)
-  target_bind(render3d_st, render3d_st.post_dof)
-  gpu_use_program(render3d_st, render3d_st.post_p_dof)
-  r3d_bind_2d(render3d_st, render3d_st.post_p_dof, "u_src", 0, render3d_st.post_color)
-  r3d_bind_2d(render3d_st, render3d_st.post_p_dof, "u_depth", 1, render3d_st.post_hdr.depth)
-  u_mat4(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_dof, "u_inv_proj"), render3d_st.cam_inv_proj)
-  u_f2(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_dof, "u_texel"), 1.0 / float(render3d_st.post_w), 1.0 / float(render3d_st.post_h))
-  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_dof, "u_focus"), render3d_st.post_dof_focus)
-  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_dof, "u_aperture"), render3d_st.post_dof_aperture)
-  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_dof, "u_max_coc"), render3d_st.post_dof_max)
-  mesh_draw(render3d_st, render3d_st.post_fs)
-  render3d_st.post_color = render3d_st.post_dof.color
+function post_dof_pass() -> void {
+  if post_dof_aperture == 0.0 { return }
+  gpu_depth_test(false)
+  gpu_blend(false)
+  target_bind(post_dof)
+  gpu_use_program(post_p_dof)
+  r3d_bind_2d(post_p_dof, "u_src", 0, post_color)
+  r3d_bind_2d(post_p_dof, "u_depth", 1, post_hdr.depth)
+  u_mat4(gpu_uniform(post_p_dof, "u_inv_proj"), cam_inv_proj)
+  u_f2(gpu_uniform(post_p_dof, "u_texel"), 1.0 / float(post_w), 1.0 / float(post_h))
+  u_f(gpu_uniform(post_p_dof, "u_focus"), post_dof_focus)
+  u_f(gpu_uniform(post_p_dof, "u_aperture"), post_dof_aperture)
+  u_f(gpu_uniform(post_p_dof, "u_max_coc"), post_dof_max)
+  mesh_draw(post_fs)
+  post_color = post_dof.color
 }
 
-function post_bloom_pass(render3d_st: mut Render3dState) -> void {
-  gpu_depth_test(render3d_st, false)
-  gpu_blend(render3d_st, false)
-  var src = render3d_st.post_color
-  var sw = render3d_st.post_color_w;  var sh = render3d_st.post_color_h
-  gpu_use_program(render3d_st, render3d_st.post_p_down)
+function post_bloom_pass() -> void {
+  gpu_depth_test(false)
+  gpu_blend(false)
+  var src = post_color
+  var sw = post_color_w;  var sh = post_color_h
+  gpu_use_program(post_p_down)
   for i in 0 .. BLOOM_LEVELS {
-    let t = render3d_st.post_bloom[i]
-    target_bind(render3d_st, t)
-    r3d_bind_2d(render3d_st, render3d_st.post_p_down, "u_src", 0, src)
-    u_f2(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_down, "u_texel"), 1.0 / float(sw), 1.0 / float(sh))
+    let t = post_bloom[i]
+    target_bind(t)
+    r3d_bind_2d(post_p_down, "u_src", 0, src)
+    u_f2(gpu_uniform(post_p_down, "u_texel"), 1.0 / float(sw), 1.0 / float(sh))
     var th = -1.0
     if i == 0 { th = 1.2 }
-    u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_down, "u_threshold"), th)
-    mesh_draw(render3d_st, render3d_st.post_fs)
+    u_f(gpu_uniform(post_p_down, "u_threshold"), th)
+    mesh_draw(post_fs)
     src = t.color;  sw = t.w;  sh = t.h
   }
-  gpu_use_program(render3d_st, render3d_st.post_p_up)
-  gpu_blend(render3d_st, true)
-  gpu_blend_func(render3d_st, GL_ONE, GL_ONE)
+  gpu_use_program(post_p_up)
+  gpu_blend(true)
+  gpu_blend_func(GL_ONE, GL_ONE)
   var i = BLOOM_LEVELS - 1
   while i > 0 {
-    let from = render3d_st.post_bloom[i]
-    let to = render3d_st.post_bloom[i - 1]
-    target_bind(render3d_st, to)
-    r3d_bind_2d(render3d_st, render3d_st.post_p_up, "u_src", 0, from.color)
-    u_f2(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_up, "u_texel"), 1.0 / float(from.w), 1.0 / float(from.h))
-    u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_up, "u_radius"), 1.0)
-    mesh_draw(render3d_st, render3d_st.post_fs)
+    let from = post_bloom[i]
+    let to = post_bloom[i - 1]
+    target_bind(to)
+    r3d_bind_2d(post_p_up, "u_src", 0, from.color)
+    u_f2(gpu_uniform(post_p_up, "u_texel"), 1.0 / float(from.w), 1.0 / float(from.h))
+    u_f(gpu_uniform(post_p_up, "u_radius"), 1.0)
+    mesh_draw(post_fs)
     i -= 1
   }
-  gpu_blend(render3d_st, false)
+  gpu_blend(false)
 }
 
-function post_tonemap(render3d_st: mut Render3dState, color_tex: int) -> void {
-  var prog = render3d_st.post_p_tone
-  if gpu_hdr_active(render3d_st) {
-    if render3d_st.post_p_tone_hdr == 0 { render3d_st.post_p_tone_hdr = r3d_program(render3d_st, "fullscreen.vert", "tonemap.frag", "#define HDR10\n") }
-    prog = render3d_st.post_p_tone_hdr
+function post_tonemap(color_tex: int) -> void {
+  var prog = post_p_tone
+  if gpu_hdr_active() {
+    if post_p_tone_hdr == 0 { post_p_tone_hdr = r3d_program("fullscreen.vert", "tonemap.frag", "#define HDR10\n") }
+    prog = post_p_tone_hdr
   }
-  if render3d_st.post_ldr_hdr != gpu_hdr_active(render3d_st) {
-    let w = render3d_st.post_ldr.w;  let h = render3d_st.post_ldr.h
-    target_free(render3d_st, render3d_st.post_ldr)
-    render3d_st.post_ldr = target_new(render3d_st, w, h, post_ldr_fmt(render3d_st), GL_RGBA, GL_UNSIGNED_BYTE, false, GL_LINEAR)
-    render3d_st.post_ldr_hdr = gpu_hdr_active(render3d_st)
+  if post_ldr_hdr != gpu_hdr_active() {
+    let w = post_ldr.w;  let h = post_ldr.h
+    target_free(post_ldr)
+    post_ldr = target_new(w, h, post_ldr_fmt(), GL_RGBA, GL_UNSIGNED_BYTE, false, GL_LINEAR)
+    post_ldr_hdr = gpu_hdr_active()
   }
-  if render3d_st.post_auto { post_measure(render3d_st) }
-  target_bind(render3d_st, render3d_st.post_ldr)
-  gpu_depth_test(render3d_st, false)
-  gpu_use_program(render3d_st, prog)
-  r3d_bind_2d(render3d_st, prog, "u_hdr", 0, color_tex)
-  r3d_bind_2d(render3d_st, prog, "u_bloom", 1, render3d_st.post_bloom[0].color)
-  r3d_bind_2d(render3d_st, prog, "u_ao", 2, render3d_st.post_ao_blur.color)
-  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_ao_strength"), render3d_st.post_ao_strength)
-  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_gi_strength"), render3d_st.post_gi_strength)
-  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_exposure"), render3d_st.post_exposure)
+  if post_auto { post_measure() }
+  target_bind(post_ldr)
+  gpu_depth_test(false)
+  gpu_use_program(prog)
+  r3d_bind_2d(prog, "u_hdr", 0, color_tex)
+  r3d_bind_2d(prog, "u_bloom", 1, post_bloom[0].color)
+  r3d_bind_2d(prog, "u_ao", 2, post_ao_blur.color)
+  u_f(gpu_uniform(prog, "u_ao_strength"), post_ao_strength)
+  u_f(gpu_uniform(prog, "u_gi_strength"), post_gi_strength)
+  u_f(gpu_uniform(prog, "u_exposure"), post_exposure)
   var auto = 0.0
-  if render3d_st.post_auto and render3d_st.post_adapt_t != null { auto = 1.0;  r3d_bind_2d(render3d_st, prog, "u_adapt", 3, render3d_st.post_adapt_t[render3d_st.post_adapt_i].color) }
-  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_auto"), auto)
-  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_bloom_strength"), float_from_bits(render3d_st.post_bloom_strength))
-  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_vignette"), render3d_st.post_vignette)
-  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_saturation"), render3d_st.post_saturation)
-  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_contrast"), render3d_st.post_contrast)
-  u_f3(render3d_st, gpu_uniform(render3d_st, prog, "u_wb"), render3d_st.post_wb_r, render3d_st.post_wb_g, render3d_st.post_wb_b)
-  u_f3(render3d_st, gpu_uniform(render3d_st, prog, "u_lift"), render3d_st.post_lift_r, render3d_st.post_lift_g, render3d_st.post_lift_b)
-  u_f3(render3d_st, gpu_uniform(render3d_st, prog, "u_gain"), render3d_st.post_gain_r, render3d_st.post_gain_g, render3d_st.post_gain_b)
+  if post_auto and post_adapt_t != null { auto = 1.0;  r3d_bind_2d(prog, "u_adapt", 3, post_adapt_t[post_adapt_i].color) }
+  u_f(gpu_uniform(prog, "u_auto"), auto)
+  u_f(gpu_uniform(prog, "u_bloom_strength"), float_from_bits(post_bloom_strength))
+  u_f(gpu_uniform(prog, "u_vignette"), post_vignette)
+  u_f(gpu_uniform(prog, "u_saturation"), post_saturation)
+  u_f(gpu_uniform(prog, "u_contrast"), post_contrast)
+  u_f3(gpu_uniform(prog, "u_wb"), post_wb_r, post_wb_g, post_wb_b)
+  u_f3(gpu_uniform(prog, "u_lift"), post_lift_r, post_lift_g, post_lift_b)
+  u_f3(gpu_uniform(prog, "u_gain"), post_gain_r, post_gain_g, post_gain_b)
   # the HDR10 variant's display calibration (the SDR program has none of these, and -1 sets nothing)
-  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_hdr_peak"), r3d_hdr_peak_nits(render3d_st))
-  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_hdr_paper"), r3d_hdr_paper_nits(render3d_st))
-  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_hdr_black"), r3d_hdr_black_nits(render3d_st))
-  mesh_draw(render3d_st, render3d_st.post_fs)
+  u_f(gpu_uniform(prog, "u_hdr_peak"), r3d_hdr_peak_nits())
+  u_f(gpu_uniform(prog, "u_hdr_paper"), r3d_hdr_paper_nits())
+  u_f(gpu_uniform(prog, "u_hdr_black"), r3d_hdr_black_nits())
+  mesh_draw(post_fs)
   # sharpen + grain onto the screen
-  gpu_fb_bind(render3d_st, gpu_screen_fb(render3d_st))
-  gpu_viewport(render3d_st, 0, 0, gl_w, gl_h)
-  gpu_use_program(render3d_st, render3d_st.post_p_sharp)
-  r3d_bind_2d(render3d_st, render3d_st.post_p_sharp, "u_src", 0, render3d_st.post_ldr.color)
-  u_f2(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_sharp, "u_texel"), 1.0 / float(render3d_st.post_ldr.w), 1.0 / float(render3d_st.post_ldr.h))
-  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_sharp, "u_amount"), render3d_st.post_sharpen)
-  var fx = render3d_st.post_fxaa
-  if r3d_env_has(render3d_st, "R3D_NOFXAA") { fx = 0.0 }
-  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_sharp, "u_fxaa"), fx)
+  gpu_fb_bind(gpu_screen_fb())
+  gpu_viewport(0, 0, gl_w, gl_h)
+  gpu_use_program(post_p_sharp)
+  r3d_bind_2d(post_p_sharp, "u_src", 0, post_ldr.color)
+  u_f2(gpu_uniform(post_p_sharp, "u_texel"), 1.0 / float(post_ldr.w), 1.0 / float(post_ldr.h))
+  u_f(gpu_uniform(post_p_sharp, "u_amount"), post_sharpen)
+  var fx = post_fxaa
+  if r3d_env_has("R3D_NOFXAA") { fx = 0.0 }
+  u_f(gpu_uniform(post_p_sharp, "u_fxaa"), fx)
   # R3D_NOGRAIN=1: no film grain, so two frames of a still camera can be compared for what else moves
-  var grain = render3d_st.post_grain
-  if r3d_env_has(render3d_st, "R3D_NOGRAIN") { grain = float_bits(0.0) }
-  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_sharp, "u_grain"), float_from_bits(grain))
-  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_sharp, "u_time"), render3d_st.r3d_time)
-  mesh_draw(render3d_st, render3d_st.post_fs)
+  var grain = post_grain
+  if r3d_env_has("R3D_NOGRAIN") { grain = float_bits(0.0) }
+  u_f(gpu_uniform(post_p_sharp, "u_grain"), float_from_bits(grain))
+  u_f(gpu_uniform(post_p_sharp, "u_time"), r3d_time)
+  mesh_draw(post_fs)
 }

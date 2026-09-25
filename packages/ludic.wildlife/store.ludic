@@ -1,33 +1,37 @@
 # store.ludic - the animals, their own dice, and the verbs that make and take one away
+var wl_list: []WildAnimal = null
+var wl_keys: int = 0
+var wl_dice: Rng = null
+var wl_hold: bool = false      # staged: nobody thinks, everybody keeps their speed
 const WL_TAU: float = 6.2831853
 
-export function wildlife_all(wildlife_st: mut WildlifeState) -> []WildAnimal {
-  if wildlife_st.wl_list == null { wildlife_st.wl_list = new []WildAnimal }
-  return wildlife_st.wl_list
+export function wildlife_all() -> []WildAnimal {
+  if wl_list == null { wl_list = new []WildAnimal }
+  return wl_list
 }
 
-export function wildlife_count_all(wildlife_st: mut WildlifeState) -> int { return len(wildlife_all(wildlife_st)) }
+export function wildlife_count_all() -> int { return len(wildlife_all()) }
 
 # a new valley: every animal forgotten, quietly (the game has already let its drawings go)
-export function wildlife_clear(wildlife_st: mut WildlifeState) -> void { wildlife_st.wl_list = new []WildAnimal }
+export function wildlife_clear() -> void { wl_list = new []WildAnimal }
 
-function wl_rng(wildlife_st: mut WildlifeState) -> Rng {
-  if wildlife_st.wl_dice == null { wildlife_st.wl_dice = rng_new(97) }
-  return wildlife_st.wl_dice
+function wl_rng() -> Rng {
+  if wl_dice == null { wl_dice = rng_new(97) }
+  return wl_dice
 }
 
-function wl_rnd(wildlife_st: mut WildlifeState) -> float { return rng_float(wl_rng(wildlife_st)) }
+function wl_rnd() -> float { return rng_float(wl_rng()) }
 
 # the package's dice from a known place (a spawn, a test)
-export function wildlife_seed(wildlife_st: mut WildlifeState, seed: int) -> void { rng_seed(wl_rng(wildlife_st), seed) }
+export function wildlife_seed(seed: int) -> void { rng_seed(wl_rng(), seed) }
 
 # an individual exactly as given: the host's own, or the host's on a guest
-export function wildlife_make(wildlife_st: mut WildlifeState, sp: int, x: float, z: float, legend: bool, yaw: float, variant: int, scale: float, nid: int) -> WildAnimal {
-  let s = wildlife_species(wildlife_st, sp)
+export function wildlife_make(sp: int, x: float, z: float, legend: bool, yaw: float, variant: int, scale: float, nid: int) -> WildAnimal {
+  let s = wildlife_species(sp)
   if s == null { return null }
   let a = new WildAnimal
-  wildlife_st.wl_keys += 1
-  a.key = wildlife_st.wl_keys
+  wl_keys += 1
+  a.key = wl_keys
   a.nid = nid
   a.sp = sp
   a.x = x
@@ -42,27 +46,27 @@ export function wildlife_make(wildlife_st: mut WildlifeState, sp: int, x: float,
   a.scale = scale
   a.legend = legend
   a.state = WILD_IDLE
-  push(wildlife_all(wildlife_st), a)
+  push(wildlife_all(), a)
   WildlifeWorld.born(a)
   return a
 }
 
 # a new individual of a species at (x, z), off the package's dice
-export function wildlife_new(wildlife_st: mut WildlifeState, sp: int, x: float, z: float, legend: bool) -> WildAnimal {
-  let s = wildlife_species(wildlife_st, sp)
+export function wildlife_new(sp: int, x: float, z: float, legend: bool) -> WildAnimal {
+  let s = wildlife_species(sp)
   if s == null { return null }
-  let yaw = wl_rnd(wildlife_st) * WL_TAU
-  let variant = rng_between(wl_rng(wildlife_st), 0, 11)
-  let scale = s.scale * (0.88 + wl_rnd(wildlife_st) * 0.24)
-  let a = wildlife_make(wildlife_st, sp, x, z, legend, yaw, variant, scale, WildlifeWorld.next_id())
-  a.thirst = wl_rnd(wildlife_st) * 50.0
-  a.hunger = wl_rnd(wildlife_st) * 50.0
-  a.scat_t = 40.0 + wl_rnd(wildlife_st) * 180.0
+  let yaw = wl_rnd() * WL_TAU
+  let variant = rng_between(wl_rng(), 0, 11)
+  let scale = s.scale * (0.88 + wl_rnd() * 0.24)
+  let a = wildlife_make(sp, x, z, legend, yaw, variant, scale, WildlifeWorld.next_id())
+  a.thirst = wl_rnd() * 50.0
+  a.hunger = wl_rnd() * 50.0
+  a.scat_t = 40.0 + wl_rnd() * 180.0
   if s.flies {
     a.state = WILD_FLY
-    a.fly_h = 10.0 + wl_rnd(wildlife_st) * 20.0
+    a.fly_h = 10.0 + wl_rnd() * 20.0
   }
-  a.timer = wl_rnd(wildlife_st) * 6.0
+  a.timer = wl_rnd() * 6.0
   return a
 }
 
@@ -74,18 +78,18 @@ export function wildlife_remove(a: WildAnimal) -> void {
 }
 
 # staged for a picture: nobody thinks, and everybody keeps the speed they were given
-export function wildlife_hold(wildlife_st: mut WildlifeState, on: bool) -> void { wildlife_st.wl_hold = on }
+export function wildlife_hold(on: bool) -> void { wl_hold = on }
 
-export function wildlife_by_nid(wildlife_st: mut WildlifeState, nid: int) -> WildAnimal {
-  let all = wildlife_all(wildlife_st)
+export function wildlife_by_nid(nid: int) -> WildAnimal {
+  let all = wildlife_all()
   for i in 0 .. len(all) { if all[i].nid == nid { return all[i] } }
   return null
 }
 
 # how many of a species are alive, legends apart
-export function wildlife_count(wildlife_st: mut WildlifeState, sp: int) -> int {
+export function wildlife_count(sp: int) -> int {
   var n = 0
-  let all = wildlife_all(wildlife_st)
+  let all = wildlife_all()
   for i in 0 .. len(all) { if all[i].alive and all[i].sp == sp and not all[i].legend { n += 1 } }
   return n
 }

@@ -1,17 +1,17 @@
 # attr_place.ludic - position and its insets, z-index, overflow, white-space and text-overflow
-function el_place_prop(ui_st: mut UiState, n: UiNode, key: string, v: Val) -> bool {
+function el_place_prop(n: UiNode, key: string, v: Val) -> bool {
   let s = vl_text(v)
   if key == "position" {
     n.pos = 0
     if s == "relative" { n.pos = 1 }
     if s == "absolute" { n.pos = 2 }
     if s == "fixed" { n.pos = 3 }
-  } else if key == "top" { n.top = el_inset(ui_st, n, 0, v) } else if key == "right" { n.right = el_inset(ui_st, n, 1, v) } else if key == "bottom" { n.bottom = el_inset(ui_st, n, 2, v) } else if key == "left" { n.left = el_inset(ui_st, n, 3, v) } else if key == "inset" {
-    el_sides(ui_st, v)
-    n.top = ui_st.el_s0
-    n.right = ui_st.el_s1
-    n.bottom = ui_st.el_s2
-    n.left = ui_st.el_s3
+  } else if key == "top" { n.top = el_inset(n, 0, v) } else if key == "right" { n.right = el_inset(n, 1, v) } else if key == "bottom" { n.bottom = el_inset(n, 2, v) } else if key == "left" { n.left = el_inset(n, 3, v) } else if key == "inset" {
+    el_sides(v)
+    n.top = el_s0
+    n.right = el_s1
+    n.bottom = el_s2
+    n.left = el_s3
   } else if key == "z-index" { n.z = int(el_num(s)) } else if key == "overflow" or key == "overflow-y" {
     if (s == "auto" or s == "scroll" or s == "hidden") and n.kind == UI_BOX { n.kind = UI_SCROLL }
   } else if key == "white-space" { n.nowrap = s == "nowrap" or s == "pre" } else if key == "text-overflow" { n.ellipsis = s == "ellipsis" } else { return false }

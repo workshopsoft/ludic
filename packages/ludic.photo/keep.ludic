@@ -1,81 +1,81 @@
 # keep.ludic - the frame onto the roll, and a frame off it
 # The composed frame, kept as `file` on `day` at `hour`: the index, or -1 when the card is full.
 # Every subject in it counts as photographed, and its best grade may rise.
-export function photo_keep(base_st: mut BaseState, photo_st: mut PhotoState, file: string, day: int, hour: float) -> int {
-  if photo_st.pht_n >= photo_st.pht_max {
-    pht_fact(base_st, photo_st, PHOTO_FULL, -1)
+export function photo_keep(file: string, day: int, hour: float) -> int {
+  if pht_n >= pht_max {
+    pht_fact(PHOTO_FULL, -1)
     return -1
   }
   var firsts = 0
-  for sp in 0 .. 32 { if (photo_st.pht_pending_mask & (1 << sp)) != 0 and photo_st.pht_best[sp] == 0 { firsts = firsts | (1 << sp) } }
-  let i = photo_add(photo_st, day, hour, photo_st.pht_pending_mask, photo_st.pht_pending_legend, false, photo_st.pht_pending_tags, file, photo_st.pht_pending_grade, photo_st.pht_pending_why)
-  photo_st.pht_legend_shot = photo_st.pht_legend_shot | photo_st.pht_pending_legend
-  let f = pht_fact(base_st, photo_st, PHOTO_KEPT, i)
-  f.mask = photo_st.pht_pending_mask
-  f.legend = photo_st.pht_pending_legend
+  for sp in 0 .. 32 { if (pht_pending_mask & (1 << sp)) != 0 and pht_best[sp] == 0 { firsts = firsts | (1 << sp) } }
+  let i = photo_add(day, hour, pht_pending_mask, pht_pending_legend, false, pht_pending_tags, file, pht_pending_grade, pht_pending_why)
+  pht_legend_shot = pht_legend_shot | pht_pending_legend
+  let f = pht_fact(PHOTO_KEPT, i)
+  f.mask = pht_pending_mask
+  f.legend = pht_pending_legend
   f.firsts = firsts
-  f.grade = photo_st.pht_pending_grade
-  f.sign = photo_st.pht_pending_sign
-  f.stars = photo_st.pht_pending_stars
+  f.grade = pht_pending_grade
+  f.sign = pht_pending_sign
+  f.stars = pht_pending_stars
   f.file = file
-  f.tags = photo_st.pht_pending_tags
+  f.tags = pht_pending_tags
   return i
 }
 
 # a frame onto the roll as it stands (a save, an older trip): the index, or -1 when full
-export function photo_add(photo_st: mut PhotoState, day: int, hour: float, mask: int, legend: int, sold: bool, tags: string, file: string, grade: int, why: int) -> int {
-  if photo_st.pht_day == null { pht_blank(photo_st) }
-  if photo_st.pht_n >= photo_st.pht_max { return -1 }
-  let i = photo_st.pht_n
-  photo_st.pht_day[i] = day
-  photo_st.pht_hour[i] = hour
-  photo_st.pht_mask[i] = mask
-  photo_st.pht_legend[i] = legend
-  photo_st.pht_sold[i] = 0
-  if sold { photo_st.pht_sold[i] = 1 }
-  photo_st.pht_grade[i] = grade
-  photo_st.pht_why[i] = why
-  push(photo_st.pht_tags, tags)
-  push(photo_st.pht_file, file)
-  photo_st.pht_n += 1
-  photo_st.pht_species_shot = photo_st.pht_species_shot | mask
-  for sp in 0 .. 32 { if (mask & (1 << sp)) != 0 and grade > photo_st.pht_best[sp] { photo_st.pht_best[sp] = grade } }
+export function photo_add(day: int, hour: float, mask: int, legend: int, sold: bool, tags: string, file: string, grade: int, why: int) -> int {
+  if pht_day == null { pht_blank() }
+  if pht_n >= pht_max { return -1 }
+  let i = pht_n
+  pht_day[i] = day
+  pht_hour[i] = hour
+  pht_mask[i] = mask
+  pht_legend[i] = legend
+  pht_sold[i] = 0
+  if sold { pht_sold[i] = 1 }
+  pht_grade[i] = grade
+  pht_why[i] = why
+  push(pht_tags, tags)
+  push(pht_file, file)
+  pht_n += 1
+  pht_species_shot = pht_species_shot | mask
+  for sp in 0 .. 32 { if (mask & (1 << sp)) != 0 and grade > pht_best[sp] { pht_best[sp] = grade } }
   return i
 }
 
 # forgetting one: the record goes, the ones after it close up, and the game is told the file
-export function photo_remove(base_st: mut BaseState, photo_st: mut PhotoState, i: int) -> void {
-  if i < 0 or i >= photo_st.pht_n { return }
-  let f = pht_fact(base_st, photo_st, PHOTO_DELETED, i)
-  f.file = photo_st.pht_file[i]
+export function photo_remove(i: int) -> void {
+  if i < 0 or i >= pht_n { return }
+  let f = pht_fact(PHOTO_DELETED, i)
+  f.file = pht_file[i]
   let tags = new []string
   let files = new []string
-  for k in 0 .. photo_st.pht_n {
+  for k in 0 .. pht_n {
     if k == i { continue }
-    push(tags, photo_st.pht_tags[k])
-    push(files, photo_st.pht_file[k])
+    push(tags, pht_tags[k])
+    push(files, pht_file[k])
   }
-  for k in i .. photo_st.pht_n - 1 {
-    photo_st.pht_day[k] = photo_st.pht_day[k + 1]
-    photo_st.pht_hour[k] = photo_st.pht_hour[k + 1]
-    photo_st.pht_mask[k] = photo_st.pht_mask[k + 1]
-    photo_st.pht_legend[k] = photo_st.pht_legend[k + 1]
-    photo_st.pht_sold[k] = photo_st.pht_sold[k + 1]
-    photo_st.pht_grade[k] = photo_st.pht_grade[k + 1]
-    photo_st.pht_why[k] = photo_st.pht_why[k + 1]
+  for k in i .. pht_n - 1 {
+    pht_day[k] = pht_day[k + 1]
+    pht_hour[k] = pht_hour[k + 1]
+    pht_mask[k] = pht_mask[k + 1]
+    pht_legend[k] = pht_legend[k + 1]
+    pht_sold[k] = pht_sold[k + 1]
+    pht_grade[k] = pht_grade[k + 1]
+    pht_why[k] = pht_why[k + 1]
   }
-  photo_st.pht_tags = tags
-  photo_st.pht_file = files
-  photo_st.pht_n -= 1
-  if photo_st.pht_cover == i { photo_st.pht_cover = -1 } else if photo_st.pht_cover > i { photo_st.pht_cover -= 1 }
+  pht_tags = tags
+  pht_file = files
+  pht_n -= 1
+  if pht_cover == i { pht_cover = -1 } else if pht_cover > i { pht_cover -= 1 }
 }
 
-export function photo_cover_set(photo_st: mut PhotoState, i: int) -> void { photo_st.pht_cover = i }
+export function photo_cover_set(i: int) -> void { pht_cover = i }
 
 # what has been photographed outright (a network's word, a staged trip)
-export function photo_record_set(photo_st: mut PhotoState, species: int, legends: int) -> void {
-  photo_st.pht_species_shot = species
-  photo_st.pht_legend_shot = legends
+export function photo_record_set(species: int, legends: int) -> void {
+  pht_species_shot = species
+  pht_legend_shot = legends
 }
 
-export function photo_best_set(photo_st: mut PhotoState, sp: int, grade: int) -> void { if sp >= 0 and sp < 32 { photo_st.pht_best[sp] = grade } }
+export function photo_best_set(sp: int, grade: int) -> void { if sp >= 0 and sp < 32 { pht_best[sp] = grade } }

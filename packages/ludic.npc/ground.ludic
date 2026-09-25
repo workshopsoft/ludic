@@ -1,11 +1,15 @@
 # ground.ludic - where a person can stand and walk: dry, gentle, allowed; a straight walk with no
 # water and no scramble on it; a spot in a ring, a spot toward something, and the nearest shore.
 # A finder that succeeds leaves its answer in npc_px / npc_pz (and the water in npc_wx / npc_wz).
+var np_px: float = 0.0
+var np_pz: float = 0.0
+var np_wx: float = 0.0
+var np_wz: float = 0.0
 
-export function npc_px(npc_st: NpcState) -> float { return npc_st.np_px }
-export function npc_pz(npc_st: NpcState) -> float { return npc_st.np_pz }
-export function npc_wx(npc_st: NpcState) -> float { return npc_st.np_wx }
-export function npc_wz(npc_st: NpcState) -> float { return npc_st.np_wz }
+export function npc_px() -> float { return np_px }
+export function npc_pz() -> float { return np_pz }
+export function npc_wx() -> float { return np_wx }
+export function npc_wz() -> float { return np_wz }
 
 export function npc_walkable(x: float, z: float) -> bool {
   if not NpcWorld.allowed(x, z) { return false }
@@ -30,41 +34,41 @@ export function npc_line_ok(ax: float, az: float, bx: float, bz: float) -> bool 
   return true
 }
 
-function np_found(npc_st: mut NpcState, x: float, z: float) -> bool {
-  npc_st.np_px = x
-  npc_st.np_pz = z
+function np_found(x: float, z: float) -> bool {
+  np_px = x
+  np_pz = z
   return true
 }
 
 # somewhere to stand d0 .. d1 from a point
-export function npc_spot_near(npc_st: mut NpcState, x0: float, z0: float, d0: float, d1: float) -> bool {
+export function npc_spot_near(x0: float, z0: float, d0: float, d1: float) -> bool {
   for t in 0 .. 40 {
-    let ang = npc_rnd(npc_st) * NP_TAU
-    let d = d0 + npc_rnd(npc_st) * (d1 - d0)
+    let ang = npc_rnd() * NP_TAU
+    let d = d0 + npc_rnd() * (d1 - d0)
     let x = x0 + Math.cos(ang) * d
     let z = z0 + Math.sin(ang) * d
-    if npc_walkable(x, z) { return np_found(npc_st, x, z) }
+    if npc_walkable(x, z) { return np_found(x, z) }
   }
   return false
 }
 
 # a place to stand d from (ax, az), on the side (bx, bz) is on
-export function npc_toward(npc_st: mut NpcState, ax: float, az: float, bx: float, bz: float, d: float) -> bool {
+export function npc_toward(ax: float, az: float, bx: float, bz: float, d: float) -> bool {
   let dd = Math.max(npc_d(ax, az, bx, bz), 0.5)
   let x = ax + (bx - ax) / dd * d
   let z = az + (bz - az) / dd * d
-  if npc_walkable(x, z) { return np_found(npc_st, x, z) }
+  if npc_walkable(x, z) { return np_found(x, z) }
   for k in 0 .. 12 {
     let ang = Math.atan2(bz - az, bx - ax) + float((k + 1) / 2 * (1 - 2 * (k % 2))) * 0.25
     let x2 = ax + Math.cos(ang) * d
     let z2 = az + Math.sin(ang) * d
-    if npc_walkable(x2, z2) { return np_found(npc_st, x2, z2) }
+    if npc_walkable(x2, z2) { return np_found(x2, z2) }
   }
-  return npc_spot_near(npc_st, x, z, 0.0, 14.0)
+  return npc_spot_near(x, z, 0.0, 14.0)
 }
 
 # the nearest bit of shore within rmax: where to stand, and the water in front of it
-export function npc_shore(npc_st: mut NpcState, x0: float, z0: float, rmax: float) -> bool {
+export function npc_shore(x0: float, z0: float, rmax: float) -> bool {
   var found = false
   var bd = rmax
   for k in 0 .. 16 {
@@ -79,9 +83,9 @@ export function npc_shore(npc_st: mut NpcState, x0: float, z0: float, rmax: floa
       if NpcWorld.ground(x, z) < NpcWorld.water(x, z) {
         if ld > 0.0 and d - ld < 12.0 {
           bd = d
-          found = np_found(npc_st, lx, lz)
-          npc_st.np_wx = x
-          npc_st.np_wz = z
+          found = np_found(lx, lz)
+          np_wx = x
+          np_wz = z
         }
         break
       }

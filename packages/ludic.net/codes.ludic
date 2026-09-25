@@ -28,10 +28,10 @@ export function net_code_of(ip: int, port: int) -> string {
 }
 
 # this machine's code: its address on the network and the socket's port
-export function net_join_code(net_st: NetState) -> string {
+export function net_join_code() -> string {
   var ip = NetSocket.local_ip()
   if ip == 0 { ip = Udp.ip("127.0.0.1") }
-  return net_code_of(ip, net_port(net_st))
+  return net_code_of(ip, net_port())
 }
 
 function net__letter(c: int) -> int {
@@ -45,7 +45,7 @@ function net__letter(c: int) -> int {
 }
 
 # a code or an address: true when net_code_ip() / net_code_port() say where
-export function net_parse_code(net_st: mut NetState, text: string) -> bool {
+export function net_parse_code(text: string) -> bool {
   let p = text
   var colon = -1
   var dots = 0
@@ -53,7 +53,7 @@ export function net_parse_code(net_st: mut NetState, text: string) -> bool {
     if p[i] == ':' { colon = i }
     if p[i] == '.' { dots += 1 }
   }
-  if dots == 3 { return net__parse_addr(net_st, text, colon) }
+  if dots == 3 { return net__parse_addr(text, colon) }
   var hi = 0
   var lo = 0
   var n = 0
@@ -72,24 +72,24 @@ export function net_parse_code(net_st: mut NetState, text: string) -> bool {
     n += 1
   }
   if n != 10 { return false }
-  net_st.net__code_ip = lo
-  net_st.net__code_port = hi
-  return net_st.net__code_ip != 0 and net_st.net__code_port > 0
+  net__code_ip = lo
+  net__code_port = hi
+  return net__code_ip != 0 and net__code_port > 0
 }
 
-function net__parse_addr(net_st: mut NetState, text: string, colon: int) -> bool {
+function net__parse_addr(text: string, colon: int) -> bool {
   var host = text
-  net_st.net__code_port = net__conf(net_st).port
+  net__code_port = net__conf().port
   if colon > 0 {
     host = text[0..colon]
-    net_st.net__code_port = Text.to_int(text[colon + 1..len(text)])
+    net__code_port = Text.to_int(text[colon + 1..len(text)])
   }
-  net_st.net__code_ip = Udp.ip(host)
-  return net_st.net__code_ip != 0 and net_st.net__code_port > 0 and net_st.net__code_port < 65536
+  net__code_ip = Udp.ip(host)
+  return net__code_ip != 0 and net__code_port > 0 and net__code_port < 65536
 }
 
-export function net_code_ip(net_st: NetState) -> int { return net_st.net__code_ip }
-export function net_code_port(net_st: NetState) -> int { return net_st.net__code_port }
+export function net_code_ip() -> int { return net__code_ip }
+export function net_code_port() -> int { return net__code_port }
 
 # six of the code's letters: a room at the matchmaker
 export function net_is_room(text: string) -> bool {

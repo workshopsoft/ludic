@@ -5,80 +5,95 @@
 # ============================================================================
 
 # the size of each cascade's depth layer; shadow_set_res changes it at run time
+var shadow_res: int = 2048
+var shadow_refused: int = 0          # the last size the graphics card had no memory for (0: none)
 const SHADOW_CASCADES: int = 5
 
+var sh_tex: int = 0
+var sh_fbo: int = 0
+var sh_vp: floats = null            # the cascades' view-projections, 16 floats each
+var sh_vp_v: [][]float = null       # a view of each
+var sh_split: floats = null         # view-space far distance of each cascade
+var sh_range: floats = null         # 4 light-frustum depth extents (metres)
+var sh_texel: floats = null         # 4 shadow texel sizes (metres)
+var sh_tmp_proj: floats = null
+var sh_tmp_vp: floats = null
+var sh_tmp_inv: floats = null
+var sh_tmp_view: floats = null
+var sh_corner: floats = null
+var sh_cascade: int = 0            # the cascade being rendered (for casters that skip far ones)
 
-function shadow_init(render3d_st: mut Render3dState) -> void {
-  shadow_make_tex(render3d_st)
-  render3d_st.sh_fbo = gpu_fb_new(render3d_st)
-  gpu_fb_bind(render3d_st, render3d_st.sh_fbo)
-  gpu_fb_no_color(render3d_st)
-  gpu_fb_bind(render3d_st, 0)
-  render3d_st.sh_vp = floats(16 * SHADOW_CASCADES)
-  render3d_st.sh_vp_v = m4_views(render3d_st.sh_vp, SHADOW_CASCADES)
-  render3d_st.sh_split = floats(SHADOW_CASCADES)
-  render3d_st.sh_range = floats(SHADOW_CASCADES)
-  render3d_st.sh_texel = floats(SHADOW_CASCADES)
+function shadow_init() -> void {
+  shadow_make_tex()
+  sh_fbo = gpu_fb_new()
+  gpu_fb_bind(sh_fbo)
+  gpu_fb_no_color()
+  gpu_fb_bind(0)
+  sh_vp = floats(16 * SHADOW_CASCADES)
+  sh_vp_v = m4_views(sh_vp, SHADOW_CASCADES)
+  sh_split = floats(SHADOW_CASCADES)
+  sh_range = floats(SHADOW_CASCADES)
+  sh_texel = floats(SHADOW_CASCADES)
   # the fourth slice keeps a tree-sized texel out to a kilometre; only the massif uses the last
-  render3d_st.sh_split[0] = 16.0;  render3d_st.sh_split[1] = 60.0;  render3d_st.sh_split[2] = 250.0;  render3d_st.sh_split[3] = 1100.0;  render3d_st.sh_split[4] = 6000.0
-  render3d_st.sh_tmp_proj = m4_new();  render3d_st.sh_tmp_vp = m4_new();  render3d_st.sh_tmp_inv = m4_new();  render3d_st.sh_tmp_view = m4_new()
-  render3d_st.sh_corner = floats(3)
+  sh_split[0] = 16.0;  sh_split[1] = 60.0;  sh_split[2] = 250.0;  sh_split[3] = 1100.0;  sh_split[4] = 6000.0
+  sh_tmp_proj = m4_new();  sh_tmp_vp = m4_new();  sh_tmp_inv = m4_new();  sh_tmp_view = m4_new()
+  sh_corner = floats(3)
 }
 
 # A shadow resolution setting: 1024, 2048 or 4096 per cascade. The depth layers are made again at
 # the new size; the pass attaches a layer per cascade every frame, and the lighting reads the
 # texel size from the map itself, so nothing else has to follow.
-function shadow_set_res(render3d_st: mut Render3dState, r: int) -> void {
-  if r < 256 or r == render3d_st.shadow_res { return }
-  let was = render3d_st.shadow_res
-  render3d_st.shadow_res = r
-  if render3d_st.sh_tex == 0 { return }
-  gpu_tex_free(render3d_st, render3d_st.sh_tex)
-  shadow_make_tex(render3d_st)
+function shadow_set_res(r: int) -> void {
+  if r < 256 or r == shadow_res { return }
+  let was = shadow_res
+  shadow_res = r
+  if sh_tex == 0 { return }
+  gpu_tex_free(sh_tex)
+  shadow_make_tex()
   # not enough video memory for that size: go back to the one that worked, and smaller again if even
   # that is refused now, rather than ending with no shadow map at all
-  if not gpu_tex_ok(render3d_st, render3d_st.sh_tex) {
-    render3d_st.shadow_refused = r
+  if not gpu_tex_ok(sh_tex) {
+    shadow_refused = r
     print(`r3d: shadows: no memory for {r} x {r} cascades; keeping {was}`)
     var size = was
-    render3d_st.shadow_res = size
-    gpu_tex_free(render3d_st, render3d_st.sh_tex)
-    shadow_make_tex(render3d_st)
-    while not gpu_tex_ok(render3d_st, render3d_st.sh_tex) and size > 512 {
+    shadow_res = size
+    gpu_tex_free(sh_tex)
+    shadow_make_tex()
+    while not gpu_tex_ok(sh_tex) and size > 512 {
       size = size / 2
-      render3d_st.shadow_res = size
-      gpu_tex_free(render3d_st, render3d_st.sh_tex)
-      shadow_make_tex(render3d_st)
+      shadow_res = size
+      gpu_tex_free(sh_tex)
+      shadow_make_tex()
     }
   }
 }
 
-function shadow_make_tex(render3d_st: mut Render3dState) -> void {
-  render3d_st.sh_tex = gpu_tex_new(render3d_st)
-  gpu_tex_bind(render3d_st, GPU_TEX2D_ARRAY, render3d_st.sh_tex)
-  gpu_tex_image3d(render3d_st, GL_DEPTH_COMPONENT32F, render3d_st.shadow_res, render3d_st.shadow_res, SHADOW_CASCADES, GL_DEPTH_COMPONENT, GL_FLOAT, null)
-  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
-  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER)
-  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER)
-  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE)
-  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL)
+function shadow_make_tex() -> void {
+  sh_tex = gpu_tex_new()
+  gpu_tex_bind(GPU_TEX2D_ARRAY, sh_tex)
+  gpu_tex_image3d(GL_DEPTH_COMPONENT32F, shadow_res, shadow_res, SHADOW_CASCADES, GL_DEPTH_COMPONENT, GL_FLOAT, null)
+  gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+  gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+  gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER)
+  gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER)
+  gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE)
+  gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL)
   let border = gl_floats(4)
   gl_put(border, 0, 1.0);  gl_put(border, 1, 1.0);  gl_put(border, 2, 1.0);  gl_put(border, 3, 1.0)
-  gpu_tex_border(render3d_st, GPU_TEX2D_ARRAY, border)
+  gpu_tex_border(GPU_TEX2D_ARRAY, border)
   free(border)
 }
 
 # light view-projection for the camera-frustum slice [near, far]
-function shadow_fit(render3d_st: mut Render3dState, c: int, near: float, far: float) -> void {
+function shadow_fit(c: int, near: float, far: float) -> void {
   # Fit the slice in VIEW space, not world space. The bounding sphere of a frustum
   # slice depends only on near/far/fov/aspect — never on where the camera is pointing —
   # so computing it here makes the radius a constant per cascade. Doing it in world
   # space (as this did) let the radius wobble as the camera turned, which changed the
   # texel size, which moved the grid the projection is snapped to, so the whole shadow
   # map resampled every frame: that is the crawl and flicker seen while moving.
-  m4_perspective(render3d_st.sh_tmp_proj, render3d_st.cam_fov, render3d_st.cam_aspect, near, far)
-  m4_inverse(render3d_st.sh_tmp_inv, render3d_st.sh_tmp_proj)          # NDC -> view space
+  m4_perspective(sh_tmp_proj, cam_fov, cam_aspect, near, far)
+  m4_inverse(sh_tmp_inv, sh_tmp_proj)          # NDC -> view space
   let cview = v3_new(0.0, 0.0, 0.0)
   let corners = floats(24)
   for i in 0 .. 8 {
@@ -86,123 +101,131 @@ function shadow_fit(render3d_st: mut Render3dState, c: int, near: float, far: fl
     if (i & 1) != 0 { x = 1.0 }
     if (i & 2) != 0 { y = 1.0 }
     if (i & 4) != 0 { z = 1.0 }
-    let w = m4_xform_point(render3d_st.sh_corner, render3d_st.sh_tmp_inv, x, y, z)
+    let w = m4_xform_point(sh_corner, sh_tmp_inv, x, y, z)
     let iw = 1.0 / w
-    corners[i * 3] = render3d_st.sh_corner[0] * iw;  corners[i * 3 + 1] = render3d_st.sh_corner[1] * iw;  corners[i * 3 + 2] = render3d_st.sh_corner[2] * iw
+    corners[i * 3] = sh_corner[0] * iw;  corners[i * 3 + 1] = sh_corner[1] * iw;  corners[i * 3 + 2] = sh_corner[2] * iw
     cview[0] = cview[0] + corners[i * 3];  cview[1] = cview[1] + corners[i * 3 + 1];  cview[2] = cview[2] + corners[i * 3 + 2]
   }
   v3_scale(cview, cview, 1.0 / 8.0)
   var radius = 0.0
   for i in 0 .. 8 {
-    v3_set(render3d_st.sh_corner, corners[i * 3], corners[i * 3 + 1], corners[i * 3 + 2])
-    let d = v3_dist(render3d_st.sh_corner, cview)
+    v3_set(sh_corner, corners[i * 3], corners[i * 3 + 1], corners[i * 3 + 2])
+    let d = v3_dist(sh_corner, cview)
     if d > radius { radius = d }
   }
   radius = radius * 1.05
   # the slice centre back into world space
-  m4_inverse(render3d_st.sh_tmp_vp, render3d_st.cam_view)
+  m4_inverse(sh_tmp_vp, cam_view)
   let center = floats(3)
-  m4_xform_point(center, render3d_st.sh_tmp_vp, cview[0], cview[1], cview[2])
+  m4_xform_point(center, sh_tmp_vp, cview[0], cview[1], cview[2])
   free(cview)
   # light view: from far along the sun direction, looking at the centre
   let eye = floats(3)
   # casters up to ~900 m toward the sun (a mountain across the valley), and the
   # slice itself behind the centre: a tight depth range keeps the bias small
   let back = radius + 900.0
-  v3_madd(eye, center, render3d_st.sun_dir, back)
+  v3_madd(eye, center, sun_dir, back)
   let up = v3_new(0.0, 1.0, 0.0)
-  m4_look_at(render3d_st.sh_tmp_view, eye, center, up)
+  m4_look_at(sh_tmp_view, eye, center, up)
   # snap the ortho window to the shadow texel grid
-  let texel = radius * 2.0 / float(render3d_st.shadow_res)
-  m4_xform_point(render3d_st.sh_corner, render3d_st.sh_tmp_view, center[0], center[1], center[2])
-  let ox = Math.floor(render3d_st.sh_corner[0] / texel) * texel - render3d_st.sh_corner[0]
-  let oy = Math.floor(render3d_st.sh_corner[1] / texel) * texel - render3d_st.sh_corner[1]
+  let texel = radius * 2.0 / float(shadow_res)
+  m4_xform_point(sh_corner, sh_tmp_view, center[0], center[1], center[2])
+  let ox = Math.floor(sh_corner[0] / texel) * texel - sh_corner[0]
+  let oy = Math.floor(sh_corner[1] / texel) * texel - sh_corner[1]
   let nr = -radius
   let zfar = back + radius + 100.0
-  m4_ortho(render3d_st.sh_tmp_proj, nr + ox, radius + ox, nr + oy, radius + oy, 1.0, zfar)
-  render3d_st.sh_range[c] = zfar - 1.0
-  render3d_st.sh_texel[c] = texel
+  m4_ortho(sh_tmp_proj, nr + ox, radius + ox, nr + oy, radius + oy, 1.0, zfar)
+  sh_range[c] = zfar - 1.0
+  sh_texel[c] = texel
   let out = floats(16)
-  m4_mul(out, render3d_st.sh_tmp_proj, render3d_st.sh_tmp_view)
-  for i in 0 .. 16 { render3d_st.sh_vp[c * 16 + i] = out[i] }
+  m4_mul(out, sh_tmp_proj, sh_tmp_view)
+  for i in 0 .. 16 { sh_vp[c * 16 + i] = out[i] }
   free(out);  free(eye);  free(up);  free(center);  free(corners)
 }
 
-function shadow_cascade_vp(render3d_st: Render3dState, c: int) -> floats { return render3d_st.sh_vp_v[c] }
+function shadow_cascade_vp(c: int) -> floats { return sh_vp_v[c] }
 
 
 # render every cascade; `draw` happens through terrain_draw_shadow + the scene's casters
-function shadow_pass(render3d_st: mut Render3dState) -> void {
-  var near = render3d_st.cam_near
-  gpu_fb_bind(render3d_st, render3d_st.sh_fbo)
-  gpu_viewport(render3d_st, 0, 0, render3d_st.shadow_res, render3d_st.shadow_res)
-  gpu_depth_test(render3d_st, true)
-  gpu_depth_func(render3d_st, GL_LESS)
-  gpu_depth_bias(render3d_st, 2.0, 4.0)
-  gpu_cull(render3d_st, false)
+function shadow_pass() -> void {
+  var near = cam_near
+  gpu_fb_bind(sh_fbo)
+  gpu_viewport(0, 0, shadow_res, shadow_res)
+  gpu_depth_test(true)
+  gpu_depth_func(GL_LESS)
+  gpu_depth_bias(2.0, 4.0)
+  gpu_cull(false)
   for c in 0 .. SHADOW_CASCADES {
-    render3d_st.sh_cascade = c
-    shadow_fit(render3d_st, c, near, render3d_st.sh_split[c])
-    prof_cpu_mark(render3d_st, "shadow fit")
-    near = render3d_st.sh_split[c]
-    gpu_fb_depth_layer(render3d_st, render3d_st.sh_tex, c)
-    if render3d_st.r3d_debug and c == 0 { let st = gpu_fb_status(render3d_st);  print(`shadow fbo status {st}`) }
-    gpu_clear(render3d_st, GL_DEPTH_BUFFER_BIT)
-    let vp = shadow_cascade_vp(render3d_st, c)
+    sh_cascade = c
+    shadow_fit(c, near, sh_split[c])
+    prof_cpu_mark("shadow fit")
+    near = sh_split[c]
+    gpu_fb_depth_layer(sh_tex, c)
+    if r3d_debug and c == 0 { let st = gpu_fb_status();  print(`shadow fbo status {st}`) }
+    gpu_clear(GL_DEPTH_BUFFER_BIT)
+    let vp = shadow_cascade_vp(c)
     # shadows off (a video setting): the cascades stay cleared, so everything reads lit
-    if render3d_st.sh_enabled {
-      if not render3d_st.sh_skip_terrain { terrain_draw_shadow(vp) }
-      r3d_scene_casters(render3d_st, vp)
+    if sh_enabled {
+      if not sh_skip_terrain { terrain_draw_shadow(vp) }
+      r3d_scene_casters(vp)
     }
   }
-  gpu_depth_bias(render3d_st, 0.0, 0.0)
-  gpu_fb_bind(render3d_st, 0)
-  if render3d_st.r3d_debug_shadow { shadow_dump(render3d_st) }
-  if render3d_st.r3d_debug_shadow and not render3d_st.sh_printed2 {
-    render3d_st.sh_printed2 = true
+  gpu_depth_bias(0.0, 0.0)
+  gpu_fb_bind(0)
+  if r3d_debug_shadow { shadow_dump() }
+  if r3d_debug_shadow and not sh_printed2 {
+    sh_printed2 = true
     let q = floats(3)
-    if render3d_st.sh_probe_x != 0.0 {
-      let vp = shadow_cascade_vp(render3d_st, 2)
-      m4_xform_point(q, vp, render3d_st.sh_probe_x, render3d_st.sh_probe_y, render3d_st.sh_probe_z)
+    if sh_probe_x != 0.0 {
+      let vp = shadow_cascade_vp(2)
+      m4_xform_point(q, vp, sh_probe_x, sh_probe_y, sh_probe_z)
       print(`probe base ndc {fixed(q[0])} {fixed(q[1])} {fixed(q[2])}`)
-      m4_xform_point(q, vp, render3d_st.sh_probe_x, render3d_st.sh_probe_y + 15.0, render3d_st.sh_probe_z)
-      print(`probe top  ndc {fixed(q[0])} {fixed(q[1])} {fixed(q[2])}  -> map texel {int((q[0] * 0.5 + 0.5) * float(render3d_st.shadow_res))} {int((q[1] * 0.5 + 0.5) * float(render3d_st.shadow_res))}`)
+      m4_xform_point(q, vp, sh_probe_x, sh_probe_y + 15.0, sh_probe_z)
+      print(`probe top  ndc {fixed(q[0])} {fixed(q[1])} {fixed(q[2])}  -> map texel {int((q[0] * 0.5 + 0.5) * float(shadow_res))} {int((q[1] * 0.5 + 0.5) * float(shadow_res))}`)
       # where the top's shadow lands on the ground: walk down the sun ray
-      let gx = render3d_st.sh_probe_x + 0.0 - render3d_st.sun_dir[0] * (15.0 / render3d_st.sun_dir[1])
-      let gz = render3d_st.sh_probe_z - render3d_st.sun_dir[2] * (15.0 / render3d_st.sun_dir[1])
-      m4_xform_point(q, vp, gx, terrain_height(render3d_st, gx, gz), gz)
+      let gx = sh_probe_x + 0.0 - sun_dir[0] * (15.0 / sun_dir[1])
+      let gz = sh_probe_z - sun_dir[2] * (15.0 / sun_dir[1])
+      m4_xform_point(q, vp, gx, terrain_height(gx, gz), gz)
       print(`shadow-of-top ground ndc {fixed(q[0])} {fixed(q[1])} {fixed(q[2])} at {fixed(gx)} {fixed(gz)}`)
     }
     for c in 0 .. SHADOW_CASCADES {
-      let vp = shadow_cascade_vp(render3d_st, c)
+      let vp = shadow_cascade_vp(c)
       # a point 5 m ahead of the camera on the ground
-      let px = render3d_st.cam_pos[0] + render3d_st.cam_fwd[0] * 5.0;  let pz = render3d_st.cam_pos[2] + render3d_st.cam_fwd[2] * 5.0
-      let w = m4_xform_point(q, vp, px, terrain_height(render3d_st, px, pz), pz)
+      let px = cam_pos[0] + cam_fwd[0] * 5.0;  let pz = cam_pos[2] + cam_fwd[2] * 5.0
+      let w = m4_xform_point(q, vp, px, terrain_height(px, pz), pz)
       print(`cascade {c}: ndc {fixed(q[0])} {fixed(q[1])} {fixed(q[2])} w {fixed(w)}  m0 {fixed(vp[0])} m5 {fixed(vp[5])} m14 {fixed(vp[14])}`)
     }
     free(q)
   }
 }
+var sh_printed2: bool = false
+var sh_printed3: bool = false
+var sh_enabled: bool = true
+var sh_force: int = -1   # R3D_FORCE=<c> pins every pixel to cascade c (debug)
+var sh_skip_terrain: bool = false
+var sh_probe_x: float = 0.0
+var sh_probe_y: float = 0.0
+var sh_probe_z: float = 0.0
 
 # Debug: cascade depths as grey PPMs (build/dbg_shadow_<c>.ppm)
-function shadow_dump(render3d_st: mut Render3dState) -> void {
-  let n = render3d_st.shadow_res * render3d_st.shadow_res
+function shadow_dump() -> void {
+  let n = shadow_res * shadow_res
   let buf = floats(n * SHADOW_CASCADES)
-  gpu_tex_bind(render3d_st, GPU_TEX2D_ARRAY, render3d_st.sh_tex)
-  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_NONE)
-  gpu_tex_read(render3d_st, GPU_TEX2D_ARRAY, GL_DEPTH_COMPONENT, GL_FLOAT, data_of(buf))
-  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE)
-  if render3d_st.sh_probe_x != 0.0 {
-    let vp = shadow_cascade_vp(render3d_st, 2)
+  gpu_tex_bind(GPU_TEX2D_ARRAY, sh_tex)
+  gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_NONE)
+  gpu_tex_read(GPU_TEX2D_ARRAY, GL_DEPTH_COMPONENT, GL_FLOAT, data_of(buf))
+  gpu_tex_param(GPU_TEX2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE)
+  if sh_probe_x != 0.0 {
+    let vp = shadow_cascade_vp(2)
     let q = floats(3)
-    m4_xform_point(q, vp, render3d_st.sh_probe_x, render3d_st.sh_probe_y + 12.0, render3d_st.sh_probe_z)
-    let tx = int((q[0] * 0.5 + 0.5) * float(render3d_st.shadow_res))
-    let ty = int((q[1] * 0.5 + 0.5) * float(render3d_st.shadow_res))
+    m4_xform_point(q, vp, sh_probe_x, sh_probe_y + 12.0, sh_probe_z)
+    let tx = int((q[0] * 0.5 + 0.5) * float(shadow_res))
+    let ty = int((q[1] * 0.5 + 0.5) * float(shadow_res))
     let want = q[2] * 0.5 + 0.5
     print(`probe (12 m up) texel {tx} {ty} card depth {fixed(want * 1000.0)}/1000`)
     for dy in 0 .. 5 {
       let yy = ty - 40 + dy * 20
-      print(`  row {yy}: {fixed(buf[2 * n + yy * render3d_st.shadow_res + tx - 20] * 1000.0)} {fixed(buf[2 * n + yy * render3d_st.shadow_res + tx] * 1000.0)} {fixed(buf[2 * n + yy * render3d_st.shadow_res + tx + 20] * 1000.0)} /1000`)
+      print(`  row {yy}: {fixed(buf[2 * n + yy * shadow_res + tx - 20] * 1000.0)} {fixed(buf[2 * n + yy * shadow_res + tx] * 1000.0)} {fixed(buf[2 * n + yy * shadow_res + tx + 20] * 1000.0)} /1000`)
     }
     free(q)
   }
@@ -217,10 +240,10 @@ function shadow_dump(render3d_st: mut Render3dState) -> void {
     let f = file_open(`build/dbg_shadow_{c}.ppm`, "wb")
     let hdr = `P6\n{sm} {sm}\n255\n`
     file_write(f, hdr, len(hdr))
-    let st = render3d_st.shadow_res / sm
+    let st = shadow_res / sm
     for y in 0 .. sm {
       for x in 0 .. sm {
-        let d = buf[c * n + (y * st) * render3d_st.shadow_res + x * st]
+        let d = buf[c * n + (y * st) * shadow_res + x * st]
         let g = int(Math.clamp((d - lo) / Math.max(hi - lo, 0.0001), 0.0, 1.0) * 255.0)
         row[x * 3] = g;  row[x * 3 + 1] = g;  row[x * 3 + 2] = g
       }
@@ -231,31 +254,32 @@ function shadow_dump(render3d_st: mut Render3dState) -> void {
   free(buf);  free(row)
 }
 
+var sh_printed: bool = false
 # a uniform array's location: some drivers only answer to the "[0]" spelling
-function sh_loc(render3d_st: Render3dState, prog: int, name: string) -> int {
-  var loc = gpu_uniform(render3d_st, prog, name + "[0]")
-  if loc < 0 { loc = gpu_uniform(render3d_st, prog, name) }
+function sh_loc(prog: int, name: string) -> int {
+  var loc = gpu_uniform(prog, name + "[0]")
+  if loc < 0 { loc = gpu_uniform(prog, name) }
   return loc
 }
-function shadow_bind(render3d_st: mut Render3dState, prog: int) -> void {
-  r3d_bind_tex(render3d_st, prog, "u_shadow", 15, GPU_TEX2D_ARRAY, render3d_st.sh_tex)
+function shadow_bind(prog: int) -> void {
+  r3d_bind_tex(prog, "u_shadow", 15, GPU_TEX2D_ARRAY, sh_tex)
   # the height-field shadow (terrain.ludic); a stand-in texture keeps the unit valid before the bake
-  var ts = render3d_st.ter_shadow_tex
+  var ts = ter_shadow_tex
   var ts_on = 1.0
-  if ts == 0 { ts = render3d_st.ter_height_tex;  ts_on = 0.0 }
-  r3d_bind_2d(render3d_st, prog, "u_tershadow", 6, ts)
-  terrain_bind_height(render3d_st, prog)
-  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_ts_on"), ts_on)
-  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_ts_half"), float(render3d_st.TERRAIN_HALF))
-  u_f2(render3d_st, gpu_uniform(render3d_st, prog, "u_ts_origin"), render3d_st.ter_ox, render3d_st.ter_oz)
-  var loc = gpu_uniform(render3d_st, prog, "u_cascade_vp[0]")
-  if loc < 0 { loc = gpu_uniform(render3d_st, prog, "u_cascade_vp") }
-  if render3d_st.r3d_debug_shadow and not render3d_st.sh_printed { render3d_st.sh_printed = true;  print(`cascade vp loc {loc} / {gpu_uniform(render3d_st, prog, "u_cascade_vp")}  split loc {gpu_uniform(render3d_st, prog, "u_cascade_split")} shadow loc {gpu_uniform(render3d_st, prog, "u_shadow")}`) }
-  u_mat4n(render3d_st, loc, SHADOW_CASCADES, render3d_st.sh_vp)
-  u_fv(render3d_st, sh_loc(render3d_st, prog, "u_cascade_split"), SHADOW_CASCADES, render3d_st.sh_split)
-  if render3d_st.r3d_debug_shadow and not render3d_st.sh_printed3 { render3d_st.sh_printed3 = true;  print(`range {fixed(render3d_st.sh_range[0])} {fixed(render3d_st.sh_range[1])} {fixed(render3d_st.sh_range[2])} {fixed(render3d_st.sh_range[3])} texel*1000 {fixed(render3d_st.sh_texel[0] * 1000.0)} {fixed(render3d_st.sh_texel[1] * 1000.0)} {fixed(render3d_st.sh_texel[2] * 1000.0)} {fixed(render3d_st.sh_texel[3] * 1000.0)} locs {gpu_uniform(render3d_st, prog, "u_cascade_range")} {gpu_uniform(render3d_st, prog, "u_cascade_texel")}`) }
-  u_fv(render3d_st, sh_loc(render3d_st, prog, "u_cascade_range"), SHADOW_CASCADES, render3d_st.sh_range)
-  if r3d_env_has(render3d_st, "R3D_FORCE") { render3d_st.sh_force = Text.to_int(r3d_env(render3d_st, "R3D_FORCE")) }
-  u_i(render3d_st, gpu_uniform(render3d_st, prog, "u_force_cascade"), render3d_st.sh_force)
-  u_fv(render3d_st, sh_loc(render3d_st, prog, "u_cascade_texel"), SHADOW_CASCADES, render3d_st.sh_texel)
+  if ts == 0 { ts = ter_height_tex;  ts_on = 0.0 }
+  r3d_bind_2d(prog, "u_tershadow", 6, ts)
+  terrain_bind_height(prog)
+  u_f(gpu_uniform(prog, "u_ts_on"), ts_on)
+  u_f(gpu_uniform(prog, "u_ts_half"), float(TERRAIN_HALF))
+  u_f2(gpu_uniform(prog, "u_ts_origin"), ter_ox, ter_oz)
+  var loc = gpu_uniform(prog, "u_cascade_vp[0]")
+  if loc < 0 { loc = gpu_uniform(prog, "u_cascade_vp") }
+  if r3d_debug_shadow and not sh_printed { sh_printed = true;  print(`cascade vp loc {loc} / {gpu_uniform(prog, "u_cascade_vp")}  split loc {gpu_uniform(prog, "u_cascade_split")} shadow loc {gpu_uniform(prog, "u_shadow")}`) }
+  u_mat4n(loc, SHADOW_CASCADES, sh_vp)
+  u_fv(sh_loc(prog, "u_cascade_split"), SHADOW_CASCADES, sh_split)
+  if r3d_debug_shadow and not sh_printed3 { sh_printed3 = true;  print(`range {fixed(sh_range[0])} {fixed(sh_range[1])} {fixed(sh_range[2])} {fixed(sh_range[3])} texel*1000 {fixed(sh_texel[0] * 1000.0)} {fixed(sh_texel[1] * 1000.0)} {fixed(sh_texel[2] * 1000.0)} {fixed(sh_texel[3] * 1000.0)} locs {gpu_uniform(prog, "u_cascade_range")} {gpu_uniform(prog, "u_cascade_texel")}`) }
+  u_fv(sh_loc(prog, "u_cascade_range"), SHADOW_CASCADES, sh_range)
+  if r3d_env_has("R3D_FORCE") { sh_force = Text.to_int(r3d_env("R3D_FORCE")) }
+  u_i(gpu_uniform(prog, "u_force_cascade"), sh_force)
+  u_fv(sh_loc(prog, "u_cascade_texel"), SHADOW_CASCADES, sh_texel)
 }

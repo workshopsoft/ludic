@@ -15,32 +15,30 @@
 #   bin/ludic-dev game-build bin/ludicc examples/lang/scenes.ludic /tmp/scenes
 #   printf 'aaaa' | /tmp/scenes
 program SceneDemo {
-  state ScenedemoState {
-    counter: int = 0
-  }
+  var counter: int = 0
 
-  handler Boot(scenedemo_st: mut ScenedemoState) phase Start { scenedemo_st.counter = 0;  print(1000) }
+  handler Boot phase Start { counter = 0;  print(1000) }
 
   scene Title start {
     on enter { print(1) }
     on exit  { print(2) }
     layer Main {
-      handler Tick(scenedemo_st: mut ScenedemoState) phase Update {
-        scenedemo_st.counter += 1
-        print(100 + scenedemo_st.counter)
-        if scenedemo_st.counter >= 2 { become Play }
+      handler Tick phase Update {
+        counter += 1
+        print(100 + counter)
+        if counter >= 2 { become Play }
       }
     }
   }
 
   scene Play {
-    on enter (scenedemo_st: mut ScenedemoState) { print(3);  scenedemo_st.counter = 0 }
+    on enter { print(3);  counter = 0 }
     on exit  { print(4) }
     layer World {
-      handler Step(scenedemo_st: mut ScenedemoState) phase Update {
-        scenedemo_st.counter += 1
-        print(200 + scenedemo_st.counter)
-        if scenedemo_st.counter >= 2 { quit() }
+      handler Step phase Update {
+        counter += 1
+        print(200 + counter)
+        if counter >= 2 { quit() }
       }
     }
     layer Hud {

@@ -10,56 +10,54 @@ import "ui_look_parts/Inner.ludic"
 import "ui_look_parts/Menu.ludic"
 program UiLook {
   numbers float
-  state UilookState {
-    said: []string = new []string
-    seen: float = 0.0
-  }
+  var said: []string = new []string
+  var seen: float = 0.0
   function rec_rect(x: float, y: float, w: float, h: float, c: int, a: float) -> void { }
-  function rec_text(uilook_st: mut UilookState, x: float, y: float, s: string, size: float, c: int, a: float) -> void { push(uilook_st.said, `text {s} {int(x)},{int(y)} {ui_hex(c)}`) }
-  function rec_image(uilook_st: mut UilookState, src: string, x: float, y: float, w: float, h: float, c: int, a: float) -> void { push(uilook_st.said, `image {src} {ui_hex(c)}`) }
-  function rec_nine(uilook_st: mut UilookState, src: string, slice: float, x: float, y: float, w: float, h: float, dst: float, c: int, a: float) -> void { push(uilook_st.said, `nine {int(w)} {ui_hex(c)}`) }
+  function rec_text(x: float, y: float, s: string, size: float, c: int, a: float) -> void { push(said, `text {s} {int(x)},{int(y)} {ui_hex(c)}`) }
+  function rec_image(src: string, x: float, y: float, w: float, h: float, c: int, a: float) -> void { push(said, `image {src} {ui_hex(c)}`) }
+  function rec_nine(src: string, slice: float, x: float, y: float, w: float, h: float, dst: float, c: int, a: float) -> void { push(said, `nine {int(w)} {ui_hex(c)}`) }
   function gauge_measure(n: UiNode, avail: float) -> void { }
-  function gauge_draw(ui_st: UiState, uilook_st: mut UilookState, n: UiNode) -> void { uilook_st.seen = ui_opacity(ui_st) }
-  function count(uilook_st: UilookState, s: string) -> int {
+  function gauge_draw(n: UiNode) -> void { seen = ui_opacity() }
+  function count(s: string) -> int {
     var n = 0
-    for i in 0 .. len(uilook_st.said) {
-      if Text.starts_with(uilook_st.said[i], s) { n += 1 }
+    for i in 0 .. len(said) {
+      if Text.starts_with(said[i], s) { n += 1 }
     }
     return n
   }
-  function has(uilook_st: UilookState, s: string) -> string {
-    for i in 0 .. len(uilook_st.said) {
-      if Text.starts_with(uilook_st.said[i], s) { return uilook_st.said[i] }
+  function has(s: string) -> string {
+    for i in 0 .. len(said) {
+      if Text.starts_with(said[i], s) { return said[i] }
     }
     return "-"
   }
-  function show(ui_st: mut UiState, uilook_st: mut UilookState, name: string, i: UiInput) -> UiNode {
-    ui_input(ui_st, i)
-    uilook_st.said = new []string
-    ui_show(ui_st, name, null, 0.0, 0.0, 400.0, 300.0)
-    let root: UiNode = ui_nodes(ui_st, name, null)
-    ui_place(ui_st, root, 0.0, 0.0, 400.0, 300.0)
+  function show(name: string, i: UiInput) -> UiNode {
+    ui_input(i)
+    said = new []string
+    ui_show(name, null, 0.0, 0.0, 400.0, 300.0)
+    let root: UiNode = ui_nodes(name, null)
+    ui_place(root, 0.0, 0.0, 400.0, 300.0)
     return root.children[0]
   }
-  entry (ui_st: mut UiState, uilook_st: mut UilookState) {
+  entry {
     let b = new UiBackend
     b.rect = fn rec_rect
     b.text = fn rec_text
     b.image = fn rec_image
     b.nine = fn rec_nine
-    ui_backend(ui_st, b)
-    ui_native(ui_st, "gauge", fn gauge_measure, fn gauge_draw)
-    var page = show(ui_st, uilook_st, "Look", new UiInput)
+    ui_backend(b)
+    ui_native("gauge", fn gauge_measure, fn gauge_draw)
+    var page = show("Look", new UiInput)
     let inner = page.children[0]
     let tip = page.children[7]
     let rest = new UiInput
     rest.x = tip.x + 2.0
     rest.y = tip.y + 2.0
-    for f in 0 .. 40 { page = show(ui_st, uilook_st, "Look", rest) }
+    for f in 0 .. 40 { page = show("Look", rest) }
     print(`root {inner.tag}.{inner.classes[0]}.{inner.classes[1]}.{inner.classes[2]} pad {int(inner.pt)} margin {int(inner.mt)} color {ui_hex(inner.fg)}`)
-    print(`{has(uilook_st, "text Hi")} | {has(uilook_st, "text Hi 0")} | opacity {uilook_st.seen} | {has(uilook_st, "nine 40 #ffffff")} {has(uilook_st, "nine 40 #ff0000")} of {count(uilook_st, "nine")}`)
-    print(`{has(uilook_st, "image photo")} | {has(uilook_st, "image icon")} | {has(uilook_st, "text first")} | {has(uilook_st, "text second")}`)
-    let menu = show(ui_st, uilook_st, "Menu", new UiInput)
+    print(`{has("text Hi")} | {has("text Hi 0")} | opacity {seen} | {has("nine 40 #ffffff")} {has("nine 40 #ff0000")} of {count("nine")}`)
+    print(`{has("image photo")} | {has("image icon")} | {has("text first")} | {has("text second")}`)
+    let menu = show("Menu", new UiInput)
     let a = menu.children[1]
     let c = menu.children[3]
     print(`by id at {int(a.x)},{int(a.y)} | flipped at {int(c.x)},{int(c.y)} {int(c.cw)}x{int(c.ch)}`)

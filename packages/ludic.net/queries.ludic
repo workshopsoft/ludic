@@ -1,17 +1,17 @@
 # queries.ludic - what the game asks of the session
-export function net_state(net_st: NetState) -> int { return net_st.net__state }
-export function net_live(net_st: NetState) -> bool { return net_st.net__state == NET_HOSTING or net_st.net__state == NET_JOINED }
-export function net_active(net_st: NetState) -> bool { return net_st.net__state != NET_IDLE and net_st.net__state != NET_LOST }
-export function net_hosting(net_st: NetState) -> bool { return net_st.net__state == NET_HOSTING }
-export function net_joined(net_st: NetState) -> bool { return net_st.net__state == NET_JOINED }
-export function net_joining(net_st: NetState) -> bool { return net_st.net__state == NET_JOINING }
-export function net_my_pid(net_st: NetState) -> int { return net_st.net__my_pid }
-export function net_token(net_st: NetState) -> int { return net_st.net__token }
-export function net_time(net_st: NetState) -> float { return net_st.net__time }
-export function net_why(net_st: NetState) -> int { return net_st.net__why }
-export function net_join_ip(net_st: NetState) -> int { return net_st.net__join_ip }
-export function net_join_port(net_st: NetState) -> int { return net_st.net__join_port }
-export function net_port(net_st: NetState) -> int {
-  if net_st.net__sock <= 0 { return 0 }
-  return NetSocket.port(net_st.net__sock)
+export function net_state() -> int { return net__state }
+export function net_live() -> bool { return net__state == NET_HOSTING or net__state == NET_JOINED }
+export function net_active() -> bool { return net__state != NET_IDLE and net__state != NET_LOST }
+export function net_hosting() -> bool { return net__state == NET_HOSTING }
+export function net_joined() -> bool { return net__state == NET_JOINED }
+export function net_joining() -> bool { return net__state == NET_JOINING }
+export function net_my_pid() -> int { return net__my_pid }
+export function net_token() -> int { return net__token }
+export function net_time() -> float { return net__time }
+export function net_why() -> int { return net__why }
+export function net_join_ip() -> int { return net__join_ip }
+export function net_join_port() -> int { return net__join_port }
+export function net_port() -> int {
+  if net__sock <= 0 { return 0 }
+  return NetSocket.port(net__sock)
 }

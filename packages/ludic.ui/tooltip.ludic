@@ -1,29 +1,34 @@
 # tooltip.ludic - an element's title="..." shown beside the pointer once it has rested on it for half
 # a second (or under it, when the keyboard's focus has), in a box styled by .ui-tooltip; a title of
 # several lines (a newline, or \n) is one .ui-tooltip-text a line
-function tt_track(ui_st: mut UiState, root: UiNode, x: float, y: float) -> void {
+var tt_key: string = ""
+var tt_since: float = 0.0
+var tt_text: string = ""
+var tt_x: float = 0.0
+var tt_y: float = 0.0
+function tt_track(root: UiNode, x: float, y: float) -> void {
   var scope = pp_top(root)
   if scope == null { scope = root }
   var n = tt_under(scope, x, y)
   var px = x
   var py = y
-  let k = tt_focused(ui_st, scope, x, y)
+  let k = tt_focused(scope, x, y)
   if k != null {
     n = k
     px = k.x
-    py = k.y + k.ch - ui_px(ui_st, 14.0)
+    py = k.y + k.ch - ui_px(14.0)
   }
   if n == null {
-    ui_st.tt_key = ""
+    tt_key = ""
     return
   }
-  if n.key != ui_st.tt_key {
-    ui_st.tt_key = n.key
-    ui_st.tt_since = an_now(ui_st)
+  if n.key != tt_key {
+    tt_key = n.key
+    tt_since = an_now()
   }
-  ui_st.tt_text = tt_translate(ui_st, n, ui_attr_text(n, "title"))
-  ui_st.tt_x = px
-  ui_st.tt_y = py
+  tt_text = tt_translate(n, ui_attr_text(n, "title"))
+  tt_x = px
+  tt_y = py
 }
 # the deepest element under the point that has a title
 function tt_under(n: UiNode, x: float, y: float) -> UiNode {
@@ -37,20 +42,20 @@ function tt_under(n: UiNode, x: float, y: float) -> UiNode {
   if n.akeys != null and ui_attr_text(n, "title") != "" { return n }
   return null
 }
-function tt_draw(ui_st: mut UiState, root: UiNode) -> void {
-  if ui_st.tt_key == "" or ui_st.tt_text == "" or an_now(ui_st) - ui_st.tt_since < 0.5 { return }
+function tt_draw(root: UiNode) -> void {
+  if tt_key == "" or tt_text == "" or an_now() - tt_since < 0.5 { return }
   let n = ct_part(root, "ui-tooltip", "")
   n.tag = "div"
   n.parent = root
   n.children = new []UiNode
-  let lines = tt_lines(ui_st.tt_text)
+  let lines = tt_lines(tt_text)
   for i in 0 .. len(lines) { push(n.children, ct_part(root, "ui-tooltip-text", lines[i])) }
-  cs_tree(ui_st, n)
-  ly_measure(ui_st, n, ui_st.ly_vp_w * 0.4, ui_px(ui_st, 16.0), root.rfg)
-  let x = Math.min(ui_st.tt_x + ui_px(ui_st, 16.0), ui_st.ly_vp_x + ui_st.ly_vp_w - n.mw)
-  let y = Math.min(ui_st.tt_y + ui_px(ui_st, 20.0), ui_st.ly_vp_y + ui_st.ly_vp_h - n.mh)
-  ly_place(ui_st, n, x, y, n.mw, n.mh)
-  fr_draw(ui_st, n)
+  cs_tree(n)
+  ly_measure(n, ly_vp_w * 0.4, ui_px(16.0), root.rfg)
+  let x = Math.min(tt_x + ui_px(16.0), ly_vp_x + ly_vp_w - n.mw)
+  let y = Math.min(tt_y + ui_px(20.0), ly_vp_y + ly_vp_h - n.mh)
+  ly_place(n, x, y, n.mw, n.mh)
+  fr_draw(n)
 }
 # a title's lines: apart at a newline, or at a written \n (which an attribute cannot hold otherwise)
 function tt_lines(s: string) -> []string {

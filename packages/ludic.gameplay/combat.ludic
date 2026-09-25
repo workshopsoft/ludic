@@ -23,16 +23,13 @@ event Died { e: int = 0, src: int = 0 }
 event Healed { e: int = 0, amount: int = 0 }
 event Crit { target: int = 0, src: int = 0 }     # the attacker's crit_pct fired
 
-state GameplayState {
-  combat_reflecting: bool = false              # thorns never reflect thorns
-  combat_pending: int = 0
-  fac_tbl: words = null
-}
+var combat_reflecting: bool = false              # thorns never reflect thorns
 
 # the mutable channel for lever 6: listeners rewrite the pending damage here.
+var combat_pending: int = 0
 
-@Namespace(Combat) function combat_amount(gameplay_st: GameplayState) -> int { return gameplay_st.combat_pending }
-@Namespace(Combat) function combat_set_amount(gameplay_st: mut GameplayState, n: int) -> void { gameplay_st.combat_pending = n }
+@Namespace(Combat) function combat_amount() -> int { return combat_pending }
+@Namespace(Combat) function combat_set_amount(n: int) -> void { combat_pending = n }
 
 # Combat.mitigate(target, raw) — raw minus effective defence, floored at 1 so any
 # landed hit chips at least a point (a common, tunable default). A game that wants
@@ -46,7 +43,7 @@ state GameplayState {
 
 # Combat.damage(target, src, amount) — the full pipeline. Returns the damage
 # actually applied (0 when vetoed or the target has no Stats/hp).
-@Namespace(Combat) function combat_damage(gameplay_st: mut GameplayState, target: int, src: int, amount: int) -> int {
+@Namespace(Combat) function combat_damage(target: int, src: int, amount: int) -> int {
   let P = World.prop_id("Stats")
   if P < 0 { return 0 }
   if World.has(target, P) == 0 { return 0 }
@@ -57,9 +54,9 @@ state GameplayState {
   var raw = amount * stats_field(src, "damage_pct", 100) / 100
   let crit = stats_field(src, "crit_pct", 0)
   if (crit > 0) and Random.chance(percent: crit) { raw *= 2;  emit Crit(target: target, src: src) }
-  gameplay_st.combat_pending = combat_mitigate(target, raw)
-  if emit DamageAboutToApply(target: target, src: src, amount: gameplay_st.combat_pending) != 0 { return 0 }
-  var dmg = gameplay_st.combat_pending
+  combat_pending = combat_mitigate(target, raw)
+  if emit DamageAboutToApply(target: target, src: src, amount: combat_pending) != 0 { return 0 }
+  var dmg = combat_pending
   if dmg < 0 { dmg = 0 }
 
   var hp = World.get(target, P, fhp) - dmg
@@ -72,10 +69,10 @@ state GameplayState {
     let leech = stats_field(src, "leech_pct", 0)
     if (leech > 0) and Random.chance(percent: leech) { combat_heal(src, stats_field(src, "leech_hp", 1)) }
     let thorns = stats_field(target, "thorns", 0)
-    if (thorns > 0) and (src != target) and (not gameplay_st.combat_reflecting) and (World.has(src, P) != 0) {
-      gameplay_st.combat_reflecting = true
-      combat_damage(gameplay_st, src, target, thorns)
-      gameplay_st.combat_reflecting = false
+    if (thorns > 0) and (src != target) and (not combat_reflecting) and (World.has(src, P) != 0) {
+      combat_reflecting = true
+      combat_damage(src, target, thorns)
+      combat_reflecting = false
     }
   }
   return dmg

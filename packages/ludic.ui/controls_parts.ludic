@@ -1,16 +1,16 @@
 # controls_parts.ludic - what a control shows besides its own parts: its label, with a `note` (a line
 # of help under it) in .ui-labels > .ui-label + .ui-note, and a range's or a number's value as text:
 # `decimals="1"` places, `format="percent"` its place between min and max, and a `unit` after it
-function ct_label(ui_st: UiState, n: UiNode) -> void {
+function ct_label(n: UiNode) -> void {
   let label = ui_attr_text(n, "label")
   let note = ui_attr_text(n, "note")
   if note == "" {
-    if label != "" { push(n.children, ct_part(n, "ui-label", ui_tr(ui_st, label))) }
+    if label != "" { push(n.children, ct_part(n, "ui-label", ui_tr(label))) }
     return
   }
   let both = ct_part(n, "ui-labels", "")
-  if label != "" { push(both.children, ct_part(n, "ui-label", ui_tr(ui_st, label))) }
-  push(both.children, ct_part(n, "ui-note", ui_tr(ui_st, note)))
+  if label != "" { push(both.children, ct_part(n, "ui-label", ui_tr(label))) }
+  push(both.children, ct_part(n, "ui-note", ui_tr(note)))
   push(n.children, both)
 }
 function ct_value_text(n: UiNode) -> string {
@@ -46,7 +46,7 @@ function ct_fixed(f: float, places: int) -> string {
 }
 # Enter (or A) on a text field: on-submit with what it holds; the focus stays, and the text too
 # unless it says clear-on-submit
-function ct_submit(ui_st: mut UiState, n: UiNode) -> void {
-  ui_fire(ui_st, n, "submit", ui_attr(n, "value"))
-  if ui_attr_on(n, "clear-on-submit") { ui_fire(ui_st, n, "change", Value.str("")) }
+function ct_submit(n: UiNode) -> void {
+  ui_fire(n, "submit", ui_attr(n, "value"))
+  if ui_attr_on(n, "clear-on-submit") { ui_fire(n, "change", Value.str("")) }
 }

@@ -33,10 +33,8 @@ program NpcAiDemo {
   @OnSpawn(Ally) handler AInit { }
   @OnSpawn(Dummy) handler DInit { }
 
-  state NpcaidemoState {
-    spotted: int = 0
-  }
-  @On(TargetSpotted) handler OnSpot(npcaidemo_st: mut NpcaidemoState) { npcaidemo_st.spotted += 1 }
+  var spotted: int = 0
+  @On(TargetSpotted) handler OnSpot { spotted += 1 }
 
   function tick_n(n: int) -> void { var i = 0;  while i < n { tick_fixed();  i += 1 } }
   function bi(b: bool) -> int { if b { return 1 };  return 0 }
@@ -57,7 +55,7 @@ program NpcAiDemo {
     return -1
   }
 
-  entry (npcaidemo_st: NpcaidemoState) {
+  entry {
     let PBr = World.prop_id("Brain")
 
     Weapon.def("blaster", 4, 10, 10, 0, 1, 0)
@@ -74,7 +72,7 @@ program NpcAiDemo {
 
     # ---- A. perception: the enemy spots the hostile dummy -------------------
     tick_n(4)
-    print(bi(npcaidemo_st.spotted >= 1))                              # 1 — TargetSpotted fired
+    print(bi(spotted >= 1))                              # 1 — TargetSpotted fired
     print(bi(Ai.target(enemy) == dummy))                # 1 — remembers the right target
 
     # ---- B. FSM attack: in range -> auto-aim + fire -> dummy takes damage ---

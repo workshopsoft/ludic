@@ -1,13 +1,16 @@
 # mix.ludic - sample one clip at a time into per-node buffers, mixed in at a weight. `rot` is 4 per
 # node, `pos` 3 per node, and `hit` says which nodes have received a value (bit 0 a rotation, bit 1
 # a translation), so a node the clips never mention stays at rest
+var q_a: floats = null
+var q_b: floats = null
+var q_cur: floats = null
 
-export function anim_mix(anim_st: mut AnimState, c: Clip, sk: Skin, t: float, w: float, rot: floats, pos: floats, hit: words) -> void {
+export function anim_mix(c: Clip, sk: Skin, t: float, w: float, rot: floats, pos: floats, hit: words) -> void {
   if c == null or sk == null { return }
-  if anim_st.q_a == null {
-    anim_st.q_a = floats(4)
-    anim_st.q_b = floats(4)
-    anim_st.q_cur = floats(4)
+  if q_a == null {
+    q_a = floats(4)
+    q_b = floats(4)
+    q_cur = floats(4)
   }
   var tt = t
   if c.dur > 0.0 { tt = t % c.dur }
@@ -24,27 +27,27 @@ export function anim_mix(anim_st: mut AnimState, c: Clip, sk: Skin, t: float, w:
       let span = c.times[o + i1] - c.times[o + i0]
       if span > 0.000001 { f = Math.clamp((tt - c.times[o + i0]) / span, 0.0, 1.0) }
     }
-    if c.cpath[ch] == AC_ROT { mix_rot(anim_st, c, ch, node, i0, i1, f, w, rot, hit) } else { mix_pos(c, ch, node, i0, i1, f, w, pos, hit) }
+    if c.cpath[ch] == AC_ROT { mix_rot(c, ch, node, i0, i1, f, w, rot, hit) } else { mix_pos(c, ch, node, i0, i1, f, w, pos, hit) }
   }
 }
 
 # Across clips the first contributor lands and the rest are nlerped onto it by their share, which
 # is what makes a cross-fade rather than a jump. Test the ROTATION bit, not the whole word: glTF
 # writes a node's translation before its rotation, and `hit == 0` then skipped every rotation.
-function mix_rot(anim_st: mut AnimState, c: Clip, ch: int, node: int, i0: int, i1: int, f: float, w: float, rot: floats, hit: words) -> void {
+function mix_rot(c: Clip, ch: int, node: int, i0: int, i1: int, f: float, w: float, rot: floats, hit: words) -> void {
   let vo = c.cvoff[ch]
   for e in 0 .. 4 {
-    anim_st.q_a[e] = c.vals[vo + i0 * 4 + e]
-    anim_st.q_b[e] = c.vals[vo + i1 * 4 + e]
+    q_a[e] = c.vals[vo + i0 * 4 + e]
+    q_b[e] = c.vals[vo + i1 * 4 + e]
   }
-  q_nlerp(anim_st.q_a, anim_st.q_a, anim_st.q_b, f)
+  q_nlerp(q_a, q_a, q_b, f)
   if (hit[node] & 1) == 0 {
-    q_store(rot, node, anim_st.q_a)
+    q_store(rot, node, q_a)
     hit[node] = hit[node] | 1
   } else {
-    q_load(anim_st.q_cur, rot, node)
-    q_nlerp(anim_st.q_cur, anim_st.q_cur, anim_st.q_a, w)
-    q_store(rot, node, anim_st.q_cur)
+    q_load(q_cur, rot, node)
+    q_nlerp(q_cur, q_cur, q_a, w)
+    q_store(rot, node, q_cur)
   }
 }
 

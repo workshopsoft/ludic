@@ -26,49 +26,44 @@ export property PhotoFact {
   v: int = 0
 }
 
-export state PhotoState {
-  pht_sort: int = 0
-  pht_page: int = 0
-  pht_order: []int = null
-  pht_max: int = 40
-  pht_n: int = 0
-  pht_day: []int = null
-  pht_hour: []float = null
-  pht_mask: []int = null
-  pht_legend: []int = null
-  pht_sold: []int = null
-  pht_grade: []int = null
-  pht_why: []int = null
-  pht_tags: []string = null
-  pht_file: []string = null
-  pht_best: []int = null          # the best grade yet, per subject
-  pht_species_shot: int = 0       # every subject ever photographed, sold or deleted
-  pht_legend_shot: int = 0
-  pht_cover: int = -1             # the one frame a game shows for the whole roll
-  pht_pending_tags: string = ""
-  pht_pending_mask: int = 0
-  pht_pending_legend: int = 0
-  pht_pending_grade: int = 0
-  pht_pending_why: int = -1
-  pht_pending_sign: int = -1
-  pht_pending_stars: bool = false
-  pht_comp: []float = null        # size, framing, light, moment of the last subject scored
-  pht_comp_have: bool = false
-  pht_fact_q: Queue<PhotoFact> = null
+var pht_max: int = 40
+var pht_n: int = 0
+var pht_day: []int = null
+var pht_hour: []float = null
+var pht_mask: []int = null
+var pht_legend: []int = null
+var pht_sold: []int = null
+var pht_grade: []int = null
+var pht_why: []int = null
+var pht_tags: []string = null
+var pht_file: []string = null
+var pht_best: []int = null          # the best grade yet, per subject
+var pht_species_shot: int = 0       # every subject ever photographed, sold or deleted
+var pht_legend_shot: int = 0
+var pht_cover: int = -1             # the one frame a game shows for the whole roll
+
+var pht_pending_tags: string = ""
+var pht_pending_mask: int = 0
+var pht_pending_legend: int = 0
+var pht_pending_grade: int = 0
+var pht_pending_why: int = -1
+var pht_pending_sign: int = -1
+var pht_pending_stars: bool = false
+var pht_comp: []float = null        # size, framing, light, moment of the last subject scored
+var pht_comp_have: bool = false
+
+var pht_fact_q: Queue<PhotoFact> = null
+
+export function photo_facts() -> Queue<PhotoFact> {
+  if pht_fact_q == null { pht_fact_q = queue_new("photo.facts") }
+  return pht_fact_q
 }
 
-
-
-export function photo_facts(base_st: mut BaseState, photo_st: mut PhotoState) -> Queue<PhotoFact> {
-  if photo_st.pht_fact_q == null { photo_st.pht_fact_q = queue_new(base_st, "photo.facts") }
-  return photo_st.pht_fact_q
-}
-
-function pht_fact(base_st: mut BaseState, photo_st: mut PhotoState, what: int, i: int) -> PhotoFact {
+function pht_fact(what: int, i: int) -> PhotoFact {
   let f = new PhotoFact
   f.what = what
   f.index = i
-  q_push(base_st, photo_facts(base_st, photo_st), f)
+  q_push(photo_facts(), f)
   return f
 }
 
@@ -85,18 +80,18 @@ function pht_floats(n: int) -> []float {
 }
 
 # an empty roll of `max` frames
-function pht_blank(photo_st: mut PhotoState) -> void {
-  photo_st.pht_n = 0
-  photo_st.pht_day = pht_ints(photo_st.pht_max)
-  photo_st.pht_hour = pht_floats(photo_st.pht_max)
-  photo_st.pht_mask = pht_ints(photo_st.pht_max)
-  photo_st.pht_legend = pht_ints(photo_st.pht_max)
-  photo_st.pht_sold = pht_ints(photo_st.pht_max)
-  photo_st.pht_grade = pht_ints(photo_st.pht_max)
-  photo_st.pht_why = pht_ints(photo_st.pht_max)
-  photo_st.pht_tags = new []string
-  photo_st.pht_file = new []string
-  photo_st.pht_best = pht_ints(32)
-  photo_st.pht_comp = pht_floats(4)
-  photo_st.pht_comp_have = false
+function pht_blank() -> void {
+  pht_n = 0
+  pht_day = pht_ints(pht_max)
+  pht_hour = pht_floats(pht_max)
+  pht_mask = pht_ints(pht_max)
+  pht_legend = pht_ints(pht_max)
+  pht_sold = pht_ints(pht_max)
+  pht_grade = pht_ints(pht_max)
+  pht_why = pht_ints(pht_max)
+  pht_tags = new []string
+  pht_file = new []string
+  pht_best = pht_ints(32)
+  pht_comp = pht_floats(4)
+  pht_comp_have = false
 }

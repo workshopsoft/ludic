@@ -1,6 +1,6 @@
 # attr_fit.ludic - aspect-ratio (16 / 9, or 1.5), object-fit (fill, contain, cover, none, scale-down)
 # for pictures and natives, zoom (zoom.ludic), and a list split at its top-level commas
-function el_fit_props(ui_st: mut UiState, n: UiNode, key: string, s: string) -> bool {
+function el_fit_props(n: UiNode, key: string, s: string) -> bool {
   if key == "aspect-ratio" {
     let parts = lss_split(s, 47)
     var r = el_num(tpl_words(parts[0]))
@@ -12,7 +12,7 @@ function el_fit_props(ui_st: mut UiState, n: UiNode, key: string, s: string) -> 
     var k = 0
     if w == "contain" { k = 1 } else if w == "cover" { k = 2 } else if w == "none" { k = 3 } else if w == "scale-down" { k = 4 }
     nx(n).fit_obj = k
-  } else if key == "zoom" { el_zoom(ui_st, n, s) } else { return false }
+  } else if key == "zoom" { el_zoom(n, s) } else { return false }
   return true
 }
 # "a, rgba(1, 2, 3, 0.5) 40%, b" -> its three parts

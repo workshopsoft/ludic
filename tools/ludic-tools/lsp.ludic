@@ -234,7 +234,7 @@ program LudicLsp {
   }
   function is_keyword_word(w: pointer) -> bool {
     if (w == "program") or (w == "import") or (w == "property") or (w == "model") or (w == "enum") or (w == "ui") { return true }
-    if (w == "const") or (w == "var") or (w == "function") or (w == "extern") or (w == "handler") or (w == "entry") or (w == "event") or (w == "scene") { return true }
+    if (w == "const") or (w == "var") or (w == "function") or (w == "extern") or (w == "handler") or (w == "entry") or (w == "event") or (w == "scene") or (w == "mut") { return true }
     if (w == "phase") or (w == "query") or (w == "on") or (w == "cancellable") or (w == "public") or (w == "layer") or (w == "start") { return true }
     if (w == "let") or (w == "return") or (w == "if") or (w == "else") or (w == "while") or (w == "for") or (w == "in") or (w == "spawn") or (w == "despawn") { return true }
     if (w == "enable") or (w == "disable") or (w == "match") or (w == "machine") or (w == "state") or (w == "become") or (w == "where") or (w == "prefab") { return true }
@@ -471,10 +471,15 @@ program LudicLsp {
       let nt = pname()
       if nt < 0 { padv();  continue }
       var ty = ""
-      if pis(":") { padv();  let tt = pname();  if tt >= 0 { ty = ttext(pD, tt) } }
+      var mu = ""
+      if pis(":") {
+        padv()
+        if pis("mut") { padv();  mu = "mut " }         # a state it may change
+        let tt = pname();  if tt >= 0 { ty = ttext(pD, tt) }
+      }
       let sidx = sym_add(kind, nt, owner)
       pD.syms[sidx].ty = ty
-      pD.syms[sidx].detail = concat3("param ", pD.syms[sidx].name, concat3(": ", ty, ""))
+      pD.syms[sidx].detail = concat3("param ", pD.syms[sidx].name, concat3(": ", mu, ty))
       if not first { buf_puts(sig, ", ") }
       buf_puts(sig, pD.syms[sidx].name);  buf_puts(sig, ": ")
       if ty == "" { buf_puts(sig, "?") } else { buf_puts(sig, ty) }
@@ -655,8 +660,10 @@ program LudicLsp {
       }
       return
     }
-    if (w == "property") or (w == "model") {
-      let is_comp = (w == "property")
+    var wd = w
+    if w == "export" and tis(pD, pi + 1, "state") { padv();  wd = "state" }
+    if (wd == "property") or (wd == "model") or (wd == "state") {      # a state: a record with one instance
+      let is_comp = (wd == "property") or (wd == "state")
       padv();  let nt = pname();  if nt < 0 { return }
       var kind = LS_ARCHETYPE
       if is_comp { kind = LS_COMPONENT }
@@ -748,7 +755,16 @@ program LudicLsp {
     }
     if w == "entry" {
       padv()
-      if pis("{") { let close = cur_match();  var endo = cstr_len(pD.text);  if close >= 0 { endo = pD.tk_end[close] };  lp_block(parent, endo) }
+      let first_param = len(pD.syms)
+      if pis("(") { lp_params(parent, LS_PARAM, buf_new()) }     # entry (h: mut Hiker): its states
+      if pis("{") {
+        let close = cur_match()
+        var endo = cstr_len(pD.text)
+        if close >= 0 { endo = pD.tk_end[close] }
+        var q = first_param
+        while q < len(pD.syms) { if pD.syms[q].kind == LS_PARAM { pD.syms[q].bstart = pD.tk_start[pi];  pD.syms[q].bend = endo };  q += 1 }
+        lp_block(parent, endo)
+      }
       return
     }
     if (w == "handler") or (w == "edge") {
@@ -758,6 +774,7 @@ program LudicLsp {
       let sidx = sym_add(LS_SYSTEM, nt, parent)
       pD.syms[sidx].doc = collect_doc(pD, decl_tok)
       pD.syms[sidx].ty = "Update"
+      if pis("(") { lp_params(sidx, LS_PARAM, buf_new()) }       # handler Draw(h: Hiker): its states
       while pk() == LT_ANNO { padv() }
       let vars = new []int
       var nv = 0
@@ -788,6 +805,8 @@ program LudicLsp {
         let close = cur_match()
         pD.syms[sidx].bstart = pD.tk_start[pi]
         if close >= 0 { pD.syms[sidx].bend = pD.tk_end[close] } else { pD.syms[sidx].bend = cstr_len(pD.text) }
+        var q = 0
+        while q < len(pD.syms) { if pD.syms[q].parent == sidx and pD.syms[q].kind == LS_PARAM { pD.syms[q].bstart = pD.syms[sidx].bstart;  pD.syms[q].bend = pD.syms[sidx].bend };  q += 1 }
         lp_block(sidx, pD.syms[sidx].bend)
       }
       return

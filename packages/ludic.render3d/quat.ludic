@@ -57,14 +57,18 @@ function q_rotate(o: floats, q: floats, v: floats) -> void {
   o[0] = x;  o[1] = y;  o[2] = z
 }
 # pitch about X, yaw about Y, roll about Z, composed as yaw * pitch * roll
-function q_euler(render3d_st: mut Render3dState, o: floats, pitch: float, yaw: float, roll: float) -> void {
-  if render3d_st.q_scratch == null {
-    render3d_st.q_scratch = floats(16)
-    render3d_st.q_sy = view(render3d_st.q_scratch, 4, 4)
-    render3d_st.q_sz = view(render3d_st.q_scratch, 8, 4)
-    render3d_st.q_st = view(render3d_st.q_scratch, 12, 4)
+var q_scratch: floats = null
+var q_sy: floats = null                     # views of q_scratch's second, third and fourth
+var q_sz: floats = null
+var q_st: floats = null
+function q_euler(o: floats, pitch: float, yaw: float, roll: float) -> void {
+  if q_scratch == null {
+    q_scratch = floats(16)
+    q_sy = view(q_scratch, 4, 4)
+    q_sz = view(q_scratch, 8, 4)
+    q_st = view(q_scratch, 12, 4)
   }
-  let qx = render3d_st.q_scratch;  let qy = render3d_st.q_sy;  let qz = render3d_st.q_sz;  let t = render3d_st.q_st
+  let qx = q_scratch;  let qy = q_sy;  let qz = q_sz;  let t = q_st
   q_axis_angle(qx, 1.0, 0.0, 0.0, pitch)
   q_axis_angle(qy, 0.0, 1.0, 0.0, yaw)
   q_axis_angle(qz, 0.0, 0.0, 1.0, roll)

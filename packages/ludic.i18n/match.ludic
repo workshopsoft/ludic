@@ -2,13 +2,13 @@
 # English, and the text that filled each hole translated in turn
 
 # does pattern p produce s? The holes land in caps, in hole order
-function try_pattern(i18n_st: mut I18nState, p: int, s: string) -> bool {
+function try_pattern(p: int, s: string) -> bool {
   let n = len(s)
-  let l0 = i18n_st.pat_l0[p]
-  let nl = i18n_st.pat_nl[p]
-  let first = i18n_st.lits[l0]
+  let l0 = pat_l0[p]
+  let nl = pat_nl[p]
+  let first = lits[l0]
   let f_n = len(first)
-  let last = i18n_st.lits[l0 + nl - 1]
+  let last = lits[l0 + nl - 1]
   let l_n = len(last)
   if nl - 1 > CAPS { return false }
   if n < f_n + l_n + nl - 1 { return false }      # every hole takes at least a byte
@@ -20,76 +20,76 @@ function try_pattern(i18n_st: mut I18nState, p: int, s: string) -> bool {
     var stop = lim
     var adv = 0
     if g < nl - 2 {
-      let mid = i18n_st.lits[l0 + g + 1]
+      let mid = lits[l0 + g + 1]
       stop = i18n_find(s, lim, pos + 1, mid, len(mid))
       if stop < 0 { return false }
       adv = len(mid)
     }
     if stop <= pos { return false }
-    i18n_st.caps[g] = s[pos..stop]
+    caps[g] = s[pos..stop]
     pos = stop + adv
   }
   return true
 }
 
 # the best of a chain that produces s, or `best` as it was
-function best_of(i18n_st: mut I18nState, head: int, next: words, s: string, best: int) -> int {
+function best_of(head: int, next: words, s: string, best: int) -> int {
   var b = best
   var c = head
   while c > 0 {
     let p = c - 1
     var sc = -1
-    if b >= 0 { sc = i18n_st.pat_sc[b] }
-    if i18n_st.pat_sc[p] > sc and try_pattern(i18n_st, p, s) { b = p }
+    if b >= 0 { sc = pat_sc[b] }
+    if pat_sc[p] > sc and try_pattern(p, s) { b = p }
     c = next[p]
   }
   return b
 }
 
-function pattern(i18n_st: mut I18nState, s: string, depth: int) -> string {
-  i18n_st.hit = false
-  if i18n_st.pat_n == 0 { return s }
+function pattern(s: string, depth: int) -> string {
+  hit = false
+  if pat_n == 0 { return s }
   let n = len(s)
   var best = -1
   if n >= 4 {
-    best = best_of(i18n_st, Dict.get_or(i18n_st.pfx, s[0..4], 0), i18n_st.nx_p, s, best)
-    best = best_of(i18n_st, Dict.get_or(i18n_st.sfx, s[n - 4..n], 0), i18n_st.nx_s, s, best)
+    best = best_of(Dict.get_or(pfx, s[0..4], 0), nx_p, s, best)
+    best = best_of(Dict.get_or(sfx, s[n - 4..n], 0), nx_s, s, best)
   }
-  if n < 80 { best = best_of(i18n_st, i18n_st.gen_head, i18n_st.nx_g, s, best) }
+  if n < 80 { best = best_of(gen_head, nx_g, s, best) }
   if best < 0 { return s }
-  try_pattern(i18n_st, best, s)
-  let l0 = i18n_st.pat_l0[best]
-  let nl = i18n_st.pat_nl[best]
+  try_pattern(best, s)
+  let l0 = pat_l0[best]
+  let nl = pat_nl[best]
   # copied out first: translating a hole may match another pattern and reuse caps
   let raw = new []string
-  for g in 0 .. nl - 1 { push(raw, i18n_st.caps[g]) }
+  for g in 0 .. nl - 1 { push(raw, caps[g]) }
   let cs = new []string
-  for g in 0 .. nl - 1 { push(cs, piece(i18n_st, raw[g], depth + 1)) }
-  let r = fill_holes(i18n_st, i18n_st.pat_out[best], l0, nl, cs)
+  for g in 0 .. nl - 1 { push(cs, piece(raw[g], depth + 1)) }
+  let r = fill_holes(pat_out[best], l0, nl, cs)
   # a pattern that gives the English straight back has translated nothing, and must not stop
   # the sentence-by-sentence pass
   if r == s { return s }
-  i18n_st.hit = true
+  hit = true
   return r
 }
 
 # the text that filled a hole: known as it stands, known without the English article the game
 # glued on ("a deer", "the Dark King"), or itself a pattern
-function piece(i18n_st: mut I18nState, c: string, depth: int) -> string {
-  let e = Dict.get_or(i18n_st.exact, c, -1)
-  if e >= 0 { return i18n_st.out[e] }
+function piece(c: string, depth: int) -> string {
+  let e = Dict.get_or(exact, c, -1)
+  if e >= 0 { return out[e] }
   let n = len(c)
   var bare = -1
   if n > 4 and (i18n_starts(c, "the ") or i18n_starts(c, "The ")) { bare = 4 }
   else if n > 3 and (i18n_starts(c, "an ") or i18n_starts(c, "An ")) { bare = 3 }
   else if n > 2 and (i18n_starts(c, "a ") or i18n_starts(c, "A ")) { bare = 2 }
   if bare > 0 {
-    let e2 = Dict.get_or(i18n_st.exact, c[bare..n], -1)
-    if e2 >= 0 { return i18n_st.out[e2] }
+    let e2 = Dict.get_or(exact, c[bare..n], -1)
+    if e2 >= 0 { return out[e2] }
   }
   if depth < 3 {
-    let r = pattern(i18n_st, c, depth)
-    if i18n_st.hit { return r }
+    let r = pattern(c, depth)
+    if hit { return r }
   }
   return c
 }

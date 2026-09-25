@@ -3,21 +3,21 @@
 const AT_ALIAS: string = " width=w height=h min-width=min-w max-width=max-w min-height=min-h max-height=max-h padding=pad background=bg background-color=bg font-size=size opacity=alpha flex-grow=grow flex-shrink=shrink flex-direction=dir flex-wrap=wrap justify-content=justify align-items=align align-self=self row-gap=gap column-gap=gap text-align=talign "
 const AT_UNDRAWN: string = " font-weight font-family font-style box-shadow cursor transition animation letter-spacing text-decoration "
 # a stylesheet's property: one that means nothing is said
-function el_attr(ui_st: mut UiState, n: UiNode, key: string, v: Val) -> void {
-  if el_apply(ui_st, n, key, v) { return }
-  if lk_in(AT_UNDRAWN, at_alias(key)) { ui_err(ui_st, `{key}: this renderer does not draw it`) } else { ui_err(ui_st, `{key}: there is no such property`) }
+function el_attr(n: UiNode, key: string, v: Val) -> void {
+  if el_apply(n, key, v) { return }
+  if lk_in(AT_UNDRAWN, at_alias(key)) { ui_err(`{key}: this renderer does not draw it`) } else { ui_err(`{key}: there is no such property`) }
 }
 # an element's attribute: a property when it names one, otherwise only there for [selectors]
-function el_apply(ui_st: mut UiState, n: UiNode, key: string, v0: Val) -> bool {
+function el_apply(n: UiNode, key: string, v0: Val) -> bool {
   let k = at_alias(key)
-  ui_st.el_cur = n
-  ui_st.el_key = k
+  el_cur = n
+  el_key = k
   if len(k) > 2 and k[0..2] == "--" {
     cs_var_set(n, k, vl_text(v0))
     return true
   }
-  let v = cs_vars_in(ui_st, n, v0)
-  return el_size(ui_st, n, k, v) or el_box(ui_st, n, k, v) or el_flex(n, k, v) or el_look(ui_st, n, k, v) or el_place_prop(ui_st, n, k, v) or el_edge(ui_st, n, k, v) or el_more(ui_st, n, k, v)
+  let v = cs_vars_in(n, v0)
+  return el_size(n, k, v) or el_box(n, k, v) or el_flex(n, k, v) or el_look(n, k, v) or el_place_prop(n, k, v) or el_edge(n, k, v) or el_more(n, k, v)
 }
 function at_alias(key: string) -> string {
   let pat = ` {key}=`
@@ -31,8 +31,8 @@ function at_alias(key: string) -> string {
   }
   return key
 }
-function el_size(ui_st: mut UiState, n: UiNode, key: string, v: Val) -> bool {
-  if key == "w" or key == "h" { el_dim(ui_st, n, key == "w", v) } else if key == "min-w" { n.min_w = el_len(ui_st, v) } else if key == "max-w" { n.max_w = el_len(ui_st, v) } else if key == "min-h" { n.min_h = el_len(ui_st, v) } else if key == "max-h" { n.max_h = el_len(ui_st, v) } else if key == "gap" { n.gap = el_len(ui_st, v) } else { return false }
+function el_size(n: UiNode, key: string, v: Val) -> bool {
+  if key == "w" or key == "h" { el_dim(n, key == "w", v) } else if key == "min-w" { n.min_w = el_len(v) } else if key == "max-w" { n.max_w = el_len(v) } else if key == "min-h" { n.min_h = el_len(v) } else if key == "max-h" { n.max_h = el_len(v) } else if key == "gap" { n.gap = el_len(v) } else { return false }
   return true
 }
 function el_flex(n: UiNode, key: string, v: Val) -> bool {
@@ -43,33 +43,33 @@ function el_flex(n: UiNode, key: string, v: Val) -> bool {
   } else if key == "grow" { n.grow = el_num(s) } else if key == "flex" { el_flex_short(n, s) } else if key == "wrap" { n.wrap = s == "wrap" or (vl_truthy(v) and s != "false" and s != "nowrap") } else if key == "align" { n.align = el_place(v) } else if key == "self" { n.self = el_place(v) } else if key == "justify" { n.justify = el_place(v) } else if key == "talign" { n.talign = el_place(v) } else if key == "display" { n.hidden = s == "none" } else { return false }
   return true
 }
-function el_look(ui_st: mut UiState, n: UiNode, key: string, v: Val) -> bool {
+function el_look(n: UiNode, key: string, v: Val) -> bool {
   let s = vl_text(v)
-  if key == "size" { n.size = el_len(ui_st, v) } else if key == "color" {
-    n.fg = ui_color(ui_st, s)
-    n.fg_a = ui_st.cl_alpha
+  if key == "size" { n.size = el_len(v) } else if key == "color" {
+    n.fg = ui_color(s)
+    n.fg_a = cl_alpha
   } else if key == "bg" {
-    if gr_is(tpl_words(s)) { nx(n).grad = gr_parse(ui_st, s) } else if len(s) > 4 and s[0..4] == "url(" { n.bg_img = el_url(s) } else if tpl_words(s) == "transparent" {
+    if gr_is(tpl_words(s)) { nx(n).grad = gr_parse(s) } else if len(s) > 4 and s[0..4] == "url(" { n.bg_img = el_url(s) } else if tpl_words(s) == "transparent" {
       n.bg = 0
       n.bg_a = 0.0
     } else {
-      n.bg = ui_color(ui_st, s)
-      n.bg_a = ui_st.cl_alpha
+      n.bg = ui_color(s)
+      n.bg_a = cl_alpha
     }
   } else if key == "alpha" { n.alpha = el_num(s) } else if key == "enabled" { n.enabled = vl_truthy(v) and s != "false" } else if key == "border-color" {
-    n.border_c = ui_color(ui_st, s)
-    n.border_a = ui_st.cl_alpha
-  } else if key == "border-width" { el_sides_border(n, el_len(ui_st, v)) } else if key == "border" { el_border(ui_st, n, s) } else if key == "border-top" or key == "border-right" or key == "border-bottom" or key == "border-left" { el_border_side(ui_st, n, key, s) } else { return false }
+    n.border_c = ui_color(s)
+    n.border_a = cl_alpha
+  } else if key == "border-width" { el_sides_border(n, el_len(v)) } else if key == "border" { el_border(n, s) } else if key == "border-top" or key == "border-right" or key == "border-bottom" or key == "border-left" { el_border_side(n, key, s) } else { return false }
   return true
 }
 # border: 1 #ffcc00, or 1px solid accent
-function el_border(ui_st: mut UiState, n: UiNode, s: string) -> void {
+function el_border(n: UiNode, s: string) -> void {
   let parts = lss_split(s, 32)
   for i in 0 .. len(parts) {
     let p = parts[i]
-    if len(p) > 0 and ((p[0] >= 48 and p[0] <= 57) or p[0] == 46) { el_sides_border(n, el_unit(ui_st, p)) } else if p == "none" { el_sides_border(n, 0.0) } else if len(p) > 0 and p != "solid" {
-      n.border_c = ui_color(ui_st, p)
-      n.border_a = ui_st.cl_alpha
+    if len(p) > 0 and ((p[0] >= 48 and p[0] <= 57) or p[0] == 46) { el_sides_border(n, el_unit(p)) } else if p == "none" { el_sides_border(n, 0.0) } else if len(p) > 0 and p != "solid" {
+      n.border_c = ui_color(p)
+      n.border_a = cl_alpha
     }
   }
   if n.border_c == UI_NONE { n.border_c = n.rfg }

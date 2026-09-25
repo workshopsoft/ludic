@@ -8,8 +8,10 @@
 #      declares them for the runtime to supply.
 # It runs inside the checker (check_*.ludic call the mg_* hooks), which already knows which name is a
 # local and which a global, and which function a call reaches. Plan lines, one edit each:
-#   VAR <file> <pos> <pos2> <state>            a declaration to move into <state>
-#   STATE <state> <file> <pos> <export 0|1> <param>   where <state> is declared (the first var)
+#   VAR <file> <pos> <pos2> <state> <at>       a declaration to move into <state>, declared at <at>
+#   LET <file> <pos>                           a declaration nothing writes: its `var` becomes `let`
+#   STATE <state> <file> <pos> <export 0|1> <param> <key> [more]   where <state> is declared (the
+#       first var this program sees, or its declaration when it has one already: `more`)
 #   REF <file> <pos> <len> <text>              a reference's name replaced
 #   INS <file> <pos> <text>                    text inserted (a parameter, an argument)
 #   ? <file>:<line> <what>                     what the tool cannot decide, for a person
@@ -18,6 +20,9 @@ var g_mg_runtime: bool = false         # --migrate-runtime: the runtime's own va
 var g_mg_plan: pointer = null
 var g_mg_vars: []Node = new []Node     # the vars that move
 var g_mg_vstate: []int = new []int     # the state each moves into
+var g_mg_written: []int = new []int    # 1: something writes it
+var g_mg_let: []int = new []int        # 1: a value nothing writes - it stays, as a module-level let
+var g_mr_unit: []int = new []int       # per reference: the unit it is read in (-1: none)
 var g_ms_name: []pointer = new []pointer
 var g_ms_mod: []pointer = new []pointer
 var g_ms_param: []pointer = new []pointer
@@ -78,7 +83,10 @@ var g_mg_entry: pointer = ""            # the program's own file: its vars are t
 function mg_state_of_file(f: pointer) -> int {
   let m = module_for_uses(f)
   if not (m == "") { return mg_state_of_mod(m, mg_short(m)) }
-  if (f == g_mg_entry) { return mg_state_of_mod("", reg_lower(g_game_name)) }
+  if (f == g_mg_entry) {                        # the program's own: SceneDemo is SceneDemoState, scene_demo_st
+    let p = mg_param_for(g_game_name)
+    return mg_state_of_mod("", p[0 .. len(p) - 3])
+  }
   var d = dir_of(f)
   while len(d) > 1 and d[len(d) - 1] == '/' { d = d[0 .. len(d) - 1] }
   return mg_state_of_mod(`@{d}`, mg_dir_name(d))
@@ -136,6 +144,18 @@ function mg_state_of_mod(m: pointer, base: pointer) -> int {
   return len(g_ms_mod) - 1
 }
 # where a state is already declared, for its new fields: the declaration, else null
+function mg_state_key(s: int) -> pointer {
+  let m = g_ms_mod[s]
+  if m == "" { return `program:{g_mg_entry}` }
+  if m[0] == '@' or m[0] == '=' { return m }
+  # a module: by the file that first says it (its barrel), else a package's module by its name
+  var i = 0
+  while i < len(g_mod_file) {
+    if (g_mod_name[i] == m) { return `module:{m}@{dir_of(g_mod_file[i])}` }
+    i += 1
+  }
+  return `package:{m}`
+}
 function mg_state_decl(name: pointer) -> Node {
   var i = 0
   while i < len(prog) {
@@ -168,6 +188,8 @@ function mg_collect() -> void {
       let k = mg_state_of_file(d.file)
       push(g_mg_vars, d)
       push(g_mg_vstate, k)
+      push(g_mg_written, 0)
+      push(g_mg_let, 0)
       d.mg = len(g_mg_vars) - 1
       if d.vis == 1 { g_ms_export[k] = 1 }
     }
@@ -231,15 +253,49 @@ function mg_ref(e: Node, g: Node) -> void {
   if not g_migrate or g == null or g.kind != N_VAR or g.mg < 0 { return }
   push(g_mr_node, e)
   push(g_mr_var, g.mg)
+  push(g_mr_unit, g_mg_cur)
   if g_mg_cur == -3 { push(g_mr_ui, 1) } else { push(g_mr_ui, 0) }
-  if g_mg_cur == -3 { return }
-  if g_mg_cur >= 0 { mg_need(g_mg_cur, g_mg_vstate[g.mg], false) }
-  else { mg_say(e, `{g.s} is read where no function is (a global's initializer); move it by hand`) }
-  if e.pos < 0 and not mg_bound_var(g.s) { mg_say(e, `a reference to {g.s} in generated code (a component, a view, a registry's lookup)`) }
 }
 function mg_write(t: Node, g: Node) -> void {
   if not g_migrate or g == null or g.kind != N_VAR or g.mg < 0 { return }
+  g_mg_written[g.mg] = 1
   if g_mg_cur >= 0 { mg_need(g_mg_cur, g_mg_vstate[g.mg], true) }
+}
+# a var nothing writes, holding a value (not a reference something could change through), and
+# that no generated code or port reads: it is a module-level let
+function mg_decide_lets() -> void {
+  var i = 0
+  while i < len(g_mg_vars) {
+    let v = g_mg_vars[i]
+    if g_mg_written[i] == 0 and mg_value_ty(v.ty) and not mg_bound_var(v.s) { g_mg_let[i] = 1 }
+    i += 1
+  }
+  var r = 0
+  while r < len(g_mr_node) {
+    if g_mr_node[r].pos < 0 { g_mg_let[g_mr_var[r]] = 0 }
+    r += 1
+  }
+}
+function mg_value_ty(t: pointer) -> bool {
+  if t == null { return false }
+  if (t == "int") or (t == "float") or (t == "fixed") or (t == "long") or (t == "bool") or (t == "string") or (t == "byte") { return true }
+  return find_enum(t) != null
+}
+# what each unit reads, now that the lets are known
+function mg_read_needs() -> void {
+  var r = 0
+  while r < len(g_mr_node) {
+    let v = g_mr_var[r]
+    let e = g_mr_node[r]
+    let u = g_mr_unit[r]
+    let g = g_mg_vars[v]
+    if g_mg_let[v] == 0 and u != -3 {
+      if u >= 0 { mg_need(u, g_mg_vstate[v], false) }
+      else { mg_say(e, `{g.s} is read where no function is (a global's initializer); move it by hand`) }
+      if e.pos < 0 and not mg_bound_var(g.s) { mg_say(e, `a reference to {g.s} in generated code (a component, a view, a registry's lookup)`) }
+    }
+    r += 1
+  }
 }
 var g_mc_passed: []int = new []int  # 1: the call already hands the callee a state (a run before)
 function mg_call(e: Node, f: Node) -> void {
@@ -328,7 +384,116 @@ function mg_param_text(u: int, s: int) -> pointer {
 var g_mg_lines: []pointer = new []pointer
 var g_mg_keys: pointer = ","
 # the same edit twice (a generic's instances share its source) is dropped by ludic migrate
-function mg_emit(line: pointer, key: pointer) -> void { push(g_mg_lines, line) }
+function mg_emit(line: pointer, key: pointer) -> void { push(g_mg_lines, mg_norm_line(line)) }
+# one spelling per file in every plan, whichever way a program reached it (`../../packages/x`, an
+# absolute path under the working directory): its paths and its state keys, normalized
+function mg_norm_line(line: pointer) -> pointer {
+  let w = new []pointer
+  var a = 0
+  var i = 0
+  while i <= len(line) {
+    if i == len(line) or line[i] == ' ' {
+      push(w, line[a .. i])
+      a = i + 1
+    }
+    i += 1
+  }
+  if len(w) < 2 { return line }
+  let k = w[0]
+  if (k == "VAR") or (k == "REF") or (k == "INS") or (k == "LET") { w[1] = mg_norm(w[1]) }
+  if (k == "?") { w[1] = mg_norm(w[1]) }
+  if (k == "VAR") and len(w) > 5 { w[5] = mg_norm_key(w[5]) }
+  if (k == "STATE") and len(w) > 6 {
+    w[2] = mg_norm(w[2])
+    w[6] = mg_norm_key(w[6])
+  }
+  var out = w[0]
+  i = 1
+  while i < len(w) {
+    out = out + " " + w[i]
+    i += 1
+  }
+  return out
+}
+# a state's key: `@dir`, `module:m@dir`, `program:file`, `package:m` - a directory that is a package's
+# own (`packages/ludic.render3d`) is that package
+function mg_norm_key(k: pointer) -> pointer {
+  if k[0] == '@' {
+    var d = mg_norm(k[1 .. len(k)])
+    while len(d) > 1 and d[len(d) - 1] == '/' { d = d[0 .. len(d) - 1] }
+    var slash = -1
+    var i = 0
+    while i < len(d) {
+      if d[i] == '/' { slash = i }
+      i += 1
+    }
+    var parent = ""
+    if slash >= 0 { parent = d[0 .. slash] }
+    let pn = len(parent)
+    if (parent == "packages") or (pn > 9 and (parent[pn - 9 .. pn] == "/packages")) {
+      var name = ""
+      var j = slash + 1
+      while j < len(d) {
+        if d[j] == '.' { name = name + "_" } else { name = name + d[j .. j + 1] }
+        j += 1
+      }
+      return `package:{name}`
+    }
+    return `@{d}`
+  }
+  var at = -1
+  var i = 0
+  while i < len(k) and at < 0 {
+    if k[i] == '@' or k[i] == ':' { at = i }
+    i += 1
+  }
+  if len(k) > 8 and (k[0 .. 8] == "package:") { return k }
+  if at >= 0 and k[at] == '@' { return k[0 .. at + 1] + mg_norm(k[at + 1 .. len(k)]) }
+  if at >= 0 and k[0 .. at] == "program" { return "program:" + mg_norm(k[at + 1 .. len(k)]) }
+  if at >= 0 {
+    # module:m@dir
+    var j = at + 1
+    while j < len(k) and k[j] != '@' { j += 1 }
+    if j < len(k) { return k[0 .. j + 1] + mg_norm(k[j + 1 .. len(k)]) }
+  }
+  return k
+}
+# `a/b/../c` is `a/c`, `./x` is `x`, and a path under the working directory is relative to it
+function mg_norm(p0: pointer) -> pointer {
+  var p = p0
+  let cwd = getenv("PWD")
+  if cwd != null {
+    let c = `{cwd}/`
+    if len(p) > len(c) and (p[0 .. len(c)] == c) { p = p[len(c) .. len(p)] }
+  }
+  let abs = len(p) > 0 and p[0] == '/'
+  let segs = new []pointer
+  var n = 0
+  var a = 0
+  var i = 0
+  while i <= len(p) {
+    if i == len(p) or p[i] == '/' {
+      let seg = p[a .. i]
+      if (seg == "..") and n > 0 and not (segs[n - 1] == "..") { n -= 1 }
+      else if not (seg == ".") and not (seg == "") {
+        if n < len(segs) { segs[n] = seg } else { push(segs, seg) }
+        n += 1
+      }
+      a = i + 1
+    }
+    i += 1
+  }
+  var out = ""
+  if abs { out = "/" }
+  i = 0
+  while i < n {
+    if i > 0 { out = out + "/" }
+    out = out + segs[i]
+    i += 1
+  }
+  if len(p) > 0 and p[len(p) - 1] == '/' { out = out + "/" }
+  return out
+}
 # text for a plan line: spaces and newlines escaped
 function mg_esc(s: pointer) -> pointer {
   var out = ""
@@ -521,7 +686,7 @@ function mg_refs() -> void {
   while r < len(g_mr_node) {
     let e = g_mr_node[r]
     let v = g_mg_vars[g_mr_var[r]]
-    if e.pos >= 0 and e.file != null {
+    if e.pos >= 0 and e.file != null and g_mg_let[g_mr_var[r]] == 0 {
       let s = g_mg_vstate[g_mr_var[r]]
       let nm = mg_src_name(v.s)
       var text = `{g_ms_param[s]}.{nm}`
@@ -576,30 +741,42 @@ function mg_binds() -> void {
   }
 }
 function mg_finish() -> void {
+  mg_decide_lets()
+  mg_read_needs()
   mg_fixpoint()
   mg_exports()
+  # each state is known by what it belongs to - a module where its barrel is, a directory, a program -
+  # the same in every program's plan (two programs may each have a module fishing, and see different
+  # files of one)
+  let anchor = new []pointer
+  var s = 0
+  while s < len(g_ms_name) {
+    push(anchor, mg_state_key(s))
+    s += 1
+  }
   var i = 0
   while i < len(g_mg_vars) {
     let v = g_mg_vars[i]
-    let s = g_mg_vstate[i]
-    mg_emit(`VAR {v.file} {itoa(v.pos)} {itoa(v.pos2)} {g_ms_name[s]}`, "")
+    let vs = g_mg_vstate[i]
+    if g_mg_let[i] == 1 { mg_emit(`LET {v.file} {itoa(v.pos)}`, "") }
+    else { mg_emit(`VAR {v.file} {itoa(v.pos)} {itoa(v.pos2)} {g_ms_name[vs]} {anchor[vs]}`, "") }
     i += 1
   }
-  var s = 0
+  s = 0
   while s < len(g_ms_name) {
     # the first var of each new state is where the state is declared
     var first = -1
     var j = 0
     while j < len(g_mg_vars) and first < 0 {
-      if g_mg_vstate[j] == s { first = j }
+      if g_mg_vstate[j] == s and g_mg_let[j] == 0 { first = j }
       j += 1
     }
     let decl = mg_state_decl(g_ms_name[s])
     if first >= 0 and decl != null {
-      mg_emit(`STATE {g_ms_name[s]} {decl.file} {itoa(decl.pos)} {itoa(g_ms_export[s])} {g_ms_param[s]} more`, "")
+      mg_emit(`STATE {g_ms_name[s]} {decl.file} {itoa(decl.pos)} {itoa(g_ms_export[s])} {g_ms_param[s]} {anchor[s]} more`, "")
     } else if first >= 0 {
       let v = g_mg_vars[first]
-      mg_emit(`STATE {g_ms_name[s]} {v.file} {itoa(v.pos)} {itoa(g_ms_export[s])} {g_ms_param[s]}`, "")
+      mg_emit(`STATE {g_ms_name[s]} {v.file} {itoa(v.pos)} {itoa(g_ms_export[s])} {g_ms_param[s]} {anchor[s]}`, "")
     }
     s += 1
   }

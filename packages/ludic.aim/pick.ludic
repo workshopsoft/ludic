@@ -6,55 +6,50 @@ export const AIM_REACH_MIN: float = 3.0     # about as far as a hand goes with a
 export const AIM_USE_MAX: float = 10.0      # past this the crosshair is for looking, not doing
 export const AIM_NEVER: float = -1.0        # a reach that is never in reach (an animal without a camera)
 
-export state AimState {
-  am_kind: int = 0
-  am_id: int = -1
-  am_t: float = 10000.0
-  am_dist: float = 0.0
-  am_reach: bool = false
-  am_off: float = 1.0
-  am_seen: int = 0
-  am_blocked: int = 0
-  am_disagree: int = 0
-}
+var am_kind: int = 0
+var am_id: int = -1
+var am_t: float = 10000.0
+var am_dist: float = 0.0
+var am_reach: bool = false
+var am_off: float = 1.0
 
 # The crosshair decides WHICH; the distance decides only WHETHER. Every reach is lifted to a floor of
 # AIM_REACH_MIN, because a per-kind reach chosen against its model was never chosen against standing
 # between two props and looking at one.
 export function aim_reach_of(reach: float) -> float { return Math.max(reach, AIM_REACH_MIN) }
 
-export function aim_begin(aim_st: mut AimState) -> void {
-  aim_st.am_kind = AIM_NONE
-  aim_st.am_id = -1
-  aim_st.am_t = 10000.0
-  aim_st.am_dist = 0.0
-  aim_st.am_reach = false
-  aim_st.am_off = 1.0
+export function aim_begin() -> void {
+  am_kind = AIM_NONE
+  am_id = -1
+  am_t = 10000.0
+  am_dist = 0.0
+  am_reach = false
+  am_off = 1.0
 }
 
 # A candidate of `kind` (the game's own, not AIM_NONE) and `id`: an upright cylinder at (x, z) from y0
 # to y1 of radius r, within `far` of the body, in reach within `reach` (floored; AIM_NEVER never).
 # True when it is now the pick.
-export function aim_offer(aim_st: mut AimState, kind: int, id: int, x: float, y0: float, y1: float, z: float, r: float, reach: float, far: float) -> bool {
+export function aim_offer(kind: int, id: int, x: float, y0: float, y1: float, z: float, r: float, reach: float, far: float) -> bool {
   let d = aim_range(x, z)
   if d > far { return false }
   let rr = r + aim_slack_m(d)
   let hit = aim_ray_cyl(x, y0, y1, z, rr)
-  if hit < 0.0 or not (hit < aim_st.am_t) { return false }
+  if hit < 0.0 or not (hit < am_t) { return false }
   if not aim_clear_to(x, (y0 + y1) * 0.5, z) { return false }
-  aim_st.am_t = hit
-  aim_st.am_off = aim_miss(x, z, rr)
-  aim_st.am_kind = kind
-  aim_st.am_id = id
-  aim_st.am_dist = d
-  aim_st.am_reach = reach >= 0.0 and d < aim_reach_of(reach)
+  am_t = hit
+  am_off = aim_miss(x, z, rr)
+  am_kind = kind
+  am_id = id
+  am_dist = d
+  am_reach = reach >= 0.0 and d < aim_reach_of(reach)
   return true
 }
 
-export function aim_kind(aim_st: AimState) -> int { return aim_st.am_kind }
-export function aim_id(aim_st: AimState) -> int { return aim_st.am_id }
-export function aim_dist(aim_st: AimState) -> float { return aim_st.am_dist }
-export function aim_in_reach(aim_st: AimState) -> bool { return aim_st.am_reach }
-export function aim_t(aim_st: AimState) -> float { return aim_st.am_t }
+export function aim_kind() -> int { return am_kind }
+export function aim_id() -> int { return am_id }
+export function aim_dist() -> float { return am_dist }
+export function aim_in_reach() -> bool { return am_reach }
+export function aim_t() -> float { return am_t }
 # how well centred the pick is: 0 dead centre, 1 at its (forgiven) edge
-export function aim_off_centre(aim_st: AimState) -> float { return aim_st.am_off }
+export function aim_off_centre() -> float { return am_off }

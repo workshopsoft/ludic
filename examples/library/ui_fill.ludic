@@ -4,23 +4,21 @@
 import "ludic.ui"
 program UiFill {
   numbers float
-  state UifillState {
-    rects: []string = new []string
-    pics: []string = new []string
-    clips: int = 0
-  }
+  var rects: []string = new []string
+  var pics: []string = new []string
+  var clips: int = 0
   const STYLE: string = "<style>.g { width: 100px; height: 20px; background: linear-gradient(to right, #000000, #ffffff) }\n.h { width: 50px; height: 40px; background-image: linear-gradient(180deg, #ff0000 0%, #0000ff 50%, #0000ff) }\nimg { width: 100px; height: 100px }\n.contain { object-fit: contain }\n.cover { object-fit: cover }\n.r { width: 160px; aspect-ratio: 16 / 9 }\nknob { height: 30px; aspect-ratio: 2 }</style>"
   const BODY: string = "<screen name='f'><div class='g'/><div class='h'/><img class='contain' src='wide.png'/><img class='cover' src='wide.png'/><div class='r'/><row><knob/></row></screen>"
-  function rec_rect(uifill_st: mut UifillState, x: float, y: float, w: float, h: float, c: int, a: float) -> void { push(uifill_st.rects, `{int(x)},{int(y)} {int(w)}x{int(h)} {ui_hex(c)}`) }
-  function rec_image(uifill_st: mut UifillState, src: string, x: float, y: float, w: float, h: float, c: int, a: float) -> void { push(uifill_st.pics, `{int(x)},{int(y)} {int(w)}x{int(h)}`) }
-  function rec_clip(uifill_st: mut UifillState, x: float, y: float, w: float, h: float) -> void { uifill_st.clips += 1 }
+  function rec_rect(x: float, y: float, w: float, h: float, c: int, a: float) -> void { push(rects, `{int(x)},{int(y)} {int(w)}x{int(h)} {ui_hex(c)}`) }
+  function rec_image(src: string, x: float, y: float, w: float, h: float, c: int, a: float) -> void { push(pics, `{int(x)},{int(y)} {int(w)}x{int(h)}`) }
+  function rec_clip(x: float, y: float, w: float, h: float) -> void { clips += 1 }
   function no_clip() -> void { }
   function no_text(x: float, y: float, s: string, size: float, c: int, a: float) -> void { }
   function nat_w(src: string) -> float { return 200.0 }
   function nat_h(src: string) -> float { return 100.0 }
   function knob_measure(n: UiNode, avail: float) -> void { }
   function knob_draw(n: UiNode) -> void { }
-  entry (ui_st: mut UiState, uifill_st: UifillState) {
+  entry {
     let b = new UiBackend
     b.rect = fn rec_rect
     b.text = fn no_text
@@ -29,13 +27,13 @@ program UiFill {
     b.image_h = fn nat_h
     b.clip = fn rec_clip
     b.unclip = fn no_clip
-    ui_backend(ui_st, b)
-    ui_native(ui_st, "knob", fn knob_measure, fn knob_draw)
-    ui_load_text(ui_st, "<ui>" + STYLE + BODY + "</ui>", "f.xml")
-    ui_show(ui_st, "f", null, 0.0, 0.0, 400.0, 600.0)
-    let r: UiNode = ui_nodes(ui_st, "f", null)
-    ui_place(ui_st, r, 0.0, 0.0, 400.0, 600.0)
-    let n = len(uifill_st.rects)
-    print(`{uifill_st.rects[0]} .. {uifill_st.rects[49]} | {uifill_st.rects[50]} .. {uifill_st.rects[59]} .. {uifill_st.rects[69]} of {n} | {uifill_st.pics[0]} | {uifill_st.pics[1]} clipped {uifill_st.clips} | ratio {int(r.children[4].ch)} knob {int(r.children[5].children[0].cw)}`)
+    ui_backend(b)
+    ui_native("knob", fn knob_measure, fn knob_draw)
+    ui_load_text("<ui>" + STYLE + BODY + "</ui>", "f.xml")
+    ui_show("f", null, 0.0, 0.0, 400.0, 600.0)
+    let r: UiNode = ui_nodes("f", null)
+    ui_place(r, 0.0, 0.0, 400.0, 600.0)
+    let n = len(rects)
+    print(`{rects[0]} .. {rects[49]} | {rects[50]} .. {rects[59]} .. {rects[69]} of {n} | {pics[0]} | {pics[1]} clipped {clips} | ratio {int(r.children[4].ch)} knob {int(r.children[5].children[0].cw)}`)
   }
 }

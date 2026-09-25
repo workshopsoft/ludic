@@ -1,25 +1,25 @@
 # system.ludic - the reader as a system: what has been read and the last bearing are saved; the
 # prints themselves are the ground's and are not (the animals leave new ones)
-export function tracks_reset(base_st: mut BaseState, tracks_st: mut TracksState) -> void {
-  tracks_st.tk_read_n = 0
-  tracks_st.tk_yaw = 0.0
-  tracks_st.tk_has_yaw = false
-  q_clear(base_st, tracks_reads(base_st, tracks_st))
+export function tracks_reset() -> void {
+  tk_read_n = 0
+  tk_yaw = 0.0
+  tk_has_yaw = false
+  q_clear(tracks_reads())
 }
 
-export function tracks_save(tracks_st: TracksState) -> Val {
+export function tracks_save() -> Val {
   let v = Value.object()
-  sv_put_int(v, "read", tracks_st.tk_read_n)
-  sv_put_bool(v, "has_yaw", tracks_st.tk_has_yaw)
-  sv_put_float(v, "yaw", tracks_st.tk_yaw)
+  sv_put_int(v, "read", tk_read_n)
+  sv_put_bool(v, "has_yaw", tk_has_yaw)
+  sv_put_float(v, "yaw", tk_yaw)
   return v
 }
 
-export function tracks_load(base_st: mut BaseState, tracks_st: mut TracksState, v: Val, version: int) -> void {
-  tracks_reset(base_st, tracks_st)
-  tracks_st.tk_read_n = sv_int(v, "read", 0)
-  tracks_st.tk_has_yaw = sv_bool(v, "has_yaw", false)
-  tracks_st.tk_yaw = sv_float(v, "yaw", 0.0)
+export function tracks_load(v: Val, version: int) -> void {
+  tracks_reset()
+  tk_read_n = sv_int(v, "read", 0)
+  tk_has_yaw = sv_bool(v, "has_yaw", false)
+  tk_yaw = sv_float(v, "yaw", 0.0)
 }
 
 export function tracks_system() -> System {

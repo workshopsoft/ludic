@@ -1,20 +1,20 @@
 # shots.ludic - a scene names its cameras; the loop takes them in order
-function lab_shots_reset(lab_st: mut LabState) -> void {
-  lab_st.lb_shot_names = new []string
-  lab_st.lb_shot_pose = new []float
+function lab_shots_reset() -> void {
+  lb_shot_names = new []string
+  lb_shot_pose = new []float
 }
 # a camera at (x, y, z) looking along yaw / pitch, both in DEGREES (cam_set's units)
-export function lab_shot(lab_st: mut LabState, name: string, x: float, y: float, z: float, yaw_deg: float, pitch_deg: float) -> void {
-  push(lab_st.lb_shot_names, name)
-  push(lab_st.lb_shot_pose, x)
-  push(lab_st.lb_shot_pose, y)
-  push(lab_st.lb_shot_pose, z)
-  push(lab_st.lb_shot_pose, yaw_deg)
-  push(lab_st.lb_shot_pose, pitch_deg)
+export function lab_shot(name: string, x: float, y: float, z: float, yaw_deg: float, pitch_deg: float) -> void {
+  push(lb_shot_names, name)
+  push(lb_shot_pose, x)
+  push(lb_shot_pose, y)
+  push(lb_shot_pose, z)
+  push(lb_shot_pose, yaw_deg)
+  push(lb_shot_pose, pitch_deg)
 }
 # a camera `dist` metres from the point (tx, ty, tz), from bearing `from_deg` (0 = from +z),
 # `up_deg` above the horizontal, looking at the point
-export function lab_shot_at(lab_st: mut LabState, name: string, tx: float, ty: float, tz: float, dist: float, from_deg: float, up_deg: float) -> void {
+export function lab_shot_at(name: string, tx: float, ty: float, tz: float, dist: float, from_deg: float, up_deg: float) -> void {
   let b = Math.deg_to_rad(from_deg)
   let e = Math.deg_to_rad(up_deg)
   let hd = dist * Math.cos(e)
@@ -22,14 +22,14 @@ export function lab_shot_at(lab_st: mut LabState, name: string, tx: float, ty: f
   let cz = tz + Math.cos(b) * hd
   let cy = ty + dist * Math.sin(e)
   let yaw = Math.atan2(cx - tx, cz - tz) * (180.0 / PI)
-  lab_shot(lab_st, name, cx, cy, cz, yaw, -up_deg)
+  lab_shot(name, cx, cy, cz, yaw, -up_deg)
 }
-export function lab_shot_count(lab_st: LabState) -> int {
-  if lab_st.lb_shot_names == null { return 0 }
-  return len(lab_st.lb_shot_names)
+export function lab_shot_count() -> int {
+  if lb_shot_names == null { return 0 }
+  return len(lb_shot_names)
 }
-function lab_shot_apply(lab_st: LabState, render3d_st: mut Render3dState, i: int) -> void {
-  if i < 0 or i >= lab_shot_count(lab_st) { return }
+function lab_shot_apply(i: int) -> void {
+  if i < 0 or i >= lab_shot_count() { return }
   let o = i * 5
-  cam_set(render3d_st, lab_st.lb_shot_pose[o], lab_st.lb_shot_pose[o + 1], lab_st.lb_shot_pose[o + 2], lab_st.lb_shot_pose[o + 3], lab_st.lb_shot_pose[o + 4])
+  cam_set(lb_shot_pose[o], lb_shot_pose[o + 1], lb_shot_pose[o + 2], lb_shot_pose[o + 3], lb_shot_pose[o + 4])
 }

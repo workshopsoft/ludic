@@ -1,56 +1,56 @@
 # boot.ludic - the window, the renderer on a plate (no terrain, no grass, no water), the plate and
 # its sky, then the scene named by R3D_SCENE (else the first one added)
-function lab_draw(lab_st: LabState, render3d_st: mut Render3dState) -> void {
-  actor_draw(render3d_st)
-  scatter_draw(render3d_st)
-  if lab_st.lb_draw != null { lab_st.lb_draw() }
+function lab_draw() -> void {
+  actor_draw()
+  scatter_draw()
+  if lb_draw != null { lb_draw() }
 }
-function lab_casters(render3d_st: mut Render3dState, light_vp: floats) -> void {
-  actor_draw_casters(render3d_st, light_vp)
-  scatter_draw_casters(render3d_st, light_vp)
+function lab_casters(light_vp: floats) -> void {
+  actor_draw_casters(light_vp)
+  scatter_draw_casters(light_vp)
 }
-function lab_pick_scene(lab_st: mut LabState) -> int {
+function lab_pick_scene() -> int {
   if LAB_COUNT == 0 { return -1 }
-  lab_st.lb_scene = LabScenes[0].key
-  if Os.has_env("R3D_SCENE") { lab_st.lb_scene = Os.env("R3D_SCENE") }
-  return labscenes_find(lab_st.lb_scene)
+  lb_scene = LabScenes[0].key
+  if Os.has_env("R3D_SCENE") { lb_scene = Os.env("R3D_SCENE") }
+  return labscenes_find(lb_scene)
 }
 # once, from the program's Start handler
-export function lab_boot(lab_st: mut LabState, render3d_st: mut Render3dState) -> void {
-  lab_st.lb_windowed = is_windowed()
-  let k = lab_pick_scene(lab_st)
+export function lab_boot() -> void {
+  lb_windowed = is_windowed()
+  let k = lab_pick_scene()
   if k < 0 {
-    print(`lab: no scene called '{lab_st.lb_scene}' - {lab_scene_names()}`)
+    print(`lab: no scene called '{lb_scene}' - {lab_scene_names()}`)
     quit()
     return
   }
   var ww = 1920
   var wh = 1080
-  if lab_st.lb_windowed {
+  if lb_windowed {
     ww = 960
     wh = 540
   }
-  r3d_plate_mode(render3d_st, true)
-  render3d_st.r3d_sky_path = `{lab_plate_dir(lab_st)}/sky.hdr`
-  if not r3d_init(render3d_st, ww, wh, lab_st.lb_title) {
+  r3d_plate_mode(true)
+  r3d_sky_path = `{lab_plate_dir()}/sky.hdr`
+  if not r3d_init(ww, wh, lb_title) {
     quit()
     return
   }
-  if lab_st.lb_font != "" { overlay_init(render3d_st, lab_st.lb_font) }
-  r3d_on_draw(render3d_st, fn lab_draw)
-  r3d_on_casters(render3d_st, fn lab_casters)
-  lab_plate_load(lab_st, render3d_st)
-  lab_shots_reset(lab_st)
-  lab_st.lb_out = `build/lab/{lab_st.lb_scene}`
+  if lb_font != "" { overlay_init(lb_font) }
+  r3d_on_draw(fn lab_draw)
+  r3d_on_casters(fn lab_casters)
+  lab_plate_load()
+  lab_shots_reset()
+  lb_out = `build/lab/{lb_scene}`
   let sc = LabScenes[k]
-  lab_st.lb_draw = sc.draw
+  lb_draw = sc.draw
   if sc.setup != null { sc.setup() }
-  if lab_shot_count(lab_st) == 0 { lab_shot_at(lab_st, "plate", 0.0, 1.0, 0.0, 8.0, 0.0, 15.0) }
-  lab_shot_apply(lab_st, render3d_st, 0)
-  if not lab_st.lb_windowed {
+  if lab_shot_count() == 0 { lab_shot_at("plate", 0.0, 1.0, 0.0, 8.0, 0.0, 15.0) }
+  lab_shot_apply(0)
+  if not lb_windowed {
     Fs.mkdir("build")
     Fs.mkdir("build/lab")
-    Fs.mkdir(lab_st.lb_out)
+    Fs.mkdir(lb_out)
   }
-  print(`lab: scene {lab_st.lb_scene}, {lab_shot_count(lab_st)} shots`)
+  print(`lab: scene {lb_scene}, {lab_shot_count()} shots`)
 }

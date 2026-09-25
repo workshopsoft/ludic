@@ -29,17 +29,15 @@ const SPR_MAGE:  int = 9
 const SPR_FLOOR: int = 10
 const SPR_WALL:  int = 11
 
-export state GamesChronoriftState {
-  game_mode: int = 0    # 0 field, 1 battle, 2 gameover, 3 victory
-  turn_phase: int = 0
-  menu_cursor: int = 0
-  encounter: int = 0
-  enemy_type: int = 0    # 0 slime, 1 skeleton, 2 boss
-  player_hit: int = 0
-  enemy_hit: int = 0
-  gold: int = 0
-  world_map: int = 0    # 0 overworld, 1 dungeon
-  boss_down: int = 0    # boss defeated flag
-  ack: int = 0   # debounce for end screens
-  potions: int = 0  # potions in inventory
-}
+var game_mode: int = 0    # 0 field, 1 battle, 2 gameover, 3 victory
+var turn_phase: int = 0
+var menu_cursor: int = 0
+var encounter: int = 0
+var enemy_type: int = 0    # 0 slime, 1 skeleton, 2 boss
+var player_hit: int = 0
+var enemy_hit: int = 0
+var gold: int = 0
+var world_map: int = 0    # 0 overworld, 1 dungeon
+var boss_down: int = 0    # boss defeated flag
+var ack: int = 0   # debounce for end screens
+var potions: int = 0  # potions in inventory

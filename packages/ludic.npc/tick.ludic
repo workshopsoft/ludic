@@ -1,53 +1,53 @@
 # tick.ludic - a step of everyone, on the machine that runs the place: the census on the half hour,
 # the day's end (only ever out of every player's sight), the walk or the act, and who noticed whom
-export function npc_tick(base_st: mut BaseState, npc_st: mut NpcState, dt: float) -> void {
-  np_ensure(npc_st)
-  for i in 0 .. len(npc_st.np_posts) { if npc_st.np_posts[i].active { np_step_post(base_st, npc_st, npc_st.np_posts[i], dt) } }
-  if npc_st.np_hold or npc_st.np_mirror { return }
-  np_census(npc_st)
-  for i in 0 .. len(npc_st.np_walkers) {
-    let p = npc_st.np_walkers[i]
-    if not p.active or np_leaves(npc_st, p) { continue }
-    if p.act == NPCA_WALK { npc_walk(base_st, npc_st, p, dt) } else { npc_act(npc_st, p, dt) }
-    npc_notice(base_st, npc_st, p)
+export function npc_tick(dt: float) -> void {
+  np_ensure()
+  for i in 0 .. len(np_posts) { if np_posts[i].active { np_step_post(np_posts[i], dt) } }
+  if np_hold or np_mirror { return }
+  np_census()
+  for i in 0 .. len(np_walkers) {
+    let p = np_walkers[i]
+    if not p.active or np_leaves(p) { continue }
+    if p.act == NPCA_WALK { npc_walk(p, dt) } else { npc_act(p, dt) }
+    npc_notice(p)
   }
 }
 
 # the posts alone: a machine that does not run the place still turns its vendors to whoever comes
-export function npc_posts_tick(base_st: mut BaseState, npc_st: mut NpcState, dt: float) -> void {
-  np_ensure(npc_st)
-  for i in 0 .. len(npc_st.np_posts) { if npc_st.np_posts[i].active { np_step_post(base_st, npc_st, npc_st.np_posts[i], dt) } }
+export function npc_posts_tick(dt: float) -> void {
+  np_ensure()
+  for i in 0 .. len(np_posts) { if np_posts[i].active { np_step_post(np_posts[i], dt) } }
 }
 
-function np_step_post(base_st: mut BaseState, npc_st: mut NpcState, p: NpcPerson, dt: float) -> void {
-  npc_act(npc_st, p, dt)
-  npc_notice(base_st, npc_st, p)
+function np_step_post(p: NpcPerson, dt: float) -> void {
+  npc_act(p, dt)
+  npc_notice(p)
 }
 
 # counted, not tallied, so it cannot drift; the census fills to what the place wants from the kinds
 # by weight (after dark, only the kinds that stay out at night), and brings out an extra when asked
-function np_census(npc_st: mut NpcState) -> void {
+function np_census() -> void {
   let h = NpcWorld.hour()
-  if Math.abs(h - npc_st.np_next_h) <= 0.5 { return }
-  npc_st.np_next_h = h
-  npc_st.np_n = 0
-  for i in 0 .. len(npc_st.np_walkers) { if npc_st.np_walkers[i].active { npc_st.np_n += 1 } }
-  let want = Math.min(NpcWorld.want(), npc_st.np_max)
-  while npc_st.np_n < want {
-    let k = np_draw_kind(npc_st, np_is_night(h))
-    if k < 0 or npc_spawn(npc_st, k) == null { break }
+  if Math.abs(h - np_next_h) <= 0.5 { return }
+  np_next_h = h
+  np_n = 0
+  for i in 0 .. len(np_walkers) { if np_walkers[i].active { np_n += 1 } }
+  let want = Math.min(NpcWorld.want(), np_max)
+  while np_n < want {
+    let k = np_draw_kind(np_is_night(h))
+    if k < 0 or npc_spawn(k) == null { break }
   }
   let extra = NpcWorld.extra()
-  if extra >= 0 and npc_st.np_n < npc_st.np_max { npc_spawn(npc_st, extra) }
+  if extra >= 0 and np_n < np_max { npc_spawn(extra) }
 }
 
 function np_is_night(h: float) -> bool { return h >= 21.0 or h < 5.0 }
 
-function np_draw_kind(npc_st: mut NpcState, night: bool) -> int {
+function np_draw_kind(night: bool) -> int {
   var total = 0
   for k in 0 .. NPCK_COUNT { if np_drawn(k, night) { total += NpcKinds[k].weight } }
   if total <= 0 { return -1 }
-  var r = npc_between(npc_st, 0, total - 1)
+  var r = npc_between(0, total - 1)
   for k in 0 .. NPCK_COUNT {
     if not np_drawn(k, night) { continue }
     r -= NpcKinds[k].weight
@@ -61,40 +61,40 @@ function np_drawn(k: int, night: bool) -> bool { return NpcKinds[k].weight > 0 a
 # Its day ends: somebody who does not stay walks out after its hour, and by ten at night nobody is
 # out but those who stay; a crowd over what the place wants thins. Only ever where no player sees
 # it go, and never while it is out for something (`goal`).
-function np_leaves(npc_st: mut NpcState, p: NpcPerson) -> bool {
+function np_leaves(p: NpcPerson) -> bool {
   if p.goal >= 0 { return false }
-  let away = npc_near(npc_st, p.x, p.z)
+  let away = npc_near(p.x, p.z)
   let h = NpcWorld.hour()
   let k = NpcKinds[p.kind]
   var go = false
   if not k.stays and h > p.out_h and away > 120.0 { go = true }
   if not k.stays and (h > 22.0 or h < 4.0) and away > 70.0 { go = true }
-  if npc_st.np_n > NpcWorld.want() and away > 150.0 { go = true }
-  if go { npc_retire(npc_st, p) }
+  if np_n > NpcWorld.want() and away > 150.0 { go = true }
+  if go { npc_retire(p) }
   return go
 }
 
 # the census looks again at the next tick
-export function npc_census_now(npc_st: mut NpcState) -> void { npc_st.np_next_h = -10.0 }
+export function npc_census_now() -> void { np_next_h = -10.0 }
 
 # held where they stand: no routine and no census (a shot of the poses)
-export function npc_hold(npc_st: mut NpcState, on: bool) -> void { npc_st.np_hold = on }
+export function npc_hold(on: bool) -> void { np_hold = on }
 
 # everyone gone, as a new trip starts; the posts are the place's and stay
-export function npc_reset(base_st: mut BaseState, npc_st: mut NpcState) -> void {
-  np_ensure(npc_st)
-  for i in 0 .. len(npc_st.np_walkers) { npc_retire(npc_st, npc_st.np_walkers[i]) }
-  npc_st.np_n = 0
-  npc_st.np_next_h = 0.0
-  npc_st.np_hold = false
-  npc_st.np_recent = new []string
-  q_clear(base_st, npc_facts(base_st, npc_st))
+export function npc_reset() -> void {
+  np_ensure()
+  for i in 0 .. len(np_walkers) { npc_retire(np_walkers[i]) }
+  np_n = 0
+  np_next_h = 0.0
+  np_hold = false
+  np_recent = new []string
+  q_clear(npc_facts())
 }
 
 # forgotten altogether, walkers and posts (the place itself was replaced)
-export function npc_clear(npc_st: mut NpcState) -> void {
-  npc_st.np_walkers = new []NpcPerson
-  npc_st.np_posts = new []NpcPerson
-  npc_st.np_n = 0
-  npc_st.np_next_h = 0.0
+export function npc_clear() -> void {
+  np_walkers = new []NpcPerson
+  np_posts = new []NpcPerson
+  np_n = 0
+  np_next_h = 0.0
 }

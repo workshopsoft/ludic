@@ -1,6 +1,6 @@
 # overworld.ludic — boot, movement/encounter input, and the shop system.
 
-handler Boot(games_chronorift_st: mut GamesChronoriftState) phase Start {
+handler Boot phase Start {
   png_load("assets/kenney/tiny-town/Tiles/tile_0000.png")      # 0 grass
   png_load("assets/kenney/tiny-town/Tiles/tile_0004.png")      # 1 tree
   png_load("assets/kenney/tiny-town/Tiles/tile_0025.png")      # 2 path
@@ -25,16 +25,16 @@ handler Boot(games_chronorift_st: mut GamesChronoriftState) phase Start {
     Party  { slot: 1 }
     Stats  { hp: 26, maxhp: 26, mp: 16, maxmp: 16, atk: 8,  def: 4, lvl: 1, xp: 0, guard: 0 }
   }
-  games_chronorift_st.game_mode = 0
-  games_chronorift_st.encounter = 4
-  games_chronorift_st.world_map = 0
-  games_chronorift_st.boss_down = 0
-  games_chronorift_st.gold = 20
-  games_chronorift_st.potions = 2
+  game_mode = 0
+  encounter = 4
+  world_map = 0
+  boss_down = 0
+  gold = 20
+  potions = 2
 }
 
-handler Control(games_chronorift_st: mut GamesChronoriftState) phase Input {
-  if games_chronorift_st.game_mode == 0 {
+handler Control phase Input {
+  if game_mode == 0 {
     for (p) in query [Pos, {Player}] {
       let k = Input.key()
       var nx = p.x
@@ -57,43 +57,43 @@ handler Control(games_chronorift_st: mut GamesChronoriftState) phase Input {
           build_dungeon(0)
           p.x = 3
           p.y = 2
-          games_chronorift_st.world_map = 1
+          world_map = 1
         }
         if tc == 'S' {
           build_field(0)
           p.x = 36
           p.y = 3
-          games_chronorift_st.world_map = 0
+          world_map = 0
         }
         if tc == 'B' {
-          if games_chronorift_st.boss_down == 0 {
-            games_chronorift_st.enemy_type = 2
+          if boss_down == 0 {
+            enemy_type = 2
             spawn Enemy {
               Actor { kind: 8 }
               Stats { hp: 120, maxhp: 120, mp: 0, maxmp: 0, atk: 18, def: 10, lvl: 5, xp: 300, guard: 0 }
             }
-            games_chronorift_st.game_mode = 1
-            games_chronorift_st.turn_phase = 0
-            games_chronorift_st.menu_cursor = 0
+            game_mode = 1
+            turn_phase = 0
+            menu_cursor = 0
           }
         }
         if tc == 'h' {
-          games_chronorift_st.game_mode = 4
-          games_chronorift_st.menu_cursor = 0
+          game_mode = 4
+          menu_cursor = 0
         }
         if tc != 'D' {
           if tc != 'S' {
             if tc != 'B' {
               if tc != 'h' {
-                games_chronorift_st.encounter -= 1
-                if games_chronorift_st.encounter <= 0 {
-                  games_chronorift_st.encounter = Random.range(4, 9)
+                encounter -= 1
+                if encounter <= 0 {
+                  encounter = Random.range(4, 9)
                   var et = 0
-                  if games_chronorift_st.world_map == 1 { et = 1 }
-                  if games_chronorift_st.world_map == 0 {
+                  if world_map == 1 { et = 1 }
+                  if world_map == 0 {
                     if Random.chance(40) { et = 1 }
                   }
-                  games_chronorift_st.enemy_type = et
+                  enemy_type = et
                   if et == 0 {
                     spawn Enemy {
                       Actor { kind: 6 }
@@ -106,9 +106,9 @@ handler Control(games_chronorift_st: mut GamesChronoriftState) phase Input {
                       Stats { hp: 30, maxhp: 30, mp: 0, maxmp: 0, atk: 11, def: 5, lvl: 1, xp: 15, guard: 0 }
                     }
                   }
-                  games_chronorift_st.game_mode = 1
-                  games_chronorift_st.turn_phase = 0
-                  games_chronorift_st.menu_cursor = 0
+                  game_mode = 1
+                  turn_phase = 0
+                  menu_cursor = 0
                 }
               }
             }
@@ -122,19 +122,19 @@ handler Control(games_chronorift_st: mut GamesChronoriftState) phase Input {
 }
 
 # shop (at the house 'h' tile): buy potions with gold
-handler Shop(games_chronorift_st: mut GamesChronoriftState) phase Update {
-  if games_chronorift_st.game_mode == 4 {
+handler Shop phase Update {
+  if game_mode == 4 {
     let k = Input.key()
-    if k == 'w' { games_chronorift_st.menu_cursor = max(0, games_chronorift_st.menu_cursor - 1) }
-    if k == 's' { games_chronorift_st.menu_cursor = min(1, games_chronorift_st.menu_cursor + 1) }
+    if k == 'w' { menu_cursor = max(0, menu_cursor - 1) }
+    if k == 's' { menu_cursor = min(1, menu_cursor + 1) }
     if is_confirm(k) {
-      if games_chronorift_st.menu_cursor == 0 {
-        if games_chronorift_st.gold >= 10 {
-          games_chronorift_st.gold -= 10
-          games_chronorift_st.potions += 1
+      if menu_cursor == 0 {
+        if gold >= 10 {
+          gold -= 10
+          potions += 1
         }
       }
-      if games_chronorift_st.menu_cursor == 1 { games_chronorift_st.game_mode = 0 }
+      if menu_cursor == 1 { game_mode = 0 }
     }
   }
 }

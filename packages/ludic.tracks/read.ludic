@@ -1,54 +1,54 @@
 # read.ludic - reading the ground. A print is read once: reading it again says the same thing
 # and counts nothing, so pressing a key over one print is not as good as walking a trail.
-export function tracks_fresh_of(tracks_st: TracksState, age: float) -> int {
-  if age > tracks_st.tk_recent_h { return TRACK_OLD }
-  if age > tracks_st.tk_fresh_h { return TRACK_RECENT }
+export function tracks_fresh_of(age: float) -> int {
+  if age > tk_recent_h { return TRACK_OLD }
+  if age > tk_fresh_h { return TRACK_RECENT }
   return TRACK_FRESH
 }
 
-function tk_push(base_st: mut BaseState, tracks_st: mut TracksState, f: TrackRead) -> void {
-  if f.first { tracks_st.tk_read_n += 1 }
-  q_push(base_st, tracks_reads(base_st, tracks_st), f)
+function tk_push(f: TrackRead) -> void {
+  if f.first { tk_read_n += 1 }
+  q_push(tracks_reads(), f)
 }
 
 # read the print at a slot (tracks_nearest's answer): a fact every time, a count the first time
-export function tracks_read(base_st: mut BaseState, tracks_st: mut TracksState, slot: int) -> void {
-  if slot < 0 or tracks_st.tk_ring == null or slot >= len(tracks_st.tk_ring) { return }
-  let t = tracks_st.tk_ring[slot]
+export function tracks_read(slot: int) -> void {
+  if slot < 0 or tk_ring == null or slot >= len(tk_ring) { return }
+  let t = tk_ring[slot]
   let f = new TrackRead
   f.sp = t.sp
   f.source = TRACK_PRINT
-  f.kind = slot / tracks_st.tk_cap
+  f.kind = slot / tk_cap
   f.legend = t.legend
-  f.age = tracks_age(tracks_st, slot)
-  f.fresh = tracks_fresh_of(tracks_st, f.age)
+  f.age = tracks_age(slot)
+  f.fresh = tracks_fresh_of(f.age)
   f.yaw = t.yaw
-  f.named = tk_named(tracks_st)
+  f.named = tk_named()
   f.bearing = tk_bearing(t.yaw)
   f.first = not t.read
   t.read = true
-  tracks_note_bearing(tracks_st, t.yaw)
-  tk_push(base_st, tracks_st, f)
+  tracks_note_bearing(t.yaw)
+  tk_push(f)
 }
 
 # a sign that is not a print (droppings, a legend's mark): the caller knows whether it is the
 # first reading of it
-export function tracks_note(base_st: mut BaseState, tracks_st: mut TracksState, sp: int, source: int, legend: bool, yaw: float, first: bool) -> void {
+export function tracks_note(sp: int, source: int, legend: bool, yaw: float, first: bool) -> void {
   let f = new TrackRead
   f.sp = sp
   f.source = source
   f.legend = legend
   f.yaw = yaw
-  f.named = tk_named(tracks_st)
+  f.named = tk_named()
   f.bearing = tk_bearing(yaw)
   f.first = first
-  tk_push(base_st, tracks_st, f)
+  tk_push(f)
 }
 
 # the way the last thing read went (a bed, droppings, a print)
-export function tracks_note_bearing(tracks_st: mut TracksState, yaw: float) -> void {
-  tracks_st.tk_yaw = yaw
-  tracks_st.tk_has_yaw = true
+export function tracks_note_bearing(yaw: float) -> void {
+  tk_yaw = yaw
+  tk_has_yaw = true
 }
 
-export function tracks_set_read_count(tracks_st: mut TracksState, n: int) -> void { tracks_st.tk_read_n = n }
+export function tracks_set_read_count(n: int) -> void { tk_read_n = n }

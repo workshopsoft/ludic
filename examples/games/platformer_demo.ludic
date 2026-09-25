@@ -32,15 +32,13 @@ program PlatformerDemo {
   @OnSpawn(Floor) handler FloorInit { }
   @OnSpawn(Wall)  handler WallInit { }
 
-  state PlatformerdemoState {
-    jumps: int = 0
-    have_power: int = 0
-    vetoed_air: int = 0
-  }
-  @On(JumpPerformed) handler CountJumps(platformerdemo_st: mut PlatformerdemoState) { platformerdemo_st.jumps += 1 }
+  var jumps: int = 0
+  @On(JumpPerformed) handler CountJumps { jumps += 1 }
   # a game rule: forbid the air (double) jump unless a "power" flag is set — pure
   # lever-4 veto, no controller edit.
-  @On(JumpRequested) handler GateAir(platformerdemo_st: mut PlatformerdemoState) { if (kind == 2) and (platformerdemo_st.have_power == 0) { platformerdemo_st.vetoed_air = 1; cancel } }
+  var have_power: int = 0
+  var vetoed_air: int = 0
+  @On(JumpRequested) handler GateAir { if (kind == 2) and (have_power == 0) { vetoed_air = 1; cancel } }
 
   function tick_n(n: int) -> void { var i = 0;  while i < n { tick_fixed();  i += 1 } }
   function bi(b: bool) -> int { if b { return 1 };  return 0 }
@@ -49,7 +47,7 @@ program PlatformerDemo {
     return World.get(e, P, World.field_id(P, "coyote_t"))
   }
 
-  entry (platformerdemo_st: mut PlatformerdemoState) {
+  entry {
     let PB = World.prop_id("Body")
     let PP = World.prop_id("Position")
     let PL = World.prop_id("Platformer")
@@ -91,16 +89,16 @@ program PlatformerDemo {
     print(bi(pf_coyote(h) == 6))                    # 1
 
     # ---- D. double jump gated by the veto hook -----------------------------
-    platformerdemo_st.have_power = 0
+    have_power = 0
     Platformer.jump(h);  tick_n(3)                  # ground jump -> airborne
-    let after_ground = platformerdemo_st.jumps
+    let after_ground = jumps
     Platformer.jump(h);  tick_n(2)                  # air jump attempt -> vetoed
-    print(bi((platformerdemo_st.jumps == after_ground) and (platformerdemo_st.vetoed_air == 1)))   # 1
+    print(bi((jumps == after_ground) and (vetoed_air == 1)))   # 1
 
-    platformerdemo_st.have_power = 1
-    let before_power = platformerdemo_st.jumps
+    have_power = 1
+    let before_power = jumps
     Platformer.jump(h);  tick_n(2)                  # air jump now allowed
-    print(bi(platformerdemo_st.jumps == before_power + 1))            # 1
+    print(bi(jumps == before_power + 1))            # 1
     tick_n(60)                                        # settle on the floor
 
     # ---- E. horizontal run into the wall (collision reuse) -----------------

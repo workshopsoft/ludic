@@ -4,28 +4,26 @@ numbers float
 import "ludic.base"
 export property Caught { species: int = 0, weight: float = 0.0 }
 export port FishingWorld { is_water: fn(float, float) -> bool }           # its port
-export state ToyFishingState {
-  dice: Rng = null
-  casts: int = 0
-  caught: Queue<Caught> = null                                   # its facts
-}
-export function fishing_cast(toy_fishing_st: mut ToyFishingState, x: float, z: float) -> bool {                 # its verb
+var dice: Rng = null
+var casts: int = 0
+export var caught: Queue<Caught> = null                                   # its facts
+export function fishing_cast(x: float, z: float) -> bool {                 # its verb
   if not FishingWorld.is_water(x, z) { return false }
-  toy_fishing_st.casts += 1
+  casts += 1
   return true
 }
-function fishing_reset(base_st: mut BaseState, toy_fishing_st: mut ToyFishingState) -> void {
-  toy_fishing_st.casts = 0
-  toy_fishing_st.dice = rng_new(7)
-  toy_fishing_st.caught = queue_new(base_st, "fishing.caught")
+function fishing_reset() -> void {
+  casts = 0
+  dice = rng_new(7)
+  caught = queue_new("fishing.caught")
 }
-function fishing_tick(base_st: mut BaseState, toy_fishing_st: mut ToyFishingState, t: Tick) -> void {
-  while toy_fishing_st.casts > 0 {
+function fishing_tick(t: Tick) -> void {
+  while casts > 0 {
     let c = new Caught
-    c.species = rng_between(toy_fishing_st.dice, 0, 2)
-    c.weight = 0.5 + rng_float(toy_fishing_st.dice)
-    q_push(base_st, toy_fishing_st.caught, c)
-    toy_fishing_st.casts -= 1
+    c.species = rng_between(dice, 0, 2)
+    c.weight = 0.5 + rng_float(dice)
+    q_push(caught, c)
+    casts -= 1
   }
 }
 export function fishing_system() -> System {

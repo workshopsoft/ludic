@@ -9,9 +9,9 @@ program AnimTest {
   function links_runtime() -> bool { return Input.key_pressed(0) }
 
   # a root and one child 1 m up, no inverse bind matrices, one skin of both
-  function skin(render3d_st: mut Render3dState) -> Skin {
-    render3d_st.gltf_doc = Json.parse("{\"nodes\": [{\"name\": \"root\", \"children\": [1]}, {\"name\": \"bone\", \"translation\": [0, 1, 0]}], \"skins\": [{\"joints\": [0, 1]}]}")
-    return skin_load(render3d_st, 0)
+  function skin() -> Skin {
+    gltf_doc = Json.parse("{\"nodes\": [{\"name\": \"root\", \"children\": [1]}, {\"name\": \"bone\", \"translation\": [0, 1, 0]}], \"skins\": [{\"joints\": [0, 1]}]}")
+    return skin_load(0)
   }
 
   # one channel on node 1: identity at 0, a quarter turn about Z at 1 s
@@ -44,14 +44,14 @@ program AnimTest {
     return q[2]
   }
 
-  test "a clip is found by name, once" (anim_st: mut AnimState) {
-    anim_clear(anim_st)
-    expect(anim_add(anim_st, turn("hiker_m_walk")))
-    expect(not anim_add(anim_st, turn("hiker_m_walk")))
-    expect(anim_add(anim_st, turn("hiker_f_walk")))
-    expect_eq(anim_count(anim_st), 2)
-    expect(anim_find(anim_st, "hiker_f_walk") != null)
-    expect(anim_find(anim_st, "bear_walk") == null)
+  test "a clip is found by name, once" {
+    anim_clear()
+    expect(anim_add(turn("hiker_m_walk")))
+    expect(not anim_add(turn("hiker_m_walk")))
+    expect(anim_add(turn("hiker_f_walk")))
+    expect_eq(anim_count(), 2)
+    expect(anim_find("hiker_f_walk") != null)
+    expect(anim_find("bear_walk") == null)
   }
 
   test "a key pair is found by halving" {
@@ -61,56 +61,56 @@ program AnimTest {
     expect_eq(anim_key_at(c, 0, -1.0), 0)
   }
 
-  test "playing samples between keys, and wraps on the duration" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
-    let sk = skin(render3d_st)
+  test "playing samples between keys, and wraps on the duration" {
+    let sk = skin()
     let c = turn("t")
-    expect(anim_play(anim_st, sk, c, 0.0, null, 0.0, 0.0))
+    expect(anim_play(sk, c, 0.0, null, 0.0, 0.0))
     expect_near(pose_z(sk), 0.0, 0.001)
-    anim_play(anim_st, sk, c, 1.0 - 0.0001, null, 0.0, 0.0)
+    anim_play(sk, c, 1.0 - 0.0001, null, 0.0, 0.0)
     expect_near(pose_z(sk), HALF, 0.01)
-    anim_play(anim_st, sk, c, 0.5, null, 0.0, 0.0)
+    anim_play(sk, c, 0.5, null, 0.0, 0.0)
     let mid = pose_z(sk)
-    anim_play(anim_st, sk, c, 1.5, null, 0.0, 0.0)
+    anim_play(sk, c, 1.5, null, 0.0, 0.0)
     expect_near(pose_z(sk), mid, 0.001)
     expect(mid > 0.3 and mid < 0.45)
   }
 
-  test "a cross-fade lands between the two clips" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
-    let sk = skin(render3d_st)
+  test "a cross-fade lands between the two clips" {
+    let sk = skin()
     let a = turn("a")
     let b = turn("b")
-    anim_play(anim_st, sk, a, 0.0, b, 0.999, 0.5)
+    anim_play(sk, a, 0.0, b, 0.999, 0.5)
     let z = pose_z(sk)
     expect(z > 0.3 and z < 0.45)
-    anim_play(anim_st, sk, a, 0.0, b, 0.999, 0.0)
+    anim_play(sk, a, 0.0, b, 0.999, 0.0)
     expect_near(pose_z(sk), 0.0, 0.001)
   }
 
-  test "a bone is found in the skin's own joints, not the file's first of that name" (render3d_st: mut Render3dState) {
-    render3d_st.gltf_doc = Json.parse("{\"nodes\": [{\"name\": \"bone\"}, {\"name\": \"root\", \"children\": [2]}, {\"name\": \"bone\"}], \"skins\": [{\"joints\": [1, 2]}]}")
-    let sk = skin_load(render3d_st, 0)
+  test "a bone is found in the skin's own joints, not the file's first of that name" {
+    gltf_doc = Json.parse("{\"nodes\": [{\"name\": \"bone\"}, {\"name\": \"root\", \"children\": [2]}, {\"name\": \"bone\"}], \"skins\": [{\"joints\": [1, 2]}]}")
+    let sk = skin_load(0)
     expect_eq(skin_joint(sk, "bone"), 2)
     expect_eq(skin_joint_quiet(sk, "wing_l"), -1)
     expect_eq(skin_joint_quiet(null, "bone"), -1)
   }
 
-  test "no skin or no clip plays nothing" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
-    expect(not anim_play(anim_st, null, turn("t"), 0.0, null, 0.0, 0.0))
-    expect(not anim_play(anim_st, skin(render3d_st), null, 0.0, null, 0.0, 0.0))
+  test "no skin or no clip plays nothing" {
+    expect(not anim_play(null, turn("t"), 0.0, null, 0.0, 0.0))
+    expect(not anim_play(skin(), null, 0.0, null, 0.0, 0.0))
   }
 
-  test "keyed translations are ignored until asked for" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
-    let sk = skin(render3d_st)
+  test "keyed translations are ignored until asked for" {
+    let sk = skin()
     let c = turn("t")
     c.cpath[0] = AC_POS
     c.vals[0] = 0.0
     c.vals[1] = 3.0
     c.vals[3] = 0.0
     c.vals[4] = 3.0
-    anim_play(anim_st, sk, c, 0.0, null, 0.0, 0.0)
+    anim_play(sk, c, 0.0, null, 0.0, 0.0)
     expect_near(sk.pose_t[4], 0.0, 0.0001)
-    anim_set_positions(anim_st, true)
-    anim_play(anim_st, sk, c, 0.0, null, 0.0, 0.0)
+    anim_set_positions(true)
+    anim_play(sk, c, 0.0, null, 0.0, 0.0)
     expect_near(sk.pose_t[4], 2.0, 0.0001)
   }
 
@@ -122,8 +122,8 @@ program AnimTest {
     b[at + 3] = (v >> 24) & 255
   }
 
-  test "clips are read out of a glTF's .bin, and a late first key is measured" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
-    anim_clear(anim_st)
+  test "clips are read out of a glTF's .bin, and a late first key is measured" {
+    anim_clear()
     let dir = Os.temp_dir() + "/ludic-anim-test"
     Fs.mkdir(dir)
     let b = buffer(40)
@@ -133,10 +133,10 @@ program AnimTest {
     put_f(b, 8 + 24, HALF)
     put_f(b, 8 + 28, HALF)
     expect(Fs.write_bytes(dir + "/t.bin", b, 40))
-    render3d_st.gltf_doc = Json.parse("{\"buffers\": [{\"uri\": \"t.bin\"}], \"bufferViews\": [{\"byteOffset\": 0}, {\"byteOffset\": 8}], \"accessors\": [{\"bufferView\": 0, \"count\": 2, \"type\": \"SCALAR\"}, {\"bufferView\": 1, \"count\": 2, \"type\": \"VEC4\"}], \"animations\": [{\"name\": \"bear_walk\", \"samplers\": [{\"input\": 0, \"output\": 1}], \"channels\": [{\"sampler\": 0, \"target\": {\"node\": 1, \"path\": \"rotation\"}}, {\"sampler\": 0, \"target\": {\"node\": 1, \"path\": \"scale\"}}]}]}")
-    expect_eq(anim_read_doc(anim_st, render3d_st, dir), 1)
-    expect_eq(anim_read_doc(anim_st, render3d_st, dir), 0)
-    let c = anim_find(anim_st, "bear_walk")
+    gltf_doc = Json.parse("{\"buffers\": [{\"uri\": \"t.bin\"}], \"bufferViews\": [{\"byteOffset\": 0}, {\"byteOffset\": 8}], \"accessors\": [{\"bufferView\": 0, \"count\": 2, \"type\": \"SCALAR\"}, {\"bufferView\": 1, \"count\": 2, \"type\": \"VEC4\"}], \"animations\": [{\"name\": \"bear_walk\", \"samplers\": [{\"input\": 0, \"output\": 1}], \"channels\": [{\"sampler\": 0, \"target\": {\"node\": 1, \"path\": \"rotation\"}}, {\"sampler\": 0, \"target\": {\"node\": 1, \"path\": \"scale\"}}]}]}")
+    expect_eq(anim_read_doc(dir), 1)
+    expect_eq(anim_read_doc(dir), 0)
+    let c = anim_find("bear_walk")
     expect(c != null)
     expect_eq(c.n, 1)
     expect_near(c.dur, 1.0, 0.0001)

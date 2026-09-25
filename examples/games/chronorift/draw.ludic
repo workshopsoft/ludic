@@ -1,7 +1,7 @@
 # draw.ludic — the Render system (overworld, battle, and overlay screens).
 
-handler Draw(games_chronorift_st: GamesChronoriftState) phase Render {
-  let m = games_chronorift_st.game_mode
+handler Draw phase Render {
+  let m = game_mode
   Screen.clear(0x101018)
 
   if m == 0 {
@@ -31,7 +31,7 @@ handler Draw(games_chronorift_st: GamesChronoriftState) phase Render {
         if c == 'D' { Screen.sprite(SPR_DOOR, sx, sy) }
         if c == 'S' { Screen.sprite(SPR_DOOR, sx, sy) }
         if c == 'B' {
-          if games_chronorift_st.boss_down == 0 { Screen.sprite(SPR_BOSS, sx, sy) }
+          if boss_down == 0 { Screen.sprite(SPR_BOSS, sx, sy) }
         }
       }
     }
@@ -47,9 +47,9 @@ handler Draw(games_chronorift_st: GamesChronoriftState) phase Render {
         Screen.draw_text(8, 18, "HP", 0x88ff88, 1)
         Screen.draw_number(24, 18, h.hp, 0xffffff, 1)
         Screen.draw_text(8, 28, "G", 0xffd24a, 1)
-        Screen.draw_number(18, 28, games_chronorift_st.gold, 0xffffff, 1)
+        Screen.draw_number(18, 28, gold, 0xffffff, 1)
         Screen.draw_text(54, 28, "PO", 0x88ffcc, 1)
-        Screen.draw_number(72, 28, games_chronorift_st.potions, 0xffffff, 1)
+        Screen.draw_number(72, 28, potions, 0xffffff, 1)
       }
     }
   }
@@ -58,13 +58,13 @@ handler Draw(games_chronorift_st: GamesChronoriftState) phase Render {
     Screen.fill_rectangle(0, 0, 320, 176, 0x241a2e)
     for (e, a) in query [Stats, Actor, {Enemy}] {
       var bs = 5
-      if games_chronorift_st.enemy_type == 2 { bs = 7 }
+      if enemy_type == 2 { bs = 7 }
       Screen.sprite_scaled(a.kind, 160 - bs * 8, 44, bs)
-      Screen.draw_text(100, 20, enemy_name(games_chronorift_st.enemy_type), 0xffffff, 1)
+      Screen.draw_text(100, 20, enemy_name(enemy_type), 0xffffff, 1)
       Screen.fill_rectangle(100, 30, 120, 8, 0x401018)
       Screen.fill_rectangle(100, 30, e.hp * 120 / e.maxhp, 8, 0xe04040)
     }
-    let ph = games_chronorift_st.turn_phase
+    let ph = turn_phase
     var act = 0
     if ph >= 2 { act = 1 }
     if ph >= 4 { act = 2 }
@@ -83,14 +83,14 @@ handler Draw(games_chronorift_st: GamesChronoriftState) phase Render {
       Screen.draw_text(hx + 36, 207, "MP", 0x88aaff, 1)
       Screen.draw_number(hx + 56, 207, st.mp, 0xffffff, 1)
     }
-    let cur = games_chronorift_st.menu_cursor
+    let cur = menu_cursor
     if ph == 0 or ph == 1 {
       Screen.draw_text(206, 181, "P1 KNIGHT", 0xffe08a, 1)
       Screen.draw_text(214, 192, "ATTACK", 0xffffff, 1)
       Screen.draw_text(214, 203, "DEFEND", 0xffffff, 1)
       Screen.draw_text(214, 214, "ITEM", 0xffffff, 1)
       Screen.draw_text(256, 214, "x", 0x777777, 1)
-      Screen.draw_number(264, 214, games_chronorift_st.potions, 0xffd24a, 1)
+      Screen.draw_number(264, 214, potions, 0xffd24a, 1)
       Screen.draw_text(214, 225, "RUN", 0xffffff, 1)
       if ph == 0 { Screen.draw_text(204, 192 + cur * 11, ">", 0xffff00, 1) }
     }
@@ -104,11 +104,11 @@ handler Draw(games_chronorift_st: GamesChronoriftState) phase Render {
     if ph == 4 { Screen.draw_text(206, 200, "ENEMY TURN", 0xff8888, 1) }
     if ph == 1 or ph == 3 {
       Screen.draw_text(6, 232, "DMG", 0xffff88, 1)
-      Screen.draw_number(34, 232, games_chronorift_st.player_hit, 0xffffff, 1)
+      Screen.draw_number(34, 232, player_hit, 0xffffff, 1)
     }
     if ph == 4 {
       Screen.draw_text(6, 232, "FOE HITS", 0xff8888, 1)
-      Screen.draw_number(66, 232, games_chronorift_st.enemy_hit, 0xffffff, 1)
+      Screen.draw_number(66, 232, enemy_hit, 0xffffff, 1)
     }
   }
 
@@ -128,11 +128,11 @@ handler Draw(games_chronorift_st: GamesChronoriftState) phase Render {
     Screen.draw_text(80, 104, "BUY POTION", 0xffffff, 1)
     Screen.draw_text(180, 104, "10 G", 0xffd24a, 1)
     Screen.draw_text(80, 122, "LEAVE", 0xffffff, 1)
-    Screen.draw_text(70, 104 + games_chronorift_st.menu_cursor * 18, ">", 0xffff00, 1)
+    Screen.draw_text(70, 104 + menu_cursor * 18, ">", 0xffff00, 1)
     Screen.draw_text(80, 150, "GOLD", 0xffd24a, 1)
-    Screen.draw_number(120, 150, games_chronorift_st.gold, 0xffffff, 1)
+    Screen.draw_number(120, 150, gold, 0xffffff, 1)
     Screen.draw_text(160, 150, "POTIONS", 0x88ffcc, 1)
-    Screen.draw_number(226, 150, games_chronorift_st.potions, 0xffffff, 1)
+    Screen.draw_number(226, 150, potions, 0xffffff, 1)
   }
   Screen.show()
 }

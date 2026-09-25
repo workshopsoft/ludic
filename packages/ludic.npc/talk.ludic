@@ -20,6 +20,7 @@ export property NpcLine {
 
 export open registry NpcLines of NpcLine as NPCL
 
+var np_said: string = ""
 
 function np_line_fits(p: NpcPerson, l: NpcLine) -> bool {
   return (l.kind < 0 or l.kind == p.kind) and (l.act < 0 or l.act == p.act)
@@ -33,8 +34,8 @@ export function npc_words(p: NpcPerson, line: int) -> string {
 }
 
 # the line it would say now (-1: none), its words kept for npc_said()
-export function npc_line_for(npc_st: mut NpcState, p: NpcPerson) -> int {
-  npc_st.np_said = ""
+export function npc_line_for(p: NpcPerson) -> int {
+  np_said = ""
   var top = -1000000
   for i in 0 .. NPCL_COUNT { if NpcLines[i].prio > top { top = NpcLines[i].prio } }
   var prio = top
@@ -44,10 +45,10 @@ export function npc_line_for(npc_st: mut NpcState, p: NpcPerson) -> int {
       let l = NpcLines[i]
       if l.prio < prio and l.prio > lower { lower = l.prio }
       if l.prio != prio or not np_line_fits(p, l) { continue }
-      if l.chance < 100 and npc_between(npc_st, 0, 99) >= l.chance { continue }
+      if l.chance < 100 and npc_between(0, 99) >= l.chance { continue }
       let w = npc_words(p, i)
       if len(w) > 0 {
-        npc_st.np_said = w
+        np_said = w
         return i
       }
     }
@@ -56,13 +57,13 @@ export function npc_line_for(npc_st: mut NpcState, p: NpcPerson) -> int {
   return -1
 }
 
-export function npc_said(npc_st: NpcState) -> string { return npc_st.np_said }
+export function npc_said() -> string { return np_said }
 
 # a player talks to them: the line (-1: nothing to say), its words in npc_said(), a Talked fact,
 # and `said` marked for the day
-export function npc_talk(base_st: mut BaseState, npc_st: mut NpcState, p: NpcPerson, player: int) -> int {
-  let line = npc_line_for(npc_st, p)
-  let f = np_fact(base_st, npc_st, NPC_F_TALKED, p, player)
+export function npc_talk(p: NpcPerson, player: int) -> int {
+  let line = npc_line_for(p)
+  let f = np_fact(NPC_F_TALKED, p, player)
   f.line = line
   p.said = NpcWorld.day()
   return line
@@ -70,16 +71,16 @@ export function npc_talk(base_st: mut BaseState, npc_st: mut NpcState, p: NpcPer
 
 # the answer to choice c of a line: the line it leads to (-1: the talk is over), its words in
 # npc_said(), and a Talked fact carrying the choice's code
-export function npc_choose(base_st: mut BaseState, npc_st: mut NpcState, p: NpcPerson, line: int, c: int, player: int) -> int {
-  npc_st.np_said = ""
+export function npc_choose(p: NpcPerson, line: int, c: int, player: int) -> int {
+  np_said = ""
   if line < 0 or line >= NPCL_COUNT { return -1 }
   let cs = NpcLines[line].choices
   if cs == null or c < 0 or c >= len(cs) { return -1 }
   let next = npc_lines_find(cs[c].line)
-  let f = np_fact(base_st, npc_st, NPC_F_TALKED, p, player)
+  let f = np_fact(NPC_F_TALKED, p, player)
   f.line = next
   f.choice = cs[c].code
-  if next >= 0 { npc_st.np_said = npc_words(p, next) }
+  if next >= 0 { np_said = npc_words(p, next) }
   return next
 }
 

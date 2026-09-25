@@ -3,21 +3,19 @@
 import "ludic.base"
 program RegistryTest {
   numbers float
-  state RegistrytestState {
-    trail: string = ""
-  }
-  function late_tick(registrytest_st: mut RegistrytestState, t: Tick) -> void { registrytest_st.trail = registrytest_st.trail + "l" }
-  function early_tick(registrytest_st: mut RegistrytestState, t: Tick) -> void { registrytest_st.trail = registrytest_st.trail + "e" }
-  function added_tick(registrytest_st: mut RegistrytestState, t: Tick) -> void { registrytest_st.trail = registrytest_st.trail + "a" }
+  var trail: string = ""
+  function late_tick(t: Tick) -> void { trail = trail + "l" }
+  function early_tick(t: Tick) -> void { trail = trail + "e" }
+  function added_tick(t: Tick) -> void { trail = trail + "a" }
   def Systems late { phase: PH_RESOLVE, tick: fn late_tick }
   def Systems early { phase: PH_INPUT, tick: fn early_tick }
-  test "the declared systems run, phase by phase" (base_st: mut BaseState, registrytest_st: RegistrytestState) {
-    expect_eq(core_count(base_st), 2)
+  test "the declared systems run, phase by phase" {
+    expect_eq(core_count(), 2)
     expect(Systems[SYS_LATE].key == "late")
     let s = system_new("added", PH_INPUT)
     s.tick = fn added_tick
-    core_add(base_st, s)
-    core_tick_all(base_st, tick_new(0.016, 1, 0.0))
-    expect(registrytest_st.trail == "eal")
+    core_add(s)
+    core_tick_all(tick_new(0.016, 1, 0.0))
+    expect(trail == "eal")
   }
 }

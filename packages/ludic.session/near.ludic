@@ -1,17 +1,17 @@
 # near.ludic - the world asks who is nearest, never "the player": an animal notices whoever is
 # closest, a camper keeps clear of everyone
-export function ply_near_d2(session_st: mut SessionState, x: float, z: float) -> float {
-  session_st.session__near_i = 0
+export function ply_near_d2(x: float, z: float) -> float {
+  session__near_i = 0
   var best = 0.0
   var first = true
   for p in 0 .. PLY_MAX {
-    if not ply_on(session_st, p) { continue }
-    let dx = x - ply_x(session_st, p)
-    let dz = z - ply_z(session_st, p)
+    if not ply_on(p) { continue }
+    let dx = x - ply_x(p)
+    let dz = z - ply_z(p)
     let d2 = dx * dx + dz * dz
     if first or d2 < best {
       best = d2
-      session_st.session__near_i = p
+      session__near_i = p
       first = false
     }
   }
@@ -19,12 +19,12 @@ export function ply_near_d2(session_st: mut SessionState, x: float, z: float) ->
 }
 
 # the distance to the nearest player, in metres; ply_near_i() says which
-export function ply_near(session_st: mut SessionState, x: float, z: float) -> float { return Math.sqrt(ply_near_d2(session_st, x, z)) }
+export function ply_near(x: float, z: float) -> float { return Math.sqrt(ply_near_d2(x, z)) }
 
-export function ply_near_i(session_st: SessionState) -> int { return session_st.session__near_i }
+export function ply_near_i() -> int { return session__near_i }
 
-export function ply_dist(session_st: SessionState, p: int, x: float, z: float) -> float {
-  let dx = x - ply_x(session_st, p)
-  let dz = z - ply_z(session_st, p)
+export function ply_dist(p: int, x: float, z: float) -> float {
+  let dx = x - ply_x(p)
+  let dz = z - ply_z(p)
   return Math.sqrt(dx * dx + dz * dz)
 }

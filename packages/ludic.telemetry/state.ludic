@@ -46,37 +46,30 @@ export property TelemetryFact {
 
 const TELEMETRY_MARK: string = "@@TELEMETRY_PLAYER@@"
 
-export state TelemetryState {
-  telemetry__proc: int = -1
-  telemetry__proc_out: string = ""
-  telemetry__proc_t0: int = 0
-  telemetry__rand_n: int = 0
-  telemetry__clock_on: bool = false
-  telemetry__cfg: TelemetryConfig = null
-  telemetry__ready: bool = false
-  telemetry__id: string = ""
-  telemetry__session: string = ""
-  telemetry__q: []string = null         # the queued lines, oldest first
-  telemetry__dirty: bool = false        # telemetry__q differs from the file
-  telemetry__h: int = -1                # the batch in flight
-  telemetry__sent_n: int = 0            # how many lines it carries
-  telemetry__next_ms: int = 0           # when the next send may go
-  telemetry__saved_ms: int = 0          # when the queue was last put on disk
-  telemetry__fails: int = 0             # sends failed in a row
-  telemetry__t0: int = 0                # the default clock's zero, wall seconds
-  telemetry__facts: Queue<TelemetryFact> = null
+var telemetry__cfg: TelemetryConfig = null
+var telemetry__ready: bool = false
+var telemetry__id: string = ""
+var telemetry__session: string = ""
+var telemetry__q: []string = null         # the queued lines, oldest first
+var telemetry__dirty: bool = false        # telemetry__q differs from the file
+var telemetry__h: int = -1                # the batch in flight
+var telemetry__sent_n: int = 0            # how many lines it carries
+var telemetry__next_ms: int = 0           # when the next send may go
+var telemetry__saved_ms: int = 0          # when the queue was last put on disk
+var telemetry__fails: int = 0             # sends failed in a row
+var telemetry__t0: int = 0                # the default clock's zero, wall seconds
+var telemetry__facts: Queue<TelemetryFact> = null
+
+export function telemetry_facts() -> Queue<TelemetryFact> {
+  if telemetry__facts == null { telemetry__facts = queue_new("telemetry.facts") }
+  return telemetry__facts
 }
 
-export function telemetry_facts(base_st: mut BaseState, telemetry_st: mut TelemetryState) -> Queue<TelemetryFact> {
-  if telemetry_st.telemetry__facts == null { telemetry_st.telemetry__facts = queue_new(base_st, "telemetry.facts") }
-  return telemetry_st.telemetry__facts
-}
-
-function telemetry__fact(base_st: mut BaseState, telemetry_st: mut TelemetryState, what: int, count: int, status: int, retry: int) -> void {
+function telemetry__fact(what: int, count: int, status: int, retry: int) -> void {
   let f = new TelemetryFact
   f.what = what
   f.count = count
   f.status = status
   f.retry_ms = retry
-  q_push(base_st, telemetry_facts(base_st, telemetry_st), f)
+  q_push(telemetry_facts(), f)
 }

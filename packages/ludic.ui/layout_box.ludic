@@ -1,11 +1,11 @@
 # layout_box.ludic - a box's content measured: its children in a line along its direction (a
 # row's text wrapped into the room its siblings leave), or a wrapping row's lines
-function ly_measure_box(ui_st: mut UiState, n: UiNode, inner: float) -> void {
+function ly_measure_box(n: UiNode, inner: float) -> void {
   for i in 0 .. len(n.children) {
-    ui_st.ly_fg_a = n.rfg_a
-    ly_measure(ui_st, n.children[i], inner, n.rsize, n.rfg)
+    ly_fg_a = n.rfg_a
+    ly_measure(n.children[i], inner, n.rsize, n.rfg)
   }
-  if n.dir == UI_ROW and inner > 0.0 { ly_row_fit(ui_st, n, inner) }
+  if n.dir == UI_ROW and inner > 0.0 { ly_row_fit(n, inner) }
   var main = 0.0
   var cross = 0.0
   var count = 0
@@ -28,7 +28,7 @@ function ly_measure_box(ui_st: mut UiState, n: UiNode, inner: float) -> void {
 }
 # a row wider than its room: its texts (and boxes of their own width) measured again in the room the
 # rest leave them, each giving up a share of the excess as wide as it is, so a line wraps beside an icon
-function ly_row_fit(ui_st: mut UiState, n: UiNode, inner: float) -> void {
+function ly_row_fit(n: UiNode, inner: float) -> void {
   var used = 0.0
   var flex = 0.0
   var count = 0
@@ -46,8 +46,8 @@ function ly_row_fit(ui_st: mut UiState, n: UiNode, inner: float) -> void {
     let c = n.children[i]
     let share = ly_main(c, UI_ROW) - over * ly_main(c, UI_ROW) / flex
     if ly_flexes(c) and share > 0.0 {
-      ui_st.ly_fg_a = n.rfg_a
-      ly_measure(ui_st, c, share, n.rsize, n.rfg)
+      ly_fg_a = n.rfg_a
+      ly_measure(c, share, n.rsize, n.rfg)
     }
   }
 }
@@ -57,7 +57,7 @@ function ly_flexes(c: UiNode) -> bool {
   return c.kind == UI_BOX and c.children != null and len(c.children) > 0
 }
 # a wrapping row: children in lines no wider than `inner`, the lines stacked `gap` apart
-function ly_measure_wrap(ui_st: mut UiState, n: UiNode, inner: float) -> void {
+function ly_measure_wrap(n: UiNode, inner: float) -> void {
   var line_w = 0.0
   var line_h = 0.0
   var widest = 0.0
@@ -65,8 +65,8 @@ function ly_measure_wrap(ui_st: mut UiState, n: UiNode, inner: float) -> void {
   var count = 0
   for i in 0 .. len(n.children) {
     let c = n.children[i]
-    ui_st.ly_fg_a = n.rfg_a
-    ly_measure(ui_st, c, inner, n.rsize, n.rfg)
+    ly_fg_a = n.rfg_a
+    ly_measure(c, inner, n.rsize, n.rfg)
     if c.pos >= 2 { continue }
     let cw = ly_main(c, UI_ROW)
     if count > 0 and line_w + n.gap + cw > inner {

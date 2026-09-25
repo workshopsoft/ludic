@@ -1,32 +1,34 @@
 # state.ludic - a component's or a screen's own values, <state name="{first}"/>, kept from frame
 # to frame by where the instance is in the tree, and set by `set name = value`
-function st_for(ui_st: mut UiState, key: string, t: UiTpl, e: UiEnv) -> Val {
+var st_keys: []string = new []string
+var st_vals: []Val = new []Val
+function st_for(key: string, t: UiTpl, e: UiEnv) -> Val {
   var decl: UiTpl = null
   for i in 0 .. len(t.kids) {
     if t.kids[i].tag == "state" { decl = t.kids[i] }
   }
   if decl == null { return null }
-  for i in 0 .. len(ui_st.st_keys) {
-    if ui_st.st_keys[i] == key { return ui_st.st_vals[i] }
+  for i in 0 .. len(st_keys) {
+    if st_keys[i] == key { return st_vals[i] }
   }
   let o = Value.object()
-  for i in 0 .. len(decl.keys) { Value.put(o, decl.keys[i], ui_eval(ui_st, decl.vals[i], e)) }
-  push(ui_st.st_keys, key)
-  push(ui_st.st_vals, o)
+  for i in 0 .. len(decl.keys) { Value.put(o, decl.keys[i], ui_eval(decl.vals[i], e)) }
+  push(st_keys, key)
+  push(st_vals, o)
   return o
 }
 # a screen's state starts again the next time it opens
-export function ui_forget(ui_st: mut UiState, screen: string) -> void {
+export function ui_forget(screen: string) -> void {
   let keys = new []string
   let vals = new []Val
-  for i in 0 .. len(ui_st.st_keys) {
-    let k = ui_st.st_keys[i]
+  for i in 0 .. len(st_keys) {
+    let k = st_keys[i]
     let mine = len(k) >= len(screen) and k[0..len(screen)] == screen and (len(k) == len(screen) or k[len(screen)] == 47)
     if not mine {
       push(keys, k)
-      push(vals, ui_st.st_vals[i])
+      push(vals, st_vals[i])
     }
   }
-  ui_st.st_keys = keys
-  ui_st.st_vals = vals
+  st_keys = keys
+  st_vals = vals
 }

@@ -4,55 +4,53 @@ export property MoneyChanged {
   after: int = 0
 }
 
-export state WalletState {
-  wl_money: int = 0
-  wl_changes: Queue<MoneyChanged> = null
+var wl_money: int = 0
+var wl_changes: Queue<MoneyChanged> = null
+
+export function wallet_changes() -> Queue<MoneyChanged> {
+  if wl_changes == null { wl_changes = queue_new("wallet.changes") }
+  return wl_changes
 }
 
-export function wallet_changes(base_st: mut BaseState, wallet_st: mut WalletState) -> Queue<MoneyChanged> {
-  if wallet_st.wl_changes == null { wallet_st.wl_changes = queue_new(base_st, "wallet.changes") }
-  return wallet_st.wl_changes
-}
-
-export function wallet_money(wallet_st: WalletState) -> int { return wallet_st.wl_money }
-export function wallet_can(wallet_st: WalletState, n: int) -> bool { return wallet_st.wl_money >= n }
+export function wallet_money() -> int { return wl_money }
+export function wallet_can(n: int) -> bool { return wl_money >= n }
 
 # the purse holds exactly n (a starting purse, a correction, the network's word)
-export function wallet_set(base_st: mut BaseState, wallet_st: mut WalletState, n: int) -> void {
-  if n == wallet_st.wl_money { return }
+export function wallet_set(n: int) -> void {
+  if n == wl_money { return }
   let c = new MoneyChanged
-  c.before = wallet_st.wl_money
+  c.before = wl_money
   c.after = n
-  wallet_st.wl_money = n
-  q_push(base_st, wallet_changes(base_st, wallet_st), c)
+  wl_money = n
+  q_push(wallet_changes(), c)
 }
 
-export function wallet_earn(base_st: mut BaseState, wallet_st: mut WalletState, n: int) -> void { wallet_set(base_st, wallet_st, wallet_st.wl_money + n) }
+export function wallet_earn(n: int) -> void { wallet_set(wl_money + n) }
 
 # only what is there: false, and nothing spent, when it is not
-export function wallet_spend(base_st: mut BaseState, wallet_st: mut WalletState, n: int) -> bool {
-  if n > wallet_st.wl_money { return false }
-  wallet_set(base_st, wallet_st, wallet_st.wl_money - n)
+export function wallet_spend(n: int) -> bool {
+  if n > wl_money { return false }
+  wallet_set(wl_money - n)
   return true
 }
 
 # a cost that happens whether or not it can be paid (a rescue, a fine); never below zero
-export function wallet_lose(base_st: mut BaseState, wallet_st: mut WalletState, n: int) -> void { wallet_set(base_st, wallet_st, Math.max(wallet_st.wl_money - n, 0)) }
+export function wallet_lose(n: int) -> void { wallet_set(Math.max(wl_money - n, 0)) }
 
-export function wallet_reset(base_st: mut BaseState, wallet_st: mut WalletState) -> void {
-  wallet_st.wl_money = 0
-  q_clear(base_st, wallet_changes(base_st, wallet_st))
+export function wallet_reset() -> void {
+  wl_money = 0
+  q_clear(wallet_changes())
 }
 
-export function wallet_save(wallet_st: WalletState) -> Val {
+export function wallet_save() -> Val {
   let v = Value.object()
-  sv_put_int(v, "money", wallet_st.wl_money)
+  sv_put_int(v, "money", wl_money)
   return v
 }
 
-export function wallet_load(base_st: mut BaseState, wallet_st: mut WalletState, v: Val, version: int) -> void {
-  wallet_st.wl_money = sv_int(v, "money", 0)
-  q_clear(base_st, wallet_changes(base_st, wallet_st))
+export function wallet_load(v: Val, version: int) -> void {
+  wl_money = sv_int(v, "money", 0)
+  q_clear(wallet_changes())
 }
 
 export function wallet_system() -> System {

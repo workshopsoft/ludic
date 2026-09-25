@@ -1,10 +1,10 @@
 # vote_state.ludic - the vote as it stands
-export function ses_vote_live(session_st: SessionState) -> bool { return session_st.session__vote_t > 0.0 }
-export function ses_vote_id(session_st: SessionState) -> int { return session_st.session__vote_id }
-export function ses_vote_kind(session_st: SessionState) -> int { return session_st.session__vote_kind }
-export function ses_vote_text(session_st: SessionState) -> string { return session_st.session__vote_text }
-export function ses_vote_left(session_st: SessionState) -> float { return session_st.session__vote_t }
-export function ses_vote_yes(session_st: SessionState) -> int { return session_st.session__vote_yes }
-export function ses_vote_no(session_st: SessionState) -> int { return session_st.session__vote_no }
-export function ses_vote_mine(session_st: SessionState) -> int { return session_st.session__vote_mine }
-export function ses_vote_passed(session_st: SessionState) -> int { return session_st.session__vote_passed }
+export function ses_vote_live() -> bool { return session__vote_t > 0.0 }
+export function ses_vote_id() -> int { return session__vote_id }
+export function ses_vote_kind() -> int { return session__vote_kind }
+export function ses_vote_text() -> string { return session__vote_text }
+export function ses_vote_left() -> float { return session__vote_t }
+export function ses_vote_yes() -> int { return session__vote_yes }
+export function ses_vote_no() -> int { return session__vote_no }
+export function ses_vote_mine() -> int { return session__vote_mine }
+export function ses_vote_passed() -> int { return session__vote_passed }
