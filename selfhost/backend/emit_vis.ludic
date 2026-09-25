@@ -30,6 +30,7 @@ function vis_say(m: pointer) -> void {
 }
 function vis_check(d: Node, what0: pointer) -> void {
   if d == null { return }
+  port_check_bound(d)
   if g_vis_off { return }
   if d.file == null { return }
   let what = vis_plain(what0)

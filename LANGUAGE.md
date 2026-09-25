@@ -141,6 +141,43 @@ fishing/land.ludic:4: error: fishing uses items.inv_add (items/index.ludic:3): a
 - `LUDIC_VIS_REPORT=1` lists these too, as `uses: <file>:<line>: <module>.<name> used from <file>
   (module <m>)`, and builds.
 
+### Ports (`port`, `bind`)
+
+A module that needs something from outside itself - the time, a save, a sound - declares a
+**port** instead of naming (and `uses`-ing) the module that answers. A port is a record of
+function values; a member with no default is required:
+
+```ludic
+# doc-check: skip — a module spans files
+# clock/index.ludic
+module clock uses units
+export port Clock {
+  now: fn() -> int
+  day: fn() -> int = fn first_day
+}
+export function hour_of_day() -> int { return Clock.now() - (Clock.day() - 1) * HOURS }
+
+# app/index.ludic - where the program is put together
+module app uses clock
+bind Clock { now: fn game_hours }
+function game_hours() -> int { return g_hours }
+```
+
+Calls go through the port by name, `Clock.now()`. `clock` never names `app`, so it needs no
+`uses app`; the binder must be able to see the port - it is `export`ed, and a binder that says
+`uses` names the port's module. What the bind names (`fn game_hours`) is checked from the bind's
+own file. The compiler refuses:
+
+```
+app.ludic:5: error: port Clock is used here but never bound: the program has to say 'bind Clock { ... }' once, where it is put together
+app.ludic:9: error: bind Clock leaves out now, which has no default
+app.ludic:11: error: port Clock is bound twice (first at app.ludic:10)
+app.ludic:9: error: port Clock has no member later
+```
+
+and a member of the wrong type is a type error like any other (`field now of Clock_port wants a
+fn()->int and this is a fn(int)->float`). A port nobody uses may stay unbound.
+
 ### Types are checked before anything is emitted
 
 Between the parse and the emitter a checker walks every function, the entry, the tests, the

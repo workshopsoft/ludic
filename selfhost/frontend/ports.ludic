@@ -1,0 +1,120 @@
+# ports.ludic — L3 ports: what a module needs from outside itself, filled in by whoever puts the
+# program together, so the module never names (or `uses`) the code that answers it.
+#
+#   port Clock { now: fn() -> float, day: fn() -> int = fn default_day }    # in module clock
+#   bind Clock { now: fn game_now }                                         # in the app
+#   Clock.now()                                                             # anywhere that sees it
+#
+# A port is a record of function values (the record `Clock_port`, members without a default are
+# required) and a global `Clock` of that record, in the port's module and exported with it. The
+# one `bind` is that global's initializer. When the program is read (ports_finish) every bind
+# must name a port, give each required member, give no member twice-over, and see the port;
+# a port used anywhere must be bound (port_check_bound, at the use). The binding's values are
+# checked for visibility from the bind's file, here, so the port's module needs no `uses` of it.
+var g_pt_name: []pointer = new []pointer
+var g_pt_comp: []Node = new []Node
+var g_pt_var: []Node = new []Node
+var g_pt_bind: []Node = new []Node          # the bind that filled it; null until one does
+var g_bd: []Node = new []Node               # every bind, in source order: s=port a=record
+
+# port NAME { member: fn(...) -> T [= fn default], ... }
+function parse_port() -> void {
+  let c = parse_component()
+  let name = c.s
+  c.s = `{name}_port`
+  push(prog, c)
+  let v = node(N_VAR)
+  v.s = name
+  v.ty = c.s
+  v.line = c.line
+  push(prog, v)
+  push(g_pt_name, name)
+  push(g_pt_comp, c)
+  push(g_pt_var, v)
+  push(g_pt_bind, null)
+}
+# bind NAME { member: fn f, ... }
+function parse_bind() -> void {
+  pi += 1
+  let b = node(N_VAR)
+  b.s = eat_id()
+  skipnl()
+  b.a = record()
+  push(g_bd, b)
+}
+function port_find(name: pointer) -> int {
+  var i = 0
+  while i < len(g_pt_name) {
+    if (g_pt_name[i] == name) { return i }
+    i += 1
+  }
+  return -1
+}
+function is_port_var(d: Node) -> bool {
+  if d.kind != N_VAR { return false }
+  let k = port_find(d.s)
+  if k < 0 { return false }
+  return (d.ty == g_pt_comp[k].s)
+}
+# a port used where none is bound: the program is not put together yet
+function port_check_bound(d: Node) -> void {
+  if not is_port_var(d) { return }
+  if g_pt_bind[port_find(d.s)] != null { return }
+  perr(`port {d.s} is used here but never bound: the program has to say 'bind {d.s} {{ ... }}' once, where it is put together`)
+}
+function port_err(b: Node, msg: pointer) -> void {
+  g_err_file = b.file
+  g_err_line = b.line
+  perr(msg)
+}
+function port_bind_one(b: Node) -> void {
+  let k = port_find(b.s)
+  if k < 0 { port_err(b, `bind {b.s}: there is no port {b.s}`) }
+  let first = g_pt_bind[k]
+  if first != null { port_err(b, `port {b.s} is bound twice (first at {first.file}:{itoa(first.line)})`) }
+  g_pt_bind[k] = b
+  let c = g_pt_comp[k]
+  let rec = b.a
+  var i = 0
+  while i < len(rec.kids) {
+    if field_index(c, rec.kids[i].s) < 0 { port_err(b, `port {b.s} has no member {rec.kids[i].s}`) }
+    i += 1
+  }
+  i = 0
+  while i < len(c.kids) {
+    if c.kids[i].a == null and not reg_rec_has(rec, c.kids[i].s) {
+      port_err(b, `bind {b.s} leaves out {c.kids[i].s}, which has no default`)
+    }
+    i += 1
+  }
+  # what the bind names is seen from the bind's file: the port itself, and every `fn name`
+  g_err_file = b.file
+  g_err_line = b.line
+  let v = g_pt_var[k]
+  vis_check(v, b.s)
+  i = 0
+  while i < len(rec.kids) {
+    let e = rec.kids[i].a
+    if e != null and e.kind == E_FNREF {
+      let f = find_fn(e.s)
+      if f != null { vis_check(f, e.s) }
+    }
+    i += 1
+  }
+  let nw = node(E_NEW)
+  nw.s = c.s
+  nw.a = rec
+  nw.file = b.file
+  nw.line = b.line
+  v.a = nw
+}
+function ports_finish() -> void {
+  let saved = g_parsing
+  g_parsing = false
+  var i = 0
+  while i < len(g_bd) {
+    port_bind_one(g_bd[i])
+    i += 1
+  }
+  g_parsing = saved
+}

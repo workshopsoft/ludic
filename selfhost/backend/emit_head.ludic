@@ -72,7 +72,14 @@ function emit_global_init_fn() -> void {
       # may see (L3), are that file's - not whichever statement was lowered last
       g_err_file = d.file
       g_err_line = d.line
+      # a port's bind is written in the app and checked there (frontend/ports.ludic)
+      if is_port_var(d) {
+        g_err_file = d.a.file
+        g_err_line = d.a.line
+        g_vis_off = true
+      }
       let v = emit_expr(d.a)
+      g_vis_off = false
       let cv = coerce_code(v, d.ty)                 # any conversion is its own line, before the store
       emit("  store ");  emit(llty(d.ty));  emit(" ");  emit(cv);  emit(", ptr @g_");  emit(d.s);  emit("\n")
     }

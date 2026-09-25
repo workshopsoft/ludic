@@ -1,0 +1,3 @@
+# units/index.ludic - a module with nothing to ask of anyone
+module units
+export const HOURS: int = 24

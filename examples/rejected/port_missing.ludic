@@ -1,0 +1,14 @@
+# L3: a bind gives every member that has no default
+program PortMissing {
+  port Clock {
+    now: fn() -> int
+    day: fn() -> int
+  }
+  function hours() -> int {
+    return 3
+  }
+  bind Clock { now: fn hours }
+  entry {
+    print(Clock.now())
+  }
+}

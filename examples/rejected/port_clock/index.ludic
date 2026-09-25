@@ -1,0 +1,6 @@
+# port_clock/index.ludic - a port that is not exported
+module clock
+port Clock { now: fn() -> int }
+export function tell() -> int {
+  return Clock.now()
+}

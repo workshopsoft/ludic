@@ -1,0 +1,7 @@
+# L3: a port that is used and never bound is a program not yet put together
+program PortUnbound {
+  port Clock { now: fn() -> int }
+  entry {
+    print(Clock.now())
+  }
+}

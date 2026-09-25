@@ -1,0 +1,13 @@
+# clock/index.ludic - the clock needs the time of day and asks for it through a port: it names
+# no module that answers, so it `uses` only units
+module clock uses units
+export port Clock {
+  now: fn() -> int
+  day: fn() -> int = fn first_day
+}
+function first_day() -> int {
+  return 1
+}
+export function hour_of_day() -> int {
+  return Clock.now() - (Clock.day() - 1) * HOURS
+}

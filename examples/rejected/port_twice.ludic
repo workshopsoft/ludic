@@ -1,0 +1,15 @@
+# L3: a port is bound once
+program PortTwice {
+  port Clock { now: fn() -> int }
+  function hours() -> int {
+    return 3
+  }
+  function minutes() -> int {
+    return 4
+  }
+  bind Clock { now: fn hours }
+  bind Clock { now: fn minutes }
+  entry {
+    print(Clock.now())
+  }
+}

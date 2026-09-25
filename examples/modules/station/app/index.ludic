@@ -1,0 +1,10 @@
+# app/index.ludic - the app puts the program together: it sees the port and fills it
+module app uses clock
+bind Clock { now: fn game_hours }
+var g_hours: int = 30
+function game_hours() -> int {
+  return g_hours
+}
+export function advance(h: int) -> void {
+  g_hours += h
+}

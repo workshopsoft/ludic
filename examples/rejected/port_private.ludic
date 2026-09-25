@@ -1,0 +1,11 @@
+# L3: whoever binds a port has to see it - clock's Clock is not exported
+import "port_clock"
+program PortPrivate {
+  function hours() -> int {
+    return 3
+  }
+  bind Clock { now: fn hours }
+  entry {
+    print(tell())
+  }
+}

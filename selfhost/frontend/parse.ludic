@@ -1002,6 +1002,8 @@ function parse_one_decl() -> void {
   }
   if is_id("ui") { push(prog, parse_ui()); return }
   if is_id("namespace") { parse_namespace(); return }   # #76 namespace block
+  if is_id("port") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].text == "{") { parse_port(); return }        # L3 ports
+  if is_id("bind") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].text == "{") { parse_bind(); return }
   if is_id("registry") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].text == "of") { parse_registry(); return }   # L8
   if is_id("def") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].kind == TK_ID) { parse_def(); return }            # L8
   if is_id("view") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].text == "{") { parse_view(); return }            # L11
@@ -1504,6 +1506,7 @@ function parse_program() -> void {
   }
   modules_finish()                                 # L3: the declared uses have no cycle
   registries_finish()                              # L8: each registry gets its defs
+  ports_finish()                                   # L3: each port gets its one bind
   views_finish()                                   # L11: each view gets its model and call
   components_finish()                              # L11: each component gets its class
 }
