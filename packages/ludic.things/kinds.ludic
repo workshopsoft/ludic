@@ -1,0 +1,63 @@
+# kinds.ludic - a Thing, and what a kind of Thing is: plain facts about the kind, and its
+# behaviour as function values the dispatcher calls (a null one is a question the kind ignores)
+export property Thing {
+  uid: int = 0            # unique for the run, never reused
+  kind: int = 0           # its place in ThingKinds
+  id: int = 0             # what the kind says it means (which sign, which item, which site)
+  look: string = ""       # how the game draws it; "" is not drawn
+  x: float = 0.0
+  y: float = 0.0
+  z: float = 0.0
+  yaw: float = 0.0
+  owner: int = -1         # whoever put it down; -1 the world's own
+  active: bool = true     # false: taken, hidden, used up for now
+  reach: float = 0.0      # how close it is used from; 0 is its kind's
+  timer: float = 0.0      # a clock the kind decides the meaning of
+  used: int = 0           # the kind's own state (split for today, which sign, ...)
+  n: int = 0              # a counter the kind decides the meaning of
+  sx: float = 0.0         # where using it puts the user, and which way that faces
+  sz: float = 0.0
+  syaw: float = 0.0
+  shared: bool = false    # the game copies it to others (a party)
+}
+
+export property ThingKind {
+  key: string = ""        # the entry's own name: what the save calls the kind
+  name: string = ""       # what it is called when nothing about the one in front of you changes it
+  reach: float = 2.2      # how close it is used from, when the Thing does not say
+  personal: bool = false  # one belongs to whoever put it down
+  saved: bool = false     # the save's section keeps a placed one (the port has the last word)
+  put_down: bool = false  # set down by someone rather than grown by the world
+  keeps: bool = false     # keeps its `used` through a restock
+  name_of: fn(Thing) -> string = null   # "" falls back to `name`
+  prompt: fn(Thing) -> string = null    # what using it would do, "" nothing
+  use: fn(Thing) -> void = null
+  tick: fn(Thing, float) -> void = null # hours of the world's clock
+  reach_of: fn(Thing) -> float = null   # a reach that depends on the one in front of you
+}
+
+# the game fills it: `def ThingKinds tent { name: "The tent", use: fn tent_use }`
+export open registry ThingKinds of ThingKind as TH
+
+export const THING_PLACED: int = 0
+export const THING_REMOVED: int = 1
+export const THING_USED: int = 2
+
+# something happened to a Thing: placed, removed for good, or used
+export property ThingFact {
+  what: int = 0
+  uid: int = 0
+  kind: int = 0
+  id: int = 0
+  owner: int = -1
+  x: float = 0.0
+  z: float = 0.0
+}
+
+export function thing_kind_ok(k: int) -> bool { return k >= 0 and k < TH_COUNT }
+
+# the kind the save calls `key`, or -1
+export function thing_kind_by_key(key: string) -> int {
+  for k in 0 .. TH_COUNT { if ThingKinds[k].key == key { return k } }
+  return -1
+}

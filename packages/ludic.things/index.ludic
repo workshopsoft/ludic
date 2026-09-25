@@ -1,0 +1,11 @@
+# ludic.things - things placed in a world (a tent, a fire ring, a branch on the ground): the game
+# names the kinds and draws them; the package keeps them, answers where they are, and saves them
+module ludic_things uses ludic_base
+numbers float
+import "ludic.base"
+import "kinds.ludic"
+import "port.ludic"
+import "store.ludic"
+import "queries.ludic"
+import "dispatch.ludic"
+import "system.ludic"

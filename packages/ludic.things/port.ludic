@@ -1,0 +1,16 @@
+# port.ludic - what the things ask the game. Every member has a default: unbound, the ground is at
+# 0, nothing is drawn, and the save keeps what its kind says to keep.
+export port ThingsWorld {
+  ground: fn(float, float) -> float = fn th_flat      # the height a moved Thing stands at
+  placed: fn(Thing) -> void = fn th_nothing           # a Thing exists now: draw it
+  removed: fn(Thing) -> void = fn th_nothing          # it is gone for good: stop drawing it
+  shown: fn(Thing) -> void = fn th_nothing            # its `active` changed: show or hide it
+  moved: fn(Thing) -> void = fn th_nothing            # it stands somewhere else now
+  keeps: fn(Thing) -> bool = fn th_kind_saves         # the save's section carries it
+  put_down: fn(Thing) -> bool = fn th_kind_put_down   # set down by someone: a restock leaves it be
+  restored: fn(Thing) -> void = fn th_nothing         # a load put it back (after `placed`)
+}
+function th_flat(x: float, z: float) -> float { return 0.0 }
+function th_nothing(t: Thing) -> void { }
+function th_kind_saves(t: Thing) -> bool { return thing_kind_ok(t.kind) and ThingKinds[t.kind].saved }
+function th_kind_put_down(t: Thing) -> bool { return thing_kind_ok(t.kind) and ThingKinds[t.kind].put_down }

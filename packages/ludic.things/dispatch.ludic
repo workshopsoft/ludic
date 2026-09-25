@@ -1,0 +1,69 @@
+# dispatch.ludic - asking a Thing its kind's questions: what it is called, what using it would do,
+# doing it, how close it is used from, and a tick for the kinds that have one
+export function thing_kind(t: Thing) -> ThingKind { return ThingKinds[t.kind] }
+
+# its own name, else its kind's, else ""
+export function thing_name(t: Thing) -> string {
+  if t == null or not thing_kind_ok(t.kind) { return "" }
+  let k = ThingKinds[t.kind]
+  if k.name_of != null {
+    let s = k.name_of(t)
+    if s != "" { return s }
+  }
+  return k.name
+}
+
+export function thing_prompt(t: Thing) -> string {
+  if t == null or not thing_kind_ok(t.kind) { return "" }
+  let k = ThingKinds[t.kind]
+  if k.prompt == null { return "" }
+  return k.prompt(t)
+}
+
+# the kind does what using it does; the use is a fact whatever the kind made of it
+export function thing_use(t: Thing) -> void {
+  if t == null or not thing_kind_ok(t.kind) { return }
+  let k = ThingKinds[t.kind]
+  th_fact(THING_USED, t)
+  if k.use != null { k.use(t) }
+}
+
+export function thing_can_use(t: Thing) -> bool {
+  return t != null and thing_kind_ok(t.kind) and ThingKinds[t.kind].use != null
+}
+
+# the kind's own reach question, else the Thing's reach, else the kind's
+export function thing_reach(t: Thing) -> float {
+  if t == null or not thing_kind_ok(t.kind) { return 0.0 }
+  let k = ThingKinds[t.kind]
+  if k.reach_of != null { return k.reach_of(t) }
+  if t.reach > 0.0 { return t.reach }
+  return k.reach
+}
+
+export function thing_is_personal(t: Thing) -> bool { return thing_kind_ok(t.kind) and ThingKinds[t.kind].personal }
+# set down by someone rather than grown by the world: the kind says, and the port has the last word
+export function thing_is_put_down(t: Thing) -> bool { return ThingsWorld.put_down(t) }
+
+# every active Thing whose kind ticks, `hours` of the world's clock on
+export function things_tick(hours: float) -> void {
+  let all = things_all()
+  for i in 0 .. len(all) {
+    let t = all[i]
+    if not t.active or not thing_kind_ok(t.kind) { continue }
+    let k = ThingKinds[t.kind]
+    if k.tick != null { k.tick(t, hours) }
+  }
+}
+
+# a restock: every Thing the world grew is back, and loses its `used` unless its kind keeps it;
+# what was put down is left as it is
+export function things_restock() -> void {
+  let all = things_all()
+  for i in 0 .. len(all) {
+    let t = all[i]
+    if thing_is_put_down(t) { continue }
+    if not ThingKinds[t.kind].keeps { t.used = 0 }
+    if not t.active { thing_show(t) }
+  }
+}

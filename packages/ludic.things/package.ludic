@@ -1,0 +1,5 @@
+# ludic.things - the placed things of a world: a record per thing, an open registry of kinds
+# whose behaviour is function values, spatial queries, facts and a save section. See README.md.
+package "ludic.things"
+version "0.1.0"
+kind source

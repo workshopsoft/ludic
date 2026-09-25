@@ -1,0 +1,156 @@
+# things_test.ludic - a toy camp: kinds as data with their behaviour as function values, the
+# verbs and what the port hears of them, the spatial questions, the facts, and the save by key
+import "ludic.things"
+import "ludic.base"
+program ThingsTest {
+  numbers float
+  var drawn: int = 0
+  var gone: int = 0
+  var shows: int = 0
+  var back: int = 0
+  var wood: int = 0
+
+  function lit_prompt(t: Thing) -> string {
+    if t.used != 0 { return "Add wood" }
+    return "Light it"
+  }
+  function lit_use(t: Thing) -> void { t.used = 1 }
+  function tent_name(t: Thing) -> string {
+    if t.owner == 0 { return "Your tent" }
+    return ""
+  }
+  function branch_use(t: Thing) -> void {
+    wood += 1
+    thing_hide(t)
+  }
+  function lure_tick(t: Thing, hours: float) -> void {
+    t.timer -= hours
+    if t.timer < 0.0 { thing_hide(t) }
+  }
+  function far_reach(t: Thing) -> float { return 9.0 }
+
+  def ThingKinds tent { name: "A tent", name_of: fn tent_name }
+  def ThingKinds fire { name: "The fire", prompt: fn lit_prompt, use: fn lit_use, keeps: true }
+  def ThingKinds branch { name: "Firewood", reach: 1.5, use: fn branch_use }
+  def ThingKinds lure { name: "A lure", tick: fn lure_tick, put_down: true, saved: true }
+  def ThingKinds sign { name: "A sign", reach_of: fn far_reach }
+
+  function hill(x: float, z: float) -> float { return x * 0.5 }
+  function on_placed(t: Thing) -> void { drawn += 1 }
+  function on_removed(t: Thing) -> void { gone += 1 }
+  function on_shown(t: Thing) -> void { shows += 1 }
+  function on_restored(t: Thing) -> void { back += 1 }
+  bind ThingsWorld { ground: fn hill, placed: fn on_placed, removed: fn on_removed, shown: fn on_shown, restored: fn on_restored }
+
+  function put(kind: int, x: float, z: float) -> Thing { return thing_spawn(kind, "m", x, 0.0, z, 0.0, 0) }
+  function facts() -> []ThingFact { return q_drain(things_facts()) }
+
+  test "a spawn is drawn, numbered and said" {
+    things_clear()
+    let a = put(TH_TENT, 1.0, 1.0)
+    let b = put(TH_FIRE, 2.0, 2.0)
+    expect_eq(drawn, 2)
+    expect(a.uid != b.uid)
+    expect_eq(things_count(), 2)
+    let fs = facts()
+    expect_eq(len(fs), 2)
+    expect_eq(fs[1].what, THING_PLACED)
+    expect_eq(fs[1].kind, TH_FIRE)
+    expect(thing_by_uid(b.uid) == b)
+  }
+
+  test "the spatial questions see only what is active" {
+    things_clear()
+    let near = put(TH_BRANCH, 1.0, 0.0)
+    let far = put(TH_BRANCH, 5.0, 0.0)
+    put(TH_FIRE, 3.0, 0.0)
+    expect(thing_nearest(TH_BRANCH, 0.0, 0.0) == near)
+    expect(thing_nearest(-1, 3.2, 0.0).kind == TH_FIRE)
+    expect_eq(len(things_within(0.0, 0.0, 3.5)), 2)
+    expect(things_within(6.0, 0.0, 10.0)[0] == far)
+    thing_hide(near)
+    expect(thing_nearest(TH_BRANCH, 0.0, 0.0) == far)
+    expect_eq(len(things_each(TH_BRANCH)), 1)
+    expect_eq(len(things_each_all(TH_BRANCH)), 2)
+    expect(thing_find(TH_BRANCH, -1) == far)
+    expect(thing_find(TH_TENT, -1) == null)
+    expect_eq(shows, 1)
+  }
+
+  test "remove and move tell the port" {
+    things_clear()
+    let a = put(TH_TENT, 1.0, 1.0)
+    put(TH_TENT, 2.0, 2.0)
+    facts()
+    thing_remove(a)
+    expect_eq(gone, 1)
+    expect_eq(things_count(), 1)
+    expect_eq(facts()[0].what, THING_REMOVED)
+    let b = thing_find(TH_TENT, -1)
+    thing_move(b, 4.0, 0.0, 1.0)
+    expect_near(b.y, 2.0, 0.001)
+    let c = thing_put(TH_BRANCH, "stick", 2.0, 0.0, 0.0, 0.25, 1.9, 7)
+    expect_near(c.y, 0.75, 0.001)
+    expect_near(thing_reach(c), 1.9, 0.001)
+    expect_eq(c.id, 7)
+  }
+
+  test "the kind answers: name, prompt, use, reach" {
+    things_clear()
+    let t = put(TH_TENT, 0.0, 0.0)
+    expect(thing_name(t) == "A tent")
+    t.owner = 0
+    expect(thing_name(t) == "Your tent")
+    let f = put(TH_FIRE, 0.0, 0.0)
+    expect(thing_prompt(f) == "Light it")
+    thing_use(f)
+    expect(thing_prompt(f) == "Add wood")
+    expect(thing_prompt(t) == "")
+    expect(not thing_can_use(t))
+    expect_near(thing_reach(f), 2.2, 0.001)
+    expect_near(thing_reach(put(TH_BRANCH, 0.0, 0.0)), 1.5, 0.001)
+    expect_near(thing_reach(put(TH_SIGN, 0.0, 0.0)), 9.0, 0.001)
+    let fs = facts()
+    expect_eq(fs[len(fs) - 3].what, THING_USED)
+  }
+
+  test "ticks and a restock" {
+    things_clear()
+    let l = put(TH_LURE, 0.0, 0.0)
+    l.timer = 1.0
+    let b = put(TH_BRANCH, 0.0, 0.0)
+    let f = put(TH_FIRE, 0.0, 0.0)
+    thing_use(b)
+    thing_use(f)
+    expect_eq(wood, 1)
+    things_tick(0.6)
+    expect(l.active)
+    things_tick(0.6)
+    expect(not l.active)
+    things_restock()
+    expect(b.active)
+    expect(not l.active)
+    expect_eq(f.used, 1)
+  }
+
+  test "the save keeps what the port keeps, by the kind's key" {
+    things_clear()
+    let l = put(TH_LURE, 3.0, 4.0)
+    l.owner = 0
+    l.timer = 2.5
+    put(TH_TENT, 0.0, 0.0)
+    let root = save_tree()
+    save_section(root, "things", 1, things_save())
+    let text = save_encode(root)
+    things_clear()
+    put(TH_LURE, 9.0, 9.0)
+    let n = load_section(save_decode(text), "things")
+    things_load(n.data, n.version)
+    expect_eq(things_count(), 1)
+    let t = thing_find(TH_LURE, -1)
+    expect_near(t.x, 3.0, 0.001)
+    expect_near(t.timer, 2.5, 0.001)
+    expect_eq(t.owner, 0)
+    expect_eq(back, 1)
+  }
+}

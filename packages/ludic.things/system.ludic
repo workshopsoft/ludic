@@ -1,0 +1,72 @@
+# system.ludic - the things as a system: its save section carries every active Thing the port
+# keeps, by its kind's KEY (so the game may reorder its kinds), and a load puts each back
+export function things_save() -> Val {
+  let l = Value.list()
+  let all = things_all()
+  for i in 0 .. len(all) {
+    let t = all[i]
+    if t.active and thing_kind_ok(t.kind) and ThingsWorld.keeps(t) { Value.add(l, th_to_json(t)) }
+  }
+  let v = Value.object()
+  Value.put(v, "placed", l)
+  return v
+}
+
+function th_to_json(t: Thing) -> Val {
+  let o = Value.object()
+  sv_put_str(o, "kind", ThingKinds[t.kind].key)
+  sv_put_str(o, "look", t.look)
+  sv_put_int(o, "id", t.id)
+  sv_put_int(o, "owner", t.owner)
+  sv_put_float(o, "x", t.x)
+  sv_put_float(o, "y", t.y)
+  sv_put_float(o, "z", t.z)
+  sv_put_float(o, "yaw", t.yaw)
+  sv_put_float(o, "reach", t.reach)
+  sv_put_float(o, "timer", t.timer)
+  sv_put_int(o, "used", t.used)
+  sv_put_int(o, "n", t.n)
+  sv_put_float(o, "sx", t.sx)
+  sv_put_float(o, "sz", t.sz)
+  sv_put_float(o, "syaw", t.syaw)
+  return o
+}
+
+# every kept Thing removed for good: what a load or a new trip is about to put back
+export function things_reset() -> void { things_drop(fn th_kept) }
+function th_kept(t: Thing) -> bool { return ThingsWorld.keeps(t) }
+
+# a kind this build does not know is dropped
+export function things_load(v: Val, version: int) -> void {
+  things_reset()
+  if v == null or Value.kind(v) != 6 or Value.has(v, "placed") == 0 { return }
+  let l = Value.get(v, "placed")
+  for i in 0 .. Value.count(l) { th_from_json(Value.at(l, i)) }
+}
+
+function th_from_json(o: Val) -> void {
+  let k = thing_kind_by_key(sv_str(o, "kind", ""))
+  if k < 0 { return }
+  let t = new Thing
+  t.owner = sv_int(o, "owner", -1)
+  t.reach = sv_float(o, "reach", 0.0)
+  t.timer = sv_float(o, "timer", 0.0)
+  t.used = sv_int(o, "used", 0)
+  t.n = sv_int(o, "n", 0)
+  t.sx = sv_float(o, "sx", 0.0)
+  t.sz = sv_float(o, "sz", 0.0)
+  t.syaw = sv_float(o, "syaw", 0.0)
+  let x = sv_float(o, "x", 0.0)
+  let z = sv_float(o, "z", 0.0)
+  let y = sv_float(o, "y", ThingsWorld.ground(x, z))
+  th_place(t, k, sv_str(o, "look", ""), x, y, z, sv_float(o, "yaw", 0.0), sv_int(o, "id", 0))
+  ThingsWorld.restored(t)
+}
+
+export function things_system() -> System {
+  let s = system_new("things", PH_COMMIT)
+  s.reset = fn things_reset
+  s.save = fn things_save
+  s.load = fn things_load
+  return s
+}

@@ -1,0 +1,80 @@
+# queries.ludic - where the Things are. Only active Things answer, except thing_by_uid and
+# things_each_all, which ask about everything that exists. A kind below 0 is any kind.
+function th_of(t: Thing, kind: int) -> bool { return kind < 0 or t.kind == kind }
+
+# the first active one of a kind (and of that id, unless id < 0), in the order placed
+export function thing_find(kind: int, id: int) -> Thing {
+  let all = things_all()
+  for i in 0 .. len(all) {
+    let t = all[i]
+    if t.active and th_of(t, kind) and (id < 0 or t.id == id) { return t }
+  }
+  return null
+}
+
+export function thing_by_uid(uid: int) -> Thing {
+  let all = things_all()
+  for i in 0 .. len(all) { if all[i].uid == uid { return all[i] } }
+  return null
+}
+
+# the nearest active one of a kind to (x, z), or null
+export function thing_nearest(kind: int, x: float, z: float) -> Thing {
+  var best: Thing = null
+  var bd = 0.0
+  let all = things_all()
+  for i in 0 .. len(all) {
+    let t = all[i]
+    if not t.active or not th_of(t, kind) { continue }
+    let d = thing_dist2(t, x, z)
+    if best == null or d < bd {
+      best = t
+      bd = d
+    }
+  }
+  return best
+}
+
+# the squared ground distance from a Thing to (x, z)
+export function thing_dist2(t: Thing, x: float, z: float) -> float {
+  let dx = t.x - x
+  let dz = t.z - z
+  return dx * dx + dz * dz
+}
+
+# every active one within r of (x, z), nearest first
+export function things_within(x: float, z: float, r: float) -> []Thing {
+  let out = new []Thing
+  let all = things_all()
+  for i in 0 .. len(all) {
+    let t = all[i]
+    if t.active and thing_dist2(t, x, z) <= r * r { th_insert(out, t, x, z) }
+  }
+  return out
+}
+
+function th_insert(out: []Thing, t: Thing, x: float, z: float) -> void {
+  push(out, t)
+  var j = len(out) - 1
+  while j > 0 and thing_dist2(out[j - 1], x, z) > thing_dist2(t, x, z) {
+    out[j] = out[j - 1]
+    j -= 1
+  }
+  out[j] = t
+}
+
+# every active one of a kind, in the order placed
+export function things_each(kind: int) -> []Thing {
+  let out = new []Thing
+  let all = things_all()
+  for i in 0 .. len(all) { if all[i].active and th_of(all[i], kind) { push(out, all[i]) } }
+  return out
+}
+
+# every one of a kind, active or not
+export function things_each_all(kind: int) -> []Thing {
+  let out = new []Thing
+  let all = things_all()
+  for i in 0 .. len(all) { if th_of(all[i], kind) { push(out, all[i]) } }
+  return out
+}

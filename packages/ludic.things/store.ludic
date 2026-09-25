@@ -1,0 +1,110 @@
+# store.ludic - the Things, and the only verbs that make, remove, move, show and hide one; each
+# placing and removing is a fact, and the port is told at once so the game can draw it
+var th_list: []Thing = null
+var th_uid: int = 0
+var th_facts: Queue<ThingFact> = null
+
+export function things_facts() -> Queue<ThingFact> {
+  if th_facts == null { th_facts = queue_new("things.facts") }
+  return th_facts
+}
+
+function th_fact(what: int, t: Thing) -> void {
+  let f = new ThingFact
+  f.what = what
+  f.uid = t.uid
+  f.kind = t.kind
+  f.id = t.id
+  f.owner = t.owner
+  f.x = t.x
+  f.z = t.z
+  q_push(things_facts(), f)
+}
+
+# whether a world has been set out (things_clear) since the program began
+export function things_ready() -> bool { return th_list != null }
+
+# every Thing, in the order placed; the list is the package's, never to be pushed to
+export function things_all() -> []Thing {
+  if th_list == null { th_list = new []Thing }
+  return th_list
+}
+
+export function things_count() -> int { return len(things_all()) }
+
+# a new world: every Thing forgotten, quietly (the game has already dropped its drawings)
+export function things_clear() -> void { th_list = new []Thing }
+
+export function thing_spawn(kind: int, look: string, x: float, y: float, z: float, yaw: float, id: int) -> Thing {
+  return th_place(new Thing, kind, look, x, y, z, yaw, id)
+}
+
+function th_place(t: Thing, kind: int, look: string, x: float, y: float, z: float, yaw: float, id: int) -> Thing {
+  t.kind = kind
+  t.look = look
+  t.x = x
+  t.y = y
+  t.z = z
+  t.yaw = yaw
+  t.id = id
+  th_uid += 1
+  t.uid = th_uid
+  push(things_all(), t)
+  ThingsWorld.placed(t)
+  th_fact(THING_PLACED, t)
+  return t
+}
+
+# a Thing on the ground (the port's), set into it by `sink`, used from `reach`
+export function thing_put(kind: int, look: string, x: float, z: float, yaw: float, sink: float, reach: float, id: int) -> Thing {
+  let t = new Thing
+  t.reach = reach
+  return th_place(t, kind, look, x, ThingsWorld.ground(x, z) - sink, z, yaw, id)
+}
+
+# gone for good
+export function thing_remove(t: Thing) -> void {
+  if t == null { return }
+  th_marked = t.uid
+  things_drop(fn th_is_marked)
+  th_marked = -1
+}
+
+var th_marked: int = -1
+function th_is_marked(t: Thing) -> bool { return t.uid == th_marked }
+
+# every Thing `gone` says so is removed for good
+export function things_drop(gone: fn(Thing) -> bool) -> void {
+  let keep = new []Thing
+  let all = things_all()
+  for i in 0 .. len(all) {
+    let t = all[i]
+    if gone(t) {
+      ThingsWorld.removed(t)
+      th_fact(THING_REMOVED, t)
+    } else {
+      push(keep, t)
+    }
+  }
+  th_list = keep
+}
+
+export function thing_move(t: Thing, x: float, z: float, yaw: float) -> void {
+  thing_move_to(t, x, ThingsWorld.ground(x, z), z, yaw)
+}
+
+export function thing_move_to(t: Thing, x: float, y: float, z: float, yaw: float) -> void {
+  t.x = x
+  t.y = y
+  t.z = z
+  t.yaw = yaw
+  ThingsWorld.moved(t)
+}
+
+export function thing_set_active(t: Thing, on: bool) -> void {
+  if t == null { return }
+  t.active = on
+  ThingsWorld.shown(t)
+}
+export function thing_hide(t: Thing) -> void { thing_set_active(t, false) }
+export function thing_show(t: Thing) -> void { thing_set_active(t, true) }
