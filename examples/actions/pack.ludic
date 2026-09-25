@@ -1,0 +1,38 @@
+# pack.ludic - 0.R: what happened is an action; what it means for a state is that state's reducer.
+# The entry dispatches; drain_actions() runs every reducer of each action, in order, each given its
+# own state - and an action a reducer dispatches goes behind the queue.
+program PackActions {
+  state Pack {
+    items: []int = new []int
+    weight: int = 0
+  }
+  state Log {
+    lines: []string = new []string
+  }
+  action PickUp { item: int, kg: int = 1 }
+  action Drop { item: int }
+  action Overload {}
+
+  reducer Pack on PickUp(p: mut Pack, a: PickUp) {
+    push(p.items, a.item)
+    p.weight += a.kg
+    if p.weight > 10 { dispatch Overload {} }
+  }
+  reducer Log on PickUp(l: mut Log, a: PickUp) { push(l.lines, `picked {a.item}`) }
+  reducer Pack on Drop(p: mut Pack, a: Drop) {
+    var kept = new []int
+    for i in 0 .. len(p.items) { if p.items[i] != a.item { push(kept, p.items[i]) } }
+    p.items = kept
+  }
+  reducer Log on Overload(l: mut Log, a: Overload) { push(l.lines, "too heavy") }
+
+  entry (p: Pack, l: Log) {
+    dispatch PickUp { item: 7 }
+    dispatch PickUp { item: 9, kg: 12 }
+    dispatch Drop { item: 7 }
+    print(len(p.items))                    # 0: nothing is reduced until the queue is drained
+    drain_actions()
+    print(`{len(p.items)} {p.items[0]} {p.weight}`)
+    for i in 0 .. len(l.lines) { print(l.lines[i]) }
+  }
+}

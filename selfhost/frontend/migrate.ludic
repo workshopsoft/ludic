@@ -422,6 +422,7 @@ function mg_call(e: Node, f: Node) -> void {
   if not g_migrate or f == null or g_mg_cur < 0 { return }
   if e.pos < 0 { return }                        # a generated call gets its states when compiled
   if is_runtime_file(f.file) and not is_runtime_file(e.file) { return }   # the runtime's are supplied
+  if is_action_builtin(f.s) { return }           # 0.R: the action queue is supplied too
   push(g_mc_call, e)
   push(g_mc_unit, g_mg_cur)
   push(g_mc_callee, mg_unit(f, 0))

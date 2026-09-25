@@ -345,6 +345,7 @@ function emit_calls_for_phase(phase: pointer) -> void {
   emit_engine_systems_for_phase(phase)               # engine-owned systems run after every user handler
   emit_dyn_systems_for_phase(phase)                  # #64: mod-registered systems run last
   if (phase == "Overlay") { emit_scene_menu_render() }   # a scene's `shows` menu paints last
+  if len(g_act_names) > 0 { emit(`  call void {fn_sym("drain_actions")}()\n`) }   # 0.R: this phase's actions, reduced
 }
 
 # the menu of the live `scene X shows Menu`, drawn on top of everything else

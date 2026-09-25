@@ -1,0 +1,15 @@
+# runaway.ludic - 0.R: a reducer that dispatches what dispatches it is stopped, by name, after
+# 64 rounds, rather than spinning
+program Runaway {
+  state Echo { n: int = 0 }
+  action Ping {}
+  reducer Echo on Ping(e: mut Echo, a: Ping) {
+    e.n += 1
+    dispatch Ping {}
+  }
+  entry {
+    dispatch Ping {}
+    drain_actions()
+    print("not reached")
+  }
+}

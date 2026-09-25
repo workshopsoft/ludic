@@ -15,6 +15,7 @@ function ck_params(f: Node, labels: []pointer, tys: []pointer) -> void {
 function ck_call_fn(e: Node, name: pointer, f: Node) -> pointer {
   state_inject_generated(e, f)
   state_inject_runtime(e, f)
+  if is_action_builtin(f.s) { state_inject(e, f) }   # 0.R: the queue is supplied
   mg_call(e, f)
   call_fill_defaults(e, f)
   ck_state_args(e, f)

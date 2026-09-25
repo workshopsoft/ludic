@@ -1,0 +1,24 @@
+# phases.ludic - 0.R: in the frame loop the queue is drained at the end of every phase, so what the
+# Input phase dispatches is reduced before Update reads it. The input translates keys to actions and
+# touches no state of its own.
+program PhaseActions {
+  state Hero {
+    x: int = 0
+    jumps: int = 0
+  }
+  action Move { dx: int }
+  action Jump {}
+  reducer Hero on Move(h: mut Hero, a: Move) { h.x += a.dx }
+  reducer Hero on Jump(h: mut Hero, a: Jump) { h.jumps += 1 }
+
+  handler Keys phase Input {
+    let k = Input.key()
+    if k == 'd' { dispatch Move { dx: 1 } }
+    if k == 'a' { dispatch Move { dx: -1 } }
+    if k == ' ' { dispatch Jump {} }
+    if k == 'q' { quit() }
+  }
+  handler Show(h: Hero) phase Update {
+    print(`{h.x} {h.jumps}`)
+  }
+}

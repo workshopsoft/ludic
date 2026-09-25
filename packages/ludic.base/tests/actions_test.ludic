@@ -1,0 +1,30 @@
+# actions_test.ludic - 0.R: the runner drains the action queue after every phase, so what an input
+# system dispatches is reduced before the simulation reads it, the same tick
+import "ludic.base"
+program ActionsTest {
+  numbers float
+  state Door {
+    open: bool = false
+    seen: string = ""
+  }
+  action Knock { times: int }
+  reducer Door on Knock(d: mut Door, a: Knock) {
+    if a.times >= 2 { d.open = true }
+  }
+  function input_tick(t: Tick) -> void { dispatch Knock { times: 2 } }
+  function sim_tick(d: mut Door, t: Tick) -> void {
+    if d.open { d.seen = d.seen + "o" } else { d.seen = d.seen + "c" }
+  }
+  test "an input system's action is reduced before the simulation's phase" (b: mut BaseState, d: Door) {
+    core_clear(b)
+    let i = system_new("input", PH_INPUT)
+    i.tick = fn input_tick
+    core_add(b, i)
+    let s = system_new("sim", PH_SIMULATE)
+    s.tick = fn sim_tick
+    core_add(b, s)
+    core_tick_all(b, tick_new(0.016, 1, 0.0))
+    expect(d.open)
+    expect(d.seen == "o")
+  }
+}

@@ -1,0 +1,5 @@
+# 0.R: only an action is dispatched
+program DispatchUnknown {
+  action Buy { cost: int }
+  entry { dispatch Sell { cost: 1 } }
+}

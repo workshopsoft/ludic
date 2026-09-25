@@ -1,0 +1,7 @@
+# 0.R: a reducer is on an action
+program ReducerNotAction {
+  state Pack { n: int = 0 }
+  property Buy { cost: int = 0 }
+  reducer Pack on Buy(p: mut Pack, a: Buy) { p.n += 1 }
+  entry { print(1) }
+}

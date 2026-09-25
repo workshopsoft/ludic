@@ -314,6 +314,62 @@ ludic migrate state packages <every example program> packages/ludic.lab/example/
 migrate: 1804 vars into 126 states, 64 into lets; 23498 edits in 460 files
 ```
 
+### Actions and reducers (`action`, `reducer`, `dispatch`)
+
+Threading states makes a function's signature say what it touches, and it shows where one function
+does everything: an input handler that reads the keys and then changes the world itself takes every
+state the world has. An action separates the two. The input says WHAT happened; each module decides
+what that means for its own state, and nothing else:
+
+```ludic
+program Pack {
+  state Bag {
+    items: []int = new []int
+    weight: int = 0
+  }
+  state Log { lines: []string = new []string }
+  action PickUp { item: int, kg: int = 1 }            # what happened: a typed record
+
+  reducer Bag on PickUp(b: mut Bag, a: PickUp) {       # in the module that owns Bag
+    push(b.items, a.item)
+    b.weight += a.kg
+  }
+  reducer Log on PickUp(l: mut Log, a: PickUp) { push(l.lines, `picked {a.item}`) }
+
+  handler Keys phase Input {
+    if Input.key() == 'e' { dispatch PickUp { item: 7 } }   # a translator: keys to actions
+  }
+}
+```
+
+- **`action Name { fields }`** is a record, with defaults like any. `export action` for other
+  modules to dispatch it.
+- **`reducer State on Action(s: mut State, a: Action) { ... }`** takes exactly its state and the
+  action, in that order. A second state is refused (`reducer Pack on Buy: a reducer takes one state,
+  and w is a Wallet - what it needs to know rides in the action`), and so is a call inside it to a
+  function that needs another, since nothing supplies one there. What it needs to know rides in the
+  action, filled by whoever dispatches it. Several reducers may handle one action, one per state;
+  a reducer is not called by name.
+- **`dispatch Action { fields }`** queues the action, from anywhere: a handler, a function, a
+  listener, a reducer. The queue is the runtime's, supplied like an entry point's state, so
+  dispatching needs no state parameter.
+- **When the queue is drained:** at the end of every phase of the frame loop (so what the `Input`
+  phase dispatches is reduced before `Update`); after every phase of the ludic.base system runner
+  (`core_tick_all`); and wherever the program calls `drain_actions()` (an `entry` program, a test,
+  a loop of its own). Draining runs the actions in the order they were dispatched, and each action's
+  reducers in the order of their states' names - never the order of imports - so the same actions
+  make the same changes on every machine and in a replay.
+- **An action a reducer dispatches** is queued behind the rest and reduced in the same drain, never
+  re-entrantly. A queue still growing after 64 rounds of that stops the program, naming the action:
+  `actions: Ping is still being dispatched after 64 rounds of reducers - a reducer dispatches what
+  dispatches it`.
+- **Events stay** for what changes no state - a sound, a notice, telemetry - and `@On` listeners run
+  as the event is emitted. Actions are for changes.
+
+`ludic deps` reports the widest function - the most states any function or entry point of the
+program's own takes - and `--check` holds it as a ratchet like its other numbers
+(`widest_function 12` in the baseline file).
+
 ### Types are checked before anything is emitted
 
 Between the parse and the emitter a checker walks every function, the entry, the tests, the

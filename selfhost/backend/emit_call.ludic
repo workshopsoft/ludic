@@ -967,6 +967,7 @@ function emit_call(e: Node) -> Val {
   vis_check(fn2, name)
   state_inject_generated(e, fn2)                   # 0.S: a call the compiler wrote gets its states
   state_inject_runtime(e, fn2)                     # and a call into the runtime
+  if is_action_builtin(fn2.s) { state_inject(e, fn2) }   # 0.R: the action queue
   call_fill_defaults(e, fn2)                       # L11 - for code the checker does not walk
   reorder_named(e, param_labels(fn2))
   # evaluate args first (their IR is emitted before the call instruction), coercing
@@ -1119,6 +1120,6 @@ function emit_expr(e: Node) -> Val {
     let c = emit_bind(`icmp eq i32 {a.code}, 0`)
     return val(emit_bind(`zext i1 {c} to i32`), "bool")
   }
-  perr("cannot emit expression")
+  perr(`cannot emit expression (node kind {itoa(e.kind)})`)
   return val("0", "int")
 }

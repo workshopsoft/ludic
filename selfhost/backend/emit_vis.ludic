@@ -38,6 +38,8 @@ function vis_check(d: Node, what0: pointer) -> void {
   # 0.S: a state's instance, supplied by the runtime (a component's or a view's glue, an entry's
   # parameters): the code that names it only passes it on
   if d.kind == N_VAR and d.uns == 1 and is_state_ty(d.ty) and len(d.s) > 6 and (d.s[0 .. 6] == "state$") { return }
+  # 0.R: the action queue and the reducers are the runtime's to call, from any module
+  if d.kind == N_FN and (is_action_builtin(d.s) or (len(d.s) > 14 and (d.s[0 .. 14] == "ludic_reduce__"))) { return }
   let what = vis_plain(what0)
   var here = g_err_file
   if here == null { return }

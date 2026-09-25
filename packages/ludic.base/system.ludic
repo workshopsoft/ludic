@@ -63,6 +63,7 @@ export function core_tick_all(base_st: mut BaseState, t: Tick) -> void {
     for i in 0 .. len(all) {
       if all[i].phase == ph and all[i].tick != null { all[i].tick(t) }
     }
+    drain_actions()                              # 0.R: the phase's actions, reduced before the next
   }
 }
 

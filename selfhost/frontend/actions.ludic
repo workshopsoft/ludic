@@ -1,0 +1,202 @@
+# actions.ludic — 0.R: actions and reducers. What happened is an action, a typed record; what it
+# means for a state is that state's reducer, in the module that owns it:
+#
+#   action PickUp { item: int }
+#   reducer Pack on PickUp(p: mut Pack, a: PickUp) { push(p.items, a.item) }
+#   ...
+#   dispatch PickUp { item: 3 }
+#
+# `dispatch` queues the action; the queue is drained - every reducer of each action run in turn,
+# each supplied its own state - at the end of every phase of the frame loop, after each ludic.base
+# phase, or where the program calls drain_actions(). A reducer takes exactly its state and the
+# action. Actions a reducer dispatches go behind the queue, never re-entrant, and a queue still
+# growing after ACTION_PASSES rounds stops the program with the action that keeps coming.
+var g_act_names: []pointer = new []pointer     # the actions, in the order read
+var g_act_nodes: []Node = new []Node
+var g_red_nodes: []Node = new []Node            # the reducers
+var g_red_state: []pointer = new []pointer
+var g_red_action: []pointer = new []pointer
+var g_dsp_ids: []Node = new []Node              # each dispatch's action number, filled at the end
+var g_dsp_names: []pointer = new []pointer
+var g_dsp_at: []Node = new []Node
+const ACTION_PASSES: int = 64
+
+# action NAME { fields } - a record
+function parse_action() -> void {
+  let c = parse_component()
+  c.uns = 3
+  push(prog, c)
+  push(g_act_names, c.s)
+  push(g_act_nodes, c)
+}
+# reducer STATE on ACTION(s: mut STATE, a: ACTION) { ... }
+function parse_reducer() -> void {
+  let st = toks[pi + 1].text
+  if toks[pi + 1].kind != TK_ID or not (toks[pi + 2].text == "on") or toks[pi + 3].kind != TK_ID {
+    perr("a reducer is `reducer State on Action(s: mut State, a: Action) { ... }`")
+  }
+  let act = toks[pi + 3].text
+  pi += 2
+  toks[pi].text = "function"                     # read the rest as a function named for the action
+  let f = parse_fn()
+  f.s = `ludic_reduce__{act}__{st}`
+  f.vis = 1
+  push(g_red_nodes, f)
+  push(g_red_state, st)
+  push(g_red_action, act)
+  push(prog, f)
+}
+# dispatch ACTION { fields } - a statement: the action made and queued
+function parse_dispatch() -> Node {
+  let at = toks[pi]
+  pi += 1
+  let name = eat_id()
+  let nw = node(E_NEW)
+  nw.s = name
+  if is_op("{") { nw.a = record() }
+  let call = node(E_CALL)
+  let callee = node(E_ID)
+  callee.s = "ludic_act_push"
+  callee.pos = -1
+  call.a = callee
+  call.pos = -1                                  # the compiler's call: the queue is supplied
+  let id = node(E_INT)
+  id.pos = -1
+  push(call.kids, id)
+  push(call.kids, nw)
+  push(g_dsp_ids, id)
+  push(g_dsp_names, name)
+  push(g_dsp_at, nw)
+  let s = node(S_EXPR)
+  s.a = call
+  s.line = at.line
+  return s
+}
+function act_index(name: pointer) -> int {
+  var i = 0
+  while i < len(g_act_names) {
+    if (g_act_names[i] == name) { return i }
+    i += 1
+  }
+  return -1
+}
+function act_err(n: Node, msg: pointer) -> void {
+  g_err_file = n.file
+  g_err_line = n.line
+  g_parsing = false
+  perr(msg)
+}
+# after the program is read: the reducers checked, each dispatch numbered, and the queue, its push
+# and its drain written
+function actions_finish() -> void {
+  var i = 0
+  while i < len(g_red_nodes) {
+    red_check(i)
+    i += 1
+  }
+  i = 0
+  while i < len(g_dsp_ids) {
+    let k = act_index(g_dsp_names[i])
+    if k < 0 { act_err(g_dsp_at[i], `dispatch {g_dsp_names[i]}: {g_dsp_names[i]} is not an action - declare it with action {g_dsp_names[i]} {{ ... }}`) }
+    g_dsp_ids[i].ival = k
+    i += 1
+  }
+  var file = g_parse_file
+  var line = 1
+  if len(g_act_nodes) > 0 {
+    file = g_act_nodes[0].file
+    line = g_act_nodes[0].line
+  }
+  # no actions: drain_actions() is still there (a ludic.base runner calls it), and does nothing
+  if len(g_act_names) == 0 {
+    vw_parse("export function drain_actions() -> void {\n}\n", file, line, 1)
+    return
+  }
+  vw_parse(act_src(), file, line, 1)
+}
+function red_check(i: int) -> void {
+  let f = g_red_nodes[i]
+  let st = g_red_state[i]
+  let act = g_red_action[i]
+  if act_index(act) < 0 { act_err(f, `reducer {st} on {act}: {act} is not an action - declare it with action {act} {{ ... }}`) }
+  if not is_state_ty(st) { act_err(f, `reducer {st} on {act}: {st} is not a state`) }
+  var ps = new []Node
+  var k = 0
+  while k < len(f.kids) {
+    if f.kids[k].kind == N_PARAM { push(ps, f.kids[k]) }
+    k += 1
+  }
+  k = 0
+  while k < len(ps) {
+    let p = ps[k]
+    if k > 0 and is_state_ty(p.ty) {
+      act_err(f, `reducer {st} on {act}: a reducer takes one state, and {p.s} is a {p.ty} - what it needs to know rides in the action`)
+    }
+    k += 1
+  }
+  if len(ps) != 2 or not (ps[0].ty == st) or not (ps[1].ty == act) {
+    act_err(f, `reducer {st} on {act}: its parameters are its state and the action - ({reg_lower(st)}: mut {st}, a: {act})`)
+  }
+  var j = 0
+  while j < i {
+    if (g_red_state[j] == st) and (g_red_action[j] == act) { act_err(f, `reducer {st} on {act} is declared twice (first at {g_red_nodes[j].file}:{itoa(g_red_nodes[j].line)})`) }
+    j += 1
+  }
+}
+# the queue, its push and its drain: each action's reducers in the order of their states' names
+function act_src() -> pointer {
+  var src = "export state LudicActions {\n  kinds: []int = new []int\n  vals: []pointer = new []pointer\n  head: int = 0\n  depth: int = 0\n}\n"
+  src = src + "export function ludic_act_push(q: mut LudicActions, k: int, v: pointer) -> void {\n  push(q.kinds, k)\n  push(q.vals, v)\n}\n"
+  src = src + "export function drain_actions(q: mut LudicActions) -> void {\n  if q.depth > 0 { return }\n  q.depth = 1\n  var pass = 0\n  var round_end = len(q.kinds)\n"
+  src = src + "  while q.head < len(q.kinds) {\n    if q.head == round_end {\n      pass += 1\n      round_end = len(q.kinds)\n"
+  src = src + `      if pass >= {itoa(ACTION_PASSES)} {{ ludic_act_runaway(q.kinds[q.head]) }}\n    }}\n`
+  src = src + "    let k = q.kinds[q.head]\n    let v = q.vals[q.head]\n    q.head += 1\n"
+  var a = 0
+  while a < len(g_act_names) {
+    let rs = red_sorted(g_act_names[a])
+    if len(rs) > 0 {
+      src = src + `    if k == {itoa(a)} {{\n`
+      var r = 0
+      while r < len(rs) {
+        src = src + `      {g_red_nodes[rs[r]].s}(v)\n`
+        r += 1
+      }
+      src = src + "    }\n"
+    }
+    a += 1
+  }
+  src = src + "  }\n  q.kinds = new []int\n  q.vals = new []pointer\n  q.head = 0\n  q.depth = 0\n}\n"
+  src = src + "export function ludic_act_runaway(k: int) -> void {\n  var name = \"?\"\n"
+  a = 0
+  while a < len(g_act_names) {
+    src = src + `  if k == {itoa(a)} {{ name = "{g_act_names[a]}" }}\n`
+    a += 1
+  }
+  src = src + "  print(`actions: {name} is still being dispatched after " + itoa(ACTION_PASSES) + " rounds of reducers - a reducer dispatches what dispatches it`)\n  exit(1)\n}\n"
+  return src
+}
+function red_sorted(act: pointer) -> []int {
+  let out = new []int
+  var i = 0
+  while i < len(g_red_nodes) {
+    if (g_red_action[i] == act) { push(out, i) }
+    i += 1
+  }
+  var a = 1
+  while a < len(out) {
+    let x = out[a]
+    var b = a - 1
+    while b >= 0 and reg_str_less(g_red_state[x], g_red_state[out[b]]) {
+      out[b + 1] = out[b]
+      b -= 1
+    }
+    out[b + 1] = x
+    a += 1
+  }
+  return out
+}
+# a call to the queue from anywhere: the queue is the runtime's to supply, like a state an entry point
+# is given (drain_actions() from a ludic.base runner or a program's own loop)
+function is_action_builtin(name: pointer) -> bool {
+  return (name == "drain_actions") or (name == "ludic_act_push")
+}

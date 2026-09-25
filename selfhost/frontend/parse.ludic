@@ -468,6 +468,7 @@ function stmt_body() -> Node {
       return n
     }
     if (t.text == "spawn") { return parse_spawn() }
+    if (t.text == "dispatch") and toks[pi + 1].kind == TK_ID { return parse_dispatch() }   # 0.R
     if (t.text == "machine") {
       pi += 1; let n = node(S_MACHINE); n.a = expr(); skipnl(); eat_op("{")
       var sidx = 0                              # states auto-number by declaration order
@@ -1026,6 +1027,8 @@ function parse_one_decl() -> void {
   if is_id("view") and (toks[pi + 1].kind == TK_ID) and ((toks[pi + 2].text == "{") or (toks[pi + 2].text == "(")) { parse_view(); return }            # L11
   if is_id("component") and (toks[pi + 1].kind == TK_ID) and ((toks[pi + 2].text == "{") or (toks[pi + 2].text == "(")) { parse_ui_component(); return }  # L11
   if is_id("state") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].text == "{") { parse_state(); return }   # 0.S
+  if is_id("action") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].text == "{") { parse_action(); return }   # 0.R
+  if is_id("reducer") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].text == "on") { parse_reducer(); return }
   if is_id("var") {
     if not g_allow_globals {
       perr(`a module-level var is refused: a module's changing data is its state (state Name {{ ... }}), passed to the functions that use it - or, if it never changes, a let`)
@@ -1572,5 +1575,6 @@ function parse_program() -> void {
   views_finish()                                   # L11: each view gets its model and call
   components_finish()                              # L11: each component gets its class
   ui_blocks_states()                               # 0.S: a ui block reads a state as State.field
+  actions_finish()                                 # 0.R: the reducers checked, the queue written
   g_gen_nodes = false
 }
