@@ -1,0 +1,10 @@
+# ludic.clock - one clock for a whole world: the hour, the day, the moon's place in its month and
+# where the day falls in a calendar the game describes; a day turning is a fact on a queue
+module ludic_clock
+numbers float
+import "ludic.base"
+import "state.ludic"
+import "verbs.ludic"
+import "queries.ludic"
+import "calendar.ludic"
+import "system.ludic"

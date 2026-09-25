@@ -1,0 +1,24 @@
+# queries.ludic - what the world asks the clock
+export function clock_day() -> int { return ck_day }
+export function clock_hours() -> float { return ck_hours }
+export function clock_moon() -> float { return ck_moon }
+export function clock_scale() -> float { return ck_scale }
+
+# game seconds per real second right now, the rest speed-up included
+export function clock_rate() -> float { return ck_scale * ck_rest() }
+
+# the game hours `dt` real seconds are worth at the current rate
+export function clock_hours_in(dt: float) -> float { return dt * clock_rate() / 3600.0 }
+
+export function clock_is_night() -> bool { return ck_hours > ck_night_from or ck_hours < ck_night_to }
+
+# "07:05"
+export function clock_hhmm() -> string {
+  let h = int(Math.floor(ck_hours))
+  let m = int(Math.floor((ck_hours - float(h)) * 60.0))
+  var hs = `{h}`
+  var ms = `{m}`
+  if h < 10 { hs = `0{h}` }
+  if m < 10 { ms = `0{m}` }
+  return hs + ":" + ms
+}

@@ -1,0 +1,27 @@
+# system.ludic - the clock as a system: it runs first (PH_INPUT) so every later system reads this
+# frame's hour, and it saves its own section
+function clock_tick(t: Tick) -> void { clock_advance(t.hours) }
+
+export function clock_save() -> Val {
+  let v = Value.object()
+  sv_put_int(v, "day", ck_day)
+  sv_put_float(v, "hours", ck_hours)
+  sv_put_float(v, "moon", ck_moon)
+  return v
+}
+
+export function clock_load(v: Val, version: int) -> void {
+  ck_day = sv_int(v, "day", 1)
+  clock_set_hours(sv_float(v, "hours", ck_start_hours))
+  ck_moon = sv_float(v, "moon", 0.5)
+  q_clear(clock_days())
+}
+
+export function clock_system() -> System {
+  let s = system_new("clock", PH_INPUT)
+  s.reset = fn clock_reset
+  s.tick = fn clock_tick
+  s.save = fn clock_save
+  s.load = fn clock_load
+  return s
+}

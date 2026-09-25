@@ -1,0 +1,5 @@
+# ludic.clock - the hours, the days, the moon and a calendar of seasons, as a pure function of the
+# day. Uses ludic.base and nothing else. See README.md.
+package "ludic.clock"
+version "0.1.0"
+kind source

@@ -1,0 +1,45 @@
+# verbs.ludic - the only way the clock changes
+export function clock_set_scale(s: float) -> void { ck_scale = s }
+export function clock_set_day(d: int) -> void { ck_day = d }
+export function clock_set_moon(m: float) -> void { ck_moon = m }
+
+# the hour, wrapped into [0, 24); setting it never turns the day - that is clock_new_day's
+export function clock_set_hours(h: float) -> void {
+  var x = h % 24.0
+  if x < 0.0 { x = x + 24.0 }
+  ck_hours = x
+}
+
+function ck_turn(how: int) -> void {
+  ck_day += 1
+  ck_moon = (ck_moon + 1.0 / ck_moon_days) % 1.0
+  let d = new DayTurned
+  d.day = ck_day
+  d.how = how
+  q_push(clock_days(), d)
+}
+
+# a new day however it came (a night slept, a collapse); the caller sets the hour first
+export function clock_new_day() -> void { ck_turn(DAY_SLEPT) }
+
+# run the hours on by `gh` game hours; past midnight the day turns. Only the machine that owns
+# the world moves it - another machine is told the time.
+export function clock_advance(gh: float) -> void {
+  if not ck_owns() { return }
+  ck_hours = ck_hours + gh
+  while not (ck_hours < 24.0) {
+    ck_hours = ck_hours - 24.0
+    ck_turn(DAY_STAYED_UP)
+  }
+}
+
+# a new trip: day one at the start hour, the moon somewhere in its month
+export function clock_reset() -> void {
+  var seed = 1
+  if ck_world != null and ck_world.seed != null { seed = ck_world.seed() }
+  ck_dice = rng_new(seed)
+  ck_day = 1
+  ck_hours = ck_start_hours
+  ck_moon = rng_span(ck_dice, ck_moon_lo, ck_moon_hi) % 1.0
+  q_clear(clock_days())
+}

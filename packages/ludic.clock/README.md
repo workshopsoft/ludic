@@ -1,0 +1,49 @@
+# ludic.clock
+
+One clock for a whole world: the hour, the day, the moon's place in its month, and where the day
+falls in a calendar the game describes - month, year and season as a pure function of the day.
+Uses [`ludic.base`](../ludic.base/README.md) and nothing else.
+
+```ludic
+import "ludic.clock"
+```
+
+The clock never runs the morning. A day turning - past midnight, or by `clock_new_day` after a
+night slept - is a `DayTurned` fact on `clock_days()`, and the game drains it into whatever its
+morning is (weather, restocking, the animals' day). Only the machine that owns the world moves
+the hour; another machine is told it (`clock_set_hours`, `clock_set_day`, `clock_set_moon`).
+
+## The port
+
+```ludic
+property ClockWorld {
+  owns_world: fn() -> bool     # does this machine run the world? (unbound: yes)
+  rest_scale: fn() -> float    # how much everyone's rest speeds the clock; 1 when nobody rests
+  seed: fn() -> int            # a seed for a new trip's moon
+}
+```
+
+## API
+
+| | |
+| --- | --- |
+| `clock_bind(w)` | the port |
+| `clock_config(start_hours, night_from, night_to)` | when a trip starts, and which hours are night |
+| `clock_config_moon(days, lo, hi)` | the moon's month in days, and the part of it a new trip starts in |
+| `clock_calendar(month_days, season_of_month)` | a month's length, and each month's season (the list's length is the year) |
+| `clock_set_scale(s)`, `clock_scale()` | game seconds per real second |
+| `clock_rate()`, `clock_hours_in(dt)` | the rate with the rest included, and the game hours `dt` real seconds are worth |
+| `clock_advance(gh)` | run the hours on (the system's tick does this from `Tick.hours`); past midnight the day turns |
+| `clock_new_day()` | turn the day now (the caller sets the hour first) |
+| `clock_reset()` | day one at the start hour, the moon from the seed |
+| `clock_day()`, `clock_hours()`, `clock_moon()`, `clock_hhmm()`, `clock_is_night()` | what the world asks |
+| `clock_month()`, `clock_year()`, `clock_day_of_month()`, `clock_season()`, `clock_days_to_change()` | today in the calendar |
+| `clock_month_of(d)`, `clock_year_of(d)`, `clock_day_of_month_of(d)`, `clock_season_of(d)`, `clock_days_to_change_from(d)`, `clock_first_day_of(season)` | any day in the calendar |
+| `clock_days() -> Queue<DayTurned>` | the facts: `{ day, how }`, `how` one of `DAY_STAYED_UP`, `DAY_SLEPT` |
+| `clock_system() -> System` | `"clock"`, `PH_INPUT` (first, so every later system reads this frame's hour): reset, tick, and its save section (`clock_save`, `clock_load`: day, hours, moon) |
+
+## Tests
+
+```bash
+ludic build packages/ludic.clock/tests/clock_test.ludic --headless -o /tmp/clock_test && /tmp/clock_test
+```

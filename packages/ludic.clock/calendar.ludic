@@ -1,0 +1,48 @@
+# calendar.ludic - where a day falls: its month, its year, and its season, a pure function of the
+# day. The game says how long a month is, how many make a year, and which season each month is.
+var cal_month_days: int = 30
+var cal_year_months: int = 12
+var cal_season: []int = null
+
+export function clock_calendar(month_days: int, season_of_month: []int) -> void {
+  cal_month_days = month_days
+  cal_year_months = len(season_of_month)
+  cal_season = season_of_month
+}
+
+export function clock_month_days() -> int { return cal_month_days }
+export function clock_year_months() -> int { return cal_year_months }
+
+# the month a day falls in, 0 .. months - 1
+export function clock_month_of(day: int) -> int { return ((day - 1) / cal_month_days) % cal_year_months }
+export function clock_year_of(day: int) -> int { return (day - 1) / (cal_month_days * cal_year_months) + 1 }
+export function clock_day_of_month_of(day: int) -> int { return (day - 1) % cal_month_days + 1 }
+
+export function clock_season_of(day: int) -> int {
+  if cal_season == null { return 0 }
+  return cal_season[clock_month_of(day)]
+}
+
+export function clock_month() -> int { return clock_month_of(ck_day) }
+export function clock_year() -> int { return clock_year_of(ck_day) }
+export function clock_day_of_month() -> int { return clock_day_of_month_of(ck_day) }
+export function clock_season() -> int { return clock_season_of(ck_day) }
+
+# days from `day` until the season is another; 0 when a year has only one
+export function clock_days_to_change_from(day: int) -> int {
+  let here = clock_season_of(day)
+  for d in 1 .. cal_month_days * cal_year_months {
+    if clock_season_of(day + d) != here { return d }
+  }
+  return 0
+}
+
+export function clock_days_to_change() -> int { return clock_days_to_change_from(ck_day) }
+
+# the first day (counted from day one) that falls in a season; -1 when none does
+export function clock_first_day_of(season: int) -> int {
+  for d in 1 .. cal_month_days * cal_year_months + 1 {
+    if clock_season_of(d) == season { return d }
+  }
+  return -1
+}
