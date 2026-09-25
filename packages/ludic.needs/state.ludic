@@ -1,0 +1,88 @@
+# state.ludic - the needs, what the body is doing, the port, the facts, and what the body holds
+export const NEED_WARMTH: int = 0
+export const NEED_FOOD: int = 1
+export const NEED_WATER: int = 2
+export const NEED_ENERGY: int = 3
+export const NEED_COUNT: int = 4
+
+# what the body is doing, which is what an hour costs
+export const NEEDS_STILL: int = 0
+export const NEEDS_WALK: int = 1
+export const NEEDS_RUN: int = 2
+export const NEEDS_SIT: int = 3
+export const NEEDS_SWIM: int = 4
+export const NEEDS_SWIM_HARD: int = 5
+export const NEEDS_FLOAT: int = 6
+export const NEEDS_DIVE: int = 7
+
+# what the needs ask the world. Every member has a default: standing still in mild air, no
+# clothing, no multipliers, no bonuses, thirst on, a collapse possible, the body up.
+export port NeedsWorld {
+  activity: fn() -> int = fn nd_still           # NEEDS_* above
+  resting: fn() -> float = fn nd_rest            # energy an hour sitting gives back (the seat's say)
+  warmth: fn() -> float = fn nd_mild             # warmth an hour from the surroundings: sun, night, weather, a fire, the water
+  keep: fn() -> float = fn nd_none               # the fraction of warmth being lost that clothing keeps
+  hot: fn() -> bool = fn nd_no                   # the midday sun: thirst runs half again faster
+  effort: fn() -> float = fn nd_one              # what moving costs in energy, times (the boots)
+  drain: fn(int) -> float = fn nd_one_of         # a need's drain, times (the difficulty, a survey's rule)
+  bonus: fn(int) -> float = fn nd_none_of        # a need's gain an hour from outside (a meal's warmth, a drink's legs)
+  thirst: fn() -> bool = fn nd_yes               # thirst is a need at all; off, water holds full
+  gentle: fn() -> bool = fn nd_no                # the needs stop above trouble: no countdown, no collapse
+  held: fn() -> bool = fn nd_no                  # the body is already down: the countdown waits
+}
+function nd_still() -> int { return NEEDS_STILL }
+function nd_rest() -> float { return 40.0 }
+function nd_mild() -> float { return -2.0 }
+function nd_none() -> float { return 0.0 }
+function nd_no() -> bool { return false }
+function nd_yes() -> bool { return true }
+function nd_one() -> float { return 1.0 }
+function nd_one_of(k: int) -> float { return 1.0 }
+function nd_none_of(k: int) -> float { return 0.0 }
+
+# what happened: a need ran out and the countdown began, every need came back above the line, or
+# the countdown ran out - the game decides what a collapse costs and says so
+export const NEEDS_CRITICAL: int = 0
+export const NEEDS_RESTORED: int = 1
+export const NEEDS_COLLAPSED: int = 2
+
+export property NeedFact {
+  what: int = 0
+  need: int = 0
+}
+
+var nd_level: []float = null
+var nd_legs: float = 0.0          # seconds left before a collapse, 0 = none
+var nd_last: int = 0              # the need the countdown is for
+var nd_collapses: int = 0
+var nd_facts: Queue<NeedFact> = null
+
+function nd_lv() -> []float {
+  if nd_level == null {
+    nd_level = floats(NEED_COUNT)
+    nd_fill()
+  }
+  return nd_level
+}
+
+function nd_fill() -> void {
+  nd_level[NEED_WARMTH] = 100.0
+  nd_level[NEED_FOOD] = 70.0
+  nd_level[NEED_WATER] = 85.0
+  nd_level[NEED_ENERGY] = 100.0
+}
+
+# the facts, oldest first; the game drains them into its notices and its collapse
+export function needs_facts() -> Queue<NeedFact> {
+  if nd_facts == null { nd_facts = queue_new("needs.facts") }
+  return nd_facts
+}
+
+function nd_fact(what: int, need: int) -> void {
+  let f = new NeedFact
+  f.what = what
+  f.need = need
+  q_push(needs_facts(), f)
+}
+
+function nd_ok(k: int) -> bool { return k >= 0 and k < NEED_COUNT }

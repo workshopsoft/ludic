@@ -1,0 +1,53 @@
+# watch.ludic - last legs: warmth, food or water at zero starts ten seconds of countdown; anything
+# above five on all three calls it off; the countdown running out is a collapse, as a fact
+const LAST_LEGS: float = 10.0
+const GENTLE_FLOOR: float = 22.0
+
+function nd_empty() -> int {
+  let lv = nd_lv()
+  if lv[NEED_WARMTH] == 0.0 { return NEED_WARMTH }
+  if lv[NEED_FOOD] == 0.0 { return NEED_FOOD }
+  if lv[NEED_WATER] == 0.0 { return NEED_WATER }
+  return -1
+}
+
+function nd_clear() -> bool {
+  let lv = nd_lv()
+  return lv[NEED_WARMTH] > 5.0 and lv[NEED_FOOD] > 5.0 and lv[NEED_WATER] > 5.0
+}
+
+# Gentle: a need that runs down stops just above where the legs start to go
+function nd_gentle() -> void {
+  let lv = nd_lv()
+  lv[NEED_WARMTH] = Math.max(lv[NEED_WARMTH], GENTLE_FLOOR)
+  lv[NEED_FOOD] = Math.max(lv[NEED_FOOD], GENTLE_FLOOR)
+  lv[NEED_WATER] = Math.max(lv[NEED_WATER], GENTLE_FLOOR)
+  nd_legs = 0.0
+}
+
+# `dt` real seconds; run it after everything this frame that could fill a need
+export function needs_watch(dt: float) -> void {
+  if NeedsWorld.held() { return }
+  if NeedsWorld.gentle() {
+    nd_gentle()
+    return
+  }
+  let need = nd_empty()
+  if need < 0 {
+    if nd_legs > 0.0 and nd_clear() {
+      nd_legs = 0.0
+      nd_fact(NEEDS_RESTORED, nd_last)
+    }
+    return
+  }
+  if nd_legs == 0.0 {
+    nd_legs = LAST_LEGS
+    nd_last = need
+    nd_fact(NEEDS_CRITICAL, need)
+    return
+  }
+  nd_legs = nd_legs - dt
+  if nd_legs > 0.0 { return }
+  nd_legs = 0.0
+  nd_fact(NEEDS_COLLAPSED, nd_last)
+}

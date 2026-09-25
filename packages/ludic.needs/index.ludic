@@ -1,0 +1,12 @@
+# ludic.needs - four bars of 0..100 that the body's work drains and meals fill; one at zero starts
+# a countdown, and the countdown running out is a fact (a collapse) the game acts on
+module ludic_needs uses ludic_base
+numbers float
+import "ludic.base"
+import "state.ludic"
+import "rates.ludic"
+import "run.ludic"
+import "watch.ludic"
+import "queries.ludic"
+import "verbs.ludic"
+import "system.ludic"

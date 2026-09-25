@@ -1,0 +1,5 @@
+# ludic.needs - a body's four needs (warmth, food, water, energy), what an hour of doing something
+# costs them, and the countdown to a collapse when one runs out. Uses ludic.base and nothing else.
+package "ludic.needs"
+version "0.1.0"
+kind source

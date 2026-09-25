@@ -1,0 +1,34 @@
+# system.ludic - the needs as a system: PH_SIMULATE, the drain then the watch, and its own save
+# section (the countdown is not saved: a loaded body starts it again if a need is still empty)
+function needs_tick(t: Tick) -> void {
+  needs_run(t.hours)
+  needs_watch(t.dt)
+}
+
+export function needs_save() -> Val {
+  let v = Value.object()
+  sv_put_float(v, "warmth", needs_warmth())
+  sv_put_float(v, "food", needs_food())
+  sv_put_float(v, "water", needs_water())
+  sv_put_float(v, "energy", needs_energy())
+  sv_put_int(v, "collapses", nd_collapses)
+  return v
+}
+
+export function needs_load(v: Val, version: int) -> void {
+  needs_reset()
+  needs_set(NEED_WARMTH, sv_float(v, "warmth", 100.0))
+  needs_set(NEED_FOOD, sv_float(v, "food", 70.0))
+  needs_set(NEED_WATER, sv_float(v, "water", 85.0))
+  needs_set(NEED_ENERGY, sv_float(v, "energy", 100.0))
+  nd_collapses = sv_int(v, "collapses", 0)
+}
+
+export function needs_system() -> System {
+  let s = system_new("needs", PH_SIMULATE)
+  s.reset = fn needs_reset
+  s.tick = fn needs_tick
+  s.save = fn needs_save
+  s.load = fn needs_load
+  return s
+}

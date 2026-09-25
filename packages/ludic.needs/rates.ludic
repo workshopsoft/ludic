@@ -1,0 +1,65 @@
+# rates.ludic - what an hour costs, by what the body is doing. A full bar is a DAY at the median
+# of a real trip (walking, some standing, an hour by the fire): 100 / 24 is about 4.2 an hour.
+# The hardest sustained work (running, the midday sun, the lake) empties it in about fourteen,
+# so the caps are the product of the multipliers, never each of them; at rest it lasts two days.
+const NEED_FOOD_CAP: float = 7.2
+const NEED_WATER_CAP: float = 7.5
+
+function nd_hard(a: int) -> bool { return a == NEEDS_RUN or a == NEEDS_SWIM_HARD }
+function nd_swim(a: int) -> bool { return a >= NEEDS_SWIM }
+
+function nd_food_rate(a: int) -> float {
+  var eat = 4.0
+  if nd_hard(a) { eat = 6.8 }
+  if a == NEEDS_SIT { eat = eat * 0.75 }
+  return Math.min(eat, NEED_FOOD_CAP)
+}
+
+# thirst follows the work rather than the clock: a run, the sun and the lake (you sweat
+# swimming and never notice) all pull it down, up to the day's cap
+function nd_water_rate(a: int) -> float {
+  var drink = 3.8
+  if a == NEEDS_WALK or a == NEEDS_SWIM or a == NEEDS_DIVE { drink = 4.6 }
+  if nd_hard(a) { drink = 7.0 }
+  if nd_swim(a) { drink = drink * 1.6 }
+  if NeedsWorld.hot() { drink = drink * 1.5 }
+  if a == NEEDS_SIT { drink = drink * 0.6 }
+  return Math.min(drink, NEED_WATER_CAP)
+}
+
+# the water costs more than running, and the cold is the real limit rather than the legs
+function nd_energy_rate(a: int) -> float {
+  if a == NEEDS_SIT { return NeedsWorld.resting() }
+  if a == NEEDS_WALK { return -5.0 * NeedsWorld.effort() }
+  if a == NEEDS_RUN { return -22.0 * NeedsWorld.effort() }
+  if a == NEEDS_SWIM { return -28.0 }
+  if a == NEEDS_SWIM_HARD { return -38.0 }
+  if a == NEEDS_FLOAT { return -6.0 }
+  if a == NEEDS_DIVE { return -34.0 }
+  return -2.0
+}
+
+# the surroundings, then the lake taking it, the effort giving a little back, clothing keeping
+# some of what is lost, and a dry body holding heat badly
+function nd_warmth_rate(a: int, water: float) -> float {
+  var wr = NeedsWorld.warmth()
+  if nd_swim(a) {
+    wr = Math.min(wr, 0.0) - 24.0
+    if a == NEEDS_SWIM_HARD { wr = wr + 2.0 }
+    if a == NEEDS_FLOAT { wr = wr - 2.0 }
+    if a == NEEDS_DIVE { wr = wr - 6.0 }
+  }
+  if nd_hard(a) { wr = wr + 3.0 }
+  let keep = Math.clamp(NeedsWorld.keep(), 0.0, 1.0)
+  if keep > 0.0 and wr < 0.0 { wr = wr * (1.0 - keep) }
+  if water < 25.0 and wr < 0.0 { wr = wr * 1.25 }
+  return wr + NeedsWorld.bonus(NEED_WARMTH)
+}
+
+# under fifty a need is felt in the legs before it is a crisis: full pace above fifty, three
+# quarters at twenty, 0.6 at nothing - one continuous line, steeper below twenty
+function nd_pace(v: float) -> float {
+  if not (v < 50.0) { return 1.0 }
+  if v < 20.0 { return 0.75 - 0.15 * ((20.0 - v) / 20.0) }
+  return 1.0 - 0.25 * ((50.0 - v) / 30.0)
+}
