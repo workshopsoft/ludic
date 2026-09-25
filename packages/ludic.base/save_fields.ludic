@@ -1,0 +1,60 @@
+# ludic.base/save_fields.ludic - reading a field with a fallback, and writing one. A float is kept
+# as thousandths in an int (rounded), so a value read back and written again is the same value.
+function sv_has(v: Val, key: string) -> bool {
+  if v == null { return false }
+  if Value.kind(v) != 6 { return false }
+  return Value.has(v, key) != 0
+}
+
+export function sv_int(v: Val, key: string, fallback: int) -> int {
+  if not sv_has(v, key) { return fallback }
+  return Value.as_int(Value.get(v, key))
+}
+
+export function sv_float(v: Val, key: string, fallback: float) -> float {
+  if not sv_has(v, key) { return fallback }
+  let f = Value.get(v, key)
+  if Value.kind(f) == 7 { return Value.as_float(f) }
+  return float(Value.as_int(f)) / 1000.0
+}
+
+export function sv_bool(v: Val, key: string, fallback: bool) -> bool {
+  if not sv_has(v, key) { return fallback }
+  return Value.as_int(Value.get(v, key)) != 0
+}
+
+export function sv_str(v: Val, key: string, fallback: string) -> string {
+  if not sv_has(v, key) { return fallback }
+  let s = Value.get(v, key)
+  if Value.kind(s) != 4 { return fallback }
+  return Value.as_str(s)
+}
+
+# a list of ints; a missing key or a non-list is the empty list
+export function sv_ints(v: Val, key: string) -> []int {
+  let out = new []int
+  if not sv_has(v, key) { return out }
+  let l = Value.get(v, key)
+  for i in 0 .. Value.count(l) { push(out, Value.as_int(Value.at(l, i))) }
+  return out
+}
+
+export function sv_put_int(v: Val, key: string, n: int) -> void { Value.put(v, key, Value.int(n)) }
+
+export function sv_put_float(v: Val, key: string, f: float) -> void {
+  Value.put(v, key, Value.int(int(Math.floor(f * 1000.0 + 0.5))))
+}
+
+export function sv_put_bool(v: Val, key: string, b: bool) -> void {
+  var n = 0
+  if b { n = 1 }
+  Value.put(v, key, Value.bool(n))
+}
+
+export function sv_put_str(v: Val, key: string, s: string) -> void { Value.put(v, key, Value.str(s)) }
+
+export function sv_put_ints(v: Val, key: string, xs: []int) -> void {
+  let l = Value.list()
+  for i in 0 .. len(xs) { Value.add(l, Value.int(xs[i])) }
+  Value.put(v, key, l)
+}

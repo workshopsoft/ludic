@@ -1,0 +1,80 @@
+# ludic.base/system.ludic - a system is a record of what it does at each verb, and the runner
+# calls them: init, reset, save and load in the order added, tick phase by phase. A null
+# function is a verb the system does not have. The game's list is the order co-op's dice need.
+export property System {
+  key: string = ""
+  phase: int = 2
+  version: int = 1
+  init: fn() -> void = null
+  reset: fn() -> void = null
+  tick: fn(Tick) -> void = null
+  save: fn() -> Val = null
+  load: fn(Val, int) -> void = null
+}
+
+var cs_list: []System = null
+
+function cs_all() -> []System {
+  if cs_list == null { cs_list = new []System }
+  return cs_list
+}
+
+export function system_new(key: string, phase: int) -> System {
+  let s = new System
+  s.key = key
+  s.phase = phase
+  return s
+}
+
+# a key is a save section's name, so two systems may not share one
+export function core_add(s: System) -> void {
+  let all = cs_all()
+  for i in 0 .. len(all) {
+    if all[i].key == s.key {
+      print(`ludic.base: two systems are keyed "{s.key}"`)
+      exit(1)
+    }
+  }
+  push(all, s)
+}
+
+export function core_clear() -> void { cs_list = new []System }
+export function core_count() -> int { return len(cs_all()) }
+
+export function core_init_all() -> void {
+  let all = cs_all()
+  for i in 0 .. len(all) { if all[i].init != null { all[i].init() } }
+}
+
+export function core_reset_all() -> void {
+  let all = cs_all()
+  for i in 0 .. len(all) { if all[i].reset != null { all[i].reset() } }
+}
+
+export function core_tick_all(t: Tick) -> void {
+  let all = cs_all()
+  for ph in 0 .. PH_COUNT {
+    for i in 0 .. len(all) {
+      if all[i].phase == ph and all[i].tick != null { all[i].tick(t) }
+    }
+  }
+}
+
+# every system that saves, under its key with its version
+export function core_save_all() -> Val {
+  let root = save_tree()
+  let all = cs_all()
+  for i in 0 .. len(all) {
+    if all[i].save != null { save_section(root, all[i].key, all[i].version, all[i].save()) }
+  }
+  return root
+}
+
+# each system its own section; one with no section (or no load) is reset instead
+export function core_load_all(root: Val) -> void {
+  let all = cs_all()
+  for i in 0 .. len(all) {
+    let n = load_section(root, all[i].key)
+    if n.found and all[i].load != null { all[i].load(n.data, n.version) } else if all[i].reset != null { all[i].reset() }
+  }
+}

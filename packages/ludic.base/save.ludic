@@ -1,0 +1,47 @@
+# ludic.base/save.ludic - the save is a tree, and each system writes its own section under its
+# own key with its own version: {"fishing": {"v": 3, ...}}. By key, never by position; a missing
+# key is a reset. The member "v" is the section's and a system may not use it.
+export property SaveNode {
+  found: bool = false
+  version: int = 0
+  data: Val = null
+}
+
+export function save_tree() -> Val { return Value.object() }
+
+# writes v (an object, or anything else, which is kept under "data") at root[key]
+export function save_section(root: Val, key: string, version: int, v: Val) -> void {
+  let sec = Value.object()
+  Value.put(sec, "v", Value.int(version))
+  if v == null {
+    Value.put(root, key, sec)
+    return
+  }
+  if Value.kind(v) == 6 {
+    for i in 0 .. Value.count(v) {
+      let k = Value.key_at(v, i)
+      if k != "v" { Value.put(sec, k, Value.at(v, i)) }
+    }
+  } else {
+    Value.put(sec, "data", v)
+  }
+  Value.put(root, key, sec)
+}
+
+# the section at root[key]: found false (and an empty object) when there is none
+export function load_section(root: Val, key: string) -> SaveNode {
+  let n = new SaveNode
+  n.data = Value.object()
+  if root == null { return n }
+  if Value.kind(root) != 6 or Value.has(root, key) == 0 { return n }
+  let sec = Value.get(root, key)
+  if Value.kind(sec) != 6 { return n }
+  n.found = true
+  n.version = sv_int(sec, "v", 0)
+  n.data = sec
+  if Value.count(sec) == 2 and Value.has(sec, "data") != 0 { n.data = Value.get(sec, "data") }
+  return n
+}
+
+export function save_encode(root: Val) -> string { return Json.encode(root) }
+export function save_decode(text: string) -> Val { return Json.parse(text) }

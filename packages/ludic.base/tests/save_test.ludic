@@ -1,0 +1,84 @@
+# save_test.ludic - the save tree: a section per key with its version, typed fields with
+# fallbacks, floats as thousandths, and a round trip through JSON
+import "ludic.base"
+program SaveTest {
+  numbers float
+
+  test "a section keeps its version and its fields" {
+    let root = save_tree()
+    let v = Value.object()
+    sv_put_int(v, "count", 7)
+    sv_put_float(v, "weight", 1.2345)
+    sv_put_bool(v, "lit", true)
+    sv_put_str(v, "name", "Crater Lake")
+    let xs = new []int
+    push(xs, 4)
+    push(xs, -2)
+    sv_put_ints(v, "pack", xs)
+    save_section(root, "fishing", 3, v)
+    let n = load_section(root, "fishing")
+    expect(n.found)
+    expect_eq(n.version, 3)
+    expect_eq(sv_int(n.data, "count", 0), 7)
+    expect(sv_float(n.data, "weight", 0.0) == 1.235)
+    expect(sv_bool(n.data, "lit", false))
+    expect(sv_str(n.data, "name", "") == "Crater Lake")
+    let back = sv_ints(n.data, "pack")
+    expect_eq(len(back), 2)
+    expect_eq(back[1], -2)
+  }
+
+  test "a missing section or field falls back" {
+    let root = save_tree()
+    let n = load_section(root, "weather")
+    expect(not n.found)
+    expect_eq(n.version, 0)
+    expect_eq(sv_int(n.data, "count", 5), 5)
+    expect(sv_float(n.data, "w", 2.5) == 2.5)
+    expect(sv_bool(n.data, "b", true))
+    expect(sv_str(n.data, "s", "x") == "x")
+    expect_eq(len(sv_ints(n.data, "l")), 0)
+    expect(not load_section(Value.int(3), "weather").found)
+  }
+
+  test "a section survives JSON, and each key is its own" {
+    let root = save_tree()
+    let a = Value.object()
+    sv_put_int(a, "n", 1)
+    let b = Value.object()
+    sv_put_int(b, "n", 2)
+    save_section(root, "clock", 1, a)
+    save_section(root, "needs", 4, b)
+    let text = save_encode(root)
+    let again = save_decode(text)
+    let c = load_section(again, "clock")
+    let d = load_section(again, "needs")
+    expect_eq(sv_int(c.data, "n", 0), 1)
+    expect_eq(sv_int(d.data, "n", 0), 2)
+    expect_eq(d.version, 4)
+    expect(save_encode(again) == text)
+  }
+
+  test "a float read and written again is the same thousandths" {
+    let v = Value.object()
+    sv_put_float(v, "f", 0.1)
+    let once = sv_float(v, "f", 0.0)
+    sv_put_float(v, "f", once)
+    expect_eq(Value.as_int(Value.get(v, "f")), 100)
+    sv_put_float(v, "g", -2.5)
+    expect(sv_float(v, "g", 0.0) == -2.5)
+    Value.put(v, "h", Value.float(0.75))
+    expect(sv_float(v, "h", 0.0) == 0.75)
+  }
+
+  test "a section that is not an object rides under data" {
+    let root = save_tree()
+    let l = Value.list()
+    Value.add(l, Value.int(9))
+    save_section(root, "log", 2, l)
+    let n = load_section(root, "log")
+    expect_eq(n.version, 2)
+    expect_eq(Value.kind(n.data), 5)
+    expect_eq(Value.as_int(Value.at(n.data, 0)), 9)
+  }
+}

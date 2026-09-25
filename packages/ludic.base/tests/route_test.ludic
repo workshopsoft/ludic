@@ -1,0 +1,68 @@
+# route_test.ludic - a game made of two mechanics that do not know each other: the route turns
+# fishing's facts into the pack's verbs, and the game binds fishing's port and orders them
+import "toys/fishing"
+import "toys/pack"
+import "ludic.base"
+program RouteTest {
+  numbers float
+
+  function water_everywhere_but_land(x: float, z: float) -> bool { return x < 100.0 }
+
+  # the route: a landed fish goes into the pack
+  function route_fishing_pack(t: Tick) -> void {
+    let fish = q_drain(caught)
+    for i in 0 .. len(fish) { pack_add(fish[i].species, 1) }
+  }
+
+  function game_start() -> void {
+    core_clear()
+    let w = new FishingWorld
+    w.is_water = fn water_everywhere_but_land
+    fishing_bind(w)
+    core_add(fishing_system())
+    let r = system_new("route.fishing_pack", PH_RESOLVE)
+    r.tick = fn route_fishing_pack
+    core_add(r)
+    core_add(pack_system())
+    core_reset_all()
+  }
+
+  function pack_total() -> int { return pack_count(0) + pack_count(1) + pack_count(2) }
+
+  test "three casts on water land three fish in the pack, one on land lands nothing" {
+    game_start()
+    expect(fishing_cast(1.0, 2.0))
+    expect(fishing_cast(3.0, 2.0))
+    expect(fishing_cast(5.0, 2.0))
+    expect(not fishing_cast(500.0, 2.0))
+    core_tick_all(tick_new(1.0 / 60.0, 0, 0.0))
+    expect_eq(pack_total(), 3)
+    expect_eq(len(core_undrained()), 0)
+  }
+
+  test "the pack saves its own section and the fishing, which saves nothing, is reset" {
+    game_start()
+    fishing_cast(1.0, 1.0)
+    core_tick_all(tick_new(1.0 / 60.0, 0, 0.0))
+    let text = save_encode(core_save_all())
+    let tree = save_decode(text)
+    expect_eq(Value.count(tree), 1)
+    expect_eq(load_section(tree, "pack").version, 1)
+    expect(not load_section(tree, "fishing").found)
+    core_reset_all()
+    expect_eq(pack_total(), 0)
+    core_load_all(save_decode(text))
+    expect_eq(pack_total(), 1)
+  }
+
+  test "the same seed lands the same fish" {
+    game_start()
+    fishing_cast(1.0, 1.0)
+    core_tick_all(tick_new(1.0 / 60.0, 0, 0.0))
+    let first = save_encode(core_save_all())
+    game_start()
+    fishing_cast(1.0, 1.0)
+    core_tick_all(tick_new(1.0 / 60.0, 0, 0.0))
+    expect(save_encode(core_save_all()) == first)
+  }
+}

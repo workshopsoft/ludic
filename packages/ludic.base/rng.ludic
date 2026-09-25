@@ -1,0 +1,44 @@
+# ludic.base/rng.ludic - a stream of dice a mechanic is handed, so it never draws from the global
+# generator and moving it cannot shift anyone else's rolls. xorshift32; the same seed, the same
+# rolls, on every machine.
+export property Rng {
+  s: int = 0x2545F491
+}
+
+export function rng_new(seed: int) -> Rng {
+  let r = new Rng
+  rng_seed(r, seed)
+  return r
+}
+
+export function rng_seed(r: Rng, seed: int) -> void {
+  var x = seed * 0x2C1B3C6D + 0x297A2D39
+  if x == 0 { x = 0x6B43A9B5 }
+  r.s = x
+}
+
+# a whole number in [0, 2^31); the right shift is masked because Ludic's is arithmetic
+export function rng_next(r: Rng) -> int {
+  var x = r.s
+  x = x ^ (x << 13)
+  x = x ^ ((x >> 17) & 0x7FFF)
+  x = x ^ (x << 5)
+  r.s = x
+  return x & 0x7FFFFFFF
+}
+
+# [0, 1), in steps of 1/65536 so it is exact in any float
+export function rng_float(r: Rng) -> float {
+  return float(rng_next(r) & 0xFFFF) / 65536.0
+}
+
+# a whole number in [lo, hi]. Not rng_range: that name is the global generator's (Random.range)
+export function rng_between(r: Rng, lo: int, hi: int) -> int {
+  if hi <= lo { return lo }
+  return lo + rng_next(r) % (hi - lo + 1)
+}
+
+# a float in [lo, hi)
+export function rng_span(r: Rng, lo: float, hi: float) -> float {
+  return lo + (hi - lo) * rng_float(r)
+}

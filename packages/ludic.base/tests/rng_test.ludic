@@ -1,0 +1,71 @@
+# rng_test.ludic - an Rng is a stream of its own: the same seed rolls the same, two streams do
+# not disturb each other or the global generator, and the ranges hold
+import "ludic.base"
+program RngTest {
+  numbers float
+
+  # a stream seeded with seed that has already rolled n times
+  function rng_after(seed: int, n: int) -> Rng {
+    let r = rng_new(seed)
+    for i in 0 .. n { rng_next(r) }
+    return r
+  }
+
+  test "the same seed rolls the same sequence" {
+    let a = rng_new(42)
+    let b = rng_new(42)
+    for i in 0 .. 100 { expect_eq(rng_next(a), rng_next(b)) }
+  }
+
+  test "different seeds differ" {
+    let a = rng_new(1)
+    let b = rng_new(2)
+    var same = 0
+    for i in 0 .. 50 { if rng_next(a) == rng_next(b) { same += 1 } }
+    expect(same < 5)
+  }
+
+  test "drawing from one stream does not move another" {
+    let a = rng_new(7)
+    let b = rng_new(7)
+    let noise = rng_new(99)
+    for i in 0 .. 20 {
+      rng_next(noise)
+      expect_eq(rng_next(a), rng_next(b))
+    }
+  }
+
+  test "reseeding starts the sequence again" {
+    let r = rng_new(5)
+    let first = rng_next(r)
+    rng_next(r)
+    rng_seed(r, 5)
+    expect_eq(rng_next(r), first)
+  }
+
+  test "the ranges hold and reach both ends" {
+    let r = rng_new(123)
+    var lo_seen = false
+    var hi_seen = false
+    for i in 0 .. 2000 {
+      let n = rng_between(r, 3, 6)
+      expect(n >= 3 and n <= 6)
+      if n == 3 { lo_seen = true }
+      if n == 6 { hi_seen = true }
+      let f = rng_float(r)
+      expect(f >= 0.0 and f < 1.0)
+      let s = rng_span(r, -2.0, 2.0)
+      expect(s >= -2.0 and s < 2.0)
+      expect(rng_next(r) >= 0)
+    }
+    expect(lo_seen and hi_seen)
+    expect_eq(rng_between(r, 4, 4), 4)
+  }
+
+  test "a known seed gives a known roll on every machine" {
+    let r = rng_new(1)
+    let x = rng_next(r)
+    expect_eq(x, 1822124854)
+    expect_eq(rng_between(r, 1, 6), rng_between(rng_after(1, 1), 1, 6))
+  }
+}

@@ -1,0 +1,63 @@
+# queue_test.ludic - Queue<T>: first in first out, drain empties, undrained queues are named.
+# A generic call is not resolved inside a `test` body yet, so each case is a function.
+import "ludic.base"
+program QueueTest {
+  numbers float
+  property Caught { species: int = 0, weight: float = 0.0 }
+
+  function caught(sp: int, w: float) -> Caught {
+    let c = new Caught
+    c.species = sp
+    c.weight = w
+    return c
+  }
+
+  function fifo_case() -> void {
+    let q: Queue<int> = q_new("ints")
+    q_push(q, 3)
+    q_push(q, 1)
+    q_push(q, 2)
+    expect_eq(q_len(q), 3)
+    let xs = q_drain(q)
+    expect_eq(len(xs), 3)
+    expect_eq(xs[0], 3)
+    expect_eq(xs[1], 1)
+    expect_eq(xs[2], 2)
+    expect_eq(q_len(q), 0)
+    expect_eq(len(q_drain(q)), 0)
+  }
+
+  function record_case() -> void {
+    let q: Queue<Caught> = q_new("caught")
+    q_push(q, caught(2, 1.5))
+    q_push(q, caught(4, 0.25))
+    let cs = q_drain(q)
+    expect_eq(cs[1].species, 4)
+    expect(cs[0].weight == 1.5)
+  }
+
+  function clear_case() -> void {
+    let q: Queue<string> = q_new("words")
+    q_push(q, "a")
+    q_clear(q)
+    expect_eq(q_len(q), 0)
+  }
+
+  function undrained_case() -> void {
+    let a: Queue<int> = q_new("left_behind")
+    let b: Queue<int> = q_new("read")
+    q_push(a, 1)
+    q_push(b, 2)
+    q_drain(b)
+    let names = core_undrained()
+    expect_eq(len(names), 1)
+    expect(names[0] == "left_behind")
+    q_drain(a)
+    expect_eq(len(core_undrained()), 0)
+  }
+
+  test "a queue drains in the order it was pushed" { fifo_case() }
+  test "a queue holds records" { record_case() }
+  test "clear drops what is waiting" { clear_case() }
+  test "the undrained queues are named, and a drain clears the report" { undrained_case() }
+}

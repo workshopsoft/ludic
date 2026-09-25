@@ -1,0 +1,28 @@
+# a toy mechanic: a pack of counts by kind, saved in its own section
+module toy_pack
+numbers float
+import "ludic.base"
+var counts: []int = null
+export function pack_add(kind: int, n: int) -> void { counts[kind] = counts[kind] + n }
+export function pack_count(kind: int) -> int { return counts[kind] }
+function pack_reset() -> void {
+  counts = new []int
+  for i in 0 .. 3 { push(counts, 0) }
+}
+function pack_save() -> Val {
+  let v = Value.object()
+  sv_put_ints(v, "counts", counts)
+  return v
+}
+function pack_load(v: Val, version: int) -> void {
+  pack_reset()
+  let xs = sv_ints(v, "counts")
+  for i in 0 .. len(xs) { if i < len(counts) { counts[i] = xs[i] } }
+}
+export function pack_system() -> System {
+  let s = system_new("pack", PH_COMMIT)
+  s.reset = fn pack_reset
+  s.save = fn pack_save
+  s.load = fn pack_load
+  return s
+}

@@ -1,0 +1,23 @@
+# ludic.base/tick.ludic - what one frame hands a system, and the phases that order systems. A
+# system names its phase; the game's list orders systems within one. Nobody says "after X".
+export property Tick {
+  dt: float = 0.0
+  frame: int = 0
+  hours: float = 0.0
+}
+
+export const PH_INPUT: int = 0
+export const PH_SENSE: int = 1
+export const PH_SIMULATE: int = 2
+export const PH_RESOLVE: int = 3
+export const PH_COMMIT: int = 4
+export const PH_PRESENT: int = 5
+export const PH_COUNT: int = 6
+
+export function tick_new(dt: float, frame: int, hours: float) -> Tick {
+  let t = new Tick
+  t.dt = dt
+  t.frame = frame
+  t.hours = hours
+  return t
+}

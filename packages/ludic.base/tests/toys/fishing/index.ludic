@@ -1,0 +1,36 @@
+# a toy mechanic: casting a line. It uses ludic.base and nothing else.
+module toy_fishing
+numbers float
+import "ludic.base"
+export property Caught { species: int = 0, weight: float = 0.0 }
+export property FishingWorld { is_water: fn(float, float) -> bool = null }  # its port
+var world: FishingWorld = null
+var dice: Rng = null
+var casts: int = 0
+export var caught: Queue<Caught> = null                                   # its facts
+export function fishing_bind(w: FishingWorld) -> void { world = w }
+export function fishing_cast(x: float, z: float) -> bool {                 # its verb
+  if not world.is_water(x, z) { return false }
+  casts += 1
+  return true
+}
+function fishing_reset() -> void {
+  casts = 0
+  dice = rng_new(7)
+  caught = q_new("fishing.caught")
+}
+function fishing_tick(t: Tick) -> void {
+  while casts > 0 {
+    let c = new Caught
+    c.species = rng_between(dice, 0, 2)
+    c.weight = 0.5 + rng_float(dice)
+    q_push(caught, c)
+    casts -= 1
+  }
+}
+export function fishing_system() -> System {
+  let s = system_new("fishing", PH_SIMULATE)
+  s.reset = fn fishing_reset
+  s.tick = fn fishing_tick
+  return s
+}

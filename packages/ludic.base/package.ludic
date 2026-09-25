@@ -1,0 +1,5 @@
+# ludic.base - the vocabulary every mechanic package shares and the only thing one may use:
+# Tick, phases, Queue<T>, rng streams, the save tree and the system runner. See README.md.
+package "ludic.base"
+version "0.1.0"
+kind source
