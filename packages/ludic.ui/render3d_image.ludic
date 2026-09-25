@@ -1,37 +1,37 @@
 # render3d_image.ludic - pictures for the render3d backend: a texture by path (its sRGB bytes as they
 # are, clamped at its edges, loaded again when the file changes) and a cell of a named atlas
 module ludic_ui
-function r3u_tex(ui_st: mut UiState, path: string) -> int {
+function r3u_tex(render3d_st: mut Render3dState, ui_st: mut UiState, path: string) -> int {
   for i in 0 .. len(ui_st.r3u_tex_paths) {
-    if ui_st.r3u_tex_paths[i] == path { return r3u_tex_fresh(ui_st, i) }
+    if ui_st.r3u_tex_paths[i] == path { return r3u_tex_fresh(render3d_st, ui_st, i) }
   }
   push(ui_st.r3u_tex_paths, path)
-  push(ui_st.r3u_tex_ids, r3u_tex_load(path))
+  push(ui_st.r3u_tex_ids, r3u_tex_load(render3d_st, path))
   push(ui_st.r3u_tex_sizes, Fs.size(path))
   push(ui_st.r3u_tex_seen, r3u_now())
   return ui_st.r3u_tex_ids[len(ui_st.r3u_tex_ids) - 1]
 }
 # a picture is looked at again every half second: a file that has changed (or that was not there,
 # and is now) is loaded again, so an <img> of a photograph written over the old one shows the new one
-function r3u_tex_fresh(ui_st: mut UiState, i: int) -> int {
+function r3u_tex_fresh(render3d_st: mut Render3dState, ui_st: mut UiState, i: int) -> int {
   let now = r3u_now()
   if now - ui_st.r3u_tex_seen[i] < 0.5 and now >= ui_st.r3u_tex_seen[i] { return ui_st.r3u_tex_ids[i] }
   ui_st.r3u_tex_seen[i] = now
   let size = Fs.size(ui_st.r3u_tex_paths[i])
   if size == ui_st.r3u_tex_sizes[i] and (ui_st.r3u_tex_ids[i] != 0 or size < 0) { return ui_st.r3u_tex_ids[i] }
-  if ui_st.r3u_tex_ids[i] != 0 { gpu_tex_free(ui_st.r3u_tex_ids[i]) }
-  ui_st.r3u_tex_ids[i] = r3u_tex_load(ui_st.r3u_tex_paths[i])
+  if ui_st.r3u_tex_ids[i] != 0 { gpu_tex_free(render3d_st, ui_st.r3u_tex_ids[i]) }
+  ui_st.r3u_tex_ids[i] = r3u_tex_load(render3d_st, ui_st.r3u_tex_paths[i])
   ui_st.r3u_tex_sizes[i] = size
   return ui_st.r3u_tex_ids[i]
 }
 # the interface is drawn in sRGB, and a picture's bytes are sRGB, so they are taken as they are
 # (not decoded to linear, which would darken it); clamped at its edges
-function r3u_tex_load(path: string) -> int {
-  let t = tex_load(path, false)
+function r3u_tex_load(render3d_st: mut Render3dState, path: string) -> int {
+  let t = tex_load(render3d_st, path, false)
   if t != 0 {
-    gpu_tex_bind(GPU_TEX2D, t)
-    gpu_tex_param(GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
-    gpu_tex_param(GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+    gpu_tex_bind(render3d_st, GPU_TEX2D, t)
+    gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+    gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
   }
   return t
 }
@@ -44,7 +44,7 @@ export function ui_image_reload(ui_st: mut UiState, path: string) -> void {
     }
   }
 }
-function r3u_image(ui_st: mut UiState, src: string, x: float, y: float, w: float, h: float, c: int, a: float) -> void {
+function r3u_image(render3d_st: mut Render3dState, ui_st: mut UiState, src: string, x: float, y: float, w: float, h: float, c: int, a: float) -> void {
   var colon = -1
   for i in 0 .. len(src) {
     if colon < 0 and src[i] == 58 { colon = i }
@@ -53,22 +53,22 @@ function r3u_image(ui_st: mut UiState, src: string, x: float, y: float, w: float
     let prefix: string = src[0..colon]
     for k in 0 .. len(ui_st.r3u_atlas) {
       if ui_st.r3u_atlas[k] == prefix {
-        r3u_cell(ui_st, k, src[colon + 1..len(src)], x, y, w, h, c, a)
+        r3u_cell(render3d_st, ui_st, k, src[colon + 1..len(src)], x, y, w, h, c, a)
         return
       }
     }
   }
-  let t = r3u_tex(ui_st, src)
-  if t != 0 { ov_sub(t, int(x), int(y), int(w), int(h), 0.0, 0.0, 1.0, 1.0, r3u_r(c), r3u_g(c), r3u_b(c), a) }
+  let t = r3u_tex(render3d_st, ui_st, src)
+  if t != 0 { ov_sub(render3d_st, t, int(x), int(y), int(w), int(h), 0.0, 0.0, 1.0, 1.0, r3u_r(c), r3u_g(c), r3u_b(c), a) }
 }
 # a picture's own size, for object-fit; an atlas cell is drawn square
-function r3u_image_w(ui_st: mut UiState, src: string) -> float {
+function r3u_image_w(render3d_st: mut Render3dState, ui_st: mut UiState, src: string) -> float {
   if r3u_is_cell(ui_st, src) { return 1.0 }
-  return float(tex_width(r3u_tex(ui_st, src)))
+  return float(tex_width(render3d_st, r3u_tex(render3d_st, ui_st, src)))
 }
-function r3u_image_h(ui_st: mut UiState, src: string) -> float {
+function r3u_image_h(render3d_st: mut Render3dState, ui_st: mut UiState, src: string) -> float {
   if r3u_is_cell(ui_st, src) { return 1.0 }
-  return float(tex_height(r3u_tex(ui_st, src)))
+  return float(tex_height(render3d_st, r3u_tex(render3d_st, ui_st, src)))
 }
 function r3u_is_cell(ui_st: UiState, src: string) -> bool {
   for k in 0 .. len(ui_st.r3u_atlas) {
@@ -77,7 +77,7 @@ function r3u_is_cell(ui_st: UiState, src: string) -> bool {
   }
   return false
 }
-function r3u_cell(ui_st: mut UiState, k: int, name: string, x: float, y: float, w: float, h: float, c: int, a: float) -> void {
+function r3u_cell(render3d_st: mut Render3dState, ui_st: mut UiState, k: int, name: string, x: float, y: float, w: float, h: float, c: int, a: float) -> void {
   let names = ui_st.r3u_atlas_names[k]
   var idx = -1
   for i in 0 .. len(names) {
@@ -95,5 +95,5 @@ function r3u_cell(ui_st: mut UiState, k: int, name: string, x: float, y: float, 
   let u0 = float(cx) / float(cols)
   let v0 = float(cy) / float(rows)
   let s = Math.min(w, h)
-  ov_sub(ui_st.r3u_atlas_tex[k], int(x + (w - s) / 2.0), int(y + (h - s) / 2.0), int(s), int(s), u0, v0, u0 + 1.0 / float(cols), v0 + 1.0 / float(rows), r3u_r(c), r3u_g(c), r3u_b(c), a)
+  ov_sub(render3d_st, ui_st.r3u_atlas_tex[k], int(x + (w - s) / 2.0), int(y + (h - s) / 2.0), int(s), int(s), u0, v0, u0 + 1.0 / float(cols), v0 + 1.0 / float(rows), r3u_r(c), r3u_g(c), r3u_b(c), a)
 }

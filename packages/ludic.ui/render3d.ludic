@@ -43,38 +43,38 @@ function r3u_scale(ui_st: UiState) -> float { return float(gl_height()) / 1080.0
 function r3u_r(c: int) -> float { return float((c / 65536) % 256) / 255.0 }
 function r3u_g(c: int) -> float { return float((c / 256) % 256) / 255.0 }
 function r3u_b(c: int) -> float { return float(c % 256) / 255.0 }
-function r3u_rect(x: float, y: float, w: float, h: float, c: int, a: float) -> void { ov_rect(int(x), int(y), int(w), int(h), r3u_r(c), r3u_g(c), r3u_b(c), a) }
+function r3u_rect(render3d_st: mut Render3dState, x: float, y: float, w: float, h: float, c: int, a: float) -> void { ov_rect(render3d_st, int(x), int(y), int(w), int(h), r3u_r(c), r3u_g(c), r3u_b(c), a) }
 # a rounded rectangle: a cross of two rects and a disc in each corner
-function r3u_round(x: float, y: float, w: float, h: float, rad0: float, c: int, a: float) -> void {
+function r3u_round(render3d_st: mut Render3dState, x: float, y: float, w: float, h: float, rad0: float, c: int, a: float) -> void {
   let rad = Math.min(rad0, Math.min(w, h) / 2.0)
   let r = r3u_r(c)
   let g = r3u_g(c)
   let b = r3u_b(c)
-  ov_rect(int(x + rad), int(y), int(w - rad * 2.0), int(h), r, g, b, a)
-  ov_rect(int(x), int(y + rad), int(rad), int(h - rad * 2.0), r, g, b, a)
-  ov_rect(int(x + w - rad), int(y + rad), int(rad), int(h - rad * 2.0), r, g, b, a)
-  ov_disc(x + rad, y + rad, rad, 12, r, g, b, a)
-  ov_disc(x + w - rad, y + rad, rad, 12, r, g, b, a)
-  ov_disc(x + rad, y + h - rad, rad, 12, r, g, b, a)
-  ov_disc(x + w - rad, y + h - rad, rad, 12, r, g, b, a)
+  ov_rect(render3d_st, int(x + rad), int(y), int(w - rad * 2.0), int(h), r, g, b, a)
+  ov_rect(render3d_st, int(x), int(y + rad), int(rad), int(h - rad * 2.0), r, g, b, a)
+  ov_rect(render3d_st, int(x + w - rad), int(y + rad), int(rad), int(h - rad * 2.0), r, g, b, a)
+  ov_disc(render3d_st, x + rad, y + rad, rad, 12, r, g, b, a)
+  ov_disc(render3d_st, x + w - rad, y + rad, rad, 12, r, g, b, a)
+  ov_disc(render3d_st, x + rad, y + h - rad, rad, 12, r, g, b, a)
+  ov_disc(render3d_st, x + w - rad, y + h - rad, rad, 12, r, g, b, a)
 }
 # a rounded frame: four straight edges and a quarter arc at each corner
-function r3u_ring(x: float, y: float, w: float, h: float, rad0: float, t: float, c: int, a: float) -> void {
+function r3u_ring(render3d_st: mut Render3dState, x: float, y: float, w: float, h: float, rad0: float, t: float, c: int, a: float) -> void {
   let rad = Math.min(rad0, Math.min(w, h) / 2.0)
   let r = r3u_r(c)
   let g = r3u_g(c)
   let b = r3u_b(c)
-  ov_rect(int(x + rad), int(y), int(w - rad * 2.0), int(t), r, g, b, a)
-  ov_rect(int(x + rad), int(y + h - t), int(w - rad * 2.0), int(t), r, g, b, a)
-  ov_rect(int(x), int(y + rad), int(t), int(h - rad * 2.0), r, g, b, a)
-  ov_rect(int(x + w - t), int(y + rad), int(t), int(h - rad * 2.0), r, g, b, a)
+  ov_rect(render3d_st, int(x + rad), int(y), int(w - rad * 2.0), int(t), r, g, b, a)
+  ov_rect(render3d_st, int(x + rad), int(y + h - t), int(w - rad * 2.0), int(t), r, g, b, a)
+  ov_rect(render3d_st, int(x), int(y + rad), int(t), int(h - rad * 2.0), r, g, b, a)
+  ov_rect(render3d_st, int(x + w - t), int(y + rad), int(t), int(h - rad * 2.0), r, g, b, a)
   let q = 1.5707964
-  ov_arc(x + rad, y + rad, rad - t / 2.0, t, q * 2.0, q, 8, r, g, b, a)
-  ov_arc(x + w - rad, y + rad, rad - t / 2.0, t, q * 3.0, q, 8, r, g, b, a)
-  ov_arc(x + w - rad, y + h - rad, rad - t / 2.0, t, 0.0, q, 8, r, g, b, a)
-  ov_arc(x + rad, y + h - rad, rad - t / 2.0, t, q, q, 8, r, g, b, a)
+  ov_arc(render3d_st, x + rad, y + rad, rad - t / 2.0, t, q * 2.0, q, 8, r, g, b, a)
+  ov_arc(render3d_st, x + w - rad, y + rad, rad - t / 2.0, t, q * 3.0, q, 8, r, g, b, a)
+  ov_arc(render3d_st, x + w - rad, y + h - rad, rad - t / 2.0, t, 0.0, q, 8, r, g, b, a)
+  ov_arc(render3d_st, x + rad, y + h - rad, rad - t / 2.0, t, q, q, 8, r, g, b, a)
 }
-function r3u_text(x: float, y: float, s: string, size: float, c: int, a: float) -> void { ov_text(int(x), int(y), int(size), s, r3u_r(c), r3u_g(c), r3u_b(c), a) }
-function r3u_measure(s: string, size: float) -> float { return float(ov_text_w(int(size), s)) }
-function r3u_clip(x: float, y: float, w: float, h: float) -> void { ov_clip(int(x), int(y), int(w), int(h)) }
-function r3u_unclip() -> void { ov_unclip() }
+function r3u_text(render3d_st: mut Render3dState, x: float, y: float, s: string, size: float, c: int, a: float) -> void { ov_text(render3d_st, int(x), int(y), int(size), s, r3u_r(c), r3u_g(c), r3u_b(c), a) }
+function r3u_measure(render3d_st: mut Render3dState, s: string, size: float) -> float { return float(ov_text_w(render3d_st, int(size), s)) }
+function r3u_clip(render3d_st: mut Render3dState, x: float, y: float, w: float, h: float) -> void { ov_clip(render3d_st, int(x), int(y), int(w), int(h)) }
+function r3u_unclip(render3d_st: mut Render3dState) -> void { ov_unclip(render3d_st) }

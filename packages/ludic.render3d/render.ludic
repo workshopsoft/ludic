@@ -5,8 +5,6 @@
 # scene_draw_casters, which the demo defines.
 # ============================================================================
 
-let r3d_fog_scale: float = 1.0   # float bits: a setting's multiplier over the density the day sets
-let r3d_fog_base: float = 0.0            # the height fog is measured from (float bits); 0 = y = 0
 # Both of these are the DAY's, set by daylight_set from the sun's own elevation. The inscatter
 # is how hard the air scatters the sun forward - nearly nothing at noon, and the glow a ridge
 # is silhouetted against at dusk. The desaturation is how fast distance takes a surface's own
@@ -17,26 +15,13 @@ let r3d_fog_base: float = 0.0            # the height fog is measured from (floa
 # and a moon, and relighting on top of those would only wash them out.
 # What the ground reflects back up, low and high, and the height they cross at. The defaults
 # are Maroon Lake's - a green basin under a grey-rock treeline at about 480 m over the datum.
-let r3d_ground_alb_r: float = 0.3;  let r3d_ground_alb_g: float = 0.34;  let r3d_ground_alb_b: float = 0.14
-let r3d_ground_hi_r: float = 0.289;  let r3d_ground_hi_g: float = 0.28;  let r3d_ground_hi_b: float = 0.26
-let r3d_ground_hi_y: float = 480.0    # 480
-let r3d_ground_hi_w: float = 150.0    # 150
 # set before r3d_init to build the landscape from a real height map
-let r3d_dem_path: string = null
-let r3d_dem_min: float = 0.0
-let r3d_dem_max: float = 0.0
-let r3d_dem_base: float = 0.0
-let r3d_dem_ox: float = 0.0
-let r3d_dem_oz: float = 0.0
-let r3d_ortho_path: string = null
 # A plate: no terrain, no grass, no water - the sky, the sun, the shadows and whatever the scene
 # draws (a lab's stage, ludic.lab). Set before the load; nothing of the landscape is made, so
 # its hundreds of megabytes of height field, materials and grass never exist.
 function r3d_plate_mode(render3d_st: mut Render3dState, on: bool) -> void { render3d_st.r3d_plate = on }
 # the sky's HDR image, when it is not the default photograph under r3d_assets
-let r3d_debug_max: bool = false
 
-let r3d_cloud_shadow: float = 0.5     # 0.5
 
 # R3D_NOPREPASS=1: light the foliage the old way, every card behind the front one included
 function r3d_prepass_off(render3d_st: mut Render3dState) -> bool {
@@ -48,14 +33,14 @@ function fog_bind(render3d_st: mut Render3dState, prog: int) -> void {
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_spec_scale"), 1.0)
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_fog_density"), render3d_st.r3d_fog_density)
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_fog_height_falloff"), render3d_st.r3d_fog_falloff)
-  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_fog_base"), r3d_fog_base)
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_fog_base"), render3d_st.r3d_fog_base)
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_fog_inscatter"), render3d_st.r3d_fog_inscatter)
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_fog_desat"), render3d_st.r3d_fog_desat)
-  u_f3(render3d_st, gpu_uniform(render3d_st, prog, "u_ground_alb"), r3d_ground_alb_r, r3d_ground_alb_g, r3d_ground_alb_b)
-  u_f3(render3d_st, gpu_uniform(render3d_st, prog, "u_ground_alb_hi"), r3d_ground_hi_r, r3d_ground_hi_g, r3d_ground_hi_b)
-  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_ground_hi_y"), r3d_ground_hi_y)
-  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_ground_hi_w"), r3d_ground_hi_w)
-  var cs = r3d_cloud_shadow
+  u_f3(render3d_st, gpu_uniform(render3d_st, prog, "u_ground_alb"), render3d_st.r3d_ground_alb_r, render3d_st.r3d_ground_alb_g, render3d_st.r3d_ground_alb_b)
+  u_f3(render3d_st, gpu_uniform(render3d_st, prog, "u_ground_alb_hi"), render3d_st.r3d_ground_hi_r, render3d_st.r3d_ground_hi_g, render3d_st.r3d_ground_hi_b)
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_ground_hi_y"), render3d_st.r3d_ground_hi_y)
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_ground_hi_w"), render3d_st.r3d_ground_hi_w)
+  var cs = render3d_st.r3d_cloud_shadow
   if r3d_env_has(render3d_st, "R3D_NOCLOUD") { cs = 0.0 }
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_cloud_shadow"), cs)
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_time"), render3d_st.r3d_time)
@@ -118,8 +103,8 @@ function r3d_load_step(render3d_st: mut Render3dState, i: int) -> bool {
   } else if t >= 0 and t < TERRAIN_INIT_STEPS {
     if render3d_st.r3d_plate { return true }
     if t == 0 {
-      if r3d_dem_path != null { terrain_use_dem(render3d_st, r3d_dem_path, r3d_dem_min, r3d_dem_max, r3d_dem_base, r3d_dem_ox, r3d_dem_oz) }
-      if r3d_ortho_path != null { terrain_use_ortho(render3d_st, r3d_ortho_path) }
+      if render3d_st.r3d_dem_path != null { terrain_use_dem(render3d_st, render3d_st.r3d_dem_path, render3d_st.r3d_dem_min, render3d_st.r3d_dem_max, render3d_st.r3d_dem_base, render3d_st.r3d_dem_ox, render3d_st.r3d_dem_oz) }
+      if render3d_st.r3d_ortho_path != null { terrain_use_ortho(render3d_st, render3d_st.r3d_ortho_path) }
     }
     terrain_init_step(render3d_st, t)
   } else if i == 1 + TERRAIN_INIT_STEPS {
@@ -282,7 +267,7 @@ function r3d_frame(render3d_st: mut Render3dState, time: float) -> void {
   prof_begin(render3d_st, "volumetric");  post_volumetric_pass(render3d_st);  prof_end(render3d_st)
   prof_begin(render3d_st, "dof");  post_dof_pass(render3d_st);  prof_end(render3d_st)
   if not render3d_st.post_no_gi { prof_begin(render3d_st, "SSAO/GI");  post_ssao_pass(render3d_st);  prof_end(render3d_st) }
-  if r3d_debug_max { tex_max(render3d_st, render3d_st.post_hdr.color, render3d_st.post_hdr.w, render3d_st.post_hdr.h, "hdr") }
+  if render3d_st.r3d_debug_max { tex_max(render3d_st, render3d_st.post_hdr.color, render3d_st.post_hdr.w, render3d_st.post_hdr.h, "hdr") }
   prof_begin(render3d_st, "bloom")
   post_bloom_pass(render3d_st)
   prof_end(render3d_st)

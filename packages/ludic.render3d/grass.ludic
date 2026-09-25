@@ -17,15 +17,10 @@ const GRASS_CELL: int = 16
 # valley the same blade. A real blade has a midrib, a colour that runs olive to straw,
 # browning where it has dried and a tip that is its own shape - none of which can be
 # written down, only photographed.
-let grass_blade_tex: int = 0
-let grass_blade_cols: int = 8
 # Where a body is standing, and how wide it pushes. The grass has never known the player was
 # in it: you walked through a meadow and every blade ignored you, which is the single most
 # noticeable thing missing from every step the game asks you to take. The game sets this each
 # frame; radius 0 means nobody is there.
-let grass_push_x: float = 0.0
-let grass_push_z: float = 0.0
-let grass_push_r: float = 0.0
 # Vulkan with multi-draw indirect: every visible tile is a record in one buffer, uploaded once a
 # frame, and each band draws its records GRASS_CHUNK at a time - one draw for up to 256 tiles. A
 # record's firstInstance is its place in its chunk times 65536; grass.vert's TILES variant reads that
@@ -194,13 +189,13 @@ function grass_draw(render3d_st: mut Render3dState) -> void {
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_wind"), render3d_st.grass_wind)
   # copied into a local first: a global reaching a uniform call is the codegen fault
   # CLAUDE.md records against u_wade and u_flutter, and it costs a day every time
-  let btex = grass_blade_tex
-  let bcols = grass_blade_cols
+  let btex = render3d_st.grass_blade_tex
+  let bcols = render3d_st.grass_blade_cols
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_blade_cols"), float(bcols))
   var bon = 0.0
   if btex != 0 { bon = 1.0;  r3d_bind_2d(render3d_st, p, "u_blade_tex", 12, btex) }
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_blade_tex_on"), bon)
-  u_f3(render3d_st, gpu_uniform(render3d_st, p, "u_push"), grass_push_x, grass_push_z, grass_push_r)
+  u_f3(render3d_st, gpu_uniform(render3d_st, p, "u_push"), render3d_st.grass_push_x, render3d_st.grass_push_z, render3d_st.grass_push_r)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_rough_scale"), 1.0)
   u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_tint"), render3d_st.sc_blade_tint)
   u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_blade_base"), render3d_st.sc_blade_base)

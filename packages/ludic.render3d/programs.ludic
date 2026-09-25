@@ -11,7 +11,6 @@
 # toolchain and redistributable from their origin, so they are fetched into the project
 # (`ludic assets`) and read from there.
 # defines prepended to EVERY program (set before any is built): renderer-wide switches
-let r3d_global_defs: string = ""
 
 function r3d_set_paths(render3d_st: mut Render3dState, root: string, assets: string) -> void { render3d_st.r3d_root = root;  render3d_st.r3d_assets = assets }
 
@@ -50,7 +49,7 @@ function r3d_shader_src(render3d_st: mut Render3dState, name: string, defines: s
   # ripples in the fragment one, and they have to be reading the same field or the meadow and
   # the lake disagree about the weather
   if render3d_st.r3d_wind_src == null { render3d_st.r3d_wind_src = r3d_shader_file(render3d_st, "wind.glsl") }
-  var s = "#version 410 core\n" + r3d_global_defs + defines + render3d_st.r3d_wind_src
+  var s = "#version 410 core\n" + render3d_st.r3d_global_defs + defines + render3d_st.r3d_wind_src
   if is_frag { s = s + render3d_st.r3d_noise_src + render3d_st.r3d_lighting_src }
   return s + r3d_shader_file(render3d_st, name)
 }
@@ -64,14 +63,14 @@ function r3d_program_log(render3d_st: mut Render3dState, vs: string, fs: string,
   let f = file_open(r3d_env(render3d_st, "R3D_PROGRAMS_LOG"), "ab")
   if f == null { return }
   # one line per program: the defines' newlines become ';' so a variant is one line
-  let defs = Text.replace(`{r3d_global_defs}{defines}`, "\n", ";")
+  let defs = Text.replace(`{render3d_st.r3d_global_defs}{defines}`, "\n", ";")
   let line = `{vs}|{fs}|{defs}\n`
   file_write(f, line, len(line))
   file_close(f)
 }
 function r3d_program(render3d_st: mut Render3dState, vs: string, fs: string, defines: string) -> int {
   r3d_program_log(render3d_st, vs, fs, defines)
-  let p = gpu_program(render3d_st, r3d_shader_src(render3d_st, vs, defines, false), r3d_shader_src(render3d_st, fs, defines, true), vs, fs, `{r3d_global_defs}{defines}`)
+  let p = gpu_program(render3d_st, r3d_shader_src(render3d_st, vs, defines, false), r3d_shader_src(render3d_st, fs, defines, true), vs, fs, `{render3d_st.r3d_global_defs}{defines}`)
   if p == 0 { print(`r3d: program failed: {vs} + {fs}`) }
   return p
 }

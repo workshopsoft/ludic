@@ -6,7 +6,6 @@
 
 const BLOOM_LEVELS: int = 6
 
-let post_auto: bool = true
 # ---- the grade ------------------------------------------------------------------------------
 # White balance, the shadows' floor and the highlights' gain. These were nine literals bound at
 # the draw, so the game had the same colour at seven in the morning as at one in the afternoon -
@@ -16,24 +15,15 @@ let post_auto: bool = true
 # They are plain ints rather than a v3 on purpose: a grade is written by daylight_set, which can
 # run before post_init has allocated anything, and nine ints cannot be null.
 
-let post_contact: float = 1.25   # 1.25: how hard a thing is darkened where it meets the ground
 # ---- volumetric light ----------------------------------------------------------------------
 # Half resolution on purpose: in-scattered light is smooth, a shaft has no sharp edge, and the
 # march is the whole cost of the pass. post_vol_steps is the quality dial; 0 switches it off
 # and the pass is skipped entirely rather than run at one step.
-let post_vol_steps: float = 24.0        # 24
-let post_vol_far: float = 800.0          # 800 m
-let post_vol_g: float = 0.6            # 0.6: air throws light forward
-let post_vol_mist_h: float = 40.0       # 40 m
 # Spatial anti-aliasing, in the sharpen pass because that pass already reads this pixel's
 # neighbourhood and runs last on the LDR image. 1 on, 0 off; the game's setting drives it.
-let post_fxaa: float = 1.0
 # ---- depth of field ------------------------------------------------------------------------
 # Off in ordinary play - the pass is skipped whole, not run at zero radius. The game turns it on
 # behind the viewfinder and says what to focus on.
-let post_dof_focus: float = 10.0      # 10 m
-let post_dof_aperture: float = 0.0            # 0 = no lens, and no pass
-let post_dof_max: float = 12.0        # 12 px
 # the LDR image is 10-bit while the output is HDR10: PQ in 8 bits bands
 function post_ldr_fmt(render3d_st: Render3dState) -> int { if gpu_hdr_active(render3d_st) { return GL_RGB10_A2 };  return GL_RGBA8 }
 
@@ -236,7 +226,7 @@ function post_ssao_pass(render3d_st: mut Render3dState) -> void {
   u_f2(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_texel"), 1.0 / float(render3d_st.post_w), 1.0 / float(render3d_st.post_h))
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_radius"), render3d_st.post_ao_radius)
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_intensity"), render3d_st.post_ao_intensity)
-  var contact = post_contact
+  var contact = render3d_st.post_contact
   if r3d_env_has(render3d_st, "R3D_NOCONTACT") { contact = 0.0 }
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_contact"), contact)
   mesh_draw(render3d_st, render3d_st.post_fs)
@@ -252,7 +242,7 @@ function post_ssao_pass(render3d_st: mut Render3dState) -> void {
 # light is a bright thing in the air and should bloom like one, and compositing it after the
 # bloom pyramid would give hard-edged rays with no glow at all.
 function post_volumetric_pass(render3d_st: mut Render3dState) -> void {
-  if post_vol_steps <= 0.0 { return }
+  if render3d_st.post_vol_steps <= 0.0 { return }
   if r3d_env_has(render3d_st, "R3D_NOVOL") { return }
   gpu_depth_test(render3d_st, false)
   gpu_blend(render3d_st, false)
@@ -267,13 +257,13 @@ function post_volumetric_pass(render3d_st: mut Render3dState) -> void {
   u_v3(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_vol, "u_cam_pos"), render3d_st.cam_pos)
   u_v3(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_vol, "u_sun_dir"), render3d_st.sun_dir)
   u_v3(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_vol, "u_sun_color"), render3d_st.sun_color)
-  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_vol, "u_vol_steps"), post_vol_steps)
+  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_vol, "u_vol_steps"), render3d_st.post_vol_steps)
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_vol, "u_vol_density"), render3d_st.post_vol_density)
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_vol, "u_vol_falloff"), render3d_st.post_vol_falloff)
-  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_vol, "u_vol_far"), post_vol_far)
-  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_vol, "u_vol_g"), post_vol_g)
+  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_vol, "u_vol_far"), render3d_st.post_vol_far)
+  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_vol, "u_vol_g"), render3d_st.post_vol_g)
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_vol, "u_vol_mist"), render3d_st.post_vol_mist)
-  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_vol, "u_vol_mist_h"), post_vol_mist_h)
+  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_vol, "u_vol_mist_h"), render3d_st.post_vol_mist_h)
   mesh_draw(render3d_st, render3d_st.post_fs)
   # Composite into the HDR scene with the bloom pyramid's own upsample - a 3x3 tent under
   # ONE/ONE blending, which is exactly what is wanted here and already exists, rather than a
@@ -293,7 +283,7 @@ function post_volumetric_pass(render3d_st: mut Render3dState) -> void {
 # The lens, between the scene and the bloom: a blurred highlight should still bloom, and a
 # bloom smeared by the lens afterwards would be a halo round nothing.
 function post_dof_pass(render3d_st: mut Render3dState) -> void {
-  if post_dof_aperture == 0.0 { return }
+  if render3d_st.post_dof_aperture == 0.0 { return }
   gpu_depth_test(render3d_st, false)
   gpu_blend(render3d_st, false)
   target_bind(render3d_st, render3d_st.post_dof)
@@ -302,9 +292,9 @@ function post_dof_pass(render3d_st: mut Render3dState) -> void {
   r3d_bind_2d(render3d_st, render3d_st.post_p_dof, "u_depth", 1, render3d_st.post_hdr.depth)
   u_mat4(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_dof, "u_inv_proj"), render3d_st.cam_inv_proj)
   u_f2(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_dof, "u_texel"), 1.0 / float(render3d_st.post_w), 1.0 / float(render3d_st.post_h))
-  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_dof, "u_focus"), post_dof_focus)
-  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_dof, "u_aperture"), post_dof_aperture)
-  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_dof, "u_max_coc"), post_dof_max)
+  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_dof, "u_focus"), render3d_st.post_dof_focus)
+  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_dof, "u_aperture"), render3d_st.post_dof_aperture)
+  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_dof, "u_max_coc"), render3d_st.post_dof_max)
   mesh_draw(render3d_st, render3d_st.post_fs)
   render3d_st.post_color = render3d_st.post_dof.color
 }
@@ -355,7 +345,7 @@ function post_tonemap(render3d_st: mut Render3dState, color_tex: int) -> void {
     render3d_st.post_ldr = target_new(render3d_st, w, h, post_ldr_fmt(render3d_st), GL_RGBA, GL_UNSIGNED_BYTE, false, GL_LINEAR)
     render3d_st.post_ldr_hdr = gpu_hdr_active(render3d_st)
   }
-  if post_auto { post_measure(render3d_st) }
+  if render3d_st.post_auto { post_measure(render3d_st) }
   target_bind(render3d_st, render3d_st.post_ldr)
   gpu_depth_test(render3d_st, false)
   gpu_use_program(render3d_st, prog)
@@ -366,7 +356,7 @@ function post_tonemap(render3d_st: mut Render3dState, color_tex: int) -> void {
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_gi_strength"), render3d_st.post_gi_strength)
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_exposure"), render3d_st.post_exposure)
   var auto = 0.0
-  if post_auto and render3d_st.post_adapt_t != null { auto = 1.0;  r3d_bind_2d(render3d_st, prog, "u_adapt", 3, render3d_st.post_adapt_t[render3d_st.post_adapt_i].color) }
+  if render3d_st.post_auto and render3d_st.post_adapt_t != null { auto = 1.0;  r3d_bind_2d(render3d_st, prog, "u_adapt", 3, render3d_st.post_adapt_t[render3d_st.post_adapt_i].color) }
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_auto"), auto)
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_bloom_strength"), float_from_bits(render3d_st.post_bloom_strength))
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_vignette"), render3d_st.post_vignette)
@@ -387,7 +377,7 @@ function post_tonemap(render3d_st: mut Render3dState, color_tex: int) -> void {
   r3d_bind_2d(render3d_st, render3d_st.post_p_sharp, "u_src", 0, render3d_st.post_ldr.color)
   u_f2(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_sharp, "u_texel"), 1.0 / float(render3d_st.post_ldr.w), 1.0 / float(render3d_st.post_ldr.h))
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_sharp, "u_amount"), render3d_st.post_sharpen)
-  var fx = post_fxaa
+  var fx = render3d_st.post_fxaa
   if r3d_env_has(render3d_st, "R3D_NOFXAA") { fx = 0.0 }
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_sharp, "u_fxaa"), fx)
   # R3D_NOGRAIN=1: no film grain, so two frames of a still camera can be compared for what else moves

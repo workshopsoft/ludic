@@ -331,7 +331,6 @@ function model_blade(render3d_st: mut Render3dState) -> Model {
 # shader that only runs the alpha test, then the lit pass shades them with no discard and
 # an equal depth test, so a pixel of needles is lit once rather than once for every card
 # stacked behind it. In a dense stand at 4K that overdraw was the largest pass in the frame.
-let sc_a2c: bool = true
 
 function scatter_init(render3d_st: mut Render3dState) -> void {
   # R3D_DUMP_ATLAS: every impostor and card atlas the run bakes, to build/atlas_<n>_{color,alpha}.ppm
@@ -407,7 +406,6 @@ function layer_add(l: Layer, x: float, y: float, z: float, scale: float, yaw: fl
 }
 
 # ---- impostors ---------------------------------------------------------------------
-let sc_bake_flower: bool = false
 function impostor_bake(render3d_st: mut Render3dState, model: Model, tiles: int, tw: int, th: int) -> Impostor {
   let im = new Impostor
   im.tiles = tiles
@@ -439,7 +437,7 @@ function impostor_bake(render3d_st: mut Render3dState, model: Model, tiles: int,
   let r = im.radius
   let hh = model.height * 0.5
   var bake = render3d_st.sc_bake_prog
-  if sc_bake_flower { bake = render3d_st.sc_bake_flower_prog }
+  if render3d_st.sc_bake_flower { bake = render3d_st.sc_bake_flower_prog }
   gpu_use_program(render3d_st, bake)
   for t in 0 .. tiles {
     let a = 2.0 * PI * (float(t) / float(tiles))
@@ -910,7 +908,6 @@ function layer_program(render3d_st: Render3dState, l: Layer, shadow: bool, card:
   return render3d_st.sc_prog
 }
 
-let sc_dbg_blade: int = 0
 # R3D_LODDBG=1 tints each LOD level (red, green, blue, yellow) and impostors magenta
 # Can level k's casters (its instances lie between the previous level's distance and its own) put a
 # shadow on anything the cascade being rendered covers? A receiver in that slice of view depth
@@ -999,7 +996,7 @@ function layer_draw_model(render3d_st: mut Render3dState, l: Layer, model: Model
   var mh = 0.0
   if not card and l.foliage { mh = model.height }
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_model_h"), mh)
-  if not card and l.foliage and not shadow and sc_a2c { gpu_alpha_to_coverage(render3d_st, true) }
+  if not card and l.foliage and not shadow and render3d_st.sc_a2c { gpu_alpha_to_coverage(render3d_st, true) }
   if card {
     u_f(render3d_st, gpu_uniform(render3d_st, p, "u_card_w"), l.atlas.radius * 2.0);  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_card_h"), l.atlas.height)
     r3d_bind_2d(render3d_st, p, "u_diff", 0, l.atlas.albedo)
@@ -1069,7 +1066,7 @@ function layer_draw_far(render3d_st: mut Render3dState, l: Layer, shadow: bool, 
     if l.foliage { u_f(render3d_st, gpu_uniform(render3d_st, p, "u_spec_scale"), 0.05) }
   }
   gpu_cull(render3d_st, false)
-  if not shadow and sc_a2c { gpu_alpha_to_coverage(render3d_st, true) }
+  if not shadow and render3d_st.sc_a2c { gpu_alpha_to_coverage(render3d_st, true) }
   if l.g_on {
     scatter_attach(render3d_st, render3d_st.sc_card, l.g_dst)
     gpu_draw_mesh_indirect(render3d_st, render3d_st.sc_card, l.g_cmds, 16 * SC_REC_W, 1, 0, 0)
@@ -1101,7 +1098,6 @@ function layer_draw_shadow(render3d_st: mut Render3dState, l: Layer, light_vp: f
   mesh_draw_instanced(render3d_st, render3d_st.sc_card, l.n_sh)
 }
 
-let sc_skip_flower: bool = false
 
 # ---- the foliage depth prepass -----------------------------------------------------------
 # Exactly the instances and positions layer_draw_model will light (the same LOD buckets,
@@ -1157,7 +1153,7 @@ function scatter_draw(render3d_st: mut Render3dState) -> void {
   for i in 0 .. len(render3d_st.sc_layers) {
     let l = render3d_st.sc_layers[i]
     if render3d_st.sc_skip_blade and l.blade { continue }
-    if sc_skip_flower and l.flower { continue }
+    if render3d_st.sc_skip_flower and l.flower { continue }
     if render3d_st.sc_skip_card and l.card { continue }
     if render3d_st.r3d_no_trees and l.imp != null and not l.card { continue }
     layer_update(render3d_st, l)

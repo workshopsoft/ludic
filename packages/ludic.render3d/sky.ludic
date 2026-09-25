@@ -7,11 +7,9 @@
 
 const SKY_PREFILTER_LEVELS: int = 6
 
-let sky_sun_boost: float = 2.3   # 2.3: the photograph's thin cloud dims its sun; a crisper day wants more
 # The yaw to bake the light at the first time (radians, float bits). A game that turns the sky at
 # start sets it before r3d_init, so the image-based light is baked once at that yaw rather than at
 # 0 and then again - which is what sky_set_yaw at boot used to cost.
-let sky_start_yaw: float = 0.0
 
 # turn the HDRI so its sun sits at world azimuth `yaw` (radians, 0 = toward -z)
 function sky_set_yaw(render3d_st: mut Render3dState, yaw: float) -> void {
@@ -50,11 +48,11 @@ function sky_load(render3d_st: mut Render3dState, path: string) -> bool {
   render3d_st.sky_rot_c = 1.0
   # the sun's irradiance is what the IBL clip leaves out of the map; lighting it
   # directly with that keeps sun and sky in the photograph's own proportion
-  render3d_st.sun_color = v3_new(render3d_st.hdr_sun_r * sky_sun_boost, render3d_st.hdr_sun_g * sky_sun_boost, render3d_st.hdr_sun_b * sky_sun_boost)
+  render3d_st.sun_color = v3_new(render3d_st.hdr_sun_r * render3d_st.sky_sun_boost, render3d_st.hdr_sun_g * render3d_st.sky_sun_boost, render3d_st.hdr_sun_b * render3d_st.sky_sun_boost)
   print(`sun irradiance: {fixed(render3d_st.hdr_sun_r)} {fixed(render3d_st.hdr_sun_g)} {fixed(render3d_st.hdr_sun_b)} (Q16.16), clip {fixed(render3d_st.hdr_clip)}`)
   print(`sky: {render3d_st.sky_w}x{render3d_st.sky_h}, sun at texel {render3d_st.hdr_max_x},{render3d_st.hdr_max_y}`)
   render3d_st.sky_fullscreen = mesh_fullscreen(render3d_st)
-  if sky_start_yaw != 0.0 { sky_set_yaw(render3d_st, sky_start_yaw) } else { sky_precompute(render3d_st) }
+  if render3d_st.sky_start_yaw != 0.0 { sky_set_yaw(render3d_st, render3d_st.sky_start_yaw) } else { sky_precompute(render3d_st) }
   return true
 }
 

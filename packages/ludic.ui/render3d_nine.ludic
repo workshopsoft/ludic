@@ -3,11 +3,11 @@ module ludic_ui
 # border-image: the texture's `slice`-pixel corners kept, the rest stretched, drawn `dst` wide (at
 # most half the box each way, ui_nine_cuts); the slice is a share of the texture's own width across
 # and its own height down, so it need not be square
-function r3u_nine(ui_st: mut UiState, src: string, slice: float, x: float, y: float, w: float, h: float, dst: float, c: int, a: float) -> void {
-  let t = r3u_tex(ui_st, src)
+function r3u_nine(render3d_st: mut Render3dState, ui_st: mut UiState, src: string, slice: float, x: float, y: float, w: float, h: float, dst: float, c: int, a: float) -> void {
+  let t = r3u_tex(render3d_st, ui_st, src)
   if t == 0 { return }
-  let su = slice / float(Math.max(tex_width(t), 1))
-  let sv = slice / float(Math.max(tex_height(t), 1))
+  let su = slice / float(Math.max(tex_width(render3d_st, t), 1))
+  let sv = slice / float(Math.max(tex_height(render3d_st, t), 1))
   let cut = ui_nine_cuts(x, y, w, h, dst)
   let xs = r3u_four(cut[0], cut[1], cut[2], cut[3])
   let ys = r3u_four(cut[4], cut[5], cut[6], cut[7])
@@ -17,7 +17,7 @@ function r3u_nine(ui_st: mut UiState, src: string, slice: float, x: float, y: fl
     for i in 0 .. 3 {
       let x0 = int(xs[i])
       let y0 = int(ys[j])
-      ov_sub(t, x0, y0, int(xs[i + 1]) - x0, int(ys[j + 1]) - y0, us[i], vs[j], us[i + 1], vs[j + 1], r3u_r(c), r3u_g(c), r3u_b(c), a)
+      ov_sub(render3d_st, t, x0, y0, int(xs[i + 1]) - x0, int(ys[j + 1]) - y0, us[i], vs[j], us[i + 1], vs[j + 1], r3u_r(c), r3u_g(c), r3u_b(c), a)
     }
   }
 }

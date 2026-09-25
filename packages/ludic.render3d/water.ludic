@@ -7,9 +7,6 @@
 
 # Where a body is standing in the water and how hard it is disturbing it. The game sets it;
 # strength 0 means nobody is in the water and the whole term is skipped.
-let wt_wade_x: float = 0.0
-let wt_wade_z: float = 0.0
-let wt_wade_s: float = 0.0
 # Several still-water planes, each at its own level over its own bounds: the sea round an
 # island and a lake a hundred metres above it cannot be one surface. Each draws the same way;
 # only one - the first added with `reflect` - gets the planar reflection pass, because every
@@ -318,9 +315,9 @@ function water_draw(render3d_st: mut Render3dState, depth_tex: int) -> void {
   # right after gpu_use_program) nor the nested gpu_uniform call (hoisting that changes
   # nothing). Verified by picture, both backends. Read a global into a local before handing it
   # to a uniform call.
-  let wx = wt_wade_x
-  let wz = wt_wade_z
-  let ws = wt_wade_s
+  let wx = render3d_st.wt_wade_x
+  let wz = render3d_st.wt_wade_z
+  let ws = render3d_st.wt_wade_s
   u_f3(render3d_st, gpu_uniform(render3d_st, p, "u_wade"), wx, wz, ws)
   var ron = 0.0
   if render3d_st.water_refl != null and render3d_st.wb_primary >= 0 {

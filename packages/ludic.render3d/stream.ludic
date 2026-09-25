@@ -131,13 +131,11 @@ function stream_band(s: Stream, d: float) -> int {
 # by band and kind. With a real microsecond clock the budget can just be the thing we
 # actually care about — how long this frame is allowed to spend growing ground cover.
 # Overshoot is bounded by one chunk, so keep chunks small on the dense near streams.
-let STREAM_BUDGET_US: int = 2500      # microseconds of generation per frame; a setting may move it
 const STREAM_BUDGET: int = 8000       # kept for the work counter only
 # The worst frame is now bounded by one chunk, not by the budget: stream_fill emits a
 # whole chunk in one call, and the densest band-0 chunk is ~114k instances. Splitting a
 # chunk's generation across frames would need a resumable generator contract; that is
 # the next step if the residual hitch ever matters.
-let stream_budget_left: int = 0
 
 # Drop the half of the cache nobody has asked for in the longest time, and rebuild the
 # index over what is left.
@@ -297,7 +295,7 @@ function stream_census(render3d_st: Render3dState) -> void {
 
 function stream_update_all(render3d_st: mut Render3dState) -> void {
   if render3d_st.stream_all == null { return }
-  render3d_st.stream_deadline = gl_now_us() + STREAM_BUDGET_US
+  render3d_st.stream_deadline = gl_now_us() + render3d_st.STREAM_BUDGET_US
   for i in 0 .. len(render3d_st.stream_all) { stream_update(render3d_st, render3d_st.stream_all[i], render3d_st.cam_pos[0], render3d_st.cam_pos[2]) }
 }
 
