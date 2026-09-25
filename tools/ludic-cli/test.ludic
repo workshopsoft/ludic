@@ -515,6 +515,15 @@ function test_dir_case() -> void {
   if s_contains(got, "helper.ludic") { bad2(lbl, "a file that is not a test was run");  return }
   if not shq(`cd {work} && {root}/bin/ludic test pk/tests > out2.txt 2>&1`) { bad2(lbl, capture_line(`tail -1 {work}/out2.txt`));  return }
   ok(lbl)
+  # -j: two tests at once, each writing one fixed scratch path - each has a TMPDIR of its own
+  let lbl2 = "ludic test -j 2: tests run side by side, each with its own Os.temp_dir()"
+  var t = "program Scratch {\n"
+  t = t + "  function hold(v: string) -> bool {\n    let p = Os.temp_dir() + \"/scratch.txt\"\n    Fs.write_text(p, v)\n    for i in 0 .. 3000 {\n      if Fs.read_text(p) != v { return false }\n    }\n    return true\n  }\n"
+  t = t + "  test \"one\" {\n    expect(hold(\"one\"))\n  }\n  test \"two\" {\n    expect(hold(\"two\"))\n  }\n}\n"
+  write_file(`{work}/pk/tests/scratch.ludic`, t)
+  if not shq(`cd {work} && {root}/bin/ludic test pk/tests -j 2 > out3.txt 2>&1`) { bad2(lbl2, capture(`cat {work}/out3.txt`));  return }
+  if not shq(`grep -q 'pk/tests/scratch.ludic  (2 tests)' {work}/out3.txt`) { bad2(lbl2, capture(`cat {work}/out3.txt`));  return }
+  ok(lbl2)
 }
 
 # package.ludic drives the CLI: `entry` (or the one program under src/) is what

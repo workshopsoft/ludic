@@ -87,15 +87,6 @@ function dp_load(path: pointer) -> bool {
   }
   return true
 }
-function s_to_int(s: pointer) -> int {
-  var v = 0
-  var i = 0
-  while s[i] >= 48 and s[i] <= 57 {
-    v = v * 10 + (s[i] - 48)
-    i += 1
-  }
-  return v
-}
 function dp_own(k: int) -> bool { return dp_pkg[k] == 0 }
 # an edge the numbers count: between two of the program's own modules
 function dp_counted(e: int) -> bool { return dp_own(dp_ef[e]) and dp_own(dp_et[e]) }

@@ -1,0 +1,119 @@
+# ---- ludic test in parallel ---------------------------------------------------
+# Each test block is a process of its own, so nothing stops them running side by side: every file
+# is compiled, then linked, then every test of every file run, each stage as up to N shell jobs at
+# once (xargs -P N; -j N, the machine's CPUs by default). What each wrote and how it exited are
+# read back in file order, so the report is the one a sequential run gives. Each test gets a TMPDIR
+# of its own, so Os.temp_dir() is never shared between two tests running at once.
+var g_test_jobs: int = 0
+function test_jobs() -> int {
+  if g_test_jobs > 0 { return g_test_jobs }
+  var n = s_to_int(capture_line("(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null)"))
+  if n < 1 { n = 1 }
+  return n
+}
+# run every <pre>*.sh under `dir`, up to N at once
+function test_stage(dir: pointer, pre: pointer) -> void {
+  shell(`ls {dir}/{pre}*.sh 2>/dev/null | xargs -P {string(test_jobs())} -n 1 sh`)
+}
+function test_rc(path: pointer) -> int {
+  let t = read_file(path)
+  if t == null { return 127 }
+  return s_to_int(s_trim(t))
+}
+function test_parallel(files: []pointer, only: pointer, verbose: bool) -> int {
+  let jd = `{tmp_dir()}/testjobs`
+  shell(`rm -rf {jd} && mkdir -p {jd}`)
+  ensure_ludicc()
+  let pbf = prebuilt_link_flags()
+  let bins = new []pointer
+  for i in 0 .. len(files) {
+    let bin = `{jd}/b{string(i)}_{flat(strip_ext(files[i]))}`
+    push(bins, bin)
+    write_file(`{jd}/c{string(i)}.sh`, `{ludicc()} --headless{title_flag()}{unsafe_flag()} {sh_single(files[i])} --emit-llvm -o {bin}.ll > {bin}.log 2>&1; echo $? > {bin}.rc1\n`)
+  }
+  test_stage(jd, "c")
+  for i in 0 .. len(files) {
+    let bin = bins[i]
+    let ll = `{bin}.ll`
+    if test_rc(`{bin}.rc1`) == 0 {
+      let flags = `{gl_link_flags(ll)}{vk_link_flags(ll)}{http_link_flags(ll)}{udp_link_flags(ll)}{process_link_flags(ll)}{threads_link_flags(ll)}{pbf}`
+      write_file(`{jd}/l{string(i)}.sh`, `{cc()} -O2 {ll}{flags} -o {bin} >> {bin}.log 2>&1; echo $? > {bin}.rc2\n`)
+    }
+  }
+  test_stage(jd, "l")
+  # the tests of every file that built, each its own job
+  let names = new [][]pointer
+  var k = 0
+  for i in 0 .. len(files) {
+    let bin = bins[i]
+    let mine = new []pointer
+    if test_rc(`{bin}.rc1`) == 0 and test_rc(`{bin}.rc2`) == 0 {
+      let listed = split_lines(capture(`{bin} --list < /dev/null`))
+      for t in 0 .. len(listed) {
+        let nm = listed[t]
+        if nm != "" and (only == "" or nm == only) {
+          let j = string(len(mine))
+          push(mine, nm)
+          # its own temporary directory too: two tests of one file may use one fixed scratch path
+          let td = `{bin}.t{j}.tmp`
+          write_file(`{jd}/t{string(k)}.sh`, `mkdir -p {td}; TMPDIR={td} {bin} {sh_single(nm)} < /dev/null > {bin}.t{j}.out 2>&1; echo $? > {bin}.t{j}.rc\n`)
+          k += 1
+        }
+      }
+    }
+    push(names, mine)
+  }
+  test_stage(jd, "t")
+  return test_report(files, bins, names, only, verbose)
+}
+# the report, file by file, as the sequential run gives it
+function test_report(files: []pointer, bins: []pointer, names: [][]pointer, only: pointer, verbose: bool) -> int {
+  var failed = 0
+  var ntests = 0
+  for i in 0 .. len(files) {
+    let f = files[i]
+    let bin = bins[i]
+    if verbose { say(`  RUN  {f}`) }
+    if test_rc(`{bin}.rc1`) != 0 or test_rc(`{bin}.rc2`) != 0 {
+      let line = `  {c_red()}FAIL{c_reset()} {f}  (did not compile)`
+      if verbose { say(line) } else { print(line) }
+      let why = capture(`grep -i error {bin}.log | head -3`)
+      if len(why) > 0 { out(why) }
+      failed += 1
+      continue
+    }
+    let mine = names[i]
+    var bad = 0
+    var log = ""
+    for t in 0 .. len(mine) {
+      let o = `{bin}.t{string(t)}.out`
+      let rc = test_rc(`{bin}.t{string(t)}.rc`)
+      let txt = capture(`grep -v '^== ' {o}`)
+      if verbose { shell(`grep -v '^== ' {o}`) }
+      if rc != 0 {
+        bad += 1
+        log = log + txt
+        if not s_contains(txt, "FAIL - ") { log = log + `FAIL - {mine[t]}  (exit {string(rc)})\n` }
+      }
+    }
+    ntests += len(mine)
+    var line = ""
+    if len(mine) == 0 and only != "" { line = `  {c_red()}FAIL{c_reset()} {f}  (no test named "{only}")` }
+    else if bad > 0 { line = `  {c_red()}FAIL{c_reset()} {f}  ({string(bad)} of {string(len(mine))} tests failed)` }
+    else if len(mine) == 1 { line = `  {c_green()}PASS{c_reset()} {f}  (1 test)` }
+    else { line = `  {c_green()}PASS{c_reset()} {f}  ({string(len(mine))} tests)` }
+    if line == "" { continue }
+    if verbose { say(line) } else {
+      print(line)
+      if bad > 0 { out(log) }
+    }
+    if bad > 0 or (len(mine) == 0 and only != "") { failed += 1 }
+  }
+  print("")
+  if failed == 0 {
+    print(`== {string(len(files))} test files passed ({string(ntests)} tests) ==`)
+    return 0
+  }
+  print(`== {string(failed)} of {string(len(files))} test files failed ==`)
+  return 1
+}

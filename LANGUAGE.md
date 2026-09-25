@@ -1827,6 +1827,7 @@ ludic run                                # compile src/main.ludic and run it
 ludic build --headless                   # headless build (renders out.ppm; reads stdin)
 ludic test                               # compile and run the project's `test` blocks
 ludic test tests/math.ludic --test adds  # just the test named "adds" (-v: every result line)
+ludic test -j 4                          # four tests at once (default: one per CPU)
 ludic test packages/ludic.base          # the test programs under a directory (a package's)
 ludic deps                               # how tangled the modules are, as the compiler resolved them
 ludic deps --check tests/deps-baseline.txt   # fail when a number rose (--baseline FILE writes them)
@@ -1861,7 +1862,10 @@ FAIL - wrong
 ```
 
 A test program's runner takes a test's name as its one argument, and `--list` to name them all -
-which is how `ludic test` runs them one at a time.
+which is how `ludic test` runs them one at a time. Because every test is its own process they run side
+by side: `ludic test -j N` runs N at once (the machine's CPU count by default; `-j 1` one after the
+other), each with a `TMPDIR` - and so an `Os.temp_dir()` - of its own, and the report comes out in file
+order as a sequential run's does.
 
 `ludic` is the CLI (`ludic help`); `ludicc` is the compiler it drives, built from
 the IR seed by `bin/ludic-dev build-cli`. **[COMPILING.md](COMPILING.md) is the

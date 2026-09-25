@@ -458,3 +458,13 @@ function cc() -> pointer {
   }
   return "clang -Wno-override-module"
 }
+# the leading decimal digits of `s` as an int (0 for none)
+function s_to_int(s: pointer) -> int {
+  var v = 0
+  var i = 0
+  while s[i] >= 48 and s[i] <= 57 {
+    v = v * 10 + (s[i] - 48)
+    i += 1
+  }
+  return v
+}

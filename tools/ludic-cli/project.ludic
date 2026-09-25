@@ -373,6 +373,16 @@ function cmd_test() -> int {
   while ai < arg_count() {
     let a = arg(ai)
     if (a == "--verbose") or (a == "-v") { verbose = true }
+    else if a == "-j" or a == "--jobs" {
+      if ai + 1 >= arg_count() { err("ludic test: -j needs a number\n");  return 1 }
+      ai += 1
+      g_test_jobs = s_to_int(arg(ai))
+      if g_test_jobs < 1 { g_test_jobs = 1 }
+    }
+    else if s_starts(a, "-j") and slen(a) > 2 {
+      g_test_jobs = s_to_int(sslice(a, 2, slen(a)))
+      if g_test_jobs < 1 { g_test_jobs = 1 }
+    }
     else if a == "--test" {
       if ai + 1 >= arg_count() { err("ludic test: --test needs a test name\n");  return 1 }
       ai += 1
@@ -380,7 +390,7 @@ function cmd_test() -> int {
     }
     else if a[0] == '-' {
       err(`ludic test: unknown option {a}\n`)
-      err("  usage: ludic test [file|dir...] [--verbose] [--test NAME]\n")
+      err("  usage: ludic test [file|dir...] [-j N] [--verbose] [--test NAME]\n")
       return 1
     }
     else if shq(`test -d {sh_single(a)}`) {
@@ -403,6 +413,7 @@ function cmd_test() -> int {
     mi += 1
   }
   shell("mkdir -p build")
+  if not host_windows() { return test_parallel(files, only, verbose) }
   var failed = 0
   var ntests = 0
   var i = 0
